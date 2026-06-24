@@ -18,8 +18,9 @@
     <script>
         require([
             "esri/WebMap", "esri/views/MapView", "esri/layers/GraphicsLayer",
-            "esri/widgets/Sketch/SketchViewModel", "esri/widgets/BasemapGallery", "esri/widgets/Expand"
-        ], function(WebMap, MapView, GraphicsLayer, SketchVM, BasemapGallery, Expand){
+            "esri/widgets/Sketch/SketchViewModel", "esri/widgets/BasemapGallery", "esri/widgets/Expand",
+            "esri/geometry/geometryEngine", "esri/Graphic"
+        ], function(WebMap, MapView, GraphicsLayer, SketchVM, BasemapGallery, Expand, geometryEngine, Graphic){
             var drawLayer = new GraphicsLayer({ listMode:"hide" });
             var map = new WebMap({ portalItem: { id: "a41af2a9ea714286aeb669ee6f2fcc9d" } });
             var view = new MapView({ container: "viewDiv", map: map });
@@ -78,22 +79,46 @@
             }
 
             function clearSel(){
-                drawLayer.removeAll();
+                drawLayer.removeAll(); labelGraphic=null;
                 if(bldLV) bldLV.featureEffect=null;
                 if(parcelLV) parcelLV.featureEffect=null;
                 parent.postMessage({ type:'landClear' }, '*');
             }
 
+            function areaOf(poly){
+                if(poly && poly.rings && poly.rings[0] && poly.rings[0].length>=3)
+                    return Math.abs(geometryEngine.geodesicArea(poly, "square-meters"));
+                return 0;
+            }
+            function measure(poly){ parent.postMessage({ type:'landMeasure', area:areaOf(poly) }, '*'); }
+            var labelGraphic=null;
+            function showAreaLabel(poly){
+                if(labelGraphic){ drawLayer.remove(labelGraphic); labelGraphic=null; }
+                var m2=areaOf(poly); if(!m2) return;
+                var c=poly.centroid; if(!c) return;
+                var ha=(m2/10000).toLocaleString('en-US',{maximumFractionDigits:2});
+                labelGraphic=new Graphic({ geometry:c, symbol:{ type:"text", text:ha+" га",
+                    color:"#ffffff", haloColor:[0,40,60,0.95], haloSize:1.6,
+                    font:{ size:12, weight:"bold", family:"sans-serif" } } });
+                drawLayer.add(labelGraphic);
+            }
             var sketch = new SketchVM({ view:view, layer:drawLayer });
+            // Зурсан полигоны харагдах симбол
+            sketch.polygonSymbol = {
+                type:"simple-fill",
+                color:[0,212,255,0.12],
+                outline:{ color:[0,212,255,1], width:1 }
+            };
             sketch.on("create", function(e){
-                if(e.state==="complete"){ var geom=e.graphic.geometry; drawLayer.removeAll(); applySelection(geom); }
+                if(e.state==="active"){ measure(e.graphic && e.graphic.geometry); } // зурж байх үед шууд хэмжих
+                else if(e.state==="complete"){ var geom=e.graphic.geometry; measure(geom); showAreaLabel(geom); applySelection(geom); } // полигон + га шошго үлдэнэ
             });
 
             // ── Parent-аас команд (баруун самбарын товч) ──
             window.addEventListener('message', function(e){
                 var d=e.data||{};
                 if(d.type==='landTool'){
-                    if(d.action==='draw') sketch.create("polygon");
+                    if(d.action==='draw'){ drawLayer.removeAll(); labelGraphic=null; sketch.create("polygon"); }
                     else if(d.action==='clear'){ sketch.cancel(); clearSel(); }
                 }
                 else if(d.type==='parcelFilter'){
