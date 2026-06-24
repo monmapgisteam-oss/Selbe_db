@@ -1142,6 +1142,8 @@ footer {
 .lc-stats { list-style:none;display:flex;flex-direction:column;gap:13px }
 .lc-stats li { display:flex;align-items:center;justify-content:space-between;gap:10px;padding-bottom:11px;border-bottom:1px solid rgba(255,255,255,.06) }
 .lc-stats li:last-child { border-bottom:none;padding-bottom:0 }
+#lcMeasure { margin-bottom:13px }
+#lcMeasure li { border-bottom:1px solid rgba(255,255,255,.06);padding-bottom:11px }
 .lc-stats .k { display:flex;align-items:center;gap:9px;font-size:.74rem;color:rgba(232,236,240,.78) }
 .lc-stats .k span { font-size:1rem }
 .lc-stats .v { font-size:.82rem;font-weight:700;color:var(--white);text-align:right;white-space:nowrap }
