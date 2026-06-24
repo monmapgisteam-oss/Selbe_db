@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="mn">
 <head>
   <meta charset="UTF-8"/>
@@ -149,6 +149,7 @@
       <aside class="agd-col agd-left agd-left-land" id="agdLeftLand" aria-hidden="true">
         <div class="agd-card">
           <div class="agd-card-t">Дэлгэрэнгүй үзүүлэлт</div>
+          <ul class="lc-stats" id="lcMeasure"></ul>
           <ul class="lc-stats" id="lcStats"></ul>
         </div>
         <div class="agd-card agd-grow">
@@ -627,10 +628,20 @@
     });
   });
 
-  // Message: сонголт / цэвэрлэх / барилга сонголт
+  // Сонгож зурж буй полигоны талбай (Google Earth measure маягаар)
+  const measEl=document.getElementById('lcMeasure');
+  function renderMeasure(m2){
+    if(!measEl) return;
+    if(!m2 || m2<=0){ measEl.innerHTML=''; return; }
+    const ha=(m2/10000).toLocaleString('en-US',{maximumFractionDigits:2});
+    measEl.innerHTML='<li class="lc-meas-row"><span class="k"><span>📏</span>Сонгосон талбайн хэмжээ</span><span class="v">'+ha+' га</span></li>';
+  }
+
+  // Message: сонголт / цэвэрлэх / барилга сонголт / хэмжилт
   window.addEventListener('message', function(e){
     const m=e.data||{};
     if(m.type==='bldSelect'){ renderBld(m.attrs); }
+    else if(m.type==='landMeasure'){ renderMeasure(m.area); }
     else if(m.type==='landSelect'){
       if(dBtn) dBtn.classList.remove('active');
       const p=m.parcels||{}, b=m.buildings||{};
@@ -640,6 +651,7 @@
     }
     else if(m.type==='landClear'){
       if(dBtn) dBtn.classList.remove('active');
+      renderMeasure(0);
       if(fullParcel) renderDonuts(fullParcel);
       renderFullStats();
       if(box) box.innerHTML='<li class="bld-hint">Газрын зураг дээр барилга дарж сонгоно уу</li>';
