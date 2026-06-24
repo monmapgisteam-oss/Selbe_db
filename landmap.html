@@ -110,7 +110,7 @@
                 outline:{ color:[0,212,255,1], width:1 }
             };
             sketch.on("create", function(e){
-                if(e.state==="active"){ measure(e.graphic && e.graphic.geometry); } // зурж байх үед шууд хэмжих
+                if(e.state==="active"){ var g=e.graphic && e.graphic.geometry; measure(g); showAreaLabel(g); } // зурж байх үед панель + полигон дотор шууд
                 else if(e.state==="complete"){ var geom=e.graphic.geometry; measure(geom); showAreaLabel(geom); applySelection(geom); } // полигон + га шошго үлдэнэ
             });
 
