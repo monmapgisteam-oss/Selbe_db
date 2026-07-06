@@ -1254,9 +1254,9 @@ footer {
 /* Bars chart */
 .agd-bars { list-style:none;display:flex;flex-direction:column;gap:18px }
 .agd-bars li { display:flex;flex-direction:column;gap:5px }
-.agd-bars .agd-bl { display:flex;justify-content:space-between;font-size:.74rem }
-.agd-bars .agd-bl span { color:rgba(232,236,240,.72) }
-.agd-bars .agd-bl b { color:var(--ac,#00d4ff);font-weight:700 }
+.agd-bars .agd-bl { display:flex;justify-content:space-between;gap:10px;font-size:.74rem;align-items:baseline }
+.agd-bars .agd-bl span { color:rgba(232,236,240,.72);line-height:1.35 }
+.agd-bars .agd-bl b { color:var(--ac,#00d4ff);font-weight:700;white-space:nowrap;flex-shrink:0 }
 .agd-bars .agd-bt { height:7px;border-radius:5px;background:rgba(255,255,255,.06);overflow:hidden }
 .agd-bars .agd-bt i { display:block;height:100%;width:0;border-radius:5px;background:linear-gradient(90deg,var(--ac,#00d4ff),color-mix(in srgb,var(--ac,#00d4ff) 45%,#fff));transition:width .6s ease }
 
@@ -1575,6 +1575,17 @@ footer {
   .hero h1 { font-size:2.1rem }
   .hero-stats { gap:16px }
 }
+
+/* ── Үлдсэн нэгж талбар — нийт тоо/талбай stat cards ── */
+.land-sum { display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px }
+.land-sc {
+  background:color-mix(in srgb,var(--ac,#fb923c) 8%,transparent);
+  border:1px solid color-mix(in srgb,var(--ac,#fb923c) 28%,transparent);
+  border-radius:10px;padding:12px 14px;
+}
+.land-sc-v { font-size:1.45rem;font-weight:800;letter-spacing:-.02em;color:var(--white);line-height:1 }
+.land-sc-v small { font-size:.66rem;font-weight:600;color:var(--muted) }
+.land-sc-l { font-size:.62rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-top:6px }
 
 /* ── REDUCED MOTION ── */
 @media(prefers-reduced-motion:reduce) {

@@ -133,6 +133,7 @@
             <button class="agd-cat"        data-imp="infra" style="--ac:#f5c842"><span>⚡</span>Дэд бүтцийн багтаамж</button>
             <button class="agd-cat"        data-imp="env"   style="--ac:#34d399"><span>🌳</span>Байгаль орчин</button>
             <button class="agd-cat"        data-imp="econ"  style="--ac:#f472b6"><span>🏘️</span>Нийгэм, эдийн засаг</button>
+            <button class="agd-cat"        data-imp="land"  style="--ac:#fb923c"><span>🏠</span>Үлдсэн нэгж талбар</button>
           </div>
         </div>
         <div class="agd-card">
@@ -422,7 +423,10 @@
       detail:[['Орон сууц','8,575 айлын 113 блок — хотын хомсдлыг бууруулна.'],
               ['Худалдаа','32 блок · 152,650 м² худалдаа-үйлчилгээний барилга.'],
               ['Спорт','1 блок спорт цогцолбор.'],
-              ['Эдийн засаг','Орон нутгийн худалдаа, үл хөдлөхийн үнэ цэн нэмэгдэнэ.']] }
+              ['Эдийн засаг','Орон нутгийн худалдаа, үл хөдлөхийн үнэ цэн нэмэгдэнэ.']] },
+    land: { ac:'#fb923c', chartT:'Зориулалтаар нийт талбай',
+      bars:[], gauge:{v:0,l:'Нийт нэгж талбар'}, badge:'Үлдсэн нэгж талбар',
+      summary:null, detail:[['Ачаалж байна','Өгөгдөл татаж байна…']] }
   };
 
   const cats = document.querySelectorAll('.agd-cat');
@@ -437,9 +441,10 @@
   function render(key){
     const d = DATA[key]; if(!d) return;
     elChartT.textContent = d.chartT;
-    elBars.innerHTML = d.bars.map(b=>
-      '<li style="--ac:'+d.ac+'"><div class="agd-bl"><span>'+esc(b[0])+'</span><b>'+b[1]+'%</b></div><div class="agd-bt"><i data-w="'+b[1]+'"></i></div></li>'
-    ).join('');
+    elBars.innerHTML = d.bars.map(b=>{
+      var lbl = (b[2]!=null) ? b[2] : b[1]+'%';
+      return '<li style="--ac:'+d.ac+'"><div class="agd-bl"><span>'+esc(b[0])+'</span><b>'+lbl+'</b></div><div class="agd-bt"><i data-w="'+b[1]+'"></i></div></li>';
+    }).join('');
     requestAnimationFrame(()=>{ elBars.querySelectorAll('.agd-bt i').forEach(i=>{ i.style.width=i.dataset.w+'%'; }); });
     if(elGauge){
       elGauge.style.setProperty('--ac', d.ac);
@@ -447,7 +452,15 @@
     }
     if(elGaugeV) elGaugeV.textContent = d.gauge.v+'%';
     if(elGaugeL) elGaugeL.textContent = d.gauge.l;
-    elDetail.innerHTML = d.detail.map(p=>
+    var sumHTML = '';
+    if(d.summary){
+      var s = d.summary;
+      sumHTML = '<div class="land-sum">'
+        + '<div class="land-sc" style="--ac:'+d.ac+'"><div class="land-sc-v">'+(s.cnt||0).toLocaleString('en-US')+'</div><div class="land-sc-l">Нийт нэгж талбар</div></div>'
+        + '<div class="land-sc" style="--ac:'+d.ac+'"><div class="land-sc-v">'+((s.m2||0)/10000).toFixed(2)+'<small> га</small></div><div class="land-sc-l">Нийт талбай</div></div>'
+        + '</div>';
+    }
+    elDetail.innerHTML = sumHTML + d.detail.map(p=>
       '<p style="--ac:'+d.ac+'"><span class="agd-dtag">'+esc(p[0])+'</span><span class="agd-dtxt">'+esc(p[1])+'</span></p>'
     ).join('');
     // tag-баганыг тухайн категорийн хамгийн урт tag-аар тааруулах (текст ойр байх)
@@ -460,11 +473,29 @@
 
   cats.forEach(c=>{
     c.addEventListener('click',()=>{
+      const key = c.dataset.imp;
+      const wasActive = c.classList.contains('active');
+      // Layer visibility toggle (2D map)
+      if(window.__selbeApplyCatVisibility) window.__selbeApplyCatVisibility(key);
+      if(wasActive){
+        // Идэвхтэй товч дахин дарагдсан → бүх layer буцаад ил, товч idle
+        cats.forEach(x=>x.classList.remove('active'));
+        return;
+      }
       cats.forEach(x=>x.classList.remove('active'));
       c.classList.add('active');
-      render(c.dataset.imp);
+      render(key);
     });
   });
+  // view.when()-с дуудагдах callback — layer URL-аас авсан бодит өгөгдлийг DATA.land-д хийж render хийнэ
+  window.__selbeRenderLand = function(summary, bars, detail){
+    DATA.land.summary = summary;
+    DATA.land.bars = bars;
+    DATA.land.detail = detail;
+    var active = document.querySelector('.agd-cat.active');
+    if(active && active.dataset.imp === 'land') render('land');
+  };
+
   render('pop');
 })();
 
@@ -667,6 +698,35 @@
     const map = new WebMap({ portalItem:{ id:"07f88188145d41d58d7376b569cb473f" } });
     const view = window.__view2d = new MapView({ container:"arcgisMap", map:map });
     const loading = document.getElementById('agdMapLoading');
+
+    // Категорийн товч дарахад тухайн категорид харгалзах layer л ил гарна
+    window.__selbeCatMap = null;
+    window.__selbeApplyCatVisibility = function(catKey){
+      if(!window.__view2d) return;
+      if(window.__selbeCatMap === catKey) catKey = null; // toggle off
+      window.__selbeCatMap = catKey;
+      var MAP = {
+        pop:   ['Барилга'],
+        road:  ['Зам','Дугуйн зам','Явган хүний зам'],
+        infra: ['Шугам сүлжээ'],
+        env:   ['Ногоон байгууламж','Гол'],
+        econ:  ['Барилга'],
+        land:  ['20260226_uldsen_negj_talbar']
+      };
+      var whitelist = catKey ? MAP[catKey] : null;
+      window.__view2d.map.allLayers.forEach(function(l){
+        if(l.type !== 'feature') return;
+        if(!whitelist){ l.visible = true; return; }
+        var t = (l.title||'').trim();
+        var url = l.url || '';
+        var match = whitelist.some(function(name){
+          if(t === name) return true;
+          if(name === 'Шугам сүлжээ' && url.indexOf('Selbe_utility') > -1) return true;
+          return false;
+        });
+        l.visible = match;
+      });
+    };
 
     const hover    = document.getElementById('mapHover');
     const hoverRows= document.getElementById('mapHoverRows');
@@ -949,6 +1009,54 @@
         if(/өндөр|муу|ноцтой|гэмт|осол|сэрэмж|аюул|эвдэр/.test(s)) return '#ff6b6b';
         return '';
       }
+
+      // ── Үлдсэн нэгж талбар — шууд FeatureServer/1 руу query илгээх ──
+      (function(){
+        var BASE = 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/20260226_uldsen_negj_talbar/FeatureServer/1/query';
+        var u1 = new URL(BASE);
+        u1.searchParams.set('where','1=1');
+        u1.searchParams.set('outStatistics', JSON.stringify([
+          {statisticType:'count',onStatisticField:'FID',outStatisticFieldName:'cnt'},
+          {statisticType:'sum',onStatisticField:'area_m2',outStatisticFieldName:'tot'}
+        ]));
+        u1.searchParams.set('f','json');
+        var u2 = new URL(BASE);
+        u2.searchParams.set('where','1=1');
+        u2.searchParams.set('groupByFieldsForStatistics','landuse_de');
+        u2.searchParams.set('outStatistics', JSON.stringify([
+          {statisticType:'count',onStatisticField:'FID',outStatisticFieldName:'cnt'},
+          {statisticType:'sum',onStatisticField:'area_m2',outStatisticFieldName:'area'}
+        ]));
+        u2.searchParams.set('f','json');
+        Promise.all([fetch(u1.toString()).then(function(r){return r.json();}), fetch(u2.toString()).then(function(r){return r.json();})])
+          .then(function(d){
+            var a1 = ((d[0].features||[])[0]||{}).attributes||{};
+            var raw = (d[1].features||[]).map(function(f){return f.attributes;});
+            var cnt = a1.cnt||0, totM2 = a1.tot||0;
+            // Хоосон/цагаан зайт landuse_de-г нэг "Тодорхойгүй" бүлэгт нэгтгэх
+            var agg = {};
+            raw.forEach(function(r){
+              var name = (r.landuse_de||'').trim() || 'Зориулалт тодорхойгүй';
+              if(!agg[name]) agg[name] = { name:name, area:0, cnt:0 };
+              agg[name].area += r.area||0;
+              agg[name].cnt  += r.cnt||0;
+            });
+            var rows = Object.keys(agg).map(function(k){ return agg[k]; })
+                        .sort(function(a,b){ return b.area-a.area; });
+            function pctOf(a){ return totM2 ? a/totM2*100 : 0; }
+            function pctLabel(a){ var p=pctOf(a); return p>0&&p<1 ? '<1%' : Math.round(p)+'%'; }
+            // График бар дээр: талбай (га) ба хувь
+            var bars = rows.map(function(r){
+              return [r.name, Math.round(pctOf(r.area)), (r.area/10000).toFixed(1)+' га · '+pctLabel(r.area)];
+            });
+            var summary = { cnt:cnt, m2:totM2 };
+            // Дэлгэрэнгүй жагсаалт хэрэггүй — зөвхөн summary card + график
+            if(window.__selbeRenderLand) window.__selbeRenderLand(summary, bars, []);
+          }).catch(function(e){
+            console.error('Үлдсэн нэгж талбар fetch алдаа:', e);
+            if(window.__selbeRenderLand) window.__selbeRenderLand(null, [], [['Алдаа','Өгөгдөл ачаалж чадсангүй']]);
+          });
+      })();
 
       // HOVER
       view.on('pointer-move', function(event){
