@@ -218,7 +218,16 @@ nav {
   font-weight:800;line-height:1.1;letter-spacing:-.01em;margin-bottom:10px;
   text-transform:uppercase;
 }
-.hero h1 .hl { color:#00d4ff !important;font-style:normal;font-weight:900; }
+.hero h1 .hl {
+  color:#00d4ff !important;font-style:normal;font-weight:900;
+  text-shadow:0 0 34px rgba(0,212,255,.45),0 0 80px rgba(0,212,255,.18); /* неон гэрэлтэлт */
+}
+/* Гарчгийн ард зөөлөн радиаль гэрэл — контентыг фонтой уусахаас сэргийлнэ */
+.hero-inner::before {
+  content:'';position:absolute;z-index:-1;pointer-events:none;
+  top:-120px;left:-160px;width:640px;height:520px;
+  background:radial-gradient(closest-side,rgba(0,212,255,.09),transparent 70%);
+}
 .hero-tagline {
   font-size:clamp(.78rem,1.4vw,1rem);
   font-weight:500;letter-spacing:.42em;text-transform:uppercase;
@@ -241,6 +250,63 @@ nav {
 }
 .hero-sub.hide-cursor::after { display:none }
 @keyframes blink-cur { 0%,100%{opacity:1} 50%{opacity:0} }
+
+/* ── HERO CTA ── */
+.hero-cta { display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:36px }
+.btn-primary {
+  display:inline-flex;align-items:center;gap:9px;
+  padding:13px 26px;border-radius:9px;
+  background:var(--cyan);color:#06202c;
+  font-weight:800;font-size:.86rem;text-decoration:none;letter-spacing:.01em;
+  box-shadow:0 10px 30px -8px rgba(0,212,255,.55);
+  transition:transform .16s ease,box-shadow .16s ease,filter .16s;
+}
+.btn-primary svg { width:15px;height:15px;transition:transform .16s }
+.btn-primary:hover { transform:translateY(-2px);box-shadow:0 14px 36px -8px rgba(0,212,255,.7);filter:brightness(1.06) }
+.btn-primary:hover svg { transform:translateX(3px) }
+.btn-primary:focus-visible { outline:2px solid #fff;outline-offset:2px }
+.btn-outline {
+  display:inline-flex;align-items:center;gap:8px;
+  padding:13px 24px;border-radius:9px;
+  background:rgba(0,212,255,.06);color:var(--white);
+  font-weight:600;font-size:.86rem;text-decoration:none;
+  border:1px solid rgba(0,212,255,.35);backdrop-filter:blur(4px);
+  transition:background .16s,border-color .16s,transform .16s ease;
+}
+.btn-outline:hover { background:rgba(0,212,255,.14);border-color:rgba(0,212,255,.6);transform:translateY(-2px) }
+.btn-outline:focus-visible { outline:2px solid var(--cyan);outline-offset:2px }
+
+/* ── HERO STATS ── */
+.hero-stats { display:flex;gap:clamp(20px,4vw,52px);flex-wrap:wrap;margin-top:48px }
+.hs-item { border-left:2px solid rgba(0,212,255,.55);padding-left:14px }
+.hs-item b {
+  display:block;font-size:clamp(1.3rem,2.4vw,1.75rem);font-weight:800;
+  letter-spacing:-.02em;color:var(--white);line-height:1;font-variant-numeric:tabular-nums;
+}
+.hs-item span {
+  display:block;margin-top:6px;
+  font-size:.6rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;
+  color:rgba(232,236,240,.45);
+}
+
+/* ── HERO SCROLL INDICATOR ── */
+.hero-scroll {
+  position:absolute;bottom:24px;left:50%;transform:translateX(-50%);z-index:4;
+  width:25px;height:41px;border-radius:14px;
+  border:1.5px solid rgba(0,212,255,.5);
+  transition:border-color .15s;
+}
+.hero-scroll:hover { border-color:var(--cyan) }
+.hero-scroll span {
+  position:absolute;left:50%;top:7px;transform:translateX(-50%);
+  width:3px;height:8px;border-radius:2px;background:var(--cyan);
+  animation:scrollDot 1.8s ease-in-out infinite;
+}
+@keyframes scrollDot {
+  0%   { top:7px;opacity:1 }
+  70%  { top:22px;opacity:0 }
+  100% { top:22px;opacity:0 }
+}
 /* ── ARCGIS-STYLE DASHBOARD ── */
 .agd-section { padding:14px;max-width:none;margin:0 }
 .agd {
@@ -297,15 +363,30 @@ nav {
 /* Body grid */
 .agd-body { display:grid;grid-template-columns:352px 1fr 400px;flex:1;min-height:0 }
 .agd-body.land-mode { grid-template-columns:352px 1fr 320px }
+.agd-body.prog-mode { grid-template-columns:352px 1fr 360px }
 .agd-col { display:flex;flex-direction:column;gap:16px;padding:16px;background:#0b1322;overflow-y:auto;height:100% }
 .agd-left  { border-right:1px solid var(--bdr);padding:10px;gap:24px }
-.agd-left-land { grid-column:1;grid-row:1;display:none }
-.agd-left-land.show { display:flex }
+.agd-left-land, .agd-left-prog { grid-column:1;grid-row:1;display:none }
+.agd-left-land.show, .agd-left-prog.show { display:flex }
 .agd-left .agd-card:has(#agdDetail) { margin-top:-14px }
 .agd-left .agd-card:has(#agdBars) { margin-top:-14px }
 .agd-right { border-left:1px solid var(--bdr) }
-.agd-right-land { grid-column:3;grid-row:1;display:none }
-.agd-right-land.show { display:flex }
+.agd-right-land, .agd-right-prog { grid-column:3;grid-row:1;display:none }
+.agd-right-land.show, .agd-right-prog.show { display:flex }
+/* Барилгын явц — нийт үзүүлэлтийн 2×2 карт */
+.prog-sum { display:grid;grid-template-columns:1fr 1fr;gap:10px }
+/* Барилгын явц — сонгосон блокийн дэлгэрэнгүй */
+.prog-id { margin-bottom:14px }
+.prog-total-bar { margin:2px 0 4px }
+.prog-total-bar .agd-bl { display:flex;justify-content:space-between;align-items:baseline;font-size:.76rem;margin-bottom:6px }
+.prog-total-bar .agd-bl b { font-weight:800;font-variant-numeric:tabular-nums }
+.prog-total-bar .agd-bt { height:9px;border-radius:5px;background:rgba(255,255,255,.06);overflow:hidden }
+.prog-total-bar .agd-bt i { display:block;height:100%;border-radius:5px;transition:width .7s ease }
+.prog-stage-t { font-size:.62rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#8fc6e6;margin:16px 0 12px;padding-top:14px;border-top:1px solid var(--bdr) }
+.prog-stages { gap:11px }
+.prog-stages .agd-bl b { font-variant-numeric:tabular-nums }
+.prog-stages .prog-na .agd-bl b { color:var(--muted);font-weight:600;font-style:italic }
+.prog-stages .prog-na { opacity:.55 }
 /* Газар чөлөөлөлт — зардлын тооцоо (зүүн) */
 .lc-stats { list-style:none;display:flex;flex-direction:column;gap:13px }
 .lc-stats li { display:flex;align-items:center;justify-content:space-between;gap:10px;padding-bottom:11px;border-bottom:1px solid rgba(255,255,255,.06) }
@@ -565,9 +646,15 @@ nav {
   .hero { padding:88px 20px 52px }
   .nav-links { display:none }
   .hamburger { display:flex }
+  .hero-stats { gap:18px;margin-top:36px }
+  .hero-cta { margin-top:28px }
+  .btn-primary,.btn-outline { padding:12px 20px;font-size:.8rem }
+  .hero-sub { bottom:76px }
 }
 @media(max-width:480px) {
   .hero h1 { font-size:2.1rem }
+  .hs-item b { font-size:1.15rem }
+  .hero-scroll { display:none }
 }
 
 /* ── Үлдсэн нэгж талбар — нийт тоо/талбай stat cards ── */
@@ -585,4 +672,6 @@ nav {
 @media(prefers-reduced-motion:reduce) {
   .r { opacity:1;transform:none;transition:none }
   #arc-canvas { display:none }
+  .hero-scroll span { animation:none;top:14px;opacity:1 }
+  .btn-primary,.btn-outline { transition:none }
 }
