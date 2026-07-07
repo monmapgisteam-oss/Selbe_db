@@ -1,0 +1,815 @@
+'use strict';
+
+/* HTML escape — олон IIFE-д хуваалцана */
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+
+/* ── ArcGIS FeatureServer орг үндэс (URL өөрчлөгдвөл зөвхөн эндээс засна) ── */
+const AGS1 = 'https://services-ap1.arcgis.com/ACqsMOmNLi5wIdIh/arcgis/rest/services';
+const AGS2 = 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services';
+
+/* ── IMPACT DASHBOARD (data-driven, cross-filter) ── */
+(function(){
+  const DATA = {
+    pop: { ac:'#00d4ff', chartT:'Үйлчилгээний хүртээмж\n20 минутын зайд',
+      bars:[['Худалдаа',95],['Цэцэрлэг',90],['Сургууль',78],['Эмнэлэг',64]],
+      detail:[['Орон сууц','8,575 айлын 113 блок орон сууц.'],
+              ['Сургууль','3,780 хүүхдийн 3 блок ЕБС.'],
+              ['Цэцэрлэг','1,200 хүүхдийн 5 блок цэцэрлэг.'],
+              ['Эмнэлэг','100 ортой 1 блок эмнэлэг.']] },
+    road: { ac:'#30f0a0', chartT:'Зорчилтын хуваарь (зорилтот)',
+      bars:[['Явган',40],['Нийтийн тээвэр',30],['Дугуй',15],['Авто',15]],
+      detail:[['Зам','Шинээр 13.2 км авто · 26.2 км дугуйн · 52 км явган зам.'],
+              ['Зогсоол','7 блок · 47,530 м² талбай.'],
+              ['Систем','Түгжрэл хянаж, нийтийн тээвэр, дохио зангаа, зогсоолыг оновчилно.']] },
+    infra: { ac:'#f5c842', chartT:'Дэд бүтцийн ачааллын түвшин',
+      bars:[['Дулаан',96],['Ус / бохир',82],['Цахилгаан',68],['Хог хаягдал',55]],
+      detail:[['Дулаан','Өвлийн оргил ачааллын гол хязгаарлалт.'],
+              ['Ус/бохир','~9,000–11,000 м³/өдрийн нэмэлт хэрэгцээ.'],
+              ['Цахилгаан','Сүлжээ, дэд станцын ачаалал.']] },
+    env: { ac:'#34d399', chartT:'Газар ашиглалт (%)',
+      bars:[['Ногоон байгууламж',37],['Барилга',27],['Зам, талбай',22],['Ус, гол',14]],
+      detail:[['Ногоон','58.11 га ногоон байгууламж — нийт талбайн 36.8%.'],
+              ['Амралт','1.5 км урт Сэлбэ голын дагуух ногоон амралтын бүс.'],
+              ['Систем','Агаар, ус, ногоон байгууламжийг тасралтгүй хэмжиж, бохирдлын шалтгааныг тогтооно.']] },
+    econ: { ac:'#f472b6', chartT:'Эдийн засгийн нөлөө',
+      bars:[['Орон сууц (айл)',100],['Ажлын талбай',72],['Худалдаа-үйлчилгээ',64],['Амьдралын чанар',88]],
+      detail:[['Орон сууц','8,575 айлын 113 блок — хотын хомсдлыг бууруулна.'],
+              ['Худалдаа','32 блок · 152,650 м² худалдаа-үйлчилгээний барилга.'],
+              ['Спорт','1 блок спорт цогцолбор.'],
+              ['Эдийн засаг','Орон нутгийн худалдаа, үл хөдлөхийн үнэ цэн нэмэгдэнэ.']] },
+    land: { ac:'#fb923c', chartT:'Зориулалтаар нийт талбай',
+      bars:[], summary:null, detail:[['Ачаалж байна','Өгөгдөл татаж байна…']] }
+  };
+
+  const cats = document.querySelectorAll('.agd-cat');
+  if(!cats.length) return;
+  const elBars=document.getElementById('agdBars'), elChartT=document.getElementById('agdChartTitle'),
+        elDetail=document.getElementById('agdDetail');
+
+  function render(key){
+    const d = DATA[key]; if(!d) return;
+    elChartT.textContent = d.chartT;
+    elBars.innerHTML = d.bars.map(b=>{
+      var lbl = (b[2]!=null) ? b[2] : b[1]+'%';
+      return '<li style="--ac:'+d.ac+'"><div class="agd-bl"><span>'+esc(b[0])+'</span><b>'+lbl+'</b></div><div class="agd-bt"><i data-w="'+b[1]+'"></i></div></li>';
+    }).join('');
+    requestAnimationFrame(()=>{ elBars.querySelectorAll('.agd-bt i').forEach(i=>{ i.style.width=i.dataset.w+'%'; }); });
+    var sumHTML = '';
+    if(d.summary){
+      var s = d.summary;
+      sumHTML = '<div class="land-sum">'
+        + '<div class="land-sc" style="--ac:'+d.ac+'"><div class="land-sc-v">'+(s.cnt||0).toLocaleString('en-US')+'</div><div class="land-sc-l">Нийт нэгж талбар</div></div>'
+        + '<div class="land-sc" style="--ac:'+d.ac+'"><div class="land-sc-v">'+((s.m2||0)/10000).toFixed(2)+'<small> га</small></div><div class="land-sc-l">Нийт талбай</div></div>'
+        + '</div>';
+    }
+    elDetail.innerHTML = sumHTML + d.detail.map(p=>
+      '<p style="--ac:'+d.ac+'"><span class="agd-dtag">'+esc(p[0])+'</span><span class="agd-dtxt">'+esc(p[1])+'</span></p>'
+    ).join('');
+    // tag-баганыг тухайн категорийн хамгийн урт tag-аар тааруулах (текст ойр байх)
+    elDetail.style.removeProperty('--tagcol');  // байгалийн өргөн хэмжихийн өмнө reset
+    let _mt=0; elDetail.querySelectorAll('.agd-dtag').forEach(s=>{ _mt=Math.max(_mt, Math.ceil(s.offsetWidth)); });
+    elDetail.style.setProperty('--tagcol', _mt+'px');
+  }
+
+  function setActive(active){
+    cats.forEach(x=>{
+      const on = x===active;
+      x.classList.toggle('active', on);
+      x.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+  }
+  cats.forEach(c=>{
+    c.addEventListener('click',()=>{
+      const key = c.dataset.imp;
+      const wasActive = c.classList.contains('active');
+      // Layer visibility toggle (2D map)
+      if(window.__selbeApplyCatVisibility) window.__selbeApplyCatVisibility(key);
+      if(wasActive){
+        // Идэвхтэй товч дахин дарагдсан → бүх layer буцаад ил, товч idle
+        setActive(null);
+        return;
+      }
+      setActive(c);
+      render(key);
+    });
+  });
+  // view.when()-с дуудагдах callback — layer URL-аас авсан бодит өгөгдлийг DATA.land-д хийж render хийнэ
+  window.__selbeRenderLand = function(summary, bars, detail){
+    DATA.land.summary = summary;
+    DATA.land.bars = bars;
+    DATA.land.detail = detail;
+    var active = document.querySelector('.agd-cat.active');
+    if(active && active.dataset.imp === 'land') render('land');
+  };
+
+  render('pop');
+})();
+
+/* ── 2D / 3D MAP TOGGLE ── */
+(function(){
+  const mode=document.getElementById('mapMode'),
+        c2=document.getElementById('arcgisMap'),
+        cL=document.getElementById('arcgisMapLand'),
+        c3=document.getElementById('arcgisMap3d');
+  if(!mode || !c3 || typeof require === 'undefined') return;
+  let inited=false;
+  function init3d(){
+    if(inited) return; inited=true;
+    // Тусдаа scene3d.html-ийг iframe-ээр (өөрийн WebGL context — 2D-тэй мөргөлдөхгүй)
+    c3.innerHTML='<iframe src="scene3d.html" style="width:100%;height:100%;border:0;display:block" title="Сэлбэ 3D" allowfullscreen></iframe>';
+  }
+  let landInited=false;
+  function initLand(){
+    if(landInited) return; landInited=true;
+    // Тусдаа landmap.html iframe — өөрийн WebGL context (2D MapView-тэй мөргөлдөхгүй)
+    cL.innerHTML='<iframe src="landmap.html" style="width:100%;height:100%;border:0;display:block" title="Газар чөлөөлөлт"></iframe>';
+  }
+  const stats=document.getElementById('sceneStats');
+  const ssToggle=document.getElementById('ssToggle');
+  if(ssToggle) ssToggle.addEventListener('click',function(e){ e.stopPropagation(); if(stats) stats.classList.toggle('collapsed'); });
+  // Гадуур дарвал хаагдах (дэлгэцийн өөр хэсэг)
+  document.addEventListener('click',function(e){
+    if(stats && !stats.classList.contains('collapsed') && !stats.contains(e.target)) stats.classList.add('collapsed');
+  });
+  // 3D iframe дотор дарвал (window blur) хаагдах
+  window.addEventListener('blur',function(){
+    if(stats && !stats.classList.contains('collapsed')) stats.classList.add('collapsed');
+  });
+  mode.querySelectorAll('button').forEach(function(b){
+    b.addEventListener('click',function(){
+      mode.querySelectorAll('button').forEach(function(x){ x.classList.toggle('active', x===b); });
+      const m=b.dataset.mode;
+      c3.classList.toggle('show', m==='3d');
+      cL.classList.toggle('show', m==='land');
+      c2.style.visibility = (m==='2d') ? 'visible' : 'hidden';
+      if(stats){ stats.classList.toggle('show', m==='3d'); stats.setAttribute('aria-hidden', m==='3d' ? 'false' : 'true'); }
+      // Зүүн самбарыг динамик солих: land → шинэ самбар, бусад → хэвийн
+      const lMain=document.getElementById('agdLeftMain'), lLand=document.getElementById('agdLeftLand');
+      if(lMain) lMain.style.display = (m==='land') ? 'none' : '';
+      if(lLand){ lLand.classList.toggle('show', m==='land'); lLand.setAttribute('aria-hidden', m==='land' ? 'false' : 'true'); }
+      const rMain=document.getElementById('agdRightMain'), rLand=document.getElementById('agdRightLand');
+      if(rMain) rMain.style.display = (m==='land') ? 'none' : '';
+      if(rLand){ rLand.classList.toggle('show', m==='land'); rLand.setAttribute('aria-hidden', m==='land' ? 'false' : 'true'); }
+      const body=document.querySelector('.agd-body');
+      if(body) body.classList.toggle('land-mode', m==='land');
+      if(m==='3d') init3d();
+      if(m==='land') initLand();
+    });
+  });
+})();
+
+/* ── Газар чөлөөлөлт — зүүн (building) + баруун (parcel donut) панель, lasso-р шүүгдэнэ ── */
+(function(){
+  const statsEl=document.getElementById('lcStats'), box=document.getElementById('bldDetail');
+  // Баруун — parcel rigth_type donut
+  function renderDonuts(counts){
+    counts=counts||{};
+    const total=(counts['эзэмших']||0)+(counts['өмчлөх']||0)+(counts['ашиглах']||0);
+    function setD(id,nId,sId,val,color){
+      const pie=document.getElementById(id); if(!pie) return;
+      const raw=total?val/total*100:0, pct=raw>=1?Math.round(raw):Math.round(raw*10)/10;
+      pie.style.background='conic-gradient('+color+' 0 '+raw+'%, rgba(255,255,255,.08) '+raw+'% 100%)';
+      document.getElementById(nId).textContent=pct+'%';
+      document.getElementById(sId).textContent=(val||0).toLocaleString('en-US')+' нэгж талбар';
+    }
+    setD('lpEz','lpEzN','lpEzS',counts['эзэмших']||0,'#30f0a0');
+    setD('lpOm','lpOmN','lpOmS',counts['өмчлөх']||0,'#00d4ff');
+    setD('lpAsh','lpAshN','lpAshS',counts['ашиглах']||0,'#f5c842');
+  }
+  // Зүүн — нэгж талбар (parcel) + барилга (build) үзүүлэлт
+  function renderStats(p, b){
+    if(!statsEl) return; p=p||{}; b=b||{};
+    const rows=[
+      ['🧩','Нэгж талбар (тоо)',(p.count||0).toLocaleString('en-US')],
+      ['📐','Нэгж талбар (га)',((p.area||0)/10000).toLocaleString('en-US',{maximumFractionDigits:1})+' га'],
+      ['🏢','Барилга (тоо)',(b.n||0).toLocaleString('en-US')],
+      ['📏','Барилга (м²)',Math.round(b.area||0).toLocaleString('en-US')+' м²']
+    ];
+    statsEl.innerHTML=rows.map(r=>'<li><span class="k"><span>'+r[0]+'</span>'+r[1]+'</span><span class="v">'+r[2]+'</span></li>').join('');
+  }
+  // Барилгын дэлгэрэнгүй (9 талбар)
+  const FIELDS=[['NIIT_UNE','Нийт үнэлгээ','tug'],['MKV_UNE','1 м²-ын үнэлгээ','tug'],['SARUUN_TUR','Сарын түрээсийн төлбөр','tug'],['OROO_TOO','Өрөөний тоо',''],['DAVHAR_TOO','Давхарын тоо',''],['TOROL','Ашиглалтын төрөл',''],['MATERIAL','Барилгын материал',''],['AJLIIN_BAI','Ажлын байрны тоо',''],['BAGTSAAMAI','Багтаамж','хүн']];
+  function renderBld(a){
+    if(!box) return; a=a||{};
+    // ТЭМДЭГЛЭЛ: мөнгөн дүнг /2 харуулж буй нь үзүүлэнгийн (demo) тохируулга — бодит үнэлгээ биш
+    box.innerHTML=FIELDS.map(function(f){ var raw=a[f[0]]; var val=(raw==null||raw==='')?'—':(f[2]==='tug'?(Math.round(Number(raw)/2).toLocaleString('en-US')+' ₮'):(raw+(f[2]?(' '+f[2]):''))); return '<li><span class="k">'+f[1]+'</span><span class="v">'+val+'</span></li>'; }).join('');
+  }
+  // Бүтэн өгөгдөл (анхны байдал, цэвэрлэх үед сэргээх)
+  let fullParcel=null, fullParcelStats=null, fullBld=null;
+  function renderFullStats(){ renderStats(fullParcelStats||{}, fullBld||{}); }
+  fetch(AGS1+"/Selbe_parcel/FeatureServer/0/query?where=1%3D1&groupByFieldsForStatistics=rigth_type&outStatistics=%5B%7B%22statisticType%22%3A%22count%22%2C%22onStatisticField%22%3A%22OBJECTID%22%2C%22outStatisticFieldName%22%3A%22c%22%7D%2C%7B%22statisticType%22%3A%22sum%22%2C%22onStatisticField%22%3A%22area_m2%22%2C%22outStatisticFieldName%22%3A%22a%22%7D%5D&f=json")
+    .then(r=>r.json()).then(function(d){ const c={}; let cnt=0,ar=0; (d.features||[]).forEach(function(f){ c[f.attributes.rigth_type]=f.attributes.c||0; cnt+=f.attributes.c||0; ar+=f.attributes.a||0; }); fullParcel=c; fullParcelStats={count:cnt,area:ar}; renderDonuts(c); renderFullStats(); }).catch(function(){});
+  fetch(AGS1+"/selbe_B/FeatureServer/0/query?where=1%3D1&outStatistics=%5B%7B%22statisticType%22%3A%22count%22%2C%22onStatisticField%22%3A%22FID%22%2C%22outStatisticFieldName%22%3A%22n%22%7D%2C%7B%22statisticType%22%3A%22sum%22%2C%22onStatisticField%22%3A%22area_m2%22%2C%22outStatisticFieldName%22%3A%22a%22%7D%5D&f=json")
+    .then(r=>r.json()).then(function(d){ const a=(d.features[0]||{}).attributes||{}; fullBld={n:a.n||0,area:a.a||0}; renderFullStats(); }).catch(function(){});
+
+  // Хэрэгслийн товч → газрын зураг (iframe) руу команд
+  const dBtn=document.getElementById('landDraw'), cBtn=document.getElementById('landClear');
+  const ORIGIN=location.origin; // iframe-үүд ижил origin — postMessage-ийг тодорхой origin руу
+  function landWin(){ var i=document.querySelector('#arcgisMapLand iframe'); return i&&i.contentWindow; }
+  if(dBtn) dBtn.addEventListener('click', function(){ dBtn.classList.add('active'); var w=landWin(); if(w) w.postMessage({type:'landTool',action:'draw'},ORIGIN); });
+  if(cBtn) cBtn.addEventListener('click', function(){ if(dBtn) dBtn.classList.remove('active'); var w=landWin(); if(w) w.postMessage({type:'landTool',action:'clear'},ORIGIN); });
+
+  // Donut дээр дарахад map-ийг rigth_type-аар шүүх
+  const DONUTS=[['lpEz','эзэмших'],['lpOm','өмчлөх'],['lpAsh','ашиглах']];
+  let donutFilter=null;
+  DONUTS.forEach(function(d){
+    const pie=document.getElementById(d[0]); if(!pie) return;
+    const cell=pie.closest('.lp-cell'); if(!cell) return;
+    cell.style.cursor='pointer';
+    // Гар/товчлуураар ашиглах боломж (a11y)
+    cell.setAttribute('role','button');
+    cell.setAttribute('tabindex','0');
+    cell.setAttribute('aria-pressed','false');
+    function toggle(){
+      donutFilter = (donutFilter===d[1]) ? null : d[1];
+      DONUTS.forEach(function(x){ const c=document.getElementById(x[0]); if(c){ const cc=c.closest('.lp-cell'); if(cc){ const on=donutFilter===x[1]; cc.classList.toggle('lp-active', on); cc.setAttribute('aria-pressed', on?'true':'false'); } } });
+      const w=landWin(); if(w) w.postMessage({ type:'parcelFilter', value:donutFilter }, ORIGIN);
+    }
+    cell.addEventListener('click', toggle);
+    cell.addEventListener('keydown', function(e){ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); toggle(); } });
+  });
+
+  // Сонгож зурж буй полигоны талбай (Google Earth measure маягаар)
+  const measEl=document.getElementById('lcMeasure');
+  function renderMeasure(m2){
+    if(!measEl) return;
+    if(!m2 || m2<=0){ measEl.innerHTML=''; return; }
+    const ha=(m2/10000).toLocaleString('en-US',{maximumFractionDigits:2});
+    measEl.innerHTML='<li class="lc-meas-row"><span class="k"><span>📏</span>Сонгосон талбайн хэмжээ</span><span class="v">'+ha+' га</span></li>';
+  }
+
+  // Message: сонголт / цэвэрлэх / барилга сонголт / хэмжилт
+  window.addEventListener('message', function(e){
+    if(e.origin !== ORIGIN) return; // зөвхөн ижил origin-оос (landmap iframe)
+    const m=e.data||{};
+    if(m.type==='bldSelect'){ renderBld(m.attrs); }
+    else if(m.type==='landMeasure'){ renderMeasure(m.area); }
+    else if(m.type==='landSelect'){
+      if(dBtn) dBtn.classList.remove('active');
+      const p=m.parcels||{}, b=m.buildings||{};
+      renderDonuts(p.counts);
+      renderStats({ count:p.total||0, area:p.area||0 }, { n:b.n||0, area:b.area||0 });
+      if(b.sums) renderBld(b.sums); // сонгосон барилгуудын нийлбэр
+    }
+    else if(m.type==='landClear'){
+      if(dBtn) dBtn.classList.remove('active');
+      renderMeasure(0);
+      if(fullParcel) renderDonuts(fullParcel);
+      renderFullStats();
+      if(box) box.innerHTML='<li class="bld-hint">Газрын зураг дээр барилга дарж сонгоно уу</li>';
+    }
+  });
+})();
+
+/* ── ARCGIS MAP (Maps SDK for JS) ── */
+(function(){
+  const el = document.getElementById('arcgisMap');
+  if(!el || typeof require === 'undefined') return;
+  require(["esri/WebMap","esri/views/MapView"], function(WebMap, MapView){
+    const map = new WebMap({ portalItem:{ id:"07f88188145d41d58d7376b569cb473f" } });
+    const view = window.__view2d = new MapView({ container:"arcgisMap", map:map });
+    const loading = document.getElementById('agdMapLoading');
+
+    // Категорийн товч дарахад тухайн категорид харгалзах layer л ил гарна
+    window.__selbeCatMap = null;
+    window.__selbeApplyCatVisibility = function(catKey){
+      if(!window.__view2d) return;
+      if(window.__selbeCatMap === catKey) catKey = null; // toggle off
+      window.__selbeCatMap = catKey;
+      var MAP = {
+        pop:   ['Барилга'],
+        road:  ['Зам','Дугуйн зам','Явган хүний зам'],
+        infra: ['Шугам сүлжээ'],
+        env:   ['Ногоон байгууламж','Гол'],
+        econ:  ['Барилга'],
+        land:  ['20260226_uldsen_negj_talbar']
+      };
+      var whitelist = catKey ? MAP[catKey] : null;
+      window.__view2d.map.allLayers.forEach(function(l){
+        if(l.type !== 'feature') return;
+        if(!whitelist){ l.visible = true; return; }
+        var t = (l.title||'').trim();
+        var url = l.url || '';
+        var match = whitelist.some(function(name){
+          if(t === name) return true;
+          if(name === 'Шугам сүлжээ' && url.indexOf('Selbe_utility') > -1) return true;
+          return false;
+        });
+        l.visible = match;
+      });
+    };
+
+    const hover    = document.getElementById('mapHover');
+    const hoverRows= document.getElementById('mapHoverRows');
+    const HOV = [
+      ['Шугам_сүлжээний_төрөл','Шугам сүлжээний төрөл'],
+      ['Тулгарсан_асуудал','Тулгарсан асуудал'],
+      ['Эрсдэлийн_зэрэг','Эрсдэлийн зэрэг'],
+      ['Засвар_үйлчилгээний_төрөл','Засвар үйлчилгээний төрөл']
+    ];
+    const attr     = document.getElementById('mapAttr');
+    const attrBody = document.getElementById('mapAttrBody');
+    const attrClose= document.getElementById('mapAttrClose');
+    function topGraphic(r){
+      const hit = r.results.filter(x=>x.graphic && x.graphic.layer);
+      return hit.length ? hit[0].graphic : null;
+    }
+    if(attrClose) attrClose.addEventListener('click',()=>{ attr.classList.remove('show'); attr.setAttribute('aria-hidden','true'); });
+
+    view.when(function(){
+      if(loading) loading.classList.add('hidden');
+      view.popupEnabled = false;
+
+      // ArcGIS legend widget (web map legend)
+      require(["esri/widgets/Legend","esri/widgets/Expand"], function(Legend, Expand){
+        const legend = new Legend({ view: view });
+        const exp = new Expand({ view: view, content: legend, expanded: false, expandTooltip: 'Тэмдэглэгээ' });
+        view.ui.add(exp, "top-right");
+      });
+
+      // FILTER — 2 тусдаа (Ерөнхий мэдээлэл / Шугам сүлжээ)
+      (function(){
+        const wraps = document.querySelectorAll('.agd-filter');
+        if(!wraps.length) return;
+        function rows(arr){
+          return arr.map(function(l){
+            return '<label class="agd-fitem"><input type="checkbox" data-id="'+l.id+'" '+(l.visible?'checked':'')+'/><span>'+(l.title||l.name||'Давхарга')+'</span></label>';
+          }).join('');
+        }
+        const selected = new Set();
+        const DIM = 0.2;
+        let utilReset = function(){};
+        function resetGeneral(){
+          selected.clear();
+          const g=document.getElementById('agdListGeneral');
+          if(g) g.querySelectorAll('input[type=checkbox]').forEach(function(cb){ cb.checked=false; });
+          applyHighlight();
+        }
+        function applyHighlight(){
+          const feat = view.map.allLayers.toArray().filter(function(l){ return l.type==='feature'; });
+          const any = selected.size>0;
+          function effectFor(l){
+            const t=(l.title||'').trim().toLowerCase();
+            if(t.indexOf('ногоон')>-1) return null; // эффект өгөхгүй
+            if(t==='зам') return 'brightness(1.2) drop-shadow(0 0 2px rgba(255,255,255,0.45))'; // зөвхөн "Зам" багасгасан
+            return 'brightness(1.6) drop-shadow(0 0 5px rgba(255,255,255,0.75))'; // энгийн
+          }
+          feat.forEach(function(l){
+            l.visible = true;
+            l.opacity = !any ? 1 : (selected.has(l.id) ? 1 : DIM);
+            l.effect = (any && selected.has(l.id)) ? effectFor(l) : null;
+          });
+        }
+        function fill(el, arr){
+          if(!el) return;
+          el.innerHTML = rows(arr) || '<div class="agd-serial-load">Давхарга алга</div>';
+          el.querySelectorAll('input[type=checkbox]').forEach(function(cb){
+            cb.checked = false;
+            cb.addEventListener('change',function(){
+              if(cb.checked) selected.add(cb.dataset.id); else selected.delete(cb.dataset.id);
+              applyHighlight();
+            });
+          });
+        }
+        function buildUtilTypes(utilLayer){
+          const u=document.getElementById('agdListUtility'); if(!u) return;
+          const TYPES=[{v:1,name:'Дулааны шугам'},{v:2,name:'Цахилгааны шугам'},{v:3,name:'Холбооны шугам'},{v:4,name:'Цэвэр усны шугам'},{v:5,name:'Бохирын шугам'}];
+          const selTypes=new Set();
+          u.innerHTML = TYPES.map(function(t){ return '<label class="agd-fitem"><input type="checkbox" data-type="'+t.v+'"/><span>'+t.name+'</span></label>'; }).join('');
+          utilReset = function(){
+            selTypes.clear();
+            u.querySelectorAll('input[type=checkbox]').forEach(function(cb){ cb.checked=false; });
+            if(utilLayer){ utilLayer.definitionExpression=null; utilLayer.opacity=1; utilLayer.effect=null; }
+            view.map.allLayers.toArray()
+              .filter(function(l){ return l.type==='feature' && l.url && l.url.indexOf('Selbe_talbain_hynalt')>-1; })
+              .forEach(function(l){ l.opacity=1; });
+          };
+          u.querySelectorAll('input[type=checkbox]').forEach(function(cb){
+            cb.checked=false;
+            cb.addEventListener('change',function(){
+              if(cb.checked) selTypes.add(cb.dataset.type); else selTypes.delete(cb.dataset.type);
+              if(utilLayer){
+                utilLayer.definitionExpression = selTypes.size ? ('Type IN ('+Array.from(selTypes).join(',')+')') : null;
+                utilLayer.opacity = 1;
+                utilLayer.effect = selTypes.size ? 'brightness(1.6) drop-shadow(0 0 5px rgba(255,255,255,0.75))' : null;
+              }
+              // Шугамаар шүүхэд ерөнхий мэдээллийн давхаргууд бүдгэрнэ
+              view.map.allLayers.toArray()
+                .filter(function(l){ return l.type==='feature' && l.url && l.url.indexOf('Selbe_talbain_hynalt')>-1; })
+                .forEach(function(l){ l.opacity = selTypes.size ? 0.3 : 1; });
+            });
+          });
+        }
+        function build(){
+          const layers=view.map.allLayers.toArray().filter(function(l){ return l.type==='feature'; });
+          fill(document.getElementById('agdListGeneral'), layers.filter(function(l){ return l.url && l.url.indexOf('Selbe_talbain_hynalt')>-1; }));
+          buildUtilTypes(layers.filter(function(l){ return l.url && l.url.indexOf('Selbe_utility')>-1; })[0]);
+        }
+        Promise.all(view.map.allLayers.toArray().map(function(l){ return l.load().catch(function(){}); })).then(build);
+        function closeAll(){ wraps.forEach(function(w){ w.querySelector('.agd-filter-menu').classList.remove('open'); w.querySelector('.agd-filter-btn').setAttribute('aria-expanded','false'); }); }
+        wraps.forEach(function(w){
+          const btn=w.querySelector('.agd-filter-btn'), menu=w.querySelector('.agd-filter-menu');
+          btn.addEventListener('click',function(e){
+            e.stopPropagation();
+            const willOpen=!menu.classList.contains('open');
+            closeAll();
+            if(willOpen){ menu.classList.add('open'); btn.setAttribute('aria-expanded','true'); }
+          });
+          // Цэс дотор дарахад нээлттэй хэвээр (олон зүйл сонгох) — зөвхөн гадуур дарахад хаагдана
+          menu.addEventListener('click',function(e){ e.stopPropagation(); });
+          // Filter-head дээр дарвал тухайн шүүлтийг reset хийнэ
+          const head=w.querySelector('.agd-filter-head');
+          if(head){
+            head.title='Шүүлтийг цэвэрлэх';
+            head.addEventListener('click',function(e){
+              e.stopPropagation();
+              if(w.querySelector('#agdListUtility')) utilReset(); else resetGeneral();
+            });
+          }
+        });
+        document.addEventListener('click',closeAll);
+      })();
+
+      // Бүх талбарыг татах (hitTest дээр attribute бүрэн ирэхийн тулд)
+      view.map.allLayers.forEach(function(l){
+        if(l.type === 'feature'){ l.outFields = ['*']; }
+      });
+
+      // PIE — Барилгын гүйцэтгэлийн зэрэглэл (Бодит + зохиомжилсон Төлөвлөсөн)
+      (function(){
+        const layer=view.map.allLayers.find(function(x){ return x.type==='feature' && x.title==='Барилга'; });
+        const pieB=document.getElementById('pieBod'), pieT=document.getElementById('pieTpl');
+        if(!layer || !pieB) return;
+        function colFor(v){ return '#00d4ff'; }
+        function render(pie,centerEl,pct){
+          const c=colFor(pct);
+          pie.style.background='conic-gradient('+c+' 0 '+pct+'%, rgba(255,255,255,.08) '+pct+'% 100%)';
+          if(centerEl){ centerEl.textContent=pct+'%'; centerEl.style.color=c; }
+        }
+        const q=layer.createQuery(); q.where='1=1'; q.outStatistics=[{statisticType:'avg',onStatisticField:'Bod_guits',outStatisticFieldName:'a'}];
+        layer.queryFeatures(q).then(function(r){
+          const av=Math.round((r.features[0]?r.features[0].attributes.a:0)||0);
+          render(pieB, document.getElementById('pieBodC'), av);
+          // Төлөвлөсөн = бодит + 18% (үзүүлэнгийн зохиомол; бодит төлөвлөгөөний өгөгдөл байхгүй)
+          render(pieT, document.getElementById('pieTplC'), Math.min(100, av+18));
+        });
+      })();
+
+
+      // LINE CHART (tplB) — Төлөвлөсөн vs Бодит гүйцэтгэл салбараар
+      (function(){
+        const host=document.getElementById('tplB'); if(!host) return;
+        const CATS=[['Барилга','Барилга'],['Явган хүний зам','Явган'],['Шугам сүлжээ','Шугам'],['Зам','Зам'],['Дугуйн зам','Дугуй']];
+        const tasks=CATS.map(function(c){
+          let l, field;
+          if(c[0]==='Шугам сүлжээ'){ l=view.map.allLayers.find(function(x){ return x.type==='feature' && x.url && x.url.indexOf('Selbe_utility')>-1; }); field='Бодит_гүйцэтгэл____'; }
+          else { l=view.map.allLayers.find(function(x){ return x.type==='feature' && x.title===c[0]; }); field='Bod_guits'; }
+          if(!l) return Promise.resolve(0);
+          const q=l.createQuery(); q.where='1=1'; q.outStatistics=[{statisticType:'avg',onStatisticField:field,outStatisticFieldName:'a'}];
+          return l.queryFeatures(q).then(function(r){ return Math.round((r.features[0]?r.features[0].attributes.a:0)||0); }).catch(function(){ return 0; });
+        });
+        Promise.all(tasks).then(function(actual){
+          const OFF=[24,18,6,27,20]; // Төлөвлөсөн шугамын зохиомол нэмэгдэл (demo) — салбар тус бүрийн %
+          const plan=actual.map(function(v,i){ return Math.min(100,v+(OFF[i]||18)); });
+          draw(CATS.map(function(c){return c[1];}), [
+            {name:'Төлөвлөсөн',color:'#3b82f6',vals:plan},
+            {name:'Бодит',color:'#00d4ff',vals:actual}
+          ]);
+        });
+        function draw(labels, series){
+          const W=320,H=185,pl=16,pr=12,pt=18,pb=34, iw=W-pl-pr, ih=H-pt-pb;
+          // Y-тэнхлэгийг өгөгдөлд тааруулах (доорх хоосон зайг багасгах)
+          const all=series.reduce(function(a,s){ return a.concat(s.vals); },[]);
+          const lo=Math.min.apply(null,all), hi=Math.max.apply(null,all);
+          let yMin=Math.max(0, Math.floor((lo-8)/10)*10);
+          let yMax=Math.min(100, Math.ceil((hi+4)/10)*10);
+          if(yMax<=yMin) yMax=yMin+10;
+          const span=yMax-yMin, mid=Math.round((yMin+yMax)/2);
+          const x=function(i){ return pl + (labels.length<=1?iw/2:i*iw/(labels.length-1)); };
+          const y=function(v){ return pt + ih - ((v-yMin)/span*ih); };
+          let svg='<svg viewBox="0 0 '+W+' '+H+'" class="lc-svg">';
+          [yMin,mid,yMax].forEach(function(g){ const yy=y(g); svg+='<line x1="'+pl+'" y1="'+yy+'" x2="'+(W-pr)+'" y2="'+yy+'" stroke="rgba(255,255,255,.08)"/>'; svg+='<text x="'+(pl-4)+'" y="'+(yy+3)+'" fill="rgba(255,255,255,.3)" font-size="8" text-anchor="end">'+g+'</text>'; });
+          series.forEach(function(s){
+            const pts=s.vals.map(function(v,i){ return x(i)+','+y(v); });
+            svg+='<polyline points="'+pts.join(' ')+'" fill="none" stroke="'+s.color+'" stroke-width="1.4" stroke-linejoin="round"/>';
+            s.vals.forEach(function(v,i){ svg+='<circle cx="'+x(i)+'" cy="'+y(v)+'" r="2.4" fill="'+s.color+'"/>'; });
+          });
+          labels.forEach(function(l,i){ svg+='<text x="'+x(i)+'" y="'+(H-12)+'" fill="rgba(232,236,240,.6)" font-size="9" text-anchor="middle">'+l+'</text>'; });
+          svg+='</svg>';
+          const leg='<div class="lc-leg">'+series.map(function(s){ return '<span><i style="background:'+s.color+'"></i>'+s.name+'</span>'; }).join('')+'</div>';
+          host.innerHTML = leg + svg;
+        }
+      })();
+
+      // БОДИТ ГҮЙЦЭТГЭЛ — интерактив slider, чирэхэд газрын зураг шүүгдэнэ
+      (function(){
+        const host=document.getElementById('agdRightBot'); if(!host) return;
+        const GEN=['Барилга','Явган хүний зам','Ногоон байгууламж','Зам','Дугуйн зам'];
+        const UT=[[1,'Дулааны шугам'],[2,'Цахилгааны шугам'],[3,'Холбооны шугам'],[4,'Цэвэр усны шугам'],[5,'Бохирын шугам']];
+        const util=view.map.allLayers.find(function(x){ return x.type==='feature' && x.url && x.url.indexOf('Selbe_utility')>-1; });
+        const UF='Бодит_гүйцэтгэл____';
+        const thr={};
+        function applyUtil(){
+          if(!util) return;
+          const active=UT.some(function(ut){ return (thr[ut[0]]||0)>0; });
+          if(!active){ util.definitionExpression=null; return; }
+          const parts=UT.map(function(ut){ return '(Type='+ut[0]+' AND '+UF+'>='+(thr[ut[0]]||0)+')'; });
+          parts.push('(Type NOT IN (1,2,3,4,5))');
+          util.definitionExpression=parts.join(' OR ');
+        }
+        const out=[], tasks=[];
+        GEN.forEach(function(title,i){
+          const l=view.map.allLayers.find(function(x){ return x.type==='feature' && x.title===title; });
+          const q=l&&l.createQuery(); if(q){ q.where='1=1'; q.outStatistics=[{statisticType:'avg',onStatisticField:'Bod_guits',outStatisticFieldName:'b'}];
+            tasks.push(l.queryFeatures(q).then(function(r){ out.push({n:title,v:Math.round((r.features[0]?r.features[0].attributes.b:0)||0),o:i,kind:'gen',layer:l}); }).catch(function(){ out.push({n:title,v:0,o:i,kind:'gen',layer:l}); }));
+          } else out.push({n:title,v:0,o:i,kind:'gen'});
+        });
+        UT.forEach(function(ut,i){
+          if(!util){ out.push({n:ut[1],v:0,o:10+i,kind:'util',t:ut[0]}); return; }
+          const q=util.createQuery(); q.where='Type='+ut[0]; q.outStatistics=[{statisticType:'avg',onStatisticField:UF,outStatisticFieldName:'b'}];
+          tasks.push(util.queryFeatures(q).then(function(r){ out.push({n:ut[1],v:Math.round((r.features[0]?r.features[0].attributes.b:0)||0),o:10+i,kind:'util',t:ut[0]}); }).catch(function(){ out.push({n:ut[1],v:0,o:10+i,kind:'util',t:ut[0]}); }));
+        });
+        Promise.all(tasks).then(function(){
+          out.sort(function(a,b){ return a.o-b.o; });
+          function makeRow(r){
+            const row=document.createElement('div'); row.className='bg-row';
+            row.innerHTML='<div class="bg-rt"><span>'+r.n+'</span><b class="bg-val">'+r.v+'%</b></div><input type="range" class="bg-range" min="0" max="100" value="'+r.v+'"/>';
+            const range=row.querySelector('.bg-range'), val=row.querySelector('.bg-val');
+            range.addEventListener('input',function(){
+              val.textContent=range.value+'%';
+              if(r.kind==='gen'){ if(r.layer) r.layer.definitionExpression = (+range.value>0) ? ('Bod_guits >= '+range.value) : null; }
+              else { thr[r.t]=+range.value; applyUtil(); }
+            });
+            return row;
+          }
+          function makeGroup(title, items, collapsed){
+            const g=document.createElement('div'); g.className='bgg'+(collapsed?' collapsed':'');
+            const h=document.createElement('div'); h.className='bgg-h'; h.innerHTML='<span>'+title+'</span><span class="bgg-c">▾</span>';
+            const body=document.createElement('div'); body.className='bgg-b';
+            h.addEventListener('click',function(){ g.classList.toggle('collapsed'); });
+            items.forEach(function(r){ body.appendChild(makeRow(r)); });
+            g.appendChild(h); g.appendChild(body); return g;
+          }
+          host.appendChild(makeGroup('Ерөнхий мэдээлэл', out.filter(function(r){ return r.kind==='gen'; }), false));
+          host.appendChild(makeGroup('Шугам сүлжээ', out.filter(function(r){ return r.kind==='util'; }), true));
+        });
+      })();
+
+      // Талбарын дараалал (хамгийн чухал нь эхэнд)
+      const PREF = ['Шугам_сүлжээний_төрөл','Материал','Length_km','Голч__мм_','Техникийн_төлөв_байдал','Эрсдэлийн_зэрэг','Тулгарсан_асуудал','Статус','Сүүлд_засвар_хийсэн_огноо','Сүүлд_үзлэг_хийсэн_огноо'];
+      const LABELS = { 'Length_km':'Урт (км)' };
+      function fieldMeta(layer){ const m={}; ((layer&&layer.fields)||[]).forEach(f=>{ m[f.name]={alias:f.alias||f.name,type:f.type}; }); return m; }
+      function fmtVal(v,type,name){
+        if(v===null||v==='') return '—';
+        const isDate = type==='esriFieldTypeDate' || /огноо|date/i.test(name||'') || (typeof v==='number' && v>1e11);
+        if(isDate){
+          const d=new Date(Number(v));
+          if(!isNaN(d.getTime())){ const p=n=>String(n).padStart(2,'0'); return d.getFullYear()+'.'+p(d.getMonth()+1)+'.'+p(d.getDate()); }
+          return v;
+        }
+        if(typeof v==='number') return Math.round(v*100)/100;
+        return v;
+      }
+      function valColor(v){
+        const s = String(v).toLowerCase();
+        // Эерэг (ногоон) — эхэнд шалгана (гэмтэлгүй зэрэг "гүй"-тэй үгсийг улаанаас сэргийлнэ)
+        if(/гэмтэлгүй|эрсдэлгүй|асуудалгүй|бага|сайн|хэвийн|ашиглалтад|шинэ|дуусс?ан/.test(s)) return '#30f0a0';
+        // Дунд (шар)
+        if(/дунд|анхаар|хүлээгд/.test(s)) return '#f5c842';
+        // Сөрөг (улаан)
+        if(/өндөр|муу|ноцтой|гэмт|осол|сэрэмж|аюул|эвдэр/.test(s)) return '#ff6b6b';
+        return '';
+      }
+
+      // ── Үлдсэн нэгж талбар — шууд FeatureServer/1 руу query илгээх ──
+      (function(){
+        var BASE = AGS2+'/20260226_uldsen_negj_talbar/FeatureServer/1/query';
+        var u1 = new URL(BASE);
+        u1.searchParams.set('where','1=1');
+        u1.searchParams.set('outStatistics', JSON.stringify([
+          {statisticType:'count',onStatisticField:'FID',outStatisticFieldName:'cnt'},
+          {statisticType:'sum',onStatisticField:'area_m2',outStatisticFieldName:'tot'}
+        ]));
+        u1.searchParams.set('f','json');
+        var u2 = new URL(BASE);
+        u2.searchParams.set('where','1=1');
+        u2.searchParams.set('groupByFieldsForStatistics','landuse_de');
+        u2.searchParams.set('outStatistics', JSON.stringify([
+          {statisticType:'count',onStatisticField:'FID',outStatisticFieldName:'cnt'},
+          {statisticType:'sum',onStatisticField:'area_m2',outStatisticFieldName:'area'}
+        ]));
+        u2.searchParams.set('f','json');
+        Promise.all([fetch(u1.toString()).then(function(r){return r.json();}), fetch(u2.toString()).then(function(r){return r.json();})])
+          .then(function(d){
+            var a1 = ((d[0].features||[])[0]||{}).attributes||{};
+            var raw = (d[1].features||[]).map(function(f){return f.attributes;});
+            var cnt = a1.cnt||0, totM2 = a1.tot||0;
+            // Хоосон/цагаан зайт landuse_de-г нэг "Тодорхойгүй" бүлэгт нэгтгэх
+            var agg = {};
+            raw.forEach(function(r){
+              var name = (r.landuse_de||'').trim() || 'Зориулалт тодорхойгүй';
+              if(!agg[name]) agg[name] = { name:name, area:0, cnt:0 };
+              agg[name].area += r.area||0;
+              agg[name].cnt  += r.cnt||0;
+            });
+            var rows = Object.keys(agg).map(function(k){ return agg[k]; })
+                        .sort(function(a,b){ return b.area-a.area; });
+            function pctOf(a){ return totM2 ? a/totM2*100 : 0; }
+            function pctLabel(a){ var p=pctOf(a); return p>0&&p<1 ? '<1%' : Math.round(p)+'%'; }
+            // График бар дээр: талбай (га) ба хувь
+            var bars = rows.map(function(r){
+              return [r.name, Math.round(pctOf(r.area)), (r.area/10000).toFixed(1)+' га · '+pctLabel(r.area)];
+            });
+            var summary = { cnt:cnt, m2:totM2 };
+            // Дэлгэрэнгүй жагсаалт хэрэггүй — зөвхөн summary card + график
+            if(window.__selbeRenderLand) window.__selbeRenderLand(summary, bars, []);
+          }).catch(function(e){
+            console.error('Үлдсэн нэгж талбар fetch алдаа:', e);
+            if(window.__selbeRenderLand) window.__selbeRenderLand(null, [], [['Алдаа','Өгөгдөл ачаалж чадсангүй']]);
+          });
+      })();
+
+      // HOVER
+      let hoverBusy = false; // нэг үед нэг л hitTest (pointer-move бүрт биш) — гүйцэтгэл
+      view.on('pointer-move', function(event){
+        if(hoverBusy) return; hoverBusy = true;
+        view.hitTest(event).then(function(r){
+          hoverBusy = false;
+          const g = topGraphic(r);
+          if(g){
+            const a = g.attributes || {};
+            hoverRows.innerHTML = HOV.map(p=>{
+              const v = a[p[0]];
+              if(v===null || v===undefined || v==='') return '';
+              const c = valColor(v); const st = c ? ' style="color:'+c+'"' : '';
+              return '<div class="map-hover-row"><span>'+p[1]+'</span><b'+st+'>'+esc(v)+'</b></div>';
+            }).join('');
+            hover.style.left = event.x + 'px';
+            hover.style.top  = event.y + 'px';
+            hover.classList.add('show');
+            view.container.style.cursor = 'pointer';
+          } else {
+            hover.classList.remove('show');
+            view.container.style.cursor = 'default';
+          }
+        }).catch(function(){ hoverBusy = false; });
+      });
+      view.on('pointer-leave', function(){ hover.classList.remove('show'); });
+
+      // CLICK → attribute preview
+      view.on('click', function(event){
+        view.hitTest(event).then(function(r){
+          const g = topGraphic(r);
+          // Зөвхөн шугам сүлжээ (Selbe_utility) давхаргад л preview гаргана
+          const isUtil = g && g.layer && g.layer.url && g.layer.url.indexOf('Selbe_utility') > -1;
+          if(!g || !isUtil){ attr.classList.remove('show'); attr.setAttribute('aria-hidden','true'); return; }
+          const a = g.attributes || {};
+          const fm = fieldMeta(g.layer);
+          let keys = PREF.filter(k=>k in a && a[k]!==null && a[k]!=='');
+          if(!keys.length) keys = Object.keys(a).filter(k=>a[k]!==null && a[k]!=='' && !/^(objectid|fid|globalid|shape|entity|layer|^id$|^type$|objectid_1)/i.test(k)).slice(0,16);
+          attrBody.innerHTML = keys.length
+            ? keys.map(k=>{ const meta=fm[k]||{}; const val=fmtVal(a[k],meta.type,k); const c=valColor(val); const st=c?' style="color:'+c+'"':''; return '<div class="map-attr-row"><span class="k">'+esc(LABELS[k]||meta.alias||k)+'</span><span class="v"'+st+'>'+esc(val)+'</span></div>'; }).join('')
+            : '<p style="color:var(--muted);font-size:.78rem;margin:6px 0">Шинж чанарын мэдээлэл алга.</p>';
+          attr.classList.add('show'); attr.setAttribute('aria-hidden','false');
+        });
+      });
+    }, function(){
+      if(loading) loading.textContent='Газрын зураг ачаалж чадсангүй (хандалт хязгаарлагдсан байж болзошгүй).';
+    });
+  });
+})();
+
+/* ── MOBILE NAV ── */
+const ham = document.getElementById('hamburger');
+const mobileMenu = document.getElementById('mobile-menu');
+function closeMobile(){
+  ham.classList.remove('open');
+  mobileMenu.classList.remove('open');
+  ham.setAttribute('aria-expanded','false');
+}
+ham.addEventListener('click',()=>{
+  const open = mobileMenu.classList.toggle('open');
+  ham.classList.toggle('open',open);
+  ham.setAttribute('aria-expanded', open ? 'true' : 'false');
+});
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeMobile(); });
+
+/* ── NAV PILL: HIDE ON SCROLL DOWN ── */
+(function(){
+  const els = document.querySelectorAll('nav .nav-links, nav .brand--nav');
+  if(!els.length) return;
+  function onScroll(){
+    // Дээд талд (hero) байхад харагдана, доош гүйлгэхэд нав болон лого нуугдана
+    const hide = window.scrollY > 80;
+    els.forEach(el=>el.classList.toggle('nav-hidden', hide));
+  }
+  window.addEventListener('scroll', onScroll, {passive:true});
+  onScroll();
+})();
+
+/* ── ARC CANVAS ── */
+(function(){
+  const c = document.getElementById('arc-canvas');
+  if(!c) return;
+  const ctx = c.getContext('2d');
+  const COLORS = ['#00d4ff','#d94cf7','#f5c842','#30f0a0'];
+  let W=0, H=0, arcs=[], pts=[];
+
+  function buildPts(){
+    pts=[];
+    for(let i=0;i<60;i++) pts.push({x:Math.random()*W, y:Math.random()*H});
+  }
+  function mkArc(){
+    if(!pts.length) return null;
+    const a=pts[Math.floor(Math.random()*pts.length)];
+    const b=pts[Math.floor(Math.random()*pts.length)];
+    return{
+      ax:a.x,ay:a.y,bx:b.x,by:b.y,
+      t:Math.random(),
+      speed:0.003+Math.random()*0.005,
+      color:COLORS[Math.floor(Math.random()*COLORS.length)],
+      alpha:0.1+Math.random()*0.2,
+      width:0.5+Math.random()*1.2
+    };
+  }
+  function resize(){
+    const r=c.parentElement.getBoundingClientRect();
+    W=c.width=r.width||window.innerWidth;
+    H=c.height=r.height||window.innerHeight;
+    buildPts();
+    arcs=[];
+    for(let i=0;i<40;i++) arcs.push(mkArc());
+  }
+  function drawArc(a){
+    const mx=(a.ax+a.bx)/2;
+    const my=Math.min(a.ay,a.by)-Math.abs(a.bx-a.ax)*0.4;
+    const steps=60, end=Math.floor(steps*a.t);
+    ctx.beginPath();
+    for(let i=0;i<=end;i++){
+      const t=i/steps;
+      const px=(1-t)*(1-t)*a.ax+2*(1-t)*t*mx+t*t*a.bx;
+      const py=(1-t)*(1-t)*a.ay+2*(1-t)*t*my+t*t*a.by;
+      i===0?ctx.moveTo(px,py):ctx.lineTo(px,py);
+    }
+    ctx.strokeStyle=a.color; ctx.globalAlpha=a.alpha; ctx.lineWidth=a.width; ctx.stroke();
+    if(a.t>0&&a.t<1){
+      const t=a.t;
+      const px=(1-t)*(1-t)*a.ax+2*(1-t)*t*mx+t*t*a.bx;
+      const py=(1-t)*(1-t)*a.ay+2*(1-t)*t*my+t*t*a.by;
+      ctx.beginPath(); ctx.arc(px,py,2.5,0,Math.PI*2);
+      ctx.fillStyle=a.color; ctx.globalAlpha=Math.min(a.alpha*2,.9); ctx.fill();
+    }
+    ctx.globalAlpha=1;
+  }
+  function drawDots(){
+    ctx.fillStyle='rgba(0,212,255,0.18)';
+    pts.forEach(p=>{ ctx.beginPath(); ctx.arc(p.x,p.y,1.5,0,Math.PI*2); ctx.fill(); });
+  }
+  function animate(){
+    ctx.clearRect(0,0,W,H);
+    drawDots();
+    for(let i=0;i<arcs.length;i++){
+      if(!arcs[i]){arcs[i]=mkArc();continue;}
+      arcs[i].t+=arcs[i].speed;
+      if(arcs[i].t>=1){arcs[i]=mkArc();continue;}
+      drawArc(arcs[i]);
+    }
+    requestAnimationFrame(animate);
+  }
+  requestAnimationFrame(()=>{ resize(); animate(); });
+  window.addEventListener('resize',resize);
+})();
+
+/* ── SCROLL REVEAL ── */
+const revealObs = new IntersectionObserver(entries=>{
+  entries.forEach(e=>{ if(e.isIntersecting){e.target.classList.add('v');revealObs.unobserve(e.target);} });
+},{threshold:0.07});
+document.querySelectorAll('.r').forEach(el=>revealObs.observe(el));
+
+// Typewriter hero-sub
+(function(){
+  const el = document.getElementById('heroSub');
+  const text = 'GIS болон AI-д суурилсан ухаалаг хотын платформ — 158 га нутаг дэвсгэрийн орон зай, дэд бүтэц, IoT мэдрэгч, нөлөөллийг бодит цагт загварчилж, шинжилж, удирдана.';
+  const typeSpeed = 38;
+  const pauseAfter = 3200;
+  const fadeTime = 700;
+
+  function typewrite(){
+    el.textContent = '';
+    el.style.opacity = '1';
+    el.classList.remove('hide-cursor');
+    let i = 0;
+    const iv = setInterval(()=>{
+      el.textContent += text[i];
+      i++;
+      if(i >= text.length){
+        clearInterval(iv);
+        el.classList.add('hide-cursor');
+        setTimeout(()=>{
+          el.style.opacity = '0';
+        }, pauseAfter);
+      }
+    }, typeSpeed);
+  }
+  setTimeout(typewrite, 800);
+})();
