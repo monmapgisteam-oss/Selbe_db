@@ -56,9 +56,23 @@
     <div class="hero-chips" aria-label="Технологи">
       <span>GIS</span><span>AI</span><span>IoT</span><span>Digital Twin</span><span>BIM</span>
     </div>
+    <div class="hero-cta">
+      <a href="#dashboard" class="btn-primary">Хяналтын самбар
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </a>
+      <a href="#dashboard" class="btn-outline" id="cta3d">🧊 3D хотын загвар</a>
+    </div>
+    <div class="hero-stats" aria-label="Гол үзүүлэлтүүд">
+      <div class="hs-item"><b data-count="158">0</b><span>га нутаг дэвсгэр</span></div>
+      <div class="hs-item"><b data-count="8575">0</b><span>айл өрх</span></div>
+      <div class="hs-item"><b data-count="113">0</b><span>BIM блок</span></div>
+      <div class="hs-item"><b data-count="12400" data-suffix="+">0</b><span>IoT мэдрэгч</span></div>
+    </div>
   </div>
 
   <p class="hero-sub" id="heroSub" aria-live="polite"></p>
+
+  <a href="#dashboard" class="hero-scroll" aria-label="Хяналтын самбар руу гүйлгэх"><span></span></a>
 
 
 </section>
@@ -165,10 +179,23 @@
         </div>
       </aside>
 
+      <!-- LEFT — Барилгын явц (динамик) -->
+      <aside class="agd-col agd-left agd-left-prog" id="agdLeftProg" aria-hidden="true">
+        <div class="agd-card">
+          <div class="agd-card-t">Барилгын явц — нийт</div>
+          <div class="prog-sum" id="progSum"><div class="agd-serial-load">Ачаалж байна…</div></div>
+        </div>
+        <div class="agd-card agd-grow">
+          <div class="agd-card-t">Сонгосон блок</div>
+          <div id="progDetail"><p class="bld-hint">Газрын зураг дээр блок дээр хулгана аваачиж үзнэ үү</p></div>
+        </div>
+      </aside>
+
       <!-- MAP -->
       <div class="agd-map">
         <div id="arcgisMap"></div>
         <div id="arcgisMapLand" class="agd-map-3d"></div>
+        <div id="arcgisMapProg" class="agd-map-3d"></div>
         <div id="arcgisMap3d" class="agd-map-3d"></div>
 
         <!-- 3D scene overlay — Сэлбэ тоогоор -->
@@ -188,6 +215,7 @@
         <div class="map-mode" id="mapMode">
           <button data-mode="2d" class="active">2D</button>
           <button data-mode="land">Газар чөлөөлөлт</button>
+          <button data-mode="prog">Барилгын явц</button>
           <button data-mode="3d">3D</button>
         </div>
         <div class="agd-map-loading" id="agdMapLoading">Газрын зураг ачаалж байна…</div>
@@ -243,6 +271,18 @@
         <div class="lp-tools">
           <button id="landDraw">⬡ Газар сонгох</button>
           <button id="landClear" title="Цэвэрлэх">✕</button>
+        </div>
+      </aside>
+
+      <!-- RIGHT — Барилгын явц (динамик) -->
+      <aside class="agd-col agd-right agd-right-prog" id="agdRightProg" aria-hidden="true">
+        <div class="agd-card">
+          <div class="agd-card-t">Гүйцэтгэлийн ангилал</div>
+          <ul class="agd-bars" id="progDist"><li><div class="agd-serial-load">Ачаалж байна…</div></li></ul>
+        </div>
+        <div class="agd-card agd-grow">
+          <div class="agd-card-t">Гүйцэтгэгч компаниар</div>
+          <ul class="lc-stats" id="progComp"></ul>
         </div>
       </aside>
 
