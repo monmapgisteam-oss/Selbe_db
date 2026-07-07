@@ -423,9 +423,12 @@ const AGS2 = 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services'
         econ:  ['Барилга'],
         land:  ['20260226_uldsen_negj_talbar']
       };
+      // Хилийн давхарга (Khil/хил) — үргэлж харагдана, категорийн шүүлтэд орохгүй (лавлагаа хүрээ)
+      function alwaysVisible(l){ var t=(l.title||'').toLowerCase(); return t.indexOf('khil')>-1 || t.indexOf('хил')>-1; }
       var whitelist = catKey ? MAP[catKey] : null;
       window.__view2d.map.allLayers.forEach(function(l){
         if(l.type !== 'feature') return;
+        if(alwaysVisible(l)){ l.visible = true; return; } // хил — байнга ил
         if(!whitelist){ l.visible = true; return; }
         var t = (l.title||'').trim();
         var url = l.url || '';
@@ -476,10 +479,13 @@ const AGS2 = 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services'
       }
 
       // ArcGIS legend widget (web map legend)
-      require(["esri/widgets/Legend","esri/widgets/Expand"], function(Legend, Expand){
+      require(["esri/widgets/Legend","esri/widgets/BasemapGallery","esri/widgets/Expand"], function(Legend, BasemapGallery, Expand){
         const legend = new Legend({ view: view });
         const exp = new Expand({ view: view, content: legend, expanded: false, expandTooltip: 'Тэмдэглэгээ' });
         view.ui.add(exp, "top-right");
+        // Суурь зураг сонгогч
+        const bgExp = new Expand({ view: view, content: new BasemapGallery({ view: view }), expanded: false, expandTooltip: 'Суурь зураг', expandIcon: 'basemap' });
+        view.ui.add(bgExp, "top-right");
       });
 
       // FILTER — 2 тусдаа (Ерөнхий мэдээлэл / Шугам сүлжээ)
@@ -665,6 +671,16 @@ const AGS2 = 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services'
         const util=view.map.allLayers.find(function(x){ return x.type==='feature' && x.url && x.url.indexOf('Selbe_utility')>-1; });
         const UF=UTIL_FIELD; // нэгдсэн utilState-тэй хамт ажиллана (applyUtilExpr)
         const out=[], tasks=[];
+        // Хувиар шүүх үед: идэвхтэй шүүгдэж буй давхаргаас бусад бүх давхарга тунгалаг болно
+        const genThr={}, DIM_SLIDER=0.1;
+        function applyDim(){
+          const feats=view.map.allLayers.toArray().filter(function(l){ return l.type==='feature'; });
+          const active=new Set();
+          out.forEach(function(r){ if(r.kind==='gen' && (genThr[r.n]||0)>0 && r.layer) active.add(r.layer); });
+          if(util && UT.some(function(ut){ return (utilState.thr[ut[0]]||0)>0; })) active.add(util);
+          const any=active.size>0;
+          feats.forEach(function(l){ l.opacity = !any ? 1 : (active.has(l) ? 1 : DIM_SLIDER); });
+        }
         GEN.forEach(function(title,i){
           const l=view.map.allLayers.find(function(x){ return x.type==='feature' && x.title===title; });
           const q=l&&l.createQuery(); if(q){ q.where='1=1'; q.outStatistics=[{statisticType:'avg',onStatisticField:'Bod_guits',outStatisticFieldName:'b'}];
@@ -684,8 +700,10 @@ const AGS2 = 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services'
             const range=row.querySelector('.bg-range'), val=row.querySelector('.bg-val');
             range.addEventListener('input',function(){
               val.textContent=range.value+'%';
-              if(r.kind==='gen'){ if(r.layer) r.layer.definitionExpression = (+range.value>0) ? ('Bod_guits >= '+range.value) : null; }
-              else { utilState.thr[r.t]=+range.value; applyUtilExpr(util); }
+              const v=+range.value;
+              if(r.kind==='gen'){ genThr[r.n]=v; if(r.layer) r.layer.definitionExpression = (v>0) ? ('Bod_guits >= '+v) : null; }
+              else { utilState.thr[r.t]=v; applyUtilExpr(util); }
+              applyDim(); // шүүж буйгаас бусад давхаргыг тунгалаг болгох
             });
             return row;
           }
