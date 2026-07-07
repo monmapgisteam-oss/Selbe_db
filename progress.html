@@ -16,31 +16,21 @@
     <div id="viewDiv"></div>
     <div id="msg">Түр хүлээнэ үү…</div>
     <script>
+        // WebMap "selbe_ehelsen_barilga" (76a2…) — бүх давхарга ба загвар webmap дээр тохируулагдсан.
+        // Кодоос симбол/renderer тааруулахгүй — webmap-ийнхийг шууд ашиглана.
         require([
-            "esri/config", "esri/WebMap", "esri/views/MapView",
-            "esri/layers/FeatureLayer",
-            "esri/widgets/Legend", "esri/widgets/Expand"
-        ], function(esriConfig, WebMap, MapView, FeatureLayer, Legend, Expand){
-            // parent ↔ iframe нь ижил origin — postMessage-ийг тодорхой origin руу
-            var ORIGIN = location.origin;
+            "esri/WebMap", "esri/views/MapView",
+            "esri/widgets/Editor", "esri/widgets/Legend", "esri/widgets/BasemapGallery", "esri/widgets/Expand"
+        ], function(WebMap, MapView, Editor, Legend, BasemapGallery, Expand){
+            var ORIGIN = location.origin; // parent ↔ iframe ижил origin
             var LAYER_TITLE = "building_GOL_barigdaj_ehelsen";
+            var NB_TITLE = "New_building"; // засварлаж болох давхарга (шинэ барилга нэмэх)
 
-            // localhost дээр ubhub.mn давхаргуудыг proxy руу (production-д шууд URL — scene3d-тэй ижил)
-            var DEV = location.hostname==='localhost' || location.hostname==='127.0.0.1';
-            if (DEV) {
-                esriConfig.request.interceptors.push({
-                    urls: /arcgis\.ubhub\.mn/,
-                    before: function(p){ p.url = p.url.replace(/^https:\/\/arcgis\.ubhub\.mn/, '/_ubhub'); }
-                });
-            }
-
+            // Зөвхөн building_GOL-д гүйцэтгэлээр (GUITS_HV) өнгө өгнө. Бусад давхарга webmap-ийн загвартайгаа хэвээр.
             function fill(c, oc){ return { type:"simple-fill", color:c, outline:{ color:oc, width:0.8 } }; }
-            // Гүйцэтгэлийн хувиар (GUITS_HV) өнгө: улаан→шар→ногоон
-            var RENDERER = {
-                type: "class-breaks",
-                field: "GUITS_HV",
-                defaultSymbol: fill([150,160,175,0.55], [200,210,225,0.9]),
-                defaultLabel: "Мэдээлэлгүй",
+            var BLD_RENDERER = {
+                type: "class-breaks", field: "GUITS_HV",
+                defaultSymbol: fill([150,160,175,0.55], [200,210,225,0.9]), defaultLabel: "Мэдээлэлгүй",
                 classBreakInfos: [
                     { minValue:-1,  maxValue:25,  symbol: fill([255,95,87,0.62],  [255,140,120,0.95]), label:"Эхэлж буй (0–25%)" },
                     { minValue:25,  maxValue:50,  symbol: fill([245,200,66,0.62], [255,225,120,0.95]), label:"Явцтай (25–50%)" },
@@ -49,22 +39,8 @@
                 ]
             };
 
-            // Webmap эх сурвалж (76a2…ed) — building_GOL + ubhub давхаргууд (ортофото/зам/хил)
             var map = new WebMap({ portalItem: { id: "76a21fa2195f4d62878b3753ab4951ed" } });
-
-            // КОНТЕКСТ ДАВХАРГА — Selbe үйлчилгээ (services.arcgis.com, CORS ажилладаг).
-            // ubhub давхаргууд браузерын CORS-оор блоклогддог тул гол/зам/ногоон контекстийг эндээс авна.
-            var HYN = "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/Selbe_talbain_hynalt/FeatureServer/";
-            var ctxGreen = new FeatureLayer({ url:HYN+"1", title:"Ногоон байгууламж", opacity:0.5, legendEnabled:false, popupEnabled:false,
-                renderer:{ type:"simple", symbol:{ type:"simple-fill", color:[48,240,160,0.14], outline:{ color:[48,240,160,0.5], width:0.6 } } } });
-            var ctxRoad = new FeatureLayer({ url:HYN+"2", title:"Зам", opacity:0.85, legendEnabled:false, popupEnabled:false,
-                renderer:{ type:"simple", symbol:{ type:"simple-line", color:[150,170,190,0.55], width:1 } } });
-            var ctxRiver = new FeatureLayer({ url:HYN+"5", title:"Сэлбэ гол", opacity:0.9, legendEnabled:false, popupEnabled:false,
-                renderer:{ type:"simple", symbol:{ type:"simple-line", color:[64,170,255,0.9], width:2 } } });
-            // building_GOL-ийн доор байрлуулна (эхэнд нэмнэ)
-            map.addMany([ctxGreen, ctxRoad, ctxRiver]);
-
-            var view = new MapView({ container: "viewDiv", map: map });
+            var view = new MapView({ container:"viewDiv", map:map });
             view.popupEnabled = false;
             var bldLayer, bldLV;
 
@@ -73,20 +49,32 @@
                 map.allLayers.forEach(function(l){ if(l.type==='feature') l.outFields=['*']; });
                 bldLayer = map.allLayers.find(function(l){ return l.title===LAYER_TITLE; });
                 if(bldLayer){
-                    bldLayer.renderer = RENDERER;   // гүйцэтгэлээр өнгө
-                    bldLayer.opacity = 0.92;
-                    map.reorder(bldLayer, map.layers.length - 1); // блокуудыг бүх давхаргын дээр
+                    bldLayer.renderer = BLD_RENDERER; // гүйцэтгэлээр өнгө (зөвхөн барилга)
                     view.whenLayerView(bldLayer).then(function(lv){ bldLV=lv; });
-                    bldLayer.when(function(){
-                        view.goTo({ target: bldLayer.fullExtent }).catch(function(){});
-                        pushSummary();
-                    }).catch(function(){});
+                    bldLayer.when(function(){ view.goTo({ target: bldLayer.fullExtent }).catch(function(){}); pushSummary(); }).catch(function(){});
                 }
                 var legend = new Legend({ view:view });
                 view.ui.add(new Expand({ view:view, content:legend, expanded:false, expandTooltip:"Тэмдэглэгээ" }), "top-right");
+                view.ui.add(new Expand({ view:view, content:new BasemapGallery({ view:view }), expanded:false, expandTooltip:"Суурь зураг", expandIcon:"basemap" }), "top-right");
+
+                // ── Барилга нэмж зурах (зөвхөн New_building давхаргад attribute бөглөж хадгална) ──
+                var nb = map.allLayers.find(function(l){ return l.title===NB_TITLE; });
+                if(nb){
+                    // Бусад давхаргыг засварлахыг хаана — зөвхөн New_building нэмэгдэнэ
+                    map.allLayers.forEach(function(l){ if(l.type==='feature' && l.title!==NB_TITLE){ l.editingEnabled=false; } });
+                    var editForm = { title:"Шинэ барилга", elements:[
+                        { type:"field", fieldName:"torol",    label:"Төрөл" },
+                        { type:"field", fieldName:"ail_too",  label:"Айлын тоо" },
+                        { type:"field", fieldName:"davhar",   label:"Давхрын тоо" },
+                        { type:"field", fieldName:"guits_on", label:"Гүйцэтгэлийн огноо" }
+                    ]};
+                    var editor = new Editor({ view:view, label:"Барилга нэмэх",
+                        layerInfos:[{ layer:nb, enabled:true, addEnabled:true, updateEnabled:true, deleteEnabled:true, formTemplate:editForm }] });
+                    view.ui.add(new Expand({ view:view, content:editor, expanded:false, expandTooltip:"➕ Барилга нэмэх", group:"tl" }), "top-left");
+                }
             }, function(err){ var m=document.getElementById('msg'); if(m){ m.textContent='Алдаа: '+((err&&err.message)||err); m.style.color='#f99'; } });
 
-            // Нийт болон гүйцэтгэлийн задаргааг тооцоод parent руу илгээх
+            // Нийт болон гүйцэтгэлийн задаргааг тооцоод parent руу илгээх (самбарын өгөгдөл)
             function pushSummary(){
                 var q1 = bldLayer.createQuery(); q1.where='1=1';
                 q1.outStatistics=[
@@ -99,31 +87,19 @@
                 q2.groupByFieldsForStatistics=["BAR_COMP"];
                 q2.outStatistics=[{ statisticType:"count", onStatisticField:"FID", outStatisticFieldName:"c" }];
                 q2.orderByFields=["c DESC"];
-                // Гүйцэтгэлийн ангиллаар тоо (renderer-тэй ижил босго)
                 var buckets=[["0–25%",-1,25],["25–50%",25,50],["50–75%",50,75],["75–100%",75,1e6]];
                 var bTasks = buckets.map(function(b){
                     var q=bldLayer.createQuery(); q.where="GUITS_HV>"+b[1]+" AND GUITS_HV<="+b[2];
                     return bldLayer.queryFeatureCount(q).then(function(n){ return { label:b[0], n:n }; }).catch(function(){ return { label:b[0], n:0 }; });
                 });
-                Promise.all([
-                    bldLayer.queryFeatures(q1),
-                    bldLayer.queryFeatures(q2),
-                    Promise.all(bTasks)
-                ]).then(function(res){
+                Promise.all([ bldLayer.queryFeatures(q1), bldLayer.queryFeatures(q2), Promise.all(bTasks) ]).then(function(res){
                     var s = (res[0].features[0]||{}).attributes || {};
-                    var comps = (res[1].features||[]).map(function(f){
-                        var name=(f.attributes.BAR_COMP||'').trim() || 'Тодорхойгүй';
-                        return { name:name, c:f.attributes.c||0 };
-                    });
-                    parent.postMessage({ type:'progSummary',
-                        summary:{ blok:s.blok||0, ail:s.ail||0, guits:s.guits||0, davhar:s.davhar||0 },
-                        dist: res[2],
-                        comps: comps
-                    }, ORIGIN);
+                    var comps = (res[1].features||[]).map(function(f){ var name=(f.attributes.BAR_COMP||'').trim() || 'Тодорхойгүй'; return { name:name, c:f.attributes.c||0 }; });
+                    parent.postMessage({ type:'progSummary', summary:{ blok:s.blok||0, ail:s.ail||0, guits:s.guits||0, davhar:s.davhar||0 }, dist: res[2], comps: comps }, ORIGIN);
                 }).catch(function(){});
             }
 
-            // Hover → блокийн дэлгэрэнгүйг parent руу (зөвхөн building_GOL давхарга)
+            // Hover → блокийн дэлгэрэнгүйг parent руу
             var busy=false, lastFID=null;
             view.on('pointer-move', function(event){
                 if(busy || !bldLayer) return; busy=true;

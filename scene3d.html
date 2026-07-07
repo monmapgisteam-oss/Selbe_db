@@ -113,8 +113,8 @@
         require([
             "esri/config", "esri/Map", "esri/Basemap", "esri/views/SceneView",
             "esri/layers/IntegratedMeshLayer", "esri/layers/VectorTileLayer", "esri/layers/FeatureLayer",
-            "esri/widgets/ScaleBar", "esri/core/reactiveUtils"
-        ], (esriConfig, Map, Basemap, SceneView, IntegratedMeshLayer, VectorTileLayer, FeatureLayer, ScaleBar, reactiveUtils) => {
+            "esri/widgets/ScaleBar", "esri/widgets/BasemapGallery", "esri/widgets/Expand", "esri/core/reactiveUtils"
+        ], (esriConfig, Map, Basemap, SceneView, IntegratedMeshLayer, VectorTileLayer, FeatureLayer, ScaleBar, BasemapGallery, Expand, reactiveUtils) => {
 
             // localhost дээр ubhub.mn-ийг proxy руу залгах (production-д шууд URL)
             const DEV = location.hostname==='localhost' || location.hostname==='127.0.0.1';
@@ -221,6 +221,9 @@
 
             // compass + navigation-toggle товчнуудыг хасах (zoom үлдээх)
             view.ui.components = ["zoom", "attribution"];
+
+            // Суурь зураг сонгогч
+            view.ui.add(new Expand({ view: view, content: new BasemapGallery({ view: view }), expanded: false, expandTooltip: "Суурь зураг", expandIcon: "basemap" }), "top-right");
 
             // Доод хэсэгт scale bar
             view.ui.add(new ScaleBar({ view: view, unit: "metric", style: "line" }), "bottom-left");
