@@ -21,6 +21,9 @@
             "esri/widgets/Sketch/SketchViewModel", "esri/widgets/BasemapGallery", "esri/widgets/Expand",
             "esri/geometry/geometryEngine", "esri/Graphic"
         ], function(WebMap, MapView, GraphicsLayer, SketchVM, BasemapGallery, Expand, geometryEngine, Graphic){
+            // parent ↔ iframe нь ижил origin — postMessage-ийг тодорхой origin руу илгээж, ирсэн мессежийг шалгана
+            var ORIGIN = location.origin;
+            var RIGHT_TYPES = { 'эзэмших':1, 'өмчлөх':1, 'ашиглах':1 }; // parcelFilter-т зөвшөөрөгдөх утгууд (SQL injection-с сэргийлэх)
             var drawLayer = new GraphicsLayer({ listMode:"hide" });
             var map = new WebMap({ portalItem: { id: "a41af2a9ea714286aeb669ee6f2fcc9d" } });
             var view = new MapView({ container: "viewDiv", map: map });
@@ -75,14 +78,14 @@
                         out.buildings.sums={}; SUMF.forEach(function(f){ out.buildings.sums[f]=a[f]; });
                     }).catch(function(){}));
                 }
-                Promise.all(tasks).then(function(){ parent.postMessage(out, '*'); });
+                Promise.all(tasks).then(function(){ parent.postMessage(out, ORIGIN); });
             }
 
             function clearSel(){
                 drawLayer.removeAll(); labelGraphic=null;
                 if(bldLV) bldLV.featureEffect=null;
                 if(parcelLV) parcelLV.featureEffect=null;
-                parent.postMessage({ type:'landClear' }, '*');
+                parent.postMessage({ type:'landClear' }, ORIGIN);
             }
 
             function areaOf(poly){
@@ -90,7 +93,7 @@
                     return Math.abs(geometryEngine.geodesicArea(poly, "square-meters"));
                 return 0;
             }
-            function measure(poly){ parent.postMessage({ type:'landMeasure', area:areaOf(poly) }, '*'); }
+            function measure(poly){ parent.postMessage({ type:'landMeasure', area:areaOf(poly) }, ORIGIN); }
             var labelGraphic=null;
             function showAreaLabel(poly){
                 if(labelGraphic){ drawLayer.remove(labelGraphic); labelGraphic=null; }
@@ -116,14 +119,17 @@
 
             // ── Parent-аас команд (баруун самбарын товч) ──
             window.addEventListener('message', function(e){
+                if(e.origin !== ORIGIN) return; // зөвхөн ижил origin-оос ирсэн мессежийг хүлээж авна
                 var d=e.data||{};
                 if(d.type==='landTool'){
                     if(d.action==='draw'){ drawLayer.removeAll(); labelGraphic=null; sketch.create("polygon"); }
                     else if(d.action==='clear'){ sketch.cancel(); clearSel(); }
                 }
                 else if(d.type==='parcelFilter'){
-                    if(parcelLV) parcelLV.featureEffect = d.value
-                        ? { filter:{ where:"rigth_type='"+d.value+"'" }, excludedEffect:EXCLUDE }
+                    // Whitelist-ээр шалгасан утга л WHERE-д орно (SQL injection-с сэргийлэх)
+                    var safe = RIGHT_TYPES[d.value] ? d.value : null;
+                    if(parcelLV) parcelLV.featureEffect = safe
+                        ? { filter:{ where:"rigth_type='"+safe+"'" }, excludedEffect:EXCLUDE }
                         : null;
                 }
             });
@@ -133,7 +139,7 @@
                 if(sketch.state==='active') return;
                 view.hitTest(event).then(function(r){
                     var hit = r.results.filter(function(x){ return x.graphic && x.graphic.layer && x.graphic.layer.title==='Building'; })[0];
-                    if(hit){ parent.postMessage({ type:'bldSelect', attrs: hit.graphic.attributes }, '*'); }
+                    if(hit){ parent.postMessage({ type:'bldSelect', attrs: hit.graphic.attributes }, ORIGIN); }
                 });
             });
         });
