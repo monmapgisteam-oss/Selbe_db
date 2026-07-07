@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="mn">
+<head>
+    <meta charset="utf-8">
+    <title>Барилгын явц</title>
+    <link rel="stylesheet" href="https://js.arcgis.com/4.31/esri/themes/dark/main.css">
+    <script src="https://js.arcgis.com/4.31/"></script>
+    <style>
+        html, body, #viewDiv { height:100%; width:100%; margin:0; padding:0; }
+        #msg { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); z-index:9;
+               background:rgba(8,14,26,.95); color:#9fe; padding:14px 18px; border-radius:10px;
+               border:1px solid rgba(120,160,200,.3); font:13px/1.5 system-ui,sans-serif; pointer-events:none; }
+    </style>
+</head>
+<body>
+    <div id="viewDiv"></div>
+    <div id="msg">Түр хүлээнэ үү…</div>
+    <script>
+        require([
+            "esri/config", "esri/WebMap", "esri/views/MapView",
+            "esri/layers/FeatureLayer",
+            "esri/widgets/Legend", "esri/widgets/Expand"
+        ], function(esriConfig, WebMap, MapView, FeatureLayer, Legend, Expand){
+            // parent ↔ iframe нь ижил origin — postMessage-ийг тодорхой origin руу
+            var ORIGIN = location.origin;
+            var LAYER_TITLE = "building_GOL_barigdaj_ehelsen";
+
+            // localhost дээр ubhub.mn давхаргуудыг proxy руу (production-д шууд URL — scene3d-тэй ижил)
+            var DEV = location.hostname==='localhost' || location.hostname==='127.0.0.1';
+            if (DEV) {
+                esriConfig.request.interceptors.push({
+                    urls: /arcgis\.ubhub\.mn/,
+                    before: function(p){ p.url = p.url.replace(/^https:\/\/arcgis\.ubhub\.mn/, '/_ubhub'); }
+                });
+            }
+
+            function fill(c, oc){ return { type:"simple-fill", color:c, outline:{ color:oc, width:0.8 } }; }
+            // Гүйцэтгэлийн хувиар (GUITS_HV) өнгө: улаан→шар→ногоон
+            var RENDERER = {
+                type: "class-breaks",
+                field: "GUITS_HV",
+                defaultSymbol: fill([150,160,175,0.55], [200,210,225,0.9]),
+                defaultLabel: "Мэдээлэлгүй",
+                classBreakInfos: [
+                    { minValue:-1,  maxValue:25,  symbol: fill([255,95,87,0.62],  [255,140,120,0.95]), label:"Эхэлж буй (0–25%)" },
+                    { minValue:25,  maxValue:50,  symbol: fill([245,200,66,0.62], [255,225,120,0.95]), label:"Явцтай (25–50%)" },
+                    { minValue:50,  maxValue:75,  symbol: fill([120,210,120,0.62],[170,235,150,0.95]), label:"Дуусах шатандаа (50–75%)" },
+                    { minValue:75,  maxValue:1e6, symbol: fill([48,240,160,0.66], [120,255,190,0.98]), label:"Бэлэн болсон (75–100%)" }
+                ]
+            };
+
+            // Webmap эх сурвалж (76a2…ed) — building_GOL + ubhub давхаргууд (ортофото/зам/хил)
+            var map = new WebMap({ portalItem: { id: "76a21fa2195f4d62878b3753ab4951ed" } });
+
+            // КОНТЕКСТ ДАВХАРГА — Selbe үйлчилгээ (services.arcgis.com, CORS ажилладаг).
+            // ubhub давхаргууд браузерын CORS-оор блоклогддог тул гол/зам/ногоон контекстийг эндээс авна.
+            var HYN = "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/Selbe_talbain_hynalt/FeatureServer/";
+            var ctxGreen = new FeatureLayer({ url:HYN+"1", title:"Ногоон байгууламж", opacity:0.5, legendEnabled:false, popupEnabled:false,
+                renderer:{ type:"simple", symbol:{ type:"simple-fill", color:[48,240,160,0.14], outline:{ color:[48,240,160,0.5], width:0.6 } } } });
+            var ctxRoad = new FeatureLayer({ url:HYN+"2", title:"Зам", opacity:0.85, legendEnabled:false, popupEnabled:false,
+                renderer:{ type:"simple", symbol:{ type:"simple-line", color:[150,170,190,0.55], width:1 } } });
+            var ctxRiver = new FeatureLayer({ url:HYN+"5", title:"Сэлбэ гол", opacity:0.9, legendEnabled:false, popupEnabled:false,
+                renderer:{ type:"simple", symbol:{ type:"simple-line", color:[64,170,255,0.9], width:2 } } });
+            // building_GOL-ийн доор байрлуулна (эхэнд нэмнэ)
+            map.addMany([ctxGreen, ctxRoad, ctxRiver]);
+
+            var view = new MapView({ container: "viewDiv", map: map });
+            view.popupEnabled = false;
+            var bldLayer, bldLV;
+
+            view.when(function(){
+                var m=document.getElementById('msg'); if(m) m.remove();
+                map.allLayers.forEach(function(l){ if(l.type==='feature') l.outFields=['*']; });
+                bldLayer = map.allLayers.find(function(l){ return l.title===LAYER_TITLE; });
+                if(bldLayer){
+                    bldLayer.renderer = RENDERER;   // гүйцэтгэлээр өнгө
+                    bldLayer.opacity = 0.92;
+                    map.reorder(bldLayer, map.layers.length - 1); // блокуудыг бүх давхаргын дээр
+                    view.whenLayerView(bldLayer).then(function(lv){ bldLV=lv; });
+                    bldLayer.when(function(){
+                        view.goTo({ target: bldLayer.fullExtent }).catch(function(){});
+                        pushSummary();
+                    }).catch(function(){});
+                }
+                var legend = new Legend({ view:view });
+                view.ui.add(new Expand({ view:view, content:legend, expanded:false, expandTooltip:"Тэмдэглэгээ" }), "top-right");
+            }, function(err){ var m=document.getElementById('msg'); if(m){ m.textContent='Алдаа: '+((err&&err.message)||err); m.style.color='#f99'; } });
+
+            // Нийт болон гүйцэтгэлийн задаргааг тооцоод parent руу илгээх
+            function pushSummary(){
+                var q1 = bldLayer.createQuery(); q1.where='1=1';
+                q1.outStatistics=[
+                    { statisticType:"count", onStatisticField:"FID",      outStatisticFieldName:"blok" },
+                    { statisticType:"sum",   onStatisticField:"AIL_TOO",  outStatisticFieldName:"ail" },
+                    { statisticType:"avg",   onStatisticField:"GUITS_HV", outStatisticFieldName:"guits" },
+                    { statisticType:"avg",   onStatisticField:"DAVHAR",   outStatisticFieldName:"davhar" }
+                ];
+                var q2 = bldLayer.createQuery(); q2.where='1=1';
+                q2.groupByFieldsForStatistics=["BAR_COMP"];
+                q2.outStatistics=[{ statisticType:"count", onStatisticField:"FID", outStatisticFieldName:"c" }];
+                q2.orderByFields=["c DESC"];
+                // Гүйцэтгэлийн ангиллаар тоо (renderer-тэй ижил босго)
+                var buckets=[["0–25%",-1,25],["25–50%",25,50],["50–75%",50,75],["75–100%",75,1e6]];
+                var bTasks = buckets.map(function(b){
+                    var q=bldLayer.createQuery(); q.where="GUITS_HV>"+b[1]+" AND GUITS_HV<="+b[2];
+                    return bldLayer.queryFeatureCount(q).then(function(n){ return { label:b[0], n:n }; }).catch(function(){ return { label:b[0], n:0 }; });
+                });
+                Promise.all([
+                    bldLayer.queryFeatures(q1),
+                    bldLayer.queryFeatures(q2),
+                    Promise.all(bTasks)
+                ]).then(function(res){
+                    var s = (res[0].features[0]||{}).attributes || {};
+                    var comps = (res[1].features||[]).map(function(f){
+                        var name=(f.attributes.BAR_COMP||'').trim() || 'Тодорхойгүй';
+                        return { name:name, c:f.attributes.c||0 };
+                    });
+                    parent.postMessage({ type:'progSummary',
+                        summary:{ blok:s.blok||0, ail:s.ail||0, guits:s.guits||0, davhar:s.davhar||0 },
+                        dist: res[2],
+                        comps: comps
+                    }, ORIGIN);
+                }).catch(function(){});
+            }
+
+            // Hover → блокийн дэлгэрэнгүйг parent руу (зөвхөн building_GOL давхарга)
+            var busy=false, lastFID=null;
+            view.on('pointer-move', function(event){
+                if(busy || !bldLayer) return; busy=true;
+                view.hitTest(event, { include:[bldLayer] }).then(function(r){
+                    busy=false;
+                    var hit=r.results.filter(function(x){ return x.graphic && x.graphic.layer===bldLayer; })[0];
+                    if(hit){
+                        view.container.style.cursor='pointer';
+                        var a=hit.graphic.attributes||{}, fid=a.FID;
+                        if(fid!==lastFID){ lastFID=fid; parent.postMessage({ type:'progSelect', attrs:a }, ORIGIN); }
+                    } else { view.container.style.cursor='default'; }
+                }).catch(function(){ busy=false; });
+            });
+        });
+    </script>
+</body>
+</html>
