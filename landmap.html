@@ -16,29 +16,41 @@
     <div id="viewDiv"></div>
     <div id="msg">Түр хүлээнэ үү…</div>
     <script>
+        // ── Pure ArcGIS SDK (WebMap-гүй) — давхарга бүр service линкээр, тодорхой extent ──
         require([
-            "esri/WebMap", "esri/views/MapView", "esri/layers/GraphicsLayer",
+            "esri/Map", "esri/Basemap", "esri/views/MapView",
+            "esri/layers/FeatureLayer", "esri/layers/VectorTileLayer", "esri/layers/GraphicsLayer",
             "esri/widgets/Sketch/SketchViewModel", "esri/widgets/BasemapGallery", "esri/widgets/Expand",
             "esri/geometry/geometryEngine", "esri/Graphic"
-        ], function(WebMap, MapView, GraphicsLayer, SketchVM, BasemapGallery, Expand, geometryEngine, Graphic){
-            // parent ↔ iframe нь ижил origin — postMessage-ийг тодорхой origin руу илгээж, ирсэн мессежийг шалгана
+        ], function(Map, Basemap, MapView, FeatureLayer, VectorTileLayer, GraphicsLayer, SketchVM, BasemapGallery, Expand, geometryEngine, Graphic){
             var ORIGIN = location.origin;
-            var RIGHT_TYPES = { 'эзэмших':1, 'өмчлөх':1, 'ашиглах':1 }; // parcelFilter-т зөвшөөрөгдөх утгууд (SQL injection-с сэргийлэх)
+            var RIGHT_TYPES = { 'эзэмших':1, 'өмчлөх':1, 'ашиглах':1 }; // parcelFilter-т зөвшөөрөгдөх утга (SQL injection-с сэргийлэх)
             var drawLayer = new GraphicsLayer({ listMode:"hide" });
-            var map = new WebMap({ portalItem: { id: "a41af2a9ea714286aeb669ee6f2fcc9d" } });
-            var view = new MapView({ container: "viewDiv", map: map });
-            view.popupEnabled = false;
+
+            // WebMap a41af2…-ийн давхарга ба загварыг хадгалав (renderer webmap-аас snapshot)
+            var AP1="https://services-ap1.arcgis.com/ACqsMOmNLi5wIdIh/arcgis/rest/services/";
+            var HJ ="https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/";
+            function sfill(c,oc,w){ return { type:"simple", symbol:{ type:"simple-fill", color:c, outline:{ color:oc, width:w } } }; }
+            var buildingLayer = new FeatureLayer({ url:AP1+"selbe_B/FeatureServer/0", title:"Building", outFields:["*"],
+                renderer: sfill([122,255,246,0.2],[122,255,246,1],0.4) });
+            var parcelFL = new FeatureLayer({ url:AP1+"Selbe_parcel/FeatureServer/0", title:"Parcel", outFields:["*"],
+                renderer: sfill([0,0,0,0],[41,151,255,1],0.4) });
+            var khil2 = new FeatureLayer({ url:AP1+"Сэлбэ_2_khil/FeatureServer/0", title:"Сэлбэ 2",
+                renderer: sfill([0,0,0,0],[255,0,4,1],0.75) });
+            var khil1 = new FeatureLayer({ url:HJ+"Tuluvlult_talbai/FeatureServer/2", title:"Сэлбэ 1",
+                renderer: sfill([0,0,0,0],[0,77,168,1],0.75) });
+            var nova = new Basemap({ baseLayers:[ new VectorTileLayer({ portalItem:{ id:"75f4dfdff19e445395653121a95a85db" } }) ], title:"Nova" });
+            var map = new Map({ basemap: nova, layers:[khil1, khil2, parcelFL, buildingLayer, drawLayer] });
+            // ЧУХАЛ: тодорхой center/zoom (WGS84) — custom-WKT extent-ийн ромбны алдаанаас сэргийлнэ
+            var view = new MapView({ container:"viewDiv", map:map, popupEnabled:false,
+                center:[106.9177, 47.9184], zoom:13, constraints:{ rotationEnabled:false } });
             var bldLayer, parcelLayer, bldLV, parcelLV;
 
             view.when(function(){
                 var m=document.getElementById('msg'); if(m) m.remove();
-                map.allLayers.forEach(function(l){ if(l.type==='feature') l.outFields=['*']; });
-                map.add(drawLayer);
-                bldLayer = map.allLayers.find(function(l){ return l.title==='Building'; });
-                parcelLayer = map.allLayers.find(function(l){ return l.title==='Parcel'; });
-                if(bldLayer) view.whenLayerView(bldLayer).then(function(lv){ bldLV=lv; });
-                if(parcelLayer) view.whenLayerView(parcelLayer).then(function(lv){ parcelLV=lv; });
-                // Esri суурь зураг сонгогч
+                bldLayer = buildingLayer; parcelLayer = parcelFL;
+                view.whenLayerView(bldLayer).then(function(lv){ bldLV=lv; });
+                view.whenLayerView(parcelLayer).then(function(lv){ parcelLV=lv; });
                 var bgExp = new Expand({ view:view, expandTooltip:"Суурь зураг", expandIcon:"basemap",
                     content: new BasemapGallery({ view:view }) });
                 view.ui.add(bgExp, "top-right");

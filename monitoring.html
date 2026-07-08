@@ -84,6 +84,7 @@
 <section id="dashboard" class="agd-section">
 
   <div class="agd r">
+    <i class="agd-tick tl" aria-hidden="true"></i><i class="agd-tick tr" aria-hidden="true"></i><i class="agd-tick bl" aria-hidden="true"></i><i class="agd-tick br" aria-hidden="true"></i>
 
     <!-- LIVE CITY DATA ticker -->
     <div class="ticker-bar" aria-label="Бодит цагийн хотын мэдээлэл" aria-live="off">
@@ -196,6 +197,7 @@
         <div id="arcgisMap"></div>
         <div id="arcgisMapLand" class="agd-map-3d"></div>
         <div id="arcgisMapProg" class="agd-map-3d"></div>
+        <div id="arcgisMapPatrol" class="agd-map-3d"></div>
         <div id="arcgisMap3d" class="agd-map-3d"></div>
 
         <!-- 3D scene overlay — Сэлбэ тоогоор -->
@@ -216,6 +218,7 @@
           <button data-mode="2d" class="active">2D</button>
           <button data-mode="land">Газар чөлөөлөлт</button>
           <button data-mode="prog">Барилгын явц</button>
+          <button data-mode="patrol">🚓 Патрол</button>
           <button data-mode="3d">3D</button>
         </div>
         <div class="agd-map-loading" id="agdMapLoading">Газрын зураг ачаалж байна…</div>
@@ -293,6 +296,7 @@
 </main><!-- /main -->
 
 
+<script defer src="map1-layers.js"></script>
 <script defer src="monitoring.js"></script>
 </body>
 </html>

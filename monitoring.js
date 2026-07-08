@@ -138,6 +138,7 @@ const AGS2 = 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services'
         c2=document.getElementById('arcgisMap'),
         cL=document.getElementById('arcgisMapLand'),
         cP=document.getElementById('arcgisMapProg'),
+        cPa=document.getElementById('arcgisMapPatrol'),
         c3=document.getElementById('arcgisMap3d');
   if(!mode || !c3 || typeof require === 'undefined') return;
   let inited=false;
@@ -158,6 +159,12 @@ const AGS2 = 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services'
     // Тусдаа progress.html iframe — building_GOL_barigdaj_ehelsen давхаргын явц
     cP.innerHTML='<iframe src="progress.html" style="width:100%;height:100%;border:0;display:block" title="Барилгын явц"></iframe>';
   }
+  let patrolInited=false;
+  function initPatrol(){
+    if(patrolInited) return; patrolInited=true;
+    // Тусдаа patrol.html iframe — ажилчдын online/offline хяналт + alert
+    cPa.innerHTML='<iframe src="patrol.html" style="width:100%;height:100%;border:0;display:block" title="Патрол — Хүн хүч"></iframe>';
+  }
   const stats=document.getElementById('sceneStats');
   const ssToggle=document.getElementById('ssToggle');
   if(ssToggle) ssToggle.addEventListener('click',function(e){ e.stopPropagation(); if(stats) stats.classList.toggle('collapsed'); });
@@ -176,10 +183,11 @@ const AGS2 = 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services'
       c3.classList.toggle('show', m==='3d');
       cL.classList.toggle('show', m==='land');
       cP.classList.toggle('show', m==='prog');
+      cPa.classList.toggle('show', m==='patrol');
       c2.style.visibility = (m==='2d') ? 'visible' : 'hidden';
       if(stats){ stats.classList.toggle('show', m==='3d'); stats.setAttribute('aria-hidden', m==='3d' ? 'false' : 'true'); }
-      // Зүүн/баруун самбарыг динамик солих (land / prog горимд тусдаа самбар)
-      const custom = (m==='land' || m==='prog');
+      // Зүүн/баруун самбарыг динамик солих (land/prog — тусдаа самбар; patrol — бүтэн зураг)
+      const custom = (m==='land' || m==='prog' || m==='patrol');
       function panel(id, showId){ const el=document.getElementById(id); if(el){ const on=(id===showId); el.classList.toggle('show', on); el.setAttribute('aria-hidden', on?'false':'true'); } }
       const lMain=document.getElementById('agdLeftMain'), rMain=document.getElementById('agdRightMain');
       if(lMain) lMain.style.display = custom ? 'none' : '';
@@ -189,10 +197,11 @@ const AGS2 = 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services'
       panel('agdLeftLand', leftShow); panel('agdLeftProg', leftShow);
       panel('agdRightLand', rightShow); panel('agdRightProg', rightShow);
       const body=document.querySelector('.agd-body');
-      if(body){ body.classList.toggle('land-mode', m==='land'); body.classList.toggle('prog-mode', m==='prog'); }
+      if(body){ body.classList.toggle('land-mode', m==='land'); body.classList.toggle('prog-mode', m==='prog'); body.classList.toggle('patrol-mode', m==='patrol'); }
       if(m==='3d') init3d();
       if(m==='land') initLand();
       if(m==='prog') initProg();
+      if(m==='patrol') initPatrol();
     });
   });
 })();
@@ -400,13 +409,29 @@ const AGS2 = 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services'
   });
 })();
 
-/* ── ARCGIS MAP (Maps SDK for JS) ── */
+/* ── ARCGIS MAP (Maps SDK for JS) — pure SDK, давхарга бүр service линкээр (map1-layers.js) ── */
 (function(){
   const el = document.getElementById('arcgisMap');
   if(!el || typeof require === 'undefined') return;
-  require(["esri/WebMap","esri/views/MapView"], function(WebMap, MapView){
-    const map = new WebMap({ portalItem:{ id:"07f88188145d41d58d7376b569cb473f" } });
-    const view = window.__view2d = new MapView({ container:"arcgisMap", map:map });
+  require([
+    "esri/Map","esri/Basemap","esri/views/MapView",
+    "esri/layers/FeatureLayer","esri/layers/VectorTileLayer",
+    "esri/renderers/support/jsonUtils"
+  ], function(Map, Basemap, MapView, FeatureLayer, VectorTileLayer, rendererJsonUtils){
+    // Давхаргууд + загварыг map1-layers.js-ээс (WebMap 07f8…-ийн snapshot). Гарчиг/URL хадгалагдсан тул доорх логик өөрчлөгдөхгүй.
+    const cfg = window.__SELBE_MAP1 || { layers:[] };
+    const layers = cfg.layers.map(function(L){
+      return new FeatureLayer({
+        url:L.url, title:L.title, outFields:["*"],
+        visible:L.visible!==false, opacity:(L.opacity==null?1:L.opacity),
+        minScale:L.minScale||0, maxScale:L.maxScale||0,
+        renderer: L.renderer ? rendererJsonUtils.fromJSON(L.renderer) : undefined,
+        popupEnabled:false
+      });
+    });
+    const nova = new Basemap({ baseLayers:[ new VectorTileLayer({ portalItem:{ id:cfg.basemapPortalId } }) ], title:"Nova" });
+    const map = new Map({ basemap: nova, layers: layers });
+    const view = window.__view2d = new MapView({ container:"arcgisMap", map:map, popupEnabled:false, constraints:{ rotationEnabled:false } });
     const loading = document.getElementById('agdMapLoading');
 
     // Категорийн товч дарахад тухайн категорид харгалзах layer л ил гарна
@@ -461,6 +486,10 @@ const AGS2 = 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services'
     view.when(function(){
       if(loading) loading.classList.add('hidden');
       view.popupEnabled = false;
+
+      // Сэлбэ бүс рүү камер (Барилга давхаргын extent — standard EPSG, аюулгүй)
+      var _bl = view.map.allLayers.find(function(x){ return x.type==='feature' && x.title==='Барилга'; });
+      if(_bl) _bl.when(function(){ view.goTo(_bl.fullExtent).catch(function(){}); }).catch(function(){});
 
       // ── Шугам сүлжээний НЭГДСЭН шүүлт ──
       // Төрлийн сонголт (дээд цэс) + гүйцэтгэлийн босго (баруун slider) хоёулаа

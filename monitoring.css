@@ -1,16 +1,48 @@
-/* ══ TOKENS ══ */
+/* ══ DESIGN TOKENS — мэргэжлийн, нэгдсэн систем ══ */
 :root {
-  --bg:    #0a0a0d;
-  --bg2:   #0f0f14;
-  --bg3:   #141419;
-  --card:  rgba(255,255,255,.03);
-  --bdr:   rgba(255,255,255,.08);
-  --cyan:  #00d4ff;
-  --pink:  #d94cf7;
-  --green: #30f0a0;
-  --amber: #f5c842;
-  --white: #e8ecf0;
-  --muted: rgba(232,236,240,.4);
+  /* Гадаргуу — сэрүүн, гүн, давхаргалсан (cohesive cool-dark) */
+  --bg:    #080b11;   /* үндсэн дэвсгэр */
+  --bg2:   #0b0f16;   /* хэсгийн дэвсгэр */
+  --bg3:   #10161f;   /* raised */
+  --panel: #0b1119;   /* самбар */
+  --panel2:#0d1420;   /* самбарын дээд/toolbar */
+  --card:  rgba(255,255,255,.022);
+  --card2: rgba(255,255,255,.045);
+  --bdr:   rgba(120,160,205,.13);   /* хүйтэн хөх-биас хайрцаг (chosen neutral) */
+  --bdr2:  rgba(125,170,215,.26);   /* тод хүрээ */
+
+  /* Текст — 3 түвшний шатлал (хүйтэн) */
+  --white: #e7eef7;                 /* үндсэн */
+  --text2: #93a4bb;                 /* хоёрдогч */
+  --muted: #586a82;                 /* гуравдагч */
+  --mono: ui-monospace,"SF Mono","JetBrains Mono","Cascadia Code",Menlo,monospace; /* багажийн өгөгдөл */
+
+  /* Брэнд + семантик өнгө (cyan — логотой ижил хэвээр) */
+  --cyan:  #00d4ff;                 /* брэнд */
+  --cyan-ink: #05202c;              /* брэнд дээрх текст */
+  --pink:  #e05cff;
+  --green: #2fe0a0;                 /* амжилт */
+  --amber: #f7c948;                 /* анхаар */
+  --red:   #ff6b6b;                 /* аюул */
+
+  /* Брэндийн тунгалаг өнгө (fill/glow) */
+  --cyan-08: rgba(0,212,255,.08);
+  --cyan-15: rgba(0,212,255,.15);
+  --cyan-30: rgba(0,212,255,.30);
+  --cyan-45: rgba(0,212,255,.45);
+
+  /* Гүн / сүүдэр (elevation) */
+  --sh-1: 0 1px 2px rgba(0,0,0,.45);
+  --sh-2: 0 10px 28px -10px rgba(0,0,0,.55);
+  --sh-3: 0 30px 70px -24px rgba(0,0,0,.75);
+  --glow: 0 0 0 1px var(--cyan-30), 0 8px 30px -6px rgba(0,212,255,.35);
+
+  /* Радиус */
+  --r-xs: 6px; --r-sm: 8px; --r: 11px; --r-lg: 14px; --r-xl: 20px;
+
+  /* Хөдөлгөөн */
+  --ease: cubic-bezier(.4,0,.2,1);
+  --dur: .18s;
 }
 
 *,*::before,*::after { margin:0; padding:0; box-sizing:border-box }
@@ -22,28 +54,41 @@ body {
   color:var(--white);
   overflow-x:hidden;
   -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+  /* Нарийн гүн өгөх радиаль дэвсгэр */
+  background-image:
+    radial-gradient(1200px 700px at 78% -8%, rgba(0,212,255,.05), transparent 60%),
+    radial-gradient(900px 600px at 8% 108%, rgba(46,224,160,.03), transparent 55%);
+  background-attachment:fixed;
+}
+
+/* ── Бүх тоон readout — багажийн monospace tabular ── */
+.hs-item b, .ss-v, .land-sc-v, .pie-c, .agd-bars .agd-bl b,
+.lc-stats .v, .bg-val, .ticker-val, .prog-total-bar .agd-bl b,
+.prog-stages .agd-bl b, .brl-kpi-v, .agd-ind-v {
+  font-family:var(--mono); font-variant-numeric:tabular-nums; letter-spacing:-.015em;
 }
 
 /* ── TICKER ── */
 .ticker-bar {
   position:absolute;bottom:0;left:0;right:0;z-index:3;
-  height:36px;
-  background:#07060a;
-  border-top:1px solid rgba(245,200,66,.15);
+  height:38px;
+  background:linear-gradient(180deg, #0a0d13, #070a0f);
+  border-top:1px solid rgba(245,200,66,.16);
   display:flex;align-items:center;
   overflow:hidden;
-  font-size:.59rem;font-weight:700;letter-spacing:.1em;
+  font-size:.6rem;font-weight:700;letter-spacing:.1em;
 }
 .ticker-label {
-  flex-shrink:0;display:flex;align-items:center;gap:7px;
-  padding:0 16px;height:100%;
-  background:rgba(245,200,66,.07);
-  border-right:1px solid rgba(245,200,66,.2);
-  color:var(--amber);white-space:nowrap;text-transform:uppercase;
+  flex-shrink:0;display:flex;align-items:center;gap:8px;
+  padding:0 18px;height:100%;
+  background:linear-gradient(180deg, rgba(245,200,66,.11), rgba(245,200,66,.05));
+  border-right:1px solid rgba(245,200,66,.22);
+  color:var(--amber);white-space:nowrap;text-transform:uppercase;letter-spacing:.14em;font-weight:800;
 }
 .ticker-dot {
-  width:6px;height:6px;border-radius:50%;
-  background:var(--amber);
+  width:7px;height:7px;border-radius:50%;
+  background:var(--amber);box-shadow:0 0 8px 0 var(--amber);
   animation:tdot 1.4s ease-in-out infinite;
 }
 @keyframes tdot { 0%,100%{opacity:1} 50%{opacity:.1} }
@@ -91,12 +136,13 @@ nav {
   border-bottom:none;
 }
 .nav-links {
-  display:flex;align-items:center;gap:0;
-  background:rgba(48,48,58,.82);
-  border-radius:100px;
-  padding:4px;
-  border:1px solid rgba(255,255,255,.07);
-  backdrop-filter:blur(10px);
+  display:flex;align-items:center;gap:2px;
+  background:rgba(11,17,26,.72);
+  border-radius:12px;
+  padding:5px;
+  border:1px solid var(--bdr2);
+  backdrop-filter:blur(14px) saturate(1.2);
+  box-shadow:var(--sh-2), inset 0 1px 0 rgba(255,255,255,.05);
   position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) translateY(48px);
   transition:opacity .3s ease,visibility .3s ease;
 }
@@ -107,27 +153,18 @@ nav {
 }
 .nav-links a {
   position:relative;
-  color:rgba(232,236,240,.72);text-decoration:none;
+  color:var(--text2);text-decoration:none;
   font-size:.72rem;font-weight:600;
-  padding:6px 18px;border-radius:100px;
-  transition:color .18s,text-shadow .18s;
+  padding:7px 16px;border-radius:8px;
+  transition:color var(--dur) var(--ease),background var(--dur) var(--ease);
   white-space:nowrap;text-transform:uppercase;letter-spacing:.06em;
 }
-.nav-links a::after {
-  content:'';
-  position:absolute;left:18px;right:18px;bottom:1px;
-  height:2px;border-radius:2px;
-  background:var(--cyan);
-  box-shadow:0 0 8px rgba(0,212,255,.9),0 0 14px rgba(0,212,255,.6);
-  opacity:0;transform:scaleX(0);
-  transition:opacity .18s ease,transform .18s ease;
+.nav-links a::after { content:none }
+.nav-links a:hover { color:var(--white);background:rgba(255,255,255,.05) }
+.nav-links a.on, .nav-links a[aria-current="page"] {
+  color:var(--white);background:var(--cyan-15);box-shadow:inset 0 0 0 1px var(--cyan-30);
 }
-.nav-links a:hover {
-  color:var(--cyan);
-  text-shadow:0 0 12px rgba(0,212,255,.65);
-}
-.nav-links a:hover::after { opacity:1;transform:scaleX(1) }
-.nav-links a:focus-visible { outline:1px solid var(--cyan);outline-offset:2px }
+.nav-links a:focus-visible { outline:2px solid var(--cyan-45);outline-offset:2px }
 .nav-right { display:flex;align-items:center;gap:8px }
 /* ── BRAND LOGO ── */
 .brand {
@@ -310,12 +347,21 @@ nav {
 /* ── ARCGIS-STYLE DASHBOARD ── */
 .agd-section { padding:14px;max-width:none;margin:0 }
 .agd {
-  border:1px solid var(--bdr);border-radius:14px;overflow:hidden;
-  background:#0a1018;
-  box-shadow:0 40px 90px -34px rgba(0,0,0,.85);
+  position:relative;
+  border:1px solid var(--bdr2);border-radius:var(--r-lg);overflow:hidden;
+  background:
+    radial-gradient(120% 70% at 50% -8%, rgba(0,212,255,.05), transparent 62%),
+    linear-gradient(180deg, #0c131d 0%, #0a0f17 100%);
+  box-shadow:var(--sh-3), inset 0 1px 0 rgba(255,255,255,.05);
   display:flex;flex-direction:column;
   height:calc(100vh - 28px);
 }
+/* Консолын булангийн registration tick (багажийн хүрээ) */
+.agd-tick{ position:absolute;z-index:20;width:12px;height:12px;pointer-events:none;opacity:.55 }
+.agd-tick::before,.agd-tick::after{ content:'';position:absolute;background:var(--cyan) }
+.agd-tick::before{ width:12px;height:1px;top:0 } .agd-tick::after{ width:1px;height:12px;left:0 }
+.agd-tick.tl{ left:9px;top:9px } .agd-tick.tr{ right:9px;top:9px;transform:scaleX(-1) }
+.agd-tick.bl{ left:9px;bottom:9px;transform:scaleY(-1) } .agd-tick.br{ right:9px;bottom:9px;transform:scale(-1) }
 
 /* Ticker дотор dashboard дээд талд */
 .agd .ticker-bar {
@@ -326,27 +372,32 @@ nav {
 /* Top bar */
 .agd-top {
   display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;
-  padding:14px 20px;background:#0c1424;border-bottom:1px solid var(--bdr);
+  padding:15px 22px;
+  background:linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,0)), var(--panel2);
+  border-bottom:1px solid var(--bdr);
 }
-.agd-top-title { display:flex;align-items:center;gap:10px;font-size:.92rem;font-weight:700;color:var(--white) }
-.agd-dot { width:14px;height:14px;border-radius:50%;background:var(--cyan);box-shadow:0 0 0 4px rgba(0,212,255,.15) }
+.agd-top-title { display:flex;align-items:center;gap:11px;font-size:.9rem;font-weight:750;letter-spacing:.04em;text-transform:uppercase;color:var(--white) }
+.agd-dot { width:11px;height:11px;border-radius:50%;background:var(--cyan);box-shadow:0 0 0 4px var(--cyan-15), 0 0 12px 0 var(--cyan-45) }
 /* Header filter */
 .agd-top-right { display:flex;align-items:center;gap:10px;flex-wrap:wrap }
 .agd-filter { position:relative }
 .agd-filter-btn {
   display:inline-flex;align-items:center;gap:8px;
-  padding:8px 14px;border-radius:8px;cursor:pointer;font-family:inherit;
-  font-size:.76rem;font-weight:600;
-  background:rgba(255,255,255,.05);border:1px solid var(--bdr);color:var(--white);
-  transition:border-color .15s,background .15s;
+  padding:9px 15px;border-radius:var(--r-sm);cursor:pointer;font-family:inherit;
+  font-size:.75rem;font-weight:600;letter-spacing:.01em;
+  background:rgba(255,255,255,.045);border:1px solid var(--bdr);color:var(--white);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
+  transition:border-color var(--dur) var(--ease),background var(--dur) var(--ease),transform var(--dur) var(--ease);
 }
-.agd-filter-btn:hover { border-color:rgba(0,212,255,.4);background:rgba(0,212,255,.06) }
+.agd-filter-btn:hover { border-color:var(--cyan-45);background:var(--cyan-08);transform:translateY(-1px) }
+.agd-filter-btn:focus-visible { outline:2px solid var(--cyan-45);outline-offset:1px }
 .agd-filter-btn svg { width:14px;height:14px;color:var(--cyan) }
-.agd-filter-caret { color:var(--muted);font-size:.7rem }
+.agd-filter-caret { color:var(--muted);font-size:.7rem;transition:transform var(--dur) var(--ease) }
+.agd-filter-btn[aria-expanded="true"] .agd-filter-caret { transform:rotate(180deg) }
 .agd-filter-menu {
-  position:absolute;top:calc(100% + 8px);right:0;z-index:30;width:240px;
-  background:rgba(10,16,26,.97);border:1px solid var(--bdr);border-radius:10px;overflow:hidden;
-  box-shadow:0 18px 44px -14px rgba(0,0,0,.75);backdrop-filter:blur(8px);
+  position:absolute;top:calc(100% + 8px);right:0;z-index:30;width:244px;
+  background:rgba(11,17,26,.98);border:1px solid var(--bdr2);border-radius:var(--r);overflow:hidden;
+  box-shadow:var(--sh-3);backdrop-filter:blur(12px);
   opacity:0;visibility:hidden;transform:translateY(-6px);
   transition:opacity .18s ease,transform .18s ease,visibility .18s;
 }
@@ -364,7 +415,8 @@ nav {
 .agd-body { display:grid;grid-template-columns:352px 1fr 400px;flex:1;min-height:0 }
 .agd-body.land-mode { grid-template-columns:352px 1fr 320px }
 .agd-body.prog-mode { grid-template-columns:352px 1fr 360px }
-.agd-col { display:flex;flex-direction:column;gap:16px;padding:16px;background:#0b1322;overflow-y:auto;height:100% }
+.agd-body.patrol-mode { grid-template-columns:1fr } /* Патрол — бүтэн зураг (patrol.html өөрийн самбартай) */
+.agd-col { display:flex;flex-direction:column;gap:16px;padding:16px;background:var(--panel);overflow-y:auto;height:100% }
 .agd-left  { border-right:1px solid var(--bdr);padding:10px;gap:24px }
 .agd-left-land, .agd-left-prog { grid-column:1;grid-row:1;display:none }
 .agd-left-land.show, .agd-left-prog.show { display:flex }
@@ -413,7 +465,12 @@ nav {
 #agdRightLand .pie::after { inset:11px }
 #agdRightLand .pie-c { font-size:.98rem }
 #agdRightLand .lp-cell .tpl-cell-t { font-size:.74rem }
-.agd-card { background:rgba(255,255,255,.02);border:1px solid var(--bdr);border-radius:10px;padding: 14px; }
+.agd-card {
+  background:linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,.011));
+  border:1px solid var(--bdr);border-radius:var(--r);padding:16px;
+  box-shadow:var(--sh-1), inset 0 1px 0 rgba(255,255,255,.045);
+  transition:border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
 .agd-grow { flex:1 }
 .agd-half { flex:1;min-height:0;display:flex;flex-direction:column;overflow:auto }
 #agdRightTop { flex:1 }
@@ -427,9 +484,9 @@ nav {
 #tplTR .tpl-cell-t { padding-left:12px }
 .tpl-cell .pie { margin:auto }
 #tplTL .pie, #tplTR .pie { margin:19px auto auto }
-.pie { width:80px;height:80px;border-radius:50%;position:relative;margin:8px auto 8px;background:conic-gradient(rgba(255,255,255,.08) 0 100%) }
-.pie::after { content:'';position:absolute;inset:9px;border-radius:50%;background:#0c1424 }
-.pie-c { position:absolute;inset:0;z-index:1;display:flex;align-items:center;justify-content:center;font-size:.8rem;font-weight:800;color:#fff }
+.pie { width:80px;height:80px;border-radius:50%;position:relative;margin:8px auto 8px;background:conic-gradient(rgba(255,255,255,.08) 0 100%);filter:drop-shadow(0 4px 10px rgba(0,0,0,.35));transition:background .7s var(--ease) }
+.pie::after { content:'';position:absolute;inset:9px;border-radius:50%;background:radial-gradient(circle at 50% 35%, #131c2a, #0c1420);box-shadow:inset 0 1px 2px rgba(0,0,0,.4) }
+.pie-c { position:absolute;inset:0;z-index:1;display:flex;align-items:center;justify-content:center;font-size:.86rem;font-weight:800;color:#fff;font-variant-numeric:tabular-nums;letter-spacing:-.01em }
 .tpl-bottom { grid-column:1 / -1 }
 
 /* Line chart (tplB) */
@@ -471,33 +528,43 @@ nav {
 }
 .bg-range::-moz-range-thumb { width:15px;height:15px;border-radius:50%;background:#fff;border:2px solid rgba(0,0,0,.35);cursor:pointer }
 .bg-range::-moz-range-track { background:transparent }
-.agd-card-t { font-size:.68rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin-bottom:12px }
+.agd-card-t { display:flex;align-items:center;gap:8px;font-size:.66rem;font-weight:750;letter-spacing:.09em;text-transform:uppercase;color:var(--text2);margin-bottom:13px }
+.agd-card-t::before { content:'';width:3px;height:11px;border-radius:2px;background:linear-gradient(var(--cyan),color-mix(in srgb,var(--cyan) 30%,transparent));flex-shrink:0 }
 #agdChartTitle { white-space:pre-line;line-height:1.45;margin-bottom:20px }
 
 /* Category selector */
 .agd-cats { display:flex;flex-direction:column;gap:6px }
 .agd-cat {
-  display:flex;align-items:center;gap:10px;
-  padding:10px 12px;border-radius:8px;cursor:pointer;
+  display:flex;align-items:center;gap:11px;
+  padding:11px 13px;border-radius:var(--r-sm);cursor:pointer;
   background:transparent;border:1px solid transparent;border-left:3px solid transparent;
-  color:var(--muted);font-family:inherit;font-size:calc(.9rem - 1px);font-weight:600;text-align:left;
-  transition:background .15s,color .15s,border-color .15s;
+  color:var(--text2);font-family:inherit;font-size:calc(.9rem - 1px);font-weight:600;text-align:left;
+  transition:background var(--dur) var(--ease),color var(--dur) var(--ease),border-color var(--dur) var(--ease),transform var(--dur) var(--ease);
 }
-.agd-cat span { font-size:1.35rem }
-.agd-cat:hover { color:var(--white);background:rgba(255,255,255,.03) }
+.agd-cat span {
+  font-size:1.05rem;width:30px;height:30px;flex-shrink:0;border-radius:8px;
+  display:flex;align-items:center;justify-content:center;
+  background:color-mix(in srgb,var(--ac) 12%,transparent);
+  border:1px solid color-mix(in srgb,var(--ac) 22%,transparent);
+  transition:background var(--dur) var(--ease),border-color var(--dur) var(--ease);
+}
+.agd-cat:hover { color:var(--white);background:rgba(255,255,255,.035) }
 .agd-cat.active {
   color:var(--white);border-left-color:var(--ac);
-  background:color-mix(in srgb,var(--ac) 10%,transparent);
+  background:color-mix(in srgb,var(--ac) 12%,transparent);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
 }
+.agd-cat.active span { background:color-mix(in srgb,var(--ac) 26%,transparent);border-color:color-mix(in srgb,var(--ac) 45%,transparent) }
+.agd-cat:focus-visible { outline:2px solid var(--cyan-45);outline-offset:1px }
 
 /* Bars chart */
-.agd-bars { list-style:none;display:flex;flex-direction:column;gap:18px }
-.agd-bars li { display:flex;flex-direction:column;gap:5px }
-.agd-bars .agd-bl { display:flex;justify-content:space-between;gap:10px;font-size:.74rem;align-items:baseline }
-.agd-bars .agd-bl span { color:rgba(232,236,240,.72);line-height:1.35 }
-.agd-bars .agd-bl b { color:var(--ac,#00d4ff);font-weight:700;white-space:nowrap;flex-shrink:0 }
-.agd-bars .agd-bt { height:7px;border-radius:5px;background:rgba(255,255,255,.06);overflow:hidden }
-.agd-bars .agd-bt i { display:block;height:100%;width:0;border-radius:5px;background:linear-gradient(90deg,var(--ac,#00d4ff),color-mix(in srgb,var(--ac,#00d4ff) 45%,#fff));transition:width .6s ease }
+.agd-bars { list-style:none;display:flex;flex-direction:column;gap:16px }
+.agd-bars li { display:flex;flex-direction:column;gap:6px }
+.agd-bars .agd-bl { display:flex;justify-content:space-between;gap:10px;font-size:.75rem;align-items:baseline }
+.agd-bars .agd-bl span { color:var(--text2);line-height:1.35 }
+.agd-bars .agd-bl b { color:var(--ac,#00d4ff);font-weight:750;white-space:nowrap;flex-shrink:0;font-variant-numeric:tabular-nums }
+.agd-bars .agd-bt { height:8px;border-radius:6px;background:rgba(255,255,255,.055);overflow:hidden;box-shadow:inset 0 1px 1px rgba(0,0,0,.25) }
+.agd-bars .agd-bt i { display:block;height:100%;width:0;border-radius:6px;background:linear-gradient(90deg,var(--ac,#00d4ff),color-mix(in srgb,var(--ac,#00d4ff) 45%,#fff));box-shadow:0 0 10px -1px color-mix(in srgb,var(--ac,#00d4ff) 60%,transparent);transition:width .7s var(--ease) }
 
 /* Map */
 .agd-map { position:relative;background:#06101e;height:100% }

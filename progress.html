@@ -16,17 +16,16 @@
     <div id="viewDiv"></div>
     <div id="msg">Түр хүлээнэ үү…</div>
     <script>
-        // WebMap "selbe_ehelsen_barilga" (76a2…) — бүх давхарга ба загвар webmap дээр тохируулагдсан.
-        // Кодоос симбол/renderer тааруулахгүй — webmap-ийнхийг шууд ашиглана.
+        // ── Pure ArcGIS SDK (WebMap-гүй) — webmap 76a2…-ийн давхаргуудыг service линкээр ──
         require([
-            "esri/WebMap", "esri/views/MapView",
+            "esri/Map", "esri/Basemap", "esri/views/MapView",
+            "esri/layers/FeatureLayer", "esri/layers/VectorTileLayer",
             "esri/widgets/Editor", "esri/widgets/Legend", "esri/widgets/BasemapGallery", "esri/widgets/Expand"
-        ], function(WebMap, MapView, Editor, Legend, BasemapGallery, Expand){
+        ], function(Map, Basemap, MapView, FeatureLayer, VectorTileLayer, Editor, Legend, BasemapGallery, Expand){
             var ORIGIN = location.origin; // parent ↔ iframe ижил origin
-            var LAYER_TITLE = "building_GOL_barigdaj_ehelsen";
-            var NB_TITLE = "New_building"; // засварлаж болох давхарга (шинэ барилга нэмэх)
+            var NB_TITLE = "New_building";
 
-            // Зөвхөн building_GOL-д гүйцэтгэлээр (GUITS_HV) өнгө өгнө. Бусад давхарга webmap-ийн загвартайгаа хэвээр.
+            // building_GOL — гүйцэтгэлээр (GUITS_HV) өнгө
             function fill(c, oc){ return { type:"simple-fill", color:c, outline:{ color:oc, width:0.8 } }; }
             var BLD_RENDERER = {
                 type: "class-breaks", field: "GUITS_HV",
@@ -39,39 +38,45 @@
                 ]
             };
 
-            var map = new WebMap({ portalItem: { id: "76a21fa2195f4d62878b3753ab4951ed" } });
-            var view = new MapView({ container:"viewDiv", map:map });
-            view.popupEnabled = false;
-            var bldLayer, bldLV;
+            // Давхаргууд — webmap-аас snapshot (services.arcgis.com, CORS *)
+            var RD = "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/selbe_road_20260707/FeatureServer/";
+            var HJ = "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/";
+            var lyrKhil   = new FeatureLayer({ url:RD+"16", title:"Хил", legendEnabled:false, popupEnabled:false,
+                renderer:{ type:"simple", symbol:{ type:"simple-line", color:[5,234,242,1], width:1.4 } } });
+            var lyrRoad   = new FeatureLayer({ url:RD+"19", title:"Зам", popupEnabled:false });        // service default renderer
+            var lyrMark   = new FeatureLayer({ url:RD+"18", title:"Замын тэмдэглэгээ", popupEnabled:false });
+            var lyrBridge = new FeatureLayer({ url:RD+"17", title:"Гүүр", popupEnabled:false });
+            var bldLayer  = new FeatureLayer({ url:HJ+"building_GOL_barigdaj_ehelsen/FeatureServer/2",
+                title:"Барилгын явц", outFields:["*"], renderer:BLD_RENDERER, opacity:0.92, popupEnabled:false });
+            var nbLayer   = new FeatureLayer({ url:HJ+"New_building/FeatureServer/3", title:NB_TITLE, outFields:["*"], popupEnabled:false,
+                renderer:{ type:"simple", symbol:{ type:"simple-fill", color:[251,5,255,0.22], outline:{ color:[251,5,255,1], width:1 } } } });
+
+            var nova = new Basemap({ baseLayers:[ new VectorTileLayer({ portalItem:{ id:"75f4dfdff19e445395653121a95a85db" } }) ], title:"Nova" });
+            var map = new Map({ basemap:nova, layers:[lyrKhil, lyrRoad, lyrMark, lyrBridge, bldLayer, nbLayer] });
+            var view = new MapView({ container:"viewDiv", map:map, popupEnabled:false, constraints:{ rotationEnabled:false } });
+            var bldLV;
 
             view.when(function(){
                 var m=document.getElementById('msg'); if(m) m.remove();
-                map.allLayers.forEach(function(l){ if(l.type==='feature') l.outFields=['*']; });
-                bldLayer = map.allLayers.find(function(l){ return l.title===LAYER_TITLE; });
-                if(bldLayer){
-                    bldLayer.renderer = BLD_RENDERER; // гүйцэтгэлээр өнгө (зөвхөн барилга)
-                    view.whenLayerView(bldLayer).then(function(lv){ bldLV=lv; });
-                    bldLayer.when(function(){ view.goTo({ target: bldLayer.fullExtent }).catch(function(){}); pushSummary(); }).catch(function(){});
-                }
+                view.whenLayerView(bldLayer).then(function(lv){ bldLV=lv; });
+                // building_GOL нь standard EPSG 32648 — goTo(fullExtent) аюулгүй (custom-WKT биш)
+                bldLayer.when(function(){ view.goTo({ target: bldLayer.fullExtent }).catch(function(){}); pushSummary(); }).catch(function(){});
+
                 var legend = new Legend({ view:view });
                 view.ui.add(new Expand({ view:view, content:legend, expanded:false, expandTooltip:"Тэмдэглэгээ" }), "top-right");
                 view.ui.add(new Expand({ view:view, content:new BasemapGallery({ view:view }), expanded:false, expandTooltip:"Суурь зураг", expandIcon:"basemap" }), "top-right");
 
                 // ── Барилга нэмж зурах (зөвхөн New_building давхаргад attribute бөглөж хадгална) ──
-                var nb = map.allLayers.find(function(l){ return l.title===NB_TITLE; });
-                if(nb){
-                    // Бусад давхаргыг засварлахыг хаана — зөвхөн New_building нэмэгдэнэ
-                    map.allLayers.forEach(function(l){ if(l.type==='feature' && l.title!==NB_TITLE){ l.editingEnabled=false; } });
-                    var editForm = { title:"Шинэ барилга", elements:[
-                        { type:"field", fieldName:"torol",    label:"Төрөл" },
-                        { type:"field", fieldName:"ail_too",  label:"Айлын тоо" },
-                        { type:"field", fieldName:"davhar",   label:"Давхрын тоо" },
-                        { type:"field", fieldName:"guits_on", label:"Гүйцэтгэлийн огноо" }
-                    ]};
-                    var editor = new Editor({ view:view, label:"Барилга нэмэх",
-                        layerInfos:[{ layer:nb, enabled:true, addEnabled:true, updateEnabled:true, deleteEnabled:true, formTemplate:editForm }] });
-                    view.ui.add(new Expand({ view:view, content:editor, expanded:false, expandTooltip:"➕ Барилга нэмэх", group:"tl" }), "top-left");
-                }
+                [bldLayer, lyrKhil, lyrRoad, lyrMark, lyrBridge].forEach(function(l){ l.editingEnabled=false; }); // бусад давхарга засварлахгүй
+                var editForm = { title:"Шинэ барилга", elements:[
+                    { type:"field", fieldName:"torol",    label:"Төрөл" },
+                    { type:"field", fieldName:"ail_too",  label:"Айлын тоо" },
+                    { type:"field", fieldName:"davhar",   label:"Давхрын тоо" },
+                    { type:"field", fieldName:"guits_on", label:"Гүйцэтгэлийн огноо" }
+                ]};
+                var editor = new Editor({ view:view, label:"Барилга нэмэх",
+                    layerInfos:[{ layer:nbLayer, enabled:true, addEnabled:true, updateEnabled:true, deleteEnabled:true, formTemplate:editForm }] });
+                view.ui.add(new Expand({ view:view, content:editor, expanded:false, expandTooltip:"➕ Барилга нэмэх", group:"tl" }), "top-left");
             }, function(err){ var m=document.getElementById('msg'); if(m){ m.textContent='Алдаа: '+((err&&err.message)||err); m.style.color='#f99'; } });
 
             // Нийт болон гүйцэтгэлийн задаргааг тооцоод parent руу илгээх (самбарын өгөгдөл)
