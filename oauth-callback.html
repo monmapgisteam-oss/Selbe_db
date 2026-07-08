@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="mn">
+<head>
+    <meta charset="utf-8">
+    <title>Нэвтэрч байна…</title>
+    <style>
+        html,body{ height:100%;margin:0;background:#0a0f18;color:#9fe;
+                   font:14px/1.5 system-ui,sans-serif;display:flex;align-items:center;justify-content:center }
+    </style>
+</head>
+<body>
+    <div>Нэвтэрлээ — цонх хаагдаж байна…</div>
+    <script>
+        // ArcGIS OAuth popup callback.
+        // Code flow (?code=...) эсвэл implicit (#access_token=...) хоёуланд ажиллана.
+        (function(){
+            var app = window.opener || window.parent;
+            var h = location.hash;
+            if (!h && location.search) { h = "#" + location.search.replace(/^\?/, ""); } // ?code=.. → #code=..
+            function finish(){
+                if (app && app.require) {
+                    app.require(["esri/identity/IdentityManager"], function(esriId){
+                        esriId.setOAuthResponseHash(h);   // opener нь PKCE verifier-тэй тул кодыг солино
+                        try { window.close(); } catch(e){}
+                    });
+                    return true;
+                }
+                return false;
+            }
+            if (!finish()) {
+                var s = document.createElement('script');
+                s.src = "https://js.arcgis.com/4.31/";
+                s.onload = function(){
+                    require(["esri/identity/IdentityManager"], function(esriId){
+                        esriId.setOAuthResponseHash(h);
+                        try { window.close(); } catch(e){}
+                    });
+                };
+                document.head.appendChild(s);
+            }
+        })();
+    </script>
+</body>
+</html>
