@@ -1012,3 +1012,82 @@ document.querySelectorAll('.r').forEach(el=>revealObs.observe(el));
   }
   setTimeout(typewrite, 800);
 })();
+
+/* ── ДЭД БҮТЭЦ БА ГАЗРЫН НЭГЖ ТАЛБАР — 3 ArcGIS үйлчилгээнээс статистик график ── */
+(function(){
+  const host = document.getElementById('infra'); if(!host) return;
+  const B = 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services';
+  function q(layerUrl, params){
+    const qs = Object.keys(params).map(k=>k+'='+encodeURIComponent(params[k])).join('&');
+    return fetch(layerUrl+'/query?'+qs+'&f=json').then(r=>r.json());
+  }
+  const CNT = '[{"statisticType":"count","onStatisticField":"OBJECTID","outStatisticFieldName":"c"}]';
+  function fmt(n){ return Math.round(n).toLocaleString('en-US'); }
+  function barRows(el, rows, fmtVal){ // rows: [label, value, color]
+    const max = Math.max.apply(null, rows.map(r=>r[1]).concat([1]));
+    el.innerHTML = rows.map(function(r){
+      const pct = Math.max(2, Math.round(r[1]/max*100));
+      return '<li><span class="ix-bl" title="'+esc(r[0])+'">'+esc(r[0])+'</span>'
+        +'<span class="ix-btrack"><span class="ix-bfill" style="width:'+pct+'%;background:'+r[2]+'"></span></span>'
+        +'<span class="ix-bv">'+fmtVal(r[1])+'</span></li>';
+    }).join('');
+  }
+  function fail(id){ const el=document.getElementById(id); if(el) el.innerHTML='<li class="ix-load">Ачаалж чадсангүй</li>'; }
+
+  // 1) bagts_hil — багцаар талбай (м²)
+  q(B+'/bagts_hil/FeatureServer/34', { where:'1=1', groupByFieldsForStatistics:'BAGTS',
+      outStatistics:'[{"statisticType":"sum","onStatisticField":"Shape__Area","outStatisticFieldName":"ar"}]' })
+    .then(function(d){
+      if(d.error) throw d.error;
+      const rows = (d.features||[]).map(f=>[ (f.attributes.BAGTS||'—').trim()||'—', f.attributes.ar||0, 'linear-gradient(90deg,#00d4ff,#0aa2cc)' ])
+        .sort((a,b)=>b[1]-a[1]);
+      barRows(document.getElementById('ixBagts'), rows, v=>fmt(v)+' м²');
+      const tot = rows.reduce((s,r)=>s+r[1],0);
+      document.getElementById('ixBagtsHa').textContent = (tot/10000).toFixed(1);
+    }).catch(function(){ fail('ixBagts'); });
+
+  // 2) Үлдсэн нэгж талбар — нийт тоо + талбай
+  q(B+'/20260226_uldsen_negj_talbar_selbe/FeatureServer/35', { where:'1=1',
+      outStatistics:'[{"statisticType":"count","onStatisticField":"OBJECTID","outStatisticFieldName":"c"},{"statisticType":"sum","onStatisticField":"area_m2","outStatisticFieldName":"ar"}]' })
+    .then(function(d){
+      const a=(d.features&&d.features[0]||{}).attributes||{};
+      document.getElementById('ixParcels').textContent = fmt(a.c||0);
+      document.getElementById('ixParcelHa').textContent = ((a.ar||0)/10000).toFixed(1);
+    }).catch(function(){});
+
+  // 2б) Эрхийн төрлөөр — донат
+  q(B+'/20260226_uldsen_negj_talbar_selbe/FeatureServer/35', { where:'1=1', groupByFieldsForStatistics:'rigth_type', outStatistics:CNT })
+    .then(function(d){
+      if(d.error) throw d.error;
+      const bucket={};
+      (d.features||[]).forEach(function(f){
+        const k=(f.attributes.rigth_type||'').trim();
+        const key = k==='өмчлөх'?'Өмчлөх':(k==='Эзэмших'?'Эзэмших':'Тодорхойгүй');
+        bucket[key]=(bucket[key]||0)+(f.attributes.c||0);
+      });
+      const COL={ 'Өмчлөх':'#00d4ff','Эзэмших':'#30f0a0','Тодорхойгүй':'#5b6b82' };
+      const rows=['Өмчлөх','Эзэмших','Тодорхойгүй'].filter(k=>bucket[k]).map(k=>[k,bucket[k],COL[k]]);
+      const tot=rows.reduce((s,r)=>s+r[1],0)||1;
+      let acc=0; const segs=rows.map(function(r){ const a=acc/tot*100, b=(acc+r[1])/tot*100; acc+=r[1]; return r[2]+' '+a+'% '+b+'%'; });
+      const pie=document.getElementById('ixRightPie');
+      pie.style.background='conic-gradient('+segs.join(',')+')';
+      document.getElementById('ixRightC').textContent=fmt(tot);
+      document.getElementById('ixRightLeg').innerHTML=rows.map(function(r){
+        const pc=Math.round(r[1]/tot*100);
+        return '<li><span class="ix-dot2" style="background:'+r[2]+'"></span>'+esc(r[0])+'<b>'+fmt(r[1])+' · '+pc+'%</b></li>';
+      }).join('');
+    }).catch(function(){ document.getElementById('ixRightC').textContent='—'; });
+
+  // 3) Road_shugam_suljee — инженерийн сүлжээний урт (км)
+  const NETS=[['Гадна дулаан хангамж',1,'#f5c842'],['Ариутгах татуурга',0,'#22d3ff'],['Борооны ус зайлуулах',2,'#30f0a0']];
+  Promise.all(NETS.map(function(n){
+    return q(B+'/Road_shugam_suljee/FeatureServer/'+n[1], { where:'1=1',
+        outStatistics:'[{"statisticType":"sum","onStatisticField":"Shape__Length","outStatisticFieldName":"len"}]' })
+      .then(function(d){ const a=(d.features&&d.features[0]||{}).attributes||{}; return [n[0],(a.len||0)/1000,n[2]]; })
+      .catch(function(){ return [n[0],0,n[2]]; });
+  })).then(function(rows){
+    rows.sort((a,b)=>b[1]-a[1]);
+    barRows(document.getElementById('ixRoads'), rows, v=>v.toFixed(1)+' км');
+    document.getElementById('ixRoadKm').textContent = rows.reduce((s,r)=>s+r[1],0).toFixed(0);
+  }).catch(function(){ fail('ixRoads'); });
+})();
