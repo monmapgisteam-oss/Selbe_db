@@ -773,3 +773,20 @@ nav {
 .ix-dot2{ width:11px; height:11px; border-radius:3px; flex-shrink:0; }
 .ix-load{ color:#586a82; font:.75rem system-ui,sans-serif; }
 /* auto-fit grid нь responsive-ийг өөрөө зохицуулна */
+
+/* ── Infra интерактив газрын зураг + дарж болох мөрүүд ── */
+.ix-mapcard{ margin-bottom:14px; }
+.ix-maphint{ display:flex; align-items:center; gap:8px; font:.72rem/1.4 system-ui,sans-serif; color:#93a4bb; margin-bottom:9px; flex-wrap:wrap; }
+.ix-hdot{ width:7px; height:7px; border-radius:50%; background:#00d4ff; box-shadow:0 0 8px #00d4ff; }
+.ix-maphint button{ background:rgba(255,255,255,.06); border:1px solid rgba(120,160,205,.2); border-radius:6px; color:#c3d0e0; font:600 .7rem system-ui,sans-serif; padding:3px 11px; cursor:pointer; }
+.ix-maphint button:hover{ color:#fff; border-color:rgba(0,212,255,.45); }
+.ix-mapwrap{ position:relative; height:440px; border:1px solid rgba(120,160,205,.14); border-radius:14px; overflow:hidden; background:#0a0f18; }
+.ix-mapwrap iframe{ width:100%; height:100%; border:0; display:block; }
+.ix-maploading{ position:absolute; inset:0; display:grid; place-items:center; color:#586a82; font:.8rem system-ui,sans-serif; }
+.ix-bars li.ixc{ cursor:pointer; border-radius:7px; padding:3px 5px; margin:-3px -5px; transition:background .15s; }
+.ix-bars li.ixc:hover{ background:rgba(255,255,255,.05); }
+.ix-bars li.ixc.sel{ background:rgba(0,212,255,.12); box-shadow:inset 2px 0 0 #00d4ff; }
+.ix-legend li.ixc{ cursor:pointer; border-radius:7px; padding:3px 6px; margin:-3px -6px; transition:background .15s; }
+.ix-legend li.ixc:hover{ background:rgba(255,255,255,.05); }
+.ix-legend li.ixc.sel{ background:rgba(0,212,255,.12); box-shadow:inset 2px 0 0 #00d4ff; }
+@media (max-width:620px){ .ix-mapwrap{ height:340px; } }
