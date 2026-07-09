@@ -750,11 +750,11 @@ nav {
 .ix-dot{ width:7px; height:7px; border-radius:50%; background:#00d4ff; box-shadow:0 0 9px #00d4ff; }
 .ix-title{ font:800 clamp(1.25rem,2.4vw,1.7rem)/1.2 system-ui,sans-serif; color:#e7eef7; margin:.55rem 0 .3rem; letter-spacing:-.01em; }
 .ix-sub{ font:.85rem/1.5 system-ui,sans-serif; color:#93a4bb; margin:0; max-width:70ch; }
-.ix-kpis{ display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:16px; }
+.ix-kpis{ display:grid; grid-template-columns:repeat(auto-fit,minmax(168px,1fr)); gap:14px; margin-bottom:16px; }
 .ix-kpi{ background:#0c1119; border:1px solid rgba(120,160,205,.14); border-radius:13px; padding:16px 18px; }
 .ix-kpi b{ display:block; font:700 clamp(1.5rem,2.6vw,2rem)/1 ui-monospace,"SF Mono",Menlo,monospace; color:#fff; font-variant-numeric:tabular-nums; letter-spacing:-.02em; }
 .ix-kpi span{ display:block; margin-top:6px; font:.72rem/1.35 system-ui,sans-serif; color:#93a4bb; }
-.ix-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
+.ix-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:14px; }
 .ix-card{ background:#0c1119; border:1px solid rgba(120,160,205,.14); border-radius:14px; padding:18px 20px; min-height:216px; box-shadow:0 18px 44px -26px rgba(0,0,0,.8); }
 .ix-card-t{ font:700 .76rem/1 system-ui,sans-serif; letter-spacing:.05em; text-transform:uppercase; color:#c3d0e0; margin-bottom:18px; }
 .ix-bars{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:14px; }
@@ -772,4 +772,4 @@ nav {
 .ix-legend b{ margin-left:auto; font:600 .72rem/1 ui-monospace,"SF Mono",Menlo,monospace; color:#fff; font-variant-numeric:tabular-nums; }
 .ix-dot2{ width:11px; height:11px; border-radius:3px; flex-shrink:0; }
 .ix-load{ color:#586a82; font:.75rem system-ui,sans-serif; }
-@media (max-width:900px){ .ix-kpis{ grid-template-columns:repeat(2,1fr); } .ix-grid{ grid-template-columns:1fr; } }
+/* auto-fit grid нь responsive-ийг өөрөө зохицуулна */
