@@ -1013,24 +1013,46 @@ document.querySelectorAll('.r').forEach(el=>revealObs.observe(el));
   setTimeout(typewrite, 800);
 })();
 
-/* ── ДЭД БҮТЭЦ БА ГАЗРЫН НЭГЖ ТАЛБАР — 3 ArcGIS үйлчилгээнээс статистик график ── */
+/* ── ДЭД БҮТЭЦ БА ГАЗРЫН НЭГЖ ТАЛБАР — 4 ArcGIS үйлчилгээ, интерактив газрын зурагтай ── */
 (function(){
   const host = document.getElementById('infra'); if(!host) return;
   const B = 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services';
+  const ORIGIN = location.origin;
   function q(layerUrl, params){
     const qs = Object.keys(params).map(k=>k+'='+encodeURIComponent(params[k])).join('&');
     return fetch(layerUrl+'/query?'+qs+'&f=json').then(r=>r.json());
   }
   const CNT = '[{"statisticType":"count","onStatisticField":"OBJECTID","outStatisticFieldName":"c"}]';
   function fmt(n){ return Math.round(n).toLocaleString('en-US'); }
-  function barRows(el, rows, fmtVal){ // rows: [label, value, color]
+
+  // ── Интерактив газрын зураг (iframe) ──
+  let mapWin = null, sel = null;
+  (function initMap(){
+    const wrap = host.querySelector('.ix-mapwrap'); if(!wrap) return;
+    const ifr = document.createElement('iframe');
+    ifr.src = 'inframap.html'; ifr.title = 'Дэд бүтэц газрын зураг';
+    ifr.addEventListener('load', function(){ mapWin = ifr.contentWindow; const l=document.getElementById('ixMapLoad'); if(l) l.remove(); });
+    wrap.appendChild(ifr);
+  })();
+  function post(kind, value){ if(mapWin) mapWin.postMessage({ type:'infraFilter', kind:kind, value:value }, ORIGIN); }
+  function unselAll(){ host.querySelectorAll('.ixc.sel').forEach(el=>el.classList.remove('sel')); }
+  function clearSel(){ sel=null; unselAll(); post('clear'); }
+  function pick(el, kind, value){
+    if(sel && sel.kind===kind && String(sel.value)===String(value)){ clearSel(); return; }
+    unselAll(); el.classList.add('sel'); sel={kind:kind,value:value}; post(kind, value);
+  }
+  const clrBtn = document.getElementById('ixClear'); if(clrBtn) clrBtn.addEventListener('click', clearSel);
+
+  function barRows(el, rows, fmtVal, kind){ // rows: [label, value, color, filterVal?]
     const max = Math.max.apply(null, rows.map(r=>r[1]).concat([1]));
     el.innerHTML = rows.map(function(r){
       const pct = Math.max(2, Math.round(r[1]/max*100));
-      return '<li><span class="ix-bl" title="'+esc(r[0])+'">'+esc(r[0])+'</span>'
+      const attr = kind ? (' class="ixc" data-k="'+kind+'" data-v="'+esc(String(r[3]!=null?r[3]:r[0]))+'"') : '';
+      return '<li'+attr+'><span class="ix-bl" title="'+esc(r[0])+'">'+esc(r[0])+'</span>'
         +'<span class="ix-btrack"><span class="ix-bfill" style="width:'+pct+'%;background:'+r[2]+'"></span></span>'
         +'<span class="ix-bv">'+fmtVal(r[1])+'</span></li>';
     }).join('');
+    if(kind) el.querySelectorAll('.ixc').forEach(function(li){ li.addEventListener('click', function(){ pick(li, li.dataset.k, li.dataset.v); }); });
   }
   function fail(id){ const el=document.getElementById(id); if(el) el.innerHTML='<li class="ix-load">Ачаалж чадсангүй</li>'; }
 
@@ -1039,9 +1061,9 @@ document.querySelectorAll('.r').forEach(el=>revealObs.observe(el));
       outStatistics:'[{"statisticType":"sum","onStatisticField":"Shape__Area","outStatisticFieldName":"ar"}]' })
     .then(function(d){
       if(d.error) throw d.error;
-      const rows = (d.features||[]).map(f=>[ (f.attributes.BAGTS||'—').trim()||'—', f.attributes.ar||0, 'linear-gradient(90deg,#00d4ff,#0aa2cc)' ])
+      const rows = (d.features||[]).map(function(f){ const n=(f.attributes.BAGTS||'—').trim()||'—'; return [n, f.attributes.ar||0, 'linear-gradient(90deg,#00d4ff,#0aa2cc)', n]; })
         .sort((a,b)=>b[1]-a[1]);
-      barRows(document.getElementById('ixBagts'), rows, v=>fmt(v)+' м²');
+      barRows(document.getElementById('ixBagts'), rows, v=>fmt(v)+' м²', 'bagts');
       const tot = rows.reduce((s,r)=>s+r[1],0);
       document.getElementById('ixBagtsHa').textContent = (tot/10000).toFixed(1);
     }).catch(function(){ fail('ixBagts'); });
@@ -1072,10 +1094,12 @@ document.querySelectorAll('.r').forEach(el=>revealObs.observe(el));
       const pie=document.getElementById('ixRightPie');
       pie.style.background='conic-gradient('+segs.join(',')+')';
       document.getElementById('ixRightC').textContent=fmt(tot);
-      document.getElementById('ixRightLeg').innerHTML=rows.map(function(r){
+      const leg=document.getElementById('ixRightLeg');
+      leg.innerHTML=rows.map(function(r){
         const pc=Math.round(r[1]/tot*100);
-        return '<li><span class="ix-dot2" style="background:'+r[2]+'"></span>'+esc(r[0])+'<b>'+fmt(r[1])+' · '+pc+'%</b></li>';
+        return '<li class="ixc" data-k="right" data-v="'+esc(r[0])+'"><span class="ix-dot2" style="background:'+r[2]+'"></span>'+esc(r[0])+'<b>'+fmt(r[1])+' · '+pc+'%</b></li>';
       }).join('');
+      leg.querySelectorAll('.ixc').forEach(function(li){ li.addEventListener('click', function(){ pick(li,'right',li.dataset.v); }); });
     }).catch(function(){ document.getElementById('ixRightC').textContent='—'; });
 
   // 3) Road_shugam_suljee — инженерийн сүлжээний урт (км)
@@ -1083,11 +1107,11 @@ document.querySelectorAll('.r').forEach(el=>revealObs.observe(el));
   Promise.all(NETS.map(function(n){
     return q(B+'/Road_shugam_suljee/FeatureServer/'+n[1], { where:'1=1',
         outStatistics:'[{"statisticType":"sum","onStatisticField":"Shape__Length","outStatisticFieldName":"len"}]' })
-      .then(function(d){ const a=(d.features&&d.features[0]||{}).attributes||{}; return [n[0],(a.len||0)/1000,n[2]]; })
-      .catch(function(){ return [n[0],0,n[2]]; });
+      .then(function(d){ const a=(d.features&&d.features[0]||{}).attributes||{}; return [n[0],(a.len||0)/1000,n[2],n[1]]; })
+      .catch(function(){ return [n[0],0,n[2],n[1]]; });
   })).then(function(rows){
     rows.sort((a,b)=>b[1]-a[1]);
-    barRows(document.getElementById('ixRoads'), rows, v=>v.toFixed(1)+' км');
+    barRows(document.getElementById('ixRoads'), rows, v=>v.toFixed(1)+' км', 'road');
     document.getElementById('ixRoadKm').textContent = rows.reduce((s,r)=>s+r[1],0).toFixed(0);
   }).catch(function(){ fail('ixRoads'); });
 
@@ -1106,4 +1130,13 @@ document.querySelectorAll('.r').forEach(el=>revealObs.observe(el));
       ['Барилгын хээ', bld, 'linear-gradient(90deg,#30f0a0,#12b886)']
     ], v=>v.toFixed(1)+' га');
   }).catch(function(){ fail('ixBld'); document.getElementById('ixBldHa').textContent='—'; });
+
+  // ── Газрын зургаас сонголт ирвэл графикийн мөрийг тодруулах ──
+  window.addEventListener('message', function(e){
+    if(e.origin!==ORIGIN) return; const d=e.data||{};
+    if(d.type==='infraCleared'){ sel=null; unselAll(); return; }
+    if(d.type!=='infraSelect') return;
+    const li = host.querySelector('.ixc[data-k="'+d.kind+'"][data-v="'+String(d.label==null?'':d.label).replace(/"/g,'')+'"]');
+    if(li){ unselAll(); li.classList.add('sel'); sel={kind:d.kind,value:d.label}; }
+  });
 })();
