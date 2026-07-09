@@ -1090,4 +1090,20 @@ document.querySelectorAll('.r').forEach(el=>revealObs.observe(el));
     barRows(document.getElementById('ixRoads'), rows, v=>v.toFixed(1)+' км');
     document.getElementById('ixRoadKm').textContent = rows.reduce((s,r)=>s+r[1],0).toFixed(0);
   }).catch(function(){ fail('ixRoads'); });
+
+  // 4) barilga_20260709 — барилгын хээ (га) + талбайн хэмжээ харьцуулалт
+  function sumAr(d){ return ((d.features&&d.features[0]||{}).attributes||{}).ar||0; }
+  Promise.all([
+    q(B+'/bagts_hil/FeatureServer/34', { where:'1=1', outStatistics:'[{"statisticType":"sum","onStatisticField":"Shape__Area","outStatisticFieldName":"ar"}]' }),
+    q(B+'/20260226_uldsen_negj_talbar_selbe/FeatureServer/35', { where:'1=1', outStatistics:'[{"statisticType":"sum","onStatisticField":"area_m2","outStatisticFieldName":"ar"}]' }),
+    q(B+'/barilga_20260709/FeatureServer/0', { where:"Layer NOT LIKE '%TEXT%'", outStatistics:'[{"statisticType":"sum","onStatisticField":"Shape__Area","outStatisticFieldName":"ar"}]' })
+  ]).then(function(res){
+    const bagts=sumAr(res[0])/10000, parcel=sumAr(res[1])/10000, bld=sumAr(res[2])/10000;
+    document.getElementById('ixBldHa').textContent = bld.toFixed(1);
+    barRows(document.getElementById('ixBld'), [
+      ['Багцын хил', bagts, 'linear-gradient(90deg,#8b5cf6,#6d28d9)'],
+      ['Нэгж талбар', parcel, 'linear-gradient(90deg,#22d3ff,#0aa2cc)'],
+      ['Барилгын хээ', bld, 'linear-gradient(90deg,#30f0a0,#12b886)']
+    ], v=>v.toFixed(1)+' га');
+  }).catch(function(){ fail('ixBld'); document.getElementById('ixBldHa').textContent='—'; });
 })();
