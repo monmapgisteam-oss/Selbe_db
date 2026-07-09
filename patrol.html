@@ -155,7 +155,7 @@
                 gateErr.style.display='none';
                 if(inIframe){
                     // ArcGIS-ийн нэвтрэх хуудсыг iframe дотор ачаалж болдоггүй → тусдаа таб нээнэ
-                    window.open(location.origin + "/patrol.html", "_blank");
+                    window.open(location.origin + location.pathname, "_blank");
                     gateErr.style.color = "#9fe";
                     gateErr.textContent = "↗ Шинэ табд нэвтэрнэ үү — нэвтэрмэгц энд автоматаар холбогдоно.";
                     gateErr.style.display='block';
@@ -195,6 +195,18 @@
                 initApp();
             }
 
+            // Токен дуусах/хүчингүй болбол → хаалт руу буцааж дахин нэвтрүүлнэ
+            function handleAuthLost(){
+                stopPoll(); started=false;
+                try{ localStorage.removeItem(CRED_KEY); }catch(e){}
+                try{ esriId.destroyCredentials(); }catch(e){}
+                setErr(false);
+                document.getElementById('panel').classList.remove('show');
+                document.getElementById('who').classList.remove('show');
+                gate.style.display='flex';
+                gateErr.style.color=''; gateErr.textContent='Хандах эрх дууслаа — дахин нэвтэрнэ үү.'; gateErr.style.display='block';
+            }
+
             // ── Дуу + Notification ──
             function beep(){ if(!soundOn) return;
                 try{ audioCtx = audioCtx || new (window.AudioContext||window.webkitAudioContext)();
@@ -217,7 +229,7 @@
             });
 
             function setErr(on){ document.getElementById('err').classList.toggle('show', on); }
-            function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+            function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
             function pad(n){ return String(n).padStart(2,'0'); }
             function serverNow(){ return Date.now() + clockSkew; }
             function agoTxt(t){ if(!t) return 'байршил хуваалцаагүй'; var s=Math.max(0,Math.round((serverNow()-t)/1000));
@@ -289,7 +301,7 @@
             }
 
             function upsertMarker(key, geom, online, rec){
-                if(!geom) return;
+                if(!geom){ if(gById[key]){ gl.removeMany([gById[key].mk, gById[key].lb]); delete gById[key]; } return; }
                 var col = online?[47,224,160]:[255,92,108];
                 var mkSym={ type:"simple-marker", size:online?11:13, color:col.concat(online?0.9:0.95), outline:{ color:[255,255,255,0.85], width:1.4 } };
                 if(gById[key]){ gById[key].mk.geometry=geom; gById[key].mk.symbol=mkSym; gById[key].lb.geometry=geom; }
@@ -313,7 +325,7 @@
                         var wm=workerMap[uid]||{};
                         var nm=(wm.name||a[userField]||'Нэргүй');
                         var online = ts>0 && (now-ts) <= offlineMin*60*1000;
-                        recs.push({ key:uid||nm, name:nm, title:wm.title, phone:wm.phone, ts:ts, online:online, geom:f.geometry });
+                        recs.push({ key:String(a.OBJECTID), name:nm, title:wm.title, phone:wm.phone, ts:ts, online:online, geom:f.geometry });
                     });
                     recs.sort(function(a,b){ return (b.ts||0)-(a.ts||0); });
                     recs.forEach(function(rec){
@@ -338,11 +350,14 @@
                         document.getElementById('alertTxt').textContent=t; al.classList.add('show');
                         beep(); notify(t); clearTimeout(al._h); al._h=setTimeout(function(){ al.classList.remove('show'); }, 8000);
                     }
-                }).catch(function(e){ console.error(e); setErr(true); });
+                }).catch(function(e){ console.error(e);
+                    var m=((e&&(e.name||''))+' '+(e&&(e.message||''))).toLowerCase();
+                    if(/token|not-authorized|identity|498|499|403/.test(m)) handleAuthLost(); else setErr(true);
+                });
             }
 
             document.getElementById('thrInput').addEventListener('change', function(){
-                var v=parseInt(this.value,10); if(!isNaN(v)&&v>=1){ offlineMin=v; refresh(); }
+                var v=parseInt(this.value,10); if(!isNaN(v)){ offlineMin=Math.min(30,Math.max(1,v)); this.value=offlineMin; refresh(); }
             });
 
             function startPoll(){ if(!poll) poll=setInterval(refresh, REFRESH_SEC*1000); }

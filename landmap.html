@@ -125,7 +125,8 @@
                 outline:{ color:[0,212,255,1], width:1 }
             };
             sketch.on("create", function(e){
-                if(e.state==="active"){ var g=e.graphic && e.graphic.geometry; measure(g); showAreaLabel(g); } // зурж байх үед панель + полигон дотор шууд
+                // Курсор хөдлөх бүрт биш, зөвхөн орой нэмэх/хасах үед л дахин тооцно (parent руу postMessage үер алдахгүй)
+                if(e.state==="active"){ var ti=e.toolEventInfo; if(!ti || ti.type==="vertex-add" || ti.type==="vertex-remove"){ var g=e.graphic && e.graphic.geometry; measure(g); showAreaLabel(g); } }
                 else if(e.state==="complete"){ var geom=e.graphic.geometry; measure(geom); showAreaLabel(geom); applySelection(geom); } // полигон + га шошго үлдэнэ
             });
 
@@ -152,7 +153,7 @@
                 view.hitTest(event).then(function(r){
                     var hit = r.results.filter(function(x){ return x.graphic && x.graphic.layer && x.graphic.layer.title==='Building'; })[0];
                     if(hit){ parent.postMessage({ type:'bldSelect', attrs: hit.graphic.attributes }, ORIGIN); }
-                });
+                }).catch(function(){});
             });
         });
     </script>
