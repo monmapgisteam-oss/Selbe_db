@@ -31,7 +31,7 @@
                 type: "class-breaks", field: "GUITS_HV",
                 defaultSymbol: fill([150,160,175,0.55], [200,210,225,0.9]), defaultLabel: "Мэдээлэлгүй",
                 classBreakInfos: [
-                    { minValue:-1,  maxValue:25,  symbol: fill([255,95,87,0.62],  [255,140,120,0.95]), label:"Эхэлж буй (0–25%)" },
+                    { minValue:0,   maxValue:25,  symbol: fill([255,95,87,0.62],  [255,140,120,0.95]), label:"Эхэлж буй (0–25%)" },
                     { minValue:25,  maxValue:50,  symbol: fill([245,200,66,0.62], [255,225,120,0.95]), label:"Явцтай (25–50%)" },
                     { minValue:50,  maxValue:75,  symbol: fill([120,210,120,0.62],[170,235,150,0.95]), label:"Дуусах шатандаа (50–75%)" },
                     { minValue:75,  maxValue:1e6, symbol: fill([48,240,160,0.66], [120,255,190,0.98]), label:"Бэлэн болсон (75–100%)" }
@@ -85,9 +85,11 @@
                 q1.outStatistics=[
                     { statisticType:"count", onStatisticField:"FID",      outStatisticFieldName:"blok" },
                     { statisticType:"sum",   onStatisticField:"AIL_TOO",  outStatisticFieldName:"ail" },
-                    { statisticType:"avg",   onStatisticField:"GUITS_HV", outStatisticFieldName:"guits" },
                     { statisticType:"avg",   onStatisticField:"DAVHAR",   outStatisticFieldName:"davhar" }
                 ];
+                // GUITS_HV дундаж — N/A (-1) мөрүүдийг хасч тооцно (эс бол дундаж хиймлээр буурна)
+                var qG = bldLayer.createQuery(); qG.where="GUITS_HV>=0";
+                qG.outStatistics=[{ statisticType:"avg", onStatisticField:"GUITS_HV", outStatisticFieldName:"guits" }];
                 var q2 = bldLayer.createQuery(); q2.where='1=1';
                 q2.groupByFieldsForStatistics=["BAR_COMP"];
                 q2.outStatistics=[{ statisticType:"count", onStatisticField:"FID", outStatisticFieldName:"c" }];
@@ -97,10 +99,11 @@
                     var q=bldLayer.createQuery(); q.where="GUITS_HV>"+b[1]+" AND GUITS_HV<="+b[2];
                     return bldLayer.queryFeatureCount(q).then(function(n){ return { label:b[0], n:n }; }).catch(function(){ return { label:b[0], n:0 }; });
                 });
-                Promise.all([ bldLayer.queryFeatures(q1), bldLayer.queryFeatures(q2), Promise.all(bTasks) ]).then(function(res){
-                    var s = (res[0].features[0]||{}).attributes || {};
+                Promise.all([ bldLayer.queryFeatures(q1), bldLayer.queryFeatures(q2), Promise.all(bTasks), bldLayer.queryFeatures(qG) ]).then(function(res){
+                    var s = ((res[0].features||[])[0]||{}).attributes || {};
+                    var g = ((res[3].features||[])[0]||{}).attributes || {};
                     var comps = (res[1].features||[]).map(function(f){ var name=(f.attributes.BAR_COMP||'').trim() || 'Тодорхойгүй'; return { name:name, c:f.attributes.c||0 }; });
-                    parent.postMessage({ type:'progSummary', summary:{ blok:s.blok||0, ail:s.ail||0, guits:s.guits||0, davhar:s.davhar||0 }, dist: res[2], comps: comps }, ORIGIN);
+                    parent.postMessage({ type:'progSummary', summary:{ blok:s.blok||0, ail:s.ail||0, guits:g.guits||0, davhar:s.davhar||0 }, dist: res[2], comps: comps }, ORIGIN);
                 }).catch(function(){});
             }
 

@@ -1,7 +1,7 @@
 'use strict';
 
 /* HTML escape — олон IIFE-д хуваалцана */
-const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 
 /* ── ArcGIS FeatureServer орг үндэс (URL өөрчлөгдвөл зөвхөн эндээс засна) ── */
 const AGS1 = 'https://services-ap1.arcgis.com/ACqsMOmNLi5wIdIh/arcgis/rest/services';
@@ -239,8 +239,7 @@ const AGS2 = 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services'
   const FIELDS=[['NIIT_UNE','Нийт үнэлгээ','tug'],['MKV_UNE','1 м²-ын үнэлгээ','tug'],['SARUUN_TUR','Сарын түрээсийн төлбөр','tug'],['OROO_TOO','Өрөөний тоо',''],['DAVHAR_TOO','Давхарын тоо',''],['TOROL','Ашиглалтын төрөл',''],['MATERIAL','Барилгын материал',''],['AJLIIN_BAI','Ажлын байрны тоо',''],['BAGTSAAMAI','Багтаамж','хүн']];
   function renderBld(a){
     if(!box) return; a=a||{};
-    // ТЭМДЭГЛЭЛ: мөнгөн дүнг /2 харуулж буй нь үзүүлэнгийн (demo) тохируулга — бодит үнэлгээ биш
-    box.innerHTML=FIELDS.map(function(f){ var raw=a[f[0]]; var val=(raw==null||raw==='')?'—':(f[2]==='tug'?(Math.round(Number(raw)/2).toLocaleString('en-US')+' ₮'):(raw+(f[2]?(' '+f[2]):''))); return '<li><span class="k">'+f[1]+'</span><span class="v">'+val+'</span></li>'; }).join('');
+    box.innerHTML=FIELDS.map(function(f){ var raw=a[f[0]]; var val=(raw==null||raw==='')?'—':(f[2]==='tug'?(Math.round(Number(raw)).toLocaleString('en-US')+' ₮'):(raw+(f[2]?(' '+f[2]):''))); return '<li><span class="k">'+f[1]+'</span><span class="v">'+esc(val)+'</span></li>'; }).join('');
   }
   // Бүтэн өгөгдөл (анхны байдал, цэвэрлэх үед сэргээх)
   let fullParcel=null, fullParcelStats=null, fullBld=null;
@@ -248,7 +247,7 @@ const AGS2 = 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services'
   fetch(AGS1+"/Selbe_parcel/FeatureServer/0/query?where=1%3D1&groupByFieldsForStatistics=rigth_type&outStatistics=%5B%7B%22statisticType%22%3A%22count%22%2C%22onStatisticField%22%3A%22OBJECTID%22%2C%22outStatisticFieldName%22%3A%22c%22%7D%2C%7B%22statisticType%22%3A%22sum%22%2C%22onStatisticField%22%3A%22area_m2%22%2C%22outStatisticFieldName%22%3A%22a%22%7D%5D&f=json")
     .then(r=>r.json()).then(function(d){ const c={}; let cnt=0,ar=0; (d.features||[]).forEach(function(f){ c[f.attributes.rigth_type]=f.attributes.c||0; cnt+=f.attributes.c||0; ar+=f.attributes.a||0; }); fullParcel=c; fullParcelStats={count:cnt,area:ar}; renderDonuts(c); renderFullStats(); }).catch(function(){});
   fetch(AGS1+"/selbe_B/FeatureServer/0/query?where=1%3D1&outStatistics=%5B%7B%22statisticType%22%3A%22count%22%2C%22onStatisticField%22%3A%22FID%22%2C%22outStatisticFieldName%22%3A%22n%22%7D%2C%7B%22statisticType%22%3A%22sum%22%2C%22onStatisticField%22%3A%22area_m2%22%2C%22outStatisticFieldName%22%3A%22a%22%7D%5D&f=json")
-    .then(r=>r.json()).then(function(d){ const a=(d.features[0]||{}).attributes||{}; fullBld={n:a.n||0,area:a.a||0}; renderFullStats(); }).catch(function(){});
+    .then(r=>r.json()).then(function(d){ const a=((d.features||[])[0]||{}).attributes||{}; fullBld={n:a.n||0,area:a.a||0}; renderFullStats(); }).catch(function(){});
 
   // Хэрэгслийн товч → газрын зураг (iframe) руу команд
   const dBtn=document.getElementById('landDraw'), cBtn=document.getElementById('landClear');
@@ -663,7 +662,7 @@ const AGS2 = 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services'
           const OFF=[24,18,6,27,20]; // Төлөвлөсөн шугамын зохиомол нэмэгдэл (demo) — салбар тус бүрийн %
           const plan=actual.map(function(v,i){ return Math.min(100,v+(OFF[i]||18)); });
           draw(CATS.map(function(c){return c[1];}), [
-            {name:'Төлөвлөсөн',color:'#3b82f6',vals:plan},
+            {name:'Төлөвлөсөн (жишиг)',color:'#3b82f6',vals:plan},
             {name:'Бодит',color:'#00d4ff',vals:actual}
           ]);
         });

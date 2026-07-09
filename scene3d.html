@@ -273,7 +273,7 @@
                         else { it.m.style.display='none'; }
                     });
                 }
-                aq.queryFeatures({ objectIds: fids, returnGeometry: true, outFields: ['FID'] }).then(r => {
+                aq.queryFeatures({ where: "FID IN ("+fids.join(",")+")", returnGeometry: true, outFields: ['FID'] }).then(r => {
                     return Promise.all(r.features.map(f => {
                         const it = items.find(x => x.fid === f.attributes.FID);
                         if(!it) return null;
