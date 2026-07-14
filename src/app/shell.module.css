@@ -1,0 +1,244 @@
+/* Үндсэн бүтэц: давхаргын жагсаалт | газрын зураг | дашбоард */
+.shell {
+  display: grid;
+  grid-template-columns: var(--rail) 1fr var(--panel);
+  grid-template-rows: var(--head) 1fr;
+  grid-template-areas:
+    'head head head'
+    'rail map  panel';
+  height: 100dvh;
+}
+
+/**
+ * Хоёр баганат хувилбарууд — зөвхөн ЗАРИМ модульд.
+ * `.panel` = модулийн үндсэн дашбоард, `.summary` = туслах багана.
+ * Туслах багана нь зураг­ны аль талд байхаас хамаарч хоёр хувилбар.
+ */
+
+/* Туслах багана БАРУУН талд (үндсэн нь зүүн) — жишээ: барилгын явц */
+.shellSplitRight {
+  grid-template-columns: var(--rail) var(--panel) 1fr var(--panel);
+  grid-template-areas:
+    'head head  head head'
+    'rail panel map  summary';
+}
+/* Багана байраа солиход хүрээний зураас нь дагаж солигдоно */
+.shellSplitRight .panel { border-left: none; border-right: 1px solid var(--line); }
+.shellSplitRight .summary { border-right: none; border-left: 1px solid var(--line); }
+
+/* Туслах багана ЗҮҮН талд (үндсэн нь баруун) — жишээ: талбайн хяналт */
+.shellSplitLeft {
+  grid-template-columns: var(--rail) var(--panel) 1fr var(--panel);
+  grid-template-areas:
+    'head head    head head'
+    'rail summary map  panel';
+}
+
+/* ── Модулийн нэгдсэн үзүүлэлт (зөвхөн .shellSplit үед) ── */
+.summary {
+  grid-area: summary;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-right: 1px solid var(--line);
+  overflow: hidden;
+}
+
+/* ── Толгой ── */
+.head {
+  grid-area: head;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 18px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  z-index: 20;
+}
+.brand { display: flex; align-items: center; gap: 12px; }
+.logo { height: 30px; width: auto; }
+.brandText { display: flex; flex-direction: column; line-height: 1.2; }
+/* Брэндийн нэр — том үсгээр. Кирилл том үсэг өргөн тул үсгийн зайг сулруулав. */
+.brandName {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+.brandSub { font-size: 0.68rem; color: var(--ink-3); }
+
+.headStats {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  margin-left: auto;
+  padding-right: 6px;
+}
+.headStat { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.25; }
+.headStatValue { font-size: 0.84rem; font-weight: 650; }
+.headStatLabel { font-size: 0.64rem; color: var(--ink-3); }
+
+.iconBtn {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  color: var(--ink-2);
+  transition: background 0.12s, color 0.12s;
+}
+.iconBtn:hover { background: var(--surface-2); color: var(--ink); }
+
+/* ── Зүүн: давхаргын жагсаалт ── */
+.rail {
+  grid-area: rail;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-right: 1px solid var(--line);
+  overflow-y: auto;
+}
+.railHead {
+  padding: 16px 16px 10px;
+  font-size: 0.66rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+}
+.railList { padding: 0 10px 14px; display: flex; flex-direction: column; gap: 3px; }
+
+.layer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 11px;
+  border-radius: var(--r);
+  text-align: left;
+  color: var(--ink-2);
+  border: 1px solid transparent;
+  transition: background 0.14s, color 0.14s, border-color 0.14s;
+}
+.layer:hover { background: var(--surface-2); color: var(--ink); }
+.layerOn {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--tone) 9%, transparent);
+  border-color: color-mix(in srgb, var(--tone) 28%, transparent);
+}
+
+.layerIcon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border-radius: 8px;
+  color: var(--tone);
+  background: color-mix(in srgb, var(--tone) 12%, transparent);
+}
+.layerOn .layerIcon { background: var(--tone); color: #fff; }
+.layerIcon svg { width: 17px; height: 17px; }
+
+.layerText { min-width: 0; flex: 1; }
+.layerTitle { font-size: 0.82rem; font-weight: 600; line-height: 1.3; }
+.layerDesc {
+  font-size: 0.68rem;
+  color: var(--ink-3);
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+}
+
+.railFoot {
+  margin-top: auto;
+  padding: 14px 16px;
+  border-top: 1px solid var(--line);
+  font-size: 0.66rem;
+  color: var(--ink-3);
+  line-height: 1.5;
+}
+
+/* ── Газрын зураг ── */
+.map { grid-area: map; position: relative; display: flex; min-width: 0; }
+
+/* ── Баруун: сонгосон объект ──
+   .summary-тэй ЯГ ижил бүтэц: ижил өргөн, ижил толгой, ижил бие. */
+.panel {
+  grid-area: panel;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-left: 1px solid var(--line);
+  overflow: hidden;
+}
+.panelHead {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--hue) 5%, var(--surface));
+}
+.panelIcon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 9px;
+  background: var(--hue);
+  color: #fff;
+}
+.panelIcon svg { width: 18px; height: 18px; }
+.panelTitle { font-size: 0.95rem; font-weight: 650; letter-spacing: -0.01em; line-height: 1.3; }
+.panelDesc { font-size: 0.7rem; color: var(--ink-3); line-height: 1.4; margin-top: 1px; }
+
+.panelBody { flex: 1; overflow-y: auto; }
+
+/* ── Дэлгэц бага үед ── */
+/* Давхаргын жагсаалт зөвхөн дүрс болж хумигдана */
+@media (max-width: 1500px) {
+  .shell { grid-template-columns: 72px 1fr var(--panel); }
+  .shellSplitRight,
+  .shellSplitLeft { grid-template-columns: 72px var(--panel) 1fr var(--panel); }
+  .railHead, .layerText, .railFoot { display: none; }
+  .layer { justify-content: center; padding: 10px 0; }
+  .railList { padding: 10px 8px; }
+}
+
+@media (max-width: 1180px) {
+  .shell {
+    grid-template-columns: 1fr;
+    grid-template-rows: var(--head) 46vh auto;
+    grid-template-areas: 'head' 'map' 'panel';
+    height: auto;
+    min-height: 100dvh;
+  }
+  /* Босоо өрөлт: зураг → үндсэн дашбоард → туслах багана */
+  .shellSplitRight,
+  .shellSplitLeft {
+    grid-template-columns: 1fr;
+    grid-template-rows: var(--head) 46vh auto auto;
+    grid-template-areas: 'head' 'map' 'panel' 'summary';
+  }
+  .summary { border-right: none; border-left: none; border-top: 1px solid var(--line); }
+  .rail {
+    grid-area: unset;
+    position: fixed;
+    inset: var(--head) 0 auto 0;
+    z-index: 15;
+    flex-direction: row;
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+    overflow-x: auto;
+  }
+  .railList { flex-direction: row; padding: 8px; }
+  .panel { border-left: none; border-top: 1px solid var(--line); }
+  .headStats { display: none; }
+}

@@ -1,0 +1,73 @@
+.wrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  background: var(--sunken);
+}
+
+.view { position: absolute; inset: 0; }
+
+.loading {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  background: var(--sunken);
+  color: var(--ink-3);
+  font-size: 0.8rem;
+}
+
+/* ── Газрын зураг дээрх хөвөгч хайрцаг ── */
+.float {
+  position: absolute;
+  z-index: 6;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  box-shadow: var(--shadow);
+}
+.floatTL { top: 14px; left: 14px; }
+.floatBL { bottom: 30px; left: 14px; }
+.floatTR { top: 14px; right: 14px; }
+
+/* Тайлбар (легенд) */
+.legend { padding: 11px 13px; min-width: 178px; max-width: 240px; }
+.legendHead {
+  font-size: 0.65rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--ink-3);
+  margin-bottom: 9px;
+}
+.legendRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+  font-size: 0.74rem;
+  color: var(--ink-2);
+  width: 100%;
+  text-align: left;
+}
+.legendToggle { border-radius: 4px; padding: 3px 5px; margin: 0 -5px; transition: background 0.12s; }
+.legendToggle:hover { background: var(--surface-2); }
+.legendOff { opacity: 0.4; }
+.dot { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+
+/* Хилийн тайлбар — зурааны хэв маягийг давтана */
+.dashLine {
+  width: 18px;
+  height: 0;
+  border-radius: 0;
+  border-top: 2px dashed;
+}
+.dotLine {
+  width: 18px;
+  height: 0;
+  border-radius: 0;
+  border-top: 2px dotted;
+}
+.legendCount { margin-left: auto; font-size: 0.7rem; color: var(--ink-3); }
