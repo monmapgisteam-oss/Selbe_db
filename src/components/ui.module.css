@@ -1,0 +1,154 @@
+/* ── Дашбоардын хэсэг ── */
+.section { padding: 18px 20px; border-bottom: 1px solid var(--line); }
+.section:last-child { border-bottom: none; }
+
+.sectionHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.sectionTitle {
+  font-size: 0.78rem;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  color: var(--ink);
+}
+.sectionNote { font-size: 0.7rem; color: var(--ink-3); }
+
+/* ── Үзүүлэлт (KPI) ── */
+.stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.stats3 { grid-template-columns: repeat(3, 1fr); }
+
+.stat {
+  padding: 12px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+}
+.statValue {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  font-size: 1.32rem;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1.2;
+}
+.statUnit { font-size: 0.7rem; font-weight: 500; color: var(--ink-3); font-family: var(--font-inter), sans-serif; letter-spacing: 0; }
+.statLabel { margin-top: 3px; font-size: 0.7rem; color: var(--ink-3); line-height: 1.35; }
+.statAccent { border-color: color-mix(in srgb, var(--tone, var(--hue)) 32%, var(--line)); background: color-mix(in srgb, var(--tone, var(--hue)) 6%, var(--surface)); }
+.statAccent .statValue { color: var(--tone, var(--hue)); }
+
+/* ── Баганан жагсаалт ── */
+.bars { display: flex; flex-direction: column; gap: 11px; }
+.barRow { display: flex; flex-direction: column; gap: 5px; width: 100%; text-align: left; }
+.barClick { border-radius: var(--r-sm); padding: 5px 6px; margin: -5px -6px; transition: background 0.12s; }
+.barClick:hover { background: var(--surface-2); }
+.barOn { background: color-mix(in srgb, var(--tone, var(--hue)) 10%, transparent); }
+
+.barTop {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 0.76rem;
+  width: 100%;
+}
+.barName { color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.barVal { flex: none; font-weight: 650; color: var(--ink); font-size: 0.74rem; }
+.barTrack { height: 5px; border-radius: 99px; background: var(--sunken); overflow: hidden; }
+.barFill { display: block; height: 100%; border-radius: 99px; background: var(--tone, var(--hue)); transition: width 0.6s var(--ease); }
+
+/* ── Хэсэгчилсэн мөр (stacked) ── */
+.stack { display: flex; height: 8px; border-radius: 99px; overflow: hidden; background: var(--sunken); }
+.stackSeg { height: 100%; transition: width 0.6s var(--ease); }
+.legend { display: flex; flex-wrap: wrap; gap: 10px 16px; margin-top: 12px; }
+.legendItem { display: flex; align-items: center; gap: 7px; font-size: 0.72rem; color: var(--ink-2); }
+.legendDot { width: 9px; height: 9px; border-radius: 3px; flex: none; }
+.legendVal { color: var(--ink); font-weight: 650; }
+
+/* ── Цагираг ── */
+.ring { position: relative; display: grid; place-items: center; flex: none; }
+.ringSvg { transform: rotate(-90deg); }
+.ringTrack { fill: none; stroke: var(--sunken); }
+.ringArc { fill: none; stroke: var(--tone, var(--hue)); stroke-linecap: round; transition: stroke-dashoffset 0.7s var(--ease); }
+.ringCenter { position: absolute; display: flex; flex-direction: column; align-items: center; line-height: 1.1; }
+.ringValue { font-weight: 700; color: var(--ink); }
+.ringLabel { font-size: 0.62rem; color: var(--ink-3); margin-top: 2px; }
+
+/* ── Түлхүүр → утга ── */
+.rows { display: flex; flex-direction: column; }
+.row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.78rem;
+}
+.row:last-child { border-bottom: none; }
+.rowKey { color: var(--ink-3); flex: none; }
+.rowVal { color: var(--ink); font-weight: 600; text-align: right; overflow-wrap: anywhere; }
+
+/* ── Chip ── */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 99px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--tone, var(--hue));
+  background: color-mix(in srgb, var(--tone, var(--hue)) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tone, var(--hue)) 26%, transparent);
+}
+
+/* ── Жагсаалтын мөр (сонгож болох) ── */
+.list { display: flex; flex-direction: column; gap: 2px; }
+.listItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  border-radius: var(--r-sm);
+  text-align: left;
+  font-size: 0.78rem;
+  color: var(--ink-2);
+  transition: background 0.12s;
+}
+.listItem:hover { background: var(--surface-2); color: var(--ink); }
+.listOn { background: color-mix(in srgb, var(--tone, var(--hue)) 11%, transparent); color: var(--ink); }
+.listMain { flex: 1; min-width: 0; }
+.listTitle { font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.listSub { font-size: 0.7rem; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.listVal { flex: none; font-weight: 650; font-size: 0.76rem; color: var(--ink); }
+
+/* ── Төлөв ── */
+.state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 28px 16px;
+  text-align: center;
+  font-size: 0.78rem;
+  color: var(--ink-3);
+}
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--line-strong);
+  border-top-color: var(--hue);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.error { color: var(--bad); }
+.errorMsg { font-size: 0.7rem; color: var(--ink-3); max-width: 260px; }

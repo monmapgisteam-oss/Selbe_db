@@ -2,9 +2,9 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "selbe-static",
-      "runtimeExecutable": "npx",
-      "runtimeArgs": ["-y", "http-server", "-p", "8123", "-c-1", "."],
+      "name": "selbe",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
       "port": 8123
     }
   ]
