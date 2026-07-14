@@ -24,58 +24,15 @@
 
 <a href="#main-content" class="skip-link">Үндсэн агуулга руу үсрэх</a>
 
-<!-- NAV -->
-<nav role="navigation" aria-label="Үндсэн навигейшн">
-  <a href="#hero" class="brand brand--nav" aria-label="Сэлбэ — 20 минутын хот">
-    <img src="logo.svg" alt="Сэлбэ — 20 минутын хот" class="brand-img"/>
-  </a>
-  <div class="nav-links" role="list">
-    <a href="#hero" role="listitem">Нүүр</a>
-    <a href="#dashboard" role="listitem">Хяналтын самбар</a>
-  </div>
-  <div class="nav-right">
-<button class="hamburger" id="hamburger" aria-label="Цэс нээх" aria-expanded="false" aria-controls="mobile-menu">
-      <span></span><span></span><span></span>
-    </button>
+<!-- ТУСДАА NAVBAR — брэнд + төслийн сэлгэгч + газрын зургийн горим -->
+<nav class="topnav" role="navigation" aria-label="Үндсэн навигейшн">
+  <a href="#dashboard" class="topnav-brand" aria-label="Сэлбэ — 20 минутын хот"><img src="logo.svg" alt="Сэлбэ — 20 минутын хот" class="topnav-logo"/></a>
+  <div class="topnav-controls">
+    <div class="topnav-modes" id="navModeSlot"></div>
+    <span class="topnav-div" aria-hidden="true"></span>
+    <button type="button" class="agd-proj" id="btnInfraView" aria-pressed="false">Дэд бүтэц ба газрын статистик</button>
   </div>
 </nav>
-
-<!-- MOBILE MENU -->
-<div class="mobile-menu" id="mobile-menu" role="dialog" aria-label="Мобайл цэс">
-  <a href="#hero"       onclick="closeMobile()">Нүүр</a>
-  <a href="#dashboard"  onclick="closeMobile()">Хяналтын самбар</a>
-</div>
-
-<!-- HERO -->
-<section class="hero" id="hero" aria-label="Hero хэсэг">
-  <canvas id="arc-canvas" aria-hidden="true"></canvas>
-  <div class="hero-inner r">
-    <div class="hero-eyebrow"><span class="he-dot" aria-hidden="true"></span>GIS × AI суурьтай ухаалаг хотын платформ</div>
-    <h1>Сэлбэ <span class="hl">20 минутын хот</span></h1>
-    <div class="hero-tagline">Smart City Platform</div>
-    <div class="hero-chips" aria-label="Технологи">
-      <span>GIS</span><span>AI</span><span>IoT</span><span>Digital Twin</span><span>BIM</span>
-    </div>
-    <div class="hero-cta">
-      <a href="#dashboard" class="btn-primary">Хяналтын самбар
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-      </a>
-      <a href="#dashboard" class="btn-outline" id="cta3d">🧊 3D хотын загвар</a>
-    </div>
-    <div class="hero-stats" aria-label="Гол үзүүлэлтүүд">
-      <div class="hs-item"><b data-count="158">0</b><span>га нутаг дэвсгэр</span></div>
-      <div class="hs-item"><b data-count="8575">0</b><span>айл өрх</span></div>
-      <div class="hs-item"><b data-count="113">0</b><span>BIM блок</span></div>
-      <div class="hs-item"><b data-count="12400" data-suffix="+">0</b><span>IoT мэдрэгч (зорилт)</span></div>
-    </div>
-  </div>
-
-  <p class="hero-sub" id="heroSub"></p>
-
-  <a href="#dashboard" class="hero-scroll" aria-label="Хяналтын самбар руу гүйлгэх"><span></span></a>
-
-
-</section>
 
 <!-- MAIN CONTENT -->
 <main id="main-content">
@@ -87,10 +44,10 @@
     <i class="agd-tick tl" aria-hidden="true"></i><i class="agd-tick tr" aria-hidden="true"></i><i class="agd-tick bl" aria-hidden="true"></i><i class="agd-tick br" aria-hidden="true"></i>
 
     <!-- LIVE CITY DATA ticker -->
-    <div class="ticker-bar" aria-label="Хотын зорилтот үзүүлэлт (жишиг)" aria-live="off">
+    <div class="ticker-bar" aria-label="Хотын бодит үзүүлэлт (ArcGIS)" aria-live="off">
       <div class="ticker-label">
         <span class="ticker-dot" aria-hidden="true"></span>
-        ЗОРИЛТОТ ҮЗҮҮЛЭЛТ
+        БОДИТ ҮЗҮҮЛЭЛТ
       </div>
       <div class="ticker-track-wrap">
         <div class="ticker-track" aria-hidden="true">
@@ -112,9 +69,8 @@
       </div>
     </div>
 
-    <!-- Top bar with global indicators -->
+    <!-- Top bar — нэгдсэн толгой (брэнд + хэсгийн холбоос + шүүлт) -->
     <div class="agd-top">
-      <div class="agd-top-title"><span class="agd-dot" aria-hidden="true"></span> ХЯНАЛТЫН САМБАР</div>
       <div class="agd-top-right">
         <div class="agd-filter">
           <button class="agd-filter-btn" aria-haspopup="true" aria-expanded="false">
@@ -290,6 +246,9 @@
       </aside>
 
     </div>
+
+    <!-- Дэд бүтэц төсөл — нэг frame доторх сэлгэгддэг харагдац (#infra-г JS-ээр энд зөөнө) -->
+    <div class="agd-projview" id="agdProjInfra" aria-hidden="true"></div>
   </div>
 </section>
 
@@ -341,6 +300,6 @@
 
 
 <script defer src="map1-layers.js"></script>
-<script defer src="monitoring.js"></script>
+<script defer src="monitoring.js?v=20260714a"></script>
 </body>
 </html>
