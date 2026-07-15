@@ -1,6 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
+import { AuthGate } from '@/components/AuthGate';
 
 /**
  * ArcGIS SDK нь браузерын API-д (ResizeObserver, WebGL) шууд түшиглэдэг тул
@@ -24,5 +25,10 @@ const Portal = dynamic(() => import('@/components/Portal'), {
 });
 
 export default function Page() {
-  return <Portal />;
+  // Нэвтэрсэн (эсвэл нэвтрэлт унтраалттай) үед л Portal ачаалагдана
+  return (
+    <AuthGate>
+      <Portal />
+    </AuthGate>
+  );
 }

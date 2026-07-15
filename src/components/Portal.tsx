@@ -167,7 +167,7 @@ export default function Portal() {
               </span>
               <span className={s.layerText}>
                 <span className={s.layerTitle}>{m.title}</span>
-                <span className={s.layerDesc}>{m.desc}</span>
+                {m.desc && <span className={s.layerDesc}>{m.desc}</span>}
               </span>
             </button>
           ))}
@@ -187,7 +187,7 @@ export default function Portal() {
           </span>
           <div>
             <h2 className={s.panelTitle}>{active.title}</h2>
-            <p className={s.panelDesc}>{active.desc}</p>
+            {active.desc && <p className={s.panelDesc}>{active.desc}</p>}
           </div>
         </header>
 
