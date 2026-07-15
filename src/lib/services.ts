@@ -25,6 +25,28 @@ export const BASEMAP = {
 } as const;
 
 /**
+ * ArcGIS Online нэвтрэлт (OAuth 2.0, PKCE — сервергүй статик сайтад тохирно).
+ *
+ * ⚠️ Энэ нь ЗӨВХӨН UI-г хаана. Өгөгдөл нь одоо нийтийн FeatureServer дээр тул
+ * жинхэнэ хамгаалалт биш — түүнд давхаргыг нууц болгож, query.ts-д токен нэмэх
+ * шаардлагатай ([[server-side-security-pending]]).
+ *
+ * ТОХИРУУЛАХ (ArcGIS Online дээр):
+ *  1. OAuth 2.0 апп үүсгэж `appId` (Client ID) авна.
+ *  2. Redirect URL-д `https://selbe.monmap.mn` ба `http://localhost:8123` нэмнэ.
+ *  3. `appId`, `portalUrl`-ыг доор бөглөнө. `allowedOrgId` бол зөвхөн танай org-ийн
+ *     хэрэглэгч нэвтэрнэ (хоосон = ямар ч ArcGIS account). Нэвтэрсний дараа консол
+ *     дээр өөрийн `orgId` хэвлэгдэнэ — түүнийг хуулж энд тавина.
+ *
+ * `appId` хоосон бол нэвтрэлт УНТРААЛТТАЙ (апп хуучнаар нээлттэй ажиллана).
+ */
+export const AUTH = {
+  appId: 'ZPJRqk1iiYcjYRLv',            // ArcGIS Online OAuth аппын Client ID
+  portalUrl: 'https://www.arcgis.com',  // ← ж: https://<org>.maps.arcgis.com (org-restrict бол org-ийнхаа URL тавь)
+  allowedOrgId: '',                     // ← нэвтэрсний дараа консол дээрх orgId-г энд тавьбал зөвхөн танай org
+} as const;
+
+/**
  * Эхлэх байрлал — багцын хилийн жинхэнэ төв (bagts_hil-ийн WGS84 хүрээнээс).
  * ⚠️ Хуучин апп 47.9184-д төвлөрдөг байсан нь дата байрлалаас ~5.5 км өмнө байв;
  * зөвхөн layer.fullExtent рүү үсэрснээр л зөв газраа очдог байлаа.
@@ -62,7 +84,7 @@ export const MODULES: {
   { key: 'parcel', title: 'Үлдсэн нэгж талбар', desc: 'Газар чөлөөлөлтийн явц, эзэмшигч, шалтгаан', icon: 'pin', hue: '#dc2626' },
   { key: 'estimator', title: 'Газрын үнэ тооцоолуур', desc: 'Талбай зурж, доторх барилгын үнэлгээг тооцох', icon: 'calc', hue: '#0d9488' },
   { key: 'utility', title: 'Шугам сүлжээ ба зам', desc: 'Инженерийн шугам, замын план', icon: 'network', hue: '#ca8a04' },
-  { key: 'survey', title: 'Талбайн хяналт', desc: 'Мобайл аппаас ирсэн амьд тайлан', icon: 'radio', hue: '#0891b2' },
+  { key: 'survey', title: 'Талбайн хяналт', desc: 'Бодит цагийн талбайн хяналтын бүртгэл', icon: 'radio', hue: '#0891b2' },
 ];
 
 /** Апп нээгдэхэд анхдагчаар сонгогдох модуль — жагсаалтын эхнийх */

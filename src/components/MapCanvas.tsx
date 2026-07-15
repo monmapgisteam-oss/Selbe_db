@@ -135,8 +135,32 @@ const denseFill = (hex: string, a = FILL_ALPHA, w = 0.5) =>
     outline: { color: c(hex, 0.85), width: w },
   }) as const;
 
+/**
+ * Ерөнхий мэдээллийн давхаргын симбол — ЦЭВЭРХЭН, гэрэлтэлгүй.
+ *
+ * `Selbe_talbain_hynalt`-ийн 7 давхарга (ногоон байгууламж 4,701 полигон, барилга,
+ * гэр…) нь олон мянган жижиг полигонтой. `fill()`-ийн гэрэлтэх halo (өргөн зузаан,
+ * тунгалаг зураас) эдгээрийг хооронд нь «цэцэглүүлж» нэг ногоон бөөгнөрөл болгодог.
+ * Тиймээс halo-гүй, нам дүүргэлт + нимгэн ТОД хүрээ өгч, объект бүрийг цэвэрхэн
+ * ялгана. Дүүргэлтийг арай нам (0.16) болгосноор давхацсан полигон бүрхэж бараандахгүй.
+ */
+const cleanFill = (hex: string, a = 0.16, w = 0.6) =>
+  ({
+    type: 'simple-fill',
+    color: c(hex, a),
+    outline: { color: c(hex, 0.9), width: w },
+  }) as const;
+
+/**
+ * Шугамын симбол — ЖИГД холболттой.
+ *
+ * `Road_shugam_suljee` нь CAD-аас экспортолсон олон богино хэрчмээс тогтоно.
+ * `simple-line`-ийн анхдагч `cap: 'butt'` + `join: 'miter'` нь хэрчмийн үзүүрт
+ * заваа, тохойд хурц эвдрэлт (spike) үүсгэж, сүлжээг барзгар харуулдаг. Дугуй
+ * cap/join өгснөөр хэрчмүүд гөлгөр залгаж, цэвэрхэн урсгал шиг харагдана.
+ */
 const line = (hex: string, w = 1.6) =>
-  ({ type: 'simple-line', color: c(hex), width: w }) as const;
+  ({ type: 'simple-line', color: c(hex), width: w, cap: 'round', join: 'round' }) as const;
 
 const simple = (sym: unknown) => ({ type: 'simple', symbol: sym }) as __esri.RendererProperties;
 
@@ -201,31 +225,9 @@ const basemapFor = (theme: 'light' | 'dark') =>
  */
 const REF_OUTLINE = (hex: string) =>
   ({
-    type: 'cim',
-    data: {
-      type: 'CIMSymbolReference',
-      symbol: {
-        type: 'CIMPolygonSymbol',
-        symbolLayers: [
-          {
-            type: 'CIMSolidStroke',
-            enable: true,
-            capStyle: 'Round',
-            joinStyle: 'Round',
-            width: 1.6,
-            color: cim(hex, 0.9),
-          },
-          {
-            type: 'CIMSolidStroke',
-            enable: true,
-            capStyle: 'Round',
-            joinStyle: 'Round',
-            width: 6,
-            color: cim(hex, 0.22),
-          },
-        ],
-      },
-    },
+    type: 'simple-fill',
+    color: [0, 0, 0, 0], // дүүргэлтгүй — зөвхөн чиг баримжааны хүрээ
+    outline: { color: c(hex, 0.9), width: 1 },
   }) as const;
 
 
@@ -361,7 +363,7 @@ function buildLayers(): FeatureLayer[] {
     url: BAGTS.url,
     outFields: ['*'],
     popupEnabled: false,
-    renderer: simple(fill(hueOf('bagts'), FILL_ALPHA, 2)),
+    renderer: simple(cleanFill(hueOf('bagts'), 0.14, 1)),
     labelingInfo: labels(hueOf('bagts'), `$feature.${BAGTS.fields.name}`),
   }));
 
@@ -397,7 +399,7 @@ function buildLayers(): FeatureLayer[] {
     outFields: ['*'],
     popupEnabled: false,
     visible: false,
-    renderer: simple(fill(hueOf('zone'))),
+    renderer: simple(cleanFill(hueOf('zone'), 0.16, 0.8)),
     labelingInfo: labels(
       hueOf('zone'),
       `
@@ -421,7 +423,7 @@ function buildLayers(): FeatureLayer[] {
     renderer: {
       type: 'class-breaks',
       field: BUILDING.fields.progress,
-      defaultSymbol: fill('#94a3b8'),
+      defaultSymbol: cleanFill('#94a3b8', 0.24),
       defaultLabel: 'Мэдээлэлгүй',
       // ⚠️ ArcGIS-ийн classBreak нь minValue/maxValue ХОЁУЛАНГ нь оруулж тоолдог.
       //    Самбарын тоолол ба SQL шүүлт нь `>= min AND < max` (хагас нээлттэй) тул
@@ -431,7 +433,7 @@ function buildLayers(): FeatureLayer[] {
         minValue: l.min,
         maxValue: l.max - 0.0001,
         label: `${l.label} (${l.range})`,
-        symbol: fill(l.color),
+        symbol: cleanFill(l.color, 0.24),
       })),
     } as __esri.RendererProperties,
   }));
@@ -446,10 +448,10 @@ function buildLayers(): FeatureLayer[] {
     renderer: {
       type: 'unique-value',
       field: PARCEL.fields.status,
-      defaultSymbol: fill('#94a3b8'),
+      defaultSymbol: cleanFill('#94a3b8', 0.24),
       defaultLabel: 'Бүртгэгдээгүй',
       uniqueValueInfos: Object.entries(PARCEL_STATUS).map(([value, color]) => ({
-        value, label: value, symbol: fill(color),
+        value, label: value, symbol: cleanFill(color, 0.24),
       })),
     } as __esri.RendererProperties,
   }));
@@ -488,7 +490,7 @@ function buildLayers(): FeatureLayer[] {
       outFields: ['*'],
       popupEnabled: false,
       visible: false,
-      renderer: simple(fill(g.hue)),
+      renderer: simple(cleanFill(g.hue)),
     }));
   }
 
@@ -500,7 +502,7 @@ function buildLayers(): FeatureLayer[] {
       outFields: ['*'],
       popupEnabled: false,
       visible: false,
-      renderer: simple(u.kind === 'line' ? line(u.hue, 1.8) : fill(u.hue)),
+      renderer: simple(u.kind === 'line' ? line(u.hue, 0.75) : cleanFill(u.hue)),
     }));
   }
 

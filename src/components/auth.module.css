@@ -1,0 +1,85 @@
+/* ── Нэвтрэлтийн дэлгэц ── */
+.screen {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--bg);
+}
+
+.card {
+  width: 100%;
+  max-width: 380px;
+  padding: 32px 30px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-lg);
+  text-align: center;
+}
+
+.logo { width: 52px; height: 52px; margin: 0 auto 18px; display: block; }
+
+.title { font-size: 1.15rem; font-weight: 700; color: var(--ink); margin-bottom: 6px; }
+.sub { font-size: 0.82rem; line-height: 1.55; color: var(--ink-3); margin-bottom: 24px; }
+
+.btn {
+  width: 100%;
+  padding: 11px 18px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--hue);
+  border-radius: var(--r);
+  transition: filter 0.14s;
+}
+.btn:hover { filter: brightness(1.08); }
+
+.btnGhost {
+  margin-top: 12px;
+  width: 100%;
+  padding: 9px 18px;
+  font-size: 0.82rem;
+  font-weight: 550;
+  color: var(--ink-2);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  transition: background 0.14s;
+}
+.btnGhost:hover { background: var(--sunken); }
+
+/* Хэрэглэгчийн мэдээлэл (татгалзсан дэлгэц дээр) */
+.user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: center;
+  margin-bottom: 20px;
+  padding: 10px 14px;
+  background: var(--surface-2);
+  border-radius: var(--r);
+}
+.avatar { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; background: var(--sunken); }
+.userName { font-size: 0.84rem; font-weight: 600; color: var(--ink); }
+.userSub { font-size: 0.72rem; color: var(--ink-3); }
+
+.error {
+  margin-top: 16px;
+  font-size: 0.76rem;
+  color: var(--bad);
+}
+
+/* Шалгаж байх үеийн эргэлдэгч */
+.spinner {
+  width: 26px;
+  height: 26px;
+  margin: 0 auto;
+  border: 3px solid var(--line);
+  border-top-color: var(--hue);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
