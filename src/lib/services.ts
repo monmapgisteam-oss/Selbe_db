@@ -41,9 +41,9 @@ export const BASEMAP = {
  * `appId` хоосон бол нэвтрэлт УНТРААЛТТАЙ (апп хуучнаар нээлттэй ажиллана).
  */
 export const AUTH = {
-  appId: 'ZPJRqk1iiYcjYRLv',            // ArcGIS Online OAuth аппын Client ID
-  portalUrl: 'https://www.arcgis.com',  // ← ж: https://<org>.maps.arcgis.com (org-restrict бол org-ийнхаа URL тавь)
-  allowedOrgId: '',                     // ← нэвтэрсний дараа консол дээрх orgId-г энд тавьбал зөвхөн танай org
+  appId: 'ZPJRqk1iiYcjYRLv',                   // ArcGIS Online OAuth аппын Client ID
+  portalUrl: 'https://monmap.maps.arcgis.com', // MonMap LLC байгууллагын portal
+  allowedOrgId: 'HJzgwvlNIXssnQar',            // Зөвхөн MonMap LLC-ийн хэрэглэгч нэвтэрнэ
 } as const;
 
 /**
