@@ -1,25 +1,46 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { MapCanvas, MapProvider, DEFAULT_OVERLAYS, DEFAULT_SUBLAYERS } from '@/components/MapCanvas';
+import { MapCanvas, MapProvider, useMap, DEFAULT_OVERLAYS, DEFAULT_SUBLAYERS } from '@/components/MapCanvas';
 import { Icon } from '@/components/Icon';
 import { OverlayControl } from '@/components/OverlayControl';
+import { Search } from '@/components/Search';
 import { useTheme } from '@/lib/theme';
 import { useAsync } from '@/lib/useAsync';
+import { FilterProvider, useFilter } from '@/lib/filter';
 import { queryCount, queryStats, queryFeatures, sum } from '@/lib/query';
 import { MODULES, DEFAULT_MODULE, ZONE, BUILDING, BOUNDARY, type ModuleKey } from '@/lib/services';
 import { num } from '@/lib/format';
+import type { Hit } from '@/lib/search';
 
 import { BuildingSummary, BuildingWork } from '@/modules/BuildingPanel';
 import { LandPanel } from '@/modules/LandPanel';
 import { GeneralLayers, GeneralInfo } from '@/modules/GeneralPanel';
 import { SurveySummary } from '@/modules/SurveyPanel';
+import { OverviewPanel } from '@/modules/OverviewPanel';
 
 import s from '@/app/shell.module.css';
 
 const isModule = (v: string): v is ModuleKey => MODULES.some((m) => m.key === v);
 
+/**
+ * Гадна бүрхүүл — зөвхөн контекстүүдийг өгнө.
+ *
+ * ⚠️ `FilterProvider` нь `useMap()`-ыг дуудах тул `MapProvider`-ын ДОТОР байх
+ * ёстой. Мөн порталын агуулга `useFilter()`-ыг дуудах тул түүнээс ДООР байх
+ * ёстой — иймд агуулгыг тусад нь салгав.
+ */
 export default function Portal() {
+  return (
+    <MapProvider>
+      <FilterProvider>
+        <PortalContent />
+      </FilterProvider>
+    </MapProvider>
+  );
+}
+
+function PortalContent() {
   const [module, setModule] = useState<ModuleKey>(DEFAULT_MODULE);
   const [sublayers, setSublayers] = useState<string[]>(DEFAULT_SUBLAYERS[DEFAULT_MODULE] ?? []);
   const [picked, setPicked] = useState<Record<string, unknown> | null>(null);
@@ -30,13 +51,9 @@ export default function Portal() {
    * Агаарын зураг анхнаасаа асаалттай (`DEFAULT_OVERLAYS`).
    */
   const [overlays, setOverlays] = useState<string[]>(DEFAULT_OVERLAYS);
-  /**
-   * Ангилал сонгох төлөв — «Ерөнхий мэдээлэл»-ийн хоёр багана ХУВААНА.
-   * Жагсаалт (зүүн) давхарга унтраахад цэвэрлэнэ, мэдээлэл (баруун) сонгоно.
-   * Зураг дээрх тодруулга глобал тул нэг л ангилал идэвхтэй байна.
-   */
-  const [facet, setFacet] = useState<string | null>(null);
   const { theme, toggle } = useTheme();
+  const { clear: clearFilter } = useFilter();
+  const { zoomToWhere } = useMap();
 
   const pick = useCallback((attrs: Record<string, unknown> | null, layerId: string | null) => {
     setPicked(attrs);
@@ -57,14 +74,36 @@ export default function Portal() {
       clearPicked();
       // Модуль бүрийн анхдагч дэд давхарга — самбарууд өөрсдөө тавихаа больсон
       setSublayers(DEFAULT_SUBLAYERS[key] ?? []);
-      // Ангиллын сонголт өмнөх модулийнх — үлдвэл шинэ модульд утгагүй болно
-      setFacet(null);
+      /**
+       * Шүүлт нь өмнөх модулийн давхаргын талбарын нэрээр бичигдсэн SQL. Үлдвэл
+       * шинэ модулийн давхаргад тэр талбар байхгүй тул ArcGIS хүсэлт бүхэлдээ
+       * унаж, зураг чимээгүй хоосорно.
+       */
+      clearFilter();
       // ⚠️ Хоосон массив БИШ. Хэрэглэгчийн сонгосон нэмэлт давхарга нь өмнөх модулийн
       //    сэдэвтэй холбоотой тул цэвэрлэх нь зөв, харин агаарын зураг бол модулиас
       //    үл хамаарах СУУРЬ давхарга — модуль дарах бүрд унтарвал буруу.
       setOverlays(DEFAULT_OVERLAYS);
     },
-    [clearPicked],
+    [clearPicked, clearFilter],
+  );
+
+  /**
+   * Хайлтын үр дүн рүү үсрэх.
+   *
+   * ⚠️ `go()`-оор дамжина: тэр нь модулийн анхдагч давхаргыг тавьдаг. Дараа нь
+   * хэрэгтэй дэд давхаргыг нэмнэ — анхдагчид ороогүй байж болно (жишээ нь
+   * «Газар» модуль чөлөөлөлтийн табаар нээгддэг ч кадастраас олдсон бол өөр).
+   */
+  const goToHit = useCallback(
+    (hit: Hit) => {
+      go(hit.module);
+      setSublayers((prev) => (prev.includes(hit.sublayer) ? prev : [...prev, hit.sublayer]));
+      // Давхарга ил болох хүртэл нэг frame хүлээнэ — эс бөгөөс `zoomToWhere` нь
+      // `visible: false` давхаргыг олохгүй.
+      requestAnimationFrame(() => zoomToWhere(hit.layerId, hit.where));
+    },
+    [go, zoomToWhere],
   );
 
   /**
@@ -120,15 +159,7 @@ export default function Portal() {
       icon: 'chart',
       title: 'Давхаргын мэдээлэл',
       desc: 'Сонгосон давхарга тус бүрийн үзүүлэлт',
-      node: (
-        <GeneralInfo
-          picked={picked}
-          pickedLayer={pickedLayer}
-          sublayers={sublayers}
-          facet={facet}
-          setFacet={setFacet}
-        />
-      ),
+      node: <GeneralInfo picked={picked} pickedLayer={pickedLayer} sublayers={sublayers} />,
     },
     building: {
       side: 'right',
@@ -149,7 +180,6 @@ export default function Portal() {
   const aux = AUX[module];
 
   return (
-    <MapProvider>
     <div
       className={[
         s.shell,
@@ -167,6 +197,11 @@ export default function Portal() {
           </span>
         </div>
 
+        <div className={s.headSearch}>
+          <Search onPick={goToHit} />
+        </div>
+
+        <ActiveFilterChip />
         <HeaderStats />
 
         <button
@@ -224,6 +259,9 @@ export default function Portal() {
         </header>
 
         <div className={s.panelBody}>
+          {module === 'overview' && (
+            <OverviewPanel sublayers={sublayers} setSublayers={setSublayers} />
+          )}
           {module === 'building' && <BuildingWork picked={picked} pickedLayer={pickedLayer} />}
           {module === 'land' && (
             <LandPanel
@@ -240,7 +278,6 @@ export default function Portal() {
               clearPicked={clearPicked}
               sublayers={sublayers}
               setSublayers={setSublayers}
-              setFacet={setFacet}
             />
           )}
         </div>
@@ -283,7 +320,41 @@ export default function Portal() {
         </aside>
       )}
     </div>
-    </MapProvider>
+  );
+}
+
+/* ── Идэвхтэй шүүлт ── */
+
+/**
+ * Газрын зурагт одоо ямар шүүлт үйлчилж байгааг ҮРГЭЛЖ харуулна.
+ *
+ * ⚠️ Урьд нь идэвхтэй шүүлт зөвхөн түүнийг үүсгэсэн самбарын мөрөнд л
+ * тодорсон байдаг байв. Хэрэглэгч доош гүйлгэж, өөр хэсэг рүү шилжсэний дараа
+ * зураг яагаад бүдгэрсэн шалтгааныг олох арга байхгүй байлаа.
+ */
+function ActiveFilterChip() {
+  const { active, clear } = useFilter();
+  if (!active) return null;
+
+  return (
+    <div className={s.filterChip} style={{ '--tone': active.color ?? 'var(--hue)' } as CSSProperties}>
+      <span className={s.filterDot} aria-hidden />
+      <span className={s.filterText}>
+        <span className={s.filterGroup}>{active.group}</span>
+        <span className={s.filterLabel}>{active.label}</span>
+      </span>
+      <button type="button" className={s.filterClear} onClick={clear} aria-label="Шүүлт цуцлах">
+        <svg viewBox="0 0 12 12" width="11" height="11" aria-hidden>
+          <path
+            d="M3 3l6 6M9 3l-6 6"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+          />
+        </svg>
+      </button>
+    </div>
   );
 }
 

@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Section, Stats, Stat, Bars, Stack, Ring, Rows, Data, Chip, Empty, List, ListItem, Tabs } from '@/components/ui';
-import { useMap } from '@/components/MapCanvas';
+import { Section, Stats, Stat, Bars, Stack, Ring, Rows, Data, Chip, Empty, List, ListItem, Tabs, Col, Note, Split } from '@/components/ui';
+import { useFilter } from '@/lib/filter';
 import { useAsync } from '@/lib/useAsync';
 import { queryGroup, queryStats, queryCount, count, sum, avg, sqlStr, groups } from '@/lib/query';
 import { BUILDING, BUILDING_STAGES, PROGRESS_LEVELS, STAGE_NA, MODULES, SURVEY } from '@/lib/services';
@@ -93,53 +93,64 @@ function useBuildings() {
 
 export function BuildingSummary() {
   const q = useBuildings();
-  const { setHighlight } = useMap();
-  const [level, setLevel] = useState<string | null>(null);
-  const [bagts, setBagts] = useState<string | null>(null);
+  const { toggle, active } = useFilter();
 
   const pickLevel = (key: string) => {
     const l = PROGRESS_LEVELS.find((x) => x.key === key)!;
-    const next = level === key ? null : key;
-    setLevel(next);
-    setBagts(null);
-    setHighlight(next ? `${F.progress} >= ${l.min} AND ${F.progress} < ${l.max}` : null);
+    toggle({
+      key: `building:level:${key}`,
+      label: `${l.label} · ${l.range}`,
+      group: 'Гүйцэтгэлийн ангилал',
+      where: `${F.progress} >= ${l.min} AND ${F.progress} < ${l.max}`,
+      module: 'building',
+      color: l.color,
+    });
   };
 
   const pickBagts = (key: string) => {
-    const next = bagts === key ? null : key;
-    setBagts(next);
-    setLevel(null);
-    setHighlight(next ? `${F.bagts} = ${sqlStr(next)}` : null);
+    toggle({
+      key: `building:bagts:${key}`,
+      label: key,
+      group: 'Багц',
+      where: `${F.bagts} = ${sqlStr(key)}`,
+      module: 'building',
+      color: HUE,
+    });
   };
+
+  /** Идэвхтэй шүүлтийн түлхүүрээс тухайн жагсаалтын сонголтыг сэргээнэ */
+  const selected = (prefix: string) =>
+    active?.key.startsWith(prefix) ? active.key.slice(prefix.length) : null;
 
   return (
     <Data q={q}>
       {(d) => (
         <>
-          <Section>
-            <Stats cols={2}>
-              <Stat value={num(d.blocks)} label="Барилгын блок" color={HUE} accent />
-              <Stat value={num(d.households)} label="Айлын тоо" color={HUE} accent />
-            </Stats>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 14 }}>
-              <Ring value={d.progress} color={HUE} size={78} width={8} />
-              <p style={{ fontSize: '0.72rem', lineHeight: 1.5, color: 'var(--ink-3)' }}>
-                {num(d.blocks)} блокийн дундаж гүйцэтгэл. Дундаж {num(d.floors, 1)} давхар.
-                Төлөвлөгдөөгүй ажлыг (утга −1) хассан.
-              </p>
-            </div>
+          <Section tone="primary">
+            <Col gap="md">
+              <Stats cols={2}>
+                <Stat value={num(d.blocks)} label="Барилгын блок" color={HUE} accent />
+                <Stat value={num(d.households)} label="Айлын тоо" color={HUE} accent />
+              </Stats>
+              <Split aside={<Ring value={d.progress} color={HUE} size={78} width={8} />}>
+                <Note>
+                  {num(d.blocks)} блокийн дундаж гүйцэтгэл. Дундаж {num(d.floors, 1)} давхар.
+                  Төлөвлөгдөөгүй ажлыг (утга −1) хассан.
+                </Note>
+              </Split>
+            </Col>
           </Section>
 
           <Section title="Гүйцэтгэлийн ангилал" note="дарж шүүнэ">
-            <Stack
-              legend={false}
-              total={d.blocks}
-              items={d.levels.map((l) => ({ key: l.key, label: l.label, value: l.value, color: l.color }))}
-            />
-            <div style={{ marginTop: 14 }}>
+            <Col gap="md">
+              <Stack
+                legend={false}
+                total={d.blocks}
+                items={d.levels.map((l) => ({ key: l.key, label: l.label, value: l.value, color: l.color }))}
+              />
               <Bars
                 max={Math.max(1, ...d.levels.map((l) => l.value))}
-                selected={level}
+                selected={selected('building:level:')}
                 onSelect={pickLevel}
                 items={d.levels.map((l) => ({
                   key: l.key,
@@ -149,14 +160,14 @@ export function BuildingSummary() {
                   color: l.color,
                 }))}
               />
-            </div>
+            </Col>
           </Section>
 
           <Section title="Багц тус бүрээр" note="дарж шүүнэ">
             <Bars
               color={HUE}
               max={100}
-              selected={bagts}
+              selected={selected('building:bagts:')}
               onSelect={pickBagts}
               items={d.bagts.map((b) => ({
                 key: b.key,
@@ -251,26 +262,28 @@ function BlockReports({
 
         return (
           <>
-            <Section title="Төлөвлөгөө ↔ талбайн хэмжилт" note={`${mine.length} тайлан`}>
-              <Stats cols={3}>
-                <Stat value={pct(planned, 0)} label="Төлөвлөгөөгөөр" color={HUE} />
-                <Stat
-                  value={measured == null ? '—' : pct(measured, 0)}
-                  label="Талбар дээр"
-                  color={SURVEY_HUE}
-                  accent
-                />
-                <Stat
-                  value={gap == null ? '—' : `${gap >= 0 ? '+' : ''}${pct(gap, 0)}`}
-                  label={gap == null ? 'Зөрүү — хэмжилтгүй' : 'Зөрүү'}
-                  color={gap == null ? undefined : gap >= 0 ? 'var(--good)' : 'var(--bad)'}
-                />
-              </Stats>
-              <p style={{ marginTop: 12, fontSize: '0.71rem', lineHeight: 1.5, color: 'var(--ink-3)' }}>
-                Талбайн утга нь <b style={{ color: 'var(--ink)' }}>{date(latest[SURVEY.fields.date] as string)}</b>-ний
-                хамгийн сүүлийн тайлангийн «Б. Барилга угсралт»-ын гүйцэтгэл. Хоёр тоо ӨӨР аргаар
-                хэмжигддэг тул зөрүү нь заавал алдаа гэсэн үг биш — шалгах шаардлагатайг заана.
-              </p>
+            <Section tone="primary" title="Төлөвлөгөө ↔ талбайн хэмжилт" note={`${mine.length} тайлан`}>
+              <Col gap="sm">
+                <Stats cols={3}>
+                  <Stat value={pct(planned, 0)} label="Төлөвлөгөөгөөр" color={HUE} />
+                  <Stat
+                    value={measured == null ? '—' : pct(measured, 0)}
+                    label="Талбар дээр"
+                    color={SURVEY_HUE}
+                    accent
+                  />
+                  <Stat
+                    value={gap == null ? '—' : `${gap >= 0 ? '+' : ''}${pct(gap, 0)}`}
+                    label={gap == null ? 'Зөрүү — хэмжилтгүй' : 'Зөрүү'}
+                    color={gap == null ? undefined : gap >= 0 ? 'var(--good)' : 'var(--bad)'}
+                  />
+                </Stats>
+                <Note>
+                  Талбайн утга нь <b>{date(latest[SURVEY.fields.date] as string)}</b>-ний
+                  хамгийн сүүлийн тайлангийн «Б. Барилга угсралт»-ын гүйцэтгэл. Хоёр тоо ӨӨР аргаар
+                  хэмжигддэг тул зөрүү нь заавал алдаа гэсэн үг биш — шалгах шаардлагатайг заана.
+                </Note>
+              </Col>
             </Section>
 
             <Section title="Энэ блокийн тайлан" note="дарж дэлгэрэнгүйг харна">
@@ -445,17 +458,16 @@ export function BuildingDetail({ picked }: { picked: Record<string, unknown> | n
         />
       </Section>
 
-      <Section title="Гүйцэтгэл">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <Ring value={progress} color={level?.color ?? HUE} size={86} />
-          <div>
-            {level && <Chip color={level.color}>{level.label}</Chip>}
-            <p style={{ marginTop: 8, fontSize: '0.73rem', lineHeight: 1.5, color: 'var(--ink-3)' }}>
-              Энэ блокийн нийт гүйцэтгэл <b style={{ color: 'var(--ink)' }}>{pct(progress)}</b>. Доорх
+      <Section tone="primary" title="Гүйцэтгэл">
+        <Split aside={<Ring value={progress} color={level?.color ?? HUE} size={86} />}>
+          <Col gap="sm">
+            {level && <div><Chip color={level.color}>{level.label}</Chip></div>}
+            <Note>
+              Энэ блокийн нийт гүйцэтгэл <b>{pct(progress)}</b>. Доорх
               үе шатуудын жинлэсэн нийлбэрээс бүрдэнэ.
-            </p>
-          </div>
-        </div>
+            </Note>
+          </Col>
+        </Split>
       </Section>
 
       <Section
@@ -465,7 +477,7 @@ export function BuildingDetail({ picked }: { picked: Record<string, unknown> | n
         {stages.length === 0 ? (
           <Empty label="Энэ блокт үе шатын мэдээлэл бүртгэгдээгүй." />
         ) : (
-          <>
+          <Col gap="sm">
             <Bars
               color={HUE}
               max={100}
@@ -477,11 +489,9 @@ export function BuildingDetail({ picked }: { picked: Record<string, unknown> | n
               }))}
             />
             {skipped > 0 && (
-              <p style={{ marginTop: 12, fontSize: '0.71rem', lineHeight: 1.5, color: 'var(--ink-3)' }}>
-                Үлдсэн {skipped} ажил (утга −1) энэ блокт төлөвлөгдөөгүй тул харуулаагүй.
-              </p>
+              <Note>Үлдсэн {skipped} ажил (утга −1) энэ блокт төлөвлөгдөөгүй тул харуулаагүй.</Note>
             )}
-          </>
+          </Col>
         )}
       </Section>
     </>

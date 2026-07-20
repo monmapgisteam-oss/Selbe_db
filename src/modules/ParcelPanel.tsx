@@ -1,8 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { Section, Stats, Stat, Bars, Donut, Rows, Data, Chip, Empty } from '@/components/ui';
-import { useMap } from '@/components/MapCanvas';
+import { Section, Stats, Stat, Bars, Donut, Rows, Data, Chip, Empty, Col, Note } from '@/components/ui';
+import { useFilter } from '@/lib/filter';
 import { useAsync } from '@/lib/useAsync';
 import { queryFeatures, groupWhere, groups, type Row } from '@/lib/query';
 import {
@@ -74,25 +73,24 @@ function useParcels() {
 
 export function ParcelPanel({ picked }: { picked: Record<string, unknown> | null }) {
   const q = useParcels();
-  const { setHighlight } = useMap();
-  const [sel, setSel] = useState<string | null>(null);
+  const { toggle, active } = useFilter();
 
   return (
     <Data q={q}>
       {(d) => (
         <>
           <Section title="Нэгдсэн үзүүлэлт">
-            <Stats cols={3}>
-              <Stat value={num(d.count)} label="Нэгж талбар" color={HUE} accent />
-              <Stat value={ha(d.areaM2, 2)} unit="га" label="Нийт талбай" color={HUE} />
-              <Stat
-                value={d.avgM2 == null ? '—' : num(d.avgM2, 0)}
-                unit={d.avgM2 == null ? undefined : 'м²'}
-                label={`Дундаж талбай (${num(d.areaRows)} талбартай)`}
-                color={HUE}
-              />
-            </Stats>
-            <div style={{ marginTop: 10 }}>
+            <Col gap="sm">
+              <Stats cols={3}>
+                <Stat value={num(d.count)} label="Нэгж талбар" color={HUE} accent />
+                <Stat value={ha(d.areaM2, 2)} unit="га" label="Нийт талбай" color={HUE} />
+                <Stat
+                  value={d.avgM2 == null ? '—' : num(d.avgM2, 0)}
+                  unit={d.avgM2 == null ? undefined : 'м²'}
+                  label={`Дундаж талбай (${num(d.areaRows)} талбартай)`}
+                  color={HUE}
+                />
+              </Stats>
               <Stats cols={2}>
                 <Stat value={num(d.owners)} label="Бүртгэгдсэн эзэмшигч" color={HUE} />
                 <Stat
@@ -101,12 +99,12 @@ export function ParcelPanel({ picked }: { picked: Record<string, unknown> | null
                   color={d.withStatus / d.count < 0.5 ? 'var(--warn)' : HUE}
                 />
               </Stats>
-            </div>
+            </Col>
           </Section>
 
           {/* Чөлөөлөлтийн явц — модулийн ГОЛ үзүүлэлт тул дугуй диаграмаар онцолно */}
           {d.facets[0].items.length > 0 && (
-            <Section title="Чөлөөлөлтийн явц" note={`${d.facets[0].items.length} төлөв`}>
+            <Section tone="primary" title="Чөлөөлөлтийн явц" note={`${d.facets[0].items.length} төлөв`}>
               <Donut
                 center={num(d.count)}
                 centerLabel="талбар"
@@ -126,12 +124,18 @@ export function ParcelPanel({ picked }: { picked: Record<string, unknown> | null
               <Section key={f.label} title={f.label} note="дарж газрын зурагт шүүнэ">
                 <Bars
                   color={HUE}
-                  selected={sel}
+                  selected={active?.key ?? null}
                   onSelect={(k) => {
                     const g = f.items.find((x) => `${f.label}:${x.label}` === k);
-                    const next = sel === k ? null : k;
-                    setSel(next);
-                    setHighlight(next && g ? groupWhere(f.field, g) : null);
+                    if (!g) return;
+                    toggle({
+                      key: k,
+                      label: `${f.label}: ${g.label}`,
+                      group: 'Үлдсэн нэгж талбар',
+                      where: groupWhere(f.field, g),
+                      module: 'land',
+                      color: HUE,
+                    });
                   }}
                   items={f.items.map((g) => ({
                     key: `${f.label}:${g.label}`,
@@ -198,12 +202,10 @@ function PickedParcel({ attrs }: { attrs: Record<string, unknown> }) {
 
   return (
     <Section title="Сонгосон нэгж талбар" note={`${rows.length} талбар`}>
-      <Rows items={rows} />
-      {!blank(attrs[F.note]) && (
-        <p style={{ marginTop: 12, fontSize: '0.74rem', lineHeight: 1.55, color: 'var(--ink-2)' }}>
-          {String(attrs[F.note])}
-        </p>
-      )}
+      <Col gap="sm">
+        <Rows items={rows} />
+        {!blank(attrs[F.note]) && <Note>{String(attrs[F.note])}</Note>}
+      </Col>
     </Section>
   );
 }

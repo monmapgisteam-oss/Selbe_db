@@ -1,12 +1,11 @@
 'use client';
 
-import { Section, Stats, Stat, Bars, Data } from '@/components/ui';
-import { useMap } from '@/components/MapCanvas';
+import { Section, Stats, Stat, Bars, Data, Col, Note, SubHead } from '@/components/ui';
+import { useFilter } from '@/lib/filter';
 import { useAsync } from '@/lib/useAsync';
 import { queryStats, queryGroup, count, sum, groups, groupWhere } from '@/lib/query';
 import { UTILITY, type UtilKey } from '@/lib/services';
 import { num, km, ha } from '@/lib/format';
-import s from './utility.module.css';
 
 /**
  * Дэд бүтцийн НЭГ давхаргын үзүүлэлт.
@@ -51,24 +50,16 @@ function useUtilityLayer(key: UtilKey) {
   }, [key]);
 }
 
-export function UtilityLayerDetail({
-  layerKey,
-  facet,
-  setFacet,
-}: {
-  layerKey: UtilKey;
-  facet: string | null;
-  setFacet: (v: string | null) => void;
-}) {
+export function UtilityLayerDetail({ layerKey }: { layerKey: UtilKey }) {
   const u = UTILITY[layerKey];
   const q = useUtilityLayer(layerKey);
-  const { setHighlight } = useMap();
+  const { toggle, active } = useFilter();
 
   return (
     <Section title={u.title}>
       <Data q={q}>
         {(d) => (
-          <>
+          <Col gap="md">
             <Stats cols={2}>
               <Stat
                 value={num(d.n)}
@@ -85,18 +76,22 @@ export function UtilityLayerDetail({
             </Stats>
 
             {d.facets.map((f) => (
-              <div key={f.label} style={{ marginTop: 16 }}>
-                <div className={s.facetHead}>
-                  {f.label} <span className={s.facetNote}>дарж газрын зурагт шүүнэ</span>
-                </div>
+              <div key={f.label}>
+                <SubHead note="дарж газрын зурагт шүүнэ">{f.label}</SubHead>
                 <Bars
                   color={u.hue}
-                  selected={facet}
+                  selected={active?.key ?? null}
                   onSelect={(k) => {
                     const g = f.items.find((x) => `${layerKey}|${f.label}:${x.label}` === k);
-                    const next = facet === k ? null : k;
-                    setFacet(next);
-                    setHighlight(next && g ? groupWhere(f.field, g) : null);
+                    if (!g) return;
+                    toggle({
+                      key: k,
+                      label: `${f.label}: ${g.label}`,
+                      group: u.title,
+                      where: groupWhere(f.field, g),
+                      module: 'general',
+                      color: u.hue,
+                    });
                   }}
                   items={f.items.map((g) => ({
                     // ⚠️ Түлхүүрт давхаргын нэр заавал орно: гурван цахилгааны давхарга
@@ -113,12 +108,12 @@ export function UtilityLayerDetail({
               </div>
             ))}
 
-            <p className={s.note} style={{ marginTop: 14 }}>
+            <Note>
               CAD зургаас экспортлогдсон давхарга — зөвхөн геометр (урт, талбай) ба бүсийн
               холбоос агуулна. Материал, голч, техникийн төлөв зэрэг актив менежментийн
               талбар байхгүй.
-            </p>
-          </>
+            </Note>
+          </Col>
         )}
       </Data>
     </Section>
