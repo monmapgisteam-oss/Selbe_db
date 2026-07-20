@@ -1,0 +1,41 @@
+/* ── Дохионы хуудаснууд ── */
+.signals { display: flex; flex-direction: column; gap: 8px; }
+
+.signal {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 11px 13px;
+  text-align: left;
+  border-radius: var(--r);
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  transition: background 0.12s, border-color 0.12s, transform 0.12s;
+}
+.signal:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--tone) 7%, var(--surface));
+  border-color: color-mix(in srgb, var(--tone) 34%, var(--line));
+}
+.signalOn {
+  background: color-mix(in srgb, var(--tone) 11%, var(--surface));
+  border-color: color-mix(in srgb, var(--tone) 48%, transparent);
+}
+
+/* Дохио тэг бол — асуудал АЛГА гэсэн эерэг мэдээлэл. Бүдгэрүүлэхгүй, харин
+   хүлээн авах боломжгүй болгоод ногоон болгоно (`--tone` нь ногоон ирнэ). */
+.signal:disabled { cursor: default; opacity: 0.72; }
+
+.signalCount {
+  flex: none;
+  min-width: 42px;
+  font-size: 1.42rem;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--tone);
+  text-align: right;
+}
+
+.signalText { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.signalLabel { font-size: 0.79rem; font-weight: 600; color: var(--ink); line-height: 1.3; }
+.signalDetail { font-size: 0.69rem; color: var(--ink-3); line-height: 1.4; }

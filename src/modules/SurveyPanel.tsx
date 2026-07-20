@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Section, Stats, Stat, Bars, Rows, Ring, Data, Empty, List, ListItem, Chip } from '@/components/ui';
+import { Section, Stats, Stat, Bars, Rows, Ring, Data, Empty, List, ListItem, Chip, Col, Note, Split } from '@/components/ui';
 import { useAsync } from '@/lib/useAsync';
 import {
   queryFeatures, queryStats, queryPolygon, queryPoints,
@@ -110,18 +110,19 @@ export function SurveySummary() {
           </Section>
         ) : (
           <Section title="Талбайн хяналт" note={`${num(d.count)} тайлан`}>
-            <Stats cols={3}>
-              <Stat value={num(d.count)} label="Ирсэн тайлан" color={HUE} accent />
-              <Stat value={num(d.workers)} label="Хүн хүч" color={HUE} />
-              <Stat value={num(d.machines)} label="Техник" color={HUE} />
-            </Stats>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginTop: 14 }}>
-              <Ring value={d.progress} color={HUE} size={78} width={8} label="б. угсралт" />
-              <p className={s.note}>
-                Талбар дээрээс илгээсэн тайлангуудын «Б. Барилга угсралтын нийт гүйцэтгэл»-ийн
-                дундаж. Энэ нь төлөвлөгөөний гүйцэтгэлээс ХАМААРАЛГҮЙ, бие даасан хэмжилт.
-              </p>
-            </div>
+            <Col gap="md">
+              <Stats cols={3}>
+                <Stat value={num(d.count)} label="Ирсэн тайлан" color={HUE} accent />
+                <Stat value={num(d.workers)} label="Хүн хүч" color={HUE} />
+                <Stat value={num(d.machines)} label="Техник" color={HUE} />
+              </Stats>
+              <Split aside={<Ring value={d.progress} color={HUE} size={78} width={8} label="б. угсралт" />}>
+                <Note>
+                  Талбар дээрээс илгээсэн тайлангуудын «Б. Барилга угсралтын нийт гүйцэтгэл»-ийн
+                  дундаж. Энэ нь төлөвлөгөөний гүйцэтгэлээс ХАМААРАЛГҮЙ, бие даасан хэмжилт.
+                </Note>
+              </Split>
+            </Col>
           </Section>
         )
       }
@@ -262,10 +263,11 @@ export function SurveyReports({
         return (
           <>
             <Section title="Талбайн хяналтын тайлан" note={`сүүлийн ${Math.min(d.reports.length, 100)}`}>
-              <p className={s.note} style={{ marginBottom: 12 }}>
+              <Col gap="sm">
+              <Note>
                 Мобайл аппаас ирсэн тайлангууд. Дарж дэлгэрэнгүйг нь харна, эсвэл газрын
                 зураг дээрх хөх ногоон цэг дээр дарна.
-              </p>
+              </Note>
               <List>
                 {d.reports.map((r) => {
                   const id = String(r.globalid);
@@ -284,6 +286,7 @@ export function SurveyReports({
                   );
                 })}
               </List>
+              </Col>
             </Section>
 
             {active && <ReportDetail r={active} issues={activeIssues} />}
@@ -318,11 +321,11 @@ export function ReportDetail({ r, issues }: { r: Row; issues: Row[] }) {
             { key: 'Техник механизм', value: <span className="num">{num(Number(r[F.machines] ?? 0))}</span> },
             {
               key: 'Нийт гүйцэтгэл',
-              value: <span className="num" style={{ color: HUE }}>{pct(Number(r[F.total] ?? 0))}</span>,
+              value: <span className={`num ${s.good}`}>{pct(Number(r[F.total] ?? 0))}</span>,
             },
             {
               key: 'Дутуу гүйцэтгэл',
-              value: <span className="num" style={{ color: 'var(--bad)' }}>{pct(Number(r[F.shortfall] ?? 0))}</span>,
+              value: <span className={`num ${s.bad}`}>{pct(Number(r[F.shortfall] ?? 0))}</span>,
             },
           ]}
         />

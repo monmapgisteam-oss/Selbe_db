@@ -8,17 +8,29 @@ const tone = (c?: string) => ({ '--tone': c ?? 'var(--hue)' }) as CSSProperties;
 
 /* ── Хэсэг ── */
 
+/**
+ * Дашбоардын хэсэг.
+ *
+ * `tone="primary"` нь тухайн самбарын ГОЛ хэсгийг заана — модулийн өнгөөр зүүн
+ * ирмэг татаж, дэвсгэрийг нь өргөнө.
+ *
+ * ⚠️ Самбар бүрд НЭГ л primary байна. Урьд нь 6-7 хэсэг дараалахад бүгд ижил
+ * жинтэй байсан тул хэрэглэгч аль нь гол вэ гэдгийг ялгаж чаддаггүй байв —
+ * хоёр, гурав нь онцлогдвол тэр асуудал шийдэгдэхгүй, зөвхөн шилжинэ.
+ */
 export function Section({
   title,
   note,
+  tone,
   children,
 }: {
   title?: string;
   note?: ReactNode;
+  tone?: 'primary';
   children: ReactNode;
 }) {
   return (
-    <section className={s.section}>
+    <section className={`${s.section} ${tone === 'primary' ? s.sectionPrimary : ''}`}>
       {title && (
         <header className={s.sectionHead}>
           <h3 className={s.sectionTitle}>{title}</h3>
@@ -27,6 +39,47 @@ export function Section({
       )}
       {children}
     </section>
+  );
+}
+
+/* ── Байрлалын примитив ── */
+
+/**
+ * Босоо өрлөг тогтмол зайтай.
+ *
+ * ⚠️ Эдгээр примитивээс өмнө самбарууд `style={{ marginTop: 16 }}`-ыг 40 гаруй
+ * газар гараар бичдэг байв. Утга нь 10, 12, 14, 16 гэж санамсаргүй хэлбэлзэж,
+ * нэг самбарын дотор ч жигдэрдэггүй байлаа.
+ */
+export function Col({ gap = 'md', children }: { gap?: 'sm' | 'md' | 'lg'; children: ReactNode }) {
+  return <div className={`${s.col} ${s[`col_${gap}`]}`}>{children}</div>;
+}
+
+/**
+ * Зүүнд дүрслэл (цагираг/дугуй), баруунд тайлбар.
+ * Самбаруудад хамгийн олон давтагдсан өрлөг.
+ */
+export function Split({ aside, children }: { aside: ReactNode; children: ReactNode }) {
+  return (
+    <div className={s.split}>
+      <div className={s.splitAside}>{aside}</div>
+      <div className={s.splitBody}>{children}</div>
+    </div>
+  );
+}
+
+/** Хэсгийн доторх тайлбар бичвэр */
+export function Note({ children }: { children: ReactNode }) {
+  return <p className={s.noteText}>{children}</p>;
+}
+
+/** Хэсгийн доторх дэд гарчиг — Section-ыг дахин давхарлахгүйгээр бүлэглэнэ */
+export function SubHead({ children, note }: { children: ReactNode; note?: ReactNode }) {
+  return (
+    <div className={s.subHead}>
+      {children}
+      {note && <span className={s.subNote}>{note}</span>}
+    </div>
   );
 }
 

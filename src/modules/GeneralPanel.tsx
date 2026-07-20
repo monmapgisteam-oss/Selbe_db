@@ -1,8 +1,9 @@
 'use client';
 
 import { type CSSProperties, type Dispatch, type SetStateAction } from 'react';
-import { Section, Stats, Stat, Bars, Donut, Rows, Ring, Data, Empty } from '@/components/ui';
-import { useMap, BORROWED_LAYERS, ZONE_LIST_HUE } from '@/components/MapCanvas';
+import { Section, Stats, Stat, Bars, Donut, Rows, Ring, Data, Empty, Col, Note, Split, SubHead } from '@/components/ui';
+import { BORROWED_LAYERS, ZONE_LIST_HUE } from '@/components/MapCanvas';
+import { useFilter } from '@/lib/filter';
 import { useAsync } from '@/lib/useAsync';
 import { queryGroup, queryStats, queryFeatures, count, sum, avg, groups, groupWhere, type Row } from '@/lib/query';
 import {
@@ -119,15 +120,13 @@ export function GeneralLayers({
   clearPicked,
   sublayers,
   setSublayers,
-  setFacet,
 }: {
   clearPicked: () => void;
   sublayers: string[];
   /** Функциональ шинэчлэлт заавал дэмжинэ — дараалсан даралт бие биенээ дарж бичихгүй */
   setSublayers: Dispatch<SetStateAction<string[]>>;
-  setFacet: (v: string | null) => void;
 }) {
-  const { setHighlight } = useMap();
+  const { clear } = useFilter();
 
   // ⚠️ «Хоосон бол анхдагчаа тавь» гэсэн эффект БАЙХГҮЙ. Шугам сүлжээ нэг модульд
   //    нэгдэж, `sublayers`-ыг ХУВААХ болсон тул хоёр самбар тус тусын анхдагчийг
@@ -139,8 +138,9 @@ export function GeneralLayers({
     // ⚠️ Функциональ шинэчлэлт: хэд хэдэн даралт нэг батчид орвол хуучин массивыг
     //    уншиж бие биенээ дарж бичихээс сэргийлнэ.
     setSublayers((prev) => (prev.includes(k) ? prev.filter((x) => x !== k) : [...prev, k]));
-    setFacet(null);
-    setHighlight(null);
+    // ⚠️ Шүүлт нь тухайн давхаргын талбарын нэрээр бичигдсэн. Давхаргыг унтраахад
+    //    үлдвэл өөр давхаргад тэр талбар байхгүй тул хүсэлт унаж, зураг хоосорно.
+    clear();
     // Сонгосон объектыг цэвэрлэнэ — эс бөгөөс өмнөх давхаргын атрибут өөр давхаргын
     // талбарын нэрсээр уншигдаж, бүх мөр «Бүртгэгдээгүй» болно.
     clearPicked();
@@ -151,6 +151,7 @@ export function GeneralLayers({
       {/* БҮХ давхарга нэг жагсаалтад — бүлэггүй. Урьд нь ерөнхий 7 нэг самбарт,
           дэд бүтцийн 11 өөр самбарт, өөр өөр хэлбэрээр гардаг байлаа. */}
       <Section title="Давхарга" note="олон давхаргыг зэрэг харж болно">
+        <Col gap="sm">
         <div className={s.layers}>
           {ALL_LAYERS.map((it) => {
             const on = sublayers.includes(it.key);
@@ -185,10 +186,9 @@ export function GeneralLayers({
         </div>
 
         {sublayers.length === 0 && (
-          <p className={s.note} style={{ marginTop: 12 }}>
-            Давхарга сонгоогүй байна — газрын зураг хоосон харагдана.
-          </p>
+          <Note>Давхарга сонгоогүй байна — газрын зураг хоосон харагдана.</Note>
         )}
+        </Col>
       </Section>
     </>
   );
@@ -205,14 +205,10 @@ export function GeneralInfo({
   picked,
   pickedLayer,
   sublayers,
-  facet,
-  setFacet,
 }: {
   picked: Record<string, unknown> | null;
   pickedLayer: string | null;
   sublayers: string[];
-  facet: string | null;
-  setFacet: (v: string | null) => void;
 }) {
   const visibleGeneral = sublayers.filter(isKey) as GeneralKey[];
   const visibleUtil = sublayers.filter(isUtilKey) as UtilKey[];
@@ -229,11 +225,11 @@ export function GeneralInfo({
   return (
     <>
       {visibleGeneral.map((k) => (
-        <GeneralLayerDetail key={k} layerKey={k} facet={facet} setFacet={setFacet} />
+        <GeneralLayerDetail key={k} layerKey={k} />
       ))}
 
       {visibleUtil.map((k) => (
-        <UtilityLayerDetail key={k} layerKey={k} facet={facet} setFacet={setFacet} />
+        <UtilityLayerDetail key={k} layerKey={k} />
       ))}
 
       {sublayers.includes('zone') && <ZoneBrief />}
@@ -297,55 +293,56 @@ function ZoneBrief() {
       {(d) => (
         <>
           <Section title="Хот төлөвлөлтийн бүс" note={d.dup > 0 ? `${d.dup} давхардал хасав` : undefined}>
-            <Stats cols={3}>
-              <Stat value={num(d.n)} label="Бүс" color={ZONE_HUE} accent />
-              <Stat value={num(d.ga, 1)} unit="га" label="Талбай" color={ZONE_HUE} />
-              <Stat value={num(d.ail)} label="Төлөвлөсөн айл" color={ZONE_HUE} />
-            </Stats>
-            <div style={{ marginTop: 10 }}>
+            <Col gap="sm">
+              <Stats cols={3}>
+                <Stat value={num(d.n)} label="Бүс" color={ZONE_HUE} accent />
+                <Stat value={num(d.ga, 1)} unit="га" label="Талбай" color={ZONE_HUE} />
+                <Stat value={num(d.ail)} label="Төлөвлөсөн айл" color={ZONE_HUE} />
+              </Stats>
               <Stats cols={2}>
                 <Stat value={num(d.builtM2 / 1000, 0)} unit="мянган м²" label="Барилгын талбай" color={ZONE_HUE} />
                 <Stat value={num(d.density, 2)} label="Нягтрал (барилга м² / газар м²)" color={ZONE_HUE} />
               </Stats>
-            </div>
-            <div style={{ marginTop: 16 }}>
-              <div className={s.facetHead}>Бүсийн ангилал</div>
-              <Donut
-                center={num(d.n)}
-                centerLabel="бүс"
-                items={d.types.map((g) => ({
-                  key: g.label, label: g.label, value: g.values.n,
-                  color: ZONE_TYPES[g.label] ?? ZONE_TYPE_EMPTY_HUE,
-                }))}
-              />
-            </div>
+              <div>
+                <SubHead>Бүсийн ангилал</SubHead>
+                <Donut
+                  center={num(d.n)}
+                  centerLabel="бүс"
+                  items={d.types.map((g) => ({
+                    key: g.label, label: g.label, value: g.values.n,
+                    color: ZONE_TYPES[g.label] ?? ZONE_TYPE_EMPTY_HUE,
+                  }))}
+                />
+              </div>
+            </Col>
           </Section>
 
           <Section title="Авто зогсоол" note="норм ба төлөвлөсөн">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              <Ring
-                value={d.coverage}
-                size={84}
-                width={9}
-                label="хүртээмж"
-                color={d.coverage != null && d.coverage < 50 ? 'var(--bad)' : ZONE_HUE}
-              />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <Rows
-                  items={[
-                    { key: 'Шаардлагатай (норм)', value: <span className="num">{num(d.norm)}</span> },
-                    { key: 'Төлөвлөсөн — нийт', value: <span className="num">{num(d.plan)}</span> },
-                    { key: '· ил', value: <span className="num">{num(d.parkOpen)}</span> },
-                    { key: '· далд', value: <span className="num">{num(d.parkUnder)}</span> },
-                    { key: 'Одоо байгаа', value: <span className="num">{num(d.exist)}</span> },
-                    {
-                      key: 'Дутагдал',
-                      value: <span className="num" style={{ color: 'var(--bad)' }}>{num(Math.max(0, d.norm - d.plan))}</span>,
-                    },
-                  ]}
+            <Split
+              aside={
+                <Ring
+                  value={d.coverage}
+                  size={84}
+                  width={9}
+                  label="хүртээмж"
+                  color={d.coverage != null && d.coverage < 50 ? 'var(--bad)' : ZONE_HUE}
                 />
-              </div>
-            </div>
+              }
+            >
+              <Rows
+                items={[
+                  { key: 'Шаардлагатай (норм)', value: <span className="num">{num(d.norm)}</span> },
+                  { key: 'Төлөвлөсөн — нийт', value: <span className="num">{num(d.plan)}</span> },
+                  { key: '· ил', value: <span className="num">{num(d.parkOpen)}</span> },
+                  { key: '· далд', value: <span className="num">{num(d.parkUnder)}</span> },
+                  { key: 'Одоо байгаа', value: <span className="num">{num(d.exist)}</span> },
+                  {
+                    key: 'Дутагдал',
+                    value: <span className={`num ${s.bad}`}>{num(Math.max(0, d.norm - d.plan))}</span>,
+                  },
+                ]}
+              />
+            </Split>
           </Section>
 
           {d.budget > 0 && (
@@ -394,24 +391,24 @@ function ParcelBrief() {
       <Data q={q}>
         {(d) => (
           <>
-            <Stats cols={2}>
-              <Stat value={num(d.n)} label="Талбарын тоо" color={LAND_HUE} accent />
-              <Stat value={ha(d.m2, 2)} unit="га" label="Нийт талбай" color={LAND_HUE} />
-            </Stats>
-            <div style={{ marginTop: 16 }}>
-              <div className={s.facetHead}>
-                Чөлөөлөлтийн явц <span className={s.facetNote}>{d.items.length} төлөв</span>
+            <Col gap="md">
+              <Stats cols={2}>
+                <Stat value={num(d.n)} label="Талбарын тоо" color={LAND_HUE} accent />
+                <Stat value={ha(d.m2, 2)} unit="га" label="Нийт талбай" color={LAND_HUE} />
+              </Stats>
+              <div>
+                <SubHead note={`${d.items.length} төлөв`}>Чөлөөлөлтийн явц</SubHead>
+                <Bars
+                  items={d.items.map((g) => ({
+                    key: g.label,
+                    label: g.label,
+                    value: g.values.n,
+                    display: num(g.values.n),
+                    color: PARCEL_STATUS[g.label] ?? PARCEL_STATUS_EMPTY_HUE,
+                  }))}
+                />
               </div>
-              <Bars
-                items={d.items.map((g) => ({
-                  key: g.label,
-                  label: g.label,
-                  value: g.values.n,
-                  display: num(g.values.n),
-                  color: PARCEL_STATUS[g.label] ?? PARCEL_STATUS_EMPTY_HUE,
-                }))}
-              />
-            </div>
+            </Col>
           </>
         )}
       </Data>
@@ -427,24 +424,16 @@ function ParcelBrief() {
  * ангилал сонгогдвол хоёр дахь нь эхнийхийг чимээгүй дарж бичих байлаа. Нэг
  * дундын төлөвтэй байснаар аль нэг л идэвхтэй байна.
  */
-function GeneralLayerDetail({
-  layerKey,
-  facet,
-  setFacet,
-}: {
-  layerKey: GeneralKey;
-  facet: string | null;
-  setFacet: (v: string | null) => void;
-}) {
+function GeneralLayerDetail({ layerKey }: { layerKey: GeneralKey }) {
   const def = GENERAL[layerKey];
   const q = useGeneral(layerKey);
-  const { setHighlight } = useMap();
+  const { toggle, active } = useFilter();
 
   return (
     <Section title={def.title}>
       <Data q={q}>
         {(d) => (
-          <>
+          <Col gap="md">
             <Stats cols={3}>
               <Stat value={num(d.count)} label="Объектын тоо" color={def.hue} accent />
               {d.areaM2 > 0 && <Stat value={ha(d.areaM2, 1)} unit="га" label="Талбай" color={def.hue} />}
@@ -452,57 +441,58 @@ function GeneralLayerDetail({
             </Stats>
 
             {(d.sums.length > 0 || d.avgs.length > 0) && (
-              <div style={{ marginTop: 12 }}>
-                <Rows
-                  items={[
-                    ...d.sums.map((x) => ({
-                      key: x.label,
-                      value: (
-                        <span className="num">
-                          {x.value == null ? '—' : num(x.value)}
-                          {x.value != null && x.unit ? ` ${x.unit}` : ''}
-                        </span>
-                      ),
-                    })),
-                    ...d.avgs.map((x) => ({
-                      key: x.label,
-                      value: (
-                        <span className="num">
-                          {x.value == null ? '—' : num(x.value, x.digits)}
-                          {x.value != null && x.unit ? ` ${x.unit}` : ''}
-                        </span>
-                      ),
-                    })),
-                  ]}
-                />
-              </div>
+              <Rows
+                items={[
+                  ...d.sums.map((x) => ({
+                    key: x.label,
+                    value: (
+                      <span className="num">
+                        {x.value == null ? '—' : num(x.value)}
+                        {x.value != null && x.unit ? ` ${x.unit}` : ''}
+                      </span>
+                    ),
+                  })),
+                  ...d.avgs.map((x) => ({
+                    key: x.label,
+                    value: (
+                      <span className="num">
+                        {x.value == null ? '—' : num(x.value, x.digits)}
+                        {x.value != null && x.unit ? ` ${x.unit}` : ''}
+                      </span>
+                    ),
+                  })),
+                ]}
+              />
             )}
 
             {d.progress != null && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginTop: 14 }}>
-                <Ring value={d.progress} color={def.hue} size={78} width={8} />
-                <p className={s.note}>
+              <Split aside={<Ring value={d.progress} color={def.hue} size={78} width={8} />}>
+                <Note>
                   Бодит гүйцэтгэлийн дундаж. Үйлчилгээнд «төлөвлөсөн гүйцэтгэл %» гэсэн талбар
                   байхгүй тул зөвхөн бодит хувь харагдана.
-                </p>
-              </div>
+                </Note>
+              </Split>
             )}
 
             {d.facets.map((f) => (
-              <div key={f.label} style={{ marginTop: 16 }}>
-                <div className={s.facetHead}>
-                  {f.label} <span className={s.facetNote}>дарж газрын зурагт шүүнэ</span>
-                </div>
+              <div key={f.label}>
+                <SubHead note="дарж газрын зурагт шүүнэ">{f.label}</SubHead>
                 <Bars
                   color={def.hue}
-                  selected={facet}
+                  selected={active?.key ?? null}
                   onSelect={(k) => {
                     const g = f.items.find((x) => `${layerKey}|${f.label}:${x.label}` === k);
-                    const next = facet === k ? null : k;
-                    setFacet(next);
-                    // groupWhere нь нэгтгэсэн бүх түүхий утгыг хамруулна —
-                    // баганад тоологдсонтой яг ижил олонлог сонгогдоно
-                    setHighlight(next && g ? groupWhere(f.field, g) : null);
+                    if (!g) return;
+                    toggle({
+                      key: k,
+                      label: `${f.label}: ${g.label}`,
+                      group: def.title,
+                      // groupWhere нь нэгтгэсэн бүх түүхий утгыг хамруулна —
+                      // баганад тоологдсонтой яг ижил олонлог сонгогдоно
+                      where: groupWhere(f.field, g),
+                      module: 'general',
+                      color: def.hue,
+                    });
                   }}
                   items={f.items.map((g) => ({
                     // ⚠️ Түлхүүрт давхаргын нэрийг заавал оруулна: хоёр давхаргад ижил
@@ -518,7 +508,7 @@ function GeneralLayerDetail({
                 />
               </div>
             ))}
-          </>
+          </Col>
         )}
       </Data>
     </Section>

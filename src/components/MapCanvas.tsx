@@ -52,10 +52,21 @@ type MapApi = {
    * хоёуланг нь нэг дор харуулна).
    */
   zoomToLayer: (key: ModuleKey | string, opts?: { withBoundary?: boolean }) => void;
+  /**
+   * Тодорхой ОБЪЕКТУУД руу ойртоно — давхарга бүхэлдээ биш.
+   *
+   * Хайлтын үр дүн дээр дарахад тэр нэг блок/талбар руу нь очих хэрэгтэй.
+   * `zoomToLayer` бол давхаргын бүтэн хүрээ рүү үсэрдэг тул энд тохирохгүй.
+   *
+   * ⚠️ Давхарга ил болсны ДАРАА дуудна. Ил биш давхарга `view.map.layers`-т
+   * байгаа ч `visible: false` тул хайлт нь түүнийг олохгүй.
+   */
+  zoomToWhere: (layerId: string, where: string) => void;
 };
 
 const Ctx = createContext<MapApi>({
-  view: null, sketchLayer: null, setHighlight: () => {}, setAoiFilter: () => {}, zoomToLayer: () => {},
+  view: null, sketchLayer: null, setHighlight: () => {}, setAoiFilter: () => {},
+  zoomToLayer: () => {}, zoomToWhere: () => {},
 });
 
 /** MapCanvas үүссэн view-гээ энд бүртгүүлнэ (дотоод) */
@@ -240,9 +251,9 @@ const hueOf = (k: ModuleKey) => MODULES.find((m) => m.key === k)!.hue;
  * Давхаргууд өөр өөр проекцтой (4326, 32648, 102100, WKT-only) тул хүрээг нэгтгэх,
  * зурагт ашиглахын өмнө заавал НЭГ системд буулгана.
  */
-async function extentOf(url: string, view: MapView): Promise<Extent | null> {
+async function extentOf(url: string, view: MapView, where = '1=1'): Promise<Extent | null> {
   const wkid = view.spatialReference?.wkid ?? 102100;
-  const box = await queryExtent(url, wkid);
+  const box = await queryExtent(url, wkid, where);
   if (!box) return null;
   return new Extent({
     xmin: box.xmin,
@@ -369,6 +380,12 @@ export const DEFAULT_OVERLAYS: string[] = [IMAGERY_ID];
  */
 const BORROWED: Partial<Record<ModuleKey, Record<string, string>>> = {
   general: { zone: 'zone', 'land:parcel': 'parcel' },
+  /**
+   * Тойм модуль нь ӨӨРИЙН давхаргагүй — бүх дохио нь бусад модулийн өгөгдлөөс
+   * тооцоологдоно. Гэвч дохиог зурагт харуулах ёстой («хугацаа хэтэрсэн 14 блок»
+   * дээр дарахад тэр 14 нь гэрэлтэх ёстой) тул эх давхаргуудыг нь зээлнэ.
+   */
+  overview: { building: 'building', 'land:parcel': 'parcel', survey: 'survey' },
 };
 
 /** Зээлдсэн давхаргын жагсаалтын мэдээлэл — самбар үүгээр шилжүүлэгч зурна */
@@ -377,11 +394,17 @@ export const BORROWED_LAYERS: Record<ModuleKey, { key: string; title: string; hu
     { key: 'zone', title: 'Хот төлөвлөлтийн бүс', hue: ZONE_LIST_HUE },
     { key: 'parcel', title: 'Үлдсэн нэгж талбар', hue: hueOf('land') },
   ],
+  // Тойм модулийн зээлдсэн давхаргыг хэрэглэгч ГАРААР сонгохгүй — дохио дарахад
+  // өөрөө асна. Тиймээс шилжүүлэгчийн жагсаалт хоосон.
+  overview: [],
   building: [],
   land: [],
 };
 
 export const DEFAULT_SUBLAYERS: Partial<Record<ModuleKey, string[]>> = {
+  // Тойм — барилгын блокууд гүйцэтгэлээрээ өнгөтэй тул нээхэд шууд контекст өгнө.
+  // Чөлөөлөлт, тайлангийн цэгийг дохио дарах үед нь өөрөө нэмнэ.
+  overview: ['building'],
   // Ерөнхий мэдээлэл — 11 дэд давхаргаас эхлэхэд ганц нь ил (бусдыг нь хэрэглэгч нэмнэ)
   general: ['built'],
   // Газар — эхлэхэд чөлөөлөлтийн таб. 43 мянган кадастрын полигон АНХНААСАА
@@ -764,9 +787,36 @@ export function MapProvider({ children }: { children: ReactNode }) {
     }
   }, [view]);
 
+  /**
+   * Заасан объектууд руу ойртоно.
+   *
+   * ⚠️ Хамгийн бага хэмжээ тавина: нэг цэгэн объект (тайлангийн цэг) эсвэл жижиг
+   * талбарын хүрээ нь бараг тэг өргөнтэй байдаг тул шууд `goTo` хийвэл газрын
+   * зураг хамгийн ойрын масштаб руу үсэрч, хэрэглэгч хаана байгаагаа алдана.
+   */
+  const zoomToWhere = useCallback(async (layerId: string, where: string) => {
+    if (!view || view.destroyed || !view.map) return;
+
+    const target = view.map.layers.find((x) => x.id === layerId) as FeatureLayer | undefined;
+    if (!target?.url) return;
+
+    try {
+      const e = await extentOf(target.url, view, where);
+      if (!e || view.destroyed) return;
+      // 150 м-ээс нарийн хүрээг тэлнэ — контекстгүй ойртохоос сэргийлнэ
+      const MIN = 150;
+      const box = e.width < MIN || e.height < MIN
+        ? e.clone().expand(Math.max(MIN / Math.max(e.width, 1), MIN / Math.max(e.height, 1)))
+        : e.clone().expand(1.6);
+      view.goTo(box).catch(() => {});
+    } catch (err) {
+      console.error('[selbe] объектын хүрээг тодорхойлж чадсангүй:', err);
+    }
+  }, [view]);
+
   const api = useMemo<MapApi>(
-    () => ({ view, sketchLayer, setHighlight, setAoiFilter, zoomToLayer }),
-    [view, sketchLayer, setHighlight, setAoiFilter, zoomToLayer],
+    () => ({ view, sketchLayer, setHighlight, setAoiFilter, zoomToLayer, zoomToWhere }),
+    [view, sketchLayer, setHighlight, setAoiFilter, zoomToLayer, zoomToWhere],
   );
 
   return (
