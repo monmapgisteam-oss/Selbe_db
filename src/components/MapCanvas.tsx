@@ -8,6 +8,9 @@ import Map from '@arcgis/core/Map';
 import MapView from '@arcgis/core/views/MapView';
 import FeatureLayer from '@arcgis/core/layers/FeatureLayer';
 import GraphicsLayer from '@arcgis/core/layers/GraphicsLayer';
+import GroupLayer from '@arcgis/core/layers/GroupLayer';
+import ImageryLayer from '@arcgis/core/layers/ImageryLayer';
+import type Layer from '@arcgis/core/layers/Layer';
 import VectorTileLayer from '@arcgis/core/layers/VectorTileLayer';
 import Basemap from '@arcgis/core/Basemap';
 import Extent from '@arcgis/core/geometry/Extent';
@@ -16,7 +19,7 @@ import '@arcgis/core/assets/esri/themes/light/main.css';
 
 import {
   BAGTS, ZONE, BUILDING, PARCEL, CADASTRE, VALUATION, GENERAL, UTILITY, SURVEY, HOME, BASEMAP,
-  BOUNDARY, BOUNDARY_HUE, PROGRESS_LEVELS, PARCEL_STATUS, MODULES,
+  BOUNDARY, BOUNDARY_HUE, PROGRESS_LEVELS, PARCEL_STATUS, MODULES, IMAGERY,
   type ModuleKey, type GeneralKey, type UtilKey,
 } from '@/lib/services';
 import { queryExtent } from '@/lib/query';
@@ -264,6 +267,17 @@ const BOUNDARY_SELBE2_ID = 'bnd:selbe2';
 const REF_BAGTS = 'ref:bagts';
 const REF_BUILDING = 'ref:building';
 
+/** Агаарын зураг — 9 ImageServer-ийг багцалсан GroupLayer */
+export const IMAGERY_ID = 'imagery';
+
+/**
+ * Апп нээгдэхэд АНХНААСАА асаалттай байх нэмэлт давхаргууд.
+ *
+ * Ортофото нь бодит газрын дүр төрхийг өгдөг тул вектор давхаргыг уншихад
+ * шууд контекст болно — хэрэглэгч бүрт гараар асаалгүй анхнаасаа ил байлгана.
+ */
+export const DEFAULT_OVERLAYS: string[] = [IMAGERY_ID];
+
 /**
  * Лавлах давхарга → аль модульд харагдах.
  *
@@ -286,6 +300,8 @@ const PASSIVE_IDS = new Set([
   BOUNDARY_SELBE2_ID,
   REF_BAGTS,
   REF_BUILDING,
+  // Агаарын зураг нь растр суурь — дарж сонгох, шүүх зүйлгүй
+  IMAGERY_ID,
 ]);
 
 /**
@@ -307,10 +323,13 @@ const isInert = (id: string) => PASSIVE_IDS.has(id) || OVERLAY_IDS.has(id);
  * Модулиар биш, ДАВХАРГААР жагсаана: «Ерөнхий мэдээлэл» гэсэн нэг мөрийн оронд
  * доторх 7 давхарга (Барилга, Ногоон байгууламж, Зам…) тус тусдаа гарна.
  * `module` нь зөвхөн бүлэглэх (гарчиг) болон идэвхтэй модулийнхыг хасахад хэрэгтэй.
+ * `module: null` = ямар ч модульд харьяалагдахгүй (агаарын зураг) — үргэлж сонгогдоно.
  */
-export type OverlayLayer = { id: string; title: string; hue: string; module: ModuleKey };
+export type OverlayLayer = { id: string; title: string; hue: string; module: ModuleKey | null };
 
 export const OVERLAY_LAYERS: OverlayLayer[] = [
+  // Агаарын зураг — модулиас үл хамаарах растр суурь, тиймээс жагсаалтын эхэнд
+  { id: IMAGERY_ID, title: IMAGERY.title, hue: IMAGERY.hue, module: null },
   ...(Object.keys(GENERAL) as GeneralKey[]).map((k) => ({
     id: `general:${k}`,
     title: GENERAL[k].title,
@@ -332,8 +351,35 @@ export const OVERLAY_LAYERS: OverlayLayer[] = [
   { id: 'survey', title: 'Талбайн хяналтын тайлан', hue: hueOf('survey'), module: 'survey' },
 ];
 
-function buildLayers(): FeatureLayer[] {
-  const L: FeatureLayer[] = [];
+function buildLayers(): Layer[] {
+  const L: Layer[] = [];
+
+  // 0а · АГААРЫН ЗУРАГ — растр суурь. Хамгийн эхэнд нэмснээр БҮХ вектор давхаргын
+  //      доор, суурь зургийн дээр зурагдана. Анхдагчаар унтраалттай.
+  L.push(new GroupLayer({
+    id: IMAGERY_ID,
+    title: IMAGERY.title,
+    visible: false,
+    listMode: 'hide',
+    /**
+     * ⚠️ `visibilityMode: 'inherited'` БИШ. Тэр горимд хүүхэд давхаргууд нэмэгдэх
+     * агшинд эцгийнхээ `visible`-ыг шингээдэг (`layerAdded` → `e.visible = this.visible`)
+     * бөгөөд конструкторын шинжүүд ямар дарааллаар олгогдох нь баталгаагүй тул
+     * `layers` нь `visibilityMode`-оос ӨМНӨ орвол горим огт үйлчлэхгүй үлдэнэ.
+     *
+     * Анхдагч 'independent' дээр хүүхэд бүр өөрийн `visible: true`-гээ хадгалж,
+     * бүлгийн `visible` нь нийтийн хаалга болно — үр дүн ижил, эрсдэлгүй.
+     */
+    layers: IMAGERY.urls.map((url, i) => new ImageryLayer({
+      id: `${IMAGERY_ID}:${i}`,
+      url,
+      visible: true,
+      // Растрыг байгаагаар нь харуулна — сервер дээрх RGB нь боловсруулагдсан
+      format: 'jpgpng',
+      popupEnabled: false,
+      legendEnabled: false,
+    })),
+  }));
 
   // 0 · ТӨСЛИЙН ҮНДСЭН ХИЛ — бүх горимд байнга харагдана.
   //     Хамгийн эхэнд нэмснээр бусад давхаргын ДООР зурагдана.
@@ -819,7 +865,9 @@ export function MapCanvas({
         // Нэмэлт давхарга — идэвхтэй модулиас бүдэгхэн.
         // Тодруулга/шүүлтэд ороогүй тул хуучин эффект үлдсэн бол цэвэрлэнэ.
         l.visible = true;
-        l.opacity = 0.55;
+        // Агаарын зураг нь бусад давхаргын ДООР зурагддаг растр суурь — бүдгэрүүлбэл
+        // зөвхөн уншигдахаа болино, дарах зүйл нь ч байхгүй. Тиймээс бүрэн тодоор.
+        l.opacity = l.id === IMAGERY_ID ? 1 : 0.55;
         OVERLAY_IDS.add(l.id);
         if ('featureEffect' in l) {
           (l as FeatureLayer).featureEffect = null as unknown as __esri.FeatureEffect;

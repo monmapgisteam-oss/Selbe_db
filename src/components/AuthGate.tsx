@@ -22,6 +22,26 @@ type Status = 'checking' | 'signed-in' | 'signed-out' | 'denied';
 /** portalUrl-ийн сүүлийн '/'-г арилгаад /sharing нэмнэ */
 const sharingUrl = () => `${AUTH.portalUrl.replace(/\/+$/, '')}/sharing`;
 
+/**
+ * «Нэвтрэх товч дарж, ArcGIS руу чиглүүлсэн» тэмдэглэгээ.
+ *
+ * Анх орж ирэхэд нэвтрэлт шалгах нь унах нь ХЭВИЙН (хараахан нэвтрээгүй). Тиймээс
+ * алдааг тэр болгонд харуулбал утгагүй чимээ болно. Харин нэвтрэлтээс БУЦАЖ ирээд
+ * унасан бол энэ нь жинхэнэ бүтэлгүйтэл — учрыг нь заавал харуулна.
+ */
+const ATTEMPT_KEY = 'selbe-auth-attempt';
+
+/** Алдаанаас хүнд ойлгомжтой мессеж гаргана */
+const describe = (e: unknown): string => {
+  if (e instanceof Error) {
+    // ArcGIS-ийн алдаа нэмэлт `details` авчирдаг — оношлоход хамгийн хэрэгтэй нь
+    const d = (e as { details?: { message?: string; httpStatus?: number } }).details;
+    const parts = [e.message, d?.message, d?.httpStatus ? `HTTP ${d.httpStatus}` : ''];
+    return parts.filter(Boolean).join(' · ');
+  }
+  return String(e);
+};
+
 export function AuthGate({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<Status>('checking');
   const [user, setUser] = useState<User | null>(null);
@@ -70,10 +90,21 @@ export function AuthGate({ children }: { children: ReactNode }) {
         console.info('[selbe] нэвтэрсэн:', info.username, '· orgId:', info.orgId);
 
         if (!alive) return;
+        sessionStorage.removeItem(ATTEMPT_KEY);
         setUser(info);
         setStatus(AUTH.allowedOrgId && info.orgId !== AUTH.allowedOrgId ? 'denied' : 'signed-in');
-      } catch {
-        if (alive) setStatus('signed-out');
+      } catch (e) {
+        // ⚠️ Энэ catch-ийг ХООСОН орхиж болохгүй. Токен солилт, portal.load() зэрэг
+        //    жинхэнэ бүтэлгүйтэл ч энд унадаг тул чимээгүй залгивал хэрэглэгч
+        //    учрыг нь мэдэхгүйгээр нэвтрэх дэлгэц рүү эргэлдэнэ.
+        console.error('[selbe] нэвтрэлт шалгах үед:', e);
+        if (!alive) return;
+
+        // Нэвтрэхээр явж ирээд унасан бол л алдааг харуулна (анхны зочилд биш)
+        const wasAttempt = sessionStorage.getItem(ATTEMPT_KEY);
+        sessionStorage.removeItem(ATTEMPT_KEY);
+        if (wasAttempt) setError(describe(e));
+        setStatus('signed-out');
       }
     })();
 
@@ -84,12 +115,16 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
   const signIn = async () => {
     setError(null);
+    // Буцаж ирээд унавал алдааг харуулах эрхтэй болгож тэмдэглэнэ
+    sessionStorage.setItem(ATTEMPT_KEY, '1');
     try {
       const { default: esriId } = await import('@arcgis/core/identity/IdentityManager');
       // popup:false тул энэ нь хуудсыг ArcGIS нэвтрэлт рүү чиглүүлж, буцаж ирнэ
       await esriId.getCredential(sharingUrl());
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Нэвтрэх боломжгүй байна.');
+      console.error('[selbe] нэвтрэх үед:', e);
+      sessionStorage.removeItem(ATTEMPT_KEY);
+      setError(describe(e));
     }
   };
 
@@ -143,6 +178,10 @@ export function AuthGate({ children }: { children: ReactNode }) {
             )}
             <p className={s.sub}>
               Энэ бүртгэл танай байгууллагын хэрэглэгч биш тул хандах эрхгүй байна.
+            </p>
+            {/* Тохиргооны зөрүүг шууд харуулна — эс бөгөөс яагаад татгалзсаныг таахад хэцүү */}
+            <p className={s.error}>
+              Бүртгэлийн orgId: {user?.orgId || '—'} · шаардлагатай: {AUTH.allowedOrgId}
             </p>
             <button type="button" className={s.btnGhost} onClick={signOut}>
               Өөр бүртгэлээр нэвтрэх

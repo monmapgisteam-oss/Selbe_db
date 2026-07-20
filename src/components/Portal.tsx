@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { MapCanvas, MapProvider } from '@/components/MapCanvas';
+import { MapCanvas, MapProvider, DEFAULT_OVERLAYS } from '@/components/MapCanvas';
 import { Icon } from '@/components/Icon';
 import { OverlayControl } from '@/components/OverlayControl';
 import { useTheme } from '@/lib/theme';
@@ -29,8 +29,11 @@ export default function Portal() {
   const [picked, setPicked] = useState<Record<string, unknown> | null>(null);
   /** Дарсан объект аль давхаргаас ирсэн — олон дэд давхарга ил үед чухал */
   const [pickedLayer, setPickedLayer] = useState<string | null>(null);
-  /** Зурагт давхцуулж харах нэмэлт давхаргууд — статистикт нөлөөлөхгүй */
-  const [overlays, setOverlays] = useState<string[]>([]);
+  /**
+   * Зурагт давхцуулж харах нэмэлт давхаргууд — статистикт нөлөөлөхгүй.
+   * Агаарын зураг анхнаасаа асаалттай (`DEFAULT_OVERLAYS`).
+   */
+  const [overlays, setOverlays] = useState<string[]>(DEFAULT_OVERLAYS);
   const { theme, toggle } = useTheme();
 
   const pick = useCallback((attrs: Record<string, unknown> | null, layerId: string | null) => {
@@ -51,7 +54,10 @@ export default function Portal() {
       setModule(key);
       clearPicked();
       setSublayers([]);
-      setOverlays([]);
+      // ⚠️ Хоосон массив БИШ. Хэрэглэгчийн сонгосон нэмэлт давхарга нь өмнөх модулийн
+      //    сэдэвтэй холбоотой тул цэвэрлэх нь зөв, харин агаарын зураг бол модулиас
+      //    үл хамаарах СУУРЬ давхарга — модуль дарах бүрд унтарвал буруу.
+      setOverlays(DEFAULT_OVERLAYS);
     },
     [clearPicked],
   );
