@@ -2,17 +2,22 @@
 
 import { useEffect, useState } from 'react';
 import { Section, Stats, Stat, Bars, Rows, Ring, Data, Empty, List, ListItem, Chip } from '@/components/ui';
-import { useMap } from '@/components/MapCanvas';
 import { useAsync } from '@/lib/useAsync';
 import {
   queryFeatures, queryStats, queryPolygon, queryPoints,
   count, sum, avg, type Row, type Point,
 } from '@/lib/query';
-import { SURVEY, SURVEY_SECTIONS, BOUNDARY, MODULES } from '@/lib/services';
+import { SURVEY, SURVEY_SECTIONS, BOUNDARY, surveyBlock } from '@/lib/services';
+import { SURVEY_HUE } from '@/components/MapCanvas';
 import { num, pct, date, text, blank } from '@/lib/format';
 import s from './survey.module.css';
 
-const HUE = MODULES.find((m) => m.key === 'survey')!.hue;
+/**
+ * Талбайн хяналт нь одоо БИЕ ДААСАН модуль биш — «Барилгын явц ба хяналт»-ын нэг
+ * хэсэг. Тиймээс өнгөө модулиас биш, зургийн давхаргаасаа авна (барилгын улбар
+ * шараас ялгарах ёстой — цэгүүд полигонуудын дээр зурагдана).
+ */
+const HUE = SURVEY_HUE;
 const F = SURVEY.fields;
 
 /** Асуудлын нөлөөллийн зэрэг — мобайл апп латинаар бичдэг */
@@ -29,7 +34,7 @@ const IMPACT: Record<string, { label: string; color: string }> = {
  * барилга, гүйцэтгэгч, хүн хүч, техник, 16 хэсгийн гүйцэтгэлийг агуулна. Асуудлууд
  * `r_asuudal` хүснэгтэд `parentglobalid`-аар холбогдоно.
  */
-function useSurvey() {
+export function useSurvey() {
   return useAsync(async () => {
     const [reports, totals, issues] = await Promise.all([
       queryFeatures(SURVEY.url, { orderBy: `${F.created} DESC`, limit: 100 }),
@@ -60,7 +65,71 @@ function useSurvey() {
   }, []);
 }
 
-/* ═════════════ ЗҮҮН багана — хилээс гадуур бүртгэсэн ═════════════ */
+/**
+ * Тухайн блокийн тайлангууд — `barilga` кодыг блокийн дугаартай тааруулна.
+ * Холболтын дүрэм ба яагаад SQL-ээр биш болохыг `surveyBlock()`-оос үзнэ үү.
+ */
+export const reportsForBlock = (reports: Row[], blok: unknown): Row[] => {
+  const target = text(blok, '').trim();
+  if (!target) return [];
+  return reports.filter((r) => surveyBlock(r[F.building]) === target);
+};
+
+/* ═════════════ Тайлангийн нэгдсэн үзүүлэлт (туслах багана) ═════════════ */
+
+/**
+ * Зөвхөн НИЙЛБЭР үзүүлэлт татна — бүх тайлан, асуудлыг татдаг `useSurvey()`-г
+ * туслах баганад дуудвал үндсэн самбартай давхардаж, нэг өгөгдлийг хоёр удаа авна.
+ */
+function useSurveyTotals() {
+  return useAsync(async () => {
+    const t = await queryStats(SURVEY.url, [
+      count(SURVEY.oid, 'n'),
+      sum(F.workers, 'workers'),
+      sum(F.machines, 'machines'),
+      avg(F.total, 'g'),
+    ]);
+    return {
+      count: Number(t.n ?? 0),
+      workers: Number(t.workers ?? 0),
+      machines: Number(t.machines ?? 0),
+      progress: t.g == null ? null : Number(t.g),
+    };
+  }, []);
+}
+
+export function SurveySummary() {
+  const q = useSurveyTotals();
+
+  return (
+    <Data q={q}>
+      {(d) =>
+        d.count === 0 ? (
+          <Section title="Талбайн хяналт">
+            <Empty label="Мобайл аппаас тайлан хараахан ирээгүй байна." />
+          </Section>
+        ) : (
+          <Section title="Талбайн хяналт" note={`${num(d.count)} тайлан`}>
+            <Stats cols={3}>
+              <Stat value={num(d.count)} label="Ирсэн тайлан" color={HUE} accent />
+              <Stat value={num(d.workers)} label="Хүн хүч" color={HUE} />
+              <Stat value={num(d.machines)} label="Техник" color={HUE} />
+            </Stats>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginTop: 14 }}>
+              <Ring value={d.progress} color={HUE} size={78} width={8} label="б. угсралт" />
+              <p className={s.note}>
+                Талбар дээрээс илгээсэн тайлангуудын «Б. Барилга угсралтын нийт гүйцэтгэл»-ийн
+                дундаж. Энэ нь төлөвлөгөөний гүйцэтгэлээс ХАМААРАЛГҮЙ, бие даасан хэмжилт.
+              </p>
+            </div>
+          </Section>
+        )
+      }
+    </Data>
+  );
+}
+
+/* ═════════════ Хилээс гадуур бүртгэсэн ═════════════ */
 
 /** Хилээс гадуур бүртгэсэн хяналтын ажилтан */
 type Offender = { user: string; points: Point[] };
@@ -72,7 +141,7 @@ type Offender = { user: string; points: Point[] };
  * төлөвлөлтийн талбайн ЖИНХЭНЭ полигоныг татаж, серверт `disjoint` харьцаагаар
  * шалгуулна — хилийн ойролцоо, гэхдээ гадна унасан цэгийг ч зөв илрүүлнэ.
  */
-function useOutside() {
+export function useOutside() {
   return useAsync(async () => {
     const boundary = await queryPolygon(BOUNDARY.plan.url);
     if (!boundary) return { total: 0, offenders: [] as Offender[] };
@@ -98,14 +167,16 @@ function useOutside() {
   }, []);
 }
 
-export function SurveyOutside() {
-  const q = useOutside();
-
+/**
+ * ⚠️ Асинк өгөгдлөө ГАДНААС авна. Дотроо `useOutside()` дуудвал эцэг нь табын
+ * анхааруулгын тоог мэдэхийн тулд ижил хүсэлтийг ДАХИН явуулах болно.
+ */
+export function SurveyOutside({ q }: { q: ReturnType<typeof useOutside> }) {
   return (
     <Data q={q}>
       {(d) =>
         d.total === 0 ? (
-          <Section>
+          <Section title="Байрлалын хяналт">
             <Empty label="Бүх тайлан төслийн хил дотор бүртгэгдсэн байна." />
           </Section>
         ) : (
@@ -149,73 +220,64 @@ export function SurveyOutside() {
   );
 }
 
-export function SurveyPanel({ picked }: { picked: Record<string, unknown> | null }) {
-  const q = useSurvey();
-  const { zoomToLayer } = useMap();
+/**
+ * Бүх тайлангийн жагсаалт + сонгосных нь дэлгэрэнгүй.
+ *
+ * Нэгтгэсэн модульд БАЙНГА харагдана — барилга сонгосон эсэхээс үл хамаарна.
+ * Тайлангийн бүрэн жагсаалт нь бие даасан үнэ цэнэтэй тул нуугдах ёсгүй.
+ *
+ * Сонголт хоёр эх үүсвэртэй: газрын зураг дээр цэг дарах (`pickedId`) эсвэл
+ * жагсаалтаас дарах (локал `selId`). Шинэ цэг дарахад локал сонголтыг тэглэж,
+ * зурган дээрх үйлдэл давамгайлна — эс бөгөөс хэрэглэгч цэг дарсан ч жагсаалтад
+ * сонгосон хуучин тайлан гацаж үлдэнэ.
+ */
+export function SurveyReports({
+  q,
+  pickedId,
+}: {
+  q: ReturnType<typeof useSurvey>;
+  pickedId?: string | null;
+}) {
   const [selId, setSelId] = useState<string | null>(null);
 
-  /**
-   * Тайлангийн цэг БА төслийн хилийг хоёуланг нь багтаах хүрээ рүү аваачна.
-   *
-   * Одоогийн тайлангууд төслийн хилээс гадуур бичигдсэн байгаа. Зөвхөн цэг рүү
-   * ойртвол хил, багц, барилга нь харагдацаас гадуур үлдэж, зөрүү нь мэдэгдэхгүй.
-   * Хоёуланг нь нэг дор харуулснаар зөрүү шууд илэрхий болно.
-   */
   useEffect(() => {
-    if (q.state !== 'ready' || q.data.count === 0) return;
-    const t = setTimeout(() => zoomToLayer('survey', { withBoundary: true }), 250);
-    return () => clearTimeout(t);
-  }, [q.state, q.state === 'ready' ? q.data.count : 0, zoomToLayer]);
+    setSelId(null);
+  }, [pickedId]);
 
   return (
     <Data q={q}>
       {(d) => {
         if (d.count === 0) {
           return (
-            <Section>
+            <Section title="Талбайн хяналтын тайлан">
               <Empty label="Мобайл аппаас тайлан хараахан ирээгүй байна." />
             </Section>
           );
         }
 
-        // Газрын зураг дээр дарсан цэг эсвэл жагсаалтаас сонгосон тайлан
-        const pickedId = picked ? String(picked.globalid ?? '') : null;
-        const activeId = pickedId || selId;
-        const active = d.reports.find((r) => String(r.globalid) === activeId) ?? d.reports[0];
+        const activeId = selId ?? pickedId ?? null;
+        const active = d.reports.find((r) => String(r.globalid) === activeId);
         const activeIssues = d.byParent.get(String(active?.globalid ?? '')) ?? [];
 
         return (
           <>
-            <Section>
-              <Stats cols={3}>
-                <Stat value={num(d.count)} label="Ирсэн тайлан" color={HUE} accent />
-                <Stat value={num(d.workers)} label="Хүн хүч" color={HUE} />
-                <Stat value={num(d.machines)} label="Техник" color={HUE} />
-              </Stats>
-            </Section>
-
-            <Section title="Дундаж гүйцэтгэл" note="тайлангуудын дундаж">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
-                <Ring value={d.progress} color={HUE} size={92} label="б. угсралт" />
-                <p className={s.note}>
-                  Мобайл аппын маягтад бүртгэсэн «Б. Барилга угсралтын нийт гүйцэтгэл» талбарын дундаж.
-                  Тайлан бүр талбар дээрээс шууд илгээгддэг.
-                </p>
-              </div>
-            </Section>
-
-            <Section title="Ирсэн тайлан" note={`сүүлийн ${Math.min(d.reports.length, 100)}`}>
+            <Section title="Талбайн хяналтын тайлан" note={`сүүлийн ${Math.min(d.reports.length, 100)}`}>
+              <p className={s.note} style={{ marginBottom: 12 }}>
+                Мобайл аппаас ирсэн тайлангууд. Дарж дэлгэрэнгүйг нь харна, эсвэл газрын
+                зураг дээрх хөх ногоон цэг дээр дарна.
+              </p>
               <List>
                 {d.reports.map((r) => {
                   const id = String(r.globalid);
                   const n = (d.byParent.get(id) ?? []).length;
+                  const blok = surveyBlock(r[F.building]);
                   return (
                     <ListItem
                       key={id}
                       color={HUE}
                       active={id === activeId}
-                      onClick={() => setSelId(id)}
-                      title={text(r[F.building], 'Барилга тодорхойгүй')}
+                      onClick={() => setSelId(id === activeId ? null : id)}
+                      title={blok ? `Блок ${blok}` : text(r[F.building], 'Барилга тодорхойгүй')}
                       sub={`${date(r[F.date] as string)} · ${text(r[F.contractor])}${n ? ` · ${n} асуудал` : ''}`}
                       value={pct(Number(r[F.total] ?? 0), 0)}
                     />
@@ -232,7 +294,7 @@ export function SurveyPanel({ picked }: { picked: Record<string, unknown> | null
   );
 }
 
-function ReportDetail({ r, issues }: { r: Row; issues: Row[] }) {
+export function ReportDetail({ r, issues }: { r: Row; issues: Row[] }) {
   // Зөвхөн бөглөгдсөн хэсгүүд (null = тухайн ажил хараахан эхлээгүй)
   const sections = SURVEY_SECTIONS.map((sec) => ({
     ...sec,

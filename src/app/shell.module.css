@@ -15,7 +15,7 @@
  * Туслах багана нь зураг­ны аль талд байхаас хамаарч хоёр хувилбар.
  */
 
-/* Туслах багана БАРУУН талд (үндсэн нь зүүн) — жишээ: барилгын явц */
+/* Туслах багана БАРУУН талд (үндсэн нь зүүн) — «Барилгын явц ба хяналт» */
 .shellSplitRight {
   grid-template-columns: var(--rail) var(--panel) 1fr var(--panel);
   grid-template-areas:
@@ -26,7 +26,10 @@
 .shellSplitRight .panel { border-left: none; border-right: 1px solid var(--line); }
 .shellSplitRight .summary { border-right: none; border-left: 1px solid var(--line); }
 
-/* Туслах багана ЗҮҮН талд (үндсэн нь баруун) — жишээ: талбайн хяналт */
+/* Туслах багана ЗҮҮН талд (үндсэн нь баруун).
+   Одоогоор ашиглаж буй модуль байхгүй — «Талбайн хяналт» нь «Барилгын явц ба
+   хяналт» руу нэгдсэн. Механизмыг үлдээв: шинэ модуль `AUX.side = 'left'` гэвэл
+   шууд ажиллана. */
 .shellSplitLeft {
   grid-template-columns: var(--rail) var(--panel) 1fr var(--panel);
   grid-template-areas:

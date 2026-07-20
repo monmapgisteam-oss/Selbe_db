@@ -1,19 +1,41 @@
 'use client';
 
-import { useEffect, useState, type CSSProperties, type Dispatch, type SetStateAction } from 'react';
-import { Section, Stats, Stat, Bars, Rows, Ring, Data, Empty } from '@/components/ui';
-import { useMap } from '@/components/MapCanvas';
+import { type CSSProperties, type Dispatch, type SetStateAction } from 'react';
+import { Section, Stats, Stat, Bars, Donut, Rows, Ring, Data, Empty } from '@/components/ui';
+import { useMap, BORROWED_LAYERS, ZONE_LIST_HUE } from '@/components/MapCanvas';
 import { useAsync } from '@/lib/useAsync';
-import { queryGroup, queryStats, count, sum, avg, groups, groupWhere } from '@/lib/query';
-import { GENERAL, GENERAL_FIELDS as G, MODULES, type GeneralKey } from '@/lib/services';
+import { queryGroup, queryStats, queryFeatures, count, sum, avg, groups, groupWhere, type Row } from '@/lib/query';
+import {
+  GENERAL, GENERAL_FIELDS as G, UTILITY, ZONE, PARCEL, PARCEL_STATUS, PARCEL_STATUS_EMPTY,
+  PARCEL_STATUS_EMPTY_HUE, ZONE_TYPES, ZONE_TYPE_EMPTY_HUE, MODULES,
+  type GeneralKey, type UtilKey,
+} from '@/lib/services';
+import { UtilityLayerDetail } from './UtilityPanel';
 import { num, pct, ha, km, date, text } from '@/lib/format';
 import s from './general.module.css';
 
-const HUE = MODULES.find((m) => m.key === 'general')!.hue;
+const ZONE_HUE = ZONE_LIST_HUE;
+const LAND_HUE = MODULES.find((m) => m.key === 'land')!.hue;
 
 const KEYS = Object.keys(GENERAL) as GeneralKey[];
+const UTIL_KEYS = Object.keys(UTILITY) as UtilKey[];
 
 const isKey = (v: string): v is GeneralKey => (KEYS as string[]).includes(v);
+const isUtilKey = (v: string): v is UtilKey => (UTIL_KEYS as string[]).includes(v);
+
+/**
+ * Бүх давхарга НЭГ жагсаалтад — бүлэглэлгүй.
+ *
+ * ⚠️ Ерөнхий давхаргууд болон дэд бүтцийн давхаргууд НЭГ `sublayers` массивыг
+ * хуваадаг. Түлхүүр нь давхцахгүй (`built`, `green`… vs `heat`, `kv10`…) тул
+ * нэг жагсаалтад аюулгүй нийлнэ.
+ */
+const ALL_LAYERS: { key: string; title: string; hue: string }[] = [
+  ...KEYS.map((k) => ({ key: k as string, title: GENERAL[k].title, hue: GENERAL[k].hue })),
+  ...UTIL_KEYS.map((k) => ({ key: k as string, title: UTILITY[k].title, hue: UTILITY[k].hue })),
+  // Зээлдсэн — өөрсдийн модультай ч энд ч сонгогдоно (`BORROWED_LAYERS`)
+  ...BORROWED_LAYERS.general,
+];
 
 /** Газрын зургийн давхаргын id (`general:green`) → дэд давхаргын түлхүүр */
 const keyOfLayer = (layerId: string | null): GeneralKey | null => {
@@ -33,15 +55,27 @@ function useGeneral(key: GeneralKey) {
     const def = GENERAL[key];
     const sums = def.sums ?? [];
 
+    /**
+     * Тухайн давхаргын талбарын нэрс. Ихэнх нь нийтлэг (`GENERAL_FIELDS`) ч
+     * ногоон байгууламж тусдаа үйлчилгээнд шилжсэн тул өөрийн нэртэй.
+     * ⚠️ `null` = тэр талбар БАЙХГҮЙ → статистикт огт оруулж болохгүй.
+     */
+    const F = { ...G, ...(def.fields ?? {}) };
+
+    const avgs = def.avgs ?? [];
+
     const [totals, ...facets] = await Promise.all([
       queryStats(def.url, [
-        count(G.oid, 'n'),
-        avg(G.progress, 'g'),
-        sum(G.area, 'area'),
-        sum(G.length, 'len'),
+        count(F.oid, 'n'),
+        ...(F.progress ? [avg(F.progress, 'g')] : []),
+        ...(F.area ? [sum(F.area, 'area')] : []),
+        ...(F.length ? [sum(F.length, 'len')] : []),
         ...sums.map((x, i) => sum(x.field, `x${i}`)),
+        ...avgs.map((x, i) => avg(x.field, `a${i}`)),
       ]),
-      ...def.facets.map((f) => queryGroup(def.url, f.field, [count(G.oid, 'n'), sum(G.area, 'area')])),
+      ...def.facets.map((f) =>
+        queryGroup(def.url, f.field, [count(F.oid, 'n'), ...(F.area ? [sum(F.area, 'area')] : [])]),
+      ),
     ]);
 
     return {
@@ -49,10 +83,20 @@ function useGeneral(key: GeneralKey) {
       progress: totals.g == null ? null : Number(totals.g),
       areaM2: Number(totals.area ?? 0),
       lengthM: Number(totals.len ?? 0),
+      // ⚠️ Дундажтай ЯГ адил: `?? 0` хийвэл өгөгдөлгүй давхарга «0 айл» гэж
+      //    харагдаж, жинхэнэ хэмжсэн тэгээс ялгагдахгүй болно.
       sums: sums.map((x, i) => ({
         label: x.label,
-        value: Number(totals[`x${i}`] ?? 0),
+        value: totals[`x${i}`] == null ? null : Number(totals[`x${i}`]),
         unit: x.unit,
+      })),
+      // ⚠️ Дундажийг `?? 0` гэж дүүргэхгүй: өгөгдөлгүй үед «0.0 м» гэсэн ХУДАЛ
+      //    тоо гарч, жинхэнэ тэгээс ялгагдахгүй болно.
+      avgs: avgs.map((x, i) => ({
+        label: x.label,
+        value: totals[`a${i}`] == null ? null : Number(totals[`a${i}`]),
+        unit: x.unit,
+        digits: x.digits ?? 1,
       })),
       // ArcGIS нь null ба ' ' -г тусад нь бүлэглэдэг тул хоосныг нэгтгэнэ
       facets: def.facets.map((f, i) => ({
@@ -64,53 +108,34 @@ function useGeneral(key: GeneralKey) {
   }, [key]);
 }
 
-export function GeneralPanel({
-  picked,
-  pickedLayer,
+/**
+ * ЗҮҮН багана — зөвхөн давхаргын жагсаалт.
+ *
+ * ⚠️ Мэдээллээс тусад нь салгасан: 18 давхаргын жагсаалт болон тэдгээрийн
+ * дэлгэрэнгүй нэг баганад байхад жагсаалт дээш гүйлгэгдэж алга болж, хэрэглэгч
+ * давхарга солихын тулд байнга буцаж гүйлгэх шаардлагатай байв.
+ */
+export function GeneralLayers({
   clearPicked,
   sublayers,
   setSublayers,
+  setFacet,
 }: {
-  picked: Record<string, unknown> | null;
-  pickedLayer: string | null;
   clearPicked: () => void;
   sublayers: string[];
   /** Функциональ шинэчлэлт заавал дэмжинэ — дараалсан даралт бие биенээ дарж бичихгүй */
   setSublayers: Dispatch<SetStateAction<string[]>>;
+  setFacet: (v: string | null) => void;
 }) {
   const { setHighlight } = useMap();
 
-  /** Ил байгаа давхаргууд (олон сонголт) */
-  const visible = sublayers.filter(isKey) as GeneralKey[];
-
-  /** Дэлгэрэнгүй үзүүлэлт нь ЗӨВХӨН нэг давхаргынх — фокус */
-  const [focus, setFocus] = useState<GeneralKey>('built');
-  const [facet, setFacet] = useState<string | null>(null);
-
-  // Эхлэхэд нэг давхарга ил
-  useEffect(() => {
-    if (sublayers.length === 0) setSublayers(['built']);
-  }, [sublayers.length, setSublayers]);
-
-  // Фокус нь ил давхаргуудын дунд байх ёстой — унтраасан бол үлдсэн рүү нь шилжинэ.
-  // (`visible` нь рендер бүрд шинэ массив тул түлхүүрийг мөр болгож тогтворжуулав.)
-  const visibleKey = visible.join(',');
-  useEffect(() => {
-    const list = visibleKey ? (visibleKey.split(',') as GeneralKey[]) : [];
-    if (list.length > 0 && !list.includes(focus)) setFocus(list[0]);
-  }, [visibleKey, focus]);
-
-  // Газрын зураг дээр объект дарвал тэр давхарга руу фокусыг шилжүүлнэ
-  const pickedKey = keyOfLayer(pickedLayer);
-  useEffect(() => {
-    if (pickedKey) setFocus(pickedKey);
-  }, [pickedKey]);
-
-  const q = useGeneral(focus);
-  const def = GENERAL[focus];
+  // ⚠️ «Хоосон бол анхдагчаа тавь» гэсэн эффект БАЙХГҮЙ. Шугам сүлжээ нэг модульд
+  //    нэгдэж, `sublayers`-ыг ХУВААХ болсон тул хоёр самбар тус тусын анхдагчийг
+  //    тавибал бие биенээ дарж бичнэ. Анхдагчийг `DEFAULT_SUBLAYERS`-ээс модуль
+  //    солигдох үед нэг удаа тавина (`Portal.go`).
 
   /** Давхаргыг ил/далд болгох. Сүүлчийнхийг унтраахыг зөвшөөрнө. */
-  const toggle = (k: GeneralKey) => {
+  const toggle = (k: string) => {
     // ⚠️ Функциональ шинэчлэлт: хэд хэдэн даралт нэг батчид орвол хуучин массивыг
     //    уншиж бие биенээ дарж бичихээс сэргийлнэ.
     setSublayers((prev) => (prev.includes(k) ? prev.filter((x) => x !== k) : [...prev, k]));
@@ -119,24 +144,25 @@ export function GeneralPanel({
     // Сонгосон объектыг цэвэрлэнэ — эс бөгөөс өмнөх давхаргын атрибут өөр давхаргын
     // талбарын нэрсээр уншигдаж, бүх мөр «Бүртгэгдээгүй» болно.
     clearPicked();
-    if (!visible.includes(k)) setFocus(k);
   };
 
   return (
     <>
+      {/* БҮХ давхарга нэг жагсаалтад — бүлэггүй. Урьд нь ерөнхий 7 нэг самбарт,
+          дэд бүтцийн 11 өөр самбарт, өөр өөр хэлбэрээр гардаг байлаа. */}
       <Section title="Давхарга" note="олон давхаргыг зэрэг харж болно">
         <div className={s.layers}>
-          {KEYS.map((k) => {
-            const on = visible.includes(k);
+          {ALL_LAYERS.map((it) => {
+            const on = sublayers.includes(it.key);
             return (
               <button
-                key={k}
+                key={it.key}
                 type="button"
                 role="switch"
                 aria-checked={on}
                 className={`${s.layer} ${on ? s.layerOn : ''}`}
-                style={{ '--tone': GENERAL[k].hue } as CSSProperties}
-                onClick={() => toggle(k)}
+                style={{ '--tone': it.hue } as CSSProperties}
+                onClick={() => toggle(it.key)}
               >
                 <span className={s.box} aria-hidden>
                   {on && (
@@ -152,124 +178,350 @@ export function GeneralPanel({
                     </svg>
                   )}
                 </span>
-                <span className={s.name}>{GENERAL[k].title}</span>
+                <span className={s.name}>{it.title}</span>
               </button>
             );
           })}
         </div>
 
-        {visible.length === 0 && (
-          <p className={s.note}>Давхарга сонгоогүй байна — газрын зураг хоосон харагдана.</p>
+        {sublayers.length === 0 && (
+          <p className={s.note} style={{ marginTop: 12 }}>
+            Давхарга сонгоогүй байна — газрын зураг хоосон харагдана.
+          </p>
         )}
       </Section>
+    </>
+  );
+}
 
-      {visible.length > 0 && (
-        <>
-          <Section title="Дэлгэрэнгүй" note={visible.length > 1 ? 'аль давхаргынх' : undefined}>
-            {visible.length > 1 && (
-              <div className={s.tabs}>
-                {visible.map((k) => (
-                  <button
-                    key={k}
-                    type="button"
-                    aria-pressed={k === focus}
-                    className={`${s.tab} ${k === focus ? s.tabOn : ''}`}
-                    style={{ '--tone': GENERAL[k].hue } as CSSProperties}
-                    onClick={() => {
-                      setFocus(k);
-                      setFacet(null);
-                      setHighlight(null);
-                    }}
-                  >
-                    {GENERAL[k].title}
-                  </button>
-                ))}
-              </div>
-            )}
+/**
+ * БАРУУН багана — сонгосон давхаргуудын мэдээлэл.
+ *
+ * Давхарга тус бүр ӨӨРИЙН хэсэгтэй. Урьд нь «фокус» гэсэн нэг давхарга л
+ * дэлгэрэнгүйгээ харуулж, бусад нь зөвхөн зурагт харагддаг байв — олон давхарга
+ * асаасан хэрэглэгч тэдгээрийн тоог харах боломжгүй байлаа.
+ */
+export function GeneralInfo({
+  picked,
+  pickedLayer,
+  sublayers,
+  facet,
+  setFacet,
+}: {
+  picked: Record<string, unknown> | null;
+  pickedLayer: string | null;
+  sublayers: string[];
+  facet: string | null;
+  setFacet: (v: string | null) => void;
+}) {
+  const visibleGeneral = sublayers.filter(isKey) as GeneralKey[];
+  const visibleUtil = sublayers.filter(isUtilKey) as UtilKey[];
+  const pickedKey = keyOfLayer(pickedLayer);
 
-            <Data q={q}>
-              {(d) => (
-                <>
-                  <Stats cols={3}>
-                    <Stat value={num(d.count)} label="Объектын тоо" color={def.hue} accent />
-                    {d.areaM2 > 0 && (
-                      <Stat value={ha(d.areaM2, 1)} unit="га" label="Талбай" color={def.hue} />
-                    )}
-                    {d.lengthM > 0 && (
-                      <Stat value={km(d.lengthM, 1)} unit="км" label="Нийт урт" color={def.hue} />
-                    )}
-                  </Stats>
+  if (sublayers.length === 0) {
+    return (
+      <Section>
+        <Empty label="Зүүн талын жагсаалтаас давхарга сонгоно уу." />
+      </Section>
+    );
+  }
 
-                  {d.sums.length > 0 && (
-                    <div style={{ marginTop: 12 }}>
-                      <Rows
-                        items={d.sums.map((x) => ({
-                          key: x.label,
-                          value: (
-                            <span className="num">
-                              {num(x.value)}
-                              {x.unit ? ` ${x.unit}` : ''}
-                            </span>
-                          ),
-                        }))}
-                      />
-                    </div>
-                  )}
-                </>
-              )}
-            </Data>
-          </Section>
+  return (
+    <>
+      {visibleGeneral.map((k) => (
+        <GeneralLayerDetail key={k} layerKey={k} facet={facet} setFacet={setFacet} />
+      ))}
 
-          <Data q={q}>
-            {(d) => (
-              <>
-                <Section title="Бодит гүйцэтгэл" note="Bod_guits талбарын дундаж">
-                  {d.progress == null ? (
-                    <Empty label="Гүйцэтгэлийн өгөгдөл байхгүй." />
-                  ) : (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
-                      <Ring value={d.progress} color={def.hue} size={92} />
-                      <p className={s.note}>
-                        Үйлчилгээнд «төлөвлөсөн гүйцэтгэл %» гэсэн талбар байхгүй — зөвхөн бодит хувь
-                        ба объект тус бүрийн зорилтот огноо (<code>Tol_guits</code>) бүртгэгддэг.
-                      </p>
-                    </div>
-                  )}
-                </Section>
+      {visibleUtil.map((k) => (
+        <UtilityLayerDetail key={k} layerKey={k} facet={facet} setFacet={setFacet} />
+      ))}
 
-                {d.facets.map((f) => (
-                  <Section key={f.label} title={f.label} note="дарж газрын зурагт шүүнэ">
-                    <Bars
-                      color={def.hue}
-                      selected={facet}
-                      onSelect={(k) => {
-                        const g = f.items.find((x) => `${f.label}:${x.label}` === k);
-                        const next = facet === k ? null : k;
-                        setFacet(next);
-                        // groupWhere нь нэгтгэсэн бүх түүхий утгыг хамруулна —
-                        // баганад тоологдсонтой яг ижил олонлог сонгогдоно
-                        setHighlight(next && g ? groupWhere(f.field, g) : null);
-                      }}
-                      items={f.items.map((g) => ({
-                        key: `${f.label}:${g.label}`,
-                        label: g.label,
-                        value: g.values.n,
-                        display:
-                          g.values.area > 0
-                            ? `${num(g.values.n)} · ${ha(g.values.area, 1)} га`
-                            : num(g.values.n),
-                      }))}
-                    />
-                  </Section>
-                ))}
-              </>
-            )}
-          </Data>
-        </>
-      )}
+      {sublayers.includes('zone') && <ZoneBrief />}
+      {sublayers.includes('parcel') && <ParcelBrief />}
 
       {picked && pickedKey && <PickedFeature attrs={picked} layer={pickedKey} />}
     </>
+  );
+}
+
+/* ═════════ Зээлдсэн давхаргын товч үзүүлэлт ═════════ */
+
+/**
+ * ⚠️ Эдгээр нь ТОВЧ. Бүсийн төсөв, зогсоолын норм, чөлөөлөлтийн явцын дэлгэрэнгүй
+ * шинжилгээ нь өөрсдийн модульд («Бүсчлэл», «Газар») хэвээр байгаа — тэднийг энд
+ * хуулбарлавал нэг агуулга хоёр газар зэрэг засагдаж, салж эхэлнэ.
+ */
+function ZoneBrief() {
+  const q = useAsync(async () => {
+    // ⚠️ `outStatistics` ашиглахгүй: 59 мөр бол хямд бөгөөд ZONE_ID-аар давхардсан
+    //    7 полигоныг клиент талд хасах шаардлагатай (сервер талд боломжгүй).
+    const rows = await queryFeatures(ZONE.url, { outFields: ['*'] });
+    const F = ZONE.fields;
+    const seen = new Set<string>();
+    const zones = rows.filter((r) => {
+      const id = String(r[F.id] ?? '').trim();
+      if (!id) return true;
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+    const S = (f: string) => zones.reduce((a, r) => a + Number(r[f] ?? 0), 0);
+
+    const facet = (field: string) =>
+      groups(
+        zones.map((r) => ({ [field]: r[field], n: 1, ga: Number(r[F.landHa] ?? 0) })) as Row[],
+        field, 'Бүртгэгдээгүй', ['n', 'ga'],
+      ).sort((a, b) => b.values.n - a.values.n);
+
+    const norm = S(F.parkNorm);
+    const plan = S(F.parkTotal);
+    const landHa = S(F.landHa);
+    const builtM2 = S(F.builtM2);
+
+    return {
+      n: zones.length, dup: rows.length - zones.length,
+      ga: landHa, ail: S(F.households), builtM2,
+      density: landHa > 0 ? builtM2 / (landHa * 10_000) : null,
+      norm, plan, exist: S(F.existTotal),
+      parkOpen: S(F.parkOpen), parkUnder: S(F.parkUnder),
+      coverage: norm > 0 ? (plan / norm) * 100 : null,
+      budget: S(F.budget), done: S(F.done2025), left: S(F.left2026),
+      // ⚠️ `BAGTS_DUG`-аар задлахгүй: 52 бүсэд 52 ӨӨР утгатай (100% өвөрмөц) тул
+      //    ангилал биш, ТАНИХ ДУГААР. Задалбал бүс бүрийг дахин жагсаана.
+      types: facet(F.type), purpose: facet(F.purpose),
+    };
+  }, []);
+
+  return (
+    <Data q={q}>
+      {(d) => (
+        <>
+          <Section title="Хот төлөвлөлтийн бүс" note={d.dup > 0 ? `${d.dup} давхардал хасав` : undefined}>
+            <Stats cols={3}>
+              <Stat value={num(d.n)} label="Бүс" color={ZONE_HUE} accent />
+              <Stat value={num(d.ga, 1)} unit="га" label="Талбай" color={ZONE_HUE} />
+              <Stat value={num(d.ail)} label="Төлөвлөсөн айл" color={ZONE_HUE} />
+            </Stats>
+            <div style={{ marginTop: 10 }}>
+              <Stats cols={2}>
+                <Stat value={num(d.builtM2 / 1000, 0)} unit="мянган м²" label="Барилгын талбай" color={ZONE_HUE} />
+                <Stat value={num(d.density, 2)} label="Нягтрал (барилга м² / газар м²)" color={ZONE_HUE} />
+              </Stats>
+            </div>
+            <div style={{ marginTop: 16 }}>
+              <div className={s.facetHead}>Бүсийн ангилал</div>
+              <Donut
+                center={num(d.n)}
+                centerLabel="бүс"
+                items={d.types.map((g) => ({
+                  key: g.label, label: g.label, value: g.values.n,
+                  color: ZONE_TYPES[g.label] ?? ZONE_TYPE_EMPTY_HUE,
+                }))}
+              />
+            </div>
+          </Section>
+
+          <Section title="Авто зогсоол" note="норм ба төлөвлөсөн">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <Ring
+                value={d.coverage}
+                size={84}
+                width={9}
+                label="хүртээмж"
+                color={d.coverage != null && d.coverage < 50 ? 'var(--bad)' : ZONE_HUE}
+              />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <Rows
+                  items={[
+                    { key: 'Шаардлагатай (норм)', value: <span className="num">{num(d.norm)}</span> },
+                    { key: 'Төлөвлөсөн — нийт', value: <span className="num">{num(d.plan)}</span> },
+                    { key: '· ил', value: <span className="num">{num(d.parkOpen)}</span> },
+                    { key: '· далд', value: <span className="num">{num(d.parkUnder)}</span> },
+                    { key: 'Одоо байгаа', value: <span className="num">{num(d.exist)}</span> },
+                    {
+                      key: 'Дутагдал',
+                      value: <span className="num" style={{ color: 'var(--bad)' }}>{num(Math.max(0, d.norm - d.plan))}</span>,
+                    },
+                  ]}
+                />
+              </div>
+            </div>
+          </Section>
+
+          {d.budget > 0 && (
+            <Section title="Төсөв ба гүйцэтгэл">
+              <Stats cols={3}>
+                <Stat value={num(d.budget / 1e9, 1)} unit="тэрбум ₮" label="Нийт төсөв" color={ZONE_HUE} accent />
+                <Stat value={num(d.done / 1e9, 1)} unit="тэрбум ₮" label="2025 гүйцэтгэл" color={ZONE_HUE} />
+                <Stat value={num(d.left / 1e9, 1)} unit="тэрбум ₮" label="2026 үлдэгдэл" color={ZONE_HUE} />
+              </Stats>
+            </Section>
+          )}
+
+          {d.purpose.length > 1 && (
+            <Section title="Зориулалт" note={`${d.purpose.length} төрөл`}>
+              <Bars
+                color={ZONE_HUE}
+                items={d.purpose.map((g) => ({
+                  key: g.label, label: g.label, value: g.values.n,
+                  display: `${num(g.values.n)} · ${num(g.values.ga, 1)} га`,
+                }))}
+              />
+            </Section>
+          )}
+
+        </>
+      )}
+    </Data>
+  );
+}
+
+function ParcelBrief() {
+  const q = useAsync(async () => {
+    const [totals, byStatus] = await Promise.all([
+      queryStats(PARCEL.url, [count(PARCEL.oid, 'n'), sum(PARCEL.fields.area, 'm2')]),
+      queryGroup(PARCEL.url, PARCEL.fields.status, [count(PARCEL.oid, 'n')]),
+    ]);
+    return {
+      n: Number(totals.n ?? 0),
+      m2: Number(totals.m2 ?? 0),
+      items: groups(byStatus, PARCEL.fields.status, PARCEL_STATUS_EMPTY, ['n']),
+    };
+  }, []);
+
+  return (
+    <Section title="Үлдсэн нэгж талбар">
+      <Data q={q}>
+        {(d) => (
+          <>
+            <Stats cols={2}>
+              <Stat value={num(d.n)} label="Талбарын тоо" color={LAND_HUE} accent />
+              <Stat value={ha(d.m2, 2)} unit="га" label="Нийт талбай" color={LAND_HUE} />
+            </Stats>
+            <div style={{ marginTop: 16 }}>
+              <div className={s.facetHead}>
+                Чөлөөлөлтийн явц <span className={s.facetNote}>{d.items.length} төлөв</span>
+              </div>
+              <Bars
+                items={d.items.map((g) => ({
+                  key: g.label,
+                  label: g.label,
+                  value: g.values.n,
+                  display: num(g.values.n),
+                  color: PARCEL_STATUS[g.label] ?? PARCEL_STATUS_EMPTY_HUE,
+                }))}
+              />
+            </div>
+          </>
+        )}
+      </Data>
+    </Section>
+  );
+}
+
+/**
+ * НЭГ ерөнхий давхаргын үзүүлэлт — тоо, талбай, гүйцэтгэл, ангиллын задаргаа.
+ *
+ * ⚠️ Ангилал сонгох (`facet`) төлөв нь ГАДНААС ирнэ. Зураг дээрх тодруулга
+ * (`setHighlight`) нь БҮХ давхаргад нэг мөр үйлчилдэг тул хоёр давхаргад зэрэг
+ * ангилал сонгогдвол хоёр дахь нь эхнийхийг чимээгүй дарж бичих байлаа. Нэг
+ * дундын төлөвтэй байснаар аль нэг л идэвхтэй байна.
+ */
+function GeneralLayerDetail({
+  layerKey,
+  facet,
+  setFacet,
+}: {
+  layerKey: GeneralKey;
+  facet: string | null;
+  setFacet: (v: string | null) => void;
+}) {
+  const def = GENERAL[layerKey];
+  const q = useGeneral(layerKey);
+  const { setHighlight } = useMap();
+
+  return (
+    <Section title={def.title}>
+      <Data q={q}>
+        {(d) => (
+          <>
+            <Stats cols={3}>
+              <Stat value={num(d.count)} label="Объектын тоо" color={def.hue} accent />
+              {d.areaM2 > 0 && <Stat value={ha(d.areaM2, 1)} unit="га" label="Талбай" color={def.hue} />}
+              {d.lengthM > 0 && <Stat value={km(d.lengthM, 1)} unit="км" label="Нийт урт" color={def.hue} />}
+            </Stats>
+
+            {(d.sums.length > 0 || d.avgs.length > 0) && (
+              <div style={{ marginTop: 12 }}>
+                <Rows
+                  items={[
+                    ...d.sums.map((x) => ({
+                      key: x.label,
+                      value: (
+                        <span className="num">
+                          {x.value == null ? '—' : num(x.value)}
+                          {x.value != null && x.unit ? ` ${x.unit}` : ''}
+                        </span>
+                      ),
+                    })),
+                    ...d.avgs.map((x) => ({
+                      key: x.label,
+                      value: (
+                        <span className="num">
+                          {x.value == null ? '—' : num(x.value, x.digits)}
+                          {x.value != null && x.unit ? ` ${x.unit}` : ''}
+                        </span>
+                      ),
+                    })),
+                  ]}
+                />
+              </div>
+            )}
+
+            {d.progress != null && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginTop: 14 }}>
+                <Ring value={d.progress} color={def.hue} size={78} width={8} />
+                <p className={s.note}>
+                  Бодит гүйцэтгэлийн дундаж. Үйлчилгээнд «төлөвлөсөн гүйцэтгэл %» гэсэн талбар
+                  байхгүй тул зөвхөн бодит хувь харагдана.
+                </p>
+              </div>
+            )}
+
+            {d.facets.map((f) => (
+              <div key={f.label} style={{ marginTop: 16 }}>
+                <div className={s.facetHead}>
+                  {f.label} <span className={s.facetNote}>дарж газрын зурагт шүүнэ</span>
+                </div>
+                <Bars
+                  color={def.hue}
+                  selected={facet}
+                  onSelect={(k) => {
+                    const g = f.items.find((x) => `${layerKey}|${f.label}:${x.label}` === k);
+                    const next = facet === k ? null : k;
+                    setFacet(next);
+                    // groupWhere нь нэгтгэсэн бүх түүхий утгыг хамруулна —
+                    // баганад тоологдсонтой яг ижил олонлог сонгогдоно
+                    setHighlight(next && g ? groupWhere(f.field, g) : null);
+                  }}
+                  items={f.items.map((g) => ({
+                    // ⚠️ Түлхүүрт давхаргын нэрийг заавал оруулна: хоёр давхаргад ижил
+                    //    нэртэй ангилал (жишээ нь «Төрөл») байвал сонголт нь холилдоно.
+                    key: `${layerKey}|${f.label}:${g.label}`,
+                    label: g.label,
+                    value: g.values.n,
+                    display:
+                      g.values.area > 0
+                        ? `${num(g.values.n)} · ${ha(g.values.area, 1)} га`
+                        : num(g.values.n),
+                  }))}
+                />
+              </div>
+            ))}
+          </>
+        )}
+      </Data>
+    </Section>
   );
 }
 
@@ -281,28 +533,53 @@ export function GeneralPanel({
  */
 function PickedFeature({ attrs, layer }: { attrs: Record<string, unknown>; layer: GeneralKey }) {
   const def = GENERAL[layer];
-  const progress = attrs[G.progress];
+  const F = { ...G, ...(def.fields ?? {}) };
+
+  /**
+   * ⚠️ Мөрүүдийг НӨХЦӨЛТЭЙ угсарна. Ногоон байгууламжид гүйцэтгэл, зорилтот огноо
+   * гэсэн талбар байхгүй тул тэднийг «—» гэж харуулбал өгөгдөл байгаа мөртлөө
+   * хоосон мэт ХУДАЛ сэтгэгдэл төрүүлнэ — байхгүй мөрийг огт гаргахгүй нь зөв.
+   */
+  const rows: { key: string; value: React.ReactNode }[] = [
+    ...def.facets.map((f) => ({ key: f.label, value: text(attrs[f.field], 'Бүртгэгдээгүй') })),
+  ];
+
+  if (F.progress) {
+    const p = attrs[F.progress];
+    rows.push({
+      key: 'Бодит гүйцэтгэл',
+      value: (
+        <span className="num" style={{ color: def.hue }}>
+          {p == null ? '—' : pct(Number(p), 0)}
+        </span>
+      ),
+    });
+  }
+  if (F.dueDate) rows.push({ key: 'Зорилтот огноо', value: date(attrs[F.dueDate] as number) });
+  if (F.area) {
+    rows.push({
+      key: 'Талбай',
+      value: <span className="num">{num(Number(attrs[F.area] ?? 0))} м²</span>,
+    });
+  }
+  // Тухайн объектын тоон утгууд — нийлбэр/дундажид ашигладаг талбарууд нь
+  // объект тус бүрийн хувьд ч утгатай (давхар, өндөр, өргөн, айлын тоо…)
+  for (const x of [...(def.sums ?? []), ...(def.avgs ?? [])]) {
+    if (attrs[x.field] == null) continue;
+    rows.push({
+      key: x.label.replace(/^Дундаж /, ''),
+      value: <span className="num">{num(Number(attrs[x.field]), 1)} {x.unit ?? ''}</span>,
+    });
+  }
+
+  // Зөвхөн объектод утгатай талбар (кадастрын дугаар гэх мэт)
+  for (const x of def.details ?? []) {
+    rows.push({ key: x.label, value: text(attrs[x.field], 'Бүртгэгдээгүй') });
+  }
 
   return (
     <Section title="Сонгосон объект" note={def.title}>
-      <Rows
-        items={[
-          ...def.facets.map((f) => ({ key: f.label, value: text(attrs[f.field], 'Бүртгэгдээгүй') })),
-          {
-            key: 'Бодит гүйцэтгэл',
-            value: (
-              <span className="num" style={{ color: def.hue }}>
-                {progress == null ? '—' : pct(Number(progress), 0)}
-              </span>
-            ),
-          },
-          { key: 'Зорилтот огноо', value: date(attrs[G.dueDate] as number) },
-          {
-            key: 'Талбай',
-            value: <span className="num">{num(Number(attrs[G.area] ?? 0))} м²</span>,
-          },
-        ]}
-      />
+      <Rows items={rows} />
     </Section>
   );
 }

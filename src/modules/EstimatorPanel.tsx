@@ -8,13 +8,15 @@ import type Polygon from '@arcgis/core/geometry/Polygon';
 import { Section, Stats, Stat, Rows, Bars, Empty, Loading } from '@/components/ui';
 import { useAsync } from '@/lib/useAsync';
 import { Icon } from '@/components/Icon';
-import { useMap, ESTIMATOR_BUILDING_HUE } from '@/components/MapCanvas';
+import { useMap, ESTIMATOR_BUILDING_HUE, CADASTRE_HUE } from '@/components/MapCanvas';
 import { queryStats, queryGroup, queryCount, count, sum, groups, type Aoi } from '@/lib/query';
-import { CADASTRE, VALUATION, MODULES } from '@/lib/services';
+import { CADASTRE, VALUATION } from '@/lib/services';
 import { num, ha, mnt } from '@/lib/format';
 import s from './estimator.module.css';
 
-const HUE = MODULES.find((m) => m.key === 'estimator')!.hue;
+// Тооцоолуур нь «Газар» модулийн нэг таб болсон. Самбарын өнгө нь газрын зураг
+// дээрх кадастрын давхаргатайгаа таарна — модулийн улаантай биш.
+const HUE = CADASTRE_HUE;
 const P = CADASTRE.fields;
 const V = VALUATION.fields;
 

@@ -18,8 +18,10 @@ import esriConfig from '@arcgis/core/config';
 import '@arcgis/core/assets/esri/themes/light/main.css';
 
 import {
-  BAGTS, ZONE, BUILDING, PARCEL, CADASTRE, VALUATION, GENERAL, UTILITY, SURVEY, HOME, BASEMAP,
-  BOUNDARY, BOUNDARY_HUE, PROGRESS_LEVELS, PARCEL_STATUS, MODULES, IMAGERY,
+  ZONE, BUILDING, PARCEL, CADASTRE, VALUATION, GENERAL, UTILITY, SURVEY, HOME, BASEMAP,
+  BOUNDARY, BOUNDARY_HUE, PROGRESS_LEVELS, PARCEL_STATUS, PARCEL_STATUS_EMPTY,
+  PARCEL_STATUS_EMPTY_HUE, MODULES, IMAGERY,
+  ZONE_TYPES, ZONE_TYPE_EMPTY, ZONE_TYPE_EMPTY_HUE,
   type ModuleKey, type GeneralKey, type UtilKey,
 } from '@/lib/services';
 import { queryExtent } from '@/lib/query';
@@ -41,10 +43,15 @@ type MapApi = {
   setAoiFilter: (geometry: __esri.Geometry | null) => void;
   /**
    * Давхаргыг бүхэлд нь харагдах хүрээнд нь аваачих.
+   *
+   * `key` нь МОДУЛИЙН түлхүүр (тухайн модулийн эхний ил давхарга) эсвэл ДАВХАРГЫН
+   * id байж болно. Нэг модульд олон давхарга байхад (барилга + тайлангийн цэг)
+   * тодорхой давхарга руу зорих шаардлага гардаг тул хоёуланг нь дэмжинэ.
+   *
    * `withBoundary` — төслийн хилийг ч багтаана (өгөгдөл хилээс гадуур байвал
    * хоёуланг нь нэг дор харуулна).
    */
-  zoomToLayer: (key: ModuleKey, opts?: { withBoundary?: boolean }) => void;
+  zoomToLayer: (key: ModuleKey | string, opts?: { withBoundary?: boolean }) => void;
 };
 
 const Ctx = createContext<MapApi>({
@@ -80,7 +87,22 @@ const cim = (hex: string, a = 1): number[] => [...rgb(hex), Math.round(a * 100)]
  * Полигоны дүүргэлтийн тунгалаг байдал — 80% тунгалаг (alpha 0.2).
  * Давхарга бүр НЭГ ижил байна: суурь зураг тод харагдаж, объектыг хүрээгээр нь ялгана.
  */
-const FILL_ALPHA = 0.2;
+/**
+ * Полигоны дүүргэлтийн тунгалаг байдал.
+ *
+ * ⚠️ Энэ утга нь агаарын зураг АНХНААСАА асаалттай болсноор шийдвэрлэх ач
+ * холбогдолтой болсон. Ортофото нь дунд өнгөтэй, нарийн бүтэцтэй дэвсгэр
+ * (жинхэнэ дундаж RGB 115,113,107) тул 0.2 тунгалагт давхаргууд угаагдаж
+ * алга болдог байв.
+ *
+ * Хэмжсэн үр дүн (CIE Lab ΔE, ортофотогийн дундажтай харьцуулсан):
+ *   a=0.16 → ΔE 12–18 (сул)   ·   a=0.30 → ΔE 22–34 (тод)
+ *
+ * Өнгийг ЦАЙРУУЛЖ шийдэх гэж оролдож болохгүй: дэвсгэр нь дунд өнгөтэй тул
+ * цайруулбал ялгаа нь ЖИЖИГРЭНЭ (жишээ нь Багц #2563eb→#3b82f6 үед ΔE 25.9→22.6),
+ * дээр нь эдгээр өнгө самбарын текстэд ч ашиглагддаг тул уншигдахаа болино.
+ */
+const FILL_ALPHA = 0.3;
 
 /**
  * Полигоны симбол — бүдэг дүүргэлт + ГЭРЭЛТЭХ хүрээ.
@@ -131,11 +153,13 @@ const fill = (hex: string, a = FILL_ALPHA, w = 1.4) =>
  * зузаан зураас, halo хэрэглэвэл зураг бүхэлдээ бөглөрч, объект хоорондоо ялгарахаа
  * болино. Тиймээс тэдэнд ганц нимгэн зураас өгнө.
  */
-const denseFill = (hex: string, a = FILL_ALPHA, w = 0.5) =>
+const denseFill = (hex: string, a = 0.26, w = 0.5) =>
   ({
     type: 'simple-fill',
     color: c(hex, a),
-    outline: { color: c(hex, 0.85), width: w },
+    // Зураас нь БҮТЭН тунгалагтай — агаарын зураг дээр хэлбэрийг тодорхойлох
+    // гол хүч нь зураас. Хагас тунгалаг зураас нь зурган дээр уусна.
+    outline: { color: c(hex, 1), width: w },
   }) as const;
 
 /**
@@ -147,23 +171,60 @@ const denseFill = (hex: string, a = FILL_ALPHA, w = 0.5) =>
  * Тиймээс halo-гүй, нам дүүргэлт + нимгэн ТОД хүрээ өгч, объект бүрийг цэвэрхэн
  * ялгана. Дүүргэлтийг арай нам (0.16) болгосноор давхацсан полигон бүрхэж бараандахгүй.
  */
-const cleanFill = (hex: string, a = 0.16, w = 0.6) =>
+const cleanFill = (hex: string, a = 0.28, w = 0.8) =>
   ({
     type: 'simple-fill',
     color: c(hex, a),
-    outline: { color: c(hex, 0.9), width: w },
+    // НИМГЭН боловч БҮТЭН тунгалагтай зураас. Харагдац нь дүүргэлтээс (ΔE 22–34)
+    // ирдэг тул зураас нь зөвхөн ирмэг тодорхойлно — зузаалах шаардлагагүй.
+    outline: { color: c(hex, 1), width: w },
   }) as const;
 
 /**
- * Шугамын симбол — ЖИГД холболттой.
+ * Шугамын симбол — НИМГЭН зураас + нарийн бараан хүрээлэл (casing).
  *
- * `Road_shugam_suljee` нь CAD-аас экспортолсон олон богино хэрчмээс тогтоно.
- * `simple-line`-ийн анхдагч `cap: 'butt'` + `join: 'miter'` нь хэрчмийн үзүүрт
- * заваа, тохойд хурц эвдрэлт (spike) үүсгэж, сүлжээг барзгар харуулдаг. Дугуй
- * cap/join өгснөөр хэрчмүүд гөлгөр залгаж, цэвэрхэн урсгал шиг харагдана.
+ * Шугаман давхаргад дүүргэлт байхгүй тул харагдац нь БҮХЭЛДЭЭ зураасаас хамаарна.
+ * Агаарын зураг нь нарийн бүтэцтэй, олон өнгөтэй тул дан нимгэн зураас түүн дээр
+ * тасарч, хэсэг хэсгээрээ алга болдог. Зузаалах нь шийдэл биш — зураг бөглөрнө.
+ *
+ * Шийдэл: доор нь бага зэрэг өргөн, бараан хагас тунгалаг хүрээлэл тавина.
+ * Хүрээлэл нь шугамыг дэвсгэрээс ТАСЛАЖ өгдөг тул үндсэн зураас нимгэн хэвээр
+ * атлаа хаана ч уншигдана — картографийн стандарт арга.
+ *
+ * ⚠️ symbolLayers-ийн ЭХНИЙХ нь ДЭЭР зурагдана — тиймээс үндсэн зураас эхэнд.
+ * ⚠️ CIM симболын alpha нь 0–100 хуваарьтай (`cim()`), энгийнийх нь 0–1 (`c()`).
+ *
+ * `Road_shugam_suljee` нь CAD-аас экспортолсон олон богино хэрчмээс тогтдог тул
+ * дугуй cap/join заавал хэрэгтэй — эс бөгөөс үзүүрт заваа, тохойд хурц эвдрэлт гарна.
  */
-const line = (hex: string, w = 1.6) =>
-  ({ type: 'simple-line', color: c(hex), width: w, cap: 'round', join: 'round' }) as const;
+const line = (hex: string, w = 1.2) =>
+  ({
+    type: 'cim',
+    data: {
+      type: 'CIMSymbolReference',
+      symbol: {
+        type: 'CIMLineSymbol',
+        symbolLayers: [
+          {
+            type: 'CIMSolidStroke',
+            enable: true,
+            capStyle: 'Round',
+            joinStyle: 'Round',
+            width: w,
+            color: cim(hex, 1),
+          },
+          {
+            type: 'CIMSolidStroke',
+            enable: true,
+            capStyle: 'Round',
+            joinStyle: 'Round',
+            width: w + 1.3,
+            color: cim('#0b1220', 0.4),
+          },
+        ],
+      },
+    },
+  }) as const;
 
 const simple = (sym: unknown) => ({ type: 'simple', symbol: sym }) as __esri.RendererProperties;
 
@@ -223,22 +284,35 @@ const basemapFor = (theme: 'light' | 'dark') =>
   });
 
 /**
- * Багцын хил — ЛАВЛАХ давхарга (дүүргэлтгүй, зөвхөн зураас).
- * Өөр модулийн өгөгдлийг байрлуулж харахад чиг баримжаа болно.
- */
-const REF_OUTLINE = (hex: string) =>
-  ({
-    type: 'simple-fill',
-    color: [0, 0, 0, 0], // дүүргэлтгүй — зөвхөн чиг баримжааны хүрээ
-    outline: { color: c(hex, 0.9), width: 1 },
-  }) as const;
-
-
-/**
  * Тооцоолуурын хоёр давхаргыг ялгах өнгө.
  * Нэгж талбар — модулийн өнгө (ногоовтор). Барилга — тодорхой ялгаатай ягаан.
  */
 export const ESTIMATOR_BUILDING_HUE = '#6366f1';
+
+/**
+ * Кадастрын нэгж талбарын өнгө.
+ *
+ * Өмнө нь «тооцоолуур» модулийн өнгө байсан ч тэр модуль «Газар» руу нэгдсэн.
+ * Газрын модулийн улаан өнгийг ХУВААЖ БОЛОХГҮЙ: улаан нь чөлөөлөлтийн явцын
+ * ангилалд оногдсон бөгөөд 43 мянган кадастрын полигон түүнтэй ижил өнгөтэй бол
+ * хоёр огт өөр зүйл нэг мэт харагдана.
+ */
+export const CADASTRE_HUE = '#0d9488';
+
+/**
+ * Бүсийн давхаргын өнгө.
+ * ⚠️ Тусдаа модуль байхаа больсон тул модулиас уншиж болохгүй — тогтмол болгов.
+ */
+export const ZONE_LIST_HUE = '#7c3aed';
+
+/**
+ * Талбайн хяналтын тайлангийн цэгний өнгө.
+ *
+ * Тайлан нь одоо барилгын модульд амьдардаг ч модулийн улбар шар өнгийг ХУВААХГҮЙ:
+ * тайлангийн цэгүүд барилгын полигонуудын ДЭЭР зурагдах тул ижил өнгөтэй байвал
+ * ялгагдахаа болино. Хөх ногоон нь гүйцэтгэлийн 4 түвшний аль нэгтэй ч давхцахгүй.
+ */
+export const SURVEY_HUE = '#0891b2';
 
 /**
  * Төслийн үндсэн хилийн симбол — дүүргэлтгүй, тасархай/цэгэн зураас.
@@ -248,7 +322,8 @@ const boundaryLine = (style: 'dash' | 'dot') =>
   ({
     type: 'simple-fill',
     color: [0, 0, 0, 0], // дүүргэлтгүй
-    outline: { color: c(BOUNDARY_HUE, 0.95), width: style === 'dash' ? 2.2 : 1.8, style },
+    // Нимгэн: өнгө нь өөрөө өндөр ялгаралтай (ΔE ≥ 71) тул зузаалах хэрэггүй
+    outline: { color: c(BOUNDARY_HUE, 1), width: style === 'dash' ? 1.5 : 1.2, style },
   }) as const;
 
 /* ─────────────────── Давхарга үүсгэх ─────────────────── */
@@ -263,10 +338,6 @@ const own = (id: string, m: ModuleKey) => {
 const BOUNDARY_PLAN_ID = 'bnd:plan';
 const BOUNDARY_SELBE2_ID = 'bnd:selbe2';
 
-/** Лавлах давхаргын id — модулийн эзэмшилд ороогүй, тусдаа удирдана */
-const REF_BAGTS = 'ref:bagts';
-const REF_BUILDING = 'ref:building';
-
 /** Агаарын зураг — 9 ImageServer-ийг багцалсан GroupLayer */
 export const IMAGERY_ID = 'imagery';
 
@@ -279,16 +350,59 @@ export const IMAGERY_ID = 'imagery';
 export const DEFAULT_OVERLAYS: string[] = [IMAGERY_ID];
 
 /**
+ * Модульд орох үед ил байх ДЭД давхаргууд.
+ *
+ * ⚠️ Урьд нь самбар бүр өөрөө «хоосон бол анхдагчаа тавь» гэсэн эффекттэй байв.
+ * Хоёр самбар (ерөнхий, шугам сүлжээ) нэг модульд нэгдэж, НЭГ `sublayers` массивыг
+ * хуваах болсноор тэр эффектүүд бие биенийхээ утгыг дарж бичих байлаа. Тиймээс
+ * анхдагчийг модулийн ТҮВШИНД, нэг газраас шийднэ (`Portal.go`).
+ */
+/**
+ * ЗЭЭЛДСЭН давхарга — өөр модулийн эзэмшилд боловч энэ модульд ч сонгогдоно.
+ *
+ * ⚠️ «Нэмэлт давхарга» (`overlays`)-аас ЯЛГААТАЙ: тэдгээр нь зөвхөн харагддаг,
+ * бүдгэрдэг, дарж сонгогдохгүй. Зээлдсэн давхарга бүрэн эрхтэй — модулийн өөрийн
+ * давхаргатай адил.
+ *
+ * `модуль → { давхаргын id: дэд түлхүүр }`. Дэд түлхүүр нь `sublayers` массивт
+ * орох нэр — тухайн модулийн бусад түлхүүртэй давхцах ЁСГҮЙ.
+ */
+const BORROWED: Partial<Record<ModuleKey, Record<string, string>>> = {
+  general: { zone: 'zone', 'land:parcel': 'parcel' },
+};
+
+/** Зээлдсэн давхаргын жагсаалтын мэдээлэл — самбар үүгээр шилжүүлэгч зурна */
+export const BORROWED_LAYERS: Record<ModuleKey, { key: string; title: string; hue: string }[]> = {
+  general: [
+    { key: 'zone', title: 'Хот төлөвлөлтийн бүс', hue: ZONE_LIST_HUE },
+    { key: 'parcel', title: 'Үлдсэн нэгж талбар', hue: hueOf('land') },
+  ],
+  building: [],
+  land: [],
+};
+
+export const DEFAULT_SUBLAYERS: Partial<Record<ModuleKey, string[]>> = {
+  // Ерөнхий мэдээлэл — 11 дэд давхаргаас эхлэхэд ганц нь ил (бусдыг нь хэрэглэгч нэмнэ)
+  general: ['built'],
+  // Газар — эхлэхэд чөлөөлөлтийн таб. 43 мянган кадастрын полигон АНХНААСАА
+  // харагдвал 217 үлдсэн талбарыг дарж, модулийн гол зорилго нуугдана.
+  land: ['parcel'],
+};
+
+/**
  * Лавлах давхарга → аль модульд харагдах.
  *
  * Тухайн модулийн өгөгдлийг байрлуулж харахад чиг баримжаа болно. Эдгээр нь
  * ЗӨВХӨН зураас — дарж сонгогдохгүй, шүүлтэд оролцохгүй.
  * Шинэ модульд лавлах давхарга нэмэх бол зөвхөн энэ хүснэгтийг засна.
+ *
+ * ⚠️ Одоогоор ХООСОН. Хоёр лавлах давхарга байсныг хассан: барилгынхыг тайлангийн
+ * цэгүүд барилгын модульд шилжсэн үед (жинхэнэ давхарга нь тэнд ил болсон),
+ * багцын хилийнхийг тухайн давхаргыг бүрмөсөн хассан үед. Механизмыг үлдээв —
+ * шинэ лавлах давхарга нэмэхэд энэ хүснэгтэд мөр нэмж, давхаргадаа дүүргэлтгүй
+ * симбол өгнө (өмнөх `REF_OUTLINE` туслах нь хэрэглэгдэхээ болсон тул хасагдсан).
  */
-const REF_IN: Record<string, ModuleKey[]> = {
-  [REF_BAGTS]: ['building', 'survey'],
-  [REF_BUILDING]: ['survey'],
-};
+const REF_IN: Record<string, ModuleKey[]> = {};
 
 /**
  * Модулийн эзэмшилд ороогүй туслах давхаргууд.
@@ -298,8 +412,6 @@ const PASSIVE_IDS = new Set([
   'sketch',
   BOUNDARY_PLAN_ID,
   BOUNDARY_SELBE2_ID,
-  REF_BAGTS,
-  REF_BUILDING,
   // Агаарын зураг нь растр суурь — дарж сонгох, шүүх зүйлгүй
   IMAGERY_ID,
 ]);
@@ -336,19 +448,19 @@ export const OVERLAY_LAYERS: OverlayLayer[] = [
     hue: GENERAL[k].hue,
     module: 'general' as ModuleKey,
   })),
-  { id: 'bagts', title: 'Багцын хил', hue: hueOf('bagts'), module: 'bagts' },
-  { id: 'zone', title: 'Хот төлөвлөлтийн бүс', hue: hueOf('zone'), module: 'zone' },
-  { id: 'building', title: 'Барилгын явц', hue: hueOf('building'), module: 'building' },
-  { id: 'parcel', title: 'Үлдсэн нэгж талбар', hue: hueOf('parcel'), module: 'parcel' },
-  { id: 'estimator', title: 'Кадастрын нэгж талбар', hue: hueOf('estimator'), module: 'estimator' },
-  { id: 'estimatorB', title: 'Барилга (үнэлгээтэй)', hue: ESTIMATOR_BUILDING_HUE, module: 'estimator' },
+  // Шугам сүлжээ нь «Ерөнхий мэдээлэл»-ийн дэд давхарга болов
   ...(Object.keys(UTILITY) as UtilKey[]).map((k) => ({
     id: `utility:${k}`,
     title: UTILITY[k].title,
     hue: UTILITY[k].hue,
-    module: 'utility' as ModuleKey,
+    module: 'general' as ModuleKey,
   })),
-  { id: 'survey', title: 'Талбайн хяналтын тайлан', hue: hueOf('survey'), module: 'survey' },
+  { id: 'building', title: 'Барилгын явц', hue: hueOf('building'), module: 'building' },
+  // Газрын модулийн 3 давхарга — таб нь алийг нь харуулахыг шийднэ
+  { id: 'land:parcel', title: 'Үлдсэн нэгж талбар', hue: hueOf('land'), module: 'land' },
+  { id: 'land:cadastre', title: 'Кадастрын нэгж талбар', hue: CADASTRE_HUE, module: 'land' },
+  { id: 'land:valuation', title: 'Барилга (үнэлгээтэй)', hue: ESTIMATOR_BUILDING_HUE, module: 'land' },
+  { id: 'survey', title: 'Талбайн хяналтын тайлан', hue: SURVEY_HUE, module: 'building' },
 ];
 
 function buildLayers(): Layer[] {
@@ -403,51 +515,28 @@ function buildLayers(): Layer[] {
     renderer: simple(boundaryLine(BOUNDARY.selbe2.style)),
   }));
 
-  // 1 · Багцын хил — төслийн үндсэн хүрээ
+  // 1 · Бүсчлэл — ЗОРИУЛАЛТААР нь өнгөөр ялгана.
+  //     Түүхий `TOROL` нь 32 өөр утгатай тул шууд ялгаж болохгүй — Arcade нь
+  //     Шинэ үйлчилгээний `TOROL` цэвэр 5 утгатай тул Arcade ангилагч хэрэггүй.
   L.push(new FeatureLayer({
-    id: own('bagts', 'bagts'),
-    url: BAGTS.url,
-    outFields: ['*'],
-    popupEnabled: false,
-    renderer: simple(cleanFill(hueOf('bagts'), 0.14, 1)),
-    labelingInfo: labels(hueOf('bagts'), `$feature.${BAGTS.fields.name}`),
-  }));
-
-  // 1б · ЛАВЛАХ давхаргууд — дүүргэлтгүй, зөвхөн зураас. REF_IN-д заасан модульд
-  //      чиг баримжаа болгож харагдана. Дарж сонгох, шүүх боломжгүй.
-  L.push(new FeatureLayer({
-    id: REF_BAGTS,
-    url: BAGTS.url,
-    title: 'Багцын хил (лавлах)',
-    outFields: [BAGTS.fields.name],
-    popupEnabled: false,
-    visible: false,
-    legendEnabled: false,
-    renderer: simple(REF_OUTLINE(hueOf('bagts'))),
-    labelingInfo: labels(hueOf('bagts'), `$feature.${BAGTS.fields.name}`),
-  }));
-
-  L.push(new FeatureLayer({
-    id: REF_BUILDING,
-    url: BUILDING.url,
-    title: 'Барилга (лавлах)',
-    outFields: [BUILDING.fields.block, BUILDING.fields.bagts],
-    popupEnabled: false,
-    visible: false,
-    legendEnabled: false,
-    renderer: simple(REF_OUTLINE(hueOf('building'))),
-  }));
-
-  // 2 · Бүсчлэл — бүсийн код (B-2.1…), хоосон бол зориулалтаар нь нэрлэнэ
-  L.push(new FeatureLayer({
-    id: own('zone', 'zone'),
+    id: 'zone',
     url: ZONE.url,
     outFields: ['*'],
     popupEnabled: false,
     visible: false,
-    renderer: simple(cleanFill(hueOf('zone'), 0.16, 0.8)),
+    renderer: {
+      type: 'unique-value',
+      field: ZONE.fields.type,
+      defaultSymbol: cleanFill(ZONE_TYPE_EMPTY_HUE, 0.26),
+      defaultLabel: ZONE_TYPE_EMPTY,
+      uniqueValueInfos: Object.entries(ZONE_TYPES).map(([value, color]) => ({
+        value, label: value, symbol: cleanFill(color, 0.32),
+      })),
+    } as __esri.RendererProperties,
     labelingInfo: labels(
-      hueOf('zone'),
+      // ⚠️ Модулийн ягаан өнгөөр БИШ. Тэр өнгө одоо «Инженерийн» ангилалд
+      //    оногдсон тул шошго нь бүсийг буруу ангид хамааруулж харагдана.
+      '#1e293b',
       `
         var id = Trim(Text($feature.${ZONE.fields.id}));
         var torol = Trim(Text($feature.${ZONE.fields.type}));
@@ -469,7 +558,7 @@ function buildLayers(): Layer[] {
     renderer: {
       type: 'class-breaks',
       field: BUILDING.fields.progress,
-      defaultSymbol: cleanFill('#94a3b8', 0.24),
+      defaultSymbol: cleanFill('#64748b', 0.3),
       defaultLabel: 'Мэдээлэлгүй',
       // ⚠️ ArcGIS-ийн classBreak нь minValue/maxValue ХОЁУЛАНГ нь оруулж тоолдог.
       //    Самбарын тоолол ба SQL шүүлт нь `>= min AND < max` (хагас нээлттэй) тул
@@ -479,14 +568,14 @@ function buildLayers(): Layer[] {
         minValue: l.min,
         maxValue: l.max - 0.0001,
         label: `${l.label} (${l.range})`,
-        symbol: cleanFill(l.color, 0.24),
+        symbol: cleanFill(l.color, 0.32),
       })),
     } as __esri.RendererProperties,
   }));
 
   // 4 · Үлдсэн нэгж талбар — чөлөөлөлтийн явцаар өнгө
   L.push(new FeatureLayer({
-    id: own('parcel', 'parcel'),
+    id: own('land:parcel', 'land'),
     url: PARCEL.url,
     outFields: ['*'],
     popupEnabled: false,
@@ -494,10 +583,11 @@ function buildLayers(): Layer[] {
     renderer: {
       type: 'unique-value',
       field: PARCEL.fields.status,
-      defaultSymbol: cleanFill('#94a3b8', 0.24),
-      defaultLabel: 'Бүртгэгдээгүй',
+      // Талбаруудын 86% нь энэ бүлэгт унадаг — саарал биш, ТОД байх ёстой
+      defaultSymbol: cleanFill(PARCEL_STATUS_EMPTY_HUE, 0.32),
+      defaultLabel: PARCEL_STATUS_EMPTY,
       uniqueValueInfos: Object.entries(PARCEL_STATUS).map(([value, color]) => ({
-        value, label: value, symbol: cleanFill(color, 0.24),
+        value, label: value, symbol: cleanFill(color, 0.32),
       })),
     } as __esri.RendererProperties,
   }));
@@ -507,18 +597,18 @@ function buildLayers(): Layer[] {
   //     жижиг масштабт 80 мянган полигон зурах болно.
   //     Барилга нь талбарын ДЭЭР зурагдана (жагсаалтад сүүлд нэмнэ).
   L.push(new FeatureLayer({
-    id: own('estimator', 'estimator'),
+    id: own('land:cadastre', 'land'),
     url: CADASTRE.url,
     title: 'Нэгж талбар',
     outFields: ['*'],
     popupEnabled: false,
     visible: false,
     minScale: 40000,
-    renderer: simple(denseFill(hueOf('estimator'))),
+    renderer: simple(denseFill(CADASTRE_HUE)),
   }));
 
   L.push(new FeatureLayer({
-    id: own('estimatorB', 'estimator'),
+    id: own('land:valuation', 'land'),
     url: VALUATION.url,
     title: 'Барилга (үнэлгээтэй)',
     outFields: ['*'],
@@ -540,21 +630,37 @@ function buildLayers(): Layer[] {
     }));
   }
 
-  // 7 · Шугам сүлжээ ба зам
+  // 7 · Дэд бүтэц — инженерийн шугам, цахилгаан, тээвэр, зам
   for (const [k, u] of Object.entries(UTILITY) as [UtilKey, (typeof UTILITY)[UtilKey]][]) {
     L.push(new FeatureLayer({
-      id: own(`utility:${k}`, 'utility'),
+      id: own(`utility:${k}`, 'general'),
       url: u.url,
       outFields: ['*'],
       popupEnabled: false,
       visible: false,
-      renderer: simple(u.kind === 'line' ? line(u.hue, 0.75) : cleanFill(u.hue)),
+      renderer: simple(
+        // Нимгэн (1.2) боловч хүрээлэлтэй тул агаарын зураг дээр ч тасрахгүй
+        u.kind === 'line' ? line(u.hue, 1.2)
+          // Цэг — цагаан хүрээтэй тойрог. Тайлангийн цэгээс ЖИЖИГ (9 vs 13):
+          // худаг, буудал нь нэгжийн тоо олонтой тул зурагт бөглөрөх ёсгүй.
+          : u.kind === 'point' ? {
+            type: 'simple-marker',
+            style: 'circle',
+            size: 9,
+            color: c(u.hue, 0.95),
+            outline: { color: [255, 255, 255, 0.9], width: 1.4 },
+          }
+          : cleanFill(u.hue),
+      ),
     }));
   }
 
-  // 8 · Талбайн хяналт — Survey123-ийн цэгүүд
+  // 8 · Талбайн хяналт — Survey123-ийн цэгүүд.
+  //     Барилгын модульд харьяалагдана: төлөвлөсөн гүйцэтгэл (полигон) ба талбар
+  //     дээр баталгаажсан тайлан (цэг) нэг зурагт зэрэг харагдана. Барилгын
+  //     полигонуудын ДАРАА нэмснээр тэдгээрийн дээр зурагдана.
   L.push(new FeatureLayer({
-    id: own('survey', 'survey'),
+    id: own('survey', 'building'),
     url: SURVEY.url,
     outFields: ['*'],
     popupEnabled: false,
@@ -563,7 +669,7 @@ function buildLayers(): Layer[] {
       type: 'simple-marker',
       style: 'circle',
       size: 13,
-      color: c(hueOf('survey'), 0.9),
+      color: c(SURVEY_HUE, 0.9),
       outline: { color: [255, 255, 255, 0.9], width: 2 },
     }),
   }));
@@ -632,10 +738,14 @@ export function MapProvider({ children }: { children: ReactNode }) {
   const setHighlight = useCallback((w: string | null) => setWhere(w), []);
   const setAoiFilter = useCallback((g: __esri.Geometry | null) => setAoi(g), []);
 
-  const zoomToLayer = useCallback(async (key: ModuleKey, opts?: { withBoundary?: boolean }) => {
+  const zoomToLayer = useCallback(async (key: ModuleKey | string, opts?: { withBoundary?: boolean }) => {
     if (!view || view.destroyed || !view.map) return;
 
-    const target = view.map.layers.find((x) => OWNER[x.id] === key && x.visible) as FeatureLayer | undefined;
+    // Давхаргын id-г ЭХЭЛЖ шалгана — модулийн түлхүүрээр хайвал нэг модулийн олон
+    // давхаргаас санамсаргүй нэг нь сонгогдоно.
+    const target = view.map.layers.find(
+      (x) => (x.id === key || OWNER[x.id] === key) && x.visible,
+    ) as FeatureLayer | undefined;
     if (!target?.url) return;
 
     const urls = [target.url];
@@ -861,13 +971,24 @@ export function MapCanvas({
         return;
       }
 
+      // ЗЭЭЛДСЭН давхарга — өөр модулийн эзэмшилд ч энэ модульд бүрэн эрхтэй
+      // харагдана (дарж сонгогдоно, бүдгэрэхгүй). Нэмэлт давхаргаас ялгаатай.
+      const borrowedKey = BORROWED[module]?.[l.id];
+      if (borrowedKey) {
+        l.visible = sublayers?.includes(borrowedKey) ?? false;
+        l.opacity = 1;
+        return;
+      }
+
       if (overlaySet.has(l.id)) {
         // Нэмэлт давхарга — идэвхтэй модулиас бүдэгхэн.
         // Тодруулга/шүүлтэд ороогүй тул хуучин эффект үлдсэн бол цэвэрлэнэ.
         l.visible = true;
         // Агаарын зураг нь бусад давхаргын ДООР зурагддаг растр суурь — бүдгэрүүлбэл
         // зөвхөн уншигдахаа болино, дарах зүйл нь ч байхгүй. Тиймээс бүрэн тодоор.
-        l.opacity = l.id === IMAGERY_ID ? 1 : 0.55;
+        // 0.55 нь агаарын зураг дээр хэт бүдэг байв — нэмэлт давхарга нь идэвхтэй
+        // модулиас ялгарах хэрэгтэй ч уншигдахаа болих ёсгүй.
+        l.opacity = l.id === IMAGERY_ID ? 1 : 0.8;
         OVERLAY_IDS.add(l.id);
         if ('featureEffect' in l) {
           (l as FeatureLayer).featureEffect = null as unknown as __esri.FeatureEffect;

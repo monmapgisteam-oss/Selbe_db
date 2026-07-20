@@ -1,31 +1,14 @@
-.toggles { display: flex; flex-direction: column; gap: 2px; }
 
-.toggle {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 9px 10px;
-  border-radius: var(--r-sm);
-  text-align: left;
-  font-size: 0.78rem;
-  color: var(--ink);
-  transition: background 0.12s, opacity 0.12s;
-}
-.toggle:hover { background: var(--surface-2); }
-.toggleOff { opacity: 0.42; }
 
-.swatch {
-  width: 12px;
-  height: 12px;
-  border-radius: 3px;
-  flex: none;
-  background: var(--tone);
-}
-.swatchLine { height: 3px; border-radius: 2px; }
 
-.toggleName { flex: 1; font-weight: 600; }
-.toggleVal { font-size: 0.74rem; color: var(--ink-3); }
+
+
+
+
+
+
+
+
 
 .note {
   font-size: 0.73rem;
@@ -35,4 +18,22 @@
   border-radius: var(--r);
   background: var(--surface-2);
   border: 1px solid var(--line);
+}
+
+/* ── Давхаргын доторх ангиллын дэд гарчиг ──
+   Ерөнхий мэдээллийн самбартай ЯГ ижил хэлбэр — давхарга бүр өөрийн Section-тэй
+   болсон тул ангилал бүрийг тусдаа Section болговол гарчиг хэт давхарлана. */
+.facetHead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 0.74rem;
+  font-weight: 650;
+  color: var(--ink-2);
+}
+.facetNote {
+  font-size: 0.68rem;
+  font-weight: 400;
+  color: var(--ink-3);
 }
