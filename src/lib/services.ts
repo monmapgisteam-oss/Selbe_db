@@ -41,9 +41,20 @@ export const BASEMAP = {
  * `appId` хоосон бол нэвтрэлт УНТРААЛТТАЙ (апп хуучнаар нээлттэй ажиллана).
  */
 export const AUTH = {
-  appId: 'ZPJRqk1iiYcjYRLv',                   // ArcGIS Online OAuth аппын Client ID
-  portalUrl: 'https://monmap.maps.arcgis.com', // MonMap LLC байгууллагын portal
-  allowedOrgId: 'HJzgwvlNIXssnQar',            // Зөвхөн MonMap LLC-ийн хэрэглэгч нэвтэрнэ
+  appId: 'ZPJRqk1iiYcjYRLv',            // ArcGIS Online OAuth аппын Client ID
+  /**
+   * ⚠️ Байгууллагын хаяг (`https://monmap.maps.arcgis.com`) БИШ, ерөнхий хаяг байх ёстой.
+   *
+   * Байгууллагын домэйн нь ArcGIS Online-ы «Allowed origins» цагаан жагсаалтыг мөрдөнө.
+   * Тэр жагсаалтад `https://selbe.monmap.mn` байгаа ч `http://localhost:8123` алга тул
+   * dev дээр `/sharing/rest/oauth2/token` рүү явах токен солилт CORS-д хаагдаж,
+   * нэвтрэлт чимээгүй бүтэлгүйтэж байв. `www.arcgis.com` нь аль ч origin-ыг зөвшөөрнө.
+   *
+   * Байгууллагаар хязгаарлах ажлыг доорх `allowedOrgId` хийж байгаа тул энэ нь
+   * хамгаалалтыг сулруулахгүй.
+   */
+  portalUrl: 'https://www.arcgis.com',
+  allowedOrgId: 'HJzgwvlNIXssnQar',     // Зөвхөн MonMap LLC-ийн хэрэглэгч нэвтэрнэ
 } as const;
 
 /**
@@ -382,6 +393,38 @@ export const UTILITY: Record<UtilKey, { url: string; title: string; hue: string;
   storm: { url: `${HJ}/Road_shugam_suljee/FeatureServer/2`, title: 'Борооны ус зайлуулах', hue: '#0891b2', kind: 'line' },
   roadplan: { url: `${HJ}/Road_shugam_suljee/FeatureServer/3`, title: 'Замын план', hue: '#64748b', kind: 'area' },
 };
+
+/**
+ * 9 · Агаарын зураг — Улаанбаатар хотын ubhub ArcGIS Server дээрх ортофото.
+ *
+ * 9 үйлчилгээ нь тус тусдаа ImageServer боловч байрлалаараа хооронд нь залгаж НЭГ
+ * бүрхэвч үүсгэдэг (`mid_1…6` өмнөд хэсэг, `north_ortho1…3` хойд хэсэг). Тиймээс
+ * хэрэглэгчид ГАНЦ унтраалга болгож харуулна — `MapCanvas` тэдгээрийг GroupLayer-т
+ * багцална.
+ *
+ * ⚠️ Проекц нь UTM 48N (32648), веб Меркатор биш. Үйлчилгээ нь тайлын кэшгүй
+ *    (`tileInfo` байхгүй) тул `ImageryTileLayer` БИШ, динамик `ImageryLayer`-ээр
+ *    дуудна — сервер өөрөө проекц хийж зураг буцаана.
+ */
+const UBHUB = 'https://mapservice.ubhub.mn/arcgis/rest/services/Imagery';
+
+export const IMAGERY = {
+  title: 'Агаарын зураг (ортофото)',
+  /** Саарал өнгө — аль ч модулийн өнгөтэй давхцахгүй */
+  hue: '#78716c',
+  /** ⚠️ Үйлчилгээний нэрсийн том/жижиг үсэг эх сервер дээрх бичиглэлээр нь */
+  urls: [
+    `${UBHUB}/Selbe_mid_1/ImageServer`,
+    `${UBHUB}/selbe_mid2/ImageServer`,
+    `${UBHUB}/selbe_mid3/ImageServer`,
+    `${UBHUB}/selbe_mid4/ImageServer`,
+    `${UBHUB}/selbe_mid5/ImageServer`,
+    `${UBHUB}/selbe_mid6/ImageServer`,
+    `${UBHUB}/Selbe_north_ortho1/ImageServer`,
+    `${UBHUB}/Selbe_north_ortho2/ImageServer`,
+    `${UBHUB}/Selbe_north_ortho3/ImageServer`,
+  ],
+} as const;
 
 /**
  * 8 · Талбайн хяналт — Survey123 мобайл аппын үр дүн.

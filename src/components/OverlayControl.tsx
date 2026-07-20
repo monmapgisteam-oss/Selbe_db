@@ -30,11 +30,18 @@ export function OverlayControl({
   // Идэвхтэй модулийн давхаргууд нь аль хэдийн ил тул жагсаалтад гарахгүй
   const available = OVERLAY_LAYERS.filter((l) => l.module !== module);
 
-  /** Эх модулиар нь бүлэглэнэ — MODULES-ийн дараалал хадгална */
-  const groups = MODULES.map((m) => ({
-    module: m,
-    layers: available.filter((l) => l.module === m.key),
-  })).filter((g) => g.layers.length > 0);
+  /**
+   * Эх модулиар нь бүлэглэнэ — MODULES-ийн дараалал хадгална.
+   * Модульд харьяалагдахгүй давхарга (агаарын зураг) нь тусдаа, ХАМГИЙН ДЭЭД бүлэг.
+   */
+  const groups = [
+    { key: 'base', title: 'Суурь', layers: available.filter((l) => l.module === null) },
+    ...MODULES.map((m) => ({
+      key: m.key as string,
+      title: m.title,
+      layers: available.filter((l) => l.module === m.key),
+    })),
+  ].filter((g) => g.layers.length > 0);
 
   const toggle = (id: string) =>
     setOverlays((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -57,9 +64,9 @@ export function OverlayControl({
           </p>
 
           {groups.map((g) => (
-            <div key={g.module.key} className={s.group}>
+            <div key={g.key} className={s.group}>
               {/* Нэг давхаргатай модульд гарчиг нь давхаргын нэртэй давхцах тул хэрэггүй */}
-              {g.layers.length > 1 && <div className={s.groupHead}>{g.module.title}</div>}
+              {g.layers.length > 1 && <div className={s.groupHead}>{g.title}</div>}
 
               {g.layers.map((l) => {
                 const on = overlays.includes(l.id);
