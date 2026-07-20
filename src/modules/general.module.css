@@ -38,27 +38,23 @@
 .layerOn .name { color: var(--tone); }
 
 /* ── Фокусын таб (олон давхарга ил үед) ── */
-.tabs {
+/* ── Давхаргын доторх ангиллын дэд гарчиг ──
+   Давхарга бүр өөрийн `Section`-тэй болсон тул ангилал бүрийг ТУСДАА Section
+   болговол хэсгийн гарчиг хэт олон давхарлаж уншигдахаа болино. Тиймээс
+   давхаргын Section дотор хөнгөн дэд гарчиг ашиглана. */
+.facetHead {
   display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  margin-bottom: 14px;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 0.74rem;
+  font-weight: 650;
+  color: var(--ink-2);
 }
-.tab {
-  padding: 5px 10px;
-  border-radius: 99px;
-  border: 1px solid var(--line);
-  font-size: 0.72rem;
-  font-weight: 600;
+.facetNote {
+  font-size: 0.68rem;
+  font-weight: 400;
   color: var(--ink-3);
-  white-space: nowrap;
-  transition: background 0.12s, border-color 0.12s, color 0.12s;
-}
-.tab:hover { background: var(--surface-2); color: var(--ink); }
-.tabOn {
-  color: var(--tone);
-  background: color-mix(in srgb, var(--tone) 12%, transparent);
-  border-color: color-mix(in srgb, var(--tone) 45%, transparent);
 }
 
 .note {

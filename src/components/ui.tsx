@@ -30,6 +30,52 @@ export function Section({
   );
 }
 
+/* ── Таб ── */
+
+/**
+ * Самбарын доторх таб.
+ *
+ * Нэг модульд олон СЭДЭВ багтахад (барилгын блок, талбайн тайлан, байрлалын
+ * хяналт) урт өрлөг болгохын оронд тус тусад нь салгана. Гүйлгэхэд гарчиг нь
+ * дагаж явахаар наалдана — урт агуулгад аль хэсэгт байгаагаа алдахгүй.
+ *
+ * `count` нь тухайн табын доторх бичлэгийн тоо. `warn` нь анхаарал татах ёстой
+ * тоо (жишээ нь хилээс гадуур бүртгэгдсэн тайлан) — таб нуугдсан ч тэмдэг нь
+ * харагдаж, хэрэглэгч анзаарна.
+ */
+export function Tabs({
+  items,
+  value,
+  onChange,
+}: {
+  items: { key: string; label: string; count?: number | null; warn?: boolean }[];
+  value: string;
+  onChange: (key: string) => void;
+}) {
+  return (
+    <div className={s.tabs} role="tablist">
+      {items.map((t) => {
+        const on = t.key === value;
+        return (
+          <button
+            key={t.key}
+            type="button"
+            role="tab"
+            aria-selected={on}
+            className={`${s.tab} ${on ? s.tabOn : ''}`}
+            onClick={() => onChange(t.key)}
+          >
+            {t.label}
+            {t.count != null && t.count > 0 && (
+              <span className={`${s.tabCount} ${t.warn ? s.tabCountWarn : ''} num`}>{t.count}</span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /* ── Үзүүлэлт ── */
 
 export function Stats({ cols = 2, children }: { cols?: 2 | 3; children: ReactNode }) {
@@ -157,6 +203,131 @@ export function Stack({
         </ul>
       )}
     </>
+  );
+}
+
+/* ── Дугуй диаграм (pie / donut) ── */
+
+/**
+ * Хувь эзлэх байдлыг харуулах дугуй диаграм.
+ *
+ * ⚠️ `Stack`-аас ЯЛГААТАЙ хэрэглээ: Stack нь нарийн зурвас — олон ангилалтай,
+ * дараалал чухал үед. Donut нь ЦӨӨН (3–7) ангилалын харьцааг онцлоход тохирно.
+ * 7-оос олон ангилалд зүсмэгүүд нь ялгагдахаа болих тул Stack эсвэл Bars хэрэглэ.
+ *
+ * ⚠️ SVG-ийн дугуйг `stroke-dasharray`-аар зурна — олон `<path>` үүсгэхээс хямд
+ * бөгөөд өнцөг тооцох тригонометр шаардахгүй.
+ */
+export function Donut({
+  items,
+  size = 132,
+  width = 22,
+  center,
+  centerLabel,
+}: {
+  items: { key: string; label: string; value: number; color: string }[];
+  size?: number;
+  width?: number;
+  /** Голд харуулах утга. Заагаагүй бол нийлбэр. */
+  center?: ReactNode;
+  centerLabel?: string;
+}) {
+  const total = items.reduce((a, b) => a + b.value, 0);
+  const r = (size - width) / 2;
+  const circ = 2 * Math.PI * r;
+
+  // Зүсмэг бүрийн ЭХЛЭХ байрлал — өмнөх зүсмэгүүдийн нийлбэр
+  let acc = 0;
+  const slices = items.map((it) => {
+    const frac = total > 0 ? it.value / total : 0;
+    const offset = acc;
+    acc += frac;
+    return { ...it, frac, offset };
+  });
+
+  return (
+    <div className={s.donutWrap}>
+      <div className={s.donut} style={{ width: size, height: size }}>
+        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+          {/* -90° эргүүлж 12 цагаас эхлүүлнэ */}
+          <g transform={`rotate(-90 ${size / 2} ${size / 2})`}>
+            <circle className={s.donutTrack} cx={size / 2} cy={size / 2} r={r} strokeWidth={width} />
+            {slices.map((sl) => (
+              <circle
+                key={sl.key}
+                cx={size / 2}
+                cy={size / 2}
+                r={r}
+                strokeWidth={width}
+                stroke={sl.color}
+                fill="none"
+                strokeDasharray={`${sl.frac * circ} ${circ}`}
+                strokeDashoffset={-sl.offset * circ}
+              >
+                <title>{`${sl.label}: ${sl.value}`}</title>
+              </circle>
+            ))}
+          </g>
+        </svg>
+        <div className={s.donutCenter}>
+          <span className={`${s.donutValue} num`}>{center ?? total}</span>
+          {centerLabel && <span className={s.donutLabel}>{centerLabel}</span>}
+        </div>
+      </div>
+
+      <ul className={s.donutLegend}>
+        {slices.map((sl) => (
+          <li key={sl.key} className={s.donutItem}>
+            <span className={s.legendDot} style={{ background: sl.color }} />
+            <span className={s.donutName}>{sl.label}</span>
+            <b className={`${s.donutPct} num`}>{(sl.frac * 100).toFixed(0)}%</b>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/* ── Цуваа график (series) ── */
+
+/**
+ * Босоо баганан цуваа — ангилал/хугацааны цувааг харьцуулна.
+ *
+ * ⚠️ `Bars`-аас ялгаатай: `Bars` нь ХЭВТЭЭ, урт нэртэй ангилалд тохирно.
+ * `Series` нь БОСОО, цөөн тэмдэгттэй шошготой (он, давхар, эгнээ) цувааг
+ * дүрсний хэлбэрээр нь уншуулна — өсөлт/бууралтын хэв маяг шууд харагдана.
+ */
+export function Series({
+  items,
+  color,
+  height = 96,
+  unit,
+}: {
+  items: { key: string; label: string; value: number; display?: string }[];
+  color?: string;
+  height?: number;
+  unit?: string;
+}) {
+  const max = Math.max(1, ...items.map((i) => i.value));
+
+  return (
+    <div className={s.series} style={tone(color)}>
+      <div className={s.seriesPlot} style={{ height }}>
+        {items.map((it) => (
+          <div key={it.key} className={s.seriesCol} title={`${it.label}: ${it.display ?? it.value}`}>
+            <span className={`${s.seriesVal} num`}>{it.display ?? it.value}</span>
+            <span
+              className={s.seriesBar}
+              // ⚠️ Хамгийн бага өндөр 2px: утга 0 байсан ч багана нь БАЙГАА гэдэг
+              //    нь харагдах ёстой — эс бөгөөс өгөгдөлгүйтэй андуурагдана.
+              style={{ height: `${Math.max(2, (it.value / max) * 100)}%` }}
+            />
+            <span className={s.seriesLabel}>{it.label}</span>
+          </div>
+        ))}
+      </div>
+      {unit && <div className={s.seriesUnit}>{unit}</div>}
+    </div>
   );
 }
 

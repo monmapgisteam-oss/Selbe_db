@@ -1,23 +1,19 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { MapCanvas, MapProvider, DEFAULT_OVERLAYS } from '@/components/MapCanvas';
+import { MapCanvas, MapProvider, DEFAULT_OVERLAYS, DEFAULT_SUBLAYERS } from '@/components/MapCanvas';
 import { Icon } from '@/components/Icon';
 import { OverlayControl } from '@/components/OverlayControl';
 import { useTheme } from '@/lib/theme';
 import { useAsync } from '@/lib/useAsync';
 import { queryCount, queryStats, queryFeatures, sum } from '@/lib/query';
-import { MODULES, DEFAULT_MODULE, BAGTS, ZONE, BUILDING, BOUNDARY, type ModuleKey } from '@/lib/services';
+import { MODULES, DEFAULT_MODULE, ZONE, BUILDING, BOUNDARY, type ModuleKey } from '@/lib/services';
 import { num } from '@/lib/format';
 
-import { BagtsPanel } from '@/modules/BagtsPanel';
-import { ZonePanel } from '@/modules/ZonePanel';
-import { BuildingSummary, BuildingDetail } from '@/modules/BuildingPanel';
-import { ParcelPanel } from '@/modules/ParcelPanel';
-import { EstimatorPanel } from '@/modules/EstimatorPanel';
-import { GeneralPanel } from '@/modules/GeneralPanel';
-import { UtilityPanel } from '@/modules/UtilityPanel';
-import { SurveyPanel, SurveyOutside } from '@/modules/SurveyPanel';
+import { BuildingSummary, BuildingWork } from '@/modules/BuildingPanel';
+import { LandPanel } from '@/modules/LandPanel';
+import { GeneralLayers, GeneralInfo } from '@/modules/GeneralPanel';
+import { SurveySummary } from '@/modules/SurveyPanel';
 
 import s from '@/app/shell.module.css';
 
@@ -25,7 +21,7 @@ const isModule = (v: string): v is ModuleKey => MODULES.some((m) => m.key === v)
 
 export default function Portal() {
   const [module, setModule] = useState<ModuleKey>(DEFAULT_MODULE);
-  const [sublayers, setSublayers] = useState<string[]>([]);
+  const [sublayers, setSublayers] = useState<string[]>(DEFAULT_SUBLAYERS[DEFAULT_MODULE] ?? []);
   const [picked, setPicked] = useState<Record<string, unknown> | null>(null);
   /** Дарсан объект аль давхаргаас ирсэн — олон дэд давхарга ил үед чухал */
   const [pickedLayer, setPickedLayer] = useState<string | null>(null);
@@ -34,6 +30,12 @@ export default function Portal() {
    * Агаарын зураг анхнаасаа асаалттай (`DEFAULT_OVERLAYS`).
    */
   const [overlays, setOverlays] = useState<string[]>(DEFAULT_OVERLAYS);
+  /**
+   * Ангилал сонгох төлөв — «Ерөнхий мэдээлэл»-ийн хоёр багана ХУВААНА.
+   * Жагсаалт (зүүн) давхарга унтраахад цэвэрлэнэ, мэдээлэл (баруун) сонгоно.
+   * Зураг дээрх тодруулга глобал тул нэг л ангилал идэвхтэй байна.
+   */
+  const [facet, setFacet] = useState<string | null>(null);
   const { theme, toggle } = useTheme();
 
   const pick = useCallback((attrs: Record<string, unknown> | null, layerId: string | null) => {
@@ -53,7 +55,10 @@ export default function Portal() {
     (key: ModuleKey) => {
       setModule(key);
       clearPicked();
-      setSublayers([]);
+      // Модуль бүрийн анхдагч дэд давхарга — самбарууд өөрсдөө тавихаа больсон
+      setSublayers(DEFAULT_SUBLAYERS[key] ?? []);
+      // Ангиллын сонголт өмнөх модулийнх — үлдвэл шинэ модульд утгагүй болно
+      setFacet(null);
       // ⚠️ Хоосон массив БИШ. Хэрэглэгчийн сонгосон нэмэлт давхарга нь өмнөх модулийн
       //    сэдэвтэй холбоотой тул цэвэрлэх нь зөв, харин агаарын зураг бол модулиас
       //    үл хамаарах СУУРЬ давхарга — модуль дарах бүрд унтарвал буруу.
@@ -104,19 +109,40 @@ export default function Portal() {
     desc: string;
     node: ReactNode;
   }>> = {
+    /**
+     * Ерөнхий мэдээлэл — ЗҮҮН баганад давхаргын жагсаалт, БАРУУН баганад мэдээлэл.
+     * 18 давхаргын жагсаалт ба тэдгээрийн дэлгэрэнгүй нэг баганад багтахгүй:
+     * жагсаалт дээш гүйлгэгдэж алга болж, давхарга солих бүрд буцаж гүйлгэх
+     * шаардлагатай болдог байв.
+     */
+    general: {
+      side: 'right',
+      icon: 'chart',
+      title: 'Давхаргын мэдээлэл',
+      desc: 'Сонгосон давхарга тус бүрийн үзүүлэлт',
+      node: (
+        <GeneralInfo
+          picked={picked}
+          pickedLayer={pickedLayer}
+          sublayers={sublayers}
+          facet={facet}
+          setFacet={setFacet}
+        />
+      ),
+    },
     building: {
       side: 'right',
       icon: 'chart',
       title: 'Нэгдсэн үзүүлэлт',
-      desc: 'Бүх блокийн дундаж ба ангилал',
-      node: <BuildingSummary />,
-    },
-    survey: {
-      side: 'left',
-      icon: 'target',
-      title: 'Байрлалын хяналт',
-      desc: 'Төслийн хилээс гадуур бүртгэсэн тайлан',
-      node: <SurveyOutside />,
+      desc: 'Бүх блокийн дундаж, ангилал ба талбайн хяналт',
+      // Тоон тойм энд. Тайлангийн жагсаалт ба хилээс гадуурын сануулга нь
+      // үндсэн самбарт, тус тусдаа хэсэг болж байнга харагдана (`BuildingWork`).
+      node: (
+        <>
+          <BuildingSummary />
+          <SurveySummary />
+        </>
+      ),
     },
   };
 
@@ -198,24 +224,25 @@ export default function Portal() {
         </header>
 
         <div className={s.panelBody}>
-          {module === 'bagts' && <BagtsPanel picked={picked} />}
-          {module === 'zone' && <ZonePanel picked={picked} />}
-          {module === 'building' && <BuildingDetail picked={picked} />}
-          {module === 'parcel' && <ParcelPanel picked={picked} />}
-          {module === 'estimator' && <EstimatorPanel />}
-          {module === 'general' && (
-            <GeneralPanel
+          {module === 'building' && <BuildingWork picked={picked} pickedLayer={pickedLayer} />}
+          {module === 'land' && (
+            <LandPanel
               picked={picked}
               pickedLayer={pickedLayer}
-              clearPicked={clearPicked}
               sublayers={sublayers}
               setSublayers={setSublayers}
             />
           )}
-          {module === 'utility' && (
-            <UtilityPanel sublayers={sublayers} setSublayers={setSublayers} />
+          {/* Ерөнхий мэдээлэл — 7 өөрийн дэд давхарга + шугам сүлжээний 4.
+              Хоёр самбар НЭГ `sublayers` массивыг хуваана; түлхүүр нь давхцахгүй. */}
+          {module === 'general' && (
+            <GeneralLayers
+              clearPicked={clearPicked}
+              sublayers={sublayers}
+              setSublayers={setSublayers}
+              setFacet={setFacet}
+            />
           )}
-          {module === 'survey' && <SurveyPanel picked={picked} />}
         </div>
       </aside>
 
@@ -229,7 +256,12 @@ export default function Portal() {
           overlays={overlays}
           onPick={pick}
         >
-          <OverlayControl module={module} overlays={overlays} setOverlays={setOverlays} />
+          <OverlayControl
+            module={module}
+            sublayers={sublayers}
+            overlays={overlays}
+            setOverlays={setOverlays}
+          />
         </MapCanvas>
       </div>
 
@@ -259,12 +291,15 @@ export default function Portal() {
 
 function HeaderStats() {
   const q = useAsync(async () => {
-    const [area, bagts, zoneRows, blocks, households] = await Promise.all([
+    // ⚠️ «багц» тоолуур байсныг хассан: түүний цорын ганц эх сурвалж нь багцын
+    //    хилийн давхарга байсан бөгөөд тэр давхарга бүрмөсөн хасагдсан. Барилгын
+    //    `BAGTS` талбараас гаргаж болох ч тоо нь ӨӨР гарна (7 нэр ба 10 полигон)
+    //    тул чимээгүй солихоос татгалзав.
+    const [area, zoneRows, blocks, households] = await Promise.all([
       // Талбай — ТӨЛӨВЛӨЛТИЙН ТАЛБАЙгаас (нэг эрх бүхий полигон, 159.57 га).
       // ⚠️ Бүсийн `SUM(GAZAR_GA)` ашиглаж болохгүй: тэр давхаргад 20 бүс давхардсан
       //    хуулбартай тул нийлбэр нь 175.85 га гэж хийсвэрждэг.
       queryStats(BOUNDARY.plan.url, [sum(BOUNDARY.plan.areaField, 'ha')]),
-      queryCount(BAGTS.url),
       // Бүсийн ТОО — мөн ZONE_ID-аар дедупликац хийж бодит бүсийн тоог гаргана
       queryFeatures(ZONE.url, { outFields: [ZONE.fields.id] }),
       queryCount(BUILDING.url),
@@ -277,7 +312,6 @@ function HeaderStats() {
 
     return {
       ga: Number(area.ha ?? 0),
-      bagts,
       zones: named.size + unnamed,
       blocks,
       households: Number(households.ail ?? 0),
@@ -295,7 +329,6 @@ function HeaderStats() {
 
   const items = [
     { v: num(q.data.ga, 1), l: 'га талбай' },
-    { v: num(q.data.bagts), l: 'багц' },
     { v: num(q.data.zones), l: 'бүс' },
     { v: num(q.data.blocks), l: 'блок' },
     { v: num(q.data.households), l: 'айл' },

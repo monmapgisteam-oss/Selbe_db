@@ -1,11 +1,13 @@
 'use client';
 
-import { useState } from 'react';
-import { Section, Stats, Stat, Bars, Stack, Ring, Rows, Data, Chip, Empty } from '@/components/ui';
+import { useEffect, useState } from 'react';
+import { Section, Stats, Stat, Bars, Stack, Ring, Rows, Data, Chip, Empty, List, ListItem, Tabs } from '@/components/ui';
 import { useMap } from '@/components/MapCanvas';
 import { useAsync } from '@/lib/useAsync';
 import { queryGroup, queryStats, queryCount, count, sum, avg, sqlStr, groups } from '@/lib/query';
-import { BUILDING, BUILDING_STAGES, PROGRESS_LEVELS, STAGE_NA, MODULES } from '@/lib/services';
+import { BUILDING, BUILDING_STAGES, PROGRESS_LEVELS, STAGE_NA, MODULES, SURVEY } from '@/lib/services';
+import { SURVEY_HUE } from '@/components/MapCanvas';
+import { useSurvey, useOutside, reportsForBlock, ReportDetail, SurveyReports, SurveyOutside } from './SurveyPanel';
 import { num, pct, date, text } from '@/lib/format';
 
 const HUE = MODULES.find((m) => m.key === 'building')!.hue;
@@ -197,7 +199,204 @@ export function BuildingSummary() {
   );
 }
 
-/* ═════════════ БАРУУН багана — сонгосон нэг блок ═════════════ */
+/* ═════════════ Блокийн талбайн тайлан — төлөвлөгөө ↔ бодит ═════════════ */
+
+/**
+ * Сонгосон блокт бичигдсэн талбайн хяналтын тайлангууд.
+ *
+ * Энэ бол хоёр модулийг нэгтгэсний ГОЛ УТГА: төлөвлөгөөний гүйцэтгэл (барилгын
+ * давхарга) ба талбар дээр биечлэн баталгаажуулсан гүйцэтгэл (Survey123) хоёрыг
+ * зэрэгцүүлж, зөрүүг нь шууд харуулна.
+ */
+function BlockReports({
+  q,
+  blok,
+  planned,
+}: {
+  q: ReturnType<typeof useSurvey>;
+  blok: unknown;
+  planned: number;
+}) {
+  const [selId, setSelId] = useState<string | null>(null);
+  const code = text(blok, '').trim();
+
+  return (
+    <Data q={q}>
+      {(d) => {
+        const mine = reportsForBlock(d.reports, blok);
+
+        if (mine.length === 0) {
+          return (
+            <Section title="Талбайн хяналт">
+              <Empty
+                label={
+                  code
+                    ? `«${code}» блокт талбайн хяналтын тайлан хараахан ирээгүй байна.`
+                    : 'Энэ блокийн дугаар бүртгэгдээгүй тул тайлантай холбох боломжгүй.'
+                }
+              />
+            </Section>
+          );
+        }
+
+        // Хамгийн сүүлийн тайлангийн хэмжсэн гүйцэтгэл — төлөвлөгөөтэй харьцуулна
+        const latest = mine[0];
+        // ⚠️ `?? 0` хийвэл «хянагч талбар дээр 0% хэмжсэн» гэж ХУДЛАА батална.
+        //    Хэмжилт байхгүй бол зөрүү ч утгагүй — хоёуланг нь нуух ёстой.
+        const raw = latest[SURVEY.fields.total];
+        const measured = raw == null ? null : Number(raw);
+        const gap = measured == null ? null : measured - planned;
+
+        const active = mine.find((r) => String(r.globalid) === selId);
+
+        return (
+          <>
+            <Section title="Төлөвлөгөө ↔ талбайн хэмжилт" note={`${mine.length} тайлан`}>
+              <Stats cols={3}>
+                <Stat value={pct(planned, 0)} label="Төлөвлөгөөгөөр" color={HUE} />
+                <Stat
+                  value={measured == null ? '—' : pct(measured, 0)}
+                  label="Талбар дээр"
+                  color={SURVEY_HUE}
+                  accent
+                />
+                <Stat
+                  value={gap == null ? '—' : `${gap >= 0 ? '+' : ''}${pct(gap, 0)}`}
+                  label={gap == null ? 'Зөрүү — хэмжилтгүй' : 'Зөрүү'}
+                  color={gap == null ? undefined : gap >= 0 ? 'var(--good)' : 'var(--bad)'}
+                />
+              </Stats>
+              <p style={{ marginTop: 12, fontSize: '0.71rem', lineHeight: 1.5, color: 'var(--ink-3)' }}>
+                Талбайн утга нь <b style={{ color: 'var(--ink)' }}>{date(latest[SURVEY.fields.date] as string)}</b>-ний
+                хамгийн сүүлийн тайлангийн «Б. Барилга угсралт»-ын гүйцэтгэл. Хоёр тоо ӨӨР аргаар
+                хэмжигддэг тул зөрүү нь заавал алдаа гэсэн үг биш — шалгах шаардлагатайг заана.
+              </p>
+            </Section>
+
+            <Section title="Энэ блокийн тайлан" note="дарж дэлгэрэнгүйг харна">
+              <List>
+                {mine.map((r) => {
+                  const id = String(r.globalid);
+                  const n = (d.byParent.get(id) ?? []).length;
+                  return (
+                    <ListItem
+                      key={id}
+                      color={SURVEY_HUE}
+                      active={id === selId}
+                      onClick={() => setSelId(id === selId ? null : id)}
+                      title={date(r[SURVEY.fields.date] as string)}
+                      sub={`${text(r[SURVEY.fields.user])}${n ? ` · ${n} асуудал` : ''}`}
+                      value={pct(Number(r[SURVEY.fields.total] ?? 0), 0)}
+                    />
+                  );
+                })}
+              </List>
+            </Section>
+
+            {active && <ReportDetail r={active} issues={d.byParent.get(String(active.globalid)) ?? []} />}
+          </>
+        );
+      }}
+    </Data>
+  );
+}
+
+/* ═════════════ ҮНДСЭН самбар — дарсан зүйлээс хамаарна ═════════════ */
+
+/**
+ * Нэгтгэсэн модулийн үндсэн самбар — ГУРВАН таб.
+ *
+ *   · Блок     — сонгосон барилгын гүйцэтгэл + түүний талбайн тайлан
+ *   · Тайлан   — талбайн хяналтын тайлангийн бүрэн жагсаалт
+ *   · Байрлал  — хилээс гадуур бүртгэгдсэн тайлангийн сануулга
+ *
+ * Хоёр модулийг нэгтгэхэд агуулга нь ~10 хэсгийн урт өрлөг болж, шатлал алдагдсан
+ * тул сэдвээр нь салгав. Гурван таб бүгд БАЙНГА байрандаа — зөвхөн нэг дор
+ * харагдахаа больсон.
+ *
+ * ⚠️ Асинк хүсэлтүүдийг ЭНД нэг удаа дуудаж, доош дамжуулна. Хүүхэд бүр өөрөө
+ *    дуудвал (а) табын тоолуурт хэрэгтэй тоо эцэгт байхгүй, (б) таб солих бүрд
+ *    ижил хүсэлт дахин явна.
+ */
+export function BuildingWork({
+  picked,
+  pickedLayer,
+}: {
+  picked: Record<string, unknown> | null;
+  pickedLayer: string | null;
+}) {
+  const survey = useSurvey();
+  const outside = useOutside();
+
+  const isBuilding = picked != null && pickedLayer === 'building';
+  const isSurvey = picked != null && pickedLayer === 'survey';
+
+  const [tab, setTab] = useState<'block' | 'reports' | 'location'>('block');
+
+  /**
+   * Газрын зураг дээр дарахад тохирох таб өөрөө нээгдэнэ — эс бөгөөс хэрэглэгч
+   * цэг дарсан ч өөр табанд байгаа тул юу ч болоогүй мэт харагдана.
+   *
+   * Сонголтын ТҮЛХҮҮРЭЭР хянана: ижил төрлийн өөр объект дарахад ч дахин ажиллана.
+   */
+  const pickKey = picked ? `${pickedLayer}:${picked[BUILDING.oid] ?? picked.globalid ?? ''}` : null;
+  useEffect(() => {
+    if (!pickKey) return;
+    if (pickKey.startsWith('building:')) setTab('block');
+    else if (pickKey.startsWith('survey:')) setTab('reports');
+  }, [pickKey]);
+
+  const planned = (() => {
+    if (!isBuilding) return 0;
+    const raw = picked[F.progress];
+    return raw == null || Number(raw) === STAGE_NA ? 0 : Number(raw);
+  })();
+
+  return (
+    <>
+      <Tabs
+        value={tab}
+        onChange={(k) => setTab(k as typeof tab)}
+        items={[
+          { key: 'block', label: 'Блок' },
+          {
+            key: 'reports',
+            label: 'Тайлан',
+            count: survey.state === 'ready' ? survey.data.count : null,
+          },
+          {
+            key: 'location',
+            label: 'Байрлал',
+            count: outside.state === 'ready' ? outside.data.total : null,
+            // Хилээс гадуур бичигдсэн тайлан бол ӨГӨГДЛИЙН ЧАНАРЫН асуудал.
+            // Таб нуугдсан ч улаан тоо нь хэрэглэгчийн нүдэнд өртөнө.
+            warn: true,
+          },
+        ]}
+      />
+
+      {tab === 'block' &&
+        (isBuilding ? (
+          <>
+            <BuildingDetail picked={picked} />
+            <BlockReports q={survey} blok={picked[F.block]} planned={planned} />
+          </>
+        ) : (
+          <Section>
+            <Empty label="Газрын зураг дээр барилга дээр дарж тухайн блокийн гүйцэтгэл, түүнд бичигдсэн талбайн тайланг харна уу." />
+          </Section>
+        ))}
+
+      {tab === 'reports' && (
+        <SurveyReports q={survey} pickedId={isSurvey ? String(picked.globalid ?? '') : null} />
+      )}
+
+      {tab === 'location' && <SurveyOutside q={outside} />}
+    </>
+  );
+}
+
+/* ═════════════ Сонгосон нэг блок ═════════════ */
 
 export function BuildingDetail({ picked }: { picked: Record<string, unknown> | null }) {
   const raw = picked?.[F.progress];

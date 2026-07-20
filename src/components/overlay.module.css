@@ -91,6 +91,13 @@
 .item:hover { background: var(--surface-2); color: var(--ink); }
 .itemOn { color: var(--tone); font-weight: 600; }
 
+/* Идэвхтэй модулийн давхарга — төлвөө ХАРУУЛНА, гэхдээ эндээс өөрчлөгдөхгүй.
+   Бүдгэрүүлэхгүй: энэ бол алдаа биш, зурган дээр байгаа гэдгийг батлах тэмдэг.
+   Зөвхөн хулганы хариу үйлдлийг болиулж, дарж болохгүйг ойлгуулна. */
+.itemLocked { cursor: default; }
+.itemLocked:hover { background: transparent; }
+.itemLocked .check { opacity: 0.75; }
+
 .check {
   display: grid;
   place-items: center;

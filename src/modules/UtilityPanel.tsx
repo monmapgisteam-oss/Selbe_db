@@ -1,155 +1,126 @@
 'use client';
 
-import { useEffect, useRef, type Dispatch, type SetStateAction } from 'react';
-import { Section, Stats, Stat, Bars, Data, Rows } from '@/components/ui';
+import { Section, Stats, Stat, Bars, Data } from '@/components/ui';
+import { useMap } from '@/components/MapCanvas';
 import { useAsync } from '@/lib/useAsync';
-import { queryStats, count, sum } from '@/lib/query';
-import { UTILITY, MODULES, type UtilKey } from '@/lib/services';
+import { queryStats, queryGroup, count, sum, groups, groupWhere } from '@/lib/query';
+import { UTILITY, type UtilKey } from '@/lib/services';
 import { num, km, ha } from '@/lib/format';
 import s from './utility.module.css';
 
-const HUE = MODULES.find((m) => m.key === 'utility')!.hue;
-const KEYS = Object.keys(UTILITY) as UtilKey[];
-
 /**
- * Шугам сүлжээ ба зам — Road_shugam_suljee.
+ * Дэд бүтцийн НЭГ давхаргын үзүүлэлт.
  *
- * Энэ бол CAD-аас экспортолсон давхарга: атрибут нь зөвхөн CAD мета (Layer, Color,
- * Linetype…) бөгөөд материал, голч, төлөв гэх мэт актив менежментийн талбар БАЙХГҮЙ.
- * Тиймээс уртаас өөр найдвартай үзүүлэлт гаргах боломжгүй — байхгүй зүйлийг зохиохгүй.
+ * ⚠️ Урьд нь энэ самбар 4 давхаргыг НЭГ дор нэгтгэж, өөрийн гэсэн жагсаалт,
+ * нийлбэр график харуулдаг байв. «Ерөнхий мэдээлэл»-д нэгдэж, давхаргын тоо 18
+ * болсноор тэр хэлбэр ажиллахаа больсон: хэрэглэгч ерөнхий давхаргад нэг маягийн,
+ * шугамд өөр маягийн UI-тай тулгарч байлаа. Одоо давхарга бүр өөрийн хэсэгтэй,
+ * ерөнхий давхаргуудтай ЯГ ижил хэлбэрээр (тоо → задаргаа) гарна.
  */
-function useUtility() {
+function useUtilityLayer(key: UtilKey) {
   return useAsync(async () => {
-    const rows = await Promise.all(
-      KEYS.map(async (k) => {
-        const u = UTILITY[k];
-        const st = await queryStats(u.url, [
+    const u = UTILITY[key];
+    const facetDefs = u.facets ?? [];
+
+    const [st, ...facetRows] = await Promise.all([
+      // Цэгэн давхаргад `Shape__Length` талбар БАЙХГҮЙ — асуувал хүсэлт унана
+      queryStats(u.url, [
+        count('OBJECTID', 'n'),
+        ...(u.kind === 'point' ? [] : [sum('Shape__Length', 'len')]),
+        ...(u.kind === 'area' ? [sum('Shape__Area', 'area')] : []),
+      ]),
+      ...facetDefs.map((f) =>
+        queryGroup(u.url, f.field, [
           count('OBJECTID', 'n'),
-          sum('Shape__Length', 'len'),
-          ...(u.kind === 'area' ? [sum('Shape__Area', 'area')] : []),
-        ]);
-        return {
-          key: k,
-          title: u.title,
-          hue: u.hue,
-          kind: u.kind,
-          n: Number(st.n ?? 0),
-          lengthM: Number(st.len ?? 0),
-          areaM2: Number(st.area ?? 0),
-        };
-      }),
-    );
-    const lines = rows.filter((r) => r.kind === 'line');
+          ...(u.kind === 'point' ? [] : [sum('Shape__Length', 'len')]),
+        ]),
+      ),
+    ]);
+
     return {
-      rows,
-      lines,
-      totalKm: lines.reduce((a, b) => a + b.lengthM, 0) / 1000,
-      totalSegments: lines.reduce((a, b) => a + b.n, 0),
-      road: rows.find((r) => r.kind === 'area'),
+      n: Number(st.n ?? 0),
+      lengthM: Number(st.len ?? 0),
+      areaM2: Number(st.area ?? 0),
+      facets: facetDefs.map((f, i) => ({
+        field: f.field,
+        label: f.label,
+        // ArcGIS нь null ба ' ' -г тусад нь бүлэглэдэг тул хоосныг нэгтгэнэ
+        items: groups(facetRows[i], f.field, 'Бүртгэгдээгүй', ['n', 'len']),
+      })),
     };
-  }, []);
+  }, [key]);
 }
 
-export function UtilityPanel({
-  sublayers,
-  setSublayers,
+export function UtilityLayerDetail({
+  layerKey,
+  facet,
+  setFacet,
 }: {
-  sublayers: string[];
-  setSublayers: Dispatch<SetStateAction<string[]>>;
+  layerKey: UtilKey;
+  facet: string | null;
+  setFacet: (v: string | null) => void;
 }) {
-  const q = useUtility();
-
-  /**
-   * Эхлэхэд бүх давхарга ил.
-   *
-   * ⚠️ `sublayers.length === 0` -г ИНВАРИАНТ болгож болохгүй: хэрэглэгч сүүлчийн
-   * давхаргыг унтраахад массив хоосорч, эффект нь бүгдийг нь буцааж асаадаг байв.
-   * Тиймээс зөвхөн НЭГ УДАА үр болгож тавина.
-   */
-  const seeded = useRef(false);
-  useEffect(() => {
-    if (seeded.current) return;
-    seeded.current = true;
-    if (sublayers.length === 0) setSublayers([...KEYS]);
-  }, [sublayers.length, setSublayers]);
-
-  const toggle = (k: UtilKey) => {
-    // Функциональ шинэчлэлт — дараалсан даралт бие биенээ дарж бичихгүй
-    setSublayers((prev) => (prev.includes(k) ? prev.filter((x) => x !== k) : [...prev, k]));
-  };
+  const u = UTILITY[layerKey];
+  const q = useUtilityLayer(layerKey);
+  const { setHighlight } = useMap();
 
   return (
-    <Data q={q}>
-      {(d) => (
-        <>
-          <Section>
+    <Section title={u.title}>
+      <Data q={q}>
+        {(d) => (
+          <>
             <Stats cols={2}>
-              <Stat value={num(d.totalKm, 1)} unit="км" label="Инженерийн шугамын нийт урт" color={HUE} accent />
-              <Stat value={num(d.totalSegments)} label="Шугамын хэрчим" color={HUE} />
+              <Stat
+                value={num(d.n)}
+                label={u.kind === 'point' ? 'Цэгийн тоо' : u.kind === 'line' ? 'Хэрчмийн тоо' : 'Объектын тоо'}
+                color={u.hue}
+                accent
+              />
+              {u.kind === 'line' && (
+                <Stat value={km(d.lengthM, 2)} unit="км" label="Нийт урт" color={u.hue} />
+              )}
+              {u.kind === 'area' && (
+                <Stat value={ha(d.areaM2, 2)} unit="га" label="Талбай" color={u.hue} />
+              )}
             </Stats>
-            {d.road && d.road.areaM2 > 0 && (
-              <div style={{ marginTop: 10 }}>
-                <Stats cols={2}>
-                  <Stat value={ha(d.road.areaM2, 2)} unit="га" label="Замын планы талбай" color={d.road.hue} />
-                  <Stat value={num(d.road.n)} label="Замын объект" color={d.road.hue} />
-                </Stats>
+
+            {d.facets.map((f) => (
+              <div key={f.label} style={{ marginTop: 16 }}>
+                <div className={s.facetHead}>
+                  {f.label} <span className={s.facetNote}>дарж газрын зурагт шүүнэ</span>
+                </div>
+                <Bars
+                  color={u.hue}
+                  selected={facet}
+                  onSelect={(k) => {
+                    const g = f.items.find((x) => `${layerKey}|${f.label}:${x.label}` === k);
+                    const next = facet === k ? null : k;
+                    setFacet(next);
+                    setHighlight(next && g ? groupWhere(f.field, g) : null);
+                  }}
+                  items={f.items.map((g) => ({
+                    // ⚠️ Түлхүүрт давхаргын нэр заавал орно: гурван цахилгааны давхарга
+                    //    бүгд «Бүс» гэсэн ижил ангилалтай тул эс бөгөөс сонголт холилдоно.
+                    key: `${layerKey}|${f.label}:${g.label}`,
+                    label: g.label,
+                    value: g.values.n,
+                    display:
+                      g.values.len > 0
+                        ? `${num(g.values.n)} · ${km(g.values.len, 2)} км`
+                        : num(g.values.n),
+                  }))}
+                />
               </div>
-            )}
-          </Section>
+            ))}
 
-          <Section title="Давхарга" note="дарж газрын зурагт нээх/хаах">
-            <div className={s.toggles}>
-              {d.rows.map((r) => {
-                const on = sublayers.includes(r.key);
-                return (
-                  <button
-                    key={r.key}
-                    type="button"
-                    aria-pressed={on}
-                    className={`${s.toggle} ${on ? '' : s.toggleOff}`}
-                    style={{ '--tone': r.hue } as React.CSSProperties}
-                    onClick={() => toggle(r.key)}
-                  >
-                    <span className={`${s.swatch} ${r.kind === 'line' ? s.swatchLine : ''}`} />
-                    <span className={s.toggleName}>{r.title}</span>
-                    <span className={`${s.toggleVal} num`}>
-                      {r.kind === 'line' ? `${km(r.lengthM, 1)} км` : `${ha(r.areaM2, 1)} га`}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </Section>
-
-          <Section title="Шугамын урт" note="төрлөөр">
-            <Bars
-              items={d.lines.map((r) => ({
-                key: r.key,
-                label: r.title,
-                value: r.lengthM,
-                display: `${km(r.lengthM, 2)} км`,
-                color: r.hue,
-              }))}
-            />
-          </Section>
-
-          <Section title="Хэрчмийн тоо">
-            <Rows
-              items={d.rows.map((r) => ({
-                key: r.title,
-                value: <span className="num">{num(r.n)}</span>,
-              }))}
-            />
-          </Section>
-
-          <Section>
-            <p className={s.note}>
-              Энэ давхаргууд нь CAD зургаас экспортлогдсон тул зөвхөн геометр (урт, талбай) агуулна.
-              Материал, голч, техникийн төлөв зэрэг актив менежментийн талбар байхгүй.
+            <p className={s.note} style={{ marginTop: 14 }}>
+              CAD зургаас экспортлогдсон давхарга — зөвхөн геометр (урт, талбай) ба бүсийн
+              холбоос агуулна. Материал, голч, техникийн төлөв зэрэг актив менежментийн
+              талбар байхгүй.
             </p>
-          </Section>
-        </>
-      )}
-    </Data>
+          </>
+        )}
+      </Data>
+    </Section>
   );
 }
