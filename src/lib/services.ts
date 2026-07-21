@@ -54,6 +54,16 @@ export const AUTH = {
 /** Эхлэх байрлал — төслийн талбайн төв */
 export const HOME = { lon: 106.916, lat: 47.9674, zoom: 15 } as const;
 
+/**
+ * Төслийн НИЙТ талбай (га) — ГАНЦ эх үүсвэр.
+ *
+ * ⚠️ Бүсийн `GAZAR_GA` талбарын нийлбэр (131 га) БИШ. Тэр нь зөвхөн бүсчилсэн
+ * газрыг хамардаг бөгөөд эх өгөгдөлд алдаатай бичлэгүүдтэй. Төслийн албан
+ * ёсны хэмжээ нь энэ тогтмол — толгойн үзүүлэлт ба анализын «1 га-д ногдох
+ * төсөв» ХОЁУЛАА эндээс уншина.
+ */
+export const PROJECT_AREA_HA = 158;
+
 /* ══════════════════════ Өртгийн загвар ══════════════════════ */
 
 /**
@@ -683,21 +693,88 @@ export const SCENE = {
 export const ELEVATION_URL =
   'https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer';
 
-/* ══════════════════════ Анхдагч төлөв ══════════════════════ */
-
-/* ══════════════════════ Бэлэн харагдацууд ══════════════════════ */
+/* ══════════════════════ Давхаргын багц ══════════════════════ */
 
 /**
- * ХАРАГДАЦ — порталын гол удирдлага.
+ * БАГЦ — каталогийн жагсаалтыг задалдаг нэгж.
  *
- * ⚠️ Урьд нь хэрэглэгч 29 чагтыг өөрөө асааж унтраах ёстой байв: юу асаахаа
- * мэдэхгүй, асаасны дараа зураг бөглөрдөг байлаа. Одоо нэг товч дарахад зураг
- * ба самбар ХОЁУЛАА тухайн сэдвийнхээ байдалд шилжинэ.
- *
- * Харагдац доторх давхаргыг самбараас нь тус тусад нь унтрааж болно — гэхдээ
- * эхлэх байдал нь үргэлж утга учиртай.
+ * ⚠️ Эдгээр нь урьд нь тус тусдаа ХАРАГДАЦ байв (зүүн талд 5 товч). Тэр нь
+ * хэрэглэгчийг «инженерийн шугам аль товчинд байна вэ?» гэж таамаглахад хүргэдэг
+ * байсан бөгөөд хоёр багцын давхаргыг зэрэг харах боломжгүй байлаа. Одоо бүгд
+ * НЭГ «Ерөнхий мэдээлэл» харагдацад багтаж, багц нь зөвхөн жагсаалтын БҮЛЭГ
+ * болов — сонголт нь давхаргын түвшинд.
  */
-export type ViewKey = 'zone' | 'build' | 'eng' | 'move' | 'green' | 'monitor';
+export type GroupKey = 'zone' | 'build' | 'eng' | 'move' | 'green';
+
+export const LAYER_GROUPS: { key: GroupKey; title: string; desc: string; icon: string; hue: string }[] = [
+  { key: 'zone', title: 'Бүс', desc: 'Хот төлөвлөлтийн 52 бүс', icon: 'frame', hue: '#0d9488' },
+  { key: 'build', title: 'Барилга', desc: 'Төлөв, зориулалт, өрх, өртөг', icon: 'building', hue: '#3387b8' },
+  { key: 'eng', title: 'Инженер', desc: 'Дулаан, ус, цахилгаан', icon: 'network', hue: '#dc2626' },
+  { key: 'move', title: 'Зам, тээвэр', desc: 'Зам, гүүр, автобус, LRT', icon: 'grid', hue: '#475569' },
+  { key: 'green', title: 'Ногоон орчин', desc: 'Ногоон байгууламж, цэцэрлэгт хүрээлэн', icon: 'layers', hue: '#22c55e' },
+];
+
+/** Багц бүрийн давхаргууд — ДАРААЛАЛ нь каталогт харагдах дараалал */
+export const GROUP_LAYERS: Record<GroupKey, string[]> = {
+  zone: ['et:28'],
+  build: ['et:24'],
+  eng: [
+    'et:7', 'et:10', 'et:9', 'et:11', 'et:8', 'et:4',
+    'et:18', 'et:23', 'et:17', 'et:16', 'et:3', 'et:19',
+    'et:21', 'et:13', 'et:22', 'et:20', 'et:15',
+  ],
+  move: ['et:29', 'et:5', 'et:27', 'et:14', 'et:12', 'et:6', 'et:2', 'et:1'],
+  green: ['et:25', 'et:26'],
+};
+
+/** Ерөнхий мэдээллийн БҮХ давхарга — багцын дарааллаар */
+export const PLAN_LAYER_IDS: string[] = LAYER_GROUPS.flatMap((g) => GROUP_LAYERS[g.key]);
+
+/**
+ * БАРИЛГЫН ХЯНАЛТЫН багц — каталогт тусдаа бүлэг болж гарна.
+ *
+ * ⚠️ `LAYER_GROUPS`-т ОРУУЛААГҮЙ: тэр жагсаалт нь `PLAN_LAYER_IDS`-ыг үүсгэдэг
+ * бөгөөд хяналтын давхаргууд тэнд орвол «Ерөнхий мэдээлэл»-ийн нийлбэрт
+ * (объектын тоо, багцын хэмжээ) хуучин үйлчилгээний өгөгдөл нэмэгдэнэ.
+ */
+export const MONITOR_GROUP = {
+  key: 'monitor' as const,
+  title: 'Барилгын хяналт',
+  desc: 'Блокийн гүйцэтгэл, талбайн тайлан',
+  icon: 'target',
+  hue: '#ea580c',
+};
+export const MONITOR_LAYER_IDS: string[] = ['mon:building', 'mon:survey'];
+
+/** Каталогт харуулах бүлгүүд — харагдацаас хамаарна */
+export const catalogGroups = (view: 'plan' | 'monitor') =>
+  view === 'monitor'
+    ? [
+      { ...MONITOR_GROUP, ids: MONITOR_LAYER_IDS },
+      ...LAYER_GROUPS.map((g) => ({ ...g, ids: GROUP_LAYERS[g.key] })),
+    ]
+    : LAYER_GROUPS.map((g) => ({ ...g, ids: GROUP_LAYERS[g.key] }));
+
+/** Давхарга аль багцад хамаарах вэ (хяналтынх багцгүй) */
+export const groupOf = (id: string): GroupKey | null =>
+  (LAYER_GROUPS.find((g) => GROUP_LAYERS[g.key].includes(id))?.key ?? null);
+
+/* ══════════════════════ Харагдац ══════════════════════ */
+
+/**
+ * ХАРАГДАЦ — ХОЁРХОН: ерөнхий мэдээлэл vs барилгын хяналт.
+ *
+ * ⚠️ Энэ хоёр нь ӨӨР өгөгдлийн сан дээр тогтдог (шинэ ЕТ vs хуучин гүйцэтгэлийн
+ * үйлчилгээ) бөгөөд өөр асуултад хариулдаг: юу барих vs юу баригдсан. Бусад
+ * бүх хуваалт (барилга/инженер/зам…) нь НЭГ үйлчилгээний дотоод сэдэв тул
+ * харагдац биш, БАГЦ болов.
+ *
+ * `layers` — каталогт багтах бүх давхарга.
+ * `initial` — харагдац сонгоход зурагт АСААЛТТАЙ гарах давхаргууд.
+ *   ⚠️ Ерөнхий мэдээллийн 29 давхаргыг бүгдийг зэрэг асаавал зураг бөглөрч,
+ *   хэрэглэгч юу ч ялгаж харахгүй. Бүсээр эхэлж, үлдсэнийг каталогоос асаана.
+ */
+export type ViewKey = 'plan' | 'monitor' | 'analysis';
 
 export const VIEWS: {
   key: ViewKey;
@@ -706,40 +783,34 @@ export const VIEWS: {
   icon: string;
   hue: string;
   layers: string[];
+  initial: string[];
 }[] = [
   {
-    key: 'zone', title: 'Бүс', desc: 'Хот төлөвлөлтийн 52 бүс',
-    icon: 'frame', hue: '#0d9488',
-    layers: ['et:28'],
-  },
-  {
-    key: 'build', title: 'Барилга', desc: 'Төлөв, зориулалт, өрх, өртөг',
-    icon: 'building', hue: '#3387b8',
-    layers: ['et:24'],
-  },
-  {
-    key: 'eng', title: 'Инженер', desc: 'Дулаан, ус, цахилгаан',
-    icon: 'network', hue: '#dc2626',
-    layers: [
-      'et:7', 'et:10', 'et:9', 'et:11', 'et:8', 'et:4',
-      'et:18', 'et:23', 'et:17', 'et:16', 'et:3', 'et:19',
-      'et:21', 'et:13', 'et:22', 'et:20', 'et:15',
-    ],
-  },
-  {
-    key: 'move', title: 'Зам, тээвэр', desc: 'Зам, гүүр, автобус, LRT',
-    icon: 'grid', hue: '#475569',
-    layers: ['et:29', 'et:5', 'et:27', 'et:14', 'et:12', 'et:6', 'et:2', 'et:1'],
-  },
-  {
-    key: 'green', title: 'Ногоон орчин', desc: 'Ногоон байгууламж, цэцэрлэгт хүрээлэн',
-    icon: 'layers', hue: '#22c55e',
-    layers: ['et:25', 'et:26'],
+    key: 'plan', title: 'Ерөнхий мэдээлэл', desc: 'Бүс · барилга · инженер · зам · ногоон орчин',
+    icon: 'layers', hue: '#0d9488',
+    layers: PLAN_LAYER_IDS,
+    initial: ['et:28'],
   },
   {
     key: 'monitor', title: 'Барилгын хяналт', desc: 'Гүйцэтгэл, талбайн тайлан',
     icon: 'target', hue: '#ea580c',
     layers: ['mon:building', 'mon:survey'],
+    initial: ['mon:building', 'mon:survey'],
+  },
+  /**
+   * АНАЛИЗ — Suitability Modeler.
+   *
+   * ⚠️ Энэ харагдац нь порталын зураг ба самбарыг ОГТ ашиглахгүй: `Portal` нь
+   * `Suitability` модулийг бүтэн талбайд зурдаг бөгөөд тэр нь өөрийн газрын
+   * зураг, өөрийн 3 багана, өөрийн харанхуй палитртай (эх аппын дизайн).
+   * `layers`/`initial` нь зөвхөн төрлийн шаардлагыг хангахад хоосон байна.
+   */
+  {
+    key: 'analysis', title: 'Тохиромжтой байдлын үнэлгээ',
+    desc: 'БНбД норм, эдийн засгийн үр ашиг',
+    icon: 'chart', hue: '#7c3aed',
+    layers: [],
+    initial: [],
   },
 ];
 
@@ -747,8 +818,8 @@ export const VIEW_BY_KEY: Record<ViewKey, (typeof VIEWS)[number]> = Object.fromE
   VIEWS.map((v) => [v.key, v]),
 ) as Record<ViewKey, (typeof VIEWS)[number]>;
 
-/** Апп нээгдэхэд — бүсээс эхэлнэ (төслийн бүтцийн нэгж) */
-export const DEFAULT_VIEW: ViewKey = 'zone';
+/** Апп нээгдэхэд — ерөнхий мэдээлэл */
+export const DEFAULT_VIEW: ViewKey = 'plan';
 
 /**
  * Апп нээгдэхэд асаалттай давхаргууд — БҮС.
@@ -758,9 +829,6 @@ export const DEFAULT_VIEW: ViewKey = 'zone';
  * анхнаасаа асаахгүй — 368 полигон нь бүсийн хилийг бүрхэнэ.
  */
 export const DEFAULT_VISIBLE: string[] = [ZONE_LAYER.id];
-
-/** Эхлэхэд задарсан байх сэдэв */
-export const DEFAULT_TOPIC: TopicKey = 'plan';
 
 /* ══════════════════════ Зурах дараалал ══════════════════════ */
 

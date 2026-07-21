@@ -313,20 +313,21 @@ function BlockReports({
  * тул сэдвээр нь салгав. Гурван таб бүгд БАЙНГА байрандаа — зөвхөн нэг дор
  * харагдахаа больсон.
  *
- * ⚠️ Асинк хүсэлтүүдийг ЭНД нэг удаа дуудаж, доош дамжуулна. Хүүхэд бүр өөрөө
- *    дуудвал (а) табын тоолуурт хэрэгтэй тоо эцэгт байхгүй, (б) таб солих бүрд
- *    ижил хүсэлт дахин явна.
+ * ⚠️ Асинк хүсэлтүүдийг ГАДНААС (`MonitorPanel`) авна. Урьд нь энэ компонент
+ *    өөрөө `useSurvey()`/`useOutside()` дууддаг байсан бөгөөд эцэг нь мөн адил
+ *    дууддаг байсан тул ижил хүсэлт ХОЁР УДАА явдаг байв.
  */
 export function BuildingWork({
   picked,
   pickedLayer,
+  survey,
+  outside,
 }: {
   picked: Record<string, unknown> | null;
   pickedLayer: string | null;
+  survey: ReturnType<typeof useSurvey>;
+  outside: ReturnType<typeof useOutside>;
 }) {
-  const survey = useSurvey();
-  const outside = useOutside();
-
   const isBuilding = picked != null && pickedLayer === 'mon:building';
   const isSurvey = picked != null && pickedLayer === 'mon:survey';
 

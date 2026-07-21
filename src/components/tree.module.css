@@ -63,6 +63,17 @@
 }
 .itemOn .desc { color: color-mix(in srgb, var(--tone) 65%, var(--ink-3)); }
 
+/* Каталог дэлгэгдсэнийг заах сум — дэлгэгдэхэд 90° эргэнэ */
+.chev {
+  flex: none;
+  font-size: 1rem;
+  line-height: 1;
+  color: var(--ink-3);
+  transition: transform 0.22s var(--ease), color 0.18s;
+}
+.itemOn .chev { color: var(--tone); }
+.chevOn { transform: rotate(90deg); }
+
 .foot {
   margin-top: auto;
   padding: 14px 9px 16px;

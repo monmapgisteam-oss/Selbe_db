@@ -60,20 +60,29 @@ const REL = {
 } as const;
 
 export type Aoi = {
-  /** ArcGIS полигоны JSON (rings + spatialReference) */
+  /** ArcGIS геометрийн JSON (полигонд rings, цэгт x/y + spatialReference) */
   geometry: unknown;
   wkid: number;
   /** Анхдагч: intersects */
   rel?: keyof typeof REL;
+  /** Анхдагч: polygon */
+  type?: 'polygon' | 'point';
+  /**
+   * Цэгэн сонголтын ХҮЛЦЭЛ (метр).
+   * ⚠️ Заавал: нимгэн шугам, цэгэн объект дээр яг таг тааруулж дарах боломжгүй
+   * тул дэлгэцийн хэдэн пикселд харгалзах зайг өгнө.
+   */
+  distance?: number;
 };
 
 const spatial = (aoi?: Aoi): Record<string, string> =>
   aoi
     ? {
         geometry: JSON.stringify(aoi.geometry),
-        geometryType: 'esriGeometryPolygon',
+        geometryType: aoi.type === 'point' ? 'esriGeometryPoint' : 'esriGeometryPolygon',
         spatialRel: REL[aoi.rel ?? 'intersects'],
         inSR: String(aoi.wkid),
+        ...(aoi.distance ? { distance: String(aoi.distance), units: 'esriSRUnit_Meter' } : {}),
       }
     : {};
 

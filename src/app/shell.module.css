@@ -1,4 +1,4 @@
-/* Үндсэн бүтэц: давхаргын мод | газрын зураг | дашбоард */
+/* Үндсэн бүтэц: харагдац | [давхаргын каталог] | газрын зураг | дашбоард */
 .shell {
   display: grid;
   grid-template-columns: var(--rail) 1fr var(--panel);
@@ -10,29 +10,33 @@
 }
 
 /**
- * Хоёр дашбоардтай хувилбар — зөвхөн «Барилгын явц ба хяналт» модульд.
- * `.panel` = сонгосон блокийн ажил, `.summary` = бүх блокийн нэгдсэн үзүүлэлт.
+ * Каталог нээлттэй — зүүн модны ХАЖУУД нэмэлт багана.
  *
- * ⚠️ Урьд нь «Ерөнхий мэдээлэл» ч хоёр баганатай байсан (зүүнд давхаргын
- * жагсаалт). Жагсаалт зүүн мод руу шилжсэн тул тэр хувилбар хэрэггүй болов.
+ * ⚠️ Модал popup биш: жагсаалтаас давхарга асаах бүрд зурагт өөрчлөлт нь ШУУД
+ * харагдах ёстой. Popup нь зураг ба самбар хоёуланг бүрхэж, «юу өөрчлөгдсөнийг»
+ * харахын тулд хаах шаардлагатай болгодог байв.
  */
-.shellSplit {
-  grid-template-columns: var(--rail) var(--panel) 1fr var(--panel);
+.shellCat {
+  grid-template-columns: var(--rail) var(--catalog) 1fr var(--panel);
   grid-template-areas:
-    'head head  head head'
-    'rail panel map  summary';
+    'head head head head'
+    'rail cat  map  panel';
 }
-/* Багана байраа солиход хүрээний зураас нь дагаж солигдоно */
-.shellSplit .panel { border-left: none; border-right: 1px solid var(--line); }
 
-.summary {
-  grid-area: summary;
-  display: flex;
-  flex-direction: column;
-  background: var(--surface);
-  border-left: 1px solid var(--line);
-  overflow: hidden;
+/**
+ * АНАЛИЗ — Suitability Modeler нь ӨӨРИЙН бүрэн дэлгэцтэй.
+ *
+ * ⚠️ Порталын зураг ба самбарыг огт зурахгүй: тэр модуль нь өөрийн газрын
+ * зураг, өөрийн 3 багана, өөрийн харанхуй палитртай бие даасан апп. Хоёр
+ * ArcGIS view зэрэг ажиллавал WebGL контекст үрэгдэнэ.
+ */
+.shellSuit {
+  grid-template-columns: var(--rail) 1fr;
+  grid-template-areas:
+    'head head'
+    'rail suit';
 }
+.suit { grid-area: suit; min-width: 0; overflow: hidden; }
 
 /* ── Толгой ── */
 .head {
@@ -118,12 +122,49 @@
 /* ── Дашбоард ── */
 .panel {
   grid-area: panel;
+  position: relative;
   display: flex;
   flex-direction: column;
+  min-width: 0;
   background: var(--surface);
   border-left: 1px solid var(--line);
   overflow: hidden;
 }
+
+/**
+ * Өргөн тохируулах бариул — самбарын ЗҮҮН ирмэг дээр.
+ *
+ * ⚠️ Grid-ийн тусдаа багана биш, самбар дотор `absolute`: тусдаа багана болговол
+ * `grid-template-areas`-ыг хоёр хувилбарт (каталогтой/каталоггүй) хоёуланд нь
+ * зассан байх ёстой болно. Хүрэх талбайг 6px болгосон нь хулганаар барихад
+ * хангалттай, харин самбарын 20px доторх зайд хүрэхгүй.
+ */
+.grip {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 6px;
+  z-index: 8;
+  cursor: col-resize;
+  touch-action: none;
+  transition: background 0.12s;
+}
+.grip::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 2px;
+  width: 2px;
+  height: 30px;
+  margin-top: -15px;
+  border-radius: 2px;
+  background: var(--line-strong);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.grip:hover, .gripOn { background: color-mix(in srgb, var(--hue) 22%, transparent); }
+.grip:hover::after, .gripOn::after { opacity: 1; }
 .panelHead {
   display: flex;
   align-items: flex-start;
@@ -157,7 +198,7 @@
 
 @media (max-width: 1380px) {
   .shell { grid-template-columns: 240px 1fr var(--panel); }
-  .shellSplit { grid-template-columns: 240px var(--panel) 1fr var(--panel); }
+  .shellCat { grid-template-columns: 240px var(--catalog) 1fr var(--panel); }
   .headStats { display: none; }
 }
 
@@ -169,14 +210,20 @@
     height: auto;
     min-height: 100dvh;
   }
-  /* Босоо өрөлт: зураг → дашбоард → нэгдсэн үзүүлэлт → давхаргын мод */
-  .shellSplit {
+  /* Босоо өрөлт: зураг → каталог → дашбоард → харагдац */
+  .shellCat {
     grid-template-columns: 1fr;
     grid-template-rows: var(--head) 46vh auto auto auto;
-    grid-template-areas: 'head' 'map' 'panel' 'summary' 'rail';
+    grid-template-areas: 'head' 'map' 'cat' 'panel' 'rail';
   }
-  .summary { border-left: none; border-top: 1px solid var(--line); }
+  .shellSuit {
+    grid-template-columns: 1fr;
+    grid-template-rows: var(--head) 1fr auto;
+    grid-template-areas: 'head' 'suit' 'rail';
+  }
+  .suit { min-height: 80vh; }
   .rail { border-right: none; border-top: 1px solid var(--line); overflow-y: visible; }
-  .panel,
-  .shellSplit .panel { border-left: none; border-right: none; border-top: 1px solid var(--line); }
+  .panel { border-left: none; border-right: none; border-top: 1px solid var(--line); }
+  /* Босоо өрөлтөд өргөн чирэх утгагүй */
+  .grip { display: none; }
 }

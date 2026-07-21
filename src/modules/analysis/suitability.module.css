@@ -1,0 +1,525 @@
+/**
+ * Suitability Modeler — ЭХ ДИЗАЙН.
+ *
+ * `Suitability_selbe/css/style.css`-ийн бараг үсэгчилсэн хөрвүүлэлт. Хоёр л
+ * зүйл өөрчлөгдсөн:
+ *
+ *   1. `#id` сонгогчид `.class` болов — CSS Module нь id-г ч хааж хувиргадаг
+ *      боловч TSX-ээс `s.id` гэж дуудахад ойлгомжгүй болно.
+ *   2. `:root` хувьсагчид `.app`-д ШИЛЖСЭН. `:root`-д үлдээвэл суитабилитийн
+ *      харанхуй палитр порталын `--bg`, `--panel`, `--line`, `--text`-ийг ДАРЖ,
+ *      цайвар горим эвдэрнэ. Одоо энэ мод дотор л үйлчилнэ.
+ */
+
+.app {
+  --bg: #0d1117;
+  --bg-2: #141a22;
+  --panel: #161d27;
+  --panel-2: #1c2532;
+  --line: #26303d;
+  --text: #e6edf3;
+  --muted: #8b98a9;
+  --accent: #4fd1c5;
+  --urban: #60a5fa;
+  --fin: #fbbf24;
+  --good: #16a34a;
+  --bad: #b91c1c;
+  --radius: 10px;
+
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', Inter, system-ui, -apple-system, sans-serif;
+  font-size: 13px;
+  overflow: hidden;
+}
+
+.app h1, .app h2, .app h3 { margin: 0; font-weight: 600 }
+.app button { font-family: inherit; cursor: pointer }
+.muted { color: var(--muted) }
+.small { font-size: 11.5px; line-height: 1.5 }
+.xsmall { font-size: 10.5px; line-height: 1.45 }
+
+/* ---------- Loader ---------- */
+.loader {
+  position: absolute; inset: 0; z-index: 99;
+  background: radial-gradient(circle at 50% 40%, #16202c, #0a0e13 70%);
+  display: grid; place-items: center; transition: opacity .5s;
+}
+.loaderDone { opacity: 0; pointer-events: none }
+.loaderBox { width: 340px; text-align: center }
+.loaderTitle { font-size: 22px; font-weight: 600; letter-spacing: .5px }
+.loaderSub { color: var(--muted); margin: 4px 0 22px; font-size: 12px }
+.loaderBar { height: 4px; background: #22303f; border-radius: 4px; overflow: hidden }
+.loaderBar span { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), #60a5fa); transition: width .35s }
+.loaderMsg { margin-top: 10px; color: var(--muted); font-size: 11px }
+.loaderErr { color: #f87171 }
+
+/* ---------- Topbar (горимын таб) ---------- */
+.topbar {
+  flex: none;
+  height: 46px; display: flex; align-items: center; gap: 20px; padding: 0 14px;
+  background: var(--panel); border-bottom: 1px solid var(--line);
+}
+.brand { display: flex; align-items: center; gap: 11px; min-width: 0 }
+.brandMark { width: 9px; height: 26px; border-radius: 3px; background: linear-gradient(180deg, var(--good), var(--fin) 55%, var(--bad)) }
+.brand h1 { font-size: 13px; letter-spacing: .2px; white-space: nowrap }
+.brand p { margin: 1px 0 0; font-size: 10.5px; color: var(--muted); white-space: nowrap }
+
+.tabs { display: flex; gap: 4px; background: var(--bg-2); padding: 3px; border-radius: 8px; border: 1px solid var(--line) }
+.tabs button {
+  background: transparent; border: 0; color: var(--muted); padding: 6px 13px; border-radius: 6px;
+  font-size: 12px; font-weight: 500; transition: .15s; white-space: nowrap;
+}
+.tabs button:hover { color: var(--text) }
+.tabActive { background: var(--panel-2); color: var(--text); box-shadow: 0 0 0 1px var(--line) }
+
+/* ---------- Shell ---------- */
+.shell {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  --left-w: 330px;
+  --right-w: 330px;
+  grid-template-columns: var(--left-w) 5px 1fr 5px var(--right-w);
+}
+
+/* ---------- Багана чирэх зураас ---------- */
+.resizer {
+  background: var(--line); cursor: col-resize; position: relative;
+  transition: background .15s; touch-action: none;
+}
+.resizer::before { content: ''; position: absolute; inset: 0 -4px; z-index: 5 } /* өргөн барих талбай */
+.resizer::after {
+  content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  width: 1px; height: 26px; background: #4a5666; border-radius: 1px;
+}
+.resizer:hover, .resizerActive { background: var(--accent) }
+.resizer:hover::after, .resizerActive::after { background: #0d1117 }
+/* Чирэх үед зураг заагчийг барихгүй — эс бөгөөс ArcGIS чирэлтийг таслана */
+.noPointer { pointer-events: none }
+
+.panel {
+  background: var(--panel); overflow-y: auto; padding: 12px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.left { border-right: 1px solid var(--line) }
+.right { border-left: 1px solid var(--line) }
+.panel::-webkit-scrollbar { width: 8px }
+.panel::-webkit-scrollbar-thumb { background: #2b3644; border-radius: 8px }
+
+.card { background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px }
+.grow { flex: 1; min-height: 190px; display: flex; flex-direction: column }
+.card h2 {
+  font-size: 12px; text-transform: uppercase; letter-spacing: .55px; color: #b8c4d4;
+  margin-bottom: 9px; display: flex; align-items: center; gap: 8px;
+}
+.pill { margin-left: auto; background: #233043; color: var(--muted); border-radius: 20px; padding: 2px 8px; font-size: 10px; letter-spacing: 0 }
+.mini {
+  margin-left: auto; background: #233043; border: 1px solid var(--line); color: var(--muted);
+  border-radius: 5px; padding: 2px 8px; font-size: 10px;
+}
+.mini:hover { color: var(--text) }
+
+/* ---------- Хураах товч ---------- */
+.collapsible > h2 { cursor: pointer; user-select: none; margin-bottom: 0 }
+.collapsible > h2:hover { color: var(--text) }
+.collapsible > .body { margin-top: 9px }
+.caret {
+  margin-left: auto; flex: none; width: 17px; height: 17px; border-radius: 4px; background: #233043;
+  display: grid; place-items: center; font-size: 9px; color: var(--muted); transition: transform .2s;
+}
+.mini + .caret { margin-left: 6px }
+.collapsed .caret { transform: rotate(-90deg) }
+.collapsed > .body { display: none }
+
+/* ---------- Map ---------- */
+/**
+ * ⚠️ `height: 100%` ЗААВАЛ. Эх аппад `#mapWrap` нь өөрөө grid-ийн нүд байсан тул
+ * мөрийнхөө өндрийг автоматаар авдаг байв. Энд дэлгэрэнгүй картыг байрлуулах
+ * `position: relative` эцэг нэмэгдсэн тул `.mapWrap` нь түүний ХҮҮХЭД болсон —
+ * өндөр зааж өгөхгүй бол `.viewDiv` (absolute) 0 өндөртэй үлдэж, ArcGIS view
+ * канвасаа огт зурахгүй (алдаа ч өгөхгүй, зүгээр л хоосон харагдана).
+ */
+.mapWrap { position: relative; min-width: 0; height: 100% }
+.viewDiv { position: absolute; inset: 0 }
+
+/* ---------- Ranking ---------- */
+.rankHead {
+  display: grid; grid-template-columns: 26px 1fr 74px 52px; gap: 6px;
+  font-size: 9.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px;
+  padding: 0 8px 6px; border-bottom: 1px solid var(--line);
+}
+.rankHead span:first-child { text-align: center }
+.rankHead span:nth-child(n+3) { text-align: right }
+.rankList { overflow-y: auto; flex: 1; margin-top: 5px }
+.rankList::-webkit-scrollbar { width: 7px }
+.rankList::-webkit-scrollbar-thumb { background: #2b3644; border-radius: 7px }
+.rankRow {
+  display: grid; grid-template-columns: 26px 1fr 74px 52px; gap: 6px; align-items: center;
+  padding: 9px 8px; border-radius: 7px; cursor: pointer; font-size: 13px;
+  border-left: 3px solid transparent; margin-bottom: 2px; width: 100%; text-align: left;
+  background: none; border-top: 0; border-right: 0; border-bottom: 0; color: inherit;
+}
+.rankRow:hover { background: #222e3d }
+.rankSel { background: #243347; border-left-color: var(--accent) }
+.rankRow :global(.rk) { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; text-align: center }
+.rankRow :global(.nm) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; letter-spacing: .2px }
+.rankRow :global(.nm) i { display: block; font-style: normal; font-size: 10.5px; color: var(--muted); font-weight: 400; margin-top: 2px }
+.rankRow :global(.nm2) { text-align: right; font-variant-numeric: tabular-nums; color: #9fb0c4; font-size: 11px; white-space: nowrap }
+.rankRow :global(.tot) {
+  text-align: center; font-weight: 700; border-radius: 6px; padding: 6px 0; color: #08111a;
+  font-variant-numeric: tabular-nums; font-size: 14px;
+}
+/* Түвшний бүлгийн гарчиг */
+.rankGrp {
+  display: grid; grid-template-columns: 9px 1fr auto 20px 12px; gap: 7px; align-items: center;
+  padding: 7px 8px 5px; margin-top: 6px;
+  border-bottom: 1px solid #26303d;
+  position: sticky; top: 0; background: var(--panel-2); z-index: 1;
+  cursor: pointer; user-select: none; border-radius: 5px 5px 0 0;
+  width: 100%; border-left: 0; border-right: 0; border-top: 0; color: inherit;
+}
+.rankGrp:hover { background: #222e3d }
+.rankGrp u { text-decoration: none; font-size: 8px; color: var(--muted); text-align: center; transition: transform .18s }
+.grpOff u { transform: rotate(-90deg) }
+.grpOff { opacity: .72; border-bottom-color: #212a36 }
+.rankGrp:first-child { margin-top: 0 }
+.rankGrp i { width: 9px; height: 9px; border-radius: 2px }
+.rankGrp span { font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: #c3cedb; font-weight: 600 }
+.rankGrp em { font-style: normal; font-size: 9px; color: #5b6675; font-variant-numeric: tabular-nums }
+.rankGrp b { text-align: right; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums }
+
+/* Багц бүсийг эрэмбэд онцлох */
+.bagts :global(.nm) { color: #fde68a }
+.bagts :global(.nm)::before { content: '◆'; font-size: 8px; color: var(--fin); margin-right: 5px; vertical-align: middle }
+
+/* Давхаргын бүлгийн гарчиг — дарж бүх давхаргыг нэгэн зэрэг сэлгэнэ */
+.lyrGrp {
+  display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;
+  margin: 8px 0 2px; padding: 3px 5px; border-radius: 5px; width: 100%;
+  font-size: 9.5px; text-transform: uppercase; letter-spacing: .45px; color: var(--muted);
+  background: none; border: 0;
+}
+.lyrGrp:first-child { margin-top: 0 }
+.lyrGrp:hover { background: #222e3d; color: var(--text) }
+.lyrGrp span { flex: 1; text-align: left }
+.lyrGrp b { font-variant-numeric: tabular-nums; color: #7f8b9c; font-weight: 600 }
+
+/* ---------- Toggles ---------- */
+.toggles { display: flex; flex-direction: column; gap: 6px }
+.chk { display: flex; align-items: center; gap: 8px; font-size: 11.5px; cursor: pointer; color: #c3cedb }
+.chk input { accent-color: var(--accent); width: 14px; height: 14px; flex: none }
+/* Шугаман давхаргын тэмдэг — дугуйтай ойролцоо өргөнтэй байлгана */
+.chk :global(.swatch) { width: 8px; height: 3px; border-radius: 2px; flex: none }
+.chk :global(.dot) { width: 9px; height: 9px; border-radius: 50%; flex: none }
+
+/* ---------- Blend slider (нийлмэл үнэлгээ) ---------- */
+.blendLabels { display: flex; justify-content: space-between; font-size: 11.5px; margin-bottom: 7px }
+.bUrban { color: var(--urban) }
+.bFin { color: var(--fin) }
+.blendLabels b { font-variant-numeric: tabular-nums }
+/**
+ * ⚠️ Гулсуурын утга нь ЭДИЙН ЗАСГИЙН эзлэх хувь: баруун тийш чирэхэд шар
+ * (санхүү) давамгайлна — градиентийн баруун тал ижил өнгөтэй.
+ */
+.blendRange { background: linear-gradient(90deg, var(--urban), var(--fin)) !important; height: 6px }
+.blendRange::-webkit-slider-thumb { width: 18px; height: 18px; background: #e6edf3; box-shadow: 0 0 0 1px #e6edf3 }
+.blendRange::-moz-range-thumb { width: 18px; height: 18px; background: #e6edf3 }
+
+.blendScores { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px }
+.blendScore { background: #101720; border-radius: 7px; padding: 8px 10px }
+.blendScore span { display: block; font-size: 9.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px }
+.blendScore b { font-size: 17px; font-variant-numeric: tabular-nums }
+
+/* ---------- Pie chart (3 үндсэн төрөл) ---------- */
+.pieWrap { display: flex; align-items: center; gap: 14px; margin-top: 2px }
+.pie { flex: none }
+.pieLegend { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px }
+.pieItem {
+  display: grid; grid-template-columns: 9px 1fr auto auto; gap: 7px; align-items: center;
+  width: 100%; padding: 4px 5px; border-radius: 5px; background: none; border: 0;
+  color: inherit; font-size: 11px; cursor: pointer; text-align: left;
+}
+.pieItem:hover { background: #222e3d }
+.pieOn { background: #243347; box-shadow: inset 2px 0 0 var(--accent) }
+.pieItem i { width: 9px; height: 9px; border-radius: 2px }
+.pieItem span { min-width: 0; color: #c3cedb; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.pieItem b { font-variant-numeric: tabular-nums; font-size: 11.5px }
+.pieItem em { font-style: normal; font-size: 9.5px; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 32px; text-align: right }
+
+/* ---------- Weight rows ---------- */
+.wRow { padding: 11px 0; border-bottom: 1px solid #212a36 }
+.wRow:last-child { border-bottom: 0 }
+.wTop { display: flex; align-items: baseline; gap: 6px }
+.wTop :global(.nm) { font-size: 11.5px; flex: 1; line-height: 1.35; color: #dbe4ee }
+.wTop :global(.pct) { font-size: 12.5px; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums }
+
+.app input[type=range] {
+  -webkit-appearance: none; appearance: none; width: 100%; height: 4px; border-radius: 4px;
+  background: #2c3846; outline: none; margin: 6px 0;
+}
+.app input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%;
+  background: var(--accent); border: 2px solid #0d1117; cursor: pointer;
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.app input[type=range]::-moz-range-thumb {
+  width: 14px; height: 14px; border-radius: 50%;
+  background: var(--accent); border: 2px solid #0d1117; cursor: pointer;
+}
+.wSlider { margin: 4px 0 6px !important }
+
+/* Норм нэг мөрөнд */
+.wReq {
+  font-size: 11px; color: #c3cedb; background: #101720; border-radius: 5px;
+  padding: 4px 8px; border-left: 2px solid var(--accent);
+}
+.wReq b { color: var(--accent); font-weight: 600 }
+/* Эх сурвалжийн иш */
+.wSrc { font-size: 9.5px; color: #5b6675; margin: 4px 0 0; line-height: 1.4 }
+
+/* Бүсийн төрлөөр өөр норм (FAR/BCR) */
+.wTypes { margin-top: 6px; display: flex; flex-direction: column; gap: 1px }
+.wTypes div {
+  display: flex; gap: 8px; align-items: baseline; font-size: 10px;
+  padding: 2px 6px; border-radius: 4px; background: #101720;
+}
+.wTypes span { flex: 1; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.wTypes b { color: #dbe4ee; font-variant-numeric: tabular-nums; flex: none }
+
+/* Босго засварлах талбарууд */
+.wThr { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-top: 7px }
+.wThr label {
+  font-size: 9px; color: var(--muted); display: flex; flex-direction: column; gap: 2px;
+  text-transform: uppercase; letter-spacing: .3px;
+}
+.wThr input {
+  width: 100%; background: #101720; border: 1px solid var(--line); color: var(--text);
+  border-radius: 4px; padding: 4px 6px; font-size: 11px; font-family: inherit;
+  font-variant-numeric: tabular-nums;
+}
+.wThr input:focus { outline: none; border-color: var(--accent) }
+
+/* ---------- Finance ---------- */
+.sliderRow { margin-bottom: 13px }
+.sliderRow label { font-size: 11.5px; display: flex; justify-content: space-between; align-items: baseline; gap: 6px }
+.sliderRow :global(.val) { color: var(--fin); font-weight: 600; font-variant-numeric: tabular-nums }
+.finSummary {
+  margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line);
+  display: grid; grid-template-columns: 1fr 1fr; gap: 7px;
+}
+.finSummary > div { background: #101720; border-radius: 6px; padding: 7px 9px }
+.finSummary span { display: block; font-size: 9.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px }
+.finSummary b { font-size: 12.5px; font-variant-numeric: tabular-nums }
+
+/* ---------- Зогсоолын хэрэгцээ ---------- */
+.subLabel { font-size: 9.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; margin: 11px 0 5px }
+.parkHead { display: flex; align-items: center; gap: 11px; margin-top: 12px }
+.parkPct { font-size: 27px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums }
+.parkPct i { font-style: normal; font-size: 13px; margin-left: 1px }
+.parkHeadTxt { min-width: 0 }
+.parkHeadTxt > b { display: block; font-size: 11.5px; color: #dbe4ee }
+.parkHeadTxt > span { font-size: 11px; color: var(--muted) }
+.parkHeadTxt > span b { color: #dbe4ee; font-variant-numeric: tabular-nums }
+
+/* Хангалтын зурвас — 100% нь нормын түвшин */
+.parkBar {
+  position: relative; height: 7px; margin-top: 9px;
+  background: #101720; border: 1px solid var(--line); border-radius: 5px; overflow: hidden;
+}
+.parkBar span { display: block; height: 100%; border-radius: 5px; transition: width .25s }
+.parkScale { display: flex; justify-content: space-between; margin-top: 3px; font-size: 9px; color: var(--muted); letter-spacing: .3px }
+.parkFormula {
+  margin-top: 9px; padding: 7px 9px; background: #101720; border-radius: 6px;
+  font-size: 11px; color: var(--muted); line-height: 1.5;
+}
+.parkFormula b { color: #dbe4ee; font-variant-numeric: tabular-nums }
+
+/* ---------- Эдийн засгийн шинжилгээ ---------- */
+.econHead { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 2px 0 8px }
+.econBig { background: #101720; border-radius: 7px; padding: 8px 10px }
+.econBig span { display: block; font-size: 9.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px }
+.econBig b { font-size: 15px; font-variant-numeric: tabular-nums; color: var(--fin) }
+.econBig b i { font-style: normal; font-size: 10px; color: var(--muted); font-weight: 500 }
+
+.econChart { margin-top: 5px; max-height: 340px; overflow-y: auto; padding-right: 3px }
+.econChart::-webkit-scrollbar { width: 7px }
+.econChart::-webkit-scrollbar-thumb { background: #2b3644; border-radius: 7px }
+.econRow { margin-bottom: 9px }
+.econRowTop { display: flex; align-items: baseline; gap: 6px; font-size: 11px }
+.econRowTop i { width: 8px; height: 8px; border-radius: 2px; flex: none; align-self: center }
+.econRowTop :global(.nm) { flex: 1; color: #c3cedb; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left }
+.econRowTop b { font-variant-numeric: tabular-nums; color: var(--text) }
+.econRowTop em { font-style: normal; font-size: 9.5px; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 36px; text-align: right }
+.econBar { height: 5px; background: #101720; border-radius: 3px; overflow: hidden; margin-top: 3px }
+.econBar i { display: block; height: 100%; border-radius: 3px; transition: width .3s }
+.econMeta { margin-top: 2px; font-size: 9px; color: #5b6675; font-variant-numeric: tabular-nums; text-align: left }
+
+/* Эдийн засгийн загварчлалын карт — үлдсэн өндрийг бүтэн эзэлнэ */
+.econTune { flex: 1; min-height: 0; display: flex; flex-direction: column }
+.econTune > .body { flex: 1; min-height: 0; display: flex; flex-direction: column }
+/* Ашгийн жагсаалт хураагдсан үед карт сунахаа болино */
+.pcOff { flex: 0 0 auto }
+.pcOff .pchart { display: none }
+
+/* Хураадаг дэд гарчиг */
+.toggleLabel {
+  display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;
+  padding: 3px 5px; margin-left: -5px; margin-right: -5px; border-radius: 5px;
+  width: calc(100% + 10px); background: none; border: 0;
+}
+.toggleLabel:hover { background: #222e3d; color: var(--text) }
+.toggleLabel span { flex: 1; text-align: left }
+.toggleLabel i {
+  font-style: normal; width: 15px; height: 15px; border-radius: 4px; background: #233043;
+  display: grid; place-items: center; font-size: 8px; transition: transform .2s;
+}
+.toggleOff i { transform: rotate(-90deg) }
+
+/* Бүсүүдийн ашиг/алдагдал — үйлчилгээний өртгийн графиктай ижил мөрүүд */
+.pchart { margin-top: 5px; flex: 1; min-height: 120px; overflow-y: auto; padding-right: 3px }
+.pchart::-webkit-scrollbar { width: 7px }
+.pchart::-webkit-scrollbar-thumb { background: #2b3644; border-radius: 7px }
+.pchart .econRow { cursor: pointer; padding: 3px 4px; margin: 0 -4px 6px; border-radius: 6px; width: 100%; background: none; border: 0; color: inherit }
+.pchart .econRow:hover { background: #222e3d }
+.pchart .econOn { background: #243347; box-shadow: inset 2px 0 0 #22d3ee }
+.pchartLgd { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 2px; font-size: 9.5px; color: var(--muted); font-variant-numeric: tabular-nums }
+
+.econGrp {
+  display: flex; align-items: center; gap: 7px; font-size: 11px; padding: 4px 5px;
+  border-radius: 5px; background: #101720; margin-bottom: 3px;
+}
+.econGrp i { width: 8px; height: 8px; border-radius: 2px; flex: none }
+.econGrp span { flex: 1; color: #c3cedb }
+.econGrp b { font-variant-numeric: tabular-nums }
+.econGrp em { font-style: normal; font-size: 9.5px; color: var(--muted); min-width: 36px; text-align: right }
+
+/* ---------- Газрын зургийн hover панель ---------- */
+.mapTip {
+  position: absolute; z-index: 10; pointer-events: none;
+  min-width: 186px; max-width: 250px;
+  background: rgba(18, 24, 33, .97); backdrop-filter: blur(8px);
+  border: 1px solid var(--line); border-radius: 9px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .6);
+  padding: 9px 11px; font-size: 11px; line-height: 1.45;
+}
+.mapTip :global(.t) { display: flex; align-items: center; gap: 7px; margin-bottom: 7px }
+.mapTip :global(.t) b { font-size: 12px; color: var(--text); flex: 1; line-height: 1.3 }
+.mapTip :global(.st) { flex: none; font-size: 9px; padding: 2px 6px; border-radius: 20px; color: #08111a; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums }
+.mapTip dl { display: grid; grid-template-columns: auto auto; gap: 3px 10px; margin: 0 }
+.mapTip dt { color: var(--muted); font-size: 10px }
+.mapTip dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; color: #dbe4ee; font-size: 10.5px }
+/* Бүсийн hover — дэд гарчиг ба норм зөрчсөн үзүүлэлтүүд */
+.mapTip :global(.sub2) { font-size: 9.5px; color: var(--muted); margin: -4px 0 7px; line-height: 1.4 }
+.mapTip :global(.fails) { margin-top: 7px; padding-top: 6px; border-top: 1px solid #26303d; display: flex; flex-direction: column; gap: 2px }
+.mapTip :global(.fails) div { display: flex; gap: 8px; align-items: baseline; font-size: 9.5px }
+.mapTip :global(.fails) span { flex: 1; color: #f87171; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.mapTip :global(.fails) em { font-style: normal; color: #dbe4ee; font-variant-numeric: tabular-nums; flex: none }
+
+/* ---------- Detail card ---------- */
+.detail {
+  position: absolute; left: 14px; top: 14px; width: 352px; max-height: calc(100% - 28px);
+  background: rgba(22, 29, 39, .97); backdrop-filter: blur(10px);
+  border: 1px solid var(--line); border-radius: 12px; overflow: auto;
+  box-shadow: 0 14px 44px rgba(0, 0, 0, .6); z-index: 11;
+}
+.dragging { box-shadow: 0 18px 52px rgba(0, 0, 0, .75); border-color: #22d3ee; transition: none }
+.detail::-webkit-scrollbar { width: 7px }
+.detail::-webkit-scrollbar-thumb { background: #2b3644; border-radius: 7px }
+.dHead {
+  padding: 13px 14px; border-bottom: 1px solid var(--line); position: sticky; top: 0;
+  background: rgba(22, 29, 39, .98); z-index: 2; display: flex; gap: 12px; align-items: center;
+  cursor: move; user-select: none; touch-action: none;
+}
+.dHead :global(.gauge) {
+  width: 54px; height: 54px; border-radius: 50%; flex: none; display: grid; place-items: center;
+  font-size: 16px; font-weight: 700; color: #08111a; font-variant-numeric: tabular-nums;
+}
+.dHead h3 { font-size: 15px }
+.dHead p { margin: 2px 0 0; font-size: 11px; color: var(--muted) }
+.dClose { margin-left: auto; background: none; border: 0; color: var(--muted); font-size: 19px; line-height: 1; align-self: flex-start }
+.dClose:hover { color: var(--text) }
+
+.dSect { padding: 11px 14px; border-bottom: 1px solid #212a36 }
+.dSect:last-child { border-bottom: 0 }
+.dSect h4 { margin: 0 0 8px; font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); font-weight: 600 }
+
+.mRow { margin-bottom: 9px }
+.mRow:last-child { margin-bottom: 0 }
+/* «Үзүүлэлт» горимд идэвхтэй үзүүлэлтийг онцлох */
+.mOn { background: #243347; box-shadow: inset 2px 0 0 var(--accent); border-radius: 5px; padding: 5px 7px; margin: 0 -7px 9px }
+.mTop { display: flex; align-items: baseline; gap: 6px; font-size: 11px; margin-bottom: 3px }
+.mTop :global(.nm) { flex: 1; color: #c3cedb; line-height: 1.3 }
+.mTop :global(.v) { font-weight: 600; font-variant-numeric: tabular-nums }
+.mTop :global(.w) { color: var(--muted); font-size: 9.5px }
+.mNorm { font-size: 9.5px; margin: 0 0 3px }
+.mNorm :global(.ok) { color: #4ade80 }
+.mNorm :global(.bad) { color: #f87171; font-weight: 600 }
+.mNorm span { color: var(--muted) }
+.mBar { height: 6px; background: #101720; border-radius: 3px; overflow: hidden; position: relative }
+.mBar i { display: block; height: 100%; border-radius: 3px; transition: width .3s }
+.mBar u { position: absolute; top: -2px; width: 1.5px; height: 10px; background: #e6edf3; opacity: .55 }
+
+/* Нийгмийн дэд бүтцийн задаргаа */
+.socRow { margin-bottom: 9px }
+.socTop { display: flex; align-items: baseline; gap: 7px; margin-bottom: 3px }
+.socTop :global(.nm) { flex: 1; font-size: 11.5px; color: #dbe4ee }
+.socTop :global(.d) { font-size: 9.5px; color: var(--muted); font-variant-numeric: tabular-nums }
+.socTop :global(.v) { font-size: 11.5px; font-weight: 600; font-variant-numeric: tabular-nums }
+.socMeta { margin-top: 3px; font-size: 9.5px; color: var(--muted) }
+
+.dGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px }
+.dGrid > div { background: #101720; border-radius: 6px; padding: 7px 9px }
+.dGrid span { display: block; font-size: 9.5px; color: var(--muted) }
+.dGrid b { font-size: 12px; font-variant-numeric: tabular-nums }
+.pos { color: #4ade80 }
+.neg { color: #f87171 }
+
+/* ---------- Үзүүлэлт сонгох жагсаалт ---------- */
+.indHead {
+  display: grid; grid-template-columns: 1fr 30px 42px 34px; gap: 7px;
+  font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px;
+  padding: 0 6px 5px; border-bottom: 1px solid var(--line);
+}
+.indHead span:nth-child(n+2) { text-align: right }
+.indHead span:last-child { text-align: left }
+.indList { display: flex; flex-direction: column; gap: 1px; margin-top: 4px }
+.ind {
+  display: grid; grid-template-columns: 1fr 30px 42px 34px; gap: 7px; align-items: center;
+  padding: 5px 6px; border-radius: 5px; cursor: pointer; font-size: 11.5px;
+  transition: background .12s; width: 100%; background: none; border: 0; color: inherit;
+}
+.ind:hover { background: #222e3d }
+.indOn { background: #243347; box-shadow: inset 2px 0 0 var(--accent) }
+.indOn :global(.nm) { color: #fff; font-weight: 600 }
+.ind :global(.nm) { color: #c3cedb; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left }
+.ind :global(.wt) { text-align: right; font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums }
+.ind :global(.cnt) { text-align: right; font-size: 10.5px; color: #dbe4ee; font-variant-numeric: tabular-nums }
+.ind :global(.bar) { height: 4px; background: #101720; border-radius: 2px; overflow: hidden }
+.ind :global(.bar) i { display: block; height: 100%; border-radius: 2px; transition: width .3s }
+
+/* Сонгосон үзүүлэлтийн норм + эх сурвалж */
+.indNote { margin-top: 9px; padding-top: 9px; border-top: 1px solid #212a36 }
+.indNote .wReq { display: flex; align-items: baseline; gap: 8px }
+.indNote .wReq :global(.wt) {
+  margin-left: auto; flex: none; font-size: 9.5px; color: var(--muted);
+  background: #233043; border-radius: 20px; padding: 1px 7px;
+}
+
+/* ArcGIS widget tweak */
+.app :global(.esri-ui) :global(.esri-widget) { --calcite-ui-foreground-1: #161d27 }
+
+@media (max-width: 1450px) {
+  .shell { --left-w: 295px; --right-w: 300px }
+  .brand p { display: none }
+}
+@media (max-width: 1100px) {
+  .shell { grid-template-columns: 1fr; grid-template-rows: 300px 320px 320px }
+  .resizer { display: none }
+  .left, .right { border: 0; border-top: 1px solid var(--line) }
+}

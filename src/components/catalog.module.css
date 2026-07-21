@@ -1,0 +1,189 @@
+/* Давхаргын каталог — зүүн модны хажуугийн БАГАНА */
+
+.drawer {
+  grid-area: cat;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--surface);
+  border-right: 1px solid var(--line);
+  overflow: hidden;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--hue) 5%, var(--surface));
+}
+.headText { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.3; }
+.title {
+  font-size: 0.62rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--ink-3);
+}
+.sub {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.close {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  font-size: 1.1rem;
+  line-height: 1;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  color: var(--ink-3);
+  transition: background 0.12s, color 0.12s;
+}
+.close:hover { background: var(--surface-2); color: var(--ink); }
+
+.body { flex: 1; overflow-y: auto; padding: 8px 8px 12px; }
+
+.foot {
+  flex: none;
+  padding: 9px 12px;
+  border-top: 1px solid var(--line);
+  font-size: 0.62rem;
+  line-height: 1.5;
+  color: var(--ink-3);
+}
+
+/* ── Багц ── */
+.group + .group { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+
+.groupHead { display: flex; align-items: center; gap: 8px; padding: 4px 4px 6px; }
+/* Гарчгийн хураах товч — дүрс, нэр, сум гурвыг бүхэлд нь эзэлнэ */
+.groupToggle {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 4px;
+  margin: -2px -4px;
+  border-radius: var(--r-sm);
+  background: none;
+  border: 0;
+  color: inherit;
+  transition: background 0.12s;
+}
+.groupToggle:hover { background: var(--surface-2); }
+.groupCaret { flex: none; font-size: 0.66rem; color: var(--ink-3); transition: transform 0.22s var(--ease); }
+.groupCaretOpen { transform: rotate(180deg); color: var(--tone); }
+.groupIcon {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  border-radius: 7px;
+  color: var(--tone);
+  background: color-mix(in srgb, var(--tone) 14%, transparent);
+}
+.groupTitle {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.74rem;
+  font-weight: 650;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.groupCost { flex: none; font-size: 0.66rem; font-weight: 650; color: var(--tone); }
+.groupBtn {
+  flex: none;
+  padding: 2px 7px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  font-family: var(--mono);
+  font-size: 0.63rem;
+  color: var(--ink-3);
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.groupBtn:hover {
+  background: color-mix(in srgb, var(--tone) 12%, transparent);
+  border-color: color-mix(in srgb, var(--tone) 40%, var(--line));
+  color: var(--ink);
+}
+
+/* ── Давхаргын мөр ── */
+.rows { display: flex; flex-direction: column; gap: 1px; }
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px;
+  border-radius: var(--r-sm);
+  border: 1px solid transparent;
+  transition: background 0.12s, border-color 0.12s;
+}
+.row:hover { background: var(--surface-2); }
+.rowOn { background: color-mix(in srgb, var(--tone) 7%, transparent); }
+.rowSel {
+  background: color-mix(in srgb, var(--tone) 12%, transparent);
+  border-color: color-mix(in srgb, var(--tone) 40%, transparent);
+}
+
+.check {
+  display: grid;
+  place-items: center;
+  width: 15px;
+  height: 15px;
+  flex: none;
+  border-radius: 4px;
+  border: 1.5px solid var(--line-strong);
+  color: #fff;
+  transition: background 0.15s var(--ease), border-color 0.15s var(--ease);
+}
+.check svg { opacity: 0; transform: scale(0.6); transition: opacity 0.15s var(--ease), transform 0.15s var(--ease); }
+.rowOn .check, .rowSel .check[aria-checked='true'] { background: var(--tone); border-color: var(--tone); }
+.rowOn .check svg { opacity: 1; transform: scale(1); }
+
+.rowMain {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  text-align: left;
+}
+.rowTitle {
+  font-size: 0.735rem;
+  font-weight: 600;
+  color: var(--ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rowOn .rowTitle, .rowSel .rowTitle { color: var(--ink); }
+.rowMeta {
+  font-size: 0.645rem;
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Бүсээр шүүгдэх боломжгүй давхарга — дүн нь төслийн бүхэлдээ */
+.rowWarn { font-style: normal; color: var(--warn); }
+
+/* Дэлгэц бага үед багана нь босоо өрөлтөд ордог тул хүрээ нь дээрээс */
+@media (max-width: 1180px) {
+  .drawer { border-right: none; border-top: 1px solid var(--line); }
+  .body { max-height: 50vh; }
+}
