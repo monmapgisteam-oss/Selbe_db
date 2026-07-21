@@ -2,7 +2,7 @@
 
 import {
   createContext, useCallback, useContext, useEffect, useMemo, useRef, useState,
-  type ReactNode,
+  type CSSProperties, type ReactNode,
 } from 'react';
 import Map from '@arcgis/core/Map';
 import MapView from '@arcgis/core/views/MapView';
@@ -24,11 +24,11 @@ import '@arcgis/core/assets/esri/themes/light/main.css';
 import {
   LAYERS, LAYER_BY_ID, layerUrl, drawOrder, DASH_PATTERN,
   HOME, BASEMAP_URL, IMAGERY, SCENE, ELEVATION_URL, ZONE_LAYER,
-  ZONE_FIELD, ZONE_TYPE_EMPTY_HUE, OID,
+  ZONE_FIELD, ZONE_NONE, ZONE_TYPE_EMPTY_HUE, OID, BUILDING, SURVEY,
   type LayerDef,
 } from '@/lib/services';
-import { queryExtent, sqlStr } from '@/lib/query';
-import { MapLegend } from './MapLegend';
+import { queryExtent, queryFeatures, sqlStr, type Aoi } from '@/lib/query';
+import { num, pct, date, text } from '@/lib/format';
 import s from './map.module.css';
 
 /** Хоёр төрлийн харагдац — 2D (MapView) ба 3D (SceneView) */
@@ -342,6 +342,10 @@ export function MapCanvas({
   const [ready, setReady] = useState(false);
   /** Ачаалагдаж чадаагүй 3D загварын тоо — null = асуудалгүй */
   const [meshError, setMeshError] = useState<number | null>(null);
+  /** Хулганы доорх объектын товч мэдээлэл */
+  const [tip, setTip] = useState<
+    { x: number; y: number; id: string; attrs: Record<string, unknown> } | null
+  >(null);
 
   const register = useContext(RegisterCtx);
   const registerRef = useRef(register);
@@ -405,16 +409,71 @@ export function MapCanvas({
         .catch((e) => console.error('[selbe] эхлэх хүрээг тодорхойлж чадсангүй:', e));
     }).catch((e: unknown) => console.error('[selbe] газрын зураг үүсгэж чадсангүй:', e));
 
-    const hitLayers = () => view.map.layers.filter((l) => l.visible && !PASSIVE.has(l.id)).toArray();
+    /**
+     * Дарж/хулгана аваачихад ХАМААРАХ давхаргын объектыг олох.
+     *
+     * ⚠️ `hitTest`-д `include` ӨГӨХГҮЙ. 3D-д `IntegratedMesh` нь бүх талбайг
+     * бүрхдэг бөгөөд `include`-д ороогүй давхарга нь ТУСГААРЛАГДАХ биш, туяаг
+     * түрүүлж таслах учир доор нь дарагдсан вектор объект огт буцаж ирдэггүй
+     * байв — 3D-д сонголт «ажиллахгүй» байсны шалтгаан. Бүх үр дүнг авчраад
+     * КАТАЛОГТ БҮРТГЭЛТЭЙ, ИЛ давхаргын эхнийхийг нь өөрсдөө шүүнэ.
+     */
+    const pickHit = (r: __esri.HitTestResult) => {
+      for (const x of r.results) {
+        if (x.type !== 'graphic') continue;
+        const lyr = x.graphic.layer;
+        if (!lyr || !lyr.visible || PASSIVE.has(lyr.id)) continue;
+        if (!LAYER_BY_ID[lyr.id]) continue;
+        return { attrs: x.graphic.attributes as Record<string, unknown>, id: lyr.id };
+      }
+      return null;
+    };
+
+    /**
+     * ⚠️ `hitTest` нь РЕНДЕРЛЭГДСЭН пикселээс хамаарна. 3D-д (`SceneView`)
+     * вектор давхаргууд газрын гадаргуу дээр наалддаг бөгөөд `IntegratedMesh`
+     * тэдгээрийг далдалж, гадаргуугийн композит бүрэн болтол `hitTest` хоосон
+     * буцаадаг — сонголт «ажиллахгүй» болдгийн ГОЛ шалтгаан.
+     *
+     * Тиймээс hitTest хоосон бол ОРОН ЗАЙН АСУУЛГА руу шилжинэ: дарсан цэгээс
+     * хэдэн пикселийн хүлцэлтэйгээр ил давхаргуудаас хайна. Энэ нь зургийн
+     * рендерээс огт хамаарахгүй тул 2D, 3D хоёуланд ижил ажиллана.
+     */
+    const pickByQuery = async (mapPoint: __esri.Point, tolerance: number) => {
+      const ids = view.map.layers.toArray()
+        .filter((l) => l.visible && LAYER_BY_ID[l.id])
+        .map((l) => l.id)
+        // Дээд талынхыг ЭХЭЛЖ шалгана: цэг → шугам → талбай
+        .sort((a, b) => drawOrder(b) - drawOrder(a));
+      if (!ids.length) return null;
+
+      const wkid = mapPoint.spatialReference?.wkid ?? 102100;
+      const aoi: Aoi = {
+        geometry: { x: mapPoint.x, y: mapPoint.y, spatialReference: { wkid } },
+        wkid,
+        type: 'point',
+        distance: tolerance,
+      };
+
+      const rows = await Promise.all(
+        ids.map((id) => queryFeatures(layerUrl(LAYER_BY_ID[id]), { aoi, limit: 1 }).catch(() => [])),
+      );
+      for (let i = 0; i < ids.length; i++) {
+        if (rows[i].length) return { attrs: rows[i][0] as Record<string, unknown>, id: ids[i] };
+      }
+      return null;
+    };
 
     const click = view.on('click', (e) => {
-      view.hitTest(e, { include: hitLayers() })
-        .then((r) => {
-          const g = r.results.find((x) => x.type === 'graphic');
-          pickRef.current(
-            g && g.type === 'graphic' ? (g.graphic.attributes as Record<string, unknown>) : null,
-            g && g.type === 'graphic' ? (g.graphic.layer?.id ?? null) : null,
-          );
+      view.hitTest(e)
+        .then(async (r) => {
+          const hit = pickHit(r);
+          if (hit) { pickRef.current(hit.attrs, hit.id); return; }
+          if (view.destroyed || !e.mapPoint) { pickRef.current(null, null); return; }
+          // ≈6 пикселийн хүлцэл — нимгэн шугам, жижиг цэгийг барихад хангалттай
+          const tol = Math.max(2, (view.resolution || 1) * 6);
+          const q = await pickByQuery(e.mapPoint, tol);
+          if (!view.destroyed) pickRef.current(q?.attrs ?? null, q?.id ?? null);
         })
         .catch(() => {/* view устгагдсан — сонголт өөрчлөгдөхгүй */});
     });
@@ -423,20 +482,26 @@ export function MapCanvas({
     const move = view.on('pointer-move', (e) => {
       if (busy) return;
       busy = true;
-      view.hitTest(e, { include: hitLayers() })
+      view.hitTest(e)
         .then((r) => {
-          if (!view.destroyed && view.container) {
-            view.container.style.cursor = r.results.some((x) => x.type === 'graphic') ? 'pointer' : 'default';
-          }
+          if (view.destroyed || !view.container) return;
+          const hit = pickHit(r);
+          view.container.style.cursor = hit ? 'pointer' : 'default';
+          // Товч мэдээллийн хайрцаг — заагчийн хажууд
+          setTip(hit ? { x: e.x, y: e.y, id: hit.id, attrs: hit.attrs } : null);
         })
         .catch(() => {})
         // ⚠️ finally — эс бөгөөс нэг унасан hitTest `busy`-г үүрд түгжинэ
         .finally(() => { busy = false; });
     });
 
+    const leave = view.on('pointer-leave', () => setTip(null));
+
     return () => {
       click.remove();
       move.remove();
+      leave.remove();
+      setTip(null);
       /**
        * ⚠️ `view.destroy()` нь 4.17-оос хойш ӨӨРИЙН `map`-ыг ч хамт устгадаг.
        * 2D↔3D солиход Map хэвээр үлдэх ёстой тул холбоог эхлээд тасална — эс
@@ -534,8 +599,91 @@ export function MapCanvas({
         </div>
       )}
 
-      {ready && <MapLegend visible={visible} />}
+      {/* Хулганы доорх объектын ТОВЧ мэдээлэл. Дэлгэрэнгүй нь дарахад
+          баруун самбарт гарна — энд зөвхөн «энэ юу вэ» гэдгийг хэлнэ. */}
+      {tip && <MapTip x={tip.x} y={tip.y} id={tip.id} attrs={tip.attrs} />}
+
+      {/* ⚠️ Газрын зураг дээрх «Тайлбар» хайрцгийг ХАССАН: давхаргын каталог
+          багана нь симбол, тоо, өртгийг аль хэдийн хажууд нь харуулж байгаа тул
+          зураг дээр үгээр давтах нь зургийн талбайг л иддэг байв. */}
       {children}
+    </div>
+  );
+}
+
+/* ─────────────────── Товч мэдээллийн хайрцаг ─────────────────── */
+
+/**
+ * Хулганы доорх объектын ТОВЧ мэдээлэл.
+ *
+ * ⚠️ Талбарууд нь каталогийн тодорхойлолтоос гарна (`qty`, `facets`) — давхарга
+ * бүрд гар аргаар бичихгүй. Хяналтын хоёр давхарга нь ерөнхий загварт багтахгүй
+ * тул тэдгээрт л онцгой мөрүүд нэмнэ.
+ *
+ * ⚠️ Байрлалыг `transform`-оор шилжүүлж хүрээнээс гаргахгүй: `right`/`bottom`
+ * тооцоолохын тулд хайрцгийн хэмжээг мэдэх шаардлагатай болох ба энэ нь рендер
+ * бүрд `offsetWidth` уншиж, layout thrash үүсгэнэ.
+ */
+function MapTip({
+  x, y, id, attrs,
+}: {
+  x: number;
+  y: number;
+  id: string;
+  attrs: Record<string, unknown>;
+}) {
+  const d = LAYER_BY_ID[id];
+  if (!d) return null;
+
+  const rows: { k: string; v: string }[] = [];
+
+  if (d.qty && attrs[d.qty.field] != null) {
+    const q = Number(attrs[d.qty.field]);
+    rows.push({
+      k: d.qty.unit === 'м²' ? 'Талбай' : 'Урт',
+      v: d.qty.unit === 'м²' ? `${num(q / 10_000, 2)} га` : `${num(q, 1)} ${d.qty.unit}`,
+    });
+  }
+
+  if (d.id === 'mon:building') {
+    const F = BUILDING.fields;
+    const g = Number(attrs[F.progress] ?? -1);
+    rows.push({ k: 'Блок', v: text(attrs[F.block]) });
+    rows.push({ k: 'Гүйцэтгэл', v: g < 0 ? '—' : pct(g, 0) });
+    rows.push({ k: 'Айл', v: num(Number(attrs[F.households] ?? 0)) });
+    rows.push({ k: 'Гүйцэтгэгч', v: text(attrs[F.contractor]) });
+  } else if (d.id === 'mon:survey') {
+    const F = SURVEY.fields;
+    rows.push({ k: 'Огноо', v: date(attrs[F.date] as string) });
+    rows.push({ k: 'Барилга', v: text(attrs[F.building]) });
+    rows.push({ k: 'Гүйцэтгэл', v: pct(Number(attrs[F.total] ?? 0), 0) });
+  } else {
+    for (const f of (d.facets ?? []).slice(0, 3)) {
+      if (attrs[f.field] == null || String(attrs[f.field]).trim() === '') continue;
+      rows.push({ k: f.label, v: text(attrs[f.field]) });
+    }
+    const zoneId = text(attrs[ZONE_FIELD], '').trim();
+    if (zoneId && zoneId !== ZONE_NONE.trim()) rows.push({ k: 'Бүс', v: zoneId });
+  }
+
+  return (
+    <div
+      className={s.tip}
+      style={{ left: x, top: y, '--tone': d.hue } as CSSProperties}
+      aria-hidden
+    >
+      <div className={s.tipHead}>{d.title}</div>
+      {rows.length > 0 && (
+        <dl className={s.tipRows}>
+          {rows.map((r) => (
+            <div key={r.k}>
+              <dt>{r.k}</dt>
+              <dd className="num">{r.v}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      <div className={s.tipHint}>дарж дэлгэрэнгүйг харна</div>
     </div>
   );
 }

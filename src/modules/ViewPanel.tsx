@@ -1,95 +1,64 @@
 'use client';
 
 import { useState, type CSSProperties, type Dispatch, type SetStateAction } from 'react';
-import { Section, Stats, Stat, Bars, Rows, Data, Empty } from '@/components/ui';
+import { Section, Stats, Stat, Bars, Stack, Rows, Data, Empty } from '@/components/ui';
+import { Icon } from '@/components/Icon';
+import { LayerSwatch } from '@/components/LayerSwatch';
 import { useMap } from '@/components/MapCanvas';
-import { useAsync } from '@/lib/useAsync';
-import { queryGroup, queryStats, count, sum, groups, groupWhere, sqlStr } from '@/lib/query';
+import { useAsync, type Async } from '@/lib/useAsync';
+import { queryGroup, count, sum, groups, groupWhere, sqlStr, type Row } from '@/lib/query';
 import {
   LAYER_BY_ID, layerUrl, OID, ZONE_FIELD, ZONE_NONE, ZONE_LAYER, ZONE_FIELDS,
   BUILT_LAYER, BUILT_FIELDS, BUILT_STATUS, ZONE_TYPES, ZONE_TYPE_EMPTY_HUE,
-  VIEW_BY_KEY, type LayerDef, type ViewKey,
+  LAYER_GROUPS, GROUP_LAYERS, PLAN_LAYER_IDS, groupOf,
+  type LayerDef, type ViewKey,
 } from '@/lib/services';
-import { num, mnt, mntShort, ha, km, text } from '@/lib/format';
+import { whereFor, qtyText, geomText, groupQty, layerStats, type Totals } from '@/lib/totals';
+import { num, text } from '@/lib/format';
 import { BuildingSummary, BuildingWork } from './BuildingPanel';
-import { SurveySummary, SurveyReports, SurveyOutside, useSurvey, useOutside } from './SurveyPanel';
+import { SurveySummary, useSurvey, useOutside } from './SurveyPanel';
 import s from './dashboard.module.css';
-
-/* ═════════════════ Тооцоо ═════════════════ */
-
-/**
- * Давхаргын тоо, хэмжээ, ӨРТГИЙГ нэг хүсэлтээр.
- *
- * ⚠️ Нэгж үнээр БҮЛЭГЛЭЖ асуудаг нь санаатай. Ихэнх давхаргад нэгж үнэ тогтмол
- * боловч зарим давхаргад ангилал бүрт өөр байдаг (жишээ нь «Инженерийн бэлтгэл
- * арга хэмжээ» 18–250 сая). Нэг ижил хэлбэрээр бүлэглэвэл тэр онцгой тохиолдол
- * өөрөө шийдэгдэнэ — `MAX(үнэ)` авбал тэр давхаргын өртөг 9 дахин хэтэрдэг байв.
- */
-async function layerTotals(d: LayerDef, where: string) {
-  const url = layerUrl(d);
-  // ⚠️ OID нь давхарга бүрт ижил БИШ (хуучин үйлчилгээнүүд `FID`, `objectid`)
-  const stats = [count(d.oid ?? OID, 'n'), ...(d.qty ? [sum(d.qty.field, 'q')] : [])];
-
-  if (!d.cost) {
-    const r = await queryStats(url, stats, where);
-    return { n: Number(r.n ?? 0), q: Number(r.q ?? 0), cost: 0 };
-  }
-
-  const rows = await queryGroup(url, d.cost.field, stats, where);
-  let n = 0, q = 0, cost = 0;
-  for (const r of rows) {
-    const price = Number(r[d.cost.field] ?? 0);
-    const rn = Number(r.n ?? 0);
-    const rq = Number(r.q ?? 0);
-    n += rn;
-    q += rq;
-    cost +=
-      d.cost.basis === 'sh' ? rn * price
-        : d.cost.basis === 'm100' ? (rq / 100) * price
-          : rq * price; // 'km' ба 'm2' — хэмжээ шууд үржигдэнэ
-  }
-  return { n, q, cost };
-}
-
-const qtyText = (d: LayerDef, q: number): string | null => {
-  if (!d.qty || q <= 0) return null;
-  if (d.qty.unit === 'км') return `${num(q, 1)} км`;
-  if (d.qty.unit === 'м') return `${km(q, 1)} км`;
-  return `${ha(q, 1)} га`;
-};
-
-const zoneWhere = (zone: string | null) => (zone ? `${ZONE_FIELD} = ${sqlStr(zone)}` : '1=1');
 
 /* ═════════════════ Үндсэн самбар ═════════════════ */
 
 /**
- * ⚠️ ШАТЛАЛГҮЙ. Урьд нь тойм → дэлгэрэнгүй → «буцах» гэсэн навигацитай байсан
- * тул хэрэглэгч хаана байгаагаа алддаг байв. Одоо бүх зүйл НЭГ хуудсанд: давхарга
- * бүр өөрийн мөртэй, дарахад задаргаа нь ЯГ ТЭНД задарна.
+ * ⚠️ Тоо, өртгийг ЭНД татахгүй — `Portal` нэг удаа татаж `totals`-оор өгнө.
+ * Каталогийн багана ба энэ самбар ижил тоо харуулах ёстой.
  */
 export function ViewPanel({
   view,
+  totals,
   visible,
   setVisible,
   zone,
   setZone,
   picked,
   pickedLayer,
+  openCatalog,
+  layer,
+  setLayer,
 }: {
   view: ViewKey;
+  totals: Async<Map<string, Totals>>;
   visible: string[];
   setVisible: Dispatch<SetStateAction<string[]>>;
   zone: string | null;
   setZone: (z: string | null) => void;
   picked: Record<string, unknown> | null;
   pickedLayer: string | null;
+  openCatalog: () => void;
+  layer: string | null;
+  setLayer: (id: string | null) => void;
 }) {
-  const v = VIEW_BY_KEY[view];
-
-  // Барилгын хяналт нь өөрийн бэспок самбартай (16 үе шат, тайлангийн хүснэгтүүд)
+  // ⚠️ Барилгын хяналт нь бэспок самбартай (16 үе шат, тайлангийн хүснэгтүүд).
+  //    ТУСДАА компонент — эс бөгөөс түүний дотоод hook-ууд нөхцөлт дуудагдана.
+  // ⚠️ «Анализ» энд ОГТ ирэхгүй: тэр харагдац нь `Portal` дээр өөрийн бүрэн
+  //    дэлгэцээр (Suitability) зурагддаг тул самбар байхгүй.
   if (view === 'monitor') {
     return <MonitorPanel picked={picked} pickedLayer={pickedLayer} />;
   }
+
+  const def = layer ? LAYER_BY_ID[layer] : null;
 
   return (
     <>
@@ -104,80 +73,84 @@ export function ViewPanel({
             : null
       )}
 
-      <LayerList ids={v.layers} visible={visible} setVisible={setVisible} zone={zone} />
+      {def ? (
+        <LayerDashboard
+          d={def}
+          totals={totals}
+          zone={zone}
+          on={visible.includes(def.id)}
+          toggle={() =>
+            setVisible((prev) =>
+              prev.includes(def.id) ? prev.filter((x) => x !== def.id) : [...prev, def.id],
+            )
+          }
+          onBack={() => { setLayer(null); openCatalog(); }}
+        />
+      ) : (
+        <PlanOverview
+          totals={totals}
+          zone={zone}
+          visible={visible}
+          setVisible={setVisible}
+          setLayer={setLayer}
+          onOpen={openCatalog}
+        />
+      )}
     </>
   );
 }
 
-/* ═════════════════ Давхаргын жагсаалт ═════════════════ */
+/* ═════════════════ Тойм — багцаар ═════════════════ */
 
-function LayerList({
-  ids,
+function PlanOverview({
+  totals,
+  zone,
   visible,
   setVisible,
-  zone,
+  setLayer,
+  onOpen,
 }: {
-  ids: string[];
+  totals: Async<Map<string, Totals>>;
+  zone: string | null;
   visible: string[];
   setVisible: Dispatch<SetStateAction<string[]>>;
-  zone: string | null;
+  setLayer: (id: string | null) => void;
+  onOpen: () => void;
 }) {
-  const key = `${ids.join(',')}|${zone ?? ''}`;
-  const q = useAsync(async () => {
-    const rows = await Promise.all(
-      ids.map(async (id) => {
-        const d = LAYER_BY_ID[id];
-        // ⚠️ ZONE_ID-гүй давхаргад бүсийн шүүлт хийвэл хүсэлт унана
-        const t = await layerTotals(d, d.noZone ? '1=1' : zoneWhere(zone));
-        return { d, ...t };
-      }),
-    );
-    return rows;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
-
   return (
-    <Data q={q} loading="Үзүүлэлт, өртөг тооцож байна…">
-      {(rows) => {
+    <Data q={totals} loading="Үзүүлэлт тооцож байна…">
+      {(map) => {
         /**
          * ⚠️ Бүс сонгогдсон үед `ZONE_ID`-гүй давхаргыг нийлбэрээс ХАСНА —
          * тэдгээр нь бүсээр шүүгдэх боломжгүй тул төслийн бүх утгаа хэвээр өгнө.
          * Нийлбэрт оруулбал бүсийн дүн бүхэлдээ худал болно.
          */
-        const counted = zone ? rows.filter((r) => !r.d.noZone) : rows;
-        const totalCost = counted.reduce((a, r) => a + r.cost, 0);
-        const totalN = counted.reduce((a, r) => a + r.n, 0);
+        const counted = PLAN_LAYER_IDS.filter((id) => !(zone && LAYER_BY_ID[id]?.noZone));
+        const totalN = counted.reduce((a, id) => a + (map.get(id)?.n ?? 0), 0);
 
         return (
           <>
             <Section title="Нийт">
               <Stats cols={2}>
                 <Stat value={num(totalN)} unit="ш" label="Объект" accent />
-                <Stat
-                  value={totalCost > 0 ? mntShort(totalCost) : '—'}
-                  unit={totalCost > 0 ? '₮' : undefined}
-                  label="Ерөнхий төсөв"
-                  accent
-                />
+                <Stat value={num(PLAN_LAYER_IDS.length)} label="Давхарга" />
               </Stats>
+              <button type="button" className={s.listBtn} onClick={onOpen}>
+                Давхаргын жагсаалт нээх
+              </button>
             </Section>
 
-            <Section title="Давхарга" note="дарж задаргааг нь харна">
+            <Section title="Багц" note="дарж дэлгэрэнгүйг задална">
               <div className={s.rows}>
-                {rows.map((r) => (
-                  <LayerRow
-                    key={r.d.id}
-                    d={r.d}
-                    n={r.n}
-                    qv={r.q}
-                    cost={r.cost}
+                {LAYER_GROUPS.map((g) => (
+                  <GroupRow
+                    key={g.key}
+                    g={g}
+                    map={map}
                     zone={zone}
-                    on={visible.includes(r.d.id)}
-                    toggle={() =>
-                      setVisible((prev) =>
-                        prev.includes(r.d.id) ? prev.filter((x) => x !== r.d.id) : [...prev, r.d.id],
-                      )
-                    }
+                    visible={visible}
+                    setVisible={setVisible}
+                    setLayer={setLayer}
                   />
                 ))}
               </div>
@@ -190,80 +163,152 @@ function LayerList({
 }
 
 /**
- * Нэг давхаргын мөр — чагт + тоо + БАЙРАНДАА задардаг задаргаа.
+ * Багцын мөр — дарахад БАЙРАНДАА задарч доторх давхаргуудаа жагсаана.
  *
- * ⚠️ Задаргааг нээхэд өөр хуудас руу шилжихгүй. Урьд нь тусдаа «дэлгэрэнгүй»
- * дэлгэц рүү ордог байсан тул буцаж ирээд хаана байснаа олох хэрэгтэй болдог байв.
+ * ⚠️ Задаргаа нь өөр хуудас руу шилжихгүй: хэрэглэгч тоймоо алдалгүй багц
+ * доторх давхаргыг шууд асааж, эсвэл нэр дээр нь дарж дашбоард руу орно.
  */
-function LayerRow({
-  d, n, qv, cost, zone, on, toggle,
+function GroupRow({
+  g, map, zone, visible, setVisible, setLayer,
 }: {
-  d: LayerDef;
-  n: number;
-  qv: number;
-  cost: number;
+  g: (typeof LAYER_GROUPS)[number];
+  map: Map<string, Totals>;
   zone: string | null;
-  on: boolean;
-  toggle: () => void;
+  visible: string[];
+  setVisible: Dispatch<SetStateAction<string[]>>;
+  setLayer: (id: string | null) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const ids = GROUP_LAYERS[g.key];
+  const defs = ids.map((id) => LAYER_BY_ID[id]).filter(Boolean);
+  const on = ids.filter((id) => visible.includes(id)).length;
+  const n = ids.reduce((a, id) => a + (map.get(id)?.n ?? 0), 0);
+  /** Багцын нийлбэр хэмжээ — урт ба талбай тусад нь */
+  const qty = groupQty(ids, map);
+
+  const toggle = (id: string) =>
+    setVisible((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
   return (
-    <div className={`${s.row} ${on ? s.rowOn : ''}`} style={{ '--tone': d.hue } as CSSProperties}>
-      <div className={s.rowHead}>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={on}
-          aria-label={`${d.title} — зурагт харуулах`}
-          className={s.check}
-          onClick={toggle}
-        >
-          <svg viewBox="0 0 12 12" width="10" height="10">
-            <path d="M2 6.2 4.6 8.8 10 3.4" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </button>
-
-        <button type="button" aria-expanded={open} className={s.rowMain} onClick={() => setOpen((x) => !x)}>
-          <span className={s.rowTitle}>{d.title}</span>
+    <div
+      className={`${s.row} ${on > 0 ? s.rowOn : ''}`}
+      style={{ '--tone': g.hue } as CSSProperties}
+    >
+      <button
+        type="button"
+        aria-expanded={open}
+        className={s.rowHead}
+        onClick={() => setOpen((x) => !x)}
+      >
+        <span className={s.groupIcon}><Icon name={g.icon} size={15} /></span>
+        <span className={s.rowMain}>
+          <span className={s.rowTitle}>{g.title}</span>
           <span className={`${s.rowValue} num`}>
-            {num(n)} ш
-            {qtyText(d, qv) ? ` · ${qtyText(d, qv)}` : ''}
-            {zone && d.noZone && <em className={s.rowWarn}> · бүсээр шүүгдээгүй</em>}
+            {num(ids.length)} давхарга · {num(n)} ш
+            {qty ? ` · ${qty}` : ''}
+            {on > 0 && <em className={s.rowOnNote}> · {on} асаалттай</em>}
           </span>
-        </button>
-
-        {cost > 0 && <span className={`${s.rowCost} num`}>{mntShort(cost)}</span>}
+        </span>
         <span className={`${s.caret} ${open ? s.caretOpen : ''}`} aria-hidden>▾</span>
-      </div>
+      </button>
 
-      {open && <LayerBreakdown d={d} cost={cost} zone={zone} />}
+      {open && (
+        <div className={s.rowBody}>
+          {defs.map((d) => {
+            const t = map.get(d.id);
+            const q = t ? qtyText(d, t.q) : null;
+            const isOn = visible.includes(d.id);
+            return (
+              <div key={d.id} className={s.subRow} style={{ '--tone': d.hue } as CSSProperties}>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={isOn}
+                  aria-label={`${d.title} — зурагт харуулах`}
+                  className={`${s.check} ${isOn ? s.checkOn : ''}`}
+                  onClick={() => toggle(d.id)}
+                >
+                  <svg viewBox="0 0 12 12" width="10" height="10">
+                    <path d="M2 6.2 4.6 8.8 10 3.4" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+
+                <LayerSwatch d={d} />
+
+                <button type="button" className={s.subMain} onClick={() => setLayer(d.id)}>
+                  <span className={s.subTitle}>{d.title}</span>
+                  <span className={`${s.subMeta} num`}>
+                    {t ? `${num(t.n)} ш` : '—'}
+                    {q ? ` · ${q}` : ''}
+                    {zone && d.noZone && <em className={s.rowWarn}> · бүсгүй</em>}
+                  </span>
+                </button>
+                <span className={s.go} aria-hidden>›</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
 
-/** Давхаргын задаргаа — ангилал ба бүсээр. Дарахад газрын зурагт шүүнэ. */
-function LayerBreakdown({ d, cost, zone }: { d: LayerDef; cost: number; zone: string | null }) {
+/* ═════════════════ Нэг давхаргын дашбоард ═════════════════ */
+
+/**
+ * Сонгосон давхаргын дашбоард:
+ *
+ *   · үндсэн үзүүлэлт  — объект, хэмжээ, нэг объектын дундаж
+ *   · ангилал бүрээр   — тоо + хэмжээ
+ *   · бүсээр           — тоо + хэмжээ
+ *
+ * ⚠️ ӨРТГИЙН мэдээлэл ЭНД БАЙХГҮЙ. Санхүүгийн бүх тооцоо «Тохиромжтой байдлын
+ * үнэлгээ» модульд төвлөрсөн: тэнд нэгж үнэ, барилгын өртөг, ашиг зэрэг нь
+ * загварын хэсэг бөгөөд гулсуураар тохируулагддаг. Хоёр газарт мөнгөн дүн
+ * үзүүлбэл аль нь эрх мэдэлтэй нь ойлгомжгүй болно.
+ */
+function LayerDashboard({
+  d,
+  totals,
+  zone,
+  on,
+  toggle,
+  onBack,
+}: {
+  d: LayerDef;
+  totals: Async<Map<string, Totals>>;
+  zone: string | null;
+  on: boolean;
+  toggle: () => void;
+  onBack: () => void;
+}) {
   const { setHighlight, zoomToLayer } = useMap();
   const [sel, setSel] = useState<string | null>(null);
-  const where = d.noZone ? '1=1' : zoneWhere(zone);
+  const where = whereFor(d, zone);
+  const g = groupOf(d.id);
+  const groupTitle = LAYER_GROUPS.find((x) => x.key === g)?.title ?? '';
 
   const q = useAsync(async () => {
-    const fs = await Promise.all([
-      ...(d.facets ?? []).map((f) =>
-        queryGroup(layerUrl(d), f.field, [count(d.oid ?? OID, 'n')], where),
-      ),
-      ...(d.noZone || zone ? [] : [queryGroup(layerUrl(d), ZONE_FIELD, [count(d.oid ?? OID, 'n')], where)]),
+    const url = layerUrl(d);
+    const stats = layerStats(d);
+    const KEYS = ['n', 'q'];
+
+    const [facetRaw, zoneRaw] = await Promise.all([
+      Promise.all((d.facets ?? []).map((f) => queryGroup(url, f.field, stats, where))),
+      d.noZone || zone ? Promise.resolve(null) : queryGroup(url, ZONE_FIELD, stats, where),
     ]);
+
     const facets = (d.facets ?? []).map((f, i) => ({
       ...f,
-      items: groups(fs[i], f.field, 'Бүртгэгдээгүй', ['n']),
+      items: groups(facetRaw[i], f.field, 'Бүртгэгдээгүй', KEYS),
     }));
-    const byZone = d.noZone || zone
-      ? null
-      : groups(fs[(d.facets ?? []).length], ZONE_FIELD, 'Тодорхойгүй', ['n'])
-        .filter((g) => g.label.trim() !== ZONE_NONE.trim())
-        .sort((a, b) => b.values.n - a.values.n);
+
+    const byZone = zoneRaw
+      ? groups(zoneRaw, ZONE_FIELD, 'Тодорхойгүй', KEYS)
+        .filter((x) => x.label.trim() !== ZONE_NONE.trim())
+        .sort((a, b) => b.values.n - a.values.n)
+      : null;
+
     return { facets, byZone };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [d.id, where]);
@@ -274,84 +319,168 @@ function LayerBreakdown({ d, cost, zone }: { d: LayerDef; cost: number; zone: st
     setHighlight(next ? w : null);
   };
 
+  const t = totals.state === 'ready' ? totals.data.get(d.id) : undefined;
+  const qty = t ? qtyText(d, t.q) : null;
+
+  /** Нэг объектод ногдох дундаж хэмжээ (шугам → м, талбай → м²) */
+  const avgQty = t && d.qty && t.n > 0 ? t.q / t.n : null;
+
   return (
-    <div className={s.rowBody}>
-      {cost > 0 && (
-        <Rows
-          items={[
-            { key: 'Ерөнхий төсөв', value: <b className="num" style={{ color: d.hue }}>{mnt(cost)}</b> },
-            { key: 'Нэгж үнэ', value: <span className="num">{costNote(d)}</span> },
-          ]}
-        />
-      )}
+    <div style={{ '--tone': d.hue } as CSSProperties}>
+      <div className={s.crumb}>
+        <button type="button" className={s.crumbBack} onClick={onBack}>‹ Жагсаалт</button>
+        {groupTitle && <span className={s.crumbGroup}>{groupTitle}</span>}
+      </div>
 
-      <button type="button" className={s.zoomBtn} onClick={() => zoomToLayer(d.id)}>
-        Зурагт төвлөрөх
-      </button>
+      <Section>
+        <div className={s.headRow}>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={on}
+            aria-label={`${d.title} — зурагт харуулах`}
+            className={`${s.check} ${on ? s.checkOn : ''}`}
+            onClick={toggle}
+          >
+            <svg viewBox="0 0 12 12" width="10" height="10">
+              <path d="M2 6.2 4.6 8.8 10 3.4" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+          <div className={s.headText}>
+            <h3 className={s.headTitle}>
+              <LayerSwatch d={d} /> {d.title}
+            </h3>
+            <p className={s.headNote}>
+              {geomText(d)}
+              {d.note ? ` · ${d.note}` : ''}
+              {!on && ' · зурагт нуугдсан'}
+            </p>
+          </div>
+        </div>
 
-      <Data q={q}>
-        {(x) => (
-          <>
-            {x.facets.map((f) =>
-              f.items.length < 2 ? null : (
-                <div key={f.label} style={{ marginTop: 14 }}>
-                  <div className={s.facetHead}>
-                    {f.label} <span className={s.facetNote}>дарж зурагт шүүнэ</span>
-                  </div>
+        {totals.state === 'error' ? (
+          <Empty label="Үзүүлэлт татагдсангүй." />
+        ) : (
+          <Stats cols={avgQty != null ? 3 : 2}>
+            <Stat value={t ? num(t.n) : '…'} unit="ш" label="Объект" accent />
+            <Stat value={qty ?? '—'} label={d.qty?.unit === 'м²' ? 'Талбай' : 'Урт'} />
+            {avgQty != null && (
+              <Stat
+                value={num(avgQty, 1)}
+                unit={d.qty!.unit}
+                label={`Дундаж ${d.qty!.unit === 'м²' ? 'талбай' : 'урт'}`}
+              />
+            )}
+          </Stats>
+        )}
+
+        {zone && d.noZone && (
+          <p className={s.warnNote}>
+            Энэ давхаргад <b>ZONE_ID</b> талбар байхгүй тул «{zone}» бүсийн шүүлт
+            үйлчлээгүй — дүн нь төслийн бүхэлдээ.
+          </p>
+        )}
+
+        <button type="button" className={s.zoomBtn} onClick={() => zoomToLayer(d.id)}>
+          Зурагт төвлөрөх
+        </button>
+      </Section>
+
+      <Data q={q} loading="Задаргаа тооцож байна…">
+        {(x) => {
+          const facets = x.facets.filter((f) => f.items.length >= 2);
+          const hasZone = x.byZone && x.byZone.length > 1;
+
+          return (
+            <>
+              {/* ── Ангилал бүрээр ── */}
+              {facets.map((f) => {
+                const paint = d.paint?.field === f.field ? d.paint : null;
+                const total = f.items.reduce((a, i) => a + i.values.n, 0);
+                return (
+                  <Section
+                    key={f.label}
+                    title={f.label}
+                    note={`${f.items.length} ангилал · дарж зурагт шүүнэ`}
+                  >
+                    {/* Ангилал цөөн бөгөөд өнгөтэй бол хувь эзлэлийг зурвасаар */}
+                    {paint && f.items.length <= 6 && (
+                      <div style={{ marginBottom: 14 }}>
+                        <Stack
+                          legend={false}
+                          total={total}
+                          items={f.items.map((i) => ({
+                            key: i.label,
+                            label: i.label,
+                            value: i.values.n,
+                            color: paint.values[i.label] ?? ZONE_TYPE_EMPTY_HUE,
+                          }))}
+                        />
+                      </div>
+                    )}
+                    <Bars
+                      color={d.hue}
+                      limit={8}
+                      selected={sel}
+                      onSelect={(k) => {
+                        const item = f.items.find((y) => `${f.label}:${y.label}` === k);
+                        pick(k, item ? groupWhere(f.field, item) : null);
+                      }}
+                      items={f.items.map((item) => ({
+                        key: `${f.label}:${item.label}`,
+                        label: item.label,
+                        value: item.values.n,
+                        // ⚠️ Тоо ГАНЦААРАА хангалтгүй: 12 хэрчимтэй кабель трасс
+                        //    1.8 км, 3,200 хэрчимтэй дулаан 49.7 км — хэмжээг ч заана.
+                        display: [
+                          `${num(item.values.n)} ш`,
+                          qtyText(d, item.values.q),
+                        ].filter(Boolean).join(' · '),
+                        color: paint ? paint.values[item.label] : undefined,
+                      }))}
+                    />
+                  </Section>
+                );
+              })}
+
+              {/* ── Бүсээр ── */}
+              {hasZone && (
+                <Section
+                  title="Бүсээр"
+                  note={`${x.byZone!.length} бүс · дарж зурагт шүүнэ`}
+                >
                   <Bars
                     color={d.hue}
                     limit={8}
                     selected={sel}
                     onSelect={(k) => {
-                      const g = f.items.find((y) => `${f.label}:${y.label}` === k);
-                      pick(k, g ? groupWhere(f.field, g) : null);
+                      const item = x.byZone!.find((y) => `бүс:${y.label}` === k);
+                      pick(k, item ? groupWhere(ZONE_FIELD, item) : null);
                     }}
-                    items={f.items.map((g) => ({
-                      key: `${f.label}:${g.label}`,
-                      label: g.label,
-                      value: g.values.n,
-                      display: `${num(g.values.n)} ш`,
-                      color: d.paint?.field === f.field ? d.paint.values[g.label] : undefined,
+                    items={x.byZone!.map((item) => ({
+                      key: `бүс:${item.label}`,
+                      label: item.label,
+                      value: item.values.n,
+                      display: [
+                        `${num(item.values.n)} ш`,
+                        qtyText(d, item.values.q),
+                      ].filter(Boolean).join(' · '),
                     }))}
                   />
-                </div>
-              ),
-            )}
+                </Section>
+              )}
 
-            {x.byZone && x.byZone.length > 1 && (
-              <div style={{ marginTop: 14 }}>
-                <div className={s.facetHead}>
-                  Бүсээр <span className={s.facetNote}>{x.byZone.length} бүс</span>
-                </div>
-                <Bars
-                  color={d.hue}
-                  limit={8}
-                  selected={sel}
-                  onSelect={(k) => {
-                    const g = x.byZone!.find((y) => `бүс:${y.label}` === k);
-                    pick(k, g ? groupWhere(ZONE_FIELD, g) : null);
-                  }}
-                  items={x.byZone.map((g) => ({
-                    key: `бүс:${g.label}`,
-                    label: g.label,
-                    value: g.values.n,
-                    display: `${num(g.values.n)} ш`,
-                  }))}
-                />
-              </div>
-            )}
-          </>
-        )}
+              {!facets.length && !hasZone && (
+                <Section>
+                  <Empty label="Энэ давхаргад задлах ангилал бүртгэгдээгүй." />
+                </Section>
+              )}
+            </>
+          );
+        }}
       </Data>
     </div>
   );
-}
-
-function costNote(d: LayerDef): string {
-  if (!d.cost) return '—';
-  return d.cost.basis === 'sh' ? '1 ш тутамд'
-    : d.cost.basis === 'm100' ? '100 м тутамд'
-      : d.cost.basis === 'km' ? '1 км тутамд' : '1 м² тутамд';
 }
 
 /* ═════════════════ Бүсийн шүүлт ═════════════════ */
@@ -416,6 +545,11 @@ function ZoneBar({ zone, setZone }: { zone: string | null; setZone: (z: string |
 
 /* ═════════════════ Барилгын хяналт ═════════════════ */
 
+/**
+ * ⚠️ Асинк хүсэлтийг ЭНД нэг удаа дуудаж `BuildingWork` руу дамжуулна.
+ * Урьд нь энд бас `SurveyReports`/`SurveyOutside`-ыг ДАХИН зурдаг байсан тул
+ * тайлангийн жагсаалт хоёр хувь харагдаж, ижил хүсэлт хоёр удаа явдаг байв.
+ */
 function MonitorPanel({
   picked,
   pickedLayer,
@@ -428,14 +562,14 @@ function MonitorPanel({
 
   return (
     <>
-      <BuildingWork picked={picked} pickedLayer={pickedLayer} />
+      <BuildingWork
+        picked={picked}
+        pickedLayer={pickedLayer}
+        survey={survey}
+        outside={outside}
+      />
       <BuildingSummary />
       <SurveySummary />
-      <SurveyReports
-        q={survey}
-        pickedId={pickedLayer === 'mon:survey' && picked ? String(picked.globalid ?? '') : null}
-      />
-      <SurveyOutside q={outside} />
     </>
   );
 }
@@ -499,7 +633,8 @@ function PickedZone({
             { key: 'FAR / BCR', value: <span className="num">{num(n(F.far), 2)} / {num(n(F.bcr), 2)}</span> },
             { key: 'Зогсоол (норм / төлөвлөсөн)', value: <span className="num">{num(n(F.parkNorm))} / {num(n(F.parkPlan))}</span> },
             ...(text(attrs[F.contractor], '') ? [{ key: 'Гүйцэтгэгч', value: text(attrs[F.contractor]) }] : []),
-            ...(budget > 0 ? [{ key: 'Батлагдсан төсөв', value: <b className="num">{mnt(budget)}</b> }] : []),
+            // ⚠️ «Батлагдсан төсөв» ХАСАГДСАН: санхүүгийн бүх дүн «Тохиромжтой
+            //    байдлын үнэлгээ» модульд төвлөрсөн.
           ]}
         />
       </div>
@@ -551,12 +686,7 @@ function PickedFeature({
       value: <span className="num">{num(Number(attrs[def.qty.field]), 1)} {def.qty.unit}</span>,
     });
   }
-  if (def.cost && attrs[def.cost.field] != null) {
-    rows.push({
-      key: `Нэгж үнэ · ${costNote(def)}`,
-      value: <span className="num">{mnt(Number(attrs[def.cost.field]))}</span>,
-    });
-  }
+  // ⚠️ «Нэгж үнэ» ХАСАГДСАН — санхүүгийн дүн зөвхөн анализын модульд.
   if (def.id === BUILT_LAYER.id) {
     for (const [f, label] of [
       [BUILT_FIELDS.floors, 'Давхар'],
