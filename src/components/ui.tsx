@@ -1,6 +1,6 @@
 'use client';
 
-import type { CSSProperties, ReactNode } from 'react';
+import { useState, type CSSProperties, type ReactNode } from 'react';
 import type { Async } from '@/lib/useAsync';
 import s from './ui.module.css';
 
@@ -116,18 +116,31 @@ export function Bars({
   max,
   selected,
   onSelect,
+  limit,
 }: {
   items: Bar[];
   color?: string;
   max?: number;
   selected?: string | null;
   onSelect?: (key: string) => void;
+  /**
+   * Эхэндээ хэдэн мөр харуулах. Үлдсэнийг «бүгдийг харах» товчоор нээнэ.
+   *
+   * ⚠️ Зарим ангилал 40+ утгатай (жишээ нь барилгын «Багц / бүс»). Бүгдийг нь
+   * задгай харуулбал самбар бүхэлдээ ганц жагсаалт болж, доор нь байгаа бусад
+   * давхаргын үзүүлэлт хэдэн дэлгэц доор үлдэнэ.
+   */
+  limit?: number;
 }) {
+  const [all, setAll] = useState(false);
+  // Хэмжээсийг БҮХ мөрөөр тогтооно — эс бөгөөс задлахад баганы урт үсэрнэ
   const top = max ?? Math.max(1, ...items.map((i) => i.value));
+  const hidden = limit != null && !all ? Math.max(0, items.length - limit) : 0;
+  const shown = hidden > 0 ? items.slice(0, limit) : items;
 
   return (
     <div className={s.bars}>
-      {items.map((it) => {
+      {shown.map((it) => {
         const w = Math.max(0, Math.min(100, (it.value / top) * 100));
         const on = selected === it.key;
         // <button> дотор зөвхөн phrasing content зөвшөөрөгдөнө — <div> ашиглаж болохгүй
@@ -162,6 +175,17 @@ export function Bars({
           </div>
         );
       })}
+
+      {hidden > 0 && (
+        <button type="button" className={s.more} onClick={() => setAll(true)}>
+          Үлдсэн {hidden}-г харах
+        </button>
+      )}
+      {all && limit != null && items.length > limit && (
+        <button type="button" className={s.more} onClick={() => setAll(false)}>
+          Хумих
+        </button>
+      )}
     </div>
   );
 }

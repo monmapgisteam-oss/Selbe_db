@@ -5,12 +5,11 @@ import { Section, Stats, Stat, Bars, Stack, Ring, Rows, Data, Chip, Empty, List,
 import { useMap } from '@/components/MapCanvas';
 import { useAsync } from '@/lib/useAsync';
 import { queryGroup, queryStats, queryCount, count, sum, avg, sqlStr, groups } from '@/lib/query';
-import { BUILDING, BUILDING_STAGES, PROGRESS_LEVELS, STAGE_NA, MODULES, SURVEY } from '@/lib/services';
-import { SURVEY_HUE } from '@/components/MapCanvas';
+import { BUILDING, BUILDING_STAGES, PROGRESS_LEVELS, STAGE_NA, SURVEY, SURVEY_HUE, LAYER_BY_ID } from '@/lib/services';
 import { useSurvey, useOutside, reportsForBlock, ReportDetail, SurveyReports, SurveyOutside } from './SurveyPanel';
 import { num, pct, date, text } from '@/lib/format';
 
-const HUE = MODULES.find((m) => m.key === 'building')!.hue;
+const HUE = LAYER_BY_ID['mon:building'].hue;
 const F = BUILDING.fields;
 
 /** Гүйцэтгэл бүртгэгдсэн (-1 биш) блокууд — ЗӨВХӨН дундаж бодоход хэрэглэнэ */
@@ -328,8 +327,8 @@ export function BuildingWork({
   const survey = useSurvey();
   const outside = useOutside();
 
-  const isBuilding = picked != null && pickedLayer === 'building';
-  const isSurvey = picked != null && pickedLayer === 'survey';
+  const isBuilding = picked != null && pickedLayer === 'mon:building';
+  const isSurvey = picked != null && pickedLayer === 'mon:survey';
 
   const [tab, setTab] = useState<'block' | 'reports' | 'location'>('block');
 
@@ -342,8 +341,8 @@ export function BuildingWork({
   const pickKey = picked ? `${pickedLayer}:${picked[BUILDING.oid] ?? picked.globalid ?? ''}` : null;
   useEffect(() => {
     if (!pickKey) return;
-    if (pickKey.startsWith('building:')) setTab('block');
-    else if (pickKey.startsWith('survey:')) setTab('reports');
+    if (pickKey.startsWith('mon:building')) setTab('block');
+    else if (pickKey.startsWith('mon:survey')) setTab('reports');
   }, [pickKey]);
 
   const planned = (() => {
