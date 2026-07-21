@@ -7,8 +7,7 @@ import {
   queryFeatures, queryStats, queryPolygon, queryPoints,
   count, sum, avg, type Row, type Point,
 } from '@/lib/query';
-import { SURVEY, SURVEY_SECTIONS, BOUNDARY, surveyBlock } from '@/lib/services';
-import { SURVEY_HUE } from '@/components/MapCanvas';
+import { SURVEY, SURVEY_SECTIONS, BOUNDARY, surveyBlock, SURVEY_HUE } from '@/lib/services';
 import { num, pct, date, text, blank } from '@/lib/format';
 import s from './survey.module.css';
 

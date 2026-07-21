@@ -1,0 +1,199 @@
+/* ── Дэд гарчиг (Section дотор) ── */
+.facetHead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 0.74rem;
+  font-weight: 650;
+  color: var(--ink-2);
+}
+.facetNote { font-size: 0.68rem; font-weight: 400; color: var(--ink-3); }
+
+.note { font-size: 0.73rem; line-height: 1.55; color: var(--ink-3); }
+
+/* ── Давхаргын мөр — БАЙРАНДАА задардаг ── */
+.rows { display: flex; flex-direction: column; gap: 2px; }
+
+.row { border-radius: var(--r-sm); transition: background 0.13s var(--ease); }
+.rowOn { background: color-mix(in srgb, var(--tone) 6%, transparent); }
+
+.rowHead { display: flex; align-items: center; gap: 9px; padding: 7px 9px; }
+
+/* Чагт — давхаргыг зурагт харуулах */
+.check {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  border-radius: 4px;
+  border: 1.5px solid var(--line-strong);
+  color: #fff;
+  transition: background 0.15s var(--ease), border-color 0.15s var(--ease);
+}
+.check svg { opacity: 0; transform: scale(0.6); transition: opacity 0.15s var(--ease), transform 0.15s var(--ease); }
+.rowOn .check { background: var(--tone); border-color: var(--tone); }
+.rowOn .check svg { opacity: 1; transform: scale(1); }
+
+.rowMain { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; text-align: left; }
+.rowTitle {
+  font-size: 0.765rem;
+  font-weight: 600;
+  color: var(--ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rowOn .rowTitle { color: var(--ink); }
+.rowValue { font-size: 0.69rem; color: var(--ink-3); }
+/* Бүсээр шүүгдэх боломжгүй давхарга — дүн нь төслийн бүхэлдээ */
+.rowWarn { font-style: normal; color: var(--warn); }
+.rowCost { flex: none; font-size: 0.72rem; font-weight: 650; color: var(--tone); }
+
+.caret { flex: none; font-size: 0.68rem; color: var(--ink-3); transition: transform 0.22s var(--ease); }
+.caretOpen { transform: rotate(180deg); color: var(--tone); }
+
+/* Задарсан агуулга — мөрийнхөө дотор, догол мөрөөр */
+.rowBody {
+  padding: 4px 12px 14px 34px;
+  border-left: 2px solid color-mix(in srgb, var(--tone) 30%, transparent);
+  margin: 0 10px 6px 18px;
+}
+
+/* ── Бүсийн шүүлт ── */
+.zoneBar {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--hue) 8%, var(--surface));
+}
+.zoneBarLabel {
+  font-size: 0.62rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+}
+.zoneBarValue { flex: 1; font-size: 0.84rem; font-weight: 650; color: var(--ink); }
+.zoneBarBtn,
+.zoneBarClear {
+  flex: none;
+  padding: 4px 9px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  font-size: 0.68rem;
+  color: var(--ink-3);
+  transition: background 0.12s, color 0.12s;
+}
+.zoneBarBtn:hover, .zoneBarClear:hover { background: var(--surface); color: var(--ink); }
+
+/* Бүсийн сонголт — хумигдсанаар эхэлнэ (52 чип самбарыг эзэлнэ) */
+.zoneBar { position: relative; flex-wrap: wrap; }
+.zoneDrop {
+  flex-basis: 100%;
+  max-height: 190px;
+  overflow-y: auto;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+.zoneGrid { display: flex; flex-wrap: wrap; gap: 4px; }
+.zoneChip {
+  padding: 4px 9px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  font-size: 0.7rem;
+  color: var(--ink-2);
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.zoneChip:hover {
+  background: color-mix(in srgb, var(--hue) 10%, transparent);
+  border-color: color-mix(in srgb, var(--hue) 40%, var(--line));
+  color: var(--ink);
+}
+
+/* ── Сонгосон бүсийн толгой ── */
+.zoneHead {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 9px 12px;
+  border-radius: var(--r-sm);
+  border: 1px solid color-mix(in srgb, var(--tone) 32%, var(--line));
+  background: color-mix(in srgb, var(--tone) 8%, transparent);
+}
+.zoneHeadId { font-size: 0.9rem; font-weight: 700; color: var(--ink); }
+.zoneHeadType { font-size: 0.72rem; color: var(--tone); font-weight: 600; }
+
+/* Объектоос бүс рүү үсрэх */
+.zoneJump {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  margin-bottom: 12px;
+  padding: 8px 11px;
+  border-radius: var(--r-sm);
+  border: 1px solid color-mix(in srgb, var(--hue) 30%, var(--line));
+  background: color-mix(in srgb, var(--hue) 6%, transparent);
+  transition: background 0.12s;
+}
+.zoneJump:hover { background: color-mix(in srgb, var(--hue) 14%, transparent); }
+.zoneJumpLabel {
+  font-size: 0.62rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--hue);
+}
+.zoneJumpValue { flex: 1; text-align: left; font-size: 0.8rem; font-weight: 650; color: var(--ink); }
+.zoneJumpGo { font-size: 0.67rem; color: var(--ink-3); }
+
+/* ── Товчлуур ── */
+.zoomBtn {
+  width: 100%;
+  margin-top: 14px;
+  padding: 7px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--ink-2);
+  transition: background 0.12s, color 0.12s;
+}
+.zoomBtn:hover { background: var(--surface-2); color: var(--ink); }
+
+/* ── Сонгосон объектоос шүүх ── */
+.filters { display: flex; flex-direction: column; gap: 3px; }
+.filter {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: var(--r-sm);
+  border: 1px solid transparent;
+  text-align: left;
+  transition: background 0.12s, border-color 0.12s;
+}
+.filter:hover { background: var(--surface-2); }
+.filterOn {
+  background: color-mix(in srgb, var(--tone) 10%, transparent);
+  border-color: color-mix(in srgb, var(--tone) 35%, transparent);
+}
+.filterKey { flex: none; width: 42%; font-size: 0.7rem; color: var(--ink-3); }
+.filterVal {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.filterOn .filterVal { color: var(--tone); }
