@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s \"https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/Selbe_barilga_last/FeatureServer/0?f=json\")",
+      "Bash(curl -s \"https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/Busiin_medeelel_last/FeatureServer/0?f=json\")"
+    ]
+  }
+}
