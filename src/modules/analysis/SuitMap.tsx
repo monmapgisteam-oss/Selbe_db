@@ -21,6 +21,7 @@ import type Polygon from '@arcgis/core/geometry/Polygon';
 import esriConfig from '@arcgis/core/config';
 
 import BuildingSceneLayer from '@arcgis/core/layers/BuildingSceneLayer';
+import BuildingExplorer from '@arcgis/core/widgets/BuildingExplorer';
 import {
   ET, BASEMAP_URL, IMAGERY, SCENE, BIM, ELEVATION_URL, HOME, LAYER_BY_ID, layerUrl,
 } from '@/lib/services';
@@ -163,6 +164,7 @@ export function SuitMap({
   const zoneRef = useRef<GraphicsLayer | null>(null);
   const labelRef = useRef<GraphicsLayer | null>(null);
   const bldRef = useRef<FeatureLayer | null>(null);
+  const bimWidgetRef = useRef<BuildingExplorer | null>(null);
   // ⚠️ Энэ файлд `Map` нэрийг ArcGIS-ийн `Map` класс эзэлсэн тул JS-ийн Map
   //    ашиглах боломжгүй — энгийн объект хангалттай.
   const ctxRef = useRef<Record<string, Layer>>({});
@@ -394,6 +396,36 @@ export function SuitMap({
         existing.destroy();
       }
     }
+  }, [dim, ready]);
+
+  /** BuildingExplorer виджет — ЗӨВХӨН BIM горимд (MapCanvas-тай ижил зан) */
+  useEffect(() => {
+    const map = mapRef.current;
+    const view = viewRef.current;
+    if (!map || !view || !ready) return;
+
+    const clear = () => {
+      if (bimWidgetRef.current) {
+        view.ui.remove(bimWidgetRef.current);
+        bimWidgetRef.current.destroy();
+        bimWidgetRef.current = null;
+      }
+    };
+
+    if (dim !== 'bim') { clear(); return; }
+
+    const layers = BIM.layers
+      .map((b) => map.findLayerById(b.key))
+      .filter((l): l is BuildingSceneLayer => l instanceof BuildingSceneLayer);
+    if (!layers.length) return;
+
+    clear();
+    const widget = new BuildingExplorer({ view: view as SceneView, layers });
+    view.ui.add(widget, 'top-right');
+    bimWidgetRef.current = widget;
+
+    return clear;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dim, ready]);
 
   /** Панелийг заагчийн хажууд, зургийн хүрээнээс гарахгүйгээр */

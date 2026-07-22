@@ -13,6 +13,7 @@ import GroupLayer from '@arcgis/core/layers/GroupLayer';
 import ImageryLayer from '@arcgis/core/layers/ImageryLayer';
 import IntegratedMeshLayer from '@arcgis/core/layers/IntegratedMeshLayer';
 import BuildingSceneLayer from '@arcgis/core/layers/BuildingSceneLayer';
+import BuildingExplorer from '@arcgis/core/widgets/BuildingExplorer';
 import ElevationLayer from '@arcgis/core/layers/ElevationLayer';
 import Ground from '@arcgis/core/Ground';
 import TileLayer from '@arcgis/core/layers/TileLayer';
@@ -347,6 +348,7 @@ export function MapCanvas({
   const el = useRef<HTMLDivElement>(null);
   const mapRef = useRef<Map | null>(null);
   const viewRef = useRef<AnyView | null>(null);
+  const bimWidgetRef = useRef<BuildingExplorer | null>(null);
   const pickRef = useRef(onPick);
   pickRef.current = onPick;
 
@@ -563,6 +565,45 @@ export function MapCanvas({
         existing.destroy();
       }
     }
+  }, [dim, ready]);
+
+  /**
+   * BuildingExplorer виджет — ЗӨВХӨН BIM горимд.
+   *
+   * ⚠️ Дээрх effect-ийн ДАРАА байрлана: BIM давхаргууд газрын зурагт нэмэгдсэн
+   * байх ёстой (React effect-үүд зарлагдсан дарааллаараа ажиллана). Виджет нь
+   * тэдгээр давхаргаар давхар/дисциплин/категориор шүүх боломж өгнө.
+   *
+   * ⚠️ view дахин үүсэх (2D↔3D↔BIM солих) бүрд шинэ виджет хэрэгтэй тул хуучныг
+   * заавал устгана — `view.destroy()` UI-г цэвэрлэдэг ч бид ref-ээ гар аргаар
+   * тэглэхгүй бол устсан виджет рүү заасаар үлдэнэ.
+   */
+  useEffect(() => {
+    const map = mapRef.current;
+    const view = viewRef.current;
+    if (!map || !view || !ready) return;
+
+    const clear = () => {
+      if (bimWidgetRef.current) {
+        view.ui.remove(bimWidgetRef.current);
+        bimWidgetRef.current.destroy();
+        bimWidgetRef.current = null;
+      }
+    };
+
+    if (dim !== 'bim') { clear(); return; }
+
+    const layers = BIM.layers
+      .map((b) => map.findLayerById(b.key))
+      .filter((l): l is BuildingSceneLayer => l instanceof BuildingSceneLayer);
+    if (!layers.length) return;
+
+    clear();
+    const widget = new BuildingExplorer({ view: view as SceneView, layers });
+    view.ui.add(widget, 'top-right');
+    bimWidgetRef.current = widget;
+
+    return clear;
   }, [dim, ready]);
 
   /* Харагдац ба БҮСИЙН шүүлт */
