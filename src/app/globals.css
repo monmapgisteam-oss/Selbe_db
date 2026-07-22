@@ -163,6 +163,56 @@ ul, ol { list-style: none; }
 .esri-zoom .esri-widget--button { border-radius: var(--r-sm) !important; }
 .esri-sketch__panel { background: var(--surface) !important; }
 
+/**
+ * BuildingExplorer (BIM) — БАРААН шилэн панель, ЦАГААН текст.
+ *
+ * ⚠️ Текстийг цагаан болгоход дэвсгэрийг ч бараан болгох ёстой: дээрх
+ * `.esri-widget` дүрэм цайвар горимд цагаан дэвсгэр өгдөг тул цагаан текст үл
+ * харагдана. Виджет нь 3D зураг дээр хөвдөг тул бараан шил нь хоёр горимд ижил
+ * тохирно.
+ *
+ * ⚠️ Дотоод удирдлагууд (давхар сонгогч, дисциплины мод, чагт) нь Calcite-ийн
+ * SHADOW DOM-д байрладаг тул энгийн `color` тэдгээрт хүрэхгүй. Харин Calcite-ийн
+ * CSS ХУВЬСАГЧ нь shadow хилийг нэвтэлдэг — `--calcite-color-text-*`-аар
+ * удирдана. Хуучин `--calcite-ui-*` алиасыг ч зэрэг тавьж хувилбар зөрөхөөс
+ * сэргийлнэ.
+ */
+.esri-building-explorer {
+  background: rgba(15, 20, 27, 0.94) !important;
+  color: #fff !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+
+  --calcite-color-text-1: #ffffff;
+  --calcite-color-text-2: #e6edf3;
+  --calcite-color-text-3: #cbd5e1;
+  --calcite-color-text-link: #7dd3fc;
+  --calcite-color-border-1: rgba(255, 255, 255, 0.24);
+  --calcite-color-border-2: rgba(255, 255, 255, 0.18);
+  --calcite-color-border-3: rgba(255, 255, 255, 0.12);
+  --calcite-ui-text-1: #ffffff;
+  --calcite-ui-text-2: #e6edf3;
+  --calcite-ui-text-3: #cbd5e1;
+}
+/* Гарчиг ба «Select Level» шошго нь shadow-гүй тул шууд */
+.esri-building-explorer .esri-widget__heading,
+.esri-building-explorer .esri-building-level-picker-label--empty,
+.esri-building-explorer .esri-building-level-picker-label {
+  color: #fff !important;
+}
+/**
+ * Calcite шошго/модны текст — `calcite-label`/`calcite-tree-item` нь shadow дотор
+ * `:host { color: var(--calcite-color-text-…) }`-оор өнгөө тогтоодог тул зөвхөн
+ * хувьсагч хангалтгүй байв (хар хэвээр). ГАДНА `!important` дүрэм нь shadow-ийн
+ * `:host` энгийн зарлалыг дардаг: slot-д орсон текст host-ынхоо `color`-ыг
+ * өвлөнө.
+ */
+.esri-building-explorer calcite-label,
+.esri-building-explorer calcite-tree,
+.esri-building-explorer calcite-tree-item,
+.esri-building-explorer calcite-action {
+  color: #fff !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
