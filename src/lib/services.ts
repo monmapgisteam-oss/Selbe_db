@@ -693,6 +693,24 @@ export const SCENE = {
 export const ELEVATION_URL =
   'https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer';
 
+/**
+ * BIM — барилгын мэдээллийн загвар (BuildingSceneLayer).
+ *
+ * ⚠️ Эдгээр нь `layerType: 'Building'` бөгөөд ЗӨВХӨН SceneView-д (3D) ачаална.
+ * `tiles.arcgis.com` дээрх нийтийн tile тул нэвтрэлт шаардахгүй, ACAO `*`.
+ * Барилгын гадна фотограмметрийн меш (`SCENE`)-ээс ЯЛГААТАЙ: энэ нь зохион
+ * бүтээсэн загвар (давхар, хана, инженерийн систем) тул BIM горимд меш нь
+ * хасагдаж, эдгээр нь оронд нь харагдана.
+ */
+const BIM_ROOT = 'https://tiles.arcgis.com/tiles/HJzgwvlNIXssnQar/arcgis/rest/services';
+
+export const BIM = {
+  layers: Array.from({ length: 12 }, (_, i) => {
+    const n = i + 1;
+    return { key: `bim:71_${n}`, title: `Барилгын загвар 71_${n}`, url: `${BIM_ROOT}/71_${n}/SceneServer` };
+  }),
+} as const;
+
 /* ══════════════════════ Давхаргын багц ══════════════════════ */
 
 /**

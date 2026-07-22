@@ -20,10 +20,14 @@ import type Layer from '@arcgis/core/layers/Layer';
 import type Polygon from '@arcgis/core/geometry/Polygon';
 import esriConfig from '@arcgis/core/config';
 
+import BuildingSceneLayer from '@arcgis/core/layers/BuildingSceneLayer';
 import {
-  ET, BASEMAP_URL, IMAGERY, SCENE, ELEVATION_URL, HOME, LAYER_BY_ID, layerUrl,
+  ET, BASEMAP_URL, IMAGERY, SCENE, BIM, ELEVATION_URL, HOME, LAYER_BY_ID, layerUrl,
 } from '@/lib/services';
 import type { Dim } from '@/components/MapCanvas';
+
+/** 3d ба bim хоёулаа SceneView ашиглана */
+const is3D = (d: Dim) => d === '3d' || d === 'bim';
 import { MAP_LAYERS, type MapLayerDef } from '@/lib/analysis/config';
 import type { Zone } from '@/lib/analysis/data';
 import s from './suitability.module.css';
@@ -96,7 +100,7 @@ const buildingRenderer = () => ({
  * Нэг ижил бичвэрийг хоёр хэлбэрээр угсарч байгаа нь энэ шалтгаантай.
  */
 function labelSymbol(dim: Dim, text: string, color: string, halo: string, haloSize: number, size: number) {
-  if (dim === '3d') {
+  if (is3D(dim)) {
     return {
       type: 'point-3d',
       symbolLayers: [{
@@ -237,7 +241,7 @@ export function SuitMap({
     const map = mapRef.current;
     setReady(false);
 
-    const view: MapView | SceneView = dim === '3d'
+    const view: MapView | SceneView = is3D(dim)
       ? new SceneView({
         container: el.current,
         map,
@@ -360,13 +364,15 @@ export function SuitMap({
   }, []);
 
   /**
-   * 3D бодит загварыг ЗӨВХӨН 3D горимд газрын зурагт байлгана.
-   * ⚠️ `visible: false`-ээр нуух нь ХАНГАЛТГҮЙ: MapView нь integrated-mesh-ийг
-   * дэмждэггүй тул давхарга зурагт БАЙХАД л «Failed to create layerview» өгнө.
+   * 3D давхаргуудыг ЗӨВХӨН тохирох горимд газрын зурагт байлгана (3d = меш,
+   * bim = барилгын загвар).
+   * ⚠️ `visible: false`-ээр нуух нь ХАНГАЛТГҮЙ: MapView нь эдгээрийг дэмждэггүй
+   * тул зурагт БАЙХАД л «Failed to create layerview» өгнө.
    */
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
+
     for (const m of SCENE.layers) {
       const id = `scene:${m.key}`;
       const existing = map.findLayerById(id);
@@ -374,6 +380,16 @@ export function SuitMap({
         // Индекс 1 — ортофотогийн дараа, бусад давхаргын өмнө
         map.add(new IntegratedMeshLayer({ id, url: m.url, title: m.title, visible: true }), 1);
       } else if (dim !== '3d' && existing) {
+        map.remove(existing);
+        existing.destroy();
+      }
+    }
+
+    for (const b of BIM.layers) {
+      const existing = map.findLayerById(b.key);
+      if (dim === 'bim' && !existing) {
+        map.add(new BuildingSceneLayer({ id: b.key, url: b.url, title: b.title, visible: true }));
+      } else if (dim !== 'bim' && existing) {
         map.remove(existing);
         existing.destroy();
       }
