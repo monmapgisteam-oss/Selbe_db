@@ -272,6 +272,10 @@
 
 `tiles.arcgis.com/tiles/HJzgwvlNIXssnQar/.../71_{1..12}/SceneServer` — порталтай ижил байгууллагын нийтийн tile (ACAO `*`, нэвтрэлт шаардахгүй). Web Mercator (3857). `services.ts → BIM.layers`-д нэг эх үүсвэр болгон бүртгэсэн.
 
+**BuildingExplorer виджет** — BIM горимд зургийн баруун дээд буланд гарна: барилга сонгох (dropdown), давхар (level), дисциплин ба категориор (Architectural, MEP…) шүүнэ. ArcGIS-ийн стандарт виджет ([`@arcgis/core/widgets/BuildingExplorer`](https://developers.arcgis.com/javascript/latest/references/core/widgets/BuildingExplorer/)), 12 BuildingSceneLayer-ыг бүгдийг нь авна.
+
+> ⚠️ Виджет нь БИМ давхаргуудыг нэмсэн effect-ийн ДАРАА үүснэ (React effect-үүд зарлагдсан дарааллаараа ажиллана). View дахин үүсэх (2D↔3D↔BIM) бүрд шинэ виджет хэрэгтэй тул хуучныг заавал `destroy()`-лоод ref-ээ тэглэнэ — эс бөгөөс устсан виджет рүү заасаар үлдэнэ. MapCanvas ба анализын SuitMap хоёуланд ижил.
+
 ### 3D мешийн URL нь порт 6443
 
 `arcgis.ubhub.mn`-ийн **443** порт нь `nginx/1.26.3`-аар дамждаг бөгөөд тэр nginx CORS-ыг өөрөө удирдаж, ArcGIS Server-ийн `Access-Control-Allow-Origin`-ыг нуугаад цагаан жагсаалтаараа (зөвхөн `https://ubhub.mn`) орлуулдаг. **6443** нь ArcGIS Server рүү шууд ордог тул `allowedOrigins: *` тохиргоо ажиллаж, аль ч origin-д ACAO буцаана. Гэрчилгээ нь хүчинтэй.
