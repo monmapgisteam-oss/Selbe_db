@@ -12,6 +12,7 @@ import GraphicsLayer from '@arcgis/core/layers/GraphicsLayer';
 import GroupLayer from '@arcgis/core/layers/GroupLayer';
 import ImageryLayer from '@arcgis/core/layers/ImageryLayer';
 import IntegratedMeshLayer from '@arcgis/core/layers/IntegratedMeshLayer';
+import BuildingSceneLayer from '@arcgis/core/layers/BuildingSceneLayer';
 import ElevationLayer from '@arcgis/core/layers/ElevationLayer';
 import Ground from '@arcgis/core/Ground';
 import TileLayer from '@arcgis/core/layers/TileLayer';
@@ -23,7 +24,7 @@ import '@arcgis/core/assets/esri/themes/light/main.css';
 
 import {
   LAYERS, LAYER_BY_ID, layerUrl, drawOrder, DASH_PATTERN,
-  HOME, BASEMAP_URL, IMAGERY, SCENE, ELEVATION_URL, ZONE_LAYER,
+  HOME, BASEMAP_URL, IMAGERY, SCENE, BIM, ELEVATION_URL, ZONE_LAYER,
   ZONE_FIELD, ZONE_NONE, ZONE_TYPE_EMPTY_HUE, OID, BUILDING, SURVEY,
   type LayerDef,
 } from '@/lib/services';
@@ -31,9 +32,18 @@ import { queryExtent, queryFeatures, sqlStr, type Aoi } from '@/lib/query';
 import { num, pct, date, text } from '@/lib/format';
 import s from './map.module.css';
 
-/** Хоёр төрлийн харагдац — 2D (MapView) ба 3D (SceneView) */
-export type Dim = '2d' | '3d';
+/**
+ * Газрын зургийн харагдац:
+ *   · 2d  — MapView, ортофото
+ *   · 3d  — SceneView, IntegratedMesh (гадна фотограмметр)
+ *   · bim — SceneView, BuildingSceneLayer (зохион бүтээсэн загвар)
+ *
+ * ⚠️ 3d ба bim ХОЁУЛАА SceneView ашиглана — ялгаа нь зөвхөн ямар 3D давхарга
+ * ачаалахад л байна.
+ */
+export type Dim = '2d' | '3d' | 'bim';
 type AnyView = MapView | SceneView;
+const is3D = (d: Dim) => d === '3d' || d === 'bim';
 
 /* ─────────────────── Map контекст ─────────────────── */
 
@@ -181,6 +191,7 @@ const PASSIVE = new Set<string>([
   'sketch',
   IMAGERY_ID,
   ...SCENE.layers.map((l) => `scene:${l.key}`),
+  ...BIM.layers.map((l) => l.key),
 ]);
 
 /**
@@ -374,7 +385,7 @@ export function MapCanvas({
     setReady(false);
 
     const view: AnyView =
-      dim === '3d'
+      is3D(dim)
         ? new SceneView({
             container: el.current,
             map,
@@ -519,13 +530,18 @@ export function MapCanvas({
   useEffect(() => () => { mapRef.current?.destroy(); mapRef.current = null; }, []);
 
   /**
-   * 3D бодит загварыг ЗӨВХӨН 3D горимд газрын зурагт байлгана.
-   * ⚠️ `visible: false`-ээр нуух нь ХАНГАЛТГҮЙ: MapView нь integrated-mesh-ийг
-   * дэмждэггүй тул давхарга зурагт байхад л «Failed to create layerview» өгнө.
+   * 3D давхаргуудыг ЗӨВХӨН тохирох горимд газрын зурагт байлгана.
+   *   · 3d  → IntegratedMesh (гадна фотограмметр)
+   *   · bim → BuildingSceneLayer (12 барилгын загвар)
+   *
+   * ⚠️ `visible: false`-ээр нуух нь ХАНГАЛТГҮЙ: MapView нь эдгээр 3D давхаргыг
+   * дэмждэггүй тул зурагт БАЙХАД л «Failed to create layerview» өгнө. Тиймээс
+   * горим биш үед бүрмөсөн ХАСНА.
    */
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
+
     for (const m of SCENE.layers) {
       const id = `scene:${m.key}`;
       const existing = map.findLayerById(id);
@@ -533,6 +549,16 @@ export function MapCanvas({
         // Индекс 1 — ортофотогийн дараа, вектор давхаргуудын өмнө
         map.add(new IntegratedMeshLayer({ id, url: m.url, title: m.title, visible: true }), 1);
       } else if (dim !== '3d' && existing) {
+        map.remove(existing);
+        existing.destroy();
+      }
+    }
+
+    for (const b of BIM.layers) {
+      const existing = map.findLayerById(b.key);
+      if (dim === 'bim' && !existing) {
+        map.add(new BuildingSceneLayer({ id: b.key, url: b.url, title: b.title, visible: true }));
+      } else if (dim !== 'bim' && existing) {
         map.remove(existing);
         existing.destroy();
       }
@@ -548,6 +574,7 @@ export function MapCanvas({
     map.layers.forEach((l) => {
       if (l.id === IMAGERY_ID) { l.visible = true; return; }
       if (l.id.startsWith('scene:')) { l.visible = dim === '3d'; return; }
+      if (l.id.startsWith('bim:')) { l.visible = dim === 'bim'; return; }
 
       l.visible = on.has(l.id);
 
@@ -567,16 +594,17 @@ export function MapCanvas({
     });
   }, [visibleKey, dim, ready, zone]);
 
-  /** 3D загвар ачаалагдсан эсэх — CORS/сүлжээний асуудлыг ил хэлнэ */
+  /** 3D/BIM загвар ачаалагдсан эсэх — CORS/сүлжээний асуудлыг ил хэлнэ */
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !ready || dim !== '3d') { setMeshError(null); return; }
-    const meshes = SCENE.layers
-      .map((m) => map.findLayerById(`scene:${m.key}`))
-      .filter((l): l is Layer => l != null);
-    if (!meshes.length) { setMeshError(null); return; }
+    if (!map || !ready || !is3D(dim)) { setMeshError(null); return; }
+    const ids = dim === 'bim'
+      ? BIM.layers.map((b) => b.key)
+      : SCENE.layers.map((m) => `scene:${m.key}`);
+    const layers = ids.map((id) => map.findLayerById(id)).filter((l): l is Layer => l != null);
+    if (!layers.length) { setMeshError(null); return; }
     let alive = true;
-    Promise.allSettled(meshes.map((l) => l.load())).then((rs) => {
+    Promise.allSettled(layers.map((l) => l.load())).then((rs) => {
       if (!alive) return;
       const failed = rs.filter((r) => r.status === 'rejected').length;
       setMeshError(failed === 0 ? null : failed);
@@ -589,7 +617,17 @@ export function MapCanvas({
       <div ref={el} className={s.view} />
       {!ready && <div className={s.loading}>Газрын зураг ачаалж байна…</div>}
 
-      {meshError != null && (
+      {meshError != null && dim === 'bim' && (
+        <div className={`${s.float} ${s.floatBR} ${s.warn}`} role="alert">
+          <b className={s.warnTitle}>Барилгын загвар ачаалагдсангүй ({meshError})</b>
+          <span>
+            <code>tiles.arcgis.com</code> дээрх BuildingSceneLayer-т хандаж чадсангүй.
+            Үйлчилгээ нийтэд ил байгаа эсэхийг шалгана уу.
+          </span>
+        </div>
+      )}
+
+      {meshError != null && dim === '3d' && (
         <div className={`${s.float} ${s.floatBR} ${s.warn}`} role="alert">
           <b className={s.warnTitle}>3D бодит загвар ачаалагдсангүй ({meshError})</b>
           <span>

@@ -172,7 +172,7 @@ export default function Portal() {
           <HeaderStats zone={zone} />
 
           <div className={s.dimSwitch} role="group" aria-label="Газрын зургийн харагдац">
-            {(['2d', '3d'] as Dim[]).map((d) => (
+            {(['2d', '3d', 'bim'] as Dim[]).map((d) => (
               <button
                 key={d}
                 type="button"
