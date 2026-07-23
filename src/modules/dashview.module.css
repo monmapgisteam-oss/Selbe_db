@@ -1,0 +1,151 @@
+/* ЕРӨНХИЙ ДАШБОАРД — газрын зургийг тойрсон картуудын хүрээ */
+
+.frame {
+  height: 100%;
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr) 300px;
+  grid-template-rows: auto minmax(280px, 1fr) auto;
+  grid-template-areas:
+    'kpi  kpi  kpi'
+    'left map  right'
+    'bot  bot  bot';
+  gap: 10px;
+  padding: 12px;
+  overflow: auto;
+  background: var(--surface-2);
+}
+
+/* ── Дээд: KPI мөр ── */
+.kpi { grid-area: kpi; display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; }
+.kpiCard {
+  position: relative;
+  min-height: 74px;
+  padding: 13px 16px;
+  border-radius: var(--r);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  overflow: hidden;
+}
+.kpiCard::before { content: ''; position: absolute; inset: 0 0 auto 0; height: 3px; background: var(--tone); }
+.kpiV { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em; color: var(--ink); }
+.kpiU { font-size: 0.7rem; font-weight: 500; color: var(--ink-3); margin-left: 3px; }
+.kpiL { margin-top: 4px; font-size: 0.66rem; color: var(--ink-3); }
+
+/* ── Зүүн / баруун баганууд ── */
+.left { grid-area: left; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.right { grid-area: right; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+
+/* ── Гол: газрын зураг ── */
+.mapCell {
+  grid-area: map;
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 280px;
+  border-radius: var(--r);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+}
+.mapDims {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  backdrop-filter: blur(8px);
+  box-shadow: var(--shadow);
+}
+.dimBtn {
+  padding: 5px 13px;
+  border-radius: 6px;
+  font-size: 0.7rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+  transition: background 0.14s, color 0.14s;
+}
+.dimBtn:hover { color: var(--ink); }
+.dimOn { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm); }
+
+/* ── Доод мөр ── */
+.bot { grid-area: bot; display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+
+/* ── Картын хүрээ ── */
+.card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 12px 14px;
+  border-radius: var(--r);
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+.cardHead { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.cardTitle { font-size: 0.64rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-2); }
+.cardNote { font-size: 0.6rem; color: var(--ink-3); white-space: nowrap; }
+.cardBody { flex: 1; min-width: 0; }
+
+.empty { padding: 22px 0; text-align: center; font-size: 0.72rem; color: var(--ink-3); }
+
+/* ── Зогсоол ── */
+.parkRow { display: flex; align-items: center; gap: 14px; }
+.parkStats { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.parkStats > div { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.parkStats span { font-size: 0.68rem; color: var(--ink-3); }
+.parkStats b { font-size: 0.85rem; font-weight: 650; color: var(--ink); }
+
+/* ── Талбайн хяналт ── */
+.surveyList { display: flex; flex-direction: column; gap: 11px; }
+.surveyList > div { display: flex; align-items: baseline; gap: 12px; }
+.surveyList b { font-size: 1.3rem; font-weight: 700; color: var(--ink); min-width: 62px; }
+.surveyList span { font-size: 0.72rem; color: var(--ink-3); }
+
+/* ── Бүсийн эрэмбэ ── */
+.rankCols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.rankHead {
+  font-size: 0.58rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-3);
+  margin-bottom: 7px;
+}
+.rankList { display: flex; flex-direction: column; gap: 4px; }
+.rankRow { display: flex; align-items: center; gap: 7px; }
+.rankNo { flex: none; width: 15px; font-size: 0.62rem; color: var(--ink-3); text-align: center; }
+.rankMain { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.2; }
+.rankMain b { font-size: 0.72rem; font-weight: 650; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rankMain em { font-style: normal; font-size: 0.57rem; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rankVal { flex: none; font-size: 0.72rem; font-weight: 700; color: var(--hue); font-variant-numeric: tabular-nums; }
+
+/* ── Дунд өргөнд: хажуугийн баганыг нарийсгана ── */
+@media (max-width: 1180px) {
+  .frame { grid-template-columns: 240px minmax(0, 1fr) 240px; }
+}
+
+/* ── Дэлгэц бага үед: босоо өрөлт ── */
+@media (max-width: 980px) {
+  .frame {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto auto auto auto;
+    grid-template-areas: 'kpi' 'map' 'left' 'right' 'bot';
+  }
+  .kpi { grid-template-columns: repeat(3, 1fr); }
+  .left, .right { flex-direction: row; }
+  .left > *, .right > * { flex: 1; }
+  .mapCell { min-height: 60vh; }
+  .bot { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 720px) {
+  .kpi { grid-template-columns: repeat(2, 1fr); }
+  .left, .right { flex-direction: column; }
+  .bot { grid-template-columns: 1fr; }
+}

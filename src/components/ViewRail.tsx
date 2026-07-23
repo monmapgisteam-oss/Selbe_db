@@ -21,20 +21,29 @@ export function ViewRail({
   view,
   setView,
   catalogOpen,
+  header = false,
 }: {
   view: ViewKey;
   setView: (v: ViewKey) => void;
   /** Давхаргын каталогийн багана нээлттэй эсэх — сумны чиглэлээр заана */
   catalogOpen: boolean;
+  /**
+   * Толгойн ХЭВТЭЭ хувилбар — зүүн баганы оронд толгойд таб болж багтана.
+   * ⚠️ Тайлбар текст (desc), гарчиг, доод тусламж хасагдаж, зөвхөн дүрс + нэр
+   * үлдэнэ: 56px өндөр толгойд бүтэн босоо мод багтахгүй.
+   */
+  header?: boolean;
 }) {
   return (
-    <nav className={s.rail} aria-label="Харагдац">
-      <div className={s.railHead}>Харагдац</div>
+    <nav className={header ? s.railRow : s.rail} aria-label="Харагдац">
+      {!header && <div className={s.railHead}>Харагдац</div>}
 
       {VIEWS.map((v) => {
         const on = v.key === view;
-        // Каталогтой харагдацууд — анализ нь өөрийн бүрэн дэлгэцтэй тул үгүй
-        const expandable = v.key !== 'analysis';
+        // ⚠️ Толгойн хэвтээ горимд каталог нь зурган дээрх «Давхарга» товчоор
+        //    нээгддэг тул таб задардаггүй — сум харуулахгүй. Босоо (зүүн) горимд
+        //    л таб дээрх сумаар каталог дэлгэгдэнэ.
+        const expandable = v.key !== 'analysis' && !header;
         const expanded = expandable && on && catalogOpen;
         return (
           <button
@@ -49,7 +58,7 @@ export function ViewRail({
             <span className={s.icon}><Icon name={v.icon} /></span>
             <span className={s.text}>
               <span className={s.title}>{v.title}</span>
-              <span className={s.desc}>{v.desc}</span>
+              {!header && <span className={s.desc}>{v.desc}</span>}
             </span>
             {expandable && (
               <span className={`${s.chev} ${expanded ? s.chevOn : ''}`} aria-hidden>›</span>
@@ -58,10 +67,12 @@ export function ViewRail({
         );
       })}
 
-      <p className={s.foot}>
-        Харагдац дарахад хажууд нь давхаргын жагсаалт дэлгэгдэнэ. Зураг дээр
-        хулгана аваачихад товч мэдээлэл, дарахад дэлгэрэнгүй нь баруун талд гарна.
-      </p>
+      {!header && (
+        <p className={s.foot}>
+          Харагдац дарахад хажууд нь давхаргын жагсаалт дэлгэгдэнэ. Зураг дээр
+          хулгана аваачихад товч мэдээлэл, дарахад дэлгэрэнгүй нь баруун талд гарна.
+        </p>
+      )}
     </nav>
   );
 }

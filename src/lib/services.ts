@@ -792,7 +792,7 @@ export const groupOf = (id: string): GroupKey | null =>
  *   ⚠️ Ерөнхий мэдээллийн 29 давхаргыг бүгдийг зэрэг асаавал зураг бөглөрч,
  *   хэрэглэгч юу ч ялгаж харахгүй. Бүсээр эхэлж, үлдсэнийг каталогоос асаана.
  */
-export type ViewKey = 'plan' | 'monitor' | 'analysis';
+export type ViewKey = 'dashboard' | 'plan' | 'monitor' | 'analysis';
 
 export const VIEWS: {
   key: ViewKey;
@@ -803,6 +803,20 @@ export const VIEWS: {
   layers: string[];
   initial: string[];
 }[] = [
+  /**
+   * ЕРӨНХИЙ ДАШБОАРД — нэгдсэн үзүүлэлтийн дэлгэц.
+   *
+   * ⚠️ Порталын самбар/каталогийг ашиглахгүй: `Portal` нь `DashboardView`-г
+   * бүтэн талбайд зурдаг бөгөөд газрын зургийг ДӨРВӨН талаас (KPI дээр, зүүн
+   * баруун картууд, доод картууд) диаграмаар хүрээлнэ.
+   */
+  {
+    key: 'dashboard', title: 'Ерөнхий дашбоард',
+    desc: 'Газрын зургийг тойрсон нэгдсэн үзүүлэлт',
+    icon: 'grid', hue: '#0d9488',
+    layers: ['et:28', 'et:24'],
+    initial: ['et:28', 'et:24'],
+  },
   {
     key: 'plan', title: 'Ерөнхий мэдээлэл', desc: 'Бүс · барилга · инженер · зам · ногоон орчин',
     icon: 'layers', hue: '#0d9488',
@@ -836,8 +850,8 @@ export const VIEW_BY_KEY: Record<ViewKey, (typeof VIEWS)[number]> = Object.fromE
   VIEWS.map((v) => [v.key, v]),
 ) as Record<ViewKey, (typeof VIEWS)[number]>;
 
-/** Апп нээгдэхэд — ерөнхий мэдээлэл */
-export const DEFAULT_VIEW: ViewKey = 'plan';
+/** Апп нээгдэхэд — ерөнхий дашбоард */
+export const DEFAULT_VIEW: ViewKey = 'dashboard';
 
 /**
  * Апп нээгдэхэд асаалттай давхаргууд — БҮС.

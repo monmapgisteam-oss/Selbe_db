@@ -90,3 +90,28 @@
   .item + .item { margin: 0 0 0 3px; }
   .desc { display: none; }
 }
+
+/* ── Толгойн ХЭВТЭЭ хувилбар (header) ── */
+.railRow {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  overflow-x: auto;
+  /* Табуудыг толгойн БАРУУН тал руу түлхэнэ (брэнд зүүн талд үлдэнэ) */
+  margin-left: auto;
+}
+.railRow .item {
+  width: auto;
+  flex: none;
+  padding: 6px 12px;
+  gap: 8px;
+}
+.railRow .item + .item { margin-top: 0; }
+.railRow .icon { width: 26px; height: 26px; border-radius: 7px; }
+.railRow .icon svg { width: 15px; height: 15px; }
+.railRow .title { font-size: 0.76rem; white-space: nowrap; }
+.railRow .chev { font-size: 0.9rem; }
