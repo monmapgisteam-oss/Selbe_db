@@ -1,0 +1,138 @@
+/* ══════════════════════════════════════════════════════════
+   Ерөнхий дашбоард — газрын зургийг ТОЙРСОН байрлал.
+     ┌──────── KPI зурвас ────────┐
+     │ зүүн │  ГАЗРЫН ЗУРАГ │ баруун │
+     └──────── доод график ───────┘
+   ══════════════════════════════════════════════════════════ */
+
+.dash {
+  height: 100%;
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  grid-template-columns: minmax(260px, 300px) minmax(0, 1fr) minmax(260px, 300px);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    'kpi  kpi  kpi'
+    'left map  right'
+    'bot  bot  bot';
+  background: var(--bg);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ── KPI зурвас ── */
+.kpi {
+  grid-area: kpi;
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 10px;
+}
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 13px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-top: 2px solid var(--tone, var(--hue));
+  border-radius: var(--r);
+  box-shadow: var(--shadow-sm);
+}
+.tileVal { font-size: 1.28rem; font-weight: 700; line-height: 1.1; color: var(--ink); }
+.tileUnit { font-size: 0.7rem; font-weight: 600; color: var(--ink-3); margin-left: 3px; }
+.tileLabel { font-size: 0.64rem; color: var(--ink-3); }
+
+/* ── Зүүн / баруун баганын карт ── */
+.side {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  overflow-y: auto;
+}
+.left { grid-area: left; }
+.right { grid-area: right; }
+
+/* ── Төв газрын зураг ── */
+.map {
+  grid-area: map;
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+
+/* ── Доод өргөн график ── */
+.bot {
+  grid-area: bot;
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 10px;
+}
+
+/* ── Карт ── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: 12px 14px;
+  box-shadow: var(--shadow-sm);
+}
+.cardHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.cardTitle {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-2);
+}
+.cardNote { font-size: 0.62rem; color: var(--ink-3); font-family: var(--mono); }
+
+.state { padding: 20px 8px; text-align: center; color: var(--ink-3); font-size: 0.74rem; }
+
+/* ── Гүйцэтгэлийн индикатор мөр ── */
+.progressRow { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+.progressText { font-size: 0.7rem; line-height: 1.5; color: var(--ink-3); }
+.progressText b { color: var(--ink); }
+
+/* ── Талбайн хяналтын индикатор ── */
+.surveyRow { display: flex; align-items: center; gap: 16px; }
+.surveyStats { display: flex; flex-direction: column; gap: 6px; }
+.surveyStats div { display: flex; align-items: baseline; gap: 8px; }
+.surveyStats b { font-size: 1rem; font-weight: 700; color: var(--ink); min-width: 54px; }
+.surveyStats span { font-size: 0.68rem; color: var(--ink-3); }
+
+/* ══════════════════ Дэлгэц бага үед — босоо өрөлт ══════════════════ */
+@media (max-width: 1180px) {
+  .dash {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto 58vh auto auto;
+    grid-template-areas:
+      'kpi'
+      'left'
+      'map'
+      'right'
+      'bot';
+    height: auto;
+    overflow: visible;
+  }
+  .kpi { grid-template-columns: repeat(3, 1fr); }
+  .side { overflow: visible; }
+  .bot { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 620px) {
+  .kpi { grid-template-columns: repeat(2, 1fr); }
+}

@@ -792,7 +792,7 @@ export const groupOf = (id: string): GroupKey | null =>
  *   ⚠️ Ерөнхий мэдээллийн 29 давхаргыг бүгдийг зэрэг асаавал зураг бөглөрч,
  *   хэрэглэгч юу ч ялгаж харахгүй. Бүсээр эхэлж, үлдсэнийг каталогоос асаана.
  */
-export type ViewKey = 'plan' | 'monitor' | 'analysis';
+export type ViewKey = 'dashboard' | 'plan' | 'monitor' | 'analysis';
 
 export const VIEWS: {
   key: ViewKey;
@@ -802,7 +802,29 @@ export const VIEWS: {
   hue: string;
   layers: string[];
   initial: string[];
+  /**
+   * ⚠️ ТУСДАА бүрэн дэлгэцтэй харагдац — порталын каталог, самбарыг ОГТ
+   * зурахгүй, өөрийн бүтэцтэй. Analysis (Suitability) ба Dashboard хоёулаа
+   * ийм: газрын зургаа өөрсдөө байрлуулна. Каталог нээх, `usePlanTotals`
+   * дуудах шаардлагагүй тул `standalone`-оор ялгаж, тэдгээрийг алгасна.
+   */
+  standalone?: true;
 }[] = [
+  /**
+   * ЕРӨНХИЙ ДАШБОАРД — газрын зургийг ТОЙРСОН үзүүлэлтийн самбар.
+   *
+   * Апп нээгдэхэд эхэлж харагдах ерөнхий тойм: төв дунд газрын зураг, эргэн
+   * тойронд KPI, дугуй диаграм, багана график, индикатор. Бүх тоо ArcGIS-ээс
+   * ажиллах үедээ шууд татагдана. Тусдаа дэлгэцтэй тул `standalone`.
+   */
+  {
+    key: 'dashboard', title: 'Ерөнхий дашбоард',
+    desc: 'Газрын зургийг тойрсон нэгдсэн үзүүлэлт',
+    icon: 'grid', hue: '#0ea5e9',
+    layers: ['et:28', 'et:24'],
+    initial: ['et:28', 'et:24'],
+    standalone: true,
+  },
   {
     key: 'plan', title: 'Ерөнхий мэдээлэл', desc: 'Бүс · барилга · инженер · зам · ногоон орчин',
     icon: 'layers', hue: '#0d9488',
@@ -829,6 +851,7 @@ export const VIEWS: {
     icon: 'chart', hue: '#7c3aed',
     layers: [],
     initial: [],
+    standalone: true,
   },
 ];
 
@@ -836,8 +859,8 @@ export const VIEW_BY_KEY: Record<ViewKey, (typeof VIEWS)[number]> = Object.fromE
   VIEWS.map((v) => [v.key, v]),
 ) as Record<ViewKey, (typeof VIEWS)[number]>;
 
-/** Апп нээгдэхэд — ерөнхий мэдээлэл */
-export const DEFAULT_VIEW: ViewKey = 'plan';
+/** Апп нээгдэхэд — газрын зургийг тойрсон ерөнхий дашбоард */
+export const DEFAULT_VIEW: ViewKey = 'dashboard';
 
 /**
  * Апп нээгдэхэд асаалттай давхаргууд — БҮС.
