@@ -82,3 +82,8 @@
 }
 .issueKind { font-size: 0.78rem; font-weight: 650; color: var(--ink); }
 .issueText { font-size: 0.75rem; line-height: 1.5; color: var(--ink-2); white-space: pre-wrap; }
+
+/* Тайлангийн онцлох тоо — inline style-аар биш, ангиар.
+   `.good` нь тайлангийн давхаргын өнгө (SURVEY_HUE), `.bad` нь дутуу гүйцэтгэл. */
+.good { color: #0891b2; }
+.bad { color: var(--bad); }

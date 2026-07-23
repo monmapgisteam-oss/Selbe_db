@@ -4,9 +4,10 @@ import { useCallback, useEffect, useMemo, useState, type CSSProperties, type Rea
 import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
 import { Donut, Bars, Series, Ring, Stack, Data } from '@/components/ui';
 import { useAsync, type Async } from '@/lib/useAsync';
+import { useFilter } from '@/lib/filter';
 import { queryStats, queryGroup, queryFeatures, count, sum, avg, groups, sqlStr, blankWhere } from '@/lib/query';
 import {
-  ZONE_LAYER, ZONE_FIELD, ZONE_FIELDS, ZONE_TYPES, ZONE_TYPE_EMPTY, ZONE_TYPE_EMPTY_HUE,
+  ZONE_LAYER, ZONE_FIELD, ZONE_FIELDS, ZONE_NONE, ZONE_TYPES, ZONE_TYPE_EMPTY, ZONE_TYPE_EMPTY_HUE,
   BUILT_LAYER, BUILT_FIELDS, BUILT_STATUS, BUILDING, PROGRESS_LEVELS,
   SURVEY, SURVEY_HUE, LAYER_BY_ID, layerUrl, OID,
 } from '@/lib/services';
@@ -378,6 +379,40 @@ export function Dashboard({ dim, zone, setZone }: { dim: Dim; zone: string | nul
   const { zoomToZone } = useMap();
 
   /**
+   * Виджетийн шүүлт — порталын НЭГДСЭН шүүлтэд тогтоно (`lib/filter`).
+   *
+   * ⚠️ Дашбоард өөрийн `useState` барихгүй: тэгвэл толгойн «идэвхтэй шүүлт»
+   * тэмдэг үүнийг харахгүй бөгөөд хоёр төлөв нэг `setHighlight`-д зэрэг бичиж,
+   * сүүлд дарсан нь нөгөөгийнхөө шүүлтийг чимээгүй дарж бичнэ.
+   *
+   * ⚠️ Картууд `label`-ыг «Бүлэг · утга» хэлбэрээр өгдөг тул тэмдэгт харуулах
+   * бүлгийг түүнээс салгана — картуудыг өөрчлөх шаардлагагүй.
+   */
+  const { active, toggle } = useFilter();
+  const filter: Filter | null = active
+    ? {
+        key: active.key,
+        label: active.label,
+        where: active.where,
+        layerIds: Array.isArray(active.layerIds) ? active.layerIds : [],
+      }
+    : null;
+  const apply = useCallback(
+    (f: Filter) => {
+      const [group, ...rest] = f.label.split(' · ');
+      toggle({
+        key: f.key,
+        label: rest.length ? rest.join(' · ') : f.label,
+        group: rest.length ? group : 'Шүүлт',
+        where: f.where,
+        view: 'dashboard',
+        layerIds: f.layerIds,
+      });
+    },
+    [toggle],
+  );
+
+  /**
    * ⚠️ Хүнд анализыг ЭХНИЙ paint-ийн ДАРАА эхлүүлнэ — эс бөгөөс дашбоард нээгдэх
    *    агшинд орон зайн тооцоо гол thread-ийг гацаана.
    */
@@ -408,11 +443,11 @@ export function Dashboard({ dim, zone, setZone }: { dim: Dim; zone: string | nul
 
       <aside className={`${o.side} ${o.left}`}>
         <BuildStatusCard ov={ov} zone={zone} />
-        <PurposeCard ov={ov} zone={zone} />
+        <PurposeCard ov={ov} filter={filter} apply={apply} />
         <ProgressCard bld={bld} />
         {/* Анализ хэсгээс — бүсийн нийлмэл үнэлгээ */}
         <SuitabilityCard suit={suit} prog={prog} zone={zone} />
-        <DensityCard suit={suit} zone={zone} />
+        <DensityCard suit={suit} filter={filter} apply={apply} />
       </aside>
 
       <div className={o.map}>
@@ -437,7 +472,7 @@ export function Dashboard({ dim, zone, setZone }: { dim: Dim; zone: string | nul
         <ParkingCard ov={ov} />
         {/* Анализ хэсгээс — FAR/BCR норм үнэлгээ */}
         <FarBcrCard farbcr={farbcr} zone={zone} />
-        <EngineeringCard costs={costs} />
+        <EngineeringCard costs={costs} filter={filter} apply={apply} />
         <StagesCard bld={bld} />
         {/* Анализ хэсгээс — дэд бүтцийн өртөг */}
         <CostCard costs={costs} />
@@ -446,7 +481,7 @@ export function Dashboard({ dim, zone, setZone }: { dim: Dim; zone: string | nul
       <div className={o.bot}>
         <BagtsCard bld={bld} />
         <SurveyCard ov={ov} />
-        <IssuesCard issues={issues} />
+        <IssuesCard issues={issues} filter={filter} apply={apply} />
         {/* Анализ хэсгээс — бүсийн эрэмбэ (дарж бүс сонгоно) */}
         <RankingCard suit={suit} zone={zone} setZone={setZone} />
       </div>
