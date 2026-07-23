@@ -170,12 +170,31 @@ export function Bars({
   selected,
   onSelect,
   limit,
+  outlined,
+  legend,
 }: {
   items: Bar[];
   color?: string;
   max?: number;
   selected?: string | null;
   onSelect?: (key: string) => void;
+  /**
+   * ТОЙМТОЙ загвар: хүрээ нь өөрийн өнгөөр, дүүргэлт нь 50% тунгалаг.
+   *
+   * ⚠️ Сонголт (`opt-in`) байгаа нь санаатай — анхдагч дүүрэн загварыг
+   * «Барилгын хяналт», «Ерөнхий дашбоард», «Тохиромжтой байдал» гурав ч
+   * ашигладаг. Тэднийг хөндөхгүйн тулд шинэ загварыг дуудагч нь өөрөө асаана.
+   */
+  outlined?: boolean;
+  /**
+   * Ангиллын нэрсийг мөр бүр дээр биш, ДООРХ ТАЙЛБАРТ гаргана.
+   *
+   * ⚠️ Нэр урт үед («Худалдаа, үйлчилгээ цогцолбор») мөр бүр хоёр эгнээ болж,
+   * 8 ангилалтай чарт хагас дэлгэц эзэлдэг байв. Тайлбарт нэрс хоорондоо
+   * шахагдан багтаж, багана нь өөрсдөө харьцуулагдах цэвэр эгнээ үлдэнэ.
+   * ⚠️ `outlined`-тэй ХАМТ ажиллана — тайлбар нь тоймтой баганы өнгийг давтана.
+   */
+  legend?: boolean;
   /**
    * Эхэндээ хэдэн мөр харуулах. Үлдсэнийг «бүгдийг харах» товчоор нээнэ.
    *
@@ -197,7 +216,24 @@ export function Bars({
         const w = Math.max(0, Math.min(100, (it.value / top) * 100));
         const on = selected === it.key;
         // <button> дотор зөвхөн phrasing content зөвшөөрөгдөнө — <div> ашиглаж болохгүй
-        const body = (
+        /**
+         * ⚠️ ТОЙМТОЙ хувилбарт утга нь баганын ДЭЭР биш, ХАЖУУД нь. Дээр
+         * байхад нэр ба утга хоёр нэг мөрөнд шахагдаж, урт нэр таслагдана;
+         * хажууд байхад багана бүтэн өргөнөө авч, утгууд нь баруун талдаа
+         * босоо эгнэн шууд харьцуулагдана.
+         */
+        const body = outlined ? (
+          <>
+            {/* ⚠️ Тайлбартай үед нэрийг мөрөнд БИЧИХГҮЙ — доорх тайлбарт орно */}
+            {!legend && <span className={s.barName} title={it.label}>{it.label}</span>}
+            <span className={s.barLine}>
+              <span className={`${s.barTrack} ${s.barTrackOut}`}>
+                <i className={`${s.barFill} ${s.barFillOut}`} style={{ width: `${w}%` }} />
+              </span>
+              <span className={`${s.barVal} num`}>{it.display ?? it.value}</span>
+            </span>
+          </>
+        ) : (
           <>
             <span className={s.barTop}>
               <span className={s.barName} title={it.label}>
@@ -228,6 +264,18 @@ export function Bars({
           </div>
         );
       })}
+
+      {/* Тайлбар — багануудтай ИЖИЛ дараалалтай, ижил өнгөтэй */}
+      {legend && (
+        <div className={s.barLegend}>
+          {shown.map((it) => (
+            <span key={it.key} className={s.barLegendItem} style={tone(it.color ?? color)}>
+              <i className={s.barLegendDot} />
+              <span className={s.barLegendName} title={it.label}>{it.label}</span>
+            </span>
+          ))}
+        </div>
+      )}
 
       {hidden > 0 && (
         <button type="button" className={s.more} onClick={() => setAll(true)}>
@@ -371,7 +419,15 @@ export function Donut({
             <>
               <span className={s.legendDot} style={{ background: sl.color }} />
               <span className={s.donutName}>{sl.label}</span>
-              <b className={`${s.donutPct} num`}>{(sl.frac * 100).toFixed(0)}%</b>
+              {/**
+                * ⚠️ `toFixed(0)` ганцаараа ХУДАЛ уншигдана: 3,947-гийн 14 нь
+                * 0.35% тул «0%» болж, зүсмэг нь диаграм дээр харагдсаар атлаа
+                * «юу ч биш» гэж бичигддэг байлаа. 0.5%-аас бага БОЛОВЧ 0 биш
+                * утгыг «<1%» гэж заана.
+                */}
+              <b className={`${s.donutPct} num`}>
+                {sl.frac > 0 && sl.frac < 0.005 ? '<1' : (sl.frac * 100).toFixed(0)}%
+              </b>
             </>
           );
           return onSelect ? (

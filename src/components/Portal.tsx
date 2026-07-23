@@ -35,6 +35,81 @@ const PANEL_DEFAULT = 360;
 const PANEL_KEY = 'selbe-panel-width';
 
 /**
+ * Зүүн каталогийн өргөний хязгаар ба анхны утга (px).
+ *
+ * ⚠️ Доод хязгаар нь `globals.css`-ийн `--catalog` (296px)-ээс бага: давхаргын
+ * нэр урт (жишээ нь «Цахилгаан дамжуулах агаарын шугам 110кв») тул хэт нарийсгах
+ * нь утгагүй ч, зураг дээр илүү зай гаргах хэрэгцээ бодитой.
+ */
+const CAT_MIN = 232;
+const CAT_MAX = 560;
+const CAT_DEFAULT = 296;
+const CAT_KEY = 'selbe-catalog-width';
+
+/**
+ * БАГАНА ЧИРЭХ — самбар ба каталог ХОЁУЛАА үүнийг хэрэглэнэ.
+ *
+ * ⚠️ `dir` нь чирэлтийн тэмдгийг заана: БАРУУН талын самбар зүүн тийш чирэхэд
+ * өргөсдөг тул `-1`, ЗҮҮН талын каталог баруун тийш чирэхэд өргөсдөг тул `+1`.
+ * Хоёуланд нь нэг томьёо — ялгаа нь зөвхөн энэ тэмдэг.
+ */
+function useColumnResize(
+  { min, max, initial, storageKey, dir }:
+  { min: number; max: number; initial: number; storageKey: string; dir: 1 | -1 },
+) {
+  const [width, setWidth] = useState(initial);
+  const [dragging, setDragging] = useState(false);
+
+  // ⚠️ Зөвхөн эффект дотор: localStorage нь статик экспортын үед байхгүй
+  useEffect(() => {
+    const v = Number(localStorage.getItem(storageKey));
+    if (Number.isFinite(v) && v >= min && v <= max) setWidth(v);
+  }, [storageKey, min, max]);
+
+  /** Чирэлтийн үед хамгийн сүүлд тооцсон өргөн — тавихад хадгална */
+  const last = useRef(initial);
+
+  const save = (w: number) => {
+    try { localStorage.setItem(storageKey, String(w)); } catch { /* private mode */ }
+  };
+
+  const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const grip = e.currentTarget;
+    grip.setPointerCapture(e.pointerId);
+    setDragging(true);
+    document.body.classList.add('resizing');
+
+    const x0 = e.clientX;
+    const w0 = width;
+    last.current = w0;
+
+    const move = (ev: PointerEvent) => {
+      const w = Math.min(max, Math.max(min, w0 + dir * (ev.clientX - x0)));
+      last.current = w;
+      setWidth(w);
+    };
+    const up = () => {
+      setDragging(false);
+      document.body.classList.remove('resizing');
+      grip.releasePointerCapture(e.pointerId);
+      grip.removeEventListener('pointermove', move);
+      grip.removeEventListener('pointerup', up);
+      grip.removeEventListener('pointercancel', up);
+      save(last.current);
+    };
+    grip.addEventListener('pointermove', move);
+    grip.addEventListener('pointerup', up);
+    grip.addEventListener('pointercancel', up);
+  };
+
+  /** Давхар товшиход анхны өргөнд буцаана */
+  const onDoubleClick = () => { setWidth(initial); save(initial); };
+
+  return { width, dragging, onPointerDown, onDoubleClick };
+}
+
+/**
  * Гадна бүрхүүл — зөвхөн контекстүүдийг өгнө.
  *
  * ⚠️ `FilterProvider` нь `useMap()`-ыг дуудах тул `MapProvider`-ын ДОТОР байх
@@ -149,56 +224,16 @@ function PortalContent() {
     [setView, zoomToWhere],
   );
 
-  /* ── Баруун самбарын өргөн ── */
+  /* ── Багануудын өргөн ── */
 
-  const [panelW, setPanelW] = useState(PANEL_DEFAULT);
-  const [dragging, setDragging] = useState(false);
-
-  // ⚠️ Зөвхөн эффект дотор: localStorage нь статик экспортын үед байхгүй
-  useEffect(() => {
-    const v = Number(localStorage.getItem(PANEL_KEY));
-    if (Number.isFinite(v) && v >= PANEL_MIN && v <= PANEL_MAX) setPanelW(v);
-  }, []);
-
-  /** Чирэлтийн үед хамгийн сүүлд тооцсон өргөн — тавихад хадгална */
-  const lastW = useRef(PANEL_DEFAULT);
-
-  const startResize = (e: ReactPointerEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    const grip = e.currentTarget;
-    grip.setPointerCapture(e.pointerId);
-    setDragging(true);
-    document.body.classList.add('resizing');
-
-    const x0 = e.clientX;
-    const w0 = panelW;
-    lastW.current = w0;
-
-    // Самбар БАРУУН талд тул зүүн тийш чирэхэд өргөснө → тэмдэг нь урвуу
-    const move = (ev: PointerEvent) => {
-      const w = Math.min(PANEL_MAX, Math.max(PANEL_MIN, w0 + (x0 - ev.clientX)));
-      lastW.current = w;
-      setPanelW(w);
-    };
-    const up = () => {
-      setDragging(false);
-      document.body.classList.remove('resizing');
-      grip.releasePointerCapture(e.pointerId);
-      grip.removeEventListener('pointermove', move);
-      grip.removeEventListener('pointerup', up);
-      grip.removeEventListener('pointercancel', up);
-      try { localStorage.setItem(PANEL_KEY, String(lastW.current)); } catch { /* private mode */ }
-    };
-    grip.addEventListener('pointermove', move);
-    grip.addEventListener('pointerup', up);
-    grip.addEventListener('pointercancel', up);
-  };
-
-  /** Давхар товшиход анхны өргөнд буцаана */
-  const resetWidth = () => {
-    setPanelW(PANEL_DEFAULT);
-    try { localStorage.setItem(PANEL_KEY, String(PANEL_DEFAULT)); } catch { /* private mode */ }
-  };
+  // Самбар БАРУУН талд тул зүүн тийш чирэхэд өргөснө → тэмдэг урвуу
+  const panelSize = useColumnResize({
+    min: PANEL_MIN, max: PANEL_MAX, initial: PANEL_DEFAULT, storageKey: PANEL_KEY, dir: -1,
+  });
+  // Каталог ЗҮҮН талд — баруун тийш чирэхэд өргөснө
+  const catSize = useColumnResize({
+    min: CAT_MIN, max: CAT_MAX, initial: CAT_DEFAULT, storageKey: CAT_KEY, dir: 1,
+  });
 
   const active = VIEW_BY_KEY[view];
   /**
@@ -213,14 +248,28 @@ function PortalContent() {
   const isSuit = view === 'analysis';
   // `standalone` нь эдгээрийг ЯГ тэмдэглэдэг — тусад нь тоолохгүй
   const isFull = standalone;
+  /**
+   * ⚠️ «Ерөнхий мэдээлэл»-д каталог БАЙНГА зүүн талд бэхлэгдэнэ — хаагдахгүй.
+   * Энэ харагдацын гол ажил нь 29 давхаргыг асаах/унтраах тул жагсаалт нь
+   * агуулга өөрөө, түр нээдэг туслах цонх биш. Хаах товч, «Давхарга» товч
+   * хоёулаа далд болно — хаах боломжгүй зүйлийг хаах товч нь төөрөгдөл.
+   *
+   * «Барилгын хяналт» нь ХУУЧНААР үлдэнэ (товчоор нээж/хаана): тэнд гол
+   * агуулга нь блокийн гүйцэтгэл бөгөөд каталог нь нэмэлт контекст.
+   */
+  const catPinned = view === 'plan';
   // Каталог нь зөвхөн «Ерөнхий мэдээлэл» ба «Барилгын хяналт»-д байна
-  const catOpen = catalog && !isFull;
+  const catOpen = (catPinned || catalog) && !isFull;
 
   return (
     <>
       <div
-        className={`${s.shell} ${isFull ? s.shellSuit : ''} ${catOpen ? s.shellCat : ''}`}
-        style={{ '--hue': active.hue, '--panel': `${panelW}px` } as CSSProperties}
+        className={`${s.shell} ${isFull ? s.shellSuit : ''} ${catOpen ? s.shellCat : ''} ${!isFull && !catPinned ? s.shellFoot : ''}`}
+        style={{
+          '--hue': active.hue,
+          '--panel': `${panelSize.width}px`,
+          '--catalog': `${catSize.width}px`,
+        } as CSSProperties}
       >
         <header className={s.head}>
           <div className={s.brand}>
@@ -270,16 +319,20 @@ function PortalContent() {
 
               {/* Газрын зураг дээрх хэрэгслүүд — давхарга нээх ба 2D/3D/BIM */}
               <div className={s.mapTools}>
-                <button
-                  type="button"
-                  aria-pressed={catOpen}
-                  className={`${s.mapBtn} ${catOpen ? s.mapBtnOn : ''}`}
-                  onClick={() => setCatalog((v) => !v)}
-                  title="Давхаргын жагсаалт"
-                >
-                  <Icon name="layers" size={15} />
-                  Давхарга
-                </button>
+                {/* ⚠️ Каталог бэхлэгдсэн харагдацад товч ХЭРЭГГҮЙ — дарахад юу ч
+                    болохгүй товч нь эвдэрсэн мэт сэтгэгдэл төрүүлнэ. */}
+                {!catPinned && (
+                  <button
+                    type="button"
+                    aria-pressed={catOpen}
+                    className={`${s.mapBtn} ${catOpen ? s.mapBtnOn : ''}`}
+                    onClick={() => setCatalog((v) => !v)}
+                    title="Давхаргын жагсаалт"
+                  >
+                    <Icon name="layers" size={15} />
+                    Давхарга
+                  </button>
+                )}
 
                 <div className={s.mapDims} role="group" aria-label="Газрын зургийн харагдац">
                   {(['2d', '3d', 'bim'] as Dim[]).map((d) => (
@@ -309,6 +362,10 @@ function PortalContent() {
                 selected={layer}
                 onSelect={setLayer}
                 onClose={() => setCatalog(false)}
+                pinned={catPinned}
+                resizing={catSize.dragging}
+                onResizeStart={catSize.onPointerDown}
+                onResizeReset={catSize.onDoubleClick}
                 zone={zone}
               />
             )}
@@ -316,12 +373,12 @@ function PortalContent() {
             <aside className={s.panel} id="panel" aria-label={`${active.title} самбар`}>
               {/* Өргөн тохируулах бариул — самбарын зүүн ирмэг дээр */}
               <div
-                className={`${s.grip} ${dragging ? s.gripOn : ''}`}
+                className={`${s.grip} ${panelSize.dragging ? s.gripOn : ''}`}
                 role="separator"
                 aria-orientation="vertical"
                 aria-label="Самбарын өргөн"
-                onPointerDown={startResize}
-                onDoubleClick={resetWidth}
+                onPointerDown={panelSize.onPointerDown}
+                onDoubleClick={panelSize.onDoubleClick}
                 title="Чирж өргөсгөнө · давхар товшиж анхны хэмжээнд буцаана"
               />
 
@@ -332,6 +389,16 @@ function PortalContent() {
                   <p className={s.panelDesc}>{active.desc}</p>
                 </div>
               </header>
+
+              {/**
+                * Нэгтгэсэн үзүүлэлт — гарчгийн ЯГ доор, самбарын доторх тогтмол зурвас.
+                *
+                * ⚠️ ЗӨВХӨН «Ерөнхий мэдээлэл»-д. «Барилгын хяналт» нь ӨӨР ХҮНИЙ
+                * хэсэг бөгөөд тэнд энэ зурвас хуучнаараа ДЭЛГЭЦИЙН ДООД хүрээнд
+                * үлдэнэ — тэр харагдацын зохион байгуулалтыг зөвшөөрөлгүй
+                * өөрчлөхгүй.
+                */}
+              {catPinned && <SummaryBar zone={zone} />}
 
               <div className={s.panelBody}>
                 <ViewPanel
@@ -350,10 +417,12 @@ function PortalContent() {
               </div>
             </aside>
 
-            {/* Доод хүрээ — нэгтгэсэн үзүүлэлт (газрын зургийг тойрсон бүтэц) */}
-            <footer className={s.dashFoot} aria-label="Нэгтгэсэн үзүүлэлт">
-              <SummaryBar zone={zone} />
-            </footer>
+            {/* «Барилгын хяналт» — нэгтгэсэн үзүүлэлт хуучнаараа доод хүрээнд */}
+            {!catPinned && (
+              <footer className={s.dashFoot} aria-label="Нэгтгэсэн үзүүлэлт">
+                <SummaryBar zone={zone} />
+              </footer>
+            )}
           </>
         )}
       </div>
@@ -396,11 +465,13 @@ function ActiveFilterChip() {
   );
 }
 
-/* ── Доод хүрээ: төслийн ерөнхий үзүүлэлт ── */
+/* ── Самбарын толгойн доорх нэгтгэсэн үзүүлэлт ── */
 
 /**
- * ⚠️ Урьд нь толгойд байсан үзүүлэлтүүд. Одоо газрын зургийг дөрвөн талаас
- * хүрээлэх бүтцэд ДООД зурвас болж шилжсэн — толгой нь зөвхөн навигацид үлдэв.
+ * ⚠️ Энэ зурвас урьд нь ДЭЛГЭЦИЙН ДООД хүрээ байв. Тэнд байхдаа газрын зургийн
+ * өндрөөс 76px хасч, нүд хамгийн бага очдог булан руу түлхэгдэж байлаа. Одоо
+ * самбарын гарчгийн доор: харагдацын нэрийг уншсан хүн шууд дараагийн мөрөнд
+ * төслийн хэмжээг харна.
  */
 function SummaryBar({ zone }: { zone: string | null }) {
   const where = zone ? `${ZONE_FIELD} = ${sqlStr(zone)}` : '1=1';

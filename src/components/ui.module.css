@@ -143,6 +143,54 @@
 .barTrack { height: 5px; border-radius: 99px; background: var(--sunken); overflow: hidden; }
 .barFill { display: block; height: 100%; border-radius: 99px; background: var(--tone, var(--hue)); transition: width 0.6s var(--ease); }
 
+/* ── Тоймтой хувилбар (`outlined`) ──
+   Хүрээ нь өөрийн өнгөөр, дүүргэлт нь 50% тунгалаг.
+   ⚠️ 5px өндөрт 1px хүрээ нь баганыг бараг бүхэлд нь эзэлнэ — тоймтой үед
+   зам нь 9px болж, дотор нь дүүргэлт уншигдана. */
+/* Тоймтой хувилбарын мөр: багана сунана, утга нь баруун талд тогтоно */
+.barLine { display: flex; align-items: center; gap: 9px; width: 100%; }
+.barLine .barTrack { flex: 1; min-width: 0; }
+.barLine .barVal { flex: none; min-width: 42px; text-align: right; }
+
+/* ── Баганан чартын тайлбар ──
+   Мөрүүдийн ДООР, багануудтай ижил дараалал ба өнгө. */
+/**
+ * ⚠️ ХҮРЭЭГҮЙ. Урьд нь дээрээ зураастай байсан нь чартыг ДОТРООС нь хоёр
+ * тасалж, зэрэгцээ чартуудын зааг нь харагдахгүй болгодог байлаа. Тусгаарлах
+ * зураас нь чарт ХООРОНД байна (`dashboard.module.css` → `.chartBlock`).
+ */
+.barLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: 9px;
+}
+.barLegendItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  font-size: 0.68rem;
+  color: var(--ink-2);
+}
+/* Тэмдэг нь баганытай ЯГ ижил — тоймтой, 50% тунгалаг дүүргэлттэй */
+.barLegendDot {
+  width: 9px;
+  height: 9px;
+  flex: none;
+  border-radius: 3px;
+  border: 1px solid var(--tone, var(--hue));
+  background: color-mix(in srgb, var(--tone, var(--hue)) 50%, transparent);
+}
+.barLegendName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.barTrackOut { height: 9px; background: transparent; }
+.barFillOut {
+  background: color-mix(in srgb, var(--tone, var(--hue)) 50%, transparent);
+  border: 1px solid var(--tone, var(--hue));
+}
+
 /* Урт жагсаалтыг задлах / хумих */
 .more {
   align-self: flex-start;
