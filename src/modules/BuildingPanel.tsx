@@ -15,7 +15,12 @@ const F = BUILDING.fields;
 /** Гүйцэтгэл бүртгэгдсэн (-1 биш) блокууд — ЗӨВХӨН дундаж бодоход хэрэглэнэ */
 const HAS_PROGRESS = `${F.progress} >= ${STAGE_NA + 1}`;
 
-function useBuildings() {
+/**
+ * Барилгын блокуудын нэгдсэн гүйцэтгэл — блок, айл, дундаж %, түвшин, багц, үе
+ * шат, гүйцэтгэгч. `BuildingSummary` ба ерөнхий `Dashboard` хоёулаа энэ hook-ыг
+ * дуудна — нэг эх сурвалж, дүн зөрөхгүй.
+ */
+export function useBuildings() {
   return useAsync(async () => {
     const [totalsAll, totalsAvg, levels, cntBagts, avgBagts, cntComp, avgComp, stages] =
       await Promise.all([

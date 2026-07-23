@@ -33,8 +33,8 @@ export function ViewRail({
 
       {VIEWS.map((v) => {
         const on = v.key === view;
-        // Каталогтой харагдацууд — анализ нь өөрийн бүрэн дэлгэцтэй тул үгүй
-        const expandable = v.key !== 'analysis';
+        // Каталогтой харагдацууд — тусдаа бүрэн дэлгэцтэй (дашбоард, анализ) нь үгүй
+        const expandable = !v.standalone;
         const expanded = expandable && on && catalogOpen;
         return (
           <button

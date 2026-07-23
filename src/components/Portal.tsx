@@ -8,6 +8,7 @@ import { MapCanvas, MapProvider, type Dim } from '@/components/MapCanvas';
 import { ViewRail } from '@/components/ViewRail';
 import { LayerCatalog } from '@/components/LayerCatalog';
 import { Suitability } from '@/modules/analysis/Suitability';
+import { Dashboard } from '@/modules/Dashboard';
 import { Icon } from '@/components/Icon';
 import { useTheme } from '@/lib/theme';
 import { useAsync } from '@/lib/useAsync';
@@ -67,11 +68,18 @@ export default function Portal() {
    * ⚠️ «Барилгын хяналт»-д хяналтын хоёр давхарга НЭМЭГДЭНЭ: тэнд каталог
    * нээгдэх бөгөөд мөрүүд нь тоогоо харуулах ёстой.
    */
+  /**
+   * ⚠️ Тусдаа бүрэн дэлгэцтэй харагдац (дашбоард, анализ) нь порталын каталог,
+   * самбарыг зурахгүй, өөрсдөө өгөгдлөө татна — тэдгээрт `usePlanTotals`-ыг
+   * дуудахгүй (29 хүсэлт дэмий).
+   */
+  const standalone = !!VIEW_BY_KEY[view].standalone;
+
   const catalogIds = useMemo(
     () => (view === 'monitor' ? [...MONITOR_LAYER_IDS, ...PLAN_LAYER_IDS] : PLAN_LAYER_IDS),
     [view],
   );
-  const totals = usePlanTotals(zone, view !== 'analysis', catalogIds);
+  const totals = usePlanTotals(zone, !standalone, catalogIds);
 
   const setView = useCallback((v: ViewKey) => {
     setViewState(v);
@@ -82,8 +90,9 @@ export default function Portal() {
     setPicked(null);
     setPickedLayer(null);
     setLayer(null);
-    // Каталогтой хоёр харагдац — идэвхтэй дээр нь дахин дарвал хумина
-    setCatalog(v !== 'analysis' ? !(view === v && catalog) : false);
+    // Каталогтой харагдац — идэвхтэй дээр нь дахин дарвал хумина.
+    // Тусдаа дэлгэцтэй харагдацад (дашбоард, анализ) каталог байхгүй.
+    setCatalog(!VIEW_BY_KEY[v].standalone ? !(view === v && catalog) : false);
   }, [view, catalog]);
 
   const pick = useCallback((attrs: Record<string, unknown> | null, layerId: string | null) => {
@@ -144,19 +153,21 @@ export default function Portal() {
 
   const active = VIEW_BY_KEY[view];
   // Каталог нь «Ерөнхий мэдээлэл» ба «Барилгын хяналт» ХОЁУЛАНД байна
-  const catOpen = catalog && view !== 'analysis';
+  const catOpen = catalog && !standalone;
   /**
-   * ⚠️ Анализ нь ӨӨРИЙН БҮРЭН ДЭЛГЭЦТЭЙ: өөрийн газрын зураг, өөрийн 3 багана,
-   * өөрийн харанхуй дизайн (Suitability Modeler-ийн эх харагдац). Тиймээс
-   * порталын зураг ба самбарыг РЕНДЕРЛЭХГҮЙ — хоёр ArcGIS view зэрэг ажиллавал
-   * WebGL контекст үрэгдэж, зураг анивчина.
+   * ⚠️ Тусдаа дэлгэцтэй харагдацууд ӨӨРИЙН БҮРЭН ДЭЛГЭЦТЭЙ: өөрсдийн газрын
+   * зураг, өөрийн байрлалтай. Тиймээс порталын каталог, самбарыг РЕНДЕРЛЭХГҮЙ —
+   * хоёр ArcGIS view зэрэг ажиллавал WebGL контекст үрэгдэж, зураг анивчина.
+   *   · analysis  — Suitability Modeler (өөрийн 3 багана, харанхуй палитр)
+   *   · dashboard — газрын зургийг тойрсон үзүүлэлтийн самбар
    */
   const isSuit = view === 'analysis';
+  const isDash = view === 'dashboard';
 
   return (
     <MapProvider>
       <div
-        className={`${s.shell} ${isSuit ? s.shellSuit : ''} ${catOpen ? s.shellCat : ''}`}
+        className={`${s.shell} ${isSuit ? s.shellSuit : ''} ${isDash ? s.shellDash : ''} ${catOpen ? s.shellCat : ''}`}
         style={{ '--hue': active.hue, '--panel': `${panelW}px` } as CSSProperties}
       >
         <header className={s.head}>
@@ -209,8 +220,15 @@ export default function Portal() {
           </div>
         )}
 
+        {/* Ерөнхий дашбоард — газрын зургийг тойрсон үзүүлэлтийн самбар */}
+        {isDash && (
+          <div className={s.dash}>
+            <Dashboard dim={dim} zone={zone} />
+          </div>
+        )}
+
         {/* Давхаргын каталог — зүүн модны хажуугийн багана */}
-        {!isSuit && catOpen && (
+        {!standalone && catOpen && (
           <LayerCatalog
             view={view === 'monitor' ? 'monitor' : 'plan'}
             totals={totals}
@@ -223,7 +241,7 @@ export default function Portal() {
           />
         )}
 
-        {!isSuit && (
+        {!standalone && (
           <>
             <div className={s.map}>
               <MapCanvas dim={dim} visible={visible} zone={zone} onPick={pick} />
