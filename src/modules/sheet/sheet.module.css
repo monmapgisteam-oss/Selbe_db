@@ -1,0 +1,441 @@
+/* ══════════════════════════════════════════════════════════
+   Sheet filler — Хүснэгт бөглөх модуль
+   Селбэ порталын дизайн токенуудаар (CSS Modules, Tailwind-гүй).
+   Цайвар/харанхуй горим — токенууд автоматаар эргэнэ.
+   ══════════════════════════════════════════════════════════ */
+
+/* ── Layout scaffolding ── */
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  /* Хуудасны ирмэгээс зай — ирмэгт наалдаж «нүцгэн» харагдахгүй */
+  padding: 18px 24px 24px;
+  /* grid/flex item нь `min-*: 0`-гүй бол хүснэгтийн өргөнөөр сунаж дэлгэцээс хальна */
+  min-width: 0;
+  min-height: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.field {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.8rem;
+  font-weight: 550;
+  color: var(--ink-2);
+}
+
+.select {
+  font: inherit;
+  font-size: 0.8rem;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 5px 9px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.select:hover { border-color: var(--line-strong); }
+.select:focus-visible { border-color: var(--hue); }
+
+.publishBtn {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--good);
+  border-radius: var(--r-sm);
+  padding: 7px 16px;
+  box-shadow: var(--shadow-sm);
+  transition: opacity 0.15s, filter 0.15s;
+}
+.publishBtn:hover:not(:disabled) { filter: brightness(1.06); }
+.publishBtn:disabled { opacity: 0.4; cursor: default; }
+
+.muted { font-size: 0.8rem; color: var(--ink-3); }
+.hint { font-size: 0.72rem; color: var(--ink-3); }
+
+.error {
+  border-radius: var(--r-sm);
+  padding: 9px 13px;
+  font-size: 0.8rem;
+  color: var(--bad);
+  background: color-mix(in srgb, var(--bad) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--bad) 30%, transparent);
+}
+.errorSm {
+  border-radius: var(--r-sm);
+  padding: 8px 12px;
+  font-size: 0.72rem;
+  color: var(--bad);
+  background: color-mix(in srgb, var(--bad) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--bad) 30%, transparent);
+}
+
+.info {
+  border-radius: var(--r);
+  padding: 10px 14px;
+  font-size: 0.78rem;
+  line-height: 1.55;
+  color: var(--ink-2);
+  background: color-mix(in srgb, var(--hue) 8%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--hue) 22%, transparent);
+}
+
+.scroll {
+  overflow: auto;
+  max-height: 80vh;
+  /* ⚠️ flex child нь `min-width: 0`-гүй бол хүснэгтийн натурал өргөнөөр сунаж,
+     дэлгэцээс хальж, overflow-x ажиллахгүй. */
+  min-width: 0;
+  max-width: 100%;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  box-shadow: var(--shadow-sm);
+  background: var(--surface);
+}
+
+/* ══════════════════════════════════════════════════════════
+   Excel маягийн pivot хүснэгт.
+   border-collapse:separate — sticky/царцаасан нүд өөрийн хүрээгээ
+   хадгална (collapsed хүрээ хүснэгтэд харьяалагдаж, царцахад алга болно).
+   Нүд бүр баруун+доод; хүснэгт дээд+зүүн ирмэгийг зурна.
+   ══════════════════════════════════════════════════════════ */
+.xl {
+  /* Семантик нүдний өнгө — токеноор, хоёр горимд эргэнэ.
+     Inline style эдгээр хувьсагчийг заана (JS константууд), нүднүүд өвлөнө. */
+  --sheet-cell: var(--surface);
+  --sheet-calc: color-mix(in srgb, var(--warn) 15%, var(--surface));
+  --sheet-hl: color-mix(in srgb, var(--hue) 15%, var(--surface));
+  --sheet-sel: color-mix(in srgb, var(--hue) 30%, var(--surface));
+  --sheet-dirty: color-mix(in srgb, var(--good) 26%, var(--surface));
+  --sheet-header: var(--surface-2);
+
+  border-collapse: separate;
+  border-spacing: 0;
+  border-top: 1px solid var(--line);
+  border-left: 1px solid var(--line);
+  font-size: 12px;
+  color: var(--ink);
+  user-select: none; /* нүд чирж сонгох үед текст сонгогдохгүй */
+  /* ⚠️ Цөөн баганатай хүснэгт 100% өргөнд сунана — барилгын багана (тогтмол
+     өргөнгүй) илүү зайг эзэлнэ. Багана олон бол натурал өргөн нь давамгайлж,
+     `.scroll`-ын overflow-x идэвхжинэ (100% үл хэрэгсэгдэнэ). */
+  width: 100%;
+}
+.xl th,
+.xl td {
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  padding: 4px 8px;
+  height: 26px; /* жигд мөрийн өндөр */
+  white-space: nowrap;
+  background: var(--surface);
+}
+/* Барилга (гүйдэг) багана: тогтмол, уншигдах өргөн. */
+.xl .bld { min-width: 58px; }
+
+.xl thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--hue);
+  color: #fff;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  box-shadow: inset 0 -1px 0 var(--line-strong);
+}
+
+/* Тоон багана цифр цифрээрээ эгнэнэ. */
+.xl .num,
+.xl .right {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+/* Царцаасан хавтгайн тусгаарлагч: сүүлийн зүүн ба эхний баруун царцсан
+   баганаас сүүдэр — гүйдэг хэсэг тусдаа бүс мэт харагдана. */
+.xl .c-jin { box-shadow: 2px 0 4px -2px rgb(16 20 24 / 0.18); }
+.xl .c-done { box-shadow: -2px 0 4px -2px rgb(16 20 24 / 0.18); }
+
+/* Sticky footer: Дундаж мөр гүйлгэх үед доор наалдана. */
+.xl tfoot td {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  background: var(--sheet-header); /* тунгалаггүй — гүйдэг мөр нэвт харагдахгүй */
+  box-shadow: inset 0 1px 0 var(--line-strong);
+}
+.xl tfoot td.fz { z-index: 4; }
+
+/* Царцаасан багана: зүүн блок (№, Ажил, Жин) + баруун блок (Хийгдсэн, Дутуу).
+   Тогтмол өргөнтэй — sticky offset эгнэнэ; барилгын багана дундуур гүйнэ. */
+.xl .fz { position: sticky; z-index: 3; }
+.xl thead th.fz { z-index: 5; }
+
+.xl .c-no {
+  left: 0;
+  width: 40px;
+  min-width: 40px;
+  max-width: 40px;
+}
+.xl .c-ajil {
+  left: 40px;
+  width: 240px;
+  min-width: 240px;
+  max-width: 240px;
+  white-space: normal;
+  text-align: left;
+}
+.xl .c-jin {
+  left: 280px;
+  width: 48px;
+  min-width: 48px;
+  max-width: 48px;
+}
+.xl .c-done {
+  right: 56px;
+  width: 56px;
+  min-width: 56px;
+  max-width: 56px;
+}
+.xl .c-dutuu {
+  right: 0;
+  width: 56px;
+  min-width: 56px;
+  max-width: 56px;
+}
+
+.xl tr.cat td {
+  background: var(--sheet-header); /* толгой / засах боломжгүй мөр */
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* Дүгнэлт хүснэгт: барилгын баганагүй тул Ажилд илүү зай өгнө. */
+.concl .c-ajil {
+  width: 620px;
+  min-width: 620px;
+  max-width: none;
+}
+.concl .c-jin,
+.concl .c-done,
+.concl .c-dutuu {
+  width: 90px;
+  min-width: 90px;
+  max-width: none;
+}
+
+.xl .num {
+  text-align: center;
+  color: var(--ink);
+}
+.xl .right { text-align: right; }
+
+/* Царцсан баганы толгой мөрийн зүүн эгнэлт. */
+.xl .c-ajil { text-align: left; }
+
+/* Нийтлээгүй (засагдсан, хараахан хадгалаагүй) нүд: ногоон хүрээ. */
+.xl td.dirty {
+  font-weight: 700;
+  box-shadow: inset 0 0 0 2px var(--good);
+}
+
+.xl .cursor-cell { cursor: cell; }
+
+/* Нүдэн доторх засварын оролт. */
+.cellInput {
+  width: 64px;
+  border: 0;
+  background: color-mix(in srgb, var(--warn) 22%, var(--surface));
+  color: var(--ink);
+  padding: 4px;
+  text-align: center;
+  outline: none;
+  font: inherit;
+  font-family: var(--mono);
+}
+
+.clip {
+  margin-left: 2px;
+  font-size: 9px;
+}
+
+/* ── Right-click контекст цэс ── */
+.menu {
+  position: fixed;
+  z-index: 60;
+  overflow: hidden;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.8rem;
+  box-shadow: var(--shadow-lg);
+  min-width: 168px;
+}
+.menuItem {
+  display: block;
+  width: 100%;
+  padding: 9px 14px;
+  text-align: left;
+  color: var(--ink);
+  transition: background 0.12s;
+}
+.menuItem:hover { background: var(--sunken); }
+.menuItemDanger {
+  display: block;
+  width: 100%;
+  padding: 9px 14px;
+  text-align: left;
+  color: var(--bad);
+  transition: background 0.12s;
+}
+.menuItemDanger:hover { background: color-mix(in srgb, var(--bad) 12%, transparent); }
+
+/* ── Хавсралт (зураг) модал ── */
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(0 0 0 / 0.45);
+  padding: 16px;
+}
+.modal {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: 80vh;
+  width: 100%;
+  max-width: 42rem;
+  overflow: auto;
+  border-radius: var(--r-lg);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  padding: 18px;
+  box-shadow: var(--shadow-lg);
+}
+.modalHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.modalTitle {
+  font-size: 0.85rem;
+  font-weight: 650;
+  color: var(--ink);
+}
+.closeBtn {
+  color: var(--ink-3);
+  font-size: 1rem;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: var(--r-sm);
+  transition: color 0.12s, background 0.12s;
+}
+.closeBtn:hover { color: var(--ink); background: var(--sunken); }
+
+.addImgBtn {
+  display: inline-flex;
+  width: fit-content;
+  cursor: pointer;
+  align-items: center;
+  gap: 6px;
+  border-radius: var(--r-sm);
+  background: var(--hue);
+  color: #fff;
+  padding: 7px 13px;
+  font-size: 0.8rem;
+  font-weight: 550;
+  box-shadow: var(--shadow-sm);
+  transition: filter 0.15s;
+}
+.addImgBtn:hover { filter: brightness(1.06); }
+
+.hiddenInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.imgGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+@media (min-width: 640px) {
+  .imgGrid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+.imgCell {
+  position: relative;
+}
+.img {
+  height: 112px;
+  width: 100%;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  object-fit: cover;
+  display: block;
+}
+.imgDel {
+  position: absolute;
+  right: 4px;
+  top: 4px;
+  border-radius: var(--r-sm);
+  background: rgb(0 0 0 / 0.6);
+  color: #fff;
+  padding: 1px 6px;
+  font-size: 0.72rem;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.imgCell:hover .imgDel { opacity: 1; }
+
+/* ── Хоёр табын хүрээ (Хүснэгт | Дүгнэлт) ── */
+.tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.tabBar {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--line);
+}
+.tab {
+  margin-bottom: -1px;
+  border-bottom: 2px solid transparent;
+  padding: 9px 16px;
+  font-size: 0.85rem;
+  font-weight: 550;
+  color: var(--ink-3);
+  transition: color 0.15s, border-color 0.15s;
+}
+.tab:hover { color: var(--ink); }
+.tabActive {
+  border-bottom-color: var(--hue);
+  color: var(--hue);
+  font-weight: 650;
+}

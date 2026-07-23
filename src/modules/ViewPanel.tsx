@@ -15,8 +15,7 @@ import {
 } from '@/lib/services';
 import { whereFor, qtyText, geomText, layerStats, type Totals } from '@/lib/totals';
 import { num, text } from '@/lib/format';
-import { BuildingSummary, BuildingWork } from './BuildingPanel';
-import { SurveySummary, useSurvey, useOutside } from './SurveyPanel';
+import { MonitorGeneral, MonitorDetail } from './BuildingPanel';
 import s from './dashboard.module.css';
 
 /** Ангиллын дугуй диаграмд өнгө оноох палитр (paint тодорхойлолтгүй давхаргад) */
@@ -1015,19 +1014,12 @@ function MonitorPanel({
   picked: Record<string, unknown> | null;
   pickedLayer: string | null;
 }) {
-  const survey = useSurvey();
-  const outside = useOutside();
-
+  // Баруун панел — СОНГОСОН барилгын бүрэн ажлын гүйцэтгэл (Tusliin table).
+  // Зүүн талд бүх барилгын ДУНДАЖ (`BuildingSummary`, Portal-д).
   return (
     <>
-      <BuildingWork
-        picked={picked}
-        pickedLayer={pickedLayer}
-        survey={survey}
-        outside={outside}
-      />
-      <BuildingSummary />
-      <SurveySummary />
+      <MonitorGeneral picked={picked} pickedLayer={pickedLayer} />
+      <MonitorDetail picked={picked} pickedLayer={pickedLayer} />
     </>
   );
 }

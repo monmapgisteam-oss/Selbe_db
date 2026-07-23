@@ -40,8 +40,7 @@ export const BASEMAP_URL =
  * `appId` хоосон бол нэвтрэлт УНТРААЛТТАЙ.
  */
 export const AUTH = {
-  // ⚠️ ТҮР — давхарга шалгах. Буцаах: 'ZPJRqk1iiYcjYRLv'
-  appId: '',
+  appId: 'ZPJRqk1iiYcjYRLv',
   /**
    * ⚠️ Байгууллагын хаяг (`monmap.maps.arcgis.com`) БИШ. Тэр домэйн ArcGIS
    * Online-ы «Allowed origins» цагаан жагсаалтыг мөрддөг тул dev дээр токен
@@ -303,6 +302,29 @@ export const CASHFLOW = {
 } as const;
 
 /**
+ * ТӨСЛИЙН ГҮЙЦЭТГЭЛ — барилга/блок бүрийн ажлын задаргаа (гүйцэтгэлийн %).
+ * ⚠️ НЭЭЛТТЭЙ хосттой хүснэгт (CORS нээлттэй, ТОКЕН ХЭРЭГГҮЙ). «Барилгын хяналт»-д
+ * барилга дээр дарахад `BLOK`-ыг `Барилга_Блок`-той тааруулж (жиш. «5/1» →
+ * «5/1 блок»/«5/1 барилга») тухайн барилгын ажлын гүйцэтгэлийг харуулна.
+ * Хувилбартай (`Огноо`/`Хувилбар`) — ХАМГИЙН СҮҮЛИЙН хувилбарыг л авна.
+ * `Гүйцэтгэл` нь 0–1 (× 100 = %). Түвшин 3 = навч ажил; Ангилал_А = бүлэг.
+ */
+export const TASK_PERF = {
+  url: 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/Tusliin_guitsetgel_master/FeatureServer/0',
+  oid: 'ObjectID',
+  fields: {
+    block: 'Барилга_Блок',   // «5/1 блок» — BLOK-той тааруулах түлхүүр
+    date: 'Огноо',           // хувилбарын огноо (YYYY-MM-DD)
+    version: 'Хувилбар',     // хувилбарын дугаар
+    level: 'Түвшин',         // 1/2/3/4 — 3 нь навч ажил
+    task: 'Ажил',            // ажлын нэр
+    catA: 'Ангилал__А_',     // бүлэг (жиш. «A. Бэлтгэл ажил»)
+    weight: 'Хувийн_жин',    // ажлын жин
+    progress: 'Гүйцэтгэл____', // гүйцэтгэл 0–1
+  },
+} as const;
+
+/**
  * ГАЗАР ЧӨЛӨӨЛӨЛТ — хоёр тусдаа FeatureServer.
  *
  * ⚠️ Эдгээр нь ЕТ (`Selbe_ET_20260721`) болон барилгын хяналтаас ТУСДАА
@@ -329,7 +351,7 @@ export const PARCEL_CLEAN = {
     /** Гүйцэтгэлийн он — 2025 / 2026 */
     year: 'Он',
     /** Буулгалт нураалтын нийт өртөг (₮) */
-    cost: 'Нийт',
+    cost: 'Буулгалт_нураалтын__өртөг_үнэ',
   },
 } as const;
 
@@ -924,7 +946,7 @@ export const groupOf = (id: string): GroupKey | null =>
  *   ⚠️ Ерөнхий мэдээллийн 29 давхаргыг бүгдийг зэрэг асаавал зураг бөглөрч,
  *   хэрэглэгч юу ч ялгаж харахгүй. Бүсээр эхэлж, үлдсэнийг каталогоос асаана.
  */
-export type ViewKey = 'dashboard' | 'plan' | 'monitor' | 'analysis';
+export type ViewKey = 'dashboard' | 'plan' | 'monitor' | 'analysis' | 'sheet';
 
 export const VIEWS: {
   key: ViewKey;
@@ -975,10 +997,10 @@ export const VIEWS: {
     initial: [],
   },
   {
-    key: 'monitor', title: 'Барилгын хяналт', desc: 'Гүйцэтгэл, талбайн тайлан',
+    key: 'monitor', title: 'Барилгын хяналт', desc: 'Барилга бүрийн ажлын гүйцэтгэл',
     icon: 'target', hue: '#ea580c',
-    layers: ['mon:building', 'mon:survey'],
-    initial: ['mon:building', 'mon:survey'],
+    layers: ['mon:building'],
+    initial: ['mon:building'],
   },
   /**
    * АНАЛИЗ — Suitability Modeler.
@@ -992,6 +1014,18 @@ export const VIEWS: {
     key: 'analysis', title: 'Тохиромжтой байдлын үнэлгээ',
     desc: 'БНбД норм, эдийн засгийн үр ашиг',
     icon: 'chart', hue: '#7c3aed',
+    layers: [],
+    initial: [],
+    standalone: true,
+  },
+  /**
+   * ГҮЙЦЭТГЭЛ БӨГЛӨХ — «Төслийн гүйцэтгэл» хүснэгтийн засварлагч (порт).
+   * ⚠️ Порталын зураг/самбарыг ашиглахгүй, өөрийн бүтэцтэй тул `standalone`.
+   */
+  {
+    key: 'sheet', title: 'Гүйцэтгэл бөглөх',
+    desc: 'Ажлын гүйцэтгэлийн хүснэгт — засах, нийтлэх',
+    icon: 'pen', hue: '#0891b2',
     layers: [],
     initial: [],
     standalone: true,

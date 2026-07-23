@@ -43,6 +43,37 @@
     'foot foot foot';
 }
 
+/**
+ * «Барилгын хяналт» — газрын зургийн ЗҮҮН талд ЕРӨНХИЙ (Tusliin) панел нэмнэ.
+ * ⚠️ `.shellFoot`-оос ХОЙНО тодорхойлов — тэрний багана/талбарыг дарж бичнэ.
+ */
+.shellMon {
+  grid-template-columns: var(--monleft, 300px) 1fr var(--panel);
+  grid-template-areas:
+    'head head head'
+    'monl map  panel'
+    'foot foot foot';
+}
+.shellMon.shellCat {
+  grid-template-columns: var(--catalog) var(--monleft, 300px) 1fr var(--panel);
+  grid-template-areas:
+    'head head head head'
+    'cat  monl map  panel'
+    'foot foot foot foot';
+}
+.monLeft {
+  grid-area: monl;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 10px;
+  padding: 12px;
+  background: var(--surface);
+  border-right: 1px solid var(--line);
+  overflow-y: auto;
+}
+
 /* ── Доод хүрээ: нэгтгэсэн үзүүлэлт (зөвхөн Барилгын хяналт) ── */
 .dashFoot {
   grid-area: foot;
