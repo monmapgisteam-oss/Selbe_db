@@ -1,0 +1,288 @@
+/* ══════════════════════════════════════════════════════════
+   Ерөнхий дашбоард — газрын зургийг ТОЙРСОН байрлал.
+     ┌──────── KPI зурвас ────────┐
+     │ зүүн │  ГАЗРЫН ЗУРАГ │ баруун │
+     └──────── доод график ───────┘
+   ══════════════════════════════════════════════════════════ */
+
+.dash {
+  height: 100%;
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  grid-template-columns: minmax(260px, 300px) minmax(0, 1fr) minmax(260px, 300px);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    'kpi  kpi  kpi'
+    'left map  right'
+    'bot  bot  bot';
+  background: var(--bg);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ── KPI зурвас ── */
+.kpi {
+  grid-area: kpi;
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 10px;
+}
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 13px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-top: 2px solid var(--tone, var(--hue));
+  border-radius: var(--r);
+  box-shadow: var(--shadow-sm);
+}
+.tileVal { font-size: 1.28rem; font-weight: 700; line-height: 1.1; color: var(--ink); }
+.tileUnit { font-size: 0.7rem; font-weight: 600; color: var(--ink-3); margin-left: 3px; }
+.tileLabel { font-size: 0.64rem; color: var(--ink-3); }
+
+/* ── Зүүн / баруун баганын карт ── */
+.side {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  overflow-y: auto;
+}
+.left { grid-area: left; }
+.right { grid-area: right; }
+
+/* ── Төв газрын зураг ── */
+.map {
+  grid-area: map;
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+
+/* ── Доод өргөн график ── */
+.bot {
+  grid-area: bot;
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr);
+  gap: 10px;
+}
+
+/* ── Идэвхтэй шүүлтийн chip (газрын зураг дээр хөвнө) ── */
+.filterChip {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100% - 24px);
+  padding: 6px 8px 6px 11px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  box-shadow: var(--shadow);
+  font-size: 0.72rem;
+}
+.filterDot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--hue); }
+.filterLabel { font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.filterCount {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: 99px;
+  background: var(--sunken);
+  color: var(--ink-2);
+  font-size: 0.66rem;
+  font-weight: 700;
+}
+.filterClear {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  border-radius: 50%;
+  font-size: 1rem;
+  line-height: 1;
+  color: var(--ink-3);
+  transition: background 0.12s, color 0.12s;
+}
+.filterClear:hover { background: var(--sunken); color: var(--ink); }
+
+/* ── Карт ── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: 12px 14px;
+  box-shadow: var(--shadow-sm);
+}
+.cardHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.cardTitle {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-2);
+}
+.cardNote { font-size: 0.62rem; color: var(--ink-3); font-family: var(--mono); }
+
+.state { padding: 20px 8px; text-align: center; color: var(--ink-3); font-size: 0.74rem; }
+
+/* ── Гүйцэтгэлийн индикатор мөр ── */
+.progressRow { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+.progressText { font-size: 0.7rem; line-height: 1.5; color: var(--ink-3); }
+.progressText b { color: var(--ink); }
+
+/* ── Анализ: нийлмэл оноо ── */
+.bigScore {
+  flex: none;
+  font-size: 2.1rem;
+  font-weight: 800;
+  line-height: 1;
+  font-family: var(--mono);
+  letter-spacing: -0.03em;
+  min-width: 54px;
+  text-align: center;
+}
+
+/* ── Анализ: жижиг нэгж үзүүлэлт (өртөг, ашиг) ── */
+.miniStats {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.miniStats div { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.miniStats span { font-size: 0.68rem; color: var(--ink-3); }
+.miniStats b { font-size: 0.78rem; font-weight: 700; font-family: var(--mono); letter-spacing: -0.02em; color: var(--ink); }
+.pos { color: var(--good) !important; }
+.neg { color: var(--bad) !important; }
+
+/* ── Талбайн хяналтын индикатор ── */
+.surveyRow { display: flex; align-items: center; gap: 16px; }
+.surveyStats { display: flex; flex-direction: column; gap: 6px; }
+.surveyStats div { display: flex; align-items: baseline; gap: 8px; }
+.surveyStats b { font-size: 1rem; font-weight: 700; color: var(--ink); min-width: 54px; }
+.surveyStats span { font-size: 0.68rem; color: var(--ink-3); }
+
+/* ── Хүнд анализын ачаалалтын явц ── */
+.load { padding: 14px 4px 8px; }
+.loadMsg { font-size: 0.72rem; color: var(--ink-3); margin-bottom: 8px; }
+.loadBar { height: 6px; border-radius: 99px; background: var(--sunken); overflow: hidden; }
+.loadBar span {
+  display: block;
+  height: 100%;
+  border-radius: 99px;
+  background: linear-gradient(90deg, var(--hue), color-mix(in srgb, var(--hue) 55%, #22d3ee));
+  transition: width 0.3s var(--ease);
+}
+
+/* ── FAR / BCR норм үнэлгээ ── */
+.normRow { margin-bottom: 12px; }
+.normRow:last-of-type { margin-bottom: 0; }
+.normHead { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+.normName { font-size: 0.8rem; font-weight: 700; color: var(--ink); font-family: var(--mono); }
+.normDesc { flex: 1; font-size: 0.64rem; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.normRate { font-size: 0.85rem; font-weight: 800; font-family: var(--mono); }
+.normNone { font-size: 0.62rem; color: var(--ink-3); margin-top: 4px; }
+.normNote { font-size: 0.62rem; line-height: 1.45; color: var(--ink-3); margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); }
+
+/* ── Бүсийн эрэмбэ ── */
+.rankWrap { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.rankLabel {
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+  margin-bottom: 6px;
+}
+.rankRow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 4px 5px;
+  border-radius: 6px;
+  text-align: left;
+  transition: background 0.12s;
+}
+.rankRow:hover { background: var(--surface-2); }
+.rankOn { background: color-mix(in srgb, var(--hue) 14%, transparent); }
+.rankNo { flex: none; width: 18px; font-size: 0.66rem; font-weight: 700; color: var(--ink-3); font-family: var(--mono); text-align: right; }
+.rankName { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.2; overflow: hidden; }
+.rankName { font-size: 0.72rem; color: var(--ink); white-space: nowrap; text-overflow: ellipsis; }
+.rankName i { font-style: normal; font-size: 0.6rem; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rankScore {
+  flex: none;
+  min-width: 26px;
+  padding: 1px 5px;
+  border-radius: 5px;
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+/* ── Газрын зургийн тайлбар (legend) ── */
+.legend {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 5;
+  display: flex;
+  gap: 14px;
+  max-width: calc(100% - 24px);
+  padding: 8px 11px;
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  box-shadow: var(--shadow-sm);
+}
+.legendGroup { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.legendHead { font-size: 0.58rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-3); }
+.legendItem { display: flex; align-items: center; gap: 5px; font-size: 0.62rem; color: var(--ink-2); white-space: nowrap; }
+.legendItem i { width: 9px; height: 9px; flex: none; border-radius: 2px; }
+
+/* ══════════════════ Дэлгэц бага үед — босоо өрөлт ══════════════════ */
+@media (max-width: 1180px) {
+  .dash {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto 58vh auto auto;
+    grid-template-areas:
+      'kpi'
+      'left'
+      'map'
+      'right'
+      'bot';
+    height: auto;
+    overflow: visible;
+  }
+  .kpi { grid-template-columns: repeat(3, 1fr); }
+  .side { overflow: visible; }
+  .bot { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 620px) {
+  .kpi { grid-template-columns: repeat(2, 1fr); }
+}

@@ -236,8 +236,13 @@
 
 .donutLegend { flex: 1; min-width: 130px; display: flex; flex-direction: column; gap: 6px; }
 .donutItem { display: flex; align-items: center; gap: 7px; font-size: 0.72rem; color: var(--ink-2); }
-.donutName { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.donutName { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
 .donutPct { flex: none; font-size: 0.7rem; font-weight: 650; color: var(--ink); }
+/* Дарж шүүх боломжтой тайлбарын мөр */
+.donutClick { width: 100%; padding: 3px 5px; border-radius: 5px; transition: background 0.12s; }
+.donutClick:hover { background: var(--surface-2); }
+.donutOn { background: color-mix(in srgb, var(--tone, var(--hue)) 14%, transparent); }
+.donutOn .donutPct { color: var(--tone, var(--hue)); }
 
 /* ── Босоо цуваа (series) ── */
 .series { display: flex; flex-direction: column; gap: 6px; }
@@ -266,6 +271,11 @@
   transition: background 0.12s;
 }
 .seriesCol:hover .seriesBar { background: var(--tone, var(--hue)); }
+/* Дарж шүүх боломжтой цуваа багана */
+.seriesClick { cursor: pointer; border-radius: 5px; transition: background 0.12s; }
+.seriesClick:hover { background: var(--surface-2); }
+.seriesOn .seriesBar { background: var(--tone, var(--hue)); }
+.seriesOn .seriesVal { color: var(--tone, var(--hue)); }
 .seriesVal {
   position: absolute;
   top: -16px;
