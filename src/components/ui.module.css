@@ -17,6 +17,37 @@
 }
 .sectionNote { font-size: 0.7rem; color: var(--ink-3); }
 
+/* Самбарын ГОЛ хэсэг — модулийн өнгөөр ирмэглэж, бусдаас ялгарна */
+.sectionPrimary {
+  background: color-mix(in srgb, var(--hue) 4%, var(--surface));
+  box-shadow: inset 3px 0 0 var(--hue);
+}
+.sectionPrimary .sectionTitle { color: var(--hue); }
+
+/* ── Байрлалын примитив ── */
+.col { display: flex; flex-direction: column; }
+.col_sm { gap: 10px; }
+.col_md { gap: 16px; }
+.col_lg { gap: 22px; }
+
+.split { display: flex; align-items: center; gap: 16px; }
+.splitAside { flex: none; }
+.splitBody { flex: 1; min-width: 0; }
+
+.noteText { font-size: 0.73rem; line-height: 1.55; color: var(--ink-3); }
+.noteText b { color: var(--ink); font-weight: 650; }
+
+.subHead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 0.74rem;
+  font-weight: 650;
+  color: var(--ink-2);
+}
+.subNote { font-size: 0.68rem; font-weight: 400; color: var(--ink-3); }
+
 /* ── Таб ──
    Самбарын биеийг гүйлгэхэд дагаж явна. `--surface` дүүргэлт заавал хэрэгтэй —
    эс бөгөөс доогуур өнгөрөх агуулга нь хагас тунгалаг табын ард харагдана. */

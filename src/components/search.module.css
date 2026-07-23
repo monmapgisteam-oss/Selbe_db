@@ -1,0 +1,93 @@
+/* ── Толгойн нэгдсэн хайлт ── */
+.wrap { position: relative; display: flex; align-items: center; min-width: 0; }
+
+.icon {
+  position: absolute;
+  left: 10px;
+  display: grid;
+  place-items: center;
+  color: var(--ink-3);
+  pointer-events: none;
+}
+
+.input {
+  width: 100%;
+  height: 34px;
+  padding: 0 12px 0 32px;
+  font: inherit;
+  font-size: 0.78rem;
+  color: var(--ink);
+  background: var(--sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  transition: border-color 0.12s, background 0.12s;
+}
+.input::placeholder { color: var(--ink-3); }
+.input:hover { border-color: var(--line-strong); }
+.input:focus {
+  outline: none;
+  background: var(--surface);
+  border-color: var(--hue);
+}
+/* Хөтчийн өөрийн цэвэрлэх товчийг хасна — байрлал нь дизайнтай таарахгүй */
+.input::-webkit-search-cancel-button { display: none; }
+
+.pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 40;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 5px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  box-shadow: var(--shadow-lg);
+}
+
+.group {
+  padding: 8px 9px 5px;
+  font-size: 0.64rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--ink-3);
+}
+
+.hit {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: 100%;
+  padding: 7px 9px;
+  text-align: left;
+  border-radius: var(--r-sm);
+  transition: background 0.1s;
+}
+.hit:hover { background: var(--surface-2); }
+
+.hitTitle {
+  font-size: 0.79rem;
+  font-weight: 600;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hitSub {
+  font-size: 0.69rem;
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.state {
+  padding: 14px 10px;
+  text-align: center;
+  font-size: 0.74rem;
+  color: var(--ink-3);
+}
+.err { color: var(--bad); }

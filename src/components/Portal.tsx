@@ -4,16 +4,19 @@ import {
   useCallback, useEffect, useMemo, useRef, useState,
   type CSSProperties, type PointerEvent as ReactPointerEvent,
 } from 'react';
-import { MapCanvas, MapProvider, type Dim } from '@/components/MapCanvas';
+import { MapCanvas, MapProvider, useMap, type Dim } from '@/components/MapCanvas';
 import { ViewRail } from '@/components/ViewRail';
 import { LayerCatalog } from '@/components/LayerCatalog';
 import { Suitability } from '@/modules/analysis/Suitability';
 import { Dashboard } from '@/modules/Dashboard';
 import { Icon } from '@/components/Icon';
+import { Search } from '@/components/Search';
 import { useTheme } from '@/lib/theme';
 import { useAsync } from '@/lib/useAsync';
+import { FilterProvider, useFilter } from '@/lib/filter';
 import { usePlanTotals } from '@/lib/totals';
 import { queryStats, count, sum, sqlStr } from '@/lib/query';
+import type { Hit } from '@/lib/search';
 import {
   DEFAULT_VIEW, VIEW_BY_KEY, layerUrl, OID, ZONE_FIELD, PROJECT_AREA_HA,
   PLAN_LAYER_IDS, MONITOR_LAYER_IDS,
@@ -31,7 +34,24 @@ const PANEL_MAX = 720;
 const PANEL_DEFAULT = 360;
 const PANEL_KEY = 'selbe-panel-width';
 
+/**
+ * Гадна бүрхүүл — зөвхөн контекстүүдийг өгнө.
+ *
+ * ⚠️ `FilterProvider` нь `useMap()`-ыг дуудах тул `MapProvider`-ын ДОТОР байх
+ * ёстой. Мөн порталын агуулга `useFilter()`-ыг дуудах тул түүнээс ДООР байх
+ * ёстой — иймд агуулгыг тусад нь салгав.
+ */
 export default function Portal() {
+  return (
+    <MapProvider>
+      <FilterProvider>
+        <PortalContent />
+      </FilterProvider>
+    </MapProvider>
+  );
+}
+
+function PortalContent() {
   /**
    * Газрын зураг ХОЁРХОН төрөлтэй: 2D = ортофото, 3D = меш. Суурийг энэ л шийднэ.
    */
@@ -60,6 +80,8 @@ export default function Portal() {
   const [picked, setPicked] = useState<Record<string, unknown> | null>(null);
   const [pickedLayer, setPickedLayer] = useState<string | null>(null);
   const { theme, toggle } = useTheme();
+  const { clear: clearFilter } = useFilter();
+  const { zoomToWhere } = useMap();
 
   /**
    * Давхаргын тоо, хэмжээ — каталогийн багана, багцын тойм, давхаргын дашбоард
@@ -90,15 +112,40 @@ export default function Portal() {
     setPicked(null);
     setPickedLayer(null);
     setLayer(null);
+    /**
+     * Шүүлт нь өмнөх харагдацын давхаргын талбарын нэрээр бичигдсэн SQL. Үлдвэл
+     * шинэ харагдацын давхаргад тэр талбар байхгүй тул ArcGIS хүсэлт бүхэлдээ
+     * унаж, зураг чимээгүй хоосорно.
+     */
+    clearFilter();
     // Каталогтой харагдац — идэвхтэй дээр нь дахин дарвал хумина.
     // Тусдаа дэлгэцтэй харагдацад (дашбоард, анализ) каталог байхгүй.
     setCatalog(!VIEW_BY_KEY[v].standalone ? !(view === v && catalog) : false);
-  }, [view, catalog]);
+  }, [view, catalog, clearFilter]);
 
   const pick = useCallback((attrs: Record<string, unknown> | null, layerId: string | null) => {
     setPicked(attrs);
     setPickedLayer(layerId);
   }, []);
+
+  /**
+   * Хайлтын үр дүн рүү үсрэх.
+   *
+   * ⚠️ `setView()`-оор дамжина: тэр нь харагдацын анхны давхаргыг тавьдаг. Дараа
+   * нь хэрэгтэй давхаргыг нэмнэ — анхдагчид ороогүй байж болно (жишээ нь
+   * «Ерөнхий мэдээлэл» зөвхөн бүсээр нээгддэг ч барилгаас олдсон бол өөр).
+   *
+   * ⚠️ Давхарга ил болох хүртэл нэг frame хүлээнэ — эс бөгөөс `zoomToWhere` нь
+   * зурагт хараахан нэмэгдээгүй давхаргыг олохгүй.
+   */
+  const goToHit = useCallback(
+    (hit: Hit) => {
+      setView(hit.view);
+      setVisible((prev) => (prev.includes(hit.layerId) ? prev : [...prev, hit.layerId]));
+      requestAnimationFrame(() => zoomToWhere(hit.layerId, hit.where));
+    },
+    [setView, zoomToWhere],
+  );
 
   /* ── Баруун самбарын өргөн ── */
 
@@ -165,7 +212,7 @@ export default function Portal() {
   const isDash = view === 'dashboard';
 
   return (
-    <MapProvider>
+    <>
       <div
         className={`${s.shell} ${isSuit ? s.shellSuit : ''} ${isDash ? s.shellDash : ''} ${catOpen ? s.shellCat : ''}`}
         style={{ '--hue': active.hue, '--panel': `${panelW}px` } as CSSProperties}
@@ -180,6 +227,11 @@ export default function Portal() {
             </span>
           </div>
 
+          <div className={s.headSearch}>
+            <Search onPick={goToHit} />
+          </div>
+
+          <ActiveFilterChip />
           <HeaderStats zone={zone} />
 
           <div className={s.dimSwitch} role="group" aria-label="Газрын зургийн харагдац">
@@ -286,7 +338,42 @@ export default function Portal() {
           </>
         )}
       </div>
-    </MapProvider>
+    </>
+  );
+}
+
+/* ── Идэвхтэй шүүлт ── */
+
+/**
+ * Газрын зурагт одоо ямар шүүлт үйлчилж байгааг ҮРГЭЛЖ харуулна.
+ *
+ * ⚠️ Урьд нь идэвхтэй шүүлт зөвхөн түүнийг үүсгэсэн самбарын мөрөнд л
+ * тодорсон байдаг байв. Хэрэглэгч доош гүйлгэж, өөр хэсэг рүү шилжсэний дараа
+ * зураг яагаад бүдгэрсэн шалтгааныг олох арга байхгүй байлаа.
+ */
+function ActiveFilterChip() {
+  const { active, clear } = useFilter();
+  if (!active) return null;
+
+  return (
+    <div className={s.filterChip} style={{ '--tone': active.color ?? 'var(--hue)' } as CSSProperties}>
+      <span className={s.filterDot} aria-hidden />
+      <span className={s.filterText}>
+        <span className={s.filterGroup}>{active.group}</span>
+        <span className={s.filterLabel}>{active.label}</span>
+      </span>
+      <button type="button" className={s.filterClear} onClick={clear} aria-label="Шүүлт цуцлах">
+        <svg viewBox="0 0 12 12" width="11" height="11" aria-hidden>
+          <path
+            d="M3 3l6 6M9 3l-6 6"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+          />
+        </svg>
+      </button>
+    </div>
   );
 }
 

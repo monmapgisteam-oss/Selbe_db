@@ -76,6 +76,58 @@
 }
 .brandSub { font-size: 0.68rem; color: var(--ink-3); }
 
+/* Хайлт — брэнд ба үзүүлэлтийн ХООРОНД. Уян хатан өргөнтэй ч дээд хязгаартай:
+   хязгааргүй бол том дэлгэцэд толгойн бүх сул зайг залгиж, үзүүлэлтүүдийг
+   баруун ирмэг рүү шахна. */
+.headSearch { flex: 1 1 auto; max-width: 340px; min-width: 150px; margin-left: 8px; }
+
+/* ── Идэвхтэй шүүлтийн тэмдэг ── */
+.filterChip {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex: none;
+  max-width: 260px;
+  margin-left: auto;
+  padding: 5px 6px 5px 11px;
+  border-radius: 99px;
+  background: color-mix(in srgb, var(--tone) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tone) 32%, transparent);
+}
+.filterDot {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--tone);
+}
+.filterText { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; }
+.filterGroup {
+  font-size: 0.6rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--tone);
+}
+.filterLabel {
+  font-size: 0.71rem;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.filterClear {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  border-radius: 50%;
+  color: var(--ink-3);
+  transition: background 0.12s, color 0.12s;
+}
+.filterClear:hover { background: color-mix(in srgb, var(--tone) 20%, transparent); color: var(--ink); }
+
 .headStats {
   display: flex;
   align-items: center;
@@ -83,6 +135,9 @@
   margin-left: auto;
   padding-right: 4px;
 }
+/* Шүүлтийн тэмдэг гарсан үед тэр нь баруун тийш түлхэх үүргийг авна —
+   хоёулаа `margin-left: auto` байвал хооронд нь нүх үүснэ. */
+.filterChip + .headStats { margin-left: 0; }
 .headStat { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.25; }
 .headStatValue { font-size: 0.84rem; font-weight: 650; }
 .headStatLabel { font-size: 0.64rem; color: var(--ink-3); white-space: nowrap; }
@@ -243,4 +298,15 @@
   .panel { border-left: none; border-right: none; border-top: 1px solid var(--line); }
   /* Босоо өрөлтөд өргөн чирэх утгагүй */
   .grip { display: none; }
+  /* Үзүүлэлт нуугдсанаар сул зай гарна — хайлт түүнийг эзэлж, гол хэрэгсэл болно */
+  .headSearch { max-width: none; margin-left: 12px; }
+  /* Шүүлтийн тэмдэг нь хайлтын дараа орох тул түлхэгч хэрэггүй */
+  .filterChip { margin-left: 10px; max-width: 190px; }
+}
+
+/* Дэлгэц маш нарийн үед шүүлтийн бичиглэл хайлтыг шахна — тэмдэг нь зөвхөн
+   өнгөт цэг ба цуцлах товч болж хумигдана. Шүүлт байгаа эсэх нь хэвээр мэдэгдэнэ. */
+@media (max-width: 720px) {
+  .filterText { display: none; }
+  .filterChip { padding: 5px 6px 5px 8px; }
 }

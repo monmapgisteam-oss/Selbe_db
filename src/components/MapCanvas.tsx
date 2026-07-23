@@ -62,10 +62,13 @@ type MapApi = {
   zoomToLayer: (id: string) => void;
   /** Тодорхой бүсийн хүрээнд аваачих */
   zoomToZone: (zone: string) => void;
+  /** Давхаргын ЯГ ТЭР объект(ууд) руу ойртох — хайлтын үр дүнд шилжихэд */
+  zoomToWhere: (layerId: string, where: string) => void;
 };
 
 const Ctx = createContext<MapApi>({
   view: null, setHighlight: () => {}, zoomToLayer: () => {}, zoomToZone: () => {},
+  zoomToWhere: () => {},
 });
 
 const RegisterCtx = createContext<(view: AnyView | null) => void>(() => {});
@@ -328,9 +331,34 @@ export function MapProvider({ children }: { children: ReactNode }) {
     goTo(layerUrl(ZONE_LAYER), `${ZONE_FIELD} = ${sqlStr(zone)}`);
   }, [goTo]);
 
+  /**
+   * Заасан объектууд руу ойртоно.
+   *
+   * ⚠️ Хамгийн бага хэмжээ тавина: нэг цэгэн объект (тайлангийн цэг) эсвэл жижиг
+   * талбарын хүрээ нь бараг тэг өргөнтэй байдаг тул шууд `goTo` хийвэл газрын
+   * зураг хамгийн ойрын масштаб руу үсэрч, хэрэглэгч хаана байгаагаа алдана.
+   * Тиймээс `goTo`-г ашиглахгүй, хүрээг өөрөө тэлнэ.
+   */
+  const zoomToWhere = useCallback(async (layerId: string, where: string) => {
+    const d = LAYER_BY_ID[layerId];
+    if (!d || !view || view.destroyed) return;
+    try {
+      const e = await extentOf(layerUrl(d), view, where);
+      if (!e || view.destroyed) return;
+      // 150 м-ээс нарийн хүрээг тэлнэ — контекстгүй ойртохоос сэргийлнэ
+      const MIN = 150;
+      const box = e.width < MIN || e.height < MIN
+        ? e.clone().expand(Math.max(MIN / Math.max(e.width, 1), MIN / Math.max(e.height, 1)))
+        : e.clone().expand(1.6);
+      view.goTo(box).catch(() => {});
+    } catch (err) {
+      console.error('[selbe] объектын хүрээг тодорхойлж чадсангүй:', err);
+    }
+  }, [view]);
+
   const api = useMemo<MapApi>(
-    () => ({ view, setHighlight, zoomToLayer, zoomToZone }),
-    [view, setHighlight, zoomToLayer, zoomToZone],
+    () => ({ view, setHighlight, zoomToLayer, zoomToZone, zoomToWhere }),
+    [view, setHighlight, zoomToLayer, zoomToZone, zoomToWhere],
   );
 
   return (
