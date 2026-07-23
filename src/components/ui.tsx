@@ -248,6 +248,8 @@ export function Donut({
   width = 22,
   center,
   centerLabel,
+  selected,
+  onSelect,
 }: {
   items: { key: string; label: string; value: number; color: string }[];
   size?: number;
@@ -255,6 +257,10 @@ export function Donut({
   /** Голд харуулах утга. Заагаагүй бол нийлбэр. */
   center?: ReactNode;
   centerLabel?: string;
+  /** Сонгосон зүсмэгийн key — идэвхтэй бол бусад нь бүдгэрнэ */
+  selected?: string | null;
+  /** Зүсмэг/тайлбар дарахад — байвал диаграм шүүлтийн удирдлага болно */
+  onSelect?: (key: string) => void;
 }) {
   const total = items.reduce((a, b) => a + b.value, 0);
   const r = (size - width) / 2;
@@ -276,21 +282,27 @@ export function Donut({
           {/* -90° эргүүлж 12 цагаас эхлүүлнэ */}
           <g transform={`rotate(-90 ${size / 2} ${size / 2})`}>
             <circle className={s.donutTrack} cx={size / 2} cy={size / 2} r={r} strokeWidth={width} />
-            {slices.map((sl) => (
-              <circle
-                key={sl.key}
-                cx={size / 2}
-                cy={size / 2}
-                r={r}
-                strokeWidth={width}
-                stroke={sl.color}
-                fill="none"
-                strokeDasharray={`${sl.frac * circ} ${circ}`}
-                strokeDashoffset={-sl.offset * circ}
-              >
-                <title>{`${sl.label}: ${sl.value}`}</title>
-              </circle>
-            ))}
+            {slices.map((sl) => {
+              const dim = selected != null && selected !== sl.key;
+              return (
+                <circle
+                  key={sl.key}
+                  cx={size / 2}
+                  cy={size / 2}
+                  r={r}
+                  strokeWidth={selected === sl.key ? width + 3 : width}
+                  stroke={sl.color}
+                  strokeOpacity={dim ? 0.28 : 1}
+                  fill="none"
+                  strokeDasharray={`${sl.frac * circ} ${circ}`}
+                  strokeDashoffset={-sl.offset * circ}
+                  style={onSelect ? { cursor: 'pointer' } : undefined}
+                  onClick={onSelect ? () => onSelect(sl.key) : undefined}
+                >
+                  <title>{`${sl.label}: ${sl.value}`}</title>
+                </circle>
+              );
+            })}
           </g>
         </svg>
         <div className={s.donutCenter}>
@@ -300,13 +312,30 @@ export function Donut({
       </div>
 
       <ul className={s.donutLegend}>
-        {slices.map((sl) => (
-          <li key={sl.key} className={s.donutItem}>
-            <span className={s.legendDot} style={{ background: sl.color }} />
-            <span className={s.donutName}>{sl.label}</span>
-            <b className={`${s.donutPct} num`}>{(sl.frac * 100).toFixed(0)}%</b>
-          </li>
-        ))}
+        {slices.map((sl) => {
+          const on = selected === sl.key;
+          const body = (
+            <>
+              <span className={s.legendDot} style={{ background: sl.color }} />
+              <span className={s.donutName}>{sl.label}</span>
+              <b className={`${s.donutPct} num`}>{(sl.frac * 100).toFixed(0)}%</b>
+            </>
+          );
+          return onSelect ? (
+            <li key={sl.key}>
+              <button
+                type="button"
+                aria-pressed={on}
+                className={`${s.donutItem} ${s.donutClick} ${on ? s.donutOn : ''}`}
+                onClick={() => onSelect(sl.key)}
+              >
+                {body}
+              </button>
+            </li>
+          ) : (
+            <li key={sl.key} className={s.donutItem}>{body}</li>
+          );
+        })}
       </ul>
     </div>
   );
@@ -326,29 +355,53 @@ export function Series({
   color,
   height = 96,
   unit,
+  selected,
+  onSelect,
 }: {
   items: { key: string; label: string; value: number; display?: string }[];
   color?: string;
   height?: number;
   unit?: string;
+  /** Сонгосон баганын key — идэвхтэй бол бусад нь бүдгэрнэ */
+  selected?: string | null;
+  /** Багана дарахад — байвал цуваа шүүлтийн удирдлага болно */
+  onSelect?: (key: string) => void;
 }) {
   const max = Math.max(1, ...items.map((i) => i.value));
 
   return (
     <div className={s.series} style={tone(color)}>
       <div className={s.seriesPlot} style={{ height }}>
-        {items.map((it) => (
-          <div key={it.key} className={s.seriesCol} title={`${it.label}: ${it.display ?? it.value}`}>
-            <span className={`${s.seriesVal} num`}>{it.display ?? it.value}</span>
-            <span
-              className={s.seriesBar}
-              // ⚠️ Хамгийн бага өндөр 2px: утга 0 байсан ч багана нь БАЙГАА гэдэг
-              //    нь харагдах ёстой — эс бөгөөс өгөгдөлгүйтэй андуурагдана.
-              style={{ height: `${Math.max(2, (it.value / max) * 100)}%` }}
-            />
-            <span className={s.seriesLabel}>{it.label}</span>
-          </div>
-        ))}
+        {items.map((it) => {
+          const on = selected === it.key;
+          const dim = selected != null && !on;
+          // ⚠️ Баганын хамгийн бага өндөр 2px: утга 0 байсан ч багана нь БАЙГАА
+          //    гэдэг нь харагдах ёстой — эс бөгөөс өгөгдөлгүйтэй андуурагдана.
+          const barH = `${Math.max(2, (it.value / max) * 100)}%`;
+          const inner = (
+            <>
+              <span className={`${s.seriesVal} num`}>{it.display ?? it.value}</span>
+              <span className={s.seriesBar} style={{ height: barH, opacity: dim ? 0.4 : 1 }} />
+              <span className={s.seriesLabel}>{it.label}</span>
+            </>
+          );
+          return onSelect ? (
+            <button
+              key={it.key}
+              type="button"
+              aria-pressed={on}
+              className={`${s.seriesCol} ${s.seriesClick} ${on ? s.seriesOn : ''}`}
+              title={`${it.label}: ${it.display ?? it.value}`}
+              onClick={() => onSelect(it.key)}
+            >
+              {inner}
+            </button>
+          ) : (
+            <div key={it.key} className={s.seriesCol} title={`${it.label}: ${it.display ?? it.value}`}>
+              {inner}
+            </div>
+          );
+        })}
       </div>
       {unit && <div className={s.seriesUnit}>{unit}</div>}
     </div>

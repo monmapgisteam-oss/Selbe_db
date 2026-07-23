@@ -92,5 +92,23 @@ export async function loadCosts(): Promise<Costs> {
   return { layers, total, perHa: total / PROJECT_AREA_HA, projectHa: PROJECT_AREA_HA };
 }
 
+/**
+ * ⚠️ Модулийн түвшний КЭШ (`loadAnalysisCached`-тай ижил зарчим). Дэд бүтцийн
+ * өртгийг ерөнхий дашбоард ба тохиромжтой байдлын үнэлгээ ХОЁУЛАА уншина;
+ * тус тусад нь дуудвал 24 давхаргын `groupBy` хоёр удаа явна. Өгөгдөл сесс
+ * дотор өөрчлөгддөггүй тул амлалтыг хадгалж дахин ашиглана.
+ */
+let cache: Promise<Costs> | null = null;
+
+export function loadCostsCached(): Promise<Costs> {
+  if (!cache) {
+    cache = loadCosts().catch((e) => {
+      cache = null; // алдаа кэшлэхгүй — дахин оролдох боломжтой байх ёстой
+      throw e;
+    });
+  }
+  return cache;
+}
+
 /** Давхаргын нэрийг каталогоос — графикийн шошгонд */
 export const layerTitle = (id: string) => LAYER_BY_ID[id]?.title ?? id;
