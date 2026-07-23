@@ -1,19 +1,19 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
 import { Donut, Bars, Series, Ring, Stack, Data } from '@/components/ui';
 import { useAsync, type Async } from '@/lib/useAsync';
-import { queryStats, queryGroup, queryFeatures, count, sum, avg, groups, sqlStr, blankWhere } from '@/lib/query';
+import { queryStats, queryGroup, queryFeatures, count, sum, avg, groups, sqlStr } from '@/lib/query';
 import {
-  ZONE_LAYER, ZONE_FIELD, ZONE_FIELDS, ZONE_TYPES, ZONE_TYPE_EMPTY, ZONE_TYPE_EMPTY_HUE,
-  BUILT_LAYER, BUILT_FIELDS, BUILT_STATUS, BUILDING, PROGRESS_LEVELS,
+  ZONE_LAYER, ZONE_FIELD, ZONE_FIELDS, ZONE_NONE, ZONE_TYPES, ZONE_TYPE_EMPTY, ZONE_TYPE_EMPTY_HUE,
+  BUILT_LAYER, BUILT_FIELDS, BUILT_STATUS,
   SURVEY, SURVEY_HUE, LAYER_BY_ID, layerUrl, OID,
 } from '@/lib/services';
 import { num, pct, ha, mnt } from '@/lib/format';
 import {
   INDICATORS, SCORE_LEVELS, levelOf, PARKING, DEFAULT_ECON_SHARE,
-  BUILD_COST_PER_M2, COST_GROUPS, COST_GROUP_OF, NO_DATA_COLOR, densityNormOf, profitScore,
+  BUILD_COST_PER_M2, COST_GROUPS, NO_DATA_COLOR, densityNormOf, profitScore,
 } from '@/lib/analysis/config';
 import {
   loadAnalysisCached, computeEconomics, computeRaw, defaultGreenCats,
@@ -38,28 +38,12 @@ import o from './overview.module.css';
  * барилгын төлөв (Barilga_ty)-ийг харуулна.
  */
 
-/** Дашбоардын газрын зурагт анхнаасаа асаах давхаргууд */
+/** Дашбоардын газрын зурагт харуулах давхаргууд — бүс + барилга */
 const DASH_LAYERS = [ZONE_LAYER.id, BUILT_LAYER.id];
-
-/**
- * Идэвхтэй шүүлт — үзүүлэлт дээр дарахад төв газрын зургийг тухайн олонлогоор
- * тодруулна (`useMap().setHighlight`).
- *   · `where`     — SQL нөхцөл (`1=1` = зөвхөн давхаргыг гаргах, шүүлтгүй)
- *   · `layerIds`  — ЗӨВХӨН эдгээр давхаргад хэрэглэнэ. Тоймд байхгүй давхаргыг
- *                   (гүйцэтгэлийн блок, инженерийн шугам) шүүлт идэвхжихэд түр
- *                   гаргаж, цуцлахад буцааж нуухад ашиглагдана.
- */
-type Filter = { key: string; label: string; where: string; layerIds: string[]; count?: number };
 
 /** Норм хангасан / зөрчсөний өнгө (FAR·BCR үнэлгээ) */
 const PASS_HUE = '#16a34a';
 const FAIL_HUE = '#ef4444';
-
-/** Өртөг/инженерийн салбар (heat/water/power…) → түүнд хамаарах давхаргын id-ууд */
-const SECTOR_LAYERS: Record<string, string[]> = Object.entries(COST_GROUP_OF).reduce((m, [id, g]) => {
-  (m[g] ??= []).push(id);
-  return m;
-}, {} as Record<string, string[]>);
 
 /* ══════════════════ Өгөгдөл ══════════════════ */
 
@@ -924,26 +908,14 @@ function RankingCard({ suit, zone, setZone }: { suit: Async<SuitSummary>; zone: 
 
 /* ══════════════════ Барилгын зориулалт (#1) ══════════════════ */
 
-function PurposeCard({ ov, filter, apply }: { ov: Async<Overview>; filter: Filter | null; apply: (f: Filter) => void }) {
-  const sel = filter?.key.startsWith('purpose:') ? filter.key.slice(8) : null;
+function PurposeCard({ ov, zone }: { ov: Async<Overview>; zone: string | null }) {
   return (
-    <Card title="Барилгын зориулалт" note="дарж зурагт шүүнэ">
+    <Card title="Барилгын зориулалт" note={zone ? `бүс ${zone}` : 'төсөл даяар'}>
       <Data q={ov} loading="Тооцож байна…">
         {(d) => (
           <Bars
             color="#3387b8"
             limit={8}
-            selected={sel}
-            onSelect={(key) => {
-              const g = d.buildByPurpose.find((x) => x.label === key);
-              apply({
-                key: `purpose:${key}`,
-                label: `Зориулалт · ${key}`,
-                where: g?.blank ? blankWhere(BUILT_FIELDS.purpose) : `${BUILT_FIELDS.purpose} = ${sqlStr(key)}`,
-                layerIds: [BUILT_LAYER.id],
-                count: g?.n,
-              });
-            }}
             items={d.buildByPurpose.map((g) => ({ key: g.label, label: g.label, value: g.n, display: `${num(g.n)} ш` }))}
           />
         )}
@@ -995,26 +967,15 @@ function ParkingCard({ ov }: { ov: Async<Overview> }) {
 
 /* ══════════════════ Инженерийн шугам километрээр (#14) ══════════════════ */
 
-function EngineeringCard({ costs, filter, apply }: { costs: Async<CostSummary>; filter: Filter | null; apply: (f: Filter) => void }) {
-  const sel = filter?.key.startsWith('eng:') ? filter.key.slice(4) : null;
+function EngineeringCard({ costs }: { costs: Async<CostSummary> }) {
   return (
-    <Card title="Инженерийн шугам" note="дарж давхаргыг зурагт гаргана">
+    <Card title="Инженерийн шугам" note="төсөл даяар · урт, км">
       <Data q={costs} loading="Тооцож байна…">
         {(d) =>
           d.engLengths.length ? (
             <>
               <Bars
                 max={Math.max(1, ...d.engLengths.map((e) => e.km))}
-                selected={sel}
-                onSelect={(key) => {
-                  const e = d.engLengths.find((x) => x.key === key);
-                  apply({
-                    key: `eng:${key}`,
-                    label: `Шугам · ${e?.label ?? key}`,
-                    where: '1=1', // тухайн системийн шугамын давхаргыг зурагт гаргана
-                    layerIds: SECTOR_LAYERS[key] ?? [],
-                  });
-                }}
                 items={d.engLengths.map((e) => ({
                   key: e.key, label: e.label, value: e.km, display: `${num(e.km, 1)} км`, color: e.color,
                 }))}
@@ -1034,10 +995,9 @@ function EngineeringCard({ costs, filter, apply }: { costs: Async<CostSummary>; 
 
 /* ══════════════════ Илэрсэн асуудал (#11) ══════════════════ */
 
-function IssuesCard({ issues, filter, apply }: { issues: Async<Issues>; filter: Filter | null; apply: (f: Filter) => void }) {
-  const sel = filter?.key.startsWith('issue:') ? filter.key.slice(6) : null;
+function IssuesCard({ issues }: { issues: Async<Issues> }) {
   return (
-    <Card title="Илэрсэн асуудал" note="дарж зурагт шүүнэ">
+    <Card title="Илэрсэн асуудал" note="төсөл даяар · нөлөөллөөр">
       <Data q={issues} loading="Тооцож байна…">
         {(d) =>
           d.total === 0 ? (
@@ -1050,18 +1010,6 @@ function IssuesCard({ issues, filter, apply }: { issues: Async<Issues>; filter: 
                 centerLabel="асуудал"
                 size={116}
                 width={18}
-                selected={sel}
-                onSelect={(key) => {
-                  const im = d.byImpact.find((x) => x.label === key);
-                  apply({
-                    key: `issue:${key}`,
-                    label: `Асуудал · ${key}`,
-                    // Асуудлыг эцэг тайлангийн цэгээр (`globalid`) газрын зурагт шүүнэ
-                    where: im && im.parents.length ? `globalid IN (${im.parents.map(sqlStr).join(', ')})` : '1=0',
-                    layerIds: ['mon:survey'],
-                    count: im?.n,
-                  });
-                }}
               />
               {d.byCategory.length > 0 && (
                 <div style={{ marginTop: 10 }}>
@@ -1090,32 +1038,22 @@ const DENSITY_BANDS = [
   { key: 'b5', label: '> 700', lo: 700, hi: Infinity, color: '#ef4444' },
 ];
 
-function DensityCard({ suit, filter, apply }: { suit: Async<SuitSummary>; filter: Filter | null; apply: (f: Filter) => void }) {
-  const sel = filter?.key.startsWith('dens:') ? filter.key.slice(5) : null;
+function DensityCard({ suit, zone }: { suit: Async<SuitSummary>; zone: string | null }) {
   return (
-    <Card title="Хүн амын нягтшил" note="дарж зурагт шүүнэ">
+    <Card title="Хүн амын нягтшил" note={zone ? `бүс ${zone} тодрол` : 'оршин суугчтай бүс'}>
       <Data q={suit} loading="Тооцож байна…">
         {(d) => {
           const buckets = DENSITY_BANDS.map((b) => ({
             ...b,
             ids: d.densityZones.filter((z) => z.density >= b.lo && z.density < b.hi).map((z) => z.id),
           }));
+          // Сонгосон бүс аль бандад орохыг тодруулна
+          const sel = zone ? buckets.find((b) => b.ids.includes(zone))?.key ?? null : null;
           return (
             <>
               <Bars
                 max={Math.max(1, ...buckets.map((b) => b.ids.length))}
                 selected={sel}
-                onSelect={(key) => {
-                  const b = buckets.find((x) => x.key === key);
-                  if (!b) return;
-                  apply({
-                    key: `dens:${key}`,
-                    label: `Нягтшил · ${b.label} хүн/га`,
-                    where: b.ids.length ? `${ZONE_FIELD} IN (${b.ids.map(sqlStr).join(', ')})` : '1=0',
-                    layerIds: [ZONE_LAYER.id],
-                    count: b.ids.length,
-                  });
-                }}
                 items={buckets.map((b) => ({
                   key: b.key, label: `${b.label} хүн/га`, value: b.ids.length, display: `${num(b.ids.length)} бүс`, color: b.color,
                 }))}
