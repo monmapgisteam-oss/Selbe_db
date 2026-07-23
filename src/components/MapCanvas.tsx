@@ -30,6 +30,7 @@ import {
   type LayerDef,
 } from '@/lib/services';
 import { queryExtent, queryFeatures, sqlStr, type Aoi } from '@/lib/query';
+import { loadBlockProgress, type BlockProgressMap } from '@/lib/blockProgress';
 import { num, pct, date, text } from '@/lib/format';
 import s from './map.module.css';
 
@@ -192,6 +193,48 @@ const zoneHighlightRenderer = (d: LayerDef) => ({
   uniqueValueInfos: ZONE_RED_TYPES.map((value) => ({
     value, label: value, symbol: symbolOf(d, ZONE_RED),
   })),
+} as __esri.RendererProperties);
+
+/**
+ * Гүйцэтгэлийн өнгө (0–100%): улаан → шар → ногоон. Хоёр хэсэгт шугаман
+ * интерполяци — блок бүрд тасралтгүй өнгө өгнө (unique-value симбол болгонд).
+ */
+const PROG_STOPS: [number, [number, number, number]][] = [
+  [0, [220, 38, 38]],    // #dc2626 улаан
+  [50, [245, 158, 11]],  // #f59e0b хув
+  [100, [22, 163, 74]],  // #16a34a ногоон
+];
+const progColor = (v: number): [number, number, number] => {
+  const x = Math.max(0, Math.min(100, v));
+  for (let i = 1; i < PROG_STOPS.length; i++) {
+    const [p1, c1] = PROG_STOPS[i - 1];
+    const [p2, c2] = PROG_STOPS[i];
+    if (x <= p2) {
+      const f = (x - p1) / (p2 - p1 || 1);
+      return [0, 1, 2].map((k) => Math.round(c1[k] + (c2[k] - c1[k]) * f)) as [number, number, number];
+    }
+  }
+  return PROG_STOPS[PROG_STOPS.length - 1][1];
+};
+
+/**
+ * `mon:building` давхаргын renderer — блок бүрийг НИЙТ ГҮЙЦЭТГЭЛЭЭР өнгөлнө
+ * (`Tusliin_guitsetgel_master`-ийн as-of утга). BLOK талбараар unique-value —
+ * нэг блокийн олон полигон ижил өнгөтэй. Мэдээлэлгүй блок → бүдэг саарал.
+ */
+const buildingProgressRenderer = (prog: BlockProgressMap): __esri.RendererProperties => ({
+  type: 'unique-value',
+  field: BUILDING.fields.block,
+  defaultSymbol: { type: 'simple-fill', color: c('#94a3b8', 0.22), outline: { color: c('#94a3b8', 0.9), width: 0.8 } },
+  defaultLabel: 'Мэдээлэлгүй',
+  uniqueValueInfos: [...prog.entries()].map(([blk, p]) => {
+    const [r, g, b] = progColor(p.overall);
+    return {
+      value: blk,
+      label: `${blk} · ${Math.round(p.overall)}%`,
+      symbol: { type: 'simple-fill', color: [r, g, b, 0.62], outline: { color: [r, g, b, 1], width: 1 } },
+    };
+  }),
 } as __esri.RendererProperties);
 
 /**
@@ -455,6 +498,8 @@ export function MapCanvas({
   const [tip, setTip] = useState<
     { x: number; y: number; id: string; attrs: Record<string, unknown> } | null
   >(null);
+  /** Блок бүрийн нийт гүйцэтгэл — газрын зургийн өнгө ба tooltip-д хоёуланд нь */
+  const [blockProg, setBlockProg] = useState<BlockProgressMap | null>(null);
 
   const register = useContext(RegisterCtx);
   const registerRef = useRef(register);
@@ -739,6 +784,29 @@ export function MapCanvas({
     });
   }, [visibleKey, dim, ready, zone, layerWhere]);
 
+  /**
+   * `mon:building` давхаргыг НИЙТ ГҮЙЦЭТГЭЛЭЭР өнгөлнө — «Гүйцэтгэл бөглөх»-ийн
+   * as-of утгаар (shapefile-ийн хуучирсан GUITS_HV БИШ). Өгөгдөл ~7с-д татагдаж
+   * cache-лэгдэнэ; ирэхэд renderer-ыг тавьж, tooltip-д хэрэглэхээр хадгална.
+   */
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    const on = new Set(visibleKey ? visibleKey.split(',') : []);
+    if (!on.has('mon:building')) return;
+    const layer = map.findLayerById('mon:building') as FeatureLayer | null;
+    if (!layer) return;
+    let alive = true;
+    loadBlockProgress()
+      .then((prog) => {
+        if (!alive) return;
+        setBlockProg(prog);
+        layer.renderer = buildingProgressRenderer(prog) as unknown as __esri.Renderer;
+      })
+      .catch((e) => console.error('[selbe] блокийн гүйцэтгэл ачаалж чадсангүй:', e));
+    return () => { alive = false; };
+  }, [visibleKey, ready]);
+
   /** 3D/BIM загвар ачаалагдсан эсэх — CORS/сүлжээний асуудлыг ил хэлнэ */
   useEffect(() => {
     const map = mapRef.current;
@@ -784,7 +852,7 @@ export function MapCanvas({
 
       {/* Хулганы доорх объектын ТОВЧ мэдээлэл. Дэлгэрэнгүй нь дарахад
           баруун самбарт гарна — энд зөвхөн «энэ юу вэ» гэдгийг хэлнэ. */}
-      {tip && <MapTip x={tip.x} y={tip.y} id={tip.id} attrs={tip.attrs} />}
+      {tip && <MapTip x={tip.x} y={tip.y} id={tip.id} attrs={tip.attrs} prog={blockProg} />}
 
       {/* ⚠️ Газрын зураг дээрх «Тайлбар» хайрцгийг ХАССАН: давхаргын каталог
           багана нь симбол, тоо, өртгийг аль хэдийн хажууд нь харуулж байгаа тул
@@ -808,12 +876,13 @@ export function MapCanvas({
  * бүрд `offsetWidth` уншиж, layout thrash үүсгэнэ.
  */
 function MapTip({
-  x, y, id, attrs,
+  x, y, id, attrs, prog,
 }: {
   x: number;
   y: number;
   id: string;
   attrs: Record<string, unknown>;
+  prog: BlockProgressMap | null;
 }) {
   const d = LAYER_BY_ID[id];
   if (!d) return null;
@@ -830,9 +899,12 @@ function MapTip({
 
   if (d.id === 'mon:building') {
     const F = BUILDING.fields;
-    const g = Number(attrs[F.progress] ?? -1);
-    rows.push({ k: 'Блок', v: text(attrs[F.block]) });
-    rows.push({ k: 'Гүйцэтгэл', v: g < 0 ? '—' : pct(g, 0) });
+    // Гүйцэтгэл нь «Гүйцэтгэл бөглөх»-ийн as-of утгаас (өнгөтэй нэг эх сурвалж),
+    // shapefile-ийн хуучирсан GUITS_HV БИШ.
+    const blk = text(attrs[F.block]);
+    const g = prog?.get(blk)?.overall ?? null;
+    rows.push({ k: 'Блок', v: blk });
+    rows.push({ k: 'Гүйцэтгэл', v: g == null ? '—' : pct(g, 0) });
     rows.push({ k: 'Айл', v: num(Number(attrs[F.households] ?? 0)) });
     rows.push({ k: 'Гүйцэтгэгч', v: text(attrs[F.contractor]) });
   } else if (d.id === 'mon:survey') {

@@ -9,6 +9,7 @@ import { ViewRail } from '@/components/ViewRail';
 import { LayerCatalog } from '@/components/LayerCatalog';
 import { Suitability } from '@/modules/analysis/Suitability';
 import { Dashboard } from '@/modules/Dashboard';
+import { Sheet } from '@/modules/sheet/Sheet';
 import { Icon } from '@/components/Icon';
 import { useTheme } from '@/lib/theme';
 import { useAsync } from '@/lib/useAsync';
@@ -23,6 +24,7 @@ import {
 } from '@/lib/services';
 import { num } from '@/lib/format';
 import { ViewPanel } from '@/modules/ViewPanel';
+import { BuildingSummary } from '@/modules/BuildingPanel';
 
 import s from '@/app/shell.module.css';
 
@@ -224,6 +226,7 @@ function PortalContent() {
    */
   const isDash = view === 'dashboard';
   const isSuit = view === 'analysis';
+  const isSheet = view === 'sheet';
   // `standalone` нь эдгээрийг ЯГ тэмдэглэдэг — тусад нь тоолохгүй
   const isFull = standalone;
   /**
@@ -242,7 +245,7 @@ function PortalContent() {
   return (
     <>
       <div
-        className={`${s.shell} ${isFull ? s.shellSuit : ''} ${catOpen ? s.shellCat : ''} ${!isFull && !catPinned ? s.shellFoot : ''}`}
+        className={`${s.shell} ${isFull ? s.shellSuit : ''} ${catOpen ? s.shellCat : ''} ${!isFull && !catPinned ? s.shellFoot : ''} ${view === 'monitor' ? s.shellMon : ''}`}
         style={{
           '--hue': active.hue,
           '--panel': `${panelSize.width}px`,
@@ -282,12 +285,21 @@ function PortalContent() {
           <div className={s.suit}>
             {isDash
               ? <Dashboard dim={dim} setDim={setDim} zone={zone} setZone={setZone} />
-              : <Suitability dim={dim} setDim={setDim} />}
+              : isSheet
+                ? <Sheet />
+                : <Suitability dim={dim} setDim={setDim} />}
           </div>
         )}
 
         {!isFull && (
           <>
+            {/* «Барилгын хяналт» — газрын зургийн ЗҮҮН талд бүх барилгын ДУНДАЖ (статик) */}
+            {view === 'monitor' && (
+              <aside className={s.monLeft} aria-label="Барилгын дундаж мэдээлэл">
+                <BuildingSummary />
+              </aside>
+            )}
+
             <div className={s.map}>
               <MapCanvas dim={dim} visible={visible} zone={zone} onPick={pick} />
 
