@@ -8,7 +8,7 @@ import { queryFeatures, sqlStr, type Row } from '@/lib/query';
 import {
   ZONE_LAYER, ZONE_FIELD, ZONE_FIELDS, ZONE_NONE, ZONE_TYPES, ZONE_TYPE_EMPTY, ZONE_TYPE_EMPTY_HUE,
   BUILT_LAYER, BUILT_FIELDS, BUILT_STATUS, BUILDING, BUILDING_STAGES, PROGRESS_LEVELS, STAGE_NA,
-  SURVEY_HUE, LAYER_BY_ID, layerUrl, OID, CASHFLOW,
+  SURVEY_HUE, LAYER_BY_ID, layerUrl, OID, CASHFLOW, PARCEL_LEFT, PARCEL_CLEAN,
 } from '@/lib/services';
 import { num, pct, ha, mnt, text } from '@/lib/format';
 import {
@@ -166,6 +166,27 @@ function useRawBlocks(): Async<Row[]> {
   }), []);
 }
 
+/* ══════════════════ Газар чөлөөлөлт (тусдаа FeatureServer-үүд) ══════════════════ */
+
+/**
+ * ⚠️ Cross-filter-т ОРОХГҮЙ: эдгээр нь ЕТ/блокоос өөр ZONE_ID схемтэй тусдаа
+ * өгөгдлийн сан. Зөвхөн газар чөлөөлөлтийн явцыг өөрийн баганад дүрснэ.
+ */
+const PL = PARCEL_LEFT.fields;
+const PC = PARCEL_CLEAN.fields;
+
+function useLeftParcels(): Async<Row[]> {
+  return useAsync(() => queryFeatures(PARCEL_LEFT.url, {
+    outFields: [PL.progress, PL.area],
+  }), []);
+}
+
+function useCleanParcels(): Async<Row[]> {
+  return useAsync(() => queryFeatures(PARCEL_CLEAN.url, {
+    outFields: [PC.status, PC.year, PC.cost],
+  }), []);
+}
+
 /* ══════════════════ Cashflow — багцын төсөв / санхүүжилт (BUS_cashflow) ══════════════════ */
 
 const CF = CASHFLOW.fields;
@@ -311,6 +332,8 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
   const costs = useCosts();
   const cash = useCashflow();
   const farbcr = useFarBcr();
+  const parcelLeft = useLeftParcels();
+  const parcelClean = useCleanParcels();
   const { setHighlight, zoomToZone, zoomToWhere } = useMap();
 
   /** Хүнд анализыг эхний paint-ийн дараа */
@@ -464,6 +487,28 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
         <MapLegend visible={visible} />
         {anyFilter && <FilterChips f={f} zinfo={zinfo} setDimFilter={setDimFilter} setZone={setZone} clearAll={clearAll} />}
       </div>
+
+      {/* Газар чөлөөлөлт — баруун баганы ЗҮҮН талд зэрэгцээ, тусдаа багана */}
+      <aside className={`${o.side} ${o.uld}`}>
+        <ParcelLeftCard raw={parcelLeft} />
+        <ParcelCleanBars
+          raw={parcelClean}
+          field={PC.status}
+          title="Цэвэрлэгээний статус"
+          note="буулгалтын өртөг"
+          hues={(label) =>
+            label.includes('авсан') ? '#22c55e'
+              : label.includes('хүлээгдэж') ? '#f59e0b'
+                : ZONE_TYPE_EMPTY_HUE}
+        />
+        <ParcelCleanBars
+          raw={parcelClean}
+          field={PC.year}
+          title="Цэвэрлэгээ он оноор"
+          note="буулгалтын өртөг"
+          hues={(label) => (label === '2025' ? '#3387b8' : label === '2026' ? '#7c3aed' : ZONE_TYPE_EMPTY_HUE)}
+        />
+      </aside>
 
       <aside className={`${o.side} ${o.right}`}>
         <ZoneTypeCard rawZ={rawZ} f={f} onToggle={toggleZoneType} />
@@ -786,6 +831,119 @@ function ZoneTypeCard({ rawZ, f, onToggle }: { rawZ: Async<Row[]>; f: Filters; o
           return items.length ? (
             <Donut items={items} center={ha(total)} centerLabel="га нийт" size={96} width={16} nowrap
               selected={f.zoneType ?? null} onSelect={onToggle} />
+          ) : <p className={o.state}>Мэдээлэл алга.</p>;
+        }}
+      </Data>
+    </Card>
+  );
+}
+
+/* ══════════════════ Газар чөлөөлөлт ══════════════════ */
+
+/** Явцын нэрсийг цэвэрлэх — «гэрээлсэн.» ба «гэрээлсэн» нэг ангилал; хоосон → нэртэй */
+const cleanProgress = (v: string) => {
+  const s = v.trim().replace(/\.$/, '');
+  return s === '' || s === '—' ? 'Тодорхойгүй' : s;
+};
+
+/** Явцын мэдээний өнгө — гэрээлсэн/дүйцүүлсэн ногоон, татгалзсан/маргаантай улаан */
+const PROGRESS_HUES: Record<string, string> = {
+  'зөвшилцөх': '#0ea5e9',
+  'үлдэх саналтай': '#f59e0b',
+  'гэрээлсэн': '#22c55e',
+  'дүйцүүлсэн': '#16a34a',
+  'татгалзсан': '#dc2626',
+  'маргаантай': '#e11d48',
+  'үнийн дүн зөвшөөрөөгүй': '#f97316',
+  'АТД': '#7c3aed',
+  'гэр': '#94a3b8',
+  'Тодорхойгүй': '#cbd5e1',
+};
+
+/**
+ * ЧӨЛӨӨЛӨГДӨӨГҮЙ нэгж талбар — чөлөөлөлтийн явцаар.
+ * ⚠️ Тусдаа өгөгдлийн сан тул cross-filter-т ОРОХГҮЙ (`onSelect` байхгүй).
+ */
+function ParcelLeftCard({ raw }: { raw: Async<Row[]> }) {
+  return (
+    <Card title="Үлдсэн нэгж талбар" note="чөлөөлөлтийн явц">
+      <Data q={raw} loading="Тооцож байна…">
+        {(rows) => {
+          const by = new Map<string, { n: number; area: number }>();
+          for (const x of rows) {
+            const k = cleanProgress(text(x[PL.progress]));
+            const cur = by.get(k) ?? { n: 0, area: 0 };
+            cur.n += 1;
+            cur.area += Number(x[PL.area]) || 0;
+            by.set(k, cur);
+          }
+          const items = [...by.entries()]
+            .map(([label, v]) => ({
+              key: label, label, value: v.n,
+              display: `${num(v.n)} · ${ha(v.area)} га`,
+              color: PROGRESS_HUES[label] ?? ZONE_TYPE_EMPTY_HUE,
+            }))
+            .sort((a, b) => b.value - a.value);
+          const total = items.reduce((a, i) => a + i.value, 0);
+          // ⚠️ `stack` (nowrap БИШ): 10 ангилалын урт нэр («үнийн дүн
+          //    зөвшөөрөөгүй») 240px нарийн баганад хажуугийн legend-д
+          //    давхарлана. Донат дээр, legend доор бүтэн өргөнөөр тавина.
+          return items.length ? (
+            <Donut items={items} center={num(total)} centerLabel="талбар" size={116} width={18} stack />
+          ) : <p className={o.state}>Мэдээлэл алга.</p>;
+        }}
+      </Data>
+    </Card>
+  );
+}
+
+/**
+ * Цэвэрлэгдсэн талбар — ангиллаар нь буулгалтын ӨРТГӨӨР (₮). Статус ба Он.
+ *
+ * ⚠️ ЗӨВХӨН өртөгтэй бүлгүүд график болно. «Цэвэрлэгдээгүй» (257 талбар,
+ * өртөггүй) нь тооны хэмжүүр тул өртгийн баганад холивол хамгийн урт багана
+ * болж, төлбөрийн харьцааг гажуудуулна. Түүнийг доод мөрөнд тоогоор гаргана.
+ */
+function ParcelCleanBars({
+  raw, field, title, note, hues,
+}: {
+  raw: Async<Row[]>;
+  field: string;
+  title: string;
+  note: string;
+  hues: (label: string, i: number) => string;
+}) {
+  return (
+    <Card title={title} note={note}>
+      <Data q={raw} loading="Тооцож байна…">
+        {(rows) => {
+          const by = new Map<string, { n: number; cost: number }>();
+          let pending = 0; // өртөггүй (цэвэрлэгдээгүй) талбарын тоо
+          for (const x of rows) {
+            const cost = Number(x[PC.cost]) || 0;
+            if (cost <= 0) { pending += 1; continue; }
+            const k = text(x[field]).trim() || 'Тодорхойгүй';
+            const cur = by.get(k) ?? { n: 0, cost: 0 };
+            cur.n += 1;
+            cur.cost += cost;
+            by.set(k, cur);
+          }
+          const items = [...by.entries()]
+            .map(([label, v], i) => ({
+              key: label, label, value: v.cost,
+              display: mnt(v.cost),
+              color: hues(label, i),
+            }))
+            .sort((a, b) => b.value - a.value);
+          const totalCost = items.reduce((a, i) => a + i.value, 0);
+          return items.length ? (
+            <>
+              <Bars inline items={items} />
+              <div className={o.miniStats}>
+                <div><span>Нийт өртөг</span><b>{mnt(totalCost)}</b></div>
+                <div><span>Цэвэрлэгдээгүй</span><b>{num(pending)} талбар</b></div>
+              </div>
+            </>
           ) : <p className={o.state}>Мэдээлэл алга.</p>;
         }}
       </Data>

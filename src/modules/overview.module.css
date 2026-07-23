@@ -10,12 +10,15 @@
   display: grid;
   gap: 10px;
   padding: 10px;
-  grid-template-columns: minmax(220px, 260px) minmax(220px, 260px) minmax(0, 1fr) minmax(220px, 260px);
+  /* ⚠️ 5 багана: газар чөлөөлөлт (uld) нь map ба right хооронд зэрэгцээ.
+     4 хажуугийн баганын min-ийг 185px болгосон — эс бөгөөс 1280px дэлгэцэд
+     газрын зураг 220px болж хэт шахагдана. Өргөн дэлгэцэд 240px хүртэл сунана. */
+  grid-template-columns: minmax(185px, 240px) minmax(185px, 240px) minmax(0, 1fr) minmax(185px, 240px) minmax(185px, 240px);
   grid-template-rows: auto minmax(0, 1fr) auto;
   grid-template-areas:
-    'kpi  kpi  kpi  kpi'
-    'left fin  map  right'
-    'bot  bot  bot  bot';
+    'kpi  kpi  kpi  kpi  kpi'
+    'left fin  map  uld  right'
+    'bot  bot  bot  bot  bot';
   background: var(--bg);
   min-width: 0;
   min-height: 0;
@@ -54,6 +57,7 @@
 }
 .left { grid-area: left; }
 .fin { grid-area: fin; }
+.uld { grid-area: uld; }
 .right { grid-area: right; }
 
 /* ── Төв газрын зураг ── */
@@ -325,12 +329,13 @@
 @media (max-width: 1180px) {
   .dash {
     grid-template-columns: 1fr;
-    grid-template-rows: auto auto 58vh auto auto auto;
+    grid-template-rows: auto auto 58vh auto auto auto auto;
     grid-template-areas:
       'kpi'
       'left'
       'map'
       'fin'
+      'uld'
       'right'
       'bot';
     height: auto;

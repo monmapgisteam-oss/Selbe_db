@@ -303,6 +303,37 @@ export const CASHFLOW = {
 } as const;
 
 /**
+ * ГАЗАР ЧӨЛӨӨЛӨЛТ — хоёр тусдаа FeatureServer.
+ *
+ * ⚠️ Эдгээр нь ЕТ (`Selbe_ET_20260721`) болон барилгын хяналтаас ТУСДАА
+ * өгөгдлийн сан. Дашбоардын cross-filter-т ОРОХГҮЙ (өөр ZONE_ID схемтэй) —
+ * зөвхөн газар чөлөөлөлтийн явцыг өөрийн баганад дүрслэнэ.
+ */
+export const PARCEL_LEFT = {
+  // Чөлөөлөгдөөгүй (үлдсэн) нэгж талбар — 224 объект
+  url: 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/%D0%A7%D3%A9%D0%BB%D3%A9%D3%A9%D0%BB%D3%A9%D0%B3%D0%B4%D3%A9%D3%A9%D0%B3%D2%AF%D0%B9_%D0%BD%D1%8D%D0%B3%D0%B6_%D1%82%D0%B0%D0%BB%D0%B1%D0%B0%D1%80_20260718/FeatureServer/67',
+  fields: {
+    /** Чөлөөлөлтийн явц — зөвшилцөх, гэрээлсэн, татгалзсан… */
+    progress: 'явцын_мэдээ',
+    /** Талбай (м²) */
+    area: 'Талбай',
+  },
+} as const;
+
+export const PARCEL_CLEAN = {
+  // Цэвэрлэсэн (одоо чөлөөлж буй) нэгж талбар — 457 объект
+  url: 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/%D0%A1%D1%8D%D0%BB%D0%B1%D1%8D_20_%D0%A7%D0%94_%D0%A1%D0%91%D0%94_%D1%86%D1%8D%D0%B2%D1%8D%D1%80%D0%BB%D1%8D%D0%B3%D1%8D%D1%8D0724/FeatureServer/3',
+  fields: {
+    /** Төлбөрийн статус — дууссан төлбөр авсан / хүлээгдэж байна */
+    status: 'Статус',
+    /** Гүйцэтгэлийн он — 2025 / 2026 */
+    year: 'Он',
+    /** Буулгалт нураалтын нийт өртөг (₮) */
+    cost: 'Нийт',
+  },
+} as const;
+
+/**
  * Гүйцэтгэлийн 4 түвшин.
  *
  * ⚠️ Өнгө нь ОРТОФОТО дээр ялгарах ёстой. Хуучин дараалал (улаан→улбар шар→шар)
