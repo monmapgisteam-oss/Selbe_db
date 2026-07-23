@@ -6,7 +6,8 @@ type Theme = 'light' | 'dark';
 
 const Ctx = createContext<{ theme: Theme; toggle: () => void }>({ theme: 'light', toggle: () => {} });
 
-const KEY = 'selbe-theme';
+/** localStorage түлхүүр — `layout.tsx`-ийн FOUC-ийн эсрэг скрипт ч энэ утгыг уншина */
+export const THEME_KEY = 'selbe-theme';
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   /**
@@ -22,7 +23,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   // Эхлэхдээ: хадгалсан сонголт → байхгүй бол системийн тохиргоо
   useEffect(() => {
-    const saved = localStorage.getItem(KEY) as Theme | null;
+    const saved = localStorage.getItem(THEME_KEY) as Theme | null;
     setTheme(saved ?? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
   }, []);
 
@@ -30,7 +31,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!theme) return;
     document.documentElement.dataset.theme = theme;
-    localStorage.setItem(KEY, theme);
+    localStorage.setItem(THEME_KEY, theme);
   }, [theme]);
 
   return (

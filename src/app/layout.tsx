@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
-import { ThemeProvider } from '@/lib/theme';
+import { ThemeProvider, THEME_KEY } from '@/lib/theme';
 import './globals.css';
 
 const inter = Inter({
@@ -32,7 +32,7 @@ export const viewport: Viewport = {
 // Гэрэл асах анивчилтыг (FOUC) зайлуулах — React ачаалахаас өмнө горимоо тавина
 const THEME_INIT = `
 try {
-  var t = localStorage.getItem('selbe-theme')
+  var t = localStorage.getItem('${THEME_KEY}')
     || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
   document.documentElement.dataset.theme = t;
 } catch (e) {}

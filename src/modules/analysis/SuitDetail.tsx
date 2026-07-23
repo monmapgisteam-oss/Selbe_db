@@ -7,19 +7,8 @@ import {
 } from '@/lib/analysis/config';
 import { scoreColor, scoreLabel, normText, passesNorm, clamp, scoreIndicator, type Part } from '@/lib/analysis/score';
 import type { MapRow } from './SuitMap';
+import { nf, money } from './suit/format';
 import s from './suitability.module.css';
-
-const nf = (v: number | null | undefined, d = 0) =>
-  v == null || !Number.isFinite(v) ? '—' : v.toLocaleString('mn-MN', { minimumFractionDigits: d, maximumFractionDigits: d });
-
-function money(v: number | null | undefined, d = 1) {
-  if (v == null || !Number.isFinite(v)) return '—';
-  const a = Math.abs(v), sign = v < 0 ? '−' : '';
-  if (a >= 1e9) return `${sign}${nf(a / 1e9, d)} тэрбум₮`;
-  if (a >= 1e6) return `${sign}${nf(a / 1e6, d)} сая₮`;
-  if (a >= 1e3) return `${sign}${nf(a / 1e3, 0)} мянга₮`;
-  return `${sign}${nf(a, 0)}₮`;
-}
 
 /**
  * Бүсийн дэлгэрэнгүй — зургийн зүүн дээд буланд хөвөх карт.
