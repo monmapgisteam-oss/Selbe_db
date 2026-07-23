@@ -180,6 +180,21 @@ export const symbolOf = (d: LayerDef, hue = d.hue) => {
 };
 
 /**
+ * Дашбоардын бүс — жигд (улбар шар), ГЭХДЭЭ доорх ангиллуудыг УЛААНААР онцолно.
+ * `uniform` горимд бүсийн давхаргад ашиглана.
+ */
+const ZONE_RED_TYPES = ['Орон сууцны бүс', 'Олон нийтийн бүс'];
+const ZONE_RED = '#dc2626';
+const zoneHighlightRenderer = (d: LayerDef) => ({
+  type: 'unique-value',
+  field: 'TOROL',
+  defaultSymbol: symbolOf(d),
+  uniqueValueInfos: ZONE_RED_TYPES.map((value) => ({
+    value, label: value, symbol: symbolOf(d, ZONE_RED),
+  })),
+} as __esri.RendererProperties);
+
+/**
  * Давхаргын хүрээг зургийн проекцоор.
  *
  * ⚠️ SDK-ийн `FeatureLayer.queryExtent()`-ийг ашиглахгүй: тэр нь `where`-ыг
@@ -271,7 +286,7 @@ function buildLayers(uniform = false): Layer[] {
     ...(d.minScale ? { minScale: d.minScale } : {}),
     elevationInfo: ON_GROUND,
     renderer: uniform
-      ? simple(symbolOf(d))
+      ? (d.id === ZONE_LAYER.id ? zoneHighlightRenderer(d) : simple(symbolOf(d)))
       : d.paint
       ? ({
           type: 'unique-value',

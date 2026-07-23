@@ -4,19 +4,17 @@ import {
   useCallback, useEffect, useMemo, useRef, useState,
   type CSSProperties, type PointerEvent as ReactPointerEvent,
 } from 'react';
-import { MapCanvas, MapProvider, useMap, type Dim } from '@/components/MapCanvas';
+import { MapCanvas, MapProvider, type Dim } from '@/components/MapCanvas';
 import { ViewRail } from '@/components/ViewRail';
 import { LayerCatalog } from '@/components/LayerCatalog';
 import { Suitability } from '@/modules/analysis/Suitability';
 import { Dashboard } from '@/modules/Dashboard';
 import { Icon } from '@/components/Icon';
-import { Search } from '@/components/Search';
 import { useTheme } from '@/lib/theme';
 import { useAsync } from '@/lib/useAsync';
 import { FilterProvider, useFilter } from '@/lib/filter';
 import { usePlanTotals } from '@/lib/totals';
 import { queryStats, count, sum, sqlStr } from '@/lib/query';
-import type { Hit } from '@/lib/search';
 import {
   DEFAULT_VIEW, VIEW_BY_KEY, layerUrl, OID, ZONE_FIELD, PROJECT_AREA_HA,
   PLAN_LAYER_IDS, MONITOR_LAYER_IDS,
@@ -158,7 +156,6 @@ function PortalContent() {
   const [pickedLayer, setPickedLayer] = useState<string | null>(null);
   const { theme, toggle } = useTheme();
   const { clear: clearFilter } = useFilter();
-  const { zoomToWhere } = useMap();
 
   /**
    * Давхаргын тоо, хэмжээ — каталогийн багана, багцын тойм, давхаргын дашбоард
@@ -204,25 +201,6 @@ function PortalContent() {
     setPicked(attrs);
     setPickedLayer(layerId);
   }, []);
-
-  /**
-   * Хайлтын үр дүн рүү үсрэх.
-   *
-   * ⚠️ `setView()`-оор дамжина: тэр нь харагдацын анхны давхаргыг тавьдаг. Дараа
-   * нь хэрэгтэй давхаргыг нэмнэ — анхдагчид ороогүй байж болно (жишээ нь
-   * «Ерөнхий мэдээлэл» зөвхөн бүсээр нээгддэг ч барилгаас олдсон бол өөр).
-   *
-   * ⚠️ Давхарга ил болох хүртэл нэг frame хүлээнэ — эс бөгөөс `zoomToWhere` нь
-   * зурагт хараахан нэмэгдээгүй давхаргыг олохгүй.
-   */
-  const goToHit = useCallback(
-    (hit: Hit) => {
-      setView(hit.view);
-      setVisible((prev) => (prev.includes(hit.layerId) ? prev : [...prev, hit.layerId]));
-      requestAnimationFrame(() => zoomToWhere(hit.layerId, hit.where));
-    },
-    [setView, zoomToWhere],
-  );
 
   /* ── Багануудын өргөн ── */
 
@@ -279,10 +257,6 @@ function PortalContent() {
               <h1 className={s.brandName}>Сэлбэ 20 минутын хот</h1>
               <span className={s.brandSub}>Ерөнхий төлөвлөгөө ба төсвийн портал</span>
             </span>
-          </div>
-
-          <div className={s.headSearch}>
-            <Search onPick={goToHit} />
           </div>
 
           {/* Харагдац сонголт — толгойд хэвтээ таб хэлбэрээр */}
