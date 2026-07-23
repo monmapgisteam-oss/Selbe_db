@@ -170,12 +170,16 @@ export function Bars({
   selected,
   onSelect,
   limit,
+  inline = false,
 }: {
   items: Bar[];
   color?: string;
   max?: number;
-  selected?: string | null;
+  /** Сонгосон key(үүд) — олон сонголтод массив */
+  selected?: string | string[] | null;
   onSelect?: (key: string) => void;
+  /** Нэг эгнээ: шошго | бар | утга (өндөр багасна). Заагаагүй бол шошго дээр. */
+  inline?: boolean;
   /**
    * Эхэндээ хэдэн мөр харуулах. Үлдсэнийг «бүгдийг харах» товчоор нээнэ.
    *
@@ -186,6 +190,7 @@ export function Bars({
   limit?: number;
 }) {
   const [all, setAll] = useState(false);
+  const sel = selected == null ? [] : Array.isArray(selected) ? selected : [selected];
   // Хэмжээсийг БҮХ мөрөөр тогтооно — эс бөгөөс задлахад баганы урт үсэрнэ
   const top = max ?? Math.max(1, ...items.map((i) => i.value));
   const hidden = limit != null && !all ? Math.max(0, items.length - limit) : 0;
@@ -195,9 +200,17 @@ export function Bars({
     <div className={s.bars}>
       {shown.map((it) => {
         const w = Math.max(0, Math.min(100, (it.value / top) * 100));
-        const on = selected === it.key;
+        const on = sel.includes(it.key);
         // <button> дотор зөвхөн phrasing content зөвшөөрөгдөнө — <div> ашиглаж болохгүй
-        const body = (
+        const body = inline ? (
+          <>
+            <span className={s.barName} title={it.label}>{it.label}</span>
+            <span className={s.barTrack}>
+              <i className={s.barFill} style={{ width: `${w}%` }} />
+            </span>
+            <span className={`${s.barVal} num`}>{it.display ?? it.value}</span>
+          </>
+        ) : (
           <>
             <span className={s.barTop}>
               <span className={s.barName} title={it.label}>
@@ -210,20 +223,21 @@ export function Bars({
             </span>
           </>
         );
+        const rowCls = `${s.barRow} ${inline ? s.barRowInline : ''}`;
         const st = tone(it.color ?? color);
         return onSelect ? (
           <button
             key={it.key}
             type="button"
             aria-pressed={on}
-            className={`${s.barRow} ${s.barClick} ${on ? s.barOn : ''}`}
+            className={`${rowCls} ${s.barClick} ${on ? s.barOn : ''}`}
             style={st}
             onClick={() => onSelect(it.key)}
           >
             {body}
           </button>
         ) : (
-          <div key={it.key} className={s.barRow} style={st}>
+          <div key={it.key} className={rowCls} style={st}>
             {body}
           </div>
         );
@@ -303,18 +317,26 @@ export function Donut({
   centerLabel,
   selected,
   onSelect,
+  nowrap = false,
+  stack = false,
 }: {
-  items: { key: string; label: string; value: number; color: string }[];
+  items: { key: string; label: string; value: number; color: string; display?: ReactNode }[];
   size?: number;
   width?: number;
   /** Голд харуулах утга. Заагаагүй бол нийлбэр. */
   center?: ReactNode;
   centerLabel?: string;
-  /** Сонгосон зүсмэгийн key — идэвхтэй бол бусад нь бүдгэрнэ */
-  selected?: string | null;
+  /** Сонгосон зүсмэгийн key(үүд) — идэвхтэй бол бусад нь бүдгэрнэ. Олон сонголтод массив. */
+  selected?: string | string[] | null;
   /** Зүсмэг/тайлбар дарахад — байвал диаграм шүүлтийн удирдлага болно */
   onSelect?: (key: string) => void;
+  /** Тайлбарыг пайн диаграмын ХАЖУУД албадаж зэрэгцүүлнэ (доош ороохгүй) */
+  nowrap?: boolean;
+  /** Тайлбарыг пайн диаграмын ДООР бүтэн өргөнөөр (нарийн баганад тохиромжтой) */
+  stack?: boolean;
 }) {
+  const sel = selected == null ? [] : Array.isArray(selected) ? selected : [selected];
+  const hasSel = sel.length > 0;
   const total = items.reduce((a, b) => a + b.value, 0);
   const r = (size - width) / 2;
   const circ = 2 * Math.PI * r;
@@ -329,21 +351,21 @@ export function Donut({
   });
 
   return (
-    <div className={s.donutWrap}>
+    <div className={`${s.donutWrap} ${nowrap ? s.donutRow : ''} ${stack ? s.donutStack : ''}`}>
       <div className={s.donut} style={{ width: size, height: size }}>
         <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
           {/* -90° эргүүлж 12 цагаас эхлүүлнэ */}
           <g transform={`rotate(-90 ${size / 2} ${size / 2})`}>
             <circle className={s.donutTrack} cx={size / 2} cy={size / 2} r={r} strokeWidth={width} />
             {slices.map((sl) => {
-              const dim = selected != null && selected !== sl.key;
+              const dim = hasSel && !sel.includes(sl.key);
               return (
                 <circle
                   key={sl.key}
                   cx={size / 2}
                   cy={size / 2}
                   r={r}
-                  strokeWidth={selected === sl.key ? width + 3 : width}
+                  strokeWidth={sel.includes(sl.key) ? width + 3 : width}
                   stroke={sl.color}
                   strokeOpacity={dim ? 0.28 : 1}
                   fill="none"
@@ -366,12 +388,12 @@ export function Donut({
 
       <ul className={s.donutLegend}>
         {slices.map((sl) => {
-          const on = selected === sl.key;
+          const on = sel.includes(sl.key);
           const body = (
             <>
               <span className={s.legendDot} style={{ background: sl.color }} />
               <span className={s.donutName}>{sl.label}</span>
-              <b className={`${s.donutPct} num`}>{(sl.frac * 100).toFixed(0)}%</b>
+              <b className={`${s.donutPct} num`}>{sl.display ?? `${(sl.frac * 100).toFixed(0)}%`}</b>
             </>
           );
           return onSelect ? (

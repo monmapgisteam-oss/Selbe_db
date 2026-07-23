@@ -126,6 +126,12 @@
 /* ── Баганан жагсаалт ── */
 .bars { display: flex; flex-direction: column; gap: 11px; }
 .barRow { display: flex; flex-direction: column; gap: 5px; width: 100%; text-align: left; }
+/* Нэг эгнээ: шошго | бар | утга — өндөр багасна */
+.barRowInline { flex-direction: row; align-items: center; gap: 8px; }
+/* Шошгыг «...»-ээр таслахгүй — шаардлагатай бол мөр даруулж БҮТЭН харуулна */
+.barRowInline .barName { flex: 0 0 42%; font-size: 0.72rem; white-space: normal; overflow: visible; line-height: 1.18; }
+.barRowInline .barTrack { flex: 1; }
+.barRowInline .barVal { flex: none; font-size: 0.72rem; }
 .barClick { border-radius: var(--r-sm); padding: 5px 6px; margin: -5px -6px; transition: background 0.12s; }
 .barClick:hover { background: var(--surface-2); }
 .barOn { background: color-mix(in srgb, var(--tone, var(--hue)) 10%, transparent); }
@@ -138,7 +144,8 @@
   font-size: 0.76rem;
   width: 100%;
 }
-.barName { color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Шошгыг «...»-ээр таслахгүй — урт нэр мөр даруулж БҮТЭН харагдана */
+.barName { color: var(--ink-2); min-width: 0; white-space: normal; overflow-wrap: anywhere; line-height: 1.25; }
 .barVal { flex: none; font-weight: 650; color: var(--ink); font-size: 0.74rem; }
 .barTrack { height: 5px; border-radius: 99px; background: var(--sunken); overflow: hidden; }
 .barFill { display: block; height: 100%; border-radius: 99px; background: var(--tone, var(--hue)); transition: width 0.6s var(--ease); }
@@ -250,6 +257,17 @@
 
 /* ── Дугуй диаграм (donut) ── */
 .donutWrap { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+/* Пайн диаграмыг хажууд албадаж зэрэгцүүлнэ — тайлбар багасаж багтана.
+   Нэрийг ellipsis-ээр таслахгүй, шаардлагатай бол мөр даруулж БҮТЭН харуулна. */
+.donutRow { flex-wrap: nowrap; }
+.donutRow .donutLegend { min-width: 0; gap: 4px; }
+/* Тайлбарыг пайны ДООР бүтэн өргөнөөр — нарийн баганад давхацахгүй */
+.donutStack { flex-direction: column; align-items: center; flex-wrap: nowrap; gap: 12px; }
+.donutStack .donutLegend { width: 100%; min-width: 0; flex: none; }
+.donutStack .donutName { white-space: normal; overflow: visible; }
+.donutRow .donutItem { gap: 5px; font-size: 0.68rem; align-items: flex-start; }
+.donutRow .donutName { white-space: normal; overflow: visible; line-height: 1.2; }
+.donutRow .legendDot { margin-top: 2px; }
 .donut { position: relative; flex: none; }
 .donutTrack { fill: none; stroke: var(--line); }
 .donutCenter {
