@@ -426,9 +426,24 @@ function PlanOverview({
            * дэлгэц доор үлдэнэ. Эхний хоёр нь «юу вэ» (төлөв) ба «юунд
            * зориулсан» (зориулалт) хоёрыг хамарна.
            */
-          const faceted = layers.flatMap((x) =>
-            (x.d.facets ?? []).slice(0, 2).map((f) => ({ d: x.d, f })),
-          );
+          const faceted = layers.flatMap((x) => {
+            const fs = (x.d.facets ?? []).slice(0, 2);
+            if (fs.length) return fs.map((f) => ({ d: x.d, f }));
+            /**
+             * ⚠️ 29 давхаргын ЗӨВХӨН 6 нь ангилалтай. Ангилалгүй давхаргыг
+             * дангаар нь сонгоход (жишээ нь «Цахилгааны шугам») багцын хэсэгт
+             * ганц баганатай чарт л үлдэж, карт бараг хоосон харагддаг байлаа —
+             * хоёр өөр багцаас нэг нэг давхарга сонгоход хоёулаа хоосон.
+             *
+             * Ийм давхаргад БҮСЭЭР задлах нь утга бүхий задаргаа: «энэ шугам
+             * 52 бүсийн алинд хэр урттай вэ».
+             *
+             * ⚠️ `ZONE_ID`-гүй давхаргад (`noZone`) хүсэлт унана; бүс аль хэдийн
+             * сонгогдсон бол задаргаа нь ганц баганатай болох тул алгасна.
+             */
+            if (x.d.noZone || zone) return [];
+            return [{ d: x.d, f: { field: ZONE_FIELD, label: 'Бүсээр' } }];
+          });
 
           /**
            * ⚠️ ГАНЦ баганатай цуваа чарт ХЭРЭГГҮЙ. «Бүс» багц нэг давхаргатай
@@ -603,10 +618,22 @@ function LayerTypeCharts({
   zone: string | null;
 }) {
   const where = whereFor(d, zone);
+  /** Задаргаа нь БҮСЭЭР үү, ангиллаар уу — нэгж үг ба хоосон шошго үүнээс */
+  const byZone = f.field === ZONE_FIELD;
 
   const q = useAsync(async () => {
     const rows = await queryGroup(layerUrl(d), f.field, layerStats(d), where);
-    return groups(rows, f.field, 'Бүртгэгдээгүй', ['n', 'q'])
+    const g = groups(rows, f.field, byZone ? 'Тодорхойгүй' : 'Бүртгэгдээгүй', ['n', 'q']);
+    /**
+     * ⚠️ «Бүсийн мэдээлэл байхгүй» мөрийг ХАСАХГҮЙ, ЗӨВХӨН нэрийг нь солино.
+     * Хасвал чартын нийлбэр картын дүнгээс зөрнө («49.7 км» карт дээр,
+     * «45.9 км» чарт дээр) — хэрэглэгч алдаа гэж уншина. Бүсийн гадна байгаа
+     * объект нь ч бас өгөгдөл тул өөрийн мөртэй байх ёстой.
+     */
+    return g
+      .map((x) => (byZone && x.label.trim() === ZONE_NONE.trim()
+        ? { ...x, label: 'Бүсэд хамаарахгүй' }
+        : x))
       .sort((a, b) => b.values.n - a.values.n);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [d.id, f.field, where]);
@@ -651,7 +678,9 @@ function LayerTypeCharts({
       <div className={s.chartBlock}>
         <div className={s.facetHead}>
           {d.title}
-          <span className={s.facetNote}>{f.label} · {q.data.length} төрөл</span>
+          <span className={s.facetNote}>
+            {f.label} · {q.data.length} {byZone ? 'бүс' : 'төрөл'}
+          </span>
         </div>
 
         {/* Донат — төрлийн эзлэх хувь. 8-аас олон зүсмэг уншигдахгүй тул багана л үлдэнэ. */}
@@ -672,7 +701,9 @@ function LayerTypeCharts({
       {sized.length > 1 && (
         <div className={s.chartBlock}>
           <div className={s.facetHead}>
-            {d.qty!.unit === 'м²' ? 'Талбай төрлөөр' : 'Урт төрлөөр'}
+            {d.qty!.unit === 'м²'
+              ? (byZone ? 'Талбай бүсээр' : 'Талбай төрлөөр')
+              : (byZone ? 'Урт бүсээр' : 'Урт төрлөөр')}
             <span className={s.facetNote}>{qtyText(d, q.data.reduce((a, x) => a + x.values.q, 0))}</span>
           </div>
           <Bars items={sized} limit={8} outlined legend />
