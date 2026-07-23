@@ -50,8 +50,14 @@ const is3D = (d: Dim) => d === '3d' || d === 'bim';
 
 type MapApi = {
   view: AnyView | null;
-  /** Ангиллын тодруулга (SQL where). null = цуцлах. Таарахгүйг БҮДГЭРҮҮЛНЭ. */
-  setHighlight: (where: string | null) => void;
+  /**
+   * Ангиллын тодруулга (SQL where). null = цуцлах. Таарахгүйг БҮДГЭРҮҮЛНЭ.
+   * `onlyLayerIds` заавал бол ЗӨВХӨН тэдгээр давхаргад хэрэглэнэ — шүүлтийн
+   * талбар бусад давхаргад байхгүй үед (жишээ нь `Barilga_ty` нь бүсийн давхаргад
+   * байхгүй) featureEffect унахаас сэргийлнэ. Нэг эсвэл олон давхарга. Заагаагүй
+   * бол бүх давхаргад.
+   */
+  setHighlight: (where: string | null, onlyLayerIds?: string | string[]) => void;
   /** Давхаргыг бүхэлд нь харагдах хүрээнд нь аваачих */
   zoomToLayer: (id: string) => void;
   /** Тодорхой бүсийн хүрээнд аваачих */
@@ -277,25 +283,31 @@ export function MapProvider({ children }: { children: ReactNode }) {
   const [view, setView] = useState<AnyView | null>(null);
   const register = useCallback((v: AnyView | null) => setView(v), []);
 
-  const [where, setWhere] = useState<string | null>(null);
+  const [hl, setHl] = useState<{ where: string | null; only?: string | string[] }>({ where: null });
 
   useEffect(() => {
     if (!view || view.destroyed || !view.map) return;
+    const onlyList = hl.only == null ? null : Array.isArray(hl.only) ? hl.only : [hl.only];
     view.map.layers.forEach((l) => {
       if (PASSIVE.has(l.id) || !('featureEffect' in l)) return;
       const fl = l as FeatureLayer;
       // ⚠️ `visible` шалгахгүй: нуугдсан давхаргын эффектийг цэвэрлэх боломжтой
       //    байх ёстой, эс бөгөөс дахин асаахад хуучин шүүлт үлдэнэ.
-      fl.featureEffect = where
+      // `only` заасан бол ЗӨВХӨН тэр давхаргууд — бусдынхыг цэвэрлэнэ.
+      const apply = hl.where && (!onlyList || onlyList.includes(l.id));
+      fl.featureEffect = apply
         ? ({
-            filter: { where },
+            filter: { where: hl.where },
             excludedEffect: 'opacity(15%) grayscale(80%)',
           } as unknown as __esri.FeatureEffect)
         : (null as unknown as __esri.FeatureEffect);
     });
-  }, [view, where]);
+  }, [view, hl]);
 
-  const setHighlight = useCallback((w: string | null) => setWhere(w), []);
+  const setHighlight = useCallback(
+    (where: string | null, only?: string | string[]) => setHl({ where, only }),
+    [],
+  );
 
   const goTo = useCallback(async (url: string, w: string) => {
     if (!view || view.destroyed) return;

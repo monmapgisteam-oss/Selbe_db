@@ -223,7 +223,7 @@ export default function Portal() {
         {/* Ерөнхий дашбоард — газрын зургийг тойрсон үзүүлэлтийн самбар */}
         {isDash && (
           <div className={s.dash}>
-            <Dashboard dim={dim} zone={zone} />
+            <Dashboard dim={dim} zone={zone} setZone={setZone} />
           </div>
         )}
 
