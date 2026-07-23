@@ -1,14 +1,138 @@
 /* ── Дэд гарчиг (Section дотор) ── */
+/* ⚠️ Чартын нэр 0.74 → 0.9rem. Өмнө нь тайлбарын тэмдэглэлээс арайхийн том
+   байсан тул чарт бүр хаана эхэлж, хаана дуусахыг нүдээр ялгахад хүндрэлтэй
+   байлаа — олон чарт дараалахад бүгд нэг урсгал мэт харагдана. */
 .facetHead {
   display: flex;
   align-items: baseline;
   gap: 8px;
   margin-bottom: 10px;
-  font-size: 0.74rem;
+  font-size: 0.9rem;
   font-weight: 650;
-  color: var(--ink-2);
+  color: var(--ink);
 }
-.facetNote { font-size: 0.68rem; font-weight: 400; color: var(--ink-3); }
+.facetNote { font-size: 0.7rem; font-weight: 400; color: var(--ink-3); }
+
+/**
+ * ЧАРТЫН БЛОК — нэг гарчиг + нэг чарт.
+ *
+ * ⚠️ Тусгаарлах зураас нь чартын ДОТОР биш, чарт ХООРОНД. Дотор нь байхад
+ * (тайлбарын дээд хүрээ) нэг чарт хоёр хэсэг мэт харагдаж, зэрэгцээ хэдэн
+ * чартын зааг нь эсрэгээрээ алга болдог байлаа. `+` сонгогч нь ЭХНИЙ блокт
+ * зураас өгөхгүй — хэсгийн гарчгийн доор шууд зураас гарах нь илүүц.
+ */
+.chartBlock + .chartBlock {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+/* ══════════ Багцын карт — тойм ба сонголтын аль алинд ══════════ */
+
+/**
+ * ⚠️ `auto-fit` + `minmax` нь шаардлага №2-ыг ӨӨРӨӨ шийднэ: 10 карт байвал
+ * 2 багана болж жижгэрч, 2 карт үлдвэл тэр хоёр нь бүтэн өргөнийг эзлэн
+ * томорно. Картын тоог гараар тоолж багана тохируулах шаардлагагүй.
+ */
+.cardGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(var(--card-min, 132px), 1fr));
+  gap: 9px;
+}
+
+/**
+ * ЦӨӨН карт → ӨРГӨН карт.
+ *
+ * ⚠️ `auto-fit` ганцаараа хангалтгүй: 2 картыг 2 багана бүрэн дүүргэдэг тул
+ * 10 картын үеийнхтэй ЯГ ижил хэмжээтэй үлдэнэ. Картын тоо цөөрөхөд
+ * `--card-min`-ыг `100%` болгож нэг багана болгоно — карт бүтэн өргөнийг
+ * авч, үзүүлэлт нь хэвтээ эгнэн том фонтоор гарна.
+ */
+.cardWide .cardStats { flex-direction: row; flex-wrap: wrap; gap: 6px 22px; }
+.cardWide .cardStat { flex-direction: column; align-items: flex-start; gap: 0; }
+.cardWide .cardVal { font-size: 1.5rem; line-height: 1.15; }
+.cardWide .cardKey { font-size: 0.66rem; }
+.cardWide .cardTitle { font-size: 0.84rem; }
+.cardWide { gap: 12px; padding: 15px 16px; }
+
+/**
+ * БҮРЭН карт — толгой, үзүүлэлт, донат, бүх чарт НЭГ хайрцагт.
+ *
+ * ⚠️ Урьд нь карт нь зөвхөн тоймын хайрцаг байсан бөгөөд чартууд нь доор
+ * тусдаа хэсгүүд болж гардаг байв. 4 багц сонговол дээр нь 4 карт, доор нь
+ * 4 хэсэг тарж, аль чарт аль багцынх болох нь алдагддаг байлаа.
+ *
+ * ⚠️ `min-width: 0` — grid элемент дотор урт нэр (тайлбарын мөр) баганыг
+ * тэлэхээс сэргийлнэ; эс бөгөөс 2 багана нь самбараас халина.
+ */
+.cardFull {
+  min-width: 0;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+.cardFull > .cardHead,
+.cardFull > .cardStats {
+  padding-left: 15px;
+  padding-right: 15px;
+}
+.cardFull > .cardHead { padding-top: 14px; }
+.cardFull > .cardStats { padding-bottom: 13px; }
+
+/* Картын агуулга — толгойгоос зураасаар тусгаарлана (дэвсгэргүй) */
+.cardBody {
+  padding: 14px 15px 15px;
+  border-top: 1px solid color-mix(in srgb, var(--tone) 30%, var(--line));
+}
+/* Чартын эхний блокт дээд зураас хэрэггүй — толгойн зураас аль хэдийн бий */
+.cardBody > .chartBlock:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+/**
+ * ⚠️ ДЭВСГЭРГҮЙ. Урьд нь карт бүр өөрийн өнгөний 9% угаалгатай байв — 10 карт
+ * дараалахад самбар өнгөт хайрцгуудын жагсаалт болж, дотор нь байгаа чарт,
+ * тоо нь дэвсгэртэйгээ өрсөлддөг байлаа. Багцын өнгө нь ХҮРЭЭ ба ДҮРС дээр
+ * хэвээр — тэр хоёр таних тэмдэг болоход хангалттай.
+ */
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 12px 13px;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--tone) 40%, var(--line));
+  background: transparent;
+  text-align: left;
+  transition: border-color 0.14s, transform 0.1s;
+}
+button.card:hover { border-color: var(--tone); }
+button.card:active { transform: scale(0.985); }
+.cardOn { border-color: var(--tone); }
+
+.cardHead { display: flex; align-items: center; gap: 7px; }
+.cardIcon {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: 7px;
+  color: var(--tone);
+  background: color-mix(in srgb, var(--tone) 20%, transparent);
+}
+.cardTitle {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.73rem;
+  font-weight: 650;
+  color: var(--ink);
+  line-height: 1.25;
+}
+
+/* Картын үзүүлэлтүүд — «12.3 км», «96.8 га», «654 цэг» */
+.cardStats { display: flex; flex-direction: column; gap: 4px; }
+.cardStat { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; }
+.cardVal { font-size: 0.98rem; font-weight: 700; color: var(--ink); letter-spacing: -0.01em; }
+.cardKey { font-size: 0.62rem; color: var(--ink-3); white-space: nowrap; }
+.cardEmpty { font-size: 0.66rem; color: var(--ink-3); }
 
 .note { font-size: 0.73rem; line-height: 1.55; color: var(--ink-3); }
 

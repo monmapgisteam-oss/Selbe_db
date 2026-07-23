@@ -2,6 +2,7 @@
 
 import { useState, type CSSProperties, type Dispatch, type SetStateAction } from 'react';
 import { Section, Stats, Stat, Bars, Donut, Rows, Data, Empty } from '@/components/ui';
+import { Icon } from '@/components/Icon';
 import { LayerSwatch } from '@/components/LayerSwatch';
 import { useMap } from '@/components/MapCanvas';
 import { useAsync, type Async } from '@/lib/useAsync';
@@ -9,10 +10,10 @@ import { queryGroup, count, sum, groups, groupWhere, sqlStr, type Row } from '@/
 import {
   LAYER_BY_ID, layerUrl, OID, ZONE_FIELD, ZONE_NONE, ZONE_LAYER, ZONE_FIELDS,
   BUILT_LAYER, BUILT_FIELDS, BUILT_STATUS, ZONE_TYPES, ZONE_TYPE_EMPTY_HUE,
-  LAYER_GROUPS, GROUP_LAYERS, PLAN_LAYER_IDS, groupOf,
+  LAYER_GROUPS, GROUP_LAYERS, PLAN_LAYER_IDS, groupOf, VIEW_BY_KEY,
   type LayerDef, type ViewKey,
 } from '@/lib/services';
-import { whereFor, qtyText, geomText, groupQty, layerStats, type Totals } from '@/lib/totals';
+import { whereFor, qtyText, geomText, layerStats, type Totals } from '@/lib/totals';
 import { num, text } from '@/lib/format';
 import { BuildingSummary, BuildingWork } from './BuildingPanel';
 import { SurveySummary, useSurvey, useOutside } from './SurveyPanel';
@@ -71,7 +72,21 @@ export function ViewPanel({
         pickedLayer === ZONE_LAYER.id
           ? <PickedZone attrs={picked} zone={zone} setZone={setZone} />
           : LAYER_BY_ID[pickedLayer]
-            ? <PickedFeature attrs={picked} def={LAYER_BY_ID[pickedLayer]} setZone={setZone} />
+            ? (
+              <PickedFeature
+                attrs={picked}
+                def={LAYER_BY_ID[pickedLayer]}
+                setZone={setZone}
+                isolated={visible.length === 1 && visible[0] === pickedLayer}
+                onIsolate={() =>
+                  setVisible((prev) =>
+                    prev.length === 1 && prev[0] === pickedLayer
+                      ? PLAN_LAYER_IDS.slice()
+                      : [pickedLayer],
+                  )
+                }
+              />
+            )
             : null
       )}
 
@@ -95,29 +110,217 @@ export function ViewPanel({
           visible={visible}
           setVisible={setVisible}
           setLayer={setLayer}
-          onOpen={openCatalog}
         />
       )}
     </>
   );
 }
 
-/* ═════════════════ Тойм — багцаар ═════════════════ */
+/* ═════════════════ Тойм — сонгосон давхаргууд, геометрийн төрлөөр ═════════════════ */
 
+/**
+ * ГЕОМЕТРИЙН ТӨРӨЛ бүрийн хэмжигдэхүүн.
+ *
+ * ⚠️ Талбай, урт, ширхэг гурвыг НЭГ график дээр нэмж болохгүй: «26.7 га» ба
+ * «65.3 км»-ийн нийлбэр утгагүй, харин «654 худаг»-ийг метрээр хэмжих аргагүй.
+ * Тиймээс төрөл бүр өөрийн график, өөрийн нэгжтэй.
+ */
+const GEOM_CHARTS = [
+  {
+    geom: 'area' as const,
+    title: 'Талбайн давхарга',
+    /** Индикаторын богино шошго — «Талбай 157.2 га» */
+    short: 'Талбай',
+    note: 'га',
+    /** м² → га */
+    value: (d: LayerDef, t: Totals) => (d.qty ? t.q / 10_000 : 0),
+    display: (v: number, t: Totals) => `${num(v, 1)} га · ${num(t.n)}`,
+  },
+  {
+    geom: 'line' as const,
+    title: 'Шугаман давхарга',
+    short: 'Урт',
+    note: 'км',
+    /** «м» → км; «км» нэгжтэй давхарга шууд */
+    value: (d: LayerDef, t: Totals) => (!d.qty ? 0 : d.qty.unit === 'км' ? t.q : t.q / 1_000),
+    display: (v: number, t: Totals) => `${num(v, 1)} км · ${num(t.n)}`,
+  },
+  {
+    geom: 'point' as const,
+    title: 'Цэгэн давхарга',
+    short: 'Цэг',
+    note: 'ширхэг',
+    /** Цэгт хэмжээ гэж байхгүй — тоо нь өөрөө хэмжигдэхүүн */
+    value: (_d: LayerDef, t: Totals) => t.n,
+    display: (v: number) => `${num(v)}`,
+  },
+  /**
+   * ⚠️ ХЭМЖЭЭГҮЙ талбай/шугам. Зарим давхарга (жишээ нь «Зам (талбай)» —
+   * 1,651 объект) зөвхөн ГЕОМЕТРТЭЙ, атрибутгүй тул урт/талбайг нь тооцох
+   * боломжгүй. Эдгээрийг га/км-ийн графикт оруулбал утга нь 0 болж чимээгүй
+   * УНАНА — чеклэсэн давхарга самбарт огт харагдахгүй. Тиймээс өөрийн
+   * хэсэгтэй: хэмжээг нь мэдэхгүй ч тоо нь мэдэгдэнэ.
+   */
+  {
+    geom: 'other' as const,
+    title: 'Хэмжээ бүртгэгдээгүй',
+    short: 'Хэмжээгүй',
+    note: 'ширхэг',
+    value: (_d: LayerDef, t: Totals) => t.n,
+    display: (v: number) => `${num(v)}`,
+  },
+];
+
+/**
+ * Давхарга аль графикт орох вэ.
+ *
+ * Цэг → үргэлж «цэгэн». Талбай/шугам нь ХЭМЖЭЭТЭЙ бол өөрийн нэгжийн графикт,
+ * хэмжээгүй бол «бүртгэгдээгүй» рүү — аль нэгэнд нь ЗААВАЛ орно.
+ */
+const chartOf = (d: LayerDef, t: Totals): 'area' | 'line' | 'point' | 'other' =>
+  d.geom === 'point' ? 'point'
+    : d.qty && t.q > 0 ? d.geom
+      : 'other';
+
+/**
+ * БАГЦЫН нэгдсэн хэмжигдэхүүн — картанд харуулах утгууд.
+ *
+ * ⚠️ Урт, талбай, цэг ГУРВЫГ ТУСАД нь хураана. Багц дотор шугам ба талбай
+ * хольцтой байдаг («Зам»-д 98.2 км тэнхлэг ба 26.7 га явган зам хоёул) тул
+ * нэг тоо болгож нэмбэл утгагүй дүн гарна.
+ */
+function cardStats(ids: string[], map: ReadonlyMap<string, Totals>) {
+  let km = 0, ha = 0, pts = 0, n = 0;
+  for (const id of ids) {
+    const d = LAYER_BY_ID[id];
+    const t = map.get(id);
+    if (!d || !t) continue;
+    n += t.n;
+    if (d.geom === 'point') { pts += t.n; continue; }
+    if (!d.qty || t.q <= 0) continue;
+    if (d.qty.unit === 'км') km += t.q;
+    else if (d.qty.unit === 'м') km += t.q / 1_000;
+    else ha += t.q / 10_000;
+  }
+  return { layers: ids.length, n, km, ha, pts };
+}
+
+/** Багцын карт — тойм ба сонголтын аль алинд ижил хэлбэр */
+function GroupCard({
+  g, ids, map, on, wide, onClick, children,
+}: {
+  g: (typeof LAYER_GROUPS)[number];
+  ids: string[];
+  map: ReadonlyMap<string, Totals>;
+  on?: boolean;
+  /** Цөөн карттай үед — бүтэн өргөн, том фонт */
+  wide?: boolean;
+  onClick?: () => void;
+  /**
+   * Багцын БҮХ агуулга — донат, чартууд, тайлбар. Өгвөл карт нь тоймын
+   * хайрцаг биш, БҮРЭН хэсэг болно.
+   *
+   * ⚠️ Урьд нь карт нь зөвхөн гурван тоо харуулж, чартууд нь доор ТУСДАА
+   * хэсгүүд болж гардаг байв — 4 багц сонговол картууд дээр, чартууд нь
+   * хэдэн дэлгэц доор тарж, аль чарт аль багцынх болох нь тодорхойгүй
+   * болдог байлаа. Одоо багц бүр өөрийн хайрцагтай.
+   */
+  children?: React.ReactNode;
+}) {
+  const x = cardStats(ids, map);
+  const rows: { v: string; k: string }[] = [];
+  if (x.km > 0) rows.push({ v: num(x.km, 1), k: 'км' });
+  if (x.ha > 0) rows.push({ v: num(x.ha, 1), k: 'га' });
+  if (x.pts > 0) rows.push({ v: num(x.pts), k: 'цэг' });
+
+  const body = (
+    <>
+      <span className={s.cardHead}>
+        <span className={s.cardIcon}><Icon name={g.icon} size={13} /></span>
+        <span className={s.cardTitle}>{g.title}</span>
+      </span>
+      <span className={s.cardStats}>
+        <span className={s.cardStat}>
+          <span className={`${s.cardVal} num`}>{num(x.layers)}</span>
+          <span className={s.cardKey}>төрөл</span>
+        </span>
+        {rows.map((r) => (
+          <span key={r.k} className={s.cardStat}>
+            <span className={`${s.cardVal} num`}>{r.v}</span>
+            <span className={s.cardKey}>{r.k}</span>
+          </span>
+        ))}
+        {/* ⚠️ Хэмжээгүй багц ч гэсэн хоосон харагдаж болохгүй — тоогоо өгнө */}
+        {!rows.length && (
+          <span className={s.cardStat}>
+            <span className={`${s.cardVal} num`}>{num(x.n)}</span>
+            <span className={s.cardKey}>объект</span>
+          </span>
+        )}
+      </span>
+    </>
+  );
+
+  const cls = `${s.card} ${wide ? s.cardWide : ''} ${on ? s.cardOn : ''} ${children ? s.cardFull : ''}`;
+  const st = { '--tone': g.hue } as CSSProperties;
+
+  // ⚠️ Агуулгатай карт нь <div>: <button> дотор чарт, товч байрлуулж болохгүй
+  if (children) {
+    return <div className={cls} style={st}>{body}<div className={s.cardBody}>{children}</div></div>;
+  }
+  return onClick ? (
+    <button type="button" aria-pressed={!!on} className={cls} style={st} onClick={onClick}>
+      {body}
+    </button>
+  ) : (
+    <div className={cls} style={st}>{body}</div>
+  );
+}
+
+/**
+ * Картын сүлжээ — картын тооноос хамаарч баганын ДООД өргөнийг тохируулна.
+ *
+ *   · 1 карт      → `100%`  — бүтэн өргөн
+ *   · 2+ карт     → `260px` — самбар зөвшөөрвөл 2 багана, эс бөгөөс дараална
+ *   · тойм (10)   → `210px` — 360px самбарт НЭГ багана: 10 карт доошоо
+ *                             дараалж, тус бүр нь бүтэн өргөн, том фонттой.
+ *                             Самбарыг өргөсгөвөл 2–3 багана болно.
+ *
+ * ⚠️ Тогтмол `repeat(2, 1fr)` БИШ: самбар 300px хүртэл нарийсдаг бөгөөд тэнд
+ * хоёр багана нь 140px тус бүр болж, дотор нь донат ба тайлбар багтахгүй.
+ * `auto-fit` + доод хязгаар нь өргөн байвал 2 багана, нарийн бол 1 багана
+ * болгож ӨӨРӨӨ шийднэ — самбарын баруун ирмэгийг чирж өргөсгөнө үү.
+ */
+const CARD_WIDE_MAX = 1;
+const gridStyle = (n: number, compact = false) =>
+  ({ '--card-min': compact ? '210px' : n <= CARD_WIDE_MAX ? '100%' : '260px' }) as CSSProperties;
+
+/**
+ * ТОЙМ — ХОЁР ГОРИМ, солигдоно.
+ *
+ *   · Сонголт ХИЙГЭЭГҮЙ → «ерөнхий» горим: 29 давхаргын багцчилсан зураг
+ *     (нийт үзүүлэлт, багцаар эзлэх хувь, багцын хэмжээ).
+ *   · Сонголт ХИЙСЭН   → «сонголтын» горим: зөвхөн сонгосон багц/давхаргын
+ *     чартууд. Ерөнхий чартууд алга болно.
+ *
+ * ⚠️ «Сонголт хийгээгүй» гэдгийг `visible.length === 0` гэж ҮЗЭХГҮЙ: апп
+ * нээгдэхэд бүсийн давхарга анхдагчаар асаалттай байдаг (эс бөгөөс зураг
+ * хоосон нээгдэнэ). Тиймээс АНХДАГЧ багцтай ЯГ тэнцүү байхыг «хараахан
+ * сонгоогүй» гэж үзнэ — ингэснээр эхний харагдац ерөнхий чартуудтай, зураг нь
+ * бүсээ харуулсан хэвээр байна.
+ */
 function PlanOverview({
   totals,
   zone,
   visible,
   setVisible,
   setLayer,
-  onOpen,
 }: {
   totals: Async<Map<string, Totals>>;
   zone: string | null;
   visible: string[];
   setVisible: Dispatch<SetStateAction<string[]>>;
   setLayer: (id: string | null) => void;
-  onOpen: () => void;
 }) {
   return (
     <Data q={totals} loading="Үзүүлэлт тооцож байна…">
@@ -128,75 +331,354 @@ function PlanOverview({
          * Нийлбэрт оруулбал бүсийн дүн бүхэлдээ худал болно.
          */
         const counted = PLAN_LAYER_IDS.filter((id) => !(zone && LAYER_BY_ID[id]?.noZone));
-        const totalN = counted.reduce((a, id) => a + (map.get(id)?.n ?? 0), 0);
-        const activeN = PLAN_LAYER_IDS.filter((id) => visible.includes(id)).length;
+        const allN = counted.reduce((a, id) => a + (map.get(id)?.n ?? 0), 0);
 
-        // Дугуй диаграм — объект багцаар (эзлэх хувь)
-        const groupN = (g: (typeof LAYER_GROUPS)[number]) =>
-          GROUP_LAYERS[g.key].reduce((a, id) => a + (map.get(id)?.n ?? 0), 0);
-        const byGroup = LAYER_GROUPS
-          .map((g) => ({ key: g.key, label: g.title, value: groupN(g), color: g.hue }))
-          .filter((x) => x.value > 0);
+        const on = counted.filter((id) => visible.includes(id));
+        const totalN = on.reduce((a, id) => a + (map.get(id)?.n ?? 0), 0);
 
-        // Баганан график — хамгийн олон объекттой давхаргууд
-        const topLayers = PLAN_LAYER_IDS
-          .map((id) => ({ id, d: LAYER_BY_ID[id], n: map.get(id)?.n ?? 0 }))
-          .filter((x) => x.d && x.n > 0)
-          .sort((a, b) => b.n - a.n)
-          .slice(0, 8)
-          .map((x) => ({ key: x.id, label: x.d.title, value: x.n, display: `${num(x.n)} ш`, color: x.d.hue }));
+        /**
+         * Хэрэглэгч хараахан сонголт хийгээгүй эсэх — анхдагч багцтай ЯГ тэнцүү.
+         * ⚠️ `visible`-ыг харна (`on` биш): `on` нь бүсийн шүүлтэд давхарга
+         * хасагдвал богиносох тул «сонгоогүй» гэж худал уншигдана.
+         */
+        const initial = VIEW_BY_KEY.plan.initial;
+        const untouched =
+          visible.length === initial.length && initial.every((id) => visible.includes(id));
 
-        // Багцаар — урт (км) ба талбай (га) тусад нь график болгоно
-        const bySize = LAYER_GROUPS
-          .map((g) => {
-            const q = groupQty(GROUP_LAYERS[g.key], map);
-            return { key: g.key, label: g.title, color: g.hue, q };
-          })
-          .filter((x) => x.q);
+        /** Төрөл бүрийн график — зөвхөн чектэй, утга нь 0-ээс их давхаргууд */
+        const charts = GEOM_CHARTS.map((c) => {
+          const items = on
+            .map((id) => ({ id, d: LAYER_BY_ID[id], t: map.get(id) }))
+            .filter((x) => x.d && x.t && chartOf(x.d, x.t) === c.geom)
+            .map((x) => ({ x, v: c.value(x.d, x.t!) }))
+            .filter((r) => r.v > 0)
+            .sort((a, b) => b.v - a.v)
+            .map((r) => ({
+              key: r.x.id,
+              label: r.x.d.title,
+              value: r.v,
+              display: c.display(r.v, r.x.t!),
+              color: r.x.d.hue,
+            }));
+          // Нийт — графикийн толгойд «5 давхарга · 60.2 км» гэж
+          const sum = items.reduce((a, i) => a + i.value, 0);
+          return { ...c, items, sum };
+        }).filter((c) => c.items.length > 0);
 
-        return (
-          <>
-            {/* ── Индикаторууд ── */}
-            <Section title="Ерөнхий үзүүлэлт">
-              <Stats cols={3}>
-                <Stat value={num(totalN)} unit="ш" label="Нийт объект" accent />
-                <Stat value={num(PLAN_LAYER_IDS.length)} label="Давхарга" />
-                <Stat value={`${num(activeN)}/${num(PLAN_LAYER_IDS.length)}`} label="Асаалттай" />
-              </Stats>
-            </Section>
+        /**
+         * СОНГОСОН ДАВХАРГУУД БАГЦААР — багц бүр өөрийн хэсэгтэй.
+         *
+         * ⚠️ Каталогийн `0/6` товчоор багцыг бүхэлд нь асаахад тэр багцын БҮХ
+         * давхарга энд нэг хэсэг болж гарна. Өөр багц нэмж асаахад ЭНЭ хэсэг
+         * хэвээр үлдэж, доор нь ШИНЭ хэсэг нэмэгдэнэ — багцууд бие биенээ
+         * дарж бичихгүй, зэрэгцэн харагдана.
+         *
+         * ⚠️ `flatMap` нь `filter(Boolean)`-ы оронд: сүүлийнх нь TypeScript-д
+         * `null`-ыг хасч чаддаггүй тул доош хүчээр хөрвүүлэх шаардлагатай болно.
+         */
+        const pickedGroups = LAYER_GROUPS.flatMap((g) => {
+          const layers = GROUP_LAYERS[g.key]
+            .filter((id) => on.includes(id))
+            .map((id) => ({ d: LAYER_BY_ID[id], t: map.get(id) }))
+            .flatMap((x) => (x.d && x.t ? [{ d: x.d, t: x.t }] : []));
+          if (!layers.length) return [];
 
-            {/* ── Дугуй диаграм (pie) — объект багцаар ── */}
-            {byGroup.length > 0 && (
-              <Section title="Объект багцаар" note="эзлэх хувь">
-                <Donut items={byGroup} center={num(totalN)} centerLabel="объект" />
+          const n = layers.reduce((a, x) => a + x.t.n, 0);
+
+          // Донат — тоогоор эзлэх хувь. Тоо нь нэгжгүй тул багц дотор ҮРГЭЛЖ зөв.
+          const donut = layers
+            .filter((x) => x.t.n > 0)
+            .sort((a, b) => b.t.n - a.t.n)
+            .map((x) => ({ key: x.d.id, label: x.d.title, value: x.t.n, color: x.d.hue }));
+
+          /**
+           * Баганан цуваа — НЭГЖ БҮРТ тусдаа.
+           * ⚠️ «Зам» багцад 98.2 км шугам ба 26.7 га талбай хоёул бий. Нэг
+           * график дээр тавибал баганын урт нь юуг ч илэрхийлэхгүй болно.
+           */
+          const series = GEOM_CHARTS.flatMap((c) => {
+            const items = layers
+              .filter((x) => chartOf(x.d, x.t) === c.geom)
+              .map((x) => ({ x, v: c.value(x.d, x.t) }))
+              .filter((r) => r.v > 0)
+              .sort((a, b) => b.v - a.v)
+              .map((r) => ({
+                key: r.x.d.id,
+                label: r.x.d.title,
+                value: r.v,
+                display: c.display(r.v, r.x.t),
+                color: r.x.d.hue,
+              }));
+            if (!items.length) return [];
+            return [{ ...c, items, sum: items.reduce((a, i) => a + i.value, 0) }];
+          });
+
+          /**
+           * Дотоод ангилалаар задлах — давхарга × ангилал бүрт нэг чартын багц.
+           *
+           * ⚠️ Давхарга бүр ТУСДАА ArcGIS хүсэлт явуулна тул зөвхөн СОНГОСОН
+           * давхаргад: бүх 29-д нь урьдчилж татвал каталог нээх бүрд 29
+           * нэмэлт хүсэлт явна.
+           *
+           * ⚠️ Эхний ХОЁР ангиллаар хязгаарлав. «Барилга» 5 ангилалтай
+           * (төлөв, зориулалт, дэлгэрэнгүй зориулалт, бүсийн төрөл, компани) —
+           * бүгдийг зурвал ганц давхарга 15 чарт болж, бусад сонголт хэдэн
+           * дэлгэц доор үлдэнэ. Эхний хоёр нь «юу вэ» (төлөв) ба «юунд
+           * зориулсан» (зориулалт) хоёрыг хамарна.
+           */
+          const faceted = layers.flatMap((x) =>
+            (x.d.facets ?? []).slice(0, 2).map((f) => ({ d: x.d, f })),
+          );
+
+          /**
+           * ⚠️ ГАНЦ баганатай цуваа чарт ХЭРЭГГҮЙ. «Бүс» багц нэг давхаргатай
+           * тул «Талбайн давхарга» чарт нь 100%-ийн ганц багана + нэг нэртэй
+           * тайлбар болж, багцын картан дээрх «130.5 га»-г л давтдаг байлаа.
+           * Оронд нь тэр давхаргын ТӨРЛҮҮД (доорх ангиллын чартууд) утга өгнө.
+           *
+           * ⚠️ Ангиллын чарт ч байхгүй бол цуваагаа ҮЛДЭЭНЭ — эс бөгөөс багцын
+           * хэсэг бүрмөсөн хоосон болно.
+           */
+          const multi = series.filter((c) => c.items.length > 1);
+          const shownSeries = multi.length > 0 || faceted.length > 0 ? multi : series;
+
+          return [{
+            g,
+            ids: layers.map((x) => x.d.id),
+            n,
+            count: layers.length,
+            donut,
+            series: shownSeries,
+            faceted,
+          }];
+        });
+
+        /* ═══ ЕРӨНХИЙ ГОРИМ — сонголт хийгээгүй, эсвэл бүх чек арилсан ═══ */
+        if (untouched || !on.length) {
+          return (
+            <>
+              <Section title="Ерөнхий үзүүлэлт" note="төсөл бүхэлдээ">
+                <Stats cols={2}>
+                  <Stat value={num(allN)} label="Нийт" accent />
+                  <Stat value={num(PLAN_LAYER_IDS.length)} label="Давхарга" />
+                </Stats>
               </Section>
-            )}
 
-            {/* ── Баганан график — тэргүүлэх давхаргууд ── */}
-            {topLayers.length > 0 && (
-              <Section title="Тэргүүлэх давхаргууд" note="дарж дэлгэрэнгүйг харна">
-                <Bars items={topLayers} limit={8} onSelect={(id) => setLayer(id)} />
-              </Section>
-            )}
-
-            {/* ── Багцын хэмжээ (урт · талбай) ── */}
-            {bySize.length > 0 && (
-              <Section title="Багцын хэмжээ" note="урт ба талбай">
-                <div className={s.ovSizeList}>
-                  {bySize.map((x) => (
-                    <div key={x.key} className={s.ovSizeRow} style={{ '--tone': x.color } as CSSProperties}>
-                      <span className={s.ovSizeDot} />
-                      <span className={s.ovSizeName}>{x.label}</span>
-                      <span className={`${s.ovSizeVal} num`}>{x.q}</span>
-                    </div>
+              {/**
+                * БАГЦ БҮР нэг карт — төрлийн тоо, урт/талбай, цэгийн тоо.
+                * ⚠️ Урьд нь донат + жагсаалт хоёроор харуулдаг байв: донат нь
+                * зөвхөн ОБЪЕКТЫН ТООГ, жагсаалт нь зөвхөн ХЭМЖЭЭГ өгдөг тул
+                * «Инженерийн бэлтгэлд юу байгаа вэ» гэдгийг мэдэхийн тулд хоёр
+                * тусдаа хэсгээс мөрөө олж тааруулах шаардлагатай байлаа. Карт
+                * нь багцын гурван хэмжигдэхүүнийг НЭГ дор өгнө.
+                */}
+              {/* ⚠️ Гарчиггүй — картууд өөрсдөө юу болохоо хэлнэ */}
+              <Section>
+                <div className={s.cardGrid} style={gridStyle(LAYER_GROUPS.length, true)}>
+                  {LAYER_GROUPS.map((g) => (
+                    <GroupCard
+                      key={g.key}
+                      g={g}
+                      ids={GROUP_LAYERS[g.key]}
+                      map={map}
+                      // Том хэлбэр — үзүүлэлт хэвтээ эгнэж, тоо нь тод харагдана
+                      wide
+                      onClick={() => setVisible(GROUP_LAYERS[g.key].slice())}
+                    />
                   ))}
                 </div>
               </Section>
-            )}
+
+            </>
+          );
+        }
+
+        /* ═══ СОНГОЛТЫН ГОРИМ — зөвхөн сонгосон багц/давхаргын чартууд ═══ */
+        return (
+          <>
+                {/**
+                  * Сонгосон багцууд — карт хэлбэрээр. Багана нь `auto-fit` тул
+                  * 2 багц сонговол хоёр карт бүтэн өргөнийг эзлэн ТОМОРНО.
+                  */}
+                <Section
+                  title="Сонгосон"
+                  note={`${num(on.length)} давхарга · ${num(totalN)}`}
+                >
+                  <div className={s.cardGrid} style={gridStyle(pickedGroups.length)}>
+                    {pickedGroups.map(({ g, ids, n, donut, series, faceted }) => (
+                      <GroupCard
+                        key={g.key}
+                        g={g}
+                        ids={ids}
+                        map={map}
+                        on
+                        wide={pickedGroups.length <= CARD_WIDE_MAX}
+                      >
+                        {/* ⚠️ Ганц давхаргатай багцад донат утгагүй — 100%-ийн нэг зүсмэг */}
+                        {donut.length > 1 && (
+                          <div className={s.chartBlock}>
+                            <Donut items={donut} center={num(n)} />
+                          </div>
+                        )}
+
+                        {series.map((c) => (
+                          <div key={c.geom} className={s.chartBlock}>
+                            <div className={s.facetHead}>
+                              {c.title}
+                              <span className={s.facetNote}>
+                                {/* ⚠️ Ширхэг нь БҮХЭЛ тоо — «1,651.0» гэж бичихгүй */}
+                                {c.note === 'ширхэг' ? num(c.sum) : `${num(c.sum, 1)} ${c.note}`}
+                              </span>
+                            </div>
+                            {/**
+                              * ⚠️ Баганан дарахад давхаргын ДЭЛГЭРЭНГҮЙ рүү үсэрдэг байв —
+                              * самбар солигдож, зурагт юу ч болдоггүй. Одоо тэр давхаргыг
+                              * зурагт ДАНГААР нь үлдээж шүүнэ: график нь `visible`-ыг
+                              * дагадаг тул самбар өөрөө шууд тэр давхарга дээр төвлөрнө.
+                              */}
+                            <Bars
+                              items={c.items}
+                              limit={8}
+                              outlined
+                              legend
+                              selected={on.length === 1 ? on[0] : null}
+                              onSelect={(id) => {
+                                setLayer(null);
+                                setVisible((prev) =>
+                                  prev.length === 1 && prev[0] === id ? PLAN_LAYER_IDS.slice() : [id],
+                                );
+                              }}
+                            />
+                          </div>
+                        ))}
+
+                        {/* Давхарга бүрийн ДОТООД төрлүүд — өөрийн чартаар */}
+                        {faceted.map(({ d, f }) => (
+                          <LayerTypeCharts key={`${d.id}:${f.field}`} d={d} f={f} zone={zone} />
+                        ))}
+                      </GroupCard>
+                    ))}
+                  </div>
+                </Section>
+
+                {/* ⚠️ Сонголтыг цуцлах — 29 давхаргыг нэг нэгээр нь унтраах нь
+                    тэвчээр барах ажил. Анхдагч байдалд буцаана: зураг бүсээ
+                    харуулж, самбар ерөнхий чартууд руугаа эргэнэ. */}
+                <Section>
+                  <button
+                    type="button"
+                    className={s.zoomBtn}
+                    onClick={() => setVisible(VIEW_BY_KEY.plan.initial.slice())}
+                  >
+                    Сонголтыг цуцлах · ерөнхий тойм руу
+                  </button>
+                </Section>
           </>
         );
       }}
     </Data>
+  );
+}
+
+/* ═════════════════ Сонгосон давхаргын дотоод төрлүүд ═════════════════ */
+
+/**
+ * Давхаргыг АНХНЫ ангиллаараа задалж чарт болгоно — донат (тоо) + багана
+ * (хэмжээ). Сонгосон багцын хэсэгт давхарга бүрийн доор орно.
+ *
+ * ⚠️ Урьд нь дотоод ангиллыг харах цорын ганц арга нь давхаргын нэр дээр дарж
+ * ТУСДАА дэлгэрэнгүй самбар нээх байв — тэгэхэд сонгосон бусад давхарга
+ * самбараас алга болдог тул харьцуулах боломжгүй болно. Одоо ангилал нь
+ * сонголтын чартын хэсэгт өөрөө орж ирнэ.
+ *
+ * ⚠️ Хэмжээний багана нь ЗӨВХӨН `qty`-тэй давхаргад. «Барилга» шиг талбайтай
+ * давхаргад төрөл бүрийн ТАЛБАЙ гарах нь гол утга — тоо ганцаараа «100 амины
+ * сууц vs 20 орон сууц» гэж төөрөгдүүлнэ.
+ */
+function LayerTypeCharts({
+  d, f, zone,
+}: {
+  d: LayerDef;
+  f: { field: string; label: string };
+  zone: string | null;
+}) {
+  const where = whereFor(d, zone);
+
+  const q = useAsync(async () => {
+    const rows = await queryGroup(layerUrl(d), f.field, layerStats(d), where);
+    return groups(rows, f.field, 'Бүртгэгдээгүй', ['n', 'q'])
+      .sort((a, b) => b.values.n - a.values.n);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [d.id, f.field, where]);
+
+  // ⚠️ Ганц ангилалтай бол задаргаа биш — давхарга өөрөө. Чарт нэмэхгүй.
+  if (q.state !== 'ready' || q.data.length < 2) return null;
+
+  const total = q.data.reduce((a, x) => a + x.values.n, 0);
+  const paint = d.paint?.field === f.field ? d.paint : null;
+  const colorOf = (label: string, i: number) =>
+    (paint ? paint.values[label] : undefined) ?? PALETTE[i % PALETTE.length];
+
+  const items = q.data.map((x, i) => ({
+    key: `${d.id}:${x.label}`,
+    label: x.label,
+    value: x.values.n,
+    color: colorOf(x.label, i),
+  }));
+
+  /** Хэмжээгээр — «Барилга» дээр төрөл бүрийн талбай, шугамд урт */
+  const sized = d.qty
+    ? q.data
+      .filter((x) => x.values.q > 0)
+      .map((x, i) => ({
+        key: `${d.id}:q:${x.label}`,
+        label: x.label,
+        value: d.qty!.unit === 'м²' ? x.values.q / 10_000 : d.qty!.unit === 'км' ? x.values.q : x.values.q / 1_000,
+        display: qtyText(d, x.values.q) ?? '',
+        color: colorOf(x.label, i),
+      }))
+      .sort((a, b) => b.value - a.value)
+    : [];
+
+  /**
+   * ⚠️ Гадна БҮРХҮҮЛГҮЙ (fragment): чартын блокууд нь багцын хэсэг доторх бусад
+   * блокуудтай ЯГ НЭГ ТҮВШИНД байх ёстой — эс бөгөөс `.chartBlock + .chartBlock`
+   * тусгаарлагч зураас нь бүрхүүлийн дотор хоригдож, хөрш чартуудын зааг
+   * харагдахгүй болно.
+   */
+  return (
+    <>
+      <div className={s.chartBlock}>
+        <div className={s.facetHead}>
+          {d.title}
+          <span className={s.facetNote}>{f.label} · {q.data.length} төрөл</span>
+        </div>
+
+        {/* Донат — төрлийн эзлэх хувь. 8-аас олон зүсмэг уншигдахгүй тул багана л үлдэнэ. */}
+        {items.length <= 8 && (
+          <div style={{ margin: '10px 0 12px' }}>
+            <Donut items={items} center={num(total)} />
+          </div>
+        )}
+
+        <Bars
+          items={items.map((it) => ({ ...it, display: num(it.value) }))}
+          limit={8}
+          outlined
+          legend
+        />
+      </div>
+
+      {sized.length > 1 && (
+        <div className={s.chartBlock}>
+          <div className={s.facetHead}>
+            {d.qty!.unit === 'м²' ? 'Талбай төрлөөр' : 'Урт төрлөөр'}
+            <span className={s.facetNote}>{qtyText(d, q.data.reduce((a, x) => a + x.values.q, 0))}</span>
+          </div>
+          <Bars items={sized} limit={8} outlined legend />
+        </div>
+      )}
+    </>
   );
 }
 
@@ -309,7 +791,7 @@ function LayerDashboard({
           <Empty label="Үзүүлэлт татагдсангүй." />
         ) : (
           <Stats cols={avgQty != null ? 3 : 2}>
-            <Stat value={t ? num(t.n) : '…'} unit="ш" label="Объект" accent />
+            <Stat value={t ? num(t.n) : '…'} label="Тоо" accent />
             <Stat value={qty ?? '—'} label={d.qty?.unit === 'м²' ? 'Талбай' : 'Урт'} />
             {avgQty != null && (
               <Stat
@@ -353,7 +835,7 @@ function LayerDashboard({
                   // ⚠️ Тоо ГАНЦААРАА хангалтгүй: 12 хэрчимтэй кабель трасс 1.8 км,
                   //    3,200 хэрчимтэй дулаан 49.7 км — хэмжээг ч заана.
                   display: [
-                    `${num(item.values.n)} ш`,
+                    `${num(item.values.n)}`,
                     qtyText(d, item.values.q),
                   ].filter(Boolean).join(' · '),
                   color: colorOf(item.label, i),
@@ -370,7 +852,7 @@ function LayerDashboard({
                         <Donut
                           items={items.map((it) => ({ key: it.key, label: it.label, value: it.value, color: it.color }))}
                           center={num(total)}
-                          centerLabel="объект"
+                          
                         />
                       </div>
                     )}
@@ -407,7 +889,7 @@ function LayerDashboard({
                       label: item.label,
                       value: item.values.n,
                       display: [
-                        `${num(item.values.n)} ш`,
+                        `${num(item.values.n)}`,
                         qtyText(d, item.values.q),
                       ].filter(Boolean).join(' · '),
                     }))}
@@ -593,7 +1075,7 @@ function PickedZone({
             <Bars
               items={x.status.map((st) => ({
                 key: st.value, label: st.value, value: st.n,
-                display: `${num(st.n)} ш`, color: st.hue,
+                display: `${num(st.n)}`, color: st.hue,
               }))}
             />
           </div>
@@ -612,11 +1094,14 @@ function PickedZone({
 /* ═════════════════ Сонгосон объект ═════════════════ */
 
 function PickedFeature({
-  attrs, def, setZone,
+  attrs, def, setZone, isolated, onIsolate,
 }: {
   attrs: Record<string, unknown>;
   def: LayerDef;
   setZone: (z: string | null) => void;
+  /** Зурагт ЗӨВХӨН энэ давхарга үлдсэн эсэх */
+  isolated: boolean;
+  onIsolate: () => void;
 }) {
   const { setHighlight } = useMap();
   const [active, setActive] = useState<string | null>(null);
@@ -655,7 +1140,7 @@ function PickedFeature({
   };
 
   return (
-    <Section title="Сонгосон объект" note={def.title}>
+    <Section title="Сонгосон" note={def.title}>
       {hasZone && (
         <button type="button" className={s.zoneJump} onClick={() => setZone(zoneId)}>
           <span className={s.zoneJumpLabel}>Бүс</span>
@@ -688,7 +1173,17 @@ function PickedFeature({
         </div>
       )}
 
-      {rows.length === 0 && filters.length === 0 && <Empty label="Энэ объектод бүртгэгдсэн талбар алга." />}
+      {rows.length === 0 && filters.length === 0 && <Empty label="Энэ дээр бүртгэгдсэн талбар алга." />}
+
+      {/**
+        * ⚠️ Зураг дээр дарсны дараа «энэ юу вэ» гэдгийг харуулдаг байсан ч тэр
+        * давхаргыг дангаар нь шүүж харах арга байхгүй байв — 29 давхарга
+        * дээр дээрээсээ давхарлан зурагдсан үед сонирхсон объектоо ялгаж
+        * харах боломжгүй. Нэг товчоор ЗӨВХӨН тэр давхаргыг үлдээнэ.
+        */}
+      <button type="button" className={s.zoomBtn} onClick={onIsolate}>
+        {isolated ? 'Бүх давхаргыг буцааж харуулах' : `Зөвхөн «${def.title}»-г харуулах`}
+      </button>
     </Section>
   );
 }

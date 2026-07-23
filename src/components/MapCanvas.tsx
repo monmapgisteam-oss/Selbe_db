@@ -131,7 +131,13 @@ const line = (hex: string, w = 1.4, dash: NonNullable<LayerDef['dash']> = 'solid
       type: 'CIMSymbolReference',
       symbol: {
         type: 'CIMLineSymbol',
-        symbolLayers: [stroke(w, cim(hex, 1)), stroke(w + 1.3, cim('#0b1220', 0.4))],
+        /**
+         * ⚠️ Хүрээлэл нь `w + 1.3` байв — үндсэн зураас 1px болоход нийт
+         * зузаан 2.3px болж, «нарийн шугам» гэсэн санаа алдагдана. Одоо
+         * харьцаагаар (×1.8) тул 1px зураас 1.8px хүрээлэлтэй: дэвсгэрээс
+         * тасалж өгөх нь хангалттай, харин зузаан нь мэдэгдэхгүй.
+         */
+        symbolLayers: [stroke(w, cim(hex, 1)), stroke(w * 1.8, cim('#0b1220', 0.4))],
       },
     },
   } as const;
@@ -148,12 +154,30 @@ const dot = (hex: string, size = 9, marker: NonNullable<LayerDef['marker']> = 'c
 const simple = (sym: unknown) => ({ type: 'simple', symbol: sym }) as __esri.RendererProperties;
 
 /** Каталогийн тодорхойлолтоос симбол — зураг ба тайлбар нэг эх сурвалжтай */
-export const symbolOf = (d: LayerDef, hue = d.hue) =>
-  d.geom === 'line'
-    ? line(hue, d.width ?? 1.4, d.dash ?? 'solid')
+/**
+ * ⚠️ ШУГАМ бүр 1px. Давхаргын тодорхойлолтод 0.8–3.0px хүртэл өөр өргөнтэй
+ * байсан нь 19 шугаман давхаргыг зэрэг асаахад зургийг бүдүүн судлууд болгож,
+ * доор нь байгаа бүс, барилга харагдахаа больдог байлаа. Ялгах үүргийг ӨНГӨ ба
+ * ЗУРААСНЫ ХЭЭ (`dash`) хоёр аль хэдийн гүйцэтгэдэг тул өргөн нь илүүц.
+ *
+ * ⚠️ ЦЭГ нь 0.7 дахин жижигрэв (9px → 6.3px). Тодорхойлолтын харьцаа хэвээр —
+ * зөвхөн ерөнхий хэмжээ буурна.
+ *
+ * ⚠️ ЗӨВХӨН `topic: 'plan'` давхаргад. «Барилгын хяналт»-ын давхаргууд
+ * (`mon:survey` цэг, `mon:building` талбай) нь ӨӨР ХҮНИЙ хэсэг бөгөөд тэнд
+ * цөөн объект тархай байрладаг тул жижигрүүлэх нь тэдний харагдацыг мууруулна.
+ */
+const LINE_PX = 1;
+const DOT_SCALE = 0.7;
+
+export const symbolOf = (d: LayerDef, hue = d.hue) => {
+  const plan = d.topic === 'plan';
+  return d.geom === 'line'
+    ? line(hue, plan ? LINE_PX : (d.width ?? 1.4), d.dash ?? 'solid')
     : d.geom === 'point'
-      ? dot(hue, d.size ?? 9, d.marker ?? 'circle')
+      ? dot(hue, (d.size ?? 9) * (plan ? DOT_SCALE : 1), d.marker ?? 'circle')
       : fill(hue, d.fill ?? 0.3, d.width ?? 0.9);
+};
 
 /**
  * Давхаргын хүрээг зургийн проекцоор.
