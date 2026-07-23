@@ -34,18 +34,69 @@ type Body = { features?: { attributes: Row }[]; count?: number; error?: { messag
  * POST-оор явуулна — where нөхцөл, геометр, outStatistics урт болоход GET-ийн
  * URL хязгаарт мөргөхөөс сэргийлнэ.
  */
-async function request(url: string, params: Record<string, string>): Promise<Body> {
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * ⚠️ ЗЭРЭГ хүсэлтийн ХЯЗГААРЛАГЧ. Дашбоард нэг дор 40+ хүсэлт (өртөг 24, анализ,
+ * газрын зургийн давхаргууд) явуулах үед ArcGIS «Too many requests» гэж
+ * татгалздаг. Зэрэг явах хүсэлтийг хязгаарлавал сервер даахаас гадна үлдсэн нь
+ * дараалалд хүлээж, шатлан ордог — бүх карт ба давхарга ачаалагдана.
+ */
+const MAX_CONCURRENT = 6;
+let active = 0;
+const waiters: (() => void)[] = [];
+async function acquire() {
+  if (active >= MAX_CONCURRENT) await new Promise<void>((r) => waiters.push(r));
+  active++;
+}
+function release() {
+  active--;
+  waiters.shift()?.();
+}
+
+/**
+ * ⚠️ ХУРДНЫ ХЯЗГААР дээр дахин оролдоно. Дашбоард нэг дор олон хүсэлт (өртөг 24,
+ * анализ) явуулах үед ArcGIS «Unable to perform query. Too many requests.» гэж
+ * HTTP 200-тай буцаадаг (эсвэл 429/503). Энэ нь ТҮР зуурын тул экспоненциал
+ * backoff-той хэдэн удаа дахин оролдвол өөрөө засрана — эс бөгөөс карт чимээгүй
+ * алдаа харуулна.
+ */
+const RETRIES = 4;
+const isRateLimit = (msg: string) => /too many requests|rate limit/i.test(msg);
+
+async function attemptRequest(url: string, params: Record<string, string>, attempt: number): Promise<Body> {
   const full = `${url}/query`;
   const res = await fetch(full, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ f: 'json', ...params }),
   });
-  if (!res.ok) throw new ArcGISError(`HTTP ${res.status}`, full);
+  if (!res.ok) {
+    if ((res.status === 429 || res.status === 503) && attempt < RETRIES) {
+      await sleep(400 * 2 ** attempt + Math.random() * 200);
+      return attemptRequest(url, params, attempt + 1);
+    }
+    throw new ArcGISError(`HTTP ${res.status}`, full);
+  }
   const body: Body = await res.json();
   // ArcGIS алдааг HTTP 200-тай буцаадаг — заавал шалгана
-  if (body.error) throw new ArcGISError(body.error.message || 'ArcGIS алдаа', full);
+  if (body.error) {
+    if (isRateLimit(body.error.message ?? '') && attempt < RETRIES) {
+      await sleep(400 * 2 ** attempt + Math.random() * 200);
+      return attemptRequest(url, params, attempt + 1);
+    }
+    throw new ArcGISError(body.error.message || 'ArcGIS алдаа', full);
+  }
   return body;
+}
+
+async function request(url: string, params: Record<string, string>): Promise<Body> {
+  await acquire();
+  try {
+    return await attemptRequest(url, params, 0);
+  } finally {
+    release();
+  }
 }
 
 /* ── Орон зайн шүүлт ── */

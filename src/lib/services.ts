@@ -40,7 +40,8 @@ export const BASEMAP_URL =
  * `appId` хоосон бол нэвтрэлт УНТРААЛТТАЙ.
  */
 export const AUTH = {
-  appId: 'ZPJRqk1iiYcjYRLv',
+  // ⚠️ ТҮР — давхарга шалгах. Буцаах: 'ZPJRqk1iiYcjYRLv'
+  appId: '',
   /**
    * ⚠️ Байгууллагын хаяг (`monmap.maps.arcgis.com`) БИШ. Тэр домэйн ArcGIS
    * Online-ы «Allowed origins» цагаан жагсаалтыг мөрддөг тул dev дээр токен
@@ -543,8 +544,8 @@ export const LAYERS: LayerDef[] = [
   /* ─────────── Бүс ─────────── */
   {
     id: 'et:28', n: 28, title: 'Хот төлөвлөлтийн бүс', topic: 'plan', geom: 'area',
-    // ⚠️ Дүүргэлт МАШ нам: бүс бол АГУУЛАГЧ, дотор нь бүхэн харагдах ёстой
-    hue: '#71717a', fill: 0.12, width: 1.6,
+    // Хил нь ТОД улбар шар, НАРИЙН; дүүргэлт 70% тунгалаг (alpha 0.3).
+    hue: '#f97316', fill: 0.3, width: 1,
     qty: M2,
     note: '52 бүс · FAR, BCR, зогсоол, төсөв',
     facets: [
@@ -885,6 +886,8 @@ export const DEFAULT_VISIBLE: string[] = [ZONE_LAYER.id];
  * өөрчлөгдөхгүй мэт харагдана.
  */
 export const drawOrder = (id: string): number => {
+  // Бүс бол АГУУЛАГЧ — хамгийн доор (барилга нь дүүргэлтийнх нь дээр гарна).
+  if (id === ZONE_LAYER.id) return -1;
   const g = LAYER_BY_ID[id]?.geom;
   return g === 'point' ? 2 : g === 'line' ? 1 : 0;
 };

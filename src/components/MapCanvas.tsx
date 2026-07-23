@@ -211,7 +211,12 @@ const PASSIVE = new Set<string>([
  */
 const ON_GROUND = { mode: 'on-the-ground' } as unknown as __esri.FeatureLayerProperties['elevationInfo'];
 
-function buildLayers(): Layer[] {
+/**
+ * @param uniform — давхарга бүрийг ГАНЦ жигд өнгөөр (өөрийн `hue`) зурна;
+ *   ангиллаар (TOROL, Barilga_ty) олон өнгө хуваахгүй. Ерөнхий дашбоардад
+ *   давхаргууд нэг нэг өнгөтэй байх ёстой — cross-filter нь тодорхой болно.
+ */
+function buildLayers(uniform = false): Layer[] {
   const L: Layer[] = [];
 
   /* Ортофото — СУУРЬ. Хамгийн эхэнд нэмснээр бүх вектор давхаргын доор. */
@@ -241,7 +246,9 @@ function buildLayers(): Layer[] {
     visible: false,
     ...(d.minScale ? { minScale: d.minScale } : {}),
     elevationInfo: ON_GROUND,
-    renderer: d.paint
+    renderer: uniform
+      ? simple(symbolOf(d))
+      : d.paint
       ? ({
           type: 'unique-value',
           field: d.paint.field,
@@ -374,6 +381,8 @@ export function MapCanvas({
   dim,
   visible,
   zone,
+  layerWhere,
+  uniform = false,
   onPick,
   children,
 }: {
@@ -382,6 +391,14 @@ export function MapCanvas({
   visible: string[];
   /** Сонгосон бүс — БҮХ давхаргыг тэр бүсээр хатуу шүүнэ. null = бүгд. */
   zone: string | null;
+  /**
+   * Давхарга ТУС БҮРИЙН `definitionExpression` (cross-filter дашбоардад).
+   * Заасан бол `zone`-ийн нэгдсэн шүүлтийг ДАРНА — давхарга бүр өөрийн WHERE-ээр
+   * шүүгдэнэ. `null`/байхгүй утга = шүүлтгүй.
+   */
+  layerWhere?: Record<string, string | null>;
+  /** Давхарга бүрийг ГАНЦ жигд өнгөөр зурах (ангиллаар олон өнгө хуваахгүй) */
+  uniform?: boolean;
   onPick: (attrs: Record<string, unknown> | null, layerId: string | null) => void;
   children?: ReactNode;
 }) {
@@ -419,11 +436,12 @@ export function MapCanvas({
       mapRef.current = new Map({
         basemap: baseMap(),
         ground: new Ground({ layers: [new ElevationLayer({ url: ELEVATION_URL })] }),
-        layers: buildLayers(),
+        layers: buildLayers(uniform),
       });
     }
 
     const map = mapRef.current;
+    if (typeof window !== 'undefined') (window as unknown as { __dbgmap: Map }).__dbgmap = map;
     setReady(false);
 
     const view: AnyView =
@@ -449,6 +467,7 @@ export function MapCanvas({
             ui: { components: ['zoom', 'attribution'] },
           });
     viewRef.current = view;
+    if (typeof window !== 'undefined') (window as unknown as { __dbgview: AnyView }).__dbgview = view;
 
     view.when(() => {
       if (view.destroyed) return;
@@ -669,11 +688,17 @@ export function MapCanvas({
        */
       const d = LAYER_BY_ID[l.id];
       if (d && 'definitionExpression' in l) {
-        (l as FeatureLayer).definitionExpression =
-          zone && !d.noZone ? `${ZONE_FIELD} = ${sqlStr(zone)}` : (null as unknown as string);
+        // `layerWhere` заасан бол давхарга бүрийн өөрийн WHERE; эс бөгөөс бүсийн
+        // нэгдсэн шүүлт (cross-filter дашбоард нь давхарга тус бүрээ шүүнэ).
+        const own = layerWhere ? layerWhere[l.id] ?? null : undefined;
+        (l as FeatureLayer).definitionExpression = (
+          own !== undefined
+            ? own
+            : zone && !d.noZone ? `${ZONE_FIELD} = ${sqlStr(zone)}` : null
+        ) as unknown as string;
       }
     });
-  }, [visibleKey, dim, ready, zone]);
+  }, [visibleKey, dim, ready, zone, layerWhere]);
 
   /** 3D/BIM загвар ачаалагдсан эсэх — CORS/сүлжээний асуудлыг ил хэлнэ */
   useEffect(() => {

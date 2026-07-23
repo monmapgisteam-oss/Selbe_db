@@ -107,16 +107,23 @@
   gap: 10px;
 }
 
-/* ── Идэвхтэй шүүлтийн chip (газрын зураг дээр хөвнө) ── */
-.filterChip {
+/* ── Идэвхтэй шүүлтийн chip-үүд (газрын зураг дээр хөвнө) ── */
+.chipBar {
   position: absolute;
   top: 12px;
   left: 12px;
   z-index: 5;
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100% - 24px);
+}
+.filterChip {
+  display: flex;
   align-items: center;
   gap: 8px;
-  max-width: calc(100% - 24px);
+  max-width: 100%;
   padding: 6px 8px 6px 11px;
   background: color-mix(in srgb, var(--surface) 92%, transparent);
   backdrop-filter: blur(6px);
@@ -125,6 +132,19 @@
   box-shadow: var(--shadow);
   font-size: 0.72rem;
 }
+.chipClearAll {
+  padding: 5px 11px;
+  border-radius: 99px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--ink-2);
+  transition: background 0.12s, color 0.12s;
+}
+.chipClearAll:hover { color: var(--bad); }
 .filterDot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--hue); }
 .filterLabel { font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .filterCount {
