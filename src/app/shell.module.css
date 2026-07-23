@@ -38,6 +38,20 @@
 }
 .suit { grid-area: suit; min-width: 0; overflow: hidden; }
 
+/**
+ * ЕРӨНХИЙ ДАШБОАРД — газрын зургийг ТОЙРСОН үзүүлэлтийн самбар.
+ *
+ * Analysis-тай ижил бүтэц: зүүн мод + бүтэн талбай. Дотоод байрлал (KPI зурвас,
+ * зүүн/баруун/доод карт, төв газрын зураг) нь `Dashboard` модулийн өөрийн grid.
+ */
+.shellDash {
+  grid-template-columns: var(--rail) 1fr;
+  grid-template-areas:
+    'head head'
+    'rail dash';
+}
+.dash { grid-area: dash; min-width: 0; min-height: 0; overflow: hidden; }
+
 /* ── Толгой ── */
 .head {
   grid-area: head;
@@ -216,12 +230,15 @@
     grid-template-rows: var(--head) 46vh auto auto auto;
     grid-template-areas: 'head' 'map' 'cat' 'panel' 'rail';
   }
-  .shellSuit {
+  .shellSuit,
+  .shellDash {
     grid-template-columns: 1fr;
     grid-template-rows: var(--head) 1fr auto;
     grid-template-areas: 'head' 'suit' 'rail';
   }
+  .shellDash { grid-template-areas: 'head' 'dash' 'rail'; }
   .suit { min-height: 80vh; }
+  .dash { min-height: 80vh; overflow: visible; }
   .rail { border-right: none; border-top: 1px solid var(--line); overflow-y: visible; }
   .panel { border-left: none; border-right: none; border-top: 1px solid var(--line); }
   /* Босоо өрөлтөд өргөн чирэх утгагүй */
