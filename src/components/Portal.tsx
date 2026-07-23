@@ -72,7 +72,9 @@ function PortalContent() {
    * жагсаалт гарвал юуных болохыг нь мэдэхгүй. Хэрэглэгч өөрөө «Ерөнхий
    * мэдээлэл» дарахад нээгдэнэ.
    */
-  const [catalog, setCatalog] = useState(false);
+  // Давхаргын сонголтын ЗҮҮН БАГАНА — «Давхарга» товчоор нээж/хаана.
+  // Анхнаасаа НЭЭЛТТЭЙ: давхаргын жагсаалт зүүн талд шууд харагдана.
+  const [catalog, setCatalog] = useState(true);
   const [layer, setLayer] = useState<string | null>(null);
 
   /** Сонгосон бүс — БҮХ давхарга, БҮХ тоо үүгээр шүүгдэнэ */
@@ -101,6 +103,7 @@ function PortalContent() {
     () => (view === 'monitor' ? [...MONITOR_LAYER_IDS, ...PLAN_LAYER_IDS] : PLAN_LAYER_IDS),
     [view],
   );
+  // ⚠️ Зөвхөн каталог/самбартай харагдацуудад — дашбоард/анализ өөрсдөө татна
   const totals = usePlanTotals(zone, !standalone, catalogIds);
 
   const setView = useCallback((v: ViewKey) => {
@@ -118,10 +121,9 @@ function PortalContent() {
      * унаж, зураг чимээгүй хоосорно.
      */
     clearFilter();
-    // Каталогтой харагдац — идэвхтэй дээр нь дахин дарвал хумина.
-    // Тусдаа дэлгэцтэй харагдацад (дашбоард, анализ) каталог байхгүй.
-    setCatalog(!VIEW_BY_KEY[v].standalone ? !(view === v && catalog) : false);
-  }, [view, catalog, clearFilter]);
+    // ⚠️ Каталог нь зурган дээрх товчоор удирдагдана — харагдац солиход хумина
+    setCatalog(false);
+  }, [clearFilter]);
 
   const pick = useCallback((attrs: Record<string, unknown> | null, layerId: string | null) => {
     setPicked(attrs);
@@ -199,22 +201,25 @@ function PortalContent() {
   };
 
   const active = VIEW_BY_KEY[view];
-  // Каталог нь «Ерөнхий мэдээлэл» ба «Барилгын хяналт» ХОЁУЛАНД байна
-  const catOpen = catalog && !standalone;
   /**
-   * ⚠️ Тусдаа дэлгэцтэй харагдацууд ӨӨРИЙН БҮРЭН ДЭЛГЭЦТЭЙ: өөрсдийн газрын
-   * зураг, өөрийн байрлалтай. Тиймээс порталын каталог, самбарыг РЕНДЕРЛЭХГҮЙ —
-   * хоёр ArcGIS view зэрэг ажиллавал WebGL контекст үрэгдэж, зураг анивчина.
+   * ⚠️ Бүтэн талбайг эзлэх харагдацууд (ерөнхий дашбоард, анализ) нь ӨӨРСДИЙН
+   * бүрэн зохион байгуулалттай — порталын каталог/самбар/нэгтгэлийг зурахгүй.
+   * Хоёр ArcGIS view зэрэг ажиллавал WebGL контекст үрэгдэж зураг анивчина тул
+   * харагдац бүр өөрийн ганц зурагтай.
    *   · analysis  — Suitability Modeler (өөрийн 3 багана, харанхуй палитр)
    *   · dashboard — газрын зургийг тойрсон үзүүлэлтийн самбар
    */
-  const isSuit = view === 'analysis';
   const isDash = view === 'dashboard';
+  const isSuit = view === 'analysis';
+  // `standalone` нь эдгээрийг ЯГ тэмдэглэдэг — тусад нь тоолохгүй
+  const isFull = standalone;
+  // Каталог нь зөвхөн «Ерөнхий мэдээлэл» ба «Барилгын хяналт»-д байна
+  const catOpen = catalog && !isFull;
 
   return (
     <>
       <div
-        className={`${s.shell} ${isSuit ? s.shellSuit : ''} ${isDash ? s.shellDash : ''} ${catOpen ? s.shellCat : ''}`}
+        className={`${s.shell} ${isFull ? s.shellSuit : ''} ${catOpen ? s.shellCat : ''}`}
         style={{ '--hue': active.hue, '--panel': `${panelW}px` } as CSSProperties}
       >
         <header className={s.head}>
@@ -231,22 +236,12 @@ function PortalContent() {
             <Search onPick={goToHit} />
           </div>
 
-          <ActiveFilterChip />
-          <HeaderStats zone={zone} />
+          {/* Харагдац сонголт — толгойд хэвтээ таб хэлбэрээр */}
+          <ViewRail view={view} setView={setView} catalogOpen={catOpen} header />
 
-          <div className={s.dimSwitch} role="group" aria-label="Газрын зургийн харагдац">
-            {(['2d', '3d', 'bim'] as Dim[]).map((d) => (
-              <button
-                key={d}
-                type="button"
-                aria-pressed={dim === d}
-                className={`${s.dimBtn} ${dim === d ? s.dimOn : ''}`}
-                onClick={() => setDim(d)}
-              >
-                {d.toUpperCase()}
-              </button>
-            ))}
-          </div>
+          {/* ⚠️ Үзүүлэлтүүд толгойгоос ДООД зурваст (`SummaryBar`) шилжсэн тул
+              шүүлтийн тэмдэг нь баруун тийш түлхэх үүргийг авна. */}
+          <ActiveFilterChip />
 
           <button
             type="button"
@@ -259,45 +254,64 @@ function PortalContent() {
           </button>
         </header>
 
-        <div className={s.rail}>
-          <ViewRail view={view} setView={setView} catalogOpen={catOpen} />
-        </div>
-
-        {/* Анализ — Suitability Modeler-ийн ЭХ дизайнаараа бүтэн талбайг эзэлнэ */}
-        {isSuit && (
+        {/* Бүтэн талбайн харагдацууд — ерөнхий дашбоард ба анализ */}
+        {isFull && (
           <div className={s.suit}>
-            {/* ⚠️ Толгойн 2D/3D товч энд ч үйлчилнэ — газрын зураг нь бусад
-                харагдацтай ижил суурьтай (ортофото / IntegratedMesh). */}
-            <Suitability dim={dim} />
+            {isDash
+              ? <Dashboard dim={dim} setDim={setDim} zone={zone} setZone={setZone} />
+              : <Suitability dim={dim} setDim={setDim} />}
           </div>
         )}
 
-        {/* Ерөнхий дашбоард — газрын зургийг тойрсон үзүүлэлтийн самбар */}
-        {isDash && (
-          <div className={s.dash}>
-            <Dashboard dim={dim} zone={zone} setZone={setZone} />
-          </div>
-        )}
-
-        {/* Давхаргын каталог — зүүн модны хажуугийн багана */}
-        {!standalone && catOpen && (
-          <LayerCatalog
-            view={view === 'monitor' ? 'monitor' : 'plan'}
-            totals={totals}
-            visible={visible}
-            setVisible={setVisible}
-            selected={layer}
-            onSelect={setLayer}
-            onClose={() => setCatalog(false)}
-            zone={zone}
-          />
-        )}
-
-        {!standalone && (
+        {!isFull && (
           <>
             <div className={s.map}>
               <MapCanvas dim={dim} visible={visible} zone={zone} onPick={pick} />
+
+              {/* Газрын зураг дээрх хэрэгслүүд — давхарга нээх ба 2D/3D/BIM */}
+              <div className={s.mapTools}>
+                <button
+                  type="button"
+                  aria-pressed={catOpen}
+                  className={`${s.mapBtn} ${catOpen ? s.mapBtnOn : ''}`}
+                  onClick={() => setCatalog((v) => !v)}
+                  title="Давхаргын жагсаалт"
+                >
+                  <Icon name="layers" size={15} />
+                  Давхарга
+                </button>
+
+                <div className={s.mapDims} role="group" aria-label="Газрын зургийн харагдац">
+                  {(['2d', '3d', 'bim'] as Dim[]).map((d) => (
+                    <button
+                      key={d}
+                      type="button"
+                      aria-pressed={dim === d}
+                      className={`${s.dimBtn} ${dim === d ? s.dimOn : ''}`}
+                      onClick={() => setDim(d)}
+                    >
+                      {d.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
             </div>
+
+            {/* Давхаргын сонголт — ЗҮҮН талын багана (товчоор нээж/хаана).
+                Layer дээр дарахад баруун самбарт түүний дашбоард гарна. */}
+            {catOpen && (
+              <LayerCatalog
+                view={view === 'monitor' ? 'monitor' : 'plan'}
+                totals={totals}
+                visible={visible}
+                setVisible={setVisible}
+                selected={layer}
+                onSelect={setLayer}
+                onClose={() => setCatalog(false)}
+                zone={zone}
+              />
+            )}
 
             <aside className={s.panel} id="panel" aria-label={`${active.title} самбар`}>
               {/* Өргөн тохируулах бариул — самбарын зүүн ирмэг дээр */}
@@ -335,6 +349,11 @@ function PortalContent() {
                 />
               </div>
             </aside>
+
+            {/* Доод хүрээ — нэгтгэсэн үзүүлэлт (газрын зургийг тойрсон бүтэц) */}
+            <footer className={s.dashFoot} aria-label="Нэгтгэсэн үзүүлэлт">
+              <SummaryBar zone={zone} />
+            </footer>
           </>
         )}
       </div>
@@ -377,9 +396,13 @@ function ActiveFilterChip() {
   );
 }
 
-/* ── Толгойн ерөнхий үзүүлэлт ── */
+/* ── Доод хүрээ: төслийн ерөнхий үзүүлэлт ── */
 
-function HeaderStats({ zone }: { zone: string | null }) {
+/**
+ * ⚠️ Урьд нь толгойд байсан үзүүлэлтүүд. Одоо газрын зургийг дөрвөн талаас
+ * хүрээлэх бүтцэд ДООД зурвас болж шилжсэн — толгой нь зөвхөн навигацид үлдэв.
+ */
+function SummaryBar({ zone }: { zone: string | null }) {
   const where = zone ? `${ZONE_FIELD} = ${sqlStr(zone)}` : '1=1';
 
   const q = useAsync(async () => {
@@ -395,9 +418,8 @@ function HeaderStats({ zone }: { zone: string | null }) {
       zones: Number(zones.n ?? 0),
       /**
        * ⚠️ Бүс сонгогдсон үед тэр бүсийн `GAZAR_GA`; сонгоогүй үед ТӨСЛИЙН
-       * албан ёсны талбай (`PROJECT_AREA_HA`). Бүх бүсийн `GAZAR_GA`-гийн
-       * нийлбэр (131 га) нь зөвхөн бүсчилсэн газрыг хамардаг бөгөөд эх
-       * өгөгдөлд алдаатай бичлэгүүдтэй тул төслийн хэмжээг илэрхийлэхгүй.
+       * албан ёсны талбай (`PROJECT_AREA_HA`). Бүх бүсийн нийлбэр (131 га) нь
+       * зөвхөн бүсчилсэн газрыг хамардаг тул төслийн хэмжээг илэрхийлэхгүй.
        */
       ga: zone ? Number(zones.ga ?? 0) : PROJECT_AREA_HA,
       ail: Number(zones.ail ?? 0),
@@ -407,13 +429,9 @@ function HeaderStats({ zone }: { zone: string | null }) {
   }, [where]);
 
   if (q.state === 'error') {
-    return (
-      <div className={s.headStats} role="alert">
-        <span className={s.headStatLabel}>Үзүүлэлт татагдсангүй</span>
-      </div>
-    );
+    return <div className={s.sumBar} role="alert"><span className={s.sumLabel}>Үзүүлэлт татагдсангүй</span></div>;
   }
-  if (q.state !== 'ready') return <div className={s.headStats} />;
+  if (q.state !== 'ready') return <div className={s.sumBar} />;
 
   const items = [
     { v: num(q.data.ga, 1), l: 'га талбай' },
@@ -421,16 +439,15 @@ function HeaderStats({ zone }: { zone: string | null }) {
     { v: num(q.data.built), l: 'барилга' },
     { v: num(q.data.ail), l: 'айл' },
     { v: num(q.data.pop), l: 'хүн ам' },
-    // ⚠️ «₮ төсөв» ХАСАГДСАН: санхүүгийн бүх дүн «Тохиромжтой байдлын
-    //    үнэлгээ» модульд төвлөрсөн.
   ];
 
   return (
-    <div className={s.headStats}>
+    <div className={s.sumBar}>
+      {zone && <span className={s.sumZone}>{zone}</span>}
       {items.map((i) => (
-        <div key={i.l} className={s.headStat}>
-          <span className={`${s.headStatValue} num`}>{i.v}</span>
-          <span className={s.headStatLabel}>{i.l}</span>
+        <div key={i.l} className={s.sumStat}>
+          <span className={`${s.sumValue} num`}>{i.v}</span>
+          <span className={s.sumLabel}>{i.l}</span>
         </div>
       ))}
     </div>

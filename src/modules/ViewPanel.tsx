@@ -1,8 +1,7 @@
 'use client';
 
 import { useState, type CSSProperties, type Dispatch, type SetStateAction } from 'react';
-import { Section, Stats, Stat, Bars, Stack, Rows, Data, Empty } from '@/components/ui';
-import { Icon } from '@/components/Icon';
+import { Section, Stats, Stat, Bars, Donut, Rows, Data, Empty } from '@/components/ui';
 import { LayerSwatch } from '@/components/LayerSwatch';
 import { useMap } from '@/components/MapCanvas';
 import { useAsync, type Async } from '@/lib/useAsync';
@@ -18,6 +17,9 @@ import { num, text } from '@/lib/format';
 import { BuildingSummary, BuildingWork } from './BuildingPanel';
 import { SurveySummary, useSurvey, useOutside } from './SurveyPanel';
 import s from './dashboard.module.css';
+
+/** Ангиллын дугуй диаграмд өнгө оноох палитр (paint тодорхойлолтгүй давхаргад) */
+const PALETTE = ['#0d9488', '#3387b8', '#ea580c', '#7c3aed', '#eab308', '#22c55e', '#e11d48', '#0891b2'];
 
 /* ═════════════════ Үндсэн самбар ═════════════════ */
 
@@ -127,129 +129,74 @@ function PlanOverview({
          */
         const counted = PLAN_LAYER_IDS.filter((id) => !(zone && LAYER_BY_ID[id]?.noZone));
         const totalN = counted.reduce((a, id) => a + (map.get(id)?.n ?? 0), 0);
+        const activeN = PLAN_LAYER_IDS.filter((id) => visible.includes(id)).length;
+
+        // Дугуй диаграм — объект багцаар (эзлэх хувь)
+        const groupN = (g: (typeof LAYER_GROUPS)[number]) =>
+          GROUP_LAYERS[g.key].reduce((a, id) => a + (map.get(id)?.n ?? 0), 0);
+        const byGroup = LAYER_GROUPS
+          .map((g) => ({ key: g.key, label: g.title, value: groupN(g), color: g.hue }))
+          .filter((x) => x.value > 0);
+
+        // Баганан график — хамгийн олон объекттой давхаргууд
+        const topLayers = PLAN_LAYER_IDS
+          .map((id) => ({ id, d: LAYER_BY_ID[id], n: map.get(id)?.n ?? 0 }))
+          .filter((x) => x.d && x.n > 0)
+          .sort((a, b) => b.n - a.n)
+          .slice(0, 8)
+          .map((x) => ({ key: x.id, label: x.d.title, value: x.n, display: `${num(x.n)} ш`, color: x.d.hue }));
+
+        // Багцаар — урт (км) ба талбай (га) тусад нь график болгоно
+        const bySize = LAYER_GROUPS
+          .map((g) => {
+            const q = groupQty(GROUP_LAYERS[g.key], map);
+            return { key: g.key, label: g.title, color: g.hue, q };
+          })
+          .filter((x) => x.q);
 
         return (
           <>
-            <Section title="Нийт">
-              <Stats cols={2}>
-                <Stat value={num(totalN)} unit="ш" label="Объект" accent />
+            {/* ── Индикаторууд ── */}
+            <Section title="Ерөнхий үзүүлэлт">
+              <Stats cols={3}>
+                <Stat value={num(totalN)} unit="ш" label="Нийт объект" accent />
                 <Stat value={num(PLAN_LAYER_IDS.length)} label="Давхарга" />
+                <Stat value={`${num(activeN)}/${num(PLAN_LAYER_IDS.length)}`} label="Асаалттай" />
               </Stats>
-              <button type="button" className={s.listBtn} onClick={onOpen}>
-                Давхаргын жагсаалт нээх
-              </button>
             </Section>
 
-            <Section title="Багц" note="дарж дэлгэрэнгүйг задална">
-              <div className={s.rows}>
-                {LAYER_GROUPS.map((g) => (
-                  <GroupRow
-                    key={g.key}
-                    g={g}
-                    map={map}
-                    zone={zone}
-                    visible={visible}
-                    setVisible={setVisible}
-                    setLayer={setLayer}
-                  />
-                ))}
-              </div>
-            </Section>
+            {/* ── Дугуй диаграм (pie) — объект багцаар ── */}
+            {byGroup.length > 0 && (
+              <Section title="Объект багцаар" note="эзлэх хувь">
+                <Donut items={byGroup} center={num(totalN)} centerLabel="объект" />
+              </Section>
+            )}
+
+            {/* ── Баганан график — тэргүүлэх давхаргууд ── */}
+            {topLayers.length > 0 && (
+              <Section title="Тэргүүлэх давхаргууд" note="дарж дэлгэрэнгүйг харна">
+                <Bars items={topLayers} limit={8} onSelect={(id) => setLayer(id)} />
+              </Section>
+            )}
+
+            {/* ── Багцын хэмжээ (урт · талбай) ── */}
+            {bySize.length > 0 && (
+              <Section title="Багцын хэмжээ" note="урт ба талбай">
+                <div className={s.ovSizeList}>
+                  {bySize.map((x) => (
+                    <div key={x.key} className={s.ovSizeRow} style={{ '--tone': x.color } as CSSProperties}>
+                      <span className={s.ovSizeDot} />
+                      <span className={s.ovSizeName}>{x.label}</span>
+                      <span className={`${s.ovSizeVal} num`}>{x.q}</span>
+                    </div>
+                  ))}
+                </div>
+              </Section>
+            )}
           </>
         );
       }}
     </Data>
-  );
-}
-
-/**
- * Багцын мөр — дарахад БАЙРАНДАА задарч доторх давхаргуудаа жагсаана.
- *
- * ⚠️ Задаргаа нь өөр хуудас руу шилжихгүй: хэрэглэгч тоймоо алдалгүй багц
- * доторх давхаргыг шууд асааж, эсвэл нэр дээр нь дарж дашбоард руу орно.
- */
-function GroupRow({
-  g, map, zone, visible, setVisible, setLayer,
-}: {
-  g: (typeof LAYER_GROUPS)[number];
-  map: Map<string, Totals>;
-  zone: string | null;
-  visible: string[];
-  setVisible: Dispatch<SetStateAction<string[]>>;
-  setLayer: (id: string | null) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const ids = GROUP_LAYERS[g.key];
-  const defs = ids.map((id) => LAYER_BY_ID[id]).filter(Boolean);
-  const on = ids.filter((id) => visible.includes(id)).length;
-  const n = ids.reduce((a, id) => a + (map.get(id)?.n ?? 0), 0);
-  /** Багцын нийлбэр хэмжээ — урт ба талбай тусад нь */
-  const qty = groupQty(ids, map);
-
-  const toggle = (id: string) =>
-    setVisible((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
-
-  return (
-    <div
-      className={`${s.row} ${on > 0 ? s.rowOn : ''}`}
-      style={{ '--tone': g.hue } as CSSProperties}
-    >
-      <button
-        type="button"
-        aria-expanded={open}
-        className={s.rowHead}
-        onClick={() => setOpen((x) => !x)}
-      >
-        <span className={s.groupIcon}><Icon name={g.icon} size={15} /></span>
-        <span className={s.rowMain}>
-          <span className={s.rowTitle}>{g.title}</span>
-          <span className={`${s.rowValue} num`}>
-            {num(ids.length)} давхарга · {num(n)} ш
-            {qty ? ` · ${qty}` : ''}
-            {on > 0 && <em className={s.rowOnNote}> · {on} асаалттай</em>}
-          </span>
-        </span>
-        <span className={`${s.caret} ${open ? s.caretOpen : ''}`} aria-hidden>▾</span>
-      </button>
-
-      {open && (
-        <div className={s.rowBody}>
-          {defs.map((d) => {
-            const t = map.get(d.id);
-            const q = t ? qtyText(d, t.q) : null;
-            const isOn = visible.includes(d.id);
-            return (
-              <div key={d.id} className={s.subRow} style={{ '--tone': d.hue } as CSSProperties}>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={isOn}
-                  aria-label={`${d.title} — зурагт харуулах`}
-                  className={`${s.check} ${isOn ? s.checkOn : ''}`}
-                  onClick={() => toggle(d.id)}
-                >
-                  <svg viewBox="0 0 12 12" width="10" height="10">
-                    <path d="M2 6.2 4.6 8.8 10 3.4" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </button>
-
-                <LayerSwatch d={d} />
-
-                <button type="button" className={s.subMain} onClick={() => setLayer(d.id)}>
-                  <span className={s.subTitle}>{d.title}</span>
-                  <span className={`${s.subMeta} num`}>
-                    {t ? `${num(t.n)} ш` : '—'}
-                    {q ? ` · ${q}` : ''}
-                    {zone && d.noZone && <em className={s.rowWarn}> · бүсгүй</em>}
-                  </span>
-                </button>
-                <span className={s.go} aria-hidden>›</span>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -393,28 +340,37 @@ function LayerDashboard({
 
           return (
             <>
-              {/* ── Ангилал бүрээр ── */}
-              {facets.map((f) => {
+              {/* ── Ангилал бүрээр — ЭХНИЙ ангиллыг дугаар диаграмаар (дашбоард төрх) ── */}
+              {facets.map((f, idx) => {
                 const paint = d.paint?.field === f.field ? d.paint : null;
+                const colorOf = (label: string, i: number) =>
+                  (paint ? paint.values[label] : undefined) ?? PALETTE[i % PALETTE.length];
                 const total = f.items.reduce((a, i) => a + i.values.n, 0);
+                const items = f.items.map((item, i) => ({
+                  key: `${f.label}:${item.label}`,
+                  label: item.label,
+                  value: item.values.n,
+                  // ⚠️ Тоо ГАНЦААРАА хангалтгүй: 12 хэрчимтэй кабель трасс 1.8 км,
+                  //    3,200 хэрчимтэй дулаан 49.7 км — хэмжээг ч заана.
+                  display: [
+                    `${num(item.values.n)} ш`,
+                    qtyText(d, item.values.q),
+                  ].filter(Boolean).join(' · '),
+                  color: colorOf(item.label, i),
+                }));
                 return (
                   <Section
                     key={f.label}
                     title={f.label}
                     note={`${f.items.length} ангилал · дарж зурагт шүүнэ`}
                   >
-                    {/* Ангилал цөөн бөгөөд өнгөтэй бол хувь эзлэлийг зурвасаар */}
-                    {paint && f.items.length <= 6 && (
+                    {/* Эхний ангиллыг дугуй диаграмаар — эзлэх хувийг нэг дор */}
+                    {idx === 0 && f.items.length <= 8 && (
                       <div style={{ marginBottom: 14 }}>
-                        <Stack
-                          legend={false}
-                          total={total}
-                          items={f.items.map((i) => ({
-                            key: i.label,
-                            label: i.label,
-                            value: i.values.n,
-                            color: paint.values[i.label] ?? ZONE_TYPE_EMPTY_HUE,
-                          }))}
+                        <Donut
+                          items={items.map((it) => ({ key: it.key, label: it.label, value: it.value, color: it.color }))}
+                          center={num(total)}
+                          centerLabel="объект"
                         />
                       </div>
                     )}
@@ -426,18 +382,7 @@ function LayerDashboard({
                         const item = f.items.find((y) => `${f.label}:${y.label}` === k);
                         pick(k, item ? groupWhere(f.field, item) : null);
                       }}
-                      items={f.items.map((item) => ({
-                        key: `${f.label}:${item.label}`,
-                        label: item.label,
-                        value: item.values.n,
-                        // ⚠️ Тоо ГАНЦААРАА хангалтгүй: 12 хэрчимтэй кабель трасс
-                        //    1.8 км, 3,200 хэрчимтэй дулаан 49.7 км — хэмжээг ч заана.
-                        display: [
-                          `${num(item.values.n)} ш`,
-                          qtyText(d, item.values.q),
-                        ].filter(Boolean).join(' · '),
-                        color: paint ? paint.values[item.label] : undefined,
-                      }))}
+                      items={items}
                     />
                   </Section>
                 );

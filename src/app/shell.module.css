@@ -1,56 +1,49 @@
-/* Үндсэн бүтэц: харагдац | [давхаргын каталог] | газрын зураг | дашбоард */
+/**
+ * ХҮРЭЭ — газрын зураг голд, дашбоард түүнийг тойрно:
+ *   · дээд  = толгой (навигаци)
+ *   · зүүн  = давхаргын сонголт (каталог, товчоор нээж/хаана)
+ *   · баруун = дэлгэрэнгүй самбар (сонгосон давхарга/бүсийн дашбоард)
+ *   · доод  = нэгтгэсэн үзүүлэлтийн зурвас
+ */
 .shell {
   display: grid;
-  grid-template-columns: var(--rail) 1fr var(--panel);
-  grid-template-rows: var(--head) 1fr;
+  grid-template-columns: 1fr var(--panel);
+  grid-template-rows: var(--head) 1fr var(--dashfoot);
   grid-template-areas:
-    'head head head'
-    'rail map  panel';
+    'head head'
+    'map  panel'
+    'foot foot';
   height: 100dvh;
 }
 
-/**
- * Каталог нээлттэй — зүүн модны ХАЖУУД нэмэлт багана.
- *
- * ⚠️ Модал popup биш: жагсаалтаас давхарга асаах бүрд зурагт өөрчлөлт нь ШУУД
- * харагдах ёстой. Popup нь зураг ба самбар хоёуланг бүрхэж, «юу өөрчлөгдсөнийг»
- * харахын тулд хаах шаардлагатай болгодог байв.
- */
+/** Давхаргын сонголт нээлттэй — газрын зургийн ЗҮҮН талд багана нэмэгдэнэ. */
 .shellCat {
-  grid-template-columns: var(--rail) var(--catalog) 1fr var(--panel);
+  grid-template-columns: var(--catalog) 1fr var(--panel);
   grid-template-areas:
-    'head head head head'
-    'rail cat  map  panel';
+    'head head head'
+    'cat  map  panel'
+    'foot foot foot';
 }
 
 /**
- * АНАЛИЗ — Suitability Modeler нь ӨӨРИЙН бүрэн дэлгэцтэй.
- *
- * ⚠️ Порталын зураг ба самбарыг огт зурахгүй: тэр модуль нь өөрийн газрын
- * зураг, өөрийн 3 багана, өөрийн харанхуй палитртай бие даасан апп. Хоёр
- * ArcGIS view зэрэг ажиллавал WebGL контекст үрэгдэнэ.
+ * АНАЛИЗ — Suitability Modeler нь ӨӨРИЙН бүрэн дэлгэцтэй (өөрийн 4 талын хүрээ:
+ * дээд топбар · зүүн/баруун карт · доод нэгтгэл). Тиймээс порталын хүрээг
+ * зурахгүй — хоёр ArcGIS view зэрэг ажиллавал WebGL контекст үрэгдэнэ.
  */
 .shellSuit {
-  grid-template-columns: var(--rail) 1fr;
+  grid-template-columns: 1fr;
+  grid-template-rows: var(--head) 1fr;
   grid-template-areas:
-    'head head'
-    'rail suit';
+    'head'
+    'suit';
 }
-.suit { grid-area: suit; min-width: 0; overflow: hidden; }
-
 /**
- * ЕРӨНХИЙ ДАШБОАРД — газрын зургийг ТОЙРСОН үзүүлэлтийн самбар.
- *
- * Analysis-тай ижил бүтэц: зүүн мод + бүтэн талбай. Дотоод байрлал (KPI зурвас,
- * зүүн/баруун/доод карт, төв газрын зураг) нь `Dashboard` модулийн өөрийн grid.
+ * ⚠️ ЕРӨНХИЙ ДАШБОАРД ч мөн ЭНЭ хүрээг ашиглана — харагдац сонголт нь толгойд
+ * хэвтээ таб болсон тул дашбоардад тусдаа grid хэрэггүй. Дотоод байрлал (KPI
+ * зурвас, зүүн/баруун/доод карт, төв газрын зураг) нь `Dashboard` модулийн
+ * өөрийн grid (`overview.module.css`).
  */
-.shellDash {
-  grid-template-columns: var(--rail) 1fr;
-  grid-template-areas:
-    'head head'
-    'rail dash';
-}
-.dash { grid-area: dash; min-width: 0; min-height: 0; overflow: hidden; }
+.suit { grid-area: suit; min-width: 0; overflow: hidden; }
 
 /* ── Толгой ── */
 .head {
@@ -142,26 +135,72 @@
 .headStatValue { font-size: 0.84rem; font-weight: 650; }
 .headStatLabel { font-size: 0.64rem; color: var(--ink-3); white-space: nowrap; }
 
-/* ── 2D ↔ 3D ── */
-.dimSwitch {
+/* ── Газрын зураг дээрх хэрэгслийн мөр ──
+   Давхарга + 2D/3D/BIM-ийг НЭГ бөөн болгож, зургийн ДЭЭД ТӨВД голлуулж,
+   тод (бүрэн бүдэг дэвсгэр, том сүүдэр) болгож, орж ирэх хөдөлгөөнтэй болгов.
+   ⚠️ ArcGIS-ийн zoom удирдлага зүүн ДЭЭД буланд, BIM виджет баруун дээд буланд
+   байдаг тул ТӨВД байрлуулснаар алинтай нь ч давхцахгүй. */
+.mapTools {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
   display: flex;
-  flex: none;
-  padding: 2px;
-  gap: 2px;
+  align-items: center;
+  gap: 6px;
+  padding: 4px;
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(10px);
+  animation: mapToolsIn 0.42s var(--ease) both;
+}
+@keyframes mapToolsIn {
+  from { opacity: 0; transform: translate(-50%, -16px) scale(0.94); }
+  to   { opacity: 1; transform: translate(-50%, 0) scale(1); }
+}
+
+/* Давхаргын каталог нээх товч */
+.mapBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 15px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 0.76rem;
+  font-weight: 650;
+  transition: background 0.16s var(--ease), color 0.16s, transform 0.1s;
+}
+.mapBtn:hover { background: var(--surface-2); color: var(--ink); }
+.mapBtn:active { transform: scale(0.95); }
+.mapBtn svg { width: 16px; height: 16px; }
+.mapBtnOn { background: var(--hue); color: #fff; box-shadow: var(--shadow-sm); }
+.mapBtnOn:hover { background: var(--hue); color: #fff; filter: brightness(1.07); }
+
+/* 2D ↔ 3D ↔ BIM — сегментчилсэн удирдлага (саарал зам · цагаан идэвх) */
+.mapDims {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 8px;
   background: var(--surface-2);
 }
 .dimBtn {
-  padding: 4px 10px;
-  border-radius: 4px;
-  font-size: 0.68rem;
+  padding: 6px 13px;
+  border-radius: 6px;
+  font-size: 0.72rem;
   font-weight: 650;
   letter-spacing: 0.04em;
   color: var(--ink-3);
-  transition: background 0.12s, color 0.12s;
+  transition: background 0.16s var(--ease), color 0.16s, transform 0.1s, box-shadow 0.16s;
 }
 .dimBtn:hover { color: var(--ink); }
+.dimBtn:active { transform: scale(0.95); }
 .dimOn { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm); }
 
 .iconBtn {
@@ -177,16 +216,35 @@
 }
 .iconBtn:hover { background: var(--surface-2); color: var(--ink); }
 
-/* ── Зүүн: давхаргын мод ── */
-.rail {
-  grid-area: rail;
-  background: var(--surface);
-  border-right: 1px solid var(--line);
-  overflow-y: auto;
-}
-
 /* ── Газрын зураг ── */
 .map { grid-area: map; position: relative; display: flex; min-width: 0; }
+
+/* ── Доод хүрээ: нэгтгэсэн үзүүлэлт ── */
+.dashFoot {
+  grid-area: foot;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  padding: 0 22px;
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+  overflow-x: auto;
+  z-index: 10;
+}
+.sumBar { display: flex; align-items: center; gap: 28px; }
+.sumZone {
+  flex: none;
+  padding: 4px 11px;
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--hue) 14%, transparent);
+  color: color-mix(in srgb, var(--hue) 65%, var(--ink));
+  font-size: 0.72rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.sumStat { display: flex; flex-direction: column; line-height: 1.2; flex: none; }
+.sumValue { font-size: 1.12rem; font-weight: 650; letter-spacing: -0.01em; }
+.sumLabel { font-size: 0.66rem; color: var(--ink-3); white-space: nowrap; }
 
 /* ── Дашбоард ── */
 .panel {
@@ -259,43 +317,30 @@
 .panelBody { flex: 1; overflow-y: auto; }
 
 /* ── Дэлгэц бага үед ── */
-/* Толгойн үзүүлэлтээс эхэлж хасна — мод нь хумигдаж болохгүй (гол удирдлага) */
-@media (max-width: 1600px) {
-  .headStats { gap: 14px; }
-  .headStat:nth-child(n + 4) { display: none; }
-}
-
-@media (max-width: 1380px) {
-  .shell { grid-template-columns: 240px 1fr var(--panel); }
-  .shellCat { grid-template-columns: 240px var(--catalog) 1fr var(--panel); }
-  .headStats { display: none; }
-}
-
 @media (max-width: 1180px) {
   .shell {
     grid-template-columns: 1fr;
     grid-template-rows: var(--head) 46vh auto auto;
-    grid-template-areas: 'head' 'map' 'panel' 'rail';
+    grid-template-areas: 'head' 'map' 'panel' 'foot';
     height: auto;
     min-height: 100dvh;
   }
-  /* Босоо өрөлт: зураг → каталог → дашбоард → харагдац */
+  /* Босоо өрөлт: зураг → каталог → дашбоард → нэгтгэл */
   .shellCat {
     grid-template-columns: 1fr;
     grid-template-rows: var(--head) 46vh auto auto auto;
-    grid-template-areas: 'head' 'map' 'cat' 'panel' 'rail';
+    grid-template-areas: 'head' 'map' 'cat' 'panel' 'foot';
   }
-  .shellSuit,
-  .shellDash {
+  /* Дашбоард ба анализ хоёулаа — нэг л бүтэн талбайн хүрээ */
+  .shellSuit {
     grid-template-columns: 1fr;
-    grid-template-rows: var(--head) 1fr auto;
-    grid-template-areas: 'head' 'suit' 'rail';
+    grid-template-rows: var(--head) 1fr;
+    grid-template-areas: 'head' 'suit';
   }
-  .shellDash { grid-template-areas: 'head' 'dash' 'rail'; }
   .suit { min-height: 80vh; }
-  .dash { min-height: 80vh; overflow: visible; }
-  .rail { border-right: none; border-top: 1px solid var(--line); overflow-y: visible; }
   .panel { border-left: none; border-right: none; border-top: 1px solid var(--line); }
+  /* Босоо өрөлтөд доод хүрээ доод захад — өндрөө автоматаар авна */
+  .dashFoot { height: auto; padding: 12px 16px; }
   /* Босоо өрөлтөд өргөн чирэх утгагүй */
   .grip { display: none; }
   /* Үзүүлэлт нуугдсанаар сул зай гарна — хайлт түүнийг эзэлж, гол хэрэгсэл болно */
