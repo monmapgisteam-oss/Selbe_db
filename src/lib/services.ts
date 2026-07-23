@@ -275,6 +275,34 @@ export const BUILDING = {
 } as const;
 
 /**
+ * BUS_cashflow — багц бүрийн ТӨСӨВ, САНХҮҮЖИЛТ, ГЭРЭЭНИЙ өгөгдөл.
+ * ⚠️ Талбар нь A1..E225 гэж КОДЛОГДСОН (Selbe_HO_polygon_join.xlsx-ийн HEADER_MAP-аар
+ * тайлав). ZONE_ID нь бүсийн давхарга (Багц-X.Y)-той холбогдоно. Утга нь таслалтай
+ * тэмдэгт мөр («259,778,021,987») тул тоо руу задлан хөрвүүлнэ.
+ */
+export const CASHFLOW = {
+  url: 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/BUS_cashflow/FeatureServer/0',
+  fields: {
+    zone: 'ZONE_ID',
+    budget: 'A5',        // Урьдчилсан төсөвт өртөг
+    orderTotal: 'B3',    // Захирамжийн дүн — нийт дүн
+    securities: 'B4',    // Санхүүжилт — үнэт цаасны хөрөнгө
+    projectIncome: 'B6', // Санхүүжилт — төслийн орлого
+    cityBudget: 'B7',    // Санхүүжилт — нийслэлийн төсөв
+    reserve: 'B8',       // Санхүүжилт — НЗД нөөц хөрөнгө
+    contract: 'C6',      // Гэрээ байгуулах эрх олгосон дүн
+    contractor: 'C2',    // Гүйцэтгэгч байгууллага
+  },
+  /** Сар бүрийн олгосон санхүүжилт (Мөнгөн дүн) — E-группээс задалсан */
+  months: [
+    { code: 'E2', label: '25-10' }, { code: 'E21', label: '25-11' }, { code: 'E40', label: '25-12' },
+    { code: 'E68', label: '26-01' }, { code: 'E87', label: '26-02' }, { code: 'E106', label: '26-03' },
+    { code: 'E125', label: '26-04' }, { code: 'E144', label: '26-05' }, { code: 'E163', label: '26-06' },
+    { code: 'E182', label: '26-07' }, { code: 'E201', label: '26-08' }, { code: 'E220', label: '26-09' },
+  ],
+} as const;
+
+/**
  * Гүйцэтгэлийн 4 түвшин.
  *
  * ⚠️ Өнгө нь ОРТОФОТО дээр ялгарах ёстой. Хуучин дараалал (улаан→улбар шар→шар)

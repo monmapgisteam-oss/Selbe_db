@@ -10,12 +10,12 @@
   display: grid;
   gap: 10px;
   padding: 10px;
-  grid-template-columns: minmax(260px, 300px) minmax(0, 1fr) minmax(260px, 300px);
+  grid-template-columns: minmax(220px, 260px) minmax(220px, 260px) minmax(0, 1fr) minmax(220px, 260px);
   grid-template-rows: auto minmax(0, 1fr) auto;
   grid-template-areas:
-    'kpi  kpi  kpi'
-    'left map  right'
-    'bot  bot  bot';
+    'kpi  kpi  kpi  kpi'
+    'left fin  map  right'
+    'bot  bot  bot  bot';
   background: var(--bg);
   min-width: 0;
   min-height: 0;
@@ -26,7 +26,7 @@
 .kpi {
   grid-area: kpi;
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
   gap: 10px;
 }
 .tile {
@@ -41,8 +41,8 @@
   box-shadow: var(--shadow-sm);
 }
 .tileVal { font-size: 1.28rem; font-weight: 700; line-height: 1.1; color: var(--ink); }
-.tileUnit { font-size: 0.7rem; font-weight: 600; color: var(--ink-3); margin-left: 3px; }
-.tileLabel { font-size: 0.64rem; color: var(--ink-3); }
+.tileUnit { font-size: 0.72rem; font-weight: 600; color: var(--ink-3); margin-left: 3px; }
+.tileLabel { font-size: 0.78rem; font-weight: 500; color: var(--ink-2); }
 
 /* ── Зүүн / баруун баганын карт ── */
 .side {
@@ -53,6 +53,7 @@
   overflow-y: auto;
 }
 .left { grid-area: left; }
+.fin { grid-area: fin; }
 .right { grid-area: right; }
 
 /* ── Төв газрын зураг ── */
@@ -106,6 +107,10 @@
   grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr);
   gap: 10px;
 }
+/* Доод эгнээний картын контентыг босоо голлуулж хоосон зайг тэнцвэржүүлнэ */
+.bot > section { display: flex; flex-direction: column; }
+.bot > section > :nth-child(2) { margin-top: auto; }
+.bot > section > :last-child { margin-bottom: auto; }
 
 /* ── Идэвхтэй шүүлтийн chip-үүд (газрын зураг дээр хөвнө) ── */
 .chipBar {
@@ -229,11 +234,12 @@
 .neg { color: var(--bad) !important; }
 
 /* ── Талбайн хяналтын индикатор ── */
-.surveyRow { display: flex; align-items: center; gap: 16px; }
-.surveyStats { display: flex; flex-direction: column; gap: 6px; }
-.surveyStats div { display: flex; align-items: baseline; gap: 8px; }
-.surveyStats b { font-size: 1rem; font-weight: 700; color: var(--ink); min-width: 54px; }
-.surveyStats span { font-size: 0.68rem; color: var(--ink-3); }
+/* Босоо: цагираг дээр, гурван үзүүлэлт доор өргөн даяар — зайг дүүргэнэ */
+.surveyRow { display: flex; flex-direction: column; align-items: center; gap: 18px; }
+.surveyStats { width: 100%; display: flex; flex-direction: row; justify-content: space-around; gap: 8px; }
+.surveyStats div { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.surveyStats b { font-size: 1.5rem; font-weight: 700; color: var(--ink); }
+.surveyStats span { font-size: 0.76rem; color: var(--ink-3); text-align: center; }
 
 /* ── Хүнд анализын ачаалалтын явц ── */
 .load { padding: 14px 4px 8px; }
@@ -319,11 +325,12 @@
 @media (max-width: 1180px) {
   .dash {
     grid-template-columns: 1fr;
-    grid-template-rows: auto auto 58vh auto auto;
+    grid-template-rows: auto auto 58vh auto auto auto;
     grid-template-areas:
       'kpi'
       'left'
       'map'
+      'fin'
       'right'
       'bot';
     height: auto;
