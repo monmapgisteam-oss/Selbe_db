@@ -12,6 +12,163 @@
 
 .note { font-size: 0.73rem; line-height: 1.55; color: var(--ink-3); }
 
+/* ══════════ Ерөнхий мэдээллийн тойм — шинэ загвар ══════════ */
+
+/* Hero — нийт объектын том үзүүлэлт */
+.ovHero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px 18px;
+  border-radius: var(--r);
+  border: 1px solid color-mix(in srgb, var(--hue) 24%, var(--line));
+  background:
+    radial-gradient(130% 150% at 0% 0%, color-mix(in srgb, var(--hue) 20%, transparent), transparent 58%),
+    color-mix(in srgb, var(--hue) 7%, var(--surface-2));
+}
+.ovHeroMain { display: flex; flex-direction: column; line-height: 1; }
+.ovHeroValue { font-size: 2.15rem; font-weight: 700; letter-spacing: -0.02em; color: var(--ink); }
+.ovHeroLabel {
+  margin-top: 6px;
+  font-size: 0.66rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+}
+.ovHeroSide { display: flex; gap: 20px; }
+.ovHeroStat { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.2; }
+.ovHeroStatV { font-size: 1.05rem; font-weight: 700; color: var(--hue); }
+.ovHeroStatL { font-size: 0.63rem; color: var(--ink-3); white-space: nowrap; }
+
+/* Давхаргын жагсаалт нээх — гол үйлдлийн товч */
+.ovListBtn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: 12px;
+  padding: 11px 14px;
+  border-radius: var(--r);
+  border: 1px solid color-mix(in srgb, var(--hue) 32%, var(--line));
+  background: color-mix(in srgb, var(--hue) 8%, transparent);
+  font-size: 0.76rem;
+  font-weight: 650;
+  color: var(--hue);
+  transition: background 0.14s var(--ease), transform 0.1s;
+}
+.ovListBtn:hover { background: color-mix(in srgb, var(--hue) 15%, transparent); }
+.ovListBtn:active { transform: scale(0.99); }
+.ovListGo { margin-left: auto; font-size: 1.15rem; line-height: 1; }
+
+/* Багц картууд */
+.ovGroups { display: flex; flex-direction: column; gap: 8px; }
+
+.ovCard {
+  border-radius: var(--r);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  overflow: hidden;
+  transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease), background 0.15s;
+}
+.ovCard:hover {
+  border-color: color-mix(in srgb, var(--tone) 40%, var(--line));
+  box-shadow: var(--shadow-sm);
+}
+.ovCardOn {
+  border-color: color-mix(in srgb, var(--tone) 45%, var(--line));
+  background: color-mix(in srgb, var(--tone) 5%, var(--surface));
+}
+
+.ovCardHead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 11px 12px;
+  text-align: left;
+}
+.ovIcon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  flex: none;
+  border-radius: 10px;
+  color: #fff;
+  background: var(--tone);
+  box-shadow: 0 3px 9px -3px color-mix(in srgb, var(--tone) 60%, transparent);
+}
+.ovIcon svg { width: 18px; height: 18px; }
+
+.ovCardMain { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.ovCardTop { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.ovCardTitle { font-size: 0.82rem; font-weight: 650; color: var(--ink); }
+.ovCount { flex: none; font-size: 0.94rem; font-weight: 700; color: var(--ink); }
+.ovCount i { font-style: normal; font-size: 0.66rem; font-weight: 500; color: var(--ink-3); margin-left: 2px; }
+
+.ovBar {
+  display: block;
+  height: 5px;
+  border-radius: 99px;
+  background: color-mix(in srgb, var(--tone) 12%, var(--surface-2));
+  overflow: hidden;
+}
+.ovBar i {
+  display: block;
+  height: 100%;
+  border-radius: 99px;
+  background: var(--tone);
+  transition: width 0.5s var(--ease);
+}
+
+.ovMeta { display: flex; align-items: center; gap: 8px; font-size: 0.66rem; color: var(--ink-3); }
+.ovOnBadge {
+  font-style: normal;
+  margin-left: auto;
+  padding: 1px 8px;
+  border-radius: 99px;
+  font-size: 0.62rem;
+  font-weight: 650;
+  color: var(--tone);
+  background: color-mix(in srgb, var(--tone) 15%, transparent);
+}
+
+.ovCaret { flex: none; font-size: 0.72rem; color: var(--ink-3); transition: transform 0.22s var(--ease), color 0.15s; }
+.ovCaretOpen { transform: rotate(180deg); color: var(--tone); }
+
+.ovCardBody {
+  padding: 3px 10px 10px;
+  border-top: 1px solid color-mix(in srgb, var(--tone) 14%, var(--line));
+}
+
+/* Багцын хэмжээ — урт · талбай жагсаалт */
+.ovSizeList { display: flex; flex-direction: column; gap: 6px; }
+.ovSizeRow {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 11px;
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  border: 1px solid transparent;
+  transition: border-color 0.12s;
+}
+.ovSizeRow:hover { border-color: color-mix(in srgb, var(--tone) 30%, var(--line)); }
+.ovSizeDot { width: 10px; height: 10px; flex: none; border-radius: 3px; background: var(--tone); }
+.ovSizeName {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ovSizeVal { flex: none; font-size: 0.75rem; font-weight: 650; color: var(--ink); }
+
 /* ── Давхаргын мөр — БАЙРАНДАА задардаг ── */
 .rows { display: flex; flex-direction: column; gap: 2px; }
 

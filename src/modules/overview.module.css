@@ -68,6 +68,37 @@
   box-shadow: var(--shadow-sm);
 }
 
+/* 2D / 3D / BIM солигч — зурган дээр давхарлав.
+   ⚠️ Порталын толгойн зурвасаас ялгаатай нь дашбоард нь бүтэн дэлгэцтэй тул
+   толгойн `mapTools` зурагдахгүй — солигчийг зургийн ДЭЭД ТӨВД өөрөө барина. */
+.mapDims {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(10px);
+}
+.dimBtn {
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 0.71rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+  transition: background 0.16s, color 0.16s, transform 0.1s, box-shadow 0.16s;
+}
+.dimBtn:hover { color: var(--ink); }
+.dimBtn:active { transform: scale(0.95); }
+.dimOn { background: var(--surface-2); color: var(--ink); box-shadow: var(--shadow-sm); }
+
 /* ── Доод өргөн график ── */
 .bot {
   grid-area: bot;

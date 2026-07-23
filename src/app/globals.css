@@ -66,6 +66,8 @@
   /* Баруун дашбоард — ХЭРЭГЛЭГЧ чирж өөрчилнө (Portal нь `.shell`-д inline тавина) */
   --panel: 360px;
   --head: 56px;
+  /* Доод хүрээ — нэгтгэсэн үзүүлэлтийн зурвас */
+  --dashfoot: 76px;
 
   --ease: cubic-bezier(0.32, 0.72, 0, 1);
   --mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace;

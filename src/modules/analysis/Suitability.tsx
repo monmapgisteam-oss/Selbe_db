@@ -7,6 +7,7 @@ import type Polygon from '@arcgis/core/geometry/Polygon';
 
 import {
   INDICATORS, PARKING, MAP_LAYERS, BUILD_COST_PER_M2, DEFAULT_ECON_SHARE,
+  SCORE_LEVELS, levelOf,
   type Indicator, type ParkingOpt, type CategoryKey,
 } from '@/lib/analysis/config';
 import {
@@ -21,7 +22,7 @@ import type { Dim } from '@/components/MapCanvas';
 import { SuitMap, type MapRow } from './SuitMap';
 import { SuitDetail } from './SuitDetail';
 import { nf, esc } from './suit/format';
-import { valueOf, type Mode, type Row } from './suit/model';
+import { valueOf, blendScore, type Mode, type Row } from './suit/model';
 import { Shell, Card } from './suit/Layout';
 import { LayerToggles } from './suit/LayerToggles';
 import { BlendCard } from './suit/BlendCard';
@@ -32,7 +33,7 @@ import s from './suitability.module.css';
 
 /* ══════════════════ Үндсэн компонент ══════════════════ */
 
-export function Suitability({ dim }: { dim: Dim }) {
+export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   /* ── Ачаалалт ── */
   const [data, setData] = useState<AnalysisData | null>(null);
   const [costs, setCosts] = useState<Costs | null>(null);
@@ -297,6 +298,25 @@ export function Suitability({ dim }: { dim: Dim }) {
               zoneTip={zoneTip}
               buildingTip={buildingTip}
             />
+
+            {/* 2D / 3D / BIM солих — газрын зураг дээр давхарлав.
+                ⚠️ ArcGIS-ийн удирдлага (zoom, home) баруун ДЭЭД, масштаб баруун
+                ДООД, дэлгэрэнгүй карт зүүн ДЭЭД буланд байдаг тул зүүн ДООД
+                буланд байрлуулж мөргөлдөөнгүй болгов. */}
+            <div className={s.mapDims} role="group" aria-label="Газрын зургийн харагдац">
+              {(['2d', '3d', 'bim'] as Dim[]).map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  aria-pressed={dim === d}
+                  className={`${s.dimBtn} ${dim === d ? s.dimOn : ''}`}
+                  onClick={() => setDim(d)}
+                >
+                  {d.toUpperCase()}
+                </button>
+              ))}
+            </div>
+
             {active && (
               <SuitDetail
                 key={active.id}
@@ -371,6 +391,41 @@ export function Suitability({ dim }: { dim: Dim }) {
           </>
         }
       />
+
+      {/* Доод хүрээ — оноон түвшний тархалт (газрын зургийг тойрсон бүтэц) */}
+      <SuitFooter rows={rows} econShare={econShare} />
     </div>
+  );
+}
+
+/* ══════════════════ Доод хүрээ: оноон тархалт ══════════════════ */
+
+/**
+ * ⚠️ Хот төлөвлөлт ба эдийн засгийн НИЙЛМЭЛ оноогоор — газрын зургийн будалт,
+ * эрэмбэтэй ижил тэнхлэг. Хуваарилалт (econShare) өөрчлөгдөхөд шинэчлэгдэнэ.
+ */
+function SuitFooter({ rows, econShare }: { rows: Row[]; econShare: number }) {
+  const scores = rows.map((r) => blendScore(r, econShare)).filter((x): x is number => x != null);
+  const avg = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
+  const counts = SCORE_LEVELS.map((L, i) => ({
+    L, n: rows.filter((r) => levelOf(blendScore(r, econShare)) === i).length,
+  }));
+
+  return (
+    <footer className={s.appFoot}>
+      <div className={s.footScore}>
+        <b style={{ color: scoreColor(avg) }}>{avg == null ? '—' : Math.round(avg)}</b>
+        <span>{rows.length} бүсийн дундаж · {scoreLabel(avg)}</span>
+      </div>
+      <div className={s.footLevels}>
+        {counts.map(({ L, n }) => (
+          <div key={L.label}>
+            <i style={{ background: L.color }} />
+            <span>{L.label}</span>
+            <b>{n}</b>
+          </div>
+        ))}
+      </div>
+    </footer>
   );
 }

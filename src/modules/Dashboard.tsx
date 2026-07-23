@@ -366,7 +366,12 @@ function useFarBcr(): Async<FarBcr> {
 
 /* ══════════════════ Үндсэн компонент ══════════════════ */
 
-export function Dashboard({ dim, zone, setZone }: { dim: Dim; zone: string | null; setZone: (z: string | null) => void }) {
+export function Dashboard({ dim, setDim, zone, setZone }: {
+  dim: Dim;
+  setDim: (d: Dim) => void;
+  zone: string | null;
+  setZone: (z: string | null) => void;
+}) {
   // ⚠️ БҮСЭЭР CROSS-FILTER: бүс сонгоход БҮС-СУУРЬТ виджет ба KPI тэр бүсээр
   //    дахин тооцогдоно; газрын зураг тэр бүсийг ГАНЦААР нь харуулж төвлөрнө.
   //    Барилгын блок, талбайн тайлан, өртөг, инженер нь бүстэй холбогддоггүй
@@ -452,6 +457,23 @@ export function Dashboard({ dim, zone, setZone }: { dim: Dim; zone: string | nul
 
       <div className={o.map}>
         <MapCanvas dim={dim} visible={DASH_LAYERS} zone={zone} onPick={pick} />
+
+        {/* 2D / 3D / BIM — дашбоард бүтэн дэлгэцтэй тул порталын хэрэгслийн
+            зурвас зурагдахгүй; солигчийг энд өөрөө барина. */}
+        <div className={o.mapDims} role="group" aria-label="Газрын зургийн харагдац">
+          {(['2d', '3d', 'bim'] as Dim[]).map((d) => (
+            <button
+              key={d}
+              type="button"
+              aria-pressed={dim === d}
+              className={`${o.dimBtn} ${dim === d ? o.dimOn : ''}`}
+              onClick={() => setDim(d)}
+            >
+              {d.toUpperCase()}
+            </button>
+          ))}
+        </div>
+
         <MapLegend />
         {zone && (
           <div className={o.filterChip}>
