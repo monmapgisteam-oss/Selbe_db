@@ -26,7 +26,7 @@ import '@arcgis/core/assets/esri/themes/light/main.css';
 import {
   LAYERS, LAYER_BY_ID, layerUrl, drawOrder, DASH_PATTERN,
   HOME, BASEMAP_URL, IMAGERY, SCENE, BIM, ELEVATION_URL, ZONE_LAYER,
-  ZONE_FIELD, ZONE_NONE, ZONE_TYPE_EMPTY_HUE, OID, BUILDING, SURVEY,
+  ZONE_FIELD, ZONE_NONE, ZONE_TYPE_EMPTY_HUE, OID, BUILDING, SURVEY, buildingKey,
   type LayerDef,
 } from '@/lib/services';
 import { queryExtent, queryFeatures, sqlStr, type Aoi } from '@/lib/query';
@@ -49,6 +49,9 @@ const is3D = (d: Dim) => d === '3d' || d === 'bim';
 
 /* ─────────────────── Map контекст ─────────────────── */
 
+/** Идэвхтэй тодруулга — `MapCanvas` 3D-д үүнийг `definitionExpression`-д нийлүүлнэ */
+export type Highlight = { where: string | null; only?: string | string[] };
+
 type MapApi = {
   view: AnyView | null;
   /**
@@ -59,6 +62,8 @@ type MapApi = {
    * бол бүх давхаргад.
    */
   setHighlight: (where: string | null, onlyLayerIds?: string | string[]) => void;
+  /** Идэвхтэй тодруулга — 3D-д `MapCanvas` өөрөө хэрэгжүүлэхэд хэрэгтэй */
+  highlight: Highlight;
   /** Давхаргыг бүхэлд нь харагдах хүрээнд нь аваачих */
   zoomToLayer: (id: string) => void;
   /** Тодорхой бүсийн хүрээнд аваачих */
@@ -68,7 +73,8 @@ type MapApi = {
 };
 
 const Ctx = createContext<MapApi>({
-  view: null, setHighlight: () => {}, zoomToLayer: () => {}, zoomToZone: () => {},
+  view: null, setHighlight: () => {}, highlight: { where: null },
+  zoomToLayer: () => {}, zoomToZone: () => {},
   zoomToWhere: () => {},
 });
 
@@ -219,19 +225,26 @@ const progColor = (v: number): [number, number, number] => {
 
 /**
  * `mon:building` давхаргын renderer — блок бүрийг НИЙТ ГҮЙЦЭТГЭЛЭЭР өнгөлнө
- * (`Tusliin_guitsetgel_master`-ийн as-of утга). BLOK талбараар unique-value —
- * нэг блокийн олон полигон ижил өнгөтэй. Мэдээлэлгүй блок → бүдэг саарал.
+ * («Б. Барилга угсралтын ажил» мөрийн утга). Мэдээлэлгүй блок → бүдэг саарал.
+ *
+ * ⚠️ BAGTS + BLOK ХОЁУЛАА түлхүүр (`valueExpression`). Зөвхөн BLOK-оор жиштэл
+ * Багц 1-ийн «5/1» Багц 2-ын «5/1»-тэй нийлж, өөр барилгын өнгийг зүүж байв.
+ * SDK-ийн `field`/`field2` хос нь давхаргын түүхий утгыг задалдаггүй тул
+ * (давхарга «Багц 4.1», хүснэгт «Багц 4-1») Arcade дээр хэвийн болгоно.
  */
 const buildingProgressRenderer = (prog: BlockProgressMap): __esri.RendererProperties => ({
   type: 'unique-value',
-  field: BUILDING.fields.block,
+  // `bagtsKey`/`blockKey`-ийн Arcade хувилбар — тэмдэгт хасаж том үсгээр.
+  valueExpression:
+    `Upper(Replace(Replace(Replace($feature.${BUILDING.fields.bagts}, " ", ""), ".", ""), "-", ""))` +
+    ` + "|" + Split(Trim($feature.${BUILDING.fields.block}), " ")[0]`,
   defaultSymbol: { type: 'simple-fill', color: c('#94a3b8', 0.22), outline: { color: c('#94a3b8', 0.9), width: 0.8 } },
   defaultLabel: 'Мэдээлэлгүй',
-  uniqueValueInfos: [...prog.entries()].map(([blk, p]) => {
+  uniqueValueInfos: [...prog.entries()].map(([key, p]) => {
     const [r, g, b] = progColor(p.overall);
     return {
-      value: blk,
-      label: `${blk} · ${Math.round(p.overall)}%`,
+      value: key,
+      label: `${key.split('|')[1]} · ${Math.round(p.overall)}%`,
       symbol: { type: 'simple-fill', color: [r, g, b, 0.62], outline: { color: [r, g, b, 1], width: 1 } },
     };
   }),
@@ -375,10 +388,20 @@ export function MapProvider({ children }: { children: ReactNode }) {
   const [view, setView] = useState<AnyView | null>(null);
   const register = useCallback((v: AnyView | null) => setView(v), []);
 
-  const [hl, setHl] = useState<{ where: string | null; only?: string | string[] }>({ where: null });
+  const [hl, setHl] = useState<Highlight>({ where: null });
 
+  /**
+   * Тодруулга 2D-д — таарахгүй объектыг БҮДГЭРҮҮЛНЭ (`featureEffect`).
+   *
+   * ⚠️ `featureEffect` нь ЗӨВХӨН MapView-д ажиллана. SceneView-ийн давхаргын
+   * харагдац (`views/3d/layers/FeatureLayerView3D`) энэ шинжийг ОГТ уншдаггүй —
+   * алдаа ч шидэхгүй, зүгээр л чимээгүй үл тоомсорлоно. Тиймээс 3D/BIM дээр
+   * бүх шүүлт «ажиллахгүй» харагддаг байв. 3D-д тодруулгыг `MapCanvas` өөрөө
+   * `definitionExpression`-д нийлүүлж хэрэгжүүлнэ (тэнд объект бүрмөсөн хасагдана).
+   */
   useEffect(() => {
     if (!view || view.destroyed || !view.map) return;
+    const is3d = view.type === '3d';
     const onlyList = hl.only == null ? null : Array.isArray(hl.only) ? hl.only : [hl.only];
     view.map.layers.forEach((l) => {
       if (PASSIVE.has(l.id) || !('featureEffect' in l)) return;
@@ -386,7 +409,7 @@ export function MapProvider({ children }: { children: ReactNode }) {
       // ⚠️ `visible` шалгахгүй: нуугдсан давхаргын эффектийг цэвэрлэх боломжтой
       //    байх ёстой, эс бөгөөс дахин асаахад хуучин шүүлт үлдэнэ.
       // `only` заасан бол ЗӨВХӨН тэр давхаргууд — бусдынхыг цэвэрлэнэ.
-      const apply = hl.where && (!onlyList || onlyList.includes(l.id));
+      const apply = !is3d && hl.where && (!onlyList || onlyList.includes(l.id));
       fl.featureEffect = apply
         ? ({
             filter: { where: hl.where },
@@ -446,8 +469,8 @@ export function MapProvider({ children }: { children: ReactNode }) {
   }, [view]);
 
   const api = useMemo<MapApi>(
-    () => ({ view, setHighlight, zoomToLayer, zoomToZone, zoomToWhere }),
-    [view, setHighlight, zoomToLayer, zoomToZone, zoomToWhere],
+    () => ({ view, setHighlight, highlight: hl, zoomToLayer, zoomToZone, zoomToWhere }),
+    [view, setHighlight, hl, zoomToLayer, zoomToZone, zoomToWhere],
   );
 
   return (
@@ -505,6 +528,13 @@ export function MapCanvas({
   const registerRef = useRef(register);
   registerRef.current = register;
 
+  /** 3D-д тодруулга `definitionExpression`-оор явна (featureEffect тэнд ажиллахгүй) */
+  const { highlight: hl } = useContext(Ctx);
+  const hlOnly = useMemo(
+    () => (hl.only == null ? null : Array.isArray(hl.only) ? hl.only : [hl.only]),
+    [hl.only],
+  );
+
   /** Массивыг эффектийн хамааралд өгч болохгүй (лавлагаа нь рендер бүрт шинэ) */
   const visibleKey = visible.join(',');
 
@@ -516,7 +546,7 @@ export function MapCanvas({
     if (!el.current) return;
 
     if (!mapRef.current) {
-      esriConfig.assetsPath = 'https://js.arcgis.com/4.31/@arcgis/core/assets';
+      esriConfig.assetsPath = 'https://js.arcgis.com/4.34/@arcgis/core/assets';
       mapRef.current = new Map({
         basemap: baseMap(),
         ground: new Ground({ layers: [new ElevationLayer({ url: ELEVATION_URL })] }),
@@ -765,24 +795,33 @@ export function MapCanvas({
       /**
        * Бүсийн шүүлт — `definitionExpression`-оор объектыг БҮРЭН хасна.
        *
-       * ⚠️ `featureEffect` БИШ. Тэрийг ангиллын тодруулга эзэлдэг бөгөөд ArcGIS
-       * давхаргад ганцхан `featureEffect` байдаг тул хоёуланг нэг дор хийвэл
-       * сүүлд бичсэн нь нөгөөгөө чимээгүй устгана. `definitionExpression` нь
-       * тусдаа механизм — хоёулаа зэрэг ажиллана.
+       * ⚠️ 2D-д `featureEffect` БИШ. Тэрийг ангиллын тодруулга эзэлдэг бөгөөд
+       * ArcGIS давхаргад ганцхан `featureEffect` байдаг тул хоёуланг нэг дор
+       * хийвэл сүүлд бичсэн нь нөгөөгөө чимээгүй устгана. `definitionExpression`
+       * нь тусдаа механизм — хоёулаа зэрэг ажиллана.
+       *
+       * ⚠️ 3D-д (SceneView) `featureEffect` ажиллахгүй тул тодруулга ЭНД
+       * нийлнэ. Нэг шинжид хоёр эзэн болох тул ЗААВАЛ `AND`-аар хослуулна —
+       * дан дарж бичвэл бүсийн шүүлт эсвэл тодруулгын аль нэг нь алга болно.
        */
       const d = LAYER_BY_ID[l.id];
       if (d && 'definitionExpression' in l) {
         // `layerWhere` заасан бол давхарга бүрийн өөрийн WHERE; эс бөгөөс бүсийн
         // нэгдсэн шүүлт (cross-filter дашбоард нь давхарга тус бүрээ шүүнэ).
         const own = layerWhere ? layerWhere[l.id] ?? null : undefined;
+        const base = own !== undefined
+          ? own
+          : zone && !d.noZone ? `${ZONE_FIELD} = ${sqlStr(zone)}` : null;
+        const hlOn = is3D(dim) && hl.where && (!hlOnly || hlOnly.includes(l.id))
+          ? hl.where
+          : null;
+        const parts = [base, hlOn].filter(Boolean) as string[];
         (l as FeatureLayer).definitionExpression = (
-          own !== undefined
-            ? own
-            : zone && !d.noZone ? `${ZONE_FIELD} = ${sqlStr(zone)}` : null
+          parts.length ? parts.map((p) => `(${p})`).join(' AND ') : null
         ) as unknown as string;
       }
     });
-  }, [visibleKey, dim, ready, zone, layerWhere]);
+  }, [visibleKey, dim, ready, zone, layerWhere, hl, hlOnly]);
 
   /**
    * `mon:building` давхаргыг НИЙТ ГҮЙЦЭТГЭЛЭЭР өнгөлнө — «Гүйцэтгэл бөглөх»-ийн
@@ -902,7 +941,7 @@ function MapTip({
     // Гүйцэтгэл нь «Гүйцэтгэл бөглөх»-ийн as-of утгаас (өнгөтэй нэг эх сурвалж),
     // shapefile-ийн хуучирсан GUITS_HV БИШ.
     const blk = text(attrs[F.block]);
-    const g = prog?.get(blk)?.overall ?? null;
+    const g = prog?.get(buildingKey(attrs[F.bagts], blk))?.overall ?? null;
     rows.push({ k: 'Блок', v: blk });
     rows.push({ k: 'Гүйцэтгэл', v: g == null ? '—' : pct(g, 0) });
     rows.push({ k: 'Айл', v: num(Number(attrs[F.households] ?? 0)) });

@@ -116,6 +116,30 @@
   border: 1px solid color-mix(in srgb, var(--hue) 22%, transparent);
 }
 
+/* ── Ачааллаж буй үеийн skeleton ── */
+.skeletonRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px;
+}
+.skeletonCell {
+  height: 14px;
+  border-radius: var(--r-sm);
+  background: linear-gradient(
+    90deg,
+    var(--sunken) 25%,
+    var(--surface-2) 37%,
+    var(--sunken) 63%
+  );
+  background-size: 400% 100%;
+  animation: skeletonPulse 1.4s ease infinite;
+}
+@keyframes skeletonPulse {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+
 .scroll {
   overflow: auto;
   max-height: 80vh;
@@ -167,7 +191,7 @@
   background: var(--surface);
 }
 /* Барилга (гүйдэг) багана: тогтмол, уншигдах өргөн. */
-.xl .bld { min-width: 58px; }
+.xl .bld { min-width: 66px; }
 
 .xl thead th {
   position: sticky;
@@ -178,6 +202,11 @@
   font-weight: 600;
   letter-spacing: 0.01em;
   box-shadow: inset 0 -1px 0 var(--line-strong);
+  /* Толгойн текст багана болгонд багтахгүй бол мөр хуваана. */
+  white-space: normal;
+  line-height: 1.25;
+  vertical-align: bottom;
+  height: auto;
 }
 
 /* Тоон багана цифр цифрээрээ эгнэнэ. */
@@ -190,7 +219,7 @@
 
 /* Царцаасан хавтгайн тусгаарлагч: сүүлийн зүүн ба эхний баруун царцсан
    баганаас сүүдэр — гүйдэг хэсэг тусдаа бүс мэт харагдана. */
-.xl .c-jin { box-shadow: 2px 0 4px -2px rgb(16 20 24 / 0.18); }
+.xl .c-perf { box-shadow: 2px 0 4px -2px rgb(16 20 24 / 0.18); }
 .xl .c-done { box-shadow: -2px 0 4px -2px rgb(16 20 24 / 0.18); }
 
 /* Sticky footer: Дундаж мөр гүйлгэх үед доор наалдана. */
@@ -224,21 +253,35 @@
 }
 .xl .c-jin {
   left: 280px;
-  width: 48px;
-  min-width: 48px;
-  max-width: 48px;
+  width: 60px;
+  min-width: 60px;
+  max-width: 60px;
+}
+/* Хоёр дахь жин (нийт талбайд эзлэх) + гүйцэтгэлийн хувь — зүүн царцсан блокт
+   нэмэгдэнэ. c-jin (280) → c-totw (340) → c-perf (400) → барилгын багана. */
+.xl .c-totw {
+  left: 340px;
+  width: 60px;
+  min-width: 60px;
+  max-width: 60px;
+}
+.xl .c-perf {
+  left: 400px;
+  width: 64px;
+  min-width: 64px;
+  max-width: 64px;
 }
 .xl .c-done {
-  right: 56px;
-  width: 56px;
-  min-width: 56px;
-  max-width: 56px;
+  right: 64px;
+  width: 64px;
+  min-width: 64px;
+  max-width: 64px;
 }
 .xl .c-dutuu {
   right: 0;
-  width: 56px;
-  min-width: 56px;
-  max-width: 56px;
+  width: 64px;
+  min-width: 64px;
+  max-width: 64px;
 }
 
 .xl tr.cat td {

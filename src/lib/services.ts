@@ -313,6 +313,7 @@ export const TASK_PERF = {
   url: 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/Tusliin_guitsetgel_master/FeatureServer/0',
   oid: 'ObjectID',
   fields: {
+    bagts: 'Багц',           // «БАГЦ-3-2» — БЛОКИЙН НЭР багц дотор л давтагдахгүй
     block: 'Барилга_Блок',   // «5/1 блок» — BLOK-той тааруулах түлхүүр
     date: 'Огноо',           // хувилбарын огноо (YYYY-MM-DD)
     version: 'Хувилбар',     // хувилбарын дугаар
@@ -323,6 +324,48 @@ export const TASK_PERF = {
     progress: 'Гүйцэтгэл____', // гүйцэтгэл 0–1
   },
 } as const;
+
+/**
+ * «Гүйцэтгэл бөглөх» хуудасны НЭГТГЭСЭН хүснэгт — бөглөсөн нүд бүр энд НЭМЭГДЭЖ
+ * (append) бичигдэнэ, хуучин огноо хэзээ ч дарагдахгүй. Тиймээс нүд бүрийн
+ * ХАМГИЙН СҮҮЛИЙН огноотой мөрийг авбал тухайн агшны бүтэн зураг гарна.
+ *
+ * `dugaar` нь excel-ийн А баганын № — шатлалын цорын ганц үнэн эх сурвалж:
+ *   «А.» = Бэлтгэл ажил, «Б.» = БАРИЛГА УГСРАЛТЫН АЖИЛ (барилгын нийт гүйцэтгэл).
+ * Б. мөрийн барилга бүрийн нүд нь эх хүснэгт өөрөө бодсон дэд-үе шатын жинтэй
+ * нийлбэр — Барилгын хяналтын «нийт гүйцэтгэл» ҮҮНИЙГ шууд авна.
+ */
+export const TASK_SHEET = {
+  url: 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/Selbe_guitsetgel_consolidated/FeatureServer/0',
+  oid: 'OBJECTID',
+  /** Барилга угсралтын ажлын үе шатын № — нийт гүйцэтгэлийн мөр */
+  constructionNo: 'Б.',
+  fields: {
+    bagts: 'bagts',          // «Багц 4-1»
+    no: 'dugaar',            // № (excel багана А) — «А.», «Б.», «Б1», «1.2», «3»
+    date: 'ognoo',           // YYYY-MM-DD
+    block: 'barilga_blok',   // «5/1 барилга» / «5/1 блок»
+    progress: 'guitsetgel',  // гүйцэтгэл 0–1
+  },
+} as const;
+
+/**
+ * Багцын нэр гурван эх сурвалжид гурван янз бичигдсэн:
+ *   барилгын давхарга «Багц 4.1» · нэгтгэсэн хүснэгт «Багц 4-1» · master «БАГЦ-4-1»
+ * Тэмдэгт/хоосон зайг хасаж том үсгээр жиших — гурвуулаа «БАГЦ41» болно.
+ *
+ * ⚠️ Багцгүйгээр блокийн нэрээр ганцаар жиших БОЛОХГҮЙ: «5/1» долоон багцад
+ * тус бүрдээ өөр БОДИТ барилга (Багц 1-ийн 5/1 ≠ Багц 2-ын 5/1).
+ */
+export const bagtsKey = (v: unknown) =>
+  String(v ?? '').toUpperCase().replace(/[^0-9А-ЯӨҮA-Z]/g, '');
+
+/** «5/1 барилга» / «5/1 блок» → «5/1» (давхаргын `BLOK`-той тааруулах) */
+export const blockKey = (v: unknown) => String(v ?? '').trim().split(/\s+/)[0];
+
+/** Барилгын мөрийн түлхүүр — багц + блок хосоор (дэлхийд давтагдашгүй) */
+export const buildingKey = (bagts: unknown, block: unknown) =>
+  `${bagtsKey(bagts)}|${blockKey(block)}`;
 
 /**
  * ГАЗАР ЧӨЛӨӨЛӨЛТ — хоёр тусдаа FeatureServer.

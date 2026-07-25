@@ -182,7 +182,7 @@ export function SuitMap({
     if (!el.current) return;
 
     if (!mapRef.current) {
-      esriConfig.assetsPath = 'https://js.arcgis.com/4.31/@arcgis/core/assets';
+      esriConfig.assetsPath = 'https://js.arcgis.com/4.34/@arcgis/core/assets';
 
       const zoneLayer = new GraphicsLayer({ title: 'Тохиромжтой байдал', elevationInfo: ON_GROUND });
       const labelLayer = new GraphicsLayer({ title: 'Шошго', elevationInfo: ON_GROUND });

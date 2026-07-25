@@ -5,7 +5,8 @@ import { Section, Stats, Stat, Bars, Stack, Ring, Rows, Data, Chip, Empty, List,
 import { useFilter } from '@/lib/filter';
 import { useAsync, type Async } from '@/lib/useAsync';
 import { queryGroup, queryStats, queryCount, queryFeatures, count, sum, avg, sqlStr, groups } from '@/lib/query';
-import { BUILDING, BUILDING_STAGES, PROGRESS_LEVELS, STAGE_NA, TASK_PERF, LAYER_BY_ID } from '@/lib/services';
+import { BUILDING, BUILDING_STAGES, PROGRESS_LEVELS, STAGE_NA, TASK_PERF, LAYER_BY_ID, bagtsKey, buildingKey } from '@/lib/services';
+import { loadBlockProgress } from '@/lib/blockProgress';
 import { num, pct, date, text } from '@/lib/format';
 
 const HUE = LAYER_BY_ID['mon:building'].hue;
@@ -125,6 +126,38 @@ export function BuildingSummary() {
     });
   };
 
+  /** Үе шат — тухайн ажил ТӨЛӨВЛӨГДСӨН (утга > −1) блокуудыг тодруулна */
+  const pickStage = (field: string) => {
+    const st = BUILDING_STAGES.find((x) => x.field === field);
+    if (!st) return;
+    toggle({
+      key: `building:stage:${field}`,
+      label: st.label,
+      group: 'Ажлын үе шат',
+      where: `${field} > ${STAGE_NA}`,
+      view: 'monitor',
+      layerIds: 'mon:building',
+      color: HUE,
+    });
+  };
+
+  const pickComp = (key: string) => {
+    toggle({
+      key: `building:comp:${key}`,
+      label: key,
+      group: 'Гүйцэтгэгч компани',
+      // «Тодорхойгүй» бүлэг нь null ба хоосон мөр ХОЁУЛАА (`groups()` нэгтгэсэн).
+      // ⚠️ `TRIM()` БОЛОХГҮЙ — энэ FeatureServer тэр функцийг таньдаггүй бөгөөд
+      // хүсэлт нь чимээгүй унаж, шүүлт «ажиллахгүй» болно.
+      where: key === 'Тодорхойгүй'
+        ? `${F.contractor} IS NULL OR ${F.contractor} = '' OR ${F.contractor} = ' '`
+        : `${F.contractor} = ${sqlStr(key)}`,
+      view: 'monitor',
+      layerIds: 'mon:building',
+      color: HUE,
+    });
+  };
+
   /** Идэвхтэй шүүлтийн түлхүүрээс тухайн жагсаалтын сонголтыг сэргээнэ */
   const selected = (prefix: string) =>
     active?.key.startsWith(prefix) ? active.key.slice(prefix.length) : null;
@@ -186,10 +219,12 @@ export function BuildingSummary() {
             />
           </Section>
 
-          <Section title="Ажлын үе шат" note="төлөвлөгдсөн блокуудын дундаж">
+          <Section title="Ажлын үе шат" note="дарж шүүнэ">
             <Bars
               color={HUE}
               max={100}
+              selected={selected('building:stage:')}
+              onSelect={pickStage}
               items={d.stages.map((st) => ({
                 key: st.key,
                 label: st.label,
@@ -199,10 +234,13 @@ export function BuildingSummary() {
             />
           </Section>
 
-          <Section title="Гүйцэтгэгч компани">
+          <Section title="Гүйцэтгэгч компани" note="дарж шүүнэ">
             <Bars
               color={HUE}
               max={100}
+              limit={8}
+              selected={selected('building:comp:')}
+              onSelect={pickComp}
               items={d.contractors.map((c) => ({
                 key: c.key,
                 label: `${c.key} · ${num(c.blocks)} блок`,
@@ -226,7 +264,7 @@ const TP = TASK_PERF.fields;
 type HeaderWork = { name: string; progress: number | null; level: number };
 type TaskPerfData = {
   version: string;              // «2026-07-23» — сүүлийн шинэчлэлтийн огноо
-  overall: number;             // ажлаар жигнэсэн гүйцэтгэл (0–100)
+  overall: number | null;      // «Б. Барилга угсралтын ажил» мөрийн гүйцэтгэл (0–100)
   headers: HeaderWork[];       // толгой (header) ажлууд өөрсдийн гүйцэтгэлээр
   taskCount: number;
   done: number;                // дууссан (гүйц ≥ 1)
@@ -243,25 +281,47 @@ const isHdr = (r: Record<string, unknown>) => {
   const w = r[TP.weight] == null ? null : Number(r[TP.weight]);
   return Number(r[TP.level]) !== 3 || (w != null && Math.abs(w - 1) < 1e-6);
 };
+/** Бэлтгэл ажлын Түвшин-1 толгойн текст — `Ангилал__А_` талбар эвдэрсэн (бүх
+ *  мөрөнд адилхан бичигдсэн тул ангилалаар ялгах боломжгүй). `secOf`-оор л
+ *  ялгана: энэ толгойн ДАРАА, дараагийн толгой хүртэлх навчид Бэлтгэлийнх —
+ *  барилгын ерөнхий гүйцэтгэлээс хасна. */
+const PREP_HEADER = 'A. Бэлтгэл ажил';
 
 /**
- * Тухайн блокийн ажлын гүйцэтгэл — «Төслийн гүйцэтгэл» хүснэгтээс (нээлттэй).
- * «Гүйцэтгэл бөглөх» хуудастай ЯГ адил as-of логик: `Барилга_Блок LIKE '{BLOK} %'`
- * -ээр бүх огноо/хувилбарыг татаад, ажил бүрээр ХАМГИЙН СҮҮЛИЙН утгыг (Огноо→OID
- * дарааллаар) авна — тиймээс өнөөдөр цөөн нүд засаад нийтэлсэн ч бүтэн хуудас
- * харагдана. Навч ажлыг (Түвшин 3) жингээр жигнэж нийт %, толгой ажлуудыг
- * өөрсдийн бүртгэсэн гүйцэтгэлээр нь тусад нь гаргана.
+ * Тухайн блокийн ажлын гүйцэтгэл.
+ *
+ * НИЙТ ГҮЙЦЭТГЭЛ (`overall`) нь «Гүйцэтгэл бөглөх»-ийн нэгтгэсэн хүснэгтээс —
+ * «Б. Барилга угсралтын ажил» мөрийн тухайн барилгын нүд (`loadBlockProgress`,
+ * газрын зургийн өнгөтэй ЯГ нэг эх сурвалж). Эх excel өөрөө дэд-үе шатын жингээр
+ * бодсон дүн бөгөөд Бэлтгэл ажил ҮҮНД ОРОХГҮЙ.
+ *
+ * Ажлын ЗАДАРГАА (толгой ажлууд, төлөвийн тоо) нь `Tusliin_guitsetgel_master`-
+ * ээс, бөглөх хуудастай адил as-of логикоор: бүх огноо/хувилбарыг татаад ажил
+ * бүрээр ХАМГИЙН СҮҮЛИЙН утгыг (Огноо→OID) авна.
+ *
+ * ⚠️ БЛОКИЙН НЭР БАГЦААР ДАВТАГДАНА («5/1» долоон багцад тус бүрдээ өөр барилга).
+ * Тиймээс `Барилга_Блок LIKE`-аас гадна Багцаар ЗААВАЛ шүүнэ — эс бөгөөс өөр
+ * багцын барилгуудын мөр нийлж, гүйцэтгэл нь хольцтой гарна.
  */
-function useTaskPerf(blok: string | null): Async<TaskPerfData | null> {
+function useTaskPerf(b: PickedBuilding | null): Async<TaskPerfData | null> {
+  const blok = b?.blok ?? null;
+  const bagts = b?.bagts ?? null;
   return useAsync(async () => {
     if (!blok) return null;
-    const rows = await queryFeatures(TASK_PERF.url, {
-      where: `${TP.block} LIKE ${sqlStr(`${blok} %`)}`,
-      outFields: [TASK_PERF.oid, TP.block, TP.date, TP.version, TP.level, TP.catA, TP.task, TP.weight, TP.progress],
-      limit: 8000,
-    });
-    // Зөвхөн хүчинтэй огноотой мөрүүд — «undefined» гэх бохир өгөгдлийг хасна
-    const valid = rows.filter((r) => isValidDate(text(r[TP.date])));
+    const [rows, prog] = await Promise.all([
+      queryFeatures(TASK_PERF.url, {
+        where: `${TP.block} LIKE ${sqlStr(`${blok} %`)}`,
+        outFields: [TASK_PERF.oid, TP.bagts, TP.block, TP.date, TP.version, TP.level, TP.catA, TP.task, TP.weight, TP.progress],
+        limit: 8000,
+      }),
+      loadBlockProgress().catch(() => null),
+    ]);
+    const cell = prog?.get(buildingKey(bagts, blok)) ?? null;
+    // Зөвхөн хүчинтэй огноотой + ЭНЭ БАГЦЫН мөрүүд («undefined» гэх бохир өгөгдөл,
+    // бусад багцын ижил нэртэй блок хоёулаа энд унана)
+    const valid = rows.filter(
+      (r) => isValidDate(text(r[TP.date])) && bagtsKey(r[TP.bagts]) === bagtsKey(bagts),
+    );
     if (!valid.length) return null;
 
     // Upload багц (Огноо|Хувилбар|Блок) бүрд OID дарааллаар толгой ажлыг доорх
@@ -304,20 +364,21 @@ function useTaskPerf(blok: string | null): Async<TaskPerfData | null> {
     }
     const latest = [...win.values()];
 
-    // Навч ажлууд (Түвшин 3) — нийт жигнэсэн гүйцэтгэл + төлөв
-    const leaves = latest.filter((r) => Number(r[TP.level]) === 3 && !isHdr(r));
-    let twp = 0, tw = 0, done = 0, inProgress = 0, notStarted = 0;
+    // Барилга угсралтын навч ажлууд (Түвшин 3) — ажлын ТӨЛӨВИЙН тоололд.
+    // Бэлтгэлийн (А.) мөрүүд энд ОРОХГҮЙ: нийт гүйцэтгэл нь Б. үе шатынх.
+    const leaves = latest.filter(
+      (r) => Number(r[TP.level]) === 3 && !isHdr(r) && secOf.get(r) !== PREP_HEADER,
+    );
+    let done = 0, inProgress = 0, notStarted = 0;
     for (const r of leaves) {
-      const w = Number(r[TP.weight]) || 0;
       const p = Number(r[TP.progress]) || 0;
-      twp += w * p; tw += w;
       if (p >= 1) done += 1; else if (p > 0) inProgress += 1; else notStarted += 1;
     }
     if (!leaves.length && !latest.length) return null;
 
     // Толгой ажлууд — өөрсдийн бүртгэсэн гүйцэтгэлээр (template дараалалд)
     const headers = latest
-      .filter((r) => isHdr(r))
+      .filter((r) => isHdr(r) && secOf.get(r) !== PREP_HEADER)
       .map((r) => ({
         name: text(r[TP.task]).replace(/\s+/g, ' ').replace(/^[A-Za-zА-Яа-яӨөҮү]\.\s*/, '').trim(),
         progress: r[TP.progress] == null ? null : Number(r[TP.progress]) * 100,
@@ -329,19 +390,24 @@ function useTaskPerf(blok: string | null): Async<TaskPerfData | null> {
       .map(({ order: _o, ...h }) => h);
 
     return {
-      version: maxDate,
-      overall: tw ? (twp / tw) * 100 : 0,
+      version: cell?.date || maxDate,
+      overall: cell?.overall ?? null,
       headers,
       taskCount: leaves.length,
       done, inProgress, notStarted,
     };
-  }, [blok]);
+  }, [bagts, blok]);
 }
 
-/** Сонгосон барилгын блокийн дугаар (BLOK) — бусад тохиолдолд null */
-function pickedBlok(picked: Record<string, unknown> | null, pickedLayer: string | null): string | null {
+/** Сонгосон барилга — БАГЦ + БЛОК хосоор (блокийн нэр багц дотор л давтагдахгүй) */
+export type PickedBuilding = { bagts: string; blok: string };
+function pickedBuilding(
+  picked: Record<string, unknown> | null,
+  pickedLayer: string | null,
+): PickedBuilding | null {
   if (picked == null || pickedLayer !== 'mon:building') return null;
-  return text(picked[F.block], '').trim() || null;
+  const blok = text(picked[F.block], '').trim();
+  return blok ? { bagts: text(picked[F.bagts], '').trim(), blok } : null;
 }
 
 /**
@@ -349,21 +415,25 @@ function pickedBlok(picked: Record<string, unknown> | null, pickedLayer: string 
  * ⚠️ ЗӨВХӨН «Төслийн гүйцэтгэл» table service — барилгын shapefile талбар БИШ.
  */
 export function MonitorGeneral({ picked, pickedLayer }: { picked: Record<string, unknown> | null; pickedLayer: string | null }) {
-  const blok = pickedBlok(picked, pickedLayer);
-  const q = useTaskPerf(blok);
-  if (!blok) {
+  const b = pickedBuilding(picked, pickedLayer);
+  const q = useTaskPerf(b);
+  if (!b) {
     return <Section><Empty label="Газрын зураг дээр барилга дээр дарж тухайн блокийн ажлын гүйцэтгэлийг харна уу." /></Section>;
   }
   return (
     <Data q={q} loading="Ажлын гүйцэтгэл татаж байна…">
       {(d) => {
-        if (!d) return <Section title="Ажлын гүйцэтгэл"><Empty label={`«${blok}» блокийн ажлын гүйцэтгэл хараахан бүртгэгдээгүй байна.`} /></Section>;
+        if (!d) return <Section title="Ажлын гүйцэтгэл"><Empty label={`«${b.blok}» блокийн ажлын гүйцэтгэл хараахан бүртгэгдээгүй байна.`} /></Section>;
         return (
           <>
-            <Section tone="primary" title={`${blok} — нийт гүйцэтгэл`} note={d.version}>
+            <Section tone="primary" title={`${b.blok} — нийт гүйцэтгэл`} note={d.version}>
               <Col gap="sm">
-                <Ring value={d.overall} color={HUE} size={104} width={11} label="ажлаар" />
-                <Note>«{num(d.taskCount)}» ажлын гүйцэтгэлийг жингээр (Хувийн жин) жигнэв.</Note>
+                <Ring value={d.overall ?? 0} color={HUE} size={104} width={11} label="угсралт" />
+                <Note>
+                  {d.overall == null
+                    ? 'Барилга угсралтын ажлын гүйцэтгэл хараахан бөглөгдөөгүй.'
+                    : `«Б. Барилга угсралтын ажил» үе шатын гүйцэтгэл (Бэлтгэл ажил ороогүй). Задаргаа «${num(d.taskCount)}» ажлаар.`}
+                </Note>
               </Col>
             </Section>
 
@@ -386,9 +456,9 @@ export function MonitorGeneral({ picked, pickedLayer }: { picked: Record<string,
  * ⚠️ ЗӨВХӨН «Төслийн гүйцэтгэл» table service.
  */
 export function MonitorDetail({ picked, pickedLayer }: { picked: Record<string, unknown> | null; pickedLayer: string | null }) {
-  const blok = pickedBlok(picked, pickedLayer);
-  const q = useTaskPerf(blok);
-  if (!blok) {
+  const b = pickedBuilding(picked, pickedLayer);
+  const q = useTaskPerf(b);
+  if (!b) {
     return <Section><Empty label="Барилга сонгоход ажлын дэлгэрэнгүй гүйцэтгэл (ангиллаар) энд гарна." /></Section>;
   }
   return (
