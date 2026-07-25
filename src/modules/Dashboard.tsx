@@ -177,7 +177,7 @@ const PC = PARCEL_CLEAN.fields;
 
 function useLeftParcels(): Async<Row[]> {
   return useAsync(() => queryFeatures(PARCEL_LEFT.url, {
-    outFields: [PL.progress, PL.area],
+    outFields: [PL.progress, PL.area, PL.block],
   }), []);
 }
 
@@ -862,11 +862,17 @@ const PROGRESS_HUES: Record<string, string> = {
 
 /**
  * ЧӨЛӨӨЛӨГДӨӨГҮЙ нэгж талбар — чөлөөлөлтийн явцаар.
- * ⚠️ Тусдаа өгөгдлийн сан тул cross-filter-т ОРОХГҮЙ (`onSelect` байхгүй).
+ *
+ * ⚠️ Дашбоардын ЕТ cross-filter-т ОРОХГҮЙ — тусдаа өгөгдлийн сан. Бүсийн код нь
+ * ЕТ-тэй ИЖИЛ схемтэй ч бичиглэл нь бохир («A17» ↔ «A-17», «C-7-1» ↔ «C-7.1»,
+ * «Багц 4.1.» гэсэн бүс биш утга, кирилл «А» ба латин «A» хольцтой) тул
+ * тааруулалт 54% — холбовол ЧИМЭЭГҮЙ БУРУУ шүүлт өгнө. Тиймээс сонголт нь
+ * ЗӨВХӨН энэ картын дотор ажиллана: ангилал сонгоход түүний задаргаа гарна.
  */
 function ParcelLeftCard({ raw }: { raw: Async<Row[]> }) {
+  const [sel, setSel] = useState<string | null>(null);
   return (
-    <Card title="Үлдсэн нэгж талбар" note="чөлөөлөлтийн явц">
+    <Card title="Үлдсэн нэгж талбар" note="чөлөөлөлтийн явц · дарж задална">
       <Data q={raw} loading="Тооцож байна…">
         {(rows) => {
           const by = new Map<string, { n: number; area: number }>();
@@ -885,12 +891,42 @@ function ParcelLeftCard({ raw }: { raw: Async<Row[]> }) {
             }))
             .sort((a, b) => b.value - a.value);
           const total = items.reduce((a, i) => a + i.value, 0);
+          if (!items.length) return <p className={o.state}>Мэдээлэл алга.</p>;
+
+          // Сонгосон ангиллын задаргаа — блокоор (`Блок` талбар).
+          const cur = sel ? by.get(sel) : null;
+          const byBlock = new Map<string, number>();
+          if (sel) {
+            for (const x of rows) {
+              if (cleanProgress(text(x[PL.progress])) !== sel) continue;
+              byBlock.set(text(x[PL.block]).trim() || '—', (byBlock.get(text(x[PL.block]).trim() || '—') ?? 0) + 1);
+            }
+          }
+          const blocks = [...byBlock.entries()].sort((a, b) => b[1] - a[1]);
+
           // ⚠️ `stack` (nowrap БИШ): 10 ангилалын урт нэр («үнийн дүн
           //    зөвшөөрөөгүй») 240px нарийн баганад хажуугийн legend-д
           //    давхарлана. Донат дээр, legend доор бүтэн өргөнөөр тавина.
-          return items.length ? (
-            <Donut items={items} center={num(total)} centerLabel="талбар" size={116} width={18} stack />
-          ) : <p className={o.state}>Мэдээлэл алга.</p>;
+          return (
+            <>
+              <Donut
+                items={items} center={num(cur ? cur.n : total)}
+                centerLabel="талбар" size={116} width={18} stack
+                selected={sel}
+                onSelect={(k) => setSel((p) => (p === k ? null : k))}
+              />
+              {cur && (
+                <div className={o.miniStats}>
+                  <div><span>{sel}</span><b>{num(cur.n)} талбар</b></div>
+                  <div><span>Талбай</span><b>{ha(cur.area)} га</b></div>
+                  <div><span>Эзлэх хувь</span><b>{Math.round((cur.n / total) * 100)}%</b></div>
+                  {blocks.map(([b, n]) => (
+                    <div key={b}><span>{b}</span><b>{num(n)}</b></div>
+                  ))}
+                </div>
+              )}
+            </>
+          );
         }}
       </Data>
     </Card>
@@ -903,6 +939,12 @@ function ParcelLeftCard({ raw }: { raw: Async<Row[]> }) {
  * ⚠️ ЗӨВХӨН өртөгтэй бүлгүүд график болно. «Цэвэрлэгдээгүй» (257 талбар,
  * өртөггүй) нь тооны хэмжүүр тул өртгийн баганад холивол хамгийн урт багана
  * болж, төлбөрийн харьцааг гажуудуулна. Түүнийг доод мөрөнд тоогоор гаргана.
+ */
+/**
+ * ⚠️ Дарж шүүх боломж ЗОРИУДААР алга: `Статус` ба `Он` нь энэ өгөгдөлд 1:1
+ * хамааралтай (төлбөр авсан бүгд 2025, хүлээгдэж буй бүгд 2026). Хооронд нь
+ * cross-filter хийвэл нөгөө карт ҮРГЭЛЖ ганц багана болж хумигдана — зөв
+ * боловч эвдэрсэн мэт харагдана. Шинэ хэмжээс нэмэгдвэл дахин авч үзнэ.
  */
 function ParcelCleanBars({
   raw, field, title, note, hues,

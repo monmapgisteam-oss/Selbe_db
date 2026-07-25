@@ -5,8 +5,9 @@ import { Section, Stats, Stat, Bars, Donut, Rows, Data, Empty } from '@/componen
 import { Icon } from '@/components/Icon';
 import { LayerSwatch } from '@/components/LayerSwatch';
 import { useMap } from '@/components/MapCanvas';
+import { useFilter } from '@/lib/filter';
 import { useAsync, type Async } from '@/lib/useAsync';
-import { queryGroup, count, sum, groups, groupWhere, sqlStr, type Row } from '@/lib/query';
+import { queryGroup, count, sum, groups, groupWhere, sqlStr, type Row, type Group } from '@/lib/query';
 import {
   LAYER_BY_ID, layerUrl, OID, ZONE_FIELD, ZONE_NONE, ZONE_LAYER, ZONE_FIELDS,
   BUILT_LAYER, BUILT_FIELDS, BUILT_STATUS, ZONE_TYPES, ZONE_TYPE_EMPTY_HUE,
@@ -20,6 +21,35 @@ import s from './dashboard.module.css';
 
 /** Ангиллын дугуй диаграмд өнгө оноох палитр (paint тодорхойлолтгүй давхаргад) */
 const PALETTE = ['#0d9488', '#3387b8', '#ea580c', '#7c3aed', '#eab308', '#22c55e', '#e11d48', '#0891b2'];
+
+/**
+ * Индексээр өнгө — 8-аас цааш ч ДАВТАГДАХГҮЙ.
+ *
+ * ⚠️ Урьд нь `PALETTE[i % 8]` байсан: «Зориулалт» 34 ангилалтай тул нэг өнгө
+ * дөрөв дахин давтагдаж, «Үлдсэнийг харах» дарахад аль багана аль ангилал
+ * болох нь уншигдахаа больдог байв. Эхний 8 нь сонгосон палитраа хэвээр
+ * хадгална; цаашид АЛТАН ӨНЦГӨӨР (137.5°) эргүүлнэ — зэргэлдээ өнгө хамгийн
+ * их зайтай тарна.
+ */
+const chartColor = (i: number) =>
+  i < PALETTE.length ? PALETTE[i] : `hsl(${(i * 137.508) % 360} 58% 52%)`;
+
+/** «Бүртгэгдээгүй / Тодорхойгүй» бүлэг — жинхэнэ ангилал мэт харагдах ёсгүй */
+const BLANK_HUE = ZONE_TYPE_EMPTY_HUE;
+
+/**
+ * Ангиллын өнгө сонгогч.
+ *
+ * ⚠️ `paint.values` нь ГАЗРЫН ЗУРГИЙН палитр бөгөөд ангиллуудыг зориудаар нэг
+ * өнгө рүү нийлүүлсэн байж болно (бүсийн 5 төрөл → 2 өнгө). Диаграмд `chartValues`
+ * нь давамгайлна — эс бөгөөс 5 зүсмэг 2 өнгөтэй гарна.
+ */
+const facetColor = (d: LayerDef, field: string) => {
+  const p = d.paint?.field === field ? d.paint : null;
+  const map = p ? (p.chartValues ?? p.values) : null;
+  return (label: string, i: number, blank = false) =>
+    (blank ? BLANK_HUE : map?.[label]) ?? chartColor(i);
+};
 
 /* ═════════════════ Үндсэн самбар ═════════════════ */
 
@@ -104,6 +134,7 @@ export function ViewPanel({
         />
       ) : (
         <PlanOverview
+          view={view}
           totals={totals}
           zone={zone}
           visible={visible}
@@ -309,18 +340,33 @@ const gridStyle = (n: number, compact = false) =>
  * бүсээ харуулсан хэвээр байна.
  */
 function PlanOverview({
+  view,
   totals,
   zone,
   visible,
   setVisible,
   setLayer,
 }: {
+  /** Шүүлт аль харагдацад харьяалагдахыг тэмдэглэнэ (харагдац солиход цэвэрлэгдэнэ) */
+  view: ViewKey;
   totals: Async<Map<string, Totals>>;
   zone: string | null;
   visible: string[];
   setVisible: Dispatch<SetStateAction<string[]>>;
   setLayer: (id: string | null) => void;
 }) {
+  /**
+   * Нэг давхаргыг ДАНГААР нь үлдээх — дахин дарвал бүх давхарга руу буцна.
+   *
+   * ⚠️ Донат ба багана ХОЁУЛАА давхаргын id-гаар түлхүүрлэдэг тул ЯГ нэг
+   * дүрмээр ажиллах ёстой. Урьд нь зөвхөн багана дарагддаг байсан бөгөөд
+   * донат нь ижилхэн харагдаж атлаа юу ч хийдэггүй байв.
+   */
+  const isolate = (id: string) => {
+    setLayer(null);
+    setVisible((prev) => (prev.length === 1 && prev[0] === id ? PLAN_LAYER_IDS.slice() : [id]));
+  };
+
   return (
     <Data q={totals} loading="Үзүүлэлт тооцож байна…">
       {(map) => {
@@ -531,7 +577,12 @@ function PlanOverview({
                         {/* ⚠️ Ганц давхаргатай багцад донат утгагүй — 100%-ийн нэг зүсмэг */}
                         {donut.length > 1 && (
                           <div className={s.chartBlock}>
-                            <Donut items={donut} center={num(n)} />
+                            <Donut
+                              items={donut}
+                              center={num(n)}
+                              selected={on.length === 1 ? on[0] : null}
+                              onSelect={isolate}
+                            />
                           </div>
                         )}
 
@@ -556,19 +607,14 @@ function PlanOverview({
                               outlined
                               legend
                               selected={on.length === 1 ? on[0] : null}
-                              onSelect={(id) => {
-                                setLayer(null);
-                                setVisible((prev) =>
-                                  prev.length === 1 && prev[0] === id ? PLAN_LAYER_IDS.slice() : [id],
-                                );
-                              }}
+                              onSelect={isolate}
                             />
                           </div>
                         ))}
 
                         {/* Давхарга бүрийн ДОТООД төрлүүд — өөрийн чартаар */}
                         {faceted.map(({ d, f }) => (
-                          <LayerTypeCharts key={`${d.id}:${f.field}`} d={d} f={f} zone={zone} />
+                          <LayerTypeCharts key={`${d.id}:${f.field}`} d={d} f={f} zone={zone} view={view} />
                         ))}
                       </GroupCard>
                     ))}
@@ -610,12 +656,14 @@ function PlanOverview({
  * сууц vs 20 орон сууц» гэж төөрөгдүүлнэ.
  */
 function LayerTypeCharts({
-  d, f, zone,
+  d, f, zone, view,
 }: {
   d: LayerDef;
   f: { field: string; label: string };
   zone: string | null;
+  view: ViewKey;
 }) {
+  const { toggle, isOn } = useFilter();
   const where = whereFor(d, zone);
   /** Задаргаа нь БҮСЭЭР үү, ангиллаар уу — нэгж үг ба хоосон шошго үүнээс */
   const byZone = f.field === ZONE_FIELD;
@@ -641,16 +689,38 @@ function LayerTypeCharts({
   if (q.state !== 'ready' || q.data.length < 2) return null;
 
   const total = q.data.reduce((a, x) => a + x.values.n, 0);
-  const paint = d.paint?.field === f.field ? d.paint : null;
-  const colorOf = (label: string, i: number) =>
-    (paint ? paint.values[label] : undefined) ?? PALETTE[i % PALETTE.length];
+  const colorOf = facetColor(d, f.field);
 
   const items = q.data.map((x, i) => ({
     key: `${d.id}:${x.label}`,
     label: x.label,
     value: x.values.n,
-    color: colorOf(x.label, i),
+    color: colorOf(x.label, i, x.blank),
   }));
+
+  /**
+   * Ангилал дарахад зурагт шүүнэ.
+   *
+   * ⚠️ `layerIds`-ыг ЗААВАЛ өгнө: шүүлтийн талбар (жиш. `Layer`) зөвхөн ЭНЭ
+   * давхаргад байдаг тул бусад давхаргад тавибал featureEffect чимээгүй унана.
+   * ⚠️ Донат ба багана НЭГ түлхүүрийн орон зайтай учир нэг товчлуур мэт
+   * ажиллана — аль нэгийг нь дарахад нөгөө нь ч тодорно.
+   */
+  const pickType = (key: string) => {
+    const item = q.data.find((x) => `${d.id}:${x.label}` === key);
+    if (!item) return;
+    toggle({
+      key,
+      label: item.label,
+      group: `${d.title} · ${f.label}`,
+      where: groupWhere(f.field, item),
+      view,
+      layerIds: d.id,
+      color: d.hue,
+    });
+  };
+  /** Хэмжээний баганын түлхүүр (`:q:`) — тоонийхтэй нэг шүүлт рүү буулгана */
+  const selKey = items.find((it) => isOn(it.key))?.key ?? null;
 
   /** Хэмжээгээр — «Барилга» дээр төрөл бүрийн талбай, шугамд урт */
   const sized = d.qty
@@ -661,7 +731,7 @@ function LayerTypeCharts({
         label: x.label,
         value: d.qty!.unit === 'м²' ? x.values.q / 10_000 : d.qty!.unit === 'км' ? x.values.q : x.values.q / 1_000,
         display: qtyText(d, x.values.q) ?? '',
-        color: colorOf(x.label, i),
+        color: colorOf(x.label, i, x.blank),
       }))
       .sort((a, b) => b.value - a.value)
     : [];
@@ -685,7 +755,7 @@ function LayerTypeCharts({
         {/* Донат — төрлийн эзлэх хувь. 8-аас олон зүсмэг уншигдахгүй тул багана л үлдэнэ. */}
         {items.length <= 8 && (
           <div style={{ margin: '10px 0 12px' }}>
-            <Donut items={items} center={num(total)} />
+            <Donut items={items} center={num(total)} selected={selKey} onSelect={pickType} />
           </div>
         )}
 
@@ -694,6 +764,8 @@ function LayerTypeCharts({
           limit={8}
           outlined
           legend
+          selected={selKey}
+          onSelect={pickType}
         />
       </div>
 
@@ -705,7 +777,16 @@ function LayerTypeCharts({
               : (byZone ? 'Урт бүсээр' : 'Урт төрлөөр')}
             <span className={s.facetNote}>{qtyText(d, q.data.reduce((a, x) => a + x.values.q, 0))}</span>
           </div>
-          <Bars items={sized} limit={8} outlined legend />
+          {/* ⚠️ Хэмжээний багана нь ӨӨР түлхүүртэй (`:q:`) — шүүлт нь ижил тул
+              тоонийх рүү буулгаж, хоёр график нэг сонголтыг хуваалцана. */}
+          <Bars
+            items={sized}
+            limit={8}
+            outlined
+            legend
+            selected={selKey ? `${d.id}:q:${selKey.slice(d.id.length + 1)}` : null}
+            onSelect={(k) => pickType(`${d.id}:${k.slice(d.id.length + 3)}`)}
+          />
         </div>
       )}
     </>
@@ -772,10 +853,21 @@ function LayerDashboard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [d.id, where]);
 
+  /**
+   * ⚠️ Тодруулгыг ЗӨВХӨН энэ давхаргад хэрэглэнэ (`d.id`). Шүүлтийн талбар
+   * (жиш. `Layer`, `Barilga_ty`) бусад давхаргад БАЙХГҮЙ тул бүгдэд нь тавибал
+   * тэдгээр давхаргын featureEffect чимээгүй унаж, шүүлт «ажиллахгүй» болно.
+   */
   const pick = (key: string, w: string | null) => {
     const next = sel === key ? null : key;
     setSel(next);
-    setHighlight(next ? w : null);
+    setHighlight(next ? w : null, d.id);
+  };
+
+  /** Ангиллын нэг чартын сонголт — донат ба багана хоёулаа үүгээр дамжина */
+  const pickFacet = (f: { field: string; label: string; items: Group[] }) => (k: string) => {
+    const item = f.items.find((y) => `${f.label}:${y.label}` === k);
+    pick(k, item ? groupWhere(f.field, item) : null);
   };
 
   const t = totals.state === 'ready' ? totals.data.get(d.id) : undefined;
@@ -854,9 +946,7 @@ function LayerDashboard({
             <>
               {/* ── Ангилал бүрээр — ЭХНИЙ ангиллыг дугаар диаграмаар (дашбоард төрх) ── */}
               {facets.map((f, idx) => {
-                const paint = d.paint?.field === f.field ? d.paint : null;
-                const colorOf = (label: string, i: number) =>
-                  (paint ? paint.values[label] : undefined) ?? PALETTE[i % PALETTE.length];
+                const colorOf = facetColor(d, f.field);
                 const total = f.items.reduce((a, i) => a + i.values.n, 0);
                 const items = f.items.map((item, i) => ({
                   key: `${f.label}:${item.label}`,
@@ -868,7 +958,7 @@ function LayerDashboard({
                     `${num(item.values.n)}`,
                     qtyText(d, item.values.q),
                   ].filter(Boolean).join(' · '),
-                  color: colorOf(item.label, i),
+                  color: colorOf(item.label, i, item.blank),
                 }));
                 return (
                   <Section
@@ -879,10 +969,13 @@ function LayerDashboard({
                     {/* Эхний ангиллыг дугуй диаграмаар — эзлэх хувийг нэг дор */}
                     {idx === 0 && f.items.length <= 8 && (
                       <div style={{ marginBottom: 14 }}>
+                        {/* ⚠️ Багана нь ЯГ ижил түлхүүртэй — донат нь зүгээр нэг
+                            зураг биш, тэр шүүлтийн өөр нэг удирдлага байх ёстой. */}
                         <Donut
                           items={items.map((it) => ({ key: it.key, label: it.label, value: it.value, color: it.color }))}
                           center={num(total)}
-                          
+                          selected={sel}
+                          onSelect={pickFacet(f)}
                         />
                       </div>
                     )}
@@ -890,10 +983,7 @@ function LayerDashboard({
                       color={d.hue}
                       limit={8}
                       selected={sel}
-                      onSelect={(k) => {
-                        const item = f.items.find((y) => `${f.label}:${y.label}` === k);
-                        pick(k, item ? groupWhere(f.field, item) : null);
-                      }}
+                      onSelect={pickFacet(f)}
                       items={items}
                     />
                   </Section>
