@@ -25,11 +25,11 @@ import '@arcgis/core/assets/esri/themes/light/main.css';
 
 import {
   LAYERS, LAYER_BY_ID, layerUrl, drawOrder, DASH_PATTERN,
-  HOME, BASEMAP_URL, IMAGERY, SCENE, BIM, ELEVATION_URL, ZONE_LAYER,
+  HOME, BASEMAP_URL, IMAGERY, SCENE, BIM, ELEVATION_URL, ZONE_LAYER, zoneWhere,
   ZONE_FIELD, ZONE_NONE, ZONE_TYPE_EMPTY_HUE, OID, BUILDING, SURVEY, buildingKey,
   type LayerDef,
 } from '@/lib/services';
-import { queryExtent, queryFeatures, sqlStr, type Aoi } from '@/lib/query';
+import { queryExtent, queryFeatures, type Aoi } from '@/lib/query';
 import { loadBlockProgress, type BlockProgressMap } from '@/lib/blockProgress';
 import { num, pct, date, text } from '@/lib/format';
 import s from './map.module.css';
@@ -199,15 +199,20 @@ export const symbolOf = (d: LayerDef, hue = d.hue) => {
  * Дашбоардын бүс — жигд (улбар шар), ГЭХДЭЭ доорх ангиллуудыг УЛААНААР онцолно.
  * `uniform` горимд бүсийн давхаргад ашиглана.
  */
-const ZONE_RED_TYPES = ['Орон сууцны бүс', 'Олон нийтийн бүс'];
 const ZONE_RED = '#dc2626';
+/**
+ * ⚠️ Ангиллын талбар ба утга хоёулаа давхаргаас ирнэ (`paint`). Шинэ бүсийн
+ * давхарга `Angilal` талбартай, утга нь жижиг үсэгтэй — «TOROL» гэж бичсэн
+ * хуучин хувилбар нэг ч бүсийг онцлохгүй болно. Улаанаар онцлох ангиллуудыг
+ * `ZONE_MAP_TYPES`-ээс уншина (тэнд онцлохыг нь улаанаар тэмдэглэсэн).
+ */
 const zoneHighlightRenderer = (d: LayerDef) => ({
   type: 'unique-value',
-  field: 'TOROL',
+  field: d.paint?.field ?? 'Angilal',
   defaultSymbol: symbolOf(d),
-  uniqueValueInfos: ZONE_RED_TYPES.map((value) => ({
-    value, label: value, symbol: symbolOf(d, ZONE_RED),
-  })),
+  uniqueValueInfos: Object.entries(d.paint?.values ?? {})
+    .filter(([, hue]) => hue === ZONE_RED)
+    .map(([value]) => ({ value, label: value, symbol: symbolOf(d, ZONE_RED) })),
 } as unknown as RendererProp);
 
 /**
@@ -280,7 +285,9 @@ async function extentOf(url: string, view: AnyView, where = '1=1'): Promise<Exte
 const zoneLabels = () =>
   [
     {
-      labelExpressionInfo: { expression: `Trim(Text($feature.${ZONE_FIELD}))` },
+      // ⚠️ Бүсийн давхаргын кодын талбар нь `ZONE_ID` БИШ (`RefName_1`) —
+      //    буруу талбар заавал шошго бүхэлдээ хоосон гарна.
+      labelExpressionInfo: { expression: `Trim(Text($feature.${ZONE_LAYER.zoneField ?? ZONE_FIELD}))` },
       symbol: {
         type: 'text',
         color: c('#111827'),
@@ -449,7 +456,7 @@ export function MapProvider({ children }: { children: ReactNode }) {
   }, [goTo]);
 
   const zoomToZone = useCallback((zone: string) => {
-    goTo(layerUrl(ZONE_LAYER), `${ZONE_FIELD} = ${sqlStr(zone)}`);
+    goTo(layerUrl(ZONE_LAYER), zoneWhere(ZONE_LAYER, zone) ?? '1=1');
   }, [goTo]);
 
   /**
@@ -826,7 +833,7 @@ export function MapCanvas({
         const own = layerWhere ? layerWhere[l.id] ?? null : undefined;
         const base = own !== undefined
           ? own
-          : zone && !d.noZone ? `${ZONE_FIELD} = ${sqlStr(zone)}` : null;
+          : zone ? zoneWhere(d, zone) : null;
         const hlOn = is3D(dim) && hl.where && (!hlOnly || hlOnly.includes(l.id))
           ? hl.where
           : null;
@@ -971,7 +978,7 @@ function MapTip({
       if (attrs[f.field] == null || String(attrs[f.field]).trim() === '') continue;
       rows.push({ k: f.label, v: text(attrs[f.field]) });
     }
-    const zoneId = text(attrs[ZONE_FIELD], '').trim();
+    const zoneId = text(attrs[d.zoneField ?? ZONE_FIELD], '').trim();
     if (zoneId && zoneId !== ZONE_NONE.trim()) rows.push({ k: 'Бүс', v: zoneId });
   }
 

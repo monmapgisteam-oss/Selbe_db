@@ -14,7 +14,7 @@
 
 import { queryFeatures, sqlStr } from '@/lib/query';
 import {
-  BUILDING, ZONE_LAYER, ZONE_FIELDS, BUILT_LAYER, BUILT_FIELDS, layerUrl, OID,
+  BUILDING, ZONE_LAYER, ZONE_FIELDS, BUILT_LAYER, BUILT_FIELDS, layerUrl, oidOf, zoneType, zoneCanon,
   type ViewKey,
 } from '@/lib/services';
 import { text } from '@/lib/format';
@@ -73,13 +73,15 @@ export async function search(q: string): Promise<Hit[]> {
       limit: LIMIT,
     }).catch(() => []),
     queryFeatures(zoneUrl, {
-      where: any([Z.id, Z.bagts, Z.contractor, Z.purpose], query),
-      outFields: [OID, Z.id, Z.bagts, Z.contractor, Z.purpose],
+      // ⚠️ Багц ба гүйцэтгэгчээр хайхаа БОЛЬСОН: шинэ бүсийн давхаргад тэр хоёр
+      //    талбар байхгүй. Бүсийг код, ангилал, зориулалтаар нь олно.
+      where: any([Z.id, Z.type, Z.purpose], query),
+      outFields: [oidOf(ZONE_LAYER), Z.id, Z.type, Z.purpose],
       limit: LIMIT,
     }).catch(() => []),
     queryFeatures(builtUrl, {
       where: any([T.block, T.company, T.purpose], query),
-      outFields: [OID, T.block, T.company, T.purpose],
+      outFields: [oidOf(BUILT_LAYER), T.block, T.company, T.purpose],
       limit: LIMIT,
     }).catch(() => []),
   ]);
@@ -101,23 +103,23 @@ export async function search(q: string): Promise<Hit[]> {
   }
 
   for (const r of zones) {
-    const oid = r[OID];
+    // ⚠️ Давхарга бүрийн OID талбар өөр нэртэй (бүс `FID`) — `oidOf` уншина
+    const oid = r[oidOf(ZONE_LAYER)];
     if (oid == null) continue;
     hits.push({
       // Бүсийн дугаараар танина — хэрэглэгчийн мэддэг ганц тодорхойлогч
-      title: `Бүс ${text(r[Z.id], '—')}`,
+      title: `Бүс ${zoneCanon(r[Z.id]) || '—'}`,
       id: `zone:${oid}`,
-      sub: [text(r[Z.bagts], ''), text(r[Z.purpose], ''), text(r[Z.contractor], '')]
-        .filter(Boolean).join(' · '),
+      sub: [zoneType(r[Z.type]), text(r[Z.purpose], '')].filter(Boolean).join(' · '),
       group: 'Хот төлөвлөлтийн бүс',
       view: 'plan',
       layerId: ZONE_LAYER.id,
-      where: `${OID} = ${Number(oid)}`,
+      where: `${oidOf(ZONE_LAYER)} = ${Number(oid)}`,
     });
   }
 
   for (const r of built) {
-    const oid = r[OID];
+    const oid = r[oidOf(BUILT_LAYER)];
     if (oid == null) continue;
     hits.push({
       title: text(r[T.block], '') || text(r[T.purpose], 'Барилга'),
@@ -126,7 +128,7 @@ export async function search(q: string): Promise<Hit[]> {
       group: 'Барилга (төлөвлөлт)',
       view: 'plan',
       layerId: BUILT_LAYER.id,
-      where: `${OID} = ${Number(oid)}`,
+      where: `${oidOf(BUILT_LAYER)} = ${Number(oid)}`,
     });
   }
 

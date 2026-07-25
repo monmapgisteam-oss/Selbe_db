@@ -23,7 +23,7 @@ import type Geometry from '@arcgis/core/geometry/Geometry';
  */
 type GeomArg = __esri.GeometryUnion;
 import type Polygon from '@arcgis/core/geometry/Polygon';
-import { layerUrl, LAYER_BY_ID } from '@/lib/services';
+import { layerUrl, LAYER_BY_ID, ZONE_FIELDS, zoneCanon, zoneRefValues, zoneType } from '@/lib/services';
 import {
   WKID, SRC, ENGINEERING_IDS, SOCIAL_FACILITIES, GREEN_CATEGORIES,
   BF, isResidential, isSellable,
@@ -165,9 +165,13 @@ export type Progress = (msg: string, pct: number) => void;
  * «Багц-2.1» гэх мэт дэд дугаарыг эцэг бүс рүү нь буулгана.
  */
 function resolveZoneId(raw: unknown, ids: Set<string>): string | null {
-  const id = String(raw ?? '').trim();
+  const id = zoneCanon(raw);
   if (!id) return null;
   if (ids.has(id)) return id;
+  // ⚠️ Ногоон байгууламж ХУУЧИН кодтой: «D-8» нь одоо `D-8.1`/`D-8.2` болсон.
+  //    Хуваагдсан бүсийн эхнийхэд нь оноож, талбайг нь алдахгүй байна.
+  const split = zoneRefValues(id).map(zoneCanon).find((c) => ids.has(c));
+  if (split) return split;
   const parent = id.replace(/\.\d+$/, '');
   return ids.has(parent) ? parent : null;
 }
@@ -192,9 +196,12 @@ export function loadAnalysisCached(onProgress: Progress = () => {}): Promise<Ana
 
 export async function loadAnalysis(onProgress: Progress = () => {}): Promise<AnalysisData> {
   onProgress('Бүсийн мэдээлэл…', 6);
+  // ⚠️ Талбарын нэрийг ЭНД бичихгүй — бүсийн давхарга солигдоход (`ZONE_ID` →
+  //    `RefName_1`, `TOROL` → `Angilal`) энэ жагсаалт чимээгүй хоосон утга буцаана.
+  const Z = ZONE_FIELDS;
   const zoneFeats = await fetchAll(url(SRC.zones), [
-    'ZONE_ID', 'TOROL', 'Area', 'Shape__Area', 'FAR', 'FAR_HUVI', 'BCR',
-    'NORM_ZOGS', 'ET_IL', 'ET_DALD', 'ET_NIIT',
+    Z.id, Z.type, Z.areaHa, 'Shape__Area', Z.far, Z.farPct, Z.bcr,
+    Z.parkNorm, Z.parkPlanOpen, Z.parkPlanUnder,
   ], true);
 
   onProgress('Барилга байгууламж…', 22);
@@ -232,7 +239,7 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
   const engUnion = engGeoms.length ? geometryEngine.union(engGeoms) : null;
 
   /* ── Ногоон байгууламжийг бүс + ангиллаар ── */
-  const zoneIds = new Set(zoneFeats.map((f) => String(f.attributes.ZONE_ID ?? '').trim()));
+  const zoneIds = new Set(zoneFeats.map((f) => zoneCanon(f.attributes[Z.id])));
   const greenByZone = new Map<string, Record<string, number>>();
   const greenCats = new Set<string>();
   for (const f of green) {
@@ -249,22 +256,22 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
   /* ── Бүс бүрийн бичлэг ── */
   const zones: Zone[] = zoneFeats.map((f) => {
     const a = f.attributes;
-    const id = String(a.ZONE_ID ?? '').trim();
+    const id = zoneCanon(a[Z.id]);
     const geom = (f.geometry ?? null) as Polygon | null;
 
     // ТАЛБАЙ — `Area` (га) нь бүсийн албан ёсны, зам/нийтийн эзэмшил хассан
     // цэвэр талбай. Санхүүд энэ, нягтшилд полигоны БОДИТ талбай хэрэглэнэ:
     // хүн ам бүсийн бүтэн газар нутаг дээр амьдардаг.
-    const areaHa = n(a.Area) > 0 ? n(a.Area) : n(a.Shape__Area) / 10_000;
+    const areaHa = n(a[Z.areaHa]) > 0 ? n(a[Z.areaHa]) : n(a.Shape__Area) / 10_000;
     const polyHa = n(a.Shape__Area) > 0 ? n(a.Shape__Area) / 10_000 : areaHa;
 
     // ⚠️ `FAR` талбар 52 бүсийн 22-т ЭВДЭРСЭН: утга таслагдаж 1.15-ын оронд
     //    0.01, 8.43-ын оронд 0.08 гэж бичигджээ. `FAR_HUVI` (хувиар) нь бүрэн
     //    бүтэн бөгөөд `BAR_M2/GAZAR_M2`-тай 43/52 бүст таарна — тиймээс
     //    `FAR_HUVI ÷ 100`-г ЗАСВАРЛАСАН утга болгон шууд ашиглана.
-    const zoneFar = a.FAR_HUVI != null ? n(a.FAR_HUVI) / 100 : (a.FAR != null ? n(a.FAR) : null);
+    const zoneFar = a[Z.farPct] != null ? n(a[Z.farPct]) / 100 : (a[Z.far] != null ? n(a[Z.far]) : null);
     // BCR нь эзлэх ХЭСЭГ (0–0.5) тул ×100 хийж хувь болгоно
-    const zoneBcr = a.BCR != null ? n(a.BCR) * 100 : null;
+    const zoneBcr = a[Z.bcr] != null ? n(a[Z.bcr]) * 100 : null;
 
     let transitM: number | null = null;
     if (geom && stopGeoms.length) {
@@ -283,11 +290,14 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
 
     return {
       id,
-      type: String(a.TOROL ?? '—').trim() || '—',
+      type: zoneType(a[Z.type]),
       geometry: geom,
       areaHa, polyHa, zoneFar, zoneBcr,
-      normParking: n(a.NORM_ZOGS),
-      etIl: n(a.ET_IL), etDald: n(a.ET_DALD), etNiit: n(a.ET_NIIT),
+      normParking: n(a[Z.parkNorm]),
+      // ⚠️ Шинэ бүсийн давхаргад ЗӨВХӨН төлөвлөсөн зогсоол (ил/далд) бий —
+      //    «одоо байгаа» (ET_NIIT) талбар байхгүй тул нийлбэрийг өөрсдөө угсарна.
+      etIl: n(a[Z.parkPlanOpen]), etDald: n(a[Z.parkPlanUnder]),
+      etNiit: n(a[Z.parkPlanOpen]) + n(a[Z.parkPlanUnder]),
       ...emptyAgg(),
       greenByCat: greenByZone.get(id) ?? {},
       greenM2: 0,

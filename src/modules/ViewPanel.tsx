@@ -9,8 +9,8 @@ import { useFilter } from '@/lib/filter';
 import { useAsync, type Async } from '@/lib/useAsync';
 import { queryGroup, count, sum, groups, groupWhere, sqlStr, type Row, type Group } from '@/lib/query';
 import {
-  LAYER_BY_ID, layerUrl, OID, ZONE_FIELD, ZONE_NONE, ZONE_LAYER, ZONE_FIELDS,
-  BUILT_LAYER, BUILT_FIELDS, BUILT_STATUS, ZONE_TYPES, ZONE_TYPE_EMPTY_HUE,
+  LAYER_BY_ID, layerUrl, oidOf, ZONE_FIELD, ZONE_NONE, ZONE_LAYER, ZONE_FIELDS,
+  BUILT_LAYER, BUILT_FIELDS, BUILT_STATUS, ZONE_TYPES, ZONE_TYPE_EMPTY_HUE, zoneType, zoneCanon, zoneWhere,
   LAYER_GROUPS, GROUP_LAYERS, PLAN_LAYER_IDS, groupOf, VIEW_BY_KEY,
   type LayerDef, type ViewKey,
 } from '@/lib/services';
@@ -487,7 +487,7 @@ function PlanOverview({
              * сонгогдсон бол задаргаа нь ганц баганатай болох тул алгасна.
              */
             if (x.d.noZone || zone) return [];
-            return [{ d: x.d, f: { field: ZONE_FIELD, label: 'Бүсээр' } }];
+            return [{ d: x.d, f: { field: x.d.zoneField ?? ZONE_FIELD, label: 'Бүсээр' } }];
           });
 
           /**
@@ -666,7 +666,7 @@ function LayerTypeCharts({
   const { toggle, isOn } = useFilter();
   const where = whereFor(d, zone);
   /** Задаргаа нь БҮСЭЭР үү, ангиллаар уу — нэгж үг ба хоосон шошго үүнээс */
-  const byZone = f.field === ZONE_FIELD;
+  const byZone = f.field === ZONE_FIELD || f.field === ZONE_LAYER.zoneField;
 
   const q = useAsync(async () => {
     const rows = await queryGroup(layerUrl(d), f.field, layerStats(d), where);
@@ -835,7 +835,7 @@ function LayerDashboard({
 
     const [facetRaw, zoneRaw] = await Promise.all([
       Promise.all((d.facets ?? []).map((f) => queryGroup(url, f.field, stats, where))),
-      d.noZone || zone ? Promise.resolve(null) : queryGroup(url, ZONE_FIELD, stats, where),
+      d.noZone || zone ? Promise.resolve(null) : queryGroup(url, d.zoneField ?? ZONE_FIELD, stats, where),
     ]);
 
     const facets = (d.facets ?? []).map((f, i) => ({
@@ -844,7 +844,7 @@ function LayerDashboard({
     }));
 
     const byZone = zoneRaw
-      ? groups(zoneRaw, ZONE_FIELD, 'Тодорхойгүй', KEYS)
+      ? groups(zoneRaw, d.zoneField ?? ZONE_FIELD, 'Тодорхойгүй', KEYS)
         .filter((x) => x.label.trim() !== ZONE_NONE.trim())
         .sort((a, b) => b.values.n - a.values.n)
       : null;
@@ -1002,7 +1002,7 @@ function LayerDashboard({
                     selected={sel}
                     onSelect={(k) => {
                       const item = x.byZone!.find((y) => `бүс:${y.label}` === k);
-                      pick(k, item ? groupWhere(ZONE_FIELD, item) : null);
+                      pick(k, item ? groupWhere(d.zoneField ?? ZONE_FIELD, item) : null);
                     }}
                     items={x.byZone!.map((item) => ({
                       key: `бүс:${item.label}`,
@@ -1037,9 +1037,12 @@ function ZoneBar({ zone, setZone }: { zone: string | null; setZone: (z: string |
   const [open, setOpen] = useState(false);
 
   const q = useAsync(async () => {
-    const rows = await queryGroup(layerUrl(ZONE_LAYER), ZONE_FIELDS.id, [count(OID, 'n')]);
+    const rows = await queryGroup(layerUrl(ZONE_LAYER), ZONE_FIELDS.id, [count(oidOf(ZONE_LAYER), 'n')]);
     return groups(rows, ZONE_FIELDS.id, 'Тодорхойгүй', ['n'])
       .filter((g) => g.label !== 'Тодорхойгүй')
+      // ⚠️ Бүсийн давхарга «Багц -1» гэж бичдэг — жагсаалт, chip, шүүлт гурвуулаа
+      //    каноник бичиглэлээр («Багц-1») явбал бусад давхаргатай нэг харагдана.
+      .map((g) => ({ ...g, label: zoneCanon(g.label) }))
       .sort((a, b) => a.label.localeCompare(b.label, 'mn'));
   }, []);
 
@@ -1135,14 +1138,16 @@ function PickedZone({
   setZone: (z: string | null) => void;
 }) {
   const F = ZONE_FIELDS;
-  const id = text(attrs[F.id], '');
-  const type = text(attrs[F.type], 'Тодорхойгүй');
+  // ⚠️ Бүсийн давхарга кодоо «Багц -1» гэж бичдэг; апп даяарын бүсийн утга нь
+  //    каноник («Багц-1») тул шүүлт, харуулалт хоёуланд нь хөрвүүлж авна.
+  const id = zoneCanon(attrs[F.id]);
+  const type = zoneType(attrs[F.type]);
 
   const q = useAsync(async () => {
     const B = BUILT_FIELDS;
-    const where = `${ZONE_FIELD} = ${sqlStr(id)}`;
+    const where = zoneWhere(BUILT_LAYER, id) ?? '1=1';
     const byStatus = await queryGroup(layerUrl(BUILT_LAYER), B.status, [
-      count(OID, 'n'), sum(B.households, 'urh'), sum(B.population, 'pop'),
+      count(oidOf(BUILT_LAYER), 'n'), sum(B.households, 'urh'), sum(B.population, 'pop'),
     ], where);
     const rows = groups(byStatus, B.status, 'Тодорхойгүй', ['n', 'urh', 'pop']);
     const status = BUILT_STATUS.map((st) => {
@@ -1161,8 +1166,6 @@ function PickedZone({
     const v = attrs[f];
     return v == null || !Number.isFinite(Number(v)) ? null : Number(v);
   };
-  const budget = n(F.budget) ?? 0;
-
   if (!id) return null;
 
   return (
@@ -1182,10 +1185,13 @@ function PickedZone({
         <Rows
           items={[
             { key: 'FAR / BCR', value: <span className="num">{num(n(F.far), 2)} / {num(n(F.bcr), 2)}</span> },
-            { key: 'Зогсоол (норм / төлөвлөсөн)', value: <span className="num">{num(n(F.parkNorm))} / {num(n(F.parkPlan))}</span> },
-            ...(text(attrs[F.contractor], '') ? [{ key: 'Гүйцэтгэгч', value: text(attrs[F.contractor]) }] : []),
-            // ⚠️ «Батлагдсан төсөв» ХАСАГДСАН: санхүүгийн бүх дүн «Тохиромжтой
-            //    байдлын үнэлгээ» модульд төвлөрсөн.
+            // ⚠️ Төлөвлөсөн зогсоолын НИЙЛБЭР талбар шинэ бүсийн давхаргад алга —
+            //    ил + далдаас угсарна.
+            { key: 'Зогсоол (норм / төлөвлөсөн)', value: <span className="num">{num(n(F.parkNorm))} / {num((n(F.parkPlanOpen) ?? 0) + (n(F.parkPlanUnder) ?? 0))}</span> },
+            ...(n(F.landPending) ? [{ key: 'Газар чөлөөлөлт', value: 'дуусаагүй' }] : []),
+            // ⚠️ «Батлагдсан төсөв» ба «Гүйцэтгэгч» ХАСАГДСАН: шинэ бүсийн
+            //    давхаргад тэр талбарууд байхгүй, санхүүгийн дүн «Тохиромжтой
+            //    байдлын үнэлгээ» ба «Хөрөнгө оруулалт» хоёрт төвлөрсөн.
           ]}
         />
       </div>
