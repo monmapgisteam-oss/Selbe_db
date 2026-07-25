@@ -158,7 +158,16 @@ const dot = (hex: string, size = 9, marker: NonNullable<LayerDef['marker']> = 'c
     outline: { color: [255, 255, 255, 0.9], width: 1.4 },
   }) as const;
 
-const simple = (sym: unknown) => ({ type: 'simple', symbol: sym }) as __esri.RendererProperties;
+/**
+ * ⚠️ ArcGIS 4.34-д давхаргын `renderer` нь ЯЛГАВАРТАЙ НЭГДЭЛ (discriminated
+ * union) болсон: гишүүн бүр `type`-ыг ЛИТЕРАЛ байдлаар шаардана. Ерөнхий
+ * `__esri.RendererProperties` нь тэр литералыг агуулаагүй тул шууд оноох
+ * боломжгүй (`type` дутуу гэж «pie-chart» гишүүн рүү заана). Давхарга өөрөө юу
+ * хүлээж авдгаас нь гаргаж авбал хувилбар өөрчлөгдөхөд дагаад шинэчлэгдэнэ.
+ */
+type RendererProp = NonNullable<__esri.FeatureLayerProperties['renderer']>;
+
+const simple = (sym: unknown) => ({ type: 'simple', symbol: sym }) as unknown as RendererProp;
 
 /** Каталогийн тодорхойлолтоос симбол — зураг ба тайлбар нэг эх сурвалжтай */
 /**
@@ -199,7 +208,7 @@ const zoneHighlightRenderer = (d: LayerDef) => ({
   uniqueValueInfos: ZONE_RED_TYPES.map((value) => ({
     value, label: value, symbol: symbolOf(d, ZONE_RED),
   })),
-} as __esri.RendererProperties);
+} as unknown as RendererProp);
 
 /**
  * Гүйцэтгэлийн өнгө (0–100%): улаан → шар → ногоон. Хоёр хэсэгт шугаман
@@ -232,7 +241,7 @@ const progColor = (v: number): [number, number, number] => {
  * SDK-ийн `field`/`field2` хос нь давхаргын түүхий утгыг задалдаггүй тул
  * (давхарга «Багц 4.1», хүснэгт «Багц 4-1») Arcade дээр хэвийн болгоно.
  */
-const buildingProgressRenderer = (prog: BlockProgressMap): __esri.RendererProperties => ({
+const buildingProgressRenderer = (prog: BlockProgressMap): RendererProp => ({
   type: 'unique-value',
   // `bagtsKey`/`blockKey`-ийн Arcade хувилбар — тэмдэгт хасаж том үсгээр.
   valueExpression:
@@ -248,7 +257,7 @@ const buildingProgressRenderer = (prog: BlockProgressMap): __esri.RendererProper
       symbol: { type: 'simple-fill', color: [r, g, b, 0.62], outline: { color: [r, g, b, 1], width: 1 } },
     };
   }),
-} as __esri.RendererProperties);
+} as unknown as RendererProp);
 
 /**
  * Давхаргын хүрээг зургийн проекцоор.
@@ -352,7 +361,7 @@ function buildLayers(uniform = false): Layer[] {
           uniqueValueInfos: Object.entries(d.paint.values).map(([value, hue]) => ({
             value, label: value, symbol: symbolOf(d, hue),
           })),
-        } as __esri.RendererProperties)
+        } as unknown as RendererProp)
       : d.breaks
         ? ({
             type: 'class-breaks',
@@ -367,7 +376,7 @@ function buildLayers(uniform = false): Layer[] {
               label: `${l.label} (${l.range})`,
               symbol: symbolOf(d, l.color),
             })),
-          } as __esri.RendererProperties)
+          } as unknown as RendererProp)
         : simple(symbolOf(d)),
     ...(d.id === ZONE_LAYER.id ? { labelingInfo: zoneLabels() } : {}),
   }));
@@ -608,9 +617,12 @@ export function MapCanvas({
       for (const x of r.results) {
         if (x.type !== 'graphic') continue;
         const lyr = x.graphic.layer;
-        if (!lyr || !lyr.visible || PASSIVE.has(lyr.id)) continue;
-        if (!LAYER_BY_ID[lyr.id]) continue;
-        return { attrs: x.graphic.attributes as Record<string, unknown>, id: lyr.id };
+        // ⚠️ `Layer.id` нь дэд давхаргын улмаас `string | number` гэж бичигдсэн —
+        // каталог нь мөрөөр түлхүүрлэдэг тул НЭГ удаа хөрвүүлж авна.
+        const id = lyr == null ? '' : String(lyr.id);
+        if (!lyr || !lyr.visible || PASSIVE.has(id)) continue;
+        if (!LAYER_BY_ID[id]) continue;
+        return { attrs: x.graphic.attributes as Record<string, unknown>, id };
       }
       return null;
     };
@@ -626,9 +638,10 @@ export function MapCanvas({
      * рендерээс огт хамаарахгүй тул 2D, 3D хоёуланд ижил ажиллана.
      */
     const pickByQuery = async (mapPoint: __esri.Point, tolerance: number) => {
-      const ids = view.map.layers.toArray()
-        .filter((l) => l.visible && LAYER_BY_ID[l.id])
-        .map((l) => l.id)
+      const ids = (view.map?.layers.toArray() ?? [])
+        .map((l) => ({ l, id: String(l.id) }))
+        .filter(({ l, id }) => l.visible && LAYER_BY_ID[id])
+        .map(({ id }) => id)
         // Дээд талынхыг ЭХЭЛЖ шалгана: цэг → шугам → талбай
         .sort((a, b) => drawOrder(b) - drawOrder(a));
       if (!ids.length) return null;
@@ -650,7 +663,9 @@ export function MapCanvas({
       return null;
     };
 
-    const click = view.on('click', (e) => {
+    // ⚠️ `e`-г ИЛ бичнэ: `view` нь MapView|SceneView нэгдэл тул `on()`-ийн
+    // overload шийдэгдэхгүй бөгөөд параметр чимээгүй `any` болно.
+    const click = view.on('click', (e: __esri.ViewClickEvent) => {
       view.hitTest(e)
         .then(async (r) => {
           const hit = pickHit(r);
@@ -665,7 +680,7 @@ export function MapCanvas({
     });
 
     let busy = false;
-    const move = view.on('pointer-move', (e) => {
+    const move = view.on('pointer-move', (e: __esri.ViewPointerMoveEvent) => {
       if (busy) return;
       busy = true;
       view.hitTest(e)
