@@ -61,6 +61,31 @@
 .publishBtn:hover:not(:disabled) { filter: brightness(1.06); }
 .publishBtn:disabled { opacity: 0.4; cursor: default; }
 
+.layerBtns { display: inline-flex; gap: 3px; }
+.layerBtn {
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--ink-2);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 4px 9px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.layerBtn:hover { border-color: var(--hue); color: var(--hue); }
+
+.caret {
+  display: inline-block;
+  width: 1em;
+  margin-left: -0.9em;
+  color: var(--ink-3);
+  cursor: pointer;
+  user-select: none;
+}
+.caret:hover { color: var(--hue); }
+
 .muted { font-size: 0.8rem; color: var(--ink-3); }
 .hint { font-size: 0.72rem; color: var(--ink-3); }
 

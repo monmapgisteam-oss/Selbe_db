@@ -9,6 +9,7 @@ import {
   base,
   deleteAttachment,
   distinct,
+  levelFromNo,
   listAttachments,
   qesc,
   queryAll,
@@ -36,24 +37,30 @@ const cls = (names: string) =>
 // add one (copying the row's task/slice metadata). Requires the layer's
 // Update/Create/Delete capabilities enabled.
 
+// Fields of the consolidated hosted table `Selbe_guitsetgel_consolidated`
+// (ASCII names — AGOL rejected Cyrillic CSV headers). `ognoo` is a DateOnly
+// field but the service returns/filters it as 'YYYY-MM-DD', so the string-date
+// logic below is unchanged.
 const F = {
-  bagts: "Багц",
-  ognoo: "Огноо",
-  ver: "Хувилбар",
-  work: "Ажил",
-  level: "Түвшин",
-  catA: "Ангилал__А_",
-  catB: "Ангилал__Б_",
-  weight: "Хувийн_жин",
-  totw: "Нийт_жин",
-  bld: "Барилга_Блок",
-  pct: "Гүйцэтгэл____",
-  oid: "ObjectID",
+  bagts: "bagts",
+  ognoo: "ognoo",
+  ver: "huvilbar",
+  work: "ajil",
+  no: "dugaar", // № (excel col A) — hierarchy code
+  level: "tuvshin",
+  catA: "angilal_a",
+  catB: "angilal_b",
+  weight: "huviin_jin",
+  totw: "niit_jin",
+  bld: "barilga_blok",
+  pct: "guitsetgel",
+  oid: "OBJECTID",
 } as const;
 
 type Cell = { fid: number; pct: number | null; date: string };
 type Row = {
   work: string;
+  no: string; // № code (excel col A), "" until the re-import supplies Дугаар
   level: number;
   weight: number | null;
   totw: number | null; // Нийт_жин: global weight (leaf tasks sum to ~1)
@@ -97,6 +104,8 @@ export default function Pivot() {
   const [edit, setEdit] = useState<{ ri: number; bld: string } | null>(null);
   const [val, setVal] = useState("");
   const [hover, setHover] = useState<{ ri: number; bld: string } | null>(null);
+  // Collapsed header rows, keyed by row identity (survives ri shifts on reload).
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   // Cell range selection (Excel-like). a = anchor, f = focus.
   const [sel, setSel] = useState<{
     a: { ri: number; b: string };
@@ -140,7 +149,7 @@ export default function Pivot() {
   // Багц list once.
   useEffect(() => {
     if (!base) return;
-    distinct("Багц")
+    distinct(F.bagts)
       .then((v) => {
         const list = (v as string[]).filter(Boolean).sort();
         setBagtsList(list);
@@ -152,7 +161,7 @@ export default function Pivot() {
   // Огноо list per Багц.
   useEffect(() => {
     if (!bagts) return;
-    distinct("Огноо", `Багц='${qesc(bagts)}'`)
+    distinct(F.ognoo, `${F.bagts}='${qesc(bagts)}'`)
       .then((v) => {
         const list = (v as string[]).filter(Boolean).sort();
         setOgnooList(list);
@@ -170,9 +179,9 @@ export default function Pivot() {
       // per (task, building). Огноо is 'YYYY-MM-DD' string so lexical order =
       // chronological; iterating ascending, the last write per cell wins.
       const all = await queryAll(
-        `Багц='${qesc(bagts)}' AND Огноо<='${qesc(ognoo)}'`,
+        `${F.bagts}='${qesc(bagts)}' AND ${F.ognoo}<='${qesc(ognoo)}'`,
         {
-          outFields: Object.values(F).join(","),
+          outFields: "*",
           orderByFields: `${F.ognoo} ASC, ${F.oid} ASC`,
         },
       );
@@ -266,6 +275,7 @@ export default function Pivot() {
       if (!r) {
         r = {
           work: s(a[F.work]),
+          no: s(a[F.no]),
           level: Number(a[F.level]) || 0,
           weight: a[F.weight] == null ? null : Number(a[F.weight]),
           totw: a[F.totw] == null ? null : Number(a[F.totw]),
@@ -273,6 +283,7 @@ export default function Pivot() {
             [F.bagts]: a[F.bagts],
             [F.ognoo]: a[F.ognoo],
             [F.ver]: a[F.ver],
+            [F.no]: a[F.no],
             [F.level]: a[F.level],
             [F.work]: a[F.work],
             [F.catA]: a[F.catA],
@@ -297,6 +308,7 @@ export default function Pivot() {
     for (const er of extraRows) {
       list.push({
         work: er.work,
+        no: "",
         level: er.header ? 1 : 3,
         weight: er.weight,
         totw: null, // locally-added row: no global weight yet
@@ -345,10 +357,68 @@ export default function Pivot() {
     return sum / buildings.length;
   };
 
-  // Header = not a leaf task. Түвшин is the signal (floor headers carry junk
-  // weights like 0/2); Түвшин-3 section rows carry weight exactly 1.
-  const isHeaderRow = (r: Row) =>
-    r.level !== 3 || (r.weight != null && Math.abs(r.weight - 1) < 1e-6);
+  // True hierarchy level (1..5) from the № code, or null before the re-import.
+  const rowLevel = (r: Row) => levelFromNo(r.no, r.weight);
+
+  // Header = not a leaf task. With № present, leaves are level 5. Before the
+  // re-import, fall back to the Түвшин heuristic (only a rough header/leaf split
+  // — it can't see phase/sub-phase/category, which the old import dropped).
+  const isHeaderRow = (r: Row) => {
+    const L = rowLevel(r);
+    if (L != null) return L !== 5;
+    return r.level !== 3 || (r.weight != null && Math.abs(r.weight - 1) < 1e-6);
+  };
+
+  // Indent depth. With № present it's the real tree depth (0..4). The tree is
+  // ragged (a category can hold leaves directly, skipping the group tier) — the
+  // visual gap is intentional. The excel's building layer is the column axis,
+  // not a row depth. Fallback: category(Түвшин 1)=0, header=1, leaf=2.
+  const depthOf = (r: Row) => {
+    const L = rowLevel(r);
+    if (L != null) return L - 1;
+    return r.level === 1 ? 0 : isHeaderRow(r) ? 1 : 2;
+  };
+  // Stable row identity (matches the pivot's grouping key) for the collapse set.
+  const rowKey = (r: Row) =>
+    `${r.level}|${s(r.tmpl[F.catA])}|${s(r.tmpl[F.catB])}|${r.work}`;
+  const toggle = (r: Row) =>
+    setCollapsed((prev) => {
+      const n = new Set(prev);
+      const k = rowKey(r);
+      if (n.has(k)) n.delete(k);
+      else n.add(k);
+      return n;
+    });
+  // Show down to `layer`, collapse deeper: collapse every header sitting at
+  // depth layer-1 so its children hide. layer 1 = phases only … 5 = fully open.
+  const collapseToLayer = (layer: number) =>
+    setCollapsed(
+      layer >= 5
+        ? new Set()
+        : new Set(
+            rows
+              .filter((r) => isHeaderRow(r) && depthOf(r) === layer - 1)
+              .map(rowKey),
+          ),
+    );
+
+  // Which rows are hidden by a collapsed ancestor. Single pass in sheet order:
+  // a collapsed header hides all deeper rows until one at its depth or shallower
+  // re-establishes context (so nested collapse composes). ri is preserved — the
+  // render skips hidden rows rather than filtering `rows` (pending/sel key on ri).
+  const hidden = useMemo(() => {
+    const h = new Array(rows.length).fill(false);
+    let cut = Infinity; // rows deeper than this are hidden
+    rows.forEach((r, i) => {
+      const d = depthOf(r);
+      if (d <= cut) {
+        h[i] = false;
+        cut = isHeaderRow(r) && collapsed.has(rowKey(r)) ? d : Infinity;
+      } else h[i] = true;
+    });
+    return h;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, collapsed]);
 
   // Footer averages (over leaf tasks only, blanks = 0), pending-aware.
   const leafRows = rows
@@ -751,6 +821,26 @@ export default function Pivot() {
             ))}
           </select>
         </label>
+        <span className={st.field}>
+          Давхарга
+          <span className={st.layerBtns}>
+            <button className={st.layerBtn} onClick={() => collapseToLayer(1)} title="Үе шат">
+              1
+            </button>
+            <button className={st.layerBtn} onClick={() => collapseToLayer(2)} title="+ дэд үе шат">
+              2
+            </button>
+            <button className={st.layerBtn} onClick={() => collapseToLayer(3)} title="+ ангилал">
+              3
+            </button>
+            <button className={st.layerBtn} onClick={() => collapseToLayer(4)} title="+ бүлэг (давхар)">
+              4
+            </button>
+            <button className={st.layerBtn} onClick={() => collapseToLayer(5)} title="Бүх ажил дэлгэх">
+              Бүгд
+            </button>
+          </span>
+        </span>
         <button
           className={st.publishBtn}
           onClick={publish}
@@ -784,9 +874,11 @@ export default function Pivot() {
             <tbody>
               {rows.map((r, ri) => {
                 const header = isHeaderRow(r);
-                if (!header) n++;
-                // All section/group headers share one indent tier; leaves deeper.
-                const tier = header ? 1 : 2;
+                if (!header) n++; // number all leaves so it matches the full sheet
+                if (hidden[ri]) return null; // collapsed under an ancestor header
+                // Indent by hierarchy depth; leaves sit one tier under sections.
+                const tier = depthOf(r);
+                const isCollapsed = header && collapsed.has(rowKey(r));
                 // Show the top category like the others: drop a leading "A. " label.
                 const work = header
                   ? r.work.replace(/^[A-Za-zА-Яа-яӨөҮү]\.\s*/, "")
@@ -805,7 +897,9 @@ export default function Pivot() {
                             : CELL_BG,
                       }}
                     >
-                      {header ? "" : n}
+                      {/* Real № code once the re-import supplies it; else a
+                          running leaf counter (headers blank). */}
+                      {r.no || (header ? "" : n)}
                     </td>
                     <td
                       className={cls("fz c-ajil")}
@@ -818,6 +912,17 @@ export default function Pivot() {
                             : CELL_BG,
                       }}
                     >
+                      {header && (
+                        <span
+                          className={st.caret}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggle(r);
+                          }}
+                        >
+                          {isCollapsed ? "▸" : "▾"}
+                        </span>
+                      )}
                       {work}
                     </td>
                     <td

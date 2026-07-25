@@ -31,18 +31,20 @@ const cls = (names: string) =>
 // unscaled and its intended global weight is #REF! in the source). Planned/future
 // rows were removed from the layer, so this is completion of entered scope.
 
+// Consolidated table `Selbe_guitsetgel_consolidated` — ASCII field names.
 const F = {
-  bagts: "Багц",
-  work: "Ажил",
-  level: "Түвшин",
-  weight: "Хувийн_жин",
-  totw: "Нийт_жин",
-  bld: "Барилга_Блок",
-  pct: "Гүйцэтгэл____",
-  ognoo: "Огноо",
-  ver: "Хувилбар", // applySections batches on it
-  sec: "Ангилал__Б_", // section identity, stamped by applySections
-  oid: "ObjectID",
+  bagts: "bagts",
+  work: "ajil",
+  no: "dugaar", // № — isHeaderAttrs derives the true level from it
+  level: "tuvshin",
+  weight: "huviin_jin",
+  totw: "niit_jin",
+  bld: "barilga_blok",
+  pct: "guitsetgel",
+  ognoo: "ognoo",
+  ver: "huvilbar", // applySections batches on it
+  sec: "angilal_b", // section identity, stamped by applySections
+  oid: "OBJECTID",
 } as const;
 
 const s = (v: unknown) => (v == null ? "" : String(v));
