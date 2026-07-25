@@ -342,12 +342,6 @@ function useTaskPerf(b: PickedBuilding | null): Async<TaskPerfData | null> {
         secOf.set(r, isHdr(r) ? text(r[TP.task]) : sec);
       }
     }
-    // Толгой ажлын дараалал — хамгийн бүрэн (олон мөртэй) багцаас template.
-    let ref: Record<string, unknown>[] = [];
-    for (const b of batches.values()) if (b.length > ref.length) ref = b;
-    const hOrder = new Map<string, number>();
-    ref.forEach((r, i) => { if (isHdr(r) && !hOrder.has(text(r[TP.task]))) hOrder.set(text(r[TP.task]), i); });
-
     // As-of сүүлийн утга ажил бүрээр: Огноо ASC, OID ASC → сүүлийнх нь ялна.
     valid.sort((a, b) => {
       const da = text(a[TP.date]), db = text(b[TP.date]);
@@ -376,18 +370,19 @@ function useTaskPerf(b: PickedBuilding | null): Async<TaskPerfData | null> {
     }
     if (!leaves.length && !latest.length) return null;
 
-    // Толгой ажлууд — өөрсдийн бүртгэсэн гүйцэтгэлээр (template дараалалд)
-    const headers = latest
-      .filter((r) => isHdr(r) && secOf.get(r) !== PREP_HEADER)
-      .map((r) => ({
-        name: text(r[TP.task]).replace(/\s+/g, ' ').replace(/^[A-Za-zА-Яа-яӨөҮү]\.\s*/, '').trim(),
-        progress: r[TP.progress] == null ? null : Number(r[TP.progress]) * 100,
-        level: Number(r[TP.level]) || 0,
-        order: hOrder.get(text(r[TP.task])) ?? Number.MAX_SAFE_INTEGER,
-      }))
-      .filter((h) => h.name)
-      .sort((a, b) => a.order - b.order)
-      .map(({ order: _o, ...h }) => h);
+    /**
+     * Толгой ажлууд = «Б. Барилга угсралтын ажил»-ын ТАВАН ДЭД ҮЕ ШАТ (Б1…Б5).
+     *
+     * ⚠️ Урьд нь `master`-ийн бүх толгой мөрийг жагсаадаг байсан тул «Суурь
+     * ухлагын ажил», «3-р давхар цутгалт» гэх мэт ГҮН дэд ажлууд (15+ мөр)
+     * гарч, үе шатын тойм алдагддаг байв. Б1…Б5 нь эх excel-д аль хэдийн
+     * жигнэгдсэн бөгөөд `master`-т ОГТ БАЙХГҮЙ тул нэгтгэсэн хүснэгтээс авна.
+     */
+    const headers = (cell?.phases ?? []).map((p) => ({
+      name: p.name.replace(/\s+/g, ' ').trim(),
+      progress: p.pct,
+      level: 2,
+    }));
 
     return {
       version: cell?.date || maxDate,
@@ -466,7 +461,7 @@ export function MonitorDetail({ picked, pickedLayer }: { picked: Record<string, 
       {(d) => {
         if (!d || !d.headers.length) return <Section title="Гүйцэтгэл толгой ажлаар"><Empty label="Мэдээлэл алга." /></Section>;
         return (
-          <Section title="Гүйцэтгэл толгой ажлаар" note={`${d.headers.length} ажил · ${d.version}`}>
+          <Section title="Барилга угсралтын ажил" note={`${d.headers.length} үе шат · ${d.version}`}>
             <Bars
               color={HUE}
               max={100}

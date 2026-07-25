@@ -252,19 +252,30 @@ const isBlank = (v: unknown): boolean =>
   v == null || (typeof v === 'string' && v.trim() === '');
 
 /**
- * «Хоосон» талбарын SQL нөхцөл.
+ * «Хоосон» талбарын SQL нөхцөл — `null` ба тоологдсон бүх хоосон хувилбар.
  *
- * `groups()` нь null, "" ба " " бүгдийг НЭГ бүлэгт нэгтгэдэг. Газрын зурагт
- * шүүхэд ижил олонлогийг сонгох ёстой — тиймээс `TRIM()` ашиглана. Зөвхөн
- * `= ' '` гэж бичвэл хэд хэдэн зайтай утга шүүлтээс мултарч, баганы тоо ба
- * зураг дээрх сонголт зөрөх болно.
+ * ⚠️ `TRIM()` ХЭРЭГЛЭХГҮЙ. Эдгээр FeatureServer нь `TRIM`/`LTRIM`-ийг
+ * ТАТГАЛЗДАГ (`UPPER`, `LIKE` ажилладаг ч) бөгөөс хүсэлт нь чимээгүй унаж,
+ * «Бүртгэгдээгүй / Тодорхойгүй» мөр дарахад зурагт ЮУ Ч БОЛДОГГҮЙ байв.
+ *
+ * Оронд нь `groups()`-ын цуглуулсан ЖИНХЭНЭ түүхий утгуудыг (`''`, `' '`,
+ * `'  '` …) шууд жагсаана — тоологдсонтой ЯГ ижил олонлог, ямар ч SQL
+ * функцгүй тул бүх үйлчилгээнд зөөвөрлөгдөнө.
  */
-export const blankWhere = (field: string) => `${field} IS NULL OR TRIM(${field}) = ''`;
+export const blankWhere = (field: string, raws: string[] = []) =>
+  [
+    `${field} IS NULL`,
+    ...(raws.length ? [`${field} IN (${raws.map(sqlStr).join(', ')})`] : []),
+  ].join(' OR ');
 
 export type Group = {
   /** Бүлгийн нэр — хоосон бол `emptyLabel` */
   label: string;
-  /** Бүлэгт нэгдсэн БҮХ түүхий утга. Хоосон бүлэгт хоосон массив. */
+  /**
+   * Бүлэгт нэгдсэн БҮХ түүхий утга.
+   * ⚠️ Хоосон бүлэгт `null`-аас БУСАД хувилбарууд (`''`, `' '` …) — `blankWhere`
+   * тэдгээрийг `IN (…)`-д жагсааж `TRIM()`-гүйгээр шүүнэ.
+   */
   raws: string[];
   /** Хоосон бүлэг эсэх */
   blank: boolean;
@@ -294,7 +305,9 @@ export function groups(rows: Row[], field: string, emptyLabel: string, numeric: 
       blank: empty,
       values: Object.fromEntries(numeric.map((k) => [k, 0])),
     };
-    if (!empty) {
+    // ⚠️ Хоосон бүлэгт ч түүхий утгыг ЦУГЛУУЛНА (`null`-аас бусдыг) — `blankWhere`
+    //    тэдгээрийг жагсааж, `TRIM()`-гүйгээр яг ижил олонлогийг шүүнэ.
+    if (r[field] != null) {
       const raw = String(r[field]);
       if (!g.raws.includes(raw)) g.raws.push(raw);
     }
@@ -307,4 +320,4 @@ export function groups(rows: Row[], field: string, emptyLabel: string, numeric: 
 
 /** Бүлгийг газрын зурагт шүүх SQL — тоологдсонтой яг ижил олонлог сонгоно */
 export const groupWhere = (field: string, g: Group): string =>
-  g.blank ? blankWhere(field) : `${field} IN (${g.raws.map(sqlStr).join(', ')})`;
+  g.blank ? blankWhere(field, g.raws) : `${field} IN (${g.raws.map(sqlStr).join(', ')})`;

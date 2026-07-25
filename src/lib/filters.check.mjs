@@ -80,5 +80,48 @@ const both = await count(merged);
 const only = await count(`${F.bagts} = ${sqlStr(bagts)}`);
 assert.ok(both > 0 && both <= only, `нийлүүлсэн шүүлт ${both}/${only}`);
 
+/* ── 6. «Бүртгэгдээгүй / Тодорхойгүй» бүлгийн шүүлт (`groupWhere` → `blankWhere`) ──
+ * ⚠️ Энэ бол бүх каталогийн facet-д хамаатай: `TRIM()`-ийг эдгээр FeatureServer
+ * ТАТГАЛЗДАГ тул хоосон мөр дарахад зурагт юу ч болдоггүй байв. Шинэ нөхцөл нь
+ * тоологдсон ЯГ ижил тоог буцаах ёстой. */
+const ET = 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/Selbe_ET_20260721/FeatureServer';
+const FACETS = [[24, 'zoriulalt'], [24, 'Bar_comp'], [28, 'zoriulalt']];
+
+const post = async (url, p) => {
+  const res = await fetch(`${url}/query`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ f: 'json', ...p }),
+  });
+  return res.json();
+};
+
+let checked = 0;
+for (const [n, field] of FACETS) {
+  const u = `${ET}/${n}`;
+  const g = await post(u, {
+    where: '1=1', outFields: field, groupByFieldsForStatistics: field,
+    outStatistics: '[{"statisticType":"count","onStatisticField":"OBJECTID","outStatisticFieldName":"c"}]',
+  });
+  const blanks = (g.features || []).map((f) => f.attributes)
+    .filter((r) => r[field] == null || String(r[field]).trim() === '');
+  if (!blanks.length) continue;
+
+  const counted = blanks.reduce((a, r) => a + r.c, 0);
+  const raws = blanks.filter((r) => r[field] != null).map((r) => String(r[field]));
+  const where = [`${field} IS NULL`, ...(raws.length ? [`${field} IN (${raws.map(sqlStr).join(', ')})`] : [])].join(' OR ');
+
+  const got = await post(u, { where, returnCountOnly: 'true' });
+  assert.ok(!got.error, `хоосон бүлгийн SQL татгалзав: ${where}`);
+  assert.equal(got.count, counted, `${field}: шүүлт ${got.count} ≠ тоологдсон ${counted}`);
+
+  // ⚠️ Регресс: хуучин `TRIM()` хэлбэр нь ЭНЭ үйлчилгээнд УНАНА — буцааж болохгүй.
+  const old = await post(u, { where: `${field} IS NULL OR TRIM(${field}) = ''`, returnCountOnly: 'true' });
+  assert.ok(old.error, `TRIM() гэнэт ажиллав — blankWhere-ийг эргэж харна уу (${field})`);
+  checked += 1;
+}
+assert.ok(checked >= 3, `хоосон бүлгийн шалгалт хэт цөөн: ${checked}`);
+
 console.log(`ok · ${LEVELS.length} ангилал, ${new Set(rows.map((r) => r[F.bagts])).size} багц, `
-  + `${STAGES.length} үе шат, ${comps.size} компани, 3D-нийлүүлэлт — бүгд ${total} блок дээр хүчинтэй`);
+  + `${STAGES.length} үе шат, ${comps.size} компани, ${checked} хоосон-бүлэг, `
+  + `3D-нийлүүлэлт — бүгд ${total} блок дээр хүчинтэй`);

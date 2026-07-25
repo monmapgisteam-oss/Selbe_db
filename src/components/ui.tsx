@@ -391,6 +391,25 @@ export function Donut({
   const r = (size - width) / 2;
   const circ = 2 * Math.PI * r;
 
+  /**
+   * Хулгана дээрх зүсмэг — ЗҮСМЭГ ба ТАЙЛБАР хоёрыг холбоно.
+   *
+   * ⚠️ Хоёр талдаа ажиллана: зүсмэг дээр очиход тайлбарын мөр, тайлбар дээр
+   * очиход зүсмэг тодорно. 4-8 ойролцоо өнгөтэй зүсмэгийг тайлбартай нь нүдээр
+   * тааруулах нь бараг боломжгүй байсан.
+   * ⚠️ ЗӨВХӨН дарж болдог диаграмд — эс бөгөөс идэвхгүй диаграм дарагдах юм шиг
+   * хуурамч мэдрэмж төрүүлнэ.
+   */
+  const [hov, setHov] = useState<string | null>(null);
+  const hovOn = onSelect ? hov : null;
+  const hoverProps = (key: string) =>
+    onSelect
+      ? { onMouseEnter: () => setHov(key), onMouseLeave: () => setHov((h) => (h === key ? null : h)) }
+      : undefined;
+  /** Тодруулах уу? Хулгана байвал ТЭР давамгайлна, эс бөгөөс сонголт. */
+  const isEmph = (key: string) => (hovOn ? hovOn === key : sel.includes(key));
+  const isDim = (key: string) => (hovOn ? hovOn !== key : hasSel && !sel.includes(key));
+
   // Зүсмэг бүрийн ЭХЛЭХ байрлал — өмнөх зүсмэгүүдийн нийлбэр
   let acc = 0;
   const slices = items.map((it) => {
@@ -407,32 +426,48 @@ export function Donut({
           {/* -90° эргүүлж 12 цагаас эхлүүлнэ */}
           <g transform={`rotate(-90 ${size / 2} ${size / 2})`}>
             <circle className={s.donutTrack} cx={size / 2} cy={size / 2} r={r} strokeWidth={width} />
-            {slices.map((sl) => {
-              const dim = hasSel && !sel.includes(sl.key);
-              return (
-                <circle
-                  key={sl.key}
-                  cx={size / 2}
-                  cy={size / 2}
-                  r={r}
-                  strokeWidth={sel.includes(sl.key) ? width + 3 : width}
-                  stroke={sl.color}
-                  strokeOpacity={dim ? 0.28 : 1}
-                  fill="none"
-                  strokeDasharray={`${sl.frac * circ} ${circ}`}
-                  strokeDashoffset={-sl.offset * circ}
-                  style={onSelect ? { cursor: 'pointer' } : undefined}
-                  onClick={onSelect ? () => onSelect(sl.key) : undefined}
-                >
-                  <title>{`${sl.label}: ${sl.value}`}</title>
-                </circle>
-              );
-            })}
+            {slices.map((sl) => (
+              <circle
+                key={sl.key}
+                className={s.donutSlice}
+                cx={size / 2}
+                cy={size / 2}
+                r={r}
+                strokeWidth={isEmph(sl.key) ? width + 3 : width}
+                stroke={sl.color}
+                strokeOpacity={isDim(sl.key) ? 0.28 : 1}
+                fill="none"
+                strokeDasharray={`${sl.frac * circ} ${circ}`}
+                strokeDashoffset={-sl.offset * circ}
+                style={onSelect ? { cursor: 'pointer' } : undefined}
+                onClick={onSelect ? () => onSelect(sl.key) : undefined}
+                {...hoverProps(sl.key)}
+              >
+                <title>{`${sl.label}: ${sl.value}`}</title>
+              </circle>
+            ))}
           </g>
         </svg>
+        {/**
+          * ⚠️ Хулгана зүсмэг дээр очиход ГОЛД нь тэр зүсмэгийн утга гарна —
+          * тайлбар руу нүд шилжүүлэхгүйгээр шууд уншина. Хулгана буухад
+          * анхны нийт утга руугаа эргэнэ.
+          */}
         <div className={s.donutCenter}>
-          <span className={`${s.donutValue} num`}>{center ?? total}</span>
-          {centerLabel && <span className={s.donutLabel}>{centerLabel}</span>}
+          {(() => {
+            const h = hovOn ? slices.find((x) => x.key === hovOn) : null;
+            return h ? (
+              <>
+                <span className={`${s.donutValue} num`}>{h.value}</span>
+                <span className={s.donutLabel} title={h.label}>{h.label}</span>
+              </>
+            ) : (
+              <>
+                <span className={`${s.donutValue} num`}>{center ?? total}</span>
+                {centerLabel && <span className={s.donutLabel}>{centerLabel}</span>}
+              </>
+            );
+          })()}
         </div>
       </div>
 
@@ -461,8 +496,12 @@ export function Donut({
               <button
                 type="button"
                 aria-pressed={on}
-                className={`${s.donutItem} ${s.donutClick} ${on ? s.donutOn : ''}`}
+                className={`${s.donutItem} ${s.donutClick} ${on ? s.donutOn : ''} ${hovOn === sl.key ? s.donutHov : ''}`}
                 onClick={() => onSelect(sl.key)}
+                // ⚠️ Гар/фокусаар хөтлөгчид ч ижил холбоо ажиллана
+                onFocus={() => setHov(sl.key)}
+                onBlur={() => setHov((h) => (h === sl.key ? null : h))}
+                {...hoverProps(sl.key)}
               >
                 {body}
               </button>
