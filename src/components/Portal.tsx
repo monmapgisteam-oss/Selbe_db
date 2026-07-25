@@ -9,6 +9,7 @@ import { ViewRail } from '@/components/ViewRail';
 import { LayerCatalog } from '@/components/LayerCatalog';
 import { Suitability } from '@/modules/analysis/Suitability';
 import { Dashboard } from '@/modules/Dashboard';
+import { Bagts } from '@/modules/Bagts';
 import { Sheet } from '@/modules/sheet/Sheet';
 import { Icon } from '@/components/Icon';
 import { useTheme } from '@/lib/theme';
@@ -250,6 +251,7 @@ function PortalContent() {
   const isDash = view === 'dashboard';
   const isSuit = view === 'analysis';
   const isSheet = view === 'sheet';
+  const isBagts = view === 'bagts';
   // `standalone` нь эдгээрийг ЯГ тэмдэглэдэг — тусад нь тоолохгүй
   const isFull = standalone;
   /**
@@ -310,9 +312,11 @@ function PortalContent() {
           <div className={s.suit}>
             {isDash
               ? <Dashboard dim={dim} setDim={setDim} zone={zone} setZone={setZone} />
-              : isSheet
-                ? <Sheet />
-                : <Suitability dim={dim} setDim={setDim} />}
+              : isBagts
+                ? <Bagts dim={dim} setDim={setDim} />
+                : isSheet
+                  ? <Sheet />
+                  : <Suitability dim={dim} setDim={setDim} />}
           </div>
         )}
 

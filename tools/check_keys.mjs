@@ -95,3 +95,106 @@ const rawTypes = [...new Set(await query(layerUrl(ZONE_LAYER), ZONE_FIELDS.type)
 const unmapped = rawTypes.filter((t) => zoneType(t) === String(t ?? '').trim() && String(t ?? '').trim() !== '');
 assert.deepEqual(unmapped, [], `каноник нэргүй ангилал: ${unmapped}`);
 console.log(`zoneType OK — ${rawTypes.length} ангилал`);
+
+/**
+ * КАТАЛОГИЙН БҮХ давхаргын OID талбар зөв эсэх.
+ * ⚠️ Буруу OID нэр (жиш. шинэ бүсийн давхаргад `OBJECTID`) нь ArcGIS-ээс
+ * «Cannot perform query. Invalid query parameters.» гэсэн хариу авчирч, тухайн
+ * давхаргын БҮХ карт ба зурагдалт нэг дор унана. Тиймээс давхарга бүр дээр
+ * жинхэнэ `COUNT()` явуулж шалгана.
+ */
+const { LAYERS, oidOf } = await import(join(out, 'services.js'));
+const bad = [];
+for (const l of LAYERS) {
+  const res = await fetch(`${layerUrl(l)}/query`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      f: 'json', where: '1=1',
+      outStatistics: JSON.stringify([{ statisticType: 'count', onStatisticField: oidOf(l), outStatisticFieldName: 'n' }]),
+    }),
+  });
+  const body = await res.json();
+  if (body.error) bad.push(`${l.id} (${oidOf(l)})`);
+}
+assert.deepEqual(bad, [], `OID буруу давхарга: ${bad.join(', ')}`);
+console.log(`oidOf OK — ${LAYERS.length} давхарга`);
+
+/**
+ * Каталогт нэрлэсэн БҮХ талбар үйлчилгээн дээр БОДИТООР байгаа эсэх.
+ *
+ * ⚠️ ArcGIS рүү excel/shapefile импортлоход багана ЧИМЭЭГҮЙ унадаг (нэр урт,
+ * кирилл, давхардсан…). Байхгүй талбарыг `outFields`-д асуувал ArcGIS алдаа
+ * буцаахгүй — тэр талбарыг зүгээр л ОРХИНО. Тэгэхээр карт «0» эсвэл
+ * «Тодорхойгүй» гэж БУРУУ ажиллаад, юу ч эвдрээгүй мэт харагдана. Эх өгөгдөл
+ * дахин импортлогдох бүрд энэ шалгалт л барьж авна.
+ */
+const missing = [];
+for (const l of LAYERS) {
+  const meta = await (await fetch(`${layerUrl(l)}?f=json`)).json();
+  const have = new Set((meta.fields ?? []).map((f) => f.name));
+  const want = [
+    l.qty?.field, l.cost?.field, l.paint?.field, l.breaks?.field,
+    ...(l.facets ?? []).map((f) => f.field),
+    ...(l.noZone ? [] : [l.zoneField ?? 'ZONE_ID']),
+  ].filter(Boolean);
+  for (const f of want) if (!have.has(f)) missing.push(`${l.id}.${f}`);
+}
+assert.deepEqual(missing, [], `үйлчилгээнд БАЙХГҮЙ талбар: ${missing.join(', ')}`);
+console.log(`талбарууд OK — ${LAYERS.length} давхарга`);
+
+/**
+ * Газар чөлөөлөлтийн талбайн ХАМРАЛТ — `area_m2` ба `Талбай` хоёулаа дутуу
+ * бөглөгдсөн тул `parcelArea()` нь хоёуланг нь нөхөж хэрэглэдэг. Аль нэг нь
+ * дахин импортод унавал нийт га чимээгүй буурна — тоолж барина.
+ */
+const { PARCEL_LEFT } = await import(join(out, 'services.js'));
+const PF = PARCEL_LEFT.fields;
+const parcels = await (await fetch(`${PARCEL_LEFT.url}/query`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+  body: new URLSearchParams({
+    f: 'json', where: '1=1', outFields: `${PF.area},${PF.areaAlt}`,
+    returnGeometry: 'false', resultRecordCount: '2000',
+  }),
+})).json();
+const rows = parcels.features.map((f) => f.attributes);
+const covered = rows.filter((x) => (Number(x[PF.area]) || Number(x[PF.areaAlt]) || 0) > 0).length;
+assert.ok(covered / rows.length >= 0.98, `нэгж талбарын хэмжээ дутуу: ${covered}/${rows.length}`);
+console.log(`parcelArea OK — ${covered}/${rows.length} талбар хэмжээтэй`);
+
+/**
+ * ТӨСЛИЙН ГҮЙЦЭТГЭЛИЙН хүснэгт — талбарын нэр ба үе шатын утга.
+ *
+ * ⚠️ Талбарын нэр нь КИРИЛЛ («Төсөлд_эзлэх_хувь») тул дахин импортлоход
+ * үсэг/доогуур зураас амархан өөрчлөгдөнө. Байхгүй талбарыг ArcGIS чимээгүй
+ * орхидог — дашбоардын цагираг 0% болоод эвдрээгүй мэт харагдана.
+ *
+ * ⚠️ 6 үе шатны нэр нь каталогт ХАТУУ бичигдсэн (`PROJECT_PROGRESS.stages`).
+ * Эх хүснэгтэд нэг нь өөрчлөгдвөл тэр үе шат диаграмаас чимээгүй унана —
+ * жингийн нийлбэр буурч, төслийн гүйцэтгэл ГАЖУУДНА.
+ */
+const { PROJECT_PROGRESS } = await import(join(out, 'services.js'));
+const PPF = PROJECT_PROGRESS.fields;
+const ppMeta = await (await fetch(`${PROJECT_PROGRESS.url}?f=json`)).json();
+const ppHave = new Set((ppMeta.fields ?? []).map((f) => f.name));
+const ppMissing = Object.values(PPF).filter((f) => !ppHave.has(f));
+assert.deepEqual(ppMissing, [], `Төсөл_Гүйцэтгэл-д байхгүй талбар: ${ppMissing.join(', ')}`);
+
+const ppRows = (await (await fetch(`${PROJECT_PROGRESS.url}/query`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+  body: new URLSearchParams({
+    f: 'json', where: '1=1', returnGeometry: 'false', resultRecordCount: '2000',
+    outFields: `${PPF.stage},${PPF.weight},${PPF.actual}`,
+  }),
+})).json()).features.map((f) => f.attributes);
+
+const seenStages = new Set(ppRows.map((r) => String(r[PPF.stage] ?? '').trim()));
+const lostStages = PROJECT_PROGRESS.stages.map((s) => s.value).filter((v) => !seenStages.has(v));
+assert.deepEqual(lostStages, [], `хүснэгтэд алга болсон үе шат: ${lostStages.join(', ')}`);
+
+const ppW = ppRows.reduce((a, r) => a + (Number(r[PPF.weight]) || 0), 0);
+const ppA = ppRows.reduce((a, r) => a + (Number(r[PPF.weight]) || 0) * (Number(r[PPF.actual]) || 0) / 100, 0);
+assert.ok(ppW > 0, 'Төсөлд эзлэх жингийн нийлбэр 0 — жигнэсэн гүйцэтгэл бодогдохгүй');
+console.log(`projectProgress OK — ${ppRows.length} мөр · хамралт ${ppW.toFixed(1)}% · гүйцэтгэл ${(ppA / ppW * 100).toFixed(1)}%`);

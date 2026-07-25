@@ -8,9 +8,11 @@ import { queryFeatures, sqlStr, type Row } from '@/lib/query';
 import {
   ZONE_LAYER, ZONE_FIELD, ZONE_FIELDS, ZONE_NONE, ZONE_TYPES, ZONE_TYPE_EMPTY, ZONE_TYPE_EMPTY_HUE,
   BUILT_LAYER, BUILT_FIELDS, BUILT_STATUS, BUILDING, BUILDING_STAGES, PROGRESS_LEVELS, STAGE_NA,
-  SURVEY_HUE, LAYER_BY_ID, layerUrl, OID, oidOf, CASHFLOW, PARCEL_LEFT, PARCEL_CLEAN,
-  INVEST, investType, zoneKey, bagtsKey, zoneCanon, zoneType, zoneTypeRaw, zoneWhere, zoneRefValues, zoneLegacyValues,
+  SURVEY_HUE, LAYER_BY_ID, layerUrl, OID, oidOf, CASHFLOW, PARCEL_LEFT, PARCEL_CLEAN, PROJECT_PROGRESS,
+  INVEST, investType, zoneKey, bagtsKey, PARCEL_PROGRESS_HUES, zoneCanon, zoneType, zoneTypeRaw, zoneWhere, zoneRefValues, zoneLegacyValues,
 } from '@/lib/services';
+import { useCashflow, type CashRow } from '@/lib/cashflow';
+import { useInvest, type InvRow } from '@/lib/invest';
 import { num, pct, ha, mnt, text } from '@/lib/format';
 import {
   INDICATORS, SCORE_LEVELS, levelOf, PARKING, DEFAULT_ECON_SHARE,
@@ -208,7 +210,7 @@ const PC = PARCEL_CLEAN.fields;
 
 function useLeftParcels(): Async<Row[]> {
   return useAsync(() => queryFeatures(PARCEL_LEFT.url, {
-    outFields: [PL.progress, PL.area, PL.block],
+    outFields: [PL.progress, PL.area, PL.areaAlt, PL.block],
   }), []);
 }
 
@@ -220,29 +222,10 @@ function useCleanParcels(): Async<Row[]> {
 
 /* ══════════════════ Cashflow — багцын төсөв / санхүүжилт (BUS_cashflow) ══════════════════ */
 
-const CF = CASHFLOW.fields;
-/** Таслалтай мөнгөн мөрийг тоо руу («259,778,021,987» → 259778021987) */
-const cfNum = (v: unknown): number => { const n = Number(String(v ?? '').replace(/[^\d.-]/g, '')); return Number.isFinite(n) ? n : 0; };
-
 /**
- * ⚠️ Санхүүжилтийн эх үүсвэрийн талбарууд (`securities`, `projectIncome`,
- * `cityBudget`, `reserve`) ТАТАГДАХАА БОЛЬСОН: тэдгээрийг харуулдаг байсан карт
- * `INVEST`-ийн эх үүсвэрийн задаргаагаар солигдсон. `CASHFLOW.fields`-д хэвээр
- * үлдээв — эргэж хэрэгтэй болбол энд нэмэхэд л хангалттай.
+ * ⚠️ Хүсэлт ба мөрийн загвар нь `@/lib/cashflow`-д — «Багцын мэдээлэл» харагдац
+ * ч мөн адил уншдаг. Энд зөвхөн ДАШБОАРДЫН шүүлтийн логик үлдэнэ.
  */
-type CashRow = { zone: string; budget: number; contract: number; contractor: string; months: number[] };
-
-function useCashflow(): Async<CashRow[]> {
-  return useAsync(() => queryFeatures(CASHFLOW.url, {
-    outFields: [CF.zone, CF.budget, CF.contract, CF.contractor, ...CASHFLOW.months.map((m) => m.code)],
-  }).then((rows) => rows.map((r) => ({
-    zone: text(r[CF.zone]),
-    budget: cfNum(r[CF.budget]),
-    contract: cfNum(r[CF.contract]),
-    contractor: text(r[CF.contractor]),
-    months: CASHFLOW.months.map((m) => cfNum(r[m.code])),
-  }))), []);
-}
 
 /** Cashflow мөрийг идэвхтэй бүсийн шүүлтээр (шууд бүсийн хэмжээс) */
 function cfMatch(r: CashRow, f: Filters): boolean {
@@ -253,32 +236,7 @@ function cfMatch(r: CashRow, f: Filters): boolean {
 
 /* ══════════════════ Хөрөнгө оруулалт · өртөг (төсөл даяар) ══════════════════ */
 
-const IV = INVEST.fields;
-
-type InvRow = {
-  type: string; zone: string; project: string; contractor: string;
-  confirmed: number; planned: number; total: number;
-  /** `INVEST.sources`-ийн дарааллаар */
-  sources: number[];
-};
-
-function useInvest(): Async<InvRow[]> {
-  return useAsync(() => queryFeatures(INVEST.url, {
-    outFields: [IV.type, IV.zone, IV.project, IV.contractor, IV.confirmed, IV.planned,
-      ...INVEST.sources.map((s) => s.field)],
-  }).then((rows) => rows.map((r) => {
-    const confirmed = Number(r[IV.confirmed]) || 0;
-    const planned = Number(r[IV.planned]) || 0;
-    return {
-      type: text(r[IV.type], 'Тодорхойгүй'),
-      zone: zoneKey(r[IV.zone]),
-      project: text(r[IV.project]),
-      contractor: text(r[IV.contractor]),
-      confirmed, planned, total: confirmed + planned,
-      sources: INVEST.sources.map((s) => Number(r[s.field]) || 0),
-    };
-  })), []);
-}
+/** ⚠️ Хүсэлт ба мөрийн загвар нь `@/lib/invest`-д — «Багцын мэдээлэл» ч уншина */
 
 /**
  * Хөрөнгө оруулалтын мөрийг идэвхтэй шүүлтээр.
@@ -409,6 +367,7 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
   const farbcr = useFarBcr();
   const parcelLeft = useLeftParcels();
   const parcelClean = useCleanParcels();
+  const project = useProjectProgress();
   const { setHighlight, zoomToZone, zoomToWhere } = useMap();
 
   /** Хүнд анализыг эхний paint-ийн дараа */
@@ -539,6 +498,7 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
       {/* ЗҮҮН — «юу баригдаж байна»: багц → блокийн гүйцэтгэл → үе шат */}
       <aside className={`${o.side} ${o.left}`}>
         <h2 className={o.colHead}>Гүйцэтгэл</h2>
+        <ProjectProgressCard q={project} />
         <BagtsInfoCard cash={cash} rawBlk={rawBlk} f={f} onPick={(v) => setDimFilter('bagts', v)} />
         <ProgressCard rawBlk={rawBlk} f={f} onToggle={toggleLevel} />
         <StagesCard rawBlk={rawBlk} f={f} />
@@ -822,6 +782,131 @@ function ProgressCard({ rawBlk, f, onToggle }: { rawBlk: Async<Row[]>; f: Filter
 
 /* ══════════════════ Ажлын үе шат (блок) ══════════════════ */
 
+/* ══════════════════ Төслийн нэгдсэн гүйцэтгэл (Төсөл_Гүйцэтгэл) ══════════════════ */
+
+const PP = PROJECT_PROGRESS.fields;
+
+type ProjectStage = {
+  label: string;
+  color: string;
+  /** Төслийн нийт дүнд эзлэх жин (%) */
+  weight: number;
+  /** Жигнэсэн гүйцэтгэл, өөрийн жинд нормчилсон (%) */
+  actual: number;
+  /** Төлөвлөгөө — зөвхөн бөглөгдсөн мөрөөр; байхгүй бол null */
+  planned: number | null;
+  rows: number;
+};
+
+type ProjectProgress = {
+  /** Жигнэсэн гүйцэтгэл — БОДИТ жингийн нийлбэрт нормчилсон (%) */
+  actual: number;
+  /** Хүснэгтэд бүртгэгдсэн нийт жин (%). 100 БИШ — доорх тайлбарыг үз. */
+  coverage: number;
+  /** Төлөвлөгөө ба гүйцэтгэл — ИЖИЛ мөрийн олонлогоор жишихэд */
+  planned: number | null;
+  actualVsPlan: number | null;
+  stages: ProjectStage[];
+};
+
+/**
+ * ТӨСЛИЙН нэгдсэн гүйцэтгэл — 6 үе шатаар жигнэсэн.
+ *
+ * ⚠️ Дашбоардын cross-filter-т ОРОХГҮЙ. Хүснэгтийн цорын ганц холбогдох
+ * хэмжээс нь `bagts_name` бөгөөд тэр нь ДЭД БҮТЦИЙН багц («БАГЦ-5.1»), харин
+ * дашбоардын `bagts` шүүлт нь БАРИЛГЫН багц («Багц 4.1») — өөр олонлог. Мөн
+ * 162-оос 50 мөрд багц огт байхгүй. Шүүлтэд холбовол бүсээр шүүхэд карт
+ * чимээгүй хоосорно; энэ нь төсөл ДАЯАРЫН үзүүлэлт тул үргэлж бүтэн харагдана.
+ *
+ * ⚠️ Жигнэсэн дүнг `Σ(жин × гүйц) / Σжин` гэж бодно, 100-д ХУВААХГҮЙ:
+ * `Төсөлд_эзлэх_хувь`-ийн нийлбэр нь 81.5% (үлдсэн 18.5% нь хүснэгтэд
+ * ороогүй). 100-д хуваавал гүйцэтгэл 22.5% гэж гарч, бодит 27.7%-иас чимээгүй
+ * бага харагдана.
+ *
+ * ⚠️ Төлөвлөгөө ба гүйцэтгэлийг ЗӨВХӨН хоёулаа бөглөгдсөн мөрөөр жишнэ
+ * (162-оос 74 мөрд төлөвлөгөө хоосон). Өөр хуваарьтай хоёр дүнг зэрэгцүүлбэл
+ * «төлөвлөгөөнөөс хоцорсон» гэсэн дүгнэлт хиймлээр гарна.
+ */
+function useProjectProgress(): Async<ProjectProgress> {
+  return useAsync(async () => {
+    const rows = await queryFeatures(PROJECT_PROGRESS.url, {
+      outFields: [PP.stage, PP.weight, PP.planned, PP.actual],
+      limit: 2000,
+    });
+
+    const wOf = (r: Row) => Number(r[PP.weight]) || 0;
+    const aOf = (r: Row) => Number(r[PP.actual] ?? 0) || 0;
+    const norm = (rs: Row[], pick: (r: Row) => number) => {
+      const w = rs.reduce((a, r) => a + wOf(r), 0);
+      return w > 0 ? rs.reduce((a, r) => a + wOf(r) * pick(r), 0) / w : null;
+    };
+
+    const withPlan = rows.filter((r) => r[PP.planned] != null);
+    const coverage = rows.reduce((a, r) => a + wOf(r), 0);
+
+    return {
+      actual: norm(rows, aOf) ?? 0,
+      coverage,
+      planned: norm(withPlan, (r) => Number(r[PP.planned]) || 0),
+      actualVsPlan: norm(withPlan, aOf),
+      stages: PROJECT_PROGRESS.stages.map((st) => {
+        const rs = rows.filter((r) => text(r[PP.stage], '').trim() === st.value);
+        const rp = rs.filter((r) => r[PP.planned] != null);
+        return {
+          label: st.label,
+          color: st.color,
+          weight: rs.reduce((a, r) => a + wOf(r), 0),
+          actual: norm(rs, aOf) ?? 0,
+          planned: norm(rp, (r) => Number(r[PP.planned]) || 0),
+          rows: rs.length,
+        };
+      }).filter((st) => st.rows > 0),
+    };
+  }, []);
+}
+
+function ProjectProgressCard({ q }: { q: Async<ProjectProgress> }) {
+  return (
+    <Card title="Төслийн гүйцэтгэл" note="6 үе шат · жигнэсэн">
+      <Data q={q} loading="Тооцож байна…">
+        {(d) => (
+          <>
+            <div className={o.progressRow}>
+              <Ring value={d.actual} size={84} width={9} color={BUILD_HUE} label="гүйцэтгэл" />
+              <div className={o.miniStats}>
+                {d.planned != null && (
+                  <div><span>Төлөвлөгөө</span><b>{pct(d.planned, 1)}</b></div>
+                )}
+                {d.actualVsPlan != null && d.planned != null && (
+                  <div>
+                    <span>Зөрүү</span>
+                    <b>{`${d.actualVsPlan >= d.planned ? '+' : '−'}${pct(Math.abs(d.actualVsPlan - d.planned), 1)}`}</b>
+                  </div>
+                )}
+                {/* ⚠️ Хамралтыг НУУХГҮЙ: хүснэгтийн жингийн нийлбэр 100 биш тул
+                    гүйцэтгэл нь бүртгэгдсэн ажлын хүрээнд л үнэн. */}
+                <div><span>Хамрагдсан жин</span><b>{pct(d.coverage, 1)}</b></div>
+              </div>
+            </div>
+            <Bars
+              color={BUILD_HUE}
+              max={100}
+              inline
+              items={d.stages.map((st) => ({
+                key: st.label,
+                label: st.label,
+                value: st.actual,
+                color: st.color,
+                display: `${pct(st.actual, 1)} · жин ${pct(st.weight, 1)}${st.planned == null ? '' : ` · төлөв ${pct(st.planned, 0)}`}`,
+              }))}
+            />
+          </>
+        )}
+      </Data>
+    </Card>
+  );
+}
+
 function StagesCard({ rawBlk, f }: { rawBlk: Async<Row[]>; f: Filters }) {
   return (
     <Card title="Ажлын үе шат">
@@ -870,19 +955,14 @@ const cleanProgress = (v: string) => {
   return s === '' || s === '—' ? 'Тодорхойгүй' : s;
 };
 
-/** Явцын мэдээний өнгө — гэрээлсэн/дүйцүүлсэн ногоон, татгалзсан/маргаантай улаан */
-const PROGRESS_HUES: Record<string, string> = {
-  'зөвшилцөх': '#0ea5e9',
-  'үлдэх саналтай': '#f59e0b',
-  'гэрээлсэн': '#22c55e',
-  'дүйцүүлсэн': '#16a34a',
-  'татгалзсан': '#dc2626',
-  'маргаантай': '#e11d48',
-  'үнийн дүн зөвшөөрөөгүй': '#f97316',
-  'АТД': '#7c3aed',
-  'гэр': '#94a3b8',
-  'Тодорхойгүй': '#cbd5e1',
-};
+/**
+ * Нэгж талбарын хэмжээ (м²) — кадастрын `area_m2`, түүнгүй бол гараар бичсэн
+ * `Талбай`.
+ *
+ * ⚠️ Ганц баганаар бодвол талбар унана: `area_m2` нь геометргүй 11 мөрд хоосон,
+ * `Талбай` нь 45 мөрд хоосон. Хоёуланг нь авбал 224-өөс 222 хамрагдана.
+ */
+const parcelArea = (x: Row) => Number(x[PL.area]) || Number(x[PL.areaAlt]) || 0;
 
 /**
  * ЧӨЛӨӨЛӨГДӨӨГҮЙ нэгж талбар — чөлөөлөлтийн явцаар.
@@ -904,14 +984,14 @@ function ParcelLeftCard({ raw }: { raw: Async<Row[]> }) {
             const k = cleanProgress(text(x[PL.progress]));
             const cur = by.get(k) ?? { n: 0, area: 0 };
             cur.n += 1;
-            cur.area += Number(x[PL.area]) || 0;
+            cur.area += parcelArea(x);
             by.set(k, cur);
           }
           const items = [...by.entries()]
             .map(([label, v]) => ({
               key: label, label, value: v.n,
               display: `${num(v.n)} · ${ha(v.area)} га`,
-              color: PROGRESS_HUES[label] ?? ZONE_TYPE_EMPTY_HUE,
+              color: PARCEL_PROGRESS_HUES[label] ?? ZONE_TYPE_EMPTY_HUE,
             }))
             .sort((a, b) => b.value - a.value);
           const total = items.reduce((a, i) => a + i.value, 0);

@@ -11,7 +11,7 @@ import { queryGroup, count, sum, groups, groupWhere, sqlStr, type Row, type Grou
 import {
   LAYER_BY_ID, layerUrl, oidOf, ZONE_FIELD, ZONE_NONE, ZONE_LAYER, ZONE_FIELDS,
   BUILT_LAYER, BUILT_FIELDS, BUILT_STATUS, ZONE_TYPES, ZONE_TYPE_EMPTY_HUE, zoneType, zoneCanon, zoneWhere,
-  LAYER_GROUPS, GROUP_LAYERS, PLAN_LAYER_IDS, groupOf, VIEW_BY_KEY,
+  LAYER_GROUPS, GROUP_LAYERS, PLAN_LAYER_IDS, PARCEL_LEFT, groupOf, VIEW_BY_KEY,
   type LayerDef, type ViewKey,
 } from '@/lib/services';
 import { whereFor, qtyText, geomText, layerStats, type Totals } from '@/lib/totals';
@@ -1255,6 +1255,21 @@ function PickedFeature({
     ] as [string, string][]) {
       if (attrs[f] == null) continue;
       rows.push({ key: label, value: <span className="num">{num(Number(attrs[f]))}</span> });
+    }
+  }
+  // Газар чөлөөлөлтийн кадастрын мэдээлэл — эзэмшигч, хаяг, дугаар, тэмдэглэл.
+  // ⚠️ Эдгээр нь ТЕКСТ тул `filters`-т (facets) орохгүй: тус бүр 100+ өөр
+  // утгатай учир дарж шүүх утгагүй, зөвхөн уншиж харах мөр.
+  if (def.id === 'land:left') {
+    const F = PARCEL_LEFT.fields;
+    for (const [f, label] of [
+      [F.parcelNo, 'Нэгж талбарын №'],
+      [F.owner, 'Эзэмшигч'],
+      [F.address, 'Хаяг'],
+      [F.note, 'Тайлбар'],
+    ] as [string, string][]) {
+      const v = text(attrs[f], '').trim();
+      if (v) rows.push({ key: label, value: v });
     }
   }
 

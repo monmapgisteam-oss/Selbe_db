@@ -285,10 +285,20 @@
 }
 .listItem:hover { background: var(--surface-2); color: var(--ink); }
 .listOn { background: color-mix(in srgb, var(--tone, var(--hue)) 11%, transparent); color: var(--ink); }
-.listMain { flex: 1; min-width: 0; }
-.listTitle { font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.listSub { font-size: 0.7rem; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.listVal { flex: none; font-weight: 650; font-size: 0.76rem; color: var(--ink); }
+/**
+ * ⚠️ ЗААВАЛ баганан flex. Урьд нь зөвхөн `flex: 1; min-width: 0` байсан бөгөөд
+ * гарчиг ба дэд мөр нь INLINE span хэвээр байлаа: тэдгээр нь нэг мөрөнд
+ * зэрэгцэн урсаж, `overflow: hidden`/`text-overflow` нь inline элементэд огт
+ * үйлчилдэггүй тул урт нэр дэд мөр ба утган дээрээ давхарладаг байв
+ * («Багц 17.1 · Гадна тохи1.08 тэрбумт — Баг»). Блок болгосноор гурвуулаа
+ * өөрийн мөртэй болж, таслалт ажиллана.
+ */
+.listMain { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.listTitle { display: block; font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.listSub { display: block; font-size: 0.7rem; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* ⚠️ `nowrap` — «62.8 тэрбум» гэх мэт утга хоёр мөр болж мөрийн өндрийг
+   тэлэхгүй; өргөн хэрэгтэй бол гарчиг нь таслагдана, утга нь бүтэн үлдэнэ. */
+.listVal { flex: none; white-space: nowrap; font-weight: 650; font-size: 0.76rem; color: var(--ink); }
 
 /* ── Төлөв ── */
 .state {

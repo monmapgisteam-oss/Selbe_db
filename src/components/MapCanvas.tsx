@@ -25,8 +25,8 @@ import '@arcgis/core/assets/esri/themes/light/main.css';
 
 import {
   LAYERS, LAYER_BY_ID, layerUrl, drawOrder, DASH_PATTERN,
-  HOME, BASEMAP_URL, IMAGERY, SCENE, BIM, ELEVATION_URL, ZONE_LAYER, zoneWhere,
-  ZONE_FIELD, ZONE_NONE, ZONE_TYPE_EMPTY_HUE, OID, BUILDING, SURVEY, buildingKey,
+  HOME, BASEMAP_URL, IMAGERY, SCENE, BIM, USAN_SAN, ELEVATION_URL, ZONE_LAYER, zoneWhere,
+  ZONE_FIELD, ZONE_NONE, ZONE_TYPE_EMPTY_HUE, OID, BUILDING, SURVEY, PARCEL_LEFT, buildingKey,
   type LayerDef,
 } from '@/lib/services';
 import { queryExtent, queryFeatures, type Aoi } from '@/lib/query';
@@ -168,6 +168,35 @@ const dot = (hex: string, size = 9, marker: NonNullable<LayerDef['marker']> = 'c
 type RendererProp = NonNullable<__esri.FeatureLayerProperties['renderer']>;
 
 const simple = (sym: unknown) => ({ type: 'simple', symbol: sym }) as unknown as RendererProp;
+
+/**
+ * УСНЫ ГАДАРГУУ — ArcGIS-ийн уугуул `WaterSymbol3DLayer` (реал-тайм долгион,
+ * туссан гэрэл, гүний өнгө).
+ *
+ * ⚠️ ЗӨВХӨН SceneView-д зурагдана. MapView-д ArcGIS энэ симбол давхаргыг
+ * чимээгүй унагааж полигоныг ОГТ зурахгүй (алдаа ч шидэхгүй) — тиймээс энэ
+ * симболтой давхаргыг 2D-д газрын зурагт нэмэхгүй.
+ *
+ * ⚠️ `elevationInfo` нь `on-the-ground` эсвэл `absolute-height` байх ЁСТОЙ.
+ * Усан сангийн Z утга худал (6-аас 5-д нь 0) тул газарт наана — `relative-*`
+ * горимуудад ус огт харагдахгүй.
+ *
+ * ⚠️ `waterbodySize` нь долгионы МАСШТАБЫГ заана, объектын хэмжээг биш:
+ * `large` нь далайн урт долгион зурдаг бөгөөд 3–11 га усан санд долгион нь
+ * полигоноос урт болж, гадаргуу хөдөлгөөнгүй хавтгай мэт харагдана. `small`
+ * (цөөрөм) нь энэ хэмжээст тохирно. `calm` — усан сан нь урсгалгүй.
+ */
+const WATER_SYMBOL = {
+  type: 'polygon-3d',
+  symbolLayers: [{
+    type: 'water',
+    waveDirection: 260,
+    // Эх веб зургийн усан сангийн өнгө (`#003399`)
+    color: USAN_SAN.hue,
+    waveStrength: 'calm',
+    waterbodySize: 'small',
+  }],
+} as const;
 
 /** Каталогийн тодорхойлолтоос симбол — зураг ба тайлбар нэг эх сурвалжтай */
 /**
@@ -760,6 +789,30 @@ export function MapCanvas({
         existing.destroy();
       }
     }
+
+    /**
+     * Усан сан — ХОЁУЛАН 3D горимд (3d ба bim, хоёулаа SceneView). 2D-д хасна.
+     *
+     * ⚠️ Меш/BIM шиг зайлшгүй хасах шаардлагагүй (энгийн FeatureLayer нь
+     * MapView-д ч ажиллана) боловч хэрэглэгч 2D-д үүнийг асаах/унтраах
+     * удирдлагагүй тул үлдээвэл байнга зурагдах, хааж болохгүй давхарга болно.
+     */
+    const usan = map.findLayerById(USAN_SAN.id);
+    if (dim !== '2d' && !usan) {
+      map.add(new FeatureLayer({
+        id: USAN_SAN.id,
+        url: USAN_SAN.url,
+        title: USAN_SAN.title,
+        outFields: ['*'],
+        popupEnabled: false,
+        visible: true,
+        elevationInfo: ON_GROUND,
+        renderer: simple(WATER_SYMBOL),
+      }));
+    } else if (dim === '2d' && usan) {
+      map.remove(usan);
+      usan.destroy();
+    }
   }, [dim, ready]);
 
   /**
@@ -811,6 +864,9 @@ export function MapCanvas({
       if (l.id === IMAGERY_ID) { l.visible = true; return; }
       if (l.id.startsWith('scene:')) { l.visible = dim === '3d'; return; }
       if (l.id.startsWith('bim:')) { l.visible = dim === 'bim'; return; }
+      // ⚠️ ЗӨВХӨН 3D-гийн давхарга нь каталогийн `visible` жагсаалтад ХЭЗЭЭ Ч
+      //    орохгүй — энэ шалгуургүй бол доорх мөр түүнийг тэр дор нь унтраана.
+      if (l.id === USAN_SAN.id) { l.visible = dim !== '2d'; return; }
 
       l.visible = on.has(l.id);
 
@@ -973,6 +1029,17 @@ function MapTip({
     rows.push({ k: 'Огноо', v: date(attrs[F.date] as string) });
     rows.push({ k: 'Барилга', v: text(attrs[F.building]) });
     rows.push({ k: 'Гүйцэтгэл', v: pct(Number(attrs[F.total] ?? 0), 0) });
+  } else if (d.id === 'land:left') {
+    // Кадастрын нэр/хаяг нь facets-т ОРОХГҮЙ (117 ба 137 өөр утга — задаргаа
+    // болгож болохгүй), гэхдээ талбар дээр хулгана хүргэхэд хамгийн хэрэгтэй
+    // мэдээлэл нь ЯГ эдгээр. Тиймээс энд гараар нэмнэ.
+    const F = PARCEL_LEFT.fields;
+    for (const [f, k] of [
+      [F.progress, 'Явц'], [F.owner, 'Эзэмшигч'], [F.address, 'Хаяг'], [F.note, 'Тайлбар'],
+    ] as [string, string][]) {
+      const v = text(attrs[f], '').trim();
+      if (v) rows.push({ k, v });
+    }
   } else {
     for (const f of (d.facets ?? []).slice(0, 3)) {
       if (attrs[f.field] == null || String(attrs[f.field]).trim() === '') continue;

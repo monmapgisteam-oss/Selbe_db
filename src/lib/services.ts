@@ -19,10 +19,30 @@
  * тооцож, бүсээр задлах явдал.
  */
 
-const HJ = 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services';
+const HJ = "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services";
 
 /** Бүх вектор давхаргын эх — НЭГ FeatureServer */
 export const ET = `${HJ}/Selbe_ET_20260721/FeatureServer`;
+
+/**
+ * ДЭД БҮТЦИЙН БАГЦУУД — `Selbe_ET_20260725` (62 давхарга).
+ *
+ * ⚠️ Энэ нь `ET`-ийн ШИНЭ ХУВИЛБАР БИШ. Огноо нь дөрөв хожуу ч агуулга нь огт
+ * өөр: ЕТ-д байдаг барилга, бүс, зам, ногоон байгууламж энд ОГТ БАЙХГҮЙ, харин
+ * ЕТ-д байхгүй гүйцэтгэлийн БАГЦУУД (Багц 5–21: гадна инженер, өндөржилт,
+ * тохижилт, сургууль, цэцэрлэг, холбоо) энд бий. Хоёулаа зэрэг ажиллана.
+ *
+ * ⚠️ Давхарга БҮР `bagts_name` талбартай бөгөөд утга нь `INVEST.bagts_name`-тэй
+ * ЯГ ТААРНА («БАГЦ-17.1», «БАГЦ - 19.1», «БАГЦ -21» — зай/зураасны бохирдол ч
+ * ижил). Энэ бол хөрөнгө оруулалтын хүснэгтийн ГАЗРЫН ЗУРГИЙН холбоос —
+ * урьд нь геометргүй байсан мөрүүд одоо зурагдана.
+ *
+ * ⚠️ Үйлчилгээний SR нь UTM 48N (EPSG:32648) тул `Shape__Length`/`Shape__Area`
+ * нь БОДИТ метр ба м². CAD-аас гаралтай давхаргуудын `Length_km`/`Area_m2`
+ * талбар зарим давхаргад хоосон (жиш. `Өндөржилтийн_ажил_БАГЦ1`) тул хэмжээг
+ * систем талбараас уншина — тэдгээр нь хэзээ ч хоосон биш.
+ */
+export const ET_PKG = `${HJ}/Selbe_ET_20260725/FeatureServer`;
 
 /**
  * Суурь зураг — Esri-гийн нийтийн РАСТР тайл (түлхүүр шаардахгүй, ACAO `*`).
@@ -33,22 +53,22 @@ export const ET = `${HJ}/Selbe_ET_20260721/FeatureServer`;
  * 'spans' of null» гэж унадаг. Мөн 2D-д ортофото түүнийг бүрэн бүрхдэг.
  */
 export const BASEMAP_URL =
-  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer';
+  "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer";
 
 /**
  * ArcGIS Online нэвтрэлт (OAuth 2.0, PKCE — сервергүй статик сайтад тохирно).
  * `appId` хоосон бол нэвтрэлт УНТРААЛТТАЙ.
  */
 export const AUTH = {
-  appId: 'ZPJRqk1iiYcjYRLv',
+  appId: "ZPJRqk1iiYcjYRLv",
   /**
    * ⚠️ Байгууллагын хаяг (`monmap.maps.arcgis.com`) БИШ. Тэр домэйн ArcGIS
    * Online-ы «Allowed origins» цагаан жагсаалтыг мөрддөг тул dev дээр токен
    * солилт CORS-д хаагддаг. `www.arcgis.com` аль ч origin-ыг зөвшөөрнө;
    * байгууллагаар хязгаарлах ажлыг `allowedOrgId` хийнэ.
    */
-  portalUrl: 'https://www.arcgis.com',
-  allowedOrgId: 'HJzgwvlNIXssnQar',
+  portalUrl: "https://www.arcgis.com",
+  allowedOrgId: "HJzgwvlNIXssnQar",
 } as const;
 
 /** Эхлэх байрлал — төслийн талбайн төв */
@@ -75,10 +95,10 @@ export const PROJECT_AREA_HA = 158;
  * геометрээс биш, ЭНД тодорхой бичнэ.
  */
 export type CostBasis =
-  | 'sh'    // ширхэг × үнэ
-  | 'm100'  // (урт_м ÷ 100) × үнэ
-  | 'km'    // урт_км × үнэ
-  | 'm2';   // талбай_м² × үнэ
+  | "sh" // ширхэг × үнэ
+  | "m100" // (урт_м ÷ 100) × үнэ
+  | "km" // урт_км × үнэ
+  | "m2"; // талбай_м² × үнэ
 
 /**
  * ⚠️ ТАЛБАЙН давхаргын нэгж НЯГТЛАХ ШААРДЛАГАТАЙ.
@@ -96,7 +116,7 @@ export type CostBasis =
  * гажина тул одоохондоо хэвээр үлдээв.
  */
 
-export type Quantity = { field: string; unit: 'м' | 'км' | 'м²' };
+export type Quantity = { field: string; unit: "м" | "км" | "м²" };
 export type Cost = { field: string; basis: CostBasis };
 
 /* ══════════════════════ Сэдэв ══════════════════════ */
@@ -111,14 +131,20 @@ export type Cost = { field: string; basis: CostBasis };
  * (юу барих) vs хяналт (юу баригдсан). Каталогийн ДАРААЛАЛ нь сэдэвчилсэн
  * хэвээр — барилга → инженер → зам → тээвэр → бүс → бусад.
  */
-export type TopicKey = 'plan' | 'monitor';
+export type TopicKey = "plan" | "monitor";
 
-export const TOPICS: { key: TopicKey; title: string; icon: string; hue: string }[] = [
-  { key: 'plan', title: 'Ерөнхий төлөвлөгөө', icon: 'layers', hue: '#0d9488' },
-  { key: 'monitor', title: 'Барилгын хяналт', icon: 'target', hue: '#ea580c' },
+export const TOPICS: {
+  key: TopicKey;
+  title: string;
+  icon: string;
+  hue: string;
+}[] = [
+  { key: "plan", title: "Ерөнхий төлөвлөгөө", icon: "layers", hue: "#0d9488" },
+  { key: "monitor", title: "Барилгын хяналт", icon: "target", hue: "#ea580c" },
 ];
 
-export const topicTitle = (k: TopicKey) => TOPICS.find((t) => t.key === k)!.title;
+export const topicTitle = (k: TopicKey) =>
+  TOPICS.find((t) => t.key === k)!.title;
 
 /* ══════════════════════ Давхаргын каталог ══════════════════════ */
 
@@ -129,13 +155,13 @@ export type LayerDef = {
   n: number;
   title: string;
   topic: TopicKey;
-  geom: 'area' | 'line' | 'point';
+  geom: "area" | "line" | "point";
   hue: string;
   /** Зураасны хээ — ижил гэр бүлийн шугамуудыг ялгана */
-  dash?: 'solid' | 'dash' | 'dot' | 'dash-dot' | 'long-dash';
+  dash?: "solid" | "dash" | "dot" | "dash-dot" | "long-dash";
   width?: number;
   fill?: number;
-  marker?: 'circle' | 'square';
+  marker?: "circle" | "square";
   size?: number;
   /** Зөвхөн ойртоход зурагдана (олон мянган объекттой давхарга) */
   minScale?: number;
@@ -174,7 +200,17 @@ export type LayerDef = {
    * Самбарын тоолол ба SQL шүүлт нь `>= min AND < max` (хагас нээлттэй) тул
    * дээд хязгаараас багахан хасаж хоёуланг нь тааруулна.
    */
-  breaks?: { field: string; levels: readonly { label: string; range: string; min: number; max: number; color: string }[]; emptyLabel: string };
+  breaks?: {
+    field: string;
+    levels: readonly {
+      label: string;
+      range: string;
+      min: number;
+      max: number;
+      color: string;
+    }[];
+    emptyLabel: string;
+  };
   /**
    * `ZONE_ID` талбар БАЙХГҮЙ давхарга.
    * ⚠️ Бүсийн нэгдсэн шүүлт эдгээрт үйлчлэхгүй — байхгүй талбараар шүүвэл
@@ -206,22 +242,42 @@ export type LayerDef = {
    * Гүйцэтгэлийн 16 үе шат, Survey123-ийн холбоост хүснэгтүүд зэрэг нь
    * ерөнхий «тоо + хэмжээ + ангилал» загварт багтахгүй.
    */
-  detail?: 'building' | 'survey';
+  detail?: "building" | "survey";
   note?: string;
 };
 
 /** Бүх давхаргад нийтлэг талбарууд */
-export const OID = 'OBJECTID';
+export const OID = "OBJECTID";
 /** Давхарга БҮР энэ талбартай — бүсийн нэгдсэн шүүлт үүн дээр тогтоно */
-export const ZONE_FIELD = 'ZONE_ID';
+export const ZONE_FIELD = "ZONE_ID";
 /** Бүсийн мэдээлэл бөглөгдөөгүй объектын утга (хоосон биш, ийм ТЕКСТ) */
-export const ZONE_NONE = ' Бүсийн мэдээлэл байхгүй ';
+export const ZONE_NONE = " Бүсийн мэдээлэл байхгүй ";
 
-/** Барилгын төлөв — хугацааны дарааллаар */
+/* ══════════════════════ ЭХ ВЕБ ЗУРГИЙН ПАЛИТР ══════════════════════ */
+
+/**
+ * ⚠️ ДООРХ ӨНГӨНҮҮД нь ЭХ ArcGIS веб зургаас (`selbe0724`, item
+ * `eb1c3f3f6925434eb1a0d544831ae27a`, эзэмшигч `saruul_monmap`) шууд авсан
+ * рендерерийн утгууд — порталын өөрийн сонголт БИШ. Төслийн баг тэр зургийг
+ * эх загвар болгон ашигладаг тул порталын өнгө түүнээс зөрөх нь «хоёр өөр
+ * төслийн зураг» мэт харагдуулна.
+ *
+ * ⚠️ Зөрөх ёстой бол ЭХ ЗУРГААС нь өөрчил, эндээс биш. Веб зургийн JSON-ыг
+ * `https://www.arcgis.com/sharing/rest/content/items/<id>/data?f=json`-оор
+ * татаж `operationalLayers[].layerDefinition.drawingInfo.renderer`-ээс уншина.
+ *
+ * ⚠️ Веб зургийн БҮХ өнгийг авсангүй. Багц 5–18-ын давхаргууд нь CAD-ийн
+ * `Layer` талбараар будагдсан бөгөөд утга нь цэвэр `#000000`, `#00ff00`,
+ * `#aaaaaa` буюу AutoCAD-ийн анхдагч индекс өнгө — эдгээр нь картографийн
+ * шийдвэр биш, экспортын үлдэгдэл. Ортофото дээр цэвэр хар/ногоон нь уншигдахгүй
+ * тул тэдгээр давхаргад порталын гэр бүлийн өнгө хэвээр (`PKG_HUE`).
+ */
+
+/** Барилгын төлөв — хугацааны дарааллаар. Өнгө: эх веб зураг, `Barilga_ty`. */
 export const BUILT_STATUS: { value: string; hue: string }[] = [
-  { value: 'Одоо байгаа', hue: '#78716c' },
-  { value: 'Баригдаж байгаа', hue: '#ea580c' },
-  { value: 'Төлөвлөсөн', hue: '#3387b8' },
+  { value: "Одоо байгаа", hue: "#000000" },
+  { value: "Баригдаж байгаа", hue: "#ff0000" },
+  { value: "Төлөвлөсөн", hue: "#fd7f6f" },
 ];
 
 /**
@@ -233,71 +289,57 @@ export const BUILT_STATUS: { value: string; hue: string }[] = [
  * явдаг. Хоёуланг нь `zoneType()`-оор каноник болгосны ДАРАА энэ хүснэгтэд
  * ирнэ — эс бөгөөс нэг ангилал хоёр өөр өнгөтэй хоёр мөр болж хуваагдана.
  */
+/**
+ * ⚠️ Өнгө нь ЭХ ВЕБ ЗУРГААС (`busiin_medeelel_final`-ийн `Angilal` uniqueValue
+ * рендерер). «Х бүс» тэр зурагт БАЙХГҮЙ тул порталынхаа хэвээр — эх зурагт
+ * нэмэгдвэл энд шинэчилнэ.
+ */
 export const ZONE_TYPES: Record<string, string> = {
-  'Орон сууцны бүс': '#eab308',
-  'Олон нийтийн бүс': '#dc2626',
-  'Нийгмийн дэд бүтцийн бүс': '#2563eb',
-  'Х бүс': '#7c3aed',
-  'Одоо байгаа барилга байгууламж': '#78716c',
-  // Шинэ давхаргад НЭМЭГДСЭН ангиллууд
-  'Ногоон байгууламж, тохижилт': '#22c55e',
-  'Газар чөлөөлөлт дутуу': '#f97316',
-  'Дэд бүтэц': '#0891b2',
-  'Таун хаус': '#a16207',
+  "Орон сууцны бүс": "#00ffff",
+  "Олон нийтийн бүс": "#ff7f7f",
+  "Нийгмийн дэд бүтцийн бүс": "#7fdeff",
+  "Х бүс": "#7c3aed",
+  "Одоо байгаа барилга байгууламж": "#ffff7f",
+  "Ногоон байгууламж, тохижилт": "#4f7f33",
+  "Газар чөлөөлөлт дутуу": "#4a2333",
+  "Дэд бүтэц": "#005199",
+  "Таун хаус": "#a6a600",
 };
-export const ZONE_TYPE_EMPTY = 'Тодорхойгүй';
-export const ZONE_TYPE_EMPTY_HUE = '#94a3b8';
+export const ZONE_TYPE_EMPTY = "Тодорхойгүй";
+export const ZONE_TYPE_EMPTY_HUE = "#94a3b8";
 
 /**
  * Бүсийн ангиллын КАНОНИК нэр — хоёр эх сурвалжийн бичиглэлийг нэгтгэнэ.
  * `busiin_medeelel_final.Angilal` (жижиг үсэг) ↔ барилгын `TOROL` (том үсэг).
  */
 const ZONE_TYPE_CANON: Record<string, string> = {
-  'орон сууцны бүс': 'Орон сууцны бүс',
-  'олон нийтийн бүс': 'Олон нийтийн бүс',
-  'нийгмийн дэд бүтэц': 'Нийгмийн дэд бүтцийн бүс',
-  'нийгмийн дэд бүтцийн бүс': 'Нийгмийн дэд бүтцийн бүс',
-  'одоо байгаа барилга': 'Одоо байгаа барилга байгууламж',
-  'одоо байгаа барилга байгууламж': 'Одоо байгаа барилга байгууламж',
-  'ногоон байгууламж тохжилт': 'Ногоон байгууламж, тохижилт',
-  'газар чөлөөлөлт дутуу': 'Газар чөлөөлөлт дутуу',
-  'дэд бүтэц': 'Дэд бүтэц',
-  'таун хаус': 'Таун хаус',
-  'х бүс': 'Х бүс',
+  "орон сууцны бүс": "Орон сууцны бүс",
+  "олон нийтийн бүс": "Олон нийтийн бүс",
+  "нийгмийн дэд бүтэц": "Нийгмийн дэд бүтцийн бүс",
+  "нийгмийн дэд бүтцийн бүс": "Нийгмийн дэд бүтцийн бүс",
+  "одоо байгаа барилга": "Одоо байгаа барилга байгууламж",
+  "одоо байгаа барилга байгууламж": "Одоо байгаа барилга байгууламж",
+  "ногоон байгууламж тохжилт": "Ногоон байгууламж, тохижилт",
+  "газар чөлөөлөлт дутуу": "Газар чөлөөлөлт дутуу",
+  "дэд бүтэц": "Дэд бүтэц",
+  "таун хаус": "Таун хаус",
+  "х бүс": "Х бүс",
 };
 
 /** Аль ч эх сурвалжийн ангиллыг каноник нэр рүү (танихгүй бол эхний үсгийг том) */
 export const zoneType = (v: unknown): string => {
-  const s = String(v ?? '').trim();
+  const s = String(v ?? "").trim();
   if (!s) return ZONE_TYPE_EMPTY;
   return ZONE_TYPE_CANON[s.toLowerCase()] ?? s;
 };
 
 /** Каноник ангилал → бүсийн давхаргад БОДИТООР бичигдсэн утгууд (SQL шүүлтэд) */
 export const zoneTypeRaw = (canon: string): string[] => {
-  const hits = Object.entries(ZONE_TYPE_CANON).filter(([, c]) => c === canon).map(([raw]) => raw);
+  const hits = Object.entries(ZONE_TYPE_CANON)
+    .filter(([, c]) => c === canon)
+    .map(([raw]) => raw);
   return [...new Set([canon, ...hits])];
 };
-
-/**
- * ГАЗРЫН ЗУРГИЙН бүсийн палитр — `ZONE_TYPES`-ээс ТУСДАА.
- *
- * ⚠️ Зурагт 5 ангиллыг 5 өөр өнгөөр будахад аль нь чухал болох нь алдагдана.
- * Хүн амьдардаг ба хүн цуглардаг хоёр ангилал (орон сууц, олон нийт) нь
- * төлөвлөлтийн гол асуулт тул ЗӨВХӨН тэр хоёр улаанаар тодорч, бусад нь нэг
- * жигд саарлаар суурь болно.
- *
- * ⚠️ `ZONE_TYPES`-ыг ӨӨРЧИЛСӨНГҮЙ: түүнийг «Ерөнхий дашбоард» модуль ч
- * ашигладаг (өөр хүний хэсэг) бөгөөд тэнд 5 ангилал ялгаатай өнгөтэй байх нь
- * зөв — тэр бол ангиллын задаргааны диаграм, газрын зураг биш.
- */
-const ZONE_MAP_ACCENT = '#dc2626';
-/**
- * ⚠️ Суурь өнгө нь САААРАЛ байв — «байхгүй/тодорхойгүй» гэсэн сэтгэгдэл төрүүлж,
- * бүс өөрөө байхгүй мэт харагддаг байлаа. Улаантай тодорхой ялгаатай, гэхдээ
- * өөрөө ч уншигдахуйц цэнхэр болов.
- */
-const ZONE_MAP_BASE = '#2563eb';
 
 /**
  * ⚠️ ГАЗРЫН ЗУРГИЙН болон диаграмын палитр БҮГД бүсийн давхаргад БОДИТООР
@@ -306,20 +348,34 @@ const ZONE_MAP_BASE = '#2563eb';
  * жишдэг. Каноник нэрээр түлхүүрлэвэл нэг ч бүс будагдахгүй.
  */
 const rawKeyed = (pick: (canon: string) => string): Record<string, string> =>
-  Object.fromEntries(Object.keys(ZONE_TYPE_CANON).map((raw) => [raw, pick(ZONE_TYPE_CANON[raw])]));
+  Object.fromEntries(
+    Object.keys(ZONE_TYPE_CANON).map((raw) => [
+      raw,
+      pick(ZONE_TYPE_CANON[raw]),
+    ]),
+  );
 
-const ZONE_ACCENT_TYPES = new Set(['Орон сууцны бүс', 'Олон нийтийн бүс']);
-
-/** Зурагт: хүн амьдардаг ба хүн цуглардаг бүс улаанаар, бусад нь жигд цэнхэр */
-export const ZONE_MAP_TYPES: Record<string, string> =
-  rawKeyed((canon) => (ZONE_ACCENT_TYPES.has(canon) ? ZONE_MAP_ACCENT : ZONE_MAP_BASE));
+/**
+ * ГАЗРЫН ЗУРГИЙН бүсийн палитр.
+ *
+ * ⚠️ Урьд нь энэ нь `ZONE_TYPES`-ээс ТУСДАА байв: зурагт зөвхөн орон сууц ба
+ * олон нийтийн бүс улаанаар тодорч, бусад нь жигд цэнхэр суурь болдог байлаа
+ * («аль нь чухал вэ» гэдгийг онцлох зорилготой). Тэр схемийг ХАССАН — эх веб
+ * зургийн 8 ангиллын өнгийг ЯГ давтахаар болсон тул зураг дээр ангилал бүр
+ * өөрийн өнгөтэй байх ёстой. Ялгах шаардлага дахин гарвал энэ мөрийг л
+ * өөрчилнө, `ZONE_TYPES` хэвээр үлдэнэ.
+ */
+export const ZONE_MAP_TYPES: Record<string, string> = rawKeyed(
+  (canon) => ZONE_TYPES[canon] ?? ZONE_TYPE_EMPTY_HUE,
+);
 
 /** Диаграмд: ангилал бүр өөрийн өнгөтэй (`ZONE_TYPES`, гэхдээ түүхий түлхүүрээр) */
-export const ZONE_CHART_TYPES: Record<string, string> =
-  rawKeyed((canon) => ZONE_TYPES[canon] ?? ZONE_TYPE_EMPTY_HUE);
+export const ZONE_CHART_TYPES: Record<string, string> = rawKeyed(
+  (canon) => ZONE_TYPES[canon] ?? ZONE_TYPE_EMPTY_HUE,
+);
 
-const M: Quantity = { field: 'urt_m', unit: 'м' };
-const M2: Quantity = { field: 'talbai_m2', unit: 'м²' };
+const M: Quantity = { field: "urt_m", unit: "м" };
+const M2: Quantity = { field: "talbai_m2", unit: "м²" };
 
 /* ══════════════════════ Барилгын хяналт ══════════════════════ */
 
@@ -335,17 +391,17 @@ const SURVEY_FS = `${HJ}/survey123_e98bd4b642f84c9fb688f754de7cb83a_results/Feat
 /** Барилгын явц · 113 блок */
 export const BUILDING = {
   url: `${BUILDING_FS}/2`,
-  oid: 'FID',
+  oid: "FID",
   fields: {
-    bagts: 'BAGTS',
-    block: 'BLOK',
-    contractor: 'BAR_COMP',
-    floors: 'DAVHAR',
-    households: 'AIL_TOO',
-    type: 'TOROL',
+    bagts: "BAGTS",
+    block: "BLOK",
+    contractor: "BAR_COMP",
+    floors: "DAVHAR",
+    households: "AIL_TOO",
+    type: "TOROL",
     /** Нийт гүйцэтгэл (%) */
-    progress: 'GUITS_HV',
-    dueDate: 'GUITS_OGN',
+    progress: "GUITS_HV",
+    dueDate: "GUITS_OGN",
   },
 } as const;
 
@@ -356,24 +412,32 @@ export const BUILDING = {
  * тэмдэгт мөр («259,778,021,987») тул тоо руу задлан хөрвүүлнэ.
  */
 export const CASHFLOW = {
-  url: 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/BUS_cashflow/FeatureServer/0',
+  url: "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/BUS_cashflow/FeatureServer/0",
   fields: {
-    zone: 'ZONE_ID',
-    budget: 'A5',        // Урьдчилсан төсөвт өртөг
-    orderTotal: 'B3',    // Захирамжийн дүн — нийт дүн
-    securities: 'B4',    // Санхүүжилт — үнэт цаасны хөрөнгө
-    projectIncome: 'B6', // Санхүүжилт — төслийн орлого
-    cityBudget: 'B7',    // Санхүүжилт — нийслэлийн төсөв
-    reserve: 'B8',       // Санхүүжилт — НЗД нөөц хөрөнгө
-    contract: 'C6',      // Гэрээ байгуулах эрх олгосон дүн
-    contractor: 'C2',    // Гүйцэтгэгч байгууллага
+    zone: "ZONE_ID",
+    budget: "A5", // Урьдчилсан төсөвт өртөг
+    orderTotal: "B3", // Захирамжийн дүн — нийт дүн
+    securities: "B4", // Санхүүжилт — үнэт цаасны хөрөнгө
+    projectIncome: "B6", // Санхүүжилт — төслийн орлого
+    cityBudget: "B7", // Санхүүжилт — нийслэлийн төсөв
+    reserve: "B8", // Санхүүжилт — НЗД нөөц хөрөнгө
+    contract: "C6", // Гэрээ байгуулах эрх олгосон дүн
+    contractor: "C2", // Гүйцэтгэгч байгууллага
   },
   /** Сар бүрийн олгосон санхүүжилт (Мөнгөн дүн) — E-группээс задалсан */
   months: [
-    { code: 'E2', label: '25-10' }, { code: 'E21', label: '25-11' }, { code: 'E40', label: '25-12' },
-    { code: 'E68', label: '26-01' }, { code: 'E87', label: '26-02' }, { code: 'E106', label: '26-03' },
-    { code: 'E125', label: '26-04' }, { code: 'E144', label: '26-05' }, { code: 'E163', label: '26-06' },
-    { code: 'E182', label: '26-07' }, { code: 'E201', label: '26-08' }, { code: 'E220', label: '26-09' },
+    { code: "E2", label: "25-10" },
+    { code: "E21", label: "25-11" },
+    { code: "E40", label: "25-12" },
+    { code: "E68", label: "26-01" },
+    { code: "E87", label: "26-02" },
+    { code: "E106", label: "26-03" },
+    { code: "E125", label: "26-04" },
+    { code: "E144", label: "26-05" },
+    { code: "E163", label: "26-06" },
+    { code: "E182", label: "26-07" },
+    { code: "E201", label: "26-08" },
+    { code: "E220", label: "26-09" },
   ],
 } as const;
 
@@ -408,24 +472,44 @@ export const CASHFLOW = {
  * нь дурын журмаар хасвал төрлийн задаргаа эх тайлангаас зөрнө.
  */
 export const INVEST = {
-  url: 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/_%D0%A5%D3%A9%D1%80%D3%A9%D0%BD%D0%B3%D3%A9_%D0%BE%D1%80%D1%83%D1%83%D0%BB%D0%B0%D0%BB%D1%82_%D3%A9%D1%80%D1%82%D3%A9%D0%B320260706/FeatureServer/249',
-  oid: 'ObjectID',
+  url: "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/_%D0%A5%D3%A9%D1%80%D3%A9%D0%BD%D0%B3%D3%A9_%D0%BE%D1%80%D1%83%D1%83%D0%BB%D0%B0%D0%BB%D1%82_%D3%A9%D1%80%D1%82%D3%A9%D0%B320260706/FeatureServer/249",
+  oid: "ObjectID",
   fields: {
-    type: 'Төрөл',            // «1.БАРИЛГА УГСРАЛТ» … «9.ОЛОН НИЙТИЙН БҮС…»
-    zone: 'Бүс',              // зөвхөн 9-р төрөлд бүсийн код (бохир бичиглэл)
-    project: 'Төсөл',
-    bagts: 'bagts_name',
-    confirmed: 'Гэрээ__захирамж__магадлалаар_баталгаажсан__2025_2026_он_',
-    planned: 'Төлөвлөгөөт_бусад_хөрөнгө_оруулалт__магадлагдаагүй__урьдчилсан_т',
-    contractor: 'ГҮЙЦЭТГЭГЧ_КОМПАНИ__ЗАХИРАМЖ__ГЭРЭЭНИЙ_ДУГААР',
+    type: "Төрөл", // «1.БАРИЛГА УГСРАЛТ» … «9.ОЛОН НИЙТИЙН БҮС…»
+    zone: "Бүс", // зөвхөн 9-р төрөлд бүсийн код (бохир бичиглэл)
+    project: "Төсөл",
+    bagts: "bagts_name",
+    confirmed: "Гэрээ__захирамж__магадлалаар_баталгаажсан__2025_2026_он_",
+    planned: "Төлөвлөгөөт_бусад_хөрөнгө_оруулалт__магадлагдаагүй__урьдчилсан_т",
+    contractor: "ГҮЙЦЭТГЭГЧ_КОМПАНИ__ЗАХИРАМЖ__ГЭРЭЭНИЙ_ДУГААР",
   },
   /** Санхүүжилтийн эх үүсвэрүүд — дүн нь ₮, тус бүр өөрийн багана */
   sources: [
-    { field: 'ҮНЭТ_ЦААСНЫ_ХӨРӨНГӨӨР_САНХҮҮЖИХ', label: 'Үнэт цаас', color: '#3387b8' },
-    { field: 'БОРЛУУЛАЛТЫН_ОРЛОГООР', label: 'Борлуулалтын орлого', color: '#22c55e' },
-    { field: 'ХУВИЙН_ХЭВШЛИЙН_ХӨРӨНГӨ_ОРУУЛАЛТААР', label: 'Хувийн хэвшил', color: '#a855f7' },
-    { field: 'НИЙСЛЭЛИЙН_ЗАСАГ_ДАРГЫН_НӨӨЦИЙН_ХӨРӨНГӨӨР', label: 'НЗД нөөц', color: '#f59e0b' },
-    { field: 'НИЙСЛЭЛИЙН_ГАЗРЫН_САН', label: 'Нийслэлийн газрын сан', color: '#0891b2' },
+    {
+      field: "ҮНЭТ_ЦААСНЫ_ХӨРӨНГӨӨР_САНХҮҮЖИХ",
+      label: "Үнэт цаас",
+      color: "#3387b8",
+    },
+    {
+      field: "БОРЛУУЛАЛТЫН_ОРЛОГООР",
+      label: "Борлуулалтын орлого",
+      color: "#22c55e",
+    },
+    {
+      field: "ХУВИЙН_ХЭВШЛИЙН_ХӨРӨНГӨ_ОРУУЛАЛТААР",
+      label: "Хувийн хэвшил",
+      color: "#a855f7",
+    },
+    {
+      field: "НИЙСЛЭЛИЙН_ЗАСАГ_ДАРГЫН_НӨӨЦИЙН_ХӨРӨНГӨӨР",
+      label: "НЗД нөөц",
+      color: "#f59e0b",
+    },
+    {
+      field: "НИЙСЛЭЛИЙН_ГАЗРЫН_САН",
+      label: "Нийслэлийн газрын сан",
+      color: "#0891b2",
+    },
   ],
 } as const;
 
@@ -440,20 +524,20 @@ export const INVEST = {
  * болгож утга нь алдагдана.
  */
 export const INVEST_TYPES: { n: number; short: string; color: string }[] = [
-  { n: 1, short: 'Барилга угсралт', color: '#3387b8' },
-  { n: 2, short: 'Гадна тохижилт', color: '#f97316' },
-  { n: 3, short: 'Гадна инженерийн шугам', color: '#0891b2' },
-  { n: 4, short: 'ТЭЗҮ, зураг төсөл', color: '#8b5cf6' },
-  { n: 5, short: 'Инженерийн эх үүсвэр', color: '#e11d48' },
-  { n: 6, short: 'Төслийн бэлтгэл ажил', color: '#64748b' },
-  { n: 7, short: 'Нийгмийн дэд бүтэц', color: '#22c55e' },
-  { n: 8, short: 'Зам', color: '#eab308' },
-  { n: 9, short: 'Олон нийтийн барилга', color: '#a855f7' },
+  { n: 1, short: "Барилга угсралт", color: "#3387b8" },
+  { n: 2, short: "Гадна тохижилт", color: "#f97316" },
+  { n: 3, short: "Гадна инженерийн шугам", color: "#0891b2" },
+  { n: 4, short: "ТЭЗҮ, зураг төсөл", color: "#8b5cf6" },
+  { n: 5, short: "Инженерийн эх үүсвэр", color: "#e11d48" },
+  { n: 6, short: "Төслийн бэлтгэл ажил", color: "#64748b" },
+  { n: 7, short: "Нийгмийн дэд бүтэц", color: "#22c55e" },
+  { n: 8, short: "Зам", color: "#eab308" },
+  { n: 9, short: "Олон нийтийн барилга", color: "#a855f7" },
 ];
 
 /** «9.ОЛОН НИЙТИЙН БҮС ДЭХ БАРИЛГА УГСРАЛТ» → каталогийн мөр (эсвэл undefined) */
 export const investType = (type: string) =>
-  INVEST_TYPES.find((t) => t.n === Number(String(type).split('.')[0]));
+  INVEST_TYPES.find((t) => t.n === Number(String(type).split(".")[0]));
 
 /**
  * Бүсийн кодыг ЕТ-ийн `ZONE_ID`-д тааруулах: «А-14 » → «A-14», «B-2-1» → «B-2.1».
@@ -467,13 +551,79 @@ export const investType = (type: string) =>
  * өөрөө хасагдана — тусад нь шалгах шаардлагагүй.
  */
 const CYR_LOOKALIKE: Record<string, string> = {
-  А: 'A', В: 'B', С: 'C', Е: 'E', К: 'K', М: 'M', Н: 'H', О: 'O', Р: 'P', Т: 'T', Х: 'X', У: 'Y',
+  А: "A",
+  В: "B",
+  С: "C",
+  Е: "E",
+  К: "K",
+  М: "M",
+  Н: "H",
+  О: "O",
+  Р: "P",
+  Т: "T",
+  Х: "X",
+  У: "Y",
 };
 export const zoneKey = (v: unknown): string => {
-  const s = String(v ?? '').trim().toUpperCase().replace(/[АВСЕКМНОРТХУ]/g, (c) => CYR_LOOKALIKE[c]);
-  const [head, ...rest] = s.split('-');
-  return rest.length ? `${head}-${rest.join('.')}` : head;
+  const s = String(v ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/[АВСЕКМНОРТХУ]/g, (c) => CYR_LOOKALIKE[c]);
+  const [head, ...rest] = s.split("-");
+  return rest.length ? `${head}-${rest.join(".")}` : head;
 };
+
+/**
+ * ТӨСЛИЙН НЭГДСЭН ГҮЙЦЭТГЭЛ — 162 мөр, геометргүй ХҮСНЭГТ (`/250`).
+ *
+ * Төслийн бүх ажлыг 6 үе шатанд (ТЭЗҮ → Ажлын зураг төсөл → Газар чөлөөлөлт →
+ * Зөвшөөрөл → Сонгон шалгаруулалт → Барилга угсралт) задалж, мөр бүрд төслийн
+ * нийт дүнд эзлэх ЖИН ба гүйцэтгэлийн хувийг өгнө. Энэ бол төслийн ГАНЦ
+ * жигнэсэн гүйцэтгэлийн эх сурвалж.
+ *
+ * ⚠️ `Selbe_guitsetgel_consolidated` (`TASK_SHEET`)-ТЭЙ ДАВХАРДАХГҮЙ: тэр нь
+ * зөвхөн БАРИЛГА УГСРАЛТЫН 7 багцын блок бүрийн ажлын гүйцэтгэл. Энэ нь
+ * түүнийг нэг мөр («Барилга угсралт», төслийн жингийн 69%) болгож агуулаад
+ * дээр нь зураг төсөл, зөвшөөрөл, тендер, газар чөлөөлөлтийг нэмнэ.
+ *
+ * ⚠️ `Төсөлд_эзлэх_хувь`-ийн нийлбэр нь 100 БИШ, **81.53%**. Үлдсэн 18.47% нь
+ * хүснэгтэд ОРООГҮЙ (импортлогдоогүй эсвэл жин нь бөглөгдөөгүй). Тиймээс
+ * жигнэсэн дүнг ЗААВАЛ бодит жингийн нийлбэрт хуваана (`Σwg / Σw`) — 100-д
+ * хуваавал гүйцэтгэл 22.5% гэж гарч, бодит 27.7%-иас чимээгүй бага харагдана.
+ *
+ * ⚠️ `Төсөл` багана НАЙДВАРГҮЙ: «5.x» дугаартай 20 мөр «Зөвшөөрөл» гэж
+ * бичигдсэн атлаа «Сонгон шалгаруулалт» хэсэгт харьяалагдана (Д/Д-ийн эхний
+ * тоо нь үе шатыг заана). Хоёулаа хадгалагдсан тул мөр давхардаагүй —
+ * `Д_Д` ганцаараа ДАВТАГДАНА (20 давхардал), `Төсөл`+`Д_Д` хос л онц.
+ *
+ * ⚠️ `Төлөвлөгөөт_хувь` нь 162-оос 74 мөрд ХООСОН. Төлөвлөгөө ба гүйцэтгэлийг
+ * жишихдээ ЗӨВХӨН хоёулаа бөглөгдсөн мөрөөр — өөр хуваарьтай хоёр дүнг
+ * зэрэгцүүлбэл «төлөвлөгөөнөөс хоцорсон» дүгнэлт хиймлээр гарна.
+ */
+export const PROJECT_PROGRESS = {
+  url: 'https://services.arcgis.com/HJzgwvlNIXssnQar/ArcGIS/rest/services/%D0%A2%D3%A9%D1%81%D3%A9%D0%BB_%D0%93%D2%AF%D0%B9%D1%86%D1%8D%D1%82%D0%B3%D1%8D%D0%BB_/FeatureServer/250',
+  oid: 'ObjectID',
+  fields: {
+    no: 'Д_Д',                      // «6.2.1.1» — эхний тоо нь үе шат
+    stage: 'Төсөл',                 // үе шатны нэр
+    work: 'Ажлын_нэр',
+    bagts: 'bagts_name',            // 112/162 мөрд — дэд бүтцийн багцын код
+    sectionWeight: 'Хэсэгт_эзлэх',  // үе шат доторх жин (%)
+    weight: 'Төсөлд_эзлэх_хувь',    // ТӨСЛИЙН нийт дүнд эзлэх жин (%)
+    planned: 'Төлөвлөгөөт_хувь',    // төлөвлөсөн гүйцэтгэл (%)
+    actual: 'Гүйцэтгэлийн_хувь',    // бодит гүйцэтгэл (%)
+    fulfilment: 'Төлөвгөө_биелэлт', // төлөвлөгөөний биелэлт (%)
+  },
+  /** Үе шатууд — ХУГАЦААНЫ дарааллаар (`Төсөл` баганын утга ба өнгө) */
+  stages: [
+    { value: 'ТЭЗҮ', label: 'ТЭЗҮ', color: '#8b5cf6' },
+    { value: 'Ажлын зураг төсөл', label: 'Ажлын зураг төсөл', color: '#6366f1' },
+    { value: 'Газар чөлөөлөлт', label: 'Газар чөлөөлөлт', color: '#e11d48' },
+    { value: 'Зөвшөөрөл', label: 'Зөвшөөрөл', color: '#0891b2' },
+    { value: 'Сонгон шалгаруулалт', label: 'Сонгон шалгаруулалт', color: '#f59e0b' },
+    { value: 'Барилга угсралт', label: 'Барилга угсралт', color: '#ea580c' },
+  ],
+} as const;
 
 /**
  * «Гүйцэтгэл бөглөх» хуудасны НЭГТГЭСЭН хүснэгт — бөглөсөн нүд бүр энд НЭМЭГДЭЖ
@@ -486,10 +636,10 @@ export const zoneKey = (v: unknown): string => {
  * нийлбэр — Барилгын хяналтын «нийт гүйцэтгэл» ҮҮНИЙГ шууд авна.
  */
 export const TASK_SHEET = {
-  url: 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/Selbe_guitsetgel_consolidated/FeatureServer/0',
-  oid: 'OBJECTID',
+  url: "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/Selbe_guitsetgel_consolidated/FeatureServer/0",
+  oid: "OBJECTID",
   /** Барилга угсралтын ажлын үе шатын № — нийт гүйцэтгэлийн мөр */
-  constructionNo: 'Б.',
+  constructionNo: "Б.",
   /**
    * Барилга угсралтын ДЭД үе шатууд (Б1…Б5) — «Гүйцэтгэл толгой ажлаар»
    * жагсаалт ЯГ эдгээр таваас бүрдэнэ:
@@ -498,18 +648,18 @@ export const TASK_SHEET = {
    * ⚠️ `Tusliin_guitsetgel_master`-т эдгээр мөр ОГТ БАЙХГҮЙ (тэнд зөвхөн
    * «A. Бэлтгэл ажил» ба навч ажлууд) — тиймээс задаргааг ЭНДЭЭС авна.
    */
-  subPhaseNos: ['Б1', 'Б2', 'Б3', 'Б4', 'Б5'] as readonly string[],
+  subPhaseNos: ["Б1", "Б2", "Б3", "Б4", "Б5"] as readonly string[],
   fields: {
-    bagts: 'bagts',          // «Багц 4-1»
-    no: 'dugaar',            // № (excel багана А) — «А.», «Б.», «Б1», «1.2», «3»
-    level: 'tuvshin',        // шатлал 1–5 (5 = навч ажил)
-    work: 'ajil',            // ажлын нэр
-    date: 'ognoo',           // YYYY-MM-DD
-    version: 'huvilbar',     // upload багцын хувилбар
-    weight: 'huviin_jin',    // Хувийн жин (толгой мөрөнд 1)
-    section: 'angilal_b',    // давхрын хэсэг — `applySections` стампална
-    block: 'barilga_blok',   // «5/1 барилга» / «5/1 блок»
-    progress: 'guitsetgel',  // гүйцэтгэл 0–1
+    bagts: "bagts", // «Багц 4-1»
+    no: "dugaar", // № (excel багана А) — «А.», «Б.», «Б1», «1.2», «3»
+    level: "tuvshin", // шатлал 1–5 (5 = навч ажил)
+    work: "ajil", // ажлын нэр
+    date: "ognoo", // YYYY-MM-DD
+    version: "huvilbar", // upload багцын хувилбар
+    weight: "huviin_jin", // Хувийн жин (толгой мөрөнд 1)
+    section: "angilal_b", // давхрын хэсэг — `applySections` стампална
+    block: "barilga_blok", // «5/1 барилга» / «5/1 блок»
+    progress: "guitsetgel", // гүйцэтгэл 0–1
   },
 } as const;
 
@@ -522,10 +672,15 @@ export const TASK_SHEET = {
  * тус бүрдээ өөр БОДИТ барилга (Багц 1-ийн 5/1 ≠ Багц 2-ын 5/1).
  */
 export const bagtsKey = (v: unknown) =>
-  String(v ?? '').toUpperCase().replace(/[^0-9А-ЯӨҮA-Z]/g, '');
+  String(v ?? "")
+    .toUpperCase()
+    .replace(/[^0-9А-ЯӨҮA-Z]/g, "");
 
 /** «5/1 барилга» / «5/1 блок» → «5/1» (давхаргын `BLOK`-той тааруулах) */
-export const blockKey = (v: unknown) => String(v ?? '').trim().split(/\s+/)[0];
+export const blockKey = (v: unknown) =>
+  String(v ?? "")
+    .trim()
+    .split(/\s+/)[0];
 
 /** Барилгын мөрийн түлхүүр — багц + блок хосоор (дэлхийд давтагдашгүй) */
 export const buildingKey = (bagts: unknown, block: unknown) =>
@@ -540,29 +695,69 @@ export const buildingKey = (bagts: unknown, block: unknown) =>
  */
 export const PARCEL_LEFT = {
   // Чөлөөлөгдөөгүй (үлдсэн) нэгж талбар — 224 объект
-  url: 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/%D0%A7%D3%A9%D0%BB%D3%A9%D3%A9%D0%BB%D3%A9%D0%B3%D0%B4%D3%A9%D3%A9%D0%B3%D2%AF%D0%B9_%D0%BD%D1%8D%D0%B3%D0%B6_%D1%82%D0%B0%D0%BB%D0%B1%D0%B0%D1%80_20260718/FeatureServer/67',
+  url: "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/%D0%A7%D3%A9%D0%BB%D3%A9%D3%A9%D0%BB%D3%A9%D0%B3%D0%B4%D3%A9%D3%A9%D0%B3%D2%AF%D0%B9_%D0%BD%D1%8D%D0%B3%D0%B6_%D1%82%D0%B0%D0%BB%D0%B1%D0%B0%D1%80_20260718/FeatureServer/67",
   fields: {
     /** Чөлөөлөлтийн явц — зөвшилцөх, гэрээлсэн, татгалзсан… */
-    progress: 'явцын_мэдээ',
-    /** Талбай (м²) */
-    area: 'Талбай',
+    progress: "явцын_мэдээ",
+    /**
+     * Талбай (м²) — КАДАСТРААС. 213/224 бөглөгдсөн, нийлбэр 9.86 га бөгөөд
+     * геометрийн бодит талбайтай (9.93 га) 0.7%-ийн зөрүүтэй.
+     *
+     * ⚠️ Гараар бичсэн `Талбай` багана БИШ: тэр нь 179/224 л бөглөгдсөн тул
+     * нийлбэр 9.43 га болж 34 талбарын хэмжээ ЧИМЭЭГҮЙ унана. Гэхдээ геометргүй
+     * 11 мөрд ЗӨВХӨН `Талбай` утгатай тул дашбоардын нийлбэр хоёуланг нь
+     * `areaAlt`-аар нөхнө (222/224 хамрагдана).
+     */
+    area: "area_m2",
+    areaAlt: "Талбай",
     /** Блок — СБД-1/2/3, ЧД-2/3 (193 талбарт хоосон) */
-    block: 'Блок',
+    block: "Блок",
+    /** Кадастрын нэгж талбарын дугаар */
+    parcelNo: "Нэгж_талбарын_дугаар",
+    /** Эзэмшигчийн овог нэр (177/224) */
+    owner: "Овог__нэр",
+    /** Хаяг (182/224) */
+    address: "Хаяг",
+    /** Газрын зориулалт — кадастрын 3 ангилал, 37/224 л бөглөгдсөн */
+    landuse: "landuse_de",
+    /** Чөлөөлөлтийн тэмдэглэл — 222/224, ХАМГИЙН БҮРЭН бөглөгдсөн багана */
+    note: "Тайлбар",
   },
 } as const;
 
 export const PARCEL_CLEAN = {
   // Цэвэрлэсэн (одоо чөлөөлж буй) нэгж талбар — 457 объект
-  url: 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/%D0%A1%D1%8D%D0%BB%D0%B1%D1%8D_20_%D0%A7%D0%94_%D0%A1%D0%91%D0%94_%D1%86%D1%8D%D0%B2%D1%8D%D1%80%D0%BB%D1%8D%D0%B3%D1%8D%D1%8D0724/FeatureServer/3',
+  url: "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/%D0%A1%D1%8D%D0%BB%D0%B1%D1%8D_20_%D0%A7%D0%94_%D0%A1%D0%91%D0%94_%D1%86%D1%8D%D0%B2%D1%8D%D1%80%D0%BB%D1%8D%D0%B3%D1%8D%D1%8D0724/FeatureServer/3",
   fields: {
     /** Төлбөрийн статус — дууссан төлбөр авсан / хүлээгдэж байна */
-    status: 'Статус',
+    status: "Статус",
     /** Гүйцэтгэлийн он — 2025 / 2026 */
-    year: 'Он',
+    year: "Он",
     /** Буулгалт нураалтын нийт өртөг (₮) */
-    cost: 'Буулгалт_нураалтын__өртөг_үнэ',
+    cost: "Буулгалт_нураалтын__өртөг_үнэ",
   },
 } as const;
+
+/**
+ * Чөлөөлөлтийн ЯВЦ → өнгө. Ногоон = асуудал шийдэгдсэн (гэрээлсэн, дүйцүүлсэн),
+ * улаан = маргаантай/татгалзсан, цэнхэр-шар = яригдаж буй.
+ *
+ * ⚠️ Эх өгөгдөлд «гэрээлсэн» ба «гэрээлсэн.» гэсэн ХОЁР бичиглэл бий (цэгтэй нь
+ * 3 талбар) — палитрт хоёуланг нь бичив, эс бөгөөс зурагт цэгтэй нь өнгөгүй
+ * үлдэнэ. Диаграм тал нь `cleanParcelProgress()`-оор урьдчилан цэвэрлэдэг.
+ */
+export const PARCEL_PROGRESS_HUES: Record<string, string> = {
+  зөвшилцөх: "#0ea5e9",
+  "үлдэх саналтай": "#f59e0b",
+  гэрээлсэн: "#22c55e",
+  "гэрээлсэн.": "#22c55e",
+  дүйцүүлсэн: "#16a34a",
+  татгалзсан: "#dc2626",
+  маргаантай: "#e11d48",
+  "үнийн дүн зөвшөөрөөгүй": "#f97316",
+  АТД: "#7c3aed",
+  гэр: "#94a3b8",
+};
 
 /**
  * Гүйцэтгэлийн 4 түвшин.
@@ -574,37 +769,65 @@ export const PARCEL_CLEAN = {
  * хос ΔE 34) — өнгө ялгахад хүндрэлтэй хэрэглэгч ч дарааллыг уншина.
  */
 export const PROGRESS_LEVELS = [
-  { key: 'l1', label: 'Эхэлсэн', range: '0–25%', min: 0, max: 25, color: '#b91c1c' },
-  { key: 'l2', label: 'Явцад', range: '25–50%', min: 25, max: 50, color: '#f97316' },
-  { key: 'l3', label: 'Дуусах шатанд', range: '50–75%', min: 50, max: 75, color: '#a3e635' },
-  { key: 'l4', label: 'Бэлэн болох', range: '75–100%', min: 75, max: 101, color: '#0d9488' },
+  {
+    key: "l1",
+    label: "Эхэлсэн",
+    range: "0–25%",
+    min: 0,
+    max: 25,
+    color: "#b91c1c",
+  },
+  {
+    key: "l2",
+    label: "Явцад",
+    range: "25–50%",
+    min: 25,
+    max: 50,
+    color: "#f97316",
+  },
+  {
+    key: "l3",
+    label: "Дуусах шатанд",
+    range: "50–75%",
+    min: 50,
+    max: 75,
+    color: "#a3e635",
+  },
+  {
+    key: "l4",
+    label: "Бэлэн болох",
+    range: "75–100%",
+    min: 75,
+    max: 101,
+    color: "#0d9488",
+  },
 ] as const;
 
 /** 16 үе шат (%) · `-1` = тухайн ажил төлөвлөгдөөгүй */
 export const BUILDING_STAGES: { field: string; label: string }[] = [
-  { field: 'A_BELTGEL', label: 'Бэлтгэл ажил' },
-  { field: 'GAZAR', label: 'Газар шороо' },
-  { field: 'SUURI', label: 'Суурь' },
-  { field: 'KARKAS', label: 'Каркас' },
-  { field: 'HANA', label: 'Хана' },
-  { field: 'DEEVER', label: 'Дээвэр' },
-  { field: 'HAALGA', label: 'Хаалга, цонх' },
-  { field: 'SHAL', label: 'Шал' },
-  { field: 'DOTOR', label: 'Дотор засал' },
-  { field: 'GADNA', label: 'Гадна засал' },
-  { field: 'LIFT', label: 'Лифт' },
-  { field: 'HALAALT', label: 'Халаалт' },
-  { field: 'US', label: 'Ус, ариутгал' },
-  { field: 'TSAHILGAAN', label: 'Цахилгаан' },
-  { field: 'HOLBOO', label: 'Холбоо' },
-  { field: 'BUSAD', label: 'Бусад' },
+  { field: "A_BELTGEL", label: "Бэлтгэл ажил" },
+  { field: "GAZAR", label: "Газар шороо" },
+  { field: "SUURI", label: "Суурь" },
+  { field: "KARKAS", label: "Каркас" },
+  { field: "HANA", label: "Хана" },
+  { field: "DEEVER", label: "Дээвэр" },
+  { field: "HAALGA", label: "Хаалга, цонх" },
+  { field: "SHAL", label: "Шал" },
+  { field: "DOTOR", label: "Дотор засал" },
+  { field: "GADNA", label: "Гадна засал" },
+  { field: "LIFT", label: "Лифт" },
+  { field: "HALAALT", label: "Халаалт" },
+  { field: "US", label: "Ус, ариутгал" },
+  { field: "TSAHILGAAN", label: "Цахилгаан" },
+  { field: "HOLBOO", label: "Холбоо" },
+  { field: "BUSAD", label: "Бусад" },
 ];
 export const STAGE_NA = -1;
 
 /** Талбайн хяналт — Survey123: цэгийн давхарга + 5 холбоост хүснэгт */
 export const SURVEY = {
   url: `${SURVEY_FS}/0`,
-  oid: 'objectid',
+  oid: "objectid",
   tables: {
     beltgel: `${SURVEY_FS}/1`,
     shoroo: `${SURVEY_FS}/2`,
@@ -613,42 +836,42 @@ export const SURVEY = {
     asuudal: `${SURVEY_FS}/5`,
   },
   fields: {
-    date: 'ognoo',
-    user: 'hereglegch',
-    contractor: 'guitsetgegch',
-    bagts: 'bagts',
-    building: 'barilga',
-    buildingType: 'barilga_torol',
-    floors: 'davhar_too',
-    pours: 'tsutgalt_too',
-    workers: 'hun_huch',
-    machines: 'tehnik_too',
+    date: "ognoo",
+    user: "hereglegch",
+    contractor: "guitsetgegch",
+    bagts: "bagts",
+    building: "barilga",
+    buildingType: "barilga_torol",
+    floors: "davhar_too",
+    pours: "tsutgalt_too",
+    workers: "hun_huch",
+    machines: "tehnik_too",
     /** Нийт барилга угсралтын гүйцэтгэл (%) */
-    total: 'b_niit',
-    shortfall: 'dutuu',
-    note: 'erunhii_tailbar',
-    created: 'CreationDate',
+    total: "b_niit",
+    shortfall: "dutuu",
+    note: "erunhii_tailbar",
+    created: "CreationDate",
   },
 } as const;
 
 /** Survey123 тайлан дахь ажлын хэсгүүд (%) */
 export const SURVEY_SECTIONS: { field: string; label: string }[] = [
-  { field: 'beltgel_niit', label: 'А. Бэлтгэл ажил' },
-  { field: 'shoroo_niit', label: '1. Газар шороо' },
-  { field: 'suuri_niit', label: '2. Суурь' },
-  { field: 'ram_niit', label: '3. Төмөр бетон рам' },
-  { field: 'hana_niit', label: '4. Хана, хамар хана' },
-  { field: 'tsonh_niit', label: '5. Хаалга, цонх' },
-  { field: 'dotor_niit', label: '6. Дотор засал' },
-  { field: 'gadna_niit', label: '7. Гадна засал' },
-  { field: 'deever_niit', label: '8. Дээвэр' },
-  { field: 'shal_niit', label: '9. Шал' },
-  { field: 'busad_niit', label: '10. Бусад' },
-  { field: 'lift_niit', label: '11. Лифт' },
-  { field: 'has_niit', label: 'Б2. Халаалт, агаар сэлгэлт' },
-  { field: 'tsbu_niit', label: 'Б3. Цэвэр, бохир ус' },
-  { field: 'tsah_niit', label: 'Б4. Цахилгаан, гэрэлтүүлэг' },
-  { field: 'holboo_niit', label: 'Б5. Холбоо, дохиолол' },
+  { field: "beltgel_niit", label: "А. Бэлтгэл ажил" },
+  { field: "shoroo_niit", label: "1. Газар шороо" },
+  { field: "suuri_niit", label: "2. Суурь" },
+  { field: "ram_niit", label: "3. Төмөр бетон рам" },
+  { field: "hana_niit", label: "4. Хана, хамар хана" },
+  { field: "tsonh_niit", label: "5. Хаалга, цонх" },
+  { field: "dotor_niit", label: "6. Дотор засал" },
+  { field: "gadna_niit", label: "7. Гадна засал" },
+  { field: "deever_niit", label: "8. Дээвэр" },
+  { field: "shal_niit", label: "9. Шал" },
+  { field: "busad_niit", label: "10. Бусад" },
+  { field: "lift_niit", label: "11. Лифт" },
+  { field: "has_niit", label: "Б2. Халаалт, агаар сэлгэлт" },
+  { field: "tsbu_niit", label: "Б3. Цэвэр, бохир ус" },
+  { field: "tsah_niit", label: "Б4. Цахилгаан, гэрэлтүүлэг" },
+  { field: "holboo_niit", label: "Б5. Холбоо, дохиолол" },
 ];
 
 /**
@@ -663,12 +886,241 @@ export const SURVEY_SECTIONS: { field: string; label: string }[] = [
  * талд яг таг шүүнэ (тайлангийн тоо бага).
  */
 export const surveyBlock = (barilga: unknown): string | null => {
-  const m = /^bagts\d+_(.+)$/i.exec(String(barilga ?? '').trim());
-  return m ? m[1].replace(/_/g, '/') : null;
+  const m = /^bagts\d+_(.+)$/i.exec(String(barilga ?? "").trim());
+  return m ? m[1].replace(/_/g, "/") : null;
 };
 
 /** Талбайн тайлангийн өнгө — барилгын улбар шараас ялгарна (цэг нь полигон дээр) */
-export const SURVEY_HUE = '#0891b2';
+export const SURVEY_HUE = "#0891b2";
+
+/* ══════════════════════ Дэд бүтцийн багцын каталог ══════════════════════ */
+
+/**
+ * `Selbe_ET_20260725`-ын 57 давхарга — ХҮСНЭГТЭЭР, гараар бичсэн 57 объектоор
+ * БИШ.
+ *
+ * ⚠️ Эдгээр давхарга бүтцээрээ ЯГ ижил: CAD-аас гаралтай, `bagts_name` ганц
+ * утгатай, өнгө нь гэр бүлээрээ тодорхойлогдоно. 57 бүтэн `LayerDef` бичвэл
+ * 500 гаруй мөр давхардсан хэв маяг болж, нэг талбарын нэр өөрчлөгдөхөд 57
+ * газар засварлана. Ялгаатай нь ЗӨВХӨН дугаар, геометр, нэр, гэр бүл.
+ *
+ * ⚠️ Хатчийн (hatch) полигонууд ОРООГҮЙ: `…_po` / `…_PO` / `…_Po` давхаргууд нь
+ * CAD-ийн зураасан дүүргэлт (`PtnName`, `PtnScl`, `PtnAng`) бөгөөд өөрийн
+ * шугаман давхаргаа давхарлан бүрхэнэ — зурагт мэдээлэл нэмэхгүй, зөвхөн
+ * доорхыг нь нуудаг. 5 давхарга (101, 103, 105, 107, 94) хасагдав.
+ *
+ * ⚠️ `cost` ЗОРИУДААР аль нэгэнд нь ч ТАВИАГҮЙ. `loadCosts()` нь `topic:'plan'`
+ * бөгөөд `cost`-той БҮХ давхаргыг дэд бүтцийн өртгийн загварт нийлүүлдэг.
+ * Эдгээрийн хоёр нь ЕТ-ийн давхаргатай ДАВХАРДАНА (110кв агаарын шугам =
+ * `et:21`, цахилгааны шугам ≈ `et:22`) тул нэмбэл цахилгааны өртөг хоёр дахин
+ * тоологдоно. Багцын өртөг нь `INVEST` хүснэгтэд аль хэдийн бий.
+ */
+type PkgFamily = "net" | "pow" | "src" | "site" | "soc" | "com";
+
+/**
+ * ⚠️ `net` ба `pow` нь ЭХ ВЕБ ЗУРГААС: Багц 5-ын шугамуудад давамгайлах
+ * «Dulanii shugam» нь `#ff0000`, ХТП/РП-ийн цэг нь `#772c94`.
+ *
+ * ⚠️ Үлдсэн дөрөв нь порталынх ХЭВЭЭР. Эх зурагт тэдгээр давхарга нь эсвэл
+ * рендерергүй (үйлчилгээний анхдагч), эсвэл CAD-ийн индекс өнгөтэй: өндөржилт
+ * ба тохижилт нь ТУНГАЛАГ дүүргэлт + `#aaaaaa` хүрээ, «Сүвлэх»-ийн барилгууд
+ * цэвэр `#000000`. Тэдгээрийг хуулбарлавал ортофото дээр давхарга нь бүрмөсөн
+ * уншигдахаа болино — эх зургийн шийдвэр биш, экспортын үлдэгдэл тул авсангүй.
+ */
+const PKG_HUE: Record<PkgFamily, string> = {
+  net: "#ff0000", // Багц 5 — гадна дулаан, ус, ариутгах татуурга (эх зураг)
+  pow: "#772c94", // Багц 6 — цахилгаан ба ХТП/РП (эх зураг)
+  src: "#0891b2", // Багц 7–15 — эх үүсвэр, магистраль
+  site: "#a16207", // Багц 16–18 — өндөржилт, тохижилт
+  soc: "#22c55e", // Багц 19–21 — нийгмийн барилга
+  com: "#7c3aed", // Холбоо — Багц 1–4
+};
+
+/**
+ * `[давхаргын дугаар, геометр, нэр, гэр бүл, багцын код]`.
+ *
+ * ⚠️ Багцын код нь `bagts_name`-ийн БОДИТ утга (зай, зураасны бохирдолтой нь
+ * хэвээр) — `INVEST.bagts_name`-тэй жишихэд яг энэ бичиглэл хэрэгтэй.
+ */
+const PKG_TABLE: [number, LayerDef["geom"], string, PkgFamily, string][] = [
+  /* ── Багц 5 · гадна дулаан, ус хангамж, ариутгах татуурга ── */
+  [
+    108,
+    "line",
+    "Багц 5.1 · Гадна дулаан, ус, татуурга (Багц 1)",
+    "net",
+    "БАГЦ-5.1",
+  ],
+  [
+    106,
+    "line",
+    "Багц 5.2 · Гадна дулаан, ус, татуурга (Багц 2)",
+    "net",
+    "БАГЦ-5.2",
+  ],
+  [
+    104,
+    "line",
+    "Багц 5.3 · Гадна дулаан, ус, татуурга (Багц 3)",
+    "net",
+    "БАГЦ-5.3",
+  ],
+  [
+    102,
+    "line",
+    "Багц 5.4 · Гадна дулаан, ус, татуурга (Багц 4)",
+    "net",
+    "БАГЦ-5.4",
+  ],
+
+  /* ── Багц 6 · цахилгааны шугам ба ХТП/РП ── */
+  [124, "line", "Багц 6.1 · Багц 1-ийн цахилгааны шугам", "pow", "БАГЦ-6.1"],
+  [125, "line", "Багц 6.2 · Багц 2-ын цахилгааны шугам", "pow", "БАГЦ-6.2"],
+  [126, "line", "Багц 6.3 · Багц 3-ын цахилгааны шугам", "pow", "БАГЦ-6.3"],
+  [127, "line", "Багц 6.4 · Багц 4-ийн цахилгааны шугам", "pow", "БАГЦ-6.4"],
+  [151, "line", "Багц 6.5 · ХТП/РП А хэсэг — трасс", "pow", "БАГЦ-6.5"],
+  [147, "point", "Багц 6.5 · ХТП/РП А хэсэг — цэг", "pow", "БАГЦ-6.5"],
+  [150, "line", "Багц 6.6 · ХТП/РП Б хэсэг — трасс", "pow", "БАГЦ-6.6"],
+  [149, "point", "Багц 6.6 · ХТП/РП Б хэсэг — цэг", "pow", "БАГЦ-6.6"],
+  [154, "line", "Багц 6.7 · ХТП/РП В хэсэг — трасс", "pow", "БАГЦ-6.7"],
+  [153, "point", "Багц 6.7 · ХТП/РП В хэсэг — цэг", "pow", "БАГЦ-6.7"],
+  [157, "line", "Багц 6.8 · ХТП/РП Г хэсэг — трасс", "pow", "БАГЦ-6.8"],
+  [156, "point", "Багц 6.8 · ХТП/РП Г хэсэг — цэг", "pow", "БАГЦ-6.8"],
+
+  /* ── Багц 7–15 · эх үүсвэр ба магистраль ── */
+  [100, "line", "Багц 7 · Хөрсний ус бууруулах, зайлуулах", "src", "БАГЦ-7"],
+  [
+    115,
+    "line",
+    "Багц 8.2 · Цахилгаан дамжуулах агаарын шугам 110кв",
+    "src",
+    "БАГЦ-8.2",
+  ],
+  [99, "line", "Багц 10 · Гадна ус хангамжийн эх үүсвэр", "src", "БАГЦ-10"],
+  [
+    98,
+    "line",
+    "Багц 11 · Гадна ус хангамжийн цагираг систем",
+    "src",
+    "БАГЦ-11",
+  ],
+  [97, "line", "Багц 12 · Ариутгах татуургын 600 шугам", "src", "БАГЦ-12"],
+  [96, "area", "Багц 13 · 2000 м³ усан сан", "src", "БАГЦ-13"],
+  [95, "line", "Багц 14 · Дулаан хангамжийн нэвтрэх суваг", "src", "БАГЦ-14"],
+  [93, "area", "Багц 15 · Насос станцын өргөтгөл", "src", "БАГЦ-15"],
+
+  /* ── Багц 16–18 · өндөржилт, тохижилт, дулааны эх үүсвэр ── */
+  [195, "area", "Багц 16.1 · Өндөржилт — Багц 1", "site", "БАГЦ-16.1"],
+  [201, "area", "Багц 16.2 · Өндөржилт — Багц 2", "site", "БАГЦ-16.2"],
+  [206, "area", "Багц 16.3 · Өндөржилт — Багц 3.1", "site", "БАГЦ-16.3"],
+  [209, "area", "Багц 16.4 · Өндөржилт — Багц 3.2", "site", "БАГЦ-16.4"],
+  [214, "area", "Багц 16.5 · Өндөржилт — Багц 3.3", "site", "БАГЦ-16.5"],
+  [217, "area", "Багц 16.6 · Өндөржилт — Багц 4.1", "site", "БАГЦ-16.6"],
+  [221, "area", "Багц 16.7 · Өндөржилт — Багц 4.2", "site", "БАГЦ-16.7"],
+  [198, "area", "Багц 17.1 · Гадна тохижилт — Багц 1", "site", "БАГЦ-17.1"],
+  [203, "area", "Багц 17.2 · Гадна тохижилт — Багц 2", "site", "БАГЦ-17.2"],
+  [205, "area", "Багц 17.3 · Гадна тохижилт — Багц 3.1", "site", "БАГЦ-17.3"],
+  [210, "area", "Багц 17.4 · Гадна тохижилт — Багц 3.2", "site", "БАГЦ-17.4"],
+  [213, "area", "Багц 17.5 · Гадна тохижилт — Багц 3.3", "site", "БАГЦ-17.5"],
+  [218, "area", "Багц 17.6 · Гадна тохижилт — Багц 4.1", "site", "БАГЦ-17.6"],
+  [222, "area", "Багц 17.7 · Гадна тохижилт — Багц 4.2", "site", "БАГЦ-17.7"],
+  // ⚠️ Давхаргын нэр «Багц18» ч `bagts_name` нь өөрөө «Багц16_…» гэсэн ТҮҮХИЙ
+  //    нэр — импортын үлдэгдэл. Кодыг эх өгөгдлийнхөөр нь үлдээв.
+  [
+    246,
+    "area",
+    "Багц 18 · Дулаан хангамжийн эх үүсвэр",
+    "site",
+    "Багц16_дулаан_хангамжын_эх_үүсвэр",
+  ],
+
+  /* ── Багц 19–21 · нийгмийн барилга ── */
+  [230, "area", "Багц 19.1 · 960 хүүхдийн сургууль", "soc", "БАГЦ - 19.1"],
+  [228, "area", "Багц 19.2 · 1560 хүүхдийн сургууль", "soc", "БАГЦ - 19.2"],
+  [232, "area", "Багц 19.3 · 1260 хүүхдийн сургууль", "soc", "БАГЦ - 19.3"],
+  [226, "area", "Багц 20.1 · 240 ортой цэцэрлэг", "soc", "БАГЦ - 20.1"],
+  [234, "area", "Багц 20.2 · 240 ортой цэцэрлэг", "soc", "БАГЦ - 20.2"],
+  [235, "area", "Багц 20.3 · 240 ортой цэцэрлэг", "soc", "БАГЦ - 20.3"],
+  [236, "area", "Багц 20.4 · 240 ортой цэцэрлэг", "soc", "БАГЦ - 20.4"],
+  [237, "area", "Багц 20.5 · 240 ортой цэцэрлэг", "soc", "БАГЦ - 20.5"],
+  [243, "area", "Багц 21 · Төрийн үйлчилгээний барилга", "soc", "БАГЦ -21"],
+  [242, "area", "Багц 21 · Хүүхдийн урлан бүтээх төв", "soc", "БАГЦ -21"],
+
+  /* ── Холбоо · Багц 1–4 ── */
+  [33, "line", "Холбоо · Багц 1 — шугам", "com", "Багц1_Холбоо"],
+  [34, "point", "Холбоо · Багц 1 — цэг", "com", "Багц1_Холбоо"],
+  [42, "line", "Холбоо · Багц 2 — шугам", "com", "Багц2_Холбоо"],
+  [43, "point", "Холбоо · Багц 2 — цэг", "com", "Багц2_Холбоо"],
+  [39, "line", "Холбоо · Багц 3 — шугам", "com", "Багц3_Холбоо"],
+  [40, "point", "Холбоо · Багц 3 — цэг", "com", "Багц3_Холбоо"],
+  [36, "line", "Холбоо · Багц 4 — шугам", "com", "Багц4_Холбоо"],
+  [37, "point", "Холбоо · Багц 4 — цэг", "com", "Багц4_Холбоо"],
+];
+
+/**
+ * `ZONE_ID` талбартай багцын давхаргууд — ЗӨВХӨН эдгээр нь бүсийн нэгдсэн
+ * шүүлтэд орно. Бусад нь CAD-аас шууд гарсан тул бүсийн харьяалалгүй.
+ */
+const PKG_ZONED = new Set([
+  124, 125, 126, 127, 115, 230, 228, 232, 226, 234, 235, 236, 237, 243, 242,
+]);
+
+/** Барилгын хэлбэртэй багцууд `talbai_m2`-тай; бусад нь систем талбараас */
+const PKG_AREA_ATTR = new Set([
+  230, 228, 232, 226, 234, 235, 236, 237, 243, 242,
+]);
+
+/** Гэр бүлийн давхаргын id-ууд — каталогийн багц энэ хүснэгтээс л үүснэ */
+const pkgIds = (family: PkgFamily): string[] =>
+  PKG_TABLE.filter(([, , , f]) => f === family).map(([n]) => `pkg:${n}`);
+
+/**
+ * Багцын код (нормчилсон) → тэр багцын давхаргын id-ууд.
+ *
+ * ⚠️ Түлхүүр нь `bagtsKey()`-ээр нормчилсон: эх өгөгдөл нэг л багцыг «БАГЦ-17.1»,
+ * «БАГЦ - 19.1», «БАГЦ -21» гэж гурван янзаар бичдэг бөгөөд `INVEST.bagts_name`
+ * ч мөн адил. Түүхий нэрээр түлхүүрлэвэл хөрөнгө оруулалтын мөр давхаргатайгаа
+ * ЧИМЭЭГҮЙ холбогдохгүй.
+ */
+export const PKG_BY_BAGTS: Record<string, string[]> = PKG_TABLE.reduce(
+  (m, [n, , , , bagts]) => {
+    const k = bagtsKey(bagts);
+    (m[k] ??= []).push(`pkg:${n}`);
+    return m;
+  },
+  {} as Record<string, string[]>,
+);
+
+const PKG_LAYERS: LayerDef[] = PKG_TABLE.map(
+  ([n, geom, title, family, bagts]) => ({
+    id: `pkg:${n}`,
+    n,
+    url: `${ET_PKG}/${n}`,
+    title,
+    topic: "plan" as const,
+    geom,
+    hue: PKG_HUE[family],
+    note: bagts,
+    ...(geom === "area" ? { fill: 0.35, width: 0.9 } : {}),
+    ...(geom === "line" ? { width: 1.6, dash: "solid" as const } : {}),
+    ...(geom === "point" ? { marker: "circle" as const, size: 7 } : {}),
+    ...(geom === "point"
+      ? {}
+      : {
+          qty:
+            geom === "line"
+              ? {
+                  field: PKG_ZONED.has(n) ? "urt_m" : "Shape__Length",
+                  unit: "м" as const,
+                }
+              : {
+                  field: PKG_AREA_ATTR.has(n) ? "talbai_m2" : "Shape__Area",
+                  unit: "м²" as const,
+                },
+        }),
+    ...(PKG_ZONED.has(n) ? {} : { noZone: true as const }),
+  }),
+);
 
 /**
  * Төслийн хил — тайлан хилээс ГАДУУР бичигдсэн эсэхийг шалгахад л ашиглана.
@@ -676,7 +1128,10 @@ export const SURVEY_HUE = '#0891b2';
  * хүрээг аль хэдийн харуулж байна.
  */
 export const BOUNDARY = {
-  plan: { url: `${HJ}/Tuluvlult_talbai/FeatureServer/2`, title: 'Төлөвлөлтийн талбай' },
+  plan: {
+    url: `${HJ}/Tuluvlult_talbai/FeatureServer/2`,
+    title: "Төлөвлөлтийн талбай",
+  },
 } as const;
 
 /**
@@ -689,185 +1144,382 @@ export const BOUNDARY = {
 export const LAYERS: LayerDef[] = [
   /* ─────────── Барилга байгууламж ─────────── */
   {
-    id: 'et:24', n: 24, title: 'Барилга', topic: 'plan', geom: 'area',
-    hue: '#3387b8', fill: 0.45, width: 1.4,
-    qty: { field: 'Барилгажсан_талбай', unit: 'м²' },
-    cost: { field: 'negj_une', basis: 'm2' },
-    note: 'төлөв, зориулалт, өрх, хүн ам',
+    id: "et:24",
+    n: 24,
+    title: "Барилга",
+    topic: "plan",
+    geom: "area",
+    // Эх веб зургийн «Төлөвлөсөн» өнгө — `uniform` горимд бүх барилга үүгээр
+    hue: "#fd7f6f",
+    fill: 0.45,
+    width: 1.4,
+    qty: { field: "Барилгажсан_талбай", unit: "м²" },
+    cost: { field: "negj_une", basis: "m2" },
+    note: "төлөв, зориулалт, өрх, хүн ам",
     facets: [
-      { field: 'Barilga_ty', label: 'Барилгын төлөв' },
-      { field: 'Зориулалт_m', label: 'Зориулалт' },
-      { field: 'zoriulalt', label: 'Дэлгэрэнгүй зориулалт' },
-      { field: 'TOROL', label: 'Бүсийн төрөл' },
-      { field: 'Bar_comp', label: 'Барилгын компани' },
+      { field: "Barilga_ty", label: "Барилгын төлөв" },
+      { field: "Зориулалт_m", label: "Зориулалт" },
+      { field: "zoriulalt", label: "Дэлгэрэнгүй зориулалт" },
+      { field: "TOROL", label: "Бүсийн төрөл" },
+      { field: "Bar_comp", label: "Барилгын компани" },
     ],
     paint: {
-      field: 'Barilga_ty',
+      field: "Barilga_ty",
       values: Object.fromEntries(BUILT_STATUS.map((x) => [x.value, x.hue])),
-      emptyLabel: 'Тодорхойгүй',
+      emptyLabel: "Тодорхойгүй",
     },
   },
 
   /* ─────────── Барилгын хяналт (ХУУЧИН үйлчилгээ) ─────────── */
   {
-    id: 'mon:building', n: 2, url: `${BUILDING_FS}/2`,
-    title: 'Барилгын блок (гүйцэтгэл)', topic: 'monitor', geom: 'area',
-    hue: '#ea580c', fill: 0.45, width: 1.4,
-    noZone: true, detail: 'building', oid: 'FID',
-    note: '113 блок · 4 түвшин · 16 үе шат',
-    breaks: { field: 'GUITS_HV', levels: PROGRESS_LEVELS, emptyLabel: 'Мэдээлэлгүй' },
+    id: "mon:building",
+    n: 2,
+    url: `${BUILDING_FS}/2`,
+    title: "Барилгын блок (гүйцэтгэл)",
+    topic: "monitor",
+    geom: "area",
+    hue: "#ea580c",
+    fill: 0.45,
+    width: 1.4,
+    noZone: true,
+    detail: "building",
+    oid: "FID",
+    note: "113 блок · 4 түвшин · 16 үе шат",
+    breaks: {
+      field: "GUITS_HV",
+      levels: PROGRESS_LEVELS,
+      emptyLabel: "Мэдээлэлгүй",
+    },
   },
   {
-    id: 'mon:survey', n: 0, url: `${SURVEY_FS}/0`,
-    title: 'Талбайн хяналтын тайлан', topic: 'monitor', geom: 'point',
-    hue: '#0891b2', marker: 'circle', size: 13,
-    noZone: true, detail: 'survey', oid: 'objectid',
-    note: 'Survey123 мобайл аппаас',
+    id: "mon:survey",
+    n: 0,
+    url: `${SURVEY_FS}/0`,
+    title: "Талбайн хяналтын тайлан",
+    topic: "monitor",
+    geom: "point",
+    hue: "#0891b2",
+    marker: "circle",
+    size: 13,
+    noZone: true,
+    detail: "survey",
+    oid: "objectid",
+    note: "Survey123 мобайл аппаас",
   },
 
   /* ─────────── Инженер · дулаан ─────────── */
   {
-    id: 'et:7', n: 7, title: 'Дулаан дамжуулах хуваарилах төв (шугам)', topic: 'plan',
-    geom: 'line', hue: '#991b1b', dash: 'solid', width: 2.6, qty: M,
+    id: "et:7",
+    n: 7,
+    title: "Дулаан дамжуулах хуваарилах төв (шугам)",
+    topic: "plan",
+    geom: "line",
+    hue: "#991b1b",
+    dash: "solid",
+    width: 2.6,
+    qty: M,
   },
   {
-    id: 'et:10', n: 10, title: 'Гадна дулаан — улаан (үргэлжилсэн)', topic: 'plan',
-    geom: 'line', hue: '#dc2626', dash: 'solid', width: 2.0, qty: M,
-    cost: { field: 'negj_une', basis: 'm100' },
+    id: "et:10",
+    n: 10,
+    title: "Гадна дулаан — улаан (үргэлжилсэн)",
+    topic: "plan",
+    geom: "line",
+    hue: "#dc2626",
+    dash: "solid",
+    width: 2.0,
+    qty: M,
+    cost: { field: "negj_une", basis: "m100" },
   },
   {
-    id: 'et:9', n: 9, title: 'Гадна дулаан — тасархай', topic: 'plan',
-    geom: 'line', hue: '#fb923c', dash: 'dash', width: 1.7, qty: M,
-    cost: { field: 'negj_une', basis: 'm100' },
+    id: "et:9",
+    n: 9,
+    title: "Гадна дулаан — тасархай",
+    topic: "plan",
+    geom: "line",
+    hue: "#fb923c",
+    dash: "dash",
+    width: 1.7,
+    qty: M,
+    cost: { field: "negj_une", basis: "m100" },
   },
   {
-    id: 'et:11', n: 11, title: 'Гадна дулаан — цэнхэр шугам', topic: 'plan',
-    geom: 'line', hue: '#e11d48', dash: 'dash-dot', width: 1.7, qty: M,
-    cost: { field: 'negj_une', basis: 'm100' },
+    id: "et:11",
+    n: 11,
+    title: "Гадна дулаан — цэнхэр шугам",
+    topic: "plan",
+    geom: "line",
+    hue: "#e11d48",
+    dash: "dash-dot",
+    width: 1.7,
+    qty: M,
+    cost: { field: "negj_une", basis: "m100" },
   },
   {
-    id: 'et:8', n: 8, title: 'Гадна дулаан — ногоон шугам', topic: 'plan',
-    geom: 'line', hue: '#f97316', dash: 'dot', width: 1.6, qty: M,
-    cost: { field: 'negj_une', basis: 'm100' },
+    id: "et:8",
+    n: 8,
+    title: "Гадна дулаан — ногоон шугам",
+    topic: "plan",
+    geom: "line",
+    hue: "#f97316",
+    dash: "dot",
+    width: 1.6,
+    qty: M,
+    cost: { field: "negj_une", basis: "m100" },
   },
   {
-    id: 'et:4', n: 4, title: 'Төлөвлөж буй ДХТ', topic: 'plan',
-    geom: 'point', hue: '#ef4444', marker: 'square', size: 9,
-    cost: { field: 'negj_une', basis: 'sh' },
+    id: "et:4",
+    n: 4,
+    title: "Төлөвлөж буй ДХТ",
+    topic: "plan",
+    geom: "point",
+    hue: "#ef4444",
+    marker: "square",
+    size: 9,
+    cost: { field: "negj_une", basis: "sh" },
   },
 
   /* ─────────── Инженер · ус ─────────── */
   {
-    id: 'et:18', n: 18, title: 'Төлөвлөж буй цэвэр ус', topic: 'plan',
-    geom: 'line', hue: '#0284c7', dash: 'solid', width: 1.8, qty: M,
-    cost: { field: 'negj_une', basis: 'm100' },
+    id: "et:18",
+    n: 18,
+    title: "Төлөвлөж буй цэвэр ус",
+    topic: "plan",
+    geom: "line",
+    hue: "#0284c7",
+    dash: "solid",
+    width: 1.8,
+    qty: M,
+    cost: { field: "negj_une", basis: "m100" },
   },
   {
-    id: 'et:23', n: 23, title: 'Цэвэр усны эх үүсвэрийн өргөтгөл', topic: 'plan',
-    geom: 'line', hue: '#38bdf8', dash: 'solid', width: 1.5, qty: M,
-    cost: { field: 'negj_une', basis: 'm100' },
+    id: "et:23",
+    n: 23,
+    title: "Цэвэр усны эх үүсвэрийн өргөтгөл",
+    topic: "plan",
+    geom: "line",
+    hue: "#38bdf8",
+    dash: "solid",
+    width: 1.5,
+    qty: M,
+    cost: { field: "negj_une", basis: "m100" },
   },
   {
-    id: 'et:17', n: 17, title: 'Орон сууцны бүсийн бохирын шугам', topic: 'plan',
-    geom: 'line', hue: '#0891b2', dash: 'dash', width: 1.7, qty: M,
-    cost: { field: 'negj_une', basis: 'm100' },
+    id: "et:17",
+    n: 17,
+    title: "Орон сууцны бүсийн бохирын шугам",
+    topic: "plan",
+    geom: "line",
+    hue: "#0891b2",
+    dash: "dash",
+    width: 1.7,
+    qty: M,
+    cost: { field: "negj_une", basis: "m100" },
   },
   {
-    id: 'et:16', n: 16, title: 'Одоо байгаа бохир ус', topic: 'plan',
-    geom: 'line', hue: '#0e7490', dash: 'dash', width: 1.4, qty: M,
-    cost: { field: 'negj_une', basis: 'm100' },
+    id: "et:16",
+    n: 16,
+    title: "Одоо байгаа бохир ус",
+    topic: "plan",
+    geom: "line",
+    hue: "#0e7490",
+    dash: "dash",
+    width: 1.4,
+    qty: M,
+    cost: { field: "negj_une", basis: "m100" },
   },
   {
-    id: 'et:3', n: 3, title: 'Орон сууцны бүсийн бохирын худаг', topic: 'plan',
-    geom: 'point', hue: '#155e75', marker: 'circle', size: 7,
-    cost: { field: 'negj_une', basis: 'sh' },
+    id: "et:3",
+    n: 3,
+    title: "Орон сууцны бүсийн бохирын худаг",
+    topic: "plan",
+    geom: "point",
+    hue: "#155e75",
+    marker: "circle",
+    size: 7,
+    cost: { field: "negj_une", basis: "sh" },
   },
   {
-    id: 'et:19', n: 19, title: 'Хөрсний ус шүүрүүлэх систем', topic: 'plan',
-    geom: 'line', hue: '#7dd3fc', dash: 'dot', width: 1.6, qty: M,
-    cost: { field: 'negj_une', basis: 'm100' },
+    id: "et:19",
+    n: 19,
+    title: "Хөрсний ус шүүрүүлэх систем",
+    topic: "plan",
+    geom: "line",
+    hue: "#7dd3fc",
+    dash: "dot",
+    width: 1.6,
+    qty: M,
+    cost: { field: "negj_une", basis: "m100" },
   },
 
   /* ─────────── Инженер · цахилгаан ─────────── */
   {
-    id: 'et:21', n: 21, title: 'Цахилгаан дамжуулах агаарын шугам 110кв', topic: 'plan',
-    geom: 'line', hue: '#b45309', dash: 'dash-dot', width: 2.2, qty: M,
-    cost: { field: 'negj_une', basis: 'm100' },
+    id: "et:21",
+    n: 21,
+    title: "Цахилгаан дамжуулах агаарын шугам 110кв",
+    topic: "plan",
+    geom: "line",
+    hue: "#b45309",
+    dash: "dash-dot",
+    width: 2.2,
+    qty: M,
+    cost: { field: "negj_une", basis: "m100" },
   },
   {
-    id: 'et:13', n: 13, title: 'Кабель трасс 10кв (Дамбадаржаа)', topic: 'plan',
-    geom: 'line', hue: '#f59e0b', dash: 'dash-dot', width: 1.6, qty: M,
-    cost: { field: 'negj_une', basis: 'm100' },
+    id: "et:13",
+    n: 13,
+    title: "Кабель трасс 10кв (Дамбадаржаа)",
+    topic: "plan",
+    geom: "line",
+    hue: "#f59e0b",
+    dash: "dash-dot",
+    width: 1.6,
+    qty: M,
+    cost: { field: "negj_une", basis: "m100" },
   },
   {
-    id: 'et:22', n: 22, title: 'Цахилгааны шугам', topic: 'plan',
-    geom: 'line', hue: '#eab308', dash: 'dash-dot', width: 1.4, qty: M,
-    cost: { field: 'negj_une', basis: 'm100' },
+    id: "et:22",
+    n: 22,
+    title: "Цахилгааны шугам",
+    topic: "plan",
+    geom: "line",
+    hue: "#eab308",
+    dash: "dash-dot",
+    width: 1.4,
+    qty: M,
+    cost: { field: "negj_une", basis: "m100" },
   },
   {
-    id: 'et:20', n: 20, title: 'Цахилгаан 0.4кв кабель трасс', topic: 'plan',
-    geom: 'line', hue: '#fbbf24', dash: 'dash-dot', width: 1.1, qty: M,
-    cost: { field: 'negj_une', basis: 'm100' },
+    id: "et:20",
+    n: 20,
+    title: "Цахилгаан 0.4кв кабель трасс",
+    topic: "plan",
+    geom: "line",
+    hue: "#fbbf24",
+    dash: "dash-dot",
+    width: 1.1,
+    qty: M,
+    cost: { field: "negj_une", basis: "m100" },
   },
 
   /* ─────────── Инженер · бэлтгэл ─────────── */
   {
-    id: 'et:15', n: 15, title: 'Инженерийн бэлтгэл арга хэмжээ', topic: 'plan',
-    geom: 'line', hue: '#6366f1', dash: 'long-dash', width: 2.0, qty: M,
+    id: "et:15",
+    n: 15,
+    title: "Инженерийн бэлтгэл арга хэмжээ",
+    topic: "plan",
+    geom: "line",
+    hue: "#6366f1",
+    dash: "long-dash",
+    width: 2.0,
+    qty: M,
     // ⚠️ Энэ давхаргын нэгж үнэ ангилал бүрт ӨӨР (18–250 сая) — `negj_une_100m`
     //    нь мөр бүрт өөрийн утгатай тул нийлбэрийг сервер тал бодно.
-    cost: { field: 'negj_une_100m', basis: 'm100' },
-    facets: [{ field: 'Layer', label: 'Арга хэмжээний төрөл' }],
+    cost: { field: "negj_une_100m", basis: "m100" },
+    facets: [{ field: "Layer", label: "Арга хэмжээний төрөл" }],
     // Каталогт төрлөөрөө задарна — энэ давхарга нэг мөр биш, багц арга хэмжээ
     catalogFacet: true,
   },
 
   /* ─────────── Зам ─────────── */
   {
-    id: 'et:29', n: 29, title: 'Зам (талбай)', topic: 'plan', geom: 'area',
-    hue: '#334155', fill: 0.24, width: 0.7, noZone: true,
-    note: 'зөвхөн геометр — атрибутгүй',
+    id: "et:29",
+    n: 29,
+    title: "Зам (талбай)",
+    topic: "plan",
+    geom: "area",
+    hue: "#334155",
+    fill: 0.24,
+    width: 0.7,
+    noZone: true,
+    note: "зөвхөн геометр — атрибутгүй",
   },
   {
-    id: 'et:5', n: 5, title: 'Замын тэнхлэг', topic: 'plan', geom: 'line',
-    hue: '#94a3b8', dash: 'solid', width: 0.8,
+    id: "et:5",
+    n: 5,
+    title: "Замын тэнхлэг",
+    topic: "plan",
+    geom: "line",
+    hue: "#94a3b8",
+    dash: "solid",
+    width: 0.8,
     // ⚠️ 24,251 хэрчим — жижиг масштабт бүгдийг зурвал зураг бөглөрнө
     minScale: 25000,
     noZone: true,
-    qty: { field: 'urt_km', unit: 'км' },
-    cost: { field: 'negjune_km', basis: 'km' },
+    qty: { field: "urt_km", unit: "км" },
+    cost: { field: "negjune_km", basis: "km" },
   },
   {
-    id: 'et:27', n: 27, title: 'Явган хүний зам', topic: 'plan', geom: 'area',
-    hue: '#a8a29e', fill: 0.34, width: 0.6, qty: M2,
-    cost: { field: 'negj_une', basis: 'm2' },
+    id: "et:27",
+    n: 27,
+    title: "Явган хүний зам",
+    topic: "plan",
+    geom: "area",
+    hue: "#a8a29e",
+    fill: 0.34,
+    width: 0.6,
+    qty: M2,
+    cost: { field: "negj_une", basis: "m2" },
   },
   {
-    id: 'et:14', n: 14, title: 'Дугуйн зам', topic: 'plan', geom: 'line',
-    hue: '#f43f5e', dash: 'solid', width: 2.0, qty: M,
-    cost: { field: 'negj_une', basis: 'm100' },
+    id: "et:14",
+    n: 14,
+    title: "Дугуйн зам",
+    topic: "plan",
+    geom: "line",
+    hue: "#f43f5e",
+    dash: "solid",
+    width: 2.0,
+    qty: M,
+    cost: { field: "negj_une", basis: "m100" },
   },
   {
-    id: 'et:12', n: 12, title: 'Гүүрэн байгууламж', topic: 'plan', geom: 'line',
-    hue: '#c026d3', dash: 'solid', width: 3.0, qty: M,
-    cost: { field: 'niit_une_sh', basis: 'sh' },
+    id: "et:12",
+    n: 12,
+    title: "Гүүрэн байгууламж",
+    topic: "plan",
+    geom: "line",
+    hue: "#c026d3",
+    dash: "solid",
+    width: 3.0,
+    qty: M,
+    cost: { field: "niit_une_sh", basis: "sh" },
   },
 
   /* ─────────── Тээвэр ─────────── */
   {
-    id: 'et:6', n: 6, title: 'Автобусны чиглэл', topic: 'plan', geom: 'line',
-    hue: '#7c3aed', dash: 'long-dash', width: 2.4, qty: M,
-    facets: [{ field: 'chiglel', label: 'Чиглэл' }],
+    id: "et:6",
+    n: 6,
+    title: "Автобусны чиглэл",
+    topic: "plan",
+    geom: "line",
+    hue: "#7c3aed",
+    dash: "long-dash",
+    width: 2.4,
+    qty: M,
+    facets: [{ field: "chiglel", label: "Чиглэл" }],
   },
   {
-    id: 'et:2', n: 2, title: 'Автобусны буудал', topic: 'plan', geom: 'point',
-    hue: '#8b5cf6', marker: 'circle', size: 10,
-    cost: { field: 'negj_une', basis: 'sh' },
+    id: "et:2",
+    n: 2,
+    title: "Автобусны буудал",
+    topic: "plan",
+    geom: "point",
+    hue: "#8b5cf6",
+    marker: "circle",
+    size: 10,
+    cost: { field: "negj_une", basis: "sh" },
   },
   {
-    id: 'et:1', n: 1, title: 'LRT/BRT зогсоол', topic: 'plan', geom: 'point',
-    hue: '#4f46e5', marker: 'square', size: 11,
-    cost: { field: 'negj_une', basis: 'sh' },
+    id: "et:1",
+    n: 1,
+    title: "LRT/BRT зогсоол",
+    topic: "plan",
+    geom: "point",
+    hue: "#4f46e5",
+    marker: "square",
+    size: 11,
+    cost: { field: "negj_une", basis: "sh" },
   },
 
   /* ─────────── Бүс ─────────── */
@@ -879,41 +1531,116 @@ export const LAYERS: LayerDef[] = [
    * `zoneCanon`/`zoneRefValues` хосоор хөрвүүлж холбоно.
    */
   {
-    id: 'zone', n: 0, url: `${HJ}/busiin_medeelel_final/FeatureServer/0`, oid: 'FID',
-    title: 'Хот төлөвлөлтийн бүс', topic: 'plan', geom: 'area',
+    id: "zone",
+    n: 0,
+    url: `${HJ}/busiin_medeelel_final/FeatureServer/0`,
+    oid: "FID",
+    title: "Хот төлөвлөлтийн бүс",
+    topic: "plan",
+    geom: "area",
     // Хил нь ТОД улбар шар, НАРИЙН; дүүргэлт 70% тунгалаг (alpha 0.3).
-    hue: '#f97316', fill: 0.3, width: 1,
-    qty: { field: 'GAZAR_M2', unit: 'м²' },
+    hue: "#f97316",
+    fill: 0.3,
+    width: 1,
+    qty: { field: "GAZAR_M2", unit: "м²" },
     // ⚠️ Бүсийн ӨӨРИЙН кодын талбар — `ZONE_ID` БИШ. Бүсийн шүүлт үүн дээр тогтоно.
-    zoneField: 'RefName_1',
-    note: '59 бүс · FAR, BCR, зогсоол',
+    zoneField: "RefName_1",
+    note: "59 бүс · FAR, BCR, зогсоол",
     facets: [
-      { field: 'Angilal', label: 'Бүсийн ангилал' },
-      { field: 'zoriulalt', label: 'Зориулалт' },
+      { field: "Angilal", label: "Бүсийн ангилал" },
+      { field: "zoriulalt", label: "Зориулалт" },
     ],
     // ⚠️ Зурагт зөвхөн орон сууц/олон нийт улаанаар — бусад нь жигд суурь өнгө
     // ⚠️ Зурагт 2 өнгө (чухал ↔ суурь), диаграмд ангилал бүр өөрийн өнгөтэй.
     paint: {
-      field: 'Angilal',
+      field: "Angilal",
       values: ZONE_MAP_TYPES,
       chartValues: ZONE_CHART_TYPES,
       emptyLabel: ZONE_TYPE_EMPTY,
     },
   },
 
+  /* ─────────── Газар чөлөөлөлт (тусдаа үйлчилгээ) ─────────── */
+  /**
+   * ⚠️ Бүсээр ШҮҮХГҮЙ (`noZone`). Талбарууд `Бүс` талбартай ч бичиглэл нь бохир:
+   * «A5» (зураасгүй), «БAГЦ4.1.» (кирилл/латин холимог, төгсгөлд цэг), «B2.3»
+   * (бүсчлэлд аль хэдийн байхгүй) — 224 талбарын 63 нь л шууд таарна. Бүсийн
+   * шүүлт тавибал үлдсэн 161 нь ЧИМЭЭГҮЙ алга болно; тиймээс энэ давхарга
+   * шүүлтээс үл хамааран бүтнээрээ зурагдана.
+   */
+  {
+    id: "land:left",
+    n: 67,
+    url: PARCEL_LEFT.url,
+    oid: "OBJECTID",
+    title: "Чөлөөлөгдөөгүй нэгж талбар",
+    topic: "plan",
+    geom: "area",
+    hue: "#e11d48",
+    fill: 0.42,
+    width: 0.8,
+    noZone: true,
+    qty: { field: PARCEL_LEFT.fields.area, unit: "м²" },
+    note: "224 талбар · чөлөөлөлтийн явц",
+    facets: [
+      { field: PARCEL_LEFT.fields.progress, label: "Чөлөөлөлтийн явц" },
+      { field: PARCEL_LEFT.fields.block, label: "Блок" },
+      { field: PARCEL_LEFT.fields.landuse, label: "Газрын зориулалт" },
+    ],
+    paint: {
+      field: PARCEL_LEFT.fields.progress,
+      values: PARCEL_PROGRESS_HUES,
+      emptyLabel: "Тодорхойгүй",
+    },
+  },
+  {
+    id: "land:clean",
+    n: 3,
+    url: PARCEL_CLEAN.url,
+    oid: "OBJECTID",
+    title: "Цэвэрлэсэн нэгж талбар",
+    topic: "plan",
+    geom: "area",
+    hue: "#22c55e",
+    fill: 0.32,
+    width: 0.8,
+    noZone: true,
+    note: "457 талбар · буулгалтын өртөг",
+    facets: [
+      { field: PARCEL_CLEAN.fields.status, label: "Төлбөрийн статус" },
+      { field: PARCEL_CLEAN.fields.year, label: "Он" },
+    ],
+  },
+
   /* ─────────── Бусад ─────────── */
   {
-    id: 'et:25', n: 25, title: 'Ногоон байгууламж', topic: 'plan', geom: 'area',
-    hue: '#22c55e', fill: 0.34, width: 0.8, qty: M2,
-    cost: { field: 'negj_une', basis: 'm2' },
-    facets: [{ field: 'Layer', label: 'Хэрэгцээний ангилал' }],
+    id: "et:25",
+    n: 25,
+    title: "Ногоон байгууламж",
+    topic: "plan",
+    geom: "area",
+    hue: "#8ebd00",
+    fill: 0.34,
+    width: 0.8,
+    qty: M2, // эх веб зураг
+    cost: { field: "negj_une", basis: "m2" },
+    facets: [{ field: "Layer", label: "Хэрэгцээний ангилал" }],
   },
   {
-    id: 'et:26', n: 26, title: 'Цэцэрлэгт хүрээлэн, ногоон алхалт', topic: 'plan',
-    geom: 'area', hue: '#84cc16', fill: 0.32, width: 0.8, qty: M2,
-    cost: { field: 'negj_une', basis: 'm2' },
-    facets: [{ field: 'Layer', label: 'Ангилал' }],
+    id: "et:26",
+    n: 26,
+    title: "Цэцэрлэгт хүрээлэн, ногоон алхалт",
+    topic: "plan",
+    geom: "area",
+    hue: "#84cc16",
+    fill: 0.32,
+    width: 0.8,
+    qty: M2,
+    cost: { field: "negj_une", basis: "m2" },
+    facets: [{ field: "Layer", label: "Ангилал" }],
   },
+
+  ...PKG_LAYERS,
 ];
 
 export const LAYER_BY_ID: Record<string, LayerDef> = Object.fromEntries(
@@ -955,22 +1682,22 @@ export const layerUrl = (l: LayerDef) => l.url ?? `${ET}/${l.n}`;
 export const oidOf = (l: LayerDef) => l.oid ?? OID;
 
 /** Бүсийн давхарга — нэгдсэн шүүлт, бүсийн самбар үүн дээр тогтоно */
-export const ZONE_LAYER = LAYER_BY_ID['zone'];
+export const ZONE_LAYER = LAYER_BY_ID["zone"];
 /** Барилгын давхарга — бүсийн самбар «энд юу баригдаж байна» гэдгийг эндээс авна */
-export const BUILT_LAYER = LAYER_BY_ID['et:24'];
+export const BUILT_LAYER = LAYER_BY_ID["et:24"];
 
 /** Барилгын давхаргын онцлох талбарууд */
 export const BUILT_FIELDS = {
-  status: 'Barilga_ty',
-  purpose: 'Зориулалт_m',
-  floorArea: 'Барилгын_нийт_талбай_m2',
-  usable: 'Барилгажсан_талбай',
-  households: 'Urhiin_too',
-  population: 'Total_population',
-  parking: 'Parking',
-  floors: 'Давхрын_тоо_max',
-  block: 'Блокы',
-  company: 'Bar_comp',
+  status: "Barilga_ty",
+  purpose: "Зориулалт_m",
+  floorArea: "Барилгын_нийт_талбай_m2",
+  usable: "Барилгажсан_талбай",
+  households: "Urhiin_too",
+  population: "Total_population",
+  parking: "Parking",
+  floors: "Давхрын_тоо_max",
+  block: "Блокы",
+  company: "Bar_comp",
 } as const;
 
 /**
@@ -987,25 +1714,25 @@ export const BUILT_FIELDS = {
  * хэвээр бодогдоно.
  */
 export const ZONE_FIELDS = {
-  id: 'RefName_1',
-  type: 'Angilal',
-  purpose: 'zoriulalt',
-  landM2: 'GAZAR_M2',
-  landHa: 'GAZAR_GA',
-  builtM2: 'BAR_M2',
-  far: 'FAR',
+  id: "RefName_1",
+  type: "Angilal",
+  purpose: "zoriulalt",
+  landM2: "GAZAR_M2",
+  landHa: "GAZAR_GA",
+  builtM2: "BAR_M2",
+  far: "FAR",
   /** FAR хувиар — түүхий `FAR` талбар зарим бүст таслагдсан тул үүнийг эрхэмлэнэ */
-  farPct: 'FAR_HUVI',
-  bcr: 'BCR',
-  households: 'URH_TOO',
+  farPct: "FAR_HUVI",
+  bcr: "BCR",
+  households: "URH_TOO",
   /** Албан ёсны цэвэр талбай (га) — зам, нийтийн эзэмшил хассан */
-  areaHa: 'Area',
-  parkNorm: 'NORM_ZOGS',
-  parkPlanOpen: 'GADNA_ZOG',
-  parkPlanUnder: 'DUL_ZOG',
-  coverage: 'HURTEEMJ',
+  areaHa: "Area",
+  parkNorm: "NORM_ZOGS",
+  parkPlanOpen: "GADNA_ZOG",
+  parkPlanUnder: "DUL_ZOG",
+  coverage: "HURTEEMJ",
   /** Газар чөлөөлөлт дуусаагүй бүс (1/0) */
-  landPending: 'ga_ch_dut',
+  landPending: "ga_ch_dut",
 } as const;
 
 /* ── Бүсийн код: шинэ давхарга ↔ бусад давхарга ── */
@@ -1016,10 +1743,15 @@ export const ZONE_FIELDS = {
  * болж хуваагдаж, `B-2.1` нь `B-2` болж нэгдсэн. Дүрмээр таах боломжгүй тул
  * ЗӨВХӨН энэ хүснэгтээр холбоно — шууд жиших нь 368 барилгын 34-ийг унагаана.
  */
-const ZONE_SPLIT: Record<string, string[]> = { 'D-8': ['D-8.1', 'D-8.2'], 'B-2.1': ['B-2'] };
+const ZONE_SPLIT: Record<string, string[]> = {
+  "D-8": ["D-8.1", "D-8.2"],
+  "B-2.1": ["B-2"],
+};
 /** Шинэ код → хуучин `ZONE_ID` (дээрхийн эсрэг тал) */
 const ZONE_LEGACY: Record<string, string> = Object.fromEntries(
-  Object.entries(ZONE_SPLIT).flatMap(([legacy, news]) => news.map((n) => [n, legacy])),
+  Object.entries(ZONE_SPLIT).flatMap(([legacy, news]) =>
+    news.map((n) => [n, legacy]),
+  ),
 );
 
 /**
@@ -1029,10 +1761,12 @@ const ZONE_LEGACY: Record<string, string> = Object.fromEntries(
  * болно.
  */
 export const zoneCanon = (v: unknown): string => {
-  const s = String(v ?? '').replace(/\s+/g, '').trim();
-  if (!s) return '';
-  const [head, ...rest] = s.split('-');
-  return rest.length > 1 ? `${head}-${rest.join('.')}` : s;
+  const s = String(v ?? "")
+    .replace(/\s+/g, "")
+    .trim();
+  if (!s) return "";
+  const [head, ...rest] = s.split("-");
+  return rest.length > 1 ? `${head}-${rest.join(".")}` : s;
 };
 
 /**
@@ -1041,9 +1775,15 @@ export const zoneCanon = (v: unknown): string => {
  */
 export const zoneRefValues = (id: string): string[] => {
   const canon = zoneCanon(id);
-  return [...new Set((ZONE_SPLIT[canon] ?? [canon]).flatMap((c) => [
-    c, c.replace('-', ' -'), c.replace(/^([^-]+-\d+)\.(\d+)$/, '$1-$2'),
-  ]))];
+  return [
+    ...new Set(
+      (ZONE_SPLIT[canon] ?? [canon]).flatMap((c) => [
+        c,
+        c.replace("-", " -"),
+        c.replace(/^([^-]+-\d+)\.(\d+)$/, "$1-$2"),
+      ]),
+    ),
+  ];
 };
 
 /** Бусад давхаргын `ZONE_ID` утга — шинэ код өгвөл хуучин руу нь буцаана */
@@ -1061,12 +1801,12 @@ export const zoneWhere = (l: LayerDef, id: string): string | null => {
   if (l.noZone) return null;
   const field = l.zoneField ?? ZONE_FIELD;
   const vals = l.zoneField ? zoneRefValues(id) : zoneLegacyValues(id);
-  return `${field} IN (${vals.map((v) => `'${v.replace(/'/g, "''")}'`).join(', ')})`;
+  return `${field} IN (${vals.map((v) => `'${v.replace(/'/g, "''")}'`).join(", ")})`;
 };
 
 /* ══════════════════════ Растр ба 3D ══════════════════════ */
 
-const UBHUB = 'https://mapservice.ubhub.mn/arcgis/rest/services/Imagery';
+const UBHUB = "https://mapservice.ubhub.mn/arcgis/rest/services/Imagery";
 
 /**
  * Агаарын зураг — 9 ImageServer нэг бүрхэвч болж залгана. СУУРЬ тул хэрэглэгчийн
@@ -1076,7 +1816,7 @@ const UBHUB = 'https://mapservice.ubhub.mn/arcgis/rest/services/Imagery';
  * `ImageryLayer`.
  */
 export const IMAGERY = {
-  title: 'Агаарын зураг (ортофото)',
+  title: "Агаарын зураг (ортофото)",
   urls: [
     `${UBHUB}/Selbe_mid_1/ImageServer`,
     `${UBHUB}/selbe_mid2/ImageServer`,
@@ -1099,12 +1839,20 @@ export const IMAGERY = {
  * ArcGIS Server рүү шууд ордог тул `allowedOrigins: *` тохиргоо ажиллаж, аль ч
  * origin-д ACAO буцаана. Гэрчилгээ нь хүчинтэй.
  */
-const UBHUB_SCENE = 'https://arcgis.ubhub.mn:6443/arcgis/rest/services/Hosted';
+const UBHUB_SCENE = "https://arcgis.ubhub.mn:6443/arcgis/rest/services/Hosted";
 
 export const SCENE = {
   layers: [
-    { key: 'mesh1', title: 'Бодит загвар — Сэлбэ 1', url: `${UBHUB_SCENE}/Selbewebapp_slpk/SceneServer` },
-    { key: 'mesh2', title: 'Бодит загвар — Сэлбэ 2', url: `${UBHUB_SCENE}/Selbewebapp2_slpk/SceneServer` },
+    {
+      key: "mesh1",
+      title: "Бодит загвар — Сэлбэ 1",
+      url: `${UBHUB_SCENE}/Selbewebapp_slpk/SceneServer`,
+    },
+    {
+      key: "mesh2",
+      title: "Бодит загвар — Сэлбэ 2",
+      url: `${UBHUB_SCENE}/Selbewebapp2_slpk/SceneServer`,
+    },
   ],
 } as const;
 
@@ -1113,7 +1861,27 @@ export const SCENE = {
  * бөгөөд хавтгай (0 м) гадаргуу дээр вектор давхаргууд түүний ~1350 м доор үлдэнэ.
  */
 export const ELEVATION_URL =
-  'https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer';
+  "https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer";
+
+/**
+ * УСАН САН — ЗӨВХӨН 3D/BIM горимд нэмэгдэх талбайн давхарга (6 полигон).
+ *
+ * ⚠️ Каталогт ОРОХГҮЙ: `LAYERS`-д биш, тусдаа тогтмол. Порталын каталог нь
+ * 2D-д ч харагддаг жагсаалт бөгөөд энэ давхарга нь зөвхөн SceneView-д
+ * зурагдана — жагсаалтад чектэй атлаа 2D-д юу ч гарахгүй мөр нь эвдэрсэн мэт.
+ *
+ * ⚠️ Геометр нь Z-тэй (`hasZ: true`) ч утга нь ХУДАЛ: 6 объектын 5-д Z = 0.
+ * `absolute-height` горимд тэдгээр нь далайн түвшинд буюу газраас ~1350 м ДООР
+ * очиж, 3D-д бүрмөсөн алга болно. Тиймээс бусад вектор давхаргын нэгэн адил
+ * газарт наана (`on-the-ground`).
+ */
+export const USAN_SAN = {
+  id: "d3:usan_san",
+  title: "Усан сан",
+  url: `${HJ}/5_n_usan_san/FeatureServer/0`,
+  /** Эх веб зургийн `5_n_usan_san` симбол — дүүргэлт 25%, хүрээ бүтэн */
+  hue: "#003399",
+} as const;
 
 /**
  * BIM — барилгын мэдээллийн загвар (BuildingSceneLayer).
@@ -1124,12 +1892,17 @@ export const ELEVATION_URL =
  * бүтээсэн загвар (давхар, хана, инженерийн систем) тул BIM горимд меш нь
  * хасагдаж, эдгээр нь оронд нь харагдана.
  */
-const BIM_ROOT = 'https://tiles.arcgis.com/tiles/HJzgwvlNIXssnQar/arcgis/rest/services';
+const BIM_ROOT =
+  "https://tiles.arcgis.com/tiles/HJzgwvlNIXssnQar/arcgis/rest/services";
 
 export const BIM = {
   layers: Array.from({ length: 12 }, (_, i) => {
     const n = i + 1;
-    return { key: `bim:71_${n}`, title: `Барилгын загвар 71_${n}`, url: `${BIM_ROOT}/71_${n}/SceneServer` };
+    return {
+      key: `bim:71_${n}`,
+      title: `Барилгын загвар 71_${n}`,
+      url: `${BIM_ROOT}/71_${n}/SceneServer`,
+    };
   }),
 } as const;
 
@@ -1152,55 +1925,182 @@ export const BIM = {
  * («0/4») нь тухайн салбар бүхэлдээ асаалттай эсэхийг шууд хэлнэ.
  */
 export type GroupKey =
-  | 'zone' | 'build'
-  | 'heat' | 'sewer' | 'water' | 'power' | 'prep'
-  | 'road' | 'transit'
-  | 'green';
+  | "zone"
+  | "build"
+  | "power"
+  | "prep"
+  | "road"
+  | "transit"
+  | "green"
+  | "land"
+  | "pkgNet"
+  | "pkgPow"
+  | "pkgSrc"
+  | "pkgSite"
+  | "pkgSoc"
+  | "pkgCom";
 
-export const LAYER_GROUPS: { key: GroupKey; title: string; desc: string; icon: string; hue: string }[] = [
-  { key: 'zone', title: 'Бүс', desc: 'Хот төлөвлөлтийн 52 бүс', icon: 'frame', hue: '#0d9488' },
-  { key: 'build', title: 'Барилга', desc: 'Төлөв, зориулалт, өрх, өртөг', icon: 'building', hue: '#3387b8' },
-  { key: 'heat', title: 'Дулааны шугам', desc: 'ДХТ, гадна дулаан', icon: 'flame', hue: '#dc2626' },
-  { key: 'sewer', title: 'Бохирын шугам', desc: 'Бохир ус, худаг, хөрсний ус', icon: 'waves', hue: '#0891b2' },
-  { key: 'water', title: 'Цэвэр усны шугам', desc: 'Төлөвлөсөн шугам, эх үүсвэр', icon: 'droplet', hue: '#0284c7' },
-  { key: 'power', title: 'Цахилгааны шугам', desc: '110кв · 10кв · 0.4кв', icon: 'bolt', hue: '#eab308' },
-  { key: 'prep', title: 'Инженерийн бэлтгэл', desc: 'Бэлтгэл арга хэмжээ', icon: 'network', hue: '#6366f1' },
-  { key: 'road', title: 'Зам', desc: 'Зам, тэнхлэг, явган, дугуй, гүүр', icon: 'road', hue: '#475569' },
-  { key: 'transit', title: 'Тээвэр', desc: 'Автобус, LRT/BRT', icon: 'bus', hue: '#7c3aed' },
-  { key: 'green', title: 'Ногоон орчин', desc: 'Ногоон байгууламж, цэцэрлэгт хүрээлэн', icon: 'layers', hue: '#22c55e' },
+export const LAYER_GROUPS: {
+  key: GroupKey;
+  title: string;
+  desc: string;
+  icon: string;
+  hue: string;
+}[] = [
+  {
+    key: "zone",
+    title: "Бүс",
+    desc: "Хот төлөвлөлтийн 52 бүс",
+    icon: "frame",
+    hue: "#0d9488",
+  },
+  {
+    key: "build",
+    title: "Барилга",
+    desc: "Төлөв, зориулалт, өрх, өртөг",
+    icon: "building",
+    hue: "#fd7f6f",
+  },
+  /**
+   * ⚠️ «Дулааны шугам», «Бохирын шугам», «Цэвэр усны шугам» ГУРВАН багц
+   * КАТАЛОГООС ХАСАГДСАН. Тэдгээрийн давхаргууд (`et:4`, `et:7`–`et:11`,
+   * `et:3`, `et:16`–`et:19`, `et:23`) `LAYERS`-д ХЭВЭЭР үлдэнэ: дэд бүтцийн
+   * өртгийн загвар (`loadCosts`) ба тохиромжтой байдлын үнэлгээ тэднийг
+   * `LAYER_BY_ID`-аар шууд уншдаг — устгавал өртгийн нийт дүн буурна.
+   * Зөвхөн ЕРӨНХИЙ МЭДЭЭЛЛИЙН каталогийн жагсаалтаас гарлаа.
+   */
+  {
+    key: "power",
+    title: "Цахилгааны шугам",
+    desc: "110кв · 10кв · 0.4кв",
+    icon: "bolt",
+    hue: "#eab308",
+  },
+  {
+    key: "prep",
+    title: "Инженерийн бэлтгэл",
+    desc: "Бэлтгэл арга хэмжээ",
+    icon: "network",
+    hue: "#6366f1",
+  },
+  {
+    key: "road",
+    title: "Зам",
+    desc: "Зам, тэнхлэг, явган, дугуй, гүүр",
+    icon: "road",
+    hue: "#475569",
+  },
+  {
+    key: "transit",
+    title: "Тээвэр",
+    desc: "Автобус, LRT/BRT",
+    icon: "bus",
+    hue: "#7c3aed",
+  },
+  {
+    key: "green",
+    title: "Ногоон орчин",
+    desc: "Ногоон байгууламж, цэцэрлэгт хүрээлэн",
+    icon: "layers",
+    hue: "#8ebd00",
+  },
+  {
+    key: "land",
+    title: "Газар чөлөөлөлт",
+    desc: "Чөлөөлөгдөөгүй ба цэвэрлэсэн нэгж талбар",
+    icon: "frame",
+    hue: "#e11d48",
+  },
+  /**
+   * ⚠️ ГҮЙЦЭТГЭЛИЙН БАГЦУУД — ЕТ-ийн сэдэвчилсэн багцуудаас ДООР. Дээрх багцууд
+   * нь «юу төлөвлөгдсөн» (ерөнхий төлөвлөгөөний давхарга), эдгээр нь «хэн юуг
+   * гэрээгээр хийх» (гүйцэтгэлийн багц). Хоёуланг нь холивол хэрэглэгч нэг
+   * дулааны шугамыг хоёр өөр багцаас хайх болно.
+   */
+  {
+    key: "pkgNet",
+    title: "Багц 5 · Гадна инженер",
+    desc: "Дулаан, ус хангамж, ариутгах татуурга",
+    icon: "network",
+    hue: "#ff0000",
+  },
+  {
+    key: "pkgPow",
+    title: "Багц 6 · Цахилгаан, ХТП/РП",
+    desc: "Багц бүрийн шугам ба ХТП/РП",
+    icon: "bolt",
+    hue: "#772c94",
+  },
+  {
+    key: "pkgSrc",
+    title: "Багц 7–15 · Эх үүсвэр",
+    desc: "Усан сан, насос, магистраль шугам",
+    icon: "droplet",
+    hue: "#0891b2",
+  },
+  {
+    key: "pkgSite",
+    title: "Багц 16–18 · Талбайн ажил",
+    desc: "Өндөржилт, гадна тохижилт",
+    icon: "frame",
+    hue: "#a16207",
+  },
+  {
+    key: "pkgSoc",
+    title: "Багц 19–21 · Нийгмийн барилга",
+    desc: "Сургууль, цэцэрлэг, олон нийтийн",
+    icon: "building",
+    hue: "#22c55e",
+  },
+  {
+    key: "pkgCom",
+    title: "Холбоо · Багц 1–4",
+    desc: "Холбоо дохиоллын шугам ба цэг",
+    icon: "radio",
+    hue: "#7c3aed",
+  },
 ];
 
 /**
  * Багц бүрийн давхаргууд — ДАРААЛАЛ нь каталогт харагдах дараалал.
  *
- * ⚠️ ЭНД БҮХ ЕТ ДАВХАРГА байх ЁСТОЙ: `PLAN_LAYER_IDS` нь үүнээс үүсдэг бөгөөд
- * багцад ороогүй давхарга каталогоос ч, зургаас ч, нийлбэрээс ч чимээгүй
- * алга болно. Нийт 29 — багц нэмэх/хасахдаа энэ тоог шалгана.
+ * ⚠️ `PLAN_LAYER_IDS` нь ЗӨВХӨН эндээс үүснэ: багцад ороогүй давхарга каталогоос
+ * ч, зургаас ч, нийлбэрээс ч гарна. Дулаан/бохир/цэвэр усны 12 давхарга нь
+ * ЗОРИУДААР энд байхгүй (дээрх тайлбарыг үз) — тэдгээр нь `LAYERS`-д үлдсэн
+ * бөгөөд өртгийн загвар ба анализ хэвээр уншина.
  */
 export const GROUP_LAYERS: Record<GroupKey, string[]> = {
-  zone: ['zone'],
-  build: ['et:24'],
-  // ДХТ (шугам) · гадна дулаан улаан/тасархай/цэнхэр/ногоон · төлөвлөж буй ДХТ
-  heat: ['et:7', 'et:10', 'et:9', 'et:11', 'et:8', 'et:4'],
-  /**
-   * Бохирын шугам · одоо байгаа бохир ус · бохирын худаг · хөрсний ус.
-   *
-   * ⚠️ «Хөрсний ус шүүрүүлэх систем» (`et:19`) нь ус ЗАЙЛУУЛАХ систем тул энд
-   * тавив — цэвэр усны хангамжид биш. Ангилал нь эргэлзээтэй бол зөвхөн энэ
-   * мөрийг өөр багц руу зөөнө.
-   */
-  sewer: ['et:17', 'et:16', 'et:3', 'et:19'],
-  water: ['et:18', 'et:23'],
+  zone: ["zone"],
+  build: ["et:24"],
   // 110кв агаарын · 10кв кабель трасс · цахилгааны шугам · 0.4кв кабель трасс
-  power: ['et:21', 'et:13', 'et:22', 'et:20'],
-  prep: ['et:15'],
-  road: ['et:29', 'et:5', 'et:27', 'et:14', 'et:12'],
-  transit: ['et:6', 'et:2', 'et:1'],
-  green: ['et:25', 'et:26'],
+  power: ["et:21", "et:13", "et:22", "et:20"],
+  prep: ["et:15"],
+  road: ["et:29", "et:5", "et:27", "et:14", "et:12"],
+  transit: ["et:6", "et:2", "et:1"],
+  green: ["et:25", "et:26"],
+  /**
+   * ⚠️ ЕТ-ээс ГАДУУРХ хоёр үйлчилгээ. `PLAN_LAYER_IDS`-д орж каталог, зураг,
+   * нийлбэрт гарна — өртгийн талбаргүй тул дэд бүтцийн ӨРТӨГТ нөлөөлөхгүй.
+   */
+  land: ["land:left", "land:clean"],
+
+  /**
+   * ⚠️ `PKG_TABLE`-аас АВТОМАТААР — гараар хуулбарлавал шинэ давхарга нэмэхэд
+   * хүснэгт ба багц хоёр салж, каталогт харагдахгүй давхарга үлдэнэ
+   * (`GROUP_LAYERS`-д ороогүй давхарга `PLAN_LAYER_IDS`-д ч орохгүй).
+   */
+  pkgNet: pkgIds("net"),
+  pkgPow: pkgIds("pow"),
+  pkgSrc: pkgIds("src"),
+  pkgSite: pkgIds("site"),
+  pkgSoc: pkgIds("soc"),
+  pkgCom: pkgIds("com"),
 };
 
 /** Ерөнхий мэдээллийн БҮХ давхарга — багцын дарааллаар */
-export const PLAN_LAYER_IDS: string[] = LAYER_GROUPS.flatMap((g) => GROUP_LAYERS[g.key]);
+export const PLAN_LAYER_IDS: string[] = LAYER_GROUPS.flatMap(
+  (g) => GROUP_LAYERS[g.key],
+);
 
 /**
  * БАРИЛГЫН ХЯНАЛТЫН багц — каталогт тусдаа бүлэг болж гарна.
@@ -1210,26 +2110,26 @@ export const PLAN_LAYER_IDS: string[] = LAYER_GROUPS.flatMap((g) => GROUP_LAYERS
  * (объектын тоо, багцын хэмжээ) хуучин үйлчилгээний өгөгдөл нэмэгдэнэ.
  */
 export const MONITOR_GROUP = {
-  key: 'monitor' as const,
-  title: 'Барилгын хяналт',
-  desc: 'Блокийн гүйцэтгэл, талбайн тайлан',
-  icon: 'target',
-  hue: '#ea580c',
+  key: "monitor" as const,
+  title: "Барилгын хяналт",
+  desc: "Блокийн гүйцэтгэл, талбайн тайлан",
+  icon: "target",
+  hue: "#ea580c",
 };
-export const MONITOR_LAYER_IDS: string[] = ['mon:building', 'mon:survey'];
+export const MONITOR_LAYER_IDS: string[] = ["mon:building", "mon:survey"];
 
 /** Каталогт харуулах бүлгүүд — харагдацаас хамаарна */
-export const catalogGroups = (view: 'plan' | 'monitor') =>
-  view === 'monitor'
+export const catalogGroups = (view: "plan" | "monitor") =>
+  view === "monitor"
     ? [
-      { ...MONITOR_GROUP, ids: MONITOR_LAYER_IDS },
-      ...LAYER_GROUPS.map((g) => ({ ...g, ids: GROUP_LAYERS[g.key] })),
-    ]
+        { ...MONITOR_GROUP, ids: MONITOR_LAYER_IDS },
+        ...LAYER_GROUPS.map((g) => ({ ...g, ids: GROUP_LAYERS[g.key] })),
+      ]
     : LAYER_GROUPS.map((g) => ({ ...g, ids: GROUP_LAYERS[g.key] }));
 
 /** Давхарга аль багцад хамаарах вэ (хяналтынх багцгүй) */
 export const groupOf = (id: string): GroupKey | null =>
-  (LAYER_GROUPS.find((g) => GROUP_LAYERS[g.key].includes(id))?.key ?? null);
+  LAYER_GROUPS.find((g) => GROUP_LAYERS[g.key].includes(id))?.key ?? null;
 
 /* ══════════════════════ Харагдац ══════════════════════ */
 
@@ -1246,7 +2146,13 @@ export const groupOf = (id: string): GroupKey | null =>
  *   ⚠️ Ерөнхий мэдээллийн 29 давхаргыг бүгдийг зэрэг асаавал зураг бөглөрч,
  *   хэрэглэгч юу ч ялгаж харахгүй. Бүсээр эхэлж, үлдсэнийг каталогоос асаана.
  */
-export type ViewKey = 'dashboard' | 'plan' | 'monitor' | 'analysis' | 'sheet';
+export type ViewKey =
+  | "dashboard"
+  | "plan"
+  | "bagts"
+  | "monitor"
+  | "analysis"
+  | "sheet";
 
 export const VIEWS: {
   key: ViewKey;
@@ -1276,16 +2182,21 @@ export const VIEWS: {
    * картууд, доод картууд) диаграмаар хүрээлнэ. Тиймээс `standalone`.
    */
   {
-    key: 'dashboard', title: 'Ерөнхий дашбоард',
-    desc: 'Газрын зургийг тойрсон нэгдсэн үзүүлэлт',
-    icon: 'grid', hue: '#0ea5e9',
-    layers: ['zone', 'et:24'],
-    initial: ['zone', 'et:24'],
+    key: "dashboard",
+    title: "Ерөнхий дашбоард",
+    desc: "Газрын зургийг тойрсон нэгдсэн үзүүлэлт",
+    icon: "grid",
+    hue: "#0ea5e9",
+    layers: ["zone", "et:24"],
+    initial: ["zone", "et:24"],
     standalone: true,
   },
   {
-    key: 'plan', title: 'Ерөнхий мэдээлэл', desc: 'Бүс · барилга · инженер · зам · ногоон орчин',
-    icon: 'layers', hue: '#0d9488',
+    key: "plan",
+    title: "Ерөнхий төлөвлөгөө",
+    desc: "Бүс · барилга · инженер · зам · ногоон орчин",
+    icon: "layers",
+    hue: "#0d9488",
     layers: PLAN_LAYER_IDS,
     /**
      * ⚠️ ХООСОН — нээгдэхэд ямар ч давхарга сонгогдоогүй, каталогт чек байхгүй,
@@ -1296,11 +2207,36 @@ export const VIEWS: {
      */
     initial: [],
   },
+  /**
+   * БАГЦЫН МЭДЭЭЛЭЛ — барилга угсралтын 7 багц тус бүрийн БҮРЭН хуудас.
+   *
+   * ⚠️ «Барилгын хяналт»-аас ЯЛГААТАЙ: тэр нь блок бүрийн ажлын гүйцэтгэлийг
+   * (юу хийгдсэн) харуулдаг бол энэ нь ГЭРЭЭ, ТӨСӨВ, САНХҮҮЖИЛТ-ийг блокийн
+   * гүйцэтгэлтэй нэг дор тавьж «мөнгө ба явц тохирч байна уу» гэсэн асуултад
+   * хариулна. Гурван эх сурвалж нэгддэг: `BUS_cashflow` (мөнгө),
+   * `building_GOL_barigdaj_ehelsen` (блокийн геометр), `Selbe_guitsetgel_…`
+   * (гүйцэтгэл). Гурвуулаа багцын нэрийг өөр өөрөөр бичдэг тул `bagtsKey()`.
+   *
+   * ⚠️ Порталын каталог/самбарыг ашиглахгүй, өөрийн бүтэцтэй тул `standalone`.
+   */
   {
-    key: 'monitor', title: 'Барилгын хяналт', desc: 'Барилга бүрийн ажлын гүйцэтгэл',
-    icon: 'target', hue: '#ea580c',
-    layers: ['mon:building'],
-    initial: ['mon:building'],
+    key: "bagts",
+    title: "Багцын мэдээлэл",
+    desc: "Багц бүрийн гэрээ, санхүүжилт, блокийн гүйцэтгэл",
+    icon: "building",
+    hue: "#d97706",
+    layers: ["mon:building"],
+    initial: ["mon:building"],
+    standalone: true,
+  },
+  {
+    key: "monitor",
+    title: "Барилгын хяналт",
+    desc: "Барилга бүрийн ажлын гүйцэтгэл",
+    icon: "target",
+    hue: "#ea580c",
+    layers: ["mon:building"],
+    initial: ["mon:building"],
   },
   /**
    * АНАЛИЗ — Suitability Modeler.
@@ -1311,9 +2247,11 @@ export const VIEWS: {
    * `layers`/`initial` нь зөвхөн төрлийн шаардлагыг хангахад хоосон байна.
    */
   {
-    key: 'analysis', title: 'Тохиромжтой байдлын үнэлгээ',
-    desc: 'БНбД норм, эдийн засгийн үр ашиг',
-    icon: 'chart', hue: '#7c3aed',
+    key: "analysis",
+    title: "Тохиромжтой байдлын үнэлгээ",
+    desc: "БНбД норм, эдийн засгийн үр ашиг",
+    icon: "chart",
+    hue: "#7c3aed",
     layers: [],
     initial: [],
     standalone: true,
@@ -1323,21 +2261,25 @@ export const VIEWS: {
    * ⚠️ Порталын зураг/самбарыг ашиглахгүй, өөрийн бүтэцтэй тул `standalone`.
    */
   {
-    key: 'sheet', title: 'Гүйцэтгэл бөглөх',
-    desc: 'Ажлын гүйцэтгэлийн хүснэгт — засах, нийтлэх',
-    icon: 'pen', hue: '#0891b2',
+    key: "sheet",
+    title: "Гүйцэтгэл бөглөх",
+    desc: "Ажлын гүйцэтгэлийн хүснэгт — засах, нийтлэх",
+    icon: "pen",
+    hue: "#0891b2",
     layers: [],
     initial: [],
     standalone: true,
   },
 ];
 
-export const VIEW_BY_KEY: Record<ViewKey, (typeof VIEWS)[number]> = Object.fromEntries(
-  VIEWS.map((v) => [v.key, v]),
-) as Record<ViewKey, (typeof VIEWS)[number]>;
+export const VIEW_BY_KEY: Record<ViewKey, (typeof VIEWS)[number]> =
+  Object.fromEntries(VIEWS.map((v) => [v.key, v])) as Record<
+    ViewKey,
+    (typeof VIEWS)[number]
+  >;
 
 /** Апп нээгдэхэд — газрын зургийг тойрсон ерөнхий дашбоард */
-export const DEFAULT_VIEW: ViewKey = 'dashboard';
+export const DEFAULT_VIEW: ViewKey = "dashboard";
 
 /**
  * Апп нээгдэхэд асаалттай давхаргууд — БҮС.
@@ -1361,14 +2303,17 @@ export const drawOrder = (id: string): number => {
   // Бүс бол АГУУЛАГЧ — хамгийн доор (барилга нь дүүргэлтийнх нь дээр гарна).
   if (id === ZONE_LAYER.id) return -1;
   const g = LAYER_BY_ID[id]?.geom;
-  return g === 'point' ? 2 : g === 'line' ? 1 : 0;
+  return g === "point" ? 2 : g === "line" ? 1 : 0;
 };
 
 /** Зураасны хээ → dash загвар. Газрын зураг ба тайлбар нэг эх сурвалжтай. */
-export const DASH_PATTERN: Record<NonNullable<LayerDef['dash']>, number[] | null> = {
+export const DASH_PATTERN: Record<
+  NonNullable<LayerDef["dash"]>,
+  number[] | null
+> = {
   solid: null,
   dash: [7, 4],
   dot: [1.5, 3],
-  'dash-dot': [8, 3, 1.5, 3],
-  'long-dash': [14, 6],
+  "dash-dot": [8, 3, 1.5, 3],
+  "long-dash": [14, 6],
 };
