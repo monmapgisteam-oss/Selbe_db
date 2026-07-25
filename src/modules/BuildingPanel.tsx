@@ -25,11 +25,13 @@ const TS = TASK_SHEET.fields;
 /** null/хоосон утгыг НЭГ бүлэгт (ArcGIS null ба ' '-г тусад нь буцаадаг) */
 const UNKNOWN = 'Тодорхойгүй';
 
-type Block = {
+export type Block = {
   oid: number;
   /** `${БАГЦ}|блок` — нэгтгэсэн хүснэгттэй холбогдох түлхүүр */
   key: string;
   bagts: string;
+  /** Блокийн нэр («5/1») — багц дотор л давтагдашгүй */
+  blok: string;
   contractor: string;
   ail: number;
   floors: number | null;
@@ -112,6 +114,7 @@ export function useBuildings() {
         oid: Number(r[BUILDING.oid]),
         key,
         bagts: text(r[F.bagts], '').trim(),
+        blok: text(r[F.block], '').trim(),
         contractor: text(r[F.contractor], '').trim(),
         ail: Number(r[F.households] ?? 0) || 0,
         floors: Number.isFinite(dav) && dav > 0 ? dav : null,
@@ -123,6 +126,8 @@ export function useBuildings() {
     const withData = blocks.filter((b) => b.progress != null);
 
     return {
+      /** Блокийн ТҮҮХИЙ мөрүүд — «Багцын мэдээлэл» блок бүрээр задалж харуулна */
+      rows: blocks,
       blocks: blocks.length,
       households: blocks.reduce((s, b) => s + b.ail, 0),
       progress: meanOf(blocks.map((b) => b.progress)),

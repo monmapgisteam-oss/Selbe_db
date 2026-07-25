@@ -839,10 +839,13 @@ export function ListItem({
       {value != null && <span className={`${s.listVal} num`}>{value}</span>}
     </>
   );
+  // Нарийн баганад урт нэр таслагдана — бүтнээр нь hover-ээр л уншина
+  const full = sub ? `${title} — ${sub}` : title;
   return onClick ? (
     <button
       type="button"
       aria-pressed={active}
+      title={full}
       className={`${s.listItem} ${active ? s.listOn : ''}`}
       style={tone(color)}
       onClick={onClick}
@@ -850,7 +853,7 @@ export function ListItem({
       {inner}
     </button>
   ) : (
-    <div className={s.listItem} style={tone(color)}>
+    <div className={s.listItem} title={full} style={tone(color)}>
       {inner}
     </div>
   );

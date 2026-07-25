@@ -51,6 +51,65 @@
 .tileUnit { font-size: 0.72rem; font-weight: 600; color: var(--ink-3); margin-left: 3px; }
 .tileLabel { font-size: 0.78rem; font-weight: 500; color: var(--ink-2); }
 
+/* ══════════ «Багцын мэдээлэл» — ГУРВАН багана ══════════ */
+
+/**
+ * ⚠️ `.dash`-ын 5 баганат сүлжээг ДАХИН ХЭРЭГЛЭЖ БОЛОХГҮЙ: тэнд хажуугийн 4
+ * багана 240px-ээр таглагдсан бөгөөд багцын дэлгэрэнгүй (гүйцэтгэгчийн урт
+ * нэр, мөнгөн дүнгийн мөр) тэр өргөнд мөр дамжина. Энд ЗҮҮН нь зөвхөн 7 мөрт
+ * жагсаалт тул нарийн, БАРУУН нь бүх дэлгэрэнгүйг барих тул өргөн.
+ *
+ * `.side`, `.map`, `.kpi`, `.tile`, `.colHead`, `.mapDims` нь дашбоардтай
+ * ХУВААЛЦАНА — тэдгээр нь сүлжээнээс хамааралгүй.
+ */
+.pack {
+  height: 100%;
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  /* ⚠️ ЗҮҮН багана 250px-д хэт нарийн байв: «Багц 17.1 · Гадна тохижилт — Багц 1»
+     гэсэн нэр ба «1.08 тэрбум» гэсэн утга хоёр нэг мөрд багтахгүй, гарчиг нь
+     хоёр үг үлдтэлээ таслагдана. Багцын код хүртэл нь уншигдах өргөн хэрэгтэй. */
+  grid-template-columns: minmax(250px, 320px) minmax(0, 1fr) minmax(300px, 400px);
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-areas:
+    'kpi  kpi kpi'
+    'left map right';
+  background: var(--bg);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Гүйцэтгэлийн 4 түвшний тайлбар — зурган дээр доод зүүн буланд хөвнө.
+   ⚠️ Блокууд `breaks` рендерээр өнгөтэй зурагддаг; тайлбаргүй бол өнгө нь
+   ямар ч утгагүй чимэглэл болно. */
+.packLegend {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  max-width: calc(100% - 24px);
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  backdrop-filter: blur(8px);
+  box-shadow: var(--shadow-sm);
+  font-size: 0.68rem;
+  color: var(--ink-2);
+}
+.packLegendItem { display: flex; align-items: center; gap: 5px; }
+.packLegendItem i { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+.packLegendItem b { font-weight: 600; color: var(--ink-3); }
+
+/* Гүйцэтгэлийн цагираг ба хажуугийн үзүүлэлт — нэг эгнээнд */
+.packRing { display: flex; align-items: center; gap: 12px; }
+.packRing > :last-child { flex: 1; min-width: 0; }
+
 /* ── Зүүн / баруун баганын карт ── */
 .side {
   display: flex;
@@ -229,6 +288,9 @@
 
 /* ── Гүйцэтгэлийн индикатор мөр ── */
 .progressRow { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+/* Цагирагийн хажуугийн үзүүлэлт үлдсэн өргөнийг эзэлнэ — эс бөгөөс «Хамрагдсан
+   жин» гэх урт шошго нь өөрийн агуулгын өргөнд шахагдаж мөр дамжина. */
+.progressRow > .miniStats { flex: 1; min-width: 0; }
 .progressText { font-size: 0.7rem; line-height: 1.5; color: var(--ink-3); }
 .progressText b { color: var(--ink); }
 
