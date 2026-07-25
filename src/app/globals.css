@@ -68,6 +68,8 @@
   --head: 56px;
   /* Доод хүрээ — нэгтгэсэн үзүүлэлтийн зурвас */
   --dashfoot: 76px;
+  /* «Барилгын хяналт» — газрын зургийн доорх явцын муруйн зурвас */
+  --montrend: 240px;
 
   --ease: cubic-bezier(0.32, 0.72, 0, 1);
   --mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace;
@@ -101,6 +103,8 @@ button { font: inherit; color: inherit; cursor: pointer; background: none; borde
  * чирэлт таслагдана.
  */
 body.resizing, body.resizing * { cursor: col-resize !important; user-select: none !important; }
+/* Мөрийн өндөр чирэх үед — дээш/доош */
+body.resizingRow, body.resizingRow * { cursor: row-resize !important; user-select: none !important; }
 a { color: inherit; text-decoration: none; }
 ul, ol { list-style: none; }
 

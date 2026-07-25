@@ -24,7 +24,7 @@ import {
 } from '@/lib/services';
 import { num } from '@/lib/format';
 import { ViewPanel } from '@/modules/ViewPanel';
-import { BuildingSummary } from '@/modules/BuildingPanel';
+import { BuildingSummary, MonitorTrend, useBuildings } from '@/modules/BuildingPanel';
 
 import s from '@/app/shell.module.css';
 
@@ -46,16 +46,29 @@ const CAT_MAX = 560;
 const CAT_DEFAULT = 296;
 const CAT_KEY = 'selbe-catalog-width';
 
+/** «Барилгын хяналт»-ын ЗҮҮН дундаж баганы өргөн (px) */
+const MON_MIN = 240;
+const MON_MAX = 620;
+const MON_DEFAULT = 300;
+const MON_KEY = 'selbe-monleft-width';
+
+/** Зургийн доорх явцын муруйн зурвасын өндөр (px) */
+const TREND_MIN = 140;
+const TREND_MAX = 560;
+const TREND_DEFAULT = 240;
+const TREND_KEY = 'selbe-montrend-height';
+
 /**
- * БАГАНА ЧИРЭХ — самбар ба каталог ХОЁУЛАА үүнийг хэрэглэнэ.
+ * БАГАНА/МӨР ЧИРЭХ — самбар, каталог, зүүн багана, доод зурвас БҮГД үүнийг.
  *
  * ⚠️ `dir` нь чирэлтийн тэмдгийг заана: БАРУУН талын самбар зүүн тийш чирэхэд
  * өргөсдөг тул `-1`, ЗҮҮН талын каталог баруун тийш чирэхэд өргөсдөг тул `+1`.
- * Хоёуланд нь нэг томьёо — ялгаа нь зөвхөн энэ тэмдэг.
+ * `axis: 'y'` нь ӨНДӨР — зургийн доорх зурвас ДЭЭШ чирэхэд өндөрсдөг тул `-1`.
+ * Бүгдэд нь нэг томьёо — ялгаа нь зөвхөн тэнхлэг ба тэмдэг.
  */
 function useColumnResize(
-  { min, max, initial, storageKey, dir }:
-  { min: number; max: number; initial: number; storageKey: string; dir: 1 | -1 },
+  { min, max, initial, storageKey, dir, axis = 'x' }:
+  { min: number; max: number; initial: number; storageKey: string; dir: 1 | -1; axis?: 'x' | 'y' },
 ) {
   const [width, setWidth] = useState(initial);
   const [dragging, setDragging] = useState(false);
@@ -78,20 +91,22 @@ function useColumnResize(
     const grip = e.currentTarget;
     grip.setPointerCapture(e.pointerId);
     setDragging(true);
-    document.body.classList.add('resizing');
+    const cls = axis === 'y' ? 'resizingRow' : 'resizing';
+    document.body.classList.add(cls);
 
-    const x0 = e.clientX;
+    const at = (ev: { clientX: number; clientY: number }) => (axis === 'y' ? ev.clientY : ev.clientX);
+    const x0 = at(e);
     const w0 = width;
     last.current = w0;
 
     const move = (ev: PointerEvent) => {
-      const w = Math.min(max, Math.max(min, w0 + dir * (ev.clientX - x0)));
+      const w = Math.min(max, Math.max(min, w0 + dir * (at(ev) - x0)));
       last.current = w;
       setWidth(w);
     };
     const up = () => {
       setDragging(false);
-      document.body.classList.remove('resizing');
+      document.body.classList.remove(cls);
       grip.releasePointerCapture(e.pointerId);
       grip.removeEventListener('pointermove', move);
       grip.removeEventListener('pointerup', up);
@@ -214,6 +229,14 @@ function PortalContent() {
   const catSize = useColumnResize({
     min: CAT_MIN, max: CAT_MAX, initial: CAT_DEFAULT, storageKey: CAT_KEY, dir: 1,
   });
+  // «Барилгын хяналт»-ын зүүн багана — мөн ЗҮҮН талд тул +1
+  const monSize = useColumnResize({
+    min: MON_MIN, max: MON_MAX, initial: MON_DEFAULT, storageKey: MON_KEY, dir: 1,
+  });
+  // Зургийн доорх муруйн зурвас — ДЭЭШ чирэхэд өндөрснө
+  const trendSize = useColumnResize({
+    min: TREND_MIN, max: TREND_MAX, initial: TREND_DEFAULT, storageKey: TREND_KEY, dir: -1, axis: 'y',
+  });
 
   const active = VIEW_BY_KEY[view];
   /**
@@ -250,6 +273,8 @@ function PortalContent() {
           '--hue': active.hue,
           '--panel': `${panelSize.width}px`,
           '--catalog': `${catSize.width}px`,
+          '--monleft': `${monSize.width}px`,
+          '--montrend': `${trendSize.width}px`,
         } as CSSProperties}
       >
         <header className={s.head}>
@@ -293,12 +318,8 @@ function PortalContent() {
 
         {!isFull && (
           <>
-            {/* «Барилгын хяналт» — газрын зургийн ЗҮҮН талд бүх барилгын ДУНДАЖ (статик) */}
-            {view === 'monitor' && (
-              <aside className={s.monLeft} aria-label="Барилгын дундаж мэдээлэл">
-                <BuildingSummary />
-              </aside>
-            )}
+            {/* «Барилгын хяналт» — ЗҮҮН талд дундаж, зургийн ДООР явцын муруй */}
+            {view === 'monitor' && <MonitorFrame size={monSize} trend={trendSize} />}
 
             <div className={s.map}>
               <MapCanvas dim={dim} visible={visible} zone={zone} onPick={pick} />
@@ -412,6 +433,56 @@ function PortalContent() {
           </>
         )}
       </div>
+    </>
+  );
+}
+
+/* ── «Барилгын хяналт»-ын хүрээ ── */
+
+/**
+ * ЗҮҮН дундаж багана + газрын зургийн ДООРХ явцын муруй.
+ *
+ * ⚠️ Хоёулаа НЭГ `useBuildings()`-ээс уншина — тусад нь дуудвал 113 блокийн
+ * хүсэлт хоёр удаа явна. Fragment тул grid-ийн шууд хүүхдүүд хэвээр: муруй нь
+ * DOM-д зүүн баганын хажууд ч, `grid-area: trend` нь зургийн доор тавина.
+ */
+function MonitorFrame(
+  { size, trend }: { size: ReturnType<typeof useColumnResize>; trend: ReturnType<typeof useColumnResize> },
+) {
+  const q = useBuildings();
+  return (
+    <>
+      <aside className={s.monLeft} aria-label="Барилгын дундаж мэдээлэл">
+        {/* Өргөн тохируулах бариул — баганы БАРУУН ирмэг дээр */}
+        <div
+          className={`${s.grip} ${size.dragging ? s.gripOn : ''}`}
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Зүүн баганын өргөн"
+          onPointerDown={size.onPointerDown}
+          onDoubleClick={size.onDoubleClick}
+          title="Чирж өргөсгөнө · давхар товшиж анхны хэмжээнд буцаана"
+        />
+        <div className={s.monScroll}>
+          <BuildingSummary q={q} />
+        </div>
+      </aside>
+
+      <section className={s.monTrend} aria-label="Барилга угсралтын явц">
+        {/* Өндөр тохируулах бариул — зурвасын ДЭЭД ирмэг дээр */}
+        <div
+          className={`${s.rowGrip} ${trend.dragging ? s.rowGripOn : ''}`}
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label="Явцын зурвасын өндөр"
+          onPointerDown={trend.onPointerDown}
+          onDoubleClick={trend.onDoubleClick}
+          title="Чирж өндөрсгөнө · давхар товшиж анхны хэмжээнд буцаана"
+        />
+        <div className={s.monScroll}>
+          <MonitorTrend q={q} />
+        </div>
+      </section>
     </>
   );
 }
