@@ -1,41 +1,33 @@
 /**
- * Барилгын блок бүрийн НИЙТ ГҮЙЦЭТГЭЛ (%), «Гүйцэтгэл бөглөх» хуудасны as-of
- * логикоор — газрын зураг дээр блокуудыг гүйцэтгэлээр өнгөлөхөд ашиглана.
+ * Барилгын блок бүрийн НИЙТ ГҮЙЦЭТГЭЛ (%) — газрын зураг дээр блокуудыг
+ * гүйцэтгэлээр өнгөлөх, tooltip болон баруун самбарт харуулахад ашиглана.
  *
- * ⚠️ Эх сурвалж нь shapefile-ийн `GUITS_HV` талбар БИШ (тэр нь хуучирсан, нэг
- * блокт олон зөрүүтэй утгатай). Оронд нь `Tusliin_guitsetgel_master` (нээлттэй)
- * хүснэгтээс бүх түүхийг татаж, ажил бүрээр хамгийн сүүлийн утгыг (Огноо→OID)
- * аваад навч ажлыг (Түвшин 3) жингээр жигнэнэ — `BuildingPanel.useTaskPerf`-тэй
- * ЯГ адил тооцоо, зөвхөн блок болгоноор нэг дор.
+ * ⚠️ Эх сурвалж нь shapefile-ийн `GUITS_HV` талбар БИШ (хуучирсан), навчийн
+ * жигнэсэн дундаж ч БИШ. «Гүйцэтгэл бөглөх» хуудасны нэгтгэсэн хүснэгтээс
+ * «Б. БАРИЛГА УГСРАЛТЫН АЖИЛ» (№ = «Б.») мөрийн тухайн барилгын нүдийг ШУУД
+ * авна — эх excel өөрөө дэд-үе шатын жингээр бодсон дүн бөгөөд Бэлтгэл ажлыг
+ * (№ «А.») агуулахгүй.
  *
- * ~40k мөрийг НЭГ УДАА татаад cache-лнэ (≈7с). Тиймээс `loadBlockProgress`-ыг
- * олон газраас дуудсан ч ганц хүсэлт л явна.
+ * Нүд бүрээр ХАМГИЙН СҮҮЛИЙН огноог авна: бөглөх хуудас нь өөрчилсөн нүдээ
+ * л шинэ огноогоор нэмдэг тул нэг барилгын нүднүүд өөр өөр огноотой байж болно.
  */
-import { TASK_PERF } from './services';
+import { TASK_SHEET, buildingKey } from './services';
 
-const TP = TASK_PERF.fields;
-const OID = TASK_PERF.oid;
+const TS = TASK_SHEET.fields;
 
 const t = (v: unknown) => (v == null ? '' : String(v));
 const isValidDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
-/** «5/1 барилга» / «5/1 блок» → «5/1» (shapefile-ийн BLOK-той тааруулах) */
-const normBlock = (b: unknown) => t(b).trim().split(/\s+/)[0];
 
-/** Толгой (header) ажил уу? Навч = Түвшин 3 + бутархай жин (isHeaderAttrs-тэй адил) */
-const isHdr = (r: Record<string, unknown>) => {
-  const w = r[TP.weight] == null ? null : Number(r[TP.weight]);
-  return Number(r[TP.level]) !== 3 || (w != null && Math.abs(w - 1) < 1e-6);
-};
-
-async function fetchAll(): Promise<Record<string, unknown>[]> {
+async function fetchConstruction(): Promise<Record<string, unknown>[]> {
   const out: Record<string, unknown>[] = [];
-  const fields = [OID, TP.block, TP.date, TP.version, TP.level, TP.catA, TP.task, TP.weight, TP.progress].join(',');
+  const fields = [TS.bagts, TS.date, TS.block, TS.progress].join(',');
   for (let off = 0; ; ) {
     const body = new URLSearchParams({
-      where: '1=1', outFields: fields, returnGeometry: 'false',
+      where: `${TS.no}='${TASK_SHEET.constructionNo}' AND ${TS.block} IS NOT NULL`,
+      outFields: fields, returnGeometry: 'false',
       resultRecordCount: '2000', resultOffset: String(off), f: 'json',
     });
-    const res = await fetch(`${TASK_PERF.url}/query`, {
+    const res = await fetch(`${TASK_SHEET.url}/query`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body,
@@ -50,62 +42,28 @@ async function fetchAll(): Promise<Record<string, unknown>[]> {
   return out;
 }
 
-export type BlockProgress = { overall: number; leaves: number };
-/** Блок → гүйцэтгэл. (`MapCanvas`-д ArcGIS-ийн `Map` нэрийг дарсан тул alias.) */
+export type BlockProgress = { overall: number; date: string };
+/** `${БАГЦ}|${блок}` → гүйцэтгэл. (`MapCanvas`-д ArcGIS-ийн `Map`-ыг дарсан тул alias.) */
 export type BlockProgressMap = Map<string, BlockProgress>;
 
-function compute(rows: Record<string, unknown>[]): Map<string, BlockProgress> {
-  const byBlk = new Map<string, Record<string, unknown>[]>();
+function compute(rows: Record<string, unknown>[]): BlockProgressMap {
+  const out: BlockProgressMap = new Map();
   for (const r of rows) {
-    if (!isValidDate(t(r[TP.date]))) continue;
-    const b = normBlock(r[TP.block]);
-    if (!/^\d+\/\d+$/.test(b)) continue; // бохир мөр (жиш. «Гүйцэтгэл»)-ийг хас
-    const arr = byBlk.get(b);
-    if (arr) arr.push(r); else byBlk.set(b, [r]);
+    const d = t(r[TS.date]);
+    if (!isValidDate(d)) continue;
+    if (r[TS.progress] == null) continue; // бөглөөгүй нүд — «мэдээлэлгүй» хэвээр
+    const k = buildingKey(r[TS.bagts], r[TS.block]);
+    const prev = out.get(k);
+    if (prev && prev.date >= d) continue; // нүд бүрээр хамгийн сүүлийн огноо ялна
+    out.set(k, { overall: Number(r[TS.progress]) * 100, date: d });
   }
-  const result = new Map<string, BlockProgress>();
-  for (const [blk, rs] of byBlk) {
-    // Upload багц (Огноо|Хувилбар|түүхий блок) бүрд OID дарааллаар section стамп
-    const batches = new Map<string, Record<string, unknown>[]>();
-    for (const r of rs) {
-      const k = `${t(r[TP.date])}|${t(r[TP.version])}|${t(r[TP.block])}`;
-      const arr = batches.get(k);
-      if (arr) arr.push(r); else batches.set(k, [r]);
-    }
-    const secOf = new WeakMap<object, string>();
-    for (const b of batches.values()) {
-      b.sort((x, y) => Number(x[OID]) - Number(y[OID]));
-      let sec = '';
-      for (const r of b) {
-        if (isHdr(r)) sec = t(r[TP.task]);
-        secOf.set(r, isHdr(r) ? t(r[TP.task]) : sec);
-      }
-    }
-    // As-of сүүлийн утга ажил бүрээр
-    rs.sort((a, b) => {
-      const da = t(a[TP.date]), db = t(b[TP.date]);
-      if (da !== db) return da < db ? -1 : 1;
-      return Number(a[OID]) - Number(b[OID]);
-    });
-    const win = new Map<string, Record<string, unknown>>();
-    for (const r of rs) win.set(`${t(r[TP.level])}|${t(r[TP.catA])}|${secOf.get(r) ?? ''}|${t(r[TP.task])}`, r);
-    let twp = 0, tw = 0, leaves = 0;
-    for (const r of win.values()) {
-      if (Number(r[TP.level]) === 3 && !isHdr(r)) {
-        const w = Number(r[TP.weight]) || 0;
-        const p = Number(r[TP.progress]) || 0;
-        twp += w * p; tw += w; leaves += 1;
-      }
-    }
-    result.set(blk, { overall: tw ? (twp / tw) * 100 : 0, leaves });
-  }
-  return result;
+  return out;
 }
 
-let cache: Promise<Map<string, BlockProgress>> | null = null;
+let cache: Promise<BlockProgressMap> | null = null;
 
 /** Блок бүрийн нийт гүйцэтгэл (0–100). Нэг удаа татаж cache-лнэ. */
-export function loadBlockProgress(): Promise<Map<string, BlockProgress>> {
-  if (!cache) cache = fetchAll().then(compute).catch((e) => { cache = null; throw e; });
+export function loadBlockProgress(): Promise<BlockProgressMap> {
+  if (!cache) cache = fetchConstruction().then(compute).catch((e) => { cache = null; throw e; });
   return cache;
 }

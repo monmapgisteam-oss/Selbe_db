@@ -161,6 +161,38 @@ export async function distinct(field: string, where = "1=1") {
   return ((j.features || []) as Feature[]).map((f) => f.attributes[field]);
 }
 
+// Live "барилга угсралтын явц" per Багц: the mean, across buildings, of the
+// stored phase-"Б." header row (БАРИЛГА УГСРАЛТЫН АЖИЛ) at each Багц's latest
+// snapshot. This is the construction-section rollup the source sheet already
+// pre-computes into that header's cells — it excludes Бэлтгэл ажил (phase А.)
+// and carries the sub-phase weights niit_jin can't, so it reproduces the Төсөл
+// report's construction % (within the snapshot-date gap). Returns { bagts: 0..1 }.
+export async function constructionByBagts(): Promise<Record<string, number>> {
+  const feats = await queryAll("dugaar='Б.' AND barilga_blok IS NOT NULL", {
+    outFields: "bagts,ognoo,barilga_blok,guitsetgel",
+  });
+  // Keep only each Багц's latest ognoo, then average its building cells.
+  const latest = new Map<string, string>();
+  for (const f of feats) {
+    const b = String(f.attributes.bagts);
+    const d = String(f.attributes.ognoo);
+    if (!latest.has(b) || d > latest.get(b)!) latest.set(b, d);
+  }
+  const sum = new Map<string, number>();
+  const cnt = new Map<string, number>();
+  for (const f of feats) {
+    const a = f.attributes;
+    const b = String(a.bagts);
+    if (String(a.ognoo) !== latest.get(b)) continue;
+    if (a.guitsetgel == null) continue; // guard null cells
+    sum.set(b, (sum.get(b) ?? 0) + Number(a.guitsetgel));
+    cnt.set(b, (cnt.get(b) ?? 0) + 1);
+  }
+  const out: Record<string, number> = {};
+  for (const [b, c] of cnt) if (c) out[b] = sum.get(b)! / c;
+  return out;
+}
+
 // --- Attachments (per feature/ObjectID). Layer must have attachments enabled
 // in ArcGIS Online, else these return an "attachments not supported" error. ---
 export type AttachInfo = {

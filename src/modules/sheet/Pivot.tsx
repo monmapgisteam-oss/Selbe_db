@@ -70,6 +70,10 @@ type Row = {
 
 const s = (v: unknown) => (v == null ? "" : String(v));
 const pct = (v: number | null) => (v == null ? "" : Math.round(v * 100) + "%");
+// Weight as a percent with one decimal (жин 0..1 → "10.0%"). Whole-area weights
+// (Нийт жин) run tiny (0.9%), so integer rounding would collapse them.
+const wpct = (v: number | null) =>
+  v == null ? "" : (v * 100).toFixed(1) + "%";
 // Original cell value as an integer-percent string ("" when empty).
 const origStr = (row: Row, bld: string) => {
   const p = row.cells[bld]?.pct;
@@ -854,6 +858,21 @@ export default function Pivot() {
 
       {err && <p className={st.error}>{err}</p>}
 
+      {busy && rows.length === 0 && (
+        <div className={st.scroll}>
+          {Array.from({ length: 14 }).map((_, i) => (
+            <div key={i} className={st.skeletonRow}>
+              <div className={st.skeletonCell} style={{ width: 26 }} />
+              <div className={st.skeletonCell} style={{ width: 220 }} />
+              <div className={st.skeletonCell} style={{ width: 46 }} />
+              <div className={st.skeletonCell} style={{ flex: 1 }} />
+              <div className={st.skeletonCell} style={{ width: 50 }} />
+              <div className={st.skeletonCell} style={{ width: 50 }} />
+            </div>
+          ))}
+        </div>
+      )}
+
       {rows.length > 0 && (
         <div className={st.scroll}>
           <table className={st.xl} onMouseLeave={() => setHover(null)}>
@@ -861,7 +880,13 @@ export default function Pivot() {
               <tr>
                 <th className={cls("fz c-no")}>№</th>
                 <th className={cls("fz c-ajil")}>Ажил</th>
-                <th className={cls("fz c-jin")}>Жин</th>
+                <th className={cls("fz c-jin")} title="Ажлын хувийн жин — эцэг ажилдаа эзлэх">
+                  Ажлын жин
+                </th>
+                <th className={cls("fz c-totw")} title="Нийт талбайд эзлэх хувийн жин">
+                  Нийт жин
+                </th>
+                <th className={cls("fz c-perf")}>Гүйцэтгэл</th>
                 {buildings.map((b) => (
                   <th key={b} className={cls("bld")}>
                     {b}
@@ -935,7 +960,25 @@ export default function Pivot() {
                             : CELL_BG,
                       }}
                     >
-                      {r.weight == null ? "" : r.weight}
+                      {wpct(r.weight)}
+                    </td>
+                    <td
+                      className={cls("right fz c-totw")}
+                      style={{
+                        backgroundColor: rowHl
+                          ? HL_BG
+                          : header
+                            ? HEADER_BG
+                            : CELL_BG,
+                      }}
+                    >
+                      {wpct(r.totw)}
+                    </td>
+                    <td
+                      className={cls("num fz c-perf")}
+                      style={{ backgroundColor: rowHl ? HL_BG : CALC_BG }}
+                    >
+                      {pct(done)}
                     </td>
                     {buildings.map((b) => {
                       const key = `${ri}:${b}`;
@@ -1095,6 +1138,8 @@ export default function Pivot() {
                   Дундаж
                 </td>
                 <td className={cls("fz c-jin")} />
+                <td className={cls("fz c-totw")} />
+                <td className={cls("num fz c-perf")}>{pct(doneAvg)}</td>
                 {buildings.map((b) => (
                   <td key={b} className={cls("num bld")} />
                 ))}

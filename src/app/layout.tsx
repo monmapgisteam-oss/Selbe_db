@@ -3,6 +3,25 @@ import { Inter } from 'next/font/google';
 import { ThemeProvider, THEME_KEY } from '@/lib/theme';
 import './globals.css';
 
+// Бүх апп `dynamic(ssr:false)` Portal-ын дотор ачаалагддаг тул модулиудын CSS нь
+// async chunk-д орж, dev дээр `<head>`-д ОРОХГҮЙ — иймд Portal будагдсаны дараа л
+// стайл ирж анивчна (FOUC), код засахад CSS алга болно. Эдгээрийг root layout
+// (сервер, prerender) дээр урьдчилан импортлон `<head>`-д байнга байлгана.
+// ponytail: SPA бүх модулио ачаалдаг тул CSS-ийг тусад нь хуваах утгагүй.
+import './shell.module.css';
+import '@/modules/overview.module.css';
+import '@/modules/dashboard.module.css';
+import '@/modules/survey.module.css';
+import '@/modules/analysis/suitability.module.css';
+import '@/modules/sheet/sheet.module.css';
+import '@/components/auth.module.css';
+import '@/components/search.module.css';
+import '@/components/swatch.module.css';
+import '@/components/map.module.css';
+import '@/components/ui.module.css';
+import '@/components/catalog.module.css';
+import '@/components/tree.module.css';
+
 const inter = Inter({
   subsets: ['latin', 'cyrillic'],
   weight: ['400', '500', '600', '700'],
