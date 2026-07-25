@@ -1,7 +1,7 @@
 // Shared ArcGIS client. `base` points straight at the public hosted layer
 // (FeatureServer/0). CORS is open and no token is needed.
 export const base =
-  "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/Tusliin_guitsetgel_master/FeatureServer/0";
+  "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/Selbe_guitsetgel_consolidated/FeatureServer/0";
 
 // ArcGIS returns HTTP 200 even on failure, with {error:{message}}. Check it.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -28,13 +28,44 @@ export type Feature = { attributes: Record<string, unknown> };
 // Escape a value for an ArcGIS SQL where clause ('' = literal quote).
 export const qesc = (v: string) => v.replace(/'/g, "''");
 
-// A row is a section header when it isn't a leaf task: leaves are Түвшин 3
-// with a fractional weight. Түвшин is the signal, not the weight — some floor
-// headers carry junk weights (8-р давхар w=2, 9-р w=0). The "СУУРИЙН АЖИЛ"
-// style Түвшин-3 section rows do carry weight exactly 1.
+// Hierarchy level (1..5) from the sheet's № code — excel column A, the source
+// of truth. The ArcGIS import must carry it verbatim as `Дугаар`; the flat
+// `Түвшин` field (1/3/4) can't reproduce the tree (it drops phase/sub-phase and
+// merges categories with leaves). Depth lives in the NUMBER FORMAT, not row
+// position — the tree is ragged (a category may hold leaves directly, no group):
+//   "A." / "Б."   phase           -> 1
+//   "Б1".."Б5"    sub-phase       -> 2
+//   "1".."11"     category header -> 3   (integer, a header)
+//   "N.M"         group / давхар  -> 4   (decimal, e.g. "3.4")
+//   "1","2",...   leaf task       -> 5   (integer, fractional weight)
+// The integer form is BOTH category (3) and leaf (5); weight splits them —
+// headers carry weight 1 (or blank), leaves a fraction. Verified against the
+// 71-9F sheet: 2 phases + 5 sub-phases + 11 categories + 14 groups + 132 leaves,
+// and its only int-weight-1 row is a genuine category.
+// ponytail: a lone leaf whose weight is exactly 1 would read as a category; if
+// that ever appears, carry an explicit header flag from the import instead.
+export function levelFromNo(no: unknown, weight: unknown): number | null {
+  const s = String(no ?? "").trim();
+  if (!s) return null;
+  if (/^[A-Za-zА-Яа-яӨөҮү]\./.test(s)) return 1;
+  if (/^[A-Za-zА-Яа-яӨөҮү]\d/.test(s)) return 2;
+  if (/^\d+\.\d+/.test(s)) return 4;
+  if (/^\d+$/.test(s)) {
+    const w = weight == null || weight === "" ? null : Number(weight);
+    return w == null || Math.abs(w - 1) < 1e-6 ? 3 : 5;
+  }
+  return null;
+}
+
+// A row is a section header when it isn't a leaf task. The consolidated table
+// carries the true № hierarchy (`dugaar`), so a leaf is level 5; anything above
+// is a header. Fall back to the legacy Түвшин/weight heuristic only if `dugaar`
+// is missing.
 export function isHeaderAttrs(a: Record<string, unknown>): boolean {
-  const w = a["Хувийн_жин"] == null ? null : Number(a["Хувийн_жин"]);
-  return Number(a["Түвшин"]) !== 3 || (w != null && Math.abs(w - 1) < 1e-6);
+  const L = levelFromNo(a["dugaar"], a["huviin_jin"]);
+  if (L != null) return L !== 5;
+  const w = a["huviin_jin"] == null ? null : Number(a["huviin_jin"]);
+  return Number(a["tuvshin"]) !== 3 || (w != null && Math.abs(w - 1) < 1e-6);
 }
 
 // The layer has no floor/section field, and job names repeat across floor
@@ -50,7 +81,7 @@ export function applySections(feats: Feature[]): void {
   const batches = new Map<string, Feature[]>();
   for (const f of feats) {
     const a = f.attributes;
-    const k = `${a["Огноо"]}|${a["Хувилбар"]}|${a["Барилга_Блок"]}`;
+    const k = `${a["ognoo"]}|${a["huvilbar"]}|${a["barilga_blok"]}`;
     const arr = batches.get(k);
     if (arr) arr.push(f);
     else batches.set(k, [f]);
@@ -60,10 +91,10 @@ export function applySections(feats: Feature[]): void {
     for (const f of batch) {
       const a = f.attributes;
       if (isHeaderAttrs(a)) {
-        sec = a["Ажил"];
-        a["Ангилал__Б_"] = sec; // header keys off its own name
-      } else if (a["Ангилал__Б_"] == null || a["Ангилал__Б_"] === "") {
-        a["Ангилал__Б_"] = sec;
+        sec = a["ajil"];
+        a["angilal_b"] = sec; // header keys off its own name
+      } else if (a["angilal_b"] == null || a["angilal_b"] === "") {
+        a["angilal_b"] = sec;
       }
     }
   }
