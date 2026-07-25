@@ -25,6 +25,21 @@ export async function agsFetch(
 
 export type Feature = { attributes: Record<string, unknown> };
 
+// The table also holds the Level-5 activity export (torol='level5', ~76k rows:
+// one Primavera activity per block, no № hierarchy and a Нийт_жин of ~1e-5).
+// This sheet edits the WBS rows only, so every query here filters to them —
+// without it the level-5 rows outnumber the sheet 4:1 and take over its layout.
+export const ACTUAL = "torol='actual'";
+export const LEVEL5 = "torol='level5'";
+
+/** Level-5 мөрүүд нэг багцаар. Багц бүр 7.5–16.7 мянган мөр — `queryAll` хуудаслана. */
+export function level5Rows(bagts: string): Promise<Feature[]> {
+  return queryAll(`bagts='${qesc(bagts)}' AND ${LEVEL5}`, {
+    outFields:
+      "dugaar,ajil,angilal_a,angilal_b,barilga_blok,niit_jin,guitsetgel,aldaatai",
+  });
+}
+
 // Escape a value for an ArcGIS SQL where clause ('' = literal quote).
 export const qesc = (v: string) => v.replace(/'/g, "''");
 
@@ -129,6 +144,11 @@ export function cloneForDate(
 
 // Query every matching row, paging past the 2000 maxRecordCount cap.
 // (A single Багц's history now exceeds 2000, so a one-shot query truncates.)
+//
+// The default ORDER BY is not cosmetic: resultOffset paging without one is
+// undefined in ArcGIS, so rows can repeat or vanish at a page boundary — and
+// the failure is silent (a block quietly keeps an older value). Callers that
+// need sheet order pass their own `orderByFields` and override this.
 export async function queryAll(
   where: string,
   extra: Record<string, string> = {},
@@ -138,6 +158,7 @@ export async function queryAll(
     const j = await agsFetch(`${base}/query`, {
       where,
       returnGeometry: "false",
+      orderByFields: "OBJECTID ASC",
       resultRecordCount: "2000",
       resultOffset: String(offset),
       ...extra,

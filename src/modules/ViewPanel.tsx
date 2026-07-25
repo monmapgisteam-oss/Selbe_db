@@ -16,7 +16,7 @@ import {
 } from '@/lib/services';
 import { whereFor, qtyText, geomText, layerStats, type Totals } from '@/lib/totals';
 import { num, text } from '@/lib/format';
-import { MonitorGeneral, MonitorDetail } from './BuildingPanel';
+import { MonitorGeneral, MonitorDetail, MonitorBagts, BAGTS_FILTER } from './BuildingPanel';
 import s from './dashboard.module.css';
 
 /** Ангиллын дугуй диаграмд өнгө оноох палитр (paint тодорхойлолтгүй давхаргад) */
@@ -1106,6 +1106,17 @@ function MonitorPanel({
 }) {
   // Баруун панел — СОНГОСОН барилгын бүрэн ажлын гүйцэтгэл (Tusliin table).
   // Зүүн талд бүх барилгын ДУНДАЖ (`BuildingSummary`, Portal-д).
+  const { active } = useFilter();
+  /**
+   * ⚠️ Барилга сонгоогүй байхад БАГЦ сонгогдвол (зүүн баганын «Багц тус бүрээр»)
+   * энэ самбар хоосон «барилга дээр дарна уу» эсэргүүцэл харуулдаг байв. Одоо
+   * тэр багцын ажлын төрөл бүрийн гүйцэтгэл гарна. Барилга сонгосон нь ДАВУУ:
+   * тодорхой асуулт нь ерөнхийхөөс тэргүүн.
+   */
+  const bagts = active?.key.startsWith(BAGTS_FILTER) ? active.key.slice(BAGTS_FILTER.length) : null;
+  const building = picked != null && pickedLayer === 'mon:building';
+  if (!building && bagts) return <MonitorBagts bagts={bagts} />;
+
   return (
     <>
       <MonitorGeneral picked={picked} pickedLayer={pickedLayer} />

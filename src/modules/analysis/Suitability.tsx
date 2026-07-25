@@ -73,8 +73,9 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
   }, []);
 
   /* ── Загварын төлөв ── */
-  // ⚠️ Нээгдэх горим = НИЙЛМЭЛ үнэлгээ (хот төлөвлөлт + эдийн засаг)
-  const [mode, setMode] = useState<Mode>('blend');
+  // ⚠️ Нээгдэх горим = ХОТ ТӨЛӨВЛӨЛТ: «Ерөнхий» (blend) таб хасагдсан тул
+  //    түүнээр нээвэл ямар ч табгүй хуудас гарна.
+  const [mode, setMode] = useState<Mode>('urban');
   /** Нийлмэл оноонд ЭДИЙН ЗАСГИЙН эзлэх хувь (үлдсэнийг хот төлөвлөлт авна) */
   const [econShare, setEconShare] = useState(DEFAULT_ECON_SHARE);
   const [indicators, setIndicators] = useState<Indicator[]>(() => INDICATORS.map((i) => ({ ...i })));
@@ -212,11 +213,12 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
           </div>
         </div>
         <nav className={s.tabs}>
+          {/* ⚠️ «Ерөнхий» (blend) ба «Эдийн засаг» (econ) табууд ХАСАГДСАН.
+              Тэдгээрийн `mode` салаанууд кодод үлдсэн — дахин нээх бол зөвхөн
+              энэ жагсаалтад мөрөө нэмнэ. */}
           {([
-            ['blend', 'Ерөнхий'],
             ['urban', 'Хот төлөвлөлт'],
             ['indicator', 'Үзүүлэлт'],
-            ['econ', 'Эдийн засаг'],
           ] as const).map(
             ([k, label]) => (
               <button

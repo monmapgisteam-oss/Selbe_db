@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  ACTUAL,
   addAttachment,
   agsFetch,
   applySections,
@@ -80,6 +81,24 @@ const origStr = (row: Row, bld: string) => {
   return p == null ? "" : String(Math.round(p * 100));
 };
 
+// Гүйцэтгэл БУУРАХГҮЙ: талбарын тайлан бол хийгдсэн ажлын хуримтлагдсан хувь
+// тул нүдэнд өмнө нь БҮРТГЭГДСЭН хувиас бага утга бичихийг хориглоно. Хязгаар
+// нь НИЙТЛЭГДСЭН утга (`row.cells`) — нийтлээгүй өөрчлөлтөө бууруулж засаж
+// болно. Хоосон болгох (нүд устгах) нь тусдаа үйлдэл тул хамаарахгүй.
+// Буруу өндөр утга бичсэн бол нүдээ цэсээр устгаад дахин бөглөнө.
+const floorOf = (row: Row, bld: string): number | null => {
+  const p = row.cells[bld]?.pct;
+  return p == null ? null : Math.round(p * 100);
+};
+/** Хязгаараас доош бол тухайн хязгаарыг, эс бөгөөс `null` буцаана. */
+const belowFloor = (row: Row, bld: string, raw: string): number | null => {
+  const t = raw.trim();
+  const floor = floorOf(row, bld);
+  if (t === "" || floor == null) return null;
+  const v = Number(t);
+  return Number.isFinite(v) && v < floor ? floor : null;
+};
+
 // Cell backgrounds: editable cells stay on the surface; calculated columns and
 // non-editable (header) cells get their own tint. Values reference theme-aware
 // CSS custom properties defined on `.xl` so they flip for light/dark.
@@ -153,7 +172,7 @@ export default function Pivot() {
   // Багц list once.
   useEffect(() => {
     if (!base) return;
-    distinct(F.bagts)
+    distinct(F.bagts, ACTUAL)
       .then((v) => {
         const list = (v as string[]).filter(Boolean).sort();
         setBagtsList(list);
@@ -165,7 +184,7 @@ export default function Pivot() {
   // Огноо list per Багц.
   useEffect(() => {
     if (!bagts) return;
-    distinct(F.ognoo, `${F.bagts}='${qesc(bagts)}'`)
+    distinct(F.ognoo, `${F.bagts}='${qesc(bagts)}' AND ${ACTUAL}`)
       .then((v) => {
         const list = (v as string[]).filter(Boolean).sort();
         setOgnooList(list);
@@ -183,7 +202,7 @@ export default function Pivot() {
       // per (task, building). Огноо is 'YYYY-MM-DD' string so lexical order =
       // chronological; iterating ascending, the last write per cell wins.
       const all = await queryAll(
-        `${F.bagts}='${qesc(bagts)}' AND ${F.ognoo}<='${qesc(ognoo)}'`,
+        `${F.bagts}='${qesc(bagts)}' AND ${F.ognoo}<='${qesc(ognoo)}' AND ${ACTUAL}`,
         {
           outFields: "*",
           orderByFields: `${F.ognoo} ASC, ${F.oid} ASC`,
@@ -483,11 +502,20 @@ export default function Pivot() {
   function applyToSelection(value: string) {
     const cells = selectedCells();
     if (!cells.length) return;
+    // Хязгаараас доош унах нүднүүдийг алгасаад хэдийг нь алгассанаа хэлнэ.
+    const ok = cells.filter((c) => belowFloor(c.row, c.b, value) == null);
+    const skipped = cells.length - ok.length;
+    setErr(
+      skipped
+        ? `${skipped} нүд алгасагдав: гүйцэтгэл өмнө бүртгэгдсэн хувиасаа буурч болохгүй.`
+        : "",
+    );
+    if (!ok.length) return;
     setUndoStack((u) => [...u, pending]);
     setRedoStack([]);
     setPending((p) => {
       const n = { ...p };
-      for (const c of cells) {
+      for (const c of ok) {
         const key = `${c.ri}:${c.b}`;
         const orig = origStr(c.row, c.b);
         if (value.trim() === orig) delete n[key];
@@ -500,6 +528,13 @@ export default function Pivot() {
   // Stage a cell edit locally (no service call). Drop the key if it matches the
   // original so Publish stays clean. Pushes an undo snapshot.
   function commitEdit(row: Row, ri: number, bld: string, raw: string) {
+    const floor = belowFloor(row, bld, raw);
+    if (floor != null) {
+      setEdit(null);
+      setErr(`${bld} · ${row.work}: өмнө нь ${floor}% бүртгэгдсэн — гүйцэтгэл буурч болохгүй.`);
+      return; // хуучин утга хэвээр
+    }
+    setErr("");
     setEdit(null);
     const key = `${ri}:${bld}`;
     const orig = origStr(row, bld);
@@ -1050,6 +1085,12 @@ export default function Pivot() {
                           className={
                             (header ? cls("num bld") : cls("num bld cursor-cell")) +
                             (dirty ? " " + st.dirty : "")
+                          }
+                          // Нүд бөглөхөд мэдэгдэх доод хязгаар (буурч болохгүй).
+                          title={
+                            header || floorOf(r, b) == null
+                              ? undefined
+                              : `Доод хязгаар ${floorOf(r, b)}%`
                           }
                           // priority: dirty > selected > crosshair > base.
                           style={{

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  ACTUAL,
   applySections,
   distinct,
   isHeaderAttrs,
@@ -156,7 +157,7 @@ export default function Conclusion() {
   const [err, setErr] = useState("");
 
   useEffect(() => {
-    distinct(F.bagts)
+    distinct(F.bagts, ACTUAL)
       .then((v) => {
         const list = (v as string[]).filter(Boolean).sort();
         setBagtsList(list);
@@ -172,7 +173,7 @@ export default function Conclusion() {
       setBusy(true);
       setErr("");
       try {
-        const fs = await queryAll(`${F.bagts}='${qesc(bagts)}'`, {
+        const fs = await queryAll(`${F.bagts}='${qesc(bagts)}' AND ${ACTUAL}`, {
           outFields: Object.values(F).join(","),
           orderByFields: `${F.ognoo} ASC, ${F.oid} ASC`,
         });

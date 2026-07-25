@@ -31,6 +31,8 @@
 .col_lg { gap: 22px; }
 
 .split { display: flex; align-items: center; gap: 16px; }
+/* Хажуугийн блок баруун талд — DOM дараалал хэвээр (аside нь эхэлж уншигдана) */
+.splitEnd { flex-direction: row-reverse; }
 .splitAside { flex: none; }
 .splitBody { flex: 1; min-width: 0; }
 
@@ -61,6 +63,15 @@
   background: var(--surface);
   border-bottom: 1px solid var(--line);
 }
+/* Хэсгийн дотор — шугам, зай, sticky-гүй (диаграмын хажууд босоо өрлөгөөр) */
+.tabsPlain {
+  position: static;
+  flex-direction: column;
+  padding: 0;
+  background: transparent;
+  border-bottom: none;
+}
+.tabsPlain .tab { padding: 6px 10px; }
 .tab {
   position: relative;
   display: inline-flex;
@@ -390,3 +401,105 @@
   white-space: nowrap;
 }
 .seriesUnit { font-size: 0.66rem; color: var(--ink-3); text-align: right; }
+
+/* ── Сонгогч ── */
+
+.select {
+  font: inherit;
+  font-size: 0.7rem;
+  color: var(--ink-2);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 3px 6px;
+  max-width: 100%;
+  cursor: pointer;
+}
+.select:hover { border-color: var(--line-strong); }
+.select:focus-visible { outline: 2px solid var(--tone, var(--hue)); outline-offset: 1px; }
+
+/* ── Цаг хугацааны муруй ── */
+
+.trend { display: flex; flex-direction: column; gap: 6px; }
+.trendHead { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.trendValue { font-size: 1.15rem; font-weight: 700; color: var(--ink); line-height: 1.1; }
+.trendMeta { font-size: 0.68rem; color: var(--ink-3); }
+
+/* Хажуугийн зай нь ЭХНИЙ/СҮҮЛИЙН цэгийг ирмэгээр таслуулахгүй байлгана */
+.trendPlot { position: relative; margin: 6px 9px 0; }
+.trendSvg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+/* `preserveAspectRatio="none"` нь зурсан зайг сунгадаг тул шугамын зузааныг
+   `non-scaling-stroke`-оор бэхэлнэ — эс бөгөөс өргөн самбарт нимгэрч харагдана. */
+.trendGrid { stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.trendArea { fill: var(--tone, var(--hue)); opacity: 0.1; }
+.trendLine {
+  fill: none;
+  stroke: var(--tone, var(--hue));
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+.trendTick {
+  position: absolute;
+  left: 0;
+  font-size: 0.6rem;
+  color: var(--ink-3);
+  pointer-events: none;
+}
+.trendTickTop { top: -13px; }
+.trendTickZero { bottom: -13px; }
+
+/* Хүрэх талбар нь баганын БҮТЭН өндөр — 8px цэгийг оносон байх шаардлагагүй */
+.trendHit {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 26px;
+  transform: translateX(-50%);
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+/* Хөндлөн огтлолын шугам — идэвхтэй цэгийн босоо тэнхлэг */
+.trendHit::before {
+  content: '';
+  position: absolute;
+  inset: 0 calc(50% - 0.5px);
+  background: var(--line-strong);
+  opacity: 0;
+}
+.trendHitOn::before { opacity: 1; }
+.trendDot {
+  position: absolute;
+  left: 50%;
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+  border-radius: 50%;
+  background: var(--tone, var(--hue));
+  /* Гадуур цагираг: муруйтай огтлолцох үед цэг нь тодорхой хэвээр */
+  box-shadow: 0 0 0 2px var(--surface);
+  transition: transform 0.12s;
+}
+.trendHitOn .trendDot { transform: scale(1.4); }
+/* Тэнхлэг — цэг БҮРИЙН бүртгэлийн огноо, цэгийнхээ ЯГ доор. Урьд нь зөвхөн
+   эхлэл/сүүл байсан тул завсрын хэмжилт хэзээ болсныг зөвхөн hover-оор мэдэх
+   байлаа. Он нь ЗӨВХӨН сольсон цэгт бичигдэнэ (Trend-д хураана) — 9-12 шошго
+   нарийн самбарт ч давхцахгүй. */
+.trendAxis {
+  position: relative;
+  height: 14px;
+  margin: 4px 9px 0;
+  font-size: 0.62rem;
+  color: var(--ink-3);
+}
+.trendAxisTick {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+.trendAxisTick:first-child { transform: none; }
+.trendAxisTick:last-child { transform: translateX(-100%); }

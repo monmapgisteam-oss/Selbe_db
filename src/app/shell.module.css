@@ -49,17 +49,20 @@
  */
 .shellMon {
   grid-template-columns: var(--monleft, 300px) 1fr var(--panel);
+  grid-template-rows: var(--head) 1fr var(--montrend) var(--dashfoot);
   grid-template-areas:
-    'head head head'
-    'monl map  panel'
-    'foot foot foot';
+    'head head  head'
+    'monl map   panel'
+    'monl trend panel'
+    'foot foot  foot';
 }
 .shellMon.shellCat {
   grid-template-columns: var(--catalog) var(--monleft, 300px) 1fr var(--panel);
   grid-template-areas:
-    'head head head head'
-    'cat  monl map  panel'
-    'foot foot foot foot';
+    'head head head  head'
+    'cat  monl map   panel'
+    'cat  monl trend panel'
+    'foot foot foot  foot';
 }
 .monLeft {
   grid-area: monl;
@@ -67,12 +70,68 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
-  gap: 10px;
-  padding: 12px;
   background: var(--surface);
   border-right: 1px solid var(--line);
+  /* ⚠️ Гүйлгэлт нь ДОТООД хэсэгт — бариул `absolute` тул гадна нь гүйлгэвэл
+     доош гүйлгэхэд бариул харагдахаа болино. */
+  overflow: hidden;
+}
+.monScroll {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
   overflow-y: auto;
 }
+/**
+ * Бариул нь баганы БАРУУН ирмэгт (баруун самбарынх нь зүүн ирмэгт).
+ * ⚠️ Сонгуур нь `.monLeft .grip` — `.grip` нь файлын ДООД талд (самбарын хэсэгт)
+ * тодорхойлогдсон тул зөвхөн класс нэрээр дарж бичих нь ажиллахгүй.
+ */
+.monLeft .grip { left: auto; right: 0; }
+.monLeft .grip::after { left: auto; right: 2px; }
+
+/* ── Явцын муруй — газрын зургийн ДООР ── */
+.monTrend {
+  grid-area: trend;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+  /* ⚠️ Гүйлгэлт нь `.monScroll` дотор — бариул `absolute` тул зурвасыг өөрөө
+     гүйлгэвэл доош гүйлгэхэд бариул харагдахаа болино. */
+  overflow: hidden;
+}
+/* Өндөр тохируулах бариул — зурвасын ДЭЭД ирмэгт (зурагтай хиллэх зааг) */
+.rowGrip {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 6px;
+  z-index: 8;
+  cursor: row-resize;
+  touch-action: none;
+  transition: background 0.12s;
+}
+.rowGrip::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 2px;
+  width: 30px;
+  height: 2px;
+  margin-left: -15px;
+  border-radius: 2px;
+  background: var(--line-strong);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.rowGrip:hover, .rowGripOn { background: color-mix(in srgb, var(--hue) 22%, transparent); }
+.rowGrip:hover::after, .rowGripOn::after { opacity: 1; }
 
 /* ── Доод хүрээ: нэгтгэсэн үзүүлэлт (зөвхөн Барилгын хяналт) ── */
 .dashFoot {
@@ -416,6 +475,16 @@
     grid-template-rows: var(--head) 46vh auto auto auto;
     grid-template-areas: 'head' 'map' 'cat' 'panel' 'foot';
   }
+  /* Барилгын хяналт — зураг → муруй → дундаж → самбар → нэгтгэл */
+  .shellMon, .shellMon.shellCat {
+    grid-template-columns: 1fr;
+    grid-template-rows: var(--head) 46vh auto auto auto auto auto;
+    grid-template-areas: 'head' 'map' 'trend' 'cat' 'monl' 'panel' 'foot';
+  }
+  .monLeft { border-right: none; border-top: 1px solid var(--line); overflow: visible; }
+  /* Босоо өрөлтөд өндөр чирэх утгагүй — зурвас агуулгаараа өснө */
+  .monTrend { overflow: visible; height: auto; }
+  .rowGrip { display: none; }
   .dashFoot { height: auto; padding: 12px 16px; }
   /* Дашбоард ба анализ хоёулаа — нэг л бүтэн талбайн хүрээ */
   .shellSuit {

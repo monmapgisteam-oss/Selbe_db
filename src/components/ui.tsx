@@ -59,9 +59,12 @@ export function Col({ gap = 'md', children }: { gap?: 'sm' | 'md' | 'lg'; childr
  * Зүүнд дүрслэл (цагираг/дугуй), баруунд тайлбар.
  * Самбаруудад хамгийн олон давтагдсан өрлөг.
  */
-export function Split({ aside, children }: { aside: ReactNode; children: ReactNode }) {
+export function Split(
+  { aside, children, asideEnd }:
+  { aside: ReactNode; children: ReactNode; /** Хажуугийн блок нь БАРУУН талд */ asideEnd?: boolean },
+) {
   return (
-    <div className={s.split}>
+    <div className={`${s.split} ${asideEnd ? s.splitEnd : ''}`}>
       <div className={s.splitAside}>{aside}</div>
       <div className={s.splitBody}>{children}</div>
     </div>
@@ -100,13 +103,16 @@ export function Tabs({
   items,
   value,
   onChange,
+  plain,
 }: {
   items: { key: string; label: string; count?: number | null; warn?: boolean }[];
   value: string;
   onChange: (key: string) => void;
+  /** Зурвас БИШ, хэсгийн дотор хажуугаар байрлах товчийн багц (шугам/зайгүй) */
+  plain?: boolean;
 }) {
   return (
-    <div className={s.tabs} role="tablist">
+    <div className={`${s.tabs} ${plain ? s.tabsPlain : ''}`} role="tablist">
       {items.map((t) => {
         const on = t.key === value;
         return (
@@ -578,6 +584,148 @@ export function Series({
         })}
       </div>
       {unit && <div className={s.seriesUnit}>{unit}</div>}
+    </div>
+  );
+}
+
+/* ── Сонгогч ── */
+
+/**
+ * Жагсаалтаас нэгийг сонгоно.
+ *
+ * ⚠️ `Tabs` нь 2-4 сонголтод л зохимжтой — 8 багцыг таб болговол самбарын
+ * өргөнөөс хальж, мөр дамжина. Уугуул `<select>` нь гар, дэлгэц уншигч,
+ * гар утасны төрөлх сонгогчийг үнэгүй авчирна.
+ */
+export function Select({
+  value, onChange, options, label,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: { key: string; label: string }[];
+  label: string;
+}) {
+  return (
+    <select
+      className={s.select}
+      value={value}
+      aria-label={label}
+      onChange={(e) => onChange(e.target.value)}
+    >
+      {options.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
+    </select>
+  );
+}
+
+/* ── Цаг хугацааны муруй ── */
+
+export type TrendPoint = {
+  /** Тэнхлэгийн шошго — «2026-07-20» / «2026-07» */
+  label: string;
+  value: number;
+  /** Уншилтын мөрөнд гарах нэмэлт тайлбар — «113 блок» */
+  note?: string;
+};
+
+/**
+ * Нэг цувааны шугаман график — хугацааны явцыг харуулна.
+ *
+ * ⚠️ `Series` (босоо багана) нь ЦӨӨН, ТУСДАА үеийг харьцуулахад тохирно.
+ * Хуримтлагдсан гүйцэтгэл нь ТАСРАЛТГҮЙ хэмжигдэхүүн тул шугамаар л «хэдийд
+ * хурдалсан/удаашрсан» нь уншигдана.
+ *
+ * ⚠️ Цэг бүрд утга БИЧИХГҮЙ — 9-12 тоо давхарлавал аль нь ч уншигдахаа болино.
+ * Оронд нь дээрх уншилтын мөр: анхдаа СҮҮЛИЙН утга, хулгана/фокус аваад тухайн
+ * цэгийнх. Тэмдэглэгээ нь хөндлөн огтлолын шугамтай — нүд босоо тэнхлэгээ олно.
+ */
+/**
+ * Тэнхлэгийн шошго — цэг бүрийн БОДИТ бүртгэлийн огноо (`note` нь сарын шошгоны
+ * доорх жинхэнэ огноо). Он нь ЗӨВХӨН сольсон цэгт бичигдэнэ: «2025-10-31 ·
+ * 11-02 · 12-31 · 2026-03-20 …» — 10 гаруй шошго нарийн самбарт ч давхцахгүй.
+ */
+function axisTicks(points: TrendPoint[]): string[] {
+  let year = '';
+  return points.map((p) => {
+    const d = p.note ?? p.label;
+    const y = d.slice(0, 4);
+    if (!/^\d{4}-/.test(d) || y !== year) { year = y; return d; }
+    return d.slice(5);
+  });
+}
+
+export function Trend({
+  points,
+  color,
+  height = 132,
+  unit = '%',
+}: {
+  points: TrendPoint[];
+  color?: string;
+  height?: number;
+  unit?: string;
+}) {
+  const [hov, setHov] = useState<number | null>(null);
+
+  if (points.length < 2) return <Empty label="Цуваа зурахад хангалттай бүртгэл алга." />;
+
+  // Тэнхлэгийн дээд хязгаар нь БҮТЭН аравт — 23%-ийн муруйг 0–100 дээр зурвал
+  // шулуун шугам болж, өсөлт нь ялгагдахгүй.
+  const peak = Math.max(...points.map((p) => p.value));
+  const top = Math.max(10, Math.ceil(peak / 10) * 10);
+  const x = (i: number) => (i / (points.length - 1)) * 100;
+  const y = (v: number) => 100 - (v / top) * 100;
+
+  const path = points.map((p, i) => `${x(i)},${y(p.value)}`).join(' ');
+  const cur = points[hov ?? points.length - 1];
+
+  return (
+    <div className={s.trend} style={tone(color)}>
+      <div className={s.trendHead}>
+        <span className={`${s.trendValue} num`}>
+          {cur.value.toFixed(1)}{unit}
+        </span>
+        <span className={s.trendMeta}>
+          {cur.label}{cur.note ? ` · ${cur.note}` : ''}
+        </span>
+      </div>
+
+      <div className={s.trendPlot} style={{ height }}>
+        <svg className={s.trendSvg} viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
+          {/* Сүлжээ — 0 / дунд / дээд. Тод биш: өгөгдөл биш, хэмжүүр. */}
+          {[0, 50, 100].map((g) => (
+            <line key={g} className={s.trendGrid} x1="0" x2="100" y1={g} y2={g} />
+          ))}
+          <polygon className={s.trendArea} points={`0,100 ${path} 100,100`} />
+          <polyline className={s.trendLine} points={path} />
+        </svg>
+
+        <span className={`${s.trendTick} ${s.trendTickTop} num`}>{top}{unit}</span>
+        <span className={`${s.trendTick} ${s.trendTickZero} num`}>0</span>
+
+        {points.map((p, i) => (
+          <button
+            key={p.label}
+            type="button"
+            className={`${s.trendHit} ${hov === i ? s.trendHitOn : ''}`}
+            style={{ left: `${x(i)}%` }}
+            aria-label={`${p.label}: ${p.value.toFixed(1)}${unit}${p.note ? ` · ${p.note}` : ''}`}
+            onMouseEnter={() => setHov(i)}
+            onMouseLeave={() => setHov((h) => (h === i ? null : h))}
+            onFocus={() => setHov(i)}
+            onBlur={() => setHov((h) => (h === i ? null : h))}
+          >
+            <span className={s.trendDot} style={{ top: `${y(p.value)}%` }} />
+          </button>
+        ))}
+      </div>
+
+      <div className={s.trendAxis}>
+        {axisTicks(points).map((t, i) => (
+          <span key={points[i].label} className={s.trendAxisTick} style={{ left: `${x(i)}%` }}>
+            {t}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }
