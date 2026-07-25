@@ -26,7 +26,7 @@ export const WKID = 32648;
  * ⚠️ URL-ыг давхардуулж бичихгүй: `layerUrl()` нь каталогоос угсарна.
  */
 export const SRC = {
-  zones: ZONE_LAYER.id,     // et:28 — BUS_LAST
+  zones: ZONE_LAYER.id,      // zone — busiin_medeelel_final
   buildings: BUILT_LAYER.id, // et:24 — barilga
   green: 'et:25',            // Ногоон байгууламж
   parkWalk: 'et:26',         // Цэцэрлэгт хүрээлэн, алхалтын бүс

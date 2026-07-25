@@ -15,9 +15,9 @@ import { useTheme } from '@/lib/theme';
 import { useAsync } from '@/lib/useAsync';
 import { FilterProvider, useFilter } from '@/lib/filter';
 import { usePlanTotals } from '@/lib/totals';
-import { queryStats, count, sum, sqlStr } from '@/lib/query';
+import { queryStats, count, sum } from '@/lib/query';
 import {
-  DEFAULT_VIEW, VIEW_BY_KEY, layerUrl, OID, ZONE_FIELD, PROJECT_AREA_HA,
+  DEFAULT_VIEW, VIEW_BY_KEY, layerUrl, oidOf, PROJECT_AREA_HA, zoneWhere,
   PLAN_LAYER_IDS, MONITOR_LAYER_IDS,
   ZONE_LAYER, ZONE_FIELDS, BUILT_LAYER, BUILT_FIELDS,
   type ViewKey,
@@ -531,16 +531,20 @@ function ActiveFilterChip() {
  * төслийн хэмжээг харна.
  */
 function SummaryBar({ zone }: { zone: string | null }) {
-  const where = zone ? `${ZONE_FIELD} = ${sqlStr(zone)}` : '1=1';
+  // ⚠️ Хоёр давхарга бүсээ ӨӨР талбар, ӨӨР бичиглэлээр агуулна — нэг WHERE-ийг
+  //    хоёуланд нь тавьж болохгүй (`zoneWhere` давхарга бүрд нь угсарна).
+  const where = zone ?? '1=1';
 
   const q = useAsync(async () => {
     const Z = ZONE_FIELDS;
     const B = BUILT_FIELDS;
+    const zoneQ = zone ? zoneWhere(ZONE_LAYER, zone) ?? '1=1' : '1=1';
+    const builtQ = zone ? zoneWhere(BUILT_LAYER, zone) ?? '1=1' : '1=1';
     const [zones, built] = await Promise.all([
       queryStats(layerUrl(ZONE_LAYER), [
-        count(OID, 'n'), sum(Z.landHa, 'ga'), sum(Z.households, 'ail'),
-      ], where),
-      queryStats(layerUrl(BUILT_LAYER), [count(OID, 'n'), sum(B.population, 'pop')], where),
+        count(oidOf(ZONE_LAYER), 'n'), sum(Z.landHa, 'ga'), sum(Z.households, 'ail'),
+      ], zoneQ),
+      queryStats(layerUrl(BUILT_LAYER), [count(oidOf(BUILT_LAYER), 'n'), sum(B.population, 'pop')], builtQ),
     ]);
     return {
       zones: Number(zones.n ?? 0),

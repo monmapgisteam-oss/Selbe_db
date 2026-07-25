@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
-import { Donut, Bars, Series, Ring, Stack, Data } from '@/components/ui';
+import { Donut, Bars, Ring, Data } from '@/components/ui';
 import { useAsync, type Async } from '@/lib/useAsync';
 import { queryFeatures, sqlStr, type Row } from '@/lib/query';
 import {
   ZONE_LAYER, ZONE_FIELD, ZONE_FIELDS, ZONE_NONE, ZONE_TYPES, ZONE_TYPE_EMPTY, ZONE_TYPE_EMPTY_HUE,
   BUILT_LAYER, BUILT_FIELDS, BUILT_STATUS, BUILDING, BUILDING_STAGES, PROGRESS_LEVELS, STAGE_NA,
-  SURVEY_HUE, LAYER_BY_ID, layerUrl, OID, CASHFLOW, PARCEL_LEFT, PARCEL_CLEAN,
+  SURVEY_HUE, LAYER_BY_ID, layerUrl, OID, oidOf, CASHFLOW, PARCEL_LEFT, PARCEL_CLEAN,
+  INVEST, investType, zoneKey, bagtsKey, zoneCanon, zoneType, zoneTypeRaw, zoneWhere, zoneRefValues, zoneLegacyValues,
 } from '@/lib/services';
 import { num, pct, ha, mnt, text } from '@/lib/format';
 import {
@@ -37,6 +38,18 @@ import o from './overview.module.css';
  * Барилгын блок (building_GOL) нь ET-ийн барилга/бүстэй өөр өгөгдлийн сан тул
  * тэдгээр хооронд cross-filter хийхгүй — блокийн хэмжээс (багц/түвшин) зөвхөн
  * блокийн элементүүдэд, ET-ийн хэмжээс (төлөв/зориулалт/бүс) зөвхөн барилга/бүсэд.
+ *
+ * ⚠️ БАЙРЛАЛ: багана бүр ГАНЦ сэдэвтэй — гүйцэтгэл · хөрөнгө оруулалт · [зураг] ·
+ * газар чөлөөлөлт · ерөнхий төлөвлөгөө, доод эгнээ нь үнэлгээ ба норм. Шинэ карт
+ * нэмэхдээ сэдэвт нь тааруулна: холимог багана нь хэрэглэгчийг «энэ тоо хаанаас
+ * гарав» гэж хайхад хүргэдэг.
+ *
+ * ⚠️ 25 картаас 17 болгож ЦӨӨЛСӨН. Хассан 8 карт нь бүгд ӨӨР картын өгөгдлийг
+ * давтаж байсан: багцын төсөв/гэрээ/гүйцэтгэгч → «Багцын мэдээлэл»,
+ * санхүүжилтийн эх үүсвэр ба оны задаргаа → «Хөрөнгө оруулалт» (INVEST),
+ * «Барилгын гүйцэтгэл» ба «Багц тус бүрийн гүйцэтгэл» → «Гүйцэтгэлийн түвшин» ба
+ * «Багцын мэдээлэл», цэвэрлэгээ он оноор → статустай 1:1. Дахин нэмэхээсээ өмнө
+ * ямар шинэ ХЭМЖЭЭС нэмж байгаагаа хэл.
  */
 
 /* ══════════════════ Шүүлтийн төлөв ══════════════════ */
@@ -52,6 +65,8 @@ type Filters = {
   zoneSet?: { key: string; label: string; ids: string[] };
   /** Дэд бүтэц (өртөг/инженер) — тухайн бүлгийн газрын зургийн давхаргууд */
   infra?: { key: string; label: string; ids: string[] };
+  /** Хөрөнгө оруулалтын төрөл (INVEST.Төрөл) — зөвхөн хөрөнгө оруулалтын картуудад */
+  investType?: string;
 };
 
 const F = BUILT_FIELDS;
@@ -62,7 +77,7 @@ function buildMatch(a: Row, f: Filters, exclude?: keyof Filters): boolean {
   if (exclude !== 'status' && f.status?.length && !f.status.includes(text(a[F.status]))) return false;
   if (exclude !== 'purpose' && f.purpose?.length && !f.purpose.includes(text(a[F.purpose]))) return false;
   if (exclude !== 'zone' && f.zone && text(a[ZONE_FIELD]) !== f.zone) return false;
-  if (exclude !== 'zoneType' && f.zoneType?.length && !f.zoneType.includes(text(a.TOROL))) return false;
+  if (exclude !== 'zoneType' && f.zoneType?.length && !f.zoneType.includes(zoneType(a.TOROL))) return false;
   if (exclude !== 'zoneSet' && f.zoneSet && !f.zoneSet.ids.includes(text(a[ZONE_FIELD]))) return false;
   return true;
 }
@@ -102,15 +117,22 @@ function buildingsWhere(f: Filters): string | null {
     f.status?.length ? inList(F.status, f.status) : null,
     f.purpose?.length ? inList(F.purpose, f.purpose) : null,
     f.zone && `${ZONE_FIELD} = ${sqlStr(f.zone)}`,
-    f.zoneType?.length ? inList('TOROL', f.zoneType) : null,
+    f.zoneType?.length ? inList('TOROL', f.zoneType.flatMap(zoneTypeRaw)) : null,
     f.zoneSet && inList(ZONE_FIELD, f.zoneSet.ids),
   );
 }
+/**
+ * ⚠️ БҮСИЙН давхаргын WHERE — бусад давхаргынхаас ӨӨР. Талбарын нэр
+ * (`RefName_1`), кодын бичиглэл («Багц -1»), ангиллын бичиглэл («олон нийтийн
+ * бүс») гурвуулаа зөрөх тул каноник утгыг эх бичиглэл рүү нь буцаан хөрвүүлнэ.
+ */
 function zonesWhere(f: Filters): string | null {
+  const Zid = ZONE_LAYER.zoneField ?? ZONE_FIELD;
+  const refs = (ids: string[]) => ids.flatMap(zoneRefValues);
   return and(
-    f.zone && `${ZONE_FIELD} = ${sqlStr(f.zone)}`,
-    f.zoneType?.length ? inList(ZONE_FIELDS.type, f.zoneType) : null,
-    f.zoneSet && inList(ZONE_FIELD, f.zoneSet.ids),
+    f.zone ? zoneWhere(ZONE_LAYER, f.zone) : null,
+    f.zoneType?.length ? inList(ZONE_FIELDS.type, f.zoneType.flatMap(zoneTypeRaw)) : null,
+    f.zoneSet && inList(Zid, refs(f.zoneSet.ids)),
   );
 }
 function blocksWhere(f: Filters): string | null {
@@ -153,11 +175,20 @@ function useRawBuildings(): Async<Row[]> {
   }), []);
 }
 
+/**
+ * ⚠️ Бүсийн код (`RefName_1`) ба ангилал («олон нийтийн бүс») нь бусад давхаргын
+ * бичиглэлээс зөрдөг тул ТАТМАГЦ каноник болгоно. Ингэснээр дараагийн бүх
+ * тооцоо — cross-filter, диаграмын өнгө, KPI — ганц бичиглэлтэй ажиллана.
+ */
 function useRawZones(): Async<Row[]> {
   const Z = ZONE_FIELDS;
   return useAsync(() => queryFeatures(layerUrl(ZONE_LAYER), {
-    outFields: [OID, Z.id, Z.type, Z.landM2, Z.parkNorm, Z.parkPlan, Z.parkExist, Z.parkPlanOpen, Z.parkPlanUnder],
-  }), []);
+    outFields: [oidOf(ZONE_LAYER), Z.id, Z.type, Z.landM2, Z.parkNorm, Z.parkPlanOpen, Z.parkPlanUnder],
+  }).then((rows) => rows.map((r) => ({
+    ...r,
+    [Z.id]: zoneCanon(r[Z.id]),
+    [Z.type]: zoneType(r[Z.type]),
+  }))), []);
 }
 
 function useRawBlocks(): Async<Row[]> {
@@ -193,19 +224,20 @@ const CF = CASHFLOW.fields;
 /** Таслалтай мөнгөн мөрийг тоо руу («259,778,021,987» → 259778021987) */
 const cfNum = (v: unknown): number => { const n = Number(String(v ?? '').replace(/[^\d.-]/g, '')); return Number.isFinite(n) ? n : 0; };
 
-type CashRow = { zone: string; budget: number; securities: number; projectIncome: number; cityBudget: number; reserve: number; contract: number; contractor: string; months: number[] };
+/**
+ * ⚠️ Санхүүжилтийн эх үүсвэрийн талбарууд (`securities`, `projectIncome`,
+ * `cityBudget`, `reserve`) ТАТАГДАХАА БОЛЬСОН: тэдгээрийг харуулдаг байсан карт
+ * `INVEST`-ийн эх үүсвэрийн задаргаагаар солигдсон. `CASHFLOW.fields`-д хэвээр
+ * үлдээв — эргэж хэрэгтэй болбол энд нэмэхэд л хангалттай.
+ */
+type CashRow = { zone: string; budget: number; contract: number; contractor: string; months: number[] };
 
 function useCashflow(): Async<CashRow[]> {
   return useAsync(() => queryFeatures(CASHFLOW.url, {
-    outFields: [CF.zone, CF.budget, CF.securities, CF.projectIncome, CF.cityBudget, CF.reserve, CF.contract, CF.contractor,
-      ...CASHFLOW.months.map((m) => m.code)],
+    outFields: [CF.zone, CF.budget, CF.contract, CF.contractor, ...CASHFLOW.months.map((m) => m.code)],
   }).then((rows) => rows.map((r) => ({
     zone: text(r[CF.zone]),
     budget: cfNum(r[CF.budget]),
-    securities: cfNum(r[CF.securities]),
-    projectIncome: cfNum(r[CF.projectIncome]),
-    cityBudget: cfNum(r[CF.cityBudget]),
-    reserve: cfNum(r[CF.reserve]),
     contract: cfNum(r[CF.contract]),
     contractor: text(r[CF.contractor]),
     months: CASHFLOW.months.map((m) => cfNum(r[m.code])),
@@ -216,6 +248,47 @@ function useCashflow(): Async<CashRow[]> {
 function cfMatch(r: CashRow, f: Filters): boolean {
   if (f.zone) return r.zone === f.zone;
   if (f.zoneSet) return f.zoneSet.ids.includes(r.zone);
+  return true;
+}
+
+/* ══════════════════ Хөрөнгө оруулалт · өртөг (төсөл даяар) ══════════════════ */
+
+const IV = INVEST.fields;
+
+type InvRow = {
+  type: string; zone: string; project: string; contractor: string;
+  confirmed: number; planned: number; total: number;
+  /** `INVEST.sources`-ийн дарааллаар */
+  sources: number[];
+};
+
+function useInvest(): Async<InvRow[]> {
+  return useAsync(() => queryFeatures(INVEST.url, {
+    outFields: [IV.type, IV.zone, IV.project, IV.contractor, IV.confirmed, IV.planned,
+      ...INVEST.sources.map((s) => s.field)],
+  }).then((rows) => rows.map((r) => {
+    const confirmed = Number(r[IV.confirmed]) || 0;
+    const planned = Number(r[IV.planned]) || 0;
+    return {
+      type: text(r[IV.type], 'Тодорхойгүй'),
+      zone: zoneKey(r[IV.zone]),
+      project: text(r[IV.project]),
+      contractor: text(r[IV.contractor]),
+      confirmed, planned, total: confirmed + planned,
+      sources: INVEST.sources.map((s) => Number(r[s.field]) || 0),
+    };
+  })), []);
+}
+
+/**
+ * Хөрөнгө оруулалтын мөрийг идэвхтэй шүүлтээр.
+ * ⚠️ Бүсээр шүүхэд зөвхөн 9-р төрөл (олон нийтийн бүсийн барилга) бүстэй тул
+ * бусад төрөл шүүлтэд ХАСАГДана — энэ нь зөв: тэдгээрийн зардал бүсэд хуваарилагдаагүй.
+ */
+function ivMatch(r: InvRow, f: Filters, exclude?: 'type'): boolean {
+  if (f.zone && r.zone !== f.zone) return false;
+  if (f.zoneSet && !f.zoneSet.ids.includes(r.zone)) return false;
+  if (exclude !== 'type' && f.investType && r.type !== f.investType) return false;
   return true;
 }
 
@@ -304,15 +377,16 @@ type FarBcr = { far: NormEval; bcr: NormEval };
 
 function useFarBcr(): Async<FarBcr> {
   return useAsync(async () => {
-    const rows = await queryFeatures(layerUrl(ZONE_LAYER), { outFields: [ZONE_FIELD, ZONE_FIELDS.type, 'FAR', 'FAR_HUVI', 'BCR'] });
+    const Z = ZONE_FIELDS;
+    const rows = await queryFeatures(layerUrl(ZONE_LAYER), { outFields: [Z.id, Z.type, Z.far, Z.farPct, Z.bcr] });
     const far: NormEval = { pass: [], fail: [], none: 0 };
     const bcr: NormEval = { pass: [], fail: [], none: 0 };
     for (const r of rows) {
-      const id = String(r[ZONE_FIELD] ?? '').trim();
-      const norm = densityNormOf(r[ZONE_FIELDS.type] as string);
-      const zf = r.FAR_HUVI != null ? Number(r.FAR_HUVI) / 100 : (r.FAR != null ? Number(r.FAR) : null);
+      const id = zoneCanon(r[Z.id]);
+      const norm = densityNormOf(zoneType(r[Z.type]));
+      const zf = r[Z.farPct] != null ? Number(r[Z.farPct]) / 100 : (r[Z.far] != null ? Number(r[Z.far]) : null);
       if (zf == null || !(zf > 0)) far.none++; else if (zf <= norm.farMax) far.pass.push(id); else far.fail.push(id);
-      const zb = r.BCR != null ? Number(r.BCR) * 100 : null;
+      const zb = r[Z.bcr] != null ? Number(r[Z.bcr]) * 100 : null;
       if (zb == null || !(zb > 0)) bcr.none++; else if (zb <= norm.bcrMax) bcr.pass.push(id); else bcr.fail.push(id);
     }
     return { far, bcr };
@@ -331,6 +405,7 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
   const rawBlk = useRawBlocks();
   const costs = useCosts();
   const cash = useCashflow();
+  const invest = useInvest();
   const farbcr = useFarBcr();
   const parcelLeft = useLeftParcels();
   const parcelClean = useCleanParcels();
@@ -391,7 +466,7 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
   const setZoneDim = useCallback((z: string | null) => setZone(z), [setZone]);
 
   /** Идэвхтэй шүүлт байгаа эсэх (цэвэрлэх товч, chip-д) */
-  const anyFilter = !!(zone || filters.status?.length || filters.purpose?.length || filters.zoneType?.length || filters.bagts || filters.level?.length || filters.zoneSet || filters.infra);
+  const anyFilter = !!(zone || filters.status?.length || filters.purpose?.length || filters.zoneType?.length || filters.bagts || filters.level?.length || filters.zoneSet || filters.infra || filters.investType);
   const clearAll = useCallback(() => { setFiltersState({}); setZone(null); }, [setZone]);
 
   /* ── Газрын зураг: давхарга тус бүрийн WHERE + харагдах ── */
@@ -405,9 +480,15 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
   const zoneFromBuildings = useMemo<string | null>(() => {
     if (!(f.status?.length || f.purpose?.length)) return null;      // зөвхөн барилгын хэмжээст
     if (rawB.state !== 'ready') return null;
-    const ids = new Set<string>();
-    for (const b of rawB.data) if (buildMatch(b, f)) { const z = text(b[ZONE_FIELD]); if (z) ids.add(z); }
-    return ids.size ? inList(ZONE_FIELD, [...ids]) : null;
+    // ⚠️ Барилга ХУУЧИН кодтой («D-8»), бүсийн давхарга ШИНЭ бичиглэлтэй
+    //    («D-8.1»/«D-8.2», «Багц -1») — `zoneRefValues` хөрвүүлж тэлнэ.
+    const refs = new Set<string>();
+    for (const b of rawB.data) {
+      if (!buildMatch(b, f)) continue;
+      const z = text(b[ZONE_FIELD], '');
+      if (z) zoneRefValues(z).forEach((v) => refs.add(v));
+    }
+    return refs.size ? inList(ZONE_LAYER.zoneField ?? ZONE_FIELD, [...refs]) : null;
   }, [f, rawB]);
 
   const layerWhere = useMemo<Record<string, string | null>>(() => ({
@@ -442,7 +523,8 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
   /** Зурагт бүс/барилга дарахад тухайн бүсийг сонгоно */
   const pick = useCallback((attrs: Record<string, unknown> | null) => {
     if (!attrs) return;
-    const zid = String(attrs[ZONE_FIELD] ?? '').trim();
+    // ⚠️ Бүсийн давхаргын объект `RefName_1`-тэй, барилгынх `ZONE_ID`-тэй ирнэ
+    const zid = String(attrs[ZONE_FIELD] ?? attrs[ZONE_LAYER.zoneField ?? ''] ?? '').trim();
     if (zid && zid !== ZONE_NONE.trim()) setZone(zid);
   }, [setZone]);
 
@@ -451,24 +533,23 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
   return (
     <div className={o.dash}>
       <div className={o.kpi}>
-        <KpiStrip rawB={rawB} rawBlk={rawBlk} rawZ={rawZ} costs={costs} cash={cash} f={f} zone={zone} />
+        <KpiStrip rawB={rawB} rawBlk={rawBlk} rawZ={rawZ} invest={invest} f={f} zone={zone} />
       </div>
 
+      {/* ЗҮҮН — «юу баригдаж байна»: багц → блокийн гүйцэтгэл → үе шат */}
       <aside className={`${o.side} ${o.left}`}>
-        <BuildStatusCard rawB={rawB} f={f} onToggle={toggleStatus} />
-        <PurposeCard rawB={rawB} f={f} onToggle={togglePurpose} />
+        <h2 className={o.colHead}>Гүйцэтгэл</h2>
+        <BagtsInfoCard cash={cash} rawBlk={rawBlk} f={f} onPick={(v) => setDimFilter('bagts', v)} />
         <ProgressCard rawBlk={rawBlk} f={f} onToggle={toggleLevel} />
-        <SuitabilityCard suit={suit} prog={prog} zone={zone} f={filters} setZoneSet={(v) => setDimFilter('zoneSet', v)} />
-        <DensityCard suit={suit} f={filters} onPick={(v) => setDimFilter('zoneSet', v)} />
+        <StagesCard rawBlk={rawBlk} f={f} />
       </aside>
 
+      {/* ХОЁРДУГААР — мөнгө: төрөл → эх үүсвэр → төсөл → сарын урсгал */}
       <aside className={`${o.side} ${o.fin}`}>
-        <FundingCard cash={cash} f={f} />
-        <BudgetCard cash={cash} f={f} setZone={setZone} />
-        <ContractCard cash={cash} f={f} />
-        <ContractorCard cash={cash} f={f} />
-        <YearlyInvestCard cash={cash} f={f} />
-        <FinancingCard cash={cash} f={f} />
+        <h2 className={o.colHead}>Хөрөнгө оруулалт</h2>
+        <InvestTypeCard invest={invest} f={f} onPick={(v) => setDimFilter('investType', v)} />
+        <InvestSourceCard invest={invest} f={f} />
+        <InvestProjectCard invest={invest} f={f} />
         <MonthlyCashCard cash={cash} f={f} />
       </aside>
 
@@ -488,8 +569,9 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
         {anyFilter && <FilterChips f={f} zinfo={zinfo} setDimFilter={setDimFilter} setZone={setZone} clearAll={clearAll} />}
       </div>
 
-      {/* Газар чөлөөлөлт — баруун баганы ЗҮҮН талд зэрэгцээ, тусдаа багана */}
+      {/* ЗУРГААС БАРУУН — газар чөлөөлөлт (ЕТ-ээс тусдаа өгөгдлийн сан) */}
       <aside className={`${o.side} ${o.uld}`}>
+        <h2 className={o.colHead}>Газар чөлөөлөлт</h2>
         <ParcelLeftCard raw={parcelLeft} />
         <ParcelCleanBars
           raw={parcelClean}
@@ -501,25 +583,22 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
               : label.includes('хүлээгдэж') ? '#f59e0b'
                 : ZONE_TYPE_EMPTY_HUE}
         />
-        <ParcelCleanBars
-          raw={parcelClean}
-          field={PC.year}
-          title="Цэвэрлэгээ он оноор"
-          note="буулгалтын өртөг"
-          hues={(label) => (label === '2025' ? '#3387b8' : label === '2026' ? '#7c3aed' : ZONE_TYPE_EMPTY_HUE)}
-        />
       </aside>
 
+      {/* БАРУУН — «юу төлөвлөсөн»: бүс, барилга, зогсоол, инженер */}
       <aside className={`${o.side} ${o.right}`}>
+        <h2 className={o.colHead}>Ерөнхий төлөвлөгөө</h2>
         <ZoneTypeCard rawZ={rawZ} f={f} onToggle={toggleZoneType} />
+        <BuildStatusCard rawB={rawB} f={f} onToggle={toggleStatus} />
+        <PurposeCard rawB={rawB} f={f} onToggle={togglePurpose} />
         <ParkingCard rawZ={rawZ} f={f} />
         <EngineeringCard costs={costs} f={f} onPick={(v) => setDimFilter('infra', v)} />
-        <StagesCard rawBlk={rawBlk} f={f} />
       </aside>
 
+      {/* ДООД — үнэлгээ ба норм (бүх карт нь БҮСИЙН олонлогийг шүүнэ) */}
       <div className={o.bot}>
-        <BagtsCard rawBlk={rawBlk} f={f} onPick={(v) => setDimFilter('bagts', v)} />
-        <SurveyCard rawBlk={rawBlk} />
+        <SuitabilityCard suit={suit} prog={prog} zone={zone} f={filters} setZoneSet={(v) => setDimFilter('zoneSet', v)} />
+        <DensityCard suit={suit} f={filters} onPick={(v) => setDimFilter('zoneSet', v)} />
         <FarBcrCard farbcr={farbcr} f={filters} onPick={(v) => setDimFilter('zoneSet', v)} />
         <RankingCard suit={suit} zone={zone} setZone={setZoneDim} />
       </div>
@@ -536,7 +615,7 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
 function MapLegend({ visible }: { visible: string[] }) {
   const vis = new Set(visible ?? []);
   const singles: { id: string; label: string; hue: string }[] = [
-    { id: ZONE_LAYER.id, label: 'Бүс', hue: LAYER_BY_ID['et:28'].hue },
+    { id: ZONE_LAYER.id, label: 'Бүс', hue: ZONE_LAYER.hue },
     { id: BUILT_LAYER.id, label: 'Барилга', hue: LAYER_BY_ID['et:24'].hue },
     { id: 'mon:building', label: 'Блок (гүйцэтгэл)', hue: LAYER_BY_ID['mon:building'].hue },
     { id: 'mon:survey', label: 'Талбайн тайлан', hue: SURVEY_HUE },
@@ -575,6 +654,7 @@ function FilterChips({
   if (f.level?.length) chips.push({ key: 'lv', label: `Гүйцэтгэл: ${f.level.map((k) => PROGRESS_LEVELS.find((l) => l.key === k)?.label ?? '').filter(Boolean).join(', ')}`, clear: () => setDimFilter('level', undefined) });
   if (f.zoneSet) chips.push({ key: 'zs', label: f.zoneSet.label, clear: () => setDimFilter('zoneSet', undefined) });
   if (f.infra) chips.push({ key: 'in', label: f.infra.label, clear: () => setDimFilter('infra', undefined) });
+  if (f.investType) chips.push({ key: 'iv', label: `Хөрөнгө оруулалт: ${ivLabel(f.investType)}`, clear: () => setDimFilter('investType', undefined) });
 
   return (
     <div className={o.chipBar}>
@@ -611,7 +691,7 @@ function Card({ title, note, children }: { title: string; note?: ReactNode; chil
 
 /* ══════════════════ KPI зурвас ══════════════════ */
 
-function KpiStrip({ rawB, rawBlk, rawZ, costs, cash, f, zone }: { rawB: Async<Row[]>; rawBlk: Async<Row[]>; rawZ: Async<Row[]>; costs: Async<CostSummary>; cash: Async<CashRow[]>; f: Filters; zone: string | null }) {
+function KpiStrip({ rawB, rawBlk, rawZ, invest, f, zone }: { rawB: Async<Row[]>; rawBlk: Async<Row[]>; rawZ: Async<Row[]>; invest: Async<InvRow[]>; f: Filters; zone: string | null }) {
   const b = rawB.state === 'ready' ? rawB.data.filter((x) => buildMatch(x, f)) : null;
   const blk = rawBlk.state === 'ready' ? rawBlk.data.filter((x) => blockMatch(x, f)) : null;
   // Бүсийн тоо газрын зурагтай нийцнэ: бүсийн хэмжээсээр шүүгээд, барилгын
@@ -619,7 +699,8 @@ function KpiStrip({ rawB, rawBlk, rawZ, costs, cash, f, zone }: { rawB: Async<Ro
   let zc = rawZ.state === 'ready' ? rawZ.data.filter((x) => zoneMatch(x, f)) : null;
   if (zc && b && (f.status?.length || f.purpose?.length)) {
     const zids = new Set(b.map((x) => text(x[ZONE_FIELD])));
-    zc = zc.filter((x) => zids.has(text(x[ZONE_FIELDS.id])));
+    // ⚠️ Бүсийн шинэ код (`D-8.1`) → барилгын хуучин код (`D-8`) руу буулгаж жишнэ
+    zc = zc.filter((x) => zoneLegacyValues(text(x[ZONE_FIELDS.id])).some((v) => zids.has(v)));
   }
   const na = rawB.state === 'error' ? '—' : '…';
   const naBlk = rawBlk.state === 'error' ? '—' : '…';
@@ -631,12 +712,9 @@ function KpiStrip({ rawB, rawBlk, rawZ, costs, cash, f, zone }: { rawB: Async<Ro
     : null;
   const progVal = avgProg && avgProg.length ? avgProg.reduce((a, x) => a + Number(x[BF.progress]), 0) / avgProg.length : null;
 
-  // Төсөл даяарын нийт үр дүн (шүүлтээс үл хамаарах контекст)
-  const engKm = costs.state === 'ready' ? costs.data.engLengths.reduce((a, e) => a + e.km, 0) : null;
-  const naCost = costs.state === 'error' ? '—' : '…';
-  const cf = cash.state === 'ready' ? cash.data.filter((r) => cfMatch(r, f)) : null;
-  const budget = cf ? cf.reduce((a, r) => a + r.budget, 0) : null;
-  const naCash = cash.state === 'error' ? '—' : '…';
+  const iv = invest.state === 'ready' ? invest.data.filter((r) => ivMatch(r, f)) : null;
+  const invTotal = iv ? iv.reduce((a, r) => a + r.total, 0) : null;
+  const naInv = invest.state === 'error' ? '—' : '…';
 
   const tiles: { v: string; u?: string; l: string; tone: string }[] = [
     zone ? { v: zone, l: 'Сонгосон бүс', tone: '#0ea5e9' } : { v: zc ? num(zc.length) : na, l: 'Бүс', tone: '#0d9488' },
@@ -646,8 +724,7 @@ function KpiStrip({ rawB, rawBlk, rawZ, costs, cash, f, zone }: { rawB: Async<Ro
     { v: urh == null ? na : num(urh), l: 'Өрх', tone: '#f59e0b' },
     { v: m2 == null ? na : ha(m2, 0), u: 'га', l: 'Барилгын талбай', tone: '#22c55e' },
     { v: progVal == null ? naBlk : pct(progVal, 0), l: 'Дундаж гүйцэтгэл', tone: '#ea580c' },
-    { v: budget == null ? naCash : mnt(budget).replace(' ₮', ''), u: '₮', l: 'Төсөвт өртөг', tone: '#e11d48' },
-    { v: engKm == null ? naCost : num(engKm, 1), u: 'км', l: 'Инженерийн шугам', tone: '#0ea5e9' },
+    { v: invTotal == null ? naInv : mnt(invTotal).replace(' ₮', ''), u: '₮', l: 'Хөрөнгө оруулалт', tone: '#a855f7' },
   ];
   return (
     <>
@@ -718,6 +795,9 @@ function ProgressCard({ rawBlk, f, onToggle }: { rawBlk: Async<Row[]>; f: Filter
           const withProg = scoped.filter((x) => Number(x[BF.progress] ?? -1) >= 0);
           const avg = withProg.length ? withProg.reduce((a, x) => a + Number(x[BF.progress]), 0) / withProg.length : null;
           const ail = scoped.reduce((a, x) => a + Number(x[BF.households] ?? 0), 0);
+          // «Барилгын гүйцэтгэл» картыг хассан — түүний ганц давхардаагүй үзүүлэлт энд шилжив
+          const floors = scoped.map((x) => Number(x[BF.floors] ?? 0)).filter((v) => v > 0);
+          const avgFloor = floors.length ? floors.reduce((a, b) => a + b, 0) / floors.length : null;
           const levels = PROGRESS_LEVELS.map((l) => ({
             ...l, value: scoped.filter((x) => { const g = Number(x[BF.progress] ?? -1); return g >= l.min && g < l.max; }).length,
           }));
@@ -729,6 +809,9 @@ function ProgressCard({ rawBlk, f, onToggle }: { rawBlk: Async<Row[]>; f: Filter
               </div>
               <Bars inline max={Math.max(1, ...levels.map((l) => l.value))} selected={f.level ?? null} onSelect={onToggle}
                 items={levels.map((l) => ({ key: l.key, label: `${l.label} · ${l.range}`, value: l.value, display: `${num(l.value)} блок`, color: l.color }))} />
+              <div className={o.miniStats}>
+                <div><span>Дундаж давхар</span><b>{num(avgFloor, 1)}</b></div>
+              </div>
             </>
           );
         }}
@@ -751,65 +834,6 @@ function StagesCard({ rawBlk, f }: { rawBlk: Async<Row[]>; f: Filters }) {
             return { key: st.field, label: st.label, value: avg ?? 0, display: avg == null ? 'төлөвлөгдөөгүй' : pct(avg, 0) };
           });
           return <Bars inline color={BUILD_HUE} max={100} limit={8} items={items} />;
-        }}
-      </Data>
-    </Card>
-  );
-}
-
-/* ══════════════════ Багц тус бүрийн гүйцэтгэл (блок) ══════════════════ */
-
-function BagtsCard({ rawBlk, f, onPick }: { rawBlk: Async<Row[]>; f: Filters; onPick: (v: string) => void }) {
-  return (
-    <Card title="Багц тус бүрийн гүйцэтгэл">
-      <Data q={rawBlk} loading="Тооцож байна…">
-        {(rows) => {
-          const scoped = rows.filter((x) => blockMatch(x, f, 'bagts'));
-          const by = new Map<string, { n: number; sum: number; cnt: number }>();
-          for (const x of scoped) {
-            const k = text(x[BF.bagts], 'Тодорхойгүй');
-            const rec = by.get(k) ?? { n: 0, sum: 0, cnt: 0 };
-            rec.n += 1;
-            const g = Number(x[BF.progress] ?? -1);
-            if (g >= 0) { rec.sum += g; rec.cnt += 1; }
-            by.set(k, rec);
-          }
-          const items = [...by.entries()].map(([key, r]) => ({
-            key, label: key.replace(/^багц\s*/i, 'Б'),
-            value: r.cnt ? r.sum / r.cnt : 0,
-            display: r.cnt ? pct(r.sum / r.cnt, 0) : '—',
-          })).sort((a, b) => a.key.localeCompare(b.key, 'mn'));
-          return items.length ? (
-            <Series color={BUILD_HUE} unit="дундаж гүйцэтгэл, %" height={150} selected={f.bagts ?? null} onSelect={onPick} items={items} />
-          ) : <p className={o.state}>Багцын мэдээлэл алга.</p>;
-        }}
-      </Data>
-    </Card>
-  );
-}
-
-/* ══════════════════ Талбайн хяналт (блок дундаж) ══════════════════ */
-
-function SurveyCard({ rawBlk }: { rawBlk: Async<Row[]> }) {
-  return (
-    <Card title="Барилгын гүйцэтгэл">
-      <Data q={rawBlk} loading="Тооцож байна…">
-        {(rows) => {
-          const done = rows.filter((x) => Number(x[BF.progress] ?? -1) >= 0);
-          const avg = done.length ? done.reduce((a, x) => a + Number(x[BF.progress]), 0) / done.length : null;
-          const ail = rows.reduce((a, x) => a + Number(x[BF.households] ?? 0), 0);
-          const floors = rows.map((x) => Number(x[BF.floors] ?? 0)).filter((v) => v > 0);
-          const avgFloor = floors.length ? floors.reduce((a, b) => a + b, 0) / floors.length : null;
-          return (
-            <div className={o.surveyRow}>
-              <Ring value={avg} color={SURVEY_HUE} size={130} width={12} label="дундаж" />
-              <div className={o.surveyStats}>
-                <div><b className="num">{num(rows.length)}</b><span>Блок</span></div>
-                <div><b className="num">{num(ail)}</b><span>Айл</span></div>
-                <div><b className="num">{num(avgFloor, 1)}</b><span>Дундаж давхар</span></div>
-              </div>
-            </div>
-          );
         }}
       </Data>
     </Card>
@@ -1003,7 +1027,11 @@ function ParkingCard({ rawZ, f }: { rawZ: Async<Row[]>; f: Filters }) {
         {(rows) => {
           const scoped = f.zone ? rows.filter((x) => text(x[Z.id]) === f.zone) : rows;
           const s = (fld: string) => scoped.reduce((a, x) => a + Number(x[fld] ?? 0), 0);
-          const norm = s(Z.parkNorm), plan = s(Z.parkPlan), exist = s(Z.parkExist);
+          const norm = s(Z.parkNorm);
+          // ⚠️ Шинэ бүсийн давхаргад НИЙЛБЭР талбар байхгүй — ил + далдаас угсарна.
+          //    «Одоо байгаа зогсоол» (ET_NIIT) талбар ч алга тул мөр нь хасагдав.
+          const open = s(Z.parkPlanOpen), under = s(Z.parkPlanUnder);
+          const plan = open + under;
           const rate = norm > 0 ? (plan / norm) * 100 : null;
           const gap = plan - norm;
           return (
@@ -1012,13 +1040,12 @@ function ParkingCard({ rawZ, f }: { rawZ: Async<Row[]>; f: Filters }) {
                 <Ring value={rate} color="#f59e0b" size={76} width={8} />
                 <p className={o.progressText}>Төлөвлөсөн зогсоол нормын <b>{rate == null ? '—' : `${Math.round(rate)}%`}</b>-ийг хангана.</p>
               </div>
-              <Bars inline max={Math.max(1, norm, plan, exist)} items={[
+              <Bars inline max={Math.max(1, norm, plan)} items={[
                 { key: 'norm', label: 'Норм (шаардлага)', value: norm, display: num(norm), color: '#64748b' },
                 { key: 'plan', label: 'Төлөвлөсөн', value: plan, display: num(plan), color: '#f59e0b' },
-                { key: 'exist', label: 'Одоо байгаа', value: exist, display: num(exist), color: '#94a3b8' },
               ]} />
               <div className={o.miniStats}>
-                <div><span>Ил / далд</span><b>{num(s(Z.parkPlanOpen))} / {num(s(Z.parkPlanUnder))}</b></div>
+                <div><span>Ил / далд</span><b>{num(open)} / {num(under)}</b></div>
                 <div><span>{gap >= 0 ? 'Илүүдэл' : 'Дутагдал'}</span><b className={gap >= 0 ? o.pos : o.neg}>{gap >= 0 ? '+' : '−'}{num(Math.abs(gap))}</b></div>
               </div>
             </>
@@ -1049,10 +1076,6 @@ function SuitabilityCard({ suit, prog, zone, f, setZoneSet }: {
   const zScore = zone ? d.byId[zone]?.score ?? null : undefined;
   const headScore = zone ? zScore ?? null : d.avgScore;
   const selKey = f.zoneSet?.key.startsWith('suit:') ? f.zoneSet.key.slice(5) : null;
-  const stackItems = [
-    ...d.levels.map((l) => ({ key: l.label, label: l.label, value: l.n, color: l.color })),
-    ...(d.noData > 0 ? [{ key: 'nd', label: 'Өгөгдөлгүй', value: d.noData, color: NO_DATA_COLOR }] : []),
-  ];
   return (
     <Card title="Тохиромжтой байдал">
       <div className={o.progressRow}>
@@ -1061,15 +1084,16 @@ function SuitabilityCard({ suit, prog, zone, f, setZoneSet }: {
           {zone ? <><b>{zone}</b> бүсийн оноо · {scoreLabel(headScore)}.</> : <><b>{num(d.zones)}</b> бүсийн дундаж · {scoreLabel(headScore)}.</>}
         </p>
       </div>
-      <Stack legend={false} total={d.zones} items={stackItems} />
-      <div style={{ marginTop: 12 }}>
-        <Bars inline max={Math.max(1, ...d.levels.map((l) => l.n))} selected={selKey}
-          onSelect={(key) => { const lv = d.levels.find((l) => l.label === key); setZoneSet(lv ? { key: `suit:${key}`, label: `Үнэлгээ: ${key}`, ids: lv.ids } : undefined); }}
-          items={d.levels.map((l) => ({ key: l.label, label: l.label, value: l.n, display: `${num(l.n)} бүс`, color: l.color }))} />
-      </div>
+      {/* ⚠️ Урьд нь дээр нь `Stack` зурвас байв — доорх баганууд ЯГ ижил тоог
+          харуулдаг тул нэг өгөгдлийг хоёр удаа зурж, картыг хоёр дахин өндөр
+          болгож байлаа. Зөвхөн багана үлдэв (дарж шүүх боломжтой нь энэ). */}
+      <Bars inline max={Math.max(1, ...d.levels.map((l) => l.n))} selected={selKey}
+        onSelect={(key) => { const lv = d.levels.find((l) => l.label === key); setZoneSet(lv ? { key: `suit:${key}`, label: `Үнэлгээ: ${key}`, ids: lv.ids } : undefined); }}
+        items={d.levels.map((l) => ({ key: l.label, label: l.label, value: l.n, display: `${num(l.n)} бүс`, color: l.color }))} />
       <div className={o.miniStats}>
         <div><span>Нийт ашиг/алдагдал</span><b className={d.profit >= 0 ? o.pos : o.neg}>{mnt(d.profit)}</b></div>
         <div><span>Ашигтай бүс</span><b>{num(d.profitZones)} / {num(d.zones)}</b></div>
+        {d.noData > 0 && <div><span>Өгөгдөлгүй</span><b style={{ color: NO_DATA_COLOR }}>{num(d.noData)} бүс</b></div>}
       </div>
     </Card>
   );
@@ -1169,69 +1193,118 @@ function EngineeringCard({ costs, f, onPick }: { costs: Async<CostSummary>; f: F
   );
 }
 
-/* ══════════════════ Багцын төсөв / санхүүжилт (cashflow) ══════════════════ */
+/* ══════════════════ Багцын мэдээлэл (төсөв × гүйцэтгэл) ══════════════════ */
 
-function BudgetCard({ cash, f, setZone }: { cash: Async<CashRow[]>; f: Filters; setZone: (z: string | null) => void }) {
+type BagtsInfo = {
+  /** Блокийн `BAGTS` утга — `f.bagts` шүүлт ЯГ үүнтэй тулгагдана */
+  key: string;
+  label: string;
+  budget: number; contract: number; contractor: string;
+  blocks: number; ail: number;
+  /** Гүйцэтгэл бүртгэгдсэн блокийн тоо — багцуудыг нэгтгэхэд ЖИН нь болно */
+  scored: number;
+  progress: number | null;
+};
+
+/**
+ * Багцын САНХҮҮ (BUS_cashflow) ба ГҮЙЦЭТГЭЛ (building_GOL) хоёрыг нэгтгэнэ.
+ *
+ * ⚠️ Багцын нэр хоёр эх сурвалжид өөр бичигдсэн («Багц-4.1» ↔ «Багц 4.1») тул
+ * `bagtsKey`-ээр л жишнэ. Харин ГАРАХ түлхүүр нь БЛОКИЙН бичиглэл байх ёстой —
+ * `blockMatch` нь `f.bagts`-ыг блокийн талбартай яг тааруулж шүүдэг.
+ */
+function joinBagts(cash: CashRow[], blocks: Row[]): BagtsInfo[] {
+  const by = new Map<string, BagtsInfo & { sum: number }>();
+  const slot = (k: string, label: string) => {
+    const cur = by.get(k) ?? { key: label, label, budget: 0, contract: 0, contractor: '—', blocks: 0, ail: 0, scored: 0, progress: null, sum: 0 };
+    by.set(k, cur);
+    return cur;
+  };
+  for (const r of cash) {
+    const s = slot(bagtsKey(r.zone), r.zone);
+    s.budget += r.budget; s.contract += r.contract;
+    if (r.contractor) s.contractor = r.contractor;
+  }
+  for (const b of blocks) {
+    const name = text(b[BF.bagts], 'Тодорхойгүй');
+    const s = slot(bagtsKey(name), name);
+    s.key = name;                                  // блокийн бичиглэл — шүүлтийн түлхүүр
+    s.blocks += 1;
+    s.ail += Number(b[BF.households] ?? 0);
+    const g = Number(b[BF.progress] ?? -1);
+    if (g >= 0) { s.sum += g; s.scored += 1; }
+  }
+  return [...by.values()]
+    .map(({ sum, ...s }) => ({ ...s, progress: s.scored ? sum / s.scored : null }))
+    .sort((a, b) => a.label.localeCompare(b.label, 'mn'));
+}
+
+const progressHue = (p: number | null) =>
+  p == null ? ZONE_TYPE_EMPTY_HUE : PROGRESS_LEVELS.find((l) => p >= l.min && p < l.max)?.color ?? BUILD_HUE;
+
+/** Багц бүрийн төсөв, гэрээ, гүйцэтгэгч, блок — дарж багцаар шүүнэ */
+function BagtsInfoCard({ cash, rawBlk, f, onPick }: {
+  cash: Async<CashRow[]>; rawBlk: Async<Row[]>; f: Filters; onPick: (v: string) => void;
+}) {
+  if (cash.state !== 'ready' || rawBlk.state !== 'ready') {
+    const err = cash.state === 'error' || rawBlk.state === 'error';
+    return <Card title="Багцын мэдээлэл"><p className={o.state}>{err ? 'Мэдээлэл алга.' : 'Тооцож байна…'}</p></Card>;
+  }
+  const list = joinBagts(cash.data, rawBlk.data);
+  if (!list.length) return <Card title="Багцын мэдээлэл"><p className={o.state}>Мэдээлэл алга.</p></Card>;
+
+  const sel = f.bagts ? list.find((x) => x.key === f.bagts) ?? null : null;
+  const scope = sel ? [sel] : list;
+  const budget = scope.reduce((a, x) => a + x.budget, 0);
+  const contract = scope.reduce((a, x) => a + x.contract, 0);
+  const scored = scope.reduce((a, x) => a + x.scored, 0);
+  const progress = scored ? scope.reduce((a, x) => a + (x.progress ?? 0) * x.scored, 0) / scored : null;
   return (
-    <Card title="Багцын төсөв">
-      <Data q={cash} loading="Тооцож байна…">
-        {(rows) => {
-          const items = rows
-            .map((r) => ({ key: r.zone, label: r.zone, value: r.budget, display: mnt(r.budget) }))
-            .filter((i) => i.value > 0)
-            .sort((a, b) => b.value - a.value);
-          return items.length ? (
-            <Bars color="#e11d48" selected={f.zone ?? null}
-              onSelect={(z) => setZone(f.zone === z ? null : z)} items={items} />
-          ) : <p className={o.state}>Мэдээлэл алга.</p>;
-        }}
-      </Data>
+    <Card title="Багцын мэдээлэл" note="төсөв · дарж шүүнэ">
+      <Bars inline items={list.map((x) => ({
+        key: x.key, label: x.label.replace(/^багц[\s-]*/i, 'Багц '), value: x.budget,
+        display: mnt(x.budget), color: progressHue(x.progress),
+      }))} selected={f.bagts ?? null} onSelect={onPick} />
+      <div className={o.miniStats}>
+        <div><span>Төсөвт өртөг</span><b>{mnt(budget)}</b></div>
+        <div><span>Гэрээлсэн</span><b>{mnt(contract)}{budget > 0 && ` · ${Math.round((contract / budget) * 100)}%`}</b></div>
+        <div><span>Блок · айл</span><b>{num(scope.reduce((a, x) => a + x.blocks, 0))} · {num(scope.reduce((a, x) => a + x.ail, 0))}</b></div>
+        <div><span>Гүйцэтгэл</span><b style={{ color: progressHue(progress) }}>{pct(progress, 0)}</b></div>
+      </div>
+      {sel && <p className={o.normNote}>{sel.contractor}</p>}
     </Card>
   );
 }
 
-function FinancingCard({ cash, f }: { cash: Async<CashRow[]>; f: Filters }) {
-  return (
-    <Card title="Санхүүжилтийн эх үүсвэр">
-      <Data q={cash} loading="Тооцож байна…">
-        {(rows) => {
-          const s = rows.filter((r) => cfMatch(r, f));
-          const sum = (k: keyof CashRow) => s.reduce((a, r) => a + (r[k] as number), 0);
-          const items = [
-            { key: 'sec', label: 'Үнэт цаас', value: sum('securities'), color: '#3387b8' },
-            { key: 'inc', label: 'Төслийн орлого', value: sum('projectIncome'), color: '#22c55e' },
-            { key: 'city', label: 'Нийслэлийн төсөв', value: sum('cityBudget'), color: '#f59e0b' },
-            { key: 'res', label: 'НЗД нөөц', value: sum('reserve'), color: '#a855f7' },
-          ].filter((i) => i.value > 0).map((i) => ({ ...i, display: mnt(i.value) }));
-          const total = items.reduce((a, i) => a + i.value, 0);
-          const [amt, ...u] = mnt(total).split(' ');
-          return items.length ? (
-            <Donut items={items} center={amt} centerLabel={u.join(' ')} size={120} width={16} stack />
-          ) : <p className={o.state}>Мэдээлэл алга.</p>;
-        }}
-      </Data>
-    </Card>
-  );
-}
+/* ══════════════════ Хөрөнгө оруулалт (INVEST) ══════════════════ */
 
-/** Санхүүжилтийн явц — Төсөв → Гэрээлсэн (нэг масштабаар, гэрээлэлтийн %-тай) */
-function FundingCard({ cash, f }: { cash: Async<CashRow[]>; f: Filters }) {
+const ivHue = (type: string) => investType(type)?.color ?? ZONE_TYPE_EMPTY_HUE;
+/** Диаграмд БОГИНО нэр; эх нэр нь урт бөгөөд бүтэн том үсэгтэй */
+const ivLabel = (type: string) => investType(type)?.short ?? type.replace(/^\d+\.\s*/, '');
+
+/** Төрөл тус бүрийн нийт хөрөнгө оруулалт — дарж бусад картыг шүүнэ */
+function InvestTypeCard({ invest, f, onPick }: { invest: Async<InvRow[]>; f: Filters; onPick: (v: string) => void }) {
   return (
-    <Card title="Санхүүжилтийн явц">
-      <Data q={cash} loading="Тооцож байна…">
+    <Card title="Хөрөнгө оруулалт төрлөөр" note="дарж задална">
+      <Data q={invest} loading="Тооцож байна…">
         {(rows) => {
-          const s = rows.filter((r) => cfMatch(r, f));
-          const budget = s.reduce((a, r) => a + r.budget, 0);
-          const contract = s.reduce((a, r) => a + r.contract, 0);
-          if (!budget) return <p className={o.state}>Мэдээлэл алга.</p>;
+          const scoped = rows.filter((r) => ivMatch(r, f, 'type'));
+          const by = new Map<string, number>();
+          for (const r of scoped) by.set(r.type, (by.get(r.type) ?? 0) + r.total);
+          const items = [...by.entries()]
+            .map(([type, v]) => ({ key: type, label: ivLabel(type), value: v, display: mnt(v), color: ivHue(type) }))
+            .filter((i) => i.value > 0).sort((a, b) => b.value - a.value);
+          if (!items.length) return <p className={o.state}>Мэдээлэл алга.</p>;
+          const sel = rows.filter((r) => ivMatch(r, f));
+          const confirmed = sel.reduce((a, r) => a + r.confirmed, 0);
+          const planned = sel.reduce((a, r) => a + r.planned, 0);
           return (
             <>
-              <Bars inline max={budget} items={[
-                { key: 'b', label: 'Урьдчилсан төсөв', value: budget, display: mnt(budget), color: '#e11d48' },
-                { key: 'c', label: `Гэрээлсэн · ${Math.round((contract / budget) * 100)}%`, value: contract, display: mnt(contract), color: '#f59e0b' },
-              ]} />
+              <Bars inline items={items} selected={f.investType ?? null} onSelect={onPick} />
               <div className={o.miniStats}>
-                <div><span>Гэрээлэгдээгүй</span><b>{mnt(budget - contract)}</b></div>
+                <div><span>Баталгаажсан</span><b>{mnt(confirmed)}</b></div>
+                <div><span>Урьдчилсан</span><b>{mnt(planned)}</b></div>
+                <div><span>Төрөл · төсөл</span><b>{num(items.length)} · {num(sel.length)}</b></div>
               </div>
             </>
           );
@@ -1241,24 +1314,30 @@ function FundingCard({ cash, f }: { cash: Async<CashRow[]>; f: Filters }) {
   );
 }
 
-/** Оноор хөрөнгө оруулалт — сарын санхүүжилтийг оноор нэгтгэж (хувиар) */
-function YearlyInvestCard({ cash, f }: { cash: Async<CashRow[]>; f: Filters }) {
-  const palette: Record<string, string> = { '2025': '#3387b8', '2026': '#22c55e', '2027': '#f59e0b', '2028': '#a855f7' };
+/**
+ * Санхүүжилтийн эх үүсвэр — 5 багана + ШИЙДЭГДЭЭГҮЙ үлдэгдэл.
+ * ⚠️ Үлдэгдлийг заавал харуулна: 90 мөрийн 28-д эх үүсвэр бөглөгдөөгүй (захирамж
+ * гараагүй) тул зөвхөн 5 багана бодвол нийлбэр KPI-ийн нийт дүнгээс бага гарна.
+ * Задаргааг `INVEST`-ийн тайлбараас (33.4 импортод орхигдсон + 449.5 эх өгөгдөлд
+ * хоосон).
+ */
+function InvestSourceCard({ invest, f }: { invest: Async<InvRow[]>; f: Filters }) {
   return (
-    <Card title="Оноор хөрөнгө оруулалт">
-      <Data q={cash} loading="Тооцож байна…">
+    <Card title="Санхүүжилтийн бүтэц" note="хөрөнгө оруулалт">
+      <Data q={invest} loading="Тооцож байна…">
         {(rows) => {
-          const s = rows.filter((r) => cfMatch(r, f));
-          const by = new Map<string, number>();
-          CASHFLOW.months.forEach((m, i) => {
-            const year = `20${m.label.slice(0, 2)}`;
-            by.set(year, (by.get(year) ?? 0) + s.reduce((a, r) => a + (r.months[i] || 0), 0));
-          });
-          const items = [...by.entries()].map(([year, v]) => ({ key: year, label: `${year} он`, value: v, color: palette[year] ?? '#8b5cf6', display: mnt(v) })).filter((i) => i.value > 0);
-          const total = items.reduce((a, i) => a + i.value, 0);
+          const scoped = rows.filter((r) => ivMatch(r, f));
+          const items = INVEST.sources.map((s, i) => ({
+            key: s.field, label: s.label, color: s.color,
+            value: scoped.reduce((a, r) => a + r.sources[i], 0),
+          }));
+          const total = scoped.reduce((a, r) => a + r.total, 0);
+          const known = items.reduce((a, i) => a + i.value, 0);
+          const all = [...items, { key: 'na', label: 'Захирамж гараагүй', color: ZONE_TYPE_EMPTY_HUE, value: Math.max(0, total - known) }]
+            .filter((i) => i.value > 0).map((i) => ({ ...i, display: mnt(i.value) }));
           const [amt, ...u] = mnt(total).split(' ');
-          return items.length ? (
-            <Donut items={items} center={amt} centerLabel={u.join(' ')} size={120} width={16} stack />
+          return all.length ? (
+            <Donut items={all} center={amt} centerLabel={u.join(' ')} size={120} width={16} stack />
           ) : <p className={o.state}>Мэдээлэл алга.</p>;
         }}
       </Data>
@@ -1266,38 +1345,50 @@ function YearlyInvestCard({ cash, f }: { cash: Async<CashRow[]>; f: Filters }) {
   );
 }
 
-/** Гүйцэтгэгч байгууллага — төсвөөр */
-function ContractorCard({ cash, f }: { cash: Async<CashRow[]>; f: Filters }) {
+/** Урт төслийн нэрийг тайрах — «Суурийн холболтын зургийн дагуух гэрээний…» */
+const clip = (s: string, n = 46) => (s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s);
+
+/**
+ * ТӨСӨЛ тус бүрийн дүн — багана бүрийн өнгө нь ТӨРӨЛ.
+ * Төрөл сонгосон бол зөвхөн түүний төслүүд (гарчгийн тэмдэглэлд төрлийн нэр).
+ */
+function InvestProjectCard({ invest, f }: { invest: Async<InvRow[]>; f: Filters }) {
   return (
-    <Card title="Гүйцэтгэгч байгууллага">
-      <Data q={cash} loading="Тооцож байна…">
+    <Card title="Төсөл тус бүрээр" note={f.investType ? ivLabel(f.investType) : 'өнгө = төрөл'}>
+      <Data q={invest} loading="Тооцож байна…">
         {(rows) => {
-          const by = new Map<string, number>();
-          for (const r of rows.filter((x) => cfMatch(x, f))) { const c = r.contractor || 'Тодорхойгүй'; by.set(c, (by.get(c) ?? 0) + r.budget); }
-          const items = [...by.entries()].map(([label, v]) => ({ key: label, label, value: v, display: mnt(v) }))
+          const items = rows.filter((r) => ivMatch(r, f))
+            .map((r, i) => ({
+              key: `${i}`, label: clip(r.project), value: r.total,
+              display: mnt(r.total), color: ivHue(r.type),
+            }))
             .filter((i) => i.value > 0).sort((a, b) => b.value - a.value);
-          return items.length ? <Bars color="#8b5cf6" limit={8} items={items} /> : <p className={o.state}>Мэдээлэл алга.</p>;
+          if (!items.length) return <p className={o.state}>Мэдээлэл алга.</p>;
+          const total = items.reduce((a, i) => a + i.value, 0);
+          return (
+            <>
+              <Bars limit={6} items={items} />
+              <div className={o.miniStats}>
+                <div><span>Төсөл</span><b>{num(items.length)}</b></div>
+                <div><span>Нийт дүн</span><b>{mnt(total)}</b></div>
+              </div>
+            </>
+          );
         }}
       </Data>
     </Card>
   );
 }
 
-function ContractCard({ cash, f }: { cash: Async<CashRow[]>; f: Filters }) {
-  return (
-    <Card title="Гэрээний дүн">
-      <Data q={cash} loading="Тооцож байна…">
-        {(rows) => {
-          const items = rows.filter((r) => cfMatch(r, f))
-            .map((r) => ({ key: r.zone, label: r.zone, value: r.contract, display: mnt(r.contract) }))
-            .filter((i) => i.value > 0).sort((a, b) => b.value - a.value);
-          return items.length ? <Bars color="#0891b2" items={items} /> : <p className={o.state}>Гэрээ бүртгэгдээгүй.</p>;
-        }}
-      </Data>
-    </Card>
-  );
-}
+/* ══════════════════ Сарын мөнгөн урсгал (cashflow) ══════════════════ */
 
+/**
+ * ⚠️ `BUS_cashflow`-оос үлдсэн ГАНЦ карт. Багцын төсөв, гэрээ, гүйцэтгэгч,
+ * санхүүжилтийн эх үүсвэр, оны задаргаа зэрэг бусад картууд ХАСАГДСАН: тэдгээр нь
+ * «Багцын мэдээлэл» (багц бүрийн төсөв·гэрээ·гүйцэтгэгч нэг картад) ба
+ * «Хөрөнгө оруулалт» (INVEST — төсөл ДАЯАРЫН эх үүсвэр) хоёрт бүрэн багтсан.
+ * Сарын урсгал л давхардаагүй тул үлдэв.
+ */
 function MonthlyCashCard({ cash, f }: { cash: Async<CashRow[]>; f: Filters }) {
   return (
     <Card title="Сар бүрийн санхүүжилт">

@@ -7,20 +7,20 @@
  * хуулбарлавал каталог дээрх дүн самбар дээрхээс зөрөх өдөр ирнэ.
  */
 
-import { queryGroup, queryStats, count, sum, sqlStr } from './query';
-import { layerUrl, OID, ZONE_FIELD, PLAN_LAYER_IDS, LAYER_BY_ID, type LayerDef } from './services';
+import { queryGroup, queryStats, count, sum } from './query';
+import { layerUrl, OID, PLAN_LAYER_IDS, LAYER_BY_ID, zoneWhere, type LayerDef } from './services';
 import { num, ha, km } from './format';
 import { useAsync, type Async } from './useAsync';
 
 export type Totals = { n: number; q: number; cost: number };
 
-/** Бүсийн шүүлтийн SQL — бүс сонгогдоогүй бол бүгд */
-export const zoneWhere = (zone: string | null) =>
-  zone ? `${ZONE_FIELD} = ${sqlStr(zone)}` : '1=1';
-
-/** Давхаргад тохирох шүүлт — `ZONE_ID`-гүй давхаргад бүсийн шүүлт хийвэл хүсэлт унана */
+/**
+ * Давхаргад тохирох бүсийн шүүлт.
+ * ⚠️ Талбарын нэр ба утга давхаргаас хамаарна: бүсийн давхарга өөрөө `RefName_1`
+ * («Багц -1») гэж бичдэг бол бусад нь `ZONE_ID` («Багц-1»). `zoneWhere` хөрвүүлнэ.
+ */
 export const whereFor = (d: LayerDef, zone: string | null) =>
-  d.noZone ? '1=1' : zoneWhere(zone);
+  (zone ? zoneWhere(d, zone) : null) ?? '1=1';
 
 /** Давхаргын статистикийн хүсэлт — тоо ба (байвал) хэмжээ */
 export const layerStats = (d: LayerDef) =>
