@@ -15,6 +15,13 @@ import Query from '@arcgis/core/rest/support/Query';
 import * as query from '@arcgis/core/rest/query';
 import * as geometryEngine from '@arcgis/core/geometry/geometryEngine';
 import type Geometry from '@arcgis/core/geometry/Geometry';
+
+/**
+ * ⚠️ ArcGIS 4.34-д `geometryEngine` нь хийсвэр `Geometry`-г БИШ, тодорхой
+ * төрлүүдийн НЭГДЛИЙГ (`GeometryUnion`) хүлээж авдаг болсон. Асуулгаас ирэх
+ * геометр нь ажиллах үедээ яг тэдгээрийн нэг тул хөрвүүлэлт нь аюулгүй.
+ */
+type GeomArg = __esri.GeometryUnion;
 import type Polygon from '@arcgis/core/geometry/Polygon';
 import { layerUrl, LAYER_BY_ID } from '@/lib/services';
 import {
@@ -215,9 +222,9 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
 
   onProgress('Орон зайн үзүүлэлт…', 84);
 
-  const stopGeoms = [...bus, ...lrt].map((f) => f.geometry).filter(Boolean) as Geometry[];
-  const parkGeoms = parkWalk.map((f) => f.geometry).filter(Boolean) as Geometry[];
-  const engGeoms = engResults.flat().map((f) => f.geometry).filter(Boolean) as Geometry[];
+  const stopGeoms = [...bus, ...lrt].map((f) => f.geometry).filter(Boolean) as GeomArg[];
+  const parkGeoms = parkWalk.map((f) => f.geometry).filter(Boolean) as GeomArg[];
+  const engGeoms = engResults.flat().map((f) => f.geometry).filter(Boolean) as GeomArg[];
 
   // ⚠️ Нэгтгэсэн (union) геометр — эс бөгөөс бүс бүрд 4,000+ шугам тус бүрээр
   //    зай бодох болж, 52 × 4,000 = 200,000 тооцоо явна.

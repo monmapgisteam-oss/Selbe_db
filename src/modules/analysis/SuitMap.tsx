@@ -64,6 +64,15 @@ const hexToRgba = (hex: string, a: number) => [
  * ⚠️ Заавал: гадаргуу ~1350 м өндөрт байх бөгөөд `elevationInfo` өгөхгүй бол
  * давхарга 0 м-т үлдэж мешийн доор алга болно.
  */
+/**
+ * ⚠️ ArcGIS 4.34-д `renderer`/`symbol` нь ЯЛГАВАРТАЙ НЭГДЭЛ болсон: гишүүн бүр
+ * `type`-ыг ЛИТЕРАЛ байдлаар шаардана. Ерөнхий `__esri.RendererProperties`/
+ * `SymbolProperties` нь тэр литералыг агуулаагүй тул шууд оноох боломжгүй.
+ * Хүлээн авагч талаас нь гаргаж авбал хувилбар өөрчлөгдөхөд дагаж шинэчлэгдэнэ.
+ */
+type RendererProp = NonNullable<__esri.FeatureLayerProperties['renderer']>;
+type SymbolProp = NonNullable<__esri.GraphicProperties['symbol']>;
+
 const ON_GROUND = { mode: 'on-the-ground' } as unknown as __esri.FeatureLayerProperties['elevationInfo'];
 
 function rendererFor(d: MapLayerDef) {
@@ -111,7 +120,7 @@ function labelSymbol(dim: Dim, text: string, color: string, halo: string, haloSi
         halo: { color: halo, size: haloSize },
         size,
       }],
-    } as unknown as __esri.SymbolProperties;
+    } as unknown as SymbolProp;
   }
   return {
     type: 'text',
@@ -120,7 +129,7 @@ function labelSymbol(dim: Dim, text: string, color: string, halo: string, haloSi
     haloSize,
     text,
     font: { size, family: 'Segoe UI', weight: 'bold' },
-  } as unknown as __esri.SymbolProperties;
+  } as unknown as SymbolProp;
 }
 
 /**
@@ -206,7 +215,7 @@ export function SuitMap({
           visible: d.on,
           outFields: ['*'],
           elevationInfo: ON_GROUND,
-          renderer: (d.kind === 'building' ? buildingRenderer() : rendererFor(d)) as __esri.RendererProperties,
+          renderer: (d.kind === 'building' ? buildingRenderer() : rendererFor(d)) as unknown as RendererProp,
           popupEnabled: false, // popup биш — hover панель
         });
         ctxRef.current[d.key] = lyr;
@@ -274,7 +283,7 @@ export function SuitMap({
     view.when(() => { if (!view.destroyed) setReady(true); }).catch(() => {});
 
     /* Дарж бүс сонгох */
-    const click = view.on('click', (e) => {
+    const click = view.on('click', (e: __esri.ViewClickEvent) => {
       const zoneLayer = zoneRef.current;
       if (!zoneLayer) return;
       view.hitTest(e, { include: [zoneLayer] })
@@ -296,7 +305,7 @@ export function SuitMap({
      */
     let token = 0;
     let lastKey: string | null = null;
-    const move = view.on('pointer-move', (e) => {
+    const move = view.on('pointer-move', (e: __esri.ViewPointerMoveEvent) => {
       const my = ++token;
       const include = [bldRef.current, zoneRef.current].filter(Boolean) as Layer[];
       if (!include.length) return;
@@ -481,7 +490,7 @@ export function SuitMap({
             color: isSel ? SELECT_COLOR : hexToRgba(col, Math.min(1, alpha * 1.35)),
             width: isSel ? 1.6 : 0.6,
           },
-        } as unknown as __esri.SymbolProperties,
+        } as unknown as SymbolProp,
       }));
 
       if (vis) {
