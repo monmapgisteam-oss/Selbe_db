@@ -1,161 +1,662 @@
 /* ══════════════════════════════════════════════════════════
-   Ерөнхий дашбоард — газрын зургийг ТОЙРСОН байрлал.
-   Багана бүр ГАНЦ сэдэвтэй, дээрээ гарчигтай (`.colHead`):
+   Ерөнхий дашбоард — ЗҮҮН ЖАГСААЛТ · ТӨВД ЗУРАГ · БАРУУНД ДЭЛГЭРЭНГҮЙ
 
-     ┌─────────────── KPI зурвас (8 хавтан) ───────────────┐
-     │ ГҮЙЦЭТГЭЛ │ ХӨРӨНГӨ  │ ГАЗРЫН │ ГАЗАР     │ ЕРӨНХИЙ │
-     │  (left)   │ ОРУУЛАЛТ │ ЗУРАГ  │ ЧӨЛӨӨЛӨЛТ │ ТӨЛӨВ-  │
-     │           │  (fin)   │ (map)  │  (uld)    │ ЛӨГӨӨ   │
-     └────────── ҮНЭЛГЭЭ БА НОРМ (bot, 4 карт) ────────────┘
+     ┌──────────┬────────────────────┬─────────────────────┐
+     │ .rail    │ .center            │ .detail             │
+     │ 7 хэсэг  │  .head (үзүүлэлт)  │ сонголт бүрд .col   │
+     │ + гол тоо│  .hero (зураг)     │ (олон сонголтод     │
+     │          │                    │  багана болж хуваа) │
+     └──────────┴────────────────────┴─────────────────────┘
+
+   ⚠️ ӨНГӨНИЙ ДҮРЭМ — өнгө нь ЗӨВХӨН УТГА заана:
+     `.done/.active/.idle`      — үе шатны төлөв
+     `.blocked/.talks/.admin`   — газар чөлөөлөлтийн хүндрэл
+     `.pHigh/.pMid/.pLow/.pMin` — гүйцэтгэлийн зэрэг
+   Бусад БҮХ тоо саарал шаталбараар (`--ink` → `--ink-3`) ялгарна. Урьд нь
+   үзүүлэлт бүр өөрийн өнгөтэй байсан — 30 гаруй өнгө нэг дэлгэцэд гарч, аль нь
+   чухал болох нь мэдэгдэхээ больжээ. Шинэ өнгө нэмэхээсээ өмнө: энэ ЮУ заах вэ?
+
+   ⚠️ `.pack*`, `.side`, `.left`, `.right`, `.map`, `.kpi`, `.colHead`,
+   `.mapDims`, `.dimBtn`, `.dimOn` — эдгээрийг «Багцын мэдээлэл» (`Bagts.tsx`)
+   ХУВААЛЦАНА. Устгахаас өмнө тэр файлыг шалга.
    ══════════════════════════════════════════════════════════ */
 
-.dash {
+.shell {
+  /* Утга заасан цорын ганц палитр — өөр өнгө нэмэхээсээ өмнө «энэ юу заах вэ?» */
+  --accent: #1e3a8a;
+  --ok: #0f766e;
+  --low: #b45309;
+  --min: #be123c;
+
+  /* Баганын өргөн — `Dashboard.tsx` бариулаар дарж бичнэ. `--detail-w`-ийн
+     анхдагч нь нээлттэй хэсгийн тоогоор өснө. */
+  --rail-w: 288px;
+  --detail-w: calc(var(--cols, 1) * 380px + (var(--cols, 1) - 1) * 12px);
+
   height: 100%;
   display: grid;
-  gap: 10px;
-  padding: 10px;
-  /* ⚠️ 5 багана: газар чөлөөлөлт (uld) нь map ба right хооронд зэрэгцээ.
-     4 хажуугийн баганын min-ийг 185px болгосон — эс бөгөөс 1280px дэлгэцэд
-     газрын зураг 220px болж хэт шахагдана. Өргөн дэлгэцэд 240px хүртэл сунана. */
-  grid-template-columns: minmax(185px, 240px) minmax(185px, 240px) minmax(0, 1fr) minmax(185px, 240px) minmax(185px, 240px);
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  grid-template-areas:
-    'kpi  kpi  kpi  kpi  kpi'
-    'left fin  map  uld  right'
-    'bot  bot  bot  bot  bot';
+  /* ⚠️ `min(...)` нь бариулаар хэт томруулсан ч төв хэсгийг дарахаас сэргийлнэ:
+     хадгалагдсан утга дэлгэц багасахад ч давхарлахгүй. */
+  grid-template-columns: min(var(--rail-w), 32vw) auto minmax(0, 1fr);
+  gap: 12px;
+  padding: 12px;
   background: var(--bg);
   min-width: 0;
   min-height: 0;
   overflow: hidden;
 }
-
-/* ── KPI зурвас ── */
-.kpi {
-  grid-area: kpi;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
-  gap: 10px;
+.shell[data-detail='1'] {
+  grid-template-columns: min(var(--rail-w), 32vw) auto minmax(0, 1fr) auto min(var(--detail-w), 68vw);
 }
-.tile {
+
+/* ══════════════════ Хэмжээ сунгах бариул ══════════════════ */
+
+/* ⚠️ Барих талбар нь 10px — 4px бариул нь хулганаар оносон эсэхийг мэдэхэд хэцүү,
+   харин илүү өргөн зураас нь харагдацыг хуваачихдаг. Тиймээс ил зураас нимгэн,
+   БАРИХ талбар нь өргөн. */
+.grip {
+  position: relative;
+  width: 10px;
+  margin: 0 -3px;
+  cursor: col-resize;
+  touch-action: none;
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 10px 13px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-top: 2px solid var(--tone, var(--hue));
-  border-radius: var(--r);
-  box-shadow: var(--shadow-sm);
+  align-items: center;
+  justify-content: center;
+  border-radius: 99px;
 }
-.tileVal { font-size: 1.28rem; font-weight: 700; line-height: 1.1; color: var(--ink); }
-.tileUnit { font-size: 0.72rem; font-weight: 600; color: var(--ink-3); margin-left: 3px; }
-.tileLabel { font-size: 0.78rem; font-weight: 500; color: var(--ink-2); }
-
-/* ══════════ «Багцын мэдээлэл» — ГУРВАН багана ══════════ */
-
-/**
- * ⚠️ `.dash`-ын 5 баганат сүлжээг ДАХИН ХЭРЭГЛЭЖ БОЛОХГҮЙ: тэнд хажуугийн 4
- * багана 240px-ээр таглагдсан бөгөөд багцын дэлгэрэнгүй (гүйцэтгэгчийн урт
- * нэр, мөнгөн дүнгийн мөр) тэр өргөнд мөр дамжина. Энд ЗҮҮН нь зөвхөн 7 мөрт
- * жагсаалт тул нарийн, БАРУУН нь бүх дэлгэрэнгүйг барих тул өргөн.
- *
- * `.side`, `.map`, `.kpi`, `.tile`, `.colHead`, `.mapDims` нь дашбоардтай
- * ХУВААЛЦАНА — тэдгээр нь сүлжээнээс хамааралгүй.
- */
-.pack {
+.grip span {
+  display: block;
+  width: 2px;
   height: 100%;
-  display: grid;
-  gap: 10px;
-  padding: 10px;
-  /* ⚠️ ЗҮҮН багана 250px-д хэт нарийн байв: «Багц 17.1 · Гадна тохижилт — Багц 1»
-     гэсэн нэр ба «1.08 тэрбум» гэсэн утга хоёр нэг мөрд багтахгүй, гарчиг нь
-     хоёр үг үлдтэлээ таслагдана. Багцын код хүртэл нь уншигдах өргөн хэрэгтэй. */
-  grid-template-columns: minmax(250px, 320px) minmax(0, 1fr) minmax(300px, 400px);
-  grid-template-rows: auto minmax(0, 1fr);
-  grid-template-areas:
-    'kpi  kpi kpi'
-    'left map right';
-  background: var(--bg);
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
+  border-radius: 99px;
+  background: var(--line);
+  transition: background 0.14s, width 0.14s;
 }
+.grip:hover span, .grip:focus-visible span { width: 4px; background: var(--ink-3); }
+.grip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.gripOn span { width: 4px; background: var(--accent); }
 
-/* Гүйцэтгэлийн 4 түвшний тайлбар — зурган дээр доод зүүн буланд хөвнө.
-   ⚠️ Блокууд `breaks` рендерээр өнгөтэй зурагддаг; тайлбаргүй бол өнгө нь
-   ямар ч утгагүй чимэглэл болно. */
-.packLegend {
-  position: absolute;
-  bottom: 12px;
-  left: 12px;
-  z-index: 5;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 12px;
-  max-width: calc(100% - 24px);
-  padding: 7px 10px;
-  border: 1px solid var(--line);
-  border-radius: var(--r);
-  background: color-mix(in srgb, var(--surface) 94%, transparent);
-  backdrop-filter: blur(8px);
-  box-shadow: var(--shadow-sm);
-  font-size: 0.68rem;
-  color: var(--ink-2);
-}
-.packLegendItem { display: flex; align-items: center; gap: 5px; }
-.packLegendItem i { width: 9px; height: 9px; border-radius: 2px; flex: none; }
-.packLegendItem b { font-weight: 600; color: var(--ink-3); }
+/* ══════════════════ Зүүн жагсаалт ══════════════════ */
 
-/* Гүйцэтгэлийн цагираг ба хажуугийн үзүүлэлт — нэг эгнээнд */
-.packRing { display: flex; align-items: center; gap: 12px; }
-.packRing > :last-child { flex: 1; min-width: 0; }
-
-/* ── Зүүн / баруун баганын карт ── */
-.side {
+.rail {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
   min-height: 0;
   overflow-y: auto;
 }
-.left { grid-area: left; }
-.fin { grid-area: fin; }
-.uld { grid-area: uld; }
-.right { grid-area: right; }
-
-/* Баганын сэдэв — багана бүр ГАНЦ сэдэвтэй (гүйцэтгэл · мөнгө · газар · төлөвлөлт).
-   ⚠️ Гүйлгэхэд ЗУУРАЛДАНА: 4 багана бүгд бие даан гүйдэг тул доош гүйлгэсэн
-   хэрэглэгч аль баганаа хараад байгаагаа алдана. */
-.colHead {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  margin: -2px 0 -2px;
-  padding: 4px 2px 6px;
-  font-size: 0.7rem;
+.railHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 2px 8px;
+  font-size: 0.82rem;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--ink-3);
-  background: var(--bg);
+}
+.railClear {
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink-3);
+  transition: color 0.12s;
+}
+.railClear:hover { color: var(--ink); }
+
+.railItem {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  padding: 12px 13px;
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  transition: border-color 0.14s, background 0.14s, box-shadow 0.14s;
+}
+.railItem:hover { border-color: var(--ink-3); box-shadow: var(--shadow-sm); }
+/* Сонгогдсон — зүүн ирмэгийн заалт (өнгө биш БАЙРЛАЛААР ялгана) */
+.railOn {
+  background: var(--surface-2);
+  border-color: var(--ink-3);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.railTop { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.railNo { flex: none; font-family: var(--mono); font-size: 0.76rem; font-weight: 700; color: var(--ink-3); }
+.railTitle {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.96rem;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.railVal {
+  flex: none;
+  font-size: 1.02rem;
+  font-weight: 700;
+  font-family: var(--mono);
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  white-space: nowrap;
+}
+/* Явцын нимгэн зурвас — тоог уншихаас өмнө нүдээр харьцуулах */
+.railBar { display: block; height: 4px; border-radius: 99px; background: var(--sunken); overflow: hidden; }
+.railBar i { display: block; height: 100%; border-radius: 99px; }
+.railBar i.active { background: var(--accent); }
+.railBar i.done { background: var(--ok); }
+.railBar i.idle { background: var(--ink-3); }
+.railNote {
+  font-size: 0.80rem;
+  line-height: 1.35;
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.railFoot {
+  margin-top: 8px;
+  padding: 10px 2px 0;
+  border-top: 1px solid var(--line);
+  font-size: 0.78rem;
+  line-height: 1.55;
+  color: var(--ink-3);
 }
 
-/* ── Төв газрын зураг ── */
-.map {
-  grid-area: map;
+/* ══════════════════ Төв — үзүүлэлт ба зураг ══════════════════ */
+
+.center { display: flex; flex-direction: column; gap: 12px; min-width: 0; min-height: 0; }
+
+.head { display: grid; grid-template-columns: repeat(auto-fit, minmax(178px, 1fr)); gap: 10px; }
+
+/* ⚠️ `--tone` нь СОНГОМОЛ: «Багцын мэдээлэл» хавтан бүрд өөрийн өнгө дамжуулдаг
+   тул дээд ирмэг нь өнгөтэй үлдэнэ. Дашбоард `--tone` дамжуулахгүй — өнгөгүй
+   (`--line`) болж, өнгө нь зөвхөн УТГА заах дүрэм хэвээр хадгалагдана. */
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 13px 15px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-top: 2px solid var(--tone, var(--line));
+  border-radius: var(--r);
+}
+/* Гол үзүүлэлт (нийт гүйцэтгэл) — ГАНЦ онцлох хавтан */
+.tileLead { border-color: var(--ink-3); box-shadow: inset 0 2px 0 var(--accent); }
+/* ⚠️ УТГА (`b`) ба НЭГЖ (`i`) тусдаа: «≈2.4 их наяд ₮» бүхэлдээ 1.7rem-ээр
+   зурагдвал хавтангаас хальж, эхний тэмдэгт нь тайрагддаг байв. Нэгжийг жижиг
+   болгож, суурь дээр нь зэрэгцүүлбэл багтахаас гадна уншихад ч хурдан. */
+.tileVal {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0 4px;
+  min-width: 0;
+}
+.tileVal b {
+  font-size: 1.72rem;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.tileVal i { font-style: normal; font-size: 0.84rem; font-weight: 600; color: var(--ink-3); white-space: nowrap; }
+.tileLabel { font-size: 0.82rem; font-weight: 500; color: var(--ink-2); }
+.tileSub { font-size: 0.72rem; color: var(--ink-3); font-family: var(--mono); }
+.tileBar { display: block; height: 5px; margin-top: 3px; border-radius: 99px; background: var(--sunken); overflow: hidden; }
+.tileBar i { display: block; height: 100%; border-radius: 99px; background: var(--accent); }
+
+.hero {
   position: relative;
   display: flex;
-  min-width: 0;
+  flex: 1;
   min-height: 0;
   border: 1px solid var(--line);
   border-radius: var(--r);
   overflow: hidden;
-  box-shadow: var(--shadow-sm);
 }
 
-/* 2D / 3D / BIM солигч — зурган дээр давхарлав.
-   ⚠️ Порталын толгойн зурвасаас ялгаатай нь дашбоард нь бүтэн дэлгэцтэй тул
-   толгойн `mapTools` зурагдахгүй — солигчийг зургийн ДЭЭД ТӨВД өөрөө барина. */
+/* ══════════════════ Баруун — дэлгэрэнгүй ══════════════════ */
+
+/* ⚠️ ӨРГӨН нь `.shell`-ийн сүлжээнээс ирнэ (`--detail-w`) — энд width тавихгүй,
+   эс бөгөөс бариулаар чирэх нь үйлчлэхгүй болно. Анхдагчаар нээлттэй хэсгийн
+   тоогоор өсөж, 68vw-д тагладаг; түүнээс хойш багана 320px-ээр үлдэж талбар
+   өөрөө хэвтээгээр гүйнэ, ингэснээр 7-уланг зэрэг нээхэд ч уншигдахаа болихгүй. */
+.detail {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(320px, 1fr);
+  gap: 12px;
+  min-width: 0;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.col {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  overflow: hidden;
+}
+.colHd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 8px 9px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-2);
+}
+.colNo { font-family: var(--mono); font-size: 0.69rem; font-weight: 700; color: var(--ink-3); }
+.colTitle {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.colClose {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: 5px;
+  font-size: 1rem;
+  line-height: 1;
+  color: var(--ink-3);
+  transition: background 0.12s, color 0.12s;
+}
+.colClose:hover { background: var(--sunken); color: var(--ink); }
+.colBody {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  padding: 12px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* ── Хавтан (баганын дотор) ── */
+.panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 13px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+.panelHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 9px;
+}
+.panelTitle {
+  font-size: 0.73rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-3);
+}
+.panelNote { font-size: 0.69rem; color: var(--ink-3); font-family: var(--mono); white-space: nowrap; }
+
+/* ══════════════════ Бэхлэгдсэн үзүүлэлтийн тэмдэг ══════════════════ */
+
+.pin {
+  margin-left: 3px;
+  font-size: 0.5em;
+  vertical-align: super;
+  color: var(--ink-3);
+  text-decoration: none;
+  border: none;
+  cursor: help;
+}
+
+/* ══════════════════ Утга заасан өнгө ══════════════════ */
+
+.done { color: var(--ok); }
+.active { color: var(--accent); }
+.idle { color: var(--ink-3); }
+.muted { color: var(--ink-3); }
+
+.blocked { color: var(--min); }
+.talks { color: var(--accent); }
+.admin { color: var(--low); }
+
+/* Гадна ус, дулааны ажлын ГЭРЭЭНИЙ төлөв (`UTILITY_WORKS[].tone`):
+   ok = гэрээ албажиж байна · warn = захирамж хүлээгдэж буй · bad = захирамж өөрчлөгдөж буй */
+.ok { color: var(--ok); }
+.warn { color: var(--low); }
+.bad { color: var(--min); }
+
+.pHigh { color: var(--ok); }
+.pMid { color: var(--accent); }
+.pLow { color: var(--low); }
+.pMin { color: var(--min); }
+
+/* Дүүргэлтэд өнгө нь ДЭВСГЭР болно (текстийн өнгө биш) */
+.gFill.done, .barTrack i.done { background: var(--ok); }
+.gFill.active, .barTrack i.talks { background: var(--accent); }
+.gFill.idle { background: var(--ink-3); }
+.barTrack i.blocked { background: var(--min); }
+.barTrack i.admin { background: var(--low); }
+
+/* ══════════════════ Ерөнхий бүтэц ══════════════════ */
+
+/* Шошго — утга хосууд */
+.rows { display: flex; flex-direction: column; gap: 5px; }
+.rows > div { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.rows span { font-size: 0.74rem; line-height: 1.35; color: var(--ink-3); }
+.rows b { font-size: 0.90rem; font-weight: 700; font-family: var(--mono); color: var(--ink); white-space: nowrap; }
+.rows b i { font-style: normal; font-size: 0.69rem; font-weight: 600; margin-left: 3px; color: var(--ink-3); }
+
+/* Гурван нийлбэр — блок · өрх · төсөв */
+.sums { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.sums > div { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.sums b { font-size: 1.28rem; font-weight: 700; font-family: var(--mono); letter-spacing: -0.02em; color: var(--ink); }
+.sums span { font-size: 0.69rem; color: var(--ink-3); }
+
+.note {
+  margin-top: 9px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  font-size: 0.71rem;
+  line-height: 1.55;
+  color: var(--ink-3);
+}
+.note b { color: var(--ink-2); font-weight: 650; }
+
+/* Анхаарах тэмдэглэл — зүүн ирмэгийн заалт */
+.warnNote {
+  margin-top: 9px;
+  padding: 7px 10px;
+  border-inline-start: 2px solid var(--min);
+  background: var(--sunken);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  font-size: 0.71rem;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+.flagNote { margin-top: 7px; font-size: 0.70rem; line-height: 1.5; color: var(--ink-3); }
+.flagNote b { color: var(--min); }
+
+/* ══════════════════ 01 · Цар хүрээ ══════════════════ */
+
+.scope { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px 10px; }
+.scopeCell { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.scopeCell b {
+  font-size: 1.28rem;
+  font-weight: 700;
+  line-height: 1.1;
+  font-family: var(--mono);
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+.scopeCell b i { font-style: normal; font-size: 0.67rem; font-weight: 600; margin-left: 3px; color: var(--ink-3); }
+.scopeCell span { font-size: 0.71rem; color: var(--ink-3); }
+
+/* Хөрөнгө оруулалтын эзлэх хувь — нэг зурвас */
+.split { display: flex; height: 28px; border-radius: var(--r-sm); overflow: hidden; background: var(--sunken); }
+.splitSeg { display: block; height: 100%; }
+.splitKeys { display: flex; flex-direction: column; gap: 4px; margin-top: 9px; }
+.splitKey { display: flex; align-items: center; gap: 6px; font-size: 0.72rem; color: var(--ink-2); }
+.splitKey i { width: 8px; height: 8px; flex: none; border-radius: 2px; }
+.splitKey b { margin-left: auto; font-family: var(--mono); font-weight: 700; color: var(--ink); }
+
+/* Зорилтот хугацаа */
+.miles { display: flex; flex-direction: column; gap: 7px; }
+.mile { display: flex; align-items: baseline; gap: 9px; }
+.mile b { flex: none; font-size: 1.12rem; font-weight: 800; font-family: var(--mono); color: var(--ink); }
+.mile span { font-size: 0.71rem; line-height: 1.4; color: var(--ink-3); }
+
+/* ══════════════════ 02 · Master Schedule ══════════════════ */
+
+.gantt { --today: 50%; display: flex; flex-direction: column; gap: 6px; }
+
+.ganttYears { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; }
+.ganttYears span {
+  font-size: 0.65rem;
+  font-weight: 600;
+  font-family: var(--mono);
+  color: var(--ink-3);
+  text-align: center;
+  border-inline-start: 1px solid var(--line);
+}
+
+.ganttBody { position: relative; display: flex; flex-direction: column; gap: 9px; }
+/* Өнөөдрийн босоо зураас */
+.ganttToday { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
+.ganttToday::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--today);
+  width: 1px;
+  background: var(--accent);
+  opacity: 0.55;
+}
+
+/* ⚠️ Нэр ба хувь ДЭЭР, зурвас ДООР — 300px нарийн баганад «нэр | зурвас»
+   хэвтээ өрөлт багтахгүй, нэр нь хоёр үг үлдтэлээ таслагдана. */
+.gRow { display: flex; flex-direction: column; gap: 4px; position: relative; z-index: 2; }
+.gName { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.gNo { font-family: var(--mono); font-size: 0.65rem; font-weight: 700; color: var(--ink-3); }
+.gLabel {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.76rem;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gPct { font-size: 0.80rem; font-weight: 700; font-family: var(--mono); white-space: nowrap; }
+
+.gTrack { position: relative; height: 11px; border-radius: 99px; background: var(--sunken); }
+.gSpan {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 99px;
+  background: color-mix(in srgb, var(--ink-3) 22%, transparent);
+  overflow: hidden;
+}
+.gFill { display: block; height: 100%; border-radius: 99px; }
+.gStatus { font-size: 0.67rem; font-style: italic; color: var(--ink-3); }
+
+.ganttFoot { display: flex; justify-content: center; padding-top: 2px; }
+.ganttMark {
+  padding: 3px 9px;
+  border-radius: var(--r-sm);
+  background: var(--sunken);
+  border: 1px solid var(--line);
+  font-size: 0.67rem;
+  font-weight: 700;
+  font-family: var(--mono);
+  color: var(--ink-2);
+}
+
+/* ══════════════════ Хүснэгт ══════════════════ */
+
+/* ⚠️ Хүснэгт ӨӨРИЙН хүрээндээ хэвтээ гүйнэ — багана хэзээ ч хальдаггүй */
+.tblWrap { overflow-x: auto; margin: 0 -2px; }
+.tbl { width: 100%; border-collapse: collapse; font-size: 0.76rem; }
+.tbl th {
+  padding: 7px 9px;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--ink-3);
+  text-align: left;
+  white-space: nowrap;
+}
+.tbl td { padding: 8px 9px; border-top: 1px solid var(--line); color: var(--ink-2); vertical-align: top; }
+.tbl tbody tr:hover td { background: var(--surface-2); }
+.rt { text-align: right !important; }
+
+/* Хоёр эгнээт нүд — гол утга дээр, дэлгэрэнгүй нь бүдэг доор */
+.cellMain { display: block; color: var(--ink); font-weight: 600; }
+.cellSub {
+  display: block;
+  margin-top: 1px;
+  font-size: 0.67rem;
+  line-height: 1.35;
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.trFlag .cellMain { color: var(--min); }
+.trTotal td { font-weight: 700; color: var(--ink); border-top: 2px solid var(--line); }
+
+/* Гүйцэтгэгчийн бүрэлдэхүүний зурвас */
+.strip { display: flex; flex-direction: column; gap: 6px; }
+.stripCell { display: flex; align-items: baseline; gap: 9px; }
+.stripCell b { flex: none; min-width: 52px; font-size: 0.96rem; font-weight: 700; font-family: var(--mono); color: var(--ink); }
+.stripCell span { font-size: 0.69rem; line-height: 1.35; color: var(--ink-3); }
+
+/* ══════════════════ 04 · Газар чөлөөлөлт ══════════════════ */
+
+.landTop { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }
+.landTop > .rows { flex: 1; min-width: 0; }
+
+.bars { display: flex; flex-direction: column; gap: 6px; }
+.barRow { display: grid; grid-template-columns: minmax(0, 1fr) 60px 28px; align-items: center; gap: 8px; }
+.barLabel { font-size: 0.72rem; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.barTrack { display: block; height: 9px; border-radius: 99px; background: var(--sunken); overflow: hidden; }
+.barTrack i { display: block; height: 100%; border-radius: 99px; }
+.barRow b { font-size: 0.78rem; font-weight: 700; font-family: var(--mono); color: var(--ink); text-align: right; }
+
+/* ══════════════════ 05 · Эх үүсвэр ══════════════════ */
+
+.srcRow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; }
+.srcTitle { font-size: 0.76rem; font-weight: 600; color: var(--ink); }
+.srcRow b {
+  grid-row: 1;
+  grid-column: 2;
+  font-size: 1.12rem;
+  font-weight: 700;
+  font-family: var(--mono);
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  white-space: nowrap;
+}
+.srcRow b i { font-style: normal; font-size: 0.67rem; font-weight: 600; margin-left: 3px; color: var(--ink-3); }
+.srcNote { grid-column: 1 / -1; font-size: 0.68rem; line-height: 1.45; color: var(--ink-3); }
+
+/* ══════════════════ 07 · Үр өгөөж ══════════════════ */
+
+/* Олон нийтийн бүс — ГАНЦ индикатор (тусдаа хавтан БИШ) */
+.indicator {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-inline-start: 3px solid var(--accent);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+}
+.indicator b {
+  font-size: 1.70rem;
+  font-weight: 800;
+  font-family: var(--mono);
+  letter-spacing: -0.03em;
+  color: var(--ink);
+}
+.indicatorLabel { font-size: 0.78rem; font-weight: 500; color: var(--ink-2); }
+.indicatorNote { margin-top: 4px; font-size: 0.68rem; line-height: 1.5; color: var(--ink-3); }
+
+.benefits { display: flex; flex-direction: column; gap: 8px; }
+.benefit { display: grid; grid-template-columns: 76px minmax(0, 1fr); align-items: baseline; gap: 10px; }
+.benefit b { font-size: 1.00rem; font-weight: 700; font-family: var(--mono); letter-spacing: -0.02em; color: var(--ink); }
+.benefit b i { font-style: normal; font-size: 0.65rem; font-weight: 600; margin-left: 2px; color: var(--ink-3); }
+.benefit span { font-size: 0.70rem; line-height: 1.45; color: var(--ink-3); }
+
+/* ══════════════════ 08 · Тохиромжтой байдлын үнэлгээ ══════════════════ */
+
+/* Нийлмэл оноо — өнгө нь `scoreColor()`-оос (үнэлгээний зэрэг заана) */
+.bigScore {
+  flex: none;
+  min-width: 62px;
+  font-size: 2.4rem;
+  font-weight: 800;
+  line-height: 1;
+  font-family: var(--mono);
+  letter-spacing: -0.04em;
+  text-align: center;
+}
+
+/* Хүнд анализын ачаалалтын явц */
+.load { padding: 14px 4px 8px; }
+.loadMsg { font-size: 0.74rem; color: var(--ink-3); margin-bottom: 8px; }
+.loadBar { height: 6px; border-radius: 99px; background: var(--sunken); overflow: hidden; }
+.loadBar span {
+  display: block;
+  height: 100%;
+  border-radius: 99px;
+  background: var(--accent);
+  transition: width 0.3s var(--ease);
+}
+
+.rankGroup { display: flex; flex-direction: column; gap: 2px; }
+.rankLabel {
+  margin: 6px 0 3px;
+  font-size: 0.66rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-3);
+}
+.rankLabel:first-child { margin-top: 0; }
+.rankRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 6px;
+  border-radius: var(--r-sm);
+  text-align: left;
+  transition: background 0.12s;
+}
+.rankRow:hover { background: var(--surface-2); }
+.rankOn { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.rankNo { flex: none; width: 20px; font-size: 0.7rem; font-weight: 700; font-family: var(--mono); color: var(--ink-3); text-align: right; }
+.rankName { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.25; font-size: 0.76rem; color: var(--ink); overflow: hidden; }
+.rankName i { font-style: normal; font-size: 0.65rem; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rankScore {
+  flex: none;
+  min-width: 30px;
+  padding: 2px 6px;
+  border-radius: 5px;
+  color: #fff;
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+/* ══════════════════ Газрын зурган дээрх удирдлага ══════════════════ */
+
 .mapDims {
   position: absolute;
   top: 12px;
@@ -184,252 +685,291 @@
 .dimBtn:active { transform: scale(0.95); }
 .dimOn { background: var(--surface-2); color: var(--ink); box-shadow: var(--shadow-sm); }
 
-/* ── Доод өргөн график — ҮНЭЛГЭЭ БА НОРМ (бүгд бүсийн олонлог шүүнэ) ── */
-.bot {
-  grid-area: bot;
-  display: grid;
-  /* Тохиромжтой байдал ба эрэмбэ өргөн (жагсаалт, стек), нягтшил ба FAR/BCR нарийн */
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1.1fr) minmax(0, 1.3fr);
-  gap: 10px;
-}
-/* Доод эгнээний картын контентыг босоо голлуулж хоосон зайг тэнцвэржүүлнэ */
-.bot > section { display: flex; flex-direction: column; }
-.bot > section > :nth-child(2) { margin-top: auto; }
-.bot > section > :last-child { margin-bottom: auto; }
-
-/* ── Идэвхтэй шүүлтийн chip-үүд (газрын зураг дээр хөвнө) ── */
-.chipBar {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  z-index: 5;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  max-width: calc(100% - 24px);
-}
-.filterChip {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  max-width: 100%;
-  padding: 6px 8px 6px 11px;
-  background: color-mix(in srgb, var(--surface) 92%, transparent);
-  backdrop-filter: blur(6px);
-  border: 1px solid var(--line);
-  border-radius: 99px;
-  box-shadow: var(--shadow);
-  font-size: 0.72rem;
-}
-.chipClearAll {
-  padding: 5px 11px;
-  border-radius: 99px;
-  background: color-mix(in srgb, var(--surface) 92%, transparent);
-  backdrop-filter: blur(6px);
-  border: 1px solid var(--line);
-  box-shadow: var(--shadow);
-  font-size: 0.68rem;
-  font-weight: 600;
-  color: var(--ink-2);
-  transition: background 0.12s, color 0.12s;
-}
-.chipClearAll:hover { color: var(--bad); }
-.filterDot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--hue); }
-.filterLabel { font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.filterCount {
-  flex: none;
-  padding: 1px 7px;
-  border-radius: 99px;
-  background: var(--sunken);
-  color: var(--ink-2);
-  font-size: 0.66rem;
-  font-weight: 700;
-}
-.filterClear {
-  display: grid;
-  place-items: center;
-  width: 20px;
-  height: 20px;
-  flex: none;
-  border-radius: 50%;
-  font-size: 1rem;
-  line-height: 1;
-  color: var(--ink-3);
-  transition: background 0.12s, color 0.12s;
-}
-.filterClear:hover { background: var(--sunken); color: var(--ink); }
-
-/* ── Карт ── */
-.card {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--r);
-  padding: 12px 14px;
-  box-shadow: var(--shadow-sm);
-}
-.cardHead {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 10px;
-}
-.cardTitle {
-  font-size: 0.72rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--ink-2);
-}
-.cardNote { font-size: 0.62rem; color: var(--ink-3); font-family: var(--mono); }
-
-.state { padding: 20px 8px; text-align: center; color: var(--ink-3); font-size: 0.74rem; }
-
-/* ── Гүйцэтгэлийн индикатор мөр ── */
-.progressRow { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
-/* Цагирагийн хажуугийн үзүүлэлт үлдсэн өргөнийг эзэлнэ — эс бөгөөс «Хамрагдсан
-   жин» гэх урт шошго нь өөрийн агуулгын өргөнд шахагдаж мөр дамжина. */
-.progressRow > .miniStats { flex: 1; min-width: 0; }
-.progressText { font-size: 0.7rem; line-height: 1.5; color: var(--ink-3); }
-.progressText b { color: var(--ink); }
-
-/* ── Анализ: нийлмэл оноо ── */
-.bigScore {
-  flex: none;
-  font-size: 2.1rem;
-  font-weight: 800;
-  line-height: 1;
-  font-family: var(--mono);
-  letter-spacing: -0.03em;
-  min-width: 54px;
-  text-align: center;
-}
-
-/* ── Анализ: жижиг нэгж үзүүлэлт (өртөг, ашиг) ── */
-.miniStats {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px solid var(--line);
-}
-.miniStats div { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-.miniStats span { font-size: 0.68rem; color: var(--ink-3); }
-.miniStats b { font-size: 0.78rem; font-weight: 700; font-family: var(--mono); letter-spacing: -0.02em; color: var(--ink); }
-.pos { color: var(--good) !important; }
-.neg { color: var(--bad) !important; }
-
-/* ── Талбайн хяналтын индикатор ── */
-/* Босоо: цагираг дээр, гурван үзүүлэлт доор өргөн даяар — зайг дүүргэнэ */
-.surveyRow { display: flex; flex-direction: column; align-items: center; gap: 18px; }
-.surveyStats { width: 100%; display: flex; flex-direction: row; justify-content: space-around; gap: 8px; }
-.surveyStats div { display: flex; flex-direction: column; align-items: center; gap: 3px; }
-.surveyStats b { font-size: 1.5rem; font-weight: 700; color: var(--ink); }
-.surveyStats span { font-size: 0.76rem; color: var(--ink-3); text-align: center; }
-
-/* ── Хүнд анализын ачаалалтын явц ── */
-.load { padding: 14px 4px 8px; }
-.loadMsg { font-size: 0.72rem; color: var(--ink-3); margin-bottom: 8px; }
-.loadBar { height: 6px; border-radius: 99px; background: var(--sunken); overflow: hidden; }
-.loadBar span {
-  display: block;
-  height: 100%;
-  border-radius: 99px;
-  background: linear-gradient(90deg, var(--hue), color-mix(in srgb, var(--hue) 55%, #22d3ee));
-  transition: width 0.3s var(--ease);
-}
-
-/* ── FAR / BCR норм үнэлгээ ── */
-.normRow { margin-bottom: 12px; }
-.normRow:last-of-type { margin-bottom: 0; }
-.normHead { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
-.normName { font-size: 0.8rem; font-weight: 700; color: var(--ink); font-family: var(--mono); }
-.normDesc { flex: 1; font-size: 0.64rem; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.normRate { font-size: 0.85rem; font-weight: 800; font-family: var(--mono); }
-.normNone { font-size: 0.62rem; color: var(--ink-3); margin-top: 4px; }
-.normNote { font-size: 0.62rem; line-height: 1.45; color: var(--ink-3); margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); }
-
-/* ── Бүсийн эрэмбэ ── */
-.rankWrap { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.rankLabel {
-  font-size: 0.62rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--ink-3);
-  margin-bottom: 6px;
-}
-.rankRow {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  width: 100%;
-  padding: 4px 5px;
-  border-radius: 6px;
-  text-align: left;
-  transition: background 0.12s;
-}
-.rankRow:hover { background: var(--surface-2); }
-.rankOn { background: color-mix(in srgb, var(--hue) 14%, transparent); }
-.rankNo { flex: none; width: 18px; font-size: 0.66rem; font-weight: 700; color: var(--ink-3); font-family: var(--mono); text-align: right; }
-.rankName { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.2; overflow: hidden; }
-.rankName { font-size: 0.72rem; color: var(--ink); white-space: nowrap; text-overflow: ellipsis; }
-.rankName i { font-style: normal; font-size: 0.6rem; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.rankScore {
-  flex: none;
-  min-width: 26px;
-  padding: 1px 5px;
-  border-radius: 5px;
-  color: #fff;
-  font-size: 0.72rem;
-  font-weight: 700;
-  text-align: center;
-}
-
-/* ── Газрын зургийн тайлбар (legend) ── */
 .legend {
   position: absolute;
   left: 12px;
   bottom: 12px;
   z-index: 5;
   display: flex;
-  gap: 14px;
+  gap: 12px;
   max-width: calc(100% - 24px);
-  padding: 8px 11px;
+  padding: 7px 10px;
   background: color-mix(in srgb, var(--surface) 90%, transparent);
   backdrop-filter: blur(6px);
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
+}
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 190px;
+  font-size: 0.69rem;
+  color: var(--ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.legendItem i { width: 9px; height: 9px; flex: none; border-radius: 2px; }
+.legendMore { font-size: 0.69rem; font-weight: 700; font-family: var(--mono); color: var(--ink-3); }
+
+/* ══════════════════ Давхаргын самбар (газрын зураг дээр) ══════════════════ */
+
+/* ⚠️ Баруун ДЭЭД буланд — GIS аппуудын ердийн байрлал. Зүүн дээд нь бүсийн
+   chip, зүүн доод нь тайлбар, дээд төв нь 2D/3D солигч аль хэдийн эзэлсэн. */
+.layerBox { position: absolute; top: 12px; right: 12px; z-index: 7; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.layerBtn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(10px);
+  font-size: 0.76rem;
+  font-weight: 650;
+  color: var(--ink-2);
+  transition: color 0.14s;
+}
+.layerBtn:hover { color: var(--ink); }
+.layerBtn b { font-family: var(--mono); font-weight: 700; color: var(--ink-3); }
+
+.layerPanel {
+  width: 310px;
+  max-height: min(460px, 60vh);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: color-mix(in srgb, var(--surface) 96%, transparent);
+  backdrop-filter: blur(12px);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+.layerHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 11px;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.layerScroll { overflow-y: auto; padding: 4px; }
+.layerGroup { margin-bottom: 2px; }
+.layerGroupHead {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 7px 8px;
+  border-radius: var(--r-sm);
+  text-align: left;
+  font-size: 0.76rem;
+  font-weight: 650;
+  color: var(--ink);
+  transition: background 0.12s;
+}
+.layerGroupHead:hover { background: var(--surface-2); }
+.layerGroupHead b { margin-left: auto; font-family: var(--mono); font-size: 0.68rem; font-weight: 700; color: var(--ink-3); }
+.layerChev { display: inline-block; font-size: 0.9rem; color: var(--ink-3); transition: transform 0.14s; }
+.layerChevOn { transform: rotate(90deg); }
+
+.layerRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px 5px 24px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  font-size: 0.72rem;
+  color: var(--ink-2);
+  transition: background 0.12s;
+}
+.layerRow:hover { background: var(--surface-2); }
+.layerRow input { flex: none; accent-color: var(--accent); }
+.layerRow i { width: 9px; height: 9px; flex: none; border-radius: 2px; }
+.layerRow span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── Багана бүрийн «зурган дээр хаана байна» мөр ── */
+.layerLink {
+  padding: 7px 10px;
+  border-radius: var(--r-sm);
+  background: var(--sunken);
+  font-size: 0.7rem;
+  line-height: 1.45;
+  color: var(--ink-3);
+}
+.layerOn { font-weight: 700; color: var(--accent); }
+.layerOff { font-weight: 700; color: var(--ink-3); }
+
+.chipBar {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 5;
+  display: flex;
+  gap: 6px;
+  max-width: calc(100% - 24px);
+}
+.filterChip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 5px 6px 5px 11px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  font-size: 0.78rem;
+}
+.filterLabel { font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.filterClear {
+  display: grid;
+  place-items: center;
+  width: 19px;
+  height: 19px;
+  flex: none;
+  border-radius: 50%;
+  font-size: 1.12rem;
+  line-height: 1;
+  color: var(--ink-3);
+  transition: background 0.12s, color 0.12s;
+}
+.filterClear:hover { background: var(--sunken); color: var(--ink); }
+
+/* ══════════════════════════════════════════════════════════
+   «Багцын мэдээлэл» (`Bagts.tsx`) — ГУРВАН багана.
+   ⚠️ Дашбоардын бүтэцтэй ХОЛБООГҮЙ, тусдаа сүлжээ.
+   ══════════════════════════════════════════════════════════ */
+
+.pack {
+  height: 100%;
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  /* ⚠️ ЗҮҮН багана 250px-д хэт нарийн байв: «Багц 17.1 · Гадна тохижилт — Багц 1»
+     гэсэн нэр ба «1.08 тэрбум» гэсэн утга нэг мөрд багтахгүй. */
+  grid-template-columns: minmax(250px, 320px) minmax(0, 1fr) minmax(300px, 400px);
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-areas:
+    'kpi  kpi kpi'
+    'left map right';
+  background: var(--bg);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.kpi {
+  grid-area: kpi;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 10px;
+}
+
+.packLegend {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  max-width: calc(100% - 24px);
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  backdrop-filter: blur(8px);
+  box-shadow: var(--shadow-sm);
+  font-size: 0.68rem;
+  color: var(--ink-2);
+}
+.packLegendItem { display: flex; align-items: center; gap: 5px; }
+.packLegendItem i { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+.packLegendItem b { font-weight: 600; color: var(--ink-3); }
+
+.packRing { display: flex; align-items: center; gap: 12px; }
+.packRing > :last-child { flex: 1; min-width: 0; }
+
+.side {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  overflow-y: auto;
+}
+.left { grid-area: left; }
+.right { grid-area: right; }
+
+.colHead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  margin: -2px 0 -2px;
+  padding: 4px 2px 6px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  background: var(--bg);
+}
+
+.map {
+  grid-area: map;
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  overflow: hidden;
   box-shadow: var(--shadow-sm);
 }
-.legendGroup { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.legendHead { font-size: 0.58rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-3); }
-.legendItem { display: flex; align-items: center; gap: 5px; font-size: 0.62rem; color: var(--ink-2); white-space: nowrap; }
-.legendItem i { width: 9px; height: 9px; flex: none; border-radius: 2px; }
 
-/* ══════════════════ Дэлгэц бага үед — босоо өрөлт ══════════════════ */
-@media (max-width: 1180px) {
-  .dash {
+/* ══════════════════ Дэлгэц бага үед ══════════════════ */
+
+@media (max-width: 1400px) {
+  .shell { grid-template-columns: 210px minmax(0, 1fr) auto; }
+  .detail { width: min(calc(var(--cols, 1) * 320px + (var(--cols, 1) - 1) * 10px), 54vw); }
+}
+
+/* Нарийн дэлгэц — гурван багана БОСОО өрөлт болно */
+@media (max-width: 1080px) {
+  .shell {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto auto;
+    height: auto;
+    overflow-y: auto;
+  }
+  .rail { flex-direction: row; flex-wrap: wrap; overflow: visible; }
+  .railItem { flex: 1 1 220px; width: auto; }
+  .railHead, .railFoot { flex-basis: 100%; }
+  .hero { height: 52vh; flex: none; }
+  .detail { width: 100%; grid-auto-flow: row; grid-auto-columns: auto; overflow: visible; }
+  .col { max-height: 70vh; }
+  .pack {
     grid-template-columns: 1fr;
-    grid-template-rows: auto auto 58vh auto auto auto auto;
-    grid-template-areas:
-      'kpi'
-      'left'
-      'map'
-      'fin'
-      'uld'
-      'right'
-      'bot';
+    grid-template-rows: auto auto 58vh auto;
+    grid-template-areas: 'kpi' 'left' 'map' 'right';
     height: auto;
     overflow: visible;
   }
   .kpi { grid-template-columns: repeat(3, 1fr); }
   .side { overflow: visible; }
-  .bot { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 620px) {
+  .head { grid-template-columns: repeat(2, 1fr); }
   .kpi { grid-template-columns: repeat(2, 1fr); }
+  .benefit { grid-template-columns: 64px minmax(0, 1fr); }
 }
