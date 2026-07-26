@@ -37,7 +37,7 @@
   display: grid;
   /* ⚠️ `min(...)` нь бариулаар хэт томруулсан ч төв хэсгийг дарахаас сэргийлнэ:
      хадгалагдсан утга дэлгэц багасахад ч давхарлахгүй. */
-  grid-template-columns: min(var(--rail-w), 32vw) auto minmax(0, 1fr);
+  grid-template-columns: min(var(--rail-w), 32vw) auto minmax(360px, 1fr);
   gap: 12px;
   padding: 12px;
   background: var(--bg);
@@ -45,8 +45,27 @@
   min-height: 0;
   overflow: hidden;
 }
+
+/**
+ * ⚠️ ТӨВ БАГАНА нь `minmax(360px, 1fr)` — 0 БИШ.
+ *
+ * Урьд нь `minmax(0, 1fr)` байсан бөгөөд дэлгэрэнгүй самбар нь ТОГТМОЛ өргөнтэй
+ * (`--detail-w`) тул 3+ хэсэг зэрэг нээхэд төв багана 100px хүрэхгүй болж
+ * газрын зураг ба толгойн үзүүлэлт хоёулаа шахагдан эвдэрдэг байв: 3 хэсэг =
+ * 1,164px хүсэх бөгөөд 1440px дэлгэцэд зурагт ердөө ~100px үлдэнэ.
+ *
+ * ⚠️ Дэлгэрэнгүй нь `minmax(0, …)` — ХУМИГДАЖ чадна. Ингэснээр зай хүрэхгүй үед
+ * сүлжээ ЭХЛЭЭД баруун самбарыг нарийсгаж, төв багана 360px-ээ хадгална; багтаж
+ * чадаагүй багана нь самбарын дотор хэвтээгээр гүйнэ (`.detail { overflow-x }`).
+ * 52vw нь бас таг — 68vw дээр ганц хэсэг ч гэсэн зургийг хэт шахаж байлаа.
+ */
 .shell[data-detail='1'] {
-  grid-template-columns: min(var(--rail-w), 32vw) auto minmax(0, 1fr) auto min(var(--detail-w), 68vw);
+  grid-template-columns:
+    min(var(--rail-w), 32vw)
+    auto
+    minmax(360px, 1fr)
+    auto
+    minmax(0, min(var(--detail-w), 52vw));
 }
 
 /* ══════════════════ Хэмжээ сунгах бариул ══════════════════ */
@@ -176,7 +195,7 @@
 
 .center { display: flex; flex-direction: column; gap: 12px; min-width: 0; min-height: 0; }
 
-.head { display: grid; grid-template-columns: repeat(auto-fit, minmax(178px, 1fr)); gap: 10px; }
+.head { display: grid; grid-template-columns: repeat(auto-fit, minmax(158px, 1fr)); gap: 10px; }
 
 /* ⚠️ `--tone` нь СОНГОМОЛ: «Багцын мэдээлэл» хавтан бүрд өөрийн өнгө дамжуулдаг
    тул дээд ирмэг нь өнгөтэй үлдэнэ. Дашбоард `--tone` дамжуулахгүй — өнгөгүй
@@ -221,7 +240,9 @@
   position: relative;
   display: flex;
   flex: 1;
-  min-height: 0;
+  /* ⚠️ 260px — flex хүүхэд нь min-height: 0 үед 0 хүртэл хумигдаж, зураг огт
+     харагдахгүй болно. Толгойн хавтангууд хоёр эгнээ болоход ч зураг үлдэнэ. */
+  min-height: 260px;
   border: 1px solid var(--line);
   border-radius: var(--r);
   overflow: hidden;
@@ -938,9 +959,19 @@
 
 /* ══════════════════ Дэлгэц бага үед ══════════════════ */
 
+/**
+ * ⚠️ ЗӨВХӨН ХУВЬСАГЧ дарж бичнэ, `grid-template-columns`-ыг БИШ.
+ *
+ * Урьд нь энд 3 баганат загвар бичигдсэн байв — дэлгэрэнгүй нээлттэй үед сүлжээнд
+ * 5 хүүхэд байдаг тул үлдсэн хоёр нь далд `auto` багана болж, баруун самбар
+ * агуулгынхаа өргөнөөр тэлж зургийг шахдаг байлаа. Мөн `.detail { width }` нь
+ * сүлжээний баганын хэмжээтэй зөрчилдөнө (өргөнийг сүлжээ л шийднэ).
+ */
 @media (max-width: 1400px) {
-  .shell { grid-template-columns: 210px minmax(0, 1fr) auto; }
-  .detail { width: min(calc(var(--cols, 1) * 320px + (var(--cols, 1) - 1) * 10px), 54vw); }
+  .shell {
+    --rail-w: 232px;
+    --detail-w: calc(var(--cols, 1) * 340px + (var(--cols, 1) - 1) * 12px);
+  }
 }
 
 /* Нарийн дэлгэц — гурван багана БОСОО өрөлт болно */
