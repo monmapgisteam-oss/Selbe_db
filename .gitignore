@@ -5,3 +5,6 @@ next-env.d.ts
 *.tsbuildinfo
 .DS_Store
 .env*.local
+
+# Танилцуулгын эх бичиг баримт — сайт нь нийтэд ил тул репод оруулахгүй
+*.pdf
