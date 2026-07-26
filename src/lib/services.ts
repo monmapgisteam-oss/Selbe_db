@@ -915,7 +915,7 @@ export const SURVEY_HUE = "#0891b2";
  * `et:21`, цахилгааны шугам ≈ `et:22`) тул нэмбэл цахилгааны өртөг хоёр дахин
  * тоологдоно. Багцын өртөг нь `INVEST` хүснэгтэд аль хэдийн бий.
  */
-type PkgFamily = "net" | "pow" | "src" | "site" | "soc" | "com";
+export type PkgFamily = "net" | "pow" | "src" | "site" | "soc" | "com";
 
 /**
  * ⚠️ `net` ба `pow` нь ЭХ ВЕБ ЗУРГААС: Багц 5-ын шугамуудад давамгайлах
@@ -1089,6 +1089,22 @@ export const PKG_BY_BAGTS: Record<string, string[]> = PKG_TABLE.reduce(
     return m;
   },
   {} as Record<string, string[]>,
+);
+
+/**
+ * Багцын ГЭР БҮЛ → тэр бүлгийн давхаргын id-ууд.
+ *
+ * ⚠️ Дашбоардын хэсэг бүр «миний холбогдох давхарга» гэдгээ ЭНДЭЭС авна —
+ * багцын кодыг гараар жагсаавал `PKG_TABLE` өөрчлөгдөхөд чимээгүй хоцорно
+ * (шинэ багц нэмэгдэхэд газрын зурагт асахаа болино). Энэ нь хүснэгтээсээ
+ * автоматаар үүсэх тул хэзээ ч зөрөхгүй.
+ */
+export const PKG_BY_FAMILY: Record<PkgFamily, string[]> = PKG_TABLE.reduce(
+  (m, [n, , , family]) => {
+    (m[family] ??= []).push(`pkg:${n}`);
+    return m;
+  },
+  {} as Record<PkgFamily, string[]>,
 );
 
 const PKG_LAYERS: LayerDef[] = PKG_TABLE.map(
@@ -1568,6 +1584,34 @@ export const LAYERS: LayerDef[] = [
    * шүүлт тавибал үлдсэн 161 нь ЧИМЭЭГҮЙ алга болно; тиймээс энэ давхарга
    * шүүлтээс үл хамааран бүтнээрээ зурагдана.
    */
+  /**
+   * ⚠️ ДАРААЛАЛ ЧУХАЛ — `land:clean` нь `land:left`-ЭЭС ӨМНӨ байх ёстой.
+   *
+   * `MapCanvas` нь `LAYERS`-ийг дарааллаар нь үүсгэдэг тул массивын СҮҮЛД
+   * байгаа давхарга зурагт ДЭЭР зурагдана. Хоёр давхарга газар зүйн хувьд
+   * давхцдаг (нэг талбар цэвэрлэгдсэн ч чөлөөлөгдөөгүй хэвээр байж болно)
+   * бөгөөд ажлын ач холбогдол нь ЧӨЛӨӨЛӨГДӨӨГҮЙ талбарт байна — тэр нь
+   * барилга эхлүүлэхэд саад болж буй хэсэг. Цэвэрлэсэн талбарыг дээр
+   * зуруулбал үлдсэн асуудал ногоон дор нуугдана.
+   */
+  {
+    id: "land:clean",
+    n: 3,
+    url: PARCEL_CLEAN.url,
+    oid: "OBJECTID",
+    title: "Цэвэрлэсэн нэгж талбар",
+    topic: "plan",
+    geom: "area",
+    hue: "#22c55e",
+    fill: 0.32,
+    width: 0.8,
+    noZone: true,
+    note: "457 талбар · буулгалтын өртөг",
+    facets: [
+      { field: PARCEL_CLEAN.fields.status, label: "Төлбөрийн статус" },
+      { field: PARCEL_CLEAN.fields.year, label: "Он" },
+    ],
+  },
   {
     id: "land:left",
     n: 67,
@@ -1592,24 +1636,6 @@ export const LAYERS: LayerDef[] = [
       values: PARCEL_PROGRESS_HUES,
       emptyLabel: "Тодорхойгүй",
     },
-  },
-  {
-    id: "land:clean",
-    n: 3,
-    url: PARCEL_CLEAN.url,
-    oid: "OBJECTID",
-    title: "Цэвэрлэсэн нэгж талбар",
-    topic: "plan",
-    geom: "area",
-    hue: "#22c55e",
-    fill: 0.32,
-    width: 0.8,
-    noZone: true,
-    note: "457 талбар · буулгалтын өртөг",
-    facets: [
-      { field: PARCEL_CLEAN.fields.status, label: "Төлбөрийн статус" },
-      { field: PARCEL_CLEAN.fields.year, label: "Он" },
-    ],
   },
 
   /* ─────────── Бусад ─────────── */
