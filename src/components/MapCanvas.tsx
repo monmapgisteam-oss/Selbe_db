@@ -243,6 +243,59 @@ const zoneTypeRenderer = (d: LayerDef) => ({
   })),
 } as unknown as RendererProp);
 
+/* ═══ Динамик web-палитр: 1 давхарга → webmap A, 2+ → webmap B ═══ */
+/**
+ * Эх ХОЁР webmap-ийн симболыг (өнгө + өргөн) сорьж авав:
+ *   · `a` — ГАНЦ давхарга сонгосон үед (дэлгэрэнгүй, webmap eb1c3f…)
+ *   · `b` — 2+ давхарга сонгосон үед (webmap d79032…)
+ *
+ * ⚠️ Зөвхөн хоёр палитрын хооронд ЯЛГААТАЙ давхаргууд энд орно; бусад давхарга
+ * хоёр газарт ижил тул шилжүүлэх шаардлагагүй. Өргөн нь `LINE_PX` нормчлолыг
+ * ДАВХАРЛАНА — хэрэглэгч эх зургийн яг өргөнийг хүссэн.
+ */
+type WebSym = { color?: string; width?: number; outline?: string; paintField?: string; paint?: Record<string, string> };
+const WEB_DYNAMIC: Record<string, { a: WebSym; b: WebSym }> = {
+  // Барилга — A: төлөвөөр (Barilga_ty), B: нэг өнгө
+  'et:24': {
+    a: { paintField: 'Barilga_ty', width: 0.75, paint: { 'Төлөвлөсөн': '#ffaa00', 'Баригдаж байгаа': '#fff700', 'Одоо байгаа': '#00ff2a' } },
+    b: { color: '#ffb700', width: 0.75 },
+  },
+  // Инженерийн бэлтгэл — A: Layer-ээр, B: цагаан
+  'et:15': {
+    a: { paintField: 'Layer', width: 0.75, paint: { 'Авто замын ус гаргуур': '#fd7f6f', 'Борооны ус зайлуулах шугам': '#004d99', 'Борооны ус зайлуулах шугам 2': '#004d99', 'Төлөвлөж буй үерийн хамгаалалтын суваг': '#3f3352', 'хөв цөөрөм': '#29d4ff', 'Өргөтгөж шинэчлэх үерийн хамгаалалтын суваг': '#3f3352' } },
+    b: { color: '#ffffff', width: 0.667 },
+  },
+  'et:6':  { a: { color: '#ff7b00', width: 0.75 },  b: { color: '#fc2121', width: 0.75 } },   // Автобус чиглэл
+  'et:14': { a: { color: '#e0a384', width: 0.75 },  b: { color: '#6e6e6e', width: 1 } },      // Дугуйн зам
+  'et:12': { a: { color: '#000000', width: 1 },     b: { color: '#000000', width: 1 } },      // Гүүр (B-д алга → хэвээр)
+  'et:27': { a: { color: '#ff7b00', width: 0.375 }, b: { color: '#9e920d', width: 0.15 } },   // Явган зам
+  'et:26': { a: { color: '#00ffa6', width: 0.375 }, b: { color: '#00ffa6', width: 0.075 } },  // Ногоон алхалт
+  'et:25': { a: { color: '#a7ff4a', outline: '#a7ff4a', width: 0.375 }, b: { color: '#a7ff4a', outline: '#000000', width: 0.563 } }, // Ногоон байгууламж
+};
+
+/** Тусад нь outline өнгөтэй дүүргэлт (эх зургийн ногоон нь бараан хүрээтэй) */
+const fillWeb = (hex: string, a: number, outline: string, w: number) =>
+  ({ type: 'simple-fill', color: c(hex, a), outline: { color: c(outline, 1), width: w } }) as const;
+
+/** Web-симбол — давхаргын geom-оор (line/fill), эх зургийн өргөн ба өнгөөр */
+const webSymbol = (d: LayerDef, s: WebSym, color: string) =>
+  d.geom === 'line'
+    ? line(color, s.width ?? 1, d.dash ?? 'solid')
+    : fillWeb(color, d.fill ?? 0.3, s.outline ?? color, s.width ?? 0.6);
+
+/** Web-симболоос renderer — paint-тэй бол uniqueValue, эс бөгөөс simple */
+const webRenderer = (d: LayerDef, s: WebSym) => {
+  if (s.paint && s.paintField) {
+    return {
+      type: 'unique-value',
+      field: s.paintField,
+      defaultSymbol: webSymbol(d, s, d.hue),
+      uniqueValueInfos: Object.entries(s.paint).map(([value, col]) => ({ value, label: value, symbol: webSymbol(d, s, col) })),
+    } as unknown as RendererProp;
+  }
+  return simple(webSymbol(d, s, s.color ?? d.hue));
+};
+
 /**
  * Гүйцэтгэлийн өнгө (0–100%): улаан → шар → ногоон. Хоёр хэсэгт шугаман
  * интерполяци — блок бүрд тасралтгүй өнгө өгнө (unique-value симбол болгонд).
@@ -882,6 +935,18 @@ export function MapCanvas({
        * дан дарж бичвэл бүсийн шүүлт эсвэл тодруулгын аль нэг нь алга болно.
        */
       const d = LAYER_BY_ID[l.id];
+
+      /**
+       * ДИНАМИК WEB-ПАЛИТР — ЗӨВХӨН «Ерөнхий төлөвлөгөө» (uniform БИШ). Сонгосон
+       * давхаргын тоогоор эх зургийн симбол солино: 1 бол `a` (webmap A,
+       * дэлгэрэнгүй), 2+ бол `b` (webmap B). Зөвхөн ХАРАГДАЖ буй давхаргад
+       * тавина — нуугдсаныг дэмий дахин рендерлэхгүй.
+       */
+      if (d && !uniform && l.visible && WEB_DYNAMIC[l.id]) {
+        const w = WEB_DYNAMIC[l.id];
+        (l as FeatureLayer).renderer = webRenderer(d, on.size <= 1 ? w.a : w.b) as unknown as __esri.Renderer;
+      }
+
       if (d && 'definitionExpression' in l) {
         // `layerWhere` заасан бол давхарга бүрийн өөрийн WHERE; эс бөгөөс бүсийн
         // нэгдсэн шүүлт (cross-filter дашбоард нь давхарга тус бүрээ шүүнэ).
@@ -898,7 +963,7 @@ export function MapCanvas({
         ) as unknown as string;
       }
     });
-  }, [visibleKey, dim, ready, zone, layerWhere, hl, hlOnly]);
+  }, [visibleKey, dim, ready, zone, layerWhere, hl, hlOnly, uniform]);
 
   /**
    * `mon:building` давхаргыг НИЙТ ГҮЙЦЭТГЭЛЭЭР өнгөлнө — «Гүйцэтгэл бөглөх»-ийн
