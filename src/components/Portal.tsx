@@ -19,7 +19,7 @@ import { usePlanTotals } from '@/lib/totals';
 import { queryStats, count, sum } from '@/lib/query';
 import {
   DEFAULT_VIEW, VIEW_BY_KEY, layerUrl, oidOf, PROJECT_AREA_HA, zoneWhere,
-  PLAN_LAYER_IDS, MONITOR_LAYER_IDS,
+  PLAN_LAYER_IDS, MONITOR_LAYER_IDS, LAYER_BY_ID, groupOf,
   ZONE_LAYER, ZONE_FIELDS, BUILT_LAYER, BUILT_FIELDS,
   type ViewKey,
 } from '@/lib/services';
@@ -267,13 +267,45 @@ function PortalContent() {
   // Каталог нь зөвхөн «Ерөнхий мэдээлэл» ба «Барилгын хяналт»-д байна
   const catOpen = (catPinned || catalog) && !isFull;
 
+  /**
+   * «Ерөнхий мэдээлэл»-д ХЭДЭН БАГЦ сонгогдсоныг тоолно — самбар өөрөө өргөсөж
+   * сонгосон багцуудыг ЗЭРЭГЦЭЭ багана болгон харуулахад ашиглана.
+   *
+   * ⚠️ `ViewPanel`-ийн `pickedGroups`-тэй ИЖИЛ дүрэм: анхны багцтай яг тэнцүү бол
+   * «хараахан сонгоогүй» тул 0; бүс сонгогдвол ZONE_ID-гүй давхаргыг хасна.
+   */
+  const planGroups = useMemo(() => {
+    if (view !== 'plan') return 0;
+    const initial = VIEW_BY_KEY.plan.initial;
+    const untouched =
+      visible.length === initial.length && initial.every((id) => visible.includes(id));
+    if (untouched) return 0;
+    const on = PLAN_LAYER_IDS.filter(
+      (id) => visible.includes(id) && !(zone && LAYER_BY_ID[id]?.noZone),
+    );
+    if (!on.length) return 0;
+    return new Set(on.map(groupOf).filter(Boolean)).size;
+  }, [view, visible, zone]);
+
+  /**
+   * ⚠️ 2+ багц сонгоход самбарыг АВТОМАТААР өргөсгөж хоёр баганыг зэрэг харуулна
+   * («Ерөнхий дашбоард»-ын дэлгэрэнгүйтэй ижил зарчим). Хэрэглэгчийн гараар
+   * тохируулсан өргөнөөс (`panelSize.width`) ХЭТ БАГА болгохгүй — `max()`; мөн
+   * газрын зургийг хамгаалж `52vw`-ээр таглана. Багц сонгоогүй үед хуучин өргөн.
+   */
+  const autoCols = Math.min(2, planGroups);
+  const autoPanel = planGroups >= 2 ? autoCols * 300 + (autoCols - 1) * 10 + 44 : 0;
+  const panelVar = planGroups >= 2
+    ? `max(${panelSize.width}px, min(${autoPanel}px, 52vw))`
+    : `${panelSize.width}px`;
+
   return (
     <>
       <div
         className={`${s.shell} ${isFull ? s.shellSuit : ''} ${catOpen ? s.shellCat : ''} ${!isFull && !catPinned ? s.shellFoot : ''} ${view === 'monitor' ? s.shellMon : ''}`}
         style={{
           '--hue': active.hue,
-          '--panel': `${panelSize.width}px`,
+          '--panel': panelVar,
           '--catalog': `${catSize.width}px`,
           '--monleft': `${monSize.width}px`,
           '--montrend': `${trendSize.width}px`,

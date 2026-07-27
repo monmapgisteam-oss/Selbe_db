@@ -557,14 +557,21 @@ function PlanOverview({
         return (
           <>
                 {/**
-                  * Сонгосон багцууд — карт хэлбэрээр. Багана нь `auto-fit` тул
-                  * 2 багц сонговол хоёр карт бүтэн өргөнийг эзлэн ТОМОРНО.
+                  * Сонгосон багцууд — «Ерөнхий дашбоард»-ын дэлгэрэнгүй самбартай
+                  * ИЖИЛ ЗАРЧМААР: багц бүр өөрийн БАГАНА болж ЗҮҮНЭЭС БАРУУН
+                  * зэрэгцэнэ (доош цувахгүй). 2+ багц сонгоход самбар өөрөө
+                  * өргөсөж хоёр баганыг зэрэг харуулна (`Portal`-д `--panel`);
+                  * түүнээс олон бол багана нь хэвтээгээр гүйнэ (`.pickedGrid`).
+                  * Ганц багцад хуучнаар нэг бүтэн өргөн карт үлдэнэ.
                   */}
                 <Section
                   title="Сонгосон"
                   note={`${num(on.length)} давхарга · ${num(totalN)}`}
                 >
-                  <div className={s.cardGrid} style={gridStyle(pickedGroups.length)}>
+                  <div
+                    className={pickedGroups.length > 1 ? s.pickedGrid : s.cardGrid}
+                    style={pickedGroups.length > 1 ? undefined : gridStyle(pickedGroups.length)}
+                  >
                     {pickedGroups.map(({ g, ids, n, donut, series, faceted }) => (
                       <GroupCard
                         key={g.key}
