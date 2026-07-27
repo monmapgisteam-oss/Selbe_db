@@ -153,6 +153,29 @@ const line = (hex: string, w = 1.4, dash: NonNullable<LayerDef['dash']> = 'solid
   } as const;
 };
 
+/**
+ * Замын шугам — зузаан СУУРЬ + дээр нь ТАСАРХАЙ (эх зургийн «Дугуйн зам» маягаар:
+ * саарал зам дээр цагаан зураас). Хоёр CIM stroke: эхнийх (тасархай) дээр.
+ */
+const roadLine = (base: string, baseW: number, dashHex: string, dashW: number, dashPattern: number[]) =>
+  ({
+    type: 'cim',
+    data: {
+      type: 'CIMSymbolReference',
+      symbol: {
+        type: 'CIMLineSymbol',
+        symbolLayers: [
+          {
+            type: 'CIMSolidStroke', enable: true, capStyle: 'Butt', joinStyle: 'Round',
+            width: dashW, color: cim(dashHex, 1),
+            effects: [{ type: 'CIMGeometricEffectDashes', dashTemplate: dashPattern, lineDashEnding: 'NoConstraint' }],
+          },
+          { type: 'CIMSolidStroke', enable: true, capStyle: 'Butt', joinStyle: 'Round', width: baseW, color: cim(base, 1) },
+        ],
+      },
+    },
+  }) as const;
+
 /** Цэг — цагаан хүрээтэй; хэлбэрээр нь сэдэв доторх давхаргууд ялгарна */
 const dot = (hex: string, size = 9, marker: NonNullable<LayerDef['marker']> = 'circle') =>
   ({
@@ -262,6 +285,8 @@ type WebSym = {
   outline?: string; outlineAlpha?: number;
   bloom?: BloomStop[];
   paintField?: string; paint?: Record<string, string>;
+  /** Замын хос-шугам: зузаан суурь + дээр нь тасархай (эх зургийн Дугуйн зам) */
+  roadStyle?: { base: string; baseW: number; dash: string; dashW: number; dashPattern: number[] };
 };
 const WEB_DYNAMIC: Record<string, { a: WebSym; b: WebSym }> = {
   // Барилга — a(single,B): нэг өнгө; b(multi,A): төлөвөөр (Barilga_ty). Хоёул bloom.
@@ -275,8 +300,11 @@ const WEB_DYNAMIC: Record<string, { a: WebSym; b: WebSym }> = {
   'et:15': { a: { color: '#000000', alpha: 0.7, width: 0.75 }, b: { color: '#fd7f6f', alpha: 1, width: 0.75 } },
   // Автобус чиглэл (line)
   'et:6':  { a: { color: '#004da8', width: 2.92 }, b: { color: '#ff7b00', width: 0.75 } },
-  // Дугуйн зам (line) — хоёул ижил
-  'et:14': { a: { color: '#ffffff', width: 1 }, b: { color: '#ffffff', width: 1 } },
+  // Дугуйн зам (line) — саарал суурь + цагаан тасархай (хоёул ижил)
+  'et:14': {
+    a: { roadStyle: { base: '#828282', baseW: 6, dash: '#ffffff', dashW: 1, dashPattern: [4, 4] } },
+    b: { roadStyle: { base: '#828282', baseW: 6, dash: '#ffffff', dashW: 1, dashPattern: [4, 4] } },
+  },
   // Гүүр (line) + bloom
   'et:12': {
     a: { color: '#878787', width: 0.75, bloom: [{ scale: 36112, strength: 2, radius: 0, threshold: 0.1 }, { scale: 9028, strength: 4, radius: 0, threshold: 0.1 }, { scale: 2257, strength: 8, radius: 0, threshold: 0.1 }] },
@@ -295,6 +323,8 @@ const WEB_DYNAMIC: Record<string, { a: WebSym; b: WebSym }> = {
     b: { color: '#adfc74', alpha: 1, outline: '#000000', outlineAlpha: 0, width: 0.45,
       bloom: [{ scale: 36112, strength: 0.25, radius: 0.375, threshold: 0.1 }, { scale: 9028, strength: 0.5, radius: 0.75, threshold: 0.1 }, { scale: 2257, strength: 1, radius: 1.5, threshold: 0.1 }] },
   },
+  // Авто зам (line) — цагаан, өргөн ялгаатай
+  'road': { a: { color: '#ffffff', width: 1.56 }, b: { color: '#ffffff', width: 0.503 } },
   // Одоо байгаа зам (line)
   'roadOld': { a: { color: '#ffffff', width: 1.5 }, b: { color: '#4d5863', width: 0.75 } },
   // Зам (fill, et:29) — эх зургийн саарал/цагаан гадаргуу, хүрээгүй
@@ -310,9 +340,11 @@ const fillWeb = (hex: string, a: number, outline: string, ow: number, w: number)
 
 /** Web-симбол — давхаргын geom-оор (line/fill), эх зургийн rgba ба өргөнөөр */
 const webSymbol = (d: LayerDef, s: WebSym, color: string) =>
-  d.geom === 'line'
-    ? line(color, s.width ?? 1, d.dash ?? 'solid', s.alpha ?? 1)
-    : fillWeb(color, s.alpha ?? d.fill ?? 0.3, s.outline ?? color, s.outlineAlpha ?? 1, s.width ?? 0.6);
+  s.roadStyle
+    ? roadLine(s.roadStyle.base, s.roadStyle.baseW, s.roadStyle.dash, s.roadStyle.dashW, s.roadStyle.dashPattern)
+    : d.geom === 'line'
+      ? line(color, s.width ?? 1, d.dash ?? 'solid', s.alpha ?? 1)
+      : fillWeb(color, s.alpha ?? d.fill ?? 0.3, s.outline ?? color, s.outlineAlpha ?? 1, s.width ?? 0.6);
 
 /** Web-симболоос renderer — paint-тэй бол uniqueValue, эс бөгөөс simple */
 const webRenderer = (d: LayerDef, s: WebSym) => {
