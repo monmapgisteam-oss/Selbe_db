@@ -1,0 +1,155 @@
+/* «Газар чөлөөлөлт» — зураг (зүүн) + дашбоард самбар (баруун) */
+
+.shell {
+  display: flex;
+  gap: 12px;
+  height: 100%;
+  min-height: 0;
+  /* ⚠️ Толгойн (navbar) доор зай — эс бөгөөс дээд KPI индикатор navbar-т
+     наалдана. Ерөнхий дашбоардын `overview.module.css .shell`-тэй ижил 12px. */
+  padding: 12px;
+  background: var(--bg);
+}
+
+/* ⚠️ Гол багана — зураг ба KPI. `flex:1` заавал: эс бөгөөс агуулгынхаа өргөнд
+   (нэг KPI хавтангийн ~160px) хумигдаж, KPI босоо давхарлаж, зураг жижгэрч,
+   баруун тал хоосон үлддэг. */
+.center {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Баруун талын дашбоард самбар — тогтмол өргөн, доош гүйнэ */
+.side {
+  flex: none;
+  width: 384px;
+  max-width: 42vw;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  padding: 1px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+@media (max-width: 960px) {
+  .side { width: 320px; }
+}
+
+/* Дээд удирдлагын зурвас — харагдац солих + полигон зурах товч ЗЭРЭГЦЭЭ,
+   зургийн дээд төвд. */
+.topbar {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  max-width: calc(100% - 24px);
+}
+
+/* Харагдац солих pill (2D/3D/BIM) — `overview.module.css .mapDims`-ийн харагдац,
+   гэхдээ байрлалгүй (topbar дотор зэрэгцэнэ). */
+.dims {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(10px);
+}
+
+.hint {
+  align-self: center;
+  padding: 5px 10px;
+  border-radius: 8px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--ink-2);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(6px);
+}
+
+/* «Полигон зурах» — дүрс (дэвсгэртэй чип) + нэр */
+.drawBtn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 13px 4px 4px;
+  border-radius: 9px;
+  font-size: 0.76rem;
+  font-weight: 650;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(10px);
+  transition: border-color 0.14s, transform 0.1s, box-shadow 0.14s;
+}
+.drawBtn:hover { border-color: var(--hue); }
+.drawBtn:active { transform: scale(0.98); }
+.drawBtn:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: var(--shadow-sm); }
+
+/* Дүрсний дэвсгэр чип — модулийн ногоон өнгөтэй */
+.drawIcon {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  border-radius: 6px;
+  color: #fff;
+  background: var(--hue);
+}
+
+.clearBtn {
+  flex: none;
+  padding: 6px 13px;
+  border-radius: 9px;
+  font-size: 0.76rem;
+  font-weight: 650;
+  color: var(--ink-2);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(10px);
+  transition: color 0.14s, border-color 0.14s, transform 0.1s;
+}
+.clearBtn:hover { color: var(--ink); border-color: var(--ink-3); }
+.clearBtn:active { transform: scale(0.97); }
+
+/* Хамрах хүрээний тэмдэг — БҮХ талбай vs СОНГОСОН талбай */
+.scope {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--ink-3);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+}
+/* Полигоноор шүүсэн үед модулийн ногоон өнгөөр онцолно */
+.scopeSel {
+  border-left-color: var(--hue);
+  background: color-mix(in srgb, var(--hue) 8%, var(--surface));
+}
+.scopeDot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 99px;
+  background: var(--ink-3);
+  transform: translateY(1px);
+}
+.scopeSel .scopeDot { background: var(--hue); }
+.scopeText { font-size: 0.82rem; font-weight: 700; color: var(--ink); }
+.scopeHint { margin-left: auto; font-size: 0.72rem; color: var(--ink-3); }
