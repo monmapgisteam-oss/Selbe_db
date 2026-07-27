@@ -28,6 +28,9 @@ const P: Record<string, string> = {
   bolt: 'M13 2 4 14h7l-1 8 9-12h-7l1-8z',
   road: 'M6 3 4 21M18 3l2 18M12 4v3M12 11v3M12 18v3',
   bus: 'M5 17V6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v11M4 11h16M8 17v2M16 17v2M4 17h16M8.5 14h.01M15.5 14h.01',
+
+  /* Баримт бичиг — эвхэгдсэн булантай хуудас (ТЭЗҮ popup) */
+  file: 'M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 3v5h5M8 13h8M8 17h5',
 };
 
 export function Icon({ name, size = 20 }: { name: string; size?: number }) {
