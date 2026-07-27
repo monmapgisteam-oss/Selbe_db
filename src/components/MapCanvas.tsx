@@ -225,23 +225,22 @@ export const symbolOf = (d: LayerDef, hue = d.hue) => {
 };
 
 /**
- * Дашбоардын бүс — жигд (улбар шар), ГЭХДЭЭ доорх ангиллуудыг УЛААНААР онцолно.
+ * Дашбоардын бүс — эх webmap-тай ижил, Angilal ангилал БҮР өөрийн өнгөтэй.
  * `uniform` горимд бүсийн давхаргад ашиглана.
+ *
+ * ⚠️ Урьд нь бүх бүсийг ганц жигд өнгөөр зурж, зөвхөн улаан ангиллуудыг
+ * онцолдог байв — `ZONE_TYPES`-д улаан утга байхгүй тул бодитоор бүх бүс жигд
+ * улбар шар харагддаг байлаа. Одоо Ерөнхий төлөвлөгөөтэй ижлээр `paint.values`
+ * (`ZONE_MAP_TYPES` = эх webmap-ийн өнгө) бүрээр зурна.
  */
-const ZONE_RED = '#dc2626';
-/**
- * ⚠️ Ангиллын талбар ба утга хоёулаа давхаргаас ирнэ (`paint`). Шинэ бүсийн
- * давхарга `Angilal` талбартай, утга нь жижиг үсэгтэй — «TOROL» гэж бичсэн
- * хуучин хувилбар нэг ч бүсийг онцлохгүй болно. Улаанаар онцлох ангиллуудыг
- * `ZONE_MAP_TYPES`-ээс уншина (тэнд онцлохыг нь улаанаар тэмдэглэсэн).
- */
-const zoneHighlightRenderer = (d: LayerDef) => ({
+const zoneTypeRenderer = (d: LayerDef) => ({
   type: 'unique-value',
   field: d.paint?.field ?? 'Angilal',
-  defaultSymbol: symbolOf(d),
-  uniqueValueInfos: Object.entries(d.paint?.values ?? {})
-    .filter(([, hue]) => hue === ZONE_RED)
-    .map(([value]) => ({ value, label: value, symbol: symbolOf(d, ZONE_RED) })),
+  defaultSymbol: symbolOf(d, ZONE_TYPE_EMPTY_HUE),
+  defaultLabel: d.paint?.emptyLabel,
+  uniqueValueInfos: Object.entries(d.paint?.values ?? {}).map(([value, hue]) => ({
+    value, label: value, symbol: symbolOf(d, hue),
+  })),
 } as unknown as RendererProp);
 
 /**
@@ -387,7 +386,7 @@ function buildLayers(uniform = false): Layer[] {
     ...(d.minScale ? { minScale: d.minScale } : {}),
     elevationInfo: ON_GROUND,
     renderer: uniform
-      ? (d.id === ZONE_LAYER.id ? zoneHighlightRenderer(d) : simple(symbolOf(d)))
+      ? (d.id === ZONE_LAYER.id ? zoneTypeRenderer(d) : simple(symbolOf(d)))
       : d.paint
       ? ({
           type: 'unique-value',
