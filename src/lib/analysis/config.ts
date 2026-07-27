@@ -12,7 +12,11 @@
  * дүн зөрөх боломжгүй.
  */
 
-import { ZONE_LAYER, BUILT_LAYER, PROJECT_AREA_HA } from '@/lib/services';
+import {
+  ZONE_LAYER, BUILT_LAYER, PROJECT_AREA_HA,
+  LAYER_BY_ID, LAYER_GROUPS, PLAN_LAYER_IDS, MONITOR_LAYER_IDS, MONITOR_GROUP, groupOf,
+  type LayerDef,
+} from '@/lib/services';
 
 export { PROJECT_AREA_HA };
 
@@ -47,19 +51,16 @@ export const COST_EXCLUDE = new Set<string>([BUILT_LAYER.id]);
 /* ══════════════════ Газрын зургийн давхарга ══════════════════ */
 
 /**
- * «Давхарга» карт дахь бүлгүүд. Эх `config.js`-ийн `MAP_GROUPS`-тай ижил.
- * ⚠️ Порталын `LAYER_GROUPS`-аас ТУСДАА: анализын бүлэглэлт нь инженерийн
- * системээр (дулаан/ус/цахилгаан) задардаг бөгөөд «Бүс» нь давхарга биш,
- * үнэлгээний үр дүн тул тэнд байхгүй.
+ * «Давхарга» карт дахь бүлгүүд — «Ерөнхий төлөвлөгөө»-тэй ИЖИЛ бүлэглэл.
+ *
+ * ⚠️ Урьд нь анализ өөрийн (дулаан/ус/цахилгаан) бүлэгтэй, зөвхөн 44 давхарга
+ * харуулдаг байв. Одоо порталын `LAYER_GROUPS`-ийг ашиглаж, plan-тай ижил бүх
+ * давхаргыг (~84) харуулна — `MAP_LAYERS` доор `LAYER_BY_ID`-аас автоматаар
+ * үүснэ. Бүсийн ОНООНЫ будалт, барилгын тунгалагшилт, шошго нь ТУСГАЙ хэвээр.
  */
 export const MAP_GROUPS: Record<string, string> = {
-  base: 'Суурь',
-  transit: 'Тээвэр, зам',
-  heat: 'Дулаан',
-  water: 'Ус, ариутгал',
-  power: 'Цахилгаан',
-  amenity: 'Тохижилт',
-  monitor: 'Барилгын хяналт',
+  ...Object.fromEntries(LAYER_GROUPS.map((g) => [g.key, g.title])),
+  [MONITOR_GROUP.key]: MONITOR_GROUP.title,
 };
 
 export type MapLayerKind = 'point' | 'point-lg' | 'line' | 'fill' | 'hatch' | 'building';
@@ -88,58 +89,61 @@ export type MapLayerDef = {
 };
 
 /**
- * ⚠️ Энэ жагсаалт нь ЗУРАГТ гаргаж болох БҮХ давхаргыг агуулна: `Selbe_ET`-ийн
- * 28 давхарга + барилгын хяналтын 2 + дотоод 2 (оноон будалт, шошго). Бүсийн
- * полигон (28) нь `zone` special-ээр орсон тул FeatureLayer хэлбэрээр давхар
- * ордоггүй.
+ * ЗУРАГТ гаргах БҮХ давхарга — «Ерөнхий төлөвлөгөө»-тэй ИЖИЛ бүрэн жагсаалт.
+ *
+ * ⚠️ ГУРВАН ТУСГАЙ давхарга нь Suitability-ийн ЦӨМ бөгөөд `SuitMap` тэдгээрийг
+ * ОНЦГОЙ зурдаг — ГАРААР үлдээв, автоматаар үүсгэхгүй:
+ *   · `zone`  — бүсийн ОНООНЫ будалт (GraphicsLayer, `colorOf`, alpha, сонголт)
+ *   · `label` — бүсийн нэрийн шошго (GraphicsLayer, 2D/3D өөр symbol)
+ *   · `et:24` — барилга, 0.3 ТУНГАЛАГ (доорх онооны өнгө нэвт харагдана)
+ *
+ * ⚠️ Бусад БҮХ context давхарга нь порталын `LAYERS`-аас (`LAYER_BY_ID`)
+ * АВТОМАТААР үүснэ — plan-д шинэ давхарга (жишээ «Сэлбэ 1/2 хил») нэмэхэд
+ * Suitability дагаж шинэчлэгдэнэ. `MAP_LAYERS`-ийг ЗӨВХӨН газрын зургийн context
+ * ба каталог уншдаг (score/cost тооцоо энэнээс хамаардаггүй — `SuitMap`,
+ * `SuitLayerCatalog`, `layerOn` гурав л).
  */
-export const MAP_LAYERS: MapLayerDef[] = [
-  // --- Суурь ---
-  { key: 'zone', special: 'zone', title: 'Бүс — үнэлгээний өнгө', kind: 'fill', color: [79, 209, 197], on: true, group: 'base' },
-  { key: 'label', special: 'label', title: 'Бүсийн нэр (шошго)', kind: 'point', color: [230, 237, 243], on: true, group: 'base' },
-  { key: 'et:24', n: 24, title: 'Барилга байгууламж', kind: 'building', color: [148, 163, 184], on: true, group: 'base' },
 
-  // --- Тээвэр, зам ---
-  { key: 'et:1', n: 1, title: 'LRT / BRT зогсоол', kind: 'point-lg', color: [244, 114, 182], on: true, group: 'transit' },
-  { key: 'et:2', n: 2, title: 'Автобусны буудал', kind: 'point', color: [250, 204, 21], on: true, group: 'transit' },
-  { key: 'et:6', n: 6, title: 'Автобусны чиглэл', kind: 'line', color: [250, 204, 21], on: false, group: 'transit' },
-  { key: 'et:5', n: 5, title: 'Авто зам (тэнхлэг)', kind: 'line', color: [203, 213, 225], on: false, group: 'transit' },
-  { key: 'et:29', n: 29, title: 'Авто зам (талбай)', kind: 'fill', color: [148, 163, 184], on: false, group: 'transit' },
-  { key: 'et:14', n: 14, title: 'Дугуйн зам', kind: 'line', color: [74, 222, 128], on: false, group: 'transit' },
-  { key: 'et:12', n: 12, title: 'Гүүрэн байгууламж', kind: 'line', color: [251, 191, 36], on: false, group: 'transit' },
+/** «#rrggbb» / «#rgb» → [r, g, b] */
+const hexRgb = (hex: string): [number, number, number] => {
+  const h = hex.replace('#', '');
+  const f = h.length === 3 ? h.split('').map((c) => c + c).join('') : h;
+  return [parseInt(f.slice(0, 2), 16) || 0, parseInt(f.slice(2, 4), 16) || 0, parseInt(f.slice(4, 6), 16) || 0];
+};
+/** Порталын геометр → анализын зурах төрөл */
+const kindOf = (geom: LayerDef['geom']): MapLayerKind =>
+  geom === 'line' ? 'line' : geom === 'point' ? 'point' : 'fill';
 
-  // --- Дулаан ---
-  { key: 'et:4', n: 4, title: 'Төлөвлөж буй ДХТ', kind: 'point', color: [248, 113, 113], on: false, group: 'heat' },
-  { key: 'et:7', n: 7, title: 'Дулаан дамжуулах хуваарилах төв', kind: 'line', color: [251, 146, 60], on: false, group: 'heat' },
-  { key: 'et:10', n: 10, title: 'Гадна дулаан — үргэлжилсэн', kind: 'line', color: [248, 113, 113], on: false, group: 'heat' },
-  { key: 'et:9', n: 9, title: 'Гадна дулаан — тасархай', kind: 'line', color: [252, 165, 165], on: false, group: 'heat' },
-  { key: 'et:11', n: 11, title: 'Гадна дулаан — цэнхэр шугам', kind: 'line', color: [96, 165, 250], on: false, group: 'heat' },
-  { key: 'et:8', n: 8, title: 'Гадна дулаан — ногоон шугам', kind: 'line', color: [134, 239, 172], on: false, group: 'heat' },
-
-  // --- Ус, ариутгал ---
-  { key: 'et:18', n: 18, title: 'Төлөвлөж буй цэвэр ус', kind: 'line', color: [56, 189, 248], on: false, group: 'water' },
-  { key: 'et:23', n: 23, title: 'Цэвэр усны эх үүсвэр өргөтгөл', kind: 'line', color: [14, 165, 233], on: false, group: 'water' },
-  { key: 'et:17', n: 17, title: 'Бохирын шугам (орон сууц)', kind: 'line', color: [168, 85, 247], on: false, group: 'water' },
-  { key: 'et:16', n: 16, title: 'Одоо байгаа бохир ус', kind: 'line', color: [147, 51, 234], on: false, group: 'water' },
-  { key: 'et:3', n: 3, title: 'Бохирын худаг', kind: 'point', color: [192, 132, 252], on: false, group: 'water' },
-  { key: 'et:19', n: 19, title: 'Хөрсний ус шүүрүүлэх', kind: 'line', color: [45, 212, 191], on: false, group: 'water' },
-  { key: 'et:15', n: 15, title: 'Инженерийн бэлтгэл арга хэмжээ', kind: 'line', color: [125, 211, 252], on: false, group: 'water' },
-
-  // --- Цахилгаан ---
-  { key: 'et:21', n: 21, title: '110 кВ агаарын шугам', kind: 'line', color: [217, 70, 239], on: false, group: 'power' },
-  { key: 'et:13', n: 13, title: '10 кВ кабель трасс', kind: 'line', color: [192, 132, 252], on: false, group: 'power' },
-  { key: 'et:20', n: 20, title: '0.4 кВ кабель трасс', kind: 'line', color: [216, 180, 254], on: false, group: 'power' },
-  { key: 'et:22', n: 22, title: 'Цахилгааны шугам', kind: 'line', color: [232, 121, 249], on: false, group: 'power' },
-
-  // --- Тохижилт ---
-  { key: 'et:25', n: 25, title: 'Ногоон байгууламж', kind: 'fill', color: [34, 197, 94], on: false, group: 'amenity' },
-  { key: 'et:26', n: 26, title: 'Цэцэрлэгт хүрээлэн, алхалтын бүс', kind: 'hatch', color: [132, 204, 22], on: false, group: 'amenity' },
-  { key: 'et:27', n: 27, title: 'Явган хүний зам', kind: 'fill', color: [163, 230, 53], on: false, group: 'amenity' },
-
-  // --- Барилгын хяналт (ХУУЧИН үйлчилгээ) ---
-  { key: 'mon:building', layerId: 'mon:building', title: 'Барилгын блок (гүйцэтгэл)', kind: 'fill', color: [234, 88, 12], on: false, group: 'monitor' },
-  { key: 'mon:survey', layerId: 'mon:survey', title: 'Талбайн хяналтын тайлан', kind: 'point', color: [8, 145, 178], on: false, group: 'monitor' },
+/**
+ * SuitMap-д ОНЦГОЙ зурагддаг гурван давхарга — автоматаар үүсгэхгүй, гараар.
+ * (`zone`/`et:24` нь порталын каталогт ч байдаг тул доорх derived-ээс ХАСНА.)
+ */
+const SPECIAL_LAYERS: MapLayerDef[] = [
+  { key: 'zone', special: 'zone', title: 'Бүс — үнэлгээний өнгө', kind: 'fill', color: [79, 209, 197], on: true, group: 'zone' },
+  { key: 'label', special: 'label', title: 'Бүсийн нэр (шошго)', kind: 'point', color: [230, 237, 243], on: true, group: 'zone' },
+  { key: 'et:24', n: 24, title: 'Барилга байгууламж', kind: 'building', color: [148, 163, 184], on: true, group: 'build' },
 ];
+const SPECIAL_KEYS = new Set(SPECIAL_LAYERS.map((s) => s.key));
+
+/** Порталын каталогийн бүх давхарга (тусгайг хасаад) → context давхарга */
+const DERIVED_LAYERS: MapLayerDef[] = [...PLAN_LAYER_IDS, ...MONITOR_LAYER_IDS]
+  .filter((id) => !SPECIAL_KEYS.has(id) && LAYER_BY_ID[id])
+  .map((id) => {
+    const d = LAYER_BY_ID[id];
+    return {
+      key: id,
+      // ⚠️ `layerId` → `SuitMap` нь `layerUrl(LAYER_BY_ID[id])`-ээр бүтэн хаяг
+      //    авна (хил зэрэг ӨӨР org дээрх давхаргад ч зөв ажиллана).
+      layerId: id,
+      title: d.title,
+      kind: kindOf(d.geom),
+      color: hexRgb(d.hue),
+      on: false,
+      group: groupOf(id) ?? MONITOR_GROUP.key,
+    } as MapLayerDef;
+  });
+
+export const MAP_LAYERS: MapLayerDef[] = [...SPECIAL_LAYERS, ...DERIVED_LAYERS];
 
 /* ══════════════════ Өртгийн задаргаа ══════════════════ */
 
@@ -166,7 +170,7 @@ export const COST_GROUP_OF: Record<string, string> = {
   'et:10': 'heat', 'et:11': 'heat',
   'et:3': 'water', 'et:15': 'water', 'et:16': 'water', 'et:17': 'water',
   'et:18': 'water', 'et:19': 'water', 'et:23': 'water',
-  'et:13': 'power', 'et:20': 'power', 'et:21': 'power', 'et:22': 'power',
+  'et:124': 'power', 'et:125': 'power', 'et:126': 'power', 'et:127': 'power',
   'et:25': 'amenity', 'et:26': 'amenity', 'et:27': 'amenity',
 };
 
