@@ -288,6 +288,15 @@ const WEB_DYNAMIC: Record<string, { a: WebSym; b: WebSym }> = {
   'et:26': { a: { color: '#0e4f38', alpha: 0.3, outline: '#0e4f38', outlineAlpha: 1, width: 0.075 }, b: { color: '#00ffa6', alpha: 0.1, outline: '#00ffa6', outlineAlpha: 1, width: 0.375 } },
   // Ногоон байгууламж (fill)
   'et:25': { a: { color: '#71ab5e', alpha: 1, outline: '#000000', outlineAlpha: 0, width: 0.563 }, b: { color: '#71ab5e', alpha: 1, outline: '#71ab5e', outlineAlpha: 1, width: 0.375 } },
+  // Мод (fill) — хоёул ногоон, хүрээгүй; өргөн ба bloom радиус ялгаатай
+  'tree': {
+    a: { color: '#adfc74', alpha: 1, outline: '#000000', outlineAlpha: 0, width: 0.75,
+      bloom: [{ scale: 2257, strength: 0.25, radius: 0, threshold: 0.1 }, { scale: 564, strength: 0.5, radius: 0, threshold: 0.1 }, { scale: 141, strength: 1, radius: 0, threshold: 0.1 }] },
+    b: { color: '#adfc74', alpha: 1, outline: '#000000', outlineAlpha: 0, width: 0.45,
+      bloom: [{ scale: 36112, strength: 0.25, radius: 0.375, threshold: 0.1 }, { scale: 9028, strength: 0.5, radius: 0.75, threshold: 0.1 }, { scale: 2257, strength: 1, radius: 1.5, threshold: 0.1 }] },
+  },
+  // Авто зам (line) — цагаан, өргөн ялгаатай
+  'road': { a: { color: '#ffffff', width: 1.56 }, b: { color: '#ffffff', width: 0.503 } },
 };
 
 /** Тусад нь outline өнгө/тунгалагтай дүүргэлт */

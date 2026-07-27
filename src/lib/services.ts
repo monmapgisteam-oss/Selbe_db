@@ -1666,6 +1666,38 @@ export const LAYERS: LayerDef[] = [
     facets: [{ field: "Layer", label: "Ангилал" }],
   },
 
+  /* ─────────── Шинэ feature-ууд (эх webmap) ─────────── */
+  /**
+   * Мод — `Tree_1` үйлчилгээ (ЕТ-ээс гадуур тул explicit `url`). Талбай, ногоон
+   * дүүргэлт, хүрээгүй; эх зурагт bloom-той. Ногоон орчны бүлэгт.
+   */
+  {
+    id: "tree",
+    n: 0,
+    url: `${HJ}/Tree_1/FeatureServer/0`,
+    title: "Мод",
+    topic: "plan",
+    geom: "area",
+    hue: "#adfc74",
+    fill: 1,
+    width: 0.75,
+  },
+  /**
+   * Авто зам — `Бусад_мэдээлэл_20260724` үйлчилгээ (кирилл нэрийг encode).
+   * Цагаан шугам. Замын бүлэгт.
+   */
+  {
+    id: "road",
+    n: 193,
+    url: `${HJ}/${encodeURIComponent("Бусад_мэдээлэл_20260724")}/FeatureServer/193`,
+    title: "Авто зам",
+    topic: "plan",
+    geom: "line",
+    hue: "#ffffff",
+    width: 1.56,
+    dash: "solid",
+  },
+
   ...PKG_LAYERS,
 ];
 
@@ -2101,9 +2133,9 @@ export const GROUP_LAYERS: Record<GroupKey, string[]> = {
   // 110кв агаарын · 10кв кабель трасс · цахилгааны шугам · 0.4кв кабель трасс
   power: ["et:21", "et:13", "et:22", "et:20"],
   prep: ["et:15"],
-  road: ["et:29", "et:5", "et:27", "et:14", "et:12"],
+  road: ["et:29", "et:5", "et:27", "et:14", "et:12", "road"],
   transit: ["et:6", "et:2", "et:1"],
-  green: ["et:25", "et:26"],
+  green: ["et:25", "et:26", "tree"],
   /**
    * ⚠️ ЕТ-ээс ГАДУУРХ хоёр үйлчилгээ. `PLAN_LAYER_IDS`-д орж каталог, зураг,
    * нийлбэрт гарна — өртгийн талбаргүй тул дэд бүтцийн ӨРТӨГТ нөлөөлөхгүй.
