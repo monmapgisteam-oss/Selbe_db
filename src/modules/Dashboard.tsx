@@ -7,11 +7,15 @@ import {
 } from 'react';
 import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
 import { Donut, Ring, Bars, Data } from '@/components/ui';
+import { Icon } from '@/components/Icon';
+import { LayerCatalog } from '@/components/LayerCatalog';
 import { useAsync, type Async } from '@/lib/useAsync';
+import { usePlanTotals } from '@/lib/totals';
 import { queryFeatures, type Row } from '@/lib/query';
 import {
   ZONE_LAYER, ZONE_FIELD, ZONE_NONE, ZONE_TYPE_EMPTY_HUE, BUILT_LAYER, BUILDING,
-  LAYERS, LAYER_BY_ID, PARCEL_LEFT, PROJECT_PROGRESS, PARCEL_PROGRESS_HUES,
+  LAYER_BY_ID, PARCEL_LEFT, PROJECT_PROGRESS, PARCEL_PROGRESS_HUES,
+  PLAN_LAYER_IDS, MONITOR_LAYER_IDS,
   PKG_BY_FAMILY, bagtsKey, buildingKey,
 } from '@/lib/services';
 import {
@@ -107,6 +111,14 @@ const SECTION_LAYERS: Record<SecKey, string[]> = {
 
 /** Дашбоард нээгдэхэд асаалттай давхаргууд */
 const BASE_LAYERS = [ZONE_LAYER.id, BUILT_LAYER.id];
+
+/**
+ * «Давхарга» каталогт харуулах давхаргууд — «Ерөнхий төлөвлөгөө»-тэй ИЖИЛ
+ * жагсаалт дээр хяналтын багцыг нэмнэ (дашбоард `mon:building`-ийг гүйцэтгэлд
+ * ашигладаг тул каталогт ч харагдах ёстой). `catalogGroups('monitor')`-той
+ * ижил дараалал.
+ */
+const CATALOG_IDS = [...MONITOR_LAYER_IDS, ...PLAN_LAYER_IDS];
 
 /* ══════════════════ Бэхлэгдсэн үзүүлэлтийн тэмдэглэгээ ══════════════════ */
 
@@ -482,6 +494,17 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
    */
   const [visible, setVisible] = useState<string[]>(BASE_LAYERS);
 
+  /**
+   * «Давхарга» каталог нээлттэй эсэх — «Ерөнхий төлөвлөгөө» дээрх товчтой ИЖИЛ
+   * зарчим. Хаалттай эхэлнэ; товч дарахад л нээгдэнэ.
+   *
+   * ⚠️ Тоо, өртгийн 30 хүсэлт нь каталог НЭЭГДЭХЭД л явна (`usePlanTotals`-ын
+   * `enabled = layerOpen`) — дашбоард нээх бүрд дэмий цохихгүй.
+   */
+  const [layerOpen, setLayerOpen] = useState(false);
+  const [layerSel, setLayerSel] = useState<string | null>(null);
+  const totals = usePlanTotals(zone, layerOpen, CATALOG_IDS);
+
   const toggle = useCallback((k: SecKey) => {
     const isOpen = open.includes(k);
     setOpen(isOpen
@@ -546,16 +569,45 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
         <div className={o.hero}>
           <MapCanvas dim={dim} visible={visible} zone={null} uniform onPick={pick} />
 
-          <div className={o.mapDims} role="group" aria-label="Газрын зургийн харагдац">
-            {(['2d', '3d', 'bim'] as Dim[]).map((x) => (
-              <button key={x} type="button" aria-pressed={dim === x}
-                className={`${o.dimBtn} ${dim === x ? o.dimOn : ''}`} onClick={() => setDim(x)}>
-                {x.toUpperCase()}
-              </button>
-            ))}
+          {/* Дээд-төв toolbar — «Давхарга» товч ба 2D/3D/BIM НЭГ мөрөнд
+              («Ерөнхий төлөвлөгөө»-тэй ижил). Товч дарахад каталог доор нь гарна. */}
+          <div className={o.mapTools}>
+            <button
+              type="button"
+              aria-pressed={layerOpen}
+              className={`${o.mapBtn} ${layerOpen ? o.mapBtnOn : ''}`}
+              onClick={() => setLayerOpen((v) => !v)}
+              title="Давхаргын жагсаалт"
+            >
+              <Icon name="layers" size={15} />
+              Давхарга
+            </button>
+
+            <div className={o.dimsInline} role="group" aria-label="Газрын зургийн харагдац">
+              {(['2d', '3d', 'bim'] as Dim[]).map((x) => (
+                <button key={x} type="button" aria-pressed={dim === x}
+                  className={`${o.dimBtn} ${dim === x ? o.dimOn : ''}`} onClick={() => setDim(x)}>
+                  {x.toUpperCase()}
+                </button>
+              ))}
+            </div>
           </div>
 
-          <MapLayers visible={visible} setVisible={setVisible} reset={() => setVisible(BASE_LAYERS)} />
+          {layerOpen && (
+            <div className={o.catPanel}>
+              <LayerCatalog
+                view="monitor"
+                totals={totals}
+                visible={visible}
+                setVisible={setVisible}
+                selected={layerSel}
+                onSelect={setLayerSel}
+                onClose={() => setLayerOpen(false)}
+                zone={zone}
+                embedded
+              />
+            </div>
+          )}
 
           {/* Тайлбар — зурагт БОДИТ харагдаж буй давхаргууд */}
           <div className={o.legend}>
@@ -783,86 +835,6 @@ function SideRail({ d, suit, open, toggle, clear, ref }: {
         Хэсэг дарж баруун талд дэлгэрэнгүйг нээнэ — хэд хэдийг зэрэг сонгоход
         багана болж хуваагдана. Багана хоорондын бариулыг чирж өргөнийг тохируулна.
       </p>
-    </div>
-  );
-}
-
-/* ══════════════════ Давхаргын жагсаалт (газрын зураг дээр) ══════════════════ */
-
-/**
- * Давхаргын бүлгүүд — id-ийн угтвараас АВТОМАТААР. Гараар жагсаавал шинэ
- * давхарга нэмэгдэхэд жагсаалтад орохгүй, чимээгүй алга болно.
- */
-const LAYER_GROUPS: { key: string; title: string; test: (id: string) => boolean }[] = [
-  { key: 'base', title: 'Бүс ба барилга', test: (id) => id === 'zone' || id === BUILT_LAYER.id },
-  { key: 'mon', title: 'Барилгын хяналт', test: (id) => id.startsWith('mon:') },
-  { key: 'land', title: 'Газар чөлөөлөлт', test: (id) => id.startsWith('land:') },
-  { key: 'pkg', title: 'Дэд бүтцийн багц', test: (id) => id.startsWith('pkg:') },
-  { key: 'et', title: 'Ерөнхий төлөвлөгөө', test: (id) => id.startsWith('et:') },
-];
-
-/** Газрын зураг дээрх давхаргын самбар — GIS аппуудын ердийн байрлал (баруун дээд) */
-function MapLayers({ visible, setVisible, reset }: {
-  visible: string[];
-  setVisible: (fn: (v: string[]) => string[]) => void;
-  reset: () => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [group, setGroup] = useState<string | null>('base');
-
-  const flip = (id: string) =>
-    setVisible((v) => (v.includes(id) ? v.filter((x) => x !== id) : [...v, id]));
-
-  const groups = LAYER_GROUPS.map((g) => {
-    const items = LAYERS.filter((L) => g.test(L.id));
-    return { ...g, items, on: items.filter((L) => visible.includes(L.id)).length };
-  }).filter((g) => g.items.length);
-
-  return (
-    <div className={o.layerBox}>
-      <button type="button" className={o.layerBtn} aria-expanded={open} onClick={() => setOpen((v) => !v)}>
-        Давхарга <b className="num">{visible.length}</b>
-      </button>
-
-      {open && (
-        <div className={o.layerPanel}>
-          <div className={o.layerHead}>
-            <span>Давхарга</span>
-            <button type="button" className={o.railClear} onClick={reset}>Анхны байдал</button>
-          </div>
-
-          <div className={o.layerScroll}>
-            {groups.map((g) => {
-              const expanded = group === g.key;
-              return (
-                <div key={g.key} className={o.layerGroup}>
-                  <button
-                    type="button"
-                    className={o.layerGroupHead}
-                    aria-expanded={expanded}
-                    onClick={() => setGroup(expanded ? null : g.key)}
-                  >
-                    <span className={`${o.layerChev} ${expanded ? o.layerChevOn : ''}`} aria-hidden>›</span>
-                    {g.title}
-                    <b className="num">{g.on}/{g.items.length}</b>
-                  </button>
-
-                  {expanded && g.items.map((L) => {
-                    const on = visible.includes(L.id);
-                    return (
-                      <label key={L.id} className={o.layerRow}>
-                        <input type="checkbox" checked={on} onChange={() => flip(L.id)} />
-                        <i style={{ background: L.hue }} aria-hidden />
-                        <span title={L.title}>{L.title}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

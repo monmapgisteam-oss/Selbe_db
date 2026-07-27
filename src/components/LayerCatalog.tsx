@@ -44,6 +44,7 @@ export function LayerCatalog({
   onResizeStart,
   onResizeReset,
   zone,
+  embedded = false,
 }: {
   /**
    * Аль харагдацын каталог вэ.
@@ -73,6 +74,12 @@ export function LayerCatalog({
   onResizeStart?: (e: ReactPointerEvent<HTMLDivElement>) => void;
   onResizeReset?: () => void;
   zone: string | null;
+  /**
+   * Порталын grid-ийн `cat` баганын оронд ХӨВӨГЧ панелийн дотор зурагдах уу.
+   * ⚠️ Дашбоард/анализ дээр каталог нь газрын зургийг тойрсон хайрцагт хөвж
+   * гарах тул баруун ирмэгийн зураас (`border-right`) илүүц болно.
+   */
+  embedded?: boolean;
 }) {
   const groups = catalogGroups(view);
 
@@ -125,7 +132,7 @@ export function LayerCatalog({
   const onCount = visible.filter((id) => all.includes(id)).length;
 
   return (
-    <aside className={s.drawer} aria-label="Давхаргын жагсаалт">
+    <aside className={`${s.drawer} ${embedded ? s.embedded : ''}`} aria-label="Давхаргын жагсаалт">
       {/* Өргөн тохируулах бариул — баганын БАРУУН ирмэг дээр (зураг руу харсан) */}
       {onResizeStart && (
         <div

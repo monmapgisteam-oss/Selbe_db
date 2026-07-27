@@ -749,85 +749,71 @@
 
 /* ⚠️ Баруун ДЭЭД буланд — GIS аппуудын ердийн байрлал. Зүүн дээд нь бүсийн
    chip, зүүн доод нь тайлбар, дээд төв нь 2D/3D солигч аль хэдийн эзэлсэн. */
-.layerBox { position: absolute; top: 12px; right: 12px; z-index: 7; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
-.layerBtn {
+/* Дээд-төв toolbar — «Давхарга» + 2D/3D/BIM НЭГ pill дотор («Ерөнхий
+   төлөвлөгөө»-ийн `mapTools`-той ижил). Bagts-д хэрэглэгддэг `.mapDims`-ийг
+   хөндөхгүйн тулд Dashboard дотоод дим нь `.dimsInline` (pill-гүй). */
+.mapTools {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 7;
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 7px 12px;
+  gap: 6px;
+  padding: 4px;
   border: 1px solid var(--line);
-  border-radius: 9px;
+  border-radius: 12px;
   background: var(--surface);
   box-shadow: var(--shadow-lg);
   backdrop-filter: blur(10px);
-  font-size: 0.76rem;
-  font-weight: 650;
-  color: var(--ink-2);
-  transition: color 0.14s;
 }
-.layerBtn:hover { color: var(--ink); }
-.layerBtn b { font-family: var(--mono); font-weight: 700; color: var(--ink-3); }
 
-.layerPanel {
-  width: 310px;
-  max-height: min(460px, 60vh);
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--line);
-  border-radius: var(--r);
-  background: color-mix(in srgb, var(--surface) 96%, transparent);
-  backdrop-filter: blur(12px);
-  box-shadow: var(--shadow-lg);
-  overflow: hidden;
-}
-.layerHead {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 9px 11px;
-  border-bottom: 1px solid var(--line);
-  font-size: 0.74rem;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--ink-3);
-}
-.layerScroll { overflow-y: auto; padding: 4px; }
-.layerGroup { margin-bottom: 2px; }
-.layerGroupHead {
-  display: flex;
+/* «Давхарга» товч — pill доторх ил тод товч (асаалттай үед `--hue`). */
+.mapBtn {
+  display: inline-flex;
   align-items: center;
   gap: 7px;
-  width: 100%;
-  padding: 7px 8px;
-  border-radius: var(--r-sm);
-  text-align: left;
+  padding: 8px 14px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-2);
   font-size: 0.76rem;
   font-weight: 650;
-  color: var(--ink);
-  transition: background 0.12s;
+  transition: background 0.16s var(--ease), color 0.16s, transform 0.1s;
 }
-.layerGroupHead:hover { background: var(--surface-2); }
-.layerGroupHead b { margin-left: auto; font-family: var(--mono); font-size: 0.68rem; font-weight: 700; color: var(--ink-3); }
-.layerChev { display: inline-block; font-size: 0.9rem; color: var(--ink-3); transition: transform 0.14s; }
-.layerChevOn { transform: rotate(90deg); }
+.mapBtn:hover { background: var(--surface-2); color: var(--ink); }
+.mapBtn:active { transform: scale(0.95); }
+.mapBtn svg { width: 15px; height: 15px; }
+.mapBtnOn { background: var(--hue); color: #fff; }
+.mapBtnOn:hover { background: var(--hue); color: #fff; filter: brightness(1.07); }
 
-.layerRow {
+/* Дотоод 2D/3D/BIM сегмент — pill-гүй, тунгалаг (гадна `.mapTools` pill өгнө).
+   ⚠️ background нь `.dimOn` (surface-2)-той ижил байвал идэвхтэй товч алга болно. */
+.dimsInline { display: flex; gap: 2px; }
+
+/* Каталог — «Ерөнхий төлөвлөгөө»-тэй ижил ЗҮҮН талын БҮТЭН ӨНДӨР багана
+   (голд хөвөхгүй). Товч дээд-төвд, жагсаалт зүүнд — plan-ийн зарчим яг ижил. */
+.catPanel {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 8;
+  width: 320px;
+  max-width: min(88%, 340px);
   display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 8px 5px 24px;
-  border-radius: var(--r-sm);
-  cursor: pointer;
-  font-size: 0.72rem;
-  color: var(--ink-2);
-  transition: background 0.12s;
+  background: var(--surface);
+  border-right: 1px solid var(--line);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  animation: catPanelIn 0.24s var(--ease) both;
 }
-.layerRow:hover { background: var(--surface-2); }
-.layerRow input { flex: none; accent-color: var(--accent); }
-.layerRow i { width: 9px; height: 9px; flex: none; border-radius: 2px; }
-.layerRow span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@keyframes catPanelIn {
+  from { opacity: 0; transform: translateX(-14px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
 
 /* ── Багана бүрийн «зурган дээр хаана байна» мөр ── */
 .layerLink {
