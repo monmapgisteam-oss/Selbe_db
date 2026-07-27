@@ -354,33 +354,6 @@
 }
 .iconBtn:hover { background: var(--surface-2); color: var(--ink); }
 
-/* Навбарын «ТЭЗҮ» баримт бичгийн товч — дүрс + нэр */
-.docBtn {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  flex: none;
-  height: 34px;
-  padding: 0 12px 0 8px;
-  border-radius: var(--r-sm);
-  border: 1px solid var(--line);
-  font-size: 0.78rem;
-  font-weight: 650;
-  color: var(--ink-2);
-  transition: background 0.12s, color 0.12s, border-color 0.12s;
-}
-.docBtn:hover { background: var(--surface-2); color: var(--ink); border-color: var(--line-strong); }
-.docBtnIcon {
-  display: grid;
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  flex: none;
-  border-radius: 6px;
-  color: #fff;
-  background: var(--hue);
-}
-
 /* ── Газрын зураг ── */
 .map { grid-area: map; position: relative; display: flex; min-width: 0; }
 
@@ -544,9 +517,6 @@
 @media (max-width: 720px) {
   .filterText { display: none; }
   .filterChip { padding: 5px 6px 5px 8px; }
-  /* Маш нарийн үед: брэндийн нэрийг нуух (зөвхөн лого), «ТЭЗҮ-БОНУ» нэрийг
-     хумьж дүрс болгоно — зай хэмнэж, таб гүйх орон зай нэмэгдэнэ. */
+  /* Маш нарийн үед: брэндийн нэрийг нуух (зөвхөн лого) — таб гүйх зай нэмэгдэнэ. */
   .brandName { display: none; }
-  .docBtnLabel { display: none; }
-  .docBtn { width: 34px; padding: 0; gap: 0; justify-content: center; }
 }

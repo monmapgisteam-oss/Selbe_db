@@ -22,6 +22,8 @@ export function ViewRail({
   setView,
   catalogOpen,
   header = false,
+  onDocs,
+  docsActive = false,
 }: {
   view: ViewKey;
   setView: (v: ViewKey) => void;
@@ -33,6 +35,10 @@ export function ViewRail({
    * үлдэнэ: 56px өндөр толгойд бүтэн босоо мод багтахгүй.
    */
   header?: boolean;
+  /** «ТЭЗҮ-БОНУ» баримтын popup нээх — байвал табуудын ХАЖУУД нэг бүлэгт орно */
+  onDocs?: () => void;
+  /** Popup нээлттэй эсэх (идэвхтэй тэмдэг) */
+  docsActive?: boolean;
 }) {
   return (
     <nav className={header ? s.railRow : s.rail} aria-label="Харагдац">
@@ -51,6 +57,9 @@ export function ViewRail({
             key={v.key}
             type="button"
             aria-current={on}
+            aria-label={v.title}
+            /* Нарийн дэлгэцэд шошго нуугдаж зөвхөн дүрс үлдэх тул нэрийг tooltip-д */
+            title={v.title}
             {...(expandable ? { 'aria-expanded': expanded } : {})}
             className={`${s.item} ${on ? s.itemOn : ''}`}
             style={{ '--tone': v.hue } as CSSProperties}
@@ -67,6 +76,25 @@ export function ViewRail({
           </button>
         );
       })}
+
+      {/* «ТЭЗҮ-БОНУ» баримт — харагдацын табуудтай НЭГ бүлэгт, ижил хэлбэрээр.
+          Харагдац биш, popup нээдэг тул `aria-current` биш `aria-pressed`. */}
+      {header && onDocs && (
+        <button
+          type="button"
+          aria-pressed={docsActive}
+          aria-label="ТЭЗҮ-БОНУ баримт бичиг"
+          title="ТЭЗҮ ба судалгааны баримт бичиг"
+          className={`${s.item} ${s.docItem} ${docsActive ? s.itemOn : ''}`}
+          style={{ '--tone': '#16a34a' } as CSSProperties}
+          onClick={onDocs}
+        >
+          <span className={s.icon}><Icon name="file" /></span>
+          <span className={s.text}>
+            <span className={s.title}>ТЭЗҮ-БОНУ</span>
+          </span>
+        </button>
+      )}
 
       {!header && (
         <p className={s.foot}>
