@@ -24,7 +24,8 @@ import { SuitDetail } from './SuitDetail';
 import { nf, esc } from './suit/format';
 import { valueOf, blendScore, type Mode, type Row } from './suit/model';
 import { Shell, Card } from './suit/Layout';
-import { LayerToggles } from './suit/LayerToggles';
+import { SuitLayerCatalog } from './suit/LayerCatalog';
+import { Icon } from '@/components/Icon';
 import { BlendCard } from './suit/BlendCard';
 import { CategoryPie, IndicatorPicker, Weights, Parking } from './suit/Urban';
 import { EconSummary, EconTune } from './suit/Economics';
@@ -98,6 +99,11 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
   const [layerOn, setLayerOn] = useState<Record<string, boolean>>(
     () => Object.fromEntries(MAP_LAYERS.map((l) => [l.key, l.on])),
   );
+  /**
+   * Давхаргын каталог нээлттэй эсэх — «Ерөнхий төлөвлөгөө» дээрх «Давхарга»
+   * товчтой ижил зарчим. Хаалттай эхэлж, товч дарахад газрын зурагт хөвж гарна.
+   */
+  const [layerCatOpen, setLayerCatOpen] = useState(false);
 
   /* ── Тооцоо ── */
   const perHa = econOpt.perHa ?? costs?.perHa ?? 0;
@@ -237,11 +243,9 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
       <Shell
         left={
           <>
-            {/* Нэмэлт давхарга — оноон будалт дээр контекст нэмнэ */}
-            <Card id="layersCard" title="Давхарга нэмэх" collapsible startOff>
-              <LayerToggles layerOn={layerOn} setLayerOn={setLayerOn} />
-            </Card>
-
+            {/* ⚠️ Давхаргын жагсаалт нь зүүн rail-ийн картаас газрын зурган дээрх
+                «Давхарга» товч + каталог руу шилжсэн («Ерөнхий төлөвлөгөө»-тэй
+                ижил зарчим). Доорх `map` слот дахь `SuitLayerCatalog`-ыг үз. */}
             {mode === 'indicator' && (
               <Card title="Хот төлөвлөлтийн тооцоолол">
                 <CategoryPie
@@ -301,22 +305,47 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
               buildingTip={buildingTip}
             />
 
-            {/* 2D / 3D / BIM солих — газрын зураг дээр давхарлав.
-                ⚠️ ArcGIS-ийн удирдлага (zoom, home) баруун ДЭЭД, масштаб баруун
-                ДООД, дэлгэрэнгүй карт зүүн ДЭЭД буланд байдаг тул зүүн ДООД
-                буланд байрлуулж мөргөлдөөнгүй болгов. */}
-            <div className={s.mapDims} role="group" aria-label="Газрын зургийн харагдац">
-              {(['2d', '3d', 'bim'] as Dim[]).map((d) => (
-                <button
-                  key={d}
-                  type="button"
-                  aria-pressed={dim === d}
-                  className={`${s.dimBtn} ${dim === d ? s.dimOn : ''}`}
-                  onClick={() => setDim(d)}
-                >
-                  {d.toUpperCase()}
-                </button>
-              ))}
+            {/* Каталог — «Ерөнхий төлөвлөгөө»-тэй ижил ЗҮҮН талын БҮТЭН ӨНДӨР
+                багана (голд хөвөхгүй). */}
+            {layerCatOpen && (
+              <div className={s.catPanel}>
+                <SuitLayerCatalog
+                  layerOn={layerOn}
+                  setLayerOn={setLayerOn}
+                  onClose={() => setLayerCatOpen(false)}
+                />
+              </div>
+            )}
+
+            {/* «Давхарга» товч + 2D/3D/BIM — НЭГ мөрөнд, зүүн доод буланд
+                (Давхарга нь дим товчны ӨМНӨ, «Ерөнхий төлөвлөгөө»-тэй ижил).
+                ⚠️ ArcGIS-ийн удирдлага (zoom баруун дээд, масштаб баруун доод,
+                дэлгэрэнгүй карт зүүн дээд)-тай мөргөлдөхгүй зүүн доод буланд. */}
+            <div className={s.mapControls}>
+              <button
+                type="button"
+                aria-pressed={layerCatOpen}
+                className={`${s.mapBtn} ${layerCatOpen ? s.mapBtnOn : ''}`}
+                onClick={() => setLayerCatOpen((v) => !v)}
+                title="Давхаргын жагсаалт"
+              >
+                <Icon name="layers" size={15} />
+                Давхарга
+              </button>
+
+              <div className={s.mapDims} role="group" aria-label="Газрын зургийн харагдац">
+                {(['2d', '3d', 'bim'] as Dim[]).map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    aria-pressed={dim === d}
+                    className={`${s.dimBtn} ${dim === d ? s.dimOn : ''}`}
+                    onClick={() => setDim(d)}
+                  >
+                    {d.toUpperCase()}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {active && (

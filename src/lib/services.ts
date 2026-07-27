@@ -1752,6 +1752,36 @@ export const LAYERS: LayerDef[] = [
     fill: 0.6,
     width: 0.7,
   },
+  /* ── Хил / төлөвлөлтийн талбай (ӨӨР үйлчилгээ) — «Бусад мэдээлэл» бүлэгт ──
+     ⚠️ ZONE_ID талбаргүй тул `noZone` — бүсээр шүүхгүй (бүх бүсийг хамарсан
+     хязгаар). */
+  {
+    id: "khil2",
+    n: 0,
+    /* ⚠️ ӨӨР org (services-ap1 / ACqsMOmNLi5wIdIh) — бүтэн URL. OID нь `FID`
+       (OBJECTID биш) тул буруу нэрээр COUNT() асуувал хүсэлт бүхэлдээ унана. */
+    url: "https://services-ap1.arcgis.com/ACqsMOmNLi5wIdIh/arcgis/rest/services/%D0%A1%D1%8D%D0%BB%D0%B1%D1%8D_2_khil/FeatureServer/0",
+    oid: "FID",
+    title: "Сэлбэ 2 хил",
+    topic: "plan",
+    geom: "area",
+    hue: "#f43f5e",
+    fill: 0.05,
+    width: 1.6,
+    noZone: true,
+  },
+  {
+    id: "khil1",
+    n: 2,
+    url: `${HJ}/Tuluvlult_talbai/FeatureServer/2`,
+    title: "Сэлбэ 1 хил",
+    topic: "plan",
+    geom: "area",
+    hue: "#22d3ee",
+    fill: 0.1,
+    width: 0.9,
+    noZone: true,
+  },
   ...PKG_LAYERS,
 ];
 
@@ -2216,7 +2246,7 @@ export const GROUP_LAYERS: Record<GroupKey, string[]> = {
   pkgSite: pkgIds("site"),
   pkgSoc: pkgIds("soc"),
   pkgCom: pkgIds("com"),
-  busad: ["road", "roadOld", "bm128", "bm146", "bm145", "bm87"],
+  busad: ["khil1", "khil2", "road", "roadOld", "bm128", "bm146", "bm145", "bm87"],
 };
 
 /** Ерөнхий мэдээллийн БҮХ давхарга — багцын дарааллаар */
