@@ -326,23 +326,20 @@ function PortalContent() {
             </span>
           </div>
 
-          {/* Харагдац сонголт — толгойд хэвтээ таб хэлбэрээр */}
-          <ViewRail view={view} setView={setView} catalogOpen={catOpen} header />
+          {/* Харагдац сонголт — толгойд хэвтээ таб хэлбэрээр. «ТЭЗҮ-БОНУ» баримт
+              нь табуудтай НЭГ бүлэгт орно (тусдаа биш). */}
+          <ViewRail
+            view={view}
+            setView={setView}
+            catalogOpen={catOpen}
+            header
+            onDocs={() => setDocsOpen(true)}
+            docsActive={docsOpen}
+          />
 
           {/* ⚠️ Үзүүлэлтүүд толгойгоос ДООД зурваст (`SummaryBar`) шилжсэн тул
               шүүлтийн тэмдэг нь баруун тийш түлхэх үүргийг авна. */}
           <ActiveFilterChip />
-
-          {/* ТЭЗҮ баримт бичиг — аль ч харагдацаас нээгддэг глобал popup товч */}
-          <button
-            type="button"
-            className={s.docBtn}
-            onClick={() => setDocsOpen(true)}
-            title="ТЭЗҮ ба судалгааны баримт бичиг"
-          >
-            <span className={s.docBtnIcon} aria-hidden><Icon name="file" size={15} /></span>
-            <span className={s.docBtnLabel}>ТЭЗҮ-БОНУ</span>
-          </button>
 
           <button
             type="button"
