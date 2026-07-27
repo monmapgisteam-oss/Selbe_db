@@ -11,6 +11,7 @@ import { Suitability } from '@/modules/analysis/Suitability';
 import { Dashboard } from '@/modules/Dashboard';
 import { Bagts } from '@/modules/Bagts';
 import { Sheet } from '@/modules/sheet/Sheet';
+import { Tailan } from '@/modules/Tailan';
 import { Icon } from '@/components/Icon';
 import { useTheme } from '@/lib/theme';
 import { useAsync } from '@/lib/useAsync';
@@ -252,6 +253,7 @@ function PortalContent() {
   const isSuit = view === 'analysis';
   const isSheet = view === 'sheet';
   const isBagts = view === 'bagts';
+  const isTailan = view === 'tailan';
   // `standalone` нь эдгээрийг ЯГ тэмдэглэдэг — тусад нь тоолохгүй
   const isFull = standalone;
   /**
@@ -348,7 +350,9 @@ function PortalContent() {
                 ? <Bagts dim={dim} setDim={setDim} />
                 : isSheet
                   ? <Sheet />
-                  : <Suitability dim={dim} setDim={setDim} />}
+                  : isTailan
+                    ? <Tailan />
+                    : <Suitability dim={dim} setDim={setDim} />}
           </div>
         )}
 
