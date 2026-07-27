@@ -2178,7 +2178,8 @@ export type ViewKey =
   | "bagts"
   | "monitor"
   | "analysis"
-  | "sheet";
+  | "sheet"
+  | "tailan";
 
 export const VIEWS: {
   key: ViewKey;
@@ -2292,6 +2293,17 @@ export const VIEWS: {
     desc: "Ажлын гүйцэтгэлийн хүснэгт — засах, нийтлэх",
     icon: "pen",
     hue: "#0891b2",
+    layers: [],
+    initial: [],
+    standalone: true,
+  },
+  /** ТАЙЛАН — тайлангийн хуудас. Порталын зураг/самбаргүй, өөрийн бүтэцтэй. */
+  {
+    key: "tailan",
+    title: "Тайлан",
+    desc: "Тайлан",
+    icon: "chart",
+    hue: "#7c3aed",
     layers: [],
     initial: [],
     standalone: true,
