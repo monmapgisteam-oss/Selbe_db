@@ -295,7 +295,7 @@ export const BUILT_STATUS: { value: string; hue: string }[] = [
  * нэмэгдвэл энд шинэчилнэ.
  */
 export const ZONE_TYPES: Record<string, string> = {
-  "Орон сууцны бүс": "#00ffff",
+  "Орон сууцны бүс": "#ffb300",
   "Олон нийтийн бүс": "#ff7f7f",
   "Нийгмийн дэд бүтцийн бүс": "#7fdeff",
   "Х бүс": "#7c3aed",
@@ -303,7 +303,7 @@ export const ZONE_TYPES: Record<string, string> = {
   "Ногоон байгууламж, тохижилт": "#4f7f33",
   "Газар чөлөөлөлт дутуу": "#4a2333",
   "Дэд бүтэц": "#005199",
-  "Таун хаус": "#a6a600",
+  "Таун хаус": "#8400ff",
 };
 export const ZONE_TYPE_EMPTY = "Тодорхойгүй";
 export const ZONE_TYPE_EMPTY_HUE = "#94a3b8";
