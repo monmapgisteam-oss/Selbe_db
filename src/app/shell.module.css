@@ -186,8 +186,15 @@
   background: var(--surface);
   border-bottom: 1px solid var(--line);
   z-index: 20;
+  /* ⚠️ Толгой дэлгэцээс ХЭЗЭЭ Ч хальж page-ыг хэвтээ гүйлгэхгүй: `min-width:0`
+     нь flex хүүхдийг хумих боломж, `overflow:hidden` нь эцсийн хамгаалалт.
+     Табын гүйлт нь `.railRow`-ийн ДОТОР явна. */
+  min-width: 0;
+  overflow: hidden;
 }
-.brand { display: flex; align-items: center; gap: 12px; }
+/* Брэнд хумигдахгүй тогтмол — шахалтыг `.railRow` бүхэлдээ авна. Нарийн дэлгэцэд
+   дэд гарчиг/нэр нь media query-ээр нуугдана. */
+.brand { display: flex; align-items: center; gap: 12px; flex: none; min-width: 0; }
 .logo { height: 30px; width: auto; }
 .brandText { display: flex; flex-direction: column; line-height: 1.2; }
 /* Брэндийн нэр — том үсгээр. Кирилл том үсэг өргөн тул үсгийн зайг сулруулав. */
@@ -527,6 +534,9 @@
   .headSearch { max-width: none; margin-left: 12px; }
   /* Шүүлтийн тэмдэг нь хайлтын дараа орох тул түлхэгч хэрэггүй */
   .filterChip { margin-left: 10px; max-width: 190px; }
+  /* Толгойд зай гаргах: брэндийн дэд гарчгийг нуух (лого + нэр үлдэнэ) */
+  .brandSub { display: none; }
+  .head { gap: 10px; padding: 0 12px; }
 }
 
 /* Дэлгэц маш нарийн үед шүүлтийн бичиглэл хайлтыг шахна — тэмдэг нь зөвхөн
@@ -534,4 +544,9 @@
 @media (max-width: 720px) {
   .filterText { display: none; }
   .filterChip { padding: 5px 6px 5px 8px; }
+  /* Маш нарийн үед: брэндийн нэрийг нуух (зөвхөн лого), «ТЭЗҮ-БОНУ» нэрийг
+     хумьж дүрс болгоно — зай хэмнэж, таб гүйх орон зай нэмэгдэнэ. */
+  .brandName { display: none; }
+  .docBtnLabel { display: none; }
+  .docBtn { width: 34px; padding: 0; gap: 0; justify-content: center; }
 }

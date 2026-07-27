@@ -97,13 +97,20 @@
   flex-direction: row;
   align-items: center;
   gap: 4px;
+  /* ⚠️ ГОЛ: толгойн үлдсэн зайг эзэлж, багтахгүй бол ДОТРОО хэвтээ гүйнэ.
+     `flex:1 1 auto` + `min-width:0` байхгүй бол таб бүхэлдээ агуулгынхаа
+     өргөнөөр тэлж, толгойг дэлгэцээс хальгаж page хэвтээ гүйдэг байлаа. */
+  flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
-  padding: 0;
+  padding: 2px 0;
   overflow-x: auto;
-  /* Табуудыг толгойн БАРУУН тал руу түлхэнэ (брэнд зүүн талд үлдэнэ) */
-  margin-left: auto;
+  overflow-y: hidden;
+  /* Гүйх зурвасыг нимгэн, дэвсгэртэй нийлүүлнэ (толгойд бүдүүн scrollbar харагдахгүй) */
+  scrollbar-width: thin;
 }
+/* Толгойд хэвтээ scrollbar-ыг нуумал болгоно (гүйлт хэвээр ажиллана) */
+.railRow::-webkit-scrollbar { height: 0; }
 .railRow .item {
   width: auto;
   flex: none;
