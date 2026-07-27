@@ -142,6 +142,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-align: left;
 }
 .groupCost { flex: none; font-size: 0.66rem; font-weight: 650; color: var(--tone); }
 /* Тоолуур — товч БИШ, зөвхөн төлөв заана (сонголт нь гарчиг дээр шилжсэн) */
