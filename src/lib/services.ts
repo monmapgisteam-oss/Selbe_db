@@ -131,7 +131,7 @@ export type Cost = { field: string; basis: CostBasis };
  * (юу барих) vs хяналт (юу баригдсан). Каталогийн ДАРААЛАЛ нь сэдэвчилсэн
  * хэвээр — барилга → инженер → зам → тээвэр → бүс → бусад.
  */
-export type TopicKey = "plan" | "monitor";
+export type TopicKey = "plan" | "monitor" | "gazar";
 
 export const TOPICS: {
   key: TopicKey;
@@ -141,6 +141,7 @@ export const TOPICS: {
 }[] = [
   { key: "plan", title: "Ерөнхий төлөвлөгөө", icon: "layers", hue: "#0d9488" },
   { key: "monitor", title: "Барилгын хяналт", icon: "target", hue: "#ea580c" },
+  { key: "gazar", title: "Газар чөлөөлөлт", icon: "frame", hue: "#16a34a" },
 ];
 
 export const topicTitle = (k: TopicKey) =>
@@ -387,6 +388,68 @@ const M2: Quantity = { field: "talbai_m2", unit: "м²" };
  */
 const BUILDING_FS = `${HJ}/building_GOL_barigdaj_ehelsen/FeatureServer`;
 const SURVEY_FS = `${HJ}/survey123_e98bd4b642f84c9fb688f754de7cb83a_results/FeatureServer`;
+
+/* ══════════════════════ Газар чөлөөлөлт (тусдаа үйлчилгээ) ══════════════════════ */
+
+/**
+ * ⚠️ ТУСДАА FeatureServer host (`services-ap1…/ACqsMOmNLi5wIdIh`) — ЕТ-ийн `HJ`
+ * биш. Барилгын үнэлгээ (`selbe_B`) ба кадастрын нэгж (`Selbe_parcel`) нь
+ * ЕТ нэгтгэлээс хасагдсан хэдий ч «Газар чөлөөлөлт» харагдацад полигоноор шүүх
+ * эх сурвалж болж дахин ашиглагдана. Зөвхөн `gazar` харагдацад хэрэглэнэ —
+ * `LAYER_GROUPS`/`PLAN_LAYER_IDS`-д ОРОХГҮЙ тул бусад каталог/нийлбэрт гарахгүй.
+ */
+const GAZAR_FS =
+  "https://services-ap1.arcgis.com/ACqsMOmNLi5wIdIh/arcgis/rest/services";
+
+/** Барилгын үнэлгээ — полигон доторх барилгуудын тоо/талбай/өртөг */
+export const GAZAR_BUILDING = {
+  url: `${GAZAR_FS}/selbe_B/FeatureServer/0`,
+  oid: "FID",
+  fields: {
+    area: "area_m2",
+    /** Барилгын нийт үнэлгээ (₮) */
+    value: "NIIT_UNE",
+    /** 1 м²-ийн үнэ (₮) */
+    unitPrice: "MKV_UNE",
+    floors: "DAVHAR_TOO",
+    rooms: "OROO_TOO",
+    type: "TOROL",
+    material: "MATERIAL",
+    name: "building_n",
+  },
+} as const;
+
+/** Кадастрын нэгж талбар — полигон доторх нэгжийн тоо/талбай/зориулалт */
+export const GAZAR_PARCEL = {
+  url: `${GAZAR_FS}/Selbe_parcel/FeatureServer/0`,
+  oid: "OBJECTID",
+  fields: {
+    area: "area_m2",
+    /** Газрын зориулалт (нэр) */
+    landuse: "landuse_de",
+    /** Эрхийн төрөл */
+    right: "rigth_type",
+    parcelId: "parcel_id",
+    status: "status_id",
+  },
+} as const;
+
+/**
+ * ХИЛИЙН давхаргууд — зөвхөн КОНТЕКСТ болгож зурна (дүүргэлтгүй, зөвхөн зураас).
+ * Шүүлт/дашбоардад оролцохгүй, полигоны бүдгэрүүлэлтэд ч ХАМРАГДАХГҮЙ —
+ * лавлагааны хил тул үргэлж бүтэн харагдана.
+ */
+/** Төлөвлөлтийн талбайн хил (`Tuluvlult_talbai`) — өөр FeatureServer (`HJ`) */
+export const GAZAR_BAGTS = {
+  url: `${HJ}/Tuluvlult_talbai/FeatureServer/2`,
+  oid: "OBJECTID",
+} as const;
+
+/** Сэлбэ-2 бүсчлэлийн хил (`Сэлбэ_2_khil`) */
+export const GAZAR_KHIL = {
+  url: `${GAZAR_FS}/${encodeURIComponent("Сэлбэ_2_khil")}/FeatureServer/0`,
+  oid: "FID",
+} as const;
 
 /** Барилгын явц · 113 блок */
 export const BUILDING = {
@@ -1221,6 +1284,75 @@ export const LAYERS: LayerDef[] = [
     detail: "survey",
     oid: "objectid",
     note: "Survey123 мобайл аппаас",
+  },
+
+  /* ─────────── Газар чөлөөлөлт (полигоноор шүүх · тусдаа үйлчилгээ) ───────────
+     ⚠️ topic:'gazar' тул каталогийн бүлэг (`LAYER_GROUPS`)-т ОРОХГҮЙ — зөвхөн
+     «Газар чөлөөлөлт» харагдацад ил гарна. Кадастрыг барилгаас ӨМНӨ бичсэн нь
+     санаатай: хоёул `area` (drawOrder 0) тул массивын дараалал зурагдах эрэмбийг
+     тодорхойлно — барилга нь кадастрын дүүргэлт дээр гарах ёстой. */
+  {
+    id: "gazar:parcel",
+    n: 0,
+    url: GAZAR_PARCEL.url,
+    oid: GAZAR_PARCEL.oid,
+    title: "Кадастрын нэгж",
+    topic: "gazar",
+    geom: "area",
+    hue: "#0ea5e9",
+    fill: 0.16,
+    width: 0.4,
+    noZone: true,
+    qty: { field: GAZAR_PARCEL.fields.area, unit: "м²" },
+    facets: [
+      { field: GAZAR_PARCEL.fields.landuse, label: "Зориулалт" },
+      { field: GAZAR_PARCEL.fields.right, label: "Эрхийн төрөл" },
+    ],
+  },
+  {
+    id: "gazar:building",
+    n: 0,
+    url: GAZAR_BUILDING.url,
+    oid: GAZAR_BUILDING.oid,
+    title: "Барилга (үнэлгээ)",
+    topic: "gazar",
+    geom: "area",
+    hue: "#16a34a",
+    fill: 0.5,
+    width: 0.5,
+    noZone: true,
+    qty: { field: GAZAR_BUILDING.fields.area, unit: "м²" },
+    facets: [
+      { field: GAZAR_BUILDING.fields.type, label: "Төрөл" },
+      { field: GAZAR_BUILDING.fields.material, label: "Материал" },
+    ],
+  },
+  /* Хилийн давхаргууд — зөвхөн зураас (fill:0), лавлагааны контекст */
+  {
+    id: "gazar:bagts",
+    n: 0,
+    url: GAZAR_BAGTS.url,
+    oid: GAZAR_BAGTS.oid,
+    title: "Төлөвлөлтийн талбайн хил",
+    topic: "gazar",
+    geom: "area",
+    hue: "#7c3aed",
+    fill: 0,
+    width: 1.6,
+    noZone: true,
+  },
+  {
+    id: "gazar:khil",
+    n: 0,
+    url: GAZAR_KHIL.url,
+    oid: GAZAR_KHIL.oid,
+    title: "Сэлбэ-2 бүсчлэлийн хил",
+    topic: "gazar",
+    geom: "area",
+    hue: "#dc2626",
+    fill: 0,
+    width: 1.2,
+    noZone: true,
   },
 
   /* ─────────── Инженер · дулаан ─────────── */
@@ -2273,6 +2405,7 @@ export type ViewKey =
   | "plan"
   | "bagts"
   | "monitor"
+  | "gazar"
   | "analysis"
   | "sheet"
   | "tailan";
@@ -2360,6 +2493,24 @@ export const VIEWS: {
     hue: "#ea580c",
     layers: ["mon:building"],
     initial: ["mon:building"],
+  },
+  /**
+   * ГАЗАР ЧӨЛӨӨЛӨЛТ — газрын зураг дээр полигон зурж, тэр талбай доторх барилга
+   * (`selbe_B`) ба кадастрын нэгж (`Selbe_parcel`)-ийг орон зайгаар шүүнэ.
+   * Гадна талынх нь бүдгэрч, дотор орсны нэгдсэн үзүүлэлт дашбоардад гарна.
+   *
+   * ⚠️ Порталын каталог/самбарыг ашиглахгүй, өөрийн бүтэц (зураг + дашбоард)-тай
+   * тул `standalone`. Тусдаа FeatureServer-ийн 2 давхаргатай (`gazar:*`).
+   */
+  {
+    key: "gazar",
+    title: "Газар чөлөөлөлт",
+    desc: "Полигон дотор шүүсэн барилга ба кадастр",
+    icon: "frame",
+    hue: "#16a34a",
+    layers: ["gazar:building", "gazar:parcel", "gazar:bagts", "gazar:khil"],
+    initial: ["gazar:building", "gazar:parcel", "gazar:bagts", "gazar:khil"],
+    standalone: true,
   },
   /**
    * АНАЛИЗ — Suitability Modeler.
