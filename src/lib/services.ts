@@ -1697,6 +1697,18 @@ export const LAYERS: LayerDef[] = [
     width: 1.56,
     dash: "solid",
   },
+  /** Одоо байгаа зам — мөн `Бусад_мэдээлэл_20260724` үйлчилгээ (/194) */
+  {
+    id: "roadOld",
+    n: 194,
+    url: `${HJ}/${encodeURIComponent("Бусад_мэдээлэл_20260724")}/FeatureServer/194`,
+    title: "Одоо байгаа зам",
+    topic: "plan",
+    geom: "line",
+    hue: "#4d5863",
+    width: 1.5,
+    dash: "solid",
+  },
 
   ...PKG_LAYERS,
 ];
@@ -2133,7 +2145,7 @@ export const GROUP_LAYERS: Record<GroupKey, string[]> = {
   // 110кв агаарын · 10кв кабель трасс · цахилгааны шугам · 0.4кв кабель трасс
   power: ["et:21", "et:13", "et:22", "et:20"],
   prep: ["et:15"],
-  road: ["et:29", "et:5", "et:27", "et:14", "et:12", "road"],
+  road: ["et:29", "et:5", "et:27", "et:14", "et:12", "road", "roadOld"],
   transit: ["et:6", "et:2", "et:1"],
   green: ["et:25", "et:26", "tree"],
   /**
@@ -2370,6 +2382,8 @@ export const DEFAULT_VISIBLE: string[] = [ZONE_LAYER.id];
  * өөрчлөгдөхгүй мэт харагдана.
  */
 export const drawOrder = (id: string): number => {
+  // Замын шугам (Бусад_мэдээлэл) — ХАМГИЙН ДООР (бусад бүх давхаргын дор суурь).
+  if (id === "road" || id === "roadOld") return -2;
   // Бүс бол АГУУЛАГЧ — хамгийн доор (барилга нь дүүргэлтийнх нь дээр гарна).
   if (id === ZONE_LAYER.id) return -1;
   const g = LAYER_BY_ID[id]?.geom;

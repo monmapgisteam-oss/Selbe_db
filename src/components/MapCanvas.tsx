@@ -297,6 +297,13 @@ const WEB_DYNAMIC: Record<string, { a: WebSym; b: WebSym }> = {
   },
   // Авто зам (line) — цагаан, өргөн ялгаатай
   'road': { a: { color: '#ffffff', width: 1.56 }, b: { color: '#ffffff', width: 0.503 } },
+  // Одоо байгаа зам (line)
+  'roadOld': { a: { color: '#ffffff', width: 1.5 }, b: { color: '#4d5863', width: 0.75 } },
+  // Зам (fill, et:29) — эх зургийн саарал/цагаан гадаргуу, хүрээгүй
+  'et:29': {
+    a: { color: '#f5f5f5', alpha: 1, outline: '#000000', outlineAlpha: 0, width: 0.75 },
+    b: { color: '#ffffff', alpha: 1, outline: '#000000', outlineAlpha: 0, width: 0.7 },
+  },
 };
 
 /** Тусад нь outline өнгө/тунгалагтай дүүргэлт */
