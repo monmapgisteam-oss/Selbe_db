@@ -31,6 +31,9 @@ const P: Record<string, string> = {
 
   /* Полигон зурах — оройнуудтай олон өнцөгт (Газар чөлөөлөлт) */
   polygon: 'M12 3 21 9v7l-6 5-8-3-3-9 8-6zM12 3v0M21 9v0M15 21v0M7 18v0M4 9v0',
+
+  /* Баримт бичиг — эвхэгдсэн булантай хуудас (ТЭЗҮ popup) */
+  file: 'M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 3v5h5M8 13h8M8 17h5',
 };
 
 export function Icon({ name, size = 20 }: { name: string; size?: number }) {
