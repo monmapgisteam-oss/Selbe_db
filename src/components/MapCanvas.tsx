@@ -123,7 +123,7 @@ const fill = (hex: string, a = 0.3, w = 0.9) =>
  * үлдэж, тасархай нь «дүүрсэн» мэт харагдана.
  * ⚠️ symbolLayers-ийн ЭХНИЙХ нь ДЭЭР зурагдана.
  */
-const line = (hex: string, w = 1.4, dash: NonNullable<LayerDef['dash']> = 'solid') => {
+const line = (hex: string, w = 1.4, dash: NonNullable<LayerDef['dash']> = 'solid', alpha = 1) => {
   const pattern = DASH_PATTERN[dash];
   // Цэгэн хээнд Round үзүүр; бусад тасархайд Butt — Round нь богино зураасыг
   // хоёр талаас сунгаж `dot` ба `dash`-ыг ялгагдахгүй болгоно.
@@ -147,7 +147,7 @@ const line = (hex: string, w = 1.4, dash: NonNullable<LayerDef['dash']> = 'solid
          * харьцаагаар (×1.8) тул 1px зураас 1.8px хүрээлэлтэй: дэвсгэрээс
          * тасалж өгөх нь хангалттай, харин зузаан нь мэдэгдэхгүй.
          */
-        symbolLayers: [stroke(w, cim(hex, 1)), stroke(w * 1.8, cim('#0b1220', 0.4))],
+        symbolLayers: [stroke(w, cim(hex, alpha)), stroke(w * 1.8, cim('#0b1220', 0.4))],
       },
     },
   } as const;
@@ -246,45 +246,59 @@ const zoneTypeRenderer = (d: LayerDef) => ({
   })),
 } as unknown as RendererProp);
 
-/* ═══ Динамик web-палитр: 1 давхарга → webmap A, 2+ → webmap B ═══ */
+/* ═══ Динамик web-палитр: 1 давхарга → webmap B (single), 2+ → webmap A (multi) ═══ */
 /**
- * Эх ХОЁР webmap-ийн симболыг (өнгө + өргөн) сорьж авав:
- *   · `a` — ГАНЦ давхарга сонгосон үед (дэлгэрэнгүй, webmap eb1c3f…)
- *   · `b` — 2+ давхарга сонгосон үед (webmap d79032…)
+ * Эх ХОЁР webmap-ийн симболыг (fill/outline rgba, өргөн, bloom) СНАПШОТ-оор авав:
+ *   · `a` — ГАНЦ давхарга сонгосон үед → «single category» = webmap d790321… (B)
+ *   · `b` — 2+ давхарга сонгосон үед → «multiple color» = webmap eb1c3f… (A)
  *
- * ⚠️ Зөвхөн хоёр палитрын хооронд ЯЛГААТАЙ давхаргууд энд орно; бусад давхарга
- * хоёр газарт ижил тул шилжүүлэх шаардлагагүй. Өргөн нь `LINE_PX` нормчлолыг
- * ДАВХАРЛАНА — хэрэглэгч эх зургийн яг өргөнийг хүссэн.
+ * ⚠️ Хэрэглэгч webmap-аа идэвхтэй засдаг тул эдгээр нь ТОДОРХОЙ АГШНЫ утга —
+ * эх зураг өөрчлөгдвөл энд гараар шинэчилнэ. Зөвхөн хоёр палитрын хооронд
+ * ялгаатай (эсвэл bloom-той) давхаргууд орно. Өргөн нь `LINE_PX`-ийг давхарлана.
  */
-type WebSym = { color?: string; width?: number; outline?: string; paintField?: string; paint?: Record<string, string> };
+type BloomStop = { scale: number; strength: number; radius: number; threshold: number };
+type WebSym = {
+  color?: string; alpha?: number; width?: number;
+  outline?: string; outlineAlpha?: number;
+  bloom?: BloomStop[];
+  paintField?: string; paint?: Record<string, string>;
+};
 const WEB_DYNAMIC: Record<string, { a: WebSym; b: WebSym }> = {
-  // Барилга — A: төлөвөөр (Barilga_ty), B: нэг өнгө
+  // Барилга — a(single,B): нэг өнгө; b(multi,A): төлөвөөр (Barilga_ty). Хоёул bloom.
   'et:24': {
-    a: { paintField: 'Barilga_ty', width: 0.75, paint: { 'Төлөвлөсөн': '#ffaa00', 'Баригдаж байгаа': '#fff700', 'Одоо байгаа': '#00ff2a' } },
-    b: { color: '#ffb700', width: 0.75 },
+    a: { color: '#ffb700', alpha: 0.2, outline: '#ffb700', outlineAlpha: 0.7, width: 0.75,
+      bloom: [{ scale: 36112, strength: 0.25, radius: 0, threshold: 0.1 }, { scale: 9028, strength: 0.5, radius: 0, threshold: 0.1 }, { scale: 2257, strength: 1, radius: 0, threshold: 0.1 }] },
+    b: { paintField: 'Barilga_ty', paint: { 'Төлөвлөсөн': '#ffaa00', 'Баригдаж байгаа': '#fff700', 'Одоо байгаа': '#00ff2a' }, alpha: 0.2, outlineAlpha: 1, width: 0.75,
+      bloom: [{ scale: 36112, strength: 0.25, radius: 0.375, threshold: 0.1 }, { scale: 9028, strength: 0.5, radius: 0.75, threshold: 0.1 }, { scale: 2257, strength: 1, radius: 1.5, threshold: 0.1 }] },
   },
-  // Инженерийн бэлтгэл — A: Layer-ээр, B: цагаан
-  'et:15': {
-    a: { paintField: 'Layer', width: 0.75, paint: { 'Авто замын ус гаргуур': '#fd7f6f', 'Борооны ус зайлуулах шугам': '#004d99', 'Борооны ус зайлуулах шугам 2': '#004d99', 'Төлөвлөж буй үерийн хамгаалалтын суваг': '#3f3352', 'хөв цөөрөм': '#29d4ff', 'Өргөтгөж шинэчлэх үерийн хамгаалалтын суваг': '#3f3352' } },
-    b: { color: '#ffffff', width: 0.667 },
+  // Инженерийн бэлтгэл (line) — a(B): хар a0.7; b(A): #fd7f6f
+  'et:15': { a: { color: '#000000', alpha: 0.7, width: 0.75 }, b: { color: '#fd7f6f', alpha: 1, width: 0.75 } },
+  // Автобус чиглэл (line)
+  'et:6':  { a: { color: '#004da8', width: 2.92 }, b: { color: '#ff7b00', width: 0.75 } },
+  // Дугуйн зам (line) — хоёул ижил
+  'et:14': { a: { color: '#ffffff', width: 1 }, b: { color: '#ffffff', width: 1 } },
+  // Гүүр (line) + bloom
+  'et:12': {
+    a: { color: '#878787', width: 0.75, bloom: [{ scale: 36112, strength: 2, radius: 0, threshold: 0.1 }, { scale: 9028, strength: 4, radius: 0, threshold: 0.1 }, { scale: 2257, strength: 8, radius: 0, threshold: 0.1 }] },
+    b: { color: '#878787', width: 1, bloom: [{ scale: 4514, strength: 2, radius: 0.375, threshold: 0.1 }, { scale: 1128, strength: 4, radius: 0.75, threshold: 0.1 }, { scale: 282, strength: 8, radius: 1.5, threshold: 0.1 }] },
   },
-  'et:6':  { a: { color: '#ff7b00', width: 0.75 },  b: { color: '#fc2121', width: 0.75 } },   // Автобус чиглэл
-  'et:14': { a: { color: '#e0a384', width: 0.75 },  b: { color: '#6e6e6e', width: 1 } },      // Дугуйн зам
-  'et:12': { a: { color: '#000000', width: 1 },     b: { color: '#000000', width: 1 } },      // Гүүр (B-д алга → хэвээр)
-  'et:27': { a: { color: '#ff7b00', width: 0.375 }, b: { color: '#9e920d', width: 0.15 } },   // Явган зам
-  'et:26': { a: { color: '#00ffa6', width: 0.375 }, b: { color: '#00ffa6', width: 0.075 } },  // Ногоон алхалт
-  'et:25': { a: { color: '#a7ff4a', outline: '#a7ff4a', width: 0.375 }, b: { color: '#a7ff4a', outline: '#000000', width: 0.563 } }, // Ногоон байгууламж
+  // Явган зам (fill)
+  'et:27': { a: { color: '#c2c0c0', alpha: 1, outline: '#383838', outlineAlpha: 1, width: 0.15 }, b: { color: '#bfbfbf', alpha: 1, outline: '#bfbfbf', outlineAlpha: 1, width: 0.375 } },
+  // Ногоон алхалт (fill)
+  'et:26': { a: { color: '#0e4f38', alpha: 0.3, outline: '#0e4f38', outlineAlpha: 1, width: 0.075 }, b: { color: '#00ffa6', alpha: 0.1, outline: '#00ffa6', outlineAlpha: 1, width: 0.375 } },
+  // Ногоон байгууламж (fill)
+  'et:25': { a: { color: '#71ab5e', alpha: 1, outline: '#000000', outlineAlpha: 0, width: 0.563 }, b: { color: '#71ab5e', alpha: 1, outline: '#71ab5e', outlineAlpha: 1, width: 0.375 } },
 };
 
-/** Тусад нь outline өнгөтэй дүүргэлт (эх зургийн ногоон нь бараан хүрээтэй) */
-const fillWeb = (hex: string, a: number, outline: string, w: number) =>
-  ({ type: 'simple-fill', color: c(hex, a), outline: { color: c(outline, 1), width: w } }) as const;
+/** Тусад нь outline өнгө/тунгалагтай дүүргэлт */
+const fillWeb = (hex: string, a: number, outline: string, ow: number, w: number) =>
+  ({ type: 'simple-fill', color: c(hex, a), outline: { color: c(outline, ow), width: w } }) as const;
 
-/** Web-симбол — давхаргын geom-оор (line/fill), эх зургийн өргөн ба өнгөөр */
+/** Web-симбол — давхаргын geom-оор (line/fill), эх зургийн rgba ба өргөнөөр */
 const webSymbol = (d: LayerDef, s: WebSym, color: string) =>
   d.geom === 'line'
-    ? line(color, s.width ?? 1, d.dash ?? 'solid')
-    : fillWeb(color, d.fill ?? 0.3, s.outline ?? color, s.width ?? 0.6);
+    ? line(color, s.width ?? 1, d.dash ?? 'solid', s.alpha ?? 1)
+    : fillWeb(color, s.alpha ?? d.fill ?? 0.3, s.outline ?? color, s.outlineAlpha ?? 1, s.width ?? 0.6);
 
 /** Web-симболоос renderer — paint-тэй бол uniqueValue, эс бөгөөс simple */
 const webRenderer = (d: LayerDef, s: WebSym) => {
@@ -298,6 +312,10 @@ const webRenderer = (d: LayerDef, s: WebSym) => {
   }
   return simple(webSymbol(d, s, s.color ?? d.hue));
 };
+
+/** bloom → ArcGIS `layer.effect` (масштабаас хамаарсан); bloom-гүй бол null */
+const webEffect = (s: WebSym) =>
+  s.bloom ? s.bloom.map((b) => ({ scale: b.scale, value: `bloom(${b.strength}, ${b.radius}px, ${b.threshold})` })) : null;
 
 /**
  * Гүйцэтгэлийн өнгө (0–100%): улаан → шар → ногоон. Хоёр хэсэгт шугаман
@@ -969,14 +987,17 @@ export function MapCanvas({
       const d = LAYER_BY_ID[l.id];
 
       /**
-       * ДИНАМИК WEB-ПАЛИТР — ЗӨВХӨН «Ерөнхий төлөвлөгөө» (uniform БИШ). Сонгосон
-       * давхаргын тоогоор эх зургийн симбол солино: 1 бол `a` (webmap A,
-       * дэлгэрэнгүй), 2+ бол `b` (webmap B). Зөвхөн ХАРАГДАЖ буй давхаргад
-       * тавина — нуугдсаныг дэмий дахин рендерлэхгүй.
+       * ДИНАМИК WEB-ПАЛИТР — «Ерөнхий төлөвлөгөө» ба «Ерөнхий дашбоард»-д.
+       * Сонгосон давхаргын тоогоор эх зургийн симбол (өнгө, өргөн, тунгалаг,
+       * bloom) солино: 1 бол `a` (single = webmap B), 2+ бол `b` (multiple =
+       * webmap A). Дашбоард (`uniform`) нь каталогийн сонголтгүй тул үргэлж
+       * `a` (single). Зөвхөн ХАРАГДАЖ буй давхаргад тавина.
        */
-      if (d && !uniform && l.visible && WEB_DYNAMIC[l.id]) {
+      if (d && l.visible && WEB_DYNAMIC[l.id]) {
         const w = WEB_DYNAMIC[l.id];
-        (l as FeatureLayer).renderer = webRenderer(d, on.size <= 1 ? w.a : w.b) as unknown as __esri.Renderer;
+        const s = uniform ? w.a : (on.size <= 1 ? w.a : w.b);
+        (l as FeatureLayer).renderer = webRenderer(d, s) as unknown as __esri.Renderer;
+        (l as FeatureLayer).effect = webEffect(s) as unknown as __esri.Effect;
       }
 
       if (d && 'definitionExpression' in l) {
