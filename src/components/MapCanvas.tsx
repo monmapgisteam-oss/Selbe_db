@@ -295,8 +295,6 @@ const WEB_DYNAMIC: Record<string, { a: WebSym; b: WebSym }> = {
     b: { color: '#adfc74', alpha: 1, outline: '#000000', outlineAlpha: 0, width: 0.45,
       bloom: [{ scale: 36112, strength: 0.25, radius: 0.375, threshold: 0.1 }, { scale: 9028, strength: 0.5, radius: 0.75, threshold: 0.1 }, { scale: 2257, strength: 1, radius: 1.5, threshold: 0.1 }] },
   },
-  // Авто зам (line) — цагаан, өргөн ялгаатай
-  'road': { a: { color: '#ffffff', width: 1.56 }, b: { color: '#ffffff', width: 0.503 } },
   // Одоо байгаа зам (line)
   'roadOld': { a: { color: '#ffffff', width: 1.5 }, b: { color: '#4d5863', width: 0.75 } },
   // Зам (fill, et:29) — эх зургийн саарал/цагаан гадаргуу, хүрээгүй
