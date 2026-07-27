@@ -14,6 +14,7 @@ import ImageryLayer from '@arcgis/core/layers/ImageryLayer';
 import IntegratedMeshLayer from '@arcgis/core/layers/IntegratedMeshLayer';
 import BuildingSceneLayer from '@arcgis/core/layers/BuildingSceneLayer';
 import BuildingExplorer from '@arcgis/core/widgets/BuildingExplorer';
+import SketchViewModel from '@arcgis/core/widgets/Sketch/SketchViewModel';
 import BasemapGallery from '@arcgis/core/widgets/BasemapGallery';
 import LocalBasemapsSource from '@arcgis/core/widgets/BasemapGallery/support/LocalBasemapsSource';
 import Expand from '@arcgis/core/widgets/Expand';
@@ -53,7 +54,16 @@ const is3D = (d: Dim) => d === '3d' || d === 'bim';
 /* ─────────────────── Map контекст ─────────────────── */
 
 /** Идэвхтэй тодруулга — `MapCanvas` 3D-д үүнийг `definitionExpression`-д нийлүүлнэ */
-export type Highlight = { where: string | null; only?: string | string[] };
+export type Highlight = {
+  where: string | null;
+  only?: string | string[];
+  /**
+   * ОРОН ЗАЙН тодруулга — заасан геометртэй огтлолцохгүй объектыг бүдгэрүүлнэ
+   * («Газар чөлөөлөлт»-ийн полигоноор шүүхэд). `where`-тэй хамт ч ажиллана.
+   * ⚠️ 2D `featureEffect`-ээр л хэрэгжинэ (3D-д ArcGIS үүнийг үл тоомсорлоно).
+   */
+  geometry?: unknown;
+};
 
 type MapApi = {
   view: AnyView | null;
@@ -64,7 +74,7 @@ type MapApi = {
    * байхгүй) featureEffect унахаас сэргийлнэ. Нэг эсвэл олон давхарга. Заагаагүй
    * бол бүх давхаргад.
    */
-  setHighlight: (where: string | null, onlyLayerIds?: string | string[]) => void;
+  setHighlight: (where: string | null, onlyLayerIds?: string | string[], geometry?: unknown) => void;
   /** Идэвхтэй тодруулга — 3D-д `MapCanvas` өөрөө хэрэгжүүлэхэд хэрэгтэй */
   highlight: Highlight;
   /** Давхаргыг бүхэлд нь харагдах хүрээнд нь аваачих */
@@ -573,10 +583,18 @@ export function MapProvider({ children }: { children: ReactNode }) {
       // ⚠️ `visible` шалгахгүй: нуугдсан давхаргын эффектийг цэвэрлэх боломжтой
       //    байх ёстой, эс бөгөөс дахин асаахад хуучин шүүлт үлдэнэ.
       // `only` заасан бол ЗӨВХӨН тэр давхаргууд — бусдынхыг цэвэрлэнэ.
-      const apply = !is3d && hl.where && (!onlyList || onlyList.includes(l.id));
+      // ⚠️ `where` эсвэл орон зайн `geometry`-ийн аль нэг байхад л хэрэглэнэ.
+      //    Хоёулаа зэрэг байвал featureEffect-ийн filter тэдгээрийг AND-оор
+      //    хослуулна (эх дотор нь SQL + орон зайн шүүлт).
+      const apply = !is3d && (hl.where || hl.geometry) && (!onlyList || onlyList.includes(l.id));
       fl.featureEffect = apply
         ? ({
-            filter: { where: hl.where },
+            filter: {
+              ...(hl.where ? { where: hl.where } : {}),
+              ...(hl.geometry
+                ? { geometry: hl.geometry, spatialRelationship: 'intersects' }
+                : {}),
+            },
             excludedEffect: 'opacity(15%) grayscale(80%)',
           } as unknown as __esri.FeatureEffect)
         : (null as unknown as __esri.FeatureEffect);
@@ -584,7 +602,8 @@ export function MapProvider({ children }: { children: ReactNode }) {
   }, [view, hl]);
 
   const setHighlight = useCallback(
-    (where: string | null, only?: string | string[]) => setHl({ where, only }),
+    (where: string | null, only?: string | string[], geometry?: unknown) =>
+      setHl({ where, only, geometry }),
     [],
   );
 
@@ -653,6 +672,10 @@ export function MapCanvas({
   layerWhere,
   uniform = false,
   onPick,
+  sketch = false,
+  onSketch,
+  drawToken = 0,
+  clearToken = 0,
   children,
 }: {
   dim: Dim;
@@ -669,14 +692,28 @@ export function MapCanvas({
   /** Давхарга бүрийг ГАНЦ жигд өнгөөр зурах (ангиллаар олон өнгө хуваахгүй) */
   uniform?: boolean;
   onPick: (attrs: Record<string, unknown> | null, layerId: string | null) => void;
+  /**
+   * ПОЛИГОН ЗУРАХ чадварыг асаана («Газар чөлөөлөлт»). Зөвхөн 2D-д ажиллана —
+   * `SketchViewModel`-ийг бэлдэнэ (гадаад товч `drawToken`-оор эхлүүлнэ).
+   */
+  sketch?: boolean;
+  /** Полигон зурж дуусахад/өөрчлөхөд геометрийг, устгахад `null`-ийг дамжуулна */
+  onSketch?: (geometry: __esri.Geometry | null) => void;
+  /** Утга нэмэгдэхэд полигон зурж эхэлнэ (гадны «Полигон зурах» товч) */
+  drawToken?: number;
+  /** Утга нэмэгдэхэд зурсан полигоныг арилгана (гадны «Цэвэрлэх» товч) */
+  clearToken?: number;
   children?: ReactNode;
 }) {
   const el = useRef<HTMLDivElement>(null);
   const mapRef = useRef<Map | null>(null);
   const viewRef = useRef<AnyView | null>(null);
   const bimWidgetRef = useRef<BuildingExplorer | null>(null);
+  const sketchVMRef = useRef<SketchViewModel | null>(null);
   const pickRef = useRef(onPick);
   pickRef.current = onPick;
+  const onSketchRef = useRef(onSketch);
+  onSketchRef.current = onSketch;
 
   const [ready, setReady] = useState(false);
   /** Ачаалагдаж чадаагүй 3D загварын тоо — null = асуудалгүй */
@@ -1002,6 +1039,95 @@ export function MapCanvas({
     return clear;
   }, [dim, ready]);
 
+  /**
+   * ПОЛИГОН ЗУРАХ — `SketchViewModel` («Газар чөлөөлөлт»).
+   *
+   * ⚠️ Esri-ийн `Sketch` WIDGET-ийг ЗОРИУДААР ашиглахгүй: түүний өөрийн UI
+   * (зүүн дээд булангийн нэргүй товчнууд) нь порталын загвартай нийцэхгүй.
+   * Оронд нь `SketchViewModel`-ийг UI-гүйгээр ажиллуулж, зурах үйлдлийг ГАДНЫ
+   * товчоор (`drawToken`) эхлүүлнэ — товч нь Gazar модульд өөрийн нэр, дүрс,
+   * дэвсгэртэйгээр гарна.
+   *
+   * ⚠️ ЗӨВХӨН 2D (MapView)-д. Орон зайн `featureEffect` (бүдгэрүүлэлт) нь
+   * SceneView-д ажиллахгүй тул полигон зурах нь 2D дээр л утга учиртай.
+   * Зурсан полигоныг `'sketch'` id-тэй `GraphicsLayer`-т хадгална — энэ id нь
+   * `PASSIVE`-д бүртгэлтэй тул дарж сонгогдохгүй, шүүлтэд оролцохгүй.
+   */
+  useEffect(() => {
+    const map = mapRef.current;
+    const view = viewRef.current;
+    if (!map || !view || !ready || !sketch || is3D(dim)) return;
+
+    let gl = map.findLayerById('sketch') as GraphicsLayer | null;
+    if (!gl) {
+      gl = new GraphicsLayer({ id: 'sketch', listMode: 'hide' });
+      map.add(gl);
+    }
+    const layer = gl;
+
+    const svm = new SketchViewModel({
+      view: view as MapView,
+      layer,
+      // Зурсан талбайн симбол — БАРИЛГА (ногоон) ба КАДАСТР (цэнхэр) хоёроос
+      // ЯЛГААТАЙ улбар шар, тасархай хүрээ: сонголтын хил гэдэг нь тод харагдана.
+      polygonSymbol: {
+        type: 'simple-fill',
+        color: [245, 158, 11, 0.08],
+        outline: { color: [217, 119, 6, 1], width: 2, style: 'dash' },
+      } as unknown as __esri.SimpleFillSymbol,
+    });
+    sketchVMRef.current = svm;
+    if (typeof window !== 'undefined') {
+      (window as unknown as { __dbgsketch: SketchViewModel }).__dbgsketch = svm;
+    }
+
+    const emit = (g: __esri.Geometry | null) => onSketchRef.current?.(g);
+
+    const created = svm.on('create', (e) => {
+      if (e.state !== 'complete') return;
+      // Зөвхөн СҮҮЛИЙН полигоныг үлдээнэ — өмнөхийг арилгана
+      const keep = e.graphic;
+      layer.removeAll();
+      layer.add(keep);
+      emit(keep.geometry ?? null);
+    });
+    const updated = svm.on('update', (e) => {
+      const g = e.graphics?.[0]?.geometry ?? null;
+      if (g) emit(g);
+    });
+    const deleted = svm.on('delete', () => {
+      layer.removeAll();
+      emit(null);
+    });
+
+    return () => {
+      created.remove();
+      updated.remove();
+      deleted.remove();
+      svm.destroy();
+      sketchVMRef.current = null;
+      // ⚠️ Графикийг УСТГАХГҮЙ: 2D↔3D сольж эргэн ирэхэд зурсан полигон хэвээр.
+    };
+  }, [sketch, dim, ready]);
+
+  /** Гадны «Полигон зурах» товч — шинэ полигон зурж эхэлнэ */
+  useEffect(() => {
+    if (!drawToken) return;
+    const svm = sketchVMRef.current;
+    if (!svm) return;
+    try { svm.cancel(); } catch { /* идэвхтэй зураалт байхгүй */ }
+    svm.create('polygon');
+  }, [drawToken]);
+
+  /** Гадны «Цэвэрлэх» товч — зурсан полигоныг арилгаж, шүүлтийг цуцлана */
+  useEffect(() => {
+    if (!clearToken) return;
+    try { sketchVMRef.current?.cancel(); } catch { /* идэвхгүй */ }
+    const gl = mapRef.current?.findLayerById('sketch') as GraphicsLayer | null;
+    gl?.removeAll();
+    onSketchRef.current?.(null);
+  }, [clearToken]);
+
   /* Харагдац ба БҮСИЙН шүүлт */
   useEffect(() => {
     const map = mapRef.current;
@@ -1010,6 +1136,10 @@ export function MapCanvas({
 
     map.layers.forEach((l) => {
       if (l.id === IMAGERY_ID) { l.visible = true; return; }
+      // ⚠️ Полигон зурах GraphicsLayer нь каталогийн `visible` жагсаалтад ХЭЗЭЭ Ч
+      //    орохгүй тул энэ шалгуургүй бол доорх мөр түүнийг нууж, зурсан полигон
+      //    алга болно. Sketch widget өөрөө агуулгыг удирдана — үргэлж ил.
+      if (l.id === 'sketch') { l.visible = true; return; }
       if (l.id.startsWith('scene:')) { l.visible = dim === '3d'; return; }
       if (l.id.startsWith('bim:')) { l.visible = dim === 'bim'; return; }
       // ⚠️ ЗӨВХӨН 3D-гийн давхарга нь каталогийн `visible` жагсаалтад ХЭЗЭЭ Ч
