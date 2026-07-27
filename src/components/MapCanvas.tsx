@@ -14,6 +14,9 @@ import ImageryLayer from '@arcgis/core/layers/ImageryLayer';
 import IntegratedMeshLayer from '@arcgis/core/layers/IntegratedMeshLayer';
 import BuildingSceneLayer from '@arcgis/core/layers/BuildingSceneLayer';
 import BuildingExplorer from '@arcgis/core/widgets/BuildingExplorer';
+import BasemapGallery from '@arcgis/core/widgets/BasemapGallery';
+import LocalBasemapsSource from '@arcgis/core/widgets/BasemapGallery/support/LocalBasemapsSource';
+import Expand from '@arcgis/core/widgets/Expand';
 import ElevationLayer from '@arcgis/core/layers/ElevationLayer';
 import Ground from '@arcgis/core/Ground';
 import TileLayer from '@arcgis/core/layers/TileLayer';
@@ -679,6 +682,35 @@ export function MapCanvas({
           });
     viewRef.current = view;
     if (typeof window !== 'undefined') (window as unknown as { __dbgview: AnyView }).__dbgview = view;
+
+    /**
+     * Esri-ийн суурь зургийн галерей — Expand дотор ХУМИГДСАНААР (зураг битүүрэхгүй).
+     * ⚠️ Selbe ортофото нь ТУСДАА давхарга (`imagery`) тул суурь зураг сольсон ч
+     * дээр нь хэвээр үлдэнэ. Widget нь view-тэй хамт устдаг (`view.destroy`).
+     */
+    view.ui.add(new Expand({
+      view,
+      content: new BasemapGallery({
+        view,
+        // ⚠️ Тодорхой заасан эх сурвалж — portal нэвтрэлтээс ҮЛ ХАМААРАН
+        //    Esri-ийн стандарт суурь зургууд үргэлж ачаалагдана.
+        source: new LocalBasemapsSource({
+          basemaps: [
+            Basemap.fromId('satellite')!,
+            Basemap.fromId('hybrid')!,
+            Basemap.fromId('streets-vector')!,
+            Basemap.fromId('topo-vector')!,
+            Basemap.fromId('gray-vector')!,
+            Basemap.fromId('dark-gray-vector')!,
+            Basemap.fromId('osm')!,
+          ],
+        }),
+      }),
+      expandIcon: 'basemap',
+      expandTooltip: 'Суурь зураг сонгох',
+      collapseTooltip: 'Хаах',
+      mode: 'floating',
+    }), 'top-right');
 
     view.when(() => {
       if (view.destroyed) return;
