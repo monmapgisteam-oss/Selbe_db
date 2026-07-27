@@ -1,0 +1,155 @@
+/* ТЭЗҮ баримт бичгийн глобал popup */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgb(0 0 0 / 0.5);
+  backdrop-filter: blur(2px);
+}
+
+.modal {
+  display: flex;
+  flex-direction: column;
+  width: 94vw;
+  height: 92vh;
+  max-width: 1400px;
+  border-radius: var(--r-lg);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-2);
+}
+.headIcon {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border-radius: 7px;
+  color: #fff;
+  background: var(--hue);
+}
+.title {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+.close {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border-radius: 7px;
+  font-size: 0.95rem;
+  line-height: 1;
+  color: var(--ink-3);
+  transition: background 0.12s, color 0.12s;
+}
+.close:hover { background: var(--sunken); color: var(--ink); }
+
+.body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Зүүн — баримт солих жагсаалт */
+.side {
+  flex: none;
+  width: 248px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  border-right: 1px solid var(--line);
+  overflow-y: auto;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 10px;
+  border-radius: var(--r-sm);
+  border: 1px solid transparent;
+  text-align: left;
+  transition: background 0.12s, border-color 0.12s;
+}
+.item:hover { background: var(--surface-2); }
+.itemOn {
+  background: color-mix(in srgb, var(--hue) 10%, var(--surface));
+  border-color: color-mix(in srgb, var(--hue) 45%, transparent);
+}
+.itemIcon {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border-radius: 6px;
+  color: var(--ink-2);
+  background: var(--sunken);
+}
+.itemOn .itemIcon { color: #fff; background: var(--hue); }
+.itemText { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
+.itemTitle {
+  font-size: 0.8rem;
+  font-weight: 650;
+  color: var(--ink);
+}
+.itemSub {
+  font-size: 0.7rem;
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.openNew {
+  margin-top: auto;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--ink-2);
+  border: 1px solid var(--line);
+  text-align: center;
+  transition: color 0.12s, border-color 0.12s;
+}
+.openNew:hover { color: var(--ink); border-color: var(--ink-3); }
+
+/* Баруун — PDF харагч */
+.viewer {
+  flex: 1;
+  min-width: 0;
+  background: var(--surface-2);
+}
+.frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+}
+
+@media (max-width: 720px) {
+  .side { width: 168px; }
+  .modal { width: 96vw; height: 94vh; }
+}
