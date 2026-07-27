@@ -36,6 +36,26 @@
   .side { width: 320px; }
 }
 
+/* Мобайл/таблет — зураг ба самбар БОСОО өрөгдөнө (row болбол зураг хэт нарийсна).
+   Зураг тогтмол өндөртэй болж, самбар доор нь бүтэн өргөнөөр гүйнэ. */
+@media (max-width: 720px) {
+  .shell {
+    flex-direction: column;
+    height: auto;
+    min-height: 100%;
+    overflow-y: auto;
+    padding: 10px;
+  }
+  .center { flex: none; }
+  .center .hero, .center [class*="hero"] { min-height: 52vh; }
+  .side {
+    width: auto;
+    max-width: none;
+    flex: none;
+    overflow-y: visible;
+  }
+}
+
 /* Дээд удирдлагын зурвас — харагдац солих + полигон зурах товч ЗЭРЭГЦЭЭ,
    зургийн дээд төвд. */
 .topbar {

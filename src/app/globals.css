@@ -89,9 +89,11 @@ body {
   overflow: hidden;
 }
 
-/* Дэлгэц бага үед портал босоо байрлалтай болж, хуудас гүйдэг болно */
+/* Дэлгэц бага үед портал босоо байрлалтай болж, хуудас БОСООГООР гүйдэг болно.
+   ⚠️ `overflow-x: hidden` — ямар ч элемент санамсаргүй хальсан ч page ХЭВТЭЭ
+   гүйхгүй (эцсийн аюулгүйн сүлжээ; санаатай дотоод гүйлт (таб, самбар) хэвээр). */
 @media (max-width: 960px) {
-  body { overflow: auto; }
+  body { overflow-x: hidden; overflow-y: auto; }
 }
 
 button { font: inherit; color: inherit; cursor: pointer; background: none; border: none; }

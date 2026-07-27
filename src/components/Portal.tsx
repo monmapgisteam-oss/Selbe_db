@@ -341,7 +341,7 @@ function PortalContent() {
             title="ТЭЗҮ ба судалгааны баримт бичиг"
           >
             <span className={s.docBtnIcon} aria-hidden><Icon name="file" size={15} /></span>
-            ТЭЗҮ-БОНУ
+            <span className={s.docBtnLabel}>ТЭЗҮ-БОНУ</span>
           </button>
 
           <button
