@@ -14,6 +14,7 @@ import { Gazar } from '@/modules/Gazar';
 import { Sheet } from '@/modules/sheet/Sheet';
 import { Tailan } from '@/modules/Tailan';
 import { Icon } from '@/components/Icon';
+import { DocViewer } from '@/components/DocViewer';
 import { useTheme } from '@/lib/theme';
 import { useAsync } from '@/lib/useAsync';
 import { FilterProvider, useFilter } from '@/lib/filter';
@@ -177,6 +178,9 @@ function PortalContent() {
   const { theme, toggle } = useTheme();
   const { clear: clearFilter } = useFilter();
 
+  /** ТЭЗҮ ба судалгааны баримт бичгийн глобал popup нээлттэй эсэх */
+  const [docsOpen, setDocsOpen] = useState(false);
+
   /**
    * Давхаргын тоо, хэмжээ — каталогийн багана, багцын тойм, давхаргын дашбоард
    * ГУРВУУЛАА эндээс уншина. Нэг эх сурвалж, нэг хүсэлтийн багц.
@@ -329,6 +333,17 @@ function PortalContent() {
               шүүлтийн тэмдэг нь баруун тийш түлхэх үүргийг авна. */}
           <ActiveFilterChip />
 
+          {/* ТЭЗҮ баримт бичиг — аль ч харагдацаас нээгддэг глобал popup товч */}
+          <button
+            type="button"
+            className={s.docBtn}
+            onClick={() => setDocsOpen(true)}
+            title="ТЭЗҮ ба судалгааны баримт бичиг"
+          >
+            <span className={s.docBtnIcon} aria-hidden><Icon name="file" size={15} /></span>
+            ТЭЗҮ-БОНУ
+          </button>
+
           <button
             type="button"
             className={s.iconBtn}
@@ -471,6 +486,9 @@ function PortalContent() {
           </>
         )}
       </div>
+
+      {/* ТЭЗҮ баримт бичгийн глобал popup — fixed тул бүх харагдацыг халхална */}
+      <DocViewer open={docsOpen} onClose={() => setDocsOpen(false)} />
     </>
   );
 }
