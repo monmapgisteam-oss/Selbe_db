@@ -1483,8 +1483,9 @@ export const LAYERS: LayerDef[] = [
     title: "Дугуйн зам",
     topic: "plan",
     geom: "line",
-    hue: "#f43f5e",
-    dash: "solid",
+    // Эх зургийн Дугуйн зам — саарал зам, цагаан тасархай (каталогийн swatch)
+    hue: "#828282",
+    dash: "dash",
     width: 2.0,
     qty: M,
     cost: { field: "negj_une", basis: "m100" },
@@ -1682,7 +1683,19 @@ export const LAYERS: LayerDef[] = [
     fill: 1,
     width: 0.75,
   },
-  /** Одоо байгаа зам — `Бусад_мэдээлэл_20260724` үйлчилгээ (/194) */
+  /** Авто зам — `Бусад_мэдээлэл_20260724`/193 (кирилл нэрийг encode). Бусад бүлэгт. */
+  {
+    id: "road",
+    n: 193,
+    url: `${HJ}/${encodeURIComponent("Бусад_мэдээлэл_20260724")}/FeatureServer/193`,
+    title: "Авто зам",
+    topic: "plan",
+    geom: "line",
+    hue: "#ffffff",
+    width: 1.56,
+    dash: "solid",
+  },
+  /** Одоо байгаа зам — `Бусад_мэдээлэл_20260724`/194. Бусад бүлэгт. */
   {
     id: "roadOld",
     n: 194,
@@ -1694,7 +1707,6 @@ export const LAYERS: LayerDef[] = [
     width: 1.5,
     dash: "solid",
   },
-
   ...PKG_LAYERS,
 ];
 
@@ -1993,7 +2005,8 @@ export type GroupKey =
   | "pkgSrc"
   | "pkgSite"
   | "pkgSoc"
-  | "pkgCom";
+  | "pkgCom"
+  | "busad";
 
 export const LAYER_GROUPS: {
   key: GroupKey;
@@ -2114,6 +2127,14 @@ export const LAYER_GROUPS: {
     icon: "radio",
     hue: "#7c3aed",
   },
+  /** БУСАД МЭДЭЭЛЭЛ — каталогийн ХАМГИЙН ДООР. Зам гэх мэт нэмэлт давхарга. */
+  {
+    key: "busad",
+    title: "Бусад мэдээлэл",
+    desc: "Авто зам, одоо байгаа зам",
+    icon: "layers",
+    hue: "#94a3b8",
+  },
 ];
 
 /**
@@ -2130,7 +2151,7 @@ export const GROUP_LAYERS: Record<GroupKey, string[]> = {
   // 110кв агаарын · 10кв кабель трасс · цахилгааны шугам · 0.4кв кабель трасс
   power: ["et:21", "et:13", "et:22", "et:20"],
   prep: ["et:15"],
-  road: ["et:29", "et:27", "et:14", "et:12", "roadOld"],
+  road: ["et:29", "et:27", "et:14", "et:12"],
   transit: ["et:6", "et:2", "et:1"],
   green: ["et:25", "et:26", "tree"],
   /**
@@ -2150,6 +2171,7 @@ export const GROUP_LAYERS: Record<GroupKey, string[]> = {
   pkgSite: pkgIds("site"),
   pkgSoc: pkgIds("soc"),
   pkgCom: pkgIds("com"),
+  busad: ["road", "roadOld"],
 };
 
 /** Ерөнхий мэдээллийн БҮХ давхарга — багцын дарааллаар */
@@ -2367,8 +2389,8 @@ export const DEFAULT_VISIBLE: string[] = [ZONE_LAYER.id];
  * өөрчлөгдөхгүй мэт харагдана.
  */
 export const drawOrder = (id: string): number => {
-  // Замын шугам (Бусад_мэдээлэл) — ХАМГИЙН ДООР (бусад бүх давхаргын дор суурь).
-  if (id === "roadOld") return -2;
+  // Замын шугам (Бусад мэдээлэл) — ХАМГИЙН ДООР (бусад давхаргын дор суурь).
+  if (id === "road" || id === "roadOld") return -2;
   // Бүс бол АГУУЛАГЧ — хамгийн доор (барилга нь дүүргэлтийнх нь дээр гарна).
   if (id === ZONE_LAYER.id) return -1;
   const g = LAYER_BY_ID[id]?.geom;
