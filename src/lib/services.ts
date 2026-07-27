@@ -1707,6 +1707,51 @@ export const LAYERS: LayerDef[] = [
     width: 1.5,
     dash: "solid",
   },
+  /* «Бусад мэдээлэл» үйлчилгээний бусад 4 давхарга (өнгө нь үйлчилгээний өгөгдмөл) */
+  {
+    id: "bm128",
+    n: 128,
+    url: `${HJ}/${encodeURIComponent("Бусад_мэдээлэл_20260724")}/FeatureServer/128`,
+    title: "Тодорхойгүй цахилгааны шугам",
+    topic: "plan",
+    geom: "line",
+    hue: "#e3b5fc",
+    width: 1,
+    dash: "solid",
+  },
+  {
+    id: "bm146",
+    n: 146,
+    url: `${HJ}/${encodeURIComponent("Бусад_мэдээлэл_20260724")}/FeatureServer/146`,
+    title: "Дамбадаржаа дулааны станц",
+    topic: "plan",
+    geom: "line",
+    hue: "#b5fcd6",
+    width: 1,
+    dash: "solid",
+  },
+  {
+    id: "bm145",
+    n: 145,
+    url: `${HJ}/${encodeURIComponent("Бусад_мэдээлэл_20260724")}/FeatureServer/145`,
+    title: "Сэлбэ дулаан станц",
+    topic: "plan",
+    geom: "area",
+    hue: "#4e4ea3",
+    fill: 0.6,
+    width: 0.7,
+  },
+  {
+    id: "bm87",
+    n: 87,
+    url: `${HJ}/${encodeURIComponent("Бусад_мэдээлэл_20260724")}/FeatureServer/87`,
+    title: "Шинэ их үүсвэр",
+    topic: "plan",
+    geom: "area",
+    hue: "#a82f2f",
+    fill: 0.6,
+    width: 0.7,
+  },
   ...PKG_LAYERS,
 ];
 
@@ -2131,7 +2176,7 @@ export const LAYER_GROUPS: {
   {
     key: "busad",
     title: "Бусад мэдээлэл",
-    desc: "Авто зам, одоо байгаа зам",
+    desc: "Зам, цахилгаан, дулааны станц, эх үүсвэр",
     icon: "layers",
     hue: "#94a3b8",
   },
@@ -2171,7 +2216,7 @@ export const GROUP_LAYERS: Record<GroupKey, string[]> = {
   pkgSite: pkgIds("site"),
   pkgSoc: pkgIds("soc"),
   pkgCom: pkgIds("com"),
-  busad: ["road", "roadOld"],
+  busad: ["road", "roadOld", "bm128", "bm146", "bm145", "bm87"],
 };
 
 /** Ерөнхий мэдээллийн БҮХ давхарга — багцын дарааллаар */
