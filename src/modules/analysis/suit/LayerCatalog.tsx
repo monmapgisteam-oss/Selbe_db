@@ -1,42 +1,24 @@
 'use client';
 
 import { useState, type CSSProperties } from 'react';
-import { MAP_LAYERS, MAP_GROUPS } from '@/lib/analysis/config';
+import { MAP_LAYERS } from '@/lib/analysis/config';
+import { LAYER_GROUPS, MONITOR_GROUP } from '@/lib/services';
 import { Icon } from '@/components/Icon';
 import c from '@/components/catalog.module.css';
 
 /**
  * ТОХИРОМЖТОЙ БАЙДЛЫН ҮНЭЛГЭЭ-ний давхаргын каталог — «Ерөнхий төлөвлөгөө»-ийн
- * `LayerCatalog`-той ИЖИЛ дүр төрх (бүлэг хумих/дэлгэх, swatch, чагт switch),
- * газрын зурган дээрх «Давхарга» товчоор нээгддэг.
+ * `LayerCatalog`-той ИЖИЛ дүр төрх ба ИЖИЛ бүлгүүд (гарчиг, дүрс, өнгө нь
+ * порталын `LAYER_GROUPS`-аас), газрын зурган дээрх «Давхарга» товчоор нээгддэг.
  *
- * ⚠️ Анализ нь порталын `LAYERS`-аас ТУСДАА `MAP_LAYERS` (өнгө/төрлийн тусгай
- * тохиргоотой) ашигладаг тул `LayerCatalog` компонентыг шууд дахин ашиглаж
- * болохгүй — энэ нь ижил CSS (`catalog.module.css`)-ийг ашиглан тэр дүр төрхийг
- * `MAP_LAYERS` дээр давтана. Ил байдал нь `layerOn` тэмдэглэлээр удирдагдана.
+ * ⚠️ Анализ нь өнгө/тунгалагшилтын тусгай рендертэй тул `LayerCatalog`
+ * компонентыг шууд дахин ашиглахгүй — ижил CSS (`catalog.module.css`)-ийг
+ * ашиглан `MAP_LAYERS` дээр давтана. Давхарга нь plan-тай ижил (~84) бөгөөд
+ * бүлэг нь plan-ийн бүлгээр. Ил байдал `layerOn` тэмдэглэлээр удирдагдана.
  */
 
-/** Бүлэг бүрийн өнгө — гарчгийн акцент (төлөөлөх давхаргын өнгөнөөс). */
-const GROUP_HUE: Record<string, string> = {
-  base: '#94a3b8',
-  transit: '#f472b6',
-  heat: '#fb923c',
-  water: '#38bdf8',
-  power: '#facc15',
-  amenity: '#4ade80',
-  monitor: '#ea580c',
-};
-
-/** Бүлгийн дүрс — «Барилгын хяналт» каталогтой ижил төрх. */
-const GROUP_ICON: Record<string, string> = {
-  base: 'building',
-  transit: 'bus',
-  heat: 'flame',
-  water: 'droplet',
-  power: 'bolt',
-  amenity: 'grid',
-  monitor: 'target',
-};
+/** Каталогийн бүлгүүд — plan-тай ЯГ ИЖИЛ (гарчиг · дүрс · өнгө). */
+const GROUP_META = [...LAYER_GROUPS, MONITOR_GROUP];
 
 export function SuitLayerCatalog({
   layerOn,
@@ -47,17 +29,21 @@ export function SuitLayerCatalog({
   setLayerOn: (v: Record<string, boolean>) => void;
   onClose: () => void;
 }) {
-  const groups = Object.keys(MAP_GROUPS)
-    .map((key) => ({
-      key,
-      label: MAP_GROUPS[key],
-      hue: GROUP_HUE[key] ?? '#94a3b8',
-      items: MAP_LAYERS.filter((l) => l.group === key),
+  const groups = GROUP_META
+    .map((g) => ({
+      key: g.key,
+      label: g.title,
+      hue: g.hue,
+      icon: g.icon,
+      items: MAP_LAYERS.filter((l) => l.group === g.key),
     }))
     .filter((g) => g.items.length > 0);
 
-  /** Хураасан бүлгүүд — эхлэхэд бүгд дэлгэгдсэн (анализ дээр давхарга цөөн). */
-  const [shut, setShut] = useState<Set<string>>(() => new Set());
+  /**
+   * Хураасан бүлгүүд — эхлэхэд БҮГД ХУРААГДСАН (plan-тай ижил). ~84 давхарга
+   * задгай байвал жагсаалт хэдэн дэлгэц болно; хэрэгтэй бүлгээ дараад л задална.
+   */
+  const [shut, setShut] = useState<Set<string>>(() => new Set(GROUP_META.map((g) => g.key)));
 
   const all = groups.flatMap((g) => g.items);
   const onCount = all.filter((l) => layerOn[l.key]).length;
@@ -112,7 +98,7 @@ export function SuitLayerCatalog({
                   className={c.groupToggle}
                   onClick={() => setOpenState(g.key, !open)}
                 >
-                  <span className={c.groupIcon}><Icon name={GROUP_ICON[g.key] ?? 'layers'} size={15} /></span>
+                  <span className={c.groupIcon}><Icon name={g.icon} size={15} /></span>
                   <span className={c.groupTitle}>{g.label}</span>
                   <span className={`${c.groupCaret} ${open ? c.groupCaretOpen : ''}`} aria-hidden>▾</span>
                 </button>

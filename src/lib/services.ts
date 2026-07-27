@@ -25,6 +25,12 @@ const HJ = "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services";
 export const ET = `${HJ}/Selbe_ET_20260721/FeatureServer`;
 
 /**
+ * Шинэчилсэн ЕТ (07-25) — багцаар задарсан цахилгааны шугам (124–127) энд.
+ * ⚠️ Үндсэн `ET`-ээс ӨӨР хувилбар тул эдгээр давхарга бүтэн `url`-аар очно.
+ */
+export const ET25 = `${HJ}/Selbe_ET_20260725/FeatureServer`;
+
+/**
  * ДЭД БҮТЦИЙН БАГЦУУД — `Selbe_ET_20260725` (62 давхарга).
  *
  * ⚠️ Энэ нь `ET`-ийн ШИНЭ ХУВИЛБАР БИШ. Огноо нь дөрөв хожуу ч агуулга нь огт
@@ -1501,22 +1507,28 @@ export const LAYERS: LayerDef[] = [
   },
 
   /* ─────────── Инженер · цахилгаан ─────────── */
+  /* ⚠️ 2026-07-25-нд ХУУЧИН 4 цахилгааны давхарга (110кв/10кв/0.4кв/шугам —
+     et:21,13,22,20) БАГЦААР задарсан 4 шинэ давхаргаар СОЛИГДСОН. Шинэ нь
+     `Selbe_ET_20260725`-ын 124–127 (бүтэн `url`). ZONE_ID, negj_une, urt_m
+     хэвээр тул бүсийн шүүлт ба өртөг (m100) яг адил ажиллана. */
   {
-    id: "et:21",
-    n: 21,
-    title: "Цахилгаан дамжуулах агаарын шугам 110кв",
+    id: "et:124",
+    n: 124,
+    url: `${ET25}/124`,
+    title: "Багц 1 цахилгааны шугам",
     topic: "plan",
     geom: "line",
     hue: "#b45309",
     dash: "dash-dot",
-    width: 2.2,
+    width: 1.8,
     qty: M,
     cost: { field: "negj_une", basis: "m100" },
   },
   {
-    id: "et:13",
-    n: 13,
-    title: "Кабель трасс 10кв (Дамбадаржаа)",
+    id: "et:125",
+    n: 125,
+    url: `${ET25}/125`,
+    title: "Багц 2 цахилгааны шугам",
     topic: "plan",
     geom: "line",
     hue: "#f59e0b",
@@ -1526,9 +1538,10 @@ export const LAYERS: LayerDef[] = [
     cost: { field: "negj_une", basis: "m100" },
   },
   {
-    id: "et:22",
-    n: 22,
-    title: "Цахилгааны шугам",
+    id: "et:126",
+    n: 126,
+    url: `${ET25}/126`,
+    title: "Багц 3 цахилгааны шугам",
     topic: "plan",
     geom: "line",
     hue: "#eab308",
@@ -1538,14 +1551,15 @@ export const LAYERS: LayerDef[] = [
     cost: { field: "negj_une", basis: "m100" },
   },
   {
-    id: "et:20",
-    n: 20,
-    title: "Цахилгаан 0.4кв кабель трасс",
+    id: "et:127",
+    n: 127,
+    url: `${ET25}/127`,
+    title: "Багц 4 цахилгааны шугам",
     topic: "plan",
     geom: "line",
     hue: "#fbbf24",
     dash: "dash-dot",
-    width: 1.1,
+    width: 1.2,
     qty: M,
     cost: { field: "negj_une", basis: "m100" },
   },
@@ -2356,7 +2370,7 @@ export const GROUP_LAYERS: Record<GroupKey, string[]> = {
   zone: ["zone"],
   build: ["et:24"],
   // 110кв агаарын · 10кв кабель трасс · цахилгааны шугам · 0.4кв кабель трасс
-  power: ["et:21", "et:13", "et:22", "et:20"],
+  power: ["et:124", "et:125", "et:126", "et:127"],
   prep: ["et:15"],
   road: ["et:29", "et:27", "et:14", "et:12"],
   transit: ["et:6", "et:2", "et:1"],
