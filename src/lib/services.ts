@@ -277,7 +277,7 @@ export const ZONE_NONE = " Бүсийн мэдээлэл байхгүй ";
 export const BUILT_STATUS: { value: string; hue: string }[] = [
   { value: "Одоо байгаа", hue: "#000000" },
   { value: "Баригдаж байгаа", hue: "#ff0000" },
-  { value: "Төлөвлөсөн", hue: "#fd7f6f" },
+  { value: "Төлөвлөсөн", hue: "#ffb700" },
 ];
 
 /**
@@ -1166,7 +1166,7 @@ export const LAYERS: LayerDef[] = [
     topic: "plan",
     geom: "area",
     // Эх веб зургийн «Төлөвлөсөн» өнгө — `uniform` горимд бүх барилга үүгээр
-    hue: "#fd7f6f",
+    hue: "#ffb700",
     fill: 0.45,
     width: 1.4,
     qty: { field: "Барилгажсан_талбай", unit: "м²" },
@@ -1985,7 +1985,7 @@ export const LAYER_GROUPS: {
     title: "Барилга",
     desc: "Төлөв, зориулалт, өрх, өртөг",
     icon: "building",
-    hue: "#fd7f6f",
+    hue: "#ffb700",
   },
   /**
    * ⚠️ «Дулааны шугам», «Бохирын шугам», «Цэвэр усны шугам» ГУРВАН багц
