@@ -311,7 +311,10 @@ export function BuildingSummary({ q }: { q: Buildings }) {
                 <Stat value={num(d.blocks)} label="Барилгын блок" color={HUE} accent />
                 <Stat value={num(d.households)} label="Айлын тоо" color={HUE} accent />
               </Stats>
-              <Split aside={<Ring value={d.progress} color={HUE} size={78} width={8} />}>
+              {/* ⚠️ ТҮР ЗУУРЫН ХАТУУ УТГА: гүйцэтгэлийн ring-ийг 21.6% дээр
+                  тогтоов (хүсэлтээр). Хүснэгтийн өгөгдөл шинэчлэгдсэний дараа
+                  `value={d.progress}` руу БУЦАА, `decimals`-ыг ХАС. */}
+              <Split aside={<Ring value={21.6} decimals={1} color={HUE} size={78} width={8} />}>
                 <Note>
                   {num(d.blocks - d.noData)} блокийн «Барилга угсралтын ажил»-ын дундаж
                   гүйцэтгэл{d.asOf ? ` (${d.asOf})` : ''}. Дундаж {num(d.floors, 1)} давхар.
@@ -355,13 +358,18 @@ export function BuildingSummary({ q }: { q: Buildings }) {
                 const g = d.bagts.find((x) => x.key === k)!;
                 pick(`${BAGTS_FILTER}${k}`, k, 'Багц', g.oids);
               }}
-              items={d.bagts.map((b) => ({
-                key: b.key,
-                label: `${b.key} · ${num(b.blocks)} блок`,
-                value: b.progress ?? 0,
-                // null = гүйцэтгэл бүртгэгдээгүй. «0.0%» гэж бичвэл жинхэнэ 0%-аас ялгагдахгүй.
-                display: b.progress == null ? 'мэдээлэлгүй' : pct(b.progress),
-              }))}
+              items={d.bagts.map((b) => {
+                // ⚠️ ТҮР ЗУУРЫН ХАТУУ УТГА (хүсэлтээр): «Багц 1»-ийг 21.6% болгов.
+                //    Өгөгдөл шинэчлэгдсэний дараа энэ override-г ХАС.
+                const p = b.key === 'Багц 1' ? 21.6 : b.progress;
+                return {
+                  key: b.key,
+                  label: `${b.key} · ${num(b.blocks)} блок`,
+                  value: p ?? 0,
+                  // null = гүйцэтгэл бүртгэгдээгүй. «0.0%» гэж бичвэл жинхэнэ 0%-аас ялгагдахгүй.
+                  display: p == null ? 'мэдээлэлгүй' : pct(p),
+                };
+              })}
             />
           </Section>
 
@@ -393,12 +401,18 @@ export function BuildingSummary({ q }: { q: Buildings }) {
                 const c = d.contractors.find((x) => x.key === k)!;
                 pick(`building:comp:${k}`, k, 'Гүйцэтгэгч компани', c.oids);
               }}
-              items={d.contractors.map((c) => ({
-                key: c.key,
-                label: `${c.key} · ${num(c.blocks)} блок`,
-                value: c.progress ?? 0,
-                display: c.progress == null ? 'мэдээлэлгүй' : pct(c.progress),
-              }))}
+              items={d.contractors.map((c) => {
+                // ⚠️ ТҮР ЗУУРЫН ХАТУУ УТГА: «Багц 1»-ийг барьсан компанийг (Хятадын
+                //    2 дахь металлурги) 21.6% болгов — багцтай зөрөхгүй байхаар.
+                //    Өгөгдөл шинэчлэгдсэний дараа энэ override-г ХАС.
+                const p = c.key.includes('металлурги') ? 21.6 : c.progress;
+                return {
+                  key: c.key,
+                  label: `${c.key} · ${num(c.blocks)} блок`,
+                  value: p ?? 0,
+                  display: p == null ? 'мэдээлэлгүй' : pct(p),
+                };
+              })}
             />
           </Section>
         </>

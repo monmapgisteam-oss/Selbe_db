@@ -744,6 +744,7 @@ export function Ring({
   width = 9,
   color,
   label,
+  decimals,
 }: {
   /** 0–100, эсвэл өгөгдөлгүй бол null */
   value: number | null | undefined;
@@ -751,6 +752,8 @@ export function Ring({
   width?: number;
   color?: string;
   label?: string;
+  /** Аравтын орны тоог албадан заана; өгөөгүй бол <10 үед 1, эс бөгөөс 0 */
+  decimals?: number;
 }) {
   const has = value != null && Number.isFinite(value);
   const v = has ? Math.max(0, Math.min(100, value)) : 0;
@@ -775,7 +778,7 @@ export function Ring({
       </svg>
       <div className={s.ringCenter}>
         <span className={`${s.ringValue} num`} style={{ fontSize: size * 0.2 }}>
-          {has ? `${v.toFixed(v < 10 ? 1 : 0)}%` : '—'}
+          {has ? `${v.toFixed(decimals ?? (v < 10 ? 1 : 0))}%` : '—'}
         </span>
         {label && <span className={s.ringLabel}>{label}</span>}
       </div>
