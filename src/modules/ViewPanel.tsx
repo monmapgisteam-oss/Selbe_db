@@ -19,37 +19,28 @@ import { num, text } from '@/lib/format';
 import { MonitorGeneral, MonitorDetail, MonitorBagts, BAGTS_FILTER } from './BuildingPanel';
 import s from './dashboard.module.css';
 
-/** Ангиллын дугуй диаграмд өнгө оноох палитр (paint тодорхойлолтгүй давхаргад) */
-const PALETTE = ['#0d9488', '#3387b8', '#ea580c', '#7c3aed', '#eab308', '#22c55e', '#e11d48', '#0891b2'];
-
-/**
- * Индексээр өнгө — 8-аас цааш ч ДАВТАГДАХГҮЙ.
- *
- * ⚠️ Урьд нь `PALETTE[i % 8]` байсан: «Зориулалт» 34 ангилалтай тул нэг өнгө
- * дөрөв дахин давтагдаж, «Үлдсэнийг харах» дарахад аль багана аль ангилал
- * болох нь уншигдахаа больдог байв. Эхний 8 нь сонгосон палитраа хэвээр
- * хадгална; цаашид АЛТАН ӨНЦГӨӨР (137.5°) эргүүлнэ — зэргэлдээ өнгө хамгийн
- * их зайтай тарна.
- */
-const chartColor = (i: number) =>
-  i < PALETTE.length ? PALETTE[i] : `hsl(${(i * 137.508) % 360} 58% 52%)`;
-
 /** «Бүртгэгдээгүй / Тодорхойгүй» бүлэг — жинхэнэ ангилал мэт харагдах ёсгүй */
 const BLANK_HUE = ZONE_TYPE_EMPTY_HUE;
 
 /**
- * Ангиллын өнгө сонгогч.
+ * МОНОХРОМ УУСГАЛТ — нэг өнгийг цайруулж дараалсан сүүдэр гаргана.
  *
- * ⚠️ `paint.values` нь ГАЗРЫН ЗУРГИЙН палитр бөгөөд ангиллуудыг зориудаар нэг
- * өнгө рүү нийлүүлсэн байж болно (бүсийн 5 төрөл → 2 өнгө). Диаграмд `chartValues`
- * нь давамгайлна — эс бөгөөс 5 зүсмэг 2 өнгөтэй гарна.
+ * Ангиллын диаграм (нэг давхаргын дэд төрлүүд) нь олон ялгаатай өнгө биш,
+ * НЭГ өнгөний уусгалттай байх ёстой (хэрэглэгчийн хүсэлт): i=0 хамгийн тод
+ * (суурь өнгө), цааш нь цагаан руу цайрна. «Бүртгэгдээгүй» саарал хэвээр.
  */
-const facetColor = (d: LayerDef, field: string) => {
-  const p = d.paint?.field === field ? d.paint : null;
-  const map = p ? (p.chartValues ?? p.values) : null;
-  return (label: string, i: number, blank = false) =>
-    (blank ? BLANK_HUE : map?.[label]) ?? chartColor(i);
+const mono = (hex: string, i: number, n: number): string => {
+  const h = hex.replace('#', '');
+  const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+  const t = n <= 1 ? 0 : (i / (n - 1)) * 0.66; // 0 (суурь) → 0.66 (цайвар)
+  const mix = (ch: number) => Math.round(ch + (255 - ch) * t);
+  const hx = (v: number) => v.toString(16).padStart(2, '0');
+  return `#${hx(mix(r))}${hx(mix(g))}${hx(mix(b))}`;
 };
+
+/** Ангилал → монохром сүүдэр (донат ба багана ижил түлхүүрээр нэг өнгөтэй) */
+const monoShades = (d: LayerDef, rows: { label: string; blank?: boolean }[]) =>
+  new Map(rows.map((x, i) => [x.label, x.blank ? BLANK_HUE : mono(d.hue, i, rows.length)]));
 
 /* ═════════════════ Үндсэн самбар ═════════════════ */
 
@@ -696,13 +687,15 @@ function LayerTypeCharts({
   if (q.state !== 'ready' || q.data.length < 2) return null;
 
   const total = q.data.reduce((a, x) => a + x.values.n, 0);
-  const colorOf = facetColor(d, f.field);
+  // ⚠️ Нэг давхаргын ангиллууд — НЭГ өнгөний уусгалт (олон өнгө биш)
+  const shade = monoShades(d, q.data);
+  const colorOf = (label: string) => shade.get(label) ?? BLANK_HUE;
 
-  const items = q.data.map((x, i) => ({
+  const items = q.data.map((x) => ({
     key: `${d.id}:${x.label}`,
     label: x.label,
     value: x.values.n,
-    color: colorOf(x.label, i, x.blank),
+    color: colorOf(x.label),
   }));
 
   /**
@@ -733,12 +726,12 @@ function LayerTypeCharts({
   const sized = d.qty
     ? q.data
       .filter((x) => x.values.q > 0)
-      .map((x, i) => ({
+      .map((x) => ({
         key: `${d.id}:q:${x.label}`,
         label: x.label,
         value: d.qty!.unit === 'м²' ? x.values.q / 10_000 : d.qty!.unit === 'км' ? x.values.q : x.values.q / 1_000,
         display: qtyText(d, x.values.q) ?? '',
-        color: colorOf(x.label, i, x.blank),
+        color: colorOf(x.label),
       }))
       .sort((a, b) => b.value - a.value)
     : [];
@@ -953,9 +946,10 @@ function LayerDashboard({
             <>
               {/* ── Ангилал бүрээр — ЭХНИЙ ангиллыг дугаар диаграмаар (дашбоард төрх) ── */}
               {facets.map((f, idx) => {
-                const colorOf = facetColor(d, f.field);
+                // ⚠️ Нэг давхаргын ангиллууд — НЭГ өнгөний уусгалт
+                const shade = monoShades(d, f.items);
                 const total = f.items.reduce((a, i) => a + i.values.n, 0);
-                const items = f.items.map((item, i) => ({
+                const items = f.items.map((item) => ({
                   key: `${f.label}:${item.label}`,
                   label: item.label,
                   value: item.values.n,
@@ -965,7 +959,7 @@ function LayerDashboard({
                     `${num(item.values.n)}`,
                     qtyText(d, item.values.q),
                   ].filter(Boolean).join(' · '),
-                  color: colorOf(item.label, i, item.blank),
+                  color: shade.get(item.label) ?? BLANK_HUE,
                 }));
                 return (
                   <Section
