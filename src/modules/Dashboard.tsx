@@ -257,7 +257,7 @@ const BF = BUILDING.fields;
 const PL = PARCEL_LEFT.fields;
 const PP = PROJECT_PROGRESS.fields;
 
-type BagtsRow = {
+export type BagtsRow = {
   key: string;
   label: string;
   blocks: number;
@@ -292,7 +292,7 @@ type BagtsRow = {
  * 24.50%). `loadBlockProgress()` нь «Барилгын хяналт»-ын ашигладаг ЯГ ижил
  * тооцоо — хоёр харагдац ижил тоо харуулна.
  */
-function useBagtsTable(): Async<BagtsRow[]> {
+export function useBagtsTable(): Async<BagtsRow[]> {
   const cash = useCashflow();
   const cashReady = cash.state === 'ready' ? cash.data : null;
   return useAsync(async () => {
