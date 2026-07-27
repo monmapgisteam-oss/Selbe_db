@@ -10,6 +10,7 @@ import { LayerCatalog } from '@/components/LayerCatalog';
 import { Suitability } from '@/modules/analysis/Suitability';
 import { Dashboard } from '@/modules/Dashboard';
 import { Bagts } from '@/modules/Bagts';
+import { Gazar } from '@/modules/Gazar';
 import { Sheet } from '@/modules/sheet/Sheet';
 import { Tailan } from '@/modules/Tailan';
 import { Icon } from '@/components/Icon';
@@ -255,6 +256,7 @@ function PortalContent() {
   const isSheet = view === 'sheet';
   const isBagts = view === 'bagts';
   const isTailan = view === 'tailan';
+  const isGazar = view === 'gazar';
   // `standalone` нь эдгээрийг ЯГ тэмдэглэдэг — тусад нь тоолохгүй
   const isFull = standalone;
   /**
@@ -349,7 +351,9 @@ function PortalContent() {
                   ? <Sheet />
                   : isTailan
                     ? <Tailan />
-                    : <Suitability dim={dim} setDim={setDim} />}
+                    : isGazar
+                      ? <Gazar dim={dim} setDim={setDim} />
+                      : <Suitability dim={dim} setDim={setDim} />}
           </div>
         )}
 

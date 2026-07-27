@@ -28,6 +28,9 @@ const P: Record<string, string> = {
   bolt: 'M13 2 4 14h7l-1 8 9-12h-7l1-8z',
   road: 'M6 3 4 21M18 3l2 18M12 4v3M12 11v3M12 18v3',
   bus: 'M5 17V6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v11M4 11h16M8 17v2M16 17v2M4 17h16M8.5 14h.01M15.5 14h.01',
+
+  /* Полигон зурах — оройнуудтай олон өнцөгт (Газар чөлөөлөлт) */
+  polygon: 'M12 3 21 9v7l-6 5-8-3-3-9 8-6zM12 3v0M21 9v0M15 21v0M7 18v0M4 9v0',
 };
 
 export function Icon({ name, size = 20 }: { name: string; size?: number }) {
