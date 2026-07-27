@@ -212,8 +212,9 @@ function PortalContent() {
      * унаж, зураг чимээгүй хоосорно.
      */
     clearFilter();
-    // ⚠️ Каталог нь зурган дээрх товчоор удирдагдана — харагдац солиход хумина
-    setCatalog(false);
+    // ⚠️ Каталог товчоор удирдагдана. «Ерөнхий төлөвлөгөө» нь давхаргын жагсаалт
+    //    гол агуулгатай тул НЭЭЛТТЭЙ эхэлнэ; бусад харагдац хумигдсан.
+    setCatalog(v === 'plan');
   }, [clearFilter]);
 
   const pick = useCallback((attrs: Record<string, unknown> | null, layerId: string | null) => {
@@ -257,17 +258,13 @@ function PortalContent() {
   // `standalone` нь эдгээрийг ЯГ тэмдэглэдэг — тусад нь тоолохгүй
   const isFull = standalone;
   /**
-   * ⚠️ «Ерөнхий мэдээлэл»-д каталог БАЙНГА зүүн талд бэхлэгдэнэ — хаагдахгүй.
-   * Энэ харагдацын гол ажил нь 29 давхаргыг асаах/унтраах тул жагсаалт нь
-   * агуулга өөрөө, түр нээдэг туслах цонх биш. Хаах товч, «Давхарга» товч
-   * хоёулаа далд болно — хаах боломжгүй зүйлийг хаах товч нь төөрөгдөл.
-   *
-   * «Барилгын хяналт» нь ХУУЧНААР үлдэнэ (товчоор нээж/хаана): тэнд гол
-   * агуулга нь блокийн гүйцэтгэл бөгөөд каталог нь нэмэлт контекст.
+   * ⚠️ «Ерөнхий мэдээлэл»-нд нэгтгэсэн зурвас нь самбарын толгойд (доод хүрээгүй)
+   * үлдэнэ. Каталогийн НЭЭЛТ нь бүх харагдацад «Давхарга» товчоор удирдагдана —
+   * plan-д ч жагсаалтыг нуух/харуулах боломжтой (хэрэглэгчийн хүсэлт).
    */
-  const catPinned = view === 'plan';
+  const planPanel = view === 'plan';
   // Каталог нь зөвхөн «Ерөнхий мэдээлэл» ба «Барилгын хяналт»-д байна
-  const catOpen = (catPinned || catalog) && !isFull;
+  const catOpen = catalog && !isFull;
 
   /**
    * «Ерөнхий мэдээлэл»-д ХЭДЭН БАГЦ сонгогдсоныг тоолно — самбар өөрөө өргөсөж
@@ -304,7 +301,7 @@ function PortalContent() {
   return (
     <>
       <div
-        className={`${s.shell} ${isFull ? s.shellSuit : ''} ${catOpen ? s.shellCat : ''} ${!isFull && !catPinned ? s.shellFoot : ''} ${view === 'monitor' ? s.shellMon : ''}`}
+        className={`${s.shell} ${isFull ? s.shellSuit : ''} ${catOpen ? s.shellCat : ''} ${!isFull && !planPanel ? s.shellFoot : ''} ${view === 'monitor' ? s.shellMon : ''}`}
         style={{
           '--hue': active.hue,
           '--panel': panelVar,
@@ -366,20 +363,17 @@ function PortalContent() {
 
               {/* Газрын зураг дээрх хэрэгслүүд — давхарга нээх ба 2D/3D/BIM */}
               <div className={s.mapTools}>
-                {/* ⚠️ Каталог бэхлэгдсэн харагдацад товч ХЭРЭГГҮЙ — дарахад юу ч
-                    болохгүй товч нь эвдэрсэн мэт сэтгэгдэл төрүүлнэ. */}
-                {!catPinned && (
-                  <button
-                    type="button"
-                    aria-pressed={catOpen}
-                    className={`${s.mapBtn} ${catOpen ? s.mapBtnOn : ''}`}
-                    onClick={() => setCatalog((v) => !v)}
-                    title="Давхаргын жагсаалт"
-                  >
-                    <Icon name="layers" size={15} />
-                    Давхарга
-                  </button>
-                )}
+                {/* «Давхарга» — БҮХ харагдацад (plan-д ч) каталогийг нуух/харуулна */}
+                <button
+                  type="button"
+                  aria-pressed={catOpen}
+                  className={`${s.mapBtn} ${catOpen ? s.mapBtnOn : ''}`}
+                  onClick={() => setCatalog((v) => !v)}
+                  title="Давхаргын жагсаалт"
+                >
+                  <Icon name="layers" size={15} />
+                  Давхарга
+                </button>
 
                 <div className={s.mapDims} role="group" aria-label="Газрын зургийн харагдац">
                   {(['2d', '3d', 'bim'] as Dim[]).map((d) => (
@@ -409,7 +403,7 @@ function PortalContent() {
                 selected={layer}
                 onSelect={setLayer}
                 onClose={() => setCatalog(false)}
-                pinned={catPinned}
+                pinned={false}
                 resizing={catSize.dragging}
                 onResizeStart={catSize.onPointerDown}
                 onResizeReset={catSize.onDoubleClick}
@@ -445,7 +439,7 @@ function PortalContent() {
                 * үлдэнэ — тэр харагдацын зохион байгуулалтыг зөвшөөрөлгүй
                 * өөрчлөхгүй.
                 */}
-              {catPinned && <SummaryBar zone={zone} />}
+              {planPanel && <SummaryBar zone={zone} />}
 
               <div className={s.panelBody}>
                 <ViewPanel
@@ -465,7 +459,7 @@ function PortalContent() {
             </aside>
 
             {/* «Барилгын хяналт» — нэгтгэсэн үзүүлэлт хуучнаараа доод хүрээнд */}
-            {!catPinned && (
+            {!planPanel && (
               <footer className={s.dashFoot} aria-label="Нэгтгэсэн үзүүлэлт">
                 <SummaryBar zone={zone} />
               </footer>
