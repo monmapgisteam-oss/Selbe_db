@@ -1932,10 +1932,11 @@ export function toggleLayer(prev: string[], id: string): string[] {
  *
  * ⚠️ MapCanvas эдгээрийг каталогийн `visible` жагсаалтаас ҮЛ ХАМААРАН хүчээр
  * асаана — ямар ч харагдац/сэдэвт нэг ижил өнгөөр гарч, каталогоос унтраагдахгүй.
- * `khil1` = Төлөвлөлтийн талбай (Tuluvlult_talbai), `khil2` = Сэлбэ-2 хил.
+ * Зөвхөн `khil1` = Сэлбэ 1 хил (Tuluvlult_talbai). `khil2` = Сэлбэ 2 хил нь
+ * ЭНД ОРОХГҮЙ — каталогоор л асаадаг (анхдагчаар унтраалттай).
  * Зөвхөн зураас (fill:0) тул дороо байгаа давхаргуудыг далдлахгүй.
  */
-export const ALWAYS_ON_IDS = ["khil1", "khil2"] as const;
+export const ALWAYS_ON_IDS = ["khil1"] as const;
 
 /** Ихэнх давхарга ЕТ-ээс; хяналтынх нь өөрийн бүтэн хаягтай */
 export const layerUrl = (l: LayerDef) => l.url ?? `${ET}/${l.n}`;
