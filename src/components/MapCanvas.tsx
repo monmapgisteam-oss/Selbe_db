@@ -28,7 +28,7 @@ import esriConfig from '@arcgis/core/config';
 import '@arcgis/core/assets/esri/themes/light/main.css';
 
 import {
-  LAYERS, LAYER_BY_ID, layerUrl, drawOrder, DASH_PATTERN,
+  LAYERS, LAYER_BY_ID, layerUrl, drawOrder, DASH_PATTERN, ALWAYS_ON_IDS, REFERENCE_IDS,
   HOME, BASEMAP_URL, IMAGERY, SCENE, BIM, USAN_SAN, ELEVATION_URL, ZONE_LAYER, zoneWhere,
   ZONE_FIELD, ZONE_NONE, ZONE_TYPE_EMPTY_HUE, OID, BUILDING, SURVEY, PARCEL_LEFT, buildingKey,
   type LayerDef,
@@ -111,6 +111,16 @@ const c = (hex: string, a = 1): number[] => [...rgb(hex), a];
 const cim = (hex: string, a = 1): number[] => [...rgb(hex), Math.round(a * 100)];
 
 /**
+ * ⚠️ БҮХ давхаргын outline (хүрээ/зураас)-ыг нэг дор нарийсгах КОЭФФИЦИЕНТ.
+ * fill/fillWeb/line/roadLine/dot — БҮХ симбол үүсгэгч энэ утгаар өргөнөө үржүүлнэ
+ * тул давхарга бүрийн (энгийн, web-палитр, зам, paint/breaks) хүрээ жигд нарийсна.
+ * 1 = хэвийн; <1 = нарийн. Нэг лүгээр бүх зурагт үйлчилнэ.
+ */
+const OUTLINE_SCALE = 0.55;
+/** Outline өргөнийг нэг мөр нарийсгана */
+const ow = (w: number) => w * OUTLINE_SCALE;
+
+/**
  * Полигон — нам дүүргэлт + нимгэн ТОД хүрээ.
  *
  * ⚠️ Дүүргэлтийн утга нь ортофото АНХНААСАА суурь болсон учир шийдвэрлэх ач
@@ -119,7 +129,7 @@ const cim = (hex: string, a = 1): number[] => [...rgb(hex), Math.round(a * 100)]
  * Хэмжсэн (CIE Lab ΔE): a=0.16 → 12–18 (сул) · a=0.30 → 22–34 (тод).
  */
 const fill = (hex: string, a = 0.3, w = 0.9) =>
-  ({ type: 'simple-fill', color: c(hex, a), outline: { color: c(hex, 1), width: w } }) as const;
+  ({ type: 'simple-fill', color: c(hex, a), outline: { color: c(hex, 1), width: ow(w) } }) as const;
 
 /**
  * Шугам — нимгэн зураас + нарийн бараан хүрээлэл (casing).
@@ -157,7 +167,7 @@ const line = (hex: string, w = 1.4, dash: NonNullable<LayerDef['dash']> = 'solid
          * харьцаагаар (×1.8) тул 1px зураас 1.8px хүрээлэлтэй: дэвсгэрээс
          * тасалж өгөх нь хангалттай, харин зузаан нь мэдэгдэхгүй.
          */
-        symbolLayers: [stroke(w, cim(hex, alpha)), stroke(w * 1.8, cim('#0b1220', 0.4))],
+        symbolLayers: [stroke(ow(w), cim(hex, alpha)), stroke(ow(w) * 1.8, cim('#0b1220', 0.4))],
       },
     },
   } as const;
@@ -177,10 +187,10 @@ const roadLine = (base: string, baseW: number, dashHex: string, dashW: number, d
         symbolLayers: [
           {
             type: 'CIMSolidStroke', enable: true, capStyle: 'Butt', joinStyle: 'Round',
-            width: dashW, color: cim(dashHex, 1),
+            width: ow(dashW), color: cim(dashHex, 1),
             effects: [{ type: 'CIMGeometricEffectDashes', dashTemplate: dashPattern, lineDashEnding: 'NoConstraint' }],
           },
-          { type: 'CIMSolidStroke', enable: true, capStyle: 'Butt', joinStyle: 'Round', width: baseW, color: cim(base, 1) },
+          { type: 'CIMSolidStroke', enable: true, capStyle: 'Butt', joinStyle: 'Round', width: ow(baseW), color: cim(base, 1) },
         ],
       },
     },
@@ -191,7 +201,7 @@ const dot = (hex: string, size = 9, marker: NonNullable<LayerDef['marker']> = 'c
   ({
     type: 'simple-marker', style: marker, size,
     color: c(hex, 0.95),
-    outline: { color: [255, 255, 255, 0.9], width: 1.4 },
+    outline: { color: [255, 255, 255, 0.9], width: ow(1.4) },
   }) as const;
 
 /**
@@ -345,8 +355,8 @@ const WEB_DYNAMIC: Record<string, { a: WebSym; b: WebSym }> = {
 };
 
 /** Тусад нь outline өнгө/тунгалагтай дүүргэлт */
-const fillWeb = (hex: string, a: number, outline: string, ow: number, w: number) =>
-  ({ type: 'simple-fill', color: c(hex, a), outline: { color: c(outline, ow), width: w } }) as const;
+const fillWeb = (hex: string, a: number, outline: string, oa: number, w: number) =>
+  ({ type: 'simple-fill', color: c(hex, a), outline: { color: c(outline, oa), width: ow(w) } }) as const;
 
 /** Web-симбол — давхаргын geom-оор (line/fill), эх зургийн rgba ба өргөнөөр */
 const webSymbol = (d: LayerDef, s: WebSym, color: string) =>
@@ -410,14 +420,14 @@ const buildingProgressRenderer = (prog: BlockProgressMap): RendererProp => ({
   valueExpression:
     `Upper(Replace(Replace(Replace($feature.${BUILDING.fields.bagts}, " ", ""), ".", ""), "-", ""))` +
     ` + "|" + Split(Trim($feature.${BUILDING.fields.block}), " ")[0]`,
-  defaultSymbol: { type: 'simple-fill', color: c('#94a3b8', 0.22), outline: { color: c('#94a3b8', 0.9), width: 0.8 } },
+  defaultSymbol: { type: 'simple-fill', color: c('#94a3b8', 0.22), outline: { color: c('#94a3b8', 0.9), width: ow(0.8) } },
   defaultLabel: 'Мэдээлэлгүй',
   uniqueValueInfos: [...prog.entries()].map(([key, p]) => {
     const [r, g, b] = progColor(p.overall);
     return {
       value: key,
       label: `${key.split('|')[1]} · ${Math.round(p.overall)}%`,
-      symbol: { type: 'simple-fill', color: [r, g, b, 0.62], outline: { color: [r, g, b, 1], width: 1 } },
+      symbol: { type: 'simple-fill', color: [r, g, b, 0.62], outline: { color: [r, g, b, 1], width: ow(1) } },
     };
   }),
 } as unknown as RendererProp);
@@ -471,6 +481,8 @@ const PASSIVE = new Set<string>([
   IMAGERY_ID,
   ...SCENE.layers.map((l) => `scene:${l.key}`),
   ...BIM.layers.map((l) => l.key),
+  // Лавлагааны хилүүд — дарж сонгогдохгүй, доорх объектыг халхлахгүй.
+  ...REFERENCE_IDS,
 ]);
 
 /**
@@ -1140,6 +1152,8 @@ export function MapCanvas({
       //    орохгүй тул энэ шалгуургүй бол доорх мөр түүнийг нууж, зурсан полигон
       //    алга болно. Sketch widget өөрөө агуулгыг удирдана — үргэлж ил.
       if (l.id === 'sketch') { l.visible = true; return; }
+      // Лавлагааны хилүүд — каталогоос үл хамааран БҮХ зурагт үргэлж ил.
+      if ((ALWAYS_ON_IDS as readonly string[]).includes(String(l.id))) { l.visible = true; return; }
       if (l.id.startsWith('scene:')) { l.visible = dim === '3d'; return; }
       if (l.id.startsWith('bim:')) { l.visible = dim === 'bim'; return; }
       // ⚠️ ЗӨВХӨН 3D-гийн давхарга нь каталогийн `visible` жагсаалтад ХЭЗЭЭ Ч
