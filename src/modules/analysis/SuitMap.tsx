@@ -42,12 +42,17 @@ const STATUS_COLORS: Record<string, [number, number, number]> = {
   'Одоо байгаа': [134, 139, 150],
 };
 
+/** ⚠️ Бүх давхаргын хүрээг нарийсгах КОЭФФИЦИЕНТ — үндсэн зургийн
+ *  `MapCanvas.OUTLINE_SCALE`-тай ижил байлгана (project даяар нэг харагдац). */
+const OUTLINE_SCALE = 0.55;
+const ow = (w: number) => w * OUTLINE_SCALE;
+
 /** Дүүргэлт 70% тунгалаг — доорх бүсийн оноо харагдана. Хүрээ нь alpha ×3. */
 const BLD_ALPHA = 0.3;
 const BLD_ALPHA_DIM = 0.15;
 const bldFill = (c: number[], a = BLD_ALPHA) => ({
   type: 'simple-fill', color: [...c, a],
-  outline: { color: [...c, Math.min(1, a * 3)], width: 0.4 },
+  outline: { color: [...c, Math.min(1, a * 3)], width: ow(0.4) },
 });
 
 const ZONE_ALPHA = 0.5;
@@ -79,19 +84,19 @@ function rendererFor(d: MapLayerDef) {
   const c = d.color;
   switch (d.kind) {
     case 'line':
-      return { type: 'simple', symbol: { type: 'simple-line', color: [...c, 0.95], width: 0.75 } };
+      return { type: 'simple', symbol: { type: 'simple-line', color: [...c, 0.95], width: ow(0.75) } };
     case 'point':
       return { type: 'simple', symbol: { type: 'simple-marker', style: 'circle', size: 7,
-        color: [...c, 0.95], outline: { color: [15, 20, 27, 0.9], width: 1.2 } } };
+        color: [...c, 0.95], outline: { color: [15, 20, 27, 0.9], width: ow(1.2) } } };
     case 'point-lg':
       return { type: 'simple', symbol: { type: 'simple-marker', style: 'diamond', size: 12,
-        color: [...c, 0.95], outline: { color: [15, 20, 27, 0.9], width: 1.4 } } };
+        color: [...c, 0.95], outline: { color: [15, 20, 27, 0.9], width: ow(1.4) } } };
     case 'hatch':
       return { type: 'simple', symbol: { type: 'simple-fill', style: 'diagonal-cross',
-        color: [...c, 0.55], outline: { color: [...c, 0.75], width: 0.8 } } };
+        color: [...c, 0.55], outline: { color: [...c, 0.75], width: ow(0.8) } } };
     default:
       return { type: 'simple', symbol: { type: 'simple-fill', color: [...c, 0.35],
-        outline: { color: [...c, 0.9], width: 0.6 } } };
+        outline: { color: [...c, 0.9], width: ow(0.6) } } };
   }
 }
 
@@ -491,7 +496,7 @@ export function SuitMap({
           color: hexToRgba(col, alpha),
           outline: {
             color: isSel ? SELECT_COLOR : hexToRgba(col, Math.min(1, alpha * 1.35)),
-            width: isSel ? 1.6 : 0.6,
+            width: isSel ? 1.6 : ow(0.6),
           },
         } as unknown as SymbolProp,
       }));
