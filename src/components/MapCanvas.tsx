@@ -28,7 +28,7 @@ import esriConfig from '@arcgis/core/config';
 import '@arcgis/core/assets/esri/themes/light/main.css';
 
 import {
-  LAYERS, LAYER_BY_ID, layerUrl, drawOrder, DASH_PATTERN, ALWAYS_ON_IDS,
+  LAYERS, LAYER_BY_ID, layerUrl, drawOrder, DASH_PATTERN, ALWAYS_ON_IDS, REFERENCE_IDS,
   HOME, BASEMAP_URL, IMAGERY, SCENE, BIM, USAN_SAN, ELEVATION_URL, ZONE_LAYER, zoneWhere,
   ZONE_FIELD, ZONE_NONE, ZONE_TYPE_EMPTY_HUE, OID, BUILDING, SURVEY, PARCEL_LEFT, buildingKey,
   type LayerDef,
@@ -481,6 +481,8 @@ const PASSIVE = new Set<string>([
   IMAGERY_ID,
   ...SCENE.layers.map((l) => `scene:${l.key}`),
   ...BIM.layers.map((l) => l.key),
+  // Лавлагааны хилүүд — дарж сонгогдохгүй, доорх объектыг халхлахгүй.
+  ...REFERENCE_IDS,
 ]);
 
 /**
