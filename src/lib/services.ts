@@ -2549,11 +2549,11 @@ export const VIEWS: {
   {
     key: "gazar",
     title: "Газар чөлөөлөлт",
-    desc: "Полигон дотор шүүсэн барилга ба кадастр",
+    desc: "Полигон дотор шүүсэн чөлөөлөлтийн явц, барилга, кадастр",
     icon: "frame",
     hue: "#16a34a",
-    layers: ["gazar:building", "gazar:parcel", "gazar:bagts", "gazar:khil"],
-    initial: ["gazar:building", "gazar:parcel", "gazar:bagts", "gazar:khil"],
+    layers: ["land:left", "gazar:building", "gazar:parcel", "gazar:bagts", "gazar:khil"],
+    initial: ["land:left", "gazar:building", "gazar:parcel", "gazar:bagts", "gazar:khil"],
     standalone: true,
   },
   /**
