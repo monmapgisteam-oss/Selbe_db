@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from "react";
-import { WBS, type WbsRow } from "./wbs";
+import { WBS, type WbsRow } from "./wbs.data";
 import { constructionByBagts } from "./ags";
 import st from "./sheet.module.css";
 

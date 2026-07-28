@@ -1,77 +1,130 @@
-/* «Газар чөлөөлөлт» — зураг (зүүн) + дашбоард самбар (баруун) */
+/* «Газар чөлөөлөлт» — газрын зураг ТӨВД, 2 талд нь багана:
+   ЗҮҮН = Чөлөөлөлт (үлдсэн нэгж талбар), БАРУУН = Барилга + Кадастр (нэгтгэсэн). */
 
-.shell {
-  display: flex;
-  gap: 12px;
+.frame {
+  display: grid;
+  grid-template-areas: "left map right";
+  grid-template-columns: minmax(268px, 330px) minmax(0, 1fr) minmax(268px, 344px);
+  grid-template-rows: minmax(0, 1fr);
+  gap: 10px;
   height: 100%;
   min-height: 0;
-  /* ⚠️ Толгойн (navbar) доор зай — эс бөгөөс дээд KPI индикатор navbar-т
-     наалдана. Ерөнхий дашбоардын `overview.module.css .shell`-тэй ижил 12px. */
   padding: 12px;
   background: var(--bg);
+  overflow: hidden;
 }
 
-/* ⚠️ Гол багана — зураг ба KPI. `flex:1` заавал: эс бөгөөс агуулгынхаа өргөнд
-   (нэг KPI хавтангийн ~160px) хумигдаж, KPI босоо давхарлаж, зураг жижгэрч,
-   баруун тал хоосон үлддэг. */
-.center {
-  flex: 1 1 auto;
-  min-width: 0;
+/* 2 талын багана — доторх панелууд босоо өрөгдөж, шаардвал багана дотроо гүйнэ */
+.left,
+.right {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+}
+.left { grid-area: left; }
+.right { grid-area: right; }
+
+/* ── Газрын зураг (төв) ──
+   ⚠️ `display:flex` ЗААВАЛ: MapCanvas-ийн `.wrap` нь `flex:1` тул эцэг нь flex
+   байх ёстой. Эс бөгөөс зураг 0 өндөртэй хумигдаж ХАР харагдана. */
+.map {
+  grid-area: map;
+  position: relative;
+  display: flex;
+  min-height: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  overflow: hidden;
 }
 
-/* Баруун талын дашбоард самбар — тогтмол өргөн, доош гүйнэ */
-.side {
+/* ── Панель ── */
+.panel {
   flex: none;
-  width: 384px;
-  max-width: 42vw;
   display: flex;
   flex-direction: column;
   gap: 11px;
-  padding: 1px;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+}
+/* Чөлөөлөлт — модулийн ногоон ирмэгтэй, онцолсон. Зүүн баганыг бүтэн дүүргэнэ. */
+.panelPrimary {
+  flex: 1;
+  background: color-mix(in srgb, var(--hue) 4%, var(--surface));
+  box-shadow: inset 3px 0 0 var(--hue);
+}
+.panelHd {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  flex: none;
+}
+.panelTitle { font-size: 0.82rem; font-weight: 700; letter-spacing: 0.01em; color: var(--ink); }
+.panelPrimary .panelTitle { color: var(--hue); }
+.panelNote { font-size: 0.7rem; color: var(--ink-3); white-space: nowrap; }
+
+.panelBody {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   min-height: 0;
-  overflow-y: auto;
+}
+/* Гүйцэтгэлийн Ring — панелийн ГОЛ дүрслэл: том, төвд, өөрийн картан дэвсгэртэй */
+.ringBox {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+}
+/* ⚠️ flex БИШ — flex-column нь «29 / 224 талбар»-ын текст хэсгүүдийг тус тусад
+   нь мөр болгож эвддэг. Энгийн block + text-align, дэд мөр нь өөрөө block. */
+.ringNote {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--ink-2);
+  text-align: center;
+  line-height: 1.5;
+}
+.ringNote b { font-size: 0.92rem; font-weight: 700; color: #16a34a; }
+.ringSub {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-3);
 }
 
-@media (max-width: 960px) {
-  .side { width: 320px; }
+/* Дэд гарчиг (диаграмын дээр) */
+.subHead {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-3);
+  margin: 2px 0 0;
 }
 
-/* Мобайл/таблет — зураг ба самбар БОСОО өрөгдөнө (row болбол зураг хэт нарийсна).
-   Зураг тогтмол өндөртэй болж, самбар доор нь бүтэн өргөнөөр гүйнэ. */
-@media (max-width: 720px) {
-  .shell {
-    flex-direction: column;
-    height: auto;
-    min-height: 100%;
-    overflow-y: auto;
-    padding: 10px;
-  }
-  .center { flex: none; }
-  .center .hero, .center [class*="hero"] { min-height: 52vh; }
-  .side {
-    width: auto;
-    max-width: none;
-    flex: none;
-    overflow-y: visible;
-  }
-}
-
-/* Дээд удирдлагын зурвас — харагдац солих + полигон зурах товч ЗЭРЭГЦЭЭ,
-   зургийн дээд төвд. */
+/* ── Дээд удирдлагын зурвас — 2D/3D/BIM + полигон товч (зургийн дээд төвд) ── */
 .topbar {
   position: absolute;
-  top: 12px;
+  top: 10px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 6;
   display: flex;
   gap: 8px;
   align-items: center;
-  max-width: calc(100% - 24px);
+  max-width: calc(100% - 20px);
 }
-
-/* Харагдац солих pill (2D/3D/BIM) — `overview.module.css .mapDims`-ийн харагдац,
-   гэхдээ байрлалгүй (topbar дотор зэрэгцэнэ). */
 .dims {
   display: flex;
   gap: 2px;
@@ -82,22 +135,6 @@
   box-shadow: var(--shadow-lg);
   backdrop-filter: blur(10px);
 }
-
-.hint {
-  align-self: center;
-  padding: 5px 10px;
-  border-radius: 8px;
-  font-size: 0.72rem;
-  font-weight: 600;
-  line-height: 1.3;
-  color: var(--ink-2);
-  background: color-mix(in srgb, var(--surface) 92%, transparent);
-  border: 1px solid var(--line);
-  box-shadow: var(--shadow-sm);
-  backdrop-filter: blur(6px);
-}
-
-/* «Полигон зурах» — дүрс (дэвсгэртэй чип) + нэр */
 .drawBtn {
   flex: none;
   display: inline-flex;
@@ -117,8 +154,6 @@
 .drawBtn:hover { border-color: var(--hue); }
 .drawBtn:active { transform: scale(0.98); }
 .drawBtn:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: var(--shadow-sm); }
-
-/* Дүрсний дэвсгэр чип — модулийн ногоон өнгөтэй */
 .drawIcon {
   display: grid;
   place-items: center;
@@ -129,7 +164,6 @@
   color: #fff;
   background: var(--hue);
 }
-
 .clearBtn {
   flex: none;
   padding: 6px 13px;
@@ -146,21 +180,26 @@
 .clearBtn:hover { color: var(--ink); border-color: var(--ink-3); }
 .clearBtn:active { transform: scale(0.97); }
 
-/* Хамрах хүрээний тэмдэг — БҮХ талбай vs СОНГОСОН талбай */
+/* ── Хамрах хүрээ — зургийн доод зүүн буланд compact overlay ── */
 .scope {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  z-index: 5;
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 8px;
-  padding: 8px 12px;
+  padding: 6px 11px;
   border: 1px solid var(--line);
   border-left: 3px solid var(--ink-3);
   border-radius: var(--r-sm);
-  background: var(--surface-2);
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
+  backdrop-filter: blur(8px);
+  box-shadow: var(--shadow-sm);
 }
-/* Полигоноор шүүсэн үед модулийн ногоон өнгөөр онцолно */
 .scopeSel {
   border-left-color: var(--hue);
-  background: color-mix(in srgb, var(--hue) 8%, var(--surface));
+  background: color-mix(in srgb, var(--hue) 10%, var(--surface));
 }
 .scopeDot {
   width: 8px;
@@ -168,8 +207,24 @@
   flex: none;
   border-radius: 99px;
   background: var(--ink-3);
-  transform: translateY(1px);
 }
 .scopeSel .scopeDot { background: var(--hue); }
-.scopeText { font-size: 0.82rem; font-weight: 700; color: var(--ink); }
-.scopeHint { margin-left: auto; font-size: 0.72rem; color: var(--ink-3); }
+.scopeText { font-size: 0.76rem; font-weight: 700; color: var(--ink); }
+.scopeHint { font-size: 0.68rem; color: var(--ink-3); }
+
+/* ── Responsive — нарийн дэлгэцэд frame нурж БОСОО өрөгдөж, гүйнэ ── */
+@media (max-width: 960px) {
+  .frame {
+    grid-template-areas:
+      "map"
+      "left"
+      "right";
+    grid-template-columns: 1fr;
+    grid-template-rows: 52vh auto auto;
+    height: auto;
+    min-height: 100%;
+    overflow-y: auto;
+  }
+  .map { min-height: 52vh; }
+  .left, .right { overflow-y: visible; }
+}
