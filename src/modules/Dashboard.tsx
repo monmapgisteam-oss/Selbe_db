@@ -744,12 +744,17 @@ function railStat(k: SecKey, d: DashData, suit: Async<SuitSummary>): {
       };
     case 'bagts': {
       const bl = b ? b.reduce((a, x) => a + x.blocks, 0) : 0;
+      // ⚠️ Хуучин тооцоо — ХЭВЭЭР үлдээв (цаашид сэргээхэд бэлэн).
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const avg = b && bl ? b.reduce((a, x) => a + (x.progress ?? 0) * x.blocks, 0) / bl : null;
       const budget = b ? b.reduce((a, x) => a + x.budget, 0) : null;
+      // ⚠️ ТҮР ХАТУУ УТГА: «Орон сууцны 7 багц»-ийн гүйцэтгэлийг түр 19.2%-д тогтоов
+      //    (`avg`-ийн оронд). Бодит тооцоонд эргэн шилжихэд дээрх `avg`-ыг ашиглана.
+      const HARDCODED_BAGTS = 19.2;
       return {
-        value: avg == null ? '…' : pct(avg, 2),
+        value: b == null ? '…' : pct(HARDCODED_BAGTS, 1),
         note: budget == null ? '…' : `7 багц · ${bn(budget)} тэрбум ₮`,
-        pct: avg ?? undefined, tone: o.active,
+        pct: HARDCODED_BAGTS, tone: o.active,
       };
     }
     case 'land': {
