@@ -868,7 +868,7 @@ function HeadKpi({ d }: { d: DashData }) {
       lead: true,
       bar: OVERALL.reported,
     },
-    { v: '≈2.4', unit: 'их наяд ₮', pinned: true, label: 'Нийт хөрөнгө оруулалт' },
+    { v: '2.339', unit: 'их наяд ₮', pinned: true, label: 'Нийт хөрөнгө оруулалт' },
   ];
 
   return (
