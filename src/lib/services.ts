@@ -440,22 +440,10 @@ export const GAZAR_PARCEL = {
   },
 } as const;
 
-/**
- * ХИЛИЙН давхаргууд — зөвхөн КОНТЕКСТ болгож зурна (дүүргэлтгүй, зөвхөн зураас).
- * Шүүлт/дашбоардад оролцохгүй, полигоны бүдгэрүүлэлтэд ч ХАМРАГДАХГҮЙ —
- * лавлагааны хил тул үргэлж бүтэн харагдана.
- */
-/** Төлөвлөлтийн талбайн хил (`Tuluvlult_talbai`) — өөр FeatureServer (`HJ`) */
-export const GAZAR_BAGTS = {
-  url: `${HJ}/Tuluvlult_talbai/FeatureServer/2`,
-  oid: "OBJECTID",
-} as const;
-
-/** Сэлбэ-2 бүсчлэлийн хил (`Сэлбэ_2_khil`) */
-export const GAZAR_KHIL = {
-  url: `${GAZAR_FS}/${encodeURIComponent("Сэлбэ_2_khil")}/FeatureServer/0`,
-  oid: "FID",
-} as const;
+/* ⚠️ Хилийн 2 давхарга (Tuluvlult_talbai, Сэлбэ_2_khil) нь `khil1`/`khil2`
+   нэрээр LAYERS-д бүртгэлтэй бөгөөд `ALWAYS_ON_IDS`-ээр БҮХ зурагт үргэлж
+   харагдана. Урьд нь эндээс `GAZAR_BAGTS`/`GAZAR_KHIL` гэсэн ДАВХАР тодорхойлолт
+   байсныг арилгав — нэг хил ХАА Ч нэг эх сурвалж, нэг өнгөтэй байх ёстой. */
 
 /** Барилгын явц · 113 блок */
 export const BUILDING = {
@@ -1333,33 +1321,9 @@ export const LAYERS: LayerDef[] = [
       { field: GAZAR_BUILDING.fields.material, label: "Материал" },
     ],
   },
-  /* Хилийн давхаргууд — зөвхөн зураас (fill:0), лавлагааны контекст */
-  {
-    id: "gazar:bagts",
-    n: 0,
-    url: GAZAR_BAGTS.url,
-    oid: GAZAR_BAGTS.oid,
-    title: "Төлөвлөлтийн талбайн хил",
-    topic: "gazar",
-    geom: "area",
-    hue: "#7c3aed",
-    fill: 0,
-    width: 1.6,
-    noZone: true,
-  },
-  {
-    id: "gazar:khil",
-    n: 0,
-    url: GAZAR_KHIL.url,
-    oid: GAZAR_KHIL.oid,
-    title: "Сэлбэ-2 бүсчлэлийн хил",
-    topic: "gazar",
-    geom: "area",
-    hue: "#dc2626",
-    fill: 0,
-    width: 1.2,
-    noZone: true,
-  },
+  /* ⚠️ Хилийн давхаргууд (`gazar:khil`, `gazar:bagts`) ЭНДЭЭС ХАСАГДСАН —
+     `khil1`/`khil2`-ын давхар бүртгэл байсан тул нэгтгэв. Хилүүд одоо
+     `ALWAYS_ON_IDS`-ээр БҮХ зурагт үргэлж, нэг ижил өнгөөр харагдана. */
 
   /* ─────────── Инженер · дулаан ─────────── */
   {
@@ -1898,9 +1862,15 @@ export const LAYERS: LayerDef[] = [
     fill: 0.6,
     width: 0.7,
   },
-  /* ── Хил / төлөвлөлтийн талбай (ӨӨР үйлчилгээ) — «Бусад мэдээлэл» бүлэгт ──
-     ⚠️ ZONE_ID талбаргүй тул `noZone` — бүсээр шүүхгүй (бүх бүсийг хамарсан
-     хязгаар). */
+  /* ── Хил / төлөвлөлтийн талбай (ӨӨР үйлчилгээ) ──
+     ⚠️ БҮХ газрын зураг дээр ҮРГЭЛЖ харагдана (`ALWAYS_ON_IDS` → MapCanvas
+     хүчээр асаана) — каталогоос унтраах боломжгүй тул бүлэгт ОРУУЛААГҮЙ.
+     Урьд нь Gazar харагдацад `gazar:khil`/`gazar:bagts` нэрээр ӨӨР өнгөтэй
+     ДАВХАР бүртгэлтэй байсныг нэгтгэв — нэг хил ХАА Ч нэг өнгөтэй байх ёстой.
+     Өнгө нь бусад бүх давхаргын hue-тай ДАВХЦАХГҮЙ байхаар сонгосон
+     (магента ба неон шар-ногоон — өөр хаана ч хэрэглэгддэггүй).
+     ⚠️ ZONE_ID талбаргүй тул `noZone`; fill:0 — зөвхөн хүрээ, эс бөгөөс байнгын
+     дүүргэлт бүх зургийг будна. */
   {
     id: "khil2",
     n: 0,
@@ -1911,9 +1881,9 @@ export const LAYERS: LayerDef[] = [
     title: "Сэлбэ 2 хил",
     topic: "plan",
     geom: "area",
-    hue: "#f43f5e",
-    fill: 0.05,
-    width: 1.6,
+    hue: "#ff00ff",
+    fill: 0,
+    width: 1.8,
     noZone: true,
   },
   {
@@ -1923,9 +1893,9 @@ export const LAYERS: LayerDef[] = [
     title: "Сэлбэ 1 хил",
     topic: "plan",
     geom: "area",
-    hue: "#22d3ee",
-    fill: 0.1,
-    width: 0.9,
+    hue: "#ccff00",
+    fill: 0,
+    width: 1.8,
     noZone: true,
   },
   ...PKG_LAYERS,
@@ -1956,6 +1926,16 @@ export function toggleLayer(prev: string[], id: string): string[] {
   const topic = LAYER_BY_ID[id]?.topic;
   return [...prev.filter((x) => LAYER_BY_ID[x]?.topic === topic), id];
 }
+
+/**
+ * БҮХ газрын зурагт ҮРГЭЛЖ харагдах давхаргууд (лавлагааны хилүүд).
+ *
+ * ⚠️ MapCanvas эдгээрийг каталогийн `visible` жагсаалтаас ҮЛ ХАМААРАН хүчээр
+ * асаана — ямар ч харагдац/сэдэвт нэг ижил өнгөөр гарч, каталогоос унтраагдахгүй.
+ * `khil1` = Төлөвлөлтийн талбай (Tuluvlult_talbai), `khil2` = Сэлбэ-2 хил.
+ * Зөвхөн зураас (fill:0) тул дороо байгаа давхаргуудыг далдлахгүй.
+ */
+export const ALWAYS_ON_IDS = ["khil1", "khil2"] as const;
 
 /** Ихэнх давхарга ЕТ-ээс; хяналтынх нь өөрийн бүтэн хаягтай */
 export const layerUrl = (l: LayerDef) => l.url ?? `${ET}/${l.n}`;
@@ -2552,8 +2532,8 @@ export const VIEWS: {
     desc: "Полигон дотор шүүсэн чөлөөлөлтийн явц, барилга, кадастр",
     icon: "frame",
     hue: "#16a34a",
-    layers: ["land:left", "gazar:building", "gazar:parcel", "gazar:bagts", "gazar:khil"],
-    initial: ["land:left", "gazar:building", "gazar:parcel", "gazar:bagts", "gazar:khil"],
+    layers: ["land:left", "gazar:building", "gazar:parcel"],
+    initial: ["land:left", "gazar:building", "gazar:parcel"],
     standalone: true,
   },
   /**
