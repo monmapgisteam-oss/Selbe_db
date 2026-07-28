@@ -15,6 +15,7 @@ import {
   type AnalysisData,
 } from '@/lib/analysis/data';
 import { loadCosts, type Costs } from '@/lib/analysis/costs';
+import { ZONE_TYPES, ZONE_TYPE_EMPTY_HUE } from '@/lib/services';
 import {
   urbanScore, scoreColor, scoreLabel, passesNorm,
 } from '@/lib/analysis/score';
@@ -85,6 +86,11 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
   const [parking, setParking] = useState<ParkingOpt>({ ...PARKING });
   const [greenCats] = useState<Set<string>>(() => defaultGreenCats());
   const [selected, setSelected] = useState<string | null>(null);
+  /**
+   * Бүсийн АНГИЛЛЫН шүүлт — унтраасан ангиллууд (`Angilal` → каноник `type`).
+   * Хоосон = бүгд харагдана. Газрын зураг ба эрэмбэд ДИНАМИК үйлчилнэ.
+   */
+  const [catOff, setCatOff] = useState<Set<string>>(() => new Set());
   const [econOpt, setEconOpt] = useState<{ pricePerM2: number | null; perHa: number | null }>({
     pricePerM2: null, perHa: null,
   });
@@ -118,21 +124,42 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
     });
   }, [data, projected, perHa, econOpt.pricePerM2, buildCost, greenCats, parking, indicators]);
 
+  /**
+   * ОНООЛОЛД орох бүсүүд — ногоон байгууламж, одоо байгаа барилгыг ХАСНА.
+   * ⚠️ Газрын зурагт (`rows`) бүх бүс хэвээр (хассан нь саарал), харин эрэмбэ,
+   * диаграм, дундаж, эдийн засаг зэрэг ТООЦОО зөвхөн `scoredRows`-оор явна.
+   */
+  const scoredRows = useMemo(() => rows.filter((r) => !r.excluded), [rows]);
+
+  /** Бүсийн ангиллууд — нэр · тоо · өнгө (ZONE_TYPES дарааллаар). */
+  const zoneCats = useMemo(() => {
+    const cnt = new Map<string, number>();
+    for (const r of rows) cnt.set(r.type, (cnt.get(r.type) ?? 0) + 1);
+    const order = Object.keys(ZONE_TYPES);
+    return [...cnt.keys()]
+      .sort((a, b) => ((order.indexOf(a) + 1) || 99) - ((order.indexOf(b) + 1) || 99))
+      .map((type) => ({ type, count: cnt.get(type) ?? 0, color: ZONE_TYPES[type] ?? ZONE_TYPE_EMPTY_HUE }));
+  }, [rows]);
+
+  /** Эрэмбэд орох бүс — оноолсон бүсээс ангиллын шүүлтээр (динамик). */
+  const rankRows = useMemo(() => scoredRows.filter((r) => !catOff.has(r.type)), [scoredRows, catOff]);
+
   const ind = indicators.find((i) => i.id === activeIndicator) ?? indicators[0];
   const totalW = indicators.reduce((a, i) => a + i.weight, 0) || 1;
 
   /** Барилгын давамгайлах нэгж үнэ — гулсуурын анхны утга */
   const basePrice = useMemo(() => {
-    const area = rows.reduce((a, r) => a + r.gfaSaleM2, 0);
-    const value = rows.reduce((a, r) => a + r.salesValue, 0);
+    const area = scoredRows.reduce((a, r) => a + r.gfaSaleM2, 0);
+    const value = scoredRows.reduce((a, r) => a + r.salesValue, 0);
     return area > 0 ? value / area : 0;
-  }, [rows]);
+  }, [scoredRows]);
 
   const colorOf = useCallback(
     (r: MapRow) => scoreColor(valueOf(r as Row, mode, ind, econShare)),
     [mode, ind, econShare],
   );
-  const shownAll = useCallback(() => true, []);
+  /** Бүс газрын зурагт харагдах эсэх — ангиллын шүүлтээр (унтраасан нь бүдгэрнэ) */
+  const shown = useCallback((r: MapRow) => !catOff.has(r.type), [catOff]);
 
   /* ── Hover панелийн HTML (эх аппын адил мөрөөр) ── */
   const zoneTip = useCallback((r: MapRow) => {
@@ -214,8 +241,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
         <div className={s.brand}>
           <span className={s.brandMark} />
           <div>
-            <h1>Сэлбэ — Suitability Modeler</h1>
-            <p>Хот төлөвлөлтийн үзүүлэлт + Санхүүгийн дүн шинжилгээ</p>
+            <h1>Сэлбэ Хот төлөвлөлтийн үзүүлэлтүүд</h1>
           </div>
         </div>
         <nav className={s.tabs}>
@@ -249,14 +275,14 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
             {mode === 'indicator' && (
               <Card title="Хот төлөвлөлтийн тооцоолол">
                 <CategoryPie
-                  rows={rows}
+                  rows={scoredRows}
                   indicators={indicators}
                   totalW={totalW}
                   filter={catFilter}
                   setFilter={setCatFilter}
                 />
                 <IndicatorPicker
-                  rows={rows}
+                  rows={scoredRows}
                   indicators={indicators}
                   active={activeIndicator}
                   setActive={setActiveIndicator}
@@ -268,20 +294,25 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
 
             {mode === 'econ' && costs && (
               <Card title="Дэд бүтцийн төсөвт өртөг">
-                <EconSummary rows={rows} costs={costs} perHa={perHa} buildCost={buildCost} />
+                <EconSummary rows={scoredRows} costs={costs} perHa={perHa} buildCost={buildCost} />
               </Card>
             )}
+
+            {/* Бүсийн ангилал — Angilal-аар шүүх (газрын зураг + эрэмбэ динамик) */}
+            <Card id="zoneCat" title="Бүсийн ангилал" collapsible>
+              <ZoneCatFilter cats={zoneCats} off={catOff} setOff={setCatOff} />
+            </Card>
 
             <Card
               title={mode === 'econ' ? 'Бүсийн эрэмбэ «Ашигт байдал»'
                 : mode === 'indicator' ? `Бүсийн эрэмбэ «${ind.short}»`
                   : mode === 'blend' ? 'Бүсийн эрэмбэ «Нийлмэл»'
                     : 'Бүсийн эрэмбэ'}
-              pill={`${rows.length} бүс`}
+              pill={`${rankRows.length} бүс`}
               grow
             >
               <Ranking
-                rows={rows}
+                rows={rankRows}
                 mode={mode}
                 ind={ind}
                 econShare={econShare}
@@ -297,7 +328,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
               dim={dim}
               rows={rows}
               colorOf={colorOf}
-              shown={shownAll}
+              shown={shown}
               selected={selected}
               onSelect={setSelected}
               layerOn={layerOn}
@@ -368,7 +399,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
                 эдийн засгийн нарийн тохиргоо нь тухайн табыг сонгоход нэмэгдэнэ. */}
             {mode === 'blend' && (
               <BlendCard
-                rows={rows}
+                rows={scoredRows}
                 econShare={econShare}
                 setEconShare={setEconShare}
                 onPick={setMode}
@@ -402,7 +433,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
 
             {mode === 'econ' && costs && (
               <EconTune
-                rows={rows}
+                rows={scoredRows}
                 costs={costs}
                 basePrice={basePrice}
                 econOpt={econOpt}
@@ -416,7 +447,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
 
             {(mode === 'urban' || mode === 'indicator') && (
               <Card id="parking" title="Зогсоолын хэрэгцээ" collapsible>
-                <Parking rows={rows} parking={parking} setParking={setParking} indicators={indicators} />
+                <Parking rows={scoredRows} parking={parking} setParking={setParking} indicators={indicators} />
               </Card>
             )}
           </>
@@ -424,7 +455,64 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
       />
 
       {/* Доод хүрээ — оноон түвшний тархалт (газрын зургийг тойрсон бүтэц) */}
-      <SuitFooter rows={rows} econShare={econShare} />
+      <SuitFooter rows={scoredRows} econShare={econShare} />
+    </div>
+  );
+}
+
+/* ══════════════════ Бүсийн ангиллын шүүлт ══════════════════ */
+
+/**
+ * `Angilal` (каноник `type`)-аар бүс шүүх. Унтраасан ангилал газрын зурагт
+ * бүдгэрч, эрэмбээс хасагдана. Хассан ангилал (ногоон/одоо байгаа) ч энд гарна —
+ * тэдгээрийг унтраавал газрын зургаас далдлана.
+ */
+function ZoneCatFilter({ cats, off, setOff }: {
+  cats: { type: string; count: number; color: string }[];
+  off: Set<string>;
+  setOff: (s: Set<string>) => void;
+}) {
+  const toggle = (type: string) => {
+    const n = new Set(off);
+    if (n.has(type)) n.delete(type); else n.add(type);
+    setOff(n);
+  };
+  const allOn = off.size === 0;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
+        <span className={`${s.muted} ${s.xsmall}`}>{cats.length} ангилал</span>
+        <button
+          type="button"
+          className={s.mini}
+          onClick={() => setOff(allOn ? new Set(cats.map((c) => c.type)) : new Set())}
+        >
+          {allOn ? 'Бүгдийг унтраах' : 'Бүгдийг асаах'}
+        </button>
+      </div>
+      {cats.map((c) => {
+        const on = !off.has(c.type);
+        return (
+          <button
+            key={c.type}
+            type="button"
+            aria-pressed={on}
+            onClick={() => toggle(c.type)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+              padding: '6px 8px', borderRadius: 8, border: '1px solid var(--line)',
+              background: on ? 'var(--panel-2)' : 'transparent',
+              color: on ? 'var(--text)' : 'var(--muted)', textAlign: 'left',
+              transition: 'background .12s, opacity .12s',
+            }}
+          >
+            <span style={{ width: 11, height: 11, borderRadius: 3, flex: 'none', background: c.color, opacity: on ? 1 : 0.35 }} />
+            <span style={{ flex: 1, minWidth: 0, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.type}</span>
+            <b style={{ fontVariantNumeric: 'tabular-nums', fontSize: 11, color: 'var(--muted)' }}>{c.count}</b>
+            <span style={{ width: 14, textAlign: 'center', color: 'var(--accent)', fontSize: 12 }}>{on ? '✓' : ''}</span>
+          </button>
+        );
+      })}
     </div>
   );
 }
