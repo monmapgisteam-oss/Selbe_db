@@ -23,7 +23,7 @@ import esriConfig from '@arcgis/core/config';
 import BuildingSceneLayer from '@arcgis/core/layers/BuildingSceneLayer';
 import BuildingExplorer from '@arcgis/core/widgets/BuildingExplorer';
 import {
-  ET, BASEMAP_URL, IMAGERY, SCENE, BIM, ELEVATION_URL, HOME, LAYER_BY_ID, layerUrl,
+  ET, BASEMAP_URL, IMAGERY, SCENE, BIM, ELEVATION_URL, HOME, LAYER_BY_ID, layerUrl, ALWAYS_ON_IDS,
 } from '@/lib/services';
 import type { Dim } from '@/components/MapCanvas';
 
@@ -451,7 +451,10 @@ export function SuitMap({
 
   /* ── Давхаргын ил байдал (оноон будалт, шошго ч энд орно) ── */
   useEffect(() => {
-    for (const [key, lyr] of Object.entries(ctxRef.current)) lyr.visible = layerOn[key] ?? false;
+    for (const [key, lyr] of Object.entries(ctxRef.current)) {
+      // Лавлагааны хилүүд — каталогоос үл хамааран энэ зурагт ч үргэлж ил.
+      lyr.visible = (ALWAYS_ON_IDS as readonly string[]).includes(key) || (layerOn[key] ?? false);
+    }
   }, [layerOn]);
 
   /* ── Бүсийн будалт ба шошго ── */

@@ -27,8 +27,9 @@ import g from './gazar.module.css';
  * featureEffect-ээр бүдгэрүүлнэ. Полигонгүй үед service бүрийн нийт дүн.
  */
 
-/** Газрын зурагт харагдах БҮХ давхарга — чөлөөлөлт + барилга/кадастр + 2 хил */
-const VISIBLE_IDS = ['gazar:khil', 'gazar:bagts', 'gazar:parcel', 'gazar:building', 'land:left'];
+/** Газрын зурагт харагдах давхаргууд — чөлөөлөлт + барилга/кадастр.
+ *  (Хилүүд `khil1`/`khil2` нь `ALWAYS_ON_IDS`-ээр автоматаар ил тул энд бичихгүй.) */
+const VISIBLE_IDS = ['gazar:parcel', 'gazar:building', 'land:left'];
 /** Полигоноор ШҮҮГДЭХ давхаргууд — featureEffect (бүдгэрүүлэлт) зөвхөн эдгээрт */
 const FILTER_IDS = ['land:left', 'gazar:building', 'gazar:parcel'];
 

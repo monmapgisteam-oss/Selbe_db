@@ -28,7 +28,7 @@ import esriConfig from '@arcgis/core/config';
 import '@arcgis/core/assets/esri/themes/light/main.css';
 
 import {
-  LAYERS, LAYER_BY_ID, layerUrl, drawOrder, DASH_PATTERN,
+  LAYERS, LAYER_BY_ID, layerUrl, drawOrder, DASH_PATTERN, ALWAYS_ON_IDS,
   HOME, BASEMAP_URL, IMAGERY, SCENE, BIM, USAN_SAN, ELEVATION_URL, ZONE_LAYER, zoneWhere,
   ZONE_FIELD, ZONE_NONE, ZONE_TYPE_EMPTY_HUE, OID, BUILDING, SURVEY, PARCEL_LEFT, buildingKey,
   type LayerDef,
@@ -1140,6 +1140,8 @@ export function MapCanvas({
       //    орохгүй тул энэ шалгуургүй бол доорх мөр түүнийг нууж, зурсан полигон
       //    алга болно. Sketch widget өөрөө агуулгыг удирдана — үргэлж ил.
       if (l.id === 'sketch') { l.visible = true; return; }
+      // Лавлагааны хилүүд — каталогоос үл хамааран БҮХ зурагт үргэлж ил.
+      if ((ALWAYS_ON_IDS as readonly string[]).includes(String(l.id))) { l.visible = true; return; }
       if (l.id.startsWith('scene:')) { l.visible = dim === '3d'; return; }
       if (l.id.startsWith('bim:')) { l.visible = dim === 'bim'; return; }
       // ⚠️ ЗӨВХӨН 3D-гийн давхарга нь каталогийн `visible` жагсаалтад ХЭЗЭЭ Ч
