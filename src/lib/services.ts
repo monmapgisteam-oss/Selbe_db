@@ -1226,7 +1226,9 @@ export const LAYERS: LayerDef[] = [
     hue: "#ffb700",
     fill: 0.45,
     width: 1.4,
-    qty: { field: "Барилгажсан_талбай", unit: "м²" },
+    // ⚠️ `Барилгажсан_талбай` нь давхраар үржсэн НИЙТ шалны талбай (152 га) тул
+    //    каталогийн талбайд барилгын бодит ХӨЛ (геометрийн Shape__Area, 21 га).
+    qty: { field: "Shape__Area", unit: "м²" },
     cost: { field: "negj_une", basis: "m2" },
     note: "төлөв, зориулалт, өрх, хүн ам",
     facets: [
