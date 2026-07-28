@@ -314,7 +314,7 @@ export function BuildingSummary({ q }: { q: Buildings }) {
               {/* ⚠️ ТҮР ЗУУРЫН ХАТУУ УТГА: гүйцэтгэлийн ring-ийг 21.6% дээр
                   тогтоов (хүсэлтээр). Хүснэгтийн өгөгдөл шинэчлэгдсэний дараа
                   `value={d.progress}` руу БУЦАА, `decimals`-ыг ХАС. */}
-              <Split aside={<Ring value={21.6} decimals={1} color={HUE} size={78} width={8} />}>
+              <Split aside={<Ring value={19.2} decimals={1} color={HUE} size={78} width={8} />}>
                 <Note>
                   {num(d.blocks - d.noData)} блокийн «Барилга угсралтын ажил»-ын дундаж
                   гүйцэтгэл{d.asOf ? ` (${d.asOf})` : ''}. Дундаж {num(d.floors, 1)} давхар.
@@ -361,7 +361,7 @@ export function BuildingSummary({ q }: { q: Buildings }) {
               items={d.bagts.map((b) => {
                 // ⚠️ ТҮР ЗУУРЫН ХАТУУ УТГА (хүсэлтээр): «Багц 1»-ийг 21.6% болгов.
                 //    Өгөгдөл шинэчлэгдсэний дараа энэ override-г ХАС.
-                const p = b.key === 'Багц 1' ? 21.6 : b.progress;
+                const p = b.key === 'Багц 1' ? 19.2 : b.progress;
                 return {
                   key: b.key,
                   label: `${b.key} · ${num(b.blocks)} блок`,
