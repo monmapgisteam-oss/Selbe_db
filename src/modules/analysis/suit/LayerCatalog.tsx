@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, type CSSProperties } from 'react';
-import { MAP_LAYERS } from '@/lib/analysis/config';
-import { LAYER_GROUPS, MONITOR_GROUP } from '@/lib/services';
+import { MAP_LAYERS, type MapLayerDef } from '@/lib/analysis/config';
+import { LAYER_GROUPS, MONITOR_GROUP, LAYER_BY_ID, type LayerDef } from '@/lib/services';
 import { Icon } from '@/components/Icon';
+import { LayerSwatch } from '@/components/LayerSwatch';
 import c from '@/components/catalog.module.css';
 
 /**
@@ -19,6 +20,19 @@ import c from '@/components/catalog.module.css';
 
 /** Каталогийн бүлгүүд — plan-тай ЯГ ИЖИЛ (гарчиг · дүрс · өнгө). */
 const GROUP_META = [...LAYER_GROUPS, MONITOR_GROUP];
+
+/**
+ * Мөрийн СИМБОЛ — газрын зурагтай ижил. plan-ий давхарга бол түүний бодит
+ * `LayerDef`-ийг (геометр төрөл · өнгө · шугамын хээ) авна; эс бөгөөс (тусгай
+ * `zone`/`label`) `MapLayerDef`-ийн kind/color-оос энгийн симбол угсарна.
+ */
+function swatchDef(l: MapLayerDef): LayerDef {
+  const real = l.layerId ? LAYER_BY_ID[l.layerId] : undefined;
+  if (real) return real;
+  const geom: LayerDef['geom'] =
+    l.kind === 'line' ? 'line' : (l.kind === 'point' || l.kind === 'point-lg') ? 'point' : 'area';
+  return { geom, hue: `rgb(${l.color.join(',')})`, fill: 0.45 } as LayerDef;
+}
 
 export function SuitLayerCatalog({
   layerOn,
@@ -136,19 +150,8 @@ export function SuitLayerCatalog({
                           </svg>
                         </button>
 
-                        {/* Симбол — шугам нь нимгэн зурвас, бусад нь цэг.
-                            (`.chk :global(.swatch/.dot)` нь `.chk`-д scoped тул
-                            энд inline хэмжээ өгнө.) */}
-                        <span
-                          aria-hidden
-                          style={{
-                            flex: 'none',
-                            background: rgb,
-                            ...(l.kind === 'line'
-                              ? { width: 10, height: 3, borderRadius: 2 }
-                              : { width: 9, height: 9, borderRadius: '50%' }),
-                          }}
-                        />
+                        {/* Симбол — газрын зурагтай ИЖИЛ (геометр · өнгө · шугамын хээ) */}
+                        <LayerSwatch d={swatchDef(l)} />
 
                         <button type="button" className={c.rowMain} onClick={() => toggle(l.key)}>
                           <span className={c.rowTitle}>{l.title}</span>

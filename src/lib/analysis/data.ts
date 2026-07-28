@@ -26,7 +26,7 @@ import type Polygon from '@arcgis/core/geometry/Polygon';
 import { layerUrl, LAYER_BY_ID, ZONE_FIELDS, zoneCanon, zoneRefValues, zoneType } from '@/lib/services';
 import {
   WKID, SRC, ENGINEERING_IDS, SOCIAL_FACILITIES, GREEN_CATEGORIES,
-  BF, isResidential, isSellable,
+  BF, isResidential, isSellable, EXCLUDED_ZONE_TYPES,
   type ParkingOpt,
 } from './config';
 
@@ -68,6 +68,11 @@ async function fetchAll(u: string, outFields: string[], returnGeometry = false):
 export type Zone = {
   id: string;
   type: string;
+  /**
+   * ОНООЛОЛД ОРОХГҮЙ бүс (ногоон байгууламж, одоо байгаа барилга). Тооцоо,
+   * эрэмбэ, дундажаас ХАСНА; газрын зурагт «өгөгдөлгүй» саараар харагдана.
+   */
+  excluded: boolean;
   geometry: Polygon | null;
   /** Албан ёсны талбай (га) — САНХҮҮД. `Area` талбар. */
   areaHa: number;
@@ -288,9 +293,11 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
 
     const engDistM = geom && engUnion ? geometryEngine.distance(geom, engUnion, 'meters') : null;
 
+    const type = zoneType(a[Z.type]);
     return {
       id,
-      type: zoneType(a[Z.type]),
+      type,
+      excluded: EXCLUDED_ZONE_TYPES.has(type),
       geometry: geom,
       areaHa, polyHa, zoneFar, zoneBcr,
       normParking: n(a[Z.parkNorm]),
@@ -502,6 +509,8 @@ export function computeEconomics(
   buildCostPerM2: number,
 ) {
   for (const z of zones) {
+    // Оноололд орохгүй бүс (ногоон/одоо байгаа) — эдийн засаг тооцохгүй
+    if (z.excluded) { z.econ = null; continue; }
     const infraCost = perHa * z.areaHa;
     const buildCost = z.gfaSaleM2 * buildCostPerM2;
     const cost = infraCost + buildCost;
@@ -534,6 +543,8 @@ export function parkingNeedOf(z: Zone, p: ParkingOpt): number | null {
  */
 export function computeRaw(zones: Zone[], activeGreen: Set<string>, parking: ParkingOpt) {
   for (const z of zones) {
+    // Оноололд орохгүй бүс — түүхий үзүүлэлт бодохгүй (raw хоосон → оноо null → саарал)
+    if (z.excluded) { z.raw = {}; continue; }
     z.greenM2 = Object.entries(z.greenByCat)
       .filter(([cat]) => activeGreen.has(cat))
       .reduce((a, [, v]) => a + v, 0);
