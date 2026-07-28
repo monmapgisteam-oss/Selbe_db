@@ -8,6 +8,7 @@ const nextConfig = {
   // ArcGIS MapView/SceneView нь StrictMode-ийн давхар mount-д WebGL context алдаж,
   // dev дээр зураг анивчина. Effect-үүд цэвэр destroy() хийдэг ч давхар үүсгэлт нь
   // ArcGIS-ийн хувьд үнэтэй тул унтраав.
+  // ArcGIS-ийн хувьд үнэтэй тул унтраав.213156
   reactStrictMode: false,
 };
 
