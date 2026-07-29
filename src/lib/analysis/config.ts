@@ -119,8 +119,8 @@ const kindOf = (geom: LayerDef['geom']): MapLayerKind =>
  * (`zone`/`et:24` нь порталын каталогт ч байдаг тул доорх derived-ээс ХАСНА.)
  */
 const SPECIAL_LAYERS: MapLayerDef[] = [
-  { key: 'zone', special: 'zone', title: 'Бүс — үнэлгээний өнгө', kind: 'fill', color: [79, 209, 197], on: true, group: 'zone' },
-  { key: 'label', special: 'label', title: 'Бүсийн нэр (шошго)', kind: 'point', color: [230, 237, 243], on: true, group: 'zone' },
+  { key: 'zone', special: 'zone', title: 'Бүсийн үнэлгээ', kind: 'fill', color: [79, 209, 197], on: true, group: 'zone' },
+  { key: 'label', special: 'label', title: 'Бүсийн нэр', kind: 'point', color: [230, 237, 243], on: true, group: 'zone' },
   { key: 'et:24', n: 24, title: 'Барилга байгууламж', kind: 'building', color: [148, 163, 184], on: true, group: 'build' },
 ];
 const SPECIAL_KEYS = new Set(SPECIAL_LAYERS.map((s) => s.key));
@@ -230,6 +230,20 @@ export const SCORE_LEVELS = [
 ] as const;
 
 export const NO_DATA_COLOR = '#94a3b8';
+
+/**
+ * ОНООЛОЛД ОРОХГҮЙ бүсийн ангиллууд (каноник нэр, `zoneType()`-ийн гаралт).
+ *
+ * ⚠️ Ногоон байгууламж ба одоо байгаа барилга нь «тохиромжтой байдал»-ын
+ * үнэлгээнд утгагүй (хүн ам, FAR/BCR, зогсоол зэрэг үзүүлэлт хамаарахгүй) тул
+ * тооцоо, эрэмбэ, дундажаас ХАСНА. Газрын зурагт устгахгүй — «өгөгдөлгүй»
+ * (саарал) өнгөөр харагдана.
+ */
+export const EXCLUDED_ZONE_TYPES = new Set<string>([
+  'Ногоон байгууламж, тохижилт',
+  'Одоо байгаа барилга байгууламж',
+  'Дэд бүтэц',
+]);
 
 /**
  * Оноо → түвшний индекс (0 = маш сайн). Өгөгдөлгүй бол −1.
