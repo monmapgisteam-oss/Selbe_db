@@ -111,8 +111,10 @@
 }
 
 /* ── Үзүүлэлт (KPI) ── */
-.stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
-.stats3 { grid-template-columns: repeat(3, 1fr); }
+/* minmax(0,1fr) — track нь агуулгын min-content-оос доош агшиж чадна;
+   эс бол нарийн эцэг дотор өргөн тоо (8,575 өрх) хүрээг давна. */
+.stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.stats3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 
 .stat {
   padding: 12px 14px;
@@ -129,8 +131,8 @@
   color: var(--ink);
   line-height: 1.2;
 }
-.statUnit { font-size: 0.7rem; font-weight: 500; color: var(--ink-3); font-family: var(--font-inter), sans-serif; letter-spacing: 0; }
-.statLabel { margin-top: 3px; font-size: 0.7rem; color: var(--ink-3); line-height: 1.35; }
+.statUnit { font-size: 0.82rem; font-weight: 500; color: var(--ink-3); font-family: var(--font-inter), sans-serif; letter-spacing: 0; }
+.statLabel { margin-top: 3px; font-size: 0.78rem; color: var(--ink-3); line-height: 1.35; }
 .statAccent { border-color: color-mix(in srgb, var(--tone, var(--hue)) 32%, var(--line)); background: color-mix(in srgb, var(--tone, var(--hue)) 6%, var(--surface)); }
 .statAccent .statValue { color: var(--tone, var(--hue)); }
 
@@ -140,7 +142,7 @@
 /* Нэг эгнээ: шошго | бар | утга — өндөр багасна */
 .barRowInline { flex-direction: row; align-items: center; gap: 8px; }
 /* Шошгыг «...»-ээр таслахгүй — шаардлагатай бол мөр даруулж БҮТЭН харуулна */
-.barRowInline .barName { flex: 0 0 42%; font-size: 0.72rem; white-space: normal; overflow: visible; line-height: 1.18; }
+.barRowInline .barName { flex: 0 0 30%; font-size: 0.72rem; white-space: normal; overflow: visible; line-height: 1.18; }
 .barRowInline .barTrack { flex: 1; }
 .barRowInline .barVal { flex: none; font-size: 0.72rem; }
 .barClick { border-radius: var(--r-sm); padding: 5px 6px; margin: -5px -6px; transition: background 0.12s; }
