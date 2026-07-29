@@ -445,6 +445,18 @@ const buildingProgressRenderer = (prog: BlockProgressMap): RendererProp => ({
  */
 let homeExtentCache: Extent | null = null;
 
+/**
+ * Map-ын МОДУЛИЙН кэш — навбараас сэдэв солиход зураг дахин үүсэхээс сэргийлнэ.
+ *
+ * ⚠️ Дашбоард/Багц/Газар/plan/monitor ТУС ТУС өөрийн `<MapCanvas>`-тай тул сэдэв
+ * солих бүрд хуучин Map (35 давхарга + basemap + ground) УСТААД, шинэ нь дахин
+ * үүсэж, давхарга бүр метадатаа дахин татдаг (35+ хүсэлт) байв. Map-ыг `uniform`
+ * (дашбоард) vs themed (бусад) гэсэн 2 түлхүүрээр кэшлэвэл давхаргууд НЭГ Л УДАА
+ * ачаалагдаж, дараагийн харагдац зөвхөн шинэ view үүсгэнэ. View нь харагдац тус
+ * бүрд шинэ хэвээр — handler-ууд props-той нь холбоотой.
+ */
+const mapCache: Record<string, Map> = {};
+
 async function extentOf(url: string, view: AnyView, where = '1=1'): Promise<Extent | null> {
   const wkid = view.spatialReference?.wkid ?? 102100;
   const box = await queryExtent(url, wkid, where);
@@ -783,14 +795,16 @@ export function MapCanvas({
   useEffect(() => {
     if (!el.current) return;
 
-    if (!mapRef.current) {
+    const mapKey = uniform ? 'uniform' : 'themed';
+    if (!mapCache[mapKey] || mapCache[mapKey].destroyed) {
       esriConfig.assetsPath = 'https://js.arcgis.com/4.34/@arcgis/core/assets';
-      mapRef.current = new Map({
+      mapCache[mapKey] = new Map({
         basemap: baseMap(),
         ground: new Ground({ layers: [new ElevationLayer({ url: ELEVATION_URL })] }),
         layers: buildLayers(uniform),
       });
     }
+    mapRef.current = mapCache[mapKey];
 
     const map = mapRef.current;
     if (typeof window !== 'undefined') (window as unknown as { __dbgmap: Map }).__dbgmap = map;
@@ -1011,8 +1025,11 @@ export function MapCanvas({
     };
   }, [dim]);
 
-  /** Map-ыг компонент бүрмөсөн салахад л устгана */
-  useEffect(() => () => { mapRef.current?.destroy(); mapRef.current = null; }, []);
+  /**
+   * Компонент салахад Map-ыг УСТГАХГҮЙ — `mapCache`-д үлдэж дараагийн харагдацад
+   * дахин ашиглагдана (view нь [dim] эффектийн cleanup-д тусад нь устна).
+   */
+  useEffect(() => () => { mapRef.current = null; }, []);
 
   /**
    * 3D давхаргуудыг ЗӨВХӨН тохирох горимд газрын зурагт байлгана.
@@ -1201,6 +1218,17 @@ export function MapCanvas({
     gl?.removeAll();
     onSketchRef.current?.(null);
   }, [clearToken]);
+
+  /**
+   * Харагдац БҮРМӨСӨН солиход зурсан полигоныг цэвэрлэнэ. ⚠️ Map нь `mapCache`-д
+   * үлдэж plan/monitor/bagts-тай ХУВААЛЦАГДДАГ тул цэвэрлэхгүй бол Газар
+   * чөлөөлөлтөд зурсан полигон бусад харагдацад харагдана. deps `[uniform]` тул
+   * зөвхөн unmount-д ажиллана (2D↔3D солиход полигон хэвээр).
+   */
+  useEffect(() => () => {
+    const gl = mapCache[uniform ? 'uniform' : 'themed']?.findLayerById('sketch') as GraphicsLayer | null;
+    gl?.removeAll();
+  }, [uniform]);
 
   /* Харагдац ба БҮСИЙН шүүлт */
   useEffect(() => {
