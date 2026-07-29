@@ -40,7 +40,7 @@
   height: 100%;
   background: var(--bg);
   color: var(--text);
-  font-family: 'Segoe UI', Inter, system-ui, -apple-system, sans-serif;
+  font-family: var(--font-inter), system-ui, -apple-system, sans-serif;
   font-size: 13px;
   overflow: hidden;
 }
@@ -625,7 +625,6 @@
   --r: 10px;
   --r-sm: 7px;
   --ease: cubic-bezier(0.32, 0.72, 0, 1);
-  --mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace;
 
   position: absolute;
   left: 0;

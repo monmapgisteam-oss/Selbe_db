@@ -714,7 +714,7 @@ export function MonitorGeneral({ picked, pickedLayer }: { picked: Record<string,
   const b = pickedBuilding(picked, pickedLayer);
   const q = useTaskPerf(b);
   if (!b) {
-    return <Section><Empty label="Газрын зураг дээр барилга дээр дарж тухайн блокийн ажлын гүйцэтгэлийг харна уу." /></Section>;
+    return <Section><Empty label="Барилга сонгоогүй байна." /></Section>;
   }
   return (
     <Data q={q} loading="Ажлын гүйцэтгэл татаж байна…">
@@ -755,7 +755,7 @@ export function MonitorDetail({ picked, pickedLayer }: { picked: Record<string, 
   const b = pickedBuilding(picked, pickedLayer);
   const q = useTaskPerf(b);
   if (!b) {
-    return <Section><Empty label="Барилга сонгоход ажлын дэлгэрэнгүй гүйцэтгэл (үе шатаар) энд гарна." /></Section>;
+    return <Section><Empty label="Барилга сонгоогүй байна." /></Section>;
   }
   return (
     <Data q={q} loading="Ажлын гүйцэтгэл татаж байна…">

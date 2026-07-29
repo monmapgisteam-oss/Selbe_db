@@ -245,13 +245,7 @@ export function Bagts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       <aside className={`${o.side} ${o.right}`}>
         <h2 className={o.colHead}>Дэлгэрэнгүй</h2>
         {!active ? (
-          <Section title="Багц сонгоно уу">
-            <Note>
-              Зүүн жагсаалтаас багц сонгоход түүний гүйцэтгэгч, төсөв, гэрээ,
-              санхүүжилтийн эх үүсвэр ба (барилгын багц бол) блок бүрийн
-              гүйцэтгэл, (дэд бүтцийн багц бол) давхаргын хэмжээ энд гарна.
-            </Note>
-          </Section>
+          <Empty label="Багц сонгоогүй байна." />
         ) : active.kind === 'build' ? (
           <>
             <ContractCard p={active} />

@@ -30,7 +30,7 @@ import { useCashflow, type CashRow } from '@/lib/cashflow';
 import { useInvest, type InvRow } from '@/lib/invest';
 import { num, pct, text } from '@/lib/format';
 import {
-  BRIEF_SOURCE, BRIEF_DATE, HEADLINE, OVERALL, SCOPE, INVEST_SPLIT, MILESTONES,
+  BRIEF_SOURCE, HEADLINE, OVERALL, SCOPE, INVEST_SPLIT, MILESTONES,
   SCHEDULE, SCHEDULE_YEARS, SCHEDULE_TODAY, BAGTS_ORIGIN, BAGTS_FLAG, BAGTS_NOTE, BAGTS_STRIP,
   LAND, SOURCES, UTILITY_WORKS, POWER_PACKS, POWER_NOTE, FINANCE, SOCIAL, BENEFITS, PUBLIC_ZONE,
 } from '@/lib/brief';
@@ -831,11 +831,6 @@ function SideRail({ d, suit, open, toggle, clear, ref }: {
           </button>
         );
       })}
-
-      <p className={o.railFoot}>
-        Хэсэг дарж баруун талд дэлгэрэнгүйг нээнэ — хэд хэдийг зэрэг сонгоход
-        багана болж хуваагдана. Багана хоорондын бариулыг чирж өргөнийг тохируулна.
-      </p>
     </div>
   );
 }
@@ -1346,8 +1341,6 @@ function BenefitDetail({ bagts }: { bagts: Async<BagtsRow[]> }) {
         </div>
         <p className={o.note}>{SOCIAL.note}</p>
       </Panel>
-
-      <p className={o.railFoot}>◆ — «{BRIEF_SOURCE}» ({BRIEF_DATE}) илтгэлээс бэхлэгдсэн үзүүлэлт.</p>
     </>
   );
 }
