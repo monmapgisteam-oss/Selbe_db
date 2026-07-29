@@ -439,6 +439,12 @@ const buildingProgressRenderer = (prog: BlockProgressMap): RendererProp => ({
  * хүсэлтэд огт оруулдаггүй бөгөөд эдгээр FeatureServer 400 «No where clause
  * specified» гэж татгалздаг. REST рүү шууд хандана (`lib/query.ts`).
  */
+/**
+ * Эхлэх хүрээний МОДУЛИЙН кэш — бүсийн давхаргын хүрээ статик тул нэг л удаа
+ * query хийж, 2D↔3D солих бүрд дахин татахгүй, дахин үсрэхгүй.
+ */
+let homeExtentCache: Extent | null = null;
+
 async function extentOf(url: string, view: AnyView, where = '1=1'): Promise<Extent | null> {
   const wkid = view.spatialReference?.wkid ?? 102100;
   const box = await queryExtent(url, wkid, where);
@@ -816,6 +822,27 @@ export function MapCanvas({
     if (typeof window !== 'undefined') (window as unknown as { __dbgview: AnyView }).__dbgview = view;
 
     /**
+     * ⚠️ Давхаргын FADE TRANSITION-ыг унтраана — АСААХ/УНТРААХ ШУУД болно.
+     *
+     * SDK-ийн 2D LayerView бүр дотооддоо `container.fadeTransitionEnabled = true`
+     * тавьдаг тул давхарга toggle хийхэд аажим бүдгэрч/тодорч (мөн tile-ууд
+     * ачаалахдаа бүдгээс тод руу) ХЭДЭН СЕКУНД үргэлжилдэг байв. Энэ нь public
+     * API-д ил гараагүй тул container-ийн тугийг нь шууд унтраана — давхарга
+     * асаахад шууд гарч, унтраахад шууд алга болно. (3D LayerView-д ийм
+     * container байхгүй тул `?.` хамгаалалт хангалттай.)
+     */
+    type FadeContainer = { fadeTransitionEnabled?: boolean; endTransitions?: () => void };
+    const killFade = (lv: __esri.LayerView) => {
+      const c = (lv as unknown as { container?: FadeContainer }).container;
+      if (c && c.fadeTransitionEnabled !== false) {
+        c.fadeTransitionEnabled = false;
+        c.endTransitions?.();
+      }
+    };
+    view.allLayerViews.forEach(killFade);
+    const fadeHandle = view.allLayerViews.on('change', (e) => e.added.forEach(killFade));
+
+    /**
      * Esri-ийн суурь зургийн галерей — Expand дотор ХУМИГДСАНААР (зураг битүүрэхгүй).
      * ⚠️ Selbe ортофото нь ТУСДАА давхарга (`imagery`) тул суурь зураг сольсон ч
      * дээр нь хэвээр үлдэнэ. Widget нь view-тэй хамт устдаг (`view.destroy`).
@@ -848,12 +875,27 @@ export function MapCanvas({
       if (view.destroyed) return;
       setReady(true);
       registerRef.current(view);
-      // Эхлэх хүрээг БҮСИЙН давхаргаар — төслийн жинхэнэ хамрах хүрээ
-      extentOf(layerUrl(ZONE_LAYER), view)
-        .then((e) => {
-          if (e && !view.destroyed) view.goTo(e.expand(1.1)).catch(() => {});
-        })
-        .catch((e) => console.error('[selbe] эхлэх хүрээг тодорхойлж чадсангүй:', e));
+      /**
+       * Эхлэх хүрээг БҮСИЙН давхаргаар — төслийн жинхэнэ хамрах хүрээ.
+       *
+       * ⚠️ `animate: false` ЗААВАЛ: нисэж очих үед завсрын БҮХ түвшний tile +
+       * 9 ортофотогийн export дахин дахин татагдаж, зураг удаан «бүдгээс тод»
+       * болдог байв. Шууд үсрэхэд зөвхөн ЭЦСИЙН хүрээний зураг л татагдана.
+       * Хүрээг модулийн кэшид хадгална — 2D↔3D солиход дахин query хийхгүй,
+       * дахин үсрэхгүй (бүс өөрчлөгддөггүй статик хүрээ).
+       */
+      if (homeExtentCache) {
+        view.goTo(homeExtentCache, { animate: false }).catch(() => {});
+      } else {
+        extentOf(layerUrl(ZONE_LAYER), view)
+          .then((e) => {
+            if (e && !view.destroyed) {
+              homeExtentCache = e.expand(1.1);
+              view.goTo(homeExtentCache, { animate: false }).catch(() => {});
+            }
+          })
+          .catch((e) => console.error('[selbe] эхлэх хүрээг тодорхойлж чадсангүй:', e));
+      }
     }).catch((e: unknown) => console.error('[selbe] газрын зураг үүсгэж чадсангүй:', e));
 
     /**
@@ -954,6 +996,7 @@ export function MapCanvas({
       click.remove();
       move.remove();
       leave.remove();
+      fadeHandle.remove();
       setTip(null);
       /**
        * ⚠️ `view.destroy()` нь 4.17-оос хойш ӨӨРИЙН `map`-ыг ч хамт устгадаг.
