@@ -570,8 +570,11 @@
 
 /* ══════════════════ 04 · Газар чөлөөлөлт ══════════════════ */
 
-.landTop { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }
-.landTop > .rows { flex: 1; min-width: 0; }
+.landTop { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-bottom: 12px; }
+/* Ring-ийн ХАЖУУГИЙН Stats/Rows нь үлдсэн зайд шахагдаж багтана; нарийн
+   самбарт (basis хүрэхгүй бол) Ring-ийн ДООР бүтэн өргөнөөр буулгаж
+   уншигдахуйц хэвээр байлгана — эс бол өргөн тоонууд хүрээг давна. */
+.landTop > :last-child { flex: 1 1 240px; min-width: 0; }
 
 .bars { display: flex; flex-direction: column; gap: 6px; }
 .barRow { display: grid; grid-template-columns: minmax(0, 1fr) 60px 28px; align-items: center; gap: 8px; }

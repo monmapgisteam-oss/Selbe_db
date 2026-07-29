@@ -235,7 +235,16 @@ export function Bars({
          * хажууд байхад багана бүтэн өргөнөө авч, утгууд нь баруун талдаа
          * босоо эгнэн шууд харьцуулагдана.
          */
-        const body = outlined ? (
+        const body = outlined && inline ? (
+          // Нэр УРД + ӨРГӨН тунгалаг бар + утга — нэг мөрөнд (богино нэрт графикт)
+          <>
+            <span className={s.barName} title={it.label}>{it.label}</span>
+            <span className={`${s.barTrack} ${s.barTrackOut}`}>
+              <i className={`${s.barFill} ${s.barFillOut}`} style={{ width: `${w}%` }} />
+            </span>
+            <span className={`${s.barVal} num`}>{it.display ?? it.value}</span>
+          </>
+        ) : outlined ? (
           <>
             {/* ⚠️ Тайлбартай үед нэрийг мөрөнд БИЧИХГҮЙ — доорх тайлбарт орно */}
             {!legend && <span className={s.barName} title={it.label}>{it.label}</span>}
