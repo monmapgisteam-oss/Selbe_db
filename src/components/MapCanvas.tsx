@@ -1373,7 +1373,6 @@ function MapTip({
           ))}
         </dl>
       )}
-      <div className={s.tipHint}>дарж дэлгэрэнгүйг харна</div>
     </div>
   );
 }
