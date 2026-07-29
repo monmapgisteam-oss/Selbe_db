@@ -96,7 +96,6 @@ export type Zone = {
   gfaSaleM2: number;
   salesValue: number;
   salesValueRes: number;
-  usableM2: number;
 
   greenByCat: Record<string, number>;
   greenM2: number;
@@ -212,7 +211,7 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
   onProgress('Барилга байгууламж…', 22);
   const buildings = await fetchAll(url(SRC.buildings), [
     'OBJECTID', 'ZONE_ID', BF.population, BF.households, BF.status,
-    BF.gfa, BF.usable, BF.purpose, BF.price,
+    BF.gfa, BF.purpose, BF.price,
   ], true);
 
   onProgress('Ногоон байгууламж…', 38);
@@ -332,7 +331,7 @@ function emptyAgg() {
   return {
     population: 0, residentPop: 0, capacityPop: 0,
     buildingCount: 0, households: 0,
-    gfaM2: 0, gfaSaleM2: 0, usableM2: 0,
+    gfaM2: 0, gfaSaleM2: 0,
     salesValue: 0, salesValueRes: 0,
   };
 }
@@ -389,7 +388,6 @@ function aggregateBuildings(zones: Zone[], buildings: Feat[]) {
     b.population += pop;
     if (res) b.residentPop += pop; else b.capacityPop += pop;
     b.gfaM2 += gfa;
-    b.usableM2 += n(a[BF.usable]);
     if (sell) b.gfaSaleM2 += gfa;
     b.salesValue += value;
     if (res) b.salesValueRes += value;

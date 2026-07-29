@@ -359,9 +359,7 @@ export function BuildingSummary({ q }: { q: Buildings }) {
                 pick(`${BAGTS_FILTER}${k}`, k, 'Багц', g.oids);
               }}
               items={d.bagts.map((b) => {
-                // ⚠️ ТҮР ЗУУРЫН ХАТУУ УТГА (хүсэлтээр): «Багц 1»-ийг 21.6% болгов.
-                //    Өгөгдөл шинэчлэгдсэний дараа энэ override-г ХАС.
-                const p = b.key === 'Багц 1' ? 19.2 : b.progress;
+                const p = b.progress;
                 return {
                   key: b.key,
                   label: `${b.key} · ${num(b.blocks)} блок`,
