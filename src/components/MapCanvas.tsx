@@ -28,7 +28,7 @@ import esriConfig from '@arcgis/core/config';
 import '@arcgis/core/assets/esri/themes/light/main.css';
 
 import {
-  LAYERS, LAYER_BY_ID, layerUrl, drawOrder, DASH_PATTERN, ALWAYS_ON_IDS, REFERENCE_IDS,
+  LAYERS, LAYER_BY_ID, layerUrl, oidOf, drawOrder, DASH_PATTERN, ALWAYS_ON_IDS, REFERENCE_IDS,
   HOME, BASEMAP_URL, IMAGERY, SCENE, BIM, USAN_SAN, ELEVATION_URL, ZONE_LAYER, zoneWhere,
   ZONE_FIELD, ZONE_NONE, ZONE_TYPE_EMPTY_HUE, OID, BUILDING, SURVEY, PARCEL_LEFT, buildingKey,
   type LayerDef,
@@ -497,6 +497,25 @@ const ON_GROUND = { mode: 'on-the-ground' } as unknown as __esri.FeatureLayerPro
  *   ангиллаар (TOROL, Barilga_ty) олон өнгө хуваахгүй. Ерөнхий дашбоардад
  *   давхаргууд нэг нэг өнгөтэй байх ёстой — cross-filter нь тодорхой болно.
  */
+/**
+ * Давхаргын `outFields` — payload багасгах. ⚠️ `plan`/`monitor` давхаргууд нь
+ * ДАРАХАД дэлгэрэнгүй самбарт `attrs`-аа ШУУД дамжуулдаг тул БҮХ талбар (`*`)
+ * хэрэгтэй. `gazar` давхаргууд нь standalone харагдацад pick-detail-гүй, зөвхөн
+ * tooltip (qty + facets) ба renderer ашигладаг — тиймээс зөвхөн тэдгээр талбарыг
+ * татна. gazar:parcel (42k) · gazar:building (35k) феатурын payload 80 талбараас
+ * цөөн талбар руу буурч, Газар чөлөөлөлт харагдац огцом хурдасна. (OID автоматаар
+ * ордог; хоосон жагсаалт бол зөвхөн OID.)
+ */
+const mapFields = (d: LayerDef): string[] => {
+  if (d.topic !== 'gazar') return ['*'];
+  const fs = new Set<string>([oidOf(d)]);
+  if (d.qty) fs.add(d.qty.field);
+  if (d.paint) fs.add(d.paint.field);
+  if (d.breaks) fs.add(d.breaks.field);
+  for (const f of d.facets ?? []) fs.add(f.field);
+  return [...fs];
+};
+
 function buildLayers(uniform = false): Layer[] {
   const L: Layer[] = [];
 
@@ -522,7 +541,7 @@ function buildLayers(uniform = false): Layer[] {
     id: d.id,
     url: layerUrl(d),
     title: d.title,
-    outFields: ['*'],
+    outFields: mapFields(d),
     popupEnabled: false,
     visible: false,
     ...(d.minScale ? { minScale: d.minScale } : {}),
