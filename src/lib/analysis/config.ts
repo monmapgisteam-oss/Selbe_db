@@ -626,7 +626,6 @@ export const ECON_SCORE: Indicator = {
 /** Барилгын талбарууд — кирилл тул тогтмолоор */
 export const BF = {
   gfa: 'Барилгын_нийт_талбай_m2',
-  usable: 'Барилгажсан_талбай',
   purpose: 'Зориулалт_m',
   price: 'negj_une',
   status: 'Barilga_ty',

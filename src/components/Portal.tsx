@@ -256,7 +256,6 @@ function PortalContent() {
    *   · dashboard — газрын зургийг тойрсон үзүүлэлтийн самбар
    */
   const isDash = view === 'dashboard';
-  const isSuit = view === 'analysis';
   const isSheet = view === 'sheet';
   const isBagts = view === 'bagts';
   const isTailan = view === 'tailan';
