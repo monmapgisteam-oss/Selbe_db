@@ -359,9 +359,7 @@ export function BuildingSummary({ q }: { q: Buildings }) {
                 pick(`${BAGTS_FILTER}${k}`, k, 'Багц', g.oids);
               }}
               items={d.bagts.map((b) => {
-                // ⚠️ ТҮР ЗУУРЫН ХАТУУ УТГА (хүсэлтээр): «Багц 1»-ийг 21.6% болгов.
-                //    Өгөгдөл шинэчлэгдсэний дараа энэ override-г ХАС.
-                const p = b.key === 'Багц 1' ? 19.2 : b.progress;
+                const p = b.progress;
                 return {
                   key: b.key,
                   label: `${b.key} · ${num(b.blocks)} блок`,
@@ -716,7 +714,7 @@ export function MonitorGeneral({ picked, pickedLayer }: { picked: Record<string,
   const b = pickedBuilding(picked, pickedLayer);
   const q = useTaskPerf(b);
   if (!b) {
-    return <Section><Empty label="Газрын зураг дээр барилга дээр дарж тухайн блокийн ажлын гүйцэтгэлийг харна уу." /></Section>;
+    return <Section><Empty label="Барилга сонгоогүй байна." /></Section>;
   }
   return (
     <Data q={q} loading="Ажлын гүйцэтгэл татаж байна…">
@@ -757,7 +755,7 @@ export function MonitorDetail({ picked, pickedLayer }: { picked: Record<string, 
   const b = pickedBuilding(picked, pickedLayer);
   const q = useTaskPerf(b);
   if (!b) {
-    return <Section><Empty label="Барилга сонгоход ажлын дэлгэрэнгүй гүйцэтгэл (үе шатаар) энд гарна." /></Section>;
+    return <Section><Empty label="Барилга сонгоогүй байна." /></Section>;
   }
   return (
     <Data q={q} loading="Ажлын гүйцэтгэл татаж байна…">

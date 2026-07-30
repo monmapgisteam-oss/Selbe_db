@@ -28,7 +28,7 @@ import esriConfig from '@arcgis/core/config';
 import '@arcgis/core/assets/esri/themes/light/main.css';
 
 import {
-  LAYERS, LAYER_BY_ID, layerUrl, drawOrder, DASH_PATTERN, ALWAYS_ON_IDS, REFERENCE_IDS,
+  LAYERS, LAYER_BY_ID, layerUrl, oidOf, drawOrder, DASH_PATTERN, ALWAYS_ON_IDS, REFERENCE_IDS,
   HOME, BASEMAP_URL, IMAGERY, SCENE, BIM, USAN_SAN, ELEVATION_URL, ZONE_LAYER, zoneWhere,
   ZONE_FIELD, ZONE_NONE, ZONE_TYPE_EMPTY_HUE, OID, BUILDING, SURVEY, PARCEL_LEFT, buildingKey,
   type LayerDef,
@@ -439,6 +439,24 @@ const buildingProgressRenderer = (prog: BlockProgressMap): RendererProp => ({
  * хүсэлтэд огт оруулдаггүй бөгөөд эдгээр FeatureServer 400 «No where clause
  * specified» гэж татгалздаг. REST рүү шууд хандана (`lib/query.ts`).
  */
+/**
+ * Эхлэх хүрээний МОДУЛИЙН кэш — бүсийн давхаргын хүрээ статик тул нэг л удаа
+ * query хийж, 2D↔3D солих бүрд дахин татахгүй, дахин үсрэхгүй.
+ */
+let homeExtentCache: Extent | null = null;
+
+/**
+ * Map-ын МОДУЛИЙН кэш — навбараас сэдэв солиход зураг дахин үүсэхээс сэргийлнэ.
+ *
+ * ⚠️ Дашбоард/Багц/Газар/plan/monitor ТУС ТУС өөрийн `<MapCanvas>`-тай тул сэдэв
+ * солих бүрд хуучин Map (35 давхарга + basemap + ground) УСТААД, шинэ нь дахин
+ * үүсэж, давхарга бүр метадатаа дахин татдаг (35+ хүсэлт) байв. Map-ыг `uniform`
+ * (дашбоард) vs themed (бусад) гэсэн 2 түлхүүрээр кэшлэвэл давхаргууд НЭГ Л УДАА
+ * ачаалагдаж, дараагийн харагдац зөвхөн шинэ view үүсгэнэ. View нь харагдац тус
+ * бүрд шинэ хэвээр — handler-ууд props-той нь холбоотой.
+ */
+const mapCache: Record<string, Map> = {};
+
 async function extentOf(url: string, view: AnyView, where = '1=1'): Promise<Extent | null> {
   const wkid = view.spatialReference?.wkid ?? 102100;
   const box = await queryExtent(url, wkid, where);
@@ -497,6 +515,25 @@ const ON_GROUND = { mode: 'on-the-ground' } as unknown as __esri.FeatureLayerPro
  *   ангиллаар (TOROL, Barilga_ty) олон өнгө хуваахгүй. Ерөнхий дашбоардад
  *   давхаргууд нэг нэг өнгөтэй байх ёстой — cross-filter нь тодорхой болно.
  */
+/**
+ * Давхаргын `outFields` — payload багасгах. ⚠️ `plan`/`monitor` давхаргууд нь
+ * ДАРАХАД дэлгэрэнгүй самбарт `attrs`-аа ШУУД дамжуулдаг тул БҮХ талбар (`*`)
+ * хэрэгтэй. `gazar` давхаргууд нь standalone харагдацад pick-detail-гүй, зөвхөн
+ * tooltip (qty + facets) ба renderer ашигладаг — тиймээс зөвхөн тэдгээр талбарыг
+ * татна. gazar:parcel (42k) · gazar:building (35k) феатурын payload 80 талбараас
+ * цөөн талбар руу буурч, Газар чөлөөлөлт харагдац огцом хурдасна. (OID автоматаар
+ * ордог; хоосон жагсаалт бол зөвхөн OID.)
+ */
+const mapFields = (d: LayerDef): string[] => {
+  if (d.topic !== 'gazar') return ['*'];
+  const fs = new Set<string>([oidOf(d)]);
+  if (d.qty) fs.add(d.qty.field);
+  if (d.paint) fs.add(d.paint.field);
+  if (d.breaks) fs.add(d.breaks.field);
+  for (const f of d.facets ?? []) fs.add(f.field);
+  return [...fs];
+};
+
 function buildLayers(uniform = false): Layer[] {
   const L: Layer[] = [];
 
@@ -522,7 +559,7 @@ function buildLayers(uniform = false): Layer[] {
     id: d.id,
     url: layerUrl(d),
     title: d.title,
-    outFields: ['*'],
+    outFields: mapFields(d),
     popupEnabled: false,
     visible: false,
     ...(d.minScale ? { minScale: d.minScale } : {}),
@@ -758,14 +795,16 @@ export function MapCanvas({
   useEffect(() => {
     if (!el.current) return;
 
-    if (!mapRef.current) {
+    const mapKey = uniform ? 'uniform' : 'themed';
+    if (!mapCache[mapKey] || mapCache[mapKey].destroyed) {
       esriConfig.assetsPath = 'https://js.arcgis.com/4.34/@arcgis/core/assets';
-      mapRef.current = new Map({
+      mapCache[mapKey] = new Map({
         basemap: baseMap(),
         ground: new Ground({ layers: [new ElevationLayer({ url: ELEVATION_URL })] }),
         layers: buildLayers(uniform),
       });
     }
+    mapRef.current = mapCache[mapKey];
 
     const map = mapRef.current;
     if (typeof window !== 'undefined') (window as unknown as { __dbgmap: Map }).__dbgmap = map;
@@ -795,6 +834,27 @@ export function MapCanvas({
           });
     viewRef.current = view;
     if (typeof window !== 'undefined') (window as unknown as { __dbgview: AnyView }).__dbgview = view;
+
+    /**
+     * ⚠️ Давхаргын FADE TRANSITION-ыг унтраана — АСААХ/УНТРААХ ШУУД болно.
+     *
+     * SDK-ийн 2D LayerView бүр дотооддоо `container.fadeTransitionEnabled = true`
+     * тавьдаг тул давхарга toggle хийхэд аажим бүдгэрч/тодорч (мөн tile-ууд
+     * ачаалахдаа бүдгээс тод руу) ХЭДЭН СЕКУНД үргэлжилдэг байв. Энэ нь public
+     * API-д ил гараагүй тул container-ийн тугийг нь шууд унтраана — давхарга
+     * асаахад шууд гарч, унтраахад шууд алга болно. (3D LayerView-д ийм
+     * container байхгүй тул `?.` хамгаалалт хангалттай.)
+     */
+    type FadeContainer = { fadeTransitionEnabled?: boolean; endTransitions?: () => void };
+    const killFade = (lv: __esri.LayerView) => {
+      const c = (lv as unknown as { container?: FadeContainer }).container;
+      if (c && c.fadeTransitionEnabled !== false) {
+        c.fadeTransitionEnabled = false;
+        c.endTransitions?.();
+      }
+    };
+    view.allLayerViews.forEach(killFade);
+    const fadeHandle = view.allLayerViews.on('change', (e) => e.added.forEach(killFade));
 
     /**
      * Esri-ийн суурь зургийн галерей — Expand дотор ХУМИГДСАНААР (зураг битүүрэхгүй).
@@ -829,12 +889,27 @@ export function MapCanvas({
       if (view.destroyed) return;
       setReady(true);
       registerRef.current(view);
-      // Эхлэх хүрээг БҮСИЙН давхаргаар — төслийн жинхэнэ хамрах хүрээ
-      extentOf(layerUrl(ZONE_LAYER), view)
-        .then((e) => {
-          if (e && !view.destroyed) view.goTo(e.expand(1.1)).catch(() => {});
-        })
-        .catch((e) => console.error('[selbe] эхлэх хүрээг тодорхойлж чадсангүй:', e));
+      /**
+       * Эхлэх хүрээг БҮСИЙН давхаргаар — төслийн жинхэнэ хамрах хүрээ.
+       *
+       * ⚠️ `animate: false` ЗААВАЛ: нисэж очих үед завсрын БҮХ түвшний tile +
+       * 9 ортофотогийн export дахин дахин татагдаж, зураг удаан «бүдгээс тод»
+       * болдог байв. Шууд үсрэхэд зөвхөн ЭЦСИЙН хүрээний зураг л татагдана.
+       * Хүрээг модулийн кэшид хадгална — 2D↔3D солиход дахин query хийхгүй,
+       * дахин үсрэхгүй (бүс өөрчлөгддөггүй статик хүрээ).
+       */
+      if (homeExtentCache) {
+        view.goTo(homeExtentCache, { animate: false }).catch(() => {});
+      } else {
+        extentOf(layerUrl(ZONE_LAYER), view)
+          .then((e) => {
+            if (e && !view.destroyed) {
+              homeExtentCache = e.expand(1.1);
+              view.goTo(homeExtentCache, { animate: false }).catch(() => {});
+            }
+          })
+          .catch((e) => console.error('[selbe] эхлэх хүрээг тодорхойлж чадсангүй:', e));
+      }
     }).catch((e: unknown) => console.error('[selbe] газрын зураг үүсгэж чадсангүй:', e));
 
     /**
@@ -935,6 +1010,7 @@ export function MapCanvas({
       click.remove();
       move.remove();
       leave.remove();
+      fadeHandle.remove();
       setTip(null);
       /**
        * ⚠️ `view.destroy()` нь 4.17-оос хойш ӨӨРИЙН `map`-ыг ч хамт устгадаг.
@@ -949,8 +1025,11 @@ export function MapCanvas({
     };
   }, [dim]);
 
-  /** Map-ыг компонент бүрмөсөн салахад л устгана */
-  useEffect(() => () => { mapRef.current?.destroy(); mapRef.current = null; }, []);
+  /**
+   * Компонент салахад Map-ыг УСТГАХГҮЙ — `mapCache`-д үлдэж дараагийн харагдацад
+   * дахин ашиглагдана (view нь [dim] эффектийн cleanup-д тусад нь устна).
+   */
+  useEffect(() => () => { mapRef.current = null; }, []);
 
   /**
    * 3D давхаргуудыг ЗӨВХӨН тохирох горимд газрын зурагт байлгана.
@@ -1139,6 +1218,17 @@ export function MapCanvas({
     gl?.removeAll();
     onSketchRef.current?.(null);
   }, [clearToken]);
+
+  /**
+   * Харагдац БҮРМӨСӨН солиход зурсан полигоныг цэвэрлэнэ. ⚠️ Map нь `mapCache`-д
+   * үлдэж plan/monitor/bagts-тай ХУВААЛЦАГДДАГ тул цэвэрлэхгүй бол Газар
+   * чөлөөлөлтөд зурсан полигон бусад харагдацад харагдана. deps `[uniform]` тул
+   * зөвхөн unmount-д ажиллана (2D↔3D солиход полигон хэвээр).
+   */
+  useEffect(() => () => {
+    const gl = mapCache[uniform ? 'uniform' : 'themed']?.findLayerById('sketch') as GraphicsLayer | null;
+    gl?.removeAll();
+  }, [uniform]);
 
   /* Харагдац ба БҮСИЙН шүүлт */
   useEffect(() => {
@@ -1373,7 +1463,6 @@ function MapTip({
           ))}
         </dl>
       )}
-      <div className={s.tipHint}>дарж дэлгэрэнгүйг харна</div>
     </div>
   );
 }

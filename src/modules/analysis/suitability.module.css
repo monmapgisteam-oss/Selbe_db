@@ -12,13 +12,20 @@
  */
 
 .app {
+  /* ХАРАНХУЙ палитр (өгөгдмөл). Цайвар нь доор `[data-theme='light'] .app`.
+     ⚠️ Толгойн theme toggle (`<html data-theme>`)-той синк болно. */
   --bg: #0d1117;
   --bg-2: #141a22;
   --panel: #161d27;
   --panel-2: #1c2532;
   --line: #26303d;
   --text: #e6edf3;
+  --text-2: #c3cedb;
   --muted: #8b98a9;
+  --sunken: #101720;
+  --hover: #222e3d;
+  --sel: #243347;
+  --scroll: #2b3644;
   --accent: #4fd1c5;
   --urban: #60a5fa;
   --fin: #fbbf24;
@@ -33,9 +40,27 @@
   height: 100%;
   background: var(--bg);
   color: var(--text);
-  font-family: 'Segoe UI', Inter, system-ui, -apple-system, sans-serif;
+  font-family: var(--font-inter), system-ui, -apple-system, sans-serif;
   font-size: 13px;
   overflow: hidden;
+}
+
+/* ЦАЙВАР ГОРИМ — толгойн theme toggle-той синк (`<html data-theme='light'>`).
+   Зөвхөн палитрыг дардаг; бусад бүх дүрэм эдгээр хувьсагчийг ашигладаг тул
+   автоматаар цайвар болно. Акцент (accent/urban/fin/good/bad) хэвээр. */
+:global([data-theme='light']) .app {
+  --bg: #eceef1;
+  --bg-2: #f4f6f8;
+  --panel: #ffffff;
+  --panel-2: #f5f7fa;
+  --line: #dfe3e8;
+  --text: #101418;
+  --text-2: #475569;
+  --muted: #64748b;
+  --sunken: #eef1f5;
+  --hover: #edf1f6;
+  --sel: #e3ecf9;
+  --scroll: #c3cdd8;
 }
 
 .app h1, .app h2, .app h3 { margin: 0; font-weight: 600 }
@@ -54,7 +79,7 @@
 .loaderBox { width: 340px; text-align: center }
 .loaderTitle { font-size: 22px; font-weight: 600; letter-spacing: .5px }
 .loaderSub { color: var(--muted); margin: 4px 0 22px; font-size: 12px }
-.loaderBar { height: 4px; background: #22303f; border-radius: 4px; overflow: hidden }
+.loaderBar { height: 4px; background: var(--sunken); border-radius: 4px; overflow: hidden }
 .loaderBar span { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), #60a5fa); transition: width .35s }
 .loaderMsg { margin-top: 10px; color: var(--muted); font-size: 11px }
 .loaderErr { color: #f87171 }
@@ -67,7 +92,7 @@
 }
 .brand { display: flex; align-items: center; gap: 11px; min-width: 0 }
 .brandMark { width: 9px; height: 26px; border-radius: 3px; background: linear-gradient(180deg, var(--good), var(--fin) 55%, var(--bad)) }
-.brand h1 { font-size: 13px; letter-spacing: .2px; white-space: nowrap }
+.brand h1 { font-size: 13px; letter-spacing: .2px; white-space: nowrap; text-transform: uppercase }
 .brand p { margin: 1px 0 0; font-size: 10.5px; color: var(--muted); white-space: nowrap }
 
 .tabs { display: flex; gap: 4px; background: var(--bg-2); padding: 3px; border-radius: 8px; border: 1px solid var(--line) }
@@ -96,10 +121,10 @@
 .resizer::before { content: ''; position: absolute; inset: 0 -4px; z-index: 5 } /* өргөн барих талбай */
 .resizer::after {
   content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-  width: 1px; height: 26px; background: #4a5666; border-radius: 1px;
+  width: 1px; height: 26px; background: var(--scroll); border-radius: 1px;
 }
 .resizer:hover, .resizerActive { background: var(--accent) }
-.resizer:hover::after, .resizerActive::after { background: #0d1117 }
+.resizer:hover::after, .resizerActive::after { background: var(--bg) }
 /* Чирэх үед зураг заагчийг барихгүй — эс бөгөөс ArcGIS чирэлтийг таслана */
 .noPointer { pointer-events: none }
 
@@ -110,17 +135,20 @@
 .left { border-right: 1px solid var(--line) }
 .right { border-left: 1px solid var(--line) }
 .panel::-webkit-scrollbar { width: 8px }
-.panel::-webkit-scrollbar-thumb { background: #2b3644; border-radius: 8px }
+.panel::-webkit-scrollbar-thumb { background: var(--scroll); border-radius: 8px }
 
 .card { background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px }
 .grow { flex: 1; min-height: 190px; display: flex; flex-direction: column }
+/* ⚠️ `grow` картын дотор жагсаалт КАРТ дотроо гүйх ёстой — эс бөгөөс агуулга
+   картаас доош халина. `body`-д flex дамжуулж, гүйдэг хүүхэд `min-height:0`. */
+.grow > .body { flex: 1; min-height: 0; display: flex; flex-direction: column }
 .card h2 {
-  font-size: 12px; text-transform: uppercase; letter-spacing: .55px; color: #b8c4d4;
+  font-size: 12px; text-transform: uppercase; letter-spacing: .55px; color: var(--text-2);
   margin-bottom: 9px; display: flex; align-items: center; gap: 8px;
 }
-.pill { margin-left: auto; background: #233043; color: var(--muted); border-radius: 20px; padding: 2px 8px; font-size: 10px; letter-spacing: 0 }
+.pill { margin-left: auto; background: var(--sel); color: var(--muted); border-radius: 20px; padding: 2px 8px; font-size: 10px; letter-spacing: 0 }
 .mini {
-  margin-left: auto; background: #233043; border: 1px solid var(--line); color: var(--muted);
+  margin-left: auto; background: var(--sel); border: 1px solid var(--line); color: var(--muted);
   border-radius: 5px; padding: 2px 8px; font-size: 10px;
 }
 .mini:hover { color: var(--text) }
@@ -130,7 +158,7 @@
 .collapsible > h2:hover { color: var(--text) }
 .collapsible > .body { margin-top: 9px }
 .caret {
-  margin-left: auto; flex: none; width: 17px; height: 17px; border-radius: 4px; background: #233043;
+  margin-left: auto; flex: none; width: 17px; height: 17px; border-radius: 4px; background: var(--sel);
   display: grid; place-items: center; font-size: 9px; color: var(--muted); transition: transform .2s;
 }
 .mini + .caret { margin-left: 6px }
@@ -156,42 +184,42 @@
 }
 .rankHead span:first-child { text-align: center }
 .rankHead span:nth-child(n+3) { text-align: right }
-.rankList { overflow-y: auto; flex: 1; margin-top: 5px }
+.rankList { overflow-y: auto; flex: 1; min-height: 0; margin-top: 5px }
 .rankList::-webkit-scrollbar { width: 7px }
-.rankList::-webkit-scrollbar-thumb { background: #2b3644; border-radius: 7px }
+.rankList::-webkit-scrollbar-thumb { background: var(--scroll); border-radius: 7px }
 .rankRow {
   display: grid; grid-template-columns: 26px 1fr 74px 52px; gap: 6px; align-items: center;
   padding: 9px 8px; border-radius: 7px; cursor: pointer; font-size: 13px;
   border-left: 3px solid transparent; margin-bottom: 2px; width: 100%; text-align: left;
   background: none; border-top: 0; border-right: 0; border-bottom: 0; color: inherit;
 }
-.rankRow:hover { background: #222e3d }
-.rankSel { background: #243347; border-left-color: var(--accent) }
+.rankRow:hover { background: var(--hover) }
+.rankSel { background: var(--sel); border-left-color: var(--accent) }
 .rankRow :global(.rk) { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; text-align: center }
 .rankRow :global(.nm) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; letter-spacing: .2px }
 .rankRow :global(.nm) i { display: block; font-style: normal; font-size: 10.5px; color: var(--muted); font-weight: 400; margin-top: 2px }
-.rankRow :global(.nm2) { text-align: right; font-variant-numeric: tabular-nums; color: #9fb0c4; font-size: 11px; white-space: nowrap }
+.rankRow :global(.nm2) { text-align: right; font-variant-numeric: tabular-nums; color: var(--text-2); font-size: 11px; white-space: nowrap }
 .rankRow :global(.tot) {
-  text-align: center; font-weight: 700; border-radius: 6px; padding: 6px 0; color: #08111a;
+  text-align: center; font-weight: 700; border-radius: 6px; padding: 6px 0; color: var(--sunken);
   font-variant-numeric: tabular-nums; font-size: 14px;
 }
 /* Түвшний бүлгийн гарчиг */
 .rankGrp {
   display: grid; grid-template-columns: 9px 1fr auto 20px 12px; gap: 7px; align-items: center;
   padding: 7px 8px 5px; margin-top: 6px;
-  border-bottom: 1px solid #26303d;
+  border-bottom: 1px solid var(--line);
   position: sticky; top: 0; background: var(--panel-2); z-index: 1;
   cursor: pointer; user-select: none; border-radius: 5px 5px 0 0;
   width: 100%; border-left: 0; border-right: 0; border-top: 0; color: inherit;
 }
-.rankGrp:hover { background: #222e3d }
+.rankGrp:hover { background: var(--hover) }
 .rankGrp u { text-decoration: none; font-size: 8px; color: var(--muted); text-align: center; transition: transform .18s }
 .grpOff u { transform: rotate(-90deg) }
-.grpOff { opacity: .72; border-bottom-color: #212a36 }
+.grpOff { opacity: .72; border-bottom-color: var(--hover) }
 .rankGrp:first-child { margin-top: 0 }
 .rankGrp i { width: 9px; height: 9px; border-radius: 2px }
-.rankGrp span { font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: #c3cedb; font-weight: 600 }
-.rankGrp em { font-style: normal; font-size: 9px; color: #5b6675; font-variant-numeric: tabular-nums }
+.rankGrp span { font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: var(--text-2); font-weight: 600 }
+.rankGrp em { font-style: normal; font-size: 9px; color: var(--muted); font-variant-numeric: tabular-nums }
 .rankGrp b { text-align: right; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums }
 
 /* Багц бүсийг эрэмбэд онцлох */
@@ -206,13 +234,13 @@
   background: none; border: 0;
 }
 .lyrGrp:first-child { margin-top: 0 }
-.lyrGrp:hover { background: #222e3d; color: var(--text) }
+.lyrGrp:hover { background: var(--hover); color: var(--text) }
 .lyrGrp span { flex: 1; text-align: left }
-.lyrGrp b { font-variant-numeric: tabular-nums; color: #7f8b9c; font-weight: 600 }
+.lyrGrp b { font-variant-numeric: tabular-nums; color: var(--muted); font-weight: 600 }
 
 /* ---------- Toggles ---------- */
 .toggles { display: flex; flex-direction: column; gap: 6px }
-.chk { display: flex; align-items: center; gap: 8px; font-size: 11.5px; cursor: pointer; color: #c3cedb }
+.chk { display: flex; align-items: center; gap: 8px; font-size: 11.5px; cursor: pointer; color: var(--text-2) }
 .chk input { accent-color: var(--accent); width: 14px; height: 14px; flex: none }
 /* Шугаман давхаргын тэмдэг — дугуйтай ойролцоо өргөнтэй байлгана */
 .chk :global(.swatch) { width: 8px; height: 3px; border-radius: 2px; flex: none }
@@ -228,11 +256,11 @@
  * (санхүү) давамгайлна — градиентийн баруун тал ижил өнгөтэй.
  */
 .blendRange { background: linear-gradient(90deg, var(--urban), var(--fin)) !important; height: 6px }
-.blendRange::-webkit-slider-thumb { width: 18px; height: 18px; background: #e6edf3; box-shadow: 0 0 0 1px #e6edf3 }
-.blendRange::-moz-range-thumb { width: 18px; height: 18px; background: #e6edf3 }
+.blendRange::-webkit-slider-thumb { width: 18px; height: 18px; background: var(--text); box-shadow: 0 0 0 1px var(--text) }
+.blendRange::-moz-range-thumb { width: 18px; height: 18px; background: var(--text) }
 
 .blendScores { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px }
-.blendScore { background: #101720; border-radius: 7px; padding: 8px 10px }
+.blendScore { background: var(--sunken); border-radius: 7px; padding: 8px 10px }
 .blendScore span { display: block; font-size: 9.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px }
 .blendScore b { font-size: 17px; font-variant-numeric: tabular-nums }
 
@@ -245,52 +273,52 @@
   width: 100%; padding: 4px 5px; border-radius: 5px; background: none; border: 0;
   color: inherit; font-size: 11px; cursor: pointer; text-align: left;
 }
-.pieItem:hover { background: #222e3d }
-.pieOn { background: #243347; box-shadow: inset 2px 0 0 var(--accent) }
+.pieItem:hover { background: var(--hover) }
+.pieOn { background: var(--sel); box-shadow: inset 2px 0 0 var(--accent) }
 .pieItem i { width: 9px; height: 9px; border-radius: 2px }
-.pieItem span { min-width: 0; color: #c3cedb; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.pieItem span { min-width: 0; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
 .pieItem b { font-variant-numeric: tabular-nums; font-size: 11.5px }
 .pieItem em { font-style: normal; font-size: 9.5px; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 32px; text-align: right }
 
 /* ---------- Weight rows ---------- */
-.wRow { padding: 11px 0; border-bottom: 1px solid #212a36 }
+.wRow { padding: 11px 0; border-bottom: 1px solid var(--hover) }
 .wRow:last-child { border-bottom: 0 }
 .wTop { display: flex; align-items: baseline; gap: 6px }
-.wTop :global(.nm) { font-size: 11.5px; flex: 1; line-height: 1.35; color: #dbe4ee }
+.wTop :global(.nm) { font-size: 11.5px; flex: 1; line-height: 1.35; color: var(--text) }
 .wTop :global(.pct) { font-size: 12.5px; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums }
 
 .app input[type=range] {
   -webkit-appearance: none; appearance: none; width: 100%; height: 4px; border-radius: 4px;
-  background: #2c3846; outline: none; margin: 6px 0;
+  background: var(--line); outline: none; margin: 6px 0;
 }
 .app input[type=range]::-webkit-slider-thumb {
   -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%;
-  background: var(--accent); border: 2px solid #0d1117; cursor: pointer;
+  background: var(--accent); border: 2px solid var(--bg); cursor: pointer;
   box-shadow: 0 0 0 1px var(--accent);
 }
 .app input[type=range]::-moz-range-thumb {
   width: 14px; height: 14px; border-radius: 50%;
-  background: var(--accent); border: 2px solid #0d1117; cursor: pointer;
+  background: var(--accent); border: 2px solid var(--bg); cursor: pointer;
 }
 .wSlider { margin: 4px 0 6px !important }
 
 /* Норм нэг мөрөнд */
 .wReq {
-  font-size: 11px; color: #c3cedb; background: #101720; border-radius: 5px;
+  font-size: 11px; color: var(--text-2); background: var(--sunken); border-radius: 5px;
   padding: 4px 8px; border-left: 2px solid var(--accent);
 }
 .wReq b { color: var(--accent); font-weight: 600 }
 /* Эх сурвалжийн иш */
-.wSrc { font-size: 9.5px; color: #5b6675; margin: 4px 0 0; line-height: 1.4 }
+.wSrc { font-size: 9.5px; color: var(--muted); margin: 4px 0 0; line-height: 1.4 }
 
 /* Бүсийн төрлөөр өөр норм (FAR/BCR) */
 .wTypes { margin-top: 6px; display: flex; flex-direction: column; gap: 1px }
 .wTypes div {
   display: flex; gap: 8px; align-items: baseline; font-size: 10px;
-  padding: 2px 6px; border-radius: 4px; background: #101720;
+  padding: 2px 6px; border-radius: 4px; background: var(--sunken);
 }
 .wTypes span { flex: 1; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
-.wTypes b { color: #dbe4ee; font-variant-numeric: tabular-nums; flex: none }
+.wTypes b { color: var(--text); font-variant-numeric: tabular-nums; flex: none }
 
 /* Босго засварлах талбарууд */
 .wThr { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-top: 7px }
@@ -299,7 +327,7 @@
   text-transform: uppercase; letter-spacing: .3px;
 }
 .wThr input {
-  width: 100%; background: #101720; border: 1px solid var(--line); color: var(--text);
+  width: 100%; background: var(--sunken); border: 1px solid var(--line); color: var(--text);
   border-radius: 4px; padding: 4px 6px; font-size: 11px; font-family: inherit;
   font-variant-numeric: tabular-nums;
 }
@@ -313,7 +341,7 @@
   margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line);
   display: grid; grid-template-columns: 1fr 1fr; gap: 7px;
 }
-.finSummary > div { background: #101720; border-radius: 6px; padding: 7px 9px }
+.finSummary > div { background: var(--sunken); border-radius: 6px; padding: 7px 9px }
 .finSummary span { display: block; font-size: 9.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px }
 .finSummary b { font-size: 12.5px; font-variant-numeric: tabular-nums }
 
@@ -323,42 +351,42 @@
 .parkPct { font-size: 27px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums }
 .parkPct i { font-style: normal; font-size: 13px; margin-left: 1px }
 .parkHeadTxt { min-width: 0 }
-.parkHeadTxt > b { display: block; font-size: 11.5px; color: #dbe4ee }
+.parkHeadTxt > b { display: block; font-size: 11.5px; color: var(--text) }
 .parkHeadTxt > span { font-size: 11px; color: var(--muted) }
-.parkHeadTxt > span b { color: #dbe4ee; font-variant-numeric: tabular-nums }
+.parkHeadTxt > span b { color: var(--text); font-variant-numeric: tabular-nums }
 
 /* Хангалтын зурвас — 100% нь нормын түвшин */
 .parkBar {
   position: relative; height: 7px; margin-top: 9px;
-  background: #101720; border: 1px solid var(--line); border-radius: 5px; overflow: hidden;
+  background: var(--sunken); border: 1px solid var(--line); border-radius: 5px; overflow: hidden;
 }
 .parkBar span { display: block; height: 100%; border-radius: 5px; transition: width .25s }
 .parkScale { display: flex; justify-content: space-between; margin-top: 3px; font-size: 9px; color: var(--muted); letter-spacing: .3px }
 .parkFormula {
-  margin-top: 9px; padding: 7px 9px; background: #101720; border-radius: 6px;
+  margin-top: 9px; padding: 7px 9px; background: var(--sunken); border-radius: 6px;
   font-size: 11px; color: var(--muted); line-height: 1.5;
 }
-.parkFormula b { color: #dbe4ee; font-variant-numeric: tabular-nums }
+.parkFormula b { color: var(--text); font-variant-numeric: tabular-nums }
 
 /* ---------- Эдийн засгийн шинжилгээ ---------- */
 .econHead { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 2px 0 8px }
-.econBig { background: #101720; border-radius: 7px; padding: 8px 10px }
+.econBig { background: var(--sunken); border-radius: 7px; padding: 8px 10px }
 .econBig span { display: block; font-size: 9.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px }
 .econBig b { font-size: 15px; font-variant-numeric: tabular-nums; color: var(--fin) }
 .econBig b i { font-style: normal; font-size: 10px; color: var(--muted); font-weight: 500 }
 
 .econChart { margin-top: 5px; max-height: 340px; overflow-y: auto; padding-right: 3px }
 .econChart::-webkit-scrollbar { width: 7px }
-.econChart::-webkit-scrollbar-thumb { background: #2b3644; border-radius: 7px }
+.econChart::-webkit-scrollbar-thumb { background: var(--scroll); border-radius: 7px }
 .econRow { margin-bottom: 9px }
 .econRowTop { display: flex; align-items: baseline; gap: 6px; font-size: 11px }
 .econRowTop i { width: 8px; height: 8px; border-radius: 2px; flex: none; align-self: center }
-.econRowTop :global(.nm) { flex: 1; color: #c3cedb; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left }
+.econRowTop :global(.nm) { flex: 1; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left }
 .econRowTop b { font-variant-numeric: tabular-nums; color: var(--text) }
 .econRowTop em { font-style: normal; font-size: 9.5px; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 36px; text-align: right }
-.econBar { height: 5px; background: #101720; border-radius: 3px; overflow: hidden; margin-top: 3px }
+.econBar { height: 5px; background: var(--sunken); border-radius: 3px; overflow: hidden; margin-top: 3px }
 .econBar i { display: block; height: 100%; border-radius: 3px; transition: width .3s }
-.econMeta { margin-top: 2px; font-size: 9px; color: #5b6675; font-variant-numeric: tabular-nums; text-align: left }
+.econMeta { margin-top: 2px; font-size: 9px; color: var(--muted); font-variant-numeric: tabular-nums; text-align: left }
 
 /* Эдийн засгийн загварчлалын карт — үлдсэн өндрийг бүтэн эзэлнэ */
 .econTune { flex: 1; min-height: 0; display: flex; flex-direction: column }
@@ -373,10 +401,10 @@
   padding: 3px 5px; margin-left: -5px; margin-right: -5px; border-radius: 5px;
   width: calc(100% + 10px); background: none; border: 0;
 }
-.toggleLabel:hover { background: #222e3d; color: var(--text) }
+.toggleLabel:hover { background: var(--hover); color: var(--text) }
 .toggleLabel span { flex: 1; text-align: left }
 .toggleLabel i {
-  font-style: normal; width: 15px; height: 15px; border-radius: 4px; background: #233043;
+  font-style: normal; width: 15px; height: 15px; border-radius: 4px; background: var(--sel);
   display: grid; place-items: center; font-size: 8px; transition: transform .2s;
 }
 .toggleOff i { transform: rotate(-90deg) }
@@ -384,18 +412,18 @@
 /* Бүсүүдийн ашиг/алдагдал — үйлчилгээний өртгийн графиктай ижил мөрүүд */
 .pchart { margin-top: 5px; flex: 1; min-height: 120px; overflow-y: auto; padding-right: 3px }
 .pchart::-webkit-scrollbar { width: 7px }
-.pchart::-webkit-scrollbar-thumb { background: #2b3644; border-radius: 7px }
+.pchart::-webkit-scrollbar-thumb { background: var(--scroll); border-radius: 7px }
 .pchart .econRow { cursor: pointer; padding: 3px 4px; margin: 0 -4px 6px; border-radius: 6px; width: 100%; background: none; border: 0; color: inherit }
-.pchart .econRow:hover { background: #222e3d }
-.pchart .econOn { background: #243347; box-shadow: inset 2px 0 0 #22d3ee }
+.pchart .econRow:hover { background: var(--hover) }
+.pchart .econOn { background: var(--sel); box-shadow: inset 2px 0 0 #22d3ee }
 .pchartLgd { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 2px; font-size: 9.5px; color: var(--muted); font-variant-numeric: tabular-nums }
 
 .econGrp {
   display: flex; align-items: center; gap: 7px; font-size: 11px; padding: 4px 5px;
-  border-radius: 5px; background: #101720; margin-bottom: 3px;
+  border-radius: 5px; background: var(--sunken); margin-bottom: 3px;
 }
 .econGrp i { width: 8px; height: 8px; border-radius: 2px; flex: none }
-.econGrp span { flex: 1; color: #c3cedb }
+.econGrp span { flex: 1; color: var(--text-2) }
 .econGrp b { font-variant-numeric: tabular-nums }
 .econGrp em { font-style: normal; font-size: 9.5px; color: var(--muted); min-width: 36px; text-align: right }
 
@@ -410,16 +438,16 @@
 }
 .mapTip :global(.t) { display: flex; align-items: center; gap: 7px; margin-bottom: 7px }
 .mapTip :global(.t) b { font-size: 12px; color: var(--text); flex: 1; line-height: 1.3 }
-.mapTip :global(.st) { flex: none; font-size: 9px; padding: 2px 6px; border-radius: 20px; color: #08111a; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums }
+.mapTip :global(.st) { flex: none; font-size: 9px; padding: 2px 6px; border-radius: 20px; color: var(--sunken); font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums }
 .mapTip dl { display: grid; grid-template-columns: auto auto; gap: 3px 10px; margin: 0 }
 .mapTip dt { color: var(--muted); font-size: 10px }
-.mapTip dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; color: #dbe4ee; font-size: 10.5px }
+.mapTip dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; color: var(--text); font-size: 10.5px }
 /* Бүсийн hover — дэд гарчиг ба норм зөрчсөн үзүүлэлтүүд */
 .mapTip :global(.sub2) { font-size: 9.5px; color: var(--muted); margin: -4px 0 7px; line-height: 1.4 }
-.mapTip :global(.fails) { margin-top: 7px; padding-top: 6px; border-top: 1px solid #26303d; display: flex; flex-direction: column; gap: 2px }
+.mapTip :global(.fails) { margin-top: 7px; padding-top: 6px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 2px }
 .mapTip :global(.fails) div { display: flex; gap: 8px; align-items: baseline; font-size: 9.5px }
 .mapTip :global(.fails) span { flex: 1; color: #f87171; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
-.mapTip :global(.fails) em { font-style: normal; color: #dbe4ee; font-variant-numeric: tabular-nums; flex: none }
+.mapTip :global(.fails) em { font-style: normal; color: var(--text); font-variant-numeric: tabular-nums; flex: none }
 
 /* ---------- Detail card ---------- */
 .detail {
@@ -430,7 +458,7 @@
 }
 .dragging { box-shadow: 0 18px 52px rgba(0, 0, 0, .75); border-color: #22d3ee; transition: none }
 .detail::-webkit-scrollbar { width: 7px }
-.detail::-webkit-scrollbar-thumb { background: #2b3644; border-radius: 7px }
+.detail::-webkit-scrollbar-thumb { background: var(--scroll); border-radius: 7px }
 .dHead {
   padding: 13px 14px; border-bottom: 1px solid var(--line); position: sticky; top: 0;
   background: rgba(22, 29, 39, .98); z-index: 2; display: flex; gap: 12px; align-items: center;
@@ -438,43 +466,43 @@
 }
 .dHead :global(.gauge) {
   width: 54px; height: 54px; border-radius: 50%; flex: none; display: grid; place-items: center;
-  font-size: 16px; font-weight: 700; color: #08111a; font-variant-numeric: tabular-nums;
+  font-size: 16px; font-weight: 700; color: var(--sunken); font-variant-numeric: tabular-nums;
 }
 .dHead h3 { font-size: 15px }
 .dHead p { margin: 2px 0 0; font-size: 11px; color: var(--muted) }
 .dClose { margin-left: auto; background: none; border: 0; color: var(--muted); font-size: 19px; line-height: 1; align-self: flex-start }
 .dClose:hover { color: var(--text) }
 
-.dSect { padding: 11px 14px; border-bottom: 1px solid #212a36 }
+.dSect { padding: 11px 14px; border-bottom: 1px solid var(--hover) }
 .dSect:last-child { border-bottom: 0 }
 .dSect h4 { margin: 0 0 8px; font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); font-weight: 600 }
 
 .mRow { margin-bottom: 9px }
 .mRow:last-child { margin-bottom: 0 }
 /* «Үзүүлэлт» горимд идэвхтэй үзүүлэлтийг онцлох */
-.mOn { background: #243347; box-shadow: inset 2px 0 0 var(--accent); border-radius: 5px; padding: 5px 7px; margin: 0 -7px 9px }
+.mOn { background: var(--sel); box-shadow: inset 2px 0 0 var(--accent); border-radius: 5px; padding: 5px 7px; margin: 0 -7px 9px }
 .mTop { display: flex; align-items: baseline; gap: 6px; font-size: 11px; margin-bottom: 3px }
-.mTop :global(.nm) { flex: 1; color: #c3cedb; line-height: 1.3 }
+.mTop :global(.nm) { flex: 1; color: var(--text-2); line-height: 1.3 }
 .mTop :global(.v) { font-weight: 600; font-variant-numeric: tabular-nums }
 .mTop :global(.w) { color: var(--muted); font-size: 9.5px }
 .mNorm { font-size: 9.5px; margin: 0 0 3px }
 .mNorm :global(.ok) { color: #4ade80 }
 .mNorm :global(.bad) { color: #f87171; font-weight: 600 }
 .mNorm span { color: var(--muted) }
-.mBar { height: 6px; background: #101720; border-radius: 3px; overflow: hidden; position: relative }
+.mBar { height: 6px; background: var(--sunken); border-radius: 3px; overflow: hidden; position: relative }
 .mBar i { display: block; height: 100%; border-radius: 3px; transition: width .3s }
-.mBar u { position: absolute; top: -2px; width: 1.5px; height: 10px; background: #e6edf3; opacity: .55 }
+.mBar u { position: absolute; top: -2px; width: 1.5px; height: 10px; background: var(--text); opacity: .55 }
 
 /* Нийгмийн дэд бүтцийн задаргаа */
 .socRow { margin-bottom: 9px }
 .socTop { display: flex; align-items: baseline; gap: 7px; margin-bottom: 3px }
-.socTop :global(.nm) { flex: 1; font-size: 11.5px; color: #dbe4ee }
+.socTop :global(.nm) { flex: 1; font-size: 11.5px; color: var(--text) }
 .socTop :global(.d) { font-size: 9.5px; color: var(--muted); font-variant-numeric: tabular-nums }
 .socTop :global(.v) { font-size: 11.5px; font-weight: 600; font-variant-numeric: tabular-nums }
 .socMeta { margin-top: 3px; font-size: 9.5px; color: var(--muted) }
 
 .dGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px }
-.dGrid > div { background: #101720; border-radius: 6px; padding: 7px 9px }
+.dGrid > div { background: var(--sunken); border-radius: 6px; padding: 7px 9px }
 .dGrid span { display: block; font-size: 9.5px; color: var(--muted) }
 .dGrid b { font-size: 12px; font-variant-numeric: tabular-nums }
 .pos { color: #4ade80 }
@@ -494,25 +522,25 @@
   padding: 5px 6px; border-radius: 5px; cursor: pointer; font-size: 11.5px;
   transition: background .12s; width: 100%; background: none; border: 0; color: inherit;
 }
-.ind:hover { background: #222e3d }
-.indOn { background: #243347; box-shadow: inset 2px 0 0 var(--accent) }
+.ind:hover { background: var(--hover) }
+.indOn { background: var(--sel); box-shadow: inset 2px 0 0 var(--accent) }
 .indOn :global(.nm) { color: #fff; font-weight: 600 }
-.ind :global(.nm) { color: #c3cedb; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left }
+.ind :global(.nm) { color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left }
 .ind :global(.wt) { text-align: right; font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums }
-.ind :global(.cnt) { text-align: right; font-size: 10.5px; color: #dbe4ee; font-variant-numeric: tabular-nums }
-.ind :global(.bar) { height: 4px; background: #101720; border-radius: 2px; overflow: hidden }
+.ind :global(.cnt) { text-align: right; font-size: 10.5px; color: var(--text); font-variant-numeric: tabular-nums }
+.ind :global(.bar) { height: 4px; background: var(--sunken); border-radius: 2px; overflow: hidden }
 .ind :global(.bar) i { display: block; height: 100%; border-radius: 2px; transition: width .3s }
 
 /* Сонгосон үзүүлэлтийн норм + эх сурвалж */
-.indNote { margin-top: 9px; padding-top: 9px; border-top: 1px solid #212a36 }
+.indNote { margin-top: 9px; padding-top: 9px; border-top: 1px solid var(--hover) }
 .indNote .wReq { display: flex; align-items: baseline; gap: 8px }
 .indNote .wReq :global(.wt) {
   margin-left: auto; flex: none; font-size: 9.5px; color: var(--muted);
-  background: #233043; border-radius: 20px; padding: 1px 7px;
+  background: var(--sel); border-radius: 20px; padding: 1px 7px;
 }
 
 /* ArcGIS widget tweak */
-.app :global(.esri-ui) :global(.esri-widget) { --calcite-ui-foreground-1: #161d27 }
+.app :global(.esri-ui) :global(.esri-widget) { --calcite-ui-foreground-1: var(--panel) }
 
 @media (max-width: 1450px) {
   .shell { --left-w: 295px; --right-w: 300px }
@@ -525,13 +553,14 @@
 }
 
 /* ---------- «Давхарга» + 2D/3D/BIM — НЭГ мөр (газрын зураг дээр) ----------
-   «Ерөнхий төлөвлөгөө»-тэй ижил зарчим: Давхарга нь дим товчны ӨМНӨ. Зүүн доод
-   буланд — ArcGIS zoom (баруун дээд), масштаб (баруун доод), дэлгэрэнгүй карт
-   (зүүн дээд)-той мөргөлдөхгүй. */
+   «Ерөнхий төлөвлөгөө»-тэй ижил зарчим: Давхарга нь дим товчны ӨМНӨ. ДЭЭД-ТӨВД —
+   ArcGIS zoom (баруун дээд), масштаб (баруун доод), дэлгэрэнгүй карт (зүүн дээд)-
+   той мөргөлдөхгүй. */
 .mapControls {
   position: absolute;
-  left: 14px;
-  bottom: 32px;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 12;
   display: flex;
   align-items: center;
@@ -584,19 +613,18 @@
    ⚠️ `catalog.module.css` нь global (гэрэл/харанхуй) хувьсагч хүлээдэг; анализ
    нь ҮРГЭЛЖ харанхуй тул тэдгээрийг энд суитийн палитраар дарж бичнэ. */
 .catPanel {
-  --surface: #161d27;
-  --surface-2: #1c2532;
-  --line: #26303d;
-  --line-strong: #3a4757;
-  --ink: #e6edf3;
-  --ink-2: #c3cedb;
+  --surface: var(--panel);
+  --surface-2: var(--panel-2);
+  --line: var(--line);
+  --line-strong: var(--line);
+  --ink: var(--text);
+  --ink-2: var(--text-2);
   --ink-3: #8b98a9;
   --warn: #fbbf24;
   --hue: #4fd1c5;
   --r: 10px;
   --r-sm: 7px;
   --ease: cubic-bezier(0.32, 0.72, 0, 1);
-  --mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace;
 
   position: absolute;
   left: 0;
