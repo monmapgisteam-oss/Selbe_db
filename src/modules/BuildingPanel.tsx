@@ -8,9 +8,11 @@ import { queryFeatures } from '@/lib/query';
 import { BUILDING, PROGRESS_LEVELS, TASK_SHEET, LAYER_BY_ID, bagtsKey, buildingKey } from '@/lib/services';
 import { loadBlockProgress, loadBlockHistory, progressSeries, type BlockHistory } from '@/lib/blockProgress';
 import { ACTUAL, applySections, qesc, queryAll, type Feature } from '@/modules/sheet/ags';
-import { num, pct, text } from '@/lib/format';
+import { num, pct, text, shade } from '@/lib/format';
 
 const HUE = LAYER_BY_ID['mon:building'].hue;
+/** Гүйцэтгэлийн түвшний нэг өнгө — сүүлийн (Дууссан) хамгийн тод → эхнийх бүдэг */
+const lvlHue = (i: number, n: number) => shade(HUE, n - 1 - i, n);
 const F = BUILDING.fields;
 const TS = TASK_SHEET.fields;
 
@@ -311,13 +313,16 @@ export function BuildingSummary({ q }: { q: Buildings }) {
                 <Stat value={num(d.blocks)} label="Барилгын блок" color={HUE} accent />
                 <Stat value={num(d.households)} label="Айлын тоо" color={HUE} accent />
               </Stats>
-              {/* ⚠️ ТҮР ЗУУРЫН ХАТУУ УТГА: гүйцэтгэлийн ring-ийг 21.6% дээр
+              {/* ⚠️ ТҮР ЗУУРЫН ХАТУУ УТГА: гүйцэтгэлийн ring-ийг 19.2% дээр
                   тогтоов (хүсэлтээр). Хүснэгтийн өгөгдөл шинэчлэгдсэний дараа
-                  `value={d.progress}` руу БУЦАА, `decimals`-ыг ХАС. */}
+                  `value={d.progress}` руу БУЦАА, `decimals`-ыг ХАС.
+                  ◆ тэмдэглэгээ нь бэхэлсэн дүнг амьд тооноос ялгана (brief.ts-ийн
+                  журам) — эс тэмдэглэвэл хэрэглэгч амьд тоо гэж уншина. */}
               <Split aside={<Ring value={19.2} decimals={1} color={HUE} size={78} width={8} />}>
                 <Note>
-                  {num(d.blocks - d.noData)} блокийн «Барилга угсралтын ажил»-ын дундаж
-                  гүйцэтгэл{d.asOf ? ` (${d.asOf})` : ''}. Дундаж {num(d.floors, 1)} давхар.
+                  <span title="Гараар тогтоосон албан ёсны дүн — амьд хүснэгтээс биш">◆ Тогтоосон дүн.</span>{' '}
+                  {num(d.blocks - d.noData)} блокийн «Барилга угсралтын ажил»-ын амьд дундаж{' '}
+                  {pct(d.progress, 1)}{d.asOf ? ` (${d.asOf})` : ''}. Дундаж {num(d.floors, 1)} давхар.
                   {d.noData > 0 ? ` ${num(d.noData)} блок хараахан бөглөгдөөгүй.` : ''}
                 </Note>
               </Split>
@@ -326,24 +331,27 @@ export function BuildingSummary({ q }: { q: Buildings }) {
 
           <Section title="Гүйцэтгэлийн ангилал" note="дарж шүүнэ">
             <Col gap="md">
+              {/* НЭГ ӨНГӨ (тодоос бүдгэр) — түвшин нь дараалалтай (Эхэлсэн→Дууссан)
+                  тул гүйцэтгэл өндөр нь ТОД, бага нь бүдэг болж уусна. */}
               <Stack
                 legend={false}
                 total={d.blocks}
-                items={d.levels.map((l) => ({ key: l.key, label: l.label, value: l.value, color: l.color }))}
+                items={d.levels.map((l, i) => ({ key: l.key, label: l.label, value: l.value, color: lvlHue(i, d.levels.length) }))}
               />
               <Bars
                 max={Math.max(1, ...d.levels.map((l) => l.value))}
                 selected={selected('building:level:')}
                 onSelect={(k) => {
-                  const l = d.levels.find((x) => x.key === k)!;
-                  pick(`building:level:${k}`, `${l.label} · ${l.range}`, 'Гүйцэтгэлийн ангилал', l.oids, l.color);
+                  const i = d.levels.findIndex((x) => x.key === k);
+                  const l = d.levels[i];
+                  pick(`building:level:${k}`, `${l.label} · ${l.range}`, 'Гүйцэтгэлийн ангилал', l.oids, lvlHue(i, d.levels.length));
                 }}
-                items={d.levels.map((l) => ({
+                items={d.levels.map((l, i) => ({
                   key: l.key,
                   label: `${l.label} · ${l.range}`,
                   value: l.value,
                   display: `${num(l.value)} блок`,
-                  color: l.color,
+                  color: lvlHue(i, d.levels.length),
                 }))}
               />
             </Col>
@@ -403,12 +411,14 @@ export function BuildingSummary({ q }: { q: Buildings }) {
                 // ⚠️ ТҮР ЗУУРЫН ХАТУУ УТГА: «Багц 1»-ийг барьсан компанийг (Хятадын
                 //    2 дахь металлурги) 21.6% болгов — багцтай зөрөхгүй байхаар.
                 //    Өгөгдөл шинэчлэгдсэний дараа энэ override-г ХАС.
-                const p = c.key.includes('металлурги') ? 21.6 : c.progress;
+                //    ◆ — бэхэлсэн дүнг амьд тооноос ялгах тэмдэглэгээ (brief.ts-ийн журам).
+                const pinned = c.key.includes('металлурги');
+                const p = pinned ? 21.6 : c.progress;
                 return {
                   key: c.key,
                   label: `${c.key} · ${num(c.blocks)} блок`,
                   value: p ?? 0,
-                  display: p == null ? 'мэдээлэлгүй' : pct(p),
+                  display: p == null ? 'мэдээлэлгүй' : `${pct(p)}${pinned ? ' ◆' : ''}`,
                 };
               })}
             />

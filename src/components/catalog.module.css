@@ -53,6 +53,10 @@
 }
 .grip:hover, .gripOn { background: color-mix(in srgb, var(--hue) 22%, transparent); }
 .grip:hover::after, .gripOn::after { opacity: 1; }
+/* Touch — 6px зурвас хуруунд хэт нарийн тул hit-талбайг тэлнэ */
+@media (pointer: coarse) {
+  .grip { width: 18px; right: -6px; }
+}
 
 .head {
   display: flex;

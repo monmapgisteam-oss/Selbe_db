@@ -8,8 +8,8 @@ import { useAsync } from '@/lib/useAsync';
 import {
   queryStats, queryGroup, groups, count, sum, avg, type Aoi, type Row,
 } from '@/lib/query';
-import { GAZAR_BUILDING, GAZAR_PARCEL, PARCEL_LEFT, PARCEL_PROGRESS_HUES } from '@/lib/services';
-import { num, text } from '@/lib/format';
+import { GAZAR_BUILDING, GAZAR_PARCEL, PARCEL_LEFT } from '@/lib/services';
+import { num, text, shade, shades } from '@/lib/format';
 import o from './overview.module.css';
 import g from './gazar.module.css';
 
@@ -39,10 +39,13 @@ const RESOLVED = ['гэрээлсэн', 'дүйцүүлсэн'];
 const DISPUTED = ['татгалзсан', 'маргаантай'];
 
 /** Диаграмын палитр — ангилал бүрд ялгарах өнгө (явцаас бусад талбарт) */
-const PALETTE = [
-  '#16a34a', '#0ea5e9', '#f59e0b', '#7c3aed',
-  '#ef4444', '#0891b2', '#d97706', '#64748b', '#db2777', '#65a30d',
-];
+/**
+ * ⚠️ НЭГ ӨНГӨНИЙ СҮҮДЭР — урьд нь 10 өөр солонгон өнгө байсныг хэрэглэгчийн
+ * хүсэлтээр Газар чөлөөлөлт харагдацын ногоон акцентын уусгалт болгов. Барилгын
+ * төрөл, газар ашиглалтын бүлгүүд өөр «утга»гүй, зөвхөн ялгах хэрэгцээтэй.
+ * Явцын өнгө (`PARCEL_PROGRESS_HUES`) нь утга агуулсан тул хэвээр.
+ */
+const PALETTE = shades('#16a34a', 10);
 
 /** м² → га */
 const ha = (m2: number) => num(m2 / 10_000, 2);
@@ -78,12 +81,12 @@ function progressItems(rows: Row[], field: string, valueKey = 'n') {
     const k = cleanProgress(text(r[field]));
     by.set(k, (by.get(k) ?? 0) + Number(r[valueKey] ?? 0));
   }
-  return [...by.entries()]
-    .map(([label, value]) => ({
-      key: label, label, value,
-      color: PARCEL_PROGRESS_HUES[label] ?? '#94a3b8',
-    }))
-    .sort((a, b) => b.value - a.value);
+  // НЭГ ӨНГӨ (Газар чөлөөлөлтийн ногоон) тодоос бүдгэр — их тоотой нь тод.
+  const sorted = [...by.entries()].sort((a, b) => b[1] - a[1]);
+  return sorted.map(([label, value], i) => ({
+    key: label, label, value,
+    color: shade('#16a34a', i, sorted.length),
+  }));
 }
 
 type ProgItems = ReturnType<typeof progressItems>;

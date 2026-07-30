@@ -126,6 +126,18 @@ export function groupQty(ids: string[], map: ReadonlyMap<string, Totals>): strin
  * ⚠️ `enabled` нь «Барилгын хяналт» харагдацад хэрэгтэй: тэнд ЕТ-ийн давхарга
  * огт үзүүлэхгүй тул 29 хүсэлт явуулах нь дэмий.
  */
+/**
+ * SESSION КЭШ — нэг удаа татсан (бүс, давхаргын багц)-ын дүнг санана.
+ *
+ * ⚠️ Урьд нь бүс солих БҮРД 29 хүсэлт шинээр явдаг байв: «Багц-1» сонгоод
+ * буцаад «бүгд» рүү шилжихэд өмнө нь татсан яг тэр дүн дахин татагдана
+ * (`MAX_CONCURRENT=6` тул ~5 багц болж цувна). Эх өгөгдөл session дотор
+ * өөрчлөгдөх нь ховор тул түлхүүр бүрийн ЭХНИЙ амжилттай үр дүнг модулийн
+ * санах ойд хадгална — бүс хооронд шилжих нь агшин зуурын болно.
+ * Алдаатай үр дүн кэшлэгдэхгүй (throw нь Map-д хүрэхгүй) — retry цэвэр явна.
+ */
+const totalsCache = new Map<string, Map<string, Totals>>();
+
 export function usePlanTotals(
   zone: string | null,
   enabled = true,
@@ -134,13 +146,17 @@ export function usePlanTotals(
   const key = `${enabled ? 'on' : 'off'}|${zone ?? ''}|${ids.join(',')}`;
   return useAsync(async () => {
     if (!enabled) return new Map<string, Totals>();
+    const hit = totalsCache.get(key);
+    if (hit) return hit;
     const entries = await Promise.all(
       ids.map(async (id) => {
         const d = LAYER_BY_ID[id];
         return [id, await layerTotals(d, whereFor(d, zone))] as const;
       }),
     );
-    return new Map<string, Totals>(entries);
+    const map = new Map<string, Totals>(entries);
+    totalsCache.set(key, map);
+    return map;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 }

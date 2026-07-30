@@ -5,6 +5,8 @@ import {
   type Indicator, type ParkingOpt, type ParkingSource, type CategoryKey,
 } from '@/lib/analysis/config';
 import { scoreColor, scoreIndicator, clamp } from '@/lib/analysis/score';
+import { Donut } from '@/components/ui';
+import { shade } from '@/lib/format';
 import { nf, normLine } from './format';
 import type { Row } from './model';
 import s from '../suitability.module.css';
@@ -28,10 +30,6 @@ export function CategoryPie({
   filter: CategoryKey | null;
   setFilter: (c: CategoryKey | null) => void;
 }) {
-  const size = 116, width = 20;
-  const r = (size - width) / 2;
-  const circ = 2 * Math.PI * r;
-
   const cats = CATEGORIES.map((c) => {
     const mine = indicators.filter((i) => i.cat === c.key);
     const weight = mine.reduce((a, i) => a + i.weight, 0);
@@ -48,54 +46,48 @@ export function CategoryPie({
     return { ...c, weight, share: (weight / totalW) * 100, score: wsum ? sum / wsum : null };
   });
 
-  let acc = 0;
-  const slices = cats.map((c) => {
-    const frac = totalW > 0 ? c.weight / totalW : 0;
-    const offset = acc;
-    acc += frac;
-    return { ...c, frac, offset };
-  });
+  /** Голд — гурван төрлийн жигнэсэн ерөнхий дундаж оноо */
+  let tSum = 0, tW = 0;
+  for (const c of cats) {
+    if (c.score == null) continue;
+    tSum += c.score * c.weight;
+    tW += c.weight;
+  }
+  const overall = tW ? Math.round(tSum / tW) : null;
 
+  /**
+   * ⚠️ Порталын БУСАД дашбоардтай ИЖИЛ `ui.tsx`-ийн Donut — урьд нь энд өөрийн
+   * SVG дугуй байсан нь ижил өгөгдлийг өөр дүрслэлээр харуулж байв. Зүсмэгийн
+   * хэмжээ нь жингийн эзлэх хувь; тайлбарт төрлийн дундаж оноо (өнгөөр) ба
+   * жингийн хувь. Харанхуй палитрт `ui`-ийн хувьсагчид `.app`-ын CSS гүүрээр
+   * буудаг тул өнгө нь энэ модулийн дэвсгэртэй зохицно.
+   */
   return (
-    <div className={s.pieWrap}>
-      <svg className={s.pie} width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-        {/* −90° эргүүлж 12 цагаас эхлүүлнэ */}
-        <g transform={`rotate(-90 ${size / 2} ${size / 2})`}>
-          <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#101720" strokeWidth={width} />
-          {slices.map((sl) => (
-            <circle
-              key={sl.key}
-              cx={size / 2} cy={size / 2} r={r}
-              fill="none"
-              stroke={sl.color}
-              strokeWidth={filter === sl.key ? width + 4 : width}
-              strokeOpacity={filter && filter !== sl.key ? 0.3 : 1}
-              strokeDasharray={`${sl.frac * circ} ${circ}`}
-              strokeDashoffset={-sl.offset * circ}
-            >
-              <title>{`${sl.label}: ${sl.share.toFixed(0)}%`}</title>
-            </circle>
-          ))}
-        </g>
-      </svg>
-
-      <div className={s.pieLegend}>
-        {cats.map((c) => (
-          <button
-            key={c.key}
-            type="button"
-            className={`${s.pieItem} ${filter === c.key ? s.pieOn : ''}`}
-            title={`${c.label} — дарж шүүнэ`}
-            onClick={() => setFilter(filter === c.key ? null : c.key)}
-          >
-            <i style={{ background: c.color }} />
-            <span>{c.short}</span>
-            <b style={{ color: scoreColor(c.score) }}>{c.score == null ? '—' : Math.round(c.score)}</b>
-            <em>{c.share.toFixed(0)}%</em>
-          </button>
-        ))}
-      </div>
-    </div>
+    <Donut
+      size={116}
+      width={20}
+      items={cats.map((c, i) => ({
+        key: c.key,
+        label: c.short,
+        value: c.weight,
+        // НЭГ ӨНГӨ (accent) тодоос бүдгэр — зүсмэгийн өнгө нь ангиллын «утга» биш,
+        // зөвхөн ялгах зорилготой. Онооны утгыг тайлбарын тоо (scoreColor) хэлнэ.
+        color: shade('#4fd1c5', i, cats.length),
+        display: (
+          <>
+            <b style={{ color: scoreColor(c.score) }}>
+              {c.score == null ? '—' : Math.round(c.score)}
+            </b>
+            {' · '}
+            {c.share.toFixed(0)}%
+          </>
+        ),
+      }))}
+      center={overall ?? '—'}
+      centerLabel="дундаж оноо"
+      selected={filter}
+      onSelect={(k) => setFilter(filter === k ? null : (k as CategoryKey))}
+    />
   );
 }
 

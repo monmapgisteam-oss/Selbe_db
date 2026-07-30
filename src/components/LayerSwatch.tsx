@@ -1,20 +1,25 @@
 'use client';
 
-import { DASH_PATTERN, type LayerDef } from '@/lib/services';
+import { DASH_PATTERN, layerUrl, type LayerDef } from '@/lib/services';
+import { webmapStyleOf } from '@/lib/webmapStyle';
 import s from './swatch.module.css';
 
 /**
  * Давхаргын симбол — SVG-ээр, газрын зурагтай ИЖИЛ хэв, зузаан, өнгөөр.
  *
  * ⚠️ Тодорхойлолтыг каталогоос уншина, дахин зохиохгүй. Симбол нь зурагтай хэзээ
- * ч зөрөх боломжгүй байх ёстой.
+ * ч зөрөх боломжгүй байх ёстой. Газрын зураг эх webmap-ийн загвараар зурагддаг
+ * давхаргад ӨНГИЙГ мөн webmap-ийн снапшотоос (`webmapStyleOf`) авна — эс бөгөөс
+ * каталогийн симбол зурагтайгаа зөрнө.
  *
  * ⚠️ Урьд нь энэ нь газрын зураг дээрх «Тайлбар» хайрцагт байв. Тэр хайрцаг нь
  * давхаргын нэрийг үгээр давтаж, зургийн зүүн доод булангийн 232px-ыг байнга
  * эзэлдэг байлаа. Одоо симбол нь каталогийн мөрөндөө — нэр, тоо, өртгийнхөө
  * хажууд байх нь илүү зөв байрлал.
  */
-export function LayerSwatch({ d, hue = d.hue }: { d: LayerDef; hue?: string }) {
+export function LayerSwatch({ d, hue: hueProp }: { d: LayerDef; hue?: string }) {
+  // Гараар заасан өнгө (facet мөр) → webmap-ийн өнгө → каталогийн hue
+  const hue = hueProp ?? webmapStyleOf(layerUrl(d))?.color ?? d.hue;
   if (d.geom === 'line') {
     const pattern = DASH_PATTERN[d.dash ?? 'solid'];
     return (

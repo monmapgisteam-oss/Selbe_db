@@ -34,7 +34,9 @@ import {
   type LayerDef,
 } from '@/lib/services';
 import { queryExtent, queryFeatures, type Aoi } from '@/lib/query';
-import { loadBlockProgress, type BlockProgressMap } from '@/lib/blockProgress';
+import { loadBlockProgress, cachedBlockProgress, type BlockProgressMap } from '@/lib/blockProgress';
+import { webmapStyleOf } from '@/lib/webmapStyle';
+import * as rendererJsonUtils from '@arcgis/core/renderers/support/jsonUtils';
 import { num, pct, date, text } from '@/lib/format';
 import s from './map.module.css';
 
@@ -173,29 +175,6 @@ const line = (hex: string, w = 1.4, dash: NonNullable<LayerDef['dash']> = 'solid
   } as const;
 };
 
-/**
- * Замын шугам — зузаан СУУРЬ + дээр нь ТАСАРХАЙ (эх зургийн «Дугуйн зам» маягаар:
- * саарал зам дээр цагаан зураас). Хоёр CIM stroke: эхнийх (тасархай) дээр.
- */
-const roadLine = (base: string, baseW: number, dashHex: string, dashW: number, dashPattern: number[]) =>
-  ({
-    type: 'cim',
-    data: {
-      type: 'CIMSymbolReference',
-      symbol: {
-        type: 'CIMLineSymbol',
-        symbolLayers: [
-          {
-            type: 'CIMSolidStroke', enable: true, capStyle: 'Butt', joinStyle: 'Round',
-            width: ow(dashW), color: cim(dashHex, 1),
-            effects: [{ type: 'CIMGeometricEffectDashes', dashTemplate: dashPattern, lineDashEnding: 'NoConstraint' }],
-          },
-          { type: 'CIMSolidStroke', enable: true, capStyle: 'Butt', joinStyle: 'Round', width: ow(baseW), color: cim(base, 1) },
-        ],
-      },
-    },
-  }) as const;
-
 /** Цэг — цагаан хүрээтэй; хэлбэрээр нь сэдэв доторх давхаргууд ялгарна */
 const dot = (hex: string, size = 9, marker: NonNullable<LayerDef['marker']> = 'circle') =>
   ({
@@ -289,99 +268,11 @@ const zoneTypeRenderer = (d: LayerDef) => ({
   })),
 } as unknown as RendererProp);
 
-/* ═══ Динамик web-палитр: 1 давхарга → webmap B (single), 2+ → webmap A (multi) ═══ */
-/**
- * Эх ХОЁР webmap-ийн симболыг (fill/outline rgba, өргөн, bloom) СНАПШОТ-оор авав:
- *   · `a` — ГАНЦ давхарга сонгосон үед → «single category» = webmap d790321… (B)
- *   · `b` — 2+ давхарга сонгосон үед → «multiple color» = webmap eb1c3f… (A)
- *
- * ⚠️ Хэрэглэгч webmap-аа идэвхтэй засдаг тул эдгээр нь ТОДОРХОЙ АГШНЫ утга —
- * эх зураг өөрчлөгдвөл энд гараар шинэчилнэ. Зөвхөн хоёр палитрын хооронд
- * ялгаатай (эсвэл bloom-той) давхаргууд орно. Өргөн нь `LINE_PX`-ийг давхарлана.
- */
-type BloomStop = { scale: number; strength: number; radius: number; threshold: number };
-type WebSym = {
-  color?: string; alpha?: number; width?: number;
-  outline?: string; outlineAlpha?: number;
-  bloom?: BloomStop[];
-  paintField?: string; paint?: Record<string, string>;
-  /** Замын хос-шугам: зузаан суурь + дээр нь тасархай (эх зургийн Дугуйн зам) */
-  roadStyle?: { base: string; baseW: number; dash: string; dashW: number; dashPattern: number[] };
-};
-const WEB_DYNAMIC: Record<string, { a: WebSym; b: WebSym }> = {
-  // Барилга — a(single,B): нэг өнгө; b(multi,A): төлөвөөр (Barilga_ty). Хоёул bloom.
-  'et:24': {
-    a: { color: '#ffb700', alpha: 0.2, outline: '#ffb700', outlineAlpha: 0.7, width: 0.75,
-      bloom: [{ scale: 36112, strength: 0.25, radius: 0, threshold: 0.1 }, { scale: 9028, strength: 0.5, radius: 0, threshold: 0.1 }, { scale: 2257, strength: 1, radius: 0, threshold: 0.1 }] },
-    b: { paintField: 'Barilga_ty', paint: { 'Төлөвлөсөн': '#ffaa00', 'Баригдаж байгаа': '#fff700', 'Одоо байгаа': '#00ff2a' }, alpha: 0.2, outlineAlpha: 1, width: 0.75,
-      bloom: [{ scale: 36112, strength: 0.25, radius: 0.375, threshold: 0.1 }, { scale: 9028, strength: 0.5, radius: 0.75, threshold: 0.1 }, { scale: 2257, strength: 1, radius: 1.5, threshold: 0.1 }] },
-  },
-  // Инженерийн бэлтгэл (line) — a(B): хар a0.7; b(A): #fd7f6f
-  'et:15': { a: { color: '#000000', alpha: 0.7, width: 0.75 }, b: { color: '#fd7f6f', alpha: 1, width: 0.75 } },
-  // Автобус чиглэл (line)
-  'et:6':  { a: { color: '#004da8', width: 2.92 }, b: { color: '#ff7b00', width: 0.75 } },
-  // Дугуйн зам (line) — саарал суурь + цагаан тасархай (хоёул ижил)
-  'et:14': {
-    a: { roadStyle: { base: '#828282', baseW: 6, dash: '#ffffff', dashW: 1, dashPattern: [4, 4] } },
-    b: { roadStyle: { base: '#828282', baseW: 6, dash: '#ffffff', dashW: 1, dashPattern: [4, 4] } },
-  },
-  // Гүүр (line) + bloom
-  'et:12': {
-    a: { color: '#878787', width: 0.75, bloom: [{ scale: 36112, strength: 2, radius: 0, threshold: 0.1 }, { scale: 9028, strength: 4, radius: 0, threshold: 0.1 }, { scale: 2257, strength: 8, radius: 0, threshold: 0.1 }] },
-    b: { color: '#878787', width: 1, bloom: [{ scale: 4514, strength: 2, radius: 0.375, threshold: 0.1 }, { scale: 1128, strength: 4, radius: 0.75, threshold: 0.1 }, { scale: 282, strength: 8, radius: 1.5, threshold: 0.1 }] },
-  },
-  // Явган зам (fill)
-  'et:27': { a: { color: '#c2c0c0', alpha: 1, outline: '#383838', outlineAlpha: 1, width: 0.15 }, b: { color: '#bfbfbf', alpha: 1, outline: '#bfbfbf', outlineAlpha: 1, width: 0.375 } },
-  // Ногоон алхалт (fill)
-  'et:26': { a: { color: '#0e4f38', alpha: 0.3, outline: '#0e4f38', outlineAlpha: 1, width: 0.075 }, b: { color: '#00ffa6', alpha: 0.1, outline: '#00ffa6', outlineAlpha: 1, width: 0.375 } },
-  // Ногоон байгууламж (fill)
-  'et:25': { a: { color: '#71ab5e', alpha: 1, outline: '#000000', outlineAlpha: 0, width: 0.563 }, b: { color: '#71ab5e', alpha: 1, outline: '#71ab5e', outlineAlpha: 1, width: 0.375 } },
-  // Мод (fill) — хоёул ногоон, хүрээгүй; өргөн ба bloom радиус ялгаатай
-  'tree': {
-    a: { color: '#adfc74', alpha: 1, outline: '#000000', outlineAlpha: 0, width: 0.75,
-      bloom: [{ scale: 2257, strength: 0.25, radius: 0, threshold: 0.1 }, { scale: 564, strength: 0.5, radius: 0, threshold: 0.1 }, { scale: 141, strength: 1, radius: 0, threshold: 0.1 }] },
-    b: { color: '#adfc74', alpha: 1, outline: '#000000', outlineAlpha: 0, width: 0.45,
-      bloom: [{ scale: 36112, strength: 0.25, radius: 0.375, threshold: 0.1 }, { scale: 9028, strength: 0.5, radius: 0.75, threshold: 0.1 }, { scale: 2257, strength: 1, radius: 1.5, threshold: 0.1 }] },
-  },
-  // Авто зам (line) — цагаан, өргөн ялгаатай
-  'road': { a: { color: '#ffffff', width: 1.56 }, b: { color: '#ffffff', width: 0.503 } },
-  // Одоо байгаа зам (line)
-  'roadOld': { a: { color: '#ffffff', width: 1.5 }, b: { color: '#4d5863', width: 0.75 } },
-  // Зам (fill, et:29) — эх зургийн саарал/цагаан гадаргуу, хүрээгүй
-  'et:29': {
-    a: { color: '#f5f5f5', alpha: 1, outline: '#000000', outlineAlpha: 0, width: 0.75 },
-    b: { color: '#ffffff', alpha: 1, outline: '#000000', outlineAlpha: 0, width: 0.7 },
-  },
-};
-
-/** Тусад нь outline өнгө/тунгалагтай дүүргэлт */
-const fillWeb = (hex: string, a: number, outline: string, oa: number, w: number) =>
-  ({ type: 'simple-fill', color: c(hex, a), outline: { color: c(outline, oa), width: ow(w) } }) as const;
-
-/** Web-симбол — давхаргын geom-оор (line/fill), эх зургийн rgba ба өргөнөөр */
-const webSymbol = (d: LayerDef, s: WebSym, color: string) =>
-  s.roadStyle
-    ? roadLine(s.roadStyle.base, s.roadStyle.baseW, s.roadStyle.dash, s.roadStyle.dashW, s.roadStyle.dashPattern)
-    : d.geom === 'line'
-      ? line(color, s.width ?? 1, d.dash ?? 'solid', s.alpha ?? 1)
-      : fillWeb(color, s.alpha ?? d.fill ?? 0.3, s.outline ?? color, s.outlineAlpha ?? 1, s.width ?? 0.6);
-
-/** Web-симболоос renderer — paint-тэй бол uniqueValue, эс бөгөөс simple */
-const webRenderer = (d: LayerDef, s: WebSym) => {
-  if (s.paint && s.paintField) {
-    return {
-      type: 'unique-value',
-      field: s.paintField,
-      defaultSymbol: webSymbol(d, s, d.hue),
-      uniqueValueInfos: Object.entries(s.paint).map(([value, col]) => ({ value, label: value, symbol: webSymbol(d, s, col) })),
-    } as unknown as RendererProp;
-  }
-  return simple(webSymbol(d, s, s.color ?? d.hue));
-};
-
-/** bloom → ArcGIS `layer.effect` (масштабаас хамаарсан); bloom-гүй бол null */
-const webEffect = (s: WebSym) =>
-  s.bloom ? s.bloom.map((b) => ({ scale: b.scale, value: `bloom(${b.strength}, ${b.radius}px, ${b.threshold})` })) : null;
+/* ⚠️ Урьд нь энд `WEB_DYNAMIC` хэмээх ХОЁР webmap-ийн симболын ГАР СНАПШОТ
+   байв (12 давхарга, single/multi палитр). Одоо загварыг эх webmap-аас БҮТНЭЭР
+   `tools/webmap_style.mjs` үүсгэж `lib/webmapStyle.ts`-д хадгалдаг бөгөөд
+   давхаргын renderer JSON `fromJSON`-оор шууд тавигддаг тул гар орчуулгын
+   давхарга бүхэлдээ хасагдав — 78 давхарга webmap-тэй 100% ижил зурагдана. */
 
 /**
  * Гүйцэтгэлийн өнгө (0–100%): улаан → шар → ногоон. Хоёр хэсэгт шугаман
@@ -555,45 +446,60 @@ function buildLayers(uniform = false): Layer[] {
   }));
 
   /* Сэдэвчилсэн давхаргууд — каталогаас ерөнхийлж */
-  const V = LAYERS.map((d) => new FeatureLayer({
-    id: d.id,
-    url: layerUrl(d),
-    title: d.title,
-    outFields: mapFields(d),
-    popupEnabled: false,
-    visible: false,
-    ...(d.minScale ? { minScale: d.minScale } : {}),
-    elevationInfo: ON_GROUND,
-    renderer: uniform
-      ? (d.id === ZONE_LAYER.id ? zoneTypeRenderer(d) : simple(symbolOf(d)))
-      : d.paint
-      ? ({
-          type: 'unique-value',
-          field: d.paint.field,
-          defaultSymbol: symbolOf(d, ZONE_TYPE_EMPTY_HUE),
-          defaultLabel: d.paint.emptyLabel,
-          uniqueValueInfos: Object.entries(d.paint.values).map(([value, hue]) => ({
-            value, label: value, symbol: symbolOf(d, hue),
-          })),
-        } as unknown as RendererProp)
-      : d.breaks
+  const V = LAYERS.map((d) => {
+    /**
+     * ЭХ WEBMAP-ИЙН ЗАГВАР — давхаргын үйлчилгээний URL-аар `webmapStyle.ts`
+     * снапшотоос хайна. Олдвол renderer JSON-ыг `fromJSON`-оор ШУУД тавьдаг
+     * тул симболын орчуулга огт хийгдэхгүй — webmap дээр харагдаж буйтай
+     * 100% ижил (CIM, bloom, dash бүгд хэвээр). Олдоогүй давхарга (хяналт,
+     * кадастр г.м. webmap-д байхгүй) доорх каталогийн загвараа хэрэглэнэ.
+     * Снапшотыг `node tools/webmap_style.mjs`-ээр шинэчилнэ.
+     */
+    const web = webmapStyleOf(layerUrl(d));
+    return new FeatureLayer({
+      id: d.id,
+      url: layerUrl(d),
+      title: d.title,
+      outFields: mapFields(d),
+      popupEnabled: false,
+      visible: false,
+      ...(d.minScale ? { minScale: d.minScale } : {}),
+      elevationInfo: ON_GROUND,
+      renderer: web?.renderer
+        ? (rendererJsonUtils.fromJSON(web.renderer as never) as unknown as RendererProp)
+        : uniform
+        ? (d.id === ZONE_LAYER.id ? zoneTypeRenderer(d) : simple(symbolOf(d)))
+        : d.paint
         ? ({
-            type: 'class-breaks',
-            field: d.breaks.field,
-            defaultSymbol: symbolOf(d, '#64748b'),
-            defaultLabel: d.breaks.emptyLabel,
-            classBreakInfos: d.breaks.levels.map((l) => ({
-              minValue: l.min,
-              // ⚠️ ArcGIS classBreak нь maxValue-г ОРУУЛЖ тоолдог; самбарын SQL нь
-              //    `< max` тул багахан хасаж хоёуланг нь тааруулна.
-              maxValue: l.max - 0.0001,
-              label: `${l.label} (${l.range})`,
-              symbol: symbolOf(d, l.color),
+            type: 'unique-value',
+            field: d.paint.field,
+            defaultSymbol: symbolOf(d, ZONE_TYPE_EMPTY_HUE),
+            defaultLabel: d.paint.emptyLabel,
+            uniqueValueInfos: Object.entries(d.paint.values).map(([value, hue]) => ({
+              value, label: value, symbol: symbolOf(d, hue),
             })),
           } as unknown as RendererProp)
-        : simple(symbolOf(d)),
-    ...(d.id === ZONE_LAYER.id ? { labelingInfo: zoneLabels() } : {}),
-  }));
+        : d.breaks
+          ? ({
+              type: 'class-breaks',
+              field: d.breaks.field,
+              defaultSymbol: symbolOf(d, '#64748b'),
+              defaultLabel: d.breaks.emptyLabel,
+              classBreakInfos: d.breaks.levels.map((l) => ({
+                minValue: l.min,
+                // ⚠️ ArcGIS classBreak нь maxValue-г ОРУУЛЖ тоолдог; самбарын SQL нь
+                //    `< max` тул багахан хасаж хоёуланг нь тааруулна.
+                maxValue: l.max - 0.0001,
+                label: `${l.label} (${l.range})`,
+                symbol: symbolOf(d, l.color),
+              })),
+            } as unknown as RendererProp)
+          : simple(symbolOf(d)),
+      ...(web?.effect ? { effect: web.effect as unknown as __esri.FeatureLayerProperties['effect'] } : {}),
+      ...(web?.opacity != null ? { opacity: web.opacity } : {}),
+      ...(d.id === ZONE_LAYER.id ? { labelingInfo: zoneLabels() } : {}),
+    });
+  });
 
   /**
    * ДАРААЛАЛ: талбай → шугам → цэг.
@@ -773,6 +679,8 @@ export function MapCanvas({
   >(null);
   /** Блок бүрийн нийт гүйцэтгэл — газрын зургийн өнгө ба tooltip-д хоёуланд нь */
   const [blockProg, setBlockProg] = useState<BlockProgressMap | null>(null);
+  /** Гүйцэтгэлийн өнгө КЭШЭЭС будагдсан — амьд дүн ирмэгц false болно */
+  const [progStale, setProgStale] = useState(false);
 
   const register = useContext(RegisterCtx);
   const registerRef = useRef(register);
@@ -1264,21 +1172,11 @@ export function MapCanvas({
        * нийлнэ. Нэг шинжид хоёр эзэн болох тул ЗААВАЛ `AND`-аар хослуулна —
        * дан дарж бичвэл бүсийн шүүлт эсвэл тодруулгын аль нэг нь алга болно.
        */
+      /* ⚠️ Урьд нь энд WEB_DYNAMIC хэмээх ГАР СНАПШОТ давхаргын тоогоор хоёр
+         палитрын хооронд renderer сольдог байв. Одоо загвар нь эх webmap-аас
+         бүтнээр үүсгэгддэг (`lib/webmapStyle.ts` — `tools/webmap_style.mjs`)
+         бөгөөд `buildLayers` дээр НЭГ УДАА тавигддаг тул энд солих зүйлгүй. */
       const d = LAYER_BY_ID[l.id];
-
-      /**
-       * ДИНАМИК WEB-ПАЛИТР — «Ерөнхий төлөвлөгөө» ба «Ерөнхий дашбоард»-д.
-       * Сонгосон давхаргын тоогоор эх зургийн симбол (өнгө, өргөн, тунгалаг,
-       * bloom) солино: 1 бол `a` (single = webmap B), 2+ бол `b` (multiple =
-       * webmap A). Дашбоард (`uniform`) нь каталогийн сонголтгүй тул үргэлж
-       * `a` (single). Зөвхөн ХАРАГДАЖ буй давхаргад тавина.
-       */
-      if (d && l.visible && WEB_DYNAMIC[l.id]) {
-        const w = WEB_DYNAMIC[l.id];
-        const s = uniform ? w.a : (on.size <= 1 ? w.a : w.b);
-        (l as FeatureLayer).renderer = webRenderer(d, s) as unknown as __esri.Renderer;
-        (l as FeatureLayer).effect = webEffect(s) as unknown as __esri.Effect;
-      }
 
       if (d && 'definitionExpression' in l) {
         // `layerWhere` заасан бол давхарга бүрийн өөрийн WHERE; эс бөгөөс бүсийн
@@ -1311,13 +1209,34 @@ export function MapCanvas({
     const layer = map.findLayerById('mon:building') as FeatureLayer | null;
     if (!layer) return;
     let alive = true;
+    /**
+     * Сүүлийн амжилттай дүнгээр ШУУД будна (stale-while-revalidate) — амьд
+     * татаж дуустал (~7с) блокууд саарал хүлээлгэдэг байсныг арилгана. Амьд
+     * дүн ирмэгц дарж шинэчилнэ; ТАТАЛТ АЛДВАЛ кэшийг ч хаяж саарал
+     * «мэдээлэлгүй» төлөвт буцаана — хуучин тоо дэлгэцэд үлдэхгүй зарчим.
+     */
+    const cached = cachedBlockProgress();
+    if (cached) {
+      setBlockProg(cached);
+      setProgStale(true); // кэшийн дүн — «шинэчилж байна…» тэмдэг ил гарна
+      layer.renderer = buildingProgressRenderer(cached) as unknown as __esri.Renderer;
+    }
     loadBlockProgress()
       .then((prog) => {
         if (!alive) return;
         setBlockProg(prog);
+        setProgStale(false);
         layer.renderer = buildingProgressRenderer(prog) as unknown as __esri.Renderer;
       })
-      .catch((e) => console.error('[selbe] блокийн гүйцэтгэл ачаалж чадсангүй:', e));
+      .catch((e) => {
+        console.error('[selbe] блокийн гүйцэтгэл ачаалж чадсангүй:', e);
+        if (!alive || !cached) return;
+        setBlockProg(null);
+        setProgStale(false);
+        // ⚠️ `globalThis.Map` — энэ файлд `Map` нь ArcGIS-ийн Map-аар дарагдсан
+        const empty: BlockProgressMap = new globalThis.Map();
+        layer.renderer = buildingProgressRenderer(empty) as unknown as __esri.Renderer;
+      });
     return () => { alive = false; };
   }, [visibleKey, ready]);
 
@@ -1361,6 +1280,14 @@ export function MapCanvas({
             <code>arcgis.ubhub.mn:6443</code> руу хандаж чадсангүй. Сервер ажиллаж
             байгаа эсэх, CORS-ын <b>allowedOrigins</b>-д энэ хаяг байгаа эсэхийг шалгана уу.
           </span>
+        </div>
+      )}
+
+      {/* Кэшээс будсан гүйцэтгэлийн тэмдэг — амьд дүн ирмэгц арилна */}
+      {progStale && (
+        <div className={`${s.float} ${s.floatBL} ${s.stale}`} role="status">
+          <span className={s.staleDot} aria-hidden />
+          Гүйцэтгэл: өмнөх дүнгээр · шинэчилж байна…
         </div>
       )}
 

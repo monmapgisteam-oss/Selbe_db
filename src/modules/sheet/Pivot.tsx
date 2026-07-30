@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ACTUAL,
   addAttachment,
@@ -97,6 +97,40 @@ const belowFloor = (row: Row, bld: string, raw: string): number | null => {
   if (t === "" || floor == null) return null;
   const v = Number(t);
   return Number.isFinite(v) && v < floor ? floor : null;
+};
+
+// ── Unpublished-edit DRAFT (localStorage) ──
+// Таб санамсаргүй хаагдах / сүлжээ тасрахад бөглөсөн нүднүүд алдагддаг байв.
+// Pending засварыг ТОГТВОРТОЙ мөрийн түлхүүрээр (`rowKey|bld` — ri БИШ: мөрийн
+// индекс дараагийн ачаалалтад шилжиж болно) хадгалж, дараагийн нээлтэд сэргээхийг
+// САНАЛ БОЛГОНО. Зургийн хавсралт (File объект) хадгалагдахгүй — тэдгээрийг
+// beforeunload анхааруулга л хамгаална.
+type Draft = {
+  t: number;
+  bagts: string;
+  ognoo: string;
+  /** [`${rowKey}|${bld}`, raw%] хосууд */
+  cells: [string, string][];
+};
+const DRAFT_KEY = "selbe-sheet-draft-v1";
+const DRAFT_TTL_MS = 3 * 24 * 3600 * 1000;
+
+const readDraft = (): Draft | null => {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    if (!raw) return null;
+    const d = JSON.parse(raw) as Draft;
+    if (!d.t || !Array.isArray(d.cells) || Date.now() - d.t > DRAFT_TTL_MS) return null;
+    return d;
+  } catch {
+    return null;
+  }
+};
+const saveDraftLS = (d: Draft) => {
+  try { localStorage.setItem(DRAFT_KEY, JSON.stringify(d)); } catch { /* дүүрсэн/private */ }
+};
+const clearDraftLS = () => {
+  try { localStorage.removeItem(DRAFT_KEY); } catch { /* байхгүй */ }
 };
 
 // Cell backgrounds: editable cells stay on the surface; calculated columns and
@@ -424,6 +458,89 @@ export default function Pivot() {
               .map(rowKey),
           ),
     );
+
+  // ── Draft: restore + persist + close-guard ──
+
+  // Слайс бүрд НЭГ л удаа санал болгоно (bagts/ognoo солиход дахин шалгана).
+  const promptedSliceRef = useRef("");
+
+  // Restore: слайс ачаалагдмагц тохирох draft байвал сэргээхийг асууна.
+  useEffect(() => {
+    const sk = `${bagts}|${ognoo}`;
+    if (busy || !rows.length || !bagts || !ognoo) return;
+    if (promptedSliceRef.current === sk) return;
+    // Слайсын restore шат ӨНГӨРСНИЙГ draft байсан эсэхээс үл хамааран тэмдэглэнэ —
+    // эс бөгөөс undo-гоор хоосолсон pending-ийн draft хэзээ ч цэвэрлэгдэхгүй.
+    promptedSliceRef.current = sk;
+    const d = readDraft();
+    if (!d || d.bagts !== bagts || d.ognoo !== ognoo) return; // өөр слайсын draft — хөндөхгүй
+
+    const byKey = new Map<string, number>();
+    rows.forEach((r, i) => byKey.set(rowKey(r), i));
+    const next: Record<string, string> = {};
+    let dropped = 0;
+    for (const [ck, v] of d.cells) {
+      const p = ck.lastIndexOf("|");
+      const rk = ck.slice(0, p);
+      const bld = ck.slice(p + 1);
+      const ri = byKey.get(rk);
+      const row = ri == null ? undefined : rows[ri];
+      // Мөр алга болсон, барилга хасагдсан, хооронд нь өндөр утга нийтлэгдсэн
+      // (floor guard), эсвэл аль хэдийн ижил утгатай бол — хаяна.
+      if (
+        row == null || !buildings.includes(bld) ||
+        belowFloor(row, bld, v) != null || v.trim() === origStr(row, bld)
+      ) { dropped++; continue; }
+      next[`${ri}:${bld}`] = v;
+    }
+    if (!Object.keys(next).length) { clearDraftLS(); return; }
+
+    const when = new Date(d.t).toLocaleString("mn-MN");
+    const msg =
+      `Нийтлэгдээгүй ${Object.keys(next).length} нүдний засвар олдлоо (${when}).` +
+      (dropped ? `\n${dropped} нүд хуучирсан тул орхигдоно.` : "") +
+      "\nСэргээх үү?";
+    if (window.confirm(msg)) setPending(next);
+    else clearDraftLS();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [busy, rows, buildings, bagts, ognoo]);
+
+  // Persist: pending өөрчлөгдөх бүрд draft-ыг шинэчилнэ. Хоосон болоход
+  // (publish → loadSlice reset, эсвэл undo) draft-ыг устгана — гэхдээ зөвхөн
+  // ЭНЭ слайсынхыг: өөр багцын draft-ыг ачаалалтын reset дарж устгаж болохгүй.
+  useEffect(() => {
+    const keys = Object.keys(pending);
+    if (!keys.length) {
+      const d = readDraft();
+      if (d && d.bagts === bagts && d.ognoo === ognoo && promptedSliceRef.current === `${bagts}|${ognoo}`) {
+        clearDraftLS();
+      }
+      return;
+    }
+    const cells: [string, string][] = [];
+    for (const [k, v] of Object.entries(pending)) {
+      const i = k.indexOf(":");
+      const r = rows[Number(k.slice(0, i))];
+      if (r) cells.push([`${rowKey(r)}|${k.slice(i + 1)}`, v]);
+    }
+    if (cells.length) saveDraftLS({ t: Date.now(), bagts, ognoo, cells });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pending, rows, bagts, ognoo]);
+
+  // Close-guard: нийтлэгдээгүй засвар эсвэл хавсаргаагүй зурагтай үед таб
+  // хаах/refresh хийхэд хөтөч анхааруулна.
+  const hasUnsaved =
+    Object.keys(pending).length > 0 || Object.keys(pendingFiles).length > 0;
+  useEffect(() => {
+    if (!hasUnsaved) return;
+    const h = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      // Chrome legacy — returnValue заавал онооно
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", h);
+    return () => window.removeEventListener("beforeunload", h);
+  }, [hasUnsaved]);
 
   // Which rows are hidden by a collapsed ancestor. Single pass in sheet order:
   // a collapsed header hides all deeper rows until one at its depth or shallower

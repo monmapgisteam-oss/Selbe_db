@@ -1,11 +1,19 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 
-export type Async<T> =
+export type Async<T> = (
   | { state: 'loading'; data: null; error: null }
   | { state: 'ready'; data: T; error: null }
-  | { state: 'error'; data: null; error: Error };
+  | { state: 'error'; data: null; error: Error }
+) & {
+  /**
+   * Хүсэлтийг ДАХИН эхлүүлнэ — алдааны дараа «Дахин оролдох» товчинд.
+   * ⚠️ Optional: гараар угсарсан Async утга (жиш. тестийн mock) үүнгүйгээр ч
+   * хүчинтэй хэвээр — `Data` компонент байгаа үед нь л товч гаргана.
+   */
+  retry?: () => void;
+};
 
 const LOADING = { state: 'loading', data: null, error: null } as const;
 
@@ -17,6 +25,14 @@ const LOADING = { state: 'loading', data: null, error: null } as const;
  */
 export function useAsync<T>(fn: () => Promise<T>, deps: unknown[]): Async<T> {
   const [result, setResult] = useState<Async<T>>(LOADING);
+  /**
+   * Дахин оролдлогын тоолуур — deps-д нэмэгдсэнээр эффект дахин ажиллана.
+   * ⚠️ ArcGIS түр гацах нь энгийн үзэгдэл (`query.ts`-ийн rate-limit тайлбар).
+   * Урьд нь алдааны дараах цорын ганц арга нь бүтэн хуудас refresh байсан —
+   * газрын зураг, бүх татагдсан өгөгдөл дэмий дахин ачаалагддаг байлаа.
+   */
+  const [nonce, setNonce] = useState(0);
+  const retry = useCallback(() => setNonce((n) => n + 1), []);
   // fn нь рендер бүрт шинэ функц — deps-ээр л дахин ажиллана
   const fnRef = useRef(fn);
   fnRef.current = fn;
@@ -39,7 +55,11 @@ export function useAsync<T>(fn: () => Promise<T>, deps: unknown[]): Async<T> {
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
+  }, [...deps, nonce]);
 
-  return result;
+  /**
+   * ⚠️ Тогтвортой лавлагаа: рендер бүрт шинэ объект буцаавал `q`-г deps-даа
+   * авсан useMemo/useEffect (жиш. Bagts-ийн `packs`) бүр дэмий дахин ажиллана.
+   */
+  return useMemo(() => ({ ...result, retry }), [result, retry]);
 }

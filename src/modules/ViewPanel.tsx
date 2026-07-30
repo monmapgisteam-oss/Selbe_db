@@ -15,7 +15,7 @@ import {
   type LayerDef, type ViewKey,
 } from '@/lib/services';
 import { whereFor, qtyText, geomText, layerStats, type Totals } from '@/lib/totals';
-import { num, text } from '@/lib/format';
+import { num, text, shade } from '@/lib/format';
 import { MonitorGeneral, MonitorDetail, MonitorBagts, BAGTS_FILTER } from './BuildingPanel';
 import s from './dashboard.module.css';
 
@@ -23,24 +23,12 @@ import s from './dashboard.module.css';
 const BLANK_HUE = ZONE_TYPE_EMPTY_HUE;
 
 /**
- * МОНОХРОМ УУСГАЛТ — нэг өнгийг цайруулж дараалсан сүүдэр гаргана.
- *
- * Ангиллын диаграм (нэг давхаргын дэд төрлүүд) нь олон ялгаатай өнгө биш,
- * НЭГ өнгөний уусгалттай байх ёстой (хэрэглэгчийн хүсэлт): i=0 хамгийн тод
- * (суурь өнгө), цааш нь цагаан руу цайрна. «Бүртгэгдээгүй» саарал хэвээр.
+ * Ангилал → монохром сүүдэр (донат ба багана ижил түлхүүрээр нэг өнгөтэй).
+ * Тинтийн логик нь портал даяар нэг — `lib/format.ts::shade`. «Бүртгэгдээгүй»
+ * саарал хэвээр.
  */
-const mono = (hex: string, i: number, n: number): string => {
-  const h = hex.replace('#', '');
-  const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
-  const t = n <= 1 ? 0 : (i / (n - 1)) * 0.66; // 0 (суурь) → 0.66 (цайвар)
-  const mix = (ch: number) => Math.round(ch + (255 - ch) * t);
-  const hx = (v: number) => v.toString(16).padStart(2, '0');
-  return `#${hx(mix(r))}${hx(mix(g))}${hx(mix(b))}`;
-};
-
-/** Ангилал → монохром сүүдэр (донат ба багана ижил түлхүүрээр нэг өнгөтэй) */
 const monoShades = (d: LayerDef, rows: { label: string; blank?: boolean }[]) =>
-  new Map(rows.map((x, i) => [x.label, x.blank ? BLANK_HUE : mono(d.hue, i, rows.length)]));
+  new Map(rows.map((x, i) => [x.label, x.blank ? BLANK_HUE : shade(d.hue, i, rows.length)]));
 
 /* ═════════════════ Үндсэн самбар ═════════════════ */
 
@@ -402,10 +390,12 @@ function PlanOverview({
           const n = layers.reduce((a, x) => a + x.t.n, 0);
 
           // Донат — тоогоор эзлэх хувь. Тоо нь нэгжгүй тул багц дотор ҮРГЭЛЖ зөв.
+          // ⚠️ НЭГ ӨНГӨ — багц бүрийн донат/цуваа нь тухайн БАГЦЫН өнгөний
+          //    тодоос бүдгэр уусгалт (солонго биш). Их тоотой нь тод.
           const donut = layers
             .filter((x) => x.t.n > 0)
             .sort((a, b) => b.t.n - a.t.n)
-            .map((x) => ({ key: x.d.id, label: x.d.title, value: x.t.n, color: x.d.hue }));
+            .map((x, i, arr) => ({ key: x.d.id, label: x.d.title, value: x.t.n, color: shade(g.hue, i, arr.length) }));
 
           /**
            * Баганан цуваа — НЭГЖ БҮРТ тусдаа.
@@ -418,12 +408,12 @@ function PlanOverview({
               .map((x) => ({ x, v: c.value(x.d, x.t) }))
               .filter((r) => r.v > 0)
               .sort((a, b) => b.v - a.v)
-              .map((r) => ({
+              .map((r, i, arr) => ({
                 key: r.x.d.id,
                 label: r.x.d.title,
                 value: r.v,
                 display: c.display(r.v, r.x.t),
-                color: r.x.d.hue,
+                color: shade(g.hue, i, arr.length),
               }));
             if (!items.length) return [];
             return [{ ...c, items, sum: items.reduce((a, i) => a + i.value, 0) }];
@@ -582,8 +572,7 @@ function PlanOverview({
                             <Bars
                               items={c.items}
                               limit={8}
-                              outlined
-                              legend
+                              inline
                               selected={on.length === 1 ? on[0] : null}
                               onSelect={isolate}
                             />
@@ -742,8 +731,7 @@ function LayerTypeCharts({
         <Bars
           items={items.map((it) => ({ ...it, display: num(it.value) }))}
           limit={8}
-          outlined
-          legend
+          inline
           selected={selKey}
           onSelect={pickType}
         />
@@ -762,8 +750,7 @@ function LayerTypeCharts({
           <Bars
             items={sized}
             limit={8}
-            outlined
-            legend
+            inline
             selected={selKey ? `${d.id}:q:${selKey.slice(d.id.length + 1)}` : null}
             onSelect={(k) => pickType(`${d.id}:${k.slice(d.id.length + 3)}`)}
           />
@@ -1184,9 +1171,10 @@ function PickedZone({
               Барилга <span className={s.facetNote}>{num(x.built)} ш · {num(x.urh)} өрх · {num(x.pop)} хүн</span>
             </div>
             <Bars
-              items={x.status.map((st) => ({
+              items={x.status.map((st, i) => ({
                 key: st.value, label: st.value, value: st.n,
-                display: `${num(st.n)}`, color: st.hue,
+                // НЭГ ӨНГӨ (барилгын давхаргын hue) тодоос бүдгэр — солонго биш
+                display: `${num(st.n)}`, color: shade(LAYER_BY_ID['et:24']?.hue ?? '#f59e0b', i, x.status.length),
               }))}
             />
           </div>

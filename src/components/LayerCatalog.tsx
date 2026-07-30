@@ -7,7 +7,6 @@ import {
 } from 'react';
 import { Icon } from './Icon';
 import { LayerSwatch } from './LayerSwatch';
-import { Data } from './ui';
 import { useAsync, type Async } from '@/lib/useAsync';
 import type { Totals } from '@/lib/totals';
 import { qtyText, whereFor, layerStats } from '@/lib/totals';
@@ -151,6 +150,8 @@ export function LayerCatalog({
           <span className={s.title}>Давхарга</span>
           <span className={s.sub}>
             {num(all.length)} нийт · {num(onCount)} асаалттай
+            {/* Тоо/хэмжээ хараахан татагдаж байгааг заана — ЖАГСААЛТ өөрөө хүлээхгүй */}
+            {totals.state === 'loading' && <> · тоолж байна…</>}
             {zone && <> · {zone}</>}
           </span>
         </div>
@@ -169,8 +170,17 @@ export function LayerCatalog({
       </header>
 
       <div className={s.body}>
-        <Data q={totals} loading="Үзүүлэлт тооцож байна…">
-          {(map) => (
+        {/**
+         * ⚠️ ЖАГСААЛТЫГ `totals` хүлээлгэхгүй ШУУД зурна. Урьд нь бүх бие
+         * `<Data q={totals}>`-д ороосон тул 29 давхаргын тоо БҮГД (6 зэрэгцээ =
+         * хэдэн секунд) ирэх хүртэл каталог хоосон «тооцож байна…» гэж хүлээлгэдэг
+         * байв. Нэр, симбол, бүлэг нь СТАТИК тул шууд харагдана; тоо/хэмжээ нь
+         * мөр бүрд ирэх бүрд нь дүүрнэ (ачаалж байхад «…», алдвал «—»).
+         */}
+        {(() => {
+          const map = totals.state === 'ready' ? totals.data : null;
+          const loadingTotals = totals.state === 'loading';
+          return (
             <>
               {groups.map((g) => {
                 const ids = g.ids;
@@ -259,7 +269,7 @@ export function LayerCatalog({
                     {open && (
                     <div className={s.rows}>
                       {defs.map((d) => {
-                        const t = map.get(d.id);
+                        const t = map?.get(d.id);
                         const isOn = visible.includes(d.id);
                         const q = t ? qtyText(d, t.q) : null;
                         return (
@@ -293,7 +303,7 @@ export function LayerCatalog({
                             >
                               <span className={s.rowTitle}>{d.title}</span>
                               <span className={`${s.rowMeta} num`}>
-                                {t ? `${num(t.n)} ш` : '—'}
+                                {t ? `${num(t.n)} ш` : (loadingTotals ? '…' : '—')}
                                 {q ? ` · ${q}` : ''}
                                 {zone && d.noZone && <em className={s.rowWarn}> · бүсгүй</em>}
                               </span>
@@ -317,8 +327,8 @@ export function LayerCatalog({
                 );
               })}
             </>
-          )}
-        </Data>
+          );
+        })()}
       </div>
 
     </aside>

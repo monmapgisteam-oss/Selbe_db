@@ -21,6 +21,12 @@ export function Search({ onPick }: { onPick: (hit: Hit) => void }) {
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * Гараар идэвхжүүлсэн мөрийн индекс. −1 = сонгоогүй (Enter юу ч хийхгүй).
+   * ⚠️ Үр дүн ШИНЭЧЛЭГДЭХ бүрд −1 рүү буцна — хуучин жагсаалтын 3-р мөрийг
+   * шинэ жагсаалтын 3-р мөр гэж андуурч сонгуулахгүй.
+   */
+  const [active, setActive] = useState(-1);
 
   const box = useRef<HTMLDivElement>(null);
   const seq = useRef(0);
@@ -43,6 +49,7 @@ export function Search({ onPick }: { onPick: (hit: Hit) => void }) {
         .then((r) => {
           if (seq.current !== mine) return; // хоцорсон хариу — хаяна
           setHits(r);
+          setActive(-1);
           setError(null);
         })
         .catch((e: unknown) => {
@@ -73,7 +80,16 @@ export function Search({ onPick }: { onPick: (hit: Hit) => void }) {
     setOpen(false);
     setQ('');
     setHits([]);
+    setActive(-1);
   };
+
+  /* Идэвхтэй мөрийг харагдах мужид байлгана — урт жагсаалтад гараар гүйлгэхгүй */
+  useEffect(() => {
+    if (active < 0) return;
+    box.current
+      ?.querySelector('[data-active="true"]')
+      ?.scrollIntoView({ block: 'nearest' });
+  }, [active]);
 
   const short = q.trim().length > 0 && q.trim().length < MIN_QUERY;
   // Бүлгийн гарчгийг үр дүнгийн дарааллаар нь оруулна — урьдчилан бүлэглэвэл
@@ -102,6 +118,19 @@ export function Search({ onPick }: { onPick: (hit: Hit) => void }) {
           if (e.key === 'Escape') {
             setOpen(false);
             (e.target as HTMLInputElement).blur();
+            return;
+          }
+          // ↑/↓/Enter — үр дүнг гараар сонгоно (хулгана шаардахгүй)
+          if (!open || busy || error || hits.length === 0) return;
+          if (e.key === 'ArrowDown') {
+            e.preventDefault(); // курсорыг мөрийн төгсгөл рүү үсэргэхгүй
+            setActive((i) => Math.min(i + 1, hits.length - 1));
+          } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            setActive((i) => Math.max(i - 1, -1)); // −1 = сонголтгүй байдалд буцна
+          } else if (e.key === 'Enter' && active >= 0 && hits[active]) {
+            e.preventDefault();
+            pick(hits[active]);
           }
         }}
       />
@@ -123,13 +152,21 @@ export function Search({ onPick }: { onPick: (hit: Hit) => void }) {
           )}
 
           {!busy && !error &&
-            hits.map((h) => {
+            hits.map((h, i) => {
               const head = h.group !== lastGroup ? h.group : null;
               lastGroup = h.group;
               return (
                 <div key={h.id}>
                   {head && <div className={s.group}>{head}</div>}
-                  <button type="button" className={s.hit} onClick={() => pick(h)}>
+                  <button
+                    type="button"
+                    className={`${s.hit} ${i === active ? s.hitActive : ''}`}
+                    data-active={i === active || undefined}
+                    onClick={() => pick(h)}
+                    // Хулгана дээгүүр нь явахад гарын идэвхжилт мөрийг дагана —
+                    // хоёр «идэвхтэй» мөр зэрэг харагдахгүй
+                    onMouseMove={() => { if (active !== i) setActive(i); }}
+                  >
                     <span className={s.hitTitle}>{h.title}</span>
                     {h.sub && <span className={s.hitSub}>{h.sub}</span>}
                   </button>
