@@ -6,7 +6,7 @@ import {
   type ReactNode, type Ref,
 } from 'react';
 import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
-import { Donut, Ring, Bars, Data } from '@/components/ui';
+import { Donut, Ring, Bars, Data, Stats, Stat } from '@/components/ui';
 import { Icon } from '@/components/Icon';
 import { LayerCatalog } from '@/components/LayerCatalog';
 import { useAsync, type Async } from '@/lib/useAsync';
@@ -30,9 +30,9 @@ import { useCashflow, type CashRow } from '@/lib/cashflow';
 import { useInvest, type InvRow } from '@/lib/invest';
 import { num, pct, text } from '@/lib/format';
 import {
-  BRIEF_SOURCE, BRIEF_DATE, HEADLINE, OVERALL, SCOPE, INVEST_SPLIT, MILESTONES,
-  SCHEDULE, SCHEDULE_YEARS, SCHEDULE_TODAY, BAGTS_ORIGIN, BAGTS_FLAG, BAGTS_NOTE, BAGTS_STRIP,
-  LAND, SOURCES, UTILITY_WORKS, POWER_PACKS, POWER_NOTE, FINANCE, SOCIAL, BENEFITS, PUBLIC_ZONE,
+  BRIEF_SOURCE, HEADLINE, OVERALL, SCOPE, INVEST_SPLIT, MILESTONES,
+  SCHEDULE, BAGTS_ORIGIN, BAGTS_STRIP,
+  LAND, SOURCES, UTILITY_WORKS, POWER_PACKS, FINANCE, SOCIAL, BENEFITS, PUBLIC_ZONE,
 } from '@/lib/brief';
 import o from './overview.module.css';
 
@@ -668,7 +668,6 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
                   <button type="button" className={o.colClose} onClick={() => toggle(k)} aria-label="Хаах">×</button>
                 </header>
                 <div className={o.colBody}>
-                  <LayerLink k={k} visible={visible} />
                   <Detail k={k} d={d} suit={suit} prog={prog} zone={zone} setZone={setZone} />
                 </div>
               </section>
@@ -691,36 +690,10 @@ function Detail({ k, d, suit, prog, zone, setZone }: {
     case 'bagts': return <BagtsDetail q={d.bagts} />;
     case 'land': return <LandDetail parcels={d.parcels} project={d.project} />;
     case 'source': return <SourceDetail invest={d.invest} />;
-    case 'finance': return <FinanceDetail invest={d.invest} />;
+    case 'finance': return <FinanceDetail />;
     case 'benefit': return <BenefitDetail bagts={d.bagts} />;
     case 'suit': return <SuitDetail suit={suit} prog={prog} zone={zone} setZone={setZone} />;
   }
-}
-
-/**
- * «Энэ хэсэг зурган дээр хаана байна» — багана бүрийн эхний мөр.
- *
- * ⚠️ Давхаргагүй хэсгийг ЧИМЭЭГҮЙ орхихгүй: 01/02/06-г нээхэд газрын зураг
- * хөдлөхгүй бөгөөд шалтгааныг нь хэлэхгүй бол хэрэглэгч эвдэрсэн гэж боддог.
- */
-function LayerLink({ k, visible }: { k: SecKey; visible: string[] }) {
-  const ids = SECTION_LAYERS[k];
-  if (!ids.length) {
-    return (
-      <p className={o.layerLink}>
-        <span className={o.layerOff}>Газрын зурагтай холбогдоогүй</span>
-        {' '}— энэ хэсгийн үзүүлэлт зөвхөн хүснэгтэн, харгалзах феатур давхарга байхгүй.
-      </p>
-    );
-  }
-  const on = ids.filter((id) => visible.includes(id));
-  const names = on.map((id) => LAYER_BY_ID[id]?.title).filter(Boolean);
-  return (
-    <p className={o.layerLink}>
-      <span className={o.layerOn}>Зурагт {num(on.length)} давхарга</span>
-      {names.length <= 3 ? ` — ${names.join(' · ')}` : ` — ${names.slice(0, 2).join(' · ')} +${names.length - 2}`}
-    </p>
-  );
 }
 
 /* ══════════════════ Зүүн жагсаалт ══════════════════ */
@@ -757,17 +730,13 @@ function railStat(k: SecKey, d: DashData, suit: Async<SuitSummary>): {
       };
     case 'bagts': {
       const bl = b ? b.reduce((a, x) => a + x.blocks, 0) : 0;
-      // ⚠️ Хуучин тооцоо — ХЭВЭЭР үлдээв (цаашид сэргээхэд бэлэн).
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // Амьд жигнэсэн дундаж — блокийн тоогоор жинлэсэн 7 багцын гүйцэтгэл.
       const avg = b && bl ? b.reduce((a, x) => a + (x.progress ?? 0) * x.blocks, 0) / bl : null;
       const budget = b ? b.reduce((a, x) => a + x.budget, 0) : null;
-      // ⚠️ ТҮР ХАТУУ УТГА: «Орон сууцны 7 багц»-ийн гүйцэтгэлийг түр 19.2%-д тогтоов
-      //    (`avg`-ийн оронд). Бодит тооцоонд эргэн шилжихэд дээрх `avg`-ыг ашиглана.
-      const HARDCODED_BAGTS = 19.2;
       return {
-        value: b == null ? '…' : pct(HARDCODED_BAGTS, 1),
+        value: avg == null ? '…' : pct(avg, 1),
         note: budget == null ? '…' : `7 багц · ${bn(budget)} тэрбум ₮`,
-        pct: HARDCODED_BAGTS, tone: o.active,
+        pct: avg ?? undefined, tone: o.active,
       };
     }
     case 'land': {
@@ -848,11 +817,6 @@ function SideRail({ d, suit, open, toggle, clear, ref }: {
           </button>
         );
       })}
-
-      <p className={o.railFoot}>
-        Хэсэг дарж баруун талд дэлгэрэнгүйг нээнэ — хэд хэдийг зэрэг сонгоход
-        багана болж хуваагдана. Багана хоорондын бариулыг чирж өргөнийг тохируулна.
-      </p>
     </div>
   );
 }
@@ -917,34 +881,32 @@ function ScopeDetail() {
   return (
     <>
       <Panel title="Төслийн цар хүрээ">
-        <div className={o.scope}>
-          {SCOPE.map((s) => (
-            <div key={s.key} className={o.scopeCell}>
-              <b className="num">{s.value}{s.unit && <i>{s.unit}</i>}{!s.live && <Pin />}</b>
-              <span>{s.label}</span>
-            </div>
+        <Stats cols={2}>
+          {SCOPE.map((s, i) => (
+            <Stat
+              key={s.key}
+              accent
+              color={HUE[i % HUE.length]}
+              value={<>{s.value}{!s.live && <Pin />}</>}
+              unit={s.unit}
+              label={s.label}
+            />
           ))}
-        </div>
+        </Stats>
       </Panel>
 
-      <Panel title="Хөрөнгө оруулалтын бүтэц" note={<>{num(HEADLINE.investBn, 1)} тэрбум ₮ <Pin /></>}>
-        <div className={o.split}>
-          {INVEST_SPLIT.map((s) => (
-            <span key={s.key} className={o.splitSeg} style={{ width: `${s.pct}%`, background: s.color }} title={`${s.label} ${s.pct}%`} />
-          ))}
-        </div>
-        <div className={o.splitKeys}>
-          {INVEST_SPLIT.map((s) => (
-            <span key={s.key} className={o.splitKey}>
-              <i style={{ background: s.color }} />
-              {s.label}<b className="num">{s.pct}%</b>
-            </span>
-          ))}
-        </div>
-        <p className={o.note}>
-          Гэрээ, захирамжид тусгагдсан {num(HEADLINE.investBn, 1)} тэрбум ₮ · авто зам, гүүр,
-          цамхаг оролцуулбал {HEADLINE.investAllLabel}.
-        </p>
+      <Panel title="Хөрөнгө оруулалтын бүтэц">
+        <Bars
+          inline
+          outlined
+          items={INVEST_SPLIT.map((s) => ({
+            key: s.key,
+            label: s.label,
+            value: s.pct,
+            color: s.color,
+            display: `${num(s.bn, 1)} · ${s.pct}%`,
+          }))}
+        />
       </Panel>
 
       <Panel title="Гол зорилтот хугацаа">
@@ -966,53 +928,28 @@ function ScopeDetail() {
  * бүтэц» ба «Олон нийтийн бүс» гэсэн хоёр үе шат амьд хүснэгтэд ОГТ БАЙХГҮЙ тул
  * тэдгээрийн хувь бэхлэгдсэнээрээ үлдэж, ◆ тэмдэгтэй гарна.
  */
+const STAGE_HUE: Record<string, string> = { done: '#34d399', active: '#38bdf8', idle: '#94a3b8' };
+
 function ScheduleDetail({ project }: { project: Async<ProjectProgress> }) {
   const p = project.state === 'ready' ? project.data : null;
-  const span = SCHEDULE_YEARS.length;
-  const today = ((SCHEDULE_TODAY.year - SCHEDULE_YEARS[0] + 0.5) / span) * 100;
 
   return (
     <>
-      <Panel title="Үндсэн үе шат" note={`${SCHEDULE_YEARS[0]}–${SCHEDULE_YEARS[span - 1]}`}>
-        <div className={o.gantt} style={{ '--today': `${today}%` } as CSSProperties}>
-          <div className={o.ganttYears}>
-            {SCHEDULE_YEARS.map((y) => <span key={y} className="num">{y}</span>)}
-          </div>
-
-          <div className={o.ganttBody}>
-            <span className={o.ganttToday} aria-hidden />
-            {SCHEDULE.map((st) => {
-              const lv = liveStage(p, st.stages);
-              const v = lv ? lv.actual : st.pct;
-              const left = ((st.from - SCHEDULE_YEARS[0]) / span) * 100;
-              const width = ((st.to - st.from + 1) / span) * 100;
-              return (
-                <div key={st.no} className={o.gRow}>
-                  <div className={o.gName}>
-                    <span className={o.gNo}>{st.no}</span>
-                    <span className={o.gLabel}>{st.label}</span>
-                    <b className={`${o.gPct} num ${o[st.tone]}`}>{pct(v, v >= 1 ? 1 : 0)}{!lv && <Pin note="Амьд хүснэгтэд энэ үе шат байхгүй" />}</b>
-                  </div>
-                  <div className={o.gTrack}>
-                    <div className={o.gSpan} style={{ left: `${left}%`, width: `${width}%` }}>
-                      <span className={`${o.gFill} ${o[st.tone]}`} style={{ width: `${Math.max(v, 2)}%` }} />
-                    </div>
-                  </div>
-                  <span className={o.gStatus}>{st.status}</span>
-                </div>
-              );
-            })}
-          </div>
-
-          <div className={o.ganttFoot}>
-            <span className={o.ganttMark}>{SCHEDULE_TODAY.label} · {pct(OVERALL.reported, 2)}</span>
-          </div>
-        </div>
-
-        <p className={o.note}>
-          Гүйцэтгэл нь <b>Төсөл_Гүйцэтгэл</b> хүснэгтийн жигнэсэн дүн
-          {p && <> (бүртгэгдсэн жин {pct(p.coverage, 1)})</>}; хугацааны зурвас ба ◆ тэмдэгтэй үе шат илтгэлээс.
-        </p>
+      <Panel title="Үндсэн үе шат">
+        <Bars
+          outlined
+          items={SCHEDULE.map((st) => {
+            const lv = liveStage(p, st.stages);
+            const v = lv ? lv.actual : st.pct;
+            return {
+              key: st.no,
+              label: `${st.label} · ${st.from}–${st.to}`,
+              value: v,
+              display: `${pct(v, v >= 1 ? 1 : 0)}${lv ? '' : ' ◆'}`,
+              color: STAGE_HUE[st.tone] ?? '#94a3b8',
+            };
+          })}
+        />
       </Panel>
 
       <Panel title="Гол зорилтот хугацаа">
@@ -1028,9 +965,20 @@ function ScheduleDetail({ project }: { project: Async<ProjectProgress> }) {
 
 /* ══════════════════ 03 · Орон сууцны 7 багц ══════════════════ */
 
-/** Гүйцэтгэлийн зэрэг — 4 түвшин, УТГА заасан өнгө */
-const progClass = (p: number | null) =>
-  p == null ? '' : p >= 50 ? o.pHigh : p >= 25 ? o.pMid : p >= 10 ? o.pLow : o.pMin;
+/**
+ * ⚠️ ТОД палитр — төслийг том дэлгэц/проектороор танилцуулдаг тул бараан өнгө
+ * харагддаггүй. Хэсэг бүрийн график энэ нэг палитраас өнгөө авна (нэгдсэн хэл).
+ */
+const HUE = ['#38bdf8', '#34d399', '#fbbf24', '#f472b6', '#a78bfa', '#fb923c', '#2dd4bf', '#f87171'];
+/** Гүйцэтгэлийн % → тод өнгө (өндөр=ногоон … бага=улаан) */
+const progHue = (p: number | null) =>
+  p == null ? '#94a3b8' : p >= 50 ? '#34d399' : p >= 25 ? '#38bdf8' : p >= 10 ? '#fbbf24' : '#f87171';
+/** brief-ийн tone нэр → тод өнгө */
+const TONE_HUE: Record<string, string> = {
+  done: '#34d399', active: '#38bdf8', idle: '#94a3b8',
+  blocked: '#f87171', talks: '#fbbf24', admin: '#a78bfa',
+  ok: '#34d399', warn: '#fbbf24', bad: '#f87171',
+};
 
 function BagtsDetail({ q }: { q: Async<BagtsRow[]> }) {
   return (
@@ -1038,59 +986,67 @@ function BagtsDetail({ q }: { q: Async<BagtsRow[]> }) {
       {(rows) => {
         const blocks = rows.reduce((a, x) => a + x.blocks, 0);
         const ail = rows.reduce((a, x) => a + x.ail, 0);
-        const budget = rows.reduce((a, x) => a + x.budget, 0);
         const avg = blocks ? rows.reduce((a, x) => a + (x.progress ?? 0) * x.blocks, 0) / blocks : null;
         return (
           <>
-            <Panel title="Нийт" note={`дундаж гүйцэтгэл ${pct(avg, 2)}`}>
-              <div className={o.sums}>
-                <div><b className="num">{num(blocks)}</b><span>блок</span></div>
-                <div><b className="num">{num(ail)}</b><span>өрх</span></div>
-                <div><b className="num">{bn(budget)}</b><span>тэрбум ₮</span></div>
+            <Panel title="Нийт гүйцэтгэл">
+              <div className={o.landTop}>
+                <Ring value={avg} size={104} width={17} color="#38bdf8" label="дундаж гүйцэтгэл" />
+                <Stats cols={2}>
+                  <Stat accent color="#38bdf8" value={num(blocks)} unit="блок" label="Барилгын блок" />
+                  <Stat accent color="#34d399" value={num(ail)} unit="өрх" label="Орон сууц" />
+                </Stats>
               </div>
             </Panel>
 
-            <Panel title="Багц тус бүрээр">
-              <div className={o.tblWrap}>
-                <table className={o.tbl}>
-                  <thead>
-                    <tr>
-                      <th>Багц</th><th className={o.rt}>Блок/Өрх</th><th className={o.rt}>₮ тэрбум</th><th className={o.rt}>Явц</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((r) => {
-                      const flag = BAGTS_FLAG[r.label.trim()];
-                      return (
-                        <tr key={r.key} className={flag ? o.trFlag : ''}>
-                          <td>
-                            <span className={o.cellMain}>{r.label}</span>
-                            <span className={o.cellSub} title={r.contractor}>{r.contractor}</span>
-                          </td>
-                          <td className={`${o.rt} num`}>{num(r.blocks)} / {num(r.ail)}</td>
-                          <td className={`${o.rt} num`}>{r.budget > 0 ? bn(r.budget) : '—'}</td>
-                          <td className={`${o.rt} num ${progClass(r.progress)}`}>{pct(r.progress, 2)}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              {Object.entries(BAGTS_FLAG).map(([k, v]) => (
-                <p key={k} className={o.flagNote}><b>{k}</b> — {v} <Pin /></p>
-              ))}
-              <p className={o.warnNote}>{BAGTS_NOTE} <Pin /></p>
+            <Panel title="Багц бүрийн явц">
+              <Bars
+                inline
+                outlined
+                items={rows.map((r) => ({
+                  key: r.key,
+                  label: r.label,
+                  value: r.progress ?? 0,
+                  display: pct(r.progress, 1),
+                  color: progHue(r.progress),
+                }))}
+              />
+            </Panel>
+
+            <Panel title="Багц бүрийн орон сууц">
+              <Bars
+                inline
+                outlined
+                items={rows.map((r) => ({
+                  key: r.key,
+                  label: r.label,
+                  value: r.ail,
+                  display: `${num(r.ail)} өрх`,
+                  color: '#34d399',
+                }))}
+              />
+            </Panel>
+
+            <Panel title="Багц бүрийн төсөв">
+              <Bars
+                inline
+                outlined
+                items={rows.map((r) => ({
+                  key: r.key,
+                  label: r.label,
+                  value: r.budget,
+                  display: r.budget > 0 ? `${bn(r.budget)} тэрбум` : '—',
+                  color: '#fbbf24',
+                }))}
+              />
             </Panel>
 
             <Panel title="Гүйцэтгэгчийн бүрэлдэхүүн">
-              <div className={o.strip}>
-                {BAGTS_STRIP.map((s) => (
-                  <div key={s.label} className={o.stripCell}>
-                    <b className="num">{s.value}<Pin /></b>
-                    <span>{s.label}</span>
-                  </div>
+              <Stats cols={3}>
+                {BAGTS_STRIP.map((s, i) => (
+                  <Stat key={s.label} accent color={HUE[i % HUE.length]} value={<>{s.value}<Pin /></>} label={s.label} />
                 ))}
-              </div>
+              </Stats>
             </Panel>
           </>
         );
@@ -1120,32 +1076,31 @@ function LandDetail({ parcels, project }: { parcels: Async<Row[]>; project: Asyn
     <>
       <Panel title="Нэгж талбарын гүйцэтгэл">
         <div className={o.landTop}>
-          <Ring value={livePct ?? LAND.pct} size={86} width={9} label="гүйцэтгэл" />
-          <div className={o.rows}>
-            <div><span>Нийт нэгж талбар</span><b className="num">{num(LAND.total)}<Pin /></b></div>
-            <div><span>Гэрээ байгуулсан</span><b className="num">{num(LAND.contracted)}<Pin /></b></div>
-            <div><span>Шаардлагагүй</span><b className="num">{num(LAND.notNeeded)}<Pin /></b></div>
-            <div><span>Үлдсэн</span><b className={`num ${o.pMin}`}>{num(LAND.left)}<Pin /></b></div>
-          </div>
+          <Ring value={livePct ?? LAND.pct} size={104} width={17} color="#34d399" label="гүйцэтгэл" />
+          <Stats cols={2}>
+            <Stat accent color="#38bdf8" value={<>{num(LAND.total)}<Pin /></>} unit="талбар" label="Нийт нэгж талбар" />
+            <Stat accent color="#34d399" value={<>{num(LAND.contracted)}<Pin /></>} unit="талбар" label="Гэрээ байгуулсан" />
+            <Stat accent color="#a78bfa" value={<>{num(LAND.notNeeded)}<Pin /></>} unit="талбар" label="Шаардлагагүй" />
+            <Stat accent color="#f87171" value={<>{num(LAND.left)}<Pin /></>} unit="талбар" label="Үлдсэн" />
+          </Stats>
         </div>
-        <div className={o.bars}>
-          {LAND.breakdown.map((x) => (
-            <div key={x.label} className={o.barRow}>
-              <span className={o.barLabel}>{x.label}</span>
-              <span className={o.barTrack}>
-                <i className={o[x.tone]} style={{ width: `${(x.n / LAND.left) * 100}%` }} />
-              </span>
-              <b className="num">{x.n}</b>
-            </div>
-          ))}
-        </div>
-        <p className={o.warnNote}>{LAND.note} <Pin /></p>
+        <Bars
+          inline
+          outlined
+          items={LAND.breakdown.map((x) => ({
+            key: x.label,
+            label: x.label,
+            value: x.n,
+            display: `${num(x.n)} талбар`,
+            color: TONE_HUE[x.tone] ?? '#94a3b8',
+          }))}
+        />
       </Panel>
 
       {/* ⚠️ Пай диаграмаас БАГАНАН болгов: 10 ангилалтай пай нь зүсмэгүүд нь
           хэт нарийсч, ойролцоо хэмжээтэйг нь нүдээр ялгах боломжгүй болдог.
           Багана нь ижил суурьтай тул урт нь шууд харьцуулагдана. */}
-      <Panel title="Газар чөлөөлөлтийн одоогийн төлөв" note="давхаргаас амьдаар">
+      <Panel title="Газар чөлөөлөлтийн одоогийн төлөв">
         <Data q={parcels} loading="Татаж байна…">
           {(rows) => {
             const by = new Map<string, number>();
@@ -1161,15 +1116,11 @@ function LandDetail({ parcels, project }: { parcels: Async<Row[]>; project: Asyn
               .sort((a, b) => b.value - a.value);
             return (
               <>
-                <Bars inline items={items} />
-                <div className={o.rows}>
-                  <div><span>Нийт бүртгэл</span><b className="num">{num(rows.length)} талбар</b></div>
-                  <div><span>Ангилал</span><b className="num">{num(items.length)}</b></div>
-                </div>
-                <p className={o.note}>
-                  Давхарга <b>2026.07.18</b>-нд шинэчлэгдсэн — илтгэлээс хойш. Тиймээс мөрийн
-                  тоо ({num(rows.length)}) ба ангилал нь дээрх бэхлэгдсэн задаргаанаас зөрнө.
-                </p>
+                <Bars inline outlined items={items} />
+                <Stats cols={2}>
+                  <Stat accent color="#38bdf8" value={num(rows.length)} unit="талбар" label="Нийт бүртгэл" />
+                  <Stat accent color="#a78bfa" value={num(items.length)} label="Ангилал" />
+                </Stats>
               </>
             );
           }}
@@ -1193,58 +1144,62 @@ function SourceDetail({ invest }: { invest: Async<InvRow[]> }) {
   return (
     <>
       <Panel title="Эх үүсвэрийн хүчин чадал">
-        <div className={o.rows}>
-          {SOURCES.map((s) => (
-            <div key={s.key} className={o.srcRow}>
-              <span className={o.srcTitle}>{s.title}</span>
-              <b className="num">{s.value}<i>{s.unit}</i><Pin /></b>
-              <span className={o.srcNote}>{s.note}</span>
-            </div>
+        <Stats cols={2}>
+          {SOURCES.map((s, i) => (
+            <Stat
+              key={s.key}
+              accent
+              color={HUE[i % HUE.length]}
+              value={<>{s.value}<Pin /></>}
+              unit={s.unit}
+              label={`${s.title} · ${s.note}`}
+            />
           ))}
-        </div>
+        </Stats>
       </Panel>
 
-      <Panel title="Гадна ус, дулааны ажил" note={<>НЗД А/464, А/467 <Pin /></>}>
-        <div className={o.tblWrap}>
-          <table className={o.tbl}>
-            <thead><tr><th>Ажил</th><th className={o.rt}>сая ₮</th></tr></thead>
-            <tbody>
-              {UTILITY_WORKS.map((w) => (
-                <tr key={w.work}>
-                  <td>
-                    <span className={o.cellMain}>{w.work}</span>
-                    <span className={`${o.cellSub} ${o[w.tone]}`}>{w.org} · {w.status}</span>
-                  </td>
-                  <td className={`${o.rt} num`}>{num(w.mn)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      <Panel title="Гадна ус, дулааны ажил">
+        <Bars
+          outlined
+          items={UTILITY_WORKS.map((w) => ({
+            key: w.work,
+            label: `${w.work} · ${w.org} — ${w.status}`,
+            value: w.mn,
+            display: `${num(w.mn)} сая ₮`,
+            color: TONE_HUE[w.tone],
+          }))}
+        />
       </Panel>
 
-      <Panel title="Гадна цахилгаан (БАГЦ-6)" note="өртөг амьдаар">
-        <div className={o.tblWrap}>
-          <table className={o.tbl}>
-            <thead><tr><th>Багц</th><th className={o.rt}>Өртөг</th><th className={o.rt}>Явц</th></tr></thead>
-            <tbody>
-              {POWER_PACKS.map((b) => {
-                const c = cost(b.key);
-                return (
-                  <tr key={b.key}>
-                    <td>
-                      <span className={o.cellMain}>{b.key}</span>
-                      <span className={o.cellSub} title={b.contractor}>{b.contractor}<Pin /></span>
-                    </td>
-                    <td className={`${o.rt} num`}>{c == null ? '…' : bn(c)}</td>
-                    <td className={`${o.rt} num ${b.pct > 0 ? o.pLow : o.muted}`}>{b.pct}%<Pin /></td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-        <p className={o.warnNote}>{POWER_NOTE} <Pin /></p>
+      <Panel title="Гадна цахилгаан (БАГЦ-6) · өртөг">
+        <Bars
+          inline
+          outlined
+          items={POWER_PACKS.map((b) => {
+            const c = cost(b.key);
+            return {
+              key: b.key,
+              label: b.key,
+              value: c ?? 0,
+              display: c == null ? '…' : `${bn(c)} тэрбум`,
+              color: '#38bdf8',
+            };
+          })}
+        />
+      </Panel>
+
+      <Panel title="Гадна цахилгаан (БАГЦ-6) · явц">
+        <Bars
+          inline
+          outlined
+          items={POWER_PACKS.map((b) => ({
+            key: b.key,
+            label: b.key,
+            value: b.pct,
+            display: `${b.pct}%`,
+            color: b.pct > 0 ? '#34d399' : '#94a3b8',
+          }))}
+        />
       </Panel>
     </>
   );
@@ -1257,29 +1212,25 @@ function SourceDetail({ invest }: { invest: Async<InvRow[]> }) {
  * (баталгаажсан 2,209.6 · урьдчилсан 1,945.7 тэрбум ₮) тул хольж үзүүлбэл
  * нийлбэр таарахгүй. Амьд дүнг ЗЭРЭГЦҮҮЛЭХ мөрөөр доор нь тэмдэглэв.
  */
-function FinanceDetail({ invest }: { invest: Async<InvRow[]> }) {
-  const iv = invest.state === 'ready' ? invest.data : null;
-  const confirmed = iv ? iv.reduce((a, r) => a + r.confirmed, 0) : null;
-  const planned = iv ? iv.reduce((a, r) => a + r.planned, 0) : null;
-
+function FinanceDetail() {
   return (
     <>
-      <Panel title="Гол үзүүлэлт" note={<Pin />}>
-        <div className={o.rows}>
-          {FINANCE.kpi.map((k) => (
-            <div key={k.label}><span>{k.label}</span><b className="num">{k.value}</b></div>
+      <Panel title="Гол үзүүлэлт">
+        <Stats cols={2}>
+          {FINANCE.kpi.map((k, i) => (
+            <Stat key={k.label} accent color={HUE[i % HUE.length]} value={k.value} label={k.label} />
           ))}
-        </div>
+        </Stats>
       </Panel>
 
-      <Panel title="Санхүүжилтийн эх үүсвэр" note={<Pin />}>
+      <Panel title="Санхүүжилтийн эх үүсвэр">
         <Donut
           items={INVEST_SPLIT.map((s) => ({ key: s.key, label: s.label, value: s.bn, color: s.color, display: `${num(s.bn, 1)} · ${s.pct}%` }))}
-          center={num(HEADLINE.investBn, 1)} centerLabel="тэрбум ₮" size={124} width={17} stack
+          center={num(HEADLINE.investBn, 1)} centerLabel="тэрбум ₮" size={150} width={24} stack
         />
       </Panel>
 
-      <Panel title="Он тус бүрийн санхүүжилт" note={<>тэрбум ₮ <Pin /></>}>
+      <Panel title="Он тус бүрийн санхүүжилт">
         <div className={o.tblWrap}>
           <table className={o.tbl}>
             <thead>
@@ -1299,15 +1250,6 @@ function FinanceDetail({ invest }: { invest: Async<InvRow[]> }) {
             </tbody>
           </table>
         </div>
-        <p className={o.note}>{FINANCE.note}</p>
-        <p className={o.warnNote}>{FINANCE.bond}</p>
-        {/* ⚠️ Амьд дүнг НУУХГҮЙ — илтгэлийн дүнтэй зөрж байгааг хэрэглэгч мэдэх ёстой */}
-        <p className={o.note}>
-          Харьцуулбал <b>Хөрөнгө оруулалт өртөг</b> хүснэгтэд: баталгаажсан{' '}
-          <b>{confirmed == null ? '…' : `${bn(confirmed)} тэрбум ₮`}</b>, урьдчилсан{' '}
-          <b>{planned == null ? '…' : `${bn(planned)} тэрбум ₮`}</b>. Эх үүсвэрийн задаргаа
-          дээрх диаграмтай таарахгүй — хүснэгтэд «нийслэлийн төсөв» багана байхгүй.
-        </p>
       </Panel>
     </>
   );
@@ -1328,43 +1270,33 @@ function BenefitDetail({ bagts }: { bagts: Async<BagtsRow[]> }) {
       </div>
 
       <Panel title="Иргэдийн амьдралын чанар">
-        <div className={o.benefits}>
-          {BENEFITS.map((b) => (
-            <div key={b.value + b.text} className={o.benefit}>
-              {/* Өрхийн тоо амьд — building_GOL-ийн нийлбэр */}
-              <b className="num">{b.live && ail != null ? num(ail) : b.value}{b.unit && <i>{b.unit}</i>}{!b.live && <Pin />}</b>
-              <span>{b.text}</span>
-            </div>
+        <Stats cols={2}>
+          {BENEFITS.map((b, i) => (
+            <Stat
+              key={b.value + b.text}
+              accent
+              color={HUE[i % HUE.length]}
+              value={<>{b.live && ail != null ? num(ail) : b.value}{!b.live && <Pin />}</>}
+              unit={b.unit}
+              label={b.text}
+            />
           ))}
-        </div>
+        </Stats>
       </Panel>
 
-      <Panel title="Нийгмийн дэд бүтэц" note={<>20 байгууламж <Pin /></>}>
-        <div className={o.tblWrap}>
-          <table className={o.tbl}>
-            <thead><tr><th>Байгууламж</th><th className={o.rt}>Одоо</th><th className={o.rt}>Шинээр</th><th className={o.rt}>Нийт</th></tr></thead>
-            <tbody>
-              {SOCIAL.rows.map((r) => (
-                <tr key={r.label}>
-                  <td>{r.label}</td>
-                  <td className={`${o.rt} num`}>{r.now}</td>
-                  <td className={`${o.rt} num`}>{r.add}</td>
-                  <td className={`${o.rt} num`}>{r.total}</td>
-                </tr>
-              ))}
-              <tr className={o.trTotal}>
-                <td>Нийт</td>
-                <td className={`${o.rt} num`}>{SOCIAL.totals.now}</td>
-                <td className={`${o.rt} num`}>{SOCIAL.totals.add}</td>
-                <td className={`${o.rt} num`}>{SOCIAL.totals.total}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <p className={o.note}>{SOCIAL.note}</p>
+      <Panel title="Нийгмийн дэд бүтэц">
+        <Bars
+          inline
+          outlined
+          items={SOCIAL.rows.map((r, i) => ({
+            key: r.label,
+            label: r.label,
+            value: r.total,
+            display: `${r.now} → ${r.total}`,
+            color: HUE[i % HUE.length],
+          }))}
+        />
       </Panel>
-
-      <p className={o.railFoot}>◆ — «{BRIEF_SOURCE}» ({BRIEF_DATE}) илтгэлээс бэхлэгдсэн үзүүлэлт.</p>
     </>
   );
 }
@@ -1381,15 +1313,11 @@ function SuitDetail({ suit, prog, zone, setZone }: {
 }) {
   if (suit.state === 'loading') {
     return (
-      <Panel title="Тохиромжтой байдал" note="анализ">
+      <Panel title="Тохиромжтой байдал">
         <div className={o.load}>
           <div className={o.loadMsg}>{prog.msg}</div>
           <div className={o.loadBar}><span style={{ width: `${Math.max(4, prog.pct)}%` }} /></div>
         </div>
-        <p className={o.note}>
-          Бүс бүрийн орон зайн огтлолцлыг бодож байна — эхний удаад хэдэн арван
-          секунд үргэлжилж, дараа нь кэшээс шууд гарна.
-        </p>
       </Panel>
     );
   }
@@ -1403,7 +1331,7 @@ function SuitDetail({ suit, prog, zone, setZone }: {
 
   return (
     <>
-      <Panel title="Нийлмэл оноо" note={zone ? `бүс ${zone}` : `${num(s.zones)} бүсийн дундаж`}>
+      <Panel title="Нийлмэл оноо">
         <div className={o.landTop}>
           <span className={o.bigScore} style={{ color: scoreColor(head) }}>{head == null ? '—' : Math.round(head)}</span>
           <div className={o.rows}>
@@ -1427,7 +1355,7 @@ function SuitDetail({ suit, prog, zone, setZone }: {
         </div>
       </Panel>
 
-      <Panel title="Бүсийн эрэмбэ" note="дарж сонгоно">
+      <Panel title="Бүсийн эрэмбэ">
         <div className={o.rankGroup}>
           <div className={o.rankLabel}>Хамгийн сайн</div>
           {scored.slice(0, 5).map((r, i) => <RankRow key={r.id} r={r} n={i + 1} zone={zone} setZone={setZone} />)}
@@ -1435,12 +1363,6 @@ function SuitDetail({ suit, prog, zone, setZone }: {
           {scored.slice(-5).reverse().map((r, i) => <RankRow key={r.id} r={r} n={scored.length - i} zone={zone} setZone={setZone} />)}
         </div>
       </Panel>
-
-      <p className={o.note}>
-        Оноо нь хот төлөвлөлтийн үзүүлэлт ({100 - DEFAULT_ECON_SHARE}%) ба эдийн засгийн
-        ашиг ({DEFAULT_ECON_SHARE}%)-ийн жигнэсэн нийлбэр. Дэлгэрэнгүй задаргаа
-        «Тохиромжтой байдал» харагдацад.
-      </p>
     </>
   );
 }

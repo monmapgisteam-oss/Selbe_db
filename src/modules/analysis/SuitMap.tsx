@@ -16,6 +16,8 @@ import Ground from '@arcgis/core/Ground';
 import Graphic from '@arcgis/core/Graphic';
 import Home from '@arcgis/core/widgets/Home';
 import ScaleBar from '@arcgis/core/widgets/ScaleBar';
+import BasemapGallery from '@arcgis/core/widgets/BasemapGallery';
+import Expand from '@arcgis/core/widgets/Expand';
 import type Layer from '@arcgis/core/layers/Layer';
 import type Polygon from '@arcgis/core/geometry/Polygon';
 import esriConfig from '@arcgis/core/config';
@@ -29,7 +31,7 @@ import type { Dim } from '@/components/MapCanvas';
 
 /** 3d ба bim хоёулаа SceneView ашиглана */
 const is3D = (d: Dim) => d === '3d' || d === 'bim';
-import { MAP_LAYERS, type MapLayerDef } from '@/lib/analysis/config';
+import { MAP_LAYERS, NO_DATA_COLOR, type MapLayerDef } from '@/lib/analysis/config';
 import type { Zone } from '@/lib/analysis/data';
 import s from './suitability.module.css';
 
@@ -56,7 +58,12 @@ const bldFill = (c: number[], a = BLD_ALPHA) => ({
 });
 
 const ZONE_ALPHA = 0.5;
-const ZONE_ALPHA_NODATA = 0.2;
+/** Өгөгдөлгүй/хассан бүс — тод харагдахаар 0.2-оос нэмэв */
+const ZONE_ALPHA_NODATA = 0.5;
+/** Өгөгдөлгүй/хассан бүсийг ЦАЙВАР (цагаан ойролцоо) — ортофото дээр тодрох.
+    Хүрээ нь бараавтар саарал (тод зааг). */
+const NODATA_FILL = '#eef2f7';
+const NODATA_OUTLINE = '#64748b';
 /** Сонгосон бүсийн хүрээ — cyan (ногоон дүүргэлт дээр ч тодорно) */
 const SELECT_COLOR = [34, 211, 238, 1];
 
@@ -284,6 +291,30 @@ export function SuitMap({
     view.ui.move('zoom', 'top-right');
     view.ui.add(new Home({ view: anyView }), 'top-right');
     view.ui.add(new ScaleBar({ view: anyView, unit: 'metric', style: 'line' }), 'bottom-right');
+    // Суурь зургийн галерей — Expand дотор (товч дарж дэлгэнэ).
+    // Галерейн ДЭЭР «Ортофото» асаах/унтраах чагт (ортофото давхаргын ил байдал).
+    const bmPanel = document.createElement('div');
+    bmPanel.style.cssText = 'display:flex;flex-direction:column';
+    const orthoRow = document.createElement('label');
+    orthoRow.style.cssText = 'display:flex;align-items:center;gap:8px;padding:9px 11px;'
+      + 'font-size:12.5px;font-weight:600;color:#e6edf3;background:#161d27;'
+      + 'border-bottom:1px solid #26303d;cursor:pointer';
+    const orthoChk = document.createElement('input');
+    orthoChk.type = 'checkbox';
+    orthoChk.style.cssText = 'width:14px;height:14px;accent-color:#4fd1c5;cursor:pointer';
+    const imagery = map.findLayerById('imagery');
+    orthoChk.checked = imagery ? imagery.visible : true;
+    orthoChk.addEventListener('change', () => { if (imagery) imagery.visible = orthoChk.checked; });
+    orthoRow.append(orthoChk, document.createTextNode('Ортофото'));
+    const galleryDiv = document.createElement('div');
+    bmPanel.append(orthoRow, galleryDiv);
+    new BasemapGallery({ view: anyView, container: galleryDiv });
+    view.ui.add(new Expand({
+      view: anyView,
+      content: bmPanel,
+      expandIcon: 'basemap',
+      expandTooltip: 'Суурь зураг',
+    }), 'top-right');
 
     view.when(() => { if (!view.destroyed) setReady(true); }).catch(() => {});
 
@@ -296,9 +327,10 @@ export function SuitMap({
           const g = hit.results.find(
             (r) => r.type === 'graphic' && (r.graphic.attributes as { zoneId?: string })?.zoneId,
           );
-          cb.current.onSelect(
-            g && g.type === 'graphic' ? (g.graphic.attributes as { zoneId: string }).zoneId : null,
-          );
+          const zid = g && g.type === 'graphic' ? (g.graphic.attributes as { zoneId: string }).zoneId : null;
+          // ⚠️ Хассан бүсийг сонгуулахгүй — дэлгэрэнгүй самбар хоосон гарахаас сэргийлнэ
+          const zr = zid ? cb.current.rows.find((x) => x.id === zid) : null;
+          cb.current.onSelect(zr && !zr.excluded ? zid : null);
         })
         .catch(() => {});
     });
@@ -332,7 +364,8 @@ export function SuitMap({
           } else if (zone && zone.type === 'graphic') {
             const id = (zone.graphic.attributes as { zoneId: string }).zoneId;
             const r = cb.current.rows.find((x) => x.id === id);
-            if (r) { key = `z${id}`; if (key !== lastKey) html = cb.current.zoneTip(r); }
+            // ⚠️ Хассан бүс (ногоон/одоо байгаа барилга/дэд бүтэц) — hover панель харуулахгүй
+            if (r && !r.excluded) { key = `z${id}`; if (key !== lastKey) html = cb.current.zoneTip(r); }
           }
 
           if (!key) {
@@ -478,15 +511,23 @@ export function SuitMap({
 
     for (const r of ordered) {
       if (!r.displayGeom) continue;
-      const col = colorOf(r);
+      const scoreCol = colorOf(r);
+      // ⚠️ Оноогүй (хассан ногоон/одоо байгаа барилга/дэд бүтэц ба жинхэнэ
+      //    өгөгдөлгүй) бүсийг саарал биш ЦАЙВАР-аар — ортофото дээр тодрох.
+      const noData = scoreCol === NO_DATA_COLOR;
+      const col = noData ? NODATA_FILL : scoreCol;
       const isSel = selected === r.id;
       const vis = shown(r);
       const isBagts = /багц/i.test(r.id);
       const hasSel = selected !== null;
 
-      let alpha = r.urban == null ? ZONE_ALPHA_NODATA : ZONE_ALPHA;
+      let alpha = noData ? ZONE_ALPHA_NODATA : ZONE_ALPHA;
       if (!vis) alpha = 0.06;
       else if (hasSel && !isSel) alpha *= 0.45;
+
+      const outline = isSel ? SELECT_COLOR
+        : noData ? hexToRgba(NODATA_OUTLINE, Math.min(1, alpha * 1.5))
+          : hexToRgba(col, Math.min(1, alpha * 1.35));
 
       zoneLayer.add(new Graphic({
         geometry: r.displayGeom,
@@ -494,10 +535,7 @@ export function SuitMap({
         symbol: {
           type: 'simple-fill',
           color: hexToRgba(col, alpha),
-          outline: {
-            color: isSel ? SELECT_COLOR : hexToRgba(col, Math.min(1, alpha * 1.35)),
-            width: isSel ? 1.6 : ow(0.6),
-          },
+          outline: { color: outline, width: isSel ? 1.6 : noData ? ow(0.8) : ow(0.6) },
         } as unknown as SymbolProp,
       }));
 

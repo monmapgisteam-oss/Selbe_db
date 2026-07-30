@@ -7,7 +7,7 @@ import { LayerSwatch } from '@/components/LayerSwatch';
 import { useMap } from '@/components/MapCanvas';
 import { useFilter } from '@/lib/filter';
 import { useAsync, type Async } from '@/lib/useAsync';
-import { queryGroup, count, sum, groups, groupWhere, sqlStr, type Row, type Group } from '@/lib/query';
+import { queryGroup, count, sum, groups, groupWhere, sqlStr, type Group } from '@/lib/query';
 import {
   LAYER_BY_ID, layerUrl, oidOf, ZONE_FIELD, ZONE_NONE, ZONE_LAYER, ZONE_FIELDS,
   BUILT_LAYER, BUILT_FIELDS, BUILT_STATUS, ZONE_TYPES, ZONE_TYPE_EMPTY_HUE, zoneType, zoneCanon, zoneWhere,
@@ -380,26 +380,6 @@ function PlanOverview({
         const initial = VIEW_BY_KEY.plan.initial;
         const untouched =
           visible.length === initial.length && initial.every((id) => visible.includes(id));
-
-        /** Төрөл бүрийн график — зөвхөн чектэй, утга нь 0-ээс их давхаргууд */
-        const charts = GEOM_CHARTS.map((c) => {
-          const items = on
-            .map((id) => ({ id, d: LAYER_BY_ID[id], t: map.get(id) }))
-            .filter((x) => x.d && x.t && chartOf(x.d, x.t) === c.geom)
-            .map((x) => ({ x, v: c.value(x.d, x.t!) }))
-            .filter((r) => r.v > 0)
-            .sort((a, b) => b.v - a.v)
-            .map((r) => ({
-              key: r.x.id,
-              label: r.x.d.title,
-              value: r.v,
-              display: c.display(r.v, r.x.t!),
-              color: r.x.d.hue,
-            }));
-          // Нийт — графикийн толгойд «5 давхарга · 60.2 км» гэж
-          const sum = items.reduce((a, i) => a + i.value, 0);
-          return { ...c, items, sum };
-        }).filter((c) => c.items.length > 0);
 
         /**
          * СОНГОСОН ДАВХАРГУУД БАГЦААР — багц бүр өөрийн хэсэгтэй.

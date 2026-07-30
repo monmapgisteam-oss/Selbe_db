@@ -1,0 +1,27 @@
+name: Test (typecheck + live-data checks)
+
+# ⚠️ Deploy-оос ТУСДАА, түүнийг ХААХГҮЙ workflow. Амьд ArcGIS үйлчилгээ рүү
+# хандаж кодын өгөгдлийн таамгийг шалгадаг тул мэдээлэл өөрчлөгдөхөд эрт барина.
+# (deploy.yml нь зөвхөн typecheck + build хийж, статикаар нийтэлдэг хэвээр.)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run typecheck
+      # Амьд өгөгдлийн шалгалтууд (filters/series/blockProgress/bagts/monitor/floor)
+      - run: npm test
