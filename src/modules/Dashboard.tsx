@@ -66,8 +66,8 @@ type SecKey = 'scope' | 'schedule' | 'bagts' | 'land' | 'source' | 'finance' | '
 const SECTIONS: { key: SecKey; no: string; title: string }[] = [
   { key: 'scope', no: '01', title: 'Төслийн цар хүрээ' },
   { key: 'schedule', no: '02', title: 'Хэрэгжилтийн ерөнхий график' },
-  { key: 'bagts', no: '03', title: 'Орон сууцны 7 багц' },
-  { key: 'land', no: '04', title: 'Газар чөлөөлөлтийн одоогийн төлөв' },
+  { key: 'land', no: '03', title: 'Газар чөлөөлөлтийн одоогийн төлөв' },
+  { key: 'bagts', no: '04', title: 'Орон сууцны 7 багц' },
   { key: 'source', no: '05', title: 'Эх үүсвэр, шугам сүлжээ' },
   { key: 'finance', no: '06', title: 'Хөрөнгө оруулалт, бонд' },
   { key: 'benefit', no: '07', title: 'Иргэдэд хүрэх үр өгөөж' },
@@ -111,6 +111,13 @@ const SECTION_LAYERS: Record<SecKey, string[]> = {
 
 /** Дашбоард нээгдэхэд асаалттай давхаргууд */
 const BASE_LAYERS = [ZONE_LAYER.id, BUILT_LAYER.id];
+
+/**
+ * Хэсэг сонгосон үед газрын зурагт контекст болж үлдэх давхарга — барилга.
+ * (Үндсэн хил `khil1` нь `ALWAYS_ON_IDS`-ээр MapCanvas-д өөрөө үргэлж асаалттай
+ * тул энд оруулах шаардлагагүй.)
+ */
+const CONTEXT_LAYERS = [BUILT_LAYER.id];
 
 /**
  * «Давхарга» каталогт харуулах давхаргууд — «Ерөнхий төлөвлөгөө»-тэй ИЖИЛ
@@ -485,8 +492,12 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
   const [open, setOpen] = useState<SecKey[]>([]);
 
   /**
-   * Газрын зурагт асаалттай давхаргууд. Хэсэг нээх/хаах нь холбогдох давхаргыг
-   * нэмж/хасна; давхаргын жагсаалтаас гараар ч асааж болно.
+   * Газрын зурагт асаалттай давхаргууд. Хэсэг сонгоход газрын зураг тэр
+   * хэсэг(үүд)-ийн холбогдох давхаргаар ШҮҮГДЭНЭ — нэмэлт биш, REPLACE:
+   * нээлттэй хэсгүүдийн `SECTION_LAYERS` + барилга контекст (`CONTEXT_LAYERS`)
+   * үлдэж, бусад бүх давхарга нуугдана. Юу ч нээлттэй биш бол анхдагч
+   * `BASE_LAYERS` (бүс + барилга). Үндсэн хил (`khil1`) нь `ALWAYS_ON_IDS`-ээр
+   * MapCanvas-д өөрөө үргэлж асаалттай тул энд оруулах шаардлагагүй.
    *
    * ⚠️ Синкийг `useEffect`-ээр ХИЙХГҮЙ — тэгвэл хэрэглэгч гараар унтраасан
    * давхаргыг эффект дахин асааж, товч «ажиллахгүй» мэт болно. Хэрэглэгчийн
@@ -507,14 +518,16 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
 
   const toggle = useCallback((k: SecKey) => {
     const isOpen = open.includes(k);
-    setOpen(isOpen
+    const next = isOpen
       ? open.filter((x) => x !== k)
-      : SECTIONS.map((s) => s.key).filter((s) => s === k || open.includes(s)));
-    const ids = SECTION_LAYERS[k];
-    if (!ids.length) return;
-    setVisible((v) => (isOpen
-      ? v.filter((id) => !ids.includes(id) || BASE_LAYERS.includes(id))
-      : [...new Set([...v, ...ids])]));
+      : SECTIONS.map((s) => s.key).filter((s) => s === k || open.includes(s));
+    setOpen(next);
+
+    // Хэсэг(үүд) нээлттэй бол газрын зургийг тэдгээрийн холбогдох давхаргаар
+    // ШҮҮНЭ: SECTION_LAYERS + барилга контекст (+ khil1 үндсэн хил always-on).
+    // Юу ч нээлттэй биш бол анхдагч руу (бүс + барилга) буцна.
+    const ids = next.flatMap((s) => SECTION_LAYERS[s]);
+    setVisible(next.length ? [...new Set([...CONTEXT_LAYERS, ...ids])] : BASE_LAYERS);
   }, [open]);
 
   const clearAll = useCallback(() => {

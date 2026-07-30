@@ -1,6 +1,6 @@
 'use client';
 
-import { type CSSProperties } from 'react';
+import { Fragment, type CSSProperties } from 'react';
 import { Icon } from './Icon';
 import { VIEWS, type ViewKey } from '@/lib/services';
 import s from './tree.module.css';
@@ -40,6 +40,26 @@ export function ViewRail({
   /** Popup нээлттэй эсэх (идэвхтэй тэмдэг) */
   docsActive?: boolean;
 }) {
+  {/* «ТЭЗҮ-БОНУ» баримт — харагдацын табуудтай НЭГ бүлэгт, ижил хэлбэрээр.
+      Харагдац биш, popup нээдэг тул `aria-current` биш `aria-pressed`. */}
+  const docsButton =
+    header && onDocs ? (
+      <button
+        type="button"
+        aria-pressed={docsActive}
+        aria-label="ТЭЗҮ-БОНУ баримт бичиг"
+        title="ТЭЗҮ ба судалгааны баримт бичиг"
+        className={`${s.item} ${s.docItem} ${docsActive ? s.itemOn : ''}`}
+        style={{ '--tone': '#16a34a' } as CSSProperties}
+        onClick={onDocs}
+      >
+        <span className={s.icon}><Icon name="file" /></span>
+        <span className={s.text}>
+          <span className={s.title}>ТЭЗҮ-БОНУ</span>
+        </span>
+      </button>
+    ) : null;
+
   return (
     <nav className={header ? s.railRow : s.rail} aria-label="Харагдац">
       {!header && <div className={s.railHead}>Харагдац</div>}
@@ -53,8 +73,8 @@ export function ViewRail({
         const expandable = !v.standalone && !header;
         const expanded = expandable && on && catalogOpen;
         return (
+          <Fragment key={v.key}>
           <button
-            key={v.key}
             type="button"
             aria-current={on}
             aria-label={v.title}
@@ -74,27 +94,11 @@ export function ViewRail({
               <span className={`${s.chev} ${expanded ? s.chevOn : ''}`} aria-hidden>›</span>
             )}
           </button>
+          {/* ТЭЗҮ-БОНУ товч «Ерөнхий дашбоард»-ын шууд ард (толгойн горимд) */}
+          {v.key === 'dashboard' && docsButton}
+          </Fragment>
         );
       })}
-
-      {/* «ТЭЗҮ-БОНУ» баримт — харагдацын табуудтай НЭГ бүлэгт, ижил хэлбэрээр.
-          Харагдац биш, popup нээдэг тул `aria-current` биш `aria-pressed`. */}
-      {header && onDocs && (
-        <button
-          type="button"
-          aria-pressed={docsActive}
-          aria-label="ТЭЗҮ-БОНУ баримт бичиг"
-          title="ТЭЗҮ ба судалгааны баримт бичиг"
-          className={`${s.item} ${s.docItem} ${docsActive ? s.itemOn : ''}`}
-          style={{ '--tone': '#16a34a' } as CSSProperties}
-          onClick={onDocs}
-        >
-          <span className={s.icon}><Icon name="file" /></span>
-          <span className={s.text}>
-            <span className={s.title}>ТЭЗҮ-БОНУ</span>
-          </span>
-        </button>
-      )}
 
       {!header && (
         <p className={s.foot}>
