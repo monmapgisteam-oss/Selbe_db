@@ -10,7 +10,6 @@ import FeatureLayer from '@arcgis/core/layers/FeatureLayer';
 import ImageryLayer from '@arcgis/core/layers/ImageryLayer';
 import IntegratedMeshLayer from '@arcgis/core/layers/IntegratedMeshLayer';
 import ElevationLayer from '@arcgis/core/layers/ElevationLayer';
-import TileLayer from '@arcgis/core/layers/TileLayer';
 import Basemap from '@arcgis/core/Basemap';
 import Ground from '@arcgis/core/Ground';
 import Graphic from '@arcgis/core/Graphic';
@@ -25,7 +24,7 @@ import esriConfig from '@arcgis/core/config';
 import BuildingSceneLayer from '@arcgis/core/layers/BuildingSceneLayer';
 import BuildingExplorer from '@arcgis/core/widgets/BuildingExplorer';
 import {
-  ET, BASEMAP_URL, IMAGERY, SCENE, BIM, ELEVATION_URL, HOME, LAYER_BY_ID, layerUrl, ALWAYS_ON_IDS,
+  ET, IMAGERY, SCENE, BIM, ELEVATION_URL, HOME, LAYER_BY_ID, layerUrl, ALWAYS_ON_IDS,
 } from '@/lib/services';
 import type { Dim } from '@/components/MapCanvas';
 
@@ -149,8 +148,9 @@ function labelSymbol(dim: Dim, text: string, color: string, halo: string, haloSi
  * ⚠️ Вектор тайлын суурь зураг БИШ: загвар солиход `VectorTileContainer`
  * дээр унадаг ба 2D-д ортофото түүнийг бүрэн бүрхдэг.
  */
-const baseMap = () =>
-  new Basemap({ baseLayers: [new TileLayer({ url: BASEMAP_URL })], title: 'World Imagery' });
+/** Анхдагч суурь зураг — ТОПОГРАФИ (порталтай нэгдмэл). Ортофото тусдаа давхарга,
+ *  эхэндээ унтраалттай — «Суурь зураг» чагтаар асаана. */
+const baseMap = () => Basemap.fromId('topo-vector');
 
 export function SuitMap({
   dim,
@@ -238,11 +238,12 @@ export function SuitMap({
       bldRef.current = buildingLayer;
       const under = ctx.filter((x) => x.lyr !== buildingLayer).map((x) => x.lyr);
 
-      /* Ортофото — СУУРЬ. Хамгийн эхэнд нэмснээр бүх давхаргын доор. */
+      /* Ортофото — вектор давхаргын доор. Эхэндээ УНТРААЛТТАЙ (анхдагч суурь
+         зураг топографи; ортофотог «Суурь зураг» чагтаар асаана). */
       const imagery = new GroupLayer({
         id: 'imagery',
         title: IMAGERY.title,
-        visible: true,
+        visible: false,
         listMode: 'hide',
         layers: IMAGERY.urls.map((url, i) => new ImageryLayer({
           id: `imagery:${i}`, url, visible: true,

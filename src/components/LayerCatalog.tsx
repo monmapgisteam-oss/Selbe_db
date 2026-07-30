@@ -7,6 +7,7 @@ import {
 } from 'react';
 import { Icon } from './Icon';
 import { LayerSwatch } from './LayerSwatch';
+import { useMap } from './MapCanvas';
 import { useAsync, type Async } from '@/lib/useAsync';
 import type { Totals } from '@/lib/totals';
 import { qtyText, whereFor, layerStats } from '@/lib/totals';
@@ -81,6 +82,8 @@ export function LayerCatalog({
   embedded?: boolean;
 }) {
   const groups = catalogGroups(view);
+  /** Ортофото ил эсэх — газрын зурагтай нэг эх сурвалж (`MapProvider`) */
+  const { ortho, setOrtho } = useMap();
 
   /**
    * Хураасан багцууд.
@@ -170,6 +173,25 @@ export function LayerCatalog({
       </header>
 
       <div className={s.body}>
+        {/* ОРТОФОТО — жагсаалтын ХАМГИЙН ДЭЭД мөр. Суурь зураг топографи, энэ
+            чагтаар ортофотог асаана/унтраана (газрын зурагтай нэг эх сурвалж). */}
+        <button
+          type="button"
+          role="switch"
+          aria-checked={ortho}
+          className={`${s.ortho} ${ortho ? s.orthoOn : ''}`}
+          onClick={() => setOrtho(!ortho)}
+        >
+          <span className={s.orthoCheck}>
+            <svg viewBox="0 0 12 12" width="10" height="10">
+              <path d="M2 6.2 4.6 8.8 10 3.4" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </span>
+          <Icon name="layers" size={15} />
+          <span className={s.orthoLabel}>Ортофото зураг</span>
+          <span className={s.orthoState}>{ortho ? 'ил' : 'нуусан'}</span>
+        </button>
+
         {/**
          * ⚠️ ЖАГСААЛТЫГ `totals` хүлээлгэхгүй ШУУД зурна. Урьд нь бүх бие
          * `<Data q={totals}>`-д ороосон тул 29 давхаргын тоо БҮГД (6 зэрэгцээ =
