@@ -20,7 +20,6 @@ import LocalBasemapsSource from '@arcgis/core/widgets/BasemapGallery/support/Loc
 import Expand from '@arcgis/core/widgets/Expand';
 import ElevationLayer from '@arcgis/core/layers/ElevationLayer';
 import Ground from '@arcgis/core/Ground';
-import TileLayer from '@arcgis/core/layers/TileLayer';
 import type Layer from '@arcgis/core/layers/Layer';
 import Basemap from '@arcgis/core/Basemap';
 import Extent from '@arcgis/core/geometry/Extent';
@@ -29,7 +28,7 @@ import '@arcgis/core/assets/esri/themes/light/main.css';
 
 import {
   LAYERS, LAYER_BY_ID, layerUrl, oidOf, drawOrder, DASH_PATTERN, ALWAYS_ON_IDS, REFERENCE_IDS,
-  HOME, BASEMAP_URL, IMAGERY, SCENE, BIM, USAN_SAN, ELEVATION_URL, ZONE_LAYER, zoneWhere,
+  HOME, IMAGERY, SCENE, BIM, USAN_SAN, ELEVATION_URL, ZONE_LAYER, zoneWhere,
   ZONE_FIELD, ZONE_NONE, ZONE_TYPE_EMPTY_HUE, OID, BUILDING, SURVEY, PARCEL_LEFT, buildingKey,
   type LayerDef,
 } from '@/lib/services';
@@ -85,12 +84,21 @@ type MapApi = {
   zoomToZone: (zone: string) => void;
   /** Давхаргын ЯГ ТЭР объект(ууд) руу ойртох — хайлтын үр дүнд шилжихэд */
   zoomToWhere: (layerId: string, where: string) => void;
+  /**
+   * ОРТОФОТО ил эсэх ба түүнийг унтраах/асаах.
+   * ⚠️ Каталогийн дээд мөр ба «Суурь зураг» товчны чагт ХОЁУЛАА эндээс уншиж
+   * бичнэ — нэг эх сурвалж тул хоорондоо синк байна. Анхдагч суурь зураг
+   * топографи, ортофото унтраалттай.
+   */
+  ortho: boolean;
+  setOrtho: (v: boolean) => void;
 };
 
 const Ctx = createContext<MapApi>({
   view: null, setHighlight: () => {}, highlight: { where: null },
   zoomToLayer: () => {}, zoomToZone: () => {},
   zoomToWhere: () => {},
+  ortho: false, setOrtho: () => {},
 });
 
 const RegisterCtx = createContext<(view: AnyView | null) => void>(() => {});
@@ -377,8 +385,13 @@ const zoneLabels = () =>
     },
   ] as unknown as __esri.LabelClassProperties[];
 
-const baseMap = () =>
-  new Basemap({ baseLayers: [new TileLayer({ url: BASEMAP_URL })], title: 'World Imagery' });
+/**
+ * Анхдагч суурь зураг — ТОПОГРАФИ (хэрэглэгчийн хүсэлт). Ортофото нь тусдаа
+ * `imagery` давхарга бөгөөд эхэндээ УНТРААЛТТАЙ; хэрэглэгч «Суурь зураг» товчны
+ * «Ортофото» чагтаар асаана. Суурь зургийн галерейгаас топо/хиймэл дагуул/гудамж
+ * зэрэг сонгож болно.
+ */
+const baseMap = () => Basemap.fromId('topo-vector');
 
 /* ─────────────────── Давхарга үүсгэх ─────────────────── */
 
@@ -428,11 +441,13 @@ const mapFields = (d: LayerDef): string[] => {
 function buildLayers(uniform = false): Layer[] {
   const L: Layer[] = [];
 
-  /* Ортофото — СУУРЬ. Хамгийн эхэнд нэмснээр бүх вектор давхаргын доор. */
+  /* Ортофото — вектор давхаргын доор. ⚠️ Эхэндээ УНТРААЛТТАЙ (хэрэглэгчийн
+     хүсэлт): анхдагч суурь зураг нь топографи, ортофотог «Суурь зураг» товчны
+     чагтаар асаана. `orthoRef` энэ төлвийг удирдана. */
   L.push(new GroupLayer({
     id: IMAGERY_ID,
     title: IMAGERY.title,
-    visible: true,
+    visible: false,
     listMode: 'hide',
     /**
      * ⚠️ `visibilityMode: 'inherited'` БИШ. Тэр горимд хүүхэд давхарга нэмэгдэх
@@ -518,6 +533,12 @@ export function MapProvider({ children }: { children: ReactNode }) {
   const register = useCallback((v: AnyView | null) => setView(v), []);
 
   const [hl, setHl] = useState<Highlight>({ where: null });
+
+  /**
+   * Ортофото ил эсэх — каталогийн дээд мөр ба «Суурь зураг» товч ХОЁУЛАА үүнийг
+   * уншиж бичнэ. Анхдагч: унтраалттай (суурь зураг топографи).
+   */
+  const [ortho, setOrtho] = useState(false);
 
   /**
    * Тодруулга 2D-д — таарахгүй объектыг БҮДГЭРҮҮЛНЭ (`featureEffect`).
@@ -607,8 +628,8 @@ export function MapProvider({ children }: { children: ReactNode }) {
   }, [view]);
 
   const api = useMemo<MapApi>(
-    () => ({ view, setHighlight, highlight: hl, zoomToLayer, zoomToZone, zoomToWhere }),
-    [view, setHighlight, hl, zoomToLayer, zoomToZone, zoomToWhere],
+    () => ({ view, setHighlight, highlight: hl, zoomToLayer, zoomToZone, zoomToWhere, ortho, setOrtho }),
+    [view, setHighlight, hl, zoomToLayer, zoomToZone, zoomToWhere, ortho],
   );
 
   return (
@@ -687,11 +708,21 @@ export function MapCanvas({
   registerRef.current = register;
 
   /** 3D-д тодруулга `definitionExpression`-оор явна (featureEffect тэнд ажиллахгүй) */
-  const { highlight: hl } = useContext(Ctx);
+  const { highlight: hl, ortho, setOrtho } = useContext(Ctx);
   const hlOnly = useMemo(
     () => (hl.only == null ? null : Array.isArray(hl.only) ? hl.only : [hl.only]),
     [hl.only],
   );
+  /**
+   * `ortho`-г эффект/DOM callback-д ref-ээр уншина — тэдгээр нь closure тул сүүлийн
+   * утгыг унших ёстой. Мөн «Суурь зураг» товчны чагтыг синк болгоно.
+   */
+  const orthoRef = useRef(ortho);
+  orthoRef.current = ortho;
+  const orthoChkRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    if (orthoChkRef.current) orthoChkRef.current.checked = ortho;
+  }, [ortho]);
 
   /** Массивыг эффектийн хамааралд өгч болохгүй (лавлагаа нь рендер бүрт шинэ) */
   const visibleKey = visible.join(',');
@@ -766,27 +797,52 @@ export function MapCanvas({
 
     /**
      * Esri-ийн суурь зургийн галерей — Expand дотор ХУМИГДСАНААР (зураг битүүрэхгүй).
-     * ⚠️ Selbe ортофото нь ТУСДАА давхарга (`imagery`) тул суурь зураг сольсон ч
-     * дээр нь хэвээр үлдэнэ. Widget нь view-тэй хамт устдаг (`view.destroy`).
+     *
+     * ⚠️ Selbe ортофото нь ТУСДАА давхарга (`imagery`) бөгөөд зургийг БҮРЭН
+     * бүрхдэг тул суурь зургаа сольсон ч ХАРАГДДАГГҮЙ байв — «суурь зураг солих
+     * товч ажиллахгүй» гэдгийн шалтгаан нь ЭНЭ. Галерейн ДЭЭР «Ортофото» асаах/
+     * унтраах чагт нэмэв: унтраахад доорх сонгосон суурь зураг ил гарна.
+     * (Suitability-ийн газартай ИЖИЛ загвар.) Widget нь view-тэй хамт устна.
      */
+    const bmPanel = document.createElement('div');
+    bmPanel.style.cssText = 'display:flex;flex-direction:column';
+    const orthoRow = document.createElement('label');
+    orthoRow.style.cssText = 'display:flex;align-items:center;gap:8px;padding:9px 11px;'
+      + 'font-size:12.5px;font-weight:600;color:var(--ink);background:var(--surface);'
+      + 'border-bottom:1px solid var(--line);cursor:pointer';
+    const orthoChk = document.createElement('input');
+    orthoChk.type = 'checkbox';
+    orthoChk.style.cssText = 'width:14px;height:14px;accent-color:var(--hue,#0d9488);cursor:pointer';
+    const imagery = map.findLayerById(IMAGERY_ID);
+    // Context нь эх сурвалж — каталогийн дээд мөртэй синк (`ortho`-г эффект уншина)
+    orthoChk.checked = orthoRef.current;
+    if (imagery) imagery.visible = orthoRef.current;
+    orthoChkRef.current = orthoChk;
+    // ⚠️ `change` дотор setOrtho — context шинэчлэгдэж, харагдацын эффект imagery-г тавина
+    orthoChk.addEventListener('change', () => setOrtho(orthoChk.checked));
+    orthoRow.append(orthoChk, document.createTextNode('Ортофото'));
+    const galleryDiv = document.createElement('div');
+    bmPanel.append(orthoRow, galleryDiv);
+    new BasemapGallery({
+      view,
+      container: galleryDiv,
+      // ⚠️ Тодорхой заасан эх сурвалж — portal нэвтрэлтээс ҮЛ ХАМААРАН
+      //    Esri-ийн стандарт суурь зургууд үргэлж ачаалагдана.
+      source: new LocalBasemapsSource({
+        basemaps: [
+          Basemap.fromId('satellite')!,
+          Basemap.fromId('hybrid')!,
+          Basemap.fromId('streets-vector')!,
+          Basemap.fromId('topo-vector')!,
+          Basemap.fromId('gray-vector')!,
+          Basemap.fromId('dark-gray-vector')!,
+          Basemap.fromId('osm')!,
+        ],
+      }),
+    });
     view.ui.add(new Expand({
       view,
-      content: new BasemapGallery({
-        view,
-        // ⚠️ Тодорхой заасан эх сурвалж — portal нэвтрэлтээс ҮЛ ХАМААРАН
-        //    Esri-ийн стандарт суурь зургууд үргэлж ачаалагдана.
-        source: new LocalBasemapsSource({
-          basemaps: [
-            Basemap.fromId('satellite')!,
-            Basemap.fromId('hybrid')!,
-            Basemap.fromId('streets-vector')!,
-            Basemap.fromId('topo-vector')!,
-            Basemap.fromId('gray-vector')!,
-            Basemap.fromId('dark-gray-vector')!,
-            Basemap.fromId('osm')!,
-          ],
-        }),
-      }),
+      content: bmPanel,
       expandIcon: 'basemap',
       expandTooltip: 'Суурь зураг сонгох',
       collapseTooltip: 'Хаах',
@@ -1145,7 +1201,7 @@ export function MapCanvas({
     const on = new Set(visibleKey ? visibleKey.split(',') : []);
 
     map.layers.forEach((l) => {
-      if (l.id === IMAGERY_ID) { l.visible = true; return; }
+      if (l.id === IMAGERY_ID) { l.visible = ortho; return; }
       // ⚠️ Полигон зурах GraphicsLayer нь каталогийн `visible` жагсаалтад ХЭЗЭЭ Ч
       //    орохгүй тул энэ шалгуургүй бол доорх мөр түүнийг нууж, зурсан полигон
       //    алга болно. Sketch widget өөрөө агуулгыг удирдана — үргэлж ил.
@@ -1194,7 +1250,7 @@ export function MapCanvas({
         ) as unknown as string;
       }
     });
-  }, [visibleKey, dim, ready, zone, layerWhere, hl, hlOnly, uniform]);
+  }, [visibleKey, dim, ready, zone, layerWhere, hl, hlOnly, uniform, ortho]);
 
   /**
    * `mon:building` давхаргыг НИЙТ ГҮЙЦЭТГЭЛЭЭР өнгөлнө — «Гүйцэтгэл бөглөх»-ийн
