@@ -4,8 +4,10 @@ import {
   useCallback, useEffect, useMemo, useRef, useState,
   type CSSProperties, type PointerEvent as ReactPointerEvent,
 } from 'react';
-import { MapCanvas, MapProvider, type Dim } from '@/components/MapCanvas';
+import { MapCanvas, MapProvider, useMap, type Dim } from '@/components/MapCanvas';
 import { ViewRail } from '@/components/ViewRail';
+import { Search } from '@/components/Search';
+import type { Hit } from '@/lib/search';
 import { LayerCatalog } from '@/components/LayerCatalog';
 import { Suitability } from '@/modules/analysis/Suitability';
 import { Dashboard } from '@/modules/Dashboard';
@@ -26,6 +28,7 @@ import {
   ZONE_LAYER, ZONE_FIELDS, BUILT_LAYER, BUILT_FIELDS,
   type ViewKey,
 } from '@/lib/services';
+import { readParam, writeParams } from '@/lib/urlState';
 import { num } from '@/lib/format';
 import { ViewPanel } from '@/modules/ViewPanel';
 import { BuildingSummary, MonitorTrend, useBuildings } from '@/modules/BuildingPanel';
@@ -145,19 +148,37 @@ export default function Portal() {
   );
 }
 
+/**
+ * URL-аас эхлэх төлөвийг уншина (хуваалцсан холбоос, F5).
+ * ⚠️ Portal нь `ssr:false` тул initializer-ууд ҮРГЭЛЖ хөтөч дээр ажиллана;
+ * буруу/хуучирсан утгыг чимээгүй хаяж анхдагчид буцна — URL-аар апп эвдэхгүй.
+ */
+const initialView = (): ViewKey => {
+  const v = readParam('v');
+  return v && VIEW_BY_KEY[v as ViewKey] ? (v as ViewKey) : DEFAULT_VIEW;
+};
+const initialDim = (): Dim => {
+  const d = readParam('d');
+  return d === '3d' || d === 'bim' ? d : '2d';
+};
+const initialLayer = (): string | null => {
+  const l = readParam('l');
+  return l && LAYER_BY_ID[l] ? l : null;
+};
+
 function PortalContent() {
   /**
    * Газрын зураг ХОЁРХОН төрөлтэй: 2D = ортофото, 3D = меш. Суурийг энэ л шийднэ.
    */
-  const [dim, setDim] = useState<Dim>('2d');
+  const [dim, setDim] = useState<Dim>(initialDim);
 
   /**
    * ХАРАГДАЦ — порталын гол удирдлага. Сонгоход зураг ба самбар ХОЁУЛАА солигдоно.
    * `visible` нь харагдацын анхны давхаргуудаар дүүрнэ; хэрэглэгч каталогоос
    * нэмж асаана.
    */
-  const [view, setViewState] = useState<ViewKey>(DEFAULT_VIEW);
-  const [visible, setVisible] = useState<string[]>(VIEW_BY_KEY[DEFAULT_VIEW].initial);
+  const [view, setViewState] = useState<ViewKey>(initialView);
+  const [visible, setVisible] = useState<string[]>(() => VIEW_BY_KEY[initialView()].initial);
 
   /**
    * Каталогийн багана нээлттэй эсэх ба самбарт задалж харуулах давхарга.
@@ -169,10 +190,10 @@ function PortalContent() {
   // Давхаргын сонголтын ЗҮҮН БАГАНА — «Давхарга» товчоор нээж/хаана.
   // Анхнаасаа НЭЭЛТТЭЙ: давхаргын жагсаалт зүүн талд шууд харагдана.
   const [catalog, setCatalog] = useState(true);
-  const [layer, setLayer] = useState<string | null>(null);
+  const [layer, setLayer] = useState<string | null>(initialLayer);
 
   /** Сонгосон бүс — БҮХ давхарга, БҮХ тоо үүгээр шүүгдэнэ */
-  const [zone, setZone] = useState<string | null>(null);
+  const [zone, setZone] = useState<string | null>(() => readParam('z'));
   const [picked, setPicked] = useState<Record<string, unknown> | null>(null);
   const [pickedLayer, setPickedLayer] = useState<string | null>(null);
   const { theme, toggle } = useTheme();
@@ -222,10 +243,72 @@ function PortalContent() {
     setCatalog(v === 'plan');
   }, [clearFilter]);
 
+  /* ── URL төлөв — хуваалцах холбоос, F5, Back ── */
+
+  /** Өмнөх харагдац — ХАРАГДАЦ солигдоход л түүхийн шинэ бичлэг үүсгэнэ */
+  const lastViewRef = useRef(view);
+
+  /**
+   * Төлөв → URL. Харагдац солиход `push` (Back ажиллана), бусад өөрчлөлтөд
+   * replace — бүс/давхарга сонгох бүрд түүх урсгавал Back дарахад мөр бүрээр
+   * ухрах болно. Анхдагч утгууд URL-д БИЧИГДЭХГҮЙ (writeParams null → устгана).
+   * popstate-ээр сэргээх үед URL аль хэдийн зөв тул writeParams өөрөө no-op.
+   */
+  useEffect(() => {
+    const push = view !== lastViewRef.current;
+    lastViewRef.current = view;
+    writeParams({
+      v: view === DEFAULT_VIEW ? null : view,
+      z: zone,
+      l: layer,
+      d: dim === '2d' ? null : dim,
+    }, { push });
+  }, [view, zone, layer, dim]);
+
+  /* URL → төлөв: хөтчийн Back/Forward-д харагдацыг бүтэн сэргээнэ */
+  useEffect(() => {
+    const onPop = () => {
+      // `setView` нь харагдацын бүрэн шинэчлэл (шүүлт цэвэрлэх г.м.) хийдэг
+      setView(initialView());
+      setZone(readParam('z'));
+      setLayer(initialLayer());
+      setDim(initialDim());
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, [setView]);
+
   const pick = useCallback((attrs: Record<string, unknown> | null, layerId: string | null) => {
     setPicked(attrs);
     setPickedLayer(layerId);
   }, []);
+
+  /* ── Нэгдсэн хайлт ── */
+
+  const { view: mapView, zoomToWhere } = useMap();
+  /**
+   * Хайлтын үр дүн ӨӨР харагдац руу заавал: тэр харагдацын газрын зураг
+   * хараахан бүртгэгдээгүй (standalone-оос ирэхэд огт байхгүй) тул ойртолтыг
+   * түр хойшлуулж, зураг бэлэн болмогц доорх эффект гүйцэтгэнэ.
+   */
+  const pendingHitRef = useRef<Hit | null>(null);
+
+  const onSearchPick = useCallback((h: Hit) => {
+    if (h.view !== view) setView(h.view);
+    // ⚠️ setView-ийн ДАРАА: тэр нь visible-ыг анхны байдалд буулгадаг тул энэ
+    //    updater анхны жагсаалт дээр нэмнэ (React дарааллаар нь боловсруулна)
+    setVisible((prev) => (prev.includes(h.layerId) ? prev : [...prev, h.layerId]));
+    if (h.view === view && mapView) zoomToWhere(h.layerId, h.where);
+    else pendingHitRef.current = h;
+  }, [view, setView, mapView, zoomToWhere]);
+
+  /* Хойшлуулсан ойртолт — зөв харагдацын зураг бүртгэгдмэгц */
+  useEffect(() => {
+    const h = pendingHitRef.current;
+    if (!h || !mapView || h.view !== view) return;
+    pendingHitRef.current = null;
+    zoomToWhere(h.layerId, h.where);
+  }, [mapView, view, zoomToWhere]);
 
   /* ── Багануудын өргөн ── */
 
@@ -335,6 +418,12 @@ function PortalContent() {
             onDocs={() => setDocsOpen(true)}
             docsActive={docsOpen}
           />
+
+          {/* Нэгдсэн хайлт — блок, бүс, гүйцэтгэгчээр. Үр дүн дарахад тохирох
+              харагдац руу шилжиж, тэр объект руу ойртоно. */}
+          <div className={s.headSearch}>
+            <Search onPick={onSearchPick} />
+          </div>
 
           {/* ⚠️ Үзүүлэлтүүд толгойгоос ДООД зурваст (`SummaryBar`) шилжсэн тул
               шүүлтийн тэмдэг нь баруун тийш түлхэх үүргийг авна. */}

@@ -434,6 +434,12 @@
 }
 .grip:hover, .gripOn { background: color-mix(in srgb, var(--hue) 22%, transparent); }
 .grip:hover::after, .gripOn::after { opacity: 1; }
+/* Touch төхөөрөмжид 6px зурвасыг хуруугаар барих боломжгүй — hit-талбайг
+   ирмэгийг нь даган тэлнэ (overlay тул зохион байгуулалт өөрчлөгдөхгүй). */
+@media (pointer: coarse) {
+  .grip { width: 18px; left: -6px; }
+  .rowGrip { height: 18px; top: -6px; }
+}
 .panelHead {
   display: flex;
   align-items: flex-start;

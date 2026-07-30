@@ -239,12 +239,47 @@ function memo<T>(fn: () => Promise<T>): () => Promise<T> {
   return () => (p ??= fn().catch((e) => { p = null; throw e; }));
 }
 
+/* ── localStorage кэш (stale-while-revalidate) ── */
+
+/**
+ * Амьд татаж дуустал (~7с, 2000+ мөр хуудаслана) газрын зургийн 113 блок
+ * СААРАЛ харагддаг байв. Сүүлийн амжилттай ТООЦООЛСОН дүнг (113 бичлэг —
+ * түүхий мөр биш, жижиг) localStorage-д хадгалж, дараагийн нээлтэд шууд будна;
+ * амьд дүн ирмэгц дарж шинэчилнэ.
+ *
+ * ⚠️ «Хуучин тоо дэлгэцэд үлдэхгүй» зарчимтай нийцүүлнэ: кэш нь зөвхөн амьд
+ * хүсэлт ЯВЖ БАЙХ хооронд харагдана. Хүсэлт АЛДВАЛ дуудагч (MapCanvas) кэшийг
+ * хаяж, саарал «мэдээлэлгүй» төлөвт буцаана — TTL-ээр давхар хамгаална.
+ */
+const CACHE_KEY = 'selbe-blockprog-v1';
+/** Кэшийн хүчинтэй хугацаа — долоо хоногоос хуучин бол огт хэрэглэхгүй */
+const CACHE_TTL_MS = 7 * 24 * 3600 * 1000;
+
+function saveCache(m: BlockProgressMap): void {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ t: Date.now(), entries: [...m] }));
+  } catch { /* private mode / дүүрсэн — кэшгүй ажиллана */ }
+}
+
+/** Сүүлийн амжилттай дүн — СИНХРОН уншина (амьд татаж дуустал түр будна) */
+export function cachedBlockProgress(): BlockProgressMap | null {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    const j = JSON.parse(raw) as { t?: number; entries?: [string, BlockProgress][] };
+    if (!j.t || !Array.isArray(j.entries) || Date.now() - j.t > CACHE_TTL_MS) return null;
+    return new Map(j.entries);
+  } catch {
+    return null;
+  }
+}
+
 /** Түүхий мөрүүд — `loadBlockProgress` ба `loadBlockHistory` ХОЁУЛАА үүнээс. */
 const loadRows = memo(fetchConstruction);
 
 /** Блок бүрийн барилга угсралтын гүйцэтгэл (0–100). */
 export const loadBlockProgress: () => Promise<BlockProgressMap> = memo(() =>
-  loadRows().then(compute));
+  loadRows().then(compute).then((m) => { saveCache(m); return m; }));
 
 /** Блок бүрийн «Б.» мөрийн бүх огноо — цаг хугацааны цувааны эх. */
 export const loadBlockHistory: () => Promise<BlockHistory> = memo(() =>

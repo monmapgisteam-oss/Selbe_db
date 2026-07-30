@@ -33,6 +33,30 @@
 .floatTR { top: 14px; right: 14px; }
 .floatBR { bottom: 30px; right: 14px; }
 
+/* Кэшээс будсан гүйцэтгэлийг илтгэх жижиг тэмдэг — амьд дүн ирмэгц арилна.
+   Хуучин дүнг амьд мэт харуулахгүй байх зарчмын үүднээс ЗААВАЛ ил тэмдэглэнэ. */
+.stale {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 11px;
+  font-size: 0.68rem;
+  color: var(--ink-2);
+}
+.staleDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--warn);
+  animation: stalePulse 1.2s ease-in-out infinite;
+}
+@keyframes stalePulse {
+  50% { opacity: 0.35; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .staleDot { animation: none; }
+}
+
 /* ⚠️ Тайлбарын (легенд) загварууд `legend.module.css` руу шилжсэн: тэр нь одоо
    зөвхөн хилийг биш, ил байгаа БҮХ давхаргыг сэдвээр нь жагсаадаг бөгөөд симболыг
    `LAYER_STYLE`-аас уншиж SVG-ээр зурдаг болсон. */

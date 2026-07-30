@@ -67,6 +67,11 @@
   transition: background 0.1s;
 }
 .hit:hover { background: var(--surface-2); }
+/* Гарын навигацийн идэвхтэй мөр — hover-той ижил дэвсгэр + зүүн ирмэгийн тэмдэг */
+.hitActive {
+  background: var(--surface-2);
+  box-shadow: inset 2px 0 0 var(--hue, #0d9488);
+}
 
 .hitTitle {
   font-size: 0.79rem;

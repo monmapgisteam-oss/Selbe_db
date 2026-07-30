@@ -13,8 +13,8 @@ import { useAsync, type Async } from '@/lib/useAsync';
 import { usePlanTotals } from '@/lib/totals';
 import { queryFeatures, type Row } from '@/lib/query';
 import {
-  ZONE_LAYER, ZONE_FIELD, ZONE_NONE, ZONE_TYPE_EMPTY_HUE, BUILT_LAYER, BUILDING,
-  LAYER_BY_ID, PARCEL_LEFT, PROJECT_PROGRESS, PARCEL_PROGRESS_HUES,
+  ZONE_LAYER, ZONE_FIELD, ZONE_NONE, BUILT_LAYER, BUILDING,
+  LAYER_BY_ID, PARCEL_LEFT, PROJECT_PROGRESS,
   PLAN_LAYER_IDS, MONITOR_LAYER_IDS,
   PKG_BY_FAMILY, bagtsKey, buildingKey,
 } from '@/lib/services';
@@ -28,7 +28,7 @@ import { urbanScore, scoreColor, scoreLabel } from '@/lib/analysis/score';
 import { loadBlockProgress, type BlockProgressMap } from '@/lib/blockProgress';
 import { useCashflow, type CashRow } from '@/lib/cashflow';
 import { useInvest, type InvRow } from '@/lib/invest';
-import { num, pct, text } from '@/lib/format';
+import { num, pct, text, shade, shades, tint } from '@/lib/format';
 import {
   BRIEF_SOURCE, HEADLINE, OVERALL, SCOPE, INVEST_SPLIT, MILESTONES,
   SCHEDULE, BAGTS_ORIGIN, BAGTS_STRIP,
@@ -898,12 +898,11 @@ function ScopeDetail() {
       <Panel title="Хөрөнгө оруулалтын бүтэц">
         <Bars
           inline
-          outlined
           items={INVEST_SPLIT.map((s) => ({
             key: s.key,
             label: s.label,
             value: s.pct,
-            color: s.color,
+            color: heat(s.pct, maxOf(INVEST_SPLIT.map((x) => x.pct))),
             display: `${num(s.bn, 1)} · ${s.pct}%`,
           }))}
         />
@@ -928,8 +927,6 @@ function ScopeDetail() {
  * бүтэц» ба «Олон нийтийн бүс» гэсэн хоёр үе шат амьд хүснэгтэд ОГТ БАЙХГҮЙ тул
  * тэдгээрийн хувь бэхлэгдсэнээрээ үлдэж, ◆ тэмдэгтэй гарна.
  */
-const STAGE_HUE: Record<string, string> = { done: '#34d399', active: '#38bdf8', idle: '#94a3b8' };
-
 function ScheduleDetail({ project }: { project: Async<ProjectProgress> }) {
   const p = project.state === 'ready' ? project.data : null;
 
@@ -937,7 +934,6 @@ function ScheduleDetail({ project }: { project: Async<ProjectProgress> }) {
     <>
       <Panel title="Үндсэн үе шат">
         <Bars
-          outlined
           items={SCHEDULE.map((st) => {
             const lv = liveStage(p, st.stages);
             const v = lv ? lv.actual : st.pct;
@@ -946,7 +942,7 @@ function ScheduleDetail({ project }: { project: Async<ProjectProgress> }) {
               label: `${st.label} · ${st.from}–${st.to}`,
               value: v,
               display: `${pct(v, v >= 1 ? 1 : 0)}${lv ? '' : ' ◆'}`,
-              color: STAGE_HUE[st.tone] ?? '#94a3b8',
+              color: heat(v, 100),
             };
           })}
         />
@@ -966,19 +962,24 @@ function ScheduleDetail({ project }: { project: Async<ProjectProgress> }) {
 /* ══════════════════ 03 · Орон сууцны 7 багц ══════════════════ */
 
 /**
- * ⚠️ ТОД палитр — төслийг том дэлгэц/проектороор танилцуулдаг тул бараан өнгө
- * харагддаггүй. Хэсэг бүрийн график энэ нэг палитраас өнгөө авна (нэгдсэн хэл).
+ * ⚠️ НЭГ ӨНГӨНИЙ СҮҮДЭР — урьд нь 8 өөр солонгон өнгө байсныг хэрэглэгчийн
+ * хүсэлтээр нэг суурь өнгө (дашбоардын sky акцент)-ийн уусгалт болгов. Эдгээр
+ * ангиллууд (SCOPE, SOURCES, BENEFITS, SOCIAL …) нь өөр өөр «утга»гүй, зөвхөн
+ * зэргэлдээ мөрийг ялгах хэрэгцээтэй тул нэг өнгөний шат хамгийн зөв. Утга
+ * агуулсан өнгө (гүйцэтгэлийн %, tone) нь ДООРХ тусдаа функцүүдэд хэвээр.
  */
-const HUE = ['#38bdf8', '#34d399', '#fbbf24', '#f472b6', '#a78bfa', '#fb923c', '#2dd4bf', '#f87171'];
-/** Гүйцэтгэлийн % → тод өнгө (өндөр=ногоон … бага=улаан) */
-const progHue = (p: number | null) =>
-  p == null ? '#94a3b8' : p >= 50 ? '#34d399' : p >= 25 ? '#38bdf8' : p >= 10 ? '#fbbf24' : '#f87171';
-/** brief-ийн tone нэр → тод өнгө */
-const TONE_HUE: Record<string, string> = {
-  done: '#34d399', active: '#38bdf8', idle: '#94a3b8',
-  blocked: '#f87171', talks: '#fbbf24', admin: '#a78bfa',
-  ok: '#34d399', warn: '#fbbf24', bad: '#f87171',
-};
+const HUE = shades('#0ea5e9', 8);
+/**
+ * ДАШБОАРДЫН НЭГ ӨНГӨ — бүх багана/зүсмэг энэ sky акцентын ТОДООС БҮДГЭР
+ * уусгалтаар өнгөтэй (хэрэглэгчийн хүсэлт: солонго биш нэг өнгө). Их утга тод,
+ * бага утга бүдэг. `heat(v, max)` нь энэ дүрмийг чартад хэрэглэнэ.
+ */
+const ACCENT = '#0ea5e9';
+const BLANK = '#94a3b8';
+/** Утга → нэг өнгөний сүүдэр (их=тод). max≤0 бол суурь өнгө. */
+const heat = (v: number, max: number) => tint(ACCENT, max > 0 ? v / max : 1);
+/** Массивын хамгийн их эерэг утга (0-т хуваахаас хамгаална) */
+const maxOf = (arr: number[]) => Math.max(1, ...arr);
 
 function BagtsDetail({ q }: { q: Async<BagtsRow[]> }) {
   return (
@@ -1002,13 +1003,12 @@ function BagtsDetail({ q }: { q: Async<BagtsRow[]> }) {
             <Panel title="Багц бүрийн явц">
               <Bars
                 inline
-                outlined
                 items={rows.map((r) => ({
                   key: r.key,
                   label: r.label,
                   value: r.progress ?? 0,
                   display: pct(r.progress, 1),
-                  color: progHue(r.progress),
+                  color: heat(r.progress ?? 0, 100),
                 }))}
               />
             </Panel>
@@ -1016,13 +1016,12 @@ function BagtsDetail({ q }: { q: Async<BagtsRow[]> }) {
             <Panel title="Багц бүрийн орон сууц">
               <Bars
                 inline
-                outlined
                 items={rows.map((r) => ({
                   key: r.key,
                   label: r.label,
                   value: r.ail,
                   display: `${num(r.ail)} өрх`,
-                  color: '#34d399',
+                  color: heat(r.ail, maxOf(rows.map((x) => x.ail))),
                 }))}
               />
             </Panel>
@@ -1030,13 +1029,12 @@ function BagtsDetail({ q }: { q: Async<BagtsRow[]> }) {
             <Panel title="Багц бүрийн төсөв">
               <Bars
                 inline
-                outlined
                 items={rows.map((r) => ({
                   key: r.key,
                   label: r.label,
                   value: r.budget,
                   display: r.budget > 0 ? `${bn(r.budget)} тэрбум` : '—',
-                  color: '#fbbf24',
+                  color: heat(r.budget, maxOf(rows.map((x) => x.budget))),
                 }))}
               />
             </Panel>
@@ -1086,13 +1084,12 @@ function LandDetail({ parcels, project }: { parcels: Async<Row[]>; project: Asyn
         </div>
         <Bars
           inline
-          outlined
           items={LAND.breakdown.map((x) => ({
             key: x.label,
             label: x.label,
             value: x.n,
             display: `${num(x.n)} талбар`,
-            color: TONE_HUE[x.tone] ?? '#94a3b8',
+            color: heat(x.n, maxOf(LAND.breakdown.map((y) => y.n))),
           }))}
         />
       </Panel>
@@ -1108,15 +1105,15 @@ function LandDetail({ parcels, project }: { parcels: Async<Row[]>; project: Asyn
               const k = cleanProgress(text(x[PL.progress]));
               by.set(k, (by.get(k) ?? 0) + 1);
             }
-            const items = [...by.entries()]
-              .map(([label, n]) => ({
-                key: label, label, value: n, display: `${num(n)} талбар`,
-                color: PARCEL_PROGRESS_HUES[label] ?? ZONE_TYPE_EMPTY_HUE,
-              }))
-              .sort((a, b) => b.value - a.value);
+            const arr = [...by.entries()].sort((a, b) => b[1] - a[1]);
+            const mx = maxOf(arr.map(([, n]) => n));
+            const items = arr.map(([label, n]) => ({
+              key: label, label, value: n, display: `${num(n)} талбар`,
+              color: heat(n, mx),
+            }));
             return (
               <>
-                <Bars inline outlined items={items} />
+                <Bars inline items={items} />
                 <Stats cols={2}>
                   <Stat accent color="#38bdf8" value={num(rows.length)} unit="талбар" label="Нийт бүртгэл" />
                   <Stat accent color="#a78bfa" value={num(items.length)} label="Ангилал" />
@@ -1160,13 +1157,12 @@ function SourceDetail({ invest }: { invest: Async<InvRow[]> }) {
 
       <Panel title="Гадна ус, дулааны ажил">
         <Bars
-          outlined
           items={UTILITY_WORKS.map((w) => ({
             key: w.work,
             label: `${w.work} · ${w.org} — ${w.status}`,
             value: w.mn,
             display: `${num(w.mn)} сая ₮`,
-            color: TONE_HUE[w.tone],
+            color: heat(w.mn, maxOf(UTILITY_WORKS.map((y) => y.mn))),
           }))}
         />
       </Panel>
@@ -1174,15 +1170,15 @@ function SourceDetail({ invest }: { invest: Async<InvRow[]> }) {
       <Panel title="Гадна цахилгаан (БАГЦ-6) · өртөг">
         <Bars
           inline
-          outlined
           items={POWER_PACKS.map((b) => {
             const c = cost(b.key);
+            const mx = maxOf(POWER_PACKS.map((x) => cost(x.key) ?? 0));
             return {
               key: b.key,
               label: b.key,
               value: c ?? 0,
               display: c == null ? '…' : `${bn(c)} тэрбум`,
-              color: '#38bdf8',
+              color: heat(c ?? 0, mx),
             };
           })}
         />
@@ -1191,13 +1187,12 @@ function SourceDetail({ invest }: { invest: Async<InvRow[]> }) {
       <Panel title="Гадна цахилгаан (БАГЦ-6) · явц">
         <Bars
           inline
-          outlined
           items={POWER_PACKS.map((b) => ({
             key: b.key,
             label: b.key,
             value: b.pct,
             display: `${b.pct}%`,
-            color: b.pct > 0 ? '#34d399' : '#94a3b8',
+            color: b.pct > 0 ? heat(b.pct, 100) : BLANK,
           }))}
         />
       </Panel>
@@ -1225,7 +1220,12 @@ function FinanceDetail() {
 
       <Panel title="Санхүүжилтийн эх үүсвэр">
         <Donut
-          items={INVEST_SPLIT.map((s) => ({ key: s.key, label: s.label, value: s.bn, color: s.color, display: `${num(s.bn, 1)} · ${s.pct}%` }))}
+          items={INVEST_SPLIT.map((s, i) => ({
+            key: s.key, label: s.label, value: s.bn,
+            // Их дүнтэй нь тод (INVEST_SPLIT нь дүнгээр буурах эрэмбэтэй)
+            color: shade(ACCENT, i, INVEST_SPLIT.length),
+            display: `${num(s.bn, 1)} · ${s.pct}%`,
+          }))}
           center={num(HEADLINE.investBn, 1)} centerLabel="тэрбум ₮" size={150} width={24} stack
         />
       </Panel>
@@ -1287,7 +1287,6 @@ function BenefitDetail({ bagts }: { bagts: Async<BagtsRow[]> }) {
       <Panel title="Нийгмийн дэд бүтэц">
         <Bars
           inline
-          outlined
           items={SOCIAL.rows.map((r, i) => ({
             key: r.label,
             label: r.label,
@@ -1342,17 +1341,20 @@ function SuitDetail({ suit, prog, zone, setZone }: {
             )}
           </div>
         </div>
-        <div className={o.bars}>
-          {s.levels.map((l) => (
-            <div key={l.label} className={o.barRow}>
-              <span className={o.barLabel}>{l.label}</span>
-              <span className={o.barTrack}>
-                <i style={{ width: `${(l.n / Math.max(1, s.zones)) * 100}%`, background: l.color }} />
-              </span>
-              <b className="num">{l.n}</b>
-            </div>
-          ))}
-        </div>
+        {/* Түвшний тархалт — порталын бусад дашбоардтай ИЖИЛ `Bars` primitive.
+            Урьд нь өөрийн CSS бартай байсан нь ижил өгөгдлийг өөр дүрслэлээр
+            харуулж, нэгдмэл байдлыг алдагдуулж байв. */}
+        <Bars
+          max={Math.max(1, s.zones)}
+          items={s.levels.map((l, i) => ({
+            key: l.label,
+            label: l.label,
+            value: l.n,
+            display: `${num(l.n)} бүс`,
+            // НЭГ ӨНГӨ (тодоос бүдгэр) — «Маш сайн» тод → «Маш муу» бүдэг
+            color: shade(ACCENT, i, s.levels.length),
+          }))}
+        />
       </Panel>
 
       <Panel title="Бүсийн эрэмбэ">

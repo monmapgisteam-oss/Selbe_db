@@ -176,9 +176,6 @@ export function Bars({
   selected,
   onSelect,
   limit,
-  outlined,
-  legend,
-  inline = false,
 }: {
   items: Bar[];
   color?: string;
@@ -186,25 +183,11 @@ export function Bars({
   /** Сонгосон key(үүд) — олон сонголтод массив */
   selected?: string | string[] | null;
   onSelect?: (key: string) => void;
-  /** Нэг эгнээ: шошго | бар | утга (өндөр багасна). Заагаагүй бол шошго дээр. */
+  /**
+   * ⚠️ Хуучирсан — үргэлж НЭГ ЭГНЭЭ (нэр урд). Дуудагчид эвдрэхгүйн тулд
+   * төрөлд үлдээв; загварт нөлөөлөхгүй.
+   */
   inline?: boolean;
-  /**
-   * ТОЙМТОЙ загвар: хүрээ нь өөрийн өнгөөр, дүүргэлт нь 50% тунгалаг.
-   *
-   * ⚠️ Сонголт (`opt-in`) байгаа нь санаатай — анхдагч дүүрэн загварыг
-   * «Барилгын хяналт», «Ерөнхий дашбоард», «Тохиромжтой байдал» гурав ч
-   * ашигладаг. Тэднийг хөндөхгүйн тулд шинэ загварыг дуудагч нь өөрөө асаана.
-   */
-  outlined?: boolean;
-  /**
-   * Ангиллын нэрсийг мөр бүр дээр биш, ДООРХ ТАЙЛБАРТ гаргана.
-   *
-   * ⚠️ Нэр урт үед («Худалдаа, үйлчилгээ цогцолбор») мөр бүр хоёр эгнээ болж,
-   * 8 ангилалтай чарт хагас дэлгэц эзэлдэг байв. Тайлбарт нэрс хоорондоо
-   * шахагдан багтаж, багана нь өөрсдөө харьцуулагдах цэвэр эгнээ үлдэнэ.
-   * ⚠️ `outlined`-тэй ХАМТ ажиллана — тайлбар нь тоймтой баганы өнгийг давтана.
-   */
-  legend?: boolean;
   /**
    * Эхэндээ хэдэн мөр харуулах. Үлдсэнийг «бүгдийг харах» товчоор нээнэ.
    *
@@ -228,15 +211,11 @@ export function Bars({
         const on = sel.includes(it.key);
         // <button> дотор зөвхөн phrasing content зөвшөөрөгдөнө — <div> ашиглаж болохгүй
         /**
-         * ГУРВАН хувилбар — `outlined` (тоймтой), `inline` (нэг эгнээ), анхдагч.
-         *
-         * ⚠️ ТОЙМТОЙ хувилбарт утга нь баганын ДЭЭР биш, ХАЖУУД нь. Дээр
-         * байхад нэр ба утга хоёр нэг мөрөнд шахагдаж, урт нэр таслагдана;
-         * хажууд байхад багана бүтэн өргөнөө авч, утгууд нь баруун талдаа
-         * босоо эгнэн шууд харьцуулагдана.
+         * ГАНЦ загвар — ТӨСЛИЙН БҮХ БАР ИЖИЛ: нэр УРД + тоймтой бар + утга нэг
+         * мөрөнд. Урьд нь «нэр дээр» (блок) хувилбар байсныг хэрэглэгчийн хүсэлтээр
+         * бүрмөсөн авав — бүх дашбоардын бар нэг эгнээ, нэр урдтай.
          */
-        const body = outlined && inline ? (
-          // Нэр УРД + ӨРГӨН тунгалаг бар + утга — нэг мөрөнд (богино нэрт графикт)
+        const body = (
           <>
             <span className={s.barName} title={it.label}>{it.label}</span>
             <span className={`${s.barTrack} ${s.barTrackOut}`}>
@@ -244,39 +223,8 @@ export function Bars({
             </span>
             <span className={`${s.barVal} num`}>{it.display ?? it.value}</span>
           </>
-        ) : outlined ? (
-          <>
-            {/* ⚠️ Тайлбартай үед нэрийг мөрөнд БИЧИХГҮЙ — доорх тайлбарт орно */}
-            {!legend && <span className={s.barName} title={it.label}>{it.label}</span>}
-            <span className={s.barLine}>
-              <span className={`${s.barTrack} ${s.barTrackOut}`}>
-                <i className={`${s.barFill} ${s.barFillOut}`} style={{ width: `${w}%` }} />
-              </span>
-              <span className={`${s.barVal} num`}>{it.display ?? it.value}</span>
-            </span>
-          </>
-        ) : inline ? (
-          <>
-            <span className={s.barName} title={it.label}>{it.label}</span>
-            <span className={s.barTrack}>
-              <i className={s.barFill} style={{ width: `${w}%` }} />
-            </span>
-            <span className={`${s.barVal} num`}>{it.display ?? it.value}</span>
-          </>
-        ) : (
-          <>
-            <span className={s.barTop}>
-              <span className={s.barName} title={it.label}>
-                {it.label}
-              </span>
-              <span className={`${s.barVal} num`}>{it.display ?? it.value}</span>
-            </span>
-            <span className={s.barTrack}>
-              <i className={s.barFill} style={{ width: `${w}%` }} />
-            </span>
-          </>
         );
-        const rowCls = `${s.barRow} ${inline ? s.barRowInline : ''}`;
+        const rowCls = `${s.barRow} ${s.barRowInline}`;
         const st = tone(it.color ?? color);
         return onSelect ? (
           <button
@@ -295,18 +243,6 @@ export function Bars({
           </div>
         );
       })}
-
-      {/* Тайлбар — багануудтай ИЖИЛ дараалалтай, ижил өнгөтэй */}
-      {legend && (
-        <div className={s.barLegend}>
-          {shown.map((it) => (
-            <span key={it.key} className={s.barLegendItem} style={tone(it.color ?? color)}>
-              <i className={s.barLegendDot} />
-              <span className={s.barLegendName} title={it.label}>{it.label}</span>
-            </span>
-          ))}
-        </div>
-      )}
 
       {hidden > 0 && (
         <button type="button" className={s.more} onClick={() => setAll(true)}>
@@ -906,6 +842,13 @@ export function Data<T>({
       <div className={s.state} role="alert">
         <strong className={s.error}>Өгөгдөл татагдсангүй</strong>
         <span className={s.errorMsg}>{q.error.message}</span>
+        {/* ArcGIS түр гацах нь энгийн — бүтэн refresh хийлгэхгүйгээр энэ
+            хүсэлтийг л дахин явуулна (`useAsync`-ийн retry) */}
+        {q.retry && (
+          <button type="button" className={s.retryBtn} onClick={q.retry}>
+            Дахин оролдох
+          </button>
+        )}
       </div>
     );
   }

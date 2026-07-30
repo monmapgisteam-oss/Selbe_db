@@ -196,16 +196,25 @@
 }
 /* Тэмдэг нь баганытай ЯГ ижил — тоймтой, 50% тунгалаг дүүргэлттэй */
 .barLegendDot {
-  width: 9px;
-  height: 9px;
+  width: 6px;
+  height: 6px;
   flex: none;
-  border-radius: 3px;
+  border-radius: 2px;
   border: 1px solid var(--tone, var(--hue));
   background: color-mix(in srgb, var(--tone, var(--hue)) 50%, transparent);
 }
 .barLegendName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.barTrackOut { height: 9px; background: transparent; }
+/* ⚠️ Барын зузаан 9px → 5px (≈40% нарийн, хэрэглэгчийн хүсэлт). Легендийн
+   тэмдэг ч мөн 9px → 6px болж дагана — доор.
+   ⚠️ Track нь СУЛ ХАРАГДАХ rail-тай (тунгалаг БИШ): урьд нь тунгалаг байсан тул
+   бага утгатай бар богино дүүргэлт + ард нь ХООСОН зай болж, утга нь хол баруунд
+   тасарч харагддаг байв. Одоо rail нь бүтэн уртаараа харагдах тул богино бар ч
+   «дуусаагүй трэк» мэт цэвэрхэн — хоосон зай алга. */
+.barTrackOut {
+  height: 5px;
+  background: color-mix(in srgb, var(--tone, var(--hue)) 14%, transparent);
+}
 .barFillOut {
   background: color-mix(in srgb, var(--tone, var(--hue)) 50%, transparent);
   border: 1px solid var(--tone, var(--hue));
@@ -325,6 +334,21 @@
 @keyframes spin { to { transform: rotate(360deg); } }
 .error { color: var(--bad); }
 .errorMsg { font-size: 0.7rem; color: var(--ink-3); max-width: 260px; }
+
+/* «Дахин оролдох» — алдааны доорх жижиг товч. Бүтэн хуудас refresh хийлгүйгээр
+   тухайн хүсэлтийг л дахин явуулна (ArcGIS түр гацах нь энгийн үзэгдэл). */
+.retryBtn {
+  margin-top: 2px;
+  padding: 5px 14px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  cursor: pointer;
+}
+.retryBtn:hover { border-color: var(--line-strong); }
 
 /* ── Дугуй диаграм (donut) ── */
 .donutWrap { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }

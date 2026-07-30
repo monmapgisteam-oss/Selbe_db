@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
-import { Section, Col, Note, Stats, Stat, Bars, Series, Rows, List, ListItem, Ring, Data, Empty } from '@/components/ui';
+import { Section, Col, Note, Stats, Stat, Bars, Rows, List, ListItem, Ring, Data, Empty } from '@/components/ui';
 import { useBuildings, MonitorBagts, type Block } from '@/modules/BuildingPanel';
 import { useCashflow, CASH_SOURCES, type CashRow } from '@/lib/cashflow';
 import { useInvest, type InvRow } from '@/lib/invest';
@@ -11,7 +11,8 @@ import { layerTotals, qtyText } from '@/lib/totals';
 import {
   BUILDING, CASHFLOW, INVEST, PROGRESS_LEVELS, LAYER_BY_ID, PKG_BY_BAGTS, bagtsKey,
 } from '@/lib/services';
-import { num, pct, mnt, mntShort, text } from '@/lib/format';
+import { num, pct, mnt, mntShort, text, shade, tint } from '@/lib/format';
+import { readParam, writeParams } from '@/lib/urlState';
 import o from './overview.module.css';
 
 /**
@@ -38,6 +39,8 @@ import o from './overview.module.css';
 
 const HUE = LAYER_BY_ID['mon:building'].hue;
 const INFRA_HUE = '#0891b2';
+/** «Тодорхойгүй / задраагүй» бүлэг — жинхэнэ ангилал мэт өнгөтэй байх ёсгүй */
+const BLANK_HUE = '#94a3b8';
 const BLOCK_LAYER = 'mon:building';
 
 /** Блокуудыг FID-ээр нэрлэн шүүх — багцын нэр давхаргад бохир бичигдсэн байж болно */
@@ -90,10 +93,18 @@ export function Bagts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const cashQ = useCashflow();
   const invQ = useInvest();
   const { zoomToWhere, setHighlight } = useMap();
-  const [sel, setSel] = useState<string | null>(null);
+  /**
+   * Сонгосон багц URL-ийн `pkg` параметрээс сэргэнэ — «Багц-3.1-ийн хуудсыг үз»
+   * гэсэн холбоос шууд ажиллана. Түлхүүр нь `bagtsKey()` хэлбэр; таарах багц
+   * олдохгүй бол (`active` null) энгийн сонголтгүй байдал — URL-аар эвдэхгүй.
+   */
+  const [sel, setSel] = useState<string | null>(() => readParam('pkg'));
 
   // Порталын нэгдсэн тодруулгыг энэ харагдац ашиглахгүй — `layerWhere`-ээр шүүнэ
   useEffect(() => { setHighlight(null); }, [setHighlight]);
+
+  /* Сонголтыг URL-д тусгана (replace — түүх урсгахгүй) */
+  useEffect(() => { writeParams({ pkg: sel }); }, [sel]);
 
   const packs = useMemo<Pack[]>(() => {
     const cash = cashQ.state === 'ready' ? cashQ.data : [];
@@ -232,9 +243,10 @@ export function Bagts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                 {LAYER_BY_ID[id].title}
               </span>
             ))
-            : PROGRESS_LEVELS.map((l) => (
+            : PROGRESS_LEVELS.map((l, i) => (
               <span key={l.key} className={o.packLegendItem}>
-                <i style={{ background: l.color } as CSSProperties} />
+                {/* Легендийн өнгө нь `levelColor`-той нэг өнгөний сүүдэр */}
+                <i style={{ background: shade(HUE, PROGRESS_LEVELS.length - 1 - i, PROGRESS_LEVELS.length) } as CSSProperties} />
                 {l.label} <b>{l.range}</b>
               </span>
             ))}
@@ -266,10 +278,12 @@ export function Bagts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   );
 }
 
-/** Гүйцэтгэлийн хувь → түвшний өнгө (жагсаалтын цэг, KPI-д) */
+/**
+ * Гүйцэтгэлийн хувь → НЭГ ӨНГӨНИЙ сүүдэр (улаан→ногоон солонго биш). Өндөр
+ * гүйцэтгэл тод, бага нь бүдэг — барилгын hue дээр (хэрэглэгчийн хүсэлт).
+ */
 function levelColor(v: number | null): string {
-  if (v == null) return '#94a3b8';
-  return PROGRESS_LEVELS.find((l) => v >= l.min && v < l.max)?.color ?? HUE;
+  return v == null ? BLANK_HUE : tint(HUE, v / 100);
 }
 
 /** Хөрөнгө оруулалтын нийт дүн — баталгаажсан + урьдчилсан */
@@ -435,12 +449,17 @@ function ContractCard({ p }: { p: Pack }) {
 function SourcesCard({ p }: { p: Pack }) {
   const c = p.cash;
   if (!c) return null;
-  const items = CASH_SOURCES
-    .map((s, i) => ({ key: s.field, label: s.label, value: c.sources[i], color: s.color }))
-    .filter((x) => x.value > 0);
+  // ⚠️ НЭГ ӨНГӨ (тодоос бүдгэр) — эх сурвалж бүр «өөр утга»гүй, зөвхөн харьцаагаа
+  //    харуулна. Их дүнтэй нь тод, багадаа бүдэг; «тодорхойгүй» саарал.
+  const named0 = CASH_SOURCES
+    .map((s, i) => ({ key: s.field, label: s.label, value: c.sources[i] }))
+    .filter((x) => x.value > 0)
+    .sort((a, b) => b.value - a.value);
+  const items: { key: string; label: string; value: number; color: string }[] =
+    named0.map((x, i) => ({ ...x, color: shade(HUE, i, named0.length) }));
   const named = items.reduce((a, x) => a + x.value, 0);
   const rest = c.orderTotal - named;
-  if (rest > 0) items.push({ key: 'rest', label: 'Эх үүсвэр тодорхойгүй', value: rest, color: '#94a3b8' });
+  if (rest > 0) items.push({ key: 'rest', label: 'Эх үүсвэр тодорхойгүй', value: rest, color: BLANK_HUE });
   if (!items.length) return null;
 
   return (
@@ -458,13 +477,15 @@ function SourcesCard({ p }: { p: Pack }) {
 function MonthsCard({ p }: { p: Pack }) {
   const c = p.cash;
   if (!c || !c.months.some((m) => m > 0)) return null;
+  // Бусад чарттай ИЖИЛ — хэвтээ бар, нэг өнгө (тодоос бүдгэр). Их олголттой
+  // сар тод, багатай нь бүдэг. Босоо `Series` байсныг хэрэглэгчийн хүсэлтээр солив.
+  const mx = Math.max(1, ...c.months);
   return (
     <Section title="Сар бүрийн олголт" note="мөнгөн дүн">
-      <Series
-        color="#22c55e"
-        unit="₮ (сараар)"
+      <Bars
         items={CASHFLOW.months.map((m, i) => ({
-          key: m.code, label: m.label, value: c.months[i], display: mntShort(c.months[i]),
+          key: m.code, label: m.label, value: c.months[i],
+          display: mntShort(c.months[i]), color: tint(HUE, c.months[i] / mx),
         }))}
       />
     </Section>
@@ -484,7 +505,9 @@ function BlocksCard({ p }: { p: Pack }) {
         max={100}
         inline
         items={p.blocks.map((b) => ({
-          key: b.key,
+          // ⚠️ `b.key` (buildingKey) БИШ: Багц 1-д хоёр блок «29/1» болж хураагдан
+          //    давхардаж, React мөр орхигдуулж болно. OID нь үргэлж өвөрмөц.
+          key: String(b.oid),
           label: b.blok || '—',
           value: b.progress ?? 0,
           color: levelColor(b.progress),
@@ -556,12 +579,16 @@ function InvestCard({ p }: { p: Pack }) {
 
 function InvestSourceCard({ p }: { p: Pack }) {
   if (!p.invest.length) return null;
-  const items: { key: string; label: string; color: string; value: number }[] = INVEST.sources
+  // НЭГ ӨНГӨ (тодоос бүдгэр) — их дүнтэй нь тод; «задраагүй» саарал.
+  const named0 = INVEST.sources
     .map((s, i) => ({
-      key: s.field as string, label: s.label as string, color: s.color as string,
+      key: s.field as string, label: s.label as string,
       value: p.invest.reduce((a, r) => a + r.sources[i], 0),
     }))
-    .filter((x) => x.value > 0);
+    .filter((x) => x.value > 0)
+    .sort((a, b) => b.value - a.value);
+  const items: { key: string; label: string; color: string; value: number }[] =
+    named0.map((x, i) => ({ ...x, color: shade(INFRA_HUE, i, named0.length) }));
   /**
    * ⚠️ Эх үүсвэрээр задраагүй үлдэгдлийг ЗААВАЛ мөр болгоно. Зөвхөн орон сууц
    * ба олон нийтийн барилга нь эх үүсвэрээр бүрэн задарсан; дэд бүтэц, зам,
@@ -569,7 +596,7 @@ function InvestSourceCard({ p }: { p: Pack }) {
    * зөв, «эх үүсвэр нь тодорхойгүй» гэдгийг далдлахгүй.
    */
   const rest = invTotal(p.invest) - items.reduce((a, x) => a + x.value, 0);
-  if (rest > 0) items.push({ key: 'rest', label: 'Эх үүсвэр задраагүй', color: '#94a3b8', value: rest });
+  if (rest > 0) items.push({ key: 'rest', label: 'Эх үүсвэр задраагүй', color: BLANK_HUE, value: rest });
   if (!items.length) return null;
 
   return (
