@@ -1000,9 +1000,22 @@ function LayerDashboard({
 
 /* ═════════════════ Бүсийн шүүлт ═════════════════ */
 
+/**
+ * ⚠️ ОЛОН СОНГОЛТ (2026-07-31): шүүлтийн төлөв `string | null` ХЭВЭЭР — олон
+ * бүсийг таслалаар нийлүүлж хадгална («B-1,B-2»). `zoneWhere` задалж `IN`
+ * болгодог тул Portal, URL (`z=`), totals-ын кэш гурвуулаа өөрчлөгдөөгүй.
+ * Чип дарахад сонголт НЭМЭГДЭЖ/ХАСАГДАНА, жагсаалт хаагдахгүй — дараалан
+ * хэд хэдийг сонгоно.
+ */
 function ZoneBar({ zone, setZone }: { zone: string | null; setZone: (z: string | null) => void }) {
   const { zoomToZone } = useMap();
   const [open, setOpen] = useState(false);
+
+  const sel = zone ? zone.split(',').filter(Boolean) : [];
+  const toggleZone = (label: string) => {
+    const next = sel.includes(label) ? sel.filter((x) => x !== label) : [...sel, label];
+    setZone(next.length ? next.join(',') : null);
+  };
 
   const q = useAsync(async () => {
     const rows = await queryGroup(layerUrl(ZONE_LAYER), ZONE_FIELDS.id, [count(oidOf(ZONE_LAYER), 'n')]);
@@ -1014,17 +1027,6 @@ function ZoneBar({ zone, setZone }: { zone: string | null; setZone: (z: string |
       .sort((a, b) => a.label.localeCompare(b.label, 'mn'));
   }, []);
 
-  if (zone) {
-    return (
-      <div className={s.zoneBar}>
-        <span className={s.zoneBarLabel}>Бүс</span>
-        <span className={s.zoneBarValue}>{zone}</span>
-        <button type="button" className={s.zoneBarBtn} onClick={() => zoomToZone(zone)}>Төвлөрөх</button>
-        <button type="button" className={s.zoneBarClear} onClick={() => setZone(null)}>Цуцлах</button>
-      </div>
-    );
-  }
-
   /**
    * ⚠️ Бүсийн 52 чип нь анхнаасаа задгай байвал самбарын эхний дэлгэцийг бүтнээр
    * эзэлж, гол агуулга нь доор нуугдана. Тиймээс хумигдсанаар эхэлнэ.
@@ -1032,9 +1034,17 @@ function ZoneBar({ zone, setZone }: { zone: string | null; setZone: (z: string |
   return (
     <div className={s.zoneBar}>
       <span className={s.zoneBarLabel}>Бүс</span>
-      <span className={s.zoneBarValue}>Бүгд</span>
+      <span className={s.zoneBarValue}>
+        {sel.length ? sel.join(', ') : 'Бүгд'}
+      </span>
+      {sel.length > 0 && (
+        <button type="button" className={s.zoneBarBtn} onClick={() => zoomToZone(zone!)}>Төвлөрөх</button>
+      )}
+      {sel.length > 0 && (
+        <button type="button" className={s.zoneBarClear} onClick={() => setZone(null)}>Цуцлах</button>
+      )}
       <button type="button" className={s.zoneBarBtn} aria-expanded={open} onClick={() => setOpen((v) => !v)}>
-        {open ? 'Хаах' : 'Бүс сонгох'}
+        {open ? 'Хаах' : sel.length ? 'Бүс нэмэх' : 'Бүс сонгох'}
       </button>
 
       {open && (
@@ -1042,16 +1052,20 @@ function ZoneBar({ zone, setZone }: { zone: string | null; setZone: (z: string |
           <Data q={q} loading="Бүсүүд…">
             {(zs) => (
               <div className={s.zoneGrid}>
-                {zs.map((g) => (
-                  <button
-                    key={g.label}
-                    type="button"
-                    className={s.zoneChip}
-                    onClick={() => { setZone(g.label); setOpen(false); }}
-                  >
-                    {g.label}
-                  </button>
-                ))}
+                {zs.map((g) => {
+                  const on = sel.includes(g.label);
+                  return (
+                    <button
+                      key={g.label}
+                      type="button"
+                      aria-pressed={on}
+                      className={`${s.zoneChip} ${on ? s.zoneChipOn : ''}`}
+                      onClick={() => toggleZone(g.label)}
+                    >
+                      {g.label}
+                    </button>
+                  );
+                })}
               </div>
             )}
           </Data>
