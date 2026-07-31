@@ -15,7 +15,7 @@ import { queryFeatures, type Row } from '@/lib/query';
 import {
   ZONE_LAYER, ZONE_FIELD, ZONE_NONE, BUILT_LAYER, BUILDING,
   LAYER_BY_ID, PARCEL_LEFT, PROJECT_PROGRESS,
-  PLAN_LAYER_IDS, MONITOR_LAYER_IDS,
+  PLAN_LAYER_IDS, MONITOR_LAYER_IDS, INITIAL_MAP_LAYERS,
   PKG_BY_FAMILY, bagtsKey, buildingKey,
 } from '@/lib/services';
 import {
@@ -109,8 +109,12 @@ const SECTION_LAYERS: Record<SecKey, string[]> = {
   suit: [ZONE_LAYER.id],
 };
 
-/** Дашбоард нээгдэхэд асаалттай давхаргууд */
-const BASE_LAYERS = [ZONE_LAYER.id, BUILT_LAYER.id];
+/**
+ * Дашбоард нээгдэхэд асаалттай давхаргууд — бүх зурагт нэг ижил эхлэл
+ * (`INITIAL_MAP_LAYERS`: барилга, зам, ногоон, мод). Бүс каталогоос асаана;
+ * бүсийн шүүлт барилга дээр дарахад ч тавигддаг (`pick` — `ZONE_FIELD`).
+ */
+const BASE_LAYERS = INITIAL_MAP_LAYERS;
 
 /**
  * Хэсэг сонгосон үед газрын зурагт контекст болж үлдэх давхарга — барилга.

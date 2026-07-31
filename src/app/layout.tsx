@@ -15,7 +15,6 @@ import '@/modules/survey.module.css';
 import '@/modules/analysis/suitability.module.css';
 import '@/modules/sheet/sheet.module.css';
 import '@/components/auth.module.css';
-import '@/components/search.module.css';
 import '@/components/swatch.module.css';
 import '@/components/map.module.css';
 import '@/components/ui.module.css';

@@ -165,7 +165,7 @@ export type AnalysisData = {
 export type Progress = (msg: string, pct: number) => void;
 
 /**
- * Ногоон байгууламжийн `ZONE_ID_1` → бүсийн `ZONE_ID` тааруулах.
+ * Ногоон байгууламжийн `RefName_1` → бүсийн код тааруулах.
  * «Багц-2.1» гэх мэт дэд дугаарыг эцэг бүс рүү нь буулгана.
  */
 function resolveZoneId(raw: unknown, ids: Set<string>): string | null {
@@ -215,7 +215,10 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
   ], true);
 
   onProgress('Ногоон байгууламж…', 38);
-  const green = await fetchAll(url(SRC.green), ['ZONE_ID_1', 'Layer', 'Shape__Area', 'Area_hec']);
+  // ⚠️ Шинэ `nogoon_baiguulamj20267031` үйлчилгээ: бүсийн код `ZONE_ID_1` → `RefName_1`
+  //    болсон (бүсийн давхаргатай ижил бичиглэл), `Area_hec` талбар байхгүй,
+  //    `Layer` нь ганц CAD утгатай тул ангиллын задаргаанд хэрэггүй.
+  const green = await fetchAll(url(SRC.green), ['RefName_1', 'Shape__Area']);
 
   onProgress('Нийтийн тээврийн зогсоол…', 50);
   const [bus, lrt] = await Promise.all([
@@ -248,12 +251,15 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
   const greenCats = new Set<string>();
   for (const f of green) {
     const a = f.attributes;
-    const zid = resolveZoneId(a.ZONE_ID_1, zoneIds);
+    const zid = resolveZoneId(a.RefName_1, zoneIds);
     if (!zid) continue;
-    const cat = String(a.Layer ?? 'Тодорхойгүй').trim();
+    // ⚠️ Шинэ үйлчилгээнд хэрэгцээний ангилал БАЙХГҮЙ — бүгд нэг ангилалд
+    //    (`GREEN_CATEGORIES`-ийн ганц түлхүүртэй ЯГ таарах ёстой, эс бөгөөс
+    //    `computeRaw`-ын шүүлт greenM2-г 0 болгоно).
+    const cat = 'Ногоон байгууламж';
     greenCats.add(cat);
     const bucket = greenByZone.get(zid) ?? {};
-    bucket[cat] = (bucket[cat] ?? 0) + (n(a.Shape__Area) || n(a.Area_hec) * 10_000);
+    bucket[cat] = (bucket[cat] ?? 0) + n(a.Shape__Area);
     greenByZone.set(zid, bucket);
   }
 

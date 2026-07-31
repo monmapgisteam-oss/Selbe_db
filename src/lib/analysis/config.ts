@@ -32,7 +32,7 @@ export const WKID = 32648;
 export const SRC = {
   zones: ZONE_LAYER.id,      // zone — busiin_medeelel_final
   buildings: BUILT_LAYER.id, // et:24 — barilga
-  green: 'et:25',            // Ногоон байгууламж
+  green: 'nogoon',           // Ногоон байгууламж (nogoon_baiguulamj20267031)
   parkWalk: 'et:26',         // Цэцэрлэгт хүрээлэн, алхалтын бүс
   busStops: 'et:2',
   lrtStops: 'et:1',
@@ -163,15 +163,20 @@ export const COST_GROUPS: Record<string, { label: string; color: string }> = {
  * сервер тал дээр нэгж үнээр бүлэглэж бодчихдог. Энд зөвхөн ямар давхарга аль
  * САЛБАРТ хамаарахыг л зааж өгнө.
  */
+/**
+ * ⚠️ «Дугуйн зам» (`dugui`) ба «Ногоон байгууламж» (`nogoon`) ЭНД БАЙХГҮЙ —
+ * 2026-07-31-ний шинэ үйлчилгээнүүдэд `negj_une` талбар огт байхгүй тул
+ * `cost`-гүй болж, өртгийн графикаас гарсан (өмнө нь transit/amenity-д байв).
+ */
 export const COST_GROUP_OF: Record<string, string> = {
   'et:1': 'transit', 'et:2': 'transit', 'et:5': 'transit',
-  'et:12': 'transit', 'et:14': 'transit',
+  'et:12': 'transit',
   'et:4': 'heat', 'et:7': 'heat', 'et:8': 'heat', 'et:9': 'heat',
   'et:10': 'heat', 'et:11': 'heat',
   'et:3': 'water', 'et:15': 'water', 'et:16': 'water', 'et:17': 'water',
   'et:18': 'water', 'et:19': 'water', 'et:23': 'water',
   'et:124': 'power', 'et:125': 'power', 'et:126': 'power', 'et:127': 'power',
-  'et:25': 'amenity', 'et:26': 'amenity', 'et:27': 'amenity',
+  'et:26': 'amenity', 'et:27': 'amenity',
 };
 
 /**
@@ -527,11 +532,16 @@ export const PARKING_SOURCES: { key: ParkingSource; label: string; short: string
 
 /* ══════════════════ Ногоон байгууламж ══════════════════ */
 
-/** `Layer` талбарын ангилал — аль нь «хүнд ногдох»-д тоологдох вэ */
+/**
+ * `Layer` талбарын ангилал — аль нь «хүнд ногдох»-д тоологдох вэ.
+ *
+ * ⚠️ 2026-07-31: шинэ `nogoon_baiguulamj20267031` үйлчилгээнд хуучин 3 ангилал
+ * (нийтийн / хязгаарлагдмал / тусгай хэрэгцээний) БАЙХГҮЙ — `Layer` талбар нь
+ * ганц CAD утгатай. Тиймээс задаргаа нэг ангилал болж нурсан; `data.ts` бүх
+ * объектод энэ түлхүүрийг оноодог. Эх өгөгдөлд ангилал эргэж ирвэл энд сэргээнэ.
+ */
 export const GREEN_CATEGORIES = [
-  { key: 'Нийтийн хэрэгцээний ногоон байгууламж', short: 'Нийтийн хэрэгцээний', default: true },
-  { key: 'Хязгаарлагдмал хэрэгцээт ногоон байгууламж', short: 'Хязгаарлагдмал хэрэгцээт', default: true },
-  { key: 'Тусгай хэрэгцээний ногоон байгууламж', short: 'Тусгай хэрэгцээний', default: false },
+  { key: 'Ногоон байгууламж', short: 'Ногоон байгууламж', default: true },
 ];
 
 /* ══════════════════ Эдийн засаг ══════════════════ */

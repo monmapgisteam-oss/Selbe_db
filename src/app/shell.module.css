@@ -207,11 +207,6 @@
 }
 .brandSub { font-size: 0.68rem; color: var(--ink-3); }
 
-/* Хайлт — брэнд ба үзүүлэлтийн ХООРОНД. Уян хатан өргөнтэй ч дээд хязгаартай:
-   хязгааргүй бол том дэлгэцэд толгойн бүх сул зайг залгиж, үзүүлэлтүүдийг
-   баруун ирмэг рүү шахна. */
-.headSearch { flex: 1 1 auto; max-width: 340px; min-width: 150px; margin-left: 8px; }
-
 /* ── Идэвхтэй шүүлтийн тэмдэг ── */
 .filterChip {
   display: flex;
@@ -509,10 +504,7 @@
   .panel { border-left: none; border-right: none; border-top: 1px solid var(--line); }
   /* Босоо өрөлтөд өргөн чирэх утгагүй */
   .grip { display: none; }
-  /* Үзүүлэлт нуугдсанаар сул зай гарна — хайлт түүнийг эзэлж, гол хэрэгсэл болно */
-  .headSearch { max-width: none; margin-left: 12px; }
-  /* Шүүлтийн тэмдэг нь хайлтын дараа орох тул түлхэгч хэрэггүй */
-  .filterChip { margin-left: 10px; max-width: 190px; }
+  .filterChip { max-width: 190px; }
   /* Толгойд зай гаргах: брэндийн дэд гарчгийг нуух (лого + нэр үлдэнэ) */
   .brandSub { display: none; }
   .head { gap: 10px; padding: 0 12px; }
