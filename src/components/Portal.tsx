@@ -4,7 +4,7 @@ import {
   useCallback, useEffect, useMemo, useRef, useState,
   type CSSProperties, type PointerEvent as ReactPointerEvent,
 } from 'react';
-import { MapCanvas, MapProvider, type Dim } from '@/components/MapCanvas';
+import { MapCanvas, MapProvider, useMap, type Dim } from '@/components/MapCanvas';
 import { ViewRail } from '@/components/ViewRail';
 import { LayerCatalog } from '@/components/LayerCatalog';
 import { Suitability } from '@/modules/analysis/Suitability';
@@ -280,6 +280,17 @@ function PortalContent() {
     setPicked(attrs);
     setPickedLayer(layerId);
   }, []);
+
+  /**
+   * ОРТОФОТО — харагдац бүрийн анхдагч (хэрэглэгчийн хүсэлт, 2026-07-31):
+   * «Багцын мэдээлэл» ба «Барилгын хяналт» дээр АСААЛТТАЙ (гүйцэтгэлийг бодит
+   * агаарын зурагтай нь тулгаж хардаг), бусад харагдацад унтраалттай (топографи).
+   * Харагдац дотроо гараар унтраасан/асаасан нь дараагийн солилт хүртэл үлдэнэ.
+   */
+  const { setOrtho } = useMap();
+  useEffect(() => {
+    setOrtho(view === 'bagts' || view === 'monitor');
+  }, [view, setOrtho]);
 
   /* ── Багануудын өргөн ── */
 
