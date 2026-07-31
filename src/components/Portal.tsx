@@ -4,10 +4,8 @@ import {
   useCallback, useEffect, useMemo, useRef, useState,
   type CSSProperties, type PointerEvent as ReactPointerEvent,
 } from 'react';
-import { MapCanvas, MapProvider, useMap, type Dim } from '@/components/MapCanvas';
+import { MapCanvas, MapProvider, type Dim } from '@/components/MapCanvas';
 import { ViewRail } from '@/components/ViewRail';
-import { Search } from '@/components/Search';
-import type { Hit } from '@/lib/search';
 import { LayerCatalog } from '@/components/LayerCatalog';
 import { Suitability } from '@/modules/analysis/Suitability';
 import { Dashboard } from '@/modules/Dashboard';
@@ -283,33 +281,6 @@ function PortalContent() {
     setPickedLayer(layerId);
   }, []);
 
-  /* ── Нэгдсэн хайлт ── */
-
-  const { view: mapView, zoomToWhere } = useMap();
-  /**
-   * Хайлтын үр дүн ӨӨР харагдац руу заавал: тэр харагдацын газрын зураг
-   * хараахан бүртгэгдээгүй (standalone-оос ирэхэд огт байхгүй) тул ойртолтыг
-   * түр хойшлуулж, зураг бэлэн болмогц доорх эффект гүйцэтгэнэ.
-   */
-  const pendingHitRef = useRef<Hit | null>(null);
-
-  const onSearchPick = useCallback((h: Hit) => {
-    if (h.view !== view) setView(h.view);
-    // ⚠️ setView-ийн ДАРАА: тэр нь visible-ыг анхны байдалд буулгадаг тул энэ
-    //    updater анхны жагсаалт дээр нэмнэ (React дарааллаар нь боловсруулна)
-    setVisible((prev) => (prev.includes(h.layerId) ? prev : [...prev, h.layerId]));
-    if (h.view === view && mapView) zoomToWhere(h.layerId, h.where);
-    else pendingHitRef.current = h;
-  }, [view, setView, mapView, zoomToWhere]);
-
-  /* Хойшлуулсан ойртолт — зөв харагдацын зураг бүртгэгдмэгц */
-  useEffect(() => {
-    const h = pendingHitRef.current;
-    if (!h || !mapView || h.view !== view) return;
-    pendingHitRef.current = null;
-    zoomToWhere(h.layerId, h.where);
-  }, [mapView, view, zoomToWhere]);
-
   /* ── Багануудын өргөн ── */
 
   // Самбар БАРУУН талд тул зүүн тийш чирэхэд өргөснө → тэмдэг урвуу
@@ -418,12 +389,6 @@ function PortalContent() {
             onDocs={() => setDocsOpen(true)}
             docsActive={docsOpen}
           />
-
-          {/* Нэгдсэн хайлт — блок, бүс, гүйцэтгэгчээр. Үр дүн дарахад тохирох
-              харагдац руу шилжиж, тэр объект руу ойртоно. */}
-          <div className={s.headSearch}>
-            <Search onPick={onSearchPick} />
-          </div>
 
           {/* ⚠️ Үзүүлэлтүүд толгойгоос ДООД зурваст (`SummaryBar`) шилжсэн тул
               шүүлтийн тэмдэг нь баруун тийш түлхэх үүргийг авна. */}
