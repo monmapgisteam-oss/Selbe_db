@@ -1806,6 +1806,12 @@ export const LAYERS: LayerDef[] = [
   /**
    * Мод — `Tree_1` үйлчилгээ (ЕТ-ээс гадуур тул explicit `url`). Талбай, ногоон
    * дүүргэлт, хүрээгүй; эх зурагт bloom-той. Ногоон орчны бүлэгт.
+   *
+   * ⚠️ Энэ болон доорх CAD-гаралтай давхаргуудад `ZONE_ID` талбар ОГТ байхгүй
+   * тул ЗААВАЛ `noZone` — эс бөгөөс бүс сонгоход `usePlanTotals`-ын статистик
+   * хүсэлт `ZONE_ID IN (…)`-ээр унаж, самбар бүхэлдээ «ArcGIS алдаа» болдог
+   * (`Promise.all` тул нэг давхаргын алдаа бүгдийг нураана). `bm128` ганцаараа
+   * `ZONE_ID`-тэй тул шүүлтэд оролцоно.
    */
   {
     id: "tree",
@@ -1817,6 +1823,7 @@ export const LAYERS: LayerDef[] = [
     hue: "#adfc74",
     fill: 1,
     width: 0.75,
+    noZone: true,
   },
   /** Авто зам — `Бусад_мэдээлэл_20260724`/193 (кирилл нэрийг encode). Бусад бүлэгт. */
   {
@@ -1829,6 +1836,7 @@ export const LAYERS: LayerDef[] = [
     hue: "#ffffff",
     width: 1.56,
     dash: "solid",
+    noZone: true,
   },
   /** Одоо байгаа зам — `Бусад_мэдээлэл_20260724`/194. Бусад бүлэгт. */
   {
@@ -1841,6 +1849,7 @@ export const LAYERS: LayerDef[] = [
     hue: "#4d5863",
     width: 1.5,
     dash: "solid",
+    noZone: true,
   },
   /* «Бусад мэдээлэл» үйлчилгээний бусад 4 давхарга (өнгө нь үйлчилгээний өгөгдмөл) */
   {
@@ -1864,6 +1873,7 @@ export const LAYERS: LayerDef[] = [
     hue: "#b5fcd6",
     width: 1,
     dash: "solid",
+    noZone: true,
   },
   {
     id: "bm145",
@@ -1875,6 +1885,7 @@ export const LAYERS: LayerDef[] = [
     hue: "#4e4ea3",
     fill: 0.6,
     width: 0.7,
+    noZone: true,
   },
   {
     id: "bm87",
@@ -1886,6 +1897,7 @@ export const LAYERS: LayerDef[] = [
     hue: "#a82f2f",
     fill: 0.6,
     width: 0.7,
+    noZone: true,
   },
   /* ── Хил / төлөвлөлтийн талбай (ӨӨР үйлчилгээ) ──
      ⚠️ БҮХ газрын зураг дээр ҮРГЭЛЖ харагдана (`ALWAYS_ON_IDS` → MapCanvas
