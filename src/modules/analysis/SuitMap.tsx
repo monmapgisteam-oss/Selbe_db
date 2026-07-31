@@ -24,7 +24,7 @@ import esriConfig from '@arcgis/core/config';
 import BuildingSceneLayer from '@arcgis/core/layers/BuildingSceneLayer';
 import BuildingExplorer from '@arcgis/core/widgets/BuildingExplorer';
 import {
-  ET, IMAGERY, SCENE, BIM, ELEVATION_URL, HOME, LAYER_BY_ID, layerUrl, ALWAYS_ON_IDS,
+  ET, IMAGERY, SCENE, BIM, ELEVATION_URL, HOME, LAYER_BY_ID, layerUrl, ALWAYS_ON_IDS, REFERENCE_IDS,
 } from '@/lib/services';
 import type { Dim } from '@/components/MapCanvas';
 
@@ -88,6 +88,14 @@ const ON_GROUND = { mode: 'on-the-ground' } as unknown as __esri.FeatureLayerPro
 
 function rendererFor(d: MapLayerDef) {
   const c = d.color;
+  // ⚠️ Лавлагааны хил (Сэлбэ 1/2) — ЗӨВХӨН зураас, дүүргэлтгүй. `rendererFor` нь
+  //    каталогийн `fill:0`-ыг мэддэггүй тул энд онцгойлно: эс бөгөөс бүх талбайг
+  //    хилийн өнгөөр буддаг (зөвхөн анализын зурагт гардаг байсан алдаа). Хүрээ нь
+  //    дүүргэлтийн өнгөөрөө (hue) тодоор гарна.
+  if ((REFERENCE_IDS as readonly string[]).includes(d.key)) {
+    return { type: 'simple', symbol: { type: 'simple-fill', color: [...c, 0],
+      outline: { color: [...c, 0.95], width: ow(1.8) } } };
+  }
   switch (d.kind) {
     case 'line':
       return { type: 'simple', symbol: { type: 'simple-line', color: [...c, 0.95], width: ow(0.75) } };

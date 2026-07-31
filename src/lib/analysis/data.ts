@@ -102,7 +102,6 @@ export type Zone = {
 
   /* Орон зайн түүхий утга */
   transitM: number | null;
-  parkPct: number | null;
   engDistM: number | null;
   social: SocialResult | null;
 
@@ -165,7 +164,7 @@ export type AnalysisData = {
 export type Progress = (msg: string, pct: number) => void;
 
 /**
- * Ногоон байгууламжийн `RefName_1` → бүсийн код тааруулах.
+ * Ногоон байгууламжийн `RefName_12` → бүсийн код тааруулах.
  * «Багц-2.1» гэх мэт дэд дугаарыг эцэг бүс рүү нь буулгана.
  */
 function resolveZoneId(raw: unknown, ids: Set<string>): string | null {
@@ -215,19 +214,17 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
   ], true);
 
   onProgress('Ногоон байгууламж…', 38);
-  // ⚠️ Шинэ `nogoon_baiguulamj20267031` үйлчилгээ: бүсийн код `ZONE_ID_1` → `RefName_1`
-  //    болсон (бүсийн давхаргатай ижил бичиглэл), `Area_hec` талбар байхгүй,
-  //    `Layer` нь ганц CAD утгатай тул ангиллын задаргаанд хэрэггүй.
-  const green = await fetchAll(url(SRC.green), ['RefName_1', 'Shape__Area']);
+  // ⚠️ `nogoon_baiguulamj/0` (`..._intersect`): бүсийн полигонтой огтлолцуулсан тул
+  //    бүсийн код `RefName_12`-д БҮГД бичигдсэн (кодгүй объект байхгүй), талбай
+  //    `Shape__Area` (м²) нь бүсийн хилээр тайрагдсан. Ангилалгүй — бүх объект
+  //    `GREEN_CATEGORIES`-ийн ганц түлхүүрт нэгдэнэ.
+  const green = await fetchAll(url(SRC.green), ['RefName_12', 'Shape__Area']);
 
   onProgress('Нийтийн тээврийн зогсоол…', 50);
   const [bus, lrt] = await Promise.all([
     fetchAll(url(SRC.busStops), ['OBJECTID'], true).catch(() => [] as Feat[]),
     fetchAll(url(SRC.lrtStops), ['OBJECTID'], true).catch(() => [] as Feat[]),
   ]);
-
-  onProgress('Алхалтын бүс…', 60);
-  const parkWalk = await fetchAll(url(SRC.parkWalk), ['OBJECTID'], true).catch(() => [] as Feat[]);
 
   onProgress('Инженерийн дэд бүтэц…', 72);
   const engResults = await Promise.all(
@@ -237,12 +234,10 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
   onProgress('Орон зайн үзүүлэлт…', 84);
 
   const stopGeoms = [...bus, ...lrt].map((f) => f.geometry).filter(Boolean) as GeomArg[];
-  const parkGeoms = parkWalk.map((f) => f.geometry).filter(Boolean) as GeomArg[];
   const engGeoms = engResults.flat().map((f) => f.geometry).filter(Boolean) as GeomArg[];
 
   // ⚠️ Нэгтгэсэн (union) геометр — эс бөгөөс бүс бүрд 4,000+ шугам тус бүрээр
   //    зай бодох болж, 52 × 4,000 = 200,000 тооцоо явна.
-  const parkUnion = parkGeoms.length ? geometryEngine.union(parkGeoms) : null;
   const engUnion = engGeoms.length ? geometryEngine.union(engGeoms) : null;
 
   /* ── Ногоон байгууламжийг бүс + ангиллаар ── */
@@ -251,11 +246,10 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
   const greenCats = new Set<string>();
   for (const f of green) {
     const a = f.attributes;
-    const zid = resolveZoneId(a.RefName_1, zoneIds);
+    const zid = resolveZoneId(a.RefName_12, zoneIds);
     if (!zid) continue;
-    // ⚠️ Шинэ үйлчилгээнд хэрэгцээний ангилал БАЙХГҮЙ — бүгд нэг ангилалд
-    //    (`GREEN_CATEGORIES`-ийн ганц түлхүүртэй ЯГ таарах ёстой, эс бөгөөс
-    //    `computeRaw`-ын шүүлт greenM2-г 0 болгоно).
+    // ⚠️ Ангилалгүй эх сурвалж — бүгд `GREEN_CATEGORIES`-ийн ганц түлхүүрт нэгдэнэ
+    //    (ЯГ таарах ёстой, эс бөгөөс `computeRaw`-ын `activeGreen` шүүлт 0 болгоно).
     const cat = 'Ногоон байгууламж';
     greenCats.add(cat);
     const bucket = greenByZone.get(zid) ?? {};
@@ -288,14 +282,6 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
       transitM = Math.min(...stopGeoms.map((g) => geometryEngine.distance(geom, g, 'meters')));
     }
 
-    let parkPct: number | null = null;
-    if (geom && parkUnion) {
-      const inter = geometryEngine.intersect(geom, parkUnion);
-      const ia = inter ? Math.abs(geometryEngine.planarArea(inter as Polygon, 'square-meters')) : 0;
-      const za = Math.abs(geometryEngine.planarArea(geom, 'square-meters')) || polyHa * 10_000;
-      parkPct = za > 0 ? (ia / za) * 100 : null;
-    }
-
     const engDistM = geom && engUnion ? geometryEngine.distance(geom, engUnion, 'meters') : null;
 
     const type = zoneType(a[Z.type]);
@@ -313,7 +299,7 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
       ...emptyAgg(),
       greenByCat: greenByZone.get(id) ?? {},
       greenM2: 0,
-      transitM, parkPct, engDistM,
+      transitM, engDistM,
       social: null,
       parkingSupply: 0, parkingNeed: null, parkingGap: null,
       econ: null,
@@ -567,7 +553,6 @@ export function computeRaw(zones: Zone[], activeGreen: Set<string>, parking: Par
       green: z.residentPop > 0 ? z.greenM2 / z.residentPop : null,
       density: z.polyHa > 0 && z.residentPop > 0 ? z.residentPop / z.polyHa : null,
       transit: z.transitM,
-      park: z.parkPct,
       engineering: z.engDistM,
       social: z.social?.score ?? null,
     };
