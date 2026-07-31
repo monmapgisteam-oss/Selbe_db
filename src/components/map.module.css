@@ -102,9 +102,7 @@
   font-size: 0.68rem;
   font-weight: 600;
   color: var(--ink-2);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .tipHint {
   margin-top: 6px;

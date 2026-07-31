@@ -57,9 +57,7 @@
   font-size: 0.66rem;
   color: var(--ink-3);
   line-height: 1.35;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .itemOn .desc { color: color-mix(in srgb, var(--tone) 65%, var(--ink-3)); }
 
