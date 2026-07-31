@@ -30,6 +30,7 @@ import {
   LAYERS, LAYER_BY_ID, layerUrl, oidOf, drawOrder, DASH_PATTERN, ALWAYS_ON_IDS, REFERENCE_IDS,
   HOME, IMAGERY, SCENE, BIM, USAN_SAN, ELEVATION_URL, ZONE_LAYER, zoneWhere,
   ZONE_FIELD, ZONE_NONE, ZONE_TYPE_EMPTY_HUE, OID, BUILDING, SURVEY, PARCEL_LEFT, buildingKey,
+  MAP_HUE_OVERRIDES,
   type LayerDef,
 } from '@/lib/services';
 import { queryExtent, queryFeatures, type Aoi } from '@/lib/query';
@@ -472,17 +473,22 @@ function buildLayers(uniform = false): Layer[] {
      */
     const web = webmapStyleOf(layerUrl(d));
     /**
-     * БАРИЛГЫН дүүргэлтийг эх зургаас БАГА ЗЭРЭГ тодруулна (хэрэглэгчийн
-     * хүсэлт, 2026-07-31): снапшотод alpha 51 (20%) — ортофото дээр бүдэг тул
-     * 82 (~32%) болгоно. Хүрээ, bloom, бусад бүх загвар снапшотоос хэвээр.
+     * ӨНГӨНИЙ OVERRIDE (`MAP_HUE_OVERRIDES`, 2026-07-31): барилгын снапшотын
+     * шар (#ffb700, 20% дүүргэлт) нь ортофото дээр ялгарахгүй байсан тул
+     * каталогийн `hue`-ээр (тод цэнхэр) дүүргэлт ~39%, хүрээ ~90% болгож будна.
+     * Масштабын sizeInfo, bloom зэрэг бусад загвар снапшотоос хэвээр.
      * ⚠️ Снапшот файлыг ӨӨРЧЛӨХГҮЙ — тэр нь `tools/webmap_style.mjs`-ээр дахин
      * үүсдэг тул тэнд хийсэн засвар устдаг; override нь ЭНД амьдарна.
      */
     const webRenderer =
-      web?.renderer && d.id === "et:24"
+      web?.renderer && MAP_HUE_OVERRIDES.has(d.id)
         ? (() => {
-            const r = structuredClone(web.renderer) as { symbol?: { color?: number[] } };
-            if (Array.isArray(r.symbol?.color)) r.symbol.color[3] = 82;
+            const r = structuredClone(web.renderer) as {
+              symbol?: { color?: number[]; outline?: { color?: number[] } };
+            };
+            const [cr, cg, cb] = rgb(d.hue);
+            if (Array.isArray(r.symbol?.color)) r.symbol.color = [cr, cg, cb, 100];
+            if (Array.isArray(r.symbol?.outline?.color)) r.symbol.outline.color = [cr, cg, cb, 230];
             return r as typeof web.renderer;
           })()
         : web?.renderer;
