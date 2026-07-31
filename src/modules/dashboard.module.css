@@ -546,6 +546,13 @@ button.card:active { transform: scale(0.985); }
   border-color: color-mix(in srgb, var(--hue) 40%, var(--line));
   color: var(--ink);
 }
+/* Сонгогдсон бүс — олон сонголтод аль нь идэвхтэйг ялгана */
+.zoneChipOn {
+  background: color-mix(in srgb, var(--hue) 18%, transparent);
+  border-color: color-mix(in srgb, var(--hue) 55%, var(--line));
+  color: var(--ink);
+  font-weight: 650;
+}
 
 /* ── Сонгосон бүсийн толгой ── */
 .zoneHead {

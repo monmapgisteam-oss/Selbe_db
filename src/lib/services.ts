@@ -66,7 +66,7 @@ export const BASEMAP_URL =
  * `appId` хоосон бол нэвтрэлт УНТРААЛТТАЙ.
  */
 export const AUTH = {
-  /** 2026-07-31: засвар дууссан тул нэвтрэлтийг буцааж асаав (хэрэглэгчийн хүсэлт) */
+  /** 2026-07-31: нэвтрэлт асаалттай (хэрэглэгчийн хүсэлт) */
   appId: "ZPJRqk1iiYcjYRLv",
   /**
    * ⚠️ Байгууллагын хаяг (`monmap.maps.arcgis.com`) БИШ. Тэр домэйн ArcGIS
@@ -2109,11 +2109,22 @@ export const zoneLegacyValues = (id: string): string[] => {
  * Давхаргад тохирсон бүсийн WHERE — бүсийн давхаргад өөрийнх нь талбар ба
  * бичиглэлээр, бусдад нь `ZONE_ID`-гаар.
  * ⚠️ Хоёр тал нь ЖАГСААЛТААР (`IN`): нэг бүс нөгөө талдаа хоёр мөр байж болно.
+ *
+ * ⚠️ ОЛОН БҮС (2026-07-31): `id` нь таслалаар тусгаарласан жагсаалт байж болно
+ * («B-1,B-2»). Шүүлтийн төлөв `string | null` хэвээр — Portal, urlState (`z=`),
+ * `usePlanTotals`-ын кэш түлхүүр гээд бүх дамжуулалт өөрчлөгдөлгүй үлдэж,
+ * задаргааг ЗӨВХӨН энд нэг газар хийнэ. Сонгогч UI нь `ZoneBar` (ViewPanel).
  */
 export const zoneWhere = (l: LayerDef, id: string): string | null => {
   if (l.noZone) return null;
+  const ids = String(id).split(",").map((s) => s.trim()).filter(Boolean);
+  if (!ids.length) return null;
   const field = l.zoneField ?? ZONE_FIELD;
-  const vals = l.zoneField ? zoneRefValues(id) : zoneLegacyValues(id);
+  const vals = [
+    ...new Set(
+      ids.flatMap((z) => (l.zoneField ? zoneRefValues(z) : zoneLegacyValues(z))),
+    ),
+  ];
   return `${field} IN (${vals.map((v) => `'${v.replace(/'/g, "''")}'`).join(", ")})`;
 };
 
