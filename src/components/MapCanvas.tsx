@@ -471,6 +471,21 @@ function buildLayers(uniform = false): Layer[] {
      * Снапшотыг `node tools/webmap_style.mjs`-ээр шинэчилнэ.
      */
     const web = webmapStyleOf(layerUrl(d));
+    /**
+     * БАРИЛГЫН дүүргэлтийг эх зургаас БАГА ЗЭРЭГ тодруулна (хэрэглэгчийн
+     * хүсэлт, 2026-07-31): снапшотод alpha 51 (20%) — ортофото дээр бүдэг тул
+     * 82 (~32%) болгоно. Хүрээ, bloom, бусад бүх загвар снапшотоос хэвээр.
+     * ⚠️ Снапшот файлыг ӨӨРЧЛӨХГҮЙ — тэр нь `tools/webmap_style.mjs`-ээр дахин
+     * үүсдэг тул тэнд хийсэн засвар устдаг; override нь ЭНД амьдарна.
+     */
+    const webRenderer =
+      web?.renderer && d.id === "et:24"
+        ? (() => {
+            const r = structuredClone(web.renderer) as { symbol?: { color?: number[] } };
+            if (Array.isArray(r.symbol?.color)) r.symbol.color[3] = 82;
+            return r as typeof web.renderer;
+          })()
+        : web?.renderer;
     return new FeatureLayer({
       id: d.id,
       url: layerUrl(d),
@@ -480,8 +495,8 @@ function buildLayers(uniform = false): Layer[] {
       visible: false,
       ...(d.minScale ? { minScale: d.minScale } : {}),
       elevationInfo: ON_GROUND,
-      renderer: web?.renderer
-        ? (rendererJsonUtils.fromJSON(web.renderer as never) as unknown as RendererProp)
+      renderer: webRenderer
+        ? (rendererJsonUtils.fromJSON(webRenderer as never) as unknown as RendererProp)
         : uniform
         ? (d.id === ZONE_LAYER.id ? zoneTypeRenderer(d) : simple(symbolOf(d)))
         : d.paint
