@@ -1,7 +1,7 @@
 'use client';
 
 import {
-  createContext, useCallback, useContext, useEffect, useMemo, useRef, useState,
+  createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState,
   type CSSProperties, type ReactNode,
 } from 'react';
 import Map from '@arcgis/core/Map';
@@ -662,7 +662,13 @@ export function MapProvider({ children }: { children: ReactNode }) {
 
 /* ─────────────────── Компонент ─────────────────── */
 
-export function MapCanvas({
+/**
+ * ⚠️ `memo` — Portal-ын каталог/самбарын багана чирэх, каталогийн давхарга
+ * задлах зэрэг ЭНД хамаагүй төлөв солигдоход зургийн React мод дэмий дахин
+ * зурагддаг байв (ArcGIS view нь effect-үүдэд амьдардаг ч reconciliation
+ * өөрөө үнэтэй). Пропс өөрчлөгдөөгүй бол бүхэлдээ алгасна.
+ */
+export const MapCanvas = memo(function MapCanvas({
   dim,
   visible,
   zone,
@@ -1378,7 +1384,7 @@ export function MapCanvas({
       {children}
     </div>
   );
-}
+});
 
 /* ─────────────────── Товч мэдээллийн хайрцаг ─────────────────── */
 

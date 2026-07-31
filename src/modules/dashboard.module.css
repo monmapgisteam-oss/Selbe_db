@@ -330,9 +330,7 @@ button.card:active { transform: scale(0.985); }
   font-size: 0.76rem;
   font-weight: 600;
   color: var(--ink-2);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .ovSizeVal { flex: none; font-size: 0.75rem; font-weight: 650; color: var(--ink); }
 
@@ -451,9 +449,7 @@ button.card:active { transform: scale(0.985); }
   font-size: 0.765rem;
   font-weight: 600;
   color: var(--ink-2);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .rowOn .rowTitle { color: var(--ink); }
 .rowValue { font-size: 0.69rem; color: var(--ink-3); }
@@ -486,9 +482,7 @@ button.card:active { transform: scale(0.985); }
   font-size: 0.735rem;
   font-weight: 600;
   color: var(--ink-2);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .subRow:hover .subTitle { color: var(--ink); }
 .subMeta { font-size: 0.645rem; color: var(--ink-3); }
@@ -631,8 +625,6 @@ button.card:active { transform: scale(0.985); }
   font-size: 0.75rem;
   font-weight: 600;
   color: var(--ink);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .filterOn .filterVal { color: var(--tone); }

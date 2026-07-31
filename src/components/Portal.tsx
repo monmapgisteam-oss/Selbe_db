@@ -77,21 +77,23 @@ function useColumnResize(
 ) {
   const [width, setWidth] = useState(initial);
   const [dragging, setDragging] = useState(false);
+  /**
+   * ⚠️ Одоогийн өргөн REF-ээр давхар — `onPointerDown` render бүрт шинээр
+   * үүсвэл `memo(LayerCatalog)` пропсын өөрчлөлт гэж үзэж дахин зурна.
+   * Ref-ээс уншсанаар callback нь тогтмол лавлагаатай (useCallback) болно.
+   */
+  const widthRef = useRef(initial);
 
   // ⚠️ Зөвхөн эффект дотор: localStorage нь статик экспортын үед байхгүй
   useEffect(() => {
     const v = Number(localStorage.getItem(storageKey));
-    if (Number.isFinite(v) && v >= min && v <= max) setWidth(v);
+    if (Number.isFinite(v) && v >= min && v <= max) { widthRef.current = v; setWidth(v); }
   }, [storageKey, min, max]);
 
-  /** Чирэлтийн үед хамгийн сүүлд тооцсон өргөн — тавихад хадгална */
-  const last = useRef(initial);
-
-  const save = (w: number) => {
-    try { localStorage.setItem(storageKey, String(w)); } catch { /* private mode */ }
-  };
-
-  const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+  const onPointerDown = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
+    const save = (w: number) => {
+      try { localStorage.setItem(storageKey, String(w)); } catch { /* private mode */ }
+    };
     e.preventDefault();
     const grip = e.currentTarget;
     grip.setPointerCapture(e.pointerId);
@@ -101,12 +103,11 @@ function useColumnResize(
 
     const at = (ev: { clientX: number; clientY: number }) => (axis === 'y' ? ev.clientY : ev.clientX);
     const x0 = at(e);
-    const w0 = width;
-    last.current = w0;
+    const w0 = widthRef.current;
 
     const move = (ev: PointerEvent) => {
       const w = Math.min(max, Math.max(min, w0 + dir * (at(ev) - x0)));
-      last.current = w;
+      widthRef.current = w;
       setWidth(w);
     };
     const up = () => {
@@ -116,15 +117,19 @@ function useColumnResize(
       grip.removeEventListener('pointermove', move);
       grip.removeEventListener('pointerup', up);
       grip.removeEventListener('pointercancel', up);
-      save(last.current);
+      save(widthRef.current);
     };
     grip.addEventListener('pointermove', move);
     grip.addEventListener('pointerup', up);
     grip.addEventListener('pointercancel', up);
-  };
+  }, [min, max, dir, axis, storageKey]);
 
   /** Давхар товшиход анхны өргөнд буцаана */
-  const onDoubleClick = () => { setWidth(initial); save(initial); };
+  const onDoubleClick = useCallback(() => {
+    widthRef.current = initial;
+    setWidth(initial);
+    try { localStorage.setItem(storageKey, String(initial)); } catch { /* private mode */ }
+  }, [initial, storageKey]);
 
   return { width, dragging, onPointerDown, onDoubleClick };
 }
@@ -280,6 +285,9 @@ function PortalContent() {
     setPicked(attrs);
     setPickedLayer(layerId);
   }, []);
+
+  /** Тогтмол лавлагаа — `memo(LayerCatalog)`-ийг дэмий дахин зуруулахгүй */
+  const closeCatalog = useCallback(() => setCatalog(false), []);
 
   /**
    * ОРТОФОТО — харагдац бүрийн анхдагч (хэрэглэгчийн хүсэлт, 2026-07-31):
@@ -482,7 +490,7 @@ function PortalContent() {
                 setVisible={setVisible}
                 selected={layer}
                 onSelect={setLayer}
-                onClose={() => setCatalog(false)}
+                onClose={closeCatalog}
                 pinned={false}
                 resizing={catSize.dragging}
                 onResizeStart={catSize.onPointerDown}

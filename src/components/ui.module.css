@@ -203,7 +203,7 @@
   border: 1px solid var(--tone, var(--hue));
   background: color-mix(in srgb, var(--tone, var(--hue)) 50%, transparent);
 }
-.barLegendName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.barLegendName { overflow-wrap: anywhere; }
 
 /* ⚠️ Барын зузаан 9px → 5px (≈40% нарийн, хэрэглэгчийн хүсэлт). Легендийн
    тэмдэг ч мөн 9px → 6px болж дагана — доор.
@@ -305,8 +305,8 @@
  * өөрийн мөртэй болж, таслалт ажиллана.
  */
 .listMain { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.listTitle { display: block; font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.listSub { display: block; font-size: 0.7rem; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.listTitle { display: block; font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+.listSub { display: block; font-size: 0.7rem; color: var(--ink-3); overflow-wrap: anywhere; }
 /* ⚠️ `nowrap` — «62.8 тэрбум» гэх мэт утга хоёр мөр болж мөрийн өндрийг
    тэлэхгүй; өргөн хэрэгтэй бол гарчиг нь таслагдана, утга нь бүтэн үлдэнэ. */
 .listVal { flex: none; white-space: nowrap; font-weight: 650; font-size: 0.76rem; color: var(--ink); }
@@ -380,7 +380,7 @@
 
 .donutLegend { flex: 1; min-width: 130px; display: flex; flex-direction: column; gap: 6px; }
 .donutItem { display: flex; align-items: center; gap: 7px; font-size: 0.72rem; color: var(--ink-2); }
-.donutName { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.donutName { flex: 1; min-width: 0; overflow-wrap: anywhere; text-align: left; }
 .donutPct { flex: none; font-size: 0.7rem; font-weight: 650; color: var(--ink); }
 /* Дарж шүүх боломжтой тайлбарын мөр */
 .donutClick { width: 100%; padding: 3px 5px; border-radius: 5px; transition: background 0.12s; }
@@ -432,9 +432,7 @@
   font-size: 0.65rem;
   color: var(--ink-3);
   max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .seriesUnit { font-size: 0.66rem; color: var(--ink-3); text-align: right; }
 
