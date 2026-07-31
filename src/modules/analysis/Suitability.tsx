@@ -180,7 +180,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
         <b>${esc(row.id)}</b>
         <span class="st" style="background:${scoreColor(score)}">${score == null ? '—' : Math.round(score)}</span>
       </div>
-      <div class="sub2">${esc(row.type)} · ${nf(row.polyHa, 2)} га · ${scoreLabel(score)}</div>
+      <div class="sub2">${esc(row.type)} · ${nf(row.areaHa, 2)} га · ${scoreLabel(score)}</div>
       <dl>
         ${dt('Оршин суугч', nf(row.residentPop))}
         ${dt('Өрх', nf(row.households))}

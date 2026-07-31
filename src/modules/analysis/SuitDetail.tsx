@@ -5,7 +5,7 @@ import {
   PARKING_SOURCES, profitScore, profitLabel,
   type Indicator, type ParkingOpt,
 } from '@/lib/analysis/config';
-import { scoreColor, scoreLabel, normText, passesNorm, clamp, scoreIndicator, type Part } from '@/lib/analysis/score';
+import { scoreColor, scoreLabel, normText, passesNorm, clamp, type Part } from '@/lib/analysis/score';
 import type { MapRow } from './SuitMap';
 import { nf, money } from './suit/format';
 import s from './suitability.module.css';
@@ -99,8 +99,6 @@ export function SuitDetail({
               const p: Part | undefined = r.parts[ind.id];
               const eff = p?.norm ?? ind;
               const pass = passesNorm(p?.value, eff);
-              // Нормын байрлалыг зурааснаас харуулах тэмдэглэгээ (зөвхөн band горимд)
-              const markPos = eff.mode === 'band' ? scoreIndicator(eff.optMin ?? 0, eff) : null;
               const on = mode === 'indicator' && activeIndicator === ind.id;
               return (
                 <div key={ind.id} className={`${s.mRow} ${on ? s.mOn : ''}`}>
@@ -118,7 +116,6 @@ export function SuitDetail({
                   </div>
                   <div className={s.mBar}>
                     <i style={{ width: `${p?.score ?? 0}%`, background: scoreColor(p?.score) }} />
-                    {markPos !== null && <u style={{ left: `calc(${markPos}% - 1px)` }} />}
                   </div>
                 </div>
               );
@@ -134,15 +131,21 @@ export function SuitDetail({
               <div><span>Барилгын тоо</span><b>{nf(r.buildingCount)}</b></div>
               <div><span>Барилгын нийт талбай</span><b>{nf(r.gfaM2)} м²</b></div>
               <div><span>Ногоон байгууламж</span><b>{nf(r.greenM2)} м²</b></div>
+              <div>
+                <span>Нэг хүнд ногдох ногоон</span>
+                <b style={{ color: scoreColor(r.parts.green?.score) }}>
+                  {r.raw.green == null ? '—' : `${nf(r.raw.green, 1)} м²/хүн`}
+                </b>
+              </div>
             </div>
           </div>
 
           <div className={s.dSect}>
             <h4>Зогсоол</h4>
             <div className={s.dGrid}>
-              <div><span>Ил (ET_IL)</span><b>{nf(r.etIl)}</b></div>
-              <div><span>Далд (ET_DALD)</span><b>{nf(r.etDald)}</b></div>
-              <div><span>Хангамж (ET_NIIT)</span><b>{nf(r.parkingSupply)}</b></div>
+              <div><span>Ил зогсоол</span><b>{nf(r.etIl)}</b></div>
+              <div><span>Далд зогсоол</span><b>{nf(r.etDald)}</b></div>
+              <div><span>Нийт зогсоол</span><b>{nf(r.parkingSupply)}</b></div>
               <div><span>Хэрэгцээ ({parkSrc.short})</span><b>{r.parkingNeed == null ? '—' : nf(r.parkingNeed)}</b></div>
               <div>
                 <span>Зөрүү</span>
