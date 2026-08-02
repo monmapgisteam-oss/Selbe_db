@@ -8,8 +8,8 @@ import { useAsync } from '@/lib/useAsync';
 import {
   queryStats, queryGroup, groups, count, sum, avg, type Aoi, type Row,
 } from '@/lib/query';
-import { GAZAR_BUILDING, GAZAR_PARCEL, PARCEL_LEFT } from '@/lib/services';
-import { num, text, shade, shades } from '@/lib/format';
+import { GAZAR_BUILDING, GAZAR_PARCEL, PARCEL_LEFT, PARCEL_PROGRESS_HUES } from '@/lib/services';
+import { num, text, shades } from '@/lib/format';
 import o from './overview.module.css';
 import g from './gazar.module.css';
 
@@ -33,10 +33,12 @@ const VISIBLE_IDS = ['gazar:parcel', 'gazar:building', 'land:left'];
 /** Полигоноор ШҮҮГДЭХ давхаргууд — featureEffect (бүдгэрүүлэлт) зөвхөн эдгээрт */
 const FILTER_IDS = ['land:left', 'gazar:building', 'gazar:parcel'];
 
-/** Чөлөөлөлт «шийдэгдсэн» гэж тооцох ангилал (гэрээлсэн + дүйцүүлсэн) */
-const RESOLVED = ['гэрээлсэн', 'дүйцүүлсэн'];
-/** Маргаантай / татгалзсан — эрсдэлтэй ангилал */
-const DISPUTED = ['татгалзсан', 'маргаантай'];
+/** `Tuluv` төлөв → өнгө ба нэр (нэгтгэсэн үйлчилгээний гол ангилал) */
+const STATUS_META = [
+  { value: 'Бүрэн чөлөөлсөн', label: 'Бүрэн чөлөөлсөн', color: '#22c55e' },
+  { value: 'Цэвэрлэсэн нэгж талбар', label: 'Цэвэрлэсэн', color: '#0ea5e9' },
+  { value: 'Үлдсэн нэгж талбар', label: 'Үлдсэн', color: '#e11d48' },
+] as const;
 
 /** Диаграмын палитр — ангилал бүрд ялгарах өнгө (явцаас бусад талбарт) */
 /**
@@ -57,12 +59,6 @@ const money = (v: number): { v: string; unit: string } =>
       : v >= 1e6 ? { v: num(v / 1e6, 1), unit: 'сая ₮' }
         : { v: num(v, 0), unit: '₮' };
 
-/** «гэрээлсэн.» ба «гэрээлсэн» нэг ангилал; хоосон → «Тодорхойгүй» */
-const cleanProgress = (v: string) => {
-  const s = v.trim().replace(/\.$/, '');
-  return s === '' || s === '—' ? 'Тодорхойгүй' : s;
-};
-
 /** Бүлэглэсэн мөрүүд → диаграмын зүсмэгүүд (өнгө автоматаар) */
 function toItems(rows: Row[], field: string, valueKey: string) {
   return groups(rows, field, 'Тодорхойгүй', [valueKey]).map((grp, i) => ({
@@ -73,33 +69,16 @@ function toItems(rows: Row[], field: string, valueKey: string) {
   }));
 }
 
-/** Явцын бүлгүүд → зүсмэг. «гэрээлсэн.»-г нэгтгэж, `PARCEL_PROGRESS_HUES`-аар өнгө.
- *  `valueKey` — тоолох хэмжигдэхүүн (`n` = тоо, `a` = талбай м²). */
-function progressItems(rows: Row[], field: string, valueKey = 'n') {
-  const by = new Map<string, number>();
-  for (const r of rows) {
-    const k = cleanProgress(text(r[field]));
-    by.set(k, (by.get(k) ?? 0) + Number(r[valueKey] ?? 0));
-  }
-  // НЭГ ӨНГӨ (Газар чөлөөлөлтийн ногоон) тодоос бүдгэр — их тоотой нь тод.
-  const sorted = [...by.entries()].sort((a, b) => b[1] - a[1]);
-  return sorted.map(([label, value], i) => ({
-    key: label, label, value,
-    color: shade('#16a34a', i, sorted.length),
-  }));
-}
-
-type ProgItems = ReturnType<typeof progressItems>;
-
-/** Явцын зүсмэгүүдээс заасан ангиллуудын нийлбэр тоо */
-const tally = (items: ProgItems, labels: string[]) =>
-  items.filter((x) => labels.includes(x.label)).reduce((s, x) => s + x.value, 0);
+type StatusBars = { key: string; label: string; value: number; color: string }[];
+type ReasonItems = { key: string; label: string; n: number; pct: number; area: number; color: string }[];
 
 type GazarData = {
-  left: { n: number; area: number; resolved: number; contracted: number; disputed: number };
-  leftProgress: ProgItems;
-  /** Явц бүрийн ТАЛБАЙ (га) — тоо биш хэмжээгээр харах өнцөг */
-  leftAreaBy: ProgItems;
+  /** `Tuluv` төлөвөөс: чөлөөлсөн (бүрэн+цэвэрлэсэн) ба үлдсэн */
+  left: { n: number; area: number; cleared: number; cleaned: number; remaining: number; resolved: number };
+  /** Төлөв бүрийн ТАЛБАЙ (га) — газрын зурагтай ижил өнгөөр */
+  statusAreaBy: StatusBars;
+  /** Үлдсэн талбарын ШАЛТГААН (явцын_мэдээ) — тоо/хувь/талбайг тус тусад нь */
+  reasons: ReasonItems;
   b: { n: number; area: number; value: number; floors: number; unitPrice: number };
   bType: ReturnType<typeof toItems>;
   bMat: ReturnType<typeof toItems>;
@@ -149,10 +128,15 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     const L = PARCEL_LEFT;
     const B = GAZAR_BUILDING;
     const P = GAZAR_PARCEL;
-    const [lStat, lProg, bStat, bType, bMat, pStat, pRight, pUse] = await Promise.all([
+    const [lStat, lStatus, lReason, bStat, bType, bMat, pStat, pRight, pUse] = await Promise.all([
       queryStats(L.url, [count('OBJECTID', 'n'), sum(L.fields.area, 'area')], '1=1', area),
-      // Явц бүрд ТОО ба ТАЛБАЙ хоёуланг — donut нь тоогоор, bars нь га-гаар
-      queryGroup(L.url, L.fields.progress, [count('OBJECTID', 'n'), sum(L.fields.area, 'a')], '1=1', area),
+      // ТӨЛӨВ (Tuluv) бүрд ТОО ба ТАЛБАЙ — нэгтгэсэн үйлчилгээний гол ангилал
+      queryGroup(L.url, L.fields.status, [count('OBJECTID', 'n'), sum(L.fields.area, 'a')], '1=1', area),
+      // ҮЛДСЭН талбарын ШАЛТГААН — зөвхөн `Tuluv='Үлдсэн'`-т `явцын_мэдээ` бүрд тоо+талбай
+      queryGroup(
+        L.url, L.fields.progress, [count('OBJECTID', 'n'), sum(L.fields.area, 'a')],
+        `${L.fields.status}='Үлдсэн нэгж талбар'`, area,
+      ),
       queryStats(B.url, [
         count(B.oid, 'n'), sum(B.fields.area, 'area'), sum(B.fields.value, 'val'),
         avg(B.fields.floors, 'fl'), avg(B.fields.unitPrice, 'up'),
@@ -163,20 +147,50 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       queryGroup(P.url, P.fields.right, [count(P.oid, 'n')], '1=1', area),
       queryGroup(P.url, P.fields.landuse, [count(P.oid, 'n')], '1=1', area),
     ]);
-    const leftProgress = progressItems(lProg, L.fields.progress);
-    // Талбайг га-руу шилжүүлж, жижиг үлдэгдлийг хаяхгүйгээр бүхэлд нь харуулна
-    const leftAreaBy = progressItems(lProg, L.fields.progress, 'a')
-      .map((x) => ({ ...x, value: Math.round(x.value / 100) / 100 })); // м² → га (2 орон)
+    // Төлөв бүрийн тоо/талбай — нэрийн арын зайг арилгаж жиших
+    const st = (value: string) => {
+      const r = lStatus.find((x) => text(x[L.fields.status]).trim() === value);
+      return { n: Number(r?.n ?? 0), a: Number(r?.a ?? 0) };
+    };
+    const cleared = st('Бүрэн чөлөөлсөн');
+    const cleaned = st('Цэвэрлэсэн нэгж талбар');
+    const remaining = st('Үлдсэн нэгж талбар');
+    const statusAreaBy: StatusBars = STATUS_META.map((m) => {
+      const s = st(m.value);
+      return { key: m.value, label: m.label, value: Math.round(s.a / 100) / 100, color: m.color };
+    });
+    // Шалтгааны нэрийг цэвэрлэж (арын зай, төгсгөлийн «.») нэгтгэнэ
+    const rmap = new Map<string, { n: number; a: number }>();
+    for (const r of lReason) {
+      let k = text(r[L.fields.progress]).trim().replace(/\.$/, '').trim();
+      if (!k || k === '—') k = 'Тодорхойгүй';
+      const cur = rmap.get(k) ?? { n: 0, a: 0 };
+      cur.n += Number(r.n ?? 0);
+      cur.a += Number(r.a ?? 0);
+      rmap.set(k, cur);
+    }
+    const remN = remaining.n || 1;
+    const reasons: ReasonItems = [...rmap.entries()]
+      .sort((x, y) => y[1].n - x[1].n)
+      .map(([label, v]) => ({
+        key: label,
+        label,
+        n: v.n,
+        pct: Math.round((v.n / remN) * 100),
+        area: Math.round(v.a / 100) / 100,
+        color: PARCEL_PROGRESS_HUES[label] ?? '#94a3b8',
+      }));
     return {
       left: {
         n: Number(lStat.n ?? 0),
         area: Number(lStat.area ?? 0),
-        resolved: tally(leftProgress, RESOLVED),
-        contracted: tally(leftProgress, ['гэрээлсэн']),
-        disputed: tally(leftProgress, DISPUTED),
+        cleared: cleared.n,
+        cleaned: cleaned.n,
+        remaining: remaining.n,
+        resolved: cleared.n + cleaned.n,
       },
-      leftProgress,
-      leftAreaBy,
+      statusAreaBy,
+      reasons,
       b: {
         n: Number(bStat.n ?? 0), area: Number(bStat.area ?? 0),
         value: Number(bStat.val ?? 0), floors: Number(bStat.fl ?? 0),
@@ -204,32 +218,59 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     <div className={g.frame}>
       {/* ── ЗҮҮН: Чөлөөлөлт (үлдсэн нэгж талбар) — үзүүлэлт + явц бүгд энд ── */}
       <div className={g.left}>
-        <section className={`${g.panel} ${g.panelPrimary}`} aria-label="Чөлөөлөлтийн явц">
+        <section className={`${g.panel} ${g.panelPrimary}`} aria-label="Газар чөлөөлөлт">
           <header className={g.panelHd}>
-            <h3 className={g.panelTitle}>Чөлөөлөлтийн явц</h3>
-            <span className={g.panelNote}>{d ? `${num(d.left.n)} үлдсэн` : '…'}</span>
+            <h3 className={g.panelTitle}>Газар чөлөөлөлт</h3>
+            <span className={g.panelNote}>{d ? `${num(d.left.remaining)} үлдсэн` : '…'}</span>
           </header>
           <div className={g.panelBody}>
-            {guard(!!d && d.leftProgress.length > 0, d && (
+            {guard(!!d && d.left.n > 0, d && (
               <>
                 <Stats cols={2}>
                   <Stat value={num(d.left.n)} unit="талбар" label="Нийт нэгж талбар" />
                   <Stat value={ha(d.left.area)} unit="га" label="Нийт талбай" />
-                  <Stat value={num(d.left.contracted)} unit="талбар" label="Гэрээ байгуулсан" />
-                  <Stat value={num(d.left.disputed)} unit="талбар" label="Маргаантай/татгалзсан" />
+                  <Stat value={num(d.left.cleared)} unit="талбар" label="Бүрэн чөлөөлсөн" />
+                  <Stat value={num(d.left.remaining)} unit="талбар" label="Үлдсэн" />
                 </Stats>
                 <div className={g.ringBox}>
-                  <Ring value={pct} size={148} width={14} color="#16a34a" label="шийдэгдсэн" />
+                  <Ring value={pct} size={148} width={14} color="#16a34a" label="чөлөөлсөн" />
                   <p className={g.ringNote}>
                     <b className="num">{d ? num(d.left.resolved) : ''}</b> /{' '}
                     <span className="num">{d ? num(d.left.n) : ''}</span> талбар
-                    <span className={g.ringSub}>гэрээлсэн + дүйцүүлсэн</span>
+                    <span className={g.ringSub}>бүрэн чөлөөлсөн + цэвэрлэсэн</span>
                   </p>
                 </div>
-                {d.leftAreaBy.length > 0 && (
+                <p className={g.subHead}>Талбай (га) төлөвөөр</p>
+                <Bars items={d.statusAreaBy} limit={3} />
+                {d.reasons.length > 0 && (
                   <>
-                    <p className={g.subHead}>Талбай (га) явцаар</p>
-                    <Bars items={d.leftAreaBy} inline limit={6} />
+                    <p className={g.subHead}>
+                      Үлдсэн {num(d.left.remaining)} талбарын шалтгаан
+                      <span className={g.subNote}> · тоогоор</span>
+                    </p>
+                    <Bars
+                      limit={8}
+                      items={d.reasons.map((r) => ({
+                        key: r.key, label: r.label, value: r.n, display: num(r.n), color: r.color,
+                      }))}
+                    />
+                    <p className={g.subHead}>Шалтгаан<span className={g.subNote}> · хувиар</span></p>
+                    <Bars
+                      limit={8}
+                      max={100}
+                      items={d.reasons.map((r) => ({
+                        key: r.key, label: r.label, value: r.pct, display: `${r.pct}%`, color: r.color,
+                      }))}
+                    />
+                    <p className={g.subHead}>Шалтгаан<span className={g.subNote}> · талбайгаар (га)</span></p>
+                    <Bars
+                      limit={8}
+                      items={[...d.reasons]
+                        .sort((a, b) => b.area - a.area)
+                        .map((r) => ({
+                          key: r.key, label: r.label, value: r.area, display: `${r.area} га`, color: r.color,
+                        }))}
+                    />
                   </>
                 )}
               </>

@@ -66,9 +66,8 @@ export const BASEMAP_URL =
  * `appId` хоосон бол нэвтрэлт УНТРААЛТТАЙ.
  */
 export const AUTH = {
-  /** ⚠️ Түр УНТРААЛТТАЙ (хэрэглэгчийн хүсэлт — засвар дуустал). Асаах утга:
-   *  "ZPJRqk1iiYcjYRLv" */
-  appId: "",
+  /** ArcGIS OAuth appId. Унтраахдаа хоосон "" болгоно (нэвтрэлтгүй ажиллана). */
+  appId: "ZPJRqk1iiYcjYRLv",
   /**
    * ⚠️ Байгууллагын хаяг (`monmap.maps.arcgis.com`) БИШ. Тэр домэйн ArcGIS
    * Online-ы «Allowed origins» цагаан жагсаалтыг мөрддөг тул dev дээр токен
@@ -753,10 +752,19 @@ export const buildingKey = (bagts: unknown, block: unknown) =>
  * зөвхөн газар чөлөөлөлтийн явцыг өөрийн баганад дүрслэнэ.
  */
 export const PARCEL_LEFT = {
-  // Чөлөөлөгдөөгүй (үлдсэн) нэгж талбар — 224 объект
-  url: "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/%D0%A7%D3%A9%D0%BB%D3%A9%D3%A9%D0%BB%D3%A9%D0%B3%D0%B4%D3%A9%D3%A9%D0%B3%D2%AF%D0%B9_%D0%BD%D1%8D%D0%B3%D0%B6_%D1%82%D0%B0%D0%BB%D0%B1%D0%B0%D1%80_20260718/FeatureServer/67",
+  // Чөлөөлөгдөөгүй (үлдсэн) нэгж талбар — `selbe_parcel_last0731` (2026-07-31).
+  // ⚠️ Нийт 2,119 объект, гэхдээ зөвхөн 182-т `явцын_мэдээ` бий (үлдсэн 1,937 нь
+  //    null — арын context талбар). Давхаргын дугаар нь /11 (0 биш).
+  url: "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/selbe_parcel_last0731/FeatureServer/11",
   fields: {
-    /** Чөлөөлөлтийн явц — зөвшилцөх, гэрээлсэн, татгалзсан… */
+    /**
+     * ТӨЛӨВ — бүх 2,119 объектыг ангилдаг ГОЛ талбар (газрын зургийн будалт).
+     *   · «Бүрэн чөлөөлсөн»       — 1,695
+     *   · «Үлдсэн нэгж талбар»     — 222 (барилга эхлүүлэхэд саад болж буй)
+     *   · «Цэвэрлэсэн нэгж талбар» — 202
+     */
+    status: "Tuluv",
+    /** Чөлөөлөлтийн явц — зөвшилцөх, гэрээлсэн, татгалзсан… (зөвхөн 182-т бий) */
     progress: "явцын_мэдээ",
     /**
      * Талбай (м²) — КАДАСТРААС. 213/224 бөглөгдсөн, нийлбэр 9.86 га бөгөөд
@@ -777,43 +785,39 @@ export const PARCEL_LEFT = {
     owner: "Овог__нэр",
     /** Хаяг (182/224) */
     address: "Хаяг",
-    /** Газрын зориулалт — кадастрын 3 ангилал, 37/224 л бөглөгдсөн */
-    landuse: "landuse_de",
-    /** Чөлөөлөлтийн тэмдэглэл — 222/224, ХАМГИЙН БҮРЭН бөглөгдсөн багана */
-    note: "Тайлбар",
-  },
-} as const;
-
-export const PARCEL_CLEAN = {
-  // Цэвэрлэсэн (одоо чөлөөлж буй) нэгж талбар — 457 объект
-  url: "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/%D0%A1%D1%8D%D0%BB%D0%B1%D1%8D_20_%D0%A7%D0%94_%D0%A1%D0%91%D0%94_%D1%86%D1%8D%D0%B2%D1%8D%D1%80%D0%BB%D1%8D%D0%B3%D1%8D%D1%8D0724/FeatureServer/3",
-  fields: {
-    /** Төлбөрийн статус — дууссан төлбөр авсан / хүлээгдэж байна */
-    status: "Статус",
-    /** Гүйцэтгэлийн он — 2025 / 2026 */
-    year: "Он",
-    /** Буулгалт нураалтын нийт өртөг (₮) */
-    cost: "Буулгалт_нураалтын__өртөг_үнэ",
+    /** Газрын зориулалт — шинэ үйлчилгээнд тоон код (`landuse`, өмнө `landuse_de`) */
+    landuse: "landuse",
+    /** Чөлөөлөлтийн тэмдэглэл — `Тайлбар (дэлгэрэнгүй)` (өмнө зүгээр `Тайлбар`) */
+    note: "Тайлбар__дэлгэрэнгүй_",
   },
 } as const;
 
 /**
- * Чөлөөлөлтийн ЯВЦ → өнгө. Ногоон = асуудал шийдэгдсэн (гэрээлсэн, дүйцүүлсэн),
- * улаан = маргаантай/татгалзсан, цэнхэр-шар = яригдаж буй.
- *
- * ⚠️ Эх өгөгдөлд «гэрээлсэн» ба «гэрээлсэн.» гэсэн ХОЁР бичиглэл бий (цэгтэй нь
- * 3 талбар) — палитрт хоёуланг нь бичив, эс бөгөөс зурагт цэгтэй нь өнгөгүй
- * үлдэнэ. Диаграм тал нь `cleanParcelProgress()`-оор урьдчилан цэвэрлэдэг.
+ * ТӨЛӨВ (`Tuluv`) → өнгө. Газрын зургийн ГОЛ будалт — үлдсэн (улаан) талбар
+ * барилга эхлүүлэхэд саад болж буй хэсэг тул хамгийн тод, чөлөөлсөн нь ногоон.
  */
+export const PARCEL_STATUS_HUES: Record<string, string> = {
+  "Бүрэн чөлөөлсөн": "#22c55e",
+  "Цэвэрлэсэн нэгж талбар": "#0ea5e9",
+  "Үлдсэн нэгж талбар": "#e11d48",
+};
+
+// ⚠️ `selbe_parcel_last0731` үйлчилгээнд зарим утга АРЫН ЗАЙТАЙ ("гэрээлсэн. ",
+//    "үлдэх саналтай " г.м.) — өнгөний зураглал нь ТУЛ түлхүүрээр хайдаг тул
+//    зайтай хувилбарыг нь мөн оруулж, будалт таарахгүй унахаас сэргийлнэ.
 export const PARCEL_PROGRESS_HUES: Record<string, string> = {
   зөвшилцөх: "#0ea5e9",
   "үлдэх саналтай": "#f59e0b",
+  "үлдэх саналтай ": "#f59e0b",
   гэрээлсэн: "#22c55e",
   "гэрээлсэн.": "#22c55e",
+  "гэрээлсэн. ": "#22c55e",
   дүйцүүлсэн: "#16a34a",
+  "дүйцүүлсэн ": "#16a34a",
   татгалзсан: "#dc2626",
   маргаантай: "#e11d48",
   "үнийн дүн зөвшөөрөөгүй": "#f97316",
+  "үнийн дүн зөвшөөрөөгүй ": "#f97316",
   АТД: "#7c3aed",
   гэр: "#94a3b8",
 };
@@ -1715,39 +1719,18 @@ export const LAYERS: LayerDef[] = [
    * шүүлтээс үл хамааран бүтнээрээ зурагдана.
    */
   /**
-   * ⚠️ ДАРААЛАЛ ЧУХАЛ — `land:clean` нь `land:left`-ЭЭС ӨМНӨ байх ёстой.
-   *
-   * `MapCanvas` нь `LAYERS`-ийг дарааллаар нь үүсгэдэг тул массивын СҮҮЛД
-   * байгаа давхарга зурагт ДЭЭР зурагдана. Хоёр давхарга газар зүйн хувьд
-   * давхцдаг (нэг талбар цэвэрлэгдсэн ч чөлөөлөгдөөгүй хэвээр байж болно)
-   * бөгөөд ажлын ач холбогдол нь ЧӨЛӨӨЛӨГДӨӨГҮЙ талбарт байна — тэр нь
-   * барилга эхлүүлэхэд саад болж буй хэсэг. Цэвэрлэсэн талбарыг дээр
-   * зуруулбал үлдсэн асуудал ногоон дор нуугдана.
+   * ⚠️ 2026-07-31: Хуучин тусдаа `land:clean` («Цэвэрлэсэн нэгж талбар») давхарга
+   * УСТСАН — шинэ нэгтгэсэн үйлчилгээ (`selbe_parcel_last0731`) цэвэрлэсэн талбарыг
+   * `Tuluv` төлөвийн нэг утга болгож агуулдаг тул `land:left` дотор өнгөөр гарна.
    */
   {
-    id: "land:clean",
-    n: 3,
-    url: PARCEL_CLEAN.url,
-    oid: "OBJECTID",
-    title: "Цэвэрлэсэн нэгж талбар",
-    topic: "plan",
-    geom: "area",
-    hue: "#22c55e",
-    fill: 0.32,
-    width: 0.8,
-    noZone: true,
-    note: "457 талбар · буулгалтын өртөг",
-    facets: [
-      { field: PARCEL_CLEAN.fields.status, label: "Төлбөрийн статус" },
-      { field: PARCEL_CLEAN.fields.year, label: "Он" },
-    ],
-  },
-  {
     id: "land:left",
-    n: 67,
+    n: 11,
     url: PARCEL_LEFT.url,
     oid: "OBJECTID",
-    title: "Чөлөөлөгдөөгүй нэгж талбар",
+    // ⚠️ Нэр «Чөлөөлөгдөөгүй…» БИШ: давхарга нь бүх нэгж талбарыг (чөлөөлсөн +
+    //    цэвэрлэсэн + үлдсэн) агуулдаг тул төлөвөөр өнгөлсөн нэгж талбарын давхарга.
+    title: "Газар чөлөөлөлтийн нэгж талбар",
     topic: "plan",
     geom: "area",
     hue: "#e11d48",
@@ -1755,15 +1738,15 @@ export const LAYERS: LayerDef[] = [
     width: 0.8,
     noZone: true,
     qty: { field: PARCEL_LEFT.fields.area, unit: "м²" },
-    note: "224 талбар · чөлөөлөлтийн явц",
+    note: "2,119 талбар · төлөв ба чөлөөлөлтийн явц",
     facets: [
+      { field: PARCEL_LEFT.fields.status, label: "Төлөв" },
       { field: PARCEL_LEFT.fields.progress, label: "Чөлөөлөлтийн явц" },
       { field: PARCEL_LEFT.fields.block, label: "Блок" },
-      { field: PARCEL_LEFT.fields.landuse, label: "Газрын зориулалт" },
     ],
     paint: {
-      field: PARCEL_LEFT.fields.progress,
-      values: PARCEL_PROGRESS_HUES,
+      field: PARCEL_LEFT.fields.status,
+      values: PARCEL_STATUS_HUES,
       emptyLabel: "Тодорхойгүй",
     },
   },
@@ -2433,7 +2416,7 @@ export const GROUP_LAYERS: Record<GroupKey, string[]> = {
    * ⚠️ ЕТ-ээс ГАДУУРХ хоёр үйлчилгээ. `PLAN_LAYER_IDS`-д орж каталог, зураг,
    * нийлбэрт гарна — өртгийн талбаргүй тул дэд бүтцийн ӨРТӨГТ нөлөөлөхгүй.
    */
-  land: ["land:left", "land:clean"],
+  land: ["land:left"],
 
   /**
    * ⚠️ `PKG_TABLE`-аас АВТОМАТААР — гараар хуулбарлавал шинэ давхарга нэмэхэд
@@ -2720,6 +2703,56 @@ export const ALWAYS_NAV_VIEWS: ViewKey[] = ["gazar", "analysis", "tailan"];
 
 /** «Удирдлага» (бүх харагдац) горимд НУУГДАХ харагдацууд */
 export const ALL_MODE_HIDE: ViewKey[] = ["sheet"];
+
+/* ══════════════════════ Нэвтрэлтийн эрх — үүрэг ══════════════════════ */
+
+/**
+ * ХЭРЭГЛЭГЧИЙН ҮҮРЭГ.
+ *   · `super`     — бүх харагдацыг үзнэ («Удирдлага» горим).
+ *   · `beginner`  — төлөвлөлт, багц, хяналт, газар, ТЭЗҮ-БОНУ, тайлан, гүйцэтгэл.
+ *   · `tolovlolt` — зөвхөн ерөнхий төлөвлөгөө ба багцын мэдээлэл.
+ */
+export type Role = "super" | "beginner" | "tolovlolt";
+
+/**
+ * ArcGIS хэрэглэгчийн нэр (ЖИЖИГ үсгээр) → үүрэг.
+ *
+ * ⚠️ Жагсаалтад БАЙХГҮЙ бүртгэл нэвтрэх эрхгүй — `AuthGate` түүнийг `denied`
+ * болгоно. Шинэ хэрэглэгч нэмэхдээ нэрийг заавал жижиг үсгээр бичнэ
+ * (`roleForUser` нь `toLowerCase()`-оор харьцуулна).
+ */
+export const ROLE_BY_USER: Record<string, Role> = {
+  bilguuntugs_monmap: "super",
+  enhsaandar_monmap: "super",
+  munkhbaatar_selbe: "super",
+  tumenjargal_monmap: "super",
+  narandulam_monmap: "super",
+  saruul_monmap: "super",
+  maralgoo_monmap: "super",
+  selbe_et: "beginner",
+  selbe_redesign: "tolovlolt",
+};
+
+/**
+ * Үүрэг бүрийн эрх: харагдацууд (`'all'` = бүгд), ТЭЗҮ-БОНУ баримт үзэх эсэх,
+ * нэвтрэнгүүт анх нээх харагдац.
+ */
+export const ROLE_ACCESS: Record<
+  Role,
+  { views: ViewKey[] | "all"; docs: boolean; home: ViewKey }
+> = {
+  super: { views: "all", docs: true, home: DEFAULT_VIEW },
+  beginner: {
+    views: ["plan", "bagts", "monitor", "gazar", "tailan", "sheet"],
+    docs: true,
+    home: "plan",
+  },
+  tolovlolt: { views: ["plan", "bagts"], docs: false, home: "plan" },
+};
+
+/** ArcGIS нэрээр үүрэг олох — олдохгүй бол `null` (нэвтрэх эрхгүй) */
+export const roleForUser = (username?: string | null): Role | null =>
+  username ? ROLE_BY_USER[username.toLowerCase()] ?? null : null;
 
 /* ⚠️ Хуучин `DEFAULT_VISIBLE` (зөвхөн бүс) устгагдсан — хаана ч уншигддаггүй
    болсон. Анхны давхаргын ГАНЦ эх сурвалж нь `INITIAL_MAP_LAYERS`. */

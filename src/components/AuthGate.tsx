@@ -1,7 +1,8 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import { AUTH } from '@/lib/services';
+import { AUTH, roleForUser, type Role } from '@/lib/services';
+import { initRemote } from '@/lib/permissions';
 import s from './auth.module.css';
 
 /**
@@ -27,6 +28,8 @@ type AuthCtx = {
   /** Аппын харагдацад орох эрхтэй юу (нэвтэрсэн эсвэл нэвтрэлт унтраалттай) */
   authorized: boolean;
   user: User | null;
+  /** Нэвтэрсэн хэрэглэгчийн үүрэг — эрхийн хүрээг үүгээр тогтооно */
+  role: Role | null;
   error: string | null;
   signIn: () => Promise<void>;
   signOut: () => Promise<void>;
@@ -36,6 +39,7 @@ const Ctx = createContext<AuthCtx>({
   status: 'off',
   authorized: true,
   user: null,
+  role: null,
   error: null,
   signIn: async () => {},
   signOut: async () => {},
@@ -64,6 +68,7 @@ const describe = (e: unknown): string => {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>(() => (AUTH.appId ? 'checking' : 'off'));
   const [user, setUser] = useState<User | null>(null);
+  const [role, setRole] = useState<Role | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -99,12 +104,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           thumbnail: u?.thumbnailUrl ?? null,
           orgId: u?.orgId ?? null,
         };
-        console.info('[selbe] нэвтэрсэн:', info.username, '· orgId:', info.orgId);
+        // Үүрэг — ArcGIS нэрээр. Жагсаалтгүй бол эрхгүй (`denied`).
+        const r = roleForUser(info.username);
+        const orgOk = !AUTH.allowedOrgId || info.orgId === AUTH.allowedOrgId;
+        console.info('[selbe] нэвтэрсэн:', info.username, '· orgId:', info.orgId, '· үүрэг:', r ?? '—');
 
         if (!alive) return;
         sessionStorage.removeItem(ATTEMPT_KEY);
         setUser(info);
-        setStatus(AUTH.allowedOrgId && info.orgId !== AUTH.allowedOrgId ? 'denied' : 'signed-in');
+        setRole(r);
+        setStatus(orgOk && r ? 'signed-in' : 'denied');
+        // Эрхийн хүснэгтийг ArcGIS-ээс татах — super бол байхгүй үед үүсгэнэ
+        if (orgOk && r) void initRemote(r === 'super');
       } catch (e) {
         console.error('[selbe] нэвтрэлт шалгах үед:', e);
         if (!alive) return;
@@ -141,7 +152,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const authorized = status === 'signed-in' || status === 'off';
 
   return (
-    <Ctx.Provider value={{ status, authorized, user, error, signIn, signOut }}>
+    <Ctx.Provider value={{ status, authorized, user, role, error, signIn, signOut }}>
       {children}
     </Ctx.Provider>
   );
@@ -152,8 +163,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
  * үед л хөвөгч цонхоор гарна. Бусад үед `null` — нүүр хуудас чөлөөтэй харагдана.
  */
 export function AuthNotice() {
-  const { status, user, error, signOut } = useAuth();
+  const { status, user, role, error, signOut } = useAuth();
   if (status !== 'denied' && !(status === 'signed-out' && error)) return null;
+  // Татгалзсан шалтгаан: (a) үүрэггүй бүртгэл, эсвэл (b) буруу байгууллага
+  const orgMismatch = !!user && !!AUTH.allowedOrgId && user.orgId !== AUTH.allowedOrgId;
+  const noRole = !role && !orgMismatch;
 
   return (
     <div className={s.screen}>
@@ -176,12 +190,24 @@ export function AuthNotice() {
                 </div>
               </div>
             )}
-            <p className={s.sub}>
-              Энэ бүртгэл танай байгууллагын хэрэглэгч биш тул хандах эрхгүй байна.
-            </p>
-            <p className={s.error}>
-              Бүртгэлийн orgId: {user?.orgId || '—'} · шаардлагатай: {AUTH.allowedOrgId}
-            </p>
+            {noRole ? (
+              <>
+                <p className={s.sub}>
+                  Энэ бүртгэлд порталд хандах эрх олгогдоогүй байна. Эрх нээлгэхийг
+                  хүсвэл дараах хэрэглэгчийн нэрийг админд илгээнэ үү.
+                </p>
+                <p className={s.error}>Хэрэглэгч: {user?.username || '—'}</p>
+              </>
+            ) : (
+              <>
+                <p className={s.sub}>
+                  Энэ бүртгэл танай байгууллагын хэрэглэгч биш тул хандах эрхгүй байна.
+                </p>
+                <p className={s.error}>
+                  Бүртгэлийн orgId: {user?.orgId || '—'} · шаардлагатай: {AUTH.allowedOrgId}
+                </p>
+              </>
+            )}
             <button type="button" className={s.btnGhost} onClick={signOut}>
               Өөр бүртгэлээр нэвтрэх
             </button>
