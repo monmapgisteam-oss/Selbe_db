@@ -16,6 +16,7 @@ import { Sheet } from '@/modules/sheet/Sheet';
 import { Tailan } from '@/modules/Tailan';
 import { Icon } from '@/components/Icon';
 import { DocViewer } from '@/components/DocViewer';
+import { UserAdmin } from '@/components/UserAdmin';
 import { useTheme } from '@/lib/theme';
 import { useAsync } from '@/lib/useAsync';
 import { FilterProvider, useFilter } from '@/lib/filter';
@@ -143,12 +144,13 @@ function useColumnResize(
  * ёстой — иймд агуулгыг тусад нь салгав.
  */
 export default function Portal(
-  { onHome, navScope = 'all' }: { onHome?: () => void; navScope?: 'all' | ViewKey[] } = {},
+  { onHome, navScope = 'all', docsAllowed = true, isSuper = false }:
+    { onHome?: () => void; navScope?: 'all' | ViewKey[]; docsAllowed?: boolean; isSuper?: boolean } = {},
 ) {
   return (
     <MapProvider>
       <FilterProvider>
-        <PortalContent onHome={onHome} navScope={navScope} />
+        <PortalContent onHome={onHome} navScope={navScope} docsAllowed={docsAllowed} isSuper={isSuper} />
       </FilterProvider>
     </MapProvider>
   );
@@ -173,7 +175,8 @@ const initialLayer = (): string | null => {
 };
 
 function PortalContent(
-  { onHome, navScope = 'all' }: { onHome?: () => void; navScope?: 'all' | ViewKey[] },
+  { onHome, navScope = 'all', docsAllowed = true, isSuper = false }:
+    { onHome?: () => void; navScope?: 'all' | ViewKey[]; docsAllowed?: boolean; isSuper?: boolean },
 ) {
   /**
    * Газрын зураг ХОЁРХОН төрөлтэй: 2D = ортофото, 3D = меш. Суурийг энэ л шийднэ.
@@ -217,6 +220,8 @@ function PortalContent(
 
   /** ТЭЗҮ ба судалгааны баримт бичгийн глобал popup нээлттэй эсэх */
   const [docsOpen, setDocsOpen] = useState(false);
+  /** Хэрэглэгчийн эрх удирдлагын modal (зөвхөн super admin) */
+  const [adminOpen, setAdminOpen] = useState(false);
 
   /**
    * Давхаргын тоо, хэмжээ — каталогийн багана, багцын тойм, давхаргын дашбоард
@@ -293,6 +298,16 @@ function PortalContent(
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
   }, [setView]);
+
+  /**
+   * ЭРХИЙН ХАМГААЛАЛТ — идэвхтэй `view` нь навигацийн хүрээнд ЗААВАЛ байна. Гүн
+   * холбоосоор (`?v=…`) эрхгүй харагдац орж ирвэл хүрээний эхний харагдац руу
+   * шилжүүлж, хязгаарлагдсан хэрэглэгч эрхгүй агуулга үзэхээс сэргийлнэ.
+   */
+  useEffect(() => {
+    if (navScope === 'all' || !navScope.length) return;
+    if (!navScope.includes(view)) setView(navScope[0]);
+  }, [navScope, view, setView]);
 
   const pick = useCallback((attrs: Record<string, unknown> | null, layerId: string | null) => {
     setPicked(attrs);
@@ -426,13 +441,25 @@ function PortalContent(
             catalogOpen={catOpen}
             header
             navScope={navScope}
-            onDocs={() => setDocsOpen(true)}
+            onDocs={docsAllowed ? () => setDocsOpen(true) : undefined}
             docsActive={docsOpen}
           />
 
           {/* ⚠️ Үзүүлэлтүүд толгойгоос ДООД зурваст (`SummaryBar`) шилжсэн тул
               шүүлтийн тэмдэг нь баруун тийш түлхэх үүргийг авна. */}
           <ActiveFilterChip />
+
+          {isSuper && (
+            <button
+              type="button"
+              className={s.iconBtn}
+              onClick={() => setAdminOpen(true)}
+              aria-label="Хэрэглэгчийн эрх"
+              title="Хэрэглэгчийн эрх удирдах"
+            >
+              <Icon name="users" size={17} />
+            </button>
+          )}
 
           <button
             type="button"
@@ -601,6 +628,9 @@ function PortalContent(
 
       {/* ТЭЗҮ баримт бичгийн глобал popup — fixed тул бүх харагдацыг халхална */}
       <DocViewer open={docsOpen} onClose={() => setDocsOpen(false)} />
+
+      {/* Хэрэглэгчийн эрх удирдлага — зөвхөн super admin нээж чадна */}
+      {isSuper && <UserAdmin open={adminOpen} onClose={() => setAdminOpen(false)} />}
     </>
   );
 }

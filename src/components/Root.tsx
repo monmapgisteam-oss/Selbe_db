@@ -1,14 +1,16 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { useEffect, useState } from 'react';
+import { useEffect, useReducer, useState } from 'react';
 import { Home } from './Home';
 import { AuthNotice, useAuth } from './AuthGate';
+import { resolveAccess, subscribe } from '@/lib/permissions';
 import {
   ALWAYS_NAV_VIEWS,
   DEFAULT_VIEW,
   HOME_SECTIONS,
   VIEW_BY_KEY,
+  roleForUser,
   type ViewKey,
 } from '@/lib/services';
 
@@ -62,8 +64,35 @@ const scopeFromUrl = (): NavScope => {
 };
 
 export default function Root() {
-  const { authorized, signIn } = useAuth();
+  const { authorized, signIn, status, user } = useAuth();
   const [scope, setScope] = useState<NavScope>(scopeFromUrl);
+
+  /** Эрхийн store өөрчлөгдвөл (super admin засвар) дахин тооцоолно */
+  const [, forcePerms] = useReducer((x) => x + 1, 0);
+  useEffect(() => subscribe(forcePerms), []);
+
+  /**
+   * ХЭРЭГЛЭГЧИЙН ЭРХ → навигацийн хүрээ. `permissions` store-оос (override эсвэл
+   * хатуу суурь). Нэвтрэлт унтраалттай (`off`, dev) үед бүх эрхтэй. Нэвтэрсэн бол
+   * `AuthGate` эрхгүй бүртгэлийг оруулахгүй тул эрх ҮРГЭЛЖ олдоно.
+   */
+  const access = resolveAccess(user?.username) ?? (status === 'off' ? { views: 'all' as const, docs: true } : null);
+  const allowed: ViewKey[] | 'all' = access?.views ?? 'all';
+  // ⚠️ Админ панел зөвхөн ЖИНХЭНЭ super үүрэгт (GRANT_ALL-аас хамааралгүй)
+  const isSuper = roleForUser(user?.username) === 'super' || status === 'off';
+
+  /** Дурын хүрээг зөвшөөрсөн харагдацуудаар хайчилна */
+  const clamp = (sc: NavScope): NavScope => {
+    if (!sc || allowed === 'all') return sc;
+    if (sc === 'all') return allowed;
+    return sc.filter((v) => allowed.includes(v));
+  };
+
+  /** Нэвтрэнгүүт эрхийн дагуу орох: бүх эрхтэй → бүгд, бусад → эхний харагдац */
+  const openEntry = () => {
+    if (allowed === 'all') openAll();
+    else if (allowed.length) openView(allowed[0]);
+  };
 
   /** Нэвтрэлтээс буцаж эрх авмагц хүлээгдэж буй цэгт орно */
   useEffect(() => {
@@ -71,7 +100,7 @@ export default function Root() {
     const p = sessionStorage.getItem(PENDING_KEY);
     if (!p) return;
     sessionStorage.removeItem(PENDING_KEY);
-    if (p === 'all') openAll();
+    if (p === 'enter' || p === 'all') openEntry();
     else if (VIEW_BY_KEY[p as ViewKey]) openView(p as ViewKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authorized]);
@@ -106,8 +135,8 @@ export default function Root() {
   };
 
   const enterAll = () => {
-    if (authorized) openAll();
-    else { sessionStorage.setItem(PENDING_KEY, 'all'); signIn(); }
+    if (authorized) openEntry();
+    else { sessionStorage.setItem(PENDING_KEY, 'enter'); signIn(); }
   };
 
   const goHome = () => {
@@ -123,7 +152,12 @@ export default function Root() {
     <>
       <AuthNotice />
       {scope && authorized ? (
-        <Portal onHome={goHome} navScope={scope} />
+        <Portal
+          onHome={goHome}
+          navScope={clamp(scope) as 'all' | ViewKey[]}
+          docsAllowed={access?.docs ?? true}
+          isSuper={isSuper}
+        />
       ) : (
         <Home onEnterAll={enterAll} />
       )}

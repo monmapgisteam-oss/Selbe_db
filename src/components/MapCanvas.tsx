@@ -277,6 +277,21 @@ const zoneTypeRenderer = (d: LayerDef) => ({
   })),
 } as unknown as RendererProp);
 
+/**
+ * `paint.values`-аар ангилал бүрийг өнгөөр ялгах unique-value renderer.
+ * ⚠️ `uniform` горимд ч ажиллана — газар чөлөөлөлтийн зураг дээр `land:left`-ийг
+ * `Tuluv` төлөвөөр (чөлөөлсөн/цэвэрлэсэн/үлдсэн) будахад хэрэгтэй.
+ */
+const paintRenderer = (d: LayerDef) => ({
+  type: 'unique-value',
+  field: d.paint!.field,
+  defaultSymbol: symbolOf(d, ZONE_TYPE_EMPTY_HUE),
+  defaultLabel: d.paint!.emptyLabel,
+  uniqueValueInfos: Object.entries(d.paint!.values).map(([value, hue]) => ({
+    value, label: value, symbol: symbolOf(d, hue),
+  })),
+} as unknown as RendererProp);
+
 /* ⚠️ Урьд нь энд `WEB_DYNAMIC` хэмээх ХОЁР webmap-ийн симболын ГАР СНАПШОТ
    байв (12 давхарга, single/multi палитр). Одоо загварыг эх webmap-аас БҮТНЭЭР
    `tools/webmap_style.mjs` үүсгэж `lib/webmapStyle.ts`-д хадгалдаг бөгөөд
@@ -503,18 +518,10 @@ function buildLayers(uniform = false): Layer[] {
       elevationInfo: ON_GROUND,
       renderer: webRenderer
         ? (rendererJsonUtils.fromJSON(webRenderer as never) as unknown as RendererProp)
+        : d.paint
+        ? paintRenderer(d)
         : uniform
         ? (d.id === ZONE_LAYER.id ? zoneTypeRenderer(d) : simple(symbolOf(d)))
-        : d.paint
-        ? ({
-            type: 'unique-value',
-            field: d.paint.field,
-            defaultSymbol: symbolOf(d, ZONE_TYPE_EMPTY_HUE),
-            defaultLabel: d.paint.emptyLabel,
-            uniqueValueInfos: Object.entries(d.paint.values).map(([value, hue]) => ({
-              value, label: value, symbol: symbolOf(d, hue),
-            })),
-          } as unknown as RendererProp)
         : d.breaks
           ? ({
               type: 'class-breaks',

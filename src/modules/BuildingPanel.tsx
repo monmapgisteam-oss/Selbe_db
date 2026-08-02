@@ -313,14 +313,8 @@ export function BuildingSummary({ q }: { q: Buildings }) {
                 <Stat value={num(d.blocks)} label="Барилгын блок" color={HUE} accent />
                 <Stat value={num(d.households)} label="Айлын тоо" color={HUE} accent />
               </Stats>
-              {/* ⚠️ ТҮР ЗУУРЫН ХАТУУ УТГА: гүйцэтгэлийн ring-ийг 19.2% дээр
-                  тогтоов (хүсэлтээр). Хүснэгтийн өгөгдөл шинэчлэгдсэний дараа
-                  `value={d.progress}` руу БУЦАА, `decimals`-ыг ХАС.
-                  ◆ тэмдэглэгээ нь бэхэлсэн дүнг амьд тооноос ялгана (brief.ts-ийн
-                  журам) — эс тэмдэглэвэл хэрэглэгч амьд тоо гэж уншина. */}
-              <Split aside={<Ring value={19.2} decimals={1} color={HUE} size={78} width={8} />}>
+              <Split aside={<Ring value={d.progress} color={HUE} size={78} width={8} />}>
                 <Note>
-                  <span title="Гараар тогтоосон албан ёсны дүн — амьд хүснэгтээс биш">◆ Тогтоосон дүн.</span>{' '}
                   {num(d.blocks - d.noData)} блокийн «Барилга угсралтын ажил»-ын амьд дундаж{' '}
                   {pct(d.progress, 1)}{d.asOf ? ` (${d.asOf})` : ''}. Дундаж {num(d.floors, 1)} давхар.
                   {d.noData > 0 ? ` ${num(d.noData)} блок хараахан бөглөгдөөгүй.` : ''}
@@ -408,17 +402,12 @@ export function BuildingSummary({ q }: { q: Buildings }) {
                 pick(`building:comp:${k}`, k, 'Гүйцэтгэгч компани', c.oids);
               }}
               items={d.contractors.map((c) => {
-                // ⚠️ ТҮР ЗУУРЫН ХАТУУ УТГА: «Багц 1»-ийг барьсан компанийг (Хятадын
-                //    2 дахь металлурги) 21.6% болгов — багцтай зөрөхгүй байхаар.
-                //    Өгөгдөл шинэчлэгдсэний дараа энэ override-г ХАС.
-                //    ◆ — бэхэлсэн дүнг амьд тооноос ялгах тэмдэглэгээ (brief.ts-ийн журам).
-                const pinned = c.key.includes('металлурги');
-                const p = pinned ? 21.6 : c.progress;
+                const p = c.progress;
                 return {
                   key: c.key,
                   label: `${c.key} · ${num(c.blocks)} блок`,
                   value: p ?? 0,
-                  display: p == null ? 'мэдээлэлгүй' : `${pct(p)}${pinned ? ' ◆' : ''}`,
+                  display: p == null ? 'мэдээлэлгүй' : pct(p),
                 };
               })}
             />
