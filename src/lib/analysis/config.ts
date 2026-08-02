@@ -144,6 +144,18 @@ const DERIVED_LAYERS: MapLayerDef[] = [...PLAN_LAYER_IDS, ...MONITOR_LAYER_IDS]
 
 export const MAP_LAYERS: MapLayerDef[] = [...SPECIAL_LAYERS, ...DERIVED_LAYERS];
 
+/**
+ * Барилгын төлөв (`Barilga_ty`) → өнгө. `SuitMap`-ийн renderer ба давхаргын
+ * каталогийн legend ХОЁУЛАА үүнийг уншина — газрын зураг дээрх өнгө ба цэсэн
+ * дэх задаргаа ижил байлгах ганц эх сурвалж. Дараалал: одоо байгаа → баригдаж
+ * байгаа → төлөвлөсөн (цаг хугацааны дэс дараалал).
+ */
+export const BUILDING_STATUS_COLORS: Record<string, [number, number, number]> = {
+  'Одоо байгаа': [134, 139, 150],
+  'Баригдаж байгаа': [251, 146, 60],
+  'Төлөвлөсөн': [96, 165, 250],
+};
+
 /* ══════════════════ Өртгийн задаргаа ══════════════════ */
 
 export const COST_GROUPS: Record<string, { label: string; color: string }> = {
