@@ -170,9 +170,9 @@
   font-weight: 600;
   line-height: 1.25;
   color: var(--ink);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* ⚠️ Таслахгүй (2026-07-31, хэрэглэгчийн хүсэлт): урт нэр `…` болж
+     халхлагддаг байсныг дараагийн мөрөнд шилжүүлж БҮТЭН харуулна. */
+  overflow-wrap: anywhere;
 }
 .railVal {
   flex: none;
@@ -193,9 +193,7 @@
   font-size: 0.80rem;
   line-height: 1.35;
   color: var(--ink-3);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .railFoot {
   margin-top: 8px;
@@ -304,9 +302,7 @@
   font-size: 0.88rem;
   font-weight: 700;
   color: var(--ink);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .colClose {
   display: grid;
@@ -500,9 +496,7 @@
   min-width: 0;
   font-size: 0.76rem;
   color: var(--ink);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .gPct { font-size: 0.80rem; font-weight: 700; font-family: var(--mono); white-space: nowrap; }
 
@@ -558,8 +552,7 @@
   font-size: 0.67rem;
   line-height: 1.35;
   color: var(--ink-3);
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 .trFlag .cellMain { color: var(--min); }
 .trTotal td { font-weight: 700; color: var(--ink); border-top: 2px solid var(--line); }
@@ -677,7 +670,7 @@
 .rankOn { background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .rankNo { flex: none; width: 20px; font-size: 0.7rem; font-weight: 700; font-family: var(--mono); color: var(--ink-3); text-align: right; }
 .rankName { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.25; font-size: 0.76rem; color: var(--ink); overflow: hidden; }
-.rankName i { font-style: normal; font-size: 0.65rem; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rankName i { font-style: normal; font-size: 0.65rem; color: var(--ink-3); overflow-wrap: anywhere; }
 .rankScore {
   flex: none;
   min-width: 30px;
@@ -740,9 +733,7 @@
   max-width: 190px;
   font-size: 0.69rem;
   color: var(--ink-2);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 .legendItem i { width: 9px; height: 9px; flex: none; border-radius: 2px; }
 .legendMore { font-size: 0.69rem; font-weight: 700; font-family: var(--mono); color: var(--ink-3); }
@@ -850,7 +841,7 @@
   border-radius: 99px;
   font-size: 0.78rem;
 }
-.filterLabel { font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.filterLabel { font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
 .filterClear {
   display: grid;
   place-items: center;

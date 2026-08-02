@@ -1,7 +1,7 @@
 'use client';
 
 import {
-  useState,
+  memo, useState,
   type CSSProperties, type Dispatch, type SetStateAction,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
@@ -13,7 +13,7 @@ import type { Totals } from '@/lib/totals';
 import { qtyText, whereFor, layerStats } from '@/lib/totals';
 import { useFilter } from '@/lib/filter';
 import { queryGroup, groups, groupWhere } from '@/lib/query';
-import { catalogGroups, LAYER_BY_ID, layerUrl, type LayerDef } from '@/lib/services';
+import { catalogGroups, INITIAL_MAP_LAYERS, LAYER_BY_ID, layerUrl, type LayerDef } from '@/lib/services';
 import { num } from '@/lib/format';
 import s from './catalog.module.css';
 
@@ -27,11 +27,16 @@ import s from './catalog.module.css';
  * ⚠️ Тоо, өртгийг ЭНД дахин татахгүй: `totals`-ыг `Portal` нэг удаа дуудаж
  * дамжуулна — самбарын дүнтэй зөрөх боломжгүй байх ёстой.
  *
- * Мөр бүр ХОЁР үйлдэлтэй:
- *   · чагт — зурагт харуулах/нуух (багана нээлттэй хэвээр)
- *   · нэр  — баруун самбарт тэр давхаргын дашбоард нээгдэнэ
+ * Мөр бүр ХОЁР үйлдэлтэй (2026-07-31, хэрэглэгчийн хүсэлт — чагт хасагдсан):
+ *   · нэр — зурагт харуулах/нуух (багана нээлттэй хэвээр)
+ *   · баруун захын жижиг диаграм товч — баруун самбарт тэр давхаргын дашбоард
+ *
+ * ⚠️ `memo` — Portal нь багана чирэх (pointermove бүрт setWidth), объект
+ * сонгох зэрэг ЭНД хамаагүй төлөвөөр байнга дахин зурагддаг. Каталогийн
+ * пропс тэр үед өөрчлөгддөггүй тул memo нь ~100 мөрийн дахин зуралтыг
+ * бүрмөсөн алгасуулна (гацалтын гомдол, 2026-07-31).
  */
-export function LayerCatalog({
+export const LayerCatalog = memo(function LayerCatalog({
   view,
   totals,
   visible,
@@ -88,31 +93,45 @@ export function LayerCatalog({
   /**
    * Хураасан багцууд.
    *
-   * ⚠️ Эхлэхэд БҮГД ХУРААГДСАН. 29 давхарга задгай байвал багана 2–3 дэлгэц
-   * болж, доод талын багц гүйлгэхгүйгээр огт харагдахгүй — хэрэглэгч ямар
-   * САЛБАРУУД байгааг ерөөсөө хараад амждаггүй. Хураангуй байдалд 10 багц бүхэлдээ
-   * (эсвэл багахан гүйлгэлтээр) нэг дэлгэцэд орж, «юу байгаа вэ» гэдэг нь эхний
-   * хормын дотор мэдэгдэнэ; хэрэгтэй багцаа дараад л задална.
-   */
-  /**
-   * ⚠️ Хураангуй эхлэл нь ЗӨВХӨН «Ерөнхий мэдээлэл»-д. «Барилгын хяналт» нь
-   * өөр хүний хэсэг бөгөөд тэнд каталог нь товчоор түр нээгддэг туслах цонх —
-   * нээгээд дахин задлах алхам нэмэх нь тэр урсгалыг удаашруулна.
+   * ⚠️ Эхлэхэд БҮГД ХУРААГДСАН — БҮХ харагдацад (2026-07-31, хэрэглэгчийн
+   * хүсэлт). 29 давхарга задгай байвал багана 2–3 дэлгэц болж, доод талын багц
+   * гүйлгэхгүйгээр огт харагдахгүй — хэрэглэгч ямар САЛБАРУУД байгааг ерөөсөө
+   * хараад амждаггүй. Хураангуй байдалд бүх багц нэг дэлгэцэд орж, «юу байгаа
+   * вэ» гэдэг нь эхний хормын дотор мэдэгдэнэ; багцын нэр дарахад асч задарна.
    */
   const [shut, setShut] = useState<Set<string>>(
-    () => (view === 'plan' ? new Set(groups.map((g) => g.key)) : new Set()),
+    () => new Set(groups.map((g) => g.key)),
   );
 
+  /**
+   * АНХНЫ (default) багц хэвээр байна уу — «Ерөнхий төлөвлөгөө»-ний нээлтийн
+   * давхаргууд (`INITIAL_MAP_LAYERS`) яг тэр чигээрээ асаалттай төлөв.
+   *
+   * ⚠️ Хэрэглэгч анхны байдлаас ШИНЭ сонголт хийхэд default давхаргууд
+   * УНТАРЧ, сонголт нь ОРЛОНО (2026-07-31, хэрэглэгчийн хүсэлт) — эс бөгөөс
+   * барилга/зам/ногоон нь сонгосон давхаргыг дарж, «сонголт маань зурагт
+   * нөлөөлсөнгүй» мэт харагдана. Portal-ын `untouched` (баруун самбарын
+   * «сонгоогүй» төлөв) яг ижил харьцуулалт ашигладаг тул хоёул нэг мөч дээр
+   * шилжинэ. Дараагийн сонголтууд ХЭВИЙН нэмэгдэнэ.
+   */
+  const isDefault = (list: string[]) =>
+    view === 'plan' &&
+    list.length === INITIAL_MAP_LAYERS.length &&
+    INITIAL_MAP_LAYERS.every((id) => list.includes(id));
+
   const toggle = (id: string) =>
-    setVisible((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+    setVisible((prev) => {
+      if (prev.includes(id)) return prev.filter((x) => x !== id);
+      return isDefault(prev) ? [id] : [...prev, id];
+    });
 
   /** Багц бүхэлдээ — нэг ч асаагүй бол бүгдийг асаана, эс бөгөөс бүгдийг унтраана */
   const toggleGroup = (ids: string[]) =>
-    setVisible((prev) =>
-      ids.every((id) => !prev.includes(id))
-        ? [...prev, ...ids.filter((id) => !prev.includes(id))]
-        : prev.filter((id) => !ids.includes(id)),
-    );
+    setVisible((prev) => {
+      if (ids.every((id) => !prev.includes(id)))
+        return isDefault(prev) ? [...ids] : [...prev, ...ids.filter((id) => !prev.includes(id))];
+      return prev.filter((id) => !ids.includes(id));
+    });
 
   /** Багцыг задлах/хураах — нэг газарт */
   const setOpenState = (key: string, open: boolean) =>
@@ -121,14 +140,6 @@ export function LayerCatalog({
       if (open) next.delete(key); else next.add(key);
       return next;
     });
-
-  /**
-   * ⚠️ БҮХ харагдацад «Барилгын хяналт»-ын зан үйл (хэрэглэгчийн хүсэлт):
-   * гарчиг дарахад бүлгийн жагсаалтыг НЭЭЖ/ХААНА (hide/unhide), тоолуурын товч
-   * давхаргыг АСААЖ/УНТРААНА. «Ерөнхий төлөвлөгөө»-нд ч гарчиг = бүх давхаргыг
-   * дарах биш, зөвхөн жагсаалт нээх/хаах болов.
-   */
-  const isPlan = false;
 
   const all = groups.flatMap((g) => g.ids);
   const onCount = visible.filter((id) => all.includes(id)).length;
@@ -173,6 +184,20 @@ export function LayerCatalog({
       </header>
 
       <div className={s.body}>
+        {/* БҮХ ДАВХАРГЫГ УНТРААХ — жагсаалтын хамгийн дээд, тусдаа том товч
+            (хэрэглэгчийн хүсэлт: шууд нүдэнд харагдахуйц). Унтраах юмгүй үед
+            бүдгэрнэ. */}
+        <button
+          type="button"
+          className={s.allOff}
+          disabled={onCount === 0}
+          onClick={() => setVisible((prev) => prev.filter((id) => !all.includes(id)))}
+        >
+          <Icon name="layers" size={15} />
+          Бүх давхаргыг унтраах
+          {onCount > 0 && <span className={`${s.allOffCount} num`}>{onCount}</span>}
+        </button>
+
         {/* ОРТОФОТО — жагсаалтын ХАМГИЙН ДЭЭД мөр. Суурь зураг топографи, энэ
             чагтаар ортофотог асаана/унтраана (газрын зурагтай нэг эх сурвалж). */}
         <button
@@ -218,72 +243,46 @@ export function LayerCatalog({
                   >
                     <div className={s.groupHead}>
                       {/**
-                        * Гарчиг дарахад багц БҮХЭЛДЭЭ сонгогдож, баруун самбарт
-                        * түүний чартууд гарна. Мөн жагсаалт нь задарна.
-                        *
-                        * ⚠️ Урьд нь гарчиг ЗӨВХӨН хураадаг байв — багцын өгөгдлийг
-                        * баруун талд гаргах цорын ганц арга нь баруун захын жижиг
-                        * «0/6» товч байсан бөгөөд түүнийг тоолуур гэж уншсан хүн
-                        * дарж үздэггүй байлаа. Одоо гол үйлдэл гол товчин дээр.
+                        * Гарчиг дарахад багцын давхаргууд БҮГД асна/унтарна
+                        * (2026-07-31, хэрэглэгчийн хүсэлт). Урьд нь гарчиг зөвхөн
+                        * жагсаалт нээж/хаадаг, асаахын тулд баруун захын жижиг
+                        * «0/6» товч дарах шаардлагатай байсан — түүнийг тоолуур
+                        * гэж уншсан хүн дарж үздэггүй байлаа.
                         *
                         * ⚠️ Багц АЛЬ ХЭДИЙН бүрэн асаалттай бол унтраана — эс
                         * бөгөөс сонголтоо буцаах арга гарчгаас алга болно.
                         */}
+                      {/* Дарах талбай нь толгойн БҮТЭН өргөн (дүрс + нэр +
+                          тоолуур) — нэр дээр онож дарах шаардлагагүй
+                          (2026-07-31, хэрэглэгчийн хүсэлт). Зөвхөн ▾ сум тусдаа. */}
                       <button
                         type="button"
-                        aria-expanded={open}
                         className={s.groupToggle}
-                        title={
-                          !isPlan ? undefined
-                            : on === ids.length ? 'Багцын сонголтыг цуцлах' : 'Багцыг бүхэлд нь сонгох'
-                        }
+                        title={on === 0 ? 'Багцыг бүхэлд нь асаах' : 'Багцыг бүхэлд нь унтраах'}
                         onClick={() => {
-                          if (!isPlan) { setOpenState(g.key, !open); return; }
                           toggleGroup(ids);
-                          // Сонгосон багцын мөрүүд нүдэнд харагдах ёстой
-                          if (on !== ids.length) setOpenState(g.key, true);
+                          // Асаахад мөрүүд нь задарч, унтраахад буцаж хураагдана
+                          // (⚠️ toggleGroup: нэг ч асаагүй үед л асаана — түүнтэй ижил нөхцөл)
+                          setOpenState(g.key, on === 0);
                         }}
                       >
                         <span className={s.groupIcon}><Icon name={g.icon} size={15} /></span>
                         <span className={s.groupTitle}>{g.title}</span>
-                        {/* Хяналтын харагдацад сум нь гарчгийн ДОТОР — хуучин байдал */}
-                        {!isPlan && (
-                          <span className={`${s.groupCaret} ${open ? s.groupCaretOpen : ''}`} aria-hidden>▾</span>
-                        )}
+                        {/* Тоолуур — товч БИШ, зөвхөн төлөв заана */}
+                        <span className={`${s.groupBtn} num`}>{on}/{ids.length}</span>
                       </button>
 
-                      {/**
-                        * Тоолуур. «Ерөнхий мэдээлэл»-д зөвхөн ТӨЛӨВ заана (сонголт
-                        * нь гарчиг дээр шилжсэн); «Барилгын хяналт»-д ХУУЧНААР
-                        * багцыг асаадаг товч хэвээр.
-                        */}
-                      {isPlan ? (
-                        <span className={`${s.groupBtn} num`}>{on}/{ids.length}</span>
-                      ) : (
-                        <button
-                          type="button"
-                          className={s.groupBtn}
-                          onClick={() => toggleGroup(ids)}
-                          title={on === 0 ? 'Багцыг бүхэлд нь асаах' : 'Багцыг бүхэлд нь унтраах'}
-                        >
-                          {on}/{ids.length}
-                        </button>
-                      )}
-
-                      {/* ⚠️ Хураах/дэлгэх нь ТУСДАА товч — зөвхөн «Ерөнхий мэдээлэл»-д,
-                          учир нь тэнд гарчиг өөрөө багцыг сонгодог болсон. */}
-                      {isPlan && (
-                        <button
-                          type="button"
-                          aria-expanded={open}
-                          aria-label={open ? `${g.title} — жагсаалтыг хураах` : `${g.title} — жагсаалтыг дэлгэх`}
-                          title={open ? 'Жагсаалтыг хураах' : 'Жагсаалтыг дэлгэх'}
-                          className={`${s.groupCaret} ${open ? s.groupCaretOpen : ''}`}
-                          onClick={() => setOpenState(g.key, !open)}
-                        >
-                          ▾
-                        </button>
-                      )}
+                      {/* Хураах/дэлгэх — ТУСДАА товч (гарчиг нь багцыг асаадаг болсон) */}
+                      <button
+                        type="button"
+                        aria-expanded={open}
+                        aria-label={open ? `${g.title} — жагсаалтыг хураах` : `${g.title} — жагсаалтыг дэлгэх`}
+                        title={open ? 'Жагсаалтыг хураах' : 'Жагсаалтыг дэлгэх'}
+                        className={`${s.groupCaret} ${open ? s.groupCaretOpen : ''}`}
+                        onClick={() => setOpenState(g.key, !open)}
+                      >
+                        ▾
+                      </button>
                     </div>
 
                     {/* ⚠️ `hidden` атрибут БОЛОХГҮЙ: `.rows`-ын `display: flex`
@@ -300,28 +299,19 @@ export function LayerCatalog({
                             className={`${s.row} ${d.catalogFacet ? s.rowFacet : ''} ${isOn ? s.rowOn : ''} ${selected === d.id ? s.rowSel : ''}`}
                             style={{ '--tone': d.hue } as CSSProperties}
                           >
+                            {/* Симбол — газрын зурагтай ижил. Тайлбарын хайрцаг
+                                хассан тул өнгө↔давхаргын холбоо ЭНД байна. */}
+                            <LayerSwatch d={d} />
+
+                            {/* Нэр дарахад зурагт асна/унтарна (чагт хасагдсан —
+                                2026-07-31, хэрэглэгчийн хүсэлт) */}
                             <button
                               type="button"
                               role="switch"
                               aria-checked={isOn}
                               aria-label={`${d.title} — зурагт харуулах`}
-                              className={s.check}
-                              onClick={() => toggle(d.id)}
-                            >
-                              <svg viewBox="0 0 12 12" width="10" height="10">
-                                <path d="M2 6.2 4.6 8.8 10 3.4" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-                              </svg>
-                            </button>
-
-                            {/* Симбол — газрын зурагтай ижил. Тайлбарын хайрцаг
-                                хассан тул өнгө↔давхаргын холбоо ЭНД байна. */}
-                            <LayerSwatch d={d} />
-
-                            <button
-                              type="button"
-                              aria-pressed={selected === d.id}
                               className={s.rowMain}
-                              onClick={() => onSelect(d.id)}
+                              onClick={() => toggle(d.id)}
                             >
                               <span className={s.rowTitle}>{d.title}</span>
                               <span className={`${s.rowMeta} num`}>
@@ -329,6 +319,18 @@ export function LayerCatalog({
                                 {q ? ` · ${q}` : ''}
                                 {zone && d.noZone && <em className={s.rowWarn}> · бүсгүй</em>}
                               </span>
+                            </button>
+
+                            {/* Дэлгэрэнгүй дашбоард — баруун самбарт (нэрээс салгав) */}
+                            <button
+                              type="button"
+                              aria-pressed={selected === d.id}
+                              aria-label={`${d.title} — дэлгэрэнгүй самбар`}
+                              title="Дэлгэрэнгүй самбар"
+                              className={s.rowChart}
+                              onClick={() => onSelect(d.id)}
+                            >
+                              <Icon name="chart" size={13} />
                             </button>
 
                             {/* Ангиллаараа задарсан давхарга — доор нь дэд мөрүүд */}
@@ -355,7 +357,7 @@ export function LayerCatalog({
 
     </aside>
   );
-}
+});
 
 /* ═════════════════ Ангиллын дэд мөрүүд ═════════════════ */
 
