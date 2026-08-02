@@ -1,40 +1,59 @@
 'use client';
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { AUTH } from '@/lib/services';
 import s from './auth.module.css';
 
 /**
- * ArcGIS Online нэвтрэлтийн хаалт.
+ * ArcGIS Online нэвтрэлт — КОНТЕКСТ хэлбэрээр.
  *
- * OAuth 2.0 (PKCE, authorization-code) урсгалаар нэвтэрч, зөвхөн нэвтэрсэн (болон
- * `AUTH.allowedOrgId` заасан бол тухайн org-ийн) хэрэглэгчид л `children`-ийг үзнэ.
+ * ⚠️ Урьд нь `AuthGate` бүх аппыг ороож, нэвтрээгүй бол ЮУГ Ч харуулдаггүй байв.
+ * Одоо нүүр хуудас (видео, сэдвийн картууд) нэвтрэлтгүй ч харагдах ёстой тул
+ * хаалт болгохоо больж, төлөв ба `signIn`-ыг context-оор түгээнэ. Нэвтрэлт нь
+ * ЗӨВХӨН хэрэглэгч сэдэв сонгож ороход шаардагдана (`useAuth().authorized`).
  *
- * ⚠️ ArcGIS SDK нь браузерын API-д түшиглэдэг тул identity модулиудыг ЗӨВХӨН effect
- * дотор динамик import хийнэ — эс бөгөөс статик экспортын SSR үед унана.
+ * OAuth 2.0 (PKCE, authorization-code, бүтэн хуудсаар чиглүүлэх) — статик сайтад
+ * тохирно. `AUTH.appId` хоосон бол нэвтрэлт унтраалттай (`status: 'off'`).
  *
- * `AUTH.appId` хоосон бол нэвтрэлт унтраалттай — апп хуучнаар шууд нээгдэнэ.
+ * ⚠️ ArcGIS identity модулиудыг ЗӨВХӨН effect дотор динамик import — статик
+ * экспортын SSR үед унахаас сэргийлнэ.
  */
 
 type User = { username: string; fullName: string; thumbnail: string | null; orgId: string | null };
-type Status = 'checking' | 'signed-in' | 'signed-out' | 'denied';
+export type AuthStatus = 'checking' | 'signed-in' | 'signed-out' | 'denied' | 'off';
+
+type AuthCtx = {
+  status: AuthStatus;
+  /** Аппын харагдацад орох эрхтэй юу (нэвтэрсэн эсвэл нэвтрэлт унтраалттай) */
+  authorized: boolean;
+  user: User | null;
+  error: string | null;
+  signIn: () => Promise<void>;
+  signOut: () => Promise<void>;
+};
+
+const Ctx = createContext<AuthCtx>({
+  status: 'off',
+  authorized: true,
+  user: null,
+  error: null,
+  signIn: async () => {},
+  signOut: async () => {},
+});
+
+export const useAuth = () => useContext(Ctx);
 
 /** portalUrl-ийн сүүлийн '/'-г арилгаад /sharing нэмнэ */
 const sharingUrl = () => `${AUTH.portalUrl.replace(/\/+$/, '')}/sharing`;
 
 /**
- * «Нэвтрэх товч дарж, ArcGIS руу чиглүүлсэн» тэмдэглэгээ.
- *
- * Анх орж ирэхэд нэвтрэлт шалгах нь унах нь ХЭВИЙН (хараахан нэвтрээгүй). Тиймээс
- * алдааг тэр болгонд харуулбал утгагүй чимээ болно. Харин нэвтрэлтээс БУЦАЖ ирээд
- * унасан бол энэ нь жинхэнэ бүтэлгүйтэл — учрыг нь заавал харуулна.
+ * «Нэвтрэх товч дарж, ArcGIS руу чиглүүлсэн» тэмдэглэгээ. Анх орж ирэхэд нэвтрэлт
+ * шалгах унах нь ХЭВИЙН; харин нэвтрэлтээс БУЦАЖ ирээд унасан бол жинхэнэ алдаа.
  */
 const ATTEMPT_KEY = 'selbe-auth-attempt';
 
-/** Алдаанаас хүнд ойлгомжтой мессеж гаргана */
 const describe = (e: unknown): string => {
   if (e instanceof Error) {
-    // ArcGIS-ийн алдаа нэмэлт `details` авчирдаг — оношлоход хамгийн хэрэгтэй нь
     const d = (e as { details?: { message?: string; httpStatus?: number } }).details;
     const parts = [e.message, d?.message, d?.httpStatus ? `HTTP ${d.httpStatus}` : ''];
     return parts.filter(Boolean).join(' · ');
@@ -42,17 +61,14 @@ const describe = (e: unknown): string => {
   return String(e);
 };
 
-export function AuthGate({ children }: { children: ReactNode }) {
-  const [status, setStatus] = useState<Status>('checking');
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [status, setStatus] = useState<AuthStatus>(() => (AUTH.appId ? 'checking' : 'off'));
   const [user, setUser] = useState<User | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Тохируулаагүй бол нэвтрэлтгүйгээр ажиллана (одоогийн байдлыг эвдэхгүй)
-    if (!AUTH.appId) {
-      setStatus('signed-in');
-      return;
-    }
+    // Тохируулаагүй бол нэвтрэлтгүйгээр ажиллана
+    if (!AUTH.appId) { setStatus('off'); return; }
 
     let alive = true;
     (async () => {
@@ -72,8 +88,6 @@ export function AuthGate({ children }: { children: ReactNode }) {
           }),
         ]);
 
-        // Нэвтэрсэн эсэх. Аль хэдийн нэвтэрсэн (эсвэл OAuth-аас буцаж ирсэн) бол
-        // энэ шийдэгдэнэ; үгүй бол catch руу унаж, нэвтрэх дэлгэц гарна.
         await esriId.checkSignInStatus(sharingUrl());
 
         const portal = new Portal({ url: AUTH.portalUrl });
@@ -85,8 +99,6 @@ export function AuthGate({ children }: { children: ReactNode }) {
           thumbnail: u?.thumbnailUrl ?? null,
           orgId: u?.orgId ?? null,
         };
-
-        // allowedOrgId бөглөхөд туслах: нэвтэрсэн хэрэглэгчийн orgId-г консолд хэвлэнэ
         console.info('[selbe] нэвтэрсэн:', info.username, '· orgId:', info.orgId);
 
         if (!alive) return;
@@ -94,13 +106,8 @@ export function AuthGate({ children }: { children: ReactNode }) {
         setUser(info);
         setStatus(AUTH.allowedOrgId && info.orgId !== AUTH.allowedOrgId ? 'denied' : 'signed-in');
       } catch (e) {
-        // ⚠️ Энэ catch-ийг ХООСОН орхиж болохгүй. Токен солилт, portal.load() зэрэг
-        //    жинхэнэ бүтэлгүйтэл ч энд унадаг тул чимээгүй залгивал хэрэглэгч
-        //    учрыг нь мэдэхгүйгээр нэвтрэх дэлгэц рүү эргэлдэнэ.
         console.error('[selbe] нэвтрэлт шалгах үед:', e);
         if (!alive) return;
-
-        // Нэвтрэхээр явж ирээд унасан бол л алдааг харуулна (анхны зочилд биш)
         const wasAttempt = sessionStorage.getItem(ATTEMPT_KEY);
         sessionStorage.removeItem(ATTEMPT_KEY);
         if (wasAttempt) setError(describe(e));
@@ -108,14 +115,11 @@ export function AuthGate({ children }: { children: ReactNode }) {
       }
     })();
 
-    return () => {
-      alive = false;
-    };
+    return () => { alive = false; };
   }, []);
 
   const signIn = async () => {
     setError(null);
-    // Буцаж ирээд унавал алдааг харуулах эрхтэй болгож тэмдэглэнэ
     sessionStorage.setItem(ATTEMPT_KEY, '1');
     try {
       const { default: esriId } = await import('@arcgis/core/identity/IdentityManager');
@@ -134,7 +138,22 @@ export function AuthGate({ children }: { children: ReactNode }) {
     location.reload();
   };
 
-  if (status === 'signed-in') return <>{children}</>;
+  const authorized = status === 'signed-in' || status === 'off';
+
+  return (
+    <Ctx.Provider value={{ status, authorized, user, error, signIn, signOut }}>
+      {children}
+    </Ctx.Provider>
+  );
+}
+
+/**
+ * Нэвтрэлтийн МЭДЭГДЭЛ — эрх татгалзсан (буруу байгууллага) эсвэл нэвтрэлт унасан
+ * үед л хөвөгч цонхоор гарна. Бусад үед `null` — нүүр хуудас чөлөөтэй харагдана.
+ */
+export function AuthNotice() {
+  const { status, user, error, signOut } = useAuth();
+  if (status !== 'denied' && !(status === 'signed-out' && error)) return null;
 
   return (
     <div className={s.screen}>
@@ -142,25 +161,6 @@ export function AuthGate({ children }: { children: ReactNode }) {
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/logo.svg" alt="" className={s.logo} />
         <div className={s.title}>Сэлбэ портал</div>
-
-        {status === 'checking' && (
-          <>
-            <p className={s.sub}>Нэвтрэлт шалгаж байна…</p>
-            <span className={s.spinner} aria-hidden />
-          </>
-        )}
-
-        {status === 'signed-out' && (
-          <>
-            <p className={s.sub}>
-              Үргэлжлүүлэхийн тулд байгууллагынхаа ArcGIS Online бүртгэлээр нэвтэрнэ үү.
-            </p>
-            <button type="button" className={s.btn} onClick={signIn}>
-              ArcGIS Online-аар нэвтрэх
-            </button>
-            {error && <p className={s.error}>{error}</p>}
-          </>
-        )}
 
         {status === 'denied' && (
           <>
@@ -179,13 +179,19 @@ export function AuthGate({ children }: { children: ReactNode }) {
             <p className={s.sub}>
               Энэ бүртгэл танай байгууллагын хэрэглэгч биш тул хандах эрхгүй байна.
             </p>
-            {/* Тохиргооны зөрүүг шууд харуулна — эс бөгөөс яагаад татгалзсаныг таахад хэцүү */}
             <p className={s.error}>
               Бүртгэлийн orgId: {user?.orgId || '—'} · шаардлагатай: {AUTH.allowedOrgId}
             </p>
             <button type="button" className={s.btnGhost} onClick={signOut}>
               Өөр бүртгэлээр нэвтрэх
             </button>
+          </>
+        )}
+
+        {status === 'signed-out' && error && (
+          <>
+            <p className={s.sub}>Нэвтрэх үед алдаа гарлаа.</p>
+            <p className={s.error}>{error}</p>
           </>
         )}
       </div>

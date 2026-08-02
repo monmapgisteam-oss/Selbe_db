@@ -194,7 +194,25 @@
 }
 /* Брэнд хумигдахгүй тогтмол — шахалтыг `.railRow` бүхэлдээ авна. Нарийн дэлгэцэд
    дэд гарчиг/нэр нь media query-ээр нуугдана. */
-.brand { display: flex; align-items: center; gap: 12px; flex: none; min-width: 0; }
+/* Брэнд — button (нүүр рүү буцах). onHome-гүй бол disabled, цэвэр текст шиг. */
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: none;
+  min-width: 0;
+  padding: 4px 8px;
+  margin: -4px -8px;
+  border-radius: var(--r-sm);
+  background: none;
+  border: 0;
+  color: inherit;
+  text-align: left;
+  transition: background 0.12s;
+}
+.brand:enabled { cursor: pointer; }
+.brand:enabled:hover { background: var(--surface-2); }
+.brand:disabled { cursor: default; }
 .logo { height: 30px; width: auto; }
 .brandText { display: flex; flex-direction: column; line-height: 1.2; }
 /* Брэндийн нэр — том үсгээр. Кирилл том үсэг өргөн тул үсгийн зайг сулруулав. */
