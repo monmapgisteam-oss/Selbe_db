@@ -15,7 +15,7 @@ import { scoreIndicator, normFor, type Part } from '@/lib/analysis/score';
  * ⚠️ `blend` нь НИЙЛМЭЛ үнэлгээ бөгөөд аппын НЭЭГДЭХ горим: хот төлөвлөлт ба
  * эдийн засаг хоёрын аль нэгийг дангаар нь харах нь дүгнэлтийг тал болгодог.
  */
-export type Mode = 'blend' | 'urban' | 'indicator' | 'econ';
+export type Mode = 'blend' | 'urban' | 'indicator' | 'econ' | 'simulation';
 export type Row = MapRow & { parts: Record<string, Part> };
 
 /**

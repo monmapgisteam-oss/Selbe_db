@@ -7,6 +7,7 @@ import {
 } from '@/lib/analysis/config';
 import { scoreColor, scoreLabel, normText, passesNorm, clamp, type Part } from '@/lib/analysis/score';
 import type { MapRow } from './SuitMap';
+import type { Mode } from './suit/model';
 import { nf, money } from './suit/format';
 import s from './suitability.module.css';
 
@@ -27,7 +28,7 @@ export function SuitDetail({
 }: {
   r: MapRow & { parts: Record<string, Part> };
   indicators: Indicator[];
-  mode: 'blend' | 'urban' | 'indicator' | 'econ';
+  mode: Mode;
   activeIndicator: string;
   parking: ParkingOpt;
   perHa: number;

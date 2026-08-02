@@ -28,7 +28,7 @@ import '@arcgis/core/assets/esri/themes/light/main.css';
 
 import {
   LAYERS, LAYER_BY_ID, layerUrl, oidOf, drawOrder, DASH_PATTERN, ALWAYS_ON_IDS, REFERENCE_IDS,
-  HOME, IMAGERY, SCENE, BIM, USAN_SAN, ELEVATION_URL, ZONE_LAYER, zoneWhere,
+  HOME, IMAGERY, SCENE, BIM, USAN_SAN, ELEVATION_URL, ZONE_LAYER, BUILT_LAYER, zoneWhere,
   ZONE_FIELD, ZONE_NONE, ZONE_TYPE_EMPTY_HUE, OID, BUILDING, SURVEY, PARCEL_LEFT, buildingKey,
   MAP_HUE_OVERRIDES,
   type LayerDef,
@@ -504,7 +504,9 @@ function buildLayers(uniform = false): Layer[] {
       renderer: webRenderer
         ? (rendererJsonUtils.fromJSON(webRenderer as never) as unknown as RendererProp)
         : uniform
-        ? (d.id === ZONE_LAYER.id ? zoneTypeRenderer(d) : simple(symbolOf(d)))
+        ? (d.id === ZONE_LAYER.id || (d.id === BUILT_LAYER.id && d.paint)
+            ? zoneTypeRenderer(d)
+            : simple(symbolOf(d)))
         : d.paint
         ? ({
             type: 'unique-value',
