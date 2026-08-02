@@ -142,11 +142,13 @@ function useColumnResize(
  * ёстой. Мөн порталын агуулга `useFilter()`-ыг дуудах тул түүнээс ДООР байх
  * ёстой — иймд агуулгыг тусад нь салгав.
  */
-export default function Portal() {
+export default function Portal(
+  { onHome, navScope = 'all' }: { onHome?: () => void; navScope?: 'all' | ViewKey[] } = {},
+) {
   return (
     <MapProvider>
       <FilterProvider>
-        <PortalContent />
+        <PortalContent onHome={onHome} navScope={navScope} />
       </FilterProvider>
     </MapProvider>
   );
@@ -170,7 +172,9 @@ const initialLayer = (): string | null => {
   return l && LAYER_BY_ID[l] ? l : null;
 };
 
-function PortalContent() {
+function PortalContent(
+  { onHome, navScope = 'all' }: { onHome?: () => void; navScope?: 'all' | ViewKey[] },
+) {
   /**
    * Газрын зураг ХОЁРХОН төрөлтэй: 2D = ортофото, 3D = меш. Суурийг энэ л шийднэ.
    */
@@ -398,14 +402,21 @@ function PortalContent() {
         } as CSSProperties}
       >
         <header className={s.head}>
-          <div className={s.brand}>
+          {/* Лого/нэр дээр дарахад НҮҮР рүү буцна (onHome өгөгдсөн бол товч болно) */}
+          <button
+            type="button"
+            className={s.brand}
+            onClick={onHome}
+            disabled={!onHome}
+            title={onHome ? 'Нүүр хуудас руу буцах' : undefined}
+          >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/logo.svg" alt="" className={s.logo} />
             <span className={s.brandText}>
               <h1 className={s.brandName}>Сэлбэ 20 минутын хот</h1>
               <span className={s.brandSub}>Ерөнхий төлөвлөгөө ба төсвийн портал</span>
             </span>
-          </div>
+          </button>
 
           {/* Харагдац сонголт — толгойд хэвтээ таб хэлбэрээр. «ТЭЗҮ-БОНУ» баримт
               нь табуудтай НЭГ бүлэгт орно (тусдаа биш). */}
@@ -414,6 +425,7 @@ function PortalContent() {
             setView={setView}
             catalogOpen={catOpen}
             header
+            navScope={navScope}
             onDocs={() => setDocsOpen(true)}
             docsActive={docsOpen}
           />

@@ -1,13 +1,17 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { AuthGate } from '@/components/AuthGate';
+import { AuthProvider } from '@/components/AuthGate';
 
 /**
  * ArcGIS SDK нь браузерын API-д (ResizeObserver, WebGL) шууд түшиглэдэг тул
- * серверт огт ажиллуулж болохгүй. Порталыг бүхэлд нь client-only болгож ачаална.
+ * серверт огт ажиллуулж болохгүй. Аппын үндсийг (`Root`) client-only болгож
+ * ачаална — тэр нь видео дэвсгэртэй НҮҮР хуудас, сонгосон харагдацыг шийднэ.
+ *
+ * ⚠️ `AuthProvider` нь дээр — нүүр хуудас нэвтрэлтгүй ч харагдана; нэвтрэлт нь
+ * харагдацад орох үед л шаардагдана (`useAuth`).
  */
-const Portal = dynamic(() => import('@/components/Portal'), {
+const Root = dynamic(() => import('@/components/Root'), {
   ssr: false,
   loading: () => (
     <div
@@ -25,10 +29,9 @@ const Portal = dynamic(() => import('@/components/Portal'), {
 });
 
 export default function Page() {
-  // Нэвтэрсэн (эсвэл нэвтрэлт унтраалттай) үед л Portal ачаалагдана
   return (
-    <AuthGate>
-      <Portal />
-    </AuthGate>
+    <AuthProvider>
+      <Root />
+    </AuthProvider>
   );
 }

@@ -2682,6 +2682,45 @@ export const VIEW_BY_KEY: Record<ViewKey, (typeof VIEWS)[number]> =
 /** Апп нээгдэхэд — газрын зургийг тойрсон ерөнхий дашбоард */
 export const DEFAULT_VIEW: ViewKey = "dashboard";
 
+/**
+ * НҮҮР ХУУДАСНЫ СЭДВҮҮД — орох цэгүүд.
+ *
+ * ⚠️ `all: true` бол тэр сэдэв нь БҮХ харагдацыг нээнэ («Удирдлага» → дээд
+ * навигацид бүгд гарна). Бусад сэдэв нь өөрийн `views`-ээ л нээнэ; тэдгээрт
+ * `ALWAYS_NAV_VIEWS` (Газар, Үнэлгээ, Тайлан) навигацид НЭМЖ харагдана.
+ *
+ * ⚠️ Нүүр хуудас (`Home.tsx`), навигацийн шүүлт (`ViewRail`), орох горим (`Root`)
+ * бүгд эндээс уншина — сэдэв нэмэх/хасахад ЗӨВХӨН энд өөрчилнө. Харагдац бүрийн
+ * мета (нэр, дүрс, өнгө) нь `VIEW_BY_KEY`-ээс.
+ */
+export const HOME_SECTIONS: {
+  id: string;
+  title: string;
+  /** «Удирдлага» — бүх харагдацыг нээнэ (`ALL_MODE_HIDE`-аас бусад) */
+  all?: boolean;
+  /**
+   * ЗӨВХӨН өөрийн `views`-ээ навигацид гаргана — `ALWAYS_NAV_VIEWS`-ийг НЭМЭХГҮЙ.
+   * (Жиш. «Гүйцэтгэл бөглөх»-т зөвхөн Барилгын хяналт ба Гүйцэтгэл бөглөх.)
+   */
+  exact?: boolean;
+  /** Картаас нээхэд ЭХНИЙ харагдац орно; навигацид бүгд гарна */
+  views: ViewKey[];
+}[] = [
+  { id: "mgmt", title: "Удирдлага", all: true, views: [] },
+  { id: "build", title: "Хяналт", views: ["bagts", "monitor"] },
+  { id: "suit", title: "Тохиромжтой байдлын үнэлгээ", views: ["analysis"] },
+  { id: "sheet", title: "Гүйцэтгэл бөглөх", exact: true, views: ["sheet", "monitor"] },
+];
+
+/**
+ * Дээд навигацид (exact БИШ) сэдэвт НЭМЖ харагдах харагдацууд — Газар, Үнэлгээ,
+ * Тайлан (+ ТЭЗҮ баримт нь ViewRail-д тусдаа байнга).
+ */
+export const ALWAYS_NAV_VIEWS: ViewKey[] = ["gazar", "analysis", "tailan"];
+
+/** «Удирдлага» (бүх харагдац) горимд НУУГДАХ харагдацууд */
+export const ALL_MODE_HIDE: ViewKey[] = ["sheet"];
+
 /* ⚠️ Хуучин `DEFAULT_VISIBLE` (зөвхөн бүс) устгагдсан — хаана ч уншигддаггүй
    болсон. Анхны давхаргын ГАНЦ эх сурвалж нь `INITIAL_MAP_LAYERS`. */
 
