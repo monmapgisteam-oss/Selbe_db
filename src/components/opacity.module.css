@@ -1,0 +1,112 @@
+/* Тунгалаг тохируулах хөвөгч цонх — газрын зургийн дээд талд (mapTools-ын доор).
+   «Тунгалаг» товчоор нээж/хаана; ил давхаргууд тус бүрдээ гулсууртай. */
+.panel {
+  position: absolute;
+  top: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 7;
+  width: 300px;
+  max-width: calc(100vw - 32px);
+  max-height: min(60vh, 520px);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  backdrop-filter: blur(10px);
+  box-shadow: var(--shadow-lg);
+  animation: panelIn 0.28s var(--ease) both;
+}
+@keyframes panelIn {
+  from { opacity: 0; transform: translate(-50%, -10px) scale(0.96); }
+  to   { opacity: 1; transform: translate(-50%, 0) scale(1); }
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.title {
+  flex: 1;
+  font-size: 0.62rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--ink-3);
+}
+.reset {
+  flex: none;
+  padding: 3px 9px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  color: var(--ink-2);
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.reset:hover { background: var(--surface-2); color: var(--ink); border-color: var(--line-strong); }
+.close {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  font-size: 1.05rem;
+  line-height: 1;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  color: var(--ink-3);
+  transition: background 0.12s, color 0.12s;
+}
+.close:hover { background: var(--surface-2); color: var(--ink); }
+
+.body { flex: 1; overflow-y: auto; padding: 8px 12px 12px; display: flex; flex-direction: column; gap: 10px; }
+.empty { font-size: 0.75rem; color: var(--ink-3); text-align: center; padding: 14px 4px; }
+
+.row { display: flex; flex-direction: column; gap: 5px; }
+.rowTop { display: flex; align-items: center; gap: 8px; }
+.name {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.73rem;
+  font-weight: 600;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.pct { flex: none; font-size: 0.68rem; font-weight: 650; color: var(--tone); }
+
+/* Гулсуур — замыг өнгөт (--tone), товчийг цагаан */
+.slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 5px;
+  border-radius: 99px;
+  background: var(--sunken);
+  outline: none;
+  cursor: pointer;
+}
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: var(--tone);
+  border: 2px solid var(--surface);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+}
+.slider::-moz-range-thumb {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: var(--tone);
+  border: 2px solid var(--surface);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+}

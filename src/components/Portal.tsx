@@ -7,6 +7,7 @@ import {
 import { MapCanvas, MapProvider, useMap, type Dim } from '@/components/MapCanvas';
 import { ViewRail } from '@/components/ViewRail';
 import { LayerCatalog } from '@/components/LayerCatalog';
+import { OpacityPanel } from '@/components/OpacityPanel';
 import { Suitability } from '@/modules/analysis/Suitability';
 import { Dashboard } from '@/modules/Dashboard';
 import { Bagts } from '@/modules/Bagts';
@@ -194,6 +195,14 @@ function PortalContent() {
   // Анхнаасаа НЭЭЛТТЭЙ: давхаргын жагсаалт зүүн талд шууд харагдана.
   const [catalog, setCatalog] = useState(true);
   const [layer, setLayer] = useState<string | null>(initialLayer);
+
+  /**
+   * ТУНГАЛАГ — давхарга бүрийн opacity override (0–1) ба тохируулах цонх нээлттэй
+   * эсэх. Override байхгүй давхарга эх webmap-ийн анхдагчаа хадгална.
+   */
+  const [opacity, setOpacity] = useState<Record<string, number>>({});
+  const [opacityOpen, setOpacityOpen] = useState(false);
+  const closeOpacity = useCallback(() => setOpacityOpen(false), []);
 
   /** Сонгосон бүс — БҮХ давхарга, БҮХ тоо үүгээр шүүгдэнэ */
   const [zone, setZone] = useState<string | null>(() => readParam('z'));
@@ -447,9 +456,9 @@ function PortalContent() {
             {view === 'monitor' && <MonitorFrame size={monSize} trend={trendSize} />}
 
             <div className={s.map}>
-              <MapCanvas dim={dim} visible={visible} zone={zone} onPick={pick} />
+              <MapCanvas dim={dim} visible={visible} opacity={opacity} zone={zone} onPick={pick} />
 
-              {/* Газрын зураг дээрх хэрэгслүүд — давхарга нээх ба 2D/3D/BIM */}
+              {/* Газрын зураг дээрх хэрэгслүүд — давхарга нээх, тунгалаг, 2D/3D/BIM */}
               <div className={s.mapTools}>
                 {/* «Давхарга» — БҮХ харагдацад (plan-д ч) каталогийг нуух/харуулна */}
                 <button
@@ -461,6 +470,18 @@ function PortalContent() {
                 >
                   <Icon name="layers" size={15} />
                   Давхарга
+                </button>
+
+                {/* «Тунгалаг» — ил давхаргуудын opacity тохируулах цонх нээнэ */}
+                <button
+                  type="button"
+                  aria-pressed={opacityOpen}
+                  className={`${s.mapBtn} ${opacityOpen ? s.mapBtnOn : ''}`}
+                  onClick={() => setOpacityOpen((v) => !v)}
+                  title="Давхаргын тунгалаг"
+                >
+                  <Icon name="droplet" size={15} />
+                  Тунгалаг
                 </button>
 
                 <div className={s.mapDims} role="group" aria-label="Газрын зургийн харагдац">
@@ -477,6 +498,16 @@ function PortalContent() {
                   ))}
                 </div>
               </div>
+
+              {/* Тунгалаг тохируулах хөвөгч цонх */}
+              {opacityOpen && (
+                <OpacityPanel
+                  visible={visible}
+                  opacity={opacity}
+                  setOpacity={setOpacity}
+                  onClose={closeOpacity}
+                />
+              )}
 
             </div>
 

@@ -671,6 +671,7 @@ export function MapProvider({ children }: { children: ReactNode }) {
 export const MapCanvas = memo(function MapCanvas({
   dim,
   visible,
+  opacity,
   zone,
   layerWhere,
   uniform = false,
@@ -684,6 +685,12 @@ export const MapCanvas = memo(function MapCanvas({
   dim: Dim;
   /** Ил байгаа давхаргын id-ууд */
   visible: string[];
+  /**
+   * Давхарга бүрийн ТУНГАЛАГ байдал (0–1). Байхгүй давхарга нь эх webmap-ийн
+   * анхдагч тунгалагаа (`buildLayers`-д тавьсан) хадгална. «Тунгалаг» товчоор
+   * хэрэглэгч тус бүрийг тохируулна.
+   */
+  opacity?: Record<string, number>;
   /** Сонгосон бүс — БҮХ давхаргыг тэр бүсээр хатуу шүүнэ. null = бүгд. */
   zone: string | null;
   /**
@@ -717,6 +724,8 @@ export const MapCanvas = memo(function MapCanvas({
   pickRef.current = onPick;
   const onSketchRef = useRef(onSketch);
   onSketchRef.current = onSketch;
+  /** Давхарга бүрийн БҮТЭЭГДЭХ (build-time) тунгалаг — override арилахад буцаана */
+  const defaultOpacityRef = useRef<Record<string, number>>({});
 
   const [ready, setReady] = useState(false);
   /** Ачаалагдаж чадаагүй 3D загварын тоо — null = асуудалгүй */
@@ -1278,6 +1287,27 @@ export const MapCanvas = memo(function MapCanvas({
       }
     });
   }, [visibleKey, dim, ready, zone, layerWhere, hl, hlOnly, uniform, ortho]);
+
+  /**
+   * ТУНГАЛАГ — давхарга бүрийн `opacity`-г override-оор тавина. Override байхгүй
+   * давхарга нь build-time анхдагчаа (эх webmap-ийн opacity эсвэл 1) хадгална.
+   * ⚠️ `opacityKey` (JSON) нь тогтмол dep — эцэг объектын лавлагаа солигдоход
+   *    дэмий ажиллуулахгүй.
+   */
+  const opacityKey = JSON.stringify(opacity ?? {});
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    const over = opacity ?? {};
+    map.layers.forEach((l) => {
+      if (!('opacity' in l) || l.id === IMAGERY_ID || l.id === 'sketch') return;
+      const def = defaultOpacityRef.current;
+      // Анхдагчийг НЭГ УДАА тогтооно — override арилахад буцах цэг
+      if (def[l.id] == null) def[l.id] = typeof l.opacity === 'number' ? l.opacity : 1;
+      l.opacity = over[l.id] ?? def[l.id];
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opacityKey, visibleKey, ready, dim, uniform]);
 
   /**
    * `mon:building` давхаргыг НИЙТ ГҮЙЦЭТГЭЛЭЭР өнгөлнө — «Гүйцэтгэл бөглөх»-ийн

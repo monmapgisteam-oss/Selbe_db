@@ -66,8 +66,9 @@ export const BASEMAP_URL =
  * `appId` хоосон бол нэвтрэлт УНТРААЛТТАЙ.
  */
 export const AUTH = {
-  /** 2026-07-31: нэвтрэлт асаалттай (хэрэглэгчийн хүсэлт) */
-  appId: "ZPJRqk1iiYcjYRLv",
+  /** ⚠️ Түр УНТРААЛТТАЙ (хэрэглэгчийн хүсэлт — засвар дуустал). Асаах утга:
+   *  "ZPJRqk1iiYcjYRLv" */
+  appId: "",
   /**
    * ⚠️ Байгууллагын хаяг (`monmap.maps.arcgis.com`) БИШ. Тэр домэйн ArcGIS
    * Online-ы «Allowed origins» цагаан жагсаалтыг мөрддөг тул dev дээр токен
