@@ -2,7 +2,7 @@
 
 import { Fragment, type CSSProperties } from 'react';
 import { Icon } from './Icon';
-import { VIEWS, type ViewKey } from '@/lib/services';
+import { VIEWS, ALL_MODE_HIDE, type ViewKey } from '@/lib/services';
 import s from './tree.module.css';
 
 /**
@@ -22,6 +22,7 @@ export function ViewRail({
   setView,
   catalogOpen,
   header = false,
+  navScope = 'all',
   onDocs,
   docsActive = false,
 }: {
@@ -29,6 +30,12 @@ export function ViewRail({
   setView: (v: ViewKey) => void;
   /** Давхаргын каталогийн багана нээлттэй эсэх — сумны чиглэлээр заана */
   catalogOpen: boolean;
+  /**
+   * Навигацийн ХҮРЭЭ. `'all'` = БҮХ харагдац («Удирдлага»); харагдацын жагсаалт
+   * бол тэр сэдвийн харагдацууд + `ALWAYS_NAV_VIEWS` (Газар, Үнэлгээ, Тайлан).
+   * ТЭЗҮ баримт нь аль ч тохиолдолд байнга (доор).
+   */
+  navScope?: 'all' | ViewKey[];
   /**
    * Толгойн ХЭВТЭЭ хувилбар — зүүн баганы оронд толгойд таб болж багтана.
    * ⚠️ Тайлбар текст (desc), гарчиг, доод тусламж хасагдаж, зөвхөн дүрс + нэр
@@ -60,11 +67,21 @@ export function ViewRail({
       </button>
     ) : null;
 
+  /**
+   * НАВИГАЦИД харагдах харагдацууд — `navScope`-ийг `Root` бүрэн бодож өгнө.
+   * `'all'` = «Удирдлага» (бүгд, `ALL_MODE_HIDE`-аас бусад); эс бөгөөс тэр
+   * сэдвийн жагсаалт. Сэдэв солихын тулд «Нүүр» рүү буцна.
+   */
+  const shown =
+    navScope === 'all'
+      ? VIEWS.filter((v) => !ALL_MODE_HIDE.includes(v.key))
+      : VIEWS.filter((v) => navScope.includes(v.key));
+
   return (
     <nav className={header ? s.railRow : s.rail} aria-label="Харагдац">
       {!header && <div className={s.railHead}>Харагдац</div>}
 
-      {VIEWS.map((v) => {
+      {shown.map((v) => {
         const on = v.key === view;
         // Каталогтой харагдацууд — тусдаа бүрэн дэлгэцтэй (дашбоард, анализ) нь үгүй.
         // ⚠️ Толгойн хэвтээ горимд каталог нь зурган дээрх «Давхарга» товчоор
@@ -94,11 +111,14 @@ export function ViewRail({
               <span className={`${s.chev} ${expanded ? s.chevOn : ''}`} aria-hidden>›</span>
             )}
           </button>
-          {/* ТЭЗҮ-БОНУ товч «Ерөнхий дашбоард»-ын шууд ард (толгойн горимд) */}
-          {v.key === 'dashboard' && docsButton}
           </Fragment>
         );
       })}
+
+      {/* ТЭЗҮ-БОНУ товч — БҮХ сэдэвт харагдана (харагдацуудын ард, толгойн горимд).
+          ⚠️ Урьд нь «Ерөнхий дашбоард»-ын ард байсан тул тэр харагдацгүй сэдэвт
+             алга болдог байв; одоо сэдвээс үл хамааран төгсгөлд байнга. */}
+      {docsButton}
 
       {!header && (
         <p className={s.foot}>
