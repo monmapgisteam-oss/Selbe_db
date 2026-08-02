@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { AUTH, roleForUser, type Role } from '@/lib/services';
-import { initRemote } from '@/lib/permissions';
+import { initRemote, hasAccess } from '@/lib/permissions';
 import s from './auth.module.css';
 
 /**
@@ -104,18 +104,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           thumbnail: u?.thumbnailUrl ?? null,
           orgId: u?.orgId ?? null,
         };
-        // Үүрэг — ArcGIS нэрээр. Жагсаалтгүй бол эрхгүй (`denied`).
         const r = roleForUser(info.username);
         const orgOk = !AUTH.allowedOrgId || info.orgId === AUTH.allowedOrgId;
-        console.info('[selbe] нэвтэрсэн:', info.username, '· orgId:', info.orgId, '· үүрэг:', r ?? '—');
+
+        // ⚠️ Эрхийн ХУВААЛЦСАН хүснэгтийг ЭХЭЛЖ татна (super бол байхгүй үед үүсгэнэ)
+        //    — панелаас нэмсэн хэрэглэгчийг таних тул нэвтрүүлэхээс ӨМНӨ ачаална.
+        await initRemote(r === 'super');
+        // Нэвтрэх эрх: хатуу жагсаалт ЭСВЭЛ панелаас нэмсэн (store) хэрэглэгч.
+        const admitted = orgOk && hasAccess(info.username);
+        console.info('[selbe] нэвтэрсэн:', info.username, '· orgId:', info.orgId, '· үүрэг:', r ?? '—', '· admitted:', admitted);
 
         if (!alive) return;
         sessionStorage.removeItem(ATTEMPT_KEY);
         setUser(info);
         setRole(r);
-        setStatus(orgOk && r ? 'signed-in' : 'denied');
-        // Эрхийн хүснэгтийг ArcGIS-ээс татах — super бол байхгүй үед үүсгэнэ
-        if (orgOk && r) void initRemote(r === 'super');
+        setStatus(admitted ? 'signed-in' : 'denied');
       } catch (e) {
         console.error('[selbe] нэвтрэлт шалгах үед:', e);
         if (!alive) return;
