@@ -104,6 +104,19 @@ function baseline(username: string): Access | null {
 }
 
 /**
+ * НЭВТРЭХ ЭРХ (admission) — хэрэглэгч порталд орж чадах уу.
+ *
+ * ⚠️ `GRANT_ALL`-аас ХАМААРАХГҮЙ: хатуу жагсаалт ЭСВЭЛ панелаас нэмсэн (store)
+ * хэрэглэгч л нэвтэрнэ. Аль алинд байхгүй бол `AuthGate` татгалзана. (GRANT_ALL нь
+ * зөвхөн нэвтэрсэн хэрэглэгч ЮУ ХАРАХЫГ өргөтгөдөг болохоос ХЭНИЙГ оруулахыг биш.)
+ */
+export function hasAccess(username?: string | null): boolean {
+  if (!username) return false;
+  if (roleForUser(username)) return true;
+  return !!loadStore()[username.toLowerCase()];
+}
+
+/**
  * Нэвтэрсэн хэрэглэгчийн эцсийн эрх: override байвал түүнийг, эс бөгөөс хатуу
  * суурийг. Аль нь ч байхгүй бол `null` (нэвтрэх эрхгүй).
  */
