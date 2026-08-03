@@ -14,7 +14,7 @@ import { usePlanTotals } from '@/lib/totals';
 import { queryFeatures, type Row } from '@/lib/query';
 import {
   ZONE_LAYER, ZONE_FIELD, ZONE_NONE, BUILT_LAYER, BUILDING,
-  LAYER_BY_ID, PARCEL_LEFT, PROJECT_PROGRESS,
+  LAYER_BY_ID, PARCEL_LEFT, PROJECT_PROGRESS, SOURCE_FS,
   PLAN_LAYER_IDS, MONITOR_LAYER_IDS, INITIAL_MAP_LAYERS,
   PKG_BY_FAMILY, bagtsKey, buildingKey,
 } from '@/lib/services';
@@ -32,7 +32,7 @@ import { num, pct, text, shade, shades, tint } from '@/lib/format';
 import {
   BRIEF_SOURCE, HEADLINE, OVERALL, SCOPE, INVEST_SPLIT, MILESTONES,
   SCHEDULE, BAGTS_ORIGIN, BAGTS_STRIP,
-  LAND, SOURCES, UTILITY_WORKS, POWER_PACKS, FINANCE, SOCIAL, BENEFITS, PUBLIC_ZONE,
+  LAND, UTILITY_WORKS, POWER_PACKS, POWER_NOTE, FINANCE, SOCIAL, BENEFITS, PUBLIC_ZONE,
 } from '@/lib/brief';
 import o from './overview.module.css';
 
@@ -61,17 +61,19 @@ import o from './overview.module.css';
 
 /* ══════════════════ Хэсгүүд ══════════════════ */
 
-type SecKey = 'scope' | 'schedule' | 'bagts' | 'land' | 'source' | 'finance' | 'benefit' | 'suit';
+type SecKey = 'scope' | 'schedule' | 'bagts' | 'land' | 'network' | 'power' | 'source' | 'finance' | 'benefit' | 'suit';
 
 const SECTIONS: { key: SecKey; no: string; title: string }[] = [
   { key: 'scope', no: '01', title: 'Төслийн цар хүрээ' },
   { key: 'schedule', no: '02', title: 'Хэрэгжилтийн ерөнхий график' },
   { key: 'land', no: '03', title: 'Газар чөлөөлөлтийн одоогийн төлөв' },
-  { key: 'bagts', no: '04', title: 'Орон сууцны 7 багц' },
-  { key: 'source', no: '05', title: 'Эх үүсвэр, шугам сүлжээ' },
-  { key: 'finance', no: '06', title: 'Хөрөнгө оруулалт, бонд' },
-  { key: 'benefit', no: '07', title: 'Иргэдэд хүрэх үр өгөөж' },
-  { key: 'suit', no: '08', title: 'Тохиромжтой байдлын үнэлгээ' },
+  { key: 'bagts', no: '04', title: 'Орон сууцны бүс' },
+  { key: 'network', no: '05', title: 'Шугам сүлжээ' },
+  { key: 'power', no: '06', title: 'Цахилгаан' },
+  { key: 'source', no: '07', title: 'Эх үүсвэр' },
+  { key: 'finance', no: '08', title: 'Хөрөнгө оруулалт, бонд' },
+  { key: 'benefit', no: '09', title: 'Нийгмийн дэд бүтэц' },
+  { key: 'suit', no: '10', title: 'Тохиромжтой байдлын үнэлгээ' },
 ];
 
 /**
@@ -94,8 +96,12 @@ const SECTION_LAYERS: Record<SecKey, string[]> = {
   bagts: ['mon:building'],
   // Газар чөлөөлөлт — нэгтгэсэн давхарга (`Tuluv` төлөвөөр чөлөөлсөн/цэвэрлэсэн/үлдсэн)
   land: ['land:left'],
-  // Гадна инженер: сүлжээ (Багц 5) · цахилгаан (Багц 6) · эх үүсвэр (Багц 7–15)
-  source: [...(PKG_BY_FAMILY.net ?? []), ...(PKG_BY_FAMILY.pow ?? []), ...(PKG_BY_FAMILY.src ?? [])],
+  // Шугам сүлжээ — гадна дулаан, ус, ариутгах татуурга (Багц 5)
+  network: [...(PKG_BY_FAMILY.net ?? [])],
+  // Цахилгаан — гадна цахилгаан ба ХТП/РП (Багц 6)
+  power: [...(PKG_BY_FAMILY.pow ?? [])],
+  // Эх үүсвэр — нэгтгэсэн үйлчилгээ (SOURCE_FS, `torol`-оор өнгөт)
+  source: ['source:eh'],
   finance: [],
   // Нийгмийн барилгууд — сургууль, цэцэрлэг, соёл, спорт (Багц 19–21)
   benefit: [...(PKG_BY_FAMILY.soc ?? [])],
@@ -405,6 +411,17 @@ function useLeftParcels(): Async<Row[]> {
   return useAsync(() => queryFeatures(PARCEL_LEFT.url, { outFields: [PL.progress, PL.block] }), []);
 }
 
+/** Эх үүсвэрийн байгууламжууд — нэгтгэсэн үйлчилгээнээс (7 объект) */
+function useSources(): Async<Row[]> {
+  return useAsync(() => queryFeatures(SOURCE_FS.url, {
+    outFields: [
+      SOURCE_FS.fields.type, SOURCE_FS.fields.name, SOURCE_FS.fields.share,
+      SOURCE_FS.fields.total, SOURCE_FS.fields.note,
+      ...SOURCE_FS.consumers.map((c) => c.field),
+    ],
+  }), []);
+}
+
 /* ── Тохиромжтой байдлын үнэлгээ (бүсийн орон зайн анализ) ── */
 
 type SuitSummary = {
@@ -464,6 +481,7 @@ type DashData = {
   project: Async<ProjectProgress>;
   parcels: Async<Row[]>;
   invest: Async<InvRow[]>;
+  sources: Async<Row[]>;
 };
 
 /* ══════════════════ Үндсэн компонент ══════════════════ */
@@ -478,6 +496,7 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
     project: useProjectProgress(),
     parcels: useLeftParcels(),
     invest: useInvest(),
+    sources: useSources(),
   };
   const { setHighlight } = useMap();
   useEffect(() => { setHighlight(null); }, [setHighlight]);
@@ -687,7 +706,9 @@ function Detail({ k, d, suit, prog, zone, setZone }: {
     case 'schedule': return <ScheduleDetail project={d.project} />;
     case 'bagts': return <BagtsDetail q={d.bagts} />;
     case 'land': return <LandDetail parcels={d.parcels} project={d.project} />;
-    case 'source': return <SourceDetail invest={d.invest} />;
+    case 'network': return <NetworkDetail />;
+    case 'power': return <PowerDetail invest={d.invest} />;
+    case 'source': return <SourceDetail sources={d.sources} />;
     case 'finance': return <FinanceDetail />;
     case 'benefit': return <BenefitDetail bagts={d.bagts} />;
     case 'suit': return <SuitDetail suit={suit} prog={prog} zone={zone} setZone={setZone} />;
@@ -747,13 +768,34 @@ function railStat(k: SecKey, d: DashData, suit: Async<SuitSummary>): {
         pct: v, tone: o.done,
       };
     }
-    case 'source': {
+    case 'network': {
+      // Гадна дулаан, ус, ариутгах (Багц 5) — `UTILITY_WORKS` (сая ₮) нийлбэр
+      const sum = UTILITY_WORKS.reduce((a, w) => a + w.mn, 0);
+      return {
+        value: num(sum / 1000, 1), pinned: true,
+        note: `${UTILITY_WORKS.length} ажил · тэрбум ₮ · гадна дулаан, ус`,
+        tone: o.active,
+      };
+    }
+    case 'power': {
+      // Гадна цахилгаан (Багц 6) — 8 багц, дундаж гүйцэтгэл 23.8% (бэхлэгдсэн)
       const keys = new Set(POWER_PACKS.map((x) => bagtsKey(x.key)));
       const sum = iv ? iv.filter((r) => keys.has(bagtsKey(r.bagts))).reduce((a, r) => a + r.total, 0) : null;
       return {
         value: '23.8%', pinned: true,
         note: sum == null ? '…' : `8 багц · ${bn(sum)} тэрбум ₮`,
         pct: 23.8, tone: o.active,
+      };
+    }
+    case 'source': {
+      // Эх үүсвэр — нэгтгэсэн үйлчилгээнээс АМЬД (дулаан, цахилгаан, ус)
+      const rows = d.sources.state === 'ready' ? d.sources.data : null;
+      if (!rows) return { value: '…', note: 'татаж байна', tone: o.active };
+      const types = new Set(rows.map((r) => srcStr(r[SOURCE_FS.fields.type])).filter(Boolean));
+      return {
+        value: `${rows.length}`,
+        note: `${types.size} төрөл · дулаан, цахилгаан, ус`,
+        tone: o.active,
       };
     }
     case 'finance':
@@ -962,7 +1004,7 @@ function ScheduleDetail({ project }: { project: Async<ProjectProgress> }) {
 /**
  * ⚠️ НЭГ ӨНГӨНИЙ СҮҮДЭР — урьд нь 8 өөр солонгон өнгө байсныг хэрэглэгчийн
  * хүсэлтээр нэг суурь өнгө (дашбоардын sky акцент)-ийн уусгалт болгов. Эдгээр
- * ангиллууд (SCOPE, SOURCES, BENEFITS, SOCIAL …) нь өөр өөр «утга»гүй, зөвхөн
+ * ангиллууд (SCOPE, BENEFITS, SOCIAL …) нь өөр өөр «утга»гүй, зөвхөн
  * зэргэлдээ мөрийг ялгах хэрэгцээтэй тул нэг өнгөний шат хамгийн зөв. Утга
  * агуулсан өнгө (гүйцэтгэлийн %, tone) нь ДООРХ тусдаа функцүүдэд хэвээр.
  */
@@ -1125,31 +1167,16 @@ function LandDetail({ parcels, project }: { parcels: Async<Row[]>; project: Asyn
   );
 }
 
-/* ══════════════════ 05 · Эх үүсвэр, шугам сүлжээ ══════════════════ */
+/* ══════════════════ 05 · Шугам сүлжээ ══════════════════ */
 
-function SourceDetail({ invest }: { invest: Async<InvRow[]> }) {
-  /** БАГЦ-6.x → INVEST-ийн нийт дүн (амьд) */
-  const cost = (key: string): number | null => {
-    if (invest.state !== 'ready') return null;
-    const k = bagtsKey(key);
-    const rows = invest.data.filter((r) => bagtsKey(r.bagts) === k);
-    return rows.length ? rows.reduce((a, r) => a + r.total, 0) : null;
-  };
-
+function NetworkDetail() {
+  const total = UTILITY_WORKS.reduce((a, w) => a + w.mn, 0);
   return (
     <>
-      <Panel title="Эх үүсвэрийн хүчин чадал">
+      <Panel title="Дүн">
         <Stats cols={2}>
-          {SOURCES.map((s, i) => (
-            <Stat
-              key={s.key}
-              accent
-              color={HUE[i % HUE.length]}
-              value={<>{s.value}<Pin /></>}
-              unit={s.unit}
-              label={`${s.title} · ${s.note}`}
-            />
-          ))}
+          <Stat accent color="#38bdf8" value={num(UTILITY_WORKS.length)} unit="ажил" label="Гадна ус, дулааны ажил" />
+          <Stat accent color="#0ea5e9" value={<>{num(total)}<Pin /></>} unit="сая ₮" label="Нийт төсөвт өртөг" />
         </Stats>
       </Panel>
 
@@ -1164,7 +1191,23 @@ function SourceDetail({ invest }: { invest: Async<InvRow[]> }) {
           }))}
         />
       </Panel>
+    </>
+  );
+}
 
+/* ══════════════════ 06 · Цахилгаан ══════════════════ */
+
+function PowerDetail({ invest }: { invest: Async<InvRow[]> }) {
+  /** БАГЦ-6.x → INVEST-ийн нийт дүн (амьд) */
+  const cost = (key: string): number | null => {
+    if (invest.state !== 'ready') return null;
+    const k = bagtsKey(key);
+    const rows = invest.data.filter((r) => bagtsKey(r.bagts) === k);
+    return rows.length ? rows.reduce((a, r) => a + r.total, 0) : null;
+  };
+
+  return (
+    <>
       <Panel title="Гадна цахилгаан (БАГЦ-6) · өртөг">
         <Bars
           inline
@@ -1182,19 +1225,90 @@ function SourceDetail({ invest }: { invest: Async<InvRow[]> }) {
         />
       </Panel>
 
-      <Panel title="Гадна цахилгаан (БАГЦ-6) · явц">
+      <Panel title="Гадна цахилгаан (БАГЦ-6) · явц ба гүйцэтгэгч">
         <Bars
           inline
           items={POWER_PACKS.map((b) => ({
             key: b.key,
-            label: b.key,
+            label: `${b.key} · ${b.contractor}`,
             value: b.pct,
             display: `${b.pct}%`,
             color: b.pct > 0 ? heat(b.pct, 100) : BLANK,
           }))}
         />
+        <p className={o.note}>{POWER_NOTE}</p>
       </Panel>
     </>
+  );
+}
+
+/* ══════════════════ 07 · Эх үүсвэр ══════════════════ */
+
+const srcNum = (v: unknown) => {
+  const n = parseFloat(String(v ?? '').replace(/[^\d.]/g, ''));
+  return Number.isFinite(n) ? n : 0;
+};
+const srcStr = (v: unknown) => String(v ?? '').replace(/​/g, '').trim();
+
+function SourceDetail({ sources }: { sources: Async<Row[]> }) {
+  const F = SOURCE_FS.fields;
+  return (
+    <Data q={sources} loading="Эх үүсвэрийн мэдээллийг татаж байна…">
+      {(rows) => {
+        const types = [...new Set(rows.map((r) => srcStr(r[F.type])))].filter(Boolean);
+        return (
+          <>
+            {types.map((type) => {
+              const facs = rows.filter((r) => srcStr(r[F.type]) === type);
+              const cons = SOURCE_FS.consumers
+                .map((c) => ({ ...c, value: facs.reduce((a, f) => a + srcNum(f[c.field]), 0) }))
+                .filter((c) => c.value > 0);
+              const maxCon = maxOf(cons.map((c) => c.value));
+              return (
+                <Panel key={type} title={type}>
+                  <Donut
+                    size={130}
+                    width={22}
+                    leaders
+                    center={`${facs.length}`}
+                    centerLabel="байгууламж"
+                    items={facs.map((f, i) => ({
+                      key: srcStr(f[F.name]) || `#${i}`,
+                      label: srcStr(f[F.name]),
+                      value: srcNum(f[F.share]) || srcNum(f[F.total]),
+                      display: srcStr(f[F.share]) || srcStr(f[F.total]),
+                      color: shade(ACCENT, i, facs.length),
+                    }))}
+                  />
+                  {cons.length > 0 && (() => {
+                    // Ус хангамж → м³/хон, дулаан/цахилгаан → МВт
+                    const unit = type.includes('Ус') ? 'м³/хон' : 'МВт';
+                    const consTotal = cons.reduce((a, c) => a + c.value, 0);
+                    return (
+                      <>
+                        <p className={o.note}>
+                          Хэрэглэгчид хуваарилсан хүчин чадал — нийт <b>{num(consTotal, 1)} {unit}</b>:
+                        </p>
+                        <Bars
+                          inline
+                          items={cons.map((c) => ({
+                            key: c.key,
+                            label: c.label,
+                            value: c.value,
+                            display: `${num(c.value, 1)} ${unit}`,
+                            color: heat(c.value, maxCon),
+                          }))}
+                        />
+                      </>
+                    );
+                  })()}
+                </Panel>
+              );
+            })}
+          </>
+        );
+      }}
+    </Data>
   );
 }
 
