@@ -19,7 +19,22 @@
  * тооцож, бүсээр задлах явдал.
  */
 
-const HJ = "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services";
+/**
+ * ⚠️ ОРЧНЫ ХУВЬСАГЧ (env) — ArcGIS/UBHUB үйлчилгээний ҮНДСЭН хаягуудыг НЭГ дороос
+ * тохируулна (`.env`). `NEXT_PUBLIC_*` нь build үед шингэдэг (статик export).
+ *
+ * ⚠️ Env өгөгдөөгүй бол доорх FALLBACK (одоогийн ажиллаж буй утга) хэрэглэгдэнэ —
+ * гол ажиллагаа env-гүйгээр ч эвдрэхгүй. Бүх дэд үйлчилгээ (ET, GAZAR, IMAGERY г.м.)
+ * эдгээр суурьнаас template-ээр гардаг тул зөвхөн энд солиход хангалттай.
+ */
+const env = (v: string | undefined, fallback: string): string =>
+  v == null || v === '' ? fallback : v;
+
+/** Үндсэн байгууллагын FeatureServer суурь (org: HJzgwvlNIXssnQar) */
+const HJ = env(
+  process.env.NEXT_PUBLIC_ARCGIS_HJ,
+  "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services",
+);
 
 /** Бүх вектор давхаргын эх — НЭГ FeatureServer */
 export const ET = `${HJ}/Selbe_ET_20260721/FeatureServer`;
@@ -58,24 +73,25 @@ export const ET_PKG = `${HJ}/Selbe_ET_20260725/FeatureServer`;
  * `VectorTileContainer._renderBackgroundLayers` дээр «Cannot destructure property
  * 'spans' of null» гэж унадаг. Мөн 2D-д ортофото түүнийг бүрэн бүрхдэг.
  */
-export const BASEMAP_URL =
-  "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer";
 
 /**
  * ArcGIS Online нэвтрэлт (OAuth 2.0, PKCE — сервергүй статик сайтад тохирно).
  * `appId` хоосон бол нэвтрэлт УНТРААЛТТАЙ.
  */
 export const AUTH = {
-  /** ArcGIS OAuth appId. Унтраахдаа хоосон "" болгоно (нэвтрэлтгүй ажиллана). */
-  appId: "ZPJRqk1iiYcjYRLv",
+  /**
+   * ArcGIS OAuth appId (`NEXT_PUBLIC_AUTH_APP_ID`). Хоосон "" бол нэвтрэлт УНТРААЛТТАЙ.
+   * ⚠️ `??` — env-д ЗӨВХӨН хоосон бичвэл унтраана; огт өгөөгүй бол fallback (асаалттай).
+   */
+  appId: process.env.NEXT_PUBLIC_AUTH_APP_ID ?? "ZPJRqk1iiYcjYRLv",
   /**
    * ⚠️ Байгууллагын хаяг (`monmap.maps.arcgis.com`) БИШ. Тэр домэйн ArcGIS
    * Online-ы «Allowed origins» цагаан жагсаалтыг мөрддөг тул dev дээр токен
    * солилт CORS-д хаагддаг. `www.arcgis.com` аль ч origin-ыг зөвшөөрнө;
    * байгууллагаар хязгаарлах ажлыг `allowedOrgId` хийнэ.
    */
-  portalUrl: "https://www.arcgis.com",
-  allowedOrgId: "HJzgwvlNIXssnQar",
+  portalUrl: env(process.env.NEXT_PUBLIC_PORTAL_URL, "https://www.arcgis.com"),
+  allowedOrgId: env(process.env.NEXT_PUBLIC_ALLOWED_ORG_ID, "HJzgwvlNIXssnQar"),
 } as const;
 
 /** Эхлэх байрлал — төслийн талбайн төв */
@@ -405,8 +421,10 @@ const SURVEY_FS = `${HJ}/survey123_e98bd4b642f84c9fb688f754de7cb83a_results/Feat
  * эх сурвалж болж дахин ашиглагдана. Зөвхөн `gazar` харагдацад хэрэглэнэ —
  * `LAYER_GROUPS`/`PLAN_LAYER_IDS`-д ОРОХГҮЙ тул бусад каталог/нийлбэрт гарахгүй.
  */
-const GAZAR_FS =
-  "https://services-ap1.arcgis.com/ACqsMOmNLi5wIdIh/arcgis/rest/services";
+const GAZAR_FS = env(
+  process.env.NEXT_PUBLIC_ARCGIS_GAZAR,
+  "https://services-ap1.arcgis.com/ACqsMOmNLi5wIdIh/arcgis/rest/services",
+);
 
 /** Барилгын үнэлгээ — полигон доторх барилгуудын тоо/талбай/өртөг */
 export const GAZAR_BUILDING = {
@@ -470,7 +488,7 @@ export const BUILDING = {
  * тэмдэгт мөр («259,778,021,987») тул тоо руу задлан хөрвүүлнэ.
  */
 export const CASHFLOW = {
-  url: "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/BUS_cashflow/FeatureServer/0",
+  url: `${HJ}/BUS_cashflow/FeatureServer/0`,
   fields: {
     zone: "ZONE_ID",
     budget: "A5", // Урьдчилсан төсөвт өртөг
@@ -530,7 +548,7 @@ export const CASHFLOW = {
  * нь дурын журмаар хасвал төрлийн задаргаа эх тайлангаас зөрнө.
  */
 export const INVEST = {
-  url: "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/_%D0%A5%D3%A9%D1%80%D3%A9%D0%BD%D0%B3%D3%A9_%D0%BE%D1%80%D1%83%D1%83%D0%BB%D0%B0%D0%BB%D1%82_%D3%A9%D1%80%D1%82%D3%A9%D0%B320260706/FeatureServer/249",
+  url: `${HJ}/_%D0%A5%D3%A9%D1%80%D3%A9%D0%BD%D0%B3%D3%A9_%D0%BE%D1%80%D1%83%D1%83%D0%BB%D0%B0%D0%BB%D1%82_%D3%A9%D1%80%D1%82%D3%A9%D0%B320260706/FeatureServer/249`,
   oid: "ObjectID",
   fields: {
     type: "Төрөл", // «1.БАРИЛГА УГСРАЛТ» … «9.ОЛОН НИЙТИЙН БҮС…»
@@ -659,7 +677,7 @@ export const zoneKey = (v: unknown): string => {
  * зэрэгцүүлбэл «төлөвлөгөөнөөс хоцорсон» дүгнэлт хиймлээр гарна.
  */
 export const PROJECT_PROGRESS = {
-  url: 'https://services.arcgis.com/HJzgwvlNIXssnQar/ArcGIS/rest/services/%D0%A2%D3%A9%D1%81%D3%A9%D0%BB_%D0%93%D2%AF%D0%B9%D1%86%D1%8D%D1%82%D0%B3%D1%8D%D0%BB_/FeatureServer/250',
+  url: `${HJ}/%D0%A2%D3%A9%D1%81%D3%A9%D0%BB_%D0%93%D2%AF%D0%B9%D1%86%D1%8D%D1%82%D0%B3%D1%8D%D0%BB_/FeatureServer/250`,
   oid: 'ObjectID',
   fields: {
     no: 'Д_Д',                      // «6.2.1.1» — эхний тоо нь үе шат
@@ -694,7 +712,7 @@ export const PROJECT_PROGRESS = {
  * нийлбэр — Барилгын хяналтын «нийт гүйцэтгэл» ҮҮНИЙГ шууд авна.
  */
 export const TASK_SHEET = {
-  url: "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/Selbe_guitsetgel_consolidated/FeatureServer/0",
+  url: `${HJ}/Selbe_guitsetgel_consolidated/FeatureServer/0`,
   oid: "OBJECTID",
   /** Барилга угсралтын ажлын үе шатын № — нийт гүйцэтгэлийн мөр */
   constructionNo: "Б.",
@@ -755,7 +773,7 @@ export const PARCEL_LEFT = {
   // Чөлөөлөгдөөгүй (үлдсэн) нэгж талбар — `selbe_parcel_last0731` (2026-07-31).
   // ⚠️ Нийт 2,119 объект, гэхдээ зөвхөн 182-т `явцын_мэдээ` бий (үлдсэн 1,937 нь
   //    null — арын context талбар). Давхаргын дугаар нь /11 (0 биш).
-  url: "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/selbe_parcel_last0731/FeatureServer/11",
+  url: `${HJ}/selbe_parcel_last0731/FeatureServer/11`,
   fields: {
     /**
      * ТӨЛӨВ — бүх 2,119 объектыг ангилдаг ГОЛ талбар (газрын зургийн будалт).
@@ -1902,7 +1920,7 @@ export const LAYERS: LayerDef[] = [
     n: 0,
     /* ⚠️ ӨӨР org (services-ap1 / ACqsMOmNLi5wIdIh) — бүтэн URL. OID нь `FID`
        (OBJECTID биш) тул буруу нэрээр COUNT() асуувал хүсэлт бүхэлдээ унана. */
-    url: "https://services-ap1.arcgis.com/ACqsMOmNLi5wIdIh/arcgis/rest/services/%D0%A1%D1%8D%D0%BB%D0%B1%D1%8D_2_khil/FeatureServer/0",
+    url: `${GAZAR_FS}/%D0%A1%D1%8D%D0%BB%D0%B1%D1%8D_2_khil/FeatureServer/0`,
     oid: "FID",
     title: "Сэлбэ 2 хил",
     topic: "plan",
@@ -2131,7 +2149,10 @@ export const zoneWhere = (l: LayerDef, id: string): string | null => {
 
 /* ══════════════════════ Растр ба 3D ══════════════════════ */
 
-const UBHUB = "https://mapservice.ubhub.mn/arcgis/rest/services/Imagery";
+const UBHUB = env(
+  process.env.NEXT_PUBLIC_UBHUB_IMAGERY,
+  "https://mapservice.ubhub.mn/arcgis/rest/services/Imagery",
+);
 
 /**
  * Агаарын зураг — 9 ImageServer нэг бүрхэвч болж залгана. СУУРЬ тул хэрэглэгчийн
@@ -2164,7 +2185,10 @@ export const IMAGERY = {
  * ArcGIS Server рүү шууд ордог тул `allowedOrigins: *` тохиргоо ажиллаж, аль ч
  * origin-д ACAO буцаана. Гэрчилгээ нь хүчинтэй.
  */
-const UBHUB_SCENE = "https://arcgis.ubhub.mn:6443/arcgis/rest/services/Hosted";
+const UBHUB_SCENE = env(
+  process.env.NEXT_PUBLIC_UBHUB_SCENE,
+  "https://arcgis.ubhub.mn:6443/arcgis/rest/services/Hosted",
+);
 
 export const SCENE = {
   layers: [
@@ -2185,8 +2209,10 @@ export const SCENE = {
  * Гадаргуугийн өндөр — 3D-д ЗААВАЛ. Меш нь 1325–1440 м ортометрик өндөрт байх
  * бөгөөд хавтгай (0 м) гадаргуу дээр вектор давхаргууд түүний ~1350 м доор үлдэнэ.
  */
-export const ELEVATION_URL =
-  "https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer";
+export const ELEVATION_URL = env(
+  process.env.NEXT_PUBLIC_ELEVATION_URL,
+  "https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer",
+);
 
 /**
  * УСАН САН — ЗӨВХӨН 3D/BIM горимд нэмэгдэх талбайн давхарга (6 полигон).
@@ -2217,8 +2243,10 @@ export const USAN_SAN = {
  * бүтээсэн загвар (давхар, хана, инженерийн систем) тул BIM горимд меш нь
  * хасагдаж, эдгээр нь оронд нь харагдана.
  */
-const BIM_ROOT =
-  "https://tiles.arcgis.com/tiles/HJzgwvlNIXssnQar/arcgis/rest/services";
+const BIM_ROOT = env(
+  process.env.NEXT_PUBLIC_BIM_ROOT,
+  "https://tiles.arcgis.com/tiles/HJzgwvlNIXssnQar/arcgis/rest/services",
+);
 
 export const BIM = {
   layers: Array.from({ length: 12 }, (_, i) => {
