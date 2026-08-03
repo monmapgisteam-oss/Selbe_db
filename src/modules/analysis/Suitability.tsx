@@ -7,7 +7,7 @@ import type Polygon from '@arcgis/core/geometry/Polygon';
 
 import {
   INDICATORS, PARKING, MAP_LAYERS, BUILD_COST_PER_M2, DEFAULT_ECON_SHARE,
-  SCORE_LEVELS, levelOf, ACTIVATABLE_ZONE_TYPES,
+  SCORE_LEVELS, levelOf, ACTIVATABLE_ZONE_TYPES, NO_DATA_COLOR,
   type Indicator, type ParkingOpt, type CategoryKey,
 } from '@/lib/analysis/config';
 import {
@@ -34,6 +34,16 @@ import {
 import { loadRoadNetworkCached, assignLoads } from './suit/roadNet';
 import type { Network } from './suit/traffic';
 import type { TrafficStats } from './suit/TrafficOverlay';
+import { TransportPanel } from './suit/TransportPanel';
+import {
+  tPaint, tRanks, tModeDef, tRange, tNormFor, tColor, buildingValue,
+  type TMode, type TransportCtx,
+} from './suit/transportModes';
+import { densityHeat, transportHeat, MAP_STYLES, type MapStyle } from './suit/heat';
+import { CAT_LABEL, BUS_BAND_LABEL } from '@/lib/analysis/transport';
+import { loadBuildingsCached, type BuildingPt } from './suit/buildings';
+import { assignRoadDemand } from './suit/roadDemand';
+import { loadBusStopsCached, busAccess, type BusStop } from './suit/busAccess';
 import { SuitLayerCatalog } from './suit/LayerCatalog';
 import { Icon } from '@/components/Icon';
 import { BlendCard } from './suit/BlendCard';
@@ -96,6 +106,18 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
   const [simKind, setSimKind] = useState<SimKind>('density');
   /** Хүн амын төрөл — «Хүн амын төвлөрөл» симуляцад (оршин суугч ↔ хүчин чадал) */
   const [popBasis, setPopBasis] = useState<PopBasis>('resident');
+  /**
+   * Тээвэр-идэвхийн дүрслэл ба тэр самбар ИДЭВХТЭЙ эсэх.
+   * ⚠️ `simKind`-тэй ХАМТ оршино: аль самбар сүүлд дарагдсан нь газрын зургийг
+   * буддаг. Тээвэр идэвхтэй үед бүсийн будалт саарал болж, барилга/зам тодрно.
+   */
+  const [tMode, setTMode] = useState<TMode>('trips');
+  const [tActive, setTActive] = useState(false);
+  /**
+   * Симуляцын газрын зургийн ХЭВ МАЯГ — полигон (хил хэвээр) ↔ дулааны гадаргуу.
+   * ⚠️ Зөвхөн «Симуляц» горимд үйлчилнэ; оноололын будалтыг хөндөхгүй.
+   */
+  const [mapStyle, setMapStyle] = useState<MapStyle>('poly');
   /** Трафик timeline-ийн цаг (замын симуляц + ирээдүйд газрын зургийн анимац) */
   const clock = useSimClock();
   const [parking, setParking] = useState<ParkingOpt>({ ...PARKING });
@@ -181,8 +203,37 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
   /** Симуляцын хэмжүүрийн хязгаар — нормчилол ба легендэд (харагдах бүсээр). */
   const simRng = useMemo(() => simRange(rows, simKind, popBasis), [rows, simKind, popBasis]);
 
+  /**
+   * Бүсүүд симуляцын хэмжүүрээр ЭРЭМБЭЛСЭН нь — hover панелийн «эрэмбэ» ба
+   * «дунджаас» мөрүүдэд. ⚠️ Самбарын жагсаалт хасагдсан тул энэ нь эрэмбийн
+   * цорын ганц хэрэглэгч болсон.
+   */
+  const simRanked = useMemo(() => {
+    if (mode !== 'simulation') return [];
+    return rows
+      .map((r) => ({ id: r.id, v: simMetric(r, simKind, popBasis).value }))
+      .filter((x): x is { id: string; v: number } => x.v != null && x.v > 0)
+      .sort((a, b) => b.v - a.v);
+  }, [rows, simKind, popBasis, mode]);
+
   /* ── Замын ачаалал: сүлжээг ХЭРЭГТЭЙ болоход нь ачаална ── */
-  const roadMode = mode === 'simulation' && simKind === 'road';
+  const roadMode = mode === 'simulation' && !tActive && simKind === 'road';
+  /** Тээвэр-идэвхийн самбар газрын зургийг буддаг эсэх */
+  const transportMode = mode === 'simulation' && tActive;
+  /** ⚠️ Замын сүлжээг ХОЁУЛАА хэрэглэнэ — агентын симуляц ба эрэлтийн хуваарилалт */
+  const needNet = roadMode || transportMode;
+  /**
+   * Идэвхтэй дүрслэлд дулааны гадаргуу утга ЗҮЙТЭЙ эсэх.
+   * ⚠️ Heatmap цөмүүдийг НЭМДЭГ тул зөвхөн хуримтлагдах хэмжигдэхүүнд утгатай —
+   * зай (хүртээмж, автобус) ба машин агентын симуляц (ачаалал) хамаарахгүй.
+   */
+  const heatable = transportMode ? tModeDef(tMode).heatable : simDef(simKind).heatable;
+  const heatOn = mode === 'simulation' && mapStyle === 'heat' && heatable;
+  /**
+   * ⚠️ Барилгын өгөгдөл нь тээврийн самбарт ЗӨВХӨН хэрэгтэй биш: «Төвлөрөл»-ийн
+   * дулааны гадаргуу ч барилгын центроидоос гардаг тул тэнд ч татна.
+   */
+  const needBuildings = tActive || heatOn;
   /** Оргил цагт сүлжээнд зэрэг явах машин — бүсийн хүн амаас (гараар өгөөгүй) */
   const peakCars = useMemo(() => peakVehicles(scoredRows), [scoredRows]);
   const [roadNet, setRoadNet] = useState<Network | null>(null);
@@ -190,9 +241,10 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
   const [trafficStats, setTrafficStats] = useState<TrafficStats | null>(null);
 
   useEffect(() => {
-    // ⚠️ 3.9 мянган хэрчмийг «Ачаалал» табыг НЭЭХЭД л татна — бусад горимд
-    //    хэрэггүй траффик үүсгэхгүй. `loadRoadNetworkCached` нь дахин татахгүй.
-    if (!roadMode || roadNet || !rows.length) return;
+    // ⚠️ 3.9 мянган хэрчмийг ХЭРЭГТЭЙ болоход л татна («Ачаалал» эсвэл
+    //    тээвэр-идэвх) — бусад горимд хэрэггүй траффик үүсгэхгүй.
+    //    `loadRoadNetworkCached` нь дахин татахгүй.
+    if (!needNet || roadNet || !rows.length) return;
     let alive = true;
     loadRoadNetworkCached()
       .then((net) => {
@@ -205,7 +257,68 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
         if (alive) setRoadErr(e instanceof Error ? e.message : String(e));
       });
     return () => { alive = false; };
-  }, [roadMode, roadNet, rows]);
+  }, [needNet, roadNet, rows]);
+
+  /* ── Тээвэр-идэвх: барилга ба автобусны буудлыг самбарыг нээхэд татна ── */
+  const [tData, setTData] = useState<{ buildings: BuildingPt[]; stops: BusStop[] } | null>(null);
+  const [tErr, setTErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!needBuildings || tData || tErr) return;
+    let alive = true;
+    Promise.all([loadBuildingsCached(), loadBusStopsCached()])
+      .then(([buildings, stops]) => { if (alive) setTData({ buildings, stops }); })
+      .catch((e: unknown) => {
+        console.error('[selbe] тээвэр-идэвх:', e);
+        if (alive) setTErr(e instanceof Error ? e.message : String(e));
+      });
+    return () => { alive = false; };
+  }, [needBuildings, tData, tErr]);
+
+  /**
+   * Тээврийн БҮХ тооцоо — барилга, зам, автобус гурав нэг дор.
+   * ⚠️ Замд хуваарилалт нь 363 барилга × ~4 мянган ирмэг тул memo ЗААВАЛ:
+   * дүрслэл сэлгэх бүрд дахин бодвол интерфейс мэдэгдэхүйц гацна.
+   */
+  const tCtx = useMemo<TransportCtx | null>(() => {
+    if (!tData || !roadNet) return null;
+    return {
+      buildings: tData.buildings,
+      stops: tData.stops,
+      net: roadNet,
+      demand: assignRoadDemand(roadNet, tData.buildings),
+      bus: busAccess(tData.buildings, tData.stops, roadNet.unitsPerMeter),
+    };
+  }, [tData, roadNet]);
+
+  /**
+   * ⚠️ Дулаан горимд Ч будалтыг тооцно — зөвхөн БҮДЭГ болгоно (`transportFaint`).
+   * Шалтгаан: hover панель нь ЭНЭ дүрсүүд дээр л ажилладаг тул тэднийг огт
+   * зурахгүй бол дулааны гадаргуу дээр юу ч дарж уншиж чадахгүй болно.
+   */
+  const transportPaint = useMemo(
+    () => (transportMode && tCtx ? tPaint(tMode, tCtx) : null),
+    [transportMode, tCtx, tMode],
+  );
+
+  /** Дүрслэлийн эрэмбэ — ЗӨВХӨН hover панель ашиглана (жагсаалт самбараас хасагдсан) */
+  const tRankMap = useMemo(() => (tCtx ? tRanks(tMode, tCtx) : null), [tCtx, tMode]);
+
+  /** Дулааны гадаргууны цэгүүд — «Симуляц» горимд, дүрслэл нь дулаанд тохирвол. */
+  const heat = useMemo(() => {
+    if (!heatOn) return null;
+    if (transportMode) return tCtx ? transportHeat(tCtx, tMode) : null;
+    // ⚠️ Төвлөрлийн дулаан нь БАРИЛГЫН центроидоос гарна (бүсийн центроидоос БИШ),
+    //    жин нь АБСОЛЮТ хүний тоо. Бүсийн ангиллын шүүлт `zoneIds`-ээр дамжина.
+    if (!tData) return null;
+    const zoneIds = new Set(rows.filter((r) => !catOff.has(r.type)).map((r) => r.id));
+    return densityHeat(tData.buildings, popBasis, zoneIds);
+  }, [heatOn, transportMode, tCtx, tMode, tData, popBasis, rows, catOff]);
+
+  /** Тээврийн дүрслэл сонгох — энэ самбарыг идэвхжүүлж, бүсийн будалтыг тавьж өгнө */
+  const pickTMode = useCallback((m: TMode) => { setTMode(m); setTActive(true); }, []);
+  /** Бүсийн симуляц сонгох — тээврийн самбар идэвхгүй болж, будалт бүс рүү буцна */
+  const pickSimKind = useCallback((k: SimKind) => { setSimKind(k); setTActive(false); }, []);
 
   /**
    * «Ачаалал» табд ЗАМЫН ТАЛБАЙГ автоматаар асаана — машин агентууд юун дээр
@@ -223,23 +336,41 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
   }, [roadMode]);
 
   const colorOf = useCallback(
-    (r: MapRow) =>
-      mode === 'simulation'
+    (r: MapRow) => {
+      // ⚠️ Тээвэр-идэвх идэвхтэй үед БҮС бүгд «өгөгдөлгүй» өнгөтэй болно —
+      //    газрын зургийн мессеж нь барилга/зам тул бүсийн дулаан будалт
+      //    түүнийг зөвхөн бүрхэнэ (`SuitMap` үүнийг цайвар дэвсгэр болгож зурна).
+      if (transportMode) return NO_DATA_COLOR;
+      return mode === 'simulation'
         ? simColor(simDef(simKind).ready ? simNorm(simMetric(r, simKind, popBasis).value, simRng) : null)
-        : scoreColor(valueOf(r as Row, mode, ind, econShare)),
-    [mode, ind, econShare, simKind, popBasis, simRng],
+        : scoreColor(valueOf(r as Row, mode, ind, econShare));
+    },
+    [mode, ind, econShare, simKind, popBasis, simRng, transportMode],
   );
   /** Бүс газрын зурагт харагдах эсэх — ангиллын шүүлтээр (унтраасан нь бүдгэрнэ) */
   const shown = useCallback((r: MapRow) => !catOff.has(r.type), [catOff]);
 
   /* ── Hover панелийн HTML (эх аппын адил мөрөөр) ── */
   const zoneTip = useCallback((r: MapRow) => {
-    // Симуляцын горим — дулааны хэмжүүр (оноололын норм-шалгалтаас өөр)
+    /**
+     * СИМУЛЯЦЫН hover панель — оноололынхоос ТУСДАА бүтэцтэй.
+     * ⚠️ Эрэмбийн жагсаалт самбараас хасагдсан тул энэ панель нь бүсийн ЭРЭМБЭ,
+     * ДУНДЖААС хэр зөрж буй, хамгийн ихтэй харьцуулсан харьцааг ӨӨРӨӨ авч явна —
+     * өөрөөр хэлбэл хуучин жагсаалтын мэдээллийг бүхэлд нь орлоно.
+     */
     if (mode === 'simulation') {
       const def = simDef(simKind);
       const m = simMetric(r, simKind, popBasis);
       const t = def.ready ? simNorm(m.value, simRng) : null;
       const dt = (k: string, v: string) => `<dt>${k}</dt><dd>${v}</dd>`;
+
+      const vals = simRanked;
+      const rank = m.value == null ? null : vals.findIndex((x) => x.id === r.id) + 1;
+      const avg = vals.length ? vals.reduce((a, x) => a + x.v, 0) / vals.length : 0;
+      const diff = m.value != null && avg > 0 ? ((m.value - avg) / avg) * 100 : null;
+      const diffTxt = diff == null ? '—'
+        : `<b style="color:${diff > 0 ? '#fb923c' : '#4ade80'}">${diff > 0 ? '+' : ''}${Math.round(diff)}%</b>`;
+
       return `
         <div class="t">
           <b>${esc(r.id)}</b>
@@ -247,7 +378,9 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
         </div>
         <div class="sub2">${esc(r.type)} · ${nf(r.areaHa, 2)} га</div>
         <dl>
-          ${dt(esc(def.label), m.text)}
+          ${dt(esc(def.label), `<b>${m.text}</b>`)}
+          ${dt('Эрэмбэ', rank && rank > 0 ? `<b>${rank}</b> / ${vals.length}` : '—')}
+          ${dt('Дунджаас', diffTxt)}
           ${dt('Оршин суугч', nf(r.residentPop))}
           ${dt('Барилга', nf(r.buildingCount))}
         </dl>`;
@@ -278,7 +411,89 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
       </dl>
       ${failed.length ? `<div class="fails">${failed.map((f) =>
         `<div><span>✗ ${esc(f.name)}</span><em>${f.v}</em></div>`).join('')}</div>` : ''}`;
-  }, [mode, ind, indicators, econShare, simKind, popBasis, simRng]);
+  }, [mode, ind, indicators, econShare, simKind, popBasis, simRng, simRanked]);
+
+  /**
+   * ТЭЭВЭР-ИДЭВХИЙН hover панель — барилга · замын хэрчим · автобусны буудал.
+   *
+   * ⚠️ Эрэмбийн ЖАГСААЛТ самбараас хасагдсан тул «энэ объект хэддүгээрт вэ»
+   * гэдгийг ЗӨВХӨН эндээс мэдэх боломжтой — тиймээс эрэмбэ нь заавал байна.
+   */
+  const transportTip = useCallback((kind: 'b' | 'r' | 's', idx: number): string | null => {
+    if (!tCtx || !tRankMap) return null;
+    const def = tModeDef(tMode);
+    const dt = (k: string, v: string) => `<dt>${k}</dt><dd>${v}</dd>`;
+    const rankOf = (i: number) => {
+      const r = tRankMap.rank.get(i);
+      return r ? `<b>${r}</b> / ${tRankMap.total}` : '—';
+    };
+
+    if (kind === 'b') {
+      const b = tCtx.buildings[idx];
+      if (!b) return null;
+      const v = buildingValue(b, tMode, tCtx, idx);
+      // ⚠️ Одоогийн дүрслэлд хамаарахгүй барилга — панель харуулахгүй (бүдэг зурагдсан)
+      if (v == null) return null;
+      const t = tNormFor(tMode, v, tRange(tMode, tCtx));
+      const acc = tCtx.bus.access[idx];
+      const link = tCtx.demand.links[idx];
+      return `
+        <div class="t">
+          <b>${esc(b.purpose || CAT_LABEL[b.cat])}</b>
+          <span class="st" style="background:${tColor(tMode, t)};color:#1a1205">${
+        t == null ? '—' : Math.round(t * 100)}</span>
+        </div>
+        <div class="sub2">${esc(CAT_LABEL[b.cat])}${b.zone ? ` · ${esc(b.zone)}` : ''}</div>
+        <dl>
+          ${dt(esc(def.label), `${nf(v)} ${def.unit}`)}
+          ${dt('Эрэмбэ', rankOf(idx))}
+          ${dt(b.cat === 'residential' ? 'Оршин суугч' : 'Хүчин чадал',
+        nf(b.cat === 'residential' ? b.population : b.capacity))}
+          ${dt('Хүн-зорчилт', `${nf(b.trips)} /ц`)}
+          ${dt('Машин-зорчилт', `${nf(b.vehTrips)} /ц`)}
+          ${dt('Ойрын зам', link ? `${nf(link.distsM[0])} м` : '<b style="color:#f87171">холбогдоогүй</b>')}
+          ${dt('Автобус', acc ? `${nf(acc.distM)} м · ${esc(BUS_BAND_LABEL[acc.band])}` : '—')}
+        </dl>`;
+    }
+
+    if (kind === 'r') {
+      const e = tCtx.net.edges[idx];
+      const v = tCtx.demand.edgeDemand[idx];
+      if (!e || !(v > 0)) return null;
+      const t = tCtx.demand.max > 0 ? v / tCtx.demand.max : 0;
+      return `
+        <div class="t">
+          <b>Замын хэрчим</b>
+          <span class="st" style="background:${tColor(tMode, t)};color:#1a1205">${Math.round(t * 100)}</span>
+        </div>
+        <div class="sub2">${nf(e.length / tCtx.net.unitsPerMeter)} м урт</div>
+        <dl>
+          ${dt('Эрэлт', `${nf(v)} машин/ц`)}
+          ${dt('Эрэмбэ', rankOf(idx))}
+          ${dt('Индекс', `${Math.round(t * 100)} / 100`)}
+        </dl>
+        <div class="fails"><div><span>Хамгийн ачаалалтай зам = 100</span><em>V/C биш</em></div></div>`;
+    }
+
+    const st = tCtx.stops[idx];
+    if (!st) return null;
+    const demand = tCtx.bus.stopDemand[idx];
+    let served = 0;
+    let servedPop = 0;
+    for (let i = 0; i < tCtx.buildings.length; i++) {
+      if (tCtx.bus.access[i]?.stop !== idx) continue;
+      served++;
+      if (tCtx.buildings[i].cat === 'residential') servedPop += tCtx.buildings[i].population;
+    }
+    return `
+      <div class="t"><b>Автобусны буудал</b></div>
+      <div class="sub2">#${st.oid}</div>
+      <dl>
+        ${dt('Зорчигчийн эрэлт', `${nf(demand)} /ц`)}
+        ${dt('Үйлчлэх барилга', nf(served))}
+        ${dt('Үйлчлэх оршин суугч', nf(servedPop))}
+      </dl>`;
+  }, [tCtx, tRankMap, tMode]);
 
   const buildingTip = useCallback((a: Record<string, unknown>) => {
     const st = String(a.Barilga_ty ?? '').trim();
@@ -309,15 +524,17 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
   const active = rows.find((r) => r.id === selected) ?? null;
 
   /**
-   * «Симуляц» — ХОЁР ТУСДАА самбар, байрлал нь ТОГТМОЛ:
-   *   · «Хүн амын төвлөрөл» (density) → ЗҮҮН багана
-   *   · «Тээврийн хүртээмж» + «Замын ачаалал» (transit/road) → БАРУУН багана
-   * Хоёулаа НЭГ `simKind`-ийг хуваалцана — дарсан (идэвхтэй) самбар л дэлгэрэнгүй
-   * ба газрын зургийг буддаг, нөгөө нь зөвхөн товчоо харуулна (шилжихгүй).
+   * «Симуляц» — ХОЁР самбар, ТООЦООЛЛЫН НЭГЖЭЭР нь хуваагдана:
+   *   · ЗҮҮН  — «Тээвэр-идэвхийн шинжилгээ» (`TransportPanel`): БАРИЛГА бүрээр
+   *   · БАРУУН — «Бүсийн симуляц» (`Simulation`): БҮС бүрээр
+   *              (төвлөрөл · хүртээмж · ачаалал гурвуулаа)
+   * Аль самбарын товчийг сүүлд дарсан нь газрын зургийг буддаг (`tActive`);
+   * нөгөө нь зөвхөн товчоо харуулна (байрлал шилжихгүй).
    */
   const simCommon = {
     kind: simKind,
-    setKind: setSimKind,
+    setKind: pickSimKind,
+    muted: tActive,
     popBasis,
     setPopBasis,
     clock: {
@@ -335,9 +552,9 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
       stats: trafficStats,
       flat: dim !== '2d',
     },
+    // ⚠️ `selected`/`onSelect` ХАСАГДСАН: эрэмбийн жагсаалт байхгүй болсон тул
+    //    самбар нь бүс сонгодоггүй — сонголт зөвхөн газрын зураг дээр дарж хийгдэнэ.
     rows: rows.filter((r) => !catOff.has(r.type)),
-    selected,
-    onSelect: setSelected,
   };
 
   return (
@@ -390,9 +607,20 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
       <Shell
         left={
           <>
-            {/* «Хүн амын төвлөрөл» симуляц — ЗҮҮН талд ТОГТМОЛ. */}
+            {/* Тээвэр-идэвхийн 7 дүрслэл — ЗҮҮН талд ГАНЦААРАА.
+                ⚠️ «Хүн амын төвлөрөл» нь БАРУУН самбар руу нүүсэн: тэр гурав
+                (төвлөрөл · хүртээмж · ачаалал) бүгд БҮСЭЭР тооцогддог тул нэг
+                дор байх нь логиктой; зүүн тал БАРИЛГА-аар тооцох шинжилгээнд
+                бүтнээрээ үлдэнэ. */}
             {mode === 'simulation' && (
-              <Simulation {...simCommon} kinds={['density']} title="Хүн амын төвлөрөл" />
+              <TransportPanel
+                mode={tMode}
+                setMode={pickTMode}
+                active={tActive}
+                ctx={tCtx}
+                loading={tActive && !tCtx}
+                error={tErr}
+              />
             )}
 
             {/* ⚠️ Давхаргын жагсаалт нь зүүн rail-ийн картаас газрын зурган дээрх
@@ -468,6 +696,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
               layerOn={layerOn}
               zoneTip={zoneTip}
               buildingTip={buildingTip}
+              transportTip={transportMode ? transportTip : undefined}
               traffic={roadMode && roadNet ? {
                 net: roadNet,
                 minuteRef: clock.minuteRef,
@@ -476,6 +705,9 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
                 maxCars: peakCars,
                 onStats: setTrafficStats,
               } : undefined}
+              transportPaint={transportPaint}
+              transportFaint={mapStyle === 'heat'}
+              heat={heat}
             />
 
             {/* Каталог — «Ерөнхий төлөвлөгөө»-тэй ижил ЗҮҮН талын БҮТЭН ӨНДӨР
@@ -505,6 +737,34 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
                 <Icon name="layers" size={15} />
                 Давхарга
               </button>
+
+              {/* Полигон ↔ дулаан — ЗӨВХӨН «Симуляц» горимд.
+                  ⚠️ Гурван самбар бүрд давтахгүй: энэ нь ЗУРГИЙН тохиргоо тул
+                  зургийн удирдлагын мөрөнд байх нь зөв. */}
+              {mode === 'simulation' && (
+                <div className={s.mapDims} role="group" aria-label="Симуляцын дүрслэл">
+                  {MAP_STYLES.map((v) => {
+                    // ⚠️ Дулаан нь ЗАЙД (хүртээмж, автобус) ба машин агентын
+                    //    симуляцад (ачаалал) утгагүй тул тэнд товч ИДЭВХГҮЙ —
+                    //    дарж болох мөртлөө юу ч болохгүй байвал эвдэрсэн мэт санагдана.
+                    const off = v.key === 'heat' && !heatable;
+                    return (
+                      <button
+                        key={v.key}
+                        type="button"
+                        disabled={off}
+                        aria-pressed={!off && mapStyle === v.key}
+                        title={off ? 'Энэ дүрслэлд дулааны гадаргуу утгагүй (зай/агент симуляц)' : v.title}
+                        className={`${s.dimBtn} ${!off && mapStyle === v.key ? s.dimOn : ''}`}
+                        style={off ? { opacity: 0.4, cursor: 'not-allowed' } : undefined}
+                        onClick={() => setMapStyle(v.key)}
+                      >
+                        {v.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
 
               <div className={s.mapDims} role="group" aria-label="Газрын зургийн харагдац">
                 {(['2d', '3d', 'bim'] as Dim[]).map((d) => (
@@ -536,10 +796,12 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
           </>
         }
         right={
-          // «Симуляц» горим: «Тээвэр · Ачаалал» самбар ЭНД БАРУУНД тогтмол.
+          // «Симуляц» горим: БҮСЭЭР тооцогддог гурван симуляц ЭНД БАРУУНД.
           // Бусад горимд ердийн картууд (жин, зогсоол г.м.).
+          // ⚠️ Картын гарчигт төрлүүдээ ЖАГСААХГҮЙ — доорх гурван товч аль хэдийн
+          //    «Төвлөрөл · Хүртээмж · Ачаалал» гэж бичсэн тул давхардал болно.
           mode === 'simulation' ? (
-            <Simulation {...simCommon} kinds={['transit', 'road']} title="Тээвэр · ачаалал" />
+            <Simulation {...simCommon} kinds={['density', 'transit', 'road']} title="Бүсийн симуляц" />
           ) : (
           <>
             {/* ⚠️ Нийлмэл горимд ЗӨВХӨН хуваарилалтын карт: хот төлөвлөлт болон
