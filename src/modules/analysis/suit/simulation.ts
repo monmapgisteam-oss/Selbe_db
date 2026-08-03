@@ -69,7 +69,7 @@ export const SIM_KINDS: SimDef[] = [
   },
 ];
 
-/** БНбД 30-01-24, 10.22 — ойрын буудал хүртэл 500 м-ээс ихгүй */
+/** БНБД 30-01-24, 10.22 — ойрын буудал хүртэл 500 м-ээс ихгүй */
 export const TRANSIT_NORM_M = 500;
 
 export const simDef = (kind: SimKind): SimDef =>

@@ -72,7 +72,7 @@ export function Shell({ left, map, right }: { left: ReactNode; map: ReactNode; r
   };
 
   return (
-    <main ref={shell} className={s.shell}>
+    <main ref={shell} className={`${s.shell} ${right == null ? s.shellNoRight : ''}`}>
       <aside className={`${s.panel} ${s.left}`}>{left}</aside>
       <div
         className={`${s.resizer} ${dragging === '--left-w' ? s.resizerActive : ''}`}
@@ -88,13 +88,19 @@ export function Shell({ left, map, right }: { left: ReactNode; map: ReactNode; r
       >
         {map}
       </div>
-      <div
-        className={`${s.resizer} ${dragging === '--right-w' ? s.resizerActive : ''}`}
-        title="Чирж өргөсгөнө · давхар товшиж анхны хэмжээнд буцаана"
-        onPointerDown={start('--right-w', 'right')}
-        onDoubleClick={reset('--right-w')}
-      />
-      <aside className={`${s.panel} ${s.right}`}>{right}</aside>
+      {/* Баруун багана ХООСОН (null) бол баганыг ч, чирэгчийг ч нуулгана —
+          жишээ «Симуляц» горимд самбар зүүн тийш шилжсэн тул баруун хоосорно. */}
+      {right != null && (
+        <>
+          <div
+            className={`${s.resizer} ${dragging === '--right-w' ? s.resizerActive : ''}`}
+            title="Чирж өргөсгөнө · давхар товшиж анхны хэмжээнд буцаана"
+            onPointerDown={start('--right-w', 'right')}
+            onDoubleClick={reset('--right-w')}
+          />
+          <aside className={`${s.panel} ${s.right}`}>{right}</aside>
+        </>
+      )}
     </main>
   );
 }

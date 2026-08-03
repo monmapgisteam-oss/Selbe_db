@@ -7,7 +7,7 @@ import type Polygon from '@arcgis/core/geometry/Polygon';
 
 import {
   INDICATORS, PARKING, MAP_LAYERS, BUILD_COST_PER_M2, DEFAULT_ECON_SHARE,
-  SCORE_LEVELS, levelOf,
+  SCORE_LEVELS, levelOf, ACTIVATABLE_ZONE_TYPES,
   type Indicator, type ParkingOpt, type CategoryKey,
 } from '@/lib/analysis/config';
 import {
@@ -52,7 +52,6 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
   const [data, setData] = useState<AnalysisData | null>(null);
   const [costs, setCosts] = useState<Costs | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [prog, setProg] = useState({ msg: 'Эхлүүлж байна…', pct: 0 });
   const [projected, setProjected] = useState(false);
   const geomRef = useRef(new Map<string, Polygon | null>());
 
@@ -60,7 +59,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
     let alive = true;
     (async () => {
       try {
-        const d = await loadAnalysisCached((msg, pct) => { if (alive) setProg({ msg, pct: pct * 0.9 }); });
+        const d = await loadAnalysisCached();
         if (!alive) return;
 
         // Дүрслэлийн геометрийг Web Mercator рүү (тооцоо нь UTM дээр хэвээр)
@@ -73,11 +72,9 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
         setData(d);
         setProjected(true);
 
-        setProg({ msg: 'Дэд бүтцийн өртөг…', pct: 94 });
         const c = await loadCosts();
         if (!alive) return;
         setCosts(c);
-        setProg({ msg: 'Бэлэн', pct: 100 });
       } catch (e: unknown) {
         console.error('[selbe] анализ:', e);
         if (alive) setError(e instanceof Error ? e.message : String(e));
@@ -109,6 +106,12 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
    * Хоосон = бүгд харагдана. Газрын зураг ба эрэмбэд ДИНАМИК үйлчилнэ.
    */
   const [catOff, setCatOff] = useState<Set<string>>(() => new Set());
+  /**
+   * ХАСАГДСАН боловч гараар ОНООЛОЛД ОРУУЛСАН ангиллууд (нийгмийн дэд бүтэц,
+   * газар чөлөөлөлт дутуу). Хоосон = хасагдсан хэвээр (цайвар). «Бүсийн ангилал»
+   * картаас сонгоход энд нэмэгдэж, оноолол дахин тооцогдоно.
+   */
+  const [scoreOn, setScoreOn] = useState<Set<string>>(() => new Set());
   const [econOpt, setEconOpt] = useState<{ pricePerM2: number | null; perHa: number | null }>({
     pricePerM2: null, perHa: null,
   });
@@ -134,20 +137,23 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
 
   const rows = useMemo<Row[]>(() => {
     if (!data || !projected) return [];
-    computeEconomics(data.zones, perHa, econOpt.pricePerM2, buildCost);
-    computeRaw(data.zones, greenCats, parking);
+    computeEconomics(data.zones, perHa, econOpt.pricePerM2, buildCost, scoreOn);
+    computeRaw(data.zones, greenCats, parking, scoreOn);
     return data.zones.map((z) => {
       const u = urbanScore(z.raw, indicators, z.type);
       return { ...z, urban: u.score, parts: u.parts, displayGeom: geomRef.current.get(z.id) ?? null };
     });
-  }, [data, projected, perHa, econOpt.pricePerM2, buildCost, greenCats, parking, indicators]);
+  }, [data, projected, perHa, econOpt.pricePerM2, buildCost, greenCats, parking, indicators, scoreOn]);
 
   /**
    * ОНООЛОЛД орох бүсүүд — ногоон байгууламж, одоо байгаа барилгыг ХАСНА.
    * ⚠️ Газрын зурагт (`rows`) бүх бүс хэвээр (хассан нь саарал), харин эрэмбэ,
    * диаграм, дундаж, эдийн засаг зэрэг ТООЦОО зөвхөн `scoredRows`-оор явна.
    */
-  const scoredRows = useMemo(() => rows.filter((r) => !r.excluded), [rows]);
+  const scoredRows = useMemo(
+    () => rows.filter((r) => !r.excluded || scoreOn.has(r.type)),
+    [rows, scoreOn],
+  );
 
   /** Бүсийн ангиллууд — нэр · тоо · өнгө (ZONE_TYPES дарааллаар). */
   const zoneCats = useMemo(() => {
@@ -302,19 +308,50 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
 
   const active = rows.find((r) => r.id === selected) ?? null;
 
-  /* ── Ачаалж дуусаагүй ── */
-  const ready = data != null && costs != null && projected;
+  /**
+   * «Симуляц» — ХОЁР ТУСДАА самбар, байрлал нь ТОГТМОЛ:
+   *   · «Хүн амын төвлөрөл» (density) → ЗҮҮН багана
+   *   · «Тээврийн хүртээмж» + «Замын ачаалал» (transit/road) → БАРУУН багана
+   * Хоёулаа НЭГ `simKind`-ийг хуваалцана — дарсан (идэвхтэй) самбар л дэлгэрэнгүй
+   * ба газрын зургийг буддаг, нөгөө нь зөвхөн товчоо харуулна (шилжихгүй).
+   */
+  const simCommon = {
+    kind: simKind,
+    setKind: setSimKind,
+    popBasis,
+    setPopBasis,
+    clock: {
+      minute: clock.minute,
+      playing: clock.playing,
+      setPlaying: clock.setPlaying,
+      speed: clock.speed,
+      setSpeed: clock.setSpeed,
+      seek: clock.seek,
+    },
+    road: {
+      edges: roadNet?.edges.length ?? null,
+      peak: peakCars,
+      error: roadErr,
+      stats: trafficStats,
+      flat: dim !== '2d',
+    },
+    rows: rows.filter((r) => !catOff.has(r.type)),
+    selected,
+    onSelect: setSelected,
+  };
 
   return (
     <div className={s.app}>
-      {!ready && (
+      {/* ⚠️ Ачаалалтын бүтэн дэлгэцийн loader ХАСАГДСАН — өгөгдөл ачаалагдах зуур
+          апп шууд нээгдэж, бүсүүд бэлэн болмогцоо газрын зурагт гарна. Зөвхөн
+          АЛДАА гарвал л мессежийг харуулна (алдааг далдлахгүйн тулд). */}
+      {error && (
         <div className={s.loader}>
           <div className={s.loaderBox}>
             <div className={s.loaderTitle}>Сэлбэ дэд төв</div>
             <div className={s.loaderSub}>Тохиромжтой байдлын загварчлал</div>
-            <div className={s.loaderBar}><span style={{ width: `${prog.pct}%` }} /></div>
-            <div className={`${s.loaderMsg} ${error ? s.loaderErr : ''}`}>
-              {error ? `Алдаа гарлаа: ${error}` : prog.msg}
+            <div className={`${s.loaderMsg} ${s.loaderErr}`}>
+              Алдаа гарлаа: {error}
             </div>
           </div>
         </div>
@@ -353,11 +390,14 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
       <Shell
         left={
           <>
+            {/* «Хүн амын төвлөрөл» симуляц — ЗҮҮН талд ТОГТМОЛ. */}
+            {mode === 'simulation' && (
+              <Simulation {...simCommon} kinds={['density']} title="Хүн амын төвлөрөл" />
+            )}
+
             {/* ⚠️ Давхаргын жагсаалт нь зүүн rail-ийн картаас газрын зурган дээрх
                 «Давхарга» товч + каталог руу шилжсэн («Ерөнхий төлөвлөгөө»-тэй
                 ижил зарчим). Доорх `map` слот дахь `SuitLayerCatalog`-ыг үз. */}
-            {/* ⚠️ «Симуляц» карт нь БАРУУН rail-д (доорх `right` слотыг үз) —
-                зүүн талд эрэмбэ/ангилал үлдэнэ. */}
             {mode === 'indicator' && (
               <Card title="Хот төлөвлөлтийн тооцоолол">
                 <CategoryPie
@@ -386,7 +426,13 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
 
             {/* Бүсийн ангилал — Angilal-аар шүүх (газрын зураг + эрэмбэ динамик) */}
             <Card id="zoneCat" title="Бүсийн ангилал" collapsible>
-              <ZoneCatFilter cats={zoneCats} off={catOff} setOff={setCatOff} />
+              <ZoneCatFilter
+                cats={zoneCats}
+                off={catOff}
+                setOff={setCatOff}
+                scoreOn={scoreOn}
+                setScoreOn={setScoreOn}
+              />
             </Card>
 
             {mode !== 'simulation' && (
@@ -490,34 +536,12 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
           </>
         }
         right={
+          // «Симуляц» горим: «Тээвэр · Ачаалал» самбар ЭНД БАРУУНД тогтмол.
+          // Бусад горимд ердийн картууд (жин, зогсоол г.м.).
+          mode === 'simulation' ? (
+            <Simulation {...simCommon} kinds={['transit', 'road']} title="Тээвэр · ачаалал" />
+          ) : (
           <>
-            {mode === 'simulation' && (
-              <Simulation
-                kind={simKind}
-                setKind={setSimKind}
-                popBasis={popBasis}
-                setPopBasis={setPopBasis}
-                clock={{
-                  minute: clock.minute,
-                  playing: clock.playing,
-                  setPlaying: clock.setPlaying,
-                  speed: clock.speed,
-                  setSpeed: clock.setSpeed,
-                  seek: clock.seek,
-                }}
-                road={{
-                  edges: roadNet?.edges.length ?? null,
-                  peak: peakCars,
-                  error: roadErr,
-                  stats: trafficStats,
-                  flat: dim !== '2d',
-                }}
-                rows={rows.filter((r) => !catOff.has(r.type))}
-                selected={selected}
-                onSelect={setSelected}
-              />
-            )}
-
             {/* ⚠️ Нийлмэл горимд ЗӨВХӨН хуваарилалтын карт: хот төлөвлөлт болон
                 эдийн засгийн нарийн тохиргоо нь тухайн табыг сонгоход нэмэгдэнэ. */}
             {mode === 'blend' && (
@@ -538,17 +562,18 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
                   <button
                     type="button"
                     className={s.mini}
-                    title="Анхны утга руу буцаах"
+                    title="Бүх үзүүлэлтийн жинг анхны (default) утга руу нэг дор буцаана"
                     onClick={(e) => { e.stopPropagation(); setIndicators(INDICATORS.map((i) => ({ ...i }))); }}
                   >
-                    Reset
+                    <Icon name="reset" size={11} />
+                    Анхны утга
                   </button>
                 }
               >
                 <p className={`${s.muted} ${s.small}`}>
                   Үзүүлэлт бүр <b>норм хангавал 100 оноо</b>, зөрчвөл 44-өөс дээшгүй оноо авна.
                   Жин нь нийлбэрээрээ 100% болж автоматаар нормчилогдоно.
-                  Босго утгыг БНбД 30-01-24-өөс авсан бөгөөд доорх талбарт засварлаж болно.
+                  Босго утгыг БНБД 30-01-24-өөс авсан бөгөөд доорх талбарт засварлаж болно.
                 </p>
                 <Weights indicators={indicators} setIndicators={setIndicators} totalW={totalW} />
               </Card>
@@ -574,6 +599,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
               </Card>
             )}
           </>
+          )
         }
       />
 
@@ -589,16 +615,23 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
  * `Angilal` (каноник `type`)-аар бүс шүүх. Унтраасан ангилал газрын зурагт
  * бүдгэрч, эрэмбээс хасагдана. Хассан ангилал (ногоон/одоо байгаа) ч энд гарна —
  * тэдгээрийг унтраавал газрын зургаас далдлана.
+ *
+ * ⚠️ ИДЭВХЖҮҮЛЖ БОЛОХ хасагдсан ангилал (`ACTIVATABLE_ZONE_TYPES` — нийгмийн дэд
+ * бүтэц, газар чөлөөлөлт дутуу) нь ЭНД харагдац биш ОНООЛТ-оо удирдана: сонгоогүй
+ * бол цайвар (хасагдсан), сонговол оноолол дахин тооцогдож будагдана. «оноол»
+ * шошготой, `scoreOn`-оор төлөвлөгдөнө.
  */
-function ZoneCatFilter({ cats, off, setOff }: {
+function ZoneCatFilter({ cats, off, setOff, scoreOn, setScoreOn }: {
   cats: { type: string; count: number; color: string }[];
   off: Set<string>;
   setOff: (s: Set<string>) => void;
+  scoreOn: Set<string>;
+  setScoreOn: (s: Set<string>) => void;
 }) {
-  const toggle = (type: string) => {
-    const n = new Set(off);
+  const toggleIn = (set: Set<string>, apply: (s: Set<string>) => void, type: string) => {
+    const n = new Set(set);
     if (n.has(type)) n.delete(type); else n.add(type);
-    setOff(n);
+    apply(n);
   };
   const allOn = off.size === 0;
   return (
@@ -614,25 +647,43 @@ function ZoneCatFilter({ cats, off, setOff }: {
         </button>
       </div>
       {cats.map((c) => {
-        const on = !off.has(c.type);
+        // Идэвхжүүлж болох хасагдсан ангилал — энэ мөр ОНООЛТ-ыг (scoreOn) удирдана
+        // (default: сонгоогүй = цайвар). Бусад ангилалд урьдын адил ХАРАГДАЦ-ыг (off).
+        const activatable = ACTIVATABLE_ZONE_TYPES.has(c.type);
+        const on = activatable ? scoreOn.has(c.type) : !off.has(c.type);
         return (
           <button
             key={c.type}
             type="button"
             aria-pressed={on}
-            onClick={() => toggle(c.type)}
+            title={activatable ? 'Сонговол оноололд орж, газрын зурагт будагдана' : undefined}
+            onClick={() => (activatable
+              ? toggleIn(scoreOn, setScoreOn, c.type)
+              : toggleIn(off, setOff, c.type))}
             style={{
               display: 'flex', alignItems: 'center', gap: 8, width: '100%',
-              padding: '6px 8px', borderRadius: 8, border: '1px solid var(--line)',
+              padding: '6px 8px', borderRadius: 8,
+              border: `1px solid ${activatable && on ? 'var(--accent)' : 'var(--line)'}`,
               background: on ? 'var(--panel-2)' : 'transparent',
               color: on ? 'var(--text)' : 'var(--muted)', textAlign: 'left',
-              transition: 'background .12s, opacity .12s',
+              transition: 'background .12s, opacity .12s, border-color .12s',
             }}
           >
             <span style={{ width: 11, height: 11, borderRadius: 3, flex: 'none', background: c.color, opacity: on ? 1 : 0.35 }} />
             <span style={{ flex: 1, minWidth: 0, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.type}</span>
+            {activatable && (
+              <span style={{
+                fontSize: 9, letterSpacing: '.3px', flex: 'none',
+                color: on ? 'var(--accent)' : 'var(--muted)',
+                border: '1px solid var(--line)', borderRadius: 4, padding: '0 4px',
+              }}>
+                сонгох
+              </span>
+            )}
             <b style={{ fontVariantNumeric: 'tabular-nums', fontSize: 11, color: 'var(--muted)' }}>{c.count}</b>
-            <span style={{ width: 14, textAlign: 'center', color: 'var(--accent)', fontSize: 12 }}>{on ? '✓' : ''}</span>
+            <span style={{ width: 14, textAlign: 'center', color: 'var(--accent)', fontSize: 12 }}>
+              {on ? '✓' : (activatable ? '+' : '')}
+            </span>
           </button>
         );
       })}
