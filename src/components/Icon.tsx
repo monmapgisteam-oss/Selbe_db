@@ -35,6 +35,9 @@ const P: Record<string, string> = {
 
   /* Баримт бичиг — эвхэгдсэн булантай хуудас (ТЭЗҮ popup) */
   file: 'M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 3v5h5M8 13h8M8 17h5',
+
+  /* Анхны утга руу буцаах — цагийн зүүний эсрэг эргэх сум (reset/restore) */
+  reset: 'M3 4v6h6M3.5 15a9 9 0 1 0 2.1-9.4L3 10',
 };
 
 export function Icon({ name, size = 20 }: { name: string; size?: number }) {

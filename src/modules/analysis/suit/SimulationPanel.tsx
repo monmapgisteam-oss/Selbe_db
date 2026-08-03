@@ -55,6 +55,8 @@ const nf0 = (v: number) => Math.round(v).toLocaleString('mn-MN');
 export function Simulation({
   kind,
   setKind,
+  kinds,
+  title = 'Симуляц',
   popBasis,
   setPopBasis,
   clock,
@@ -65,6 +67,14 @@ export function Simulation({
 }: {
   kind: SimKind;
   setKind: (k: SimKind) => void;
+  /**
+   * Энэ самбарт ХАРУУЛАХ симуляцын төрлүүд (сонгогчийн товчнууд). Өгөхгүй бол
+   * бүгд. Идэвхтэй `kind` энэ жагсаалтад БАЙХГҮЙ бол зөвхөн товчнууд харагдаж,
+   * дэлгэрэнгүй (тоон уншилт, эрэмбэ) нуугдана — өөр самбар идэвхтэй гэсэн үг.
+   */
+  kinds?: SimKind[];
+  /** Картын гарчиг */
+  title?: string;
   /** «Хүн амын төвлөрөл»-д тоолох хүн амын төрөл */
   popBasis: PopBasis;
   setPopBasis: (p: PopBasis) => void;
@@ -77,6 +87,9 @@ export function Simulation({
   selected: string | null;
   onSelect: (id: string) => void;
 }) {
+  const shownKinds = kinds ?? SIM_KINDS.map((k) => k.key);
+  /** Идэвхтэй симуляц ЭНЭ самбарынх мөн үү (дэлгэрэнгүйг зөвхөн тэр үед харуулна) */
+  const activeHere = shownKinds.includes(kind);
   const def = simDef(kind);
 
   const ranked = useMemo<Ranked[]>(() => {
@@ -96,15 +109,21 @@ export function Simulation({
 
   // ⚠️ Картын гарчигт pill ТАВИХГҮЙ: доорх сегмент сонгогч нь идэвхтэй симуляцыг
   //    аль хэдийн тод харуулдаг тул давхардал болно.
+  // `--sim` акцент: идэвхтэй бол идэвхтэй төрлийнх, эс бөгөөс энэ самбарын
+  // эхний төрлийнх (идэвхгүй самбар өөр самбарын өнгөөр будагдахгүй).
+  const localHue = activeHere ? def.hue : simDef(shownKinds[0]).hue;
+
+  // ⚠️ Картын гарчигт pill ТАВИХГҮЙ: доорх сегмент сонгогч нь идэвхтэй симуляцыг
+  //    аль хэдийн тод харуулдаг тул давхардал болно.
   return (
-    <Card title="Симуляц">
+    <Card title={title}>
       {/* ⚠️ `--sim` нь ЭНД тавигдана — доорх бүх дүрэм (сонгогч, гулсуур,
           эрэмбийн баар) үүнээс уншина. Симуляц солиход бүхэл панелийн акцент
           нэг дор өөрчлөгдөнө. */}
-      <div className={c.root} style={{ '--sim': def.hue } as CSSProperties}>
-        {/* ── Симуляц сонгох ── */}
+      <div className={c.root} style={{ '--sim': localHue } as CSSProperties}>
+        {/* ── Симуляц сонгох (энэ самбарт хамаарах төрлүүд) ── */}
         <div className={c.seg} role="tablist" aria-label="Симуляцын төрөл">
-          {SIM_KINDS.map((k) => (
+          {SIM_KINDS.filter((k) => shownKinds.includes(k.key)).map((k) => (
             <button
               key={k.key}
               type="button"
@@ -120,6 +139,13 @@ export function Simulation({
           ))}
         </div>
 
+        {/* Дэлгэрэнгүй нь ЗӨВХӨН идэвхтэй самбарт — нөгөө нь зөвхөн товчоо харуулна */}
+        {!activeHere ? (
+          <p className={c.desc} style={{ marginTop: 6 }}>
+            Дэлгэрэнгүй харах бол дээрх төрлийг сонгоно уу.
+          </p>
+        ) : (
+        <>
         {/* ── Гарчиг ба тайлбар ── */}
         <div>
           <div className={c.head}>
@@ -219,6 +245,8 @@ export function Simulation({
             )}
           </>
         )}
+        </>
+        )}
       </div>
     </Card>
   );
@@ -253,7 +281,7 @@ function readout(kind: SimKind, ranked: Ranked[], road?: RoadState): Cell[] {
 
   if (kind === 'transit') {
     // ⚠️ Хүртээмжид БАГА нь сайн — тиймээс «хамгийн их» биш «хамгийн хол»,
-    //    норм нь БНбД-ийн 500 м.
+    //    норм нь БНБД-ийн 500 м.
     const ok = ranked.filter((x) => x.value <= TRANSIT_NORM_M).length;
     const pct = Math.round((ok / ranked.length) * 100);
     return [
