@@ -352,6 +352,26 @@
 
 /* ── Дугуй диаграм (donut) ── */
 .donutWrap { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+
+/* ── Leader-line пай — зүсмэгээс зураас татсан гадна шошго ── */
+.donutLead { display: flex; justify-content: center; }
+.donutLead svg { max-width: 100%; height: auto; overflow: hidden; }
+.donutLeadCtr { font-size: 15px; font-weight: 700; fill: var(--ink); }
+.donutLeadCtrLbl { font-size: 8px; fill: var(--ink-3); text-transform: uppercase; letter-spacing: 0.04em; }
+/* foreignObject доторх HTML шошго — мөр даруулж БҮТЭН нэрийг харуулна */
+.donutLeadBox {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  height: 100%;
+  font-size: 10px;
+  line-height: 1.22;
+  color: var(--ink-2);
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+.donutLeadName { color: var(--ink-2); }
+.donutLeadPct { font-size: 11.5px; font-weight: 700; white-space: nowrap; }
 /* Пайн диаграмыг хажууд албадаж зэрэгцүүлнэ — тайлбар багасаж багтана.
    Нэрийг ellipsis-ээр таслахгүй, шаардлагатай бол мөр даруулж БҮТЭН харуулна. */
 .donutRow { flex-wrap: nowrap; }
