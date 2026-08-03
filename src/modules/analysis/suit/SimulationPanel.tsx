@@ -1,0 +1,314 @@
+'use client';
+
+import { useMemo, type CSSProperties } from 'react';
+import { Card } from './Layout';
+import { Icon } from '@/components/Icon';
+import {
+  SIM_KINDS, POP_BASES, TRANSIT_NORM_M, simDef, simMetric, simRange, simNorm, simColor,
+  type SimKind, type PopBasis,
+} from './simulation';
+import { Timeline } from './Timeline';
+import type { MapRow } from '../SuitMap';
+import type { TrafficStats } from './TrafficOverlay';
+import c from './simulation.module.css';
+
+/** Замын сүлжээний ачаалалт ба амьд симуляцын хураангуй (эцгээс) */
+export type RoadState = {
+  /** Сүлжээний хэрчмийн тоо — `null` бол ачаалж байна */
+  edges: number | null;
+  /** Оргил цагт зэрэг явах машины таамаг (`peakVehicles`) */
+  peak: number;
+  /** Ачаалахад алдаа гарсан бол мессеж */
+  error: string | null;
+  /** `TrafficOverlay`-аас ~2 удаа/сек ирэх хураангуй */
+  stats: TrafficStats | null;
+  /** 3D горим — машины давхарга зурагдахгүй (хавтгай проекц нийцэхгүй) */
+  flat: boolean;
+};
+
+/** Timeline-ийн удирдлагыг эцгээс (Suitability) дамжуулна */
+export type ClockProps = {
+  minute: number;
+  playing: boolean;
+  setPlaying: (v: boolean) => void;
+  speed: number;
+  setSpeed: (v: number) => void;
+  seek: (m: number) => void;
+};
+
+/** Эрэмбийн нэг мөр — түүхий утга, бичвэр, нормчилсон 0..1 */
+type Ranked = { r: MapRow; value: number; text: string; t: number | null };
+
+const nf0 = (v: number) => Math.round(v).toLocaleString('mn-MN');
+
+/**
+ * СИМУЛЯЦЫН ПАНЕЛЬ — «Үзүүлэлт»-ийн ард шинэ таб.
+ *
+ * Гурван симуляц (төвлөрөл · хүртээмж · ачаалал) НЭГ бүтцээр харагдана:
+ *   сонгогч → гарчиг → тоон уншилт → [цагийн консол] → эрэмбэ.
+ * Таб сэлгэхэд байрлал нь хэвээр, зөвхөн АГУУЛГА нь солигдоно — ингэснээр
+ * хэрэглэгч бүр удаа шинээр уншихгүй.
+ *
+ * ⚠️ Газрын зургийн будалт нь эцэг компонент дахь `colorOf`-той НЭГ эх сурвалж
+ * (`simulation.ts`) ашигладаг тул зураг ↔ жагсаалт ↔ легенд гурав ижил өнгөтэй.
+ */
+export function Simulation({
+  kind,
+  setKind,
+  popBasis,
+  setPopBasis,
+  clock,
+  road,
+  rows,
+  selected,
+  onSelect,
+}: {
+  kind: SimKind;
+  setKind: (k: SimKind) => void;
+  /** «Хүн амын төвлөрөл»-д тоолох хүн амын төрөл */
+  popBasis: PopBasis;
+  setPopBasis: (p: PopBasis) => void;
+  /** «Замын ачаалал» timeline-ийн удирдлага */
+  clock: ClockProps;
+  /** Замын сүлжээ + амьд машинуудын төлөв («Ачаалал» табд) */
+  road?: RoadState;
+  /** Газрын зурагт харагдаж буй бүсүүд (шүүлтийн дараах) */
+  rows: MapRow[];
+  selected: string | null;
+  onSelect: (id: string) => void;
+}) {
+  const def = simDef(kind);
+
+  const ranked = useMemo<Ranked[]>(() => {
+    if (!def.ready) return [];
+    const range = simRange(rows, kind, popBasis);
+    return rows
+      .map((r) => {
+        const m = simMetric(r, kind, popBasis);
+        return { r, value: m.value, text: m.text, t: simNorm(m.value, range) };
+      })
+      .filter((x): x is Ranked => x.value != null && x.value > 0)
+      .sort((a, b) => b.value - a.value);
+  }, [rows, kind, popBasis, def.ready]);
+
+  const top = ranked.slice(0, 14);
+  const cells = readout(kind, ranked, road);
+
+  // ⚠️ Картын гарчигт pill ТАВИХГҮЙ: доорх сегмент сонгогч нь идэвхтэй симуляцыг
+  //    аль хэдийн тод харуулдаг тул давхардал болно.
+  return (
+    <Card title="Симуляц">
+      {/* ⚠️ `--sim` нь ЭНД тавигдана — доорх бүх дүрэм (сонгогч, гулсуур,
+          эрэмбийн баар) үүнээс уншина. Симуляц солиход бүхэл панелийн акцент
+          нэг дор өөрчлөгдөнө. */}
+      <div className={c.root} style={{ '--sim': def.hue } as CSSProperties}>
+        {/* ── Симуляц сонгох ── */}
+        <div className={c.seg} role="tablist" aria-label="Симуляцын төрөл">
+          {SIM_KINDS.map((k) => (
+            <button
+              key={k.key}
+              type="button"
+              role="tab"
+              aria-selected={kind === k.key}
+              className={`${c.segBtn} ${kind === k.key ? c.segOn : ''}`}
+              onClick={() => setKind(k.key)}
+              title={k.label}
+            >
+              <Icon name={k.icon} size={17} />
+              {k.short}
+            </button>
+          ))}
+        </div>
+
+        {/* ── Гарчиг ба тайлбар ── */}
+        <div>
+          <div className={c.head}>
+            <span className={c.headTitle}>{def.label}</span>
+            {def.unit && <span className={c.headUnit}>{def.unit}</span>}
+          </div>
+          <p className={c.desc} style={{ marginTop: 5 }}>{def.desc}</p>
+        </div>
+
+        {/* ── Хүн амын төрөл — зөвхөн «Төвлөрөл»-д ── */}
+        {kind === 'density' && (
+          <div className={c.pick}>
+            <span className={c.pickLabel}>Хүн ам</span>
+            <div className={c.segSm} role="group" aria-label="Хүн амын төрөл">
+              {POP_BASES.map((p) => (
+                <button
+                  key={p.key}
+                  type="button"
+                  aria-pressed={popBasis === p.key}
+                  className={popBasis === p.key ? c.segSmOn : undefined}
+                  onClick={() => setPopBasis(p.key)}
+                  title={p.label}
+                >
+                  {p.short}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── Тоон уншилт ── */}
+        {cells.length > 0 && (
+          <div className={c.readout}>
+            {cells.map((x) => (
+              <div key={x.k} className={c.cell}>
+                <div className={c.cellV} style={x.color ? { color: x.color } : undefined}>
+                  {x.v}
+                  {x.unit && <small>{x.unit}</small>}
+                </div>
+                <div className={c.cellK}>{x.k}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ── Цагийн консол ба трафикийн төлөв (зөвхөн «Ачаалал») ── */}
+        {kind === 'road' && (
+          <>
+            <Timeline {...clock} hue={def.hue} />
+            <RoadStatus road={road} />
+          </>
+        )}
+
+        {/* ── Эрэмбэ ── */}
+        {!def.ready ? (
+          <p className={c.empty}>Энэ симуляц удахгүй нэмэгдэнэ.</p>
+        ) : ranked.length === 0 ? (
+          <p className={c.empty}>Тооцоолох өгөгдөл алга.</p>
+        ) : (
+          <>
+            <div className={c.secHead}>
+              Эрэмбэ
+              <b>{ranked.length} бүс</b>
+            </div>
+
+            {/* Дулааны легенд — «бага/их» биш, БОДИТ хязгаараар */}
+            <div className={c.legend}>
+              <span className={c.legendEnd}>{nf0(ranked[ranked.length - 1].value)}</span>
+              <span className={c.legendBar} />
+              <span className={c.legendEnd}>{nf0(ranked[0].value)} {def.unit}</span>
+            </div>
+
+            <div className={c.list}>
+              {top.map((x, i) => (
+                <button
+                  key={x.r.id}
+                  type="button"
+                  className={`${c.row} ${selected === x.r.id ? c.rowOn : ''}`}
+                  style={{ '--t': x.t ?? 0 } as CSSProperties}
+                  onClick={() => onSelect(x.r.id)}
+                >
+                  <span className={c.rk}>{i + 1}</span>
+                  <span className={c.nm}>
+                    {x.r.id}
+                    <i>{x.r.type}</i>
+                  </span>
+                  <span className={c.val}>{x.text}</span>
+                  <span className={c.heat} style={{ background: simColor(x.t) }}>
+                    {x.t == null ? '—' : Math.round(x.t * 100)}
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            {ranked.length > top.length && (
+              <p className={c.more}>… нийт {ranked.length} бүсээс эхний {top.length}</p>
+            )}
+          </>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+/* ══════════════════ Тоон уншилт ══════════════════ */
+
+type Cell = { k: string; v: string; unit?: string; color?: string };
+
+/**
+ * Симуляц бүрийн ГУРВАН гол тоо.
+ *
+ * ⚠️ Гурвуулаа ижил бүтэцтэй байх нь санаатай: хамгийн онцлох утга → дундаж →
+ * норм/чанарын үзүүлэлт. Ингэснээр таб сэлгэхэд нүд ижил байрлалаас уншина.
+ */
+function readout(kind: SimKind, ranked: Ranked[], road?: RoadState): Cell[] {
+  if (kind === 'road') {
+    const st = road?.stats;
+    const flow = st ? Math.round(st.flow * 100) : null;
+    return [
+      { k: 'Машин', v: st ? nf0(st.cars) : '—' },
+      { k: 'Дундаж хурд', v: st ? String(Math.round(st.kmh)) : '—', unit: st ? 'км/ц' : undefined },
+      {
+        k: 'Урсгал',
+        v: flow == null ? '—' : `${flow}%`,
+        color: flow == null ? undefined : flow > 70 ? '#4ade80' : flow > 40 ? '#fbbf24' : '#f87171',
+      },
+    ];
+  }
+  if (!ranked.length) return [];
+  const avg = ranked.reduce((a, x) => a + x.value, 0) / ranked.length;
+
+  if (kind === 'transit') {
+    // ⚠️ Хүртээмжид БАГА нь сайн — тиймээс «хамгийн их» биш «хамгийн хол»,
+    //    норм нь БНбД-ийн 500 м.
+    const ok = ranked.filter((x) => x.value <= TRANSIT_NORM_M).length;
+    const pct = Math.round((ok / ranked.length) * 100);
+    return [
+      { k: 'Дундаж зай', v: nf0(avg), unit: 'м' },
+      { k: 'Хамгийн хол', v: nf0(ranked[0].value), unit: 'м' },
+      {
+        k: `${TRANSIT_NORM_M} м дотор`,
+        v: `${pct}%`,
+        color: pct > 70 ? '#4ade80' : pct > 40 ? '#fbbf24' : '#f87171',
+      },
+    ];
+  }
+  return [
+    { k: 'Хамгийн өндөр', v: nf0(ranked[0].value), unit: 'хүн/га' },
+    { k: 'Дундаж', v: nf0(avg), unit: 'хүн/га' },
+    { k: 'Бүс', v: nf0(ranked.length) },
+  ];
+}
+
+/* ══════════════════ Замын сүлжээний төлөв ══════════════════ */
+
+/**
+ * Сүлжээ ачаалагдсан эсэх ба симуляцын таамгийн тайлбар.
+ * ⚠️ Тоон уншилт (машин/хурд/урсгал) нь ДЭЭР `readout`-д гарсан тул энд
+ * давтахгүй — зөвхөн контекст ба анхааруулга.
+ */
+function RoadStatus({ road }: { road?: RoadState }) {
+  if (!road) return null;
+
+  if (road.error) {
+    return <p className={c.err}>Замын сүлжээ ачаалж чадсангүй: {road.error}</p>;
+  }
+  if (!road.edges) {
+    return (
+      <p className={c.loading}>
+        Замын сүлжээ ачаалж байна
+        <span className={c.dots}><i /><i /><i /></span>
+      </p>
+    );
+  }
+
+  return (
+    <>
+      <p className={c.note}>
+        <b>{nf0(road.edges)}</b> замын хэрчмийн сүлжээнд машин агентууд урдахаа дагаж
+        (car-following) явж, уулзвар дээр эргэлтээ сонгоно. Оргил цагийн багтаамж{' '}
+        <b>{nf0(road.peak)} машин</b> — бүсийн хүн ам × аялал үүсгэлтээс. Замын өнгө нь
+        тухайн хэрчмийн нягтрал.
+      </p>
+      {road.flat && (
+        <p className={c.warn}>
+          <Icon name="road" size={14} />
+          <span>Машины хөдөлгөөн зөвхөн <b>2D</b> харагдацад зурагдана.</span>
+        </p>
+      )}
+    </>
+  );
+}
