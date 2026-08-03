@@ -76,6 +76,32 @@ export function measurePath(pts: Pt[]): { cum: number[]; length: number } {
   return { cum, length: cum[cum.length - 1] ?? 0 };
 }
 
+/**
+ * Цэгээс ХЭРЧИМ (a→b) хүртэлх хамгийн богино зай.
+ * ⚠️ Хязгаарлагдмал хэрчим — тусгал нь гадуур унавал үзүүрт таслана (`t`-г 0..1),
+ * эс бөгөөс шугамын үргэлжлэл рүү «уяж» худал ойр зай өгнө.
+ */
+export function distToSeg(p: Pt, a: Pt, b: Pt): number {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const L2 = dx * dx + dy * dy;
+  if (L2 === 0) return Math.hypot(p[0] - a[0], p[1] - a[1]);
+  const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / L2));
+  return Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy));
+}
+
+/** Цэгээс ОЛОН ОРОЙТ шугам хүртэлх хамгийн богино зай (хэрчим бүрийн минимум). */
+export function distToPath(p: Pt, pts: Pt[]): number {
+  if (pts.length === 0) return Infinity;
+  if (pts.length === 1) return Math.hypot(p[0] - pts[0][0], p[1] - pts[0][1]);
+  let best = Infinity;
+  for (let i = 1; i < pts.length; i++) {
+    const d = distToSeg(p, pts[i - 1], pts[i]);
+    if (d < best) best = d;
+  }
+  return best;
+}
+
 /** Оройнуудаас `Segment` бүтээнэ (id ба baseLoad-ыг өгнө). */
 export function makeSegment(id: string, pts: Pt[], baseLoad = 0): Segment {
   const { cum, length } = measurePath(pts);

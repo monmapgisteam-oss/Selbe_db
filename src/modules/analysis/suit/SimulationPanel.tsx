@@ -4,7 +4,7 @@ import { useMemo, type CSSProperties } from 'react';
 import { Card } from './Layout';
 import { Icon } from '@/components/Icon';
 import {
-  SIM_KINDS, POP_BASES, TRANSIT_NORM_M, simDef, simMetric, simRange, simNorm, simColor,
+  SIM_KINDS, POP_BASES, TRANSIT_NORM_M, simDef, simMetric, simRange, simNorm,
   type SimKind, type PopBasis,
 } from './simulation';
 import { Timeline } from './Timeline';
@@ -57,13 +57,12 @@ export function Simulation({
   setKind,
   kinds,
   title = 'Симуляц',
+  muted = false,
   popBasis,
   setPopBasis,
   clock,
   road,
   rows,
-  selected,
-  onSelect,
 }: {
   kind: SimKind;
   setKind: (k: SimKind) => void;
@@ -75,6 +74,12 @@ export function Simulation({
   kinds?: SimKind[];
   /** Картын гарчиг */
   title?: string;
+  /**
+   * ӨӨР самбар (тээвэр-идэвх) газрын зургийг эзэлж байна — идэвхтэй `kind`
+   * энэ самбарынх байсан ч дэлгэрэнгүйг нуух. Эс бөгөөс хоёр самбар зэрэг
+   * «би идэвхтэй» гэж харагдана.
+   */
+  muted?: boolean;
   /** «Хүн амын төвлөрөл»-д тоолох хүн амын төрөл */
   popBasis: PopBasis;
   setPopBasis: (p: PopBasis) => void;
@@ -84,12 +89,10 @@ export function Simulation({
   road?: RoadState;
   /** Газрын зурагт харагдаж буй бүсүүд (шүүлтийн дараах) */
   rows: MapRow[];
-  selected: string | null;
-  onSelect: (id: string) => void;
 }) {
   const shownKinds = kinds ?? SIM_KINDS.map((k) => k.key);
   /** Идэвхтэй симуляц ЭНЭ самбарынх мөн үү (дэлгэрэнгүйг зөвхөн тэр үед харуулна) */
-  const activeHere = shownKinds.includes(kind);
+  const activeHere = !muted && shownKinds.includes(kind);
   const def = simDef(kind);
 
   const ranked = useMemo<Ranked[]>(() => {
@@ -104,7 +107,6 @@ export function Simulation({
       .sort((a, b) => b.value - a.value);
   }, [rows, kind, popBasis, def.ready]);
 
-  const top = ranked.slice(0, 14);
   const cells = readout(kind, ranked, road);
 
   // ⚠️ Картын гарчигт pill ТАВИХГҮЙ: доорх сегмент сонгогч нь идэвхтэй симуляцыг
@@ -128,8 +130,8 @@ export function Simulation({
               key={k.key}
               type="button"
               role="tab"
-              aria-selected={kind === k.key}
-              className={`${c.segBtn} ${kind === k.key ? c.segOn : ''}`}
+              aria-selected={!muted && kind === k.key}
+              className={`${c.segBtn} ${!muted && kind === k.key ? c.segOn : ''}`}
               onClick={() => setKind(k.key)}
               title={k.label}
             >
@@ -199,7 +201,10 @@ export function Simulation({
           </>
         )}
 
-        {/* ── Эрэмбэ ── */}
+        {/* ── Легенд ──
+            ⚠️ Эрэмбийн ЖАГСААЛТ ЗОРИУДААР ХАСАГДСАН: 13 мөр бүсийн код бичсэн
+            хүснэгт нь газрын зурагтай холбогдохгүй тул уншихад хүнд байсан.
+            Бүс бүрийн утгыг ГАЗРЫН ЗУРАГ дээр хулганаа аваачиж уншина. */}
         {!def.ready ? (
           <p className={c.empty}>Энэ симуляц удахгүй нэмэгдэнэ.</p>
         ) : ranked.length === 0 ? (
@@ -207,7 +212,7 @@ export function Simulation({
         ) : (
           <>
             <div className={c.secHead}>
-              Эрэмбэ
+              Шатлал
               <b>{ranked.length} бүс</b>
             </div>
 
@@ -218,31 +223,11 @@ export function Simulation({
               <span className={c.legendEnd}>{nf0(ranked[0].value)} {def.unit}</span>
             </div>
 
-            <div className={c.list}>
-              {top.map((x, i) => (
-                <button
-                  key={x.r.id}
-                  type="button"
-                  className={`${c.row} ${selected === x.r.id ? c.rowOn : ''}`}
-                  style={{ '--t': x.t ?? 0 } as CSSProperties}
-                  onClick={() => onSelect(x.r.id)}
-                >
-                  <span className={c.rk}>{i + 1}</span>
-                  <span className={c.nm}>
-                    {x.r.id}
-                    <i>{x.r.type}</i>
-                  </span>
-                  <span className={c.val}>{x.text}</span>
-                  <span className={c.heat} style={{ background: simColor(x.t) }}>
-                    {x.t == null ? '—' : Math.round(x.t * 100)}
-                  </span>
-                </button>
-              ))}
-            </div>
-
-            {ranked.length > top.length && (
-              <p className={c.more}>… нийт {ranked.length} бүсээс эхний {top.length}</p>
-            )}
+            <p className={c.desc}>
+              Бүс бүрийн дэлгэрэнгүйг газрын зураг дээрээс хараарай — хулганаа
+              аваачихад <b>{def.label.toLowerCase()}</b>, эрэмбэ ба хөрш бүсүүдтэй
+              харьцуулсан байдал гарч ирнэ.
+            </p>
           </>
         )}
         </>

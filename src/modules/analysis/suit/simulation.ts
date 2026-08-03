@@ -34,6 +34,15 @@ export type SimDef = {
   icon: string;
   /** Одоо тооцоологддог эсэх — `false` бол «удахгүй» гэж харагдана */
   ready: boolean;
+  /**
+   * Дулааны гадаргуу утгатай эсэх (`heat.ts`).
+   *
+   * ⚠️ Heatmap нь цөмүүдийг НЭМДЭГ тул зөвхөн ХУРИМТЛАГДАХ хэмжигдэхүүнд
+   * утгатай. `transit` нь ЗАЙ (м) — зайг нэмэх нь физик утгагүй бөгөөд
+   * «улаан = хол = муу» болж бусад дүрслэлтэй зөрчилдөнө. `road` нь амьд
+   * машин агентаар илэрхийлэгддэг тул дээр нь дулаан нэмбэл зөвхөн бүрхэнэ.
+   */
+  heatable: boolean;
 };
 
 export const SIM_KINDS: SimDef[] = [
@@ -46,6 +55,7 @@ export const SIM_KINDS: SimDef[] = [
     hue: '#a78bfa',
     icon: 'flame',
     ready: true,
+    heatable: true,
   },
   {
     key: 'transit',
@@ -56,6 +66,7 @@ export const SIM_KINDS: SimDef[] = [
     hue: '#38bdf8',
     icon: 'bus',
     ready: true,
+    heatable: false,
   },
   {
     key: 'road',
@@ -66,6 +77,7 @@ export const SIM_KINDS: SimDef[] = [
     hue: '#f59e0b',
     icon: 'road',
     ready: true,
+    heatable: false,
   },
 ];
 
