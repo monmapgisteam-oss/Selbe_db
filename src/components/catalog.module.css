@@ -311,6 +311,24 @@
 }
 .facetRowOn .facetName { color: var(--ink); font-weight: 600; }
 .facetMeta { flex: none; font-size: 0.62rem; color: var(--ink-3); }
+
+/* Legend мөр — шүүлтгүй, зөвхөн газрын зурагтай ижил өнгийг тайлбарлана
+   (жиш. барилгын `Barilga_ty` төлөв). */
+.legendRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 7px;
+}
+/* Өнгөт дөрвөлжин — газрын зурагтай ижил (30% дүүргэлт + тод хүрээ) */
+.legendDot {
+  flex: none;
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+  border: 1px solid var(--tone);
+  background: color-mix(in srgb, var(--tone) 30%, transparent);
+}
 .rowSel {
   background: color-mix(in srgb, var(--tone) 12%, transparent);
   border-color: color-mix(in srgb, var(--tone) 40%, transparent);

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, type CSSProperties } from 'react';
-import { MAP_LAYERS, type MapLayerDef } from '@/lib/analysis/config';
+import { MAP_LAYERS, BUILDING_STATUS_COLORS, type MapLayerDef } from '@/lib/analysis/config';
 import { LAYER_GROUPS, MONITOR_GROUP, LAYER_BY_ID, type LayerDef } from '@/lib/services';
 import { Icon } from '@/components/Icon';
 import { LayerSwatch } from '@/components/LayerSwatch';
@@ -134,7 +134,7 @@ export function SuitLayerCatalog({
                     return (
                       <div
                         key={l.key}
-                        className={`${c.row} ${isOn ? c.rowOn : ''}`}
+                        className={`${c.row} ${isOn ? c.rowOn : ''} ${l.kind === 'building' ? c.rowFacet : ''}`}
                         style={{ '--tone': rgb } as CSSProperties}
                       >
                         <button
@@ -156,6 +156,23 @@ export function SuitLayerCatalog({
                         <button type="button" className={c.rowMain} onClick={() => toggle(l.key)}>
                           <span className={c.rowTitle}>{l.title}</span>
                         </button>
+
+                        {/* Барилга — төлөв бүрийн (`Barilga_ty`) өнгийг газрын зурагтай
+                            ижлээр задалж харуулна (шүүлт биш, зөвхөн legend). */}
+                        {l.kind === 'building' && (
+                          <div className={c.facetRows}>
+                            {Object.entries(BUILDING_STATUS_COLORS).map(([label, col]) => (
+                              <div
+                                key={label}
+                                className={c.legendRow}
+                                style={{ '--tone': `rgb(${col.join(',')})` } as CSSProperties}
+                              >
+                                <span className={c.legendDot} aria-hidden />
+                                <span className={c.facetName}>{label}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     );
                   })}

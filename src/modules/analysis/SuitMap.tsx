@@ -30,18 +30,17 @@ import type { Dim } from '@/components/MapCanvas';
 
 /** 3d ба bim хоёулаа SceneView ашиглана */
 const is3D = (d: Dim) => d === '3d' || d === 'bim';
-import { MAP_LAYERS, NO_DATA_COLOR, type MapLayerDef } from '@/lib/analysis/config';
+import { MAP_LAYERS, NO_DATA_COLOR, BUILDING_STATUS_COLORS, type MapLayerDef } from '@/lib/analysis/config';
 import type { Zone } from '@/lib/analysis/data';
+import { TrafficOverlay } from './suit/TrafficOverlay';
+import type { Network } from './suit/traffic';
+import type { TrafficStats } from './suit/TrafficOverlay';
 import s from './suitability.module.css';
 
 export type MapRow = Zone & { urban: number | null; displayGeom: Polygon | null };
 
-/** Барилгын төлөвийн өнгө — эх аппын палитр */
-const STATUS_COLORS: Record<string, [number, number, number]> = {
-  'Төлөвлөсөн': [96, 165, 250],
-  'Баригдаж байгаа': [251, 146, 60],
-  'Одоо байгаа': [134, 139, 150],
-};
+/** Барилгын төлөвийн өнгө — каталогийн legend-тэй нэг эх сурвалж (`config.ts`) */
+const STATUS_COLORS = BUILDING_STATUS_COLORS;
 
 /** ⚠️ Бүх давхаргын хүрээг нарийсгах КОЭФФИЦИЕНТ — үндсэн зургийн
  *  `MapCanvas.OUTLINE_SCALE`-тай ижил байлгана (project даяар нэг харагдац). */
@@ -170,6 +169,7 @@ export function SuitMap({
   layerOn,
   zoneTip,
   buildingTip,
+  traffic,
 }: {
   /** 2D (MapView + ортофото) эсвэл 3D (SceneView + IntegratedMesh) */
   dim: Dim;
@@ -185,6 +185,18 @@ export function SuitMap({
   /** Hover панелийн HTML — эх аппын адил мөрөөр угсарна */
   zoneTip: (r: MapRow) => string;
   buildingTip: (attrs: Record<string, unknown>) => string;
+  /**
+   * «Замын ачаалал» симуляц — машин агентуудын давхарга.
+   * ⚠️ Зөвхөн 2D-д зурагдана (доор үз); өгөгдөөгүй бол давхарга огт үүсэхгүй.
+   */
+  traffic?: {
+    net: Network | null;
+    minuteRef: React.MutableRefObject<number>;
+    playing: boolean;
+    speed: number;
+    maxCars: number;
+    onStats?: (s: TrafficStats) => void;
+  };
 }) {
   const el = useRef<HTMLDivElement>(null);
   const tipEl = useRef<HTMLDivElement>(null);
@@ -590,6 +602,11 @@ export function SuitMap({
   return (
     <div className={s.mapWrap}>
       <div ref={el} className={s.viewDiv} />
+      {/* ⚠️ Трафикийн канвас нь `viewDiv`-ийн ДЭЭР, hover панелийн ДООР.
+          3D-д хасагдана — тэнд хавтгай проекц газрын гадаргуутай нийцэхгүй. */}
+      {traffic && !is3D(dim) && (
+        <TrafficOverlay viewRef={viewRef} ready={ready} {...traffic} />
+      )}
       <div ref={tipEl} className={s.mapTip} hidden />
     </div>
   );
