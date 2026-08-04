@@ -79,12 +79,15 @@ const pageQuery = (offset: number) => new URLSearchParams({
   f: 'json',
 });
 
-/** «Замын тэнхлэг» давхаргын шугамуудыг Web Mercator оройн жагсаалт болгож татна. */
-export async function loadRoadPaths(signal?: AbortSignal): Promise<Pt[][]> {
-  const def = LAYER_BY_ID[ROAD_LAYER_ID];
-  if (!def) throw new Error(`Замын давхарга каталогт алга: ${ROAD_LAYER_ID}`);
-  const url = layerUrl(def);
-
+/**
+ * ДУРЫН ArcGIS line давхаргын шугамуудыг Web Mercator оройн жагсаалт болгож татна.
+ *
+ * ⚠️ Энэ нь `loadRoadPaths` (et:5)-ийн ЕРӨНХИЙЧИЛСӨН хувилбар — харьцуулах 3
+ * сүлжээ (бодит зам · төлөвлөгөө · ачаалал бууруулах зам) бүгд ижил хайрцаг
+ * (`AREA_UTM`), ижил хялбаршуулалт (`SIMPLIFY_M`), ижил CRS-ээр ирнэ. Line
+ * давхаргын URL л өөр. `netSources.ts`-ийн бүртгэл үүнийг дуудна.
+ */
+export async function loadPathsFrom(url: string, signal?: AbortSignal): Promise<Pt[][]> {
   const fetchPage = async (offset: number): Promise<Pt[][]> => {
     const r: QueryResp = await fetch(`${url}/query?${pageQuery(offset)}`, { signal }).then((x) => x.json());
     if (r.error) throw new Error(r.error.message ?? 'ArcGIS query алдаа');
@@ -118,6 +121,13 @@ export async function loadRoadPaths(signal?: AbortSignal): Promise<Pt[][]> {
     Array.from({ length: pages }, (_, i) => fetchPage(i * PAGE)),
   );
   return chunks.flat();
+}
+
+/** «Замын тэнхлэг» (et:5) давхаргын шугамууд — `loadPathsFrom`-ийн тусгай тохиолдол. */
+export async function loadRoadPaths(signal?: AbortSignal): Promise<Pt[][]> {
+  const def = LAYER_BY_ID[ROAD_LAYER_ID];
+  if (!def) throw new Error(`Замын давхарга каталогт алга: ${ROAD_LAYER_ID}`);
+  return loadPathsFrom(layerUrl(def), signal);
 }
 
 /* ══════════════════ Аялал үүсгэлт → ирмэгийн жин ══════════════════ */

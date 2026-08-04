@@ -31,8 +31,9 @@ import {
   simMetric, simRange, simNorm, simColor, simDef, peakVehicles,
   type SimKind, type PopBasis,
 } from './suit/simulation';
-import { loadRoadNetworkCached, assignLoads } from './suit/roadNet';
+import { assignLoads } from './suit/roadNet';
 import type { Network } from './suit/traffic';
+import { loadNetworkCached, NET_KINDS, NET_SOURCES, isNetReady, type NetKind } from './suit/netSources';
 import type { TrafficStats } from './suit/TrafficOverlay';
 import { TransportPanel } from './suit/TransportPanel';
 import {
@@ -54,6 +55,9 @@ import s from './suitability.module.css';
 
 /** «Ачаалал» симуляцад автоматаар асах давхарга — «Зам (талбай)» */
 const ROAD_AREA_LAYER = 'et:29';
+
+/** Барилгын давхарга — «Бодит» симуляцад нуухад (одоо байгаа нөхцлийн зам л харагдана) */
+const BUILDING_LAYER = 'et:24';
 
 /* ══════════════════ Үндсэн компонент ══════════════════ */
 
@@ -238,14 +242,24 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
   const [roadNet, setRoadNet] = useState<Network | null>(null);
   const [roadErr, setRoadErr] = useState<string | null>(null);
   const [trafficStats, setTrafficStats] = useState<TrafficStats | null>(null);
+  /**
+   * Харьцуулах ЗАМЫН СҮЛЖЭЭ — Бодит / Төлөвлөгөө / Шинэ зам (`netSources.ts`).
+   * ⚠️ Одоо зөвхөн `plan` (et:5) бэлэн; `real`/`relief` line ирэхэд идэвхжинэ.
+   */
+  const [netKind, setNetKind] = useState<NetKind>('plan');
+
+  // Сүлжээ солиход хуучин геометрийг цэвэрлэж дахин ачаална (ирмэг индекс өөр).
+  useEffect(() => { setRoadNet(null); setRoadErr(null); }, [netKind]);
 
   useEffect(() => {
     // ⚠️ 3.9 мянган хэрчмийг ХЭРЭГТЭЙ болоход л татна («Ачаалал» эсвэл
     //    тээвэр-идэвх) — бусад горимд хэрэггүй траффик үүсгэхгүй.
-    //    `loadRoadNetworkCached` нь дахин татахгүй.
+    //    `loadNetworkCached` нь сүлжээ бүрийг НЭГ УДАА кэшлэнэ.
     if (!needNet || roadNet || !rows.length) return;
     let alive = true;
-    loadRoadNetworkCached()
+    // ⚠️ Гэрлэн дохио (дүрмийн + OSM) `loadNetworkCached` дотор аль хэдийн
+    //    тавигдсан ирнэ; энд зөвхөн бүсийн эрэлтийн жинг (`baseLoad`) ононо.
+    loadNetworkCached(netKind)
       .then((net) => {
         if (!alive) return;
         assignLoads(net, rows);
@@ -256,7 +270,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
         if (alive) setRoadErr(e instanceof Error ? e.message : String(e));
       });
     return () => { alive = false; };
-  }, [needNet, roadNet, rows]);
+  }, [needNet, roadNet, rows, netKind]);
 
   /* ── Тээвэр-идэвх: барилга ба автобусны буудлыг самбарыг нээхэд татна ── */
   const [tData, setTData] = useState<{ buildings: BuildingPt[]; stops: BusStop[] } | null>(null);
@@ -320,16 +334,31 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
    * «Ачаалал» табд ЗАМЫН ТАЛБАЙГ автоматаар асаана — машин агентууд юун дээр
    * гүйж байгаа нь харагдахгүй бол симуляц утгагүй. Агентууд `et:5` тэнхлэгээр
    * явдаг тул `et:29` полигоны яг дундуур гүйж харагдана.
+   *
+   * ⚠️ ЗӨВХӨН «Төлөвлөгөө» сүлжээнд: `et:29` бол ТӨЛӨВЛӨГӨӨТ замын талбай тул
+   * «Бодит» (OSM) сүлжээн дээр асаавал бодит машинтай зөрнө. Бодит зам дээр
+   * хэрэглэгчийн vector tile суурь + OSM өөрөө контекст болно.
    * ⚠️ Табаас гарахад ЗӨВХӨН өөрсдөө асаасан бол унтраана — хэрэглэгч каталогоос
    * гараар асаасан байсныг таслах эрхгүй.
    */
   const layerOnRef = useRef(layerOn);
   layerOnRef.current = layerOn;
   useEffect(() => {
-    if (!roadMode || layerOnRef.current[ROAD_AREA_LAYER]) return;
+    if (!roadMode || netKind !== 'plan' || layerOnRef.current[ROAD_AREA_LAYER]) return;
     setLayerOn((v) => ({ ...v, [ROAD_AREA_LAYER]: true }));
     return () => setLayerOn((v) => ({ ...v, [ROAD_AREA_LAYER]: false }));
-  }, [roadMode]);
+  }, [roadMode, netKind]);
+
+  /**
+   * «Бодит» замын симуляцад БАРИЛГЫГ нуана — одоо байгаа нөхцлийг харуулах тул
+   * төлөвлөлтийн барилгууд зам дээр давхарлахгүй. Гарахад буцааж асаана (хэрэглэгч
+   * өөрөө унтрааж байсныг ялгах хэрэггүй — барилга анхдагчаараа асаалттай).
+   */
+  useEffect(() => {
+    if (!(roadMode && netKind === 'real')) return;
+    setLayerOn((v) => ({ ...v, [BUILDING_LAYER]: false }));
+    return () => setLayerOn((v) => ({ ...v, [BUILDING_LAYER]: true }));
+  }, [roadMode, netKind]);
 
   const colorOf = useCallback(
     (r: MapRow) => {
@@ -343,8 +372,17 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
     },
     [mode, ind, econShare, simKind, popBasis, simRng, transportMode],
   );
+  /**
+   * «БОДИТ» замын симуляц — ОДОО БАЙГАА нөхцлийг харуулах тул төлөвлөлтийн
+   * давхаргууд (бүсийн полигон, барилга) газрын зургаас нуугдана: зөвхөн бодит
+   * зам + трафик + хэрэглэгчийн vector tile суурь үлдэнэ.
+   */
+  const bareReal = roadMode && netKind === 'real';
   /** Бүс газрын зурагт харагдах эсэх — ангиллын шүүлтээр (унтраасан нь бүдгэрнэ) */
-  const shown = useCallback((r: MapRow) => !catOff.has(r.type), [catOff]);
+  const shown = useCallback(
+    (r: MapRow) => !bareReal && !catOff.has(r.type),
+    [catOff, bareReal],
+  );
 
   /* ── Hover панелийн HTML (эх аппын адил мөрөөр) ── */
   const zoneTip = useCallback((r: MapRow) => {
@@ -538,6 +576,17 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
       error: roadErr,
       stats: trafficStats,
       flat: dim !== '2d',
+      /** Харьцуулах замын сүлжээ сонгогч (Бодит/Төлөвлөгөө/Шинэ зам) */
+      net: {
+        kind: netKind,
+        setKind: setNetKind,
+        options: NET_KINDS.map((k) => ({
+          kind: k,
+          label: NET_SOURCES[k].label,
+          short: NET_SOURCES[k].short,
+          ready: isNetReady(k),
+        })),
+      },
     },
     // ⚠️ `selected`/`onSelect` ХАСАГДСАН: эрэмбийн жагсаалт байхгүй болсон тул
     //    самбар нь бүс сонгодоггүй — сонголт зөвхөн газрын зураг дээр дарж хийгдэнэ.
@@ -695,6 +744,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
               transportPaint={transportPaint}
               transportFaint={mapStyle === 'heat'}
               heat={heat}
+              roadTile={bareReal}
             />
 
             {/* Каталог — «Ерөнхий төлөвлөгөө»-тэй ижил ЗҮҮН талын БҮТЭН ӨНДӨР
