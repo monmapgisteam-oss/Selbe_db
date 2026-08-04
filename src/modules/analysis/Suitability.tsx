@@ -7,7 +7,7 @@ import type Polygon from '@arcgis/core/geometry/Polygon';
 
 import {
   INDICATORS, PARKING, MAP_LAYERS, BUILD_COST_PER_M2, DEFAULT_ECON_SHARE,
-  SCORE_LEVELS, levelOf,
+  ACTIVATABLE_ZONE_TYPES, NO_DATA_COLOR,
   type Indicator, type ParkingOpt, type CategoryKey,
 } from '@/lib/analysis/config';
 import {
@@ -23,7 +23,7 @@ import type { Dim } from '@/components/MapCanvas';
 import { SuitMap, type MapRow } from './SuitMap';
 import { SuitDetail } from './SuitDetail';
 import { nf, esc } from './suit/format';
-import { valueOf, blendScore, type Mode, type Row } from './suit/model';
+import { valueOf, type Mode, type Row } from './suit/model';
 import { Shell, Card } from './suit/Layout';
 import { Simulation } from './suit/SimulationPanel';
 import { useSimClock } from './suit/Timeline';
@@ -31,9 +31,20 @@ import {
   simMetric, simRange, simNorm, simColor, simDef, peakVehicles,
   type SimKind, type PopBasis,
 } from './suit/simulation';
-import { loadRoadNetworkCached, assignLoads } from './suit/roadNet';
+import { assignLoads } from './suit/roadNet';
 import type { Network } from './suit/traffic';
+import { loadNetworkCached, NET_KINDS, NET_SOURCES, isNetReady, type NetKind } from './suit/netSources';
 import type { TrafficStats } from './suit/TrafficOverlay';
+import { TransportPanel } from './suit/TransportPanel';
+import {
+  tPaint, tModeDef, tRange, tNormFor, tColor, buildingValue,
+  type TMode, type TransportCtx,
+} from './suit/transportModes';
+import { densityHeat, transportHeat, MAP_STYLES, type MapStyle } from './suit/heat';
+import { CAT_LABEL, BUS_BAND_LABEL } from '@/lib/analysis/transport';
+import { loadBuildingsCached, type BuildingPt } from './suit/buildings';
+import { assignRoadDemand } from './suit/roadDemand';
+import { loadBusStopsCached, busAccess, type BusStop } from './suit/busAccess';
 import { SuitLayerCatalog } from './suit/LayerCatalog';
 import { Icon } from '@/components/Icon';
 import { BlendCard } from './suit/BlendCard';
@@ -45,6 +56,9 @@ import s from './suitability.module.css';
 /** «Ачаалал» симуляцад автоматаар асах давхарга — «Зам (талбай)» */
 const ROAD_AREA_LAYER = 'et:29';
 
+/** Барилгын давхарга — «Бодит» симуляцад нуухад (одоо байгаа нөхцлийн зам л харагдана) */
+const BUILDING_LAYER = 'et:24';
+
 /* ══════════════════ Үндсэн компонент ══════════════════ */
 
 export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
@@ -52,7 +66,6 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
   const [data, setData] = useState<AnalysisData | null>(null);
   const [costs, setCosts] = useState<Costs | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [prog, setProg] = useState({ msg: 'Эхлүүлж байна…', pct: 0 });
   const [projected, setProjected] = useState(false);
   const geomRef = useRef(new Map<string, Polygon | null>());
 
@@ -60,7 +73,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
     let alive = true;
     (async () => {
       try {
-        const d = await loadAnalysisCached((msg, pct) => { if (alive) setProg({ msg, pct: pct * 0.9 }); });
+        const d = await loadAnalysisCached();
         if (!alive) return;
 
         // Дүрслэлийн геометрийг Web Mercator рүү (тооцоо нь UTM дээр хэвээр)
@@ -73,11 +86,9 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
         setData(d);
         setProjected(true);
 
-        setProg({ msg: 'Дэд бүтцийн өртөг…', pct: 94 });
         const c = await loadCosts();
         if (!alive) return;
         setCosts(c);
-        setProg({ msg: 'Бэлэн', pct: 100 });
       } catch (e: unknown) {
         console.error('[selbe] анализ:', e);
         if (alive) setError(e instanceof Error ? e.message : String(e));
@@ -99,6 +110,18 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
   const [simKind, setSimKind] = useState<SimKind>('density');
   /** Хүн амын төрөл — «Хүн амын төвлөрөл» симуляцад (оршин суугч ↔ хүчин чадал) */
   const [popBasis, setPopBasis] = useState<PopBasis>('resident');
+  /**
+   * Тээвэр-идэвхийн дүрслэл ба тэр самбар ИДЭВХТЭЙ эсэх.
+   * ⚠️ `simKind`-тэй ХАМТ оршино: аль самбар сүүлд дарагдсан нь газрын зургийг
+   * буддаг. Тээвэр идэвхтэй үед бүсийн будалт саарал болж, барилга/зам тодрно.
+   */
+  const [tMode, setTMode] = useState<TMode>('trips');
+  const [tActive, setTActive] = useState(false);
+  /**
+   * Симуляцын газрын зургийн ХЭВ МАЯГ — полигон (хил хэвээр) ↔ дулааны гадаргуу.
+   * ⚠️ Зөвхөн «Симуляц» горимд үйлчилнэ; оноололын будалтыг хөндөхгүй.
+   */
+  const [mapStyle, setMapStyle] = useState<MapStyle>('poly');
   /** Трафик timeline-ийн цаг (замын симуляц + ирээдүйд газрын зургийн анимац) */
   const clock = useSimClock();
   const [parking, setParking] = useState<ParkingOpt>({ ...PARKING });
@@ -109,6 +132,12 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
    * Хоосон = бүгд харагдана. Газрын зураг ба эрэмбэд ДИНАМИК үйлчилнэ.
    */
   const [catOff, setCatOff] = useState<Set<string>>(() => new Set());
+  /**
+   * ХАСАГДСАН боловч гараар ОНООЛОЛД ОРУУЛСАН ангиллууд (нийгмийн дэд бүтэц,
+   * газар чөлөөлөлт дутуу). Хоосон = хасагдсан хэвээр (цайвар). «Бүсийн ангилал»
+   * картаас сонгоход энд нэмэгдэж, оноолол дахин тооцогдоно.
+   */
+  const [scoreOn, setScoreOn] = useState<Set<string>>(() => new Set());
   const [econOpt, setEconOpt] = useState<{ pricePerM2: number | null; perHa: number | null }>({
     pricePerM2: null, perHa: null,
   });
@@ -134,20 +163,23 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
 
   const rows = useMemo<Row[]>(() => {
     if (!data || !projected) return [];
-    computeEconomics(data.zones, perHa, econOpt.pricePerM2, buildCost);
-    computeRaw(data.zones, greenCats, parking);
+    computeEconomics(data.zones, perHa, econOpt.pricePerM2, buildCost, scoreOn);
+    computeRaw(data.zones, greenCats, parking, scoreOn);
     return data.zones.map((z) => {
       const u = urbanScore(z.raw, indicators, z.type);
       return { ...z, urban: u.score, parts: u.parts, displayGeom: geomRef.current.get(z.id) ?? null };
     });
-  }, [data, projected, perHa, econOpt.pricePerM2, buildCost, greenCats, parking, indicators]);
+  }, [data, projected, perHa, econOpt.pricePerM2, buildCost, greenCats, parking, indicators, scoreOn]);
 
   /**
    * ОНООЛОЛД орох бүсүүд — ногоон байгууламж, одоо байгаа барилгыг ХАСНА.
    * ⚠️ Газрын зурагт (`rows`) бүх бүс хэвээр (хассан нь саарал), харин эрэмбэ,
    * диаграм, дундаж, эдийн засаг зэрэг ТООЦОО зөвхөн `scoredRows`-оор явна.
    */
-  const scoredRows = useMemo(() => rows.filter((r) => !r.excluded), [rows]);
+  const scoredRows = useMemo(
+    () => rows.filter((r) => !r.excluded || scoreOn.has(r.type)),
+    [rows, scoreOn],
+  );
 
   /** Бүсийн ангиллууд — нэр · тоо · өнгө (ZONE_TYPES дарааллаар). */
   const zoneCats = useMemo(() => {
@@ -175,20 +207,59 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
   /** Симуляцын хэмжүүрийн хязгаар — нормчилол ба легендэд (харагдах бүсээр). */
   const simRng = useMemo(() => simRange(rows, simKind, popBasis), [rows, simKind, popBasis]);
 
+  /**
+   * Бүсийн симуляцын хэмжүүрийн ДУНДАЖ — hover панелийн «дунджаас» мөрд.
+   * ⚠️ Эрэмбэлэх шаардлагагүй (эрэмбийн мөр хасагдсан) тул зөвхөн дундаж.
+   */
+  const simAvg = useMemo(() => {
+    if (mode !== 'simulation') return 0;
+    const vals = rows
+      .map((r) => simMetric(r, simKind, popBasis).value)
+      .filter((v): v is number => v != null && v > 0);
+    return vals.length ? vals.reduce((a, v) => a + v, 0) / vals.length : 0;
+  }, [rows, simKind, popBasis, mode]);
+
   /* ── Замын ачаалал: сүлжээг ХЭРЭГТЭЙ болоход нь ачаална ── */
-  const roadMode = mode === 'simulation' && simKind === 'road';
+  const roadMode = mode === 'simulation' && !tActive && simKind === 'road';
+  /** Тээвэр-идэвхийн самбар газрын зургийг буддаг эсэх */
+  const transportMode = mode === 'simulation' && tActive;
+  /** ⚠️ Замын сүлжээг ХОЁУЛАА хэрэглэнэ — агентын симуляц ба эрэлтийн хуваарилалт */
+  const needNet = roadMode || transportMode;
+  /**
+   * Идэвхтэй дүрслэлд дулааны гадаргуу утга ЗҮЙТЭЙ эсэх.
+   * ⚠️ Heatmap цөмүүдийг НЭМДЭГ тул зөвхөн хуримтлагдах хэмжигдэхүүнд утгатай —
+   * зай (хүртээмж, автобус) ба машин агентын симуляц (ачаалал) хамаарахгүй.
+   */
+  const heatable = transportMode ? tModeDef(tMode).heatable : simDef(simKind).heatable;
+  const heatOn = mode === 'simulation' && mapStyle === 'heat' && heatable;
+  /**
+   * ⚠️ Барилгын өгөгдөл нь тээврийн самбарт ЗӨВХӨН хэрэгтэй биш: «Төвлөрөл»-ийн
+   * дулааны гадаргуу ч барилгын центроидоос гардаг тул тэнд ч татна.
+   */
+  const needBuildings = tActive || heatOn;
   /** Оргил цагт сүлжээнд зэрэг явах машин — бүсийн хүн амаас (гараар өгөөгүй) */
   const peakCars = useMemo(() => peakVehicles(scoredRows), [scoredRows]);
   const [roadNet, setRoadNet] = useState<Network | null>(null);
   const [roadErr, setRoadErr] = useState<string | null>(null);
   const [trafficStats, setTrafficStats] = useState<TrafficStats | null>(null);
+  /**
+   * Харьцуулах ЗАМЫН СҮЛЖЭЭ — Бодит / Төлөвлөгөө / Шинэ зам (`netSources.ts`).
+   * ⚠️ Одоо зөвхөн `plan` (et:5) бэлэн; `real`/`relief` line ирэхэд идэвхжинэ.
+   */
+  const [netKind, setNetKind] = useState<NetKind>('plan');
+
+  // Сүлжээ солиход хуучин геометрийг цэвэрлэж дахин ачаална (ирмэг индекс өөр).
+  useEffect(() => { setRoadNet(null); setRoadErr(null); }, [netKind]);
 
   useEffect(() => {
-    // ⚠️ 3.9 мянган хэрчмийг «Ачаалал» табыг НЭЭХЭД л татна — бусад горимд
-    //    хэрэггүй траффик үүсгэхгүй. `loadRoadNetworkCached` нь дахин татахгүй.
-    if (!roadMode || roadNet || !rows.length) return;
+    // ⚠️ 3.9 мянган хэрчмийг ХЭРЭГТЭЙ болоход л татна («Ачаалал» эсвэл
+    //    тээвэр-идэвх) — бусад горимд хэрэггүй траффик үүсгэхгүй.
+    //    `loadNetworkCached` нь сүлжээ бүрийг НЭГ УДАА кэшлэнэ.
+    if (!needNet || roadNet || !rows.length) return;
     let alive = true;
-    loadRoadNetworkCached()
+    // ⚠️ Гэрлэн дохио (дүрмийн + OSM) `loadNetworkCached` дотор аль хэдийн
+    //    тавигдсан ирнэ; энд зөвхөн бүсийн эрэлтийн жинг (`baseLoad`) ононо.
+    loadNetworkCached(netKind)
       .then((net) => {
         if (!alive) return;
         assignLoads(net, rows);
@@ -199,41 +270,138 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
         if (alive) setRoadErr(e instanceof Error ? e.message : String(e));
       });
     return () => { alive = false; };
-  }, [roadMode, roadNet, rows]);
+  }, [needNet, roadNet, rows, netKind]);
+
+  /* ── Тээвэр-идэвх: барилга ба автобусны буудлыг самбарыг нээхэд татна ── */
+  const [tData, setTData] = useState<{ buildings: BuildingPt[]; stops: BusStop[] } | null>(null);
+  const [tErr, setTErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!needBuildings || tData || tErr) return;
+    let alive = true;
+    Promise.all([loadBuildingsCached(), loadBusStopsCached()])
+      .then(([buildings, stops]) => { if (alive) setTData({ buildings, stops }); })
+      .catch((e: unknown) => {
+        console.error('[selbe] тээвэр-идэвх:', e);
+        if (alive) setTErr(e instanceof Error ? e.message : String(e));
+      });
+    return () => { alive = false; };
+  }, [needBuildings, tData, tErr]);
+
+  /**
+   * Тээврийн БҮХ тооцоо — барилга, зам, автобус гурав нэг дор.
+   * ⚠️ Замд хуваарилалт нь 363 барилга × ~4 мянган ирмэг тул memo ЗААВАЛ:
+   * дүрслэл сэлгэх бүрд дахин бодвол интерфейс мэдэгдэхүйц гацна.
+   */
+  const tCtx = useMemo<TransportCtx | null>(() => {
+    if (!tData || !roadNet) return null;
+    return {
+      buildings: tData.buildings,
+      stops: tData.stops,
+      net: roadNet,
+      demand: assignRoadDemand(roadNet, tData.buildings),
+      bus: busAccess(tData.buildings, tData.stops, roadNet.unitsPerMeter),
+    };
+  }, [tData, roadNet]);
+
+  /**
+   * ⚠️ Дулаан горимд Ч будалтыг тооцно — зөвхөн БҮДЭГ болгоно (`transportFaint`).
+   * Шалтгаан: hover панель нь ЭНЭ дүрсүүд дээр л ажилладаг тул тэднийг огт
+   * зурахгүй бол дулааны гадаргуу дээр юу ч дарж уншиж чадахгүй болно.
+   */
+  const transportPaint = useMemo(
+    () => (transportMode && tCtx ? tPaint(tMode, tCtx) : null),
+    [transportMode, tCtx, tMode],
+  );
+
+  /** Дулааны гадаргууны цэгүүд — «Симуляц» горимд, дүрслэл нь дулаанд тохирвол. */
+  const heat = useMemo(() => {
+    if (!heatOn) return null;
+    if (transportMode) return tCtx ? transportHeat(tCtx, tMode) : null;
+    // ⚠️ Төвлөрлийн дулаан нь БАРИЛГЫН центроидоос гарна (бүсийн центроидоос БИШ),
+    //    жин нь АБСОЛЮТ хүний тоо. Бүсийн ангиллын шүүлт `zoneIds`-ээр дамжина.
+    if (!tData) return null;
+    const zoneIds = new Set(rows.filter((r) => !catOff.has(r.type)).map((r) => r.id));
+    return densityHeat(tData.buildings, popBasis, zoneIds);
+  }, [heatOn, transportMode, tCtx, tMode, tData, popBasis, rows, catOff]);
+
+  /** Тээврийн дүрслэл сонгох — энэ самбарыг идэвхжүүлж, бүсийн будалтыг тавьж өгнө */
+  const pickTMode = useCallback((m: TMode) => { setTMode(m); setTActive(true); }, []);
+  /** Бүсийн симуляц сонгох — тээврийн самбар идэвхгүй болж, будалт бүс рүү буцна */
+  const pickSimKind = useCallback((k: SimKind) => { setSimKind(k); setTActive(false); }, []);
 
   /**
    * «Ачаалал» табд ЗАМЫН ТАЛБАЙГ автоматаар асаана — машин агентууд юун дээр
    * гүйж байгаа нь харагдахгүй бол симуляц утгагүй. Агентууд `et:5` тэнхлэгээр
    * явдаг тул `et:29` полигоны яг дундуур гүйж харагдана.
+   *
+   * ⚠️ ЗӨВХӨН «Төлөвлөгөө» сүлжээнд: `et:29` бол ТӨЛӨВЛӨГӨӨТ замын талбай тул
+   * «Бодит» (OSM) сүлжээн дээр асаавал бодит машинтай зөрнө. Бодит зам дээр
+   * хэрэглэгчийн vector tile суурь + OSM өөрөө контекст болно.
    * ⚠️ Табаас гарахад ЗӨВХӨН өөрсдөө асаасан бол унтраана — хэрэглэгч каталогоос
    * гараар асаасан байсныг таслах эрхгүй.
    */
   const layerOnRef = useRef(layerOn);
   layerOnRef.current = layerOn;
   useEffect(() => {
-    if (!roadMode || layerOnRef.current[ROAD_AREA_LAYER]) return;
+    if (!roadMode || netKind !== 'plan' || layerOnRef.current[ROAD_AREA_LAYER]) return;
     setLayerOn((v) => ({ ...v, [ROAD_AREA_LAYER]: true }));
     return () => setLayerOn((v) => ({ ...v, [ROAD_AREA_LAYER]: false }));
-  }, [roadMode]);
+  }, [roadMode, netKind]);
+
+  /**
+   * «Бодит» замын симуляцад БАРИЛГЫГ нуана — одоо байгаа нөхцлийг харуулах тул
+   * төлөвлөлтийн барилгууд зам дээр давхарлахгүй. Гарахад буцааж асаана (хэрэглэгч
+   * өөрөө унтрааж байсныг ялгах хэрэггүй — барилга анхдагчаараа асаалттай).
+   */
+  useEffect(() => {
+    if (!(roadMode && netKind === 'real')) return;
+    setLayerOn((v) => ({ ...v, [BUILDING_LAYER]: false }));
+    return () => setLayerOn((v) => ({ ...v, [BUILDING_LAYER]: true }));
+  }, [roadMode, netKind]);
 
   const colorOf = useCallback(
-    (r: MapRow) =>
-      mode === 'simulation'
+    (r: MapRow) => {
+      // ⚠️ Тээвэр-идэвх идэвхтэй үед БҮС бүгд «өгөгдөлгүй» өнгөтэй болно —
+      //    газрын зургийн мессеж нь барилга/зам тул бүсийн дулаан будалт
+      //    түүнийг зөвхөн бүрхэнэ (`SuitMap` үүнийг цайвар дэвсгэр болгож зурна).
+      if (transportMode) return NO_DATA_COLOR;
+      return mode === 'simulation'
         ? simColor(simDef(simKind).ready ? simNorm(simMetric(r, simKind, popBasis).value, simRng) : null)
-        : scoreColor(valueOf(r as Row, mode, ind, econShare)),
-    [mode, ind, econShare, simKind, popBasis, simRng],
+        : scoreColor(valueOf(r as Row, mode, ind, econShare));
+    },
+    [mode, ind, econShare, simKind, popBasis, simRng, transportMode],
   );
+  /**
+   * «БОДИТ» замын симуляц — ОДОО БАЙГАА нөхцлийг харуулах тул төлөвлөлтийн
+   * давхаргууд (бүсийн полигон, барилга) газрын зургаас нуугдана: зөвхөн бодит
+   * зам + трафик + хэрэглэгчийн vector tile суурь үлдэнэ.
+   */
+  const bareReal = roadMode && netKind === 'real';
   /** Бүс газрын зурагт харагдах эсэх — ангиллын шүүлтээр (унтраасан нь бүдгэрнэ) */
-  const shown = useCallback((r: MapRow) => !catOff.has(r.type), [catOff]);
+  const shown = useCallback(
+    (r: MapRow) => !bareReal && !catOff.has(r.type),
+    [catOff, bareReal],
+  );
 
   /* ── Hover панелийн HTML (эх аппын адил мөрөөр) ── */
   const zoneTip = useCallback((r: MapRow) => {
-    // Симуляцын горим — дулааны хэмжүүр (оноололын норм-шалгалтаас өөр)
+    /**
+     * СИМУЛЯЦЫН hover панель — оноололынхоос ТУСДАА бүтэцтэй.
+     * ⚠️ ЭРЭМБЭ (энэ бүс хэддүгээрт вэ) ЗОРИУДААР БАЙХГҮЙ: ижил утгатай бүсүүд
+     * дээр эрэмбэ нь дурын дараалал болж («100 тэмдэгтэй атлаа 4-т») андуурмаг
+     * төрүүлдэг. Харьцуулалт нь ДУНДЖААС хэдэн хувь гэдгээр илэрхийлэгдэнэ.
+     */
     if (mode === 'simulation') {
       const def = simDef(simKind);
       const m = simMetric(r, simKind, popBasis);
       const t = def.ready ? simNorm(m.value, simRng) : null;
       const dt = (k: string, v: string) => `<dt>${k}</dt><dd>${v}</dd>`;
+
+      const diff = m.value != null && simAvg > 0 ? ((m.value - simAvg) / simAvg) * 100 : null;
+      const diffTxt = diff == null ? '—'
+        : `<b style="color:${diff > 0 ? '#fb923c' : '#4ade80'}">${diff > 0 ? '+' : ''}${Math.round(diff)}%</b>`;
+
       return `
         <div class="t">
           <b>${esc(r.id)}</b>
@@ -241,7 +409,8 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
         </div>
         <div class="sub2">${esc(r.type)} · ${nf(r.areaHa, 2)} га</div>
         <dl>
-          ${dt(esc(def.label), m.text)}
+          ${dt(esc(def.label), `<b>${m.text}</b>`)}
+          ${dt('Дунджаас', diffTxt)}
           ${dt('Оршин суугч', nf(r.residentPop))}
           ${dt('Барилга', nf(r.buildingCount))}
         </dl>`;
@@ -272,7 +441,85 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
       </dl>
       ${failed.length ? `<div class="fails">${failed.map((f) =>
         `<div><span>✗ ${esc(f.name)}</span><em>${f.v}</em></div>`).join('')}</div>` : ''}`;
-  }, [mode, ind, indicators, econShare, simKind, popBasis, simRng]);
+  }, [mode, ind, indicators, econShare, simKind, popBasis, simRng, simAvg]);
+
+  /**
+   * ТЭЭВЭР-ИДЭВХИЙН hover панель — барилга · замын хэрчим · автобусны буудал.
+   *
+   * ⚠️ ЭРЭМБЭ ЗОРИУДААР БАЙХГҮЙ: живэ өгөгдөл дээр олон объект ЯГ ИЖИЛ утгатай
+   * (жиш. X-12-т 770 хүнтэй 8 адилхан блок) бөгөөд тэдгээрийн хооронд эрэмбэ нь
+   * дурын дараалал болно. «100 тэмдэгтэй атлаа 4-т» гэсэн зөрчил мэт харагдац
+   * үүсгэдэг тул хассан — утга ба тэмдэг хоёр өөрөө хангалттай.
+   */
+  const transportTip = useCallback((kind: 'b' | 'r' | 's', idx: number): string | null => {
+    if (!tCtx) return null;
+    const def = tModeDef(tMode);
+    const dt = (k: string, v: string) => `<dt>${k}</dt><dd>${v}</dd>`;
+
+    if (kind === 'b') {
+      const b = tCtx.buildings[idx];
+      if (!b) return null;
+      const v = buildingValue(b, tMode, tCtx, idx);
+      // ⚠️ Одоогийн дүрслэлд хамаарахгүй барилга — панель харуулахгүй (бүдэг зурагдсан)
+      if (v == null) return null;
+      const t = tNormFor(tMode, v, tRange(tMode, tCtx));
+      const acc = tCtx.bus.access[idx];
+      const link = tCtx.demand.links[idx];
+      return `
+        <div class="t">
+          <b>${esc(b.purpose || CAT_LABEL[b.cat])}</b>
+          <span class="st" style="background:${tColor(tMode, t)};color:#1a1205">${
+        t == null ? '—' : Math.round(t * 100)}</span>
+        </div>
+        <div class="sub2">${esc(CAT_LABEL[b.cat])}${b.zone ? ` · ${esc(b.zone)}` : ''}</div>
+        <dl>
+          ${dt(esc(def.label), `${nf(v)} ${def.unit}`)}
+          ${dt(b.cat === 'residential' ? 'Оршин суугч' : 'Хүчин чадал',
+        nf(b.cat === 'residential' ? b.population : b.capacity))}
+          ${dt('Хүн-зорчилт', `${nf(b.trips)} /ц`)}
+          ${dt('Машин-зорчилт', `${nf(b.vehTrips)} /ц`)}
+          ${dt('Ойрын зам', link ? `${nf(link.distsM[0])} м` : '<b style="color:#f87171">холбогдоогүй</b>')}
+          ${dt('Автобус', acc ? `${nf(acc.distM)} м · ${esc(BUS_BAND_LABEL[acc.band])}` : '—')}
+        </dl>`;
+    }
+
+    if (kind === 'r') {
+      const e = tCtx.net.edges[idx];
+      const v = tCtx.demand.edgeDemand[idx];
+      if (!e || !(v > 0)) return null;
+      const t = tCtx.demand.max > 0 ? v / tCtx.demand.max : 0;
+      return `
+        <div class="t">
+          <b>Замын хэрчим</b>
+          <span class="st" style="background:${tColor(tMode, t)};color:#1a1205">${Math.round(t * 100)}</span>
+        </div>
+        <div class="sub2">${nf(e.length / tCtx.net.unitsPerMeter)} м урт</div>
+        <dl>
+          ${dt('Эрэлт', `${nf(v)} машин/ц`)}
+          ${dt('Хамгийн ихээс', `${Math.round(t * 100)}%`)}
+        </dl>
+        <div class="fails"><div><span>Эрэлт — хүчин чадалтай харьцуулаагүй</span><em>V/C биш</em></div></div>`;
+    }
+
+    const st = tCtx.stops[idx];
+    if (!st) return null;
+    const demand = tCtx.bus.stopDemand[idx];
+    let served = 0;
+    let servedPop = 0;
+    for (let i = 0; i < tCtx.buildings.length; i++) {
+      if (tCtx.bus.access[i]?.stop !== idx) continue;
+      served++;
+      if (tCtx.buildings[i].cat === 'residential') servedPop += tCtx.buildings[i].population;
+    }
+    return `
+      <div class="t"><b>Автобусны буудал</b></div>
+      <div class="sub2">#${st.oid}</div>
+      <dl>
+        ${dt('Зорчигчийн эрэлт', `${nf(demand)} /ц`)}
+        ${dt('Үйлчлэх барилга', nf(served))}
+        ${dt('Үйлчлэх оршин суугч', nf(servedPop))}
+      </dl>`;
+  }, [tCtx, tMode]);
 
   const buildingTip = useCallback((a: Record<string, unknown>) => {
     const st = String(a.Barilga_ty ?? '').trim();
@@ -302,19 +549,62 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
 
   const active = rows.find((r) => r.id === selected) ?? null;
 
-  /* ── Ачаалж дуусаагүй ── */
-  const ready = data != null && costs != null && projected;
+  /**
+   * «Симуляц» — ХОЁР самбар, ТООЦООЛЛЫН НЭГЖЭЭР нь хуваагдана:
+   *   · ЗҮҮН  — «Тээвэр-идэвхийн шинжилгээ» (`TransportPanel`): БАРИЛГА бүрээр
+   *   · БАРУУН — «Бүсийн симуляц» (`Simulation`): БҮС бүрээр
+   *              (төвлөрөл · хүртээмж · ачаалал гурвуулаа)
+   * Аль самбарын товчийг сүүлд дарсан нь газрын зургийг буддаг (`tActive`);
+   * нөгөө нь зөвхөн товчоо харуулна (байрлал шилжихгүй).
+   */
+  const simCommon = {
+    kind: simKind,
+    setKind: pickSimKind,
+    muted: tActive,
+    popBasis,
+    setPopBasis,
+    clock: {
+      minute: clock.minute,
+      playing: clock.playing,
+      setPlaying: clock.setPlaying,
+      speed: clock.speed,
+      setSpeed: clock.setSpeed,
+      seek: clock.seek,
+    },
+    road: {
+      edges: roadNet?.edges.length ?? null,
+      error: roadErr,
+      stats: trafficStats,
+      flat: dim !== '2d',
+      /** Харьцуулах замын сүлжээ сонгогч (Бодит/Төлөвлөгөө/Шинэ зам) */
+      net: {
+        kind: netKind,
+        setKind: setNetKind,
+        options: NET_KINDS.map((k) => ({
+          kind: k,
+          label: NET_SOURCES[k].label,
+          short: NET_SOURCES[k].short,
+          ready: isNetReady(k),
+        })),
+      },
+    },
+    // ⚠️ `selected`/`onSelect` ХАСАГДСАН: эрэмбийн жагсаалт байхгүй болсон тул
+    //    самбар нь бүс сонгодоггүй — сонголт зөвхөн газрын зураг дээр дарж хийгдэнэ.
+    rows: rows.filter((r) => !catOff.has(r.type)),
+  };
 
   return (
     <div className={s.app}>
-      {!ready && (
+      {/* ⚠️ Ачаалалтын бүтэн дэлгэцийн loader ХАСАГДСАН — өгөгдөл ачаалагдах зуур
+          апп шууд нээгдэж, бүсүүд бэлэн болмогцоо газрын зурагт гарна. Зөвхөн
+          АЛДАА гарвал л мессежийг харуулна (алдааг далдлахгүйн тулд). */}
+      {error && (
         <div className={s.loader}>
           <div className={s.loaderBox}>
             <div className={s.loaderTitle}>Сэлбэ дэд төв</div>
             <div className={s.loaderSub}>Тохиромжтой байдлын загварчлал</div>
-            <div className={s.loaderBar}><span style={{ width: `${prog.pct}%` }} /></div>
-            <div className={`${s.loaderMsg} ${error ? s.loaderErr : ''}`}>
-              {error ? `Алдаа гарлаа: ${error}` : prog.msg}
+            <div className={`${s.loaderMsg} ${s.loaderErr}`}>
+              Алдаа гарлаа: {error}
             </div>
           </div>
         </div>
@@ -353,11 +643,25 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
       <Shell
         left={
           <>
+            {/* Тээвэр-идэвхийн 7 дүрслэл — ЗҮҮН талд ГАНЦААРАА.
+                ⚠️ «Хүн амын төвлөрөл» нь БАРУУН самбар руу нүүсэн: тэр гурав
+                (төвлөрөл · хүртээмж · ачаалал) бүгд БҮСЭЭР тооцогддог тул нэг
+                дор байх нь логиктой; зүүн тал БАРИЛГА-аар тооцох шинжилгээнд
+                бүтнээрээ үлдэнэ. */}
+            {mode === 'simulation' && (
+              <TransportPanel
+                mode={tMode}
+                setMode={pickTMode}
+                active={tActive}
+                ctx={tCtx}
+                loading={tActive && !tCtx}
+                error={tErr}
+              />
+            )}
+
             {/* ⚠️ Давхаргын жагсаалт нь зүүн rail-ийн картаас газрын зурган дээрх
                 «Давхарга» товч + каталог руу шилжсэн («Ерөнхий төлөвлөгөө»-тэй
                 ижил зарчим). Доорх `map` слот дахь `SuitLayerCatalog`-ыг үз. */}
-            {/* ⚠️ «Симуляц» карт нь БАРУУН rail-д (доорх `right` слотыг үз) —
-                зүүн талд эрэмбэ/ангилал үлдэнэ. */}
             {mode === 'indicator' && (
               <Card title="Хот төлөвлөлтийн тооцоолол">
                 <CategoryPie
@@ -386,7 +690,13 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
 
             {/* Бүсийн ангилал — Angilal-аар шүүх (газрын зураг + эрэмбэ динамик) */}
             <Card id="zoneCat" title="Бүсийн ангилал" collapsible>
-              <ZoneCatFilter cats={zoneCats} off={catOff} setOff={setCatOff} />
+              <ZoneCatFilter
+                cats={zoneCats}
+                off={catOff}
+                setOff={setCatOff}
+                scoreOn={scoreOn}
+                setScoreOn={setScoreOn}
+              />
             </Card>
 
             {mode !== 'simulation' && (
@@ -422,6 +732,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
               layerOn={layerOn}
               zoneTip={zoneTip}
               buildingTip={buildingTip}
+              transportTip={transportMode ? transportTip : undefined}
               traffic={roadMode && roadNet ? {
                 net: roadNet,
                 minuteRef: clock.minuteRef,
@@ -430,6 +741,10 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
                 maxCars: peakCars,
                 onStats: setTrafficStats,
               } : undefined}
+              transportPaint={transportPaint}
+              transportFaint={mapStyle === 'heat'}
+              heat={heat}
+              roadTile={bareReal}
             />
 
             {/* Каталог — «Ерөнхий төлөвлөгөө»-тэй ижил ЗҮҮН талын БҮТЭН ӨНДӨР
@@ -459,6 +774,34 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
                 <Icon name="layers" size={15} />
                 Давхарга
               </button>
+
+              {/* Полигон ↔ дулаан — ЗӨВХӨН «Симуляц» горимд.
+                  ⚠️ Гурван самбар бүрд давтахгүй: энэ нь ЗУРГИЙН тохиргоо тул
+                  зургийн удирдлагын мөрөнд байх нь зөв. */}
+              {mode === 'simulation' && (
+                <div className={s.mapDims} role="group" aria-label="Симуляцын дүрслэл">
+                  {MAP_STYLES.map((v) => {
+                    // ⚠️ Дулаан нь ЗАЙД (хүртээмж, автобус) ба машин агентын
+                    //    симуляцад (ачаалал) утгагүй тул тэнд товч ИДЭВХГҮЙ —
+                    //    дарж болох мөртлөө юу ч болохгүй байвал эвдэрсэн мэт санагдана.
+                    const off = v.key === 'heat' && !heatable;
+                    return (
+                      <button
+                        key={v.key}
+                        type="button"
+                        disabled={off}
+                        aria-pressed={!off && mapStyle === v.key}
+                        title={off ? 'Энэ дүрслэлд дулааны гадаргуу утгагүй (зай/агент симуляц)' : v.title}
+                        className={`${s.dimBtn} ${!off && mapStyle === v.key ? s.dimOn : ''}`}
+                        style={off ? { opacity: 0.4, cursor: 'not-allowed' } : undefined}
+                        onClick={() => setMapStyle(v.key)}
+                      >
+                        {v.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
 
               <div className={s.mapDims} role="group" aria-label="Газрын зургийн харагдац">
                 {(['2d', '3d', 'bim'] as Dim[]).map((d) => (
@@ -490,34 +833,14 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
           </>
         }
         right={
+          // «Симуляц» горим: БҮСЭЭР тооцогддог гурван симуляц ЭНД БАРУУНД.
+          // Бусад горимд ердийн картууд (жин, зогсоол г.м.).
+          // ⚠️ Картын гарчигт төрлүүдээ ЖАГСААХГҮЙ — доорх гурван товч аль хэдийн
+          //    «Төвлөрөл · Хүртээмж · Ачаалал» гэж бичсэн тул давхардал болно.
+          mode === 'simulation' ? (
+            <Simulation {...simCommon} kinds={['density', 'transit', 'road']} title="Бүсийн симуляц" />
+          ) : (
           <>
-            {mode === 'simulation' && (
-              <Simulation
-                kind={simKind}
-                setKind={setSimKind}
-                popBasis={popBasis}
-                setPopBasis={setPopBasis}
-                clock={{
-                  minute: clock.minute,
-                  playing: clock.playing,
-                  setPlaying: clock.setPlaying,
-                  speed: clock.speed,
-                  setSpeed: clock.setSpeed,
-                  seek: clock.seek,
-                }}
-                road={{
-                  edges: roadNet?.edges.length ?? null,
-                  peak: peakCars,
-                  error: roadErr,
-                  stats: trafficStats,
-                  flat: dim !== '2d',
-                }}
-                rows={rows.filter((r) => !catOff.has(r.type))}
-                selected={selected}
-                onSelect={setSelected}
-              />
-            )}
-
             {/* ⚠️ Нийлмэл горимд ЗӨВХӨН хуваарилалтын карт: хот төлөвлөлт болон
                 эдийн засгийн нарийн тохиргоо нь тухайн табыг сонгоход нэмэгдэнэ. */}
             {mode === 'blend' && (
@@ -538,17 +861,18 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
                   <button
                     type="button"
                     className={s.mini}
-                    title="Анхны утга руу буцаах"
+                    title="Бүх үзүүлэлтийн жинг анхны (default) утга руу нэг дор буцаана"
                     onClick={(e) => { e.stopPropagation(); setIndicators(INDICATORS.map((i) => ({ ...i }))); }}
                   >
-                    Reset
+                    <Icon name="reset" size={11} />
+                    Анхны утга
                   </button>
                 }
               >
                 <p className={`${s.muted} ${s.small}`}>
                   Үзүүлэлт бүр <b>норм хангавал 100 оноо</b>, зөрчвөл 44-өөс дээшгүй оноо авна.
                   Жин нь нийлбэрээрээ 100% болж автоматаар нормчилогдоно.
-                  Босго утгыг БНбД 30-01-24-өөс авсан бөгөөд доорх талбарт засварлаж болно.
+                  Босго утгыг БНБД 30-01-24-өөс авсан бөгөөд доорх талбарт засварлаж болно.
                 </p>
                 <Weights indicators={indicators} setIndicators={setIndicators} totalW={totalW} />
               </Card>
@@ -574,11 +898,9 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
               </Card>
             )}
           </>
+          )
         }
       />
-
-      {/* Доод хүрээ — оноон түвшний тархалт (газрын зургийг тойрсон бүтэц) */}
-      <SuitFooter rows={scoredRows} econShare={econShare} />
     </div>
   );
 }
@@ -589,16 +911,23 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
  * `Angilal` (каноник `type`)-аар бүс шүүх. Унтраасан ангилал газрын зурагт
  * бүдгэрч, эрэмбээс хасагдана. Хассан ангилал (ногоон/одоо байгаа) ч энд гарна —
  * тэдгээрийг унтраавал газрын зургаас далдлана.
+ *
+ * ⚠️ ИДЭВХЖҮҮЛЖ БОЛОХ хасагдсан ангилал (`ACTIVATABLE_ZONE_TYPES` — нийгмийн дэд
+ * бүтэц, газар чөлөөлөлт дутуу) нь ЭНД харагдац биш ОНООЛТ-оо удирдана: сонгоогүй
+ * бол цайвар (хасагдсан), сонговол оноолол дахин тооцогдож будагдана. «оноол»
+ * шошготой, `scoreOn`-оор төлөвлөгдөнө.
  */
-function ZoneCatFilter({ cats, off, setOff }: {
+function ZoneCatFilter({ cats, off, setOff, scoreOn, setScoreOn }: {
   cats: { type: string; count: number; color: string }[];
   off: Set<string>;
   setOff: (s: Set<string>) => void;
+  scoreOn: Set<string>;
+  setScoreOn: (s: Set<string>) => void;
 }) {
-  const toggle = (type: string) => {
-    const n = new Set(off);
+  const toggleIn = (set: Set<string>, apply: (s: Set<string>) => void, type: string) => {
+    const n = new Set(set);
     if (n.has(type)) n.delete(type); else n.add(type);
-    setOff(n);
+    apply(n);
   };
   const allOn = off.size === 0;
   return (
@@ -614,25 +943,43 @@ function ZoneCatFilter({ cats, off, setOff }: {
         </button>
       </div>
       {cats.map((c) => {
-        const on = !off.has(c.type);
+        // Идэвхжүүлж болох хасагдсан ангилал — энэ мөр ОНООЛТ-ыг (scoreOn) удирдана
+        // (default: сонгоогүй = цайвар). Бусад ангилалд урьдын адил ХАРАГДАЦ-ыг (off).
+        const activatable = ACTIVATABLE_ZONE_TYPES.has(c.type);
+        const on = activatable ? scoreOn.has(c.type) : !off.has(c.type);
         return (
           <button
             key={c.type}
             type="button"
             aria-pressed={on}
-            onClick={() => toggle(c.type)}
+            title={activatable ? 'Сонговол оноололд орж, газрын зурагт будагдана' : undefined}
+            onClick={() => (activatable
+              ? toggleIn(scoreOn, setScoreOn, c.type)
+              : toggleIn(off, setOff, c.type))}
             style={{
               display: 'flex', alignItems: 'center', gap: 8, width: '100%',
-              padding: '6px 8px', borderRadius: 8, border: '1px solid var(--line)',
+              padding: '6px 8px', borderRadius: 8,
+              border: `1px solid ${activatable && on ? 'var(--accent)' : 'var(--line)'}`,
               background: on ? 'var(--panel-2)' : 'transparent',
               color: on ? 'var(--text)' : 'var(--muted)', textAlign: 'left',
-              transition: 'background .12s, opacity .12s',
+              transition: 'background .12s, opacity .12s, border-color .12s',
             }}
           >
             <span style={{ width: 11, height: 11, borderRadius: 3, flex: 'none', background: c.color, opacity: on ? 1 : 0.35 }} />
             <span style={{ flex: 1, minWidth: 0, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.type}</span>
+            {activatable && (
+              <span style={{
+                fontSize: 9, letterSpacing: '.3px', flex: 'none',
+                color: on ? 'var(--accent)' : 'var(--muted)',
+                border: '1px solid var(--line)', borderRadius: 4, padding: '0 4px',
+              }}>
+                сонгох
+              </span>
+            )}
             <b style={{ fontVariantNumeric: 'tabular-nums', fontSize: 11, color: 'var(--muted)' }}>{c.count}</b>
-            <span style={{ width: 14, textAlign: 'center', color: 'var(--accent)', fontSize: 12 }}>{on ? '✓' : ''}</span>
+            <span style={{ width: 14, textAlign: 'center', color: 'var(--accent)', fontSize: 12 }}>
+              {on ? '✓' : (activatable ? '+' : '')}
+            </span>
           </button>
         );
       })}
@@ -640,34 +987,3 @@ function ZoneCatFilter({ cats, off, setOff }: {
   );
 }
 
-/* ══════════════════ Доод хүрээ: оноон тархалт ══════════════════ */
-
-/**
- * ⚠️ Хот төлөвлөлт ба эдийн засгийн НИЙЛМЭЛ оноогоор — газрын зургийн будалт,
- * эрэмбэтэй ижил тэнхлэг. Хуваарилалт (econShare) өөрчлөгдөхөд шинэчлэгдэнэ.
- */
-function SuitFooter({ rows, econShare }: { rows: Row[]; econShare: number }) {
-  const scores = rows.map((r) => blendScore(r, econShare)).filter((x): x is number => x != null);
-  const avg = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
-  const counts = SCORE_LEVELS.map((L, i) => ({
-    L, n: rows.filter((r) => levelOf(blendScore(r, econShare)) === i).length,
-  }));
-
-  return (
-    <footer className={s.appFoot}>
-      <div className={s.footScore}>
-        <b style={{ color: scoreColor(avg) }}>{avg == null ? '—' : Math.round(avg)}</b>
-        <span>{rows.length} бүсийн дундаж · {scoreLabel(avg)}</span>
-      </div>
-      <div className={s.footLevels}>
-        {counts.map(({ L, n }) => (
-          <div key={L.label}>
-            <i style={{ background: L.color }} />
-            <span>{L.label}</span>
-            <b>{n}</b>
-          </div>
-        ))}
-      </div>
-    </footer>
-  );
-}

@@ -2713,7 +2713,7 @@ export const VIEWS: {
   {
     key: "analysis",
     title: "Тохиромжтой байдлын үнэлгээ",
-    desc: "БНбД норм, эдийн засгийн үр ашиг",
+    desc: "БНБД норм, эдийн засгийн үр ашиг",
     icon: "chart",
     hue: "#7c3aed",
     layers: [],
