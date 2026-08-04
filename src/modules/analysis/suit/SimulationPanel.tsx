@@ -10,7 +10,15 @@ import {
 import { Timeline } from './Timeline';
 import type { MapRow } from '../SuitMap';
 import type { TrafficStats } from './TrafficOverlay';
+import type { NetKind } from './netSources';
 import c from './simulation.module.css';
+
+/** Харьцуулах замын сүлжээний сонголт (Бодит/Төлөвлөгөө/Шинэ зам) */
+export type NetSel = {
+  kind: NetKind;
+  setKind: (k: NetKind) => void;
+  options: { kind: NetKind; label: string; short: string; ready: boolean }[];
+};
 
 /** Замын сүлжээний ачаалалт ба амьд симуляцын хураангуй (эцгээс) */
 export type RoadState = {
@@ -22,6 +30,8 @@ export type RoadState = {
   stats: TrafficStats | null;
   /** 3D горим — машины давхарга зурагдахгүй (хавтгай проекц нийцэхгүй) */
   flat: boolean;
+  /** Харьцуулах замын сүлжээ сонгогч */
+  net?: NetSel;
 };
 
 /** Timeline-ийн удирдлагыг эцгээс (Suitability) дамжуулна */
@@ -194,6 +204,7 @@ export function Simulation({
         {/* ── Цагийн консол ба трафикийн төлөв (зөвхөн «Ачаалал») ── */}
         {kind === 'road' && (
           <>
+            <NetSelector net={road?.net} />
             <Timeline {...clock} hue={def.hue} />
             <RoadStatus road={road} />
           </>
@@ -202,8 +213,10 @@ export function Simulation({
         {/* ── Легенд ──
             ⚠️ Эрэмбийн ЖАГСААЛТ ЗОРИУДААР ХАСАГДСАН: 13 мөр бүсийн код бичсэн
             хүснэгт нь газрын зурагтай холбогдохгүй тул уншихад хүнд байсан.
-            Бүс бүрийн утгыг ГАЗРЫН ЗУРАГ дээр хулганаа аваачиж уншина. */}
-        {!def.ready ? (
+            Бүс бүрийн утгыг ГАЗРЫН ЗУРАГ дээр хулганаа аваачиж уншина.
+            ⚠️ «Ачаалал» табд ХАРАГДАХГҮЙ: тэр нь амьд трафикийн симуляц тул бүсийн
+            аялалын эрэмбэ (аялал/ц) утгагүй — уншилт нь машин/хурд/урсгал дээр. */}
+        {kind === 'road' ? null : !def.ready ? (
           <p className={c.empty}>Энэ симуляц удахгүй нэмэгдэнэ.</p>
         ) : ranked.length === 0 ? (
           <p className={c.empty}>Тооцоолох өгөгдөл алга.</p>
@@ -277,6 +290,37 @@ function readout(kind: SimKind, ranked: Ranked[], road?: RoadState): Cell[] {
     { k: 'Дундаж', v: nf0(avg), unit: 'хүн/га' },
     { k: 'Бүс', v: nf0(ranked.length) },
   ];
+}
+
+/* ══════════════════ Замын сүлжээ сонгогч ══════════════════ */
+
+/**
+ * ХАРЬЦУУЛАХ замын сүлжээ сонгох — Бодит / Төлөвлөгөө / Шинэ зам.
+ * ⚠️ Line ирээгүй сүлжээ (`ready=false`) идэвхгүй харагдана. Одоо зөвхөн
+ * «Төлөвлөгөө» (et:5) бэлэн; бусад нь ArcGIS line ирэхэд идэвхжинэ.
+ */
+function NetSelector({ net }: { net?: NetSel }) {
+  if (!net) return null;
+  return (
+    <div className={c.pick}>
+      <span className={c.pickLabel}>Зам</span>
+      <div className={c.segSm} role="group" aria-label="Харьцуулах замын сүлжээ">
+        {net.options.map((o) => (
+          <button
+            key={o.kind}
+            type="button"
+            aria-pressed={net.kind === o.kind}
+            className={net.kind === o.kind ? c.segSmOn : undefined}
+            disabled={!o.ready}
+            onClick={() => net.setKind(o.kind)}
+            title={o.ready ? o.label : `${o.label} — line хараахан ирээгүй`}
+          >
+            {o.short}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 /* ══════════════════ Замын сүлжээний төлөв ══════════════════ */

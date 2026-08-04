@@ -68,7 +68,9 @@ export const SIM_KINDS: SimDef[] = [
     key: 'road',
     label: 'Замын ачаалал',
     short: 'Ачаалал',
-    unit: 'аялал/ц',
+    // ⚠️ Нэгж ЗОРИУДААР хоосон: «Ачаалал» нь амьд симуляц — гарчгийн хажууд
+    //    «аялал/ц» гэх бүсийн нэгж төөрөгдүүлж байсан (уншилт нь машин/хурд/урсгал).
+    unit: '',
     hue: '#f59e0b',
     icon: 'road',
     ready: true,
@@ -126,12 +128,19 @@ export const zoneTrips = (z: { residentPop: number; capacityPop: number }): numb
 export const TRIP_DURATION_H = 0.05;
 
 /**
+ * Симуляцын машины тооны ҮРЖҮҮЛЭГЧ — дэлгэцэд илүү нягт урсгал харуулах.
+ * ⚠️ Хэрэглэгчийн хүсэлтээр оргил ≈3,000 машин (2026-08-04): Little-ийн тооцоо
+ * ~1,071 × 2.8 ≈ 3,000. Харьцуулалтад нөлөөгүй — 3 сүлжээнд ИЖИЛ үржүүлэгч.
+ */
+export const DEMAND_SCALE = 2.8;
+
+/**
  * Оргил цагт сүлжээнд ЗЭРЭГ байх машины тоо (Little-ийн хууль: L = λ × W).
  * Симуляцын «машины тоо» энэ таамгаас гарна — гараар өгсөн дугуй тоо БИШ.
  */
 export function peakVehicles(zones: { residentPop: number; capacityPop: number }[]): number {
   const trips = zones.reduce((a, z) => a + zoneTrips(z), 0);
-  return Math.round(trips * TRIP_DURATION_H);
+  return Math.round(trips * TRIP_DURATION_H * DEMAND_SCALE);
 }
 
 export type SimMetric = {

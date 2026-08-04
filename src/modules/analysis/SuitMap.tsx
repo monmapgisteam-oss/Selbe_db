@@ -7,6 +7,7 @@ import SceneView from '@arcgis/core/views/SceneView';
 import GraphicsLayer from '@arcgis/core/layers/GraphicsLayer';
 import GroupLayer from '@arcgis/core/layers/GroupLayer';
 import FeatureLayer from '@arcgis/core/layers/FeatureLayer';
+import VectorTileLayer from '@arcgis/core/layers/VectorTileLayer';
 import ImageryLayer from '@arcgis/core/layers/ImageryLayer';
 import IntegratedMeshLayer from '@arcgis/core/layers/IntegratedMeshLayer';
 import ElevationLayer from '@arcgis/core/layers/ElevationLayer';
@@ -189,6 +190,14 @@ function labelSymbol(dim: Dim, text: string, color: string, halo: string, haloSi
  *  эхэндээ унтраалттай — «Суурь зураг» чагтаар асаана. */
 const baseMap = () => Basemap.fromId('topo-vector');
 
+/**
+ * БОДИТ ЗАМЫН гадаргуу — attribute-тай vector tile (`test_zam`).
+ * ⚠️ Замын ПОЛИГОН (талбай), centerline биш — зөвхөн ХАРАГДАЦ. Трафикийн граф нь
+ * `Monmap_zam` line дээр хэвээр (`netSources.ts`). «Бодит» сонгоход л ил болно.
+ */
+const ROAD_TILE_URL =
+  'https://vectortileservices-ap1.arcgis.com/ACqsMOmNLi5wIdIh/arcgis/rest/services/test_zam/VectorTileServer';
+
 export function SuitMap({
   dim,
   rows,
@@ -204,6 +213,7 @@ export function SuitMap({
   transportPaint,
   transportFaint = false,
   heat,
+  roadTile = false,
 }: {
   /** 2D (MapView + ортофото) эсвэл 3D (SceneView + IntegratedMesh) */
   dim: Dim;
@@ -252,6 +262,8 @@ export function SuitMap({
    * УСТАНА — полигон харагдац руу буцна.
    */
   heat?: HeatPoint[] | null;
+  /** «Бодит» замын vector tile гадаргууг ил болгох (attribute-тай `test_zam`). */
+  roadTile?: boolean;
 }) {
   const el = useRef<HTMLDivElement>(null);
   const tipEl = useRef<HTMLDivElement>(null);
@@ -260,6 +272,7 @@ export function SuitMap({
   const zoneRef = useRef<GraphicsLayer | null>(null);
   const labelRef = useRef<GraphicsLayer | null>(null);
   const bldRef = useRef<FeatureLayer | null>(null);
+  const roadTileRef = useRef<VectorTileLayer | null>(null);
   const tranRef = useRef<GraphicsLayer | null>(null);
   const heatRef = useRef<FeatureLayer | null>(null);
   /** Тээврийн будалт дахин зурагдах бүрд өснө — hover-ийн кэшийг хүчингүй болгоно */
@@ -334,14 +347,22 @@ export function SuitMap({
         })),
       });
 
+      /* Бодит замын vector tile гадаргуу — «Бодит» симуляцад л ил. Ортофотогийн
+         дээр, бусад контекстийн доор (машин канвас нь газрын зургаас ДЭЭР тул
+         энэ давхарга машиныг бүрхэхгүй). */
+      const roadTileLayer = new VectorTileLayer({
+        id: 'roadTile', url: ROAD_TILE_URL, visible: false, listMode: 'hide',
+      });
+      roadTileRef.current = roadTileLayer;
+
       /**
-       * ⚠️ ДАРААЛАЛ: ортофото → контекст → бүсийн будалт → барилга → шошго.
+       * ⚠️ ДАРААЛАЛ: ортофото → замын tile → контекст → бүсийн будалт → барилга → шошго.
        * Барилгыг бүсийн полигоны ДЭЭР зурна — эс бөгөөс будалт дор дарагдана.
        */
       mapRef.current = new Map({
         basemap: baseMap(),
         ground: new Ground({ layers: [new ElevationLayer({ url: ELEVATION_URL })] }),
-        layers: [imagery, ...under, zoneLayer, ...(buildingLayer ? [buildingLayer] : []), tranLayer, labelLayer],
+        layers: [imagery, roadTileLayer, ...under, zoneLayer, ...(buildingLayer ? [buildingLayer] : []), tranLayer, labelLayer],
       });
     }
 
@@ -510,6 +531,7 @@ export function SuitMap({
     zoneRef.current = null;
     labelRef.current = null;
     bldRef.current = null;
+    roadTileRef.current = null;
     tranRef.current = null;
     ctxRef.current = {};
   }, []);
@@ -596,6 +618,11 @@ export function SuitMap({
       lyr.visible = (ALWAYS_ON_IDS as readonly string[]).includes(key) || (layerOn[key] ?? false);
     }
   }, [layerOn]);
+
+  /* ── Бодит замын vector tile — «Бодит» симуляцад л ил ── */
+  useEffect(() => {
+    if (roadTileRef.current) roadTileRef.current.visible = roadTile;
+  }, [roadTile]);
 
   /* ── Бүсийн будалт ба шошго ── */
   const paintKey = rows.map((r) => `${r.id}:${colorOf(r)}:${shown(r) ? 1 : 0}`).join('|')
