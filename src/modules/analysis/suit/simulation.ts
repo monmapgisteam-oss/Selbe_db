@@ -19,8 +19,6 @@ export type SimDef = {
   key: SimKind;
   label: string;
   short: string;
-  /** Панелийн доор гарах тайлбар */
-  desc: string;
   /** Хэмжүүрийн нэгж (легенд, tooltip-д) */
   unit: string;
   /**
@@ -34,6 +32,15 @@ export type SimDef = {
   icon: string;
   /** Одоо тооцоологддог эсэх — `false` бол «удахгүй» гэж харагдана */
   ready: boolean;
+  /**
+   * Дулааны гадаргуу утгатай эсэх (`heat.ts`).
+   *
+   * ⚠️ Heatmap нь цөмүүдийг НЭМДЭГ тул зөвхөн ХУРИМТЛАГДАХ хэмжигдэхүүнд
+   * утгатай. `transit` нь ЗАЙ (м) — зайг нэмэх нь физик утгагүй бөгөөд
+   * «улаан = хол = муу» болж бусад дүрслэлтэй зөрчилдөнө. `road` нь амьд
+   * машин агентаар илэрхийлэгддэг тул дээр нь дулаан нэмбэл зөвхөн бүрхэнэ.
+   */
+  heatable: boolean;
 };
 
 export const SIM_KINDS: SimDef[] = [
@@ -41,35 +48,35 @@ export const SIM_KINDS: SimDef[] = [
     key: 'density',
     label: 'Хүн амын төвлөрөл',
     short: 'Төвлөрөл',
-    desc: 'Бүс бүрийн оршин суугчийн нягтрал — хүн ÷ полигоны талбай (га). Хүн шигүү суусан бүсийг дулаан өнгөөр.',
     unit: 'хүн/га',
     hue: '#a78bfa',
     icon: 'flame',
     ready: true,
+    heatable: true,
   },
   {
     key: 'transit',
     label: 'Тээврийн хүртээмж',
     short: 'Хүртээмж',
-    desc: 'Бүсээс хамгийн ойрын автобусны буудал / LRT·BRT зогсоол хүрэх зай (м). Хол зайтай (муу хүртээмжтэй) бүсийг дулаан өнгөөр.',
     unit: 'м',
     hue: '#38bdf8',
     icon: 'bus',
     ready: true,
+    heatable: false,
   },
   {
     key: 'road',
     label: 'Замын ачаалал',
     short: 'Ачаалал',
-    desc: 'Бүсийн аялал үүсгэлт → замын сүлжээнд машин агентууд. Цагийн гулсуурыг хөдөлгөж өдрийн ачааллыг хараарай.',
     unit: 'аялал/ц',
     hue: '#f59e0b',
     icon: 'road',
     ready: true,
+    heatable: false,
   },
 ];
 
-/** БНбД 30-01-24, 10.22 — ойрын буудал хүртэл 500 м-ээс ихгүй */
+/** БНБД 30-01-24, 10.22 — ойрын буудал хүртэл 500 м-ээс ихгүй */
 export const TRANSIT_NORM_M = 500;
 
 export const simDef = (kind: SimKind): SimDef =>
