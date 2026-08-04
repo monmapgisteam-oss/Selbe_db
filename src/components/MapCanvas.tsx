@@ -9,6 +9,8 @@ import MapView from '@arcgis/core/views/MapView';
 import SceneView from '@arcgis/core/views/SceneView';
 import FeatureLayer from '@arcgis/core/layers/FeatureLayer';
 import GraphicsLayer from '@arcgis/core/layers/GraphicsLayer';
+import Graphic from '@arcgis/core/Graphic';
+import Polygon from '@arcgis/core/geometry/Polygon';
 import GroupLayer from '@arcgis/core/layers/GroupLayer';
 import ImageryLayer from '@arcgis/core/layers/ImageryLayer';
 import IntegratedMeshLayer from '@arcgis/core/layers/IntegratedMeshLayer';
@@ -30,7 +32,7 @@ import {
   LAYERS, LAYER_BY_ID, layerUrl, oidOf, drawOrder, DASH_PATTERN, ALWAYS_ON_IDS, REFERENCE_IDS,
   HOME, IMAGERY, SCENE, BIM, USAN_SAN, ELEVATION_URL, ZONE_LAYER, zoneWhere,
   ZONE_FIELD, ZONE_NONE, ZONE_TYPE_EMPTY_HUE, OID, BUILDING, SURVEY, PARCEL_LEFT, buildingKey,
-  MAP_HUE_OVERRIDES,
+  MAP_HUE_OVERRIDES, SOURCE_FS,
   type LayerDef,
 } from '@/lib/services';
 import { queryExtent, queryFeatures, type Aoi } from '@/lib/query';
@@ -401,6 +403,22 @@ const zoneLabels = () =>
     },
   ] as unknown as __esri.LabelClassProperties[];
 
+/** Эх үүсвэрийн шошго — байгууламжийн нэр, цагаан halo-той */
+const sourceLabels = () =>
+  [
+    {
+      labelExpressionInfo: { expression: `Trim(Text($feature['${SOURCE_FS.fields.name}']))` },
+      symbol: {
+        type: 'text',
+        color: c('#0f172a'),
+        haloColor: [255, 255, 255, 0.95],
+        haloSize: 2,
+        font: { size: 11, weight: 'bold' },
+      },
+      labelPlacement: 'always-horizontal',
+    },
+  ] as unknown as __esri.LabelClassProperties[];
+
 /**
  * Анхдагч суурь зураг — ТОПОГРАФИ (хэрэглэгчийн хүсэлт). Ортофото нь тусдаа
  * `imagery` давхарга бөгөөд эхэндээ УНТРААЛТТАЙ; хэрэглэгч «Суурь зураг» товчны
@@ -541,6 +559,7 @@ function buildLayers(uniform = false): Layer[] {
       ...(web?.effect ? { effect: web.effect as unknown as __esri.FeatureLayerProperties['effect'] } : {}),
       ...(web?.opacity != null ? { opacity: web.opacity } : {}),
       ...(d.id === ZONE_LAYER.id ? { labelingInfo: zoneLabels() } : {}),
+      ...(d.id === 'source:eh' ? { labelingInfo: sourceLabels(), labelsVisible: true } : {}),
     });
   });
 
@@ -615,7 +634,10 @@ export function MapProvider({ children }: { children: ReactNode }) {
     if (!view || view.destroyed) return;
     try {
       const e = await extentOf(url, view, w);
-      if (e && !view.destroyed) view.goTo(e.expand(1.2)).catch(() => {});
+      // Гөлгөр zoom-in анимаци (1.4 сек, easing)
+      if (e && !view.destroyed) {
+        view.goTo(e.expand(1.2), { animate: true, duration: 1400, easing: 'ease-in-out' }).catch(() => {});
+      }
     } catch (err) {
       console.error('[selbe] хүрээг тодорхойлж чадсангүй:', err);
     }
@@ -733,6 +755,10 @@ export const MapCanvas = memo(function MapCanvas({
   onSketchRef.current = onSketch;
   /** Давхарга бүрийн БҮТЭЭГДЭХ (build-time) тунгалаг — override арилахад буцаана */
   const defaultOpacityRef = useRef<Record<string, number>>({});
+  /** Сүүлд ил байсан давхаргын id-ууд — шинээр ил болсныг илрүүлэхэд */
+  const prevVisRef = useRef<Set<string>>(new Set());
+  /** Одоо орох-анимаци явж буй давхаргууд — opacity override түр алгасна */
+  const fadingRef = useRef<Set<string>>(new Set());
 
   const [ready, setReady] = useState(false);
   /** Ачаалагдаж чадаагүй 3D загварын тоо — null = асуудалгүй */
@@ -1237,6 +1263,91 @@ export const MapCanvas = memo(function MapCanvas({
     gl?.removeAll();
   }, [uniform]);
 
+  /**
+   * ПУЛЬС-АНИМАЦИ (Эх үүсвэр) — `source:eh`-ийн полигонууд газрын зураг дээр
+   * ил байх ХУГАЦААНД центроид тойруулан БАЙНГА томорч-жижгэрч «амьсгалдаг».
+   * Зорилго: хэрэглэгч эх үүсвэрийн байршлыг амархан анзаарах.
+   *
+   * ⚠️ FeatureLayer-ийн геометрийг шууд масштаблаж болдоггүй тул объектуудыг
+   *    тусдаа `source:pulse` GraphicsLayer-т ХУУЛЖ, кадр бүрт цэг бүрийг
+   *    центроид тойруулан томруулна (ердөө 7 полигон — маш хөнгөн). Эх давхаргыг
+   *    нуулгүй (opacity=0) зөвхөн пульслэх хуулбарыг харуулна.
+   * • Хэсэг хаагдаж давхарга нуугдмагц (`!visible`) хуулбарыг цэвэрлэж, эх
+   *   давхаргын opacity-г сэргээж зогсоно.
+   */
+  const pulseLayer = useCallback((layer: Layer) => {
+    const map = mapRef.current;
+    if (!map || layer.id !== 'source:eh') return;
+    const id = layer.id;
+    if (fadingRef.current.has(id)) return;      // аль хэдийн пульсэлж байна
+    const d = LAYER_BY_ID[id];
+    const src = layer as FeatureLayer;
+    if (!d) return;
+    fadingRef.current.add(id);
+
+    // Пульслэх хуулбарын давхарга (нэг удаа үүсгэнэ)
+    let gl = map.findLayerById('source:pulse') as GraphicsLayer | null;
+    if (!gl) {
+      gl = new GraphicsLayer({ id: 'source:pulse', listMode: 'hide' });
+      map.add(gl);
+    }
+    const pulse = gl;
+    const pfield = d.paint?.field;
+    const pvals = d.paint?.values ?? {};
+
+    const finish = () => {
+      fadingRef.current.delete(id);
+      pulse.removeAll();
+    };
+
+    // 7 объектын геометр + өнгийг НЭГ УДАА татаад пульслэнэ.
+    src.queryFeatures({ where: '1=1', returnGeometry: true, outFields: pfield ? [pfield] : ['*'] })
+      .then((fs) => {
+        const items = fs.features
+          .map((ft) => {
+            const poly = ft.geometry as Polygon | null;
+            const c = poly?.centroid;
+            if (!poly || !poly.rings || !c) return null;
+            const hue = (pfield && pvals[String(ft.attributes?.[pfield])]) || d.hue;
+            return { rings: poly.rings, cx: c.x, cy: c.y, sr: poly.spatialReference,
+              symbol: symbolOf(d, hue) };
+          })
+          .filter(Boolean) as Array<{ rings: number[][][]; cx: number; cy: number;
+            sr: __esri.SpatialReference; symbol: unknown }>;
+        if (!items.length || src.destroyed || !src.visible) { finish(); return; }
+
+        // Эх давхаргыг (label-тайгаа) харагдуулж үлдээнэ; дээр нь томорч-жижгэрэх
+        // хуулбар давхарлана. Хуулбар зөвхөн ≥1× томроод буцах тул зай гарахгүй.
+        const graphics = items.map((it) => {
+          // symbolOf нь энгийн simple-fill объект буцаадаг — Graphic өөрөө autocast хийнэ.
+          const g = new Graphic({
+            geometry: new Polygon({ rings: it.rings, spatialReference: it.sr }),
+            symbol: it.symbol as __esri.SimpleFillSymbolProperties & { type: 'simple-fill' },
+          });
+          pulse.add(g);
+          return g;
+        });
+
+        const PERIOD = 1400;        // нэг мөчлөг (мс)
+        const GROW = 0.35;          // 1×…1.35× томроод буцна
+        let base = -1;
+        const step = (t: number) => {
+          if (base < 0) base = t;
+          if (src.destroyed || !src.visible) { finish(); return; }
+          const wave = 0.5 - 0.5 * Math.cos(((t - base) % PERIOD) / PERIOD * Math.PI * 2);
+          const f = 1 + GROW * wave;              // 1…1.35…1
+          items.forEach((it, i) => {
+            const scaled = it.rings.map((ring) =>
+              ring.map(([x, y]) => [it.cx + (x - it.cx) * f, it.cy + (y - it.cy) * f]));
+            graphics[i].geometry = new Polygon({ rings: scaled, spatialReference: it.sr });
+          });
+          requestAnimationFrame(step);
+        };
+        requestAnimationFrame(step);
+      })
+      .catch(() => finish());
+  }, []);
+
   /* Харагдац ба БҮСИЙН шүүлт */
   useEffect(() => {
     const map = mapRef.current;
@@ -1249,6 +1360,8 @@ export const MapCanvas = memo(function MapCanvas({
       //    орохгүй тул энэ шалгуургүй бол доорх мөр түүнийг нууж, зурсан полигон
       //    алга болно. Sketch widget өөрөө агуулгыг удирдана — үргэлж ил.
       if (l.id === 'sketch') { l.visible = true; return; }
+      // Эх үүсвэрийн пульс-хуулбар — өөрийн анимаци удирдана, каталогт үл хамаарна.
+      if (l.id === 'source:pulse') { l.visible = true; return; }
       // Лавлагааны хилүүд — каталогоос үл хамааран БҮХ зурагт үргэлж ил.
       if ((ALWAYS_ON_IDS as readonly string[]).includes(String(l.id))) { l.visible = true; return; }
       if (l.id.startsWith('scene:')) { l.visible = dim === '3d'; return; }
@@ -1257,7 +1370,11 @@ export const MapCanvas = memo(function MapCanvas({
       //    орохгүй — энэ шалгуургүй бол доорх мөр түүнийг тэр дор нь унтраана.
       if (l.id === USAN_SAN.id) { l.visible = dim !== '2d'; return; }
 
-      l.visible = on.has(l.id);
+      const show = on.has(l.id);
+      // ЗӨВХӨН Эх үүсвэр (`source:eh`) давхарга шинээр ил болоход анзаарагдам
+      // пульс-анимаци эхэлнэ. Бусад давхаргад (барилга г.м.) анимаци байхгүй.
+      if (show && l.id === 'source:eh' && !prevVisRef.current.has(l.id)) pulseLayer(l);
+      l.visible = show;
 
       /**
        * Бүсийн шүүлт — `definitionExpression`-оор объектыг БҮРЭН хасна.
@@ -1293,7 +1410,9 @@ export const MapCanvas = memo(function MapCanvas({
         ) as unknown as string;
       }
     });
-  }, [visibleKey, dim, ready, zone, layerWhere, hl, hlOnly, uniform, ortho]);
+    // Дараагийн өөрчлөлтөд «шинээр ил болсон»-ыг зөв илрүүлэхийн тулд тэмдэглэнэ.
+    prevVisRef.current = on;
+  }, [visibleKey, dim, ready, zone, layerWhere, hl, hlOnly, uniform, ortho, pulseLayer]);
 
   /**
    * ТУНГАЛАГ — давхарга бүрийн `opacity`-г override-оор тавина. Override байхгүй
@@ -1308,6 +1427,8 @@ export const MapCanvas = memo(function MapCanvas({
     const over = opacity ?? {};
     map.layers.forEach((l) => {
       if (!('opacity' in l) || l.id === IMAGERY_ID || l.id === 'sketch') return;
+      // Fade-in анимаци явж буй давхаргыг битгий дар — tween өөрөө opacity-г удирдана.
+      if (fadingRef.current.has(String(l.id))) return;
       const def = defaultOpacityRef.current;
       // Анхдагчийг НЭГ УДАА тогтооно — override арилахад буцах цэг
       if (def[l.id] == null) def[l.id] = typeof l.opacity === 'number' ? l.opacity : 1;
