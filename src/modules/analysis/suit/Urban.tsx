@@ -139,7 +139,8 @@ export function IndicatorPicker({
                   title={i.name}
                   onClick={() => setActive(i.id)}
                 >
-                  <span className="nm">{i.short}</span>
+                  {/* FAR/BCR нь дангаараа (богино нэр), бусад нь бүтэн нэршлээрээ */}
+                  <span className="nm">{i.byType ? i.short : i.name}</span>
                   <span className="wt">{((i.weight / totalW) * 100).toFixed(0)}%</span>
                   <span className="cnt">{total ? `${pass}/${total}` : '—'}</span>
                   <span className="bar"><i style={{ width: `${pct}%`, background: scoreColor(pct) }} /></span>
@@ -261,16 +262,16 @@ export function Parking({
     ? `${nf(hh)} өрх × ${parking.perHousehold.toFixed(2)} зогсоол = <b>${nf(hh * parking.perHousehold)}</b>`
     : parking.source === 'population'
       ? `${nf(pop)} хүн × ${parking.per1000} ÷ 1000 = <b>${nf((pop * parking.per1000) / 1000)}</b>`
-      : 'Эх өгөгдлийн <b>NORM_ZOGS</b> талбарын нийлбэр';
+      : 'Бүх бүсийн <b>нормд заасан зогсоолын тоо</b>-ны нийлбэр';
 
   return (
     <>
       <p className={`${s.muted} ${s.small}`}>
-        <b>Байгаа зогсоол</b> = ил + далд (ET_NIIT) — өгөгдлөөс шууд.
-        <b> Шаардлагатай зогсоол</b>-ыг доорх 3 аргын аль нэгээр бодож, хоёрыг нь харьцуулна.
+        <b>Байгаа зогсоол</b> = Ерөнхий төлөвлөгөөнд батлагдсан нийт авто зогсоол — ил ба далд зогсоолын нийлбэр.
+        <b> Шаардлагатай зогсоол</b>-ыг доорх гурван аргын аль нэгээр тооцож, хоёуланг нь харьцуулна.
       </p>
 
-      <div className={s.subLabel}>Хэрэгцээг юугаар бодох вэ?</div>
+      <div className={s.subLabel}>Хэрэгцээг ямар аргаар тооцох вэ?</div>
       <div className={s.toggles}>
         {PARKING_SOURCES.map((src) => (
           <label key={src.key} className={s.chk}>
@@ -311,12 +312,12 @@ export function Parking({
           {pct == null ? '—' : Math.round(pct)}<i>%</i>
         </div>
         <div className={s.parkHeadTxt}>
-          <b>Хэрэгцээний хангалт</b>
+          <b>Хэрэгцээ хангасан хувь</b>
           <span>Байгаа <b>{nf(supply)}</b> · шаардлагатай <b>{nf(need)}</b> зогсоол</span>
         </div>
       </div>
 
-      <div className={s.parkBar} title="Байгаа зогсоол нь хэрэгцээний хэдэн хувийг хангаж байна">
+      <div className={s.parkBar} title="Байгаа зогсоол нийт хэрэгцээний хэдэн хувийг хангаж байгааг харуулна">
         <span style={{ width: `${pct == null ? 0 : clamp(pct, 0, 100)}%`, background: col }} />
       </div>
       <div className={s.parkScale}><span>0%</span><span>Норм 100%</span></div>
@@ -326,7 +327,7 @@ export function Parking({
       </div>
 
       <div className={s.finSummary}>
-        <div><span>Байгаа — ил / далд</span><b>{nf(il)} / {nf(dald)}</b></div>
+        <div><span>Ил болон далд зогсоол</span><b>{nf(il)} / {nf(dald)}</b></div>
         <div>
           <span>{gap >= 0 ? 'Илүүдэл' : 'Дутагдал'}</span>
           <b className={gap >= 0 ? s.pos : s.neg}>{gap >= 0 ? '+' : '−'}{nf(Math.abs(gap))}</b>
