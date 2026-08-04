@@ -31,7 +31,14 @@ jobs:
       # next.config.mjs дахь output:'export' → out/ хавтас үүснэ (CNAME, .nojekyll нь public/-оос)
       - run: npm run build
 
+      # ⚠️ `enablement: true` — Pages УНТРААЛТТАЙ байвал workflow ӨӨРӨӨ асаана
+      #    (дээрх `pages: write` эрхээр API дуудна). Ингэснээр Settings → Pages
+      #    рүү гараар орох шаардлагагүй бөгөөд repo дахин үүсгэсэн ч сэргэнэ.
+      #    ⚠️ PRIVATE repo дээр Pages нь төлбөртэй төлөвлөгөө шаардана —
+      #    үнэгүй төлөвлөгөөнд энэ алхам «Resource not accessible» гэж унана.
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: out
