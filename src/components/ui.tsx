@@ -320,6 +320,7 @@ export function Donut({
   onSelect,
   nowrap = false,
   stack = false,
+  leaders = false,
 }: {
   items: { key: string; label: string; value: number; color: string; display?: ReactNode }[];
   size?: number;
@@ -335,6 +336,8 @@ export function Donut({
   nowrap?: boolean;
   /** Тайлбарыг пайн диаграмын ДООР бүтэн өргөнөөр (нарийн баганад тохиромжтой) */
   stack?: boolean;
+  /** Тайлбарыг доор жагсаахын оронд зүсмэг бүрээс ЗУРААС татаж гадна бичнэ */
+  leaders?: boolean;
 }) {
   const sel = selected == null ? [] : Array.isArray(selected) ? selected : [selected];
   const hasSel = sel.length > 0;
@@ -369,6 +372,82 @@ export function Donut({
     acc += frac;
     return { ...it, frac, offset };
   });
+
+  /**
+   * LEADER горим — тайлбарыг доор жагсаахын оронд зүсмэг бүрээс зураас татаж
+   * пайн диаграмын гадна шошгыг бичнэ. Цөөн зүсмэгтэй (2–4) диаграмд тохиромжтой.
+   */
+  if (leaders) {
+    const cx = size / 2;
+    const cy = size / 2;
+    const Ro = r + width / 2; // зүсмэгийн ГАДНА радиус
+    const GAP = 16; // зурааснаас шошго хүртэл
+    const PAD = 106; // хажуугийн шошгын зай — vbW нь ~панелд багтаж, масштаб ≈ 1
+    const PADY = 70; // босоо зай (дээд/доод зүсмэгийн шошгонд)
+    const GUTTER = 6; // зураас ба текстийн хоорондын зай
+    const LW = PAD - GAP - GUTTER - 2; // шошгын хайрцгийн өргөн — бүтэн үг багтаана
+    const vbW = size + PAD * 2;
+    const vbH = size + PADY * 2;
+    return (
+      <div className={s.donutLead}>
+        <svg width={vbW} height={vbH} viewBox={`${-PAD} ${-PADY} ${vbW} ${vbH}`}>
+          {/* Цагирган зүсмэгүүд — 12 цагаас (-90°) */}
+          <g transform={`rotate(-90 ${cx} ${cy})`}>
+            <circle className={s.donutTrack} cx={cx} cy={cy} r={r} strokeWidth={width} />
+            {slices.map((sl) => (
+              <circle
+                key={sl.key}
+                cx={cx}
+                cy={cy}
+                r={r}
+                strokeWidth={width}
+                stroke={sl.color}
+                fill="none"
+                strokeDasharray={`${sl.frac * circ} ${circ}`}
+                strokeDashoffset={-sl.offset * circ}
+              >
+                <title>{`${sl.label}: ${sl.value}`}</title>
+              </circle>
+            ))}
+          </g>
+          {/* Голын утга */}
+          <text x={cx} y={cy - 1} textAnchor="middle" className={s.donutLeadCtr}>{String(center ?? total)}</text>
+          {centerLabel && <text x={cx} y={cy + 12} textAnchor="middle" className={s.donutLeadCtrLbl}>{centerLabel}</text>}
+          {/* Зураас + гадна БҮТЭН шошго (foreignObject — HTML мөр даруулна) */}
+          {slices.map((sl) => {
+            const mid = sl.offset + sl.frac / 2;
+            const th = mid * 2 * Math.PI;
+            const sin = Math.sin(th);
+            const cos = Math.cos(th);
+            const sx = cx + Ro * sin;
+            const sy = cy - Ro * cos;
+            const ex = cx + (Ro + 12) * sin;
+            const ey = cy - (Ro + 12) * cos;
+            const right = sin >= 0;
+            const lx = right ? cx + Ro + GAP : cx - Ro - GAP;
+            // Текст зурааснаас GUTTER-ийн зайд — давхацахгүй
+            const boxX = right ? lx + GUTTER : -PAD + 2;
+            const pct = sl.display ?? `${sl.frac > 0 && sl.frac < 0.005 ? '<1' : (sl.frac * 100).toFixed(0)}%`;
+            return (
+              <g key={sl.key}>
+                <polyline points={`${sx},${sy} ${ex},${ey} ${lx},${ey}`} fill="none" stroke={sl.color} strokeWidth={1} />
+                <circle cx={lx} cy={ey} r={1.6} fill={sl.color} />
+                <foreignObject x={boxX} y={ey - 30} width={LW} height={60}>
+                  <div
+                    className={s.donutLeadBox}
+                    style={{ textAlign: right ? 'left' : 'right' }}
+                  >
+                    <span className={s.donutLeadName}>{sl.label}</span>{' '}
+                    <b className={s.donutLeadPct} style={{ color: sl.color }}>{pct}</b>
+                  </div>
+                </foreignObject>
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+    );
+  }
 
   return (
     <div className={`${s.donutWrap} ${nowrap ? s.donutRow : ''} ${stack ? s.donutStack : ''}`}>
