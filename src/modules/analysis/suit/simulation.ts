@@ -19,8 +19,6 @@ export type SimDef = {
   key: SimKind;
   label: string;
   short: string;
-  /** Панелийн доор гарах тайлбар */
-  desc: string;
   /** Хэмжүүрийн нэгж (легенд, tooltip-д) */
   unit: string;
   /**
@@ -50,7 +48,6 @@ export const SIM_KINDS: SimDef[] = [
     key: 'density',
     label: 'Хүн амын төвлөрөл',
     short: 'Төвлөрөл',
-    desc: 'Бүс бүрийн оршин суугчийн нягтрал — хүн ÷ полигоны талбай (га). Хүн шигүү суусан бүсийг дулаан өнгөөр.',
     unit: 'хүн/га',
     hue: '#a78bfa',
     icon: 'flame',
@@ -61,7 +58,6 @@ export const SIM_KINDS: SimDef[] = [
     key: 'transit',
     label: 'Тээврийн хүртээмж',
     short: 'Хүртээмж',
-    desc: 'Бүсээс хамгийн ойрын автобусны буудал / LRT·BRT зогсоол хүрэх зай (м). Хол зайтай (муу хүртээмжтэй) бүсийг дулаан өнгөөр.',
     unit: 'м',
     hue: '#38bdf8',
     icon: 'bus',
@@ -72,7 +68,6 @@ export const SIM_KINDS: SimDef[] = [
     key: 'road',
     label: 'Замын ачаалал',
     short: 'Ачаалал',
-    desc: 'Бүсийн аялал үүсгэлт → замын сүлжээнд машин агентууд. Цагийн гулсуурыг хөдөлгөж өдрийн ачааллыг хараарай.',
     unit: 'аялал/ц',
     hue: '#f59e0b',
     icon: 'road',
