@@ -81,13 +81,13 @@ export function TransportPanel({
           </p>
         ) : (
           <>
-            {/* ── Гарчиг ба тайлбар ── */}
-            <div>
-              <div className={c.head}>
-                <span className={c.headTitle}>{def.label}</span>
-                {def.unit && <span className={c.headUnit}>{def.unit}</span>}
-              </div>
-              <p className={c.desc} style={{ marginTop: 5 }}>{def.desc}</p>
+            {/* ── Гарчиг ──
+                ⚠️ Тайлбарын догол мөр ЗОРИУДААР БАЙХГҮЙ (`SimulationPanel`-тэй
+                ижил шийдвэр): сонгогчийн товч ба тоон уншилт нь юу харагдаж
+                байгааг аль хэдийн хэлдэг. */}
+            <div className={c.head}>
+              <span className={c.headTitle}>{def.label}</span>
+              {def.unit && <span className={c.headUnit}>{def.unit}</span>}
             </div>
 
             {/* ── Тоон уншилт ── */}
@@ -119,12 +119,6 @@ export function TransportPanel({
                 </div>
 
                 <Legend mode={mode} min={range.min} max={range.max} unit={def.unit} />
-
-                <p className={c.desc}>
-                  {def.target === 'road'
-                    ? 'Замын хэрчим дээр хулганаа аваачихад эрэлт, эрэмбэ ба хэрчмийн урт гарч ирнэ.'
-                    : 'Барилга дээр хулганаа аваачихад зориулалт, тооцоолсон утга ба эрэмбэ гарч ирнэ.'}
-                </p>
               </>
             )}
           </>

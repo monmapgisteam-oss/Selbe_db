@@ -16,8 +16,6 @@ import c from './simulation.module.css';
 export type RoadState = {
   /** Сүлжээний хэрчмийн тоо — `null` бол ачаалж байна */
   edges: number | null;
-  /** Оргил цагт зэрэг явах машины таамаг (`peakVehicles`) */
-  peak: number;
   /** Ачаалахад алдаа гарсан бол мессеж */
   error: string | null;
   /** `TrafficOverlay`-аас ~2 удаа/сек ирэх хураангуй */
@@ -148,13 +146,13 @@ export function Simulation({
           </p>
         ) : (
         <>
-        {/* ── Гарчиг ба тайлбар ── */}
-        <div>
-          <div className={c.head}>
-            <span className={c.headTitle}>{def.label}</span>
-            {def.unit && <span className={c.headUnit}>{def.unit}</span>}
-          </div>
-          <p className={c.desc} style={{ marginTop: 5 }}>{def.desc}</p>
+        {/* ── Гарчиг ──
+            ⚠️ Тайлбарын догол мөр (`def.desc`) ЗОРИУДААР БАЙХГҮЙ: сонгогчийн
+            товч ба доорх тоон уншилт нь юу харагдаж байгааг аль хэдийн хэлдэг
+            тул 2-3 мөрийн давхардсан текст самбарыг л уртасгаж байв. */}
+        <div className={c.head}>
+          <span className={c.headTitle}>{def.label}</span>
+          {def.unit && <span className={c.headUnit}>{def.unit}</span>}
         </div>
 
         {/* ── Хүн амын төрөл — зөвхөн «Төвлөрөл»-д ── */}
@@ -223,11 +221,6 @@ export function Simulation({
               <span className={c.legendEnd}>{nf0(ranked[0].value)} {def.unit}</span>
             </div>
 
-            <p className={c.desc}>
-              Бүс бүрийн дэлгэрэнгүйг газрын зураг дээрээс хараарай — хулганаа
-              аваачихад <b>{def.label.toLowerCase()}</b>, эрэмбэ ба хөрш бүсүүдтэй
-              харьцуулсан байдал гарч ирнэ.
-            </p>
           </>
         )}
         </>
@@ -308,14 +301,9 @@ function RoadStatus({ road }: { road?: RoadState }) {
     );
   }
 
+  // ⚠️ Тайлбарын догол мөр ЗОРИУДААР БАЙХГҮЙ — зөвхөн 3D-ийн анхааруулга үлдэв.
   return (
     <>
-      <p className={c.note}>
-        <b>{nf0(road.edges)}</b> замын хэрчмийн сүлжээнд машин агентууд урдахаа дагаж
-        (car-following) явж, уулзвар дээр эргэлтээ сонгоно. Оргил цагийн багтаамж{' '}
-        <b>{nf0(road.peak)} машин</b> — бүсийн хүн ам × аялал үүсгэлтээс. Замын өнгө нь
-        тухайн хэрчмийн нягтрал.
-      </p>
       {road.flat && (
         <p className={c.warn}>
           <Icon name="road" size={14} />

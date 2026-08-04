@@ -1,5 +1,5 @@
 /**
- * ТЭЭВЭР-ИДЭВХИЙН 7 ДҮРСЛЭЛ — «Симуляц» табын зүүн талын шинэ самбарын цөм.
+ * ТЭЭВЭР-ИДЭВХИЙН ДҮРСЛЭЛҮҮД — «Симуляц» табын зүүн талын самбарын цөм.
  *
  * ⚠️ Одоо байгаа `simulation.ts` нь БҮСЭЭР (`Zone`) тооцдог; энэ модуль
  * БАРИЛГА БҮРЭЭР ажиллана. Тиймээс `simMetric`-ийг өргөтгөхгүй, тусад нь
@@ -10,8 +10,7 @@
  */
 
 import {
-  CAT_LABEL, BUS_BAND_LABEL, MODE_SPLIT, CAR_OCCUPANCY,
-  BUS_GOOD_M, BUS_OK_M,
+  CAT_LABEL, BUS_BAND_LABEL, BUS_GOOD_M, BUS_OK_M,
 } from '@/lib/analysis/transport';
 import { simColor } from './simulation';
 import { demandNorm, type RoadDemand } from './roadDemand';
@@ -30,7 +29,6 @@ export type TModeDef = {
   key: TMode;
   label: string;
   short: string;
-  desc: string;
   unit: string;
   icon: string;
   hue: string;
@@ -51,42 +49,36 @@ export const T_MODES: TModeDef[] = [
     key: 'population',
     label: 'Оршин суугчид',
     short: 'Хүн ам',
-    desc: 'Орон сууцны барилга бүрийн оршин суугчийн тоо (`Хүн ам` талбар). Орон сууц БУС барилга энэ дүрслэлд оролцохгүй.',
     unit: 'хүн', icon: 'users', hue: '#f59e0b', target: 'building', heatable: true,
   },
   {
     key: 'capacity',
     label: 'Үйлчилгээний багтаамж',
     short: 'Багтаамж',
-    desc: 'Сургууль, цэцэрлэг, эмнэлэг, оффис, худалдаа-үйлчилгээний барилгын хүчин чадал (`Хүчин чадал` талбар). Орон сууц оролцохгүй.',
     unit: 'хүн', icon: 'building', hue: '#60a5fa', target: 'building', heatable: true,
   },
   {
     key: 'trips',
     label: 'Хүн-зорчилт',
     short: 'Зорчилт',
-    desc: 'Барилга бүрийн өглөөний оргил цагт үүсгэх хүн-зорчилт. Орон сууц → хүн ам × 0.35; бусад → багтаамж × ангиллын коэффициент.',
     unit: 'зорчилт/ц', icon: 'target', hue: '#a78bfa', target: 'building', heatable: true,
   },
   {
     key: 'vehicles',
     label: 'Машин-зорчилт',
     short: 'Машин',
-    desc: `Хүн-зорчилтоос гарах автомашины тоо: × ${Math.round(MODE_SPLIT.car * 100)}% (машины хувь) ÷ ${CAR_OCCUPANCY} (дундаж зорчигч).`,
     unit: 'машин/ц', icon: 'car', hue: '#fb923c', target: 'building', heatable: true,
   },
   {
     key: 'roadDemand',
     label: 'Замын эрэлт',
     short: 'Зам',
-    desc: 'Барилгуудын машин-зорчилтыг хамгийн ойрын 3 замд 50/30/20% жингээр тараасан дүн. ⚠️ Эгнээний тоо эх өгөгдөлд байхгүй тул энэ нь эрэлт (машин/ц) — хүчин чадалтай харьцуулсан V/C БИШ.',
     unit: 'машин/ц', icon: 'road', hue: '#f87171', target: 'road', heatable: true,
   },
   {
     key: 'busAccess',
     label: 'Автобусны хүртээмж',
     short: 'Автобус',
-    desc: `Барилга бүрээс хамгийн ойрын автобусны буудал хүртэлх зай: ≤${BUS_GOOD_M} м сайн · ${BUS_GOOD_M}–${BUS_OK_M} м боломжийн · >${BUS_OK_M} м үйлчилгээ дутмаг.`,
     // ⚠️ `heatable: false` — жин нь ЗАЙ; дулаан гадаргуу зайг нэмэх нь утгагүй
     unit: 'м', icon: 'bus', hue: '#38bdf8', target: 'stop', heatable: false,
   },
@@ -282,20 +274,6 @@ export function tItems(mode: TMode, ctx: TransportCtx): TItem[] {
   }
   // ⚠️ Хүртээмжид ч ИХ→БАГА: хамгийн ХОЛ (муу хүртээмжтэй) барилга дээр гарна
   return out.sort((a, b) => b.value - a.value);
-}
-
-/**
- * Дүрслэлийн ЭРЭМБИЙН хүснэгт — объектын индекс → байр (1-ээс эхэлнэ).
- *
- * ⚠️ Эрэмбийн ЖАГСААЛТ самбараас хасагдсан тул эрэмбэ нь зөвхөн ГАЗРЫН ЗУРГИЙН
- * hover панелиар уншигдана. Тиймээс энэ хүснэгт нь тэр панелийн цорын ганц эх
- * сурвалж — `tItems`-тэй ижил эрэмбэлэлтээс гарна.
- */
-export function tRanks(mode: TMode, ctx: TransportCtx): { rank: Map<number, number>; total: number } {
-  const items = tItems(mode, ctx);
-  const rank = new Map<number, number>();
-  for (let i = 0; i < items.length; i++) rank.set(items[i].idx, i + 1);
-  return { rank, total: items.length };
 }
 
 /* ══════════════════ Газрын зургийн будалт ══════════════════ */

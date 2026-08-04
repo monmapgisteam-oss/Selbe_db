@@ -7,7 +7,7 @@ import type Polygon from '@arcgis/core/geometry/Polygon';
 
 import {
   INDICATORS, PARKING, MAP_LAYERS, BUILD_COST_PER_M2, DEFAULT_ECON_SHARE,
-  SCORE_LEVELS, levelOf, ACTIVATABLE_ZONE_TYPES, NO_DATA_COLOR,
+  ACTIVATABLE_ZONE_TYPES, NO_DATA_COLOR,
   type Indicator, type ParkingOpt, type CategoryKey,
 } from '@/lib/analysis/config';
 import {
@@ -23,7 +23,7 @@ import type { Dim } from '@/components/MapCanvas';
 import { SuitMap, type MapRow } from './SuitMap';
 import { SuitDetail } from './SuitDetail';
 import { nf, esc } from './suit/format';
-import { valueOf, blendScore, type Mode, type Row } from './suit/model';
+import { valueOf, type Mode, type Row } from './suit/model';
 import { Shell, Card } from './suit/Layout';
 import { Simulation } from './suit/SimulationPanel';
 import { useSimClock } from './suit/Timeline';
@@ -36,7 +36,7 @@ import type { Network } from './suit/traffic';
 import type { TrafficStats } from './suit/TrafficOverlay';
 import { TransportPanel } from './suit/TransportPanel';
 import {
-  tPaint, tRanks, tModeDef, tRange, tNormFor, tColor, buildingValue,
+  tPaint, tModeDef, tRange, tNormFor, tColor, buildingValue,
   type TMode, type TransportCtx,
 } from './suit/transportModes';
 import { densityHeat, transportHeat, MAP_STYLES, type MapStyle } from './suit/heat';
@@ -204,16 +204,15 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
   const simRng = useMemo(() => simRange(rows, simKind, popBasis), [rows, simKind, popBasis]);
 
   /**
-   * Бүсүүд симуляцын хэмжүүрээр ЭРЭМБЭЛСЭН нь — hover панелийн «эрэмбэ» ба
-   * «дунджаас» мөрүүдэд. ⚠️ Самбарын жагсаалт хасагдсан тул энэ нь эрэмбийн
-   * цорын ганц хэрэглэгч болсон.
+   * Бүсийн симуляцын хэмжүүрийн ДУНДАЖ — hover панелийн «дунджаас» мөрд.
+   * ⚠️ Эрэмбэлэх шаардлагагүй (эрэмбийн мөр хасагдсан) тул зөвхөн дундаж.
    */
-  const simRanked = useMemo(() => {
-    if (mode !== 'simulation') return [];
-    return rows
-      .map((r) => ({ id: r.id, v: simMetric(r, simKind, popBasis).value }))
-      .filter((x): x is { id: string; v: number } => x.v != null && x.v > 0)
-      .sort((a, b) => b.v - a.v);
+  const simAvg = useMemo(() => {
+    if (mode !== 'simulation') return 0;
+    const vals = rows
+      .map((r) => simMetric(r, simKind, popBasis).value)
+      .filter((v): v is number => v != null && v > 0);
+    return vals.length ? vals.reduce((a, v) => a + v, 0) / vals.length : 0;
   }, [rows, simKind, popBasis, mode]);
 
   /* ── Замын ачаалал: сүлжээг ХЭРЭГТЭЙ болоход нь ачаална ── */
@@ -301,9 +300,6 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
     [transportMode, tCtx, tMode],
   );
 
-  /** Дүрслэлийн эрэмбэ — ЗӨВХӨН hover панель ашиглана (жагсаалт самбараас хасагдсан) */
-  const tRankMap = useMemo(() => (tCtx ? tRanks(tMode, tCtx) : null), [tCtx, tMode]);
-
   /** Дулааны гадаргууны цэгүүд — «Симуляц» горимд, дүрслэл нь дулаанд тохирвол. */
   const heat = useMemo(() => {
     if (!heatOn) return null;
@@ -354,9 +350,9 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
   const zoneTip = useCallback((r: MapRow) => {
     /**
      * СИМУЛЯЦЫН hover панель — оноололынхоос ТУСДАА бүтэцтэй.
-     * ⚠️ Эрэмбийн жагсаалт самбараас хасагдсан тул энэ панель нь бүсийн ЭРЭМБЭ,
-     * ДУНДЖААС хэр зөрж буй, хамгийн ихтэй харьцуулсан харьцааг ӨӨРӨӨ авч явна —
-     * өөрөөр хэлбэл хуучин жагсаалтын мэдээллийг бүхэлд нь орлоно.
+     * ⚠️ ЭРЭМБЭ (энэ бүс хэддүгээрт вэ) ЗОРИУДААР БАЙХГҮЙ: ижил утгатай бүсүүд
+     * дээр эрэмбэ нь дурын дараалал болж («100 тэмдэгтэй атлаа 4-т») андуурмаг
+     * төрүүлдэг. Харьцуулалт нь ДУНДЖААС хэдэн хувь гэдгээр илэрхийлэгдэнэ.
      */
     if (mode === 'simulation') {
       const def = simDef(simKind);
@@ -364,10 +360,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
       const t = def.ready ? simNorm(m.value, simRng) : null;
       const dt = (k: string, v: string) => `<dt>${k}</dt><dd>${v}</dd>`;
 
-      const vals = simRanked;
-      const rank = m.value == null ? null : vals.findIndex((x) => x.id === r.id) + 1;
-      const avg = vals.length ? vals.reduce((a, x) => a + x.v, 0) / vals.length : 0;
-      const diff = m.value != null && avg > 0 ? ((m.value - avg) / avg) * 100 : null;
+      const diff = m.value != null && simAvg > 0 ? ((m.value - simAvg) / simAvg) * 100 : null;
       const diffTxt = diff == null ? '—'
         : `<b style="color:${diff > 0 ? '#fb923c' : '#4ade80'}">${diff > 0 ? '+' : ''}${Math.round(diff)}%</b>`;
 
@@ -379,7 +372,6 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
         <div class="sub2">${esc(r.type)} · ${nf(r.areaHa, 2)} га</div>
         <dl>
           ${dt(esc(def.label), `<b>${m.text}</b>`)}
-          ${dt('Эрэмбэ', rank && rank > 0 ? `<b>${rank}</b> / ${vals.length}` : '—')}
           ${dt('Дунджаас', diffTxt)}
           ${dt('Оршин суугч', nf(r.residentPop))}
           ${dt('Барилга', nf(r.buildingCount))}
@@ -411,22 +403,20 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
       </dl>
       ${failed.length ? `<div class="fails">${failed.map((f) =>
         `<div><span>✗ ${esc(f.name)}</span><em>${f.v}</em></div>`).join('')}</div>` : ''}`;
-  }, [mode, ind, indicators, econShare, simKind, popBasis, simRng, simRanked]);
+  }, [mode, ind, indicators, econShare, simKind, popBasis, simRng, simAvg]);
 
   /**
    * ТЭЭВЭР-ИДЭВХИЙН hover панель — барилга · замын хэрчим · автобусны буудал.
    *
-   * ⚠️ Эрэмбийн ЖАГСААЛТ самбараас хасагдсан тул «энэ объект хэддүгээрт вэ»
-   * гэдгийг ЗӨВХӨН эндээс мэдэх боломжтой — тиймээс эрэмбэ нь заавал байна.
+   * ⚠️ ЭРЭМБЭ ЗОРИУДААР БАЙХГҮЙ: живэ өгөгдөл дээр олон объект ЯГ ИЖИЛ утгатай
+   * (жиш. X-12-т 770 хүнтэй 8 адилхан блок) бөгөөд тэдгээрийн хооронд эрэмбэ нь
+   * дурын дараалал болно. «100 тэмдэгтэй атлаа 4-т» гэсэн зөрчил мэт харагдац
+   * үүсгэдэг тул хассан — утга ба тэмдэг хоёр өөрөө хангалттай.
    */
   const transportTip = useCallback((kind: 'b' | 'r' | 's', idx: number): string | null => {
-    if (!tCtx || !tRankMap) return null;
+    if (!tCtx) return null;
     const def = tModeDef(tMode);
     const dt = (k: string, v: string) => `<dt>${k}</dt><dd>${v}</dd>`;
-    const rankOf = (i: number) => {
-      const r = tRankMap.rank.get(i);
-      return r ? `<b>${r}</b> / ${tRankMap.total}` : '—';
-    };
 
     if (kind === 'b') {
       const b = tCtx.buildings[idx];
@@ -446,7 +436,6 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
         <div class="sub2">${esc(CAT_LABEL[b.cat])}${b.zone ? ` · ${esc(b.zone)}` : ''}</div>
         <dl>
           ${dt(esc(def.label), `${nf(v)} ${def.unit}`)}
-          ${dt('Эрэмбэ', rankOf(idx))}
           ${dt(b.cat === 'residential' ? 'Оршин суугч' : 'Хүчин чадал',
         nf(b.cat === 'residential' ? b.population : b.capacity))}
           ${dt('Хүн-зорчилт', `${nf(b.trips)} /ц`)}
@@ -469,10 +458,9 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
         <div class="sub2">${nf(e.length / tCtx.net.unitsPerMeter)} м урт</div>
         <dl>
           ${dt('Эрэлт', `${nf(v)} машин/ц`)}
-          ${dt('Эрэмбэ', rankOf(idx))}
-          ${dt('Индекс', `${Math.round(t * 100)} / 100`)}
+          ${dt('Хамгийн ихээс', `${Math.round(t * 100)}%`)}
         </dl>
-        <div class="fails"><div><span>Хамгийн ачаалалтай зам = 100</span><em>V/C биш</em></div></div>`;
+        <div class="fails"><div><span>Эрэлт — хүчин чадалтай харьцуулаагүй</span><em>V/C биш</em></div></div>`;
     }
 
     const st = tCtx.stops[idx];
@@ -493,7 +481,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
         ${dt('Үйлчлэх барилга', nf(served))}
         ${dt('Үйлчлэх оршин суугч', nf(servedPop))}
       </dl>`;
-  }, [tCtx, tRankMap, tMode]);
+  }, [tCtx, tMode]);
 
   const buildingTip = useCallback((a: Record<string, unknown>) => {
     const st = String(a.Barilga_ty ?? '').trim();
@@ -547,7 +535,6 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
     },
     road: {
       edges: roadNet?.edges.length ?? null,
-      peak: peakCars,
       error: roadErr,
       stats: trafficStats,
       flat: dim !== '2d',
@@ -864,9 +851,6 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
           )
         }
       />
-
-      {/* Доод хүрээ — оноон түвшний тархалт (газрын зургийг тойрсон бүтэц) */}
-      <SuitFooter rows={scoredRows} econShare={econShare} />
     </div>
   );
 }
@@ -953,34 +937,3 @@ function ZoneCatFilter({ cats, off, setOff, scoreOn, setScoreOn }: {
   );
 }
 
-/* ══════════════════ Доод хүрээ: оноон тархалт ══════════════════ */
-
-/**
- * ⚠️ Хот төлөвлөлт ба эдийн засгийн НИЙЛМЭЛ оноогоор — газрын зургийн будалт,
- * эрэмбэтэй ижил тэнхлэг. Хуваарилалт (econShare) өөрчлөгдөхөд шинэчлэгдэнэ.
- */
-function SuitFooter({ rows, econShare }: { rows: Row[]; econShare: number }) {
-  const scores = rows.map((r) => blendScore(r, econShare)).filter((x): x is number => x != null);
-  const avg = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
-  const counts = SCORE_LEVELS.map((L, i) => ({
-    L, n: rows.filter((r) => levelOf(blendScore(r, econShare)) === i).length,
-  }));
-
-  return (
-    <footer className={s.appFoot}>
-      <div className={s.footScore}>
-        <b style={{ color: scoreColor(avg) }}>{avg == null ? '—' : Math.round(avg)}</b>
-        <span>{rows.length} бүсийн дундаж · {scoreLabel(avg)}</span>
-      </div>
-      <div className={s.footLevels}>
-        {counts.map(({ L, n }) => (
-          <div key={L.label}>
-            <i style={{ background: L.color }} />
-            <span>{L.label}</span>
-            <b>{n}</b>
-          </div>
-        ))}
-      </div>
-    </footer>
-  );
-}
