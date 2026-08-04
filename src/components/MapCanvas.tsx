@@ -35,6 +35,7 @@ import {
   MAP_HUE_OVERRIDES, SOURCE_FS,
   type LayerDef,
 } from '@/lib/services';
+import { SCENE3D_LAYERS } from '@/lib/scene3d';
 import { queryExtent, queryFeatures, type Aoi } from '@/lib/query';
 import { loadBlockProgress, cachedBlockProgress, type BlockProgressMap } from '@/lib/blockProgress';
 import { webmapStyleOf } from '@/lib/webmapStyle';
@@ -374,6 +375,22 @@ let homeExtentCache: Extent | null = null;
  */
 const mapCache: Record<string, Map> = {};
 
+/**
+ * Web scene JSON-ы `elevationInfo.mode` нь camelCase (`onTheGround`) ирдэг ч
+ * JS API нь kebab-case (`on-the-ground`) хүлээдэг тул хөрвүүлнэ (offset/unit хэвээр).
+ */
+const ELEV_MODE: Record<string, string> = {
+  onTheGround: 'on-the-ground',
+  relativeToGround: 'relative-to-ground',
+  absoluteHeight: 'absolute-height',
+  relativeToScene: 'relative-to-scene',
+};
+function sceneElevInfo(raw: unknown): __esri.FeatureLayerProperties['elevationInfo'] {
+  const e = (raw ?? {}) as { mode?: string };
+  const mode = (ELEV_MODE[e.mode ?? ''] ?? e.mode ?? 'on-the-ground');
+  return { ...e, mode } as __esri.FeatureLayerProperties['elevationInfo'];
+}
+
 async function extentOf(url: string, view: AnyView, where = '1=1'): Promise<Extent | null> {
   const wkid = view.spatialReference?.wkid ?? 102100;
   const box = await queryExtent(url, wkid, where);
@@ -403,7 +420,11 @@ const zoneLabels = () =>
     },
   ] as unknown as __esri.LabelClassProperties[];
 
-/** Эх үүсвэрийн шошго — байгууламжийн нэр, цагаан halo-той */
+/**
+ * Эх үүсвэрийн шошго — байгууламжийн нэр. ⚠️ Жижиг фонт дээр ЗУЗААН halo нь
+ * үсэг бүрийг «хоёр давхар/echo» мэт харуулдаг тул halo-г НИМГЭН (0.5) болгож,
+ * дедупликаци асаав — нэр яг НЭГ л удаа, цэвэр гарна.
+ */
 const sourceLabels = () =>
   [
     {
@@ -411,11 +432,14 @@ const sourceLabels = () =>
       symbol: {
         type: 'text',
         color: c('#0f172a'),
-        haloColor: [255, 255, 255, 0.95],
-        haloSize: 2,
-        font: { size: 11, weight: 'bold' },
+        haloColor: [255, 255, 255, 1],
+        haloSize: 0.5,
+        font: { size: 9, weight: 'normal' },
       },
       labelPlacement: 'always-horizontal',
+      deconflictionStrategy: 'static',
+      repeatLabel: false,
+      minScale: 20000,
     },
   ] as unknown as __esri.LabelClassProperties[];
 
@@ -1100,6 +1124,32 @@ export const MapCanvas = memo(function MapCanvas({
     }
 
     /**
+     * SCENE3D — 'selbe_3D_ 0804' web scene-ийн 14 давхарга (барилга, зам, мод,
+     * ногоон, спорт г.м.). ⚠️ Renderer-ийг scene-ээс ХУУЛСАН (`scene3d.ts`) —
+     * барилгыг `Давх_1`-ээр өргөх Extrude зэрэг 3D style-ийг `fromJSON`-оор ЯГ
+     * тавьдаг тул scene дээрхтэй ижил. ЗӨВХӨН BIM (SceneView) горимд, эс бөгөөс
+     * MapView «layerview» алдаа өгнө.
+     */
+    for (const s of SCENE3D_LAYERS) {
+      const existing = map.findLayerById(s.id);
+      if (dim === 'bim' && !existing) {
+        map.add(new FeatureLayer({
+          id: s.id,
+          url: s.url,
+          title: s.title,
+          opacity: s.opacity,
+          popupEnabled: false,
+          visible: true,
+          elevationInfo: sceneElevInfo(s.elevationInfo),
+          renderer: rendererJsonUtils.fromJSON(s.renderer as never) as unknown as RendererProp,
+        }));
+      } else if (dim !== 'bim' && existing) {
+        map.remove(existing);
+        existing.destroy();
+      }
+    }
+
+    /**
      * Усан сан — ХОЁУЛАН 3D горимд (3d ба bim, хоёулаа SceneView). 2D-д хасна.
      *
      * ⚠️ Меш/BIM шиг зайлшгүй хасах шаардлагагүй (энгийн FeatureLayer нь
@@ -1366,11 +1416,16 @@ export const MapCanvas = memo(function MapCanvas({
       if ((ALWAYS_ON_IDS as readonly string[]).includes(String(l.id))) { l.visible = true; return; }
       if (l.id.startsWith('scene:')) { l.visible = dim === '3d'; return; }
       if (l.id.startsWith('bim:')) { l.visible = dim === 'bim'; return; }
+      // Web scene-ийн 3D давхаргууд — ЗӨВХӨН BIM горимд (SceneView) харагдана.
+      if (l.id.startsWith('scene3d:')) { l.visible = dim === 'bim'; return; }
       // ⚠️ ЗӨВХӨН 3D-гийн давхарга нь каталогийн `visible` жагсаалтад ХЭЗЭЭ Ч
       //    орохгүй — энэ шалгуургүй бол доорх мөр түүнийг тэр дор нь унтраана.
       if (l.id === USAN_SAN.id) { l.visible = dim !== '2d'; return; }
 
-      const show = on.has(l.id);
+      // ⚠️ BIM горимд каталогийн 2D давхаргыг НУУНА — web scene өөрөө зам, ногоон,
+      //    мод, барилгын 3D хувилбарыг агуулдаг тул давхцал/эмх замбараагүйг арилгаж
+      //    scene-ийн цэвэр төрхтэй тааруулна.
+      const show = on.has(l.id) && dim !== 'bim';
       // ЗӨВХӨН Эх үүсвэр (`source:eh`) давхарга шинээр ил болоход анзаарагдам
       // пульс-анимаци эхэлнэ. Бусад давхаргад (барилга г.м.) анимаци байхгүй.
       if (show && l.id === 'source:eh' && !prevVisRef.current.has(l.id)) pulseLayer(l);
