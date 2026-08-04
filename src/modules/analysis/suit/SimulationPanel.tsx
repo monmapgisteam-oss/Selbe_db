@@ -4,26 +4,34 @@ import { useMemo, type CSSProperties } from 'react';
 import { Card } from './Layout';
 import { Icon } from '@/components/Icon';
 import {
-  SIM_KINDS, POP_BASES, TRANSIT_NORM_M, simDef, simMetric, simRange, simNorm, simColor,
+  SIM_KINDS, POP_BASES, TRANSIT_NORM_M, simDef, simMetric, simRange, simNorm,
   type SimKind, type PopBasis,
 } from './simulation';
 import { Timeline } from './Timeline';
 import type { MapRow } from '../SuitMap';
 import type { TrafficStats } from './TrafficOverlay';
+import type { NetKind } from './netSources';
 import c from './simulation.module.css';
+
+/** Харьцуулах замын сүлжээний сонголт (Бодит/Төлөвлөгөө/Шинэ зам) */
+export type NetSel = {
+  kind: NetKind;
+  setKind: (k: NetKind) => void;
+  options: { kind: NetKind; label: string; short: string; ready: boolean }[];
+};
 
 /** Замын сүлжээний ачаалалт ба амьд симуляцын хураангуй (эцгээс) */
 export type RoadState = {
   /** Сүлжээний хэрчмийн тоо — `null` бол ачаалж байна */
   edges: number | null;
-  /** Оргил цагт зэрэг явах машины таамаг (`peakVehicles`) */
-  peak: number;
   /** Ачаалахад алдаа гарсан бол мессеж */
   error: string | null;
   /** `TrafficOverlay`-аас ~2 удаа/сек ирэх хураангуй */
   stats: TrafficStats | null;
   /** 3D горим — машины давхарга зурагдахгүй (хавтгай проекц нийцэхгүй) */
   flat: boolean;
+  /** Харьцуулах замын сүлжээ сонгогч */
+  net?: NetSel;
 };
 
 /** Timeline-ийн удирдлагыг эцгээс (Suitability) дамжуулна */
@@ -55,16 +63,31 @@ const nf0 = (v: number) => Math.round(v).toLocaleString('mn-MN');
 export function Simulation({
   kind,
   setKind,
+  kinds,
+  title = 'Симуляц',
+  muted = false,
   popBasis,
   setPopBasis,
   clock,
   road,
   rows,
-  selected,
-  onSelect,
 }: {
   kind: SimKind;
   setKind: (k: SimKind) => void;
+  /**
+   * Энэ самбарт ХАРУУЛАХ симуляцын төрлүүд (сонгогчийн товчнууд). Өгөхгүй бол
+   * бүгд. Идэвхтэй `kind` энэ жагсаалтад БАЙХГҮЙ бол зөвхөн товчнууд харагдаж,
+   * дэлгэрэнгүй (тоон уншилт, эрэмбэ) нуугдана — өөр самбар идэвхтэй гэсэн үг.
+   */
+  kinds?: SimKind[];
+  /** Картын гарчиг */
+  title?: string;
+  /**
+   * ӨӨР самбар (тээвэр-идэвх) газрын зургийг эзэлж байна — идэвхтэй `kind`
+   * энэ самбарынх байсан ч дэлгэрэнгүйг нуух. Эс бөгөөс хоёр самбар зэрэг
+   * «би идэвхтэй» гэж харагдана.
+   */
+  muted?: boolean;
   /** «Хүн амын төвлөрөл»-д тоолох хүн амын төрөл */
   popBasis: PopBasis;
   setPopBasis: (p: PopBasis) => void;
@@ -74,9 +97,10 @@ export function Simulation({
   road?: RoadState;
   /** Газрын зурагт харагдаж буй бүсүүд (шүүлтийн дараах) */
   rows: MapRow[];
-  selected: string | null;
-  onSelect: (id: string) => void;
 }) {
+  const shownKinds = kinds ?? SIM_KINDS.map((k) => k.key);
+  /** Идэвхтэй симуляц ЭНЭ самбарынх мөн үү (дэлгэрэнгүйг зөвхөн тэр үед харуулна) */
+  const activeHere = !muted && shownKinds.includes(kind);
   const def = simDef(kind);
 
   const ranked = useMemo<Ranked[]>(() => {
@@ -91,26 +115,31 @@ export function Simulation({
       .sort((a, b) => b.value - a.value);
   }, [rows, kind, popBasis, def.ready]);
 
-  const top = ranked.slice(0, 14);
   const cells = readout(kind, ranked, road);
 
   // ⚠️ Картын гарчигт pill ТАВИХГҮЙ: доорх сегмент сонгогч нь идэвхтэй симуляцыг
   //    аль хэдийн тод харуулдаг тул давхардал болно.
+  // `--sim` акцент: идэвхтэй бол идэвхтэй төрлийнх, эс бөгөөс энэ самбарын
+  // эхний төрлийнх (идэвхгүй самбар өөр самбарын өнгөөр будагдахгүй).
+  const localHue = activeHere ? def.hue : simDef(shownKinds[0]).hue;
+
+  // ⚠️ Картын гарчигт pill ТАВИХГҮЙ: доорх сегмент сонгогч нь идэвхтэй симуляцыг
+  //    аль хэдийн тод харуулдаг тул давхардал болно.
   return (
-    <Card title="Симуляц">
+    <Card title={title}>
       {/* ⚠️ `--sim` нь ЭНД тавигдана — доорх бүх дүрэм (сонгогч, гулсуур,
           эрэмбийн баар) үүнээс уншина. Симуляц солиход бүхэл панелийн акцент
           нэг дор өөрчлөгдөнө. */}
-      <div className={c.root} style={{ '--sim': def.hue } as CSSProperties}>
-        {/* ── Симуляц сонгох ── */}
+      <div className={c.root} style={{ '--sim': localHue } as CSSProperties}>
+        {/* ── Симуляц сонгох (энэ самбарт хамаарах төрлүүд) ── */}
         <div className={c.seg} role="tablist" aria-label="Симуляцын төрөл">
-          {SIM_KINDS.map((k) => (
+          {SIM_KINDS.filter((k) => shownKinds.includes(k.key)).map((k) => (
             <button
               key={k.key}
               type="button"
               role="tab"
-              aria-selected={kind === k.key}
-              className={`${c.segBtn} ${kind === k.key ? c.segOn : ''}`}
+              aria-selected={!muted && kind === k.key}
+              className={`${c.segBtn} ${!muted && kind === k.key ? c.segOn : ''}`}
               onClick={() => setKind(k.key)}
               title={k.label}
             >
@@ -120,13 +149,20 @@ export function Simulation({
           ))}
         </div>
 
-        {/* ── Гарчиг ба тайлбар ── */}
-        <div>
-          <div className={c.head}>
-            <span className={c.headTitle}>{def.label}</span>
-            {def.unit && <span className={c.headUnit}>{def.unit}</span>}
-          </div>
-          <p className={c.desc} style={{ marginTop: 5 }}>{def.desc}</p>
+        {/* Дэлгэрэнгүй нь ЗӨВХӨН идэвхтэй самбарт — нөгөө нь зөвхөн товчоо харуулна */}
+        {!activeHere ? (
+          <p className={c.desc} style={{ marginTop: 6 }}>
+            Дэлгэрэнгүй харах бол дээрх төрлийг сонгоно уу.
+          </p>
+        ) : (
+        <>
+        {/* ── Гарчиг ──
+            ⚠️ Тайлбарын догол мөр (`def.desc`) ЗОРИУДААР БАЙХГҮЙ: сонгогчийн
+            товч ба доорх тоон уншилт нь юу харагдаж байгааг аль хэдийн хэлдэг
+            тул 2-3 мөрийн давхардсан текст самбарыг л уртасгаж байв. */}
+        <div className={c.head}>
+          <span className={c.headTitle}>{def.label}</span>
+          {def.unit && <span className={c.headUnit}>{def.unit}</span>}
         </div>
 
         {/* ── Хүн амын төрөл — зөвхөн «Төвлөрөл»-д ── */}
@@ -168,20 +204,26 @@ export function Simulation({
         {/* ── Цагийн консол ба трафикийн төлөв (зөвхөн «Ачаалал») ── */}
         {kind === 'road' && (
           <>
+            <NetSelector net={road?.net} />
             <Timeline {...clock} hue={def.hue} />
             <RoadStatus road={road} />
           </>
         )}
 
-        {/* ── Эрэмбэ ── */}
-        {!def.ready ? (
+        {/* ── Легенд ──
+            ⚠️ Эрэмбийн ЖАГСААЛТ ЗОРИУДААР ХАСАГДСАН: 13 мөр бүсийн код бичсэн
+            хүснэгт нь газрын зурагтай холбогдохгүй тул уншихад хүнд байсан.
+            Бүс бүрийн утгыг ГАЗРЫН ЗУРАГ дээр хулганаа аваачиж уншина.
+            ⚠️ «Ачаалал» табд ХАРАГДАХГҮЙ: тэр нь амьд трафикийн симуляц тул бүсийн
+            аялалын эрэмбэ (аялал/ц) утгагүй — уншилт нь машин/хурд/урсгал дээр. */}
+        {kind === 'road' ? null : !def.ready ? (
           <p className={c.empty}>Энэ симуляц удахгүй нэмэгдэнэ.</p>
         ) : ranked.length === 0 ? (
           <p className={c.empty}>Тооцоолох өгөгдөл алга.</p>
         ) : (
           <>
             <div className={c.secHead}>
-              Эрэмбэ
+              Шатлал
               <b>{ranked.length} бүс</b>
             </div>
 
@@ -192,32 +234,9 @@ export function Simulation({
               <span className={c.legendEnd}>{nf0(ranked[0].value)} {def.unit}</span>
             </div>
 
-            <div className={c.list}>
-              {top.map((x, i) => (
-                <button
-                  key={x.r.id}
-                  type="button"
-                  className={`${c.row} ${selected === x.r.id ? c.rowOn : ''}`}
-                  style={{ '--t': x.t ?? 0 } as CSSProperties}
-                  onClick={() => onSelect(x.r.id)}
-                >
-                  <span className={c.rk}>{i + 1}</span>
-                  <span className={c.nm}>
-                    {x.r.id}
-                    <i>{x.r.type}</i>
-                  </span>
-                  <span className={c.val}>{x.text}</span>
-                  <span className={c.heat} style={{ background: simColor(x.t) }}>
-                    {x.t == null ? '—' : Math.round(x.t * 100)}
-                  </span>
-                </button>
-              ))}
-            </div>
-
-            {ranked.length > top.length && (
-              <p className={c.more}>… нийт {ranked.length} бүсээс эхний {top.length}</p>
-            )}
           </>
+        )}
+        </>
         )}
       </div>
     </Card>
@@ -253,7 +272,7 @@ function readout(kind: SimKind, ranked: Ranked[], road?: RoadState): Cell[] {
 
   if (kind === 'transit') {
     // ⚠️ Хүртээмжид БАГА нь сайн — тиймээс «хамгийн их» биш «хамгийн хол»,
-    //    норм нь БНбД-ийн 500 м.
+    //    норм нь БНБД-ийн 500 м.
     const ok = ranked.filter((x) => x.value <= TRANSIT_NORM_M).length;
     const pct = Math.round((ok / ranked.length) * 100);
     return [
@@ -271,6 +290,37 @@ function readout(kind: SimKind, ranked: Ranked[], road?: RoadState): Cell[] {
     { k: 'Дундаж', v: nf0(avg), unit: 'хүн/га' },
     { k: 'Бүс', v: nf0(ranked.length) },
   ];
+}
+
+/* ══════════════════ Замын сүлжээ сонгогч ══════════════════ */
+
+/**
+ * ХАРЬЦУУЛАХ замын сүлжээ сонгох — Бодит / Төлөвлөгөө / Шинэ зам.
+ * ⚠️ Line ирээгүй сүлжээ (`ready=false`) идэвхгүй харагдана. Одоо зөвхөн
+ * «Төлөвлөгөө» (et:5) бэлэн; бусад нь ArcGIS line ирэхэд идэвхжинэ.
+ */
+function NetSelector({ net }: { net?: NetSel }) {
+  if (!net) return null;
+  return (
+    <div className={c.pick}>
+      <span className={c.pickLabel}>Зам</span>
+      <div className={c.segSm} role="group" aria-label="Харьцуулах замын сүлжээ">
+        {net.options.map((o) => (
+          <button
+            key={o.kind}
+            type="button"
+            aria-pressed={net.kind === o.kind}
+            className={net.kind === o.kind ? c.segSmOn : undefined}
+            disabled={!o.ready}
+            onClick={() => net.setKind(o.kind)}
+            title={o.ready ? o.label : `${o.label} — line хараахан ирээгүй`}
+          >
+            {o.short}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 /* ══════════════════ Замын сүлжээний төлөв ══════════════════ */
@@ -295,14 +345,9 @@ function RoadStatus({ road }: { road?: RoadState }) {
     );
   }
 
+  // ⚠️ Тайлбарын догол мөр ЗОРИУДААР БАЙХГҮЙ — зөвхөн 3D-ийн анхааруулга үлдэв.
   return (
     <>
-      <p className={c.note}>
-        <b>{nf0(road.edges)}</b> замын хэрчмийн сүлжээнд машин агентууд урдахаа дагаж
-        (car-following) явж, уулзвар дээр эргэлтээ сонгоно. Оргил цагийн багтаамж{' '}
-        <b>{nf0(road.peak)} машин</b> — бүсийн хүн ам × аялал үүсгэлтээс. Замын өнгө нь
-        тухайн хэрчмийн нягтрал.
-      </p>
       {road.flat && (
         <p className={c.warn}>
           <Icon name="road" size={14} />

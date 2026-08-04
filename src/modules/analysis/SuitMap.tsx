@@ -7,6 +7,7 @@ import SceneView from '@arcgis/core/views/SceneView';
 import GraphicsLayer from '@arcgis/core/layers/GraphicsLayer';
 import GroupLayer from '@arcgis/core/layers/GroupLayer';
 import FeatureLayer from '@arcgis/core/layers/FeatureLayer';
+import VectorTileLayer from '@arcgis/core/layers/VectorTileLayer';
 import ImageryLayer from '@arcgis/core/layers/ImageryLayer';
 import IntegratedMeshLayer from '@arcgis/core/layers/IntegratedMeshLayer';
 import ElevationLayer from '@arcgis/core/layers/ElevationLayer';
@@ -20,6 +21,7 @@ import Expand from '@arcgis/core/widgets/Expand';
 import type Layer from '@arcgis/core/layers/Layer';
 import type Polygon from '@arcgis/core/geometry/Polygon';
 import esriConfig from '@arcgis/core/config';
+import { createRenderer as createHeatRenderer } from '@arcgis/core/smartMapping/renderers/heatmap';
 
 import BuildingSceneLayer from '@arcgis/core/layers/BuildingSceneLayer';
 import BuildingExplorer from '@arcgis/core/widgets/BuildingExplorer';
@@ -35,6 +37,8 @@ import type { Zone } from '@/lib/analysis/data';
 import { TrafficOverlay } from './suit/TrafficOverlay';
 import type { Network } from './suit/traffic';
 import type { TrafficStats } from './suit/TrafficOverlay';
+import type { TPaint } from './suit/transportModes';
+import type { HeatPoint } from './suit/heat';
 import s from './suitability.module.css';
 
 export type MapRow = Zone & { urban: number | null; displayGeom: Polygon | null };
@@ -64,6 +68,33 @@ const NODATA_FILL = '#eef2f7';
 const NODATA_OUTLINE = '#64748b';
 /** Сонгосон бүсийн хүрээ — cyan (ногоон дүүргэлт дээр ч тодорно) */
 const SELECT_COLOR = [34, 211, 238, 1];
+
+/**
+ * Тээвэр-идэвхийн будалтын тунгалаг байдал.
+ * ⚠️ Дүрслэлд ХАМААРАХГҮЙ барилга (жиш. «Хүн ам» дүрслэл дэх сургууль) бүрмөсөн
+ * алга болохгүй — маш бүдгээр үлдэж контекст өгнө; эс бөгөөс газрын зураг
+ * цоорхойтой харагдана.
+ */
+const T_ALPHA_ON = 0.8;
+const T_ALPHA_OFF = 0.1;
+/** Дулааны гадаргуу асаалттай үеийн тунгалагийн үржүүлэгч (дүрс бараг үл үзэгдэнэ) */
+const T_FAINT = 0.22;
+
+/**
+ * Дулааны гадаргуугийн өнгөний шатлал — YlOrRd (`simulation.simColor`-той нэг гэр бүл).
+ * ⚠️ Хамгийн доод зогсоол нь БҮРЭН ТУНГАЛАГ байх ЁСТОЙ: эс бөгөөс өгөгдөлгүй
+ * талбай шар хальсаар бүрхэгдэж, ортофото/бүсийн хил уншигдахгүй болно.
+ */
+const HEAT_STOPS = [
+  { ratio: 0, color: 'rgba(255, 255, 178, 0)' },
+  { ratio: 0.12, color: 'rgba(255, 237, 160, 0.55)' },
+  { ratio: 0.4, color: 'rgba(254, 178, 76, 0.75)' },
+  { ratio: 0.7, color: 'rgba(253, 141, 60, 0.85)' },
+  { ratio: 1, color: 'rgba(189, 0, 38, 0.92)' },
+];
+
+/** Дулааны цөмийн радиус (пиксель) — жижиг нь толбо, том нь бүх зургийг будна */
+const HEAT_RADIUS = 30;
 
 const hexToRgba = (hex: string, a: number) => [
   parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16), a,
@@ -159,6 +190,14 @@ function labelSymbol(dim: Dim, text: string, color: string, halo: string, haloSi
  *  эхэндээ унтраалттай — «Суурь зураг» чагтаар асаана. */
 const baseMap = () => Basemap.fromId('topo-vector');
 
+/**
+ * БОДИТ ЗАМЫН гадаргуу — attribute-тай vector tile (`test_zam`).
+ * ⚠️ Замын ПОЛИГОН (талбай), centerline биш — зөвхөн ХАРАГДАЦ. Трафикийн граф нь
+ * `Monmap_zam` line дээр хэвээр (`netSources.ts`). «Бодит» сонгоход л ил болно.
+ */
+const ROAD_TILE_URL =
+  'https://vectortileservices-ap1.arcgis.com/ACqsMOmNLi5wIdIh/arcgis/rest/services/test_zam/VectorTileServer';
+
 export function SuitMap({
   dim,
   rows,
@@ -169,7 +208,12 @@ export function SuitMap({
   layerOn,
   zoneTip,
   buildingTip,
+  transportTip,
   traffic,
+  transportPaint,
+  transportFaint = false,
+  heat,
+  roadTile = false,
 }: {
   /** 2D (MapView + ортофото) эсвэл 3D (SceneView + IntegratedMesh) */
   dim: Dim;
@@ -186,6 +230,11 @@ export function SuitMap({
   zoneTip: (r: MapRow) => string;
   buildingTip: (attrs: Record<string, unknown>) => string;
   /**
+   * Тээвэр-идэвхийн hover панель — 'b' барилга · 'r' замын хэрчим · 's' буудал,
+   * `idx` нь тухайн массивын индекс. Өгөхгүй бол тээврийн дүрс hover-гүй.
+   */
+  transportTip?: (kind: 'b' | 'r' | 's', idx: number) => string | null;
+  /**
    * «Замын ачаалал» симуляц — машин агентуудын давхарга.
    * ⚠️ Зөвхөн 2D-д зурагдана (доор үз); өгөгдөөгүй бол давхарга огт үүсэхгүй.
    */
@@ -197,6 +246,24 @@ export function SuitMap({
     maxCars: number;
     onStats?: (s: TrafficStats) => void;
   };
+  /**
+   * Тээвэр-идэвхийн дүрслэл — барилга/зам/буудлын будалт (`transportModes.tPaint`).
+   * ⚠️ Өгөгдөхгүй бол давхарга ХООСОН үлдэнэ (бусад горимд юу ч зурахгүй).
+   */
+  transportPaint?: TPaint | null;
+  /**
+   * Дулааны гадаргуу асаалттай — тээврийн дүрсийг БҮДЭГ зурна.
+   * ⚠️ Огт зурахгүй БОЛОХГҮЙ: hover панель зөвхөн эдгээр дүрс дээр ажилладаг тул
+   * тэднийг хаявал дулааны зураг дээр юу ч уншиж чадахгүй болно.
+   */
+  transportFaint?: boolean;
+  /**
+   * Дулааны гадаргууны жинтэй цэгүүд (`heat.ts`). `null`/хоосон бол давхарга
+   * УСТАНА — полигон харагдац руу буцна.
+   */
+  heat?: HeatPoint[] | null;
+  /** «Бодит» замын vector tile гадаргууг ил болгох (attribute-тай `test_zam`). */
+  roadTile?: boolean;
 }) {
   const el = useRef<HTMLDivElement>(null);
   const tipEl = useRef<HTMLDivElement>(null);
@@ -205,6 +272,11 @@ export function SuitMap({
   const zoneRef = useRef<GraphicsLayer | null>(null);
   const labelRef = useRef<GraphicsLayer | null>(null);
   const bldRef = useRef<FeatureLayer | null>(null);
+  const roadTileRef = useRef<VectorTileLayer | null>(null);
+  const tranRef = useRef<GraphicsLayer | null>(null);
+  const heatRef = useRef<FeatureLayer | null>(null);
+  /** Тээврийн будалт дахин зурагдах бүрд өснө — hover-ийн кэшийг хүчингүй болгоно */
+  const paintVerRef = useRef(0);
   const bimWidgetRef = useRef<BuildingExplorer | null>(null);
   // ⚠️ Энэ файлд `Map` нэрийг ArcGIS-ийн `Map` класс эзэлсэн тул JS-ийн Map
   //    ашиглах боломжгүй — энгийн объект хангалттай.
@@ -212,8 +284,8 @@ export function SuitMap({
   const [ready, setReady] = useState(false);
 
   // Callback-уудыг ref-ээр — эффектийг дахин ажиллуулахгүйгээр шинэчилнэ
-  const cb = useRef({ colorOf, shown, zoneTip, buildingTip, onSelect, rows });
-  cb.current = { colorOf, shown, zoneTip, buildingTip, onSelect, rows };
+  const cb = useRef({ colorOf, shown, zoneTip, buildingTip, transportTip, onSelect, rows });
+  cb.current = { colorOf, shown, zoneTip, buildingTip, transportTip, onSelect, rows };
 
   /**
    * Map-ыг НЭГ УДАА үүсгэнэ; view нь 2D/3D солигдох бүрд дахин үүснэ.
@@ -227,8 +299,12 @@ export function SuitMap({
 
       const zoneLayer = new GraphicsLayer({ title: 'Тохиромжтой байдал', elevationInfo: ON_GROUND });
       const labelLayer = new GraphicsLayer({ title: 'Шошго', elevationInfo: ON_GROUND });
+      // ⚠️ Тээврийн будалт нь барилгын давхаргыг ДАРНА (дээр нь зурагдана) —
+      //    эс бөгөөс төлөвийн өнгө (Barilga_ty) шинжилгээний өнгийг бүрхэнэ.
+      const tranLayer = new GraphicsLayer({ title: 'Тээвэр-идэвх', elevationInfo: ON_GROUND });
       zoneRef.current = zoneLayer;
       labelRef.current = labelLayer;
+      tranRef.current = tranLayer;
 
       /**
        * ⚠️ `special` давхаргууд (оноон будалт, шошго) нь дээрх GraphicsLayer —
@@ -271,14 +347,22 @@ export function SuitMap({
         })),
       });
 
+      /* Бодит замын vector tile гадаргуу — «Бодит» симуляцад л ил. Ортофотогийн
+         дээр, бусад контекстийн доор (машин канвас нь газрын зургаас ДЭЭР тул
+         энэ давхарга машиныг бүрхэхгүй). */
+      const roadTileLayer = new VectorTileLayer({
+        id: 'roadTile', url: ROAD_TILE_URL, visible: false, listMode: 'hide',
+      });
+      roadTileRef.current = roadTileLayer;
+
       /**
-       * ⚠️ ДАРААЛАЛ: ортофото → контекст → бүсийн будалт → барилга → шошго.
+       * ⚠️ ДАРААЛАЛ: ортофото → замын tile → контекст → бүсийн будалт → барилга → шошго.
        * Барилгыг бүсийн полигоны ДЭЭР зурна — эс бөгөөс будалт дор дарагдана.
        */
       mapRef.current = new Map({
         basemap: baseMap(),
         ground: new Ground({ layers: [new ElevationLayer({ url: ELEVATION_URL })] }),
-        layers: [imagery, ...under, zoneLayer, ...(buildingLayer ? [buildingLayer] : []), labelLayer],
+        layers: [imagery, roadTileLayer, ...under, zoneLayer, ...(buildingLayer ? [buildingLayer] : []), tranLayer, labelLayer],
       });
     }
 
@@ -365,12 +449,18 @@ export function SuitMap({
     let lastKey: string | null = null;
     const move = view.on('pointer-move', (e: __esri.ViewPointerMoveEvent) => {
       const my = ++token;
-      const include = [bldRef.current, zoneRef.current].filter(Boolean) as Layer[];
+      // ⚠️ ДАРААЛАЛ = ЗУРАГДАХ дараалал: тээврийн дүрс хамгийн дээр зурагддаг
+      //    тул hover-т ч тэргүүн ээлжинд шалгагдана.
+      const include = [tranRef.current, bldRef.current, zoneRef.current].filter(Boolean) as Layer[];
       if (!include.length) return;
       view.hitTest(e, { include })
         .then((hit) => {
           if (my !== token || !tipEl.current) return;
           const tip = tipEl.current;
+          const tran = hit.results.find(
+            (r) => r.type === 'graphic' && r.graphic.layer === tranRef.current
+              && (r.graphic.attributes as { tOn?: boolean })?.tOn,
+          );
           const bld = hit.results.find((r) => r.type === 'graphic' && r.graphic.layer === bldRef.current);
           const zone = hit.results.find(
             (r) => r.type === 'graphic' && (r.graphic.attributes as { zoneId?: string })?.zoneId,
@@ -378,7 +468,18 @@ export function SuitMap({
 
           let key: string | null = null;
           let html: string | null = null;
-          if (bld && bld.type === 'graphic') {
+          if (tran && tran.type === 'graphic') {
+            const a = tran.graphic.attributes as { tKind: 'b' | 'r' | 's'; tIdx: number };
+            /**
+             * ⚠️ Түлхүүрт БУДАЛТЫН ХУВИЛБАР (`paintVer`) орно: дүрслэл солиход
+             * ИЖИЛ барилгын агуулга өөрчлөгддөг тул зөвхөн индексээр түлхүүрлэвэл
+             * `lastKey` таарч, панель ХУУЧИН утгаа хадгална.
+             */
+            const k = `t${paintVerRef.current}${a.tKind}${a.tIdx}`;
+            const tipHtml = k === lastKey ? '' : cb.current.transportTip?.(a.tKind, a.tIdx) ?? null;
+            // `null` = энэ объект одоогийн дүрслэлд утгагүй → панель харуулахгүй
+            if (tipHtml !== null) { key = k; html = tipHtml === '' ? null : tipHtml; }
+          } else if (bld && bld.type === 'graphic') {
             const a = bld.graphic.attributes as Record<string, unknown>;
             key = `b${a.OBJECTID}`;
             if (key !== lastKey) html = cb.current.buildingTip(a);
@@ -430,6 +531,8 @@ export function SuitMap({
     zoneRef.current = null;
     labelRef.current = null;
     bldRef.current = null;
+    roadTileRef.current = null;
+    tranRef.current = null;
     ctxRef.current = {};
   }, []);
 
@@ -516,6 +619,11 @@ export function SuitMap({
     }
   }, [layerOn]);
 
+  /* ── Бодит замын vector tile — «Бодит» симуляцад л ил ── */
+  useEffect(() => {
+    if (roadTileRef.current) roadTileRef.current.visible = roadTile;
+  }, [roadTile]);
+
   /* ── Бүсийн будалт ба шошго ── */
   const paintKey = rows.map((r) => `${r.id}:${colorOf(r)}:${shown(r) ? 1 : 0}`).join('|')
     + `#${selected ?? ''}#${dim}`;
@@ -577,6 +685,114 @@ export function SuitMap({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paintKey]);
+
+  /* ── Тээвэр-идэвхийн будалт (барилга · зам · буудал) ── */
+  useEffect(() => {
+    const layer = tranRef.current;
+    if (!layer) return;
+    layer.removeAll();
+    paintVerRef.current++;
+    if (!transportPaint) return;
+
+    const sr = { wkid: 3857 };
+
+    // ⚠️ `tKind`/`tIdx` нь hover панелийн ГАНЦ холбоос: эдгээргүй бол зурсан
+    //    дүрсээс буцаад өгөгдөл рүү очих арга байхгүй.
+    // Дулаан асаалттай бол дүрсүүд зөвхөн hover-ийн «баригдах гадаргуу» болно
+    const fade = transportFaint ? T_FAINT : 1;
+
+    for (const b of transportPaint.buildings) {
+      const a = (b.on ? T_ALPHA_ON : T_ALPHA_OFF) * fade;
+      layer.add(new Graphic({
+        geometry: { type: 'polygon', rings: b.rings, spatialReference: sr } as unknown as Polygon,
+        attributes: { tKind: 'b', tIdx: b.idx, tOn: b.on },
+        symbol: {
+          type: 'simple-fill',
+          color: hexToRgba(b.color, a),
+          outline: { color: hexToRgba(b.color, Math.min(1, a * 1.4)), width: ow(b.on ? 0.7 : 0.3) },
+        } as unknown as SymbolProp,
+      }));
+    }
+
+    for (const r of transportPaint.roads) {
+      layer.add(new Graphic({
+        geometry: { type: 'polyline', paths: [r.pts], spatialReference: sr } as unknown as __esri.Polyline,
+        attributes: { tKind: 'r', tIdx: r.idx, tOn: true },
+        symbol: {
+          type: 'simple-line', color: hexToRgba(r.color, 0.95 * fade), width: r.width, cap: 'round', join: 'round',
+        } as unknown as SymbolProp,
+      }));
+    }
+
+    for (const p of transportPaint.stops) {
+      layer.add(new Graphic({
+        geometry: { type: 'point', x: p.x, y: p.y, spatialReference: sr } as unknown as __esri.Point,
+        attributes: { tKind: 's', tIdx: p.idx, tOn: true },
+        symbol: {
+          type: 'simple-marker', style: 'circle', size: p.size,
+          color: [56, 189, 248, 0.9 * fade],
+          outline: { color: [8, 47, 73, 0.95 * fade], width: ow(1.6) },
+        } as unknown as SymbolProp,
+      }));
+    }
+  }, [transportPaint, transportFaint]);
+
+  /* ── Дулааны гадаргуу (клиент талын цэгэн давхарга) ── */
+  useEffect(() => {
+    const map = mapRef.current;
+    const view = viewRef.current;
+    // ⚠️ ЗӨВХӨН 2D: `HeatmapRenderer` нь SceneView-д дэмжигдэхгүй тул 3D-д
+    //    давхарга нэмбэл «Failed to create layerview» алдаа өгнө.
+    if (!map || !view || !ready || is3D(dim) || !heat?.length) return;
+
+    const layer = new FeatureLayer({
+      id: 'simHeat',
+      title: 'Дулааны гадаргуу',
+      source: heat.map((p, i) => new Graphic({
+        geometry: { type: 'point', x: p.x, y: p.y, spatialReference: { wkid: 3857 } } as unknown as __esri.Point,
+        attributes: { oid: i + 1, w: p.w },
+      })),
+      objectIdField: 'oid',
+      fields: [
+        { name: 'oid', type: 'oid' },
+        { name: 'w', type: 'double' },
+      ],
+      geometryType: 'point',
+      spatialReference: { wkid: 3857 } as unknown as __esri.SpatialReference,
+      popupEnabled: false,
+      legendEnabled: false,
+      // ⚠️ Дулааны гадаргуу дээгүүр hover хийхэд бүс/барилга «хаагдахгүй» байх
+      //    ёстой — hitTest-д огт оруулахгүй тул `include` жагсаалтад алга.
+    });
+
+    // Бүсийн будалтын ДЭЭР, барилгын ДООР — бүсийн хил бүдэг харагдсаар байна
+    const at = zoneRef.current ? map.layers.indexOf(zoneRef.current) + 1 : undefined;
+    map.add(layer, at);
+    heatRef.current = layer;
+
+    /**
+     * ⚠️ Нягтралын хязгаарыг (`minDensity`/`maxDensity`) ГАРААР тааруулах
+     * боломжгүй: тэдгээр нь цөмийн радиус, дэлгэцийн масштаб, жингийн нэгжээс
+     * нэгэн зэрэг хамаардаг. smartMapping нь харагдац бүрд тохирохыг нь бодно;
+     * бид зөвхөн ӨНГИЙГ нь өөрийн шатлалаар сольж, бусад давхаргатай нэгдмэл
+     * болгоно. Алдаа гарвал ArcGIS-ийн анхдагч дулааны өнгө үлдэнэ.
+     */
+    let alive = true;
+    createHeatRenderer({ layer, view, field: 'w', radius: HEAT_RADIUS, fadeToTransparent: true })
+      .then(({ renderer }) => {
+        if (!alive || layer.destroyed) return;
+        renderer.colorStops = HEAT_STOPS as unknown as __esri.HeatmapColorStop[];
+        layer.renderer = renderer;
+      })
+      .catch((e: unknown) => console.warn('[selbe] дулааны шатлал:', e));
+
+    return () => {
+      alive = false;
+      map.remove(layer);
+      layer.destroy();
+      if (heatRef.current === layer) heatRef.current = null;
+    };
+  }, [heat, ready, dim]);
 
   /** Сонгосон бүс рүү төвлөрөх */
   useEffect(() => {

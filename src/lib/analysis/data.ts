@@ -497,10 +497,13 @@ export function computeEconomics(
   perHa: number,
   pricePerM2: number | null,
   buildCostPerM2: number,
+  // «Бүсийн ангилал» картаас гараар идэвхжүүлсэн (хасагдсан) ангиллууд — оноолд оруулна
+  scoreTypes?: Set<string>,
 ) {
   for (const z of zones) {
-    // Оноололд орохгүй бүс (ногоон/одоо байгаа) — эдийн засаг тооцохгүй
-    if (z.excluded) { z.econ = null; continue; }
+    // Оноололд орохгүй бүс (ногоон/одоо байгаа) — эдийн засаг тооцохгүй.
+    // Гараар идэвхжүүлсэн ангилал бол ХАСАХГҮЙ (доор бодогдоно).
+    if (z.excluded && !scoreTypes?.has(z.type)) { z.econ = null; continue; }
     const infraCost = perHa * z.areaHa;
     const buildCost = z.gfaSaleM2 * buildCostPerM2;
     const cost = infraCost + buildCost;
@@ -531,10 +534,17 @@ export function parkingNeedOf(z: Zone, p: ParkingOpt): number | null {
  * Сонгосон ногоон ангилал / зогсоолын аргаас хамаарч ТҮҮХИЙ үзүүлэлтийг дахин бодно.
  * (Жин өөрчлөгдөхөд энэ дахин ажиллах шаардлагагүй — зөвхөн оноолт л дахин бодогдоно.)
  */
-export function computeRaw(zones: Zone[], activeGreen: Set<string>, parking: ParkingOpt) {
+export function computeRaw(
+  zones: Zone[],
+  activeGreen: Set<string>,
+  parking: ParkingOpt,
+  // «Бүсийн ангилал» картаас гараар идэвхжүүлсэн (хасагдсан) ангиллууд — оноолд оруулна
+  scoreTypes?: Set<string>,
+) {
   for (const z of zones) {
-    // Оноололд орохгүй бүс — түүхий үзүүлэлт бодохгүй (raw хоосон → оноо null → саарал)
-    if (z.excluded) { z.raw = {}; continue; }
+    // Оноололд орохгүй бүс — түүхий үзүүлэлт бодохгүй (raw хоосон → оноо null → саарал).
+    // Гараар идэвхжүүлсэн ангилал бол ХАСАХГҮЙ (доор бодогдоно).
+    if (z.excluded && !scoreTypes?.has(z.type)) { z.raw = {}; continue; }
     z.greenM2 = Object.entries(z.greenByCat)
       .filter(([cat]) => activeGreen.has(cat))
       .reduce((a, [, v]) => a + v, 0);

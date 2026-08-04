@@ -19,8 +19,6 @@ export type SimDef = {
   key: SimKind;
   label: string;
   short: string;
-  /** Панелийн доор гарах тайлбар */
-  desc: string;
   /** Хэмжүүрийн нэгж (легенд, tooltip-д) */
   unit: string;
   /**
@@ -34,6 +32,15 @@ export type SimDef = {
   icon: string;
   /** Одоо тооцоологддог эсэх — `false` бол «удахгүй» гэж харагдана */
   ready: boolean;
+  /**
+   * Дулааны гадаргуу утгатай эсэх (`heat.ts`).
+   *
+   * ⚠️ Heatmap нь цөмүүдийг НЭМДЭГ тул зөвхөн ХУРИМТЛАГДАХ хэмжигдэхүүнд
+   * утгатай. `transit` нь ЗАЙ (м) — зайг нэмэх нь физик утгагүй бөгөөд
+   * «улаан = хол = муу» болж бусад дүрслэлтэй зөрчилдөнө. `road` нь амьд
+   * машин агентаар илэрхийлэгддэг тул дээр нь дулаан нэмбэл зөвхөн бүрхэнэ.
+   */
+  heatable: boolean;
 };
 
 export const SIM_KINDS: SimDef[] = [
@@ -41,35 +48,37 @@ export const SIM_KINDS: SimDef[] = [
     key: 'density',
     label: 'Хүн амын төвлөрөл',
     short: 'Төвлөрөл',
-    desc: 'Бүс бүрийн оршин суугчийн нягтрал — хүн ÷ полигоны талбай (га). Хүн шигүү суусан бүсийг дулаан өнгөөр.',
     unit: 'хүн/га',
     hue: '#a78bfa',
     icon: 'flame',
     ready: true,
+    heatable: true,
   },
   {
     key: 'transit',
     label: 'Тээврийн хүртээмж',
     short: 'Хүртээмж',
-    desc: 'Бүсээс хамгийн ойрын автобусны буудал / LRT·BRT зогсоол хүрэх зай (м). Хол зайтай (муу хүртээмжтэй) бүсийг дулаан өнгөөр.',
     unit: 'м',
     hue: '#38bdf8',
     icon: 'bus',
     ready: true,
+    heatable: false,
   },
   {
     key: 'road',
     label: 'Замын ачаалал',
     short: 'Ачаалал',
-    desc: 'Бүсийн аялал үүсгэлт → замын сүлжээнд машин агентууд. Цагийн гулсуурыг хөдөлгөж өдрийн ачааллыг хараарай.',
-    unit: 'аялал/ц',
+    // ⚠️ Нэгж ЗОРИУДААР хоосон: «Ачаалал» нь амьд симуляц — гарчгийн хажууд
+    //    «аялал/ц» гэх бүсийн нэгж төөрөгдүүлж байсан (уншилт нь машин/хурд/урсгал).
+    unit: '',
     hue: '#f59e0b',
     icon: 'road',
     ready: true,
+    heatable: false,
   },
 ];
 
-/** БНбД 30-01-24, 10.22 — ойрын буудал хүртэл 500 м-ээс ихгүй */
+/** БНБД 30-01-24, 10.22 — ойрын буудал хүртэл 500 м-ээс ихгүй */
 export const TRANSIT_NORM_M = 500;
 
 export const simDef = (kind: SimKind): SimDef =>
@@ -119,12 +128,19 @@ export const zoneTrips = (z: { residentPop: number; capacityPop: number }): numb
 export const TRIP_DURATION_H = 0.05;
 
 /**
+ * Симуляцын машины тооны ҮРЖҮҮЛЭГЧ — дэлгэцэд илүү нягт урсгал харуулах.
+ * ⚠️ Хэрэглэгчийн хүсэлтээр оргил ≈3,000 машин (2026-08-04): Little-ийн тооцоо
+ * ~1,071 × 2.8 ≈ 3,000. Харьцуулалтад нөлөөгүй — 3 сүлжээнд ИЖИЛ үржүүлэгч.
+ */
+export const DEMAND_SCALE = 2.8;
+
+/**
  * Оргил цагт сүлжээнд ЗЭРЭГ байх машины тоо (Little-ийн хууль: L = λ × W).
  * Симуляцын «машины тоо» энэ таамгаас гарна — гараар өгсөн дугуй тоо БИШ.
  */
 export function peakVehicles(zones: { residentPop: number; capacityPop: number }[]): number {
   const trips = zones.reduce((a, z) => a + zoneTrips(z), 0);
-  return Math.round(trips * TRIP_DURATION_H);
+  return Math.round(trips * TRIP_DURATION_H * DEMAND_SCALE);
 }
 
 export type SimMetric = {

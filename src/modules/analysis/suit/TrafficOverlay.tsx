@@ -5,11 +5,9 @@ import type MapView from '@arcgis/core/views/MapView';
 import type SceneView from '@arcgis/core/views/SceneView';
 
 import {
-  diurnalAt, stepCars, spawnTable, spawnCar, targetCars, carPose,
-  CAR_LEN, V_MAX, type Car, type Network,
+  diurnalAt, stepCars, spawnTable, spawnCar, targetCars, carPose, carLen,
+  signalPhase, CAR_LEN, MIN_GAP_M, V_MAX, type Car, type Network,
 } from './traffic';
-import { simColor } from './simulation';
-
 /** Симуляцаас UI рүү буцах хураангуй — «Ачаалал» панелийн үзүүлэлт. */
 export type TrafficStats = {
   /** Идэвхтэй машины тоо */
@@ -23,9 +21,10 @@ export type TrafficStats = {
 /**
  * ГҮЙЦЭТГЭЛИЙН ТАГ — эрэлтийн загвар үүнээс их машин шаардвал таслана.
  * ⚠️ Хэмжилт (бодит сүлжээ, 3,957 ирмэг): 1,200 машин = 0.11 мс/фрейм тул энэ
- * хязгаар нь гүйцэтгэлээс биш, ЗУРАЛТЫН уншигдах байдлаас гарсан.
+ * хязгаар нь гүйцэтгэлээс биш, аюулгүйн дээд шал. `DEMAND_SCALE=5`-ийн дараах
+ * оргил ~5,355 машиныг багтаана.
  */
-const CAR_CAP = 1600;
+const CAR_CAP = 8000;
 
 /** Нэг фреймд зөвшөөрөх ДЭЭД алхам (сек) — таб идэвхгүй байгаад буцахад «үсрэхээс» хамгаална. */
 const MAX_DT = 0.12;
@@ -39,9 +38,6 @@ const MAX_DT = 0.12;
  * хурдандаа ойр үлдэнэ — «SUMO шиг» харагдац энэ тэнцвэрээс гарна.
  */
 const paceOf = (speed: number) => Math.sqrt(Math.max(1, speed) / 20);
-
-/** Замын хэрчмийн ачааллыг өнгөөр — машины эзлэх урт ÷ хэрчмийн урт. */
-const OCCUPANCY_FULL = 0.28;
 
 /** Машины өргөн (м) — зөвхөн ЗУРАЛТАД (хөдөлгүүр нь уртаар л ажилладаг). */
 const CAR_W = 1.9;
@@ -124,6 +120,8 @@ export function TrafficOverlay({
     let raf = 0;
     let last = 0;
     let statAt = 0;
+    /** Гэрлэн дохионы сим-хугацаа — машины хөдөлгөөнтэй ижил масштабаар хуримтлана. */
+    let simTime = 0;
 
     const frame = (ts: number) => {
       raf = requestAnimationFrame(frame);
@@ -133,24 +131,8 @@ export function TrafficOverlay({
       const dtReal = last ? Math.min(MAX_DT, (ts - last) / 1000) : 0;
       last = ts;
 
-      /* ── 1. Эрэлт: машины тоог өдрийн муруйгаар барина ── */
-      const demand = diurnalAt(minuteRef.current);
-      const cap = Math.max(1, Math.min(CAR_CAP, opt.current.maxCars));
-      const want = targetCars(demand, cap, Math.min(10, cap));
-      while (cars.length > want) cars.pop();
-      // Нэг фреймд цөөхнийг нэмнэ — эрэлт огцом өсөхөд гэнэт «цутгахгүй»
-      for (let i = 0; i < 12 && cars.length < want; i++) {
-        const c = spawnCar(net, tbl);
-        if (!c) break;
-        cars.push(c);
-      }
-
-      /* ── 2. Хөдөлгөөн ── */
-      if (opt.current.playing && dtReal > 0) {
-        stepCars(net, cars, dtReal * paceOf(opt.current.speed));
-      }
-
-      /* ── 3. Зуралт ── */
+      /* ── 0. Дэлгэцийн хөрвүүлэг — эрэлтийн блокоос ӨМНӨ, учир нь машин
+         нэмэх/хасахдаа «дэлгэцэд харагдаж байна уу» гэдгийг шалгана ── */
       const dpr = Math.min(2, window.devicePixelRatio || 1);
       const w = view.width;
       const h = view.height;
@@ -169,35 +151,105 @@ export function TrafficOverlay({
       const oy = ext.ymax;
       const px = (x: number) => (x - ox) * k;
       const py = (y: number) => (oy - y) * k;
-
-      ctx.clearRect(0, 0, cnv.width, cnv.height);
-
-      /* 3a. Машинтай хэрчмүүдийг ачааллын өнгөөр — түгжрэл ХААНА байгаа нь энэ */
-      const perEdge = new Map<number, number>();
-      let sumV = 0;
-      for (const c of cars) {
-        perEdge.set(c.e, (perEdge.get(c.e) ?? 0) + 1);
-        sumV += c.v;
-      }
-      // ⚠️ `k` нь пиксел / ПРОЕКЦЫН НЭГЖ. Метрээр өгсөн хэмжээг (зам, машин)
-      //    `unitsPerMeter`-ээр хөрвүүлж байж пиксел болгоно.
       const upm = net.unitsPerMeter || 1;
       const pxPerM = k * upm;
+
+      /** Машин дэлгэцээс ГАДУУР байна уу (жижиг захын зайтай) */
+      const offscreen = (c: Car): boolean => {
+        const p = carPose(net, c);
+        const x = px(p.x);
+        const y = py(p.y);
+        return x < -30 || y < -30 || x > cnv.width + 30 || y > cnv.height + 30;
+      };
+
+      /* ── 1. Эрэлт: машины тоог өдрийн муруйгаар барина ──
+         ⚠️ МАШИН ДЭЛГЭЦИЙН ДУНДААС ХЭЗЭЭ Ч АЛГА БОЛОХГҮЙ. Цөөрүүлэхдээ:
+           а) дэлгэцээс ГАДУУРХ машиныг чимээгүй авна (үл үзэгдэх), эсвэл
+           б) замын ХИЛИЙН ГАРЦАД (sink) ойртсон машиныг «бүсээс гарлаа» гэж
+              авна — хилээр гарч буй мэт зүй ёсны харагдац.
+         Аль нь ч байхгүй бол ХАСАХГҮЙ — тоо түр зөрөхийг зөвшөөрнө. */
+      const demand = diurnalAt(minuteRef.current);
+      const cap = Math.max(1, Math.min(CAR_CAP, opt.current.maxCars));
+      const want = targetCars(demand, cap, Math.min(10, cap));
+      let excess = cars.length - want;
+      if (excess > 0) {
+        for (let i = cars.length - 1; i >= 0 && excess > 0; i--) {
+          if (offscreen(cars[i])) { cars.splice(i, 1); excess--; }
+        }
+        for (let i = cars.length - 1; i >= 0 && excess > 0; i--) {
+          const c = cars[i];
+          const e = net.edges[c.e];
+          const node = c.dir === 1 ? e.b : e.a;
+          if (!net.sinkExit.has(node)) continue;
+          const distEndM = (c.dir === 1 ? e.length - c.s : c.s) / upm;
+          if (distEndM < 25) { cars.splice(i, 1); excess--; }
+        }
+      }
+      // Нэг фреймд цөөхнийг нэмнэ — эрэлт огцом өсөхөд гэнэт «цутгахгүй».
+      // ⚠️ Аль болох ДЭЛГЭЦЭЭС ГАДУУР төрүүлнэ (хэдэн оролдлого) — дэлгэцийн
+      //    дунд «пор» хийж гарч ирэхгүй; бүх зам дэлгэцэд байвал аргагүй.
+      //    ×5 эрэлтэд (~5,355) фреймд 30 → оргил ~3 секундэд бөглөнө.
+      if (cars.length < want) {
+        /* ⚠️ ДАВХЦЛЫН ХАМГААЛАЛТ: санамсаргүй байрлалд төрөх машин аль хэдийн
+           зогсож буй машины ДЭЭР бууж давхарладаг байсан (өндөр нягтралд илт).
+           Хөдөлгөөний зай барих логик давхарласныг САЛГАЖ чаддаггүй тул төрөхөөс
+           нь ӨМНӨ шалгана: ижил ирмэг дээрх машинтай бамперын зай хүрэлцэхгүй
+           бол тэр байрлалд ТӨРӨХГҮЙ (дахин оролдоно). */
+        const occ = new Map<number, { s: number; half: number }[]>();
+        const occAdd = (c: Car) => {
+          let l = occ.get(c.e);
+          if (!l) { l = []; occ.set(c.e, l); }
+          l.push({ s: c.s, half: (carLen(c) / 2) * upm });
+        };
+        for (const c of cars) occAdd(c);
+        const gapU = MIN_GAP_M * upm;
+        // ⚠️ Ирмэгийн ҮЗҮҮРТ төрөхгүй: зэргэлдээ ирмэгийн зангилаан дээр зогссон
+        //    машины хагас бие энэ ирмэг рүү цухуйж болно — тэнд төрвөл давхарлана.
+        //    Хязгаар: өөрийн хагас + зай + хамгийн урт тээврийн хагас (автобус 5.5м).
+        const endMargin = (5.5 + MIN_GAP_M) * upm;
+        const fits = (cand: Car): boolean => {
+          const half = (carLen(cand) / 2) * upm;
+          const len = net.edges[cand.e].length;
+          if (cand.s < half + endMargin || cand.s > len - half - endMargin) return false;
+          const l = occ.get(cand.e);
+          if (!l) return true;
+          for (const o of l) if (Math.abs(o.s - cand.s) < o.half + half + gapU) return false;
+          return true;
+        };
+        for (let i = 0; i < 30 && cars.length < want; i++) {
+          let c: Car | null = null;
+          for (let t = 0; t < 8; t++) {
+            const cand = spawnCar(net, tbl);
+            if (!cand) break;
+            if (!fits(cand)) continue; // давхцана — өөр байрлал сонирхоно
+            c = cand;
+            if (offscreen(cand)) break;
+          }
+          if (!c) continue; // энэ фреймд зав олдсонгүй — дараагийн фреймд
+          cars.push(c);
+          occAdd(c);
+        }
+      }
+
+      /* ── 2. Хөдөлгөөн ── */
+      if (opt.current.playing && dtReal > 0) {
+        const dt = dtReal * paceOf(opt.current.speed);
+        simTime += dt;
+        stepCars(net, cars, dt, Math.random, simTime);
+      }
+
+      /* ── 3. Зуралт ── */
+      ctx.clearRect(0, 0, cnv.width, cnv.height);
+
+      /* 3a. Дундаж хурдын нийлбэр — хураангуйд (замын шугам ЗУРАГДАХГҮЙ).
+         ⚠️ Ирмэгийн ачааллын зураас ЗОРИУДААР ХАСАГДСАН: замын гадаргуу нь
+         vector tile (`test_zam`)-аас өөрөө харагддаг тул давхар шугам зөвхөн
+         дүрсийг бөглөрүүлж байсан. Түгжрэл нь машинуудын өнгө (тормозны гэрэл,
+         зогссон бөөгнөрөл)-өөс уншигдана. */
+      let sumV = 0;
+      for (const c of cars) sumV += c.v;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
-      ctx.lineWidth = Math.max(2 * dpr, Math.min(11 * dpr, 7 * pxPerM));
-      ctx.globalAlpha = 0.5;
-      for (const [ei, n] of perEdge) {
-        const e = net.edges[ei];
-        const lenM = Math.max(e.length / upm, 1);
-        const occ = Math.min(1, (n * CAR_LEN) / lenM / OCCUPANCY_FULL);
-        ctx.strokeStyle = simColor(occ);
-        ctx.beginPath();
-        ctx.moveTo(px(e.pts[0][0]), py(e.pts[0][1]));
-        for (let i = 1; i < e.pts.length; i++) ctx.lineTo(px(e.pts[i][0]), py(e.pts[i][1]));
-        ctx.stroke();
-      }
-      ctx.globalAlpha = 1;
 
       /* 3b. Машинууд.
          ⚠️ ХОЁР харагдац: ойртоход БОДИТ МАСШТАБТАЙ машины бие (4.5 × 1.9 м,
@@ -225,16 +277,19 @@ export function TrafficOverlay({
           ctx.stroke();
         }
       } else {
-        const L = lenPx;
-        const W = CAR_W * pxPerM;
-        const pad = L;
-        ctx.lineWidth = Math.max(0.6, W * 0.07);
-        ctx.strokeStyle = 'rgba(8,12,18,.55)';
+        // ⚠️ Урт нь МАШИН БҮРД өөр (автобус/ачаа урт) — төрөл нүдэнд ялгарна.
+        //    Өргөн нь урттай зэрэгцэн бага зэрэг өснө (урт машин илүү өргөн).
+        const pad = 14 * pxPerM;
         for (const c of cars) {
           const p = carPose(net, c);
           const x = px(p.x);
           const y = py(p.y);
           if (x < -pad || y < -pad || x > cnv.width + pad || y > cnv.height + pad) continue;
+
+          const L = carLen(c) * pxPerM;
+          const W = CAR_W * (1 + (carLen(c) / CAR_LEN - 1) * 0.35) * pxPerM;
+          ctx.lineWidth = Math.max(0.6, W * 0.07);
+          ctx.strokeStyle = 'rgba(8,12,18,.55)';
 
           ctx.save();
           ctx.translate(x, y);
@@ -268,6 +323,27 @@ export function TrafficOverlay({
           ctx.fillRect(-L / 2, ly - lh / 2, lw2, lh);
           ctx.globalAlpha = 1;
           ctx.restore();
+        }
+      }
+
+      /* ── 3c-0. БОДИТ гэрлэн дохионы шугам (`gerlen_dohio`) ──
+         ⚠️ Approach line бүрийг өнгөөр: бүлэг 0 (codes 1,3) ба бүлэг 1 (codes 2,4)
+         ЭСРЭГ фазтай — 30 сек тутам ногоон↔улаан солигдоно. Машины `isGreen`-тэй
+         ИЖИЛ мөчлөг (`SIGNAL_CYCLE_S`) тул улаан шугамын машин ҮРГЭЛЖ зогсоно. */
+      if (net.signalLines.length) {
+        ctx.lineCap = 'round';
+        // ⚠️ НАРИЙН зураас — зогсолтын шугам газарт зурсан тэмдэглэгээ шиг,
+        //    машиныг бүрхэхгүй (машин ~1.9 м өргөн, шугам ~0.8 м).
+        ctx.lineWidth = Math.max(1.2 * dpr, Math.min(3.5 * dpr, 0.8 * pxPerM));
+        for (const ln of net.signalLines) {
+          if (ln.pts.length < 2) continue;
+          // Ногоон → шар (3 сек) → улаан — хөдөлгүүрийн фазтай НЭГ эх сурвалж
+          const ph = signalPhase(ln.group, simTime);
+          ctx.strokeStyle = ph === 'green' ? '#22c55e' : ph === 'yellow' ? '#facc15' : '#ff3b30';
+          ctx.beginPath();
+          ctx.moveTo(px(ln.pts[0][0]), py(ln.pts[0][1]));
+          for (let i = 1; i < ln.pts.length; i++) ctx.lineTo(px(ln.pts[i][0]), py(ln.pts[i][1]));
+          ctx.stroke();
         }
       }
 
