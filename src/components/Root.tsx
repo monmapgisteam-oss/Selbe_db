@@ -1,5 +1,9 @@
 'use client';
 
+// ⚠️ @arcgis/core-аас ӨМНӨ ачаалагдах ЁСТОЙ — UBHUB ортофотогийн console-алдааг
+// шүүхийн тулд ArcGIS-ийн Logger `console.error`-оо хадгалахаас өмнө patch хийнэ.
+import '@/lib/silenceOrthoLogs';
+
 import dynamic from 'next/dynamic';
 import { useEffect, useReducer, useState } from 'react';
 import { Home } from './Home';
