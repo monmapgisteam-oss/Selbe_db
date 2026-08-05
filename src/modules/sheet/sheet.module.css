@@ -481,6 +481,32 @@
 }
 .imgCell:hover .imgDel { opacity: 1; }
 
+/* ══════════════════════════════════════════════════════════
+   «Гүйцэтгэл шинэ» — Багц 3.2 (9F_publish) хуудасны бүрэн хуулбар.
+   60 багана тул царцаах нь зөвхөн № + Ажил; бусад нь хэвтээ гүйнэ.
+   `.xl`-ийн ижил нэртэй дүрмүүдийг дарахын тулд ЭНД, доор нь бичив.
+   ══════════════════════════════════════════════════════════ */
+.b32 { width: auto; }
+.b32 .c-no { left: 0; width: 54px; min-width: 54px; max-width: 54px; }
+.b32 .c-ajil {
+  left: 54px;
+  width: 300px;
+  min-width: 300px;
+  max-width: 300px;
+  /* Ажлын нэр урт — хүснэгт хэвтээ гүйдэг тул мөр таслахгүй, тайрна. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Царцсан блокоос гүйдэг хэсгийг тусгаарлах сүүдэр. */
+.b32 .c-ajil { box-shadow: 2px 0 4px -2px rgb(16 20 24 / 0.18); }
+.b32 .c-w { min-width: 72px; width: 72px; }
+.b32 .c-money { min-width: 106px; width: 106px; text-align: right; }
+.b32 .c-calc { min-width: 72px; width: 72px; }
+.b32 .c-date { min-width: 92px; width: 92px; }
+/* Толгой 60 баганад хоёр мөр болж хуваагдах тул доод ирмэгээр нь тэгшилнэ. */
+.b32 thead th { min-height: 40px; }
+
 /* ── Хоёр табын хүрээ (Хүснэгт | Дүгнэлт) ── */
 .tabs {
   display: flex;
