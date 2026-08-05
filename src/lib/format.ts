@@ -29,14 +29,14 @@ export function mnt(v: number | null | undefined): string {
   return `${num(v)} ₮`;
 }
 
-/** Богино төгрөг — хүснэгтэд: 448.7 тэрбум */
+/** Богино төгрөг — хүснэгтэд: 448.7 тэрбум ₮ (нэгжээ ҮРГЭЛЖ дагуулна) */
 export function mntShort(v: number | null | undefined): string {
   if (v == null || !Number.isFinite(v) || v === 0) return '—';
   const a = Math.abs(v);
-  if (a >= 1e12) return `${num(v / 1e12, 2)} их наяд`;
-  if (a >= 1e9) return `${num(v / 1e9, 1)} тэрбум`;
-  if (a >= 1e6) return `${num(v / 1e6, 1)} сая`;
-  return num(v);
+  if (a >= 1e12) return `${num(v / 1e12, 2)} их наяд ₮`;
+  if (a >= 1e9) return `${num(v / 1e9, 1)} тэрбум ₮`;
+  if (a >= 1e6) return `${num(v / 1e6, 1)} сая ₮`;
+  return `${num(v)} ₮`;
 }
 
 /** Огноо: ArcGIS epoch (мс), "2026-07-14" эсвэл DateOnly */
@@ -76,9 +76,64 @@ function lighten(hex: string, t: number): string {
   return `#${hx(r)}${hx(g)}${hx(b)}`;
 }
 
-/** `i`-р зэрэглэлийн сүүдэр (`i=0` тод → цайвар руу). Ангилал ЭРЭМБЭ-ээр өнгөтэй үед. */
-export const shade = (hex: string, i: number, n: number): string =>
-  lighten(hex, n <= 1 ? 0 : (i / (n - 1)) * 0.66);
+/* ── HSL хөрвүүлэлт — өнгөний ДУГУЙ (hue) дээр эргүүлж ялгах ── */
+
+function hexToHsl(hex: string): [number, number, number] {
+  const h = hex.replace('#', '');
+  const r = parseInt(h.slice(0, 2), 16) / 255;
+  const g = parseInt(h.slice(2, 4), 16) / 255;
+  const b = parseInt(h.slice(4, 6), 16) / 255;
+  const mx = Math.max(r, g, b);
+  const mn = Math.min(r, g, b);
+  const l = (mx + mn) / 2;
+  const d = mx - mn;
+  if (d === 0) return [0, 0, l];
+  const s = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
+  let hue = 0;
+  if (mx === r) hue = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+  else if (mx === g) hue = ((b - r) / d + 2) / 6;
+  else hue = ((r - g) / d + 4) / 6;
+  return [hue * 360, s, l];
+}
+
+function hslToHex(hue: number, s: number, l: number): string {
+  const H = ((hue % 360) + 360) % 360 / 360;
+  const S = Math.max(0, Math.min(1, s));
+  const L = Math.max(0, Math.min(1, l));
+  const q = L < 0.5 ? L * (1 + S) : L + S - L * S;
+  const p = 2 * L - q;
+  const conv = (t: number) => {
+    let x = t;
+    if (x < 0) x += 1; if (x > 1) x -= 1;
+    if (x < 1 / 6) return p + (q - p) * 6 * x;
+    if (x < 1 / 2) return q;
+    if (x < 2 / 3) return p + (q - p) * (2 / 3 - x) * 6;
+    return p;
+  };
+  const to = (v: number) => Math.round(v * 255).toString(16).padStart(2, '0');
+  return `#${to(conv(H + 1 / 3))}${to(conv(H))}${to(conv(H - 1 / 3))}`;
+}
+
+/**
+ * `i`-р зэрэглэлийн өнгө — НЭГ өнгөний ГЭР БҮЛД, гэвч зүсмэг бүр ТОД ЯЛГААТАЙ.
+ *
+ * ⚠️ Урьд нь зөвхөн цагаан руу цайруулдаг байсан тул зэргэлдээ зүсмэгүүд бараг
+ * ижил өнгөтэй, ялангуяа пайн диаграм дээр (50% тунгалаг) нүдээр ялгагдахгүй
+ * байв. Одоо `i=0` нь суурь өнгө ХЭВЭЭР (газрын зураг/баганатай тааруулна),
+ * дараагийн зүсмэг бүр өнгөний дугуй дээр ЭРГЭЖ (hue-shift) + гэрэлтэнэ —
+ * тиймээс солонго биш, нэг гэр бүлийн боловч тодорхой ялгаатай.
+ */
+export const shade = (hex: string, i: number, n: number): string => {
+  if (n <= 1 || i <= 0) return hex;
+  const [h, s, l] = hexToHsl(hex);
+  const t = i / (n - 1); // 0..1
+  // Эргэлтийн алхам — цөөн зүсмэгт том (тод ялгаа), олонд нийт ~120° дотор
+  const step = Math.min(26, 120 / (n - 1));
+  const hue = h + i * step;
+  const light = Math.min(0.82, l + t * 0.26);
+  const sat = Math.max(0.35, s * (1 - t * 0.18));
+  return hslToHex(hue, sat, light);
+};
 
 /** Нэг өнгөнөөс `n` ширхэг сүүдрийн массив — тогтмол уртын палитр хэрэгтэй үед */
 export const shades = (hex: string, n: number): string[] =>

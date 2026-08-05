@@ -32,12 +32,9 @@ export function Home({ onEnterAll }: { onEnterAll: () => void }) {
 
   return (
     <div className={s.home}>
-      {/* Дэвсгэр — WebP (PNG fallback) */}
-      <picture>
-        <source srcSet="/high_resolution_1.webp" type="image/webp" />
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img className={s.bg} src="/high_resolution_1.png" alt="" />
-      </picture>
+      {/* Дэвсгэр — WebP (444KB; 2.9MB PNG fallback хасав — бүх орчин үеийн browser webp дэмжинэ) */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img className={s.bg} src="/high_resolution_1.webp" alt="" />
       <div className={s.scrim} aria-hidden />
       <div className={s.grid} aria-hidden />
 

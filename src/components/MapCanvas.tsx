@@ -36,10 +36,10 @@ import {
   type LayerDef,
 } from '@/lib/services';
 import { SCENE3D_LAYERS } from '@/lib/scene3d';
-import { plan2dStyleOf } from '@/lib/plan2d';
+import { plan2dStyleOf, loadPlan2dStyle } from '@/lib/plan2d';
 import { queryExtent, queryFeatures, type Aoi } from '@/lib/query';
 import { loadBlockProgress, cachedBlockProgress, type BlockProgressMap } from '@/lib/blockProgress';
-import { webmapStyleOf } from '@/lib/webmapStyle';
+import { webmapStyleOf, loadWebmapStyle } from '@/lib/webmapStyle';
 import * as rendererJsonUtils from '@arcgis/core/renderers/support/jsonUtils';
 import { num, pct, date, text } from '@/lib/format';
 import s from './map.module.css';
@@ -765,6 +765,19 @@ export const MapCanvas = memo(function MapCanvas({
   const fadingRef = useRef<Set<string>>(new Set());
 
   const [ready, setReady] = useState(false);
+
+  /**
+   * Style снапшотууд (/webmap-style.json, /plan2d-style.json) — bundle-аас
+   * гаргаж ажиллах үед татдаг болсон тул Map барихаас ӨМНӨ ачаалж дуусгана
+   * (buildLayers синхроноор уншдаг). Хоёулаа кэштэй — дахин mount-д шууд ready.
+   */
+  const [stylesReady, setStylesReady] = useState(false);
+  useEffect(() => {
+    let on = true;
+    Promise.all([loadWebmapStyle(), loadPlan2dStyle()])
+      .then(() => { if (on) setStylesReady(true); });
+    return () => { on = false; };
+  }, []);
   /** Ачаалагдаж чадаагүй 3D загварын тоо — null = асуудалгүй */
   const [meshError, setMeshError] = useState<number | null>(null);
   /** Хулганы доорх объектын товч мэдээлэл */
@@ -805,7 +818,9 @@ export const MapCanvas = memo(function MapCanvas({
    * ⚠️ Map-ыг дахин үүсгэвэл давхаргууд шинээр ачаалагдаж, сонголт алдагдана.
    */
   useEffect(() => {
-    if (!el.current) return;
+    // ⚠️ Style снапшот ачаалагдаагүй бол Map барихгүй — buildLayers webmap
+    //    renderer-ээ синхроноор уншдаг тул эрт барьвал fallback style-тай үлдэнэ.
+    if (!el.current || !stylesReady) return;
 
     const mapKey = uniform ? 'uniform' : 'themed';
     if (!mapCache[mapKey] || mapCache[mapKey].destroyed) {
@@ -1060,7 +1075,7 @@ export const MapCanvas = memo(function MapCanvas({
       viewRef.current = null;
       registerRef.current(null);
     };
-  }, [dim]);
+  }, [dim, stylesReady]);
 
   /**
    * Компонент салахад Map-ыг УСТГАХГҮЙ — `mapCache`-д үлдэж дараагийн харагдацад
