@@ -23,7 +23,7 @@
 
 import { LAYER_BY_ID, layerUrl } from '@/lib/services';
 import {
-  buildNetwork, nodeByIntersection,
+  buildNetwork, markDuplicates, nodeByIntersection,
   type Network, type Pt, type SignalDef, type SignalLine,
 } from './traffic';
 import { loadPathsFrom, WM_UNITS_PER_M } from './roadNet';
@@ -143,11 +143,17 @@ export function loadNetworkCached(kind: NetKind): Promise<Network> {
         const geom = src.nodeIntersections
           ? nodeByIntersection(paths, { unitsPerMeter: WM_UNITS_PER_M })
           : paths;
-        return buildNetwork(geom, {
+        const net = buildNetwork(geom, {
           unitsPerMeter: WM_UNITS_PER_M,
           signals,
           directed: src.directed,
         });
+        // ⚠️ ДАВХАРДСАН шугамууд (нэг гудамжийг хоёр line-аар зурсан) дээр машин
+        //    явуулбал хоёр жагсаа бие бие дээрээ зурагдана — тэднийг тэмдэглэж
+        //    урсгалаас хасна (ирмэгийг устгахгүй тул холболт хэвээр).
+        const dup = markDuplicates(net);
+        if (dup) console.info(`[selbe] «${src.label}»: давхардсан ${dup}/${net.edges.length} ирмэгийг урсгалаас хасав`);
+        return net;
       })
       .catch((e) => { cache.delete(kind); throw e; });
     cache.set(kind, p);
@@ -207,9 +213,10 @@ async function fetchRealSignals(): Promise<SignalDef[]> {
     let g = groups.get(name);
     if (!g) { g = { pts: [], lines: [] }; groups.set(name, g); }
     for (const p of path) g.pts.push(p as Pt);
-    // ⚠️ Бүлэг: codes 1,3 → 0, codes 2,4 → 1. Мөчлөгийн phase-тэй тэнцвэл ногоон.
-    const group: 0 | 1 = code === 1 || code === 3 ? 0 : 1;
-    g.lines.push({ pts: path.map((p) => p as Pt), group });
+    // ⚠️ ТҮҮХИЙ кодыг хадгална — ээлжид хуваарилах нь ЗОХИЦУУЛАЛТЫН ХӨТӨЛБӨРИЙН
+    //    ажил (`SignalPlan`). Ингэснээр хэрэглэгч хөтөлбөр солиход сүлжээг
+    //    дахин татах/угсрах шаардлагагүй.
+    g.lines.push({ pts: path.map((p) => p as Pt), code });
   }
 
   const out: SignalDef[] = [];

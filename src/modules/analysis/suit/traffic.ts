@@ -161,7 +161,24 @@ export type NetNode = { x: number; y: number; out: number[] };
  * хэдэн ирмэг болж хуваагдаж, зарим нь хаягддаг тул ирмэгийн индексээр эх
  * замын АТРИБУТ (OSM-ийн ангилал, эгнээ) руу буцаж очих ГАНЦ зам нь энэ.
  */
-export type NetEdge = Segment & { a: number; b: number; src: number };
+export type NetEdge = Segment & {
+  a: number;
+  b: number;
+  src: number;
+  /**
+   * ДАВХАРДСАН ирмэг — өөр ирмэгийн ЯГ ДЭЭР (хэдхэн метрийн зайд) хэвтэж байна.
+   *
+   * ⚠️ Эх өгөгдлийн алдаа: нэг гудамжийг хоёр line-аар зурсан, эсвэл хоёр line
+   * бараг зэрэгцэж давхцсан. Хэмжилтээр `Monmap_zam`-д 328 хос (3.1 км = 8.6%),
+   * төлөвлөгөөнд 573 хос (3.5 км). Хоёуланд нь машин явуулбал ХОЁР ЖАГСАА бие
+   * бие дээрээ зурагдаж «машин давхцаж байна» гэж харагдана.
+   *
+   * ⚠️ Ирмэгийг УСТГАХГҮЙ (индекс шилжиж, `stopBars`/`sinkExit` эвдэрнэ) —
+   * зөвхөн машин ТӨРӨХГҮЙ ба уулзвар дээр СОНГОГДОХГҮЙ болгоно. Өөр гарц огт
+   * байхгүй бол ашиглагдана (мухардахгүй).
+   */
+  dup?: boolean;
+};
 
 export type Network = {
   nodes: NetNode[];
@@ -193,7 +210,7 @@ export type Network = {
    * ⚠️ МЭДЭЭЛЛИЙН зориулалттай (оношилгоо/тест): машины ЗОГСОЛТ `stopBars`-т
    * суурилдаг — зангилаагаар биш, зураасан дээр.
    */
-  signalGroups: Map<number, Map<number, SignalGroup>>;
+  signalGroups: Map<number, Map<number, SignalCode>>;
   /**
    * Газрын зурагт зурах БОДИТ гэрлэн дохионы шугамууд (`gerlen_dohio`).
    * ⚠️ Зөвхөн сүлжээнд НААЛДСАН уулзварынх — зуралт ба машины зан нэг мөчлөгтэй.
@@ -249,21 +266,29 @@ export const SIGNAL_SNAP_M = 12;
 export const SINK_JUMP_M = 60;
 
 /**
- * Гэрлэн дохионы БҮЛЭГ: 0 = codes 1,3 (нэг тэнхлэг), 1 = codes 2,4 (нөгөө).
- * Мөчлөгийн phase-тэй тэнцэх үед НОГООН (`signalLineGreen`).
+ * Гэрлэн дохионы ЗУРААСНЫ КОД (`gerlen_dohio_code`) — эх өгөгдлийн дугаар.
+ *
+ * ⚠️ Урьд нь 4 код (уулзвар тус бүр 4 approach) байсныг ХОЁР бүлэг болгож
+ * ХАТУУ бичсэн байв. Одоо өгөгдөл 8 код болсон (4 чиглэл × 2 эгнээ) тул бүлэг
+ * нь кодоос БИШ, сонгосон ЗОХИЦУУЛАЛТЫН ХӨТӨЛБӨРӨӨС (`SignalPlan`) гарна —
+ * сүлжээ нь зөвхөн ТҮҮХИЙ кодыг хадгална.
  */
-export type SignalGroup = 0 | 1;
+export type SignalCode = number;
 
-/** Газрын зурагт зурах гэрлэн дохионы approach line (бодит геометр). */
-export type SignalLine = { pts: Pt[]; group: SignalGroup };
+/**
+ * Газрын зурагт зурах гэрлэн дохионы approach line (бодит геометр).
+ * ⚠️ `hub` = харьяалагдах уулзварын төв. Зөрчлийг ГЕОМЕТРЭЭР тооцоход
+ * (`compatStages`) зураас уулзварын аль талд байгааг мэдэх шаардлагатай.
+ */
+export type SignalLine = { pts: Pt[]; code: SignalCode; hub?: Pt };
 
 /**
  * Ирмэг дээрх зогсолтын шугам — `gerlen_dohio` line ирмэгийг огтолсон цэг.
- *   `s`     — огтолсон байрлал ирмэгийн дагуу (ПРОЕКЦЫН нэгж, 0..length)
- *   `dir`   — аль чиглэлийн урсгалд үйлчлэх вэ (уулзварын төв РҮҮ явж буй тал)
- *   `group` — фазын бүлэг (`signalLineGreen`-д өгнө)
+ *   `s`    — огтолсон байрлал ирмэгийн дагуу (ПРОЕКЦЫН нэгж, 0..length)
+ *   `dir`  — аль чиглэлийн урсгалд үйлчлэх вэ (уулзварын төв РҮҮ явж буй тал)
+ *   `code` — эх өгөгдлийн зураасны код (`SignalPlan`-аар ээлж рүү буулгана)
  */
-export type StopBar = { s: number; dir: 1 | -1; group: SignalGroup };
+export type StopBar = { s: number; dir: 1 | -1; code: SignalCode };
 
 /**
  * Гэрлэн дохионы тодорхойлолт — уулзварын ТӨВ (`pt`) ба approach `lines`.
@@ -478,7 +503,7 @@ export function buildNetwork(
      уулзварт (`SIGNAL_SNAP_M` дотор) наана; дохио цөөн (≤хэдэн арав) тул шугаман
      хайлт хангалттай. */
   const signals = new Set<number>();
-  const signalGroups = new Map<number, Map<number, SignalGroup>>();
+  const signalGroups = new Map<number, Map<number, SignalCode>>();
   const signalLines: SignalLine[] = [];
   const stopBars = new Map<number, StopBar[]>();
 
@@ -498,7 +523,9 @@ export function buildNetwork(
     for (const sd of signalDefs) {
       const lines = sd.lines ?? [];
       if (!lines.length) continue;
-      for (const ln of lines) signalLines.push(ln);
+      // ⚠️ Уулзварын төвийг зураас бүрд дагуулж хадгална — зөрчлийн тооцоо
+      //    (`compatStages`) зураас аль талд байгааг үүгээр л мэднэ.
+      for (const ln of lines) signalLines.push({ ...ln, hub: sd.pt });
 
       /* ── Зогсолтын ШУГАМЫГ ирмэг дээр буулгах ──
          Line замаа ХӨНДЛӨН огтолдог тул centerline ирмэгтэй огтолцоно. Шугамыг
@@ -527,7 +554,7 @@ export function buildNetwork(
               ((Q[0] - P[0]) * (sd.pt[0] - hx) + (Q[1] - P[1]) * (sd.pt[1] - hy)) > 0 ? 1 : -1;
             let list = stopBars.get(ei);
             if (!list) { list = []; stopBars.set(ei, list); }
-            list.push({ s, dir, group: ln.group });
+            list.push({ s, dir, code: ln.code });
           }
         }
       }
@@ -543,7 +570,7 @@ export function buildNetwork(
         const mx = (a[0] + b[0]) / 2 - sd.pt[0];
         const my = (a[1] + b[1]) / 2 - sd.pt[1];
         const L = Math.hypot(mx, my) || 1;
-        return { g: ln.group, dx: mx / L, dy: my / L };
+        return { g: ln.code, dx: mx / L, dy: my / L };
       });
       // ⚠️ Уулзварын ойролцоох БҮХ жинхэнэ уулзвар (degree≥3) — noding хуваасан
       //    кластер уулзварыг бүхэлд нь хаана. Тус бүрийн ирмэгийг хамгийн
@@ -553,10 +580,10 @@ export function buildNetwork(
         if (Math.hypot(nodes[i].x - sd.pt[0], nodes[i].y - sd.pt[1]) > tolU) continue;
         signals.add(i);
         let m = signalGroups.get(i);
-        if (!m) { m = new Map<number, SignalGroup>(); signalGroups.set(i, m); }
+        if (!m) { m = new Map<number, SignalCode>(); signalGroups.set(i, m); }
         for (const ei of nodes[i].out) {
           const eh = outHeading(edges[ei], i);
-          let bestG: SignalGroup = 0;
+          let bestG: SignalCode = 0;
           let bestDot = -1;
           for (const ld of lineDirs) {
             const dot = Math.abs(eh[0] * ld.dx + eh[1] * ld.dy);
@@ -592,8 +619,66 @@ export function buildNetwork(
 }
 
 /**
- * Гэрлэн дохионы БҮТЭН мөчлөг (сим-секунд). Хагас нь нэг бүлгийн ногоон.
- * ⚠️ Бодит дохио 30 сек тутам сольдог (`gerlen_dohio`) тул хагас = 30, бүтэн = 60.
+ * ДАВХАРДСАН ИРМЭГҮҮДИЙГ ТЭМДЭГЛЭНЭ — өөр (урт) ирмэгийн дээр хэвтэж буй нь.
+ *
+ * ⚠️ ЯАГААД ХЭРЭГТЭЙ: эх өгөгдөлд нэг гудамж хоёр line-аар зурагдсан газрууд
+ * бий (хэмжилт: `Monmap_zam` 328 хос ≈ 3.1 км, төлөвлөгөө 573 хос ≈ 3.5 км;
+ * хоорондын зай ихэвчлэн 0.8–1.8 м). Хоёуланд нь машин явуулбал хоёр жагсаа
+ * бие бие дээрээ зурагдаж, дэлгэц дээр машин давхцсан мэт харагдана.
+ *
+ * ⚠️ Ирмэгийг УСТГАХГҮЙ: индекс шилжвэл `stopBars`, `sinkExit`, машины `e`
+ * бүгд эвдэрнэ. Зөвхөн `dup` тэмдэг тавина — `spawnTable` тэнд машин
+ * төрүүлэхгүй, `pickNext` өөр гарц байвал сонгохгүй.
+ *
+ * @returns тэмдэглэсэн ирмэгийн тоо
+ */
+export function markDuplicates(
+  net: Network,
+  { tolM = 2.5, cover = 0.85 }: { tolM?: number; cover?: number } = {},
+): number {
+  const upm = net.unitsPerMeter || 1;
+  const tol = tolM * upm;
+  // Урт ирмэгээс эхэлж шалгана — хамгийн урт нь хэзээ ч хаягдахгүй
+  const order = net.edges.map((_, i) => i).sort((a, b) => net.edges[b].length - net.edges[a].length);
+  /** A-гийн оройнуудын хэдэн хувь нь B-ээс `tol` дотор байна вэ */
+  const covered = (A: NetEdge, B: NetEdge): number => {
+    let hit = 0;
+    for (const p of A.pts) {
+      let best = Infinity;
+      for (let i = 1; i < B.pts.length && best > tol; i++) {
+        const d = distToSeg(p, B.pts[i - 1], B.pts[i]);
+        if (d < best) best = d;
+      }
+      if (best <= tol) hit++;
+    }
+    return hit / Math.max(1, A.pts.length);
+  };
+
+  let marked = 0;
+  for (const i of order) {
+    const A = net.edges[i];
+    if (A.dup) continue;
+    const am = A.pts[Math.floor(A.pts.length / 2)];
+    for (const j of order) {
+      if (j === i) continue;
+      const B = net.edges[j];
+      if (B.dup || B.length < A.length) continue;
+      // Хурдан шүүлт — дунд цэгүүд хол бол огт шалгахгүй
+      const bm = B.pts[Math.floor(B.pts.length / 2)];
+      if (Math.hypot(am[0] - bm[0], am[1] - bm[1]) > B.length + tol) continue;
+      if (covered(A, B) >= cover) {
+        A.dup = true;
+        marked++;
+        break;
+      }
+    }
+  }
+  return marked;
+}
+
+/**
+ * Гэрлэн дохионы БҮТЭН мөчлөг (сим-секунд) — АНХДАГЧ утга.
+ * ⚠️ Бодит дохио 30 сек тутам сольдог (`gerlen_dohio`) тул 2 ээлжид хагас = 30.
  * `stepCars`/зуралтад өгөх `time` нь машины хөдөлгөөнтэй ижил масштабтай сим-хугацаа.
  */
 export const SIGNAL_CYCLE_S = 60;
@@ -604,24 +689,279 @@ export const YELLOW_S = 3;
 export type SignalPhase = 'green' | 'yellow' | 'red';
 
 /**
- * Бүлгийн гэрлийн ФАЗ. Идэвхтэй хагас (30 сек) = эхний 27 сек НОГООН + сүүлийн
- * 3 сек ШАР (`YELLOW_S`); идэвхгүй хагас = УЛААН.
+ * ГЭРЛЭН ДОХИОНЫ ЗОХИЦУУЛАЛТЫН ХӨТӨЛБӨР — мөчлөгийг ЭЭЛЖҮҮДЭД хуваана.
+ *
+ * `stages[i]` = тухайн ээлжид НОГООН асах зурааснуудын код (`gerlen_dohio_code`).
+ * Ээлж бүр мөчлөгийг ТЭНЦҮҮ хуваан авч, төгсгөлийн `yellow` секунд шар болно.
+ * Ямар ч ээлжид ороогүй код бүх мөчлөгийн турш УЛААН.
+ *
+ * ⚠️ Ээлжийн ТОО нэмэгдэх тусам нэг ээлжид ногдох ногоон хугацаа БОГИНОСНО:
+ * 60 сек мөчлөгт 2 ээлж = 27 сек ногоон, 4 ээлж = 12 сек, 8 ээлж = 4.5 сек.
+ * Тиймээс ээлж олсон тусам аюулгүй боловч багтаамж БУУРНА — энэ солилцоог
+ * харьцуулах нь энэ самбарын гол зорилго.
+ */
+export type SignalPlan = {
+  /** Товч танигч (UI-д товчны түлхүүр) */
+  key: string;
+  /** Самбарт харагдах нэр */
+  label: string;
+  /** Тайлбар — юуг юутай зэрэг явуулж байгаа нь */
+  desc: string;
+  /** Ээлж бүрийн НОГООН кодууд */
+  stages: SignalCode[][];
+  /** Бүтэн мөчлөг (сим-секунд) */
+  cycle: number;
+  /** Ногооны төгсгөлийн шар (сим-секунд) */
+  yellow: number;
+};
+
+/**
+ * БЭЛЭН ХӨТӨЛБӨРҮҮД — `gerlen_dohio` 8 кодын бүтцэд тааруулсан.
+ *
+ * ⚠️ Өгөгдлийн бүтэц (хэмжсэн): нэг уулзварт 8 зураас = 4 чиглэл × 2 эгнээ.
+ * Чиглэл бүрийн хос: (1,5) · (2,6) · (3,7) · (4,8). Эсрэг талын хосууд нэг
+ * тэнхлэгт: {1,5} ↔ {3,7} ба {2,6} ↔ {4,8}. Тиймээс сондгой/тэгш хуваалт нь
+ * хоёр тэнхлэгийг зөв ялгана.
+ */
+export const SIGNAL_PLANS: SignalPlan[] = [
+  {
+    key: '2',
+    label: '2 ээлж',
+    desc: 'Хоёр тэнхлэг ээлжилнэ — сондгой кодууд, дараа нь тэгш. Хамгийн их багтаамжтай.',
+    stages: [[1, 3, 5, 7], [2, 4, 6, 8]],
+    cycle: SIGNAL_CYCLE_S,
+    yellow: YELLOW_S,
+  },
+  {
+    key: '4',
+    label: '4 ээлж',
+    desc: 'Чиглэл бүр дангаараа ногоон болно — эсрэг урсгалын зөрчилгүй, гэхдээ хүлээлт урт.',
+    stages: [[1, 5], [4, 8], [3, 7], [2, 6]],
+    cycle: 80,
+    yellow: YELLOW_S,
+  },
+  {
+    key: '8',
+    label: '8 ээлж',
+    desc: 'Эгнээ бүр тусдаа — хамгийн аюулгүй, гэхдээ багтаамж эрс буурна.',
+    stages: [[1], [5], [4], [8], [3], [7], [2], [6]],
+    cycle: 120,
+    yellow: 2,
+  },
+];
+
+/**
+ * Анхдагч ГАРААР бичсэн хөтөлбөр (2 ээлж).
+ * ⚠️ Аппад бодит анхдагч нь сүлжээнээс бодогдох «Тал тус бүр» (`compatPlan`);
+ * энэ нь зөвхөн дохиогүй сүлжээ ба тестийн нөөц утга.
+ */
+export const DEFAULT_SIGNAL_PLAN = SIGNAL_PLANS[0];
+
+/* ── ЗӨРЧИЛГҮЙ ЭЭЛЖИЙГ ГЕОМЕТРЭЭС ГАРГАХ ── */
+
+/** Хоёр өнцгийн (градус) хамгийн бага зөрүү, 0..180. */
+const angDiff = (a: number, b: number): number => {
+  const d = Math.abs(((a - b) % 360) + 360) % 360;
+  return d > 180 ? 360 - d : d;
+};
+
+/**
+ * ЗУРААС БҮРИЙН УУЛЗВАР ДАХЬ БАЙРЛАЛ — уулзварын төвөөс зураас руу чиглэсэн
+ * өнцөг (градус). Энэ өнцөг нь тухайн зураас АЛЬ ТАЛААС орж ирэх урсгалынх
+ * болохыг заана.
+ */
+function signalBearings(net: Network): Map<SignalCode, number> {
+  const out = new Map<SignalCode, number>();
+  for (const ln of net.signalLines) {
+    if (!ln.hub || ln.pts.length < 2) continue;
+    const a = ln.pts[0];
+    const b = ln.pts[ln.pts.length - 1];
+    const mx = (a[0] + b[0]) / 2 - ln.hub[0];
+    const my = (a[1] + b[1]) / 2 - ln.hub[1];
+    out.set(ln.code, ((Math.atan2(my, mx) * 180) / Math.PI + 360) % 360);
+  }
+  return out;
+}
+
+/**
+ * ЗӨРЧИЛГҮЙ ЭЭЛЖҮҮДИЙГ СҮЛЖЭЭНИЙ ГЕОМЕТРЭЭС бодно.
+ *
+ * ЗАРЧИМ (машин мөргөлдөхгүй байх нөхцөл): уулзварт нэг зэрэг нээгдэж болох
+ * урсгалууд нь ХӨНДЛӨН гардаггүй байх ёстой.
+ *   · Нэг талын зураасууд (нэг approach-ийн хоёр эгнээ) — зэрэг нээгдэнэ
+ *   · ЭСРЭГ талын зураасууд (≈180°) — зэрэг нээгдэнэ (нүүр нүүрээрээ уулзах
+ *     урсгал шулуун явахад огтлолцохгүй)
+ *   · ХӨНДЛӨН тал (≈90°) — зэрэг нээгдэхгүй
+ *
+ * Ээлж бүрд «үндсэн» зураас ба түүнтэй зөрчилгүй бүх зураас ногоон болно.
+ * Ижил багц давтагдвал нэгтгэнэ (нэг л удаа ээлж болно).
+ *
+ * ⚠️ ЭНЭ НЬ ЗӨВХӨН ГЕОМЕТРЭЭС гарах ойролцоолол: эгнээ тус бүр аль чиглэлд
+ * (шулуун/зүүн/баруун) явахыг өгөгдөл хэлдэггүй тул зүүн эргэлтийн зөрчлийг
+ * тооцохгүй. Тийм мэдээлэл ирвэл энэ функцийг л өргөтгөнө — хөтөлбөрийн бусад
+ * хэсэг өөрчлөгдөхгүй.
+ */
+export function compatStages(
+  net: Network,
+  {
+    sideDeg = 18,
+    oppDeg = 35,
+    mode = 'split',
+  }: {
+    sideDeg?: number;
+    oppDeg?: number;
+    /**
+     * ЭЭЛЖ ҮҮСГЭХ ГОРИМ:
+     *   · `split`    — тал БҮР дангаараа нээгдэнэ (эсрэг тал ч зэрэг нээгдэхгүй).
+     *                  Хамгаалагдсан зүүн эргэлттэй уулзварт ийм байдаг.
+     *   · `opposite` — тал ба түүний ЭСРЭГ тал ХАМТ (сонгодог 2 фазын схем).
+     *
+     * ⚠️ АНХДАГЧ нь `split`: энэ уулзвар дээр хэрэглэгч «1 ногоон байхад 7, 8
+     * хэзээ ч ногоон асахгүй» гэж баталсан — 1 ба 7 нь ЭСРЭГ тал тул `opposite`
+     * горим тэднийг хамт нээх байсан.
+     */
+    mode?: 'split' | 'opposite';
+  } = {},
+): SignalCode[][] {
+  const bear = signalBearings(net);
+  const codes = [...bear.keys()].sort(
+    (a, b) => (bear.get(a) as number) - (bear.get(b) as number),
+  );
+  if (!codes.length) return [];
+
+  /* ① ТАЛУУДЫГ бүлэглэнэ — нэг approach-ийн эгнээнүүд хэдхэн градусын зөрүүтэй.
+     ⚠️ Энэ алхам ЗААВАЛ: хос замын огтлолцол 90° биш (энэ уулзварт 52°) байхад
+     «хоорондоо ойрхон» гэсэн ганц хүлцлээр шүүвэл ХОЁР ӨӨР замын тал нэг
+     бүлэгт унаж, хөндлөн урсгал зэрэг нээгдэнэ. */
+  const sides: SignalCode[][] = [];
+  for (const c of codes) {
+    const last = sides[sides.length - 1];
+    if (last && angDiff(bear.get(last[0]) as number, bear.get(c) as number) <= sideDeg) last.push(c);
+    else sides.push([c]);
+  }
+  // Тойрог хаагдах газар (359° ↔ 1°) эхний ба сүүлийн бүлэг нийлж болно
+  if (sides.length > 1) {
+    const first = sides[0];
+    const last = sides[sides.length - 1];
+    if (angDiff(bear.get(first[0]) as number, bear.get(last[0]) as number) <= sideDeg) {
+      first.push(...last);
+      sides.pop();
+    }
+  }
+
+  /* ② Тал бүрийг ЭСРЭГ талтай нь (≈180°) хосолж НЭГ ээлж болгоно.
+     Эсрэг тал олдохгүй бол (мухар салаа) тэр тал дангаараа ээлж авна. */
+  const stages: SignalCode[][] = [];
+  const seen = new Set<string>();
+  for (const side of sides) {
+    let stage: SignalCode[];
+    if (mode === 'split') {
+      // ⚠️ Тал дангаараа: эсрэг тал ч ХАМТ нээгдэхгүй. Ингэснээр зүүн эргэлт
+      //    эсрэг урсгалтай зөрчлөх боломж бүрмөсөн үгүй болно.
+      stage = [...side].sort((a, b) => a - b);
+    } else {
+      const b0 = bear.get(side[0]) as number;
+      let opp: SignalCode[] | null = null;
+      let best = oppDeg;
+      for (const other of sides) {
+        if (other === side) continue;
+        const d = Math.abs(180 - angDiff(b0, bear.get(other[0]) as number));
+        if (d < best) { best = d; opp = other; }
+      }
+      stage = [...side, ...(opp ?? [])].sort((a, b) => a - b);
+    }
+    const key = stage.join(',');
+    if (seen.has(key)) continue; // ижил багц давхардуулахгүй
+    seen.add(key);
+    stages.push(stage);
+  }
+  return stages;
+}
+
+/**
+ * Сүлжээнээс ЗӨРЧИЛГҮЙ хөтөлбөр угсарна. Дохиогүй сүлжээнд `null`.
+ * ⚠️ Ээлжийн тоо нь уулзварын хэлбэрээс гарна (энгийн «+» уулзварт 2, олон
+ * салаат уулзварт олон), тиймээс мөчлөгийг ээлжийн тоонд тааруулж уртасгана.
+ */
+export function compatPlan(
+  net: Network,
+  {
+    perStage = 30,
+    yellow = YELLOW_S,
+    mode = 'split',
+  }: { perStage?: number; yellow?: number; mode?: 'split' | 'opposite' } = {},
+): SignalPlan | null {
+  const stages = compatStages(net, { mode });
+  if (!stages.length) return null;
+  const split = mode === 'split';
+  return {
+    key: split ? 'auto' : 'auto2',
+    label: split ? 'Тал тус бүр' : 'Эсрэг тал хамт',
+    desc: split
+      ? `Уулзварын геометрээс бодсон ${stages.length} ээлж — тал бүр дангаараа `
+        + 'нээгдэнэ, эсрэг тал ч зэрэг ногоон болохгүй (зүүн эргэлт хамгаалагдана).'
+      : `Уулзварын геометрээс бодсон ${stages.length} ээлж — тал ба ЭСРЭГ тал нь `
+        + 'хамт нээгдэнэ (сонгодог схем, багтаамж илүү).',
+    stages,
+    // ⚠️ Ээлж олон бол мөчлөг уртасна — ногоон хугацаа тогтмол хэвээр байлгана
+    cycle: perStage * stages.length,
+    yellow,
+  };
+}
+
+/**
+ * Код аль ээлжид ЭХЛЭЭД тохиолдох вэ (олдохгүй бол −1) — зөвхөн МЭДЭЭЛЛИЙН.
+ * ⚠️ Фаз бодоход ХЭРЭГЛЭХГҮЙ: нэг код ОЛОН ээлжид орж болно (уулзварын хуваарьт
+ * код 7 нь 6 ээлжид ногоон болдог), тиймээс «эхний ээлж»-ээр шүүвэл тэр
+ * хөдөлгөөн бусад ээлжид буруугаар улаан болно.
+ */
+export function signalStage(code: SignalCode, plan: SignalPlan): number {
+  for (let i = 0; i < plan.stages.length; i++) if (plan.stages[i].includes(code)) return i;
+  return -1;
+}
+
+/** Тухайн агшинд хэддүгээр ЭЭЛЖ явж байгаа вэ (0-ээс эхлэнэ). */
+export function currentStage(time: number, plan: SignalPlan): number {
+  const n = plan.stages.length;
+  if (n <= 0) return -1;
+  const share = plan.cycle / n;
+  const t = ((time % plan.cycle) + plan.cycle) % plan.cycle;
+  return Math.min(n - 1, Math.floor(t / share));
+}
+
+/**
+ * Тухайн зураасны ФАЗ. Ээлжийн үргэлжлэх хугацаа = мөчлөг / ээлжийн тоо;
+ * түүний эхний хэсэг НОГООН, сүүлийн `yellow` секунд ШАР, бусад ээлжид УЛААН.
  *
  * ⚠️ ШАРААР МАШИН ЯВАХГҮЙ: зогсолтын шугам шарт ч үйлчилнэ (`signalLineGreen`
  * зөвхөн ногоонд true). Шугам аль хэдийн ДАВСАН машин уулзвараа чөлөөлж гарна —
  * бодит жолооч шиг. Зам (машины зогсолт) БА line (өнгө) ХОЁУЛ энэ функцээс
  * гардаг тул зурааны өнгө ↔ машины зан ҮРГЭЛЖ таарна.
  */
-export function signalPhase(group: SignalGroup, time: number): SignalPhase {
-  const half = SIGNAL_CYCLE_S / 2;
-  const t = ((time % SIGNAL_CYCLE_S) + SIGNAL_CYCLE_S) % SIGNAL_CYCLE_S;
-  if (Math.floor(t / half) !== group) return 'red';
-  return t % half < half - YELLOW_S ? 'green' : 'yellow';
+export function signalPhase(
+  code: SignalCode,
+  time: number,
+  plan: SignalPlan = DEFAULT_SIGNAL_PLAN,
+): SignalPhase {
+  const n = plan.stages.length;
+  if (n <= 0) return 'red';
+  const share = plan.cycle / n;
+  const t = ((time % plan.cycle) + plan.cycle) % plan.cycle;
+  // ⚠️ ОДООГИЙН ээлжийн багцад орсон эсэхээр шийднэ (кодын «өөрийн» ээлжээр
+  //    БИШ): нэг код олон ээлжид ногоон болж болно.
+  const stage = Math.min(n - 1, Math.floor(t / share));
+  if (!plan.stages[stage].includes(code)) return 'red';
+  // ⚠️ Шар нь ногооноос ХАСАГДАНА (нэмэгддэггүй) — мөчлөгийн урт тогтмол
+  return t % share < Math.max(0, share - plan.yellow) ? 'green' : 'yellow';
 }
 
 /** Урсгал НЭВТРЭХ эрхтэй юу — ЗӨВХӨН ногоон (шарт ч зогсоно). */
-export function signalLineGreen(group: SignalGroup, time: number): boolean {
-  return signalPhase(group, time) === 'green';
+export function signalLineGreen(
+  code: SignalCode,
+  time: number,
+  plan: SignalPlan = DEFAULT_SIGNAL_PLAN,
+): boolean {
+  return signalPhase(code, time, plan) === 'green';
 }
 
 /** Зангилаанаас ГАРАХ чиглэлийн нэгж вектор (тухайн ирмэг дагуу). */
@@ -656,7 +996,7 @@ export type Car = {
    */
   tint: number;
   /**
-   * ТЭЭВРИЙН ТӨРЛИЙН индекс (`VEHICLE_TYPES`) — хөнгөн авто / автобус / ачаа.
+   * ТЭЭВРИЙН ТӨРЛИЙН индекс (`VEHICLE_TYPES`) — хөнгөн авто / автобус.
    * ⚠️ Заавал биш (`?`): хуучин код ба тестийн машин үүнгүй байж болно — тэр үед
    * анхдагч урт (`CAR_LEN`) ба зуралт хэрэглэгдэнэ.
    */
@@ -677,6 +1017,22 @@ export const MIN_GAP_M = 2;
  * эсрэг талын approach-ийн машинтай давхцахгүй, жагсаа зам дагуу тарж жагсна.
  */
 export const STOP_LINE_M = 2.5;
+/**
+ * УУЛЗВАРЫН «ХАЙРЦАГ» — жинхэнэ уулзварын (degree ≥ 3) зангилаанаас энэ зайд
+ * (БОДИТ метр) байгаа машин уулзварыг ЭЗЭЛСЭН гэж тооцно.
+ *
+ * ⚠️ ЯАГААД ХЭРЭГТЭЙ ВЭ: car-following нь зөвхөн НЭГ ирмэг·чиглэл дэх урдах
+ * машиныг хардаг тул хөндлөн замаас ирж буй машиныг ОГТ мэдэхгүй. Хэмжилтээр
+ * (бодит «Төлөвлөгөө» сүлжээ, 400 машин) уулзвар дээр фрейм тутам 23.5 хос
+ * машин бие бие рүүгээ орж байв — дэлгэц дээр «мөргөлдөж, дээгүүр нь өнгөрч
+ * байна» гэж харагдах гол шалтгаан.
+ *
+ * ⚠️ Зөвхөн degree ≥ 3 зангилаанд: огтлолцлын таслалт (`nodeByIntersection`)
+ * нь нэг гудамжийг олон ирмэг болгодог тул degree-2 зангилаа бүрд хайрцаг
+ * тавибал машин гудамжны дундуур байнга зогсоно.
+ */
+export const JUNCTION_R_M = 5;
+
 /** Жолоочийн урвалын хугацаа (с) — Krauss загварын τ */
 const TAU = 1.0;
 /** Хурдатгал ба удаашрал (м/с²) */
@@ -697,8 +1053,14 @@ export const V_MAX = 50 / 3.6;
  * дарж болно — хөдөлгүүр зөвхөн `len`/`vRange`-ийг л уншина.
  * ⚠️ `vRange` нь БОДИТ м/с (км/ц ÷ 3.6). Ачаа/автобус нь хөнгөн автоос удаан.
  */
+/** Зуралтын ХЭЛБЭР — `TrafficOverlay` эндээс салаална. */
+export type VehicleModel = 'sedan' | 'hatch' | 'suv' | 'van' | 'pickup' | 'bus';
+
 export type VehicleType = {
-  key: 'car' | 'bus' | 'truck';
+  /** Хөдөлгөөний ангилал — автобусанд тусгай дүрэм үйлчилнэ (`isBus`) */
+  key: 'car' | 'bus';
+  /** Дүрслэлийн загвар — хөнгөн авто хэд хэдэн биетэй */
+  model: VehicleModel;
   label: string;
   /** Урт (бодит метр) — car-following ба зуралтад */
   len: number;
@@ -708,11 +1070,39 @@ export type VehicleType = {
   mix: number;
 };
 
+/**
+ * ⚠️ АЧААНЫ машин ХАСАГДСАН: гэр хорооллын гудамжны урсгал бараг бүхэлдээ
+ * хөнгөн авто + автобус.
+ *
+ * ⚠️ ХӨНГӨН АВТО таван ЗАГВАРТАЙ: седан · хэтчбэк · жийп · вэн · пикап. Урт нь
+ * ч бага зэрэг өөр (4.1–5.1 м) тул урсгал жинхэнэ гудамж шиг харагдана — нэг
+ * хэвийн хайрцаг цуваа биш. Хөдөлгүүр зөвхөн `len`-ийг л уншина.
+ */
 export const VEHICLE_TYPES: VehicleType[] = [
-  { key: 'car', label: 'Хөнгөн авто', len: 4.5, vRange: [30 / 3.6, 50 / 3.6], mix: 0.78 },
-  { key: 'truck', label: 'Ачааны', len: 8.0, vRange: [20 / 3.6, 38 / 3.6], mix: 0.14 },
-  { key: 'bus', label: 'Автобус', len: 11.0, vRange: [25 / 3.6, 45 / 3.6], mix: 0.08 },
+  { key: 'car', model: 'sedan', label: 'Седан', len: 4.6, vRange: [30 / 3.6, 50 / 3.6], mix: 0.34 },
+  { key: 'car', model: 'hatch', label: 'Хэтчбэк', len: 4.1, vRange: [30 / 3.6, 50 / 3.6], mix: 0.26 },
+  { key: 'car', model: 'suv', label: 'Жийп', len: 4.8, vRange: [28 / 3.6, 48 / 3.6], mix: 0.24 },
+  { key: 'car', model: 'van', label: 'Микро вэн', len: 5.1, vRange: [26 / 3.6, 44 / 3.6], mix: 0.09 },
+  { key: 'car', model: 'pickup', label: 'Пикап', len: 5.0, vRange: [28 / 3.6, 46 / 3.6], mix: 0.04 },
+  { key: 'bus', model: 'bus', label: 'Автобус', len: 11.0, vRange: [25 / 3.6, 45 / 3.6], mix: 0.03 },
 ];
+
+/**
+ * АВТОБУС ЯВАХ ЗАМЫН доод урт (БОДИТ метр).
+ *
+ * ⚠️ Автобус ТУСЛАХ (гэр хорооллын богино) гудамжаар явахгүй — маршрут нь голч
+ * замаар дамждаг. Замын ангиллын өгөгдөл (`fclass`) энэ давхаргуудад БАЙХГҮЙ
+ * тул ХЭРЧМИЙН УРТЫГ орлуулагч болгож байна: уулзвар дээр таслагдсаны дараа
+ * урт үлдсэн хэрчим = дамжин өнгөрөх зам, богино нь = хорооллын салаа.
+ */
+export const BUS_MIN_EDGE_M = 40;
+
+/** Энэ машин автобус уу (`VEHICLE_TYPES`-ийн ангиллаар). */
+export const isBus = (c: Car): boolean => VEHICLE_TYPES[c.vt ?? 0]?.key === 'bus';
+
+/** Автобус энэ ирмэгээр явж болох уу (голч зам мөн үү). */
+export const busAllows = (net: Network, edge: number): boolean =>
+  (net.edges[edge]?.length ?? 0) >= BUS_MIN_EDGE_M * (net.unitsPerMeter || 1);
 
 /** Холимог жингээр тээврийн төрлийн индекс сонгоно. */
 export function pickVehicleType(rnd: () => number = Math.random): number {
@@ -744,13 +1134,24 @@ export function pickNext(
   fromEdge: number,
   travel: Pt,
   rnd: () => number = Math.random,
+  /**
+   * Тухайн машинд ЗӨВШӨӨРӨГДӨХ салаа (автобусны маршрутын хязгаарлалт).
+   * ⚠️ Шүүлтээр ганц ч салаа үлдэхгүй бол ХЭРЭГСЭХГҮЙ — эс бөгөөс автобус
+   * богино гудамжинд орчихоод гарах аргагүй болж мөнхөд гацна.
+   */
+  allow?: (edge: number) => boolean,
 ): number | null {
   const outs = net.nodes[node]?.out ?? [];
   let total = 0;
   const ws: number[] = [];
   const cand: number[] = [];
+  // Шүүлт ямар нэг салаа үлдээж байгаа эсэхийг ЭХЛЭЭД шалгана
+  const useAllow = allow
+    ? outs.some((i) => i !== fromEdge && (!net.directed || net.edges[i].a === node) && allow(i))
+    : false;
   for (const i of outs) {
     if (i === fromEdge) continue;
+    if (useAllow && allow && !allow(i)) continue;
     // ⚠️ ЧИГЛЭЛТЭЙ сүлжээнд зөвхөн ЭНЭ зангилаанаас ГАРАХ (a===node) ирмэг рүү —
     //    сумны эсрэг явахгүй. `a!==node` бол тэр ирмэг рүү орох боломжгүй.
     if (net.directed && net.edges[i].a !== node) continue;
@@ -763,6 +1164,27 @@ export function pickNext(
     cand.push(i);
     ws.push(w);
     total += w;
+  }
+  /* ⚠️ ДАВХАРДСАН салааг ХАЯНА — гэхдээ зөвхөн өөр сонголт байвал. Бүх салаа
+     давхардсан бол (эх өгөгдөл тийм байж болно) хэвээр нь ашиглана, эс бөгөөс
+     машин уулзвар дээр гарах аргагүй болж гацна. */
+  const fresh = cand.filter((i) => !net.edges[i].dup);
+  if (fresh.length && fresh.length < cand.length) {
+    let t2 = 0;
+    const ws2: number[] = [];
+    for (let k = 0; k < cand.length; k++) {
+      if (net.edges[cand[k]].dup) continue;
+      ws2.push(ws[k]);
+      t2 += ws[k];
+    }
+    if (t2 > 0) {
+      let r2 = rnd() * t2;
+      for (let k = 0; k < fresh.length; k++) {
+        r2 -= ws2[k];
+        if (r2 <= 0) return fresh[k];
+      }
+      return fresh[fresh.length - 1];
+    }
   }
   if (!cand.length || total <= 0) return null;
   let r = rnd() * total;
@@ -786,6 +1208,12 @@ export function stepCars(
   rnd: () => number = Math.random,
   /** Гэрлэн дохионы сим-хугацаа (секунд). Дохиогүй сүлжээнд хэрэггүй. */
   time = 0,
+  /**
+   * Зохицуулалтын хөтөлбөр — аль код хэддүгээр ээлжид ногоон болох.
+   * ⚠️ Сүлжээнд хадгалагддаггүй тул фрейм бүрд өгнө: хэрэглэгч хөтөлбөр солиход
+   * сүлжээг ДАХИН УГСРАХ шаардлагагүй, шууд үйлчилнэ.
+   */
+  plan: SignalPlan = DEFAULT_SIGNAL_PLAN,
 ): void {
   if (dt <= 0 || !cars.length) return;
 
@@ -802,6 +1230,12 @@ export function stepCars(
   const gap = new Array<number>(cars.length).fill(Infinity);
   /** Урдах машины хурд (м/с) — Krauss-ийн аюулгүй хурдад хэрэгтэй */
   const leadV = new Array<number>(cars.length).fill(0);
+  /**
+   * Урдах машины ИНДЕКС (эсвэл −1). ⚠️ Хүлээх байрлалыг тогтооход ЗААВАЛ
+   * хэрэгтэй: зогсох цэгийг зөвхөн ирмэгийн хилээр бодвол жагсааны БҮХ машин
+   * тэр нэг цэг рүү үсэрч, бие бие дээрээ бууна.
+   */
+  const leadIdx = new Array<number>(cars.length).fill(-1);
   for (const idx of lanes.values()) {
     idx.sort((p, q) => cars[p].s - cars[q].s);
     // dir=+1 бол s ӨСӨХ тийш явна → урдах нь дараагийнх; dir=−1 бол эсрэгээр
@@ -815,6 +1249,7 @@ export function stepCars(
         gap[me] = Math.abs(cars[ahead].s - cars[me].s)
           - ((carLen(cars[me]) + carLen(cars[ahead])) / 2) * upm;
         leadV[me] = cars[ahead].v;
+        leadIdx[me] = ahead;
       }
     }
   }
@@ -836,6 +1271,100 @@ export function stepCars(
     }
   }
 
+  /** Эгнээний (ирмэг·чиглэл) түлхүүр. */
+  const laneKey = (edge: number, dir: 1 | -1): number => edge * 2 + (dir === 1 ? 0 : 1);
+
+  /* ── УУЛЗВАРЫН ЭЗЭМШИЛ ──
+     Зангилаа бүрийг НЭГ л машин эзэлнэ: хайрцагт хамгийн ОЙР нь эзэн болно
+     (тогтвортой — фрейм тутам эзэн солигдож «анивчихгүй»). Бусад нь хайрцгийн
+     өмнө хүлээнэ. Уулзварт аль хэдийн ОРСОН машин хамгийн ойр байх тул эзэн
+     хэвээр үлдэж, гарч дуустал бусдыг оруулахгүй — мухардал үүсэхгүй. */
+  /** Тухайн машины уулзварт эзлэх радиус (бодит метр) — урт машин илүү зайтай */
+  const jr = (c: Car): number => Math.max(JUNCTION_R_M, carLen(c) / 2 + 1.5);
+  /** зангилаа → { машины индекс, зангилаа хүртэлх зай (м) } */
+  const junction = new Map<number, { i: number; d: number }>();
+  const isJunction = (n: number): boolean => (net.nodes[n]?.out.length ?? 0) >= 3;
+  const claim = (n: number, i: number, d: number): void => {
+    const cur = junction.get(n);
+    if (!cur || d < cur.d) junction.set(n, { i, d });
+  };
+  for (let i = 0; i < cars.length; i++) {
+    const c = cars[i];
+    const e = net.edges[c.e];
+    if (!e) continue;
+    const R = jr(c);
+    // ⚠️ ЗАРЛАХ радиус нь ХАЙРЦГААС том: хайрцагт ОРСНЫ дараа зарлавал хоёр машин
+    //    хоёулаа орж дуусаад л «эзэн» тодорно — хэн ч хүлээж амжихгүй. Тиймээс
+    //    ойртож яваад л эзэмшлээ авна; хамгийн ойр нь ялна.
+    const claimR = R * 2.5;
+    // Урд талын зангилаа руу ойртсон эсвэл ард нь дөнгөж гарсан хоёуланг тооцно
+    const ahead = (c.dir === 1 ? e.length - c.s : c.s) / upm;
+    const behind = (c.dir === 1 ? c.s : e.length - c.s) / upm;
+    const nA = c.dir === 1 ? e.b : e.a;
+    const nB = c.dir === 1 ? e.a : e.b;
+    // ⚠️ Хайрцгаас ГАДНА ЗОГССОН машин эзэмшил АВАХГҮЙ: тэр нь жагсаанд зогсож
+    //    байгаа болохоос уулзвар руу орох гэж яваа биш — эс бөгөөс хөндлөн
+    //    урсгалыг дэмий хаана.
+    if (isJunction(nA) && (ahead < R || (ahead < claimR && c.v > 0.5))) claim(nA, i, ahead);
+    if (behind < R && isJunction(nB)) claim(nB, i, behind);
+  }
+  /**
+   * ХҮЛЭЭХ БАЙРЛАЛД зогсоох — хилийн зогсох цэг рүү ойртоно, ГЭХДЭЭ:
+   *   · урагшлахаас өөр зүг рүү ШИЛЖИХГҮЙ (dir-ийн эсрэг гулсахгүй),
+   *   · урдах машиныхаа ард ЗААВАЛ үлдэнэ.
+   *
+   * ⚠️ Урьд нь `c.s` шууд хилийн цэг рүү тавигддаг байсан тул жагсаанд ард
+   * байсан машин тэр цэг рүү ҮСЭРЧ, урдахынхаа ДЭЭР буудаг байв — зурган дээр
+   * машин давхцаж харагдах гол шалтгаан.
+   */
+  const waitAt = (c: Car, i: number, target: number): void => {
+    let t = target;
+    const li = leadIdx[i];
+    if (li >= 0) {
+      const min = ((carLen(c) + carLen(cars[li])) / 2 + MIN_GAP_M) * upm;
+      t = c.dir === 1 ? Math.min(t, cars[li].s - min) : Math.max(t, cars[li].s + min);
+    }
+    c.s = c.dir === 1 ? Math.max(c.s, t) : Math.min(c.s, t);
+    c.v = 0;
+  };
+
+  /** Машиныг эгнээнд ОРУУЛАХАД шаардагдах чөлөө (хагас урт + бамперын зай). */
+  const needOf = (c: Car): number => (carLen(c) / 2 + MIN_GAP_M) * upm;
+  /**
+   * Эгнээнд орсны ДАРАА үлдэх хөдөлгөөний ДЭЭД хязгаар (проекцын нэгж).
+   *
+   * ⚠️ Үүнгүй бол машин орцын шалгалтыг давсны дараа ҮЛДСЭН `move`-оороо
+   * шууд урагшилж, орцны цаана ЗОГСОЖ буй машиныг НЭВТ өнгөрдөг байсан —
+   * «ар талын машин урдахаа дээгүүр нь давж гардаг» алдаа яг эндээс гарна.
+   */
+  const capAfterEntry = (c: Car, clear: number | undefined): number =>
+    clear === undefined ? Infinity : Math.max(0, clear - needOf(c));
+
+  /**
+   * U-ЭРГЭЛТ — ижил ирмэгийн ЭСРЭГ эгнээ рүү шилжинэ.
+   *
+   * ⚠️ Эсрэг эгнээний орц дүүрсэн бол ЭРГЭХГҮЙ: үзүүрт жагсааны сүүлээс зайгаа
+   * барьж зогсоод `null` буцаана. Урьд нь шалгалтгүй эргэдэг байсан тул мухарт
+   * ирсэн машин эсрэг эгнээнд зогсож буй машины ДЭЭР бууж давхцдаг байв.
+   * Амжилттай бол ҮЛДЭХ хөдөлгөөний дээд хязгаарыг буцаана.
+   */
+  const uTurn = (c: Car, i: number): number | null => {
+    const edge = net.edges[c.e];
+    const back: 1 | -1 = c.dir === 1 ? -1 : 1;
+    const key = laneKey(c.e, back);
+    const clear = laneFront.get(key);
+    const need = needOf(c);
+    if (clear !== undefined && clear < need) {
+      const short = need - clear;
+      waitAt(c, i, c.dir === 1 ? edge.length - short : short);
+      return null;
+    }
+    c.s = c.dir === 1 ? edge.length : 0;
+    c.dir = back;
+    laneFront.set(key, -(carLen(c) / 2) * upm);
+    return capAfterEntry(c, clear);
+  };
+
   /* ── 2. Хурдаа тохируулж, урагшилна ──
      ⚠️ «Зай багасах тусам хурдаа шугаманаар бууруул» гэсэн энгийн дүрэм ХҮРЭЛЦЭХГҮЙ:
      тэр нь зогсох замыг тооцдоггүй тул дискрет алхамд машин урдахаа НЭВТ өнгөрдөг
@@ -854,7 +1383,7 @@ export function stepCars(
     const bars = net.stopBars.get(c.e);
     if (bars) {
       for (const b of bars) {
-        if (b.dir !== c.dir || signalLineGreen(b.group, time)) continue;
+        if (b.dir !== c.dir || signalLineGreen(b.code, time, plan)) continue;
         const distM = (c.dir === 1 ? b.s - c.s : c.s - b.s) / upm;
         if (distM <= 0) continue;
         // Шугамыг «зогссон саад» гэж үзнэ: бамперын зай = төв хүртэл − хагас урт
@@ -888,6 +1417,19 @@ export function stepCars(
         const qG = roomM + bestClear / upm - carLen(c) / 2;
         if (qG < g) { g = qG; vl = 0; }
       }
+
+      /* ── УУЛЗВАРЫГ ӨӨР МАШИН ЭЗЭЛЖ БАЙВАЛ ХҮЛЭЭНЭ ──
+         ⚠️ Хөндлөн замын машиныг car-following ХАРДАГГҮЙ (өөр ирмэг·эгнээ) тул
+         зөвхөн энэ дүрэм л уулзвар дээрх мөргөлдөөнөөс сэргийлнэ. Хайрцгийн
+         ирмэгт (`jr`) тултал ойртоод зогсоно — эзэн гармагц үргэлжилнэ. */
+      if (isJunction(endNode)) {
+        const owner = junction.get(endNode);
+        if (owner && owner.i !== i) {
+          const roomM = (c.dir === 1 ? net.edges[c.e].length - c.s : c.s) / upm;
+          const jG = roomM - jr(c) - carLen(c) / 2;
+          if (jG < g) { g = jG; vl = 0; }
+        }
+      }
     }
     let want = c.vmax;
     if (Number.isFinite(g)) {
@@ -916,14 +1458,17 @@ export function stepCars(
       //    (зураасан дээр) хийгддэг. Ногоонд шугам давсан машин гэрэл солигдсон ч
       //    уулзвараа ЧӨЛӨӨЛЖ гарна — бодит жолооч шиг (уулзвар дунд гацахгүй).
       const travel = outHeading(edge, node).map((v) => -v) as Pt; // гарах ↔ ирэх
-      let next = pickNext(net, node, c.e, travel, rnd);
+      // ⚠️ АВТОБУС голч замаар л явна — богино туслах гудамж руу эргэхгүй.
+      //    Салаа огт үлдэхгүй бол шүүлт өөрөө хүчингүй болно (гацахгүй).
+      const allow = isBus(c) ? (e2: number) => busAllows(net, e2) : undefined;
+      let next = pickNext(net, node, c.e, travel, rnd, allow);
       // Сонгосон салааны орц ДҮҮРСЭН бол өөр чөлөөтэй салааг (2 оролдлого) эрнэ —
       // хажуугийн чөлөөтэй зам байсаар байтал жагсаатай салаанд хүчээр зогсохгүй.
       for (let t = 0; t < 2 && next != null; t++) {
         const d0 = net.edges[next].a === node ? 1 : -1;
         const cl0 = laneFront.get(next * 2 + (d0 === 1 ? 0 : 1));
         if (cl0 === undefined || cl0 >= (carLen(c) / 2 + MIN_GAP_M) * upm) break;
-        const again = pickNext(net, node, c.e, travel, rnd);
+        const again = pickNext(net, node, c.e, travel, rnd, allow);
         if (again != null) next = again;
       }
       if (next == null) {
@@ -940,20 +1485,20 @@ export function stepCars(
             if (clear !== undefined && clear < need) {
               // Гарцын жагсааны сүүлээс зайгаа барина (давхарлахгүй)
               const short = need - clear;
-              if (c.dir === 1) c.s = Math.max(c.s, edge.length - short);
-              else c.s = Math.min(c.s, short);
-              c.v = 0;
+              waitAt(c, i, c.dir === 1 ? edge.length - short : short);
               break;
             }
             c.e = pick;
             c.dir = 1;
             c.s = 0;
             laneFront.set(eKey, -(carLen(c) / 2) * upm);
+            // ⚠️ Орцны цаана зогсож буй машин руу «нэвт үсрэхээс» хамгаална
+            move = Math.min(move, capAfterEntry(c, clear));
             // Шинэ ирмэгийн улаан шугам — үлдсэн хөдөлгөөнийг таслана
             const jBars = net.stopBars.get(c.e);
             if (jBars) {
               for (const b of jBars) {
-                if (b.dir !== 1 || signalLineGreen(b.group, time)) continue;
+                if (b.dir !== 1 || signalLineGreen(b.code, time, plan)) continue;
                 if (b.s <= 0) continue;
                 move = Math.min(move, Math.max(0, b.s - (carLen(c) / 2 + MIN_GAP_M) * upm));
               }
@@ -961,13 +1506,15 @@ export function stepCars(
             continue;
           }
           // Ойр гарц алга — U-эргэлт (чиглэлийн эсрэг ч ТАСРАЛТГҮЙ явах нь чухал)
-          c.s = c.dir === 1 ? edge.length : 0;
-          c.dir = c.dir === 1 ? -1 : 1;
+          const uCap = uTurn(c, i);
+          if (uCap == null) break; // эсрэг эгнээ дүүрэн — хүлээнэ
+          move = Math.min(move, uCap);
           continue;
         }
         // Чиглэлгүй мухар — U-эргэлт хийж буцна
-        c.s = c.dir === 1 ? edge.length : 0;
-        c.dir = c.dir === 1 ? -1 : 1;
+        const uCap = uTurn(c, i);
+        if (uCap == null) break;
+        move = Math.min(move, uCap);
         continue;
       }
       // ── НЭВТРЭЛТ ХААХ (merge) ──
@@ -979,34 +1526,79 @@ export function stepCars(
       // Орцоос урдах машины ар бампер хүртэлх зай < надад хэрэгтэй зай бол ХҮЛЭЭНЭ
       const clear = laneFront.get(nKey);
       const need = (carLen(c) / 2 + MIN_GAP_M) * upm;
-      if (clear !== undefined && clear < need) {
+      // ⚠️ УУЛЗВАРЫГ ӨӨР МАШИН ЭЗЭЛСЭН бол нэвтрэхгүй. Тоормосны дүрэм ганцаараа
+      //    хүрэлцэхгүй: хоёр машин НЭГ ФРЕЙМД зэрэг үсэрч, уулзварын дунд
+      //    мөргөлдөх нүх үлддэг. Энд эзэмшлийг ДАХИН шалгаад л хаана.
+      const jOwner = isJunction(node) ? junction.get(node) : undefined;
+      if ((jOwner && jOwner.i !== i) || (clear !== undefined && clear < need)) {
         // ⚠️ ЗАНГИЛААН ДЭЭР БИШ — жагсааны СҮҮЛЭЭС зайгаа барьж зогсоно: урд
         //    ирмэгийн жагсаа зангилааг ДАВАН сунаж ирсэн бол (clear < 0)
         //    зангилаанаас (need − clear) ухарч зогсоно — эс бөгөөс жагсааны
         //    сүүлчийн машинтай ДАВХАРЛАНА. Урагшлахгүй, ухрахгүй — зөвхөн
         //    зөвшөөрөгдсөн хэмжээнд ойртоно.
-        const short = need - clear;
-        if (c.dir === 1) c.s = Math.max(c.s, edge.length - short);
-        else c.s = Math.min(c.s, short);
-        c.v = 0;
+        //    ⚠️ Зөвхөн уулзварын эзэмшлээр хаагдсан бол (`clear` хоосон) хайрцгийн
+        //    ирмэгт тултал очно — зангилаа дээр биш.
+        const short = clear === undefined ? jr(c) * upm : need - clear;
+        waitAt(c, i, c.dir === 1 ? edge.length - short : short);
         break;
       }
       c.e = next;
       c.dir = nDir;
       c.s = entryS;
+      // ⚠️ Уулзварыг ЭЗЭЛЛЭЭ — нэг фрейм дэх дараагийн машин энд орж ирэхгүй
+      if (isJunction(node)) junction.set(node, { i, d: 0 });
       // Энэ машин орцыг эзэллээ — дараагийн нэвтрэгч хаагдана (ар бампер орцны цаана)
       laneFront.set(nKey, -(carLen(c) / 2) * upm);
+      // ⚠️ ҮЛДСЭН хөдөлгөөнийг ШИНЭ эгнээний урдах машинд тултал таслана. Урьд нь
+      //    зөвхөн ОРОХ эрхийг шалгаад (`clear >= need`) үлдсэн `move`-оор чөлөөтэй
+      //    урагшилдаг байсан тул уулзвараас гарсан машин орцны цаана зогсож буй
+      //    машиныг НЭВТ өнгөрч, дээрээс нь давхарладаг байв.
+      move = Math.min(move, capAfterEntry(c, clear));
       // ⚠️ ШИНЭ ирмэг дээрх УЛААН зогсолтын шугам — нэг фреймд шугам «нэвт үсрэхээс»
       //    хамгаална: үлдсэн хөдөлгөөнийг шугаманд тултал таслана (дараагийн
       //    фреймүүдэд энгийн зогсолтын логик авна).
       const nBars = net.stopBars.get(c.e);
       if (nBars) {
         for (const b of nBars) {
-          if (b.dir !== c.dir || signalLineGreen(b.group, time)) continue;
+          if (b.dir !== c.dir || signalLineGreen(b.code, time, plan)) continue;
           const aheadU = c.dir === 1 ? b.s - c.s : c.s - b.s;
           if (aheadU <= 0) continue;
           move = Math.min(move, Math.max(0, aheadU - (carLen(c) / 2 + MIN_GAP_M) * upm));
         }
+      }
+    }
+  }
+
+  /* ── 3. ДАВХЦЛЫН ХАТУУ ХЯЗГААР (сүүлчийн хамгаалалт) ──
+     Дээрх бүх шалгалт нь ФРЕЙМИЙН ЭХЭН дэх зайд тулгуурладаг: нэг фреймд хоёр
+     машин нэг эгнээ рүү орох, дугуйлан эргэх, эсвэл дуудагч талаас машин нэмэх
+     үед хос машин бие бие рүүгээ орох боломж онолын хувьд үлдэнэ. Энэ пасс нь
+     эгнээ бүрийг УРДААС нь гүйж, дагагчийн бампер урдахын бамперыг ДАВААГҮЙ
+     эсэхийг баталгаажуулна — давхцвал дагагчийг л ухраана (урдахыг хөдөлгөхгүй,
+     эс бөгөөс хэлхээ дагуу түлхэлт тарж жагсаа мушгирна). */
+  const after = new Map<number, number[]>();
+  for (let i = 0; i < cars.length; i++) {
+    const key = laneKey(cars[i].e, cars[i].dir);
+    const l = after.get(key);
+    if (l) l.push(i); else after.set(key, [i]);
+  }
+  for (const [key, idx] of after) {
+    if (idx.length < 2) continue;
+    idx.sort((p, q) => cars[p].s - cars[q].s);
+    const fwd = key % 2 === 0; // dir=+1 бол s ӨСӨХ тийш явна → урдах нь их s-тэй
+    const order = fwd ? idx.slice().reverse() : idx; // урдахаас нь ард руу
+    for (let k = 1; k < order.length; k++) {
+      const lead = cars[order[k - 1]];
+      const me = cars[order[k]];
+      const min = ((carLen(me) + carLen(lead)) / 2) * upm; // бампер хүрэх зай
+      if (fwd) {
+        if (lead.s - me.s < min) {
+          me.s = Math.max(0, lead.s - min);
+          me.v = Math.min(me.v, lead.v);
+        }
+      } else if (me.s - lead.s < min) {
+        me.s = Math.min(net.edges[me.e].length, lead.s + min);
+        me.v = Math.min(me.v, lead.v);
       }
     }
   }
@@ -1026,7 +1618,9 @@ export function spawnTable(net: Network, minLenM = 25): SpawnTable {
   const cum: number[] = [];
   let total = 0;
   for (const e of net.edges) {
-    if (e.length >= min) total += (e.baseLoad + 0.12) * e.length;
+    // ⚠️ ДАВХАРДСАН ирмэг дээр машин ТӨРӨХГҮЙ — нөгөө (үлдсэн) ирмэг дээр л
+    //    урсгал явна, эс бөгөөс хоёр жагсаа бие бие дээрээ зурагдана.
+    if (e.length >= min && !e.dup) total += (e.baseLoad + 0.12) * e.length;
     cum.push(total);
   }
   return { cum, total };
@@ -1049,7 +1643,14 @@ export function pickEdge(tbl: SpawnTable, rnd: () => number = Math.random): numb
 export function spawnCar(net: Network, tbl: SpawnTable, rnd: () => number = Math.random): Car | null {
   const e = pickEdge(tbl, rnd);
   if (e < 0) return null;
-  const vt = pickVehicleType(rnd);
+  let vt = pickVehicleType(rnd);
+  // ⚠️ АВТОБУС зөвхөн ГОЛЧ зам дээр төрнө. Богино туслах гудамж таарвал уг
+  //    машиныг хөнгөн авто болгож солино — эс бөгөөс автобус хорооллын
+  //    гудамжны дундаас гарч ирээд тэндээсээ гарах аргагүй болно.
+  if (VEHICLE_TYPES[vt].key === 'bus' && !busAllows(net, e)) {
+    const carIdx = VEHICLE_TYPES.map((x, i) => (x.key === 'car' ? i : -1)).filter((i) => i >= 0);
+    vt = carIdx[Math.floor(rnd() * carIdx.length) % carIdx.length];
+  }
   const t = VEHICLE_TYPES[vt];
   const vmax = t.vRange[0] + rnd() * (t.vRange[1] - t.vRange[0]);
   // ⚠️ ЧИГЛЭЛТЭЙ сүлжээнд машин ЗӨВХӨН `a→b` (dir=+1) явна — сумны дагуу

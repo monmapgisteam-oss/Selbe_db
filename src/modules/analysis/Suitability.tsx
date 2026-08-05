@@ -32,7 +32,7 @@ import {
   type SimKind, type PopBasis,
 } from './suit/simulation';
 import { assignLoads } from './suit/roadNet';
-import type { Network } from './suit/traffic';
+import { SIGNAL_PLANS, compatPlan, type Network } from './suit/traffic';
 import { loadNetworkCached, NET_KINDS, NET_SOURCES, isNetReady, type NetKind } from './suit/netSources';
 import type { TrafficStats } from './suit/TrafficOverlay';
 import { TransportPanel } from './suit/TransportPanel';
@@ -106,8 +106,12 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
   const [indicators, setIndicators] = useState<Indicator[]>(() => INDICATORS.map((i) => ({ ...i })));
   const [activeIndicator, setActiveIndicator] = useState(INDICATORS[0].id);
   const [catFilter, setCatFilter] = useState<CategoryKey | null>(null);
-  /** Идэвхтэй симуляцын дэд төрөл — «Симуляц» табд ашиглана */
-  const [simKind, setSimKind] = useState<SimKind>('density');
+  /**
+   * Идэвхтэй симуляцын дэд төрөл — «Симуляц» табд ашиглана.
+   * ⚠️ Анхдагч нь «Ачаалал» — сонгогчийн ЭХНИЙ товчтой нийцнэ (эс бөгөөс нээхэд
+   * эхний товч ба идэвхтэй таб зөрж, хэрэглэгч андуурна).
+   */
+  const [simKind, setSimKind] = useState<SimKind>('road');
   /** Хүн амын төрөл — «Хүн амын төвлөрөл» симуляцад (оршин суугч ↔ хүчин чадал) */
   const [popBasis, setPopBasis] = useState<PopBasis>('resident');
   /**
@@ -247,6 +251,24 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
    * ⚠️ Одоо зөвхөн `plan` (et:5) бэлэн; `real`/`relief` line ирэхэд идэвхжинэ.
    */
   const [netKind, setNetKind] = useState<NetKind>('plan');
+  /**
+   * ГЭРЛЭН ДОХИОНЫ зохицуулалтын хөтөлбөр (2 / 4 / 8 ээлж).
+   * ⚠️ Сүлжээнд хадгалагдахгүй — солиход дахин татах/угсрах шаардлагагүй,
+   * дараагийн фреймээс шууд үйлчилнэ.
+   */
+  const [signalPlanKey, setSignalPlanKey] = useState('auto');
+  /**
+   * Боломжит хөтөлбөрүүд — сүлжээний ГЕОМЕТРЭЭС бодсон «Авто (зөрчилгүй)» нь
+   * эхэнд, дараа нь гараар бичсэн хувилбарууд.
+   * ⚠️ Авто хөтөлбөр нь ачаалагдсан сүлжээнээс хамаарна (дохио байхгүй бол алга).
+   */
+  const signalPlans = useMemo(() => {
+    if (!roadNet) return SIGNAL_PLANS;
+    const split = compatPlan(roadNet, { mode: 'split' });
+    const opp = compatPlan(roadNet, { mode: 'opposite' });
+    return [split, opp, ...SIGNAL_PLANS].filter((x): x is NonNullable<typeof x> => !!x);
+  }, [roadNet]);
+  const signalPlan = signalPlans.find((x) => x.key === signalPlanKey) ?? signalPlans[0];
 
   // Сүлжээ солиход хуучин геометрийг цэвэрлэж дахин ачаална (ирмэг индекс өөр).
   useEffect(() => { setRoadNet(null); setRoadErr(null); }, [netKind]);
@@ -587,6 +609,13 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
           ready: isNetReady(k),
         })),
       },
+      /** Гэрлэн дохионы зохицуулалт — ээлжийн хөтөлбөр сонгогч */
+      signal: {
+        plan: signalPlan,
+        plans: signalPlans,
+        setPlan: setSignalPlanKey,
+        lines: roadNet?.signalLines.length ?? 0,
+      },
     },
     // ⚠️ `selected`/`onSelect` ХАСАГДСАН: эрэмбийн жагсаалт байхгүй болсон тул
     //    самбар нь бүс сонгодоггүй — сонголт зөвхөн газрын зураг дээр дарж хийгдэнэ.
@@ -739,6 +768,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
                 playing: clock.playing,
                 speed: clock.speed,
                 maxCars: peakCars,
+                signalPlan,
                 onStats: setTrafficStats,
               } : undefined}
               transportPaint={transportPaint}
@@ -838,7 +868,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
           // ⚠️ Картын гарчигт төрлүүдээ ЖАГСААХГҮЙ — доорх гурван товч аль хэдийн
           //    «Төвлөрөл · Хүртээмж · Ачаалал» гэж бичсэн тул давхардал болно.
           mode === 'simulation' ? (
-            <Simulation {...simCommon} kinds={['density', 'transit', 'road']} title="Бүсийн симуляц" />
+            <Simulation {...simCommon} kinds={['road', 'density', 'transit']} title="Бүсийн симуляц" />
           ) : (
           <>
             {/* ⚠️ Нийлмэл горимд ЗӨВХӨН хуваарилалтын карт: хот төлөвлөлт болон
