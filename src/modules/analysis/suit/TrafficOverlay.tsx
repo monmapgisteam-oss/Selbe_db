@@ -6,7 +6,8 @@ import type SceneView from '@arcgis/core/views/SceneView';
 
 import {
   diurnalAt, stepCars, spawnTable, spawnCar, targetCars, carPose, carLen,
-  signalPhase, CAR_LEN, MIN_GAP_M, V_MAX, type Car, type Network,
+  signalPhase, VEHICLE_TYPES, DEFAULT_SIGNAL_PLAN, CAR_LEN, MIN_GAP_M, V_MAX,
+  type Car, type Network, type SignalPlan,
 } from './traffic';
 /** Симуляцаас UI рүү буцах хураангуй — «Ачаалал» панелийн үзүүлэлт. */
 export type TrafficStats = {
@@ -49,10 +50,16 @@ const CAR_W = 1.9;
  * больдог. Бодит замын машины өнгөний тархалттай ойролцоо жинтэй.
  */
 const BODY_COLORS = [
-  '#eceff3', '#eceff3', '#d5dae0', // цагаан · мөнгөлөг (хамгийн түгээмэл)
+  '#eceff3', '#eceff3', '#e4e8ee', // цагаан (хамгийн түгээмэл)
+  '#d5dae0', '#b9c1cb',            // мөнгөлөг
   '#8f99a6', '#5d6874',            // саарал
-  '#2b3440',                       // хар
-  '#b23b32', '#2f6fb0',            // улаан · цэнхэр
+  '#2b3440', '#1b2029',            // хар
+  '#b23b32', '#8d2f2a',            // улаан · бордоо
+  '#2f6fb0', '#27506f',            // цэнхэр · хар хөх
+  '#3f7f5f',                       // ногоон
+  '#c98a2b',                       // шаргал
+  '#7a5fa3',                       // ягаан ягаавтар
+  '#2a6f6b',                       // номин ногоон
 ];
 
 /** Энэ пиксел уртаас доош бол нарийн ширийн зурахгүй — зөвхөн цэг/зураас. */
@@ -63,6 +70,159 @@ function body(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h:
   ctx.beginPath();
   if (typeof ctx.roundRect === 'function') ctx.roundRect(x, y, w, h, r);
   else ctx.rect(x, y, w, h);
+}
+
+/**
+ * ЭНЭ ПИКСЕЛ УРТААС дээш л нарийн эд анги (дугуй, толь, шил) зурна.
+ * ⚠️ Хэдэн зуун машин × хэдэн зам = фрейм бүрийн зардал. Хол байхад тэдгээр нь
+ * ямар ч мэдээлэл нэмэхгүй (1-2 пиксел) тул зөвхөн ойртоход л асна.
+ */
+const FINE_MIN_PX = 26;
+
+/** Автобусны биеийн өнгө — хөнгөн автоос ЯЛГАРАХ палитр (шар/цэнхэр давамгай). */
+const BUS_COLORS = ['#e8b23a', '#d9dee4', '#3f7fb8', '#4f9d69'];
+
+/**
+ * ДЭЭРЭЭС ХАРСАН ХӨНГӨН АВТО — бодит хэлбэрийн силуэт.
+ *
+ * ⚠️ Урьд нь энгийн бөөрөнхий тэгш өнцөгт + бүхээг байсан тул ойртоход «машин»
+ * гэхээсээ «хайрцаг» шиг харагддаг байв. Одоо: хамар нь нарийсч, гадас (дугуй)
+ * бие рүүгээ цухуйж, салхин шил ба хойд шил тусад нь, хажуугийн толь бүхий
+ * хэлбэр. Бүх хэмжээ нь БИЕИЙН урт/өргөнөөс хувиар гарах тул автобус/ачаа ч
+ * ижил зарчмаар масштаблагдана.
+ *
+ * Локал тэнхлэг: +x = УРАГШ, эх нь машины төв.
+ */
+function drawCarBody(
+  ctx: CanvasRenderingContext2D,
+  L: number, W: number, color: string, fine: boolean,
+  model: 'sedan' | 'hatch' | 'suv' | 'van' | 'pickup' = 'sedan',
+) {
+  /* ── ЗАГВАР БҮРИЙН ХЭМЖЭЭС (биеийн уртаас хувиар) ──
+     `cabF`/`cabB` — бүхээгийн урд/хойд зах, `nose` — хамрын нарийсал,
+     `boxy` — булангийн өнцөгшил (жийп/вэн эгц, седан бөөрөнхий). */
+  const M = {
+    sedan: { cabF: 0.16, cabB: -0.2, nose: 0.46, boxy: 0.14, rear: 0.44 },
+    hatch: { cabF: 0.14, cabB: -0.34, nose: 0.44, boxy: 0.16, rear: 0.46 },
+    suv: { cabF: 0.2, cabB: -0.32, nose: 0.5, boxy: 0.08, rear: 0.5 },
+    van: { cabF: 0.26, cabB: -0.4, nose: 0.5, boxy: 0.07, rear: 0.5 },
+    pickup: { cabF: 0.2, cabB: -0.06, nose: 0.47, boxy: 0.1, rear: 0.48 },
+  }[model];
+
+  // ── Дугуй (биеийн ДООР — хажуугаар нь цухуйна) ──
+  if (fine) {
+    ctx.fillStyle = 'rgba(18,22,28,.92)';
+    const wl = L * (model === 'suv' || model === 'pickup' ? 0.19 : 0.17);
+    const ww = W * (model === 'suv' || model === 'pickup' ? 0.18 : 0.16);
+    for (const sx of [L * 0.29, -L * 0.3]) {
+      for (const sy of [-W * 0.5, W * 0.5 - ww]) {
+        body(ctx, sx - wl / 2, sy, wl, ww, ww * 0.35);
+        ctx.fill();
+      }
+    }
+  }
+
+  // ── Бие — урд нь нарийсч (`nose`), хойд нь дүрсээсээ хамаарч өргөн ──
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(-L * 0.46, -W * rearW(model));
+  ctx.lineTo(L * 0.22, -W * 0.5);
+  ctx.quadraticCurveTo(L * 0.5, -W * M.nose, L * 0.5, -W * 0.12);
+  ctx.lineTo(L * 0.5, W * 0.12);
+  ctx.quadraticCurveTo(L * 0.5, W * M.nose, L * 0.22, W * 0.5);
+  ctx.lineTo(-L * 0.46, W * rearW(model));
+  ctx.quadraticCurveTo(-L * 0.5, W * 0.4, -L * 0.5, W * 0.2);
+  ctx.lineTo(-L * 0.5, -W * 0.2);
+  ctx.quadraticCurveTo(-L * 0.5, -W * 0.4, -L * 0.46, -W * rearW(model));
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // ── Бүхээгийн дээвэр — загвар бүрд өөр урттай ──
+  ctx.fillStyle = 'rgba(16,22,30,.55)';
+  body(ctx, L * M.cabB, -W * 0.34, L * (M.cabF - M.cabB), W * 0.68, W * M.boxy);
+  ctx.fill();
+
+  // ── ПИКАП: нээлттэй ачааны тавцан (бүхээгийн хойно) ──
+  if (model === 'pickup') {
+    ctx.fillStyle = 'rgba(0,0,0,.22)';
+    body(ctx, -L * 0.44, -W * 0.36, L * 0.36, W * 0.72, W * 0.06);
+    ctx.fill();
+  }
+
+  if (!fine) return;
+
+  // ── Салхин шил ба хойд шил ──
+  ctx.fillStyle = 'rgba(120,160,195,.55)';
+  ctx.beginPath();
+  ctx.moveTo(L * (M.cabF - 0.02), -W * 0.33);
+  ctx.lineTo(L * (M.cabF + 0.11), -W * 0.24);
+  ctx.lineTo(L * (M.cabF + 0.11), W * 0.24);
+  ctx.lineTo(L * (M.cabF - 0.02), W * 0.33);
+  ctx.closePath();
+  ctx.fill();
+  if (model !== 'pickup') {
+    ctx.beginPath();
+    ctx.moveTo(L * M.cabB, -W * 0.31);
+    ctx.lineTo(L * (M.cabB - 0.11), -W * 0.22);
+    ctx.lineTo(L * (M.cabB - 0.11), W * 0.22);
+    ctx.lineTo(L * M.cabB, W * 0.31);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // ── Хажуугийн толь ──
+  ctx.fillStyle = 'rgba(30,36,44,.9)';
+  const mw = L * 0.05;
+  const mh = W * 0.1;
+  ctx.fillRect(L * (M.cabF + 0.02), -W * 0.5 - mh * 0.75, mw, mh);
+  ctx.fillRect(L * (M.cabF + 0.02), W * 0.5 - mh * 0.25, mw, mh);
+}
+
+/** Хойд хэсгийн өргөн — жийп/вэн эгц (бараг бүтэн), седан бага зэрэг нарийссан. */
+function rearW(model: string): number {
+  return model === 'suv' || model === 'van' ? 0.48 : 0.44;
+}
+
+/**
+ * АВТОБУС — урт тэгш өнцөгт бие, хажуугийн цонхны туузтай.
+ * ⚠️ Хөнгөн автоос ХОЛООС ялгагдах ёстой: урт (11 м) ба цонхны тууз нь
+ * газрын зураг дээр нэг харцаар «нийтийн тээвэр» гэдгийг хэлнэ.
+ */
+function drawBusBody(
+  ctx: CanvasRenderingContext2D,
+  L: number, W: number, color: string, fine: boolean,
+) {
+  if (fine) {
+    ctx.fillStyle = 'rgba(18,22,28,.92)';
+    const wl = L * 0.09;
+    const ww = W * 0.15;
+    for (const sx of [L * 0.33, -L * 0.2, -L * 0.31]) {
+      for (const sy of [-W * 0.5, W * 0.5 - ww]) {
+        body(ctx, sx - wl / 2, sy, wl, ww, ww * 0.3);
+        ctx.fill();
+      }
+    }
+  }
+
+  ctx.fillStyle = color;
+  body(ctx, -L * 0.5, -W * 0.5, L, W, W * 0.18);
+  ctx.fill();
+  ctx.stroke();
+
+  // Салхин шил — урд талд бүтэн өргөнөөр
+  ctx.fillStyle = 'rgba(120,160,195,.6)';
+  body(ctx, L * 0.4, -W * 0.4, L * 0.07, W * 0.8, W * 0.08);
+  ctx.fill();
+
+  if (!fine) return;
+  // Хажуугийн цонхны тууз — хоёр талд
+  ctx.fillStyle = 'rgba(60,90,120,.45)';
+  ctx.fillRect(-L * 0.42, -W * 0.5 + W * 0.06, L * 0.78, W * 0.09);
+  ctx.fillRect(-L * 0.42, W * 0.5 - W * 0.15, L * 0.78, W * 0.09);
+  // Дээврийн агааржуулалт
+  ctx.fillStyle = 'rgba(16,22,30,.3)';
+  ctx.fillRect(-L * 0.1, -W * 0.16, L * 0.12, W * 0.32);
 }
 
 /**
@@ -84,6 +244,7 @@ export function TrafficOverlay({
   playing,
   speed,
   maxCars,
+  signalPlan = DEFAULT_SIGNAL_PLAN,
   onStats,
 }: {
   viewRef: RefObject<MapView | SceneView | null>;
@@ -96,14 +257,20 @@ export function TrafficOverlay({
   speed: number;
   /** Оргил цагт зэрэг явах машины тоо — эрэлтийн загвараас (`peakVehicles`) */
   maxCars: number;
+  /**
+   * ГЭРЛЭН ДОХИОНЫ зохицуулалтын хөтөлбөр (ээлжийн тоо, мөчлөг).
+   * ⚠️ Сүлжээнд хадгалагдахгүй тул солиход дахин угсрах шаардлагагүй — дараагийн
+   *    фреймээс шууд үйлчилнэ.
+   */
+  signalPlan?: SignalPlan;
   /** ~2 удаа/сек хураангуй буцаана */
   onStats?: (s: TrafficStats) => void;
 }) {
   const cvs = useRef<HTMLCanvasElement>(null);
   const carsRef = useRef<Car[]>([]);
   // Хөдөлгөөний параметрүүдийг ref-ээр — эффектийг дахин эхлүүлэхгүйгээр солино
-  const opt = useRef({ playing, speed, onStats, maxCars });
-  opt.current = { playing, speed, onStats, maxCars };
+  const opt = useRef({ playing, speed, onStats, maxCars, signalPlan });
+  opt.current = { playing, speed, onStats, maxCars, signalPlan };
 
   useEffect(() => {
     const cnv = cvs.current;
@@ -235,7 +402,7 @@ export function TrafficOverlay({
       if (opt.current.playing && dtReal > 0) {
         const dt = dtReal * paceOf(opt.current.speed);
         simTime += dt;
-        stepCars(net, cars, dt, Math.random, simTime);
+        stepCars(net, cars, dt, Math.random, simTime, opt.current.signalPlan);
       }
 
       /* ── 3. Зуралт ── */
@@ -258,6 +425,8 @@ export function TrafficOverlay({
          харагдацад «хаана түгжирч байна» гэдэг өнгөөр л уншигдана. */
       const lenPx = CAR_LEN * pxPerM;
       const detail = lenPx >= DETAIL_MIN_PX * dpr;
+      // ⚠️ Нарийн эд анги (дугуй, толь, шил) зөвхөн ОЙРТОХОД — зардлыг барина
+      const fineDetail = lenPx >= FINE_MIN_PX * dpr;
 
       if (!detail) {
         const dash = Math.max(2.4 * dpr, lenPx);
@@ -291,21 +460,27 @@ export function TrafficOverlay({
           ctx.lineWidth = Math.max(0.6, W * 0.07);
           ctx.strokeStyle = 'rgba(8,12,18,.55)';
 
+          // ⚠️ ТЭЭВРИЙН ТӨРӨЛ (`VEHICLE_TYPES`) — хэлбэр ба палитрыг шийднэ.
+          //    Төрөлгүй хуучин машиныг хөнгөн авто гэж үзнэ.
+          const vt = VEHICLE_TYPES[c.vt ?? 0];
+          const kind = vt?.key ?? 'car';
+          const pal = kind === 'bus' ? BUS_COLORS : BODY_COLORS;
+          const color = pal[Math.floor(c.tint * pal.length) % pal.length];
+
           ctx.save();
           ctx.translate(x, y);
           // ⚠️ Дэлгэцийн y нь ДООШОО өсдөг тул чиглэлийн y-г урвуулна
           ctx.rotate(Math.atan2(-p.uy, p.ux));
 
-          // Бие — УРД тал +x талд
-          ctx.fillStyle = BODY_COLORS[Math.floor(c.tint * BODY_COLORS.length) % BODY_COLORS.length];
-          body(ctx, -L / 2, -W / 2, L, W, W * 0.24);
+          // ── Хүрэлцэх сүүдэр — биеэс арай том, бүдэг. `shadowBlur` ЗОРИУДААР
+          //    ХЭРЭГЛЭЭГҮЙ: хэдэн зуун машинд тэр нь фрейм унагадаг.
+          ctx.fillStyle = 'rgba(6,10,16,.28)';
+          body(ctx, -L * 0.5 - W * 0.06, -W * 0.5 - W * 0.06, L + W * 0.12, W + W * 0.12, W * 0.2);
           ctx.fill();
-          ctx.stroke();
 
-          // Бүхээг — биеэс нарийн, бага зэрэг ХОЙНО (урд капот үлдэнэ)
-          ctx.fillStyle = 'rgba(14,21,30,.62)';
-          body(ctx, -L * 0.26, -W * 0.31, L * 0.46, W * 0.62, W * 0.13);
-          ctx.fill();
+          // ── Бие (төрлөөрөө) ──
+          if (kind === 'bus') drawBusBody(ctx, L, W, color, fineDetail);
+          else drawCarBody(ctx, L, W, color, fineDetail, (vt?.model ?? 'sedan') as 'sedan');
 
           // Гэрэл — булан бүрд жижиг дөрвөлжин. Урд нь шаргал, ард нь улаан
           // (удаашрах тусам тодорно) — чиглэл ба түгжрэл хоёулаа уншигдана.
@@ -338,7 +513,7 @@ export function TrafficOverlay({
         for (const ln of net.signalLines) {
           if (ln.pts.length < 2) continue;
           // Ногоон → шар (3 сек) → улаан — хөдөлгүүрийн фазтай НЭГ эх сурвалж
-          const ph = signalPhase(ln.group, simTime);
+          const ph = signalPhase(ln.code, simTime, opt.current.signalPlan);
           ctx.strokeStyle = ph === 'green' ? '#22c55e' : ph === 'yellow' ? '#facc15' : '#ff3b30';
           ctx.beginPath();
           ctx.moveTo(px(ln.pts[0][0]), py(ln.pts[0][1]));

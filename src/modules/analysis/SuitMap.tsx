@@ -35,7 +35,7 @@ const is3D = (d: Dim) => d === '3d' || d === 'bim';
 import { MAP_LAYERS, NO_DATA_COLOR, BUILDING_STATUS_COLORS, type MapLayerDef } from '@/lib/analysis/config';
 import type { Zone } from '@/lib/analysis/data';
 import { TrafficOverlay } from './suit/TrafficOverlay';
-import type { Network } from './suit/traffic';
+import type { Network, SignalPlan } from './suit/traffic';
 import type { TrafficStats } from './suit/TrafficOverlay';
 import type { TPaint } from './suit/transportModes';
 import type { HeatPoint } from './suit/heat';
@@ -244,6 +244,8 @@ export function SuitMap({
     playing: boolean;
     speed: number;
     maxCars: number;
+    /** Гэрлэн дохионы зохицуулалтын хөтөлбөр (ээлжийн тоо, мөчлөг) */
+    signalPlan?: SignalPlan;
     onStats?: (s: TrafficStats) => void;
   };
   /**

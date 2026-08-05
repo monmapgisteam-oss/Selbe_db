@@ -11,6 +11,7 @@ import { Timeline } from './Timeline';
 import type { MapRow } from '../SuitMap';
 import type { TrafficStats } from './TrafficOverlay';
 import type { NetKind } from './netSources';
+import type { SignalPlan } from './traffic';
 import c from './simulation.module.css';
 
 /** Харьцуулах замын сүлжээний сонголт (Бодит/Төлөвлөгөө/Шинэ зам) */
@@ -32,6 +33,17 @@ export type RoadState = {
   flat: boolean;
   /** Харьцуулах замын сүлжээ сонгогч */
   net?: NetSel;
+  /** Гэрлэн дохионы зохицуулалтын сонголт */
+  signal?: SignalSel;
+};
+
+/** Гэрлэн дохионы зохицуулалтын хөтөлбөр сонгогч (эцгээс). */
+export type SignalSel = {
+  plan: SignalPlan;
+  plans: SignalPlan[];
+  setPlan: (key: string) => void;
+  /** Сүлжээнд наагдсан зогсолтын зураасны тоо — 0 бол дохиогүй */
+  lines: number;
 };
 
 /** Timeline-ийн удирдлагыг эцгээс (Suitability) дамжуулна */
@@ -133,20 +145,26 @@ export function Simulation({
       <div className={c.root} style={{ '--sim': localHue } as CSSProperties}>
         {/* ── Симуляц сонгох (энэ самбарт хамаарах төрлүүд) ── */}
         <div className={c.seg} role="tablist" aria-label="Симуляцын төрөл">
-          {SIM_KINDS.filter((k) => shownKinds.includes(k.key)).map((k) => (
-            <button
-              key={k.key}
-              type="button"
-              role="tab"
-              aria-selected={!muted && kind === k.key}
-              className={`${c.segBtn} ${!muted && kind === k.key ? c.segOn : ''}`}
-              onClick={() => setKind(k.key)}
-              title={k.label}
-            >
-              <Icon name={k.icon} size={17} />
-              {k.short}
-            </button>
-          ))}
+          {/* ⚠️ Табын ДАРААЛАЛ нь дуудагчийн `kinds`-ээс — `SIM_KINDS`-ийн
+              бүртгэлийн дарааллаас БИШ. Самбар бүр өөрийн эрэмбээ тогтоох
+              боломжтой (жиш. «Ачаалал» эхэнд). */}
+          {shownKinds
+            .map((key) => SIM_KINDS.find((k) => k.key === key))
+            .filter((k): k is (typeof SIM_KINDS)[number] => !!k)
+            .map((k) => (
+              <button
+                key={k.key}
+                type="button"
+                role="tab"
+                aria-selected={!muted && kind === k.key}
+                className={`${c.segBtn} ${!muted && kind === k.key ? c.segOn : ''}`}
+                onClick={() => setKind(k.key)}
+                title={k.label}
+              >
+                <Icon name={k.icon} size={17} />
+                {k.short}
+              </button>
+            ))}
         </div>
 
         {/* Дэлгэрэнгүй нь ЗӨВХӨН идэвхтэй самбарт — нөгөө нь зөвхөн товчоо харуулна */}
@@ -207,6 +225,7 @@ export function Simulation({
             <NetSelector net={road?.net} />
             <Timeline {...clock} hue={def.hue} />
             <RoadStatus road={road} />
+            <SignalControl sig={road?.signal} />
           </>
         )}
 
@@ -319,6 +338,60 @@ function NetSelector({ net }: { net?: NetSel }) {
           </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+/* ══════════════════ Гэрлэн дохионы зохицуулалт ══════════════════ */
+
+/**
+ * ГЭРЛЭН ДОХИОНЫ ЗОХИЦУУЛАЛТ — мөчлөгийг хэдэн ЭЭЛЖ болгож хуваахыг сонгоно.
+ *
+ * ⚠️ Энэ бол харьцуулалтын хэрэгсэл: ээлж олон байх тусам зөрчил багасах ч
+ * нэг ээлжид ногдох ногоон хугацаа богиноссоор багтаамж буурна. Сонголт бүрд
+ * ногоон хугацааг ТООГООР харуулж энэ солилцоог ил болгоно.
+ */
+function SignalControl({ sig }: { sig?: SignalSel }) {
+  if (!sig) return null;
+  const green = Math.max(0, sig.plan.cycle / sig.plan.stages.length - sig.plan.yellow);
+  return (
+    <div className={c.console}>
+      <div className={c.secHead}>
+        Гэрлэн дохионы зохицуулалт
+        <b>{sig.lines} зураас</b>
+      </div>
+      <div className={c.pick} style={{ marginTop: 8 }}>
+        <span className={c.pickLabel}>Ээлж</span>
+        <div className={c.segSm} role="group" aria-label="Зохицуулалтын хөтөлбөр">
+          {sig.plans.map((p) => (
+            <button
+              key={p.key}
+              type="button"
+              aria-pressed={sig.plan.key === p.key}
+              className={sig.plan.key === p.key ? c.segSmOn : undefined}
+              onClick={() => sig.setPlan(p.key)}
+              title={p.desc}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className={c.readout} style={{ marginTop: 8 }}>
+        <div className={c.cell}>
+          <div className={c.cellV}>{sig.plan.stages.length}</div>
+          <div className={c.cellK}>Ээлж</div>
+        </div>
+        <div className={c.cell}>
+          <div className={c.cellV}>{sig.plan.cycle}<small>с</small></div>
+          <div className={c.cellK}>Мөчлөг</div>
+        </div>
+        <div className={c.cell}>
+          <div className={c.cellV}>{green.toFixed(green < 10 ? 1 : 0)}<small>с</small></div>
+          <div className={c.cellK}>Ногоон / ээлж</div>
+        </div>
+      </div>
+      <p className={c.desc} style={{ marginTop: 8 }}>{sig.plan.desc}</p>
     </div>
   );
 }
