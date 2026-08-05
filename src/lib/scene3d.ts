@@ -3,7 +3,9 @@
  * АВТОМАТААР хуулсан 3D давхаргууд + тэдгээрийн ЯГ scene-ийн renderer (style).
  *
  * ⚠️ Service-ийн default renderer нь ХАВТГАЙ 2D (esriSFS) — scene дотор зохиогч
- * 3D болгосон (барилгыг 'Давх_1'-ээр өргөх Extrude, 3D мод г.м.). Тиймээс энд
+ * 3D болгосон (барилгыг өндрөөр өргөх Extrude, 3D мод г.м.). ⚠️ Барилгын өндрийг
+ * 'Давх_1' (давхрын тоо) БИШ, 'Ondor_m' (бодит метр өндөр) талбараар өргөнө.
+ * Тиймээс энд
  * renderer-ийг scene-ээс хуулж, 'rendererJsonUtils.fromJSON'-оор ШУУД тавина —
  * хөрвүүлэлт огт хийхгүй тул scene дээр харагдаж буйтай 100% ижил.
  *
@@ -334,7 +336,7 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
       "visualVariables": [
         {
           "type": "sizeInfo",
-          "field": "Давх_1",
+          "field": "Ondor_m",
           "valueUnit": "meters"
         }
       ],
@@ -868,8 +870,10 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
       "authoringInfo": {
         "lengthUnit": "meters"
       },
-      "type": "simple",
-      "symbol": {
+      "type": "uniqueValue",
+      "valueExpression": "Text($feature.OBJECTID % 6)",
+      "valueExpressionTitle": "Модны төрөл",
+      "defaultSymbol": {
         "type": "PointSymbol3D",
         "symbolLayers": [
           {
@@ -879,12 +883,106 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
             },
             "height": 10
           }
-        ],
-        "styleOrigin": {
-          "styleName": "EsriRealisticTreesStyle",
-          "name": "Umbellularia"
+        ]
+      },
+      "uniqueValueInfos": [
+        {
+          "value": "0",
+          "label": "UmbellulariaCalifornica",
+          "symbol": {
+            "type": "PointSymbol3D",
+            "symbolLayers": [
+              {
+                "type": "Object",
+                "resource": {
+                  "href": "https://static.arcgis.com/arcgis/styleItems/RealisticTrees/gltf/resource/UmbellulariaCalifornica.glb"
+                },
+                "height": 10
+              }
+            ]
+          }
+        },
+        {
+          "value": "1",
+          "label": "AcerSaccharum",
+          "symbol": {
+            "type": "PointSymbol3D",
+            "symbolLayers": [
+              {
+                "type": "Object",
+                "resource": {
+                  "href": "https://static.arcgis.com/arcgis/styleItems/RealisticTrees/gltf/resource/AcerSaccharum.glb"
+                },
+                "height": 11
+              }
+            ]
+          }
+        },
+        {
+          "value": "2",
+          "label": "BetulaPapyrifera",
+          "symbol": {
+            "type": "PointSymbol3D",
+            "symbolLayers": [
+              {
+                "type": "Object",
+                "resource": {
+                  "href": "https://static.arcgis.com/arcgis/styleItems/RealisticTrees/gltf/resource/BetulaPapyrifera.glb"
+                },
+                "height": 13
+              }
+            ]
+          }
+        },
+        {
+          "value": "3",
+          "label": "QuercusRubra",
+          "symbol": {
+            "type": "PointSymbol3D",
+            "symbolLayers": [
+              {
+                "type": "Object",
+                "resource": {
+                  "href": "https://static.arcgis.com/arcgis/styleItems/RealisticTrees/gltf/resource/QuercusRubra.glb"
+                },
+                "height": 12
+              }
+            ]
+          }
+        },
+        {
+          "value": "4",
+          "label": "PopulusTremuloides",
+          "symbol": {
+            "type": "PointSymbol3D",
+            "symbolLayers": [
+              {
+                "type": "Object",
+                "resource": {
+                  "href": "https://static.arcgis.com/arcgis/styleItems/RealisticTrees/gltf/resource/PopulusTremuloides.glb"
+                },
+                "height": 13
+              }
+            ]
+          }
+        },
+        {
+          "value": "5",
+          "label": "LiquidambarStyraciflua",
+          "symbol": {
+            "type": "PointSymbol3D",
+            "symbolLayers": [
+              {
+                "type": "Object",
+                "resource": {
+                  "href": "https://static.arcgis.com/arcgis/styleItems/RealisticTrees/gltf/resource/LiquidambarStyraciflua.glb"
+                },
+                "height": 10
+              }
+            ]
+          }
         }
-      }
+      ]
     }
   }
 ];

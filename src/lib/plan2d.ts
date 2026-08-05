@@ -1,12 +1,10 @@
 /**
- * PLAN2D — "Selbe 2D map 0804" webmap (a4f03c99ab5846c7a3db9b27c2895582)-ээс
- * АВТОМАТААР хуулсан 14 давхаргын ЯГ webmap style (renderer).
+ * PLAN2D — "Selbe 2D map 0804" webmap-ээс хуулсан 14 давхаргын style.
+ * renderer нь webmap override / service default (rendererJsonUtils.fromJSON).
  *
- * renderer нь webmap-ийн override (байвал) ЭСВЭЛ service-ийн default. Хоёулаа
- * ArcGIS JSON тул rendererJsonUtils.fromJSON-оор ШУУД тавьдаг — webmap дээрхтэй
- * 100% ижил. Бүгд selbe_3D__0804_WFL1/FeatureServer-ийн sublayer.
- *
- * Эдгээр нь Ерөнхий төлөвлөгөө (2D)-нд каталогийн давхарга болж орно.
+ * ⚠️ Мод (sb:0) — дээрээс харсан БОДИТ 2 модны зураг (public/tree-oak.webp,
+ *    tree-dense.png)-ыг OBJECTID-аар RANDOM ононо. Size visual variable (метр)
+ *    тул zoom-оор масштаблана (холоос жижгэрч, ойроос томорно).
  */
 export type Plan2DLayer = {
   id: string;
@@ -25,20 +23,60 @@ export const PLAN2D_LAYERS: Plan2DLayer[] = [
     "title": "Мод",
     "geom": "point",
     "opacity": 1,
-    "source": "webmap-override",
+    "source": "real-photos x2 random + meter-scale (oak/dense)",
     "renderer": {
-      "type": "simple",
-      "symbol": {
+      "type": "uniqueValue",
+      "valueExpression": "When($feature.OBJECTID % 2 == 0, 'oak', 'dense')",
+      "valueExpressionTitle": "Модны төрөл",
+      "defaultSymbol": {
         "type": "esriPMS",
+        "url": "/tree-oak.webp",
+        "contentType": "image/webp",
+        "width": 52,
+        "height": 29,
         "angle": 0,
         "xoffset": 0,
-        "yoffset": 0,
-        "contentType": "image/png",
-        "imageData": "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",
-        "url": "https://static.arcgis.com/images/Symbols/Firefly/FireflyB14.png",
-        "height": 5,
-        "width": 5.003
-      }
+        "yoffset": 0
+      },
+      "uniqueValueInfos": [
+        {
+          "value": "oak",
+          "label": "Царс (оук)",
+          "symbol": {
+            "type": "esriPMS",
+            "url": "/tree-oak.webp",
+            "contentType": "image/webp",
+            "width": 52,
+            "height": 29,
+            "angle": 0,
+            "xoffset": 0,
+            "yoffset": 0
+          }
+        },
+        {
+          "value": "dense",
+          "label": "Нягт навчит",
+          "symbol": {
+            "type": "esriPMS",
+            "url": "/tree-dense.png",
+            "contentType": "image/png",
+            "width": 34,
+            "height": 34,
+            "angle": 0,
+            "xoffset": 0,
+            "yoffset": 0
+          }
+        }
+      ],
+      "visualVariables": [
+        {
+          "type": "sizeInfo",
+          "valueExpression": "8",
+          "valueUnit": "meters",
+          "minSize": 3,
+          "maxSize": 44
+        }
+      ]
     }
   },
   {
@@ -756,5 +794,4 @@ export const PLAN2D_LAYERS: Plan2DLayer[] = [
 ];
 
 const BY_ID: Record<string, Plan2DLayer> = Object.fromEntries(PLAN2D_LAYERS.map((l) => [l.id, l]));
-/** id-гаар webmap renderer-ийг олох (buildLayers-д fromJSON-д өгнө) */
 export const plan2dStyleOf = (id: string): unknown => BY_ID[id]?.renderer;
