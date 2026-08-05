@@ -1,20 +1,28 @@
 'use client';
 
 import { useState } from "react";
+import FillNew from "./FillNew";
 import Level5 from "./Level5";
 import Pivot from "./Pivot";
 import Wbs from "./Wbs";
 import st from "./sheet.module.css";
 
 /**
+ * «Гүйцэтгэл шинэ» (Багц 3.2 — 9F_publish хуудасны бүрэн хуулбар) +
  * «Гүйцэтгэл бөглөх» (хүснэгт засвар) + «Дүгнэлт» (төслийн нэгдсэн WBS) +
  * «Түвшин 5» (ажилбарын түвшний экспорт, зөвхөн харах).
  */
 export function Sheet() {
-  const [tab, setTab] = useState<"fill" | "concl" | "l5">("fill");
+  const [tab, setTab] = useState<"new" | "fill" | "concl" | "l5">("fill");
   return (
     <div className={st.tabs}>
       <div className={st.tabBar}>
+        <button
+          className={`${st.tab} ${tab === "new" ? st.tabActive : ""}`}
+          onClick={() => setTab("new")}
+        >
+          Гүйцэтгэл шинэ
+        </button>
         <button
           className={`${st.tab} ${tab === "fill" ? st.tabActive : ""}`}
           onClick={() => setTab("fill")}
@@ -34,7 +42,15 @@ export function Sheet() {
           Түвшин 5
         </button>
       </div>
-      {tab === "fill" ? <Pivot /> : tab === "concl" ? <Wbs /> : <Level5 />}
+      {tab === "new" ? (
+        <FillNew />
+      ) : tab === "fill" ? (
+        <Pivot />
+      ) : tab === "concl" ? (
+        <Wbs />
+      ) : (
+        <Level5 />
+      )}
     </div>
   );
 }
