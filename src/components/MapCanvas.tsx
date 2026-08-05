@@ -207,34 +207,10 @@ type RendererProp = NonNullable<__esri.FeatureLayerProperties['renderer']>;
 
 const simple = (sym: unknown) => ({ type: 'simple', symbol: sym }) as unknown as RendererProp;
 
-/**
- * УСНЫ ГАДАРГУУ — ArcGIS-ийн уугуул `WaterSymbol3DLayer` (реал-тайм долгион,
- * туссан гэрэл, гүний өнгө).
- *
- * ⚠️ ЗӨВХӨН SceneView-д зурагдана. MapView-д ArcGIS энэ симбол давхаргыг
- * чимээгүй унагааж полигоныг ОГТ зурахгүй (алдаа ч шидэхгүй) — тиймээс энэ
- * симболтой давхаргыг 2D-д газрын зурагт нэмэхгүй.
- *
- * ⚠️ `elevationInfo` нь `on-the-ground` эсвэл `absolute-height` байх ЁСТОЙ.
- * Усан сангийн Z утга худал (6-аас 5-д нь 0) тул газарт наана — `relative-*`
- * горимуудад ус огт харагдахгүй.
- *
- * ⚠️ `waterbodySize` нь долгионы МАСШТАБЫГ заана, объектын хэмжээг биш:
- * `large` нь далайн урт долгион зурдаг бөгөөд 3–11 га усан санд долгион нь
- * полигоноос урт болж, гадаргуу хөдөлгөөнгүй хавтгай мэт харагдана. `small`
- * (цөөрөм) нь энэ хэмжээст тохирно. `calm` — усан сан нь урсгалгүй.
- */
-const WATER_SYMBOL = {
-  type: 'polygon-3d',
-  symbolLayers: [{
-    type: 'water',
-    waveDirection: 260,
-    // Эх веб зургийн усан сангийн өнгө (`#003399`)
-    color: USAN_SAN.hue,
-    waveStrength: 'calm',
-    waterbodySize: 'small',
-  }],
-} as const;
+/* ⚠️ Урьд нь энд «Усан сан»-гийн `WATER_SYMBOL` (WaterSymbol3DLayer) байв.
+   Хэрэглэгчийн хүсэлтээр «Усан сан» давхаргыг газрын зурагт унтраасан тул
+   ашиглагдахаа больж УСТСАН. Буцааж асаахдаа энэ симбол + доорх нэмэх логикийг
+   сэргээнэ. */
 
 /** Каталогийн тодорхойлолтоос симбол — зураг ба тайлбар нэг эх сурвалжтай */
 /**
@@ -1160,22 +1136,11 @@ export const MapCanvas = memo(function MapCanvas({
      * MapView-д ч ажиллана) боловч хэрэглэгч 2D-д үүнийг асаах/унтраах
      * удирдлагагүй тул үлдээвэл байнга зурагдах, хааж болохгүй давхарга болно.
      */
+    // ⚠️ «Усан сан» — хэрэглэгчийн хүсэлтээр газрын зурагт УНТРААВ: огт нэмэхгүй,
+    //    байвал устгана (scene-ийн «Гол» ус хангалттай). Буцааж асаах бол өмнөх
+    //    `dim !== '2d'` дээр нэмэх логикийг сэргээнэ.
     const usan = map.findLayerById(USAN_SAN.id);
-    if (dim !== '2d' && !usan) {
-      map.add(new FeatureLayer({
-        id: USAN_SAN.id,
-        url: USAN_SAN.url,
-        title: USAN_SAN.title,
-        outFields: ['*'],
-        popupEnabled: false,
-        visible: true,
-        elevationInfo: ON_GROUND,
-        renderer: simple(WATER_SYMBOL),
-      }));
-    } else if (dim === '2d' && usan) {
-      map.remove(usan);
-      usan.destroy();
-    }
+    if (usan) { map.remove(usan); usan.destroy(); }
   }, [dim, ready]);
 
   /**
@@ -1422,9 +1387,10 @@ export const MapCanvas = memo(function MapCanvas({
       if (l.id.startsWith('bim:')) { l.visible = dim === 'bim'; return; }
       // Web scene-ийн 3D давхаргууд — ЗӨВХӨН BIM горимд (SceneView) харагдана.
       if (l.id.startsWith('scene3d:')) { l.visible = dim === 'bim'; return; }
-      // ⚠️ ЗӨВХӨН 3D-гийн давхарга нь каталогийн `visible` жагсаалтад ХЭЗЭЭ Ч
-      //    орохгүй — энэ шалгуургүй бол доорх мөр түүнийг тэр дор нь унтраана.
-      if (l.id === USAN_SAN.id) { l.visible = dim !== '2d'; return; }
+      // ⚠️ «Усан сан» — хэрэглэгчийн хүсэлтээр газрын зурагт УНТРААВ (усан бүрхэвч
+      //    scene-ийн «Гол»-той давхцаж/ил үлдэж байсан). Буцааж асаах бол
+      //    `dim !== '2d'` болгоно.
+      if (l.id === USAN_SAN.id) { l.visible = false; return; }
 
       // ⚠️ BIM горимд каталогийн 2D давхаргыг НУУНА — web scene өөрөө зам, ногоон,
       //    мод, барилгын 3D хувилбарыг агуулдаг тул давхцал/эмх замбараагүйг арилгаж

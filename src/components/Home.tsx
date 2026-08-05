@@ -67,6 +67,11 @@ export function Home({ onEnterAll }: { onEnterAll: () => void }) {
                 )}
                 <span className={s.userName}>{user.fullName}</span>
               </span>
+              {/* Нэвтэрсэн хэрэглэгч порталд ОРОХ — эс бөгөөс нүүр хуудсанд гацна */}
+              <button type="button" className={`${s.signBtn} ${s.signIn}`} onClick={onEnterAll}>
+                Орох
+                <span className={s.signInArrow} aria-hidden>→</span>
+              </button>
               <button type="button" className={s.signBtn} onClick={signOut}>Гарах</button>
             </>
           ) : (
