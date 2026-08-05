@@ -1,7 +1,8 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { DASH_PATTERN, layerUrl, MAP_HUE_OVERRIDES, type LayerDef } from '@/lib/services';
-import { webmapStyleOf } from '@/lib/webmapStyle';
+import { webmapStyleOf, loadWebmapStyle } from '@/lib/webmapStyle';
 import s from './swatch.module.css';
 
 /**
@@ -18,6 +19,14 @@ import s from './swatch.module.css';
  * хажууд байх нь илүү зөв байрлал.
  */
 export function LayerSwatch({ d, hue: hueProp }: { d: LayerDef; hue?: string }) {
+  // Webmap style снапшот аль хэдийн MapCanvas-аар ачаалагдсан байдаг ч swatch
+  // түүнээс ӨМНӨ зурагдвал каталогийн hue-гээр гараад, ачаалагдмагц дахин зурна.
+  const [, setLoaded] = useState(false);
+  useEffect(() => {
+    let on = true;
+    loadWebmapStyle().then(() => { if (on) setLoaded(true); });
+    return () => { on = false; };
+  }, []);
   // Гараар заасан өнгө (facet мөр) → webmap-ийн өнгө → каталогийн hue.
   // ⚠️ `MAP_HUE_OVERRIDES`-т орсон давхаргад зураг нь снапшотын өнгийг d.hue-ээр
   //    орлуулж зурдаг тул swatch мөн d.hue — эс бөгөөс каталог зурагтайгаа зөрнө.

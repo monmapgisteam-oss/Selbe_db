@@ -70,11 +70,16 @@ export async function layerTotals(d: LayerDef, where: string): Promise<Totals> {
 }
 
 /** Хэмжээг уншихад ойлгомжтой нэгжээр — метрийг км, м²-ыг га болгоно */
+/**
+ * Хэмжээг УХААЛАГ нэгжээр — жижиг утга том нэгжид «0.0» болж бөөрөнхийлөгддөг
+ * байсныг зассан (жишээ нь дугуйн замын бүс тус бүрийн 300–2000 м² талбай
+ * «0.0 га» гэж гарч байв). 1 га-аас бага → м², 1 км-ээс богино → м.
+ */
 export const qtyText = (d: LayerDef, q: number): string | null => {
   if (!d.qty || q <= 0) return null;
-  if (d.qty.unit === 'км') return `${num(q, 1)} км`;
-  if (d.qty.unit === 'м') return `${km(q, 1)} км`;
-  return `${ha(q, 1)} га`;
+  if (d.qty.unit === 'км') return q < 1 ? `${num(q * 1000)} м` : `${num(q, 1)} км`;
+  if (d.qty.unit === 'м') return q < 1000 ? `${num(q)} м` : `${km(q, 1)} км`;
+  return q < 10_000 ? `${num(q)} м²` : `${ha(q, 1)} га`;
 };
 
 /** Нэгж үнэ юунд ногдохыг үгээр */

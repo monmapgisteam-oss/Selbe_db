@@ -226,6 +226,8 @@ export function Bars({
         );
         const rowCls = `${s.barRow} ${s.barRowInline}`;
         const st = tone(it.color ?? color);
+        /** Бүх дашбоардад ИЖИЛ hover popup — нэр: утга (+шүүх заавар) */
+        const tip = `${it.label}: ${it.display ?? it.value}${onSelect ? ' — дарж газрын зурагт шүүнэ' : ''}`;
         return onSelect ? (
           <button
             key={it.key}
@@ -233,12 +235,13 @@ export function Bars({
             aria-pressed={on}
             className={`${rowCls} ${s.barClick} ${on ? s.barOn : ''}`}
             style={st}
+            title={tip}
             onClick={() => onSelect(it.key)}
           >
             {body}
           </button>
         ) : (
-          <div key={it.key} className={rowCls} style={st}>
+          <div key={it.key} className={rowCls} style={st} title={tip}>
             {body}
           </div>
         );
@@ -301,14 +304,37 @@ export function Stack({
 /* ── Дугуй диаграм (pie / donut) ── */
 
 /**
+ * Цагирган ЗҮСМЭГИЙН зам (annular sector) — 12 цагаас цагийн зүүний дагуу.
+ *
+ * ⚠️ Урьд нь зүсмэгийг `stroke-dasharray`-аар (ганц шугам) зурдаг байсныг
+ * ДҮҮРГЭЛТ + ЗАХЫН ШУГАМ тусад нь удирдахын тулд бүтэн замаар сольсон: дотор
+ * талыг тунгалаг дүүргэж, зах (дотор/гадна нум + радиал зааг) нь тод бүтэн
+ * шугамтай болно. `f0`,`f1` — эхлэх/дуусах бутархай (0..1).
+ */
+function sectorPath(cx: number, cy: number, ri: number, ro: number, f0: number, f1: number): string {
+  // Бүтэн тойрог (ганц ангилал) — нэг нумаар хаагдахгүй тул мэдрэгдэхгүй зайг үлдээнэ
+  const full = f1 - f0 >= 0.99999;
+  const a0 = f0 * 2 * Math.PI;
+  const a1 = (full ? f1 - 0.0001 : f1) * 2 * Math.PI;
+  const pt = (rr: number, a: number): [number, number] => [cx + rr * Math.sin(a), cy - rr * Math.cos(a)];
+  const [ox0, oy0] = pt(ro, a0);
+  const [ox1, oy1] = pt(ro, a1);
+  const [ix1, iy1] = pt(ri, a1);
+  const [ix0, iy0] = pt(ri, a0);
+  const large = a1 - a0 > Math.PI ? 1 : 0;
+  return `M${ox0},${oy0} A${ro},${ro} 0 ${large} 1 ${ox1},${oy1} `
+    + `L${ix1},${iy1} A${ri},${ri} 0 ${large} 0 ${ix0},${iy0} Z`;
+}
+
+/**
  * Хувь эзлэх байдлыг харуулах дугуй диаграм.
  *
  * ⚠️ `Stack`-аас ЯЛГААТАЙ хэрэглээ: Stack нь нарийн зурвас — олон ангилалтай,
  * дараалал чухал үед. Donut нь ЦӨӨН (3–7) ангилалын харьцааг онцлоход тохирно.
  * 7-оос олон ангилалд зүсмэгүүд нь ялгагдахаа болих тул Stack эсвэл Bars хэрэглэ.
  *
- * ⚠️ SVG-ийн дугуйг `stroke-dasharray`-аар зурна — олон `<path>` үүсгэхээс хямд
- * бөгөөд өнцөг тооцох тригонометр шаардахгүй.
+ * ⚠️ Зүсмэг бүр annular-sector `<path>`: дотор ДҮҮРГЭЛТ тунгалаг, ЗАХЫН ШУГАМ
+ * тод бүтэн — өнгөний ялгарал `shade()`-ийн hue-эргэлтээс.
  */
 export function Donut({
   items,
@@ -343,7 +369,6 @@ export function Donut({
   const hasSel = sel.length > 0;
   const total = items.reduce((a, b) => a + b.value, 0);
   const r = (size - width) / 2;
-  const circ = 2 * Math.PI * r;
 
   /**
    * Хулгана дээрх зүсмэг — ЗҮСМЭГ ба ТАЙЛБАР хоёрыг холбоно.
@@ -363,6 +388,17 @@ export function Donut({
   /** Тодруулах уу? Хулгана байвал ТЭР давамгайлна, эс бөгөөс сонголт. */
   const isEmph = (key: string) => (hovOn ? hovOn === key : sel.includes(key));
   const isDim = (key: string) => (hovOn ? hovOn !== key : hasSel && !sel.includes(key));
+  /**
+   * ДҮҮРГЭЛТ тунгалаг (зөөлөн зурвас), ЗАХЫН ШУГАМ тод бүтэн (тодорхой хүрээ).
+   * Тодруулсан зүсмэг дүүргэлт нь өтгөрч, бүдгэрүүлсэн нь бараг үл үзэгдэнэ.
+   * Зах нь ямагт тод — бүдгэрүүлсэн үед л сулрана.
+   */
+  const fillOpacity = (key: string) => (isEmph(key) ? 0.55 : isDim(key) ? 0.08 : 0.3);
+  const edgeOpacity = (key: string) => (isDim(key) ? 0.35 : 1);
+  const edgeWidth = (key: string) => (isEmph(key) ? 2.5 : 1.6);
+  // Зүсмэгийн дотор/гадна радиус — band-ийн зузаан нь `width`
+  const ri = r - width / 2;
+  const ro = r + width / 2;
 
   // Зүсмэг бүрийн ЭХЛЭХ байрлал — өмнөх зүсмэгүүдийн нийлбэр
   let acc = 0;
@@ -391,23 +427,25 @@ export function Donut({
     return (
       <div className={s.donutLead}>
         <svg width={vbW} height={vbH} viewBox={`${-PAD} ${-PADY} ${vbW} ${vbH}`}>
-          {/* Цагирган зүсмэгүүд — 12 цагаас (-90°) */}
-          <g transform={`rotate(-90 ${cx} ${cy})`}>
+          {/* Цагирган зүсмэгүүд — дүүргэлт тунгалаг, зах тод (12 цагаас) */}
+          <g>
             <circle className={s.donutTrack} cx={cx} cy={cy} r={r} strokeWidth={width} />
             {slices.map((sl) => (
-              <circle
+              <path
                 key={sl.key}
-                cx={cx}
-                cy={cy}
-                r={r}
-                strokeWidth={width}
+                d={sectorPath(cx, cy, ri, ro, sl.offset, sl.offset + sl.frac)}
+                fill={sl.color}
+                fillOpacity={fillOpacity(sl.key)}
                 stroke={sl.color}
-                fill="none"
-                strokeDasharray={`${sl.frac * circ} ${circ}`}
-                strokeDashoffset={-sl.offset * circ}
+                strokeOpacity={edgeOpacity(sl.key)}
+                strokeWidth={edgeWidth(sl.key)}
+                strokeLinejoin="round"
+                style={onSelect ? { cursor: 'pointer' } : undefined}
+                onClick={onSelect ? () => onSelect(sl.key) : undefined}
+                {...hoverProps(sl.key)}
               >
-                <title>{`${sl.label}: ${sl.value}`}</title>
-              </circle>
+                <title>{`${sl.label}: ${sl.value}${onSelect ? ' — дарж газрын зурагт шүүнэ' : ''}`}</title>
+              </path>
             ))}
           </g>
           {/* Голын утга */}
@@ -429,13 +467,20 @@ export function Donut({
             const boxX = right ? lx + GUTTER : -PAD + 2;
             const pct = sl.display ?? `${sl.frac > 0 && sl.frac < 0.005 ? '<1' : (sl.frac * 100).toFixed(0)}%`;
             return (
-              <g key={sl.key}>
+              <g
+                key={sl.key}
+                opacity={isDim(sl.key) ? 0.35 : 1}
+                style={onSelect ? { cursor: 'pointer' } : undefined}
+                onClick={onSelect ? () => onSelect(sl.key) : undefined}
+                {...hoverProps(sl.key)}
+              >
                 <polyline points={`${sx},${sy} ${ex},${ey} ${lx},${ey}`} fill="none" stroke={sl.color} strokeWidth={1} />
                 <circle cx={lx} cy={ey} r={1.6} fill={sl.color} />
                 <foreignObject x={boxX} y={ey - 30} width={LW} height={60}>
                   <div
                     className={s.donutLeadBox}
-                    style={{ textAlign: right ? 'left' : 'right' }}
+                    style={{ textAlign: right ? 'left' : 'right', fontWeight: isEmph(sl.key) ? 600 : undefined }}
+                    title={`${sl.label}: ${sl.value}${onSelect ? ' — дарж газрын зурагт шүүнэ' : ''}`}
                   >
                     <span className={s.donutLeadName}>{sl.label}</span>{' '}
                     <b className={s.donutLeadPct} style={{ color: sl.color }}>{pct}</b>
@@ -453,28 +498,26 @@ export function Donut({
     <div className={`${s.donutWrap} ${nowrap ? s.donutRow : ''} ${stack ? s.donutStack : ''}`}>
       <div className={s.donut} style={{ width: size, height: size }}>
         <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-          {/* -90° эргүүлж 12 цагаас эхлүүлнэ */}
-          <g transform={`rotate(-90 ${size / 2} ${size / 2})`}>
+          {/* Зүсмэг бүр — дүүргэлт тунгалаг, зах тод бүтэн (12 цагаас) */}
+          <g>
             <circle className={s.donutTrack} cx={size / 2} cy={size / 2} r={r} strokeWidth={width} />
             {slices.map((sl) => (
-              <circle
+              <path
                 key={sl.key}
                 className={s.donutSlice}
-                cx={size / 2}
-                cy={size / 2}
-                r={r}
-                strokeWidth={isEmph(sl.key) ? width + 3 : width}
+                d={sectorPath(size / 2, size / 2, ri, ro, sl.offset, sl.offset + sl.frac)}
+                fill={sl.color}
+                fillOpacity={fillOpacity(sl.key)}
                 stroke={sl.color}
-                strokeOpacity={isDim(sl.key) ? 0.28 : 1}
-                fill="none"
-                strokeDasharray={`${sl.frac * circ} ${circ}`}
-                strokeDashoffset={-sl.offset * circ}
+                strokeOpacity={edgeOpacity(sl.key)}
+                strokeWidth={edgeWidth(sl.key)}
+                strokeLinejoin="round"
                 style={onSelect ? { cursor: 'pointer' } : undefined}
                 onClick={onSelect ? () => onSelect(sl.key) : undefined}
                 {...hoverProps(sl.key)}
               >
                 <title>{`${sl.label}: ${sl.value}`}</title>
-              </circle>
+              </path>
             ))}
           </g>
         </svg>

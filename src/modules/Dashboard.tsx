@@ -16,7 +16,7 @@ import {
   ZONE_LAYER, ZONE_FIELD, ZONE_NONE, BUILT_LAYER, BUILDING,
   LAYER_BY_ID, PARCEL_LEFT, PROJECT_PROGRESS, SOURCE_FS,
   PLAN_LAYER_IDS, MONITOR_LAYER_IDS, INITIAL_MAP_LAYERS,
-  PKG_BY_FAMILY, bagtsKey, buildingKey,
+  PKG_BY_FAMILY, PKG_BY_BAGTS, LAYERS, bagtsKey, buildingKey,
 } from '@/lib/services';
 import {
   INDICATORS, SCORE_LEVELS, levelOf, PARKING, DEFAULT_ECON_SHARE,
@@ -484,6 +484,34 @@ type DashData = {
   sources: Async<Row[]>;
 };
 
+/* ══════════════════ Газрын зургийн НЭГДСЭН чарт-шүүлт ══════════════════ */
+
+/**
+ * Чарт (бар/зүсмэг) дарахад газрын зурагт тавигдах шүүлт — БҮХ хэсэгт ИЖИЛ
+ * механизм (хэсэг бүр өөр өөр чадвартай байсныг жигдлэв).
+ *   · `where`+`only` — аттрибутын тодруулга: `only` давхаргад таарахгүй объект
+ *     бүдгэрнэ (`setHighlight` → featureEffect).
+ *   · `layers` — давхаргын шүүлт: зурагт ЗӨВХӨН эдгээр давхарга үлдэнэ
+ *     (багц гэх мэт «нэг давхарга = нэг ангилал» өгөгдөлд).
+ * Ижил чарт мөрийг ДАХИН дарахад шүүлт арилна; чип дээрх × мөн адил.
+ */
+export type MapFilter = {
+  sec: SecKey;
+  key: string;
+  /** Чип дээр харагдах нэр */
+  label: string;
+  where?: string;
+  only?: string[];
+  layers?: string[];
+};
+
+/** SQL string literal — дан хашилтыг давхарлана (нэрэнд ' орсон ч эвдрэхгүй) */
+const sq = (v: string) => v.replace(/'/g, "''");
+
+/** Нэр нь дэд текст агуулсан давхаргуудын id — Шугам сүлжээ/Нийгэмд ашиглана */
+const layersByTitle = (subs: string[]): string[] =>
+  LAYERS.filter((l) => subs.some((s) => l.title.toLowerCase().includes(s))).map((l) => l.id);
+
 /* ══════════════════ Үндсэн компонент ══════════════════ */
 
 const bn = (v: number) => num(v / 1e9, 1);
@@ -499,7 +527,10 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
     sources: useSources(),
   };
   const { setHighlight } = useMap();
-  useEffect(() => { setHighlight(null); }, [setHighlight]);
+
+  /** Чарт-шүүлт (бүх хэсэгт нэгдсэн) — аттрибутын тодруулгыг зурагт тусгана */
+  const [flt, setFlt] = useState<MapFilter | null>(null);
+  useEffect(() => { setHighlight(flt?.where ?? null, flt?.only); }, [flt, setHighlight]);
 
   /**
    * Нээлттэй хэсгүүд — ОЛОН сонголт. Дараалал нь ДАРСАН дараалал биш,
@@ -533,24 +564,46 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
   const [layerSel, setLayerSel] = useState<string | null>(null);
   const totals = usePlanTotals(zone, layerOpen, CATALOG_IDS);
 
+  /** Нээлттэй хэсгүүдийн давхаргын жагсаалт (чарт-шүүлтгүй үеийн анхдагч) */
+  const layersFor = useCallback((secs: SecKey[]) => {
+    const ids = secs.flatMap((s) => SECTION_LAYERS[s]);
+    return secs.length ? [...new Set([...CONTEXT_LAYERS, ...ids])] : BASE_LAYERS;
+  }, []);
+
   const toggle = useCallback((k: SecKey) => {
     const isOpen = open.includes(k);
     const next = isOpen
       ? open.filter((x) => x !== k)
       : SECTIONS.map((s) => s.key).filter((s) => s === k || open.includes(s));
     setOpen(next);
+    // Хэсэг солигдоход чарт-шүүлт хүчингүй (өөр контекст) — цэвэрлэнэ.
+    setFlt(null);
 
     // Хэсэг(үүд) нээлттэй бол газрын зургийг тэдгээрийн холбогдох давхаргаар
     // ШҮҮНЭ: SECTION_LAYERS + барилга контекст (+ khil1 үндсэн хил always-on).
     // Юу ч нээлттэй биш бол анхдагч руу (бүс + барилга) буцна.
-    const ids = next.flatMap((s) => SECTION_LAYERS[s]);
-    setVisible(next.length ? [...new Set([...CONTEXT_LAYERS, ...ids])] : BASE_LAYERS);
-  }, [open]);
+    setVisible(layersFor(next));
+  }, [open, layersFor]);
 
   const clearAll = useCallback(() => {
     setOpen([]);
+    setFlt(null);
     setVisible(BASE_LAYERS);
   }, []);
+
+  /**
+   * Чарт дарахад — ИЖИЛ мөрийг дахин дарвал шүүлт арилна. Давхаргын шүүлттэй
+   * (`layers`) сонголт зурагт зөвхөн тэр давхаргуудыг үлдээж, арилгахад
+   * нээлттэй хэсгүүдийн анхдагч давхаргууд руу буцна.
+   */
+  const selectFlt = useCallback((next: MapFilter) => {
+    const off = !!flt && flt.sec === next.sec && flt.key === next.key;
+    const val = off ? null : next;
+    setFlt(val);
+    setVisible(val?.layers?.length
+      ? [...new Set([...CONTEXT_LAYERS, ...val.layers])]
+      : layersFor(open));
+  }, [flt, open, layersFor]);
 
   /** Үнэлгээ нь ХҮНД (бүх бүсийн орон зайн анализ) — зөвхөн 08 нээгдэхэд ачаална */
   const [prog, setProg] = useState<{ msg: string; pct: number }>({ msg: 'Хүлээж байна…', pct: 0 });
@@ -652,12 +705,20 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
             {visible.length > 8 && <span className={o.legendMore}>+{visible.length - 8}</span>}
           </div>
 
-          {zone && (
+          {(zone || flt) && (
             <div className={o.chipBar}>
-              <div className={o.filterChip}>
-                <span className={o.filterLabel}>Бүс: {zone}</span>
-                <button type="button" className={o.filterClear} onClick={() => setZone(null)} aria-label="Цуцлах">×</button>
-              </div>
+              {zone && (
+                <div className={o.filterChip}>
+                  <span className={o.filterLabel}>Бүс: {zone}</span>
+                  <button type="button" className={o.filterClear} onClick={() => setZone(null)} aria-label="Цуцлах">×</button>
+                </div>
+              )}
+              {flt && (
+                <div className={o.filterChip}>
+                  <span className={o.filterLabel}>{flt.label}</span>
+                  <button type="button" className={o.filterClear} onClick={() => selectFlt(flt)} aria-label="Цуцлах">×</button>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -685,7 +746,7 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
                   <button type="button" className={o.colClose} onClick={() => toggle(k)} aria-label="Хаах">×</button>
                 </header>
                 <div className={o.colBody}>
-                  <Detail k={k} d={d} suit={suit} prog={prog} zone={zone} setZone={setZone} />
+                  <Detail k={k} d={d} suit={suit} prog={prog} zone={zone} setZone={setZone} flt={flt} onFlt={selectFlt} />
                 </div>
               </section>
             );
@@ -696,21 +757,24 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
   );
 }
 
-function Detail({ k, d, suit, prog, zone, setZone }: {
+/** Хэсэг бүрийн чарт-шүүлтийн нийтлэг props — БҮХ хэсэг ижил интерфэйстэй */
+type FltProps = { flt: MapFilter | null; onFlt: (f: MapFilter) => void };
+
+function Detail({ k, d, suit, prog, zone, setZone, flt, onFlt }: {
   k: SecKey; d: DashData;
   suit: Async<SuitSummary>; prog: { msg: string; pct: number };
   zone: string | null; setZone: (z: string | null) => void;
-}) {
+} & FltProps) {
   switch (k) {
     case 'scope': return <ScopeDetail />;
     case 'schedule': return <ScheduleDetail project={d.project} />;
-    case 'bagts': return <BagtsDetail q={d.bagts} />;
-    case 'land': return <LandDetail parcels={d.parcels} project={d.project} />;
-    case 'network': return <NetworkDetail />;
-    case 'power': return <PowerDetail invest={d.invest} />;
-    case 'source': return <SourceDetail sources={d.sources} />;
+    case 'bagts': return <BagtsDetail q={d.bagts} flt={flt} onFlt={onFlt} />;
+    case 'land': return <LandDetail parcels={d.parcels} project={d.project} flt={flt} onFlt={onFlt} />;
+    case 'network': return <NetworkDetail flt={flt} onFlt={onFlt} />;
+    case 'power': return <PowerDetail invest={d.invest} flt={flt} onFlt={onFlt} />;
+    case 'source': return <SourceDetail sources={d.sources} flt={flt} onFlt={onFlt} />;
     case 'finance': return <FinanceDetail />;
-    case 'benefit': return <BenefitDetail bagts={d.bagts} />;
+    case 'benefit': return <BenefitDetail bagts={d.bagts} flt={flt} onFlt={onFlt} />;
     case 'suit': return <SuitDetail suit={suit} prog={prog} zone={zone} setZone={setZone} />;
   }
 }
@@ -1021,13 +1085,23 @@ const heat = (v: number, max: number) => tint(ACCENT, max > 0 ? v / max : 1);
 /** Массивын хамгийн их эерэг утга (0-т хуваахаас хамгаална) */
 const maxOf = (arr: number[]) => Math.max(1, ...arr);
 
-function BagtsDetail({ q }: { q: Async<BagtsRow[]> }) {
+function BagtsDetail({ q, flt, onFlt }: { q: Async<BagtsRow[]> } & FltProps) {
+  const sel = flt?.sec === 'bagts' ? flt.key : null;
   return (
     <Data q={q} loading="Гурван эх сурвалжийг нэгтгэж байна…">
       {(rows) => {
         const blocks = rows.reduce((a, x) => a + x.blocks, 0);
         const ail = rows.reduce((a, x) => a + x.ail, 0);
         const avg = blocks ? rows.reduce((a, x) => a + (x.progress ?? 0) * x.blocks, 0) / blocks : null;
+        /** Багц дарахад — газрын зурагт тэр багцын блокуудыг тодруулна */
+        const pick = (key: string) => {
+          const r = rows.find((x) => x.key === key);
+          if (!r) return;
+          onFlt({
+            sec: 'bagts', key, label: `Багц: ${r.label}`,
+            where: `${BF.bagts} = '${sq(r.label)}'`, only: ['mon:building'],
+          });
+        };
         return (
           <>
             <Panel title="Нийт гүйцэтгэл">
@@ -1043,6 +1117,8 @@ function BagtsDetail({ q }: { q: Async<BagtsRow[]> }) {
             <Panel title="Багц бүрийн явц">
               <Bars
                 inline
+                selected={sel}
+                onSelect={pick}
                 items={rows.map((r) => ({
                   key: r.key,
                   label: r.label,
@@ -1056,6 +1132,8 @@ function BagtsDetail({ q }: { q: Async<BagtsRow[]> }) {
             <Panel title="Багц бүрийн орон сууц">
               <Bars
                 inline
+                selected={sel}
+                onSelect={pick}
                 items={rows.map((r) => ({
                   key: r.key,
                   label: r.label,
@@ -1069,6 +1147,8 @@ function BagtsDetail({ q }: { q: Async<BagtsRow[]> }) {
             <Panel title="Багц бүрийн төсөв">
               <Bars
                 inline
+                selected={sel}
+                onSelect={pick}
                 items={rows.map((r) => ({
                   key: r.key,
                   label: r.label,
@@ -1106,9 +1186,12 @@ const cleanProgress = (v: string) => {
  * `Чөлөөлөгдөөгүй_нэгж_талбар_20260718` давхаргад 224 мөр бүртгэлтэй, ангилал нь
  * ч өөр. Давхарга нь илтгэлээс ХОЙШ шинэчлэгдсэн тул аль нь ч буруу биш.
  */
-function LandDetail({ parcels, project }: { parcels: Async<Row[]>; project: Async<ProjectProgress> }) {
+function LandDetail({ parcels, project, flt, onFlt }: {
+  parcels: Async<Row[]>; project: Async<ProjectProgress>;
+} & FltProps) {
   const p = project.state === 'ready' ? project.data : null;
   const livePct = p?.byStage['Газар чөлөөлөлт']?.actual ?? null;
+  const sel = flt?.sec === 'land' ? flt.key : null;
 
   return (
     <>
@@ -1141,9 +1224,14 @@ function LandDetail({ parcels, project }: { parcels: Async<Row[]>; project: Asyn
         <Data q={parcels} loading="Татаж байна…">
           {(rows) => {
             const by = new Map<string, number>();
+            /** Цэвэрлэсэн ангилал → ТҮҮХИЙ утгууд (шүүлтийн WHERE-д яг таарна) */
+            const raws = new Map<string, Set<string>>();
             for (const x of rows) {
-              const k = cleanProgress(text(x[PL.progress]));
+              const rv = text(x[PL.progress]);
+              const k = cleanProgress(rv);
               by.set(k, (by.get(k) ?? 0) + 1);
+              if (!raws.has(k)) raws.set(k, new Set());
+              raws.get(k)!.add(String(x[PL.progress] ?? ''));
             }
             const arr = [...by.entries()].sort((a, b) => b[1] - a[1]);
             const mx = maxOf(arr.map(([, n]) => n));
@@ -1151,12 +1239,24 @@ function LandDetail({ parcels, project }: { parcels: Async<Row[]>; project: Asyn
               key: label, label, value: n, display: `${num(n)} талбар`,
               color: heat(n, mx),
             }));
+            /** Ангилал дарахад — тэр төлөвтэй талбаруудыг зурагт тодруулна */
+            const pick = (label: string) => {
+              const vs = [...(raws.get(label) ?? [])].filter((v) => v.trim() !== '');
+              const eq = vs.map((v) => `${PL.progress} = '${sq(v)}'`);
+              // «Тодорхойгүй» = хоосон/null утгууд ч мөн орно
+              if (label === 'Тодорхойгүй') eq.push(`${PL.progress} IS NULL`, `${PL.progress} = ''`);
+              if (!eq.length) return;
+              onFlt({
+                sec: 'land', key: label, label: `Төлөв: ${label}`,
+                where: eq.join(' OR '), only: ['land:left'],
+              });
+            };
             return (
               <>
-                <Bars inline items={items} />
+                <Bars inline items={items} selected={sel} onSelect={pick} />
                 <Stats cols={2}>
                   <Stat accent color="#38bdf8" value={num(rows.length)} unit="талбар" label="Нийт бүртгэл" />
-                  <Stat accent color="#a78bfa" value={num(items.length)} label="Ангилал" />
+                  <Stat accent color="#a78bfa" value={num(items.length)} unit="ангилал" label="Ангилал" />
                 </Stats>
               </>
             );
@@ -1169,8 +1269,30 @@ function LandDetail({ parcels, project }: { parcels: Async<Row[]>; project: Asyn
 
 /* ══════════════════ 05 · Шугам сүлжээ ══════════════════ */
 
-function NetworkDetail() {
+/**
+ * Ажлын нэр → холбогдох давхаргууд. Ажил нь давхаргатай НЭРЭЭР холбогдоно
+ * (амьд түлхүүр талбар байхгүй) — олдохгүй бол тэр мөр шүүлтгүй (no-op).
+ */
+const netLayersOf = (work: string): string[] => {
+  const t = work.toLowerCase();
+  if (t.includes('эх үүсвэр')) return layersByTitle(['ус хангамжийн эх үүсвэр']);
+  if (t.includes('цагираг')) return layersByTitle(['цагираг']);
+  if (t.includes('насос')) return layersByTitle(['насос']);
+  if (t.includes('усан сан')) return layersByTitle(['усан сан']);
+  if (t.includes('багц-3')) return PKG_BY_BAGTS[bagtsKey('БАГЦ-5.3')] ?? [];
+  if (t.includes('багц-4')) return PKG_BY_BAGTS[bagtsKey('БАГЦ-5.4')] ?? [];
+  if (t.includes('сувг') || t.includes('сүвл')) return layersByTitle(['сүвл', 'суваг']);
+  return [];
+};
+
+function NetworkDetail({ flt, onFlt }: FltProps) {
   const total = UTILITY_WORKS.reduce((a, w) => a + w.mn, 0);
+  const sel = flt?.sec === 'network' ? flt.key : null;
+  /** Ажил дарахад — зурагт тэр ажлын давхаргууд л үлдэнэ */
+  const pick = (key: string) => {
+    const ids = netLayersOf(key);
+    if (ids.length) onFlt({ sec: 'network', key, label: `Ажил: ${key}`, layers: ids });
+  };
   return (
     <>
       <Panel title="Дүн">
@@ -1182,6 +1304,8 @@ function NetworkDetail() {
 
       <Panel title="Гадна ус, дулааны ажил">
         <Bars
+          selected={sel}
+          onSelect={pick}
           items={UTILITY_WORKS.map((w) => ({
             key: w.work,
             label: `${w.work} · ${w.org} — ${w.status}`,
@@ -1197,7 +1321,7 @@ function NetworkDetail() {
 
 /* ══════════════════ 06 · Цахилгаан ══════════════════ */
 
-function PowerDetail({ invest }: { invest: Async<InvRow[]> }) {
+function PowerDetail({ invest, flt, onFlt }: { invest: Async<InvRow[]> } & FltProps) {
   /** БАГЦ-6.x → INVEST-ийн нийт дүн (амьд) */
   const cost = (key: string): number | null => {
     if (invest.state !== 'ready') return null;
@@ -1205,12 +1329,20 @@ function PowerDetail({ invest }: { invest: Async<InvRow[]> }) {
     const rows = invest.data.filter((r) => bagtsKey(r.bagts) === k);
     return rows.length ? rows.reduce((a, r) => a + r.total, 0) : null;
   };
+  const sel = flt?.sec === 'power' ? flt.key : null;
+  /** Багц дарахад — зурагт тэр багцын давхаргууд л үлдэнэ */
+  const pick = (key: string) => {
+    const ids = PKG_BY_BAGTS[bagtsKey(key)] ?? [];
+    if (ids.length) onFlt({ sec: 'power', key, label: `Багц: ${key}`, layers: ids });
+  };
 
   return (
     <>
       <Panel title="Гадна цахилгаан (БАГЦ-6) · өртөг">
         <Bars
           inline
+          selected={sel}
+          onSelect={pick}
           items={POWER_PACKS.map((b) => {
             const c = cost(b.key);
             const mx = maxOf(POWER_PACKS.map((x) => cost(x.key) ?? 0));
@@ -1228,6 +1360,8 @@ function PowerDetail({ invest }: { invest: Async<InvRow[]> }) {
       <Panel title="Гадна цахилгаан (БАГЦ-6) · явц ба гүйцэтгэгч">
         <Bars
           inline
+          selected={sel}
+          onSelect={pick}
           items={POWER_PACKS.map((b) => ({
             key: b.key,
             label: `${b.key} · ${b.contractor}`,
@@ -1250,8 +1384,20 @@ const srcNum = (v: unknown) => {
 };
 const srcStr = (v: unknown) => String(v ?? '').replace(/​/g, '').trim();
 
-function SourceDetail({ sources }: { sources: Async<Row[]> }) {
+function SourceDetail({ sources, flt, onFlt }: { sources: Async<Row[]> } & FltProps) {
   const F = SOURCE_FS.fields;
+  const sel = flt?.sec === 'source' ? flt.key : null;
+  /**
+   * Байгууламж дарахад — зурагт тэр байгууламжийг тодруулна. Нэрийн төгсгөлд
+   * үл үзэгдэх тэмдэгт (ZWSP) байдаг тул `=` биш `LIKE 'нэр%'`-ээр жишинэ.
+   */
+  const pick = (name: string) => {
+    if (!name || name.startsWith('#')) return;
+    onFlt({
+      sec: 'source', key: name, label: `Эх үүсвэр: ${name}`,
+      where: `${F.name} LIKE '${sq(name)}%'`, only: ['source:eh'],
+    });
+  };
   return (
     <Data q={sources} loading="Эх үүсвэрийн мэдээллийг татаж байна…">
       {(rows) => {
@@ -1270,6 +1416,8 @@ function SourceDetail({ sources }: { sources: Async<Row[]> }) {
                     size={130}
                     width={22}
                     leaders
+                    selected={sel}
+                    onSelect={pick}
                     center={`${facs.length}`}
                     centerLabel="байгууламж"
                     items={facs.map((f, i) => ({
@@ -1325,7 +1473,7 @@ function FinanceDetail() {
       <Panel title="Гол үзүүлэлт">
         <Stats cols={2}>
           {FINANCE.kpi.map((k, i) => (
-            <Stat key={k.label} accent color={HUE[i % HUE.length]} value={k.value} label={k.label} />
+            <Stat key={k.label} accent color={HUE[i % HUE.length]} value={k.value} unit={k.unit} label={k.label} />
           ))}
         </Stats>
       </Panel>
@@ -1369,8 +1517,23 @@ function FinanceDetail() {
 
 /* ══════════════════ 07 · Үр өгөөж ══════════════════ */
 
-function BenefitDetail({ bagts }: { bagts: Async<BagtsRow[]> }) {
+/** Нийгмийн ангилал → давхаргын нэрийн дэд текст (олдохгүй мөр шүүлтгүй) */
+const SOC_MATCH: Record<string, string[]> = {
+  'Сургууль': ['сургууль'],
+  'Цэцэрлэг': ['цэцэрлэг'],
+  'Соёлын цогцолбор': ['урлан'],
+  'Өрхийн эмнэлэг, хороо, цагдаа': ['төрийн үйлчилгээ'],
+};
+
+function BenefitDetail({ bagts, flt, onFlt }: { bagts: Async<BagtsRow[]> } & FltProps) {
   const ail = bagts.state === 'ready' ? bagts.data.reduce((a, x) => a + x.ail, 0) : null;
+  const sel = flt?.sec === 'benefit' ? flt.key : null;
+  /** Ангилал дарахад — зурагт тэр төрлийн барилгын давхаргууд л үлдэнэ */
+  const pick = (key: string) => {
+    const subs = SOC_MATCH[key];
+    const ids = subs ? layersByTitle(subs).filter((id) => id.startsWith('pkg:')) : [];
+    if (ids.length) onFlt({ sec: 'benefit', key, label: `Нийгэм: ${key}`, layers: ids });
+  };
 
   return (
     <>
@@ -1399,6 +1562,8 @@ function BenefitDetail({ bagts }: { bagts: Async<BagtsRow[]> }) {
       <Panel title="Нийгмийн дэд бүтэц">
         <Bars
           inline
+          selected={sel}
+          onSelect={pick}
           items={SOCIAL.rows.map((r, i) => ({
             key: r.label,
             label: r.label,
