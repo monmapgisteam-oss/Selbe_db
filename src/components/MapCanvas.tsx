@@ -36,6 +36,7 @@ import {
   type LayerDef,
 } from '@/lib/services';
 import { SCENE3D_LAYERS } from '@/lib/scene3d';
+import { plan2dStyleOf } from '@/lib/plan2d';
 import { queryExtent, queryFeatures, type Aoi } from '@/lib/query';
 import { loadBlockProgress, cachedBlockProgress, type BlockProgressMap } from '@/lib/blockProgress';
 import { webmapStyleOf } from '@/lib/webmapStyle';
@@ -558,7 +559,10 @@ function buildLayers(uniform = false): Layer[] {
       visible: false,
       ...(d.minScale ? { minScale: d.minScale } : {}),
       elevationInfo: ON_GROUND,
-      renderer: webRenderer
+      // `sb:*` — «Selbe 2D map 0804» webmap-ийн ЯГ renderer (100% style).
+      renderer: plan2dStyleOf(d.id)
+        ? (rendererJsonUtils.fromJSON(plan2dStyleOf(d.id) as never) as unknown as RendererProp)
+        : webRenderer
         ? (rendererJsonUtils.fromJSON(webRenderer as never) as unknown as RendererProp)
         : d.paint
         ? paintRenderer(d)
