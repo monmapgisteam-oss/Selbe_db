@@ -23,5 +23,7 @@ jobs:
 
       - run: npm ci
       - run: npm run typecheck
+      # ESLint (Next core-web-vitals + TS) — warning зөвшөөрнө, error унагана
+      - run: npm run lint
       # Амьд өгөгдлийн шалгалтууд (filters/series/blockProgress/bagts/monitor/floor)
       - run: npm test

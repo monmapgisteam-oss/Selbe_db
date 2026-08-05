@@ -59,18 +59,36 @@ const money = (v: number): { v: string; unit: string } =>
       : v >= 1e6 ? { v: num(v / 1e6, 1), unit: 'сая ₮' }
         : { v: num(v, 0), unit: '₮' };
 
-/** Бүлэглэсэн мөрүүд → диаграмын зүсмэгүүд (өнгө автоматаар) */
-function toItems(rows: Row[], field: string, valueKey: string) {
+/** Бүлэглэсэн мөрүүд → диаграмын зүсмэгүүд (өнгө автоматаар, тоо НЭГЖТЭЙ) */
+function toItems(rows: Row[], field: string, valueKey: string, unit = 'ш') {
   return groups(rows, field, 'Тодорхойгүй', [valueKey]).map((grp, i) => ({
     key: grp.label || `#${i}`,
     label: grp.label,
     value: grp.values[valueKey] ?? 0,
+    display: `${num(grp.values[valueKey] ?? 0)} ${unit}`,
     color: PALETTE[i % PALETTE.length],
   }));
 }
 
 type StatusBars = { key: string; label: string; value: number; color: string }[];
-type ReasonItems = { key: string; label: string; n: number; pct: number; area: number; color: string }[];
+type ReasonItems = {
+  key: string; label: string; n: number; pct: number; area: number; color: string;
+  /** Түүхий утгуудаас урьдчилан бүтээсэн WHERE — дарж зурагт шүүхэд */
+  where: string;
+}[];
+
+/* ── Чарт дарж газрын зурагт шүүх (дашбоардтай ИЖИЛ механизм) ── */
+
+type GFlt = { grp: string; key: string; label: string; where: string; only: string[] };
+
+/** SQL string literal — дан хашилтыг давхарлана */
+const sq = (v: string) => v.replace(/'/g, "''");
+
+/** Ангиллын нэр → WHERE («Тодорхойгүй» = хоосон/null) */
+const eqOrNull = (field: string, label: string) =>
+  label === 'Тодорхойгүй'
+    ? `${field} IS NULL OR ${field} = ''`
+    : `${field} = '${sq(label)}'`;
 
 type GazarData = {
   /** `Tuluv` төлөвөөс: чөлөөлсөн (бүрэн+цэвэрлэсэн) ба үлдсэн */
@@ -97,6 +115,7 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
 
   /** Sketch-ээс ирсэн геометр — бүдгэрүүлэлт ба REST шүүлтийг ЗЭРЭГ тохируулна */
   const onSketch = useCallback((geom: __esri.Geometry | null) => {
+    setFlt(null); // полигон шүүлт тодруулгыг эзэмшинэ — чарт-шүүлтийг цэвэрлэнэ
     if (!geom) {
       setAoi(null);
       setHighlight(null);
@@ -115,9 +134,27 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
 
   const startDraw = useCallback(() => setDrawToken((t) => t + 1), []);
 
+  /**
+   * Чарт-шүүлт — бар/зүсмэг дарахад холбогдох давхаргад тодруулга тавина.
+   * Ижил мөрийг дахин дарвал арилна. Полигон (AOI) шүүлттэй ЗЭРЭГ биш —
+   * сүүлд хийсэн үйлдэл нь тодруулгыг эзэмшинэ.
+   */
+  const [flt, setFlt] = useState<GFlt | null>(null);
+  const fltRef = useRef<GFlt | null>(null);
+  fltRef.current = flt;
+  // ⚠️ setState-ийн updater ДОТОР setHighlight дуудаж болохгүй (React render
+  //    дундуур өөр компонент шинэчилнэ) — тул ref-ээс уншиж ГАДНА нь дуудна.
+  const pickFlt = useCallback((next: GFlt) => {
+    const cur = fltRef.current;
+    const val = cur && cur.grp === next.grp && cur.key === next.key ? null : next;
+    setFlt(val);
+    setHighlight(val ? val.where : null, val ? val.only : undefined);
+  }, [setHighlight]);
+
   const clear = useCallback(() => {
     setClearToken((t) => t + 1);
     setAoi(null);
+    setFlt(null);
     setHighlight(null);
   }, [setHighlight]);
 
@@ -157,29 +194,40 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     const remaining = st('Үлдсэн нэгж талбар');
     const statusAreaBy: StatusBars = STATUS_META.map((m) => {
       const s = st(m.value);
-      return { key: m.value, label: m.label, value: Math.round(s.a / 100) / 100, color: m.color };
+      const ha2 = Math.round(s.a / 100) / 100;
+      return { key: m.value, label: m.label, value: ha2, display: `${num(ha2, 2)} га`, color: m.color };
     });
-    // Шалтгааны нэрийг цэвэрлэж (арын зай, төгсгөлийн «.») нэгтгэнэ
-    const rmap = new Map<string, { n: number; a: number }>();
+    // Шалтгааны нэрийг цэвэрлэж (арын зай, төгсгөлийн «.») нэгтгэнэ.
+    // ⚠️ Түүхий утгуудыг мөн хадгална — дарж шүүхэд WHERE яг таарах ёстой.
+    const rmap = new Map<string, { n: number; a: number; raws: Set<string> }>();
     for (const r of lReason) {
+      const raw = String(r[L.fields.progress] ?? '');
       let k = text(r[L.fields.progress]).trim().replace(/\.$/, '').trim();
       if (!k || k === '—') k = 'Тодорхойгүй';
-      const cur = rmap.get(k) ?? { n: 0, a: 0 };
+      const cur = rmap.get(k) ?? { n: 0, a: 0, raws: new Set<string>() };
       cur.n += Number(r.n ?? 0);
       cur.a += Number(r.a ?? 0);
+      cur.raws.add(raw);
       rmap.set(k, cur);
     }
     const remN = remaining.n || 1;
     const reasons: ReasonItems = [...rmap.entries()]
       .sort((x, y) => y[1].n - x[1].n)
-      .map(([label, v]) => ({
-        key: label,
-        label,
-        n: v.n,
-        pct: Math.round((v.n / remN) * 100),
-        area: Math.round(v.a / 100) / 100,
-        color: PARCEL_PROGRESS_HUES[label] ?? '#94a3b8',
-      }));
+      .map(([label, v]) => {
+        const eq = [...v.raws].filter((x) => x.trim() !== '')
+          .map((x) => `${L.fields.progress} = '${sq(x)}'`);
+        if (label === 'Тодорхойгүй') eq.push(`${L.fields.progress} IS NULL`, `${L.fields.progress} = ''`);
+        return {
+          key: label,
+          label,
+          n: v.n,
+          pct: Math.round((v.n / remN) * 100),
+          area: Math.round(v.a / 100) / 100,
+          color: PARCEL_PROGRESS_HUES[label] ?? '#94a3b8',
+          // Шалтгаан нь зөвхөн ҮЛДСЭН талбарт хамаатай тул төлөвөөр хамт хязгаарлана
+          where: `${L.fields.status}='Үлдсэн нэгж талбар' AND (${eq.join(' OR ')})`,
+        };
+      });
     return {
       left: {
         n: Number(lStat.n ?? 0),
@@ -196,11 +244,11 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         value: Number(bStat.val ?? 0), floors: Number(bStat.fl ?? 0),
         unitPrice: Number(bStat.up ?? 0),
       },
-      bType: toItems(bType, B.fields.type, 'n'),
-      bMat: toItems(bMat, B.fields.material, 'n'),
+      bType: toItems(bType, B.fields.type, 'n', 'барилга'),
+      bMat: toItems(bMat, B.fields.material, 'n', 'барилга'),
       p: { n: Number(pStat.n ?? 0), area: Number(pStat.area ?? 0) },
-      pRight: toItems(pRight, P.fields.right, 'n'),
-      pUse: toItems(pUse, P.fields.landuse, 'n'),
+      pRight: toItems(pRight, P.fields.right, 'n', 'нэгж'),
+      pUse: toItems(pUse, P.fields.landuse, 'n', 'нэгж'),
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aoiKey]);
@@ -241,8 +289,22 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                   </p>
                 </div>
                 <p className={g.subHead}>Талбай (га) төлөвөөр</p>
-                <Bars items={d.statusAreaBy} limit={3} />
-                {d.reasons.length > 0 && (
+                <Bars
+                  items={d.statusAreaBy}
+                  limit={3}
+                  selected={flt?.grp === 'status' ? flt.key : null}
+                  onSelect={(k) => pickFlt({
+                    grp: 'status', key: k, label: `Төлөв: ${k}`,
+                    where: `${PARCEL_LEFT.fields.status} = '${sq(k)}'`, only: ['land:left'],
+                  })}
+                />
+                {d.reasons.length > 0 && (() => {
+                  const selReason = flt?.grp === 'reason' ? flt.key : null;
+                  const pickReason = (k: string) => {
+                    const r = d.reasons.find((x) => x.key === k);
+                    if (r) pickFlt({ grp: 'reason', key: k, label: `Шалтгаан: ${k}`, where: r.where, only: ['land:left'] });
+                  };
+                  return (
                   <>
                     <p className={g.subHead}>
                       Үлдсэн {num(d.left.remaining)} талбарын шалтгаан
@@ -250,14 +312,18 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                     </p>
                     <Bars
                       limit={8}
+                      selected={selReason}
+                      onSelect={pickReason}
                       items={d.reasons.map((r) => ({
-                        key: r.key, label: r.label, value: r.n, display: num(r.n), color: r.color,
+                        key: r.key, label: r.label, value: r.n, display: `${num(r.n)} талбар`, color: r.color,
                       }))}
                     />
                     <p className={g.subHead}>Шалтгаан<span className={g.subNote}> · хувиар</span></p>
                     <Bars
                       limit={8}
                       max={100}
+                      selected={selReason}
+                      onSelect={pickReason}
                       items={d.reasons.map((r) => ({
                         key: r.key, label: r.label, value: r.pct, display: `${r.pct}%`, color: r.color,
                       }))}
@@ -265,6 +331,8 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                     <p className={g.subHead}>Шалтгаан<span className={g.subNote}> · талбайгаар (га)</span></p>
                     <Bars
                       limit={8}
+                      selected={selReason}
+                      onSelect={pickReason}
                       items={[...d.reasons]
                         .sort((a, b) => b.area - a.area)
                         .map((r) => ({
@@ -272,7 +340,8 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                         }))}
                     />
                   </>
-                )}
+                  );
+                })()}
               </>
             ))}
           </div>
@@ -330,6 +399,16 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           <span className={g.scopeText}>{aoi ? 'Сонгосон талбай' : 'Бүх талбай'}</span>
           <span className={g.scopeHint}>{aoi ? 'полигоноор шүүсэн' : 'полигон зурж шүүнэ'}</span>
         </div>
+
+        {/* Чарт-шүүлтийн чип — дашбоардтай ижил, ×-ээр цуцлана */}
+        {flt && (
+          <div className={o.chipBar}>
+            <div className={o.filterChip}>
+              <span className={o.filterLabel}>{flt.label}</span>
+              <button type="button" className={o.filterClear} onClick={() => pickFlt(flt)} aria-label="Цуцлах">×</button>
+            </div>
+          </div>
+        )}
       </main>
 
       {/* ── БАРУУН: Барилга + Кадастр (нэгтгэсэн багана) ── */}
@@ -349,12 +428,26 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                   <Stat value={d.b.unitPrice ? money(d.b.unitPrice).v : '—'} unit={d.b.unitPrice ? `${money(d.b.unitPrice).unit}/м²` : ''} label="Дундаж м² үнэ" />
                 </Stats>
                 {d.bType.length > 0 && (
-                  <Donut items={d.bType} size={112} width={17} center={num(d.b.n)} centerLabel="барилга" stack />
+                  <Donut
+                    items={d.bType} size={112} width={17} center={num(d.b.n)} centerLabel="барилга" stack
+                    selected={flt?.grp === 'bType' ? flt.key : null}
+                    onSelect={(k) => pickFlt({
+                      grp: 'bType', key: k, label: `Барилга: ${k}`,
+                      where: eqOrNull(GAZAR_BUILDING.fields.type, k), only: ['gazar:building'],
+                    })}
+                  />
                 )}
                 {d.bMat.length > 0 && (
                   <>
                     <p className={g.subHead}>Материалаар</p>
-                    <Bars items={d.bMat} inline limit={5} />
+                    <Bars
+                      items={d.bMat} inline limit={5}
+                      selected={flt?.grp === 'bMat' ? flt.key : null}
+                      onSelect={(k) => pickFlt({
+                        grp: 'bMat', key: k, label: `Материал: ${k}`,
+                        where: eqOrNull(GAZAR_BUILDING.fields.material, k), only: ['gazar:building'],
+                      })}
+                    />
                   </>
                 )}
               </>
@@ -375,12 +468,26 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                   <Stat value={ha(d.p.area)} unit="га" label="Талбай" />
                 </Stats>
                 {d.pRight.length > 0 && (
-                  <Donut items={d.pRight} size={112} width={17} center={num(d.p.n)} centerLabel="нэгж" stack />
+                  <Donut
+                    items={d.pRight} size={112} width={17} center={num(d.p.n)} centerLabel="нэгж" stack
+                    selected={flt?.grp === 'pRight' ? flt.key : null}
+                    onSelect={(k) => pickFlt({
+                      grp: 'pRight', key: k, label: `Эрх: ${k}`,
+                      where: eqOrNull(GAZAR_PARCEL.fields.right, k), only: ['gazar:parcel'],
+                    })}
+                  />
                 )}
                 {d.pUse.length > 0 && (
                   <>
                     <p className={g.subHead}>Зориулалтаар</p>
-                    <Bars items={d.pUse} inline limit={5} />
+                    <Bars
+                      items={d.pUse} inline limit={5}
+                      selected={flt?.grp === 'pUse' ? flt.key : null}
+                      onSelect={(k) => pickFlt({
+                        grp: 'pUse', key: k, label: `Зориулалт: ${k}`,
+                        where: eqOrNull(GAZAR_PARCEL.fields.landuse, k), only: ['gazar:parcel'],
+                      })}
+                    />
                   </>
                 )}
               </>

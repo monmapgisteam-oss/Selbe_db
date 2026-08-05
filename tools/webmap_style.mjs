@@ -110,41 +110,12 @@ walk(map.operationalLayers);
 
 for (const [from, to] of ALIAS) if (S[from]) S[to] = S[from];
 
-const out = `/**
- * ⚠️ АВТОМАТААР ҮҮССЭН ФАЙЛ — ГАРААР БҮҮ ЗАСВАРЛА.
- *   Үүсгэгч: tools/webmap_style.mjs
- *   Эх webmap: ${ITEM}
- *
- * Webmap-ийн давхарга бүрийн ЗАГВАР (renderer JSON · bloom effect · opacity)
- * үйлчилгээний URL-аар түлхүүрлэгдсэн. MapCanvas давхарга бүрээ URL-аар нь
- * эндээс хайж, олдвол \`Renderer.fromJSON()\`-д ШУУД өгнө — тиймээс газрын
- * зураг webmap дээр харагдаж буйтай яг ижил. Олдоогүй давхарга (хяналт,
- * кадастр г.м. энэ webmap-д байхгүй) хуучин каталогийн загвараа хэрэглэнэ.
- *
- * Webmap засагдвал: \`node tools/webmap_style.mjs\` ажиллуулж дахин үүсгэнэ.
+/**
+ * ⚠️ 2026-08-05: bundle хөнгөлөх зорилгоор снапшотыг src/lib/webmapStyle.ts-д
+ *    БИШ, public/webmap-style.json руу бичдэг болов — апп ажиллах үедээ fetch
+ *    хийж татна (src/lib/webmapStyle.ts нь одоо slim loader, ГАРААР засварлана).
  */
-
-export type WebmapStyle = {
-  /** drawingInfo.renderer — webmap-ийн ЯГ хэлбэрээр (Renderer.fromJSON-д) */
-  renderer?: unknown;
-  /** Масштабаас хамаарсан bloom — SDK-ийн layer.effect хэлбэрт хөрвүүлсэн */
-  effect?: { scale: number; value: string }[];
-  opacity?: number;
-  /** Каталогийн swatch-д — renderer-ийн гол өнгө */
-  color?: string;
-};
-
-export const WEBMAP_ITEM = ${JSON.stringify(ITEM)};
-
-const S: Record<string, WebmapStyle> = ${JSON.stringify(S, null, 2)};
-
-/** URL-ыг харьцуулахын өмнө нэг хэлбэрт (кирилл зам encode-той ч, шуудхан ч ирдэг) */
-const norm = (u: string) => decodeURIComponent(u).replace(/\\/+$/, "").toLowerCase();
-
-/** Давхаргын үйлчилгээний URL → webmap-ийн загвар (байхгүй бол undefined) */
-export const webmapStyleOf = (url: string): WebmapStyle | undefined => S[norm(url)];
-`;
-
-const dest = join(dirname(fileURLToPath(import.meta.url)), "..", "src", "lib", "webmapStyle.ts");
+const out = JSON.stringify(S);
+const dest = join(dirname(fileURLToPath(import.meta.url)), "..", "public", "webmap-style.json");
 writeFileSync(dest, out, "utf-8");
-console.log(`OK: ${matched} давхаргын загвар → src/lib/webmapStyle.ts (${(out.length / 1024).toFixed(0)} KB)`);
+console.log(`OK: ${matched} давхаргын загвар → public/webmap-style.json (${(out.length / 1024).toFixed(0)} KB)`);
