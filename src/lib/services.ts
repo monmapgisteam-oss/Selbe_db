@@ -27,6 +27,8 @@
  * гол ажиллагаа env-гүйгээр ч эвдрэхгүй. Бүх дэд үйлчилгээ (ET, GAZAR, IMAGERY г.м.)
  * эдгээр суурьнаас template-ээр гардаг тул зөвхөн энд солиход хангалттай.
  */
+import { PLAN2D_LAYERS } from './plan2d';
+
 const env = (v: string | undefined, fallback: string): string =>
   v == null || v === '' ? fallback : v;
 
@@ -1272,7 +1274,32 @@ export const BOUNDARY = {
  * зураасны хээ ба зузаанаар ялгав: нэрийг нь хадгалсан ч зурагт «цэнхэр дулаан»
  * нь усны шугамтай андуурагдахаа больсон.
  */
+/**
+ * SB — «Selbe 2D map 0804» webmap-ийн 14 давхарга (`selbe_3D__0804_WFL1`).
+ * Каталогийн LayerDef болгон үүсгэнэ; ГАЗРЫН ЗУРАГТ style нь webmap renderer-ээс
+ * ирнэ (`plan2dStyleOf` → `buildLayers`), каталогийн swatch нь fallback `hue`.
+ * Талбай/уртыг нийлбэрт тооцуулахаар `qty` тохируулав.
+ */
+const SB_BASE = `${HJ}/selbe_3D__0804_WFL1/FeatureServer`;
+const SB_LAYERS: LayerDef[] = PLAN2D_LAYERS.map((l) => ({
+  id: l.id,
+  n: l.sub,
+  url: `${SB_BASE}/${l.sub}`,
+  title: l.title,
+  topic: "plan" as const,
+  geom: l.geom,
+  hue: "#94a3b8",
+  fill: 0.4,
+  width: 1,
+  ...(l.geom === "area"
+    ? { qty: { field: "Shape__Area", unit: "м²" } }
+    : l.geom === "line"
+    ? { qty: { field: "Shape__Length", unit: "м" } }
+    : {}),
+}));
+
 export const LAYERS: LayerDef[] = [
+  ...SB_LAYERS,
   /* ─────────── Барилга байгууламж ─────────── */
   {
     id: "et:24",
@@ -2348,6 +2375,7 @@ export type GroupKey =
   | "road"
   | "transit"
   | "green"
+  | "orchin"
   | "land"
   | "pkgNet"
   | "pkgPow"
@@ -2420,6 +2448,13 @@ export const LAYER_GROUPS: {
     desc: "Ногоон байгууламж, цэцэрлэгт хүрээлэн",
     icon: "layers",
     hue: "#8ebd00",
+  },
+  {
+    key: "orchin",
+    title: "Тохижилт",
+    desc: "Гол, спорт, хүүхдийн тоглоом, сүүдрэвч",
+    icon: "layers",
+    hue: "#0ea5e9",
   },
   {
     key: "land",
@@ -2496,13 +2531,21 @@ export const LAYER_GROUPS: {
  */
 export const GROUP_LAYERS: Record<GroupKey, string[]> = {
   zone: ["zone"],
-  build: ["et:24"],
+  // ⚠️ Ерөнхий төлөвлөгөөний ФИЗИК давхаргууд «Selbe 2D map 0804» webmap-ийн
+  //    `sb:*` (selbe_3D__0804_WFL1)-ээр СОЛИГДЛОО — style webmap-аас 100%. Хуучин
+  //    `et:24`/`et:29`/`et:27`/`dugui`/`nogoon`/`tree` LayerDef нь LAYERS-д ХЭВЭЭР
+  //    (analysis/өртөг шууд уншдаг) ч plan каталогийн жагсаалтаас гарлаа.
+  build: ["sb:4"],
   // 110кв агаарын · 10кв кабель трасс · цахилгааны шугам · 0.4кв кабель трасс
   power: ["et:124", "et:125", "et:126", "et:127"],
   prep: ["et:15"],
-  road: ["et:29", "et:27", "dugui", "et:12"],
+  // Автозам · Явган зам · Дугуйн зам · Замын цагаан зураас (webmap) + Гүүр (хэвээр)
+  road: ["sb:2", "sb:3", "sb:15", "sb:5", "et:12"],
   transit: ["et:6", "et:2", "et:1"],
-  green: ["nogoon", "et:26", "tree"],
+  // Ногоон байгууламж · Мод (webmap) + ЕТ ногоон (хэвээр, давхцаагүй)
+  green: ["sb:1", "sb:0", "et:26"],
+  // Тохижилт — Гол · Спорт (полигон/шугам) · Хүүхдийн тоглоом · Сүүдрэвч (webmap)
+  orchin: ["sb:16", "sb:8", "sb:7", "sb:11", "sb:10", "sb:14", "sb:13"],
   /**
    * ⚠️ ЕТ-ээс ГАДУУРХ хоёр үйлчилгээ. `PLAN_LAYER_IDS`-д орж каталог, зураг,
    * нийлбэрт гарна — өртгийн талбаргүй тул дэд бүтцийн ӨРТӨГТ нөлөөлөхгүй.
@@ -2545,6 +2588,13 @@ export const INITIAL_MAP_LAYERS: string[] = [
   "nogoon", // Ногоон байгууламж
   "tree", // Мод
 ];
+
+/**
+ * Ерөнхий төлөвлөгөө (2D) нээгдэхэд асаалттай давхаргууд — «Selbe 2D map 0804»
+ * webmap шиг харагдуулахаар түүний 14 давхаргыг (`sb:*`) бүгдийг асаана.
+ * ⚠️ Dashboard-ын `INITIAL_MAP_LAYERS`-ээс ТУСДАА — plan-ыг л webmap-аар сольсон.
+ */
+export const PLAN_INITIAL: string[] = PLAN2D_LAYERS.map((l) => l.id);
 
 /**
  * БАРИЛГЫН ХЯНАЛТЫН багц — каталогт тусдаа бүлэг болж гарна.
@@ -2645,13 +2695,10 @@ export const VIEWS: {
     hue: "#0d9488",
     layers: PLAN_LAYER_IDS,
     /**
-     * ⚠️ Нээгдэхэд `INITIAL_MAP_LAYERS` (барилга, зам, ногоон, мод) асаалттай
-     * (хэрэглэгчийн сонголт, 2026-07-31 — өмнө нь хоосон байв). Самбарын
-     * «сонгоогүй» төлөв энэ жагсаалттай ЯГ тэнцүү эсэхээр тодорхойлогддог
-     * (`planGroups`-ын `untouched`) тул анхны байдалд баруун талд ерөнхий
-     * тойм хэвээр харагдана.
+     * ⚠️ Нээгдэхэд «Selbe 2D map 0804» webmap-ийн 14 давхарга (`PLAN_INITIAL`)
+     * асаалттай — plan-ыг webmap шиг харуулна.
      */
-    initial: INITIAL_MAP_LAYERS,
+    initial: PLAN_INITIAL,
   },
   /**
    * БАГЦЫН МЭДЭЭЛЭЛ — барилга угсралтын 7 багц тус бүрийн БҮРЭН хуудас.
