@@ -2916,6 +2916,9 @@ export const drawOrder = (id: string): number => {
   if (id === "road" || id === "roadOld") return -2;
   // Бүс бол АГУУЛАГЧ — хамгийн доор (барилга нь дүүргэлтийнх нь дээр гарна).
   if (id === ZONE_LAYER.id) return -1;
+  // ⚠️ «Гол» (ус, `sb:16`) — талбай ч гэсэн зам/гүүр/барилгын ДОР суурь болно
+  //    (гүүр усны ДЭЭГҮҮР гарна). Эс бөгөөс массивын дараалалд ус бүхнийг дарна.
+  if (id === "sb:16") return -0.5;
   const g = LAYER_BY_ID[id]?.geom;
   return g === "point" ? 2 : g === "line" ? 1 : 0;
 };
