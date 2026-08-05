@@ -480,8 +480,8 @@ function PlanOverview({
             <>
               <Section title="Ерөнхий үзүүлэлт" note="төсөл бүхэлдээ">
                 <Stats cols={2}>
-                  <Stat value={num(allN)} label="Нийт" accent />
-                  <Stat value={num(PLAN_LAYER_IDS.length)} label="Давхарга" />
+                  <Stat value={num(allN)} unit="объект" label="Нийт" accent />
+                  <Stat value={num(PLAN_LAYER_IDS.length)} unit="ш" label="Давхарга" />
                 </Stats>
               </Section>
 
@@ -724,12 +724,12 @@ function LayerTypeCharts({
         {/* Донат — төрлийн эзлэх хувь. 8-аас олон зүсмэг уншигдахгүй тул багана л үлдэнэ. */}
         {items.length <= 8 && (
           <div style={{ margin: '10px 0 12px' }}>
-            <Donut items={items} center={num(total)} selected={selKey} onSelect={pickType} />
+            <Donut items={items} center={num(total)} centerLabel="ш" selected={selKey} onSelect={pickType} />
           </div>
         )}
 
         <Bars
-          items={items.map((it) => ({ ...it, display: num(it.value) }))}
+          items={items.map((it) => ({ ...it, display: `${num(it.value)} ш` }))}
           limit={8}
           inline
           selected={selKey}
@@ -880,7 +880,7 @@ function LayerDashboard({
           <Empty label="Үзүүлэлт татагдсангүй." />
         ) : (
           <Stats cols={avgQty != null ? 3 : 2}>
-            <Stat value={t ? num(t.n) : '…'} label="Тоо" accent />
+            <Stat value={t ? num(t.n) : '…'} unit="ш" label="Тоо" accent />
             <Stat value={qty ?? '—'} label={d.qty?.unit === 'м²' ? 'Талбай' : 'Урт'} />
             {avgQty != null && (
               <Stat
@@ -1124,6 +1124,19 @@ function PickedZone({
   //    каноник («Багц-1») тул шүүлт, харуулалт хоёуланд нь хөрвүүлж авна.
   const id = zoneCanon(attrs[F.id]);
   const type = zoneType(attrs[F.type]);
+  const { setHighlight } = useMap();
+  /** Барилгын төлөв дарахад — тэр бүсийн тийм төлөвтэй барилгуудыг тодруулна */
+  const [selSt, setSelSt] = useState<string | null>(null);
+  const pickStatus = (v: string) => {
+    const off = selSt === v;
+    setSelSt(off ? null : v);
+    if (off) { setHighlight(null); return; }
+    const zw = zoneWhere(BUILT_LAYER, id);
+    setHighlight(
+      `${zw ? `(${zw}) AND ` : ''}${BUILT_FIELDS.status} = '${v.replace(/'/g, "''")}'`,
+      BUILT_LAYER.id,
+    );
+  };
 
   const q = useAsync(async () => {
     const B = BUILT_FIELDS;
@@ -1159,7 +1172,7 @@ function PickedZone({
 
       <Stats cols={3}>
         <Stat value={num(n(F.landHa), 2)} unit="га" label="Талбай" accent />
-        <Stat value={num(n(F.households))} label="Төлөвлөсөн айл" />
+        <Stat value={num(n(F.households))} unit="айл" label="Төлөвлөсөн айл" />
         <Stat value={num((n(F.builtM2) ?? 0) / 1000, 0)} unit="мянган м²" label="Барилгын талбай" />
       </Stats>
 
@@ -1185,6 +1198,8 @@ function PickedZone({
               Барилга <span className={s.facetNote}>{num(x.built)} ш · {num(x.urh)} өрх · {num(x.pop)} хүн</span>
             </div>
             <Bars
+              selected={selSt}
+              onSelect={pickStatus}
               items={x.status.map((st, i) => ({
                 key: st.value, label: st.value, value: st.n,
                 // НЭГ ӨНГӨ (барилгын давхаргын hue) тодоос бүдгэр — солонго биш

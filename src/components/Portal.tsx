@@ -149,10 +149,61 @@ export default function Portal(
 ) {
   return (
     <MapProvider>
+      {/* Нэвтрээд дашбоард (газрын зураг) бэлэн болтол ачаалалтын дэлгэц */}
+      <Booting />
       <FilterProvider>
         <PortalContent onHome={onHome} navScope={navScope} docsAllowed={docsAllowed} isSuper={isSuper} />
       </FilterProvider>
     </MapProvider>
+  );
+}
+
+/**
+ * BOOTING — портал нээгдэхэд газрын зураг (view) бэлэн болтол ДҮҮРЭН ДЭЛГЭЦИЙН
+ * ачаалалтын хэсэг харуулна. `useMap().view` нь `view.when()` (setReady) дээр л
+ * тавигддаг тул түүнийг «дашбоард нээгдлээ» дохио болгоно. Эхний удаа бэлэн
+ * болмогц дахин ХАРАГДАХГҮЙ (2D↔3D солиход анивчихгүй).
+ */
+function Booting() {
+  const { view } = useMap();
+  const [done, setDone] = useState(false);
+  useEffect(() => {
+    if (done) return;
+    // ⚠️ Context дэх `view` нь dev StrictMode-ийн register(null) timing-ээс болж
+    //    заримдаа хоцордог тул DOM-ийн `esri-view` бэлэн эсэхийг ч POLLING-оор
+    //    шалгана. Аль нэг нь бэлэн болмогц (эсвэл дээд тал нь ~12с) хаана.
+    let tries = 0;
+    const iv = setInterval(() => {
+      tries += 1;
+      const el = document.querySelector('.esri-view') as (Element & { __esriView__?: { ready?: boolean } }) | null;
+      const domReady = !!(el && el.__esriView__ && el.__esriView__.ready);
+      if (domReady || !!view || tries > 40) setDone(true);
+    }, 300);
+    return () => clearInterval(iv);
+  }, [view, done]);
+  if (done) return null;
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      style={{
+        position: 'fixed', inset: 0, zIndex: 4000,
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        gap: 22, background: 'radial-gradient(120% 120% at 50% 30%, #0f1b2e 0%, #0a1220 60%, #070d18 100%)',
+        color: '#e2e8f0',
+      }}
+    >
+      <style>{'@keyframes selbeSpin{to{transform:rotate(360deg)}}@keyframes selbePulse{0%,100%{opacity:.55}50%{opacity:1}}'}</style>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/logo.svg" alt="" width={60} height={60} style={{ animation: 'selbePulse 1.8s ease-in-out infinite' }} />
+      <div style={{
+        width: 40, height: 40, borderRadius: '50%',
+        border: '3px solid rgba(148,197,255,0.18)', borderTopColor: '#38bdf8',
+        animation: 'selbeSpin .9s linear infinite',
+      }} />
+      <div style={{ fontSize: 15, fontWeight: 500, letterSpacing: 0.3 }}>Дашбоард ачаалж байна…</div>
+      <div style={{ fontSize: 12.5, color: '#8aa0bd' }}>Сэлбэ 20 минутын хот · Digital Twin Platform</div>
+    </div>
   );
 }
 

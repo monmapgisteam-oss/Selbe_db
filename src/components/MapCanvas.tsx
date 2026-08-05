@@ -36,9 +36,10 @@ import {
   type LayerDef,
 } from '@/lib/services';
 import { SCENE3D_LAYERS } from '@/lib/scene3d';
+import { plan2dStyleOf, loadPlan2dStyle } from '@/lib/plan2d';
 import { queryExtent, queryFeatures, type Aoi } from '@/lib/query';
 import { loadBlockProgress, cachedBlockProgress, type BlockProgressMap } from '@/lib/blockProgress';
-import { webmapStyleOf } from '@/lib/webmapStyle';
+import { webmapStyleOf, loadWebmapStyle } from '@/lib/webmapStyle';
 import * as rendererJsonUtils from '@arcgis/core/renderers/support/jsonUtils';
 import { num, pct, date, text } from '@/lib/format';
 import s from './map.module.css';
@@ -206,34 +207,10 @@ type RendererProp = NonNullable<__esri.FeatureLayerProperties['renderer']>;
 
 const simple = (sym: unknown) => ({ type: 'simple', symbol: sym }) as unknown as RendererProp;
 
-/**
- * УСНЫ ГАДАРГУУ — ArcGIS-ийн уугуул `WaterSymbol3DLayer` (реал-тайм долгион,
- * туссан гэрэл, гүний өнгө).
- *
- * ⚠️ ЗӨВХӨН SceneView-д зурагдана. MapView-д ArcGIS энэ симбол давхаргыг
- * чимээгүй унагааж полигоныг ОГТ зурахгүй (алдаа ч шидэхгүй) — тиймээс энэ
- * симболтой давхаргыг 2D-д газрын зурагт нэмэхгүй.
- *
- * ⚠️ `elevationInfo` нь `on-the-ground` эсвэл `absolute-height` байх ЁСТОЙ.
- * Усан сангийн Z утга худал (6-аас 5-д нь 0) тул газарт наана — `relative-*`
- * горимуудад ус огт харагдахгүй.
- *
- * ⚠️ `waterbodySize` нь долгионы МАСШТАБЫГ заана, объектын хэмжээг биш:
- * `large` нь далайн урт долгион зурдаг бөгөөд 3–11 га усан санд долгион нь
- * полигоноос урт болж, гадаргуу хөдөлгөөнгүй хавтгай мэт харагдана. `small`
- * (цөөрөм) нь энэ хэмжээст тохирно. `calm` — усан сан нь урсгалгүй.
- */
-const WATER_SYMBOL = {
-  type: 'polygon-3d',
-  symbolLayers: [{
-    type: 'water',
-    waveDirection: 260,
-    // Эх веб зургийн усан сангийн өнгө (`#003399`)
-    color: USAN_SAN.hue,
-    waveStrength: 'calm',
-    waterbodySize: 'small',
-  }],
-} as const;
+/* ⚠️ Урьд нь энд «Усан сан»-гийн `WATER_SYMBOL` (WaterSymbol3DLayer) байв.
+   Хэрэглэгчийн хүсэлтээр «Усан сан» давхаргыг газрын зурагт унтраасан тул
+   ашиглагдахаа больж УСТСАН. Буцааж асаахдаа энэ симбол + доорх нэмэх логикийг
+   сэргээнэ. */
 
 /** Каталогийн тодорхойлолтоос симбол — зураг ба тайлбар нэг эх сурвалжтай */
 /**
@@ -558,7 +535,10 @@ function buildLayers(uniform = false): Layer[] {
       visible: false,
       ...(d.minScale ? { minScale: d.minScale } : {}),
       elevationInfo: ON_GROUND,
-      renderer: webRenderer
+      // `sb:*` — «Selbe 2D map 0804» webmap-ийн ЯГ renderer (100% style).
+      renderer: plan2dStyleOf(d.id)
+        ? (rendererJsonUtils.fromJSON(plan2dStyleOf(d.id) as never) as unknown as RendererProp)
+        : webRenderer
         ? (rendererJsonUtils.fromJSON(webRenderer as never) as unknown as RendererProp)
         : d.paint
         ? paintRenderer(d)
@@ -785,6 +765,19 @@ export const MapCanvas = memo(function MapCanvas({
   const fadingRef = useRef<Set<string>>(new Set());
 
   const [ready, setReady] = useState(false);
+
+  /**
+   * Style снапшотууд (/webmap-style.json, /plan2d-style.json) — bundle-аас
+   * гаргаж ажиллах үед татдаг болсон тул Map барихаас ӨМНӨ ачаалж дуусгана
+   * (buildLayers синхроноор уншдаг). Хоёулаа кэштэй — дахин mount-д шууд ready.
+   */
+  const [stylesReady, setStylesReady] = useState(false);
+  useEffect(() => {
+    let on = true;
+    Promise.all([loadWebmapStyle(), loadPlan2dStyle()])
+      .then(() => { if (on) setStylesReady(true); });
+    return () => { on = false; };
+  }, []);
   /** Ачаалагдаж чадаагүй 3D загварын тоо — null = асуудалгүй */
   const [meshError, setMeshError] = useState<number | null>(null);
   /** Хулганы доорх объектын товч мэдээлэл */
@@ -825,7 +818,9 @@ export const MapCanvas = memo(function MapCanvas({
    * ⚠️ Map-ыг дахин үүсгэвэл давхаргууд шинээр ачаалагдаж, сонголт алдагдана.
    */
   useEffect(() => {
-    if (!el.current) return;
+    // ⚠️ Style снапшот ачаалагдаагүй бол Map барихгүй — buildLayers webmap
+    //    renderer-ээ синхроноор уншдаг тул эрт барьвал fallback style-тай үлдэнэ.
+    if (!el.current || !stylesReady) return;
 
     const mapKey = uniform ? 'uniform' : 'themed';
     if (!mapCache[mapKey] || mapCache[mapKey].destroyed) {
@@ -1080,7 +1075,7 @@ export const MapCanvas = memo(function MapCanvas({
       viewRef.current = null;
       registerRef.current(null);
     };
-  }, [dim]);
+  }, [dim, stylesReady]);
 
   /**
    * Компонент салахад Map-ыг УСТГАХГҮЙ — `mapCache`-д үлдэж дараагийн харагдацад
@@ -1156,22 +1151,11 @@ export const MapCanvas = memo(function MapCanvas({
      * MapView-д ч ажиллана) боловч хэрэглэгч 2D-д үүнийг асаах/унтраах
      * удирдлагагүй тул үлдээвэл байнга зурагдах, хааж болохгүй давхарга болно.
      */
+    // ⚠️ «Усан сан» — хэрэглэгчийн хүсэлтээр газрын зурагт УНТРААВ: огт нэмэхгүй,
+    //    байвал устгана (scene-ийн «Гол» ус хангалттай). Буцааж асаах бол өмнөх
+    //    `dim !== '2d'` дээр нэмэх логикийг сэргээнэ.
     const usan = map.findLayerById(USAN_SAN.id);
-    if (dim !== '2d' && !usan) {
-      map.add(new FeatureLayer({
-        id: USAN_SAN.id,
-        url: USAN_SAN.url,
-        title: USAN_SAN.title,
-        outFields: ['*'],
-        popupEnabled: false,
-        visible: true,
-        elevationInfo: ON_GROUND,
-        renderer: simple(WATER_SYMBOL),
-      }));
-    } else if (dim === '2d' && usan) {
-      map.remove(usan);
-      usan.destroy();
-    }
+    if (usan) { map.remove(usan); usan.destroy(); }
   }, [dim, ready]);
 
   /**
@@ -1418,9 +1402,10 @@ export const MapCanvas = memo(function MapCanvas({
       if (l.id.startsWith('bim:')) { l.visible = dim === 'bim'; return; }
       // Web scene-ийн 3D давхаргууд — ЗӨВХӨН BIM горимд (SceneView) харагдана.
       if (l.id.startsWith('scene3d:')) { l.visible = dim === 'bim'; return; }
-      // ⚠️ ЗӨВХӨН 3D-гийн давхарга нь каталогийн `visible` жагсаалтад ХЭЗЭЭ Ч
-      //    орохгүй — энэ шалгуургүй бол доорх мөр түүнийг тэр дор нь унтраана.
-      if (l.id === USAN_SAN.id) { l.visible = dim !== '2d'; return; }
+      // ⚠️ «Усан сан» — хэрэглэгчийн хүсэлтээр газрын зурагт УНТРААВ (усан бүрхэвч
+      //    scene-ийн «Гол»-той давхцаж/ил үлдэж байсан). Буцааж асаах бол
+      //    `dim !== '2d'` болгоно.
+      if (l.id === USAN_SAN.id) { l.visible = false; return; }
 
       // ⚠️ BIM горимд каталогийн 2D давхаргыг НУУНА — web scene өөрөө зам, ногоон,
       //    мод, барилгын 3D хувилбарыг агуулдаг тул давхцал/эмх замбараагүйг арилгаж

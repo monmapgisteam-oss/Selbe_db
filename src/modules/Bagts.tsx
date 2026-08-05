@@ -415,8 +415,8 @@ function ContractCard({ p }: { p: Pack }) {
         <div className={o.packRing}>
           <Ring value={p.progress} size={86} color={levelColor(p.progress)} label="гүйцэтгэл" />
           <Stats cols={2}>
-            <Stat value={num(p.blocks.length)} label="Блок" color={HUE} accent />
-            <Stat value={num(p.households)} label="Айл" color={HUE} accent />
+            <Stat value={num(p.blocks.length)} unit="блок" label="Блок" color={HUE} accent />
+            <Stat value={num(p.households)} unit="айл" label="Айл" color={HUE} accent />
           </Stats>
         </div>
         <Rows
@@ -498,12 +498,25 @@ function MonthsCard({ p }: { p: Pack }) {
  */
 function BlocksCard({ p }: { p: Pack }) {
   const withData = p.blocks.filter((b) => b.progress != null).length;
+  const { zoomToWhere, setHighlight } = useMap();
+  /** Сонгосон блок — дарахад зурагт тодруулж ойртоно, дахин дарахад болино */
+  const [selOid, setSelOid] = useState<string | null>(null);
+  const pick = (key: string) => {
+    const off = selOid === key;
+    setSelOid(off ? null : key);
+    if (off) { setHighlight(null); return; }
+    const w = `${BUILDING.oid} = ${Number(key)}`;
+    setHighlight(w, BLOCK_LAYER);
+    zoomToWhere(BLOCK_LAYER, w);
+  };
   return (
     <Section title="Блок бүрийн гүйцэтгэл" note={`${num(withData)}/${num(p.blocks.length)} бүртгэлтэй`}>
       <Bars
         color={HUE}
         max={100}
         inline
+        selected={selOid}
+        onSelect={pick}
         items={p.blocks.map((b) => ({
           // ⚠️ `b.key` (buildingKey) БИШ: Багц 1-д хоёр блок «29/1» болж хураагдан
           //    давхардаж, React мөр орхигдуулж болно. OID нь үргэлж өвөрмөц.

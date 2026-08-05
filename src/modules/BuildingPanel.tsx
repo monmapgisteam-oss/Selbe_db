@@ -310,8 +310,8 @@ export function BuildingSummary({ q }: { q: Buildings }) {
           <Section tone="primary">
             <Col gap="md">
               <Stats cols={2}>
-                <Stat value={num(d.blocks)} label="Барилгын блок" color={HUE} accent />
-                <Stat value={num(d.households)} label="Айлын тоо" color={HUE} accent />
+                <Stat value={num(d.blocks)} unit="блок" label="Барилгын блок" color={HUE} accent />
+                <Stat value={num(d.households)} unit="айл" label="Айлын тоо" color={HUE} accent />
               </Stats>
               <Split aside={<Ring value={d.progress} color={HUE} size={78} width={8} />}>
                 <Note>
@@ -545,8 +545,8 @@ export function MonitorBagts({ bagts }: { bagts: string }) {
             <Section tone="primary" title={`${d.name} — ажлын гүйцэтгэл`} note={d.asOf}>
               <Col gap="sm">
                 <Stats cols={2}>
-                  <Stat value={num(d.blocks)} label="Блок" color={HUE} accent />
-                  <Stat value={num(done.length)} label="Ажлын төрөл" color={HUE} accent />
+                  <Stat value={num(d.blocks)} unit="блок" label="Блок" color={HUE} accent />
+                  <Stat value={num(done.length)} unit="төрөл" label="Ажлын төрөл" color={HUE} accent />
                 </Stats>
                 <Note>
                   Ажлын төрөл тус бүрийн гүйцэтгэл — багцын блокуудын дундаж
@@ -734,9 +734,9 @@ export function MonitorGeneral({ picked, pickedLayer }: { picked: Record<string,
 
             <Section title="Ажлын төлөв" note={`${num(d.taskCount)} ажил`}>
               <Stats cols={3}>
-                <Stat value={num(d.done)} label="Дууссан" color="var(--good)" />
-                <Stat value={num(d.inProgress)} label="Явцтай" color={HUE} accent />
-                <Stat value={num(d.notStarted)} label="Эхлээгүй" color="var(--ink-3)" />
+                <Stat value={num(d.done)} unit="ажил" label="Дууссан" color="var(--good)" />
+                <Stat value={num(d.inProgress)} unit="ажил" label="Явцтай" color={HUE} accent />
+                <Stat value={num(d.notStarted)} unit="ажил" label="Эхлээгүй" color="var(--ink-3)" />
               </Stats>
             </Section>
           </>
