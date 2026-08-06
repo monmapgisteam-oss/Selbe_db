@@ -2241,43 +2241,45 @@ export const zoneWhere = (l: LayerDef, id: string): string | null => {
 
 const UBHUB = env(
   process.env.NEXT_PUBLIC_UBHUB_IMAGERY,
-  "https://mapservice.ubhub.mn/arcgis/rest/services/Imagery",
+  "https://imagery.ubhub.mn/imagery/rest/services/Hosted",
 );
 
 /**
- * Агаарын зураг — 9 ImageServer нэг бүрхэвч болж залгана. СУУРЬ тул хэрэглэгчийн
- * унтраалгагүй: газрын зураг хоёрхон төрөлтэй (2D = ортофото, 3D = меш).
+ * Агаарын зураг — НЭГ нэгтгэсэн ImageServer (`selbe_ortho_merged`). СУУРЬ тул
+ * хэрэглэгчийн унтраалгагүй: газрын зураг хоёрхон төрөлтэй (2D = ортофото, 3D = меш).
  *
- * ⚠️ Проекц UTM 48N (32648), тайлын кэшгүй → `ImageryTileLayer` БИШ, динамик
- * `ImageryLayer`.
+ * ⚠️ 2026-08-06: өмнөх 9 тусдаа ImageServer (`Selbe_mid_1…`, `Selbe_north_ortho1…`,
+ * host `mapservice.ubhub.mn`) БҮГД «Service not started» болж унасан тул нэг
+ * нэгтгэсэн үйлчилгээгээр солив. Шинэ host `imagery.ubhub.mn`, CORS дурын origin-д
+ * нээлттэй (preflight + `X-Esri-Authorization` зөвшөөрнө).
+ *
+ * ⚠️ Проекц Web Mercator (3857/102100) — өмнөх UTM 48N БИШ. `tileInfo` (LERC2D,
+ * 3см хүртэл) байгаа ч `capabilities` нь «Image, Metadata» тул тайл serving биш,
+ * `exportImage`-аар үйлчилдэг → `ImageryTileLayer` БИШ, динамик `ImageryLayer`
+ * хэвээр (одоогийн MapCanvas/SuitMap-ийн арга зөв). Массив нь нэг элементтэй ч
+ * `.map()`-аар давхарга үүсгэдэг код өөрчлөлтгүй ажиллана.
  */
 export const IMAGERY = {
   title: "Агаарын зураг (ортофото)",
   urls: [
-    `${UBHUB}/Selbe_mid_1/ImageServer`,
-    `${UBHUB}/selbe_mid2/ImageServer`,
-    `${UBHUB}/selbe_mid3/ImageServer`,
-    `${UBHUB}/selbe_mid4/ImageServer`,
-    `${UBHUB}/selbe_mid5/ImageServer`,
-    `${UBHUB}/selbe_mid6/ImageServer`,
-    `${UBHUB}/Selbe_north_ortho1/ImageServer`,
-    `${UBHUB}/Selbe_north_ortho2/ImageServer`,
-    `${UBHUB}/Selbe_north_ortho3/ImageServer`,
+    `${UBHUB}/selbe_ortho_merged/ImageServer`,
   ],
 } as const;
 
 /**
  * 3D бодит загвар (IntegratedMesh).
  *
- * ⚠️ ПОРТ 6443 нь САНААТАЙ. 443 порт нь `nginx/1.26.3`-аар дамждаг бөгөөд тэр
- * nginx CORS-ыг өөрөө удирдаж, ArcGIS Server-ийн `Access-Control-Allow-Origin`-ыг
- * нуугаад цагаан жагсаалтаараа (зөвхөн `https://ubhub.mn`) орлуулдаг. 6443 нь
- * ArcGIS Server рүү шууд ордог тул `allowedOrigins: *` тохиргоо ажиллаж, аль ч
- * origin-д ACAO буцаана. Гэрчилгээ нь хүчинтэй.
+ * ⚠️ 2026-08-06: ПОРТ 6443 үхсэн (Connection refused — тэр порт дээр юу ч
+ * сонсохгүй болсон) тул энгийн `:443` (https) руу шилжүүлэв. Хуучин болгоомжлол
+ * («443 nginx зөвхөн `https://ubhub.mn` origin зөвшөөрдөг тул 6443 хэрэглэв»)
+ * ОДОО ХҮЧИНГҮЙ: 443 nginx одоо дурын origin-д ACAO echo хийж, CORS preflight
+ * (OPTIONS) ба `X-Esri-Authorization` header-ийг бүрэн зөвшөөрдөг болсон. Хоёр
+ * SceneServer (`layers/0` → `IntegratedMesh`, `nodepages/0` binary stream) 443
+ * дээр эрүүл ажиллана. Гэрчилгээ хүчинтэй.
  */
 const UBHUB_SCENE = env(
   process.env.NEXT_PUBLIC_UBHUB_SCENE,
-  "https://arcgis.ubhub.mn:6443/arcgis/rest/services/Hosted",
+  "https://arcgis.ubhub.mn/arcgis/rest/services/Hosted",
 );
 
 export const SCENE = {
