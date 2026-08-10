@@ -1,6 +1,10 @@
 import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
-import { ThemeProvider, THEME_KEY } from '@/lib/theme';
+// ⚠️ THEME_KEY-г 'use client' модулиас (theme.tsx) импортлохгүй: сервер компонентэд
+//    тэр нь client reference proxy болж, доорх THEME_INIT-д функцын эх код шингэн
+//    inline script эвдэрдэг байв. Заавал энгийн модулиас (themeKey.ts).
+import { ThemeProvider } from '@/lib/theme';
+import { THEME_KEY } from '@/lib/themeKey';
 import './globals.css';
 
 // Бүх апп `dynamic(ssr:false)` Portal-ын дотор ачаалагддаг тул модулиудын CSS нь

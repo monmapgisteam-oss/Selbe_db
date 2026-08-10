@@ -32,11 +32,11 @@ import {
   LAYERS, LAYER_BY_ID, layerUrl, oidOf, drawOrder, DASH_PATTERN, ALWAYS_ON_IDS, REFERENCE_IDS,
   HOME, IMAGERY, SCENE, BIM, USAN_SAN, ELEVATION_URL, ZONE_LAYER, zoneWhere,
   ZONE_FIELD, ZONE_NONE, ZONE_TYPE_EMPTY_HUE, OID, BUILDING, SURVEY, PARCEL_LEFT, buildingKey,
-  MAP_HUE_OVERRIDES, SOURCE_FS,
+  MAP_HUE_OVERRIDES, SOURCE_FS, BASE_MAP_IDS,
   type LayerDef,
 } from '@/lib/services';
 import { SCENE3D_LAYERS } from '@/lib/scene3d';
-import { plan2dStyleOf, loadPlan2dStyle } from '@/lib/plan2d';
+import { plan2dStyleOf, loadPlan2dStyle, PLAN2D_ALIASED } from '@/lib/plan2d';
 import { queryExtent, queryFeatures, type Aoi } from '@/lib/query';
 import { loadBlockProgress, cachedBlockProgress, type BlockProgressMap } from '@/lib/blockProgress';
 import { webmapStyleOf, loadWebmapStyle } from '@/lib/webmapStyle';
@@ -116,6 +116,21 @@ const rgb = (hex: string): [number, number, number] => {
   const h = hex.replace('#', '');
   return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
 };
+
+/**
+ * План2d-ийн esriPFS текстурын СУУРЬ өнгө — inline SVG (base64 data URI)-ийн
+ * эхний `fill="#…"` (дэвсгэр rect). SceneView зурган дүүргэлт дэмждэггүй тул
+ * BIM-д энэ өнгөөр цул дүүргэлт хийж 2D план map-тай ижил харагдуулна.
+ */
+function pfsBaseColor(url: string | undefined): string | null {
+  if (!url?.startsWith('data:image/svg+xml;base64,')) return null;
+  try {
+    const m = /fill="(#[0-9a-fA-F]{6})"/.exec(atob(url.split(',')[1]));
+    return m ? m[1] : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * ⚠️ ArcGIS-д өнгөний alpha нь СИМБОЛЫН ТӨРЛӨӨС хамаарч өөр хэмжээстэй:
@@ -526,6 +541,8 @@ function buildLayers(uniform = false): Layer[] {
             return r as typeof web.renderer;
           })()
         : web?.renderer;
+    // План2d style (шууд эсвэл alias-аар). Тавигдвал selbe0724 effect/opacity-г алгасна.
+    const p2 = plan2dStyleOf(d.id);
     return new FeatureLayer({
       id: d.id,
       url: layerUrl(d),
@@ -536,8 +553,8 @@ function buildLayers(uniform = false): Layer[] {
       ...(d.minScale ? { minScale: d.minScale } : {}),
       elevationInfo: ON_GROUND,
       // `sb:*` — «Selbe 2D map 0804» webmap-ийн ЯГ renderer (100% style).
-      renderer: plan2dStyleOf(d.id)
-        ? (rendererJsonUtils.fromJSON(plan2dStyleOf(d.id) as never) as unknown as RendererProp)
+      renderer: p2
+        ? (rendererJsonUtils.fromJSON(p2 as never) as unknown as RendererProp)
         : webRenderer
         ? (rendererJsonUtils.fromJSON(webRenderer as never) as unknown as RendererProp)
         : d.paint
@@ -560,8 +577,10 @@ function buildLayers(uniform = false): Layer[] {
               })),
             } as unknown as RendererProp)
           : simple(symbolOf(d)),
-      ...(web?.effect ? { effect: web.effect as unknown as __esri.FeatureLayerProperties['effect'] } : {}),
-      ...(web?.opacity != null ? { opacity: web.opacity } : {}),
+      // ⚠️ План2d-аар жигдэлсэн давхаргад selbe0724 снапшотын EFFECT (bloom/гэрэлтэлт)
+      //    ба opacity-г ТАВИХГҮЙ — эс бөгөөс барилга гэрэлтэж, өнгө нь план 2D map-аас зөрнө.
+      ...(!p2 && web?.effect ? { effect: web.effect as unknown as __esri.FeatureLayerProperties['effect'] } : {}),
+      ...(!p2 && web?.opacity != null ? { opacity: web.opacity } : {}),
       ...(d.id === ZONE_LAYER.id ? { labelingInfo: zoneLabels() } : {}),
       ...(d.id === 'source:eh' ? { labelingInfo: sourceLabels(), labelsVisible: true } : {}),
     });
@@ -1128,6 +1147,50 @@ export const MapCanvas = memo(function MapCanvas({
     for (const s of SCENE3D_LAYERS) {
       const existing = map.findLayerById(s.id);
       if (dim === 'bim' && !existing) {
+        /**
+         * ⚠️ BIM давхаргыг 2D map-тай ЖИГД болгох (хэрэглэгчийн хүсэлт), ГЭХДЭЭ
+         * зөвхөн БОЛОМЖТОЙГ нь: мод (Object/3D загвар), барилга (Extrude), ус
+         * (Water) зэрэг ЖИНХЭНЭ 3D симбол нь 3D хэвээр үлдэнэ; хавтгай fill/line
+         * давхаргууд (ногоон, зам, явган, дугуй г.м.) л план2d 2D style-ийг авна.
+         * scene3d:N ↔ план2d sb:N нь ижил service.
+         */
+        type SceneRenderer = {
+          symbol?: { symbolLayers?: { type?: string }[] };
+          defaultSymbol?: { symbolLayers?: { type?: string }[] };
+          uniqueValueInfos?: { symbol?: { symbolLayers?: { type?: string }[] } }[];
+        };
+        const r3 = s.renderer as SceneRenderer;
+        const sym3 = r3.symbol ?? r3.defaultSymbol ?? r3.uniqueValueInfos?.[0]?.symbol;
+        const t0 = sym3?.symbolLayers?.[0]?.type;
+        const keep3D = t0 === 'Object' || t0 === 'Extrude' || t0 === 'Water';
+        let p2 = keep3D ? null : plan2dStyleOf(s.id.replace('scene3d:', 'sb:'));
+        /**
+         * ⚠️ SceneView нь ЗУРГАН дүүргэлт (esriPFS) болон зургийн маркер (esriPMS)
+         * дэмждэггүй — тэдгээрийг тавьбал давхарга 3D-д ОГТ зурагдахгүй (ногоон,
+         * зам, явган, дугуй BIM дээр алга болж байсан шалтгаан). Тиймээс esriPFS
+         * текстурыг СУУРЬ ӨНГӨӨР нь (SVG-ийн эхний rect fill) цул дүүргэлт болгож
+         * хөрвүүлнэ — BIM дээр 2D план map-тай ижил өнгөтэй харагдана.
+         */
+        type PfsSymbol = { type?: string; url?: string; outline?: { color?: number[]; width?: number } };
+        const p2sym = (p2 as { symbol?: PfsSymbol; defaultSymbol?: PfsSymbol } | null);
+        const sym2 = p2sym?.symbol ?? p2sym?.defaultSymbol;
+        if (sym2?.type === 'esriPMS') p2 = null;
+        else if (sym2?.type === 'esriPFS') {
+          const base = pfsBaseColor(sym2.url);
+          if (base) {
+            p2 = {
+              type: 'simple',
+              symbol: {
+                type: 'esriSFS', style: 'esriSFSSolid', color: [...rgb(base), 255],
+                outline: {
+                  type: 'esriSLS', style: 'esriSLSSolid',
+                  color: sym2.outline?.color ?? [...rgb(base), 255],
+                  width: sym2.outline?.width ?? 0.5,
+                },
+              },
+            };
+          } else p2 = null;
+        }
         map.add(new FeatureLayer({
           id: s.id,
           url: s.url,
@@ -1136,7 +1199,7 @@ export const MapCanvas = memo(function MapCanvas({
           popupEnabled: false,
           visible: true,
           elevationInfo: sceneElevInfo(s.elevationInfo),
-          renderer: rendererJsonUtils.fromJSON(s.renderer as never) as unknown as RendererProp,
+          renderer: rendererJsonUtils.fromJSON((p2 ?? s.renderer) as never) as unknown as RendererProp,
         }));
       } else if (dim !== 'bim' && existing) {
         map.remove(existing);
@@ -1407,6 +1470,27 @@ export const MapCanvas = memo(function MapCanvas({
       //    `dim !== '2d'` болгоно.
       if (l.id === USAN_SAN.id) { l.visible = false; return; }
 
+      /**
+       * СУУРЬ давхаргууд (план 2D-ийн 14) — каталогийн сонголт ХООСОН үед 2D-д
+       * бүгд харагдана (анхны зураг план 2D шигээ бүрэн). Хэрэглэгч каталогоос
+       * ЯМАР НЭГ давхарга сонгомогц суурь нь унтарч, ЗӨВХӨН сонгосон нь үлдэнэ;
+       * сонголтоо арилгахад суурь буцаж асна. (Суурь давхаргыг өөрийг нь сонговол
+       * тэр нь мэдээж харагдана.) 3D-д меш, BIM-д scene3d:* орлодог тул зөвхөн 2D.
+       */
+      if ((BASE_MAP_IDS as readonly string[]).includes(String(l.id))) {
+        l.visible = dim === '2d' && (on.size === 0 || on.has(String(l.id)));
+        return;
+      }
+      /**
+       * План2d ALIAS style-тай давхаргууд (dugui, nogoon, tree, et:24…) — renderer
+       * нь зурган текстур (esriPFS/esriPMS) тул SceneView-д дэмжигдэхгүй. 3D/BIM-д
+       * НУУНА: асаалттай орхивол «picture-fill is unsupported in 3D» алдаа асгарч,
+       * давхарга нь ямартай ч зурагдахгүй (3D-д меш, BIM-д scene3d:* орлоно).
+       */
+      if (is3D(dim) && PLAN2D_ALIASED.has(String(l.id))) {
+        l.visible = false;
+        return;
+      }
       // ⚠️ BIM горимд каталогийн 2D давхаргыг НУУНА — web scene өөрөө зам, ногоон,
       //    мод, барилгын 3D хувилбарыг агуулдаг тул давхцал/эмх замбараагүйг арилгаж
       //    scene-ийн цэвэр төрхтэй тааруулна.
