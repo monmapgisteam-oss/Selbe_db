@@ -9,6 +9,7 @@ import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
 import { Donut, Ring, Bars, Data, Stats, Stat } from '@/components/ui';
 import { Icon } from '@/components/Icon';
 import { LayerCatalog } from '@/components/LayerCatalog';
+import { ZoneFilter } from '@/components/ZoneFilter';
 import { useAsync, type Async } from '@/lib/useAsync';
 import { usePlanTotals } from '@/lib/totals';
 import { queryFeatures, type Row } from '@/lib/query';
@@ -650,7 +651,10 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
         <HeadKpi d={d} />
 
         <div className={o.hero}>
-          <MapCanvas dim={dim} visible={visible} zone={null} uniform onPick={pick} />
+          {/* ⚠️ zone={null} байсныг заслав (2026-08-10) — бүсийн шүүлт дашбоардын
+              зурагт огт хүрдэггүй байв. Одоо давхаргууд бүсээр шүүгдэж,
+              noZone давхаргууд орон зайн маскаар бүдгэрнэ. */}
+          <MapCanvas dim={dim} visible={visible} zone={zone} uniform onPick={pick} />
 
           {/* Дээд-төв toolbar — «Давхарга» товч ба 2D/3D/BIM НЭГ мөрөнд
               («Ерөнхий төлөвлөгөө»-тэй ижил). Товч дарахад каталог доор нь гарна. */}
@@ -674,6 +678,9 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
                 </button>
               ))}
             </div>
+
+            {/* Бүсийн шүүлт — тусдаа хэрэглүүр (төрлөөр бүлэглэсэн, компакт) */}
+            <ZoneFilter zone={zone} setZone={setZone} variant="tool" />
           </div>
 
           {layerOpen && (
