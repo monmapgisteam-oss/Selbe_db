@@ -5,6 +5,7 @@ import { Section, Stats, Stat, Bars, Donut, Rows, Data, Empty } from '@/componen
 import { Icon } from '@/components/Icon';
 import { LayerSwatch } from '@/components/LayerSwatch';
 import { useMap } from '@/components/MapCanvas';
+import { ZoneFilter } from '@/components/ZoneFilter';
 import { useFilter } from '@/lib/filter';
 import { useAsync, type Async } from '@/lib/useAsync';
 import { queryGroup, count, sum, groups, groupWhere, sqlStr, type Group } from '@/lib/query';
@@ -73,7 +74,7 @@ export function ViewPanel({
 
   return (
     <>
-      <ZoneBar zone={zone} setZone={setZone} />
+      <ZoneFilter zone={zone} setZone={setZone} />
 
       {/* Дарсан объект — ХАМГИЙН ДЭЭР. Зураг дээр дарсан хариу шууд нүдэнд өртөнө. */}
       {picked && pickedLayer && (
@@ -998,82 +999,9 @@ function LayerDashboard({
   );
 }
 
-/* ═════════════════ Бүсийн шүүлт ═════════════════ */
-
-/**
- * ⚠️ ОЛОН СОНГОЛТ (2026-07-31): шүүлтийн төлөв `string | null` ХЭВЭЭР — олон
- * бүсийг таслалаар нийлүүлж хадгална («B-1,B-2»). `zoneWhere` задалж `IN`
- * болгодог тул Portal, URL (`z=`), totals-ын кэш гурвуулаа өөрчлөгдөөгүй.
- * Чип дарахад сонголт НЭМЭГДЭЖ/ХАСАГДАНА, жагсаалт хаагдахгүй — дараалан
- * хэд хэдийг сонгоно.
- */
-function ZoneBar({ zone, setZone }: { zone: string | null; setZone: (z: string | null) => void }) {
-  const { zoomToZone } = useMap();
-  const [open, setOpen] = useState(false);
-
-  const sel = zone ? zone.split(',').filter(Boolean) : [];
-  const toggleZone = (label: string) => {
-    const next = sel.includes(label) ? sel.filter((x) => x !== label) : [...sel, label];
-    setZone(next.length ? next.join(',') : null);
-  };
-
-  const q = useAsync(async () => {
-    const rows = await queryGroup(layerUrl(ZONE_LAYER), ZONE_FIELDS.id, [count(oidOf(ZONE_LAYER), 'n')]);
-    return groups(rows, ZONE_FIELDS.id, 'Тодорхойгүй', ['n'])
-      .filter((g) => g.label !== 'Тодорхойгүй')
-      // ⚠️ Бүсийн давхарга «Багц -1» гэж бичдэг — жагсаалт, chip, шүүлт гурвуулаа
-      //    каноник бичиглэлээр («Багц-1») явбал бусад давхаргатай нэг харагдана.
-      .map((g) => ({ ...g, label: zoneCanon(g.label) }))
-      .sort((a, b) => a.label.localeCompare(b.label, 'mn'));
-  }, []);
-
-  /**
-   * ⚠️ Бүсийн 52 чип нь анхнаасаа задгай байвал самбарын эхний дэлгэцийг бүтнээр
-   * эзэлж, гол агуулга нь доор нуугдана. Тиймээс хумигдсанаар эхэлнэ.
-   */
-  return (
-    <div className={s.zoneBar}>
-      <span className={s.zoneBarLabel}>Бүс</span>
-      <span className={s.zoneBarValue}>
-        {sel.length ? sel.join(', ') : 'Бүгд'}
-      </span>
-      {sel.length > 0 && (
-        <button type="button" className={s.zoneBarBtn} onClick={() => zoomToZone(zone!)}>Төвлөрөх</button>
-      )}
-      {sel.length > 0 && (
-        <button type="button" className={s.zoneBarClear} onClick={() => setZone(null)}>Цуцлах</button>
-      )}
-      <button type="button" className={s.zoneBarBtn} aria-expanded={open} onClick={() => setOpen((v) => !v)}>
-        {open ? 'Хаах' : sel.length ? 'Бүс нэмэх' : 'Бүс сонгох'}
-      </button>
-
-      {open && (
-        <div className={s.zoneDrop}>
-          <Data q={q} loading="Бүсүүд…">
-            {(zs) => (
-              <div className={s.zoneGrid}>
-                {zs.map((g) => {
-                  const on = sel.includes(g.label);
-                  return (
-                    <button
-                      key={g.label}
-                      type="button"
-                      aria-pressed={on}
-                      className={`${s.zoneChip} ${on ? s.zoneChipOn : ''}`}
-                      onClick={() => toggleZone(g.label)}
-                    >
-                      {g.label}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </Data>
-        </div>
-      )}
-    </div>
-  );
-}
+/* ═════════════════ Бүсийн шүүлт ═════════════════
+   ⚠️ 2026-08-10: дотоод `ZoneBar` нь ТУСДАА хэрэглүүр болж `components/ZoneFilter`
+   рүү нүүсэн (төрлөөр бүлэглэсэн, dashboard-д ч ажиллана). Энд зөвхөн хэрэглэнэ. */
 
 /* ═════════════════ Барилгын хяналт ═════════════════ */
 

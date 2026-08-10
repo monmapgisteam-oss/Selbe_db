@@ -119,7 +119,9 @@ export const AUTH = {
    * ArcGIS OAuth appId (`NEXT_PUBLIC_AUTH_APP_ID`). Хоосон "" бол нэвтрэлт УНТРААЛТТАЙ.
    * ⚠️ `??` — env-д ЗӨВХӨН хоосон бичвэл унтраана; огт өгөөгүй бол fallback (асаалттай).
    */
-  appId: process.env.NEXT_PUBLIC_AUTH_APP_ID ?? "ZPJRqk1iiYcjYRLv",
+  // ⚠️ ТҮР УНТРААВ (UI шалгах). СЭРГЭЭХ: доорх мөрийг устгаад энэ мөрийг эргүүлнэ —
+  //   appId: process.env.NEXT_PUBLIC_AUTH_APP_ID ?? "ZPJRqk1iiYcjYRLv",
+  appId: "",
   /**
    * ⚠️ Байгууллагын хаяг (`monmap.maps.arcgis.com`) БИШ. Тэр домэйн ArcGIS
    * Online-ы «Allowed origins» цагаан жагсаалтыг мөрддөг тул dev дээр токен
@@ -941,6 +943,17 @@ export const BUILDING_STAGES: { field: string; label: string }[] = [
 ];
 export const STAGE_NA = -1;
 
+/**
+ * ХҮҮХДИЙН ТОГЛООМ — төрлийн жагсаалт (`huuhdiin_togloom/18`, 111 цэг).
+ * MapCanvas 2D-д төрөл бүрийг ЭГЦ ДЭЭРЭЭС харсан SVG дүрсээр зурна — өнгө нь
+ * эндээс нэг эх сурвалжтай.
+ */
+export const TOGLOOM_TYPES: { value: string; color: string; kind: "slide" | "swing" | "set" }[] = [
+  { value: "Гулгуур", color: "#f59e0b", kind: "slide" },
+  { value: "Дүүжин", color: "#0ea5e9", kind: "swing" },
+  { value: "Том гулсууран тоглоом", color: "#22c55e", kind: "set" },
+];
+
 /** Талбайн хяналт — Survey123: цэгийн давхарга + 5 холбоост хүснэгт */
 export const SURVEY = {
   url: `${SURVEY_FS}/0`,
@@ -1281,6 +1294,15 @@ export const BOUNDARY = {
  * Талбай/уртыг нийлбэрт тооцуулахаар `qty` тохируулав.
  */
 const SB_BASE = `${HJ}/selbe_3D__0804_WFL1/FeatureServer`;
+/**
+ * ⚠️ `ZONE_ID` талбартай sb давхаргууд — үйлчилгээнээс нэг бүрчлэн шалгасан
+ * (2026-08-10): ЗӨВХӨН Явган зам (3) ба Барилга (4). Бусад 12 нь CAD-гаралтай
+ * (`Entity`, `Layer`, `cad_layer` талбартай) тул бүсийн шүүлтэд ОРОХГҮЙ —
+ * байхгүй талбараар `definitionExpression` тавьбал давхарга зурагдахаа больж,
+ * `usePlanTotals`-ын статистик хүсэлт унадаг (Promise.all тул самбар бүхэлдээ
+ * «ArcGIS алдаа» болно).
+ */
+const SB_ZONED = new Set([3, 4]);
 const SB_LAYERS: LayerDef[] = PLAN2D_LAYERS.map((l) => ({
   id: l.id,
   n: l.sub,
@@ -1291,6 +1313,7 @@ const SB_LAYERS: LayerDef[] = PLAN2D_LAYERS.map((l) => ({
   hue: "#94a3b8",
   fill: 0.4,
   width: 1,
+  ...(SB_ZONED.has(l.sub) ? {} : { noZone: true as const }),
   ...(l.geom === "area"
     ? { qty: { field: "Shape__Area", unit: "м²" } }
     : l.geom === "line"
@@ -1921,6 +1944,27 @@ export const LAYERS: LayerDef[] = [
     fill: 1,
     width: 0.75,
     noZone: true,
+  },
+  /**
+   * ХҮҮХДИЙН ТОГЛООМ (цэг, 111) — төрлөөр (Гулгуур/Дүүжин/Том гулсууран) ЭГЦ
+   * ДЭЭРЭЭС харсан SVG дүрс (MapCanvas тавина). СУУРЬ давхаргын нэг:
+   * каталог/үзүүлэлтэд ОРОХГҮЙ (хэрэглэгчийн хүсэлт) — зөвхөн дашбоард ба
+   * төлөвлөгөөний зурагт default давхаргуудтай хамт харагдана (`BASE_MAP_IDS`,
+   * `INITIAL_MAP_LAYERS`). ZONE_ID-гүй тул бүс сонгоход орон зайн маскаар бүдгэрнэ.
+   */
+  {
+    id: "tgl",
+    n: 18,
+    url: `${HJ}/huuhdiin_togloom/FeatureServer/18`,
+    title: "Хүүхдийн тоглоом",
+    topic: "plan",
+    geom: "point",
+    hue: "#f59e0b",
+    marker: "circle",
+    size: 8,
+    noZone: true,
+    facets: [{ field: "type", label: "Төрөл" }],
+    note: "111 цэг · 3 төрөл",
   },
   /** Авто зам — `Бусад_мэдээлэл_20260724`/193 (кирилл нэрийг encode). Бусад бүлэгт. */
   {
@@ -2589,6 +2633,7 @@ export const INITIAL_MAP_LAYERS: string[] = [
   "et:12", // Гүүрэн байгууламж
   "nogoon", // Ногоон байгууламж
   "tree", // Мод
+  "tgl", // Хүүхдийн тоглоом (эгц дээрээс харсан дүрс)
 ];
 
 /**
@@ -2608,7 +2653,11 @@ export const PLAN_INITIAL: string[] = PLAN2D_LAYERS.map((l) => l.id);
  * харагдана. Каталогийн чагт нь зөвхөн НЭМЭЛТ (бүс, инженер, хяналт…) давхаргыг
  * удирдана. Зөвхөн 2D-д: 3D-д меш газрыг бүрхэнэ, BIM-д scene3d:* орлоно.
  */
-export const BASE_MAP_IDS: readonly string[] = PLAN2D_LAYERS.map((l) => l.id);
+export const BASE_MAP_IDS: readonly string[] = [
+  ...PLAN2D_LAYERS.map((l) => l.id),
+  // Хүүхдийн тоглоом — суурьтай хамт харагдана (каталог/үзүүлэлтгүй)
+  "tgl",
+];
 
 /**
  * БАРИЛГЫН ХЯНАЛТЫН багц — каталогт тусдаа бүлэг болж гарна.
