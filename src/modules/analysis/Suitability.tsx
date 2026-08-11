@@ -32,8 +32,10 @@ import {
   type SimKind, type PopBasis,
 } from './suit/simulation';
 import { assignLoads } from './suit/roadNet';
-import { SIGNAL_PLANS, compatPlan, type Network } from './suit/traffic';
-import { loadNetworkCached, NET_KINDS, NET_SOURCES, isNetReady, type NetKind } from './suit/netSources';
+import { SIGNAL_PLANS, type Network } from './suit/traffic';
+import {
+  loadNetworkCached, NET_KINDS, NET_SOURCES, isNetReady, netHasCars, type NetKind,
+} from './suit/netSources';
 import type { TrafficStats } from './suit/TrafficOverlay';
 import { TransportPanel } from './suit/TransportPanel';
 import {
@@ -227,8 +229,24 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
   const roadMode = mode === 'simulation' && !tActive && simKind === 'road';
   /** Тээвэр-идэвхийн самбар газрын зургийг буддаг эсэх */
   const transportMode = mode === 'simulation' && tActive;
+  /**
+   * Харьцуулах ЗАМЫН СҮЛЖЭЭ — Бодит / Төлөвлөгөө / Шинэ зам (`netSources.ts`).
+   * ⚠️ Доорх `netCars`/`netLoad` үүнээс хамаардаг тул ЭНД зарлагдана.
+   */
+  const [netKind, setNetKind] = useState<NetKind>('plan');
   /** ⚠️ Замын сүлжээг ХОЁУЛАА хэрэглэнэ — агентын симуляц ба эрэлтийн хуваарилалт */
-  const needNet = roadMode || transportMode;
+  /**
+   * Идэвхтэй сүлжээн дээр МАШИН явах уу («Шинэ зам» — зөвхөн харагдана).
+   * ⚠️ Явахгүй бол замын сүлжээ УГСАРЧ ч болохгүй: тэр line нь холбогдоогүй
+   * хэсгүүд тул машин мухарт гацна.
+   */
+  const netCars = netHasCars(netKind);
+  /**
+   * Сүлжээг АЛЬ өгөгдлөөр татах вэ. Тээвэр-идэвхийн анализад заавал явдаг
+   * сүлжээ хэрэгтэй тул машингүй сүлжээ сонгосон байвал «Бодит» руу шилжинэ.
+   */
+  const netLoad: NetKind = netCars ? netKind : 'real';
+  const needNet = (roadMode && netCars) || transportMode;
   /**
    * Идэвхтэй дүрслэлд дулааны гадаргуу утга ЗҮЙТЭЙ эсэх.
    * ⚠️ Heatmap цөмүүдийг НЭМДЭГ тул зөвхөн хуримтлагдах хэмжигдэхүүнд утгатай —
@@ -247,31 +265,52 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
   const [roadErr, setRoadErr] = useState<string | null>(null);
   const [trafficStats, setTrafficStats] = useState<TrafficStats | null>(null);
   /**
-   * Харьцуулах ЗАМЫН СҮЛЖЭЭ — Бодит / Төлөвлөгөө / Шинэ зам (`netSources.ts`).
-   * ⚠️ Одоо зөвхөн `plan` (et:5) бэлэн; `real`/`relief` line ирэхэд идэвхжинэ.
-   */
-  const [netKind, setNetKind] = useState<NetKind>('plan');
-  /**
    * ГЭРЛЭН ДОХИОНЫ зохицуулалтын хөтөлбөр (2 / 4 / 8 ээлж).
    * ⚠️ Сүлжээнд хадгалагдахгүй — солиход дахин татах/угсрах шаардлагагүй,
    * дараагийн фреймээс шууд үйлчилнэ.
    */
-  const [signalPlanKey, setSignalPlanKey] = useState('auto');
+  /**
+   * ГЭРЛЭН ДОХИОНЫ БАРИГДСАН ЭЭЛЖ — null бол хуваарь автоматаар эргэлдэнэ;
+   * тоо бол тэр ээлжийн кодууд газрын зураг дээр БАЙНГА ногоон (бусад нь улаан).
+   * Ээлж бүрийн үйлчлэлийг нүдээр шалгах горим.
+   */
+  const [signalStage, setSignalStage] = useState<number | null>(null);
   /**
    * Боломжит хөтөлбөрүүд — сүлжээний ГЕОМЕТРЭЭС бодсон «Авто (зөрчилгүй)» нь
    * эхэнд, дараа нь гараар бичсэн хувилбарууд.
    * ⚠️ Авто хөтөлбөр нь ачаалагдсан сүлжээнээс хамаарна (дохио байхгүй бол алга).
    */
-  const signalPlans = useMemo(() => {
-    if (!roadNet) return SIGNAL_PLANS;
-    const split = compatPlan(roadNet, { mode: 'split' });
-    const opp = compatPlan(roadNet, { mode: 'opposite' });
-    return [split, opp, ...SIGNAL_PLANS].filter((x): x is NonNullable<typeof x> => !!x);
-  }, [roadNet]);
-  const signalPlan = signalPlans.find((x) => x.key === signalPlanKey) ?? signalPlans[0];
+  /** Бодит уулзварын хуваарь — UI-д ганц хөтөлбөр (3 ээлж: 3·4·7·8 → 1·6 → 2·5) */
+  const realPlan = useMemo(
+    () => SIGNAL_PLANS.find((x) => x.key === 'real') ?? SIGNAL_PLANS[0],
+    [],
+  );
+  /**
+   * Хөдөлгүүр/зуралтад өгөх ИДЭВХТЭЙ хөтөлбөр.
+   * ⚠️ Ээлж баригдсан үед НЭГ ээлжтэй, шаргүй синтетик хөтөлбөр өгнө — signalPhase
+   * тэр ээлжийн кодуудыг БАЙНГА ногоон, бусдыг улаан гэж тооцно (шинэ логик
+   * хэрэггүй, мөчлөгийн математик өөрөө ингэж ажиллана).
+   */
+  const signalPlan = useMemo(() => {
+    if (signalStage == null || !realPlan.stages[signalStage]) return realPlan;
+    // ⚠️ Уулзвар БҮРИЙН тухайн ээлжийг барина — эс бөгөөс ээлж барихад зөвхөн
+    //    фоллбэк хуваарь үлдэж, 2-р уулзвар буруу чиглэлээ асаана.
+    const held = Object.fromEntries(
+      Object.entries(realPlan.byJunction ?? {}).map(([name, st]) => [
+        name, [st[signalStage] ?? st[st.length - 1]],
+      ]),
+    );
+    return {
+      ...realPlan,
+      key: `stage${signalStage}`,
+      stages: [realPlan.stages[signalStage]],
+      byJunction: held,
+      yellow: 0,
+    };
+  }, [realPlan, signalStage]);
 
   // Сүлжээ солиход хуучин геометрийг цэвэрлэж дахин ачаална (ирмэг индекс өөр).
-  useEffect(() => { setRoadNet(null); setRoadErr(null); }, [netKind]);
+  useEffect(() => { setRoadNet(null); setRoadErr(null); }, [netLoad]);
 
   useEffect(() => {
     // ⚠️ 3.9 мянган хэрчмийг ХЭРЭГТЭЙ болоход л татна («Ачаалал» эсвэл
@@ -281,7 +320,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
     let alive = true;
     // ⚠️ Гэрлэн дохио (дүрмийн + OSM) `loadNetworkCached` дотор аль хэдийн
     //    тавигдсан ирнэ; энд зөвхөн бүсийн эрэлтийн жинг (`baseLoad`) ононо.
-    loadNetworkCached(netKind)
+    loadNetworkCached(netLoad)
       .then((net) => {
         if (!alive) return;
         assignLoads(net, rows);
@@ -292,7 +331,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
         if (alive) setRoadErr(e instanceof Error ? e.message : String(e));
       });
     return () => { alive = false; };
-  }, [needNet, roadNet, rows, netKind]);
+  }, [needNet, roadNet, rows, netLoad]);
 
   /* ── Тээвэр-идэвх: барилга ба автобусны буудлыг самбарыг нээхэд татна ── */
   const [tData, setTData] = useState<{ buildings: BuildingPt[]; stops: BusStop[] } | null>(null);
@@ -369,6 +408,20 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
     if (!roadMode || netKind !== 'plan' || layerOnRef.current[ROAD_AREA_LAYER]) return;
     setLayerOn((v) => ({ ...v, [ROAD_AREA_LAYER]: true }));
     return () => setLayerOn((v) => ({ ...v, [ROAD_AREA_LAYER]: false }));
+  }, [roadMode, netKind]);
+
+  /**
+   * «Шинэ зам» сонгоход түүний line давхаргуудыг АВТОМАТААР асаана.
+   * ⚠️ Тэр сүлжээнд машин явахгүй тул line нь харагдахгүй бол сонголт нь
+   * газрын зураг дээр ЮУ Ч ӨӨРЧЛӨХГҮЙ — хэрэглэгчид эвдэрсэн мэт харагдана.
+   * ⚠️ Сонголтоос гарахад ЗӨВХӨН өөрсдөө асаасныг унтраана (каталогоос гараар
+   * асаасныг таслах эрхгүй) — «Зам (талбай)»-тай ижил зарчим.
+   */
+  useEffect(() => {
+    const keys = (NET_SOURCES[netKind].display ?? []).filter((k) => !layerOnRef.current[k]);
+    if (!roadMode || !keys.length) return;
+    setLayerOn((v) => ({ ...v, ...Object.fromEntries(keys.map((k) => [k, true])) }));
+    return () => setLayerOn((v) => ({ ...v, ...Object.fromEntries(keys.map((k) => [k, false])) }));
   }, [roadMode, netKind]);
 
   /**
@@ -598,6 +651,8 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
       error: roadErr,
       stats: trafficStats,
       flat: dim !== '2d',
+      /** «Шинэ зам» — машингүй, зөвхөн газрын зурагт харагдана */
+      carsOff: !netCars,
       /** Харьцуулах замын сүлжээ сонгогч (Бодит/Төлөвлөгөө/Шинэ зам) */
       net: {
         kind: netKind,
@@ -607,14 +662,14 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
           label: NET_SOURCES[k].label,
           short: NET_SOURCES[k].short,
           ready: isNetReady(k),
+          note: NET_SOURCES[k].note,
         })),
       },
-      /** Гэрлэн дохионы зохицуулалт — ээлжийн хөтөлбөр сонгогч */
+      /** Гэрлэн дохионы зохицуулалт — ээлж барьж асаах сонгогч */
       signal: {
-        plan: signalPlan,
-        plans: signalPlans,
-        setPlan: setSignalPlanKey,
-        lines: roadNet?.signalLines.length ?? 0,
+        plan: realPlan,
+        stage: signalStage,
+        setStage: setSignalStage,
       },
     },
     // ⚠️ `selected`/`onSelect` ХАСАГДСАН: эрэмбийн жагсаалт байхгүй болсон тул
@@ -762,7 +817,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
               zoneTip={zoneTip}
               buildingTip={buildingTip}
               transportTip={transportMode ? transportTip : undefined}
-              traffic={roadMode && roadNet ? {
+              traffic={roadMode && netCars && roadNet ? {
                 net: roadNet,
                 minuteRef: clock.minuteRef,
                 playing: clock.playing,

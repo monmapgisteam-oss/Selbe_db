@@ -340,6 +340,15 @@ function sectorPath(cx: number, cy: number, ri: number, ro: number, f0: number, 
  * ⚠️ Зүсмэг бүр annular-sector `<path>`: дотор ДҮҮРГЭЛТ тунгалаг, ЗАХЫН ШУГАМ
  * тод бүтэн — өнгөний ялгарал `shade()`-ийн hue-эргэлтээс.
  */
+
+/**
+ * viewBox-ийн ЗАХЫН НӨӨЦ (пиксел).
+ * ⚠️ Зүсмэгийн гадна радиус нь `size / 2`-т яг хүрдэг ба SVG-ийн `stroke` замын
+ * ДУНДУУР зурагддаг тул захын шугамын хагас нь хүрээнээс гарч тасардаг байв.
+ * Хамгийн зузаан зах 2.5px (тодруулсан зүсмэг) — 2px нөөц хүрэлцээтэй.
+ */
+const EDGE_PAD = 2;
+
 export function Donut({
   items,
   size = 132,
@@ -501,7 +510,17 @@ export function Donut({
   return (
     <div className={`${s.donutWrap} ${nowrap ? s.donutRow : ''} ${stack ? s.donutStack : ''}`}>
       <div className={s.donut} style={{ width: size, height: size }}>
-        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        {/**
+          * ⚠️ viewBox нь `size`-ээс АРАЙ ТОМ: зүсмэгийн ГАДНА радиус (`ro`) яг
+          * `size / 2` тул зах (`stroke`) нь замын дундуур зурагдаж, хагас нь
+          * хүрээнээс гарч 4 талаасаа ТАСАРЧ харагддаг байв. Хамгийн зузаан зах
+          * 2.5px (тодруулсан зүсмэг) тул 2px нөөц хангалттай.
+          */}
+        <svg
+          width={size}
+          height={size}
+          viewBox={`${-EDGE_PAD} ${-EDGE_PAD} ${size + EDGE_PAD * 2} ${size + EDGE_PAD * 2}`}
+        >
           {/* Зүсмэг бүр — дүүргэлт тунгалаг, зах тод бүтэн (12 цагаас) */}
           <g>
             <circle className={s.donutTrack} cx={size / 2} cy={size / 2} r={r} strokeWidth={width} />

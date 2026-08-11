@@ -1770,6 +1770,62 @@ export const LAYERS: LayerDef[] = [
     catalogFacet: true,
   },
 
+  /* ─────────── Ачаалал бууруулах ШИНЭ зам ───────────
+     ⚠️ ТУСДАА service (`Selbe_shine_zam`) — ЕТ-ийн `Selbe_ET` дээр биш тул
+     хаягаа өөрөө авчирна. Дөрвөн давхарга нь төлөвлөж буй шинэ замын хэсгүүд.
+     ⚠️ `GROUP_LAYERS`-т ОРУУЛААГҮЙ: «Ерөнхий төлөвлөгөө»-ний каталог, объектын
+     тоо, багцын нийлбэрт орох ёсгүй (эдгээр нь хараахан батлагдаагүй санал).
+     Зөвхөн анализын «Ачаалал» табын «Шинэ зам» сонголтоор харагдана —
+     `config.ts`-ийн `RELIEF_LAYERS`-ыг үз. */
+  {
+    id: "sz:0",
+    n: 0,
+    title: "Шинэ зам — хойд сүлжээ",
+    topic: "plan",
+    geom: "line",
+    hue: "#4ade80",
+    dash: "solid",
+    width: 1.4,
+    noZone: true,
+    url: "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/Selbe_shine_zam/FeatureServer/0",
+  },
+  {
+    id: "sz:1",
+    n: 1,
+    title: "Шинэ зам — Дамба (285 м)",
+    topic: "plan",
+    geom: "line",
+    hue: "#4ade80",
+    dash: "solid",
+    width: 1.6,
+    noZone: true,
+    url: "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/Selbe_shine_zam/FeatureServer/1",
+  },
+  {
+    id: "sz:2",
+    n: 2,
+    title: "Шинэ зам — Сэлбэ (2400 м)",
+    topic: "plan",
+    geom: "line",
+    hue: "#4ade80",
+    dash: "solid",
+    width: 1.6,
+    noZone: true,
+    url: "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/Selbe_shine_zam/FeatureServer/2",
+  },
+  {
+    id: "sz:3",
+    n: 3,
+    title: "Шинэ зам — Дарь эх",
+    topic: "plan",
+    geom: "line",
+    hue: "#4ade80",
+    dash: "solid",
+    width: 1.6,
+    noZone: true,
+    url: "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/Selbe_shine_zam/FeatureServer/3",
+  },
+
   /* ─────────── Зам ─────────── */
   {
     id: "et:29",

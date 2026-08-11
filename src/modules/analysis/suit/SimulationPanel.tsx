@@ -18,7 +18,14 @@ import c from './simulation.module.css';
 export type NetSel = {
   kind: NetKind;
   setKind: (k: NetKind) => void;
-  options: { kind: NetKind; label: string; short: string; ready: boolean }[];
+  options: {
+    kind: NetKind;
+    label: string;
+    short: string;
+    ready: boolean;
+    /** Бэлэн биш үед tooltip-д харуулах заавар (юу хийвэл идэвхжих вэ) */
+    note?: string;
+  }[];
 };
 
 /** Замын сүлжээний ачаалалт ба амьд симуляцын хураангуй (эцгээс) */
@@ -31,19 +38,29 @@ export type RoadState = {
   stats: TrafficStats | null;
   /** 3D горим — машины давхарга зурагдахгүй (хавтгай проекц нийцэхгүй) */
   flat: boolean;
+  /**
+   * Сонгосон сүлжээнд МАШИН ЯВАХГҮЙ («Шинэ зам») — зөвхөн газрын зурагт
+   * харагдана. Ийм үед «сүлжээ ачаалж байна» гэж мөнхөд эргэлдэх ёсгүй.
+   */
+  carsOff?: boolean;
   /** Харьцуулах замын сүлжээ сонгогч */
   net?: NetSel;
   /** Гэрлэн дохионы зохицуулалтын сонголт */
   signal?: SignalSel;
 };
 
-/** Гэрлэн дохионы зохицуулалтын хөтөлбөр сонгогч (эцгээс). */
+/**
+ * Гэрлэн дохионы зохицуулалт (эцгээс) — ЭЭЛЖ сонгоно.
+ * ⚠️ `stage = null` бол хуваарь АВТОМАТААР эргэлдэнэ; тоо өгвөл тэр ээлжийг
+ * газрын зураг дээр БАРЬЖ асаана (кодууд нь байнга ногоон, бусад нь улаан) —
+ * ээлж бүрийн үйлчлэлийг нүдээр шалгах горим.
+ */
 export type SignalSel = {
+  /** Идэвхтэй хөтөлбөр (ээлжүүдийн жагсаалтыг эндээс уншина) */
   plan: SignalPlan;
-  plans: SignalPlan[];
-  setPlan: (key: string) => void;
-  /** Сүлжээнд наагдсан зогсолтын зураасны тоо — 0 бол дохиогүй */
-  lines: number;
+  /** Барьж асаасан ээлж (0-ээс эхлэнэ) — null бол авто эргэлт */
+  stage: number | null;
+  setStage: (i: number | null) => void;
 };
 
 /** Timeline-ийн удирдлагыг эцгээс (Suitability) дамжуулна */
@@ -314,9 +331,9 @@ function readout(kind: SimKind, ranked: Ranked[], road?: RoadState): Cell[] {
 /* ══════════════════ Замын сүлжээ сонгогч ══════════════════ */
 
 /**
- * ХАРЬЦУУЛАХ замын сүлжээ сонгох — Бодит / Төлөвлөгөө / Шинэ зам.
- * ⚠️ Line ирээгүй сүлжээ (`ready=false`) идэвхгүй харагдана. Одоо зөвхөн
- * «Төлөвлөгөө» (et:5) бэлэн; бусад нь ArcGIS line ирэхэд идэвхжинэ.
+ * ХАРЬЦУУЛАХ замын сүлжээ сонгох — Бодит / Төлөвлөгөө / Шинэ зам / Тест.
+ * ⚠️ Line ирээгүй сүлжээ (`ready=false`) идэвхгүй харагдана; tooltip нь юу
+ * хийвэл идэвхжихийг (`note`) хэлнэ.
  */
 function NetSelector({ net }: { net?: NetSel }) {
   if (!net) return null;
@@ -332,7 +349,7 @@ function NetSelector({ net }: { net?: NetSel }) {
             className={net.kind === o.kind ? c.segSmOn : undefined}
             disabled={!o.ready}
             onClick={() => net.setKind(o.kind)}
-            title={o.ready ? o.label : `${o.label} — line хараахан ирээгүй`}
+            title={o.ready ? o.label : `${o.label} — ${o.note ?? 'line хараахан ирээгүй'}`}
           >
             {o.short}
           </button>
@@ -345,11 +362,10 @@ function NetSelector({ net }: { net?: NetSel }) {
 /* ══════════════════ Гэрлэн дохионы зохицуулалт ══════════════════ */
 
 /**
- * ГЭРЛЭН ДОХИОНЫ ЗОХИЦУУЛАЛТ — мөчлөгийг хэдэн ЭЭЛЖ болгож хуваахыг сонгоно.
- *
- * ⚠️ Энэ бол харьцуулалтын хэрэгсэл: ээлж олон байх тусам зөрчил багасах ч
- * нэг ээлжид ногдох ногоон хугацаа богиноссоор багтаамж буурна. Сонголт бүрд
- * ногоон хугацааг ТООГООР харуулж энэ солилцоог ил болгоно.
+ * ГЭРЛЭН ДОХИОНЫ ЗОХИЦУУЛАЛТ — ХУУЧИН сегмент товчлуурын UI, харин товч бүр
+ * нэг ЭЭЛЖ. Товч дарахад тэр ээлж газрын зураг дээр БАРИГДАЖ асна: ээлжийн
+ * кодууд байнга ногоон, бусад нь улаан — машид яг түүгээр явна. «Авто» нь
+ * хуваарийн ердийн эргэлт.
  */
 function SignalControl({ sig }: { sig?: SignalSel }) {
   if (!sig) return null;
@@ -358,40 +374,41 @@ function SignalControl({ sig }: { sig?: SignalSel }) {
     <div className={c.console}>
       <div className={c.secHead}>
         Гэрлэн дохионы зохицуулалт
-        <b>{sig.lines} зураас</b>
       </div>
       <div className={c.pick} style={{ marginTop: 8 }}>
         <span className={c.pickLabel}>Ээлж</span>
-        <div className={c.segSm} role="group" aria-label="Зохицуулалтын хөтөлбөр">
-          {sig.plans.map((p) => (
+        <div className={c.segSm} role="group" aria-label="Гэрлэн дохионы ээлж">
+          <button
+            type="button"
+            aria-pressed={sig.stage == null}
+            className={sig.stage == null ? c.segSmOn : undefined}
+            onClick={() => sig.setStage(null)}
+            title={`Хуваарийн дагуу эргэлдэнэ (мөчлөг ${sig.plan.cycle}с, ээлж бүр ~${Math.round(green)}с ногоон)`}
+          >
+            Авто
+          </button>
+          {sig.plan.stages.map((codes, i) => (
             <button
-              key={p.key}
+              key={i}
               type="button"
-              aria-pressed={sig.plan.key === p.key}
-              className={sig.plan.key === p.key ? c.segSmOn : undefined}
-              onClick={() => sig.setPlan(p.key)}
-              title={p.desc}
+              aria-pressed={sig.stage === i}
+              className={sig.stage === i ? c.segSmOn : undefined}
+              onClick={() => sig.setStage(sig.stage === i ? null : i)}
+              title={`${codes.join(', ')} кодын гэрэл НОГООН асна — бусад нь улаан`}
             >
-              {p.label}
+              {i + 1} ээлж
             </button>
           ))}
         </div>
       </div>
-      <div className={c.readout} style={{ marginTop: 8 }}>
-        <div className={c.cell}>
-          <div className={c.cellV}>{sig.plan.stages.length}</div>
-          <div className={c.cellK}>Ээлж</div>
-        </div>
-        <div className={c.cell}>
-          <div className={c.cellV}>{sig.plan.cycle}<small>с</small></div>
-          <div className={c.cellK}>Мөчлөг</div>
-        </div>
-        <div className={c.cell}>
-          <div className={c.cellV}>{green.toFixed(green < 10 ? 1 : 0)}<small>с</small></div>
-          <div className={c.cellK}>Ногоон / ээлж</div>
-        </div>
-      </div>
-      <p className={c.desc} style={{ marginTop: 8 }}>{sig.plan.desc}</p>
+      {/* ⚠️ «Авто» горимд тайлбар догол мөр ЗОРИУДААР БАЙХГҮЙ: товчны tooltip
+          хуваарийг аль хэдийн хэлдэг тул самбарыг л уртасгаж байв. Ээлж
+          БАРИГДСАН үед л юу болоод буйг нэг мөрөөр сануулна. */}
+      {sig.stage != null && (
+        <p className={c.desc} style={{ marginTop: 8 }}>
+          {`${sig.stage + 1}-р ээлж баригдав: ${sig.plan.stages[sig.stage].join(', ')} кодын гэрэл ногоон, бусад нь улаан.`}
+        </p>
+      )}
     </div>
   );
 }
@@ -408,6 +425,19 @@ function RoadStatus({ road }: { road?: RoadState }) {
 
   if (road.error) {
     return <p className={c.err}>Замын сүлжээ ачаалж чадсангүй: {road.error}</p>;
+  }
+  /* ⚠️ Машингүй сүлжээ: line нь одоогийн замтай холбогдоогүй тул хөдөлгөөн
+     үүсгэхгүй — үүнийг ХЭЛЖ өгнө, эс бөгөөс «эвдэрсэн» гэж ойлгогдоно. */
+  if (road.carsOff) {
+    return (
+      <p className={c.warn}>
+        <Icon name="road" size={14} />
+        <span>
+          Шинэ замын санал <b>газрын зурагт</b> харагдана. Хөдөлгөөн зөвхөн
+          <b> Бодит</b> ба <b>Төлөвлөгөө</b> сүлжээнд гүйнэ.
+        </span>
+      </p>
+    );
   }
   if (!road.edges) {
     return (

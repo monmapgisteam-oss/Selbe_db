@@ -12,7 +12,10 @@ import c from './simulation.module.css';
  * харин `minute` нь UI-д ~10 удаа/сек шинэчлэгддэг ХӨӨРӨГДСӨН төлөв. Тэгвэл цаг
  * жигд урсаж, гэхдээ React-ийн дахин зуралт бага байна.
  */
-export function useSimClock(startMin = 8 * 60) {
+// ⚠️ 00:00-оос эхэлнэ: өдрийн мөчлөг цөөн машинтай шөнөөс эхэлж, өглөөний
+//    оргил руу ЖАМААРАА өсдөг. 08:00-оос эхлүүлбэл симуляц шууд оргил ачааллын
+//    дундаас «үсэрч» эхэлдэг байв.
+export function useSimClock(startMin = 0) {
   const [minute, setMinute] = useState(startMin);
   const [playing, setPlaying] = useState(false);
   /** Хурд — бодит 1 секундэд хэдэн сим-минут явах вэ (×5 / ×20 / ×60) */
@@ -83,10 +86,36 @@ export function Timeline({
   const load = diurnalAt(minute);
   const W = 244;
   const H = 40;
-  // Эрэлтийн муруйн замнал — 24 цаг + өдрийн эцэст 00:00 давтаж хаана
-  const line = [...DIURNAL, DIURNAL[0]].map((v, i) => `${(i / 24) * W},${H - v * (H - 4) - 2}`);
-  // Муруйн доорх дүүргэлт — эрэлтийн «эзлэхүүн» нүдэнд шууд уншигдана
-  const area = `0,${H} ${line.join(' ')} ${W},${H}`;
+  /* ── Эрэлтийн муруй — ГӨЛГӨР (Catmull-Rom сплайн → кубик Безье) ──
+     ⚠️ Урьд нь цэгүүдийг шулуунаар холбосон polyline байсан тул муруй өнцөг
+     өнцгөөрөө хуга харагдаж байв. Catmull-Rom нь ЦЭГ БҮРЭЭ ЯГ ДАЙРДАГ тул
+     эрэлтийн утга өөрчлөгдөхгүй, зөвхөн хооронд нь гөлгөр татна. Захын цэгт
+     тойргоор (24 цаг эргэдэг) хөршөө авна — 00:00 дээр залгаас гөлгөр. */
+  const pts = [...DIURNAL, DIURNAL[0]].map((v, i): [number, number] => [
+    (i / 24) * W,
+    H - v * (H - 4) - 2,
+  ]);
+  const at = (i: number): [number, number] => {
+    // Тойрог хөрш: эхлэлээс өмнөх = 23 цаг, төгсгөлийн дараах = 01 цаг (x-г гулсуулна)
+    if (i < 0) return [pts[0][0] - (W / 24), H - DIURNAL[23] * (H - 4) - 2];
+    if (i >= pts.length) return [pts[pts.length - 1][0] + (W / 24), H - DIURNAL[1] * (H - 4) - 2];
+    return pts[i];
+  };
+  let path = `M ${pts[0][0]},${pts[0][1]}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = at(i - 1);
+    const p1 = at(i);
+    const p2 = at(i + 1);
+    const p3 = at(i + 2);
+    // Catmull-Rom → Безьегийн жолоодлогын цэгүүд (τ = 1/6)
+    const c1x = p1[0] + (p2[0] - p0[0]) / 6;
+    const c1y = p1[1] + (p2[1] - p0[1]) / 6;
+    const c2x = p2[0] - (p3[0] - p1[0]) / 6;
+    const c2y = p2[1] - (p3[1] - p1[1]) / 6;
+    path += ` C ${c1x},${c1y} ${c2x},${c2y} ${p2[0]},${p2[1]}`;
+  }
+  // Муруйн доорх дүүргэлт — ижил замыг доод ирмэгээр хаана
+  const area = `${path} L ${W},${H} L 0,${H} Z`;
   const markX = (wrapMin(minute) / 1440) * W;
 
   return (
@@ -113,9 +142,9 @@ export function Timeline({
             stroke="var(--line)" strokeWidth="1" vectorEffect="non-scaling-stroke"
           />
         ))}
-        <polygon points={area} fill={hue} opacity="0.14" />
-        <polyline
-          points={line.join(' ')}
+        <path d={area} fill={hue} opacity="0.14" />
+        <path
+          d={path}
           fill="none" stroke={hue} strokeWidth="1.6"
           strokeLinejoin="round" vectorEffect="non-scaling-stroke"
         />
