@@ -1,9 +1,9 @@
 /**
  * UBHUB ортофотогийн console-алдааг ЧИМЭЭГҮЙ болгох (side-effect модуль).
  *
- * ⚠️ UBHUB ортофото ImageServer-ууд одоогоор эрх ХААЛТТАЙ (503 «User couldn't
- * access this resource») тул ачаалагдахгүй. Ортофото анхдагчаар унтраалттай тул
- * газрын зурагт нөлөөгүй ч ArcGIS нь давхарга/layerview бүрийн load-алдааг
+ * ⚠️ Ортофото анхдагчаар унтраалттай (`setOrtho(false)`) тул газрын зурагт
+ * нөлөөгүй. Хэрэв ImageServer түр унавал (өмнө 9 тусдаа service «Service not
+ * started» болж байсан) ArcGIS нь давхарга/layerview бүрийн load-алдааг
  * `console.error`-ээр улаанаар бичиж console-ыг дүүргэдэг. ЗӨВХӨН эдгээр ортофото
  * (`ImageryLayer` / imagery layerview) алдааг шүүнэ — бусад БҮХ алдаа хэвээр гарна.
  *

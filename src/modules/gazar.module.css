@@ -26,6 +26,22 @@
 .left { grid-area: left; }
 .right { grid-area: right; }
 
+/* Баганын нийтлэг толгой — хоёр баганад ИЖИЛ загвар (panelPrimary-ийн хэв маяг:
+   өнгөт хүрээ + зүүн акцент зураас + өнгөт гарчиг), гэхдээ багана бүр ӨӨРИЙН
+   `--tone` өнгөтэй: зүүн (чөлөөлөх) ногоон, баруун (гаднах) цэнхэр. */
+.colHd {
+  flex: none;
+  padding: 10px 14px;
+  border-radius: var(--r);
+  border: 1px solid color-mix(in srgb, var(--tone) 45%, var(--line));
+  background: color-mix(in srgb, var(--tone) 6%, var(--surface));
+  box-shadow: inset 3px 0 0 var(--tone);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: var(--tone);
+}
+
 /* ── Газрын зураг (төв) ──
    ⚠️ `display:flex` ЗААВАЛ: MapCanvas-ийн `.wrap` нь `flex:1` тул эцэг нь flex
    байх ёстой. Эс бөгөөс зураг 0 өндөртэй хумигдаж ХАР харагдана. */
@@ -56,6 +72,14 @@
   background: color-mix(in srgb, var(--hue) 4%, var(--surface));
   box-shadow: inset 3px 0 0 var(--hue);
 }
+/* Гаднах орчны самбарууд (БАРУУН багана) — зүүний ногоонтой ИЖИЛ хэв маяг,
+   гэхдээ ЦЭНХЭР (баганын толгойн #0ea5e9-тэй ижил өнгө) */
+.panelOuter {
+  background: color-mix(in srgb, #0ea5e9 4%, var(--surface));
+  box-shadow: inset 3px 0 0 #0ea5e9;
+  border-color: color-mix(in srgb, #0ea5e9 35%, var(--line));
+}
+.panelOuter .panelTitle { color: #0ea5e9; }
 .panelHd {
   display: flex;
   align-items: baseline;

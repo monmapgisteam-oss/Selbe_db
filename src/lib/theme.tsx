@@ -6,8 +6,14 @@ type Theme = 'light' | 'dark';
 
 const Ctx = createContext<{ theme: Theme; toggle: () => void }>({ theme: 'light', toggle: () => {} });
 
-/** localStorage түлхүүр — `layout.tsx`-ийн FOUC-ийн эсрэг скрипт ч энэ утгыг уншина */
-export const THEME_KEY = 'selbe-theme';
+/**
+ * localStorage түлхүүр — ⚠️ `themeKey.ts`-ээс (client-гүй модуль). Урьд нь ЭНД
+ * зарлаад layout.tsx (сервер) импортлоход client reference proxy болж, FOUC
+ * скрипт эвдэрдэг байсан (тайлбарыг `themeKey.ts`-ээс). Client талын хуучин
+ * импортуудад зориулж дахин экспортолно.
+ */
+import { THEME_KEY } from './themeKey';
+export { THEME_KEY };
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   /**

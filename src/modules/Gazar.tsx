@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useRef, useState, type CSSProperties } from 'react';
 import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
 import { Icon } from '@/components/Icon';
 import { Stats, Stat, Donut, Bars, Ring, Empty, Loading } from '@/components/ui';
@@ -195,7 +195,11 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     const statusAreaBy: StatusBars = STATUS_META.map((m) => {
       const s = st(m.value);
       const ha2 = Math.round(s.a / 100) / 100;
-      return { key: m.value, label: m.label, value: ha2, display: `${num(ha2, 2)} га`, color: m.color };
+      // Тоо ба нэгж (га) ХАМТ — «1,695 талбар · 78.08 га»
+      return {
+        key: m.value, label: m.label, value: ha2,
+        display: `${num(s.n)} талбар · ${num(ha2, 2)} га`, color: m.color,
+      };
     });
     // Шалтгааны нэрийг цэвэрлэж (арын зай, төгсгөлийн «.») нэгтгэнэ.
     // ⚠️ Түүхий утгуудыг мөн хадгална — дарж шүүхэд WHERE яг таарах ёстой.
@@ -266,7 +270,11 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     <div className={g.frame}>
       {/* ── ЗҮҮН: Чөлөөлөлт (үлдсэн нэгж талбар) — үзүүлэлт + явц бүгд энд ── */}
       <div className={g.left}>
-        <section className={`${g.panel} ${g.panelPrimary}`} aria-label="Газар чөлөөлөлт">
+        {/* Баганын толгой — баруунтай ИЖИЛ загвар, ӨӨР өнгө (ногоон = чөлөөлөлт) */}
+        <h3 className={g.colHd} style={{ '--tone': '#16a34a' } as CSSProperties}>
+          Төслийн талбайн чөлөөлөх нэгж талбар
+        </h3>
+        <section className={`${g.panel} ${g.panelPrimary}`} aria-label="Төслийн талбайн чөлөөлөх нэгж талбар">
           <header className={g.panelHd}>
             <h3 className={g.panelTitle}>Газар чөлөөлөлт</h3>
             <span className={g.panelNote}>{d ? `${num(d.left.remaining)} үлдсэн` : '…'}</span>
@@ -306,6 +314,8 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                   };
                   return (
                   <>
+                    {/* ГУРВАН график ХЭВЭЭР (тоо / хувь / талбай) — мөр бүрийн
+                        тэмдэглэгээнд нэгж ба тоо ХАМТ (хэрэглэгчийн хүсэлт). */}
                     <p className={g.subHead}>
                       Үлдсэн {num(d.left.remaining)} талбарын шалтгаан
                       <span className={g.subNote}> · тоогоор</span>
@@ -315,7 +325,8 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                       selected={selReason}
                       onSelect={pickReason}
                       items={d.reasons.map((r) => ({
-                        key: r.key, label: r.label, value: r.n, display: `${num(r.n)} талбар`, color: r.color,
+                        key: r.key, label: r.label, value: r.n,
+                        display: `${num(r.n)} талбар · ${r.pct}%`, color: r.color,
                       }))}
                     />
                     <p className={g.subHead}>Шалтгаан<span className={g.subNote}> · хувиар</span></p>
@@ -325,7 +336,8 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                       selected={selReason}
                       onSelect={pickReason}
                       items={d.reasons.map((r) => ({
-                        key: r.key, label: r.label, value: r.pct, display: `${r.pct}%`, color: r.color,
+                        key: r.key, label: r.label, value: r.pct,
+                        display: `${r.pct}% · ${num(r.n)} талбар`, color: r.color,
                       }))}
                     />
                     <p className={g.subHead}>Шалтгаан<span className={g.subNote}> · талбайгаар (га)</span></p>
@@ -336,7 +348,8 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                       items={[...d.reasons]
                         .sort((a, b) => b.area - a.area)
                         .map((r) => ({
-                          key: r.key, label: r.label, value: r.area, display: `${r.area} га`, color: r.color,
+                          key: r.key, label: r.label, value: r.area,
+                          display: `${num(r.area, 2)} га · ${num(r.n)} талбар`, color: r.color,
                         }))}
                     />
                   </>
@@ -413,7 +426,11 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
 
       {/* ── БАРУУН: Барилга + Кадастр (нэгтгэсэн багана) ── */}
       <div className={g.right}>
-        <section className={g.panel} aria-label="Барилга">
+        {/* Баганын толгой — зүүнтэй ИЖИЛ загвар, ӨӨР өнгө (цэнхэр = гаднах орчин) */}
+        <h3 className={g.colHd} style={{ '--tone': '#0ea5e9' } as CSSProperties}>
+          Төслийн талбайгаас гаднах нэгж талбар, барилга
+        </h3>
+        <section className={`${g.panel} ${g.panelOuter}`} aria-label="Барилга">
           <header className={g.panelHd}>
             <h3 className={g.panelTitle}>Барилга</h3>
             <span className={g.panelNote}>{d ? `${num(d.b.n)} барилга` : '…'}</span>
@@ -455,7 +472,7 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           </div>
         </section>
 
-        <section className={g.panel} aria-label="Кадастрын нэгж">
+        <section className={`${g.panel} ${g.panelOuter}`} aria-label="Кадастрын нэгж">
           <header className={g.panelHd}>
             <h3 className={g.panelTitle}>Кадастрын нэгж</h3>
             <span className={g.panelNote}>{d ? `${num(d.p.n)} нэгж` : '…'}</span>
