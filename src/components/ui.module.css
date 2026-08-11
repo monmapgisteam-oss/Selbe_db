@@ -120,6 +120,8 @@
    эс бол нарийн эцэг дотор өргөн тоо (8,575 өрх) хүрээг давна. */
 .stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .stats3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.stats4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 720px) { .stats4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
 .stat {
   padding: 12px 14px;

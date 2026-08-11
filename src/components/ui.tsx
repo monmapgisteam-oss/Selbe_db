@@ -137,8 +137,12 @@ export function Tabs({
 
 /* ── Үзүүлэлт ── */
 
-export function Stats({ cols = 2, children }: { cols?: 2 | 3; children: ReactNode }) {
-  return <div className={`${s.stats} ${cols === 3 ? s.stats3 : ''}`}>{children}</div>;
+export function Stats({ cols = 2, children }: { cols?: 2 | 3 | 4; children: ReactNode }) {
+  return (
+    <div className={`${s.stats} ${cols === 3 ? s.stats3 : ''} ${cols === 4 ? s.stats4 : ''}`}>
+      {children}
+    </div>
+  );
 }
 
 export function Stat({
