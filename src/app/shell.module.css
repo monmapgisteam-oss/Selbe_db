@@ -183,7 +183,10 @@
   align-items: center;
   gap: 16px;
   padding: 0 18px;
-  background: var(--surface);
+  /* Зүүнээс цацрах маш зөөлөн модулийн өнгөт туяа — толгойг «амьд» болгоно */
+  background:
+    radial-gradient(120% 200% at 0% 50%, color-mix(in srgb, var(--hue) 7%, transparent), transparent 42%),
+    var(--surface);
   border-bottom: 1px solid var(--line);
   z-index: 20;
   /* ⚠️ Толгой дэлгэцээс ХЭЗЭЭ Ч хальж page-ыг хэвтээ гүйлгэхгүй: `min-width:0`
@@ -301,9 +304,11 @@
   padding: 4px;
   border: 1px solid var(--line);
   border-radius: 12px;
-  background: var(--surface);
+  /* Хагас тунгалаг «шилэн» дэвсгэр — доогуурх зураг бүдэг нэвт харагдана */
+  background: color-mix(in srgb, var(--surface) 86%, transparent);
   box-shadow: var(--shadow-lg);
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(14px) saturate(1.15);
+  -webkit-backdrop-filter: blur(14px) saturate(1.15);
   animation: mapToolsIn 0.42s var(--ease) both;
 }
 @keyframes mapToolsIn {
@@ -457,7 +462,10 @@
   gap: 12px;
   padding: 16px 20px;
   border-bottom: 1px solid var(--line);
-  background: color-mix(in srgb, var(--hue) 5%, var(--surface));
+  /* Булангаас цацрах өнгөт туяа — statAccent-тэй ижил гэр бүлийн хэв */
+  background:
+    radial-gradient(120% 160% at 0% 0%, color-mix(in srgb, var(--hue) 10%, transparent), transparent 55%),
+    color-mix(in srgb, var(--hue) 4%, var(--surface));
 }
 .panelIcon {
   display: grid;
@@ -466,7 +474,9 @@
   height: 34px;
   flex: none;
   border-radius: 9px;
-  background: var(--hue);
+  /* Градиент + өнгөт сүүдэр — дүрс нь хавтгай дөрвөлжин биш «товойсон» */
+  background: linear-gradient(135deg, color-mix(in srgb, var(--hue) 82%, #fff), var(--hue));
+  box-shadow: 0 4px 12px -4px color-mix(in srgb, var(--hue) 55%, transparent);
   color: #fff;
 }
 .panelIcon svg { width: 18px; height: 18px; }

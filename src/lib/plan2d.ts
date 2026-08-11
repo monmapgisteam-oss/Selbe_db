@@ -130,5 +130,36 @@ export function loadPlan2dStyle(): Promise<void> {
   return pending;
 }
 
-/** id-гаар webmap renderer-ийг олох (ачаалагдаагүй бол undefined — fallback style) */
-export const plan2dStyleOf = (id: string): unknown => STYLES?.[id];
+/**
+ * КАТАЛОГ → ПЛАН2D alias — «Ерөнхий төлөвлөгөө 2D map»-ийн style-ийг ижил
+ * утгатай каталогийн давхаргуудад мөн өмсгөнө (хэрэглэгчийн хүсэлт: бүх
+ * давхаргыг план 2D map-тай жигдлэх). Эдгээр `sb:*` renderer нь `simple`
+ * (талбар шаардахгүй) тул өөр үйлчилгээний давхаргад найдвартай тавигдана.
+ *
+ * ⚠️ Зөвхөн физик/газрын бүрхэвчийн давхаргууд — инженерийн шугам, бүс,
+ * хяналт, багц зэрэг план2d webmap-д ЭКВИВАЛЕНТГҮЙ давхаргууд өөрийн
+ * загвартаа үлдэнэ (тэдгээрт өмсгөх план2d style алга).
+ */
+const PLAN2D_ALIAS: Record<string, string> = {
+  "et:24": "sb:4",   // Барилга
+  "et:29": "sb:2",   // Зам (талбай) → Автозам
+  "et:27": "sb:3",   // Явган хүний зам
+  "dugui": "sb:15",  // Дугуйн зам
+  "nogoon": "sb:1",  // Ногоон байгууламж
+  "et:26": "sb:1",   // Цэцэрлэгт хүрээлэн → ногоон
+  "tree": "sb:0",    // Мод
+};
+
+/**
+ * id-гаар webmap renderer-ийг олох (ачаалагдаагүй бол undefined — fallback style).
+ * Шууд `sb:*` олдохгүй бол alias-аар ижил утгатай план2d давхаргын style-ийг авна.
+ */
+export const plan2dStyleOf = (id: string): unknown => STYLES?.[id] ?? STYLES?.[PLAN2D_ALIAS[id]];
+
+/**
+ * План2d style-ийг ALIAS-аар авсан каталогийн давхаргууд. ⚠️ Тэдгээрийн ихэнх нь
+ * зурган текстур (esriPFS/esriPMS) тул SceneView-д дэмжигдэхгүй — 3D/BIM горимд
+ * MapCanvas эдгээрийг нуана («picture-fill is unsupported in 3D» алдааны эх).
+ * 3D-д меш газрын бүрхэвчийг өөрөө харуулдаг тул визуал алдагдалгүй.
+ */
+export const PLAN2D_ALIASED: ReadonlySet<string> = new Set(Object.keys(PLAN2D_ALIAS));

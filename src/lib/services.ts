@@ -941,6 +941,17 @@ export const BUILDING_STAGES: { field: string; label: string }[] = [
 ];
 export const STAGE_NA = -1;
 
+/**
+ * ХҮҮХДИЙН ТОГЛООМ — төрлийн жагсаалт (`huuhdiin_togloom/18`, 111 цэг).
+ * MapCanvas 2D-д төрөл бүрийг ЭГЦ ДЭЭРЭЭС харсан SVG дүрсээр зурна — өнгө нь
+ * эндээс нэг эх сурвалжтай.
+ */
+export const TOGLOOM_TYPES: { value: string; color: string; kind: "slide" | "swing" | "set" }[] = [
+  { value: "Гулгуур", color: "#f59e0b", kind: "slide" },
+  { value: "Дүүжин", color: "#0ea5e9", kind: "swing" },
+  { value: "Том гулсууран тоглоом", color: "#22c55e", kind: "set" },
+];
+
 /** Талбайн хяналт — Survey123: цэгийн давхарга + 5 холбоост хүснэгт */
 export const SURVEY = {
   url: `${SURVEY_FS}/0`,
@@ -1281,6 +1292,15 @@ export const BOUNDARY = {
  * Талбай/уртыг нийлбэрт тооцуулахаар `qty` тохируулав.
  */
 const SB_BASE = `${HJ}/selbe_3D__0804_WFL1/FeatureServer`;
+/**
+ * ⚠️ `ZONE_ID` талбартай sb давхаргууд — үйлчилгээнээс нэг бүрчлэн шалгасан
+ * (2026-08-10): ЗӨВХӨН Явган зам (3) ба Барилга (4). Бусад 12 нь CAD-гаралтай
+ * (`Entity`, `Layer`, `cad_layer` талбартай) тул бүсийн шүүлтэд ОРОХГҮЙ —
+ * байхгүй талбараар `definitionExpression` тавьбал давхарга зурагдахаа больж,
+ * `usePlanTotals`-ын статистик хүсэлт унадаг (Promise.all тул самбар бүхэлдээ
+ * «ArcGIS алдаа» болно).
+ */
+const SB_ZONED = new Set([3, 4]);
 const SB_LAYERS: LayerDef[] = PLAN2D_LAYERS.map((l) => ({
   id: l.id,
   n: l.sub,
@@ -1291,6 +1311,7 @@ const SB_LAYERS: LayerDef[] = PLAN2D_LAYERS.map((l) => ({
   hue: "#94a3b8",
   fill: 0.4,
   width: 1,
+  ...(SB_ZONED.has(l.sub) ? {} : { noZone: true as const }),
   ...(l.geom === "area"
     ? { qty: { field: "Shape__Area", unit: "м²" } }
     : l.geom === "line"
@@ -1922,6 +1943,27 @@ export const LAYERS: LayerDef[] = [
     width: 0.75,
     noZone: true,
   },
+  /**
+   * ХҮҮХДИЙН ТОГЛООМ (цэг, 111) — төрлөөр (Гулгуур/Дүүжин/Том гулсууран) ЭГЦ
+   * ДЭЭРЭЭС харсан SVG дүрс (MapCanvas тавина). СУУРЬ давхаргын нэг:
+   * каталог/үзүүлэлтэд ОРОХГҮЙ (хэрэглэгчийн хүсэлт) — зөвхөн дашбоард ба
+   * төлөвлөгөөний зурагт default давхаргуудтай хамт харагдана (`BASE_MAP_IDS`,
+   * `INITIAL_MAP_LAYERS`). ZONE_ID-гүй тул бүс сонгоход орон зайн маскаар бүдгэрнэ.
+   */
+  {
+    id: "tgl",
+    n: 18,
+    url: `${HJ}/huuhdiin_togloom/FeatureServer/18`,
+    title: "Хүүхдийн тоглоом",
+    topic: "plan",
+    geom: "point",
+    hue: "#f59e0b",
+    marker: "circle",
+    size: 8,
+    noZone: true,
+    facets: [{ field: "type", label: "Төрөл" }],
+    note: "111 цэг · 3 төрөл",
+  },
   /** Авто зам — `Бусад_мэдээлэл_20260724`/193 (кирилл нэрийг encode). Бусад бүлэгт. */
   {
     id: "road",
@@ -2241,43 +2283,45 @@ export const zoneWhere = (l: LayerDef, id: string): string | null => {
 
 const UBHUB = env(
   process.env.NEXT_PUBLIC_UBHUB_IMAGERY,
-  "https://mapservice.ubhub.mn/arcgis/rest/services/Imagery",
+  "https://imagery.ubhub.mn/imagery/rest/services/Hosted",
 );
 
 /**
- * Агаарын зураг — 9 ImageServer нэг бүрхэвч болж залгана. СУУРЬ тул хэрэглэгчийн
- * унтраалгагүй: газрын зураг хоёрхон төрөлтэй (2D = ортофото, 3D = меш).
+ * Агаарын зураг — НЭГ нэгтгэсэн ImageServer (`selbe_ortho_merged`). СУУРЬ тул
+ * хэрэглэгчийн унтраалгагүй: газрын зураг хоёрхон төрөлтэй (2D = ортофото, 3D = меш).
  *
- * ⚠️ Проекц UTM 48N (32648), тайлын кэшгүй → `ImageryTileLayer` БИШ, динамик
- * `ImageryLayer`.
+ * ⚠️ 2026-08-06: өмнөх 9 тусдаа ImageServer (`Selbe_mid_1…`, `Selbe_north_ortho1…`,
+ * host `mapservice.ubhub.mn`) БҮГД «Service not started» болж унасан тул нэг
+ * нэгтгэсэн үйлчилгээгээр солив. Шинэ host `imagery.ubhub.mn`, CORS дурын origin-д
+ * нээлттэй (preflight + `X-Esri-Authorization` зөвшөөрнө).
+ *
+ * ⚠️ Проекц Web Mercator (3857/102100) — өмнөх UTM 48N БИШ. `tileInfo` (LERC2D,
+ * 3см хүртэл) байгаа ч `capabilities` нь «Image, Metadata» тул тайл serving биш,
+ * `exportImage`-аар үйлчилдэг → `ImageryTileLayer` БИШ, динамик `ImageryLayer`
+ * хэвээр (одоогийн MapCanvas/SuitMap-ийн арга зөв). Массив нь нэг элементтэй ч
+ * `.map()`-аар давхарга үүсгэдэг код өөрчлөлтгүй ажиллана.
  */
 export const IMAGERY = {
   title: "Агаарын зураг (ортофото)",
   urls: [
-    `${UBHUB}/Selbe_mid_1/ImageServer`,
-    `${UBHUB}/selbe_mid2/ImageServer`,
-    `${UBHUB}/selbe_mid3/ImageServer`,
-    `${UBHUB}/selbe_mid4/ImageServer`,
-    `${UBHUB}/selbe_mid5/ImageServer`,
-    `${UBHUB}/selbe_mid6/ImageServer`,
-    `${UBHUB}/Selbe_north_ortho1/ImageServer`,
-    `${UBHUB}/Selbe_north_ortho2/ImageServer`,
-    `${UBHUB}/Selbe_north_ortho3/ImageServer`,
+    `${UBHUB}/selbe_ortho_merged/ImageServer`,
   ],
 } as const;
 
 /**
  * 3D бодит загвар (IntegratedMesh).
  *
- * ⚠️ ПОРТ 6443 нь САНААТАЙ. 443 порт нь `nginx/1.26.3`-аар дамждаг бөгөөд тэр
- * nginx CORS-ыг өөрөө удирдаж, ArcGIS Server-ийн `Access-Control-Allow-Origin`-ыг
- * нуугаад цагаан жагсаалтаараа (зөвхөн `https://ubhub.mn`) орлуулдаг. 6443 нь
- * ArcGIS Server рүү шууд ордог тул `allowedOrigins: *` тохиргоо ажиллаж, аль ч
- * origin-д ACAO буцаана. Гэрчилгээ нь хүчинтэй.
+ * ⚠️ 2026-08-06: ПОРТ 6443 үхсэн (Connection refused — тэр порт дээр юу ч
+ * сонсохгүй болсон) тул энгийн `:443` (https) руу шилжүүлэв. Хуучин болгоомжлол
+ * («443 nginx зөвхөн `https://ubhub.mn` origin зөвшөөрдөг тул 6443 хэрэглэв»)
+ * ОДОО ХҮЧИНГҮЙ: 443 nginx одоо дурын origin-д ACAO echo хийж, CORS preflight
+ * (OPTIONS) ба `X-Esri-Authorization` header-ийг бүрэн зөвшөөрдөг болсон. Хоёр
+ * SceneServer (`layers/0` → `IntegratedMesh`, `nodepages/0` binary stream) 443
+ * дээр эрүүл ажиллана. Гэрчилгээ хүчинтэй.
  */
 const UBHUB_SCENE = env(
   process.env.NEXT_PUBLIC_UBHUB_SCENE,
-  "https://arcgis.ubhub.mn:6443/arcgis/rest/services/Hosted",
+  "https://arcgis.ubhub.mn/arcgis/rest/services/Hosted",
 );
 
 export const SCENE = {
@@ -2587,6 +2631,7 @@ export const INITIAL_MAP_LAYERS: string[] = [
   "et:12", // Гүүрэн байгууламж
   "nogoon", // Ногоон байгууламж
   "tree", // Мод
+  "tgl", // Хүүхдийн тоглоом (эгц дээрээс харсан дүрс)
 ];
 
 /**
@@ -2595,6 +2640,22 @@ export const INITIAL_MAP_LAYERS: string[] = [
  * ⚠️ Dashboard-ын `INITIAL_MAP_LAYERS`-ээс ТУСДАА — plan-ыг л webmap-аар сольсон.
  */
 export const PLAN_INITIAL: string[] = PLAN2D_LAYERS.map((l) => l.id);
+
+/**
+ * ЗУРГИЙН СУУРЬ ДАВХАРГУУД — «Ерөнхий төлөвлөгөө 2D map»-ийн 14 давхарга БҮХ
+ * 2D зурагт ҮРГЭЛЖ харагдана (хэрэглэгчийн хүсэлт, 2026-08-10: давхаргын цонх
+ * ба зургийн суурь харагдацыг САЛГАВ).
+ *
+ * ⚠️ MapCanvas эдгээрийг каталогийн `visible` жагсаалтаас ҮЛ ХАМААРАН асаана —
+ * эхний оролтод каталог хоосон (юу ч чагтлаагүй) ч зураг план 2D шигээ бүрэн
+ * харагдана. Каталогийн чагт нь зөвхөн НЭМЭЛТ (бүс, инженер, хяналт…) давхаргыг
+ * удирдана. Зөвхөн 2D-д: 3D-д меш газрыг бүрхэнэ, BIM-д scene3d:* орлоно.
+ */
+export const BASE_MAP_IDS: readonly string[] = [
+  ...PLAN2D_LAYERS.map((l) => l.id),
+  // Хүүхдийн тоглоом — суурьтай хамт харагдана (каталог/үзүүлэлтгүй)
+  "tgl",
+];
 
 /**
  * БАРИЛГЫН ХЯНАЛТЫН багц — каталогт тусдаа бүлэг болж гарна.
@@ -2695,10 +2756,11 @@ export const VIEWS: {
     hue: "#0d9488",
     layers: PLAN_LAYER_IDS,
     /**
-     * ⚠️ Нээгдэхэд «Selbe 2D map 0804» webmap-ийн 14 давхарга (`PLAN_INITIAL`)
-     * асаалттай — plan-ыг webmap шиг харуулна.
+     * ⚠️ Каталог ХООСОН эхэлнэ (2026-08-10): суурь 14 давхарга (`BASE_MAP_IDS`)
+     * каталогиос хамааралгүй ҮРГЭЛЖ зурагдана — тиймээс эхний оролтод чагт
+     * байхгүй ч зураг план 2D шигээ бүрэн харагдана.
      */
-    initial: PLAN_INITIAL,
+    initial: [],
   },
   /**
    * БАГЦЫН МЭДЭЭЛЭЛ — барилга угсралтын 7 багц тус бүрийн БҮРЭН хуудас.

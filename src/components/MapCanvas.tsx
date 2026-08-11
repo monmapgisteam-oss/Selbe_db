@@ -8,6 +8,7 @@ import Map from '@arcgis/core/Map';
 import MapView from '@arcgis/core/views/MapView';
 import SceneView from '@arcgis/core/views/SceneView';
 import FeatureLayer from '@arcgis/core/layers/FeatureLayer';
+import * as geometryEngine from '@arcgis/core/geometry/geometryEngine';
 import GraphicsLayer from '@arcgis/core/layers/GraphicsLayer';
 import Graphic from '@arcgis/core/Graphic';
 import Polygon from '@arcgis/core/geometry/Polygon';
@@ -32,11 +33,11 @@ import {
   LAYERS, LAYER_BY_ID, layerUrl, oidOf, drawOrder, DASH_PATTERN, ALWAYS_ON_IDS, REFERENCE_IDS,
   HOME, IMAGERY, SCENE, BIM, USAN_SAN, ELEVATION_URL, ZONE_LAYER, zoneWhere,
   ZONE_FIELD, ZONE_NONE, ZONE_TYPE_EMPTY_HUE, OID, BUILDING, SURVEY, PARCEL_LEFT, buildingKey,
-  MAP_HUE_OVERRIDES, SOURCE_FS,
+  MAP_HUE_OVERRIDES, SOURCE_FS, BASE_MAP_IDS, TOGLOOM_TYPES,
   type LayerDef,
 } from '@/lib/services';
 import { SCENE3D_LAYERS } from '@/lib/scene3d';
-import { plan2dStyleOf, loadPlan2dStyle } from '@/lib/plan2d';
+import { plan2dStyleOf, loadPlan2dStyle, PLAN2D_ALIASED } from '@/lib/plan2d';
 import { queryExtent, queryFeatures, type Aoi } from '@/lib/query';
 import { loadBlockProgress, cachedBlockProgress, type BlockProgressMap } from '@/lib/blockProgress';
 import { webmapStyleOf, loadWebmapStyle } from '@/lib/webmapStyle';
@@ -97,6 +98,14 @@ type MapApi = {
    */
   ortho: boolean;
   setOrtho: (v: boolean) => void;
+  /**
+   * БҮСИЙН ОРОН ЗАЙН МАСК — сонгосон бүс(үүд)ийн нэгтгэсэн полигон. `ZONE_ID`-гүй
+   * (noZone) давхаргуудыг атрибутаар шүүх боломжгүй тул 2D-д энэ геометрээр
+   * `featureEffect` бүдгэрүүлэлт хийнэ — суурь давхаргууд ч бүсээр «шүүгдэнэ».
+   * MapCanvas бүс өөрчлөгдөхөд бөглөнө; тодруулгын эффекттэй НЭГ давталтад
+   * нийлдэг тул хоёр эзэн нэг шинж дээр зөрчилдөхгүй.
+   */
+  setZoneMask: (g: unknown) => void;
 };
 
 const Ctx = createContext<MapApi>({
@@ -104,6 +113,7 @@ const Ctx = createContext<MapApi>({
   zoomToLayer: () => {}, zoomToZone: () => {},
   zoomToWhere: () => {},
   ortho: false, setOrtho: () => {},
+  setZoneMask: () => {},
 });
 
 const RegisterCtx = createContext<(view: AnyView | null) => void>(() => {});
@@ -116,6 +126,21 @@ const rgb = (hex: string): [number, number, number] => {
   const h = hex.replace('#', '');
   return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
 };
+
+/**
+ * План2d-ийн esriPFS текстурын СУУРЬ өнгө — inline SVG (base64 data URI)-ийн
+ * эхний `fill="#…"` (дэвсгэр rect). SceneView зурган дүүргэлт дэмждэггүй тул
+ * BIM-д энэ өнгөөр цул дүүргэлт хийж 2D план map-тай ижил харагдуулна.
+ */
+function pfsBaseColor(url: string | undefined): string | null {
+  if (!url?.startsWith('data:image/svg+xml;base64,')) return null;
+  try {
+    const m = /fill="(#[0-9a-fA-F]{6})"/.exec(atob(url.split(',')[1]));
+    return m ? m[1] : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * ⚠️ ArcGIS-д өнгөний alpha нь СИМБОЛЫН ТӨРЛӨӨС хамаарч өөр хэмжээстэй:
@@ -327,6 +352,85 @@ const buildingProgressRenderer = (prog: BlockProgressMap): RendererProp => ({
   }),
 } as unknown as RendererProp);
 
+/* ══════════ Хүүхдийн тоглоом (`tgl`) — 100% БОДИТ харагдах симбол ══════════ */
+
+/**
+ * Esri Recreation Style-ийн БОДИТ 3D загваруудын рендер зураг (static.arcgis.com,
+ * CORS нээлттэй — модны GLB-тэй ижил host). Схем дүрс БИШ, жинхэнэ тоглоомын
+ * төхөөрөмжийн фотореал дүрс (хэрэглэгчийн хүсэлт, 2026-08-10):
+ *   · Гулгуур → Slide · Дүүжин → Swing · Том гулсууран → Jungle_Gym
+ */
+const TOGL_IMG: Record<'slide' | 'swing' | 'set', string> = {
+  slide: 'https://static.arcgis.com/arcgis/styleItems/Recreation/thumbnails/Slide.png',
+  swing: 'https://static.arcgis.com/arcgis/styleItems/Recreation/thumbnails/Swing.png',
+  set: 'https://static.arcgis.com/arcgis/styleItems/Recreation/thumbnails/Jungle_Gym.png',
+};
+
+/** BIM (SceneView)-д тавих ЖИНХЭНЭ 3D загваруудын web style нэр — 2D зургуудын эх */
+const TOGL_STYLE: Record<'slide' | 'swing' | 'set', string> = {
+  slide: 'Slide',
+  swing: 'Swing',
+  set: 'Jungle_Gym',
+};
+
+/**
+ * `tgl3d` (BIM) renderer — Esri Recreation web style-ийн бодит 3D моделууд.
+ * Size визуал хувьсагч нь ӨНДРИЙГ метрээр өгнө (анхдагчаас ~35% том, хэрэглэгчийн
+ * хүсэлт) — харьцаа нь моделоос хадгалагдана.
+ */
+function togl3dRenderer(): RendererProp {
+  return {
+    type: 'unique-value',
+    field: 'type',
+    uniqueValueInfos: TOGLOOM_TYPES.map((t) => ({
+      value: t.value,
+      label: t.value,
+      symbol: { type: 'web-style', styleName: 'EsriRecreationStyle', name: TOGL_STYLE[t.kind] },
+    })),
+    visualVariables: [{
+      type: 'size',
+      axis: 'height',
+      valueUnit: 'meters',
+      valueExpression:
+        `When($feature.type == 'Гулгуур', 4, $feature.type == 'Дүүжин', 3.6, 5.5)`,
+    }],
+  } as unknown as RendererProp;
+}
+
+/**
+ * `tgl`-ийн renderer — `type`-аар unique-value, бодит загварын рендер зургууд.
+ *
+ * ⚠️ МАСШТАБТ УЯГДСАН хэмжээ (хэрэглэгчийн хүсэлт: «яг мод шиг») — `basePx`-ийг
+ * view-ийн масштабаас MapCanvas ӨӨРӨӨ тооцож (px ≈ 61000 ÷ масштаб, ~16 м
+ * эзлэхүүн) масштаб өөрчлөгдөх бүрд renderer-ийг ШИНЭЧИЛНЭ. Урьд нь size
+ * visual variable (`$view.scale`) ашигласан боловч picture marker дээр
+ * ажиллаагүй тул watch-д суурилсан баталгаат аргаар солив.
+ */
+function toglRenderer(basePx: number): RendererProp {
+  // Төрөл бүрийн харьцаа — том цогцолбор арай том, гулгуур арай нарийн
+  const RATIO: Record<string, number> = { slide: 0.85, swing: 0.95, set: 1.1 };
+  return {
+    type: 'unique-value',
+    field: 'type',
+    uniqueValueInfos: TOGLOOM_TYPES.map((t) => {
+      const s = Math.round(basePx * RATIO[t.kind] * 10) / 10;
+      return {
+        value: t.value,
+        label: t.value,
+        symbol: {
+          type: 'picture-marker',
+          url: TOGL_IMG[t.kind],
+          width: `${s}px`,
+          height: `${s}px`,
+        },
+      };
+    }),
+  } as unknown as RendererProp;
+}
+
+/** Масштаб → tgl дүрсийн суурь px (хязгаартай — хэт жижиг/том болохгүй) */
+const toglPx = (scale: number) => Math.max(2.5, Math.min(90, 61000 / Math.max(scale, 1)));
+
 /**
  * Давхаргын хүрээг зургийн проекцоор.
  *
@@ -526,6 +630,8 @@ function buildLayers(uniform = false): Layer[] {
             return r as typeof web.renderer;
           })()
         : web?.renderer;
+    // План2d style (шууд эсвэл alias-аар). Тавигдвал selbe0724 effect/opacity-г алгасна.
+    const p2 = plan2dStyleOf(d.id);
     return new FeatureLayer({
       id: d.id,
       url: layerUrl(d),
@@ -536,8 +642,8 @@ function buildLayers(uniform = false): Layer[] {
       ...(d.minScale ? { minScale: d.minScale } : {}),
       elevationInfo: ON_GROUND,
       // `sb:*` — «Selbe 2D map 0804» webmap-ийн ЯГ renderer (100% style).
-      renderer: plan2dStyleOf(d.id)
-        ? (rendererJsonUtils.fromJSON(plan2dStyleOf(d.id) as never) as unknown as RendererProp)
+      renderer: p2
+        ? (rendererJsonUtils.fromJSON(p2 as never) as unknown as RendererProp)
         : webRenderer
         ? (rendererJsonUtils.fromJSON(webRenderer as never) as unknown as RendererProp)
         : d.paint
@@ -560,8 +666,10 @@ function buildLayers(uniform = false): Layer[] {
               })),
             } as unknown as RendererProp)
           : simple(symbolOf(d)),
-      ...(web?.effect ? { effect: web.effect as unknown as __esri.FeatureLayerProperties['effect'] } : {}),
-      ...(web?.opacity != null ? { opacity: web.opacity } : {}),
+      // ⚠️ План2d-аар жигдэлсэн давхаргад selbe0724 снапшотын EFFECT (bloom/гэрэлтэлт)
+      //    ба opacity-г ТАВИХГҮЙ — эс бөгөөс барилга гэрэлтэж, өнгө нь план 2D map-аас зөрнө.
+      ...(!p2 && web?.effect ? { effect: web.effect as unknown as __esri.FeatureLayerProperties['effect'] } : {}),
+      ...(!p2 && web?.opacity != null ? { opacity: web.opacity } : {}),
       ...(d.id === ZONE_LAYER.id ? { labelingInfo: zoneLabels() } : {}),
       ...(d.id === 'source:eh' ? { labelingInfo: sourceLabels(), labelsVisible: true } : {}),
     });
@@ -591,6 +699,9 @@ export function MapProvider({ children }: { children: ReactNode }) {
    */
   const [ortho, setOrtho] = useState(false);
 
+  /** Бүсийн орон зайн маск — noZone давхаргуудын 2D бүдгэрүүлэлтэд (доорх эффект) */
+  const [zoneMask, setZoneMask] = useState<unknown>(null);
+
   /**
    * Тодруулга 2D-д — таарахгүй объектыг БҮДГЭРҮҮЛНЭ (`featureEffect`).
    *
@@ -614,6 +725,13 @@ export function MapProvider({ children }: { children: ReactNode }) {
       //    Хоёулаа зэрэг байвал featureEffect-ийн filter тэдгээрийг AND-оор
       //    хослуулна (эх дотор нь SQL + орон зайн шүүлт).
       const apply = !is3d && (hl.where || hl.geometry) && (!onlyList || onlyList.includes(l.id));
+      /**
+       * БҮСИЙН МАСК — тодруулгагүй үед `ZONE_ID`-гүй (noZone) давхаргыг сонгосон
+       * бүсийн полигоноор орон зайгаар бүдгэрүүлнэ. Атрибутын шүүлт боломгүй
+       * (CAD-гаралтай суурь давхаргууд) тул зөвхөн ингэж «шүүгдэнэ». Тодруулга
+       * идэвхэвбэл тэр нь давамгайлна (нэг давхаргад нэг л featureEffect).
+       */
+      const maskApply = !apply && !is3d && zoneMask != null && LAYER_BY_ID[l.id]?.noZone;
       fl.featureEffect = apply
         ? ({
             filter: {
@@ -624,9 +742,14 @@ export function MapProvider({ children }: { children: ReactNode }) {
             },
             excludedEffect: 'opacity(15%) grayscale(80%)',
           } as unknown as __esri.FeatureEffect)
+        : maskApply
+        ? ({
+            filter: { geometry: zoneMask, spatialRelationship: 'intersects' },
+            excludedEffect: 'opacity(15%) grayscale(80%)',
+          } as unknown as __esri.FeatureEffect)
         : (null as unknown as __esri.FeatureEffect);
     });
-  }, [view, hl]);
+  }, [view, hl, zoneMask]);
 
   const setHighlight = useCallback(
     (where: string | null, only?: string | string[], geometry?: unknown) =>
@@ -682,7 +805,7 @@ export function MapProvider({ children }: { children: ReactNode }) {
   }, [view]);
 
   const api = useMemo<MapApi>(
-    () => ({ view, setHighlight, highlight: hl, zoomToLayer, zoomToZone, zoomToWhere, ortho, setOrtho }),
+    () => ({ view, setHighlight, highlight: hl, zoomToLayer, zoomToZone, zoomToWhere, ortho, setOrtho, setZoneMask }),
     [view, setHighlight, hl, zoomToLayer, zoomToZone, zoomToWhere, ortho],
   );
 
@@ -765,6 +888,65 @@ export const MapCanvas = memo(function MapCanvas({
   const fadingRef = useRef<Set<string>>(new Set());
 
   const [ready, setReady] = useState(false);
+
+  /**
+   * БҮСИЙН ОРОН ЗАЙН МАСК — сонгосон бүс(үүд)ийн нэгтгэсэн полигоныг татаж
+   * Provider-т өгнө; тэр нь noZone давхаргуудыг 2D-д геометрээр бүдгэрүүлнэ
+   * («суурь давхаргууд ч бүсээр шүүгдэх ёстой» — хэрэглэгчийн хүсэлт).
+   * ⚠️ Race: бүс солигдох бүрд token шинэчлэгдэж, хоцорсон хариу хаягдана.
+   */
+  const { setZoneMask } = useMap();
+  const zoneMaskToken = useRef(0);
+  useEffect(() => {
+    const t = ++zoneMaskToken.current;
+    if (!ready || dim !== '2d' || !zone) { setZoneMask(null); return; }
+    const zl = mapRef.current?.findLayerById(ZONE_LAYER.id) as FeatureLayer | undefined;
+    if (!zl) { setZoneMask(null); return; }
+    (async () => {
+      try {
+        const q = zl.createQuery();
+        q.where = zoneWhere(ZONE_LAYER, zone) ?? '1=1';
+        q.returnGeometry = true;
+        q.outFields = [];
+        const sr = viewRef.current?.spatialReference;
+        if (sr) q.outSpatialReference = sr;
+        const res = await zl.queryFeatures(q);
+        if (zoneMaskToken.current !== t) return;
+        const gs = res.features.map((f) => f.geometry).filter(Boolean) as __esri.Geometry[];
+        const u = gs.length > 1
+          ? geometryEngine.union(gs as __esri.Polygon[])
+          : gs[0] ?? null;
+        setZoneMask(u);
+      } catch {
+        if (zoneMaskToken.current === t) setZoneMask(null);
+      }
+    })();
+  }, [zone, ready, dim, setZoneMask]);
+  /* Unmount үед маскыг цэвэрлэнэ — дараагийн харагдац хуучин бүдгэрүүлэлт өвлөхгүй */
+  useEffect(() => () => setZoneMask(null), [setZoneMask]);
+
+  /**
+   * `tgl` (Хүүхдийн тоглоом) — төрөл бүрд ЭГЦ ДЭЭРЭЭС харсан icon renderer.
+   * Map кэшлэгддэг тул mount бүрд идемпотентээр тавина (нэг л удаа солигдоно).
+   */
+  useEffect(() => {
+    if (!ready) return;
+    const l = mapRef.current?.findLayerById('tgl') as FeatureLayer | undefined;
+    const view = viewRef.current;
+    if (!l || !view) return;
+    let last = 0;
+    const apply = (scale: number) => {
+      const px = toglPx(scale);
+      // Zoom анимацийн үед scale олон удаа галддаг — 12%-иас бага өөрчлөлтөд
+      // renderer дахин үүсгэхгүй (хямд throttle).
+      if (last && Math.abs(px - last) / last < 0.12) return;
+      last = px;
+      l.renderer = toglRenderer(px) as unknown as __esri.Renderer;
+    };
+    apply(view.scale);
+    const h = view.watch('scale', (s: number) => apply(s));
+    return () => h.remove();
+  }, [ready, dim]);
 
   /**
    * Style снапшотууд (/webmap-style.json, /plan2d-style.json) — bundle-аас
@@ -1128,6 +1310,50 @@ export const MapCanvas = memo(function MapCanvas({
     for (const s of SCENE3D_LAYERS) {
       const existing = map.findLayerById(s.id);
       if (dim === 'bim' && !existing) {
+        /**
+         * ⚠️ BIM давхаргыг 2D map-тай ЖИГД болгох (хэрэглэгчийн хүсэлт), ГЭХДЭЭ
+         * зөвхөн БОЛОМЖТОЙГ нь: мод (Object/3D загвар), барилга (Extrude), ус
+         * (Water) зэрэг ЖИНХЭНЭ 3D симбол нь 3D хэвээр үлдэнэ; хавтгай fill/line
+         * давхаргууд (ногоон, зам, явган, дугуй г.м.) л план2d 2D style-ийг авна.
+         * scene3d:N ↔ план2d sb:N нь ижил service.
+         */
+        type SceneRenderer = {
+          symbol?: { symbolLayers?: { type?: string }[] };
+          defaultSymbol?: { symbolLayers?: { type?: string }[] };
+          uniqueValueInfos?: { symbol?: { symbolLayers?: { type?: string }[] } }[];
+        };
+        const r3 = s.renderer as SceneRenderer;
+        const sym3 = r3.symbol ?? r3.defaultSymbol ?? r3.uniqueValueInfos?.[0]?.symbol;
+        const t0 = sym3?.symbolLayers?.[0]?.type;
+        const keep3D = t0 === 'Object' || t0 === 'Extrude' || t0 === 'Water';
+        let p2 = keep3D ? null : plan2dStyleOf(s.id.replace('scene3d:', 'sb:'));
+        /**
+         * ⚠️ SceneView нь ЗУРГАН дүүргэлт (esriPFS) болон зургийн маркер (esriPMS)
+         * дэмждэггүй — тэдгээрийг тавьбал давхарга 3D-д ОГТ зурагдахгүй (ногоон,
+         * зам, явган, дугуй BIM дээр алга болж байсан шалтгаан). Тиймээс esriPFS
+         * текстурыг СУУРЬ ӨНГӨӨР нь (SVG-ийн эхний rect fill) цул дүүргэлт болгож
+         * хөрвүүлнэ — BIM дээр 2D план map-тай ижил өнгөтэй харагдана.
+         */
+        type PfsSymbol = { type?: string; url?: string; outline?: { color?: number[]; width?: number } };
+        const p2sym = (p2 as { symbol?: PfsSymbol; defaultSymbol?: PfsSymbol } | null);
+        const sym2 = p2sym?.symbol ?? p2sym?.defaultSymbol;
+        if (sym2?.type === 'esriPMS') p2 = null;
+        else if (sym2?.type === 'esriPFS') {
+          const base = pfsBaseColor(sym2.url);
+          if (base) {
+            p2 = {
+              type: 'simple',
+              symbol: {
+                type: 'esriSFS', style: 'esriSFSSolid', color: [...rgb(base), 255],
+                outline: {
+                  type: 'esriSLS', style: 'esriSLSSolid',
+                  color: sym2.outline?.color ?? [...rgb(base), 255],
+                  width: sym2.outline?.width ?? 0.5,
+                },
+              },
+            };
+          } else p2 = null;
+        }
         map.add(new FeatureLayer({
           id: s.id,
           url: s.url,
@@ -1136,11 +1362,37 @@ export const MapCanvas = memo(function MapCanvas({
           popupEnabled: false,
           visible: true,
           elevationInfo: sceneElevInfo(s.elevationInfo),
-          renderer: rendererJsonUtils.fromJSON(s.renderer as never) as unknown as RendererProp,
+          renderer: rendererJsonUtils.fromJSON((p2 ?? s.renderer) as never) as unknown as RendererProp,
         }));
       } else if (dim !== 'bim' && existing) {
         map.remove(existing);
         existing.destroy();
+      }
+    }
+
+    /**
+     * ХҮҮХДИЙН ТОГЛООМ — BIM-д ЖИНХЭНЭ 3D загвараар (Esri Recreation web style:
+     * Slide/Swing/Jungle_Gym — 2D-ийн бодит зургуудын эх моделууд). 2D-ийн `tgl`
+     * суурь давхарга BIM-д нуугддаг тул энэ нь түүний 3D хувилбар. Зөвхөн
+     * SceneView-д нэмнэ — web style 3D симбол MapView-д ажиллахгүй.
+     */
+    {
+      const tgl3d = map.findLayerById('tgl3d');
+      const tglDef = LAYER_BY_ID['tgl'];
+      if (dim === 'bim' && !tgl3d && tglDef) {
+        map.add(new FeatureLayer({
+          id: 'tgl3d',
+          url: layerUrl(tglDef),
+          title: 'Хүүхдийн тоглоом (3D)',
+          outFields: ['type'],
+          popupEnabled: false,
+          visible: true,
+          elevationInfo: ON_GROUND,
+          renderer: togl3dRenderer() as unknown as RendererProp,
+        }));
+      } else if (dim !== 'bim' && tgl3d) {
+        map.remove(tgl3d);
+        tgl3d.destroy();
       }
     }
 
@@ -1402,19 +1654,42 @@ export const MapCanvas = memo(function MapCanvas({
       if (l.id.startsWith('bim:')) { l.visible = dim === 'bim'; return; }
       // Web scene-ийн 3D давхаргууд — ЗӨВХӨН BIM горимд (SceneView) харагдана.
       if (l.id.startsWith('scene3d:')) { l.visible = dim === 'bim'; return; }
+      // Хүүхдийн тоглоомын 3D хувилбар — мөн зөвхөн BIM-д
+      if (l.id === 'tgl3d') { l.visible = dim === 'bim'; return; }
       // ⚠️ «Усан сан» — хэрэглэгчийн хүсэлтээр газрын зурагт УНТРААВ (усан бүрхэвч
       //    scene-ийн «Гол»-той давхцаж/ил үлдэж байсан). Буцааж асаах бол
       //    `dim !== '2d'` болгоно.
       if (l.id === USAN_SAN.id) { l.visible = false; return; }
 
-      // ⚠️ BIM горимд каталогийн 2D давхаргыг НУУНА — web scene өөрөө зам, ногоон,
-      //    мод, барилгын 3D хувилбарыг агуулдаг тул давхцал/эмх замбараагүйг арилгаж
-      //    scene-ийн цэвэр төрхтэй тааруулна.
-      const show = on.has(l.id) && dim !== 'bim';
-      // ЗӨВХӨН Эх үүсвэр (`source:eh`) давхарга шинээр ил болоход анзаарагдам
-      // пульс-анимаци эхэлнэ. Бусад давхаргад (барилга г.м.) анимаци байхгүй.
-      if (show && l.id === 'source:eh' && !prevVisRef.current.has(l.id)) pulseLayer(l);
-      l.visible = show;
+      /**
+       * СУУРЬ давхаргууд (план 2D-ийн 14) — каталогийн сонголт ХООСОН үед 2D-д
+       * бүгд харагдана (анхны зураг план 2D шигээ бүрэн). Хэрэглэгч каталогоос
+       * ЯМАР НЭГ давхарга сонгомогц суурь нь унтарч, ЗӨВХӨН сонгосон нь үлдэнэ;
+       * сонголтоо арилгахад суурь буцаж асна. 3D-д меш, BIM-д scene3d:* орлоно.
+       *
+       * ⚠️ ЭНД `return` ХИЙХГҮЙ — доорх бүсийн шүүлт (definitionExpression)
+       * суурь давхаргад ч тавигдах ёстой (sb:3, sb:4 нь ZONE_ID-тэй). Урьд нь
+       * return хийдэг байсан тул бүс сонгоход суурь давхарга шүүгдэхгүй байв.
+       */
+      if ((BASE_MAP_IDS as readonly string[]).includes(String(l.id))) {
+        l.visible = dim === '2d' && (on.size === 0 || on.has(String(l.id)));
+      } else if (is3D(dim) && PLAN2D_ALIASED.has(String(l.id))) {
+        /**
+         * План2d ALIAS style-тай давхаргууд (dugui, nogoon, tree, et:24…) — renderer
+         * нь зурган текстур (esriPFS/esriPMS) тул SceneView-д дэмжигдэхгүй. 3D/BIM-д
+         * НУУНА: асаалттай орхивол «picture-fill is unsupported in 3D» алдаа асгарна.
+         */
+        l.visible = false;
+      } else {
+        // ⚠️ BIM горимд каталогийн 2D давхаргыг НУУНА — web scene өөрөө зам, ногоон,
+        //    мод, барилгын 3D хувилбарыг агуулдаг тул давхцал/эмх замбараагүйг арилгаж
+        //    scene-ийн цэвэр төрхтэй тааруулна.
+        const show = on.has(l.id) && dim !== 'bim';
+        // ЗӨВХӨН Эх үүсвэр (`source:eh`) давхарга шинээр ил болоход анзаарагдам
+        // пульс-анимаци эхэлнэ. Бусад давхаргад (барилга г.м.) анимаци байхгүй.
+        if (show && l.id === 'source:eh' && !prevVisRef.current.has(l.id)) pulseLayer(l);
+        l.visible = show;
+      }
 
       /**
        * Бүсийн шүүлт — `definitionExpression`-оор объектыг БҮРЭН хасна.
