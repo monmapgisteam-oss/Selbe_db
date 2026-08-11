@@ -256,14 +256,6 @@
 /** Дэд сонголтын мөр — зүүн талд бүдэг шошго */
 .pick { display: flex; align-items: center; gap: 8px }
 
-.pickLabel {
-  flex: none;
-  font-size: 9.5px;
-  text-transform: uppercase;
-  letter-spacing: .5px;
-  color: var(--muted);
-}
-
 /* ══════════════════ Хэсгийн гарчиг ══════════════════ */
 
 .secHead {
