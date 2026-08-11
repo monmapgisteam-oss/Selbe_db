@@ -142,7 +142,28 @@ const DERIVED_LAYERS: MapLayerDef[] = [...PLAN_LAYER_IDS, ...MONITOR_LAYER_IDS]
     } as MapLayerDef;
   });
 
-export const MAP_LAYERS: MapLayerDef[] = [...SPECIAL_LAYERS, ...DERIVED_LAYERS];
+/**
+ * «АЧААЛАЛ БУУРУУЛАХ ШИНЭ ЗАМ» — `Selbe_shine_zam` service-ийн 4 давхарга.
+ *
+ * ⚠️ `PLAN_LAYER_IDS`-д БАЙХГҮЙ (батлагдаагүй санал тул ерөнхий төлөвлөгөөний
+ * каталог/нийлбэрт орохгүй) — тиймээс `DERIVED_LAYERS`-ээс ирэхгүй, гараар
+ * нэмэв. «Ачаалал» табд «Шинэ зам» сонгоход АВТОМАТААР асна
+ * (`Suitability.tsx`), мөн давхаргын цэснээс гараар ч асааж болно.
+ */
+export const RELIEF_LAYERS: MapLayerDef[] = ['sz:0', 'sz:1', 'sz:2', 'sz:3'].map((id) => ({
+  key: id,
+  layerId: id,
+  title: LAYER_BY_ID[id]?.title ?? id,
+  kind: 'line' as MapLayerKind,
+  color: [74, 222, 128],
+  on: false,
+  group: 'road',
+}));
+
+/** «Шинэ зам»-ын давхаргын түлхүүрүүд — сонгоход автоматаар асаах жагсаалт */
+export const RELIEF_LAYER_KEYS: string[] = RELIEF_LAYERS.map((l) => l.key);
+
+export const MAP_LAYERS: MapLayerDef[] = [...SPECIAL_LAYERS, ...DERIVED_LAYERS, ...RELIEF_LAYERS];
 
 /**
  * Барилгын төлөв (`Barilga_ty`) → өнгө. `SuitMap`-ийн renderer ба давхаргын
@@ -240,8 +261,11 @@ export const NORM_FAIL_MAX = 44;
 export const SCORE_LEVELS = [
   { min: 85, max: 101, label: 'Маш сайн', color: '#16a34a' },
   { min: 65, max: 85, label: 'Сайн', color: '#a3d84a' },
-  { min: 45, max: 65, label: 'Дунд', color: '#f59e0b' },
-  { min: 25, max: 45, label: 'Муу', color: '#ef4444' },
+  // ⚠️ Доод хоёр түвшний өнгө ЗӨӨЛРҮҮЛСЭН: улбар шар → ШАР, улаан → УЛБАР ШАР.
+  //    Оноо багатай бүс «анхаарал шаардсан» гэж уншигдах ёстой болохоос
+  //    «муу/аюултай» гэсэн сэтгэгдэл төрүүлэх ёсгүй.
+  { min: 45, max: 65, label: 'Дунд', color: '#facc15' },
+  { min: 25, max: 45, label: 'Муу', color: '#f59e0b' },
   { min: 0, max: 25, label: 'Маш муу', color: '#b91c1c' },
 ] as const;
 
