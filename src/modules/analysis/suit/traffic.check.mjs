@@ -131,7 +131,7 @@ const buildNetwork = (paths, { tolM = SNAP_TOL_M, unitsPerMeter = 1, signals: si
     for (const sd of signalDefs) {
       const lines = sd.lines ?? [];
       if (!lines.length) continue;
-      for (const ln of lines) signalLines.push({ ...ln, hub: sd.pt });
+      for (const ln of lines) signalLines.push({ ...ln, hub: sd.pt, j: sd.name });
       // Зогсолтын шугамыг ирмэг дээр буулгах (30% сунгаж огтолцол хайна)
       for (const ln of lines) {
         const A = ln.pts[0], B = ln.pts[ln.pts.length - 1];
@@ -149,7 +149,7 @@ const buildNetwork = (paths, { tolM = SNAP_TOL_M, unitsPerMeter = 1, signals: si
             const dir = ((Q[0] - P[0]) * (sd.pt[0] - hx) + (Q[1] - P[1]) * (sd.pt[1] - hy)) > 0 ? 1 : -1;
             let list = stopBars.get(ei);
             if (!list) { list = []; stopBars.set(ei, list); }
-            list.push({ s, dir, code: ln.code });
+            list.push({ s, dir, code: ln.code, j: sd.name });
           }
         }
       }
@@ -204,7 +204,7 @@ const distToSeg = (q, a, b) => {
   return Math.hypot(q[0] - (a[0] + t * dx), q[1] - (a[1] + t * dy));
 };
 // ДАВХАРДСАН ирмэгийг тэмдэглэнэ — өөр (урт) ирмэгийн ДЭЭР хэвтэж буй нь
-const markDuplicates = (net, { tolM = 2.5, cover = 0.85 } = {}) => {
+const markDuplicates = (net, { tolM = 1.0, cover = 0.85 } = {}) => {
   const upm = net.unitsPerMeter || 1;
   const tol = tolM * upm;
   const order = net.edges.map((_, i) => i).sort((a, b) => net.edges[b].length - net.edges[a].length);
@@ -239,6 +239,14 @@ const markDuplicates = (net, { tolM = 2.5, cover = 0.85 } = {}) => {
 const YELLOW_S = 3;
 // ЗОХИЦУУЛАЛТЫН ХӨТӨЛБӨР — мөчлөгийг ээлжүүдэд хуваана (код → ээлж)
 const SIGNAL_PLANS = [
+  // Бодит уулзварын хуваарь (хэрэглэгчийн өгсөн): 3·4·7·8 → 1·6 → 2·5
+  { key: 'real', label: 'Уулзварын хуваарь', desc: 'Бодит 3 ээлж',
+    stages: [[3, 4, 7, 8], [1, 6], [2, 5]],
+    byJunction: {
+      '1-р гэрлэн дохио': [[3, 4, 7, 8], [1, 6], [2, 5]],
+      '2-р гэрлэн дохио': [[1, 2], [3, 4], [5, 6]],
+    },
+    cycle: 90, yellow: 3 },
   // Бодит уулзварын хуваарь: ээлж бүрд үндсэн зураас + зөрчилгүй зэрэглэлүүд
   { key: 'real', label: 'Уулзварын хуваарь', desc: 'Бодит 8 ээлж',
     stages: [[1,7,8],[2,1,7],[3,4,7,8],[4,3,7,8],[5,8,3,4],[6,1,2],[7,8,3,4],[8,7,1,4]],
@@ -314,17 +322,20 @@ const currentStage = (time, plan) => {
   const t = ((time % plan.cycle) + plan.cycle) % plan.cycle;
   return Math.min(n - 1, Math.floor(t / share));
 };
-const signalPhase = (code, time, plan = DEFAULT_SIGNAL_PLAN) => {
-  const n = plan.stages.length;
+const signalPhase = (code, time, plan = DEFAULT_SIGNAL_PLAN, junction) => {
+  // Уулзвартаа тусгай хуваарьтай бол түүгээр (код уулзвар бүрд 1-ээс эхэлдэг)
+  const stages = (junction != null && plan.byJunction && plan.byJunction[junction]) || plan.stages;
+  const n = stages.length;
   if (n <= 0) return 'red';
   const share = plan.cycle / n;
   const t = ((time % plan.cycle) + plan.cycle) % plan.cycle;
   // ОДООГИЙН ээлжийн багцад орсон эсэхээр — нэг код олон ээлжид ногоон болж болно
   const stage = Math.min(n - 1, Math.floor(t / share));
-  if (!plan.stages[stage].includes(code)) return 'red';
+  if (!stages[stage].includes(code)) return 'red';
   return t % share < Math.max(0, share - plan.yellow) ? 'green' : 'yellow';
 };
-const signalLineGreen = (code, time, plan = DEFAULT_SIGNAL_PLAN) => signalPhase(code, time, plan) === 'green';
+const signalLineGreen = (code, time, plan = DEFAULT_SIGNAL_PLAN, junction) =>
+  signalPhase(code, time, plan, junction) === 'green';
 const nodeByIntersection = (paths, { unitsPerMeter = 1, cellM = 60 } = {}) => {
   const cell = cellM * unitsPerMeter;
   const splits = paths.map((p) => Array.from({ length: Math.max(0, p.length - 1) }, () => []));
@@ -357,6 +368,45 @@ const nodeByIntersection = (paths, { unitsPerMeter = 1, cellM = 60 } = {}) => {
       const h = isect(segs[pi].a, segs[pi].b, segs[qi].a, segs[qi].b);
       if (h) { splits[segs[pi].w][segs[pi].i].push({ t: h.t, pt: h.pt }); splits[segs[qi].w][segs[qi].i].push({ t: h.u, pt: h.pt }); }
     }
+  // T-УУЛЗВАР: нэг шугамын ҮЗҮҮР нөгөөгийн ДУНДУУР тулсан бол тэр шугамыг таслана
+  const tol = SNAP_TOL_M * unitsPerMeter;
+  const cutV = paths.map(() => new Set());
+  for (let w = 0; w < paths.length; w++) {
+    const p = paths[w];
+    if (p.length < 2) continue;
+    for (const tip of [p[0], p[p.length - 1]]) {
+      let best = null;
+      const cx0 = Math.floor((tip[0] - tol) / cell);
+      const cx1 = Math.floor((tip[0] + tol) / cell);
+      const cy0 = Math.floor((tip[1] - tol) / cell);
+      const cy1 = Math.floor((tip[1] + tol) / cell);
+      for (let cx = cx0; cx <= cx1; cx++) {
+        for (let cy = cy0; cy <= cy1; cy++) {
+          for (const si of grid.get(`${cx},${cy}`) ?? []) {
+            const sg = segs[si];
+            if (sg.w === w) continue;
+            const dx = sg.b[0] - sg.a[0];
+            const dy = sg.b[1] - sg.a[1];
+            const L2 = dx * dx + dy * dy;
+            if (L2 < 1e-12) continue;
+            const raw = ((tip[0] - sg.a[0]) * dx + (tip[1] - sg.a[1]) * dy) / L2;
+            const t = Math.max(0, Math.min(1, raw));
+            const px = sg.a[0] + t * dx;
+            const py = sg.a[1] + t * dy;
+            const d = Math.hypot(tip[0] - px, tip[1] - py);
+            if (d > tol) continue;
+            const vertex = t <= 1e-6 ? sg.i : t >= 1 - 1e-6 ? sg.i + 1 : -1;
+            if (vertex >= 0 && (vertex === 0 || vertex >= paths[sg.w].length - 1)) continue;
+            if (!best || d < best.d) best = { seg: si, t, pt: [px, py], d, vertex };
+          }
+        }
+      }
+      if (!best) continue;
+      if (best.vertex >= 0) cutV[segs[best.seg].w].add(best.vertex);
+      else splits[segs[best.seg].w][segs[best.seg].i].push({ t: best.t, pt: best.pt });
+    }
+  }
+
   const out = [];
   for (let w = 0; w < paths.length; w++) {
     const p = paths[w]; if (p.length < 2) continue; let cur = [p[0]];
@@ -364,6 +414,7 @@ const nodeByIntersection = (paths, { unitsPerMeter = 1, cellM = 60 } = {}) => {
       const sp = splits[w][i].filter((s) => s.t > 1e-6 && s.t < 1 - 1e-6).sort((a, b) => a.t - b.t);
       for (const s of sp) { cur.push(s.pt); if (cur.length >= 2) out.push(cur); cur = [s.pt]; }
       cur.push(p[i + 1]);
+      if (cutV[w].has(i + 1) && i + 1 < p.length - 1 && cur.length >= 2) { out.push(cur); cur = [p[i + 1]]; }
     }
     if (cur.length >= 2) out.push(cur);
   }
@@ -382,15 +433,44 @@ const SIGNAL_CYCLE_S = 60;
 const CAR_LEN = 5;
 const carLen = (c) => c.len ?? CAR_LEN;
 const MIN_GAP_M = 2;
+const PATIENCE_S = 25;
+const TURN_BACK_M = 10;
+const U_TURN_V = 2.5;
 const JUNCTION_R_M = 5;
 const STOP_LINE_M = 2.5;
 const TAU = 1.0;
 const ACC = 1.8, DEC = 4.5;
 const V_MIN = 30 / 3.6, V_MAX = 50 / 3.6;
 
+const TURN_SMOOTH_M = 8;
 const carPose = (net, car) => {
-  const p = poseAt(net.edges[car.e], car.s);
-  return car.dir === 1 ? p : { x: p.x, y: p.y, ux: -p.ux, uy: -p.uy };
+  const e = net.edges[car.e];
+  const p = poseAt(e, car.s);
+  let x = p.x, y = p.y;
+  let ux = car.dir === 1 ? p.ux : -p.ux;
+  let uy = car.dir === 1 ? p.uy : -p.uy;
+  if (car.hx != null && car.hy != null && car.hux != null && car.huy != null) {
+    const R = Math.min(TURN_SMOOTH_M * (net.unitsPerMeter || 1), e.length);
+    const dIn = car.dir === 1 ? car.s : e.length - car.s;
+    if (R > 1e-6 && dIn < R) {
+      const q = poseAt(e, car.dir === 1 ? R : e.length - R);
+      const qux = car.dir === 1 ? q.ux : -q.ux;
+      const quy = car.dir === 1 ? q.uy : -q.uy;
+      const t = Math.max(0, Math.min(1, dIn / R));
+      const t2 = t * t, t3 = t2 * t;
+      const h00 = 2 * t3 - 3 * t2 + 1, h10 = t3 - 2 * t2 + t;
+      const h01 = -2 * t3 + 3 * t2, h11 = t3 - t2;
+      x = h00 * car.hx + h10 * car.hux * R + h01 * q.x + h11 * qux * R;
+      y = h00 * car.hy + h10 * car.huy * R + h01 * q.y + h11 * quy * R;
+      const d00 = 6 * t2 - 6 * t, d10 = 3 * t2 - 4 * t + 1;
+      const d01 = -6 * t2 + 6 * t, d11 = 3 * t2 - 2 * t;
+      const dx = d00 * car.hx + d10 * car.hux * R + d01 * q.x + d11 * qux * R;
+      const dy = d00 * car.hy + d10 * car.huy * R + d01 * q.y + d11 * quy * R;
+      const L = Math.hypot(dx, dy) || 1;
+      ux = dx / L; uy = dy / L;
+    }
+  }
+  return { x, y, ux, uy };
 };
 
 const pickNext = (net, node, fromEdge, travel, rnd = Math.random, allow) => {
@@ -501,20 +581,26 @@ const stepCars = (net, cars, dt, rnd = Math.random, time = 0, plan = DEFAULT_SIG
     }
     c.s = c.dir === 1 ? edge.length : 0;
     c.dir = back;
+    c.v = Math.min(c.v, U_TURN_V);
+    c.hux = undefined; c.huy = undefined;
     laneFront.set(key, -(carLen(c) / 2) * upm);
     return capAfterEntry(c, clear);
   };
   for (let i = 0; i < cars.length; i++) {
     const c = cars[i];
+    if (c.done) continue;
+    if (c.v < 0.3) c.wait = (c.wait ?? 0) + dt; else c.wait = 0;
     let g = gap[i] / upm;
     let vl = leadV[i];
     // Улаан гэрлийн зогсолт — ЗУРААСАН дээр (`stopBars`)
     const bars = net.stopBars.get(c.e);
+    let redAhead = false;
     if (bars) {
       for (const b of bars) {
-        if (b.dir !== c.dir || signalLineGreen(b.code, time, plan)) continue;
+        if (b.dir !== c.dir || signalLineGreen(b.code, time, plan, b.j)) continue;
         const distM = (c.dir === 1 ? b.s - c.s : c.s - b.s) / upm;
         if (distM <= 0) continue;
+        if (distM < 60) redAhead = true;
         const sigG = distM - carLen(c) / 2;
         if (sigG < g) { g = sigG; vl = 0; }
       }
@@ -549,6 +635,16 @@ const stepCars = (net, cars, dt, rnd = Math.random, time = 0, plan = DEFAULT_SIG
         }
       }
     }
+    // Тэвчээр дууссан үзүүрийн машин БУЦАЖ ЭРГЭНЭ (гацааны циклийг таслана)
+    {
+      // Улаан гэрлийн хүлээлт бол гацаа биш — тэвчээрийн эргэлт үйлчлэхгүй
+      const roomEndM = (c.dir === 1 ? net.edges[c.e].length - c.s : c.s) / upm;
+      if (!redAhead && (c.wait ?? 0) > PATIENCE_S && roomEndM < TURN_BACK_M) {
+        const uCap = uTurn(c, i);
+        if (uCap != null) { c.wait = 0; continue; }
+      }
+    }
+
     let want = c.vmax;
     if (Number.isFinite(g)) {
       const free = Math.max(0, g - MIN_GAP_M);
@@ -565,7 +661,26 @@ const stepCars = (net, cars, dt, rnd = Math.random, time = 0, plan = DEFAULT_SIG
       move -= room;
       const node = c.dir === 1 ? edge.b : edge.a;
       const travel = outHeading(edge, node).map((v) => -v);
-      let next = pickNext(net, node, c.e, travel, rnd);
+      // «Гарч явах» машин ойролцоо гарцуудын аль нэг рүү чиглэнэ
+      let next = null;
+      if (c.leaving) {
+        const dist = exitDistances(net);
+        let best = Infinity;
+        const ws2 = [];
+        for (const ei of net.nodes[node]?.out ?? []) {
+          if (ei === c.e) continue;
+          if (net.directed && net.edges[ei].a !== node) continue;
+          const far = net.edges[ei].a === node ? net.edges[ei].b : net.edges[ei].a;
+          const w = net.edges[ei].length + dist[far];
+          if (Number.isFinite(w)) ws2.push({ ei, w });
+          if (w < best) best = w;
+        }
+        if (Number.isFinite(best)) {
+          const nearBest = ws2.filter((x) => x.w <= best * 1.35 + 40 * upm);
+          if (nearBest.length) next = nearBest[Math.floor(rnd() * nearBest.length) % nearBest.length].ei;
+        }
+      }
+      if (next == null) next = pickNext(net, node, c.e, travel, rnd);
       for (let t = 0; t < 2 && next != null; t++) {
         const d0 = net.edges[next].a === node ? 1 : -1;
         const cl0 = laneFront.get(next * 2 + (d0 === 1 ? 0 : 1));
@@ -574,6 +689,13 @@ const stepCars = (net, cars, dt, rnd = Math.random, time = 0, plan = DEFAULT_SIG
         if (again != null) next = again;
       }
       if (next == null) {
+        // «Гарч явах» машин мухарт хүрвэл сүлжээнээс ГАРНА (дуудагч устгана)
+        if (portalNodes(net).has(node)) {
+          c.s = c.dir === 1 ? edge.length : 0;
+          c.v = 0;
+          c.done = true;
+          break;
+        }
         if (net.directed) {
           // Мухарт машин УСТАХГҮЙ — ойрын гарц руу шилжиж тасралтгүй явна
           const exits = net.sinkExit.get(node);
@@ -590,12 +712,14 @@ const stepCars = (net, cars, dt, rnd = Math.random, time = 0, plan = DEFAULT_SIG
               break;
             }
             c.e = pick; c.dir = 1; c.s = 0;
+            c.v = Math.min(c.v, U_TURN_V);
+            c.hux = undefined; c.huy = undefined;
             laneFront.set(eKey, -(carLen(c) / 2) * upm);
             move = Math.min(move, capAfterEntry(c, clear));
             const jBars = net.stopBars.get(c.e);
             if (jBars) {
               for (const b of jBars) {
-                if (b.dir !== 1 || signalLineGreen(b.code, time, plan)) continue;
+                if (b.dir !== 1 || signalLineGreen(b.code, time, plan, b.j)) continue;
                 if (b.s <= 0) continue;
                 move = Math.min(move, Math.max(0, b.s - (carLen(c) / 2 + MIN_GAP_M) * upm));
               }
@@ -629,6 +753,8 @@ const stepCars = (net, cars, dt, rnd = Math.random, time = 0, plan = DEFAULT_SIG
       c.e = next;
       c.dir = nDir;
       c.s = entryS;
+      c.hx = net.nodes[node].x; c.hy = net.nodes[node].y;
+      c.hux = travel[0]; c.huy = travel[1];
       if (isJunction(node)) junction.set(node, { i, d: 0 });
       laneFront.set(nKey, -(carLen(c) / 2) * upm);
       // Үлдсэн хөдөлгөөнийг шинэ эгнээний урдах машинд тултал таслана
@@ -637,7 +763,7 @@ const stepCars = (net, cars, dt, rnd = Math.random, time = 0, plan = DEFAULT_SIG
       const nBars = net.stopBars.get(c.e);
       if (nBars) {
         for (const b of nBars) {
-          if (b.dir !== c.dir || signalLineGreen(b.code, time, plan)) continue;
+          if (b.dir !== c.dir || signalLineGreen(b.code, time, plan, b.j)) continue;
           const aheadU = c.dir === 1 ? b.s - c.s : c.s - b.s;
           if (aheadU <= 0) continue;
           move = Math.min(move, Math.max(0, aheadU - (carLen(c) / 2 + MIN_GAP_M) * upm));
@@ -648,6 +774,7 @@ const stepCars = (net, cars, dt, rnd = Math.random, time = 0, plan = DEFAULT_SIG
   // Давхцлын ХАТУУ хязгаар — эгнээ бүрийг урдаас нь гүйж дагагчийг ухраана
   const after = new Map();
   for (let i = 0; i < cars.length; i++) {
+    if (cars[i].done) continue;
     const key = laneKey(cars[i].e, cars[i].dir);
     const l = after.get(key);
     if (l) l.push(i); else after.set(key, [i]);
@@ -670,7 +797,14 @@ const stepCars = (net, cars, dt, rnd = Math.random, time = 0, plan = DEFAULT_SIG
   }
 };
 
-const spawnTable = (net, minLenM = 25) => {
+const carCapacity = (net, util = 0.5) => {
+  const upm = net.unitsPerMeter || 1;
+  let lenM = 0;
+  for (const e of net.edges) if (!e.dup) lenM += e.length / upm;
+  const dirs = net.directed ? 1 : 2;
+  return Math.max(10, Math.floor(((lenM * dirs) / (CAR_LEN + MIN_GAP_M)) * util));
+};
+const spawnTable = (net, minLenM = PORTAL_MIN_EDGE_M) => {
   const min = minLenM * (net.unitsPerMeter || 1);
   const cum = [];
   let total = 0;
@@ -694,6 +828,75 @@ const spawnCar = (net, tbl, rnd = Math.random) => {
   const vmax = V_MAX;
   const dir = net.directed ? 1 : rnd() < 0.5 ? 1 : -1;
   return { e, s: rnd() * net.edges[e].length, dir, v: vmax, vmax };
+};
+const boundaryNodeCache = new WeakMap();
+const boundaryNodes = (net) => {
+  let bs = boundaryNodeCache.get(net);
+  if (bs) return bs;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const n of net.nodes) { x0 = Math.min(x0, n.x); y0 = Math.min(y0, n.y); x1 = Math.max(x1, n.x); y1 = Math.max(y1, n.y); }
+  const mx = (x1 - x0) * 0.15, my = (y1 - y0) * 0.15;
+  const all = [];
+  bs = new Set();
+  for (let i = 0; i < net.nodes.length; i++) {
+    if (net.nodes[i].out.length !== 1) continue;
+    all.push(i);
+    const n = net.nodes[i];
+    if (n.x < x0 + mx || n.x > x1 - mx || n.y < y0 + my || n.y > y1 - my) bs.add(i);
+  }
+  if (bs.size < 8) bs = new Set(all);
+  boundaryNodeCache.set(net, bs);
+  return bs;
+};
+const PORTAL_MIN_EDGE_M = 100;
+const portalNodeCache = new WeakMap();
+const portalNodes = (net) => {
+  let ps = portalNodeCache.get(net);
+  if (ps) return ps;
+  const upm = net.unitsPerMeter || 1;
+  const bn = boundaryNodes(net);
+  ps = new Set();
+  for (const n of bn) {
+    const e = net.edges[net.nodes[n].out[0]];
+    if (!e.dup && e.length >= PORTAL_MIN_EDGE_M * upm) ps.add(n);
+  }
+  if (ps.size < 6) ps = bn;
+  portalNodeCache.set(net, ps);
+  return ps;
+};
+const exitDistCache = new WeakMap();
+const exitDistances = (net) => {
+  let d = exitDistCache.get(net);
+  if (d) return d;
+  d = new Float64Array(net.nodes.length).fill(Infinity);
+  for (const n of portalNodes(net)) d[n] = 0;
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const e of net.edges) {
+      if (d[e.b] + e.length < d[e.a]) { d[e.a] = d[e.b] + e.length; changed = true; }
+      if (!net.directed && d[e.a] + e.length < d[e.b]) { d[e.b] = d[e.a] + e.length; changed = true; }
+    }
+  }
+  exitDistCache.set(net, d);
+  return d;
+};
+const boundaryEntries = (net) => {
+  const out = [];
+  for (const n of portalNodes(net)) {
+    const e = net.nodes[n].out[0];
+    if (net.edges[e].dup) continue;
+    const dir = net.edges[e].a === n ? 1 : -1;
+    if (net.directed && dir !== 1) continue;
+    out.push({ e, dir });
+  }
+  return out;
+};
+const spawnCarAt = (net, entry, rnd = Math.random) => {
+  const upm = net.unitsPerMeter || 1;
+  const inset = Math.min(2.8 * upm, net.edges[entry.e].length / 2);
+  const s0 = entry.dir === 1 ? inset : net.edges[entry.e].length - inset;
+  return { e: entry.e, s: s0, dir: entry.dir, v: V_MAX * 0.6, vmax: V_MAX };
 };
 const targetCars = (diurnal, max, min = 10) =>
   Math.round(min + Math.max(0, max - min) * Math.max(0, Math.min(1, diurnal)));
@@ -872,12 +1075,154 @@ assert.equal(buildNetwork([[[0, 0], [0, 0.4]]]).edges.length, 0, 'доройтс
   );
 }
 
-// Мухар зам — U-эргэлт хийж чиглэлээ солино
+/* ══════ МУХАР: ДОТООД мухарт эргэнэ · ХИЛИЙН гарцаар ГАРНА ══════ */
+
+/**
+ * «Шат» хэлбэрийн туршилтын сүлжээ: хэвтээ нуруу + 300 м-ийн НАЙМАН салаа
+ * (үзүүр нь bbox-ийн захад тул ХИЛИЙН ПОРТАЛ) + нурууны дундаас гарах богино
+ * ДОТООД стуб (захын бүсэд ороогүй тул портал БИШ).
+ *
+ * ⚠️ Найман захын мухар ЗААВАЛ хэрэгтэй: `boundaryNodes` нь наймаас цөөн бол
+ * «жижиг сүлжээ» гэж үзээд БҮХ мухрыг хил болгодог (фоллбэк) — тэгвэл дотоод
+ * стуб ч портал болж, хоёр зан төлөвийн ялгаа алга болно.
+ */
+const stubNet = (stubLen = 60) => {
+  const roads = [];
+  for (let x = 0; x < 800; x += 100) roads.push([[x, 0], [x + 100, 0]]);
+  for (const x of [100, 300, 500, 700]) roads.push([[x, 0], [x, 300]]);
+  for (const x of [0, 200, 600, 800]) roads.push([[x, 0], [x, -300]]);
+  roads.push([[400, 0], [400, stubLen]]);
+  return buildNetwork(roads);
+};
+
 {
-  const stub = buildNetwork([[[0, 0], [60, 0]]]);
-  const car = { e: 0, s: 59, dir: 1, v: V_MAX, vmax: V_MAX };
-  for (let i = 0; i < 5; i++) stepCars(stub, [car], 0.1);
-  assert.equal(car.dir, -1, 'мухар үзүүрээс буцав');
+  const net = stubNet();
+  const ports = portalNodes(net);
+  assert.ok(ports.size >= 6, `урт салаанууд портал болов (${ports.size})`);
+
+  /* ① ДОТООД мухар — машин ЭРГЭНЭ (алга болохгүй), удаашрана */
+  const tip = net.nodes.findIndex((n) => Math.abs(n.x - 400) < 0.01 && Math.abs(n.y - 60) < 0.01);
+  assert.ok(tip >= 0 && !ports.has(tip), 'дотоод стубын үзүүр портал БИШ');
+  const se = net.nodes[tip].out[0];
+  const toTip = net.edges[se].b === tip ? 1 : -1;
+  const car = {
+    e: se, s: toTip === 1 ? net.edges[se].length - 2 : 2,
+    dir: toTip, v: V_MAX, vmax: V_MAX,
+  };
+  for (let i = 0; i < 100 && car.dir === toTip; i++) stepCars(net, [car], 0.1);
+  assert.equal(car.dir, -toTip, 'дотоод мухраас эргэж буцав');
+  assert.ok(!car.done, 'дотоод мухарт АЛГА БОЛООГҮЙ');
+  assert.ok(car.v <= U_TURN_V + 0.01, `эргэхдээ удаашрав (${car.v.toFixed(1)} м/с)`);
+
+  /* ② ХИЛИЙН ПОРТАЛ — машин ЭРГЭХГҮЙ, бүсээс ГАРНА
+     ⚠️ Замууд судалгааны хилээр тасарсан бөгөөд бодит дээр цааш үргэлжилдэг:
+        тэнд 180° эргэвэл «гэнэт эсрэг эгнээнд орлоо» гэж харагдана. */
+  const pNode = [...ports][0];
+  const pEdge = net.nodes[pNode].out[0];
+  const pDir = net.edges[pEdge].b === pNode ? 1 : -1;
+  const out = {
+    e: pEdge, s: pDir === 1 ? net.edges[pEdge].length - 20 : 20,
+    dir: pDir, v: V_MAX, vmax: V_MAX,
+  };
+  for (let i = 0; i < 200 && !out.done; i++) stepCars(net, [out], 0.1);
+  assert.ok(out.done, 'хилийн гарцаар ГАРСАН');
+  assert.equal(out.dir, pDir, 'гарахдаа эргээгүй');
+}
+
+/* ══════ ХУВААРЬ УУЛЗВАР ТУС БҮРЭЭР — код давхардсан ч зөв ══════ */
+
+{
+  /*  ⚠️ `gerlen_dohio_code` уулзвар БҮРД 1-ээс дахин эхэлдэг: 2026-08-10-ны
+      өгөгдөлд код 1-6 хоёр уулзварт хоёуланд нь бий. Кодоор л шийдвэл нэг
+      уулзварын хуваарь нөгөөг нь албадан дагуулж, өөр газрын өөр чиглэл зэрэг
+      ногоон болно. Тиймээс зогсолтын шугам ба зурагдах шугам бүр өөрийн
+      уулзварын нэрийг (`j`) авч явна. */
+  const real = SIGNAL_PLANS.find((p) => p.key === 'real' && p.byJunction);
+  assert.ok(real, 'бодит хуваарь уулзвараар задарсан');
+  const A = '1-р гэрлэн дохио';
+  const B = '2-р гэрлэн дохио';
+  assert.equal(real.byJunction[A].length, real.byJunction[B].length, 'ээлжийн тоо ижил');
+
+  const share = real.cycle / real.byJunction[A].length; // 30 сек
+  const midOf = (i) => i * share + share / 2;
+
+  // 1-р ээлж: A-д 3,4,7,8 · B-д 1,2
+  assert.ok(signalLineGreen(3, midOf(0), real, A), 'A: 1-р ээлжид код 3 ногоон');
+  assert.ok(!signalLineGreen(1, midOf(0), real, A), 'A: 1-р ээлжид код 1 улаан');
+  assert.ok(signalLineGreen(1, midOf(0), real, B), 'B: 1-р ээлжид код 1 ногоон');
+  assert.ok(signalLineGreen(2, midOf(0), real, B), 'B: 1-р ээлжид код 2 ногоон');
+  assert.ok(!signalLineGreen(3, midOf(0), real, B), 'B: 1-р ээлжид код 3 улаан');
+
+  // 2-р ээлж: A-д 1,6 · B-д 3,4
+  assert.ok(signalLineGreen(1, midOf(1), real, A), 'A: 2-р ээлжид код 1 ногоон');
+  assert.ok(!signalLineGreen(1, midOf(1), real, B), 'B: 2-р ээлжид код 1 улаан');
+  assert.ok(signalLineGreen(4, midOf(1), real, B), 'B: 2-р ээлжид код 4 ногоон');
+
+  // 3-р ээлж: A-д 2,5 · B-д 5,6
+  assert.ok(signalLineGreen(2, midOf(2), real, A), 'A: 3-р ээлжид код 2 ногоон');
+  assert.ok(!signalLineGreen(2, midOf(2), real, B), 'B: 3-р ээлжид код 2 улаан');
+  assert.ok(signalLineGreen(6, midOf(2), real, B), 'B: 3-р ээлжид код 6 ногоон');
+
+  /*  ⚠️ ГОЛ БАТАЛГАА: ижил код, ижил агшинд, ӨӨР уулзварт ӨӨР өнгөтэй.
+      Энэ унавал хоёр уулзвар дахин цуг ажиллаж эхэлсэн гэсэн үг. */
+  assert.notEqual(
+    signalPhase(1, midOf(0), real, A),
+    signalPhase(1, midOf(0), real, B),
+    'нэг код хоёр уулзварт ӨӨР өнгөтэй',
+  );
+
+  // Уулзварын нэр өгөөгүй бол фоллбэк (`stages`) — хуучин зан төлөв хэвээр
+  assert.equal(signalPhase(3, midOf(0), real), signalPhase(3, midOf(0), real, A), 'нэргүй → фоллбэк = A');
+
+  // B-д ямар ч ээлжид БҮГД улаан болохгүй (машин мөнхөд гацахгүй)
+  for (let i = 0; i < real.byJunction[B].length; i++) {
+    assert.ok(real.byJunction[B][i].length > 0, `B: ${i + 1}-р ээлжид ногоон зураас бий`);
+  }
+}
+
+{
+  /*  Зогсолтын шугам ба зурагдах шугам уулзварынхаа нэрийг АВЧ ЯВНА —
+      үгүй бол хөдөлгүүр аль хуваарийг хэрэглэхээ мэдэхгүй. */
+  const cx = buildNetwork([
+    [[0, 0], [100, 0]], [[100, 0], [200, 0]],
+    [[100, 0], [100, 100]], [[100, 0], [100, -100]],
+  ], { signals: [{
+    pt: [100, 0],
+    name: '2-р гэрлэн дохио',
+    lines: [
+      { pts: [[90, -8], [90, 8]], code: 1 },
+      { pts: [[92, 30], [108, 30]], code: 3 },
+    ],
+  }] });
+  assert.ok(cx.signalLines.every((l) => l.j === '2-р гэрлэн дохио'), 'зурагдах шугам нэртэй');
+  const bars = [...cx.stopBars.values()].flat();
+  assert.ok(bars.length > 0 && bars.every((b) => b.j === '2-р гэрлэн дохио'), 'зогсолтын шугам нэртэй');
+
+  /*  Машин 2-р уулзварын хуваарийг дагана: код 1 нь 1-р ЭЭЛЖИД ногоон
+      (1-р уулзварын хуваарьт код 1 нь 2-р ээлжид ногоон — өөр). */
+  const real = SIGNAL_PLANS.find((p) => p.key === 'real' && p.byJunction);
+  const share = real.cycle / 3;
+  let seed = 5;
+  const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+  const car = { e: 0, s: 60, dir: 1, v: V_MAX, vmax: V_MAX };
+  for (let t = 0; t < 200 && car.e === 0; t++) stepCars(cx, [car], 0.1, rnd, share / 2, real);
+  assert.notEqual(car.e, 0, '2-р уулзварын 1-р ээлжид код 1 ногоон — машин давав');
+
+  // 1-р уулзварын хуваарь байсан бол тэр агшинд код 1 УЛААН → давахгүй
+  const car2 = { e: 0, s: 60, dir: 1, v: V_MAX, vmax: V_MAX };
+  const cxA = buildNetwork([
+    [[0, 0], [100, 0]], [[100, 0], [200, 0]],
+    [[100, 0], [100, 100]], [[100, 0], [100, -100]],
+  ], { signals: [{
+    pt: [100, 0],
+    name: '1-р гэрлэн дохио',
+    lines: [
+      { pts: [[90, -8], [90, 8]], code: 1 },
+      { pts: [[92, 30], [108, 30]], code: 3 },
+    ],
+  }] });
+  for (let t = 0; t < 200; t++) stepCars(cxA, [car2], 0.1, rnd, share / 2, real);
+  assert.equal(car2.e, 0, '1-р уулзварт код 1 тэр ээлжид улаан — машин зогсов');
 }
 
 /* ══════════════════ Проекцын нэгж (Web Mercator) ══════════════════ */
@@ -1139,22 +1484,32 @@ assert.ok(targetCars(0.5, 400) > 200 && targetCars(0.5, 400) < 210, 'эрэлт 
 }
 
 {
-  // ХОЁР ЭГНЭЭТ зам (эсрэг чиглэлийн хос line) — мухарт ЭСРЭГ УРСГАЛ руу шилжинэ
-  //   →→→ зам: (0,0)→(200,0)   ·   ←←← зам: (200,8)→(0,8)  (8 м зайтай зэрэгцээ)
+  /*  ХОЁР ЭГНЭЭТ зам (эсрэг чиглэлийн хос line) — ДОТООД мухарт эсрэг урсгал
+      руу шилжинэ.
+      ⚠️ Хосыг ТОМ сүлжээний ДОТОР тавина: жижиг сүлжээнд бүх мухар «хил» болж
+      (`boundaryNodes`-ийн фоллбэк), машин шилжихийн оронд бүсээс ГАРНА. Хилийн
+      гарц дээр гарах нь ЗӨВ зан төлөв — түүнийг дээрх мухрын тест шалгана. */
   const dual = buildNetwork([
-    [[0, 0], [200, 0]],
-    [[200, 8], [0, 8]],
+    ...Array.from({ length: 8 }, (_, k) => [[k * 100, 0], [(k + 1) * 100, 0]]),
+    ...[100, 300, 500, 700].map((x) => [[x, 0], [x, 300]]),
+    ...[0, 200, 600, 800].map((x) => [[x, 0], [x, -300]]),
+    [[300, 100], [500, 100]],   // →→→ дотоод эгнээ
+    [[500, 108], [300, 108]],   // ←←← эсрэг эгнээ (8 м зэрэгцээ)
   ], { directed: true });
-  // (200,0)-ын sink-ээс (200,8)-ын гарц (edge1) олдоно (8 м < SINK_JUMP_M)
-  const sinkNode = dual.nodes.findIndex((n) => Math.abs(n.x - 200) < 0.01 && Math.abs(n.y) < 0.01);
-  assert.ok(dual.sinkExit.get(sinkNode)?.includes(1), 'мухраас эсрэг урсгалын эх олдов');
+  const east = dual.edges.findIndex((e) => e.length > 150 && Math.abs(e.pts[0][1] - 100) < 0.01);
+  const west = dual.edges.findIndex((e) => e.length > 150 && Math.abs(e.pts[0][1] - 108) < 0.01);
+  assert.ok(east >= 0 && west >= 0, 'хоёр эгнээт хос үүсэв');
+  const sinkNode = dual.edges[east].b;
+  assert.ok(!portalNodes(dual).has(sinkNode), 'дотоод мухар — портал БИШ');
+  assert.ok(dual.sinkExit.get(sinkNode)?.includes(west), 'мухраас эсрэг урсгалын эх олдов');
 
-  const car = { e: 0, s: 195, dir: 1, v: V_MAX, vmax: V_MAX };
+  const car = { e: east, s: dual.edges[east].length - 5, dir: 1, v: V_MAX, vmax: V_MAX };
   let seed = 13;
   const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
-  for (let i = 0; i < 40 && car.e === 0; i++) stepCars(dual, [car], 0.1, rnd);
-  assert.equal(car.e, 1, 'мухарт устахгүй — эсрэг урсгал руу U-эргэлт хийв');
+  for (let i = 0; i < 60 && car.e === east; i++) stepCars(dual, [car], 0.1, rnd);
+  assert.equal(car.e, west, 'мухарт устахгүй — эсрэг урсгал руу U-эргэлт хийв');
   assert.equal(car.dir, 1, 'шинэ ирмэг дээр сумны дагуу (a→b) явна');
+  assert.ok(car.v <= U_TURN_V + 0.01, `шилжихдээ удаашрав (${car.v.toFixed(1)} м/с)`);
 }
 
 /* ══════════════════ Улаан гэрэлд машин ДАВХЦАХГҮЙ жагсах ══════════════════ */
@@ -1443,17 +1798,23 @@ assert.ok(targetCars(0.5, 400) > 200 && targetCars(0.5, 400) < 210, 'эрэлт 
 {
   // Мухар зам: A үзүүрт хүрээд U-эргэлт хийхийг оролдоно, гэвч эсрэг эгнээний
   // орцонд B зогсож байна → эргэхгүй хүлээнэ (өмнө нь B дээр бууж давхцдаг байв).
-  const stub = buildNetwork([[[0, 0], [100, 0]]]);
-  const blocked = { e: 0, s: 99, dir: -1, v: 0, vmax: 0 };
-  const comer = { e: 0, s: 80, dir: 1, v: V_MAX, vmax: V_MAX };
-  for (let i = 0; i < 40; i++) stepCars(stub, [blocked, comer], 0.2, () => 0);
-  assert.equal(comer.dir, 1, 'эсрэг эгнээ дүүрэн — U-эргэлт хийсэнгүй');
-  assert.ok(comer.s <= 100.01, 'ирмэгээсээ гараагүй');
+  // ⚠️ ДОТООД мухар дээр (хилийн гарц дээр машин ЭРГЭХГҮЙ, гардаг)
+  const stub = stubNet(100);
+  const tipN = stub.nodes.findIndex((n) => Math.abs(n.x - 400) < 0.01 && Math.abs(n.y - 100) < 0.01);
+  const se = stub.nodes[tipN].out[0];
+  const L = stub.edges[se].length;
+  const toTip = stub.edges[se].b === tipN ? 1 : -1;
+  const at = (d) => (toTip === 1 ? L - d : d);
+  const blocked = { e: se, s: at(1), dir: -toTip, v: 0, vmax: 0 };
+  const comer = { e: se, s: at(20), dir: toTip, v: V_MAX, vmax: V_MAX };
+  for (let i = 0; i < 60; i++) stepCars(stub, [blocked, comer], 0.2, () => 0);
+  assert.equal(comer.dir, toTip, 'эсрэг эгнээ дүүрэн — U-эргэлт хийсэнгүй');
+  assert.ok(comer.s <= L + 0.01 && comer.s >= -0.01, 'ирмэгээсээ гараагүй');
 
-  // B зам чөлөөлмөгц эргэлт хэвийн үргэлжилнэ
-  const free = { e: 0, s: 80, dir: 1, v: V_MAX, vmax: V_MAX };
-  for (let i = 0; i < 40; i++) stepCars(stub, [free], 0.2, () => 0);
-  assert.equal(free.dir, -1, 'чөлөөтэй үед U-эргэлт хийв');
+  // Эсрэг эгнээ чөлөөлмөгц эргэлт хэвийн үргэлжилнэ
+  const free = { e: se, s: at(20), dir: toTip, v: V_MAX, vmax: V_MAX };
+  for (let i = 0; i < 60; i++) stepCars(stub, [free], 0.2, () => 0);
+  assert.equal(free.dir, -toTip, 'чөлөөтэй үед U-эргэлт хийв');
 }
 
 /* ══════ УУЛЗВАР — хөндлөн урсгал зэрэг орж МӨРГӨЛДӨХГҮЙ ══════ */
@@ -1498,19 +1859,30 @@ assert.ok(targetCars(0.5, 400) > 200 && targetCars(0.5, 400) < 210, 'эрэлт 
 /* ══════ ДАВХАРДСАН ШУГАМ — хоёр жагсаа бие бие дээрээ зурагдахгүй ══════ */
 
 {
-  /*  ⚠️ Эх өгөгдлийн алдаа: нэг гудамжийг ХОЁР line-аар зурсан (хэмжилтээр
-      Monmap_zam-д 328 хос ≈ 3.1 км, хоорондоо 0.8–1.8 м). Хоёуланд нь машин
-      явуулбал хоёр жагсаа давхцаж, дэлгэц дээр «машин мөргөлдсөн» мэт
-      харагдана. Ирмэгийг УСТГАЛГҮЙ тэмдэглээд урсгалаас хасна. */
+  /*  ⚠️ Эх өгөгдлийн алдаа: нэг гудамжийг ЯГ ДАВХАРЛАН хоёр удаа зурсан.
+      Хоёуланд нь машин явуулбал хоёр жагсаа давхцаж, дэлгэц дээр «машин
+      мөргөлдсөн» мэт харагдана. Ирмэгийг УСТГАЛГҮЙ тэмдэглээд урсгалаас хасна. */
   const d = buildNetwork([
     [[0, 0], [200, 0]],           // үндсэн гудамж
-    [[0, 1.2], [200, 1.2]],       // ЯГ ДЭЭР нь зурагдсан хуулбар (1.2 м зайд)
+    [[0, 0.3], [200, 0.3]],       // ЯГ дээр нь зурагдсан хуулбар (0.3 м)
     [[100, 0], [100, 120]],       // хөндлөн салаа — давхардаагүй
   ]);
   const n = markDuplicates(d);
   assert.equal(n, 1, `нэг ирмэг давхардсан гэж тэмдэглэгдэв (гарсан ${n})`);
   assert.equal(d.edges.filter((e) => e.dup).length, 1, 'зөвхөн НЭГ нь хаягдав');
   assert.ok(d.edges.some((e) => !e.dup && e.length > 50), 'үндсэн гудамж хэвээр');
+
+  /*  ⚠️ ЗЭРЭГЦЭЭ ЭГНЭЭ бол хуулбар БИШ — хаяж болохгүй.
+      Бодит өгөгдөлд эгнээ хоорондын зай 1.3–3.8 м (жиш. 8↔10 = 1.5 м,
+      9↔11 = 1.7 м) байдаг бол жинхэнэ хуулбар 0.0 м байна. Хүлцлийг эгнээний
+      зайд хүргэвэл ЖИНХЭНЭ зам тасалдаж, машин цааш явж чадахгүй болно:
+      OBJECTID 9-ийн 782 м-ийн 407 м нь ингэж хаагдаж, машин буцаж эргэдэг байв. */
+  const lanes = buildNetwork([
+    [[0, 0], [200, 0]],
+    [[0, 1.5], [200, 1.5]],       // 1.5 м зайтай ЗЭРЭГЦЭЭ эгнээ
+  ]);
+  assert.equal(markDuplicates(lanes), 0, '1.5 м зайтай зэрэгцээ эгнээ хуулбар БИШ');
+  assert.ok(lanes.edges.every((e) => !e.dup), 'хоёулаа урсгалд үлдэв');
 
   // Төрөлт — давхардсан ирмэг дээр машин үүсэхгүй
   const tbl = spawnTable(d);
@@ -1538,6 +1910,245 @@ assert.ok(targetCars(0.5, 400) > 200 && targetCars(0.5, 400) < 210, 'эрэлт 
   if (hub2 >= 0) {
     assert.ok(pickNext(only, hub2, 0, [1, 0], rnd) != null, 'бүх салаа давхардсан ч гарц олдов');
   }
+}
+
+/* ══════ УУЛЗВАРЫН ХУВААРЬ — хэрэглэгчийн өгсөн 3 ээлж ══════ */
+
+{
+  /*  Бодит хуваарь: 1-р ээлж {3,4,7,8} · 2-р ээлж {1,6} · 3-р ээлж {2,5}.
+      Жагсаалтад ороогүй код тухайн ээлжид УЛААН. */
+  const pReal = SIGNAL_PLANS.find((x) => x.key === 'real');
+  assert.ok(pReal, 'уулзварын хуваарь бүртгэлтэй');
+  assert.equal(pReal.stages.length, 3, '3 ээлжтэй');
+  assert.deepEqual(pReal.stages[0], [3, 4, 7, 8], '1-р ээлж: 3,4,7,8');
+  assert.deepEqual(pReal.stages[1], [1, 6], '2-р ээлж: 1,6');
+  assert.deepEqual(pReal.stages[2], [2, 5], '3-р ээлж: 2,5');
+
+  const share = pReal.cycle / 3;
+  const SPEC = [
+    [[3, 4, 7, 8], [1, 2, 5, 6]],
+    [[1, 6], [2, 3, 4, 5, 7, 8]],
+    [[2, 5], [1, 3, 4, 6, 7, 8]],
+  ];
+  for (let st = 0; st < 3; st++) {
+    const t = st * share + share * 0.3; // ээлжийн ногоон хэсэгт
+    for (const c of SPEC[st][0]) {
+      assert.ok(signalLineGreen(c, t, pReal), `${st + 1}-р ээлж: код ${c} НОГООН`);
+    }
+    for (const c of SPEC[st][1]) {
+      assert.ok(!signalLineGreen(c, t, pReal), `${st + 1}-р ээлж: код ${c} улаан`);
+    }
+    // Ээлжийн төгсгөлд ногоонууд ШАР болно
+    const ty = st * share + share - pReal.yellow / 2;
+    for (const c of SPEC[st][0]) {
+      assert.equal(signalPhase(c, ty, pReal), 'yellow', `${st + 1}-р ээлжийн төгсгөлд шар`);
+    }
+  }
+
+  // Код бүр мөчлөгт ЯГ НЭГ удаа ногоон болно (мартагдсан код алга)
+  for (let code = 1; code <= 8; code++) {
+    const stagesOn = pReal.stages.filter((st) => st.includes(code)).length;
+    assert.equal(stagesOn, 1, `код ${code} яг нэг ээлжид`);
+  }
+}
+
+/* ══════ ЭРГЭЛТИЙН ЗӨӨЛРҮҮЛЭЛТ — уулзвар дээр огцом эргэхгүй ══════ */
+
+{
+  /*  «L» зам: зүүнээс ирээд хойшоо эргэнэ. Урьд нь ирмэг солигдмогц чиглэл
+      агшин зуур 90° эргэдэг байсан — одоо эхний ~8 м-т нумаар шилжинэ. */
+  const L2 = buildNetwork([
+    [[0, 0], [60, 0]],
+    [[60, 0], [60, 60]],
+  ], { directed: true });
+  const car = { e: 0, s: 55, dir: 1, v: V_MAX, vmax: V_MAX };
+  let seed = 3;
+  const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+  for (let i = 0; i < 40 && car.e === 0; i++) stepCars(L2, [car], 0.1, rnd);
+  assert.equal(car.e, 1, 'машин эргэлт хийв');
+  assert.ok(car.hx != null && car.hux != null, 'булангийн өгөгдөл тавигдав');
+  assert.ok(Math.abs(car.hx - 60) < 1.5 && Math.abs(car.hy) < 1.5, 'булан нь уулзварын цэг');
+
+  // Орсны дараахан — чиглэл ХОЛИМОГ (хуучин чиглэлийн үлдэц бий, огцом биш)
+  car.s = 1;
+  const p1 = carPose(L2, car);
+  assert.ok(p1.ux > 0.25, `эхэнд хуучин (+x) чиглэлийн үлдэцтэй (ux=${p1.ux.toFixed(2)})`);
+  assert.ok(p1.uy > 0.25, `шинэ (+y) чиглэл рүү эргэж эхэлсэн (uy=${p1.uy.toFixed(2)})`);
+
+  // Муруйн төгсгөлд — бүрэн шинэ чиглэлдээ орсон
+  car.s = 8.01;
+  const p2 = carPose(L2, car);
+  assert.ok(Math.abs(p2.ux) < 0.05 && p2.uy > 0.99, 'нумын дараа ирмэгээ яг дагана');
+
+  // Муруйн эхлэл БУЛАНГААС эхэлнэ (байрлал таслархай үсрэхгүй)
+  car.s = 0;
+  const p0 = carPose(L2, car);
+  assert.ok(Math.hypot(p0.x - 60, p0.y - 0) < 0.5, 'нум булангийн цэгээс эхэлнэ');
+
+  /*  ШУЛУУН гарц — орох, гарах чиглэл ижил бол нум нь ЯГ шулуун (гажилтгүй) */
+  const st = buildNetwork([
+    [[0, 0], [60, 0]],
+    [[60, 0], [120, 0]],
+  ], { directed: true });
+  const c2 = { e: 1, s: 3, dir: 1, v: V_MAX, vmax: V_MAX, hx: 60, hy: 0, hux: 1, huy: 0 };
+  const ps = carPose(st, c2);
+  assert.ok(Math.abs(ps.y) < 1e-6 && Math.abs(ps.x - 63) < 0.2, 'шулуунд гажилт үүсгэхгүй');
+  assert.ok(ps.ux > 0.999, 'шулуунд чиглэл өөрчлөгдөхгүй');
+}
+
+/* ══════ 24 ЦАГИЙН МӨЧЛӨГ — машин хилээр орж/гарна, гэнэт үл үзэгдэнэ ══════ */
+
+{
+  /*  «Гарч явах» машин мухарт хүрээд `done` болно (sink-jump/U-эргэлт хийхгүй) —
+      дуудагч тал жагсаалтаас авахад «хилээр гарч одсон» мэт харагдана. */
+  const road = buildNetwork([[[0, 0], [100, 0]], [[100, 0], [200, 0]]], { directed: true });
+  const c = { e: 1, s: 80, dir: 1, v: V_MAX, vmax: V_MAX, leaving: true };
+  let seed = 4;
+  const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+  for (let i = 0; i < 100 && !c.done; i++) stepCars(road, [c], 0.1, rnd);
+  assert.ok(c.done, 'гарч яваа машин мухарт done болов');
+  assert.ok(Math.abs(c.s - road.edges[1].length) < 0.01, 'яг үзүүрт нь зогсов');
+  assert.equal(c.dir, 1, 'U-эргэлт хийгээгүй (гарсан)');
+
+  /* ⚠️ ЭНГИЙН машин ч ХИЛИЙН ГАРЦААР гарна: замууд судалгааны хилээр
+     тасарсан бөгөөд бодит дээр цааш үргэлжилдэг. Урьд нь энгийн машин тэнд
+     эсрэг эгнээ рүү үсэрч буцдаг байсныг зассан. Дотоод мухарт эргэх нь
+     хэвээр — «дотоод мухарт АЛГА БОЛООГҮЙ» тестийг үз. */
+  const c2 = { e: 1, s: 80, dir: 1, v: V_MAX, vmax: V_MAX };
+  for (let i = 0; i < 100 && !c2.done; i++) stepCars(road, [c2], 0.1, rnd);
+  assert.ok(c2.done, 'энгийн машин ч хилийн гарцаар гарав');
+  assert.equal(c2.dir, 1, 'хил дээр эргээгүй');
+
+  // done машиныг хөдөлгүүр алгасна (байрлал өөрчлөгдөхгүй)
+  const sBefore = c.s;
+  stepCars(road, [c, c2], 0.1, rnd);
+  assert.equal(c.s, sBefore, 'done машин хөдлөхгүй');
+}
+
+{
+  /*  Хилийн орцууд: мухрын (degree-1) зангилаанууд; чиглэлтэй сүлжээнд сумны
+      эсрэг орц хасагдана; орцоор орсон машин сүлжээ РҮҮ чиглэнэ. */
+  const y = buildNetwork([
+    [[0, 0], [100, 0]],     // e0: зүүн мухар (0,0) → төв
+    [[100, 0], [200, 0]],   // e1: төв → баруун мухар
+    [[100, 0], [100, 100]], // e2: төв → хойд мухар
+  ]);
+  const ens = boundaryEntries(y);
+  assert.equal(ens.length, 3, 'гурван мухар = гурван орц');
+
+  const en0 = ens.find((x) => x.e === 0);
+  assert.ok(en0 && en0.dir === 1, 'зүүн орц сүлжээ рүү (a→b)');
+  const en1 = ens.find((x) => x.e === 1);
+  assert.ok(en1 && en1.dir === -1, 'баруун орц СӨРӨГ чиглэлд (сүлжээ рүү)');
+
+  const car = spawnCarAt(y, en1);
+  assert.equal(car.e, 1, 'орцын ирмэг дээр төрөв');
+  assert.ok(y.edges[1].length - car.s < 5, 'үзүүрт нь ойрхон');
+  assert.equal(car.dir, -1, 'сүлжээ рүү чиглэсэн');
+
+  // Чиглэлтэй сүлжээнд сумны эсрэг орц ХАСАГДАНА
+  const dnet = buildNetwork([[[0, 0], [100, 0]], [[100, 0], [200, 0]]], { directed: true });
+  const dens = boundaryEntries(dnet);
+  assert.equal(dens.length, 1, 'чиглэлтэйд зөвхөн эхлэлийн мухар орц болно');
+  assert.ok(dens[0].e === 0 && dens[0].dir === 1, 'зөв орц үлдэв');
+}
+
+/* ══════ УЛААН ГЭРЭЛД ТЭВЧЭЭР БАРАГДАХГҮЙ — савлахгүй ══════ */
+
+{
+  /*  Улаан 60с (3 ээлжийн хуваарьт) > тэвчээр 25с. Урьд нь зогсолтын шугам
+      дээрх машин «гацлаа» гэж андуурч БУЦАЖ ЭРГЭЭД, эрэлт нь буцааж дуудахад
+      урагш-хойш савладаг байв. Одоо улаан зураас урд байвал гэрлээ л хүлээнэ. */
+  const cx4 = buildNetwork([
+    [[0, 0], [100, 0]], [[100, 0], [200, 0]],
+    [[100, 0], [100, 100]], [[100, 0], [100, -100]],
+  ], { signals: [{ pt: [100, 0], lines: [
+    { pts: [[90, -8], [90, 8]], code: 5 },       // E-W шугам (s=90)
+    { pts: [[92, 30], [108, 30]], code: 1 },
+  ] }] });
+  // «Уулзварын хуваарь»: код 5 нь 3-р ээлжид л ногоон — 1, 2-р ээлжид (60с) улаан
+  const pReal2 = SIGNAL_PLANS.find((x) => x.key === 'real');
+  const car = { e: 0, s: 60, dir: 1, v: V_MAX, vmax: V_MAX };
+  let seed = 6;
+  const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+  // 40 сим-секунд УЛААН дээр барина (t=0..40 — 1-р ээлж {3,4,7,8} тул код 5 улаан)
+  for (let t = 0; t < 400; t++) stepCars(cx4, [car], 0.1, rnd, t * 0.1 % 28, pReal2);
+  assert.equal(car.dir, 1, 'улаанд 40с зогссон ч БУЦАЖ ЭРГЭЭГҮЙ');
+  assert.equal(car.e, 0, 'ирмэгээ орхиогүй');
+  assert.ok(car.s + CAR_LEN / 2 <= 90 + 0.01, 'шугамаа даваагүй');
+  assert.ok((car.wait ?? 0) > PATIENCE_S, 'тэвчээр хэтэрсэн ч (гэрэл тул) хүлээсээр');
+
+  // Ногоон асмагц хөдөлнө
+  const tGreen = (pReal2.cycle / 3) * 2 + 5; // 3-р ээлж — код 5 ногоон
+  for (let t = 0; t < 100 && car.e === 0; t++) stepCars(cx4, [car], 0.1, rnd, tGreen, pReal2);
+  assert.notEqual(car.e, 0, 'ногоонд уулзвараа давав');
+}
+
+/* ══════ 100 м-ЭЭС БОГИНО ШУГАМ — зөвхөн дамжина, төрөхгүй/алга болохгүй ══════ */
+
+{
+  /*  Захын хоёр мухар: нэг нь УРТ (150 м) ирмэгтэй — портал; нөгөө нь БОГИНО
+      (40 м) стуб — машин зөвхөн дамжин явна. */
+  const pn = buildNetwork([
+    [[0, 0], [150, 0]],     // e0 — урт: портал болно
+    [[150, 0], [190, 0]],   // e1 — богино стуб: портал БОЛОХГҮЙ
+    [[150, 0], [150, 150]], // e2 — урт салаа
+    [[150, 150], [150, 190]], // e3 — богино стуб
+    [[150, 150], [300, 150]], // e4 — урт: портал
+    [[0, 0], [0, -150]],     // e5 — урт: портал
+  ]);
+  // ⚠️ Жижиг сүлжээний фоллбэк (<6 портал) энэ тестэд саад болохгүйн тулд
+  //    портал 6-аас цөөн ч урт/богино ялгааг ОРЦООР нь шалгана
+  const ens = boundaryEntries(pn);
+  for (const en of ens) {
+    // Фоллбэк идэвхжээгүй бол богино ирмэг дээр орц байх ёсгүй
+    if (ens.length < pn.nodes.filter((n) => n.out.length === 1).length) {
+      assert.ok(pn.edges[en.e].length >= 100, `орц зөвхөн урт ирмэг дээр (e${en.e})`);
+    }
+  }
+
+  // Төрөлт: 100 м-ээс богино ирмэг дээр хэзээ ч төрөхгүй
+  for (const e of pn.edges) e.baseLoad = 0.5;
+  const tb = spawnTable(pn);
+  let seed = 12;
+  const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+  for (let i = 0; i < 300; i++) {
+    const idx = pickEdge(tb, rnd);
+    if (idx >= 0) assert.ok(pn.edges[idx].length >= 100, `богино ирмэг дээр төрөв (e${idx})`);
+  }
+}
+
+{
+  /*  ОД хэлбэрийн сүлжээ: төвөөс 8 УРТ (200 м) салаа + зүүн салааны үзүүрт
+      БОГИНО (40 м) стуб. Стубын үзүүр bbox-ийн захад байгаа ч ирмэг нь богино
+      тул ПОРТАЛ БОЛОХГҮЙ: гарагч тэнд хүрвэл алга болохгүй, эргэж буцна. */
+  const roads = [];
+  for (let k = 0; k < 8; k++) {
+    const a = (k * Math.PI) / 4;
+    roads.push([[0, 0], [Math.cos(a) * 200, Math.sin(a) * 200]]);
+  }
+  roads.push([[200, 0], [200, 40]]); // богино стуб — зүүн салааны үзүүрээс
+  const pn2 = buildNetwork(roads);
+  const stubNode = pn2.nodes.findIndex((n) => Math.abs(n.x - 200) < 0.1 && Math.abs(n.y - 40) < 0.1);
+  assert.ok(stubNode >= 0, 'стубын үзүүр олдов');
+  assert.ok(boundaryNodes(pn2).has(stubNode), 'стуб захын бүсэд байгаа (тест утга учиртай)');
+  assert.ok(!portalNodes(pn2).has(stubNode), 'богино стуб портал БИШ');
+  assert.ok(portalNodes(pn2).size >= 6, 'урт порталууд хангалттай (фоллбэк идэвхжээгүй)');
+
+  const stubEdge = pn2.nodes[stubNode].out[0];
+  const cs = {
+    e: stubEdge, s: 5, dir: pn2.edges[stubEdge].b === stubNode ? 1 : -1,
+    v: V_MAX, vmax: V_MAX, leaving: true,
+  };
+  let seed2 = 9;
+  const rnd2 = () => (seed2 = (seed2 * 1103515245 + 12345) % 2147483648) / 2147483648;
+  for (let i = 0; i < 60 && !cs.done; i++) stepCars(pn2, [cs], 0.1, rnd2);
+  assert.ok(!cs.done, 'богино стубын мухарт АЛГА БОЛООГҮЙ (эргэж буцсан)');
+
+  // Харин УРТ салааны мухарт хүрвэл гарна — төв рүү яваад портал салаагаар
+  const cl = { e: 0, s: 190, dir: -1, v: V_MAX, vmax: V_MAX, leaving: true };
+  for (let i = 0; i < 600 && !cl.done; i++) stepCars(pn2, [cl], 0.1, rnd2);
+  assert.ok(cl.done, 'урт порталын мухарт жамаараа гарав');
 }
 
 console.log('traffic.check: ok — diurnal, замын байрлал, сүлжээ, уулзвар, car-following, эрэлт, дохио, чиглэл, давхцалгүй');

@@ -20,11 +20,14 @@ export function Ranking({
   onSelect: (id: string | null) => void;
 }) {
   /**
-   * ⚠️ Анхнаасаа зөвхөн «Муу» бүлэг нээлттэй — анхаарал шаардсан бүсийг шууд
-   * харуулж, сайн үзүүлэлттэй бүсүүд жагсаалтыг дүүргэхгүй.
+   * ⚠️ Анхнаасаа зөвхөн 25–45 онооны бүлэг нээлттэй — анхаарал шаардсан бүсийг
+   * шууд харуулж, өндөр оноотой бүсүүд жагсаалтыг дүүргэхгүй.
+   *
+   * ⚠️ Түвшинг ОНООНЫ ЗУРВАСААР олно, шошгын үгээр БИШ: интерфейсээс үнэлгээний
+   * үг хассан тул шошгонд түшиглэвэл дараа нь чимээгүй эвдэрнэ.
    */
   const [off, setOff] = useState<Set<number>>(
-    () => new Set(SCORE_LEVELS.map((_, i) => i).filter((i) => SCORE_LEVELS[i].label !== 'Муу')),
+    () => new Set(SCORE_LEVELS.map((_, i) => i).filter((i) => SCORE_LEVELS[i].min !== 25)),
   );
 
   const sorted = useMemo(
@@ -58,9 +61,13 @@ export function Ranking({
             setOff(next);
           }}
         >
+          {/* ⚠️ Бүлгийн нэр нь ҮНЭЛГЭЭНИЙ ҮГГҮЙ («сайн»/«муу» гэхгүй): эрэмбэ нь
+              оноог харуулах ёстой болохоос дүгнэлт өгөх ёсгүй. Түвшинг ӨНГӨ ба
+              ОНООНЫ ЗУРВАС хоёр л заана. */}
           <i style={{ background: L ? L.color : NO_DATA_COLOR }} />
-          <span>{L ? L.label : 'Өгөгдөлгүй'}</span>
-          <em>{L ? `${L.min}–${Math.min(100, L.max)}` : ''}</em>
+          <span>{L ? `${L.min}–${Math.min(100, L.max)} оноо` : 'Өгөгдөлгүй'}</span>
+          <em />
+
           <b>{lv < 0 ? noData : perLevel[lv]}</b>
           <u>▼</u>
         </button>,

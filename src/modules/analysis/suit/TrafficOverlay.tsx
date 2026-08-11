@@ -5,7 +5,8 @@ import type MapView from '@arcgis/core/views/MapView';
 import type SceneView from '@arcgis/core/views/SceneView';
 
 import {
-  diurnalAt, stepCars, spawnTable, spawnCar, targetCars, carPose, carLen,
+  boundaryEntries, carCapacity, diurnalAt, stepCars, spawnTable, spawnCar, spawnCarAt,
+  targetCars, carPose, carLen,
   signalPhase, VEHICLE_TYPES, DEFAULT_SIGNAL_PLAN, CAR_LEN, MIN_GAP_M, V_MAX,
   type Car, type Network, type SignalPlan,
 } from './traffic';
@@ -78,6 +79,17 @@ function body(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h:
  * ямар ч мэдээлэл нэмэхгүй (1-2 пиксел) тул зөвхөн ойртоход л асна.
  */
 const FINE_MIN_PX = 26;
+
+/**
+ * «Гарч явах» машины ТЭВЧЭЭРИЙН хугацаа (сим-сек): үүнээс удаж хилд хүрч
+ * чадаагүй бол (түгжирсэн) 2.5 секундэд ААЖИМ БҮДГЭРЧ алга болно — «гэнэт алга
+ * болох»-ын оронд зөөлөн ууссан гарал. Хил руу чиглэсэн ихэнх машин үүнээс
+ * өмнө жамаараа гарчихдаг тул fade нь зөвхөн даатгал.
+ */
+const LEAVE_GRACE_S = 45;
+const FADE_S = 2.5;
+/** Шинэ машин 0.8 секундэд аажим ТОДОРЧ орж ирнэ (гэнэт «пор» хийхгүй) */
+const BORN_FADE_S = 0.8;
 
 /** Автобусны биеийн өнгө — хөнгөн автоос ЯЛГАРАХ палитр (шар/цэнхэр давамгай). */
 const BUS_COLORS = ['#e8b23a', '#d9dee4', '#3f7fb8', '#4f9d69'];
@@ -280,6 +292,11 @@ export function TrafficOverlay({
     if (!ctx) return;
 
     const tbl = spawnTable(net);
+    /** Сүлжээний багтаамжийн таг — эрэлт үүнээс их бол энд таслана (түгжрэлээс
+        сэргийлнэ; оргилын ЦАГ өөрчлөгдөхгүй, зөвхөн нягтрал хязгаарлагдана) */
+    const capNet = carCapacity(net);
+    /** Хилийн орц/гарцууд — машин эндээс «ирж», эндээс «явж одно» */
+    const entries = boundaryEntries(net);
     // ⚠️ Машиныг ЦЭВЭРЛЭНЭ: тэдгээр нь ирмэгийн ИНДЕКС барьдаг тул өөр сүлжээ
     //    ирвэл хуучин индекс огт өөр зам заана (эсвэл хязгаараас гарна).
     const cars = carsRef.current;
@@ -329,34 +346,48 @@ export function TrafficOverlay({
         return x < -30 || y < -30 || x > cnv.width + 30 || y > cnv.height + 30;
       };
 
-      /* ── 1. Эрэлт: машины тоог өдрийн муруйгаар барина ──
-         ⚠️ МАШИН ДЭЛГЭЦИЙН ДУНДААС ХЭЗЭЭ Ч АЛГА БОЛОХГҮЙ. Цөөрүүлэхдээ:
-           а) дэлгэцээс ГАДУУРХ машиныг чимээгүй авна (үл үзэгдэх), эсвэл
-           б) замын ХИЛИЙН ГАРЦАД (sink) ойртсон машиныг «бүсээс гарлаа» гэж
-              авна — хилээр гарч буй мэт зүй ёсны харагдац.
-         Аль нь ч байхгүй бол ХАСАХГҮЙ — тоо түр зөрөхийг зөвшөөрнө. */
+      /* ── 1. Эрэлт: машины тоог өдрийн муруйгаар ЖИГД барина ──
+         24 цагийн мөчлөг: 00:00-д цөөхөн → өглөөний оргилд түгжирнэ → буурна →
+         оройн оргил → шөнө рүү буурна — дараа нь дахин эхэлнэ (`diurnalAt` wrap).
+         ⚠️ МАШИН ГЭНЭТ АЛГА БОЛОХГҮЙ, ГЭНЭТ ГАРЧ ИРЭХГҮЙ:
+           · ЦӨӨРҮҮЛЭХ — далд байгааг чимээгүй авна; харагдаж байгааг «гарч
+             явах» горимд шилжүүлнэ: замаа үргэлжлүүлж яваад ХИЛИЙН ГАРЦААР
+             (мухрын үзүүр = бүсийн зах) жамаараа гарч одно.
+           · Эрэлт эргэж өсвөл гарч яваа машиныг ЭХЭЛЖ буцаана — устгах/
+             төрүүлэх чичиргээ үүсэхгүй. */
       const demand = diurnalAt(minuteRef.current);
-      const cap = Math.max(1, Math.min(CAR_CAP, opt.current.maxCars));
+      const cap = Math.max(1, Math.min(CAR_CAP, opt.current.maxCars, capNet));
       const want = targetCars(demand, cap, Math.min(10, cap));
-      let excess = cars.length - want;
+      // Хилээр гарсан (done), далд гарсан, эсвэл бүрэн бүдгэрсэн гарагсдыг авна
+      for (let i = cars.length - 1; i >= 0; i--) {
+        const c = cars[i];
+        const faded = c.leaving && c.leaveT != null
+          && simTime - c.leaveT > LEAVE_GRACE_S + FADE_S;
+        if (c.done || faded || (c.leaving && offscreen(c))) cars.splice(i, 1);
+      }
+      const leavingNow = cars.reduce((a, c) => a + (c.leaving ? 1 : 0), 0);
+      // «Ирж буй» тоо = нийт − гарч яваа: зорилтот тоо руу үүгээр тэгшитгэнэ
+      let excess = cars.length - leavingNow - want;
       if (excess > 0) {
+        // Далд байгааг шууд; үлдсэнийг «гарч явах» горимд
         for (let i = cars.length - 1; i >= 0 && excess > 0; i--) {
-          if (offscreen(cars[i])) { cars.splice(i, 1); excess--; }
+          if (!cars[i].leaving && offscreen(cars[i])) { cars.splice(i, 1); excess--; }
         }
         for (let i = cars.length - 1; i >= 0 && excess > 0; i--) {
-          const c = cars[i];
-          const e = net.edges[c.e];
-          const node = c.dir === 1 ? e.b : e.a;
-          if (!net.sinkExit.has(node)) continue;
-          const distEndM = (c.dir === 1 ? e.length - c.s : c.s) / upm;
-          if (distEndM < 25) { cars.splice(i, 1); excess--; }
+          if (!cars[i].leaving) { cars[i].leaving = true; cars[i].leaveT = simTime; excess--; }
+        }
+      } else if (excess < 0) {
+        // Эрэлт өслөө — гарч яваа машиныг буцааж «үлдээнэ» (шинээр төрүүлэхээс өмнө)
+        for (const c of cars) {
+          if (excess >= 0) break;
+          if (c.leaving) { c.leaving = false; excess++; }
         }
       }
       // Нэг фреймд цөөхнийг нэмнэ — эрэлт огцом өсөхөд гэнэт «цутгахгүй».
-      // ⚠️ Аль болох ДЭЛГЭЦЭЭС ГАДУУР төрүүлнэ (хэдэн оролдлого) — дэлгэцийн
-      //    дунд «пор» хийж гарч ирэхгүй; бүх зам дэлгэцэд байвал аргагүй.
-      //    ×5 эрэлтэд (~5,355) фреймд 30 → оргил ~3 секундэд бөглөнө.
-      if (cars.length < want) {
+      // ⚠️ ДЭЛГЭЦИЙН ДУНДААС ХЭЗЭЭ Ч ТӨРӨХГҮЙ: далд газар санамсаргүй, эсвэл
+      //    ХИЛИЙН ОРЦООР (мухрын үзүүр = бүсийн зах) орж ирнэ — «бүсэд орж
+      //    ирж яваа» мэт жамаараа харагдана.
+      if (cars.length - leavingNow < want) {
         /* ⚠️ ДАВХЦЛЫН ХАМГААЛАЛТ: санамсаргүй байрлалд төрөх машин аль хэдийн
            зогсож буй машины ДЭЭР бууж давхарладаг байсан (өндөр нягтралд илт).
            Хөдөлгөөний зай барих логик давхарласныг САЛГАЖ чаддаггүй тул төрөхөөс
@@ -383,26 +414,60 @@ export function TrafficOverlay({
           for (const o of l) if (Math.abs(o.s - cand.s) < o.half + half + gapU) return false;
           return true;
         };
-        for (let i = 0; i < 30 && cars.length < want; i++) {
-          let c: Car | null = null;
-          for (let t = 0; t < 8; t++) {
-            const cand = spawnCar(net, tbl);
-            if (!cand) break;
-            if (!fits(cand)) continue; // давхцана — өөр байрлал сонирхоно
-            c = cand;
-            if (offscreen(cand)) break;
+        /** Хилийн орц чөлөөтэй юу — орцын 14 м дотор машин байхгүй бол */
+        const entryFree = (en: { e: number; dir: 1 | -1 }): boolean => {
+          const l = occ.get(en.e);
+          if (!l) return true;
+          const len = net.edges[en.e].length;
+          // Орцын чөлөөт бүс — машины урт + зай (14 м байсныг багасгав: орц бүр
+          // ~3 сек тутам биш ~2 сек тутам нэг машин нэвтрүүлж, оргилын өсөлтийг гүйцнэ)
+          const zone = 10 * upm;
+          for (const o of l) {
+            const dTip = en.dir === 1 ? o.s : len - o.s;
+            if (dTip < zone) return false;
           }
-          if (!c) continue; // энэ фреймд зав олдсонгүй — дараагийн фреймд
-          cars.push(c);
-          occAdd(c);
+          return true;
+        };
+        /* ── Төрөлт: далд газар + ЧӨЛӨӨТЭЙ орц бүрээр ──
+           ⚠️ Урьд нь орцыг САНАМСАРГҮЙ сонгож, эхний бүтэлгүй оролдлоор бүх
+           төрөлтөө зогсоодог байсан тул оргил цагт орох урсгал эрэлтээ гүйцэхгүй
+           «хэт цөөхөн машин» харагдаж байв. Одоо чөлөөтэй орцуудын ЖАГСААЛТ
+           гаргаж, бүгдээр нь зэрэг оруулна. */
+        let need = Math.min(30, Math.max(0, want - (cars.length - leavingNow)));
+        // ① ДАЛД газар санамсаргүй байрлалд (хамгийн жам ёсны)
+        for (let t = 0; t < 16 && need > 0; t++) {
+          const cand = spawnCar(net, tbl);
+          if (!cand || !fits(cand) || !offscreen(cand)) continue;
+          cand.bornT = simTime;
+          cars.push(cand);
+          occAdd(cand);
+          need--;
+        }
+        // ② Чөлөөтэй ХИЛИЙН ОРЦ бүрээр нэг машин орж ирнэ
+        if (need > 0 && entries.length) {
+          const free = entries.filter(entryFree);
+          // Санамсаргүй эрэмбэ — үргэлж нэг өнцгөөс цувахгүй
+          for (let i = free.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [free[i], free[j]] = [free[j], free[i]];
+          }
+          for (const en of free) {
+            if (need <= 0) break;
+            const c = spawnCarAt(net, en);
+            c.bornT = simTime;
+            cars.push(c);
+            occAdd(c);
+            need--;
+          }
         }
       }
 
       /* ── 2. Хөдөлгөөн ── */
+      let dtSim = 0;
       if (opt.current.playing && dtReal > 0) {
-        const dt = dtReal * paceOf(opt.current.speed);
-        simTime += dt;
-        stepCars(net, cars, dt, Math.random, simTime, opt.current.signalPlan);
+        dtSim = dtReal * paceOf(opt.current.speed);
+        simTime += dtSim;
+        stepCars(net, cars, dtSim, Math.random, simTime, opt.current.signalPlan);
       }
 
       /* ── 3. Зуралт ── */
@@ -415,6 +480,44 @@ export function TrafficOverlay({
          зогссон бөөгнөрөл)-өөс уншигдана. */
       let sumV = 0;
       for (const c of cars) sumV += c.v;
+      /* ── ЗАМНАЛЫН ГӨЛГӨРҮҮЛЭЛТ (ArcGIS smooth-ийн үзэл) ──
+         Зурагдах байрлал/чиглэл нь бодит байрлалаа экспоненциалаар (τ=0.15с)
+         дагана. Уулзварын таслалтын БОГИНО хэрчмүүдээр дамжсан эргэлт олон
+         жижиг хугаралтай байдгийг нэг гөлгөр нум болгоно. Зөвхөн харагдац —
+         хөдөлгүүрийн байрлалд огт нөлөөгүй. Том үсрэлтэд (мухрын шилжилт,
+         төрөлт) ШУУД наана — эс бөгөөс машин газраар «гулсаж» ниснэ. */
+      const SMOOTH_TAU = 0.15;
+      const kSm = dtSim > 0 ? 1 - Math.exp(-dtSim / SMOOTH_TAU) : 0;
+      const smoothPose = (c: Car, p: { x: number; y: number; ux: number; uy: number }) => {
+        const jump = c.sx == null || c.sy == null
+          || Math.hypot(p.x - c.sx, p.y - c.sy) > 20 * upm;
+        if (jump || kSm <= 0) {
+          if (jump) { c.sx = p.x; c.sy = p.y; c.sux = p.ux; c.suy = p.uy; }
+          return { x: c.sx ?? p.x, y: c.sy ?? p.y, ux: c.sux ?? p.ux, uy: c.suy ?? p.uy };
+        }
+        c.sx = (c.sx as number) + (p.x - (c.sx as number)) * kSm;
+        c.sy = (c.sy as number) + (p.y - (c.sy as number)) * kSm;
+        let ux = (c.sux ?? p.ux) + (p.ux - (c.sux ?? p.ux)) * kSm;
+        let uy = (c.suy ?? p.uy) + (p.uy - (c.suy ?? p.uy)) * kSm;
+        const L = Math.hypot(ux, uy);
+        // U-эргэлт (бараг эсрэг вектор) — дундаж нь тэглэдэг тул шууд наана
+        if (L < 0.3 || (c.sux ?? 0) * p.ux + (c.suy ?? 0) * p.uy < -0.7) {
+          ux = p.ux; uy = p.uy;
+        } else { ux /= L; uy /= L; }
+        c.sux = ux; c.suy = uy;
+        return { x: c.sx, y: c.sy, ux, uy };
+      };
+
+      /** Машины тунгалагшил: төрөхдөө 0.8с тодорно; гарч чадаагүй нь 2.5с бүдгэрнэ */
+      const alphaOf = (c: Car): number => {
+        let a = 1;
+        if (c.bornT != null) a = Math.min(1, (simTime - c.bornT) / BORN_FADE_S);
+        if (c.leaving && c.leaveT != null) {
+          const over = simTime - c.leaveT - LEAVE_GRACE_S;
+          if (over > 0) a = Math.min(a, Math.max(0, 1 - over / FADE_S));
+        }
+        return a;
+      };
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
 
@@ -432,7 +535,7 @@ export function TrafficOverlay({
         const dash = Math.max(2.4 * dpr, lenPx);
         ctx.lineWidth = Math.max(1.8 * dpr, dash * 0.62);
         for (const c of cars) {
-          const p = carPose(net, c);
+          const p = smoothPose(c, carPose(net, c));
           const x = px(p.x);
           const y = py(p.y);
           if (x < -20 || y < -20 || x > cnv.width + 20 || y > cnv.height + 20) continue;
@@ -440,17 +543,19 @@ export function TrafficOverlay({
           ctx.strokeStyle = t > 0.55 ? '#e6f6ff' : t > 0.25 ? '#fbbf24' : '#ef4444';
           const dx = (p.ux * dash) / 2;
           const dy = (-p.uy * dash) / 2;
+          ctx.globalAlpha = alphaOf(c);
           ctx.beginPath();
           ctx.moveTo(x - dx, y - dy);
           ctx.lineTo(x + dx, y + dy);
           ctx.stroke();
+          ctx.globalAlpha = 1;
         }
       } else {
         // ⚠️ Урт нь МАШИН БҮРД өөр (автобус/ачаа урт) — төрөл нүдэнд ялгарна.
         //    Өргөн нь урттай зэрэгцэн бага зэрэг өснө (урт машин илүү өргөн).
         const pad = 14 * pxPerM;
         for (const c of cars) {
-          const p = carPose(net, c);
+          const p = smoothPose(c, carPose(net, c));
           const x = px(p.x);
           const y = py(p.y);
           if (x < -pad || y < -pad || x > cnv.width + pad || y > cnv.height + pad) continue;
@@ -468,6 +573,7 @@ export function TrafficOverlay({
           const color = pal[Math.floor(c.tint * pal.length) % pal.length];
 
           ctx.save();
+          ctx.globalAlpha = alphaOf(c); // төрөх/гарах шилжилт — гэнэт биш
           ctx.translate(x, y);
           // ⚠️ Дэлгэцийн y нь ДООШОО өсдөг тул чиглэлийн y-г урвуулна
           ctx.rotate(Math.atan2(-p.uy, p.ux));
@@ -492,12 +598,11 @@ export function TrafficOverlay({
           ctx.fillRect(L / 2 - lw2, ly - lh / 2, lw2, lh);
 
           const t = Math.max(0, Math.min(1, c.v / c.vmax));
-          ctx.globalAlpha = t < 0.75 ? Math.min(1, (0.75 - t) * 1.9) : 0.35;
+          ctx.globalAlpha = (t < 0.75 ? Math.min(1, (0.75 - t) * 1.9) : 0.35) * alphaOf(c);
           ctx.fillStyle = t < 0.75 ? '#ff2d20' : 'rgba(120,30,26,.9)';
           ctx.fillRect(-L / 2, -ly - lh / 2, lw2, lh);
           ctx.fillRect(-L / 2, ly - lh / 2, lw2, lh);
-          ctx.globalAlpha = 1;
-          ctx.restore();
+          ctx.restore(); // alpha-г restore сэргээнэ
         }
       }
 
@@ -513,7 +618,7 @@ export function TrafficOverlay({
         for (const ln of net.signalLines) {
           if (ln.pts.length < 2) continue;
           // Ногоон → шар (3 сек) → улаан — хөдөлгүүрийн фазтай НЭГ эх сурвалж
-          const ph = signalPhase(ln.code, simTime, opt.current.signalPlan);
+          const ph = signalPhase(ln.code, simTime, opt.current.signalPlan, ln.j);
           ctx.strokeStyle = ph === 'green' ? '#22c55e' : ph === 'yellow' ? '#facc15' : '#ff3b30';
           ctx.beginPath();
           ctx.moveTo(px(ln.pts[0][0]), py(ln.pts[0][1]));
