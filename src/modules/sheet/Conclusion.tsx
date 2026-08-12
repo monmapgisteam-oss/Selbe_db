@@ -10,6 +10,7 @@ import {
   queryAll,
   type Feature,
 } from "./ags";
+import { useColWidths } from "./colWidths";
 import st from "./sheet.module.css";
 
 // Join space-separated table token names to their CSS-module class names.
@@ -150,6 +151,7 @@ export function buildJobs(feats: Feature[]): { jobs: Job[]; grand: number } {
 }
 
 export default function Conclusion() {
+  const { style: colStyle, grip } = useColWidths("conclusion");
   const [bagtsList, setBagtsList] = useState<string[]>([]);
   const [bagts, setBagts] = useState("");
   const [feats, setFeats] = useState<Feature[]>([]);
@@ -218,14 +220,14 @@ export default function Conclusion() {
 
       {jobs.length > 0 && (
         <div className={st.scroll}>
-          <table className={cls("xl concl")}>
+          <table className={cls("xl concl")} style={colStyle}>
             <thead>
               <tr>
-                <th className={cls("c-no")}>№</th>
-                <th className={cls("c-ajil")}>Ажил</th>
-                <th className={cls("c-jin")}>Жин</th>
-                <th className={cls("c-done")}>Гүйцэтгэл</th>
-                <th className={cls("c-dutuu")}>Дутуу</th>
+                <th className={cls("c-no")}>№<i {...grip("no")} /></th>
+                <th className={cls("c-ajil")}>Ажил<i {...grip("ajil")} /></th>
+                <th className={cls("c-jin")}>Жин<i {...grip("jin")} /></th>
+                <th className={cls("c-done")}>Гүйцэтгэл<i {...grip("done")} /></th>
+                <th className={cls("c-dutuu")}>Дутуу<i {...grip("dutuu")} /></th>
               </tr>
             </thead>
             <tbody>

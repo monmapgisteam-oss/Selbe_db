@@ -1,5 +1,9 @@
-// `bagts32.tree.ts`-ийг үүсгэгч. Excel-ийн `9F_publish` хуудасны мөрийн модыг
-// (эцэг–хүү) НИЙЛБЭР ТОМЪЁОНУУДААС нь уншиж гаргана.
+// БАГЦЫН мөрийн модыг үүсгэгч. Excel-ийн `*_final_publish` хуудасны эцэг–хүү
+// холбоог НИЙЛБЭР ТОМЪЁОНУУДААС нь уншиж гаргана.
+//
+// ⚠️ Багана бүрийн БАЙРЛАЛ багц бүрд ӨӨР (блок 8 · 11 · 12 · 22; зарим багцад
+// «Төлөвлөгөө биелэлт» багана огт байхгүй). Тиймээс баганыг хатуу бичихгүй —
+// ТОЛГОЙН МӨРӨӨС нь таньж авна (доорх `layout()`).
 //
 // Яагаад томъёоноос? № багана (excel A) дангаараа модыг тодорхойлж чадахгүй:
 // "1" гэсэн код нь ангилал (ГАЗАР ШОРООНЫ АЖИЛ) ч, ажил (Барилга барих талбайг
@@ -14,7 +18,7 @@
 // Ажиллуулах (xlsx нь ердөө zip):
 //   Copy-Item Багц_3_2_final.xlsx book.zip
 //   Expand-Archive book.zip -DestinationPath xl
-//   node tools/bagts32-tree.mjs ./xl sheet3.xml ts src/modules/sheet/bagts32.tree.ts
+//   node tools/bagts-tree.mjs ./xl sheet3.xml ts src/modules/sheet/bagts32.tree.ts
 // (sheet3.xml = 9F_publish — xl/workbook.xml + xl/_rels/workbook.xml.rels-ээс
 //  rId → worksheets/sheetN.xml холбоог хараарай.)
 //
@@ -67,18 +71,51 @@ const rows = new Map(); // мөрийн дугаар -> { cells }
 const LAST = Math.max(...rows.keys());
 
 const colNum = (c) => [...c].reduce((n, ch) => n * 26 + (ch.charCodeAt(0) - 64), 0);
-// ХҮҮХЭД МӨР рүү заадаг багана: жин/мөнгө (C, D, E, H) ба барилгын 24 багана
-// (L..AI). Огнооны багана (AJ..BG) ба $BH$2 нь өөрийн мөр/тогтмолыг заадаг тул
-// хүүхэд гэж уншвал мод эвдэрнэ.
-const OK = (c) => {
-  const n = colNum(c);
-  return c === "C" || c === "D" || c === "E" || c === "H" ||
-    (n >= colNum("L") && n <= colNum("AI"));
-};
+
+/**
+ * ТОЛГОЙН МӨРӨӨС баганы байрлалыг таних.
+ *
+ * Бүтэц нь бүх багцад ижил ДАРААЛАЛТАЙ, зөвхөн блокийн тоо өөр:
+ *   № · Ажил · жин · жин · жин-одоо · Обьём · Нэгж өртөг · Мөнгөн дүн ·
+ *   Төлөвлөгөөт · Гүйцэтгэл · [Төлөвлөгөө биелэлт] ·
+ *   N×гүйцэтгэл · N×төлөвлөгөөт · N×(Эхлэх, Дуусах) · Шинэчлэгдсэн огноо
+ */
+function layout() {
+  const h = rows.get(1)?.cells || {};
+  const cols = Object.keys(h).sort((a, b) => colNum(a) - colNum(b));
+  const txt = (c) => String(h[c]?.v ?? "").toLowerCase().replace(/\s+/g, "");
+  const act = cols.filter((c) => /гүйцэтгэл$/.test(txt(c)) && /^\d+\/\d+/.test(txt(c)));
+  const plan = cols.filter((c) => /төлөвлөгө/.test(txt(c)) && /^\d+\/\d+/.test(txt(c)));
+  const date = cols.filter((c) => /(эхлэх|дуусах)$/.test(txt(c)));
+  return { act, plan, date };
+}
+const LAY = layout();
+console.log("толгой: блок", LAY.act.length,
+  "· гүйцэтгэл", LAY.act[0] + ".." + LAY.act[LAY.act.length - 1],
+  "· төлөвлөгөөт", LAY.plan[0] + ".." + LAY.plan[LAY.plan.length - 1],
+  "· огноо", LAY.date.length);
+
+/**
+ * ХҮҮХЭД МӨР рүү заадаг багана: жин/мөнгө (C, D, E, H) ба барилгын гүйцэтгэл +
+ * төлөвлөгөөт баганууд.
+ * ⚠️ ОГНООНЫ багана ба «Шинэчлэгдсэн огноо» нь өөрийн мөр/тогтмолыг заадаг тул
+ * хүүхэд гэж уншвал мод эвдэрнэ — тэдгээрийг ЗААВАЛ хасна.
+ */
+const BLD = new Set([...LAY.act, ...LAY.plan]);
+const OK = (c) => c === "C" || c === "D" || c === "E" || c === "H" || BLD.has(c);
 
 // Excel бүлгийг гурван янзаар нийлбэрлэдэг — аль нь ч ижил хүүхдүүдийг нэрлэнэ.
-function parseKids(f, rn) {
+function parseKids(rawF, rn) {
   const out = new Set();
+  /**
+   * ⚠️ ХӨНДЛӨН ХУУДАСНЫ лавлагааг ЭХЛЭЭД хасна. Багц 1-ийн «Бэлтгэл ажил»
+   * хэсэг нь `'9F'!H11` гэж өөр хуудаснаас татдаг бөгөөд түүнийг доорх
+   * задлагч «H багана, мөр 11» гэж уншаад ХУДАЛ хүүхэд үүсгэдэг байв.
+   */
+  const f = String(rawF).replace(
+    /(?:'[^']*'|\w+)!\$?[A-Z]{1,2}\$?\d+(?::\$?[A-Z]{1,2}\$?\d+)?/g,
+    " ",
+  );
   // 1) SUMPRODUCT($C3:$C10,L3:L10) / SUM(H15:H19) — ЗӨВХӨН босоо муж.
   //    Хэвтээ муж (X2:AI2 — уг мөрийн 12 барилга) нь багана дамжих тул
   //    мөрийг өөрийнх нь хүүхэд болгож мэдэнэ.
@@ -115,7 +152,11 @@ function parseKids(f, rn) {
 
 function childrenOf(rn) {
   const c = rows.get(rn)?.cells || {};
-  for (const f of [c.L?.f, c.M?.f, c.H?.f, c.E?.f, c.X?.f].filter(Boolean)) {
+  // ⚠️ Эхний хоёр гүйцэтгэл ба эхний төлөвлөгөөт баганыг ДИНАМИКААР (багц бүрд
+  //    өөр байрлалтай) — эс бөгөөс 12F багцын бүлгүүд огт уншигдахгүй.
+  const a0 = LAY.act[0], a1 = LAY.act[1], p0 = LAY.plan[0];
+  const cand = [c[a0]?.f, c[a1]?.f, c.H?.f, c.E?.f, c[p0]?.f].filter(Boolean);
+  for (const f of cand) {
     const kids = parseKids(f, rn);
     if (kids.length) return kids;
   }
@@ -131,6 +172,35 @@ for (const rn of [...rows.keys()].sort((a, b) => a - b)) {
   if (!kids.length) continue;
   kidsOf.set(rn, kids);
   for (const k of kids) if (!parent.has(k)) parent.set(k, rn);
+}
+
+/**
+ * ЭЦЭГГҮЙ ҮЛДСЭН мөрийг № баганаар нөхөх.
+ *
+ * ⚠️ Багц 1/2-ийн «Бэлтгэл ажил» хэсэг нь нийлбэр томъёогүй — утгыг нь `9F`
+ * хуудаснаас шууд татдаг тул тэдгээрийн 8 ажил эцэггүй үлдэж, дээд түвшний мөр
+ * мэт харагдана (бүлэг нь хоосон, ажлууд нь тархай).
+ *
+ * Дүрэм: № нь ҮСГЭЭР эхэлбэл БҮЛГИЙН толгой («А. Бэлтгэл ажил», «Б1»), түүний
+ * дараах ТООН №-тэй эцэггүй мөрүүд түүнд харьяалагдана. Томъёогоор эцэг нь
+ * тодорхой болсон мөрийг ХӨНДӨХГҮЙ — Багц 3.2 (зөрүү 0) хэвээр үлдэнэ.
+ */
+{
+  const ordered = [...rows.keys()].filter((r) => r > 1).sort((a, b) => a - b);
+  const no = (rn) => String(rows.get(rn)?.cells?.A?.v ?? "").trim();
+  let head = null;
+  let fixed = 0;
+  for (const rn of ordered) {
+    if (/^[A-ZА-ЯӨҮЁ]/i.test(no(rn))) { head = rn; continue; }
+    if (head != null && !parent.has(rn) && !kidsOf.has(rn)) {
+      parent.set(rn, head);
+      const l = kidsOf.get(head) ?? [];
+      l.push(rn);
+      kidsOf.set(head, l);
+      fixed++;
+    }
+  }
+  if (fixed) console.log("№-ээр нөхсөн эцэг:", fixed);
 }
 
 const roots = [...rows.keys()].filter((r) => r > 1 && !parent.has(r)).sort((a, b) => a - b);
@@ -199,8 +269,8 @@ if (process.argv[4] === "ts") {
   lines[lines.length - 1] = lines[lines.length - 1].replace(/ \+$/, ";");
   fs.writeFileSync(
     process.argv[5],
-    `// АВТОМАТААР ҮҮССЭН — «Багц_3_2_final.xlsx» → 9F_publish хуудасны мөрийн мод.\n` +
-      `// Гараар бүү засварла; \`tools/bagts32-tree.mjs\`-ээр дахин үүсгэ.\n` +
+    `// АВТОМАТААР ҮҮССЭН — ${process.argv[6] ?? base} мөрийн мод.\n` +
+      `// Гараар бүү засварла; \`tools/bagts-tree.mjs\`-ээр дахин үүсгэ.\n` +
       `//\n` +
       `// Тэмдэгт бүр нэг ObjectID (= excel мөр − 1, дараалал нь ижил):\n` +
       `//   "0".."4"  тухайн гүнд байх ажлын мөр\n` +

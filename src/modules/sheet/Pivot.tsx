@@ -17,6 +17,7 @@ import {
   type AttachInfo,
   type Feature,
 } from "./ags";
+import { useColWidths } from "./colWidths";
 import st from "./sheet.module.css";
 
 // Join space-separated table token names to their CSS-module class names,
@@ -144,6 +145,7 @@ const DIRTY_BG = "var(--sheet-dirty)"; // edited, not yet published (green)
 const HEADER_BG = "var(--sheet-header)"; // non-editable header/group rows
 
 export default function Pivot() {
+  const { style: colStyle, grip, resetAll, resized } = useColWidths("pivot");
   const [bagtsList, setBagtsList] = useState<string[]>([]);
   const [ognooList, setOgnooList] = useState<string[]>([]);
   const [bagts, setBagts] = useState("");
@@ -1094,6 +1096,15 @@ export default function Pivot() {
             </button>
           </span>
         </span>
+        {resized && (
+          <button
+            className={st.layerBtn}
+            onClick={resetAll}
+            title="Чирж өөрчилсөн бүх баганы өргөнийг анхны хэмжээнд нь буцаана"
+          >
+            Өргөн сэргээх
+          </button>
+        )}
         <button
           className={st.publishBtn}
           onClick={publish}
@@ -1124,25 +1135,25 @@ export default function Pivot() {
 
       {rows.length > 0 && (
         <div className={st.scroll}>
-          <table className={st.xl} onMouseLeave={() => setHover(null)}>
+          <table className={st.xl} style={colStyle} onMouseLeave={() => setHover(null)}>
             <thead>
               <tr>
-                <th className={cls("fz c-no")}>№</th>
-                <th className={cls("fz c-ajil")}>Ажил</th>
+                <th className={cls("fz c-no")}>№<i {...grip("no")} /></th>
+                <th className={cls("fz c-ajil")}>Ажил<i {...grip("ajil")} /></th>
                 <th className={cls("fz c-jin")} title="Ажлын хувийн жин — эцэг ажилдаа эзлэх">
-                  Ажлын жин
+                  Ажлын жин<i {...grip("jin")} />
                 </th>
                 <th className={cls("fz c-totw")} title="Нийт талбайд эзлэх хувийн жин">
-                  Нийт жин
+                  Нийт жин<i {...grip("totw")} />
                 </th>
-                <th className={cls("fz c-perf")}>Гүйцэтгэл</th>
+                <th className={cls("fz c-perf")}>Гүйцэтгэл<i {...grip("perf")} /></th>
                 {buildings.map((b) => (
                   <th key={b} className={cls("bld")}>
-                    {b}
+                    {b}<i {...grip("bld")} />
                   </th>
                 ))}
-                <th className={cls("fz c-done")}>Хийгдсэн</th>
-                <th className={cls("fz c-dutuu")}>Дутуу</th>
+                <th className={cls("fz c-done")}>Хийгдсэн<i {...grip("done")} /></th>
+                <th className={cls("fz c-dutuu")}>Дутуу<i {...grip("dutuu")} /></th>
               </tr>
             </thead>
             <tbody>
