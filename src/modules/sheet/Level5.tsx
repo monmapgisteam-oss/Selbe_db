@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { LEVEL5, distinct, level5Rows, type Feature } from "./ags";
+import { useColWidths } from "./colWidths";
 import st from "./sheet.module.css";
 
 const cls = (names: string) =>
@@ -99,6 +100,7 @@ const lateTitle = (m: Record<string, number>) =>
  * огт өөр мөчлөгтэй (нэг удаагийн экспорт) тул тэнд ХАМААРУУЛАХГҮЙ.
  */
 export default function Level5() {
+  const { style: colStyle, grip } = useColWidths("level5");
   const [bagtsList, setBagtsList] = useState<string[]>([]);
   const [bagts, setBagts] = useState("");
   const [blok, setBlok] = useState("");
@@ -235,15 +237,15 @@ export default function Level5() {
       </p>
 
       <div className={st.scroll}>
-        <table className={cls("xl concl")}>
+        <table className={cls("xl concl")} style={colStyle}>
           <thead>
             <tr>
-              <th className={cls("c-no")}>Activity ID</th>
-              <th className={cls("c-ajil")}>Ажил</th>
-              <th className={cls("c-jin")}>АХЗ</th>
-              <th className={cls("c-done")}>Гүйцэтгэл</th>
-              <th className={cls("c-jin")}>Ажилбар</th>
-              <th className={cls("c-dutuu")}>Хоцролт</th>
+              <th className={cls("c-no")}>Activity ID<i {...grip("no")} /></th>
+              <th className={cls("c-ajil")}>Ажил<i {...grip("ajil")} /></th>
+              <th className={cls("c-jin")}>АХЗ<i {...grip("jin")} /></th>
+              <th className={cls("c-done")}>Гүйцэтгэл<i {...grip("done")} /></th>
+              <th className={cls("c-jin")}>Ажилбар<i {...grip("jin")} /></th>
+              <th className={cls("c-dutuu")}>Хоцролт<i {...grip("dutuu")} /></th>
             </tr>
           </thead>
           <tbody>

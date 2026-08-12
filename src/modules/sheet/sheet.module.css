@@ -160,6 +160,18 @@
    Нүд бүр баруун+доод; хүснэгт дээд+зүүн ирмэгийг зурна.
    ══════════════════════════════════════════════════════════ */
 .xl {
+  /* Баганы ӨРГӨН — хувьсагчаар: `colWidths.tsx` чирэхэд эдгээрийг хүснэгтийн
+     inline style дээр дарж бичнэ. Царцсан баганы `left` шилжилт нь эдгээрийн
+     НИЙЛБЭР тул өргөн өөрчлөгдөхөд өөрөө дагана. */
+  --w-no: 40px;
+  --w-ajil: 240px;
+  --w-jin: 60px;
+  --w-totw: 60px;
+  --w-perf: 64px;
+  --w-bld: 66px;
+  --w-done: 64px;
+  --w-dutuu: 64px;
+
   /* Семантик нүдний өнгө — токеноор, хоёр горимд эргэнэ.
      Inline style эдгээр хувьсагчийг заана (JS константууд), нүднүүд өвлөнө. */
   --sheet-cell: var(--surface);
@@ -190,8 +202,10 @@
   white-space: nowrap;
   background: var(--surface);
 }
-/* Барилга (гүйдэг) багана: тогтмол, уншигдах өргөн. */
-.xl .bld { min-width: 66px; }
+/* Барилга (гүйдэг) багана: тогтмол, уншигдах өргөн.
+   ⚠️ `width`/`max-width` ЗОРИУДААР байхгүй — цөөн баганатай хүснэгтэд илүү зайг
+   эдгээр эзлэн 100%-д сунана. Чирэхэд min-width нь дагаж хөдөлнө. */
+.xl .bld { min-width: var(--w-bld); width: var(--w-bld); }
 
 .xl thead th {
   position: sticky;
@@ -239,50 +253,77 @@
 
 .xl .c-no {
   left: 0;
-  width: 40px;
-  min-width: 40px;
-  max-width: 40px;
+  width: var(--w-no);
+  min-width: var(--w-no);
+  max-width: var(--w-no);
 }
 .xl .c-ajil {
-  left: 40px;
-  width: 240px;
-  min-width: 240px;
-  max-width: 240px;
+  left: var(--w-no);
+  width: var(--w-ajil);
+  min-width: var(--w-ajil);
+  max-width: var(--w-ajil);
   white-space: normal;
   text-align: left;
 }
 .xl .c-jin {
-  left: 280px;
-  width: 60px;
-  min-width: 60px;
-  max-width: 60px;
+  left: calc(var(--w-no) + var(--w-ajil));
+  width: var(--w-jin);
+  min-width: var(--w-jin);
+  max-width: var(--w-jin);
 }
 /* Хоёр дахь жин (нийт талбайд эзлэх) + гүйцэтгэлийн хувь — зүүн царцсан блокт
-   нэмэгдэнэ. c-jin (280) → c-totw (340) → c-perf (400) → барилгын багана. */
+   нэмэгдэнэ. № → Ажил → Жин → Нийт жин → Гүйцэтгэл → барилгын багана. */
 .xl .c-totw {
-  left: 340px;
-  width: 60px;
-  min-width: 60px;
-  max-width: 60px;
+  left: calc(var(--w-no) + var(--w-ajil) + var(--w-jin));
+  width: var(--w-totw);
+  min-width: var(--w-totw);
+  max-width: var(--w-totw);
 }
 .xl .c-perf {
-  left: 400px;
-  width: 64px;
-  min-width: 64px;
-  max-width: 64px;
+  left: calc(var(--w-no) + var(--w-ajil) + var(--w-jin) + var(--w-totw));
+  width: var(--w-perf);
+  min-width: var(--w-perf);
+  max-width: var(--w-perf);
 }
 .xl .c-done {
-  right: 64px;
-  width: 64px;
-  min-width: 64px;
-  max-width: 64px;
+  right: var(--w-dutuu);
+  width: var(--w-done);
+  min-width: var(--w-done);
+  max-width: var(--w-done);
 }
 .xl .c-dutuu {
   right: 0;
-  width: 64px;
-  min-width: 64px;
-  max-width: 64px;
+  width: var(--w-dutuu);
+  min-width: var(--w-dutuu);
+  max-width: var(--w-dutuu);
 }
+
+/* ── Баганы өргөн чирэх бариул ──
+   Толгойн нүдний БАРУУН ирмэг дээрх нарийн зурвас. `thead th` бүхэлдээ
+   `position: sticky` тул энэ нь түүнд харьцангуй байрлана. */
+.grip {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 7px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 6;
+  touch-action: none; /* хүрэлтээр чирэхэд хуудас гүйхгүй */
+}
+.grip::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  right: 2px;
+  width: 2px;
+  border-radius: 1px;
+  background: transparent;
+  transition: background 0.12s;
+}
+.grip:hover::after,
+.grip[data-drag="1"]::after { background: rgb(255 255 255 / 0.75); }
 
 .xl tr.cat td {
   background: var(--sheet-header); /* толгой / засах боломжгүй мөр */
@@ -290,19 +331,19 @@
   color: var(--ink);
 }
 
-/* Дүгнэлт хүснэгт: барилгын баганагүй тул Ажилд илүү зай өгнө. */
-.concl .c-ajil {
-  width: 620px;
-  min-width: 620px;
-  max-width: none;
+/* Дүгнэлт хүснэгт: барилгын баганагүй тул Ажилд илүү зай өгнө.
+   Өргөнийг ЗӨВХӨН хувьсагчаар өөрчилнө — `.xl`-ийн дүрэм өөрөө уншина.
+   `max-width: none` — үлдсэн зайг эдгээр эзлэн 100%-д сунана. */
+.concl {
+  --w-ajil: 620px;
+  --w-jin: 90px;
+  --w-done: 90px;
+  --w-dutuu: 90px;
 }
+.concl .c-ajil,
 .concl .c-jin,
 .concl .c-done,
-.concl .c-dutuu {
-  width: 90px;
-  min-width: 90px;
-  max-width: none;
-}
+.concl .c-dutuu { max-width: none; }
 
 .xl .num {
   text-align: center;
@@ -486,24 +527,37 @@
    60 багана тул царцаах нь зөвхөн № + Ажил; бусад нь хэвтээ гүйнэ.
    `.xl`-ийн ижил нэртэй дүрмүүдийг дарахын тулд ЭНД, доор нь бичив.
    ══════════════════════════════════════════════════════════ */
-.b32 { width: auto; }
-.b32 .c-no { left: 0; width: 54px; min-width: 54px; max-width: 54px; }
+.b32 {
+  width: auto;
+  --w-no: 54px;
+  --w-ajil: 300px;
+  --w-w: 72px;
+  --w-vol: 84px;
+  --w-money: 106px;
+  --w-calc: 72px;
+  --w-date: 92px;
+}
 .b32 .c-ajil {
-  left: 54px;
-  width: 300px;
-  min-width: 300px;
-  max-width: 300px;
   /* Ажлын нэр урт — хүснэгт хэвтээ гүйдэг тул мөр таслахгүй, тайрна. */
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  /* Царцсан блокоос гүйдэг хэсгийг тусгаарлах сүүдэр. */
+  box-shadow: 2px 0 4px -2px rgb(16 20 24 / 0.18);
 }
-/* Царцсан блокоос гүйдэг хэсгийг тусгаарлах сүүдэр. */
-.b32 .c-ajil { box-shadow: 2px 0 4px -2px rgb(16 20 24 / 0.18); }
-.b32 .c-w { min-width: 72px; width: 72px; }
-.b32 .c-money { min-width: 106px; width: 106px; text-align: right; }
-.b32 .c-calc { min-width: 72px; width: 72px; }
-.b32 .c-date { min-width: 92px; width: 92px; }
+.b32 .c-w { min-width: var(--w-w); width: var(--w-w); max-width: var(--w-w); }
+.b32 .c-vol { min-width: var(--w-vol); width: var(--w-vol); max-width: var(--w-vol); text-align: right; }
+.b32 .c-money {
+  min-width: var(--w-money);
+  width: var(--w-money);
+  max-width: var(--w-money);
+  text-align: right;
+}
+.b32 .c-calc { min-width: var(--w-calc); width: var(--w-calc); max-width: var(--w-calc); }
+.b32 .c-date { min-width: var(--w-date); width: var(--w-date); max-width: var(--w-date); }
+/* ⚠️ Энэ хуудсанд барилгын багана СУНАХГҮЙ (хүснэгт `width: auto`) — тиймээс
+   чирсэн өргөн нь яг мөрдөгдөхийн тулд max-width-ийг ч заана. */
+.b32 .bld { width: var(--w-bld); max-width: var(--w-bld); overflow: hidden; }
 /* Толгой 60 баганад хоёр мөр болж хуваагдах тул доод ирмэгээр нь тэгшилнэ. */
 .b32 thead th { min-height: 40px; }
 
