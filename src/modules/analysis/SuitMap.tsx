@@ -147,11 +147,24 @@ function rendererFor(d: MapLayerDef) {
   }
 }
 
-/** Барилгын renderer — `Barilga_ty` (төлөв)-өөр */
-const buildingRenderer = () => ({
+/**
+ * Барилгын renderer — `Barilga_ty` (төлөв)-өөр.
+ *
+ * ⚠️ `focus` (шүүлт идэвхтэй) үед ХҮРЭЭГ нь тод, зузаан болгоно: шүүлт нь
+ * үлдсэн барилгыг зөвхөн ЦӨӨРҮҮЛДЭГ тул тэдгээр нь ортофото дээр төдийлөн
+ * анзаарагдахгүй байв. Одоо «энэ бол миний шүүсэн зүйл» гэдэг нь илт харагдана.
+ */
+const bldFocusFill = (c: number[]) => ({
+  type: 'simple-fill', color: [...c, 0.55],
+  outline: { color: [255, 255, 255, 0.95], width: ow(1.2) },
+});
+const buildingRenderer = (focus = false) => ({
   type: 'unique-value', field: 'Barilga_ty',
-  defaultSymbol: bldFill([203, 213, 225], BLD_ALPHA_DIM), defaultLabel: 'Бусад',
-  uniqueValueInfos: Object.entries(STATUS_COLORS).map(([value, c]) => ({ value, label: value, symbol: bldFill(c) })),
+  defaultSymbol: focus ? bldFocusFill([203, 213, 225]) : bldFill([203, 213, 225], BLD_ALPHA_DIM),
+  defaultLabel: 'Бусад',
+  uniqueValueInfos: Object.entries(STATUS_COLORS).map(([value, c]) => ({
+    value, label: value, symbol: focus ? bldFocusFill(c) : bldFill(c),
+  })),
 });
 
 /**
@@ -218,6 +231,10 @@ export function SuitMap({
   heat,
   roadTile = false,
   bldWhere = null,
+  bldFocus = 0,
+  bldPick = null,
+  onBldClick,
+  zoneFaint = false,
 }: {
   /** 2D (MapView + ортофото) эсвэл 3D (SceneView + IntegratedMesh) */
   dim: Dim;
@@ -275,6 +292,27 @@ export function SuitMap({
    * `null` бол шүүлтгүй — бүх барилга харагдана.
    */
   bldWhere?: string | null;
+  /**
+   * ШҮҮСЭН БАРИЛГА руу төвлөрүүлэх ТООЛУУР — өсөх бүрд газрын зураг шүүлтийн
+   * хүрээ рүү шилжинэ. 0 бол хөдөлгөхгүй (анхны ачаалалт).
+   */
+  bldFocus?: number;
+  /**
+   * ТОДРУУЛАХ барилгын `OBJECTID` («Байршил» картаас сонгосон).
+   * `null` бол тодруулга арилна.
+   */
+  bldPick?: number | null;
+  /**
+   * БАРИЛГА дээр дарахад дуудагдана («Байршил» карт сонсоно).
+   * Барилгагүй газар дарвал `null`.
+   */
+  onBldClick?: (oid: number | null) => void;
+  /**
+   * Бүсийн будалтыг МАШ ТУНГАЛАГ болгох («Байршил» горим).
+   * ⚠️ Тэр үед мессеж нь БАРИЛГЫН байршил тул бүсийн дүүргэлт зөвхөн хилийн
+   *    чиг баримжаа өгөх ёстой — ортофото, барилга нэвт харагдана.
+   */
+  zoneFaint?: boolean;
 }) {
   const el = useRef<HTMLDivElement>(null);
   const tipEl = useRef<HTMLDivElement>(null);
@@ -283,6 +321,8 @@ export function SuitMap({
   const zoneRef = useRef<GraphicsLayer | null>(null);
   const labelRef = useRef<GraphicsLayer | null>(null);
   const bldRef = useRef<FeatureLayer | null>(null);
+  /** Сонгосон барилгын тодруулга — бүсийн будалтаас ТУСДАА (цэвэрлэгддэггүй) */
+  const pickRef = useRef<GraphicsLayer | null>(null);
   const roadTileRef = useRef<VectorTileLayer | null>(null);
   const tranRef = useRef<GraphicsLayer | null>(null);
   const heatRef = useRef<FeatureLayer | null>(null);
@@ -295,8 +335,8 @@ export function SuitMap({
   const [ready, setReady] = useState(false);
 
   // Callback-уудыг ref-ээр — эффектийг дахин ажиллуулахгүйгээр шинэчилнэ
-  const cb = useRef({ colorOf, shown, zoneTip, buildingTip, transportTip, onSelect, rows });
-  cb.current = { colorOf, shown, zoneTip, buildingTip, transportTip, onSelect, rows };
+  const cb = useRef({ colorOf, shown, zoneTip, buildingTip, transportTip, onSelect, rows, onBldClick });
+  cb.current = { colorOf, shown, zoneTip, buildingTip, transportTip, onSelect, rows, onBldClick };
 
   /**
    * Map-ыг НЭГ УДАА үүсгэнэ; view нь 2D/3D солигдох бүрд дахин үүснэ.
@@ -313,6 +353,8 @@ export function SuitMap({
       // ⚠️ Тээврийн будалт нь барилгын давхаргыг ДАРНА (дээр нь зурагдана) —
       //    эс бөгөөс төлөвийн өнгө (Barilga_ty) шинжилгээний өнгийг бүрхэнэ.
       const tranLayer = new GraphicsLayer({ title: 'Тээвэр-идэвх', elevationInfo: ON_GROUND });
+      const pickLayer = new GraphicsLayer({ title: 'Сонголт', elevationInfo: ON_GROUND, listMode: 'hide' });
+      pickRef.current = pickLayer;
       zoneRef.current = zoneLayer;
       labelRef.current = labelLayer;
       tranRef.current = tranLayer;
@@ -392,7 +434,7 @@ export function SuitMap({
           imagery, roadTileLayer, zoneLayer, ...under,
           ...(greenLayer ? [greenLayer] : []),
           ...(buildingLayer ? [buildingLayer] : []),
-          tranLayer, labelLayer,
+          tranLayer, pickLayer, labelLayer,
         ],
       });
     }
@@ -454,12 +496,26 @@ export function SuitMap({
 
     view.when(() => { if (!view.destroyed) setReady(true); }).catch(() => {});
 
-    /* Дарж бүс сонгох */
+    /**
+     * Дарж БАРИЛГА эсвэл БҮС сонгох.
+     *
+     * ⚠️ Барилгыг ТЭРГҮҮНД шалгана — тэр нь бүсийн будалтын ДЭЭР зурагддаг тул
+     * нүдээр барилга дээр дарсан хүн бүс сонгогдвол гайхна. Барилга олдвол
+     * бүсийн сонголтыг ХӨНДӨХГҮЙ (хоёр самбар зэрэг ажиллана).
+     */
     const click = view.on('click', (e: __esri.ViewClickEvent) => {
       const zoneLayer = zoneRef.current;
-      if (!zoneLayer) return;
-      view.hitTest(e, { include: [zoneLayer] })
+      const include = [bldRef.current, zoneLayer].filter(Boolean) as Layer[];
+      if (!include.length) return;
+      view.hitTest(e, { include })
         .then((hit) => {
+          const bld = hit.results.find((r) => r.type === 'graphic' && r.graphic.layer === bldRef.current);
+          if (bld && bld.type === 'graphic') {
+            const oid = (bld.graphic.attributes as Record<string, unknown>)?.OBJECTID;
+            if (oid != null) { cb.current.onBldClick?.(Number(oid)); return; }
+          }
+          cb.current.onBldClick?.(null);
+
           const g = hit.results.find(
             (r) => r.type === 'graphic' && (r.graphic.attributes as { zoneId?: string })?.zoneId,
           );
@@ -659,12 +715,16 @@ export function SuitMap({
      ⚠️ Хоосон мөр = шүүлтгүй. `null` олговол ArcGIS өмнөх илэрхийлэлээ
      хадгалдаг тул заавал '' болгож ЦЭВЭРЛЭНЭ. */
   useEffect(() => {
-    if (bldRef.current) bldRef.current.definitionExpression = bldWhere ?? '';
+    const l = bldRef.current;
+    if (!l) return;
+    l.definitionExpression = bldWhere ?? '';
+    // ⚠️ Шүүлт идэвхтэй бол ҮЛДСЭН барилгыг тод хүрээгээр онцолно
+    l.renderer = buildingRenderer(bldWhere != null) as unknown as RendererProp;
   }, [bldWhere, ready]);
 
   /* ── Бүсийн будалт ба шошго ── */
   const paintKey = rows.map((r) => `${r.id}:${colorOf(r)}:${shown(r) ? 1 : 0}`).join('|')
-    + `#${selected ?? ''}#${dim}`;
+    + `#${selected ?? ''}#${dim}#${zoneFaint ? 1 : 0}`;
   useEffect(() => {
     const zoneLayer = zoneRef.current, labelLayer = labelRef.current;
     if (!zoneLayer || !labelLayer) return;
@@ -685,16 +745,29 @@ export function SuitMap({
       const col = noData ? NODATA_FILL : scoreCol;
       const isSel = selected === r.id;
       const vis = shown(r);
+      /**
+       * ⚠️ Шүүлтээс гарсан бүсийг ОГТ ЗУРАХГҮЙ (ArcGIS-ийн filter-ийн зан).
+       * Урьд нь alpha 0.06-оор бүдгэрүүлж үлдээдэг байсан нь «шүүсэн» гэхээсээ
+       * «сонгоогүй» гэж уншигдаж, зураг бөглөрөх шалтгаан болж байв.
+       */
+      if (!vis) continue;
       const isBagts = /багц/i.test(r.id);
       const hasSel = selected !== null;
 
       let alpha = noData ? ZONE_ALPHA_NODATA : ZONE_ALPHA;
-      if (!vis) alpha = 0.06;
+      if (zoneFaint) alpha = 0.1;
       else if (hasSel && !isSel) alpha *= 0.45;
 
+      /**
+       * ⚠️ ХҮРЭЭНИЙ тунгалаг нь ДҮҮРГЭЛТЭЭС тусдаа: «Байршил» горимд дүүргэлт
+       * 0.1 болтол унадаг бөгөөд хүрээг нь дагуулбал (alpha × 1.35) бүсийн зааг
+       * бараг үл үзэгдэх болно. Тэнд хүрээг ТОД үлдээж, зөвхөн дүүргэлтийг
+       * нэвт харуулна.
+       */
       const outline = isSel ? SELECT_COLOR
-        : noData ? hexToRgba(NODATA_OUTLINE, Math.min(1, alpha * 1.5))
-          : hexToRgba(col, Math.min(1, alpha * 1.35));
+        : zoneFaint ? hexToRgba(col, 0.9)
+          : noData ? hexToRgba(NODATA_OUTLINE, Math.min(1, alpha * 1.5))
+            : hexToRgba(col, Math.min(1, alpha * 1.35));
 
       zoneLayer.add(new Graphic({
         geometry: r.displayGeom,
@@ -702,7 +775,10 @@ export function SuitMap({
         symbol: {
           type: 'simple-fill',
           color: hexToRgba(col, alpha),
-          outline: { color: outline, width: isSel ? 1.6 : noData ? ow(0.8) : ow(0.6) },
+          outline: {
+            color: outline,
+            width: isSel ? 1.6 : zoneFaint ? ow(1.4) : noData ? ow(0.8) : ow(0.6),
+          },
         } as unknown as SymbolProp,
       }));
 
@@ -840,6 +916,70 @@ export function SuitMap({
     if (r?.displayGeom) view.goTo({ target: r.displayGeom, scale: 6000 }, { duration: 550 }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected]);
+
+  /**
+   * ШҮҮСЭН БАРИЛГА руу төвлөрөх — «Барилгын ангилал» картаас сонгоход.
+   *
+   * ⚠️ `bldFocus` нь ТООЛУУР: шүүлт өөрчлөгдөх бүрд өснө. `bldWhere`-ээр
+   * сэрээж болохгүй — тэр нь бүсийн ангиллын шүүлтээс ч өөрчлөгддөг тул
+   * хэрэглэгч бүс шүүхэд газрын зураг гэнэт үсэрнэ.
+   *
+   * ⚠️ Хүрээг СЕРВЭРЭЭС асууна (`queryExtent`): давхарга нь `definitionExpression`
+   * -тэй тул хөтөч дээр ачаалагдсан хэсэг нь бүрэн биш байж болно.
+   */
+  useEffect(() => {
+    const view = viewRef.current;
+    const lyr = bldRef.current;
+    if (!view || view.destroyed || !lyr || !ready || !bldFocus) return;
+    let alive = true;
+    lyr.queryExtent()
+      .then((res) => {
+        if (!alive || !res.extent || view.destroyed) return;
+        // Хэт ойртохоос сэргийлж доод масштаб тавина (нэг барилга сонгоход)
+        return view.goTo({ target: res.extent.expand(1.6) }, { duration: 600 });
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bldFocus, ready]);
+
+  /**
+   * СОНГОСОН БАРИЛГЫГ тодруулж, түүн рүү ойртох («Байршил» картаас).
+   *
+   * ⚠️ Тодруулгыг ТУСДАА давхаргад зурна: бүсийн будалтын давхарга (`zoneLayer`)
+   * оноо/шүүлт өөрчлөгдөх бүрд бүхэлдээ цэвэрлэгддэг тул тэнд зурвал тодруулга
+   * санамсаргүй алга болно.
+   */
+  useEffect(() => {
+    const view = viewRef.current;
+    const layer = pickRef.current;
+    const bld = bldRef.current;
+    if (!layer || !view || view.destroyed || !ready) return;
+    layer.removeAll();
+    if (bldPick == null || !bld) return;
+
+    let alive = true;
+    const q = bld.createQuery();
+    q.objectIds = [bldPick];
+    q.returnGeometry = true;
+    q.outFields = [];
+    bld.queryFeatures(q)
+      .then((res) => {
+        const g = res.features[0]?.geometry;
+        if (!alive || !g || view.destroyed) return;
+        layer.add(new Graphic({
+          geometry: g,
+          symbol: {
+            type: 'simple-fill',
+            color: [34, 211, 238, 0.35],
+            outline: { color: [34, 211, 238, 1], width: ow(3) },
+          } as unknown as SymbolProp,
+        }));
+        return view.goTo({ target: g, scale: 3000 }, { duration: 600 });
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [bldPick, ready]);
 
   /** Судалгааны талбар руу эхэлж төвлөрөх (view дахин үүсэх бүрд) */
   const fitKey = `${rows.length}|${ready}|${dim}`;
