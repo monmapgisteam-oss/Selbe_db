@@ -28,7 +28,7 @@ export class ArcGISError extends Error {
 
 export type Row = Record<string, string | number | null>;
 
-type Body = { features?: { attributes: Row }[]; count?: number; error?: { message?: string } };
+type Body = { features?: { attributes: Row }[]; count?: number; exceededTransferLimit?: boolean; error?: { message?: string } };
 
 /**
  * POST-оор явуулна — where нөхцөл, геометр, outStatistics урт болоход GET-ийн
@@ -46,12 +46,20 @@ const MAX_CONCURRENT = 6;
 let active = 0;
 const waiters: (() => void)[] = [];
 async function acquire() {
-  if (active >= MAX_CONCURRENT) await new Promise<void>((r) => waiters.push(r));
+  if (active >= MAX_CONCURRENT) {
+    // ⚠️ Сэрэхдээ active-ийг ДАХИН нэмэхгүй — release() слотоо шууд гардуулсан
+    //    (active хэвээр). Эс бөгөөс буулгах↔нэмэх хоёрын завсарт өөр acquire
+    //    шургалж MAX_CONCURRENT түр хэтэрч, «Too many requests» эргэн ирнэ.
+    await new Promise<void>((r) => waiters.push(r));
+    return;
+  }
   active++;
 }
 function release() {
-  active--;
-  waiters.shift()?.();
+  // Хүлээгч байвал слотыг ШУУД гардуулна — active тоо өөрчлөгдөхгүй
+  const w = waiters.shift();
+  if (w) w();
+  else active--;
 }
 
 /**
@@ -165,6 +173,9 @@ export async function queryGroup(
     outStatistics: JSON.stringify(stats),
     ...spatial(aoi),
   });
+  // ⚠️ Бүлгийн тоо maxRecordCount-аас хэтэрвэл сервер үр дүнг ЧИМЭЭГҮЙ тайрдаг —
+  //    ховор ч тохиолдвол ядаж лог үлдээж мэдэгдэнэ.
+  if (body.exceededTransferLimit) console.warn(`[selbe] queryGroup тайрагдав (exceededTransferLimit): ${url}`);
   return (body.features ?? []).map((f) => f.attributes);
 }
 
@@ -180,9 +191,25 @@ export async function queryFeatures(
     ...spatial(opts.aoi),
   };
   if (opts.orderBy) params.orderByFields = opts.orderBy;
-  if (opts.limit) params.resultRecordCount = String(opts.limit);
-  const body = await request(url, params);
-  return (body.features ?? []).map((f) => f.attributes);
+
+  // ⚠️ ХУУДАСЛАЛТ: сервер maxRecordCount(~2000)-аас олон мөрийг нэг хариунд
+  //    өгөхгүй — exceededTransferLimit=true тавиад ТАЙРЧ буцаадаг. Давталтгүй
+  //    бол их өгөгдөлтэй давхаргын мөрүүд чимээгүй дутуу ирж, алдаагүй мэт
+  //    харагдана. resultOffset-оор үлдсэн хуудсуудыг татаж нэгтгэнэ.
+  const rows: Row[] = [];
+  for (;;) {
+    const page = { ...params };
+    if (rows.length) page.resultOffset = String(rows.length);
+    if (opts.limit) page.resultRecordCount = String(opts.limit - rows.length);
+    const body = await request(url, page);
+    const feats = (body.features ?? []).map((f) => f.attributes);
+    rows.push(...feats);
+    if (!body.exceededTransferLimit) break;
+    if (opts.limit && rows.length >= opts.limit) break;
+    // Хамгаалалт: хоосон хуудас ирвэл мөнхийн давталтаас гарна
+    if (!feats.length) break;
+  }
+  return rows;
 }
 
 /** Полигоны геометрийг WGS84-д татна — орон зайн шүүлтэд эх болгож ашиглана */

@@ -159,22 +159,29 @@ export function listUsers(): UserPerm[] {
   return [...rows.values()].sort((a, b) => a.username.localeCompare(b.username));
 }
 
-/** Хэрэглэгчийн эрхийг хадгалах (override) — cache + localStorage + ArcGIS хүснэгт */
-export function setUser(username: string, access: Access, role: Role | null = null): void {
+/**
+ * Хэрэглэгчийн эрхийг хадгалах (override) — cache + localStorage + ArcGIS хүснэгт.
+ * ⚠️ ArcGIS бичилтийн үр дүнг (амжилттай эсэх) promise-оор буцаана — урьд нь
+ * fire-and-forget байсан тул бичилт унахад админ огт мэддэггүй байв. `false` бол
+ * өөрчлөлт зөвхөн энэ browser-т үлдсэн гэсэн үг — дуудагч (UserAdmin) анхааруулна.
+ */
+export function setUser(username: string, access: Access, role: Role | null = null): Promise<boolean> {
   const store = { ...loadStore() };
   store[username.toLowerCase()] = { views: access.views, docs: access.docs, role };
   saveStore(store);
-  // ArcGIS хүснэгтэд бичих (fire-and-forget — offline бол localStorage хэвээр)
-  void import('./permsRemote').then((m) =>
-    m.upsert({ username, role, views: access.views, docs: access.docs }));
+  return import('./permsRemote')
+    .then((m) => m.upsert({ username, role, views: access.views, docs: access.docs }))
+    .catch(() => false);
 }
 
-/** Override-ыг устгах — cache + localStorage + ArcGIS хүснэгтээс */
-export function clearOverride(username: string): void {
+/** Override-ыг устгах — cache + localStorage + ArcGIS хүснэгтээс. Үр дүн: setUser-тэй адил. */
+export function clearOverride(username: string): Promise<boolean> {
   const store = { ...loadStore() };
   delete store[username.toLowerCase()];
   saveStore(store);
-  void import('./permsRemote').then((m) => m.remove(username));
+  return import('./permsRemote')
+    .then((m) => m.remove(username))
+    .catch(() => false);
 }
 
 /** localStorage/өөр таб дахь өөрчлөлтөд захиалах — цэвэрлэх функц буцаана */

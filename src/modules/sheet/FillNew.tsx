@@ -155,14 +155,21 @@ export default function FillNew() {
   };
 
   const publish = useCallback(async () => {
-    if (asOf == null || dirtyCount === 0) return;
+    // ⚠️ busy — Ctrl+S auto-repeat үед олон зэрэгцээ applyEdits илгээгдэхээс сэргийлнэ.
+    if (busy || asOf == null || dirtyCount === 0) return;
     setBusy(true);
     setErr("");
     try {
       const editedOids = new Set(
         Object.keys(pending).map((k) => Number(k.split(":")[0])),
       );
-      const idx = touchedIndexes(rows, editedOids);
+      // ⚠️ asOf ($BH$2) БҮХ мөрийн төлөвлөгөөт хувьд нөлөөлдөг тул огноо
+      // өөрчлөгдсөн бол бүх мөрийг дахин бичнэ — эс тэгвэл зөвхөн засварласан
+      // салбар шинэ огноогоор, бусад мөрийн F_PLAN хуучнаар үлдэж зөрнө.
+      const idx =
+        asOf !== asOfOrig
+          ? rows.map((_, i) => i)
+          : touchedIndexes(rows, editedOids);
       const c = computeAll(rows, asOf, pending);
       const updates = idx.map((i) => {
         const a: Record<string, unknown> = { [FLD.oid]: rows[i].oid };
@@ -195,7 +202,7 @@ export default function FillNew() {
     } finally {
       setBusy(false);
     }
-  }, [rows, asOf, asOfOrig, pending, dirtyCount]);
+  }, [rows, asOf, asOfOrig, pending, dirtyCount, busy]);
 
   // Ctrl+S — «Гүйцэтгэл бөглөх»-тэй ижил.
   useEffect(() => {
@@ -233,7 +240,12 @@ export default function FillNew() {
             type="date"
             className={st.select}
             value={msToInput(asOf)}
-            onChange={(e) => setAsOf(inputToMs(e.target.value))}
+            onChange={(e) => {
+              // ⚠️ Хоосон утга (огноог арилгах) → null болговол calc=[] болж бүх
+              // мөр чимээгүй алга болно — тиймээс хуучин огноогоо хэвээр үлдээнэ.
+              const ms = inputToMs(e.target.value);
+              if (ms != null) setAsOf(ms);
+            }}
             title="Төлөвлөгөөт хувь бүхэлдээ энэ огноогоор бодогдоно ($BH$2)"
           />
         </label>

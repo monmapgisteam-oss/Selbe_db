@@ -19,7 +19,7 @@ export type RemoteRow = { username: string; role: Role | null; views: ViewKey[] 
 const TITLE = 'Selbe_Permissions';
 const TABLE_NAME = 'permissions';
 
-let tableUrlCache: string | null | undefined; // undefined = хараахан хайгаагүй
+let tableUrlCache: string | undefined; // ⚠️ зөвхөн ОЛДСОН URL — null/олдоогүйг кэшлэхгүй (tableUrl-ыг үз)
 
 /** IdentityManager-аас идэвхтэй token авах (нэвтрээгүй бол null) */
 async function getToken(): Promise<{ token: string; user: string } | null> {
@@ -99,12 +99,15 @@ async function createTable(token: string, user: string): Promise<string | null> 
 
 /** Хүснэгтийн URL-ыг тодорхойлох — олох, эс бөгөөс (super) үүсгэх */
 async function tableUrl(canCreate: boolean): Promise<string | null> {
-  if (tableUrlCache !== undefined) return tableUrlCache;
+  // ⚠️ Зөвхөн ОЛДСОН URL-ыг кэшлэнэ — null-ыг кэшлэвэл порталын search транзит
+  //    алдаа/индексжилтийн хоцрогдолтой үед «олдсонгүй» сешн даяар тогтмолжиж,
+  //    remote эрх огт уншигдахгүй байв; одоо дараагийн дуудлагад дахин хайна.
+  if (tableUrlCache) return tableUrlCache;
   const auth = await getToken();
-  if (!auth) { tableUrlCache = null; return null; }
+  if (!auth) return null;
   let url = await findTableUrl(auth.token);
   if (!url && canCreate) url = await createTable(auth.token, auth.user);
-  tableUrlCache = url;
+  if (url) tableUrlCache = url;
   return url;
 }
 

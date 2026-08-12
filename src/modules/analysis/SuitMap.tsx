@@ -32,7 +32,10 @@ import type { Dim } from '@/components/MapCanvas';
 
 /** 3d ба bim хоёулаа SceneView ашиглана */
 const is3D = (d: Dim) => d === '3d' || d === 'bim';
-import { MAP_LAYERS, NO_DATA_COLOR, BUILDING_STATUS_COLORS, type MapLayerDef } from '@/lib/analysis/config';
+import {
+  MAP_LAYERS, NO_DATA_COLOR, BUILDING_STATUS_COLORS, GREEN_LAYER_KEY,
+  type MapLayerDef,
+} from '@/lib/analysis/config';
 import type { Zone } from '@/lib/analysis/data';
 import { TrafficOverlay } from './suit/TrafficOverlay';
 import type { Network, SignalPlan } from './suit/traffic';
@@ -214,6 +217,7 @@ export function SuitMap({
   transportFaint = false,
   heat,
   roadTile = false,
+  bldWhere = null,
 }: {
   /** 2D (MapView + ортофото) эсвэл 3D (SceneView + IntegratedMesh) */
   dim: Dim;
@@ -266,6 +270,11 @@ export function SuitMap({
   heat?: HeatPoint[] | null;
   /** «Бодит» замын vector tile гадаргууг ил болгох (attribute-тай `test_zam`). */
   roadTile?: boolean;
+  /**
+   * Барилгын давхаргын SQL шүүлт («Барилгын ангилал» картаас).
+   * `null` бол шүүлтгүй — бүх барилга харагдана.
+   */
+  bldWhere?: string | null;
 }) {
   const el = useRef<HTMLDivElement>(null);
   const tipEl = useRef<HTMLDivElement>(null);
@@ -334,7 +343,16 @@ export function SuitMap({
 
       const buildingLayer = ctx.find((x) => x.d.kind === 'building')?.lyr ?? null;
       bldRef.current = buildingLayer;
-      const under = ctx.filter((x) => x.lyr !== buildingLayer).map((x) => x.lyr);
+      /**
+       * ⚠️ БАРИЛГА ба НОГООН БАЙГУУЛАМЖ хоёрыг контекстээс САЛГАНА — тэдгээр нь
+       * бүсийн будалтын ДЭЭР зурагдана. Ногоон нь урьд нь контекстийн дунд байсан
+       * тул бүсийн будалт дор нь дарагдаж, «Ногоон байгууламж» картаас асаахад
+       * бараг харагддаггүй байв.
+       */
+      const greenLayer = ctx.find((x) => x.d.key === GREEN_LAYER_KEY)?.lyr ?? null;
+      const under = ctx
+        .filter((x) => x.lyr !== buildingLayer && x.lyr !== greenLayer)
+        .map((x) => x.lyr);
 
       /* Ортофото — вектор давхаргын доор. Эхэндээ УНТРААЛТТАЙ (анхдагч суурь
          зураг топографи; ортофотог «Суурь зураг» чагтаар асаана). */
@@ -358,13 +376,24 @@ export function SuitMap({
       roadTileRef.current = roadTileLayer;
 
       /**
-       * ⚠️ ДАРААЛАЛ: ортофото → замын tile → контекст → бүсийн будалт → барилга → шошго.
-       * Барилгыг бүсийн полигоны ДЭЭР зурна — эс бөгөөс будалт дор дарагдана.
+       * ⚠️ ДАРААЛАЛ (доороос дээш):
+       *   ортофото → замын tile → БҮСИЙН БУДАЛТ → контекст → ногоон → барилга
+       *   → тээвэр → шошго
+       *
+       * Бүсийн будалт нь бүхэл бүсийг дүүргэдэг ХАМГИЙН ТОМ гадаргуу тул
+       * ХАМГИЙН ДООР байна — эс бөгөөс дээрх бүх нарийн давхаргыг (ногоон,
+       * инженерийн шугам, зам) бүрхэнэ. Барилга, ногоон байгууламж хоёр нь
+       * будалтын дээр зурагдаж, аль бүсэд юу байгааг зэрэг харуулна.
        */
       mapRef.current = new Map({
         basemap: baseMap(),
         ground: new Ground({ layers: [new ElevationLayer({ url: ELEVATION_URL })] }),
-        layers: [imagery, roadTileLayer, ...under, zoneLayer, ...(buildingLayer ? [buildingLayer] : []), tranLayer, labelLayer],
+        layers: [
+          imagery, roadTileLayer, zoneLayer, ...under,
+          ...(greenLayer ? [greenLayer] : []),
+          ...(buildingLayer ? [buildingLayer] : []),
+          tranLayer, labelLayer,
+        ],
       });
     }
 
@@ -625,6 +654,13 @@ export function SuitMap({
   useEffect(() => {
     if (roadTileRef.current) roadTileRef.current.visible = roadTile;
   }, [roadTile]);
+
+  /* ── Барилгын зориулалтын шүүлт («Барилгын ангилал» карт) ──
+     ⚠️ Хоосон мөр = шүүлтгүй. `null` олговол ArcGIS өмнөх илэрхийлэлээ
+     хадгалдаг тул заавал '' болгож ЦЭВЭРЛЭНЭ. */
+  useEffect(() => {
+    if (bldRef.current) bldRef.current.definitionExpression = bldWhere ?? '';
+  }, [bldWhere, ready]);
 
   /* ── Бүсийн будалт ба шошго ── */
   const paintKey = rows.map((r) => `${r.id}:${colorOf(r)}:${shown(r) ? 1 : 0}`).join('|')

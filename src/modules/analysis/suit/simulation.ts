@@ -85,7 +85,8 @@ export const simDef = (kind: SimKind): SimDef =>
   SIM_KINDS.find((s) => s.key === kind) ?? SIM_KINDS[0];
 
 /**
- * Хүн амын ХОЁР төрөл — өгөгдөлд `Total_population` нь зориулалтаар хуваагддаг:
+ * Хүн амын ХОЁР төрөл — эх өгөгдлийн ТУСДАА талбараас (`Population` ба
+ * `Huchin_chadal`; хоёрын нийлбэр нь `Total_population`):
  *   · `resident` — орон сууцны барилгын оршин суугч (өрхөөс). Аялал ҮҮСГЭНЭ.
  *   · `capacity` — орон сууц бус барилгын хүчин чадал (сургууль/оффис). Аялал ТАТНА.
  *   · `total`    — хоёрын нийлбэр.

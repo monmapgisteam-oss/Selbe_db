@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { AUTH, roleForUser, type Role } from '@/lib/services';
 import { initRemote, hasAccess } from '@/lib/permissions';
 import s from './auth.module.css';
@@ -33,6 +33,8 @@ type AuthCtx = {
   error: string | null;
   signIn: () => Promise<void>;
   signOut: () => Promise<void>;
+  /** Алдааны мэдэгдлийг хаах — signed-out+error дэлгэцээс гарах гарц */
+  clearError: () => void;
 };
 
 const Ctx = createContext<AuthCtx>({
@@ -43,6 +45,7 @@ const Ctx = createContext<AuthCtx>({
   error: null,
   signIn: async () => {},
   signOut: async () => {},
+  clearError: () => {},
 });
 
 export const useAuth = () => useContext(Ctx);
@@ -70,12 +73,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [role, setRole] = useState<Role | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // ⚠️ registerOAuthInfos дууссаныг илтгэх promise — бүртгэл дуусаагүй үед getCredential
+  //    PKCE redirect хийдэггүй тул эрт дарсан «Нэвтрэх» race-д унахаас сэргийлж
+  //    signIn эхэндээ үүнийг хүлээнэ.
+  const oauthReadyRef = useRef<Promise<void> | null>(null);
 
   useEffect(() => {
     // Тохируулаагүй бол нэвтрэлтгүйгээр ажиллана
     if (!AUTH.appId) { setStatus('off'); return; }
 
     let alive = true;
+    let oauthReady: () => void = () => {};
+    oauthReadyRef.current = new Promise<void>((res) => { oauthReady = res; });
     (async () => {
       try {
         const [{ default: esriId }, { default: OAuthInfo }, { default: Portal }] = await Promise.all([
@@ -92,6 +101,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             flowType: 'authorization-code', // PKCE — client secret-гүй, SPA-д аюулгүй
           }),
         ]);
+        oauthReady();
 
         await esriId.checkSignInStatus(sharingUrl());
 
@@ -120,12 +130,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setRole(r);
         setStatus(admitted ? 'signed-in' : 'denied');
       } catch (e) {
-        console.error('[selbe] нэвтрэлт шалгах үед:', e);
+        // «not-authenticated» бол ердийн (нэвтрээгүй) төлөв — улаан алдаа биш
+        const notAuthed = (e as { name?: string })?.name === 'identity-manager:not-authenticated';
+        if (notAuthed) console.debug('[selbe] нэвтрээгүй байна (хэвийн):', e);
+        else console.error('[selbe] нэвтрэлт шалгах үед:', e);
         if (!alive) return;
         const wasAttempt = sessionStorage.getItem(ATTEMPT_KEY);
         sessionStorage.removeItem(ATTEMPT_KEY);
         if (wasAttempt) setError(describe(e));
         setStatus('signed-out');
+      } finally {
+        // ⚠️ import унасан ч signIn мөнхөд хүлээхгүй — давхар resolve нь хоргүй
+        oauthReady();
       }
     })();
 
@@ -136,6 +152,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError(null);
     sessionStorage.setItem(ATTEMPT_KEY, '1');
     try {
+      // ⚠️ OAuthInfo бүртгэл дуусахыг хүлээнэ — эрт дарахад redirect алдагдах race-аас сэргийлнэ
+      await oauthReadyRef.current;
       const { default: esriId } = await import('@arcgis/core/identity/IdentityManager');
       // popup:false тул энэ нь хуудсыг ArcGIS нэвтрэлт рүү чиглүүлж, буцаж ирнэ
       await esriId.getCredential(sharingUrl());
@@ -155,7 +173,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const authorized = status === 'signed-in' || status === 'off';
 
   return (
-    <Ctx.Provider value={{ status, authorized, user, role, error, signIn, signOut }}>
+    <Ctx.Provider value={{ status, authorized, user, role, error, signIn, signOut, clearError: () => setError(null) }}>
       {children}
     </Ctx.Provider>
   );
@@ -166,7 +184,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
  * үед л хөвөгч цонхоор гарна. Бусад үед `null` — нүүр хуудас чөлөөтэй харагдана.
  */
 export function AuthNotice() {
-  const { status, user, role, error, signOut } = useAuth();
+  const { status, user, role, error, signIn, signOut, clearError } = useAuth();
   if (status !== 'denied' && !(status === 'signed-out' && error)) return null;
   // Татгалзсан шалтгаан: (a) үүрэггүй бүртгэл, эсвэл (b) буруу байгууллага
   const orgMismatch = !!user && !!AUTH.allowedOrgId && user.orgId !== AUTH.allowedOrgId;
@@ -221,6 +239,13 @@ export function AuthNotice() {
           <>
             <p className={s.sub}>Нэвтрэх үед алдаа гарлаа.</p>
             <p className={s.error}>{error}</p>
+            {/* ⚠️ .screen бүтэн дэлгэцийг халхалдаг тул гарцгүй бол хэрэглэгч F5-гүйгээр гацна */}
+            <button type="button" className={s.btn} onClick={signIn} style={{ marginTop: 16 }}>
+              Дахин оролдох
+            </button>
+            <button type="button" className={s.btnGhost} onClick={clearError}>
+              Хаах
+            </button>
           </>
         )}
       </div>
