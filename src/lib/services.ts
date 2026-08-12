@@ -120,9 +120,7 @@ export const AUTH = {
    * ⚠️ `??` — env-д ЗӨВХӨН хоосон бичвэл унтраана; огт өгөөгүй бол fallback (асаалттай).
    */
   // ⚠️ ТҮР УНТРААВ (UI шалгах). СЭРГЭЭХ: доорх мөрийг устгаад энэ мөрийг эргүүлнэ —
-  // ⚠️ ТҮР: нэвтрэлт унтраасан — commit/deploy-ийн өмнө ЗААВАЛ сэргээнэ
-  //   appId: process.env.NEXT_PUBLIC_AUTH_APP_ID ?? "ZPJRqk1iiYcjYRLv",
-  appId: "",
+  appId: process.env.NEXT_PUBLIC_AUTH_APP_ID ?? "ZPJRqk1iiYcjYRLv",
   /**
    * ⚠️ Байгууллагын хаяг (`monmap.maps.arcgis.com`) БИШ. Тэр домэйн ArcGIS
    * Online-ы «Allowed origins» цагаан жагсаалтыг мөрддөг тул dev дээр токен
