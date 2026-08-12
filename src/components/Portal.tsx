@@ -11,6 +11,7 @@ import { OpacityPanel } from '@/components/OpacityPanel';
 import { Suitability } from '@/modules/analysis/Suitability';
 import { Dashboard } from '@/modules/Dashboard';
 import { Bagts } from '@/modules/Bagts';
+import { Tsogts } from '@/modules/Tsogts';
 import { Gazar } from '@/modules/Gazar';
 import { Finance } from '@/modules/Finance';
 import { Sheet } from '@/modules/sheet/Sheet';
@@ -231,6 +232,7 @@ const initialView = (): ViewKey => {
   const v = readParam('v');
   return v && VIEW_BY_KEY[v as ViewKey] ? (v as ViewKey) : DEFAULT_VIEW;
 };
+
 const initialDim = (): Dim => {
   const d = readParam('d');
   return d === '3d' || d === 'bim' ? d : '2d';
@@ -400,7 +402,8 @@ function PortalContent(
    */
   const { setOrtho } = useMap();
   useEffect(() => {
-    setOrtho(view === 'bagts' || view === 'monitor');
+    // tsogts — багц+хяналтын нэгдсэн харагдац тул мөн ортофототой
+    setOrtho(view === 'bagts' || view === 'monitor' || view === 'tsogts');
   }, [view, setOrtho]);
 
   /* ── Багануудын өргөн ── */
@@ -437,6 +440,7 @@ function PortalContent(
   const isTailan = view === 'tailan';
   const isGazar = view === 'gazar';
   const isFinance = view === 'finance';
+  const isTsogts = view === 'tsogts';
   // `standalone` нь эдгээрийг ЯГ тэмдэглэдэг — тусад нь тоолохгүй
   const isFull = standalone;
   /**
@@ -555,15 +559,17 @@ function PortalContent(
               ? <Dashboard dim={dim} setDim={setDim} zone={zone} setZone={setZone} />
               : isBagts
                 ? <Bagts dim={dim} setDim={setDim} />
-                : isSheet
-                  ? <Sheet />
-                  : isTailan
-                    ? <Tailan />
-                    : isGazar
-                      ? <Gazar dim={dim} setDim={setDim} />
-                      : isFinance
-                        ? <Finance />
-                        : <Suitability dim={dim} setDim={setDim} />}
+                : isTsogts
+                  ? <Tsogts dim={dim} setDim={setDim} />
+                  : isSheet
+                    ? <Sheet />
+                    : isTailan
+                      ? <Tailan />
+                      : isGazar
+                        ? <Gazar dim={dim} setDim={setDim} />
+                        : isFinance
+                          ? <Finance />
+                          : <Suitability dim={dim} setDim={setDim} />}
           </div>
         )}
 
