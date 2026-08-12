@@ -13,6 +13,7 @@ import {
   ALWAYS_NAV_VIEWS,
   DEFAULT_VIEW,
   HOME_SECTIONS,
+  ROLE_ACCESS,
   VIEW_BY_KEY,
   roleForUser,
   type ViewKey,
@@ -87,9 +88,13 @@ export default function Root() {
    * `AuthGate` эрхгүй бүртгэлийг оруулахгүй тул эрх ҮРГЭЛЖ олдоно.
    */
   const access = resolveAccess(user?.username) ?? (status === 'off' ? { views: 'all' as const, docs: true } : null);
-  const allowed: ViewKey[] | 'all' = access?.views ?? 'all';
   // ⚠️ Админ панел зөвхөн ЖИНХЭНЭ super үүрэгт (GRANT_ALL-аас хамааралгүй)
-  const isSuper = roleForUser(user?.username) === 'super' || status === 'off';
+  const hardSuper = roleForUser(user?.username) === 'super';
+  const isSuper = hardSuper || status === 'off';
+  // ⚠️ Хатуу super-ийг НИКОГДА түгжихгүй: UserAdmin дээр санамсаргүй бүх view-г
+  //    унтраасан override байсан ч, super нь ҮРГЭЛЖ бүх эрхтэй — эс бөгөөс өөрийгөө
+  //    админ панелаас гаргаж, засах арга үгүй болно (noAccess дэлгэц Portal-ыг орлоно).
+  const allowed: ViewKey[] | 'all' = hardSuper ? 'all' : (access?.views ?? 'all');
 
   /** Дурын хүрээг зөвшөөрсөн харагдацуудаар хайчилна */
   const clamp = (sc: NavScope): NavScope => {
@@ -98,10 +103,18 @@ export default function Root() {
     return sc.filter((v) => allowed.includes(v));
   };
 
-  /** Нэвтрэнгүүт эрхийн дагуу орох: бүх эрхтэй → бүгд, бусад → эхний харагдац */
+  /**
+   * Нэвтрэнгүүт эрхийн дагуу орох: бүх эрхтэй → бүгд; бусад → үүргийн `home`
+   * харагдац (эрхэд нь байвал), эс бөгөөс эхний зөвшөөрөгдсөн харагдац.
+   * ⚠️ `home`-ыг мөрддөг тул `ROLE_ACCESS.views` массивын ДАРААЛАЛ өөрчилвөл ч
+   *    хэрэглэгч зөв нүүр харагдацдаа орно (өмнө нь allowed[0]-д хэврэгээр найдаж байв).
+   */
   const openEntry = () => {
-    if (allowed === 'all') openAll();
-    else if (allowed.length) openView(allowed[0]);
+    if (allowed === 'all') { openAll(); return; }
+    if (!allowed.length) return;
+    const role = roleForUser(user?.username);
+    const home = role ? ROLE_ACCESS[role]?.home : undefined;
+    openView(home && allowed.includes(home) ? home : allowed[0]);
   };
 
   /** Нэвтрэлтээс буцаж эрх авмагц хүлээгдэж буй цэгт орно */

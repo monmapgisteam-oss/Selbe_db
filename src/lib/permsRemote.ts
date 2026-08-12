@@ -128,13 +128,19 @@ export async function fetchAll(canCreate = false): Promise<Record<string, Remote
     for (const f of res.features) {
       const a = f.attributes as { username?: string; role?: string; views?: string; docs?: number };
       if (!a.username) continue;
-      let views: ViewKey[] | 'all' = 'all';
-      try { const v = a.views ? JSON.parse(a.views) : 'all'; views = v === 'all' ? 'all' : (v as ViewKey[]); } catch { /* default all */ }
+      // ⚠️ FAIL-CLOSED: views талбар хоосон/эвдэрсэн (JSON алдаа, урт таслагдсан)
+      //    бол «бүх эрх» БИШ, «эрхгүй» ([]) руу унана — аюулгүй байдлын анхдагч.
+      let views: ViewKey[] | 'all' = [];
+      try {
+        const v = a.views ? JSON.parse(a.views) : [];
+        views = v === 'all' ? 'all' : Array.isArray(v) ? (v as ViewKey[]) : [];
+      } catch { views = []; }
       out[a.username.toLowerCase()] = {
         username: a.username,
         role: (a.role as Role) || null,
         views,
-        docs: a.docs !== 0,
+        // ⚠️ FAIL-CLOSED: зөвхөн ТОДОРХОЙ 1 (эсвэл true) бол эрх нээнэ; null/хоосон → үгүй
+        docs: a.docs === 1 || (a.docs as unknown) === true,
       };
     }
     return out;
