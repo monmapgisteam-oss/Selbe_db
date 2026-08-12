@@ -2884,6 +2884,7 @@ export type ViewKey =
   | "plan"
   | "bagts"
   | "monitor"
+  | "tsogts"
   | "gazar"
   | "analysis"
   | "sheet"
@@ -2971,6 +2972,23 @@ export const VIEWS: {
     hue: "#ea580c",
     layers: ["mon:building"],
     initial: ["mon:building"],
+  },
+  /**
+   * БАРИЛГЫН ЦОГЦ ХЯНАЛТ — «Багцын мэдээлэл» + «Барилгын хяналт» + «Санхүүжилт»
+   * ГУРВЫГ НЭГ дэлгэцэд нэгтгэсэн харагдац (`Tsogts` модуль): зүүн талд багцын
+   * жагсаалт; багц сонгоход ерөнхий мэдээлэл + санхүүгийн график + барилгын явц
+   * баруун талд зэрэг гарна; зураг дээрх барилга дарахад тухайн барилгын хяналт.
+   * Хуучин 3 цэс хэвээр — нэгтгэл батлагдмагц устгаж болно.
+   */
+  {
+    key: "tsogts",
+    title: "Барилгын цогц хяналт",
+    desc: "Багц · барилгын явц · санхүүжилт — нэгдсэн хяналт",
+    icon: "building",
+    hue: "#c2410c",
+    layers: ["mon:building"],
+    initial: ["mon:building"],
+    standalone: true,
   },
   /**
    * ГАЗАР ЧӨЛӨӨЛӨЛТ — газрын зураг дээр полигон зурж, тэр талбай доторх барилга
@@ -3084,7 +3102,7 @@ export const HOME_SECTIONS: {
   views: ViewKey[];
 }[] = [
   { id: "mgmt", title: "Удирдлага", all: true, views: [] },
-  { id: "build", title: "Хяналт", views: ["bagts", "monitor"] },
+  { id: "build", title: "Хяналт", views: ["bagts", "monitor", "tsogts"] },
   { id: "suit", title: "Тохиромжтой байдлын үнэлгээ", views: ["analysis"] },
   { id: "sheet", title: "Гүйцэтгэл бөглөх", exact: true, views: ["sheet", "monitor"] },
 ];
@@ -3144,7 +3162,12 @@ export const ROLE_ACCESS: Record<
 > = {
   super: { views: "all", docs: true, home: DEFAULT_VIEW },
   beginner: {
-    views: ["plan", "bagts", "monitor", "gazar", "tailan", "sheet"],
+    // tsogts — багц+хяналт+санхүүжилтийн НЭГДСЭН харагдац. ⚠️ Дотроо таб/эрхийн
+    // шүүлтгүй тул tsogts (мөн bagts) нь санхүүжилтийн өгөгдлийг (гэрээ, эх үүсвэр,
+    // сарын урсгал, төлбөрийн акт %) харуулна — эдгээр үүрэгт `finance` view өгөөгүй
+    // ч санхүүгийн мэдээлэл tsogts/bagts-аар нээлттэй. Санхүүг үнэхээр нуух бол
+    // Tsogts/Bagts-ийн санхүүгийн блокуудыг эрхээр нөхцөлдүүлэх шаардлагатай.
+    views: ["plan", "bagts", "monitor", "tsogts", "gazar", "tailan", "sheet"],
     docs: true,
     home: "plan",
   },

@@ -176,6 +176,39 @@
  */
 .suit { grid-area: suit; min-width: 0; overflow: hidden; }
 
+/* ── «Барилгын цогц хяналт»-ын дотоод таб — толгойн доор хөвөгч эмх ──
+   Grid layout-д ОРОЛЦОХГҮЙ (fixed) тул shell-ийн мөр/баганад нөлөөгүй. */
+.tsTabs {
+  position: fixed;
+  top: calc(var(--head) + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1500;
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  background: var(--surface);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.22);
+}
+.tsTab {
+  padding: 6px 16px;
+  border: none;
+  border-radius: 99px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--ink-2);
+  background: transparent;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.tsTab:hover { color: var(--ink); }
+.tsTabOn {
+  background: var(--hue);
+  color: #fff;
+}
+
 /* ── Толгой ── */
 .head {
   grid-area: head;
