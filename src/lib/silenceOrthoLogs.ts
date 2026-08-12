@@ -29,6 +29,12 @@ if (typeof window !== 'undefined') {
       ) {
         return; // UBHUB ортофотогийн load/layerview-алдаа — чимээгүй
       }
+      // ⚠️ 3D (SceneView) горимд 2D зурган симбол (picture-fill/picture-marker,
+      //    esriPFS/esriPMS) дэмжигдэхгүй гэсэн esri-ийн warning — ХОР ХӨНӨӨЛГҮЙ:
+      //    esri тэр симболыг зүгээр л алгасдаг. Console-ыг дүүргэхээс сэргийлж чимээгүй.
+      if (/\[esri\.views\.3d\b/.test(s) && /unsupported in 3D/i.test(s)) {
+        return;
+      }
       orig(...(args as []));
     };
   }

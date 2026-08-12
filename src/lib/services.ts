@@ -119,7 +119,6 @@ export const AUTH = {
    * ArcGIS OAuth appId (`NEXT_PUBLIC_AUTH_APP_ID`). Хоосон "" бол нэвтрэлт УНТРААЛТТАЙ.
    * ⚠️ `??` — env-д ЗӨВХӨН хоосон бичвэл унтраана; огт өгөөгүй бол fallback (асаалттай).
    */
-  // ⚠️ ТҮР УНТРААВ (UI шалгах). СЭРГЭЭХ: доорх мөрийг устгаад энэ мөрийг эргүүлнэ —
   appId: process.env.NEXT_PUBLIC_AUTH_APP_ID ?? "ZPJRqk1iiYcjYRLv",
   /**
    * ⚠️ Байгууллагын хаяг (`monmap.maps.arcgis.com`) БИШ. Тэр домэйн ArcGIS
@@ -222,7 +221,7 @@ export type LayerDef = {
   dash?: "solid" | "dash" | "dot" | "dash-dot" | "long-dash";
   width?: number;
   fill?: number;
-  marker?: "circle" | "square";
+  marker?: "circle" | "square" | "diamond";
   size?: number;
   /** Зөвхөн ойртоход зурагдана (олон мянган объекттой давхарга) */
   minScale?: number;
@@ -1502,6 +1501,51 @@ export const LAYERS: LayerDef[] = [
     note: "Survey123 мобайл аппаас",
   },
 
+  /* ─────────── ХАБЭА — Цамхагт кран (тусдаа үйлчилгээ) ───────────
+     ⚠️ URL inline: `HABEA` тогтмол ЭНЭ массиваас ДООР тодорхойлогддог тул TDZ-аас
+     сэргийлж `HJ`-ээс шууд угсарна. Бүс полигоныг ЭХЛЭЭД (доор), цэгийг ДЭЭР зурна. */
+  {
+    id: "habea:buffer",
+    n: 51,
+    url: `${HJ}/${encodeURIComponent("Цамхагт_кран")}/FeatureServer/51`,
+    title: "Аюулгүйн бүс",
+    topic: "monitor",
+    geom: "area",
+    hue: "#dc2626",
+    fill: 0.1,
+    width: 1,
+    noZone: true,
+    oid: "OBJECTID",
+  },
+  {
+    id: "habea:crane",
+    n: 50,
+    url: `${HJ}/${encodeURIComponent("Цамхагт_кран")}/FeatureServer/50`,
+    title: "Цамхагт кран",
+    topic: "monitor",
+    geom: "point",
+    hue: "#dc2626",
+    marker: "circle",
+    size: 11,
+    noZone: true,
+    oid: "OBJECTID",
+  },
+  /* Осол зөрчлийн бүртгэл — Survey123 цэгүүд (болсон газар нь) */
+  {
+    id: "habea:osol",
+    n: 0,
+    url: `${HJ}/survey123_a4e9f3801ea84fdd99133b139557ca81/FeatureServer/0`,
+    title: "Осол, зөрчил",
+    topic: "monitor",
+    geom: "point",
+    hue: "#f59e0b",
+    marker: "diamond",
+    size: 12,
+    noZone: true,
+    oid: "objectid",
+    note: "Survey123 мобайл аппаас",
+  },
+
   /* ─────────── Газар чөлөөлөлт (полигоноор шүүх · тусдаа үйлчилгээ) ───────────
      ⚠️ topic:'gazar' тул каталогийн бүлэг (`LAYER_GROUPS`)-т ОРОХГҮЙ — зөвхөн
      «Газар чөлөөлөлт» харагдацад ил гарна. Кадастрыг барилгаас ӨМНӨ бичсэн нь
@@ -2533,6 +2577,82 @@ export const USAN_SAN = {
 } as const;
 
 /**
+ * ХАБЭА — Хөдөлмөрийн аюулгүй байдал, эрүүл ахуй. ГУРВАН Survey123/FeatureServer:
+ *   · labor    — өдрийн ажилтан/техникийн тоо (Survey123, цэг)
+ *   · incident — осол, зөрчлийн бүртгэл (Survey123, цэг)
+ *   · crane    — цамхагт краны цэг (layer 50) + аюулгүйн бүсийн полигон (layer 51)
+ * ⚠️ Талбарын нэрс эх сервисээс ЯГ хуулагдсан (Survey123-ийн `field_*`, кириллэн нэр).
+ */
+export const HABEA = {
+  labor: {
+    url: `${HJ}/survey123_732c0391190f4af59033d44b66358cb8/FeatureServer/0`,
+    fields: {
+      ognoo: "Ognoo", bagts: "Bagts", turul: "Turul",
+      niitAjiltan: "Niit_ajiltan", mongol: "mongol_ajiltani_too", gadaad: "gadaad_ajiltanii_too",
+      hunTsag: "Hun_tsag", niitTehnik: "Niit_tehnik",
+      tsamhagtKran: "tsamhagt_kran", avtoKran: "avto_kran", achaanii: "achaanii_avtomashin",
+      ekskavator: "Ekskavator", kovsh: "kovsh", usniMashin: "usni_mashin",
+    },
+    /**
+     * ӨРГӨН схем: маягтын НЭГ бүртгэл = өдрийн нэгдсэн тайлан бөгөөд ГҮЙЦЭТГЭГЧ
+     * бүр өөрийн баганын бүлэгтэй (Survey123-ийн repeat → suffix-тэй багана).
+     * Талбарын нэрийг `laborCompanyFields(sfx)`-ээр угсарна. `bagts` нь маягтын
+     * domain-д ХАТУУ заагдсан багц; сүүлийн 5 нь багц заагдаагүй гүйцэтгэгч
+     * (Bagts_* талбаргүй — bagts: null).
+     */
+    companies: [
+      { sfx: "HHDMGK", code: "ХХДМГК", label: "Хятадын 2-р металлургийн групп", bagts: "Багц -1" },
+      { sfx: "HBZIT", code: "ХБЗИТ", label: "Хятадын барилгын 6-р трест", bagts: "Багц -2" },
+      { sfx: "HBTIT", code: "ХБТИТ", label: "ХБТИТ", bagts: "Багц -3.1" },
+      { sfx: "MSK", code: "МСК", label: "Морин сувд констракшн", bagts: "Багц -3.2" },
+      { sfx: "NBG", code: "НБГ", label: "«Нутгын буян» групп", bagts: "Багц -3.3" },
+      { sfx: "MK", code: "МК", label: "Moncon Construction", bagts: "Багц -4.1" },
+      { sfx: "P", code: "П", label: "Профессионалстрой", bagts: "Багц -4.2" },
+      { sfx: "MMSE", code: "ММСЕ", label: "ММСЕ", bagts: null },
+      { sfx: "SC", code: "SC", label: "SC", bagts: null },
+      { sfx: "OSNAAG", code: "ОСНААГ", label: "ОСНААГ", bagts: null },
+      { sfx: "GUBB", code: "ГУББ", label: "ГУББ", bagts: null },
+      { sfx: "CHHO", code: "ЧХО", label: "ЧХО", bagts: null },
+    ],
+  },
+  incident: {
+    url: `${HJ}/survey123_a4e9f3801ea84fdd99133b139557ca81/FeatureServer/0`,
+    fields: {
+      ognoo: "field_22", company: "field_5", bagts: "field_6", dugaar: "field_9",
+      turul: "field_7", medeelel: "field_14", shaltgaanTurul: "field_11",
+      shaltgaan: "field_13", argaHemjee: "field_18",
+    },
+  },
+  crane: {
+    url: `${HJ}/${encodeURIComponent("Цамхагт_кран")}/FeatureServer/50`,
+    bufferUrl: `${HJ}/${encodeURIComponent("Цамхагт_кран")}/FeatureServer/51`,
+    fields: {
+      dugaar: "Краны_дугаар", blok: "Блок", bagts: "Багц",
+      sunUrt: "Краны_суны_урт_m", undur: "Краны_өндөр_m", tuluv: "Tuluv",
+    },
+  },
+} as const;
+
+/**
+ * Гүйцэтгэгчийн баганын бүлгийн талбарууд — нэрс нь эх сервисээс ЯГ хуулагдсан
+ * хэв маяг (`MNG_ajiltani_too_<SFX>` г.м). `Bagts_<SFX>` нь зөвхөн багц
+ * заасан 7 гүйцэтгэгчид бий; бусдад нь байхгүй талбар уншихад undefined → 0.
+ */
+export const laborCompanyFields = (sfx: string) => ({
+  bagts: `Bagts_${sfx}`,
+  mongol: `MNG_ajiltani_too_${sfx}`,
+  gadaad: `G_ajiltanii_too_${sfx}`,
+  niitAjiltan: `Niit_ajiltan_${sfx}`,
+  niitTehnik: `Niit_tehnik_${sfx}`,
+  tsamhagtKran: `tsamhagt_kran_${sfx}`,
+  avtoKran: `avto_kran_${sfx}`,
+  achaanii: `achaanii_avtomashin_${sfx}`,
+  ekskavator: `Ekskavator_${sfx}`,
+  kovsh: `kovsh_${sfx}`,
+  usniMashin: `usni_mashin_${sfx}`,
+});
+
+/**
  * BIM — барилгын мэдээллийн загвар (BuildingSceneLayer).
  *
  * ⚠️ Эдгээр нь `layerType: 'Building'` бөгөөд ЗӨВХӨН SceneView-д (3D) ачаална.
@@ -2837,14 +2957,30 @@ export const MONITOR_GROUP = {
 };
 export const MONITOR_LAYER_IDS: string[] = ["mon:building", "mon:survey"];
 
+/** ХАБЭА-ийн давхаргууд — каталогид тусдаа бүлэг (харагдацын үндсэн давхаргууд) */
+export const HABEA_GROUP = {
+  key: "habea" as const,
+  title: "ХАБЭА",
+  desc: "Осол зөрчил · цамхагт кран · аюулгүйн бүс",
+  icon: "shield",
+  hue: "#dc2626",
+};
+export const HABEA_LAYER_IDS: string[] = ["habea:osol", "habea:crane", "habea:buffer"];
+
 /** Каталогт харуулах бүлгүүд — харагдацаас хамаарна */
-export const catalogGroups = (view: "plan" | "monitor") =>
+export const catalogGroups = (view: "plan" | "monitor" | "habea") =>
   view === "monitor"
     ? [
         { ...MONITOR_GROUP, ids: MONITOR_LAYER_IDS },
         ...LAYER_GROUPS.map((g) => ({ ...g, ids: GROUP_LAYERS[g.key] })),
       ]
-    : LAYER_GROUPS.map((g) => ({ ...g, ids: GROUP_LAYERS[g.key] }));
+    : view === "habea"
+      ? [
+          { ...HABEA_GROUP, ids: HABEA_LAYER_IDS },
+          { ...MONITOR_GROUP, ids: MONITOR_LAYER_IDS },
+          ...LAYER_GROUPS.map((g) => ({ ...g, ids: GROUP_LAYERS[g.key] })),
+        ]
+      : LAYER_GROUPS.map((g) => ({ ...g, ids: GROUP_LAYERS[g.key] }));
 
 /** Давхарга аль багцад хамаарах вэ (хяналтынх багцгүй) */
 export const groupOf = (id: string): GroupKey | null =>
@@ -2875,7 +3011,8 @@ export type ViewKey =
   | "analysis"
   | "sheet"
   | "tailan"
-  | "finance";
+  | "finance"
+  | "habea";
 
 export const VIEWS: {
   key: ViewKey;
@@ -2929,46 +3066,19 @@ export const VIEWS: {
     initial: [],
   },
   /**
-   * БАГЦЫН МЭДЭЭЛЭЛ — барилга угсралтын 7 багц тус бүрийн БҮРЭН хуудас.
-   *
-   * ⚠️ «Барилгын хяналт»-аас ЯЛГААТАЙ: тэр нь блок бүрийн ажлын гүйцэтгэлийг
-   * (юу хийгдсэн) харуулдаг бол энэ нь ГЭРЭЭ, ТӨСӨВ, САНХҮҮЖИЛТ-ийг блокийн
-   * гүйцэтгэлтэй нэг дор тавьж «мөнгө ба явц тохирч байна уу» гэсэн асуултад
-   * хариулна. Гурван эх сурвалж нэгддэг: `BUS_cashflow` (мөнгө),
-   * `building_GOL_barigdaj_ehelsen` (блокийн геометр), `Selbe_guitsetgel_…`
-   * (гүйцэтгэл). Гурвуулаа багцын нэрийг өөр өөрөөр бичдэг тул `bagtsKey()`.
-   *
-   * ⚠️ Порталын каталог/самбарыг ашиглахгүй, өөрийн бүтэцтэй тул `standalone`.
-   */
-  {
-    key: "bagts",
-    title: "Багцын мэдээлэл",
-    desc: "Багц бүрийн гэрээ, санхүүжилт, блокийн гүйцэтгэл",
-    icon: "building",
-    hue: "#d97706",
-    layers: ["mon:building"],
-    initial: ["mon:building"],
-    standalone: true,
-  },
-  {
-    key: "monitor",
-    title: "Барилгын хяналт",
-    desc: "Барилга бүрийн ажлын гүйцэтгэл",
-    icon: "target",
-    hue: "#ea580c",
-    layers: ["mon:building"],
-    initial: ["mon:building"],
-  },
-  /**
    * БАРИЛГЫН ЦОГЦ ХЯНАЛТ — «Багцын мэдээлэл» + «Барилгын хяналт» + «Санхүүжилт»
    * ГУРВЫГ НЭГ дэлгэцэд нэгтгэсэн харагдац (`Tsogts` модуль): зүүн талд багцын
    * жагсаалт; багц сонгоход ерөнхий мэдээлэл + санхүүгийн график + барилгын явц
    * баруун талд зэрэг гарна; зураг дээрх барилга дарахад тухайн барилгын хяналт.
-   * Хуучин 3 цэс хэвээр — нэгтгэл батлагдмагц устгаж болно.
+   *
+   * ⚠️ Хуучин «Багцын мэдээлэл» (`bagts`) ба «Барилгын хяналт» (`monitor`) цонхнууд
+   *    2026-08-12-нд навигациас ХАСАГДСАН — бүх мэдээлэл нь энэ нэгдсэн цонхоор
+   *    харагддаг тул илүүдэхгүй. Хоёр модулийн код (`Bagts.tsx`, `BuildingPanel.tsx`)
+   *    ХЭВЭЭР — `Tsogts` эдгээрийн export-уудыг дахин ашигладаг тул устгаагүй.
    */
   {
     key: "tsogts",
-    title: "Барилгын цогц хяналт",
+    title: "Барилгын хяналт",
     desc: "Багц · барилгын явц · санхүүжилт — нэгдсэн хяналт",
     icon: "building",
     hue: "#c2410c",
@@ -3052,6 +3162,21 @@ export const VIEWS: {
     initial: [],
     standalone: true,
   },
+  /**
+   * ХАБЭА — Хөдөлмөрийн аюулгүй байдал. Зургийг ТОЙРСОН чөлөөт бүтэц («Барилгын
+   * хяналт» шиг): дээр KPI, зүүн осол зөрчил, төвд краны зураг, баруун кран/техник,
+   * доор осол зөрчлийн график. 3 Survey123/FeatureServer эх сурвалж. `standalone`.
+   */
+  {
+    key: "habea",
+    title: "ХАБЭА",
+    desc: "Ажилтан · техник · осол зөрчил · цамхагт кран",
+    icon: "shield",
+    hue: "#dc2626",
+    layers: ["habea:osol", "habea:crane", "habea:buffer"],
+    initial: ["habea:osol", "habea:crane", "habea:buffer"],
+    standalone: true,
+  },
 ];
 
 export const VIEW_BY_KEY: Record<ViewKey, (typeof VIEWS)[number]> =
@@ -3088,9 +3213,9 @@ export const HOME_SECTIONS: {
   views: ViewKey[];
 }[] = [
   { id: "mgmt", title: "Удирдлага", all: true, views: [] },
-  { id: "build", title: "Хяналт", views: ["bagts", "monitor", "tsogts"] },
+  { id: "build", title: "Хяналт", views: ["tsogts", "habea"] },
   { id: "suit", title: "Тохиромжтой байдлын үнэлгээ", views: ["analysis"] },
-  { id: "sheet", title: "Гүйцэтгэл бөглөх", exact: true, views: ["sheet", "monitor"] },
+  { id: "sheet", title: "Гүйцэтгэл бөглөх", exact: true, views: ["sheet"] },
 ];
 
 /**
@@ -3149,15 +3274,14 @@ export const ROLE_ACCESS: Record<
   super: { views: "all", docs: true, home: DEFAULT_VIEW },
   beginner: {
     // tsogts — багц+хяналт+санхүүжилтийн НЭГДСЭН харагдац. ⚠️ Дотроо таб/эрхийн
-    // шүүлтгүй тул tsogts (мөн bagts) нь санхүүжилтийн өгөгдлийг (гэрээ, эх үүсвэр,
-    // сарын урсгал, төлбөрийн акт %) харуулна — эдгээр үүрэгт `finance` view өгөөгүй
-    // ч санхүүгийн мэдээлэл tsogts/bagts-аар нээлттэй. Санхүүг үнэхээр нуух бол
-    // Tsogts/Bagts-ийн санхүүгийн блокуудыг эрхээр нөхцөлдүүлэх шаардлагатай.
-    views: ["plan", "bagts", "monitor", "tsogts", "gazar", "tailan", "sheet"],
+    // шүүлтгүй тул tsogts нь санхүүжилтийн өгөгдлийг (гэрээ, эх үүсвэр, сарын
+    // урсгал, төлбөрийн акт %) харуулна — энэ үүрэгт тусдаа `finance` view өгөөгүй
+    // ч санхүүгийн мэдээлэл tsogts-оор нээлттэй хэвээр.
+    views: ["plan", "tsogts", "habea", "gazar", "tailan", "sheet"],
     docs: true,
     home: "plan",
   },
-  tolovlolt: { views: ["plan", "bagts"], docs: false, home: "plan" },
+  tolovlolt: { views: ["plan"], docs: false, home: "plan" },
 };
 
 /** ArcGIS нэрээр үүрэг олох — олдохгүй бол `null` (нэвтрэх эрхгүй) */

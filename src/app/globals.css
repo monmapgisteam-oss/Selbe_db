@@ -31,18 +31,22 @@
   color-scheme: light;
 }
 
+/* ⚠️ 2026-08-12: ArcGIS Operations Dashboard-ын CYAN-ХАР палитр — БҮХ аппад жигд
+   (хэрэглэгчийн хүсэлт). Урьд нь энэ cyan-хар нь зөвхөн «Барилгын хяналт» (tsogts)
+   харагдацад байсныг глобал dark theme болгож бүх цонхонд тусгав. Цайвар (light)
+   горим хэвээр цагаан. */
 [data-theme='dark'] {
-  --bg: #0b0e14;
-  --surface: #141924;
-  --surface-2: #1a202c;
-  --sunken: #090c11;
+  --bg: #0a1622;
+  --surface: #102330;
+  --surface-2: #0c1c28;
+  --sunken: #071019;
 
-  --line: #242b38;
-  --line-strong: #344050;
+  --line: #1d3b4d;
+  --line-strong: #2b556e;
 
-  --ink: #e9edf2;
-  --ink-2: #9aa6b5;
-  --ink-3: #6b7787;
+  --ink: #eaf6fa;
+  --ink-2: #b9d6e0;
+  --ink-3: #7fa4b5;
 
   --good: #34d399;
   --warn: #fbbf24;
@@ -59,9 +63,12 @@
   /* Модулийн өнгө — идэвхтэй модуль JS-ээр тавина */
   --hue: #2563eb;
 
-  --r-sm: 6px;
-  --r: 10px;
-  --r-lg: 14px;
+  /* ⚠️ 2026-08-12: Operations Dashboard төрх — дөрвөлживтөр (радиус багасгав).
+     Урьд нь 6/10/14px байв; tsogts-ийн 3px виджеттэй нийцүүлэн бүх карт/товч
+     дөрвөлживтөр болов. Дугуй pill-ууд 99px-ээ шууд бичдэг тул хэвээр. */
+  --r-sm: 3px;
+  --r: 4px;
+  --r-lg: 6px;
 
   --rail: 268px;
   /* Давхаргын каталогийн багана — зүүн модны хажууд */
@@ -75,7 +82,7 @@
   --montrend: 240px;
 
   --ease: cubic-bezier(0.32, 0.72, 0, 1);
-  --mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace;
+  --mono: var(--font-mono), ui-monospace, 'SF Mono', Menlo, monospace;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -85,7 +92,7 @@ html, body { height: 100%; }
 body {
   background: var(--bg);
   color: var(--ink);
-  font-family: var(--font-inter), system-ui, sans-serif;
+  font-family: var(--font-sans), system-ui, sans-serif;
   font-size: 15px;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;

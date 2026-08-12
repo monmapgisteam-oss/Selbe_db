@@ -213,14 +213,18 @@
 /* ⚠️ `--tone` нь СОНГОМОЛ: «Багцын мэдээлэл» хавтан бүрд өөрийн өнгө дамжуулдаг
    тул дээд ирмэг нь өнгөтэй үлдэнэ. Дашбоард `--tone` дамжуулахгүй — өнгөгүй
    (`--line`) болж, өнгө нь зөвхөн УТГА заах дүрэм хэвээр хадгалагдана. */
+/* ⚠️ 2026-08-12: «Барилгын хяналт» (tsogts)-ын Operations Dashboard индикатортой
+   100% ижил — ГОЛЛУУЛСАН том тоо дээр, ЖИЖИГ uppercase шошго доор. */
 .tile {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  padding: 13px 15px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  text-align: center;
+  padding: 14px 12px;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-top: 2px solid var(--tone, var(--line));
   border-radius: var(--r);
 }
 /* Гол үзүүлэлт (нийт гүйцэтгэл) — ГАНЦ онцлох хавтан */
@@ -231,22 +235,24 @@
 .tileVal {
   display: flex;
   align-items: baseline;
+  justify-content: center;
   flex-wrap: wrap;
   gap: 0 4px;
   min-width: 0;
 }
 .tileVal b {
-  font-size: 1.72rem;
+  font-size: 1.6rem;
   font-weight: 700;
   line-height: 1.1;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.02em;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
 }
-.tileVal i { font-style: normal; font-size: 0.84rem; font-weight: 600; color: var(--ink-3); white-space: nowrap; }
-.tileLabel { font-size: 0.82rem; font-weight: 500; color: var(--ink-2); }
-.tileSub { font-size: 0.72rem; color: var(--ink-3); font-family: var(--mono); }
-.tileBar { display: block; height: 5px; margin-top: 3px; border-radius: 99px; background: var(--sunken); overflow: hidden; }
+.tileVal i { font-style: normal; font-size: 0.82rem; font-weight: 600; color: var(--ink-3); white-space: nowrap; }
+/* tsogts-ийн индикатор шошготой ижил — ЖИЖИГ uppercase, letter-spacing */
+.tileLabel { font-size: 0.64rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-3); }
+.tileSub { font-size: 0.68rem; color: var(--ink-3); font-family: var(--mono); }
+.tileBar { display: block; width: 100%; height: 4px; margin-top: 3px; border-radius: 99px; background: var(--sunken); overflow: hidden; }
 .tileBar i { display: block; height: 100%; border-radius: 99px; background: var(--accent); }
 
 .hero {

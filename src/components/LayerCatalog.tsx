@@ -55,8 +55,9 @@ export const LayerCatalog = memo(function LayerCatalog({
    * Аль харагдацын каталог вэ.
    * ⚠️ «Барилгын хяналт»-д хяналтын багц ЭХЭНД, дараа нь ЕТ-ийн багцууд —
    * тэнд гүйцэтгэлийн давхарга дээр контекст нэмэх нь ердийн хэрэглээ.
+   * «ХАБЭА»-д аюулгүй байдлын багц ЭХЭНД, дараа нь хяналт + ЕТ (контекст).
    */
-  view: 'plan' | 'monitor';
+  view: 'plan' | 'monitor' | 'habea';
   totals: Async<Map<string, Totals>>;
   visible: string[];
   setVisible: Dispatch<SetStateAction<string[]>>;
@@ -402,7 +403,7 @@ function FacetRows({
 }: {
   d: LayerDef;
   zone: string | null;
-  view: 'plan' | 'monitor';
+  view: 'plan' | 'monitor' | 'habea';
   /** Шүүхийн өмнө давхаргыг зурагт гаргана — унтарсан давхаргыг шүүх нь дэмий */
   onNeedVisible: () => void;
 }) {
