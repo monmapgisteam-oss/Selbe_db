@@ -19,6 +19,7 @@ import '@/modules/survey.module.css';
 import '@/modules/analysis/suitability.module.css';
 import '@/modules/sheet/sheet.module.css';
 import '@/modules/finance.module.css';
+import '@/modules/tsogts.module.css';
 import '@/components/auth.module.css';
 import '@/components/home.module.css';
 import '@/components/swatch.module.css';

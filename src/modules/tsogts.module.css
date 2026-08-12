@@ -1,0 +1,232 @@
+/* ══════════════════════════════════════════════════════════
+   БАРИЛГЫН ЦОГЦ ХЯНАЛТ — мэргэжлийн дашбоард бүтэц.
+   CHART БОЛГОН ТУСДАА ЭЛЕМЕНТ: өөрийн үүр (grid cell), өөрийн гүйлгэлт.
+
+     ┌────────────── KPI (дээр, бүтэн өргөн) ──────────────┐
+     │ Багцын  │            │ Гэрээ/төсөв │ Эх үүсвэр     │
+     │ жагсаалт│   ЗУРАГ    ├─────────────┼───────────────│
+     │ (зүүн)  │            │ Блок явц    │ Ажлын төрөл   │
+     ├──────── Санхүүгийн график (доор, бүтэн өргөн) ─────┤
+   ══════════════════════════════════════════════════════════ */
+
+.pack {
+  height: 100%;
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+  grid-template-columns:
+    minmax(235px, 290px)   /* жагсаалт */
+    minmax(0, 1fr)         /* зураг */
+    minmax(300px, 380px);  /* баруун НЭГ багана (scroll-гүй) */
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  /* ЗҮҮН (list) ба БАРУУН (r) баганууд бүтэн өндрийг эзэлнэ. Зүүнд багцын
+     жагсаалт + блок бүрийн гүйцэтгэл; голд KPI · зураг · санхүүгийн график. */
+  grid-template-areas:
+    'list kpi r'
+    'list map r'
+    'list fin r';
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+
+  /* ══ ArcGIS Operations Dashboard загварын палитр — ЗӨВХӨН энэ харагдацад.
+     Бүх карт/хавтан/жагсаалт var()-аас уншдаг тул токеныг энд дахин
+     тодорхойлоход хүү компонентууд автоматаар энэ загварт орно.
+     (Хэрэглэгчийн light/dark сонголтоос үл хамааран тогтмол — жинхэнэ
+     Operations Dashboard үргэлж харанхуй байдагтай ижил.) ══ */
+  --bg: #0a1622;
+  --surface: #102330;
+  --surface-2: #0c1c28;
+  --line: #1d3b4d;
+  --line-strong: #2b556e;
+  --ink: #eaf6fa;
+  --ink-2: #b9d6e0;
+  --ink-3: #7fa4b5;
+  --hue: #29b6d8;
+  background: var(--bg);
+  color: var(--ink);
+}
+
+/* Панел бүр — Operations Dashboard-ын хайрцган төрх: бараг шулуун булан,
+   нимгэн cyan-туяатай хүрээ */
+.pack section,
+.pack aside > section {
+  border-radius: 3px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+
+/* Панелийн гарчгууд — жижиг, uppercase (Operations Dashboard-ын widget header) */
+.pack section h3,
+.pack section h4 {
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 0.68rem;
+  color: var(--ink-2);
+}
+
+/* ── Дээд KPI зурвас — Operations Dashboard-ын indicator загвар ── */
+.kpi {
+  grid-area: kpi;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  min-width: 0;
+}
+/* PackKpi-ийн хавтангууд (дотоод бүтцэд нь хүрэлгүй элементээр нь загварлана):
+   төвлөрсөн ТОМ утга дээр, жижиг uppercase шошго доор */
+.kpi > div {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  text-align: center;
+  padding: 12px 10px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--surface);
+}
+.kpi > div > span:first-child {
+  font-size: 1.55rem;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.kpi > div > span:last-child {
+  font-size: 0.64rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-3);
+}
+
+/* ── Зүүн: багцын жагсаалт ── */
+.list {
+  grid-area: list;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ── БАРУУН НЭГ БҮТЭН БАГАНА — бүх өндрийг эзэлж, дотроо гүйлгэнэ ── */
+.r {
+  grid-area: r;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.r section { padding: 10px 12px; }
+/* Гүйцэтгэлийн Ring — дээд KPI зурвастай ДАВХАРДДАГ тул нуана */
+.r [class*='packRing'] { display: none; }
+
+
+/* ── Төв: зураг — хайрцган хүрээтэй (Operations Dashboard-ын map widget) ── */
+.map {
+  grid-area: map;
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  border-radius: 3px;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+}
+
+/* ── Доод мөрийн ГОЛ үүр: санхүүгийн график — scroll-ГҮЙ, бүтэн харагдана ── */
+.fin {
+  grid-area: fin;
+  min-width: 0;
+  overflow: visible;
+}
+/* Санхүүгийн картын толгойн баруун талын «олгогдох нийт» тэмдэглэгээ
+   (график дээр давхардахгүй — Section-ий header дотор) */
+.totNote {
+  font-size: 0.72rem;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+.totNote b {
+  color: var(--hue);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.85rem;
+}
+
+/* Санхүүгийн графикийн 3 баганы легенд */
+.finLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin-bottom: 8px;
+  font-size: 0.72rem;
+  color: var(--ink-2);
+}
+.finLegend span { display: inline-flex; align-items: center; gap: 6px; }
+.finLegend i { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
+
+/* ── УЛААН alert-ийн анивчилт (жагсаалтын ⚠ тэмдэг) ── */
+@keyframes tsAlertBlink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.12; }
+}
+.alertBlink {
+  animation: tsAlertBlink 0.9s ease-in-out infinite;
+}
+
+/* ── «Хоцрогдолтой багц» карт БҮХЭЛДЭЭ улаанаар анивчина ── */
+@keyframes tsCardBlink {
+  0%, 100% {
+    border-color: #e11d48;
+    box-shadow: 0 0 0 2px rgb(225 29 72 / 0.5), 0 0 20px 5px rgb(225 29 72 / 0.25);
+    background: color-mix(in srgb, #e11d48 9%, var(--surface));
+  }
+  50% {
+    border-color: color-mix(in srgb, #e11d48 30%, var(--line));
+    box-shadow: 0 0 0 0 rgb(225 29 72 / 0);
+    background: var(--surface);
+  }
+}
+.alertCard section {
+  border-color: #e11d48;
+  animation: tsCardBlink 1.1s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .alertBlink, .alertCard section { animation: none; }
+}
+
+/* Барилгын хяналт руу буцах товч */
+.backBtn {
+  flex: none;
+  align-self: flex-start;
+  padding: 6px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.backBtn:hover { color: var(--ink); }
+
+/* ── Нарийн дэлгэц — босоо цуваа ── */
+@media (max-width: 1080px) {
+  .pack {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto 52vh auto auto;
+    grid-template-areas: 'kpi' 'list' 'map' 'r' 'fin';
+    height: auto;
+    overflow: visible;
+  }
+  .list { max-height: none; }
+  .fin { max-height: none; }
+}

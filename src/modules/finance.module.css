@@ -57,15 +57,141 @@
   border: 1px solid var(--line);
 }
 
-/* ── Багц тус бүрийн график — НЭГ баганад (өргөн тусам дүнгийн шошго давхцахгүй) ── */
+/* ── Багц тус бүрийн график — 2 баганад (нарийн дэлгэцэд 1) ── */
 .grid {
   flex: none;
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+}
+@media (max-width: 1180px) {
+  .grid { grid-template-columns: 1fr; }
 }
 
 .subContractor { font-size: 0.68rem !important; color: var(--ink-3); }
+
+/* ── Хоцрогдлын нэгдсэн alert зурвас ── */
+.alertStrip {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 16px;
+  border: 1px solid color-mix(in srgb, #e11d48 40%, var(--line));
+  border-left: 4px solid #e11d48;
+  border-radius: 12px;
+  background: color-mix(in srgb, #e11d48 6%, var(--surface));
+}
+.alertHd { font-size: 0.8rem; font-weight: 700; color: var(--ink); }
+.alertList { display: flex; flex-wrap: wrap; gap: 8px; }
+.alertItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 99px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+}
+.alertItem b { font-variant-numeric: tabular-nums; }
+.alertItem:hover { filter: brightness(1.12); }
+.alertRed { border-color: color-mix(in srgb, #e11d48 55%, var(--line)); }
+.alertRed b { color: #e11d48; }
+.alertYellow { border-color: color-mix(in srgb, #f59e0b 55%, var(--line)); }
+.alertYellow b { color: #f59e0b; }
+
+/* ── Хоцрогдолтой панел — ТОД улаанаар анивчина ── */
+@keyframes lagPulseRed {
+  0%, 100% {
+    border-color: #e11d48;
+    box-shadow: 0 0 0 3px rgb(225 29 72 / 0.55), 0 0 26px 8px rgb(225 29 72 / 0.30);
+    background: color-mix(in srgb, #e11d48 10%, var(--surface));
+  }
+  50% {
+    border-color: color-mix(in srgb, #e11d48 25%, var(--line));
+    box-shadow: 0 0 0 0 rgb(225 29 72 / 0);
+    background: var(--surface);
+  }
+}
+@keyframes lagPulseYellow {
+  0%, 100% {
+    border-color: #f59e0b;
+    box-shadow: 0 0 0 2px rgb(245 158 11 / 0.45), 0 0 18px 5px rgb(245 158 11 / 0.22);
+    background: color-mix(in srgb, #f59e0b 7%, var(--surface));
+  }
+  50% {
+    border-color: color-mix(in srgb, #f59e0b 25%, var(--line));
+    box-shadow: 0 0 0 0 rgb(245 158 11 / 0);
+    background: var(--surface);
+  }
+}
+.panelLagRed {
+  border-color: #e11d48;
+  animation: lagPulseRed 1s ease-in-out infinite;
+}
+.panelLagYellow {
+  border-color: color-mix(in srgb, #f59e0b 60%, var(--line));
+  animation: lagPulseYellow 1.6s ease-in-out infinite;
+}
+
+/* Хоцрогдол хэмжсэн сарын БИЕТ багана — ӨӨРИЙН өнгөөрөө (var(--glow)) ТОД
+   пульсэлнэ: гэрэлтэлт (drop-shadow) томроод багасна, тод судал ургаж хатна,
+   бага зэрэг opacity савлана. Өнгө хувирахгүй тул легендтэй зөрчилдөхгүй;
+   улаан/шар зэрэглэлийг зөвхөн ХУРДААР ялгана (улаан хурдан, шар удаан). */
+@keyframes barPulse {
+  0%, 100% {
+    opacity: 1;
+    stroke-width: 0.5;
+    filter: drop-shadow(0 0 1px var(--glow));
+  }
+  50% {
+    opacity: 0.6;
+    stroke-width: 3.5;
+    filter: drop-shadow(0 0 10px var(--glow)) drop-shadow(0 0 4px var(--glow));
+  }
+}
+.barBlinkRed {
+  stroke: var(--glow);
+  animation: barPulse 0.75s ease-in-out infinite;
+}
+.barBlinkYellow {
+  stroke: var(--glow);
+  animation: barPulse 1.25s ease-in-out infinite;
+}
+
+/* Хөдөлгөөн мэдрэг хэрэглэгчид — анивчилтгүй, тогтмол өнгөт хүрээ/багана */
+@media (prefers-reduced-motion: reduce) {
+  .panelLagRed, .panelLagYellow, .barBlinkRed, .barBlinkYellow { animation: none; }
+}
+
+/* Панелийн толгойн badge-ууд босоо баганад */
+.badges {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+.lagBadge {
+  padding: 4px 12px;
+  border-radius: 99px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.lagRed {
+  color: #fff;
+  background: #e11d48;
+}
+.lagYellow {
+  color: #1a1408;
+  background: #f59e0b;
+}
 
 /* Толгойн «Олгогдох нийт санхүүжилт» — өмнө шилжүүлсэн + сарын хуваарь */
 .totBadge {

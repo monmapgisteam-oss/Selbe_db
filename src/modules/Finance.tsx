@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, type MouseEvent } from 'react';
+import { useMemo, useState, type MouseEvent, type CSSProperties } from 'react';
 import { Data, Empty } from '@/components/ui';
 import { useAsync } from '@/lib/useAsync';
 import { queryFeatures } from '@/lib/query';
@@ -50,7 +50,7 @@ const PHYS = '#a855f7'; // биет гүйцэтгэлийн хувь (шошг�
 type Row = Record<string, unknown>;
 
 /** Нэг сарын цэг: төлөвлөгөө + олгосон + биет гүйцэтгэл */
-type MonthPt = {
+export type MonthPt = {
   label: string; // «2025-10»
   amount: number; // тухайн сард авах санхүүжилт ₮ (төлөвлөгөө)
   amountCum: number; // өссөн төлөвлөгөө ₮
@@ -60,12 +60,12 @@ type MonthPt = {
 };
 
 /** Багц бүрийн IPC: сар → олгосон нийлбэр */
-type GivenMap = Map<string, Map<string, number>>;
+export type GivenMap = Map<string, Map<string, number>>;
 
 /** Багц бүрийн биет гүйцэтгэл: сар → % (блокуудын дундаж, тухайн сарын эцсээр) */
-type PhysMap = Map<string, Map<string, number>>;
+export type PhysMap = Map<string, Map<string, number>>;
 
-type FinData = { contracts: Row[]; given: GivenMap; phys: PhysMap };
+export type FinData = { contracts: Row[]; given: GivenMap; phys: PhysMap };
 
 // ═══════════════════════════════════════════════════════════
 //  AREA ГРАФИК (shadcn gradient загвар) — нэг цуваа: сарын авах дүн ₮.
@@ -73,7 +73,18 @@ type FinData = { contracts: Row[]; given: GivenMap; phys: PhysMap };
 //  X тэнхлэгт он сар (товчлохгүй) + хүрэх өссөн хувь шараар.
 // ═══════════════════════════════════════════════════════════
 
-function ComboChart({ items, height = 280 }: { items: MonthPt[]; height?: number }) {
+export function ComboChart({
+  items,
+  height = 280,
+  lagMonth,
+  lagLvl,
+}: {
+  items: MonthPt[];
+  height?: number;
+  /** Хоцрогдол хэмжсэн сар — тэр сарын БИЕТ багана анивчина */
+  lagMonth?: string;
+  lagLvl?: 'red' | 'yellow' | null;
+}) {
   const [hi, setHi] = useState<number | null>(null);
   // Нэг баганат бүтэн өргөнд ойролцоо — 12 сар × ~133px слот: бүтэн дүн давхцахгүй
   const W = 1600;
@@ -126,7 +137,11 @@ function ComboChart({ items, height = 280 }: { items: MonthPt[]; height?: number
           const hp = it.phys > 0 ? Math.max(3, (Math.min(100, it.phys) / 100) * plotH) : 0;
           const kGiven = 1;
           const kPhys = hasGiven ? 2 : 1;
-          const dim = hi != null && hi !== i;
+          // Бүдгэрүүлэлт: hover байвал түүнээс бусад; hover-гүй ч ХОЦРОГДЛЫН сар
+          // байвал тэр сараас бусад БҮХ сар бүдгэрч, хоцрогдсон сар тодорно.
+          const lagFocus = hi == null && lagMonth != null && lagLvl != null;
+          // Хоцрогдсон сар — тод (opacity 1), бусад сар бүдэг. Hover давамгайлна.
+          const gOpacity = hi != null ? (hi === i ? 1 : 0.5) : lagFocus ? (lagMonth === it.label ? 1 : 0.28) : 1;
           // Шошгоны байрлал: нэг слот доторх шошгууд ойртвол дээш нь түлхэж салгана
           const planLblY = baseY - h - (i % 2 === 0 ? 6 : 18);
           let givenLblY = baseY - hg - (i % 2 === 0 ? 18 : 6);
@@ -139,7 +154,7 @@ function ComboChart({ items, height = 280 }: { items: MonthPt[]; height?: number
           );
           while (taken.some((y) => Math.abs(y - physLblY) < 12)) physLblY -= 12;
           return (
-            <g key={it.label} opacity={dim ? 0.55 : 1}>
+            <g key={it.label} opacity={gOpacity}>
               {it.amount > 0 && (
                 <>
                   <rect x={barX(i, 0)} y={baseY - h} width={barW} height={h} rx={4} fill={PLAN} />
@@ -170,7 +185,23 @@ function ComboChart({ items, height = 280 }: { items: MonthPt[]; height?: number
               )}
               {it.phys > 0 && (
                 <>
-                  <rect x={barX(i, kPhys)} y={baseY - hp} width={barW} height={hp} rx={4} fill={PHYS} />
+                  <rect
+                    x={barX(i, kPhys)}
+                    y={baseY - hp}
+                    width={barW}
+                    height={hp}
+                    rx={4}
+                    fill={PHYS}
+                    stroke={PHYS}
+                    style={{ ['--glow']: PHYS } as CSSProperties}
+                    className={
+                      lagMonth === it.label && lagLvl
+                        ? lagLvl === 'red'
+                          ? f.barBlinkRed
+                          : f.barBlinkYellow
+                        : undefined
+                    }
+                  />
                   {/* Биет гүйцэтгэлийн хувь — баганынхаа дээр */}
                   <text
                     x={barX(i, kPhys) + barW / 2}
@@ -215,9 +246,14 @@ function ComboChart({ items, height = 280 }: { items: MonthPt[]; height?: number
 // ═══════════════════════════════════════════════════════════
 //  ДАТА
 // ═══════════════════════════════════════════════════════════
-export function Finance() {
-  const q = useAsync<FinData>(async () => {
-    const S = TASK_SHEET.fields;
+
+/**
+ * Санхүүжилтийн бүх дата — CASHFLOW2 (төлөвлөгөө) + IPC (олгосон, цэвэрлэсэн) +
+ * TASK_SHEET (биет гүйцэтгэл, сарын эцсийн байдлаар).
+ * ⚠️ export — «Барилгын цогц хяналт» (Tsogts) мөн энэ ГАНЦ ачаалагчийг ашиглана.
+ */
+export async function loadFinData(): Promise<FinData> {
+  const S = TASK_SHEET.fields;
     const [contracts, ipc, sheet] = await Promise.all([
       queryFeatures(CASHFLOW2.url, { outFields: ['*'], orderBy: `${CASHFLOW2.oid} ASC` }),
       queryFeatures(IPC_LOG.url, { outFields: ['*'] }),
@@ -289,8 +325,11 @@ export function Finance() {
       });
     }
 
-    return { contracts, given, phys };
-  }, []);
+  return { contracts, given, phys };
+}
+
+export function Finance() {
+  const q = useAsync<FinData>(loadFinData, []);
 
   return (
     <div className={f.frame}>
@@ -306,7 +345,7 @@ export function Finance() {
 // ═══════════════════════════════════════════════════════════
 
 /** Гэрээний мөрөөс сарын цэгүүд — ЯГ датаных нь дагуу + IPC олгосон + биет гүйцэтгэл */
-function contractMonths(r: Row, given: GivenMap, phys: PhysMap): MonthPt[] {
+export function contractMonths(r: Row, given: GivenMap, phys: PhysMap): MonthPt[] {
   const C = CASHFLOW2.fields;
   const byMon = given.get(pkgKey(r[C.pkg2])) ?? given.get(pkgKey(r[C.pkg]));
   const ph = phys.get(bagtsKey(r[C.pkg2])) ?? phys.get(bagtsKey(r[C.pkg]));
@@ -319,6 +358,30 @@ function contractMonths(r: Row, given: GivenMap, phys: PhysMap): MonthPt[] {
     phys: ph?.get(m.label) ?? 0,
   }));
 }
+
+/**
+ * ХОЦРОГДЛЫН ШАЛГАЛТ — гүйцэтгэлийн ХУВИЙГ жишнэ (дүн биш):
+ * сүүлийн биет дататай сар дээр «төлөвлөсөн өссөн хувь (CF)» − «бодит биет %».
+ * Хоёул бөглөгдсөн үед л утга буцаана — өрөөсгөл дататай харьцуулалт хийхгүй.
+ */
+export function lagOf(months: MonthPt[]): { month: string; planned: number; actual: number; gap: number } | null {
+  const nowYm = new Date().toISOString().slice(0, 7);
+  let mi = -1;
+  months.forEach((m, i) => {
+    if (m.label <= nowYm && m.phys > 0) mi = i;
+  });
+  if (mi < 0) return null;
+  // Төлөвлөгөө: тухайн сар хүртэлх сүүлийн бөглөгдсөн өссөн хувь
+  let planned = 0;
+  for (let i = 0; i <= mi; i++) if (months[i].cumPct > 0) planned = months[i].cumPct;
+  if (planned <= 0) return null;
+  const actual = months[mi].phys;
+  return { month: months[mi].label, planned, actual, gap: planned - actual };
+}
+
+/** Хоцрогдлын зэрэглэл: ≥10% улаан, 5–10% шар, бусад нь alert биш */
+export const lagLevel = (gap: number): 'red' | 'yellow' | null =>
+  gap >= 10 ? 'red' : gap >= 5 ? 'yellow' : null;
 
 function FinanceBody({ d }: { d: FinData }) {
   const C = CASHFLOW2.fields;
@@ -342,6 +405,22 @@ function FinanceBody({ d }: { d: FinData }) {
     return { rows, list: [...map.entries()] };
   }, [d.contracts, d.given, d.phys, C.type]);
 
+  // Хоцрогдолтой багцууд — дээд alert зурвас + панел руу үсрэх холбоос
+  const lags = useMemo(() => {
+    const out: { id: string; title: string; gap: number; planned: number; actual: number; month: string }[] = [];
+    groups.list.forEach(([type, rows], gi) => {
+      rows.forEach(({ r, months }, i) => {
+        const lag = lagOf(months);
+        if (!lag || !lagLevel(lag.gap)) return;
+        const t4 = text(r[C.pkg2]);
+        const t3 = text(r[C.pkg]);
+        const title = t4 !== '—' && t4 !== '0' ? t4 : t3 !== '—' && t3 !== '0' ? t3 : type;
+        out.push({ id: `finp-${gi}-${i}`, title: title.replace(/\s+/g, ' '), ...lag });
+      });
+    });
+    return out.sort((a, b) => b.gap - a.gap);
+  }, [groups, C.pkg, C.pkg2]);
+
   return (
     <>
       <header className={f.pageHd}>
@@ -360,7 +439,41 @@ function FinanceBody({ d }: { d: FinData }) {
         </div>
       </header>
 
-      {groups.list.map(([type, rows]) => (
+      {/* ── Хоцрогдлын нэгдсэн alert — хувь голлосон ── */}
+      {lags.length > 0 && (
+        <div className={f.alertStrip} role="alert">
+          <p className={f.alertHd}>
+            ⚠ {lags.length} багц гүйцэтгэлийн хувиар төлөвлөгөөнөөс хоцорч байна
+          </p>
+          <div className={f.alertList}>
+            {lags.map((l) => (
+              <button
+                key={l.id}
+                type="button"
+                className={`${f.alertItem} ${lagLevel(l.gap) === 'red' ? f.alertRed : f.alertYellow}`}
+                title={`${l.month}: төлөвлөсөн ${l.planned.toFixed(1)}% · бодит ${l.actual.toFixed(1)}%`}
+                onClick={() => {
+                  const el = document.getElementById(l.id);
+                  if (!el) return;
+                  // ⚠️ Энэ контейнер дээр smooth scroll (scrollIntoView ч, scrollTo
+                  //    {behavior:'smooth'} ч) огт хөдөлдөггүй нь туршилтаар тогтоогдсон
+                  //    тул гүйдэг өвгийг олж ШУУД байрлуулна — очсон панел нь анивчдаг
+                  //    тул хэрэглэгч хаана буусанаа алдахгүй.
+                  let p = el.parentElement;
+                  while (p && p.scrollHeight <= p.clientHeight + 10) p = p.parentElement;
+                  if (p)
+                    p.scrollTop =
+                      p.scrollTop + el.getBoundingClientRect().top - p.getBoundingClientRect().top - 10;
+                }}
+              >
+                {l.title} <b>−{l.gap.toFixed(1)}%</b>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {groups.list.map(([type, rows], gi) => (
         <div key={type} className={f.group}>
           <header className={f.groupHd}>
             <h2>{type}</h2>
@@ -375,22 +488,39 @@ function FinanceBody({ d }: { d: FinData }) {
                 t4 !== '—' && t4 !== '0' ? t4 : t3 !== '—' && t3 !== '0' ? t3 : `Гэрээ ${i + 1}`;
               // Олгогдох нийт = өмнө шилжүүлсэн (CF028) + сарын хуваарийн нийлбэр
               const total = n(r[C.prevAmount]) + months.reduce((a, m) => a + m.amount, 0);
+              const lag = lagOf(months);
+              const lvl = lag ? lagLevel(lag.gap) : null;
               return (
-              <section key={i} className={f.panel} aria-label={text(r[C.name])}>
+              <section
+                key={i}
+                id={`finp-${gi}-${i}`}
+                className={`${f.panel} ${lvl === 'red' ? f.panelLagRed : lvl === 'yellow' ? f.panelLagYellow : ''}`}
+                aria-label={text(r[C.name])}
+              >
                 <header className={f.panelHd}>
                   <div>
                     <h3>{title}</h3>
                     <p>{text(r[C.name])}</p>
                     <p className={f.subContractor}>{text(r[C.contractor])}</p>
                   </div>
-                  {total > 0 && (
-                    <div className={f.totBadge}>
-                      <span>Олгогдох нийт санхүүжилт</span>
-                      <b>{num(total)} ₮</b>
-                    </div>
-                  )}
+                  <div className={f.badges}>
+                    {lag && lvl && (
+                      <span
+                        className={`${f.lagBadge} ${lvl === 'red' ? f.lagRed : f.lagYellow}`}
+                        title={`${lag.month}: төлөвлөсөн ${lag.planned.toFixed(1)}% · бодит ${lag.actual.toFixed(1)}%`}
+                      >
+                        {lvl === 'red' ? 'Хоцрогдол' : 'Анхаарах'} −{lag.gap.toFixed(1)}%
+                      </span>
+                    )}
+                    {total > 0 && (
+                      <div className={f.totBadge}>
+                        <span>Олгогдох нийт санхүүжилт</span>
+                        <b>{num(total)} ₮</b>
+                      </div>
+                    )}
+                  </div>
                 </header>
-                <ComboChart items={months} height={230} />
+                <ComboChart items={months} height={230} lagMonth={lag?.month} lagLvl={lvl} />
               </section>
               );
             })}

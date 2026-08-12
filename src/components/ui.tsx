@@ -24,7 +24,7 @@ export function Section({
   tone,
   children,
 }: {
-  title?: string;
+  title?: ReactNode;
   note?: ReactNode;
   tone?: 'primary';
   children: ReactNode;
@@ -360,6 +360,7 @@ export function Donut({
   nowrap = false,
   stack = false,
   leaders = false,
+  edge = 1,
 }: {
   items: { key: string; label: string; value: number; color: string; display?: ReactNode }[];
   size?: number;
@@ -377,6 +378,8 @@ export function Donut({
   stack?: boolean;
   /** Тайлбарыг доор жагсаахын оронд зүсмэг бүрээс ЗУРААС татаж гадна бичнэ */
   leaders?: boolean;
+  /** Захын шугамын зузааны үржүүлэгч (1 = анхдагч, 0.5 = хагас нарийн) */
+  edge?: number;
 }) {
   const sel = selected == null ? [] : Array.isArray(selected) ? selected : [selected];
   const hasSel = sel.length > 0;
@@ -408,7 +411,7 @@ export function Donut({
    */
   const fillOpacity = (key: string) => (isEmph(key) ? 0.55 : isDim(key) ? 0.08 : 0.3);
   const edgeOpacity = (key: string) => (isDim(key) ? 0.35 : 1);
-  const edgeWidth = (key: string) => (isEmph(key) ? 2.5 : 1.6);
+  const edgeWidth = (key: string) => (isEmph(key) ? 2.5 : 1.6) * edge;
   // Зүсмэгийн дотор/гадна радиус — band-ийн зузаан нь `width`
   const ri = r - width / 2;
   const ro = r + width / 2;

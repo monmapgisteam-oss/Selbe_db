@@ -41,7 +41,8 @@ const HUE = LAYER_BY_ID['mon:building'].hue;
 const INFRA_HUE = '#0891b2';
 /** «Тодорхойгүй / задраагүй» бүлэг — жинхэнэ ангилал мэт өнгөтэй байх ёсгүй */
 const BLANK_HUE = '#94a3b8';
-const BLOCK_LAYER = 'mon:building';
+// ⚠️ export — «Барилгын цогц хяналт» (Tsogts) мөн энэ давхаргаар ажиллана
+export const BLOCK_LAYER = 'mon:building';
 
 /** Блокуудыг FID-ээр нэрлэн шүүх — багцын нэр давхаргад бохир бичигдсэн байж болно */
 const oidWhere = (oids: number[]) =>
@@ -53,7 +54,8 @@ const meanOf = (vals: (number | null)[]) => {
   return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null;
 };
 
-type Pack = {
+// ⚠️ export — Tsogts (цогц хяналт) ижил бүтцээр ажиллана
+export type Pack = {
   /** `bagtsKey()`-ээр нормчилсон — жагсаалтын мөрийн онц */
   key: string;
   /** Дэлгэцэд гарах нэр */
@@ -88,6 +90,69 @@ function commonName(titles: string[]): string {
   return p.replace(/[\s·—-]+$/u, '').trim() || titles[0] || '';
 }
 
+/**
+ * БАГЦУУДЫГ УГСРАХ — Bagts ба Tsogts (цогц хяналт) хоёулаа энэ ГАНЦ логикоор.
+ * Цэвэр функц: эх сурвалжийн мөрүүдээс Pack[] бүтээнэ (дэлгэрэнгүй тайлбар нь
+ * файлын толгойд).
+ */
+export function buildPacks(rows: Block[] | null, cash: CashRow[], inv: InvRow[]): Pack[] {
+  /* ── Барилга угсралтын багц — эх нь БЛОКИЙН давхарга ── */
+  const build: Pack[] = [];
+  if (rows) {
+    const byName = new Map<string, Block[]>();
+    for (const b of rows) {
+      const k = b.bagts || '—';
+      const arr = byName.get(k);
+      if (arr) arr.push(b); else byName.set(k, [b]);
+    }
+    for (const [name, blocks] of byName) {
+      build.push({
+        key: bagtsKey(name),
+        name,
+        kind: 'build',
+        layerIds: [BLOCK_LAYER],
+        where: oidWhere(blocks.map((b) => b.oid)),
+        blocks: blocks.slice().sort((a, b) => a.blok.localeCompare(b.blok, 'mn', { numeric: true })),
+        households: blocks.reduce((s, b) => s + b.ail, 0),
+        progress: meanOf(blocks.map((b) => b.progress)),
+        cash: cash.find((c) => bagtsKey(c.zone) === bagtsKey(name)) ?? null,
+        invest: [],
+      });
+    }
+    build.sort((a, b) => a.name.localeCompare(b.name, 'mn', { numeric: true }));
+  }
+
+  /**
+   * ── Дэд бүтцийн багц ──
+   * ⚠️ Түлхүүрийн олонлог нь ДАВХАРГА ба ХӨРӨНГӨ ОРУУЛАЛТЫН НЭГДЭЛ. Зөвхөн
+   * давхаргаас авбал геометргүй мөнгөн багц (жиш. «БАГЦ-8.3») алга болно;
+   * зөвхөн INVEST-ээс авбал төсөв хараахан батлагдаагүй 16 багц алга болно.
+   */
+  const keys = new Set<string>([
+    ...Object.keys(PKG_BY_BAGTS),
+    ...inv.map((r) => bagtsKey(r.bagts)).filter(Boolean),
+  ]);
+  const infra: Pack[] = [...keys].map((key) => {
+    const layerIds = PKG_BY_BAGTS[key] ?? [];
+    const rowsInv = inv.filter((r) => bagtsKey(r.bagts) === key);
+    const titles = layerIds.map((id) => LAYER_BY_ID[id].title);
+    return {
+      key,
+      name: titles.length ? commonName(titles) : text(rowsInv[0]?.bagts, key),
+      kind: 'infra' as const,
+      layerIds,
+      where: null,
+      blocks: [],
+      households: 0,
+      progress: null,
+      cash: null,
+      invest: rowsInv,
+    };
+  }).sort((a, b) => a.name.localeCompare(b.name, 'mn', { numeric: true }));
+
+  return [...build, ...infra];
+}
+
 export function Bagts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const q = useBuildings();
   const cashQ = useCashflow();
@@ -106,66 +171,14 @@ export function Bagts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   /* Сонголтыг URL-д тусгана (replace — түүх урсгахгүй) */
   useEffect(() => { writeParams({ pkg: sel }); }, [sel]);
 
-  const packs = useMemo<Pack[]>(() => {
-    const cash = cashQ.state === 'ready' ? cashQ.data : [];
-    const inv = invQ.state === 'ready' ? invQ.data : [];
-
-    /* ── Барилга угсралтын багц — эх нь БЛОКИЙН давхарга ── */
-    const build: Pack[] = [];
-    if (q.state === 'ready') {
-      const byName = new Map<string, Block[]>();
-      for (const b of q.data.rows) {
-        const k = b.bagts || '—';
-        const arr = byName.get(k);
-        if (arr) arr.push(b); else byName.set(k, [b]);
-      }
-      for (const [name, blocks] of byName) {
-        build.push({
-          key: bagtsKey(name),
-          name,
-          kind: 'build',
-          layerIds: [BLOCK_LAYER],
-          where: oidWhere(blocks.map((b) => b.oid)),
-          blocks: blocks.slice().sort((a, b) => a.blok.localeCompare(b.blok, 'mn', { numeric: true })),
-          households: blocks.reduce((s, b) => s + b.ail, 0),
-          progress: meanOf(blocks.map((b) => b.progress)),
-          cash: cash.find((c) => bagtsKey(c.zone) === bagtsKey(name)) ?? null,
-          invest: [],
-        });
-      }
-      build.sort((a, b) => a.name.localeCompare(b.name, 'mn', { numeric: true }));
-    }
-
-    /**
-     * ── Дэд бүтцийн багц ──
-     * ⚠️ Түлхүүрийн олонлог нь ДАВХАРГА ба ХӨРӨНГӨ ОРУУЛАЛТЫН НЭГДЭЛ. Зөвхөн
-     * давхаргаас авбал геометргүй мөнгөн багц (жиш. «БАГЦ-8.3») алга болно;
-     * зөвхөн INVEST-ээс авбал төсөв хараахан батлагдаагүй 16 багц алга болно.
-     */
-    const keys = new Set<string>([
-      ...Object.keys(PKG_BY_BAGTS),
-      ...inv.map((r) => bagtsKey(r.bagts)).filter(Boolean),
-    ]);
-    const infra: Pack[] = [...keys].map((key) => {
-      const layerIds = PKG_BY_BAGTS[key] ?? [];
-      const rows = inv.filter((r) => bagtsKey(r.bagts) === key);
-      const titles = layerIds.map((id) => LAYER_BY_ID[id].title);
-      return {
-        key,
-        name: titles.length ? commonName(titles) : text(rows[0]?.bagts, key),
-        kind: 'infra' as const,
-        layerIds,
-        where: null,
-        blocks: [],
-        households: 0,
-        progress: null,
-        cash: null,
-        invest: rows,
-      };
-    }).sort((a, b) => a.name.localeCompare(b.name, 'mn', { numeric: true }));
-
-    return [...build, ...infra];
-  }, [q, cashQ, invQ]);
+  const packs = useMemo<Pack[]>(
+    () => buildPacks(
+      q.state === 'ready' ? q.data.rows : null,
+      cashQ.state === 'ready' ? cashQ.data : [],
+      invQ.state === 'ready' ? invQ.data : [],
+    ),
+    [q, cashQ, invQ],
+  );
 
   const active = packs.find((p) => p.key === sel) ?? null;
 
@@ -297,7 +310,7 @@ export function Bagts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
  * Гүйцэтгэлийн хувь → НЭГ ӨНГӨНИЙ сүүдэр (улаан→ногоон солонго биш). Өндөр
  * гүйцэтгэл тод, бага нь бүдэг — барилгын hue дээр (хэрэглэгчийн хүсэлт).
  */
-function levelColor(v: number | null): string {
+export function levelColor(v: number | null): string {
   return v == null ? BLANK_HUE : tint(HUE, v / 100);
 }
 
@@ -306,7 +319,7 @@ const invTotal = (rows: InvRow[]) => rows.reduce((a, r) => a + r.total, 0);
 
 /* ══════════════════ Багцын жагсаалт ══════════════════ */
 
-function PackList({
+export function PackList({
   title, note, packs, sel, onSel,
 }: {
   title: string;
@@ -361,7 +374,7 @@ function subInfra(p: Pack): string {
  * оруулахгүй). Багцуудын дунджийг дахин дундажлавал блок цөөтэй багц том
  * багцтай ижил жинтэй болж, төслийн явц гажина.
  */
-function PackKpi({ active, packs }: { active: Pack | null; packs: Pack[] }) {
+export function PackKpi({ active, packs }: { active: Pack | null; packs: Pack[] }) {
   const scope = active ? [active] : packs;
   const blocks = scope.reduce((s, p) => s + p.blocks.length, 0);
   const households = scope.reduce((s, p) => s + p.households, 0);
@@ -413,7 +426,7 @@ function PackKpi({ active, packs }: { active: Pack | null; packs: Pack[] }) {
  * Тэдгээрийг нэмбэл нэг ажлыг гурав тоолно. Зөрүүг нь ХАРУУЛАХ нь гол утга —
  * захирамж төсвөөс их бол өртөг өссөн гэсэн үг.
  */
-function ContractCard({ p }: { p: Pack }) {
+export function ContractCard({ p }: { p: Pack }) {
   const c = p.cash;
   if (!c) {
     return (
@@ -461,7 +474,7 @@ function ContractCard({ p }: { p: Pack }) {
  * гараагүй хэсэг нь эх үүсвэргүй үлддэг. Зөрүүг нуухгүй, тусад нь мөр болгоно —
  * эс бөгөөс диаграм «бүх мөнгө эх үүсвэртэй» гэсэн худал зураг өгнө.
  */
-function SourcesCard({ p }: { p: Pack }) {
+export function SourcesCard({ p }: { p: Pack }) {
   const c = p.cash;
   if (!c) return null;
   // ⚠️ НЭГ ӨНГӨ (тодоос бүдгэр) — эх сурвалж бүр «өөр утга»гүй, зөвхөн харьцаагаа
@@ -489,7 +502,7 @@ function SourcesCard({ p }: { p: Pack }) {
   );
 }
 
-function MonthsCard({ p }: { p: Pack }) {
+export function MonthsCard({ p }: { p: Pack }) {
   const c = p.cash;
   if (!c || !c.months.some((m) => m > 0)) return null;
   // Бусад чарттай ИЖИЛ — хэвтээ бар, нэг өнгө (тодоос бүдгэр). Их олголттой
@@ -511,7 +524,7 @@ function MonthsCard({ p }: { p: Pack }) {
  * ⚠️ Бөглөгдөөгүй блокийг ХАСАХГҮЙ, 0 гэж ч зурахгүй: «мэдээлэлгүй» гэж бичнэ.
  * 0%-иар зурвал тайлан ирээгүй блок нь ажил эхлээгүйтэй андуурагдана.
  */
-function BlocksCard({ p }: { p: Pack }) {
+export function BlocksCard({ p, title = 'Блок бүрийн гүйцэтгэл' }: { p: Pack; title?: string }) {
   const withData = p.blocks.filter((b) => b.progress != null).length;
   const { zoomToWhere, setHighlight } = useMap();
   /** Сонгосон блок — дарахад зурагт тодруулж ойртоно, дахин дарахад болино */
@@ -525,7 +538,7 @@ function BlocksCard({ p }: { p: Pack }) {
     zoomToWhere(BLOCK_LAYER, w);
   };
   return (
-    <Section title="Блок бүрийн гүйцэтгэл" note={`${num(withData)}/${num(p.blocks.length)} бүртгэлтэй`}>
+    <Section title={title} note={`${num(withData)}/${num(p.blocks.length)} бүртгэлтэй`}>
       <Bars
         color={HUE}
         max={100}
@@ -555,7 +568,7 @@ function BlocksCard({ p }: { p: Pack }) {
  * захирамж, магадлалаар батлагдсан дүн, хоёр дахь нь захирамж гараагүй таамаг.
  * Нийлүүлбэл батлагдаагүй мөнгө батлагдсан мэт харагдана.
  */
-function InvestCard({ p }: { p: Pack }) {
+export function InvestCard({ p }: { p: Pack }) {
   if (!p.invest.length) {
     return (
       <Section tone="primary" title={p.name}>
@@ -605,7 +618,7 @@ function InvestCard({ p }: { p: Pack }) {
   );
 }
 
-function InvestSourceCard({ p }: { p: Pack }) {
+export function InvestSourceCard({ p }: { p: Pack }) {
   if (!p.invest.length) return null;
   // НЭГ ӨНГӨ (тодоос бүдгэр) — их дүнтэй нь тод; «задраагүй» саарал.
   const named0 = INVEST.sources
@@ -646,7 +659,7 @@ function InvestSourceCard({ p }: { p: Pack }) {
  * метр). CAD-ийн `Length_km`/`Area_m2` талбар зарим давхаргад хоосон тул
  * тэдгээрийг эх болговол хэмжээ чимээгүй 0 болно.
  */
-function LayersCard({ p }: { p: Pack }) {
+export function LayersCard({ p }: { p: Pack }) {
   const q = usePkgTotals(p.layerIds);
   if (!p.layerIds.length) {
     return (
