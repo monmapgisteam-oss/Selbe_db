@@ -3,28 +3,37 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   applyUpdates,
-  BLD,
   computeAll,
-  FLD,
-  F_ACT,
-  F_PLAN,
   loadRows,
   touchedIndexes,
-  type B32Row,
-} from "./bagts32";
+  type SheetRow,
+} from "./bagtsSheet";
+import {
+  loadSchema,
+  pkgFloors,
+  PKG_GROUPS,
+  PKGS,
+  type Pkg,
+  type Schema,
+} from "./bagts.pkg";
+import { ACTUAL, distinct } from "./ags";
+import { useColWidths } from "./colWidths";
 import st from "./sheet.module.css";
 
-// «Гүйцэтгэл шинэ» — Багц 3.2-ын `9F_publish` хуудас (Bagts_3_2/FeatureServer/0)
-// excel-ийнхээ бүх баганаар. Дизайн нь «Гүйцэтгэл бөглөх»-тэй нэг (`.xl`
-// хүснэгт, царцсан толгой, давхаргын товч, ногоон «нийтлээгүй» нүд).
+// «Гүйцэтгэл шинэ» — багцуудын `*_final_publish` хуудас excel-ийнхээ бүх
+// баганаар. Дизайн нь «Гүйцэтгэл бөглөх»-тэй нэг (`.xl` хүснэгт, царцсан
+// толгой, давхаргын товч, ногоон «нийтлээгүй» нүд).
 //
 // «Гүйцэтгэл бөглөх»-өөс ялгаатай нь: тэнд нүд бүр = тусдаа feature, энд МӨР
-// бүр = нэг feature бөгөөд 12 барилга нь түүний 12 талбар. Тиймээс засвар нь
-// шинэ мөр үүсгэдэггүй, зөвхөн талбар шинэчилдэг (applyEdits/updates).
+// бүр = нэг feature бөгөөд блокууд нь түүний талбарууд. Тиймээс засвар нь шинэ
+// мөр үүсгэдэггүй, зөвхөн талбар шинэчилдэг (applyEdits/updates).
+//
+// Багц бүрийн блокийн тоо (4…22) ба талбарын нэрс ӨӨР тул аль нь ч энд хатуу
+// бичигдээгүй — `bagts.pkg.ts → loadSchema` үйлчилгээнээс нь таьж авна.
 //
 // Харагдаж буй тоонууд нь ХАДГАЛАГДСАН утга биш, excel-ийн томъёогоор ЭНД
-// бодогдсон утгууд (`bagts32.ts` → computeAll). Publish хийхэд эвдэрсэн бүлгийн
-// нийлбэрүүд (#REF!) орж ирсэн тул хадгалагдсаныг шууд харуулах боломжгүй.
+// бодогдсон утгууд (`bagtsSheet.ts` → computeAll). Publish хийхэд эвдэрсэн
+// бүлгийн нийлбэрүүд (#REF!) орж ирсэн тул хадгалагдсаныг харуулах боломжгүй.
 
 const cls = (names: string) =>
   names.split(/\s+/).filter(Boolean).map((n) => st[n] || n).join(" ");
@@ -53,12 +62,15 @@ const qty = (v: number | null) =>
   v == null ? "" : Number(v.toFixed(3)).toLocaleString("en-US");
 const dt = (ms: number | null) =>
   ms == null ? "" : new Date(ms).toISOString().slice(0, 10);
-/** `<input type="date">`-ийн утга ↔ ms (UTC — үйлчилгээний огноо UTC шөнө дунд). */
-const msToInput = (ms: number | null) => (ms == null ? "" : dt(ms));
+/** «YYYY-MM-DD» ↔ ms (UTC — үйлчилгээний огноо UTC шөнө дунд). */
 const inputToMs = (s: string) => (s ? Date.parse(s + "T00:00:00Z") : null);
 
 export default function FillNew() {
-  const [rows, setRows] = useState<B32Row[]>([]);
+  const [pkg, setPkg] = useState<Pkg>(PKGS[5]); // Багц 3.2 — анх бэлэн болсон нь
+  const [sc, setSc] = useState<Schema | null>(null);
+  /** Тайлангийн огноонууд — «Гүйцэтгэл бөглөх» табтай НЭГ эх сурвалжаас. */
+  const [dates, setDates] = useState<string[]>([]);
+  const [rows, setRows] = useState<SheetRow[]>([]);
   const [asOf, setAsOf] = useState<number | null>(null);
   const [asOfOrig, setAsOfOrig] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
@@ -70,20 +82,44 @@ export default function FillNew() {
   const [val, setVal] = useState("");
   const [hover, setHover] = useState<{ i: number; b: number | null } | null>(null);
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
+  const { style: colStyle, grip, resetAll, resized } = useColWidths("fillnew");
 
+  // Тайлангийн огнооны жагсаалт — нэг л удаа. Алдаа гарвал чимээгүй өнгөрнө:
+  // хадгалагдсан огноо нь доор ямар ч тохиолдолд сонголт болж нэмэгддэг.
+  useEffect(() => {
+    let alive = true;
+    distinct("ognoo", ACTUAL)
+      .then((d) => alive && setDates([...new Set(d.map(String).filter(Boolean))].sort()))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // Багц солигдох бүрд бүдүүвч + мөрүүдийг шинээр татна. Хуучин багцын
+  // хариу хожуу ирээд шинийг дарж бичихээс `alive` хамгаална.
   useEffect(() => {
     let alive = true;
     setBusy(true);
-    loadRows()
-      .then(({ rows, asOf }) => {
+    setErr("");
+    setRows([]);
+    setSc(null);
+    setPending({});
+    setEdit(null);
+    loadSchema(pkg)
+      .then(async (schema) => {
+        const r = await loadRows(pkg, schema);
         if (!alive) return;
-        setRows(rows);
-        setAsOf(asOf);
-        setAsOfOrig(asOf);
+        setSc(schema);
+        setRows(r.rows);
+        setAsOf(r.asOf);
+        setAsOfOrig(r.asOf);
         // Эхлээд ангилал хүртэл (гүн 0..2) — 1400 мөр × 60 багана нэг дор
         // зурвал хөтөч удаашрана. «Бүгд» товчоор бүрэн дэлгэнэ.
         setCollapsed(
-          new Set(rows.filter((r) => r.group && r.depth === 2).map((r) => r.oid)),
+          new Set(
+            r.rows.filter((x) => x.group && x.depth === 2).map((x) => x.oid),
+          ),
         );
       })
       .catch((e) => alive && setErr(String(e.message || e)))
@@ -91,11 +127,20 @@ export default function FillNew() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [pkg]);
+
+  // Үйлчилгээнд огноо огт бичигдээгүй бол `<select>` эхний мөрөө харуулах ч
+  // төлөв нь `null` хэвээр үлдэж хүснэгт бүхэлдээ хоосон харагдана. Тиймээс
+  // хамгийн сүүлийн тайлангийн огноогоор нөхнө (нийтлэхэд л хадгалагдана).
+  useEffect(() => {
+    if (asOf == null && dates.length) setAsOf(inputToMs(dates[dates.length - 1]));
+  }, [asOf, dates]);
+
+  const nBld = sc?.bld.length ?? 0;
 
   const calc = useMemo(
-    () => (asOf == null ? [] : computeAll(rows, asOf, pending)),
-    [rows, asOf, pending],
+    () => (asOf == null || !nBld ? [] : computeAll(rows, nBld, asOf, pending)),
+    [rows, nBld, asOf, pending],
   );
 
   // Хаагдсан бүлгийн доорх мөрүүд. Гүн буурах хүртэл нуугдана.
@@ -135,12 +180,12 @@ export default function FillNew() {
   const dirtyCount =
     Object.keys(pending).length + (asOf !== asOfOrig ? 1 : 0);
 
-  const origStr = (r: B32Row, b: number) => {
+  const origStr = (r: SheetRow, b: number) => {
     const p = r.act[b];
     return p == null ? "" : String(Math.round(p * 1000) / 10);
   };
 
-  const commit = (r: B32Row, b: number, raw: string) => {
+  const commit = (r: SheetRow, b: number, raw: string) => {
     const key = `${r.oid}:${b}`;
     const t = raw.trim().replace(",", ".");
     setEdit(null);
@@ -156,7 +201,7 @@ export default function FillNew() {
 
   const publish = useCallback(async () => {
     // ⚠️ busy — Ctrl+S auto-repeat үед олон зэрэгцээ applyEdits илгээгдэхээс сэргийлнэ.
-    if (busy || asOf == null || dirtyCount === 0) return;
+    if (busy || asOf == null || dirtyCount === 0 || !sc) return;
     setBusy(true);
     setErr("");
     try {
@@ -170,24 +215,26 @@ export default function FillNew() {
         asOf !== asOfOrig
           ? rows.map((_, i) => i)
           : touchedIndexes(rows, editedOids);
-      const c = computeAll(rows, asOf, pending);
+      const c = computeAll(rows, nBld, asOf, pending);
       const updates = idx.map((i) => {
-        const a: Record<string, unknown> = { [FLD.oid]: rows[i].oid };
-        for (let b = 0; b < BLD.length; b++) {
-          a[F_ACT[b]] = c[i].act[b];
-          a[F_PLAN[b]] = c[i].plan[b];
+        const a: Record<string, unknown> = { [sc.f.oid]: rows[i].oid };
+        for (let b = 0; b < nBld; b++) {
+          a[sc.act[b]] = c[i].act[b];
+          a[sc.plan[b]] = c[i].plan[b];
         }
-        a[FLD.plan] = c[i].I;
-        a[FLD.act] = c[i].J;
-        a[FLD.ratio] = c[i].K;
-        a[FLD.wE] = c[i].E; // Одоо байгаа = C × Бодит гүйцэтгэл
+        a[sc.f.plan] = c[i].I;
+        a[sc.f.act] = c[i].J;
+        // ⚠️ Зарим багцад «Төлөвлөгөө биелэлт» ба «Одоо байгаа» багана огт
+        //    байхгүй — байхгүй талбар рүү бичвэл applyEdits бүхэлдээ унана.
+        if (sc.f.ratio) a[sc.f.ratio] = c[i].K;
+        if (sc.f.wE) a[sc.f.wE] = c[i].E; // Одоо байгаа = C × Бодит гүйцэтгэл
         return a;
       });
-      // $BH$2 — төлөвлөгөөт хувь бүхэлдээ энэ огноогоор бодогддог тул
+      // Шинэчлэгдсэн огноо — төлөвлөгөөт хувь бүхэлдээ үүгээр бодогддог тул
       // өөрчилсөн бол хамт хадгална (эс тэгвэл үйлчилгээ өөртэйгээ зөрнө).
-      if (asOf !== asOfOrig && rows.length)
-        updates.push({ [FLD.oid]: rows[0].oid, [FLD.asOf]: asOf });
-      await applyUpdates(updates);
+      if (asOf !== asOfOrig && rows.length && sc.f.asOf)
+        updates.push({ [sc.f.oid]: rows[0].oid, [sc.f.asOf]: asOf });
+      await applyUpdates(pkg, updates);
       // Хадгалагдсан утгыг локал мөрүүдэд буулгаж, «нийтлээгүй» төлвийг арилгана.
       setRows((prev) =>
         prev.map((r, i) => {
@@ -202,7 +249,7 @@ export default function FillNew() {
     } finally {
       setBusy(false);
     }
-  }, [rows, asOf, asOfOrig, pending, dirtyCount, busy]);
+  }, [pkg, sc, nBld, rows, asOf, asOfOrig, pending, dirtyCount, busy]);
 
   // Ctrl+S — «Гүйцэтгэл бөглөх»-тэй ижил.
   useEffect(() => {
@@ -216,6 +263,16 @@ export default function FillNew() {
     return () => window.removeEventListener("keydown", h);
   }, [publish]);
 
+  const floorOpts = useMemo(() => pkgFloors(pkg.group), [pkg.group]);
+
+  // ⚠️ Үйлчилгээнд ХАДГАЛАГДСАН огноо тайлангийн жагсаалтад байхгүй байж болно
+  // (жишээ нь 2026-07-05). Түүнийг сонголт болгож нэмэхгүй бол `<select>`
+  // өөрөө өөр огноо руу үсэрч, төлөвлөгөөт хувь чимээгүй өөрчлөгдөнө.
+  const dateOpts = useMemo(() => {
+    const cur = dt(asOf);
+    return [...new Set(cur ? [...dates, cur] : dates)].sort();
+  }, [dates, asOf]);
+
   /** Enter/Tab — дараагийн засварлаж болох мөр рүү (баганадаа доошоо). */
   const nextEditable = (i: number, b: number, step: number) => {
     for (let k = i + step; k >= 0 && k < rows.length; k += step)
@@ -223,31 +280,62 @@ export default function FillNew() {
     return null;
   };
 
-  if (err && !rows.length)
-    return (
-      <div className={st.wrap}>
-        <p className={st.error}>{err}</p>
-      </div>
-    );
-
+  // ⚠️ Алдаа гарсан ч эрт `return` хийхгүй — эс тэгвэл багц сонгогч алга болж
+  // хэрэглэгч өөр багц руу шилжих аргагүй үлдэнэ.
   return (
     <div className={st.wrap}>
       <div className={st.toolbar}>
-        <span className={st.field}>Багц 3.2 — 9F_publish</span>
         <label className={st.field}>
-          Шинэчлэгдсэн огноо{" "}
-          <input
-            type="date"
+          Багц{" "}
+          <select
             className={st.select}
-            value={msToInput(asOf)}
+            value={pkg.group}
+            disabled={busy}
+            onChange={(e) => setPkg(pkgFloors(e.target.value)[0])}
+          >
+            {PKG_GROUPS.map((g) => (
+              <option key={g} value={g}>{g}</option>
+            ))}
+          </select>
+        </label>
+        {/* Хувилбар — зөвхөн 9F ба 12F ХОЁУЛАА хуудастай багцад (1, 2, 4-2).
+            Бусад багцад ганц хувилбартай тул сонгогч ч харагдахгүй.
+            ⚠️ «Давхарга» товчнуудтай андуурахгүйн тулд «Давхар» гэж нэрлээгүй —
+            тэр нь модны гүн, энэ нь барилгын давхрын тоо. */}
+        {floorOpts.length > 1 && (
+          <label className={st.field}>
+            Хувилбар{" "}
+            <select
+              className={st.select}
+              value={pkg.key}
+              disabled={busy}
+              onChange={(e) =>
+                setPkg(PKGS.find((p) => p.key === e.target.value) ?? pkg)
+              }
+            >
+              {floorOpts.map((p) => (
+                <option key={p.key} value={p.key}>{p.floors}F</option>
+              ))}
+            </select>
+          </label>
+        )}
+        <label className={st.field}>
+          Огноо{" "}
+          <select
+            className={st.select}
+            value={dt(asOf)}
             onChange={(e) => {
-              // ⚠️ Хоосон утга (огноог арилгах) → null болговол calc=[] болж бүх
-              // мөр чимээгүй алга болно — тиймээс хуучин огноогоо хэвээр үлдээнэ.
+              // ⚠️ Хоосон утга → null болговол calc=[] болж бүх мөр чимээгүй
+              // алга болно — тиймээс задлагдахгүй бол хуучнаа хэвээр үлдээнэ.
               const ms = inputToMs(e.target.value);
               if (ms != null) setAsOf(ms);
             }}
-            title="Төлөвлөгөөт хувь бүхэлдээ энэ огноогоор бодогдоно ($BH$2)"
-          />
+            title="Төлөвлөгөөт хувь бүхэлдээ энэ огноогоор бодогдоно (excel-ийн «Шинэчлэгдсэн огноо»)"
+          >
+            {dateOpts.map((d) => (
+              <option key={d} value={d}>{d}</option>
+            ))}
+          </select>
         </label>
         <span className={st.field}>
           Давхарга
@@ -259,6 +347,15 @@ export default function FillNew() {
             <button className={st.layerBtn} onClick={() => collapseToLayer(5)} title="Бүх ажил дэлгэх">Бүгд</button>
           </span>
         </span>
+        {resized && (
+          <button
+            className={st.layerBtn}
+            onClick={resetAll}
+            title="Чирж өөрчилсөн бүх баганы өргөнийг анхны хэмжээнд нь буцаана"
+          >
+            Өргөн сэргээх
+          </button>
+        )}
         <button
           className={st.publishBtn}
           onClick={publish}
@@ -269,15 +366,6 @@ export default function FillNew() {
         </button>
         {busy && <span className={st.muted}>ажиллаж байна…</span>}
       </div>
-
-      <p className={st.hint}>
-        Зөвхөн бодит гүйцэтгэлийн нүд (5/1–5/12) засагдана; бусад нь excel-ийн
-        томъёогоор энд бодогдоно — Мөнгөн дүн = Обьём×Нэгж өртөг, Хувийн жин =
-        дүн/эцгийн дүн, <b>Одоо байгаа = Хувийн жин × Бодит гүйцэтгэл</b>,
-        төлөвлөгөөт хувь = эхлэх/дуусах огноо ба шинэчлэгдсэн огноо, бүлгийн мөр
-        = хүүхдийнхээ жинтэй дундаж. Нийтлэхэд засварласан мөр ба түүний дээд
-        бүлгүүд шинэчлэгдэнэ.
-      </p>
 
       {err && <p className={st.error}>{err}</p>}
 
@@ -293,36 +381,37 @@ export default function FillNew() {
         </div>
       )}
 
-      {rows.length > 0 && (
+      {rows.length > 0 && sc && (
         <div className={st.scroll}>
           <table
             className={cls("xl b32")}
+            style={colStyle}
             onMouseLeave={() => setHover(null)}
           >
             <thead>
               <tr>
-                <th className={cls("fz c-no")}>№</th>
-                <th className={cls("fz c-ajil")}>Ажил</th>
-                <th className={cls("c-w")}>Хувийн жин</th>
-                <th className={cls("c-w")} title="Нийт төсөлд эзлэх">Хувийн жин</th>
-                <th className={cls("c-w")}>Хувийн жин- Одоо байгаа</th>
-                <th className={cls("c-w")}>Обьём</th>
-                <th className={cls("c-money")}>Нэгж өртөг</th>
-                <th className={cls("c-money")}>Мөнгөн дүн</th>
-                <th className={cls("c-calc")}>Төлөвлөгөөт гүйцэтгэл</th>
-                <th className={cls("c-calc")}>Бодит гүйцэтгэл</th>
-                <th className={cls("c-calc")}>Төлөвлөгөө биелэлт</th>
-                {BLD.map((b) => (
-                  <th key={`a${b}`} className={cls("bld")}>{b}-гүйцэтгэл</th>
+                <th className={cls("fz c-no")}>№<i {...grip("no")} /></th>
+                <th className={cls("fz c-ajil")}>Ажил<i {...grip("ajil")} /></th>
+                <th className={cls("c-w")}>Хувийн жин<i {...grip("w")} /></th>
+                <th className={cls("c-w")} title="Нийт төсөлд эзлэх">Хувийн жин<i {...grip("w")} /></th>
+                <th className={cls("c-w")}>Хувийн жин- Одоо байгаа<i {...grip("w")} /></th>
+                <th className={cls("c-vol")}>Обьём<i {...grip("vol")} /></th>
+                <th className={cls("c-money")}>Нэгж өртөг<i {...grip("money")} /></th>
+                <th className={cls("c-money")}>Мөнгөн дүн<i {...grip("money")} /></th>
+                <th className={cls("c-calc")}>Төлөвлөгөөт гүйцэтгэл<i {...grip("calc")} /></th>
+                <th className={cls("c-calc")}>Бодит гүйцэтгэл<i {...grip("calc")} /></th>
+                <th className={cls("c-calc")}>Төлөвлөгөө биелэлт<i {...grip("calc")} /></th>
+                {sc.bld.map((b) => (
+                  <th key={`a${b}`} className={cls("bld")}>{b}-гүйцэтгэл<i {...grip("bld")} /></th>
                 ))}
-                {BLD.map((b) => (
-                  <th key={`p${b}`} className={cls("bld")}>{b} барилга -төлөвлөгөөт</th>
+                {sc.bld.map((b) => (
+                  <th key={`p${b}`} className={cls("bld")}>{b} барилга -төлөвлөгөөт<i {...grip("bld")} /></th>
                 ))}
-                {BLD.map((b) => [
-                  <th key={`s${b}`} className={cls("c-date")}>{b} барилга - Эхлэх</th>,
-                  <th key={`e${b}`} className={cls("c-date")}>{b} барилга - Дуусах</th>,
+                {sc.bld.map((b) => [
+                  <th key={`s${b}`} className={cls("c-date")}>{b} барилга - Эхлэх<i {...grip("date")} /></th>,
+                  <th key={`e${b}`} className={cls("c-date")}>{b} барилга - Дуусах<i {...grip("date")} /></th>,
                 ])}
-                <th className={cls("c-date")}>Шинэчлэгдсэн огноо</th>
+                <th className={cls("c-date")}>Шинэчлэгдсэн огноо<i {...grip("date")} /></th>
               </tr>
             </thead>
             <tbody>
@@ -376,7 +465,7 @@ export default function FillNew() {
                     >
                       {wt(c.E)}
                     </td>
-                    <td className={cls("right c-w")} style={{ backgroundColor: bg }}>{qty(r.vol)}</td>
+                    <td className={cls("right c-vol")} style={{ backgroundColor: bg }}>{qty(r.vol)}</td>
                     <td className={cls("right c-money")} style={{ backgroundColor: bg }}>{money(r.unit)}</td>
                     <td className={cls("right c-money")} style={{ backgroundColor: bg }}>{money(c.H)}</td>
                     <td className={cls("num c-calc")} style={{ backgroundColor: rowHl ? HL_BG : CALC_BG }}>{pc(c.I, 1)}</td>
@@ -384,7 +473,7 @@ export default function FillNew() {
                     <td className={cls("num c-calc")} style={{ backgroundColor: rowHl ? HL_BG : CALC_BG }}>{pc(c.K, 1)}</td>
 
                     {/* Бодит гүйцэтгэл — цорын ганц засагддаг блок. */}
-                    {BLD.map((b, bi) => {
+                    {sc.bld.map((b, bi) => {
                       const key = `${r.oid}:${bi}`;
                       const dirty = key in pending;
                       const colHl = hover?.b === bi;
@@ -445,8 +534,8 @@ export default function FillNew() {
                       );
                     })}
 
-                    {/* Барилга-төлөвлөгөөт — огноо + $BH$2-оос бодогдоно. */}
-                    {BLD.map((b, bi) => (
+                    {/* Барилга-төлөвлөгөөт — огноо + шинэчлэгдсэн огноогоор бодогдоно. */}
+                    {sc.bld.map((b, bi) => (
                       <td
                         key={`p${b}`}
                         className={cls("num bld")}
@@ -457,7 +546,7 @@ export default function FillNew() {
                       </td>
                     ))}
 
-                    {BLD.map((b, bi) => [
+                    {sc.bld.map((b, bi) => [
                       <td key={`s${b}`} className={cls("num c-date")} style={{ backgroundColor: bg }}>
                         {dt(c.start[bi])}
                       </td>,

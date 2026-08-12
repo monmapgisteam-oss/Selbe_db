@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { WBS, type WbsRow } from "./wbs.data";
 import { constructionByBagts } from "./ags";
+import { useColWidths } from "./colWidths";
 import st from "./sheet.module.css";
 
 // Construction leaves (6.2.1.x, Орон сууц барилга угсралт) → service Багц. These
@@ -35,6 +36,7 @@ const hasKids = (i: number) => i + 1 < WBS.length && WBS[i + 1].depth > WBS[i].d
 // the design/дэд бүтэц/plan columns aren't in the feature service. Collapsible
 // by dotted № prefix.
 export default function Wbs() {
+  const { style: colStyle, grip } = useColWidths("wbs");
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [live, setLive] = useState<Record<string, number>>({});
   const [err, setErr] = useState("");
@@ -111,16 +113,16 @@ export default function Wbs() {
       </span>
       {err && <p className={st.errorSm}>{err}</p>}
       <div className={st.scroll}>
-        <table className={cls("xl concl")}>
+        <table className={cls("xl concl")} style={colStyle}>
           <thead>
             <tr>
-              <th className={cls("c-no")}>№</th>
-              <th className={cls("c-ajil")}>Ажлын нэр</th>
-              <th className={cls("c-jin")}>Хэсэгт</th>
-              <th className={cls("c-jin")}>Төсөлд</th>
-              <th className={cls("c-done")}>Төлөвлөгөө</th>
-              <th className={cls("c-done")}>Гүйцэтгэл</th>
-              <th className={cls("c-dutuu")}>Биелэлт</th>
+              <th className={cls("c-no")}>№<i {...grip("no")} /></th>
+              <th className={cls("c-ajil")}>Ажлын нэр<i {...grip("ajil")} /></th>
+              <th className={cls("c-jin")}>Хэсэгт<i {...grip("jin")} /></th>
+              <th className={cls("c-jin")}>Төсөлд<i {...grip("jin")} /></th>
+              <th className={cls("c-done")}>Төлөвлөгөө<i {...grip("done")} /></th>
+              <th className={cls("c-done")}>Гүйцэтгэл<i {...grip("done")} /></th>
+              <th className={cls("c-dutuu")}>Биелэлт<i {...grip("dutuu")} /></th>
             </tr>
           </thead>
           <tbody>

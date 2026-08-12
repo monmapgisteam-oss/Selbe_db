@@ -1,76 +1,19 @@
-// «Багц 3.2» — Bagts_3_2/FeatureServer/0 дээрх `9F_publish` хуудасны толь.
+// Багцын `*_final_publish` хуудасны нэгдсэн толь — 10 үйлчилгээнд НЭГ код.
+//
 // Мөр бүр = excel-ийн нэг мөр (ObjectID = excel мөр − 1), багана бүр = excel-ийн
-// нэг багана. Талбарын нэрс нь AGOL-д publish хийхэд толгойн мөрөөс автоматаар
-// үүссэн тул доогуур зураасны тоо жигд БИШ (толгойд ард нь зай байсан эсэхээс
-// хамаараад "барилга_" vs "барилга__") — тиймээс жагсаалтууд гараар бичигдсэн.
+// нэг багана. Талбарын нэрс багц бүрд өөр (AGOL толгойн мөрөөс автоматаар
+// үүсгэдэг тул доогуур зураасны тоо жигд БИШ, бичээсийн алдаа ч бий) — тиймээс
+// нэрийг хатуу бичихгүй, `bagts.pkg.ts → resolveSchema` ажиллах үедээ таьна.
 //
 // Тооцоолол: excel дэх томъёог энд давтан бодно. Publish хийсэн утгууд нь
 // зарим бүлэгт #REF!-ээс болж эвдэрсэн (жишээ нь «БАРИЛГА УГСРАЛТЫН АЖИЛ»
 // мөрийн нүднүүд 4e-05), тиймээс хадгалагдсан утгыг биш, бодсоныг харуулна.
 
 import { agsFetch, type Feature } from "./ags";
-import { TREE } from "./bagts32.tree";
+import { TREES } from "./bagts.trees";
+import type { Pkg, Schema } from "./bagts.pkg";
 
-export const B32_BASE =
-  "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/Bagts_3_2/FeatureServer/0";
-
-/** Барилга/блокийн 12 багана — excel-ийн L..W (гүйцэтгэл) толгойн нэрс. */
-export const BLD = [
-  "5/1", "5/2", "5/3", "5/4", "5/5", "5/6",
-  "5/7", "5/8", "5/9", "5/10", "5/11", "5/12",
-] as const;
-
-/** Бодит гүйцэтгэл (excel L..W) — засварлагдах цорын ганц баганууд. */
-export const F_ACT = [
-  "F5_1_гүйцэтгэл", "F5_2_гүйцэтгэл", "F5_3_гүйцэтгэл", "F5_4_гүйцэтгэл",
-  "F5_5_гүйцэтгэл", "F5_6_гүйцэтгэл", "F5_7_гүйцэтгэл", "F5_8_гүйцэтгэл",
-  "F5_9_гүйцэтгэл", "F5_10_гүйцэтгэл", "F5_11_гүйцэтгэл", "F5_12_гүйцэтгэл",
-];
-
-/** Барилга-төлөвлөгөөт (excel X..AI) — огноо + «шинэчлэгдсэн огноо»-оос бодогдоно. */
-export const F_PLAN = [
-  "F5_1_барилга__төлөвлөгөөт", "F5_2_барилга_төлөвлөгөөт",
-  "F5_3_барилга__төлөвлөгөөт", "F5_4_барилга_төлөвлөгөөт",
-  "F5_5_барилга__төлөвлөгөөт", "F5_6_барилга__төлөвлөгөөт",
-  "F5_7_барилга__төлөвлөгөөт", "F5_8_барилга__төлөвлөгөөт",
-  "F5_9_барилга__төлөвлөгөөт", "F5_10_барилга__төлөвлөгөөт",
-  "F5_11_барилга_төлөвлөгөөт", "F5_12_барилга_төлөвлөгөөт",
-];
-
-/** Эхлэх огноо (excel AJ, AL, AN, …). */
-export const F_START = [
-  "F5_1_барилга__Эхлэх", "F5_2_барилга___Эхлэх", "F5_3_барилга___Эхлэх",
-  "F5_4_барилга___Эхлэх", "F5_5_барилга__Эхлэх", "F5_6_барилга___Эхлэх",
-  "F5_7_барилга___Эхлэх", "F5_8_барилга___Эхлэх", "F5_9_барилга___Эхлэх",
-  "F5_10_барилга___Эхлэх", "F5_11_барилга__Эхлэх", "F5_12_барилга__Эхлэх",
-];
-
-/** Дуусах огноо (excel AK, AM, AO, …). */
-export const F_END = [
-  "F5_1_барилга__Дуусах", "F5_2_барилга___Дуусах", "F5_3_барилга___Дуусах",
-  "F5_4_барилга___Дуусах", "F5_5_барилга__Дуусах", "F5_6_барилга___Дуусах",
-  "F5_7_барилга___Дуусах", "F5_8_барилга___Дуусах", "F5_9_барилга___Дуусах",
-  "F5_10_барилга___Дуусах", "F5_11_барилга__Дуусах", "F5_12_барилга___Дуусах",
-];
-
-export const FLD = {
-  no: "F_", // № (excel A)
-  work: "Ажил", // excel B
-  wC: "Хувийн_жин", // excel C — эцэгтээ эзлэх жин
-  wD: "Хувийн_жин1", // excel D — нийт төсөлд эзлэх жин (H/H$11)
-  wE: "Хувийн_жин__Одоо_байгаа", // excel E
-  vol: "Обьём", // excel F
-  unit: "Нэгж_өртөг", // excel G
-  money: "Мөнгөн_дүн", // excel H
-  plan: "Төлөвлөгөөт_гүйцэтгэл", // excel I
-  act: "Бодит_гүйцэтгэл", // excel J
-  ratio: "Төлөвлөгөө_биелэлт", // excel K
-  asOf: "Шинэчлэгдсэн_огноо", // excel BH — $BH$2 нь тооцооны «өнөөдөр»
-  note: "F61",
-  oid: "ObjectID",
-} as const;
-
-export type B32Row = {
+export type SheetRow = {
   oid: number;
   no: string;
   work: string;
@@ -78,29 +21,32 @@ export type B32Row = {
   group: boolean;
   wC: number | null;
   wD: number | null;
-  // ⚠ `Хувийн_жин__Одоо_байгаа` (excel E) энд БАЙХГҮЙ: тэр нь C×J-ээс бүрэн
-  // бодогддог тул уншаад ч ашиглахгүй. Нийтлэхэд `FLD.wE`-рүү буцааж бичнэ.
+  // ⚠ `Хувийн жин- Одоо байгаа` (excel E) энд БАЙХГҮЙ: тэр нь C×J-ээс бүрэн
+  // бодогддог тул уншаад ч ашиглахгүй. Нийтлэхэд `f.wE`-рүү буцааж бичнэ.
   vol: number | null;
   unit: number | null;
   money: number | null;
-  act: (number | null)[]; // хадгалагдсан 12 бодит гүйцэтгэл
+  act: (number | null)[]; // хадгалагдсан блок бүрийн бодит гүйцэтгэл
   start: (number | null)[]; // ms epoch
   end: (number | null)[];
-  note: string;
 };
 
 const num = (v: unknown): number | null =>
   v == null || v === "" || !Number.isFinite(Number(v)) ? null : Number(v);
 
-/** Бүх мөрийг (1429) татна — maxRecordCount 2000 тул нэг хуудсанд багтдаг ч хуудаслая. */
-export async function loadRows(): Promise<{ rows: B32Row[]; asOf: number | null }> {
+/** Багцын бүх мөрийг татна — maxRecordCount 2000 тул хуудаслая. */
+export async function loadRows(
+  pkg: Pkg,
+  sc: Schema,
+): Promise<{ rows: SheetRow[]; asOf: number | null }> {
+  const tree = TREES[pkg.key] ?? "";
   const feats: Feature[] = [];
   for (let offset = 0; ; ) {
-    const j = await agsFetch(`${B32_BASE}/query`, {
+    const j = await agsFetch(`${pkg.url}/query`, {
       where: "1=1",
       outFields: "*",
       returnGeometry: "false",
-      orderByFields: "ObjectID ASC",
+      orderByFields: `${sc.f.oid} ASC`,
       resultRecordCount: "2000",
       resultOffset: String(offset),
     });
@@ -110,18 +56,18 @@ export async function loadRows(): Promise<{ rows: B32Row[]; asOf: number | null 
     offset += fs.length;
   }
 
-  // $BH$2 — excel-ийн 2-р мөрийн «Шинэчлэгдсэн огноо» нь бүх төлөвлөгөөт
+  // Excel-ийн 2-р мөрийн «Шинэчлэгдсэн огноо» ($BH$2 г.м.) нь бүх төлөвлөгөөт
   // хувийн лавлах цэг. Мөр бүрт биш, зөвхөн тэнд бичигдсэн.
   let asOf: number | null = null;
-  const rows: B32Row[] = [];
+  const rows: SheetRow[] = [];
   for (const f of feats) {
     const a = f.attributes;
-    const oid = Number(a[FLD.oid]);
-    if (asOf == null) asOf = num(a[FLD.asOf]);
-    const work = String(a[FLD.work] ?? "").trim();
-    const no = String(a[FLD.no] ?? "").trim();
+    const oid = Number(a[sc.f.oid]);
+    if (asOf == null && sc.f.asOf) asOf = num(a[sc.f.asOf]);
+    const work = String(a[sc.f.work] ?? "").trim();
+    const no = String(a[sc.f.no] ?? "").trim();
     if (!work && !no) continue; // хуудасны сүүлийн хоосон мөрүүд
-    const ch = TREE[oid - 1] ?? "0";
+    const ch = tree[oid - 1] ?? "0";
     const group = ch >= "A" && ch <= "E";
     rows.push({
       oid,
@@ -129,15 +75,16 @@ export async function loadRows(): Promise<{ rows: B32Row[]; asOf: number | null 
       work,
       depth: group ? ch.charCodeAt(0) - 65 : Number(ch),
       group,
-      wC: num(a[FLD.wC]),
-      wD: num(a[FLD.wD]),
-      vol: num(a[FLD.vol]),
-      unit: num(a[FLD.unit]),
-      money: num(a[FLD.money]),
-      act: F_ACT.map((k) => num(a[k])),
-      start: F_START.map((k) => num(a[k])),
-      end: F_END.map((k) => num(a[k])),
-      note: String(a[FLD.note] ?? ""),
+      wC: num(a[sc.f.wC]),
+      wD: num(a[sc.f.wD]),
+      vol: num(a[sc.f.vol]),
+      unit: num(a[sc.f.unit]),
+      money: num(a[sc.f.money]),
+      act: sc.act.map((k) => num(a[k])),
+      // ⚠ Огноогүй блок бий (Багц 3.1-ийн 5/2 — excel толгой нь эвдэрсэн);
+      //   тэнд төлөвлөгөөт хувь бодогдохгүй, `null` хэвээр үлдэнэ.
+      start: sc.start.map((k) => (k ? num(a[k]) : null)),
+      end: sc.end.map((k) => (k ? num(a[k]) : null)),
     });
   }
   return { rows, asOf };
@@ -148,8 +95,8 @@ export async function loadRows(): Promise<{ rows: B32Row[]; asOf: number | null 
 /**
  * Excel X3: `IF($BH$2<=AJ3,0,IF($BH$2>=AK3,1,($BH$2-AJ3)/(AK3-AJ3)))`
  * — эхлэх/дуусах огнооны хооронд шугаман интерполяци.
- * (Excel-ийн Z багана дээр `(AO3-AL3)` гэсэн бичлэгийн алдаа бий — 5/3 баганы
- * хуваарь буруу мөрөөс уншдаг. Энд зөв хэлбэрээр нь бодсон.)
+ * (Зарим багцын excel-д `(AO3-AL3)` гэсэн бичлэгийн алдаа бий — тэр багана
+ * хуваарийг буруу мөрөөс уншдаг. Энд зөв хэлбэрээр нь бодсон.)
  */
 export const planAt = (
   asOf: number,
@@ -163,8 +110,8 @@ export const planAt = (
 };
 
 export type Calc = {
-  plan: (number | null)[]; // excel X..AI
-  act: (number | null)[]; // excel L..W
+  plan: (number | null)[]; // блок бүрийн төлөвлөгөөт
+  act: (number | null)[]; // блок бүрийн бодит
   start: (number | null)[];
   end: (number | null)[];
   H: number | null; // Мөнгөн дүн (excel H)
@@ -176,16 +123,12 @@ export type Calc = {
   K: number; // Төлөвлөгөө биелэлт
 };
 
-/** `AVERAGE(IF(range="",0,range))` — хоосныг 0 гэж үзэн 12-т хуваана. */
-const avg12 = (v: (number | null)[]) =>
-  v.reduce<number>((s, x) => s + (x ?? 0), 0) / BLD.length;
-
 /**
  * Мөр бүрийн эцэг: өөрөөсөө бага гүнтэй хамгийн ойрын дээд мөр. Excel-ийн
- * нийлбэр томъёонуудаас гаргасан модтой яг таарахыг `bagts32.tree.ts`-д
- * шалгасан.
+ * нийлбэр томъёонуудаас гаргасан модтой яг таарахыг багц бүр дээр
+ * `tools/bagts-tree.mjs` шалгасан (зөрүү 0).
  */
-export function childIndexes(rows: B32Row[]): number[][] {
+export function childIndexes(rows: SheetRow[]): number[][] {
   const kids: number[][] = rows.map(() => []);
   const stack: number[] = [];
   rows.forEach((r, i) => {
@@ -198,7 +141,7 @@ export function childIndexes(rows: B32Row[]): number[][] {
 }
 
 /** Мөр бүрийн эцгийн индекс (эцэггүй бол −1). */
-function parentIndexes(rows: B32Row[]): number[] {
+function parentIndexes(rows: SheetRow[]): number[] {
   const p = new Array(rows.length).fill(-1);
   const stack: number[] = [];
   rows.forEach((r, i) => {
@@ -217,10 +160,10 @@ function parentIndexes(rows: B32Row[]): number[] {
  * C · Хувийн жин        `=H/H(эцэг)` — эцэгтээ эзлэх хувь (үндэс = 1)
  * D · Хувийн жин        `=H/H(үе шат)` — үе шатандаа эзлэх хувь
  * E · Одоо байгаа       леаф `=C*J`, бүлэг `=C*ΣE(хүү)` ← гүйцэтгэл өөрчлөгдөхөд ХӨДӨЛНӨ
- * X..AI · төлөвлөгөөт   леаф огноогоор интерполяци, бүлэг D-жинтэй дундаж
- * L..W · бодит          леаф засвар/хадгалсан, бүлэг D-жинтэй дундаж
- * AJ/AK · огноо         бүлэг MIN(эхлэх) / MAX(дуусах)
- * I / J                 `=AVERAGE(12 нүд)` (хоосон = 0)
+ * төлөвлөгөөт багана    леаф огноогоор интерполяци, бүлэг D-жинтэй дундаж
+ * бодит багана          леаф засвар/хадгалсан, бүлэг D-жинтэй дундаж
+ * эхлэх/дуусах          бүлэг MIN(эхлэх) / MAX(дуусах)
+ * I / J                 `=AVERAGE(блокийн нүднүүд)` (хоосон = 0)
  * K                     `=IF(I=0,0,J/I)`
  *
  * ⚠ «Бэлтгэл ажил» (A) бүлгийн хүүхдүүдэд жин огт байхгүй — excel дэх
@@ -231,13 +174,14 @@ function parentIndexes(rows: B32Row[]): number[] {
  * гүйцэтгэл ба J (доороос дээш) → E (C ба J-ээс хамаарна, доороос дээш).
  */
 export function computeAll(
-  rows: B32Row[],
+  rows: SheetRow[],
+  nBld: number,
   asOf: number,
   edits: Record<string, string> = {},
 ): Calc[] {
   const kids = childIndexes(rows);
   const par = parentIndexes(rows);
-  const n = BLD.length;
+  const n = nBld;
   const N = rows.length;
 
   // ── 1. H (Мөнгөн дүн), доороос дээш ────────────────────────────────────────
@@ -268,7 +212,11 @@ export function computeAll(
     const p = par[i];
     rootH[i] = p < 0 ? H[i] : rootH[p];
     C[i] =
-      p >= 0 && H[i] != null && H[p] ? H[i]! / H[p]! : p < 0 ? (rows[i].wC ?? 1) : rows[i].wC;
+      p >= 0 && H[i] != null && H[p]
+        ? H[i]! / H[p]!
+        : p < 0
+          ? (rows[i].wC ?? 1)
+          : rows[i].wC;
     D[i] = H[i] != null && rootH[i] ? H[i]! / rootH[i]! : rows[i].wD;
   }
 
@@ -307,16 +255,15 @@ export function computeAll(
         plan[b] = planAt(asOf, r.start[b], r.end[b]);
         const e = edits[`${r.oid}:${b}`];
         act[b] =
-          e === undefined
-            ? r.act[b]
-            : e.trim() === ""
-              ? null
-              : Number(e) / 100;
+          e === undefined ? r.act[b] : e.trim() === "" ? null : Number(e) / 100;
       }
     }
 
-    const I = avg12(plan);
-    const J = avg12(act);
+    // `AVERAGE(IF(range="",0,range))` — хоосныг 0 гэж үзэн блокийн тоонд хуваана.
+    const avg = (v: (number | null)[]) =>
+      v.reduce<number>((s, x) => s + (x ?? 0), 0) / n;
+    const I = avg(plan);
+    const J = avg(act);
 
     // E · Хувийн жин- Одоо байгаа. Леаф `=C*J`; бүлэг `=C*(ΣE хүүхэд)` —
     // хүүхдийн C нийлбэр 1 тул энэ нь бүлгийн хувьд ч `C*J`-тэй тэнцүү.
@@ -355,7 +302,7 @@ export function computeAll(
 
 /** Засварласан мөр + түүний бүх өвөг мөрийн индексүүд (нийтлэхэд шинэчлэгдэнэ). */
 export function touchedIndexes(
-  rows: B32Row[],
+  rows: SheetRow[],
   editedOids: Set<number>,
 ): number[] {
   const hit = new Set<number>();
@@ -374,12 +321,13 @@ export function touchedIndexes(
 
 /** `applyEdits` — 500-аар хуваан илгээнэ. */
 export async function applyUpdates(
+  pkg: Pkg,
   updates: Record<string, unknown>[],
 ): Promise<void> {
   for (let i = 0; i < updates.length; i += 500) {
     const chunk = updates.slice(i, i + 500);
     try {
-      const j = await agsFetch(`${B32_BASE}/applyEdits`, {
+      const j = await agsFetch(`${pkg.url}/applyEdits`, {
         updates: JSON.stringify(chunk.map((attributes) => ({ attributes }))),
         rollbackOnFailure: "true",
       });
