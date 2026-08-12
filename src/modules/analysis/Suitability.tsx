@@ -7,12 +7,13 @@ import type Polygon from '@arcgis/core/geometry/Polygon';
 
 import {
   INDICATORS, PARKING, MAP_LAYERS, BUILD_COST_PER_M2, DEFAULT_ECON_SHARE,
-  ACTIVATABLE_ZONE_TYPES, NO_DATA_COLOR,
-  type Indicator, type ParkingOpt, type CategoryKey,
+  ACTIVATABLE_ZONE_TYPES, NO_DATA_COLOR, BF, BUILDING_PURPOSE_OTHER,
+  GREEN, GREEN_LAYER_KEY,
+  type Indicator, type ParkingOpt, type CategoryKey, type GreenOpt,
 } from '@/lib/analysis/config';
 import {
   loadAnalysisCached, computeEconomics, computeRaw, defaultGreenCats,
-  type AnalysisData,
+  type AnalysisData, type BuildingPurposeStat,
 } from '@/lib/analysis/data';
 import { loadCostsCached, type Costs } from '@/lib/analysis/costs';
 import { ZONE_TYPES, ZONE_TYPE_EMPTY_HUE } from '@/lib/services';
@@ -50,7 +51,7 @@ import { loadBusStopsCached, busAccess, type BusStop } from './suit/busAccess';
 import { SuitLayerCatalog } from './suit/LayerCatalog';
 import { Icon } from '@/components/Icon';
 import { BlendCard } from './suit/BlendCard';
-import { CategoryPie, IndicatorPicker, Weights, Parking } from './suit/Urban';
+import { CategoryPie, IndicatorPicker, Weights, Parking, Green } from './suit/Urban';
 import { EconSummary, EconTune } from './suit/Economics';
 import { Ranking } from './suit/Ranking';
 import s from './suitability.module.css';
@@ -138,6 +139,8 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
   /** Трафик timeline-ийн цаг (замын симуляц + ирээдүйд газрын зургийн анимац) */
   const clock = useSimClock();
   const [parking, setParking] = useState<ParkingOpt>({ ...PARKING });
+  /** Ногоон байгууламжийн хэрэгцээг хэрхэн тооцох — «Ногоон байгууламж» карт */
+  const [greenOpt, setGreenOpt] = useState<GreenOpt>({ ...GREEN });
   const [greenCats] = useState<Set<string>>(() => defaultGreenCats());
   const [selected, setSelected] = useState<string | null>(null);
   /**
@@ -151,6 +154,13 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
    * картаас сонгоход энд нэмэгдэж, оноолол дахин тооцогдоно.
    */
   const [scoreOn, setScoreOn] = useState<Set<string>>(() => new Set());
+  /**
+   * БАРИЛГЫН зориулалтын шүүлт — унтраасан бүлгүүд (`BUILDING_PURPOSES[].key`).
+   * Хоосон = бүх барилга харагдана. ⚠️ Зөвхөн ГАЗРЫН ЗУРГИЙН харагдацад
+   * үйлчилнэ: бүсийн оноо барилгуудаас нэгтгэгддэг тул энд шүүвэл дүн өөрчлөгдөж,
+   * «би зөвхөн нуусан» гэж бодсон хэрэглэгч өөр оноо хараад төөрнө.
+   */
+  const [bldOff, setBldOff] = useState<Set<string>>(() => new Set());
   const [econOpt, setEconOpt] = useState<{ pricePerM2: number | null; perHa: number | null }>({
     pricePerM2: null, perHa: null,
   });
@@ -203,6 +213,40 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
       .sort((a, b) => ((order.indexOf(a) + 1) || 99) - ((order.indexOf(b) + 1) || 99))
       .map((type) => ({ type, count: cnt.get(type) ?? 0, color: ZONE_TYPES[type] ?? ZONE_TYPE_EMPTY_HUE }));
   }, [rows]);
+
+  /**
+   * Ногоон байгууламжийн давхаргыг газрын зурагт асаах.
+   * ⚠️ Аль хэдийн асаалттай бол төлөвийг ХӨНДӨХГҮЙ — эс бөгөөс хэрэглэгч
+   * гараар унтраасан ч карт руу дарах бүрд эргэж асч, тэмцэлдэнэ.
+   */
+  const showGreenLayer = useCallback(() => {
+    setLayerOn((v) => (v[GREEN_LAYER_KEY] ? v : { ...v, [GREEN_LAYER_KEY]: true }));
+  }, []);
+
+  /** Барилгын зориулалтын бүлгүүд — ачаалалтад нэгтгэгдсэн. */
+  const bldCats = useMemo<BuildingPurposeStat[]>(() => data?.buildingCats ?? [], [data]);
+
+  /**
+   * Барилгын давхаргын SQL шүүлт — унтраасан бүлгийн зориулалтуудыг хасна.
+   *
+   * ⚠️ Бүлгийн ХЭВ ШИНЖИЙГ (regex) БИШ, бодитоор байсан ТҮҮХИЙ утгуудыг
+   * жагсаана: ArcGIS-д кирилл regex байхгүй. Шинэ зориулалт нэмэгдвэл жагсаалтад
+   * ороогүй тул ХАРАГДАНА — өгөгдөл чимээгүй алга болохоос энэ нь дээр.
+   *
+   * ⚠️ SQL-д `NULL NOT IN (…)` нь ҮНЭН биш тул зориулалтгүй бичлэг ямар ч
+   * шүүлтэд алга болно. Тиймээс «Бусад» бүлэг ил үед `IS NULL`-ыг тусад нь
+   * зөвшөөрнө (зориулалтгүй бичлэг тэр бүлэгт тоологддог).
+   */
+  const bldWhere = useMemo(() => {
+    if (!bldOff.size) return null;
+    const hide = bldCats.filter((c) => bldOff.has(c.key));
+    const values = hide.flatMap((c) => c.values);
+    const otherOn = !bldOff.has(BUILDING_PURPOSE_OTHER.key);
+    if (!values.length) return otherOn ? null : `${BF.purpose} IS NOT NULL`;
+    const list = values.map((v) => `'${v.replace(/'/g, "''")}'`).join(',');
+    const not = `${BF.purpose} NOT IN (${list})`;
+    return otherOn ? `(${BF.purpose} IS NULL OR ${not})` : not;
+  }, [bldCats, bldOff]);
 
   /** Эрэмбэд орох бүс — оноолсон бүсээс ангиллын шүүлтээр (динамик). */
   const rankRows = useMemo(() => scoredRows.filter((r) => !catOff.has(r.type)), [scoredRows, catOff]);
@@ -790,6 +834,13 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
               />
             </Card>
 
+            {/* Барилгын ангилал — `Зориулалт_m`-ээр газрын зургийн барилгыг шүүх */}
+            {bldCats.length > 0 && (
+              <Card id="bldCat" title="Барилгын ангилал" collapsible>
+                <BuildingCatFilter cats={bldCats} off={bldOff} setOff={setBldOff} />
+              </Card>
+            )}
+
             {mode !== 'simulation' && (
             <Card
               title={mode === 'econ' ? 'Бүсийн эрэмбэ «Ашигт байдал»'
@@ -837,6 +888,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
               transportFaint={mapStyle === 'heat'}
               heat={heat}
               roadTile={bareReal}
+              bldWhere={bldWhere}
             />
 
             {/* Каталог — «Ерөнхий төлөвлөгөө»-тэй ижил ЗҮҮН талын БҮТЭН ӨНДӨР
@@ -989,6 +1041,24 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
                 <Parking rows={scoredRows} parking={parking} setParking={setParking} indicators={indicators} />
               </Card>
             )}
+
+            {/* Ногоон байгууламж — «Зогсоолын хэрэгцээ»-ний ижил зарчим.
+                ⚠️ Картыг ХӨНДӨХӨД газрын зурагт ногоон давхарга нь АВТОМАТААР
+                асна: тоо нь тайлбарладаг байгууламж хаана байгааг зэрэг харна
+                (хэрэглэгчийн хүсэлт, 2026-08-12). Унтраахыг нь хориглохгүй —
+                зөвхөн нэг удаа асаана. */}
+            {(mode === 'urban' || mode === 'indicator') && (
+              <Card id="green" title="Ногоон байгууламж" collapsible>
+                <div onPointerDown={showGreenLayer}>
+                  <Green
+                    rows={scoredRows}
+                    green={greenOpt}
+                    setGreen={(g) => { showGreenLayer(); setGreenOpt(g); }}
+                    indicators={indicators}
+                  />
+                </div>
+              </Card>
+            )}
           </>
           )
         }
@@ -1071,6 +1141,73 @@ function ZoneCatFilter({ cats, off, setOff, scoreOn, setScoreOn }: {
             <b style={{ fontVariantNumeric: 'tabular-nums', fontSize: 11, color: 'var(--muted)' }}>{c.count}</b>
             <span style={{ width: 14, textAlign: 'center', color: 'var(--accent)', fontSize: 12 }}>
               {on ? '✓' : (activatable ? '+' : '')}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * БАРИЛГЫН АНГИЛАЛ — `Зориулалт_m` талбарын бүлгүүд («Бүсийн ангилал»-ын ижил зан).
+ *
+ * ⚠️ Зөвхөн ГАЗРЫН ЗУРГИЙН харагдацыг шүүнэ (`definitionExpression`), ТООЦООГ
+ * хөндөхгүй: бүсийн хүн ам, FAR, зогсоол зэрэг нь барилгуудаас нэгтгэгддэг тул
+ * энд шүүвэл оноо чимээгүй өөрчлөгдөж, «би зөвхөн нуусан» гэж бодсон хэрэглэгч
+ * өөр дүн хараад төөрөх байв.
+ */
+function BuildingCatFilter({ cats, off, setOff }: {
+  cats: BuildingPurposeStat[];
+  off: Set<string>;
+  setOff: (s: Set<string>) => void;
+}) {
+  const allOn = off.size === 0;
+  const total = cats.reduce((a, c) => a + c.count, 0);
+  const shownN = cats.reduce((a, c) => a + (off.has(c.key) ? 0 : c.count), 0);
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
+        <span className={`${s.muted} ${s.xsmall}`}>
+          {cats.length} ангилал · {nf(shownN)}/{nf(total)} барилга
+        </span>
+        <button
+          type="button"
+          className={s.mini}
+          onClick={() => setOff(allOn ? new Set(cats.map((c) => c.key)) : new Set())}
+        >
+          {allOn ? 'Бүгдийг унтраах' : 'Бүгдийг асаах'}
+        </button>
+      </div>
+      {cats.map((c) => {
+        const on = !off.has(c.key);
+        return (
+          <button
+            key={c.key}
+            type="button"
+            aria-pressed={on}
+            // Бүлэгт ЯМАР зориулалтууд багтсаныг нээлгүйгээр харах
+            title={`${c.label} — ${nf(c.count)} барилга · ${nf(c.gfaM2)} м²${
+              c.values.length ? `\n${c.values.join(' · ')}` : ''}`}
+            onClick={() => {
+              const n = new Set(off);
+              if (n.has(c.key)) n.delete(c.key); else n.add(c.key);
+              setOff(n);
+            }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+              padding: '6px 8px', borderRadius: 8,
+              border: '1px solid var(--line)',
+              background: on ? 'var(--panel-2)' : 'transparent',
+              color: on ? 'var(--text)' : 'var(--muted)', textAlign: 'left',
+              transition: 'background .12s, opacity .12s, border-color .12s',
+            }}
+          >
+            <span style={{ width: 11, height: 11, borderRadius: 3, flex: 'none', background: c.color, opacity: on ? 1 : 0.35 }} />
+            <span style={{ flex: 1, minWidth: 0, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.label}</span>
+            <b style={{ fontVariantNumeric: 'tabular-nums', fontSize: 11, color: 'var(--muted)' }}>{c.count}</b>
+            <span style={{ width: 14, textAlign: 'center', color: 'var(--accent)', fontSize: 12 }}>
+              {on ? '✓' : ''}
             </span>
           </button>
         );

@@ -453,7 +453,9 @@
 /* ---------- Detail card ---------- */
 .detail {
   position: absolute; left: 14px; top: 14px; width: 352px; max-height: calc(100% - 28px);
-  background: rgba(22, 29, 39, .97); backdrop-filter: blur(10px);
+  /* ⚠️ Палитрын `--panel`-аас гаргана (урьд нь ХАТУУ бичсэн бараан өнгө байсан
+     тул цайвар горимд бараан карт дээр бараан текст болж уншигдахгүй байв). */
+  background: color-mix(in srgb, var(--panel) 97%, transparent); backdrop-filter: blur(10px);
   border: 1px solid var(--line); border-radius: 12px; overflow: auto;
   box-shadow: 0 14px 44px rgba(0, 0, 0, .6); z-index: 11;
 }
@@ -462,7 +464,8 @@
 .detail::-webkit-scrollbar-thumb { background: var(--scroll); border-radius: 7px }
 .dHead {
   padding: 13px 14px; border-bottom: 1px solid var(--line); position: sticky; top: 0;
-  background: rgba(22, 29, 39, .98); z-index: 2; display: flex; gap: 12px; align-items: center;
+  background: color-mix(in srgb, var(--panel) 98%, transparent);
+  z-index: 2; display: flex; gap: 12px; align-items: center;
   cursor: move; user-select: none; touch-action: none;
 }
 .dHead :global(.gauge) {
@@ -476,7 +479,8 @@
 
 .dSect { padding: 11px 14px; border-bottom: 1px solid var(--hover) }
 .dSect:last-child { border-bottom: 0 }
-.dSect h4 { margin: 0 0 8px; font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); font-weight: 600 }
+/* Хэсгийн гарчиг — ЦАГААН (бүх хэсэгт ижил; урьд нь бүдэг саарал байв) */
+.dSect h4 { margin: 0 0 8px; font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: var(--text); font-weight: 600 }
 
 .mRow { margin-bottom: 9px }
 .mRow:last-child { margin-bottom: 0 }
@@ -487,8 +491,10 @@
 .mTop :global(.v) { font-weight: 600; font-variant-numeric: tabular-nums }
 .mTop :global(.w) { color: var(--muted); font-size: 9.5px }
 .mNorm { font-size: 9.5px; margin: 0 0 3px }
+/* ⚠️ Норм ХАНГАСАН ба ЗӨРЧСӨН аль ч тохиолдолд НЭГ ногоон (урьд нь зөрчсөнийг
+   улаанаар бичдэг байв). Энэ мөр нь үнэлгээ биш, ШААРДЛАГА-ыг бичдэг; хангасан
+   эсэхийг ✓/✗ тэмдэг ба дээрх утгын өнгө (оноо) хэлнэ. Өгөгдөлгүй бол бүдэг. */
 .mNorm :global(.ok) { color: #4ade80 }
-.mNorm :global(.bad) { color: #f87171; font-weight: 600 }
 .mNorm span { color: var(--muted) }
 /* ⚠️ Барын геометр — порталын ui.tsx-ийн barTrack/barFill-тэй ИЖИЛ (5px, 99px
    радиус, ижил transition) — бүх дашбоардын диаграм нэг загвартай харагдана. */
@@ -510,6 +516,50 @@
 .dGrid b { font-size: 12px; font-variant-numeric: tabular-nums }
 .pos { color: #4ade80 }
 .neg { color: #f87171 }
+
+/* ══════════ Дэлгэрэнгүйн ДИАГРАМ ══════════
+   ⚠️ Ангилалт өнгө (`SuitDetail.tsx`-ийн C1/C2/C3) нь оноолтын ногоон→улаан
+   шатлалтай ОГТ давхцахгүй сонгогдсон — диаграмын өнгийг «үнэлгээ» гэж
+   уншихгүй. Утга бүр диаграмын хажууд ТЕКСТЭЭР ч бичигдэнэ (өнгө сохор,
+   хэвлэсэн хувилбарт ч мэдээлэл алдагдахгүй). */
+.chart { margin: 0 0 10px }
+.chart:last-child { margin-bottom: 0 }
+/* Диаграмын тайлбар — юуг юутай харьцуулж байгааг үгээр хэлнэ */
+.chCap { margin-top: 6px; font-size: 9.5px; color: var(--muted); line-height: 1.45 }
+.chCap b { color: var(--text-2); font-weight: 600 }
+
+/* Пайн диаграм ЗҮҮН, тайлбар нь БАРУУН талд зэрэгцэнэ (`Donut`-ын DOM дараалал).
+   ⚠️ Картын өргөн нарийхан тул `nowrap`: тайлбар доош унабал пай ганцаараа
+   мөр эзэлж, хэсэг нь хоосон үлдэнэ.
+   ⚠️ `ui.module.css`-ийн ангийн нэр ХЭШЛЭГДДЭГ тул нэрээр нь хандаж болохгүй —
+   бүтцээр (`> div`) барина. */
+.donutSide > div { flex-wrap: nowrap }
+
+/* ── ААЛЗНЫ (radar) ДИАГРАМ — үзүүлэлтүүдийн онооны профайл ──
+   8 тэнхлэг, 0–100 оноо. Тор нь олон өнцөгт (тойрог биш) — тэнхлэгийн тоог
+   нүдээр шууд тоолж болно. */
+.radar { display: block; margin: 0 auto; max-width: 100%; height: auto }
+.radarGrid { fill: none; stroke: var(--line); stroke-width: 1 }
+.radarSpoke { stroke: var(--line); stroke-width: 1 }
+.radarArea { fill: var(--accent); fill-opacity: .16; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round }
+/* ⚠️ Радарын БҮХ бичиг ЦАГААН (`--text`) — бүдэг саарал байхад нарийн шошго
+   ортофотогийн дэвсгэр дээр уншигдахгүй байв (хэрэглэгчийн хүсэлт). */
+.radarLbl { fill: var(--text); font-size: 8.5px }
+.radarTick { fill: var(--text); font-size: 7px; opacity: .75 }
+.radarCtr { fill: var(--text); font-size: 20px; font-weight: 700 }
+.radarCtrLbl { fill: var(--text); font-size: 7.5px }
+
+/* ── БОСОО БАГАНАН диаграм — 2–3 хэмжигдэхүүнийг нэг тэнхлэг дээр ── */
+.cols { display: flex; align-items: flex-end; gap: 14px; height: 88px; border-bottom: 1px solid var(--line) }
+.colItem { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; min-width: 0 }
+.colVal {
+  font-size: 10.5px; font-weight: 600; color: var(--text); text-align: center;
+  margin-bottom: 3px; font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.colBar { display: block; min-height: 2px; border-radius: 4px 4px 0 0; transition: height .6s var(--ease) }
+.colNames { display: flex; gap: 14px; margin-top: 5px }
+.colNames span { flex: 1; min-width: 0; font-size: 9.5px; color: var(--muted); text-align: center; line-height: 1.3 }
+
 
 /* ---------- Үзүүлэлт сонгох жагсаалт ---------- */
 .indHead {

@@ -27,6 +27,7 @@ import { layerUrl, LAYER_BY_ID, ZONE_FIELDS, zoneCanon, zoneRefValues, zoneType 
 import {
   WKID, SRC, ENGINEERING_IDS, SOCIAL_FACILITIES, GREEN_CATEGORIES,
   BF, isResidential, isSellable, EXCLUDED_ZONE_TYPES,
+  BUILDING_PURPOSES, BUILDING_PURPOSE_OTHER, buildingPurposeKey, ASSUME_MET,
   type ParkingOpt,
 } from './config';
 
@@ -111,6 +112,12 @@ export type Zone = {
 
   econ: Econ | null;
   raw: Record<string, number | null>;
+  /**
+   * `ASSUME_MET`-ээр ДАРАГДАХААС ӨМНӨХ бодит утгууд.
+   * ⚠️ Тооцоо зогсоогүй гэдгийн баталгаа: дарагдсан үзүүлэлтийн жинхэнэ утга
+   * энд бүтнээрээ хадгалагдана (`ASSUME_MET` хоосон бол `raw`-тай ижил).
+   */
+  rawActual: Record<string, number | null>;
 };
 
 export type SocialPart = {
@@ -157,6 +164,28 @@ export type AnalysisData = {
   zones: Zone[];
   /** Ногоон байгууламжийн `Layer` талбарт бодитоор байсан ангиллууд */
   greenCats: string[];
+  /** Барилгын зориулалтын бүлгүүд — «Барилгын ангилал» карт */
+  buildingCats: BuildingPurposeStat[];
+};
+
+/** Нэг зориулалтын бүлгийн нэгтгэл */
+export type BuildingPurposeStat = {
+  key: string;
+  label: string;
+  color: string;
+  count: number;
+  /** Барилгын нийт талбай (м²) */
+  gfaM2: number;
+  /** Оршин суугч (орон сууцны бүлэгт) эсвэл хүчин чадал (бусад бүлэгт) */
+  pop: number;
+  /**
+   * Бүлэгт бодитоор багтсан `Зориулалт_m`-ийн ТҮҮХИЙ утгууд.
+   * ⚠️ Газрын зургийн шүүлтэд (SQL `NOT IN`) хэрэгтэй: ArcGIS-д кирилл regex
+   * байхгүй тул бүлгийн хэв шинжийг тэнд давтаж чадахгүй.
+   */
+  values: string[];
+  /** Бүлэгт зориулалт нь ХООСОН/NULL бичлэг оров уу */
+  hasBlank: boolean;
 };
 
 /* ══════════════════ Ачаалалт ══════════════════ */
@@ -209,7 +238,7 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
 
   onProgress('Барилга байгууламж…', 22);
   const buildings = await fetchAll(url(SRC.buildings), [
-    'OBJECTID', 'ZONE_ID', BF.population, BF.households, BF.status,
+    'OBJECTID', 'ZONE_ID', BF.population, BF.capacity, BF.households, BF.status,
     BF.gfa, BF.purpose, BF.price,
   ], true);
 
@@ -304,6 +333,7 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
       parkingSupply: 0, parkingNeed: null, parkingGap: null,
       econ: null,
       raw: {},
+      rawActual: {},
     };
   });
 
@@ -314,7 +344,51 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
 
   onProgress('Бэлэн', 100);
 
-  return { zones, greenCats: [...greenCats].sort() };
+  return {
+    zones,
+    greenCats: [...greenCats].sort(),
+    buildingCats: groupBuildingPurposes(buildings),
+  };
+}
+
+/**
+ * Барилгуудыг ЗОРИУЛАЛТЫН бүлгээр нэгтгэнэ.
+ *
+ * ⚠️ Бодитоор БАЙГАА бүлгийг л буцаана — хоосон мөр жагсаалтыг сунгаад
+ * «энэ төрлийн барилга байхгүй» гэдгийг тоогоор нь давхар хэлэхгүй.
+ * Эрэмбэ нь тоогоор буурах, «Бусад» ямагт СҮҮЛД (үлдэгдлийн бүлэг).
+ */
+function groupBuildingPurposes(buildings: Feat[]): BuildingPurposeStat[] {
+  const agg = new Map<string, { count: number; gfaM2: number; pop: number; values: Set<string>; blank: boolean }>();
+  for (const f of buildings) {
+    const a = f.attributes;
+    const raw = String(a[BF.purpose] ?? '').trim();
+    const key = buildingPurposeKey(raw);
+    const b = agg.get(key) ?? { count: 0, gfaM2: 0, pop: 0, values: new Set<string>(), blank: false };
+    b.count += 1;
+    b.gfaM2 += n(a[BF.gfa]);
+    // Бүлэгт нэг л «хүн» багана — орон сууцны бүлэгт оршин суугч, бусдад хүчин чадал
+    b.pop += n(a[BF.population]) + n(a[BF.capacity]);
+    if (raw) b.values.add(raw); else b.blank = true;
+    agg.set(key, b);
+  }
+
+  const defs = [...BUILDING_PURPOSES.map((g) => ({ key: g.key, label: g.label, color: g.color })),
+    { ...BUILDING_PURPOSE_OTHER }];
+
+  return defs
+    .filter((d) => agg.has(d.key))
+    .map((d) => {
+      const b = agg.get(d.key)!;
+      return {
+        key: d.key, label: d.label, color: d.color,
+        count: b.count, gfaM2: b.gfaM2, pop: b.pop,
+        values: [...b.values].sort(), hasBlank: b.blank,
+      };
+    })
+    .sort((x, y) => (x.key === BUILDING_PURPOSE_OTHER.key ? 1
+      : y.key === BUILDING_PURPOSE_OTHER.key ? -1
+        : y.count - x.count));
 }
 
 /* ══════════════════ Барилгын нэгтгэлт ══════════════════ */
@@ -371,14 +445,19 @@ function aggregateBuildings(zones: Zone[], buildings: Feat[]) {
     a._zone = hit.id;
 
     const b = byZone.get(hit.id) ?? emptyAgg();
+    // ⚠️ ЭХ ТАЛБАРУУДААС шууд: `Population` = оршин суугч, `Huchin_chadal` =
+    //    хүчин чадал. Урьд нь `Total_population`-ыг зориулалтын regex-ээр
+    //    хуваадаг байсныг орлов (тоо ижил, ангилал нь эх өгөгдлийнх болов).
     const pop = n(a[BF.population]);
+    const cap = n(a[BF.capacity]);
     const gfa = n(a[BF.gfa]);
     const res = isResidential(a[BF.purpose]);
     const sell = isSellable(a[BF.status]);
     const value = sell ? gfa * n(a[BF.price]) : 0;
 
-    b.population += pop;
-    if (res) b.residentPop += pop; else b.capacityPop += pop;
+    b.population += pop + cap;
+    b.residentPop += pop;
+    b.capacityPop += cap;
     b.gfaM2 += gfa;
     if (sell) b.gfaSaleM2 += gfa;
     b.salesValue += value;
@@ -544,7 +623,7 @@ export function computeRaw(
   for (const z of zones) {
     // Оноололд орохгүй бүс — түүхий үзүүлэлт бодохгүй (raw хоосон → оноо null → саарал).
     // Гараар идэвхжүүлсэн ангилал бол ХАСАХГҮЙ (доор бодогдоно).
-    if (z.excluded && !scoreTypes?.has(z.type)) { z.raw = {}; continue; }
+    if (z.excluded && !scoreTypes?.has(z.type)) { z.raw = {}; z.rawActual = {}; continue; }
     z.greenM2 = Object.entries(z.greenByCat)
       .filter(([cat]) => activeGreen.has(cat))
       .reduce((a, [, v]) => a + v, 0);
@@ -559,13 +638,37 @@ export function computeRaw(
       far: z.zoneFar && z.zoneFar > 0 ? z.zoneFar : null,
       bcr: z.zoneBcr && z.zoneBcr > 0 ? z.zoneBcr : null,
       parking: z.parkingNeed && z.parkingNeed > 0 ? (z.parkingSupply / z.parkingNeed) * 100 : null,
-      // Нягтшил ба ногоон — ЗӨВХӨН оршин суугчаар (үйлчилгээний хүчин чадал орохгүй)
+      // Ногоон — ЗӨВХӨН оршин суугчаар: норм нь «нэг ОРШИН СУУГЧид ногдох м²»
       green: z.residentPop > 0 ? z.greenM2 / z.residentPop : null,
+      /**
+       * НЯГТШИЛ — ХОЁР ТУСДАА үзүүлэлт (хэрэглэгчийн шийдвэр, 2026-08-12).
+       *
+       * ⚠️ Хоёрыг НИЙЛҮҮЛЖ БОЛОХГҮЙ: сургуулийн суудал зэрэг хүчин чадал нь
+       * ойролцоох орон сууцны оршин суугчтай ДАВХАРДДАГ (сурагч гэртээ ч,
+       * сургууль дээрээ ч тоологддог) тул нийлбэр нь бодит ачааллыг хөөрөгдөнө.
+       *
+       * ⚠️ Зөвхөн оршин суугчаар бодвол орон сууцгүй атлаа барилгатай 27 бүс
+       * «өгөгдөлгүй» болж саарлаар харагддаг байсан — тэрхүү хоосон зайг
+       * `densityCap` нөхнө (жин нь 0 тул оноог хөндөхгүй).
+       */
       density: z.polyHa > 0 && z.residentPop > 0 ? z.residentPop / z.polyHa : null,
+      densityCap: z.polyHa > 0 && z.capacityPop > 0 ? z.capacityPop / z.polyHa : null,
       transit: z.transitM,
       engineering: z.engDistM,
       social: z.social?.score ?? null,
     };
+
+    /* ── ТҮР дүгнэлт ── `ASSUME_MET` дэх үзүүлэлтийг «норм хангасан» болгоно.
+       ⚠️ Бодит утгыг УСТГАХГҮЙ — `rawActual`-д бүтнээрээ үлдэнэ. Өгөгдөлгүй
+       (`null`) бүсэд ч хангасан гэж үзнэ: зорилго нь тэр үзүүлэлтийг оноололд
+       нөлөөлүүлэхгүй байх (эс бөгөөс жин нь дахин хуваарилагдаж, өөр
+       үзүүлэлтийн эзлэх хувийг чимээгүй өсгөнө). */
+    z.rawActual = z.raw;
+    const assumed = Object.entries(ASSUME_MET);
+    if (assumed.length) {
+      z.raw = { ...z.raw };
+      for (const [id, v] of assumed) z.raw[id] = v;
+    }
   }
 }
 
