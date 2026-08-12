@@ -182,18 +182,31 @@ export function Bagts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     zoomToWhere(id, active?.where ?? '1=1');
   }, [active, zoomToWhere]);
 
-  const loading = q.state === 'loading' || invQ.state === 'loading';
+  // ⚠️ cashQ-г ч хүлээнэ: эс бөгөөс cashflow хоцорч ирэх хооронд «бүртгэгдээгүй»
+  //    гэсэн түр зуурын худал мэдэгдэл анивчина.
+  const loading = q.state === 'loading' || cashQ.state === 'loading' || invQ.state === 'loading';
+  /**
+   * ⚠️ cashflow/INVEST хүсэлтийн АЛДААГ залгихгүй: `packs` дотор error төлөв
+   * хоосон массив мэт боловсордог тул алдааг энд шалгахгүй бол «бүртгэгдээгүй»
+   * гэсэн ХУДАЛ мэдэгдэл (ContractCard/InvestCard) гарна. Алдаатай үед
+   * `Data`-гийн алдааны UI (текст + «Дахин оролдох») харуулна.
+   */
+  const errQ: Async<unknown> | null =
+    cashQ.state === 'error' ? cashQ : invQ.state === 'error' ? invQ : null;
 
   return (
     <div className={o.pack}>
       <div className={o.kpi}>
-        <PackKpi active={active} packs={packs} />
+        {/* ⚠️ Алдаатай үед KPI гаргахгүй — мөнгөн дүн нь худал 0 болно */}
+        {!errQ && <PackKpi active={active} packs={packs} />}
       </div>
 
       {/* ЗҮҮН — багцын сонголт */}
       <aside className={`${o.side} ${o.left}`}>
         <h2 className={o.colHead}>Багц</h2>
-        {loading ? (
+        {errQ ? (
+          <Section title="Багцууд"><Data q={errQ}>{() => null}</Data></Section>
+        ) : loading ? (
           <Section title="Багцууд"><Empty label="Ачаалж байна…" /></Section>
         ) : (
           <>
@@ -256,7 +269,9 @@ export function Bagts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       {/* БАРУУН — сонгосон багцын дэлгэрэнгүй */}
       <aside className={`${o.side} ${o.right}`}>
         <h2 className={o.colHead}>Дэлгэрэнгүй</h2>
-        {!active ? (
+        {errQ ? (
+          <Data q={errQ}>{() => null}</Data>
+        ) : !active ? (
           <Empty label="Багц сонгоогүй байна." />
         ) : active.kind === 'build' ? (
           <>

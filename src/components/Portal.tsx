@@ -93,6 +93,11 @@ function useColumnResize(
     if (Number.isFinite(v) && v >= min && v <= max) { widthRef.current = v; setWidth(v); }
   }, [storageKey, min, max]);
 
+  // ⚠️ Чирэлтийн ДУНДУУР компонент unmount болбол `up()` хэзээ ч ажиллахгүй,
+  //    body-ийн класс үлдэж апп даяар курсор/текст сонголт эвдэрнэ (globals.css-ийн
+  //    `body.resizing *`) — unmount дээр заавал цэвэрлэнэ.
+  useEffect(() => () => { document.body.classList.remove('resizing', 'resizingRow'); }, []);
+
   const onPointerDown = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
     const save = (w: number) => {
       try { localStorage.setItem(storageKey, String(w)); } catch { /* private mode */ }
@@ -167,7 +172,16 @@ export default function Portal(
  */
 function Booting() {
   const { view } = useMap();
-  const [done, setDone] = useState(false);
+  /**
+   * ⚠️ Порталын зураггүй standalone харагдац (analysis, sheet, tailan, finance —
+   * `layers: []`) context-д view ХЭЗЭЭ Ч бүртгэдэггүй тул хүлээх дохио ирэхгүй,
+   * Booting 12с дэмий таглана — тэдгээрт ЭХНЭЭСЭЭ дууссан гэж үзнэ.
+   * (useState-ийн initializer-т нэг удаа тооцно — hooks-ийн дараалал тогтвортой.)
+   */
+  const [done, setDone] = useState(() => {
+    const v = VIEW_BY_KEY[initialView()];
+    return !!v.standalone && !v.layers.length;
+  });
   useEffect(() => {
     if (done) return;
     // ⚠️ Context дэх `view` нь dev StrictMode-ийн register(null) timing-ээс болж
@@ -357,8 +371,17 @@ function PortalContent(
    * шилжүүлж, хязгаарлагдсан хэрэглэгч эрхгүй агуулга үзэхээс сэргийлнэ.
    */
   useEffect(() => {
-    if (navScope === 'all' || !navScope.length) return;
-    if (!navScope.includes(view)) setView(navScope[0]);
+    // ⚠️ Хоосон массивыг «бүх эрх» гэж үзэж БОЛОХГҮЙ — эрхгүй deep-link бүрэн
+    //    зурагддаг байв. Хоосон хүрээтэй үед Root Portal-ыг огт зурдаггүй тул
+    //    энд navScope үргэлж 1+ гишүүнтэй.
+    if (navScope === 'all') return;
+    if (!navScope.includes(view)) {
+      // ⚠️ Redirect түүхэнд PUSH хийвэл Back → эрхгүй view сэргэж guard дахин
+      //    push — гарах аргагүй гогцоо. lastViewRef-ыг урьдчилан оноож URL
+      //    эффектийн push-ыг дарна: redirect нь replace байх ёстой.
+      lastViewRef.current = navScope[0];
+      setView(navScope[0]);
+    }
   }, [navScope, view, setView]);
 
   const pick = useCallback((attrs: Record<string, unknown> | null, layerId: string | null) => {

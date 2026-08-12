@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type CSSProperties, type Dispatch, type SetStateAction } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type Dispatch, type SetStateAction } from 'react';
 import { Section, Stats, Stat, Bars, Donut, Rows, Data, Empty } from '@/components/ui';
 import { Icon } from '@/components/Icon';
 import { LayerSwatch } from '@/components/LayerSwatch';
@@ -17,7 +17,7 @@ import {
 } from '@/lib/services';
 import { whereFor, qtyText, geomText, layerStats, type Totals } from '@/lib/totals';
 import { num, text, shade } from '@/lib/format';
-import { MonitorGeneral, MonitorDetail, MonitorBagts, BAGTS_FILTER } from './BuildingPanel';
+import { MonitorGeneral, MonitorDetail, MonitorBagts, BAGTS_FILTER, pickedBuilding, useTaskPerf } from './BuildingPanel';
 import s from './dashboard.module.css';
 
 /** «Бүртгэгдээгүй / Тодорхойгүй» бүлэг — жинхэнэ ангилал мэт харагдах ёсгүй */
@@ -792,6 +792,25 @@ function LayerDashboard({
 }) {
   const { setHighlight, zoomToLayer } = useMap();
   const [sel, setSel] = useState<string | null>(null);
+  /**
+   * ⚠️ Тодруулга ХОЦРОХООС сэргийлнэ. Шүүлт идэвхтэй байхад «‹ Жагсаалт»-аар
+   * буцах (unmount) эсвэл өөр давхарга сонгоход (remount болохгүй) хуучин
+   * WHERE-тэй featureEffect зурган дээр үлдэж, цуцлах удирдлага харагдахгүй
+   * байв. Cleanup нь ЗӨВХӨН өөрийн тавьсан тодруулгыг арилгана (ref-ээр
+   * шалгана) — эс бөгөөс бусад самбарын тодруулгыг дайрч цэвэрлэнэ.
+   */
+  const selRef = useRef(sel);
+  selRef.current = sel;
+  useEffect(() => () => { if (selRef.current != null) setHighlight(null); }, [setHighlight]);
+  const prevLayerRef = useRef(d.id);
+  useEffect(() => {
+    if (prevLayerRef.current === d.id) return;
+    prevLayerRef.current = d.id;
+    if (selRef.current != null) {
+      setSel(null);
+      setHighlight(null);
+    }
+  }, [d.id, setHighlight]);
   const where = whereFor(d, zone);
   const g = groupOf(d.id);
   const groupTitle = LAYER_GROUPS.find((x) => x.key === g)?.title ?? '';
@@ -1021,6 +1040,15 @@ function MonitorPanel({
   // Зүүн талд бүх барилгын ДУНДАЖ (`BuildingSummary`, Portal-д).
   const { active } = useFilter();
   /**
+   * ⚠️ Хүнд queryAll хүсэлтийг ЭНД нэг удаа дуудаж хоёр компонент руу prop-оор
+   * өгнө. Урьд нь General/Detail тус бүр өөрөө `useTaskPerf(b)` дууддаг байсан
+   * тул барилга сонгох бүрд ижил хуудаслалттай хүсэлт ХОЁР ДАВХАР явдаг байв
+   * (Portal-ын MonitorFrame `useBuildings`-ийг хуваалцдагтай ижил загвар).
+   * Багцын салаанд `b` нь null тул хүсэлт огт явахгүй.
+   */
+  const b = pickedBuilding(picked, pickedLayer);
+  const q = useTaskPerf(b);
+  /**
    * ⚠️ Барилга сонгоогүй байхад БАГЦ сонгогдвол (зүүн баганын «Багц тус бүрээр»)
    * энэ самбар хоосон «барилга дээр дарна уу» эсэргүүцэл харуулдаг байв. Одоо
    * тэр багцын ажлын төрөл бүрийн гүйцэтгэл гарна. Барилга сонгосон нь ДАВУУ:
@@ -1032,8 +1060,8 @@ function MonitorPanel({
 
   return (
     <>
-      <MonitorGeneral picked={picked} pickedLayer={pickedLayer} />
-      <MonitorDetail picked={picked} pickedLayer={pickedLayer} />
+      <MonitorGeneral b={b} q={q} />
+      <MonitorDetail b={b} q={q} />
     </>
   );
 }
@@ -1055,6 +1083,24 @@ function PickedZone({
   const { setHighlight } = useMap();
   /** Барилгын төлөв дарахад — тэр бүсийн тийм төлөвтэй барилгуудыг тодруулна */
   const [selSt, setSelSt] = useState<string | null>(null);
+  /**
+   * ⚠️ Тодруулга ХОЦРОХООС сэргийлнэ. Шүүлт идэвхтэй байхад өөр бүс дарахад
+   * компонент remount хийгдэхгүй тул хуучин бүсийн `zoneWhere`-тэй тодруулга
+   * үлдэж, статусын товч (утга нь бүх бүсэд ижил) «идэвхтэй» мэт худал
+   * харагддаг байв. Cleanup нь ЗӨВХӨН өөрийн тавьсан тодруулгыг арилгана.
+   */
+  const selStRef = useRef(selSt);
+  selStRef.current = selSt;
+  useEffect(() => () => { if (selStRef.current != null) setHighlight(null); }, [setHighlight]);
+  const prevIdRef = useRef(id);
+  useEffect(() => {
+    if (prevIdRef.current === id) return;
+    prevIdRef.current = id;
+    if (selStRef.current != null) {
+      setSelSt(null);
+      setHighlight(null);
+    }
+  }, [id, setHighlight]);
   const pickStatus = (v: string) => {
     const off = selSt === v;
     setSelSt(off ? null : v);
@@ -1161,6 +1207,25 @@ function PickedFeature({
 }) {
   const { setHighlight } = useMap();
   const [active, setActive] = useState<string | null>(null);
+  /**
+   * ⚠️ Тодруулга ХОЦРОХООС сэргийлнэ. Шүүлт идэвхтэй байхад өөр объект дарахад
+   * компонент remount хийгдэхгүй тул хуучин WHERE-тэй featureEffect зурган
+   * дээр үлдэж, шинэ объектын товчнуудад хуучин түлхүүр таарахгүй учир цуцлах
+   * чип ч харагдахгүй байв. Онц нь `attrs` объект — дарах бүрд шинээр ирнэ.
+   * Cleanup нь ЗӨВХӨН өөрийн тавьсан тодруулгыг арилгана (ref-ээр шалгана).
+   */
+  const activeRef = useRef(active);
+  activeRef.current = active;
+  useEffect(() => () => { if (activeRef.current != null) setHighlight(null); }, [setHighlight]);
+  const prevAttrsRef = useRef(attrs);
+  useEffect(() => {
+    if (prevAttrsRef.current === attrs) return;
+    prevAttrsRef.current = attrs;
+    if (activeRef.current != null) {
+      setActive(null);
+      setHighlight(null);
+    }
+  }, [attrs, setHighlight]);
 
   const zoneId = text(attrs[ZONE_FIELD], '').trim();
   const hasZone = zoneId !== '' && zoneId !== ZONE_NONE.trim();

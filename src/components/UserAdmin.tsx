@@ -36,6 +36,9 @@ const toggled = (views: ViewKey[] | 'all', k: ViewKey): ViewKey[] => {
 export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [users, setUsers] = useState<UserPerm[]>([]);
   const [name, setName] = useState('');
+  // ⚠️ ArcGIS хүснэгтэд бичигдэж ЧАДААГҮЙ хэрэглэгчид (жижиг үсгээр) — урьд нь
+  //    бичилт унахад ямар ч дохиогүй, өөрчлөлт зөвхөн энэ browser-т үлддэг байв.
+  const [unsynced, setUnsynced] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (open) setUsers(listUsers());
@@ -44,20 +47,33 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
 
   if (!open) return null;
 
+  /** ArcGIS бичилтийн үр дүнг хүлээж, унасан мөрийг unsynced-д тэмдэглэнэ */
+  const track = (username: string, p: Promise<boolean>) => {
+    const key = username.toLowerCase();
+    void p.then((ok) => {
+      setUnsynced((prev) => {
+        if (prev.has(key) === !ok) return prev; // өөрчлөлтгүй — дахин зурахгүй
+        const next = new Set(prev);
+        if (ok) next.delete(key); else next.add(key);
+        return next;
+      });
+    });
+  };
+
   const applyRole = (u: UserPerm, role: Role) => {
     const a = ROLE_ACCESS[role];
-    setUser(u.username, { views: a.views, docs: a.docs }, role);
+    track(u.username, setUser(u.username, { views: a.views, docs: a.docs }, role));
   };
   const flipView = (u: UserPerm, k: ViewKey) =>
-    setUser(u.username, { views: toggled(u.views, k), docs: u.docs }, u.role);
+    track(u.username, setUser(u.username, { views: toggled(u.views, k), docs: u.docs }, u.role));
   const flipDocs = (u: UserPerm) =>
-    setUser(u.username, { views: u.views, docs: !u.docs }, u.role);
+    track(u.username, setUser(u.username, { views: u.views, docs: !u.docs }, u.role));
 
   const add = () => {
     const n = name.trim();
     if (!n) return;
     const a = ROLE_ACCESS.tolovlolt;
-    setUser(n, { views: a.views, docs: a.docs }, 'tolovlolt');
+    track(n, setUser(n, { views: a.views, docs: a.docs }, 'tolovlolt'));
     setName('');
   };
 
@@ -89,7 +105,18 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
           {users.map((u) => (
             <div key={u.username.toLowerCase()} className={s.user}>
               <div className={s.userHead}>
-                <span className={s.uname}>{u.username}</span>
+                <span className={s.uname}>
+                  {u.username}
+                  {unsynced.has(u.username.toLowerCase()) && (
+                    // ⚠️ ArcGIS бичилт унасан — тусгай CSS класс байхгүй тул inline загвар
+                    <span
+                      style={{ marginLeft: 8, fontSize: '0.68rem', fontWeight: 550, color: '#fbbf24' }}
+                      title="ArcGIS хүснэгтэд бичиж чадсангүй — өөрчлөлт бусад төхөөрөмжид үйлчлэхгүй"
+                    >
+                      ArcGIS-т хадгалагдсангүй — зөвхөн энэ browser-т
+                    </span>
+                  )}
+                </span>
                 <div className={s.presets}>
                   {ROLE_PRESETS.map((r) => (
                     <button
@@ -106,7 +133,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
                     <button
                       type="button"
                       className={s.reset}
-                      onClick={() => clearOverride(u.username)}
+                      onClick={() => track(u.username, clearOverride(u.username))}
                       title="Хатуу тохиргоо руу сэргээх"
                     >
                       Сэргээх

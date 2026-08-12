@@ -30,7 +30,7 @@ export type NetSel = {
 
 /** Замын сүлжээний ачаалалт ба амьд симуляцын хураангуй (эцгээс) */
 export type RoadState = {
-  /** Сүлжээний хэрчмийн тоо — `null` бол ачаалж байна */
+  /** Сүлжээний хэрчмийн тоо — `null` бол ачаалж байна, `0` бол хоосон сүлжээ */
   edges: number | null;
   /** Ачаалахад алдаа гарсан бол мессеж */
   error: string | null;
@@ -439,11 +439,20 @@ function RoadStatus({ road }: { road?: RoadState }) {
       </p>
     );
   }
-  if (!road.edges) {
+  /* ⚠️ null ба 0-ыг ЯЛГАНА: null = ачаалж байна, 0 = амжилттай татагдсан ч
+     хоосон сүлжээ — falsy-гээр нэгтгэвэл хоосон үед loading үүрд эргэлдэнэ. */
+  if (road.edges === null) {
     return (
       <p className={c.loading}>
         Замын сүлжээ ачаалж байна
         <span className={c.dots}><i /><i /><i /></span>
+      </p>
+    );
+  }
+  if (road.edges === 0) {
+    return (
+      <p className={c.err}>
+        Сүлжээнд зам олдсонгүй — давхарга хоосон эсвэл талбайн гадна байна.
       </p>
     );
   }

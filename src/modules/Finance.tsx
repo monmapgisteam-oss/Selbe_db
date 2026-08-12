@@ -327,7 +327,10 @@ function FinanceBody({ d }: { d: FinData }) {
   const groups = useMemo(() => {
     const rows = d.contracts
       .map((r) => ({ r, months: contractMonths(r, d.given, d.phys) }))
-      .filter(({ months }) => months.some((m) => m.amount > 0 || m.cumPct > 0 || m.given > 0));
+      // ⚠️ m.phys ч бас — санхүүгийн хуваарь нь хоосон ч биет гүйцэтгэлтэй багц
+      //    жагсаалтаас бүрмөсөн алга болохоос сэргийлнэ (phys нь TASK_SHEET-ээс
+      //    тусдаа эх үүсвэртэй).
+      .filter(({ months }) => months.some((m) => m.amount > 0 || m.cumPct > 0 || m.given > 0 || m.phys > 0));
     const map = new Map<string, typeof rows>();
     rows.forEach((row) => {
       const t = text(row.r[C.type]).replace(/\s+/g, ' ').trim();

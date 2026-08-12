@@ -884,8 +884,10 @@ export const MapCanvas = memo(function MapCanvas({
   const defaultOpacityRef = useRef<Record<string, number>>({});
   /** Сүүлд ил байсан давхаргын id-ууд — шинээр ил болсныг илрүүлэхэд */
   const prevVisRef = useRef<Set<string>>(new Set());
-  /** Одоо орох-анимаци явж буй давхаргууд — opacity override түр алгасна */
+  /** Одоо пульс-анимаци явж буй давхаргууд — давхар гогцоо эхлэхээс сэргийлнэ */
   const fadingRef = useRef<Set<string>>(new Set());
+  /** Идэвхтэй пульс-гогцоог цуцлах функц — unmount дээр rAF-ийг зогсооно */
+  const pulseCancelRef = useRef<(() => void) | null>(null);
 
   const [ready, setReady] = useState(false);
 
@@ -962,6 +964,10 @@ export const MapCanvas = memo(function MapCanvas({
   }, []);
   /** Ачаалагдаж чадаагүй 3D загварын тоо — null = асуудалгүй */
   const [meshError, setMeshError] = useState<number | null>(null);
+  /** `view.when` унасан — «ачаалж байна…»-гийн оронд алдаа + «Дахин оролдох» */
+  const [initError, setInitError] = useState(false);
+  /** «Дахин оролдох» — утга нэмэгдэхэд view-г бүхэлд нь дахин үүсгэнэ */
+  const [initToken, setInitToken] = useState(0);
   /** Хулганы доорх объектын товч мэдээлэл */
   const [tip, setTip] = useState<
     { x: number; y: number; id: string; attrs: Record<string, unknown> } | null
@@ -970,6 +976,8 @@ export const MapCanvas = memo(function MapCanvas({
   const [blockProg, setBlockProg] = useState<BlockProgressMap | null>(null);
   /** Гүйцэтгэлийн өнгө КЭШЭЭС будагдсан — амьд дүн ирмэгц false болно */
   const [progStale, setProgStale] = useState(false);
+  /** Амьд гүйцэтгэл татаж чадаагүй — блокууд саарал «мэдээлэлгүй» төлөвт */
+  const [progError, setProgError] = useState(false);
 
   const register = useContext(RegisterCtx);
   const registerRef = useRef(register);
@@ -1018,6 +1026,7 @@ export const MapCanvas = memo(function MapCanvas({
     const map = mapRef.current;
     if (typeof window !== 'undefined') (window as unknown as { __dbgmap: Map }).__dbgmap = map;
     setReady(false);
+    setInitError(false);
 
     const view: AnyView =
       is3D(dim)
@@ -1144,7 +1153,13 @@ export const MapCanvas = memo(function MapCanvas({
           })
           .catch((e) => console.error('[selbe] эхлэх хүрээг тодорхойлж чадсангүй:', e));
       }
-    }).catch((e: unknown) => console.error('[selbe] газрын зураг үүсгэж чадсангүй:', e));
+    }).catch((e: unknown) => {
+      console.error('[selbe] газрын зураг үүсгэж чадсангүй:', e);
+      // ⚠️ Харагдац солиход cleanup нь view-г устгахад `when()` reject хийж болно —
+      //    тэр нь жинхэнэ алдаа биш тул зөвхөн АМЬД view-ийн уналтыг тэмдэглэнэ.
+      //    Эс бөгөөс «ачаалж байна…» давхарга мэдээлэлгүй ҮҮРД дүүжигнэдэг байв.
+      if (!view.destroyed) setInitError(true);
+    });
 
     /**
      * Дарж/хулгана аваачихад ХАМААРАХ давхаргын объектыг олох.
@@ -1182,7 +1197,9 @@ export const MapCanvas = memo(function MapCanvas({
     const pickByQuery = async (mapPoint: __esri.Point, tolerance: number) => {
       const ids = (view.map?.layers.toArray() ?? [])
         .map((l) => ({ l, id: String(l.id) }))
-        .filter(({ l, id }) => l.visible && LAYER_BY_ID[id])
+        // ⚠️ PASSIVE-ийг pickHit-тэй АДИЛ хасна — эс бөгөөс үргэлж ил лавлагааны
+        //    хил (khil1) fallback-аар байнга «сонгогдож» зарчим зөрчигдөнө.
+        .filter(({ l, id }) => l.visible && !PASSIVE.has(id) && LAYER_BY_ID[id])
         .map(({ id }) => id)
         // Дээд талынхыг ЭХЭЛЖ шалгана: цэг → шугам → талбай
         .sort((a, b) => drawOrder(b) - drawOrder(a));
@@ -1257,7 +1274,8 @@ export const MapCanvas = memo(function MapCanvas({
       viewRef.current = null;
       registerRef.current(null);
     };
-  }, [dim, stylesReady]);
+    // `initToken` — «Дахин оролдох» дарахад view-г дахин үүсгэнэ
+  }, [dim, stylesReady, initToken]);
 
   /**
    * Компонент салахад Map-ыг УСТГАХГҮЙ — `mapCache`-д үлдэж дараагийн харагдацад
@@ -1558,8 +1576,9 @@ export const MapCanvas = memo(function MapCanvas({
    *    тусдаа `source:pulse` GraphicsLayer-т ХУУЛЖ, кадр бүрт цэг бүрийг
    *    центроид тойруулан томруулна (ердөө 7 полигон — маш хөнгөн). Эх давхаргыг
    *    нуулгүй (opacity=0) зөвхөн пульслэх хуулбарыг харуулна.
-   * • Хэсэг хаагдаж давхарга нуугдмагц (`!visible`) хуулбарыг цэвэрлэж, эх
-   *   давхаргын opacity-г сэргээж зогсоно.
+   * • Хэсэг хаагдаж давхарга нуугдмагц (`!visible`) хуулбарыг цэвэрлэж зогсоно;
+   *   unmount дээр `pulseCancelRef`-ээр ГАДНААС цуцлагдана (Map кэштэй тул
+   *   давхарга ил үлдэж, гогцоо өөрөө хэзээ ч зогсдоггүй байв).
    */
   const pulseLayer = useCallback((layer: Layer) => {
     const map = mapRef.current;
@@ -1586,6 +1605,21 @@ export const MapCanvas = memo(function MapCanvas({
       pulse.removeAll();
     };
 
+    /**
+     * ⚠️ rAF гогцоог unmount дээр ГАДНААС цуцлах функц. Map нь `mapCache`-д
+     * үлддэг тул unmount-д `!src.visible` нөхцөл хэзээ ч биелэхгүй — цуцлахгүй
+     * бол гогцоо үүрд ажиллаж, дахин mount-д ХОЁР дахь гогцоо давхарлан
+     * бие биеийнхээ графикуудыг устгадаг байв. Query явж байхад цуцлагдвал
+     * `cancelled` туг гогцоо эхлэхийг таслана.
+     */
+    let cancelled = false;
+    let raf = 0;
+    pulseCancelRef.current = () => {
+      cancelled = true;
+      cancelAnimationFrame(raf);
+      finish();
+    };
+
     // 7 объектын геометр + өнгийг НЭГ УДАА татаад пульслэнэ.
     src.queryFeatures({ where: '1=1', returnGeometry: true, outFields: pfield ? [pfield] : ['*'] })
       .then((fs) => {
@@ -1600,7 +1634,7 @@ export const MapCanvas = memo(function MapCanvas({
           })
           .filter(Boolean) as Array<{ rings: number[][][]; cx: number; cy: number;
             sr: __esri.SpatialReference; symbol: unknown }>;
-        if (!items.length || src.destroyed || !src.visible) { finish(); return; }
+        if (cancelled || !items.length || src.destroyed || !src.visible) { finish(); return; }
 
         // Эх давхаргыг (label-тайгаа) харагдуулж үлдээнэ; дээр нь томорч-жижгэрэх
         // хуулбар давхарлана. Хуулбар зөвхөн ≥1× томроод буцах тул зай гарахгүй.
@@ -1619,7 +1653,7 @@ export const MapCanvas = memo(function MapCanvas({
         let base = -1;
         const step = (t: number) => {
           if (base < 0) base = t;
-          if (src.destroyed || !src.visible) { finish(); return; }
+          if (cancelled || src.destroyed || !src.visible) { finish(); return; }
           const wave = 0.5 - 0.5 * Math.cos(((t - base) % PERIOD) / PERIOD * Math.PI * 2);
           const f = 1 + GROW * wave;              // 1…1.35…1
           items.forEach((it, i) => {
@@ -1627,12 +1661,20 @@ export const MapCanvas = memo(function MapCanvas({
               ring.map(([x, y]) => [it.cx + (x - it.cx) * f, it.cy + (y - it.cy) * f]));
             graphics[i].geometry = new Polygon({ rings: scaled, spatialReference: it.sr });
           });
-          requestAnimationFrame(step);
+          raf = requestAnimationFrame(step);
         };
-        requestAnimationFrame(step);
+        raf = requestAnimationFrame(step);
       })
       .catch(() => finish());
   }, []);
+
+  /**
+   * Unmount — идэвхтэй пульс-гогцоог ЗААВАЛ цуцална. ⚠️ Харагдацын эффектийн
+   * cleanup-д БИШ: тэр нь бүс/тодруулга солигдох бүрд ажилладаг тул пульс
+   * дундаа тасарч дахин эхлэхгүй байсан. Давхарга нуугдахад гогцоо `!visible`
+   * шалгалтаараа өөрөө зогсоно — энд зөвхөн unmount-ын үүрд-гогцоог хаана.
+   */
+  useEffect(() => () => { pulseCancelRef.current?.(); pulseCancelRef.current = null; }, []);
 
   /* Харагдац ба БҮСИЙН шүүлт */
   useEffect(() => {
@@ -1742,8 +1784,8 @@ export const MapCanvas = memo(function MapCanvas({
     const over = opacity ?? {};
     map.layers.forEach((l) => {
       if (!('opacity' in l) || l.id === IMAGERY_ID || l.id === 'sketch') return;
-      // Fade-in анимаци явж буй давхаргыг битгий дар — tween өөрөө opacity-г удирдана.
-      if (fadingRef.current.has(String(l.id))) return;
+      // ⚠️ Пульсэлж буй (fadingRef) давхаргыг АЛГАСАХГҮЙ — пульс нь эх давхаргын
+      //    opacity-д хүрдэггүй тул алгасвал «Эх үүсвэр»-ийн гулсуур үхмэл болно.
       const def = defaultOpacityRef.current;
       // Анхдагчийг НЭГ УДАА тогтооно — override арилахад буцах цэг
       if (def[l.id] == null) def[l.id] = typeof l.opacity === 'number' ? l.opacity : 1;
@@ -1761,7 +1803,8 @@ export const MapCanvas = memo(function MapCanvas({
     const map = mapRef.current;
     if (!map || !ready) return;
     const on = new Set(visibleKey ? visibleKey.split(',') : []);
-    if (!on.has('mon:building')) return;
+    // Давхарга унтрахад алдааны тэмдгийг хамт нууна — хамааралгүй сануулга үлдэхгүй
+    if (!on.has('mon:building')) { setProgError(false); return; }
     const layer = map.findLayerById('mon:building') as FeatureLayer | null;
     if (!layer) return;
     let alive = true;
@@ -1782,16 +1825,21 @@ export const MapCanvas = memo(function MapCanvas({
         if (!alive) return;
         setBlockProg(prog);
         setProgStale(false);
+        setProgError(false);
         layer.renderer = buildingProgressRenderer(prog) as unknown as __esri.Renderer;
       })
       .catch((e) => {
         console.error('[selbe] блокийн гүйцэтгэл ачаалж чадсангүй:', e);
-        if (!alive || !cached) return;
+        if (!alive) return;
         setBlockProg(null);
         setProgStale(false);
+        // ⚠️ КЭШГҮЙ үед ч саарал «мэдээлэлгүй» renderer-ыг ЗААВАЛ тавина — эс
+        //    бөгөөс блокууд shapefile-ийн ХУУЧИРСАН GUITS_HV өнгөөр «баталгаатай»
+        //    мэт үлддэг байв («хуучин тоо дэлгэцэд үлдэхгүй» зарчим).
         // ⚠️ `globalThis.Map` — энэ файлд `Map` нь ArcGIS-ийн Map-аар дарагдсан
         const empty: BlockProgressMap = new globalThis.Map();
         layer.renderer = buildingProgressRenderer(empty) as unknown as __esri.Renderer;
+        setProgError(true); // «Гүйцэтгэл ачаалагдсангүй» тэмдэг ил гарна
       });
     return () => { alive = false; };
   }, [visibleKey, ready]);
@@ -1817,7 +1865,30 @@ export const MapCanvas = memo(function MapCanvas({
   return (
     <div className={s.wrap}>
       <div ref={el} className={s.view} />
-      {!ready && <div className={s.loading}>Газрын зураг ачаалж байна…</div>}
+      {!ready && !initError && <div className={s.loading}>Газрын зураг ачаалж байна…</div>}
+
+      {/* `view.when` унасан — байнгын «ачаалж байна…»-гийн оронд алдааг ил хэлж,
+          «Дахин оролдох»-оор view-г дахин үүсгүүлнэ */}
+      {!ready && initError && (
+        <div className={s.loading} role="alert">
+          <div className={`${s.float} ${s.warn}`} style={{ position: 'static' }}>
+            <b className={s.warnTitle}>Газрын зураг үүсгэж чадсангүй</b>
+            <span>Сүлжээ эсвэл газрын зургийн үйлчилгээний алдаа гарлаа.</span>
+            <button
+              type="button"
+              onClick={() => setInitToken((t) => t + 1)}
+              style={{
+                alignSelf: 'flex-start', padding: '5px 12px', cursor: 'pointer',
+                font: 'inherit', fontWeight: 600, color: 'var(--ink)',
+                background: 'var(--surface)', border: '1px solid var(--line)',
+                borderRadius: 6,
+              }}
+            >
+              Дахин оролдох
+            </button>
+          </div>
+        </div>
+      )}
 
       {meshError != null && dim === 'bim' && (
         <div className={`${s.float} ${s.floatBR} ${s.warn}`} role="alert">
@@ -1844,6 +1915,18 @@ export const MapCanvas = memo(function MapCanvas({
         <div className={`${s.float} ${s.floatBL} ${s.stale}`} role="status">
           <span className={s.staleDot} aria-hidden />
           Гүйцэтгэл: өмнөх дүнгээр · шинэчилж байна…
+        </div>
+      )}
+
+      {/* Амьд гүйцэтгэл огт татагдсангүй — блокууд саарал «мэдээлэлгүй» өнгөөр
+          байгааг ил хэлнэ (хуучирсан өнгө «баталгаатай» мэт үлдээхгүй зарчим) */}
+      {progError && (
+        <div className={`${s.float} ${s.floatBL} ${s.warn}`} role="alert">
+          <b className={s.warnTitle}>Гүйцэтгэл ачаалагдсангүй</b>
+          <span>
+            Блокийн гүйцэтгэлийн амьд дүн татагдсангүй тул блокууд «мэдээлэлгүй»
+            саарал өнгөөр харагдаж байна.
+          </span>
         </div>
       )}
 

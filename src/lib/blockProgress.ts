@@ -77,7 +77,10 @@ function compute(rows: Record<string, unknown>[]): BlockProgressMap {
     const k = buildingKey(r[TS.bagts], r[TS.block]);
     const cells = win.get(k) ?? new Map();
     const prev = cells.get(no);
-    if (prev && prev.date >= d) continue; // нүд бүрээр сүүлийн огноо ялна
+    // ⚠️ Нүд бүрээр сүүлийн огноо ялна; ИЖИЛ огноонд сүүлийн (их OID-той) мөр
+    //    ялна — history()-ийн «нэг өдөрт хоёр бичлэг — сүүлийнх ялна» дүрэмтэй
+    //    ижил, эс бөгөөс зураг/самбар нэг тоо, муруй өөр тоо заана.
+    if (prev && prev.date > d) continue;
     cells.set(no, {
       pct: r[TS.progress] == null ? null : Number(r[TS.progress]) * 100,
       name: t(r[TS.work]),

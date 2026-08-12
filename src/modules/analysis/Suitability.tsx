@@ -14,7 +14,7 @@ import {
   loadAnalysisCached, computeEconomics, computeRaw, defaultGreenCats,
   type AnalysisData,
 } from '@/lib/analysis/data';
-import { loadCosts, type Costs } from '@/lib/analysis/costs';
+import { loadCostsCached, type Costs } from '@/lib/analysis/costs';
 import { ZONE_TYPES, ZONE_TYPE_EMPTY_HUE } from '@/lib/services';
 import {
   urbanScore, scoreColor, scoreLabel, passesNorm,
@@ -88,9 +88,16 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
         setData(d);
         setProjected(true);
 
-        const c = await loadCosts();
-        if (!alive) return;
-        setCosts(c);
+        // ⚠️ Өртөг нь ХОЁРДОГЧ өгөгдөл (зөвхөн эдийн засгийн тооцоонд хэрэгтэй):
+        //    унавал бүтэн дэлгэцийн алдаагаар аппыг хаахгүй — зөвхөн warn.
+        //    Кэштэй хувилбар — Dashboard-тай нэг query хуваалцана.
+        try {
+          const c = await loadCostsCached();
+          if (!alive) return;
+          setCosts(c);
+        } catch (ce: unknown) {
+          console.warn('[selbe] өртөг ачаалагдсангүй (эдийн засгийн тооцоо идэвхгүй):', ce);
+        }
       } catch (e: unknown) {
         console.error('[selbe] анализ:', e);
         if (alive) setError(e instanceof Error ? e.message : String(e));

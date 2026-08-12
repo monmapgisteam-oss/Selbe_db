@@ -158,16 +158,49 @@ export default function Root() {
     setScope(null);
   };
 
+  /**
+   * ⚠️ Хайчилсан хүрээ ХООСОН бол Portal-ыг ОГТ зурахгүй: Portal хоосон
+   * navScope-ыг «бүх эрх» гэж андуурч эрхгүй агуулга харагдаж байсан тул
+   * (жиш. tolovlolt эрхтэй хэрэглэгч `?g=suit` гүн холбоосоор орох) эндээс
+   * шүүж «эрх хүрэлцэхгүй» мэдэгдэл харуулна.
+   */
+  const clamped = clamp(scope);
+  const noAccess = Array.isArray(clamped) && !clamped.length;
+
   return (
     <>
       <AuthNotice />
       {scope && authorized ? (
-        <Portal
-          onHome={goHome}
-          navScope={clamp(scope) as 'all' | ViewKey[]}
-          docsAllowed={access?.docs ?? true}
-          isSuper={isSuper}
-        />
+        noAccess ? (
+          <div
+            role="alert"
+            style={{
+              height: '100dvh', display: 'grid', placeItems: 'center',
+              color: 'var(--ink-3)', fontSize: '0.9rem', textAlign: 'center', padding: 24,
+            }}
+          >
+            <div style={{ display: 'grid', gap: 14, justifyItems: 'center' }}>
+              <p style={{ margin: 0 }}>Таны эрх энэ хэсгийг үзэхэд хүрэлцэхгүй байна.</p>
+              <button
+                type="button"
+                onClick={goHome}
+                style={{
+                  padding: '8px 18px', borderRadius: 8, border: '1px solid var(--line)',
+                  background: 'transparent', color: 'inherit', font: 'inherit', cursor: 'pointer',
+                }}
+              >
+                Нүүр хуудас руу буцах
+              </button>
+            </div>
+          </div>
+        ) : (
+          <Portal
+            onHome={goHome}
+            navScope={clamped as 'all' | ViewKey[]}
+            docsAllowed={access?.docs ?? true}
+            isSuper={isSuper}
+          />
+        )
       ) : (
         <Home onEnterAll={enterAll} />
       )}

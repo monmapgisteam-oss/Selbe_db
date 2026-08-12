@@ -365,7 +365,7 @@ export function TrafficOverlay({
           && simTime - c.leaveT > LEAVE_GRACE_S + FADE_S;
         if (c.done || faded || (c.leaving && offscreen(c))) cars.splice(i, 1);
       }
-      const leavingNow = cars.reduce((a, c) => a + (c.leaving ? 1 : 0), 0);
+      let leavingNow = cars.reduce((a, c) => a + (c.leaving ? 1 : 0), 0);
       // «Ирж буй» тоо = нийт − гарч яваа: зорилтот тоо руу үүгээр тэгшитгэнэ
       let excess = cars.length - leavingNow - want;
       if (excess > 0) {
@@ -378,9 +378,12 @@ export function TrafficOverlay({
         }
       } else if (excess < 0) {
         // Эрэлт өслөө — гарч яваа машиныг буцааж «үлдээнэ» (шинээр төрүүлэхээс өмнө)
+        // ⚠️ leavingNow-г мөн хорогдуулна: эс бөгөөс доорх need буцаасан машиныг
+        //    «гарч яваа» хэвээр тооцож ДАВХАР төрүүлээд дараагийн фреймд илүүдлээ
+        //    дахин гаргадаг савлагаа (churn) үүсдэг байсан.
         for (const c of cars) {
           if (excess >= 0) break;
-          if (c.leaving) { c.leaving = false; excess++; }
+          if (c.leaving) { c.leaving = false; leavingNow--; excess++; }
         }
       }
       // Нэг фреймд цөөхнийг нэмнэ — эрэлт огцом өсөхөд гэнэт «цутгахгүй».
@@ -424,7 +427,9 @@ export function TrafficOverlay({
           const zone = 10 * upm;
           for (const o of l) {
             const dTip = en.dir === 1 ? o.s : len - o.s;
-            if (dTip < zone) return false;
+            // ⚠️ o.s нь машины ТӨВ — урт тээврийн (автобус 11 м) АР БИЕ бүсэд
+            //    цухуйсан байхыг half-аар тооцно, эс бөгөөс давхарлан төрдөг байсан
+            if (dTip - o.half < zone) return false;
           }
           return true;
         };
@@ -438,7 +443,10 @@ export function TrafficOverlay({
         for (let t = 0; t < 16 && need > 0; t++) {
           const cand = spawnCar(net, tbl);
           if (!cand || !fits(cand) || !offscreen(cand)) continue;
-          cand.bornT = simTime;
+          // ⚠️ Зогссон (paused) үед simTime хөдөлдөггүй тул bornT=simTime бол
+          //    alpha=0 ҮҮРД — машин статистикт тоологдовч дэлгэцэнд үл үзэгдэнэ
+          //    (таб анх playing=false-ээр нээгддэг). Зогссон үед fade алгасаж тод төрүүлнэ.
+          cand.bornT = opt.current.playing ? simTime : simTime - BORN_FADE_S;
           cars.push(cand);
           occAdd(cand);
           need--;
@@ -454,7 +462,8 @@ export function TrafficOverlay({
           for (const en of free) {
             if (need <= 0) break;
             const c = spawnCarAt(net, en);
-            c.bornT = simTime;
+            // ⚠️ paused үед fade алгасана (дээрх ①-тэй ижил шалтгаан)
+            c.bornT = opt.current.playing ? simTime : simTime - BORN_FADE_S;
             cars.push(c);
             occAdd(c);
             need--;
