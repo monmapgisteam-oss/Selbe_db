@@ -554,7 +554,7 @@ export function BlocksCard({ p, title = 'Блок бүрийн гүйцэтгэ�
           color: levelColor(b.progress),
           display: b.progress == null
             ? 'мэдээлэлгүй'
-            : `${pct(b.progress, 0)} · ${num(b.ail)} айл${b.floors ? ` · ${b.floors} давхар` : ''}`,
+            : `${pct(b.progress, 0)}${b.floors ? ` · ${b.floors} давхар` : ''}`,
         }))}
       />
     </Section>
