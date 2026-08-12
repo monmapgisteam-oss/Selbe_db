@@ -9,11 +9,14 @@
   gap: 12px;
   margin-bottom: 14px;
 }
+/* ⚠️ 2026-08-12: Operations Dashboard виджет-толгойн хэл — ЖИЖИГ uppercase,
+   letter-spacing. Бүх дашбоардын хэсгийн гарчиг tsogts-тэй нэгдмэл болов. */
 .sectionTitle {
-  font-size: 0.78rem;
-  font-weight: 650;
-  letter-spacing: 0.01em;
-  color: var(--ink);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-2);
 }
 .sectionNote { font-size: 0.7rem; color: var(--ink-3); }
 
@@ -123,28 +126,36 @@
 .stats4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 @media (max-width: 720px) { .stats4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
+/* ⚠️ 2026-08-12: «Барилгын хяналт» (tsogts)-ын Operations Dashboard индикатортой
+   100% ижил — ГОЛЛУУЛСАН том тоо, доор нь ЖИЖИГ uppercase шошго, хавтгай карт. */
 .stat {
-  padding: 12px 14px;
-  background: var(--surface-2);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  text-align: center;
+  padding: 14px 12px;
+  background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--r);
-  /* Дээд ирмэгийн нарийн гэрэлт зурвас — картыг «өргөгдсөн» мэт харагдуулна */
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--ink) 4%, transparent);
   transition: border-color 0.15s var(--ease);
 }
 .stat:hover { border-color: var(--line-strong); }
 .statValue {
   display: flex;
   align-items: baseline;
+  justify-content: center;
   gap: 4px;
-  font-size: 1.32rem;
+  font-size: 1.55rem;
   font-weight: 700;
   letter-spacing: -0.015em;
   color: var(--ink);
-  line-height: 1.2;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
 }
-.statUnit { font-size: 0.82rem; font-weight: 500; color: var(--ink-3); font-family: var(--font-inter), sans-serif; letter-spacing: 0; }
-.statLabel { margin-top: 3px; font-size: 0.78rem; color: var(--ink-3); line-height: 1.35; }
+.statUnit { font-size: 0.82rem; font-weight: 500; color: var(--ink-3); font-family: var(--font-sans), sans-serif; letter-spacing: 0; }
+.statLabel { font-size: 0.64rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-3); line-height: 1.3; }
 /* Онцолсон KPI — булангаас цацрах зөөлөн өнгөт гэрэлтэй */
 .statAccent {
   border-color: color-mix(in srgb, var(--tone, var(--hue)) 32%, var(--line));
@@ -184,11 +195,9 @@
   display: block;
   height: 100%;
   border-radius: 99px;
-  background: linear-gradient(
-    90deg,
-    var(--tone, var(--hue)),
-    color-mix(in srgb, var(--tone, var(--hue)) 78%, #fff)
-  );
+  /* ⚠️ 2026-08-12: Operations Dashboard — ЦУЛ дүүргэлт (өмнөх цайруулах градиентийг
+     хасав; хавтгай цул бар нь дашбоардын serial chart-тай нийцнэ). */
+  background: var(--tone, var(--hue));
   transition: width 0.6s var(--ease);
 }
 
@@ -244,9 +253,10 @@
   height: 5px;
   background: color-mix(in srgb, var(--tone, var(--hue)) 14%, transparent);
 }
+/* ⚠️ 2026-08-12: Operations Dashboard — тоймтой/тунгалаг байхаа больж ЦУЛ бар болов. */
 .barFillOut {
-  background: color-mix(in srgb, var(--tone, var(--hue)) 50%, transparent);
-  border: 1px solid var(--tone, var(--hue));
+  background: var(--tone, var(--hue));
+  border: none;
 }
 
 /* Урт жагсаалтыг задлах / хумих */
@@ -445,6 +455,16 @@
   gap: 6px;
   /* Утгын шошго баганын дээр гардаг тул дээд талд зай үлдээнэ */
   padding-top: 16px;
+  /* ⚠️ 2026-08-12: Operations Dashboard — хэвтээ hairline тор (25% алхам) +
+     суурь тэнхлэг. tsogts-ийн ComboChart-ын CartesianGrid-тэй ижил төрх. */
+  background: repeating-linear-gradient(
+    to top,
+    var(--line) 0,
+    var(--line) 1px,
+    transparent 1px,
+    transparent 25%
+  );
+  border-bottom: 1px solid var(--line-strong);
 }
 .seriesCol {
   flex: 1;
@@ -459,8 +479,9 @@
 }
 .seriesBar {
   width: 100%;
-  border-radius: 3px 3px 0 0;
-  background: color-mix(in srgb, var(--tone, var(--hue)) 78%, transparent);
+  border-radius: 2px 2px 0 0;
+  /* Operations Dashboard — ЦУЛ багана (тунгалаг биш) */
+  background: color-mix(in srgb, var(--tone, var(--hue)) 90%, transparent);
   transition: background 0.12s;
 }
 .seriesCol:hover .seriesBar { background: var(--tone, var(--hue)); }

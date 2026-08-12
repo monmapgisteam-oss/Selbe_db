@@ -17,6 +17,15 @@ import ImageryLayer from '@arcgis/core/layers/ImageryLayer';
 import IntegratedMeshLayer from '@arcgis/core/layers/IntegratedMeshLayer';
 import BuildingSceneLayer from '@arcgis/core/layers/BuildingSceneLayer';
 import BuildingExplorer from '@arcgis/core/widgets/BuildingExplorer';
+import ViewshedAnalysis from '@arcgis/core/analysis/ViewshedAnalysis';
+import AreaMeasurementAnalysis from '@arcgis/core/analysis/AreaMeasurementAnalysis';
+import DirectLineMeasurementAnalysis from '@arcgis/core/analysis/DirectLineMeasurementAnalysis';
+import LineOfSightAnalysis from '@arcgis/core/analysis/LineOfSightAnalysis';
+import DimensionAnalysis from '@arcgis/core/analysis/DimensionAnalysis';
+import SliceAnalysis from '@arcgis/core/analysis/SliceAnalysis';
+import VolumeMeasurementAnalysis from '@arcgis/core/analysis/VolumeMeasurementAnalysis';
+import Slide from '@arcgis/core/webscene/Slide';
+import * as reactiveUtils from '@arcgis/core/core/reactiveUtils';
 import SketchViewModel from '@arcgis/core/widgets/Sketch/SketchViewModel';
 import BasemapGallery from '@arcgis/core/widgets/BasemapGallery';
 import LocalBasemapsSource from '@arcgis/core/widgets/BasemapGallery/support/LocalBasemapsSource';
@@ -1446,7 +1455,8 @@ export const MapCanvas = memo(function MapCanvas({
 
     const clear = () => {
       if (bimWidgetRef.current) {
-        view.ui.remove(bimWidgetRef.current);
+        // ⚠️ view устсан бол `view.ui` null — эхлээд шалгана (unmount-д эвдрэхгүй)
+        if (!view.destroyed) view.ui.remove(bimWidgetRef.current);
         bimWidgetRef.current.destroy();
         bimWidgetRef.current = null;
       }
@@ -1465,6 +1475,332 @@ export const MapCanvas = memo(function MapCanvas({
     bimWidgetRef.current = widget;
 
     return clear;
+  }, [dim, ready]);
+
+  /**
+   * ШИНЖИЛГЭЭНИЙ ЦОГЦ ХЭРЭГСЭЛ («Analysis objects») — ЗӨВХӨН 3D/BIM (SceneView).
+   *
+   * ⚠️ Esri-ийн «Analysis objects» жишээгээр 6 шинжилгээг НЭГ toolbar-т нэгтгэв.
+   *    Өмнөх ДАВХАРДСАН тусдаа хэрэгслүүд (viewshed, зай/талбай хэмжилтийн widget)
+   *    ХАСАГДСАН — энэ цогц хэрэгсэл тэдгээрийг бүрэн орлоно:
+   *      · Талбай (AreaMeasurementAnalysis)   · Зай (DirectLineMeasurementAnalysis)
+   *      · Харах шугам (LineOfSightAnalysis)   · Харагдац (ViewshedAnalysis)
+   *      · Хэмжээс (DimensionAnalysis)         · Огтлол (SliceAnalysis)
+   *    Товч дарж → зурган дээр дараалан байршуулна; «Арилгах»/«Дуусгах».
+   *    view дахин үүсэх бүрд бүх шинжилгээ + toolbar-ыг цэвэрлэнэ.
+   */
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view || !ready || !is3D(dim)) return;
+    const sv = view as SceneView;
+
+    type AV = { interactive: boolean; place: (o?: { signal?: AbortSignal }) => Promise<unknown> };
+    type Tool = { name: string; type: string; icon: string; analysis: __esri.Analysis; av: AV | null; btn?: HTMLElement };
+    const tools: Tool[] = [
+      { name: 'Талбай', type: 'area-measurement', icon: 'esri-icon-measure-area', analysis: new AreaMeasurementAnalysis(), av: null },
+      { name: 'Зай', type: 'direct-line-measurement', icon: 'esri-icon-measure-line', analysis: new DirectLineMeasurementAnalysis(), av: null },
+      { name: 'Харах шугам', type: 'line-of-sight', icon: 'esri-icon-line-of-sight', analysis: new LineOfSightAnalysis(), av: null },
+      { name: 'Харагдац', type: 'viewshed', icon: 'esri-icon-visible', analysis: new ViewshedAnalysis(), av: null },
+      { name: 'Хэмжээс', type: 'dimension', icon: 'esri-icon-measure', analysis: new DimensionAnalysis(), av: null },
+      { name: 'Огтлол', type: 'slice', icon: 'esri-icon-cursor-marquee', analysis: new SliceAnalysis(), av: null },
+    ];
+    tools.forEach((t) => sv.analyses.add(t.analysis));
+    void Promise.all(
+      tools.map(async (t) => {
+        t.av = (await sv.whenAnalysisView(t.analysis as never)) as unknown as AV;
+      }),
+    );
+
+    let active: Tool | null = null;
+    let abort: AbortController | null = null;
+
+    const mk = (tag: string, css: string, txt?: string) => {
+      const n = document.createElement(tag);
+      n.style.cssText = css;
+      if (txt != null) n.textContent = txt;
+      return n;
+    };
+    // Цэвэр DARK загвар (аппын design token) — хэвтээ ИКОН action-bar
+    const panel = mk('div', 'width:238px;padding:15px;display:flex;flex-direction:column;gap:12px;'
+      + 'background:var(--surface);color:var(--ink);font-family:inherit');
+    panel.append(mk('div', 'font-size:0.92rem;font-weight:700;color:var(--ink)', 'Шинжилгээ'));
+    const bar = mk('div', 'display:flex;gap:6px');
+    const iconBtnCss = 'flex:1;height:40px;display:grid;place-items:center;border:1px solid var(--line);'
+      + 'border-radius:9px;color:var(--ink-2);cursor:pointer;background:transparent;transition:background .12s,color .12s,border-color .12s';
+    tools.forEach((t) => {
+      const b = mk('button', iconBtnCss) as HTMLButtonElement;
+      b.title = t.name;
+      const ic = mk('span', 'font-size:18px');
+      ic.className = t.icon;
+      b.append(ic);
+      b.addEventListener('mouseenter', () => { if (t !== active) b.style.background = 'var(--surface-2)'; });
+      b.addEventListener('mouseleave', () => { if (t !== active) b.style.background = 'transparent'; });
+      b.addEventListener('click', () => onTool(t));
+      t.btn = b;
+      bar.append(b);
+    });
+    panel.append(bar);
+    const prompt = mk('div', 'font-size:0.76rem;line-height:1.5;color:var(--ink-3);min-height:20px', 'Шинжилгээний төрөл сонгоно уу.');
+    const controls = mk('div', 'display:flex;gap:8px');
+    const cBtnCss = 'flex:1;padding:8px 10px;border-radius:8px;font-size:0.78rem;font-weight:600;cursor:pointer;display:none';
+    const clearBtn = mk('button', cBtnCss + ';border:1px solid var(--line);background:var(--surface-2);color:var(--ink)', 'Арилгах') as HTMLButtonElement;
+    const doneBtn = mk('button', cBtnCss + ';border:1px solid transparent;background:var(--hue);color:#fff', 'Дуусгах') as HTMLButtonElement;
+    controls.append(clearBtn, doneBtn);
+    panel.append(prompt, controls);
+
+    const highlight = () => {
+      tools.forEach((t) => {
+        const b = t.btn!;
+        const on = t === active;
+        b.style.background = on ? 'var(--hue)' : 'transparent';
+        b.style.color = on ? '#fff' : 'var(--ink-2)';
+        b.style.borderColor = on ? 'transparent' : 'var(--line)';
+      });
+      clearBtn.style.display = active ? 'block' : 'none';
+      doneBtn.style.display = active ? 'block' : 'none';
+      prompt.textContent = active
+        ? `Зурган дээр дарж «${active.name}» байрлуул.`
+        : 'Шинжилгээний төрөл сонгоно уу.';
+    };
+    const stop = () => {
+      abort?.abort();
+      abort = null;
+      if (active?.av) active.av.interactive = false;
+      active = null;
+      highlight();
+    };
+    // Нэгийг байрлуулаад ДАХИН place() дуудна — цуцлах хүртэл дараалан нэмнэ
+    const placeContinuous = async () => {
+      abort?.abort();
+      abort = new AbortController();
+      const signal = abort.signal;
+      const tool = active;
+      try {
+        while (!signal.aborted && tool?.av) {
+          await tool.av.place({ signal });
+        }
+      } catch (err) {
+        if ((err as { name?: string } | null)?.name !== 'AbortError') console.error('[analysis]', err);
+      } finally {
+        if (abort?.signal === signal) abort = null;
+      }
+    };
+    const onTool = (t: Tool) => {
+      if (active === t) { stop(); return; }
+      stop();
+      active = t;
+      highlight();
+      void placeContinuous();
+    };
+    const clearActive = () => {
+      if (!active) return;
+      const a = active.analysis as unknown as Record<string, unknown>;
+      switch (active.type) {
+        case 'direct-line-measurement': a.startPoint = null; a.endPoint = null; break;
+        case 'area-measurement': a.geometry = null; break;
+        case 'line-of-sight': a.observer = null; a.targets = []; break;
+        case 'slice': a.shape = null; break;
+        case 'viewshed': a.viewsheds = []; break;
+        case 'dimension': a.dimensions = []; break;
+      }
+    };
+    clearBtn.addEventListener('click', clearActive);
+    doneBtn.addEventListener('click', stop);
+
+    const expand = new Expand({
+      view, content: panel, expandIcon: 'measure',
+      expandTooltip: 'Шинжилгээ', collapseTooltip: 'Хаах', mode: 'floating',
+    });
+    view.ui.add(expand, 'top-right');
+
+    return () => {
+      abort?.abort();
+      // ⚠️ view устсан бол `view.ui` null — эхлээд шалгана (харагдац солиход эвдрэхгүй)
+      if (!view.destroyed) {
+        view.ui.remove(expand);
+        tools.forEach((t) => sv.analyses.remove(t.analysis));
+      }
+      expand.destroy();
+    };
+  }, [dim, ready]);
+
+  /**
+   * ЭЗЛЭХҮҮН ХЭМЖИЛТ + СЛАЙД — ЗӨВХӨН 3D/BIM (SceneView). Хоёр тусдаа Expand.
+   *
+   *   · Эзлэхүүн (`VolumeMeasurementAnalysis`, stockpile) — полигон зурж, огтлол/
+   *     дүүргэлт/цэвэр эзлэхүүнийг бодит цагт харуулна.
+   *   · Слайд (`Slide.createFrom`) — одоогийн 3D харагдацыг снапшот болгож хадгалж,
+   *     дарж буцаж очно (session-д хадгална).
+   */
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view || !ready || !is3D(dim)) return;
+    const sv = view as SceneView;
+
+    let disposed = false;
+    const mk = (tag: string, css: string, txt?: string) => {
+      const n = document.createElement(tag);
+      n.style.cssText = css;
+      if (txt != null) n.textContent = txt;
+      return n;
+    };
+    const rowCss = 'display:flex;justify-content:space-between;gap:10px;font-size:0.8rem';
+
+    // ══════════ ЭЗЛЭХҮҮН ══════════
+    const vma = new VolumeMeasurementAnalysis({
+      measureType: 'stockpile',
+      displayUnits: { volume: 'metric', elevation: 'metric' },
+    });
+    sv.analyses.add(vma);
+    let vAbort: AbortController | null = null;
+    let vWatch: __esri.WatchHandle | null = null;
+
+    const panelV = mk('div', 'width:250px;padding:15px;display:flex;flex-direction:column;gap:11px;'
+      + 'background:var(--surface);color:var(--ink)');
+    panelV.append(mk('div', 'font-size:0.92rem;font-weight:700;color:var(--ink)', 'Эзлэхүүн хэмжилт'));
+    const vPlace = mk('button', 'width:100%;padding:9px;border-radius:8px;border:1px solid transparent;'
+      + 'background:var(--hue);color:#fff;font-size:0.8rem;font-weight:600;cursor:pointer', '＋ Полигон зурж хэмжих') as HTMLButtonElement;
+    panelV.append(vPlace);
+    // Нэгж сонгогч (SDK sample шиг)
+    const unitRow = mk('div', 'display:flex;align-items:center;justify-content:space-between;gap:8px');
+    unitRow.append(mk('span', 'font-size:0.78rem;color:var(--ink-3)', 'Нэгж'));
+    const volUnit = mk('select', 'padding:5px 8px;border:1px solid var(--line);border-radius:6px;'
+      + 'background:var(--surface-2);color:var(--ink);font-size:0.76rem;cursor:pointer') as HTMLSelectElement;
+    volUnit.innerHTML = '<option value="metric">Метр</option><option value="cubic-meters">м³</option>'
+      + '<option value="cubic-feet">фут³</option><option value="cubic-yards">ярд³</option>';
+    unitRow.append(volUnit);
+    panelV.append(unitRow);
+    volUnit.addEventListener('change', () => {
+      vma.displayUnits.volume = volUnit.value as unknown as typeof vma.displayUnits.volume;
+    });
+    // Үр дүн — тусгаарлах зураастай (Огтлол/Дүүргэлт/Цэвэр)
+    const results = mk('div', 'display:flex;flex-direction:column;gap:8px;padding-top:11px;border-top:1px solid var(--line)');
+    const cutV = mk('b', 'font-variant-numeric:tabular-nums;color:var(--ink)', '—');
+    const fillV = mk('b', 'font-variant-numeric:tabular-nums;color:var(--ink)', '—');
+    const netV = mk('b', 'font-variant-numeric:tabular-nums;color:var(--ink)', '—');
+    const mkRow = (label: string, val: HTMLElement) => {
+      const r = mk('div', rowCss);
+      r.append(mk('span', 'color:var(--ink-3)', label), val);
+      return r;
+    };
+    results.append(mkRow('Огтлол', cutV), mkRow('Дүүргэлт', fillV), mkRow('Цэвэр', netV));
+    panelV.append(results);
+
+    const fmtVol = (v?: { value?: number; unit?: string } | null) =>
+      v?.value != null ? `${num(Math.round(v.value))} ${v.unit ?? ''}`.trim() : '—';
+
+    void sv.whenAnalysisView(vma).then((av) => {
+      if (disposed) return;
+      const avv = av as unknown as { result?: Record<string, { value?: number; unit?: string }> };
+      vWatch = reactiveUtils.watch(
+        () => avv.result,
+        (result) => {
+          cutV.textContent = fmtVol(result?.cutVolume);
+          fillV.textContent = fmtVol(result?.fillVolume);
+          netV.textContent = fmtVol(result?.netVolume);
+        },
+        { initial: true },
+      );
+    });
+    vPlace.addEventListener('click', async () => {
+      vAbort?.abort();
+      vAbort = new AbortController();
+      const signal = vAbort.signal;
+      try {
+        const av = await sv.whenAnalysisView(vma);
+        if (disposed) return;
+        await av.place({ signal });
+      } catch (err) {
+        if ((err as { name?: string } | null)?.name !== 'AbortError') console.error('[volume]', err);
+      }
+    });
+
+    const expandV = new Expand({
+      view, content: panelV, expandIcon: 'cube',
+      expandTooltip: 'Эзлэхүүн хэмжилт', collapseTooltip: 'Хаах', mode: 'floating',
+    });
+    view.ui.add(expandV, 'top-right');
+
+    // ══════════ СЛАЙД ══════════
+    const slides: Slide[] = [];
+    const panelS = mk('div', 'width:262px;padding:15px;display:flex;flex-direction:column;gap:11px;'
+      + 'max-height:72vh;overflow:auto;background:var(--surface);color:var(--ink)');
+    panelS.append(mk('div', 'font-size:0.92rem;font-weight:700;color:var(--ink)', 'Слайд'));
+    const listDiv = mk('div', 'display:flex;flex-direction:column;gap:6px');
+    panelS.append(listDiv);
+
+    // Слайд бүр — thumbnail зураг + нэр + огноо + × устгах (Esri sample шиг)
+    const fmtSlideDate = (d?: Date) => {
+      try { return d ? d.toLocaleString('en-GB', { timeZone: 'UTC' }) : ''; } catch { return ''; }
+    };
+    const addSlideRow = (slide: Slide) => {
+      const row = mk('div', 'display:flex;align-items:center;gap:9px;padding:7px;border:1px solid var(--line);'
+        + 'border-radius:8px;background:var(--surface-2);cursor:pointer');
+      const img = mk('img', 'width:60px;height:40px;object-fit:cover;border-radius:5px;flex:none') as HTMLImageElement;
+      const thumb = (slide as unknown as { thumbnail?: { url?: string } }).thumbnail;
+      if (thumb?.url) img.src = thumb.url;
+      const info = mk('div', 'flex:1;min-width:0;display:flex;flex-direction:column;gap:1px');
+      const date = (slide as unknown as { environment?: { lighting?: { date?: Date } } }).environment?.lighting?.date;
+      info.append(
+        mk('div', 'font-size:0.78rem;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis',
+          slide.title?.text || 'Слайд'),
+        mk('div', 'font-size:0.66rem;color:var(--ink-3)', fmtSlideDate(date)),
+      );
+      const del = mk('button', 'flex:none;width:24px;height:24px;display:grid;place-items:center;border:0;'
+        + 'background:transparent;color:var(--ink-3);cursor:pointer;font-size:1.15rem;line-height:1', '×') as HTMLButtonElement;
+      del.title = 'Устгах';
+      row.append(img, info, del);
+      row.addEventListener('click', () => { void slide.applyTo(sv, { speedFactor: 0.6 }); });
+      del.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const i = slides.indexOf(slide);
+        if (i >= 0) slides.splice(i, 1);
+        row.remove();
+      });
+      listDiv.append(row);
+    };
+
+    // Доод хэсэг: «Слайд нэмэх» — нэр + Үүсгэх
+    const addWrap = mk('div', 'display:flex;flex-direction:column;gap:6px;padding-top:9px;border-top:1px solid var(--line)');
+    addWrap.append(mk('div', 'font-size:0.72rem;color:var(--ink-3)', 'Слайд нэмэх'));
+    const addRow = mk('div', 'display:flex;gap:6px');
+    const nameInput = mk('input', 'flex:1;min-width:0;padding:7px 9px;border:1px solid var(--line);border-radius:7px;'
+      + 'background:var(--surface-2);color:var(--ink);font-size:0.78rem') as HTMLInputElement;
+    nameInput.placeholder = 'Нэр оруулах';
+    const createBtn = mk('button', 'flex:none;padding:7px 13px;border-radius:7px;border:1px solid transparent;'
+      + 'background:var(--hue);color:#fff;font-size:0.78rem;font-weight:600;cursor:pointer', 'Үүсгэх') as HTMLButtonElement;
+    addRow.append(nameInput, createBtn);
+    addWrap.append(addRow);
+    panelS.append(addWrap);
+
+    createBtn.addEventListener('click', () => {
+      void Slide.createFrom(sv).then((slide) => {
+        if (disposed) return;
+        slide.title.text = nameInput.value.trim() || `Слайд ${slides.length + 1}`;
+        slides.push(slide);
+        addSlideRow(slide);
+        nameInput.value = '';
+      });
+    });
+
+    const expandS = new Expand({
+      view, content: panelS, expandIcon: 'image',
+      expandTooltip: 'Харагдацын слайд', collapseTooltip: 'Хаах', mode: 'floating',
+    });
+    view.ui.add(expandS, 'top-right');
+
+    return () => {
+      disposed = true;
+      vAbort?.abort();
+      vWatch?.remove();
+      if (!view.destroyed) {
+        view.ui.remove(expandV);
+        view.ui.remove(expandS);
+        sv.analyses.remove(vma);
+      }
+      expandV.destroy();
+      expandS.destroy();
+    };
   }, [dim, ready]);
 
   /**

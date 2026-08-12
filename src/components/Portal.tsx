@@ -14,6 +14,7 @@ import { Bagts } from '@/modules/Bagts';
 import { Tsogts } from '@/modules/Tsogts';
 import { Gazar } from '@/modules/Gazar';
 import { Finance } from '@/modules/Finance';
+import { Habea } from '@/modules/Habea';
 import { Sheet } from '@/modules/sheet/Sheet';
 import { Tailan } from '@/modules/Tailan';
 import { Icon } from '@/components/Icon';
@@ -403,7 +404,8 @@ function PortalContent(
   const { setOrtho } = useMap();
   useEffect(() => {
     // tsogts — багц+хяналтын нэгдсэн харагдац тул мөн ортофототой
-    setOrtho(view === 'bagts' || view === 'monitor' || view === 'tsogts');
+    // habea — кран, аюулгүйн бүсийг бодит талбай дээр нь хардаг (2026-08-12)
+    setOrtho(view === 'bagts' || view === 'monitor' || view === 'tsogts' || view === 'habea');
   }, [view, setOrtho]);
 
   /* ── Багануудын өргөн ── */
@@ -440,6 +442,7 @@ function PortalContent(
   const isTailan = view === 'tailan';
   const isGazar = view === 'gazar';
   const isFinance = view === 'finance';
+  const isHabea = view === 'habea';
   const isTsogts = view === 'tsogts';
   // `standalone` нь эдгээрийг ЯГ тэмдэглэдэг — тусад нь тоолохгүй
   const isFull = standalone;
@@ -569,7 +572,9 @@ function PortalContent(
                         ? <Gazar dim={dim} setDim={setDim} />
                         : isFinance
                           ? <Finance />
-                          : <Suitability dim={dim} setDim={setDim} />}
+                          : isHabea
+                            ? <Habea dim={dim} setDim={setDim} />
+                            : <Suitability dim={dim} setDim={setDim} />}
           </div>
         )}
 

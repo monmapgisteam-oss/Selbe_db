@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next';
-import { Inter } from 'next/font/google';
+import { Roboto, Roboto_Mono } from 'next/font/google';
 // ⚠️ THEME_KEY-г 'use client' модулиас (theme.tsx) импортлохгүй: сервер компонентэд
 //    тэр нь client reference proxy болж, доорх THEME_INIT-д функцын эх код шингэн
 //    inline script эвдэрдэг байв. Заавал энгийн модулиас (themeKey.ts).
@@ -20,6 +20,7 @@ import '@/modules/analysis/suitability.module.css';
 import '@/modules/sheet/sheet.module.css';
 import '@/modules/finance.module.css';
 import '@/modules/tsogts.module.css';
+import '@/modules/habea.module.css';
 import '@/components/auth.module.css';
 import '@/components/home.module.css';
 import '@/components/swatch.module.css';
@@ -29,10 +30,20 @@ import '@/components/ui.module.css';
 import '@/components/catalog.module.css';
 import '@/components/tree.module.css';
 
-const inter = Inter({
+// ⚠️ Төслийн ЖИГД үндсэн фонт — Roboto (Inter-ийг орлов). Roboto-д 600 жин
+//    БАЙХГҮЙ тул CSS дэх font-weight:600/650 нь автоматаар хамгийн ойрын 700-д
+//    буудаг (CSS фонт тааруулалт) — тод текст арай зузаан харагдана.
+const roboto = Roboto({
   subsets: ['latin', 'cyrillic'],
-  weight: ['400', '500', '600', '700'],
-  variable: '--font-inter',
+  weight: ['400', '500', '700'],
+  variable: '--font-sans',
+  display: 'swap',
+});
+// Тоон утгын зэрэгцүүлэлт (tabular) — мөн Roboto гэр бүлээс (жигд төрх)
+const robotoMono = Roboto_Mono({
+  subsets: ['latin', 'cyrillic'],
+  weight: ['400', '500'],
+  variable: '--font-mono',
   display: 'swap',
 });
 
@@ -69,7 +80,7 @@ try {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="mn" className={inter.variable} suppressHydrationWarning>
+    <html lang="mn" className={`${roboto.variable} ${robotoMono.variable}`} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT }} />
       </head>
