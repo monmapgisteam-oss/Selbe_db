@@ -227,8 +227,14 @@ export default function Pivot() {
       .catch((e) => setErr(String(e)));
   }, [bagts]);
 
+  // ⚠️ Багц солиход loadSlice хуучин огноотой, дараа нь шинэ огноотой зэрэг
+  // дуудагдаж болно — цуцлах механизмгүй тул хоцорсон хариу сүүлд ирвэл сонгосон
+  // огноотой зөрсөн дата дэлгэцэнд үлддэг байв. Sequence counter: зөвхөн хамгийн
+  // СҮҮЛИЙН дуудлага л state-д бичнэ.
+  const loadSeqRef = useRef(0);
   const loadSlice = useCallback(async () => {
     if (!bagts || !ognoo) return;
+    const seq = ++loadSeqRef.current;
     setErr("");
     setBusy(true);
     try {
@@ -242,6 +248,9 @@ export default function Pivot() {
           orderByFields: `${F.ognoo} ASC, ${F.oid} ASC`,
         },
       );
+      // ⚠️ Хоцорсон хариу: бидний дараа шинэ дуудлага эхэлсэн бол энэ үр дүнг
+      // хаяна — эс бөгөөс хуучин слайсын дата шинийг дарж үлдэнэ.
+      if (seq !== loadSeqRef.current) return;
       // Stamp section identity into Ангилал__Б_ (floor sections reuse job
       // names — without this the win-map merges distinct floor rows).
       applySections(all);
@@ -298,15 +307,27 @@ export default function Pivot() {
       setExtraRows([]);
       setExtraBuildings([]);
     } catch (e) {
-      setErr(String(e));
+      // ⚠️ Зөвхөн сүүлийн дуудлага л err/busy-г удирдана — хоцорсон хариу шинэ
+      // ачаалалтын busy төлөвийг дутуу цуцалж болохгүй.
+      if (seq === loadSeqRef.current) setErr(String(e));
     } finally {
-      setBusy(false);
+      if (seq === loadSeqRef.current) setBusy(false);
     }
   }, [bagts, ognoo]);
+
+  // ⚠️ Нийтлэлийн дараах зураг хавсаргалтын алдаанууд — reload-ын setErr("")-д
+  // дарагдахгүй байхаар ref-д хадгалж, loadSlice ДУУССАНЫ дараа харуулна.
+  const attachErrsRef = useRef<string[]>([]);
 
   useEffect(() => {
     (async () => {
       await loadSlice();
+      // ⚠️ publish-ийн ognoo !== today салбар setOgnoo(today) хийж ЭНД дахин
+      // ачаалдаг — өмнө нь тэр салбарт хавсралтын алдаа бүрэн хаягдаж байв.
+      if (attachErrsRef.current.length) {
+        setErr("Зураг хавсаргахад алдаа: " + attachErrsRef.current[0]);
+        attachErrsRef.current = [];
+      }
     })();
   }, [loadSlice]);
 
@@ -616,11 +637,31 @@ export default function Pivot() {
     }
     return out;
   };
+  // ⚠️ Хуучин огноо: floor нь СОНГОСОН огнооны (хуучин) утгаар шалгагддаг ч
+  // нийтлэх нь ӨНӨӨДРИЙН огноогоор бичдэг тул хуучин огноон дээр засвал сүүлийн
+  // өндөр утгыг хэрэглэгч харалгүйгээр дарж бууруулж чадна — засварыг зөвхөн
+  // хамгийн сүүлийн огноон дээр зөвшөөрнө.
+  const latestOgnoo = ognooList[ognooList.length - 1] || "";
+  const notLatest = !!latestOgnoo && ognoo !== latestOgnoo;
+  const oldDateMsg = `Хуучин огноо (${ognoo}) сонгогдсон — засварыг зөвхөн сүүлийн огноо (${latestOgnoo}) дээр хийнэ.`;
+
   function applyToSelection(value: string) {
+    if (notLatest) {
+      setErr(oldDateMsg);
+      return;
+    }
+    // ⚠️ Тоон шалгалт + 0–100 clamp (commitEdit-тэй ижил): тоо биш утга NaN
+    // болж нийтлэхэд null бичигдэн өмнөх утгыг чимээгүй устгадаг байв.
+    const t = value.trim().replace(",", ".");
+    if (t !== "" && !Number.isFinite(Number(t))) {
+      setErr("Тоон утга оруулна уу.");
+      return;
+    }
+    const norm = t === "" ? "" : String(Math.min(100, Math.max(0, Number(t))));
     const cells = selectedCells();
     if (!cells.length) return;
     // Хязгаараас доош унах нүднүүдийг алгасаад хэдийг нь алгассанаа хэлнэ.
-    const ok = cells.filter((c) => belowFloor(c.row, c.b, value) == null);
+    const ok = cells.filter((c) => belowFloor(c.row, c.b, norm) == null);
     const skipped = cells.length - ok.length;
     setErr(
       skipped
@@ -635,8 +676,8 @@ export default function Pivot() {
       for (const c of ok) {
         const key = `${c.ri}:${c.b}`;
         const orig = origStr(c.row, c.b);
-        if (value.trim() === orig) delete n[key];
-        else n[key] = value.trim();
+        if (norm === orig) delete n[key];
+        else n[key] = norm;
       }
       return n;
     });
@@ -645,7 +686,22 @@ export default function Pivot() {
   // Stage a cell edit locally (no service call). Drop the key if it matches the
   // original so Publish stays clean. Pushes an undo snapshot.
   function commitEdit(row: Row, ri: number, bld: string, raw: string) {
-    const floor = belowFloor(row, bld, raw);
+    // ⚠️ Хуучин огноон дээр засвар хориглоно (notLatest тайлбарыг дээрээс хар).
+    if (notLatest) {
+      setEdit(null);
+      setErr(oldDateMsg);
+      return;
+    }
+    // ⚠️ Тоон шалгалт: тоо биш утга нүдийг NaN% болгож, нийтлэхэд null бичигдэн
+    // өмнөх утгыг чимээгүй устгадаг байв. Таслалыг цэг болгож, 0–100-д clamp.
+    const t = raw.trim().replace(",", ".");
+    if (t !== "" && !Number.isFinite(Number(t))) {
+      setEdit(null);
+      setErr(`${bld} · ${row.work}: тоон утга оруулна уу.`);
+      return;
+    }
+    const norm = t === "" ? "" : String(Math.min(100, Math.max(0, Number(t))));
+    const floor = belowFloor(row, bld, norm);
     if (floor != null) {
       setEdit(null);
       setErr(`${bld} · ${row.work}: өмнө нь ${floor}% бүртгэгдсэн — гүйцэтгэл буурч болохгүй.`);
@@ -656,8 +712,8 @@ export default function Pivot() {
     const key = `${ri}:${bld}`;
     const orig = origStr(row, bld);
     const next = { ...pending };
-    if (raw.trim() === orig) delete next[key];
-    else next[key] = raw.trim();
+    if (norm === orig) delete next[key];
+    else next[key] = norm;
     if (JSON.stringify(next) === JSON.stringify(pending)) return; // no change
     setUndoStack((u) => [...u, pending]);
     setRedoStack([]);
@@ -754,9 +810,42 @@ export default function Pivot() {
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
   };
 
+  // ⚠️ Давхар-илгээлтийн хамгаалалт: `busy` шалгалт хуучирсан closure-т үлдэж
+  // болдог тул ref-ээр шалгана — хурдан давхар Ctrl+S/товшилт ижил нүдийг хоёр
+  // удаа adds болгож өнөөдрийн огноотой давхардсан мөр үүсгэдэг байв.
+  const publishingRef = useRef(false);
+
   // Apply all pending edits in one applyEdits call, upload any held images to
   // the features just created, then reload. Photos are optional.
   async function publish() {
+    if (publishingRef.current) return;
+    publishingRef.current = true;
+    // ⚠️ Backstop: хуучин огнооны слайс дээр pending үүссэн байвал (жиш. draft
+    // сэргээлт) нийтлэхгүй — commitEdit/applyToSelection-ий хориг энд давхар
+    // баталгаажина.
+    if (notLatest) {
+      publishingRef.current = false;
+      setErr(oldDateMsg);
+      return;
+    }
+    // ⚠️ Хувь нь pending-д байхгүй (жиш. Ctrl+Z-ээр буцаагдсан) шинэ нүдний
+    // бэлтгэсэн зургууд Нийтлэхэд илгээгдэхгүй, дараах reload-д чимээгүй устдаг
+    // тул үргэлжлүүлэхийн өмнө асууж баталгаажуулна.
+    const orphaned = Object.keys(pendingFiles).filter((k) => {
+      if (k in pending) return false;
+      const ori = Number(k.split(":")[0]);
+      const obld = k.slice(k.indexOf(":") + 1);
+      return rows[ori]?.cells[obld] == null;
+    });
+    if (
+      orphaned.length &&
+      !window.confirm(
+        `${orphaned.length} нүдэнд зураг бэлтгэсэн ч хувь нь оруулаагүй тул нийтлэхэд хадгалагдахгүй устана.\nҮргэлжлүүлэх үү?`,
+      )
+    ) {
+      publishingRef.current = false;
+      return;
+    }
     // Append model: each changed cell becomes a NEW row stamped today, so old
     // dates are never touched (light DB — only edited cells, not the whole
     // sheet). Re-editing a cell already published *today* updates that same row
@@ -826,19 +915,27 @@ export default function Pivot() {
           }
         }
       }
+      // ⚠️ Хавсралтын алдааг ref-д хадгална: ognoo !== today салбарын reload
+      // эффектээр явагддаг тул алдаа өмнө нь тэнд бүрэн хаягдаж байв — одоо
+      // reload дууссаны ДАРАА хоёр салбарт хоёуланд нь харагдана.
+      attachErrsRef.current = attachErrs;
       // Show today (= current merged state). If already viewing today, reload
       // in place; otherwise switch date and let the effect reload as-of today.
       setOgnooList((l) => (l.includes(today) ? l : [...l, today].sort()));
       if (ognoo === today) {
         await loadSlice(); // revokes object URLs + clears pendingFiles
-        if (attachErrs.length)
-          setErr("Зураг хавсаргахад алдаа: " + attachErrs[0]);
+        if (attachErrsRef.current.length) {
+          setErr("Зураг хавсаргахад алдаа: " + attachErrsRef.current[0]);
+          attachErrsRef.current = [];
+        }
       } else {
         setOgnoo(today);
       }
     } catch (e) {
       setErr(String(e));
       setBusy(false);
+    } finally {
+      publishingRef.current = false;
     }
   }
 

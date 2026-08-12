@@ -372,23 +372,35 @@ export function touchedIndexes(
   return [...hit].sort((a, b) => a - b);
 }
 
-/** `applyEdits` — 2000-аар хуваан илгээнэ. */
+/** `applyEdits` — 500-аар хуваан илгээнэ. */
 export async function applyUpdates(
   updates: Record<string, unknown>[],
 ): Promise<void> {
   for (let i = 0; i < updates.length; i += 500) {
     const chunk = updates.slice(i, i + 500);
-    const j = await agsFetch(`${B32_BASE}/applyEdits`, {
-      updates: JSON.stringify(chunk.map((attributes) => ({ attributes }))),
-      rollbackOnFailure: "true",
-    });
-    const bad = (j.updateResults || []).find(
-      (r: { success?: boolean }) => r.success === false,
-    );
-    if (bad)
-      throw new Error(
-        (bad as { error?: { description?: string } }).error?.description ||
-          "Шинэчлэх амжилтгүй",
+    try {
+      const j = await agsFetch(`${B32_BASE}/applyEdits`, {
+        updates: JSON.stringify(chunk.map((attributes) => ({ attributes }))),
+        rollbackOnFailure: "true",
+      });
+      const bad = (j.updateResults || []).find(
+        (r: { success?: boolean }) => r.success === false,
       );
+      if (bad)
+        throw new Error(
+          (bad as { error?: { description?: string } }).error?.description ||
+            "Шинэчлэх амжилтгүй",
+        );
+    } catch (e) {
+      // ⚠️ rollbackOnFailure зөвхөн НЭГ chunk дотроо үйлчилнэ — өмнөх chunk-ууд
+      // аль хэдийн серверт бичигдсэн тул хагас амжилтыг мессежид тодруулна.
+      if (i > 0)
+        throw new Error(
+          `${i}/${updates.length} мөр хадгалагдав; үлдсэн нь амжилтгүй (` +
+            String((e as Error).message || e) +
+            ") — дахин Нийтлэх дарж гүйцээнэ үү",
+        );
+      throw e;
+    }
   }
 }

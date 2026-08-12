@@ -40,6 +40,9 @@ export const metadata: Metadata = {
   description:
     'Сэлбэ дэд төвийн орон зайн мэдээллийн портал. Багцын хил, бүсчлэл, барилгын явц, газар чөлөөлөлт, инженерийн шугам сүлжээ, талбайн хяналтын үзүүлэлт — ArcGIS үйлчилгээнээс шууд.',
   metadataBase: new URL('https://selbe.monmap.mn'),
+  // favicon.ico байхгүйгээс 404 гарч байсан — SVG лого нь бүх орчин үеийн browser-т favicon болно
+  icons: { icon: '/logo.svg' },
+  manifest: '/manifest.json',
   openGraph: {
     type: 'website',
     title: 'Сэлбэ — Орон зайн мэдээллийн портал',

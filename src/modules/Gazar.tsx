@@ -112,10 +112,18 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const [drawToken, setDrawToken] = useState(0);
   const [clearToken, setClearToken] = useState(0);
   const pickRef = useRef<(a: Record<string, unknown> | null, id: string | null) => void>(() => {});
+  /**
+   * ⚠️ AOI-ийн ТҮҮХИЙ геометр — `pickFlt` (deps-гүй useCallback) дотор state
+   * биш ref-ээс уншина. `setHighlight` нь тодруулгыг БҮРЭН орлуулдаг тул
+   * геометргүй дуудвал полигоны орон зайн бүдгэрүүлэлт алга болж, самбарын тоо
+   * полигоноор шүүгдсэн атал зураг бүх талбайг тодоор харуулна.
+   */
+  const aoiGeomRef = useRef<__esri.Geometry | null>(null);
 
   /** Sketch-ээс ирсэн геометр — бүдгэрүүлэлт ба REST шүүлтийг ЗЭРЭГ тохируулна */
   const onSketch = useCallback((geom: __esri.Geometry | null) => {
     setFlt(null); // полигон шүүлт тодруулгыг эзэмшинэ — чарт-шүүлтийг цэвэрлэнэ
+    aoiGeomRef.current = geom;
     if (!geom) {
       setAoi(null);
       setHighlight(null);
@@ -148,12 +156,21 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     const cur = fltRef.current;
     const val = cur && cur.grp === next.grp && cur.key === next.key ? null : next;
     setFlt(val);
-    setHighlight(val ? val.where : null, val ? val.only : undefined);
+    // ⚠️ AOI идэвхтэй бол геометрийг ҮРГЭЛЖ хамт дамжуулна: сонгоход SQL +
+    //    орон зайн шүүлт AND-ээр хослоно (MapCanvas-ийн featureEffect тэгж
+    //    хослуулдаг), цуцлахад полигоны бүдгэрүүлэлт сэргэнэ.
+    const geom = aoiGeomRef.current ?? undefined;
+    setHighlight(
+      val ? val.where : null,
+      val ? val.only : (geom ? FILTER_IDS : undefined),
+      geom,
+    );
   }, [setHighlight]);
 
   const clear = useCallback(() => {
     setClearToken((t) => t + 1);
     setAoi(null);
+    aoiGeomRef.current = null; // ⚠️ хоцорсон геометр pickFlt-д дахин орох ёсгүй
     setFlt(null);
     setHighlight(null);
   }, [setHighlight]);

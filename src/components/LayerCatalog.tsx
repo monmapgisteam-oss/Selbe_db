@@ -166,6 +166,26 @@ export const LayerCatalog = memo(function LayerCatalog({
             {num(all.length)} нийт · {num(onCount)} асаалттай
             {/* Тоо/хэмжээ хараахан татагдаж байгааг заана — ЖАГСААЛТ өөрөө хүлээхгүй */}
             {totals.state === 'loading' && <> · тоолж байна…</>}
+            {/* ⚠️ Алдааг «—»-ээр нуухгүй (query.ts-ийн дүрэм) — юу болсныг хэлж,
+                дахин оролдох гарц өгнө. Товч нь текстэн холбоос маягтай тул
+                css модульд шинэ класс нэмэлгүй inline-аар зурав. */}
+            {totals.state === 'error' && (
+              <>
+                {' · '}<em className={s.rowWarn}>тоо татагдсангүй</em>
+                {totals.retry && (
+                  <>
+                    {' '}
+                    <button
+                      type="button"
+                      onClick={totals.retry}
+                      style={{ font: 'inherit', color: 'inherit', background: 'none', border: 0, padding: 0, cursor: 'pointer', textDecoration: 'underline' }}
+                    >
+                      дахин оролдох
+                    </button>
+                  </>
+                )}
+              </>
+            )}
             {zone && <> · {zone}</>}
           </span>
         </div>
@@ -396,6 +416,19 @@ function FacetRows({
       .sort((a, b) => b.values.n - a.values.n);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [d.id, where]);
+
+  // ⚠️ Алдааг ЧИМЭЭГҮЙ null болгохгүй (query.ts-ийн дүрэм) — дэд мөрүүд дуугүй
+  //    алга болбол хэрэглэгч задаргаа огт байхгүй гэж эндүүрнэ. Жижиг мөрөөр
+  //    мэдэгдэж, дахин оролдох гарц өгнө.
+  if (q.state === 'error') {
+    return (
+      <div className={s.facetRows}>
+        <button type="button" className={s.facetRow} onClick={q.retry}>
+          <span className={s.facetName}>Ангилал татагдсангүй — дахин оролдох</span>
+        </button>
+      </div>
+    );
+  }
 
   if (q.state !== 'ready' || q.data.length < 2) return null;
 

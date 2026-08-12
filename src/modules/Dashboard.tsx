@@ -6,7 +6,7 @@ import {
   type ReactNode, type Ref,
 } from 'react';
 import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
-import { Donut, Ring, Bars, Data, Stats, Stat } from '@/components/ui';
+import { Donut, Ring, Bars, Data, Stats, Stat, Empty } from '@/components/ui';
 import { Icon } from '@/components/Icon';
 import { LayerCatalog } from '@/components/LayerCatalog';
 import { ZoneFilter } from '@/components/ZoneFilter';
@@ -283,6 +283,11 @@ export type BagtsRow = {
    * Барилга угсралтын гүйцэтгэл (%) — «Гүйцэтгэл бөглөх» хуудасны «Б.» мөрөөр.
    * ⚠️ Хуваарь нь БҮХ блок (тайлангүйг 0%). Зөвхөн тайлагнасан блокоор
    * дундажлавал шинэ багц бүртгэгдэх бүрд дүн нь БУУНА.
+   * ⚠️ МЭДЭГДЭЖ БУЙ ЗӨРҮҮ: «Барилгын хяналт» (BuildingPanel) ба «Багцын
+   * мэдээлэл» (Bagts) нь тайлангүй блокоо ХАСЧ дундажладаг тул нэг багц тэнд
+   * арай ӨӨР (өндөр) % харагдана. Нэгтгэхдээ энэ «бүх блокоор хуваах» дүрмийг
+   * ГАНЦ helper болгож гурван модульд хамт хэрэглэх — `missing` тэмдэглэл
+   * хэвээр үлдэнэ.
    */
   progress: number | null;
   /** Тайлан ирээгүй блокийн тоо */
@@ -307,14 +312,19 @@ export type BagtsRow = {
 export function useBagtsTable(): Async<BagtsRow[]> {
   const cash = useCashflow();
   const cashReady = cash.state === 'ready' ? cash.data : null;
+  const cashError = cash.state === 'error' ? cash.error : null;
   return useAsync(async () => {
+    // ⚠️ Cashflow-ийн алдааг ДАМЖУУЛНА — эс бөгөөс доорх мөнхийн pending
+    //    promise-д гацаж, багц/толгойн KPI «ачаалж байна» төлөвөөс гардаггүй,
+    //    алдаа огт харагддаггүй байв.
+    if (cashError) throw cashError;
     if (!cashReady) return new Promise<BagtsRow[]>(() => {});
     const [blocks, prog] = await Promise.all([
       queryFeatures(BUILDING.url, { outFields: [BUILDING.oid, BF.bagts, BF.block, BF.households] }),
       loadBlockProgress(),
     ]);
     return joinBagts(blocks, cashReady, prog);
-  }, [cashReady]);
+  }, [cashReady, cashError]);
 }
 
 function joinBagts(blocks: Row[], cash: CashRow[], prog: BlockProgressMap): BagtsRow[] {
@@ -773,7 +783,7 @@ function Detail({ k, d, suit, prog, zone, setZone, flt, onFlt }: {
   zone: string | null; setZone: (z: string | null) => void;
 } & FltProps) {
   switch (k) {
-    case 'scope': return <ScopeDetail />;
+    case 'scope': return <ScopeDetail bagts={d.bagts} />;
     case 'schedule': return <ScheduleDetail project={d.project} />;
     case 'bagts': return <BagtsDetail q={d.bagts} flt={flt} onFlt={onFlt} />;
     case 'land': return <LandDetail parcels={d.parcels} project={d.project} flt={flt} onFlt={onFlt} />;
@@ -988,7 +998,13 @@ function HeadKpi({ d }: { d: DashData }) {
 
 /* ══════════════════ 01 · Цар хүрээ ══════════════════ */
 
-function ScopeDetail() {
+function ScopeDetail({ bagts }: { bagts: Async<BagtsRow[]> }) {
+  /**
+   * ⚠️ `live` мөрийг АМЬД тоогоор орлуулна (BENEFITS-ийн загвар) — эс бөгөөс
+   * толгойн KPI шинэ блокийн тоо, энэ хавтан brief-ийн бэхлэгдсэн «113» гэж
+   * ЗЭРЭГ зөрж гарна. Амьд дүн ирээгүй байхад бэхлэгдсэн утга нь харагдана.
+   */
+  const blocks = bagts.state === 'ready' ? bagts.data.reduce((a, x) => a + x.blocks, 0) : null;
   return (
     <>
       <Panel title="Төслийн цар хүрээ">
@@ -998,7 +1014,7 @@ function ScopeDetail() {
               key={s.key}
               accent
               color={HUE[i % HUE.length]}
-              value={<>{s.value}{!s.live && <Pin />}</>}
+              value={<>{s.live && blocks != null ? num(blocks) : s.value}{!s.live && <Pin />}</>}
               unit={s.unit}
               label={s.label}
             />
@@ -1409,6 +1425,9 @@ function SourceDetail({ sources, flt, onFlt }: { sources: Async<Row[]> } & FltPr
     <Data q={sources} loading="Эх үүсвэрийн мэдээллийг татаж байна…">
       {(rows) => {
         const types = [...new Set(rows.map((r) => srcStr(r[F.type])))].filter(Boolean);
+        // ⚠️ Үйлчилгээ 0 мөр буцаавал баганад толгойноос өөр юу ч гарахгүй —
+        //    хэрэглэгч «эвдэрсэн» гэж ойлгохгүйн тулд хоосон төлөвөө ил хэлнэ.
+        if (!types.length) return <Empty label="Эх үүсвэрийн бүртгэл хоосон байна." />;
         return (
           <>
             {types.map((type) => {

@@ -214,9 +214,12 @@ export function Weights({
                 {fields.map(([key, label]) => (
                   <label key={String(key)}>
                     <span>{label}</span>
+                    {/* ⚠️ Controlled: «Анхны утга» reset хийхэд дэлгэцийн тоо
+                        төлөвтэйгээ ХАМТ буцах ёстой — defaultValue бол DOM
+                        хуучин засварласан утгаа хадгалж, оноололтой зөрдөг. */}
                     <input
                       type="number" step="any"
-                      defaultValue={i[key] as number}
+                      value={i[key] as number}
                       onChange={(e) => {
                         const v = parseFloat(e.target.value);
                         if (Number.isFinite(v)) patch(i.id, key, v);

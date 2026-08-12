@@ -577,7 +577,7 @@ export function MonitorBagts({ bagts }: { bagts: string }) {
 /* ═════════════ Блокийн АЖЛЫН ГҮЙЦЭТГЭЛ — нэгтгэсэн хүснэгтээс ═════════════ */
 
 type HeaderWork = { name: string; progress: number | null };
-type TaskPerfData = {
+export type TaskPerfData = {
   version: string;             // «2026-07-20» — сүүлийн бөглөсөн огноо
   overall: number | null;      // «Б. Барилга угсралтын ажил» мөрийн гүйцэтгэл (0–100)
   headers: HeaderWork[];       // Б1…Б5 дэд үе шатууд
@@ -606,8 +606,13 @@ const rowKey = (a: Record<string, unknown>) =>
  *
  * ⚠️ БЛОКИЙН НЭР БАГЦААР ДАВТАГДАНА («5/1» долоон багцад тус бүрдээ өөр барилга)
  * тул `barilga_blok LIKE`-аас гадна Багцаар ЗААВАЛ шүүнэ.
+ *
+ * ⚠️ Дуудагч (ViewPanel-ийн MonitorPanel) НЭГ УДАА дуудаж `MonitorGeneral` ба
+ * `MonitorDetail`-д prop-оор өгнө. Урьд нь хоёулаа тус тусдаа дууддаг байсан
+ * тул хуудаслалттай ижил хүнд queryAll (блокийн түүх 2000+ мөр давдаг) барилга
+ * сонгох бүрд ХОЁР ДАВХАР явдаг байв.
  */
-function useTaskPerf(b: PickedBuilding | null): Async<TaskPerfData | null> {
+export function useTaskPerf(b: PickedBuilding | null): Async<TaskPerfData | null> {
   const blok = b?.blok ?? null;
   const bagts = b?.bagts ?? null;
   return useAsync(async () => {
@@ -696,7 +701,7 @@ const emptyPerf = (cell: Cell): Omit<TaskPerfData, 'hist' | 'key'> => ({
 
 /** Сонгосон барилга — БАГЦ + БЛОК хосоор (блокийн нэр багц дотор л давтагдахгүй) */
 export type PickedBuilding = { bagts: string; blok: string };
-function pickedBuilding(
+export function pickedBuilding(
   picked: Record<string, unknown> | null,
   pickedLayer: string | null,
 ): PickedBuilding | null {
@@ -708,10 +713,10 @@ function pickedBuilding(
 /**
  * ЗҮҮН — барилгын ЕРӨНХИЙ гүйцэтгэл: нийт % + ажлын төлөв.
  * ⚠️ ЗӨВХӨН «Гүйцэтгэл бөглөх»-ийн нэгтгэсэн хүснэгт — shapefile талбар БИШ.
+ * ⚠️ `b`/`q`-г дуудагч НЭГ УДАА бэлдэж өгнө (`useTaskPerf`-ийн тайлбар) —
+ *    энд өөрөө дуудвал `MonitorDetail`-тай давхар хүсэлт явна.
  */
-export function MonitorGeneral({ picked, pickedLayer }: { picked: Record<string, unknown> | null; pickedLayer: string | null }) {
-  const b = pickedBuilding(picked, pickedLayer);
-  const q = useTaskPerf(b);
+export function MonitorGeneral({ b, q }: { b: PickedBuilding | null; q: Async<TaskPerfData | null> }) {
   if (!b) {
     return <Section><Empty label="Барилга сонгоогүй байна." /></Section>;
   }
@@ -749,10 +754,9 @@ export function MonitorGeneral({ picked, pickedLayer }: { picked: Record<string,
 /**
  * БАРУУН — ажлын ДЭЛГЭРЭНГҮЙ гүйцэтгэл: Б1…Б5 дэд үе шат.
  * ⚠️ ЗӨВХӨН «Гүйцэтгэл бөглөх»-ийн нэгтгэсэн хүснэгт.
+ * ⚠️ `b`/`q`-г дуудагч НЭГ УДАА бэлдэж өгнө (`useTaskPerf`-ийн тайлбар).
  */
-export function MonitorDetail({ picked, pickedLayer }: { picked: Record<string, unknown> | null; pickedLayer: string | null }) {
-  const b = pickedBuilding(picked, pickedLayer);
-  const q = useTaskPerf(b);
+export function MonitorDetail({ b, q }: { b: PickedBuilding | null; q: Async<TaskPerfData | null> }) {
   if (!b) {
     return <Section><Empty label="Барилга сонгоогүй байна." /></Section>;
   }
