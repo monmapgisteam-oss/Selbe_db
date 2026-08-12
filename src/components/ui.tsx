@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import type { Async } from '@/lib/useAsync';
 import s from './ui.module.css';
 
@@ -137,8 +137,12 @@ export function Tabs({
 
 /* ── Үзүүлэлт ── */
 
-export function Stats({ cols = 2, children }: { cols?: 2 | 3; children: ReactNode }) {
-  return <div className={`${s.stats} ${cols === 3 ? s.stats3 : ''}`}>{children}</div>;
+export function Stats({ cols = 2, children }: { cols?: 2 | 3 | 4; children: ReactNode }) {
+  return (
+    <div className={`${s.stats} ${cols === 3 ? s.stats3 : ''} ${cols === 4 ? s.stats4 : ''}`}>
+      {children}
+    </div>
+  );
 }
 
 export function Stat({
@@ -752,6 +756,10 @@ export function Trend({
 }) {
   const [hov, setHov] = useState<number | null>(null);
 
+  // ⚠️ Цуваа солигдоход (grain/хамрах хүрээ) хуучин hov хүчингүй болно — цэгийн
+  //    товч unmount болоход React blur/mouseleave өгдөггүй тул энд цэвэрлэнэ.
+  useEffect(() => setHov(null), [points.length]);
+
   if (points.length < 2) return <Empty label="Цуваа зурахад хангалттай бүртгэл алга." />;
 
   // Тэнхлэгийн дээд хязгаар нь БҮТЭН аравт — 23%-ийн муруйг 0–100 дээр зурвал
@@ -762,7 +770,10 @@ export function Trend({
   const y = (v: number) => 100 - (v / top) * 100;
 
   const path = points.map((p, i) => `${x(i)},${y(p.value)}`).join(' ');
-  const cur = points[hov ?? points.length - 1];
+  // ⚠️ Индексийг ХЯЗГААРЛАНА: дээрх цэвэрлэгээ рендерийн ДАРАА ажилладаг тул
+  //    богиноссон цуваан дээр хуучин hov-оор шууд индекслэвэл cur undefined
+  //    болж бүх React мод унана.
+  const cur = points[hov != null && hov < points.length ? hov : points.length - 1];
 
   return (
     <div className={s.trend} style={tone(color)}>

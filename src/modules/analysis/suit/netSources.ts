@@ -184,9 +184,16 @@ export function loadNetworkCached(kind: NetKind): Promise<Network> {
   if (!p) {
     const src = NET_SOURCES[kind];
     // Геометрийг ArcGIS line-аас, гэрлэн дохиог ЗӨВХӨН бодит service-ээс.
+    // ⚠️ Дохионы service унавал ЧИМЭЭГҮЙ дохиогүй угсрагддаг байсан — warn бичиж,
+    //    Network.signalsFailed тугаар UI-д мэдэгдэх боломж үлдээнэ.
+    let signalsFailed = false;
     p = Promise.all([
       loadPathsFrom(sourceUrl(src)),
-      loadRealSignalsCached().catch(() => [] as SignalDef[]), // service унавал дохиогүй
+      loadRealSignalsCached().catch((e) => { // service унавал дохиогүй
+        signalsFailed = true;
+        console.warn('[selbe] Гэрлэн дохио ачаалагдсангүй — ДОХИОГҮЙ симуляц (page reload хүртэл):', e);
+        return [] as SignalDef[];
+      }),
     ])
       .then(([paths, signals]) => {
         // ⚠️ Огтлолцол дээр таслах — тасраагүй урт шугамтай эх сурвалжид
@@ -209,6 +216,7 @@ export function loadNetworkCached(kind: NetKind): Promise<Network> {
           const dup = markDuplicates(net);
           if (dup) console.info(`[selbe] «${src.label}»: давхардсан ${dup}/${net.edges.length} ирмэгийг урсгалаас хасав`);
         }
+        if (signalsFailed) net.signalsFailed = true;
         return net;
       })
       .catch((e) => { cache.delete(kind); throw e; });

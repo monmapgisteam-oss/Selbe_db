@@ -1,8 +1,9 @@
 'use client';
 
 import {
-  CATEGORIES, DENSITY_BY_TYPE, PARKING_SOURCES,
+  CATEGORIES, DENSITY_BY_TYPE, PARKING_SOURCES, GREEN_SOURCES,
   type Indicator, type ParkingOpt, type ParkingSource, type CategoryKey,
+  type GreenOpt, type GreenSource,
 } from '@/lib/analysis/config';
 import { scoreColor, scoreIndicator, clamp } from '@/lib/analysis/score';
 import { Donut } from '@/components/ui';
@@ -107,7 +108,9 @@ export function IndicatorPicker({
   const ind = indicators.find((i) => i.id === active) ?? indicators[0];
   const groups = CATEGORIES
     .filter((c) => !filter || c.key === filter)
-    .map((c) => ({ c, items: indicators.filter((i) => i.cat === c.key) }))
+    // ⚠️ ЛАВЛАГААНЫ үзүүлэлтийг ХАСНА: нормгүй тул «норм хангасан %» ба газрын
+    //    зургийн будалт нь худал (бүх бүс 100 оноо мэт харагдана).
+    .map((c) => ({ c, items: indicators.filter((i) => i.cat === c.key && !i.ref) }))
     .filter((g) => g.items.length > 0);
 
   return (
@@ -176,7 +179,8 @@ export function Weights({
 
   return (
     <div>
-      {indicators.map((i) => {
+      {/* ⚠️ ЛАВЛАГААНЫ үзүүлэлт нормгүй тул жин/босго засварлах утгагүй */}
+      {indicators.filter((i) => !i.ref).map((i) => {
         // Босго засварлах талбарууд — горимоос хамаарч өөр
         const fields: [keyof Indicator, string][] = i.mode === 'band'
           ? [['optMin', 'Нормын доод'], ['optMax', 'Нормын дээд'], ['hardMin', '0 оноо (доош)'], ['hardMax', '0 оноо (дээш)']]
@@ -214,9 +218,12 @@ export function Weights({
                 {fields.map(([key, label]) => (
                   <label key={String(key)}>
                     <span>{label}</span>
+                    {/* ⚠️ Controlled: «Анхны утга» reset хийхэд дэлгэцийн тоо
+                        төлөвтэйгээ ХАМТ буцах ёстой — defaultValue бол DOM
+                        хуучин засварласан утгаа хадгалж, оноололтой зөрдөг. */}
                     <input
                       type="number" step="any"
-                      defaultValue={i[key] as number}
+                      value={i[key] as number}
                       onChange={(e) => {
                         const v = parseFloat(e.target.value);
                         if (Number.isFinite(v)) patch(i.id, key, v);
@@ -334,6 +341,147 @@ export function Parking({
         </div>
         <div><span>Дутагдалтай бүс</span><b className={short ? s.neg : s.pos}>{short} / {withNeed.length}</b></div>
         <div><span>Хангалттай бүс</span><b className={s.pos}>{withNeed.length - short} / {withNeed.length}</b></div>
+      </div>
+    </>
+  );
+}
+
+/* ══════════════════ Ногоон байгууламж ══════════════════ */
+
+/**
+ * НОГООН БАЙГУУЛАМЖИЙН ХАНГАМЖ — «Зогсоолын хэрэгцээ» картын ЯГ ИЖИЛ зарчим:
+ * байгаа хэмжээ ба шаардлагатай хэмжээ хоёрыг харьцуулж, хангалтын хувийг гаргана.
+ *
+ * ⚠️ Хоёр арга нь ӨӨР ЗҮЙЛ хэмждэг (`GreenSource`-ын тайлбарыг үз):
+ *   · 6 м²/хүн — ЗӨВХӨН оршин суугчтай бүсэд хэрэгцээ гарна. Оршин суугчгүй
+ *     (сургууль, үйлчилгээ) бүс «хэрэгцээгүй» тул тоололд ОРОХГҮЙ — эс бөгөөс
+ *     ногоонгүй ч гэсэн «хангалттай» гэж тоологдож, дүнг хөөрөгдөнө.
+ *   · Талбайн % — хүн амаас хамаарахгүй тул БҮХ бүсэд үйлчилнэ.
+ *
+ * ⚠️ ТАЛБАЙ нь `polyHa` (полигоны БОДИТ талбай): ногоон байгууламжийн м² нь
+ * бүсийн полигоноор ТАЙРАГДСАН (`nogoon_baiguulamj/0` — бүсээр огтлолцуулсан)
+ * тул хувь тооцоход ижил суурьтай байх ёстой. `areaHa` (албан ёсны, зам хассан)
+ * авбал хүртээмж хиймлээр өсөж харагдана.
+ */
+export function Green({
+  rows, green, setGreen, indicators,
+}: {
+  rows: Row[];
+  green: GreenOpt;
+  setGreen: (g: GreenOpt) => void;
+  indicators: Indicator[];
+}) {
+  const perPerson = green.source === 'perPerson';
+
+  /** Бүс бүрийн байгаа ба шаардлагатай ногоон (м²). Хэрэгцээгүй бол `null`. */
+  const per = rows.map((r) => {
+    const have = r.greenM2;
+    const need = perPerson
+      ? (r.residentPop > 0 ? r.residentPop * green.perPerson : null)
+      : (r.polyHa > 0 ? r.polyHa * 10_000 * (green.share / 100) : null);
+    return { r, have, need };
+  });
+
+  const withNeed = per.filter((p) => p.need != null && p.need > 0);
+  const haveAll = rows.reduce((a, r) => a + r.greenM2, 0);
+  const need = withNeed.reduce((a, p) => a + (p.need ?? 0), 0);
+  // ⚠️ Хангалтын хувийг ЗӨВХӨН хэрэгцээтэй бүсийн ногооноор — эс бөгөөс
+  //    хэрэгцээгүй бүсийн ногоон нь бусдын дутагдлыг нөхөж, дүн худал өснө.
+  const haveNeeded = withNeed.reduce((a, p) => a + p.have, 0);
+  const gap = haveNeeded - need;
+  const short = withNeed.filter((p) => p.have < (p.need ?? 0)).length;
+  const pct = need > 0 ? (haveNeeded / need) * 100 : null;
+
+  /** Төслийн НИЙТ талбайд ногоон эзлэх хувь — «30% ногоон уу?» гэсэн асуултын хариу */
+  const landM2 = rows.reduce((a, r) => a + r.polyHa * 10_000, 0);
+  const sharePct = landM2 > 0 ? (haveAll / landM2) * 100 : null;
+
+  // Хангалтын өнгө нь газрын зураг, оноололтой ижил шатлалаас гарна
+  const greenInd = indicators.find((i) => i.id === 'green')!;
+  const col = scoreColor(scoreIndicator(pct, { ...greenInd, mode: 'higher', hardMin: 0, target: 100 }));
+
+  const pop = rows.reduce((a, r) => a + r.residentPop, 0);
+  const formula = perPerson
+    ? `${nf(pop)} оршин суугч × ${green.perPerson} м² = <b>${nf(need)} м²</b>`
+    : `${nf(landM2 / 10_000, 1)} га × ${green.share}% = <b>${nf(need)} м²</b>`;
+
+  return (
+    <>
+      <p className={`${s.muted} ${s.small}`}>
+        <b>Байгаа ногоон</b> = бүсийн полигоноор тайрсан ногоон байгууламжийн талбай.
+        <b> Шаардлагатай ногоон</b>-ыг доорх хоёр аргын аль нэгээр тооцож, хоёуланг нь харьцуулна.
+      </p>
+
+      <div className={s.subLabel}>Хэрэгцээг ямар аргаар тооцох вэ?</div>
+      <div className={s.toggles}>
+        {GREEN_SOURCES.map((src) => (
+          <label key={src.key} className={s.chk}>
+            <input
+              type="radio" name="greenSrc"
+              checked={green.source === src.key}
+              onChange={() => setGreen({ ...green, source: src.key as GreenSource })}
+            />
+            <span>{src.label}</span>
+          </label>
+        ))}
+      </div>
+
+      <div className={s.sliderRow}>
+        <label>
+          <span>{perPerson ? 'Нэг оршин суугчид ногдох ногоон' : 'Талбайд ногоон эзлэх хувь'}</span>
+          <span className="val">{perPerson ? `${green.perPerson.toFixed(1)} м²` : `${green.share}%`}</span>
+        </label>
+        <input
+          type="range"
+          min={perPerson ? 2 : 5}
+          max={perPerson ? 20 : 60}
+          step={perPerson ? 0.5 : 1}
+          value={perPerson ? green.perPerson : green.share}
+          aria-label="Ногоон байгууламжийн коэффициент"
+          onChange={(e) => setGreen(perPerson
+            ? { ...green, perPerson: Number(e.target.value) }
+            : { ...green, share: Number(e.target.value) })}
+        />
+      </div>
+
+      <div className={s.parkHead}>
+        <div className={s.parkPct} style={{ color: col }}>
+          {pct == null ? '—' : Math.round(pct)}<i>%</i>
+        </div>
+        <div className={s.parkHeadTxt}>
+          <b>Хэрэгцээ хангасан хувь</b>
+          <span>Байгаа <b>{nf(haveNeeded)}</b> · шаардлагатай <b>{nf(need)}</b> м²</span>
+        </div>
+      </div>
+
+      <div className={s.parkBar} title="Байгаа ногоон байгууламж нийт хэрэгцээний хэдэн хувийг хангаж байгааг харуулна">
+        <span style={{ width: `${pct == null ? 0 : clamp(pct, 0, 100)}%`, background: col }} />
+      </div>
+      <div className={s.parkScale}><span>0%</span><span>Норм 100%</span></div>
+
+      <div className={s.parkFormula}>
+        Хэрэгцээ: <span dangerouslySetInnerHTML={{ __html: formula }} />
+      </div>
+
+      <div className={s.finSummary}>
+        <div>
+          <span>Ногоон эзлэх хувь (төсөл)</span>
+          {/* ⚠️ Энэ нь ХАНГАМЖААС тусдаа тоо: нийт газарт ногоон хэдэн хувийг
+              эзэлж байгааг заана («30% ногоон уу?» гэсэн асуултын шууд хариу). */}
+          <b style={{ color: scoreColor(sharePct == null ? null
+            : clamp((sharePct / green.share) * 100, 0, 100)) }}>
+            {sharePct == null ? '—' : `${nf(sharePct, 1)}%`}
+          </b>
+        </div>
+        <div>
+          <span>Ногоон / нийт талбай</span>
+          <b>{nf(haveAll / 10_000, 1)} / {nf(landM2 / 10_000, 1)} га</b>
+        </div>
+        <div>
+          <span>{gap >= 0 ? 'Илүүдэл' : 'Дутагдал'}</span>
+          <b className={gap >= 0 ? s.pos : s.neg}>{gap >= 0 ? '+' : '−'}{nf(Math.abs(gap))} м²</b>
+        </div>
+        <div><span>Дутагдалтай бүс</span><b className={short ? s.neg : s.pos}>{short} / {withNeed.length}</b></div>
       </div>
     </>
   );

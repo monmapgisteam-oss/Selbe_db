@@ -1,0 +1,230 @@
+/* ═══════════════════════════════════════════════════════════
+   САНХҮҮЖИЛТ — Cashflow төлөвлөгөө: комбо график голтой.
+   Багана = сарын авах дүн ₮ · шугам = өссөн гүйцэтгэлийн хувь %.
+   ═══════════════════════════════════════════════════════════ */
+
+.frame {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 18px;
+  background: var(--bg);
+  overflow-y: auto;
+}
+
+/* ── Хуудасны толгой ── */
+.pageHd {
+  flex: none;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.pageHd h2 { font-size: 1rem; font-weight: 700; color: var(--ink); }
+.pageHd p { margin-top: 3px; font-size: 0.72rem; color: var(--ink-3); line-height: 1.45; }
+
+/* ── Төрлийн бүлэг ── */
+.group {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.groupHd {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 2px 6px;
+  border-bottom: 2px solid color-mix(in srgb, var(--hue) 35%, var(--line));
+}
+.groupHd h2 {
+  font-size: 0.84rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+.groupHd span {
+  padding: 1px 9px;
+  border-radius: 99px;
+  font-size: 0.68rem;
+  font-weight: 650;
+  color: var(--ink-3);
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+/* ── Багц тус бүрийн график — НЭГ баганад (өргөн тусам дүнгийн шошго давхцахгүй) ── */
+.grid {
+  flex: none;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.subContractor { font-size: 0.68rem !important; color: var(--ink-3); }
+
+/* Толгойн «Олгогдох нийт санхүүжилт» — өмнө шилжүүлсэн + сарын хуваарь */
+.totBadge {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+.totBadge span {
+  font-size: 0.62rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--ink-3);
+}
+.totBadge b {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #0891b2;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Өмнө (2023–2025-09) шилжүүлсэн дүнгийн тэмдэглэгээ */
+.prevBadge {
+  flex: none;
+  align-self: flex-start;
+  padding: 4px 10px;
+  border-radius: 99px;
+  font-size: 0.66rem;
+  font-weight: 650;
+  color: var(--ink-2);
+  background: color-mix(in srgb, #f59e0b 10%, var(--surface-2));
+  border: 1px solid color-mix(in srgb, #f59e0b 35%, var(--line));
+  white-space: nowrap;
+}
+
+/* ── Панел (карт) ── */
+.panel {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.panelHd {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  /* Бадж ЯМАГТ баруун талд — доош мөр дамжихгүй (жигд) */
+  flex-wrap: nowrap;
+}
+.panelHd > div:first-child { flex: 1; min-width: 0; }
+.panelHd h3 { font-size: 0.9rem; font-weight: 700; color: var(--ink); line-height: 1.3; }
+.panelHd p { margin-top: 3px; font-size: 0.72rem; color: var(--ink-3); line-height: 1.45; }
+
+/* Толгойн хоёр үзүүлэлт */
+.headStats { display: flex; gap: 10px; }
+.headStat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-2);
+  min-width: 120px;
+}
+.headStat span { font-size: 0.64rem; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.02em; }
+.headStat b { font-size: 1.05rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* Легенд */
+.legend { display: flex; gap: 18px; font-size: 0.74rem; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 7px; }
+.legend i { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
+.legend .legendBar { width: 11px; height: 11px; border-radius: 3px; opacity: 0.75; }
+
+/* ── Комбо график ── */
+.chartWrap { position: relative; width: 100%; }
+.comboSvg { width: 100%; display: block; cursor: crosshair; }
+.curveGrid { stroke: var(--line); stroke-width: 1; }
+.curveCursor { stroke: var(--ink-3); stroke-width: 1; stroke-dasharray: 3 3; }
+.axisX { fill: var(--ink-3); font-size: 11px; }
+.axisXPct { fill: #f59e0b; font-size: 11.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.barVal { fill: var(--ink-2); font-size: 10.5px; font-weight: 600; }
+.barValG { fill: #22c55e; font-size: 10.5px; font-weight: 700; }
+.barValP { fill: #a855f7; font-size: 10.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* Tooltip */
+.tip {
+  position: absolute;
+  top: 8px;
+  z-index: 4;
+  min-width: 160px;
+  padding: 9px 11px;
+  border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.14);
+  pointer-events: none;
+}
+.tipHd { font-size: 0.74rem; font-weight: 700; color: var(--ink); margin-bottom: 6px; }
+.tipRow { display: flex; align-items: center; gap: 7px; font-size: 0.72rem; color: var(--ink-2); line-height: 1.7; }
+.tipRow i { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+.tipRow b { margin-left: auto; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
+.tipGap { margin-top: 3px; padding-top: 5px; border-top: 1px solid var(--line); }
+
+/* ── Дэлгэрэнгүй хүснэгт (сар хэвтээгээр) ── */
+.ledgerWrap { overflow-x: auto; }
+.ledger {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.74rem;
+}
+.ledger th {
+  padding: 7px 9px;
+  text-align: right;
+  font-size: 0.66rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--ink-3);
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+.ledger th:first-child { text-align: left; }
+.thMon { font-variant-numeric: tabular-nums; }
+.ledger td {
+  padding: 7px 9px;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.ledger tbody tr:last-child td { border-bottom: none; }
+.ledger tbody tr:hover { background: color-mix(in srgb, var(--hue) 4%, transparent); }
+.tdDate { font-weight: 650; color: var(--ink); }
+.tdNum { text-align: right; font-variant-numeric: tabular-nums; }
+.tdCum { font-weight: 650; color: var(--ink); }
+
+/* ── Гэрээ сонгох ── */
+.contractGrid { max-height: 420px; overflow-y: auto; }
+.backBtn {
+  flex: none;
+  padding: 7px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.backBtn:hover { background: color-mix(in srgb, var(--hue) 8%, var(--surface-2)); color: var(--ink); }

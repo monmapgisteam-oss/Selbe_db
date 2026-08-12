@@ -246,6 +246,14 @@ export type Network = {
    * тасралтгүй байх нь чиглэлээс чухал).
    */
   sinkExit: Map<number, number[]>;
+  /**
+   * Гэрлэн дохионы service УНАЖ сүлжээ ДОХИОГҮЙ угсрагдсаныг тэмдэглэнэ.
+   *
+   * ⚠️ UI (RoadStatus/SignalControl) энэ тугаар «дохиогүй симуляц» гэсэн
+   * анхааруулга харуулах боломжтой — сүлжээ кэшлэгддэг тул service сэргэсэн ч
+   * page reload хүртэл дохиогүй хувилбар хэвээр үлддэг.
+   */
+  signalsFailed?: boolean;
 };
 
 /** Үзүүрийг наах хүлцэл (БОДИТ метр) — CAD-ийн хэрчмүүд яг таг таардаггүй. */
@@ -1423,7 +1431,9 @@ export function pickNext(
     const dot = travel[0] * h[0] + travel[1] * h[1];
     // (1+cos)/2 → шулуун=1, эгц эргэлт=0.5, буцах=0. Квадратаар нь эрчимжүүлнэ.
     const align = Math.max(0.02, ((1 + dot) / 2) ** 2);
-    const w = align * Math.min(1, net.edges[i].length / 25);
+    // ⚠️ edge.length проекцын нэгжтэй тул 25 БОДИТ метрийн босгыг upm-ээр хөрвүүлнэ —
+    //    эс бөгөөс босго ~16.8 м болж богино хог хэрчим бүрэн жин авдаг байсан
+    const w = align * Math.min(1, net.edges[i].length / (25 * (net.unitsPerMeter || 1)));
     if (w <= 0) continue;
     cand.push(i);
     ws.push(w);

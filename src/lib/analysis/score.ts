@@ -78,7 +78,9 @@ export function urbanScore(
 
   for (const ind of indicators) {
     const eff = normFor(ind, torol);
-    if (ind.weight <= 0) {
+    // ⚠️ `ref` — БНБД-д норм заагаагүй лавлагааны үзүүлэлт: оноолт БОДОХГҮЙ
+    //    (утга нь харагдана). Жин 0 нь мөн адил оноололд ордоггүй.
+    if (ind.ref || ind.weight <= 0) {
       parts[ind.id] = { value: raw[ind.id] ?? null, score: null, weight: 0, norm: eff };
       continue;
     }
