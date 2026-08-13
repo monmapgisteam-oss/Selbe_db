@@ -145,6 +145,9 @@ const DIRTY_BG = "var(--sheet-dirty)"; // edited, not yet published (green)
 const HEADER_BG = "var(--sheet-header)"; // non-editable header/group rows
 
 export default function Pivot() {
+  const wrapRef = useRef<HTMLDivElement>(null);
+  /** Энэ таб яг одоо нуугдсан уу (`display: none` → `offsetParent` нь null). */
+  const hiddenNow = () => !wrapRef.current?.offsetParent;
   const { style: colStyle, grip, resetAll, resized } = useColWidths("pivot");
   const [bagtsList, setBagtsList] = useState<string[]>([]);
   const [ognooList, setOgnooList] = useState<string[]>([]);
@@ -944,8 +947,12 @@ export default function Pivot() {
   const dirtyCount = Object.keys(pending).length;
 
   // Ctrl/Cmd+S = publish, Ctrl+Z = undo, Ctrl+Y / Ctrl+Shift+Z = redo.
+  // ⚠️ Табууд солигдоход САЛДАГГҮЙ, зөвхөн нуугддаг (Sheet.tsx) тул энэ
+  //    сонсогч далд байхдаа ч ажиллана — нуугдсан үед НЭГ Ctrl+S хоёр хуудсыг
+  //    зэрэг нийтлүүлэхээс `hiddenNow` хамгаална.
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
+      if (hiddenNow()) return;
       if (!(e.ctrlKey || e.metaKey)) return;
       const k = e.key.toLowerCase();
       if (k === "s") {
@@ -1050,7 +1057,7 @@ export default function Pivot() {
 
   let n = 0;
   return (
-    <div className={st.wrap}>
+    <div className={st.wrap} ref={wrapRef}>
       <div className={st.toolbar}>
         <label className={st.field}>
           Багц{" "}
@@ -1140,7 +1147,7 @@ export default function Pivot() {
               <tr>
                 <th className={cls("fz c-no")}>№<i {...grip("no")} /></th>
                 <th className={cls("fz c-ajil")}>Ажил<i {...grip("ajil")} /></th>
-                <th className={cls("fz c-jin")} title="Ажлын хувийн жин — эцэг ажилдаа эзлэх">
+                <th className={cls("fz c-jin")} title="Ажлын хувийн жин — дээд мөртөө эзлэх">
                   Ажлын жин<i {...grip("jin")} />
                 </th>
                 <th className={cls("fz c-totw")} title="Нийт талбайд эзлэх хувийн жин">
