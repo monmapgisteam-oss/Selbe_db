@@ -14,7 +14,6 @@
 
 import type { ReactNode } from 'react';
 import { isNumeric } from '@/lib/agent/format';
-import { AgentChart } from '@/components/AgentChart';
 import s from '@/components/agent.module.css';
 
 /** `**тод**` ба `` `код` `` — мөрийн дотоод тэмдэглэгээ */
@@ -59,21 +58,6 @@ export function AgentMarkdown({ text }: { text: string }) {
     const line = lines[i];
 
     if (!line.trim()) { i++; continue; }
-
-    /**
-     * ── График ── ```chart … ``` хашлагатай JSON блок
-     *
-     * ⚠️ Хаалтын хашлага ирээгүй ч (хариулт таслагдсан) гогцоо мөнхөд эргэлдэхгүй:
-     * файлын төгсгөл хүрвэл цуглуулсанаа зурна.
-     */
-    if (/^\s*```\s*chart\s*$/i.test(line)) {
-      i++;
-      const buf: string[] = [];
-      while (i < lines.length && !/^\s*```\s*$/.test(lines[i])) buf.push(lines[i++]);
-      if (i < lines.length) i++; // хаалтын хашлагыг алгасна
-      out.push(<AgentChart key={`ch${i}`} raw={buf.join('\n')} />);
-      continue;
-    }
 
     /* ── Хүснэгт ── */
     if (isTableRow(line)) {
