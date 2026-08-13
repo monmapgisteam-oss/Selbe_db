@@ -148,7 +148,10 @@ async function main() {
     numBad.length === 0,
     numBad.map(([s]) => s).join(' · '),
   );
+  // ⚠️ Санхүүгийн ганц зөв эх нь ds:cashflow2 (Cashflow /106). BUS_cashflow
+  //    (ds:cashflow) ба INVEST (ds:invest) хасагдсан — буцаж ороогүйг барина.
   check('санхүүгийн эх сурвалж каталогт бий', prompt.includes('ds:cashflow2'));
+  check('ХАСАГДСАН `ds:invest` каталогт БУЦАЖ ОРООГҮЙ', !prompt.includes('ds:invest'));
   check('төслийн явц каталогт бий', prompt.includes('ds:progress'));
 
   /* ── Тест 2: эрхийн хязгаарлалт ── */

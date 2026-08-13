@@ -58,7 +58,11 @@ const cors = (res, origin) => {
   if (origin && ALLOWED.includes(origin)) res.setHeader('Access-Control-Allow-Origin', origin);
   res.setHeader('Vary', 'Origin');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  // ⚠️ `x-arcgis-token` ЗААВАЛ — портал нэвтэрсэн хэрэглэгчийн токеныг энэ
+  //    толгойгоор илгээдэг. Жагсаалтад байхгүй бол хөтөч preflight-д татгалзаж,
+  //    чат «Failed to fetch» гэж унана (сервер тал огт дуудагдахгүй).
+  //    Локал реле токеныг ШАЛГАХГҮЙ ч зөвшөөрөх ЁСТОЙ.
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-arcgis-token');
   res.setHeader('Access-Control-Max-Age', '86400');
 };
 
