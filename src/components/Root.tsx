@@ -10,25 +10,28 @@ import { Home } from './Home';
 import { AuthNotice, useAuth } from './AuthGate';
 import { resolveAccess, subscribe } from '@/lib/permissions';
 import {
-  ALWAYS_NAV_VIEWS,
+  ALL_MODE_HIDE,
   DEFAULT_VIEW,
   HOME_SECTIONS,
   ROLE_ACCESS,
+  VIEWS,
   VIEW_BY_KEY,
   roleForUser,
   type ViewKey,
 } from '@/lib/services';
 
 /**
- * АППЫН ҮНДЭС — НҮҮР vs ПОРТАЛ, ба орсон СЭДВИЙН навигацийн хүрээг шийднэ.
+ * АППЫН ҮНДЭС — НҮҮР vs ПОРТАЛ.
  *
  * Орох горим URL-д тусна (F5, Back дэмжинэ):
- *   · `?all=1`        — «Удирдлага»: дээд навигацид БҮХ харагдац.
- *   · `?g=<сэдэв-id>`  — тодорхой сэдэв: тэр сэдвийн харагдац + `ALWAYS_NAV_VIEWS`.
- *   · юу ч биш         — видео дэвсгэртэй НҮҮР хуудас.
+ *   · `?all=1&v=<харагдац>` — портал: дээд навигацид БҮХ харагдац.
+ *   · юу ч биш              — дэвсгэр зурагтай НҮҮР хуудас.
+ *
+ * ⚠️ `?g=<сэдэв-id>` нь ХУУЧИН формат — навигацийг сэдвээр хязгаарладаг байсныг
+ * 2026-08-13-нд хассан. Хуучин холбоос ирвэл «бүх» гэж үзнэ.
  *
  * `writeParams` (Portal) нь зөвхөн өөрийн патчилсан түлхүүрийг устгадаг тул
- * харагдац соливол `all`/`g` хадгалагдана — сэдвийн хүрээ алдагдахгүй.
+ * харагдац соливол `all` хадгалагдана.
  */
 const Portal = dynamic(() => import('./Portal'), {
   ssr: false,
@@ -47,24 +50,25 @@ const PENDING_KEY = 'selbe-pending-view';
 /** Орсон горим: null = нүүр, 'all' = бүх харагдац, эсвэл навигацид гарах харагдацууд */
 type NavScope = null | 'all' | ViewKey[];
 
-type Section = (typeof HOME_SECTIONS)[number];
-/** Сэдвийн навигацийн жагсаалт — exact бол зөвхөн өөрийнх, эс бөгөөс + always */
-const sectionScope = (sec: Section): ViewKey[] =>
-  sec.exact ? sec.views : [...sec.views, ...ALWAYS_NAV_VIEWS];
-
+/**
+ * ⚠️ 2026-08-13: СЭДВИЙН ХЯЗГААРЛАЛТЫГ ХАСАВ. Урьд нь сэдвээр орвол дээд
+ * навигацид зөвхөн тэр сэдвийн харагдац + `ALWAYS_NAV_VIEWS` гарч, үлдсэн нь
+ * НУУГДДАГ байв (жиш. «Барилгын хяналт»-аар орход дашбоард, төлөвлөгөө,
+ * гүйцэтгэл, иргэд дөрөв алга болно). Хэрэглэгч өөр хэсэг рүү очихын тулд
+ * нүүр рүү буцаж, дахин орох шаардлагатай байсан — нэмэлт алхам, төөрөгдөл.
+ *
+ * Одоо сэдэв нь зөвхөн ОРОХ ЦЭГ: аль ч цэгээс орсон навигацид БҮГД гарна
+ * (эрхээр л шүүгдэнэ). Сэдвийн бүлэглэл нь нүүр хуудсанд хэвээр ажиллана.
+ *
+ * ⚠️ Хуучин `?g=<сэдэв>` холбоосууд ажилласаар байна — тэдгээрийг «бүх» гэж
+ * үзнэ. Хүчингүй болгож 404 өгөх шалтгаан алга.
+ */
 const scopeFromUrl = (): NavScope => {
   const p = new URLSearchParams(window.location.search);
   if (p.get('all') === '1') return 'all';
-  const g = p.get('g');
-  const byId = HOME_SECTIONS.find((s) => s.id === g && !s.all);
-  if (byId) return sectionScope(byId);
-  // Fallback: ?v нь сэдвийн харагдац бол тэр сэдэв; өөр хүчинтэй харагдац бол «бүх»
+  if (p.get('g')) return 'all';
   const v = p.get('v') as ViewKey | null;
-  if (v) {
-    const byView = HOME_SECTIONS.find((s) => !s.all && s.views.includes(v));
-    if (byView) return sectionScope(byView);
-    if (VIEW_BY_KEY[v]) return 'all';
-  }
+  if (v && VIEW_BY_KEY[v]) return 'all';
   return null;
 };
 
@@ -145,22 +149,76 @@ export default function Root() {
     setScope('all');
   };
 
-  /** Тодорхой харагдацад орох — түүний сэдвийн хүрээгээр */
+  /**
+   * Тодорхой харагдацад орох.
+   * ⚠️ Навигацийн хүрээ нь ҮРГЭЛЖ «бүх» — сэдэв нь зөвхөн орох цэг (дээрх
+   * `scopeFromUrl`-ийн тайлбарыг үз). `?g=` бичихээ больсон.
+   */
   const openView = (key: ViewKey) => {
-    const sec = HOME_SECTIONS.find((s) => !s.all && s.views.includes(key));
     const u = new URL(window.location.href);
     u.searchParams.set('v', key);
-    u.searchParams.delete('all');
-    if (sec) u.searchParams.set('g', sec.id);
-    else u.searchParams.delete('g');
+    u.searchParams.set('all', '1');
+    u.searchParams.delete('g');
     window.history.pushState({}, '', u);
-    setScope(sec ? sectionScope(sec) : 'all');
+    setScope('all');
   };
 
   const enterAll = () => {
     if (authorized) openEntry();
     else { sessionStorage.setItem(PENDING_KEY, 'enter'); signIn(); }
   };
+
+  /**
+   * НҮҮР ХУУДАСНААС ХАРАГДАЦАД ШУУД ОРОХ.
+   *
+   * ⚠️ Нэвтрээгүй бол харагдацын түлхүүрийг `PENDING_KEY`-д хадгална — ArcGIS-аас
+   * буцаж ирэхэд дээрх эффект түүнийг уншиж ЯГ тэр цэгт оруулна («Нэвтрэх» дараад
+   * дараа нь цэсээ дахин хайх шаардлагагүй).
+   */
+  const enterView = (key: ViewKey) => {
+    if (authorized) openView(key);
+    else { sessionStorage.setItem(PENDING_KEY, key); signIn(); }
+  };
+
+  /**
+   * НҮҮРИЙН СЭДВИЙН КАРТУУД.
+   *
+   * ⚠️ Нэвтрээгүй үед БҮГДИЙГ харуулна: эрх нь хараахан мэдэгдэхгүй байхад
+   * сонголтыг нуувал хэрэглэгч платформд юу байдгийг ч мэдэхгүй. Дарахад
+   * нэвтрэлт рүү чиглүүлээд, буцаж ирэхэд тэр цэгт нь оруулна.
+   *
+   * ⚠️ `HOME_SECTIONS` нь БҮХ харагдацыг хамардаггүй — ердөө `tsogts`, `habea`,
+   * `analysis`, `sheet` дөрөв. Дашбоард, төлөвлөгөө, газар, санхүүжилт, тайлан,
+   * иргэд нь ямар ч сэдэвт ороогүй. Тэдгээрийг «Бусад» бүлэгт цуглуулахгүй бол
+   * нүүрнээс ХҮРЭХ ЗАМГҮЙ болно.
+   */
+  const shown = VIEWS
+    .filter((v) => !ALL_MODE_HIDE.includes(v.key))
+    .filter((v) => !authorized || allowed === 'all' || allowed.includes(v.key));
+  const meta = (k: ViewKey) => shown.find((v) => v.key === k);
+
+  const covered = new Set(HOME_SECTIONS.flatMap((s) => (s.all ? [] : s.views)));
+  const groups = [
+    ...HOME_SECTIONS.filter((s) => !s.all).map((s) => ({
+      id: s.id,
+      title: s.title,
+      views: s.views.map(meta).filter((v) => v != null),
+    })),
+    {
+      id: 'other',
+      title: 'Бусад хэсэг',
+      views: shown.filter((v) => !covered.has(v.key)),
+    },
+  ]
+    // Эрхээр шүүсний дараа ХООСОН үлдсэн бүлгийг харуулахгүй
+    .filter((g) => g.views.length > 0)
+    .map((g) => ({
+      id: g.id,
+      title: g.title,
+      views: g.views.map((v) => ({
+        key: v.key, title: v.title, desc: v.desc, hue: v.hue,
+      })),
+    }));
 
   const goHome = () => {
     const u = new URL(window.location.href);
@@ -174,8 +232,8 @@ export default function Root() {
   /**
    * ⚠️ Хайчилсан хүрээ ХООСОН бол Portal-ыг ОГТ зурахгүй: Portal хоосон
    * navScope-ыг «бүх эрх» гэж андуурч эрхгүй агуулга харагдаж байсан тул
-   * (жиш. tolovlolt эрхтэй хэрэглэгч `?g=suit` гүн холбоосоор орох) эндээс
-   * шүүж «эрх хүрэлцэхгүй» мэдэгдэл харуулна.
+   * (жиш. эрх нь зөвхөн `plan`-тай хэрэглэгчийн эрхийг бүрмөсөн хассан бол)
+   * эндээс шүүж «эрх хүрэлцэхгүй» мэдэгдэл харуулна.
    */
   const clamped = clamp(scope);
   const noAccess = Array.isArray(clamped) && !clamped.length;
@@ -215,7 +273,11 @@ export default function Root() {
           />
         )
       ) : (
-        <Home onEnterAll={enterAll} />
+        <Home
+          onEnterAll={enterAll}
+          groups={groups}
+          onEnterView={enterView}
+        />
       )}
     </>
   );
