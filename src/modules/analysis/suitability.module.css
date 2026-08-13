@@ -369,6 +369,17 @@
 }
 .parkFormula b { color: var(--text); font-variant-numeric: tabular-nums }
 
+/**
+ * ЖИГД КАРТ — «Зогсоолын хэрэгцээ» ба «Ногоон байгууламж».
+ *
+ * ⚠️ Эдгээрт оноолтын ногоон→шар→УЛААН шатлалыг хэрэглэхээ больсон: карт нь
+ * хэмжилтийн тайлан болохоос үнэлгээ биш (хэрэглэгчийн шийдвэр, 2026-08-12).
+ * Бичвэр БҮГД цагаан, диаграм БҮГД нэг бүдэг өнгөтэй (`Urban.tsx` → `CHART`).
+ * ⚠️ Зөвхөн энэ хоёр картад — `finSummary`/`parkHead` зэрэг ангиуд `BlendCard`,
+ * `Economics`-д ч хэрэглэгддэг тул хүрээлэлгүйгээр өөрчилж БОЛОХГҮЙ.
+ */
+.plain, .plain span, .plain b, .plain i, .plain em { color: var(--text) }
+
 /* ---------- Эдийн засгийн шинжилгээ ---------- */
 .econHead { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 2px 0 8px }
 .econBig { background: var(--sunken); border-radius: 7px; padding: 8px 10px }
