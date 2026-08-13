@@ -15,6 +15,7 @@
 
 import { AGENT_TOOLS, describeCall, runTool } from './tools';
 import { buildSystemPrompt, type AgentScope } from './registry';
+import { AUTH } from '@/lib/services';
 
 /* ── Anthropic-ийн агуулгын блокууд (реле дамжуулдаг хэлбэр) ── */
 
@@ -34,6 +35,33 @@ const MAX_TURNS = 6;
 export const AGENT_API =
   process.env.NEXT_PUBLIC_AGENT_API?.replace(/\/+$/, '') || 'http://localhost:8787';
 
+/**
+ * Нэвтэрсэн хэрэглэгчийн ArcGIS токен — реле үүгээр хэн болохыг батална.
+ *
+ * ⚠️ ЯАГААД ХЭРЭГТЭЙ ВЭ: реле нь нийтэд нээлттэй хаяг дээр байрлах тул зөвхөн
+ * CORS-д найдаж болохгүй (curl түүнийг тоохгүй). Токенгүй бол хаягийг олсон
+ * хэн ч байгууллагын AI эрхээр токен зарцуулна.
+ *
+ * ⚠️ `getCredential` БИШ `findCredential` — эхнийх нь токен байхгүй үед
+ * нэвтрэлтийн хуудас руу ЧИГЛҮҮЛНЭ. Хэрэглэгч асуулт бичиж байхад гэнэт хуудас
+ * солигдвол бичсэн зүйл нь алдагдана. `findCredential` нь зөвхөн ОДОО байгааг
+ * буцаадаг тул хажуугийн үр дагаваргүй.
+ *
+ * ⚠️ Нэвтрэлт унтраалттай (`AUTH.appId` хоосон) эсвэл локал реле үед энэ нь
+ * `null` буцаана — тэр тохиолдолд реле ч токен шаардахгүй.
+ */
+async function arcgisToken(): Promise<string | null> {
+  if (!AUTH.appId) return null;
+  try {
+    const { default: esriId } = await import('@arcgis/core/identity/IdentityManager');
+    const url = `${AUTH.portalUrl.replace(/\/+$/, '')}/sharing`;
+    return esriId.findCredential(url)?.token ?? null;
+  } catch {
+    // Нэвтрээгүй байх нь ХЭВИЙН — реле нь ойлгомжтой мессежээр татгалзана
+    return null;
+  }
+}
+
 export type AskResult = { text: string; turns: number };
 
 type RelayReply = {
@@ -48,9 +76,15 @@ async function callRelay(
   body: { system: string; messages: ApiMessage[]; tools: typeof AGENT_TOOLS },
   signal?: AbortSignal,
 ): Promise<RelayReply> {
+  const token = await arcgisToken();
   const res = await fetch(`${AGENT_API}/chat`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      // ⚠️ Токенгүй үед толгойг ОГТ нэмэхгүй — хоосон утга илгээвэл локал реле
+      //    (нэвтрэлт шалгадаггүй) рүү илүү preflight толгой явна.
+      ...(token ? { 'x-arcgis-token': token } : {}),
+    },
     body: JSON.stringify(body),
     signal,
   });
