@@ -11,12 +11,25 @@
  * тохиолддог. Функц эдгээрийг ЗАСАХ эсвэл ХАСАХ ёстой — хэзээ ч шидэхгүй.
  */
 
+/** Агентын гаргах графикийн төрлүүд */
+export const CHART_TYPES = ['bar', 'column', 'line', 'pie', 'stack', 'gauge'] as const;
+export type ChartType = (typeof CHART_TYPES)[number];
+
 /** Агентын гаргах график */
 export type ChartSpec = {
-  /** bar = хэвтээ (ангилал олон) · column = босоо · line = хугацааны цуваа · pie = бүтэц */
-  type: 'bar' | 'column' | 'line' | 'pie';
+  /**
+   * bar    — хэвтээ багана: ангилал ХАРЬЦУУЛАХ (шошго урт байхад)
+   * column — босоо багана: цөөн үеийг зэрэгцүүлэх
+   * line   — шугам: хугацааны цуваа
+   * pie    — дугуй: бүтэц, эзлэх хувь
+   * stack  — нэг эгнээнд давхарласан: нийтэд эзлэх хувь (нийлбэр = 100%)
+   * gauge  — ганц хувийн заалт (0–100), жишээ нь нийт гүйцэтгэл
+   */
+  type: ChartType;
   title?: string;
   unit?: string;
+  /** Графикийн ДООД талд гарах тайлбар — юуг харуулж байгаа, гол дүгнэлт */
+  note?: string;
   data: { label: string; value: number }[];
 };
 
@@ -57,8 +70,8 @@ export function parseChart(raw: string): ChartSpec | null {
   if (!j || typeof j !== 'object') return null;
   const o = j as Record<string, unknown>;
 
-  const type = String(o.type ?? '').toLowerCase();
-  if (!['bar', 'column', 'line', 'pie'].includes(type)) return null;
+  const type = String(o.type ?? '').toLowerCase() as ChartType;
+  if (!CHART_TYPES.includes(type)) return null;
 
   if (!Array.isArray(o.data)) return null;
   const data = o.data
@@ -72,13 +85,27 @@ export function parseChart(raw: string): ChartSpec | null {
     .filter((d): d is { label: string; value: number } => !!d)
     .slice(0, MAX_POINTS);
 
-  // ⚠️ Нэг цэгээр график зурах утгагүй — тоог нь өгүүлбэрт бичих нь дээр
-  if (data.length < 2) return null;
+  /*
+   * ⚠️ `gauge` нь ГАНЦ утгын заалт тул нэг цэгээр хангалттай — бусад төрөлд
+   * нэг цэгээр график зурах утгагүй (тоог нь өгүүлбэрт бичих нь дээр).
+   */
+  const need = type === 'gauge' ? 1 : 2;
+  if (data.length < need) return null;
+
+  /*
+   * ⚠️ `gauge` нь 0–100 хувийн хуваарьтай. Загвар заримдаа бутархай (0.182)
+   * илгээдэг — тэр чигээр нь зурвал зүү бараг тэг дээр зогсоно. 0–1 хооронд
+   * ирвэл хувь болгож хөрвүүлнэ. (1-ээс их бол аль хэдийн хувь.)
+   */
+  if (type === 'gauge' && data[0].value > 0 && data[0].value <= 1) {
+    data[0] = { ...data[0], value: data[0].value * 100 };
+  }
 
   return {
-    type: type as ChartSpec['type'],
+    type,
     title: o.title ? String(o.title).trim() : undefined,
     unit: o.unit ? String(o.unit).trim() : undefined,
+    note: o.note ? String(o.note).trim() : undefined,
     data,
   };
 }

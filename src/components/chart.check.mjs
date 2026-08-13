@@ -42,6 +42,26 @@ ok('12-оос олон бол таслав',
     Array.from({ length: 20 }, (_, i) => ({ label: `s${i}`, value: i + 1 })),
   )}}`).data.length === 12);
 
+console.log('\n2б. Шинэ төрөл — `stack` ба `gauge`');
+ok('stack уншигдав',
+  parseChart('{"type":"stack","data":[{"label":"Чөлөөлсөн","value":1703},{"label":"Үлдсэн","value":171}]}').type === 'stack');
+ok('gauge НЭГ цэгээр хүчинтэй',
+  parseChart('{"type":"gauge","data":[{"label":"Нийт гүйцэтгэл","value":18.2}]}').data.length === 1);
+ok('gauge-ийн бутархай (0.182) хувь болов',
+  parseChart('{"type":"gauge","data":[{"label":"x","value":0.182}]}').data[0].value === 18.2);
+ok('gauge-ийн 18.2 хэвээр (давхар үржүүлэхгүй)',
+  parseChart('{"type":"gauge","data":[{"label":"x","value":18.2}]}').data[0].value === 18.2);
+ok('gauge-ийн 1.0 нь 100% болов',
+  parseChart('{"type":"gauge","data":[{"label":"x","value":1}]}').data[0].value === 100);
+ok('bar НЭГ цэгээр ХҮЧИНГҮЙ хэвээр',
+  parseChart('{"type":"bar","data":[{"label":"a","value":5}]}') === null);
+
+console.log('\n2в. `note` — графикийн доорх тайлбар');
+ok('note уншигдав',
+  parseChart('{"type":"bar","note":"Багц 2 тэргүүлж байна.","data":[{"label":"a","value":1},{"label":"b","value":2}]}').note === 'Багц 2 тэргүүлж байна.');
+ok('note байхгүй бол undefined',
+  parseChart('{"type":"bar","data":[{"label":"a","value":1},{"label":"b","value":2}]}').note === undefined);
+
 console.log('\n3. Буруу оролт — БҮГД null (чат унахгүй)');
 ok('эвдэрсэн JSON', parseChart('{"type":"bar",,,}') === null);
 ok('хоосон мөр', parseChart('') === null);
@@ -50,21 +70,28 @@ ok('data массив биш', parseChart('{"type":"bar","data":"муу"}') === 
 ok('data огт байхгүй', parseChart('{"type":"pie"}') === null);
 ok('массив дотор хогтой', parseChart('{"type":"bar","data":[null,5,{"label":"b","value":2},{"label":"c","value":3}]}').data.length === 2);
 
-console.log('\n4. Telegram — графикийн JSON ГАРАХГҮЙ, тайлбар ҮЛДЭНЭ');
+console.log('\n4. Telegram — JSON ГАРАХГҮЙ, `note` дүгнэлт ҮЛДЭНЭ');
 {
   const md = [
     'Багц 2 тэргүүлж байна.',
     '```chart',
-    '{"type":"bar","data":[{"label":"Багц 2","value":24.8}]}',
+    '{"type":"bar","note":"Багц 2 тэргүүлж, Багц 3.1 хоцорсон.","data":[{"label":"Багц 2","value":24.8},{"label":"Багц 3.1","value":0.7}]}',
     '```',
-    'Багц 2 хамгийн өндөр гүйцэтгэлтэй.',
     'Эх сурвалж: `mon:building`',
   ].join('\n');
   const h = toHtml(md);
-  ok('JSON гараагүй', !h.includes('"type"') && !h.includes('label'));
+  ok('JSON гараагүй', !h.includes('"type"') && !h.includes('"label"'));
   ok('хашлага гараагүй', !h.includes('```'));
-  ok('тайлбар үлдсэн', h.includes('Багц 2 хамгийн өндөр гүйцэтгэлтэй'));
+  // ⚠️ ГОЛ ШАЛГУУР: тайлбар нь JSON дотор байдаг тул блокийг бүхэлд нь
+  //    хаявал Telegram хэрэглэгч шинжилгээг бүрэн алдана
+  ok('`note` дүгнэлт ҮЛДСЭН', h.includes('Багц 2 тэргүүлж, Багц 3.1 хоцорсон'));
   ok('эх сурвалж хасагдсан', !h.includes('mon:building'));
+}
+{
+  // note-гүй график — юу ч үлдэхгүй, гэхдээ бусад текст хэвээр
+  const h = toHtml(['Эхлэл.', '```chart', '{"type":"bar","data":[{"label":"a","value":1}]}', '```', 'Төгсгөл.'].join('\n'));
+  ok('note-гүй бол JSON гарахгүй', !h.includes('type') && !h.includes('value'));
+  ok('эргэн тойрны текст хэвээр', h.includes('Эхлэл') && h.includes('Төгсгөл'));
 }
 {
   // Хариулт таслагдаж хаалтын хашлага ирээгүй тохиолдол
