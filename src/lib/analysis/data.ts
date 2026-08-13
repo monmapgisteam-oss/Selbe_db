@@ -286,7 +286,13 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
   //    `GREEN_CATEGORIES`-ийн ганц түлхүүрт нэгдэнэ.
   // ⚠️ ГЕОМЕТРТЭЙ: «нөлөөллийн бүс» арга нь ногооноос барилга хүртэлх ЗАЙГ
   //    хэмждэг тул зөвхөн талбайн тоо хангалтгүй.
-  const green = await fetchAll(url(SRC.green), ['RefName_12', 'Shape__Area'], true);
+  // ⚠️ АНАЛИЗ нь ХУУЧИН intersect үйлчилгээг ХЭВЭЭР уншина (2026-08-13):
+  //    test_data [35]-д ганц dissolve-полигон, `RefName_12` алга — бүс тус
+  //    бүрийн ногоон талбай тэндээс бодогдохгүй. Зөвхөн ЗУРГИЙН давхарга
+  //    test_data руу шилжсэн; тооцооны эх энэ хаяг хэвээр.
+  const GREEN_DATA_URL =
+    'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/nogoon_baiguulamj/FeatureServer/0';
+  const green = await fetchAll(GREEN_DATA_URL, ['RefName_12', 'Shape__Area'], true);
 
   onProgress('Нийтийн тээврийн зогсоол…', 50);
   const [bus, lrt] = await Promise.all([

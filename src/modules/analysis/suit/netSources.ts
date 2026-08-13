@@ -111,7 +111,8 @@ export const NET_SOURCES: Record<NetKind, NetSource> = {
     hue: '#38bdf8',
     // ① Одоогийн бодит замын line (Monmap_zam_selbe, 113 feature, polyline).
     //    Гэрлэн дохио нь бодит gerlen_dohio service-ээс; геометр энэ давхаргаас.
-    url: 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/Monmap_zam_selbe/FeatureServer/0',
+    // test_data [98] monmap_road_simulation — 2026-08-13 шилжив (113 feature)
+    url: 'https://services-ap1.arcgis.com/ACqsMOmNLi5wIdIh/arcgis/rest/services/test_data/FeatureServer/98',
     nodeIntersections: true, // ⚠️ урт шугам уулзвар гатална — таслахгүй бол сүлжээ бутарна
     directed: true, // ⚠️ line сумтай — машин зөвхөн тэр зүг явна
   },
@@ -122,7 +123,8 @@ export const NET_SOURCES: Record<NetKind, NetSource> = {
     hue: '#a78bfa',
     // ② Ерөнхий төлөвлөгөөний машин явах line (selbe_zam_tuluwlult, 205 feature).
     //    et:5 «Замын тэнхлэг»-ийг СОЛЬСОН: энэ нь машин явахаар зурсан жинхэнэ line.
-    url: 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/selbe_zam_tuluwlult/FeatureServer/0',
+    // test_data [104] ET_road_simulation — 2026-08-13 шилжив (205 feature)
+    url: 'https://services-ap1.arcgis.com/ACqsMOmNLi5wIdIh/arcgis/rest/services/test_data/FeatureServer/104',
     nodeIntersections: true, // ⚠️ таслахгүй бол 3.7% холбогдоно; таславал 88.9%
     directed: true, // line сумтай — 141 мухар бүгд 60м дотор гарцтай (тасралтгүй)
   },
@@ -229,7 +231,8 @@ export function loadNetworkCached(kind: NetKind): Promise<Network> {
 
 /** `gerlen_dohio` FeatureServer — уулзвар бүр 4 line (approach), code 1-4. */
 const SIGNAL_LAYER_URL =
-  'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/gerlen_dohio/FeatureServer/0';
+  // test_data [103] gerlen_dohio — 2026-08-13 шилжив (талбарууд ижил)
+  'https://services-ap1.arcgis.com/ACqsMOmNLi5wIdIh/arcgis/rest/services/test_data/FeatureServer/103';
 
 let signalCache: Promise<SignalDef[]> | null = null;
 

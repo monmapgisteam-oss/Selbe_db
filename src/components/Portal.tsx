@@ -27,8 +27,9 @@ import { useAsync } from '@/lib/useAsync';
 import { FilterProvider, useFilter } from '@/lib/filter';
 import { usePlanTotals } from '@/lib/totals';
 import { queryStats, count, sum } from '@/lib/query';
+import { loadHeadline } from '@/lib/live';
 import {
-  DEFAULT_VIEW, VIEW_BY_KEY, layerUrl, oidOf, PROJECT_AREA_HA, zoneWhere,
+  DEFAULT_VIEW, VIEW_BY_KEY, layerUrl, oidOf, zoneWhere,
   PLAN_LAYER_IDS, MONITOR_LAYER_IDS, LAYER_BY_ID, groupOf,
   ZONE_LAYER, ZONE_FIELDS, BUILT_LAYER, BUILT_FIELDS,
   type ViewKey,
@@ -842,20 +843,22 @@ function SummaryBar({ zone }: { zone: string | null }) {
     const B = BUILT_FIELDS;
     const zoneQ = zone ? zoneWhere(ZONE_LAYER, zone) ?? '1=1' : '1=1';
     const builtQ = zone ? zoneWhere(BUILT_LAYER, zone) ?? '1=1' : '1=1';
-    const [zones, built] = await Promise.all([
+    const [zones, built, headline] = await Promise.all([
       queryStats(layerUrl(ZONE_LAYER), [
         count(oidOf(ZONE_LAYER), 'n'), sum(Z.landHa, 'ga'), sum(Z.households, 'ail'),
       ], zoneQ),
       queryStats(layerUrl(BUILT_LAYER), [count(oidOf(BUILT_LAYER), 'n'), sum(B.population, 'pop')], builtQ),
+      loadHeadline(),
     ]);
     return {
       zones: Number(zones.n ?? 0),
       /**
-       * ⚠️ Бүс сонгогдсон үед тэр бүсийн `GAZAR_GA`; сонгоогүй үед ТӨСЛИЙН
-       * албан ёсны талбай (`PROJECT_AREA_HA`). Бүх бүсийн нийлбэр (131 га) нь
-       * зөвхөн бүсчилсэн газрыг хамардаг тул төслийн хэмжээг илэрхийлэхгүй.
+       * ⚠️ Бүс сонгогдсон үед тэр бүсийн `GAZAR_GA`; сонгоогүй үед хилийн
+       * давхаргын АМЬД `Hec_area` (урьд нь бэхлэгдсэн 158 га байсан). Бүх
+       * бүсийн нийлбэр (~131 га) нь зөвхөн бүсчилсэн газрыг хамардаг тул
+       * төслийн хэмжээг илэрхийлэхгүй.
        */
-      ga: zone ? Number(zones.ga ?? 0) : PROJECT_AREA_HA,
+      ga: zone ? Number(zones.ga ?? 0) : headline.areaHa,
       ail: Number(zones.ail ?? 0),
       built: Number(built.n ?? 0),
       pop: Number(built.pop ?? 0),

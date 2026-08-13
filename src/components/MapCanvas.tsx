@@ -904,7 +904,9 @@ function buildLayers(uniform = false): Layer[] {
      * кадастр г.м. webmap-д байхгүй) доорх каталогийн загвараа хэрэглэнэ.
      * Снапшотыг `node tools/webmap_style.mjs`-ээр шинэчилнэ.
      */
-    const web = webmapStyleOf(layerUrl(d));
+    // ⚠️ styleUrl — test_data руу шилжсэн ч webmap-снапшотын ХУУЧИН түлхүүрээр
+    //    хайж, зураг дээрх загварыг 1:1 хадгална (2026-08-13).
+    const web = webmapStyleOf(d.styleUrl ?? layerUrl(d));
     /**
      * ӨНГӨНИЙ OVERRIDE (`MAP_HUE_OVERRIDES`, 2026-07-31): барилгын снапшотын
      * шар (#ffb700, 20% дүүргэлт) нь ортофото дээр ялгарахгүй байсан тул

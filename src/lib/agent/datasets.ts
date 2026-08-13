@@ -17,10 +17,8 @@
  */
 
 import {
-  CASHFLOW,
   CASHFLOW2,
   HABEA,
-  INVEST,
   PROJECT_PROGRESS,
   TASK_SHEET,
   BOUNDARY,
@@ -70,9 +68,6 @@ export type Dataset = {
   sensitive?: boolean;
 };
 
-/** CASHFLOW-ийн сарын багануудыг (`E2` → «25-10 сар») тайлбар болгоно */
-const monthFields = (): Record<string, string> =>
-  Object.fromEntries(CASHFLOW.months.map((m) => [m.code, `Сарын санхүүжилт — ${m.label}`]));
 
 const ALL: Dataset[] = [
   /* ─────────── Эмзэг БУС ─────────── */
@@ -149,33 +144,14 @@ const ALL: Dataset[] = [
     url: BOUNDARY.plan.url,
     view: 'plan',
     synonyms: ['хил', 'төлөвлөлтийн талбай', 'хүрээ'],
-    note: 'Төслийн албан ёсны нийт талбай нь тогтмол 158 га — энэ давхаргын геометрээс тооцохгүй.',
+    note: 'Төслийн нийт талбай = энэ давхаргын Hec_area талбар (га) — геометрээс дахин тооцохгүй.',
   },
 
   /* ─────────── ЭМЗЭГ — зөвшөөрөл гартал хаалттай ─────────── */
 
-  {
-    id: 'ds:cashflow',
-    title: 'Мөнгөн урсгал — бүсээр',
-    url: CASHFLOW.url,
-    view: 'finance',
-    sensitive: true,
-    zoneField: CASHFLOW.fields.zone,
-    synonyms: ['мөнгөн урсгал', 'санхүүжилт', 'төсөв', 'гэрээ'],
-    fields: {
-      [CASHFLOW.fields.zone]: 'Бүс',
-      [CASHFLOW.fields.budget]: 'Урьдчилсан төсөвт өртөг',
-      [CASHFLOW.fields.orderTotal]: 'Захирамжийн нийт дүн',
-      [CASHFLOW.fields.securities]: 'Санхүүжилт — үнэт цаас',
-      [CASHFLOW.fields.projectIncome]: 'Санхүүжилт — төслийн орлого',
-      [CASHFLOW.fields.cityBudget]: 'Санхүүжилт — нийслэлийн төсөв',
-      [CASHFLOW.fields.reserve]: 'Санхүүжилт — НЗД нөөц хөрөнгө',
-      [CASHFLOW.fields.contract]: 'Гэрээ байгуулах эрх олгосон дүн',
-      [CASHFLOW.fields.contractor]: 'Гүйцэтгэгч байгууллага',
-      ...monthFields(),
-    },
-    warn: 'Мөнгөн дүн ТӨГРӨГӨӨР. Хариултад нэгжийг (сая ₮ / тэрбум ₮) заавал бич.',
-  },
+  /* ds:cashflow (BUS_cashflow) 2026-08-13-нд, ds:invest (Хөрөнгө оруулалт өртөг
+     /249) 2026-08-14-нд хасагдав — санхүүгийн ЦОРЫН ГАНЦ зөв эх нь доорх
+     ds:cashflow2 (Cashflow /106). INVEST өгөгдөл тодруулагдсаны дараа эргэн нэмнэ. */
 
   /**
    * ⚠️ «БАРИЛГЫН ХЯНАЛТ / ЦОГЦОЛБОР» дашбоардын толгойн тоонууд ЭНДЭЭС гардаг
@@ -222,29 +198,6 @@ const ALL: Dataset[] = [
       'Мөнгөн дүн ТӨГРӨГӨӨР; хариултад сая/тэрбум/их наяд гэж хөрвүүлж бич.',
   },
 
-  {
-    id: 'ds:invest',
-    title: 'Хөрөнгө оруулалт — өртөг, гэрээ',
-    url: INVEST.url,
-    oid: INVEST.oid,
-    view: 'finance',
-    sensitive: true,
-    zoneField: INVEST.fields.bagts,
-    synonyms: ['хөрөнгө оруулалт', 'гэрээ', 'гүйцэтгэгч компани', 'өртөг'],
-    fields: {
-      [INVEST.fields.type]: 'Төрөл («1.БАРИЛГА УГСРАЛТ» …)',
-      [INVEST.fields.zone]: 'Бүс (зөвхөн 9-р төрөлд, бичиглэл бохир)',
-      [INVEST.fields.project]: 'Төслийн нэр',
-      [INVEST.fields.bagts]: 'Багцын нэр',
-      [INVEST.fields.confirmed]: 'Баталгаажсан хөрөнгө оруулалт (гэрээ/захирамж)',
-      [INVEST.fields.planned]: 'Төлөвлөгөөт, магадлагдаагүй хөрөнгө оруулалт',
-      [INVEST.fields.contractor]: 'Гүйцэтгэгч компани / захирамж, гэрээний дугаар',
-      ...Object.fromEntries(INVEST.sources.map((s) => [s.field, `Санхүүжилтийн эх — ${s.label}`])),
-    },
-    warn:
-      'Баталгаажсан ба төлөвлөгөөт дүнг ХОЛИХГҮЙ: эхнийх нь гэрээтэй, хоёр дахь нь урьдчилсан тооцоо. ' +
-      'Багцын нэрний бичиглэл зөрдөг тул тэгш бус тааралт гарвал LIKE ашиглана.',
-  },
 
   {
     id: 'ds:progress',

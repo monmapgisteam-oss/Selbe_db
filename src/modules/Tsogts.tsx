@@ -2,12 +2,11 @@
 
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
-import { Section, Note, Data, Empty, Donut, Rows, Bars, List, ListItem } from '@/components/ui';
+import { Section, Note, Data, Empty, Rows, Bars, List, ListItem } from '@/components/ui';
 import {
   buildPacks, PackKpi, ContractCard, BlocksCard,
   InvestCard, LayersCard, levelColor, BLOCK_LAYER, type Pack,
 } from '@/modules/Bagts';
-import { CASH_SOURCES } from '@/lib/cashflow';
 import {
   useBuildings, MonitorBagts, MonitorGeneral, MonitorDetail, useTaskPerf,
   pickedBuilding, type PickedBuilding,
@@ -15,10 +14,8 @@ import {
 import {
   loadFinData, contractMonths, ComboChart, lagOf, lagLevel, type FinData,
 } from '@/modules/Finance';
-import { useCashflow } from '@/lib/cashflow';
-import { useInvest } from '@/lib/invest';
 import { useAsync, type Async } from '@/lib/useAsync';
-import { BUILDING, CASHFLOW2, INVEST, PROGRESS_LEVELS, LAYER_BY_ID, bagtsKey } from '@/lib/services';
+import { BUILDING, CASHFLOW2, PROGRESS_LEVELS, LAYER_BY_ID, bagtsKey } from '@/lib/services';
 import { shade, mntShort, num, pct } from '@/lib/format';
 import { readParam, writeParams } from '@/lib/urlState';
 import o from './overview.module.css';
@@ -58,8 +55,6 @@ const meanOf = (vals: (number | null)[]) => {
 
 export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const q = useBuildings();
-  const cashQ = useCashflow();
-  const invQ = useInvest();
   const finQ = useAsync<FinData>(loadFinData, []);
   const { zoomToWhere, setHighlight } = useMap();
 
@@ -73,12 +68,8 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
   useEffect(() => { writeParams({ pkg: sel }); }, [sel]);
 
   const packs = useMemo<Pack[]>(
-    () => buildPacks(
-      q.state === 'ready' ? q.data.rows : null,
-      cashQ.state === 'ready' ? cashQ.data : [],
-      invQ.state === 'ready' ? invQ.data : [],
-    ),
-    [q, cashQ, invQ],
+    () => buildPacks(q.state === 'ready' ? q.data.rows : null),
+    [q],
   );
 
   const active = packs.find((p) => p.key === sel) ?? null;
@@ -121,30 +112,14 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
   const alerted = useMemo(() => packs.filter((p) => alertKeys.has(p.key)), [packs, alertKeys]);
 
   /**
-   * ДЭД БҮТЦИЙН багцуудыг ХО-ын «Төрөл»-өөр нь бүлэглэнэ (жиш. «2.ГАДНА
-   * ТОХИЖИЛТ», «7.НИЙГМИЙН ДЭД БҮТЭЦ» — тэргүүн тоо нь эрэмбийг өгдөг).
-   * Төсөв нь INVEST-д ороогүй (зөвхөн зурагтай) багц «Төсөв бүртгэгдээгүй»
-   * бүлэгт орно — алга болгохгүй.
+   * ДЭД БҮТЦИЙН багцууд — нэг жагсаалт. (Хөрөнгө оруулалтын «Төрөл»-өөр
+   * бүлэглэдэг байсан нь INVEST /249 түр хасагдсанаар устсан; санхүүгийн
+   * гүйцэтгэлийн хувь нь Cashflow /106-оос хэвээр ажиллана.)
    */
-  const infraGroups = useMemo(() => {
-    const NO_BUDGET = '~Төсөв бүртгэгдээгүй';
-    const map = new Map<string, Pack[]>();
-    packs.filter((p) => p.kind === 'infra').forEach((p) => {
-      const t = (p.invest[0]?.type ?? '').toString().trim() || NO_BUDGET;
-      const arr = map.get(t) ?? [];
-      arr.push(p);
-      map.set(t, arr);
-    });
-    // «1.…» дугаараар эрэмбэлнэ; «Төсөв бүртгэгдээгүй» ЗААВАЛ хамгийн сүүлд
-    return [...map.entries()].sort(
-      (a, b) =>
-        (a[0].startsWith('~') ? 1 : 0) - (b[0].startsWith('~') ? 1 : 0) ||
-        a[0].localeCompare(b[0], 'mn', { numeric: true }),
-    );
-  }, [packs]);
-  /** Бүлгийн гарчиг — «2.ГАДНА ТОХИЖИЛТ» → «Гадна тохижилт» маягаар цэвэрлэнэ */
-  const groupTitle = (t: string) =>
-    t.startsWith('~') ? 'Төсөв бүртгэгдээгүй' : t.replace(/^\d+\./, '').trim();
+  const infraPacks = useMemo(
+    () => packs.filter((p) => p.kind === 'infra'),
+    [packs],
+  );
 
   /**
    * НЭГДСЭН псевдо-багц — багц СОНГООГҮЙ үед «Блок бүрийн гүйцэтгэл» болон
@@ -164,8 +139,6 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
       blocks,
       households: build.reduce((s, p) => s + p.households, 0),
       progress: meanOf(blocks.map((b) => b.progress)),
-      cash: null,
-      invest: [],
     };
   }, [packs]);
 
@@ -214,9 +187,8 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
     zoomToWhere(id, active?.where ?? alertedWhere ?? '1=1');
   }, [active, alertedWhere, zoomToWhere]);
 
-  const loading = q.state === 'loading' || cashQ.state === 'loading' || invQ.state === 'loading';
-  const errQ: Async<unknown> | null =
-    cashQ.state === 'error' ? cashQ : invQ.state === 'error' ? invQ : null;
+  const loading = q.state === 'loading';
+  const errQ: Async<unknown> | null = q.state === 'error' ? q : null;
 
   return (
     <div className={ts.pack}>
@@ -257,18 +229,15 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
               onSel={pick}
               finMap={finMap}
             />
-            {/* Дэд бүтцийн багцууд — ХО-ын ТӨРЛӨӨР бүлэглэсэн (alert-гүй нь) */}
-            {infraGroups.map(([t, gp]) => (
-              <TsPackList
-                key={t}
-                title={groupTitle(t)}
-                note="гүйцэтгэлийн хувь"
-                packs={gp.filter((p) => !alertKeys.has(p.key))}
-                sel={sel}
-                onSel={pick}
-                finMap={finMap}
-              />
-            ))}
+            {/* Дэд бүтцийн багцууд — нэг жагсаалт (alert-гүй нь) */}
+            <TsPackList
+              title="Дэд бүтэц ба нийгмийн барилга"
+              note="гүйцэтгэлийн хувь"
+              packs={infraPacks.filter((p) => !alertKeys.has(p.key))}
+              sel={sel}
+              onSel={pick}
+              finMap={finMap}
+            />
             <Note>
               Багц сонгоход баруунд гэрээ/төсөв, эх үүсвэр, блок бүрийн гүйцэтгэл,
               доор санхүүгийн график гарна. Зураг дээрх барилга дарахад баруун
@@ -323,8 +292,7 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
         ) : !active ? (
           /* Багц сонгоогүй — ТӨСЛИЙН НЭГДСЭН: гэрээ/төсөв · эх үүсвэр · төлөв · блок гүйцэтгэл */
           <>
-            <TotalCard packs={packs} />
-            <TotalSourcesDonut packs={packs} />
+            <TotalCard packs={packs} fin={finQ.state === 'ready' ? finQ.data : null} />
             {allPack && <LevelsCard blocks={allPack.blocks} />}
             {/* Блок бүрийн гүйцэтгэл — БАГЦААР нь бүлэглэсэн (нэг багц = нэг карт) */}
             {packs.filter((p) => p.kind === 'build').map((p) => (
@@ -334,14 +302,12 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
         ) : active.kind === 'build' ? (
           <>
             <ContractCard p={active} />
-            <SourcesDonut p={active} />
             <BlocksCard p={active} />
             <MonitorBagts bagts={active.name} />
           </>
         ) : (
           <>
             <InvestCard p={active} />
-            <SourcesDonut p={active} />
             <LayersCard p={active} />
           </>
         )}
@@ -354,9 +320,6 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
     </div>
   );
 }
-
-/** «Тодорхойгүй / задраагүй» — жинхэнэ эх үүсвэр мэт өнгөтэй байх ёсгүй */
-const BLANK_HUE = '#94a3b8';
 
 /**
  * БАГЦЫН ЖАГСААЛТ (Tsogts хувилбар) — МӨНГӨН ДҮН БИШ, ГҮЙЦЭТГЭЛИЙН ХУВИЙГ
@@ -437,132 +400,30 @@ function TsPackList({
 }
 
 /**
- * САНХҮҮЖИЛТИЙН ЭХ ҮҮСВЭР — DONUT хэлбэрээр (хэрэглэгчийн хүсэлт).
- * Дата бэлтгэл нь Bagts-ийн SourcesCard/InvestSourceCard-тай ИЖИЛ дүрэм:
- * named эх үүсвэрүүд их дүнгээс нь эрэмбэлэгдэж нэг өнгөний сүүдрээр, эх
- * үүсвэргүй үлдэгдэл нь саарал «тодорхойгүй/задраагүй» зүсмэг болно.
+ * ТӨСЛИЙН НЭГДСЭН карт — багц сонгоогүй үеийн баруун карт.
+ * (BUS_cashflow-ийн төсөв/захирамж/гэрээний мөрүүд 2026-08-13-нд хасагдсан.)
+ * «Олгосон санхүүжилт» нь БОДИТ IPC актын нийлбэр (CASHFLOW2+IPC — Finance-тэй
+ * нэг эх сурвалж). Дэд бүтцийн ХО (INVEST /249) 2026-08-14-нд түр хасагдсан.
  */
-function SourcesDonut({ p }: { p: Pack }) {
-  let items: { key: string; label: string; value: number; color: string }[] = [];
-  let total = 0;
-
-  if (p.kind === 'build') {
-    const c = p.cash;
-    if (!c) return null;
-    const named = CASH_SOURCES
-      .map((s, i) => ({ key: s.field, label: s.label, value: c.sources[i] }))
-      .filter((x) => x.value > 0)
-      .sort((a, b) => b.value - a.value);
-    items = named.map((x, i) => ({ ...x, color: shade(HUE, i, named.length) }));
-    const sum = items.reduce((a, x) => a + x.value, 0);
-    const rest = c.orderTotal - sum;
-    if (rest > 0) items.push({ key: 'rest', label: 'Эх үүсвэр тодорхойгүй', value: rest, color: BLANK_HUE });
-    total = c.orderTotal;
-  } else {
-    if (!p.invest.length) return null;
-    const named = INVEST.sources
-      .map((s, i) => ({
-        key: s.field as string,
-        label: s.label as string,
-        value: p.invest.reduce((a, r) => a + r.sources[i], 0),
-      }))
-      .filter((x) => x.value > 0)
-      .sort((a, b) => b.value - a.value);
-    items = named.map((x, i) => ({ ...x, color: shade('#0891b2', i, named.length) }));
-    const invTotal = p.invest.reduce((a, r) => a + r.total, 0);
-    const rest = invTotal - items.reduce((a, x) => a + x.value, 0);
-    if (rest > 0) items.push({ key: 'rest', label: 'Эх үүсвэр задраагүй', value: rest, color: BLANK_HUE });
-    total = invTotal;
-  }
-  if (!items.length) return null;
-
-  return (
-    <Section title="Санхүүжилтийн эх үүсвэр" note={mntShort(total)}>
-      <SourceDonutView items={items} total={total} />
-    </Section>
-  );
-}
-
-/**
- * ArcGIS маягийн leader-line donut — зүсмэг бүрээс гадагш зураас татаж нэр + %
- * бичнэ, голд НИЙТ дүн. Санхүүжилтийн бүх эх үүсвэрийн donut энэ хэлбэртэй.
- */
-/** Эх үүсвэрийн өнгө — ногоон, cyan цэнхэр (нэрлэгдсэн); тодорхойгүй нь саарал */
-const SOURCE_PALETTE = ['#22c55e', '#06b6d4', '#f59e0b', '#a855f7'];
-
-function SourceDonutView({
-  items,
-  total,
-}: {
-  items: { key: string; label: string; value: number; color: string }[];
-  total: number;
-}) {
-  let ci = 0;
-  const colored = items.map((x) =>
-    x.color === BLANK_HUE ? x : { ...x, color: SOURCE_PALETTE[ci++ % SOURCE_PALETTE.length] },
-  );
-  return (
-    <Donut
-      items={colored.map((x) => ({
-        ...x,
-        display: total > 0 ? `${((x.value / total) * 100).toFixed(0)}%` : '—',
-      }))}
-      size={150}
-      width={26}
-      center={mntShort(total).replace(' ₮', '')}
-      centerLabel="нийт"
-      leaders
-      edge={0.5}
-    />
-  );
-}
-
-/**
- * ТӨСЛИЙН НЭГДСЭН гэрээ/төсөв — багц сонгоогүй үеийн баруун карт.
- * Барилгын багцуудын BUS_cashflow дүнгүүд + дэд бүтцийн ХО-ын нийлбэр.
- */
-function TotalCard({ packs }: { packs: Pack[] }) {
+function TotalCard({ packs, fin }: { packs: Pack[]; fin: FinData | null }) {
   const build = packs.filter((p) => p.kind === 'build');
-  const budget = build.reduce((s, p) => s + (p.cash?.budget ?? 0), 0);
-  const orderTotal = build.reduce((s, p) => s + (p.cash?.orderTotal ?? 0), 0);
-  const contract = build.reduce((s, p) => s + (p.cash?.contract ?? 0), 0);
-  const paid = build.reduce((s, p) => s + (p.cash?.months.reduce((a, m) => a + m, 0) ?? 0), 0);
-  const invest = packs.reduce((s, p) => s + p.invest.reduce((a, r) => a + r.total, 0), 0);
+  const blocks = build.reduce((s, p) => s + p.blocks.length, 0);
+  const households = build.reduce((s, p) => s + p.households, 0);
+  // IPC-ээр олгосон нийт ₮ — багц бүрийн сар бүрийн net дүнгийн нийлбэр
+  let given = 0;
+  fin?.given.forEach((months) => months.forEach((v) => { given += v; }));
   return (
-    <Section tone="primary" title="Төсөл нийт — гэрээ ба төсөв" note={`${build.length} барилгын багц`}>
+    <Section tone="primary" title="Төсөл нийт" note={`${build.length} барилгын багц`}>
       <Rows
         items={[
-          { key: 'Урьдчилсан төсөвт өртөг', value: <span className="num">{mntShort(budget)}</span> },
-          { key: 'Захирамжийн нийт дүн', value: <span className="num">{mntShort(orderTotal)}</span> },
-          { key: 'Гэрээ байгуулах эрх', value: <span className="num">{mntShort(contract)}</span> },
-          { key: 'Олгосон санхүүжилт', value: <span className="num">{mntShort(paid)}</span> },
-          { key: 'Дэд бүтцийн хөрөнгө оруулалт', value: <span className="num">{mntShort(invest)}</span> },
+          { key: 'Блок', value: <span className="num">{num(blocks)}</span> },
+          { key: 'Айл өрх', value: <span className="num">{num(households)}</span> },
+          {
+            key: 'Олгосон санхүүжилт (IPC актаар)',
+            value: <span className="num">{fin ? mntShort(given) : '…'}</span>,
+          },
         ]}
       />
-    </Section>
-  );
-}
-
-/** ТӨСЛИЙН НЭГДСЭН эх үүсвэрийн donut — бүх барилгын багцын нийлбэрээр */
-function TotalSourcesDonut({ packs }: { packs: Pack[] }) {
-  const build = packs.filter((p) => p.kind === 'build' && p.cash);
-  if (!build.length) return null;
-  const named = CASH_SOURCES
-    .map((s, i) => ({
-      key: s.field,
-      label: s.label,
-      value: build.reduce((a, p) => a + (p.cash?.sources[i] ?? 0), 0),
-    }))
-    .filter((x) => x.value > 0)
-    .sort((a, b) => b.value - a.value);
-  const items = named.map((x, i) => ({ ...x, color: shade(HUE, i, named.length) }));
-  const total = build.reduce((s, p) => s + (p.cash?.orderTotal ?? 0), 0);
-  const rest = total - items.reduce((a, x) => a + x.value, 0);
-  if (rest > 0) items.push({ key: 'rest', label: 'Эх үүсвэр тодорхойгүй', value: rest, color: BLANK_HUE });
-  if (!items.length) return null;
-  return (
-    <Section title="Санхүүжилтийн эх үүсвэр" note={mntShort(total)}>
-      <SourceDonutView items={items} total={total} />
     </Section>
   );
 }
@@ -627,6 +488,33 @@ function FinCard({ p, finQ }: { p: Pack | null; finQ: Async<FinData> }) {
   const lag = months ? lagOf(months) : null;
   const lvl = lag ? lagLevel(lag.gap) : null;
 
+  /**
+   * KPI — Cashflow (төлөвлөсөн санхүүжилт) ба IPC (олгосон акт)-ын ₮ дүн, тэдгээрийн
+   * ЗӨРҮҮ; мөн ГҮЙЦЭТГЭЛИЙН ХУВЬ хоёр (төлөвлөгөөт = Cashflow-ийн өссөн %, бодит =
+   * биет гүйцэтгэл %) ба тэдгээрийн ЗӨРҮҮ. Хоёр хувийг «одоо» хүртэлх сүүлийн
+   * бөглөгдсөн сараар авна — `lagOf`-той ижил дүрэм тул хоцрогдлын badge-тэй таарна.
+   */
+  const givenTotal = months ? months.reduce((a, m) => a + m.given, 0) : 0;
+  const nowYm = new Date().toISOString().slice(0, 7);
+  let plannedPct: number | null = null;
+  let actualPct: number | null = null;
+  if (months) {
+    for (const m of months) {
+      if (m.label > nowYm) continue;
+      if (m.cumPct > 0) plannedPct = m.cumPct;
+      if (m.phys > 0) actualPct = m.phys;
+    }
+  }
+  // Санхүүжилтийн зөрүү — төлөвлөсөн − олгосон (₮). Эерэг = олгоогүй үлдэгдэл.
+  const finGap = total - givenTotal;
+  // IPC-ийн санхүүжилтийн гүйцэтгэл — олгосон ÷ төлөвлөсөн (%)
+  const givenShare = total > 0 ? (givenTotal / total) * 100 : null;
+  // Гүйцэтгэлийн зөрүү — төлөвлөгөөт − бодит (%). Эерэг = хоцрогдол.
+  const progGap = plannedPct != null && actualPct != null ? plannedPct - actualPct : null;
+  const gapLvl = progGap == null ? null : lagLevel(progGap);
+  const gapColor = gapLvl === 'red' ? '#e11d48' : gapLvl === 'yellow' ? '#f59e0b' : '#22c55e';
+  const gapText = progGap == null ? '—' : `${progGap >= 0 ? '−' : '+'}${Math.abs(progGap).toFixed(1)}%`;
+
   // ГАРЧИГ — нэр + (хоцрогдол бол) нэрний ХАЖУУД alert badge
   const title = (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
@@ -659,6 +547,34 @@ function FinCard({ p, finQ }: { p: Pack | null; finQ: Async<FinData> }) {
         <Empty label="Cashflow-д энэ багцын гэрээ бүртгэлгүй." />
       ) : months ? (
         <>
+          <div className={ts.finKpi}>
+            {[
+              { v: mntShort(total), l: 'Cashflow төлөвлөсөн', c: '#0891b2' },
+              {
+                v: (
+                  <>
+                    {mntShort(givenTotal)}
+                    {givenShare != null && (
+                      <small style={{ fontSize: '0.72em', opacity: 0.7, marginLeft: 4, fontWeight: 600 }}>
+                        {givenShare.toFixed(0)}%
+                      </small>
+                    )}
+                  </>
+                ),
+                l: 'IPC олгосон',
+                c: '#22c55e',
+              },
+              { v: mntShort(finGap), l: 'Санхүүжилтийн зөрүү (төл − олгосон)', c: '#f59e0b' },
+              { v: plannedPct == null ? '—' : pct(plannedPct, 1), l: 'Төлөвлөгөөт гүйцэтгэл', c: '#0891b2' },
+              { v: actualPct == null ? '—' : pct(actualPct, 1), l: 'Бодит гүйцэтгэл', c: '#a855f7' },
+              { v: gapText, l: 'Гүйцэтгэлийн зөрүү (төл − бодит)', c: gapColor },
+            ].map((k) => (
+              <div key={k.l}>
+                <span className={`${ts.finKpiVal} num`} style={{ color: k.c }}>{k.v}</span>
+                <span className={ts.finKpiLabel}>{k.l}</span>
+              </div>
+            ))}
+          </div>
           <div className={ts.finLegend}>
             <span><i style={{ background: '#0891b2' }} />Төлөвлөсөн санхүүжилт</span>
             <span><i style={{ background: '#22c55e' }} />Олгосон · IPC акт</span>
