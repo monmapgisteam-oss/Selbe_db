@@ -15,6 +15,7 @@ import { Tsogts } from '@/modules/Tsogts';
 import { Gazar } from '@/modules/Gazar';
 import { Finance } from '@/modules/Finance';
 import { Habea } from '@/modules/Habea';
+import { Irged } from '@/modules/Irged';
 import { Sheet } from '@/modules/sheet/Sheet';
 import { Tailan } from '@/modules/Tailan';
 import { Icon } from '@/components/Icon';
@@ -444,6 +445,7 @@ function PortalContent(
   const isFinance = view === 'finance';
   const isHabea = view === 'habea';
   const isTsogts = view === 'tsogts';
+  const isIrged = view === 'irged';
   // `standalone` нь эдгээрийг ЯГ тэмдэглэдэг — тусад нь тоолохгүй
   const isFull = standalone;
   /**
@@ -574,7 +576,9 @@ function PortalContent(
                           ? <Finance />
                           : isHabea
                             ? <Habea dim={dim} setDim={setDim} />
-                            : <Suitability dim={dim} setDim={setDim} />}
+                            : isIrged
+                              ? <Irged />
+                              : <Suitability dim={dim} setDim={setDim} />}
           </div>
         )}
 

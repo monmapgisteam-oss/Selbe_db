@@ -2532,6 +2532,111 @@ const UBHUB_SCENE = env(
   "https://arcgis.ubhub.mn/arcgis/rest/services/Hosted",
 );
 
+/**
+ * «Иргэдэд хүрэх үр өгөөж» харагдацын 2D СУУРЬ ЗУРАГ — ортофото MapServer.
+ *
+ * ⚠️ `IMAGERY` (ImageServer, `selbe_ortho_merged`)-ЭЭС ӨӨР үйлчилгээ: энэ нь
+ * динамик MapServer (`singleFusedMapCache: false`, capabilities «Map, Query,
+ * Data») бөгөөд НЭГ растр давхаргатай (`Selbe_ortho_P.tif`). Тиймээс
+ * `ImageryLayer` БИШ, `MapImageLayer`-ээр ачаална.
+ *
+ * ⚠️ Проекц UTM 48N (32648) — аппын суурь зураг Web Mercator (3857). MapServer
+ * нь `exportMap`-даа гаралтын SR-ийг хүлээж авдаг тул сервер талдаа хөрвүүлнэ;
+ * тайл кэш байхгүй тул зураг бүрэн ачаалахад ImageServer-ээс удаан байж болно.
+ *
+ * ⚠️ Каталогийн давхарга БИШ — `LAYERS`-д ороогүй, `MapCanvas.buildLayers` нь
+ * тусад нь нэмнэ. Ил эсэхийг `visible` prop-оор (id-гаар) л удирдана.
+ */
+/**
+ * «Иргэдэд хүрэх үр өгөөж» харагдацын 3D БОДИТ ЗАГВАР — гурван IntegratedMesh.
+ *
+ * ⚠️ Аппын үндсэн `SCENE`-ЭЭС ӨӨР үйлчилгээ (`Selbewebapp*_slpk` биш
+ * `Selbe1/2/3_slpk`). Хоёуланг зэрэг зурвал меш давхцаж, z-fight үүсгэх тул
+ * `MapCanvas` нь харагдац бүрд ЗӨВХӨН НЭГ багц меш байлгана (`scene` prop).
+ *
+ * ⚠️ `key` нь `scene:` угтвартай id болно (`scene:irged1`…) — MapCanvas-ийн
+ * 3D-ийн бүх дүрэм (зөвхөн `dim === '3d'`-д нэмэх, PASSIVE) тэр угтвараар
+ * ажилладаг тул нэрийн загвараа ЗААВАЛ хадгална.
+ */
+export const IRGED_SCENE = {
+  layers: [
+    {
+      key: "irged1",
+      title: "Бодит загвар — Сэлбэ 1",
+      url: `${UBHUB_SCENE}/Selbe1_slpk/SceneServer`,
+    },
+    {
+      key: "irged2",
+      title: "Бодит загвар — Сэлбэ 2",
+      url: `${UBHUB_SCENE}/Selbe2_slpk/SceneServer`,
+    },
+    {
+      key: "irged3",
+      title: "Бодит загвар — Сэлбэ 3",
+      url: `${UBHUB_SCENE}/Selbe3_slpk/SceneServer`,
+    },
+  ],
+} as const;
+
+/**
+ * НҮХЭН ЖОРЛОН — «Иргэдэд хүрэх үр өгөөж» харагдацын цэгэн давхарга (1,675 цэг).
+ *
+ * ⚠️ Каталогийн давхарга БИШ (`LAYERS`-д ороогүй) — `MapCanvas.buildLayers` нь
+ * тусад нь нэмнэ. Ил эсэхийг `visible` prop-оор л удирдана.
+ *
+ * ⚠️ ЗӨВХӨН БАЙРШИЛ ба ТОО харагдана. Атрибутын үлдсэн талбарууд (PLI,
+ * Ground_wat, UB_Flood_r, Population, Toilet_zon г.м.) нь бохирдлын индексийн
+ * загварын оролт бөгөөд хэрэглэгчид ил ГАРГАХГҮЙ: давхарга нь `outFields: []`
+ * (зөвхөн OID), `popupEnabled: false`, `PASSIVE` — дарахад юу ч гарахгүй.
+ */
+export const IRGED_TOILET = {
+  id: "irged:toilet",
+  title: "Нүхэн жорлон",
+  url: `${HJ}/selbe_UB_toilet_all/FeatureServer/0`,
+  /**
+   * УЛБАР ШАР (хэрэглэгчийн сонголт) — гэрэлтэх эффекттэй хамт ажиллана.
+   *
+   * ⚠️ `#f97316` — ТОД улбар шар. Эхэн үеийн `#b45309` (бараан, шороон өнгө)
+   * биш: тэр нь гэр хорооллын хүрэн-саарал дэвсгэртэйгээ уусаж, цэг нь
+   * мэдэгдэхгүй болж байсан. `#f97316` нь хамаагүй тод, ханасан тул bloom-той
+   * хослоод ортофото дээр илт тусна.
+   *
+   * ⚠️ Каталогийн өөр давхарга `#b45309`-ыг эзэлсэн байдаг (`services.ts:1751`)
+   * тул тэр утга руу БУЦААХГҮЙ — хоёрдмол утга үүснэ.
+   */
+  hue: "#f97316",
+} as const;
+
+/**
+ * ЗАМЫН ТӨЛӨВЛӨЛТ — «Иргэдэд хүрэх үр өгөөж» харагдацын вектор тайл давхарга.
+ *
+ * ⚠️ `VectorTileLayer` — `capabilities: TilesOnly,Tilemap`, өөрийн загвартай
+ * (`resources/styles`). URL өгөхөд ArcGIS загварыг нь автоматаар уншина тул
+ * renderer гараар бичих ШААРДЛАГАГҮЙ (зам, тэмдэглэгээ, гүүр гэсэн бүлгүүдтэй).
+ *
+ * ⚠️ Тайл нь Web Mercator (102100), LOD 0–16 — 16-аас ойр зумд тайл дуусах тул
+ * ArcGIS сүүлийн түвшнийг сунгаж харуулна (хэвийн зан төлөв).
+ *
+ * ⚠️ Каталогийн давхарга БИШ — `MapCanvas.buildLayers` тусад нь нэмнэ.
+ */
+export const IRGED_ROAD = {
+  id: "irged:road",
+  title: "Зам",
+  url: env(
+    process.env.NEXT_PUBLIC_IRGED_ROAD,
+    "https://arcgis.ubhub.mn/arcgis/rest/services/Hosted/Selbe_road/VectorTileServer",
+  ),
+} as const;
+
+export const IRGED_ORTHO = {
+  id: "irged:ortho",
+  title: "Ортофото (Selbe_ortho)",
+  url: env(
+    process.env.NEXT_PUBLIC_IRGED_ORTHO,
+    "https://arcgis.ubhub.mn/arcgis/rest/services/Selbe_ortho/MapServer",
+  ),
+} as const;
+
 export const SCENE = {
   layers: [
     {
@@ -3012,7 +3117,8 @@ export type ViewKey =
   | "sheet"
   | "tailan"
   | "finance"
-  | "habea";
+  | "habea"
+  | "irged";
 
 export const VIEWS: {
   key: ViewKey;
@@ -3118,6 +3224,27 @@ export const VIEWS: {
     desc: "БНБД норм, эдийн засгийн үр ашиг",
     icon: "chart",
     hue: "#7c3aed",
+    layers: [],
+    initial: [],
+    standalone: true,
+  },
+  /**
+   * ИРГЭДЭД ХҮРЭХ ҮР ӨГӨӨЖ — иргэдэд чиглэсэн үзүүлэлтүүдийн ТУСДАА харагдац.
+   * Одоогоор нүхэн жорлонгийн байршил ба тоо.
+   *
+   * ⚠️ 2026-08-13: анх энд `analysis`-ийн гурван хүртээмжийн үзүүлэлт (тээвэр,
+   * нийгмийн, инженерийн) байсныг ХАСАВ — эх өгөгдөл нь батлагдаагүй. Тэдгээр
+   * нь «Тохиромжтой байдлын үнэлгээ» цонхонд хэвээр.
+   *
+   * ⚠️ Өөрийн бүтэцтэй (зураг + зүүн самбар), порталын каталог/самбарыг
+   * ашиглахгүй тул `standalone`.
+   */
+  {
+    key: "irged",
+    title: "Иргэдэд хүрэх үр өгөөж",
+    desc: "Нүхэн жорлонгийн байршил ба тоо",
+    icon: "users",
+    hue: "#16a34a",
     layers: [],
     initial: [],
     standalone: true,
