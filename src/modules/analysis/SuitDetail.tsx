@@ -36,6 +36,16 @@ const C3 = '#ea580c';   // 3-р: орлого
 const pctOf = (v: number, max: number) => (max > 0 ? clamp((v / max) * 100, 0, 100) : 0);
 
 /**
+ * Үзүүлэлт харьцуулах БОСГОТОЙ юу.
+ * ⚠️ `normText`-ийг босгогүй үзүүлэлт дээр дуудвал «0 – 0 хүн/га» гэсэн утгагүй
+ * мөр бичнэ — лавлагааны мөрөнд босго байгаа эсэхийг эхлээд шалгана.
+ */
+const hasNorm = (ind: Indicator) =>
+  ind.mode === 'higher' ? ind.target != null
+    : ind.mode === 'lower' ? ind.best != null
+      : ind.optMin != null && ind.optMax != null;
+
+/**
  * ҮЗҮҮЛЭЛТИЙН МӨР — «Хот төлөвлөлтийн үзүүлэлт» хэсгийн мөртэй ИЖИЛ хэлбэр
  * (нэр · утга, доор нь зурвас). Нийтлэг тэнхлэгтэй (`max`) хоёр мөр нь хоёр
  * хэмжигдэхүүнийг харьцуулна.
@@ -253,6 +263,23 @@ export function SuitDetail({
   const supply = r.parkingSupply;
   const splitOk = Math.abs(r.etIl + r.etDald - supply) < 1 && supply > 0;
 
+  /**
+   * ── ГАЗРЫН АШИГЛАЛТ ── бүсийн талбай юугаар бүрдэж байна вэ.
+   *
+   * ⚠️ Барилгын хувьд ХӨЛ талбай (`builtM2`, полигоны бодит талбай) — «Барилгын
+   * нийт талбай» (`gfaM2`) нь давхраар үржсэн ШАЛНЫ талбай тул газартай
+   * харьцуулбал 100%-иас давна.
+   *
+   * ⚠️ Ногоон ба барилга ДАВХЦАЖ болно (ногоон полигон барилгын дээгүүр
+   * зурагдсан тохиолдол). Тэгвэл «бусад» сөрөг болох тул 0-ээр хашина —
+   * зүсмэгүүд ойролцоо утга гэдгийг тайлбарт хэлнэ.
+   */
+  const landM2 = r.polyHa * 10_000;
+  const builtM2 = Math.min(r.builtM2, landM2);
+  const greenM2 = Math.min(r.greenM2, Math.max(0, landM2 - builtM2));
+  const otherM2 = Math.max(0, landM2 - builtM2 - greenM2);
+  const landPct = (v: number) => (landM2 > 0 ? `${nf((v / landM2) * 100, 1)}%` : '—');
+
   return (
     <div ref={box} className={s.detail}>
       <div className={s.dHead} onPointerDown={startDrag}>
@@ -269,6 +296,26 @@ export function SuitDetail({
 
       {urbanModes && (
         <>
+          {/* ⚠️ ТУСДАА хэсэг, «Хот төлөвлөлтийн үзүүлэлт»-ийн ДЭЭР: газрын
+              ашиглалт нь оноололд ордог үзүүлэлт БИШ, бүсийн бүтцийн зураг. */}
+          {landM2 > 0 && (
+            <div className={s.dSect}>
+              <h4>Үндсэн үзүүлэлт</h4>
+              <div className={`${s.chart} ${s.donutSide}`}>
+                <Donut
+                  size={88}
+                  width={15}
+                  items={[
+                    { key: 'bld', label: 'Барилга', value: builtM2, color: C1, display: landPct(builtM2) },
+                    { key: 'grn', label: 'Ногоон байгууламж', value: greenM2, color: C2, display: landPct(greenM2) },
+                    { key: 'oth', label: 'Бусад', value: otherM2, color: '#64748b', display: landPct(otherM2) },
+                  ]}
+                  center={<span style={{ fontSize: 12 }}>{nf(r.polyHa, 1)} га</span>}
+                />
+              </div>
+            </div>
+          )}
+
           <div className={s.dSect}>
             <h4>Хот төлөвлөлтийн үзүүлэлт</h4>
 
@@ -309,9 +356,11 @@ export function SuitDetail({
                       энэ нь үнэлгээ биш, ШААРДЛАГА-ыг бичдэг. Хангасан эсэхийг
                       ✓/✗ тэмдэг ба дээрх утгын өнгө (оноо) хэлнэ. */}
                   <div className={s.mNorm}>
-                    {/* ⚠️ ЛАВЛАГААНЫ (нормгүй) үзүүлэлтийг дүгнэхгүй */}
+                    {/* ⚠️ ЛАВЛАГААНЫ үзүүлэлтийг ✓/✗-ээр ДҮГНЭХГҮЙ — БНБД-д
+                        норм заагаагүй. Харьцуулах босго байвал зөвхөн ҮЗҮҮЛНЭ
+                        (жиш. «лавлагаа · ≥ 30 %»), дүгнэлт өгөхгүй. */}
                     {ind.ref || ind.weight <= 0 ? (
-                      <span>лавлагаа · оноололд ороогүй</span>
+                      <span>лавлагаа{hasNorm(eff) ? ` · ${normText(eff, nf)}` : ' · оноололд ороогүй'}</span>
                     ) : (
                       <span className={pass == null ? undefined : 'ok'}>
                         {pass == null ? 'өгөгдөлгүй' : pass ? '✓ норм' : '✗ норм'} {normText(eff, nf)}

@@ -1,16 +1,51 @@
 'use client';
 
+import { useState, type ReactNode } from 'react';
 import {
-  CATEGORIES, DENSITY_BY_TYPE, PARKING_SOURCES, GREEN_SOURCES,
+  CATEGORIES, DENSITY_BY_TYPE, PARKING_SOURCES, GREEN_SOURCES, GREEN_RADII, LOCATION_RADII, BUILDING_PURPOSES, BUILDING_PURPOSE_OTHER,
   type Indicator, type ParkingOpt, type ParkingSource, type CategoryKey,
   type GreenOpt, type GreenSource,
 } from '@/lib/analysis/config';
-import { scoreColor, scoreIndicator, clamp } from '@/lib/analysis/score';
+import { scoreColor, clamp } from '@/lib/analysis/score';
 import { Donut } from '@/components/ui';
 import { shade } from '@/lib/format';
 import { nf, normLine } from './format';
+import type { LocationPt } from '@/lib/analysis/data';
 import type { Row } from './model';
 import s from '../suitability.module.css';
+
+/**
+ * «Зогсоол» ба «Ногоон байгууламж» картын ДИАГРАМЫН ЦОРЫН ГАНЦ ӨНГӨ.
+ *
+ * ⚠️ Оноолтын шатлал (ногоон→шар→улаан) хэрэглэхээ БОЛЬСОН: эдгээр карт нь
+ * хэмжилтийн тайлан болохоос үнэлгээ биш тул улаан өнгө «алдаа гарлаа» гэсэн
+ * худал дохио өгдөг байв (хэрэглэгчийн шийдвэр, 2026-08-12). Бүдэг цэнхэр нь
+ * `SuitDetail`-ийн C1-тэй ижил — самбар даяар нэг диаграмын өнгө.
+ */
+const CHART = '#4f83cc';
+
+/**
+ * ТООЦООНЫ ТОМЬЁО — хураадаг блок.
+ *
+ * ⚠️ Анхдагчаар НЭЭЛТТЭЙ: хангалтын хувь ХААНААС гарсныг харуулах нь энэ
+ * картуудын гол зорилго (хэрэглэгчийн хүсэлт, 2026-08-12). Хураах боломж нь
+ * зөвхөн зай чөлөөлөх сонголт — нуух өгөгдмөл БИШ.
+ */
+function Formula({ children }: { children: ReactNode }) {
+  const [off, setOff] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        className={`${s.subLabel} ${s.toggleLabel} ${off ? s.toggleOff : ''}`}
+        onClick={() => setOff((v) => !v)}
+      >
+        <span>Тооцооны томьёо</span><i>▼</i>
+      </button>
+      {!off && <div className={s.parkFormula}>{children}</div>}
+    </>
+  );
+}
 
 /* ══════════════════ Үндсэн 3 төрлийн дугуй диаграм ══════════════════ */
 
@@ -243,12 +278,11 @@ export function Weights({
 /* ══════════════════ Зогсоол ══════════════════ */
 
 export function Parking({
-  rows, parking, setParking, indicators,
+  rows, parking, setParking,
 }: {
   rows: Row[];
   parking: ParkingOpt;
   setParking: (p: ParkingOpt) => void;
-  indicators: Indicator[];
 }) {
   const supply = rows.reduce((a, r) => a + r.parkingSupply, 0);
   const need = rows.reduce((a, r) => a + (r.parkingNeed ?? 0), 0);
@@ -259,25 +293,18 @@ export function Parking({
   const short = withNeed.filter((r) => (r.parkingGap ?? 0) < 0).length;
   const pct = need > 0 ? (supply / need) * 100 : null;
 
-  // Хангалтын өнгө нь газрын зураг, оноололтой ижил шатлалаас гарна
-  const parkInd = indicators.find((i) => i.id === 'parking')!;
-  const col = scoreColor(scoreIndicator(pct, parkInd));
-
   const hh = rows.reduce((a, r) => a + r.households, 0);
   const pop = rows.reduce((a, r) => a + r.population, 0);
-  const formula = parking.source === 'households'
-    ? `${nf(hh)} өрх × ${parking.perHousehold.toFixed(2)} зогсоол = <b>${nf(hh * parking.perHousehold)}</b>`
+  /** Хэрэгцээний томьёоны ЗҮҮН тал — сонгосон аргаас хамаарна */
+  const needExpr = parking.source === 'households'
+    ? <>{nf(hh)} өрх × {parking.perHousehold.toFixed(2)} зогсоол</>
     : parking.source === 'population'
-      ? `${nf(pop)} хүн × ${parking.per1000} ÷ 1000 = <b>${nf((pop * parking.per1000) / 1000)}</b>`
-      : 'Бүх бүсийн <b>нормд заасан зогсоолын тоо</b>-ны нийлбэр';
+      ? <>{nf(pop)} хүн × {parking.per1000} ÷ 1000</>
+      : <>бүх бүсийн нормд заасан зогсоолын нийлбэр</>;
 
   return (
-    <>
-      <p className={`${s.muted} ${s.small}`}>
-        <b>Байгаа зогсоол</b> = Ерөнхий төлөвлөгөөнд батлагдсан нийт авто зогсоол — ил ба далд зогсоолын нийлбэр.
-        <b> Шаардлагатай зогсоол</b>-ыг доорх гурван аргын аль нэгээр тооцож, хоёуланг нь харьцуулна.
-      </p>
-
+    // ⚠️ `.plain` — бичвэр БҮГД цагаан, онооны ногоон/улаан алга
+    <div className={s.plain}>
       <div className={s.subLabel}>Хэрэгцээг ямар аргаар тооцох вэ?</div>
       <div className={s.toggles}>
         {PARKING_SOURCES.map((src) => (
@@ -315,34 +342,40 @@ export function Parking({
       )}
 
       <div className={s.parkHead}>
-        <div className={s.parkPct} style={{ color: col }}>
+        <div className={s.parkPct} style={{ color: CHART }}>
           {pct == null ? '—' : Math.round(pct)}<i>%</i>
         </div>
         <div className={s.parkHeadTxt}>
           <b>Хэрэгцээ хангасан хувь</b>
-          <span>Байгаа <b>{nf(supply)}</b> · шаардлагатай <b>{nf(need)}</b> зогсоол</span>
+          <span>Төлөвлөгөөнд <b>{nf(supply)}</b> · шаардлагатай <b>{nf(need)}</b> зогсоол</span>
         </div>
       </div>
 
-      <div className={s.parkBar} title="Байгаа зогсоол нийт хэрэгцээний хэдэн хувийг хангаж байгааг харуулна">
-        <span style={{ width: `${pct == null ? 0 : clamp(pct, 0, 100)}%`, background: col }} />
+      <div className={s.parkBar} title="Ерөнхий төлөвлөгөөнд тусгагдсан зогсоол нийт хэрэгцээний хэдэн хувийг хангаж байгааг харуулна">
+        <span style={{ width: `${pct == null ? 0 : clamp(pct, 0, 100)}%`, background: CHART }} />
       </div>
       <div className={s.parkScale}><span>0%</span><span>Норм 100%</span></div>
 
-      <div className={s.parkFormula}>
-        Хэрэгцээ: <span dangerouslySetInnerHTML={{ __html: formula }} />
-      </div>
+      {/* ⚠️ БҮТЭН гинж: хэрэгцээ → байгаа → хангалт. Урьд нь зөвхөн хэрэгцээний
+          мөр байсан тул дээрх хувь ХААНААС гарсан нь харагддаггүй байв. */}
+      <Formula>
+        Хэрэгцээ = {needExpr} = <b>{nf(need)}</b> зогсоол<br />
+        Ерөнхий төлөвлөгөөнд тусгагдсан = {nf(il)} ил + {nf(dald)} далд = <b>{nf(supply)}</b> зогсоол<br />
+        Хангалт = {nf(supply)} ÷ {nf(need)} × 100 = <b>{pct == null ? '—' : `${Math.round(pct)}%`}</b>
+      </Formula>
 
       <div className={s.finSummary}>
         <div><span>Ил болон далд зогсоол</span><b>{nf(il)} / {nf(dald)}</b></div>
         <div>
           <span>{gap >= 0 ? 'Илүүдэл' : 'Дутагдал'}</span>
-          <b className={gap >= 0 ? s.pos : s.neg}>{gap >= 0 ? '+' : '−'}{nf(Math.abs(gap))}</b>
+          <b>{gap >= 0 ? '+' : '−'}{nf(Math.abs(gap))}</b>
         </div>
-        <div><span>Дутагдалтай бүс</span><b className={short ? s.neg : s.pos}>{short} / {withNeed.length}</b></div>
-        <div><span>Хангалттай бүс</span><b className={s.pos}>{withNeed.length - short} / {withNeed.length}</b></div>
+        {/* ⚠️ «N / M» биш ЦЭВЭР ТОО: хуваарь нь хоёр нүдэнд давхардаж, «23/23»
+            гэдгийг «23 бүсийн 23» гэхээсээ бутархай мэт уншиж болзошгүй байв. */}
+        <div><span>Дутагдалтай бүс</span><b>{short}</b></div>
+        <div><span>Хангалттай бүс</span><b>{withNeed.length - short}</b></div>
       </div>
-    </>
+    </div>
   );
 }
 
@@ -364,17 +397,30 @@ export function Parking({
  * авбал хүртээмж хиймлээр өсөж харагдана.
  */
 export function Green({
-  rows, green, setGreen, indicators,
+  rows, green, setGreen,
 }: {
   rows: Row[];
   green: GreenOpt;
   setGreen: (g: GreenOpt) => void;
-  indicators: Indicator[];
 }) {
   const perPerson = green.source === 'perPerson';
+  const buffer = green.source === 'buffer';
+  /** Нэгж — «нөлөөллийн бүс» арга нь ХҮН тоолдог, бусад нь м² хэмждэг */
+  const unit = buffer ? 'оршин суугч' : 'м²';
 
-  /** Бүс бүрийн байгаа ба шаардлагатай ногоон (м²). Хэрэгцээгүй бол `null`. */
+  /**
+   * Бүс бүрийн байгаа ба шаардлагатай хэмжээ. Хэрэгцээгүй бол `null`.
+   *
+   * ⚠️ «Нөлөөллийн бүс» арга нь ӨӨР ЗҮЙЛ хэмждэг: талбай биш, ХҮН. Хэрэгцээ =
+   * бүсийн бүх оршин суугч (бүгд ногоонд хүрэх ёстой), байгаа = радиус дотор
+   * амьдардаг нь. Тиймээс нэгж, шошго нь бусад хоёроос ялгаатай.
+   */
   const per = rows.map((r) => {
+    if (buffer) {
+      const pop = r.greenDist.reduce((a, x) => a + x.pop, 0);
+      const cov = r.greenDist.reduce((a, x) => a + (x.d <= green.radius ? x.pop : 0), 0);
+      return { r, have: cov, need: pop > 0 ? pop : null };
+    }
     const have = r.greenM2;
     const need = perPerson
       ? (r.residentPop > 0 ? r.residentPop * green.perPerson : null)
@@ -396,22 +442,23 @@ export function Green({
   const landM2 = rows.reduce((a, r) => a + r.polyHa * 10_000, 0);
   const sharePct = landM2 > 0 ? (haveAll / landM2) * 100 : null;
 
-  // Хангалтын өнгө нь газрын зураг, оноололтой ижил шатлалаас гарна
-  const greenInd = indicators.find((i) => i.id === 'green')!;
-  const col = scoreColor(scoreIndicator(pct, { ...greenInd, mode: 'higher', hardMin: 0, target: 100 }));
-
-  const pop = rows.reduce((a, r) => a + r.residentPop, 0);
-  const formula = perPerson
-    ? `${nf(pop)} оршин суугч × ${green.perPerson} м² = <b>${nf(need)} м²</b>`
-    : `${nf(landM2 / 10_000, 1)} га × ${green.share}% = <b>${nf(need)} м²</b>`;
+  /**
+   * Хэрэгцээний томьёоны ЗҮҮН тал.
+   * ⚠️ Хүн ам/талбайг ЗӨВХӨН хэрэгцээтэй бүсээр нийлбэрлэнэ — томьёо нь
+   * баруун талын дүнгээ ГАРГАХ ёстой. Бүх бүсээр нийлбэрлэвэл «6,280 × 6 =
+   * 37,680» гэж бичээд өөр тоо гарч, хэрэглэгч арифметик нь буруу гэж бодно.
+   */
+  const needPop = withNeed.reduce((a, p) => a + p.r.residentPop, 0);
+  const needLandM2 = withNeed.reduce((a, p) => a + p.r.polyHa * 10_000, 0);
+  const needExpr = buffer
+    ? <>бүсийн бүх оршин суугч</>
+    : perPerson
+      ? <>{nf(needPop)} оршин суугч × {green.perPerson} м²</>
+      : <>{nf(needLandM2 / 10_000, 1)} га × {green.share}%</>;
 
   return (
-    <>
-      <p className={`${s.muted} ${s.small}`}>
-        <b>Байгаа ногоон</b> = бүсийн полигоноор тайрсан ногоон байгууламжийн талбай.
-        <b> Шаардлагатай ногоон</b>-ыг доорх хоёр аргын аль нэгээр тооцож, хоёуланг нь харьцуулна.
-      </p>
-
+    // ⚠️ `.plain` — бичвэр БҮГД цагаан, онооны ногоон/улаан алга
+    <div className={s.plain}>
       <div className={s.subLabel}>Хэрэгцээг ямар аргаар тооцох вэ?</div>
       <div className={s.toggles}>
         {GREEN_SOURCES.map((src) => (
@@ -428,61 +475,271 @@ export function Green({
 
       <div className={s.sliderRow}>
         <label>
-          <span>{perPerson ? 'Нэг оршин суугчид ногдох ногоон' : 'Талбайд ногоон эзлэх хувь'}</span>
-          <span className="val">{perPerson ? `${green.perPerson.toFixed(1)} м²` : `${green.share}%`}</span>
+          <span>{buffer ? 'Нөлөөллийн бүсийн радиус' : perPerson ? 'Нэг оршин суугчид ногдох ногоон' : 'Талбайд ногоон эзлэх хувь'}</span>
+          <span className="val">
+            {buffer ? `${green.radius} м` : perPerson ? `${green.perPerson.toFixed(1)} м²` : `${green.share}%`}
+          </span>
         </label>
-        <input
-          type="range"
-          min={perPerson ? 2 : 5}
-          max={perPerson ? 20 : 60}
-          step={perPerson ? 0.5 : 1}
-          value={perPerson ? green.perPerson : green.share}
-          aria-label="Ногоон байгууламжийн коэффициент"
-          onChange={(e) => setGreen(perPerson
-            ? { ...green, perPerson: Number(e.target.value) }
-            : { ...green, share: Number(e.target.value) })}
-        />
+
+        {/* ⚠️ Радиус нь ТОГТСОН шатлалтай (гулсуур БИШ): 100 м-ээс дээш бүх утга
+            100% өгдөг тул тасралтгүй гулсуурын дийлэнх нь үхмэл байв. */}
+        {buffer ? (
+          <div style={{ display: 'flex', gap: 4, marginTop: 5 }}>
+            {GREEN_RADII.map((v) => {
+              const on = green.radius === v;
+              return (
+                <button
+                  key={v}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => setGreen({ ...green, radius: v })}
+                  style={{
+                    flex: 1, padding: '4px 0', fontSize: 11, borderRadius: 6,
+                    border: `1px solid ${on ? CHART : 'var(--line)'}`,
+                    background: on ? 'var(--panel-2)' : 'transparent',
+                    color: 'var(--text)', fontVariantNumeric: 'tabular-nums',
+                  }}
+                >
+                  {v}
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <input
+            type="range"
+            min={perPerson ? 2 : 5}
+            max={perPerson ? 20 : 60}
+            step={perPerson ? 0.5 : 1}
+            value={perPerson ? green.perPerson : green.share}
+            aria-label="Ногоон байгууламжийн коэффициент"
+            onChange={(e) => {
+              const v = Number(e.target.value);
+              setGreen(perPerson ? { ...green, perPerson: v } : { ...green, share: v });
+            }}
+          />
+        )}
       </div>
 
       <div className={s.parkHead}>
-        <div className={s.parkPct} style={{ color: col }}>
+        <div className={s.parkPct} style={{ color: CHART }}>
           {pct == null ? '—' : Math.round(pct)}<i>%</i>
         </div>
         <div className={s.parkHeadTxt}>
-          <b>Хэрэгцээ хангасан хувь</b>
-          <span>Байгаа <b>{nf(haveNeeded)}</b> · шаардлагатай <b>{nf(need)}</b> м²</span>
+          <b>{buffer ? 'Ногоон байгууламжийн хүртээмж' : 'Хэрэгцээ хангасан хувь'}</b>
+          <span>
+            {buffer ? 'Хамрагдсан' : 'Байгаа'} <b>{nf(haveNeeded)}</b> ·{' '}
+            {buffer ? 'нийт' : 'шаардлагатай'} <b>{nf(need)}</b> {unit}
+          </span>
         </div>
       </div>
 
-      <div className={s.parkBar} title="Байгаа ногоон байгууламж нийт хэрэгцээний хэдэн хувийг хангаж байгааг харуулна">
-        <span style={{ width: `${pct == null ? 0 : clamp(pct, 0, 100)}%`, background: col }} />
+      <div className={s.parkBar} title={buffer
+        ? 'Ногоон байгууламжийн нөлөөллийн бүсэд хамрагдсан оршин суугчийн эзлэх хувь'
+        : 'Байгаа ногоон байгууламж нийт хэрэгцээний хэдэн хувийг хангаж байгааг харуулна'}>
+        <span style={{ width: `${pct == null ? 0 : clamp(pct, 0, 100)}%`, background: CHART }} />
       </div>
       <div className={s.parkScale}><span>0%</span><span>Норм 100%</span></div>
 
-      <div className={s.parkFormula}>
-        Хэрэгцээ: <span dangerouslySetInnerHTML={{ __html: formula }} />
-      </div>
+      {/* ⚠️ БҮТЭН гинж — дээрх хувь хаанаас гарсныг мөр мөрөөр нь харуулна */}
+      <Formula>
+        {buffer ? 'Нийт' : 'Хэрэгцээ'} = {needExpr} = <b>{nf(need)}</b> {unit}<br />
+        {buffer ? `Хамрагдсан (${green.radius} м дотор)` : 'Байгаа'} = <b>{nf(haveNeeded)}</b> {unit}<br />
+        Хангалт = {nf(haveNeeded)} ÷ {nf(need)} × 100 = <b>{pct == null ? '—' : `${Math.round(pct)}%`}</b>
+      </Formula>
 
       <div className={s.finSummary}>
         <div>
           <span>Ногоон эзлэх хувь (төсөл)</span>
           {/* ⚠️ Энэ нь ХАНГАМЖААС тусдаа тоо: нийт газарт ногоон хэдэн хувийг
               эзэлж байгааг заана («30% ногоон уу?» гэсэн асуултын шууд хариу). */}
-          <b style={{ color: scoreColor(sharePct == null ? null
-            : clamp((sharePct / green.share) * 100, 0, 100)) }}>
-            {sharePct == null ? '—' : `${nf(sharePct, 1)}%`}
-          </b>
+          <b>{sharePct == null ? '—' : `${nf(sharePct, 1)}%`}</b>
         </div>
         <div>
           <span>Ногоон / нийт талбай</span>
           <b>{nf(haveAll / 10_000, 1)} / {nf(landM2 / 10_000, 1)} га</b>
         </div>
         <div>
-          <span>{gap >= 0 ? 'Илүүдэл' : 'Дутагдал'}</span>
-          <b className={gap >= 0 ? s.pos : s.neg}>{gap >= 0 ? '+' : '−'}{nf(Math.abs(gap))} м²</b>
+          <span>{buffer ? 'Хамрагдаагүй' : gap >= 0 ? 'Илүүдэл' : 'Дутагдал'}</span>
+          <b>{buffer ? nf(need - haveNeeded) : `${gap >= 0 ? '+' : '−'}${nf(Math.abs(gap))}`} {unit}</b>
         </div>
-        <div><span>Дутагдалтай бүс</span><b className={short ? s.neg : s.pos}>{short} / {withNeed.length}</b></div>
+        <div><span>Дутагдалтай бүс</span><b>{short}</b></div>
       </div>
-    </>
+    </div>
+  );
+}
+
+/* ══════════════════ Байршил ══════════════════ */
+
+/** Зориулалтын бүлгийн өнгө — «Барилгын ангилал» картын палитртай НЭГ эх сурвалж */
+const groupColor = (g: string) =>
+  BUILDING_PURPOSES.find((x) => x.key === g)?.color ?? BUILDING_PURPOSE_OTHER.color;
+
+/**
+ * БАЙРШЛЫН ШИНЖИЛГЭЭ — газрын зурагтай ХОЁР ТАЛЫН холбоотой.
+ *
+ * Газрын зураг дээрх барилга дээр дарахад тухайн барилгын ХӨРШИЙН зураг гарна:
+ * радиус тус бүрд хэдэн барилга байгаа, тэдгээр нь ямар зориулалттай, хэдэн
+ * метрийн зайд байгаа.
+ *
+ * ⚠️ Зайг УРЬДЧИЛАН бодоогүй (`LocationPt` тайлбарыг үз): сонгосон барилгаас
+ * бусад руу 368 тооцоо л явна — сонголт бүрд шинэчлэгдэнэ.
+ *
+ * ⚠️ «Өдрийн урсгал» нь тээврийн загварын оргил цагийн ХҮН-ЗОРЧИЛТ: орон сууц
+ * үүсгэнэ, сургууль/оффис/үйлчилгээ татна. Оршин суугчийн тоо нь «хэн энд
+ * амьдардаг», зорчилт нь «энд хэдэн хүн хөдөлж байна» — бизнесийн байршилд
+ * сүүлийнх нь чухал.
+ */
+export function Location({ pts, sel, onSel, radius, setRadius, publicOnly, setPublicOnly }: {
+  pts: LocationPt[];
+  /** Сонгосон барилгын OBJECTID (газрын зургаас эсвэл жагсаалтаас) */
+  sel: number | null;
+  onSel: (oid: number | null) => void;
+  radius: number;
+  setRadius: (r: number) => void;
+  /** ЗӨВХӨН олон нийтийн бүсийн барилгыг зурагт ба шинжилгээнд үлдээх */
+  publicOnly: boolean;
+  setPublicOnly: (v: boolean) => void;
+}) {
+  const me = sel == null ? null : pts.find((p) => p.oid === sel) ?? null;
+
+  /** Сонгосон барилгаас бусад руу — зайгаар эрэмбэлсэн */
+  const near = me
+    ? pts
+      .filter((p) => p.oid !== me.oid)
+      .map((p) => ({ p, d: Math.hypot(p.x - me.x, p.y - me.y) }))
+      .sort((a, b) => a.d - b.d)
+    : [];
+
+  /* ⚠️ Чагт нь ХОЁУЛАНГ нь хумина: газрын зургийн барилга БА энэ картын
+     хөршийн жагсаалт. Эс бөгөөс зурагт үл харагдах барилга жагсаалтад гарч,
+     дарахад «хаана байна?» гэсэн асуулт төрнө. */
+  const check = (
+    <label className={s.chk} style={{ marginBottom: 4 }}>
+      <input
+        type="checkbox"
+        checked={publicOnly}
+        onChange={(e) => setPublicOnly(e.target.checked)}
+      />
+      <span>Улаан бүсийн барилга</span>
+    </label>
+  );
+
+  if (!pts.length) {
+    return (
+      <div className={s.plain}>
+        {check}
+        <p className={`${s.muted} ${s.small}`}>Барилгын өгөгдөл алга</p>
+      </div>
+    );
+  }
+
+  if (!me) {
+    return (
+      <div className={s.plain}>{check}</div>
+    );
+  }
+
+  const within = (r: number) => near.filter((x) => x.d <= r);
+  const list = within(radius);
+  const flow = list.reduce((a, x) => a + x.p.trips, 0);
+  const rivals = list.filter((x) => x.p.group === me.group).length;
+
+  return (
+    <div className={s.plain}>
+      {check}
+      {/**
+        * СОНГОСОН БАРИЛГА — толгойд нь «ЮУ сонгосон» гэдэг л байна.
+        *
+        * ⚠️ Урьд нь энд «210 м» гэсэн том тоо байсан бөгөөд утга нь гурав дахь
+        * мөрөнд («хамгийн ойрын барилга хүртэл») нуугдаж, юуны тоо болох нь
+        * ойлгомжгүй байв. Зайг доорх нүд рүү шошготой нь хамт зөөв.
+        */}
+      <div style={{
+        display: 'flex', alignItems: 'flex-start', gap: 8,
+        marginTop: 2, marginBottom: 9,
+      }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.25 }}>
+            {me.purpose || 'Тодорхойгүй'}
+          </div>
+          <div style={{ fontSize: 10.5, opacity: 0.7, marginTop: 2 }}>
+            {me.zone ?? '—'} · барилга #{me.oid}
+            {me.pop > 0 ? ` · ${nf(me.pop)} оршин суугч` : ''}
+            {me.trips > 0 ? ` · ${nf(me.trips)} зорчилт/ц` : ''}
+          </div>
+        </div>
+        <button type="button" className={s.mini} onClick={() => onSel(null)}>
+          Цуцлах
+        </button>
+      </div>
+
+      {/* Радиусын задаргаа — дарж дэлгэрэнгүйг сольно */}
+      <div className={s.subLabel} style={{ marginTop: 11 }}>Эргэн тойрны барилга</div>
+      <div style={{ display: 'flex', gap: 4 }}>
+        {LOCATION_RADII.map((v) => {
+          const on = radius === v;
+          return (
+            <button
+              key={v}
+              type="button"
+              aria-pressed={on}
+              onClick={() => setRadius(v)}
+              style={{
+                flex: 1, padding: '5px 0', borderRadius: 6,
+                border: `1px solid ${on ? CHART : 'var(--line)'}`,
+                background: on ? 'var(--panel-2)' : 'transparent',
+                color: 'var(--text)', fontVariantNumeric: 'tabular-nums', lineHeight: 1.25,
+              }}
+            >
+              <div style={{ fontSize: 13, fontWeight: 600 }}>{within(v).length}</div>
+              <div style={{ fontSize: 9.5, opacity: 0.75 }}>{v} м</div>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className={s.finSummary} style={{ marginTop: 9 }}>
+        {/* ⚠️ Зай нь ЭНД, шошготойгоо хамт — толгойн «том тоо» байхдаа юуны
+            тоо болох нь ойлгомжгүй байв. */}
+        <div>
+          <span>Хамгийн ойр барилга</span>
+          <b>{near.length ? `${Math.round(near[0].d)} м` : '—'}</b>
+        </div>
+        <div><span>Өдрийн урсгал</span><b>{nf(flow)} /ц</b></div>
+        <div><span>Ижил зориулалт</span><b>{rivals}</b></div>
+        <div><span>{radius} м доторх</span><b>{list.length} барилга</b></div>
+      </div>
+
+      {/* Дэлгэрэнгүй жагсаалт — зай + зориулалт */}
+      <div className={s.subLabel} style={{ marginTop: 11 }}>
+        {radius} м доторх {list.length} барилга
+      </div>
+      <div className={`${s.econChart} ${s.pchart}`}>
+        {list.length === 0 && (
+          <p className={`${s.muted} ${s.small}`}>Энэ зайд өөр барилга алга</p>
+        )}
+        {list.map((x) => (
+          <button
+            key={x.p.oid}
+            type="button"
+            className={s.econRow}
+            title="Дарвал энэ барилга руу шилжинэ"
+            onClick={() => onSel(x.p.oid)}
+          >
+            <div className={s.econRowTop}>
+              <i style={{ background: groupColor(x.p.group) }} />
+              <span className="nm">{x.p.purpose || 'Тодорхойгүй'}</span>
+              <b>{Math.round(x.d)} м</b>
+            </div>
+            <div className={s.econMeta}>
+              {x.p.zone ?? '—'}
+              {x.p.pop > 0 ? ` · ${nf(x.p.pop)} оршин суугч` : ''}
+              {x.p.trips > 0 ? ` · ${nf(x.p.trips)} зорчилт/ц` : ''}
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
