@@ -46,6 +46,8 @@ const ALLOWED = (process.env.ALLOW_ORIGIN || 'http://localhost:8123,http://127.0
 const MODEL = process.env.AGENT_MODEL || 'claude-opus-5';
 const MAX_TOKENS = 8000;
 const EFFORT = process.env.AGENT_EFFORT || 'low';
+/** `effort` дэмждэг эсэх — `worker.mjs`-тэй ижил дүрэм байх ёстой */
+const WITH_EFFORT = Boolean(EFFORT) && !/haiku/i.test(MODEL);
 
 /** Нэг хүсэлтэд зөвшөөрөх биеийн дээд хэмжээ — бүртгэл + яриа (2 МБ) */
 const MAX_BODY = 2 * 1024 * 1024;
@@ -126,7 +128,9 @@ const server = createServer(async (req, res) => {
     const response = await client.messages.create({
       model: MODEL,
       max_tokens: MAX_TOKENS,
-      output_config: { effort: EFFORT },
+      // ⚠️ Haiku ЭНЭ ПАРАМЕТРИЙГ ДЭМЖДЭГГҮЙ — илгээвэл бүх хүсэлт
+      //    «This model does not support the effort parameter» гэж унана.
+      ...(WITH_EFFORT ? { output_config: { effort: EFFORT } } : {}),
       // ⚠️ Системийн зааврыг КЭШЛЭНЭ. Тэр нь давхаргын бүртгэл (мянган токен)
       //    агуулдаг бөгөөд яриа бүрт давтагдана — кэшгүй бол удаан ба үнэтэй.
       system: system

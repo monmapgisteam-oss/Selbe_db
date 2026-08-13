@@ -5,9 +5,15 @@
   "type": "module",
   "description": "Сэлбэ AI туслах — LLM түлхүүр барих реле (порталын build-д ОРОХГҮЙ)",
   "scripts": {
-    "start": "node --env-file-if-exists=.env.local server.mjs"
+    "start": "node --env-file-if-exists=.env.local server.mjs",
+    "deploy": "wrangler deploy",
+    "deploy:secret": "wrangler secret put ANTHROPIC_API_KEY",
+    "deploy:log": "wrangler tail"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.70.0"
+  },
+  "devDependencies": {
+    "wrangler": "^4.42.0"
   }
 }
