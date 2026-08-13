@@ -40,6 +40,17 @@ const STATUS_META = [
   { value: 'Үлдсэн нэгж талбар', label: 'Үлдсэн', color: '#e11d48' },
 ] as const;
 
+/**
+ * ⚠️ Статус баганыг ХАТУУ 3-аар БИШ, өгөгдлөөс ШУУД угсарна. Эх сервист
+ * мэдэгдэж буй 3-аас ГАДНА төлөв (жишээ нь «Гэрээлсэн») эсвэл хоосон утга гарч
+ * ирвэл тэдгээр талбарууд «Нийт»-д тоологдоод график дээр АЛГА болж, баганы
+ * нийлбэр нийт дүнд хүрэхгүй байв. Эдгээр map нь мэдэгдэж буй төлөвүүдэд тогтмол
+ * нэр/өнгө/дараалал өгч, бусдыг нь автоматаар доор нэмнэ — баганууд «Нийт»-тэй
+ * ҮРГЭЛЖ тэнцэнэ (шинэ/устсан төлөвт өөрөө зохицно). */
+const STATUS_ORDER: string[] = STATUS_META.map((m) => m.value);
+const STATUS_LABEL: Record<string, string> = Object.fromEntries(STATUS_META.map((m) => [m.value, m.label]));
+const STATUS_COLOR: Record<string, string> = Object.fromEntries(STATUS_META.map((m) => [m.value, m.color]));
+
 /** Диаграмын палитр — ангилал бүрд ялгарах өнгө (явцаас бусад талбарт) */
 /**
  * ⚠️ НЭГ ӨНГӨНИЙ СҮҮДЭР — урьд нь 10 өөр солонгон өнгө байсныг хэрэглэгчийн
@@ -201,23 +212,40 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       queryGroup(P.url, P.fields.right, [count(P.oid, 'n')], '1=1', area),
       queryGroup(P.url, P.fields.landuse, [count(P.oid, 'n')], '1=1', area),
     ]);
-    // Төлөв бүрийн тоо/талбай — нэрийн арын зайг арилгаж жиших
-    const st = (value: string) => {
-      const r = lStatus.find((x) => text(x[L.fields.status]).trim() === value);
-      return { n: Number(r?.n ?? 0), a: Number(r?.a ?? 0) };
-    };
+    // ТӨЛӨВ бүрийг ӨГӨГДЛӨӨС нэгтгэнэ (арын зай арилгаж, хоосон/null = «Тодорхойгүй»).
+    // Хатуу 3 биш тул нэг ч талбар графикаас гээгдэхгүй — баганууд «Нийт»-тэй тэнцэнэ.
+    const smap = new Map<string, { n: number; a: number }>();
+    for (const r of lStatus) {
+      let k = text(r[L.fields.status]).trim();
+      if (!k || k === '—') k = 'Тодорхойгүй';
+      const cur = smap.get(k) ?? { n: 0, a: 0 };
+      cur.n += Number(r.n ?? 0);
+      cur.a += Number(r.a ?? 0);
+      smap.set(k, cur);
+    }
+    const st = (value: string) => smap.get(value) ?? { n: 0, a: 0 };
     const cleared = st('Бүрэн чөлөөлсөн');
     const cleaned = st('Цэвэрлэсэн нэгж талбар');
     const remaining = st('Үлдсэн нэгж талбар');
-    const statusAreaBy: StatusBars = STATUS_META.map((m) => {
-      const s = st(m.value);
-      const ha2 = Math.round(s.a / 100) / 100;
-      // Тоо ба нэгж (га) ХАМТ — «1,695 талбар · 78.08 га»
-      return {
-        key: m.value, label: m.label, value: ha2,
-        display: `${num(s.n)} талбар · ${num(ha2, 2)} га`, color: m.color,
-      };
-    });
+    // Мэдэгдэж буй 3 төлөв ЭХЭНД (тогтмол өнгө/дараалал), бусад нь тоогоор нь араас.
+    const statusAreaBy: StatusBars = [...smap.entries()]
+      .sort((x, y) => {
+        const ox = STATUS_ORDER.indexOf(x[0]);
+        const oy = STATUS_ORDER.indexOf(y[0]);
+        if (ox !== -1 || oy !== -1) return (ox === -1 ? 99 : ox) - (oy === -1 ? 99 : oy);
+        return y[1].n - x[1].n;
+      })
+      .map(([value, s], i) => {
+        const ha2 = Math.round(s.a / 100) / 100;
+        // Тоо ба нэгж (га) ХАМТ — «1,703 талбар · 78.08 га»
+        return {
+          key: value,
+          label: STATUS_LABEL[value] ?? value,
+          value: ha2,
+          display: `${num(s.n)} талбар · ${num(ha2, 2)} га`,
+          color: STATUS_COLOR[value] ?? (value === 'Тодорхойгүй' ? '#94a3b8' : PALETTE[i % PALETTE.length]),
+        };
+      });
     // Шалтгааны нэрийг цэвэрлэж (арын зай, төгсгөлийн «.») нэгтгэнэ.
     // ⚠️ Түүхий утгуудыг мөн хадгална — дарж шүүхэд WHERE яг таарах ёстой.
     const rmap = new Map<string, { n: number; a: number; raws: Set<string> }>();
@@ -314,13 +342,16 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                   </p>
                 </div>
                 <p className={g.subHead}>Талбай (га) төлөвөөр</p>
+                {/* limit БАЙХГҮЙ — бүх төлөв харагдаж, баганы нийлбэр «Нийт»-тэй тэнцэнэ */}
                 <Bars
                   items={d.statusAreaBy}
-                  limit={3}
                   selected={flt?.grp === 'status' ? flt.key : null}
                   onSelect={(k) => pickFlt({
                     grp: 'status', key: k, label: `Төлөв: ${k}`,
-                    where: `${PARCEL_LEFT.fields.status} = '${sq(k)}'`, only: ['land:left'],
+                    where: k === 'Тодорхойгүй'
+                      ? `(${PARCEL_LEFT.fields.status} IS NULL OR ${PARCEL_LEFT.fields.status} = '')`
+                      : `${PARCEL_LEFT.fields.status} = '${sq(k)}'`,
+                    only: ['land:left'],
                   })}
                 />
                 {d.reasons.length > 0 && (() => {
