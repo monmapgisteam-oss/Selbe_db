@@ -1,0 +1,13 @@
+{
+  "name": "selbe-agent-proxy",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Сэлбэ AI туслах — LLM түлхүүр барих реле (порталын build-д ОРОХГҮЙ)",
+  "scripts": {
+    "start": "node --env-file-if-exists=.env.local server.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.70.0"
+  }
+}
