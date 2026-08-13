@@ -32,7 +32,7 @@ import { Bars, Data, Stat, Stats } from '@/components/ui';
 import { HeadKpi, useBagtsTable } from '@/modules/Dashboard';
 import { useAsync } from '@/lib/useAsync';
 import { queryCount } from '@/lib/query';
-import { BENEFITS, HEADLINE, PUBLIC_ZONE, SOCIAL } from '@/lib/brief';
+import { BENEFITS, HEADLINE, SOCIAL } from '@/lib/brief';
 import {
   IRGED_ORTHO, IRGED_ROAD, IRGED_SCENE, IRGED_TOILET, LAYER_BY_ID, PKG_BY_FAMILY,
 } from '@/lib/services';
@@ -346,13 +346,6 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             </Stats>
           </div>
         </section>
-
-        {/* Олон нийтийн бүс — тусдаа хавтан БИШ, ГАНЦ индикатор (дашбоардтай ижил) */}
-        <div className={o.indicator}>
-          <b className="num">{PUBLIC_ZONE.value}</b>
-          <span className={o.indicatorLabel}>{PUBLIC_ZONE.label}</span>
-          <span className={o.indicatorNote}>{PUBLIC_ZONE.note}</span>
-        </div>
       </div>
     </div>
   );
