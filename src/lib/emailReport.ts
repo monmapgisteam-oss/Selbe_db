@@ -16,6 +16,7 @@
  */
 import type { BagtsRow } from '@/modules/Dashboard';
 import { buildReportDoc } from './reportPdf';
+import type { ReportExtra } from './reportData';
 
 /** Тест хугацааны хүлээн авагчид (нарийн тохиргоо дараа) */
 export const REPORT_RECIPIENTS = ['bilguuntugs@monmap.mn'];
@@ -34,7 +35,7 @@ const wrap76 = (b64: string) => b64.replace(/(.{76})/g, '$1\r\n');
 const encHeader = (str: string) => `=?UTF-8?B?${b64utf8(str)}?=`;
 
 /** pdfmake-ээр PDF үүсгэж base64 буцаана (динамик ачаалалт) */
-async function makePdfBase64(rows: BagtsRow[], dateStr: string): Promise<string> {
+async function makePdfBase64(rows: BagtsRow[], dateStr: string, extra: ReportExtra): Promise<string> {
   const mod = await import('pdfmake/build/pdfmake');
   const vfsMod = await import('pdfmake/build/vfs_fonts');
   // ⚠️ UMD/CJS interop — build нь `module.exports`-оор гардаг тул `.default`.
@@ -47,7 +48,7 @@ async function makePdfBase64(rows: BagtsRow[], dateStr: string): Promise<string>
   if (typeof pdfMake.addVirtualFileSystem === 'function') pdfMake.addVirtualFileSystem(vfs);
   else pdfMake.vfs = vfs;
 
-  const doc = buildReportDoc(rows, dateStr);
+  const doc = buildReportDoc(rows, dateStr, extra);
   // ⚠️ pdfmake 0.3.x — `getBase64()` нь PROMISE (callback БИШ). Callback дамжуулбал
   //    Promise шийдэгдэхгүй, товч мөнхөд «Бэлтгэж байна…» дээр гацна.
   return pdfMake.createPdf(doc).getBase64();
@@ -74,8 +75,8 @@ const bodyHtml = '<p>Сайн байна уу,</p><p>Сэлбэ 20 минуты�
  * CLASSIC OUTLOOK — `.eml` (X-Unsent) татна. Нээхэд Outlook мэйл бичих цонх,
  * PDF хавсаргагдсан, Send дарахад бэлэн.
  */
-export async function emailViaEml(rows: BagtsRow[], dateStr: string): Promise<void> {
-  const pdfB64 = await makePdfBase64(rows, dateStr);
+export async function emailViaEml(rows: BagtsRow[], dateStr: string, extra: ReportExtra): Promise<void> {
+  const pdfB64 = await makePdfBase64(rows, dateStr, extra);
   const bd = 'SELBE-TAILAN-BOUNDARY-8f2c1a';
   const eml = [
     'X-Unsent: 1',
@@ -105,8 +106,8 @@ export async function emailViaEml(rows: BagtsRow[], dateStr: string): Promise<vo
 /**
  * NEW OUTLOOK / ВЭБ — PDF-ийг ТАТААД `mailto` нээнэ (хэрэглэгч гараар хавсаргана).
  */
-export async function emailViaMailto(rows: BagtsRow[], dateStr: string): Promise<void> {
-  const pdfB64 = await makePdfBase64(rows, dateStr);
+export async function emailViaMailto(rows: BagtsRow[], dateStr: string, extra: ReportExtra): Promise<void> {
+  const pdfB64 = await makePdfBase64(rows, dateStr, extra);
   const bytes = Uint8Array.from(atob(pdfB64), (c) => c.charCodeAt(0));
   download(PDF_NAME, new Blob([bytes], { type: 'application/pdf' }));
   const url = `mailto:${REPORT_RECIPIENTS.join(',')}`
@@ -116,8 +117,8 @@ export async function emailViaMailto(rows: BagtsRow[], dateStr: string): Promise
 }
 
 /** Зөвхөн PDF татах (мэйлгүй) */
-export async function downloadReportPdf(rows: BagtsRow[], dateStr: string): Promise<void> {
-  const pdfB64 = await makePdfBase64(rows, dateStr);
+export async function downloadReportPdf(rows: BagtsRow[], dateStr: string, extra: ReportExtra): Promise<void> {
+  const pdfB64 = await makePdfBase64(rows, dateStr, extra);
   const bytes = Uint8Array.from(atob(pdfB64), (c) => c.charCodeAt(0));
   download(PDF_NAME, new Blob([bytes], { type: 'application/pdf' }));
 }
