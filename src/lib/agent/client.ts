@@ -31,9 +31,16 @@ export type ApiMessage = { role: 'user' | 'assistant'; content: string | Content
  */
 const MAX_TURNS = 6;
 
-/** Реле сервер — env-ээр солино, эс бөгөөс локал dev */
+/**
+ * Реле сервер — env-ээр солино, эс бөгөөс локал dev.
+ *
+ * ⚠️ `.trim()` ЗААВАЛ: GitHub-ийн Variable-д хаягийг хуулж буулгахад ард нь
+ * ХАРАГДАХГҮЙ мөр таслалт (`\r\n`) үлддэг. Тэрийг арилгахгүй бол хүсэлт
+ * `…workers.dev⏎/chat` рүү явж, URL хүчингүй болж AI чимээгүйхэн ажиллахаа
+ * болино. (Бодитоор тохиолдсон: 2026.08.13, амьд багцаас илрүүлсэн.)
+ */
 export const AGENT_API =
-  process.env.NEXT_PUBLIC_AGENT_API?.replace(/\/+$/, '') || 'http://localhost:8787';
+  process.env.NEXT_PUBLIC_AGENT_API?.trim().replace(/\/+$/, '') || 'http://localhost:8787';
 
 /**
  * Нэвтэрсэн хэрэглэгчийн ArcGIS токен — реле үүгээр хэн болохыг батална.
