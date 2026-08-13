@@ -15,6 +15,10 @@ __pycache__/
 
 # AI релений нууц (LLM түлхүүр) — репод хэзээ ч орохгүй
 agent-proxy/.env*
+# Cloudflare Worker-ийн локал нууц — ХЭЗЭЭ Ч репод орохгүй
+agent-proxy/.dev.vars*
+# Wrangler-ийн локал кэш — build биш, түр файл
+agent-proxy/.wrangler/
 
 # Ботоор зөвшөөрсөн Telegram хэрэглэгчид — нэрс/ID тул репод оруулахгүй
 telegram-users.json
