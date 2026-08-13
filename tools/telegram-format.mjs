@@ -35,24 +35,37 @@ const isSource = (l) => /^\s*(эх сурвалж|source)\s*:/i.test(l);
  * зурдаг (`AgentChart.tsx`) ч Telegram-д зураг зурах боломжгүй — хасахгүй бол
  * хэрэглэгч түүхий JSON хараад ойлгохгүй.
  *
- * ⚠️ Графикийн ДАРААХ ТАЙЛБАР ӨГҮҮЛБЭР нь энгийн текст тул ХЭВЭЭР үлдэнэ —
- * агент график бүрийг тайлбарлах үүрэгтэй тул Telegram хэрэглэгч утгыг нь
- * үгээр бүрэн авна.
+ * ⚠️ ГЭХДЭЭ БЛОК ДОТОРХ `note`-ЫГ АВЧ ҮЛДЭНЭ. Агентын дүгнэлт («Багц 2
+ * тэргүүлж…») тэр талбарт ордог тул блокийг бүхэлд нь хаявал Telegram
+ * хэрэглэгч зөвхөн хүснэгт хараад, ШИНЖИЛГЭЭГ нь бүрэн алдана.
  *
  * ⚠️ Хаалтын хашлага ирээгүй ч (хариулт таслагдсан) үлдсэн мөрийг бүгдийг
- * залгинэ — түүхий JSON гарахаас сэргийлэх нь чухал.
+ * залгина — түүхий JSON гарахаас сэргийлэх нь чухал.
  */
 function stripCharts(lines) {
   const out = [];
-  let inChart = false;
+  let buf = null; // null = блокоос гадна
+
+  const flush = () => {
+    if (!buf) return;
+    // Задлан шинжлэх нь бүтэхгүй бол ЧИМЭЭГҮЙ орхино — түүхий JSON гаргахгүй
+    try {
+      const note = JSON.parse(buf.join('\n'))?.note;
+      if (note && String(note).trim()) out.push(String(note).trim());
+    } catch { /* эвдэрсэн JSON — тайлбар алга */ }
+    buf = null;
+  };
+
   for (const l of lines) {
-    if (!inChart && /^\s*```\s*chart\s*$/i.test(l)) { inChart = true; continue; }
-    if (inChart) {
-      if (/^\s*```\s*$/.test(l)) inChart = false;
+    if (!buf && /^\s*```\s*chart\s*$/i.test(l)) { buf = []; continue; }
+    if (buf) {
+      if (/^\s*```\s*$/.test(l)) flush();
+      else buf.push(l);
       continue;
     }
     out.push(l);
   }
+  flush(); // хаалтгүй блок — дотроос нь тайлбар гарвал авна
   return out;
 }
 

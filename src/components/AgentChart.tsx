@@ -14,7 +14,7 @@
  * буцаана (`chart.ts`) — хариултын текст, хүснэгт хэвийн харагдана.
  */
 
-import { Bars, Series, Donut, Trend } from '@/components/ui';
+import { Bars, Series, Donut, Trend, Stack, Ring } from '@/components/ui';
 import { parseChart, PALETTE } from '@/lib/agent/chart';
 import s from '@/components/agent.module.css';
 
@@ -26,7 +26,7 @@ export function AgentChart({ raw }: { raw: string }) {
     return null;
   }
 
-  const { type, title, unit, data } = spec;
+  const { type, title, unit, note, data } = spec;
   const items = data.map((d, i) => ({
     key: `${i}-${d.label}`,
     label: d.label,
@@ -36,9 +36,14 @@ export function AgentChart({ raw }: { raw: string }) {
 
   return (
     <figure className={s.chart}>
-      {title && <figcaption className={s.chartTitle}>{title}</figcaption>}
+      {title && <p className={s.chartTitle}>{title}</p>}
+
       {type === 'pie' ? (
         <Donut items={items} stack size={128} />
+      ) : type === 'stack' ? (
+        <Stack items={items} />
+      ) : type === 'gauge' ? (
+        <Ring value={data[0].value} label={data[0].label} size={104} />
       ) : type === 'line' ? (
         <Trend points={data.map((d) => ({ label: d.label, value: d.value }))} unit={unit ?? ''} />
       ) : type === 'column' ? (
@@ -47,6 +52,10 @@ export function AgentChart({ raw }: { raw: string }) {
         // `Bars` нь нэг өнгөөр илүү цэвэрхэн — ангиллын өнгө утга илэрхийлэхгүй
         <Bars items={items.map(({ color: _c, ...b }) => b)} color={PALETTE[0]} />
       )}
+
+      {/* ⚠️ Тайлбарыг ГРАФИКИЙН ДООР, хүрээн ДОТОР — тусдаа догол мөр болгож
+          гаргавал аль диаграмынх нь болох нь тодорхойгүй болно. */}
+      {note && <figcaption className={s.chartNote}>{note}</figcaption>}
     </figure>
   );
 }
