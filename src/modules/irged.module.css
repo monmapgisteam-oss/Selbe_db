@@ -1,0 +1,121 @@
+/* «Иргэдэд хүрэх үр өгөөж» — ХОЁР зураг зэрэгцээ, дэлгэцийг тэн хуваана. */
+
+.frame {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: minmax(0, 1fr);
+  gap: 8px;
+  height: 100%;
+  min-height: 0;
+  padding: 8px;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+/**
+ * Нэг тал — зураг + түүн дээрх хөвөгч элементүүд.
+ *
+ * ⚠️ `display:flex` ЗААВАЛ: MapCanvas-ийн `.wrap` нь `flex:1` тул эцэг нь flex
+ * байх ёстой. Эс бөгөөс зураг 0 өндөртэй хумигдаж ХАР харагдана.
+ * ⚠️ `min-width: 0` — grid нүд нь агуулгаараа тэлж, хоёр тал тэнцүү болохгүй
+ * байхаас сэргийлнэ.
+ */
+.pane {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  overflow: hidden;
+}
+
+/* Аль тал нь юу болохыг заасан шошго — дээд төвд, зурагт саад болохгүй */
+.tag {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  padding: 5px 12px;
+  border-radius: 99px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  border: 1px solid var(--line);
+  backdrop-filter: blur(8px);
+  box-shadow: var(--shadow-sm);
+  pointer-events: none;
+}
+
+/**
+ * Үзүүлэлтийн хөвөгч карт — зүүн зургийн зүүн дээд буланд.
+ *
+ * ⚠️ `top: 100px`: ArcGIS-ийн zoom товч зүүн дээд буланд (≈15px + 2×32px)
+ * сууна. Дээгүүр тавибал товч дарагдаж, томруулах боломжгүй болно.
+ *
+ * ⚠️ `pointer-events: none` — зургийг чирэхэд саад болохгүй.
+ */
+.overlay {
+  position: absolute;
+  top: 100px;
+  left: 10px;
+  z-index: 6;
+  min-width: 180px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
+  backdrop-filter: blur(10px);
+  box-shadow: var(--shadow-lg);
+  pointer-events: none;
+}
+
+/* Давхаргын чагтууд — үзүүлэлтийн доор.
+   ⚠️ `pointer-events: auto` — эцэг `.overlay` нь `none` тул энд буцааж өгнө. */
+.toggles {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 6px;
+  padding: 6px 8px 4px;
+  border-top: 1px solid var(--line);
+  pointer-events: auto;
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 2px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--ink-2);
+  cursor: pointer;
+  border-radius: var(--r-sm);
+  transition: color 0.12s;
+}
+.toggle:hover { color: var(--ink); }
+.toggle input {
+  width: 13px;
+  height: 13px;
+  flex: none;
+  accent-color: var(--hue);
+  cursor: pointer;
+}
+
+/* ── Responsive — нарийн дэлгэцэд хоёр зураг ДЭЭР ДООР өрөгдөнө ── */
+@media (max-width: 900px) {
+  .frame {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr 1fr;
+  }
+  .overlay {
+    top: auto;
+    bottom: 34px;
+    min-width: 150px;
+  }
+}
