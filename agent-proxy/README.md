@@ -70,8 +70,92 @@ browser талд** (`src/lib/agent/`). Учир нь тэнд `LAYERS`, `VIEWS`,
 
 **Дүрэм:** шинэ давхарга нэмэгдэхэд энэ хавтсанд юу ч засагдах ёсгүй.
 
-## Дараагийн алхам (deploy)
+## Байршуулах — `selbe.monmap.mn` дээр AI ажиллуулах
 
-Локалаар батлагдсаны дараа Cloudflare Worker болгож `api.selbe.monmap.mn` дээр
-байрлуулна — `createServer` нь `fetch` handler болно. Порталын GitHub Pages
-deploy хэвээр үлдэнэ.
+Локал `server.mjs` нь зөвхөн таны компьютер дээр ажилладаг тул нийтэд гарсан
+сайт дээр AI дуугарахгүй. Үүний тулд **`worker.mjs`** (ижил логиктой Cloudflare
+Worker хувилбар)-ыг байршуулна.
+
+> **Яагаад заавал сервер вэ:** портал бүрэн статик тул түлхүүрийг build-д
+> шингээвэл JS багцаас **хэн ч уншина**. Түлхүүр зөвхөн релений дотор байх ёстой.
+
+### 1. Cloudflare (нэг удаа, ~5 минут)
+
+```sh
+cd agent-proxy
+npm install
+npx wrangler login                    # хөтөч нээгдэж зөвшөөрөл асууна
+npm run deploy:secret                 # ANTHROPIC_API_KEY-г буулгана (дэлгэцэд харагдахгүй)
+npm run deploy
+```
+
+Гаралтад ажлын хаяг гарна:
+
+```
+https://selbe-agent.<таны-нэр>.workers.dev
+```
+
+Шалгах:
+
+```sh
+curl https://selbe-agent.<таны-нэр>.workers.dev/health
+# {"ok":true,"model":"claude-opus-5","effort":"low"}
+```
+
+### 2. GitHub (нэг удаа)
+
+Репо → **Settings → Secrets and variables → Actions → Variables** таб →
+**New repository variable**:
+
+| Нэр | Утга |
+|---|---|
+| `AGENT_API` | `https://selbe-agent.<таны-нэр>.workers.dev` |
+
+> **Secret биш, Variable.** Энэ бол нийтийн URL — багцад ил бичигдэнэ.
+> Түлхүүр Cloudflare дотроо үлдэнэ.
+
+Дараа нь `main` руу push хийхэд (эсвэл Actions → Run workflow) шинэ build
+энэ хаягийг агуулан гарна. Ингээд **selbe.monmap.mn дээр орвол AI шууд
+ажиллана — хэрэглэгч юу ч буулгахгүй.**
+
+### 3. Өөрийн домэйн (заавал биш)
+
+Cloudflare дээр `monmap.mn` бүсийг удирддаг бол `wrangler.toml`-ийн `[[routes]]`
+хэсгийг идэвхжүүлээд `AGENT_API`-г `https://api.selbe.monmap.mn` болгоно.
+
+## Хэн ашиглах вэ — ArcGIS нэвтрэлт
+
+⚠️ Реле нээлттэй хаяг дээр байрлах тул **хамгаалалтгүй бол хаягийг олсон хэн ч
+таны Anthropic эрхээр токен зарцуулна.**
+
+`wrangler.toml`-д `ARCGIS_ORG_ID` тохируулсан үед реле нь хүсэлт бүрийн
+`x-arcgis-token` толгойг ArcGIS-ээр шалгаж, тухайн байгууллагын гишүүн эсэхийг
+батална. Портал нэвтэрсэн хэрэглэгчийн токеныг автоматаар хавсаргана
+(`src/lib/agent/client.ts`).
+
+- Нэвтрээгүй бол: *«Нэвтрэлтийн хугацаа дууссан эсвэл хүчингүй байна»*
+- Өөр байгууллагынх бол: *«Танай байгууллагад энэ үйлчилгээ нээгдээгүй байна»*
+
+Шалгагдсан токеныг 5 минут кэшлэнэ — асуулт бүрд ArcGIS руу дахин очихгүй (хурд).
+
+⚠️ Локал `server.mjs` нь энэ шалгалтыг хийхгүй (хөгжүүлэлт саадгүй байх үүднээс).
+Тиймээс **локал релег нийтийн хаяг руу гаргаж болохгүй.**
+
+### Тохиргооны хувьсагч (Worker)
+
+| Хувьсагч | Хаана | Утга |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | **Нууц** (`deploy:secret`) | Заавал |
+| `ALLOW_ORIGIN` | `wrangler.toml` | Зөвшөөрөх эх, таслалаар |
+| `ARCGIS_ORG_ID` | `wrangler.toml` | Хоосон бол нэвтрэлт **шаардахгүй** |
+| `ARCGIS_PORTAL` | `wrangler.toml` | Порталын `AUTH.portalUrl`-тэй ижил байх ёстой |
+| `AGENT_MODEL` / `AGENT_EFFORT` | `wrangler.toml` | `server.mjs`-тэй ижил анхдагч |
+
+## Зардал хянах
+
+Реле нээгдмэгц асуулт бүр таны Anthropic данснаас гарна.
+[console.anthropic.com](https://console.anthropic.com) → **Limits** дээр
+сарын дээд хязгаар тавихыг зөвлөж байна.
+
+⚠️ `worker.mjs` ба `server.mjs` нь **толин хувилбар**: загвар, effort, кэшлэлт,
+алдааны мессеж ижил. Аль нэгийг засвал нөгөөг нь хамт засна.
