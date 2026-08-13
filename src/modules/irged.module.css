@@ -1,89 +1,104 @@
-/* «Иргэдэд хүрэх үр өгөөж» — ХОЁР зураг зэрэгцээ, дэлгэцийг тэн хуваана. */
+/**
+ * «Иргэдэд хүрэх үр өгөөж» — ӨМНӨ · ЗУРАГ · ДАРАА гурван багана,
+ * дээр нь толгойн үзүүлэлт.
+ *
+ * ⚠️ Хавтан, баганын толгой, төвийн зургийн загварыг «Газар чөлөөлөлт»-ээс
+ * (`gazar.module.css`) ШУУД авна — энд зөвхөн СҮЛЖЭЭ ба тэндгүй зүйлс.
+ * Хуулбарлавал хоёр цонх аажмаар зөрнө.
+ */
 
 .frame {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-areas: "left map right";
+  grid-template-columns: minmax(268px, 330px) minmax(0, 1fr) minmax(268px, 344px);
   grid-template-rows: minmax(0, 1fr);
-  gap: 8px;
+  gap: 10px;
   height: 100%;
   min-height: 0;
-  padding: 8px;
+  padding: 12px;
   background: var(--bg);
   overflow: hidden;
 }
 
 /**
- * Нэг тал — зураг + түүн дээрх хөвөгч элементүүд.
+ * ТӨВ багана — үзүүлэлтийн зурвас ба зураг нь БОСОО өрөгдөнө.
  *
- * ⚠️ `display:flex` ЗААВАЛ: MapCanvas-ийн `.wrap` нь `flex:1` тул эцэг нь flex
- * байх ёстой. Эс бөгөөс зураг 0 өндөртэй хумигдаж ХАР харагдана.
- * ⚠️ `min-width: 0` — grid нүд нь агуулгаараа тэлж, хоёр тал тэнцүү болохгүй
- * байхаас сэргийлнэ.
+ * ⚠️ `gazar.module.css`-ийн `.map` нь `display:flex` (мөр) — түүнийг ГЛОБАЛААР
+ * өөрчилж болохгүй (Газар чөлөөлөлт дагаж эвдэрнэ) тул чиглэлийг нь ЗӨВХӨН
+ * энд дарж бичнэ.
  */
-.pane {
-  position: relative;
-  display: flex;
-  min-width: 0;
-  min-height: 0;
-  border: 1px solid var(--line);
-  border-radius: var(--r);
-  overflow: hidden;
-}
-
-/* Аль тал нь юу болохыг заасан шошго — дээд төвд, зурагт саад болохгүй */
-.tag {
-  position: absolute;
-  top: 10px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 6;
-  padding: 5px 12px;
-  border-radius: 99px;
-  font-size: 0.7rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-  color: var(--ink);
-  background: color-mix(in srgb, var(--surface) 88%, transparent);
-  border: 1px solid var(--line);
-  backdrop-filter: blur(8px);
-  box-shadow: var(--shadow-sm);
-  pointer-events: none;
+.mapCol {
+  flex-direction: column;
 }
 
 /**
- * Үзүүлэлтийн хөвөгч карт — зүүн зургийн зүүн дээд буланд.
+ * Толгойн таван үзүүлэлт — зургийн дээд зурваст.
  *
- * ⚠️ `top: 100px`: ArcGIS-ийн zoom товч зүүн дээд буланд (≈15px + 2×32px)
- * сууна. Дээгүүр тавибал товч дарагдаж, томруулах боломжгүй болно.
- *
- * ⚠️ `pointer-events: none` — зургийг чирэхэд саад болохгүй.
+ * ⚠️ `flex: none` — эс бөгөөс flex контейнерт агуулгаараа хумигдана. Зураг нь
+ * `MapCanvas`-ийн `.wrap` (`flex: 1`)-ээр үлдсэн зайг эзэлнэ.
  */
-.overlay {
-  position: absolute;
-  top: 100px;
-  left: 10px;
-  z-index: 6;
-  min-width: 180px;
-  padding: 4px;
-  border: 1px solid var(--line);
-  border-radius: var(--r);
-  background: color-mix(in srgb, var(--surface) 90%, transparent);
-  backdrop-filter: blur(10px);
-  box-shadow: var(--shadow-lg);
-  pointer-events: none;
+.kpi {
+  flex: none;
+  min-width: 0;
+  padding: 8px 10px 0;
 }
 
-/* Давхаргын чагтууд — үзүүлэлтийн доор.
-   ⚠️ `pointer-events: auto` — эцэг `.overlay` нь `none` тул энд буцааж өгнө. */
+/**
+ * ЗУРГИЙН ХҮРЭЭ — үзүүлэлтийн доорх үлдсэн бүх зай.
+ *
+ * ⚠️ `position: relative` нь ЧУХАЛ: toolbar, каталог, тайлбар гурав нь
+ * `position: absolute` (overview.module.css) бөгөөд хамгийн ойрын `relative`
+ * эцгээсээ хэмжигддэг. Энэ хүрээгүй бол тэд БҮХ баганаас хэмжигдэж, toolbar нь
+ * `top: 12px`-ээр үзүүлэлтийн зурвасны дээр гарч түүнийг бүрхэнэ.
+ *
+ * ⚠️ `display: flex` — `MapCanvas`-ийн `.wrap` нь `flex: 1` тул эцэг нь flex
+ * байх ёстой; эс бөгөөс зураг 0 өндөртэй хумигдана.
+ */
+.mapBox {
+  position: relative;
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Хоёр талын багана — доторх хавтангууд босоо өрөгдөж, шаардвал гүйнэ */
+.left,
+.right {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+}
+.left { grid-area: left; }
+.right { grid-area: right; }
+
+/**
+ * «ӨМНӨ» талын хавтан — баруун талын цэнхэртэй ИЖИЛ бүтэц, ӨӨР өнгө.
+ *
+ * ⚠️ `gazar.module.css`-ийн `.panelOuter`-ыг дахин ашиглаж БОЛОХГҮЙ: тэр нь
+ * цэнхрийг (#0ea5e9) ХАТУУ бичсэн. Энэ хувилбар өнгийг `--tone`-оос авдаг тул
+ * дуудагч тал (`IRGED_TOILET.hue`) шийднэ — өнгө нэг эх сурвалжид үлдэнэ.
+ *
+ * ⚠️ Гарчгийг ЭЛЕМЕНТЭЭР (`h3`) сонгож байна, класснаас БИШ: `panelTitle` нь
+ * ӨӨР CSS module-д хамаарах тул энэ файлаас класс нэрээр нь хүрэх боломжгүй
+ * (build-д хэшлэгдэж өөр нэр болно).
+ */
+.panelBefore {
+  background: color-mix(in srgb, var(--tone) 4%, var(--surface));
+  border-color: color-mix(in srgb, var(--tone) 35%, var(--line));
+  box-shadow: inset 3px 0 0 var(--tone);
+}
+.panelBefore h3 { color: var(--tone); }
+
+/* Давхаргын чагтууд — «Давхарга» товчны панел дотор */
 .toggles {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  margin-top: 6px;
-  padding: 6px 8px 4px;
-  border-top: 1px solid var(--line);
-  pointer-events: auto;
+  padding: 4px 2px;
 }
 
 .toggle {
@@ -107,15 +122,33 @@
   cursor: pointer;
 }
 
-/* ── Responsive — нарийн дэлгэцэд хоёр зураг ДЭЭР ДООР өрөгдөнө ── */
-@media (max-width: 900px) {
+/* ── Responsive ── */
+@media (max-width: 1320px) {
+  /* Зураг ДЭЭШЭЭ, өмнө/дараа доор нь ЗЭРЭГЦЭЭ — харьцуулалт хэвээр үлдэнэ */
   .frame {
-    grid-template-columns: 1fr;
-    grid-template-rows: 1fr 1fr;
+    grid-template-areas:
+      "map map"
+      "left right";
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto auto;
+    height: auto;
+    min-height: 100%;
+    overflow-y: auto;
   }
-  .overlay {
-    top: auto;
-    bottom: 34px;
-    min-width: 150px;
+  .left,
+  .right { overflow-y: visible; }
+  /* ⚠️ Мөрийн өндөр `auto` болсон тул зурагт доод хязгаар ЗААВАЛ — эс бөгөөс
+     `MapCanvas`-ийн `flex:1` нь 0 өндөрт хумигдаж зураг алга болно. */
+  .mapCol { min-height: 62vh; }
+}
+
+@media (max-width: 760px) {
+  /* Нарийн дэлгэц — бүгд нэг баганад */
+  .frame {
+    grid-template-areas:
+      "map"
+      "left"
+      "right";
+    grid-template-columns: 1fr;
   }
 }

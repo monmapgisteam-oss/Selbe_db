@@ -600,7 +600,7 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
       />
 
       <main className={o.center}>
-        <HeadKpi d={d} />
+        <HeadKpi bagts={d.bagts} />
 
         <div className={o.hero}>
           {/* ⚠️ zone={null} байсныг заслав (2026-08-10) — бүсийн шүүлт дашбоардын
@@ -928,12 +928,27 @@ function SideRail({ d, suit, open, toggle, clear, ref }: {
 
 /* ══════════════════ Толгойн үзүүлэлт ══════════════════ */
 
-function HeadKpi({ d }: { d: DashData }) {
-  const b = d.bagts.state === 'ready' ? d.bagts.data : null;
+/**
+ * ⚠️ EXPORT — «Иргэдэд хүрэх үр өгөөж» (`Irged.tsx`) энэ мөрийг ДАХИН
+ * АШИГЛАНА. Хуулбарлавал таван үзүүлэлт хоёр цонхонд салангид амьдарна.
+ *
+ * ⚠️ Prop нь `DashData` БҮХЭЛДЭЭ БИШ, зөвхөн `bagts`: бусад талбар нь энд
+ * хэрэггүй бөгөөд шаардвал дуудагч тал дашбоардын БҮХ өгөгдлийг татах
+ * үүрэгтэй болно (эх үүсвэр, санхүү, үнэлгээ гэх мэт — 10 гаруй хүсэлт).
+ */
+export function HeadKpi({ bagts }: { bagts: Async<BagtsRow[]> }) {
+  const b = bagts.state === 'ready' ? bagts.data : null;
   const blocks = b ? b.reduce((a, x) => a + x.blocks, 0) : null;
   const ail = b ? b.reduce((a, x) => a + x.ail, 0) : null;
-  const h = d.headline.state === 'ready' ? d.headline.data : null;
-  const p = d.project.state === 'ready' ? d.project.data : null;
+  // ⚠️ Толгой/явцыг ЭНД амьдаар ачаална (prop-оор БИШ) — «Иргэдэд хүрэх үр өгөөж»
+  //    (Irged.tsx) энэ мөрийг зөвхөн `bagts`-аар дахин ашиглана. loadHeadline/
+  //    loadProjectProgress нь cached тул давхар хүсэлт үүсэхгүй.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const hq = useAsync(loadHeadline, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const pq = useAsync(loadProjectProgress, []);
+  const h = hq.state === 'ready' ? hq.data : null;
+  const p = pq.state === 'ready' ? pq.data : null;
 
   /**
    * ⚠️ УТГА ба НЭГЖ нь ТУСДАА талбар — тоо том, нэгж жижиг.
@@ -1494,11 +1509,11 @@ const SOC_MATCH: Record<string, string[]> = {
 };
 
 /**
- * БҮХ ТОО АМЬД (2026-08-13). Илтгэлийн BENEFITS/PUBLIC_ZONE/SOCIAL багц
- * (44,518 · 7,060 мод · 16,000 ажлын байр · 7,500 тн нүүрс · 1.5 их наяд ◆...)
- * амьд эх сурвалжгүй мөрүүд нь ХАСАГДАВ — үлдсэн нь үйлчилгээнээс бодогдоно.
+ * БҮХ ТОО АМЬД. Илтгэлийн BENEFITS/PUBLIC_ZONE/SOCIAL хатуу мөрүүд хасагдаж,
+ * үлдсэн нь үйлчилгээнээс бодогдоно (headline/social нь `d`-гээс).
+ * ⚠️ EXPORT — «Иргэдэд хүрэх үр өгөөж» (`Irged.tsx`) дахин ашиглаж болохоор.
  */
-function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[]>; d: DashData } & FltProps) {
+export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[]>; d: DashData } & FltProps) {
   const ail = bagts.state === 'ready' ? bagts.data.reduce((a, x) => a + x.ail, 0) : null;
   const h = d.headline.state === 'ready' ? d.headline.data : null;
   const soc = d.social.state === 'ready' ? d.social.data : null;

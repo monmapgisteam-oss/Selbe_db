@@ -585,7 +585,7 @@ function PortalContent(
                           : isHabea
                             ? <Habea dim={dim} setDim={setDim} />
                             : isIrged
-                              ? <Irged />
+                              ? <Irged dim={dim} setDim={setDim} />
                               : <Suitability dim={dim} setDim={setDim} />}
           </div>
         )}
