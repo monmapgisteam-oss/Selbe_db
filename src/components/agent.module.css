@@ -1,0 +1,276 @@
+/* Сэлбэ AI туслах — баруун доод буланд хөвөгч цонх */
+
+.fab {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 60;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  transition: transform 0.15s var(--ease), border-color 0.15s var(--ease);
+}
+.fab:hover { transform: translateY(-1px); border-color: var(--hue); }
+.fab[aria-pressed='true'] { border-color: var(--hue); color: var(--hue); }
+
+.panel {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 61;
+  width: min(420px, calc(100vw - 36px));
+  height: min(620px, calc(100dvh - 36px));
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  transition: width 0.18s var(--ease), height 0.18s var(--ease);
+}
+
+/**
+ * БАРУУН ТАЛЫН САМБАР — өргөтгөсөн горим.
+ *
+ * ⚠️ Бүтэн дэлгэц БОЛГОХГҮЙ: порталын толгой (`--head`) ил үлдэнэ, газрын
+ * зураг зүүн талд харагдсаар байна. Хэрэглэгч хариултыг зурагтай зэрэг харах
+ * нь энэ порталд хамгийн чухал — бүтэн дэлгэц тэр холбоог тасална.
+ */
+.panelWide {
+  top: var(--head);
+  right: 0;
+  bottom: 0;
+  width: min(600px, 46vw);
+  height: auto;
+  border-radius: 0;
+  border-top: none;
+  border-right: none;
+  border-bottom: none;
+}
+
+/* ⚠️ Нарийн дэлгэцэнд (таблет, утас) баруун самбар утгагүй — бүтэн өргөн */
+@media (max-width: 900px) {
+  .panelWide { width: 100vw; }
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-2);
+}
+.title { font-size: 13.5px; font-weight: 600; }
+.sub { font-size: 11.5px; color: var(--ink-3); }
+.spacer { margin-left: auto; }
+
+.iconBtn {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.iconBtn:hover { border-color: var(--line); color: var(--ink); }
+
+.log {
+  overflow-y: auto;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.msg { max-width: 92%; word-break: break-word; }
+.user {
+  align-self: flex-end;
+  padding: 8px 12px;
+  border-radius: var(--r);
+  background: var(--sunken);
+  color: var(--ink);
+  white-space: pre-wrap;
+}
+
+/* ── Агентын хариулт ── */
+.bot { align-self: stretch; color: var(--ink); }
+.bot code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--sunken);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--ink-2);
+}
+/* Тод бичвэр — бүлгийн гарчиг, нэр. Өнгө нь ЭНГИЙН (цагаан/хар) */
+.bot strong {
+  font-weight: 650;
+  color: var(--ink);
+}
+
+/**
+ * ⚠️ ЗӨВХӨН ТООН утга шар — хэрэглэгч эхлээд түүнийг хардаг.
+ *
+ * ⚠️ Бүх тод бичвэрийг шар болговол бүлгийн гарчиг, нэр ч шар болж, гол тоо
+ * ялгарахаа болино. Ялгалыг `AgentMarkdown.isNumeric()` хийнэ.
+ *
+ * ⚠️ `--hue` (харагдацын өнгө) БИШ: тэр нь харагдац солигдох бүрд өөрчлөгддөг
+ * тул нэг өдөр цэнхэр, нөгөө өдөр ногоон болно. `--warn` нь ТОГТМОЛ шар бөгөөд
+ * гэрэл/харанхуй хоёрт өөрөө тохирдог (#ca8a04 / #fbbf24).
+ */
+.bot strong.num {
+  color: var(--warn);
+  font-variant-numeric: tabular-nums;
+}
+
+.para { margin: 0 0 8px; white-space: pre-wrap; }
+.para:last-child { margin-bottom: 0; }
+
+.list { margin: 0 0 8px; padding-left: 18px; }
+.list li { margin-bottom: 3px; }
+.list li::marker { color: var(--ink-3); }
+
+/* ⚠️ Эх сурвалжийн мөрийн загвар ЗОРИУДААР байхгүй — тэр мөр хэрэглэгчид
+   ОГТ харагдахгүй (`AgentMarkdown` хаядаг). */
+
+/* ⚠️ Хүснэгт нарийн цонхонд багтахгүй — ХӨНДЛӨН гүйлгэнэ, цонх сунахгүй */
+.tableWrap {
+  margin: 2px 0 10px;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+.table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.table th,
+.table td {
+  padding: 6px 9px;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+.table th {
+  background: var(--sunken);
+  font-weight: 600;
+  color: var(--ink-2);
+  position: sticky;
+  top: 0;
+}
+.table tbody tr:last-child td { border-bottom: none; }
+/* Тоон багана — баруун зэрэгцүүлнэ (эхний баганаас бусад) */
+.table td:not(:first-child) { text-align: right; }
+.table th:not(:first-child) { text-align: right; }
+
+.progress {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink-3);
+  font-size: 12.5px;
+}
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--hue);
+  animation: pulse 1s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 1; }
+}
+
+.error {
+  align-self: stretch;
+  padding: 8px 10px;
+  border: 1px solid var(--bad);
+  border-radius: var(--r-sm);
+  color: var(--bad);
+  font-size: 12.5px;
+}
+
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+.chip:hover { border-color: var(--hue); color: var(--ink); }
+
+.foot {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  padding: 10px 12px;
+  border-top: 1px solid var(--line);
+  background: var(--surface-2);
+}
+.input {
+  flex: 1;
+  min-height: 38px;
+  max-height: 120px;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.4;
+  resize: none;
+}
+.input:focus { outline: none; border-color: var(--hue); }
+
+.send {
+  padding: 9px 14px;
+  border: 1px solid var(--hue);
+  border-radius: var(--r-sm);
+  background: var(--hue);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.send:disabled { opacity: 0.45; cursor: default; }
+
+.offline {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--sunken);
+  color: var(--ink-2);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.offline code {
+  font-family: var(--mono);
+  font-size: 11.5px;
+}
