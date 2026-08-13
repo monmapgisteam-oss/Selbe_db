@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   applyUpdates,
   computeAll,
@@ -16,6 +16,8 @@ import {
   type Pkg,
   type Schema,
 } from "./bagts.pkg";
+import DatePicker from "./DatePicker";
+import { seriesBands } from "./bagts.bands";
 import { ACTUAL, distinct } from "./ags";
 import { useColWidths } from "./colWidths";
 import st from "./sheet.module.css";
@@ -65,8 +67,34 @@ const dt = (ms: number | null) =>
 /** «YYYY-MM-DD» ↔ ms (UTC — үйлчилгээний огноо UTC шөнө дунд). */
 const inputToMs = (s: string) => (s ? Date.parse(s + "T00:00:00Z") : null);
 
+/**
+ * Засагдахгүй нүд дарахад ЯАГААД гэдгийг тайлбарлах бичвэрүүд.
+ * Зөвхөн «болохгүй» гэж хэлээд орхивол хэрэглэгч алдаа гэж боддог — тиймээс
+ * тухайн багана ЮУНААС бодогддгийг, эсвэл ХААНА бөглөхийг заана.
+ */
+const RO = {
+  no: "№ ба Ажлын нэр нь excel-ийн бүтэц — энэ хуудаснаас засагдахгүй.",
+  wC: "Хувийн жин: Мөнгөн дүн ÷ дээд мөрийн дүн. Автоматаар бодогдоно.",
+  wD: "Хувийн жин (нийт төсөлд): Мөнгөн дүн ÷ үе шатны дүн. Автоматаар бодогдоно.",
+  wE: "Одоо байгаа: Хувийн жин × Бодит гүйцэтгэл. Гүйцэтгэл бөглөхөд өөрөө хөдөлнө.",
+  vol: "Обьём нь үйлчилгээнд хадгалагдсан — энэ хуудаснаас засагдахгүй.",
+  unit: "Нэгж өртөг нь үйлчилгээнд хадгалагдсан — энэ хуудаснаас засагдахгүй.",
+  money: "Мөнгөн дүн: Обьём × Нэгж өртөг; бүлгийн мөрд дэд мөрүүдийнхээ нийлбэр.",
+  I: "Төлөвлөгөөт гүйцэтгэл нь блокуудын төлөвлөгөөт хувийн дундаж. Огноог засвал өөрчлөгдөнө.",
+  J: "Бодит гүйцэтгэл нь блокуудын бодит хувийн дундаж. Блокийн нүдийг бөглөнө үү.",
+  K: "Төлөвлөгөө биелэлт: Бодит ÷ Төлөвлөгөөт. Автоматаар бодогдоно.",
+  groupAct: "Бүлгийн мөр нь дэд мөрүүдийнхээ жинтэй дунджаар бодогдоно — доод ажлын мөр дээр бөглөнө үү.",
+  blockPlan: "Барилга-төлөвлөгөөт нь эхлэх/дуусах огноо ба шинэчлэгдсэн огноогоор бодогдоно — огноог нь засаарай.",
+  groupDate: "Энэ огноо нь доод ажлуудынхаа хамгийн эрт эхлэх / хамгийн сүүл дуусахаар бодогдож байна — доод ажлынхаа огноог засаарай.",
+  noDateField: "Энэ блокт огнооны багана үйлчилгээнд байхгүй тул хадгалах газаргүй.",
+  asOfRow: "Шинэчлэгдсэн огноо зөвхөн эхний мөрд бичигдэнэ — тэндээс эсвэл дээд талын «Огноо»-гоор солино.",
+} as const;
+
 export default function FillNew() {
-  const [pkg, setPkg] = useState<Pkg>(PKGS[5]); // Багц 3.2 — анх бэлэн болсон нь
+  const wrapRef = useRef<HTMLDivElement>(null);
+  /** Энэ таб яг одоо нуугдсан уу (`display: none` → `offsetParent` нь null). */
+  const hiddenNow = () => !wrapRef.current?.offsetParent;
+  const [pkg, setPkg] = useState<Pkg>(PKGS[0]); // Багц 1 · 9F — жагсаалтын эхнийх
   const [sc, setSc] = useState<Schema | null>(null);
   /** Тайлангийн огноонууд — «Гүйцэтгэл бөглөх» табтай НЭГ эх сурвалжаас. */
   const [dates, setDates] = useState<string[]>([]);
@@ -78,11 +106,43 @@ export default function FillNew() {
   // Нийтлээгүй засварууд, `${oid}:${barilgaIndex}` түлхүүрээр. Утга нь хувь
   // ("" = хоосон болгох). Зөвхөн «Нийтлэх» дархад үйлчилгээнд бичигдэнэ.
   const [pending, setPending] = useState<Record<string, string>>({});
+  // Огнооны нийтлээгүй засвар, `${oid}:${blok}:s|e` түлхүүрээр («s» = эхлэх,
+  // «e» = дуусах). Утга нь «YYYY-MM-DD», "" = огноог арилгах.
+  const [pendDate, setPendDate] = useState<Record<string, string>>({});
   const [edit, setEdit] = useState<{ i: number; b: number } | null>(null);
   const [val, setVal] = useState("");
+  /** Нээлттэй календар: аль нүднээс, ямар утгатай, хаана байрлах вэ. */
+  const [pick, setPick] = useState<{
+    kind: "s" | "e" | "asOf";
+    row: SheetRow;
+    b: number;
+    value: string;
+    rect: DOMRect;
+  } | null>(null);
   const [hover, setHover] = useState<{ i: number; b: number | null } | null>(null);
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
   const { style: colStyle, grip, resetAll, resized } = useColWidths("fillnew");
+
+  // Засагдахгүй нүд дарахад «яагаад» гэдгийг хэлнэ. Дараагийн товшилт бүр
+  // өмнөх мэдэгдлийг солино; 4 секундын дараа өөрөө арилна.
+  const [notice, setNotice] = useState("");
+  const noticeT = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const say = (msg: string) => {
+    if (noticeT.current) clearTimeout(noticeT.current);
+    setNotice(msg);
+    noticeT.current = setTimeout(() => setNotice(""), 4000);
+  };
+  useEffect(
+    () => () => {
+      if (noticeT.current) clearTimeout(noticeT.current);
+    },
+    [],
+  );
+  /** Засагдахгүй нүдэнд өгөх props — товшихад тайлбарыг харуулна. */
+  const ro = (msg: string) => ({
+    title: msg,
+    onClick: () => say(msg),
+  });
 
   // Тайлангийн огнооны жагсаалт — нэг л удаа. Алдаа гарвал чимээгүй өнгөрнө:
   // хадгалагдсан огноо нь доор ямар ч тохиолдолд сонголт болж нэмэгддэг.
@@ -105,6 +165,7 @@ export default function FillNew() {
     setRows([]);
     setSc(null);
     setPending({});
+    setPendDate({});
     setEdit(null);
     loadSchema(pkg)
       .then(async (schema) => {
@@ -139,8 +200,11 @@ export default function FillNew() {
   const nBld = sc?.bld.length ?? 0;
 
   const calc = useMemo(
-    () => (asOf == null || !nBld ? [] : computeAll(rows, nBld, asOf, pending)),
-    [rows, nBld, asOf, pending],
+    () =>
+      asOf == null || !nBld
+        ? []
+        : computeAll(rows, nBld, asOf, pending, pendDate),
+    [rows, nBld, asOf, pending, pendDate],
   );
 
   // Хаагдсан бүлгийн доорх мөрүүд. Гүн буурах хүртэл нуугдана.
@@ -178,7 +242,9 @@ export default function FillNew() {
     );
 
   const dirtyCount =
-    Object.keys(pending).length + (asOf !== asOfOrig ? 1 : 0);
+    Object.keys(pending).length +
+    Object.keys(pendDate).length +
+    (asOf !== asOfOrig ? 1 : 0);
 
   const origStr = (r: SheetRow, b: number) => {
     const p = r.act[b];
@@ -199,6 +265,22 @@ export default function FillNew() {
     });
   };
 
+  /** Огнооны нүдний ХАДГАЛАГДСАН утга «YYYY-MM-DD» хэлбэрээр. */
+  const origDay = (r: SheetRow, b: number, k: "s" | "e") =>
+    dt(k === "s" ? r.start[b] : r.end[b]);
+
+  const commitDate = (r: SheetRow, b: number, k: "s" | "e", raw: string) => {
+    const key = `${r.oid}:${b}:${k}`;
+    setEdit(null);
+    setPendDate((p) => {
+      const n = { ...p };
+      // Анхны утгадаа буцсан бол «нийтлээгүй» тэмдэглэгээг арилгана.
+      if (raw === origDay(r, b, k)) delete n[key];
+      else n[key] = raw;
+      return n;
+    });
+  };
+
   const publish = useCallback(async () => {
     // ⚠️ busy — Ctrl+S auto-repeat үед олон зэрэгцээ applyEdits илгээгдэхээс сэргийлнэ.
     if (busy || asOf == null || dirtyCount === 0 || !sc) return;
@@ -206,21 +288,28 @@ export default function FillNew() {
     setErr("");
     try {
       const editedOids = new Set(
-        Object.keys(pending).map((k) => Number(k.split(":")[0])),
+        [...Object.keys(pending), ...Object.keys(pendDate)].map((k) =>
+          Number(k.split(":")[0]),
+        ),
       );
-      // ⚠️ asOf ($BH$2) БҮХ мөрийн төлөвлөгөөт хувьд нөлөөлдөг тул огноо
-      // өөрчлөгдсөн бол бүх мөрийг дахин бичнэ — эс тэгвэл зөвхөн засварласан
-      // салбар шинэ огноогоор, бусад мөрийн F_PLAN хуучнаар үлдэж зөрнө.
+      // ⚠️ asOf БҮХ мөрийн төлөвлөгөөт хувьд нөлөөлдөг тул огноо өөрчлөгдсөн
+      // бол бүх мөрийг дахин бичнэ — эс тэгвэл зөвхөн засварласан салбар шинэ
+      // огноогоор, бусад мөрийн төлөвлөгөөт багана хуучнаар үлдэж зөрнө.
       const idx =
         asOf !== asOfOrig
           ? rows.map((_, i) => i)
           : touchedIndexes(rows, editedOids);
-      const c = computeAll(rows, nBld, asOf, pending);
+      const c = computeAll(rows, nBld, asOf, pending, pendDate);
       const updates = idx.map((i) => {
         const a: Record<string, unknown> = { [sc.f.oid]: rows[i].oid };
         for (let b = 0; b < nBld; b++) {
           a[sc.act[b]] = c[i].act[b];
           a[sc.plan[b]] = c[i].plan[b];
+          // Огноог мөн буцааж бичнэ: энэ мөрд бичигдсэн (`own`) утга ба
+          // бүлгийн мөрийн MIN/MAX (`agg`) — хоёул excel-ийн томъёотой ижил.
+          // Талбаргүй блок бий тул шалгаж байж бичнэ.
+          if (sc.start[b]) a[sc.start[b]!] = c[i].start[b];
+          if (sc.end[b]) a[sc.end[b]!] = c[i].end[b];
         }
         a[sc.f.plan] = c[i].I;
         a[sc.f.act] = c[i].J;
@@ -236,24 +325,35 @@ export default function FillNew() {
         updates.push({ [sc.f.oid]: rows[0].oid, [sc.f.asOf]: asOf });
       await applyUpdates(pkg, updates);
       // Хадгалагдсан утгыг локал мөрүүдэд буулгаж, «нийтлээгүй» төлвийг арилгана.
+      const touched = new Set(idx);
       setRows((prev) =>
-        prev.map((r, i) => {
-          if (!idx.includes(i)) return r;
-          return { ...r, act: c[i].act.slice() };
-        }),
+        prev.map((r, i) =>
+          touched.has(i)
+            ? {
+                ...r,
+                act: c[i].act.slice(),
+                start: c[i].start.slice(),
+                end: c[i].end.slice(),
+              }
+            : r,
+        ),
       );
       setPending({});
+      setPendDate({});
       setAsOfOrig(asOf);
     } catch (e) {
       setErr(String((e as Error).message || e));
     } finally {
       setBusy(false);
     }
-  }, [pkg, sc, nBld, rows, asOf, asOfOrig, pending, dirtyCount, busy]);
+  }, [pkg, sc, nBld, rows, asOf, asOfOrig, pending, pendDate, dirtyCount, busy]);
 
   // Ctrl+S — «Гүйцэтгэл бөглөх»-тэй ижил.
+  // ⚠️ Табууд солигдоход САЛДАГГҮЙ, зөвхөн нуугддаг (Sheet.tsx) тул нуугдсан
+  //    үед нэг Ctrl+S хоёр хуудсыг зэрэг нийтлүүлэхээс `hiddenNow` хамгаална.
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
+      if (hiddenNow()) return;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
         e.preventDefault();
         publish();
@@ -264,6 +364,12 @@ export default function FillNew() {
   }, [publish]);
 
   const floorOpts = useMemo(() => pkgFloors(pkg.group), [pkg.group]);
+
+  /** Толгойн 2-р мөр — блокуудыг барилгын төрлөөр нь бүлэглэсэн нь. */
+  const bands = useMemo(
+    () => (sc ? seriesBands(pkg.key, sc.bld) : []),
+    [pkg.key, sc],
+  );
 
   // ⚠️ Үйлчилгээнд ХАДГАЛАГДСАН огноо тайлангийн жагсаалтад байхгүй байж болно
   // (жишээ нь 2026-07-05). Түүнийг сонголт болгож нэмэхгүй бол `<select>`
@@ -283,7 +389,7 @@ export default function FillNew() {
   // ⚠️ Алдаа гарсан ч эрт `return` хийхгүй — эс тэгвэл багц сонгогч алга болж
   // хэрэглэгч өөр багц руу шилжих аргагүй үлдэнэ.
   return (
-    <div className={st.wrap}>
+    <div className={st.wrap} ref={wrapRef}>
       <div className={st.toolbar}>
         <label className={st.field}>
           Багц{" "}
@@ -388,30 +494,60 @@ export default function FillNew() {
             style={colStyle}
             onMouseLeave={() => setHover(null)}
           >
+            {/* ТОЛГОЙ нь `*_final_system` хуудасны бүтэц: 4 мөрт бүлэглэсэн.
+                Мөр ба багана нь `*_final_publish`-тэйгээ ижил тул тооцоо
+                хөндөгдөхгүй — зөвхөн дүрслэл. */}
             <thead>
               <tr>
-                <th className={cls("fz c-no")}>№<i {...grip("no")} /></th>
-                <th className={cls("fz c-ajil")}>Ажил<i {...grip("ajil")} /></th>
-                <th className={cls("c-w")}>Хувийн жин<i {...grip("w")} /></th>
-                <th className={cls("c-w")} title="Нийт төсөлд эзлэх">Хувийн жин<i {...grip("w")} /></th>
-                <th className={cls("c-w")}>Хувийн жин- Одоо байгаа<i {...grip("w")} /></th>
-                <th className={cls("c-vol")}>Обьём<i {...grip("vol")} /></th>
-                <th className={cls("c-money")}>Нэгж өртөг<i {...grip("money")} /></th>
-                <th className={cls("c-money")}>Мөнгөн дүн<i {...grip("money")} /></th>
-                <th className={cls("c-calc")}>Төлөвлөгөөт гүйцэтгэл<i {...grip("calc")} /></th>
-                <th className={cls("c-calc")}>Бодит гүйцэтгэл<i {...grip("calc")} /></th>
-                <th className={cls("c-calc")}>Төлөвлөгөө биелэлт<i {...grip("calc")} /></th>
+                <th rowSpan={4} className={cls("fz c-no")}>№<i {...grip("no")} /></th>
+                <th rowSpan={4} className={cls("fz c-ajil")}>Ажил<i {...grip("ajil")} /></th>
+                {/* Excel-д C1:D4 — «Хувийн жин» хоёр баганыг бүрэн хамарна.
+                    ⚠️ Энд `c-w` өргөний ангилал ТАВИХГҮЙ: 72px нь хоёр баганын
+                    НИЙЛБЭР болж уншигдаж, хоёуланг нь шахна. Өргөнийг мөрийн
+                    нүднүүд өөрсдөө заана. */}
+                <th rowSpan={4} colSpan={2} className={cls("c-wspan")}>Хувийн жин<i {...grip("w")} /></th>
+                <th rowSpan={4} className={cls("c-now")}>Одоо байгаа хувийн жин<i {...grip("now")} /></th>
+                <th rowSpan={4} className={cls("c-vol")}>Обьём<i {...grip("vol")} /></th>
+                <th rowSpan={4} className={cls("c-money")}>Нэгж өртөг<i {...grip("money")} /></th>
+                <th rowSpan={4} className={cls("c-money")}>Мөнгөн дүн<i {...grip("money")} /></th>
+                <th rowSpan={4} className={cls("c-calc")}>Төлөвлөгөөт гүйцэтгэл<i {...grip("calc")} /></th>
+                <th rowSpan={4} className={cls("c-calc")}>Бодит гүйцэтгэл<i {...grip("calc")} /></th>
+                <th rowSpan={4} className={cls("c-calc")}>Төлөвлөгөө биелэлт<i {...grip("calc")} /></th>
+                <th colSpan={nBld} className={cls("band")}>Ажил гүйцэтгэл ({nBld} барилга)</th>
+                <th colSpan={nBld} className={cls("band")}>Төлөвлөгөөт гүйцэтгэл ({nBld} барилга)</th>
+                <th colSpan={nBld * 2} className={cls("band")}>Төлөвлөгөөт хуваарь ({nBld} барилга)</th>
+                <th rowSpan={4} className={cls("c-date")}>Шинэчлэгдсэн огноо<i {...grip("date")} /></th>
+              </tr>
+              {/* 2-р мөр — барилгын төрөл (блокийн цуваагаар) */}
+              <tr>
+                {bands.map((g, gi) => (
+                  <th key={`ba${gi}`} colSpan={g.count} className={cls("band2")}>{g.label}</th>
+                ))}
+                {bands.map((g, gi) => (
+                  <th key={`bp${gi}`} colSpan={g.count} className={cls("band2")}>{g.label}</th>
+                ))}
+                {bands.map((g, gi) => (
+                  <th key={`bd${gi}`} colSpan={g.count * 2} className={cls("band2")}>{g.label}</th>
+                ))}
+              </tr>
+              {/* 3-р мөр — блокийн код */}
+              <tr>
                 {sc.bld.map((b) => (
-                  <th key={`a${b}`} className={cls("bld")}>{b}-гүйцэтгэл<i {...grip("bld")} /></th>
+                  <th key={`a${b}`} rowSpan={2} className={cls("bld")}>{b}<i {...grip("bld")} /></th>
                 ))}
                 {sc.bld.map((b) => (
-                  <th key={`p${b}`} className={cls("bld")}>{b} барилга -төлөвлөгөөт<i {...grip("bld")} /></th>
+                  <th key={`p${b}`} rowSpan={2} className={cls("bld")}>{b} барилга<i {...grip("bld")} /></th>
                 ))}
+                {sc.bld.map((b) => (
+                  <th key={`d${b}`} colSpan={2} className={cls("c-date2")}>{b} барилга</th>
+                ))}
+              </tr>
+              {/* 4-р мөр — хуваарийн Эхлэх/Дуусах */}
+              <tr>
                 {sc.bld.map((b) => [
-                  <th key={`s${b}`} className={cls("c-date")}>{b} барилга - Эхлэх<i {...grip("date")} /></th>,
-                  <th key={`e${b}`} className={cls("c-date")}>{b} барилга - Дуусах<i {...grip("date")} /></th>,
+                  <th key={`s${b}`} className={cls("c-date")}>Эхлэх<i {...grip("date")} /></th>,
+                  <th key={`e${b}`} className={cls("c-date")}>Дуусах<i {...grip("date")} /></th>,
                 ])}
-                <th className={cls("c-date")}>Шинэчлэгдсэн огноо<i {...grip("date")} /></th>
               </tr>
             </thead>
             <tbody>
@@ -427,6 +563,7 @@ export default function FillNew() {
                       className={cls("num fz c-no")}
                       style={{ backgroundColor: bg }}
                       onMouseEnter={() => setHover({ i, b: null })}
+                      onClick={() => say(RO.no)}
                     >
                       {r.no}
                     </td>
@@ -438,6 +575,7 @@ export default function FillNew() {
                       }}
                       title={r.work}
                       onMouseEnter={() => setHover({ i, b: null })}
+                      onClick={() => say(RO.no)}
                     >
                       {r.group && (
                         <span
@@ -452,25 +590,26 @@ export default function FillNew() {
                       )}
                       {r.work}
                     </td>
-                    <td className={cls("right c-w")} style={{ backgroundColor: bg }} title={full(c.C)}>{wt(c.C)}</td>
-                    <td className={cls("right c-w")} style={{ backgroundColor: bg }} title={full(c.D)}>{wt(c.D)}</td>
+                    <td className={cls("right c-w")} style={{ backgroundColor: bg }} title={full(c.C)} onClick={() => say(RO.wC)}>{wt(c.C)}</td>
+                    <td className={cls("right c-w")} style={{ backgroundColor: bg }} title={full(c.D)} onClick={() => say(RO.wD)}>{wt(c.D)}</td>
                     {/* Одоо байгаа = Хувийн жин × Бодит гүйцэтгэл — гүйцэтгэл
                         бөглөхөд хамт хөдөлдөг тул бодогдох өнгөтэй. Дээд
                         бүлгүүдэд өөрчлөлт нь бөөрөнхийлөлтөөс нуугдах тул
                         бүтэн нарийвчлалыг tooltip-оор өгнө. */}
                     <td
-                      className={cls("right c-w")}
+                      className={cls("right c-now")}
                       style={{ backgroundColor: rowHl ? HL_BG : CALC_BG }}
                       title={full(c.E)}
+                      onClick={() => say(RO.wE)}
                     >
                       {wt(c.E)}
                     </td>
-                    <td className={cls("right c-vol")} style={{ backgroundColor: bg }}>{qty(r.vol)}</td>
-                    <td className={cls("right c-money")} style={{ backgroundColor: bg }}>{money(r.unit)}</td>
-                    <td className={cls("right c-money")} style={{ backgroundColor: bg }}>{money(c.H)}</td>
-                    <td className={cls("num c-calc")} style={{ backgroundColor: rowHl ? HL_BG : CALC_BG }}>{pc(c.I, 1)}</td>
-                    <td className={cls("num c-calc")} style={{ backgroundColor: rowHl ? HL_BG : CALC_BG }}>{pc(c.J, 1)}</td>
-                    <td className={cls("num c-calc")} style={{ backgroundColor: rowHl ? HL_BG : CALC_BG }}>{pc(c.K, 1)}</td>
+                    <td className={cls("right c-vol")} style={{ backgroundColor: bg }} {...ro(RO.vol)}>{qty(r.vol)}</td>
+                    <td className={cls("right c-money")} style={{ backgroundColor: bg }} {...ro(RO.unit)}>{money(r.unit)}</td>
+                    <td className={cls("right c-money")} style={{ backgroundColor: bg }} {...ro(RO.money)}>{money(c.H)}</td>
+                    <td className={cls("num c-calc")} style={{ backgroundColor: rowHl ? HL_BG : CALC_BG }} {...ro(RO.I)}>{pc(c.I, 1)}</td>
+                    <td className={cls("num c-calc")} style={{ backgroundColor: rowHl ? HL_BG : CALC_BG }} {...ro(RO.J)}>{pc(c.J, 1)}</td>
+                    <td className={cls("num c-calc")} style={{ backgroundColor: rowHl ? HL_BG : CALC_BG }} {...ro(RO.K)}>{pc(c.K, 1)}</td>
 
                     {/* Бодит гүйцэтгэл — цорын ганц засагддаг блок. */}
                     {sc.bld.map((b, bi) => {
@@ -524,7 +663,8 @@ export default function FillNew() {
                           }}
                           onMouseEnter={() => setHover({ i, b: bi })}
                           onClick={() => {
-                            if (r.group) return; // бүлгийн мөр бодогдоно, гараар засагдахгүй
+                            // Бүлгийн мөр бодогдоно — гараар засагдахгүй
+                            if (r.group) return say(RO.groupAct);
                             setVal(pending[key] ?? origStr(r, bi));
                             setEdit({ i, b: bi });
                           }}
@@ -541,27 +681,116 @@ export default function FillNew() {
                         className={cls("num bld")}
                         style={{ backgroundColor: rowHl ? HL_BG : CALC_BG }}
                         onMouseEnter={() => setHover({ i, b: null })}
+                        {...ro(RO.blockPlan)}
                       >
                         {pc(c.plan[bi], 1)}
                       </td>
                     ))}
 
-                    {sc.bld.map((b, bi) => [
-                      <td key={`s${b}`} className={cls("num c-date")} style={{ backgroundColor: bg }}>
-                        {dt(c.start[bi])}
-                      </td>,
-                      <td key={`e${b}`} className={cls("num c-date")} style={{ backgroundColor: bg }}>
-                        {dt(c.end[bi])}
-                      </td>,
-                    ])}
-                    <td className={cls("num c-date")} style={{ backgroundColor: bg }}>
-                      {i === 0 ? dt(asOf) : ""}
-                    </td>
+                    {/* Эхлэх/Дуусах огноо — календараар засагдана (ажлын мөрд).
+                        Бүлгийн мөрд дэд мөрүүдийн MIN/MAX тул зөвхөн харагдана. */}
+                    {sc.bld.map((b, bi) =>
+                      (["s", "e"] as const).map((k) => {
+                        const key = `${r.oid}:${bi}:${k}`;
+                        const fld = k === "s" ? sc.start[bi] : sc.end[bi];
+                        const ms = k === "s" ? c.start[bi] : c.end[bi];
+                        // ⚠️ Хаанаас ирсэн огноо вэ: `agg` = дэд мөрүүдийн
+                        // MIN/MAX (бодогдоно, засагдахгүй), `own`/`none` = энэ
+                        // мөрийнх (хоосон байсан ч засагдана).
+                        const src = k === "s" ? c.startSrc[bi] : c.endSrc[bi];
+                        // Талбар нь үйлчилгээнд байхгүй блок бий (толгой нь
+                        // эвдэрсэн) — тэнд хадгалах газаргүй тул засагдахгүй.
+                        const editable = src !== "agg" && !!fld;
+                        return (
+                          <td
+                            key={`${k}${b}`}
+                            className={cls(
+                              "num c-date" +
+                                (editable ? " cursor-cell" : "") +
+                                (key in pendDate ? " dirty" : ""),
+                            )}
+                            style={{ backgroundColor: bg }}
+                            title={
+                              editable
+                                ? "Дарж календараар сонгоно"
+                                : src === "agg"
+                                  ? RO.groupDate
+                                  : RO.noDateField
+                            }
+                            onClick={(e) => {
+                              if (!editable)
+                                return say(src === "agg" ? RO.groupDate : RO.noDateField);
+                              setPick({
+                                kind: k,
+                                row: r,
+                                b: bi,
+                                value: pendDate[key] ?? dt(ms),
+                                rect: e.currentTarget.getBoundingClientRect(),
+                              });
+                            }}
+                          >
+                            {dt(ms)}
+                          </td>
+                        );
+                      }),
+                    )}
+                    {/* Шинэчлэгдсэн огноо — зөвхөн эхний мөрд бичигддэг.
+                        Хэрэгслийн мөрний сонгогчтой нэг утга. */}
+                    {
+                      <td
+                        className={cls(
+                          "num c-date" +
+                            (i === 0 ? " cursor-cell" : "") +
+                            (i === 0 && asOf !== asOfOrig ? " dirty" : ""),
+                        )}
+                        style={{ backgroundColor: bg }}
+                        title={i === 0 ? "Дарж календараар сонгоно" : RO.asOfRow}
+                        onClick={(e) => {
+                          if (i !== 0) return say(RO.asOfRow);
+                          setPick({
+                            kind: "asOf",
+                            row: r,
+                            b: -1,
+                            value: dt(asOf),
+                            rect: e.currentTarget.getBoundingClientRect(),
+                          });
+                        }}
+                      >
+                        {i === 0 ? dt(asOf) : ""}
+                      </td>
+                    }
                   </tr>
                 );
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Огнооны календар — нүдэнд биш, ХУУДСАН ДЭЭР хөвж гарна (fixed).
+          Хүснэгтийн нүд дотор байрлуулбал `overflow: hidden`-д таслагдана. */}
+      {pick && (
+        <DatePicker
+          value={pick.value}
+          anchor={pick.rect}
+          onClose={() => setPick(null)}
+          onPick={(v) => {
+            if (pick.kind === "asOf") {
+              // ⚠️ Хоосон болговол calc=[] болж бүх мөр алга болно — тиймээс
+              //    задлагдсан үед л солино.
+              const ms = inputToMs(v);
+              if (ms != null) setAsOf(ms);
+            } else {
+              commitDate(pick.row, pick.b, pick.kind, v);
+            }
+            setPick(null);
+          }}
+        />
+      )}
+
+      {notice && (
+        <div className={st.notice} role="status" onClick={() => setNotice("")}>
+          <b>Энэ нүд засагдахгүй.</b> {notice}
         </div>
       )}
     </div>

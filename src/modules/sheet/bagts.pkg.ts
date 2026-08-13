@@ -51,7 +51,7 @@ export const PKG_GROUPS: string[] = [...new Set(PKGS.map((p) => p.group))];
 export const pkgFloors = (group: string): Pkg[] =>
   PKGS.filter((p) => p.group === group);
 
-export const pkgOf = (key: string): Pkg => PKGS.find((p) => p.key === key) ?? PKGS[5];
+export const pkgOf = (key: string): Pkg => PKGS.find((p) => p.key === key) ?? PKGS[0];
 
 /** Багцын талбарын БҮДҮҮВЧ — нэр бүхэн үйлчилгээнээс танигдсан. */
 export type Schema = {
@@ -164,7 +164,7 @@ export function resolveSchema(fields: FieldMeta[]): Schema {
   }
 
   /* ── Скаляр талбарууд ── */
-  // «Хувийн жин» гурав удаа давтагдана: C, D (эцэг/нийт) ба E (одоо байгаа).
+  // «Хувийн жин» гурав удаа давтагдана: C, D (дээд мөр/нийт) ба E (одоо байгаа).
   const weights = names.filter(
     (n) => norm(n).startsWith("хувийнжин") && !/одоо/.test(norm(n)),
   );
