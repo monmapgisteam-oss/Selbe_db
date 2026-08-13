@@ -4,14 +4,12 @@ import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
 import { Section, Col, Note, Stats, Stat, Bars, Rows, List, ListItem, Ring, Data, Empty } from '@/components/ui';
 import { useBuildings, MonitorBagts, type Block } from '@/modules/BuildingPanel';
-import { useCashflow, CASH_SOURCES, type CashRow } from '@/lib/cashflow';
-import { useInvest, type InvRow } from '@/lib/invest';
 import { useAsync, type Async } from '@/lib/useAsync';
 import { layerTotals, qtyText } from '@/lib/totals';
 import {
-  BUILDING, CASHFLOW, INVEST, PROGRESS_LEVELS, LAYER_BY_ID, PKG_BY_BAGTS, bagtsKey,
+  BUILDING, PROGRESS_LEVELS, LAYER_BY_ID, PKG_BY_BAGTS, bagtsKey,
 } from '@/lib/services';
-import { num, pct, mnt, mntShort, text, shade, tint } from '@/lib/format';
+import { num, pct, shade, tint } from '@/lib/format';
 import { readParam, writeParams } from '@/lib/urlState';
 import o from './overview.module.css';
 
@@ -27,10 +25,10 @@ import o from './overview.module.css';
  *     `building_GOL_barigdaj_ehelsen`-ий 113 блок, мөнгө нь `BUS_cashflow`,
  *     гүйцэтгэл нь `Selbe_guitsetgel_consolidated`.
  *   · `infra` — дэд бүтцийн багц (Багц 5…21, Холбоо). Геометр нь
- *     `Selbe_ET_20260725`-ын давхаргууд, мөнгө нь `INVEST` хүснэгт.
- * Хоёуланд нь БАЙХГҮЙ зүйлийг зохиохгүй: барилгын багцад INVEST мөр байхгүй
- * (тэдгээрийн `bagts_name` хоосон), дэд бүтцийн багцад блокийн гүйцэтгэл
- * байхгүй. Карт бүр өөрт хамаарахгүй бол зурагдахгүй.
+ *     `Selbe_ET_20260725`-ын давхаргууд. (Хөрөнгө оруулалтын дүн 2026-08-14-нд
+ *     түр хасагдсан — «Хөрөнгө оруулалт өртөг /249» тодруулагдаж дахин холбоно.)
+ * Барилгын багцад блокийн гүйцэтгэл, дэд бүтцийн багцад зөвхөн газрын зургийн
+ * давхарга. Карт бүр өөрт хамаарахгүй бол зурагдахгүй.
  *
  * ⚠️ Гурван эх сурвалж багцын нэрийг гурван янз бичдэг («Багц 4.1» / «Багц-4.1»
  * / «Багц 4-1»), дэд бүтцийнх нь бүр «БАГЦ - 19.1», «БАГЦ -21» гэж зайтай. БҮХ
@@ -68,8 +66,6 @@ export type Pack = {
   blocks: Block[];
   households: number;
   progress: number | null;
-  cash: CashRow | null;
-  invest: InvRow[];
 };
 
 /**
@@ -95,7 +91,7 @@ function commonName(titles: string[]): string {
  * Цэвэр функц: эх сурвалжийн мөрүүдээс Pack[] бүтээнэ (дэлгэрэнгүй тайлбар нь
  * файлын толгойд).
  */
-export function buildPacks(rows: Block[] | null, cash: CashRow[], inv: InvRow[]): Pack[] {
+export function buildPacks(rows: Block[] | null): Pack[] {
   /* ── Барилга угсралтын багц — эх нь БЛОКИЙН давхарга ── */
   const build: Pack[] = [];
   if (rows) {
@@ -115,8 +111,6 @@ export function buildPacks(rows: Block[] | null, cash: CashRow[], inv: InvRow[])
         blocks: blocks.slice().sort((a, b) => a.blok.localeCompare(b.blok, 'mn', { numeric: true })),
         households: blocks.reduce((s, b) => s + b.ail, 0),
         progress: meanOf(blocks.map((b) => b.progress)),
-        cash: cash.find((c) => bagtsKey(c.zone) === bagtsKey(name)) ?? null,
-        invest: [],
       });
     }
     build.sort((a, b) => a.name.localeCompare(b.name, 'mn', { numeric: true }));
@@ -124,29 +118,22 @@ export function buildPacks(rows: Block[] | null, cash: CashRow[], inv: InvRow[])
 
   /**
    * ── Дэд бүтцийн багц ──
-   * ⚠️ Түлхүүрийн олонлог нь ДАВХАРГА ба ХӨРӨНГӨ ОРУУЛАЛТЫН НЭГДЭЛ. Зөвхөн
-   * давхаргаас авбал геометргүй мөнгөн багц (жиш. «БАГЦ-8.3») алга болно;
-   * зөвхөн INVEST-ээс авбал төсөв хараахан батлагдаагүй 16 багц алга болно.
+   * ⚠️ Түлхүүрийн олонлог нь газрын зургийн ДАВХАРГА (`PKG_BY_BAGTS`). Хөрөнгө
+   * оруулалтын дүн (INVEST /249) 2026-08-14-нд түр хасагдсан тул зөвхөн зурагт
+   * харагдах давхаргаар багцалж, санхүүгийн үзүүлэлт үзүүлэхгүй.
    */
-  const keys = new Set<string>([
-    ...Object.keys(PKG_BY_BAGTS),
-    ...inv.map((r) => bagtsKey(r.bagts)).filter(Boolean),
-  ]);
-  const infra: Pack[] = [...keys].map((key) => {
+  const infra: Pack[] = Object.keys(PKG_BY_BAGTS).map((key) => {
     const layerIds = PKG_BY_BAGTS[key] ?? [];
-    const rowsInv = inv.filter((r) => bagtsKey(r.bagts) === key);
     const titles = layerIds.map((id) => LAYER_BY_ID[id].title);
     return {
       key,
-      name: titles.length ? commonName(titles) : text(rowsInv[0]?.bagts, key),
+      name: titles.length ? commonName(titles) : key,
       kind: 'infra' as const,
       layerIds,
       where: null,
       blocks: [],
       households: 0,
       progress: null,
-      cash: null,
-      invest: rowsInv,
     };
   }).sort((a, b) => a.name.localeCompare(b.name, 'mn', { numeric: true }));
 
@@ -155,8 +142,6 @@ export function buildPacks(rows: Block[] | null, cash: CashRow[], inv: InvRow[])
 
 export function Bagts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const q = useBuildings();
-  const cashQ = useCashflow();
-  const invQ = useInvest();
   const { zoomToWhere, setHighlight } = useMap();
   /**
    * Сонгосон багц URL-ийн `pkg` параметрээс сэргэнэ — «Багц-3.1-ийн хуудсыг үз»
@@ -172,12 +157,8 @@ export function Bagts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   useEffect(() => { writeParams({ pkg: sel }); }, [sel]);
 
   const packs = useMemo<Pack[]>(
-    () => buildPacks(
-      q.state === 'ready' ? q.data.rows : null,
-      cashQ.state === 'ready' ? cashQ.data : [],
-      invQ.state === 'ready' ? invQ.data : [],
-    ),
-    [q, cashQ, invQ],
+    () => buildPacks(q.state === 'ready' ? q.data.rows : null),
+    [q],
   );
 
   const active = packs.find((p) => p.key === sel) ?? null;
@@ -195,17 +176,9 @@ export function Bagts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     zoomToWhere(id, active?.where ?? '1=1');
   }, [active, zoomToWhere]);
 
-  // ⚠️ cashQ-г ч хүлээнэ: эс бөгөөс cashflow хоцорч ирэх хооронд «бүртгэгдээгүй»
-  //    гэсэн түр зуурын худал мэдэгдэл анивчина.
-  const loading = q.state === 'loading' || cashQ.state === 'loading' || invQ.state === 'loading';
-  /**
-   * ⚠️ cashflow/INVEST хүсэлтийн АЛДААГ залгихгүй: `packs` дотор error төлөв
-   * хоосон массив мэт боловсордог тул алдааг энд шалгахгүй бол «бүртгэгдээгүй»
-   * гэсэн ХУДАЛ мэдэгдэл (ContractCard/InvestCard) гарна. Алдаатай үед
-   * `Data`-гийн алдааны UI (текст + «Дахин оролдох») харуулна.
-   */
-  const errQ: Async<unknown> | null =
-    cashQ.state === 'error' ? cashQ : invQ.state === 'error' ? invQ : null;
+  const loading = q.state === 'loading';
+  /** Барилгын хүсэлт алдаатай бол `Data`-гийн алдааны UI (текст + «Дахин оролдох») */
+  const errQ: Async<unknown> | null = q.state === 'error' ? q : null;
 
   return (
     <div className={o.pack}>
@@ -232,7 +205,7 @@ export function Bagts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             />
             <PackList
               title="Дэд бүтэц ба нийгмийн барилга"
-              note="хөрөнгө оруулалт"
+              note="газрын зургийн давхарга"
               packs={packs.filter((p) => p.kind === 'infra')}
               sel={sel}
               onSel={setSel}
@@ -289,15 +262,12 @@ export function Bagts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         ) : active.kind === 'build' ? (
           <>
             <ContractCard p={active} />
-            <SourcesCard p={active} />
-            <MonthsCard p={active} />
             <BlocksCard p={active} />
             <MonitorBagts bagts={active.name} />
           </>
         ) : (
           <>
             <InvestCard p={active} />
-            <InvestSourceCard p={active} />
             <LayersCard p={active} />
           </>
         )}
@@ -313,9 +283,6 @@ export function Bagts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
 export function levelColor(v: number | null): string {
   return v == null ? BLANK_HUE : tint(HUE, v / 100);
 }
-
-/** Хөрөнгө оруулалтын нийт дүн — баталгаажсан + урьдчилсан */
-const invTotal = (rows: InvRow[]) => rows.reduce((a, r) => a + r.total, 0);
 
 /* ══════════════════ Багцын жагсаалт ══════════════════ */
 
@@ -341,7 +308,7 @@ export function PackList({
               : subInfra(p)}
             value={p.kind === 'build'
               ? (p.progress == null ? '—' : pct(p.progress, 0))
-              : (p.invest.length ? mntShort(invTotal(p.invest)) : '—')}
+              : (p.layerIds.length ? `${num(p.layerIds.length)} давхарга` : '—')}
             color={p.kind === 'build' ? levelColor(p.progress) : INFRA_HUE}
             active={p.key === sel}
             onClick={() => onSel(p.key === sel ? null : p.key)}
@@ -352,17 +319,9 @@ export function PackList({
   );
 }
 
-/**
- * ⚠️ Дэд бүтцийн багцын дэд мөр нь юу БАЙГААГ шууд хэлнэ. Хоёр дутуу тохиолдол
- * бодитоор бий: 16 багц зурагтай ч төсөв нь INVEST-д ороогүй, «БАГЦ-8.3» нь
- * төсөвтэй ч геометргүй. Хоосон мөр үлдээвэл хэрэглэгч дарж үзээд л мэднэ.
- */
+/** Дэд бүтцийн багцын дэд мөр — газрын зургийн давхаргын тоо */
 function subInfra(p: Pack): string {
-  const bits: string[] = [];
-  if (p.layerIds.length) bits.push(`${num(p.layerIds.length)} давхарга`);
-  else bits.push('зураггүй');
-  if (!p.invest.length) bits.push('төсөв бүртгэгдээгүй');
-  return bits.join(' · ');
+  return p.layerIds.length ? `${num(p.layerIds.length)} давхарга` : 'зураггүй';
 }
 
 /* ══════════════════ Толгойн үзүүлэлт ══════════════════ */
@@ -379,31 +338,17 @@ export function PackKpi({ active, packs }: { active: Pack | null; packs: Pack[] 
   const blocks = scope.reduce((s, p) => s + p.blocks.length, 0);
   const households = scope.reduce((s, p) => s + p.households, 0);
   const progress = meanOf(scope.flatMap((p) => p.blocks.map((b) => b.progress)));
-  const budget = scope.reduce((s, p) => s + (p.cash?.budget ?? 0), 0);
-  const paid = scope.reduce((s, p) => s + (p.cash?.months.reduce((a, m) => a + m, 0) ?? 0), 0);
-  const invest = scope.reduce((s, p) => s + invTotal(p.invest), 0);
+  const layers = scope.filter((p) => p.kind === 'infra').reduce((s, p) => s + p.layerIds.length, 0);
 
-  /**
-   * ⚠️ `budget` (BUS_cashflow) ба `invest` (INVEST) хоёрыг НЭМЭХГҮЙ: эхнийх нь
-   * барилга угсралтын багцын гэрээт өртөг, хоёр дахь нь дэд бүтцийн хөрөнгө
-   * оруулалт. Хоёр өөр хүснэгт, хоёр өөр хамрах хүрээ — нийлбэр нь ямар ч
-   * тайланд байдаггүй тоо болно. Тусад нь хоёр нүд.
-   */
   const items = active?.kind === 'infra'
     ? [
-      { v: num(active.layerIds.length), l: 'давхарга', c: INFRA_HUE },
-      { v: num(active.invest.length), l: 'хөрөнгө оруулалтын мөр', c: INFRA_HUE },
-      { v: mntShort(invTotal(active.invest)), l: 'нийт хөрөнгө оруулалт', c: '#3387b8' },
-      { v: mntShort(active.invest.reduce((a, r) => a + r.confirmed, 0)), l: 'баталгаажсан', c: '#22c55e' },
-      { v: mntShort(active.invest.reduce((a, r) => a + r.planned, 0)), l: 'урьдчилсан', c: '#f59e0b' },
+      { v: num(active.layerIds.length), l: 'газрын зургийн давхарга', c: INFRA_HUE },
     ]
     : [
       { v: progress == null ? '—' : pct(progress, 1), l: 'гүйцэтгэл', c: levelColor(progress) },
       { v: num(blocks), l: 'блок', c: HUE },
       { v: num(households), l: 'айл', c: HUE },
-      { v: mntShort(budget), l: 'төсөвт өртөг', c: '#3387b8' },
-      { v: mntShort(paid), l: 'олгосон санхүүжилт', c: '#22c55e' },
-      { v: mntShort(invest), l: 'дэд бүтцийн хөрөнгө оруулалт', c: '#0891b2' },
+      { v: num(layers), l: 'дэд бүтцийн давхарга', c: '#0891b2' },
     ];
 
   return (
@@ -418,27 +363,18 @@ export function PackKpi({ active, packs }: { active: Pack | null; packs: Pack[] 
   );
 }
 
-/* ══════════════════ Барилгын багц — гэрээ ба төсөв ══════════════════ */
+/* ══════════════════ Барилгын багц — гүйцэтгэл ══════════════════ */
 
 /**
- * ⚠️ Гурван мөнгөн дүн ГУРВАН ӨӨР үе шатыг заана, нийлбэр биш:
- *   төсөвт өртөг (A5) → захирамжийн дүн (B3) → гэрээ байгуулах эрх (C6).
- * Тэдгээрийг нэмбэл нэг ажлыг гурав тоолно. Зөрүүг нь ХАРУУЛАХ нь гол утга —
- * захирамж төсвөөс их бол өртөг өссөн гэсэн үг.
+ * Багцын үндсэн карт — гүйцэтгэл, блок/айл, гүйцэтгэгч. (Гэрээ/төсөв/эх
+ * үүсвэр/сарын олголтын BUS_cashflow картууд 2026-08-13-нд хасагдсан;
+ * санхүүгийн бодит дүн «Цогц хяналт»-ын графикт CASHFLOW2+IPC-ээс гарна.)
  */
 export function ContractCard({ p }: { p: Pack }) {
-  const c = p.cash;
-  if (!c) {
-    return (
-      <Section title={`${p.name} — гэрээ`}>
-        <Note>Энэ багц `BUS_cashflow`-д бүртгэгдээгүй байна — санхүүгийн дүн алга.</Note>
-      </Section>
-    );
-  }
-  const paid = c.months.reduce((a, m) => a + m, 0);
-  const over = c.orderTotal - c.budget;
+  // Гүйцэтгэгч — блокийн давхаргын BAR_COMP (багцын бүх блок нэг гүйцэтгэгчтэй)
+  const contractor = p.blocks.map((b) => b.contractor).find((c) => c) ?? '—';
   return (
-    <Section tone="primary" title={`${p.name} — гэрээ ба төсөв`} note={text(c.zone)}>
+    <Section tone="primary" title={`${p.name} — гүйцэтгэл`}>
       <Col gap="sm">
         <div className={o.packRing}>
           <Ring value={p.progress} size={86} color={levelColor(p.progress)} label="гүйцэтгэл" />
@@ -447,75 +383,8 @@ export function ContractCard({ p }: { p: Pack }) {
             <Stat value={num(p.households)} unit="айл" label="Айл" color={HUE} accent />
           </Stats>
         </div>
-        <Rows
-          items={[
-            { key: 'Гүйцэтгэгч', value: c.contractor },
-            { key: 'Урьдчилсан төсөвт өртөг', value: <span className="num">{mnt(c.budget)}</span> },
-            { key: 'Захирамжийн нийт дүн', value: <span className="num">{mnt(c.orderTotal)}</span> },
-            {
-              key: 'Захирамж − төсөв',
-              value: <span className="num">{`${over >= 0 ? '+' : '−'}${mnt(Math.abs(over))}`}</span>,
-            },
-            { key: 'Гэрээ байгуулах эрх', value: <span className="num">{mnt(c.contract)}</span> },
-            { key: 'Олгосон санхүүжилт', value: <span className="num">{mnt(paid)}</span> },
-            {
-              key: 'Захирамжийн гүйцэтгэл',
-              value: <span className="num">{c.orderTotal ? pct((paid / c.orderTotal) * 100, 1) : '—'}</span>,
-            },
-          ]}
-        />
+        <Rows items={[{ key: 'Гүйцэтгэгч', value: contractor }]} />
       </Col>
-    </Section>
-  );
-}
-
-/**
- * ⚠️ Эх үүсвэрийн нийлбэр нь захирамжийн дүнтэй ТААРАХГҮЙ байж болно: захирамж
- * гараагүй хэсэг нь эх үүсвэргүй үлддэг. Зөрүүг нуухгүй, тусад нь мөр болгоно —
- * эс бөгөөс диаграм «бүх мөнгө эх үүсвэртэй» гэсэн худал зураг өгнө.
- */
-export function SourcesCard({ p }: { p: Pack }) {
-  const c = p.cash;
-  if (!c) return null;
-  // ⚠️ НЭГ ӨНГӨ (тодоос бүдгэр) — эх сурвалж бүр «өөр утга»гүй, зөвхөн харьцаагаа
-  //    харуулна. Их дүнтэй нь тод, багадаа бүдэг; «тодорхойгүй» саарал.
-  const named0 = CASH_SOURCES
-    .map((s, i) => ({ key: s.field, label: s.label, value: c.sources[i] }))
-    .filter((x) => x.value > 0)
-    .sort((a, b) => b.value - a.value);
-  const items: { key: string; label: string; value: number; color: string }[] =
-    named0.map((x, i) => ({ ...x, color: shade(HUE, i, named0.length) }));
-  const named = items.reduce((a, x) => a + x.value, 0);
-  const rest = c.orderTotal - named;
-  if (rest > 0) items.push({ key: 'rest', label: 'Эх үүсвэр тодорхойгүй', value: rest, color: BLANK_HUE });
-  if (!items.length) return null;
-
-  return (
-    <Section title="Санхүүжилтийн эх үүсвэр" note={mntShort(c.orderTotal)}>
-      <Bars
-        color={HUE}
-        items={items.map((x) => ({
-          key: x.key, label: x.label, value: x.value, color: x.color, display: mntShort(x.value),
-        }))}
-      />
-    </Section>
-  );
-}
-
-export function MonthsCard({ p }: { p: Pack }) {
-  const c = p.cash;
-  if (!c || !c.months.some((m) => m > 0)) return null;
-  // Бусад чарттай ИЖИЛ — хэвтээ бар, нэг өнгө (тодоос бүдгэр). Их олголттой
-  // сар тод, багатай нь бүдэг. Босоо `Series` байсныг хэрэглэгчийн хүсэлтээр солив.
-  const mx = Math.max(1, ...c.months);
-  return (
-    <Section title="Сар бүрийн олголт" note="мөнгөн дүн">
-      <Bars
-        items={CASHFLOW.months.map((m, i) => ({
-          key: m.code, label: m.label, value: c.months[i],
-          display: mntShort(c.months[i]), color: tint(HUE, c.months[i] / mx),
-        }))}
-      />
     </Section>
   );
 }
@@ -564,90 +433,17 @@ export function BlocksCard({ p, title = 'Блок бүрийн гүйцэтгэ�
 /* ══════════════════ Дэд бүтцийн багц ══════════════════ */
 
 /**
- * ⚠️ «Баталгаажсан» ба «урьдчилсан» хоёрыг ЗААВАЛ тусад нь: эхнийх нь гэрээ,
- * захирамж, магадлалаар батлагдсан дүн, хоёр дахь нь захирамж гараагүй таамаг.
- * Нийлүүлбэл батлагдаагүй мөнгө батлагдсан мэт харагдана.
+ * Дэд бүтцийн багцын толгойн карт. Хөрөнгө оруулалтын дүн («Хөрөнгө оруулалт
+ * өртөг /249») 2026-08-14-нд түр хасагдсан тул одоогоор зөвхөн газрын зургийн
+ * давхаргууд харагдана — доор `LayersCard` тэдгээрийн тоо, хэмжээг үзүүлнэ.
  */
 export function InvestCard({ p }: { p: Pack }) {
-  if (!p.invest.length) {
-    return (
-      <Section tone="primary" title={p.name}>
-        <Note>
-          Энэ багц «Хөрөнгө оруулалт · өртөг» хүснэгтэд бүртгэгдээгүй байна —
-          зурагт нь харагдах ч төсвийн дүн хараахан батлагдаагүй.
-        </Note>
-      </Section>
-    );
-  }
-  const confirmed = p.invest.reduce((a, r) => a + r.confirmed, 0);
-  const planned = p.invest.reduce((a, r) => a + r.planned, 0);
-  const contractors = [...new Set(p.invest.map((r) => r.contractor).filter((c) => c && c !== '—'))];
-
   return (
-    <>
-      <Section tone="primary" title={`${p.name} — хөрөнгө оруулалт`} note={text(p.invest[0].bagts)}>
-        <Col gap="sm">
-          <Stats cols={2}>
-            <Stat value={mntShort(confirmed)} label="Баталгаажсан" color="#22c55e" accent />
-            <Stat value={mntShort(planned)} label="Урьдчилсан" color="#f59e0b" accent />
-          </Stats>
-          <Rows
-            items={[
-              { key: 'Нийт', value: <span className="num">{mnt(confirmed + planned)}</span> },
-              { key: 'Төрөл', value: text(p.invest[0].type) },
-              ...(contractors.length
-                ? [{ key: 'Гүйцэтгэгч', value: contractors.join(', ') }]
-                : []),
-            ]}
-          />
-        </Col>
-      </Section>
-
-      <Section title="Ажил, төслөөр" note={`${num(p.invest.length)} мөр`}>
-        <Bars
-          color={INFRA_HUE}
-          items={p.invest.map((r, i) => ({
-            key: `${i}`,
-            label: r.project,
-            value: r.total,
-            display: mntShort(r.total),
-          }))}
-        />
-      </Section>
-    </>
-  );
-}
-
-export function InvestSourceCard({ p }: { p: Pack }) {
-  if (!p.invest.length) return null;
-  // НЭГ ӨНГӨ (тодоос бүдгэр) — их дүнтэй нь тод; «задраагүй» саарал.
-  const named0 = INVEST.sources
-    .map((s, i) => ({
-      key: s.field as string, label: s.label as string,
-      value: p.invest.reduce((a, r) => a + r.sources[i], 0),
-    }))
-    .filter((x) => x.value > 0)
-    .sort((a, b) => b.value - a.value);
-  const items: { key: string; label: string; color: string; value: number }[] =
-    named0.map((x, i) => ({ ...x, color: shade(INFRA_HUE, i, named0.length) }));
-  /**
-   * ⚠️ Эх үүсвэрээр задраагүй үлдэгдлийг ЗААВАЛ мөр болгоно. Зөвхөн орон сууц
-   * ба олон нийтийн барилга нь эх үүсвэрээр бүрэн задарсан; дэд бүтэц, зам,
-   * сургуулийнх задраагүй тул ихэнх багцад энэ мөр ГАНЦААРАА үлдэнэ — тэр нь
-   * зөв, «эх үүсвэр нь тодорхойгүй» гэдгийг далдлахгүй.
-   */
-  const rest = invTotal(p.invest) - items.reduce((a, x) => a + x.value, 0);
-  if (rest > 0) items.push({ key: 'rest', label: 'Эх үүсвэр задраагүй', color: BLANK_HUE, value: rest });
-  if (!items.length) return null;
-
-  return (
-    <Section title="Санхүүжилтийн эх үүсвэр" note={mntShort(invTotal(p.invest))}>
-      <Bars
-        color={INFRA_HUE}
-        items={items.map((x) => ({
-          key: x.key, label: x.label, value: x.value, color: x.color, display: mntShort(x.value),
-        }))}
-      />
+    <Section tone="primary" title={p.name}>
+      <Note>
+        Энэ багцын хөрөнгө оруулалтын дүн түр хасагдсан. Зурагт харагдах давхаргууд
+        доор жагсаав; санхүүжилтийн үзүүлэлт эх өгөгдөл тодруулагдсаны дараа нэмэгдэнэ.
+      </Note>
     </Section>
   );
 }

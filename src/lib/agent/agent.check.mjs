@@ -148,7 +148,7 @@ async function main() {
     numBad.length === 0,
     numBad.map(([s]) => s).join(' · '),
   );
-  check('санхүүгийн эх сурвалж каталогт бий', prompt.includes('ds:cashflow') && prompt.includes('ds:invest'));
+  check('санхүүгийн эх сурвалж каталогт бий', prompt.includes('ds:cashflow2'));
   check('төслийн явц каталогт бий', prompt.includes('ds:progress'));
 
   /* ── Тест 2: эрхийн хязгаарлалт ── */
@@ -163,11 +163,11 @@ async function main() {
   // ⚠️ Санхүү нээгдсэн ч ЭРХЭЭР хамгаалагдсан хэвээр — энэ бол гол шалгуур
   check(
     'санхүү `finance` эрхтэй хүнд НЭЭЛТТЭЙ',
-    !(await runTool('query_feature', { id: 'ds:invest', stats: [{ op: 'count', field: 'ObjectID', as: 'n' }] }, 'all')).isError,
+    !(await runTool('query_feature', { id: 'ds:cashflow2', stats: [{ op: 'count', field: 'ObjectID', as: 'n' }] }, 'all')).isError,
   );
   check(
     'санхүү `finance` эрхгүй хүнд ХААЛТТАЙ',
-    (await runTool('query_feature', { id: 'ds:invest' }, ['plan', 'bagts', 'sheet'])).isError,
+    (await runTool('query_feature', { id: 'ds:cashflow2' }, ['plan', 'bagts', 'sheet'])).isError,
   );
   check(
     'төслийн явц `dashboard` эрхгүй бол хаалттай',

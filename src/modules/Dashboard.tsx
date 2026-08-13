@@ -15,7 +15,7 @@ import { usePlanTotals } from '@/lib/totals';
 import { queryFeatures, type Row } from '@/lib/query';
 import {
   ZONE_LAYER, ZONE_FIELD, ZONE_NONE, BUILT_LAYER, BUILDING,
-  LAYER_BY_ID, PARCEL_LEFT, PROJECT_PROGRESS, SOURCE_FS,
+  LAYER_BY_ID, PARCEL_LEFT, SOURCE_FS,
   PLAN_LAYER_IDS, MONITOR_LAYER_IDS, INITIAL_MAP_LAYERS,
   PKG_BY_FAMILY, PKG_BY_BAGTS, LAYERS, bagtsKey, buildingKey,
 } from '@/lib/services';
@@ -27,14 +27,13 @@ import { loadAnalysisCached, computeEconomics, computeRaw, defaultGreenCats } fr
 import { loadCostsCached } from '@/lib/analysis/costs';
 import { urbanScore, scoreColor, scoreLabel } from '@/lib/analysis/score';
 import { loadBlockProgress, type BlockProgressMap } from '@/lib/blockProgress';
-import { useCashflow, type CashRow } from '@/lib/cashflow';
-import { useInvest, type InvRow } from '@/lib/invest';
+import { loadLandStatus, type LandStatus } from '@/lib/land';
 import { num, pct, text, shade, shades, tint } from '@/lib/format';
+import { SCHEDULE, BAGTS_ORIGIN } from '@/lib/brief';
 import {
-  BRIEF_SOURCE, HEADLINE, OVERALL, SCOPE, INVEST_SPLIT, MILESTONES,
-  SCHEDULE, BAGTS_ORIGIN, BAGTS_STRIP,
-  LAND, UTILITY_WORKS, POWER_PACKS, POWER_NOTE, FINANCE, SOCIAL, BENEFITS, PUBLIC_ZONE,
-} from '@/lib/brief';
+  loadHeadline, loadSocial, loadProjectProgress, loadBudget, liveStage,
+  type Headline, type SocialLive, type ProjectProgress, type Budget,
+} from '@/lib/live';
 import o from './overview.module.css';
 
 /**
@@ -132,16 +131,8 @@ const CONTEXT_LAYERS = [BUILT_LAYER.id];
  */
 const CATALOG_IDS = [...MONITOR_LAYER_IDS, ...PLAN_LAYER_IDS];
 
-/* ══════════════════ Бэхлэгдсэн үзүүлэлтийн тэмдэглэгээ ══════════════════ */
-
-/** ◆ — «энэ тоо ArcGIS-ээс ирээгүй» */
-function Pin({ note }: { note?: string }) {
-  return (
-    <abbr className={o.pin} title={note ? `${note} · ${BRIEF_SOURCE}` : `Бэхлэгдсэн үзүүлэлт · ${BRIEF_SOURCE}`}>
-      ◆
-    </abbr>
-  );
-}
+/* ◆ Pin тэмдэглэгээ 2026-08-13-нд УСТСАН — бэхлэгдсэн тоо үлдээгүй,
+   бүх үзүүлэлт ArcGIS үйлчилгээнээс амьдаар гарна (@/lib/live · @/lib/land). */
 
 /* ══════════════════ Хэмжээ сунгах бариул ══════════════════ */
 
@@ -267,15 +258,12 @@ function Panel({ title, note, children }: { title?: string; note?: ReactNode; ch
 
 const BF = BUILDING.fields;
 const PL = PARCEL_LEFT.fields;
-const PP = PROJECT_PROGRESS.fields;
 
 export type BagtsRow = {
   key: string;
   label: string;
   blocks: number;
   ail: number;
-  /** Урьдчилсан төсөвт өртөг, ₮ (BUS_cashflow · A5) */
-  budget: number;
   contractor: string;
   /** Гадаад / Үндэсний — илтгэлээс бэхлэгдсэн */
   origin: string;
@@ -295,13 +283,15 @@ export type BagtsRow = {
 };
 
 /**
- * ОРОН СУУЦНЫ 7 БАГЦ — гурван өгөгдлийн сангийн нийлбэр.
+ * ОРОН СУУЦНЫ 7 БАГЦ — хоёр өгөгдлийн сангийн нийлбэр.
  *
- *   `building_GOL`  → блок, өрх (BAGTS · BLOK · AIL_TOO)
- *   `BUS_cashflow`  → төсөв, гүйцэтгэгч (A5 · C2)
+ *   `building_GOL`  → блок, өрх, гүйцэтгэгч (BAGTS · BLOK · AIL_TOO · BAR_COMP)
  *   `Selbe_guitsetgel_consolidated` → «Б.» мөрийн бодит гүйцэтгэл
  *
- * ⚠️ Багцын нэр гурвуулаа өөр бичиглэлтэй («Багц 4.1» / «Багц-4.1» / «Багц 4-1»)
+ * (BUS_cashflow-ийн төсөв/эх үүсвэр 2026-08-13-нд хасагдсан — санхүү нь
+ * CASHFLOW2 + IPC-ээс, «Санхүүжилт» ба «Цогц хяналт»-ын графикт амьдаар гарна.)
+ *
+ * ⚠️ Багцын нэр эх сурвалжуудад өөр бичиглэлтэй («Багц 4.1» / «Багц 4-1»)
  * тул ЗӨВХӨН `bagtsKey()`-ээр жишинэ.
  *
  * ⚠️ Гүйцэтгэлийг давхаргын `GUITS_HV`-ээс АВАХГҮЙ: тэр талбар хуучирсан бөгөөд
@@ -310,29 +300,23 @@ export type BagtsRow = {
  * тооцоо — хоёр харагдац ижил тоо харуулна.
  */
 export function useBagtsTable(): Async<BagtsRow[]> {
-  const cash = useCashflow();
-  const cashReady = cash.state === 'ready' ? cash.data : null;
-  const cashError = cash.state === 'error' ? cash.error : null;
   return useAsync(async () => {
-    // ⚠️ Cashflow-ийн алдааг ДАМЖУУЛНА — эс бөгөөс доорх мөнхийн pending
-    //    promise-д гацаж, багц/толгойн KPI «ачаалж байна» төлөвөөс гардаггүй,
-    //    алдаа огт харагддаггүй байв.
-    if (cashError) throw cashError;
-    if (!cashReady) return new Promise<BagtsRow[]>(() => {});
     const [blocks, prog] = await Promise.all([
-      queryFeatures(BUILDING.url, { outFields: [BUILDING.oid, BF.bagts, BF.block, BF.households] }),
+      queryFeatures(BUILDING.url, {
+        outFields: [BUILDING.oid, BF.bagts, BF.block, BF.households, BF.contractor],
+      }),
       loadBlockProgress(),
     ]);
-    return joinBagts(blocks, cashReady, prog);
-  }, [cashReady, cashError]);
+    return joinBagts(blocks, prog);
+  }, []);
 }
 
-function joinBagts(blocks: Row[], cash: CashRow[], prog: BlockProgressMap): BagtsRow[] {
+function joinBagts(blocks: Row[], prog: BlockProgressMap): BagtsRow[] {
   const by = new Map<string, BagtsRow & { sum: number }>();
   const slot = (name: string) => {
     const k = bagtsKey(name);
     const cur = by.get(k) ?? {
-      key: k, label: name, blocks: 0, ail: 0, budget: 0, contractor: '—',
+      key: k, label: name, blocks: 0, ail: 0, contractor: '—',
       origin: BAGTS_ORIGIN[name.trim()] ?? '—', progress: null, missing: 0, sum: 0,
     };
     by.set(k, cur);
@@ -344,16 +328,12 @@ function joinBagts(blocks: Row[], cash: CashRow[], prog: BlockProgressMap): Bagt
     const s = slot(name);
     s.blocks += 1;
     s.ail += Number(b[BF.households] ?? 0);
+    // Гүйцэтгэгч — блокийн давхаргын BAR_COMP (багцын бүх блок нэг гүйцэтгэгчтэй)
+    const comp = text(b[BF.contractor], '').trim();
+    if (comp) s.contractor = comp;
     const cell = prog.get(buildingKey(b[BF.bagts], b[BF.block]));
     if (cell) s.sum += cell.overall;
     else s.missing += 1;
-  }
-  // Санхүү нь блокийн дараа — багцын нэрийг блокийн бичиглэлээр үлдээнэ
-  for (const r of cash) {
-    const s = by.get(bagtsKey(r.zone));
-    if (!s) continue;
-    s.budget += r.budget;
-    if (r.contractor) s.contractor = r.contractor;
   }
 
   return [...by.values()]
@@ -361,61 +341,11 @@ function joinBagts(blocks: Row[], cash: CashRow[], prog: BlockProgressMap): Bagt
     .sort((a, b) => a.label.localeCompare(b.label, 'mn'));
 }
 
-/* ── Төслийн жигнэсэн гүйцэтгэл (Төсөл_Гүйцэтгэл · 162 мөр) ── */
+/* ── Төслийн жигнэсэн гүйцэтгэл — тооцоо @/lib/live-д (Тайлан/Нүүр мөн уншина) ── */
 
-type StageAgg = { weight: number; actual: number; rows: number };
-type ProjectProgress = {
-  /** Жигнэсэн гүйцэтгэл — БОДИТ жингийн нийлбэрт нормчилсон (%) */
-  actual: number;
-  /** Хүснэгтэд бүртгэгдсэн нийт жин (%) — 100 БИШ, 81.53 */
-  coverage: number;
-  byStage: Record<string, StageAgg>;
-};
-
-/**
- * ⚠️ Жигнэсэн дүнг `Σ(жин × гүйц) / Σжин` гэж бодно, 100-д ХУВААХГҮЙ:
- * `Төсөлд_эзлэх_хувь`-ийн нийлбэр 81.53%. 100-д хуваавал 22.5% гэж гарч, бодит
- * 27.65%-иас чимээгүй бага харагдана.
- */
 function useProjectProgress(): Async<ProjectProgress> {
-  return useAsync(async () => {
-    const rows = await queryFeatures(PROJECT_PROGRESS.url, {
-      outFields: [PP.stage, PP.weight, PP.actual],
-      limit: 2000,
-    });
-    const w = (r: Row) => Number(r[PP.weight]) || 0;
-    const a = (r: Row) => Number(r[PP.actual] ?? 0) || 0;
-
-    const byStage: Record<string, StageAgg & { wa: number }> = {};
-    for (const r of rows) {
-      const k = text(r[PP.stage], '').trim();
-      (byStage[k] ??= { weight: 0, actual: 0, rows: 0, wa: 0 });
-      byStage[k].weight += w(r);
-      byStage[k].wa += w(r) * a(r);
-      byStage[k].rows += 1;
-    }
-    const coverage = rows.reduce((acc, r) => acc + w(r), 0);
-    return {
-      actual: coverage > 0 ? rows.reduce((acc, r) => acc + w(r) * a(r), 0) / coverage : 0,
-      coverage,
-      byStage: Object.fromEntries(
-        Object.entries(byStage).map(([k, v]) => [k, { weight: v.weight, rows: v.rows, actual: v.weight > 0 ? v.wa / v.weight : 0 }]),
-      ),
-    };
-  }, []);
-}
-
-/** Илтгэлийн үе шатыг амьд хүснэгтийн мөрүүдэд буулгаж жигнэнэ */
-function liveStage(p: ProjectProgress | null, stages: string[]): { actual: number; weight: number } | null {
-  if (!p || !stages.length) return null;
-  let w = 0, wa = 0;
-  for (const s of stages) {
-    const agg = p.byStage[s];
-    if (!agg) continue;
-    w += agg.weight;
-    wa += agg.weight * agg.actual;
-  }
-  return w > 0 ? { actual: wa / w, weight: w } : null;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  return useAsync(loadProjectProgress, []);
 }
 
 function useLeftParcels(): Async<Row[]> {
@@ -491,7 +421,14 @@ type DashData = {
   bagts: Async<BagtsRow[]>;
   project: Async<ProjectProgress>;
   parcels: Async<Row[]>;
-  invest: Async<InvRow[]>;
+  /** Газар чөлөөлөлтийн нэгдсэн АМЬД тооцоо — «Газар чөлөөлөлт» харагдацтай НЭГ томьёо */
+  land: Async<LandStatus>;
+  /** Толгойн амьд үзүүлэлт — талбай, хүн ам, нийт ХО, ногоон */
+  headline: Async<Headline>;
+  /** Төслийн төсөв — Cashflow /106 (олон нийтийн бүсгүй) */
+  budget: Async<Budget>;
+  /** Нийгмийн барилгууд — test_data давхаргуудаас амьд тоо/хүчин чадал */
+  social: Async<SocialLive>;
   sources: Async<Row[]>;
 };
 
@@ -525,8 +462,6 @@ const layersByTitle = (subs: string[]): string[] =>
 
 /* ══════════════════ Үндсэн компонент ══════════════════ */
 
-const bn = (v: number) => num(v / 1e9, 1);
-
 export function Dashboard({ dim, setDim, zone, setZone }: {
   dim: Dim; setDim: (d: Dim) => void; zone: string | null; setZone: (z: string | null) => void;
 }) {
@@ -534,7 +469,14 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
     bagts: useBagtsTable(),
     project: useProjectProgress(),
     parcels: useLeftParcels(),
-    invest: useInvest(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    land: useAsync(loadLandStatus, []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    headline: useAsync(loadHeadline, []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    budget: useAsync(loadBudget, []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    social: useAsync(loadSocial, []),
     sources: useSources(),
   };
   const { setHighlight } = useMap();
@@ -783,28 +725,57 @@ function Detail({ k, d, suit, prog, zone, setZone, flt, onFlt }: {
   zone: string | null; setZone: (z: string | null) => void;
 } & FltProps) {
   switch (k) {
-    case 'scope': return <ScopeDetail bagts={d.bagts} />;
+    case 'scope': return <ScopeDetail bagts={d.bagts} d={d} />;
     case 'schedule': return <ScheduleDetail project={d.project} />;
     case 'bagts': return <BagtsDetail q={d.bagts} flt={flt} onFlt={onFlt} />;
-    case 'land': return <LandDetail parcels={d.parcels} project={d.project} flt={flt} onFlt={onFlt} />;
+    case 'land': return <LandDetail parcels={d.parcels} land={d.land} flt={flt} onFlt={onFlt} />;
     case 'network': return <NetworkDetail flt={flt} onFlt={onFlt} />;
-    case 'power': return <PowerDetail invest={d.invest} flt={flt} onFlt={onFlt} />;
+    case 'power': return <PowerDetail flt={flt} onFlt={onFlt} />;
     case 'source': return <SourceDetail sources={d.sources} flt={flt} onFlt={onFlt} />;
-    case 'finance': return <FinanceDetail />;
-    case 'benefit': return <BenefitDetail bagts={d.bagts} flt={flt} onFlt={onFlt} />;
+    case 'finance': return <FinanceDetail budget={d.budget} />;
+    case 'benefit': return <BenefitDetail bagts={d.bagts} d={d} flt={flt} onFlt={onFlt} />;
     case 'suit': return <SuitDetail suit={suit} prog={prog} zone={zone} setZone={setZone} />;
   }
 }
 
 /* ══════════════════ Зүүн жагсаалт ══════════════════ */
 
+/** ГАДНА ШУГАМ СҮЛЖЭЭНИЙ багцууд — дулаан/ус/татуурга (Багц 5.x, 7, 10–15) */
+const isNetworkPack = (bagts: string) => /^БАГЦ(5[1-4]|7|1[0-5])$/.test(bagtsKey(bagts));
+/** ЦАХИЛГААНЫ багцууд — БАГЦ-6.1…6.8 */
+const isPowerPack = (bagts: string) => /^БАГЦ6[1-8]$/.test(bagtsKey(bagts));
+
+/** Багцын нэрийг давхаргын гарчгуудын нийтлэг угтвараас (Bagts-тай ижил дүрэм) */
+const packLabel = (ids: string[]): string => {
+  const titles = ids.map((id) => LAYER_BY_ID[id]?.title ?? '').filter(Boolean);
+  if (!titles.length) return '';
+  let p = titles[0];
+  for (const t of titles.slice(1)) {
+    let i = 0;
+    while (i < p.length && i < t.length && p[i] === t[i]) i += 1;
+    p = p.slice(0, i);
+  }
+  return p.replace(/[\s·—-]+$/u, '').trim() || titles[0];
+};
+
+/**
+ * Дэд бүтцийн багцууд (`PKG_BY_BAGTS`) предикатаар — газрын зургийн давхаргатай
+ * нь л. (Хөрөнгө оруулалтын дүн INVEST /249-д байсан нь 2026-08-14-нд түр
+ * хасагдсан тул зөвхөн зурагт шүүх багцын жагсаалт үлдэв.)
+ */
+const infraPackList = (pred: (b: string) => boolean) =>
+  Object.entries(PKG_BY_BAGTS)
+    .filter(([key, ids]) => ids.length && pred(key))
+    .map(([key, ids]) => ({ key, ids, label: packLabel(ids) || key }))
+    .sort((a, b) => a.label.localeCompare(b.label, 'mn', { numeric: true }));
+
 /**
  * Хэсэг бүрийн ГОЛ тоо — жагсаалтаас шууд уншигдана, дэлгэрэнгүй нээх
- * шаардлагагүй. Амьд өгөгдөл ирээгүй бол «…».
+ * шаардлагагүй. Амьд өгөгдөл ирээгүй бол «…». (◆ pinned төлөв УСТСАН —
+ * бүх утга амьд.)
  */
 function railStat(k: SecKey, d: DashData, suit: Async<SuitSummary>): {
   value: string;
-  pinned?: boolean;
   note: string;
   /** Байвал жагсаалтын мөрөнд нимгэн явцын зурвас зурна */
   pct?: number;
@@ -812,61 +783,59 @@ function railStat(k: SecKey, d: DashData, suit: Async<SuitSummary>): {
 } {
   const b = d.bagts.state === 'ready' ? d.bagts.data : null;
   const p = d.project.state === 'ready' ? d.project.data : null;
-  const iv = d.invest.state === 'ready' ? d.invest.data : null;
   const blocks = b ? b.reduce((a, x) => a + x.blocks, 0) : null;
   const ail = b ? b.reduce((a, x) => a + x.ail, 0) : null;
 
   switch (k) {
-    case 'scope':
+    case 'scope': {
+      // АМЬД — хилийн давхаргын Hec_area (урьд нь бэхлэгдсэн 158 га ◆)
+      const h = d.headline.state === 'ready' ? d.headline.data : null;
       return {
-        value: `${num(HEADLINE.areaHa)} га`, pinned: true,
+        value: h == null ? '…' : `${num(h.areaHa, 1)} га`,
         note: blocks == null ? '…' : `${num(blocks)} блок · ${num(ail)} өрх`,
       };
+    }
     case 'schedule':
+      // ⚠️ АМЬД — Төсөл_Гүйцэтгэл хүснэгтийн жигнэсэн дундаж (илтгэлийн
+      //    бэхлэгдсэн 36.35% ◆-г хассан, 2026-08-13 хэрэглэгчийн шийдвэр).
       return {
-        value: pct(OVERALL.reported, 2), pinned: true,
-        note: p == null ? '…' : `6 үе шат · хүснэгтээр ${pct(p.actual, 1)}`,
-        pct: OVERALL.reported, tone: o.active,
+        value: p == null ? '…' : pct(p.actual, 2),
+        note: p == null ? '…' : `${SCHEDULE.length} үе шат · жин ${pct(p.coverage, 1)}`,
+        pct: p?.actual ?? undefined, tone: o.active,
       };
     case 'bagts': {
       const bl = b ? b.reduce((a, x) => a + x.blocks, 0) : 0;
       // Амьд жигнэсэн дундаж — блокийн тоогоор жинлэсэн 7 багцын гүйцэтгэл.
       const avg = b && bl ? b.reduce((a, x) => a + (x.progress ?? 0) * x.blocks, 0) / bl : null;
-      const budget = b ? b.reduce((a, x) => a + x.budget, 0) : null;
+      const ailSum = b ? b.reduce((a, x) => a + x.ail, 0) : null;
       return {
         value: avg == null ? '…' : pct(avg, 1),
-        note: budget == null ? '…' : `7 багц · ${bn(budget)} тэрбум ₮`,
+        note: ailSum == null ? '…' : `7 багц · ${num(bl)} блок · ${num(ailSum)} өрх`,
         pct: avg ?? undefined, tone: o.active,
       };
     }
     case 'land': {
-      const live = p?.byStage['Газар чөлөөлөлт']?.actual ?? null;
-      const rows = d.parcels.state === 'ready' ? d.parcels.data.length : null;
-      const v = live ?? LAND.pct;
+      // ⚠️ АМЬД — «Газар чөлөөлөлт» харагдацтай ЯГ НЭГ томьёо (loadLandStatus):
+      //    (Бүрэн чөлөөлсөн + Цэвэрлэсэн) ÷ нийт. Урьд нь Төсөл_Гүйцэтгэлийн
+      //    үе шатын % (95.5) харуулж, талбарын 90%-тай ЗӨРДӨГ байв.
+      const land = d.land.state === 'ready' ? d.land.data : null;
       return {
-        value: pct(v, 1),
-        note: rows == null ? '…' : `${num(LAND.left)} үлдсэн ◆ · ${num(rows)} бүртгэл`,
-        pct: v, tone: o.done,
+        value: land?.pct == null ? '…' : pct(land.pct, 1),
+        note: land == null ? '…' : `${num(land.remaining)} үлдсэн · ${num(land.total)} талбар`,
+        pct: land?.pct ?? undefined, tone: o.done,
       };
     }
     case 'network': {
-      // Гадна дулаан, ус, ариутгах (Багц 5) — `UTILITY_WORKS` (сая ₮) нийлбэр
-      const sum = UTILITY_WORKS.reduce((a, w) => a + w.mn, 0);
-      return {
-        value: num(sum / 1000, 1), pinned: true,
-        note: `${UTILITY_WORKS.length} ажил · тэрбум ₮ · гадна дулаан, ус`,
-        tone: o.active,
-      };
+      // Гадна дулаан/ус/татуургын багцууд — газрын зургийн давхаргаар (Багц 5.x,
+      // 7–15). Хөрөнгө оруулалтын дүн (INVEST /249) 2026-08-14-нд түр хасагдсан.
+      const n = infraPackList(isNetworkPack).length;
+      return { value: num(n), note: 'багц · гадна дулаан, ус · зурагт', tone: o.active };
     }
     case 'power': {
-      // Гадна цахилгаан (Багц 6) — 8 багц, дундаж гүйцэтгэл 23.8% (бэхлэгдсэн)
-      const keys = new Set(POWER_PACKS.map((x) => bagtsKey(x.key)));
-      const sum = iv ? iv.filter((r) => keys.has(bagtsKey(r.bagts))).reduce((a, r) => a + r.total, 0) : null;
-      return {
-        value: '23.8%', pinned: true,
-        note: sum == null ? '…' : `8 багц · ${bn(sum)} тэрбум ₮`,
-        pct: 23.8, tone: o.active,
-      };
+      // Цахилгааны багцууд (БАГЦ-6.x) — газрын зургийн давхаргаар. ХО-ын дүн
+      // (INVEST /249) 2026-08-14-нд түр хасагдсан.
+      const n = infraPackList(isPowerPack).length;
+      return { value: num(n), note: 'багц · цахилгаан · зурагт', tone: o.active };
     }
     case 'source': {
       // Эх үүсвэр — нэгтгэсэн үйлчилгээнээс АМЬД (дулаан, цахилгаан, ус)
@@ -879,10 +848,25 @@ function railStat(k: SecKey, d: DashData, suit: Async<SuitSummary>): {
         tone: o.active,
       };
     }
-    case 'finance':
-      return { value: '19.9%', pinned: true, note: '395.6 / 1,988.2 тэрбум ₮', pct: 19.9, tone: o.active };
-    case 'benefit':
-      return { value: num(HEADLINE.population), pinned: true, note: '20 байгууламж · 16,000 ажлын байр' };
+    case 'finance': {
+      // АМЬД — Cashflow /106: гэрээгээр баталгаажсан ÷ нийт төсөвт өртөг
+      const bg = d.budget.state === 'ready' ? d.budget.data : null;
+      const share = bg && bg.total ? (bg.contract / bg.total) * 100 : null;
+      return {
+        value: share == null ? '…' : pct(share, 1),
+        note: bg == null ? '…' : `гэрээ ${num(bg.contract / 1e9, 1)} / төсөв ${num(bg.total / 1e9, 1)} тэрбум ₮`,
+        pct: share ?? undefined, tone: o.active,
+      };
+    }
+    case 'benefit': {
+      // АМЬД — хүн ам (барилгуудын Population) + нийгмийн байгууламжийн тоо
+      const h = d.headline.state === 'ready' ? d.headline.data : null;
+      const soc = d.social.state === 'ready' ? d.social.data : null;
+      return {
+        value: h == null ? '…' : num(h.population),
+        note: soc == null ? '…' : `${num(soc.totalN)} нийгмийн байгууламж`,
+      };
+    }
     case 'suit': {
       // ⚠️ 08 нээгдтэл анализ ажиллахгүй тул энд «нээж бодуулна» гэж хэлнэ
       if (suit.state === 'error') return { value: '—', note: 'бодогдсонгүй' };
@@ -925,7 +909,7 @@ function SideRail({ d, suit, open, toggle, clear, ref }: {
             <span className={o.railTop}>
               <span className={o.railNo}>{s.no}</span>
               <span className={o.railTitle}>{s.title}</span>
-              <b className={`${o.railVal} num`}>{st.value}{st.pinned && <Pin />}</b>
+              <b className={`${o.railVal} num`}>{st.value}</b>
             </span>
             {/* Явцын нимгэн зурвас — хувьтай хэсэгт л. Тоог уншихаас өмнө
                 нүд нь зурвасын уртаар харьцуулна. */}
@@ -948,30 +932,35 @@ function HeadKpi({ d }: { d: DashData }) {
   const b = d.bagts.state === 'ready' ? d.bagts.data : null;
   const blocks = b ? b.reduce((a, x) => a + x.blocks, 0) : null;
   const ail = b ? b.reduce((a, x) => a + x.ail, 0) : null;
+  const h = d.headline.state === 'ready' ? d.headline.data : null;
+  const p = d.project.state === 'ready' ? d.project.data : null;
 
   /**
-   * ⚠️ УТГА ба НЭГЖ нь ТУСДАА талбар. Урьд нь «≈2.4 их наяд ₮» бүхэлдээ 1.7rem-ээр
-   * зурагдаж хавтангаас хальж, «36.35%» ч мөн адил тайрагддаг байв. Тоо нь том,
-   * нэгж нь жижиг байвал хоёулаа багтаад зогсохгүй уншихад ч хурдан.
+   * ⚠️ УТГА ба НЭГЖ нь ТУСДАА талбар — тоо том, нэгж жижиг.
+   * 2026-08-13: бэхлэгдсэн ◆ (158 га · 44,518 · 36.35% · 2.339 их наяд)
+   * БҮГД амьд боллоо: хил [97] · барилгын Population нийлбэр · Төсөл_Гүйцэтгэл
+   * жигнэсэн дундаж · INVEST нийлбэр.
    */
-  const tiles: { v: string; unit?: string; pinned?: boolean; label: string; sub?: string; lead?: true; bar?: number }[] = [
-    { v: num(HEADLINE.areaHa), unit: 'га', pinned: true, label: 'Төслийн талбай' },
+  const tiles: { v: string; unit?: string; label: string; sub?: string; lead?: true; bar?: number }[] = [
+    { v: h == null ? '…' : num(h.areaHa, 1), unit: 'га', label: 'Төслийн талбай' },
     {
       v: ail == null ? '…' : num(ail), unit: 'өрх',
       label: 'Өрхийн орон сууц',
       sub: blocks == null ? undefined : `${num(blocks)} блок`,
     },
-    { v: num(HEADLINE.population), unit: 'хүн', pinned: true, label: 'Хамрагдах хүн ам' },
+    { v: h == null ? '…' : num(h.population), unit: 'хүн', label: 'Хамрагдах хүн ам' },
     {
-      // ⚠️ Хүснэгтээр бодогдсон дүнг (27.65%) энд ХАРУУЛАХГҮЙ — толгойн хавтан
-      //    нь ГАНЦ албан ёсны тоо хэлэх ёстой. Зөрүү нь 02-р хэсгийн тайлбарт
-      //    бүрэн тайлбарлагдсан хэвээр.
-      v: num(OVERALL.reported, 2), unit: '%', pinned: true,
+      v: p == null ? '…' : num(p.actual, 2), unit: '%',
       label: 'Төслийн нийт гүйцэтгэл',
+      sub: p == null ? undefined : `бүртгэгдсэн жин ${num(p.coverage, 1)}%`,
       lead: true,
-      bar: OVERALL.reported,
+      bar: p?.actual,
     },
-    { v: '2.339', unit: 'их наяд ₮', pinned: true, label: 'Нийт хөрөнгө оруулалт' },
+    {
+      v: h == null ? '…' : num(h.investTotal / 1e12, 2), unit: 'их наяд ₮',
+      label: 'Төслийн нийт төсөв',
+      sub: h == null ? undefined : `гэрээ байгуулсан ${num(h.investConfirmed / 1e9, 1)} тэрбум`,
+    },
   ];
 
   return (
@@ -981,11 +970,9 @@ function HeadKpi({ d }: { d: DashData }) {
           <span className={o.tileVal}>
             <b className="num">{t.v}</b>
             {t.unit && <i>{t.unit}</i>}
-            {t.pinned && <Pin />}
           </span>
           <span className={o.tileLabel}>{t.label}</span>
-          {/* Гол үзүүлэлтэд зурвас — 36% гэдэг нь «дөнгөж гуравны нэг» гэдгийг
-              тоо уншихаас өмнө нүдээр ойлгуулна. */}
+          {/* Гол үзүүлэлтэд зурвас — тоо уншихаас өмнө хэмжээг нүдээр ойлгуулна */}
           {t.bar != null && (
             <span className={o.tileBar}><i className={o.active} style={{ width: `${clamp(t.bar, 0, 100)}%` }} /></span>
           )}
@@ -998,49 +985,47 @@ function HeadKpi({ d }: { d: DashData }) {
 
 /* ══════════════════ 01 · Цар хүрээ ══════════════════ */
 
-function ScopeDetail({ bagts }: { bagts: Async<BagtsRow[]> }) {
-  /**
-   * ⚠️ `live` мөрийг АМЬД тоогоор орлуулна (BENEFITS-ийн загвар) — эс бөгөөс
-   * толгойн KPI шинэ блокийн тоо, энэ хавтан brief-ийн бэхлэгдсэн «113» гэж
-   * ЗЭРЭГ зөрж гарна. Амьд дүн ирээгүй байхад бэхлэгдсэн утга нь харагдана.
-   */
-  const blocks = bagts.state === 'ready' ? bagts.data.reduce((a, x) => a + x.blocks, 0) : null;
+function ScopeDetail({ bagts, d }: { bagts: Async<BagtsRow[]>; d: DashData }) {
+  // БҮГД АМЬД (2026-08-13): бэхлэгдсэн SCOPE (74 багц · 7,500 тн нүүрс ·
+  // −7.7% агаар · 16,000 ажлын байр) — эх сурвалжгүй мөрүүд ХАСАГДАВ.
+  const b = bagts.state === 'ready' ? bagts.data : null;
+  const blocks = b ? b.reduce((a, x) => a + x.blocks, 0) : null;
+  const ail = b ? b.reduce((a, x) => a + x.ail, 0) : null;
+  const h = d.headline.state === 'ready' ? d.headline.data : null;
+  const soc = d.social.state === 'ready' ? d.social.data : null;
+  /** Багцын тоо — барилгын 7 + газрын зургийн дэд бүтцийн багцууд (PKG_BY_BAGTS) */
+  const packs = b
+    ? new Set([...b.map((x) => x.key), ...Object.keys(PKG_BY_BAGTS)]).size
+    : null;
+
   return (
     <>
       <Panel title="Төслийн цар хүрээ">
         <Stats cols={2}>
-          {SCOPE.map((s, i) => (
-            <Stat
-              key={s.key}
-              accent
-              color={HUE[i % HUE.length]}
-              value={<>{s.live && blocks != null ? num(blocks) : s.value}{!s.live && <Pin />}</>}
-              unit={s.unit}
-              label={s.label}
-            />
-          ))}
+          <Stat accent color={HUE[0]} value={blocks == null ? '…' : num(blocks)} unit="блок" label="Орон сууцны блок" />
+          <Stat accent color={HUE[1]} value={ail == null ? '…' : num(ail)} unit="өрх" label="Айл өрх" />
+          <Stat accent color={HUE[2]} value={packs == null ? '…' : num(packs)} unit="багц" label="Нийт багц" />
+          <Stat accent color={HUE[3]} value={soc == null ? '…' : num(soc.totalN)} unit="ш" label="Нийгмийн байгууламж" />
+          <Stat accent color={HUE[4]} value={h?.greenHa == null ? '—' : num(h.greenHa, 1)} unit="га" label="Ногоон байгууламж" />
+          <Stat accent color={HUE[5 % HUE.length]} value={h == null ? '…' : num(h.population)} unit="хүн" label="Хамрагдах хүн ам" />
         </Stats>
       </Panel>
 
-      <Panel title="Хөрөнгө оруулалтын бүтэц">
-        <Bars
-          inline
-          items={INVEST_SPLIT.map((s) => ({
-            key: s.key,
-            label: s.label,
-            value: s.pct,
-            color: heat(s.pct, maxOf(INVEST_SPLIT.map((x) => x.pct))),
-            display: `${num(s.bn, 1)} · ${s.pct}%`,
-          }))}
-        />
-      </Panel>
-
-      <Panel title="Гол зорилтот хугацаа">
-        <div className={o.miles}>
-          {MILESTONES.map((m) => (
-            <div key={m.year} className={o.mile}><b className="num">{m.year}</b><span>{m.text}</span></div>
-          ))}
-        </div>
+      <Panel title="Санхүүжилтийн эх үүсвэр (төслийн төсөв)">
+        <Data q={d.budget} loading="Татаж байна…">
+          {(bg) => (
+            <Bars
+              inline
+              items={bg.sources.map((s) => ({
+                key: s.key,
+                label: s.label,
+                value: s.value,
+                color: heat(s.value, maxOf(bg.sources.map((x) => x.value))),
+                display: `${num(s.value / 1e9, 1)} тэрбум ₮`,
+              }))}
+            />
+          )}
+        </Data>
       </Panel>
     </>
   );
@@ -1049,40 +1034,29 @@ function ScopeDetail({ bagts }: { bagts: Async<BagtsRow[]> }) {
 /* ══════════════════ 02 · Master Schedule ══════════════════ */
 
 /**
- * ⚠️ ГҮЙЦЭТГЭЛ нь боломжтой бол АМЬД (`Төсөл_Гүйцэтгэл`-ийн жигнэсэн дүн).
- * Хугацааны зурвас нь илтгэлээс — амьд хүснэгтэд огноо байхгүй. «Инженерийн дэд
- * бүтэц» ба «Олон нийтийн бүс» гэсэн хоёр үе шат амьд хүснэгтэд ОГТ БАЙХГҮЙ тул
- * тэдгээрийн хувь бэхлэгдсэнээрээ үлдэж, ◆ тэмдэгтэй гарна.
+ * ГҮЙЦЭТГЭЛ БҮГД АМЬД — `Төсөл_Гүйцэтгэл`-ийн жигнэсэн дүн (`liveStage`).
+ * Амьд хүснэгтэд БАЙХГҮЙ үе шат (04 Инженерийн дэд бүтэц, 06 Олон нийтийн бүс)
+ * «—» гэж гарна — бэхлэгдсэн тоо ХЭВЛЭХГҮЙ (2026-08-13 хэрэглэгчийн шийдвэр).
+ * Хугацааны зурвас (`from`–`to`) нь төлөвлөгөөний мета — тоон үзүүлэлт биш.
  */
 function ScheduleDetail({ project }: { project: Async<ProjectProgress> }) {
   const p = project.state === 'ready' ? project.data : null;
 
   return (
-    <>
-      <Panel title="Үндсэн үе шат">
-        <Bars
-          items={SCHEDULE.map((st) => {
-            const lv = liveStage(p, st.stages);
-            const v = lv ? lv.actual : st.pct;
-            return {
-              key: st.no,
-              label: `${st.label} · ${st.from}–${st.to}`,
-              value: v,
-              display: `${pct(v, v >= 1 ? 1 : 0)}${lv ? '' : ' ◆'}`,
-              color: heat(v, 100),
-            };
-          })}
-        />
-      </Panel>
-
-      <Panel title="Гол зорилтот хугацаа">
-        <div className={o.miles}>
-          {MILESTONES.map((m) => (
-            <div key={m.year} className={o.mile}><b className="num">{m.year}</b><span>{m.text}</span></div>
-          ))}
-        </div>
-      </Panel>
-    </>
+    <Panel title="Үндсэн үе шат">
+      <Bars
+        items={SCHEDULE.map((st) => {
+          const v = liveStage(p, st.stages);
+          return {
+            key: st.no,
+            label: `${st.label} · ${st.from}–${st.to}`,
+            value: v ?? 0,
+            display: v == null ? '—' : pct(v, v >= 1 ? 1 : 0),
+            color: v == null ? '#94a3b8' : heat(v, 100),
+          };
+        })}
+      />
+    </Panel>
   );
 }
 
@@ -1102,7 +1076,6 @@ const HUE = shades('#0ea5e9', 8);
  * бага утга бүдэг. `heat(v, max)` нь энэ дүрмийг чартад хэрэглэнэ.
  */
 const ACCENT = '#0ea5e9';
-const BLANK = '#94a3b8';
 /** Утга → нэг өнгөний сүүдэр (их=тод). max≤0 бол суурь өнгө. */
 const heat = (v: number, max: number) => tint(ACCENT, max > 0 ? v / max : 1);
 /** Массивын хамгийн их эерэг утга (0-т хуваахаас хамгаална) */
@@ -1167,27 +1140,29 @@ function BagtsDetail({ q, flt, onFlt }: { q: Async<BagtsRow[]> } & FltProps) {
               />
             </Panel>
 
-            <Panel title="Багц бүрийн төсөв">
-              <Bars
-                inline
-                selected={sel}
-                onSelect={pick}
-                items={rows.map((r) => ({
-                  key: r.key,
-                  label: r.label,
-                  value: r.budget,
-                  display: r.budget > 0 ? `${bn(r.budget)} тэрбум` : '—',
-                  color: heat(r.budget, maxOf(rows.map((x) => x.budget))),
-                }))}
-              />
-            </Panel>
-
+            {/* «Багц бүрийн төсөв» panel 2026-08-13-нд хасагдав — BUS_cashflow
+                үйлчилгээ устаж, багцын төсвийн бодит эх сурвалж алга. */}
+            {/* ГҮЙЦЭТГЭГЧИЙН БҮРЭЛДЭХҮҮН — амьд (блок/өрхөөс), BAGTS_ORIGIN нь
+                зөвхөн Гадаад/Үндэсний гэсэн ангилал (тоо биш). */}
             <Panel title="Гүйцэтгэгчийн бүрэлдэхүүн">
-              <Stats cols={3}>
-                {BAGTS_STRIP.map((s, i) => (
-                  <Stat key={s.label} accent color={HUE[i % HUE.length]} value={<>{s.value}<Pin /></>} label={s.label} />
-                ))}
-              </Stats>
+              {(() => {
+                const nat = rows.filter((r) => BAGTS_ORIGIN[r.label.trim()] === 'Үндэсний');
+                const natBlocks = nat.reduce((a, x) => a + x.blocks, 0);
+                const natAil = nat.reduce((a, x) => a + x.ail, 0);
+                const allBlocks = rows.reduce((a, x) => a + x.blocks, 0);
+                const allAil = rows.reduce((a, x) => a + x.ail, 0);
+                const p100 = (a: number, b: number) => (b ? Math.round((a / b) * 100) : 0);
+                return (
+                  <Stats cols={3}>
+                    <Stat accent color={HUE[0]} value={`${p100(nat.length, rows.length)}%`}
+                      label={`Үндэсний багц (${num(nat.length)}/${num(rows.length)})`} />
+                    <Stat accent color={HUE[1]} value={`${p100(natBlocks, allBlocks)}%`}
+                      label={`Блокийн эзлэх (${num(natBlocks)}/${num(allBlocks)})`} />
+                    <Stat accent color={HUE[2]} value={`${p100(natAil, allAil)}%`}
+                      label={`Өрхийн эзлэх (${num(natAil)}/${num(allAil)})`} />
+                  </Stats>
+                );
+              })()}
             </Panel>
           </>
         );
@@ -1209,35 +1184,41 @@ const cleanProgress = (v: string) => {
  * `Чөлөөлөгдөөгүй_нэгж_талбар_20260718` давхаргад 224 мөр бүртгэлтэй, ангилал нь
  * ч өөр. Давхарга нь илтгэлээс ХОЙШ шинэчлэгдсэн тул аль нь ч буруу биш.
  */
-function LandDetail({ parcels, project, flt, onFlt }: {
-  parcels: Async<Row[]>; project: Async<ProjectProgress>;
+function LandDetail({ parcels, land, flt, onFlt }: {
+  parcels: Async<Row[]>; land: Async<LandStatus>;
 } & FltProps) {
-  const p = project.state === 'ready' ? project.data : null;
-  const livePct = p?.byStage['Газар чөлөөлөлт']?.actual ?? null;
   const sel = flt?.sec === 'land' ? flt.key : null;
 
   return (
     <>
+      {/* ⚠️ БҮГД АМЬД (loadLandStatus) — «Газар чөлөөлөлт» харагдацтай нэг эх.
+          Илтгэлийн LAND ◆ багц (2,206/1,914/95.5%...) 2026-08-13-нд хасагдав. */}
       <Panel title="Нэгж талбарын гүйцэтгэл">
-        <div className={o.landTop}>
-          <Ring value={livePct ?? LAND.pct} size={104} width={17} color="#34d399" label="гүйцэтгэл" />
-          <Stats cols={2}>
-            <Stat accent color="#38bdf8" value={<>{num(LAND.total)}<Pin /></>} unit="талбар" label="Нийт нэгж талбар" />
-            <Stat accent color="#34d399" value={<>{num(LAND.contracted)}<Pin /></>} unit="талбар" label="Гэрээ байгуулсан" />
-            <Stat accent color="#a78bfa" value={<>{num(LAND.notNeeded)}<Pin /></>} unit="талбар" label="Шаардлагагүй" />
-            <Stat accent color="#f87171" value={<>{num(LAND.left)}<Pin /></>} unit="талбар" label="Үлдсэн" />
-          </Stats>
-        </div>
-        <Bars
-          inline
-          items={LAND.breakdown.map((x) => ({
-            key: x.label,
-            label: x.label,
-            value: x.n,
-            display: `${num(x.n)} талбар`,
-            color: heat(x.n, maxOf(LAND.breakdown.map((y) => y.n))),
-          }))}
-        />
+        <Data q={land} loading="Татаж байна…">
+          {(ls) => (
+            <>
+              <div className={o.landTop}>
+                <Ring value={ls.pct} size={104} width={17} color="#34d399" label="чөлөөлсөн" />
+                <Stats cols={2}>
+                  <Stat accent color="#38bdf8" value={num(ls.total)} unit="талбар" label="Нийт нэгж талбар" />
+                  <Stat accent color="#34d399" value={num(ls.cleared)} unit="талбар" label="Бүрэн чөлөөлсөн" />
+                  <Stat accent color="#a78bfa" value={num(ls.cleaned)} unit="талбар" label="Цэвэрлэсэн" />
+                  <Stat accent color="#f87171" value={num(ls.remaining)} unit="талбар" label="Үлдсэн" />
+                </Stats>
+              </div>
+              <Bars
+                inline
+                items={[...ls.byStatus].sort((a, b) => b.n - a.n).map((x) => ({
+                  key: x.label,
+                  label: x.label,
+                  value: x.n,
+                  display: `${num(x.n)} талбар`,
+                  color: heat(x.n, maxOf(ls.byStatus.map((y) => y.n))),
+                }))}
+              />
+            </>
+          )}
+        </Data>
       </Panel>
 
       {/* ⚠️ Пай диаграмаас БАГАНАН болгов: 10 ангилалтай пай нь зүсмэгүүд нь
@@ -1296,106 +1277,86 @@ function LandDetail({ parcels, project, flt, onFlt }: {
  * Ажлын нэр → холбогдох давхаргууд. Ажил нь давхаргатай НЭРЭЭР холбогдоно
  * (амьд түлхүүр талбар байхгүй) — олдохгүй бол тэр мөр шүүлтгүй (no-op).
  */
-const netLayersOf = (work: string): string[] => {
-  const t = work.toLowerCase();
-  if (t.includes('эх үүсвэр')) return layersByTitle(['ус хангамжийн эх үүсвэр']);
-  if (t.includes('цагираг')) return layersByTitle(['цагираг']);
-  if (t.includes('насос')) return layersByTitle(['насос']);
-  if (t.includes('усан сан')) return layersByTitle(['усан сан']);
-  if (t.includes('багц-3')) return PKG_BY_BAGTS[bagtsKey('БАГЦ-5.3')] ?? [];
-  if (t.includes('багц-4')) return PKG_BY_BAGTS[bagtsKey('БАГЦ-5.4')] ?? [];
-  if (t.includes('сувг') || t.includes('сүвл')) return layersByTitle(['сүвл', 'суваг']);
-  return [];
-};
 
+/**
+ * Гадна дулаан/ус/татуургын багцууд — газрын зургийн давхаргаар (Багц 5.x, 7–15).
+ * Багц дарахад зурагт тэр багцын давхаргууд л үлдэнэ. (Хөрөнгө оруулалтын дүн
+ * INVEST /249-д байсан нь 2026-08-14-нд түр хасагдсан.)
+ */
 function NetworkDetail({ flt, onFlt }: FltProps) {
-  const total = UTILITY_WORKS.reduce((a, w) => a + w.mn, 0);
   const sel = flt?.sec === 'network' ? flt.key : null;
-  /** Ажил дарахад — зурагт тэр ажлын давхаргууд л үлдэнэ */
+  const items = infraPackList(isNetworkPack);
   const pick = (key: string) => {
-    const ids = netLayersOf(key);
-    if (ids.length) onFlt({ sec: 'network', key, label: `Ажил: ${key}`, layers: ids });
+    const ids = PKG_BY_BAGTS[key] ?? [];
+    if (ids.length) onFlt({ sec: 'network', key, label: `Багц: ${key}`, layers: ids });
   };
   return (
-    <>
-      <Panel title="Дүн">
-        <Stats cols={2}>
-          <Stat accent color="#38bdf8" value={num(UTILITY_WORKS.length)} unit="ажил" label="Гадна ус, дулааны ажил" />
-          <Stat accent color="#0ea5e9" value={<>{num(total)}<Pin /></>} unit="сая ₮" label="Нийт төсөвт өртөг" />
-        </Stats>
-      </Panel>
-
-      <Panel title="Гадна ус, дулааны ажил">
-        <Bars
-          selected={sel}
-          onSelect={pick}
-          items={UTILITY_WORKS.map((w) => ({
-            key: w.work,
-            label: `${w.work} · ${w.org} — ${w.status}`,
-            value: w.mn,
-            display: `${num(w.mn)} сая ₮`,
-            color: heat(w.mn, maxOf(UTILITY_WORKS.map((y) => y.mn))),
-          }))}
-        />
-      </Panel>
-    </>
+    <Panel title="Гадна ус, дулааны багцууд">
+      {!items.length ? (
+        <Empty label="Багцын давхарга алга." />
+      ) : (
+        <>
+          <p className={o.note}>
+            {num(items.length)} багц. Багц дарж газрын зурагт шүүнэ. Хөрөнгө
+            оруулалтын дүн эх өгөгдөл тодруулагдсаны дараа нэмэгдэнэ.
+          </p>
+          <Bars
+            inline
+            selected={sel}
+            onSelect={pick}
+            items={items.map((w) => ({
+              key: w.key,
+              label: w.label,
+              value: w.ids.length,
+              display: `${num(w.ids.length)} давхарга`,
+              color: '#0ea5e9',
+            }))}
+          />
+        </>
+      )}
+    </Panel>
   );
 }
 
 /* ══════════════════ 06 · Цахилгаан ══════════════════ */
 
-function PowerDetail({ invest, flt, onFlt }: { invest: Async<InvRow[]> } & FltProps) {
-  /** БАГЦ-6.x → INVEST-ийн нийт дүн (амьд) */
-  const cost = (key: string): number | null => {
-    if (invest.state !== 'ready') return null;
-    const k = bagtsKey(key);
-    const rows = invest.data.filter((r) => bagtsKey(r.bagts) === k);
-    return rows.length ? rows.reduce((a, r) => a + r.total, 0) : null;
-  };
+/**
+ * Цахилгааны багцууд (БАГЦ-6.x) — газрын зургийн давхаргаар. Багц дарахад зурагт
+ * тэр багцын давхаргууд л үлдэнэ. (ХО-ын дүн INVEST /249-д байсан нь 2026-08-14-нд
+ * түр хасагдсан.)
+ */
+function PowerDetail({ flt, onFlt }: FltProps) {
   const sel = flt?.sec === 'power' ? flt.key : null;
-  /** Багц дарахад — зурагт тэр багцын давхаргууд л үлдэнэ */
+  const items = infraPackList(isPowerPack);
   const pick = (key: string) => {
-    const ids = PKG_BY_BAGTS[bagtsKey(key)] ?? [];
+    const ids = PKG_BY_BAGTS[key] ?? [];
     if (ids.length) onFlt({ sec: 'power', key, label: `Багц: ${key}`, layers: ids });
   };
-
   return (
-    <>
-      <Panel title="Гадна цахилгаан (БАГЦ-6) · өртөг">
-        <Bars
-          inline
-          selected={sel}
-          onSelect={pick}
-          items={POWER_PACKS.map((b) => {
-            const c = cost(b.key);
-            const mx = maxOf(POWER_PACKS.map((x) => cost(x.key) ?? 0));
-            return {
-              key: b.key,
-              label: b.key,
-              value: c ?? 0,
-              display: c == null ? '…' : `${bn(c)} тэрбум`,
-              color: heat(c ?? 0, mx),
-            };
-          })}
-        />
-      </Panel>
-
-      <Panel title="Гадна цахилгаан (БАГЦ-6) · явц ба гүйцэтгэгч">
-        <Bars
-          inline
-          selected={sel}
-          onSelect={pick}
-          items={POWER_PACKS.map((b) => ({
-            key: b.key,
-            label: `${b.key} · ${b.contractor}`,
-            value: b.pct,
-            display: `${b.pct}%`,
-            color: b.pct > 0 ? heat(b.pct, 100) : BLANK,
-          }))}
-        />
-        <p className={o.note}>{POWER_NOTE}</p>
-      </Panel>
-    </>
+    <Panel title="Гадна цахилгаан (БАГЦ-6)">
+      {!items.length ? (
+        <Empty label="Багцын давхарга алга." />
+      ) : (
+        <>
+          <p className={o.note}>
+            {num(items.length)} багц. Багц дарж газрын зурагт шүүнэ. Хөрөнгө
+            оруулалтын дүн эх өгөгдөл тодруулагдсаны дараа нэмэгдэнэ.
+          </p>
+          <Bars
+            inline
+            selected={sel}
+            onSelect={pick}
+            items={items.map((w) => ({
+              key: w.key,
+              label: w.label,
+              value: w.ids.length,
+              display: `${num(w.ids.length)} давхарга`,
+              color: '#0ea5e9',
+            }))}
+          />
+        </>
+      )}
+    </Panel>
   );
 }
 
@@ -1489,70 +1450,58 @@ function SourceDetail({ sources, flt, onFlt }: { sources: Async<Row[]> } & FltPr
 /* ══════════════════ 06 · Санхүүжилт, бонд ══════════════════ */
 
 /**
- * ⚠️ БҮХ ТОО БЭХЛЭГДСЭН. INVEST-ийн амьд дүн илтгэлийнхээс ЭРС зөрдөг
- * (баталгаажсан 2,209.6 · урьдчилсан 1,945.7 тэрбум ₮) тул хольж үзүүлбэл
- * нийлбэр таарахгүй. Амьд дүнг ЗЭРЭГЦҮҮЛЭХ мөрөөр доор нь тэмдэглэв.
+ * ТӨСВИЙН ЭХ = Cashflow /106 (CASHFLOW2) — захирамж/гэрээгээр баталгаажсан
+ * ТӨСЛИЙН төсөв (2026-08-14, хэрэглэгчийн шийдвэр). Санхүүгийн ганц зөв эх нь
+ * Cashflow. «Хөрөнгө оруулалт өртөг» /249 бүхэлдээ түр хасагдсан.
  */
-function FinanceDetail() {
+function FinanceDetail({ budget }: { budget: Async<Budget> }) {
   return (
-    <>
-      <Panel title="Гол үзүүлэлт">
-        <Stats cols={2}>
-          {FINANCE.kpi.map((k, i) => (
-            <Stat key={k.label} accent color={HUE[i % HUE.length]} value={k.value} unit={k.unit} label={k.label} />
-          ))}
-        </Stats>
-      </Panel>
+    <Data q={budget} loading="Татаж байна…">
+      {(bg) => (
+        <>
+          <Panel title="Гол үзүүлэлт">
+            <Stats cols={2}>
+              <Stat accent color={HUE[0]} value={num(bg.total / 1e12, 2)} unit="их наяд ₮" label="Төслийн нийт төсөвт өртөг" />
+              <Stat accent color={HUE[1]} value={num(bg.orderTotal / 1e9, 1)} unit="тэрбум ₮" label="Захирамжийн нийт дүн" />
+              <Stat accent color={HUE[2]} value={num(bg.contract / 1e9, 1)} unit="тэрбум ₮" label="Гэрээ байгуулсан дүн" />
+            </Stats>
+          </Panel>
 
-      <Panel title="Санхүүжилтийн эх үүсвэр">
-        <Donut
-          items={INVEST_SPLIT.map((s, i) => ({
-            key: s.key, label: s.label, value: s.bn,
-            // Их дүнтэй нь тод (INVEST_SPLIT нь дүнгээр буурах эрэмбэтэй)
-            color: shade(ACCENT, i, INVEST_SPLIT.length),
-            display: `${num(s.bn, 1)} · ${s.pct}%`,
-          }))}
-          center={num(HEADLINE.investBn, 1)} centerLabel="тэрбум ₮" size={150} width={24} stack
-        />
-      </Panel>
-
-      <Panel title="Он тус бүрийн санхүүжилт">
-        <div className={o.tblWrap}>
-          <table className={o.tbl}>
-            <thead>
-              <tr><th>Ангилал</th>{FINANCE.years.map((y) => <th key={y} className={o.rt}>{y}</th>)}</tr>
-            </thead>
-            <tbody>
-              {FINANCE.rows.map((r) => (
-                <tr key={r.label}>
-                  <td>{r.label}</td>
-                  {r.v.map((v, i) => <td key={i} className={`${o.rt} num`}>{v == null ? '—' : num(v, 1)}</td>)}
-                </tr>
-              ))}
-              <tr className={o.trTotal}>
-                <td>Нийт</td>
-                {FINANCE.total.map((v, i) => <td key={i} className={`${o.rt} num`}>{num(v, 1)}</td>)}
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </Panel>
-    </>
+          <Panel title="Санхүүжилтийн эх үүсвэр (захирамжаар)">
+            <Donut
+              items={bg.sources.map((s, i) => ({
+                key: s.key, label: s.label, value: s.value,
+                color: shade(ACCENT, i, bg.sources.length),
+                display: `${num(s.value / 1e9, 1)} тэрбум`,
+              }))}
+              center={num(bg.orderTotal / 1e9, 1)} centerLabel="тэрбум ₮" size={150} width={24} stack
+            />
+          </Panel>
+        </>
+      )}
+    </Data>
   );
 }
 
 /* ══════════════════ 07 · Үр өгөөж ══════════════════ */
 
-/** Нийгмийн ангилал → давхаргын нэрийн дэд текст (олдохгүй мөр шүүлтгүй) */
+/** Нийгмийн ангилал → давхаргын нэрийн дэд текст (амьд loadSocial-ийн нэршлээр) */
 const SOC_MATCH: Record<string, string[]> = {
   'Сургууль': ['сургууль'],
   'Цэцэрлэг': ['цэцэрлэг'],
-  'Соёлын цогцолбор': ['урлан'],
-  'Өрхийн эмнэлэг, хороо, цагдаа': ['төрийн үйлчилгээ'],
+  'Хүүхдийн урлан бүтээх төв': ['урлан'],
+  'Төрийн үйлчилгээ': ['төрийн үйлчилгээ'],
 };
 
-function BenefitDetail({ bagts, flt, onFlt }: { bagts: Async<BagtsRow[]> } & FltProps) {
+/**
+ * БҮХ ТОО АМЬД (2026-08-13). Илтгэлийн BENEFITS/PUBLIC_ZONE/SOCIAL багц
+ * (44,518 · 7,060 мод · 16,000 ажлын байр · 7,500 тн нүүрс · 1.5 их наяд ◆...)
+ * амьд эх сурвалжгүй мөрүүд нь ХАСАГДАВ — үлдсэн нь үйлчилгээнээс бодогдоно.
+ */
+function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[]>; d: DashData } & FltProps) {
   const ail = bagts.state === 'ready' ? bagts.data.reduce((a, x) => a + x.ail, 0) : null;
+  const h = d.headline.state === 'ready' ? d.headline.data : null;
+  const soc = d.social.state === 'ready' ? d.social.data : null;
   const sel = flt?.sec === 'benefit' ? flt.key : null;
   /** Ангилал дарахад — зурагт тэр төрлийн барилгын давхаргууд л үлдэнэ */
   const pick = (key: string) => {
@@ -1563,41 +1512,32 @@ function BenefitDetail({ bagts, flt, onFlt }: { bagts: Async<BagtsRow[]> } & Flt
 
   return (
     <>
-      {/* Олон нийтийн бүс — тусдаа хавтан БИШ, ГАНЦ индикатор */}
-      <div className={o.indicator}>
-        <b className="num">{PUBLIC_ZONE.value}<Pin /></b>
-        <span className={o.indicatorLabel}>{PUBLIC_ZONE.label}</span>
-        <span className={o.indicatorNote}>{PUBLIC_ZONE.note}</span>
-      </div>
-
       <Panel title="Иргэдийн амьдралын чанар">
         <Stats cols={2}>
-          {BENEFITS.map((b, i) => (
-            <Stat
-              key={b.value + b.text}
-              accent
-              color={HUE[i % HUE.length]}
-              value={<>{b.live && ail != null ? num(ail) : b.value}{!b.live && <Pin />}</>}
-              unit={b.unit}
-              label={b.text}
-            />
-          ))}
+          <Stat accent color={HUE[0]} value={h == null ? '…' : num(h.population)} unit="хүн" label="Шинэ орон сууцанд амьдрах хүн ам" />
+          <Stat accent color={HUE[1]} value={ail == null ? '…' : num(ail)} unit="өрх" label="Айл өрх шинэ орон сууцтай" />
+          <Stat accent color={HUE[2]} value={soc == null ? '…' : num(soc.totalN)} unit="ш" label="Нийгмийн үйлчилгээний барилга" />
+          <Stat accent color={HUE[3]} value={h?.greenHa == null ? '—' : num(h.greenHa, 1)} unit="га" label="Ногоон байгууламж" />
         </Stats>
       </Panel>
 
-      <Panel title="Нийгмийн дэд бүтэц">
-        <Bars
-          inline
-          selected={sel}
-          onSelect={pick}
-          items={SOCIAL.rows.map((r, i) => ({
-            key: r.label,
-            label: r.label,
-            value: r.total,
-            display: `${r.now} → ${r.total}`,
-            color: HUE[i % HUE.length],
-          }))}
-        />
+      <Panel title="Нийгмийн дэд бүтэц · шинээр">
+        {soc == null ? <Empty label="Татаж байна…" /> : (
+          <Bars
+            inline
+            selected={sel}
+            onSelect={pick}
+            items={soc.rows.map((r, i) => ({
+              key: r.label,
+              label: r.label,
+              value: r.n,
+              display: r.capacity != null
+                ? `${num(r.n)} ш · ${num(r.capacity)} хүчин чадал`
+                : `${num(r.n)} ш`,
+              color: HUE[i % HUE.length],
+            }))}
+          />
+        )}
       </Panel>
     </>
   );

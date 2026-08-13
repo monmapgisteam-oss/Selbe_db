@@ -108,7 +108,8 @@ type GazarData = {
   statusAreaBy: StatusBars;
   /** Үлдсэн талбарын ШАЛТГААН (явцын_мэдээ) — тоо/хувь/талбайг тус тусад нь */
   reasons: ReasonItems;
-  b: { n: number; area: number; value: number; floors: number; unitPrice: number };
+  /** ⚠️ area устсан — test_data [96]-д area_m2 талбар байхгүй */
+  b: { n: number; value: number; floors: number; unitPrice: number };
   bType: ReturnType<typeof toItems>;
   bMat: ReturnType<typeof toItems>;
   p: { n: number; area: number };
@@ -202,8 +203,9 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         L.url, L.fields.progress, [count('OBJECTID', 'n'), sum(L.fields.area, 'a')],
         `${L.fields.status}='Үлдсэн нэгж талбар'`, area,
       ),
+      // ⚠️ area_m2 талбар test_data [96]-д устсан тул талбайн нийлбэр асуухгүй
       queryStats(B.url, [
-        count(B.oid, 'n'), sum(B.fields.area, 'area'), sum(B.fields.value, 'val'),
+        count(B.oid, 'n'), sum(B.fields.value, 'val'),
         avg(B.fields.floors, 'fl'), avg(B.fields.unitPrice, 'up'),
       ], '1=1', area),
       queryGroup(B.url, B.fields.type, [count(B.oid, 'n')], '1=1', area),
@@ -289,7 +291,7 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       statusAreaBy,
       reasons,
       b: {
-        n: Number(bStat.n ?? 0), area: Number(bStat.area ?? 0),
+        n: Number(bStat.n ?? 0),
         value: Number(bStat.val ?? 0), floors: Number(bStat.fl ?? 0),
         unitPrice: Number(bStat.up ?? 0),
       },
@@ -486,8 +488,9 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           <div className={g.panelBody}>
             {guard(!!d && d.b.n > 0, d && (
               <>
+                {/* «Талбай» stat 2026-08-13-нд хасагдав — area_m2 талбар test_data-д алга */}
                 <Stats cols={2}>
-                  <Stat value={ha(d.b.area)} unit="га" label="Талбай" />
+                  <Stat value={num(d.b.n)} unit="барилга" label="Тоо" />
                   <Stat value={money(d.b.value).v} unit={money(d.b.value).unit} label="Нийт үнэлгээ" />
                   <Stat value={d.b.floors ? num(d.b.floors, 1) : '—'} unit="давхар" label="Дундаж өндөр" />
                   <Stat value={d.b.unitPrice ? money(d.b.unitPrice).v : '—'} unit={d.b.unitPrice ? `${money(d.b.unitPrice).unit}/м²` : ''} label="Дундаж м² үнэ" />

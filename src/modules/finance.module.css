@@ -26,6 +26,68 @@
 .pageHd h2 { font-size: 1rem; font-weight: 700; color: var(--ink); }
 .pageHd p { margin-top: 3px; font-size: 0.72rem; color: var(--ink-3); line-height: 1.45; }
 
+/* ── Санхүүжилтийн бүртгэлийн хүснэгт (Cashflow · IPC) ── */
+.reg {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.regHd {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.regHd h2 {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+.regHd span { font-size: 0.7rem; color: var(--ink-3); }
+/* Хүснэгт БҮТЭН харагдана — босоо тасалдалгүй; өргөн бол хэвтээ гүйнэ.
+   Хуудасны гол хүрээ (.frame) гүйнэ; толгол мөр (sticky) түүн дээр наалдана. */
+.tblWrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+.tbl thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: color-mix(in srgb, var(--hue) 12%, var(--surface));
+  color: var(--ink-2);
+  font-weight: 650;
+  text-align: left;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--line);
+}
+.tbl td {
+  padding: 6px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
+  color: var(--ink);
+}
+.tbl tbody tr:hover td { background: color-mix(in srgb, var(--hue) 8%, transparent); }
+.cellNum { text-align: right; font-variant-numeric: tabular-nums; }
+.cellName { max-width: 320px; white-space: normal; line-height: 1.3; }
+.cellMuted { color: var(--ink-3); }
+.tbl tfoot td {
+  position: sticky;
+  bottom: 0;
+  background: color-mix(in srgb, var(--hue) 12%, var(--surface));
+  font-weight: 700;
+  border-top: 2px solid var(--line);
+  color: var(--ink);
+}
+
 /* ── Төрлийн бүлэг ── */
 .group {
   flex: none;

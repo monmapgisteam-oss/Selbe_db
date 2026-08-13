@@ -417,7 +417,8 @@ function pickRows(id: string, a: Record<string, unknown>): [string, string][] {
     ['Блок', text(a[C.blok], '—')],
     ['Төлөв', text(a[C.tuluv], '—')],
     ['Өндөр', `${num(nn(a[C.undur]))} м`],
-    ['Сумны урт', `${num(nn(a[C.sunUrt]))} м`],
+    // ⚠️ test_data: цэг [8] «сумны», бүс [7] хуучин «суны» нэртэй — хоёуланг унших
+    ['Сумны урт', `${num(nn(a[C.sunUrt] ?? a[C.sunUrtBuf]))} м`],
   ];
   if (id === 'habea:buffer') rows.push(['Аюулгүйн радиус', `${num(nn(a['BUFF_DIST']))} м`]);
   return rows;

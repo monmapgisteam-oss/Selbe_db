@@ -1,10 +1,11 @@
 'use client';
 
-import { useMemo, useState, type MouseEvent, type CSSProperties } from 'react';
+import { useState, type MouseEvent, type CSSProperties } from 'react';
 import { Data, Empty } from '@/components/ui';
 import { useAsync } from '@/lib/useAsync';
 import { queryFeatures } from '@/lib/query';
 import { CASHFLOW2, IPC_LOG, TASK_SHEET, bagtsKey } from '@/lib/services';
+import { finFieldLabel } from '@/lib/financeFieldLabels';
 import { mntShort, num, text } from '@/lib/format';
 import f from './finance.module.css';
 
@@ -328,13 +329,51 @@ export async function loadFinData(): Promise<FinData> {
   return { contracts, given, phys };
 }
 
+/**
+ * САНХҮҮЖИЛТИЙН БҮРТГЭЛ — ГРАФИКГҮЙ, зөвхөн ХОЁР ХҮСНЭГТ (хэрэглэгчийн хүсэлт,
+ * 2026-08-14): Cashflow (гэрээ/захирамжийн санхүүжилт /106) ба IPC (олгосон
+ * акт /107). Хуучин комбо графикууд (ComboChart) энэ харагдацаас ХАСАГДСАН —
+ * ComboChart нь «Багцын хяналт» (Tsogts)-д ХЭВЭЭР ашиглагдана.
+ */
+/** Үйлчилгээний талбарын тодорхойлолт — нэр, харагдах alias, төрөл */
+type FieldDef = { name: string; alias: string; type: string };
+type FinTables = {
+  cashflow: Row[]; ipc: Row[];
+  cfFields: FieldDef[]; ipcFields: FieldDef[];
+};
+
+/** Давхаргын талбарын метадата (`?f=json`) — alias нь хүний уншихуйц баганын нэр */
+async function loadFields(url: string): Promise<FieldDef[]> {
+  try {
+    const res = await fetch(`${url}?f=json`);
+    const j = await res.json();
+    return Array.isArray(j?.fields)
+      ? j.fields.map((x: { name: string; alias?: string; type: string }) => ({
+          name: x.name, alias: x.alias || x.name, type: x.type,
+        }))
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+async function loadFinRegister(): Promise<FinTables> {
+  const [cfFields, ipcFields, cashflow, ipc] = await Promise.all([
+    loadFields(CASHFLOW2.url),
+    loadFields(IPC_LOG.url),
+    queryFeatures(CASHFLOW2.url, { outFields: ['*'], orderBy: `${CASHFLOW2.oid} ASC` }),
+    queryFeatures(IPC_LOG.url, { outFields: ['*'] }),
+  ]);
+  return { cashflow, ipc, cfFields, ipcFields };
+}
+
 export function Finance() {
-  const q = useAsync<FinData>(loadFinData, []);
+  const q = useAsync<FinTables>(loadFinRegister, []);
 
   return (
     <div className={f.frame}>
-      <Data q={q} loading="Санхүүжилтийн төлөвлөгөө…">
-        {(d) => <FinanceBody d={d} />}
+      <Data q={q} loading="Санхүүжилтийн бүртгэл…">
+        {(d) => <FinTablesView d={d} />}
       </Data>
     </div>
   );
@@ -383,151 +422,116 @@ export function lagOf(months: MonthPt[]): { month: string; planned: number; actu
 export const lagLevel = (gap: number): 'red' | 'yellow' | null =>
   gap >= 10 ? 'red' : gap >= 5 ? 'yellow' : null;
 
-function FinanceBody({ d }: { d: FinData }) {
-  const C = CASHFLOW2.fields;
+/* ═══════════════════════════════════════════════════════════
+   САНХҮҮЖИЛТ — ХОЁР БҮРЭН ХҮСНЭГТ (Cashflow · IPC), ГРАФИКГҮЙ
+   ⚠️ Багана/мөрийг ҮЙЛЧИЛГЭЭ ЯГ БАЙГААГААР нь харуулна: багана нь давхаргын
+   талбар БҮР (alias-аар нэрлэсэн, эх дараалалд), мөр нь БҮХ мөр (шүүлтгүй).
+   ═══════════════════════════════════════════════════════════ */
 
-  // Сарын хуваарьтай мөрүүдийг ТӨРЛӨӨР нь бүлэглэнэ (эх дарааллаар)
-  const groups = useMemo(() => {
-    const rows = d.contracts
-      .map((r) => ({ r, months: contractMonths(r, d.given, d.phys) }))
-      // ⚠️ m.phys ч бас — санхүүгийн хуваарь нь хоосон ч биет гүйцэтгэлтэй багц
-      //    жагсаалтаас бүрмөсөн алга болохоос сэргийлнэ (phys нь TASK_SHEET-ээс
-      //    тусдаа эх үүсвэртэй).
-      .filter(({ months }) => months.some((m) => m.amount > 0 || m.cumPct > 0 || m.given > 0 || m.phys > 0));
-    const map = new Map<string, typeof rows>();
-    rows.forEach((row) => {
-      const t = text(row.r[C.type]).replace(/\s+/g, ' ').trim();
-      const key = t === '—' || t === '0' ? 'БУСАД' : t;
-      const arr = map.get(key) ?? [];
-      arr.push(row);
-      map.set(key, arr);
-    });
-    return { rows, list: [...map.entries()] };
-  }, [d.contracts, d.given, d.phys, C.type]);
+const NUMERIC_TYPES = new Set([
+  'esriFieldTypeDouble', 'esriFieldTypeInteger', 'esriFieldTypeSingle',
+  'esriFieldTypeSmallInteger', 'esriFieldTypeBigInteger', 'esriFieldTypeOID',
+]);
 
-  // Хоцрогдолтой багцууд — дээд alert зурвас + панел руу үсрэх холбоос
-  const lags = useMemo(() => {
-    const out: { id: string; title: string; gap: number; planned: number; actual: number; month: string }[] = [];
-    groups.list.forEach(([type, rows], gi) => {
-      rows.forEach(({ r, months }, i) => {
-        const lag = lagOf(months);
-        if (!lag || !lagLevel(lag.gap)) return;
-        const t4 = text(r[C.pkg2]);
-        const t3 = text(r[C.pkg]);
-        const title = t4 !== '—' && t4 !== '0' ? t4 : t3 !== '—' && t3 !== '0' ? t3 : type;
-        out.push({ id: `finp-${gi}-${i}`, title: title.replace(/\s+/g, ' '), ...lag });
-      });
-    });
-    return out.sort((a, b) => b.gap - a.gap);
-  }, [groups, C.pkg, C.pkg2]);
+/** Нүдний утгыг талбарын ТӨРЛӨӨР нь форматлана — үйлчилгээ дэх утгыг гажуудуулахгүй */
+function fmtCell(v: unknown, type: string): { text: string; num: boolean } {
+  if (v == null || v === '') return { text: '', num: false };
+  if (type === 'esriFieldTypeDate') {
+    const d = typeof v === 'number' ? new Date(v) : new Date(String(v));
+    return { text: Number.isNaN(d.getTime()) ? String(v) : d.toISOString().slice(0, 10), num: true };
+  }
+  if (NUMERIC_TYPES.has(type)) {
+    const x = Number(v);
+    if (!Number.isFinite(x)) return { text: String(v), num: true };
+    return { text: Number.isInteger(x) ? num(x) : String(x), num: true };
+  }
+  return { text: text(v), num: false };
+}
 
+/** Үйлчилгээний БҮРЭН хүснэгт — талбар бүр багана (alias), мөр бүр яг байгаагаар */
+function FullTable({
+  title, subtitle, rows, fields,
+}: {
+  title: string;
+  subtitle: string;
+  rows: Row[];
+  fields: FieldDef[];
+}) {
+  // Багана нь талбарын метадатагийн дараалалд; ирээгүй бол эхний мөрийн түлхүүрээс.
+  // ⚠️ GlobalID баганыг ХАСНА (хэрэглэгчийн хүсэлт — утгагүй UUID).
+  const isSkip = (name: string, type: string) =>
+    type === 'esriFieldTypeGlobalID' || /globalid/i.test(name);
+  const cols: FieldDef[] = (
+    fields.length
+      ? fields
+      : rows[0]
+        ? Object.keys(rows[0]).map((k) => ({ name: k, alias: k, type: 'esriFieldTypeString' }))
+        : []
+  ).filter((c) => !isSkip(c.name, c.type));
+  return (
+    <section className={f.reg}>
+      <header className={f.regHd}>
+        <h2>{title}</h2>
+        <span>{subtitle}</span>
+      </header>
+      {rows.length === 0 || cols.length === 0 ? (
+        <Empty label="Мөр алга." />
+      ) : (
+        <div className={f.tblWrap}>
+          <table className={f.tbl}>
+            <thead>
+              <tr>
+                {cols.map((c) => (
+                  <th key={c.name} title={c.name}>{finFieldLabel(c.name)}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={i}>
+                  {cols.map((c) => {
+                    const cell = fmtCell(r[c.name], c.type);
+                    return (
+                      <td key={c.name} className={cell.num ? f.cellNum : undefined}>{cell.text}</td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** Санхүүжилт — Cashflow ба IPC-ийн БҮРЭН хүснэгт (график огт байхгүй) */
+function FinTablesView({ d }: { d: FinTables }) {
   return (
     <>
       <header className={f.pageHd}>
         <div>
-          <h2>Санхүүжилтийн төлөвлөгөө — багц тус бүрээр</h2>
+          <h2>Санхүүжилтийн бүртгэл — Cashflow ба IPC</h2>
           <p>
-            {groups.rows.length} гэрээ сарын хуваарьтай ({d.contracts.length}-аас) · 2025-10-аас сар
-            бүр хэдэн хувьд гүйцэтгэж, хэдэн төгрөгний санхүүжилт авах
+            Эх үйлчилгээний бүрэн хүснэгт — багана бүр (талбарын нэр), мөр бүр яг
+            байгаагаар. Огноо ба тоон утгыг талбарын төрлөөр форматлав.
           </p>
-        </div>
-        <div className={f.legend}>
-          <span><i className={f.legendBar} style={{ background: PLAN }} />Төлөвлөсөн санхүүжилт (₮)</span>
-          <span><i className={f.legendBar} style={{ background: ACT }} />Олгосон · IPC акт (₮)</span>
-          <span><i className={f.legendBar} style={{ background: CUM }} />Санхүүжилтийн өссөн хувь (%)</span>
-          <span><i className={f.legendBar} style={{ background: PHYS }} />Биет гүйцэтгэл · Гүйцэтгэл бөглөх (%)</span>
         </div>
       </header>
 
-      {/* ── Хоцрогдлын нэгдсэн alert — хувь голлосон ── */}
-      {lags.length > 0 && (
-        <div className={f.alertStrip} role="alert">
-          <p className={f.alertHd}>
-            ⚠ {lags.length} багц гүйцэтгэлийн хувиар төлөвлөгөөнөөс хоцорч байна
-          </p>
-          <div className={f.alertList}>
-            {lags.map((l) => (
-              <button
-                key={l.id}
-                type="button"
-                className={`${f.alertItem} ${lagLevel(l.gap) === 'red' ? f.alertRed : f.alertYellow}`}
-                title={`${l.month}: төлөвлөсөн ${l.planned.toFixed(1)}% · бодит ${l.actual.toFixed(1)}%`}
-                onClick={() => {
-                  const el = document.getElementById(l.id);
-                  if (!el) return;
-                  // ⚠️ Энэ контейнер дээр smooth scroll (scrollIntoView ч, scrollTo
-                  //    {behavior:'smooth'} ч) огт хөдөлдөггүй нь туршилтаар тогтоогдсон
-                  //    тул гүйдэг өвгийг олж ШУУД байрлуулна — очсон панел нь анивчдаг
-                  //    тул хэрэглэгч хаана буусанаа алдахгүй.
-                  let p = el.parentElement;
-                  while (p && p.scrollHeight <= p.clientHeight + 10) p = p.parentElement;
-                  if (p)
-                    p.scrollTop =
-                      p.scrollTop + el.getBoundingClientRect().top - p.getBoundingClientRect().top - 10;
-                }}
-              >
-                {l.title} <b>−{l.gap.toFixed(1)}%</b>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+      <FullTable
+        title="Cashflow — гэрээ, захирамжийн санхүүжилт (/106)"
+        subtitle={`${num(d.cashflow.length)} мөр · ${d.cfFields.length} багана`}
+        rows={d.cashflow}
+        fields={d.cfFields}
+      />
 
-      {groups.list.map(([type, rows], gi) => (
-        <div key={type} className={f.group}>
-          <header className={f.groupHd}>
-            <h2>{type}</h2>
-            <span>{rows.length}</span>
-          </header>
-          <div className={f.grid}>
-            {rows.map(({ r, months }, i) => {
-              // Толгой: CF004 (дэд багцтай) → CF003 → дугаар; "0" гэсэн утгыг алгасна
-              const t4 = text(r[C.pkg2]);
-              const t3 = text(r[C.pkg]);
-              const title =
-                t4 !== '—' && t4 !== '0' ? t4 : t3 !== '—' && t3 !== '0' ? t3 : `Гэрээ ${i + 1}`;
-              // Олгогдох нийт = өмнө шилжүүлсэн (CF028) + сарын хуваарийн нийлбэр
-              const total = n(r[C.prevAmount]) + months.reduce((a, m) => a + m.amount, 0);
-              const lag = lagOf(months);
-              const lvl = lag ? lagLevel(lag.gap) : null;
-              return (
-              <section
-                key={i}
-                id={`finp-${gi}-${i}`}
-                className={`${f.panel} ${lvl === 'red' ? f.panelLagRed : lvl === 'yellow' ? f.panelLagYellow : ''}`}
-                aria-label={text(r[C.name])}
-              >
-                <header className={f.panelHd}>
-                  <div>
-                    <h3>{title}</h3>
-                    <p>{text(r[C.name])}</p>
-                    <p className={f.subContractor}>{text(r[C.contractor])}</p>
-                  </div>
-                  <div className={f.badges}>
-                    {lag && lvl && (
-                      <span
-                        className={`${f.lagBadge} ${lvl === 'red' ? f.lagRed : f.lagYellow}`}
-                        title={`${lag.month}: төлөвлөсөн ${lag.planned.toFixed(1)}% · бодит ${lag.actual.toFixed(1)}%`}
-                      >
-                        {lvl === 'red' ? 'Хоцрогдол' : 'Анхаарах'} −{lag.gap.toFixed(1)}%
-                      </span>
-                    )}
-                    {total > 0 && (
-                      <div className={f.totBadge}>
-                        <span>Олгогдох нийт санхүүжилт</span>
-                        <b>{num(total)} ₮</b>
-                      </div>
-                    )}
-                  </div>
-                </header>
-                <ComboChart items={months} height={230} lagMonth={lag?.month} lagLvl={lvl} />
-              </section>
-              );
-            })}
-          </div>
-        </div>
-      ))}
-      {groups.rows.length === 0 && <Empty label="Сарын хуваарьтай гэрээ алга." />}
+      <FullTable
+        title="IPC — олгосон акт (/107)"
+        subtitle={`${num(d.ipc.length)} мөр · ${d.ipcFields.length} багана`}
+        rows={d.ipc}
+        fields={d.ipcFields}
+      />
     </>
   );
 }

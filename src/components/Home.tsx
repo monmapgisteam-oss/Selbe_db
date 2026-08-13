@@ -1,17 +1,34 @@
 'use client';
 
 import { useAuth } from './AuthGate';
-import { HEADLINE, OVERALL } from '@/lib/brief';
+import { useAsync } from '@/lib/useAsync';
+import { loadHeadline, loadHousing, loadProjectProgress } from '@/lib/live';
+import { num, pct } from '@/lib/format';
 import s from './home.module.css';
 
-/** Гол үзүүлэлтүүд — албан ёсны илтгэлийн дүн (`brief.ts`) */
-const STATS: { value: string; label: string }[] = [
-  { value: `${HEADLINE.areaHa} га`, label: 'Төслийн талбай' },
-  { value: HEADLINE.population.toLocaleString('en-US'), label: 'Хамрагдах хүн ам' },
-  { value: HEADLINE.households.toLocaleString('en-US'), label: 'Өрхийн орон сууц' },
-  { value: '58.11 га', label: 'Ногоон байгууламж' },
-  { value: `${OVERALL.reported}%`, label: 'Төслийн гүйцэтгэл' },
-];
+/**
+ * Гол үзүүлэлтүүд — БҮГД АМЬД (2026-08-13). Урьд нь илтгэлийн бэхлэгдсэн дүн
+ * (158 га · 44,518 · 8,575 · 58.11 га · 36.35%) ямар ч ◆ тэмдэггүй харагдаж
+ * байсныг үйлчилгээний бодит утгаар сольсон; ачаалж буй үед «…».
+ */
+function useHomeStats(): { value: string; label: string }[] {
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const h = useAsync(loadHeadline, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const hh = useAsync(loadHousing, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const p = useAsync(loadProjectProgress, []);
+  const hd = h.state === 'ready' ? h.data : null;
+  const hs = hh.state === 'ready' ? hh.data : null;
+  const pp = p.state === 'ready' ? p.data : null;
+  return [
+    { value: hd ? `${num(hd.areaHa, 1)} га` : '…', label: 'Төслийн талбай' },
+    { value: hd ? num(hd.population) : '…', label: 'Хамрагдах хүн ам' },
+    { value: hs ? num(hs.ail) : '…', label: 'Өрхийн орон сууц' },
+    { value: hd?.greenHa != null ? `${num(hd.greenHa, 1)} га` : '…', label: 'Ногоон байгууламж' },
+    { value: pp ? pct(pp.actual, 2) : '…', label: 'Төслийн гүйцэтгэл' },
+  ];
+}
 
 /** Нэрнээс товч үсэг (avatar) — эхний хоёр үгийн эхний үсэг */
 function initials(name: string): string {
@@ -29,6 +46,7 @@ function initials(name: string): string {
  */
 export function Home({ onEnterAll }: { onEnterAll: () => void }) {
   const { status, user, signOut } = useAuth();
+  const stats = useHomeStats();
 
   return (
     <div className={s.home}>
@@ -94,7 +112,7 @@ export function Home({ onEnterAll }: { onEnterAll: () => void }) {
         </p>
 
         <dl className={s.stats}>
-          {STATS.map((st) => (
+          {stats.map((st) => (
             <div key={st.label} className={s.stat}>
               <dt className={s.statValue}>{st.value}</dt>
               <dd className={s.statLabel}>{st.label}</dd>
