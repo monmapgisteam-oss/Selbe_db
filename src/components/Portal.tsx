@@ -15,11 +15,13 @@ import { Tsogts } from '@/modules/Tsogts';
 import { Gazar } from '@/modules/Gazar';
 import { Finance } from '@/modules/Finance';
 import { Habea } from '@/modules/Habea';
+import { Irged } from '@/modules/Irged';
 import { Sheet } from '@/modules/sheet/Sheet';
 import { Tailan } from '@/modules/Tailan';
 import { Icon } from '@/components/Icon';
 import { DocViewer } from '@/components/DocViewer';
 import { UserAdmin } from '@/components/UserAdmin';
+import { AgentButton, AgentChat } from '@/components/AgentChat';
 import { useTheme } from '@/lib/theme';
 import { useAsync } from '@/lib/useAsync';
 import { FilterProvider, useFilter } from '@/lib/filter';
@@ -291,6 +293,12 @@ function PortalContent(
   const [docsOpen, setDocsOpen] = useState(false);
   /** Хэрэглэгчийн эрх удирдлагын modal (зөвхөн super admin) */
   const [adminOpen, setAdminOpen] = useState(false);
+  /**
+   * AI туслахын цонх нээлттэй эсэх.
+   * ⚠️ Агент нь `navScope`-оор хязгаарлагдана — тэр нь хэрэглэгчийн үзэж болох
+   * харагдацууд. Тиймээс эрхгүй хэсгийн давхаргыг агент ч харахгүй.
+   */
+  const [agentOpen, setAgentOpen] = useState(false);
 
   /**
    * Давхаргын тоо, хэмжээ — каталогийн багана, багцын тойм, давхаргын дашбоард
@@ -444,6 +452,7 @@ function PortalContent(
   const isFinance = view === 'finance';
   const isHabea = view === 'habea';
   const isTsogts = view === 'tsogts';
+  const isIrged = view === 'irged';
   // `standalone` нь эдгээрийг ЯГ тэмдэглэдэг — тусад нь тоолохгүй
   const isFull = standalone;
   /**
@@ -574,7 +583,9 @@ function PortalContent(
                           ? <Finance />
                           : isHabea
                             ? <Habea dim={dim} setDim={setDim} />
-                            : <Suitability dim={dim} setDim={setDim} />}
+                            : isIrged
+                              ? <Irged />
+                              : <Suitability dim={dim} setDim={setDim} />}
           </div>
         )}
 
@@ -720,6 +731,10 @@ function PortalContent(
 
       {/* Хэрэглэгчийн эрх удирдлага — зөвхөн super admin нээж чадна */}
       {isSuper && <UserAdmin open={adminOpen} onClose={() => setAdminOpen(false)} />}
+
+      {/* AI туслах — бүх харагдацад нэг л удаа (яриа харагдац соливол тасрахгүй) */}
+      <AgentButton open={agentOpen} onToggle={() => setAgentOpen(true)} />
+      <AgentChat open={agentOpen} onClose={() => setAgentOpen(false)} scope={navScope} />
     </>
   );
 }
