@@ -30,10 +30,36 @@ const isSep = (l) => /^\s*\|[\s:|-]+\|\s*$/.test(l);
  */
 const isSource = (l) => /^\s*(эх сурвалж|source)\s*:/i.test(l);
 
+/**
+ * ⚠️ ГРАФИКИЙН БЛОКИЙГ БҮРЭН ХАСНА. Портал ```chart блокийг диаграм болгож
+ * зурдаг (`AgentChart.tsx`) ч Telegram-д зураг зурах боломжгүй — хасахгүй бол
+ * хэрэглэгч түүхий JSON хараад ойлгохгүй.
+ *
+ * ⚠️ Графикийн ДАРААХ ТАЙЛБАР ӨГҮҮЛБЭР нь энгийн текст тул ХЭВЭЭР үлдэнэ —
+ * агент график бүрийг тайлбарлах үүрэгтэй тул Telegram хэрэглэгч утгыг нь
+ * үгээр бүрэн авна.
+ *
+ * ⚠️ Хаалтын хашлага ирээгүй ч (хариулт таслагдсан) үлдсэн мөрийг бүгдийг
+ * залгинэ — түүхий JSON гарахаас сэргийлэх нь чухал.
+ */
+function stripCharts(lines) {
+  const out = [];
+  let inChart = false;
+  for (const l of lines) {
+    if (!inChart && /^\s*```\s*chart\s*$/i.test(l)) { inChart = true; continue; }
+    if (inChart) {
+      if (/^\s*```\s*$/.test(l)) inChart = false;
+      continue;
+    }
+    out.push(l);
+  }
+  return out;
+}
+
 export function toHtml(md) {
-  const lines = String(md)
-    .split('\n')
-    .filter((l) => !isSource(l));
+  const lines = stripCharts(
+    String(md).split('\n').filter((l) => !isSource(l)),
+  );
   const out = [];
   let i = 0;
 
