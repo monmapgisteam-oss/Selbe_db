@@ -30,10 +30,49 @@ const isSep = (l) => /^\s*\|[\s:|-]+\|\s*$/.test(l);
  */
 const isSource = (l) => /^\s*(эх сурвалж|source)\s*:/i.test(l);
 
+/**
+ * ⚠️ ГРАФИКИЙН БЛОКИЙГ БҮРЭН ХАСНА. Портал ```chart блокийг диаграм болгож
+ * зурдаг (`AgentChart.tsx`) ч Telegram-д зураг зурах боломжгүй — хасахгүй бол
+ * хэрэглэгч түүхий JSON хараад ойлгохгүй.
+ *
+ * ⚠️ ГЭХДЭЭ БЛОК ДОТОРХ `note`-ЫГ АВЧ ҮЛДЭНЭ. Агентын дүгнэлт («Багц 2
+ * тэргүүлж…») тэр талбарт ордог тул блокийг бүхэлд нь хаявал Telegram
+ * хэрэглэгч зөвхөн хүснэгт хараад, ШИНЖИЛГЭЭГ нь бүрэн алдана.
+ *
+ * ⚠️ Хаалтын хашлага ирээгүй ч (хариулт таслагдсан) үлдсэн мөрийг бүгдийг
+ * залгина — түүхий JSON гарахаас сэргийлэх нь чухал.
+ */
+function stripCharts(lines) {
+  const out = [];
+  let buf = null; // null = блокоос гадна
+
+  const flush = () => {
+    if (!buf) return;
+    // Задлан шинжлэх нь бүтэхгүй бол ЧИМЭЭГҮЙ орхино — түүхий JSON гаргахгүй
+    try {
+      const note = JSON.parse(buf.join('\n'))?.note;
+      if (note && String(note).trim()) out.push(String(note).trim());
+    } catch { /* эвдэрсэн JSON — тайлбар алга */ }
+    buf = null;
+  };
+
+  for (const l of lines) {
+    if (!buf && /^\s*```\s*chart\s*$/i.test(l)) { buf = []; continue; }
+    if (buf) {
+      if (/^\s*```\s*$/.test(l)) flush();
+      else buf.push(l);
+      continue;
+    }
+    out.push(l);
+  }
+  flush(); // хаалтгүй блок — дотроос нь тайлбар гарвал авна
+  return out;
+}
+
 export function toHtml(md) {
-  const lines = String(md)
-    .split('\n')
-    .filter((l) => !isSource(l));
+  const lines = stripCharts(
+    String(md).split('\n').filter((l) => !isSource(l)),
+  );
   const out = [];
   let i = 0;
 
