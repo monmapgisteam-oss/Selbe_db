@@ -66,7 +66,7 @@ import s from './map.module.css';
  * ачаалахад л байна.
  */
 export type Dim = '2d' | '3d' | 'bim';
-export type AnyView = MapView | SceneView;
+type AnyView = MapView | SceneView;
 const is3D = (d: Dim) => d === '3d' || d === 'bim';
 
 /* ─────────────────── Map контекст ─────────────────── */
@@ -1132,8 +1132,6 @@ export const MapCanvas = memo(function MapCanvas({
   drawToken = 0,
   clearToken = 0,
   scene,
-  mapId,
-  onView,
   children,
 }: {
   dim: Dim;
@@ -1175,19 +1173,6 @@ export const MapCanvas = memo(function MapCanvas({
    * меш үлдэж, хоёр багц давхцан z-fight үүснэ.
    */
   scene?: readonly { key: string; title: string; url: string }[];
-  /**
-   * Map-ын КЭШИЙН ТҮЛХҮҮР. Заагаагүй бол `uniform ? 'uniform' : 'themed'`.
-   *
-   * ⚠️ Хоёр MapCanvas-ыг ЗЭРЭГ ажиллуулахад ЗААВАЛ өөр түлхүүр өгнө. Нэг Map-ыг
-   * хуваалцвал `dim`-ээс хамаарсан эффектүүд бие биенийхээ давхаргыг тасралтгүй
-   * нэмж/хасна: 2D тал мешийг устгах агшинд 3D тал дахин нэмнэ гэх мэт.
-   */
-  mapId?: string;
-  /**
-   * View үүсэх/устахад дуудагдана (гадна камерын синк хийхэд).
-   * ⚠️ Тогтвортой (`useCallback`) функц дамжуулна.
-   */
-  onView?: (view: AnyView | null) => void;
   children?: ReactNode;
 }) {
   const el = useRef<HTMLDivElement>(null);
@@ -1302,9 +1287,6 @@ export const MapCanvas = memo(function MapCanvas({
   const registerRef = useRef(register);
   registerRef.current = register;
 
-  /** Гадаад view-callback — closure биш ref-ээр (эффект дахин ажиллуулахгүй) */
-  const onViewRef = useRef(onView);
-  onViewRef.current = onView;
 
 
   /** 3D-д тодруулга `definitionExpression`-оор явна (featureEffect тэнд ажиллахгүй) */
@@ -1331,6 +1313,7 @@ export const MapCanvas = memo(function MapCanvas({
   const sceneList = scene ?? SCENE.layers;
   const sceneKey = sceneList.map((m) => m.key).join(',');
 
+
   /**
    * Map-ыг НЭГ УДАА үүсгэнэ; view нь 2D/3D солигдох бүрд дахин үүснэ.
    * ⚠️ Map-ыг дахин үүсгэвэл давхаргууд шинээр ачаалагдаж, сонголт алдагдана.
@@ -1340,7 +1323,7 @@ export const MapCanvas = memo(function MapCanvas({
     //    renderer-ээ синхроноор уншдаг тул эрт барьвал fallback style-тай үлдэнэ.
     if (!el.current || !stylesReady) return;
 
-    const mapKey = mapId ?? (uniform ? 'uniform' : 'themed');
+    const mapKey = uniform ? 'uniform' : 'themed';
     if (!mapCache[mapKey] || mapCache[mapKey].destroyed) {
       esriConfig.assetsPath = 'https://js.arcgis.com/4.34/@arcgis/core/assets';
       mapCache[mapKey] = new Map({
@@ -1460,7 +1443,6 @@ export const MapCanvas = memo(function MapCanvas({
       if (view.destroyed) return;
       setReady(true);
       registerRef.current(view);
-      onViewRef.current?.(view);
       /**
        * Эхлэх хүрээг БҮСИЙН давхаргаар — төслийн жинхэнэ хамрах хүрээ.
        *
@@ -1602,11 +1584,9 @@ export const MapCanvas = memo(function MapCanvas({
       view.destroy();
       viewRef.current = null;
       registerRef.current(null);
-      onViewRef.current?.(null);
     };
     // `initToken` — «Дахин оролдох» дарахад view-г дахин үүсгэнэ
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dim, stylesReady, initToken, mapId]);
+  }, [dim, stylesReady, initToken]);
 
   /**
    * Компонент салахад Map-ыг УСТГАХГҮЙ — `mapCache`-д үлдэж дараагийн харагдацад
@@ -1784,8 +1764,8 @@ export const MapCanvas = memo(function MapCanvas({
    * масштабын зогсолтууд хариуцна. Тиймээс энд ажиллах явцад юу ч бодогдохгүй,
    * зөвхөн НЭГ УДААГИЙН оноолт.
    *
-   * ⚠️ ЗӨВХӨН 2D: SceneView кластер дэмжихгүй. 3D тал өөрийн Map-тай (`mapId`)
-   * тул энд тавьсан утга тийш дамжихгүй.
+   * ⚠️ ЗӨВХӨН 2D: SceneView кластер дэмжихгүй. Горим солигдоход энэ эффект
+   * дахин ажиллаж (`dim` хамаарал) кластерыг цэвэрлэнэ.
    *
    * ⚠️ Cleanup-д ЗААВАЛ цэвэрлэнэ: Map кэшлэгддэг тул кластер нь өөр харагдацад
    * үлдэж болзошгүй.

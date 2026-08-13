@@ -658,7 +658,7 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
       />
 
       <main className={o.center}>
-        <HeadKpi d={d} />
+        <HeadKpi bagts={d.bagts} />
 
         <div className={o.hero}>
           {/* ⚠️ zone={null} байсныг заслав (2026-08-10) — бүсийн шүүлт дашбоардын
@@ -944,8 +944,16 @@ function SideRail({ d, suit, open, toggle, clear, ref }: {
 
 /* ══════════════════ Толгойн үзүүлэлт ══════════════════ */
 
-function HeadKpi({ d }: { d: DashData }) {
-  const b = d.bagts.state === 'ready' ? d.bagts.data : null;
+/**
+ * ⚠️ EXPORT — «Иргэдэд хүрэх үр өгөөж» (`Irged.tsx`) энэ мөрийг ДАХИН
+ * АШИГЛАНА. Хуулбарлавал таван үзүүлэлт хоёр цонхонд салангид амьдарна.
+ *
+ * ⚠️ Prop нь `DashData` БҮХЭЛДЭЭ БИШ, зөвхөн `bagts`: бусад талбар нь энд
+ * хэрэггүй бөгөөд шаардвал дуудагч тал дашбоардын БҮХ өгөгдлийг татах
+ * үүрэгтэй болно (эх үүсвэр, санхүү, үнэлгээ гэх мэт — 10 гаруй хүсэлт).
+ */
+export function HeadKpi({ bagts }: { bagts: Async<BagtsRow[]> }) {
+  const b = bagts.state === 'ready' ? bagts.data : null;
   const blocks = b ? b.reduce((a, x) => a + x.blocks, 0) : null;
   const ail = b ? b.reduce((a, x) => a + x.ail, 0) : null;
 
@@ -1551,7 +1559,13 @@ const SOC_MATCH: Record<string, string[]> = {
   'Өрхийн эмнэлэг, хороо, цагдаа': ['төрийн үйлчилгээ'],
 };
 
-function BenefitDetail({ bagts, flt, onFlt }: { bagts: Async<BagtsRow[]> } & FltProps) {
+/**
+ * ⚠️ EXPORT — «Иргэдэд хүрэх үр өгөөж» (`Irged.tsx`) ЭНЭ ХЭСГИЙГ ДАХИН
+ * АШИГЛАНА. Хуулбарлавал үзүүлэлт, чарт хоёр цонхонд салангид амьдарч,
+ * `brief.ts` шинэчлэхэд нэг нь хоцордог. Cross-filter хэрэггүй бол
+ * `flt={null} onFlt={() => {}}` дамжуулна.
+ */
+export function BenefitDetail({ bagts, flt, onFlt }: { bagts: Async<BagtsRow[]> } & FltProps) {
   const ail = bagts.state === 'ready' ? bagts.data.reduce((a, x) => a + x.ail, 0) : null;
   const sel = flt?.sec === 'benefit' ? flt.key : null;
   /** Ангилал дарахад — зурагт тэр төрлийн барилгын давхаргууд л үлдэнэ */
