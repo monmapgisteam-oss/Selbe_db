@@ -505,8 +505,15 @@ function FinCard({ p, finQ }: { p: Pack | null; finQ: Async<FinData> }) {
       if (m.phys > 0) actualPct = m.phys;
     }
   }
+  // Санхүүжилтийн зөрүү — төлөвлөсөн − олгосон (₮). Эерэг = олгоогүй үлдэгдэл.
+  const finGap = total - givenTotal;
   // IPC-ийн санхүүжилтийн гүйцэтгэл — олгосон ÷ төлөвлөсөн (%)
   const givenShare = total > 0 ? (givenTotal / total) * 100 : null;
+  // Гүйцэтгэлийн зөрүү — төлөвлөгөөт − бодит (%). Эерэг = хоцрогдол.
+  const progGap = plannedPct != null && actualPct != null ? plannedPct - actualPct : null;
+  const gapLvl = progGap == null ? null : lagLevel(progGap);
+  const gapColor = gapLvl === 'red' ? '#e11d48' : gapLvl === 'yellow' ? '#f59e0b' : '#22c55e';
+  const gapText = progGap == null ? '—' : `${progGap >= 0 ? '−' : '+'}${Math.abs(progGap).toFixed(1)}%`;
 
   // ГАРЧИГ — нэр + (хоцрогдол бол) нэрний ХАЖУУД alert badge
   const title = (
@@ -557,8 +564,10 @@ function FinCard({ p, finQ }: { p: Pack | null; finQ: Async<FinData> }) {
                 l: 'IPC олгосон',
                 c: '#22c55e',
               },
+              { v: mntShort(finGap), l: 'Санхүүжилтийн зөрүү', c: '#f59e0b' },
               { v: plannedPct == null ? '—' : pct(plannedPct, 1), l: 'Төлөвлөгөөт гүйцэтгэл', c: '#0891b2' },
               { v: actualPct == null ? '—' : pct(actualPct, 1), l: 'Бодит гүйцэтгэл', c: '#a855f7' },
+              { v: gapText, l: 'Гүйцэтгэлийн зөрүү', c: gapColor },
             ].map((k) => (
               <div key={k.l}>
                 <span className={`${ts.finKpiVal} num`} style={{ color: k.c }}>{k.v}</span>
