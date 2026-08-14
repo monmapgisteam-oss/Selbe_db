@@ -6,7 +6,7 @@ import {
   type Indicator, type ParkingOpt, type ParkingSource, type CategoryKey,
   type GreenOpt, type GreenSource,
 } from '@/lib/analysis/config';
-import { scoreColor, clamp } from '@/lib/analysis/score';
+import { scoreColor, clamp, passesNorm } from '@/lib/analysis/score';
 import { Donut } from '@/components/ui';
 import { shade } from '@/lib/format';
 import { nf, normLine } from './format';
@@ -164,9 +164,12 @@ export function IndicatorPicker({
                 const p = r.parts[i.id];
                 if (!p || p.value == null) continue;
                 total++;
-                // ⚠️ «Норм хангасан» гэдэг нь ЯГ 100 оноо — хөвөгч тооны
-                //    нарийвчлалыг бодож 99.9-ээр шалгана
-                if ((p.score ?? 0) >= 99.9) pass++;
+                // ⚠️ «Норм хангасан» нь ТҮҮХИЙ утгын шинж — жингээс ХАМААРАХГҮЙ.
+                //    Өмнө нь жин-гатласан `p.score`-оор шалгаж байсан тул жинг 0
+                //    болгоход бүх бүс худал «унаж» 0/total болдог байв. Норм
+                //    шалгалтыг түүхий утга + хадгалсан нормоор хийнэ (Suitability
+                //    hover, SuitDetail-тэй ижил канон).
+                if (passesNorm(p.value, p.norm)) pass++;
               }
               const pct = total ? (pass / total) * 100 : 0;
               return (

@@ -47,6 +47,27 @@ const MAX_BODY = 2 * 1024 * 1024;
 const TOKEN_TTL = 5 * 60 * 1000;
 const verified = new Map();
 
+/**
+ * ⚠️ БУЛААЛТААС ХАМГААЛАХ — нэг дуудагчийн (баталгаажсан ArcGIS хэрэглэгч, эс
+ * бөгөөс эх) минут доторх хүсэлтийг хязгаарлана. Түлхүүр барих реле рүү хязгааргүй
+ * дуудалт хийхээс сэргийлнэ.
+ *
+ * ⚠️ Worker-ийн isolate богино настай тул энэ нь ЗӨВХӨН ойрын хүсэлтэд үйлчилнэ
+ * (isolate солигдоход тоолол тэглэгдэнэ) — нэг дуудагчийн хурц үерийг барих
+ * хамгаалалт. Бат бэх, тархсан хязгаарлалт хэрэгтэй бол Cloudflare KV эсвэл
+ * Durable Object-оор тоолуур хийнэ.
+ */
+const RATE_LIMIT = 40;
+const RATE_WINDOW = 60 * 1000;
+const hits = new Map();
+function rateLimited(key) {
+  const now = Date.now();
+  const arr = (hits.get(key) || []).filter((t) => now - t < RATE_WINDOW);
+  arr.push(now);
+  hits.set(key, arr);
+  return arr.length > RATE_LIMIT;
+}
+
 const json = (code, body, headers = {}) =>
   new Response(JSON.stringify(body), {
     status: code,
@@ -143,9 +164,16 @@ export default {
      * ⚠️ ArcGIS НЭВТРЭЛТ. `ARCGIS_ORG_ID` тохируулсан үед л шаардана — ингэснээр
      * локал хөгжүүлэлт (`server.mjs`, тохиргоогүй) хэвээр ажиллана.
      */
+    let caller = origin || 'anon';
     if (env.ARCGIS_ORG_ID) {
       const auth = await checkArcGIS(request.headers.get('x-arcgis-token'), env);
       if (!auth.ok) return json(401, { error: auth.reason, retryable: false }, cors);
+      caller = auth.username;
+    }
+
+    // ⚠️ Дуудагч тус бүрд хурдны хязгаар — түлхүүр барих реле рүү үер хийхээс сэргийлнэ
+    if (rateLimited(caller)) {
+      return json(429, { error: 'Хэт олон хүсэлт — түр хүлээгээд дахин оролдоно уу.', retryable: true }, cors);
     }
 
     if (!env.ANTHROPIC_API_KEY) {
@@ -155,6 +183,13 @@ export default {
       }, cors);
     }
 
+    // ⚠️ Биеийг бүтэн уншихаас ӨМНӨ зарласан хэмжээгээр (content-length, БАЙТ)
+    //    таслана — эс бөгөөс том ачаалал бүхэлдээ санах ойд буусны ДАРАА л
+    //    шалгагдана. (raw.length нь UTF-16 нэгж тул байтын хязгаартай яг таарахгүй.)
+    const declared = Number(request.headers.get('content-length'));
+    if (Number.isFinite(declared) && declared > MAX_BODY) {
+      return json(413, { error: 'Хүсэлтийн бие хэт том' }, cors);
+    }
     const raw = await request.text();
     if (raw.length > MAX_BODY) return json(413, { error: 'Хүсэлтийн бие хэт том' }, cors);
 

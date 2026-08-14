@@ -1060,6 +1060,7 @@ function ScheduleDetail({ project }: { project: Async<ProjectProgress> }) {
   return (
     <Panel title="Үндсэн үе шат">
       <Bars
+        max={100}
         items={SCHEDULE.map((st) => {
           const v = liveStage(p, st.stages);
           return {
@@ -1128,6 +1129,7 @@ function BagtsDetail({ q, flt, onFlt }: { q: Async<BagtsRow[]> } & FltProps) {
             <Panel title="Багц бүрийн явц">
               <Bars
                 inline
+                max={100}
                 selected={sel}
                 onSelect={pick}
                 items={rows.map((r) => ({
@@ -1618,9 +1620,9 @@ function SuitDetail({ suit, prog, zone, setZone }: {
       <Panel title="Бүсийн эрэмбэ">
         <div className={o.rankGroup}>
           <div className={o.rankLabel}>Хамгийн сайн</div>
-          {scored.slice(0, 5).map((r, i) => <RankRow key={r.id} r={r} n={i + 1} zone={zone} setZone={setZone} />)}
+          {scored.slice(0, 5).map((r, i) => <RankRow key={`top-${r.id}`} r={r} n={i + 1} zone={zone} setZone={setZone} />)}
           <div className={o.rankLabel}>Хамгийн муу</div>
-          {scored.slice(-5).reverse().map((r, i) => <RankRow key={r.id} r={r} n={scored.length - i} zone={zone} setZone={setZone} />)}
+          {scored.slice(-5).reverse().map((r, i) => <RankRow key={`bot-${r.id}`} r={r} n={scored.length - i} zone={zone} setZone={setZone} />)}
         </div>
       </Panel>
     </>

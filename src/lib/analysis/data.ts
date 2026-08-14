@@ -678,7 +678,11 @@ export function computeEconomics(
     const buildCost = z.gfaSaleM2 * buildCostPerM2;
     const cost = infraCost + buildCost;
     const revenue = pricePerM2 == null ? z.salesValue : z.gfaSaleM2 * pricePerM2;
-    const revenueRes = pricePerM2 == null ? z.salesValueRes : 0;
+    // ⚠️ Орон сууцны орлогыг гараар үнэ өөрчлөхөд 0 болгож ХАЯХГҮЙ — `salesValueRes`
+    //    нь орон сууцны зарагдах талбай × SALE_PRICE_PER_M2 тул шинэ үнэд
+    //    ХАРЬЦАНГУЙ бодно (эс бөгөөс «үүнээс орон сууц» задаргаа гэнэт 0 гарна).
+    const revenueRes =
+      pricePerM2 == null ? z.salesValueRes : (z.salesValueRes / SALE_PRICE_PER_M2) * pricePerM2;
     const profit = revenue - cost;
     z.econ = {
       infraCost, buildCost, cost, revenue, revenueRes, profit,

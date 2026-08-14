@@ -602,7 +602,10 @@ export default function Pivot() {
   // Open a cell for editing, prefilled with its effective value.
   const openCell = (ri: number, b: string) => {
     const r = rows[ri];
-    if (!r) return setEdit(null);
+    // ⚠️ Толгой/нийлбэр мөрийг ЗАСВАРЛАХГҮЙ: хулганаар боломжгүй ч гар удирдлагаар
+    //    (сонголт толгой руу шилжээд Enter) нээгдэж, нийтлэхэд толгойн tmpl-ээс
+    //    ХУУРМАГ шинэ обьект үүсдэг байв.
+    if (!r || isHeaderRow(r)) return setEdit(null);
     const key = `${ri}:${b}`;
     setVal(key in pending ? pending[key] : origStr(r, b));
     setEdit({ ri, bld: b });
@@ -921,6 +924,11 @@ export default function Pivot() {
       // эффектээр явагддаг тул алдаа өмнө нь тэнд бүрэн хаягдаж байв — одоо
       // reload дууссаны ДАРАА хоёр салбарт хоёуланд нь харагдана.
       attachErrsRef.current = attachErrs;
+      // Нийтлэл амжилттай — нийтэлсэн зүсмэгийн ганц draft слотыг цэвэрлэнэ. Огноо
+      // шинэ болж шилжвэл persist эффект хуучин зүсмэгийн draft-ыг цэвэрлэдэггүй тул
+      // энд тодорхой устгана (эс бөгөөс хуучин огноог үзэхэд аль хэдийн нийтэлсэн
+      // нүднүүдийг «сэргээх үү?» гэж худал асуудаг байв).
+      clearDraftLS();
       // Show today (= current merged state). If already viewing today, reload
       // in place; otherwise switch date and let the effect reload as-of today.
       setOgnooList((l) => (l.includes(today) ? l : [...l, today].sort()));

@@ -275,7 +275,10 @@ export function EconTune({
             type="range" min={0} max={Math.max(40, Math.ceil((costs.perHa / 1e9) * 1.5))} step={0.5}
             value={perHa / 1e9}
             aria-label="1 га-д зарцуулах төсөв"
-            onChange={(e) => setEconOpt({ pricePerM2: price, perHa: Number(e.target.value) * 1e9 })}
+            // ⚠️ Зөвхөн төсвийн гулсуур хөдлөхөд үнийн null төлөвийг ХАДГАЛНА —
+            //    `price` (=basePrice) бичвэл орон сууцны орлого/«өөрчилсөн» тэмдэг
+            //    ямар ч үнэ хөндөөгүй атал буруу асна.
+            onChange={(e) => setEconOpt({ pricePerM2: econOpt.pricePerM2, perHa: Number(e.target.value) * 1e9 })}
           />
         </div>
 

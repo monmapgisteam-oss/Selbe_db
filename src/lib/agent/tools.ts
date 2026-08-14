@@ -225,10 +225,17 @@ async function runQuery(input: QueryIn, scope: AgentScope): Promise<ToolOutcome>
   //    query» гэсэн ерөнхий алдаа буцаадаг тул агент юу буруу болсныг ойлгохгүй,
   //    ижил алдааг дахин дахин давтдаг. Энд яг аль нэр буруугий нь хэлж өгнө.
   const known = new Set((await fieldsOf(url)).map((f) => f.name));
+  // orderBy бас шалгах талбар — «талбар [ASC|DESC], …» тул талбарын нэрсийг л салгана.
+  // (Өмнө нь шалгагдахгүй тул хуурмаг нэр ArcGIS-ийн ерөнхий алдаа руу шууд оруулдаг байв.)
+  const orderFields = (input.orderBy ?? '')
+    .split(',')
+    .map((t) => t.trim().split(/\s+/)[0])
+    .filter(Boolean);
   const used = [
     ...(input.stats?.map((s) => s.field) ?? []),
     ...(input.groupBy ? [input.groupBy] : []),
     ...(input.outFields ?? []),
+    ...orderFields,
   ];
   const bad = used.filter((f) => f && f !== '*' && !known.has(f));
   if (bad.length) {

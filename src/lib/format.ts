@@ -29,15 +29,12 @@ export function mnt(v: number | null | undefined): string {
   return `${num(v)} ₮`;
 }
 
-/** Богино төгрөг — хүснэгтэд: 448.7 тэрбум ₮ (нэгжээ ҮРГЭЛЖ дагуулна) */
-export function mntShort(v: number | null | undefined): string {
-  if (v == null || !Number.isFinite(v) || v === 0) return '—';
-  const a = Math.abs(v);
-  if (a >= 1e12) return `${num(v / 1e12, 2)} их наяд ₮`;
-  if (a >= 1e9) return `${num(v / 1e9, 1)} тэрбум ₮`;
-  if (a >= 1e6) return `${num(v / 1e6, 1)} сая ₮`;
-  return `${num(v)} ₮`;
-}
+/**
+ * Богино төгрөг — хүснэгтэд: 448.7 тэрбум ₮ (нэгжээ ҮРГЭЛЖ дагуулна).
+ * ⚠️ `mnt`-тэй ижил дүрэм тул давхардуулахгүй, alias болгов — нэг эх кодоос
+ *    хоёулаа өөрчлөгдөнө (өмнө нь хоёр биет хуулбар чимээгүй салах эрсдэлтэй байв).
+ */
+export const mntShort = mnt;
 
 /** Огноо: ArcGIS epoch (мс), "2026-07-14" эсвэл DateOnly */
 export function date(v: number | string | null | undefined): string {
