@@ -365,7 +365,7 @@ function useSources(): Async<Row[]> {
 
 /* ── Тохиромжтой байдлын үнэлгээ (бүсийн орон зайн анализ) ── */
 
-type SuitSummary = {
+export type SuitSummary = {
   avgScore: number | null;
   levels: { label: string; color: string; n: number }[];
   noData: number;
@@ -389,7 +389,7 @@ const blendOf = (u: number | null, e: number | null): number | null =>
  * НЭЭГДЭХ хүртэл огт ажиллуулахгүй (`enabled`) — эс бөгөөс дашбоард нээх бүрд
  * хэрэглэгчийн хүсээгүй хэдэн арван хүсэлт явна.
  */
-function useSuitability(enabled: boolean, onProgress?: (m: string, p: number) => void): Async<SuitSummary> {
+export function useSuitability(enabled: boolean, onProgress?: (m: string, p: number) => void): Async<SuitSummary> {
   return useAsync(async () => {
     if (!enabled) return new Promise<SuitSummary>(() => {});
     const [data, costs] = await Promise.all([loadAnalysisCached(onProgress), loadCostsCached()]);
