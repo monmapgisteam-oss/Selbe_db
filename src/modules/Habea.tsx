@@ -582,7 +582,10 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         </Section>
         <Section title="Сүүлийн бүртгэлүүд" note="дарж дэлгэрэнгүй">
           {recent.length ? recent.map((x) => {
-            const id = `${x.d}|${x.type}`;
+            // ⚠️ Давхцахгүй ОБЪЕКТ ИД-ээр таних — өмнө нь `огноо|төрөл` байсан тул
+            //    нэг өдрийн ижил төрлийн 2 бүртгэл мөргөлдөж, нэгийг дарахад хоёул
+            //    задардаг байв (React key давхардал бас).
+            const id = String(x.oid);
             const on = expanded === id;
             return (
               <div key={id} className={h.incident}>

@@ -81,7 +81,7 @@ function toItems(rows: Row[], field: string, valueKey: string, unit = 'ш') {
   }));
 }
 
-type StatusBars = { key: string; label: string; value: number; color: string }[];
+type StatusBars = { key: string; label: string; value: number; color: string; where: string }[];
 type ReasonItems = {
   key: string; label: string; n: number; pct: number; area: number; color: string;
   /** Түүхий утгуудаас урьдчилан бүтээсэн WHERE — дарж зурагт шүүхэд */
@@ -216,16 +216,18 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     ]);
     // ТӨЛӨВ бүрийг ӨГӨГДЛӨӨС нэгтгэнэ (арын зай арилгаж, хоосон/null = «Тодорхойгүй»).
     // Хатуу 3 биш тул нэг ч талбар графикаас гээгдэхгүй — баганууд «Нийт»-тэй тэнцэнэ.
-    const smap = new Map<string, { n: number; a: number }>();
+    const smap = new Map<string, { n: number; a: number; raws: Set<string> }>();
     for (const r of lStatus) {
+      const raw = String(r[L.fields.status] ?? ''); // түүхий утга — WHERE-д яг таарна
       let k = text(r[L.fields.status]).trim();
       if (!k || k === '—') k = 'Тодорхойгүй';
-      const cur = smap.get(k) ?? { n: 0, a: 0 };
+      const cur = smap.get(k) ?? { n: 0, a: 0, raws: new Set<string>() };
       cur.n += Number(r.n ?? 0);
       cur.a += Number(r.a ?? 0);
+      if (raw.trim() !== '') cur.raws.add(raw);
       smap.set(k, cur);
     }
-    const st = (value: string) => smap.get(value) ?? { n: 0, a: 0 };
+    const st = (value: string) => smap.get(value) ?? { n: 0, a: 0, raws: new Set<string>() };
     const cleared = st('Бүрэн чөлөөлсөн');
     const cleaned = st('Цэвэрлэсэн нэгж талбар');
     const remaining = st('Үлдсэн нэгж талбар');
@@ -239,6 +241,14 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       })
       .map(([value, s], i) => {
         const ha2 = Math.round(s.a / 100) / 100;
+        // ⚠️ Дарж шүүхэд WHERE-ийг ТҮҮХИЙ утгуудаас (шалтгааны шүүлттэй ижил) угсарна:
+        //    түлхүүр нь арын зай арилгасан хувилбар тул `Tuluv = '<trim>'` нь зай-мэдрэг
+        //    сан дээр таарахгүй байж болзошгүй. Тодорхойгүй = NULL/хоосон.
+        const eq = [...s.raws].filter((x) => x.trim() !== '')
+          .map((x) => `${L.fields.status} = '${sq(x)}'`);
+        const where = value === 'Тодорхойгүй'
+          ? `(${L.fields.status} IS NULL OR ${L.fields.status} = '')`
+          : eq.length ? `(${eq.join(' OR ')})` : `${L.fields.status} = '${sq(value)}'`;
         // Тоо ба нэгж (га) ХАМТ — «1,703 талбар · 78.08 га»
         return {
           key: value,
@@ -246,6 +256,7 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           value: ha2,
           display: `${num(s.n)} талбар · ${num(ha2, 2)} га`,
           color: STATUS_COLOR[value] ?? (value === 'Тодорхойгүй' ? '#94a3b8' : PALETTE[i % PALETTE.length]),
+          where,
         };
       });
     // Шалтгааны нэрийг цэвэрлэж (арын зай, төгсгөлийн «.») нэгтгэнэ.
@@ -348,13 +359,11 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                 <Bars
                   items={d.statusAreaBy}
                   selected={flt?.grp === 'status' ? flt.key : null}
-                  onSelect={(k) => pickFlt({
-                    grp: 'status', key: k, label: `Төлөв: ${k}`,
-                    where: k === 'Тодорхойгүй'
-                      ? `(${PARCEL_LEFT.fields.status} IS NULL OR ${PARCEL_LEFT.fields.status} = '')`
-                      : `${PARCEL_LEFT.fields.status} = '${sq(k)}'`,
-                    only: ['land:left'],
-                  })}
+                  onSelect={(k) => {
+                    // Шалтгааны шүүлттэй ижил — item-ийн урьдчилан угсарсан (түүхий утгат) WHERE-ийг авна
+                    const it = d.statusAreaBy.find((x) => x.key === k);
+                    if (it) pickFlt({ grp: 'status', key: k, label: `Төлөв: ${k}`, where: it.where, only: ['land:left'] });
+                  }}
                 />
                 {d.reasons.length > 0 && (() => {
                   const selReason = flt?.grp === 'reason' ? flt.key : null;

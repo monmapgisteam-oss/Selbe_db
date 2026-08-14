@@ -1092,9 +1092,24 @@ export function MapProvider({ children }: { children: ReactNode }) {
       if (!e || view.destroyed) return;
       // 150 м-ээс нарийн хүрээг тэлнэ — контекстгүй ойртохоос сэргийлнэ
       const MIN = 150;
-      const box = e.width < MIN || e.height < MIN
-        ? e.clone().expand(Math.max(MIN / Math.max(e.width, 1), MIN / Math.max(e.height, 1)))
-        : e.clone().expand(1.6);
+      let box;
+      if (e.width < MIN || e.height < MIN) {
+        // ⚠️ expand() нь хэмжээг ҮРЖҮҮЛДЭГ тул тэг өргөнтэй хүрээ (нэг цэгэн объект)
+        //    дээр 0×factor = 0 хэвээр үлдэж, зураг хамгийн ойрын масштаб руу үсэрдэг.
+        //    Тиймээс төвөөс ГАРААР угсарна: тал бүрийг дор хаяж MIN болгоно (аль
+        //    хэдийн MIN-ээс том талыг богиносгохгүй).
+        const cx = (e.xmin + e.xmax) / 2;
+        const cy = (e.ymin + e.ymax) / 2;
+        const w = Math.max(e.width, MIN);
+        const h = Math.max(e.height, MIN);
+        box = new Extent({
+          xmin: cx - w / 2, xmax: cx + w / 2,
+          ymin: cy - h / 2, ymax: cy + h / 2,
+          spatialReference: e.spatialReference,
+        });
+      } else {
+        box = e.clone().expand(1.6);
+      }
       view.goTo(box).catch(() => {});
     } catch (err) {
       console.error('[selbe] объектын хүрээг тодорхойлж чадсангүй:', err);

@@ -66,7 +66,12 @@ export type GivenMap = Map<string, Map<string, number>>;
 /** Багц бүрийн биет гүйцэтгэл: сар → % (блокуудын дундаж, тухайн сарын эцсээр) */
 export type PhysMap = Map<string, Map<string, number>>;
 
-export type FinData = { contracts: Row[]; given: GivenMap; phys: PhysMap };
+/**
+ * `physCnt` — багц бүрийн сар тутмын БЛОКИЙН ТОО (phys дундаж хэдэн блокоос гарсан).
+ * Төслийн нэгтгэсэн биет гүйцэтгэлийг багцуудаар блок-жигнэхэд (давхар дунджийг
+ * зайлсхийхэд) ашиглана — `phys`-ийн утгыг ХӨНДӨХГҮЙ, зэрэгцээ мэдээлэл.
+ */
+export type FinData = { contracts: Row[]; given: GivenMap; phys: PhysMap; physCnt: PhysMap };
 
 // ═══════════════════════════════════════════════════════════
 //  AREA ГРАФИК (shadcn gradient загвар) — нэг цуваа: сарын авах дүн ₮.
@@ -290,6 +295,7 @@ export async function loadFinData(): Promise<FinData> {
     // Append-лог тул блок бүрийн тухайн сараас өмнөх ХАМГИЙН СҮҮЛИЙН бичилтийг авна.
     const nowYm = new Date().toISOString().slice(0, 7);
     const phys: PhysMap = new Map();
+    const physCnt: PhysMap = new Map(); // багц·сар → блокийн тоо (жин)
     {
       // багц → блок → [огноо, гүйцэтгэл][] (огноогоор эрэмбэлсэн)
       const byPkg = new Map<string, Map<string, { d: string; g: number }[]>>();
@@ -305,6 +311,7 @@ export async function loadFinData(): Promise<FinData> {
       });
       byPkg.forEach((blocks, k) => {
         const byMon = new Map<string, number>();
+        const cntMon = new Map<string, number>();
         CASHFLOW2.months.forEach((m) => {
           if (m.label > nowYm) return; // ирээдүйн сард биет дата байхгүй
           let sum = 0;
@@ -320,13 +327,14 @@ export async function loadFinData(): Promise<FinData> {
               cnt++;
             }
           });
-          if (cnt > 0) byMon.set(m.label, (sum / cnt) * 100);
+          if (cnt > 0) { byMon.set(m.label, (sum / cnt) * 100); cntMon.set(m.label, cnt); }
         });
         phys.set(k, byMon);
+        physCnt.set(k, cntMon);
       });
     }
 
-  return { contracts, given, phys };
+  return { contracts, given, phys, physCnt };
 }
 
 /**
@@ -443,7 +451,10 @@ function fmtCell(v: unknown, type: string): { text: string; num: boolean } {
   if (NUMERIC_TYPES.has(type)) {
     const x = Number(v);
     if (!Number.isFinite(x)) return { text: String(v), num: true };
-    return { text: Number.isInteger(x) ? num(x) : String(x), num: true };
+    // ⚠️ Бутархайг ч `num()`-оор — мянгатын таслал ба модулийн локал хадгална
+    //    (өмнө нь `String(x)` бүлэглэлгүй, экспонент хэлбэрт ордог байв).
+    const dec = Math.min(4, String(x).split('.')[1]?.length ?? 0);
+    return { text: num(x, dec), num: true };
   }
   return { text: text(v), num: false };
 }

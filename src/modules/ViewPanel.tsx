@@ -1147,7 +1147,7 @@ function PickedZone({
       <Stats cols={3}>
         <Stat value={num(n(F.landHa), 2)} unit="га" label="Талбай" accent />
         <Stat value={num(n(F.households))} unit="айл" label="Төлөвлөсөн айл" />
-        <Stat value={num((n(F.builtM2) ?? 0) / 1000, 0)} unit="мянган м²" label="Барилгын талбай" />
+        <Stat value={num(n(F.builtM2) != null ? n(F.builtM2)! / 1000 : null, 0)} unit="мянган м²" label="Барилгын талбай" />
       </Stats>
 
       <div style={{ marginTop: 10 }}>
@@ -1272,7 +1272,10 @@ function PickedFeature({
     const k = `${field}:${value}`;
     const next = active === k ? null : k;
     setActive(next);
-    setHighlight(next ? `${field} = ${sqlStr(String(value))}` : null);
+    // ⚠️ Тодотголыг ТУХАЙН давхаргад л хязгаарлана (2 дахь арг = def.id) — эс бөгөөс
+    //    facet талбар байхгүй бусад давхаргад featureEffect чимээгүй унаж, тэднийг
+    //    буруугаар бүдгэрүүлнэ (бусад бүх дуудлага layerId дамжуулдаг).
+    setHighlight(next ? `${field} = ${sqlStr(String(value))}` : null, def.id);
   };
 
   return (

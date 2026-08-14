@@ -32,8 +32,25 @@ function b64utf8(str: string): string {
 }
 /** MIME мөр — 76 тэмдэгтээр таслана */
 const wrap76 = (b64: string) => b64.replace(/(.{76})/g, '$1\r\n');
-/** Гарчиг дахь кириллийг MIME-encoded-word болгоно */
-const encHeader = (str: string) => `=?UTF-8?B?${b64utf8(str)}?=`;
+/**
+ * Гарчиг дахь кириллийг MIME-encoded-word болгоно.
+ * ⚠️ RFC 2047: encoded-word бүр ≤75 тэмдэгт байх ёстой. Кирилл (2 байт) гарчиг
+ *    нэг encoded-word-т багтахгүй тул мөрийг ТЭМДЭГТЭЭР хэсэглэж (олон байтын
+ *    тэмдэг хагасалдахгүй) тус бүрийг тусдаа base64 болгоод CRLF + зайгаар
+ *    (folding whitespace) залгана. ≤45 байт → base64 ≤60 → encoded-word ≤72 (<75).
+ */
+const encHeader = (str: string): string => {
+  const enc = new TextEncoder();
+  const words: string[] = [];
+  let chunk = '';
+  const flush = () => { if (chunk) { words.push(`=?UTF-8?B?${b64utf8(chunk)}?=`); chunk = ''; } };
+  for (const ch of str) {
+    if (chunk && enc.encode(chunk + ch).length > 45) flush();
+    chunk += ch;
+  }
+  flush();
+  return words.join('\r\n ');
+};
 
 /** pdfmake-ээр PDF үүсгэж base64 буцаана (динамик ачаалалт) */
 async function makePdfBase64(rows: BagtsRow[], dateStr: string, live: ReportLive): Promise<string> {

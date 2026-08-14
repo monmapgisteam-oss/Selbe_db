@@ -236,9 +236,11 @@ export default function FillNew() {
         updates.push({ [sc.f.oid]: rows[0].oid, [sc.f.asOf]: asOf });
       await applyUpdates(pkg, updates);
       // Хадгалагдсан утгыг локал мөрүүдэд буулгаж, «нийтлээгүй» төлвийг арилгана.
+      // (idx нь бүх мөр байж болох тул includes биш Set — O(n²) болгохгүй.)
+      const idxSet = new Set(idx);
       setRows((prev) =>
         prev.map((r, i) => {
-          if (!idx.includes(i)) return r;
+          if (!idxSet.has(i)) return r;
           return { ...r, act: c[i].act.slice() };
         }),
       );

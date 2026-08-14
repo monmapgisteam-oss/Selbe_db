@@ -28,7 +28,7 @@ export class ArcGISError extends Error {
 
 export type Row = Record<string, string | number | null>;
 
-type Body = { features?: { attributes: Row }[]; count?: number; exceededTransferLimit?: boolean; error?: { message?: string } };
+type Body = { features?: { attributes: Row }[]; count?: number; exceededTransferLimit?: boolean; objectIdFieldName?: string; error?: { message?: string } };
 
 /**
  * POST-оор явуулна — where нөхцөл, геометр, outStatistics урт болоход GET-ийн
@@ -190,26 +190,49 @@ export async function queryFeatures(
     returnGeometry: 'false',
     ...spatial(opts.aoi),
   };
-  if (opts.orderBy) params.orderByFields = opts.orderBy;
 
   // ⚠️ ХУУДАСЛАЛТ: сервер maxRecordCount(~2000)-аас олон мөрийг нэг хариунд
   //    өгөхгүй — exceededTransferLimit=true тавиад ТАЙРЧ буцаадаг. Давталтгүй
   //    бол их өгөгдөлтэй давхаргын мөрүүд чимээгүй дутуу ирж, алдаагүй мэт
   //    харагдана. resultOffset-оор үлдсэн хуудсуудыг татаж нэгтгэнэ.
-  const rows: Row[] = [];
-  for (;;) {
-    const page = { ...params };
-    if (rows.length) page.resultOffset = String(rows.length);
-    if (opts.limit) page.resultRecordCount = String(opts.limit - rows.length);
-    const body = await request(url, page);
-    const feats = (body.features ?? []).map((f) => f.attributes);
-    rows.push(...feats);
-    if (!body.exceededTransferLimit) break;
-    if (opts.limit && rows.length >= opts.limit) break;
-    // Хамгаалалт: хоосон хуудас ирвэл мөнхийн давталтаас гарна
-    if (!feats.length) break;
+  //
+  // ⚠️ Эрэмбэгүй resultOffset хуудаслалт ArcGIS-д ТОГТВОРГҮЙ — хуудасны зааг дээр
+  //    мөр давхардах/унах эрсдэлтэй (алдаагүй мэт). Дуудагч orderBy өгөөгүй бол
+  //    давхаргын OID талбараар (хариунаас `objectIdFieldName` олдоно) эрэмбэлж
+  //    тогтворжуулна. OID нэр давхаргаар өөр (OBJECTID/FID/ObjectID) тул хатуу
+  //    нэр бичихгүй — зөвхөн хуудаслах шаардлага гарсан үед л (эхний хуудас
+  //    тайрагдвал) OID-оор эрэмбэлж ЭХНЭЭС нь дахин татна. Нэг хуудасны хариу
+  //    (нийтлэг тохиолдол) огт өөрчлөгдөхгүй.
+  let order = opts.orderBy;
+  const collect = async (): Promise<{ rows: Row[]; oidField?: string; restart: boolean }> => {
+    const rows: Row[] = [];
+    let oidField: string | undefined;
+    for (;;) {
+      const page = { ...params };
+      if (order) page.orderByFields = order;
+      if (rows.length) page.resultOffset = String(rows.length);
+      if (opts.limit) page.resultRecordCount = String(opts.limit - rows.length);
+      const body = await request(url, page);
+      oidField = body.objectIdFieldName ?? oidField;
+      if (!order && rows.length === 0 && body.exceededTransferLimit && oidField) {
+        return { rows: [], oidField, restart: true };
+      }
+      const feats = (body.features ?? []).map((f) => f.attributes);
+      rows.push(...feats);
+      if (!body.exceededTransferLimit) break;
+      if (opts.limit && rows.length >= opts.limit) break;
+      // Хамгаалалт: хоосон хуудас ирвэл мөнхийн давталтаас гарна
+      if (!feats.length) break;
+    }
+    return { rows, restart: false };
+  };
+
+  let res = await collect();
+  if (res.restart && res.oidField) {
+    order = `${res.oidField} ASC`;
+    res = await collect();
   }
-  return rows;
+  return res.rows;
 }
 
 /** Полигоны геометрийг WGS84-д татна — орон зайн шүүлтэд эх болгож ашиглана */
@@ -246,7 +269,7 @@ export async function queryPoints(
   const body = await request(url, params);
   const feats = (body.features ?? []) as unknown as { attributes: Row; geometry?: { x: number; y: number } }[];
   return feats
-    .filter((f) => f.geometry && Number.isFinite(f.geometry.x))
+    .filter((f) => f.geometry && Number.isFinite(f.geometry.x) && Number.isFinite(f.geometry.y))
     .map((f) => ({ attrs: f.attributes, lon: f.geometry!.x, lat: f.geometry!.y }));
 }
 

@@ -1,7 +1,10 @@
 // Shared ArcGIS client. `base` points straight at the public hosted layer
 // (FeatureServer/0). CORS is open and no token is needed.
-export const base =
-  "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/Selbe_guitsetgel_consolidated/FeatureServer/0";
+// ⚠️ URL-ыг services.ts-ийн `TASK_SHEET`-ээс авна — энэ давхаргын ГАНЦ эх сурвалж.
+//    Хатуу бичвэл үйлчилгээ нүүх/нэр солиход энэ модул чимээгүй үхсэн URL руу
+//    хандана (FillNew/Conclusion/Level5 бүгд).
+import { TASK_SHEET } from "@/lib/services";
+export const base = TASK_SHEET.url;
 
 // ArcGIS returns HTTP 200 even on failure, with {error:{message}}. Check it.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

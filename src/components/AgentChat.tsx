@@ -94,6 +94,13 @@ export function AgentChat({
     if (!open) abort.current?.abort();
   }, [open]);
 
+  /**
+   * Компонент бүрмөсөн unmount хийхэд (жиш. брэнд/НҮҮР товч дарж Portal задрахад)
+   * явж буй хүсэлтийг зогсооно — эс бөгөөс fetch + ArcGIS асуулгууд дэмий
+   * үргэлжилнэ.
+   */
+  useEffect(() => () => abort.current?.abort(), []);
+
   const send = useCallback(
     async (raw: string) => {
       const q = raw.trim();
@@ -108,6 +115,12 @@ export function AgentChat({
       const controller = new AbortController();
       abort.current = controller;
 
+      // ask() нь history.current-ыг ЯВЦ ДУНД өөрчилдөг (асуулт, assistant tool_use,
+      // tool_result мөрүүд). Тасалсан/алдаатай эргэлтэд эдгээр дутуу мөрүүд үлдвэл
+      // дараагийн хүсэлт эвдэрдэг (400: role ээлжлэх / tool_use араас tool_result)
+      // тул эргэлтийн ӨМНӨХ уртыг тэмдэглэж, амжилтгүй үед яг тэр рүү буцаана.
+      const base = history.current.length;
+
       try {
         const { text } = await ask({
           question: q,
@@ -118,14 +131,14 @@ export function AgentChat({
         });
         setLog((l) => [...l, { role: 'bot', text }]);
       } catch (e) {
+        // Түүхийг тэнцвэртэй (role ээлжилсэн, tool_use бүр tool_result-тай) байдалд
+        // буцаана — тасалсан ба алдаатай ХОЁУЛАНД (өмнө нь зөвхөн сүүлийн user
+        // мөрийг хасдаг байсан тул дан assistant tool_use дүүжлэгдэж үлддэг байв).
+        history.current.length = base;
         if (controller.signal.aborted) return;
         // ⚠️ Алдааг ЧИМЭЭГҮЙ залгихгүй — хэрэглэгч хуучин хариултыг шинэ гэж
         //    андуурвал буруу шийдвэр гаргана.
         setError(e instanceof Error ? e.message : String(e));
-        // Амжилтгүй эргэлтийн дараа түүх тэнцвэргүй үлддэг (хариулт ирээгүй)
-        // тул сүүлийн хэрэглэгчийн мөрийг хасна — дараагийн асуулт зөв явна.
-        const h = history.current;
-        while (h.length && h[h.length - 1].role === 'user') h.pop();
       } finally {
         setBusy(false);
         setProgress('');

@@ -601,10 +601,17 @@ function aggregateMonths(d: FinData) {
     cum += planM[i];
     let given = 0;
     d.given.forEach((byMon) => { given += byMon.get(m.label) ?? 0; });
-    const physVals: number[] = [];
-    d.phys.forEach((byMon) => {
+    // ⚠️ Төслийн сарын биет гүйцэтгэл — багцуудын дунджийн ДУНДАЖ БИШ. Давхар
+    //    дундаж нь блок цөөтэй багцыг том багцтай ижил жинтэй болгож гажуудуулж,
+    //    мөн дэлгэц дээрх PackKpi-ийн блок-жигнэсэн дүнтэй зөрдөг. Багц бүрийг
+    //    блокийнх нь тоогоор жигнэнэ: Σ(pct_p · blocks_p) / Σ blocks_p.
+    let physW = 0, physN = 0;
+    d.phys.forEach((byMon, k) => {
       const v = byMon.get(m.label);
-      if (v != null) physVals.push(v);
+      if (v == null) return;
+      const w = d.physCnt.get(k)?.get(m.label) ?? 1;
+      physW += v * w;
+      physN += w;
     });
     return {
       label: m.label,
@@ -612,7 +619,7 @@ function aggregateMonths(d: FinData) {
       amountCum: cum,
       cumPct: planTotal > 0 ? (cum / planTotal) * 100 : 0,
       given,
-      phys: physVals.length ? physVals.reduce((a, b) => a + b, 0) / physVals.length : 0,
+      phys: physN > 0 ? physW / physN : 0,
     };
   });
 }

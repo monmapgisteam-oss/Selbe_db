@@ -121,8 +121,11 @@ const nameOf = (f) =>
 const chats = new Map();
 const MAX_HISTORY = 20;
 
-/** ⚠️ Нэг хүн олон удаа бичихэд админ руу дахин дахин мэдэгдэхгүй */
-const pending = new Set();
+/**
+ * ⚠️ Нэг хүн олон удаа бичихэд админ руу дахин дахин мэдэгдэхгүй.
+ * id → нэр (зөвшөөрөх үед бүртгэлд нэрийг нь хадгалахад ашиглана).
+ */
+const pending = new Map();
 
 const HELP = [
   'Сэлбэ төслийн AI туслах.',
@@ -155,7 +158,7 @@ async function requestAccess(from, chatId) {
   );
 
   if (pending.has(id)) return;
-  pending.add(id);
+  pending.set(id, nameOf(from));
 
   // ⚠️ Хүсэлтийг БҮХ админд илгээнэ — нэг нь л хариулахад хангалттай
   for (const adminId of ADMINS.keys()) {
@@ -206,7 +209,9 @@ async function handleCallback(cb) {
     await reply(targetId, 'Хандалтын хүсэлт татгалзагдлаа.').catch(() => {});
   } else {
     const views = action === 'plan' ? ['plan', 'bagts'] : 'all';
-    users[targetId] = { views, name: cb.data_name ?? '', at: new Date().toISOString() };
+    // Хүсэлт үүсэх үед хадгалсан нэрийг (pending) уншина — `cb.data_name` гэж
+    // Telegram callback-т байдаггүй талбар байсан тул нэр үргэлж хоосон үлддэг байв.
+    users[targetId] = { views, name: pending.get(targetId) ?? '', at: new Date().toISOString() };
     saveUsers();
     pending.delete(targetId);
     note = views === 'all' ? 'Бүх эрхээр зөвшөөрлөө' : 'Төлөвлөлтийн эрхээр зөвшөөрлөө';

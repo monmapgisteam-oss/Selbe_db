@@ -191,7 +191,10 @@ const server = createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, () => {
+// ⚠️ ЗӨВХӨН loopback (127.0.0.1) — энэ реле API түлхүүр барьдаг ба токен
+//    шалгадаггүй тул бүх интерфейс (0.0.0.0)-д сонсвол LAN-ийн хэн ч Origin-гүй
+//    хүсэлтээр түлхүүр зарцуулна. Локал хөгжүүлэлтэд хостын машин л хандана.
+server.listen(PORT, '127.0.0.1', () => {
   if (!process.env.ANTHROPIC_API_KEY) {
     console.warn('[agent-proxy] ⚠️ ANTHROPIC_API_KEY тохируулаагүй байна — хүсэлт бүр татгалзана.');
   }

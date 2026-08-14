@@ -43,6 +43,21 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
   useEffect(() => {
     if (open) setUsers(listUsers());
   }, [open]);
+
+  // ⚠️ Escape-ээр хаах + нээлттэй үед фоны гүйлгэлтийг түгжих (DocViewer-тэй ижил
+  //    хэв маяг — өмнө нь энэ модал зөвхөн даралт/✕-ээр хаагддаг, гар/уншигчид
+  //    таагүй байв).
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [open, onClose]);
   useEffect(() => subscribe(() => setUsers(listUsers())), []);
 
   if (!open) return null;
@@ -79,7 +94,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
 
   return (
     <div className={s.overlay} onClick={onClose} role="presentation">
-      <div className={s.modal} onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Хэрэглэгчийн эрх">
+      <div className={s.modal} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Хэрэглэгчийн эрх">
         <header className={s.head}>
           <h2 className={s.title}>Хэрэглэгчийн эрх</h2>
           <button type="button" className={s.close} onClick={onClose} aria-label="Хаах">✕</button>

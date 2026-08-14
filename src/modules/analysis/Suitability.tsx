@@ -651,6 +651,10 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
     let pass = 0, total = 0;
     const failed: { name: string; v: string }[] = [];
     for (const i of indicators) {
+      // ⚠️ Лавлагаа/жин 0 үзүүлэлт (greenCap, densityCap) норм-д ОРОХГҮЙ —
+      //    оноолол (score.ts:83) ба дэлгэрэнгүй самбар (SuitDetail) хассан тул
+      //    hover тоолол мөн адил хасна (эс бөгөөс худал «✗» ба буруу X/Y гарна).
+      if (i.ref || i.weight <= 0) continue;
       const p = row.parts[i.id];
       if (!p || p.value == null) continue;
       total++;
