@@ -2250,8 +2250,10 @@ const TD_KEEP_COST = new Set(["et:4"]);
 /** `talbai_m2` атрибут нь [id]-д устсан — системийн Shape__Area-д буулгана */
 const TD_QTY_SYS_AREA = new Set([
   "pkg:226", "pkg:228", "pkg:230", "pkg:232", "pkg:234", "pkg:235",
-  "pkg:242", "pkg:243",
+  "pkg:236", "pkg:242", "pkg:243",
 ]);
+/** `urt_km` уртын талбар test_data-д устсан — системийн Shape__Length (м)-д буулгана */
+const TD_QTY_SYS_LENGTH = new Set(["et:5"]);
 /** qty-ийн талбар нь ӨӨР нэрээр хадгалагдсан давхаргууд */
 const TD_QTY_FIELD: Record<string, string> = { "pkg:237": "Area_m2" };
 /** Бүсийн талбар нь test_data-д устсан — нэгдсэн шүүлтээс гаргана */
@@ -2275,6 +2277,7 @@ for (const l of LAYERS) {
   l.url = `${TD}/${n}`;
   if (l.cost && !TD_KEEP_COST.has(l.id)) delete l.cost;
   if (l.qty && TD_QTY_SYS_AREA.has(l.id)) l.qty = { field: "Shape__Area", unit: "м²" };
+  if (l.qty && TD_QTY_SYS_LENGTH.has(l.id)) l.qty = { field: "Shape__Length", unit: "м" };
   const qf = TD_QTY_FIELD[l.id];
   if (l.qty && qf) l.qty = { ...l.qty, field: qf };
   if (TD_FORCE_NOZONE.has(l.id)) {
