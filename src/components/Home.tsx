@@ -6,6 +6,7 @@ import { useAsync } from '@/lib/useAsync';
 import { loadHeadline, loadHousing, loadProjectProgress } from '@/lib/live';
 import { num, pct } from '@/lib/format';
 import { DocViewer } from './DocViewer';
+import { ExecKpi } from './ExecKpi';
 import type { ViewKey } from '@/lib/services';
 import s from './home.module.css';
 
@@ -274,6 +275,9 @@ export function Home({
           </div>
           <span className={s.progressNote}>Төслийн нийт гүйцэтгэл {progress != null ? pct(progress, 2) : '…'}</span>
         </div>
+
+        {/* Удирдлагад зориулсан амьд KPI үнэлгээ — карт дарж холбоотой харагдац руу үсэрнэ */}
+        <ExecKpi onView={onEnterView} />
       </main>
 
       {/* Баримт үзэгч — порталынхтай ИЖИЛ компонент, нэвтрэх шаардлагагүй */}
