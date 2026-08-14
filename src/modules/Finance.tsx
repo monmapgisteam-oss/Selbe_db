@@ -122,15 +122,11 @@ export function ComboChart({
   });
   // Бодит муруйнууд (санхүүжилт, биет) зөвхөн ОДОО хүртэл; төлөвлөгөө л дуустал хүрнэ
   let lastPhys = -1;
-  let lastGiven = -1;
-  rows.forEach((r, i) => {
-    if (r.physPct > 0) lastPhys = i;
-    if (r.it.given > 0) lastGiven = i;
-  });
+  rows.forEach((r, i) => { if (r.physPct > 0) lastPhys = i; });
 
-  const series: { key: 'planned' | 'financing' | 'physical'; color: string; end: number }[] = [
+  // Шугам зурах цуваа — ТӨЛӨВЛӨГӨӨ + БИЕТ (санхүүжилт нь БАГАНА, доор тусад нь).
+  const series: { key: 'planned' | 'physical'; color: string; end: number }[] = [
     { key: 'planned', color: PLAN, end: N - 1 },
-    { key: 'financing', color: ACT, end: lastGiven >= 0 ? lastGiven : N - 1 },
     { key: 'physical', color: PHYS, end: lastPhys },
   ];
 
@@ -188,14 +184,28 @@ export function ComboChart({
           );
         })()}
 
-        {/* Төлөвлөгөөний талбай — S-муруйн «бие» (бүдэг дүүргэлт) */}
+        {/* САНХҮҮЖИЛТ (IPC) — ӨССӨН ОЛГОСОН ₮ БАГАНА (шугам БИШ) */}
         {(() => {
-          const linePts = rows.map((r, i) => ({ x: xFor(i), y: yFor(r.planned) }));
-          const areaD = `${smoothPath(linePts)} L ${xFor(N - 1)} ${padT + plotH} L ${xFor(0)} ${padT + plotH} Z`;
-          return <path d={areaD} className={f.sArea} fill={PLAN} opacity={0.1} />;
+          const step = N > 1 ? plotW / (N - 1) : plotW;
+          const bw = Math.min(18, step * 0.5);
+          return rows.map((r, i) => {
+            if (r.givenCum <= 0) return null;
+            const y = yFor(r.givenCum);
+            const hgt = padT + plotH - y;
+            return (
+              <g key={`ipc-${i}`}>
+                <rect x={xFor(i) - bw / 2} y={y} width={bw} height={hgt} rx={2} fill={ACT} opacity={0.82} />
+                {showLabel(i) && (
+                  <text x={xFor(i)} y={y - 4} className={f.barValG} textAnchor="middle">
+                    {mntShort(r.givenCum).replace(' ₮', '')}
+                  </text>
+                )}
+              </g>
+            );
+          });
         })()}
 
-        {/* 3 S-муруй (өссөн %) */}
+        {/* Шугам: төлөвлөгөө (cyan) + биет (purple) — санхүүжилт нь багана тул энд алга */}
         {series.map((sd) => {
           if (sd.end < 1) return null;
           const linePts = rows.slice(0, sd.end + 1).map((r, i) => ({ x: xFor(i), y: yFor(r[sd.key]) }));
@@ -210,35 +220,34 @@ export function ComboChart({
           );
         })}
 
-        {/* Хугацаа бүрийн ӨССӨН ТӨЛӨВЛӨГӨӨ ₮ — цэг бүр дээр (эцсийнхийг endpoint зурна).
-            Сөөлжилсөн байрлалаар давхцлыг бууруулна. */}
+        {/* ТӨЛӨВЛӨГӨӨ — цэг бүр дээр ТОЙРОГ + өссөн ₮ (сөөлжилсөн байрлал) */}
         {rows.map((r, i) => {
-          if (r.planned <= 0 || i === N - 1) return null;
+          if (r.planned <= 0) return null;
+          const x = xFor(i);
+          const y = yFor(r.planned);
           return (
-            <text
-              key={`plv-${i}`}
-              x={xFor(i)}
-              y={yFor(r.planned) - (i % 2 === 0 ? 8 : 18)}
-              className={f.barVal}
-              textAnchor="middle"
-            >
-              {mntShort(r.planned).replace(' ₮', '')}
-            </text>
+            <g key={`pl-${i}`}>
+              <circle cx={x} cy={y} r={3.5} fill={PLAN} className={f.sDot} vectorEffect="non-scaling-stroke" />
+              {showLabel(i) && (
+                <text x={x} y={y - (i % 2 === 0 ? 8 : 18)} className={f.barVal} textAnchor="middle">
+                  {mntShort(r.planned).replace(' ₮', '')}
+                </text>
+              )}
+            </g>
           );
         })}
 
-        {/* Endpoint цэг + утга (шууд шошго — өнгө бус хоёрдогч кодчлол).
-            Мөнгө ₮-ээр, биет %-аар (хуучинтай адил) */}
-        {series.map((sd) => {
-          if (sd.end < 0) return null;
-          const r = rows[sd.end];
-          const x = xFor(sd.end);
-          const y = yFor(r[sd.key]);
-          const lbl = sd.key === 'physical' ? `${r.physPct.toFixed(0)}%` : mntShort(r[sd.key]).replace(' ₮', '');
+        {/* БИЕТ ГҮЙЦЭТГЭЛ — цэг бүр дээр ТОЙРОГ + % (одоо хүртэл, БҮХ цэгт) */}
+        {rows.map((r, i) => {
+          if (i > lastPhys || r.physPct <= 0) return null;
+          const x = xFor(i);
+          const y = yFor(r.physical);
           return (
-            <g key={`${sd.key}-end`}>
-              <circle cx={x} cy={y} r={4} fill={sd.color} className={f.sDot} vectorEffect="non-scaling-stroke" />
-              <text x={x + 8} y={y + 4} className={f.sEndLbl} fill={sd.color}>{lbl}</text>
+            <g key={`ph-${i}`}>
+              <circle cx={x} cy={y} r={3.5} fill={PHYS} className={f.sDot} vectorEffect="non-scaling-stroke" />
+              {showLabel(i) && (
+                <text x={x} y={y + 15} className={f.barValP} textAnchor="middle">{r.physPct.toFixed(1)}%</text>
+              )}
             </g>
           );
         })}
