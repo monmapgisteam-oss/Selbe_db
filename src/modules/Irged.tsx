@@ -202,8 +202,8 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         </section>
       </div>
 
-      {/* ══════════ ТӨВ — ҮЗҮҮЛЭЛТ + ГАЗРЫН ЗУРАГ ══════════ */}
-      <main className={`${g.map} ${i.mapCol}`}>
+      {/* ══════════ ТӨВ — ҮЗҮҮЛЭЛТ + ГАЗРЫН ЗУРАГ (дашбоардын .center шиг) ══════════ */}
+      <main className={i.mapCol}>
         {/* Толгойн таван үзүүлэлт — зургийн ДЭЭД зурваст, «Өмнө»/«Дараа»
             баганын толгойтой НЭГ шугамд зэрэгцэнэ. */}
         <div className={i.kpi}>

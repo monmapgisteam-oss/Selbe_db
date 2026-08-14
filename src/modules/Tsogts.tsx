@@ -576,9 +576,9 @@ function FinCard({ p, finQ }: { p: Pack | null; finQ: Async<FinData> }) {
             ))}
           </div>
           <div className={ts.finLegend}>
-            <span><i style={{ background: '#0891b2' }} />Төлөвлөсөн санхүүжилт</span>
-            <span><i style={{ background: '#22c55e' }} />Олгосон · IPC акт</span>
-            <span><i style={{ background: '#a855f7' }} />Биет гүйцэтгэл</span>
+            <span><i style={{ background: '#0891b2' }} />Төлөвлөгөө өссөн ₮</span>
+            <span><i style={{ background: '#22c55e' }} />Санхүүжилт өссөн ₮</span>
+            <span><i style={{ background: '#a855f7' }} />Биет гүйцэтгэл %</span>
           </div>
           <ComboChart items={months} height={220} lagMonth={lag?.month} lagLvl={lvl} />
         </>
