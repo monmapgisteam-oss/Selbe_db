@@ -93,10 +93,10 @@ export function ComboChart({
   const [hi, setHi] = useState<number | null>(null);
   const W = 1600;
   const H = height;
-  const padL = 66; // зүүн — Y тэнхлэгийн ₮
-  const padR = 64; // баруун — endpoint шошго
+  const padL = 76; // зүүн — Y тэнхлэгийн ₮ шошго (зүүн ирмэгээс эхэлнэ)
+  const padR = 40; // баруун — сүүлийн цэгийн шошго
   const padT = 22;
-  const padB = 48; // доор — он сар + төлөвлөсөн өссөн хувь
+  const padB = 58; // доор — он сар + төлөвлөгөөт % + биет % (3 мөр)
   const N = items.length;
   const plotW = W - padL - padR;
   const plotH = H - padT - padB;
@@ -136,6 +136,8 @@ export function ComboChart({
   };
   const pt = hi != null ? rows[hi] : null;
   const showLabel = (i: number) => N <= 15 || i % 2 === 0 || i === N - 1;
+  // Ирмэг дээрх шошго халхлагдахгүй: эхнийх баруун тийш, сүүлчийнх зүүн тийш
+  const anchorFor = (i: number): 'start' | 'middle' | 'end' => (i === 0 ? 'start' : i === N - 1 ? 'end' : 'middle');
 
   return (
     <div className={f.chartWrap} onMouseMove={onMove} onMouseLeave={() => setHi(null)}>
@@ -154,7 +156,8 @@ export function ComboChart({
           return (
             <g key={t}>
               <line x1={padL} x2={W - padR} y1={gy} y2={gy} className={f.curveGrid} />
-              <text x={padL - 6} y={gy + 3} className={f.sAxisY} textAnchor="end">
+              {/* Зүүн ирмэгээс эхэлж баруун тийш — хэзээ ч халхлагдахгүй */}
+              <text x={4} y={gy - 4} className={f.sAxisY} textAnchor="start">
                 {t === 0 ? '0' : mntShort(val).replace(' ₮', '')}
               </text>
             </g>
@@ -195,8 +198,10 @@ export function ComboChart({
             return (
               <g key={`ipc-${i}`}>
                 <rect x={xFor(i) - bw / 2} y={y} width={bw} height={hgt} rx={2} fill={ACT} opacity={0.82} />
-                {showLabel(i) && (
-                  <text x={xFor(i)} y={y - 4} className={f.barValG} textAnchor="middle">
+                {/* Баганын шошго — зөвхөн төлөвлөгөөний цэгээс ХАНГАЛТТАЙ доор бол
+                    (эс бөгөөс эхэн үед утга ойролцоо тул төлөвлөгөөнийхтэй давхцана) */}
+                {showLabel(i) && y - yFor(r.planned) > 14 && (
+                  <text x={xFor(i)} y={y - 4} className={f.barValG} textAnchor={anchorFor(i)}>
                     {mntShort(r.givenCum).replace(' ₮', '')}
                   </text>
                 )}
@@ -229,7 +234,7 @@ export function ComboChart({
             <g key={`pl-${i}`}>
               <circle cx={x} cy={y} r={3.5} fill={PLAN} className={f.sDot} vectorEffect="non-scaling-stroke" />
               {showLabel(i) && (
-                <text x={x} y={y - (i % 2 === 0 ? 8 : 18)} className={f.barVal} textAnchor="middle">
+                <text x={x} y={y - (i % 2 === 0 ? 8 : 18)} className={f.barVal} textAnchor={anchorFor(i)}>
                   {mntShort(r.planned).replace(' ₮', '')}
                 </text>
               )}
@@ -237,20 +242,15 @@ export function ComboChart({
           );
         })}
 
-        {/* БИЕТ ГҮЙЦЭТГЭЛ — цэг бүр дээр ТОЙРОГ + % (одоо хүртэл, БҮХ цэгт) */}
-        {rows.map((r, i) => {
-          if (i > lastPhys || r.physPct <= 0) return null;
-          const x = xFor(i);
-          const y = yFor(r.physical);
-          return (
-            <g key={`ph-${i}`}>
-              <circle cx={x} cy={y} r={3.5} fill={PHYS} className={f.sDot} vectorEffect="non-scaling-stroke" />
-              {showLabel(i) && (
-                <text x={x} y={y + 15} className={f.barValP} textAnchor="middle">{r.physPct.toFixed(1)}%</text>
-              )}
-            </g>
-          );
-        })}
+        {/* БИЕТ ГҮЙЦЭТГЭЛ — цэг бүр дээр зөвхөн ТОЙРОГ (% нь доод тэнхлэгийн мөрөнд,
+            баганатай давхцахгүйн тулд) */}
+        {rows.map((r, i) => (i > lastPhys || r.physPct <= 0 ? null : (
+          <circle
+            key={`ph-${i}`}
+            cx={xFor(i)} cy={yFor(r.physical)} r={3.5}
+            fill={PHYS} className={f.sDot} vectorEffect="non-scaling-stroke"
+          />
+        )))}
 
         {/* Hover: crosshair + сарын цэгүүд */}
         {hi != null && (
@@ -266,13 +266,19 @@ export function ComboChart({
           </>
         )}
 
-        {/* X тэнхлэг: он сар + доор ТӨЛӨВЛӨСӨН ӨССӨН ХУВЬ (cumPct) */}
+        {/* X тэнхлэг — 3 мөр: он сар · ТӨЛӨВЛӨГӨӨТ өссөн % (амбер) · БИЕТ гүйцэтгэл % (ягаан).
+            Хувиудыг ЭНД эмхлэснээр график дотор баганатай давхцахгүй. */}
         {rows.map((r, i) => (showLabel(i) ? (
           <g key={r.label}>
-            <text x={xFor(i)} y={H - 22} className={f.axisX} textAnchor="middle">{r.label}</text>
+            <text x={xFor(i)} y={H - 36} className={f.axisX} textAnchor="middle">{r.label}</text>
             {r.it.cumPct > 0 && (
-              <text x={xFor(i)} y={H - 6} className={f.axisXPct} textAnchor="middle">
+              <text x={xFor(i)} y={H - 21} className={f.axisXPct} textAnchor="middle">
                 {r.it.cumPct.toFixed(1)}%
+              </text>
+            )}
+            {i <= lastPhys && r.physPct > 0 && (
+              <text x={xFor(i)} y={H - 6} className={f.axisXPct} style={{ fill: PHYS }} textAnchor="middle">
+                {r.physPct.toFixed(1)}%
               </text>
             )}
           </g>
