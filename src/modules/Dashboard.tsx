@@ -21,11 +21,11 @@ import {
 } from '@/lib/services';
 import {
   INDICATORS, SCORE_LEVELS, levelOf, PARKING, DEFAULT_ECON_SHARE,
-  BUILD_COST_PER_M2, NO_DATA_COLOR, profitScore,
+  BUILD_COST_PER_M2, profitScore,
 } from '@/lib/analysis/config';
 import { loadAnalysisCached, computeEconomics, computeRaw, defaultGreenCats } from '@/lib/analysis/data';
 import { loadCostsCached } from '@/lib/analysis/costs';
-import { urbanScore, scoreColor, scoreLabel } from '@/lib/analysis/score';
+import { urbanScore } from '@/lib/analysis/score';
 import { loadBlockProgress, type BlockProgressMap } from '@/lib/blockProgress';
 import { loadLandStatus, type LandStatus } from '@/lib/land';
 import { num, pct, text, shade, shades, tint } from '@/lib/format';
@@ -61,7 +61,7 @@ import o from './overview.module.css';
 
 /* ══════════════════ Хэсгүүд ══════════════════ */
 
-type SecKey = 'scope' | 'schedule' | 'bagts' | 'land' | 'network' | 'power' | 'source' | 'finance' | 'benefit' | 'suit';
+type SecKey = 'scope' | 'schedule' | 'bagts' | 'land' | 'network' | 'power' | 'source' | 'finance' | 'benefit';
 
 const SECTIONS: { key: SecKey; no: string; title: string }[] = [
   { key: 'scope', no: '01', title: 'Төслийн цар хүрээ' },
@@ -73,7 +73,6 @@ const SECTIONS: { key: SecKey; no: string; title: string }[] = [
   { key: 'source', no: '07', title: 'Эх үүсвэр' },
   { key: 'finance', no: '08', title: 'Хөрөнгө оруулалт, бонд' },
   { key: 'benefit', no: '09', title: 'Нийгмийн дэд бүтэц' },
-  { key: 'suit', no: '10', title: 'Тохиромжтой байдлын үнэлгээ' },
 ];
 
 /**
@@ -105,8 +104,6 @@ const SECTION_LAYERS: Record<SecKey, string[]> = {
   finance: [],
   // Нийгмийн барилгууд — сургууль, цэцэрлэг, соёл, спорт (Багц 19–21)
   benefit: [...(PKG_BY_FAMILY.soc ?? [])],
-  // Үнэлгээ нь БҮСЭЭР бодогддог
-  suit: [ZONE_LAYER.id],
 };
 
 /**
@@ -558,11 +555,6 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
       : layersFor(open));
   }, [flt, open, layersFor]);
 
-  /** Үнэлгээ нь ХҮНД (бүх бүсийн орон зайн анализ) — зөвхөн 08 нээгдэхэд ачаална */
-  const [prog, setProg] = useState<{ msg: string; pct: number }>({ msg: 'Хүлээж байна…', pct: 0 });
-  const onProgress = useCallback((msg: string, p: number) => setProg({ msg, pct: p }), []);
-  const suit = useSuitability(open.includes('suit'), onProgress);
-
   const pick = useCallback((attrs: Record<string, unknown> | null) => {
     if (!attrs) return;
     const zid = String(attrs[ZONE_FIELD] ?? attrs[ZONE_LAYER.zoneField ?? ''] ?? '').trim();
@@ -589,7 +581,7 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
 
   return (
     <div className={o.shell} data-detail={open.length > 0 ? '1' : '0'} style={vars}>
-      <SideRail ref={railRef} d={d} suit={suit} open={open} toggle={toggle} clear={clearAll} />
+      <SideRail ref={railRef} d={d} open={open} toggle={toggle} clear={clearAll} />
 
       <Grip
         label="Зүүн жагсаалтын өргөн"
@@ -705,7 +697,7 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
                   <button type="button" className={o.colClose} onClick={() => toggle(k)} aria-label="Хаах">×</button>
                 </header>
                 <div className={o.colBody}>
-                  <Detail k={k} d={d} suit={suit} prog={prog} zone={zone} setZone={setZone} flt={flt} onFlt={selectFlt} />
+                  <Detail k={k} d={d} flt={flt} onFlt={selectFlt} />
                 </div>
               </section>
             );
@@ -719,10 +711,8 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
 /** Хэсэг бүрийн чарт-шүүлтийн нийтлэг props — БҮХ хэсэг ижил интерфэйстэй */
 type FltProps = { flt: MapFilter | null; onFlt: (f: MapFilter) => void };
 
-function Detail({ k, d, suit, prog, zone, setZone, flt, onFlt }: {
+function Detail({ k, d, flt, onFlt }: {
   k: SecKey; d: DashData;
-  suit: Async<SuitSummary>; prog: { msg: string; pct: number };
-  zone: string | null; setZone: (z: string | null) => void;
 } & FltProps) {
   switch (k) {
     case 'scope': return <ScopeDetail bagts={d.bagts} d={d} />;
@@ -734,7 +724,6 @@ function Detail({ k, d, suit, prog, zone, setZone, flt, onFlt }: {
     case 'source': return <SourceDetail sources={d.sources} flt={flt} onFlt={onFlt} />;
     case 'finance': return <FinanceDetail budget={d.budget} />;
     case 'benefit': return <BenefitDetail bagts={d.bagts} d={d} flt={flt} onFlt={onFlt} />;
-    case 'suit': return <SuitDetail suit={suit} prog={prog} zone={zone} setZone={setZone} />;
   }
 }
 
@@ -774,7 +763,7 @@ const infraPackList = (pred: (b: string) => boolean) =>
  * шаардлагагүй. Амьд өгөгдөл ирээгүй бол «…». (◆ pinned төлөв УСТСАН —
  * бүх утга амьд.)
  */
-function railStat(k: SecKey, d: DashData, suit: Async<SuitSummary>): {
+function railStat(k: SecKey, d: DashData): {
   value: string;
   note: string;
   /** Байвал жагсаалтын мөрөнд нимгэн явцын зурвас зурна */
@@ -867,22 +856,11 @@ function railStat(k: SecKey, d: DashData, suit: Async<SuitSummary>): {
         note: soc == null ? '…' : `${num(soc.totalN)} нийгмийн байгууламж`,
       };
     }
-    case 'suit': {
-      // ⚠️ 08 нээгдтэл анализ ажиллахгүй тул энд «нээж бодуулна» гэж хэлнэ
-      if (suit.state === 'error') return { value: '—', note: 'бодогдсонгүй' };
-      if (suit.state !== 'ready') return { value: '—', note: 'нээхэд бодогдоно' };
-      const s = suit.data;
-      return {
-        value: s.avgScore == null ? '—' : String(Math.round(s.avgScore)),
-        note: `${num(s.zones)} бүс · ашигтай ${num(s.profitZones)}`,
-        pct: s.avgScore ?? undefined, tone: o.active,
-      };
-    }
   }
 }
 
-function SideRail({ d, suit, open, toggle, clear, ref }: {
-  d: DashData; suit: Async<SuitSummary>;
+function SideRail({ d, open, toggle, clear, ref }: {
+  d: DashData;
   open: SecKey[]; toggle: (k: SecKey) => void; clear: () => void;
   ref?: Ref<HTMLDivElement>;
 }) {
@@ -897,7 +875,7 @@ function SideRail({ d, suit, open, toggle, clear, ref }: {
 
       {SECTIONS.map((s) => {
         const on = open.includes(s.key);
-        const st = railStat(s.key, d, suit);
+        const st = railStat(s.key, d);
         return (
           <button
             key={s.key}
@@ -1560,88 +1538,7 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
   );
 }
 
-/* ══════════════════ 08 · Тохиромжтой байдлын үнэлгээ ══════════════════ */
-
-/**
- * ⚠️ Бүх тоо АМЬД — бэхлэгдсэн үзүүлэлт энд БАЙХГҮЙ. Үнэлгээ нь бүсийн
- * геометр, ногоон байгууламж, зогсоол, дэд бүтцийн өртгөөс тухай бүр бодогддог.
- */
-function SuitDetail({ suit, prog, zone, setZone }: {
-  suit: Async<SuitSummary>; prog: { msg: string; pct: number };
-  zone: string | null; setZone: (z: string | null) => void;
-}) {
-  if (suit.state === 'loading') {
-    return (
-      <Panel title="Тохиромжтой байдал">
-        <div className={o.load}>
-          <div className={o.loadMsg}>{prog.msg}</div>
-          <div className={o.loadBar}><span style={{ width: `${Math.max(4, prog.pct)}%` }} /></div>
-        </div>
-      </Panel>
-    );
-  }
-  if (suit.state === 'error') {
-    return <Panel title="Тохиромжтой байдал"><p className={o.note}>Үнэлгээ бодогдсонгүй: {suit.error.message}</p></Panel>;
-  }
-
-  const s = suit.data;
-  const head = zone ? s.byId[zone]?.score ?? null : s.avgScore;
-  const scored = s.ranked.filter((r) => r.score != null);
-
-  return (
-    <>
-      <Panel title="Нийлмэл оноо">
-        <div className={o.landTop}>
-          <span className={o.bigScore} style={{ color: scoreColor(head) }}>{head == null ? '—' : Math.round(head)}</span>
-          <div className={o.rows}>
-            <div><span>Үнэлгээ</span><b>{scoreLabel(head)}</b></div>
-            <div><span>Ашигтай бүс</span><b className="num">{num(s.profitZones)} / {num(s.zones)}</b></div>
-            {s.noData > 0 && (
-              <div><span>Өгөгдөлгүй</span><b className="num" style={{ color: NO_DATA_COLOR }}>{num(s.noData)} бүс</b></div>
-            )}
-          </div>
-        </div>
-        {/* Түвшний тархалт — порталын бусад дашбоардтай ИЖИЛ `Bars` primitive.
-            Урьд нь өөрийн CSS бартай байсан нь ижил өгөгдлийг өөр дүрслэлээр
-            харуулж, нэгдмэл байдлыг алдагдуулж байв. */}
-        <Bars
-          max={Math.max(1, s.zones)}
-          items={s.levels.map((l, i) => ({
-            key: l.label,
-            label: l.label,
-            value: l.n,
-            display: `${num(l.n)} бүс`,
-            // НЭГ ӨНГӨ (тодоос бүдгэр) — «Маш сайн» тод → «Маш муу» бүдэг
-            color: shade(ACCENT, i, s.levels.length),
-          }))}
-        />
-      </Panel>
-
-      <Panel title="Бүсийн эрэмбэ">
-        <div className={o.rankGroup}>
-          <div className={o.rankLabel}>Хамгийн сайн</div>
-          {scored.slice(0, 5).map((r, i) => <RankRow key={`top-${r.id}`} r={r} n={i + 1} zone={zone} setZone={setZone} />)}
-          <div className={o.rankLabel}>Хамгийн муу</div>
-          {scored.slice(-5).reverse().map((r, i) => <RankRow key={`bot-${r.id}`} r={r} n={scored.length - i} zone={zone} setZone={setZone} />)}
-        </div>
-      </Panel>
-    </>
-  );
-}
-
-function RankRow({ r, n, zone, setZone }: {
-  r: { id: string; type: string; score: number | null };
-  n: number; zone: string | null; setZone: (z: string | null) => void;
-}) {
-  const on = zone === r.id;
-  return (
-    <button type="button" aria-pressed={on} className={`${o.rankRow} ${on ? o.rankOn : ''}`}
-      onClick={() => setZone(on ? null : r.id)}>
-      <span className={o.rankNo}>{n}</span>
-      <span className={o.rankName}>{r.id}<i>{r.type}</i></span>
-      <span className={`${o.rankScore} num`} style={{ background: scoreColor(r.score) }}>
-        {r.score == null ? '—' : Math.round(r.score)}
-      </span>
-    </button>
-  );
-}
+/* «Тохиромжтой байдлын үнэлгээ» (suit) хэсэг ерөнхий дашбоардаас ХАСАГДСАН
+   (2026-08-14, хэрэглэгчийн шийдвэр). Дэлгэрэнгүй үнэлгээ нь ТУСДАА «Тохиромжтой
+   байдлын үнэлгээ» (analysis) харагдацад хэвээр. `useSuitability`/`SuitSummary`
+   нь нүүрийн CEO KPI (ExecKpi)-д хэрэгтэй тул export хэвээр үлдэв. */
