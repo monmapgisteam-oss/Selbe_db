@@ -434,6 +434,30 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           onPick={pickRef.current}
         />
 
+        {/* Зургийн дээд KPI — газар чөлөөлөлтийн гол үзүүлэлт (зүүн панелийн товч хэлбэр) */}
+        {d && d.left.n > 0 && (
+          <div className={g.mapKpi} aria-label="Газар чөлөөлөлтийн үзүүлэлт">
+            <div className={g.mapKpiCard}>
+              <span className={g.mapKpiVal}>{num(d.left.n)}</span>
+              <span className={g.mapKpiLbl}>Нийт нэгж талбар</span>
+            </div>
+            <div className={g.mapKpiCard}>
+              <span className={g.mapKpiVal} style={{ color: '#16a34a' }}>
+                {pct == null ? '—' : `${Math.round(pct)}%`}
+              </span>
+              <span className={g.mapKpiLbl}>Чөлөөлсөн</span>
+            </div>
+            <div className={g.mapKpiCard}>
+              <span className={g.mapKpiVal} style={{ color: '#e11d48' }}>{num(d.left.remaining)}</span>
+              <span className={g.mapKpiLbl}>Үлдсэн талбар</span>
+            </div>
+            <div className={g.mapKpiCard}>
+              <span className={g.mapKpiVal}>{ha(d.left.area)} <small>га</small></span>
+              <span className={g.mapKpiLbl}>Нийт талбай</span>
+            </div>
+          </div>
+        )}
+
         <div className={g.topbar}>
           <div className={g.dims} role="group" aria-label="Газрын зургийн харагдац">
             {(['2d', '3d', 'bim'] as Dim[]).map((x) => (
