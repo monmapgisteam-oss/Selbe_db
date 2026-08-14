@@ -148,7 +148,8 @@
 /* ── Дээд удирдлагын зурвас — 2D/3D/BIM + полигон товч (зургийн дээд төвд) ── */
 .topbar {
   position: absolute;
-  top: 10px;
+  /* KPI мөр (top:10px, ~47px өндөр)-ын ДООР — хоёр төвлөрсөн мөр босоо давхарлана */
+  top: 64px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 6;
@@ -213,6 +214,50 @@
 .clearBtn:active { transform: scale(0.97); }
 
 /* ── Хамрах хүрээ — зургийн доод зүүн буланд compact overlay ── */
+/* ── Газрын зургийн дээд KPI (төвд, харагдац-солигчийн ДЭЭР) ── */
+.mapKpi {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  display: flex;
+  gap: 8px;
+  max-width: calc(100% - 96px);
+}
+.mapKpiCard {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(10px);
+}
+.mapKpiVal {
+  font-size: 0.98rem;
+  font-weight: 800;
+  line-height: 1.15;
+  color: var(--ink);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.mapKpiVal small { font-size: 0.64em; font-weight: 700; color: var(--ink-3); }
+.mapKpiLbl {
+  font-size: 0.63rem;
+  font-weight: 650;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+/* Нарийн дэлгэцэд төвд зай хүрэлцэхгүй — KPI-г нуугаад харагдац-солигчийг дээш нь буцаана
+   (үзүүлэлт нь зүүн панелд хэвээр). */
+@media (max-width: 1200px) {
+  .mapKpi { display: none; }
+  .topbar { top: 10px; }
+}
+
 .scope {
   position: absolute;
   left: 10px;
