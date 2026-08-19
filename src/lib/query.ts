@@ -235,45 +235,7 @@ export async function queryFeatures(
   return res.rows;
 }
 
-/** Полигоны геометрийг WGS84-д татна — орон зайн шүүлтэд эх болгож ашиглана */
-export async function queryPolygon(url: string, where = '1=1'): Promise<Aoi | null> {
-  const body = await request(url, {
-    where,
-    outFields: '',
-    returnGeometry: 'true',
-    outSR: '4326',
-    resultRecordCount: '1',
-  });
-  const g = (body.features as unknown as { geometry?: { rings?: number[][][] } }[] | undefined)?.[0]?.geometry;
-  if (!g?.rings) return null;
-  return { geometry: { rings: g.rings, spatialReference: { wkid: 4326 } }, wkid: 4326 };
-}
-
-export type Point = { attrs: Row; lon: number; lat: number };
-
-/** Цэгэн объектуудыг координаттай нь татна (WGS84) */
-export async function queryPoints(
-  url: string,
-  opts: { where?: string; outFields?: string[]; orderBy?: string; limit?: number; aoi?: Aoi } = {},
-): Promise<Point[]> {
-  const params: Record<string, string> = {
-    where: opts.where ?? '1=1',
-    outFields: (opts.outFields ?? ['*']).join(','),
-    returnGeometry: 'true',
-    outSR: '4326',
-    ...spatial(opts.aoi),
-  };
-  if (opts.orderBy) params.orderByFields = opts.orderBy;
-  if (opts.limit) params.resultRecordCount = String(opts.limit);
-
-  const body = await request(url, params);
-  const feats = (body.features ?? []) as unknown as { attributes: Row; geometry?: { x: number; y: number } }[];
-  return feats
-    .filter((f) => f.geometry && Number.isFinite(f.geometry.x) && Number.isFinite(f.geometry.y))
-    .map((f) => ({ attrs: f.attributes, lon: f.geometry!.x, lat: f.geometry!.y }));
-}
-
-export type ExtentBox = { xmin: number; ymin: number; xmax: number; ymax: number; wkid: number };
+export type ExtentBox ={ xmin: number; ymin: number; xmax: number; ymax: number; wkid: number };
 
 /**
  * Давхаргын хүрээ — заасан проекцоор.

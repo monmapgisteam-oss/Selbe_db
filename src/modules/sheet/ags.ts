@@ -18,7 +18,16 @@ export async function agsFetch(
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ ...params, f: "json" }),
   });
-  const json = await res.json();
+  // ⚠️ Proxy/CDN-ийн 502 эсвэл HTML хариу «SyntaxError: Unexpected token <»
+  // болж улаан баннерт гардаг байв — хүнд ойлгомжтой мессеж болгоно.
+  if (!res.ok) throw new Error(`ArcGIS HTTP ${res.status}`);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let json: any;
+  try {
+    json = await res.json();
+  } catch {
+    throw new Error("Үйлчилгээ JSON биш хариу буцаав — сүлжээгээ шалгана уу");
+  }
   if (json.error)
     throw new Error(
       json.error.message || json.error.details?.[0] || "ArcGIS error",
@@ -118,33 +127,6 @@ export function applySections(feats: Feature[]): void {
   }
 }
 
-// Fields ArcGIS manages itself — never copy these when cloning a feature.
-// A fresh insert gets its own ObjectID, and editor tracking stamps
-// CreationDate/EditDate (the "filled date and hour") automatically.
-export const SYSTEM_FIELDS = new Set([
-  "ObjectID",
-  "OBJECTID",
-  "GlobalID",
-  "CreationDate",
-  "Creator",
-  "EditDate",
-  "Editor",
-]);
-
-// Copy a feature's data attributes for a new daily snapshot: drop the
-// system-managed fields and stamp the new date on the date field.
-export function cloneForDate(
-  attrs: Record<string, unknown>,
-  dateField: string,
-  date: string,
-): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(attrs))
-    if (!SYSTEM_FIELDS.has(k)) out[k] = v;
-  out[dateField] = date;
-  return out;
-}
-
 // Query every matching row, paging past the 2000 maxRecordCount cap.
 // (A single Багц's history now exceeds 2000, so a one-shot query truncates.)
 //
@@ -175,14 +157,29 @@ export async function queryAll(
 }
 
 // Distinct values of one field, optionally scoped by a where clause.
+// ⚠️ maxRecordCount (2000) нь distinct-д ч үйлчилнэ — огнооны жагсаалт нийтлэл
+// бүрээр урссаар нэг л өдөр таг тасарч, «сүүлийн огноо» хамгаалалт андуурна.
+// Тиймээс queryAll шиг хуудаслана (orderBy — offset-ийн тогтвортой дараалал).
 export async function distinct(field: string, where = "1=1") {
-  const j = await agsFetch(`${base}/query`, {
-    where,
-    outFields: field,
-    returnDistinctValues: "true",
-    returnGeometry: "false",
-  });
-  return ((j.features || []) as Feature[]).map((f) => f.attributes[field]);
+  const out: unknown[] = [];
+  for (let offset = 0; ; ) {
+    const j = await agsFetch(`${base}/query`, {
+      where,
+      outFields: field,
+      returnDistinctValues: "true",
+      returnGeometry: "false",
+      orderByFields: `${field} ASC`,
+      resultRecordCount: "2000",
+      resultOffset: String(offset),
+    });
+    const fs = (j.features || []) as Feature[];
+    out.push(...fs.map((f) => f.attributes[field]));
+    // ⚠️ 40к таг: aggregated query дээр offset үл дэмжих үйлчилгээ ижил хуудсаа
+    // давтвал мөнхийн давталтад орохоос сэргийлнэ.
+    if (!j.exceededTransferLimit || fs.length === 0 || out.length > 40000) break;
+    offset += fs.length;
+  }
+  return out;
 }
 
 // Live "барилга угсралтын явц" per Багц: the mean, across buildings, of the

@@ -25,7 +25,7 @@ import {
   type Headline, type SocialLive, type ProjectProgress, type Budget,
 } from '@/lib/live';
 import { SCHEDULE } from '@/lib/brief';
-import { emailViaEml, type ReportLive } from '@/lib/emailReport';
+import { emailViaEml, emailViaMailto, downloadReportPdf, type ReportLive } from '@/lib/emailReport';
 import r from './report.module.css';
 
 export function Tailan() {
@@ -66,18 +66,36 @@ export function Tailan() {
   /** Мэйл үүсгэх явц — pdfmake динамик ачаалалт хормын зуур авна */
   const [busy, setBusy] = useState(false);
 
-  const send = useCallback(async () => {
-    if (!rows || !live || busy) return;
-    setBusy(true);
-    try {
-      await emailViaEml(rows, date || new Date().toLocaleString('mn-MN'), live);
-    } catch (e) {
-      console.error('[selbe] тайлан:', e);
-      alert('Тайлан үүсгэхэд алдаа гарлаа: ' + (e instanceof Error ? e.message : String(e)));
-    } finally {
-      setBusy(false);
-    }
-  }, [rows, live, busy, date]);
+  /**
+   * ГУРВАН ГАРЦ — нэг ажил, гурван орчинд.
+   *
+   * ⚠️ 2026-08-19: Урьд нь ЗӨВХӨН `emailViaEml` холбогдсон байв. `emailReport.ts`
+   * нь толгойдоо «New Outlook / вэб (OWA) нь X-Unsent .eml-ийг бичих цонхоор
+   * НЭЭЖ ЧАДАХГҮЙ» гэж бичээд `emailViaMailto` ба `downloadReportPdf` хоёрыг
+   * fallback болгож бэлдсэн атлаа тэдгээрийг ХААНА Ч дуудаагүй (үхмэл код).
+   * Windows 11 дээр New Outlook нь 2024 оны сүүлээс АНХДАГЧ мэйл програм тул
+   * тэдгээр машин дээр татсан .eml нь зөвхөн уншигдах хэлбэрээр нээгдэж, бичих
+   * цонх гарахгүй — өөрөөр хэлбэл тайланг илгээх ямар ч арга үлддэггүй байлаа.
+   */
+  const run = useCallback(
+    async (fn: (r: BagtsRow[], d: string, l: ReportLive) => Promise<void>, what: string) => {
+      if (!rows || !live || busy) return;
+      setBusy(true);
+      try {
+        await fn(rows, date || new Date().toLocaleString('mn-MN'), live);
+      } catch (e) {
+        console.error('[selbe] тайлан:', e);
+        alert(`${what} үүсгэхэд алдаа гарлаа: ` + (e instanceof Error ? e.message : String(e)));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [rows, live, busy, date],
+  );
+
+  const send = useCallback(() => run(emailViaEml, 'Тайлан'), [run]);
+  const sendWeb = useCallback(() => run(emailViaMailto, 'Мэйл'), [run]);
+  const savePdf = useCallback(() => run(downloadReportPdf, 'PDF'), [run]);
 
   const ready = !!rows && !!live;
   /** Төсөв — Cashflow /106 (олон нийтийн бүсгүй) */
@@ -97,6 +115,29 @@ export function Tailan() {
           >
             <Icon name="chart" size={15} />
             {busy ? 'Бэлтгэж байна…' : 'Outlook-оор илгээх'}
+          </button>
+          {/* ⚠️ Хоёр дахь зам — New Outlook / вэб OWA. Тэнд .eml нь бичих цонх
+              нээдэггүй тул `mailto:` (хавсралтгүй, PDF нь тусад нь татагдана). */}
+          <button
+            type="button"
+            className={r.btn}
+            disabled={!ready || busy}
+            onClick={sendWeb}
+            title="New Outlook эсвэл вэб хувилбар (OWA) ашигладаг бол — мэйл бичих цонх нээгдэж, PDF нь тусад нь татагдана"
+          >
+            <Icon name="chart" size={15} />
+            Шинэ Outlook / вэб
+          </button>
+          {/* Мэйлгүй зам — файлыг өөрөө хадгалаад хүссэн сувгаараа илгээнэ */}
+          <button
+            type="button"
+            className={r.btn}
+            disabled={!ready || busy}
+            onClick={savePdf}
+            title="Зөвхөн PDF файлыг татах — мэйл програм нээхгүй"
+          >
+            <Icon name="chart" size={15} />
+            PDF татах
           </button>
         </div>
       </div>

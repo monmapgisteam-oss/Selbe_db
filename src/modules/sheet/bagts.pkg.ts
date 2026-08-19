@@ -51,8 +51,6 @@ export const PKG_GROUPS: string[] = [...new Set(PKGS.map((p) => p.group))];
 export const pkgFloors = (group: string): Pkg[] =>
   PKGS.filter((p) => p.group === group);
 
-export const pkgOf = (key: string): Pkg => PKGS.find((p) => p.key === key) ?? PKGS[5];
-
 /** Багцын талбарын БҮДҮҮВЧ — нэр бүхэн үйлчилгээнээс танигдсан. */
 export type Schema = {
   /** Блокийн шошго — «5/1», «6/8», «29/3» г.м. Excel-ийн толгойтой ижил. */

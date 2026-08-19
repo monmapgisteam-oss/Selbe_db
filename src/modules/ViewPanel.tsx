@@ -272,7 +272,11 @@ function GroupCard({
   );
 
   const cls = `${s.card} ${wide ? s.cardWide : ''} ${on ? s.cardOn : ''} ${children ? s.cardFull : ''}`;
-  const st = { '--tone': g.hue } as CSSProperties;
+  // ⚠️ 2026-08-18: `g.hue` (газрын зургийн бүлгийн өнгө) → аппын НЭГ акцент.
+  //    Картын чимэглэл (дэвсгэр, хүрээ, дүрс) нь мэдээлэл дамжуулдаггүй тул
+  //    бүлэг бүрээр өнгө солих нь зөвхөн чимэг байв. Чартын өнгө ба мөрийн
+  //    swatch нь газрын зурагтайгаа тааруулсан хэвээр (тэдгээр нь ФУНКЦ).
+  const st = { '--tone': 'var(--hue)' } as CSSProperties;
 
   // ⚠️ Агуулгатай карт нь <div>: <button> дотор чарт, товч байрлуулж болохгүй
   if (children) {
@@ -864,7 +868,7 @@ function LayerDashboard({
   const avgQty = t && d.qty && t.n > 0 ? t.q / t.n : null;
 
   return (
-    <div style={{ '--tone': d.hue } as CSSProperties}>
+    <div style={{ '--tone': 'var(--hue)' } as CSSProperties}>
       <div className={s.crumb}>
         <button type="button" className={s.crumbBack} onClick={onBack}>‹ Жагсаалт</button>
         {groupTitle && <span className={s.crumbGroup}>{groupTitle}</span>}
@@ -1301,7 +1305,7 @@ function PickedFeature({
                 type="button"
                 aria-pressed={on}
                 className={`${s.filter} ${on ? s.filterOn : ''}`}
-                style={{ '--tone': def.hue } as CSSProperties}
+                style={{ '--tone': 'var(--hue)' } as CSSProperties}
                 onClick={() => apply(f.field, f.value)}
               >
                 <span className={s.filterKey}>{f.label}</span>

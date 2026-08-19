@@ -1,65 +1,86 @@
 /* Зүүн багана — бэлэн харагдацууд */
 
+/* ⚠️ 2026-08-17: envhub-ийн «ХЭЛТЭС» самбарын хэл — дугаар + дүрс + нэр гэсэн
+   НЯГТ мөрүүд, хоорондоо hairline заагтай, өнгөт карт БИШ. Сонголтыг зүүн
+   ирмэгийн 2px заалт + дэвсгэрийн угаалтаар заана. */
 .rail {
   display: flex;
   flex-direction: column;
   min-height: 100%;
-  padding: 12px 10px 0;
+  padding: 10px 0 0;
 }
 
+/* envhub eyebrow — 11px / .15em / 600 */
 .railHead {
-  padding: 4px 8px 10px;
-  font-size: 0.62rem;
-  font-weight: 650;
+  padding: 6px 12px 8px;
+  font-size: 11px;
+  line-height: 1.3;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.09em;
+  letter-spacing: 0.15em;
   color: var(--ink-3);
+}
+/* Хоёр дахь бүлгийн гарчиг («Баримт») — дээрээсээ зураасаар тусгаарлана */
+.railHead ~ .railHead {
+  margin-top: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
 }
 
 .item {
   display: flex;
   align-items: center;
-  gap: 11px;
+  gap: 9px;
   width: 100%;
-  padding: 11px 11px;
-  border-radius: var(--r);
-  border: 1px solid transparent;
+  padding: 8px 12px;
+  border-left: 2px solid transparent;
   text-align: left;
   color: var(--ink-2);
   transition: background 0.14s var(--ease), color 0.14s, border-color 0.14s;
 }
-.item + .item { margin-top: 3px; }
-.item:hover { background: color-mix(in srgb, var(--tone) 9%, transparent); color: var(--ink); }
+.item:hover { background: color-mix(in oklab, var(--hue) 8%, transparent); color: var(--ink); }
 
 .itemOn {
   color: var(--ink);
-  background: color-mix(in srgb, var(--tone) 11%, transparent);
-  border-color: color-mix(in srgb, var(--tone) 34%, transparent);
+  background: color-mix(in oklab, var(--hue) 12%, transparent);
+  border-left-color: var(--hue);
 }
 
+/* Дугаар — envhub-ийн 01/02/03 зангуу. Тогтмол өргөнтэй тул нэрнүүд зэрэгцэнэ. */
+.no {
+  flex: none;
+  width: 2ch;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.itemOn .no { color: var(--hue); }
+
+/* ⚠️ 2026-08-18: дүрс бүр өөрийн hue-ээр будагдаж солонго болдог байсныг НЭГ
+   форматад оруулав: энгийн үед саарал (монохром), идэвхтэйд л акцент дүүргэлт. */
 .icon {
   display: grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
+  width: 22px;
+  height: 22px;
   flex: none;
-  border-radius: 9px;
-  color: var(--tone);
-  background: color-mix(in srgb, var(--tone) 14%, transparent);
+  border-radius: var(--r-sm);
+  color: var(--ink-3);
+  background: color-mix(in oklab, var(--ink) 7%, transparent);
   transition: background 0.18s var(--ease), color 0.18s;
 }
-.itemOn .icon { background: var(--tone); color: #fff; }
-.icon svg { width: 17px; height: 17px; }
+.item:hover .icon { color: var(--hue); }
+.itemOn .icon { background: var(--hue); color: var(--surface); }
+.icon svg { width: 14px; height: 14px; }
 
 .text { min-width: 0; flex: 1; display: flex; flex-direction: column; }
-.title { font-size: 0.82rem; font-weight: 650; line-height: 1.3; letter-spacing: -0.005em; }
-.desc {
-  font-size: 0.66rem;
-  color: var(--ink-3);
-  line-height: 1.35;
-  overflow-wrap: anywhere;
-}
-.itemOn .desc { color: color-mix(in srgb, var(--tone) 65%, var(--ink-3)); }
+.title { font-size: 12px; font-weight: 500; line-height: 1.3; }
+.itemOn .title { font-weight: 600; }
+/* ⚠️ Тайлбар текст НУУГДСАН — envhub-ийн жагсаалт нь зөвхөн нэр (нягт). Урт
+   тайлбар нь 11 мөрийг хоёр дахин өндөр болгож, гүйлгэлт шаарддаг байв.
+   Бүтэн тайлбар нь `title` шинжид (hover) хэвээр. */
+.desc { display: none; }
 
 /* Каталог дэлгэгдсэнийг заах сум — дэлгэгдэхэд 90° эргэнэ */
 .chev {
@@ -69,7 +90,7 @@
   color: var(--ink-3);
   transition: transform 0.22s var(--ease), color 0.18s;
 }
-.itemOn .chev { color: var(--tone); }
+.itemOn .chev { color: var(--hue); }
 .chevOn { transform: rotate(90deg); }
 
 .foot {
@@ -81,12 +102,21 @@
   line-height: 1.55;
 }
 
+/* Нарийн дэлгэц — босоо жагсаалт ХЭВТЭЭ гүйдэг зурвас болно */
 @media (max-width: 1180px) {
-  .rail { flex-direction: row; overflow-x: auto; padding: 8px; }
+  .rail { flex-direction: row; align-items: center; overflow-x: auto; padding: 6px 8px; min-height: 0; }
   .railHead, .foot { display: none; }
-  .item { width: auto; flex: none; }
-  .item + .item { margin: 0 0 0 3px; }
-  .desc { display: none; }
+  .item {
+    width: auto;
+    flex: none;
+    padding: 6px 10px;
+    border-left: 0;
+    border-bottom: 2px solid transparent;
+    border-radius: var(--r-sm);
+  }
+  .itemOn { border-bottom-color: var(--hue); }
+  /* Хэвтээ зурваст дугаар нь зай эзэлж, нэрийг шахна */
+  .no { display: none; }
 }
 
 /* ── Толгойн ХЭВТЭЭ хувилбар (header) ── */
@@ -125,3 +155,12 @@
 /* «ТЭЗҮ-БОНУ» баримтын таб — бусад харагдацын табтай ИЖИЛ, бүлгээс тусгаарлахгүй.
    Зөвхөн дүрсний өнгө нь модулийн ногоон (утга: харагдац биш, баримт). */
 .docItem { flex: none; }
+
+/* ── ХУРААГДСАН босоо цэс — зөвхөн дүрс (нэр нь title tooltip-д) ── */
+.railMin .no,
+.railMin .text,
+.railMin .chev,
+.railMin .railHead { display: none; }
+.railMin .item { justify-content: center; padding: 9px 0; gap: 0; }
+.railMin .icon { width: 26px; height: 26px; }
+.railMin .icon svg { width: 15px; height: 15px; }

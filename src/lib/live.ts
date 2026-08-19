@@ -18,11 +18,12 @@
  *   · ногоон      — test_data [35] Shape__Area
  */
 
-import { queryFeatures, queryStats, count, sum, type Row } from '@/lib/query';
+import { queryFeatures, queryStats, queryGroup, count, sum, type Row } from '@/lib/query';
 import {
   BOUNDARY, BUILT_LAYER, CASHFLOW2, PROJECT_PROGRESS,
-  LAYER_BY_ID, layerUrl, oidOf,
+  LAYER_BY_ID, PARCEL_LEFT, layerUrl, oidOf, bagtsKey,
 } from '@/lib/services';
+import { sumBy, tally } from '@/lib/agg';
 
 /**
  * Оршин суух хүн ам — [108]-ийн `Population` талбар.
@@ -52,8 +53,20 @@ export type Budget = {
   orderTotal: number;
   /** Гэрээ байгуулах эрх олгосон дүн (CF023) — ₮ */
   contract: number;
+  /**
+   * ⚠️ ШИНЭ — Өмнө шилжүүлсэн мөнгөн дүн (CF028), ₮.
+   * ⚠️ CF027 (`prevPct`)-ыг ХЭЗЭЭ Ч нийлбэрлэхгүй: тэр нь мөр тутмын 0–1
+   *    бутархай хувь бөгөөд нийлбэрлэхэд утгагүй тоо гарна.
+   */
+  transferred: number;
   /** Санхүүжилтийн эх үүсвэр — задраагүй үлдэгдэлтэй */
   sources: { key: string; label: string; value: number }[];
+  /** ⚠️ ШИНЭ — ажлын ТӨРӨЛ (CF002)-өөр төсөвт өртөг */
+  byType: { key: string; label: string; value: number; n: number }[];
+  /** ⚠️ ШИНЭ — багц (CF004)-аар. `key` нь `bagtsKey()`, `label` нь түүхий нэр. */
+  byPkg: { key: string; label: string; value: number; n: number }[];
+  /** ⚠️ ШИНЭ — сарын санхүүжилтийн ТӨЛӨВЛӨГӨӨ, ₮ */
+  months: { label: string; amount: number }[];
 };
 
 /**
@@ -61,13 +74,27 @@ export type Budget = {
  * (/249)-ЭЭС ЯЛГААТАЙ: тэр нь олон нийтийн бүсийн хувийн таамаг оруулж 4.16
  * их наяд хөөргөдөг; энэ нь захирамж/гэрээгээр баталгаажсан ТӨСЛИЙН төсөв.
  */
+/** CF002/CF004-ийн «0» нь БӨГЛӨӨГҮЙ sentinel — хоосонтой адилаар үзнэ */
+const cfLabel = (v: unknown) => String(v ?? '').replace(/\s+/g, ' ').trim();
+
 export const loadBudget = cached<Budget>(async () => {
   const CF = CASHFLOW2.fields;
   const stats = [
     sum(CF.budget, 'b'), sum(CF.orderTotal, 'o'), sum(CF.contractAmount, 'c'),
+    sum(CF.prevAmount, 'p'),
     ...CASHFLOW2.sources.map((s, i) => sum(s.field, `s${i}`)),
+    // ⚠️ ЗӨВХӨН `m.amount` — `amountCum` нь ЖИЛ БҮР ТЭГЛЭГДДЭГ (2025-12 → 2026-01)
+    //    тул өссөн дүн гэж нийлбэрлэвэл хөрөөний шүд шиг график гарна.
+    ...CASHFLOW2.months.map((m, i) => sum(m.amount, `m${i}`)),
   ];
-  const r = await queryStats(CASHFLOW2.url, stats);
+  const [r, g] = await Promise.all([
+    queryStats(CASHFLOW2.url, stats),
+    // ⚠️ Энэ бол шинээр нэмэгдсэн ЦОРЫН ГАНЦ хүсэлт. Хоёр баганыг НЭГ groupBy-д.
+    queryGroup(CASHFLOW2.url, `${CF.type},${CF.pkg2}`, [
+      sum(CF.budget, 'b'), count(CASHFLOW2.oid, 'n'),
+    ]),
+  ]);
+
   const total = Number(r.b ?? 0);
   const orderTotal = Number(r.o ?? 0);
   const named: { key: string; label: string; value: number }[] = CASHFLOW2.sources
@@ -75,9 +102,29 @@ export const loadBudget = cached<Budget>(async () => {
     .filter((x) => x.value > 0)
     .sort((a, b) => b.value - a.value);
   // Захирамжийн дүнгээс эх үүсвэр задраагүй үлдэгдэл (зөрүү нуухгүй)
-  const rest = orderTotal - named.reduce((a, x) => a + x.value, 0);
+  const rest = orderTotal - sumBy(named, (x) => x.value);
   if (rest > 0) named.push({ key: 'rest', label: 'Эх үүсвэр задраагүй', value: rest });
-  return { total, orderTotal, contract: Number(r.c ?? 0), sources: named };
+
+  return {
+    total,
+    orderTotal,
+    contract: Number(r.c ?? 0),
+    transferred: Number(r.p ?? 0),
+    sources: named,
+    // ⚠️ Мөр бүр = АЖЛЫН мөр, ГЭРЭЭ БИШ (76 мөрийн 50-д CF022 хоосон) → `n` = «ажил»
+    byType: tally(
+      g,
+      (row) => ({ key: cfLabel(row[CF.type]), value: Number(row.b ?? 0), n: Number(row.n ?? 0) }),
+      'Төрөл тодорхойлоогүй',
+    ).filter((t) => t.value > 0),
+    byPkg: tally(
+      g,
+      (row) => ({ key: cfLabel(row[CF.pkg2]), value: Number(row.b ?? 0), n: Number(row.n ?? 0) }),
+      'Багц тодорхойлоогүй',
+    ).filter((t) => t.value > 0),
+    months: CASHFLOW2.months.map((m, i) => ({ label: m.label, amount: Number(r[`m${i}`] ?? 0) })),
+  };
+  // ⚠️ Хяналт: Σ byType.value === total байх ёстой.
 });
 
 export type Headline = {
@@ -115,12 +162,39 @@ export const loadHeadline = cached<Headline>(async () => {
 /* ══════════════ Төслийн жигнэсэн явц ══════════════ */
 
 type StageAgg = { weight: number; actual: number; rows: number };
+
+/**
+ * `Төсөл_Гүйцэтгэл`-ийн МӨР — задаргаа хэрэгтэй хэсгүүд өөрсдөө нэгтгэнэ.
+ *
+ * ⚠️ 2026-08-17: Урьд нь `loadProjectProgress` нь мөрүүдийг нэгтгээд ХАЯДАГ
+ * байсан тул «Шугам сүлжээ», «Цахилгаан», «Нийгмийн дэд бүтэц» хэсгүүд өөрсдийн
+ * зүсэлтээ гаргаж чаддаггүй байв. Одоо түүхий мөрийг ч буцаана — ИЖИЛ ГАНЦ
+ * хүсэлт, зөвхөн `outFields` дөрвөөр нэмэгдсэн.
+ */
+export type ProgRow = {
+  /**
+   * `Төсөл` — ⚠️ НАЙДВАРГҮЙ багана: 20 мөр «Зөвшөөрөл» гэж бичигдсэн атлаа
+   * «Сонгон шалгаруулалт»-д харьяалагдана. Зөвхөн НЭГТГЭХЭД хэрэглэнэ.
+   */
+  stage: string;
+  work: string;
+  no: string;
+  /** `bagts_name` нормчилсон (`bagtsKey`) — 112/162 мөрд бий, эс бөгөөс '' */
+  bagts: string;
+  weight: number;
+  actual: number;
+  /** ⚠️ 162-оос 74 мөрд ХООСОН — тиймээс `null`, 0 БИШ */
+  planned: number | null;
+};
+
 export type ProjectProgress = {
   /** Жигнэсэн гүйцэтгэл — БОДИТ жингийн нийлбэрт нормчилсон (%) */
   actual: number;
   /** Хүснэгтэд бүртгэгдсэн нийт жин (%) — 100 БИШ (~81.5) */
   coverage: number;
   byStage: Record<string, StageAgg>;
+  /** ⚠️ ШИНЭ — түүхий мөрүүд. Хэсэг тус бүр өөрийн зүсэлтээ эндээс бодно. */
+  rows: ProgRow[];
 };
 
 /**
@@ -129,33 +203,86 @@ export type ProjectProgress = {
  */
 export const loadProjectProgress = cached<ProjectProgress>(async () => {
   const PP = PROJECT_PROGRESS.fields;
-  const rows = await queryFeatures(PROJECT_PROGRESS.url, {
-    outFields: [PP.stage, PP.weight, PP.actual],
+  const raw = await queryFeatures(PROJECT_PROGRESS.url, {
+    // ⚠️ ИЖИЛ ГАНЦ queryFeatures — 4 талбар нэмэгдсэн, шинэ хүсэлт ҮҮСЭХГҮЙ
+    outFields: [PP.stage, PP.weight, PP.actual, PP.planned, PP.bagts, PP.work, PP.no],
     limit: 2000,
   });
-  const w = (r: Row) => Number(r[PP.weight]) || 0;
-  const a = (r: Row) => Number(r[PP.actual] ?? 0) || 0;
+  const rows: ProgRow[] = raw.map((r) => ({
+    stage: String(r[PP.stage] ?? '').trim(),
+    work: String(r[PP.work] ?? '').trim(),
+    no: String(r[PP.no] ?? '').trim(),
+    bagts: bagtsKey(r[PP.bagts]),
+    weight: Number(r[PP.weight]) || 0,
+    actual: Number(r[PP.actual] ?? 0) || 0,
+    planned:
+      r[PP.planned] == null || r[PP.planned] === '' ? null : Number(r[PP.planned]) || 0,
+  }));
 
   const byStage: Record<string, StageAgg & { wa: number }> = {};
   let tw = 0;
   let twa = 0;
   for (const r of rows) {
-    const k = String(r[PP.stage] ?? '').trim();
-    if (!k) continue;
-    const cur = byStage[k] ?? { weight: 0, actual: 0, rows: 0, wa: 0 };
-    cur.weight += w(r);
-    cur.wa += w(r) * a(r);
+    if (!r.stage) continue;
+    const cur = byStage[r.stage] ?? { weight: 0, actual: 0, rows: 0, wa: 0 };
+    cur.weight += r.weight;
+    cur.wa += r.weight * r.actual;
     cur.rows += 1;
-    byStage[k] = cur;
-    tw += w(r);
-    twa += w(r) * a(r);
+    byStage[r.stage] = cur;
+    tw += r.weight;
+    twa += r.weight * r.actual;
   }
   for (const k of Object.keys(byStage)) {
     const s = byStage[k];
     s.actual = s.weight ? s.wa / s.weight : 0;
   }
-  return { actual: tw ? twa / tw : 0, coverage: tw, byStage };
+  return { actual: tw ? twa / tw : 0, coverage: tw, byStage, rows };
 });
+
+/** Жигнэсэн дүн — `Σ(жин×гүйц) ÷ Σжин`. Төлөвлөгөө нь БӨГЛӨГДСӨН мөрөөр л. */
+export type Weighted = {
+  weight: number;
+  actual: number | null;
+  /**
+   * ⚠️ Зөвхөн `planned != null` мөрийн ЖИНГЭЭР — өөр хуваарьтай хоёр дүнг
+   * зэрэгцүүлбэл «хоцорсон» дүгнэлт хиймлээр гарна (162-оос 74 мөр хоосон).
+   */
+  planned: number | null;
+  /** Төлөвлөгөө бөглөгдсөн мөрийн эзлэх жин — карт дээр ил хэлэхэд */
+  plannedWeight: number;
+  rows: number;
+};
+
+export function weighted(rows: readonly ProgRow[]): Weighted {
+  const w = sumBy(rows, (r) => r.weight);
+  const wa = sumBy(rows, (r) => r.weight * r.actual);
+  const withPlan = rows.filter((r) => r.planned != null);
+  const pw = sumBy(withPlan, (r) => r.weight);
+  const pwa = sumBy(withPlan, (r) => r.weight * (r.planned as number));
+  return {
+    weight: w,
+    actual: w ? wa / w : null,
+    planned: pw ? pwa / pw : null,
+    plannedWeight: pw,
+    rows: rows.length,
+  };
+}
+
+/** Мөрүүдийг түлхүүрээр бүлэглэж, бүлэг тус бүрд `weighted()` бодно */
+export function rollupBy(
+  rows: readonly ProgRow[],
+  key: (r: ProgRow) => string,
+): { key: string; agg: Weighted }[] {
+  const m = new Map<string, ProgRow[]>();
+  for (const r of rows) {
+    const k = key(r);
+    if (!k) continue;
+    const list = m.get(k);
+    if (list) list.push(r);
+    else m.set(k, [r]);
+  }
+  return [...m].map(([k, rs]) => ({ key: k, agg: weighted(rs) }));
+}
 
 /** Хэд хэдэн үе шатыг жингээр нь нэгтгэсэн амьд % — таарах шат алга бол null */
 export const liveStage = (p: ProjectProgress | null, keys: readonly string[]): number | null => {
@@ -194,6 +321,12 @@ export type SocialRow = {
   n: number;
   /** Хүчин чадал (суудал/ор) — талбар хоосон давхаргад null */
   capacity: number | null;
+  /**
+   * ⚠️ ШИНЭ — давхарга тус бүрийн задаргаа. `loadSocial` нь давхарга тутамд
+   * count+sum аль хэдийн асуудаг байсан бөгөөд дүнг л ХАЯДАГ байв. Шинэ хүсэлт
+   * ҮҮСЭХГҮЙ.
+   */
+  per: { id: string; title: string; n: number; capacity: number | null }[];
 };
 export type SocialLive = { rows: SocialRow[]; totalN: number };
 
@@ -211,7 +344,8 @@ export const loadSocial = cached<SocialLive>(async () => {
       const per = await Promise.all(
         g.ids.map(async (id) => {
           const d = LAYER_BY_ID[id];
-          if (!d) return { n: 0, cap: 0, hasCap: false };
+          const title = d?.title ?? id;
+          if (!d) return { id, title, n: 0, cap: 0, hasCap: false };
           const s = await queryStats(layerUrl(d), [
             count(oidOf(d), 'n'),
             sum('Huchin_chadal', 'cap'),
@@ -221,15 +355,66 @@ export const loadSocial = cached<SocialLive>(async () => {
             return { ...c, cap: null } as Row;
           });
           const cap = s.cap == null ? null : Number(s.cap);
-          return { n: Number(s.n ?? 0), cap: cap ?? 0, hasCap: cap != null && cap > 0 };
+          return { id, title, n: Number(s.n ?? 0), cap: cap ?? 0, hasCap: cap != null && cap > 0 };
         }),
       );
-      const n = per.reduce((s, x) => s + x.n, 0);
+      const n = sumBy(per, (x) => x.n);
       const hasCap = per.some((x) => x.hasCap);
-      const cap = per.reduce((s, x) => s + (x.cap ?? 0), 0);
-      return { key: g.key, label: g.label, n, capacity: hasCap ? cap : null };
+      const cap = sumBy(per, (x) => x.cap ?? 0);
+      return {
+        key: g.key,
+        label: g.label,
+        n,
+        capacity: hasCap ? cap : null,
+        per: per
+          .map((x) => ({ id: x.id, title: x.title, n: x.n, capacity: x.hasCap ? x.cap : null }))
+          .filter((x) => x.n > 0),
+      };
     }),
   );
   const kept = rows.filter((r) => r.n > 0);
   return { rows: kept, totalN: kept.reduce((s, r) => s + r.n, 0) };
+});
+
+/* ══════════════════ Газар чөлөөлөлт — нүүрийн KPI ══════════════════ */
+
+export type Clearance = {
+  /** Чөлөөлсөн = «Бүрэн чөлөөлсөн» + «Цэвэрлэсэн нэгж талбар» */
+  cleared: number;
+  /** Чөлөөлөөгүй = «Үлдсэн нэгж талбар» (барилга эхлүүлэхэд саад) */
+  remaining: number;
+  /** Чөлөөлөөгүй талбайн нийлбэр (га) */
+  remainingHa: number;
+  total: number;
+  /** Чөлөөлсөн хувь (0–100), нийт 0 бол null */
+  pct: number | null;
+};
+
+/**
+ * Газар чөлөөлөлтийн нэгтгэл — `selbe_parcel` [94]-ийн `Tuluv` төлөвөөр.
+ * «Газар чөлөөлөлт» харагдацын тооцоотой ИЖИЛ ангилал (`Gazar.tsx`):
+ * чөлөөлсөн = бүрэн + цэвэрлэсэн; бусад бүх төлөв «чөлөөлөөгүй»-д ОРОХГҮЙ,
+ * зөвхөн «Үлдсэн нэгж талбар» нь саадтай тул тэр нь ЧӨЛӨӨЛӨӨГҮЙ тоо.
+ */
+export const loadClearance = cached<Clearance>(async () => {
+  const F = PARCEL_LEFT.fields;
+  const rows = await queryGroup(
+    PARCEL_LEFT.url, F.status,
+    [count('OBJECTID', 'n'), sum(F.area, 'a')],
+  );
+  let cleared = 0, remaining = 0, remainingM2 = 0, total = 0;
+  for (const r of rows) {
+    const k = String(r[F.status] ?? '').trim();
+    const n = Number(r.n ?? 0);
+    total += n;
+    if (k === 'Бүрэн чөлөөлсөн' || k === 'Цэвэрлэсэн нэгж талбар') cleared += n;
+    else if (k === 'Үлдсэн нэгж талбар') { remaining += n; remainingM2 += Number(r.a ?? 0); }
+  }
+  return {
+    cleared,
+    remaining,
+    remainingHa: remainingM2 / 10_000,
+    total,
+    pct: total > 0 ? (cleared / total) * 100 : null,
+  };
 });

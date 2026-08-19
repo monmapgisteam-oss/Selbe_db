@@ -15,7 +15,8 @@
  */
 
 import { Bars, Series, Donut, Trend, Stack, Ring } from '@/components/ui';
-import { parseChart, PALETTE } from '@/lib/agent/chart';
+import { parseChart } from '@/lib/agent/chart';
+import { cat } from '@/lib/format';
 import s from '@/components/agent.module.css';
 
 export function AgentChart({ raw }: { raw: string }) {
@@ -31,7 +32,10 @@ export function AgentChart({ raw }: { raw: string }) {
     key: `${i}-${d.label}`,
     label: d.label,
     value: d.value,
-    color: PALETTE[i % PALETTE.length],
+    // ⚠️ Энэ бол ЖИНХЭНЭ зэрэглэлийн тохиолдол: цувааг туслах өөрөө үүсгэдэг
+    //    тул «утга»гүй, зөвхөн ЯЛГАХ хэрэгтэй. Слотууд нь тогтмол дараалалтай
+    //    бөгөөд хоёр горимд CVD-ээр баталгаажсан (`globals.css`).
+    color: cat(i),
   }));
 
   return (
@@ -50,7 +54,7 @@ export function AgentChart({ raw }: { raw: string }) {
         <Series items={items} unit={unit} />
       ) : (
         // `Bars` нь нэг өнгөөр илүү цэвэрхэн — ангиллын өнгө утга илэрхийлэхгүй
-        <Bars items={items.map(({ color: _c, ...b }) => b)} color={PALETTE[0]} />
+        <Bars items={items.map(({ color: _c, ...b }) => b)} color={cat(0)} />
       )}
 
       {/* ⚠️ Тайлбарыг ГРАФИКИЙН ДООР, хүрээн ДОТОР — тусдаа догол мөр болгож

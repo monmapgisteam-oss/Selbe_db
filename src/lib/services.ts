@@ -204,7 +204,7 @@ export type Cost = { field: string; basis: CostBasis };
  * (юу барих) vs хяналт (юу баригдсан). Каталогийн ДАРААЛАЛ нь сэдэвчилсэн
  * хэвээр — барилга → инженер → зам → тээвэр → бүс → бусад.
  */
-export type TopicKey = "plan" | "monitor" | "gazar";
+export type TopicKey = "plan" | "monitor" | "gazar" | "iot";
 
 export const TOPICS: {
   key: TopicKey;
@@ -215,6 +215,7 @@ export const TOPICS: {
   { key: "plan", title: "Ерөнхий төлөвлөгөө", icon: "layers", hue: "#0d9488" },
   { key: "monitor", title: "Барилгын хяналт", icon: "target", hue: "#ea580c" },
   { key: "gazar", title: "Газар чөлөөлөлт", icon: "frame", hue: "#16a34a" },
+  { key: "iot", title: "IoT мэдрэгч", icon: "radio", hue: "#0891b2" },
 ];
 
 export const topicTitle = (k: TopicKey) =>
@@ -304,6 +305,13 @@ export type LayerDef = {
    * Барилгын хяналтын хоёр давхарга нь хуучин үйлчилгээнд үлдсэн (шинэ ЕТ-д
    * гүйцэтгэлийн өгөгдөл ОГТ байхгүй) тул хаягаа өөрөө авчирна.
    */
+  /**
+   * Давхаргын ТОГТМОЛ шүүлт (definitionExpression-ийн суурь).
+   * ⚠️ IoT мэдрэгчид: телеметрийн мөр бүр геометрээ ДАВТДАГ (10,000 ижил цэг).
+   *    `device_id IS NULL` нь суурилуулалтын ГАНЦ мөрийг үлдээнэ — зурагт
+   *    мэдрэгч тус бүр НЭГ цэг болж гарна.
+   */
+  where?: string;
   url?: string;
   /**
    * ЗАГВАРЫН түлхүүр URL — webmap-style.json-ийн snapshot ХУУЧИН үйлчилгээний
@@ -312,6 +320,26 @@ export type LayerDef = {
    * шийдвэр, 2026-08-13). Байхгүй бол `layerUrl()` ашиглагдана.
    */
   styleUrl?: string;
+  /**
+   * ӨРТГИЙН асуулгын ЭХ — миграциас ӨМНӨХ тодорхойлолтын хуулбар.
+   *
+   * ⚠️ 2026-08-19: test_data-д `negj_une` талбар зөвхөн НЭГ давхаргад (et:4)
+   * үлдсэн тул миграци нь бусад ~18 давхаргаас `cost`-ыг УСТГАДАГ. Тэр нь
+   * зөв — байхгүй талбараар асуувал давхарга бүхэлдээ унана. Гэвч дагавар нь
+   * ноцтой байв: `loadCosts()` дэд бүтцийн өртгийг ЗӨВХӨН хоёр давхаргаас
+   * уншиж, `costs.perHa` олон дахин буурснаар Suitability-ийн бүсийн
+   * дэд бүтцийн зардал бараг тэг болж АШГИЙГ хөөрөгддөг байлаа.
+   *
+   * Хуучин ET үйлчилгээ АМЬД, `negj_une` бүрэн хэвээр байгааг шалгасан
+   * (жиш. ET/8: 14 шугам · 235.5 м · 40 сая ₮/100м). Тиймээс өртгийн асуулгыг
+   * ХУУЧИН хаягаар явуулна — зураг, загвар нь test_data-д хэвээр.
+   *
+   * ⚠️ Зөвхөн `where='1=1'` асуулгад (`loadCosts`) хэрэглэнэ. Каталогийн
+   * `layerTotals` нь БҮСИЙН шүүлттэй `where` дамжуулдаг бөгөөд тэр нөхцөл нь
+   * test_data-гийн талбаруудаар зохиогддог тул хуучин сервист хүчингүй байж
+   * болно — тэнд ЭНИЙГ хэрэглэхгүй.
+   */
+  costSrc?: { url: string; cost: Cost; qty?: Quantity; oid?: string };
   /**
    * OID талбарын нэр — анхдагч `OBJECTID`.
    * ⚠️ Хуучин үйлчилгээнүүд өөр нэртэй (`FID`, `objectid`). Буруу нэрээр
@@ -795,6 +823,44 @@ export const bagtsKey = (v: unknown) =>
     .toUpperCase()
     .replace(/[^0-9А-ЯӨҮA-Z]/g, "");
 
+/**
+ * ОЛОН БАГЦЫГ ХАМАРСАН мөр мөн үү («БАГЦ 1-4», «БАГЦ 1-6\nБАГЦ 8-17»)?
+ *
+ * ⚠️ 2026-08-18: `bagtsKey` нь ЦЭГ, ЗУРААС, ЗАЙГ БҮГДИЙГ хаядаг — «Багц 4-1» ба
+ * «Багц 4.1»-ийг тааруулахын тулд ЗААВАЛ ийм байх ёстой. Гэвч тэр дүрэм нь
+ * ДИАПАЗОН бичиглэлийг ч нурааж, «БАГЦ 1-4» → «БАГЦ14» болгодог — энэ нь бодит
+ * дэд бүтцийн багц «Багц 14»-ийн ЯГ түлхүүр. Үр дүнд Cashflow-гийн ТЭЗҮ 1–4
+ * зураг төслийн гэрээ (2.23 тэрбум ₮) «Багц 14 · Дулаан хангамжийн нэвтрэх
+ * суваг»-т наалдаж, тэр багц «санхүү бүртгэлгүй» гэхийн оронд ХУДАЛ гүйцэтгэл
+ * харуулдаг байв.
+ *
+ * Тиймээс багц↔гэрээ тааруулах бүх газар (Санхүүжилт, Барилгын цогц хяналт)
+ * диапазон мөрийг ЭНЭ шалгуураар ЭХЛЭЭД хасна. Диапазоны дүнг тодорхой нэг
+ * багцад хуваарилах боломжгүй тул алдагдахгүй — зүгээр л буруу эзэнд очихгүй.
+ */
+export const isPkgRange = (v: unknown) => {
+  const s = String(v ?? "").trim();
+  // Олон мөрт нүд («БАГЦ 1-6» + шинэ мөр + «БАГЦ 8-17») — аль нэгд нь ч хамаарахгүй
+  if (/[\r\n]/.test(s)) return true;
+  // Таслалаар жагсаасан («БАГЦ-6.1, 6.2»)
+  if (s.includes(",")) return true;
+  // «БАГЦ 1-4», «БАГЦ 1- 4» — ТООН ДИАПАЗОН.
+  // ⚠️ Дэд багцыг диапазонтой АНДУУРЧ БОЛОХГҮЙ. Үйлчилгээний бодит утгуудыг
+  //    шалгасан (Cashflow /106): дэд багц нь ҮРГЭЛЖ ЦЭГТЭЙ («БАГЦ-3.1»,
+  //    «БАГЦ-16.7», «БАГЦ - 19.1»), диапазон нь ЗУРААСТАЙ бөгөөд тоо нь ӨСНӨ.
+  //    Нэмэлт хамгаалалт болгож өсөх дарааллыг шаардана — ингэснээр «Багц 4-1»
+  //    хэлбэрийн дэд багц (4 > 1) орж ирсэн ч диапазон гэж тооцогдохгүй.
+  const m = s.match(/(\d+)\s*[-–—]\s*(\d+)\s*$/u);
+  return m != null && Number(m[2]) > Number(m[1]);
+};
+
+/**
+ * Гэрээний мөрөөс БАГЦЫН түлхүүр. Диапазон/жагсаалт мөрд ХООСОН мөр буцаана —
+ * багцын түлхүүрүүд хэзээ ч хоосон биш тул ийм мөр аль ч багцад наалдахгүй.
+ * Багц↔гэрээ тааруулах бүх газар `bagtsKey`-ийн ОРОНД энийг хэрэглэнэ.
+ */
+export const pkgKeyOf = (v: unknown) => (isPkgRange(v) ? "" : bagtsKey(v));
+
 /** «5/1 барилга» / «5/1 блок» → «5/1» (давхаргын `BLOK`-той тааруулах) */
 export const blockKey = (v: unknown) =>
   String(v ?? "")
@@ -857,9 +923,17 @@ export const PARCEL_LEFT = {
  * ТӨЛӨВ (`Tuluv`) → өнгө. Газрын зургийн ГОЛ будалт — үлдсэн (улаан) талбар
  * барилга эхлүүлэхэд саад болж буй хэсэг тул хамгийн тод, чөлөөлсөн нь ногоон.
  */
+/**
+ * ТӨЛӨВ (`Tuluv`) → өнгө.
+ *
+ * ⚠️ 2026-08-17: Сервис одоо ДӨРӨВ утга буцаадаг болсон — «Гэрээлсэн» өнгөгүй
+ * байсан тул зурагт өнгөгүй тусаж, самбарын тоонууд нийлбэртээ таардаггүй байв
+ * (Бүрэн чөлөөлсөн + Цэвэрлэсэн + Үлдсэн ≠ нийт талбар).
+ */
 export const PARCEL_STATUS_HUES: Record<string, string> = {
   "Бүрэн чөлөөлсөн": "#22c55e",
   "Цэвэрлэсэн нэгж талбар": "#0ea5e9",
+  "Гэрээлсэн": "#a78bfa",
   "Үлдсэн нэгж талбар": "#e11d48",
 };
 
@@ -1325,6 +1399,42 @@ const SB_LAYERS: LayerDef[] = PLAN2D_LAYERS.map((l) => ({
     : l.geom === "line"
     ? { qty: { field: "Shape__Length", unit: "м" } }
     : {}),
+}));
+
+const IOT_BASE =
+  process.env.NEXT_PUBLIC_ARCGIS_IOT ??
+  "https://services-ap1.arcgis.com/OgVoRiKUkHg9Iokz/arcgis/rest/services";
+
+/**
+ * IoT МЭДРЭГЧ — газрын зурагт харагдах цэгүүд.
+ *
+ * ⚠️ Давхарга бүр 10,000 хүртэл ТЕЛЕМЕТРИЙН мөртэй бөгөөд мөр бүр ИЖИЛ
+ *    геометрээ давтдаг. `where` нь суурилуулалтын ганц мөрийг үлдээж, зурагт
+ *    мэдрэгч тус бүр НЭГ цэг болгоно — эс бөгөөс 10,000 цэг нэг дээр овоолж
+ *    рендерийг дэмий ачаална.
+ * ⚠️ `noZone` — эдгээрт ZONE_ID талбар БАЙХГҮЙ. Бүсээр шүүвэл
+ *    definitionExpression бүхэлдээ унаж давхарга зурагдахаа болино.
+ * ⚠️ `oid` нь OBJECTID (анхдагч) тул заагаагүй.
+ */
+const IOT_LAYERS: LayerDef[] = [
+  { key: "Waste_Sensor",  n: 62, title: "Хогийн савны мэдрэгч",   hue: "#ea580c" },
+  { key: "Water_Meter",   n: 61, title: "Усны тоолуур",           hue: "#0891b2" },
+  { key: "Light_Sensor",  n: 60, title: "Гэрэлтүүлгийн мэдрэгч",  hue: "#f59e0b" },
+  { key: "Temp_Humidity", n: 64, title: "Агаарын темп, чийг",     hue: "#22c55e" },
+  { key: "Soil_Meter",    n: 63, title: "Хөрсний мэдрэгч",        hue: "#a855f7" },
+].map((x) => ({
+  id: `iot:${x.key.toLowerCase()}`,
+  n: x.n,
+  title: x.title,
+  topic: "iot" as const,
+  geom: "point" as const,
+  hue: x.hue,
+  marker: "circle" as const,
+  size: 11,
+  url: `${IOT_BASE}/${x.key}/FeatureServer/${x.n}`,
+  where: "device_id IS NULL",
+  noZone: true as const,
+  note: x.key,
 }));
 
 export const LAYERS: LayerDef[] = [
@@ -2199,6 +2309,7 @@ export const LAYERS: LayerDef[] = [
     noZone: true,
   },
   ...PKG_LAYERS,
+  ...IOT_LAYERS,
 ];
 
 /* ══════════ TEST_DATA ШИЛЖИЛТ — 2026-08-13 ══════════ */
@@ -2275,7 +2386,13 @@ for (const l of LAYERS) {
   if (n == null) continue;
   l.styleUrl = l.url ?? `${ET}/${l.n}`;
   l.url = `${TD}/${n}`;
-  if (l.cost && !TD_KEEP_COST.has(l.id)) delete l.cost;
+  if (l.cost && !TD_KEEP_COST.has(l.id)) {
+    // ⚠️ Устгахын ӨМНӨ миграциас өмнөх бүтэн тодорхойлолтыг хадгална — өртгийн
+    //    асуулга нь `cost` талбартай зэрэг `qty`/`oid`-г ч ЭНЭ ижил үйлчилгээнээс
+    //    авах ёстой (доорх мөрүүд `qty`/`oid`-г test_data-д тааруулж дарж бичнэ).
+    l.costSrc = { url: l.styleUrl, cost: l.cost, qty: l.qty, oid: l.oid };
+    delete l.cost;
+  }
   if (l.qty && TD_QTY_SYS_AREA.has(l.id)) l.qty = { field: "Shape__Area", unit: "м²" };
   if (l.qty && TD_QTY_SYS_LENGTH.has(l.id)) l.qty = { field: "Shape__Length", unit: "м" };
   const qf = TD_QTY_FIELD[l.id];
@@ -2295,6 +2412,7 @@ for (const l of LAYERS) {
 export const LAYER_BY_ID: Record<string, LayerDef> = Object.fromEntries(
   LAYERS.map((l) => [l.id, l]),
 );
+
 
 /**
  * Эх webmap-ийн снапшот загварыг хэрэглэхдээ ӨНГИЙГ нь каталогийн `hue`-ээр
@@ -2350,6 +2468,20 @@ export const REFERENCE_IDS = ["khil1", "khil2"] as const;
 
 /** Ихэнх давхарга ЕТ-ээс; хяналтынх нь өөрийн бүтэн хаягтай */
 export const layerUrl = (l: LayerDef) => l.url ?? `${ET}/${l.n}`;
+
+/**
+ * ӨРТГИЙН асуулгын эх — одоогийн үйлчилгээ (өртгийн талбар нь үлдсэн бол),
+ * эс бөгөөс миграциас өмнөх хуулбар (`costSrc`). Аль нь ч байхгүй бол `null`.
+ *
+ * ⚠️ ЗӨВХӨН `where='1=1'` хэлбэрийн нэгтгэлд. Шалтгааныг `LayerDef.costSrc`-ийн
+ * тайлбараас үзнэ үү.
+ */
+export const costSource = (
+  l: LayerDef,
+): { url: string; cost: Cost; qty?: Quantity; oid?: string } | null =>
+  l.cost
+    ? { url: layerUrl(l), cost: l.cost, qty: l.qty, oid: l.oid }
+    : l.costSrc ?? null;
 
 /**
  * Давхаргын OID талбар.
@@ -3130,7 +3262,8 @@ export type ViewKey =
   | "tailan"
   | "finance"
   | "habea"
-  | "irged";
+  | "irged"
+  | "iot";
 
 export const VIEWS: {
   key: ViewKey;
@@ -3317,6 +3450,17 @@ export const VIEWS: {
     initial: ["habea:osol", "habea:crane", "habea:buffer"],
     standalone: true,
   },
+  {
+    key: "iot",
+    title: "IoT хяналт",
+    desc: "Мэдрэгчийн амьд заалт — хугацааны цуваа ба сүүлийн байдал",
+    icon: "radio",
+    hue: "#0891b2",
+    // Мэдрэгч бүр НЭГ цэгээр (суурилуулалтын мөр) — `IOT_LAYERS.where` үзнэ үү
+    layers: ["iot:waste_sensor", "iot:water_meter", "iot:light_sensor", "iot:temp_humidity", "iot:soil_meter"],
+    initial: ["iot:waste_sensor", "iot:water_meter", "iot:light_sensor", "iot:temp_humidity", "iot:soil_meter"],
+    standalone: true,
+  },
 ];
 
 export const VIEW_BY_KEY: Record<ViewKey, (typeof VIEWS)[number]> =
@@ -3366,7 +3510,7 @@ export const HOME_SECTIONS: {
    */
   { id: "review", title: "Тойм", views: ["dashboard", "tailan"] },
   { id: "plan", title: "Төлөвлөлт", views: ["plan", "analysis", "irged"] },
-  { id: "build", title: "Хэрэгжилт", views: ["tsogts", "gazar", "habea"] },
+  { id: "build", title: "Хэрэгжилт", views: ["tsogts", "gazar", "habea", "iot"] },
   { id: "money", title: "Санхүү", views: ["finance", "sheet"] },
 ];
 

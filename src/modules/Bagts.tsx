@@ -9,7 +9,7 @@ import { layerTotals, qtyText } from '@/lib/totals';
 import {
   BUILDING, PROGRESS_LEVELS, LAYER_BY_ID, PKG_BY_BAGTS, bagtsKey,
 } from '@/lib/services';
-import { num, pct, shade, tint } from '@/lib/format';
+import { num, pct, shade, tint, NO_DATA } from '@/lib/format';
 import { readParam, writeParams } from '@/lib/urlState';
 import o from './overview.module.css';
 
@@ -38,7 +38,7 @@ import o from './overview.module.css';
 const HUE = LAYER_BY_ID['mon:building'].hue;
 const INFRA_HUE = '#0891b2';
 /** «Тодорхойгүй / задраагүй» бүлэг — жинхэнэ ангилал мэт өнгөтэй байх ёсгүй */
-const BLANK_HUE = '#94a3b8';
+const BLANK_HUE = NO_DATA;
 // ⚠️ export — «Барилгын цогц хяналт» (Tsogts) мөн энэ давхаргаар ажиллана
 export const BLOCK_LAYER = 'mon:building';
 

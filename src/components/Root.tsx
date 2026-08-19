@@ -67,8 +67,10 @@ const scopeFromUrl = (): NavScope => {
   const p = new URLSearchParams(window.location.search);
   if (p.get('all') === '1') return 'all';
   if (p.get('g')) return 'all';
-  const v = p.get('v') as ViewKey | null;
-  if (v && VIEW_BY_KEY[v]) return 'all';
+  const v = p.get('v');
+  // ⚠️ `Object.hasOwn` — URL-ын утга хэрэглэгчийн гар дор: `?v=__proto__` нь
+  //    энгийн индексжүүлэлтээр prototype-ийн гишүүнийг «олж» худал true өгнө.
+  if (v && Object.hasOwn(VIEW_BY_KEY, v)) return 'all';
   return null;
 };
 
@@ -128,7 +130,8 @@ export default function Root() {
     if (!p) return;
     sessionStorage.removeItem(PENDING_KEY);
     if (p === 'enter' || p === 'all') openEntry();
-    else if (VIEW_BY_KEY[p as ViewKey]) openView(p as ViewKey);
+    // ⚠️ sessionStorage ч гаднын утга — prototype түлхүүрээс хамгаална
+    else if (Object.hasOwn(VIEW_BY_KEY, p)) openView(p as ViewKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authorized]);
 

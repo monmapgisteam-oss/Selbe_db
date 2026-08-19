@@ -119,12 +119,18 @@ export function AgentChat({
       // tool_result мөрүүд). Тасалсан/алдаатай эргэлтэд эдгээр дутуу мөрүүд үлдвэл
       // дараагийн хүсэлт эвдэрдэг (400: role ээлжлэх / tool_use араас tool_result)
       // тул эргэлтийн ӨМНӨХ уртыг тэмдэглэж, амжилтгүй үед яг тэр рүү буцаана.
-      const base = history.current.length;
+      //
+      // ⚠️ Массивын ЗААЛТЫГ (`history.current` БИШ `h`) барина: хүсэлт явж байхад
+      //    ⟲ дарвал `clear()` шинэ ХООСОН массив тавьдаг. Тэр үед `history.current
+      //    .length = base` гэвэл хоосон массивыг сийрэг (sparse) болгож, дараагийн
+      //    хүсэлтэд `[null,null,…]` илгээгдэн Anthropic 400 буцаана.
+      const h = history.current;
+      const base = h.length;
 
       try {
         const { text } = await ask({
           question: q,
-          history: history.current,
+          history: h,
           scope,
           onProgress: setProgress,
           signal: controller.signal,
@@ -134,7 +140,10 @@ export function AgentChat({
         // Түүхийг тэнцвэртэй (role ээлжилсэн, tool_use бүр tool_result-тай) байдалд
         // буцаана — тасалсан ба алдаатай ХОЁУЛАНД (өмнө нь зөвхөн сүүлийн user
         // мөрийг хасдаг байсан тул дан assistant tool_use дүүжлэгдэж үлддэг байв).
-        history.current.length = base;
+        // ⚠️ `h` (заалт барьсан массив) — `history.current` БИШ. `clear()` шинэ
+        //    массив тавьсан бол энэ нь орхигдсон хуучныг л огтолно; идэвхтэй
+        //    ХООСОН түүх сийрэгжихгүй (дээрх тайлбарыг үз).
+        h.length = base;
         if (controller.signal.aborted) return;
         // ⚠️ Алдааг ЧИМЭЭГҮЙ залгихгүй — хэрэглэгч хуучин хариултыг шинэ гэж
         //    андуурвал буруу шийдвэр гаргана.

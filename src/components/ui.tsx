@@ -1,10 +1,139 @@
 'use client';
 
-import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
+import React, { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { Async } from '@/lib/useAsync';
+import { Icon } from './Icon';
 import s from './ui.module.css';
 
-const tone = (c?: string) => ({ '--tone': c ?? 'var(--hue)' }) as CSSProperties;
+/* ⚠️ envhub-ийн гол дүрэм: чартын анхдагч өнгө нь МОДУЛИЙН биш, НЭГ өгөгдлийн
+   өнгө (--data). Дуудагч өнгө өгвөл түүнийг л хүндэтгэнэ (газрын зурагтай
+   уялдсан өнгөнүүд хэвээр ажиллана). `?? var(--data)` fallback-ийг хасаж
+   болохгүй — --tone удамшдаг тул дотор давхарласан дуудлагад алдаа гарна. */
+const tone = (c?: string) => ({ '--tone': c ?? 'var(--data)' }) as CSSProperties;
+
+/**
+ * Тоо БИШ утгыг 0 болгоно.
+ *
+ * ⚠️ 2026-08-18: Яагаад ЗААВАЛ примитив дотор. ArcGIS-ийн олон талбар нь ТЕКСТ
+ * төрөлтэй бөгөөд «80%» гэх мэт тэмдэгт агуулдаг; дуудагч түүнийг `Number()`-ээр
+ * хөрвүүлэхэд `NaN` гарна. NaN нь `Math.max`-аар дамжихад дээд хязгаар нь ч NaN
+ * болж, `width: NaN%` гэсэн ХҮЧИНГҮЙ CSS үүснэ. Browser хүчингүй зарлалыг ҮЛ
+ * ХЭРЭГСДЭГ тул `.barFill` (display:block) нь эцгийнхээ 100%-ийг эзэлж, БҮХ
+ * багана ДҮҮРЭН зурагдана — өөрөөр хэлбэл өгөгдөл эвдэрсэн үед график нь
+ * «бүгд 100%» гэсэн ХУДАЛ уншилт өгдөг байв. Дуудагч бүрийг найдвартай
+ * болгохын оронд примитив өөрөө ийм утгыг 0 гэж үзнэ: багана нь хоосон
+ * харагдаж, алдаа нүдэнд шууд илэрнэ.
+ */
+const fin = (v: number) => (Number.isFinite(v) ? v : 0);
+
+/* ── Хулганы тайлбар (tooltip) ─────────────────────────────────────────────
+   ЭКСПОРТЛОХГҮЙ дотоод хэрэгсэл. `Bars`/`Stack`/`Series`/`Donut` дөрвүүлээ
+   энийг хэрэглэнэ.
+
+   ⚠️ Яагаад `title=`-г орлуулав:
+     • ~1 секунд хүлээдэг — өгөгдөл шалгаж яваа хүнд удаан;
+     • ХҮРЭЛТЭЭР (touch) огт гарахгүй — таблетаас үзэгчид юу ч авахгүй;
+     • загварыг нь удирдах боломжгүй (системийн хайрцаг, горим дагахгүй);
+     • ганц мөр текстээс өөр юу ч багтахгүй (өнгөт тэмдэг, нэгж, тайлбар үгүй).
+
+   ⚠️ Яагаад `position: fixed`:
+   Самбарууд нь `.panel { overflow:hidden }`, `.panelBody { overflow-y:auto }`,
+   AgentChat-ийн `.chart { overflow-x:auto }` гэсэн ГУРВАН тайрагч эцгийн дотор
+   байдаг. `absolute` нь тэднээр тайрагдана. Эдгээр эцгүүдийн аль нь ч
+   `transform/filter/contain` эзэмшдэггүй (шалгасан) тул `fixed` нь агуулах
+   блок үүсгэхгүй — бүх тайралтаас чөлөөтэй гарна. `body { overflow: hidden }`
+   учир гүйлтийн шилжилт тооцох шаардлагагүй, цонхны хэмжээ шууд хүчинтэй.
+
+   ⚠️ `createPortal` ХЭРЭГГҮЙ (төсөлд хаана ч ашиглагдаагүй, ssr:false-тэй
+   харилцан үйлчлэл нэмэхээс зайлсхийв). */
+
+type TipData = { x: number; y: number; label: string; value: string; color?: string; hint?: string };
+
+const TIP_DELAY = 60; // мс — `title`-ийн ~1000-ын оронд
+const TIP_OFF = 14; // заагуураас хол зай
+
+function useTip() {
+  const [tip, setTip] = useState<TipData | null>(null);
+  /**
+   * ⚠️ 2026-08-18: Таймер нь ЗААВАЛ ref — урьд нь `useState` байсан бөгөөд
+   * `setTimeout`-ыг state updater-ийн ДОТОР үүсгэдэг байв. React updater-ийг
+   * нэгээс олон удаа дуудаж болно (StrictMode-ийн давхар дуудалт, concurrent
+   * рендерийн дахин тоглолт) — тэр үед хадгалагдаагүй ӨНЧИН таймер үлдэж,
+   * `hide()` цэвэрлэх юмгүй өнгөрдөг. Өнчин таймер хожим асахад tooltip нь
+   * заагуур яваад өгсний ДАРАА дэлгэц дээр гарч ЗҮҮГДЭЖ үлддэг байлаа.
+   */
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const stop = () => { if (timer.current) { clearTimeout(timer.current); timer.current = null; } };
+
+  // Компонент салахад унтраалгүй үлдсэн таймер ажиллуулахгүй
+  useEffect(() => stop, []);
+
+  const hide = () => {
+    stop();
+    setTip(null);
+  };
+  /** Заагуур хөдлөх бүрд байрлалыг шинэчилнэ; анх гарахдаа л хүлээнэ */
+  const show = (e: { clientX: number; clientY: number }, d: Omit<TipData, 'x' | 'y'>) => {
+    const at = { ...d, x: e.clientX, y: e.clientY };
+    setTip((cur) => (cur ? at : cur));
+    if (timer.current) return;
+    timer.current = setTimeout(() => { timer.current = null; setTip(at); }, TIP_DELAY);
+  };
+  /** Гар/фокусаар хөтлөгчид — элементийн хүрээнээс байрлалыг авна */
+  const showAt = (el: Element | null, d: Omit<TipData, 'x' | 'y'>) => {
+    if (!el) return;
+    // ⚠️ Хүлээгдэж буй заагуурын таймерыг зогсооно — эс бөгөөс тэр нь хожим
+    //    асаад фокусын байрлалыг ХУУЧИН заагуурынхаар дарж бичнэ.
+    stop();
+    const r = el.getBoundingClientRect();
+    setTip({ ...d, x: r.left + r.width / 2, y: r.top });
+  };
+
+  /** Тэмдэг бүрд наах хэрэглэгчийн үйлдлүүд */
+  const bind = (d: Omit<TipData, 'x' | 'y'>) => ({
+    onPointerMove: (e: React.PointerEvent) => show(e, d),
+    onPointerLeave: hide,
+    // Хүрэлтээр — `title` энд юу ч өгдөггүй байсан
+    onPointerDown: (e: React.PointerEvent) => {
+      if (e.pointerType === 'touch') showAt(e.currentTarget, d);
+    },
+    onFocus: (e: React.FocusEvent) => showAt(e.currentTarget, d),
+    onBlur: hide,
+  });
+
+  return { bind, hide, node: tip ? <Tip {...tip} /> : null };
+}
+
+function Tip({ x, y, label, value, color, hint }: TipData) {
+  // Цонхны ирмэгээс хальтал эсрэг тал руу эргэнэ (хэмжээг нь мэдэхгүй тул
+  // хамгийн өргөн боломжит утгаар бариулна — `max-width` нь 260px)
+  const flipX = x > window.innerWidth - 280;
+  const flipY = y < 110;
+  const c = color ?? 'var(--data)';
+  return (
+    /* envhub-ийн tooltip бүтэц: өнгөөр будсан толгойн зурвас (цэг + нэр),
+       дор нь өнгөтэй ТОМ утга, дараа нь бүдэг тайлбар. */
+    <div
+      role="tooltip"
+      className={s.tip}
+      style={{
+        left: x + (flipX ? -TIP_OFF : TIP_OFF),
+        top: y + (flipY ? TIP_OFF : -TIP_OFF),
+        transform: `translate(${flipX ? '-100%' : '0'}, ${flipY ? '0' : '-100%'})`,
+      }}
+    >
+      <span className={s.tipHd} style={{ background: `color-mix(in oklab, ${c} 10%, transparent)` }}>
+        <i className={s.tipDot} style={{ background: c }} />
+        <span className={s.tipName}>{label}</span>
+      </span>
+      <span className={s.tipBody}>
+        <b className={`${s.tipVal} num`} style={{ color: c }}>{value}</b>
+        {hint && <span className={s.tipHint}>{hint}</span>}
+      </span>
+    </div>
+  );
+}
 
 /* ── Хэсэг ── */
 
@@ -111,8 +240,36 @@ export function Tabs({
   /** Зурвас БИШ, хэсгийн дотор хажуугаар байрлах товчийн багц (шугам/зайгүй) */
   plain?: boolean;
 }) {
+  /**
+   * ⚠️ 2026-08-17: ГАРЫН удирдлага. Урьд нь `role="tablist"`/`role="tab"` гэж
+   * зарласан ч сумны товч ажилладаггүй байсан — таб гэж зарлачихаад тэр зан
+   * төлөвийг өгөхгүй байх нь ердийн товчноос ч ДОР (уншигч «сумаар сонго» гэж
+   * зөвлөнө, гэтэл ажиллахгүй).
+   *
+   * ⚠️ `aria-controls` НЭМЭХГҮЙ: ~20 дуудагчийн самбарууд id-гүй тул байхгүй
+   * id заах нь огт заахаас дор.
+   *
+   * ⚠️ `preventScroll` — `.tabs` нь `position: sticky`. Ердийн `focus()` нь
+   * элементийг харагдуулах гэж гүйлгэхдээ табыг ӨӨРИЙНХ нь наалдсан толгойн
+   * доогуур оруулж нууж орхино.
+   */
+  const nav = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const keys = plain ? ['ArrowUp', 'ArrowDown'] : ['ArrowLeft', 'ArrowRight'];
+    const i = items.findIndex((t) => t.key === value);
+    let next = -1;
+    if (e.key === keys[0]) next = (i - 1 + items.length) % items.length;
+    else if (e.key === keys[1]) next = (i + 1) % items.length;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = items.length - 1;
+    if (next < 0 || next === i) return;
+    e.preventDefault();
+    onChange(items[next].key);
+    const el = e.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next];
+    el?.focus({ preventScroll: true });
+  };
+
   return (
-    <div className={`${s.tabs} ${plain ? s.tabsPlain : ''}`} role="tablist">
+    <div className={`${s.tabs} ${plain ? s.tabsPlain : ''}`} role="tablist" onKeyDown={nav}>
       {items.map((t) => {
         const on = t.key === value;
         return (
@@ -121,6 +278,8 @@ export function Tabs({
             type="button"
             role="tab"
             aria-selected={on}
+            // Идэвхтэй таб л Tab-аар орно; доторх шилжилт сумаар (roving tabindex)
+            tabIndex={on ? 0 : -1}
             className={`${s.tab} ${on ? s.tabOn : ''}`}
             onClick={() => onChange(t.key)}
           >
@@ -202,36 +361,46 @@ export function Bars({
   limit?: number;
 }) {
   const [all, setAll] = useState(false);
+  const tip = useTip();
   const sel = selected == null ? [] : Array.isArray(selected) ? selected : [selected];
   // Хэмжээсийг БҮХ мөрөөр тогтооно — эс бөгөөс задлахад баганы урт үсэрнэ
-  const top = max ?? Math.max(1, ...items.map((i) => i.value));
+  const top = fin(max ?? Math.max(1, ...items.map((i) => fin(i.value)))) || 1;
   const hidden = limit != null && !all ? Math.max(0, items.length - limit) : 0;
   const shown = hidden > 0 ? items.slice(0, limit) : items;
 
   return (
     <div className={s.bars}>
       {shown.map((it) => {
-        const w = Math.max(0, Math.min(100, (it.value / top) * 100));
+        const w = Math.max(0, Math.min(100, (fin(it.value) / top) * 100));
         const on = sel.includes(it.key);
+        const dim = sel.length > 0 && !on;
         // <button> дотор зөвхөн phrasing content зөвшөөрөгдөнө — <div> ашиглаж болохгүй
         /**
-         * ГАНЦ загвар — ТӨСЛИЙН БҮХ БАР ИЖИЛ: нэр УРД + тоймтой бар + утга нэг
-         * мөрөнд. Урьд нь «нэр дээр» (блок) хувилбар байсныг хэрэглэгчийн хүсэлтээр
-         * бүрмөсөн авав — бүх дашбоардын бар нэг эгнээ, нэр урдтай.
+         * ⚠️ 2026-08-17: envhub-ийн RowChart загвар — ХОЁР мөр: дээр нь
+         * нэр + утга (baseline, хоёр захад), доор нь БҮТЭН өргөний 2px hairline
+         * зам. Урьд нь нэр|бар|утга нэг эгнээ байсан — нэрэнд 30% л зай өгч урт
+         * монгол нэрийг олон мөр даруулдаг байв; одоо нэр бүтэн өргөнтэй.
          */
         const body = (
           <>
-            <span className={s.barName} title={it.label}>{it.label}</span>
-            <span className={`${s.barTrack} ${s.barTrackOut}`}>
-              <i className={`${s.barFill} ${s.barFillOut}`} style={{ width: `${w}%` }} />
+            <span className={s.barTop}>
+              <span className={`${s.barName} ${on ? s.barNameOn : ''}`} title={it.label}>{it.label}</span>
+              <span className={`${s.barVal} ${on ? s.barValOn : ''} num`}>{it.display ?? it.value}</span>
             </span>
-            <span className={`${s.barVal} num`}>{it.display ?? it.value}</span>
+            <span className={s.barTrack}>
+              <i className={s.barFill} style={{ width: `${w}%`, opacity: dim ? 0.3 : 1 }} />
+            </span>
           </>
         );
-        const rowCls = `${s.barRow} ${s.barRowInline}`;
+        const rowCls = `${s.barRow} ${dim ? s.barRowDim : ''}`;
         const st = tone(it.color ?? color);
         /** Бүх дашбоардад ИЖИЛ hover popup — нэр: утга (+шүүх заавар) */
-        const tip = `${it.label}: ${it.display ?? it.value}${onSelect ? ' — дарж газрын зурагт шүүнэ' : ''}`;
+        const tipData = {
+          label: it.label,
+          value: String(it.display ?? it.value),
+          color: it.color ?? color,
+          hint: onSelect ? 'Дарж газрын зурагт шүүнэ' : undefined,
+        };
         return onSelect ? (
           <button
             key={it.key}
@@ -239,17 +408,18 @@ export function Bars({
             aria-pressed={on}
             className={`${rowCls} ${s.barClick} ${on ? s.barOn : ''}`}
             style={st}
-            title={tip}
             onClick={() => onSelect(it.key)}
+            {...tip.bind(tipData)}
           >
             {body}
           </button>
         ) : (
-          <div key={it.key} className={rowCls} style={st} title={tip}>
+          <div key={it.key} className={rowCls} style={st} {...tip.bind(tipData)}>
             {body}
           </div>
         );
       })}
+      {tip.node}
 
       {hidden > 0 && (
         <button type="button" className={s.more} onClick={() => setAll(true)}>
@@ -277,30 +447,58 @@ export function Stack({
   total?: number;
   legend?: boolean;
 }) {
-  const sum = (total ?? items.reduce((a, b) => a + b.value, 0)) || 1;
+  const sum = fin(total ?? items.reduce((a, b) => a + fin(b.value), 0)) || 1;
+  const tip = useTip();
+  /**
+   * ⚠️ 2026-08-17: Хэсэг↔тайлбарын ХОЛБОО — `Donut`-ынхтой ЯГ ижил зан төлөв
+   * (тэндхийн `hov` загварыг хэвээр нь буулгав). Урьд нь Stack-д огт байгаагүй
+   * тул нарийхан зурвасны 5 дахь хэсэг аль нэр вэ гэдгийг таах аргагүй байлаа.
+   */
+  const [hov, setHov] = useState<string | null>(null);
+  const hoverProps = (key: string) => ({
+    onMouseEnter: () => setHov(key),
+    onMouseLeave: () => setHov((h) => (h === key ? null : h)),
+  });
+  const isDim = (key: string) => hov != null && hov !== key;
+  const share = (v: number) => {
+    const f = v / sum;
+    // «0%» худал уншилтаас сэргийлнэ — Donut-ынхтой ижил дүрэм
+    return f > 0 && f < 0.005 ? '<1%' : `${(f * 100).toFixed(0)}%`;
+  };
+
   return (
     <>
       <div className={s.stack}>
         {items.map((i) => (
           <span
             key={i.key}
-            className={s.stackSeg}
+            className={`${s.stackSeg} ${isDim(i.key) ? s.stackSegDim : ''}`}
             style={{ width: `${(i.value / sum) * 100}%`, background: i.color }}
-            title={`${i.label}: ${i.value}`}
+            {...hoverProps(i.key)}
+            {...tip.bind({ label: i.label, value: `${i.value} · ${share(i.value)}`, color: i.color })}
           />
         ))}
       </div>
       {legend && (
         <ul className={s.legend}>
           {items.map((i) => (
-            <li key={i.key} className={s.legendItem}>
+            <li
+              key={i.key}
+              className={`${s.legendItem} ${hov === i.key ? s.legendItemOn : ''} ${isDim(i.key) ? s.legendItemDim : ''}`}
+              {...hoverProps(i.key)}
+            >
               <span className={s.legendDot} style={{ background: i.color }} />
               {i.label}
+              {/* ⚠️ Хувь нь ЗААВАЛ: --c5/--c6 слотууд цайвар горимд 3:1-ээс
+                  доогуур тул өнгө нь дангаараа мэдээлэл дамжуулж болохгүй
+                  (globals.css дахь «relief» дүрэм). */}
               <b className={`${s.legendVal} num`}>{i.value}</b>
+              <span className={s.legendPct}>{share(i.value)}</span>
             </li>
           ))}
         </ul>
       )}
+      {tip.node}
     </>
   );
 }
@@ -383,7 +581,7 @@ export function Donut({
 }) {
   const sel = selected == null ? [] : Array.isArray(selected) ? selected : [selected];
   const hasSel = sel.length > 0;
-  const total = items.reduce((a, b) => a + b.value, 0);
+  const total = items.reduce((a, b) => a + fin(b.value), 0);
   const r = (size - width) / 2;
 
   /**
@@ -392,26 +590,37 @@ export function Donut({
    * ⚠️ Хоёр талдаа ажиллана: зүсмэг дээр очиход тайлбарын мөр, тайлбар дээр
    * очиход зүсмэг тодорно. 4-8 ойролцоо өнгөтэй зүсмэгийг тайлбартай нь нүдээр
    * тааруулах нь бараг боломжгүй байсан.
-   * ⚠️ ЗӨВХӨН дарж болдог диаграмд — эс бөгөөс идэвхгүй диаграм дарагдах юм шиг
-   * хуурамч мэдрэмж төрүүлнэ.
+   *
+   * ⚠️ 2026-08-17: Урьд нь энэ бүхэн `onSelect` байхаас ХАМААРДАГ байв — өөрөөр
+   * хэлбэл ЗӨВХӨН УНШИХ 14 диаграмд hover огт байхгүй, голын уншилт ч
+   * солигддоггүй байсан. Хамаарлыг АВЧ ХАЯВ. «Дарагдах юм шиг хуурамч мэдрэмж
+   * төрүүлэхгүй» гэсэн анхны болгоомжлолыг ЗААХАГЧ (`cursor`) ба `onClick`-ийг
+   * хэвээр нь хаалттай үлдээснээр хангаж байна — тодруулга нь заалт биш,
+   * УНШИХАД туслах хэрэгсэл.
    */
   const [hov, setHov] = useState<string | null>(null);
-  const hovOn = onSelect ? hov : null;
-  const hoverProps = (key: string) =>
-    onSelect
-      ? { onMouseEnter: () => setHov(key), onMouseLeave: () => setHov((h) => (h === key ? null : h)) }
-      : undefined;
+  const tip = useTip();
+  const hovOn = hov;
+  const hoverProps = (key: string) => ({
+    onMouseEnter: () => setHov(key),
+    onMouseLeave: () => setHov((h) => (h === key ? null : h)),
+  });
   /** Тодруулах уу? Хулгана байвал ТЭР давамгайлна, эс бөгөөс сонголт. */
   const isEmph = (key: string) => (hovOn ? hovOn === key : sel.includes(key));
   const isDim = (key: string) => (hovOn ? hovOn !== key : hasSel && !sel.includes(key));
   /**
-   * ДҮҮРГЭЛТ тунгалаг (зөөлөн зурвас), ЗАХЫН ШУГАМ тод бүтэн (тодорхой хүрээ).
-   * Тодруулсан зүсмэг дүүргэлт нь өтгөрч, бүдгэрүүлсэн нь бараг үл үзэгдэнэ.
-   * Зах нь ямагт тод — бүдгэрүүлсэн үед л сулрана.
+   * ⚠️ 2026-08-17: envhub-ийн зүсмэгийн хэл — ТУНГАЛАГ дүүргэлт (0.42) + ИЖИЛ
+   * өнгийн ЦУЛ 1px зах. Онцолсон нь дүүргэлтээ өтгөрүүлнэ (0.62), бүдгэрсэн нь
+   * бараг алга болно (0.06 / зах 0.15) — envhub-д сонголт ЯГ ингэж уншигддаг.
    */
-  const fillOpacity = (key: string) => (isEmph(key) ? 0.55 : isDim(key) ? 0.08 : 0.3);
-  const edgeOpacity = (key: string) => (isDim(key) ? 0.35 : 1);
-  const edgeWidth = (key: string) => (isEmph(key) ? 2.5 : 1.6) * edge;
+  const sliceStyle = (key: string, color: string): CSSProperties => ({
+    fill: color,
+    fillOpacity: isDim(key) ? 0.06 : isEmph(key) ? 0.62 : 0.42,
+    stroke: color,
+    strokeOpacity: isDim(key) ? 0.15 : 0.9,
+    strokeWidth: 1 * edge,
+    ...(onSelect ? { cursor: 'pointer' } : null),
+  });
   // Зүсмэгийн дотор/гадна радиус — band-ийн зузаан нь `width`
   const ri = r - width / 2;
   const ro = r + width / 2;
@@ -419,11 +628,25 @@ export function Donut({
   // Зүсмэг бүрийн ЭХЛЭХ байрлал — өмнөх зүсмэгүүдийн нийлбэр
   let acc = 0;
   const slices = items.map((it) => {
-    const frac = total > 0 ? it.value / total : 0;
+    const frac = total > 0 ? fin(it.value) / total : 0;
     const offset = acc;
     acc += frac;
     return { ...it, frac, offset };
   });
+
+  /**
+   * Дэлгэц уншигчид зориулсан товч тойм — эхний 3 зүсмэг.
+   * ⚠️ Урьд нь `<svg>` дээр `role`/`aria-label` огт байгаагүй тул диаграм нь
+   * туслах технологид ЯМАР Ч утга дамжуулдаггүй байв (зөвхөн `<path>` бүрийн
+   * `<title>` — тэр нь найдвартай уншигддаггүй).
+   */
+  const ariaSummary =
+    `Дугуй диаграм. Нийт ${center ?? total}${centerLabel ? ` ${centerLabel}` : ''}. ` +
+    slices
+      .slice(0, 3)
+      .map((sl) => `${sl.label} ${(sl.frac * 100).toFixed(0)}%`)
+      .join(', ') +
+    (items.length > 3 ? `, бусад ${items.length - 3} ангилал.` : '.');
 
   /**
    * LEADER горим — тайлбарыг доор жагсаахын оронд зүсмэг бүрээс зураас татаж
@@ -442,26 +665,31 @@ export function Donut({
     const vbH = size + PADY * 2;
     return (
       <div className={s.donutLead}>
-        <svg width={vbW} height={vbH} viewBox={`${-PAD} ${-PADY} ${vbW} ${vbH}`}>
-          {/* Цагирган зүсмэгүүд — дүүргэлт тунгалаг, зах тод (12 цагаас) */}
+        <svg
+          width={vbW}
+          height={vbH}
+          viewBox={`${-PAD} ${-PADY} ${vbW} ${vbH}`}
+          role="img"
+          aria-label={ariaSummary}
+        >
+          {/* envhub: гадна захын 1px чиглүүлэгч тойрог (бүтэн band биш) */}
           <g>
-            <circle className={s.donutTrack} cx={cx} cy={cy} r={r} strokeWidth={width} />
+            <circle className={s.donutTrack} cx={cx} cy={cy} r={Ro} strokeWidth={1} />
             {slices.map((sl) => (
               <path
                 key={sl.key}
                 d={sectorPath(cx, cy, ri, ro, sl.offset, sl.offset + sl.frac)}
-                fill={sl.color}
-                fillOpacity={fillOpacity(sl.key)}
-                stroke={sl.color}
-                strokeOpacity={edgeOpacity(sl.key)}
-                strokeWidth={edgeWidth(sl.key)}
                 strokeLinejoin="round"
-                style={onSelect ? { cursor: 'pointer' } : undefined}
+                style={sliceStyle(sl.key, sl.color)}
                 onClick={onSelect ? () => onSelect(sl.key) : undefined}
                 {...hoverProps(sl.key)}
-              >
-                <title>{`${sl.label}: ${sl.value}${onSelect ? ' — дарж газрын зурагт шүүнэ' : ''}`}</title>
-              </path>
+                {...tip.bind({
+                  label: sl.label,
+                  value: `${sl.value} · ${sl.frac > 0 && sl.frac < 0.005 ? '<1' : (sl.frac * 100).toFixed(0)}%`,
+                  color: sl.color,
+                  hint: onSelect ? 'Дарж газрын зурагт шүүнэ' : undefined,
+                })}
+              />
             ))}
           </g>
           {/* Голын утга */}
@@ -490,13 +718,24 @@ export function Donut({
                 onClick={onSelect ? () => onSelect(sl.key) : undefined}
                 {...hoverProps(sl.key)}
               >
-                <polyline points={`${sx},${sy} ${ex},${ey} ${lx},${ey}`} fill="none" stroke={sl.color} strokeWidth={1} />
-                <circle cx={lx} cy={ey} r={1.6} fill={sl.color} />
+                {/* ⚠️ Будаг нь `style`-аар — SVG-ийн presentation ШИНЖ дотор
+                    `var(--cN)` задардаггүй тул токен палитр ажиллахгүй байв. */}
+                <polyline
+                  points={`${sx},${sy} ${ex},${ey} ${lx},${ey}`}
+                  strokeWidth={1}
+                  style={{ fill: 'none', stroke: sl.color }}
+                />
+                <circle cx={lx} cy={ey} r={1.6} style={{ fill: sl.color }} />
                 <foreignObject x={boxX} y={ey - 30} width={LW} height={60}>
                   <div
                     className={s.donutLeadBox}
                     style={{ textAlign: right ? 'left' : 'right', fontWeight: isEmph(sl.key) ? 600 : undefined }}
-                    title={`${sl.label}: ${sl.value}${onSelect ? ' — дарж газрын зурагт шүүнэ' : ''}`}
+                    {...tip.bind({
+                      label: sl.label,
+                      value: `${sl.value} · ${pct}`,
+                      color: sl.color,
+                      hint: onSelect ? 'Дарж газрын зурагт шүүнэ' : undefined,
+                    })}
                   >
                     <span className={s.donutLeadName}>{sl.label}</span>{' '}
                     <b className={s.donutLeadPct} style={{ color: sl.color }}>{pct}</b>
@@ -506,6 +745,7 @@ export function Donut({
             );
           })}
         </svg>
+        {tip.node}
       </div>
     );
   }
@@ -523,27 +763,28 @@ export function Donut({
           width={size}
           height={size}
           viewBox={`${-EDGE_PAD} ${-EDGE_PAD} ${size + EDGE_PAD * 2} ${size + EDGE_PAD * 2}`}
+          role="img"
+          aria-label={ariaSummary}
         >
-          {/* Зүсмэг бүр — дүүргэлт тунгалаг, зах тод бүтэн (12 цагаас) */}
+          {/* envhub: гадна захын 1px чиглүүлэгч тойрог (бүтэн band биш) */}
           <g>
-            <circle className={s.donutTrack} cx={size / 2} cy={size / 2} r={r} strokeWidth={width} />
+            <circle className={s.donutTrack} cx={size / 2} cy={size / 2} r={ro} strokeWidth={1} />
             {slices.map((sl) => (
               <path
                 key={sl.key}
                 className={s.donutSlice}
                 d={sectorPath(size / 2, size / 2, ri, ro, sl.offset, sl.offset + sl.frac)}
-                fill={sl.color}
-                fillOpacity={fillOpacity(sl.key)}
-                stroke={sl.color}
-                strokeOpacity={edgeOpacity(sl.key)}
-                strokeWidth={edgeWidth(sl.key)}
                 strokeLinejoin="round"
-                style={onSelect ? { cursor: 'pointer' } : undefined}
+                style={sliceStyle(sl.key, sl.color)}
                 onClick={onSelect ? () => onSelect(sl.key) : undefined}
                 {...hoverProps(sl.key)}
-              >
-                <title>{`${sl.label}: ${sl.value}`}</title>
-              </path>
+                {...tip.bind({
+                  label: sl.label,
+                  value: `${sl.value} · ${sl.frac > 0 && sl.frac < 0.005 ? '<1' : (sl.frac * 100).toFixed(0)}%`,
+                  color: sl.color,
+                  hint: onSelect ? 'Дарж газрын зурагт шүүнэ' : undefined,
+                })}
+              />
             ))}
           </g>
         </svg>
@@ -575,7 +816,15 @@ export function Donut({
           const on = sel.includes(sl.key);
           const body = (
             <>
-              <span className={s.legendDot} style={{ background: sl.color }} />
+              {/* envhub: тэмдэг нь зүсмэгийн ЯГ багасгасан хувь — ижил дүүргэлт
+                  (42%) + ижил өнгийн зах. */}
+              <span
+                className={s.legendDot}
+                style={{
+                  background: `color-mix(in oklab, ${sl.color} 42%, transparent)`,
+                  border: `1px solid ${sl.color}`,
+                }}
+              />
               <span className={s.donutName}>{sl.label}</span>
               {/**
                 * ⚠️ `toFixed(0)` ганцаараа ХУДАЛ уншигдана: 3,947-гийн 14 нь
@@ -606,10 +855,19 @@ export function Donut({
               </button>
             </li>
           ) : (
-            <li key={sl.key} className={s.donutItem}>{body}</li>
+            // ⚠️ Зөвхөн унших диаграмд ч тайлбар↔зүсмэгийн холбоо ажиллана —
+            //    hover нь заалт биш, уншихад туслах хэрэгсэл (дээрх тайлбар).
+            <li
+              key={sl.key}
+              className={`${s.donutItem} ${hovOn === sl.key ? s.donutHov : ''}`}
+              {...hoverProps(sl.key)}
+            >
+              {body}
+            </li>
           );
         })}
       </ul>
+      {tip.node}
     </div>
   );
 }
@@ -640,43 +898,65 @@ export function Series({
   /** Багана дарахад — байвал цуваа шүүлтийн удирдлага болно */
   onSelect?: (key: string) => void;
 }) {
-  const max = Math.max(1, ...items.map((i) => i.value));
+  const max = Math.max(1, ...items.map((i) => fin(i.value)));
+  const tip = useTip();
 
+  /**
+   * ⚠️ 2026-08-17: envhub-ийн BarChart хэл — ТОРГҮЙ, ТЭНХЛЭГГҮЙ, баганан дээр
+   * байнгын утгагүй. Утга нь hover tooltip-д; доор нь зөвхөн 10px цифр/шошгын
+   * мөр. Сонгогдоогүй багана 0.22 хүртэл бүдгэрнэ.
+   */
   return (
     <div className={s.series} style={tone(color)}>
       <div className={s.seriesPlot} style={{ height }}>
         {items.map((it) => {
           const on = selected === it.key;
           const dim = selected != null && !on;
-          // ⚠️ Баганын хамгийн бага өндөр 2px: утга 0 байсан ч багана нь БАЙГАА
+          // ⚠️ Баганын хамгийн бага өндөр 1.5%: утга 0 байсан ч багана нь БАЙГАА
           //    гэдэг нь харагдах ёстой — эс бөгөөс өгөгдөлгүйтэй андуурагдана.
-          const barH = `${Math.max(2, (it.value / max) * 100)}%`;
-          const inner = (
-            <>
-              <span className={`${s.seriesVal} num`}>{it.display ?? it.value}</span>
-              <span className={s.seriesBar} style={{ height: barH, opacity: dim ? 0.4 : 1 }} />
-              <span className={s.seriesLabel}>{it.label}</span>
-            </>
-          );
+          const barH = `${Math.max(1.5, (fin(it.value) / max) * 100)}%`;
+          const tipData = {
+            label: it.label,
+            value: String(it.display ?? it.value) + (unit ? ` ${unit}` : ''),
+            color,
+            hint: onSelect ? 'Дарж шүүнэ' : undefined,
+          };
+          const inner = <span className={s.seriesBar} style={{ height: barH, opacity: dim ? 0.22 : 1 }} />;
           return onSelect ? (
             <button
               key={it.key}
               type="button"
               aria-pressed={on}
-              className={`${s.seriesCol} ${s.seriesClick} ${on ? s.seriesOn : ''}`}
-              title={`${it.label}: ${it.display ?? it.value}`}
+              /* ⚠️ `seriesOn` ХАСАГДАВ: envhub шилжилтэд түүний дүрэм
+                 (`.seriesOn .seriesBar/.seriesVal`) устсан ч дуудалт нь үлдэж,
+                 DOM-д утгагүй `undefined` класс бичигдэж байв. Сонголт нь
+                 сонгоогүй баганыг 0.22 хүртэл бүдгэрүүлснээр аль хэдийн
+                 уншигдана (доорх `dim`), шошго нь `.seriesLabelOn`-оор тодорно. */
+              className={`${s.seriesCol} ${s.seriesClick}`}
               onClick={() => onSelect(it.key)}
+              {...tip.bind(tipData)}
             >
               {inner}
             </button>
           ) : (
-            <div key={it.key} className={s.seriesCol} title={`${it.label}: ${it.display ?? it.value}`}>
+            <div key={it.key} className={s.seriesCol} {...tip.bind(tipData)}>
               {inner}
             </div>
           );
         })}
       </div>
+      <div className={s.seriesTicks} aria-hidden>
+        {items.map((it) => {
+          const on = selected === it.key;
+          return (
+            <span key={it.key} className={`${s.seriesLabel} num ${on ? s.seriesLabelOn : ''}`}>
+              {it.label}
+            </span>
+          );
+        })}
+      </div>
       {unit && <div className={s.seriesUnit}>{unit}</div>}
+      {tip.node}
     </div>
   );
 }
@@ -736,13 +1016,33 @@ export type TrendPoint = {
  * доорх жинхэнэ огноо). Он нь ЗӨВХӨН сольсон цэгт бичигдэнэ: «2025-10-31 ·
  * 11-02 · 12-31 · 2026-03-20 …» — 10 гаруй шошго нарийн самбарт ч давхцахгүй.
  */
+/**
+ * Тэнхлэгийн шошго — ХЭДХЭН цэг дээр л.
+ *
+ * ⚠️ 2026-08-18: Урьд нь ЦЭГ БҮРД шошго буцаадаг байв. 12 цэгтэй цуваанд тэр
+ * зүгээр байсан ч IoT-ийн 90 цэгтэй цуваанд огнооны бичиг бүрэн давхарлаж,
+ * тэнхлэг нь уншигдахааргүй бараан зурвас болдог байлаа. Одоо хамгийн ихдээ
+ * `MAX_TICKS` ширхгийг тэнцүү алхмаар сонгоно (эхний ба сүүлийнх ЗААВАЛ орно —
+ * цувааны хамрах хүрээг тэд хэлнэ), бусад нь хоосон мөр буцаж зурагдахгүй.
+ */
+const MAX_TICKS = 6;
 function axisTicks(points: TrendPoint[]): string[] {
+  const n = points.length;
+  const keep = new Set<number>();
+  if (n <= MAX_TICKS) {
+    for (let i = 0; i < n; i++) keep.add(i);
+  } else {
+    const step = (n - 1) / (MAX_TICKS - 1);
+    for (let i = 0; i < MAX_TICKS; i++) keep.add(Math.round(i * step));
+  }
   let year = '';
-  return points.map((p) => {
+  return points.map((p, i) => {
     const d = p.note ?? p.label;
     const y = d.slice(0, 4);
-    if (!/^\d{4}-/.test(d) || y !== year) { year = y; return d; }
-    return d.slice(5);
+    const full = !/^\d{4}-/.test(d) || y !== year;
+    if (full) year = y;
+    if (!keep.has(i)) return '';
+    return full ? d : d.slice(5);
   });
 }
 
@@ -758,6 +1058,10 @@ export function Trend({
   unit?: string;
 }) {
   const [hov, setHov] = useState<number | null>(null);
+  // ⚠️ Нэг хуудсанд хэд хэдэн Trend байж болно — градиентийн id ДАВТАГДВАЛ
+  //    сүүлийнх нь бусдыгаа дардаг (SVG-ийн id нь баримт даяар нэгдмэл).
+  //    React 19-ийн `useId` нь CSS/`url(#…)`-д хүчинтэй тэмдэгт л гаргана.
+  const gradId = `trendArea${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
 
   // ⚠️ Цуваа солигдоход (grain/хамрах хүрээ) хуучин hov хүчингүй болно — цэгийн
   //    товч unmount болоход React blur/mouseleave өгдөггүй тул энд цэвэрлэнэ.
@@ -767,48 +1071,86 @@ export function Trend({
 
   // Тэнхлэгийн дээд хязгаар нь БҮТЭН аравт — 23%-ийн муруйг 0–100 дээр зурвал
   // шулуун шугам болж, өсөлт нь ялгагдахгүй.
-  const peak = Math.max(...points.map((p) => p.value));
+  const peak = Math.max(...points.map((p) => fin(p.value)));
   const top = Math.max(10, Math.ceil(peak / 10) * 10);
   const x = (i: number) => (i / (points.length - 1)) * 100;
-  const y = (v: number) => 100 - (v / top) * 100;
+  const y = (v: number) => 100 - (fin(v) / top) * 100;
 
   const path = points.map((p, i) => `${x(i)},${y(p.value)}`).join(' ');
   // ⚠️ Индексийг ХЯЗГААРЛАНА: дээрх цэвэрлэгээ рендерийн ДАРАА ажилладаг тул
   //    богиноссон цуваан дээр хуучин hov-оор шууд индекслэвэл cur undefined
   //    болж бүх React мод унана.
-  const cur = points[hov != null && hov < points.length ? hov : points.length - 1];
+  const curIdx = hov != null && hov < points.length ? hov : points.length - 1;
+  const cur = points[curIdx];
+
+  /**
+   * ⚠️ 2026-08-18: ROVING TABINDEX. Урьд нь цэг бүр Tab-стоп байв — 12 цэгтэй
+   * цуваанд зүгээр ч, IoT-ийн 90 цэгтэй 9 графикт ~800 Tab-стоп болж, гараар
+   * хөтлөгч самбарыг давахын тулд минут дарах шаардлагатай байлаа. Одоо график
+   * бүр НЭГ л стоптой (идэвхтэй цэг, анхдаа сүүлийнх); цэг хооронд сум/Home/End.
+   */
+  const nav = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    let next = -1;
+    if (e.key === 'ArrowLeft') next = Math.max(0, curIdx - 1);
+    else if (e.key === 'ArrowRight') next = Math.min(points.length - 1, curIdx + 1);
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = points.length - 1;
+    if (next < 0 || next === curIdx) return;
+    e.preventDefault();
+    // focus() нь onFocus-оор setHov-ийг өөрөө дуудна; preventScroll — самбарын
+    // гүйлтийг үсэргэхгүй (Tabs-ын ижил болгоомжлол).
+    e.currentTarget.querySelectorAll<HTMLButtonElement>('button')[next]
+      ?.focus({ preventScroll: true });
+  };
 
   return (
     <div className={s.trend} style={tone(color)}>
       <div className={s.trendHead}>
         <span className={`${s.trendValue} num`}>
-          {cur.value.toFixed(1)}{unit}
+          {fin(cur.value).toFixed(1)}{unit}
         </span>
         <span className={s.trendMeta}>
           {cur.label}{cur.note ? ` · ${cur.note}` : ''}
         </span>
       </div>
 
-      <div className={s.trendPlot} style={{ height }}>
+      <div className={s.trendPlot} style={{ height }} onKeyDown={nav}>
         <svg className={s.trendSvg} viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
-          {/* Сүлжээ — 0 / дунд / дээд. Тод биш: өгөгдөл биш, хэмжүүр. */}
-          {[0, 50, 100].map((g) => (
-            <line key={g} className={s.trendGrid} x1="0" x2="100" y1={g} y2={g} />
-          ))}
-          <polygon className={s.trendArea} points={`0,100 ${path} 100,100`} />
+          {/**
+            * ⚠️ Талбайн бүрхүүл нь ХАВТГАЙ 0.1 тунгалаг байсныг ГРАДИЕНТ болгов:
+            * шугамын дор өтгөн, суурь тэнхлэг дээр уусна. Хавтгай бүрхүүл нь
+            * тор болон суурь тэнхлэгийг бүрхэж, хоёулаа бүдгэрдэг байв.
+            * ⚠️ SVG `fill` тул CSS градиент ажиллахгүй — заавал `<linearGradient>`.
+            * ⚠️ `gradientUnits="userSpaceOnUse"` — эс бөгөөс `preserveAspectRatio
+            * ="none"` сунгалттай хослоод градиентийн тэнхлэг гажина.
+            */}
+          {/* envhub-ийн AreaChart: 0.34→0.02 градиент, ТОРГҮЙ, y-тэнхлэггүй —
+              утгын лавлагаа нь дээрх readout мөр ба hover tooltip. */}
+          <defs>
+            <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="100" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stopColor="var(--tone, var(--data))" stopOpacity="0.34" />
+              <stop offset="100%" stopColor="var(--tone, var(--data))" stopOpacity="0.02" />
+            </linearGradient>
+          </defs>
+          <polygon points={`0,100 ${path} 100,100`} style={{ fill: `url(#${gradId})` }} />
           <polyline className={s.trendLine} points={path} />
         </svg>
 
-        <span className={`${s.trendTick} ${s.trendTickTop} num`}>{top}{unit}</span>
-        <span className={`${s.trendTick} ${s.trendTickZero} num`}>0</span>
-
         {points.map((p, i) => (
           <button
-            key={p.label}
+            /**
+             * ⚠️ 2026-08-18: түлхүүр нь `p.label` БАЙСАН. Шошго нь ДЭЛГЭЦИЙН текст
+             * тул давтагдаж БОЛНО — IoT-ийн «ММ-ДД ЧЧ:мм» шошготой хоёр заалт нэг
+             * минутад ирэхэд React «two children with the same key» алдаа өгч, нэг
+             * цэг нь зурагдахгүй үлддэг байв. Жагсаалт нь дарааллаа СОЛИХГҮЙ, бүхлээр
+             * нь дахин зурагддаг тул индекс нь найдвартай таних тэмдэг.
+             */
+            key={i}
             type="button"
+            tabIndex={curIdx === i ? 0 : -1}
             className={`${s.trendHit} ${hov === i ? s.trendHitOn : ''}`}
             style={{ left: `${x(i)}%` }}
-            aria-label={`${p.label}: ${p.value.toFixed(1)}${unit}${p.note ? ` · ${p.note}` : ''}`}
+            aria-label={`${p.label}: ${fin(p.value).toFixed(1)}${unit}${p.note ? ` · ${p.note}` : ''}`}
             onMouseEnter={() => setHov(i)}
             onMouseLeave={() => setHov((h) => (h === i ? null : h))}
             onFocus={() => setHov(i)}
@@ -820,11 +1162,11 @@ export function Trend({
       </div>
 
       <div className={s.trendAxis}>
-        {axisTicks(points).map((t, i) => (
-          <span key={points[i].label} className={s.trendAxisTick} style={{ left: `${x(i)}%` }}>
+        {axisTicks(points).map((t, i) => (t ? (
+          <span key={i} className={s.trendAxisTick} style={{ left: `${x(i)}%` }}>
             {t}
           </span>
-        ))}
+        ) : null))}
       </div>
     </div>
   );
@@ -859,12 +1201,32 @@ export function Ring({
   const v = has ? Math.max(0, Math.min(100, value)) : 0;
   const r = (size - width) / 2;
   const c = 2 * Math.PI * r;
+  const text = has ? `${v.toFixed(decimals ?? (v < 10 ? 1 : 0))}%` : '—';
 
   return (
-    <div className={s.ring} style={{ ...tone(color), width: size, height: size }}>
-      <svg className={s.ringSvg} width={size} height={size}>
+    /**
+     * ⚠️ 2026-08-17: Туслах технологид зориулсан утга нэмэв. Урьд нь энэ
+     * цагираг нь `role`, `aria-label`, `<title>` — ЮУ Ч БАЙХГҮЙ байсан тул
+     * дэлгэц уншигчид зөвхөн голын «63%» гэсэн тоо очиж, юуны 63% болох нь
+     * мэдэгддэггүй байв.
+     * ⚠️ Өгөгдөлгүй үед `aria-valuenow={0}` гэж бичихгүй — тэр нь ЖИНХЭНЭ 0%-тай
+     * андуурагдана (энэ компонентын үндсэн дүрэм, дээрх тайлбарыг үзнэ үү).
+     */
+    <div
+      className={s.ring}
+      style={{ ...tone(color), width: size, height: size }}
+      role="progressbar"
+      aria-label={label}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      {...(has ? { 'aria-valuenow': v, 'aria-valuetext': text } : { 'aria-valuetext': 'өгөгдөлгүй' })}
+    >
+      <svg className={s.ringSvg} width={size} height={size} aria-hidden>
         <circle className={s.ringTrack} cx={size / 2} cy={size / 2} r={r} strokeWidth={width} />
-        {has && (
+        {/* ⚠️ ЯГ 0 үед нум зурахгүй: `stroke-linecap: round` нь тэг урттай зурааст
+            ч бөөрөнхий үзүүр буулгадаг тул «0%» дээр цэг гарч, бага зэрэг
+            гүйцэтгэлтэй мэт хуурамч уншилт өгдөг. */}
+        {has && v > 0 && (
           <circle
             className={s.ringArc}
             cx={size / 2}
@@ -876,9 +1238,9 @@ export function Ring({
           />
         )}
       </svg>
-      <div className={s.ringCenter}>
+      <div className={s.ringCenter} aria-hidden>
         <span className={`${s.ringValue} num`} style={{ fontSize: size * 0.2 }}>
-          {has ? `${v.toFixed(decimals ?? (v < 10 ? 1 : 0))}%` : '—'}
+          {text}
         </span>
         {label && <span className={s.ringLabel}>{label}</span>}
       </div>
@@ -965,16 +1327,47 @@ export function ListItem({
 /* ── Төлөв ── */
 
 export function Loading({ label = 'Ачаалж байна…' }: { label?: string }) {
+  // ⚠️ `role="status"` — ачаалал дуусахад дэлгэц уншигч мэдэгдэнэ. Урьд нь
+  //    зөвхөн нүдэнд харагдах эргэлдэгч байсан.
   return (
-    <div className={s.state}>
+    <div className={s.state} role="status" aria-live="polite">
       <span className={s.spinner} aria-hidden />
       {label}
     </div>
   );
 }
 
-export function Empty({ label }: { label: string }) {
-  return <div className={s.state}>{label}</div>;
+/**
+ * Хоосон төлөв.
+ *
+ * ⚠️ 2026-08-17: Урьд нь `Loading` ба алдаатай ижил, ялгаагүй саарал өгүүлбэр
+ * байсан (33 дуудлагатай — аппын хамгийн олон харагддаг «төлөв»). Одоо
+ * тасархай хүрээтэй бие даасан хайрцаг: хэрэглэгч энэ нь АЧААЛЖ БАЙГАА юм уу,
+ * АЛДАА юм уу, эсвэл ЖИНХЭНЭ хоосон гэдгийг шууд ялгана.
+ *
+ * `label` нь ганц ЗААВАЛ талбар хэвээр — 33 дуудагчийн нэг нь ч өөрчлөгдөхгүй.
+ */
+export function Empty({
+  label,
+  icon = 'chart',
+  hint,
+}: {
+  label: string;
+  /** `Icon.tsx`-ийн нэр. Мэдэгдэхгүй нэр өгвөл дүрс нь зүгээр л гарахгүй. */
+  icon?: string;
+  /** Дараа нь ЮУ хийхийг заана — хоосон дэлгэц бол урилга байх ёстой */
+  hint?: ReactNode;
+}) {
+  return (
+    <div className={`${s.state} ${s.empty}`}>
+      {/* `Icon` нь `currentColor`-оор зурагддаг тул өнгийг боодол өгнө */}
+      <span className={s.emptyIcon}>
+        <Icon name={icon} size={22} />
+      </span>
+      <span className={s.emptyLabel}>{label}</span>
+      {hint && <span className={s.emptyHint}>{hint}</span>}
+    </div>
+  );
 }
 
 /**

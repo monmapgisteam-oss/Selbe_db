@@ -474,12 +474,14 @@ export function SuitMap({
     const bmPanel = document.createElement('div');
     bmPanel.style.cssText = 'display:flex;flex-direction:column';
     const orthoRow = document.createElement('label');
+    // ⚠️ Энэ мөр DOM-оор шууд үүсдэг ч ӨНГӨӨ токеноор авна — түүхий hex бичвэл
+    //    гэрэл сэдэвт харанхуй зурвас болж, дизайн системээс сална.
     orthoRow.style.cssText = 'display:flex;align-items:center;gap:8px;padding:9px 11px;'
-      + 'font-size:12.5px;font-weight:600;color:#e6edf3;background:#161d27;'
-      + 'border-bottom:1px solid #26303d;cursor:pointer';
+      + 'font-size:12.5px;font-weight:600;color:var(--ink);background:var(--surface);'
+      + 'border-bottom:1px solid var(--line);cursor:pointer';
     const orthoChk = document.createElement('input');
     orthoChk.type = 'checkbox';
-    orthoChk.style.cssText = 'width:14px;height:14px;accent-color:#4fd1c5;cursor:pointer';
+    orthoChk.style.cssText = 'width:14px;height:14px;accent-color:var(--data);cursor:pointer';
     const imagery = map.findLayerById('imagery');
     orthoChk.checked = imagery ? imagery.visible : true;
     orthoChk.addEventListener('change', () => { if (imagery) imagery.visible = orthoChk.checked; });

@@ -24,7 +24,7 @@
  * `leadingLayers`-т оруулахад газрын зураг бүхэлдээ хоосон болдог байв.
  */
 
-import { useCallback, useMemo, useState, type CSSProperties } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { MapCanvas, type Dim } from '@/components/MapCanvas';
 import { Icon } from '@/components/Icon';
 import { ZoneFilter } from '@/components/ZoneFilter';
@@ -36,16 +36,16 @@ import { BENEFITS, HEADLINE, SOCIAL } from '@/lib/brief';
 import {
   IRGED_ORTHO, IRGED_ROAD, IRGED_SCENE, IRGED_TOILET, LAYER_BY_ID, PKG_BY_FAMILY,
 } from '@/lib/services';
-import { num, shades } from '@/lib/format';
-import o from './overview.module.css';
+import { num } from '@/lib/format';
 /**
- * ⚠️ «Газар чөлөөлөлт»-ийн ЗАГВАРЫГ ШУУД дахин ашиглана (хуулбарлаагүй):
- * баганын толгой (`colHd`), хавтан (`panel`/`panelHd`/`panelBody`), төвийн
- * зураг (`map`) — бүгд тэндээс. Хоёр цонх нь ижилхэн «зүүн самбар · зураг ·
- * баруун самбар» бүтэцтэй тул хэв маягийг нь салгах шалтгаан алга; тэрийг
- * зассан үед энэ ч дагана.
+ * ⚠️ 2026-08-18: envhub хэл рүү шилжив. Хавтан нь Ерөнхий дашбоардын envhub
+ * Box (`overview.module.css` → `panel`/`panelHead`/`panelTitle`/`panelNote`/
+ * `panelBody`) — surface + hairline, сүүдэргүй. Урьд нь «Газар чөлөөлөлт»-ийн
+ * ӨНГӨТ хавтанг (gazar.module.css) авдаг байсныг болив: «Өмнө» улбар шар,
+ * «Дараа» цэнхэр гэсэн өнгөт identity бүрмөсөн устаж, хоёр багана одоо ЯГ ИЖИЛ
+ * карт болов — ялгаа нь зөвхөн ГАРЧГИЙН ҮГЭНД.
  */
-import g from './gazar.module.css';
+import o from './overview.module.css';
 import i from './irged.module.css';
 
 /**
@@ -71,9 +71,6 @@ const TOGGLES = [
  * (хэрэглэгчийн шийдвэр: унтраах утгагүй сонголт харуулахгүй).
  */
 const ALWAYS = [IRGED_ROAD.id];
-
-/** Багануудын палитр — дашбоардтай ижил нэг өнгөний уусгалт */
-const HUE = shades('#0ea5e9', 8);
 
 /**
  * «Одоо байгаа» тооны ТЕКСТЭЭС баганын уртыг гаргана: `"2 (1,440)"` → 2,
@@ -143,24 +140,19 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     <div className={i.frame}>
       {/* ══════════ ӨМНӨ — одоогийн байдал ══════════ */}
       <div className={i.left}>
-        {/* Баганын толгой — баруунтай ИЖИЛ загвар, ӨӨР өнгө (саарал = одоогийн) */}
-        <h3 className={g.colHd} style={{ '--tone': IRGED_TOILET.hue } as CSSProperties}>
-          Өмнө
-        </h3>
+        {/* Баганын толгой — хоёр баганад ЯГ ИЖИЛ eyebrow, ялгаа нь зөвхөн ҮГ */}
+        <h3 className={`eyebrow ${i.colHd}`}>Өмнө</h3>
 
-        <section
-          className={`${g.panel} ${i.panelBefore}`}
-          style={{ '--tone': IRGED_TOILET.hue } as CSSProperties}
-          aria-label="Нүхэн жорлон"
-        >
-          <header className={g.panelHd}>
-            <h3 className={g.panelTitle}>{IRGED_TOILET.title}</h3>
+        <section className={`${o.panel} ${i.card}`} aria-label="Нүхэн жорлон">
+          <header className={o.panelHead}>
+            <h3 className={o.panelTitle}>{IRGED_TOILET.title}</h3>
           </header>
-          <div className={g.panelBody}>
+          <div className={o.panelBody}>
             <Data q={qToilet} loading="Тоолж байна…">
               {(n) => (
                 <Stats cols={2}>
-                  <Stat value={num(n)} unit="ш" label="Бүртгэгдсэн" color={IRGED_TOILET.hue} accent />
+                  {/* ⚠️ envhub: индикаторын тоо var(--ink) — акцент өнгө байхгүй */}
+                  <Stat value={num(n)} unit="ш" label="Бүртгэгдсэн" />
                   {/* ⚠️ Тоог ЭНД бичихгүй — `HEADLINE.households` нь толгойн
                       үзүүлэлт, нүүр хуудас, тайлан гурвын ижил эх сурвалж. */}
                   <Stat
@@ -174,30 +166,27 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           </div>
         </section>
 
-        <section
-          className={`${g.panel} ${i.panelBefore}`}
-          style={{ '--tone': IRGED_TOILET.hue } as CSSProperties}
-          aria-label="Одоо байгаа нийгмийн байгууламж"
-        >
-          <header className={g.panelHd}>
-            <h3 className={g.panelTitle}>Нийгмийн дэд бүтэц</h3>
-            <span className={g.panelNote}>{SOCIAL.totals.now} байгууламж</span>
+        <section className={`${o.panel} ${i.card}`} aria-label="Одоо байгаа нийгмийн байгууламж">
+          <header className={o.panelHead}>
+            <h3 className={o.panelTitle}>Нийгмийн дэд бүтэц</h3>
+            <span className={o.panelNote}>{SOCIAL.totals.now} байгууламж</span>
           </header>
-          <div className={g.panelBody}>
+          <div className={o.panelBody}>
             {/* «Дараа» талтай ЯГ ИЖИЛ загвар — ялгаа нь зөвхөн утга.
-                Шошгод эх текстийг нь бүтнээр («2 (1,440)») үлдээв. */}
+                Шошгод эх текстийг нь бүтнээр («2 (1,440)») үлдээв.
+                ⚠️ Мөр бүрийн өнгө заахгүй — envhub-д өгөгдлийн ГАНЦ өнгө
+                (`Bars`-ын анхдагч var(--data)); ангиллыг дараалал нь ялгана. */}
             <Bars
               inline
               max={SOC_MAX}
-              items={SOCIAL.rows.map((r, n) => ({
+              items={SOCIAL.rows.map((r) => ({
                 key: r.label,
                 label: r.label,
                 value: headCount(r.now),
                 display: r.now,
-                color: HUE[n % HUE.length],
               }))}
             />
-            <p className={g.ringNote}>{SOCIAL.note}</p>
+            <p className={i.note}>{SOCIAL.note}</p>
           </div>
         </section>
       </div>
@@ -295,19 +284,17 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
 
       {/* ══════════ ДАРАА — төлөвлөсөн ══════════ */}
       <div className={i.right}>
-        {/* Баганын толгой — зүүнтэй ИЖИЛ загвар, ӨӨР өнгө (цэнхэр = төлөвлөсөн) */}
-        <h3 className={g.colHd} style={{ '--tone': '#0ea5e9' } as CSSProperties}>
-          Дараа
-        </h3>
+        {/* Баганын толгой — зүүнтэй ЯГ ИЖИЛ eyebrow, ялгаа нь зөвхөн ҮГ */}
+        <h3 className={`eyebrow ${i.colHd}`}>Дараа</h3>
 
-        <section className={`${g.panel} ${g.panelOuter}`} aria-label="Нийгмийн дэд бүтэц">
-          <header className={g.panelHd}>
-            <h3 className={g.panelTitle}>Нийгмийн дэд бүтэц</h3>
-            <span className={g.panelNote}>{SOCIAL.totals.total} байгууламж</span>
+        <section className={`${o.panel} ${i.card}`} aria-label="Нийгмийн дэд бүтэц">
+          <header className={o.panelHead}>
+            <h3 className={o.panelTitle}>Нийгмийн дэд бүтэц</h3>
+            <span className={o.panelNote}>{SOCIAL.totals.total} байгууламж</span>
           </header>
-          <div className={g.panelBody}>
+          <div className={o.panelBody}>
             <Stats cols={2}>
-              <Stat value={num(SOCIAL.totals.total)} unit="ш" label="Нийт болно" accent />
+              <Stat value={num(SOCIAL.totals.total)} unit="ш" label="Нийт болно" />
               <Stat value={SOCIAL.totals.add} unit="ш" label="Шинээр нэмэгдэнэ" />
             </Stats>
             {/* «Өмнө» талтай ЯГ ИЖИЛ загвар, НЭГ хэмжүүр (`SOC_MAX`) — хоёр
@@ -315,29 +302,26 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             <Bars
               inline
               max={SOC_MAX}
-              items={SOCIAL.rows.map((r, n) => ({
+              items={SOCIAL.rows.map((r) => ({
                 key: r.label,
                 label: r.label,
                 value: r.total,
                 display: String(r.total),
-                color: HUE[n % HUE.length],
               }))}
             />
           </div>
         </section>
 
-        <section className={`${g.panel} ${g.panelOuter}`} aria-label="Иргэдийн амьдралын чанар">
-          <header className={g.panelHd}>
-            <h3 className={g.panelTitle}>Иргэдийн амьдралын чанар</h3>
+        <section className={`${o.panel} ${i.card}`} aria-label="Иргэдийн амьдралын чанар">
+          <header className={o.panelHead}>
+            <h3 className={o.panelTitle}>Иргэдийн амьдралын чанар</h3>
           </header>
-          <div className={g.panelBody}>
+          <div className={o.panelBody}>
             {/* ⚠️ `Stats` нь 2/3/4 багана л дэмжинэ — нарийн баганад 2 тохирно */}
             <Stats cols={2}>
-              {BENEFITS.map((b, n) => (
+              {BENEFITS.map((b) => (
                 <Stat
                   key={b.value + b.text}
-                  accent
-                  color={HUE[n % HUE.length]}
                   value={b.value}
                   unit={b.unit}
                   label={b.text}

@@ -19,7 +19,14 @@ import { buildReportDoc, type ReportLive } from './reportPdf';
 
 export type { ReportLive } from './reportPdf';
 
-/** Тест хугацааны хүлээн авагчид (нарийн тохиргоо дараа) */
+/**
+ * Тайлан хүлээн авагчид.
+ *
+ * ⚠️ ЭНЭ НЬ ТУРШИЛТЫН ГАНЦ ХАЯГ — ҮЙЛДВЭРЛЭЛД ГАРГАХААС ӨМНӨ ЗААВАЛ солино.
+ * Одоогийн байдлаар удирдлагад илгээх ёстой тайлан бүр энэ нэг хаяг руу очно;
+ * жинхэнэ тараах жагсаалт тодрох хүртэл энд үлдээв. Хаяг нэмэхэд `emailViaEml`
+ * (To: толгой) ба `emailViaMailto` (mailto: хаяг) ХОЁУЛАА автоматаар дагана.
+ */
 export const REPORT_RECIPIENTS = ['bilguuntugs@monmap.mn'];
 const PDF_NAME = 'Selbe_tailan.pdf';
 
