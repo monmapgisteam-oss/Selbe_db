@@ -15,9 +15,8 @@
  * pdfmake нь ХҮНД сан тул зөвхөн товч дарахад динамикаар ачаална (`import()`).
  */
 import type { BagtsRow } from '@/modules/Dashboard';
-import { buildReportDoc, type ReportLive } from './reportPdf';
-
-export type { ReportLive } from './reportPdf';
+import { buildReportDoc } from './reportPdf';
+import type { ReportExtra } from './reportData';
 
 /**
  * Тайлан хүлээн авагчид.
@@ -39,28 +38,11 @@ function b64utf8(str: string): string {
 }
 /** MIME мөр — 76 тэмдэгтээр таслана */
 const wrap76 = (b64: string) => b64.replace(/(.{76})/g, '$1\r\n');
-/**
- * Гарчиг дахь кириллийг MIME-encoded-word болгоно.
- * ⚠️ RFC 2047: encoded-word бүр ≤75 тэмдэгт байх ёстой. Кирилл (2 байт) гарчиг
- *    нэг encoded-word-т багтахгүй тул мөрийг ТЭМДЭГТЭЭР хэсэглэж (олон байтын
- *    тэмдэг хагасалдахгүй) тус бүрийг тусдаа base64 болгоод CRLF + зайгаар
- *    (folding whitespace) залгана. ≤45 байт → base64 ≤60 → encoded-word ≤72 (<75).
- */
-const encHeader = (str: string): string => {
-  const enc = new TextEncoder();
-  const words: string[] = [];
-  let chunk = '';
-  const flush = () => { if (chunk) { words.push(`=?UTF-8?B?${b64utf8(chunk)}?=`); chunk = ''; } };
-  for (const ch of str) {
-    if (chunk && enc.encode(chunk + ch).length > 45) flush();
-    chunk += ch;
-  }
-  flush();
-  return words.join('\r\n ');
-};
+/** Гарчиг дахь кириллийг MIME-encoded-word болгоно */
+const encHeader = (str: string) => `=?UTF-8?B?${b64utf8(str)}?=`;
 
 /** pdfmake-ээр PDF үүсгэж base64 буцаана (динамик ачаалалт) */
-async function makePdfBase64(rows: BagtsRow[], dateStr: string, live: ReportLive): Promise<string> {
+async function makePdfBase64(rows: BagtsRow[], dateStr: string, extra: ReportExtra): Promise<string> {
   const mod = await import('pdfmake/build/pdfmake');
   const vfsMod = await import('pdfmake/build/vfs_fonts');
   // ⚠️ UMD/CJS interop — build нь `module.exports`-оор гардаг тул `.default`.
@@ -73,7 +55,7 @@ async function makePdfBase64(rows: BagtsRow[], dateStr: string, live: ReportLive
   if (typeof pdfMake.addVirtualFileSystem === 'function') pdfMake.addVirtualFileSystem(vfs);
   else pdfMake.vfs = vfs;
 
-  const doc = buildReportDoc(rows, dateStr, live);
+  const doc = buildReportDoc(rows, dateStr, extra);
   // ⚠️ pdfmake 0.3.x — `getBase64()` нь PROMISE (callback БИШ). Callback дамжуулбал
   //    Promise шийдэгдэхгүй, товч мөнхөд «Бэлтгэж байна…» дээр гацна.
   return pdfMake.createPdf(doc).getBase64();
@@ -100,8 +82,8 @@ const bodyHtml = '<p>Сайн байна уу,</p><p>Сэлбэ 20 минуты�
  * CLASSIC OUTLOOK — `.eml` (X-Unsent) татна. Нээхэд Outlook мэйл бичих цонх,
  * PDF хавсаргагдсан, Send дарахад бэлэн.
  */
-export async function emailViaEml(rows: BagtsRow[], dateStr: string, live: ReportLive): Promise<void> {
-  const pdfB64 = await makePdfBase64(rows, dateStr, live);
+export async function emailViaEml(rows: BagtsRow[], dateStr: string, extra: ReportExtra): Promise<void> {
+  const pdfB64 = await makePdfBase64(rows, dateStr, extra);
   const bd = 'SELBE-TAILAN-BOUNDARY-8f2c1a';
   const eml = [
     'X-Unsent: 1',
@@ -131,8 +113,8 @@ export async function emailViaEml(rows: BagtsRow[], dateStr: string, live: Repor
 /**
  * NEW OUTLOOK / ВЭБ — PDF-ийг ТАТААД `mailto` нээнэ (хэрэглэгч гараар хавсаргана).
  */
-export async function emailViaMailto(rows: BagtsRow[], dateStr: string, live: ReportLive): Promise<void> {
-  const pdfB64 = await makePdfBase64(rows, dateStr, live);
+export async function emailViaMailto(rows: BagtsRow[], dateStr: string, extra: ReportExtra): Promise<void> {
+  const pdfB64 = await makePdfBase64(rows, dateStr, extra);
   const bytes = Uint8Array.from(atob(pdfB64), (c) => c.charCodeAt(0));
   download(PDF_NAME, new Blob([bytes], { type: 'application/pdf' }));
   const url = `mailto:${REPORT_RECIPIENTS.join(',')}`
@@ -142,8 +124,8 @@ export async function emailViaMailto(rows: BagtsRow[], dateStr: string, live: Re
 }
 
 /** Зөвхөн PDF татах (мэйлгүй) */
-export async function downloadReportPdf(rows: BagtsRow[], dateStr: string, live: ReportLive): Promise<void> {
-  const pdfB64 = await makePdfBase64(rows, dateStr, live);
+export async function downloadReportPdf(rows: BagtsRow[], dateStr: string, extra: ReportExtra): Promise<void> {
+  const pdfB64 = await makePdfBase64(rows, dateStr, extra);
   const bytes = Uint8Array.from(atob(pdfB64), (c) => c.charCodeAt(0));
   download(PDF_NAME, new Blob([bytes], { type: 'application/pdf' }));
 }
