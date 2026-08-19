@@ -24,6 +24,8 @@ export type SheetRow = {
   // ⚠ `Хувийн жин- Одоо байгаа` (excel E) энд БАЙХГҮЙ: тэр нь C×J-ээс бүрэн
   // бодогддог тул уншаад ч ашиглахгүй. Нийтлэхэд `f.wE`-рүү буцааж бичнэ.
   vol: number | null;
+  /** «Объём_шинэ2» — зөвхөн ХАРУУЛНА, ямар ч томъёонд ОРОХГҮЙ. */
+  vol2: number | null;
   unit: number | null;
   money: number | null;
   act: (number | null)[]; // хадгалагдсан блок бүрийн бодит гүйцэтгэл
@@ -78,6 +80,7 @@ export async function loadRows(
       wC: num(a[sc.f.wC]),
       wD: num(a[sc.f.wD]),
       vol: num(a[sc.f.vol]),
+      vol2: sc.f.vol2 ? num(a[sc.f.vol2]) : null,
       unit: num(a[sc.f.unit]),
       money: num(a[sc.f.money]),
       act: sc.act.map((k) => num(a[k])),
@@ -109,13 +112,33 @@ export const planAt = (
   return e === s ? 1 : (asOf - s) / (e - s);
 };
 
+/** «YYYY-MM-DD» ↔ ms (UTC — үйлчилгээний огноо UTC шөнө дунд байдаг). */
+export const dayToMs = (s: string): number | null =>
+  s ? Date.parse(`${s}T00:00:00Z`) : null;
+export const msToDay = (ms: number | null): string =>
+  ms == null ? "" : new Date(ms).toISOString().slice(0, 10);
+
+/** Нийтлээгүй засвар байвал түүнийг, эс бөгөөс хадгалагдсаныг. `""` = арилгах. */
+const pickDate = (edit: string | undefined, stored: number | null) =>
+  edit === undefined ? stored : dayToMs(edit);
+
+/**
+ * Нүдэн дэх огноо ХААНААС ирсэн бэ:
+ *   `own`  — энэ мөрд бичигдсэн (гараар засагдана, серверт хадгалагдана)
+ *   `agg`  — дэд мөрүүдийнхээ MIN/MAX (excel: `MIN(AF23:AF38)`) — засагдахгүй
+ *   `none` — огноо алга
+ */
+export type DateSrc = "own" | "agg" | "none";
+
 export type Calc = {
   plan: (number | null)[]; // блок бүрийн төлөвлөгөөт
   act: (number | null)[]; // блок бүрийн бодит
   start: (number | null)[];
   end: (number | null)[];
+  startSrc: DateSrc[];
+  endSrc: DateSrc[];
   H: number | null; // Мөнгөн дүн (excel H)
-  C: number | null; // Хувийн жин — эцэгтээ эзлэх (excel C)
+  C: number | null; // Хувийн жин — дээд мөртөө эзлэх (excel C)
   D: number | null; // Хувийн жин — үе шатандаа эзлэх (excel D)
   E: number | null; // Хувийн жин- Одоо байгаа (excel E)
   I: number; // Төлөвлөгөөт гүйцэтгэл
@@ -124,9 +147,10 @@ export type Calc = {
 };
 
 /**
- * Мөр бүрийн эцэг: өөрөөсөө бага гүнтэй хамгийн ойрын дээд мөр. Excel-ийн
- * нийлбэр томъёонуудаас гаргасан модтой яг таарахыг багц бүр дээр
- * `tools/bagts-tree.mjs` шалгасан (зөрүү 0).
+ * Мөр бүрийн ДЭД мөрүүд. Мөрийн дээд мөр гэдэг нь: түүнээс дээш байрлах,
+ * өөрөөс нь бага гүнтэй хамгийн ойрын мөр. Excel-ийн нийлбэр томъёонуудаас
+ * гаргасан шатлалтай яг таарахыг багц бүр дээр `tools/bagts-tree.mjs`
+ * шалгасан (зөрүү 0).
  */
 export function childIndexes(rows: SheetRow[]): number[][] {
   const kids: number[][] = rows.map(() => []);
@@ -140,7 +164,7 @@ export function childIndexes(rows: SheetRow[]): number[][] {
   return kids;
 }
 
-/** Мөр бүрийн эцгийн индекс (эцэггүй бол −1). */
+/** Мөр бүрийн дээд мөрийн индекс (дээд мөргүй бол −1). */
 function parentIndexes(rows: SheetRow[]): number[] {
   const p = new Array(rows.length).fill(-1);
   const stack: number[] = [];
@@ -156,17 +180,17 @@ function parentIndexes(rows: SheetRow[]): number[] {
 /**
  * Хуудсыг бүхэлд нь дахин бодно — excel-ийн БҮХ томъёог давтана.
  *
- * H · Мөнгөн дүн        леаф `=F*G` (Обьём×Нэгж өртөг), бүлэг `=ΣH(хүү)`
- * C · Хувийн жин        `=H/H(эцэг)` — эцэгтээ эзлэх хувь (үндэс = 1)
+ * H · Мөнгөн дүн        ажлын мөр `=F*G` (Обьём×Нэгж өртөг), бүлэг `=ΣH(дэд мөр)`
+ * C · Хувийн жин        `=H/H(дээд мөр)` — дээд мөртөө эзлэх хувь (үндэс = 1)
  * D · Хувийн жин        `=H/H(үе шат)` — үе шатандаа эзлэх хувь
- * E · Одоо байгаа       леаф `=C*J`, бүлэг `=C*ΣE(хүү)` ← гүйцэтгэл өөрчлөгдөхөд ХӨДӨЛНӨ
- * төлөвлөгөөт багана    леаф огноогоор интерполяци, бүлэг D-жинтэй дундаж
- * бодит багана          леаф засвар/хадгалсан, бүлэг D-жинтэй дундаж
+ * E · Одоо байгаа       ажлын мөр `=C*J`, бүлэг `=C*ΣE(дэд мөр)` ← гүйцэтгэл өөрчлөгдөхөд ХӨДӨЛНӨ
+ * төлөвлөгөөт багана    ажлын мөр огноогоор интерполяци, бүлэг D-жинтэй дундаж
+ * бодит багана          ажлын мөр засвар/хадгалсан, бүлэг D-жинтэй дундаж
  * эхлэх/дуусах          бүлэг MIN(эхлэх) / MAX(дуусах)
  * I / J                 `=AVERAGE(блокийн нүднүүд)` (хоосон = 0)
  * K                     `=IF(I=0,0,J/I)`
  *
- * ⚠ «Бэлтгэл ажил» (A) бүлгийн хүүхдүүдэд жин огт байхгүй — excel дэх
+ * ⚠ «Бэлтгэл ажил» (A) бүлгийн дэд мөрүүдэд жин огт байхгүй — excel дэх
  *   `SUMPRODUCT($C3:$C10,…)` үргэлж 0 гаргадаг. Жингийн нийлбэр 0 үед энгийн
  *   дунджаар бодов; 0 харуулснаас үнэн.
  *
@@ -178,6 +202,7 @@ export function computeAll(
   nBld: number,
   asOf: number,
   edits: Record<string, string> = {},
+  dateEdits: Record<string, string> = {},
 ): Calc[] {
   const kids = childIndexes(rows);
   const par = parentIndexes(rows);
@@ -220,16 +245,69 @@ export function computeAll(
     D[i] = H[i] != null && rootH[i] ? H[i]! / rootH[i]! : rows[i].wD;
   }
 
-  // ── 3. Гүйцэтгэл, төлөвлөгөө, огноо + E, доороос дээш ──────────────────────
+  /* ── 3. ХУВААРИЙН ОГНОО ────────────────────────────────────────────────────
+   * а) өөрийн (эсвэл засварласан) огноо      → `own`  (засагдана)
+   * б) байхгүй бол дэд мөрүүдийн MIN/MAX     → `agg`  (бодогдоно)
+   *
+   * ⚠️ Огноог ДЭЭД мөрөөс доош ӨВЛҮҮЛЖ БОЛОХГҮЙ. Эх `9F` хуудсанд мөр бүр
+   *    огноотой байдаг тул «доод ажлууд нь дээдийнхээ хуваарийг өвлөнө» гэж
+   *    үзэх нь логикийн хувьд сонсогдоно — гэвч 10 багцын ХАДГАЛАГДСАН
+   *    төлөвлөгөөт хувьтай тулгахад таарц 97.5%-иас 26.9% болж унасан.
+   *    `*_final_publish` дээрх нарийвчилсан мөрүүд огноогүй нь САНААТАЙ:
+   *    тэдгээрийн төлөвлөгөөт хувь 0 бөгөөд бүлэг рүүгээ тэрхүү 0-оороо
+   *    жигнэгдэн ордог. Мөн бүлгийн мөрийг өөрийнх нь огноогоор интерполяци
+   *    хийвэл 97.5% → 97.3% болж бага зэрэг дордоно. Тиймээс бүлэг нь ҮРГЭЛЖ
+   *    дэд мөрүүдийнхээ жигнэсэн дундаж. */
+  const St: (number | null)[][] = [];
+  const En: (number | null)[][] = [];
+  const StSrc: DateSrc[][] = [];
+  const EnSrc: DateSrc[][] = [];
+  for (let i = 0; i < N; i++) {
+    St[i] = new Array(n).fill(null);
+    En[i] = new Array(n).fill(null);
+    StSrc[i] = new Array(n).fill("none");
+    EnSrc[i] = new Array(n).fill("none");
+  }
+  for (let i = N - 1; i >= 0; i--) {
+    const r = rows[i];
+    for (let b = 0; b < n; b++) {
+      const os = pickDate(dateEdits[`${r.oid}:${b}:s`], r.start[b]);
+      const oe = pickDate(dateEdits[`${r.oid}:${b}:e`], r.end[b]);
+      if (os != null) (St[i][b] = os), (StSrc[i][b] = "own");
+      if (oe != null) (En[i][b] = oe), (EnSrc[i][b] = "own");
+      if (!kids[i].length) continue;
+      if (St[i][b] == null) {
+        let m: number | null = null;
+        for (const k of kids[i]) {
+          const v = St[k][b];
+          if (v != null && (m == null || v < m)) m = v;
+        }
+        if (m != null) (St[i][b] = m), (StSrc[i][b] = "agg");
+      }
+      if (En[i][b] == null) {
+        let m: number | null = null;
+        for (const k of kids[i]) {
+          const v = En[k][b];
+          if (v != null && (m == null || v > m)) m = v;
+        }
+        if (m != null) (En[i][b] = m), (EnSrc[i][b] = "agg");
+      }
+    }
+  }
+  // ── 4. Гүйцэтгэл, төлөвлөгөө + E, доороос дээш ─────────────────────────────
   const out: Calc[] = new Array(N);
   for (let i = N - 1; i >= 0; i--) {
     const r = rows[i];
     const plan: (number | null)[] = new Array(n).fill(null);
     const act: (number | null)[] = new Array(n).fill(null);
-    const start: (number | null)[] = new Array(n).fill(null);
-    const end: (number | null)[] = new Array(n).fill(null);
+    const start = St[i];
+    const end = En[i];
+    const startSrc = StSrc[i];
+    const endSrc = EnSrc[i];
 
     if (kids[i].length) {
+      // Excel: `SUMPRODUCT($C(дэд), T(дэд))` — дэд мөрүүдийн C нийлбэр 1 тул
+      // энэ нь D-жинтэй хэвийсэн дундажтай тэнцүү (D ∝ C).
       const den = kids[i].reduce((s, k) => s + (D[k] ?? 0), 0);
       for (let b = 0; b < n; b++) {
         let sp = 0,
@@ -240,19 +318,27 @@ export function computeAll(
           sp += w * (out[k].plan[b] ?? 0);
           sa += w * (out[k].act[b] ?? 0);
           cnt += w;
-          const cs = out[k].start[b];
-          const ce = out[k].end[b];
-          if (cs != null && (start[b] == null || cs < start[b]!)) start[b] = cs;
-          if (ce != null && (end[b] == null || ce > end[b]!)) end[b] = ce;
         }
         plan[b] = cnt > 0 ? sp / cnt : null;
         act[b] = cnt > 0 ? sa / cnt : null;
+        // ⚠️ Хуваарийг доод ажлууд дээр нь биш, ШУУД энэ бүлэг дээр бичсэн бол
+        //    (`own` — дэд мөрүүд огноогүй тул MIN/MAX хоосон гарсан) дундаж нь
+        //    үргэлж 0 болно. Эх `9F` хуудсанд ийм мөрүүд огноогоороо бодогддог:
+        //    жишээ нь Багц 4.1-ийн «СУУРИЙН АЖИЛ» — 9F 93.8%, publish 0.0%.
+        //    Эталон нь `9F` тул огноогоор нь интерполяци хийнэ.
+        if (
+          startSrc[b] === "own" &&
+          endSrc[b] === "own" &&
+          start[b] != null &&
+          end[b] != null
+        )
+          plan[b] = planAt(asOf, start[b], end[b]);
       }
     } else {
       for (let b = 0; b < n; b++) {
-        start[b] = r.start[b];
-        end[b] = r.end[b];
-        plan[b] = planAt(asOf, r.start[b], r.end[b]);
+        // Excel `9F`-ийн T багана:
+        //   `IF($R$5<=AF,0,IF($R$5>=AG,1,($R$5-AF)/(AG-AF)))`
+        plan[b] = planAt(asOf, start[b], end[b]);
         const e = edits[`${r.oid}:${b}`];
         act[b] =
           e === undefined ? r.act[b] : e.trim() === "" ? null : Number(e) / 100;
@@ -265,8 +351,8 @@ export function computeAll(
     const I = avg(plan);
     const J = avg(act);
 
-    // E · Хувийн жин- Одоо байгаа. Леаф `=C*J`; бүлэг `=C*(ΣE хүүхэд)` —
-    // хүүхдийн C нийлбэр 1 тул энэ нь бүлгийн хувьд ч `C*J`-тэй тэнцүү.
+    // E · Хувийн жин- Одоо байгаа. Ажлын мөр `=C*J`; бүлэг `=C*(ΣE дэд мөр)` —
+    // дэд мөрийн C нийлбэр 1 тул энэ нь бүлгийн хувьд ч `C*J`-тэй тэнцүү.
     let E: number | null = null;
     if (C[i] != null) {
       if (kids[i].length) {
@@ -288,6 +374,8 @@ export function computeAll(
       act,
       start,
       end,
+      startSrc,
+      endSrc,
       H: H[i],
       C: C[i],
       D: D[i],
