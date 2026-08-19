@@ -9,6 +9,13 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
+  /* ⚠️ Багана хөндлөн гүйлгэх зурвасыг ДЭЛГЭЦЭЭС ХАЙХГҮЙ болгох тулгуур:
+     хуудсыг доош гүйлгэж байж зурвасаа олдог байсныг зогсоохын тулд бүхэл
+     самбар нь `.suit`-ийн өндрөөр тогтож, ЗӨВХӨН хүснэгт дотроо гүйнэ.
+     Ингэснээр хөндлөн зурвас нь үргэлж дэлгэцийн доод ирмэгт харагдана. */
+  height: 100%;
+  /* `.tabs` нь flex тул порталын толгойн ҮЛДСЭН өндрийг эзэлнэ. */
+  flex: 1 1 auto;
   /* Хуудасны ирмэгээс зай — ирмэгт наалдаж «нүцгэн» харагдахгүй */
   padding: 18px 24px 24px;
   /* grid/flex item нь `min-*: 0`-гүй бол хүснэгтийн өргөнөөр сунаж дэлгэцээс хальна */
@@ -120,6 +127,127 @@
   border: 1px solid color-mix(in srgb, var(--hue) 22%, transparent);
 }
 
+/* Засагдахгүй нүд дарахад гарах ТҮР мэдэгдэл.
+   ⚠️ Урсгалаас гадуур (fixed) — эс тэгвэл гарч/алга болох бүрд хүснэгт доош
+   үсэрч, хэрэглэгчийн дарж байсан мөр хөдөлнө. */
+.notice {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 40;
+  max-width: 360px;
+  padding: 10px 14px;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--hue);
+  border-radius: var(--r);
+  box-shadow: var(--shadow);
+  animation: noticeIn 0.14s ease;
+}
+.notice b { font-weight: 650; }
+@keyframes noticeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ══════════════════════════════════════════════════════════
+   Огнооны календар (`DatePicker.tsx`) — хөтчийн өөрийнхийг ОРЛОНО.
+   Хөтчийн календарын загвар/хэл нь хуудаснаас өөрчлөгддөггүй тул өөрсдөө.
+   ══════════════════════════════════════════════════════════ */
+.cal {
+  position: fixed;
+  z-index: 60;
+  width: 244px;
+  padding: 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  box-shadow: var(--shadow-lg);
+  font-size: 0.78rem;
+  color: var(--ink);
+  user-select: none;
+}
+.calHead {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-bottom: 6px;
+}
+.calTitle {
+  flex: 1;
+  text-align: center;
+  font-weight: 650;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+.calNav {
+  width: 22px;
+  height: 22px;
+  border-radius: var(--r-sm);
+  color: var(--ink-2);
+  font-size: 0.85rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.calNav:hover { background: color-mix(in srgb, var(--hue) 16%, var(--surface)); color: var(--hue); }
+
+.calGrid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 1px;
+}
+.calWd {
+  text-align: center;
+  padding: 3px 0;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--ink-3);
+}
+.calDay {
+  height: 28px;
+  border-radius: var(--r-sm);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.calDay:hover { background: color-mix(in srgb, var(--hue) 18%, var(--surface)); }
+/* Хөрш сарын өдрүүд — байгаа ч анхаарал татахгүй. */
+.calOther { color: var(--ink-3); opacity: 0.55; }
+/* Өнөөдөр: хүрээгээр (өнгө нь ганц дохио болохгүй). */
+.calToday { box-shadow: inset 0 0 0 1px var(--hue); }
+/* Сонгосон өдөр: дүүрэн — цагаан үсэгтэй. */
+.calSel {
+  background: var(--hue);
+  color: #fff;
+  font-weight: 650;
+}
+.calSel:hover { background: var(--hue); }
+
+.calFoot {
+  display: flex;
+  justify-content: space-between;
+  padding-top: 7px;
+  margin-top: 5px;
+  border-top: 1px solid var(--line);
+}
+.calBtn {
+  padding: 3px 9px;
+  border-radius: var(--r-sm);
+  font: inherit;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--hue);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.calBtn:hover { background: color-mix(in srgb, var(--hue) 14%, var(--surface)); }
+
 /* ── Ачааллаж буй үеийн skeleton ── */
 .skeletonRow {
   display: flex;
@@ -141,7 +269,11 @@
 
 .scroll {
   overflow: auto;
-  max-height: 80vh;
+  /* Үлдсэн бүх өндрийг эзэлнэ — доод ирмэг нь дэлгэцийн доод ирмэг дээр
+     тогтох тул хөндлөн гүйлгэх зурвас нь ҮРГЭЛЖ ил. `min-height: 0` нь flex
+     хүүхдийг хумих зөвшөөрөл (эс тэгвэл агуулгынхаа өндрөөр сунана). */
+  flex: 1 1 auto;
+  min-height: 240px;
   /* ⚠️ flex child нь `min-width: 0`-гүй бол хүснэгтийн натурал өргөнөөр сунаж,
      дэлгэцээс хальж, overflow-x ажиллахгүй. */
   min-width: 0;
@@ -171,12 +303,18 @@
   --w-dutuu: 64px;
 
   /* Семантик нүдний өнгө — токеноор, хоёр горимд эргэнэ.
-     Inline style эдгээр хувьсагчийг заана (JS константууд), нүднүүд өвлөнө. */
+     Inline style эдгээр хувьсагчийг заана (JS константууд), нүднүүд өвлөнө.
+
+     ⚠️ БҮГД ГАНЦ ӨНГӨНӨӨС (`--hue`). Урьд нь бодогдох нүд улбар шар (--warn),
+     нийтлээгүй нүд ногоон (--good), сонголт цэнхэр байсан нь хуудсыг эрээн
+     болгож, аль нь илүү чухлыг заадаггүй байв. Одоо ялгаа нь ЗӨВХӨН
+     ХАНАЛТААР: сул = бодогдоно → хүчтэй = анхаарал татна. Өнгө нь ганц дохио
+     болж үлдэхгүйн тулд нийтлээгүй нүд хүрээтэй, тод үсэгтэй хэвээр. */
   --sheet-cell: var(--surface);
-  --sheet-calc: color-mix(in srgb, var(--warn) 15%, var(--surface));
-  --sheet-hl: color-mix(in srgb, var(--hue) 15%, var(--surface));
+  --sheet-calc: color-mix(in srgb, var(--hue) 8%, var(--surface));
+  --sheet-hl: color-mix(in srgb, var(--hue) 16%, var(--surface));
   --sheet-sel: color-mix(in srgb, var(--hue) 30%, var(--surface));
-  --sheet-dirty: color-mix(in srgb, var(--good) 26%, var(--surface));
+  --sheet-dirty: color-mix(in srgb, var(--hue) 40%, var(--surface));
   --sheet-header: var(--surface-2);
 
   border-collapse: separate;
@@ -381,13 +519,27 @@
 .cellInput {
   width: 64px;
   border: 0;
-  background: color-mix(in srgb, var(--warn) 22%, var(--surface));
+  background: color-mix(in srgb, var(--hue) 22%, var(--surface));
   color: var(--ink);
   padding: 4px;
   text-align: center;
   outline: none;
   font: inherit;
   font-family: var(--mono);
+}
+
+/* Огнооны нүдний засварлагч. `type="date"` нь календарын дүрсээ багтаах өргөн
+   шаарддаг тул нүдээ бүтнээр эзэлнэ (`.cellInput`-ийн 64px хүрэлцэхгүй). */
+.dateInput {
+  width: 100%;
+  border: 0;
+  background: color-mix(in srgb, var(--hue) 22%, var(--surface));
+  color: var(--ink);
+  padding: 3px 2px;
+  outline: none;
+  font: inherit;
+  font-family: var(--mono);
+  font-size: 11px;
 }
 
 .clip {
@@ -552,10 +704,12 @@
   --w-no: 54px;
   --w-ajil: 300px;
   --w-w: 72px;
+  /* «Одоо байгаа хувийн жин» — гарчиг нь урт тул хоёр жингээсээ өргөн. */
+  --w-now: 104px;
   --w-vol: 84px;
   --w-money: 106px;
-  --w-calc: 72px;
-  --w-date: 92px;
+  --w-calc: 96px;
+  --w-date: 118px;
 }
 .b32 .c-ajil {
   /* Ажлын нэр урт — хүснэгт хэвтээ гүйдэг тул мөр таслахгүй, тайрна. */
@@ -566,6 +720,7 @@
   box-shadow: inset -1px 0 0 var(--line-strong);
 }
 .b32 .c-w { min-width: var(--w-w); width: var(--w-w); max-width: var(--w-w); }
+.b32 .c-now { min-width: var(--w-now); width: var(--w-now); max-width: var(--w-now); }
 .b32 .c-vol { min-width: var(--w-vol); width: var(--w-vol); max-width: var(--w-vol); text-align: right; }
 .b32 .c-money {
   min-width: var(--w-money);
@@ -578,10 +733,52 @@
 /* ⚠️ Энэ хуудсанд барилгын багана СУНАХГҮЙ (хүснэгт `width: auto`) — тиймээс
    чирсэн өргөн нь яг мөрдөгдөхийн тулд max-width-ийг ч заана. */
 .b32 .bld { width: var(--w-bld); max-width: var(--w-bld); overflow: hidden; }
-/* Толгой 60 баганад хоёр мөр болж хуваагдах тул доод ирмэгээр нь тэгшилнэ.
-   ⚠️ table-cell дээр min-height үйлчилдэггүй — height нь өөрөө min-height шиг
-   ажилладаг (агуулга ихдвэл нүд сунана). */
-.b32 thead th { height: 40px; }
+/* ── `*_final_system`-ийн 4 МӨРТ БҮЛЭГЛЭСЭН ТОЛГОЙ ──
+   ⚠️ Мөр бүр өөрийн `top` шилжилттэй байх ЁСТОЙ: бүгд `top: 0` бол дөрвүүлээ
+   дээд ирмэгт наалдаж бие бие рүүгээ дарагдана. Тиймээс мөрийн өндрийг ТОГТМОЛ
+   болгож, шилжилтийг нь нийлбэрээр нь өгөв. */
+.b32 { --h1: 30px; --h2: 22px; --h3: 22px; }
+/* 4-р мөр — блокийн нэр 60 баганад хоёр мөр болж хуваагддаг (main-ы 40px). */
+.b32 thead tr:nth-child(4) th { height: 40px; }
+.b32 thead tr:nth-child(1) th { height: var(--h1); top: 0; }
+.b32 thead tr:nth-child(2) th { height: var(--h2); top: var(--h1); }
+.b32 thead tr:nth-child(3) th { height: var(--h3); top: calc(var(--h1) + var(--h2)); }
+.b32 thead tr:nth-child(4) th { top: calc(var(--h1) + var(--h2) + var(--h3)); }
+/* Дөрвүүлээ хамарсан нүд (№, Ажил, жин…) — дээд ирмэгээс наалдана. */
+.b32 thead th[rowspan="4"] { top: 0; }
+/* 3-р мөрөөс 4-р мөр рүү сунасан блокийн код. */
+.b32 thead th[rowspan="2"] { top: calc(var(--h1) + var(--h2)); }
+
+/* 1-р мөрийн бүлгийн гарчиг ба 2-р мөрийн барилгын нэр — өргөн зурвас тул
+   голлож, тод харагдана. */
+.b32 .band,
+.b32 .band2 {
+  text-align: center;
+  white-space: nowrap;
+  font-weight: 650;
+}
+.b32 .band { letter-spacing: 0.02em; }
+.b32 .band2 { font-weight: 550; opacity: 0.9; }
+/* Хуваарийн блок нь Эхлэх+Дуусах хоёрыг хамарна. */
+.b32 .c-date2 { text-align: center; white-space: nowrap; }
+/* Хоёр багана хамарсан «Хувийн жин» — өргөний ангилалгүй, зөвхөн голлоно. */
+.b32 .c-wspan { text-align: center; }
+
+
+/* ⚠️ `.xl thead th`-ийн `vertical-align: bottom`-ыг ЭНД дарна: 4 мөрт толгойд
+   дөрвүүлээ хамарсан нүд (№, Ажил, Хувийн жин…) нь 90px өндөртэй болдог тул
+   доод ирмэгт наалдвал бүлгийн гарчигтайгаа эгнэхгүй, унжсан харагдана. */
+.b32 thead th {
+  min-height: 20px;
+  vertical-align: middle;
+  text-align: center;
+}
+/* ⚠️ Өргөний ангиллууд (`.c-vol`, `.c-money`, `.c-w`…) нь баруун тийш
+   эгнүүлдэг бөгөөд тэдгээрийн жинлэлт (0,2,0) нь дээрх `.b32 thead th`
+   (0,1,2)-оос ХҮЧТЭЙ тул ТОЛГОЙ дээр ч ноёрхож байв. `[class]` нэмснээр
+   жинлэлт (0,2,1) болж, зөвхөн ТОЛГОЙН текст голлоно — мөрийн нүднүүд
+   баруун эгнээндээ хэвээр (тоо баганаараа эгнэх нь уншихад чухал). */
+.b32 thead th[class] { text-align: center; }
 
 /* ── Баганын crosshair (FillNew) — React state биш, O(1) overlay ──
    Хүснэгтийг position:relative ороолтод хийж, hover-т орсон гүйцэтгэлийн
@@ -610,6 +807,12 @@
   flex-direction: column;
   /* Зай нь FillNew-гийн .wrap padding-аас ирнэ */
   gap: 0;
+  /* ⚠️ Хөндлөн зурвасыг дэлгэцийн доод ирмэгт тогтоох ГИНЖ:
+     `.suit` (grid 1fr) → `.tabs` → `.wrap` → `.scroll`. Гинжний аль нэг нь
+     өндөргүй бол «auto» болж тасарна — тэгвэл `.scroll` агуулгынхаа өндрөөр
+     сунаж, зурвас нь хуудасны ёроолд буцаад унана. */
+  height: 100%;
+  min-height: 0;
 }
 
 /* ── Өгөгдөл оруулах порталын толгой (таб хасагдсаны оронд) ── */
