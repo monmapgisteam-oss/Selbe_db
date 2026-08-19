@@ -66,11 +66,12 @@ type Job = {
 // Ordered job list for one Багц. Groups building cells per (level|work), keeps
 // first-seen order, computes each leaf's mean completion, then rolls headers up
 // from the leaves that follow them (until the next header).
+// Section-aware identity: job names repeat across floor sections, so the key
+// must include the section (Ангилал__Б_) or distinct floor rows silently merge
+// and their weight is lost. ⚠️ feats нь applySections-оор УРЬДЧИЛАН тамгалагдсан
+// байх ёстой (ачаалалт дээр нэг удаа) — render/useMemo дотор state-ийн обьектыг
+// мутаци хийхгүй.
 export function buildJobs(feats: Feature[]): { jobs: Job[]; grand: number } {
-  // Section-aware identity: job names repeat across floor sections, so the key
-  // must include the section (Ангилал__Б_, stamped by applySections) or
-  // distinct floor rows silently merge and their weight is lost.
-  applySections(feats); // idempotent; feats arrive Огноо ASC, ObjectID ASC
   // Latest value per (section|level|work|bld) cell.
   const win = new Map<string, Feature>();
   const blds = new Set<string>();
@@ -179,6 +180,7 @@ export default function Conclusion() {
           outFields: Object.values(F).join(","),
           orderByFields: `${F.ognoo} ASC, ${F.oid} ASC`,
         });
+        applySections(fs); // idempotent; feats arrive Огноо ASC, ObjectID ASC
         if (!cancelled) setFeats(fs);
       } catch (e) {
         if (!cancelled) setErr(String(e));

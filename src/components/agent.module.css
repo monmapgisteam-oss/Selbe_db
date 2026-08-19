@@ -121,7 +121,7 @@
 }
 /* Тод бичвэр — бүлгийн гарчиг, нэр. Өнгө нь ЭНГИЙН (цагаан/хар) */
 .bot strong {
-  font-weight: 650;
+  font-weight: 600;
   color: var(--ink);
 }
 
@@ -136,7 +136,7 @@
  * гэрэл/харанхуй хоёрт өөрөө тохирдог (#ca8a04 / #fbbf24).
  */
 .bot strong.num {
-  color: var(--warn);
+  color: var(--warn-ink);
   font-variant-numeric: tabular-nums;
 }
 
@@ -207,7 +207,7 @@
   padding: 8px 10px;
   border: 1px solid var(--bad);
   border-radius: var(--r-sm);
-  color: var(--bad);
+  color: var(--bad-ink);
   font-size: 12.5px;
 }
 
@@ -282,7 +282,7 @@
   margin: 12px 0;
   padding: 12px 12px 10px;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--r-lg);
   background: var(--surface-2);
   /* Диаграм дотроо SVG-ээ өргөнөөр нь тааруулдаг — эцэг нь хэтрэхээс сэргийлнэ */
   max-width: 100%;
@@ -295,7 +295,7 @@
 .chartTitle {
   margin-bottom: 8px;
   font-size: 0.8rem;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.35;
   color: var(--ink-2);
 }

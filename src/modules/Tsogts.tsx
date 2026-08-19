@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { Fragment, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
 import { Section, Note, Data, Empty, Rows, Bars, List, ListItem } from '@/components/ui';
 import {
@@ -15,8 +15,8 @@ import {
   loadFinData, contractMonths, ComboChart, lagOf, lagLevel, type FinData,
 } from '@/modules/Finance';
 import { useAsync, type Async } from '@/lib/useAsync';
-import { BUILDING, CASHFLOW2, PROGRESS_LEVELS, LAYER_BY_ID, bagtsKey } from '@/lib/services';
-import { shade, mntShort, num, pct } from '@/lib/format';
+import { BUILDING, CASHFLOW2, PROGRESS_LEVELS, LAYER_BY_ID, pkgKeyOf } from '@/lib/services';
+import { cat, shade, mntShort, num, pct } from '@/lib/format';
 import { readParam, writeParams } from '@/lib/urlState';
 import o from './overview.module.css';
 import f from './finance.module.css';
@@ -84,8 +84,12 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
     const C = CASHFLOW2.fields;
     const m = new Map<string, ReturnType<typeof contractMonths>>();
     finQ.data.contracts.forEach((r) => {
-      const k2 = bagtsKey(String(r[C.pkg2] ?? ''));
-      const k3 = bagtsKey(String(r[C.pkg] ?? ''));
+      // ⚠️ `pkgKeyOf` — «БАГЦ 1-4» мэт ОЛОН багц хамарсан мөр нь bagtsKey-ээр
+      //    «БАГЦ14» болж, бодит «Багц 14 · Дулаан хангамжийн нэвтрэх суваг»-т
+      //    ХАРИЙН ТЭЗҮ гэрээ (2.23 тэрбум ₮) наалдаж, тэр багц «санхүү
+      //    бүртгэлгүй» гэхийн оронд ХУДАЛ гүйцэтгэл харуулдаг байв.
+      const k2 = pkgKeyOf(r[C.pkg2]);
+      const k3 = pkgKeyOf(r[C.pkg]);
       [k2, k3].forEach((k) => {
         if (k && k !== '0' && !m.has(k)) m.set(k, contractMonths(r, finQ.data.given, finQ.data.phys));
       });
@@ -367,9 +371,18 @@ function TsPackList({
     <Section title={title} note={`${num(packs.length)} багц · ${note}`}>
       <List>
         {rows.map(({ p, lag, lvl, execPct }) => {
+          /**
+           * ⚠️ 2026-08-18 (хэрэглэгчийн хүсэлт): багц дарахад ЖАГСААЛТЫН ДОТОР,
+           * ЯГ ТЭР МӨРИЙН ДООР сарын цуваа задарна. Урьд нь сонголт зөвхөн
+           * дэлгэцийн ӨӨР хэсэг дэх картуудыг сольдог байсан тул хэрэглэгч
+           * жагсаалтаас нүдээ салгаж, багц хооронд харьцуулах боломжгүй байв.
+           * Одоо хэд хэдэн багцыг ээлжлэн дарж, нэг байрлалд цувааг нь хардаг.
+           */
+          const months = finMap?.get(p.key) ?? null;
+          const open = p.key === sel;
           return (
+            <Fragment key={p.key}>
             <ListItem
-              key={p.key}
               title={p.name}
               sub={p.kind === 'build'
                 ? `${num(p.blocks.length)} блок · ${num(p.households)} айл${lag && lvl ? ` · төл. ${lag.planned.toFixed(0)}% / бодит ${lag.actual.toFixed(0)}%` : ''}`
@@ -377,21 +390,49 @@ function TsPackList({
               value={
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                   {execPct == null ? '—' : pct(execPct, 0)}
-                  {lvl && (
+                  {/**
+                    * ⚠️ 2026-08-18: анхааруулга нь ЗӨВХӨН «⚠» тэмдэг байсныг
+                    * ЗӨРҮҮ + ТӨЛӨВЛӨСӨН/БОДИТ гурвалаар ил гаргав. Урьд нь тоо
+                    * нь зөвхөн hover-ийн `title`-д байсан тул жагсаалтыг нүдээр
+                    * гүйлгэхэд аль багц хэр хоцорсныг ХАРАХ арга байхгүй байлаа.
+                    */}
+                  {lvl && lag && (
                     <b
-                      title={lag ? `${lag.month}: төлөвлөсөн ${lag.planned.toFixed(1)}% · бодит ${lag.actual.toFixed(1)}% (−${lag.gap.toFixed(1)}%)` : ''}
-                      className={lvl === 'red' ? ts.alertBlink : undefined}
-                      style={{ color: lvl === 'red' ? '#e11d48' : '#f59e0b', fontSize: lvl === 'red' ? '1.05em' : '0.9em' }}
+                      className={`${ts.gapBadge} ${lvl === 'red' ? ts.gapRed : ts.gapYellow}`}
+                      title={`${lag.month}: төлөвлөсөн ${lag.planned.toFixed(1)}% · бодит ${lag.actual.toFixed(1)}%`}
                     >
-                      ⚠
+                      <span className={lvl === 'red' ? ts.alertBlink : undefined}>⚠</span>
+                      <span className="num">−{lag.gap.toFixed(1)}%</span>
+                      <small className="num">
+                        {lag.planned.toFixed(0)}/{lag.actual.toFixed(0)}
+                      </small>
                     </b>
                   )}
                 </span>
               }
-              color={lvl === 'red' ? '#e11d48' : lvl === 'yellow' ? '#f59e0b' : p.kind === 'build' ? levelColor(p.progress) : '#0891b2'}
-              active={p.key === sel}
-              onClick={() => onSel(p.key === sel ? null : p.key)}
+              color={lvl === 'red' ? 'var(--bad)' : lvl === 'yellow' ? 'var(--warn)' : p.kind === 'build' ? levelColor(p.progress) : cat(2)}
+              active={open}
+              onClick={() => onSel(open ? null : p.key)}
             />
+            {open && (
+              <div className={ts.packExpand}>
+                {months && months.length ? (
+                  <>
+                    <div className={ts.packLegend}>
+                      <span><i style={{ background: cat(2) }} />Төлөвлөгөө</span>
+                      <span><i style={{ background: cat(0) }} />Санхүүжилт</span>
+                      <span><i style={{ background: cat(1) }} />Биет %</span>
+                    </div>
+                    {/* ⚠️ Намхан (140px) — жагсаалтын мөр хооронд задарч байгаа тул
+                        доод бүтэн графикийн (220px) орлуулга БИШ, товч тойм. */}
+                    <ComboChart items={months} height={140} lagMonth={lag?.month} lagLvl={lvl} />
+                  </>
+                ) : (
+                  <Empty label="Cashflow-д энэ багцын гэрээ бүртгэлгүй." />
+                )}
+              </div>
+            )}
+            </Fragment>
           );
         })}
       </List>
@@ -412,8 +453,60 @@ function TotalCard({ packs, fin }: { packs: Pack[]; fin: FinData | null }) {
   // IPC-ээр олгосон нийт ₮ — багц бүрийн сар бүрийн net дүнгийн нийлбэр
   let given = 0;
   fin?.given.forEach((months) => months.forEach((v) => { given += v; }));
+
+  /**
+   * ⚠️ 2026-08-18 (хэрэглэгчийн хүсэлт): ТӨСЛИЙН ХЭМЖЭЭНИЙ төлөвлөсөн ба бодит
+   * гүйцэтгэлийн хувь. Урьд нь энэ хоёр зөвхөн доод графикийн KPI зурваст л
+   * байсан тул «Төсөл нийт» карт мөнгө ба блокийн тоо гэсэн хоёрхон зүйл
+   * харуулж, төсөл ХЭР хоцорч байгаа нь эндээс уншигдахгүй байв.
+   *
+   * `aggregateMonths` нь доод графиктай ЯГ ижил нэгтгэлийг (блокоор жигнэсэн
+   * биет %) буцаадаг тул хоёр газрын тоо ЗӨРӨХГҮЙ.
+   */
+  const totals = useMemo(() => {
+    if (!fin) return null;
+    const months = aggregateMonths(fin);
+    const nowYm = new Date().toISOString().slice(0, 7);
+    let planned: number | null = null;
+    let actual: number | null = null;
+    for (const m of months) {
+      if (m.label > nowYm) continue;
+      if (m.cumPct > 0) planned = m.cumPct;
+      if (m.phys > 0) actual = m.phys;
+    }
+    const gap = planned != null && actual != null ? planned - actual : null;
+    return { planned, actual, gap, lvl: gap == null ? null : lagLevel(gap) };
+  }, [fin]);
+
+  // ТЕКСТИЙН өнгө тул -ink хувилбар — light горимд цагаан дээр 4.5:1 хангана
+  const gapTone = totals?.lvl === 'red' ? 'var(--bad-ink)'
+    : totals?.lvl === 'yellow' ? 'var(--warn-ink)' : 'var(--good-ink)';
+
   return (
     <Section tone="primary" title="Төсөл нийт" note={`${build.length} барилгын багц`}>
+      {/* Төслийн хэмжээний гүйцэтгэл — гурван нүд, доод графиктай нэг өнгө */}
+      <div className={ts.totKpi}>
+        <div>
+          <span className={`${ts.totKpiVal} num`} style={{ color: cat(2) }}>
+            {totals?.planned == null ? '…' : pct(totals.planned, 1)}
+          </span>
+          <span className={ts.totKpiLabel}>Төлөвлөсөн</span>
+        </div>
+        <div>
+          <span className={`${ts.totKpiVal} num`} style={{ color: cat(1) }}>
+            {totals?.actual == null ? '…' : pct(totals.actual, 1)}
+          </span>
+          <span className={ts.totKpiLabel}>Бодит гүйцэтгэл</span>
+        </div>
+        <div>
+          <span className={`${ts.totKpiVal} num`} style={{ color: gapTone }}>
+            {totals?.gap == null
+              ? '…'
+              : `${totals.gap >= 0 ? '−' : '+'}${Math.abs(totals.gap).toFixed(1)}%`}
+          </span>
+          <span className={ts.totKpiLabel}>Зөрүү</span>
+        </div>
+      </div>
       <Rows
         items={[
           { key: 'Блок', value: <span className="num">{num(blocks)}</span> },
@@ -470,8 +563,8 @@ function FinCard({ p, finQ }: { p: Pack | null; finQ: Async<FinData> }) {
   if (d) {
     if (p) {
       const row =
-        d.contracts.find((r) => bagtsKey(String(r[C.pkg2] ?? '')) === p.key) ??
-        d.contracts.find((r) => bagtsKey(String(r[C.pkg] ?? '')) === p.key) ??
+        d.contracts.find((r) => pkgKeyOf(r[C.pkg2]) === p.key) ??
+        d.contracts.find((r) => pkgKeyOf(r[C.pkg]) === p.key) ??
         null;
       if (!row) noRow = true;
       else {
@@ -512,7 +605,8 @@ function FinCard({ p, finQ }: { p: Pack | null; finQ: Async<FinData> }) {
   // Гүйцэтгэлийн зөрүү — төлөвлөгөөт − бодит (%). Эерэг = хоцрогдол.
   const progGap = plannedPct != null && actualPct != null ? plannedPct - actualPct : null;
   const gapLvl = progGap == null ? null : lagLevel(progGap);
-  const gapColor = gapLvl === 'red' ? '#e11d48' : gapLvl === 'yellow' ? '#f59e0b' : '#22c55e';
+  // ТЕКСТИЙН өнгө тул -ink хувилбар — light горимд цагаан дээр 4.5:1 хангана
+  const gapColor = gapLvl === 'red' ? 'var(--bad-ink)' : gapLvl === 'yellow' ? 'var(--warn-ink)' : 'var(--good-ink)';
   const gapText = progGap == null ? '—' : `${progGap >= 0 ? '−' : '+'}${Math.abs(progGap).toFixed(1)}%`;
 
   // ГАРЧИГ — нэр + (хоцрогдол бол) нэрний ХАЖУУД alert badge
@@ -549,7 +643,7 @@ function FinCard({ p, finQ }: { p: Pack | null; finQ: Async<FinData> }) {
         <>
           <div className={ts.finKpi}>
             {[
-              { v: mntShort(total), l: 'Cashflow төлөвлөсөн', c: '#0891b2' },
+              { v: mntShort(total), l: 'Cashflow төлөвлөсөн', c: cat(2) },
               {
                 v: (
                   <>
@@ -562,11 +656,13 @@ function FinCard({ p, finQ }: { p: Pack | null; finQ: Async<FinData> }) {
                   </>
                 ),
                 l: 'IPC олгосон',
-                c: '#22c55e',
+                c: cat(0),
               },
-              { v: mntShort(finGap), l: 'Санхүүжилтийн зөрүү', c: '#f59e0b' },
-              { v: plannedPct == null ? '—' : pct(plannedPct, 1), l: 'Төлөвлөгөөт гүйцэтгэл', c: '#0891b2' },
-              { v: actualPct == null ? '—' : pct(actualPct, 1), l: 'Бодит гүйцэтгэл', c: '#a855f7' },
+              /* ⚠️ envhub: эерэг зөрүү нь хэвийн үлдэгдэл тул ТОГТМОЛ warn өнгө
+                 нь худал дохио байв — төлөв заадаггүй утга var(--ink)-ээр. */
+              { v: mntShort(finGap), l: 'Санхүүжилтийн зөрүү', c: 'var(--ink)' },
+              { v: plannedPct == null ? '—' : pct(plannedPct, 1), l: 'Төлөвлөгөөт гүйцэтгэл', c: cat(2) },
+              { v: actualPct == null ? '—' : pct(actualPct, 1), l: 'Бодит гүйцэтгэл', c: cat(1) },
               { v: gapText, l: 'Гүйцэтгэлийн зөрүү', c: gapColor },
             ].map((k) => (
               <div key={k.l}>
@@ -576,9 +672,9 @@ function FinCard({ p, finQ }: { p: Pack | null; finQ: Async<FinData> }) {
             ))}
           </div>
           <div className={ts.finLegend}>
-            <span><i style={{ background: '#0891b2' }} />Төлөвлөгөө өссөн ₮</span>
-            <span><i style={{ background: '#22c55e' }} />Санхүүжилт өссөн ₮</span>
-            <span><i style={{ background: '#a855f7' }} />Биет гүйцэтгэл %</span>
+            <span><i style={{ background: cat(2) }} />Төлөвлөгөө өссөн ₮</span>
+            <span><i style={{ background: cat(0) }} />Санхүүжилт өссөн ₮</span>
+            <span><i style={{ background: cat(1) }} />Биет гүйцэтгэл %</span>
           </div>
           <ComboChart items={months} height={220} lagMonth={lag?.month} lagLvl={lvl} />
         </>

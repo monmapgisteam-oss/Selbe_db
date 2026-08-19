@@ -26,7 +26,7 @@ import {
 } from '@/lib/services';
 import { usePlanTotals } from '@/lib/totals';
 import { Section, Bars, Donut, Series, Loading, Empty } from '@/components/ui';
-import { num, date, text, shade } from '@/lib/format';
+import { num, date, text } from '@/lib/format';
 import { MapCanvas, type Dim } from '@/components/MapCanvas';
 import { LayerCatalog } from '@/components/LayerCatalog';
 import { OpacityPanel } from '@/components/OpacityPanel';
@@ -91,25 +91,25 @@ function topN<T extends { key: string; label: string; value: number }>(items: T[
  * Ослын төрлийн ХҮНД байдлын өнгө — domain-ий утгууд чөлөөт бичвэртэй ирдэг
  * («Амь нас эрсдэж болзошгүй байсан», «Ноцтой осол»...) тул түлхүүр үгээр
  * тааруулна. Дараалал чухал: амь нас/ноцтой нь «болзошгүй»-ээс түрүүнд.
+ *
+ * ⚠️ envhub: ӨНГӨ = УТГА. Хүнд байдал нь төлөвийн ГУРАВХАН токенд буудаг —
+ *    амь нас/гал = var(--bad), гэмтэл/хохирол/дөхсөн = var(--warn), бусад нь
+ *    саарал бэх. Ижил шатлалын хоёр төрөл ИЖИЛ өнгөтэй байх нь зөв: ялгааг
+ *    зүсмэгийн 1px зах, дараалал, тайлбар өгнө (өнгө биш).
  */
 const SEVERITY: [RegExp, string][] = [
-  [/амь|ноцтой|үйлдвэрлэлийн/i, '#dc2626'],
-  [/гал/i, '#b91c1c'],
-  [/эмнэлг|гэмтэл|тусламж/i, '#ea580c'],
-  [/эд хөрөнг|өмч|хохирол/i, '#f59e0b'],
-  [/дөхсөн|болзошгүй/i, '#eab308'],
+  [/амь|ноцтой|үйлдвэрлэлийн/i, 'var(--bad)'],
+  [/гал/i, 'var(--bad)'],
+  [/эмнэлг|гэмтэл|тусламж/i, 'var(--warn)'],
+  [/эд хөрөнг|өмч|хохирол/i, 'var(--warn)'],
+  [/дөхсөн|болзошгүй/i, 'var(--warn)'],
 ];
-const severityHue = (label: string) => SEVERITY.find(([re]) => re.test(label))?.[1] ?? '#94a3b8';
+// ⚠️ «Өгөгдөлгүй/бусад» нь ӨНГӨТ цуваа БИШ — саарал бэхийн токен (горим дагана).
+const severityHue = (label: string) => SEVERITY.find(([re]) => re.test(label))?.[1] ?? 'var(--ink-3)';
 
-/** Давхардсан өнгөтэй зүсмэгүүдийг shade-ээр ялгаруулна (нэг өнгө 2+ төрөлд оногдвол) */
+/** Зүсмэг бүрд хүнд байдлын токен онооно — «Бусад» саарал бэхээр үлдэнэ */
 function severityColors<T extends { label: string }>(items: T[]) {
-  const seen = new Map<string, number>();
-  return items.map((it) => {
-    const base = it.label === 'Бусад' ? '#94a3b8' : severityHue(it.label);
-    const k = seen.get(base) ?? 0;
-    seen.set(base, k + 1);
-    return { ...it, color: k ? shade(base, k, 5) : base };
-  });
+  return items.map((it) => ({ ...it, color: severityHue(it.label) }));
 }
 
 type Inc = {
@@ -159,8 +159,11 @@ function monthSeries(list: Inc[]) {
 
 /* ─────────── Цамхагт кран ─────────── */
 
+/* ⚠️ Краны төлөв нь сайн/муу заадаггүй АНГИЛАЛ — идэвхтэй хоёр төлөв нь
+   өгөгдлийн ГАНЦ өнгө (var(--data)), буусан нь саарал бэх. Ялгааг өнгөөр биш —
+   дараалал, тайлбар, зүсмэгийн 1px зах өгнө (envhub). */
 const CRANE_HUE: Record<string, string> = {
-  'Шинээр нэмэгдсэн': '#22c55e', 'Одоо байгаа': '#2563eb', 'Буусан': '#787878',
+  'Шинээр нэмэгдсэн': 'var(--data)', 'Одоо байгаа': 'var(--data)', 'Буусан': 'var(--ink-3)',
 };
 
 type Crane = {
@@ -495,7 +498,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
 
   /* Кран */
   const craneByStatus = countBy(fCrane, (x) => x.tuluv)
-    .map((x) => ({ ...x, color: CRANE_HUE[x.label] ?? '#94a3b8' }));
+    .map((x) => ({ ...x, color: CRANE_HUE[x.label] ?? 'var(--ink-3)' }));
   const craneByPkg = byPkg(cranes, () => 1);
   const craneActive = fCrane.filter((x) => x.tuluv !== 'Буусан').length;
   const avgUndur = fCrane.length ? fCrane.reduce((s, x) => s + x.undur, 0) / fCrane.length : 0;
@@ -507,8 +510,10 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const gadaad = fLabor.reduce((s, x) => s + x.gadaad, 0);
   const totalTech = fLabor.reduce((s, x) => s + x.tehnik, 0);
   const workerMix = [
-    { key: 'mn', label: 'Монгол', value: mongol, color: '#2563eb' },
-    { key: 'fr', label: 'Гадаад', value: gadaad, color: '#0ea5e9' },
+    // ⚠️ envhub: хоёр ангиллыг хоёр чимэглэлийн өнгөөр будахгүй — ГОЛ бүлэг нь
+    //    өгөгдлийн ганц өнгө, нөгөө нь саарал бэх (нийт доторх хувь гэж уншигдана).
+    { key: 'mn', label: 'Монгол', value: mongol, color: 'var(--data)' },
+    { key: 'fr', label: 'Гадаад', value: gadaad, color: 'var(--ink-3)' },
   ].filter((x) => x.value > 0);
   const techBreak = TECH
     .map((t) => ({
@@ -571,13 +576,14 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             : <Empty label="Бүртгэл алга" />}
         </Section>
         <Section title="Сарын явц" note="бүртгэлийн тоо">
+          {/* Чартын анхдагч өнгө = var(--data) (envhub: өгөгдлийн ГАНЦ өнгө) */}
           {months.length
-            ? <Series items={months} color="#ea580c" height={72} />
+            ? <Series items={months} height={72} />
             : <Empty label="Бүртгэл алга" />}
         </Section>
         <Section title="Шалтгааны төрөл">
           {incByCause.length
-            ? <Bars items={incByCause} color="#f59e0b" />
+            ? <Bars items={incByCause} />
             : <Empty label="Бүртгэл алга" />}
         </Section>
         <Section title="Сүүлийн бүртгэлүүд" note="дарж дэлгэрэнгүй">
@@ -739,11 +745,11 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         </Section>
         <Section title="Кран — багцаар" note="дарж бүгдийг шүүнэ">
           {craneByPkg.length
-            ? <Bars items={craneByPkg} color="#dc2626" selected={pkg} onSelect={togglePkg} />
+            ? <Bars items={craneByPkg} selected={pkg} onSelect={togglePkg} />
             : <Empty label="Бүртгэл алга" />}
         </Section>
         <Section title="Техник — төрлөөр" note={`${num(totalTech)} нэгж`}>
-          {techBreak.length ? <Bars items={techBreak} color="#0891b2" /> : surveyEmpty}
+          {techBreak.length ? <Bars items={techBreak} /> : surveyEmpty}
         </Section>
         <Section
           title="Ажилтан — бүрэлдэхүүн"
@@ -759,17 +765,17 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       <div className={h.fin}>
         <Section title="Осол, зөрчил — багцаар" note="дарж бүгдийг шүүнэ">
           {incByPkg.length
-            ? <Bars items={incByPkg} color="#ea580c" selected={pkg} onSelect={togglePkg} />
+            ? <Bars items={incByPkg} selected={pkg} onSelect={togglePkg} />
             : <Empty label="Бүртгэл алга" />}
         </Section>
         <Section title="Осол, зөрчил — компаниар">
           {incByCompany.length
-            ? <Bars items={incByCompany} color="#f59e0b" />
+            ? <Bars items={incByCompany} />
             : <Empty label="Бүртгэл алга" />}
         </Section>
         <Section title="Ажилтан — гүйцэтгэгчээр" note={`Монгол ${num(mongol)} · Гадаад ${num(gadaad)}`}>
           {workersByCompany.length
-            ? <Series items={workersByCompany} color="#2563eb" height={110} unit="ажилтан" />
+            ? <Series items={workersByCompany} height={110} unit="ажилтан" />
             : surveyEmpty}
         </Section>
         <Section title="Осол, зөрчлийн зураг" note="хавсаргасан зургууд · дарж томруулна">

@@ -81,7 +81,9 @@ export function SuitLayerCatalog({
 
   return (
     <aside className={`${c.drawer} ${c.embedded}`} aria-label="Давхаргын жагсаалт">
-      <header className={c.head} style={{ '--hue': '#4fd1c5' } as CSSProperties}>
+      {/* ⚠️ Урьд нь энд '--hue': '#4fd1c5' гэж дардаг байв — одоо глобал --hue
+          нь var(--data) тул хоёр горимд өөрөө тохирно (override хэрэггүй). */}
+      <header className={c.head}>
         <div className={c.headText}>
           <span className={c.title}>Давхарга</span>
           <span className={c.sub}>{all.length} нийт · {onCount} асаалттай</span>

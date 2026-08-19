@@ -299,7 +299,8 @@ function readout(kind: SimKind, ranked: Ranked[], road?: RoadState): Cell[] {
       {
         k: 'Урсгал',
         v: flow == null ? '—' : `${flow}%`,
-        color: flow == null ? undefined : flow > 70 ? '#4ade80' : flow > 40 ? '#fbbf24' : '#f87171',
+        // Утга заасан өнгө — статус токеноор (хоёр горимд уншигдана)
+        color: flow == null ? undefined : flow > 70 ? 'var(--good-ink)' : flow > 40 ? 'var(--warn-ink)' : 'var(--bad-ink)',
       },
     ];
   }
@@ -317,7 +318,8 @@ function readout(kind: SimKind, ranked: Ranked[], road?: RoadState): Cell[] {
       {
         k: `${TRANSIT_NORM_M} м дотор`,
         v: `${pct}%`,
-        color: pct > 70 ? '#4ade80' : pct > 40 ? '#fbbf24' : '#f87171',
+        // Утга заасан өнгө — статус токеноор (хоёр горимд уншигдана)
+        color: pct > 70 ? 'var(--good-ink)' : pct > 40 ? 'var(--warn-ink)' : 'var(--bad-ink)',
       },
     ];
   }

@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, type CSSProperties } from 'react';
+import { Fragment } from 'react';
 import { Icon } from './Icon';
 import { VIEWS, ALL_MODE_HIDE, type ViewKey } from '@/lib/services';
 import s from './tree.module.css';
@@ -22,6 +22,7 @@ export function ViewRail({
   setView,
   catalogOpen,
   header = false,
+  collapsed = false,
   navScope = 'all',
   onDocs,
   docsActive = false,
@@ -49,26 +50,29 @@ export function ViewRail({
   onDocs?: () => void;
   /** Popup нээлттэй эсэх (идэвхтэй тэмдэг) */
   docsActive?: boolean;
+  /** ХУРААГДСАН босоо горим — зөвхөн дүрс үлдэнэ (нэр tooltip-д) */
+  collapsed?: boolean;
 }) {
-  {/* «ТЭЗҮ-БОНУ» баримт — харагдацын табуудтай НЭГ бүлэгт, ижил хэлбэрээр.
-      Харагдац биш, popup нээдэг тул `aria-current` биш `aria-pressed`. */}
-  const docsButton =
-    header && onDocs ? (
-      <button
-        type="button"
-        aria-pressed={docsActive}
-        aria-label="ТЭЗҮ-БОНУ баримт бичиг"
-        title="ТЭЗҮ ба судалгааны баримт бичиг"
-        className={`${s.item} ${s.docItem} ${docsActive ? s.itemOn : ''}`}
-        style={{ '--tone': '#16a34a' } as CSSProperties}
-        onClick={onDocs}
-      >
-        <span className={s.icon}><Icon name="file" /></span>
-        <span className={s.text}>
-          <span className={s.title}>ТЭЗҮ-БОНУ</span>
-        </span>
-      </button>
-    ) : null;
+  {/* «ТЭЗҮ-БОНУ» баримт — харагдацуудтай ИЖИЛ хэлбэрээр.
+      Харагдац биш, popup нээдэг тул `aria-current` биш `aria-pressed`.
+      ⚠️ 2026-08-17: Урьд нь `header &&` гэж хаагдсан байсан тул БОСОО (зүүн
+      багана) горимд огт гардаггүй байв. Одоо хоёуланд. */}
+  const docsButton = onDocs ? (
+    <button
+      type="button"
+      aria-pressed={docsActive}
+      aria-label="ТЭЗҮ-БОНУ баримт бичиг"
+      title="ТЭЗҮ ба судалгааны баримт бичиг"
+      className={`${s.item} ${s.docItem} ${docsActive ? s.itemOn : ''}`}
+      onClick={onDocs}
+    >
+      {!header && <span className={s.no} aria-hidden />}
+      <span className={s.icon}><Icon name="file" /></span>
+      <span className={s.text}>
+        <span className={s.title}>ТЭЗҮ-БОНУ</span>
+      </span>
+    </button>
+  ) : null;
 
   /**
    * НАВИГАЦИД харагдах харагдацууд — `navScope`-ийг `Root` бүрэн бодож өгнө.
@@ -81,10 +85,10 @@ export function ViewRail({
       : VIEWS.filter((v) => navScope.includes(v.key));
 
   return (
-    <nav className={header ? s.railRow : s.rail} aria-label="Харагдац">
+    <nav className={header ? s.railRow : `${s.rail} ${collapsed ? s.railMin : ''}`} aria-label="Харагдац">
       {!header && <div className={s.railHead}>Харагдац</div>}
 
-      {shown.map((v) => {
+      {shown.map((v, i) => {
         const on = v.key === view;
         // Каталогтой харагдацууд — тусдаа бүрэн дэлгэцтэй (дашбоард, анализ) нь үгүй.
         // ⚠️ Толгойн хэвтээ горимд каталог нь зурган дээрх «Давхарга» товчоор
@@ -102,9 +106,11 @@ export function ViewRail({
             title={v.title}
             {...(expandable ? { 'aria-expanded': expanded } : {})}
             className={`${s.item} ${on ? s.itemOn : ''}`}
-            style={{ '--tone': v.hue } as CSSProperties}
             onClick={() => setView(v.key)}
           >
+            {/* envhub-ийн хэлтсийн жагсаалт шиг дугаарлалт — зөвхөн БОСОО горимд.
+                Дараалал нь мэдээлэл БИШ, зөвхөн нүдээр хөтлөх зүүн зангуу. */}
+            {!header && <span className={`${s.no} num`} aria-hidden>{String(i + 1).padStart(2, '0')}</span>}
             <span className={s.icon}><Icon name={v.icon} /></span>
             <span className={s.text}>
               <span className={s.title}>{v.title}</span>
@@ -121,14 +127,10 @@ export function ViewRail({
       {/* ТЭЗҮ-БОНУ товч — БҮХ сэдэвт харагдана (харагдацуудын ард, толгойн горимд).
           ⚠️ Урьд нь «Ерөнхий дашбоард»-ын ард байсан тул тэр харагдацгүй сэдэвт
              алга болдог байв; одоо сэдвээс үл хамааран төгсгөлд байнга. */}
+      {/* envhub-ийн «СИСТЕМ» бүлэг шиг — баримт бичиг нь харагдацуудаас
+          зураасаар тусгаарлагдсан ӨӨР төрлийн зүйл (popup, харагдац биш). */}
+      {!header && docsButton && <div className={s.railHead}>Баримт</div>}
       {docsButton}
-
-      {!header && (
-        <p className={s.foot}>
-          Харагдац дарахад хажууд нь давхаргын жагсаалт дэлгэгдэнэ. Зураг дээр
-          хулгана аваачихад товч мэдээлэл, дарахад дэлгэрэнгүй нь баруун талд гарна.
-        </p>
-      )}
     </nav>
   );
 }

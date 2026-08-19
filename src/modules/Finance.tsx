@@ -1,18 +1,18 @@
 'use client';
 
-import { useState, type MouseEvent, type CSSProperties } from 'react';
+import { useState, type MouseEvent } from 'react';
 import { Data, Empty } from '@/components/ui';
 import { useAsync } from '@/lib/useAsync';
 import { queryFeatures } from '@/lib/query';
-import { CASHFLOW2, IPC_LOG, TASK_SHEET, bagtsKey } from '@/lib/services';
+import { CASHFLOW2, IPC_LOG, TASK_SHEET, bagtsKey, pkgKeyOf } from '@/lib/services';
 import { finFieldLabel } from '@/lib/financeFieldLabels';
-import { mntShort, num, text } from '@/lib/format';
+import { mntShort, num, text, cat } from '@/lib/format';
 import f from './finance.module.css';
 
 /* ═══════════════════════════════════════════════════════════
    САНХҮҮЖИЛТ — CASHFLOW (төлөвлөгөө) + IPC (олгосон акт).
    МӨР (гэрээ/багц) БҮРД тусдаа график: сар бүр хэдэн хувьд гүйцэтгэж,
-   хэдэн төгрөг ТӨЛӨВЛӨСӨН (цэнхэр) ба IPC-ээр хэдийг ОЛГОСОН (ногоон).
+   хэдэн төгрөг ТӨЛӨВЛӨСӨН (PLAN слот) ба IPC-ээр хэдийг ОЛГОСОН (ACT слот).
    ═══════════════════════════════════════════════════════════ */
 
 /** Утгыг тоо руу — ArcGIS Double эсвэл "0" мэт мөр ирдэг */
@@ -34,18 +34,36 @@ function ym(v: unknown): string | null {
   return m ? `${m[1]}-${m[2].padStart(2, '0')}` : null;
 }
 
-/** Багцын түлхүүр: том үсэг + зөвхөн үсэг/тоо/цэг — «БАГЦ-4.2» = «Багц 4.2» */
-const pkgKey = (v: unknown) =>
-  String(v ?? '')
-    .toUpperCase()
-    .replace(/[^А-ЯЁҮӨA-Z0-9.]/g, '');
+/**
+ * ⚠️ 2026-08-18: багцын түлхүүр нь `bagtsKey` (services.ts) — ЛОКАЛ `pkgKey`
+ * хасагдав. Тэр нь цэгийг үлдээж, зурааныг хаядаг байсан тул «БАГЦ-3.1»
+ * (/107 IPC) ба «Багц 3-1» (/106 Cashflow) хоёр өөр түлхүүр болж, тухайн
+ * гэрээний «Өссөн олгосон» багана чимээгүй алга болдог байв. `phys`/`PhysMap`
+ * аль хэдийн `bagtsKey` хэрэглэдэг байсан — одоо гурвуулаа НЭГ дүрэмтэй.
+ */
 
 /** Жинхэнэ акт мөн үү — "Contract Price" псевдо-мөр, хоосон мөрийг хасна */
 const isRealAct = (no: unknown) => /^(IPC|APC|АРС)[-\s]?\d+/i.test(String(no ?? '').trim());
 
-const PLAN = '#0891b2'; // төлөвлөгөөт өссөн % (S-муруй)
-const ACT = '#22c55e'; // олгосон санхүүжилтийн өссөн % (S-муруй)
-const PHYS = '#a855f7'; // биет гүйцэтгэлийн % (S-муруй)
+/**
+ * S-муруйн гурван цуваа — баталгаажсан палитрын слотууд.
+ *
+ * ⚠️ 2026-08-17: Урьд нь тогтмол hex байсан (`#0891b2 / #22c55e / #a855f7`) —
+ * хоёр асуудалтай: горим дагадаггүй, мөн `#22c55e`/`#a855f7` нь цагаан дээр
+ * 2.0–3.4:1 буюу хэмжээст тэмдэгт болоход сул.
+ *
+ * ⚠️ 2026-08-18: слот 1/4/7 → 1/2/3. Гурван цуваа нь графикт ЗЭРЭГЦЭЭ орох тул
+ * аль ч хоёр нь зэрэгцэж болно — палитрын эхний ГУРВАН слот нь CVD-ийн
+ * шалгуурт хамгийн сайн салгагдсан дараалал (усан цэнхэр · улбар шар · индиго).
+ * Хуучин 1/4/7 нь усан цэнхэр↔ногоонийг зэрэгцүүлж, өнгө ялгах бэрхшээлтэй
+ * хэрэглэгчид төлөвлөгөө/санхүүжилт хоёрыг ялгахад хүндрэлтэй байв.
+ * ⚠️ Эдгээр нь `var(--cN)` буцаадаг тул ЗӨВХӨН CSS контекстэд ажиллана — энэ
+ * файлын SVG будаг бүхэн `style={{ fill/stroke }}` руу шилжсэн (presentation
+ * ШИНЖ дотор `var()` задардаггүй).
+ */
+const PLAN = cat(2); // төлөвлөгөөт өссөн % — индиго (суурь лавлагаа)
+const ACT = cat(0); // олгосон санхүүжилтийн өссөн % — усан цэнхэр (аппын акцент)
+const PHYS = cat(1); // биет гүйцэтгэлийн % — улбар шар (муруй, хоёуланаас тодрох)
 
 type Row = Record<string, unknown>;
 
@@ -73,9 +91,9 @@ export type PhysMap = Map<string, Map<string, number>>;
 export type FinData = { contracts: Row[]; given: GivenMap; phys: PhysMap; physCnt: PhysMap };
 
 // ═══════════════════════════════════════════════════════════
-//  AREA ГРАФИК (shadcn gradient загвар) — нэг цуваа: сарын авах дүн ₮.
-//  Гөлгөр natural муруй · градиент дүүргэлт · hover tooltip.
-//  X тэнхлэгт он сар (товчлохгүй) + хүрэх өссөн хувь шараар.
+//  КОМБО ГРАФИК (envhub хэлээр) — градиентгүй, glow-гүй хавтгай дүрслэл.
+//  Багана = өссөн олгосон ₮ (ACT) · шугам = төлөвлөгөө (PLAN) ба биет (PHYS).
+//  X тэнхлэгт он сар + өссөн хувиуд цуваа өөрийн слотын өнгөөр.
 // ═══════════════════════════════════════════════════════════
 
 export function ComboChart({
@@ -164,14 +182,15 @@ export function ComboChart({
           );
         })}
 
-        {/* Хоцрогдсон сарын тэмдэг — босоо шугам + биет цэг дээр АНИВЧДАГ alert */}
+        {/* Хоцрогдсон сарын тэмдэг — босоо шугам + биет цэг дээр ЛУГШДАГ статус
+            цэг (glow-гүй; өнгө нь --bad/--warn, зэрэг нь лугшилтын хурдаар) */}
         {lagMonth != null && lagLvl != null && (() => {
           const li = rows.findIndex((r) => r.label === lagMonth);
           if (li < 0) return null;
-          const color = lagLvl === 'red' ? '#e11d48' : '#f59e0b';
+          const color = lagLvl === 'red' ? 'var(--bad)' : 'var(--warn)';
           const cx = xFor(li);
           return (
-            <g style={{ ['--glow']: color } as CSSProperties}>
+            <g>
               <line
                 x1={cx} x2={cx} y1={padT} y2={padT + plotH}
                 stroke={color} strokeWidth={1.5} strokeDasharray="4 4" opacity={0.5}
@@ -197,11 +216,12 @@ export function ComboChart({
             const hgt = padT + plotH - y;
             return (
               <g key={`ipc-${i}`}>
-                <rect x={xFor(i) - bw / 2} y={y} width={bw} height={hgt} rx={2} fill={ACT} opacity={0.82} />
+                <rect x={xFor(i) - bw / 2} y={y} width={bw} height={hgt} rx={2} opacity={0.82} style={{ fill: ACT }} />
                 {/* Баганын шошго — зөвхөн төлөвлөгөөний цэгээс ХАНГАЛТТАЙ доор бол
-                    (эс бөгөөс эхэн үед утга ойролцоо тул төлөвлөгөөнийхтэй давхцана) */}
+                    (эс бөгөөс эхэн үед утга ойролцоо тул төлөвлөгөөнийхтэй давхцана).
+                    Өнгө нь ACT цувааныхаа слот — identity, статус биш. */}
                 {showLabel(i) && y - yFor(r.planned) > 14 && (
-                  <text x={xFor(i)} y={y - 4} className={f.barValG} textAnchor={anchorFor(i)}>
+                  <text x={xFor(i)} y={y - 4} className={f.barValG} style={{ fill: ACT }} textAnchor={anchorFor(i)}>
                     {mntShort(r.givenCum).replace(' ₮', '')}
                   </text>
                 )}
@@ -210,7 +230,8 @@ export function ComboChart({
           });
         })()}
 
-        {/* Шугам: төлөвлөгөө (cyan) + биет (purple) — санхүүжилт нь багана тул энд алга */}
+        {/* Шугам: төлөвлөгөө (PLAN — индиго) + биет (PHYS — улбар шар);
+            санхүүжилт нь багана тул энд алга */}
         {series.map((sd) => {
           if (sd.end < 1) return null;
           const linePts = rows.slice(0, sd.end + 1).map((r, i) => ({ x: xFor(i), y: yFor(r[sd.key]) }));
@@ -219,8 +240,8 @@ export function ComboChart({
               key={sd.key}
               d={smoothPath(linePts)}
               className={f.sLine}
-              stroke={sd.color}
               vectorEffect="non-scaling-stroke"
+              style={{ stroke: sd.color }}
             />
           );
         })}
@@ -232,7 +253,7 @@ export function ComboChart({
           const y = yFor(r.planned);
           return (
             <g key={`pl-${i}`}>
-              <circle cx={x} cy={y} r={3.5} fill={PLAN} className={f.sDot} vectorEffect="non-scaling-stroke" />
+              <circle cx={x} cy={y} r={3.5} className={f.sDot} vectorEffect="non-scaling-stroke" style={{ fill: PLAN }} />
               {showLabel(i) && (
                 <text x={x} y={y - (i % 2 === 0 ? 8 : 18)} className={f.barVal} textAnchor={anchorFor(i)}>
                   {mntShort(r.planned).replace(' ₮', '')}
@@ -248,7 +269,7 @@ export function ComboChart({
           <circle
             key={`ph-${i}`}
             cx={xFor(i)} cy={yFor(r.physical)} r={3.5}
-            fill={PHYS} className={f.sDot} vectorEffect="non-scaling-stroke"
+            className={f.sDot} vectorEffect="non-scaling-stroke" style={{ fill: PHYS }}
           />
         )))}
 
@@ -260,19 +281,21 @@ export function ComboChart({
               <circle
                 key={sd.key}
                 cx={xFor(hi)} cy={yFor(rows[hi][sd.key])} r={3.5}
-                fill={sd.color} className={f.sDot} vectorEffect="non-scaling-stroke"
+                className={f.sDot} vectorEffect="non-scaling-stroke" style={{ fill: sd.color }}
               />
             ) : null))}
           </>
         )}
 
-        {/* X тэнхлэг — 3 мөр: он сар · ТӨЛӨВЛӨГӨӨТ өссөн % (амбер) · БИЕТ гүйцэтгэл % (ягаан).
+        {/* X тэнхлэг — 3 мөр: он сар · ТӨЛӨВЛӨГӨӨТ өссөн % · БИЕТ гүйцэтгэл %.
+            Хоёр % мөр зэрэгцдэг тул цуваа бүр ӨӨРИЙН слотын өнгөөр (fill inline) —
+            энэ нь envhub-ийн «өнгө = утга» дүрэмд нийцсэн identity будаг.
             Хувиудыг ЭНД эмхлэснээр график дотор баганатай давхцахгүй. */}
         {rows.map((r, i) => (showLabel(i) ? (
           <g key={r.label}>
             <text x={xFor(i)} y={H - 36} className={f.axisX} textAnchor="middle">{r.label}</text>
             {r.it.cumPct > 0 && (
-              <text x={xFor(i)} y={H - 21} className={f.axisXPct} textAnchor="middle">
+              <text x={xFor(i)} y={H - 21} className={f.axisXPct} style={{ fill: PLAN }} textAnchor="middle">
                 {r.it.cumPct.toFixed(1)}%
               </text>
             )}
@@ -291,11 +314,11 @@ export function ComboChart({
           className={f.tip}
           style={{ left: `${(hi! / Math.max(1, N - 1)) * 100}%`, transform: `translateX(${hi! < N / 2 ? '10px' : 'calc(-100% - 10px)'})` }}
         >
-          <p className={f.tipHd}>{pt.label}</p>
-          <p className={f.tipRow}><i style={{ background: PLAN }} />Өссөн төлөвлөгөө<b>{pt.planned > 0 ? mntShort(pt.planned) : '—'}</b></p>
-          <p className={f.tipRow}><i style={{ background: ACT }} />Өссөн олгосон<b>{pt.givenCum > 0 ? mntShort(pt.givenCum) : '—'}</b></p>
-          <p className={f.tipRow}><i style={{ background: PHYS }} />Биет гүйцэтгэл<b>{pt.physPct > 0 ? `${pt.physPct.toFixed(1)}%` : '—'}</b></p>
-          <p className={`${f.tipRow} ${f.tipGap}`}><i style={{ background: PLAN }} />Санхүүжилтийн явц<b>{pt.planned > 0 ? `${((pt.givenCum / pt.planned) * 100).toFixed(0)}%` : '—'}</b></p>
+          <p className={`num ${f.tipHd}`}>{pt.label}</p>
+          <p className={f.tipRow}><i style={{ background: PLAN }} />Өссөн төлөвлөгөө<b className="num">{pt.planned > 0 ? mntShort(pt.planned) : '—'}</b></p>
+          <p className={f.tipRow}><i style={{ background: ACT }} />Өссөн олгосон<b className="num">{pt.givenCum > 0 ? mntShort(pt.givenCum) : '—'}</b></p>
+          <p className={f.tipRow}><i style={{ background: PHYS }} />Биет гүйцэтгэл<b className="num">{pt.physPct > 0 ? `${pt.physPct.toFixed(1)}%` : '—'}</b></p>
+          <p className={`${f.tipRow} ${f.tipGap}`}><i style={{ background: PLAN }} />Санхүүжилтийн явц<b className="num">{pt.planned > 0 ? `${((pt.givenCum / pt.planned) * 100).toFixed(0)}%` : '—'}</b></p>
         </div>
       )}
     </div>
@@ -353,7 +376,7 @@ export async function loadFinData(): Promise<FinData> {
       if (!isRealAct(r[F.no])) return;
       const net = n(r[F.net]);
       if (net === 0) return;
-      const k = pkgKey(r[F.pkg]);
+      const k = bagtsKey(r[F.pkg]);
       if (!k || k === '0') return;
       let mon = ym(r[F.submitDate]) ?? ym(r[F.periodTo]) ?? ym(r[F.approvedDate]) ?? last;
       if (mon < first) mon = first;
@@ -466,8 +489,11 @@ export function Finance() {
 /** Гэрээний мөрөөс сарын цэгүүд — ЯГ датаных нь дагуу + IPC олгосон + биет гүйцэтгэл */
 export function contractMonths(r: Row, given: GivenMap, phys: PhysMap): MonthPt[] {
   const C = CASHFLOW2.fields;
-  const byMon = given.get(pkgKey(r[C.pkg2])) ?? given.get(pkgKey(r[C.pkg]));
-  const ph = phys.get(bagtsKey(r[C.pkg2])) ?? phys.get(bagtsKey(r[C.pkg]));
+  // ⚠️ `pkgKeyOf` (bagtsKey БИШ): «БАГЦ 1-4» мэт диапазон мөр нь bagtsKey-ээр
+  //    «БАГЦ14» болж, бодит «Багц 14»-ийн олголт/биет гүйцэтгэлийг өөрийн болгон
+  //    зурдаг байв. Диапазон мөр одоо хоосон түлхүүртэй — юутай ч таарахгүй.
+  const byMon = given.get(pkgKeyOf(r[C.pkg2])) ?? given.get(pkgKeyOf(r[C.pkg]));
+  const ph = phys.get(pkgKeyOf(r[C.pkg2])) ?? phys.get(pkgKeyOf(r[C.pkg]));
   return CASHFLOW2.months.map((m) => ({
     label: m.label,
     amount: n(r[m.amount]),
@@ -555,7 +581,8 @@ function FullTable({
     <section className={f.reg}>
       <header className={f.regHd}>
         <h2>{title}</h2>
-        <span>{subtitle}</span>
+        {/* envhub: бүх тоо «num» (tabular) — мөр·баганын тоолол */}
+        <span className="num">{subtitle}</span>
       </header>
       {rows.length === 0 || cols.length === 0 ? (
         <Empty label="Мөр алга." />
@@ -575,7 +602,8 @@ function FullTable({
                   {cols.map((c) => {
                     const cell = fmtCell(r[c.name], c.type);
                     return (
-                      <td key={c.name} className={cell.num ? f.cellNum : undefined}>{cell.text}</td>
+                      // envhub: тоон нүд бүр глобал «num» (tabular) + баруун зэрэгцүүлэлт
+                      <td key={c.name} className={cell.num ? `num ${f.cellNum}` : undefined}>{cell.text}</td>
                     );
                   })}
                 </tr>

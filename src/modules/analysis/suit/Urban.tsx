@@ -8,7 +8,7 @@ import {
 } from '@/lib/analysis/config';
 import { scoreColor, clamp, passesNorm } from '@/lib/analysis/score';
 import { Donut } from '@/components/ui';
-import { shade } from '@/lib/format';
+import { shade, CAT_LIGHT } from '@/lib/format';
 import { nf, normLine } from './format';
 import type { LocationPt } from '@/lib/analysis/data';
 import type { Row } from './model';
@@ -19,10 +19,11 @@ import s from '../suitability.module.css';
  *
  * ⚠️ Оноолтын шатлал (ногоон→шар→улаан) хэрэглэхээ БОЛЬСОН: эдгээр карт нь
  * хэмжилтийн тайлан болохоос үнэлгээ биш тул улаан өнгө «алдаа гарлаа» гэсэн
- * худал дохио өгдөг байв (хэрэглэгчийн шийдвэр, 2026-08-12). Бүдэг цэнхэр нь
- * `SuitDetail`-ийн C1-тэй ижил — самбар даяар нэг диаграмын өнгө.
+ * худал дохио өгдөг байв (хэрэглэгчийн шийдвэр, 2026-08-12).
+ * ⚠️ 2026-08-18: envhub дүрэм — өгөгдлийн ГАНЦ өнгө `var(--data)` (урьд нь
+ * хатуу бичсэн цэнхэр #4f83cc байв). Зөвхөн inline style-д ордог тул var() болно.
  */
-const CHART = '#4f83cc';
+const CHART = 'var(--data)';
 
 /**
  * ТООЦООНЫ ТОМЬЁО — хураадаг блок.
@@ -108,7 +109,7 @@ export function CategoryPie({
         value: c.weight,
         // НЭГ ӨНГӨ (accent) тодоос бүдгэр — зүсмэгийн өнгө нь ангиллын «утга» биш,
         // зөвхөн ялгах зорилготой. Онооны утгыг тайлбарын тоо (scoreColor) хэлнэ.
-        color: shade('#4fd1c5', i, cats.length),
+        color: shade(CAT_LIGHT[0], i, cats.length),
         display: (
           <>
             <b style={{ color: scoreColor(c.score) }}>
@@ -345,7 +346,8 @@ export function Parking({
       )}
 
       <div className={s.parkHead}>
-        <div className={s.parkPct} style={{ color: CHART }}>
+        {/* envhub: индикаторын том тоо акцентаар будагдахгүй — үндсэн бэхээрээ */}
+        <div className={s.parkPct}>
           {pct == null ? '—' : Math.round(pct)}<i>%</i>
         </div>
         <div className={s.parkHeadTxt}>
@@ -497,7 +499,7 @@ export function Green({
                   aria-pressed={on}
                   onClick={() => setGreen({ ...green, radius: v })}
                   style={{
-                    flex: 1, padding: '4px 0', fontSize: 11, borderRadius: 6,
+                    flex: 1, padding: '4px 0', fontSize: 11, borderRadius: 2,
                     border: `1px solid ${on ? CHART : 'var(--line)'}`,
                     background: on ? 'var(--panel-2)' : 'transparent',
                     color: 'var(--text)', fontVariantNumeric: 'tabular-nums',
@@ -525,7 +527,8 @@ export function Green({
       </div>
 
       <div className={s.parkHead}>
-        <div className={s.parkPct} style={{ color: CHART }}>
+        {/* envhub: индикаторын том тоо акцентаар будагдахгүй — үндсэн бэхээрээ */}
+        <div className={s.parkPct}>
           {pct == null ? '—' : Math.round(pct)}<i>%</i>
         </div>
         <div className={s.parkHeadTxt}>
@@ -689,7 +692,7 @@ export function Location({ pts, sel, onSel, radius, setRadius, publicOnly, setPu
               aria-pressed={on}
               onClick={() => setRadius(v)}
               style={{
-                flex: 1, padding: '5px 0', borderRadius: 6,
+                flex: 1, padding: '5px 0', borderRadius: 2,
                 border: `1px solid ${on ? CHART : 'var(--line)'}`,
                 background: on ? 'var(--panel-2)' : 'transparent',
                 color: 'var(--text)', fontVariantNumeric: 'tabular-nums', lineHeight: 1.25,

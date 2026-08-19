@@ -1323,21 +1323,21 @@ function ZoneCatFilter({ cats, off, setOff, setScoreOn }: {
             onClick={() => pick(c.type)}
             style={{
               display: 'flex', alignItems: 'center', gap: 8, width: '100%',
-              padding: '6px 8px', borderRadius: 8,
+              padding: '6px 8px', borderRadius: 2,
               border: `1px solid ${activatable && on ? 'var(--accent)' : 'var(--line)'}`,
               background: on ? 'var(--panel-2)' : 'transparent',
               color: on ? 'var(--text)' : 'var(--muted)', textAlign: 'left',
               transition: 'background .12s, opacity .12s, border-color .12s',
             }}
           >
-            <span style={{ width: 11, height: 11, borderRadius: 3, flex: 'none', background: c.color, opacity: on ? 1 : 0.35 }} />
+            <span style={{ width: 11, height: 11, borderRadius: 2, flex: 'none', background: c.color, opacity: on ? 1 : 0.35 }} />
             <span style={{ flex: 1, minWidth: 0, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.type}</span>
             {/* ⚠️ «оноол» шошго — энэ ангилал ХАРАГДВАЛ оноололд ч ордгийг сануулна */}
             {activatable && (
               <span style={{
                 fontSize: 9, letterSpacing: '.3px', flex: 'none',
                 color: on ? 'var(--accent)' : 'var(--muted)',
-                border: '1px solid var(--line)', borderRadius: 4, padding: '0 4px',
+                border: '1px solid var(--line)', borderRadius: 2, padding: '0 4px',
               }}>
                 оноол
               </span>
@@ -1414,14 +1414,14 @@ function BuildingCatFilter({ cats, off, setOff }: {
             onClick={() => pick(c.key)}
             style={{
               display: 'flex', alignItems: 'center', gap: 8, width: '100%',
-              padding: '6px 8px', borderRadius: 8,
+              padding: '6px 8px', borderRadius: 2,
               border: '1px solid var(--line)',
               background: on ? 'var(--panel-2)' : 'transparent',
               color: on ? 'var(--text)' : 'var(--muted)', textAlign: 'left',
               transition: 'background .12s, opacity .12s, border-color .12s',
             }}
           >
-            <span style={{ width: 11, height: 11, borderRadius: 3, flex: 'none', background: c.color, opacity: on ? 1 : 0.35 }} />
+            <span style={{ width: 11, height: 11, borderRadius: 2, flex: 'none', background: c.color, opacity: on ? 1 : 0.35 }} />
             <span style={{ flex: 1, minWidth: 0, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.label}</span>
             <b style={{ fontVariantNumeric: 'tabular-nums', fontSize: 11, color: 'var(--muted)' }}>{c.count}</b>
             <span style={{ width: 14, textAlign: 'center', color: 'var(--accent)', fontSize: 12 }}>

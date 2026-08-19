@@ -141,11 +141,11 @@ export default function Level5() {
   const bloks = useMemo(() => {
     const set = new Set<string>();
     for (const f of rows) set.add(s(f.attributes.barilga_blok));
-    return [...set].sort((a, b) => {
-      const [ax, ay] = a.split("/");
-      const [bx, by] = b.split("/");
-      return ax === bx ? parseInt(ay) - parseInt(by) : ax.localeCompare(bx);
-    });
+    // ⚠️ «/»-гүй буюу хоосон блок утгад parseInt NaN буцааж эрэмбэ тодорхойгүй
+    // болдог байв — Pivot-ын buildings sort-той ижил numeric харьцуулалт.
+    return [...set].sort((a, b) =>
+      a.localeCompare(b, undefined, { numeric: true }),
+    );
   }, [rows]);
 
   const tree = useMemo(

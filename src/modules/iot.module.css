@@ -1,0 +1,441 @@
+/**
+ * IoT ХЯНАЛТ — ТУСДАА бүтэц.
+ *
+ * ⚠️ 2026-08-18: Энэ харагдац `overview.module.css`-ийн `.shell[data-detail='1']`
+ * сүлжээг ХЭРЭГЛЭХЭЭ БОЛИВ. Тэр сүлжээг Dashboard мөн хуваалцдаг тул мөрийн
+ * дугаарыг IoT-д тохируулах бүрд Dashboard эвдэрдэг, `grid-auto-flow: dense` нь
+ * автомат байрлалтай гарчгийг хоосон мөрд урагш нь татаж «агуулга алга болсон»
+ * мэт харагдуулдаг байв. Одоо IoT нь энгийн 12 баганат сүлжээтэй, элемент бүр
+ * ИЛ заасан багана эзэлнэ — автомат байрлуулагч огт оролцохгүй.
+ *
+ * ⚠️ 2026-08-18: envhub дизайны хэл рүү БҮРЭН шилжив. Хасагдсан: градиент толгой
+ * хавтан (heroA/heroB), 14px дугуй ирмэг, өнгөт tint-үүд (CAT_LIGHT), сүүдэр.
+ * Одоогийн хэл: гадаргуу нь surface + 1px hairline + var(--r-sm); гүнийг зөвхөн
+ * давхарга (surface → surface-2) илэрхийлнэ; өгөгдлийн ГАНЦ өнгө var(--data);
+ * төлөвийн өнгө (good/warn/bad) зөвхөн утга нь сайн/муу заадаг газарт.
+ */
+
+.wrap {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 10px;
+  align-content: start;
+  padding: 2px 2px 18px;
+  min-height: 100%;
+}
+
+/* ══════════════════ Карт — envhub Box: толгой hairline-аар, бие дотроо ══════════════════ */
+
+.card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+.cardHd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex: none;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+}
+/* ⚠️ line-height 1 БИШ — кирилл том Й/Ё-гийн дээд тэмдэг тайрагдана */
+.cardTitle {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.3;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink);
+}
+.cardNote {
+  flex: none;
+  font-size: 11.5px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.cardBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+}
+
+/* Картын доод мөр — нэгтгэсэн төлөвийн зурвас */
+.cardFoot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 12px;
+  border-top: 1px solid var(--line);
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+
+/* ══════════════════ Тэргүүлэх индикатор карт ══════════════════ */
+
+/**
+ * ⚠️ Урьд нь нил ягаан/усан ГРАДИЕНТ хавтан байсан — envhub-д градиент, цагаан
+ * hardcode бичиг хоёулаа хориотой. Одоо энгийн indicator-карт: eyebrow шошго,
+ * 20px/500 var(--ink) том тоо (акцентаар будахгүй — гол утга байрлалаараа
+ * ялгарна), спарклайн нь өгөгдлийн ГАНЦ өнгө var(--data).
+ */
+.hero {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 118px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+
+.heroTop { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+/* Eyebrow — хэсгийн жижиг шошго */
+.heroLabel {
+  font-size: 10.5px;
+  line-height: 1.3;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.13em;
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.heroIcon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  color: var(--ink-3);
+}
+.heroVal {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  font-size: 20px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.heroUnit { font-size: 11px; font-weight: 500; color: var(--ink-3); }
+/* Спарклайн — indicator картын доторх жижиг хандлага, өнгө нь var(--data) */
+.spark { position: relative; display: block; width: 100%; height: 34px; margin-top: 4px; overflow: visible; }
+.sparkLine { fill: none; stroke: var(--data); stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
+.sparkArea { fill: color-mix(in srgb, var(--data) 16%, transparent); stroke: none; }
+.sparkDot { fill: var(--data); }
+
+.heroSub {
+  font-size: 11px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ══════════════════ Дүрст мөр — жижиг indicator ══════════════════ */
+
+.tile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+/* Икон нь ижил хэлбэрт мөрүүдийг нүдээр ялгах хэрэгсэл — өнгөт bubble БИШ */
+.tileIcon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  color: var(--ink-3);
+}
+.tileMain { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.tileLabel {
+  font-size: 10.5px;
+  line-height: 1.3;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tileVal { font-size: 19px; font-weight: 500; color: var(--ink); line-height: 1.1; font-variant-numeric: tabular-nums; }
+
+/* Төлөвийн шошго — 999px нь зөвхөн энэ жижиг pill-д. `--tint` нь `-ink` токен
+   (текстэд уншигдана), дэвсгэр нь түүний бүдэг tint. */
+.pill {
+  flex: none;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  background: color-mix(in srgb, var(--tint) 14%, transparent);
+  color: var(--tint);
+}
+
+/* ══════════════════ Үзүүлэлтийн нүд ══════════════════ */
+
+.grid {
+  display: grid;
+  /**
+   * ⚠️ 228 → 200px. 891px картад 228 нь 3 багана өгч 10 нүд 4 мөр болдог (470px);
+   * хажуугийн баганан диаграм 341px тул 129px хоосон үлддэг байв. 200px нь 4 багана
+   * → 3 мөр → мөрийн өндөр диаграмтайгаа таарна.
+   */
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+}
+/* Дотогш давхарга — surface-2, гүн нь өнгөөр биш давхаргаар */
+.metric {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+.metricHd { display: flex; align-items: center; gap: 8px; }
+/* Өгөгдлийн цэг — бүх нүдэнд НЭГ өнгө var(--data), ангиллын өнгө байхгүй */
+.metricDot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--data); }
+.metricName {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 10.5px;
+  line-height: 1.3;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.metricAge { flex: none; font-size: 10px; font-variant-numeric: tabular-nums; }
+.metricVal {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  font-size: 19px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.metricUnit { font-size: 11px; font-weight: 500; color: var(--ink-3); }
+.metricFoot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 10.5px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ══════════════════ Тайлбар — төлөвийн өнгөт цэгүүд ══════════════════ */
+
+.legend { display: flex; flex-wrap: wrap; gap: 8px 14px; }
+.legendRow { display: flex; align-items: center; gap: 7px; min-width: 0; }
+/* Дүүргэсэн жижиг цэг — `--tint` нь ТӨЛӨВИЙН токен (good/warn/bad/ink-3), утгатай */
+.legendBullet {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--tint);
+}
+.legendName { font-size: 12px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.legendPct { font-size: 11px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+
+/* ══════════════════ Газрын зураг ══════════════════ */
+
+.mapCard { position: relative; padding: 0; overflow: hidden; }
+/**
+ * ⚠️ `display: flex` ЗААВАЛ. `MapCanvas`-ийн үндсэн боодол (`map.module.css .wrap`)
+ * нь `flex: 1; min-height: 0` — эцэг нь flex сав БИШ бол `flex` нөлөөлөхгүй, доторх
+ * бүх зүйл нь `position: absolute` тул өндөр нь 0 болж ЗУРАГ ОГТ ЗУРАГДАХГҮЙ.
+ * (`.mapBox` 420px харагдаж байхад дотор нь 0px байсан алдаа яг энэ.)
+ */
+.mapBox {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 420px;
+  overflow: hidden;
+}
+.mapBar {
+  position: absolute;
+  z-index: 4;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  pointer-events: none;
+}
+.mapBar > * { pointer-events: auto; }
+/* Газрын зураг ДЭЭР хөвөгч чип — blur нь зөвхөн ийм хөвөгч давхаргад зөвшөөрөгдөнө
+   (картад биш); envhub-ийн зургийн popup мөн ижил хэвтэй. */
+.mapTitle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 10px;
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  border: 1px solid var(--line);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+  backdrop-filter: blur(6px);
+}
+.dims { display: flex; gap: 1px; padding: 2px; border-radius: var(--r-sm); background: var(--line); }
+.dimBtn {
+  padding: 4px 10px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+/* Идэвхтэй = сонголт → өгөгдлийн өнгө. Бичиг нь `--bg` — хоёр горимд өөрөө
+   эсрэгээрээ тохирно (цайварт цагаан дээр гүн teal, харанхуйд цайвар cyan дээр гүн). */
+.dimOn { background: var(--data); color: var(--bg); }
+
+/* ══════════════════ Байрлал — 12 багана, МӨР БҮР ИЛ ══════════════════ */
+
+/**
+ * ⚠️ Мөр ба багана ХОЁУЛАА ил заагдана. Автомат байрлуулагчид найдвал элемент
+ * нь DOM дараалал ба хоосон нүднээс хамаарч урагш ГУЛСДАГ — өмнөх бүтцэд
+ * `dense` нь «Хугацааны цуваа» гарчгийг хоосон 2-р мөрд татаж, агуулга алга
+ * болсон мэт харагдуулж байсан. Ил байрлалд DOM дараалал огт нөлөөлөхгүй,
+ * тиймээс газрын зургийг `Data`-аас ГАДНА (шууд) рендер хийсэн ч байранд нь орно.
+ */
+
+/**
+ * ⚠️ `display: grid` — боодол нь нүдээ дүүргэдэг ч доторх `.hero` нь өөрийн
+ * өндрөө барьж, доогуураа хоосон гаргадаг байв (мөрийн өндрийг хажуугийн
+ * «Сүүлийн заалт» карт тогтоодог). Grid-ийн хүүхэд анхдагчаар СУНАДАГ тул дүүрнэ.
+ */
+.pHeroA  { grid-column: 1 / 4;   grid-row: 1; display: grid; }
+.pHeroB  { grid-column: 4 / 7;   grid-row: 1; display: grid; }
+.pTiles  { grid-column: 7 / 10;  grid-row: 1; display: flex; flex-direction: column; gap: 10px; }
+.pList   { grid-column: 10 / 13; grid-row: 1 / 3; }
+.pMap    { grid-column: 1 / 10;  grid-row: 2; }
+.pTrend  { grid-column: 1 / 7;   grid-row: 3; }
+.pDonut  { grid-column: 7 / 10;  grid-row: 3; }
+.pRing   { grid-column: 10 / 13; grid-row: 3; }
+.pCells  { grid-column: 1 / 9;   grid-row: 4; }
+.pBars   { grid-column: 9 / 13;  grid-row: 4; }
+.pCharts { grid-column: 1 / 13;  grid-row: 5; }
+
+.chartGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px; }
+/**
+ * ⚠️ Бөгж нь мөрийн өндрийг ТОГТООДОГГҮЙ — хажуугийн чартын карт (332px) тогтоож,
+ * бөгж 132px тул доор нь ~110px хоосон зай үлддэг байв. Бөгжийг ТОМСГООД доор нь
+ * задаргааны нүд тавьж дүүргэв (envhub-ийн gauge/donut карт мөн хайрцгаа дүүргэдэг).
+ */
+.ringWrap { display: grid; place-items: center; flex: 1 1 auto; min-height: 0; padding: 4px 0; }
+/* Нарийн дэлгэцэд бөгж картаасаа халихгүй байх хамгаалалт */
+.ringWrap > * { max-width: 100%; }
+.ringWrap svg { max-width: 100%; height: auto; }
+
+/* Бөгжний доорх задаргаа — хоёр нүд, hairline заагтай */
+.split {
+  flex: none;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  border-top: 1px solid var(--line);
+  background: var(--line);
+}
+.splitCell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 9px 12px;
+  background: var(--surface);
+}
+.splitLabel {
+  font-size: 10.5px;
+  line-height: 1.3;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.splitVal { font-size: 19px; font-weight: 500; line-height: 1; font-variant-numeric: tabular-nums; }
+
+/* ══════════════════ Нарийсах ══════════════════ */
+
+/**
+ * ⚠️ Нарийсахад мөр бүрийг ДАХИН заана — багана солиод мөрийг нь орхивол хоёр
+ * элемент нэг нүдэнд давхарлана (ил байрлалд grid нь мөргөлдөөнийг ЗАСАХГҮЙ).
+ */
+@media (max-width: 1500px) {
+  .pHeroA  { grid-column: 1 / 4;   grid-row: 1; }
+  .pHeroB  { grid-column: 4 / 7;   grid-row: 1; }
+  .pTiles  { grid-column: 7 / 13;  grid-row: 1; flex-direction: row; }
+  .pTiles > * { flex: 1 1 0; min-width: 0; }
+  .pMap    { grid-column: 1 / 10;  grid-row: 2; }
+  .pList   { grid-column: 10 / 13; grid-row: 2; }
+  .pTrend  { grid-column: 1 / 7;   grid-row: 3; }
+  .pDonut  { grid-column: 7 / 10;  grid-row: 3; }
+  .pRing   { grid-column: 10 / 13; grid-row: 3; }
+  .pCells  { grid-column: 1 / 9;   grid-row: 4; }
+  .pBars   { grid-column: 9 / 13;  grid-row: 4; }
+  .pCharts { grid-column: 1 / 13;  grid-row: 5; }
+}
+
+@media (max-width: 1180px) {
+  .pHeroA  { grid-column: 1 / 7;   grid-row: 1; }
+  .pHeroB  { grid-column: 7 / 13;  grid-row: 1; }
+  .pTiles  { grid-column: 1 / 13;  grid-row: 2; flex-direction: row; }
+  .pMap    { grid-column: 1 / 13;  grid-row: 3; }
+  .pList   { grid-column: 1 / 13;  grid-row: 4; }
+  .pTrend  { grid-column: 1 / 13;  grid-row: 5; }
+  .pDonut  { grid-column: 1 / 7;   grid-row: 6; }
+  .pRing   { grid-column: 7 / 13;  grid-row: 6; }
+  .pCells  { grid-column: 1 / 13;  grid-row: 7; }
+  .pBars   { grid-column: 1 / 13;  grid-row: 8; }
+  .pCharts { grid-column: 1 / 13;  grid-row: 9; }
+}
+
+@media (max-width: 640px) {
+  .pHeroA  { grid-column: 1 / 13; grid-row: 1; }
+  .pHeroB  { grid-column: 1 / 13; grid-row: 2; }
+  .pTiles  { grid-column: 1 / 13; grid-row: 3; flex-direction: column; }
+  .pMap    { grid-column: 1 / 13; grid-row: 4; }
+  .pList   { grid-column: 1 / 13; grid-row: 5; }
+  .pTrend  { grid-column: 1 / 13; grid-row: 6; }
+  .pDonut  { grid-column: 1 / 13; grid-row: 7; }
+  .pRing   { grid-column: 1 / 13; grid-row: 8; }
+  .pCells  { grid-column: 1 / 13; grid-row: 9; }
+  .pBars   { grid-column: 1 / 13; grid-row: 10; }
+  .pCharts { grid-column: 1 / 13; grid-row: 11; }
+  .mapBox { min-height: 320px; }
+}

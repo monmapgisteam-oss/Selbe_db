@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
 import { Icon } from '@/components/Icon';
 import { Stats, Stat, Donut, Bars, Ring, Empty, Loading } from '@/components/ui';
@@ -8,8 +8,8 @@ import { useAsync } from '@/lib/useAsync';
 import {
   queryStats, queryGroup, groups, count, sum, avg, type Aoi, type Row,
 } from '@/lib/query';
-import { GAZAR_BUILDING, GAZAR_PARCEL, PARCEL_LEFT, PARCEL_PROGRESS_HUES } from '@/lib/services';
-import { num, text, shades } from '@/lib/format';
+import { GAZAR_BUILDING, GAZAR_PARCEL, PARCEL_LEFT } from '@/lib/services';
+import { num, text, shades, CAT_LIGHT, NO_DATA } from '@/lib/format';
 import o from './overview.module.css';
 import g from './gazar.module.css';
 
@@ -33,11 +33,15 @@ const VISIBLE_IDS = ['gazar:parcel', 'gazar:building', 'land:left'];
 /** Полигоноор ШҮҮГДЭХ давхаргууд — featureEffect (бүдгэрүүлэлт) зөвхөн эдгээрт */
 const FILTER_IDS = ['land:left', 'gazar:building', 'gazar:parcel'];
 
-/** `Tuluv` төлөв → өнгө ба нэр (нэгтгэсэн үйлчилгээний гол ангилал) */
+/** `Tuluv` төлөв → өнгө ба нэр (нэгтгэсэн үйлчилгээний гол ангилал).
+ *  ⚠️ envhub: ӨНГӨ = УТГА. «Бүрэн чөлөөлсөн» нь жинхэнэ САЙН төлөв тул
+ *  var(--good), «Үлдсэн» нь барилгад саад буй муу төлөв тул var(--bad),
+ *  завсрын «Цэвэрлэсэн» нь төвийг сахисан өгөгдлийн өнгө var(--data).
+ *  Урьдын чимэглэлийн hex (#22c55e/#0ea5e9/#e11d48) хасагдсан. */
 const STATUS_META = [
-  { value: 'Бүрэн чөлөөлсөн', label: 'Бүрэн чөлөөлсөн', color: '#22c55e' },
-  { value: 'Цэвэрлэсэн нэгж талбар', label: 'Цэвэрлэсэн', color: '#0ea5e9' },
-  { value: 'Үлдсэн нэгж талбар', label: 'Үлдсэн', color: '#e11d48' },
+  { value: 'Бүрэн чөлөөлсөн', label: 'Бүрэн чөлөөлсөн', color: 'var(--good)' },
+  { value: 'Цэвэрлэсэн нэгж талбар', label: 'Цэвэрлэсэн', color: 'var(--data)' },
+  { value: 'Үлдсэн нэгж талбар', label: 'Үлдсэн', color: 'var(--bad)' },
 ] as const;
 
 /**
@@ -51,14 +55,15 @@ const STATUS_ORDER: string[] = STATUS_META.map((m) => m.value);
 const STATUS_LABEL: Record<string, string> = Object.fromEntries(STATUS_META.map((m) => [m.value, m.label]));
 const STATUS_COLOR: Record<string, string> = Object.fromEntries(STATUS_META.map((m) => [m.value, m.color]));
 
-/** Диаграмын палитр — ангилал бүрд ялгарах өнгө (явцаас бусад талбарт) */
+/** Donut-ийн зүсмэгийн палитр — ГАНЦ өгөгдлийн өнгөний (Сэлбэ teal) сүүдэр */
 /**
- * ⚠️ НЭГ ӨНГӨНИЙ СҮҮДЭР — урьд нь 10 өөр солонгон өнгө байсныг хэрэглэгчийн
- * хүсэлтээр Газар чөлөөлөлт харагдацын ногоон акцентын уусгалт болгов. Барилгын
- * төрөл, газар ашиглалтын бүлгүүд өөр «утга»гүй, зөвхөн ялгах хэрэгцээтэй.
- * Явцын өнгө (`PARCEL_PROGRESS_HUES`) нь утга агуулсан тул хэвээр.
+ * ⚠️ envhub: өгөгдлийн ГАНЦ өнгө (var(--data)). Урьд нь энэ харагдацын НОГООН
+ * identity-ийн (CAT_LIGHT[3]) уусгалт байсныг --data-гийн эх болох Сэлбэ teal
+ * (CAT_LIGHT[0]) руу шилжүүлэв — Dashboard-ын `shade(ACCENT…)`-тэй ижил хэв.
+ * Зүсмэгүүд утга ялгаагүй тул нэг өнгөний сүүдрээр (зөвхөн Donut-д) зааглагдана;
+ * Bars нь бүр ганц var(--data)-гаар зурагдана.
  */
-const PALETTE = shades('#16a34a', 10);
+const PALETTE = shades(CAT_LIGHT[0], 10);
 
 /** м² → га */
 const ha = (m2: number) => num(m2 / 10_000, 2);
@@ -239,7 +244,7 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         if (ox !== -1 || oy !== -1) return (ox === -1 ? 99 : ox) - (oy === -1 ? 99 : oy);
         return y[1].n - x[1].n;
       })
-      .map(([value, s], i) => {
+      .map(([value, s]) => {
         const ha2 = Math.round(s.a / 100) / 100;
         // ⚠️ Дарж шүүхэд WHERE-ийг ТҮҮХИЙ утгуудаас (шалтгааны шүүлттэй ижил) угсарна:
         //    түлхүүр нь арын зай арилгасан хувилбар тул `Tuluv = '<trim>'` нь зай-мэдрэг
@@ -255,7 +260,8 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           label: STATUS_LABEL[value] ?? value,
           value: ha2,
           display: `${num(s.n)} талбар · ${num(ha2, 2)} га`,
-          color: STATUS_COLOR[value] ?? (value === 'Тодорхойгүй' ? '#94a3b8' : PALETTE[i % PALETTE.length]),
+          // Гэнэтийн шинэ төлөв — утга нь үл мэдэгдэх тул төвийг сахисан өгөгдлийн өнгө
+          color: STATUS_COLOR[value] ?? (value === 'Тодорхойгүй' ? NO_DATA : 'var(--data)'),
           where,
         };
       });
@@ -285,7 +291,10 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           n: v.n,
           pct: Math.round((v.n / remN) * 100),
           area: Math.round(v.a / 100) / 100,
-          color: PARCEL_PROGRESS_HUES[label] ?? '#94a3b8',
+          // ⚠️ envhub: шалтгаанууд бүгд «үлдсэн» бүлгийн ДОТООД ангилал — сайн/муу
+          //    утга заахгүй тул ганц өгөгдлийн өнгө; «Тодорхойгүй» нь саарал бэх.
+          //    (Урьдын PARCEL_PROGRESS_HUES солонго нь чимэглэл болж байсан.)
+          color: label === 'Тодорхойгүй' ? NO_DATA : 'var(--data)',
           // Шалтгаан нь зөвхөн ҮЛДСЭН талбарт хамаатай тул төлөвөөр хамт хязгаарлана
           where: `${L.fields.status}='Үлдсэн нэгж талбар' AND (${eq.join(' OR ')})`,
         };
@@ -328,8 +337,8 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     <div className={g.frame}>
       {/* ── ЗҮҮН: Чөлөөлөлт (үлдсэн нэгж талбар) — үзүүлэлт + явц бүгд энд ── */}
       <div className={g.left}>
-        {/* Баганын толгой — баруунтай ИЖИЛ загвар, ӨӨР өнгө (ногоон = чөлөөлөлт) */}
-        <h3 className={g.colHd} style={{ '--tone': '#16a34a' } as CSSProperties}>
+        {/* Баганын толгой — envhub eyebrow: өнгөгүй; багана нь БАЙРЛАЛААРАА ялгарна */}
+        <h3 className={g.colHd}>
           Төслийн талбайн чөлөөлөх нэгж талбар
         </h3>
         <section className={`${g.panel} ${g.panelPrimary}`} aria-label="Төслийн талбайн чөлөөлөх нэгж талбар">
@@ -347,7 +356,8 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                   <Stat value={num(d.left.remaining)} unit="талбар" label="Үлдсэн" />
                 </Stats>
                 <div className={g.ringBox}>
-                  <Ring value={pct} size={148} width={14} color="#16a34a" label="чөлөөлсөн" />
+                  {/* «Чөлөөлсөн» — жинхэнэ САЙН төлөв тул var(--good) (нүүрний ижил цагирагтай нэг өнгө) */}
+                  <Ring value={pct} size={148} width={14} color="var(--good)" label="чөлөөлсөн" />
                   <p className={g.ringNote}>
                     <b className="num">{d ? num(d.left.resolved) : ''}</b> /{' '}
                     <span className="num">{d ? num(d.left.n) : ''}</span> талбар
@@ -485,8 +495,8 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
 
       {/* ── БАРУУН: Барилга + Кадастр (нэгтгэсэн багана) ── */}
       <div className={g.right}>
-        {/* Баганын толгой — зүүнтэй ИЖИЛ загвар, ӨӨР өнгө (цэнхэр = гаднах орчин) */}
-        <h3 className={g.colHd} style={{ '--tone': '#0ea5e9' } as CSSProperties}>
+        {/* Баганын толгой — зүүнтэй ЯГ ижил envhub eyebrow (өнгөт identity байхгүй) */}
+        <h3 className={g.colHd}>
           Төслийн талбайгаас гаднах нэгж талбар, барилга
         </h3>
         <section className={`${g.panel} ${g.panelOuter}`} aria-label="Барилга">
@@ -517,8 +527,9 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                 {d.bMat.length > 0 && (
                   <>
                     <p className={g.subHead}>Материалаар</p>
+                    {/* envhub: Bars нь ГАНЦ өгөгдлийн өнгөөр — ялгааг дараалал, хэмжээ өгнө */}
                     <Bars
-                      items={d.bMat} inline limit={5}
+                      items={d.bMat.map((x) => ({ ...x, color: 'var(--data)' }))} inline limit={5}
                       selected={flt?.grp === 'bMat' ? flt.key : null}
                       onSelect={(k) => pickFlt({
                         grp: 'bMat', key: k, label: `Материал: ${k}`,
@@ -557,8 +568,9 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                 {d.pUse.length > 0 && (
                   <>
                     <p className={g.subHead}>Зориулалтаар</p>
+                    {/* envhub: Bars нь ГАНЦ өгөгдлийн өнгөөр — ялгааг дараалал, хэмжээ өгнө */}
                     <Bars
-                      items={d.pUse} inline limit={5}
+                      items={d.pUse.map((x) => ({ ...x, color: 'var(--data)' }))} inline limit={5}
                       selected={flt?.grp === 'pUse' ? flt.key : null}
                       onSelect={(k) => pickFlt({
                         grp: 'pUse', key: k, label: `Зориулалт: ${k}`,

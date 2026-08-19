@@ -40,7 +40,7 @@
   width: 28px;
   height: 28px;
   flex: none;
-  border-radius: 7px;
+  border-radius: var(--r-sm);
   color: #fff;
   background: var(--hue);
 }
@@ -57,7 +57,7 @@
   width: 30px;
   height: 30px;
   flex: none;
-  border-radius: 7px;
+  border-radius: var(--r-sm);
   font-size: 0.95rem;
   line-height: 1;
   color: var(--ink-3);
@@ -112,7 +112,7 @@
 .itemText { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
 .itemTitle {
   font-size: 0.8rem;
-  font-weight: 650;
+  font-weight: 600;
   color: var(--ink);
 }
 .itemSub {

@@ -22,3 +22,6 @@ agent-proxy/.wrangler/
 
 # Ботоор зөвшөөрсөн Telegram хэрэглэгчид — нэрс/ID тул репод оруулахгүй
 telegram-users.json
+
+# Audit-ийн түр гаралт (2026-08-18) — репод оруулахгүй
+.audit/

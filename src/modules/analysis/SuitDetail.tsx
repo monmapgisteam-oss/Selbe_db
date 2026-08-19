@@ -125,10 +125,14 @@ function Radar({ items, center, size = 300 }: {
       {items.map((it, i) => {
         if (it.score == null) return null;
         const p = at(i, clamp(it.score, 0, 100) / 100);
+        // ⚠️ Хүрээ нь `style`-аар. Урьд нь `stroke="var(--panel)"` байв — хоёр
+        //    алдаатай: (1) `--panel` бол ӨРГӨН (360px), өнгө биш; (2) SVG-ийн
+        //    presentation ШИНЖ дотор `var()` задардаггүй. Тиймээс цэгийг олон
+        //    өнцөгтөөс тусгаарлах гэрэлт хүрээ огт зурагддаггүй байлаа.
         return (
           <circle
             key={it.key} cx={p.x} cy={p.y} r={3.2}
-            fill={scoreColor(it.score)} stroke="var(--panel)" strokeWidth={2}
+            fill={scoreColor(it.score)} style={{ stroke: 'var(--surface)' }} strokeWidth={2}
           >
             <title>{`${it.label}: ${Math.round(it.score)} оноо`}</title>
           </circle>

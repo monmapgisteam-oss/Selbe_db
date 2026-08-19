@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   applyUpdates,
   computeAll,
@@ -38,10 +38,41 @@ import st from "./sheet.module.css";
 const cls = (names: string) =>
   names.split(/\s+/).filter(Boolean).map((n) => st[n] || n).join(" ");
 
-const CALC_BG = "var(--sheet-calc)";
-const CELL_BG = "var(--sheet-cell)";
-const HL_BG = "var(--sheet-hl)";
-const HEADER_BG = "var(--sheet-header)";
+// ── Нийтлээгүй засварын НООРОГ (localStorage) ──
+// «Гүйцэтгэл бөглөх» (Pivot)-ын хамгаалалттай ижил зорилго: таб санамсаргүй
+// хаагдах / сүлжээ тасрахад бөглөсөн нүд алдагдахаас сэргийлнэ. Слот нь БАГЦ
+// бүрд ТУСДАА (Pivot-ын ганц слотын хөндлөн-багц алдагдлыг давтахгүй); нүдний
+// түлхүүр `${oid}:${b}` — oid нь үйлчилгээний ObjectID тул дараагийн
+// ачаалалтад тогтвортой. Огнооны (asOf) өөрчлөлт ноорогт ХАДГАЛАГДАХГҮЙ.
+type Draft = { t: number; cells: [string, string][] };
+const DRAFT_PREFIX = "selbe-fillnew-draft:";
+const DRAFT_TTL_MS = 3 * 24 * 3600 * 1000;
+const readDraft = (pkgKey: string): Draft | null => {
+  try {
+    const raw = localStorage.getItem(DRAFT_PREFIX + pkgKey);
+    if (!raw) return null;
+    const d = JSON.parse(raw) as Draft;
+    if (!d.t || !Array.isArray(d.cells) || Date.now() - d.t > DRAFT_TTL_MS)
+      return null;
+    return d;
+  } catch {
+    return null;
+  }
+};
+const saveDraftLS = (pkgKey: string, d: Draft) => {
+  try {
+    localStorage.setItem(DRAFT_PREFIX + pkgKey, JSON.stringify(d));
+  } catch {
+    /* дүүрсэн/private горим — зөвхөн энэ сешнд үйлчилнэ */
+  }
+};
+const clearDraftLS = (pkgKey: string) => {
+  try {
+    localStorage.removeItem(DRAFT_PREFIX + pkgKey);
+  } catch {
+    /* байхгүй */
+  }
+};
 
 /** 0..1 → хувь. Бүлгийн нийлбэр бутархай тул аравны нэг хүртэл. */
 const pc = (v: number | null, dec = 0) =>
@@ -80,9 +111,36 @@ export default function FillNew() {
   const [pending, setPending] = useState<Record<string, string>>({});
   const [edit, setEdit] = useState<{ i: number; b: number } | null>(null);
   const [val, setVal] = useState("");
-  const [hover, setHover] = useState<{ i: number; b: number | null } | null>(null);
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
   const { style: colStyle, grip, resetAll, resized } = useColWidths("fillnew");
+
+  // ── Crosshair — React state БИШ ──
+  // Урьд нь нүд бүрийн mouseenter hover state солиж «Бүгд» горимд ~80k нүдийг
+  // бүхэлд нь дахин зурж заагч гацдаг байв. Одоо мөрийг CSS :hover, баганыг
+  // `data-bi` нүдэн дээгүүр O(1)-ээр зөөдөг overlay (.colHl) гүйцэтгэнэ.
+  const colHlRef = useRef<HTMLDivElement | null>(null);
+  const colHlBi = useRef<string | null>(null);
+  const moveColHl = (e: React.MouseEvent<HTMLTableElement>) => {
+    const hl = colHlRef.current;
+    if (!hl) return;
+    const td = (e.target as HTMLElement).closest?.(
+      "td[data-bi]",
+    ) as HTMLElement | null;
+    const bi = td?.dataset.bi ?? null;
+    if (bi === colHlBi.current) return;
+    colHlBi.current = bi;
+    if (!td || bi == null) {
+      hl.style.display = "none";
+      return;
+    }
+    hl.style.display = "block";
+    hl.style.left = `${td.offsetLeft}px`;
+    hl.style.width = `${td.offsetWidth}px`;
+  };
+  const hideColHl = () => {
+    colHlBi.current = null;
+    if (colHlRef.current) colHlRef.current.style.display = "none";
+  };
 
   // Тайлангийн огнооны жагсаалт — нэг л удаа. Алдаа гарвал чимээгүй өнгөрнө:
   // хадгалагдсан огноо нь доор ямар ч тохиолдолд сонголт болж нэмэгддэг.
@@ -187,10 +245,30 @@ export default function FillNew() {
 
   const commit = (r: SheetRow, b: number, raw: string) => {
     const key = `${r.oid}:${b}`;
-    const t = raw.trim().replace(",", ".");
+    // Утга угаас хувиар илэрхийлэгддэг тул төгсгөлийн «%»-ийг тэвчинэ.
+    const t = raw.trim().replace(",", ".").replace(/\s*%$/, "");
     setEdit(null);
-    if (t !== "" && !Number.isFinite(Number(t))) return; // тоо биш — үл хэрэгсэнэ
+    if (t !== "" && !Number.isFinite(Number(t))) {
+      // Чимээгүй хаявал хэрэглэгч «бичигдлээ» гэж андуурдаг — мэдэгдэнэ.
+      setErr(`${sc?.bld[b] ?? ""} · ${r.work}: тоон утга оруулна уу.`);
+      return;
+    }
     const v = t === "" ? "" : String(Math.min(100, Math.max(0, Number(t))));
+    // ⚠️ Гүйцэтгэл БУУРАХГҮЙ (floor.check.mjs-ийн дүрэмтэй ижил: хоосон болгох
+    // хамаарахгүй, хязгаар нь ХАДГАЛАГДСАН утга). Pivot шиг хатуу хориглодоггүй
+    // нь санаатай — энд мөрөө шууд (in-place) засдаг тул буруу ӨНДӨР утгыг
+    // засах цорын ганц зам нь яг энэ; андуурлаас баталгаажуулалт хамгаална.
+    const floor = r.act[b];
+    if (
+      v !== "" &&
+      floor != null &&
+      Number(v) < Math.round(floor * 1000) / 10 &&
+      !window.confirm(
+        `${sc?.bld[b] ?? ""} · ${r.work}: өмнө нь ${origStr(r, b)}% бүртгэгдсэн — бууруулах гэж байна. Зөв үү?`,
+      )
+    )
+      return;
+    setErr("");
     setPending((p) => {
       const n = { ...p };
       if (v === origStr(r, b)) delete n[key];
@@ -199,12 +277,95 @@ export default function FillNew() {
     });
   };
 
+  // ── Нооргийн сэргээлт — багц ачаалагдмагц НЭГ удаа санал болгоно ──
+  const promptedPkgRef = useRef("");
+  useEffect(() => {
+    if (busy || !rows.length || !sc) return;
+    if (promptedPkgRef.current === pkg.key) return;
+    // Сэргээх шат өнгөрснийг ноорог байсан эсэхээс үл хамааран тэмдэглэнэ.
+    promptedPkgRef.current = pkg.key;
+    const d = readDraft(pkg.key);
+    if (!d) return;
+    const byOid = new Map(rows.map((r, i) => [r.oid, i] as const));
+    const next: Record<string, string> = {};
+    let dropped = 0;
+    for (const [key, v] of d.cells) {
+      const oid = Number(key.split(":")[0]);
+      const b = Number(key.slice(key.indexOf(":") + 1));
+      const i = byOid.get(oid);
+      const r = i == null ? undefined : rows[i];
+      // Мөр алга болсон, бүлгийн мөр, блок хасагдсан, эсвэл аль хэдийн ижил
+      // утгатай (хооронд нь нийтлэгдсэн) бол — хаяна.
+      if (
+        !r ||
+        r.group ||
+        !Number.isInteger(b) ||
+        b < 0 ||
+        b >= nBld ||
+        v === origStr(r, b)
+      ) {
+        dropped++;
+        continue;
+      }
+      next[key] = v;
+    }
+    if (!Object.keys(next).length) {
+      clearDraftLS(pkg.key);
+      return;
+    }
+    const when = new Date(d.t).toLocaleString("mn-MN");
+    const msg =
+      `Нийтлэгдээгүй ${Object.keys(next).length} нүдний засвар олдлоо (${when}).` +
+      (dropped ? `\n${dropped} нүд хуучирсан тул орхигдоно.` : "") +
+      "\nСэргээх үү?";
+    if (window.confirm(msg)) setPending(next);
+    else clearDraftLS(pkg.key);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [busy, rows, sc, nBld, pkg.key]);
+
+  // Ноорог хадгалах — pending өөрчлөгдөх бүрд. Хоосон болоход (нийтэлсэн /
+  // болиулсан) устгана, гэхдээ зөвхөн сэргээх шат ӨНГӨРСӨН багцынхыг: багц
+  // солих үеийн setPending({}) шинэ багцын хуучин ноорогийг дарж болохгүй.
+  useEffect(() => {
+    if (!Object.keys(pending).length) {
+      if (promptedPkgRef.current === pkg.key) clearDraftLS(pkg.key);
+      return;
+    }
+    saveDraftLS(pkg.key, { t: Date.now(), cells: Object.entries(pending) });
+  }, [pending, pkg.key]);
+
+  // Таб хаах/refresh — нийтлээгүй засвартай үед хөтөч анхааруулна.
+  useEffect(() => {
+    if (!dirtyCount) return;
+    const h = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      // Chrome legacy — returnValue заавал онооно
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", h);
+    return () => window.removeEventListener("beforeunload", h);
+  }, [dirtyCount]);
+
+  /** Багц/хувилбар солихын өмнө нийтлээгүй засварыг баталгаажуулна. */
+  const confirmSwitch = () =>
+    dirtyCount === 0 ||
+    window.confirm(
+      `Нийтлэгдээгүй ${dirtyCount} өөрчлөлт бий. Багц солих уу?\n` +
+        "(Нүдний засварууд ноорог болон хадгалагдаж, буцаж ирэхэд сэргээхийг санал болгоно.)",
+    );
+
   const publish = useCallback(async () => {
     // ⚠️ busy — Ctrl+S auto-repeat үед олон зэрэгцээ applyEdits илгээгдэхээс сэргийлнэ.
     if (busy || asOf == null || dirtyCount === 0 || !sc) return;
     setBusy(true);
     setErr("");
     try {
+      // ⚠️ Зэрэг засварын хамгаалалт: `rows` нь хуудсыг НЭЭХ үеийн хуулбар тул
+      // түүгээр бүтэн мөр бичвэл өөр хэрэглэгчийн хооронд нийтэлсэн нүд хуучин
+      // утгаар дарагдаж чимээгүй буцдаг. Тиймээс нийтлэхийн өмнө мөрүүдийг
+      // ШИНЭЭР татаж, зөвхөн өөрийн pending нүдийг давхарлаад бүлгийн
+      // нийлбэрүүдийг шинэ өгөгдлөөс бодно.
+      const fresh = (await loadRows(pkg, sc)).rows;
       const editedOids = new Set(
         Object.keys(pending).map((k) => Number(k.split(":")[0])),
       );
@@ -213,11 +374,11 @@ export default function FillNew() {
       // салбар шинэ огноогоор, бусад мөрийн F_PLAN хуучнаар үлдэж зөрнө.
       const idx =
         asOf !== asOfOrig
-          ? rows.map((_, i) => i)
-          : touchedIndexes(rows, editedOids);
-      const c = computeAll(rows, nBld, asOf, pending);
+          ? fresh.map((_, i) => i)
+          : touchedIndexes(fresh, editedOids);
+      const c = computeAll(fresh, nBld, asOf, pending);
       const updates = idx.map((i) => {
-        const a: Record<string, unknown> = { [sc.f.oid]: rows[i].oid };
+        const a: Record<string, unknown> = { [sc.f.oid]: fresh[i].oid };
         for (let b = 0; b < nBld; b++) {
           a[sc.act[b]] = c[i].act[b];
           a[sc.plan[b]] = c[i].plan[b];
@@ -232,17 +393,17 @@ export default function FillNew() {
       });
       // Шинэчлэгдсэн огноо — төлөвлөгөөт хувь бүхэлдээ үүгээр бодогддог тул
       // өөрчилсөн бол хамт хадгална (эс тэгвэл үйлчилгээ өөртэйгээ зөрнө).
-      if (asOf !== asOfOrig && rows.length && sc.f.asOf)
-        updates.push({ [sc.f.oid]: rows[0].oid, [sc.f.asOf]: asOf });
+      if (asOf !== asOfOrig && fresh.length && sc.f.asOf)
+        updates.push({ [sc.f.oid]: fresh[0].oid, [sc.f.asOf]: asOf });
       await applyUpdates(pkg, updates);
-      // Хадгалагдсан утгыг локал мөрүүдэд буулгаж, «нийтлээгүй» төлвийг арилгана.
+      // Шинэ татсан мөрүүд дээр хадгалсан утгыг буулгаж локал төлвийг солино —
+      // бусдын зэрэгцээ засвар ч ингэж дэлгэцэнд шинэчлэгдэнэ.
       // (idx нь бүх мөр байж болох тул includes биш Set — O(n²) болгохгүй.)
       const idxSet = new Set(idx);
-      setRows((prev) =>
-        prev.map((r, i) => {
-          if (!idxSet.has(i)) return r;
-          return { ...r, act: c[i].act.slice() };
-        }),
+      setRows(
+        fresh.map((r, i) =>
+          idxSet.has(i) ? { ...r, act: c[i].act.slice() } : r,
+        ),
       );
       setPending({});
       setAsOfOrig(asOf);
@@ -251,19 +412,34 @@ export default function FillNew() {
     } finally {
       setBusy(false);
     }
-  }, [pkg, sc, nBld, rows, asOf, asOfOrig, pending, dirtyCount, busy]);
+  }, [pkg, sc, nBld, asOf, asOfOrig, pending, dirtyCount, busy]);
 
   // Ctrl+S — «Гүйцэтгэл бөглөх»-тэй ижил.
+  // ⚠️ Нээлттэй нүдний бичиж буй утгыг ЭХЛЭЖ commit хийнэ — эс тэгвэл хуучин
+  // pending-ээр нийтлээд, оролтын утга дараа нь blur дээр эргэж dirty болж
+  // хэрэглэгч «хадгалагдсан» гэж андуурдаг байв. commit нь state-д дараагийн
+  // render дээр л тусах тул нийтлэлийг дарааллуулж эффектээр гүйцээнэ.
+  const [publishQueued, setPublishQueued] = useState(false);
+  const flushEditRef = useRef<() => void>(() => {});
+  flushEditRef.current = () => {
+    if (edit && rows[edit.i]) commit(rows[edit.i], edit.b, val);
+  };
+  useEffect(() => {
+    if (!publishQueued || edit) return;
+    setPublishQueued(false);
+    publish();
+  }, [publishQueued, edit, publish]);
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
         e.preventDefault();
-        publish();
+        flushEditRef.current();
+        setPublishQueued(true);
       }
     };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
-  }, [publish]);
+  }, []);
 
   const floorOpts = useMemo(() => pkgFloors(pkg.group), [pkg.group]);
 
@@ -293,7 +469,10 @@ export default function FillNew() {
             className={st.select}
             value={pkg.group}
             disabled={busy}
-            onChange={(e) => setPkg(pkgFloors(e.target.value)[0])}
+            onChange={(e) => {
+              if (!confirmSwitch()) return;
+              setPkg(pkgFloors(e.target.value)[0]);
+            }}
           >
             {PKG_GROUPS.map((g) => (
               <option key={g} value={g}>{g}</option>
@@ -311,9 +490,10 @@ export default function FillNew() {
               className={st.select}
               value={pkg.key}
               disabled={busy}
-              onChange={(e) =>
-                setPkg(PKGS.find((p) => p.key === e.target.value) ?? pkg)
-              }
+              onChange={(e) => {
+                if (!confirmSwitch()) return;
+                setPkg(PKGS.find((p) => p.key === e.target.value) ?? pkg);
+              }}
             >
               {floorOpts.map((p) => (
                 <option key={p.key} value={p.key}>{p.floors}F</option>
@@ -326,6 +506,7 @@ export default function FillNew() {
           <select
             className={st.select}
             value={dt(asOf)}
+            disabled={busy}
             onChange={(e) => {
               // ⚠️ Хоосон утга → null болговол calc=[] болж бүх мөр чимээгүй
               // алга болно — тиймээс задлагдахгүй бол хуучнаа хэвээр үлдээнэ.
@@ -383,37 +564,51 @@ export default function FillNew() {
         </div>
       )}
 
-      {rows.length > 0 && sc && (
+      {/* Хоосон үр дүнг тайлбаргүй орхивол хэрэглэгч юу болсныг мэдэхгүй гацдаг. */}
+      {!busy && !err && sc && rows.length === 0 && (
+        <p className={st.muted}>Энэ багцад мөр олдсонгүй.</p>
+      )}
+      {rows.length > 0 && sc && calc.length === 0 && (
+        <p className={st.muted}>
+          Тайлангийн огноо тодорхойлогдоогүй тул хүснэгт бодогдохгүй байна —
+          Огноо сонгоно уу (жагсаалт ачаалагдаагүй бол хуудсыг дахин ачаална уу).
+        </p>
+      )}
+
+      {rows.length > 0 && sc && calc.length > 0 && (
         <div className={st.scroll}>
+          <div className={st.tableWrap}>
+          <div ref={colHlRef} className={st.colHl} aria-hidden="true" />
           <table
             className={cls("xl b32")}
             style={colStyle}
-            onMouseLeave={() => setHover(null)}
+            onMouseOver={moveColHl}
+            onMouseLeave={hideColHl}
           >
             <thead>
               <tr>
-                <th className={cls("fz c-no")}>№<i {...grip("no")} /></th>
-                <th className={cls("fz c-ajil")}>Ажил<i {...grip("ajil")} /></th>
-                <th className={cls("c-w")}>Хувийн жин<i {...grip("w")} /></th>
-                <th className={cls("c-w")} title="Нийт төсөлд эзлэх">Хувийн жин<i {...grip("w")} /></th>
-                <th className={cls("c-w")}>Хувийн жин- Одоо байгаа<i {...grip("w")} /></th>
-                <th className={cls("c-vol")}>Обьём<i {...grip("vol")} /></th>
-                <th className={cls("c-money")}>Нэгж өртөг<i {...grip("money")} /></th>
-                <th className={cls("c-money")}>Мөнгөн дүн<i {...grip("money")} /></th>
-                <th className={cls("c-calc")}>Төлөвлөгөөт гүйцэтгэл<i {...grip("calc")} /></th>
-                <th className={cls("c-calc")}>Бодит гүйцэтгэл<i {...grip("calc")} /></th>
-                <th className={cls("c-calc")}>Төлөвлөгөө биелэлт<i {...grip("calc")} /></th>
+                <th scope="col" className={cls("fz c-no")}>№<i {...grip("no")} /></th>
+                <th scope="col" className={cls("fz c-ajil")}>Ажил<i {...grip("ajil")} /></th>
+                <th scope="col" className={cls("c-w")}>Хувийн жин<i {...grip("w")} /></th>
+                <th scope="col" className={cls("c-w")} title="Нийт төсөлд эзлэх">Хувийн жин<i {...grip("w")} /></th>
+                <th scope="col" className={cls("c-w")}>Хувийн жин- Одоо байгаа<i {...grip("w")} /></th>
+                <th scope="col" className={cls("c-vol")}>Обьём<i {...grip("vol")} /></th>
+                <th scope="col" className={cls("c-money")}>Нэгж өртөг<i {...grip("money")} /></th>
+                <th scope="col" className={cls("c-money")}>Мөнгөн дүн<i {...grip("money")} /></th>
+                <th scope="col" className={cls("c-calc")}>Төлөвлөгөөт гүйцэтгэл<i {...grip("calc")} /></th>
+                <th scope="col" className={cls("c-calc")}>Бодит гүйцэтгэл<i {...grip("calc")} /></th>
+                <th scope="col" className={cls("c-calc")}>Төлөвлөгөө биелэлт<i {...grip("calc")} /></th>
                 {sc.bld.map((b) => (
-                  <th key={`a${b}`} className={cls("bld")}>{b}-гүйцэтгэл<i {...grip("bld")} /></th>
+                  <th scope="col" key={`a${b}`} className={cls("bld")}>{b}-гүйцэтгэл<i {...grip("bld")} /></th>
                 ))}
                 {sc.bld.map((b) => (
-                  <th key={`p${b}`} className={cls("bld")}>{b} барилга -төлөвлөгөөт<i {...grip("bld")} /></th>
+                  <th scope="col" key={`p${b}`} className={cls("bld")}>{b} барилга -төлөвлөгөөт<i {...grip("bld")} /></th>
                 ))}
                 {sc.bld.map((b) => [
-                  <th key={`s${b}`} className={cls("c-date")}>{b} барилга - Эхлэх<i {...grip("date")} /></th>,
-                  <th key={`e${b}`} className={cls("c-date")}>{b} барилга - Дуусах<i {...grip("date")} /></th>,
+                  <th scope="col" key={`s${b}`} className={cls("c-date")}>{b} барилга - Эхлэх<i {...grip("date")} /></th>,
+                  <th scope="col" key={`e${b}`} className={cls("c-date")}>{b} барилга - Дуусах<i {...grip("date")} /></th>,
                 ])}
-                <th className={cls("c-date")}>Шинэчлэгдсэн огноо<i {...grip("date")} /></th>
+                <th scope="col" className={cls("c-date")}>Шинэчлэгдсэн огноо<i {...grip("date")} /></th>
               </tr>
             </thead>
             <tbody>
@@ -421,68 +616,55 @@ export default function FillNew() {
                 if (hidden[i]) return null;
                 const c = calc[i];
                 if (!c) return null;
-                const rowHl = hover?.i === i;
-                const bg = rowHl ? HL_BG : r.group ? HEADER_BG : CELL_BG;
                 return (
                   <tr key={r.oid} className={r.group ? st.cat : undefined}>
-                    <td
-                      className={cls("num fz c-no")}
-                      style={{ backgroundColor: bg }}
-                      onMouseEnter={() => setHover({ i, b: null })}
-                    >
-                      {r.no}
-                    </td>
+                    <td className={cls("num fz c-no")}>{r.no}</td>
                     <td
                       className={cls("fz c-ajil")}
-                      style={{
-                        paddingLeft: `${r.depth * 14 + 6}px`,
-                        background: bg,
-                      }}
+                      style={{ paddingLeft: `${r.depth * 14 + 6}px` }}
                       title={r.work}
-                      onMouseEnter={() => setHover({ i, b: null })}
                     >
                       {r.group && (
-                        <span
+                        /* button — гараар (Enter/Space) эвхэж дэлгэх боломжтой;
+                           globals-ийн button reset .caret-ийн хэвийг хадгална. */
+                        <button
+                          type="button"
                           className={st.caret}
+                          aria-expanded={!collapsed.has(r.oid)}
+                          aria-label={collapsed.has(r.oid) ? "Дэлгэх" : "Эвхэх"}
                           onClick={(e) => {
                             e.stopPropagation();
                             toggle(r.oid);
                           }}
                         >
                           {collapsed.has(r.oid) ? "▸" : "▾"}
-                        </span>
+                        </button>
                       )}
                       {r.work}
                     </td>
-                    <td className={cls("right c-w")} style={{ backgroundColor: bg }} title={full(c.C)}>{wt(c.C)}</td>
-                    <td className={cls("right c-w")} style={{ backgroundColor: bg }} title={full(c.D)}>{wt(c.D)}</td>
+                    <td className={cls("right c-w")} title={full(c.C)}>{wt(c.C)}</td>
+                    <td className={cls("right c-w")} title={full(c.D)}>{wt(c.D)}</td>
                     {/* Одоо байгаа = Хувийн жин × Бодит гүйцэтгэл — гүйцэтгэл
                         бөглөхөд хамт хөдөлдөг тул бодогдох өнгөтэй. Дээд
                         бүлгүүдэд өөрчлөлт нь бөөрөнхийлөлтөөс нуугдах тул
                         бүтэн нарийвчлалыг tooltip-оор өгнө. */}
-                    <td
-                      className={cls("right c-w")}
-                      style={{ backgroundColor: rowHl ? HL_BG : CALC_BG }}
-                      title={full(c.E)}
-                    >
+                    <td className={cls("right c-w calc")} title={full(c.E)}>
                       {wt(c.E)}
                     </td>
-                    <td className={cls("right c-vol")} style={{ backgroundColor: bg }}>{qty(r.vol)}</td>
-                    <td className={cls("right c-money")} style={{ backgroundColor: bg }}>{money(r.unit)}</td>
-                    <td className={cls("right c-money")} style={{ backgroundColor: bg }}>{money(c.H)}</td>
-                    <td className={cls("num c-calc")} style={{ backgroundColor: rowHl ? HL_BG : CALC_BG }}>{pc(c.I, 1)}</td>
-                    <td className={cls("num c-calc")} style={{ backgroundColor: rowHl ? HL_BG : CALC_BG }}>{pc(c.J, 1)}</td>
-                    <td className={cls("num c-calc")} style={{ backgroundColor: rowHl ? HL_BG : CALC_BG }}>{pc(c.K, 1)}</td>
+                    <td className={cls("right c-vol")}>{qty(r.vol)}</td>
+                    <td className={cls("right c-money")}>{money(r.unit)}</td>
+                    <td className={cls("right c-money")}>{money(c.H)}</td>
+                    <td className={cls("num c-calc calc")}>{pc(c.I, 1)}</td>
+                    <td className={cls("num c-calc calc")}>{pc(c.J, 1)}</td>
+                    <td className={cls("num c-calc calc")}>{pc(c.K, 1)}</td>
 
                     {/* Бодит гүйцэтгэл — цорын ганц засагддаг блок. */}
                     {sc.bld.map((b, bi) => {
                       const key = `${r.oid}:${bi}`;
                       const dirty = key in pending;
-                      const colHl = hover?.b === bi;
-                      const hl = rowHl || colHl;
                       if (edit && edit.i === i && edit.b === bi)
                         return (
-                          <td key={`a${b}`} className={cls("num bld")} style={{ padding: 0 }}>
+                          <td key={`a${b}`} data-bi={bi} className={cls("num bld")} style={{ padding: 0 }}>
                             <input
                               autoFocus
                               type="text"
@@ -512,51 +694,55 @@ export default function FillNew() {
                       return (
                         <td
                           key={`a${b}`}
+                          data-bi={bi}
                           className={cls(
                             "num bld" +
                               (r.group ? "" : " cursor-cell") +
                               (dirty ? " dirty" : ""),
                           )}
-                          style={{
-                            backgroundColor: hl
-                              ? HL_BG
-                              : r.group
-                                ? HEADER_BG
-                                : CELL_BG,
-                          }}
-                          onMouseEnter={() => setHover({ i, b: bi })}
+                          // ⚠️ Гар хандалт: Tab-аар очиж Enter/F2-оор нээнэ —
+                          // хулганагүй хэрэглэгч огт орж чаддаггүй байв.
+                          tabIndex={r.group ? undefined : 0}
                           onClick={() => {
                             if (r.group) return; // бүлгийн мөр бодогдоно, гараар засагдахгүй
                             setVal(pending[key] ?? origStr(r, bi));
                             setEdit({ i, b: bi });
                           }}
+                          onKeyDown={
+                            r.group
+                              ? undefined
+                              : (e) => {
+                                  if (e.key === "Enter" || e.key === "F2") {
+                                    e.preventDefault();
+                                    setVal(pending[key] ?? origStr(r, bi));
+                                    setEdit({ i, b: bi });
+                                  }
+                                }
+                          }
                         >
-                          {pc(c.act[bi], r.group ? 1 : 0)}
+                          {/* Аравны нэг — редакторын нарийвчлалтай ижил, эс
+                              тэгвэл 60.5 нүд «61%» харагдаж худал мэт байв. */}
+                          {pc(c.act[bi], 1)}
                         </td>
                       );
                     })}
 
                     {/* Барилга-төлөвлөгөөт — огноо + шинэчлэгдсэн огноогоор бодогдоно. */}
                     {sc.bld.map((b, bi) => (
-                      <td
-                        key={`p${b}`}
-                        className={cls("num bld")}
-                        style={{ backgroundColor: rowHl ? HL_BG : CALC_BG }}
-                        onMouseEnter={() => setHover({ i, b: null })}
-                      >
+                      <td key={`p${b}`} className={cls("num bld calc")}>
                         {pc(c.plan[bi], 1)}
                       </td>
                     ))}
 
                     {sc.bld.map((b, bi) => [
-                      <td key={`s${b}`} className={cls("num c-date")} style={{ backgroundColor: bg }}>
+                      <td key={`s${b}`} className={cls("num c-date")}>
                         {dt(c.start[bi])}
                       </td>,
-                      <td key={`e${b}`} className={cls("num c-date")} style={{ backgroundColor: bg }}>
+                      <td key={`e${b}`} className={cls("num c-date")}>
                         {dt(c.end[bi])}
                       </td>,
                     ])}
-                    <td className={cls("num c-date")} style={{ backgroundColor: bg }}>
+                    <td className={cls("num c-date")}>
                       {i === 0 ? dt(asOf) : ""}
                     </td>
                   </tr>
@@ -564,6 +750,7 @@ export default function FillNew() {
               })}
             </tbody>
           </table>
+          </div>
         </div>
       )}
     </div>

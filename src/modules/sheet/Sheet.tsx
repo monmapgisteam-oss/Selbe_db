@@ -1,56 +1,33 @@
 'use client';
 
-import { useState } from "react";
 import FillNew from "./FillNew";
-import Level5 from "./Level5";
-import Pivot from "./Pivot";
-import Wbs from "./Wbs";
+import { Icon } from "@/components/Icon";
 import st from "./sheet.module.css";
 
 /**
- * «Гүйцэтгэл шинэ» (Багц 3.2 — 9F_publish хуудасны бүрэн хуулбар) +
- * «Гүйцэтгэл бөглөх» (хүснэгт засвар) + «Дүгнэлт» (төслийн нэгдсэн WBS) +
- * «Түвшин 5» (ажилбарын түвшний экспорт, зөвхөн харах).
+ * ГҮЙЦЭТГЭЛ БӨГЛӨХ — өгөгдөл оруулах ПОРТАЛ.
+ *
+ * ⚠️ 2026-08-18 (хэрэглэгчийн шийдвэр): дөрвөн табтай байсныг ЗӨВХӨН «Гүйцэтгэл
+ * шинэ» (FillNew) болгож хумив — энэ нь өгөгдөл ОРУУЛДАГ цор ганц хэсэг, бусад
+ * гурав (Pivot/Wbs/Level5) нь харах/экспортын хуудаснууд байсан. Тэдгээрийн код
+ * ба ТООЦООЛОЛ (`bagtsSheet.ts → computeAll`, excel-ийн томъёонууд) ХЭВЭЭР —
+ * FillNew дотор ажилладаг хэвээр, зөвхөн навигаци нь хасагдсан.
  */
 export function Sheet() {
-  const [tab, setTab] = useState<"new" | "fill" | "concl" | "l5">("fill");
   return (
     <div className={st.tabs}>
-      <div className={st.tabBar}>
-        <button
-          className={`${st.tab} ${tab === "new" ? st.tabActive : ""}`}
-          onClick={() => setTab("new")}
-        >
-          Гүйцэтгэл шинэ
-        </button>
-        <button
-          className={`${st.tab} ${tab === "fill" ? st.tabActive : ""}`}
-          onClick={() => setTab("fill")}
-        >
-          Гүйцэтгэл бөглөх
-        </button>
-        <button
-          className={`${st.tab} ${tab === "concl" ? st.tabActive : ""}`}
-          onClick={() => setTab("concl")}
-        >
-          Дүгнэлт
-        </button>
-        <button
-          className={`${st.tab} ${tab === "l5" ? st.tabActive : ""}`}
-          onClick={() => setTab("l5")}
-        >
-          Түвшин 5
-        </button>
-      </div>
-      {tab === "new" ? (
-        <FillNew />
-      ) : tab === "fill" ? (
-        <Pivot />
-      ) : tab === "concl" ? (
-        <Wbs />
-      ) : (
-        <Level5 />
-      )}
+      {/* Порталын толгой — таб биш, өгөгдөл оруулах хэсгийн тодорхойлолт */}
+      <header className={st.portalHead}>
+        <span className={st.portalIcon}><Icon name="pen" size={16} /></span>
+        <div className={st.portalText}>
+          <h2 className={st.portalTitle}>Гүйцэтгэл бөглөх</h2>
+          <p className={st.portalDesc}>
+            Багцын гүйцэтгэлийн өгөгдөл оруулах портал — блок бүрийн явцыг бөглөж
+            нийтлэхэд нийлбэр, жин, дүн автоматаар бодогдоно.
+          </p>
+        </div>
+      </header>
+      <FillNew />
     </div>
   );
 }

@@ -49,7 +49,10 @@ const n = (v: unknown) => (v == null || !Number.isFinite(Number(v)) ? 0 : Number
 const PAGE = 2000;
 async function fetchAll(u: string, outFields: string[], returnGeometry = false): Promise<Feat[]> {
   const out: Feat[] = [];
-  for (let start = 0; ; start += PAGE) {
+  // ⚠️ Дараагийн хуудсыг ИРСЭН бичлэгийн тоогоор ахиулна (PAGE-ээр НЕ).
+  // Сервер хариуны хэмжээгээр таслахад 2000-аас цөөн ирж, exceededTransferLimit
+  // үнэн байдаг — PAGE-ээр ахиулбал дундах бичлэгүүд чимээгүй алдагдана.
+  for (let start = 0; ; ) {
     const q = new Query({
       where: '1=1',
       outFields,
@@ -62,6 +65,7 @@ async function fetchAll(u: string, outFields: string[], returnGeometry = false):
     out.push(...(res.features as unknown as Feat[]));
     if (res.features.length === 0) break;
     if (res.features.length < PAGE && !res.exceededTransferLimit) break;
+    start += res.features.length;
   }
   return out;
 }
@@ -794,11 +798,6 @@ export function computeRaw(
 }
 
 /** Барилгын давамгайлах нэгж үнэ (₮/м²) — гулсуурын анхны утга */
-export function dominantPrice(zones: Zone[]): number {
-  const total = zones.reduce((a, z) => a + z.gfaSaleM2, 0);
-  const value = zones.reduce((a, z) => a + z.salesValue, 0);
-  return total > 0 ? value / total : 0;
-}
 
 /** Анхдагчаар идэвхтэй ногоон ангиллууд */
 export const defaultGreenCats = () =>

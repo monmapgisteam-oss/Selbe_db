@@ -43,7 +43,7 @@
   padding: 12px 14px 12px 15px;
   border: 1px solid var(--line);
   border-left: 3px solid var(--st, var(--line));
-  border-radius: 10px;
+  border-radius: var(--r-lg);
   background: var(--surface);
   min-width: 0;
   text-align: left;
@@ -86,7 +86,7 @@
 }
 .label {
   font-size: 0.64rem;
-  font-weight: 650;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.03em;
   color: var(--ink-3);

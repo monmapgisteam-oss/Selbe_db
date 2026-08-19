@@ -32,6 +32,7 @@ import SketchViewModel from '@arcgis/core/widgets/Sketch/SketchViewModel';
 import BasemapGallery from '@arcgis/core/widgets/BasemapGallery';
 import LocalBasemapsSource from '@arcgis/core/widgets/BasemapGallery/support/LocalBasemapsSource';
 import Expand from '@arcgis/core/widgets/Expand';
+import LayerList from '@arcgis/core/widgets/LayerList';
 import ElevationLayer from '@arcgis/core/layers/ElevationLayer';
 import Ground from '@arcgis/core/Ground';
 import type Layer from '@arcgis/core/layers/Layer';
@@ -1323,6 +1324,33 @@ export const MapCanvas = memo(function MapCanvas({
     if (orthoChkRef.current) orthoChkRef.current.checked = ortho;
   }, [ortho]);
 
+  /**
+   * БҮТЭН ДЭЛГЭЦ (хэрэглэгчийн хүсэлт, 2026-08-18) — зурган дээрх товч дарахад
+   * апп бүхэлдээ browser-ийн бүтэн дэлгэцэд орж, зураг viewport-ыг дүүргэнэ
+   * (`.fs` → position: fixed inset 0; ArcGIS view хэмжээгээ өөрөө дагана).
+   * Давхарга (LayerList) ба суурь зургийн widget хоёулаа зурган дээрээ байгаа
+   * тул бүтэн дэлгэцэд ч бүрэн ажиллана.
+   *
+   * ⚠️ Fullscreen API-г ЗӨВХӨН товчны click дотор дуудна (хэрэглэгчийн үйлдэл
+   * шаарддаг). Esc-ээр гарахад `fullscreenchange` сонсогч төлвийг буцаана.
+   */
+  const [fs, setFs] = useState(false);
+  const toggleFs = useCallback(() => {
+    setFs((cur) => {
+      const next = !cur;
+      if (next) document.documentElement.requestFullscreen?.().catch(() => {});
+      else if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+      return next;
+    });
+  }, []);
+  const toggleFsRef = useRef(toggleFs);
+  toggleFsRef.current = toggleFs;
+  useEffect(() => {
+    const onChange = () => { if (!document.fullscreenElement) setFs(false); };
+    document.addEventListener('fullscreenchange', onChange);
+    return () => document.removeEventListener('fullscreenchange', onChange);
+  }, []);
+
   /** Массивыг эффектийн хамааралд өгч болохгүй (лавлагаа нь рендер бүрт шинэ) */
   const visibleKey = visible.join(',');
 
@@ -1456,6 +1484,39 @@ export const MapCanvas = memo(function MapCanvas({
       mode: 'floating',
     }), 'top-right');
 
+    /**
+     * ДАВХАРГЫН ЖАГСААЛТ (LayerList) — суурь зургийн доор, мөн Expand дотор.
+     * Бүтэн дэлгэцэд порталын каталог руу гарах шаардлагагүйгээр давхаргаа
+     * асааж/унтраана. Ижил SDK-ийн бэлэн widget — view-тэй хамт устна.
+     */
+    const llDiv = document.createElement('div');
+    new LayerList({ view, container: llDiv });
+    view.ui.add(new Expand({
+      view,
+      content: llDiv,
+      expandIcon: 'layers',
+      expandTooltip: 'Давхаргууд',
+      collapseTooltip: 'Хаах',
+      mode: 'floating',
+    }), 'top-right');
+
+    /**
+     * БҮТЭН ДЭЛГЭЦИЙН товч — Esri-ийн widget товчны загвараар (ижил хэмжээ,
+     * ижил дэвсгэр) тул бусад удирдлагатай нэг формат. Toggle нь компонентын
+     * `fs` төлвийг удирдана (`toggleFsRef` — click үргэлж сүүлийн callback-ыг дуудна).
+     */
+    const fsBtn = document.createElement('div');
+    fsBtn.className = 'esri-widget--button esri-widget';
+    fsBtn.setAttribute('role', 'button');
+    fsBtn.setAttribute('tabindex', '0');
+    fsBtn.title = 'Бүтэн дэлгэц';
+    fsBtn.innerHTML =
+      '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">'
+      + '<path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" '
+      + 'stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    fsBtn.addEventListener('click', () => toggleFsRef.current());
+    view.ui.add(fsBtn, 'top-right');
+
     view.when(() => {
       if (view.destroyed) return;
       setReady(true);
@@ -1523,15 +1584,25 @@ export const MapCanvas = memo(function MapCanvas({
      * рендерээс огт хамаарахгүй тул 2D, 3D хоёуланд ижил ажиллана.
      */
     const pickByQuery = async (mapPoint: __esri.Point, tolerance: number) => {
-      const ids = (view.map?.layers.toArray() ?? [])
+      /**
+       * ⚠️ 2026-08-19: Давхаргын ИДЭВХТЭЙ `definitionExpression`-ийг хамт барина.
+       *
+       * Урьд нь энэ fallback нь `where` огт өгдөггүй (=`1=1`) байв. Тэр илэрхийлэлд
+       * (1) бүсийн шүүлт, (2) давхаргын тогтмол `d.where`, (3) 3D-ийн тодруулга
+       * ГУРВУУЛАА агуулагддаг тул зурган дээр ХАРАГДАХГҮЙ обьект сонгогддог байлаа.
+       * 3D-д энэ нь ОНЦГОЙ тохиолдол БИШ — торон гадаргуу `hitTest`-ийг няцаадаг
+       * тул энэ fallback нь ХЭВИЙН зам (дээрх тайлбарыг үз): бүс сонгосон
+       * хэрэглэгч дарахад нуугдсан обьектын самбар нээгддэг байв.
+       */
+      const cand = (view.map?.layers.toArray() ?? [])
         .map((l) => ({ l, id: String(l.id) }))
         // ⚠️ PASSIVE-ийг pickHit-тэй АДИЛ хасна — эс бөгөөс үргэлж ил лавлагааны
         //    хил (khil1) fallback-аар байнга «сонгогдож» зарчим зөрчигдөнө.
         .filter(({ l, id }) => l.visible && !PASSIVE.has(id) && LAYER_BY_ID[id])
-        .map(({ id }) => id)
         // Дээд талынхыг ЭХЭЛЖ шалгана: цэг → шугам → талбай
-        .sort((a, b) => drawOrder(b) - drawOrder(a));
-      if (!ids.length) return null;
+        .sort((a, b) => drawOrder(String(b.id)) - drawOrder(String(a.id)));
+      if (!cand.length) return null;
+      const ids = cand.map(({ id }) => id);
 
       const wkid = mapPoint.spatialReference?.wkid ?? 102100;
       const aoi: Aoi = {
@@ -1542,7 +1613,13 @@ export const MapCanvas = memo(function MapCanvas({
       };
 
       const rows = await Promise.all(
-        ids.map((id) => queryFeatures(layerUrl(LAYER_BY_ID[id]), { aoi, limit: 1 }).catch(() => [])),
+        cand.map(({ l, id }) =>
+          queryFeatures(layerUrl(LAYER_BY_ID[id]), {
+            aoi,
+            limit: 1,
+            where: (l as __esri.FeatureLayer).definitionExpression || '1=1',
+          }).catch(() => []),
+        ),
       );
       for (let i = 0; i < ids.length; i++) {
         if (rows[i].length) return { attrs: rows[i][0] as Record<string, unknown>, id: ids[i] };
@@ -2490,7 +2567,11 @@ export const MapCanvas = memo(function MapCanvas({
         const hlOn = is3D(dim) && hl.where && (!hlOnly || hlOnly.includes(l.id))
           ? hl.where
           : null;
-        const parts = [base, hlOn].filter(Boolean) as string[];
+        /* ⚠️ Давхаргын ТОГТМОЛ шүүлт (`LayerDef.where`) — бүсийн болон
+           тодруулгын шүүлтээс ТУСДАА, ҮРГЭЛЖ хүчинтэй. IoT мэдрэгчид үүгээр
+           10,000 давхардсан телеметрийн цэгээс ганц суурилуулалтын мөрийг л
+           үлдээнэ; эс бөгөөс бүсээр шүүхэд энэ нөхцөл алдагдана. */
+        const parts = [d.where ?? null, base, hlOn].filter(Boolean) as string[];
         (l as FeatureLayer).definitionExpression = (
           parts.length ? parts.map((p) => `(${p})`).join(' AND ') : null
         ) as unknown as string;
@@ -2596,7 +2677,7 @@ export const MapCanvas = memo(function MapCanvas({
   }, [dim, ready, sceneKey]);
 
   return (
-    <div className={s.wrap}>
+    <div className={`${s.wrap} ${fs ? s.fs : ''}`}>
       <div ref={el} className={s.view} />
       {!ready && !initError && <div className={s.loading}>Газрын зураг ачаалж байна…</div>}
 
