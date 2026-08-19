@@ -9,6 +9,13 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
+  /* ⚠️ Багана хөндлөн гүйлгэх зурвасыг ДЭЛГЭЦЭЭС ХАЙХГҮЙ болгох тулгуур:
+     хуудсыг доош гүйлгэж байж зурвасаа олдог байсныг зогсоохын тулд бүхэл
+     самбар нь `.suit`-ийн өндрөөр тогтож, ЗӨВХӨН хүснэгт дотроо гүйнэ.
+     Ингэснээр хөндлөн зурвас нь үргэлж дэлгэцийн доод ирмэгт харагдана. */
+  height: 100%;
+  /* `.tabs` нь flex тул порталын толгойн ҮЛДСЭН өндрийг эзэлнэ. */
+  flex: 1 1 auto;
   /* Хуудасны ирмэгээс зай — ирмэгт наалдаж «нүцгэн» харагдахгүй */
   padding: 18px 24px 24px;
   /* grid/flex item нь `min-*: 0`-гүй бол хүснэгтийн өргөнөөр сунаж дэлгэцээс хальна */
@@ -51,11 +58,14 @@
 .publishBtn {
   font-size: 0.8rem;
   font-weight: 600;
-  color: #fff;
-  background: var(--hue);
+  /* ⚠️ Дэвсгэр нь --good БИШ --good-ink: цайвар горимд --good цагаан тексттэй
+     3.3:1 л өгдөг (харанхуйд 1.9:1) тул бараан ink-хувилбарыг дүүргэлт болгов
+     (харанхуйд good-ink = good хэвээр). Текст нь --hue-ink — өнгөт дэвсгэр
+     дээрх бэх, хоёр горимд 4.5:1-ээс дээш. */
+  color: var(--hue-ink);
+  background: var(--good-ink);
   border-radius: var(--r-sm);
   padding: 7px 16px;
-  box-shadow: var(--shadow-sm);
   transition: opacity 0.15s, filter 0.15s;
 }
 .publishBtn:hover:not(:disabled) { filter: brightness(1.06); }
@@ -80,6 +90,7 @@
   display: inline-block;
   width: 1em;
   margin-left: -0.9em;
+  padding: 0; /* button болсон (гар хандалт) — UA-ийн анхны padding-ийг дарна */
   color: var(--ink-3);
   cursor: pointer;
   user-select: none;
@@ -93,7 +104,7 @@
   border-radius: var(--r-sm);
   padding: 9px 13px;
   font-size: 0.8rem;
-  color: var(--bad);
+  color: var(--bad-ink);
   background: color-mix(in srgb, var(--bad) 12%, transparent);
   border: 1px solid color-mix(in srgb, var(--bad) 30%, transparent);
 }
@@ -101,13 +112,13 @@
   border-radius: var(--r-sm);
   padding: 8px 12px;
   font-size: 0.72rem;
-  color: var(--bad);
+  color: var(--bad-ink);
   background: color-mix(in srgb, var(--bad) 12%, transparent);
   border: 1px solid color-mix(in srgb, var(--bad) 30%, transparent);
 }
 
 .info {
-  border-radius: var(--r);
+  border-radius: var(--r-sm);
   padding: 10px 14px;
   font-size: 0.78rem;
   line-height: 1.55;
@@ -247,30 +258,28 @@
 .skeletonCell {
   height: 14px;
   border-radius: var(--r-sm);
-  background: linear-gradient(
-    90deg,
-    var(--sunken) 25%,
-    var(--surface-2) 37%,
-    var(--sunken) 63%
-  );
-  background-size: 400% 100%;
-  animation: skeletonPulse 1.4s ease infinite;
+  /* envhub: градиент хориотой — гялбааны оронд тэгш өнгөний зөөлөн амьсгал */
+  background: var(--sunken);
+  animation: skeletonPulse 1.2s ease-in-out infinite alternate;
 }
 @keyframes skeletonPulse {
-  0% { background-position: 100% 50%; }
-  100% { background-position: 0 50%; }
+  from { opacity: 1; }
+  to { opacity: 0.45; }
 }
 
 .scroll {
   overflow: auto;
-  max-height: 80vh;
+  /* Үлдсэн бүх өндрийг эзэлнэ — доод ирмэг нь дэлгэцийн доод ирмэг дээр
+     тогтох тул хөндлөн гүйлгэх зурвас нь ҮРГЭЛЖ ил. `min-height: 0` нь flex
+     хүүхдийг хумих зөвшөөрөл (эс тэгвэл агуулгынхаа өндрөөр сунана). */
+  flex: 1 1 auto;
+  min-height: 240px;
   /* ⚠️ flex child нь `min-width: 0`-гүй бол хүснэгтийн натурал өргөнөөр сунаж,
      дэлгэцээс хальж, overflow-x ажиллахгүй. */
   min-width: 0;
   max-width: 100%;
   border: 1px solid var(--line);
-  border-radius: var(--r);
-  box-shadow: var(--shadow-sm);
+  border-radius: var(--r-sm);
   background: var(--surface);
 }
 
@@ -338,10 +347,14 @@
   position: sticky;
   top: 0;
   z-index: 2;
-  background: var(--hue);
-  color: #fff;
+  /* envhub: өнгө = утга — толгойн акцент дүүргэлт чимэглэл байсан тул
+     surface-2 давхарга + eyebrow маягийн бичиг болов. */
+  background: var(--sheet-header);
+  color: var(--ink-2);
+  font-size: 10.5px;
   font-weight: 600;
-  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
   box-shadow: inset 0 -1px 0 var(--line-strong);
   /* Толгойн текст багана болгонд багтахгүй бол мөр хуваана. */
   white-space: normal;
@@ -359,9 +372,9 @@
 }
 
 /* Царцаасан хавтгайн тусгаарлагч: сүүлийн зүүн ба эхний баруун царцсан
-   баганаас сүүдэр — гүйдэг хэсэг тусдаа бүс мэт харагдана. */
-.xl .c-perf { box-shadow: 2px 0 4px -2px rgb(16 20 24 / 0.18); }
-.xl .c-done { box-shadow: -2px 0 4px -2px rgb(16 20 24 / 0.18); }
+   баганын ирмэг дээр hairline — envhub сүүдэр хэрэглэхгүй, зураасаар зааглана. */
+.xl .c-perf { box-shadow: inset -1px 0 0 var(--line-strong); }
+.xl .c-done { box-shadow: inset 1px 0 0 var(--line-strong); }
 
 /* Sticky footer: Дундаж мөр гүйлгэх үед доор наалдана. */
 .xl tfoot td {
@@ -450,13 +463,23 @@
   transition: background 0.12s;
 }
 .grip:hover::after,
-.grip[data-drag="1"]::after { background: rgb(255 255 255 / 0.75); }
+.grip:focus-visible::after,
+.grip[data-drag="1"]::after { background: var(--data); }
 
 .xl tr.cat td {
   background: var(--sheet-header); /* толгой / засах боломжгүй мөр */
   font-weight: 600;
   color: var(--ink);
 }
+
+/* Бодогдох (томъёолсон) нүд — шар тинт.
+   ⚠️ `.cat`-ын дүрмээс ХОЙНО, ижил өвөрмөцтэй: бүлгийн мөрөнд ч бодогдох
+   багана шар хэвээр (урьд нь inline style ийм дараалалтай байсан). */
+.xl tr td.calc { background: var(--sheet-calc); }
+
+/* Мөрийн crosshair — CSS :hover. Урьд нь нүд бүрийн mouseenter React state
+   шинэчилж 1400×60 хүснэгтийг бүхэлд нь дахин зурдаг байв (FillNew). */
+.xl tbody tr:hover td { background: var(--sheet-hl); }
 
 /* Дүгнэлт хүснэгт: барилгын баганагүй тул Ажилд илүү зай өгнө.
    Өргөнийг ЗӨВХӨН хувьсагчаар өөрчилнө — `.xl`-ийн дүрэм өөрөө уншина.
@@ -481,12 +504,13 @@
 /* Царцсан баганы толгой мөрийн зүүн эгнэлт. */
 .xl .c-ajil { text-align: left; }
 
-/* Нийтлээгүй (засагдсан, хараахан хадгалаагүй) нүд: хүрээ + тод үсэг.
-   ⚠️ Өнгө нь ганц дохио БИШ — хүрээ, үсгийн жин нь өнгө ялгаж чадахгүй
-   хэрэглэгчид ч (мөн хэвлэсэн хуудсанд) уншигдана. */
-.xl td.dirty {
+/* Нийтлээгүй (засагдсан, хараахан хадгалаагүй) нүд: ногоон дэвсгэр + хүрээ.
+   Дараалал: dirty > hover > суурь (Pivot-ын inline дараалалтай ижил). */
+.xl td.dirty,
+.xl tbody tr:hover td.dirty {
   font-weight: 700;
-  box-shadow: inset 0 0 0 2px var(--hue);
+  background: var(--sheet-dirty);
+  box-shadow: inset 0 0 0 2px var(--good);
 }
 
 .xl .cursor-cell { cursor: cell; }
@@ -550,7 +574,7 @@
   width: 100%;
   padding: 9px 14px;
   text-align: left;
-  color: var(--bad);
+  color: var(--bad-ink);
   transition: background 0.12s;
 }
 .menuItemDanger:hover { background: color-mix(in srgb, var(--bad) 12%, transparent); }
@@ -574,7 +598,7 @@
   width: 100%;
   max-width: 42rem;
   overflow: auto;
-  border-radius: var(--r-lg);
+  border-radius: var(--r-sm);
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--ink);
@@ -589,7 +613,7 @@
 }
 .modalTitle {
   font-size: 0.85rem;
-  font-weight: 650;
+  font-weight: 600;
   color: var(--ink);
 }
 .closeBtn {
@@ -610,11 +634,11 @@
   gap: 6px;
   border-radius: var(--r-sm);
   background: var(--hue);
-  color: #fff;
+  /* ⚠️ Харанхуйд --hue цайвар cyan — цагаан текст 1.4:1 тул hue-ink (бараан бэх). */
+  color: var(--hue-ink);
   padding: 7px 13px;
   font-size: 0.8rem;
   font-weight: 550;
-  box-shadow: var(--shadow-sm);
   transition: filter 0.15s;
 }
 .addImgBtn:hover { filter: brightness(1.06); }
@@ -663,7 +687,12 @@
   opacity: 0;
   transition: opacity 0.12s;
 }
-.imgCell:hover .imgDel { opacity: 1; }
+.imgCell:hover .imgDel,
+.imgDel:focus-visible { opacity: 1; }
+/* Хүрэлтийн төхөөрөмжид hover байхгүй — устгах товч үргэлж ил. */
+@media (hover: none) {
+  .imgDel { opacity: 1; }
+}
 
 /* ══════════════════════════════════════════════════════════
    «Гүйцэтгэл шинэ» — Багц 3.2 (9F_publish) хуудасны бүрэн хуулбар.
@@ -687,8 +716,8 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  /* Царцсан блокоос гүйдэг хэсгийг тусгаарлах сүүдэр. */
-  box-shadow: 2px 0 4px -2px rgb(16 20 24 / 0.18);
+  /* Царцсан блокоос гүйдэг хэсгийг тусгаарлах hairline (envhub: сүүдэргүй). */
+  box-shadow: inset -1px 0 0 var(--line-strong);
 }
 .b32 .c-w { min-width: var(--w-w); width: var(--w-w); max-width: var(--w-w); }
 .b32 .c-now { min-width: var(--w-now); width: var(--w-now); max-width: var(--w-now); }
@@ -709,6 +738,8 @@
    дээд ирмэгт наалдаж бие бие рүүгээ дарагдана. Тиймээс мөрийн өндрийг ТОГТМОЛ
    болгож, шилжилтийг нь нийлбэрээр нь өгөв. */
 .b32 { --h1: 30px; --h2: 22px; --h3: 22px; }
+/* 4-р мөр — блокийн нэр 60 баганад хоёр мөр болж хуваагддаг (main-ы 40px). */
+.b32 thead tr:nth-child(4) th { height: 40px; }
 .b32 thead tr:nth-child(1) th { height: var(--h1); top: 0; }
 .b32 thead tr:nth-child(2) th { height: var(--h2); top: var(--h1); }
 .b32 thead tr:nth-child(3) th { height: var(--h3); top: calc(var(--h1) + var(--h2)); }
@@ -742,30 +773,78 @@
   vertical-align: middle;
   text-align: center;
 }
+/* ⚠️ Өргөний ангиллууд (`.c-vol`, `.c-money`, `.c-w`…) нь баруун тийш
+   эгнүүлдэг бөгөөд тэдгээрийн жинлэлт (0,2,0) нь дээрх `.b32 thead th`
+   (0,1,2)-оос ХҮЧТЭЙ тул ТОЛГОЙ дээр ч ноёрхож байв. `[class]` нэмснээр
+   жинлэлт (0,2,1) болж, зөвхөн ТОЛГОЙН текст голлоно — мөрийн нүднүүд
+   баруун эгнээндээ хэвээр (тоо баганаараа эгнэх нь уншихад чухал). */
+.b32 thead th[class] { text-align: center; }
 
-/* ── Хоёр табын хүрээ (Хүснэгт | Дүгнэлт) ── */
+/* ── Баганын crosshair (FillNew) — React state биш, O(1) overlay ──
+   Хүснэгтийг position:relative ороолтод хийж, hover-т орсон гүйцэтгэлийн
+   баганын дээгүүр тунгалаг давхаргыг imperative байрлуулна: нүд бүрийн
+   mouseenter-ээр state солибол 80k нүд дахин зурагддаг байв. */
+.tableWrap {
+  position: relative;
+  width: max-content;
+  min-width: 100%;
+}
+.colHl {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: none;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--hue) 12%, transparent);
+  /* Царцсан багана/толгой (z-index 2..5)-ийн ДООР, энгийн нүдний дээр. */
+  z-index: 1;
+}
+
+/* ── Порталын босоо хүрээ (толгой + FillNew). Таб 2026-08-18-нд хасагдсан
+   тул .tabBar/.tab/.tabActive классууд мөн устав. ── */
 .tabs {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  /* Зай нь FillNew-гийн .wrap padding-аас ирнэ */
+  gap: 0;
+  /* ⚠️ Хөндлөн зурвасыг дэлгэцийн доод ирмэгт тогтоох ГИНЖ:
+     `.suit` (grid 1fr) → `.tabs` → `.wrap` → `.scroll`. Гинжний аль нэг нь
+     өндөргүй бол «auto» болж тасарна — тэгвэл `.scroll` агуулгынхаа өндрөөр
+     сунаж, зурвас нь хуудасны ёроолд буцаад унана. */
+  height: 100%;
+  min-height: 0;
 }
-.tabBar {
+
+/* ── Өгөгдөл оруулах порталын толгой (таб хасагдсаны оронд) ── */
+.portalHead {
   display: flex;
-  gap: 4px;
-  border-bottom: 1px solid var(--line);
+  align-items: center;
+  gap: 12px;
+  flex: none;
+  /* .wrap-ийн padding-тай (18px 24px) эгнэнэ — карт ирмэгт наалдахгүй */
+  margin: 18px 24px 0;
+  padding: 10px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
 }
-.tab {
-  margin-bottom: -1px;
-  border-bottom: 2px solid transparent;
-  padding: 9px 16px;
-  font-size: 0.85rem;
-  font-weight: 550;
-  color: var(--ink-3);
-  transition: color 0.15s, border-color 0.15s;
-}
-.tab:hover { color: var(--ink); }
-.tabActive {
-  border-bottom-color: var(--hue);
+.portalIcon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--hue) 14%, transparent);
   color: var(--hue);
-  font-weight: 650;
 }
+.portalText { min-width: 0; }
+.portalTitle {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink);
+}
+.portalDesc { margin: 3px 0 0; font-size: 11.5px; line-height: 1.45; color: var(--ink-3); }

@@ -31,7 +31,7 @@ export function LayerSwatch({ d, hue: hueProp }: { d: LayerDef; hue?: string }) 
   // ⚠️ `MAP_HUE_OVERRIDES`-т орсон давхаргад зураг нь снапшотын өнгийг d.hue-ээр
   //    орлуулж зурдаг тул swatch мөн d.hue — эс бөгөөс каталог зурагтайгаа зөрнө.
   const hue = hueProp
-    ?? (MAP_HUE_OVERRIDES.has(d.id) ? d.hue : webmapStyleOf(layerUrl(d))?.color)
+    ?? (MAP_HUE_OVERRIDES.has(d.id) ? d.hue : webmapStyleOf(d.styleUrl ?? layerUrl(d))?.color)
     ?? d.hue;
   if (d.geom === 'line') {
     const pattern = DASH_PATTERN[d.dash ?? 'solid'];

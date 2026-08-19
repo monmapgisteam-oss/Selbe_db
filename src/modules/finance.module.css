@@ -1,6 +1,13 @@
 /* ═══════════════════════════════════════════════════════════
-   САНХҮҮЖИЛТ — Cashflow төлөвлөгөө: комбо график голтой.
-   Багана = сарын авах дүн ₮ · шугам = өссөн гүйцэтгэлийн хувь %.
+   САНХҮҮЖИЛТ — envhub дизайн хэл (2026-08-18).
+   Гадаргуу: хуудас --bg · карт --surface · дотогш --surface-2.
+   Гүн = 1px hairline + давхарга. Картад сүүдэр, градиент, glow ОГТ БАЙХГҮЙ;
+   box-shadow зөвхөн ЖИНХЭНЭ хөвөгч зүйлд (tooltip → --shadow-lg).
+   Өнгө = утга: гурван цуваа cat(2)/cat(0)/cat(1) слотоо tsx-ээс inline авна,
+   төлөв (хоцрогдол) нь --bad/--warn. Бусад бүх бэх --ink шатлал.
+
+   ⚠️ «Барилгын цогц хяналт» (Tsogts.tsx) энэ файлаас `lagBadge/lagRed/lagYellow`
+   болон ComboChart-ын бүх классыг хэрэглэдэг — устгахаас өмнө түүнийг шалга.
    ═══════════════════════════════════════════════════════════ */
 
 .frame {
@@ -8,349 +15,196 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 14px 18px;
+  /* envhub-ийн нэгдсэн зай — gap-2.5 (10px) */
+  gap: 10px;
+  padding: 10px;
   background: var(--bg);
+  /* Аюулгүйн сүлжээ: хэт нам дэлгэцэд хуудас босоогоор гүйнэ; ердийн үед
+     хүснэгт бүр КАРТЫНХАА дотор гүйдэг тул энд гүйлт үүсэхгүй. */
   overflow-y: auto;
 }
 
-/* ── Хуудасны толгой ── */
+/* ── Хуудасны толгой — eyebrow шошго + нэг мөр тайлбар ── */
 .pageHd {
   flex: none;
   display: flex;
-  align-items: flex-end;
+  align-items: baseline;
   justify-content: space-between;
   gap: 16px;
   flex-wrap: wrap;
+  padding: 2px 2px 0;
 }
-.pageHd h2 { font-size: 1rem; font-weight: 700; color: var(--ink); }
-.pageHd p { margin-top: 3px; font-size: 0.72rem; color: var(--ink-3); line-height: 1.45; }
-
-/* ── Төрлийн бүлэг ── */
-.group {
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.groupHd {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 2px 6px;
-  border-bottom: 2px solid color-mix(in srgb, var(--hue) 35%, var(--line));
-}
-.groupHd h2 {
-  font-size: 0.84rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  color: var(--ink);
-}
-.groupHd span {
-  padding: 1px 9px;
-  border-radius: 99px;
-  font-size: 0.68rem;
-  font-weight: 650;
-  color: var(--ink-3);
-  background: var(--surface);
-  border: 1px solid var(--line);
-}
-
-/* ── Багц тус бүрийн график — 2 баганад (нарийн дэлгэцэд 1) ── */
-.grid {
-  flex: none;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-@media (max-width: 1180px) {
-  .grid { grid-template-columns: 1fr; }
-}
-
-.subContractor { font-size: 0.68rem !important; color: var(--ink-3); }
-
-/* ── Хоцрогдлын нэгдсэн alert зурвас ── */
-.alertStrip {
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 12px 16px;
-  border: 1px solid color-mix(in srgb, #e11d48 40%, var(--line));
-  border-left: 4px solid #e11d48;
-  border-radius: 12px;
-  background: color-mix(in srgb, #e11d48 6%, var(--surface));
-}
-.alertHd { font-size: 0.8rem; font-weight: 700; color: var(--ink); }
-.alertList { display: flex; flex-wrap: wrap; gap: 8px; }
-.alertItem {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 12px;
-  border-radius: 99px;
-  font-size: 0.74rem;
+.pageHd h2 {
+  font-size: 11px;
+  line-height: 1.3;
   font-weight: 600;
-  cursor: pointer;
-  border: 1px solid var(--line);
-  background: var(--surface);
-  color: var(--ink);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--ink-3);
 }
-.alertItem b { font-variant-numeric: tabular-nums; }
-.alertItem:hover { filter: brightness(1.12); }
-.alertRed { border-color: color-mix(in srgb, #e11d48 55%, var(--line)); }
-.alertRed b { color: #e11d48; }
-.alertYellow { border-color: color-mix(in srgb, #f59e0b 55%, var(--line)); }
-.alertYellow b { color: #f59e0b; }
+.pageHd p { margin-top: 2px; font-size: 11.5px; color: var(--ink-3); line-height: 1.45; }
 
-/* ── Хоцрогдолтой панел — ТОД улаанаар анивчина ── */
-@keyframes lagPulseRed {
-  0%, 100% {
-    border-color: #e11d48;
-    box-shadow: 0 0 0 3px rgb(225 29 72 / 0.55), 0 0 26px 8px rgb(225 29 72 / 0.30);
-    background: color-mix(in srgb, #e11d48 10%, var(--surface));
-  }
-  50% {
-    border-color: color-mix(in srgb, #e11d48 25%, var(--line));
-    box-shadow: 0 0 0 0 rgb(225 29 72 / 0);
-    background: var(--surface);
-  }
-}
-@keyframes lagPulseYellow {
-  0%, 100% {
-    border-color: #f59e0b;
-    box-shadow: 0 0 0 2px rgb(245 158 11 / 0.45), 0 0 18px 5px rgb(245 158 11 / 0.22);
-    background: color-mix(in srgb, #f59e0b 7%, var(--surface));
-  }
-  50% {
-    border-color: color-mix(in srgb, #f59e0b 25%, var(--line));
-    box-shadow: 0 0 0 0 rgb(245 158 11 / 0);
-    background: var(--surface);
-  }
-}
-.panelLagRed {
-  border-color: #e11d48;
-  animation: lagPulseRed 1s ease-in-out infinite;
-}
-.panelLagYellow {
-  border-color: color-mix(in srgb, #f59e0b 60%, var(--line));
-  animation: lagPulseYellow 1.6s ease-in-out infinite;
-}
-
-/* Хоцрогдол хэмжсэн сарын БИЕТ багана — ӨӨРИЙН өнгөөрөө (var(--glow)) ТОД
-   пульсэлнэ: гэрэлтэлт (drop-shadow) томроод багасна, тод судал ургаж хатна,
-   бага зэрэг opacity савлана. Өнгө хувирахгүй тул легендтэй зөрчилдөхгүй;
-   улаан/шар зэрэглэлийг зөвхөн ХУРДААР ялгана (улаан хурдан, шар удаан). */
-@keyframes barPulse {
-  0%, 100% {
-    opacity: 1;
-    stroke-width: 0.5;
-    filter: drop-shadow(0 0 1px var(--glow));
-  }
-  50% {
-    opacity: 0.6;
-    stroke-width: 3.5;
-    filter: drop-shadow(0 0 10px var(--glow)) drop-shadow(0 0 4px var(--glow));
-  }
-}
-.barBlinkRed {
-  stroke: var(--glow);
-  animation: barPulse 0.75s ease-in-out infinite;
-}
-.barBlinkYellow {
-  stroke: var(--glow);
-  animation: barPulse 1.25s ease-in-out infinite;
-}
-
-/* Хөдөлгөөн мэдрэг хэрэглэгчид — анивчилтгүй, тогтмол өнгөт хүрээ/багана */
-@media (prefers-reduced-motion: reduce) {
-  .panelLagRed, .panelLagYellow, .barBlinkRed, .barBlinkYellow { animation: none; }
-}
-
-/* Панелийн толгойн badge-ууд босоо баганад */
-.badges {
-  flex: none;
+/* ── Бүртгэлийн карт (Cashflow · IPC) — envhub Box ──
+   Хоёр карт хуудасны өндрийг хуваан эзэлж, хүснэгт нь КАРТ ДОТРОО гүйнэ. */
+.reg {
+  flex: 1 1 0;
+  min-height: 240px;
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
-  gap: 6px;
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  overflow: hidden;
 }
+/* Картын толгой — envhub Head: 13.5px/600 гарчиг + hairline доод зураас,
+   баруун талд 11.5px тайлбар */
+.regHd {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.regHd h2 {
+  font-size: 13.5px;
+  line-height: 1.3;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink);
+  min-width: 0;
+}
+.regHd span { font-size: 11.5px; color: var(--ink-3); white-space: nowrap; }
+
+/* Картын бие — хоёр тэнхлэгээр ӨӨРӨӨ гүйнэ (толгой sticky энэ хүрээнд наалдана) */
+.tblWrap {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+/* ⚠️ border-collapse: separate — collapse үед sticky толгойн доод зураас
+   агуулгатайгаа хамт гүйж алга болдог; separate үед нүдэндээ наалдана. */
+.tbl {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.tbl thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  /* Дотогш давхарга — envhub surface-2 (өнгөт тинт БИШ) */
+  background: var(--surface-2);
+  color: var(--ink-3);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  text-align: left;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line);
+}
+.tbl td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-2);
+}
+.tbl tbody tr:last-child td { border-bottom: none; }
+.tbl tbody tr:hover td { background: var(--surface-2); }
+.cellNum { text-align: right; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+
+/* ── Хоцрогдлын статус pill (Tsogts-ын панелийн гарчигт) ──
+   Өнгө = УТГА: --bad/--warn токен. 999px нь жижиг pill badge тул зөвшөөрөгдөнө. */
 .lagBadge {
-  padding: 4px 12px;
-  border-radius: 99px;
-  font-size: 0.7rem;
-  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  border: 1px solid var(--line);
 }
 .lagRed {
-  color: #fff;
-  background: #e11d48;
+  color: var(--bad-ink);
+  background: color-mix(in oklab, var(--bad) 12%, var(--surface));
+  border-color: color-mix(in oklab, var(--bad) 40%, var(--line));
 }
 .lagYellow {
-  color: #1a1408;
-  background: #f59e0b;
+  color: var(--warn-ink);
+  background: color-mix(in oklab, var(--warn) 12%, var(--surface));
+  border-color: color-mix(in oklab, var(--warn) 40%, var(--line));
 }
 
-/* Толгойн «Олгогдох нийт санхүүжилт» — өмнө шилжүүлсэн + сарын хуваарь */
-.totBadge {
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 2px;
-  padding: 8px 14px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--surface-2);
-}
-.totBadge span {
-  font-size: 0.62rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-  color: var(--ink-3);
-}
-.totBadge b {
-  font-size: 0.95rem;
-  font-weight: 700;
-  color: #0891b2;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-/* Өмнө (2023–2025-09) шилжүүлсэн дүнгийн тэмдэглэгээ */
-.prevBadge {
-  flex: none;
-  align-self: flex-start;
-  padding: 4px 10px;
-  border-radius: 99px;
-  font-size: 0.66rem;
-  font-weight: 650;
-  color: var(--ink-2);
-  background: color-mix(in srgb, #f59e0b 10%, var(--surface-2));
-  border: 1px solid color-mix(in srgb, #f59e0b 35%, var(--line));
-  white-space: nowrap;
-}
-
-/* ── Панел (карт) ── */
-.panel {
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 14px 16px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--surface);
-}
-.panelHd {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  /* Бадж ЯМАГТ баруун талд — доош мөр дамжихгүй (жигд) */
-  flex-wrap: nowrap;
-}
-.panelHd > div:first-child { flex: 1; min-width: 0; }
-.panelHd h3 { font-size: 0.9rem; font-weight: 700; color: var(--ink); line-height: 1.3; }
-.panelHd p { margin-top: 3px; font-size: 0.72rem; color: var(--ink-3); line-height: 1.45; }
-
-/* Толгойн хоёр үзүүлэлт */
-.headStats { display: flex; gap: 10px; }
-.headStat {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 8px 14px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--surface-2);
-  min-width: 120px;
-}
-.headStat span { font-size: 0.64rem; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.02em; }
-.headStat b { font-size: 1.05rem; font-weight: 700; font-variant-numeric: tabular-nums; }
-
-/* Легенд */
-.legend { display: flex; gap: 18px; font-size: 0.74rem; color: var(--ink-2); }
-.legend span { display: inline-flex; align-items: center; gap: 7px; }
-.legend i { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
-.legend .legendBar { width: 11px; height: 11px; border-radius: 3px; opacity: 0.75; }
-
-/* ── Комбо график ── */
+/* ── Комбо график (ComboChart — Tsogts хэрэглэнэ) ── */
 .chartWrap { position: relative; width: 100%; }
 .comboSvg { width: 100%; display: block; cursor: crosshair; }
-.curveGrid { stroke: var(--line); stroke-width: 1; }
+.curveGrid { stroke: var(--chart-grid); stroke-width: 1; }
 .curveCursor { stroke: var(--ink-3); stroke-width: 1; stroke-dasharray: 3 3; }
-.axisX { fill: var(--ink-3); font-size: 11px; }
-.axisXPct { fill: #f59e0b; font-size: 11.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.barVal { fill: var(--ink-2); font-size: 10.5px; font-weight: 600; }
-.barValG { fill: #22c55e; font-size: 10.5px; font-weight: 700; }
-.barValP { fill: #a855f7; font-size: 10.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.axisX { fill: var(--ink-3); font-size: 11px; font-variant-numeric: tabular-nums; }
+/* Тэнхлэгийн % мөрүүд — цуваа ӨӨРИЙН слотын өнгийг tsx-ээс inline (fill) авна
+   (PLAN/PHYS хоёр мөр зэрэгцдэг тул identity хэрэгтэй); энд зөвхөн нөөц бэх. */
+.axisXPct { fill: var(--ink-3); font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; }
+/* Цэгийн ₮ шошго — төлөвлөгөө нь саарал бэхээр (байрлал нь цэг дээрээ),
+   олгосон (barValG) нь ACT цувааны слотыг tsx-ээс inline авна. */
+.barVal { fill: var(--ink-2); font-size: 10.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.barValG { fill: var(--ink-2); font-size: 10.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
 
-/* Tooltip */
+/* S-муруйн шугам, цэг */
+.sLine {
+  fill: none;
+  stroke-width: 2.4;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.sDot { stroke: var(--surface); stroke-width: 2; }
+.sAxisY {
+  fill: var(--ink-3);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Хоцрогдол хэмжсэн сарын БИЕТ цэг — glow-гүй, зөвхөн тунгалагийн лугшилт.
+   Улаан/шар зэргийг ХУРДААР ялгана (улаан хурдан, шар удаан) — өнгө нь цэгийн
+   fill дээрээ (--bad/--warn) хэвээр тул легендтэй зөрчилдөхгүй. */
+@keyframes lagPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.barBlinkRed {
+  stroke: var(--surface);
+  stroke-width: 1.5;
+  animation: lagPulse 0.75s ease-in-out infinite;
+}
+.barBlinkYellow {
+  stroke: var(--surface);
+  stroke-width: 1.5;
+  animation: lagPulse 1.25s ease-in-out infinite;
+}
+/* Хөдөлгөөн мэдрэг хэрэглэгчид — лугшилтгүй, тогтмол цэг */
+@media (prefers-reduced-motion: reduce) {
+  .barBlinkRed, .barBlinkYellow { animation: none; }
+}
+
+/* Tooltip — ЖИНХЭНЭ хөвөгч элемент тул сүүдэр энд Л зөвшөөрөгдөнө */
 .tip {
   position: absolute;
   top: 8px;
   z-index: 4;
   min-width: 160px;
   padding: 9px 11px;
-  border-radius: 8px;
+  border-radius: var(--r-sm);
   background: var(--surface);
   border: 1px solid var(--line);
-  box-shadow: 0 8px 24px rgb(0 0 0 / 0.14);
+  box-shadow: var(--shadow-lg);
   pointer-events: none;
 }
-.tipHd { font-size: 0.74rem; font-weight: 700; color: var(--ink); margin-bottom: 6px; }
-.tipRow { display: flex; align-items: center; gap: 7px; font-size: 0.72rem; color: var(--ink-2); line-height: 1.7; }
+.tipHd { font-size: 12px; font-weight: 600; color: var(--ink); margin-bottom: 6px; }
+.tipRow { display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--ink-2); line-height: 1.7; }
 .tipRow i { width: 9px; height: 9px; border-radius: 2px; flex: none; }
-.tipRow b { margin-left: auto; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
+.tipRow b { margin-left: auto; font-weight: 600; color: var(--ink); }
 .tipGap { margin-top: 3px; padding-top: 5px; border-top: 1px solid var(--line); }
-
-/* ── Дэлгэрэнгүй хүснэгт (сар хэвтээгээр) ── */
-.ledgerWrap { overflow-x: auto; }
-.ledger {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.74rem;
-}
-.ledger th {
-  padding: 7px 9px;
-  text-align: right;
-  font-size: 0.66rem;
-  font-weight: 650;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-  color: var(--ink-3);
-  border-bottom: 1px solid var(--line);
-  white-space: nowrap;
-}
-.ledger th:first-child { text-align: left; }
-.thMon { font-variant-numeric: tabular-nums; }
-.ledger td {
-  padding: 7px 9px;
-  border-bottom: 1px solid var(--line);
-  color: var(--ink-2);
-  white-space: nowrap;
-}
-.ledger tbody tr:last-child td { border-bottom: none; }
-.ledger tbody tr:hover { background: color-mix(in srgb, var(--hue) 4%, transparent); }
-.tdDate { font-weight: 650; color: var(--ink); }
-.tdNum { text-align: right; font-variant-numeric: tabular-nums; }
-.tdCum { font-weight: 650; color: var(--ink); }
-
-/* ── Гэрээ сонгох ── */
-.contractGrid { max-height: 420px; overflow-y: auto; }
-.backBtn {
-  flex: none;
-  padding: 7px 14px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface-2);
-  color: var(--ink-2);
-  font-size: 0.74rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-.backBtn:hover { background: color-mix(in srgb, var(--hue) 8%, var(--surface-2)); color: var(--ink); }

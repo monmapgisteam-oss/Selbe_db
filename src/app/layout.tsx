@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next';
-import { Roboto, Roboto_Mono } from 'next/font/google';
+import { Inter } from 'next/font/google';
 // ⚠️ THEME_KEY-г 'use client' модулиас (theme.tsx) импортлохгүй: сервер компонентэд
 //    тэр нь client reference proxy болж, доорх THEME_INIT-д функцын эх код шингэн
 //    inline script эвдэрдэг байв. Заавал энгийн модулиас (themeKey.ts).
@@ -12,10 +12,12 @@ import './globals.css';
 // стайл ирж анивчна (FOUC), код засахад CSS алга болно. Эдгээрийг root layout
 // (сервер, prerender) дээр урьдчилан импортлон `<head>`-д байнга байлгана.
 // ponytail: SPA бүх модулио ачаалдаг тул CSS-ийг тусад нь хуваах утгагүй.
+// ⚠️ 2026-08-17: `survey.module.css`-ийг ЖАГСААЛТААС хасав — түүний классуудыг
+//    ямар ч компонент импортлодоггүй (зөвхөн энд байсан) тул критик замд дэмий
+//    ачаа байлаа. Файл нь өөрөө хэвээр.
 import './shell.module.css';
 import '@/modules/overview.module.css';
 import '@/modules/dashboard.module.css';
-import '@/modules/survey.module.css';
 import '@/modules/analysis/suitability.module.css';
 import '@/modules/sheet/sheet.module.css';
 import '@/modules/finance.module.css';
@@ -30,20 +32,18 @@ import '@/components/ui.module.css';
 import '@/components/catalog.module.css';
 import '@/components/tree.module.css';
 
-// ⚠️ Төслийн ЖИГД үндсэн фонт — Roboto (Inter-ийг орлов). Roboto-д 600 жин
-//    БАЙХГҮЙ тул CSS дэх font-weight:600/650 нь автоматаар хамгийн ойрын 700-д
-//    буудаг (CSS фонт тааруулалт) — тод текст арай зузаан харагдана.
-const roboto = Roboto({
+/**
+ * ⚠️ 2026-08-17: ГАНЦХАН гэр бүл — INTER (envhub «Environment» порталын дизайн
+ * хэлийг бүрэн дуурайв). Тэнд хоёр дахь фонт хориотой: тоон утга ч, гарчиг ч,
+ * тайлбар ч бүгд Inter, зөвхөн хэмжээ/жин/tracking-ээр ялгарна. Тоон
+ * зэрэгцүүлэлтийг mono фонт БИШ `.num` (tabular-nums) хийнэ.
+ *
+ * `--mono`, `--cond` токенууд `globals.css`-д мөн Inter руу заадаг болсон тул
+ * тэдгээрийг хэрэглэдэг бүх CSS өөрчлөлтгүй ажиллана.
+ */
+const inter = Inter({
   subsets: ['latin', 'cyrillic'],
-  weight: ['400', '500', '700'],
   variable: '--font-sans',
-  display: 'swap',
-});
-// Тоон утгын зэрэгцүүлэлт (tabular) — мөн Roboto гэр бүлээс (жигд төрх)
-const robotoMono = Roboto_Mono({
-  subsets: ['latin', 'cyrillic'],
-  weight: ['400', '500'],
-  variable: '--font-mono',
   display: 'swap',
 });
 
@@ -69,18 +69,24 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
-// Гэрэл асах анивчилтыг (FOUC) зайлуулах — React ачаалахаас өмнө горимоо тавина
+// Гэрэл асах анивчилтыг (FOUC) зайлуулах — React ачаалахаас өмнө горимоо тавина.
+// ⚠️ 2026-08-17: envhub шиг АНХДАГЧ нь DARK (урьд нь системийн тохиргоог дагадаг
+// байв). Хэрэглэгчийн сонгосон горим (localStorage) ямагт давамгайлна.
+// ⚠️ 2026-08-18: Хадгалагдсан утгыг ШАЛГАНА. Урьд нь localStorage-ийн юуг ч
+// шууд `data-theme`-д тавьдаг байв — хуучирсан/эвдэрсэн утга (жиш. 'auto',
+// хагас бичигдсэн мөр) нь `[data-theme='dark']`-т ч, `[data-theme='light']`-д ч
+// тохирохгүй тул каскад `:root` дээр унаж, DARK анхдагчийн оронд ЦАЙВАР горим
+// нээгддэг байлаа.
 const THEME_INIT = `
 try {
-  var t = localStorage.getItem('${THEME_KEY}')
-    || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-  document.documentElement.dataset.theme = t;
+  var t = localStorage.getItem('${THEME_KEY}');
+  document.documentElement.dataset.theme = t === 'light' ? 'light' : 'dark';
 } catch (e) {}
 `;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="mn" className={`${roboto.variable} ${robotoMono.variable}`} suppressHydrationWarning>
+    <html lang="mn" className={inter.variable} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT }} />
       </head>

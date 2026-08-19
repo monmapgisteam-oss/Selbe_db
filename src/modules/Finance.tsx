@@ -1,17 +1,18 @@
 'use client';
 
-import { useMemo, useState, type MouseEvent, type CSSProperties } from 'react';
+import { useState, type MouseEvent } from 'react';
 import { Data, Empty } from '@/components/ui';
 import { useAsync } from '@/lib/useAsync';
 import { queryFeatures } from '@/lib/query';
-import { CASHFLOW2, IPC_LOG, TASK_SHEET, bagtsKey } from '@/lib/services';
-import { mntShort, num, text } from '@/lib/format';
+import { CASHFLOW2, IPC_LOG, TASK_SHEET, bagtsKey, pkgKeyOf } from '@/lib/services';
+import { finFieldLabel } from '@/lib/financeFieldLabels';
+import { mntShort, num, text, cat } from '@/lib/format';
 import f from './finance.module.css';
 
 /* ═══════════════════════════════════════════════════════════
    САНХҮҮЖИЛТ — CASHFLOW (төлөвлөгөө) + IPC (олгосон акт).
    МӨР (гэрээ/багц) БҮРД тусдаа график: сар бүр хэдэн хувьд гүйцэтгэж,
-   хэдэн төгрөг ТӨЛӨВЛӨСӨН (цэнхэр) ба IPC-ээр хэдийг ОЛГОСОН (ногоон).
+   хэдэн төгрөг ТӨЛӨВЛӨСӨН (PLAN слот) ба IPC-ээр хэдийг ОЛГОСОН (ACT слот).
    ═══════════════════════════════════════════════════════════ */
 
 /** Утгыг тоо руу — ArcGIS Double эсвэл "0" мэт мөр ирдэг */
@@ -33,19 +34,36 @@ function ym(v: unknown): string | null {
   return m ? `${m[1]}-${m[2].padStart(2, '0')}` : null;
 }
 
-/** Багцын түлхүүр: том үсэг + зөвхөн үсэг/тоо/цэг — «БАГЦ-4.2» = «Багц 4.2» */
-const pkgKey = (v: unknown) =>
-  String(v ?? '')
-    .toUpperCase()
-    .replace(/[^А-ЯЁҮӨA-Z0-9.]/g, '');
+/**
+ * ⚠️ 2026-08-18: багцын түлхүүр нь `bagtsKey` (services.ts) — ЛОКАЛ `pkgKey`
+ * хасагдав. Тэр нь цэгийг үлдээж, зурааныг хаядаг байсан тул «БАГЦ-3.1»
+ * (/107 IPC) ба «Багц 3-1» (/106 Cashflow) хоёр өөр түлхүүр болж, тухайн
+ * гэрээний «Өссөн олгосон» багана чимээгүй алга болдог байв. `phys`/`PhysMap`
+ * аль хэдийн `bagtsKey` хэрэглэдэг байсан — одоо гурвуулаа НЭГ дүрэмтэй.
+ */
 
 /** Жинхэнэ акт мөн үү — "Contract Price" псевдо-мөр, хоосон мөрийг хасна */
 const isRealAct = (no: unknown) => /^(IPC|APC|АРС)[-\s]?\d+/i.test(String(no ?? '').trim());
 
-const PLAN = '#0891b2'; // төлөвлөсөн (багана)
-const ACT = '#22c55e'; // олгосон IPC (багана)
-const CUM = '#f59e0b'; // санхүүжилтийн өссөн хувь (шошго)
-const PHYS = '#a855f7'; // биет гүйцэтгэлийн хувь (шошго)
+/**
+ * S-муруйн гурван цуваа — баталгаажсан палитрын слотууд.
+ *
+ * ⚠️ 2026-08-17: Урьд нь тогтмол hex байсан (`#0891b2 / #22c55e / #a855f7`) —
+ * хоёр асуудалтай: горим дагадаггүй, мөн `#22c55e`/`#a855f7` нь цагаан дээр
+ * 2.0–3.4:1 буюу хэмжээст тэмдэгт болоход сул.
+ *
+ * ⚠️ 2026-08-18: слот 1/4/7 → 1/2/3. Гурван цуваа нь графикт ЗЭРЭГЦЭЭ орох тул
+ * аль ч хоёр нь зэрэгцэж болно — палитрын эхний ГУРВАН слот нь CVD-ийн
+ * шалгуурт хамгийн сайн салгагдсан дараалал (усан цэнхэр · улбар шар · индиго).
+ * Хуучин 1/4/7 нь усан цэнхэр↔ногоонийг зэрэгцүүлж, өнгө ялгах бэрхшээлтэй
+ * хэрэглэгчид төлөвлөгөө/санхүүжилт хоёрыг ялгахад хүндрэлтэй байв.
+ * ⚠️ Эдгээр нь `var(--cN)` буцаадаг тул ЗӨВХӨН CSS контекстэд ажиллана — энэ
+ * файлын SVG будаг бүхэн `style={{ fill/stroke }}` руу шилжсэн (presentation
+ * ШИНЖ дотор `var()` задардаггүй).
+ */
+const PLAN = cat(2); // төлөвлөгөөт өссөн % — индиго (суурь лавлагаа)
+const ACT = cat(0); // олгосон санхүүжилтийн өссөн % — усан цэнхэр (аппын акцент)
+const PHYS = cat(1); // биет гүйцэтгэлийн % — улбар шар (муруй, хоёуланаас тодрох)
 
 type Row = Record<string, unknown>;
 
@@ -65,12 +83,17 @@ export type GivenMap = Map<string, Map<string, number>>;
 /** Багц бүрийн биет гүйцэтгэл: сар → % (блокуудын дундаж, тухайн сарын эцсээр) */
 export type PhysMap = Map<string, Map<string, number>>;
 
-export type FinData = { contracts: Row[]; given: GivenMap; phys: PhysMap };
+/**
+ * `physCnt` — багц бүрийн сар тутмын БЛОКИЙН ТОО (phys дундаж хэдэн блокоос гарсан).
+ * Төслийн нэгтгэсэн биет гүйцэтгэлийг багцуудаар блок-жигнэхэд (давхар дунджийг
+ * зайлсхийхэд) ашиглана — `phys`-ийн утгыг ХӨНДӨХГҮЙ, зэрэгцээ мэдээлэл.
+ */
+export type FinData = { contracts: Row[]; given: GivenMap; phys: PhysMap; physCnt: PhysMap };
 
 // ═══════════════════════════════════════════════════════════
-//  AREA ГРАФИК (shadcn gradient загвар) — нэг цуваа: сарын авах дүн ₮.
-//  Гөлгөр natural муруй · градиент дүүргэлт · hover tooltip.
-//  X тэнхлэгт он сар (товчлохгүй) + хүрэх өссөн хувь шараар.
+//  КОМБО ГРАФИК (envhub хэлээр) — градиентгүй, glow-гүй хавтгай дүрслэл.
+//  Багана = өссөн олгосон ₮ (ACT) · шугам = төлөвлөгөө (PLAN) ба биет (PHYS).
+//  X тэнхлэгт он сар + өссөн хувиуд цуваа өөрийн слотын өнгөөр.
 // ═══════════════════════════════════════════════════════════
 
 export function ComboChart({
@@ -86,32 +109,53 @@ export function ComboChart({
   lagLvl?: 'red' | 'yellow' | null;
 }) {
   const [hi, setHi] = useState<number | null>(null);
-  // Нэг баганат бүтэн өргөнд ойролцоо — 12 сар × ~133px слот: бүтэн дүн давхцахгүй
   const W = 1600;
   const H = height;
-  const padT = 32; // дээр — сөөлжилсөн дүнгийн шошгонд зай
-  const padB = 46; // доор — он сар + санхүү хувь (2 мөр)
+  const padL = 76; // зүүн — Y тэнхлэгийн ₮ шошго (зүүн ирмэгээс эхэлнэ)
+  const padR = 40; // баруун — сүүлийн цэгийн шошго
+  const padT = 22;
+  const padB = 58; // доор — он сар + төлөвлөгөөт % + биет % (3 мөр)
   const N = items.length;
-  const maxA = Math.max(1, ...items.map((i) => Math.max(i.amount, i.given)));
-  const slot = W / N;
-  const hasGiven = items.some((i) => i.given > 0);
-  const hasPhys = items.some((i) => i.phys > 0);
-  // Олон багана (shadcn Bar Chart Multiple): төлөвлөгөө · олгосон · биет
-  const series = 1 + (hasGiven ? 1 : 0) + (hasPhys ? 1 : 0);
-  const gap = series > 1 ? 3 : 0;
-  const barW = Math.min(series > 1 ? 22 : 48, (slot * 0.66 - gap * (series - 1)) / series);
-  const cx = (i: number) => slot * i + slot / 2;
-  const groupW = series * barW + (series - 1) * gap;
-  /** k дэх цувааны баганын зүүн х (k: 0=план, 1=олгосон, 2=биет) */
-  const barX = (i: number, k: number) => cx(i) - groupW / 2 + k * (barW + gap);
+  const plotW = W - padL - padR;
   const plotH = H - padT - padB;
-  const baseY = padT + plotH;
+  const xFor = (i: number) => padL + (N <= 1 ? plotW / 2 : (i / (N - 1)) * plotW);
+
+  // ── Өссөн S-муруйн өгөгдөл — ₮ ТЭНХЛЭГ (нэг тэнхлэг): төлөвлөгөө · санхүүжилт · биет.
+  //    Мөнгө нь ₮-ээр (хуучинтай адил утга); биет нь ₮ өндөртэй ч %-аар шошголно. ──
+  const totalPlan = Math.max(1, ...items.map((i) => i.amountCum));
+  const yMax = totalPlan;
+  const yFor = (v: number) => padT + (1 - Math.max(0, Math.min(yMax, v)) / yMax) * plotH;
+  let gsum = 0;
+  const rows = items.map((it) => {
+    gsum += it.given;
+    return {
+      label: it.label,
+      planned: it.amountCum, // өссөн төлөвлөгөө ₮
+      financing: gsum, // өссөн олгосон санхүүжилт ₮
+      physical: (it.phys / 100) * totalPlan, // биет гүйцэтгэлийн үнэ цэнэ ₮ (өндөр тогтооно)
+      physPct: it.phys, // шошго/тултипт харуулах биет %
+      givenCum: gsum,
+      it,
+    };
+  });
+  // Бодит муруйнууд (санхүүжилт, биет) зөвхөн ОДОО хүртэл; төлөвлөгөө л дуустал хүрнэ
+  let lastPhys = -1;
+  rows.forEach((r, i) => { if (r.physPct > 0) lastPhys = i; });
+
+  // Шугам зурах цуваа — ТӨЛӨВЛӨГӨӨ + БИЕТ (санхүүжилт нь БАГАНА, доор тусад нь).
+  const series: { key: 'planned' | 'physical'; color: string; end: number }[] = [
+    { key: 'planned', color: PLAN, end: N - 1 },
+    { key: 'physical', color: PHYS, end: lastPhys },
+  ];
 
   const onMove = (e: MouseEvent<HTMLDivElement>) => {
     const r = e.currentTarget.getBoundingClientRect();
-    setHi(Math.max(0, Math.min(N - 1, Math.floor(((e.clientX - r.left) / r.width) * N))));
+    setHi(Math.max(0, Math.min(N - 1, Math.round(((e.clientX - r.left) / r.width) * (N - 1)))));
   };
-  const pt = hi != null ? items[hi] : null;
+  const pt = hi != null ? rows[hi] : null;
+  const showLabel = (i: number) => N <= 15 || i % 2 === 0 || i === N - 1;
+  // Ирмэг дээрх шошго халхлагдахгүй: эхнийх баруун тийш, сүүлчийнх зүүн тийш
+  const anchorFor = (i: number): 'start' | 'middle' | 'end' => (i === 0 ? 'start' : i === N - 1 ? 'end' : 'middle');
 
   return (
     <div className={f.chartWrap} onMouseMove={onMove} onMouseLeave={() => setHi(null)}>
@@ -121,126 +165,183 @@ export function ComboChart({
         viewBox={`0 0 ${W} ${H}`}
         preserveAspectRatio="none"
         role="img"
-        aria-label="Сарын санхүүжилтийн төлөвлөгөө: авах дүн ба хүрэх хувь"
+        aria-label="Өссөн явцын S-муруй: төлөвлөгөө, санхүүжилт, биет гүйцэтгэл (%)"
       >
-        {/* CartesianGrid vertical={false} — зөвхөн хэвтээ тор */}
+        {/* Хэвтээ тор + Y тэнхлэгийн ₮ (0 → нийт төлөвлөгөө) */}
         {[0, 0.25, 0.5, 0.75, 1].map((t) => {
-          const gy = padT + t * plotH;
-          return <line key={t} x1={0} x2={W} y1={gy} y2={gy} className={f.curveGrid} />;
+          const val = t * yMax;
+          const gy = yFor(val);
+          return (
+            <g key={t}>
+              <line x1={padL} x2={W - padR} y1={gy} y2={gy} className={f.curveGrid} />
+              {/* Зүүн ирмэгээс эхэлж баруун тийш — хэзээ ч халхлагдахгүй */}
+              <text x={4} y={gy - 4} className={f.sAxisY} textAnchor="start">
+                {t === 0 ? '0' : mntShort(val).replace(' ₮', '')}
+              </text>
+            </g>
+          );
         })}
 
-        {/* Bar radius={4} — shadcn Bar Chart Multiple: төлөвлөгөө · олгосон · биет */}
-        {items.map((it, i) => {
-          const h = it.amount > 0 ? Math.max(3, (it.amount / maxA) * plotH) : 0;
-          const hg = it.given > 0 ? Math.max(3, (it.given / maxA) * plotH) : 0;
-          // Биет гүйцэтгэл ӨӨРИЙН 0–100% масштабтай: 100% = графикийн бүтэн өндөр
-          const hp = it.phys > 0 ? Math.max(3, (Math.min(100, it.phys) / 100) * plotH) : 0;
-          const kGiven = 1;
-          const kPhys = hasGiven ? 2 : 1;
-          // Бүдгэрүүлэлт: hover байвал түүнээс бусад; hover-гүй ч ХОЦРОГДЛЫН сар
-          // байвал тэр сараас бусад БҮХ сар бүдгэрч, хоцрогдсон сар тодорно.
-          const lagFocus = hi == null && lagMonth != null && lagLvl != null;
-          // Хоцрогдсон сар — тод (opacity 1), бусад сар бүдэг. Hover давамгайлна.
-          const gOpacity = hi != null ? (hi === i ? 1 : 0.5) : lagFocus ? (lagMonth === it.label ? 1 : 0.28) : 1;
-          // Шошгоны байрлал: нэг слот доторх шошгууд ойртвол дээш нь түлхэж салгана
-          const planLblY = baseY - h - (i % 2 === 0 ? 6 : 18);
-          let givenLblY = baseY - hg - (i % 2 === 0 ? 18 : 6);
-          if (it.amount > 0 && it.given > 0 && Math.abs(planLblY - givenLblY) < 12) {
-            givenLblY = Math.min(planLblY, givenLblY) - 12;
-          }
-          let physLblY = baseY - hp - 6;
-          const taken = [it.amount > 0 ? planLblY : null, it.given > 0 ? givenLblY : null].filter(
-            (y): y is number => y != null,
-          );
-          while (taken.some((y) => Math.abs(y - physLblY) < 12)) physLblY -= 12;
+        {/* Хоцрогдсон сарын тэмдэг — босоо шугам + биет цэг дээр ЛУГШДАГ статус
+            цэг (glow-гүй; өнгө нь --bad/--warn, зэрэг нь лугшилтын хурдаар) */}
+        {lagMonth != null && lagLvl != null && (() => {
+          const li = rows.findIndex((r) => r.label === lagMonth);
+          if (li < 0) return null;
+          const color = lagLvl === 'red' ? 'var(--bad)' : 'var(--warn)';
+          const cx = xFor(li);
           return (
-            <g key={it.label} opacity={gOpacity}>
-              {it.amount > 0 && (
-                <>
-                  <rect x={barX(i, 0)} y={baseY - h} width={barW} height={h} rx={4} fill={PLAN} />
-                  {/* Төлөвлөсөн дүн БҮТНЭЭРЭЭ — сөөлжлөн */}
-                  <text
-                    x={barX(i, 0) + barW / 2}
-                    y={planLblY}
-                    className={f.barVal}
-                    textAnchor="middle"
-                  >
-                    {num(it.amount)}
-                  </text>
-                </>
+            <g>
+              <line
+                x1={cx} x2={cx} y1={padT} y2={padT + plotH}
+                stroke={color} strokeWidth={1.5} strokeDasharray="4 4" opacity={0.5}
+              />
+              {rows[li].physPct > 0 && (
+                <circle
+                  cx={cx} cy={yFor(rows[li].physical)} r={5} fill={color}
+                  className={lagLvl === 'red' ? f.barBlinkRed : f.barBlinkYellow}
+                  vectorEffect="non-scaling-stroke"
+                />
               )}
-              {it.given > 0 && (
-                <>
-                  <rect x={barX(i, kGiven)} y={baseY - hg} width={barW} height={hg} rx={4} fill={ACT} />
-                  {/* Олгосон дүн БҮТНЭЭРЭЭ — эсрэг сөөлжилтөөр (давхцахгүй) */}
-                  <text
-                    x={barX(i, kGiven) + barW / 2}
-                    y={givenLblY}
-                    className={f.barValG}
-                    textAnchor="middle"
-                  >
-                    {num(it.given)}
+            </g>
+          );
+        })()}
+
+        {/* САНХҮҮЖИЛТ (IPC) — ӨССӨН ОЛГОСОН ₮ БАГАНА (шугам БИШ) */}
+        {(() => {
+          const step = N > 1 ? plotW / (N - 1) : plotW;
+          const bw = Math.min(18, step * 0.5);
+          return rows.map((r, i) => {
+            if (r.givenCum <= 0) return null;
+            const y = yFor(r.givenCum);
+            const hgt = padT + plotH - y;
+            return (
+              <g key={`ipc-${i}`}>
+                <rect x={xFor(i) - bw / 2} y={y} width={bw} height={hgt} rx={2} opacity={0.82} style={{ fill: ACT }} />
+                {/* Баганын шошго — зөвхөн төлөвлөгөөний цэгээс ХАНГАЛТТАЙ доор бол
+                    (эс бөгөөс эхэн үед утга ойролцоо тул төлөвлөгөөнийхтэй давхцана).
+                    Өнгө нь ACT цувааныхаа слот — identity, статус биш. */}
+                {showLabel(i) && y - yFor(r.planned) > 14 && (
+                  <text x={xFor(i)} y={y - 4} className={f.barValG} style={{ fill: ACT }} textAnchor={anchorFor(i)}>
+                    {mntShort(r.givenCum).replace(' ₮', '')}
                   </text>
-                </>
-              )}
-              {it.phys > 0 && (
-                <>
-                  <rect
-                    x={barX(i, kPhys)}
-                    y={baseY - hp}
-                    width={barW}
-                    height={hp}
-                    rx={4}
-                    fill={PHYS}
-                    stroke={PHYS}
-                    style={{ ['--glow']: PHYS } as CSSProperties}
-                    className={
-                      lagMonth === it.label && lagLvl
-                        ? lagLvl === 'red'
-                          ? f.barBlinkRed
-                          : f.barBlinkYellow
-                        : undefined
-                    }
-                  />
-                  {/* Биет гүйцэтгэлийн хувь — баганынхаа дээр */}
-                  <text
-                    x={barX(i, kPhys) + barW / 2}
-                    y={physLblY}
-                    className={f.barValP}
-                    textAnchor="middle"
-                  >
-                    {it.phys.toFixed(1)}%
-                  </text>
-                </>
-              )}
-              {/* X тэнхлэг: он сар (товчлохгүй) + санхүү хувь шараар */}
-              <text x={cx(i)} y={H - 24} className={f.axisX} textAnchor="middle">{it.label}</text>
-              {it.cumPct > 0 && (
-                <text x={cx(i)} y={H - 7} className={f.axisXPct} textAnchor="middle">
-                  {it.cumPct.toFixed(1)}%
+                )}
+              </g>
+            );
+          });
+        })()}
+
+        {/* Шугам: төлөвлөгөө (PLAN — индиго) + биет (PHYS — улбар шар);
+            санхүүжилт нь багана тул энд алга */}
+        {series.map((sd) => {
+          if (sd.end < 1) return null;
+          const linePts = rows.slice(0, sd.end + 1).map((r, i) => ({ x: xFor(i), y: yFor(r[sd.key]) }));
+          return (
+            <path
+              key={sd.key}
+              d={smoothPath(linePts)}
+              className={f.sLine}
+              vectorEffect="non-scaling-stroke"
+              style={{ stroke: sd.color }}
+            />
+          );
+        })}
+
+        {/* ТӨЛӨВЛӨГӨӨ — цэг бүр дээр ТОЙРОГ + өссөн ₮ (сөөлжилсөн байрлал) */}
+        {rows.map((r, i) => {
+          if (r.planned <= 0) return null;
+          const x = xFor(i);
+          const y = yFor(r.planned);
+          return (
+            <g key={`pl-${i}`}>
+              <circle cx={x} cy={y} r={3.5} className={f.sDot} vectorEffect="non-scaling-stroke" style={{ fill: PLAN }} />
+              {showLabel(i) && (
+                <text x={x} y={y - (i % 2 === 0 ? 8 : 18)} className={f.barVal} textAnchor={anchorFor(i)}>
+                  {mntShort(r.planned).replace(' ₮', '')}
                 </text>
               )}
             </g>
           );
         })}
+
+        {/* БИЕТ ГҮЙЦЭТГЭЛ — цэг бүр дээр зөвхөн ТОЙРОГ (% нь доод тэнхлэгийн мөрөнд,
+            баганатай давхцахгүйн тулд) */}
+        {rows.map((r, i) => (i > lastPhys || r.physPct <= 0 ? null : (
+          <circle
+            key={`ph-${i}`}
+            cx={xFor(i)} cy={yFor(r.physical)} r={3.5}
+            className={f.sDot} vectorEffect="non-scaling-stroke" style={{ fill: PHYS }}
+          />
+        )))}
+
+        {/* Hover: crosshair + сарын цэгүүд */}
+        {hi != null && (
+          <>
+            <line x1={xFor(hi)} x2={xFor(hi)} y1={padT} y2={padT + plotH} className={f.curveCursor} />
+            {series.map((sd) => (hi <= sd.end ? (
+              <circle
+                key={sd.key}
+                cx={xFor(hi)} cy={yFor(rows[hi][sd.key])} r={3.5}
+                className={f.sDot} vectorEffect="non-scaling-stroke" style={{ fill: sd.color }}
+              />
+            ) : null))}
+          </>
+        )}
+
+        {/* X тэнхлэг — 3 мөр: он сар · ТӨЛӨВЛӨГӨӨТ өссөн % · БИЕТ гүйцэтгэл %.
+            Хоёр % мөр зэрэгцдэг тул цуваа бүр ӨӨРИЙН слотын өнгөөр (fill inline) —
+            энэ нь envhub-ийн «өнгө = утга» дүрэмд нийцсэн identity будаг.
+            Хувиудыг ЭНД эмхлэснээр график дотор баганатай давхцахгүй. */}
+        {rows.map((r, i) => (showLabel(i) ? (
+          <g key={r.label}>
+            <text x={xFor(i)} y={H - 36} className={f.axisX} textAnchor="middle">{r.label}</text>
+            {r.it.cumPct > 0 && (
+              <text x={xFor(i)} y={H - 21} className={f.axisXPct} style={{ fill: PLAN }} textAnchor="middle">
+                {r.it.cumPct.toFixed(1)}%
+              </text>
+            )}
+            {i <= lastPhys && r.physPct > 0 && (
+              <text x={xFor(i)} y={H - 6} className={f.axisXPct} style={{ fill: PHYS }} textAnchor="middle">
+                {r.physPct.toFixed(1)}%
+              </text>
+            )}
+          </g>
+        ) : null))}
       </svg>
 
       {/* Tooltip */}
       {pt && (
         <div
           className={f.tip}
-          style={{ left: `${((hi! + 0.5) / N) * 100}%`, transform: `translateX(${hi! < N / 2 ? '10px' : 'calc(-100% - 10px)'})` }}
+          style={{ left: `${(hi! / Math.max(1, N - 1)) * 100}%`, transform: `translateX(${hi! < N / 2 ? '10px' : 'calc(-100% - 10px)'})` }}
         >
-          <p className={f.tipHd}>{pt.label}</p>
-          <p className={f.tipRow}><i style={{ background: PLAN }} />Төлөвлөсөн<b>{pt.amount > 0 ? mntShort(pt.amount) : '—'}</b></p>
-          <p className={f.tipRow}><i style={{ background: PLAN }} />Өссөн төлөвлөгөө<b>{pt.amountCum > 0 ? mntShort(pt.amountCum) : '—'}</b></p>
-          <p className={f.tipRow}><i style={{ background: ACT }} />Олгосон (IPC)<b>{pt.given > 0 ? mntShort(pt.given) : '—'}</b></p>
-          <p className={`${f.tipRow} ${f.tipGap}`}><i style={{ background: CUM }} />Санхүү. өссөн хувь<b>{pt.cumPct > 0 ? `${pt.cumPct.toFixed(1)}%` : '—'}</b></p>
-          <p className={f.tipRow}><i style={{ background: PHYS }} />Биет гүйцэтгэл<b>{pt.phys > 0 ? `${pt.phys.toFixed(1)}%` : '—'}</b></p>
+          <p className={`num ${f.tipHd}`}>{pt.label}</p>
+          <p className={f.tipRow}><i style={{ background: PLAN }} />Өссөн төлөвлөгөө<b className="num">{pt.planned > 0 ? mntShort(pt.planned) : '—'}</b></p>
+          <p className={f.tipRow}><i style={{ background: ACT }} />Өссөн олгосон<b className="num">{pt.givenCum > 0 ? mntShort(pt.givenCum) : '—'}</b></p>
+          <p className={f.tipRow}><i style={{ background: PHYS }} />Биет гүйцэтгэл<b className="num">{pt.physPct > 0 ? `${pt.physPct.toFixed(1)}%` : '—'}</b></p>
+          <p className={`${f.tipRow} ${f.tipGap}`}><i style={{ background: PLAN }} />Санхүүжилтийн явц<b className="num">{pt.planned > 0 ? `${((pt.givenCum / pt.planned) * 100).toFixed(0)}%` : '—'}</b></p>
         </div>
       )}
     </div>
   );
+}
+
+/** Catmull-Rom → куб Безье гөлгөрүүлэлт — S-муруй жигд, эвдрэлгүй харагдана */
+function smoothPath(pts: { x: number; y: number }[]): string {
+  if (pts.length === 0) return '';
+  if (pts.length === 1) return `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
+  let d = `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
+  for (let i = 0; i < pts.length - 1; i += 1) {
+    const p0 = pts[i - 1] ?? pts[i];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[i + 2] ?? p2;
+    const c1x = p1.x + (p2.x - p0.x) / 6;
+    const c1y = p1.y + (p2.y - p0.y) / 6;
+    const c2x = p2.x - (p3.x - p1.x) / 6;
+    const c2y = p2.y - (p3.y - p1.y) / 6;
+    d += ` C ${c1x.toFixed(1)} ${c1y.toFixed(1)} ${c2x.toFixed(1)} ${c2y.toFixed(1)} ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
+  }
+  return d;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -275,7 +376,7 @@ export async function loadFinData(): Promise<FinData> {
       if (!isRealAct(r[F.no])) return;
       const net = n(r[F.net]);
       if (net === 0) return;
-      const k = pkgKey(r[F.pkg]);
+      const k = bagtsKey(r[F.pkg]);
       if (!k || k === '0') return;
       let mon = ym(r[F.submitDate]) ?? ym(r[F.periodTo]) ?? ym(r[F.approvedDate]) ?? last;
       if (mon < first) mon = first;
@@ -289,6 +390,7 @@ export async function loadFinData(): Promise<FinData> {
     // Append-лог тул блок бүрийн тухайн сараас өмнөх ХАМГИЙН СҮҮЛИЙН бичилтийг авна.
     const nowYm = new Date().toISOString().slice(0, 7);
     const phys: PhysMap = new Map();
+    const physCnt: PhysMap = new Map(); // багц·сар → блокийн тоо (жин)
     {
       // багц → блок → [огноо, гүйцэтгэл][] (огноогоор эрэмбэлсэн)
       const byPkg = new Map<string, Map<string, { d: string; g: number }[]>>();
@@ -304,6 +406,7 @@ export async function loadFinData(): Promise<FinData> {
       });
       byPkg.forEach((blocks, k) => {
         const byMon = new Map<string, number>();
+        const cntMon = new Map<string, number>();
         CASHFLOW2.months.forEach((m) => {
           if (m.label > nowYm) return; // ирээдүйн сард биет дата байхгүй
           let sum = 0;
@@ -319,22 +422,61 @@ export async function loadFinData(): Promise<FinData> {
               cnt++;
             }
           });
-          if (cnt > 0) byMon.set(m.label, (sum / cnt) * 100);
+          if (cnt > 0) { byMon.set(m.label, (sum / cnt) * 100); cntMon.set(m.label, cnt); }
         });
         phys.set(k, byMon);
+        physCnt.set(k, cntMon);
       });
     }
 
-  return { contracts, given, phys };
+  return { contracts, given, phys, physCnt };
+}
+
+/**
+ * САНХҮҮЖИЛТИЙН БҮРТГЭЛ — ГРАФИКГҮЙ, зөвхөн ХОЁР ХҮСНЭГТ (хэрэглэгчийн хүсэлт,
+ * 2026-08-14): Cashflow (гэрээ/захирамжийн санхүүжилт /106) ба IPC (олгосон
+ * акт /107). Хуучин комбо графикууд (ComboChart) энэ харагдацаас ХАСАГДСАН —
+ * ComboChart нь «Багцын хяналт» (Tsogts)-д ХЭВЭЭР ашиглагдана.
+ */
+/** Үйлчилгээний талбарын тодорхойлолт — нэр, харагдах alias, төрөл */
+type FieldDef = { name: string; alias: string; type: string };
+type FinTables = {
+  cashflow: Row[]; ipc: Row[];
+  cfFields: FieldDef[]; ipcFields: FieldDef[];
+};
+
+/** Давхаргын талбарын метадата (`?f=json`) — alias нь хүний уншихуйц баганын нэр */
+async function loadFields(url: string): Promise<FieldDef[]> {
+  try {
+    const res = await fetch(`${url}?f=json`);
+    const j = await res.json();
+    return Array.isArray(j?.fields)
+      ? j.fields.map((x: { name: string; alias?: string; type: string }) => ({
+          name: x.name, alias: x.alias || x.name, type: x.type,
+        }))
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+async function loadFinRegister(): Promise<FinTables> {
+  const [cfFields, ipcFields, cashflow, ipc] = await Promise.all([
+    loadFields(CASHFLOW2.url),
+    loadFields(IPC_LOG.url),
+    queryFeatures(CASHFLOW2.url, { outFields: ['*'], orderBy: `${CASHFLOW2.oid} ASC` }),
+    queryFeatures(IPC_LOG.url, { outFields: ['*'] }),
+  ]);
+  return { cashflow, ipc, cfFields, ipcFields };
 }
 
 export function Finance() {
-  const q = useAsync<FinData>(loadFinData, []);
+  const q = useAsync<FinTables>(loadFinRegister, []);
 
   return (
     <div className={f.frame}>
-      <Data q={q} loading="Санхүүжилтийн төлөвлөгөө…">
-        {(d) => <FinanceBody d={d} />}
+      <Data q={q} loading="Санхүүжилтийн бүртгэл…">
+        {(d) => <FinTablesView d={d} />}
       </Data>
     </div>
   );
@@ -347,8 +489,11 @@ export function Finance() {
 /** Гэрээний мөрөөс сарын цэгүүд — ЯГ датаных нь дагуу + IPC олгосон + биет гүйцэтгэл */
 export function contractMonths(r: Row, given: GivenMap, phys: PhysMap): MonthPt[] {
   const C = CASHFLOW2.fields;
-  const byMon = given.get(pkgKey(r[C.pkg2])) ?? given.get(pkgKey(r[C.pkg]));
-  const ph = phys.get(bagtsKey(r[C.pkg2])) ?? phys.get(bagtsKey(r[C.pkg]));
+  // ⚠️ `pkgKeyOf` (bagtsKey БИШ): «БАГЦ 1-4» мэт диапазон мөр нь bagtsKey-ээр
+  //    «БАГЦ14» болж, бодит «Багц 14»-ийн олголт/биет гүйцэтгэлийг өөрийн болгон
+  //    зурдаг байв. Диапазон мөр одоо хоосон түлхүүртэй — юутай ч таарахгүй.
+  const byMon = given.get(pkgKeyOf(r[C.pkg2])) ?? given.get(pkgKeyOf(r[C.pkg]));
+  const ph = phys.get(pkgKeyOf(r[C.pkg2])) ?? phys.get(pkgKeyOf(r[C.pkg]));
   return CASHFLOW2.months.map((m) => ({
     label: m.label,
     amount: n(r[m.amount]),
@@ -383,151 +528,121 @@ export function lagOf(months: MonthPt[]): { month: string; planned: number; actu
 export const lagLevel = (gap: number): 'red' | 'yellow' | null =>
   gap >= 10 ? 'red' : gap >= 5 ? 'yellow' : null;
 
-function FinanceBody({ d }: { d: FinData }) {
-  const C = CASHFLOW2.fields;
+/* ═══════════════════════════════════════════════════════════
+   САНХҮҮЖИЛТ — ХОЁР БҮРЭН ХҮСНЭГТ (Cashflow · IPC), ГРАФИКГҮЙ
+   ⚠️ Багана/мөрийг ҮЙЛЧИЛГЭЭ ЯГ БАЙГААГААР нь харуулна: багана нь давхаргын
+   талбар БҮР (alias-аар нэрлэсэн, эх дараалалд), мөр нь БҮХ мөр (шүүлтгүй).
+   ═══════════════════════════════════════════════════════════ */
 
-  // Сарын хуваарьтай мөрүүдийг ТӨРЛӨӨР нь бүлэглэнэ (эх дарааллаар)
-  const groups = useMemo(() => {
-    const rows = d.contracts
-      .map((r) => ({ r, months: contractMonths(r, d.given, d.phys) }))
-      // ⚠️ m.phys ч бас — санхүүгийн хуваарь нь хоосон ч биет гүйцэтгэлтэй багц
-      //    жагсаалтаас бүрмөсөн алга болохоос сэргийлнэ (phys нь TASK_SHEET-ээс
-      //    тусдаа эх үүсвэртэй).
-      .filter(({ months }) => months.some((m) => m.amount > 0 || m.cumPct > 0 || m.given > 0 || m.phys > 0));
-    const map = new Map<string, typeof rows>();
-    rows.forEach((row) => {
-      const t = text(row.r[C.type]).replace(/\s+/g, ' ').trim();
-      const key = t === '—' || t === '0' ? 'БУСАД' : t;
-      const arr = map.get(key) ?? [];
-      arr.push(row);
-      map.set(key, arr);
-    });
-    return { rows, list: [...map.entries()] };
-  }, [d.contracts, d.given, d.phys, C.type]);
+const NUMERIC_TYPES = new Set([
+  'esriFieldTypeDouble', 'esriFieldTypeInteger', 'esriFieldTypeSingle',
+  'esriFieldTypeSmallInteger', 'esriFieldTypeBigInteger', 'esriFieldTypeOID',
+]);
 
-  // Хоцрогдолтой багцууд — дээд alert зурвас + панел руу үсрэх холбоос
-  const lags = useMemo(() => {
-    const out: { id: string; title: string; gap: number; planned: number; actual: number; month: string }[] = [];
-    groups.list.forEach(([type, rows], gi) => {
-      rows.forEach(({ r, months }, i) => {
-        const lag = lagOf(months);
-        if (!lag || !lagLevel(lag.gap)) return;
-        const t4 = text(r[C.pkg2]);
-        const t3 = text(r[C.pkg]);
-        const title = t4 !== '—' && t4 !== '0' ? t4 : t3 !== '—' && t3 !== '0' ? t3 : type;
-        out.push({ id: `finp-${gi}-${i}`, title: title.replace(/\s+/g, ' '), ...lag });
-      });
-    });
-    return out.sort((a, b) => b.gap - a.gap);
-  }, [groups, C.pkg, C.pkg2]);
+/** Нүдний утгыг талбарын ТӨРЛӨӨР нь форматлана — үйлчилгээ дэх утгыг гажуудуулахгүй */
+function fmtCell(v: unknown, type: string): { text: string; num: boolean } {
+  if (v == null || v === '') return { text: '', num: false };
+  if (type === 'esriFieldTypeDate') {
+    const d = typeof v === 'number' ? new Date(v) : new Date(String(v));
+    return { text: Number.isNaN(d.getTime()) ? String(v) : d.toISOString().slice(0, 10), num: true };
+  }
+  if (NUMERIC_TYPES.has(type)) {
+    const x = Number(v);
+    if (!Number.isFinite(x)) return { text: String(v), num: true };
+    // ⚠️ Бутархайг ч `num()`-оор — мянгатын таслал ба модулийн локал хадгална
+    //    (өмнө нь `String(x)` бүлэглэлгүй, экспонент хэлбэрт ордог байв).
+    const dec = Math.min(4, String(x).split('.')[1]?.length ?? 0);
+    return { text: num(x, dec), num: true };
+  }
+  return { text: text(v), num: false };
+}
 
+/** Үйлчилгээний БҮРЭН хүснэгт — талбар бүр багана (alias), мөр бүр яг байгаагаар */
+function FullTable({
+  title, subtitle, rows, fields,
+}: {
+  title: string;
+  subtitle: string;
+  rows: Row[];
+  fields: FieldDef[];
+}) {
+  // Багана нь талбарын метадатагийн дараалалд; ирээгүй бол эхний мөрийн түлхүүрээс.
+  // ⚠️ GlobalID баганыг ХАСНА (хэрэглэгчийн хүсэлт — утгагүй UUID).
+  const isSkip = (name: string, type: string) =>
+    type === 'esriFieldTypeGlobalID' || /globalid/i.test(name);
+  const cols: FieldDef[] = (
+    fields.length
+      ? fields
+      : rows[0]
+        ? Object.keys(rows[0]).map((k) => ({ name: k, alias: k, type: 'esriFieldTypeString' }))
+        : []
+  ).filter((c) => !isSkip(c.name, c.type));
+  return (
+    <section className={f.reg}>
+      <header className={f.regHd}>
+        <h2>{title}</h2>
+        {/* envhub: бүх тоо «num» (tabular) — мөр·баганын тоолол */}
+        <span className="num">{subtitle}</span>
+      </header>
+      {rows.length === 0 || cols.length === 0 ? (
+        <Empty label="Мөр алга." />
+      ) : (
+        <div className={f.tblWrap}>
+          <table className={f.tbl}>
+            <thead>
+              <tr>
+                {cols.map((c) => (
+                  <th key={c.name} title={c.name}>{finFieldLabel(c.name)}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={i}>
+                  {cols.map((c) => {
+                    const cell = fmtCell(r[c.name], c.type);
+                    return (
+                      // envhub: тоон нүд бүр глобал «num» (tabular) + баруун зэрэгцүүлэлт
+                      <td key={c.name} className={cell.num ? `num ${f.cellNum}` : undefined}>{cell.text}</td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** Санхүүжилт — Cashflow ба IPC-ийн БҮРЭН хүснэгт (график огт байхгүй) */
+function FinTablesView({ d }: { d: FinTables }) {
   return (
     <>
       <header className={f.pageHd}>
         <div>
-          <h2>Санхүүжилтийн төлөвлөгөө — багц тус бүрээр</h2>
+          <h2>Санхүүжилтийн бүртгэл — Cashflow ба IPC</h2>
           <p>
-            {groups.rows.length} гэрээ сарын хуваарьтай ({d.contracts.length}-аас) · 2025-10-аас сар
-            бүр хэдэн хувьд гүйцэтгэж, хэдэн төгрөгний санхүүжилт авах
+            Эх үйлчилгээний бүрэн хүснэгт — багана бүр (талбарын нэр), мөр бүр яг
+            байгаагаар. Огноо ба тоон утгыг талбарын төрлөөр форматлав.
           </p>
-        </div>
-        <div className={f.legend}>
-          <span><i className={f.legendBar} style={{ background: PLAN }} />Төлөвлөсөн санхүүжилт (₮)</span>
-          <span><i className={f.legendBar} style={{ background: ACT }} />Олгосон · IPC акт (₮)</span>
-          <span><i className={f.legendBar} style={{ background: CUM }} />Санхүүжилтийн өссөн хувь (%)</span>
-          <span><i className={f.legendBar} style={{ background: PHYS }} />Биет гүйцэтгэл · Гүйцэтгэл бөглөх (%)</span>
         </div>
       </header>
 
-      {/* ── Хоцрогдлын нэгдсэн alert — хувь голлосон ── */}
-      {lags.length > 0 && (
-        <div className={f.alertStrip} role="alert">
-          <p className={f.alertHd}>
-            ⚠ {lags.length} багц гүйцэтгэлийн хувиар төлөвлөгөөнөөс хоцорч байна
-          </p>
-          <div className={f.alertList}>
-            {lags.map((l) => (
-              <button
-                key={l.id}
-                type="button"
-                className={`${f.alertItem} ${lagLevel(l.gap) === 'red' ? f.alertRed : f.alertYellow}`}
-                title={`${l.month}: төлөвлөсөн ${l.planned.toFixed(1)}% · бодит ${l.actual.toFixed(1)}%`}
-                onClick={() => {
-                  const el = document.getElementById(l.id);
-                  if (!el) return;
-                  // ⚠️ Энэ контейнер дээр smooth scroll (scrollIntoView ч, scrollTo
-                  //    {behavior:'smooth'} ч) огт хөдөлдөггүй нь туршилтаар тогтоогдсон
-                  //    тул гүйдэг өвгийг олж ШУУД байрлуулна — очсон панел нь анивчдаг
-                  //    тул хэрэглэгч хаана буусанаа алдахгүй.
-                  let p = el.parentElement;
-                  while (p && p.scrollHeight <= p.clientHeight + 10) p = p.parentElement;
-                  if (p)
-                    p.scrollTop =
-                      p.scrollTop + el.getBoundingClientRect().top - p.getBoundingClientRect().top - 10;
-                }}
-              >
-                {l.title} <b>−{l.gap.toFixed(1)}%</b>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+      <FullTable
+        title="Cashflow — гэрээ, захирамжийн санхүүжилт (/106)"
+        subtitle={`${num(d.cashflow.length)} мөр · ${d.cfFields.length} багана`}
+        rows={d.cashflow}
+        fields={d.cfFields}
+      />
 
-      {groups.list.map(([type, rows], gi) => (
-        <div key={type} className={f.group}>
-          <header className={f.groupHd}>
-            <h2>{type}</h2>
-            <span>{rows.length}</span>
-          </header>
-          <div className={f.grid}>
-            {rows.map(({ r, months }, i) => {
-              // Толгой: CF004 (дэд багцтай) → CF003 → дугаар; "0" гэсэн утгыг алгасна
-              const t4 = text(r[C.pkg2]);
-              const t3 = text(r[C.pkg]);
-              const title =
-                t4 !== '—' && t4 !== '0' ? t4 : t3 !== '—' && t3 !== '0' ? t3 : `Гэрээ ${i + 1}`;
-              // Олгогдох нийт = өмнө шилжүүлсэн (CF028) + сарын хуваарийн нийлбэр
-              const total = n(r[C.prevAmount]) + months.reduce((a, m) => a + m.amount, 0);
-              const lag = lagOf(months);
-              const lvl = lag ? lagLevel(lag.gap) : null;
-              return (
-              <section
-                key={i}
-                id={`finp-${gi}-${i}`}
-                className={`${f.panel} ${lvl === 'red' ? f.panelLagRed : lvl === 'yellow' ? f.panelLagYellow : ''}`}
-                aria-label={text(r[C.name])}
-              >
-                <header className={f.panelHd}>
-                  <div>
-                    <h3>{title}</h3>
-                    <p>{text(r[C.name])}</p>
-                    <p className={f.subContractor}>{text(r[C.contractor])}</p>
-                  </div>
-                  <div className={f.badges}>
-                    {lag && lvl && (
-                      <span
-                        className={`${f.lagBadge} ${lvl === 'red' ? f.lagRed : f.lagYellow}`}
-                        title={`${lag.month}: төлөвлөсөн ${lag.planned.toFixed(1)}% · бодит ${lag.actual.toFixed(1)}%`}
-                      >
-                        {lvl === 'red' ? 'Хоцрогдол' : 'Анхаарах'} −{lag.gap.toFixed(1)}%
-                      </span>
-                    )}
-                    {total > 0 && (
-                      <div className={f.totBadge}>
-                        <span>Олгогдох нийт санхүүжилт</span>
-                        <b>{num(total)} ₮</b>
-                      </div>
-                    )}
-                  </div>
-                </header>
-                <ComboChart items={months} height={230} lagMonth={lag?.month} lagLvl={lvl} />
-              </section>
-              );
-            })}
-          </div>
-        </div>
-      ))}
-      {groups.rows.length === 0 && <Empty label="Сарын хуваарьтай гэрээ алга." />}
+      <FullTable
+        title="IPC — олгосон акт (/107)"
+        subtitle={`${num(d.ipc.length)} мөр · ${d.ipcFields.length} багана`}
+        rows={d.ipc}
+        fields={d.ipcFields}
+      />
     </>
   );
 }

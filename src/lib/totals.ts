@@ -8,7 +8,7 @@
  */
 
 import { queryGroup, queryStats, count, sum } from './query';
-import { layerUrl, OID, PLAN_LAYER_IDS, LAYER_BY_ID, zoneWhere, type LayerDef } from './services';
+import { layerUrl, OID, PLAN_LAYER_IDS, LAYER_BY_ID, zoneWhere, type LayerDef, type Cost } from './services';
 import { num, ha, km } from './format';
 import { useAsync, type Async } from './useAsync';
 
@@ -33,10 +33,16 @@ export const layerStats = (d: LayerDef) =>
  * ⚠️ Ганц газарт бичнэ: нийт дүн, ангилал бүрийн дүн, нэгж үнийн шатлал гурав
  * бүгд эндээс тооцоно — эс бөгөөс задаргааны нийлбэр нийт дүнтэйгээ зөрнө.
  */
-export function costOf(d: LayerDef, n: number, q: number, price: number): number {
-  if (!d.cost || !Number.isFinite(price)) return 0;
-  return d.cost.basis === 'sh' ? n * price
-    : d.cost.basis === 'm100' ? (q / 100) * price
+/**
+ * ⚠️ 2026-08-19: Параметр нь `LayerDef` БАЙСАН. `loadCosts` нь одоо миграциас
+ * ӨМНӨХ өртгийн тодорхойлолтоор (`costSrc`) ажилладаг тул давхаргын ОДООГИЙН
+ * `d.cost` (устсан байж болно) БИШ, шийдэгдсэн `Cost`-ыг шууд авна — эс бөгөөс
+ * сэргээсэн давхаргууд бүгд 0 өртөгтэй хэвээр үлдэнэ.
+ */
+export function costOf(c: Cost | undefined, n: number, q: number, price: number): number {
+  if (!c || !Number.isFinite(price)) return 0;
+  return c.basis === 'sh' ? n * price
+    : c.basis === 'm100' ? (q / 100) * price
       : q * price; // 'km' ба 'm2' — хэмжээ шууд үржигдэнэ
 }
 
@@ -64,7 +70,7 @@ export async function layerTotals(d: LayerDef, where: string): Promise<Totals> {
     const rq = Number(r.q ?? 0);
     n += rn;
     q += rq;
-    cost += costOf(d, rn, rq, Number(r[d.cost.field] ?? 0));
+    cost += costOf(d.cost, rn, rq, Number(r[d.cost.field] ?? 0));
   }
   return { n, q, cost };
 }

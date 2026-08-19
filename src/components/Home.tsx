@@ -1,17 +1,140 @@
 'use client';
 
+import { useEffect, useRef, useState } from 'react';
 import { useAuth } from './AuthGate';
-import { HEADLINE, OVERALL } from '@/lib/brief';
+import { useAsync } from '@/lib/useAsync';
+import {
+  loadBudget, loadClearance, loadHeadline, loadHousing, loadProjectProgress, loadSocial,
+} from '@/lib/live';
+import { mntShort, num, pct } from '@/lib/format';
+import { DocViewer } from './DocViewer';
+import { ExecKpi } from './ExecKpi';
+import { Icon } from './Icon';
+import type { ViewKey } from '@/lib/services';
 import s from './home.module.css';
 
-/** Гол үзүүлэлтүүд — албан ёсны илтгэлийн дүн (`brief.ts`) */
-const STATS: { value: string; label: string }[] = [
-  { value: `${HEADLINE.areaHa} га`, label: 'Төслийн талбай' },
-  { value: HEADLINE.population.toLocaleString('en-US'), label: 'Хамрагдах хүн ам' },
-  { value: HEADLINE.households.toLocaleString('en-US'), label: 'Өрхийн орон сууц' },
-  { value: '58.11 га', label: 'Ногоон байгууламж' },
-  { value: `${OVERALL.reported}%`, label: 'Төслийн гүйцэтгэл' },
-];
+/** Нүүрт товч болж гарах харагдац — мета нь `VIEWS`-ээс ирнэ (`Root` шүүнэ) */
+export type HomeView = {
+  key: ViewKey;
+  title: string;
+  desc: string;
+  /** ⚠️ Ашиглагдахаа больсон (нэг акцент) — `Root`-ийн дамжуулалттай нийцүүлж үлдээв */
+  hue: string;
+};
+
+/** Сэдвийн бүлэг — `HOME_SECTIONS` + хамрагдаагүйг цуглуулсан «Бусад» */
+export type HomeGroup = {
+  id: string;
+  title: string;
+  views: HomeView[];
+};
+
+/** Нэг KPI нүд — бүгд АМЬД (services.ts-ээс), ачаалж байхад «…» */
+type Kpi = {
+  key: string;
+  value: string;
+  label: string;
+  /** Утгын доорх нэмэлт мөр — задаргаа, хувь, эсвэл эх сурвалж */
+  sub?: string;
+  icon: string;
+  /** Дарахад очих харагдац — байхгүй бол зөвхөн уншина */
+  view?: ViewKey;
+  /** Статусын өнгө — зөвхөн УТГА нь төлөв илэрхийлдэг нүдэнд */
+  tone?: string;
+};
+
+/**
+ * НҮҮРИЙН БҮХ ҮЗҮҮЛЭЛТ — таван ачаалагчаас.
+ *
+ * ⚠️ 2026-08-18 (хэрэглэгчийн хүсэлт): нүүр нь «лендинг» биш ЕРӨНХИЙ KPI
+ * ДАШБОАРД болов. Тиймээс өмнөх 5 үзүүлэлт дээр бусад хэсгээс (санхүүжилт,
+ * газар чөлөөлөлт, нийгмийн үйлчилгээ, орон сууц) гол тоонуудыг ТАТАЖ нэгтгэв —
+ * хэрэглэгч дотогш орохоос өмнө төслийн бүтэн зургийг харна.
+ *
+ * ⚠️ Бүх ачаалагч `cached` тул порталд орсны дараа ДАХИН татагдахгүй — эдгээр
+ * нь тэр хэсгүүдийн кэшийг УРЬДЧИЛАН дүүргэж, шилжилтийг хурдасгана.
+ */
+function useHomeKpis(): { main: Kpi[]; more: Kpi[]; progress: number | null } {
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const h = useAsync(loadHeadline, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const hh = useAsync(loadHousing, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const p = useAsync(loadProjectProgress, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const c = useAsync(loadClearance, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const b = useAsync(loadBudget, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const so = useAsync(loadSocial, []);
+
+  const hd = h.state === 'ready' ? h.data : null;
+  const hs = hh.state === 'ready' ? hh.data : null;
+  const pp = p.state === 'ready' ? p.data : null;
+  const cl = c.state === 'ready' ? c.data : null;
+  const bg = b.state === 'ready' ? b.data : null;
+  const sc = so.state === 'ready' ? so.data : null;
+
+  /**
+   * Төсвийн ГЭРЭЭЛСЭН хувь — гэрээт дүн ÷ нийт төсөв.
+   *
+   * ⚠️ `transferred` (CF-ийн шилжүүлсэн багана) БИШ: амьд өгөгдөлд тэр нь 0
+   * байгаа тул «0% шилжүүлсэн» гэсэн утгагүй мөр гарч, төсөв огт хөдлөөгүй
+   * мэт төөрөгдүүлж байв. Гэрээлсэн дүн нь бодитоор бөглөгдсөн бөгөөд
+   * төсвийн хэдийг нь ажилд холбосныг шууд хэлнэ.
+   */
+  const contractPct = bg && bg.total > 0 ? (bg.contract / bg.total) * 100 : null;
+
+  return {
+    // ГОЛ ДӨРӨВ — том нүд, дээд эгнээнд
+    main: [
+      {
+        key: 'prog',
+        value: pp ? pct(pp.actual, 1) : '…',
+        label: 'Төслийн гүйцэтгэл',
+        sub: pp ? `${num(pp.coverage, 0)}% багц бүртгэгдсэн` : undefined,
+        icon: 'chart',
+        view: 'tsogts',
+      },
+      {
+        key: 'fin',
+        value: bg ? mntShort(bg.total) : '…',
+        label: 'Нийт төсөв',
+        sub: contractPct != null ? `${pct(contractPct, 0)} гэрээлсэн` : undefined,
+        icon: 'calc',
+        view: 'finance',
+      },
+      {
+        key: 'clear',
+        value: cl?.pct != null ? pct(cl.pct, 1) : '…',
+        label: 'Газар чөлөөлөлт',
+        sub: cl ? `${num(cl.remaining)} талбар үлдсэн · ${num(cl.remainingHa, 1)} га` : undefined,
+        icon: 'polygon',
+        view: 'gazar',
+        tone: cl?.pct == null ? undefined
+          : cl.pct >= 95 ? 'var(--good)' : cl.pct >= 80 ? 'var(--warn)' : 'var(--bad)',
+      },
+      {
+        key: 'pop',
+        value: hd ? num(hd.population) : '…',
+        label: 'Хамрагдах хүн ам',
+        sub: hs ? `${num(hs.ail)} өрхийн орон сууц` : undefined,
+        icon: 'users',
+        view: 'irged',
+      },
+    ],
+    // НЭМЭЛТ — жижиг нүд, доод эгнээнд
+    more: [
+      { key: 'area', value: hd ? `${num(hd.areaHa, 1)} га` : '…', label: 'Төслийн талбай', icon: 'frame', view: 'plan' },
+      { key: 'green', value: hd?.greenHa != null ? `${num(hd.greenHa, 1)} га` : '…', label: 'Ногоон байгууламж', icon: 'droplet', view: 'plan' },
+      { key: 'blocks', value: hs ? num(hs.blocks) : '…', label: 'Барилгын блок', icon: 'building', view: 'tsogts' },
+      { key: 'contract', value: bg ? mntShort(bg.contract) : '…', label: 'Гэрээт дүн', icon: 'file', view: 'finance' },
+      { key: 'social', value: sc ? num(sc.totalN) : '…', label: 'Нийгмийн байгууламж', icon: 'grid', view: 'irged' },
+      { key: 'cleared', value: cl ? num(cl.cleared) : '…', label: 'Чөлөөлсөн талбар', icon: 'target', view: 'gazar' },
+    ],
+    progress: pp ? pp.actual : null,
+  };
+}
 
 /** Нэрнээс товч үсэг (avatar) — эхний хоёр үгийн эхний үсэг */
 function initials(name: string): string {
@@ -21,24 +144,89 @@ function initials(name: string): string {
 }
 
 /**
- * НҮҮР ХУУДАС — «Сэлбэ 20 минутын хот» дижитал ихэр платформын лендинг.
+ * НҮҮР ХУУДАС — ЕРӨНХИЙ KPI ДАШБОАРД.
  *
- * Дээд navbar-т төслийн нэр, ArcGIS НЭВТРЭЛТ. Гол хэсэгт төслийн нэр, товч
- * танилцуулга ба албан ёсны үзүүлэлтүүд. «Нэвтрэх» дарж ороход нэвтрээгүй бол
- * ArcGIS руу чиглүүлж, буцаж ирэхэд автоматаар орно.
+ * ⚠️ 2026-08-18 (хэрэглэгчийн шийдвэр): ДЭВСГЭР ЗУРАГ ХАСАГДАВ. Урьд нь 444KB
+ * агаарын зураг + харанхуй scrim + тор дээр цагаан бичиг байсан — гоё ч
+ * (а) 444KB нь эхний зурагтыг удаашруулдаг, (б) хагас тунгалаг бичиг нь
+ * үзүүлэлтийн тоог уншихад муу, (в) порталын дотоод дүр төрхөөс ТЭС өөр тул
+ * орох үед харагдац огцом үсэрдэг байв. Одоо порталтай ИЖИЛ гадаргуу, ижил
+ * токен — нүүр нь порталын нэг хэсэг мэт үргэлжилнэ.
  */
-export function Home({ onEnterAll }: { onEnterAll: () => void }) {
+export function Home({
+  onEnterAll,
+  groups,
+  onEnterView,
+}: {
+  /** «Нэвтрэх» / «Орох» — эрхийн дагуу орох цэгт хүргэнэ */
+  onEnterAll: () => void;
+  groups: HomeGroup[];
+  onEnterView: (key: ViewKey) => void;
+}) {
   const { status, user, signOut } = useAuth();
+  const { main, more, progress } = useHomeKpis();
+
+  /** Нээлттэй сэдвийн id — нэг зэрэг ГАНЦ dropdown */
+  const [open, setOpen] = useState<string | null>(null);
+  /** Баримт үзэгч нээлттэй эсэх */
+  const [docs, setDocs] = useState(false);
+  const bar = useRef<HTMLDivElement>(null);
+
+  /**
+   * Гадуур дарах ба Escape — dropdown хаана.
+   *
+   * ⚠️ `pointerdown` (click БИШ): доторх товчны `click` ажиллахаас ӨМНӨ гадуурх
+   * даралт бүртгэгдэх ёстой. `click`-ээр сонсвол сонголт хийх агшинд эхлээд
+   * хаагдаад, зарим browser-т дарагдалт алдагддаг.
+   */
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      if (!bar.current?.contains(e.target as Node)) setOpen(null);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(null); };
+    window.addEventListener('pointerdown', onDown);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('pointerdown', onDown);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  /** KPI нүд — `view` байвал дарж болох товч, эс бөгөөс зүгээр л уншина */
+  const tile = (k: Kpi, big: boolean) => {
+    const inner = (
+      <>
+        <span className={s.kpiTop}>
+          <span className={s.kpiIcon}><Icon name={k.icon} size={big ? 16 : 14} /></span>
+          <span className={s.kpiLabel}>{k.label}</span>
+          {k.view && <span className={s.kpiGo} aria-hidden>→</span>}
+        </span>
+        <span className={`${s.kpiValue} num`} style={k.tone ? { color: k.tone } : undefined}>
+          {k.value}
+        </span>
+        {k.sub && <span className={s.kpiSub}>{k.sub}</span>}
+      </>
+    );
+    const cls = `${s.kpi} ${big ? s.kpiBig : ''}`;
+    return k.view ? (
+      <button
+        key={k.key}
+        type="button"
+        className={cls}
+        onClick={() => onEnterView(k.view!)}
+        title={`${k.label} — дэлгэрэнгүй рүү очих`}
+      >
+        {inner}
+      </button>
+    ) : (
+      <div key={k.key} className={cls}>{inner}</div>
+    );
+  };
 
   return (
     <div className={s.home}>
-      {/* Дэвсгэр — WebP (444KB; 2.9MB PNG fallback хасав — бүх орчин үеийн browser webp дэмжинэ) */}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img className={s.bg} src="/high_resolution_1.webp" alt="" />
-      <div className={s.scrim} aria-hidden />
-      <div className={s.grid} aria-hidden />
-
-      {/* ── Дээд навигацийн зурвас ── */}
+      {/* ── Дээд навигацийн зурвас — лого · цэс · нэвтрэлт ── */}
       <header className={s.navbar}>
         <div className={s.brand}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -49,6 +237,76 @@ export function Home({ onEnterAll }: { onEnterAll: () => void }) {
             <small className={s.brandTag}>Digital Twin Platform</small>
           </span>
         </div>
+
+        <div className={s.spacer} aria-hidden />
+
+        {/* ── Сэдвийн цэс — дарахад доош dropdown нээгдэнэ ── */}
+        {groups.length > 0 && (
+          <nav
+            className={s.menuRow}
+            ref={bar}
+            aria-label="Платформын хэсгүүд"
+            /**
+             * ⚠️ Зөвхөн ХУЛГАНА. Хүрэлтэнд (`touch`) hover гэж байхгүй — хуруу
+             * хүрэхэд `pointerenter` мөн буудаг тул шүүхгүй бол цэс нээгдээд,
+             * араас нь `click` ирж шууд хаагдана.
+             */
+            onPointerLeave={(e) => { if (e.pointerType === 'mouse') setOpen(null); }}
+          >
+            {groups.map((g) => {
+              const on = open === g.id;
+              return (
+                <div
+                  key={g.id}
+                  className={s.menuItem}
+                  onPointerEnter={(e) => { if (e.pointerType === 'mouse') setOpen(g.id); }}
+                >
+                  <button
+                    type="button"
+                    className={`${s.menuBtn} ${on ? s.menuBtnOn : ''}`}
+                    aria-expanded={on}
+                    aria-haspopup="true"
+                    /* Хүрэлт ба ГАР (Enter/Space)-т — hover байхгүй тул товшилт хэвээр */
+                    onClick={() => setOpen(on ? null : g.id)}
+                  >
+                    {g.title}
+                    <span className={`${s.caret} ${on ? s.caretOn : ''}`} aria-hidden>▾</span>
+                  </button>
+
+                  {on && (
+                    <div className={s.dropdown} role="menu">
+                      {g.views.map((v) => (
+                        <button
+                          key={v.key}
+                          type="button"
+                          role="menuitem"
+                          className={s.viewBtn}
+                          onClick={() => { setOpen(null); onEnterView(v.key); }}
+                          title={v.desc}
+                        >
+                          <span className={s.viewText}>
+                            <span className={s.viewTitle}>{v.title}</span>
+                            <span className={s.viewDesc}>{v.desc}</span>
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {/* «Баримт бичиг» — задрахгүй, ГАНЦ товч. */}
+            <button
+              type="button"
+              className={s.menuBtn}
+              onPointerEnter={(e) => { if (e.pointerType === 'mouse') setOpen(null); }}
+              onClick={() => { setOpen(null); setDocs(true); }}
+            >
+              Баримт бичиг
+            </button>
+          </nav>
+        )}
 
         <div className={s.spacer} aria-hidden />
 
@@ -66,7 +324,7 @@ export function Home({ onEnterAll }: { onEnterAll: () => void }) {
               </span>
               {/* Нэвтэрсэн хэрэглэгч порталд ОРОХ — эс бөгөөс нүүр хуудсанд гацна */}
               <button type="button" className={`${s.signBtn} ${s.signIn}`} onClick={onEnterAll}>
-                Орох
+                Порталд орох
                 <span className={s.signInArrow} aria-hidden>→</span>
               </button>
               <button type="button" className={s.signBtn} onClick={signOut}>Гарах</button>
@@ -80,28 +338,51 @@ export function Home({ onEnterAll }: { onEnterAll: () => void }) {
         </div>
       </header>
 
-      {/* ── Гол — төслийн нэр ба мэдээлэл ── */}
-      <main className={s.hero}>
-        <span className={s.eyebrow}>Улаанбаатар хот · Сэлбэ дэд төв</span>
-        <h1 className={s.title}>
-          Сэлбэ 20 минутын хот
-          <span className={s.titleSub}>Digital Twin Platform</span>
-        </h1>
-        <p className={s.lede}>
-          Ерөнхий төлөвлөгөө, барилгын явц, инженерийн шугам сүлжээ, газар
-          чөлөөлөлт, санхүүжилтийг нэг орон зайн платформд нэгтгэж, шийдвэр
-          гаргалтыг өгөгдөлд түшиглүүлнэ.
-        </p>
-
-        <dl className={s.stats}>
-          {STATS.map((st) => (
-            <div key={st.label} className={s.stat}>
-              <dt className={s.statValue}>{st.value}</dt>
-              <dd className={s.statLabel}>{st.label}</dd>
+      {/* ── Дашбоард ── */}
+      <main className={s.board}>
+        <header className={s.boardHead}>
+          <div>
+            <h1 className={s.title}>Төслийн ерөнхий байдал</h1>
+            <p className={s.lede}>
+              Ерөнхий төлөвлөгөө, барилгын явц, инженерийн сүлжээ, газар чөлөөлөлт,
+              санхүүжилтийн амьд нэгтгэл — бүх тоо ArcGIS-ээс шууд.
+            </p>
+          </div>
+          {/* Төслийн нийт гүйцэтгэл — толгойн баруун талд, нэг харцаар */}
+          <div className={s.progressBox}>
+            <span className={s.progressTop}>
+              <span className={s.progressLabel}>Нийт гүйцэтгэл</span>
+              <span className={`${s.progressPct} num`}>{progress != null ? pct(progress, 2) : '…'}</span>
+            </span>
+            <div
+              className={s.progressTrack}
+              role="progressbar"
+              aria-valuenow={progress ?? 0}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-label="Төслийн нийт гүйцэтгэл"
+            >
+              <span className={s.progressFill} style={{ width: `${progress ?? 0}%` }} />
             </div>
-          ))}
-        </dl>
+          </div>
+        </header>
+
+        {/* ГОЛ дөрөв — том нүд */}
+        <section className={s.kpiMain} aria-label="Гол үзүүлэлт">
+          {main.map((k) => tile(k, true))}
+        </section>
+
+        {/* НЭМЭЛТ зургаа — жижиг нүд */}
+        <section className={s.kpiMore} aria-label="Нэмэлт үзүүлэлт">
+          {more.map((k) => tile(k, false))}
+        </section>
+
+        {/* Удирдлагад зориулсан амьд KPI үнэлгээ — карт дарж холбоотой харагдац руу */}
+        <ExecKpi onView={onEnterView} />
       </main>
+
+      {/* Баримт үзэгч — порталынхтай ИЖИЛ компонент, нэвтрэх шаардлагагүй */}
+      <DocViewer open={docs} onClose={() => setDocs(false)} />
     </div>
   );
 }

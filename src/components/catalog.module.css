@@ -71,7 +71,7 @@
 .headText { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.3; }
 .title {
   font-size: 0.62rem;
-  font-weight: 650;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.09em;
   color: var(--ink-3);
@@ -113,7 +113,7 @@
   background: color-mix(in srgb, var(--hue) 10%, var(--surface));
   color: var(--ink);
   font-size: 0.78rem;
-  font-weight: 650;
+  font-weight: 600;
   transition: background 0.14s, border-color 0.14s, opacity 0.14s;
 }
 .allOff:hover:not(:disabled) {
@@ -158,12 +158,42 @@
   flex: none;
   border-radius: 4px;
   border: 1.5px solid var(--line-strong);
-  color: #fff;
+  /* ⚠️ Акцент дээрх бэх — харанхуй горимд цагаан нь 1.7:1 (globals.css) */
+  color: var(--hue-ink);
   transition: background 0.15s, border-color 0.15s;
 }
 .orthoCheck svg { opacity: 0; transform: scale(0.6); transition: opacity 0.15s, transform 0.15s; }
 .orthoOn .orthoCheck { background: var(--hue); border-color: var(--hue); }
 .orthoOn .orthoCheck svg { opacity: 1; transform: scale(1); }
+
+/**
+ * ДАВХАРГЫН МӨРИЙН ЧАГТ — `analysis/suit/LayerCatalog.tsx` (`c.check`).
+ *
+ * ⚠️ 2026-08-19: Энэ дүрэм ОГТ БАЙГААГҮЙ. Тэр компонент `className={c.check}`
+ * гэж бичдэг ч `catalog.module.css`-д ийм класс байхгүй тул CSS-модуль
+ * `undefined` буцааж, товч нь ЗАГВАРГҮЙ зурагддаг байв: хайрцаг/хүрээ алга, мөн
+ * `svg { opacity: 0 }` дүрэм байхгүйгээс УНТРААЛТТАЙ давхаргын чагт ч тэмдэгтэй
+ * харагдаж, аль нь асаалттай болох нь ялгагдахгүй байлаа.
+ *
+ * ⚠️ `.orthoCheck`-ийг ШУУД дахин ашиглах боломжгүй: түүний асаалттай төлөв нь
+ * эцгийн `.orthoOn`-оос ирдэг бол энэ жагсаалт `.rowOn` хэрэглэдэг.
+ */
+.check {
+  display: grid;
+  place-items: center;
+  width: 15px;
+  height: 15px;
+  flex: none;
+  border-radius: var(--r-lg);
+  border: 1.5px solid var(--line-strong);
+  background: transparent;
+  /* Акцент дэвсгэр дээрх бэх — харанхуйд цагаан 1.7:1 л өгнө (globals.css) */
+  color: var(--hue-ink);
+  transition: background 0.15s, border-color 0.15s;
+}
+.check svg { opacity: 0; transform: scale(0.6); transition: opacity 0.15s, transform 0.15s; }
+.rowOn .check { background: var(--hue); border-color: var(--hue); }
+.rowOn .check svg { opacity: 1; transform: scale(1); }
 .orthoLabel { flex: 1; min-width: 0; font-size: 0.78rem; font-weight: 600; }
 .orthoState { flex: none; font-size: 0.66rem; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.04em; }
 
@@ -173,11 +203,11 @@
 .group {
   border: 1px solid var(--line);
   border-radius: var(--r);
-  background: color-mix(in srgb, var(--tone) 4%, var(--surface-2));
+  background: color-mix(in srgb, var(--hue) 4%, var(--surface-2));
   padding: 5px 6px;
   transition: border-color 0.14s;
 }
-.group:hover { border-color: color-mix(in srgb, var(--tone) 35%, var(--line)); }
+.group:hover { border-color: color-mix(in srgb, var(--hue) 35%, var(--line)); }
 .group + .group { margin-top: 7px; }
 
 .groupHead { display: flex; align-items: center; gap: 8px; padding: 4px 4px 6px; }
@@ -211,27 +241,26 @@
   transition: transform 0.22s var(--ease), background 0.12s, color 0.12s;
 }
 .groupCaret:hover { background: var(--surface-2); color: var(--ink); }
-.groupCaretOpen { transform: rotate(180deg); color: var(--tone); }
+.groupCaretOpen { transform: rotate(180deg); color: var(--hue); }
 .groupIcon {
   display: grid;
   place-items: center;
   width: 24px;
   height: 24px;
   flex: none;
-  border-radius: 7px;
-  color: var(--tone);
-  background: color-mix(in srgb, var(--tone) 14%, transparent);
+  border-radius: var(--r-sm);
+  color: var(--hue);
+  background: color-mix(in srgb, var(--hue) 14%, transparent);
 }
 .groupTitle {
   flex: 1;
   min-width: 0;
   font-size: 0.74rem;
-  font-weight: 650;
+  font-weight: 600;
   color: var(--ink);
   overflow-wrap: anywhere;
   text-align: left;
 }
-.groupCost { flex: none; font-size: 0.66rem; font-weight: 650; color: var(--tone); }
 /* Тоолуур — товч БИШ, зөвхөн төлөв заана (сонголт нь гарчиг дээр шилжсэн).
    Өнгө нь үндсэн текст (харанхуйд цагаан) — бүдэг саарал уншигдахгүй байсан. */
 .groupBtn {
@@ -260,11 +289,11 @@
 /* Асаалттай давхарга — ТОД ялгарна: өнгөт дэвсгэр + хүрээ + зүүн ирмэгийн
    зурвас (бүлгийн картын сүүмгэр туяанаас 7% нь ялгардаггүй байсан). */
 .rowOn {
-  background: color-mix(in srgb, var(--tone) 20%, transparent);
-  border-color: color-mix(in srgb, var(--tone) 55%, transparent);
-  box-shadow: inset 2.5px 0 0 var(--tone);
+  background: color-mix(in srgb, var(--hue) 20%, transparent);
+  border-color: color-mix(in srgb, var(--hue) 55%, transparent);
+  box-shadow: inset 2.5px 0 0 var(--hue);
 }
-.rowOn:hover { background: color-mix(in srgb, var(--tone) 26%, transparent); }
+.rowOn:hover { background: color-mix(in srgb, var(--hue) 26%, transparent); }
 
 /* ── Ангиллын дэд мөр ──
    ⚠️ `.row` нь нэг мөрийн flex байсан. Дэд жагсаалт нь мөрийн ДООР бүтэн
@@ -285,7 +314,7 @@
   gap: 1px;
   margin: 5px 0 2px 30px;
   padding-left: 9px;
-  border-left: 1.5px solid color-mix(in srgb, var(--tone) 30%, var(--line));
+  border-left: 1.5px solid color-mix(in srgb, var(--hue) 30%, var(--line));
 }
 .facetRow {
   display: flex;
@@ -299,8 +328,8 @@
 }
 .facetRow:hover { background: var(--surface-2); }
 .facetRowOn {
-  background: color-mix(in srgb, var(--tone) 14%, transparent);
-  border-color: color-mix(in srgb, var(--tone) 45%, transparent);
+  background: color-mix(in srgb, var(--hue) 14%, transparent);
+  border-color: color-mix(in srgb, var(--hue) 45%, transparent);
 }
 .facetName {
   flex: 1;
@@ -326,12 +355,12 @@
   width: 11px;
   height: 11px;
   border-radius: 3px;
-  border: 1px solid var(--tone);
-  background: color-mix(in srgb, var(--tone) 30%, transparent);
+  border: 1px solid var(--hue);
+  background: color-mix(in srgb, var(--hue) 30%, transparent);
 }
 .rowSel {
-  background: color-mix(in srgb, var(--tone) 12%, transparent);
-  border-color: color-mix(in srgb, var(--tone) 40%, transparent);
+  background: color-mix(in srgb, var(--hue) 12%, transparent);
+  border-color: color-mix(in srgb, var(--hue) 40%, transparent);
 }
 
 /* Дэлгэрэнгүй дашбоард нээх товч — мөрийн баруун захад (нэр нь давхаргыг асаадаг) */
@@ -346,7 +375,7 @@
   transition: background 0.12s, color 0.12s;
 }
 .rowChart:hover { background: var(--surface-2); color: var(--ink); }
-.rowSel .rowChart, .rowChart[aria-pressed='true'] { color: var(--tone); background: color-mix(in srgb, var(--tone) 14%, transparent); }
+.rowSel .rowChart, .rowChart[aria-pressed='true'] { color: var(--hue); background: color-mix(in srgb, var(--hue) 14%, transparent); }
 
 .rowMain {
   flex: 1;
@@ -369,7 +398,7 @@
   overflow-wrap: anywhere;
 }
 /* Бүсээр шүүгдэх боломжгүй давхарга — дүн нь төслийн бүхэлдээ */
-.rowWarn { font-style: normal; color: var(--warn); }
+.rowWarn { font-style: normal; color: var(--warn-ink); }
 
 /* Дэлгэц бага үед багана нь босоо өрөлтөд ордог тул хүрээ нь дээрээс */
 @media (max-width: 1180px) {

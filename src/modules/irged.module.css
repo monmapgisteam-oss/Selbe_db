@@ -1,0 +1,164 @@
+/**
+ * «Иргэдэд хүрэх үр өгөөж» — ӨМНӨ · ЗУРАГ · ДАРАА гурван багана,
+ * дээр нь толгойн үзүүлэлт.
+ *
+ * ⚠️ 2026-08-18: envhub хэл рүү шилжив. Хавтангийн загварыг Ерөнхий дашбоардын
+ * envhub Box-оос (`overview.module.css` → `panel`/`panelHead`/`panelTitle`/
+ * `panelNote`/`panelBody`) авна — surface + hairline, сүүдэргүй. Урьд нь
+ * «Газар чөлөөлөлт»-ийн ӨНГӨТ хавтанг (gazar.module.css: улбар шар «Өмнө»,
+ * цэнхэр «Дараа») хэрэглэдэг байсныг бүрмөсөн болив: хоёр багана одоо ЯГ ИЖИЛ
+ * энгийн карт, ялгаа нь зөвхөн ГАРЧГИЙН ҮГЭНД. Энд зөвхөн СҮЛЖЭЭ ба
+ * overview-д байхгүй жижиг зүйлс.
+ */
+
+.frame {
+  display: grid;
+  grid-template-areas: "left map right";
+  grid-template-columns: minmax(268px, 330px) minmax(0, 1fr) minmax(268px, 344px);
+  grid-template-rows: minmax(0, 1fr);
+  gap: 10px;
+  height: 100%;
+  min-height: 0;
+  padding: 12px;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+/**
+ * ТӨВ БАГАНА — Ерөнхий дашбоардын `.center`-тэй ИЖИЛ: үзүүлэлтийн зурвас +
+ * газрын зураг ХОЁР ТУСДАА элемент, хооронд нь 12px зай. Хүрээ/overflow нь
+ * ЗӨВХӨН газрын зурагт (`.mapBox`) байна — эс бөгөөс картууд зурагтай нэг
+ * хүрээнд багтаж «наалдсан» харагдана.
+ */
+.mapCol {
+  grid-area: map;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/**
+ * Толгойн таван үзүүлэлт — зургийн ДЭЭД зурваст, тусдаа картууд (дашбоардтай
+ * ижил). `flex: none` — эс бөгөөс flex контейнерт агуулгаараа хумигдана.
+ */
+.kpi {
+  flex: none;
+  min-width: 0;
+}
+
+/**
+ * ЗУРГИЙН ХҮРЭЭ — үзүүлэлтийн доорх үлдсэн бүх зай. Hairline хүрээ, 2px булан
+ * ЭНД; картууд гадуур үлдэнэ. envhub: сүүдэр байхгүй — гүнийг hairline л өгнө.
+ *
+ * ⚠️ `position: relative` нь ЧУХАЛ: toolbar, каталог, тайлбар гурав нь
+ * `position: absolute` бөгөөд хамгийн ойрын `relative` эцгээсээ хэмжигддэг.
+ * ⚠️ `display: flex` — `MapCanvas`-ийн `.wrap` нь `flex: 1` тул эцэг flex байна.
+ */
+.mapBox {
+  position: relative;
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+
+/* Хоёр талын багана — доторх хавтангууд босоо өрөгдөж, шаардвал гүйнэ */
+.left,
+.right {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+}
+.left { grid-area: left; }
+.right { grid-area: right; }
+
+/**
+ * Баганын толгой — глобал `.eyebrow` (10–11px, uppercase, ink-3) дээр зөвхөн
+ * байрлалын нэмэлт. Хоёр баганад ЯГ ИЖИЛ: «Өмнө/Дараа»-г үг нь л ялгана.
+ */
+.colHd {
+  flex: none;
+  padding: 2px 2px 0;
+}
+
+/**
+ * overview-гийн `.panel` нь flex тохиргоогүй тул гүйдэг flex баганад агуулгаараа
+ * хумигдаж мэднэ — энд `flex: none` даруулж өндрийг нь агуулгад нь өгнө.
+ */
+.card { flex: none; }
+
+/* Хавтангийн доорх тайлбар мөр — жижиг, ink-3 (утга биш, контекст) */
+.note {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ink-3);
+}
+
+/* Давхаргын чагтууд — «Давхарга» товчны панел дотор */
+.toggles {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 2px;
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 2px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--ink-2);
+  cursor: pointer;
+  border-radius: var(--r-sm);
+  transition: color 0.12s;
+}
+.toggle:hover { color: var(--ink); }
+.toggle input {
+  width: 13px;
+  height: 13px;
+  flex: none;
+  /* envhub: сонголт = өгөгдлийн ганц өнгө */
+  accent-color: var(--data);
+  cursor: pointer;
+}
+
+/* ── Responsive ── */
+@media (max-width: 1320px) {
+  /* Зураг ДЭЭШЭЭ, өмнө/дараа доор нь ЗЭРЭГЦЭЭ — харьцуулалт хэвээр үлдэнэ */
+  .frame {
+    grid-template-areas:
+      "map map"
+      "left right";
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto auto;
+    height: auto;
+    min-height: 100%;
+    overflow-y: auto;
+  }
+  .left,
+  .right { overflow-y: visible; }
+  /* ⚠️ Мөрийн өндөр `auto` болсон тул зурагт доод хязгаар ЗААВАЛ — эс бөгөөс
+     `MapCanvas`-ийн `flex:1` нь 0 өндөрт хумигдаж зураг алга болно. */
+  .mapCol { min-height: 62vh; }
+}
+
+@media (max-width: 760px) {
+  /* Нарийн дэлгэц — бүгд нэг баганад */
+  .frame {
+    grid-template-areas:
+      "map"
+      "left"
+      "right";
+    grid-template-columns: 1fr;
+  }
+}

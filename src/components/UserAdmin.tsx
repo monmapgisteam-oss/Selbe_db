@@ -43,6 +43,21 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
   useEffect(() => {
     if (open) setUsers(listUsers());
   }, [open]);
+
+  // ⚠️ Escape-ээр хаах + нээлттэй үед фоны гүйлгэлтийг түгжих (DocViewer-тэй ижил
+  //    хэв маяг — өмнө нь энэ модал зөвхөн даралт/✕-ээр хаагддаг, гар/уншигчид
+  //    таагүй байв).
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [open, onClose]);
   useEffect(() => subscribe(() => setUsers(listUsers())), []);
 
   if (!open) return null;
@@ -78,11 +93,40 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
   };
 
   return (
-    <div className={s.overlay} onClick={onClose} role="presentation">
-      <div className={s.modal} onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Хэрэглэгчийн эрх">
+    /**
+     * ⚠️ 2026-08-18 (хэрэглэгчийн шийдвэр): жижиг МОДАЛ байсныг ТУСДАА «Админ
+     * портал» хуудас болгов — админы тохиргоо нь үндсэн порталаас салангид,
+     * өөрийн толгой ба хажуугийн цэстэй бүтэн дэлгэцийн хэсэг. Нээх/хаах logic
+     * (isSuper шалгалт, Escape, гүйлгэлт түгжих) хэвээр.
+     */
+    <div className={s.page} role="dialog" aria-modal="true" aria-label="Админ портал">
+      <header className={s.pageHead}>
+        <span className={s.pageBrand}>
+          <span className={s.pageBadge}><Icon name="users" size={15} /></span>
+          <span className={s.pageBrandText}>
+            <b>Админ портал</b>
+            <small>Сэлбэ 20 минутын хот · тохиргоо</small>
+          </span>
+        </span>
+        <button type="button" className={s.back} onClick={onClose}>
+          ← Портал руу буцах
+        </button>
+      </header>
+
+      <aside className={s.side} aria-label="Админ цэс">
+        <div className={s.sideHead}>Тохиргоо</div>
+        <button type="button" className={`${s.sideItem} ${s.sideItemOn}`} aria-current="true">
+          <Icon name="users" size={14} />
+          Хэрэглэгчдийн эрх удирдах
+        </button>
+      </aside>
+
+      <div className={s.main}>
         <header className={s.head}>
-          <h2 className={s.title}>Хэрэглэгчийн эрх</h2>
-          <button type="button" className={s.close} onClick={onClose} aria-label="Хаах">✕</button>
+          <h2 className={s.title}>Хэрэглэгчдийн эрх удирдах</h2>
+          <p className={s.subtitle}>
+            Хэрэглэгч бүрд үүргийн багц оноох буюу харагдац тус бүрийг нээж/хаана.
+          </p>
         </header>
 
         {/* Хэрэглэгч нэмэх */}
@@ -152,7 +196,6 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
                       type="button"
                       aria-pressed={on}
                       className={`${s.chip} ${on ? s.chipOn : ''}`}
-                      style={on ? { '--tone': v.hue } as React.CSSProperties : undefined}
                       onClick={() => flipView(u, v.key)}
                     >
                       <span className={s.chipIcon}><Icon name={v.icon} size={14} /></span>
@@ -164,7 +207,6 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
                   type="button"
                   aria-pressed={u.docs}
                   className={`${s.chip} ${u.docs ? s.chipOn : ''}`}
-                  style={u.docs ? { '--tone': '#16a34a' } as React.CSSProperties : undefined}
                   onClick={() => flipDocs(u)}
                 >
                   <span className={s.chipIcon}><Icon name="file" size={14} /></span>

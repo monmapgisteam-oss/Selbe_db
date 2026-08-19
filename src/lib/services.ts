@@ -38,6 +38,19 @@ const HJ = env(
   "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services",
 );
 
+/**
+ * TEST_DATA — MUST org-ийн НЭГДСЭН орон зайн үйлчилгээ (2026-08-13).
+ * Орон зайн бүх давхарга (санхүүгийн хүснэгт, «Гүйцэтгэл бөглөх», Survey123,
+ * 3D/растераас БУСАД) энэ 109 давхаргат НЭГ FeatureServer-ээс уншигдана.
+ * Хост нь GAZAR org-той ижил (services-ap1 · ACqsMOmNLi5wIdIh). Давхаргын
+ * дугаарын зураглалыг `TD_LAYER` (LAYERS-ийн төгсгөлд) хийнэ; хуучин загвар
+ * (webmap snapshot) нь `styleUrl`-ээр хэвээр хэрэглэгдэнэ.
+ */
+export const TD = `${env(
+  process.env.NEXT_PUBLIC_ARCGIS_GAZAR,
+  "https://services-ap1.arcgis.com/ACqsMOmNLi5wIdIh/arcgis/rest/services",
+)}/test_data/FeatureServer`;
+
 /** Бүх вектор давхаргын эх — НЭГ FeatureServer */
 export const ET = `${HJ}/Selbe_ET_20260721/FeatureServer`;
 
@@ -78,7 +91,8 @@ export const ET_PKG = `${HJ}/Selbe_ET_20260725/FeatureServer`;
  * сургууль/цэцэрлэг. Утга нь тухайн байгууламжаас тэр хэрэглэгчид хуваарилсан МВт.
  */
 export const SOURCE_FS = {
-  url: `${HJ}/eh_uusver_negdsen20260308/FeatureServer/7`,
+  // test_data [105] eh_uusver_negdsen — 2026-08-13 шилжив (талбарууд бүрэн)
+  url: `${TD}/105`,
   fields: {
     type: "torol",       // Дулаан / Цахилгаан / Ус хангамжийн эх үүсвэр
     name: "нэр",         // байгууламжийн нэр
@@ -190,7 +204,7 @@ export type Cost = { field: string; basis: CostBasis };
  * (юу барих) vs хяналт (юу баригдсан). Каталогийн ДАРААЛАЛ нь сэдэвчилсэн
  * хэвээр — барилга → инженер → зам → тээвэр → бүс → бусад.
  */
-export type TopicKey = "plan" | "monitor" | "gazar";
+export type TopicKey = "plan" | "monitor" | "gazar" | "iot";
 
 export const TOPICS: {
   key: TopicKey;
@@ -201,6 +215,7 @@ export const TOPICS: {
   { key: "plan", title: "Ерөнхий төлөвлөгөө", icon: "layers", hue: "#0d9488" },
   { key: "monitor", title: "Барилгын хяналт", icon: "target", hue: "#ea580c" },
   { key: "gazar", title: "Газар чөлөөлөлт", icon: "frame", hue: "#16a34a" },
+  { key: "iot", title: "IoT мэдрэгч", icon: "radio", hue: "#0891b2" },
 ];
 
 export const topicTitle = (k: TopicKey) =>
@@ -290,7 +305,41 @@ export type LayerDef = {
    * Барилгын хяналтын хоёр давхарга нь хуучин үйлчилгээнд үлдсэн (шинэ ЕТ-д
    * гүйцэтгэлийн өгөгдөл ОГТ байхгүй) тул хаягаа өөрөө авчирна.
    */
+  /**
+   * Давхаргын ТОГТМОЛ шүүлт (definitionExpression-ийн суурь).
+   * ⚠️ IoT мэдрэгчид: телеметрийн мөр бүр геометрээ ДАВТДАГ (10,000 ижил цэг).
+   *    `device_id IS NULL` нь суурилуулалтын ГАНЦ мөрийг үлдээнэ — зурагт
+   *    мэдрэгч тус бүр НЭГ цэг болж гарна.
+   */
+  where?: string;
   url?: string;
+  /**
+   * ЗАГВАРЫН түлхүүр URL — webmap-style.json-ийн snapshot ХУУЧИН үйлчилгээний
+   * хаягаар түлхүүрлэгдсэн. test_data руу шилжихэд `url` шинэчлэгдсэн ч рендерер
+   * хайлт ЭНЭ хаягаар хийгдэж хуучин загвар 1:1 хадгалагдана (хэрэглэгчийн
+   * шийдвэр, 2026-08-13). Байхгүй бол `layerUrl()` ашиглагдана.
+   */
+  styleUrl?: string;
+  /**
+   * ӨРТГИЙН асуулгын ЭХ — миграциас ӨМНӨХ тодорхойлолтын хуулбар.
+   *
+   * ⚠️ 2026-08-19: test_data-д `negj_une` талбар зөвхөн НЭГ давхаргад (et:4)
+   * үлдсэн тул миграци нь бусад ~18 давхаргаас `cost`-ыг УСТГАДАГ. Тэр нь
+   * зөв — байхгүй талбараар асуувал давхарга бүхэлдээ унана. Гэвч дагавар нь
+   * ноцтой байв: `loadCosts()` дэд бүтцийн өртгийг ЗӨВХӨН хоёр давхаргаас
+   * уншиж, `costs.perHa` олон дахин буурснаар Suitability-ийн бүсийн
+   * дэд бүтцийн зардал бараг тэг болж АШГИЙГ хөөрөгддөг байлаа.
+   *
+   * Хуучин ET үйлчилгээ АМЬД, `negj_une` бүрэн хэвээр байгааг шалгасан
+   * (жиш. ET/8: 14 шугам · 235.5 м · 40 сая ₮/100м). Тиймээс өртгийн асуулгыг
+   * ХУУЧИН хаягаар явуулна — зураг, загвар нь test_data-д хэвээр.
+   *
+   * ⚠️ Зөвхөн `where='1=1'` асуулгад (`loadCosts`) хэрэглэнэ. Каталогийн
+   * `layerTotals` нь БҮСИЙН шүүлттэй `where` дамжуулдаг бөгөөд тэр нөхцөл нь
+   * test_data-гийн талбаруудаар зохиогддог тул хуучин сервист хүчингүй байж
+   * болно — тэнд ЭНИЙГ хэрэглэхгүй.
+   */
+  costSrc?: { url: string; cost: Cost; qty?: Quantity; oid?: string };
   /**
    * OID талбарын нэр — анхдагч `OBJECTID`.
    * ⚠️ Хуучин үйлчилгээнүүд өөр нэртэй (`FID`, `objectid`). Буруу нэрээр
@@ -464,10 +513,10 @@ const GAZAR_FS = env(
 
 /** Барилгын үнэлгээ — полигон доторх барилгуудын тоо/талбай/өртөг */
 export const GAZAR_BUILDING = {
-  url: `${GAZAR_FS}/selbe_B/FeatureServer/0`,
-  oid: "FID",
+  // test_data [96] selbe_gadna_building — 2026-08-13 шилжив (oid FID→OBJECTID)
+  url: `${TD}/96`,
+  oid: "OBJECTID",
   fields: {
-    area: "area_m2",
     /** Барилгын нийт үнэлгээ (₮) */
     value: "NIIT_UNE",
     /** 1 м²-ийн үнэ (₮) */
@@ -477,12 +526,14 @@ export const GAZAR_BUILDING = {
     type: "TOROL",
     material: "MATERIAL",
     name: "building_n",
+    // ⚠️ area (area_m2) test_data [96]-д БАЙХГҮЙ болсон — талбайн нийлбэр хасагдав
   },
 } as const;
 
 /** Кадастрын нэгж талбар — полигон доторх нэгжийн тоо/талбай/зориулалт */
 export const GAZAR_PARCEL = {
-  url: `${GAZAR_FS}/Selbe_parcel/FeatureServer/0`,
+  // test_data [95] Selbe_gadna_parcel — 2026-08-13 шилжив
+  url: `${TD}/95`,
   oid: "OBJECTID",
   fields: {
     area: "area_m2",
@@ -491,7 +542,7 @@ export const GAZAR_PARCEL = {
     /** Эрхийн төрөл */
     right: "rigth_type",
     parcelId: "parcel_id",
-    status: "status_id",
+    // ⚠️ status (status_id) test_data [95]-д байхгүй болсон
   },
 } as const;
 
@@ -517,41 +568,8 @@ export const BUILDING = {
   },
 } as const;
 
-/**
- * BUS_cashflow — багц бүрийн ТӨСӨВ, САНХҮҮЖИЛТ, ГЭРЭЭНИЙ өгөгдөл.
- * ⚠️ Талбар нь A1..E225 гэж КОДЛОГДСОН (Selbe_HO_polygon_join.xlsx-ийн HEADER_MAP-аар
- * тайлав). ZONE_ID нь бүсийн давхарга (Багц-X.Y)-той холбогдоно. Утга нь таслалтай
- * тэмдэгт мөр («259,778,021,987») тул тоо руу задлан хөрвүүлнэ.
- */
-export const CASHFLOW = {
-  url: `${HJ}/BUS_cashflow/FeatureServer/0`,
-  fields: {
-    zone: "ZONE_ID",
-    budget: "A5", // Урьдчилсан төсөвт өртөг
-    orderTotal: "B3", // Захирамжийн дүн — нийт дүн
-    securities: "B4", // Санхүүжилт — үнэт цаасны хөрөнгө
-    projectIncome: "B6", // Санхүүжилт — төслийн орлого
-    cityBudget: "B7", // Санхүүжилт — нийслэлийн төсөв
-    reserve: "B8", // Санхүүжилт — НЗД нөөц хөрөнгө
-    contract: "C6", // Гэрээ байгуулах эрх олгосон дүн
-    contractor: "C2", // Гүйцэтгэгч байгууллага
-  },
-  /** Сар бүрийн олгосон санхүүжилт (Мөнгөн дүн) — E-группээс задалсан */
-  months: [
-    { code: "E2", label: "25-10" },
-    { code: "E21", label: "25-11" },
-    { code: "E40", label: "25-12" },
-    { code: "E68", label: "26-01" },
-    { code: "E87", label: "26-02" },
-    { code: "E106", label: "26-03" },
-    { code: "E125", label: "26-04" },
-    { code: "E144", label: "26-05" },
-    { code: "E163", label: "26-06" },
-    { code: "E182", label: "26-07" },
-    { code: "E201", label: "26-08" },
-    { code: "E220", label: "26-09" },
-  ],
-} as const;
+/* BUS_cashflow (багцын төсөв/эх үүсвэр/сарын олголт) 2026-08-13-нд бүрмөсөн
+   хасагдав — санхүүгийн бодит эх нь CASHFLOW2 (төлөвлөгөө) + IPC_LOG (олгосон акт). */
 
 /* ══════════════════════ Санхүүжилт (шинэ харагдац) ══════════════════════ */
 
@@ -661,102 +679,12 @@ export const CASHFLOW2 = {
 } as const;
 
 /**
- * ХӨРӨНГӨ ОРУУЛАЛТ · ӨРТӨГ (2026-07-06) — төслийн НИЙТ хөрөнгө оруулалт 9
- * төрлөөр, санхүүжилтийн эх үүсвэрээр, 90 мөр. Геометргүй ХҮСНЭГТ (`/249`).
- *
- * ⚠️ `CASHFLOW`-той ДАВХАРДАХГҮЙ: тэр нь ЗӨВХӨН барилга угсралтын 7 багцын
- * сар бүрийн мөнгөн урсгал; энэ нь төсөл ДАЯАРЫН хөрөнгө оруулалт (зам, инженер,
- * нийгмийн дэд бүтэц, ТЭЗҮ, олон нийтийн бүсийн барилга).
- *
- * ⚠️ Нийт = `confirmed` + `planned` (баталгаажсан ба урьдчилсан) = 4,155.3 тэрбум,
- * харин эх үүсвэрийн 5 баганын нийлбэр 3,672.4 — 482.9 тэрбумын ЗӨРҮҮ. Эх
- * excel-тэй (`Хөрөнгө оруулалт өртөг 20260706.xlsx` · хуудас
- * «Investment 20MINCITY.») тулгаж задлав:
- *   · 33.4 тэрбум — «НИЙСЛЭЛИЙН ТӨСВИЙН ХӨРӨНГӨӨР» багана (excel-ийн H, 4 мөр:
- *     960 хүүхдийн сургууль, 240 хүүхдийн цэцэрлэг 1, дахин төлөвлөлтийн 2 мөр).
- *     Энэ багана ArcGIS рүү импортлогдоогүй. Дахин импортлохдоо оруулбал доорх
- *     `sources`-д нэг мөр нэмэхэд л хангалттай.
- *   · 449.5 тэрбум — excel дээрээ ч ХООСОН, 24 мөр («Урьдчилсан төсөв»,
- *     «магадлагдаагүй»): захирамж гараагүй тул санхүүжилтийн эх үүсвэр хараахан
- *     шийдэгдээгүй. Эх хүснэгтийн нэгтгэл үүнийг «Захирамж гараагүй /ЭҮ
- *     тодорхойгүй/» гэж нэрлэдэг.
- * Зөрүүг диаграмд ЗААВАЛ зүсмэг болгоно, эс бөгөөс нийт дүн KPI-тай зөрнө.
- * Зөвхөн орон сууц (1) ба олон нийтийн барилга (9) нь эх үүсвэрээр бүрэн
- * задарсан; дэд бүтэц, зам, сургууль, тохижилтынх задраагүй.
- *
- * ⚠️ 3 ажил ХОЁР төрөлд давхар бичигдсэн (үерийн ус 22.0 · замын зураг төсөл 1.2 ·
- * хөрсний ус зураг төсөл 0.5 тэрбум) — нийт дүн 23.7 тэрбумаар (0.6%) ихдэнэ.
- * Энэ нь импортын алдаа БИШ: excel-ийн «НИЙТ ДҮН» мөр өөрөө мөн адил давхар
- * тоолсон. Тиймээс ХАСААГҮЙ — аль төрөлд харьяалагдахыг өгөгдөл заагаагүй, нэгийг
- * нь дурын журмаар хасвал төрлийн задаргаа эх тайлангаас зөрнө.
+ * ⚠️ «Хөрөнгө оруулалт · өртөг» (2026-07-06 · FeatureServer/249) хүснэгт
+ * 2026-08-14-нд төслөөс ТҮР ХАСАГДСАН (хэрэглэгчийн шийдвэр — өгөгдлийн утга
+ * хөгжүүлэгчээс тодруулагдсаны дараа эргэн нэмнэ). Санхүүгийн ганц зөв эх нь
+ * `Cashflow /106` (CASHFLOW2). Тиймээс энэ файлаас `INVEST`, `INVEST_TYPES`,
+ * `investType` устгагдав.
  */
-export const INVEST = {
-  url: `${HJ}/_%D0%A5%D3%A9%D1%80%D3%A9%D0%BD%D0%B3%D3%A9_%D0%BE%D1%80%D1%83%D1%83%D0%BB%D0%B0%D0%BB%D1%82_%D3%A9%D1%80%D1%82%D3%A9%D0%B320260706/FeatureServer/249`,
-  oid: "ObjectID",
-  fields: {
-    type: "Төрөл", // «1.БАРИЛГА УГСРАЛТ» … «9.ОЛОН НИЙТИЙН БҮС…»
-    zone: "Бүс", // зөвхөн 9-р төрөлд бүсийн код (бохир бичиглэл)
-    project: "Төсөл",
-    bagts: "bagts_name",
-    confirmed: "Гэрээ__захирамж__магадлалаар_баталгаажсан__2025_2026_он_",
-    planned: "Төлөвлөгөөт_бусад_хөрөнгө_оруулалт__магадлагдаагүй__урьдчилсан_т",
-    contractor: "ГҮЙЦЭТГЭГЧ_КОМПАНИ__ЗАХИРАМЖ__ГЭРЭЭНИЙ_ДУГААР",
-  },
-  /** Санхүүжилтийн эх үүсвэрүүд — дүн нь ₮, тус бүр өөрийн багана */
-  sources: [
-    {
-      field: "ҮНЭТ_ЦААСНЫ_ХӨРӨНГӨӨР_САНХҮҮЖИХ",
-      label: "Үнэт цаас",
-      color: "#3387b8",
-    },
-    {
-      field: "БОРЛУУЛАЛТЫН_ОРЛОГООР",
-      label: "Борлуулалтын орлого",
-      color: "#22c55e",
-    },
-    {
-      field: "ХУВИЙН_ХЭВШЛИЙН_ХӨРӨНГӨ_ОРУУЛАЛТААР",
-      label: "Хувийн хэвшил",
-      color: "#a855f7",
-    },
-    {
-      field: "НИЙСЛЭЛИЙН_ЗАСАГ_ДАРГЫН_НӨӨЦИЙН_ХӨРӨНГӨӨР",
-      label: "НЗД нөөц",
-      color: "#f59e0b",
-    },
-    {
-      field: "НИЙСЛЭЛИЙН_ГАЗРЫН_САН",
-      label: "Нийслэлийн газрын сан",
-      color: "#0891b2",
-    },
-  ],
-} as const;
-
-/**
- * Хөрөнгө оруулалтын 9 төрөл — БОГИНО нэр ба өнгө, эх өгөгдлийн «1.» угтварын
- * дугаараар.
- *
- * ⚠️ Эх нэр нь бүтэн ТОМ үсгээр, урт («9.ОЛОН НИЙТИЙН БҮС ДЭХ БАРИЛГА УГСРАЛТ»,
- * «8.ЗАМ /АВТО ЗАМ, ДУГУЙН ЗАМ, ЯВГАН ЗАМ/»). 240px баганад мөр бүр 4–5 эгнээ
- * болж, диаграм нэрсийн жагсаалт болж хувирдаг. Богино нэрийг ЭНД гараар бичнэ:
- * автомат таслалт нь «Гадна инженерийн шугам сүлжээ»-г «Гадна инженерийн»
- * болгож утга нь алдагдана.
- */
-export const INVEST_TYPES: { n: number; short: string; color: string }[] = [
-  { n: 1, short: "Барилга угсралт", color: "#3387b8" },
-  { n: 2, short: "Гадна тохижилт", color: "#f97316" },
-  { n: 3, short: "Гадна инженерийн шугам", color: "#0891b2" },
-  { n: 4, short: "ТЭЗҮ, зураг төсөл", color: "#8b5cf6" },
-  { n: 5, short: "Инженерийн эх үүсвэр", color: "#e11d48" },
-  { n: 6, short: "Төслийн бэлтгэл ажил", color: "#64748b" },
-  { n: 7, short: "Нийгмийн дэд бүтэц", color: "#22c55e" },
-  { n: 8, short: "Зам", color: "#eab308" },
-  { n: 9, short: "Олон нийтийн барилга", color: "#a855f7" },
-];
-
-/** «9.ОЛОН НИЙТИЙН БҮС ДЭХ БАРИЛГА УГСРАЛТ» → каталогийн мөр (эсвэл undefined) */
-export const investType = (type: string) =>
-  INVEST_TYPES.find((t) => t.n === Number(String(type).split(".")[0]));
 
 /**
  * Бүсийн кодыг ЕТ-ийн `ZONE_ID`-д тааруулах: «А-14 » → «A-14», «B-2-1» → «B-2.1».
@@ -895,6 +823,44 @@ export const bagtsKey = (v: unknown) =>
     .toUpperCase()
     .replace(/[^0-9А-ЯӨҮA-Z]/g, "");
 
+/**
+ * ОЛОН БАГЦЫГ ХАМАРСАН мөр мөн үү («БАГЦ 1-4», «БАГЦ 1-6\nБАГЦ 8-17»)?
+ *
+ * ⚠️ 2026-08-18: `bagtsKey` нь ЦЭГ, ЗУРААС, ЗАЙГ БҮГДИЙГ хаядаг — «Багц 4-1» ба
+ * «Багц 4.1»-ийг тааруулахын тулд ЗААВАЛ ийм байх ёстой. Гэвч тэр дүрэм нь
+ * ДИАПАЗОН бичиглэлийг ч нурааж, «БАГЦ 1-4» → «БАГЦ14» болгодог — энэ нь бодит
+ * дэд бүтцийн багц «Багц 14»-ийн ЯГ түлхүүр. Үр дүнд Cashflow-гийн ТЭЗҮ 1–4
+ * зураг төслийн гэрээ (2.23 тэрбум ₮) «Багц 14 · Дулаан хангамжийн нэвтрэх
+ * суваг»-т наалдаж, тэр багц «санхүү бүртгэлгүй» гэхийн оронд ХУДАЛ гүйцэтгэл
+ * харуулдаг байв.
+ *
+ * Тиймээс багц↔гэрээ тааруулах бүх газар (Санхүүжилт, Барилгын цогц хяналт)
+ * диапазон мөрийг ЭНЭ шалгуураар ЭХЛЭЭД хасна. Диапазоны дүнг тодорхой нэг
+ * багцад хуваарилах боломжгүй тул алдагдахгүй — зүгээр л буруу эзэнд очихгүй.
+ */
+export const isPkgRange = (v: unknown) => {
+  const s = String(v ?? "").trim();
+  // Олон мөрт нүд («БАГЦ 1-6» + шинэ мөр + «БАГЦ 8-17») — аль нэгд нь ч хамаарахгүй
+  if (/[\r\n]/.test(s)) return true;
+  // Таслалаар жагсаасан («БАГЦ-6.1, 6.2»)
+  if (s.includes(",")) return true;
+  // «БАГЦ 1-4», «БАГЦ 1- 4» — ТООН ДИАПАЗОН.
+  // ⚠️ Дэд багцыг диапазонтой АНДУУРЧ БОЛОХГҮЙ. Үйлчилгээний бодит утгуудыг
+  //    шалгасан (Cashflow /106): дэд багц нь ҮРГЭЛЖ ЦЭГТЭЙ («БАГЦ-3.1»,
+  //    «БАГЦ-16.7», «БАГЦ - 19.1»), диапазон нь ЗУРААСТАЙ бөгөөд тоо нь ӨСНӨ.
+  //    Нэмэлт хамгаалалт болгож өсөх дарааллыг шаардана — ингэснээр «Багц 4-1»
+  //    хэлбэрийн дэд багц (4 > 1) орж ирсэн ч диапазон гэж тооцогдохгүй.
+  const m = s.match(/(\d+)\s*[-–—]\s*(\d+)\s*$/u);
+  return m != null && Number(m[2]) > Number(m[1]);
+};
+
+/**
+ * Гэрээний мөрөөс БАГЦЫН түлхүүр. Диапазон/жагсаалт мөрд ХООСОН мөр буцаана —
+ * багцын түлхүүрүүд хэзээ ч хоосон биш тул ийм мөр аль ч багцад наалдахгүй.
+ * Багц↔гэрээ тааруулах бүх газар `bagtsKey`-ийн ОРОНД энийг хэрэглэнэ.
+ */
+export const pkgKeyOf = (v: unknown) => (isPkgRange(v) ? "" : bagtsKey(v));
+
 /** «5/1 барилга» / «5/1 блок» → «5/1» (давхаргын `BLOK`-той тааруулах) */
 export const blockKey = (v: unknown) =>
   String(v ?? "")
@@ -913,10 +879,8 @@ export const buildingKey = (bagts: unknown, block: unknown) =>
  * зөвхөн газар чөлөөлөлтийн явцыг өөрийн баганад дүрслэнэ.
  */
 export const PARCEL_LEFT = {
-  // Чөлөөлөгдөөгүй (үлдсэн) нэгж талбар — `selbe_parcel_last0731` (2026-07-31).
-  // ⚠️ Нийт 2,119 объект, гэхдээ зөвхөн 182-т `явцын_мэдээ` бий (үлдсэн 1,937 нь
-  //    null — арын context талбар). Давхаргын дугаар нь /11 (0 биш).
-  url: `${HJ}/selbe_parcel_last0731/FeatureServer/11`,
+  // test_data [94] selbe_parcel — 2026-08-13 шилжив (2,117 объект, Tuluv/явцын_мэдээ бүрэн)
+  url: `${TD}/94`,
   fields: {
     /**
      * ТӨЛӨВ — бүх 2,119 объектыг ангилдаг ГОЛ талбар (газрын зургийн будалт).
@@ -937,17 +901,19 @@ export const PARCEL_LEFT = {
      * `areaAlt`-аар нөхнө (222/224 хамрагдана).
      */
     area: "area_m2",
-    areaAlt: "Талбай",
+    // ⚠️ test_data [94]-д гараар бичсэн «Талбай» багана байхгүй — areaAlt нь
+    //    area-тайгаа ижил болов (нөхөлтийн зам хаагдсан ч query эвдрэхгүй)
+    areaAlt: "area_m2",
     /** Блок — СБД-1/2/3, ЧД-2/3 (193 талбарт хоосон) */
     block: "Блок",
-    /** Кадастрын нэгж талбарын дугаар */
-    parcelNo: "Нэгж_талбарын_дугаар",
+    /** Кадастрын нэгж талбарын дугаар — test_data-д `parcel_id` болж нэрлэгдсэн */
+    parcelNo: "parcel_id",
     /** Эзэмшигчийн овог нэр (177/224) */
     owner: "Овог__нэр",
     /** Хаяг (182/224) */
     address: "Хаяг",
-    /** Газрын зориулалт — шинэ үйлчилгээнд тоон код (`landuse`, өмнө `landuse_de`) */
-    landuse: "landuse",
+    /** Газрын зориулалт — test_data [94]-д тусдаа талбар алга; `Төрөл`-ийг ашиглана */
+    landuse: "Төрөл",
     /** Чөлөөлөлтийн тэмдэглэл — `Тайлбар (дэлгэрэнгүй)` (өмнө зүгээр `Тайлбар`) */
     note: "Тайлбар__дэлгэрэнгүй_",
   },
@@ -957,9 +923,17 @@ export const PARCEL_LEFT = {
  * ТӨЛӨВ (`Tuluv`) → өнгө. Газрын зургийн ГОЛ будалт — үлдсэн (улаан) талбар
  * барилга эхлүүлэхэд саад болж буй хэсэг тул хамгийн тод, чөлөөлсөн нь ногоон.
  */
+/**
+ * ТӨЛӨВ (`Tuluv`) → өнгө.
+ *
+ * ⚠️ 2026-08-17: Сервис одоо ДӨРӨВ утга буцаадаг болсон — «Гэрээлсэн» өнгөгүй
+ * байсан тул зурагт өнгөгүй тусаж, самбарын тоонууд нийлбэртээ таардаггүй байв
+ * (Бүрэн чөлөөлсөн + Цэвэрлэсэн + Үлдсэн ≠ нийт талбар).
+ */
 export const PARCEL_STATUS_HUES: Record<string, string> = {
   "Бүрэн чөлөөлсөн": "#22c55e",
   "Цэвэрлэсэн нэгж талбар": "#0ea5e9",
+  "Гэрээлсэн": "#a78bfa",
   "Үлдсэн нэгж талбар": "#e11d48",
 };
 
@@ -1380,7 +1354,8 @@ const PKG_LAYERS: LayerDef[] = PKG_TABLE.map(
  */
 export const BOUNDARY = {
   plan: {
-    url: `${HJ}/Tuluvlult_talbai/FeatureServer/2`,
+    // test_data [97] selbe_boundry — 2026-08-13 шилжив (khil1/khil2 мөн энд)
+    url: `${TD}/97`,
     title: "Төлөвлөлтийн талбай",
   },
 } as const;
@@ -1426,12 +1401,63 @@ const SB_LAYERS: LayerDef[] = PLAN2D_LAYERS.map((l) => ({
     : {}),
 }));
 
+const IOT_BASE =
+  process.env.NEXT_PUBLIC_ARCGIS_IOT ??
+  "https://services-ap1.arcgis.com/OgVoRiKUkHg9Iokz/arcgis/rest/services";
+
+/**
+ * IoT МЭДРЭГЧ — газрын зурагт харагдах цэгүүд.
+ *
+ * ⚠️ Давхарга бүр 10,000 хүртэл ТЕЛЕМЕТРИЙН мөртэй бөгөөд мөр бүр ИЖИЛ
+ *    геометрээ давтдаг. `where` нь суурилуулалтын ганц мөрийг үлдээж, зурагт
+ *    мэдрэгч тус бүр НЭГ цэг болгоно — эс бөгөөс 10,000 цэг нэг дээр овоолж
+ *    рендерийг дэмий ачаална.
+ * ⚠️ `noZone` — эдгээрт ZONE_ID талбар БАЙХГҮЙ. Бүсээр шүүвэл
+ *    definitionExpression бүхэлдээ унаж давхарга зурагдахаа болино.
+ * ⚠️ `oid` нь OBJECTID (анхдагч) тул заагаагүй.
+ */
+const IOT_LAYERS: LayerDef[] = [
+  { key: "Waste_Sensor",  n: 62, title: "Хогийн савны мэдрэгч",   hue: "#ea580c" },
+  { key: "Water_Meter",   n: 61, title: "Усны тоолуур",           hue: "#0891b2" },
+  { key: "Light_Sensor",  n: 60, title: "Гэрэлтүүлгийн мэдрэгч",  hue: "#f59e0b" },
+  { key: "Temp_Humidity", n: 64, title: "Агаарын темп, чийг",     hue: "#22c55e" },
+  { key: "Soil_Meter",    n: 63, title: "Хөрсний мэдрэгч",        hue: "#a855f7" },
+].map((x) => ({
+  id: `iot:${x.key.toLowerCase()}`,
+  n: x.n,
+  title: x.title,
+  topic: "iot" as const,
+  geom: "point" as const,
+  hue: x.hue,
+  marker: "circle" as const,
+  size: 11,
+  url: `${IOT_BASE}/${x.key}/FeatureServer/${x.n}`,
+  where: "device_id IS NULL",
+  noZone: true as const,
+  note: x.key,
+}));
+
 export const LAYERS: LayerDef[] = [
   ...SB_LAYERS,
   /* ─────────── Барилга байгууламж ─────────── */
   {
     id: "et:24",
     n: 24,
+    /**
+     * ⚠️ ЭХ СУРВАЛЖ СОЛИГДСОН (2026-08-12): `Selbe_ET_.../24` → `Selbe_barilga_last/0`.
+     *
+     * Шинэ давхаргад `ZONE_ID` бүрэн зассан (хуучинд 19 бичлэг «Бүсийн мэдээлэл
+     * байхгүй», D-8 хуваагдаагүй, B-2 зөрсөн байв) ба 368 барилгатай (хуучин 363).
+     * `Population`, `Urhiin_too`, `Parking`, `Huchin_chadal` дүн нь хуучинтай
+     * таарахыг шалгасан (хүчин чадалд −63 санаатай засвар: эмнэлэг 194→125,
+     * цэвэрлэх байгууламж 4→2, үйлчилгээ 9,438→9,446).
+     *
+     * ⚠️ `negj_une` талбар шинэ давхаргад БАЙХГҮЙ. Тэр нь 363/363 бичлэгт ижил
+     * 4,700,000 байсан тул `analysis/config.ts`-ийн `SALE_PRICE_PER_M2`
+     * тогтмолоор солигдов; энэ давхаргын `cost` тодорхойлолт хасагдав (байхгүй
+     * талбараар `queryGroup` хийвэл ArcGIS БҮХ хүсэлтийг унагаана).
+     */
+    url: `${HJ}/Selbe_barilga_last/FeatureServer/0`,
     title: "Барилга",
     topic: "plan",
     geom: "area",
@@ -1448,7 +1474,6 @@ export const LAYERS: LayerDef[] = [
     // ⚠️ `Барилгажсан_талбай` нь давхраар үржсэн НИЙТ шалны талбай (152 га) тул
     //    каталогийн талбайд барилгын бодит ХӨЛ (геометрийн Shape__Area, 21 га).
     qty: { field: "Shape__Area", unit: "м²" },
-    cost: { field: "negj_une", basis: "m2" },
     note: "төлөв, зориулалт, өрх, хүн ам",
     facets: [
       { field: "Barilga_ty", label: "Барилгын төлөв" },
@@ -1478,12 +1503,12 @@ export const LAYERS: LayerDef[] = [
     noZone: true,
     detail: "building",
     oid: "FID",
-    note: "113 блок · 4 түвшин · 16 үе шат",
-    breaks: {
-      field: "GUITS_HV",
-      levels: PROGRESS_LEVELS,
-      emptyLabel: "Мэдээлэлгүй",
-    },
+    note: "Гүйцэтгэл «Гүйцэтгэл бөглөх» хүснэгтээс амьд",
+    /* ⚠️ `breaks` (GUITS_HV) 2026-08-13-нд ХАСАГДАВ: давхаргын GUITS_HV талбар
+       ХУУЧИРСАН (5–14 нэгж зөрдөг) бөгөөд эхний зураглалт болон каталогийн
+       тоололд худал өнгө/тоо өгдөг байв. Гүйцэтгэлийн будалтыг MapCanvas нь
+       `Selbe_guitsetgel_consolidated`-ын амьд дүнгээр (`buildingProgressRenderer`)
+       өөрөө тавьдаг хэвээр. */
   },
   {
     id: "mon:survey",
@@ -1581,7 +1606,8 @@ export const LAYERS: LayerDef[] = [
     fill: 0.5,
     width: 0.5,
     noZone: true,
-    qty: { field: GAZAR_BUILDING.fields.area, unit: "м²" },
+    // ⚠️ qty (area_m2) test_data [96]-д устсан — системийн Shape__Area-г ашиглана
+    qty: { field: "Shape__Area", unit: "м²" },
     facets: [
       { field: GAZAR_BUILDING.fields.type, label: "Төрөл" },
       { field: GAZAR_BUILDING.fields.material, label: "Материал" },
@@ -2003,7 +2029,7 @@ export const LAYERS: LayerDef[] = [
     qty: { field: "GAZAR_M2", unit: "м²" },
     // ⚠️ Бүсийн ӨӨРИЙН кодын талбар — `ZONE_ID` БИШ. Бүсийн шүүлт үүн дээр тогтоно.
     zoneField: "RefName_1",
-    note: "59 бүс · FAR, BCR, зогсоол",
+    note: "FAR, BCR, зогсоолын үзүүлэлттэй",
     facets: [
       { field: "Angilal", label: "Бүсийн ангилал" },
       { field: "zoriulalt", label: "Зориулалт" },
@@ -2046,7 +2072,7 @@ export const LAYERS: LayerDef[] = [
     width: 0.8,
     noZone: true,
     qty: { field: PARCEL_LEFT.fields.area, unit: "м²" },
-    note: "2,119 талбар · төлөв ба чөлөөлөлтийн явц",
+    note: "Төлөв ба чөлөөлөлтийн явц — амьд",
     facets: [
       { field: PARCEL_LEFT.fields.status, label: "Төлөв" },
       { field: PARCEL_LEFT.fields.progress, label: "Чөлөөлөлтийн явц" },
@@ -2170,7 +2196,7 @@ export const LAYERS: LayerDef[] = [
     size: 8,
     noZone: true,
     facets: [{ field: "type", label: "Төрөл" }],
-    note: "111 цэг · 3 төрөл",
+    note: "Төрлөөр СВГ дүрстэй",
   },
   /** Авто зам — `Бусад_мэдээлэл_20260724`/193 (кирилл нэрийг encode). Бусад бүлэгт. */
   {
@@ -2283,11 +2309,110 @@ export const LAYERS: LayerDef[] = [
     noZone: true,
   },
   ...PKG_LAYERS,
+  ...IOT_LAYERS,
 ];
+
+/* ══════════ TEST_DATA ШИЛЖИЛТ — 2026-08-13 ══════════ */
+
+/**
+ * Каталогийн давхарга → test_data-гийн давхаргын дугаар. Гурван geometry-matcher
+ * агентын тулгалтаар (нэр · зориулалт · тоо · талбар) баталгаажсан зураглал.
+ *
+ * ⚠️ ЭНД БАЙХГҮЙ id-ууд ХУУЧИН үйлчилгээндээ үлдэнэ (test_data-д эквивалент
+ * алга): mon:building/mon:survey (AIL_TOO, GUITS_HV талбар [107]-д дутуу),
+ * habea:osol + ХАБЭА-ийн хоёр Survey123, tree (полигон мод), sz:0–3 (шинэ зам),
+ * et:26 (цэцэрлэгт хүрээлэн), bm128/bm145/bm87.
+ */
+const TD_LAYER: Record<string, number> = {
+  /* sb — «2D map 0804» webmap давхаргууд */
+  "sb:0": 36, "sb:1": 35, "sb:2": 85, "sb:3": 88, "sb:4": 108, "sb:5": 38,
+  "sb:7": 93, "sb:8": 92, "sb:10": 101, "sb:11": 100, "sb:13": 91, "sb:14": 90,
+  "sb:15": 39, "sb:16": 43,
+  /* et — ерөнхий төлөвлөгөө */
+  "et:1": 99, "et:2": 87, "et:3": 33, "et:4": 24, "et:5": 104, "et:6": 86,
+  "et:7": 55, "et:8": 54, "et:9": 53, "et:10": 52, "et:11": 51, "et:12": 42,
+  "et:15": 37, "et:16": 34, "et:17": 32, "et:18": 23, "et:19": 21, "et:23": 5,
+  "et:24": 108, "et:27": 88, "et:29": 85,
+  "et:124": 59, "et:125": 58, "et:126": 57, "et:127": 56,
+  /* pkg — дэд бүтцийн багцууд */
+  "pkg:33": 84, "pkg:34": 83, "pkg:36": 78, "pkg:37": 77, "pkg:39": 80,
+  "pkg:40": 79, "pkg:42": 82, "pkg:43": 81,
+  "pkg:93": 61, "pkg:95": 63, "pkg:96": 64, "pkg:97": 65, "pkg:98": 66,
+  "pkg:99": 67, "pkg:100": 68, "pkg:102": 70, "pkg:104": 72, "pkg:106": 74,
+  "pkg:108": 76, "pkg:115": 6,
+  "pkg:124": 59, "pkg:125": 58, "pkg:126": 57, "pkg:127": 56,
+  "pkg:147": 19, "pkg:149": 17, "pkg:150": 18, "pkg:151": 20, "pkg:153": 15,
+  "pkg:154": 16, "pkg:156": 13, "pkg:157": 14,
+  "pkg:195": 31, "pkg:198": 50, "pkg:201": 30, "pkg:203": 49, "pkg:205": 48,
+  "pkg:206": 29, "pkg:209": 28, "pkg:210": 47, "pkg:213": 46, "pkg:214": 27,
+  "pkg:217": 26, "pkg:218": 45, "pkg:221": 25, "pkg:222": 44,
+  "pkg:226": 4, "pkg:228": 10, "pkg:230": 12, "pkg:232": 11, "pkg:234": 3,
+  "pkg:235": 2, "pkg:236": 1, "pkg:237": 0, "pkg:242": 9, "pkg:243": 22,
+  "pkg:246": 60,
+  /* бусад тусдаа үйлчилгээнээс нэгдсэн */
+  tgl: 102, dugui: 39, zone: 106, nogoon: 35, khil1: 97, khil2: 97,
+  road: 104, roadOld: 98, bm146: 41,
+  "land:left": 94, "gazar:parcel": 95, "gazar:building": 96,
+  "habea:crane": 8, "habea:buffer": 7,
+};
+
+/** `negj_une*` өртгийн талбараа test_data-д ХАДГАЛСАН цорын ганц давхарга */
+const TD_KEEP_COST = new Set(["et:4"]);
+/** `talbai_m2` атрибут нь [id]-д устсан — системийн Shape__Area-д буулгана */
+const TD_QTY_SYS_AREA = new Set([
+  "pkg:226", "pkg:228", "pkg:230", "pkg:232", "pkg:234", "pkg:235",
+  "pkg:236", "pkg:242", "pkg:243",
+]);
+/** `urt_km` уртын талбар test_data-д устсан — системийн Shape__Length (м)-д буулгана */
+const TD_QTY_SYS_LENGTH = new Set(["et:5"]);
+/** qty-ийн талбар нь ӨӨР нэрээр хадгалагдсан давхаргууд */
+const TD_QTY_FIELD: Record<string, string> = { "pkg:237": "Area_m2" };
+/** Бүсийн талбар нь test_data-д устсан — нэгдсэн шүүлтээс гаргана */
+const TD_FORCE_NOZONE = new Set(["dugui", "nogoon", "pkg:234"]);
+/** oid нь FID → OBJECTID болж өөрчлөгдсөн давхаргууд */
+const TD_OID: Record<string, string> = { zone: "OBJECTID", khil2: "OBJECTID" };
+/** catalogFacet-ийн ангиллын талбар нь устсан — задаргааг авна */
+const TD_DROP_FACETS = new Set(["et:15"]);
+
+/**
+ * ШИЛЖҮҮЛЭГЧ: url-ыг test_data руу онооно, ХУУЧИН url-ыг `styleUrl` болгож
+ * webmap-загварын хайлтад үлдээнэ (зураг дээрх style ХЭВЭЭР — хэрэглэгчийн
+ * шийдвэр). Мөн test_data-д устсан талбаруудын хэрэглээг (cost/qty/facet/
+ * zoneField/oid) давхарга бүрд аюулгүй болгоно — эс бөгөөс байхгүй талбараар
+ * query явж давхарга бүхэлдээ унана.
+ */
+for (const l of LAYERS) {
+  const n = TD_LAYER[l.id];
+  if (n == null) continue;
+  l.styleUrl = l.url ?? `${ET}/${l.n}`;
+  l.url = `${TD}/${n}`;
+  if (l.cost && !TD_KEEP_COST.has(l.id)) {
+    // ⚠️ Устгахын ӨМНӨ миграциас өмнөх бүтэн тодорхойлолтыг хадгална — өртгийн
+    //    асуулга нь `cost` талбартай зэрэг `qty`/`oid`-г ч ЭНЭ ижил үйлчилгээнээс
+    //    авах ёстой (доорх мөрүүд `qty`/`oid`-г test_data-д тааруулж дарж бичнэ).
+    l.costSrc = { url: l.styleUrl, cost: l.cost, qty: l.qty, oid: l.oid };
+    delete l.cost;
+  }
+  if (l.qty && TD_QTY_SYS_AREA.has(l.id)) l.qty = { field: "Shape__Area", unit: "м²" };
+  if (l.qty && TD_QTY_SYS_LENGTH.has(l.id)) l.qty = { field: "Shape__Length", unit: "м" };
+  const qf = TD_QTY_FIELD[l.id];
+  if (l.qty && qf) l.qty = { ...l.qty, field: qf };
+  if (TD_FORCE_NOZONE.has(l.id)) {
+    l.noZone = true;
+    delete l.zoneField;
+  }
+  const oid = TD_OID[l.id];
+  if (oid) l.oid = oid;
+  if (TD_DROP_FACETS.has(l.id)) {
+    delete l.facets;
+    delete l.catalogFacet;
+  }
+}
 
 export const LAYER_BY_ID: Record<string, LayerDef> = Object.fromEntries(
   LAYERS.map((l) => [l.id, l]),
 );
+
 
 /**
  * Эх webmap-ийн снапшот загварыг хэрэглэхдээ ӨНГИЙГ нь каталогийн `hue`-ээр
@@ -2343,6 +2468,20 @@ export const REFERENCE_IDS = ["khil1", "khil2"] as const;
 
 /** Ихэнх давхарга ЕТ-ээс; хяналтынх нь өөрийн бүтэн хаягтай */
 export const layerUrl = (l: LayerDef) => l.url ?? `${ET}/${l.n}`;
+
+/**
+ * ӨРТГИЙН асуулгын эх — одоогийн үйлчилгээ (өртгийн талбар нь үлдсэн бол),
+ * эс бөгөөс миграциас өмнөх хуулбар (`costSrc`). Аль нь ч байхгүй бол `null`.
+ *
+ * ⚠️ ЗӨВХӨН `where='1=1'` хэлбэрийн нэгтгэлд. Шалтгааныг `LayerDef.costSrc`-ийн
+ * тайлбараас үзнэ үү.
+ */
+export const costSource = (
+  l: LayerDef,
+): { url: string; cost: Cost; qty?: Quantity; oid?: string } | null =>
+  l.cost
+    ? { url: layerUrl(l), cost: l.cost, qty: l.qty, oid: l.oid }
+    : l.costSrc ?? null;
 
 /**
  * Давхаргын OID талбар.
@@ -2532,6 +2671,111 @@ const UBHUB_SCENE = env(
   "https://arcgis.ubhub.mn/arcgis/rest/services/Hosted",
 );
 
+/**
+ * «Иргэдэд хүрэх үр өгөөж» харагдацын 2D СУУРЬ ЗУРАГ — ортофото MapServer.
+ *
+ * ⚠️ `IMAGERY` (ImageServer, `selbe_ortho_merged`)-ЭЭС ӨӨР үйлчилгээ: энэ нь
+ * динамик MapServer (`singleFusedMapCache: false`, capabilities «Map, Query,
+ * Data») бөгөөд НЭГ растр давхаргатай (`Selbe_ortho_P.tif`). Тиймээс
+ * `ImageryLayer` БИШ, `MapImageLayer`-ээр ачаална.
+ *
+ * ⚠️ Проекц UTM 48N (32648) — аппын суурь зураг Web Mercator (3857). MapServer
+ * нь `exportMap`-даа гаралтын SR-ийг хүлээж авдаг тул сервер талдаа хөрвүүлнэ;
+ * тайл кэш байхгүй тул зураг бүрэн ачаалахад ImageServer-ээс удаан байж болно.
+ *
+ * ⚠️ Каталогийн давхарга БИШ — `LAYERS`-д ороогүй, `MapCanvas.buildLayers` нь
+ * тусад нь нэмнэ. Ил эсэхийг `visible` prop-оор (id-гаар) л удирдана.
+ */
+/**
+ * «Иргэдэд хүрэх үр өгөөж» харагдацын 3D БОДИТ ЗАГВАР — гурван IntegratedMesh.
+ *
+ * ⚠️ Аппын үндсэн `SCENE`-ЭЭС ӨӨР үйлчилгээ (`Selbewebapp*_slpk` биш
+ * `Selbe1/2/3_slpk`). Хоёуланг зэрэг зурвал меш давхцаж, z-fight үүсгэх тул
+ * `MapCanvas` нь харагдац бүрд ЗӨВХӨН НЭГ багц меш байлгана (`scene` prop).
+ *
+ * ⚠️ `key` нь `scene:` угтвартай id болно (`scene:irged1`…) — MapCanvas-ийн
+ * 3D-ийн бүх дүрэм (зөвхөн `dim === '3d'`-д нэмэх, PASSIVE) тэр угтвараар
+ * ажилладаг тул нэрийн загвараа ЗААВАЛ хадгална.
+ */
+export const IRGED_SCENE = {
+  layers: [
+    {
+      key: "irged1",
+      title: "Бодит загвар — Сэлбэ 1",
+      url: `${UBHUB_SCENE}/Selbe1_slpk/SceneServer`,
+    },
+    {
+      key: "irged2",
+      title: "Бодит загвар — Сэлбэ 2",
+      url: `${UBHUB_SCENE}/Selbe2_slpk/SceneServer`,
+    },
+    {
+      key: "irged3",
+      title: "Бодит загвар — Сэлбэ 3",
+      url: `${UBHUB_SCENE}/Selbe3_slpk/SceneServer`,
+    },
+  ],
+} as const;
+
+/**
+ * НҮХЭН ЖОРЛОН — «Иргэдэд хүрэх үр өгөөж» харагдацын цэгэн давхарга (1,675 цэг).
+ *
+ * ⚠️ Каталогийн давхарга БИШ (`LAYERS`-д ороогүй) — `MapCanvas.buildLayers` нь
+ * тусад нь нэмнэ. Ил эсэхийг `visible` prop-оор л удирдана.
+ *
+ * ⚠️ ЗӨВХӨН БАЙРШИЛ ба ТОО харагдана. Атрибутын үлдсэн талбарууд (PLI,
+ * Ground_wat, UB_Flood_r, Population, Toilet_zon г.м.) нь бохирдлын индексийн
+ * загварын оролт бөгөөд хэрэглэгчид ил ГАРГАХГҮЙ: давхарга нь `outFields: []`
+ * (зөвхөн OID), `popupEnabled: false`, `PASSIVE` — дарахад юу ч гарахгүй.
+ */
+export const IRGED_TOILET = {
+  id: "irged:toilet",
+  title: "Нүхэн жорлон",
+  url: `${HJ}/selbe_UB_toilet_all/FeatureServer/0`,
+  /**
+   * УЛБАР ШАР (хэрэглэгчийн сонголт) — гэрэлтэх эффекттэй хамт ажиллана.
+   *
+   * ⚠️ `#f97316` — ТОД улбар шар. Эхэн үеийн `#b45309` (бараан, шороон өнгө)
+   * биш: тэр нь гэр хорооллын хүрэн-саарал дэвсгэртэйгээ уусаж, цэг нь
+   * мэдэгдэхгүй болж байсан. `#f97316` нь хамаагүй тод, ханасан тул bloom-той
+   * хослоод ортофото дээр илт тусна.
+   *
+   * ⚠️ Каталогийн өөр давхарга `#b45309`-ыг эзэлсэн байдаг (`services.ts:1751`)
+   * тул тэр утга руу БУЦААХГҮЙ — хоёрдмол утга үүснэ.
+   */
+  hue: "#f97316",
+} as const;
+
+/**
+ * ЗАМЫН ТӨЛӨВЛӨЛТ — «Иргэдэд хүрэх үр өгөөж» харагдацын вектор тайл давхарга.
+ *
+ * ⚠️ `VectorTileLayer` — `capabilities: TilesOnly,Tilemap`, өөрийн загвартай
+ * (`resources/styles`). URL өгөхөд ArcGIS загварыг нь автоматаар уншина тул
+ * renderer гараар бичих ШААРДЛАГАГҮЙ (зам, тэмдэглэгээ, гүүр гэсэн бүлгүүдтэй).
+ *
+ * ⚠️ Тайл нь Web Mercator (102100), LOD 0–16 — 16-аас ойр зумд тайл дуусах тул
+ * ArcGIS сүүлийн түвшнийг сунгаж харуулна (хэвийн зан төлөв).
+ *
+ * ⚠️ Каталогийн давхарга БИШ — `MapCanvas.buildLayers` тусад нь нэмнэ.
+ */
+export const IRGED_ROAD = {
+  id: "irged:road",
+  title: "Зам",
+  url: env(
+    process.env.NEXT_PUBLIC_IRGED_ROAD,
+    "https://arcgis.ubhub.mn/arcgis/rest/services/Hosted/Selbe_road/VectorTileServer",
+  ),
+} as const;
+
+export const IRGED_ORTHO = {
+  id: "irged:ortho",
+  title: "Ортофото (Selbe_ortho)",
+  url: env(
+    process.env.NEXT_PUBLIC_IRGED_ORTHO,
+    "https://arcgis.ubhub.mn/arcgis/rest/services/Selbe_ortho/MapServer",
+  ),
+} as const;
+
 export const SCENE = {
   layers: [
     {
@@ -2571,7 +2815,8 @@ export const ELEVATION_URL = env(
 export const USAN_SAN = {
   id: "d3:usan_san",
   title: "Усан сан",
-  url: `${HJ}/5_n_usan_san/FeatureServer/0`,
+  // test_data [89] usan_san_5 — 2026-08-13 шилжив (6 объект)
+  url: `${TD}/89`,
   /** Эх веб зургийн `5_n_usan_san` симбол — дүүргэлт 25%, хүрээ бүтэн */
   hue: "#003399",
 } as const;
@@ -2585,13 +2830,23 @@ export const USAN_SAN = {
  */
 export const HABEA = {
   labor: {
-    url: `${HJ}/survey123_732c0391190f4af59033d44b66358cb8/FeatureServer/0`,
+    /**
+     * ⚠️ 2026-08-19: маягт ДАХИН хэвлэгдэж item ID солигдсон. Хуучин
+     * `survey123_732c0391...` нь `CONT_0001 — Item does not exist or is
+     * inaccessible` буцааж, ХАБЭА хуудсыг бүхэлдээ унагаж байсан.
+     */
+    url: `${HJ}/survey123_60cf822671df4c3681cf8f77317bdb4f/FeatureServer/0`,
+    /**
+     * ЗӨВХӨН маягтын НИЙТ (roll-up) талбарууд. Шинэ маягт нь ажилтан/техникийг
+     * ЗӨВХӨН гүйцэтгэгчийн дагавартай баганаар хөтөлдөг тул монгол/гадаад
+     * задаргаа, техникийн ТӨРЛИЙН задаргаа дээд түвшинд БАЙХГҮЙ —
+     * `laborCompanyFields(sfx)`-ээр компани тус бүрээс уншина.
+     */
     fields: {
-      ognoo: "Ognoo", bagts: "Bagts", turul: "Turul",
-      niitAjiltan: "Niit_ajiltan", mongol: "mongol_ajiltani_too", gadaad: "gadaad_ajiltanii_too",
-      hunTsag: "Hun_tsag", niitTehnik: "Niit_tehnik",
-      tsamhagtKran: "tsamhagt_kran", avtoKran: "avto_kran", achaanii: "achaanii_avtomashin",
-      ekskavator: "Ekskavator", kovsh: "kovsh", usniMashin: "usni_mashin",
+      ognoo: "Ognoo",
+      niitAjiltan: "Niit_ajiltan",
+      hunTsag: "Hun_tsag",
+      niitTehnik: "Niit_tehnik",
     },
     /**
      * ӨРГӨН схем: маягтын НЭГ бүртгэл = өдрийн нэгдсэн тайлан бөгөөд ГҮЙЦЭТГЭГЧ
@@ -2624,11 +2879,15 @@ export const HABEA = {
     },
   },
   crane: {
-    url: `${HJ}/${encodeURIComponent("Цамхагт_кран")}/FeatureServer/50`,
-    bufferUrl: `${HJ}/${encodeURIComponent("Цамхагт_кран")}/FeatureServer/51`,
+    // test_data [8] цэг · [7] аюулгүйн бүс — 2026-08-13 шилжив
+    url: `${TD}/8`,
+    bufferUrl: `${TD}/7`,
     fields: {
       dugaar: "Краны_дугаар", blok: "Блок", bagts: "Багц",
-      sunUrt: "Краны_суны_урт_m", undur: "Краны_өндөр_m", tuluv: "Tuluv",
+      /** ⚠️ ЦЭГ давхаргад «сумны» гэж зөв бичигдсэн; БҮС [7]-д хуучин «суны» хэвээр */
+      sunUrt: "Краны_сумны_урт_m",
+      sunUrtBuf: "Краны_суны_урт_m",
+      undur: "Краны_өндөр_m", tuluv: "Tuluv",
     },
   },
 } as const;
@@ -2643,13 +2902,8 @@ export const laborCompanyFields = (sfx: string) => ({
   mongol: `MNG_ajiltani_too_${sfx}`,
   gadaad: `G_ajiltanii_too_${sfx}`,
   niitAjiltan: `Niit_ajiltan_${sfx}`,
-  niitTehnik: `Niit_tehnik_${sfx}`,
-  tsamhagtKran: `tsamhagt_kran_${sfx}`,
-  avtoKran: `avto_kran_${sfx}`,
-  achaanii: `achaanii_avtomashin_${sfx}`,
-  ekskavator: `Ekskavator_${sfx}`,
-  kovsh: `kovsh_${sfx}`,
-  usniMashin: `usni_mashin_${sfx}`,
+  // ⚠️ Шинэ маягтад техник нь `Tehnik_<SFX>` (`Niit_tehnik_<SFX>` БИШ).
+  niitTehnik: `Tehnik_${sfx}`,
 });
 
 /**
@@ -3012,7 +3266,9 @@ export type ViewKey =
   | "sheet"
   | "tailan"
   | "finance"
-  | "habea";
+  | "habea"
+  | "irged"
+  | "iot";
 
 export const VIEWS: {
   key: ViewKey;
@@ -3078,7 +3334,7 @@ export const VIEWS: {
    */
   {
     key: "tsogts",
-    title: "Барилгын хяналт",
+    title: "Багцын хяналт",
     desc: "Багц · барилгын явц · санхүүжилт — нэгдсэн хяналт",
     icon: "building",
     hue: "#c2410c",
@@ -3118,6 +3374,28 @@ export const VIEWS: {
     desc: "БНБД норм, эдийн засгийн үр ашиг",
     icon: "chart",
     hue: "#7c3aed",
+    layers: [],
+    initial: [],
+    standalone: true,
+  },
+  /**
+   * ИРГЭДЭД ХҮРЭХ ҮР ӨГӨӨЖ — ӨМНӨ / ДАРАА харьцуулалт: зүүнд одоогийн байдал
+   * (нүхэн жорлон, байгаа нийгмийн байгууламж), баруунд төлөвлөсөн (шинэ
+   * байгууламж, амьдралын чанарын өөрчлөлт), дунд нь газрын зураг.
+   *
+   * ⚠️ 2026-08-13: анх энд `analysis`-ийн гурван хүртээмжийн үзүүлэлт (тээвэр,
+   * нийгмийн, инженерийн) байсныг ХАСАВ — эх өгөгдөл нь батлагдаагүй. Тэдгээр
+   * нь «Тохиромжтой байдлын үнэлгээ» цонхонд хэвээр.
+   *
+   * ⚠️ Өөрийн бүтэцтэй (гурван багана), порталын каталог/самбарыг ашиглахгүй
+   * тул `standalone`.
+   */
+  {
+    key: "irged",
+    title: "Иргэдэд хүрэх үр өгөөж",
+    desc: "Өмнө · дараа — нийгмийн дэд бүтэц, нүхэн жорлон",
+    icon: "users",
+    hue: "#16a34a",
     layers: [],
     initial: [],
     standalone: true,
@@ -3177,6 +3455,17 @@ export const VIEWS: {
     initial: ["habea:osol", "habea:crane", "habea:buffer"],
     standalone: true,
   },
+  {
+    key: "iot",
+    title: "IoT хяналт",
+    desc: "Мэдрэгчийн амьд заалт — хугацааны цуваа ба сүүлийн байдал",
+    icon: "radio",
+    hue: "#0891b2",
+    // Мэдрэгч бүр НЭГ цэгээр (суурилуулалтын мөр) — `IOT_LAYERS.where` үзнэ үү
+    layers: ["iot:waste_sensor", "iot:water_meter", "iot:light_sensor", "iot:temp_humidity", "iot:soil_meter"],
+    initial: ["iot:waste_sensor", "iot:water_meter", "iot:light_sensor", "iot:temp_humidity", "iot:soil_meter"],
+    standalone: true,
+  },
 ];
 
 export const VIEW_BY_KEY: Record<ViewKey, (typeof VIEWS)[number]> =
@@ -3189,15 +3478,15 @@ export const VIEW_BY_KEY: Record<ViewKey, (typeof VIEWS)[number]> =
 export const DEFAULT_VIEW: ViewKey = "dashboard";
 
 /**
- * НҮҮР ХУУДАСНЫ СЭДВҮҮД — орох цэгүүд.
+ * НҮҮР ХУУДАСНЫ СЭДВҮҮД — ЗӨВХӨН нүүр дэх бүлэглэл (dropdown цэс).
  *
- * ⚠️ `all: true` бол тэр сэдэв нь БҮХ харагдацыг нээнэ («Удирдлага» → дээд
- * навигацид бүгд гарна). Бусад сэдэв нь өөрийн `views`-ээ л нээнэ; тэдгээрт
- * `ALWAYS_NAV_VIEWS` (Газар, Үнэлгээ, Тайлан) навигацид НЭМЖ харагдана.
+ * ⚠️ 2026-08-13: сэдэв нь навигацийг ХЯЗГААРЛАХАА БОЛЬСОН. Урьд нь сэдвээр
+ * орвол дээд навигацид зөвхөн тэр сэдвийн харагдац гардаг байсныг хассан
+ * (`Root.scopeFromUrl`-ийн тайлбарыг үз) — одоо аль ч цэгээс орсон БҮГД гарна.
+ * Тиймээс энд юу нэмэх нь зөвхөн нүүрний бүлэглэлд нөлөөлнө.
  *
- * ⚠️ Нүүр хуудас (`Home.tsx`), навигацийн шүүлт (`ViewRail`), орох горим (`Root`)
- * бүгд эндээс уншина — сэдэв нэмэх/хасахад ЗӨВХӨН энд өөрчилнө. Харагдац бүрийн
- * мета (нэр, дүрс, өнгө) нь `VIEW_BY_KEY`-ээс.
+ * ⚠️ Нүүр хуудас (`Home.tsx`) эндээс уншина — сэдэв нэмэх/хасахад ЗӨВХӨН энд
+ * өөрчилнө. Харагдац бүрийн мета (нэр, тайлбар, өнгө) нь `VIEW_BY_KEY`-ээс.
  */
 export const HOME_SECTIONS: {
   id: string;
@@ -3205,22 +3494,39 @@ export const HOME_SECTIONS: {
   /** «Удирдлага» — бүх харагдацыг нээнэ (`ALL_MODE_HIDE`-аас бусад) */
   all?: boolean;
   /**
-   * ЗӨВХӨН өөрийн `views`-ээ навигацид гаргана — `ALWAYS_NAV_VIEWS`-ийг НЭМЭХГҮЙ.
-   * (Жиш. «Гүйцэтгэл бөглөх»-т зөвхөн Барилгын хяналт ба Гүйцэтгэл бөглөх.)
+   * ⚠️ ХУУЧИРСАН — навигацийн хязгаарлалттай хамт хүчингүй болсон. Хаана ч
+   * уншигдахгүй; `ALWAYS_NAV_VIEWS`-тэй хамт нэг шийдвэрийн үлдэгдэл.
    */
   exact?: boolean;
-  /** Картаас нээхэд ЭХНИЙ харагдац орно; навигацид бүгд гарна */
   views: ViewKey[];
 }[] = [
   { id: "mgmt", title: "Удирдлага", all: true, views: [] },
-  { id: "build", title: "Хяналт", views: ["tsogts", "habea"] },
-  { id: "suit", title: "Тохиромжтой байдлын үнэлгээ", views: ["analysis"] },
-  { id: "sheet", title: "Гүйцэтгэл бөглөх", exact: true, views: ["sheet"] },
+  /**
+   * ⚠️ 2026-08-13: сэдвүүдийг ДАХИН ХУВААВ. Урьд нь ердөө «Хяналт»,
+   * «Тохиромжтой байдлын үнэлгээ», «Гүйцэтгэл бөглөх» гурав байсан бөгөөд
+   * тэдгээр нь 10 харагдацаас ердөө 4-ийг л хамардаг байв — дашбоард,
+   * төлөвлөгөө, газар, санхүүжилт, тайлан, иргэд нь ямар ч сэдэвт үгүй
+   * («Бусад хэсэг» гэсэн үлдэгдэл бүлэгт хаягдаж байсан). Одоо БҮХ харагдац
+   * утгаараа бүлэглэгдсэн: төлөвлөх → хэрэгжүүлэх → санхүүжүүлэх → тайлагнах.
+   *
+   * ⚠️ Шинэ харагдац нэмэхдээ энд ЗААВАЛ бүлэгт нь оруулна. Оруулаагүй бол
+   * `Root` нь «Бусад хэсэг» болгон нүүрт гаргана (хүрэх зам алдагдахгүй) — тэр
+   * бүлэг харагдвал энд юм дутсаны шинж.
+   */
+  { id: "review", title: "Тойм", views: ["dashboard", "tailan"] },
+  { id: "plan", title: "Төлөвлөлт", views: ["plan", "analysis", "irged"] },
+  { id: "build", title: "Хэрэгжилт", views: ["tsogts", "gazar", "habea", "iot"] },
+  { id: "money", title: "Санхүү", views: ["finance", "sheet"] },
 ];
 
 /**
- * Дээд навигацид (exact БИШ) сэдэвт НЭМЖ харагдах харагдацууд — Газар, Үнэлгээ,
- * Тайлан (+ ТЭЗҮ баримт нь ViewRail-д тусдаа байнга).
+ * ⚠️ ХУУЧИРСАН (2026-08-13) — хаана ч уншигдахгүй.
+ *
+ * Урьд нь сэдвээр орсон үед дээд навигацид НЭМЖ гардаг харагдацууд байв. Одоо
+ * сэдвийн хязгаарлалт хасагдаж, аль ч цэгээс орсон БҮХ харагдац гардаг болсон
+ * тул хэрэггүй. Устгаагүй нь: `HOME_SECTIONS` дээрх `exact` тугтай хамт нэг
+ * шийдвэрийн үлдэгдэл — сэдвийн хязгаарлалтыг эргүүлэн сэргээх бол хоёуланг нь
+ * хамт авч үзнэ.
  */
 export const ALWAYS_NAV_VIEWS: ViewKey[] = ["gazar", "finance", "analysis", "tailan"];
 

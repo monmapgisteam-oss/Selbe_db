@@ -8,7 +8,7 @@ import type Polygon from '@arcgis/core/geometry/Polygon';
 import {
   INDICATORS, PARKING, MAP_LAYERS, BUILD_COST_PER_M2, DEFAULT_ECON_SHARE,
   ACTIVATABLE_ZONE_TYPES, NO_DATA_COLOR, BF, BUILDING_PURPOSE_OTHER,
-  GREEN, GREEN_LAYER_KEY,
+  GREEN, GREEN_LAYER_KEY, LOCATION_RADII, LOCATION_ZONE_TYPES, LOCATION_EXCLUDE_OIDS,
   type Indicator, type ParkingOpt, type CategoryKey, type GreenOpt,
 } from '@/lib/analysis/config';
 import {
@@ -16,7 +16,7 @@ import {
   type AnalysisData, type BuildingPurposeStat,
 } from '@/lib/analysis/data';
 import { loadCostsCached, type Costs } from '@/lib/analysis/costs';
-import { ZONE_TYPES, ZONE_TYPE_EMPTY_HUE } from '@/lib/services';
+import { ZONE_TYPES, ZONE_TYPE_EMPTY_HUE, ZONE_FIELD, zoneRefValues } from '@/lib/services';
 import {
   urbanScore, scoreColor, scoreLabel, passesNorm,
 } from '@/lib/analysis/score';
@@ -51,7 +51,7 @@ import { loadBusStopsCached, busAccess, type BusStop } from './suit/busAccess';
 import { SuitLayerCatalog } from './suit/LayerCatalog';
 import { Icon } from '@/components/Icon';
 import { BlendCard } from './suit/BlendCard';
-import { CategoryPie, IndicatorPicker, Weights, Parking, Green } from './suit/Urban';
+import { CategoryPie, IndicatorPicker, Weights, Parking, Green, Location } from './suit/Urban';
 import { EconSummary, EconTune } from './suit/Economics';
 import { Ranking } from './suit/Ranking';
 import s from './suitability.module.css';
@@ -61,6 +61,9 @@ const ROAD_AREA_LAYER = 'et:29';
 
 /** Барилгын давхарга — «Бодит» симуляцад нуухад (одоо байгаа нөхцлийн зам л харагдана) */
 const BUILDING_LAYER = 'et:24';
+
+/** «Улаан бүсийн барилга» горимын бүсийн жигд саарал */
+const LOC_ZONE_GRAY = '#64748b';
 
 /* ══════════════════ Үндсэн компонент ══════════════════ */
 
@@ -149,11 +152,14 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
    */
   const [catOff, setCatOff] = useState<Set<string>>(() => new Set());
   /**
-   * ХАСАГДСАН боловч гараар ОНООЛОЛД ОРУУЛСАН ангиллууд (нийгмийн дэд бүтэц,
-   * газар чөлөөлөлт дутуу). Хоосон = хасагдсан хэвээр (цайвар). «Бүсийн ангилал»
-   * картаас сонгоход энд нэмэгдэж, оноолол дахин тооцогдоно.
+   * ХАСАГДСАН боловч ОНООЛОЛД ОРУУЛСАН ангиллууд (нийгмийн дэд бүтэц, газар
+   * чөлөөлөлт дутуу — 17 бүс).
+   *
+   * ⚠️ АНХНААСАА ОРУУЛСАН (хэрэглэгчийн шийдвэр, 2026-08-12): урьд нь хоосон
+   * байсан тул тэдгээр 17 бүс саараар харагдаж, эрэмбэ ба дунджид ордоггүй
+   * байв. «Бүсийн ангилал» картаас хасч болно (мөр дээр нь дарж шүүнэ).
    */
-  const [scoreOn, setScoreOn] = useState<Set<string>>(() => new Set());
+  const [scoreOn, setScoreOn] = useState<Set<string>>(() => new Set(ACTIVATABLE_ZONE_TYPES));
   /**
    * БАРИЛГЫН зориулалтын шүүлт — унтраасан бүлгүүд (`BUILDING_PURPOSES[].key`).
    * Хоосон = бүх барилга харагдана. ⚠️ Зөвхөн ГАЗРЫН ЗУРГИЙН харагдацад
@@ -161,6 +167,19 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
    * «би зөвхөн нуусан» гэж бодсон хэрэглэгч өөр оноо хараад төөрнө.
    */
   const [bldOff, setBldOff] = useState<Set<string>>(() => new Set());
+  /**
+   * ШҮҮСЭН БАРИЛГА руу газрын зургийг төвлөрүүлэх ТООЛУУР.
+   * ⚠️ `bldWhere`-ээр шууд сэрээж болохгүй: тэр нь бүсийн ангиллын шүүлтээс ч
+   *    хамаарч дахин бодогддог тул хэрэглэгч бүс шүүхэд зураг гэнэт үсэрнэ.
+   */
+  const [bldFocus, setBldFocus] = useState(0);
+  /** «Байршил» картын хүрээний радиус (м) */
+  const [locRadius, setLocRadius] = useState(LOCATION_RADII[2]);
+  /** «Байршил» картаас газрын зурагт тодруулсан барилга (OBJECTID) */
+  const [locPick, setLocPick] = useState<number | null>(null);
+  /** «Байршил» — зөвхөн олон нийтийн бүсийн барилгыг үзэх */
+  const [locPublicOnly, setLocPublicOnly] = useState(false);
+
   const [econOpt, setEconOpt] = useState<{ pricePerM2: number | null; perHa: number | null }>({
     pricePerM2: null, perHa: null,
   });
@@ -195,6 +214,29 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
   }, [data, projected, perHa, econOpt.pricePerM2, buildCost, greenCats, parking, indicators, scoreOn]);
 
   /**
+   * Олон нийтийн бүсийн кодууд — чагт асаалттай үед зураг ба картыг хумина.
+   * ⚠️ Ангиллаар гаргана, гараар жагсаахгүй: бүс нэмэгдэхэд аяндаа дагана.
+   */
+  const publicZoneIds = useMemo(
+    () => rows.filter((r) => LOCATION_ZONE_TYPES.includes(r.type)).map((r) => r.id),
+    [rows],
+  );
+
+  /**
+   * «Байршил» картын шинжилгээнд орох барилгууд.
+   * ⚠️ Чагт асаалттай үед ЗУРГИЙН шүүлттэй ИЖИЛ олонлог байх ёстой — эс бөгөөс
+   * зурагт үл харагдах барилга жагсаалтад гарч, дарахад олдохгүй.
+   */
+  const locPts = useMemo(() => {
+    const all = data?.bldPts ?? [];
+    if (!locPublicOnly) return all;
+    const keep = new Set(publicZoneIds);
+    return all.filter((p) => p.zone != null && keep.has(p.zone)
+      && !LOCATION_EXCLUDE_OIDS.has(p.oid));
+  }, [data, locPublicOnly, publicZoneIds]);
+
+
+  /**
    * ОНООЛОЛД орох бүсүүд — ногоон байгууламж, одоо байгаа барилгыг ХАСНА.
    * ⚠️ Газрын зурагт (`rows`) бүх бүс хэвээр (хассан нь саарал), харин эрэмбэ,
    * диаграм, дундаж, эдийн засаг зэрэг ТООЦОО зөвхөн `scoredRows`-оор явна.
@@ -213,6 +255,27 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
       .sort((a, b) => ((order.indexOf(a) + 1) || 99) - ((order.indexOf(b) + 1) || 99))
       .map((type) => ({ type, count: cnt.get(type) ?? 0, color: ZONE_TYPES[type] ?? ZONE_TYPE_EMPTY_HUE }));
   }, [rows]);
+
+  /**
+   * «Ногоон байгууламж» картын гулсуур ↔ `green` ҮЗҮҮЛЭЛТИЙН НОРМ — нэг утга.
+   *
+   * ⚠️ Хоёр тусдаа төлөв БАЙЛГАХГҮЙ: картад 10 м², «Жин» картад 6 м² гэж
+   * зөрвөл аль нь оноог тодорхойлж байгаа нь ойлгомжгүй болно. Тиймээс ганц эх
+   * сурвалж нь `indicators`-ийн `green.target` бөгөөд гулсуур түүнийг шууд
+   * засна — зогсоолын гулсуур оноог өөрчилдөгтэй ижил зан.
+   *
+   * ⚠️ ЗӨВХӨН «6 м²/хүн» аргад үйлчилнэ: тэр нь үзүүлэлттэй ижил нэгжтэй
+   * (м²/хүн). «Талбайн %» арга нь оноололд ордоггүй тул газрын зургийг
+   * хөндөхгүй.
+   */
+  const greenTarget = indicators.find((i) => i.id === 'green')?.target ?? GREEN.perPerson;
+  const greenView: GreenOpt = { ...greenOpt, perPerson: greenTarget };
+  const applyGreen = useCallback((g: GreenOpt) => {
+    setGreenOpt(g);
+    if (g.perPerson !== greenTarget) {
+      setIndicators((prev) => prev.map((i) => (i.id === 'green' ? { ...i, target: g.perPerson } : i)));
+    }
+  }, [greenTarget]);
 
   /**
    * Ногоон байгууламжийн давхаргыг газрын зурагт асаах.
@@ -238,15 +301,50 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
    * зөвшөөрнө (зориулалтгүй бичлэг тэр бүлэгт тоологддог).
    */
   const bldWhere = useMemo(() => {
-    if (!bldOff.size) return null;
-    const hide = bldCats.filter((c) => bldOff.has(c.key));
-    const values = hide.flatMap((c) => c.values);
-    const otherOn = !bldOff.has(BUILDING_PURPOSE_OTHER.key);
-    if (!values.length) return otherOn ? null : `${BF.purpose} IS NOT NULL`;
-    const list = values.map((v) => `'${v.replace(/'/g, "''")}'`).join(',');
-    const not = `${BF.purpose} NOT IN (${list})`;
-    return otherOn ? `(${BF.purpose} IS NULL OR ${not})` : not;
-  }, [bldCats, bldOff]);
+    const parts: string[] = [];
+
+    /* ── ЗОРИУЛАЛТЫН шүүлт ── */
+    if (bldOff.size) {
+      const values = bldCats.filter((c) => bldOff.has(c.key)).flatMap((c) => c.values);
+      const otherOn = !bldOff.has(BUILDING_PURPOSE_OTHER.key);
+      if (!values.length) {
+        if (!otherOn) parts.push(`${BF.purpose} IS NOT NULL`);
+      } else {
+        const list = values.map((v) => `'${v.replace(/'/g, "''")}'`).join(',');
+        const not = `${BF.purpose} NOT IN (${list})`;
+        parts.push(otherOn ? `(${BF.purpose} IS NULL OR ${not})` : not);
+      }
+    }
+
+    /* ── БҮСИЙН АНГИЛЛЫН шүүлт ──
+       ⚠️ Унтраасан ангиллын бүс газрын зургаас бүрэн алга болдог тул тэдгээрийн
+          дотор ЗОГСОХ барилга ч алга болох ёстой (ArcGIS-ийн filter-ийн зан).
+       ⚠️ Бүсийн код бичиглэлээр зөрдөг («B-2» ↔ «B-2.1», «D-8» ↔ «D-8.1/8.2»)
+          тул түүхий id-г шууд БИШ, `zoneRefValues`-ээр бүх хувилбарт тэлж өгнө. */
+    if (catOff.size && rows.length) {
+      const keep = rows.filter((r) => !catOff.has(r.type)).map((r) => r.id);
+      if (!keep.length) return '1=0';
+      const vals = [...new Set(keep.flatMap((id) => zoneRefValues(id)))];
+      parts.push(`${ZONE_FIELD} IN (${vals.map((v) => `'${v.replace(/'/g, "''")}'`).join(',')})`);
+    }
+
+    /**
+     * «Байршил» картын чагт — улаан бүсийн барилга.
+     * ⚠️ Гараар хассан барилгыг (`LOCATION_EXCLUDE_OIDS`) ЭНД ч хасна: карт ба
+     *    зураг НЭГ олонлогтой байх ёстой, эс бөгөөс жагсаалтад байхгүй барилга
+     *    зурагт үлдэж, дарахад карт хоосон хариу өгнө.
+     */
+    if (locPublicOnly) {
+      if (!publicZoneIds.length) return '1=0';
+      const vals = [...new Set(publicZoneIds.flatMap((id) => zoneRefValues(id)))];
+      parts.push(`${ZONE_FIELD} IN (${vals.map((v) => `'${v.replace(/'/g, "''")}'`).join(',')})`);
+      if (LOCATION_EXCLUDE_OIDS.size) {
+        parts.push(`OBJECTID NOT IN (${[...LOCATION_EXCLUDE_OIDS].join(',')})`);
+      }
+    }
+
+    return parts.length ? parts.join(' AND ') : null;
+  }, [bldCats, bldOff, catOff, rows, locPublicOnly, publicZoneIds]);
 
   /** Эрэмбэд орох бүс — оноолсон бүсээс ангиллын шүүлтээр (динамик). */
   const rankRows = useMemo(() => scoredRows.filter((r) => !catOff.has(r.type)), [scoredRows, catOff]);
@@ -492,11 +590,15 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
       //    газрын зургийн мессеж нь барилга/зам тул бүсийн дулаан будалт
       //    түүнийг зөвхөн бүрхэнэ (`SuitMap` үүнийг цайвар дэвсгэр болгож зурна).
       if (transportMode) return NO_DATA_COLOR;
+      /* ⚠️ «Улаан бүсийн барилга» чагт асаалттай үед бүсийг ОНООГООР будахгүй,
+         жигд саараар: тэр үед газрын зургийн мессеж нь БАРИЛГЫН байршил бөгөөд
+         ногоон-улаан будалт нүдийг татаж, барилга ялгарахгүй болно. */
+      if (locPublicOnly) return LOC_ZONE_GRAY;
       return mode === 'simulation'
         ? simColor(simDef(simKind).ready ? simNorm(simMetric(r, simKind, popBasis).value, simRng) : null)
         : scoreColor(valueOf(r as Row, mode, ind, econShare));
     },
-    [mode, ind, econShare, simKind, popBasis, simRng, transportMode],
+    [mode, ind, econShare, simKind, popBasis, simRng, transportMode, locPublicOnly],
   );
   /**
    * «БОДИТ» замын симуляц — ОДОО БАЙГАА нөхцлийг харуулах тул төлөвлөлтийн
@@ -506,8 +608,11 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
   const bareReal = roadMode && netKind === 'real';
   /** Бүс газрын зурагт харагдах эсэх — ангиллын шүүлтээр (унтраасан нь бүдгэрнэ) */
   const shown = useCallback(
-    (r: MapRow) => !bareReal && !catOff.has(r.type),
-    [catOff, bareReal],
+    // ⚠️ Чагт асаалттай бол ЗӨВХӨН тэр ангиллын бүс үлдэнэ — барилгын шүүлттэй
+    //    ижил олонлог байх ёстой (эс бөгөөс хоосон бүс зурагт эзэлхүүн эзэлнэ).
+    (r: MapRow) => !bareReal && !catOff.has(r.type)
+      && (!locPublicOnly || LOCATION_ZONE_TYPES.includes(r.type)),
+    [catOff, bareReal, locPublicOnly],
   );
 
   /* ── Hover панелийн HTML (эх аппын адил мөрөөр) ── */
@@ -546,6 +651,10 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
     let pass = 0, total = 0;
     const failed: { name: string; v: string }[] = [];
     for (const i of indicators) {
+      // ⚠️ Лавлагаа/жин 0 үзүүлэлт (greenCap, densityCap) норм-д ОРОХГҮЙ —
+      //    оноолол (score.ts:83) ба дэлгэрэнгүй самбар (SuitDetail) хассан тул
+      //    hover тоолол мөн адил хасна (эс бөгөөс худал «✗» ба буруу X/Y гарна).
+      if (i.ref || i.weight <= 0) continue;
       const p = row.parts[i.id];
       if (!p || p.value == null) continue;
       total++;
@@ -829,7 +938,6 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
                 cats={zoneCats}
                 off={catOff}
                 setOff={setCatOff}
-                scoreOn={scoreOn}
                 setScoreOn={setScoreOn}
               />
             </Card>
@@ -837,7 +945,11 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
             {/* Барилгын ангилал — `Зориулалт_m`-ээр газрын зургийн барилгыг шүүх */}
             {bldCats.length > 0 && (
               <Card id="bldCat" title="Барилгын ангилал" collapsible>
-                <BuildingCatFilter cats={bldCats} off={bldOff} setOff={setBldOff} />
+                <BuildingCatFilter
+                  cats={bldCats}
+                  off={bldOff}
+                  setOff={(v) => { setBldOff(v); setBldFocus((n) => n + 1); }}
+                />
               </Card>
             )}
 
@@ -889,6 +1001,10 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
               heat={heat}
               roadTile={bareReal}
               bldWhere={bldWhere}
+              bldFocus={bldFocus}
+              bldPick={locPick}
+              onBldClick={setLocPick}
+              zoneFaint={locPublicOnly}
             />
 
             {/* Каталог — «Ерөнхий төлөвлөгөө»-тэй ижил ЗҮҮН талын БҮТЭН ӨНДӨР
@@ -1037,8 +1153,25 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
             )}
 
             {(mode === 'urban' || mode === 'indicator') && (
-              <Card id="parking" title="Зогсоолын хэрэгцээ" collapsible>
-                <Parking rows={scoredRows} parking={parking} setParking={setParking} indicators={indicators} />
+              <Card
+                id="parking"
+                title="Зогсоолын хэрэгцээ"
+                collapsible
+                action={
+                  <button
+                    type="button"
+                    className={s.mini}
+                    title="Тооцох арга ба коэффициентийг анхны (default) утга руу буцаана"
+                    // ⚠️ `stopPropagation` — товч нь картын ГАРЧИГ дотор сууж
+                    //    байгаа тул үгүй бол карт хураагдана.
+                    onClick={(e) => { e.stopPropagation(); setParking({ ...PARKING }); }}
+                  >
+                    <Icon name="reset" size={11} />
+                    Анхны утга
+                  </button>
+                }
+              >
+                <Parking rows={scoredRows} parking={parking} setParking={setParking} />
               </Card>
             )}
 
@@ -1048,15 +1181,53 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
                 (хэрэглэгчийн хүсэлт, 2026-08-12). Унтраахыг нь хориглохгүй —
                 зөвхөн нэг удаа асаана. */}
             {(mode === 'urban' || mode === 'indicator') && (
-              <Card id="green" title="Ногоон байгууламж" collapsible>
+              <Card
+                id="green"
+                title="Ногоон байгууламж"
+                collapsible
+                action={
+                  <button
+                    type="button"
+                    className={s.mini}
+                    title="Тооцох арга ба коэффициентийг анхны (default) утга руу буцаана"
+                    // ⚠️ Үзүүлэлтийн нормыг ч БНБД-ийн 6.0 м² руу буцаана —
+                    //    эс бөгөөс карт «6» гэж бичээд оноо 10-аар бодогдоно.
+                    onClick={(e) => { e.stopPropagation(); applyGreen({ ...GREEN }); }}
+                  >
+                    <Icon name="reset" size={11} />
+                    Анхны утга
+                  </button>
+                }
+              >
                 <div onPointerDown={showGreenLayer}>
+                  {/* ⚠️ `scoredRows` БИШ, БҮХ бүс: газрын ашиглалтын «30% ногоон»
+                      дүрэм ба нэг хүнд ногдох норм нь бүсийн ангиллаас
+                      хамаарахгүй. Оноололоос хассан 35 бүс (46.7 га, түүний
+                      дотор ногоон байгууламжийн 10 бүс) хасагдвал хуваарь 135.3
+                      → 88.6 га болж, хангалт хиймлээр өснө. */}
                   <Green
-                    rows={scoredRows}
-                    green={greenOpt}
-                    setGreen={(g) => { showGreenLayer(); setGreenOpt(g); }}
-                    indicators={indicators}
+                    rows={rows}
+                    green={greenView}
+                    setGreen={(g) => { showGreenLayer(); applyGreen(g); }}
                   />
                 </div>
+              </Card>
+            )}
+
+            {/* ⚠️ ХООСОН ЗАГВАР — агуулгыг хэрэглэгч дараа тодорхойлно
+                (2026-08-12). Байрлал нь «Ногоон байгууламж»-ийн ЯГ ДООР;
+                харагдах горим нь ч түүнтэй ижил. */}
+            {(mode === 'urban' || mode === 'indicator') && (
+              <Card id="location" title="Байршил" collapsible>
+                <Location
+                  pts={locPts}
+                  sel={locPick}
+                  onSel={setLocPick}
+                  radius={locRadius}
+                  setRadius={setLocRadius}
+                  publicOnly={locPublicOnly}
+                  setPublicOnly={setLocPublicOnly}
+                />
               </Card>
             )}
           </>
@@ -1070,77 +1241,110 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
 /* ══════════════════ Бүсийн ангиллын шүүлт ══════════════════ */
 
 /**
- * `Angilal` (каноник `type`)-аар бүс шүүх. Унтраасан ангилал газрын зурагт
- * бүдгэрч, эрэмбээс хасагдана. Хассан ангилал (ногоон/одоо байгаа) ч энд гарна —
- * тэдгээрийг унтраавал газрын зургаас далдлана.
+ * `Angilal` (каноник `type`)-аар бүс шүүх. Унтраасан ангиллын бүс газрын
+ * зургаас БҮРЭН алга болж (барилга нь ч хамт), эрэмбээс хасагдана.
  *
  * ⚠️ ИДЭВХЖҮҮЛЖ БОЛОХ хасагдсан ангилал (`ACTIVATABLE_ZONE_TYPES` — нийгмийн дэд
- * бүтэц, газар чөлөөлөлт дутуу) нь ЭНД харагдац биш ОНООЛТ-оо удирдана: сонгоогүй
- * бол цайвар (хасагдсан), сонговол оноолол дахин тооцогдож будагдана. «оноол»
- * шошготой, `scoreOn`-оор төлөвлөгдөнө.
+ * бүтэц, газар чөлөөлөлт дутуу) нь НЭГ дарахад ХОЁУЛАНГ нь удирдана: харагдац
+ * (`catOff`) ба оноолол (`scoreOn`). Урьд нь зөвхөн оноололыг удирддаг байсан
+ * тул «унтраалттай» мөр газрын зурагт харагдсаар байж, хэрэглэгч товч ажиллахгүй
+ * байна гэж бодох шалтгаан болж байв (хэрэглэгчийн хүсэлт, 2026-08-12).
  */
-function ZoneCatFilter({ cats, off, setOff, scoreOn, setScoreOn }: {
+function ZoneCatFilter({ cats, off, setOff, setScoreOn }: {
   cats: { type: string; count: number; color: string }[];
   off: Set<string>;
   setOff: (s: Set<string>) => void;
-  scoreOn: Set<string>;
+  /** ⚠️ Зөвхөн БИЧНЭ: оноолол нь харагдацаас (`off`) гардаг тул уншихгүй */
   setScoreOn: (s: Set<string>) => void;
 }) {
-  const toggleIn = (set: Set<string>, apply: (s: Set<string>) => void, type: string) => {
-    const n = new Set(set);
-    if (n.has(type)) n.delete(type); else n.add(type);
-    apply(n);
+  const allTypes = cats.map((c) => c.type);
+  /** Одоо ХАРАГДАЖ байгаа ангиллууд */
+  const visible = allTypes.filter((t) => !off.has(t));
+  /** ӨГӨГДМӨЛ — БҮХ ангилал харагдана (шүүлт тавиагүй байдал) */
+  const filtered = visible.length !== allTypes.length;
+
+  /**
+   * ⚠️ ШҮҮЛТИЙГ ТАВИХ (сонгох) зарчим — унтраах БИШ. Мөр дээр дарахад ЗӨВХӨН
+   * тэр ангилал үлдэнэ (ArcGIS-ийн «select by attribute»-ийн зан). Ганцаараа
+   * үлдсэн мөрөө дахин дарвал өгөгдмөл байдал руу буцна.
+   *
+   * ⚠️ `scoreOn`-ыг ХАМТ бичнэ: идэвхжүүлж болох ангилал харагдаж байвал
+   * оноололд ч орно. Хоёр олонлог эсрэг утгатай (`off` = нуусан, `scoreOn` =
+   * оноололд орсон) тул нэг үйлдэлд хоёуланг нь тааруулна.
+   */
+  const apply = (hidden: string[]) => {
+    setOff(new Set(hidden));
+    setScoreOn(new Set(allTypes.filter((t) => ACTIVATABLE_ZONE_TYPES.has(t) && !hidden.includes(t))));
   };
-  const allOn = off.size === 0;
+  /**
+   * ⚠️ ОЛОН СОНГОЛТ — легендийн шүүлтийн зарчим:
+   *   · шүүлтгүй үед дарвал  → ЗӨВХӨН тэр нь үлдэнэ (ганцаарчилна)
+   *   · шүүлттэй үед сонгоогүй мөр → НЭМНЭ («Олон нийт» + «Орон сууц» хоёуланг)
+   *   · сонгосон мөр (олон байхад) → ХАСНА
+   *   · сүүлчийн сонгосон мөр → шүүлт цэвэрлэгдэнэ
+   * Хэрэглэгч Ctrl/Shift дарах шаардлагагүй — энгийн даралтаар бүтнэ.
+   */
+  const pick = (type: string) => {
+    if (!filtered) { apply(allTypes.filter((t) => t !== type)); return; }
+    const on = visible.includes(type);
+    if (on && visible.length === 1) { apply([]); return; }
+    apply(on
+      ? [...allTypes.filter((t) => off.has(t)), type]
+      : allTypes.filter((t) => off.has(t) && t !== type));
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
-        <span className={`${s.muted} ${s.xsmall}`}>{cats.length} ангилал</span>
-        <button
-          type="button"
-          className={s.mini}
-          onClick={() => setOff(allOn ? new Set(cats.map((c) => c.type)) : new Set())}
-        >
-          {allOn ? 'Бүгдийг унтраах' : 'Бүгдийг асаах'}
-        </button>
+        <span className={`${s.muted} ${s.xsmall}`}>
+          {filtered ? `${visible.length} / ${cats.length} ангилал` : `${cats.length} ангилал`}
+        </span>
+        {filtered && (
+          <button type="button" className={s.mini} onClick={() => apply([])}>
+            Шүүлт цэвэрлэх
+          </button>
+        )}
       </div>
       {cats.map((c) => {
-        // Идэвхжүүлж болох хасагдсан ангилал — энэ мөр ОНООЛТ-ыг (scoreOn) удирдана
-        // (default: сонгоогүй = цайвар). Бусад ангилалд урьдын адил ХАРАГДАЦ-ыг (off).
         const activatable = ACTIVATABLE_ZONE_TYPES.has(c.type);
-        const on = activatable ? scoreOn.has(c.type) : !off.has(c.type);
+        // ⚠️ Харагдац нь ГАНЦ эх сурвалжтай (`off`) — идэвхжүүлж болох ангилал ч
+        //    үүнийг дагана; `scoreOn` нь `apply`-д хамт бичигддэг.
+        const on = !off.has(c.type);
         return (
           <button
             key={c.type}
             type="button"
             aria-pressed={on}
-            title={activatable ? 'Сонговол оноололд орж, газрын зурагт будагдана' : undefined}
-            onClick={() => (activatable
-              ? toggleIn(scoreOn, setScoreOn, c.type)
-              : toggleIn(off, setOff, c.type))}
+            title={!filtered
+              ? `Дарвал зөвхөн «${c.type}» үлдэнэ${activatable ? ' (оноололд ч орно)' : ''}`
+              : on && visible.length === 1 ? 'Дарвал шүүлт цэвэрлэгдэнэ'
+                : on ? `Дарвал «${c.type}»-ийг шүүлтээс хасна`
+                  : `Дарвал «${c.type}»-ийг шүүлтэд нэмнэ`}
+            onClick={() => pick(c.type)}
             style={{
               display: 'flex', alignItems: 'center', gap: 8, width: '100%',
-              padding: '6px 8px', borderRadius: 8,
+              padding: '6px 8px', borderRadius: 2,
               border: `1px solid ${activatable && on ? 'var(--accent)' : 'var(--line)'}`,
               background: on ? 'var(--panel-2)' : 'transparent',
               color: on ? 'var(--text)' : 'var(--muted)', textAlign: 'left',
               transition: 'background .12s, opacity .12s, border-color .12s',
             }}
           >
-            <span style={{ width: 11, height: 11, borderRadius: 3, flex: 'none', background: c.color, opacity: on ? 1 : 0.35 }} />
+            <span style={{ width: 11, height: 11, borderRadius: 2, flex: 'none', background: c.color, opacity: on ? 1 : 0.35 }} />
             <span style={{ flex: 1, minWidth: 0, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.type}</span>
+            {/* ⚠️ «оноол» шошго — энэ ангилал ХАРАГДВАЛ оноололд ч ордгийг сануулна */}
             {activatable && (
               <span style={{
                 fontSize: 9, letterSpacing: '.3px', flex: 'none',
                 color: on ? 'var(--accent)' : 'var(--muted)',
-                border: '1px solid var(--line)', borderRadius: 4, padding: '0 4px',
+                border: '1px solid var(--line)', borderRadius: 2, padding: '0 4px',
               }}>
-                сонгох
+                оноол
               </span>
             )}
             <b style={{ fontVariantNumeric: 'tabular-nums', fontSize: 11, color: 'var(--muted)' }}>{c.count}</b>
             <span style={{ width: 14, textAlign: 'center', color: 'var(--accent)', fontSize: 12 }}>
-              {on ? '✓' : (activatable ? '+' : '')}
+              {on ? '✓' : ''}
             </span>
           </button>
         );
@@ -1162,22 +1366,37 @@ function BuildingCatFilter({ cats, off, setOff }: {
   off: Set<string>;
   setOff: (s: Set<string>) => void;
 }) {
-  const allOn = off.size === 0;
+  const allKeys = cats.map((c) => c.key);
+  const visible = allKeys.filter((k) => !off.has(k));
+  const filtered = visible.length !== allKeys.length;
   const total = cats.reduce((a, c) => a + c.count, 0);
   const shownN = cats.reduce((a, c) => a + (off.has(c.key) ? 0 : c.count), 0);
+
+  /**
+   * ⚠️ ШҮҮЛТ ТАВИХ (сонгох) зарчим — унтраах БИШ, «Бүсийн ангилал» картын ижил
+   * зан. Мөр дээр дарахад ЗӨВХӨН тэр бүлэг үлдэнэ; ганцаараа үлдсэн мөрөө
+   * дахин дарвал шүүлт цэвэрлэгдэнэ.
+   */
+  const pick = (key: string) => {
+    // ⚠️ «Бүсийн ангилал»-ын ЯГ ижил олон сонголтын зарчим (тэндхийг үз)
+    if (!filtered) { setOff(new Set(allKeys.filter((k) => k !== key))); return; }
+    const on = visible.includes(key);
+    if (on && visible.length === 1) { setOff(new Set()); return; }
+    setOff(new Set(on
+      ? [...allKeys.filter((k) => off.has(k)), key]
+      : allKeys.filter((k) => off.has(k) && k !== key)));
+  };
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
         <span className={`${s.muted} ${s.xsmall}`}>
           {cats.length} ангилал · {nf(shownN)}/{nf(total)} барилга
         </span>
-        <button
-          type="button"
-          className={s.mini}
-          onClick={() => setOff(allOn ? new Set(cats.map((c) => c.key)) : new Set())}
-        >
-          {allOn ? 'Бүгдийг унтраах' : 'Бүгдийг асаах'}
-        </button>
+        {filtered && (
+          <button type="button" className={s.mini} onClick={() => setOff(new Set())}>
+            Шүүлт цэвэрлэх
+          </button>
+        )}
       </div>
       {cats.map((c) => {
         const on = !off.has(c.key);
@@ -1187,23 +1406,22 @@ function BuildingCatFilter({ cats, off, setOff }: {
             type="button"
             aria-pressed={on}
             // Бүлэгт ЯМАР зориулалтууд багтсаныг нээлгүйгээр харах
-            title={`${c.label} — ${nf(c.count)} барилга · ${nf(c.gfaM2)} м²${
-              c.values.length ? `\n${c.values.join(' · ')}` : ''}`}
-            onClick={() => {
-              const n = new Set(off);
-              if (n.has(c.key)) n.delete(c.key); else n.add(c.key);
-              setOff(n);
-            }}
+            title={`${!filtered ? `Дарвал зөвхөн «${c.label}» үлдэнэ`
+              : on && visible.length === 1 ? 'Дарвал шүүлт цэвэрлэгдэнэ'
+                : on ? `Дарвал «${c.label}»-ийг шүүлтээс хасна`
+                  : `Дарвал «${c.label}»-ийг шүүлтэд нэмнэ`}\n`
+              + `${nf(c.count)} барилга · ${nf(c.gfaM2)} м²${c.values.length ? `\n${c.values.join(' · ')}` : ''}`}
+            onClick={() => pick(c.key)}
             style={{
               display: 'flex', alignItems: 'center', gap: 8, width: '100%',
-              padding: '6px 8px', borderRadius: 8,
+              padding: '6px 8px', borderRadius: 2,
               border: '1px solid var(--line)',
               background: on ? 'var(--panel-2)' : 'transparent',
               color: on ? 'var(--text)' : 'var(--muted)', textAlign: 'left',
               transition: 'background .12s, opacity .12s, border-color .12s',
             }}
           >
-            <span style={{ width: 11, height: 11, borderRadius: 3, flex: 'none', background: c.color, opacity: on ? 1 : 0.35 }} />
+            <span style={{ width: 11, height: 11, borderRadius: 2, flex: 'none', background: c.color, opacity: on ? 1 : 0.35 }} />
             <span style={{ flex: 1, minWidth: 0, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.label}</span>
             <b style={{ fontVariantNumeric: 'tabular-nums', fontSize: 11, color: 'var(--muted)' }}>{c.count}</b>
             <span style={{ width: 14, textAlign: 'center', color: 'var(--accent)', fontSize: 12 }}>

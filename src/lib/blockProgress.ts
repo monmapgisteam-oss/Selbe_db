@@ -44,6 +44,9 @@ async function fetchConstruction(): Promise<Record<string, unknown>[]> {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body,
     });
+    // ⚠️ HTTP алдаа (429/503 г.м.)-д бие нь JSON биш байж болно — эхлээд res.ok
+    //    шалгахгүй бол res.json() тодорхойгүй SyntaxError шидэж будлиантана.
+    if (!res.ok) throw new Error(`ArcGIS HTTP ${res.status}`);
     const j = await res.json();
     if (j.error) throw new Error(j.error.message || 'ArcGIS error');
     const fs = ((j.features || []) as { attributes: Record<string, unknown> }[]).map((f) => f.attributes);

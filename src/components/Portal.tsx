@@ -15,18 +15,22 @@ import { Tsogts } from '@/modules/Tsogts';
 import { Gazar } from '@/modules/Gazar';
 import { Finance } from '@/modules/Finance';
 import { Habea } from '@/modules/Habea';
+import { Irged } from '@/modules/Irged';
+import { Iot } from '@/modules/Iot';
 import { Sheet } from '@/modules/sheet/Sheet';
 import { Tailan } from '@/modules/Tailan';
 import { Icon } from '@/components/Icon';
 import { DocViewer } from '@/components/DocViewer';
 import { UserAdmin } from '@/components/UserAdmin';
+import { AgentButton, AgentChat } from '@/components/AgentChat';
 import { useTheme } from '@/lib/theme';
 import { useAsync } from '@/lib/useAsync';
 import { FilterProvider, useFilter } from '@/lib/filter';
 import { usePlanTotals } from '@/lib/totals';
 import { queryStats, count, sum } from '@/lib/query';
+import { loadHeadline } from '@/lib/live';
 import {
-  DEFAULT_VIEW, VIEW_BY_KEY, layerUrl, oidOf, PROJECT_AREA_HA, zoneWhere,
+  DEFAULT_VIEW, VIEW_BY_KEY, layerUrl, oidOf, zoneWhere,
   PLAN_LAYER_IDS, MONITOR_LAYER_IDS, LAYER_BY_ID, groupOf,
   ZONE_LAYER, ZONE_FIELDS, BUILT_LAYER, BUILT_FIELDS,
   type ViewKey,
@@ -267,10 +271,27 @@ function PortalContent(
    * жагсаалт гарвал юуных болохыг нь мэдэхгүй. Хэрэглэгч өөрөө «Ерөнхий
    * мэдээлэл» дарахад нээгдэнэ.
    */
-  // Давхаргын сонголтын ЗҮҮН БАГАНА — «Давхарга» товчоор нээж/хаана.
-  // Анхнаасаа НЭЭЛТТЭЙ: давхаргын жагсаалт зүүн талд шууд харагдана.
+  // Давхаргын сонголт — «Давхарга» товчоор нээж/хаана.
+  // ⚠️ 2026-08-18: зүүн БАГАНА байсныг зурган дээрх ХӨВӨГЧ POPUP болгов
+  //    (хэрэглэгчийн шийдвэр) — идэвхжихэд зураг шахагдахгүй, дээр нь хөвнө.
   const [catalog, setCatalog] = useState(true);
   const [layer, setLayer] = useState<string | null>(initialLayer);
+
+  /**
+   * ЗҮҮН ЦЭС ХУРААГДСАН эсэх (хэрэглэгчийн шийдвэр, 2026-08-18) — хураахад
+   * зөвхөн дүрс үлдэж 54px болно. Сонголт localStorage-д хадгалагдана.
+   * ⚠️ Зөвхөн эффект дотор уншина — статик экспортод localStorage байхгүй.
+   */
+  const [navMin, setNavMin] = useState(false);
+  useEffect(() => {
+    try { setNavMin(localStorage.getItem('selbe-nav-min') === '1'); } catch { /* private */ }
+  }, []);
+  const toggleNav = useCallback(() => {
+    setNavMin((v) => {
+      try { localStorage.setItem('selbe-nav-min', v ? '0' : '1'); } catch { /* private */ }
+      return !v;
+    });
+  }, []);
 
   /**
    * ТУНГАЛАГ — давхарга бүрийн opacity override (0–1) ба тохируулах цонх нээлттэй
@@ -291,6 +312,12 @@ function PortalContent(
   const [docsOpen, setDocsOpen] = useState(false);
   /** Хэрэглэгчийн эрх удирдлагын modal (зөвхөн super admin) */
   const [adminOpen, setAdminOpen] = useState(false);
+  /**
+   * AI туслахын цонх нээлттэй эсэх.
+   * ⚠️ Агент нь `navScope`-оор хязгаарлагдана — тэр нь хэрэглэгчийн үзэж болох
+   * харагдацууд. Тиймээс эрхгүй хэсгийн давхаргыг агент ч харахгүй.
+   */
+  const [agentOpen, setAgentOpen] = useState(false);
 
   /**
    * Давхаргын тоо, хэмжээ — каталогийн багана, багцын тойм, давхаргын дашбоард
@@ -443,7 +470,9 @@ function PortalContent(
   const isGazar = view === 'gazar';
   const isFinance = view === 'finance';
   const isHabea = view === 'habea';
+  const isIot = view === 'iot';
   const isTsogts = view === 'tsogts';
+  const isIrged = view === 'irged';
   // `standalone` нь эдгээрийг ЯГ тэмдэглэдэг — тусад нь тоолохгүй
   const isFull = standalone;
   /**
@@ -489,10 +518,12 @@ function PortalContent(
 
   return (
     <>
+      {/* ⚠️ 2026-08-18: `--hue: active.hue` ХАСАГДАВ — харагдац бүр өөр өнгөөр
+          будагддаг байсныг байгууллагын НЭГ акцентад (globals.css) нэгтгэв.
+          Мөн `shellCat` хасагдав: каталог багана биш, зурган дээрх popup боллоо. */}
       <div
-        className={`${s.shell} ${isFull ? s.shellSuit : ''} ${catOpen ? s.shellCat : ''} ${!isFull && !planPanel ? s.shellFoot : ''} ${view === 'monitor' ? s.shellMon : ''}`}
+        className={`${s.shell} ${isFull ? s.shellSuit : ''} ${!isFull && !planPanel ? s.shellFoot : ''} ${view === 'monitor' ? s.shellMon : ''} ${navMin ? s.shellNavMin : ''}`}
         style={{
-          '--hue': active.hue,
           '--panel': panelVar,
           '--catalog': `${catSize.width}px`,
           '--monleft': `${monSize.width}px`,
@@ -516,17 +547,9 @@ function PortalContent(
             </span>
           </button>
 
-          {/* Харагдац сонголт — толгойд хэвтээ таб хэлбэрээр. «ТЭЗҮ-БОНУ» баримт
-              нь табуудтай НЭГ бүлэгт орно (тусдаа биш). */}
-          <ViewRail
-            view={view}
-            setView={setView}
-            catalogOpen={catOpen}
-            header
-            navScope={navScope}
-            onDocs={docsAllowed ? () => setDocsOpen(true) : undefined}
-            docsActive={docsOpen}
-          />
+          {/* ⚠️ 2026-08-17: Харагдац сонголт толгойноос ЗҮҮН БАГАНА руу зөөгдөв
+              (доорх `<aside className={s.nav}>`) — envhub-ийн хэлтсийн жагсаалт
+              шиг босоо. Толгойд зөвхөн брэнд ба хэрэгслийн товчнууд үлдэнэ. */}
 
           {/* ⚠️ Үзүүлэлтүүд толгойгоос ДООД зурваст (`SummaryBar`) шилжсэн тул
               шүүлтийн тэмдэг нь баруун тийш түлхэх үүргийг авна. */}
@@ -555,6 +578,33 @@ function PortalContent(
           </button>
         </header>
 
+        {/* ── ЗҮҮН БАГАНА: харагдацын жагсаалт ──
+            envhub-ийн «ХЭЛТЭС» самбартай ижил — дугаарласан босоо жагсаалт.
+            Толгойн доор, бүх мөрийг эзэлнэ (`grid-area: nav`). */}
+        <aside className={s.nav}>
+          {/* Цэс хураах/дэлгэх — хураахад зөвхөн дүрс үлдэнэ (54px) */}
+          <button
+            type="button"
+            className={s.navFold}
+            onClick={toggleNav}
+            aria-pressed={navMin}
+            aria-label={navMin ? 'Цэс дэлгэх' : 'Цэс хураах'}
+            title={navMin ? 'Цэс дэлгэх' : 'Цэс хураах'}
+          >
+            <span className={s.navFoldArrow} aria-hidden>{navMin ? '»' : '«'}</span>
+            {!navMin && <span>Хураах</span>}
+          </button>
+          <ViewRail
+            view={view}
+            setView={setView}
+            catalogOpen={catOpen}
+            navScope={navScope}
+            collapsed={navMin}
+            onDocs={docsAllowed ? () => setDocsOpen(true) : undefined}
+            docsActive={docsOpen}
+          />
+        </aside>
+
         {/* Бүтэн талбайн харагдацууд — ерөнхий дашбоард ба анализ */}
         {isFull && (
           <div className={s.suit}>
@@ -574,7 +624,11 @@ function PortalContent(
                           ? <Finance />
                           : isHabea
                             ? <Habea dim={dim} setDim={setDim} />
-                            : <Suitability dim={dim} setDim={setDim} />}
+                            : isIrged
+                              ? <Irged dim={dim} setDim={setDim} />
+                              : isIot
+                                ? <Iot dim={dim} setDim={setDim} />
+                                : <Suitability dim={dim} setDim={setDim} />}
           </div>
         )}
 
@@ -637,26 +691,33 @@ function PortalContent(
                 />
               )}
 
-            </div>
+              {/**
+                * Давхаргын сонголт — идэвхжихэд зурган дээр ХӨВӨГЧ POPUP болж
+                * гарна (хэрэглэгчийн шийдвэр, 2026-08-18). Урьд нь grid-ийн
+                * тусдаа багана байсан тул нээхэд зураг шахагддаг байв.
+                * `embedded` — grid-area/хүрээг унтраасан хөвөгч хувилбар.
+                */}
+              {catOpen && (
+                <div className={s.catPop}>
+                  <LayerCatalog
+                    view={view === 'monitor' ? 'monitor' : 'plan'}
+                    totals={totals}
+                    visible={visible}
+                    setVisible={setVisible}
+                    selected={layer}
+                    onSelect={setLayer}
+                    onClose={closeCatalog}
+                    pinned={false}
+                    embedded
+                    resizing={catSize.dragging}
+                    onResizeStart={catSize.onPointerDown}
+                    onResizeReset={catSize.onDoubleClick}
+                    zone={zone}
+                  />
+                </div>
+              )}
 
-            {/* Давхаргын сонголт — ЗҮҮН талын багана (товчоор нээж/хаана).
-                Layer дээр дарахад баруун самбарт түүний дашбоард гарна. */}
-            {catOpen && (
-              <LayerCatalog
-                view={view === 'monitor' ? 'monitor' : 'plan'}
-                totals={totals}
-                visible={visible}
-                setVisible={setVisible}
-                selected={layer}
-                onSelect={setLayer}
-                onClose={closeCatalog}
-                pinned={false}
-                resizing={catSize.dragging}
-                onResizeStart={catSize.onPointerDown}
-                onResizeReset={catSize.onDoubleClick}
-                zone={zone}
-              />
-            )}
+            </div>
 
             <aside className={s.panel} id="panel" aria-label={`${active.title} самбар`}>
               {/* Өргөн тохируулах бариул — самбарын зүүн ирмэг дээр */}
@@ -720,6 +781,10 @@ function PortalContent(
 
       {/* Хэрэглэгчийн эрх удирдлага — зөвхөн super admin нээж чадна */}
       {isSuper && <UserAdmin open={adminOpen} onClose={() => setAdminOpen(false)} />}
+
+      {/* AI туслах — бүх харагдацад нэг л удаа (яриа харагдац соливол тасрахгүй) */}
+      <AgentButton open={agentOpen} onToggle={() => setAgentOpen(true)} />
+      <AgentChat open={agentOpen} onClose={() => setAgentOpen(false)} scope={navScope} />
     </>
   );
 }
@@ -827,20 +892,22 @@ function SummaryBar({ zone }: { zone: string | null }) {
     const B = BUILT_FIELDS;
     const zoneQ = zone ? zoneWhere(ZONE_LAYER, zone) ?? '1=1' : '1=1';
     const builtQ = zone ? zoneWhere(BUILT_LAYER, zone) ?? '1=1' : '1=1';
-    const [zones, built] = await Promise.all([
+    const [zones, built, headline] = await Promise.all([
       queryStats(layerUrl(ZONE_LAYER), [
         count(oidOf(ZONE_LAYER), 'n'), sum(Z.landHa, 'ga'), sum(Z.households, 'ail'),
       ], zoneQ),
       queryStats(layerUrl(BUILT_LAYER), [count(oidOf(BUILT_LAYER), 'n'), sum(B.population, 'pop')], builtQ),
+      loadHeadline(),
     ]);
     return {
       zones: Number(zones.n ?? 0),
       /**
-       * ⚠️ Бүс сонгогдсон үед тэр бүсийн `GAZAR_GA`; сонгоогүй үед ТӨСЛИЙН
-       * албан ёсны талбай (`PROJECT_AREA_HA`). Бүх бүсийн нийлбэр (131 га) нь
-       * зөвхөн бүсчилсэн газрыг хамардаг тул төслийн хэмжээг илэрхийлэхгүй.
+       * ⚠️ Бүс сонгогдсон үед тэр бүсийн `GAZAR_GA`; сонгоогүй үед хилийн
+       * давхаргын АМЬД `Hec_area` (урьд нь бэхлэгдсэн 158 га байсан). Бүх
+       * бүсийн нийлбэр (~131 га) нь зөвхөн бүсчилсэн газрыг хамардаг тул
+       * төслийн хэмжээг илэрхийлэхгүй.
        */
-      ga: zone ? Number(zones.ga ?? 0) : PROJECT_AREA_HA,
+      ga: zone ? Number(zones.ga ?? 0) : headline.areaHa,
       ail: Number(zones.ail ?? 0),
       built: Number(built.n ?? 0),
       pop: Number(built.pop ?? 0),
