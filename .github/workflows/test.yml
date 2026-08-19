@@ -25,5 +25,12 @@ jobs:
       - run: npm run typecheck
       # ESLint (Next core-web-vitals + TS) — warning зөвшөөрнө, error унагана
       - run: npm run lint
-      # Амьд өгөгдлийн шалгалтууд (filters/series/blockProgress/bagts/monitor/floor)
+      # ⚠️ `test:agent`/`test:drift` нь agent-proxy реле (server.mjs)-г асаадаг —
+      #    тэр нь `@anthropic-ai/sdk`-г import хийдэг тул agent-proxy-ийн тусдаа
+      #    хамаарлыг суулгана (root `npm ci` үүнийг ХАМАРДАГГҮЙ). Реле нь тестэд
+      #    ХУУРАМЧ загвар руу чиглэдэг тул жинхэнэ түлхүүр шаардлагагүй.
+      - run: npm ci
+        working-directory: agent-proxy
+      # Амьд өгөгдлийн шалгалтууд (filters/series/blockProgress/bagts/monitor/floor
+      #  + agent реле + өгөгдлийн ХАЗАЙЛТ)
       - run: npm test

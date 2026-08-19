@@ -1,0 +1,39 @@
+# Cloudflare Worker — Сэлбэ AI релений байршуулалт.
+#
+# ⚠️ ЭНД НУУЦ ТООЦООЛОЛ БИЧИХГҮЙ. `ANTHROPIC_API_KEY` нь Cloudflare-ийн нууц
+#    хадгалалтад ордог тул энэ файл git-д ороход аюулгүй:
+#        npx wrangler secret put ANTHROPIC_API_KEY
+#
+# Байршуулах:  cd agent-proxy && npx wrangler deploy
+# Логоо харах: npx wrangler tail
+
+name = "selbe-agent"
+main = "worker.mjs"
+compatibility_date = "2026-08-01"
+
+[vars]
+# ⚠️ Порталын БОДИТ хаягууд. Энд байхгүй эхээс ирсэн хүсэлтийг реле татгалзана.
+ALLOW_ORIGIN = "https://selbe.monmap.mn,https://monmapgisteam-oss.github.io,http://localhost:8123"
+
+# ⚠️ Энэ хувьсагчийг тохируулснаар ArcGIS нэвтрэлт ШААРДАГДАНА: зөвхөн энэ
+#    байгууллагад нэвтэрсэн хэрэглэгч AI-г ашиглана. Хоосон болговол реле
+#    нээлттэй болж, хаягийг олсон хэн ч таны эрхээр токен зарцуулна.
+ARCGIS_ORG_ID = "HJzgwvlNIXssnQar"
+
+# ⚠️ `monmap.maps.arcgis.com` БИШ — порталын `AUTH.portalUrl`-тэй ЯГ ижил байх ёстой,
+#    эс бөгөөс токен өөр порталынх болж шалгалт унана.
+ARCGIS_PORTAL = "https://www.arcgis.com"
+
+# Загвар ба гүнзгийрэл — `server.mjs`-ийн анхдагчтай ижил.
+# Туршилтын үед зардал хэмнэхийг хүсвэл AGENT_MODEL = "claude-haiku-4-5"
+AGENT_MODEL = "claude-opus-5"
+AGENT_EFFORT = "low"
+
+# ── Өөрийн домэйн (заавал биш) ───────────────────────────────────────────
+# Cloudflare дээр `monmap.mn` бүсийг нэмсэн бол доорхийг идэвхжүүлээд
+# `NEXT_PUBLIC_AGENT_API`-г https://api.selbe.monmap.mn болгоно.
+# Идэвхжүүлэхгүй бол ажлын хаяг нь https://selbe-agent.<нэр>.workers.dev болно.
+#
+# [[routes]]
+# pattern = "api.selbe.monmap.mn/*"
+# zone_name = "monmap.mn"

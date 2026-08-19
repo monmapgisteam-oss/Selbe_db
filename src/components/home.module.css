@@ -1,107 +1,72 @@
-/* ═══════════════════════════════════════════════════════════
-   НҮҮР ХУУДАС — «Сэлбэ 20 минутын хот» дижитал ихэр платформын лендинг
-   ═══════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════════════
+   НҮҮР ХУУДАС — ЕРӨНХИЙ KPI ДАШБОАРД
+
+   ⚠️ 2026-08-18 (хэрэглэгчийн шийдвэр): ДЭВСГЭР ЗУРАГТАЙ ХАРАНХУЙ ЛЕНДИНГ
+   БҮРЭН ХАСАГДАВ (`.bg` / `.scrim` / `.grid` / `.hero` / `.stats` / `.eyebrow`
+   / `.title`-ийн цагаан-текст хувилбар). Шалтгаан:
+     · 444KB агаарын зураг нь эхний зурагтыг удаашруулна;
+     · хагас тунгалаг цагаан бичиг дээр тоо унших нь муу;
+     · порталын дотоод дүр төрхөөс тэс өөр тул орох үед харагдац үсэрдэг байв.
+
+   Одоо порталтай ИЖИЛ токен (`--bg`/`--surface`/`--ink`) — нүүр нь порталын
+   үргэлжлэл мэт бөгөөд цайвар/харанхуй хоёр горимд адилхан ажиллана.
+   ═══════════════════════════════════════════════════════════════════════ */
 
 .home {
-  position: fixed;
-  inset: 0;
-  overflow-y: auto;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
-  color: #fff;
-  background: #090c11;
+  background: var(--bg);
+  color: var(--ink);
 }
 
-/* Дэвсгэр зураг */
-.bg {
-  position: fixed;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: center;
-  z-index: 0;
-  pointer-events: none;
-}
-/* Текст уншигдахаар — зүүн ба доор бараан */
-.scrim {
-  position: fixed;
-  inset: 0;
-  z-index: 1;
-  pointer-events: none;
-  background:
-    linear-gradient(90deg, rgba(6, 9, 13, 0.92) 0%, rgba(6, 9, 13, 0.68) 44%, rgba(6, 9, 13, 0.16) 100%),
-    linear-gradient(180deg, rgba(6, 9, 13, 0.6) 0%, rgba(6, 9, 13, 0.08) 38%, rgba(6, 9, 13, 0.6) 100%);
-}
-/* Дижитал ихэр — нарийн торон давхарга (техник төрх) */
-.grid {
-  position: fixed;
-  inset: 0;
-  z-index: 1;
-  pointer-events: none;
-  opacity: 0.5;
-  background-image:
-    linear-gradient(rgba(56, 189, 248, 0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(56, 189, 248, 0.06) 1px, transparent 1px);
-  background-size: 46px 46px;
-  mask-image: radial-gradient(ellipse 80% 70% at 30% 40%, #000 0%, transparent 78%);
-  -webkit-mask-image: radial-gradient(ellipse 80% 70% at 30% 40%, #000 0%, transparent 78%);
-}
+/* ══════════════ Дээд зурвас ══════════════ */
 
-/* ── Navbar ── */
 .navbar {
-  position: relative;
-  z-index: 3;
+  position: sticky;
+  top: 0;
+  z-index: 30;
   display: flex;
   align-items: center;
-  gap: 20px;
-  padding: 14px 34px;
-  border-bottom: 1px solid rgba(56, 189, 248, 0.14);
-  background: linear-gradient(180deg, rgba(7, 10, 15, 0.72) 0%, rgba(7, 10, 15, 0.42) 100%);
-  backdrop-filter: blur(16px);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04), 0 8px 30px -18px rgba(0, 0, 0, 0.8);
+  gap: 18px;
+  padding: 12px 24px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
 }
 .brand { display: flex; align-items: center; gap: 14px; flex: none; }
-.logo { height: 30px; width: auto; flex: none; filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.55)); }
+.logo { height: 30px; width: auto; flex: none; }
 .brandDivider {
   width: 1px;
   height: 26px;
-  background: linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.28), transparent);
+  background: var(--line);
 }
 .brandText {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  font-size: 0.9rem;
-  font-weight: 500;
-  letter-spacing: 0.02em;
-  line-height: 1.15;
+  line-height: 1.25;
+  font-size: 0.82rem;
+  letter-spacing: 0.01em;
   white-space: nowrap;
-  text-transform: uppercase;
 }
 .brandText b { font-weight: 800; letter-spacing: 0.06em; }
 .brandTag {
-  font-size: 0.6rem;
-  font-weight: 600;
-  letter-spacing: 0.22em;
+  font-size: 0.64rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: rgba(125, 211, 252, 0.9);
+  color: var(--ink-3);
 }
-
-/* Navbar-ын завсар — нэвтрэлтийг баруун тийш түлхнэ */
 .spacer { flex: 1; }
 
-/* Нэвтрэлт */
 .auth { display: flex; align-items: center; gap: 12px; flex: none; }
-/* Нэвтэрсэн хэрэглэгч — avatar + нэр */
 .userChip {
   display: inline-flex;
   align-items: center;
   gap: 9px;
-  padding: 5px 12px 5px 5px;
+  padding: 4px 12px 4px 4px;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--line);
+  background: var(--surface-2);
 }
 .avatar,
 .avatarFallback {
@@ -110,160 +75,329 @@
   border-radius: 50%;
   flex: none;
 }
-.avatar { object-fit: cover; border: 1px solid rgba(255, 255, 255, 0.2); }
+.avatar { object-fit: cover; border: 1px solid var(--line); }
 .avatarFallback {
   display: grid;
   place-items: center;
   font-size: 0.66rem;
   font-weight: 700;
-  letter-spacing: 0.02em;
-  color: #06283d;
-  background: linear-gradient(135deg, #7dd3fc, #38bdf8);
+  color: #fff;
+  background: var(--hue);
 }
 .userName { font-size: 0.82rem; font-weight: 600; white-space: nowrap; }
 .signBtn {
-  padding: 9px 18px;
-  border-radius: 9px;
-  border: 1px solid rgba(255, 255, 255, 0.24);
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
-  font-size: 0.82rem;
+  padding: 8px 16px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: 0.8rem;
   font-weight: 600;
   white-space: nowrap;
-  transition: background 0.15s, border-color 0.15s;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
-.signBtn:hover { background: rgba(255, 255, 255, 0.18); border-color: rgba(255, 255, 255, 0.45); }
-/* Гол нэвтрэх товч — зөөлөн шилэн (glass) төрх */
+.signBtn:hover { background: var(--surface-2); color: var(--ink); }
+/* Гол нэвтрэх товч — цул акцент */
 .signIn {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 9px 20px;
-  border: 1px solid rgba(56, 189, 248, 0.45);
-  background: rgba(14, 165, 233, 0.16);
-  color: #e0f2fe;
-  transition: background 0.16s, border-color 0.16s, color 0.16s;
-}
-.signIn:hover {
-  background: rgba(14, 165, 233, 0.28);
-  border-color: rgba(125, 211, 252, 0.7);
+  padding: 8px 18px;
+  border-color: transparent;
+  background: var(--hue);
   color: #fff;
 }
+.signIn:hover { background: var(--hue); color: #fff; filter: brightness(1.08); }
 .signInArrow { font-size: 0.95rem; transition: transform 0.16s var(--ease); }
 .signIn:hover .signInArrow { transform: translateX(3px); }
 
-/* ── Гол — төслийн танилцуулга (зүүн тал) ── */
-.hero {
-  position: relative;
-  z-index: 2;
+/* ══════════════ Дашбоардын их бие ══════════════ */
+
+.board {
   flex: 1;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-  max-width: 860px;
-  padding: clamp(28px, 5vh, 60px) clamp(24px, 5vw, 60px);
+  gap: 16px;
+  width: 100%;
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 22px 24px 40px;
 }
 
-.eyebrow {
-  font-size: 0.72rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.16em;
-  color: rgba(125, 211, 252, 0.95);
-  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.6);
+.boardHead {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
 }
 .title {
-  margin-top: 12px;
-  font-size: clamp(2.2rem, 5.6vw, 4.1rem);
+  margin: 0;
+  font-size: clamp(1.3rem, 2.4vw, 1.7rem);
   font-weight: 700;
-  line-height: 1.06;
-  letter-spacing: 0.005em;
-  text-transform: uppercase;
-  text-shadow: 0 3px 40px rgba(0, 0, 0, 0.65);
-}
-/* Хоёр дахь мөр — «Digital Twin Platform» */
-.titleSub {
-  display: block;
-  margin-top: 8px;
-  text-transform: none;
-  font-size: clamp(1.1rem, 2.4vw, 1.9rem);
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  background: linear-gradient(90deg, #bae6fd, #38bdf8);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  filter: drop-shadow(0 2px 10px rgba(0, 0, 0, 0.55));
+  letter-spacing: -0.015em;
 }
 .lede {
-  margin-top: 18px;
-  max-width: 600px;
-  font-size: clamp(0.95rem, 1.5vw, 1.15rem);
-  line-height: 1.6;
-  color: rgba(255, 255, 255, 0.82);
-  text-shadow: 0 1px 14px rgba(0, 0, 0, 0.6);
+  margin: 6px 0 0;
+  max-width: 620px;
+  font-size: 0.83rem;
+  line-height: 1.55;
+  color: var(--ink-3);
 }
 
-/* Албан ёсны үзүүлэлтүүд */
-.stats {
-  margin: clamp(24px, 3.5vh, 36px) 0 0;
-  display: flex;
-  flex-wrap: nowrap;
-  gap: 0;
-}
-.stat {
+/* Нийт гүйцэтгэлийн зурвас — толгойн баруун талд */
+.progressBox {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  padding: 0 clamp(12px, 1.6vw, 24px);
-  border-left: 1px solid rgba(255, 255, 255, 0.16);
+  gap: 7px;
+  flex: none;
+  width: min(100%, 300px);
 }
-.statLabel { white-space: nowrap; }
-.stat:first-child { padding-left: 0; border-left: none; }
-.statValue {
-  font-size: clamp(1.3rem, 2.4vw, 1.9rem);
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  font-variant-numeric: tabular-nums;
+.progressTop { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.progressLabel {
+  font-family: var(--cond);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.progressPct { font-size: 1.05rem; font-weight: 700; color: var(--hue); }
+.progressTrack {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--chart-track, var(--surface-2));
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+.progressFill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--hue);
+}
+
+/* ══════════════ KPI нүднүүд ══════════════ */
+
+.kpiMain {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(238px, 1fr));
+  gap: 12px;
+}
+.kpiMore {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(158px, 1fr));
+  gap: 10px;
+}
+
+.kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 13px 15px;
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  color: inherit;
+  transition: border-color 0.15s, background 0.15s, transform 0.12s;
+}
+/* ⚠️ Зөвхөн ТОВЧ болсон нүд (view-тэй) hover-ийн хариу өгнө — эс бөгөөс
+   дарж болохгүй нүд дарагдах мэт харагдана. */
+button.kpi { cursor: pointer; }
+button.kpi:hover {
+  border-color: color-mix(in srgb, var(--hue) 55%, var(--line));
+  background: var(--surface-2);
+}
+button.kpi:hover .kpiGo { opacity: 1; transform: translateX(2px); }
+
+.kpiBig { padding: 16px 18px; gap: 8px; }
+
+.kpiTop { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.kpiIcon {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border-radius: var(--r-sm);
+  color: var(--hue);
+  background: color-mix(in srgb, var(--hue) 12%, transparent);
+}
+.kpiLabel {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.73rem;
+  font-weight: 600;
+  color: var(--ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
-  text-shadow: 0 2px 16px rgba(0, 0, 0, 0.55);
 }
-.statLabel {
-  margin: 0;
-  font-size: 0.74rem;
-  color: rgba(255, 255, 255, 0.62);
-  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.6);
+.kpiGo {
+  flex: none;
+  font-size: 0.85rem;
+  color: var(--ink-3);
+  opacity: 0;
+  transition: opacity 0.15s, transform 0.15s var(--ease);
+}
+.kpiValue {
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+.kpiBig .kpiValue { font-size: 1.7rem; }
+.kpiSub {
+  font-size: 0.68rem;
+  line-height: 1.4;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ══════════════ Сэдвийн цэс (navbar дотор) + dropdown ══════════════ */
+
+/**
+ * Сонгодог хэвтээ цэс — ЛОГО · ЦЭС · НЭВТРЭЛТ нэг зурваст. Дэвсгэр, хүрээгүй
+ * ЭНГИЙН ТЕКСТ; идэвхтэйг нь ДООГУУР ЗУРААС заана.
+ */
+.menuRow {
+  display: flex;
+  align-items: center;
+  gap: clamp(4px, 1.4vw, 20px);
+  flex: none;
+}
+
+/* ⚠️ `position: relative` — dropdown-ыг ЯГ энэ цэсний дор зангидна */
+.menuItem { position: relative; }
+
+/**
+ * ⚠️ Доогуурх зураас нь `border-bottom` дээр ҮРГЭЛЖ байна (тунгалаг өнгөтэй) —
+ * зөвхөн өнгө нь солигдоно. Ингэснээр hover хийхэд текст доош/дээш үсэрдэггүй.
+ */
+.menuBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 2px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--ink-2);
+  font-size: 0.82rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.menuBtn:hover { color: var(--ink); border-bottom-color: var(--line-strong); }
+.menuBtnOn { color: var(--ink); border-bottom-color: var(--hue); }
+.caret { font-size: 0.62rem; transition: transform 0.18s var(--ease); }
+.caretOn { transform: rotate(180deg); }
+
+.dropdown {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  min-width: 268px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  border-radius: var(--r-lg);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+  animation: dropIn 0.18s var(--ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
+}
+@keyframes dropIn {
+  from { opacity: 0; transform: translate(-50%, -6px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dropdown { animation: none; }
+}
+
+/**
+ * Dropdown доторх мөр — дэвсгэр, хүрээгүй ХАВТГАЙ. Hover дээр хүрээ БИШ,
+ * ЗҮҮН ТАЛЫН зураас: хүрээ нь мөрийн өндрийг харааны хувьд өөрчилж «үсэрдэг».
+ */
+.viewBtn {
+  display: flex;
+  align-items: center;
+  padding: 7px 10px;
+  text-align: left;
+  border-radius: var(--r-sm);
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  transition: background 0.14s, box-shadow 0.14s;
+}
+.viewBtn:hover {
+  background: var(--surface-2);
+  box-shadow: inset 3px 0 0 var(--hue);
+}
+.viewBtn:focus-visible {
+  outline: 2px solid var(--hue);
+  outline-offset: -2px;
+}
+
+.viewText {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.viewTitle {
+  font-size: 0.79rem;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  color: var(--ink);
+}
+/* Тайлбар нэг мөрөнд — урт бол «…». Бүтнээр нь `title` (tooltip) харуулна. */
+.viewDesc {
+  font-size: 0.66rem;
+  line-height: 1.35;
+  color: var(--ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ── Ачаалах үеийн зөөлөн хөдөлгөөн (stagger) ── */
-.eyebrow,
-.title,
-.lede,
-.stats {
+.boardHead,
+.kpiMain,
+.kpiMore {
   opacity: 0;
-  animation: rise 0.6s var(--ease, cubic-bezier(0.22, 1, 0.36, 1)) forwards;
+  animation: rise 0.5s var(--ease, cubic-bezier(0.22, 1, 0.36, 1)) forwards;
 }
-.eyebrow { animation-delay: 0.05s; }
-.title { animation-delay: 0.14s; }
-.lede { animation-delay: 0.24s; }
-.stats { animation-delay: 0.34s; }
+.boardHead { animation-delay: 0.02s; }
+.kpiMain { animation-delay: 0.1s; }
+.kpiMore { animation-delay: 0.18s; }
 @keyframes rise {
-  from { opacity: 0; transform: translateY(16px); }
+  from { opacity: 0; transform: translateY(12px); }
   to { opacity: 1; transform: translateY(0); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .eyebrow, .title, .lede, .stats { opacity: 1; animation: none; }
+  .boardHead, .kpiMain, .kpiMore { opacity: 1; animation: none; }
 }
 
 /* ── Нарийн дэлгэц ── */
 @media (max-width: 820px) {
-  .navbar { gap: 12px; padding: 12px 18px; }
-  .hero { padding: 36px 20px; }
-  .scrim { background: linear-gradient(180deg, rgba(6, 9, 13, 0.6) 0%, rgba(6, 9, 13, 0.4) 40%, rgba(6, 9, 13, 0.85) 100%); }
+  .navbar { gap: 12px; padding: 12px 16px; flex-wrap: wrap; row-gap: 8px; }
+  .board { padding: 16px 16px 32px; }
   .brandTag { display: none; }
   .userName { display: none; }
-  /* Босоо тусгаарлагчийг хасаж, эгнээ болгон эвхнэ */
-  .stats { flex-wrap: wrap; gap: 14px 26px; }
-  .stat { padding: 0; border-left: none; }
+  .progressBox { width: 100%; }
+  /**
+   * ⚠️ `overflow-x` тавьж БОЛОХГҮЙ: dropdown нь зурваснаас доош унждаг тул
+   * тайрагдана. Оронд нь цэсийг ДООД мөрөнд бүтнээр нь буулгана.
+   */
+  .menuRow { order: 3; width: 100%; justify-content: flex-start; flex-wrap: wrap; }
+  .spacer { display: none; }
 }

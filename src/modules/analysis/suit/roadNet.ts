@@ -12,13 +12,10 @@
  * `et:29` «Зам (талбай)» полигоны яг дундуур гүйнэ.
  */
 
-import { LAYER_BY_ID, layerUrl, HOME } from '@/lib/services';
-import { buildNetwork, type Network, type Pt } from './traffic';
+import { HOME } from '@/lib/services';
+import type { Network, Pt } from './traffic';
 import { zoneTrips } from './simulation';
 import type { MapRow } from '../SuitMap';
-
-/** Каталог дахь эх давхарга — «Замын тэнхлэг» (`Selbe_ET_20260721`/5) */
-const ROAD_LAYER_ID = 'et:5';
 
 /** Нэг хүсэлтэд авах бичлэгийн тоо (үйлчилгээний хязгаар 2000) */
 const PAGE = 2000;
@@ -123,12 +120,10 @@ export async function loadPathsFrom(url: string, signal?: AbortSignal): Promise<
   return chunks.flat();
 }
 
-/** «Замын тэнхлэг» (et:5) давхаргын шугамууд — `loadPathsFrom`-ийн тусгай тохиолдол. */
-export async function loadRoadPaths(signal?: AbortSignal): Promise<Pt[][]> {
-  const def = LAYER_BY_ID[ROAD_LAYER_ID];
-  if (!def) throw new Error(`Замын давхарга каталогт алга: ${ROAD_LAYER_ID}`);
-  return loadPathsFrom(layerUrl(def), signal);
-}
+/* ⚠️ 2026-08-19: `loadRoadPaths` (et:5-ийн тусгай тохиолдол) ба доорх кэш
+   (`loadRoadNetworkCached`) ХАСАГДАВ — хоёулаа зөвхөн бие биенээ дуудаж,
+   гаднаас нэг ч дуудагчгүй байв. Сүлжээ татах бодит зам нь `netSources.ts` →
+   `loadPathsFrom(url)` (ЕРӨНХИЙЧИЛСЭН хувилбар). */
 
 /* ══════════════════ Аялал үүсгэлт → ирмэгийн жин ══════════════════ */
 
@@ -171,20 +166,3 @@ export function assignLoads(net: Network, rows: MapRow[]): void {
   }
 }
 
-/* ══════════════════ Кэш ══════════════════ */
-
-let cache: Promise<Network> | null = null;
-
-/**
- * Сүлжээг НЭГ УДАА татаж кэшлэнэ (табыг сэлгэх бүрд дахин татахгүй).
- * ⚠️ `baseLoad` нь бүсийн өгөгдлөөс хамаардаг тул дуудагч тал `assignLoads`-ыг
- * ӨӨРӨӨ дуудна — кэш нь зөвхөн ГЕОМЕТРИЙГ хадгална.
- */
-export function loadRoadNetworkCached(): Promise<Network> {
-  if (!cache) {
-    cache = loadRoadPaths()
-      .then((paths) => buildNetwork(paths, { unitsPerMeter: WM_UNITS_PER_M }))
-      .catch((e) => { cache = null; throw e; });
-  }
-  return cache;
-}

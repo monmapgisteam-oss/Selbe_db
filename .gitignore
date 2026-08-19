@@ -12,3 +12,16 @@ __pycache__/
 # ГЭХДЭЭ «ТЭЗҮ-БОНУ» popup-ийн PDF-үүд deploy-д (GitHub Pages) орох ёстой тул
 # зөвхөн эдгээрийг исключение болгоно.
 !public/docs/*.pdf
+
+# AI релений нууц (LLM түлхүүр) — репод хэзээ ч орохгүй
+agent-proxy/.env*
+# Cloudflare Worker-ийн локал нууц — ХЭЗЭЭ Ч репод орохгүй
+agent-proxy/.dev.vars*
+# Wrangler-ийн локал кэш — build биш, түр файл
+agent-proxy/.wrangler/
+
+# Ботоор зөвшөөрсөн Telegram хэрэглэгчид — нэрс/ID тул репод оруулахгүй
+telegram-users.json
+
+# Audit-ийн түр гаралт (2026-08-18) — репод оруулахгүй
+.audit/

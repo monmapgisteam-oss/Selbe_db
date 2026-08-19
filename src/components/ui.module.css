@@ -1,24 +1,70 @@
-/* ── Дашбоардын хэсэг ── */
-.section { padding: 18px 20px; border-bottom: 1px solid var(--line); }
-.section:last-child { border-bottom: none; }
+/* ── Хулганы тайлбар ──
+   ⚠️ `fixed` — самбарын `overflow` тайралтаас гарахын тулд (`ui.tsx`-ийн
+   `useTip` дээрх тайлбарыг үзнэ үү). `pointer-events: none` заавал: эс бөгөөс
+   заагуурын доор орж өөрөө `pointerleave` өдөөж анивчина. */
+/* envhub-ийн tooltip: min 124px, hairline хүрээ, шилэн дэвсгэр, өнгөт толгойн
+   зурвас (JS талаас color-mix-ээр будна) + том өнгөт утга. Сүүдэр нь ЗӨВХӨН
+   ийм хөвөгч зүйлд зөвшөөрөгдөнө. */
+.tip {
+  position: fixed;
+  z-index: 60;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  min-width: 124px;
+  max-width: 260px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--surface) 95%, transparent);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  box-shadow: var(--shadow-lg);
+  color: var(--ink);
+}
+.tipHd {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--line);
+}
+.tipDot { width: 6px; height: 6px; flex: none; border-radius: 99px; }
+.tipName { font-size: 11.5px; font-weight: 500; color: var(--ink); overflow-wrap: anywhere; }
+.tipBody { display: flex; flex-direction: column; gap: 3px; padding: 6px 8px; }
+.tipVal { font-size: 17px; line-height: 1; font-weight: 500; }
+.tipHint { font-size: 10.5px; color: var(--ink-3); }
+
+/* ── Дашбоардын хэсэг ──
+   ⚠️ 2026-08-17: envhub-ийн Card/Head хэл — хэсэг бүр нь НЭГ хавтангийн заагтай
+   мөр БИШ, hairline хүрээт БИЕ ДААСАН карт (rounded-xs, bg-paper-2). Завсрыг
+   эцэг нь өгнө (`.panelBody` gap 10px). Толгой нь бүтэн өргөний hairline-тай
+   тусдаа зурвас (px-3 py-2), гарчиг 13.5px / 600 / +0.06em uppercase. */
+.section {
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
 
 .sectionHead {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 14px;
+  gap: 8px;
+  margin: -12px -12px 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
 }
-/* ⚠️ 2026-08-12: Operations Dashboard виджет-толгойн хэл — ЖИЖИГ uppercase,
-   letter-spacing. Бүх дашбоардын хэсгийн гарчиг tsogts-тэй нэгдмэл болов. */
 .sectionTitle {
-  font-size: 0.72rem;
-  font-weight: 700;
+  font-size: 13.5px;
+  line-height: 1;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--ink-2);
+  letter-spacing: 0.06em;
+  color: var(--ink);
 }
-.sectionNote { font-size: 0.7rem; color: var(--ink-3); }
+.sectionNote { font-size: 11.5px; color: var(--ink-3); }
 
 /* Самбарын ГОЛ хэсэг — модулийн өнгөөр ирмэглэж, бусдаас ялгарна */
 .sectionPrimary {
@@ -40,7 +86,7 @@
 .splitBody { flex: 1; min-width: 0; }
 
 .noteText { font-size: 0.73rem; line-height: 1.55; color: var(--ink-3); }
-.noteText b { color: var(--ink); font-weight: 650; }
+.noteText b { color: var(--ink); font-weight: 600; }
 
 .subHead {
   display: flex;
@@ -48,7 +94,7 @@
   gap: 8px;
   margin-bottom: 10px;
   font-size: 0.74rem;
-  font-weight: 650;
+  font-weight: 600;
   color: var(--ink-2);
 }
 .subNote { font-size: 0.68rem; font-weight: 400; color: var(--ink-3); }
@@ -100,7 +146,7 @@
   padding: 1px 6px;
   border-radius: 99px;
   font-size: 0.66rem;
-  font-weight: 650;
+  font-weight: 600;
   color: var(--ink-3);
   background: var(--surface-2);
   border: 1px solid var(--line);
@@ -113,49 +159,74 @@
 /* Анхааруулга — таб идэвхгүй байсан ч ялгарна */
 .tabCountWarn,
 .tabOn .tabCountWarn {
-  color: var(--warn);
+  color: var(--warn-ink);
   background: color-mix(in srgb, var(--warn) 14%, transparent);
   border-color: color-mix(in srgb, var(--warn) 30%, transparent);
 }
 
-/* ── Үзүүлэлт (KPI) ── */
-/* minmax(0,1fr) — track нь агуулгын min-content-оос доош агшиж чадна;
+/* ── Үзүүлэлт (KPI) ──
+   ⚠️ 2026-08-17: envhub-ийн KPI зурвас — тусдаа картууд БИШ, НЭГ hairline
+   хүрээт хайрцаг дотор hairline ЗААГААР тусгаарлагдсан нүднүүд. 1px завсар +
+   --line дэвсгэр нь заагийг зурна; нүд өөрөө хүрээгүй болно.
+   minmax(0,1fr) — track нь агуулгын min-content-оос доош агшиж чадна;
    эс бол нарийн эцэг дотор өргөн тоо (8,575 өрх) хүрээг давна. */
-.stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+.stats > * { border: none; border-radius: 0; }
 .stats3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .stats4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 @media (max-width: 720px) { .stats4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
-/* ⚠️ 2026-08-12: «Барилгын хяналт» (tsogts)-ын Operations Dashboard индикатортой
-   100% ижил — ГОЛЛУУЛСАН том тоо, доор нь ЖИЖИГ uppercase шошго, хавтгай карт. */
+/* ⚠️ 2026-08-17: envhub-ийн KPI нүдний хэл — ЗҮҮН зэрэгцүүлсэн, дээр нь eyebrow
+   шошго, доор нь 16px/500 тоо. Сүүдэр ОГТ байхгүй (envhub-д картын сүүдэр
+   хориотой — гүнийг hairline + гадаргуун шат өгнө).
+   DOM-ийн дараалал (утга → шошго) хэвээр тул `column-reverse`-ээр эргүүлнэ —
+   56 дуудагчийн нэг нь ч өөрчлөгдөхгүй. */
 .stat {
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  text-align: center;
-  padding: 14px 12px;
+  flex-direction: column-reverse;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6px;
+  text-align: left;
+  padding: 8px 12px;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: var(--r);
+  border-radius: var(--r-sm);
   transition: border-color 0.15s var(--ease);
 }
 .stat:hover { border-color: var(--line-strong); }
 .statValue {
   display: flex;
   align-items: baseline;
-  justify-content: center;
   gap: 4px;
-  font-size: 1.55rem;
-  font-weight: 700;
-  letter-spacing: -0.015em;
+  font-size: 16px;
+  font-weight: 500;
   color: var(--ink);
-  line-height: 1.1;
+  line-height: 1;
   font-variant-numeric: tabular-nums;
 }
-.statUnit { font-size: 0.82rem; font-weight: 500; color: var(--ink-3); font-family: var(--font-sans), sans-serif; letter-spacing: 0; }
-.statLabel { font-size: 0.64rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-3); line-height: 1.3; }
+.statUnit { font-size: 11px; font-weight: 400; color: var(--ink-3); letter-spacing: 0; }
+/* envhub eyebrow — 2 мөрийн зай нөөцөлж, олон карт зэрэгцэхэд тоонууд нэг
+   суурьт зэрэгцэнэ */
+.statLabel {
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--ink-3);
+  line-height: 1.25;
+  min-height: 26px;
+  display: flex;
+  align-items: flex-start;
+}
 /* Онцолсон KPI — булангаас цацрах зөөлөн өнгөт гэрэлтэй */
 .statAccent {
   border-color: color-mix(in srgb, var(--tone, var(--hue)) 32%, var(--line));
@@ -165,98 +236,44 @@
 }
 .statAccent .statValue { color: var(--tone, var(--hue)); }
 
-/* ── Баганан жагсаалт ── */
-.bars { display: flex; flex-direction: column; gap: 11px; }
-.barRow { display: flex; flex-direction: column; gap: 5px; width: 100%; text-align: left; }
-/* Нэг эгнээ: шошго | бар | утга — өндөр багасна */
-.barRowInline { flex-direction: row; align-items: center; gap: 8px; }
-/* Шошгыг «...»-ээр таслахгүй — шаардлагатай бол мөр даруулж БҮТЭН харуулна */
-.barRowInline .barName { flex: 0 0 30%; font-size: 0.72rem; white-space: normal; overflow: visible; line-height: 1.18; }
-.barRowInline .barTrack { flex: 1; }
-.barRowInline .barVal { flex: none; font-size: 0.72rem; }
-.barClick { border-radius: var(--r-sm); padding: 5px 6px; margin: -5px -6px; transition: background 0.12s; }
-.barClick:hover { background: var(--surface-2); }
-.barOn { background: color-mix(in srgb, var(--tone, var(--hue)) 10%, transparent); }
+/* ── Баганан жагсаалт ──
+   ⚠️ 2026-08-17: envhub-ийн RowChart хэл — бар нь «блок» биш, текстийн ДООРХ
+   2px hairline зам. Нэр 12px, утга 11.5px; сонголт нь өнгөт дэвсгэр биш
+   ТЕКСТИЙН жингээр (нэр medium + ink болно), бусад нь бүдгэрнэ. */
+.bars { display: flex; flex-direction: column; gap: 4px; }
+.barRow { display: flex; flex-direction: column; gap: 3px; width: 100%; text-align: left; }
+.barRowDim .barName, .barRowDim .barVal { opacity: 0.4; }
+.barClick { border-radius: var(--r-sm); padding: 3px 4px; margin: -3px -4px; transition: background 0.12s; }
+.barClick:hover { background: color-mix(in oklab, var(--tone, var(--data)) 8%, transparent); }
+.barOn { background: transparent; }
 
-.barTop {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-  font-size: 0.76rem;
-  width: 100%;
+.barTop { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; }
+/* envhub: нэрийг таслана (…) — бүтэн нэр нь title/tooltip-д */
+.barName {
+  min-width: 0;
+  font-size: 12px;
+  color: var(--ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color 0.12s;
 }
-/* Шошгыг «...»-ээр таслахгүй — урт нэр мөр даруулж БҮТЭН харагдана */
-.barName { color: var(--ink-2); min-width: 0; white-space: normal; overflow-wrap: anywhere; line-height: 1.25; }
-.barVal { flex: none; font-weight: 650; color: var(--ink); font-size: 0.74rem; }
-.barTrack { height: 5px; border-radius: 99px; background: var(--sunken); overflow: hidden; }
-/* Дүүргэлт — төгсгөл рүүгээ бага зэрэг цайрах градиент (гүн, чиглэлийн мэдрэмж) */
+.barNameOn { font-weight: 500; color: var(--ink); }
+.barVal { flex: none; font-size: 11.5px; color: var(--ink-3); transition: color 0.12s; }
+.barValOn { color: var(--ink); }
+.barTrack {
+  display: block;
+  height: 2px;
+  width: 100%;
+  border-radius: 1px;
+  background: var(--chart-track);
+  overflow: hidden;
+}
 .barFill {
   display: block;
   height: 100%;
-  border-radius: 99px;
-  /* ⚠️ 2026-08-12: Operations Dashboard — ЦУЛ дүүргэлт (өмнөх цайруулах градиентийг
-     хасав; хавтгай цул бар нь дашбоардын serial chart-тай нийцнэ). */
-  background: var(--tone, var(--hue));
-  transition: width 0.6s var(--ease);
-}
-
-/* ── Тоймтой хувилбар (`outlined`) ──
-   Хүрээ нь өөрийн өнгөөр, дүүргэлт нь 50% тунгалаг.
-   ⚠️ 5px өндөрт 1px хүрээ нь баганыг бараг бүхэлд нь эзэлнэ — тоймтой үед
-   зам нь 9px болж, дотор нь дүүргэлт уншигдана. */
-/* Тоймтой хувилбарын мөр: багана сунана, утга нь баруун талд тогтоно */
-.barLine { display: flex; align-items: center; gap: 9px; width: 100%; }
-.barLine .barTrack { flex: 1; min-width: 0; }
-.barLine .barVal { flex: none; min-width: 42px; text-align: right; }
-
-/* ── Баганан чартын тайлбар ──
-   Мөрүүдийн ДООР, багануудтай ижил дараалал ба өнгө. */
-/**
- * ⚠️ ХҮРЭЭГҮЙ. Урьд нь дээрээ зураастай байсан нь чартыг ДОТРООС нь хоёр
- * тасалж, зэрэгцээ чартуудын зааг нь харагдахгүй болгодог байлаа. Тусгаарлах
- * зураас нь чарт ХООРОНД байна (`dashboard.module.css` → `.chartBlock`).
- */
-.barLegend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 14px;
-  margin-top: 9px;
-}
-.barLegendItem {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  max-width: 100%;
-  font-size: 0.68rem;
-  color: var(--ink-2);
-}
-/* Тэмдэг нь баганытай ЯГ ижил — тоймтой, 50% тунгалаг дүүргэлттэй */
-.barLegendDot {
-  width: 6px;
-  height: 6px;
-  flex: none;
-  border-radius: 2px;
-  border: 1px solid var(--tone, var(--hue));
-  background: color-mix(in srgb, var(--tone, var(--hue)) 50%, transparent);
-}
-.barLegendName { overflow-wrap: anywhere; }
-
-/* ⚠️ Барын зузаан 9px → 5px (≈40% нарийн, хэрэглэгчийн хүсэлт). Легендийн
-   тэмдэг ч мөн 9px → 6px болж дагана — доор.
-   ⚠️ Track нь СУЛ ХАРАГДАХ rail-тай (тунгалаг БИШ): урьд нь тунгалаг байсан тул
-   бага утгатай бар богино дүүргэлт + ард нь ХООСОН зай болж, утга нь хол баруунд
-   тасарч харагддаг байв. Одоо rail нь бүтэн уртаараа харагдах тул богино бар ч
-   «дуусаагүй трэк» мэт цэвэрхэн — хоосон зай алга. */
-.barTrackOut {
-  height: 5px;
-  background: color-mix(in srgb, var(--tone, var(--hue)) 14%, transparent);
-}
-/* ⚠️ 2026-08-12: Operations Dashboard — тоймтой/тунгалаг байхаа больж ЦУЛ бар болов. */
-.barFillOut {
-  background: var(--tone, var(--hue));
-  border: none;
+  background: var(--tone, var(--data));
+  transition: width 0.6s var(--ease), opacity 0.12s;
 }
 
 /* Урт жагсаалтыг задлах / хумих */
@@ -273,17 +290,43 @@
 .more:hover { background: var(--surface-2); color: var(--ink); }
 
 /* ── Хэсэгчилсэн мөр (stacked) ── */
-.stack { display: flex; height: 8px; border-radius: 99px; overflow: hidden; background: var(--sunken); }
-.stackSeg { height: 100%; transition: width 0.6s var(--ease); }
+/* ⚠️ 8px → 10px: хэсгүүд нь одоо тусгаарлагч зайтай тул нимгэн зурвасанд
+   хэсэг бүр нь өөрөө хэтэрхий нарийсч байв. */
+.stack { display: flex; height: 10px; border-radius: 99px; overflow: hidden; background: var(--chart-track); }
+/* Зэргэлдээ хэсгүүдийн хооронд ГАДАРГУУН өнгөт 1.5px зай — ойролцоо өнгөтэй
+   хоёр хэсэг нийлж НЭГ болж харагдахаас сэргийлнэ (`box-shadow` нь өргөнийг
+   өөрчлөхгүй тул хувь хэмжээ ЯГ хэвээр). */
+.stackSeg {
+  height: 100%;
+  transition: width 0.6s var(--ease), opacity 0.12s var(--ease);
+  box-shadow: inset -1.5px 0 0 var(--surface);
+}
+.stackSeg:last-child { box-shadow: none; }
+.stackSegDim { opacity: 0.32; }
 .legend { display: flex; flex-wrap: wrap; gap: 10px 16px; margin-top: 12px; }
-.legendItem { display: flex; align-items: center; gap: 7px; font-size: 0.72rem; color: var(--ink-2); }
-.legendDot { width: 9px; height: 9px; border-radius: 3px; flex: none; }
-.legendVal { color: var(--ink); font-weight: 650; }
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--ink-2);
+  transition: opacity 0.12s var(--ease);
+}
+.legendItemOn { color: var(--ink); }
+.legendItemDim { opacity: 0.45; }
+/* envhub: 8px, 1px радиустай дөрвөлжин — donut-д зүсмэгийн багасгасан хувь
+   (тунгалаг дэвсгэр + өнгөт хүрээ, inline style-аас), stack-д цул. */
+.legendDot { width: 8px; height: 8px; border-radius: 1px; flex: none; }
+/* envhub: чартын дотор 500-аас дээш жин байхгүй */
+.legendVal { color: var(--ink); font-weight: 500; }
+/* Хувь — үнэмлэхүй тооны ХАЖУУД. Хоёулаа хэрэгтэй: тоо нь хэмжээг, хувь нь
+   бүхэлд эзлэх байрыг хэлнэ. */
+.legendPct { font-size: 0.68rem; color: var(--ink-3); font-variant-numeric: tabular-nums; }
 
 /* ── Цагираг ── */
 .ring { position: relative; display: grid; place-items: center; flex: none; }
 .ringSvg { transform: rotate(-90deg); }
-.ringTrack { fill: none; stroke: var(--sunken); }
+.ringTrack { fill: none; stroke: var(--chart-track); }
 .ringArc { fill: none; stroke: var(--tone, var(--hue)); stroke-linecap: round; transition: stroke-dashoffset 0.7s var(--ease); }
 .ringCenter { position: absolute; display: flex; flex-direction: column; align-items: center; line-height: 1.1; }
 .ringValue { font-weight: 700; color: var(--ink); }
@@ -291,18 +334,19 @@
 
 /* ── Түлхүүр → утга ── */
 .rows { display: flex; flex-direction: column; }
+/* envhub KeyValue хэл — 12px, утга нь medium (600 биш) */
 .row {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 14px;
-  padding: 8px 0;
+  padding: 7px 0;
   border-bottom: 1px solid var(--line);
-  font-size: 0.78rem;
+  font-size: 12px;
 }
 .row:last-child { border-bottom: none; }
 .rowKey { color: var(--ink-3); flex: none; }
-.rowVal { color: var(--ink); font-weight: 600; text-align: right; overflow-wrap: anywhere; }
+.rowVal { color: var(--ink); font-weight: 500; text-align: right; overflow-wrap: anywhere; }
 
 /* ── Chip ── */
 .chip {
@@ -348,7 +392,7 @@
 .listSub { display: block; font-size: 0.7rem; color: var(--ink-3); overflow-wrap: anywhere; }
 /* ⚠️ `nowrap` — «62.8 тэрбум» гэх мэт утга хоёр мөр болж мөрийн өндрийг
    тэлэхгүй; өргөн хэрэгтэй бол гарчиг нь таслагдана, утга нь бүтэн үлдэнэ. */
-.listVal { flex: none; white-space: nowrap; font-weight: 650; font-size: 0.76rem; color: var(--ink); }
+.listVal { flex: none; white-space: nowrap; font-weight: 600; font-size: 0.76rem; color: var(--ink); }
 
 /* ── Төлөв ── */
 .state {
@@ -371,7 +415,28 @@
   animation: spin 0.7s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
-.error { color: var(--bad); }
+/**
+ * ⚠️ Хөдөлгөөн мэдрэг хэрэглэгчид. `globals.css` нь БҮХ анимацийг 0.01ms болгож
+ * зогсоодог — тэр нь эргэлдэгчийг зогсоохгүй, ХАГАС дуусаагүй цагираг байдлаар
+ * ЭВДЭРСЭН мэт харагдуулдаг байв. Ийм үед бүтэн цагираг болгож, «ажиллаж
+ * байгаа» гэдгийг тэмдэг биш ТЕКСТ («Ачаалж байна…») дамжуулна.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .spinner { border-color: var(--line-strong); border-top-color: var(--hue); opacity: 0.7; }
+}
+
+/* ── Хоосон төлөв ── */
+.empty {
+  gap: var(--s2);
+  padding: var(--s9) var(--s7);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r);
+  background: var(--surface-2);
+}
+.emptyIcon { display: block; color: var(--ink-3); opacity: 0.7; }
+.emptyLabel { color: var(--ink-2); }
+.emptyHint { font-size: 0.7rem; color: var(--ink-3); max-width: 32ch; }
+.error { color: var(--bad-ink); }
 .errorMsg { font-size: 0.7rem; color: var(--ink-3); max-width: 260px; }
 
 /* «Дахин оролдох» — алдааны доорх жижиг товч. Бүтэн хуудас refresh хийлгүйгээр
@@ -384,7 +449,7 @@
   color: var(--ink);
   background: var(--surface-2);
   border: 1px solid var(--line);
-  border-radius: 7px;
+  border-radius: var(--r-sm);
   cursor: pointer;
 }
 .retryBtn:hover { border-color: var(--line-strong); }
@@ -409,7 +474,7 @@
   overflow-wrap: break-word;
   word-break: normal;
 }
-.donutLeadName { color: var(--ink-2); }
+.donutLeadName { color: var(--ink-2); font-family: var(--cond); }
 .donutLeadPct { font-size: 11.5px; font-weight: 700; white-space: nowrap; }
 /* Пайн диаграмыг хажууд албадаж зэрэгцүүлнэ — тайлбар багасаж багтана.
    Нэрийг ellipsis-ээр таслахгүй, шаардлагатай бол мөр даруулж БҮТЭН харуулна. */
@@ -423,7 +488,8 @@
 .donutRow .donutName { white-space: normal; overflow: visible; line-height: 1.2; }
 .donutRow .legendDot { margin-top: 2px; }
 .donut { position: relative; flex: none; }
-.donutTrack { fill: none; stroke: var(--line); }
+/* envhub: гадна захын 1px чиглүүлэгч тойрог */
+.donutTrack { fill: none; stroke: var(--line-strong); }
 .donutCenter {
   position: absolute;
   inset: 0;
@@ -434,77 +500,76 @@
   gap: 2px;
   pointer-events: none;
 }
-.donutValue { font-size: 1.15rem; font-weight: 700; color: var(--ink); line-height: 1.1; }
-.donutLabel { font-size: 0.62rem; color: var(--ink-3); text-align: center; }
+/* envhub: голын нийлбэр — жижиг, medium (том тод тоо биш) */
+.donutValue { font-size: 13px; font-weight: 500; color: var(--ink); line-height: 1.1; }
+.donutLabel { font-size: 10px; color: var(--ink-3); text-align: center; }
 
 .donutLegend { flex: 1; min-width: 130px; display: flex; flex-direction: column; gap: 6px; }
-.donutItem { display: flex; align-items: center; gap: 7px; font-size: 0.72rem; color: var(--ink-2); }
+.donutItem { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--ink-2); }
 .donutName { flex: 1; min-width: 0; overflow-wrap: anywhere; text-align: left; }
-.donutPct { flex: none; font-size: 0.7rem; font-weight: 650; color: var(--ink); }
+.donutPct { flex: none; font-size: 11.5px; font-weight: 400; color: var(--ink-3); }
 /* Дарж шүүх боломжтой тайлбарын мөр */
-.donutClick { width: 100%; padding: 3px 5px; border-radius: 5px; transition: background 0.12s; }
+.donutClick { width: 100%; padding: 3px 5px; border-radius: var(--r-sm); transition: background 0.12s; }
 .donutClick:hover { background: var(--surface-2); }
 .donutOn { background: color-mix(in srgb, var(--tone, var(--hue)) 14%, transparent); }
 .donutOn .donutPct { color: var(--tone, var(--hue)); }
+/**
+ * ⚠️ 2026-08-17 НЭМЭВ. `ui.tsx` нь `s.donutHov`-ыг аль хэдийн тавьдаг байсан ч
+ * энэ дүрэм CSS-д БАЙГААГҮЙ — өөрөөр хэлбэл зүсмэг дээр хулгана очиход
+ * тайлбарын харгалзах мөр нь тодрох ЁСТОЙ байсан боловч огт тодордоггүй байв
+ * (холбоо нь зөвхөн НЭГ ТАЛДАА ажиллаж байсан гэсэн үг).
+ * Хүрээг зузаалахгүй, ЗҮҮН ирмэг + дэвсгэрээр заана — мөрийн өндөр хөдлөхгүй.
+ */
+.donutHov {
+  background: var(--surface-2);
+  box-shadow: inset 2px 0 0 var(--tone, var(--hue));
+}
+.donutSlice { transition: fill-opacity 0.12s var(--ease), stroke-width 0.12s var(--ease); }
 
-/* ── Босоо цуваа (series) ── */
-.series { display: flex; flex-direction: column; gap: 6px; }
+/* ── Босоо цуваа (series) ──
+   ⚠️ 2026-08-17: envhub-ийн BarChart хэл — 3px завсар, зөвхөн ДЭЭД буланд 1px
+   радиус, торгүй/тэнхлэггүй, доор нь 10px цифрийн мөр. Багана бүр бүтэн
+   өндрийн дарагдах талбар; hover нь 12% өнгөн угаалт. */
+.series { display: flex; flex-direction: column; }
 .seriesPlot {
+  position: relative;
   display: flex;
-  align-items: flex-end;
-  gap: 6px;
-  /* Утгын шошго баганын дээр гардаг тул дээд талд зай үлдээнэ */
-  padding-top: 16px;
-  /* ⚠️ 2026-08-12: Operations Dashboard — хэвтээ hairline тор (25% алхам) +
-     суурь тэнхлэг. tsogts-ийн ComboChart-ын CartesianGrid-тэй ижил төрх. */
-  background: repeating-linear-gradient(
-    to top,
-    var(--line) 0,
-    var(--line) 1px,
-    transparent 1px,
-    transparent 25%
-  );
-  border-bottom: 1px solid var(--line-strong);
+  align-items: stretch;
+  gap: 3px;
 }
 .seriesCol {
   flex: 1;
   min-width: 0;
-  height: 100%;
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  align-items: center;
-  gap: 4px;
   position: relative;
+  border-radius: 1px;
+  transition: background 0.12s;
 }
 .seriesBar {
   width: 100%;
-  border-radius: 2px 2px 0 0;
-  /* Operations Dashboard — ЦУЛ багана (тунгалаг биш) */
-  background: color-mix(in srgb, var(--tone, var(--hue)) 90%, transparent);
-  transition: background 0.12s;
+  border-radius: 1px 1px 0 0;
+  background: var(--tone, var(--data));
+  transition: height 0.4s var(--ease), opacity 0.12s;
 }
-.seriesCol:hover .seriesBar { background: var(--tone, var(--hue)); }
-/* Дарж шүүх боломжтой цуваа багана */
-.seriesClick { cursor: pointer; border-radius: 5px; transition: background 0.12s; }
-.seriesClick:hover { background: var(--surface-2); }
-.seriesOn .seriesBar { background: var(--tone, var(--hue)); }
-.seriesOn .seriesVal { color: var(--tone, var(--hue)); }
-.seriesVal {
-  position: absolute;
-  top: -16px;
-  font-size: 0.66rem;
-  font-weight: 650;
-  color: var(--ink-2);
-  white-space: nowrap;
-}
+.seriesClick { cursor: pointer; }
+.seriesClick:hover { background: color-mix(in oklab, var(--tone, var(--data)) 12%, transparent); }
+.seriesTicks { display: flex; gap: 3px; margin-top: 6px; }
 .seriesLabel {
-  font-size: 0.65rem;
+  flex: 1;
+  min-width: 0;
+  font-size: 10px;
+  line-height: 1;
+  text-align: center;
   color: var(--ink-3);
-  max-width: 100%;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color 0.12s;
 }
-.seriesUnit { font-size: 0.66rem; color: var(--ink-3); text-align: right; }
+.seriesLabelOn { color: var(--ink); }
+.seriesUnit { margin-top: 4px; font-size: 10.5px; color: var(--ink-3); text-align: right; }
 
 /* ── Сонгогч ── */
 
@@ -514,7 +579,7 @@
   color: var(--ink-2);
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--r-lg);
   padding: 3px 6px;
   max-width: 100%;
   cursor: pointer;
@@ -524,37 +589,28 @@
 
 /* ── Цаг хугацааны муруй ── */
 
+/* ⚠️ 2026-08-17: envhub-ийн AreaChart хэл — торгүй, y-тэнхлэггүй; 1.5px муруй,
+   0.34→0.02 градиент, 5px цэг (гадаргуун цагирагтай), ТАСАРХАЙ өнгөт crosshair. */
 .trend { display: flex; flex-direction: column; gap: 6px; }
 .trendHead { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-.trendValue { font-size: 1.15rem; font-weight: 700; color: var(--ink); line-height: 1.1; }
-.trendMeta { font-size: 0.68rem; color: var(--ink-3); }
+.trendValue { font-size: 17px; font-weight: 500; color: var(--ink); line-height: 1; }
+.trendMeta { font-size: 10.5px; color: var(--ink-3); }
 
 /* Хажуугийн зай нь ЭХНИЙ/СҮҮЛИЙН цэгийг ирмэгээр таслуулахгүй байлгана */
 .trendPlot { position: relative; margin: 6px 9px 0; }
 .trendSvg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 /* `preserveAspectRatio="none"` нь зурсан зайг сунгадаг тул шугамын зузааныг
    `non-scaling-stroke`-оор бэхэлнэ — эс бөгөөс өргөн самбарт нимгэрч харагдана. */
-.trendGrid { stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
-.trendArea { fill: var(--tone, var(--hue)); opacity: 0.1; }
 .trendLine {
   fill: none;
-  stroke: var(--tone, var(--hue));
-  stroke-width: 2;
+  stroke: var(--tone, var(--data));
+  stroke-width: 1.5;
   stroke-linejoin: round;
   stroke-linecap: round;
   vector-effect: non-scaling-stroke;
 }
-.trendTick {
-  position: absolute;
-  left: 0;
-  font-size: 0.6rem;
-  color: var(--ink-3);
-  pointer-events: none;
-}
-.trendTickTop { top: -13px; }
-.trendTickZero { bottom: -13px; }
 
-/* Хүрэх талбар нь баганын БҮТЭН өндөр — 8px цэгийг оносон байх шаардлагагүй */
+/* Хүрэх талбар нь баганын БҮТЭН өндөр — 5px цэгийг оносон байх шаардлагагүй */
 .trendHit {
   position: absolute;
   top: 0;
@@ -566,28 +622,33 @@
   background: none;
   cursor: pointer;
 }
-/* Хөндлөн огтлолын шугам — идэвхтэй цэгийн босоо тэнхлэг */
+/* Хөндлөн огтлол — envhub: ӨНГӨТ, ТАСАРХАЙ (2/2) босоо шугам, 0.7 тунгалаг */
 .trendHit::before {
   content: '';
   position: absolute;
   inset: 0 calc(50% - 0.5px);
-  background: var(--line-strong);
+  background: repeating-linear-gradient(
+    to bottom,
+    var(--tone, var(--data)) 0 2px,
+    transparent 2px 4px
+  );
   opacity: 0;
 }
-.trendHitOn::before { opacity: 1; }
+.trendHitOn::before { opacity: 0.7; }
 .trendDot {
   position: absolute;
   left: 50%;
-  width: 8px;
-  height: 8px;
-  margin: -4px 0 0 -4px;
+  width: 5px;
+  height: 5px;
+  margin: -2.5px 0 0 -2.5px;
   border-radius: 50%;
-  background: var(--tone, var(--hue));
-  /* Гадуур цагираг: муруйтай огтлолцох үед цэг нь тодорхой хэвээр */
+  background: var(--tone, var(--data));
+  /* envhub ring-2: муруйтай огтлолцох үед цэг нь тодорхой хэвээр */
   box-shadow: 0 0 0 2px var(--surface);
-  transition: transform 0.12s;
+  opacity: 0.5;
+  transition: transform 0.12s, opacity 0.12s;
 }
-.trendHitOn .trendDot { transform: scale(1.4); }
+.trendHitOn .trendDot { transform: scale(1.4); opacity: 1; }
 /* Тэнхлэг — цэг БҮРИЙН бүртгэлийн огноо, цэгийнхээ ЯГ доор. Урьд нь зөвхөн
    эхлэл/сүүл байсан тул завсрын хэмжилт хэзээ болсныг зөвхөн hover-оор мэдэх
    байлаа. Он нь ЗӨВХӨН сольсон цэгт бичигдэнэ (Trend-д хураана) — 9-12 шошго
@@ -596,7 +657,7 @@
   position: relative;
   height: 14px;
   margin: 4px 9px 0;
-  font-size: 0.62rem;
+  font-size: 10px;
   color: var(--ink-3);
 }
 .trendAxisTick {

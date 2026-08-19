@@ -60,19 +60,17 @@
   gap: 8px;
 }
 
-/* Хэсэг (Section) БҮР ТУСДАА КАРТ — Operations Dashboard-ын widget шиг */
+/* Хэсэг (Section) БҮР ТУСДАА КАРТ. Картын гадаргууг ui.module.css-ийн `.section`
+   өгнө (envhub Box: var(--surface) + 1px hairline + var(--r-sm), СҮҮДЭРГҮЙ) —
+   энд зөвхөн байрлалын шинж үлдэнэ. */
 .list > section,
 .r > section,
 .fin > section {
   flex: none;
   min-width: 0;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--r);
-  box-shadow: var(--shadow-sm);
-  padding: 10px 12px;
 }
 
+/* Газрын зураг — карттай ижил hairline хүрээ, сүүдэргүй (envhub) */
 .map {
   grid-area: map;
   position: relative;
@@ -80,9 +78,8 @@
   min-width: 0;
   min-height: 0;
   border: 1px solid var(--line);
-  border-radius: var(--r);
+  border-radius: var(--r-sm);
   overflow: hidden;
-  box-shadow: var(--shadow-sm);
 }
 
 /* ДООД зурвас: осол багцаар/компаниар НАРИЙН, ажилтан (босоо график) ба
@@ -119,13 +116,15 @@
   text-align: left;
   cursor: pointer;
 }
-.incHead:hover .incType { color: var(--accent); }
+/* ⚠️ var(--accent) нь overview-ийн `.shell` дотор л тодорхойлогддог байсан тул
+   энд УНШИГДДАГГҮЙ байв — өгөгдлийн ганц өнгөөр шууд. */
+.incHead:hover .incType { color: var(--data); }
 .incDot { width: 8px; height: 8px; flex: none; border-radius: 50%; }
 .incType {
   flex: 1;
   min-width: 0;
   font-size: 0.76rem;
-  font-weight: 650;
+  font-weight: 600;
   color: var(--ink);
   overflow-wrap: anywhere;
 }
@@ -148,7 +147,8 @@
   gap: 6px;
   margin-top: 6px;
   padding: 8px 10px;
-  background: var(--sunken);
+  /* envhub гадаргуу: карт var(--surface) → дотогш var(--surface-2) */
+  background: var(--surface-2);
   border-radius: var(--r-sm);
   font-size: 0.7rem;
   line-height: 1.5;
@@ -157,7 +157,9 @@
 .incBody p { margin: 0; }
 .incBody b { color: var(--ink); }
 
-/* ── Зурган дээрээс сонгосон объектын карт — баруун доод булан ── */
+/* ── Зурган дээрээс сонгосон объектын карт — баруун доод булан.
+   Зураг ДЭЭГҮҮР ЖИНХЭНЭ хөвөгч гадаргуу тул shadow-lg + blur нь энд
+   зөвшөөрөгдөнө (overview-ийн mapTools/legend-тэй ижил хэл). ── */
 .pick {
   position: absolute;
   right: 12px;
@@ -171,7 +173,7 @@
   background: color-mix(in srgb, var(--surface) 94%, transparent);
   backdrop-filter: blur(8px);
   border: 1px solid var(--line);
-  border-radius: var(--r);
+  border-radius: var(--r-sm);
   box-shadow: var(--shadow-lg);
 }
 .pickHead {
@@ -228,7 +230,7 @@
   object-fit: cover;
   display: block;
 }
-.photos a:hover { border-color: var(--accent); }
+.photos a:hover { border-color: var(--data); }
 .photoNote {
   margin-top: 6px;
   font-size: 0.66rem;
@@ -256,7 +258,7 @@
   line-height: 1;
   cursor: pointer;
 }
-.slideNav:hover:enabled { color: var(--ink); border-color: var(--accent); }
+.slideNav:hover:enabled { color: var(--ink); border-color: var(--data); }
 .slideNav:disabled { opacity: 0.35; cursor: default; }
 .slideImg {
   flex: 1;
@@ -268,11 +270,12 @@
   height: 200px;
   object-fit: contain;
   display: block;
-  background: var(--sunken);
+  /* envhub: картын доторх гүн = var(--surface-2) давхарга */
+  background: var(--surface-2);
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
 }
-.slideImg:hover img { border-color: var(--accent); }
+.slideImg:hover img { border-color: var(--data); }
 .slideCap {
   display: flex;
   align-items: baseline;
@@ -298,7 +301,7 @@
   background: var(--surface);
   color: var(--ink);
   font-size: 0.78rem;
-  font-weight: 650;
+  font-weight: 600;
   cursor: pointer;
 }
 .retry:hover { background: var(--surface-2); }

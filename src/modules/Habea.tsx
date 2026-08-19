@@ -26,7 +26,7 @@ import {
 } from '@/lib/services';
 import { usePlanTotals } from '@/lib/totals';
 import { Section, Bars, Donut, Series, Loading, Empty } from '@/components/ui';
-import { num, date, text, shade } from '@/lib/format';
+import { num, date, text } from '@/lib/format';
 import { MapCanvas, type Dim } from '@/components/MapCanvas';
 import { LayerCatalog } from '@/components/LayerCatalog';
 import { OpacityPanel } from '@/components/OpacityPanel';
@@ -91,25 +91,25 @@ function topN<T extends { key: string; label: string; value: number }>(items: T[
  * Ослын төрлийн ХҮНД байдлын өнгө — domain-ий утгууд чөлөөт бичвэртэй ирдэг
  * («Амь нас эрсдэж болзошгүй байсан», «Ноцтой осол»...) тул түлхүүр үгээр
  * тааруулна. Дараалал чухал: амь нас/ноцтой нь «болзошгүй»-ээс түрүүнд.
+ *
+ * ⚠️ envhub: ӨНГӨ = УТГА. Хүнд байдал нь төлөвийн ГУРАВХАН токенд буудаг —
+ *    амь нас/гал = var(--bad), гэмтэл/хохирол/дөхсөн = var(--warn), бусад нь
+ *    саарал бэх. Ижил шатлалын хоёр төрөл ИЖИЛ өнгөтэй байх нь зөв: ялгааг
+ *    зүсмэгийн 1px зах, дараалал, тайлбар өгнө (өнгө биш).
  */
 const SEVERITY: [RegExp, string][] = [
-  [/амь|ноцтой|үйлдвэрлэлийн/i, '#dc2626'],
-  [/гал/i, '#b91c1c'],
-  [/эмнэлг|гэмтэл|тусламж/i, '#ea580c'],
-  [/эд хөрөнг|өмч|хохирол/i, '#f59e0b'],
-  [/дөхсөн|болзошгүй/i, '#eab308'],
+  [/амь|ноцтой|үйлдвэрлэлийн/i, 'var(--bad)'],
+  [/гал/i, 'var(--bad)'],
+  [/эмнэлг|гэмтэл|тусламж/i, 'var(--warn)'],
+  [/эд хөрөнг|өмч|хохирол/i, 'var(--warn)'],
+  [/дөхсөн|болзошгүй/i, 'var(--warn)'],
 ];
-const severityHue = (label: string) => SEVERITY.find(([re]) => re.test(label))?.[1] ?? '#94a3b8';
+// ⚠️ «Өгөгдөлгүй/бусад» нь ӨНГӨТ цуваа БИШ — саарал бэхийн токен (горим дагана).
+const severityHue = (label: string) => SEVERITY.find(([re]) => re.test(label))?.[1] ?? 'var(--ink-3)';
 
-/** Давхардсан өнгөтэй зүсмэгүүдийг shade-ээр ялгаруулна (нэг өнгө 2+ төрөлд оногдвол) */
+/** Зүсмэг бүрд хүнд байдлын токен онооно — «Бусад» саарал бэхээр үлдэнэ */
 function severityColors<T extends { label: string }>(items: T[]) {
-  const seen = new Map<string, number>();
-  return items.map((it) => {
-    const base = it.label === 'Бусад' ? '#94a3b8' : severityHue(it.label);
-    const k = seen.get(base) ?? 0;
-    seen.set(base, k + 1);
-    return { ...it, color: k ? shade(base, k, 5) : base };
-  });
+  return items.map((it) => ({ ...it, color: severityHue(it.label) }));
 }
 
 type Inc = {
@@ -159,8 +159,11 @@ function monthSeries(list: Inc[]) {
 
 /* ─────────── Цамхагт кран ─────────── */
 
+/* ⚠️ Краны төлөв нь сайн/муу заадаггүй АНГИЛАЛ — идэвхтэй хоёр төлөв нь
+   өгөгдлийн ГАНЦ өнгө (var(--data)), буусан нь саарал бэх. Ялгааг өнгөөр биш —
+   дараалал, тайлбар, зүсмэгийн 1px зах өгнө (envhub). */
 const CRANE_HUE: Record<string, string> = {
-  'Шинээр нэмэгдсэн': '#22c55e', 'Одоо байгаа': '#2563eb', 'Буусан': '#787878',
+  'Шинээр нэмэгдсэн': 'var(--data)', 'Одоо байгаа': 'var(--data)', 'Буусан': 'var(--ink-3)',
 };
 
 type Crane = {
@@ -180,28 +183,19 @@ const normCrane = (r: Row): Crane => ({
 
 /* ─────────── Ажилтан · техник (өргөн схем) ─────────── */
 
-const TECH: { key: 'tsamhagtKran' | 'avtoKran' | 'achaanii' | 'ekskavator' | 'kovsh' | 'usniMashin'; label: string }[] = [
-  { key: 'tsamhagtKran', label: 'Цамхагт кран' },
-  { key: 'avtoKran', label: 'Авто кран' },
-  { key: 'achaanii', label: 'Ачааны машин' },
-  { key: 'ekskavator', label: 'Экскаватор' },
-  { key: 'kovsh', label: 'Ковш' },
-  { key: 'usniMashin', label: 'Усны машин' },
-];
-
 type LaborRow = {
   key: string; label: string; code: string; bagtsRaw: string; bagtsK: string;
   mongol: number; gadaad: number; ajiltan: number; tehnik: number;
-  tech: { key: string; label: string; value: number }[];
 };
 
 /**
  * Хүн хүч, техникийн «одоогийн байдал».
  *
- * Үндсэн зам: СҮҮЛИЙН бүртгэлээс (max огноо) гүйцэтгэгч бүрийн баганын бүлгийг
- * задлана — нэг бүртгэл өдрийн НЭГДСЭН тайлан тул нийлбэр нь тухайн өдрийн
- * бүрэн зураг. Бүх бүлэг хоосон бол (маягтыг энгийн талбараар нь бөглөсөн
- * хуучин маягийн өгөгдөл) багц тус бүрийн сүүлийн бүртгэлээс уншина.
+ * СҮҮЛИЙН бүртгэлээс (max огноо) гүйцэтгэгч бүрийн баганын бүлгийг задлана —
+ * нэг бүртгэл өдрийн НЭГДСЭН тайлан тул нийлбэр нь тухайн өдрийн бүрэн зураг.
+ *
+ * ⚠️ Шинэ маягт (2026-08) техникийг ЗӨВХӨН гүйцэтгэгчийн нийт тоогоор хөтөлдөг
+ * (`Tehnik_<SFX>`) — цамхагт кран/экскаватор гэх ТӨРЛИЙН задаргаа БАЙХГҮЙ.
  */
 function laborState(rows: Row[]): { rows: LaborRow[]; asOf: number | null; hunTsag: number } {
   if (!rows.length) return { rows: [], asOf: null, hunTsag: 0 };
@@ -214,38 +208,17 @@ function laborState(rows: Row[]): { rows: LaborRow[]; asOf: number | null; hunTs
       const f = laborCompanyFields(c.sfx);
       const mongol = nn(latest[f.mongol]);
       const gadaad = nn(latest[f.gadaad]);
-      const tech = TECH.map((t) => ({ key: t.key, label: t.label, value: nn(latest[f[t.key]]) }));
       const bagtsRaw = c.bagts ?? text(latest[f.bagts], '');
       return {
         key: c.sfx, label: c.label, code: c.code, bagtsRaw, bagtsK: bagtsKey(bagtsRaw),
         mongol, gadaad,
         ajiltan: nn(latest[f.niitAjiltan]) || mongol + gadaad,
-        tehnik: nn(latest[f.niitTehnik]) || tech.reduce((s, x) => s + x.value, 0),
-        tech,
+        tehnik: nn(latest[f.niitTehnik]),
       };
     })
     .filter((x) => x.ajiltan > 0 || x.tehnik > 0);
 
-  if (comp.length) return { rows: comp, asOf, hunTsag: nn(latest[L.hunTsag]) };
-
-  // Хуучин маягийн энгийн талбарууд — багц тус бүрийн СҮҮЛИЙН бүртгэл
-  const m = new Map<string, Row>();
-  rows.forEach((r) => {
-    const k = text(r[L.bagts], '—');
-    const cur = m.get(k);
-    if (!cur || dOf(r) >= dOf(cur)) m.set(k, r);
-  });
-  const gen: LaborRow[] = [...m.entries()]
-    .map(([bagtsRaw, r]) => ({
-      key: bagtsRaw, label: bagtsRaw, code: bagtsRaw, bagtsRaw, bagtsK: bagtsKey(bagtsRaw),
-      mongol: nn(r[L.mongol]), gadaad: nn(r[L.gadaad]),
-      ajiltan: nn(r[L.niitAjiltan]) || nn(r[L.mongol]) + nn(r[L.gadaad]),
-      tehnik: nn(r[L.niitTehnik]),
-      tech: TECH.map((t) => ({ key: t.key, label: t.label, value: nn(r[L[t.key]]) })),
-    }))
-    .filter((x) => x.ajiltan > 0 || x.tehnik > 0);
-  const hunTsag = [...m.values()].reduce((s, r) => s + nn(r[L.hunTsag]), 0);
-  return { rows: gen, asOf, hunTsag };
+  return { rows: comp, asOf, hunTsag: nn(latest[L.hunTsag]) };
 }
 
 /* ─────────── Туслах дүрслэл ─────────── */
@@ -417,7 +390,8 @@ function pickRows(id: string, a: Record<string, unknown>): [string, string][] {
     ['Блок', text(a[C.blok], '—')],
     ['Төлөв', text(a[C.tuluv], '—')],
     ['Өндөр', `${num(nn(a[C.undur]))} м`],
-    ['Сумны урт', `${num(nn(a[C.sunUrt]))} м`],
+    // ⚠️ test_data: цэг [8] «сумны», бүс [7] хуучин «суны» нэртэй — хоёуланг унших
+    ['Сумны урт', `${num(nn(a[C.sunUrt] ?? a[C.sunUrtBuf]))} м`],
   ];
   if (id === 'habea:buffer') rows.push(['Аюулгүйн радиус', `${num(nn(a['BUFF_DIST']))} м`]);
   return rows;
@@ -494,7 +468,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
 
   /* Кран */
   const craneByStatus = countBy(fCrane, (x) => x.tuluv)
-    .map((x) => ({ ...x, color: CRANE_HUE[x.label] ?? '#94a3b8' }));
+    .map((x) => ({ ...x, color: CRANE_HUE[x.label] ?? 'var(--ink-3)' }));
   const craneByPkg = byPkg(cranes, () => 1);
   const craneActive = fCrane.filter((x) => x.tuluv !== 'Буусан').length;
   const avgUndur = fCrane.length ? fCrane.reduce((s, x) => s + x.undur, 0) / fCrane.length : 0;
@@ -506,14 +480,14 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const gadaad = fLabor.reduce((s, x) => s + x.gadaad, 0);
   const totalTech = fLabor.reduce((s, x) => s + x.tehnik, 0);
   const workerMix = [
-    { key: 'mn', label: 'Монгол', value: mongol, color: '#2563eb' },
-    { key: 'fr', label: 'Гадаад', value: gadaad, color: '#0ea5e9' },
+    // ⚠️ envhub: хоёр ангиллыг хоёр чимэглэлийн өнгөөр будахгүй — ГОЛ бүлэг нь
+    //    өгөгдлийн ганц өнгө, нөгөө нь саарал бэх (нийт доторх хувь гэж уншигдана).
+    { key: 'mn', label: 'Монгол', value: mongol, color: 'var(--data)' },
+    { key: 'fr', label: 'Гадаад', value: gadaad, color: 'var(--ink-3)' },
   ].filter((x) => x.value > 0);
-  const techBreak = TECH
-    .map((t) => ({
-      key: t.key, label: t.label,
-      value: fLabor.reduce((s, x) => s + (x.tech.find((y) => y.key === t.key)?.value ?? 0), 0),
-    }))
+  /* Техник — маягт ТӨРЛӨӨР задалдаггүй тул ГҮЙЦЭТГЭГЧЭЭР харуулна (богино код) */
+  const techByCompany = fLabor
+    .map((x) => ({ key: x.key, label: x.code, value: x.tehnik }))
     .filter((x) => x.value > 0)
     .sort((a, b) => b.value - a.value);
   /* Босоо графикт БОГИНО код — бүтэн нэр нь баганын доор багтахгүй (hover-т гарна) */
@@ -570,18 +544,22 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             : <Empty label="Бүртгэл алга" />}
         </Section>
         <Section title="Сарын явц" note="бүртгэлийн тоо">
+          {/* Чартын анхдагч өнгө = var(--data) (envhub: өгөгдлийн ГАНЦ өнгө) */}
           {months.length
-            ? <Series items={months} color="#ea580c" height={72} />
+            ? <Series items={months} height={72} />
             : <Empty label="Бүртгэл алга" />}
         </Section>
         <Section title="Шалтгааны төрөл">
           {incByCause.length
-            ? <Bars items={incByCause} color="#f59e0b" />
+            ? <Bars items={incByCause} />
             : <Empty label="Бүртгэл алга" />}
         </Section>
         <Section title="Сүүлийн бүртгэлүүд" note="дарж дэлгэрэнгүй">
           {recent.length ? recent.map((x) => {
-            const id = `${x.d}|${x.type}`;
+            // ⚠️ Давхцахгүй ОБЪЕКТ ИД-ээр таних — өмнө нь `огноо|төрөл` байсан тул
+            //    нэг өдрийн ижил төрлийн 2 бүртгэл мөргөлдөж, нэгийг дарахад хоёул
+            //    задардаг байв (React key давхардал бас).
+            const id = String(x.oid);
             const on = expanded === id;
             return (
               <div key={id} className={h.incident}>
@@ -735,11 +713,11 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         </Section>
         <Section title="Кран — багцаар" note="дарж бүгдийг шүүнэ">
           {craneByPkg.length
-            ? <Bars items={craneByPkg} color="#dc2626" selected={pkg} onSelect={togglePkg} />
+            ? <Bars items={craneByPkg} selected={pkg} onSelect={togglePkg} />
             : <Empty label="Бүртгэл алга" />}
         </Section>
-        <Section title="Техник — төрлөөр" note={`${num(totalTech)} нэгж`}>
-          {techBreak.length ? <Bars items={techBreak} color="#0891b2" /> : surveyEmpty}
+        <Section title="Техник — гүйцэтгэгчээр" note={`${num(totalTech)} нэгж`}>
+          {techByCompany.length ? <Bars items={techByCompany} /> : surveyEmpty}
         </Section>
         <Section
           title="Ажилтан — бүрэлдэхүүн"
@@ -755,17 +733,17 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       <div className={h.fin}>
         <Section title="Осол, зөрчил — багцаар" note="дарж бүгдийг шүүнэ">
           {incByPkg.length
-            ? <Bars items={incByPkg} color="#ea580c" selected={pkg} onSelect={togglePkg} />
+            ? <Bars items={incByPkg} selected={pkg} onSelect={togglePkg} />
             : <Empty label="Бүртгэл алга" />}
         </Section>
         <Section title="Осол, зөрчил — компаниар">
           {incByCompany.length
-            ? <Bars items={incByCompany} color="#f59e0b" />
+            ? <Bars items={incByCompany} />
             : <Empty label="Бүртгэл алга" />}
         </Section>
         <Section title="Ажилтан — гүйцэтгэгчээр" note={`Монгол ${num(mongol)} · Гадаад ${num(gadaad)}`}>
           {workersByCompany.length
-            ? <Series items={workersByCompany} color="#2563eb" height={110} unit="ажилтан" />
+            ? <Series items={workersByCompany} height={110} unit="ажилтан" />
             : surveyEmpty}
         </Section>
         <Section title="Осол, зөрчлийн зураг" note="хавсаргасан зургууд · дарж томруулна">

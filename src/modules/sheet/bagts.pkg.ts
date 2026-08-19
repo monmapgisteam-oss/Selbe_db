@@ -51,8 +51,6 @@ export const PKG_GROUPS: string[] = [...new Set(PKGS.map((p) => p.group))];
 export const pkgFloors = (group: string): Pkg[] =>
   PKGS.filter((p) => p.group === group);
 
-export const pkgOf = (key: string): Pkg => PKGS.find((p) => p.key === key) ?? PKGS[0];
-
 /** Багцын талбарын БҮДҮҮВЧ — нэр бүхэн үйлчилгээнээс танигдсан. */
 export type Schema = {
   /** Блокийн шошго — «5/1», «6/8», «29/3» г.м. Excel-ийн толгойтой ижил. */
@@ -72,6 +70,13 @@ export type Schema = {
     wD: string;
     wE: string | null;
     vol: string;
+    /**
+     * «Объём_шинэ2» — 2026-08-19-нд үйлчилгээнд нэмэгдсэн ХОЁР ДАХЬ обьём.
+     * ⚠️ Бичлэг нь хуучин `Обьём`-оос ЯЛГААТАЙ: зөөлний тэмдэг биш ХАТУУГИЙН
+     *   тэмдэг (Объём). Тиймээс `vol`-ийн шүүлтүүрт огт баригдахгүй.
+     * ⚠️ Багц 3.1-д БАЙХГҮЙ — тэнд `null`, багана хоосон харагдана.
+     */
+    vol2: string | null;
     unit: string;
     money: string;
     plan: string;
@@ -174,7 +179,9 @@ export function resolveSchema(fields: FieldMeta[]): Schema {
     wC: weights[0] ?? "Хувийн_жин",
     wD: weights[1] ?? weights[0] ?? "Хувийн_жин1",
     wE: find((n) => n.startsWith("хувийнжин") && /одоо/.test(n)),
-    vol: find((n) => n.startsWith("обьём")) ?? "Обьём",
+    // ⚠️ `2`-оор төгссөнийг хасна — «Объём_шинэ2» нь тусдаа багана.
+    vol: find((n) => /^об[ьъ]ём/.test(n) && !/2$/.test(n)) ?? "Обьём",
+    vol2: find((n) => /^об[ьъ]ём/.test(n) && /2$/.test(n)),
     unit: find((n) => n.startsWith("нэгжөртөг")) ?? "Нэгж_өртөг",
     money: find((n) => n.startsWith("мөнгөндүн")) ?? "Мөнгөн_дүн",
     // ⚠️ Гурван бичлэг: `Төлөвлөгөөт_гүйцэтгэл`, бичээсийн алдаатай

@@ -5,7 +5,7 @@
 .wrap {
   height: 100%;
   overflow-y: auto;
-  background: var(--sunken, var(--surface-2));
+  background: var(--bg);
   padding: 24px 16px 60px;
 }
 
@@ -19,7 +19,6 @@
   gap: 12px;
   flex-wrap: wrap;
 }
-.toolTitle { font-size: 0.82rem; font-weight: 650; color: var(--ink-2); min-width: 0; }
 .tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .btn {
   display: inline-flex;
@@ -27,34 +26,18 @@
   gap: 7px;
   padding: 8px 15px;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: var(--r-sm);
   background: var(--hue, var(--accent));
   color: #fff;
   font-size: 0.8rem;
-  font-weight: 650;
-  box-shadow: var(--shadow-sm);
+  font-weight: 600;
   transition: filter 0.14s, transform 0.1s;
 }
 .btn:hover { filter: brightness(1.07); }
 .btn:active { transform: scale(0.97); }
 .btn svg { width: 15px; height: 15px; }
 
-/* Хоёрдогч товч — outline */
-.btnGhost {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 13px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface);
-  color: var(--ink-2);
-  font-size: 0.8rem;
-  font-weight: 600;
-  transition: background 0.14s, color 0.14s;
-}
-.btnGhost:hover { background: var(--surface-2); color: var(--ink); }
-.btn:disabled, .btnGhost:disabled { opacity: 0.5; cursor: not-allowed; filter: none; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; filter: none; }
 
 /* Цаас */
 .paper {
@@ -62,43 +45,40 @@
   margin: 0 auto;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: var(--r);
-  box-shadow: var(--shadow-lg);
+  border-radius: var(--r-sm);
   padding: 48px 56px 56px;
   color: var(--ink);
   line-height: 1.5;
 }
 
 .docHead {
-  border-bottom: 2px solid var(--ink);
+  border-bottom: 1px solid var(--line-strong);
   padding-bottom: 14px;
   margin-bottom: 22px;
 }
 .title {
-  font-size: 1.5rem;
-  font-weight: 750;
+  font-size: 20px;
+  font-weight: 600;
   letter-spacing: -0.01em;
-  line-height: 1.2;
+  line-height: 1.25;
   color: var(--ink);
 }
-.sub { margin-top: 6px; font-size: 0.82rem; color: var(--ink-3); }
+.sub { margin-top: 6px; font-size: 11.5px; color: var(--ink-3); }
 
 .section { margin-top: 26px; }
 .section:first-of-type { margin-top: 0; }
 .h2 {
-  font-size: 1.02rem;
-  font-weight: 700;
+  font-size: 13.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
   color: var(--ink);
-  margin-bottom: 4px;
-}
-.h3 {
-  font-size: 0.9rem;
-  font-weight: 650;
-  color: var(--ink-2);
-  margin: 14px 0 4px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 6px;
+  margin-bottom: 8px;
 }
 .intro {
-  font-size: 0.86rem;
+  font-size: 12px;
   color: var(--ink-2);
   margin-bottom: 10px;
 }
@@ -107,45 +87,35 @@
 .table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.84rem;
+  font-size: 12px;
 }
 .table th, .table td {
   border: 1px solid var(--line);
-  padding: 7px 11px;
+  padding: 6px 10px;
   text-align: left;
   vertical-align: top;
 }
 .table thead th {
   background: var(--surface-2);
-  font-weight: 700;
-  color: var(--ink-2);
-  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--ink-3);
+  font-size: 10.5px;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.08em;
 }
 .table tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--surface-2) 45%, transparent); }
 /* Тоон багана — баруун зэрэгцүүлэлт */
 .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 /* Нийт мөр — тодотгол */
-.total td { font-weight: 700; background: color-mix(in srgb, var(--hue, var(--accent)) 8%, var(--surface)); }
+.total td { font-weight: 600; background: color-mix(in srgb, var(--hue, var(--accent)) 8%, var(--surface)); }
 
-.note {
-  margin-top: 8px;
-  font-size: 0.78rem;
-  line-height: 1.5;
-  color: var(--ink-3);
-}
-.pin { color: var(--warn); font-weight: 700; }
 .footNote {
   margin-top: 30px;
   padding-top: 12px;
   border-top: 1px solid var(--line);
-  font-size: 0.74rem;
+  font-size: 11px;
   color: var(--ink-3);
 }
-
-/* Ачаалж буй / алдаа — Data компонентын байрлал */
-.state { padding: 16px; font-size: 0.84rem; color: var(--ink-3); }
 
 /* ══════════════ ХЭВЛЭХ ══════════════ */
 @media print {
@@ -163,6 +133,7 @@
   }
   .title, .h2, .docHead { color: #000; }
   .docHead { border-bottom-color: #000; }
+  .h2 { border-bottom-color: #999; }
   .table th, .table td { border-color: #999; }
   .table thead th { background: #eee; color: #000; }
   .table tbody tr:nth-child(even) td { background: #f6f6f6; }

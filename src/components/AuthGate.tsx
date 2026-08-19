@@ -164,10 +164,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  /**
+   * ГАРАХ — ЗӨВХӨН локал итгэмжлэлийг устгаад зогсохгүй, ArcGIS-ийн SSO сешнийг ч
+   * хаана.
+   *
+   * ⚠️ 2026-08-19: Урьд нь `destroyCredentials()` + `reload()` хийдэг байв. Тэр нь
+   * порталын cookie-г ХӨНДӨХГҮЙ тул «Өөр бүртгэлээр нэвтрэх» → «Нэвтрэх» дарахад
+   * `/oauth2/authorize` нь ЯГ ТЭР хэрэглэгчид дуугүйхэн шинэ код олгож, эрх
+   * татгалзсан дэлгэц рүү нь буцаадаг байлаа — өөр бүртгэлээр орох цорын ганц зам
+   * нь browser-ийн cookie-г гараар цэвэрлэх байв.
+   *
+   * ⚠️ `redirect_uri` нь query-гүй ЦЭВЭР зам: буцаж ирээд `?v=…` үлдвэл хэрэглэгч
+   * дөнгөж гарсан харагдац руугаа шууд эргэж ордог.
+   */
   const signOut = async () => {
     const { default: esriId } = await import('@arcgis/core/identity/IdentityManager');
     esriId.destroyCredentials();
-    location.reload();
+    const back = encodeURIComponent(location.origin + location.pathname);
+    location.href =
+      `${sharingUrl()}/rest/oauth2/signout?client_id=${encodeURIComponent(AUTH.appId)}&redirect_uri=${back}`;
   };
 
   const authorized = status === 'signed-in' || status === 'off';

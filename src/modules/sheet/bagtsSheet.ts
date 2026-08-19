@@ -24,6 +24,8 @@ export type SheetRow = {
   // ⚠ `Хувийн жин- Одоо байгаа` (excel E) энд БАЙХГҮЙ: тэр нь C×J-ээс бүрэн
   // бодогддог тул уншаад ч ашиглахгүй. Нийтлэхэд `f.wE`-рүү буцааж бичнэ.
   vol: number | null;
+  /** «Объём_шинэ2» — зөвхөн ХАРУУЛНА, ямар ч томъёонд ОРОХГҮЙ. */
+  vol2: number | null;
   unit: number | null;
   money: number | null;
   act: (number | null)[]; // хадгалагдсан блок бүрийн бодит гүйцэтгэл
@@ -78,6 +80,7 @@ export async function loadRows(
       wC: num(a[sc.f.wC]),
       wD: num(a[sc.f.wD]),
       vol: num(a[sc.f.vol]),
+      vol2: sc.f.vol2 ? num(a[sc.f.vol2]) : null,
       unit: num(a[sc.f.unit]),
       money: num(a[sc.f.money]),
       act: sc.act.map((k) => num(a[k])),

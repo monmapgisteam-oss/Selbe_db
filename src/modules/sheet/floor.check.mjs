@@ -9,6 +9,9 @@
 import assert from 'node:assert/strict';
 
 // Pivot.tsx-ийн хуулбар — тэндээ өөрчилвөл ЭНДЭЭ ч өөрчил.
+// ⚠️ FillNew.tsx-ийн commit() мөн ИЖИЛ дүрмээр (хоосон = чөлөөтэй, хязгаар нь
+// ХАДГАЛАГДСАН утга) шалгадаг ч in-place загвартаа тохируулж хатуу хориглохын
+// оронд window.confirm-оор баталгаажуулдаг — дүрэм өөрчилбөл түүнийг ч шинэчил.
 const floorOf = (row, bld) => {
   const p = row.cells[bld]?.pct;
   return p == null ? null : Math.round(p * 100);

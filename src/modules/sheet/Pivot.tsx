@@ -113,12 +113,17 @@ type Draft = {
   /** [`${rowKey}|${bld}`, raw%] хосууд */
   cells: [string, string][];
 };
-const DRAFT_KEY = "selbe-sheet-draft-v1";
+// ⚠️ Слот нь ЗҮСМЭГ (багц|огноо) бүрд ТУСДАА: нэг ганц слот байхад Багц А-гийн
+// том ноорог Багц Б дээр нэг нүд засмагц чимээгүй дарагдаж устдаг байв.
+// Хугацаа дууссан слотуудыг sweepDrafts нэг удаа цэвэрлэнэ.
+const DRAFT_PREFIX = "selbe-sheet-draft-v1";
 const DRAFT_TTL_MS = 3 * 24 * 3600 * 1000;
+const draftKeyOf = (bagts: string, ognoo: string) =>
+  `${DRAFT_PREFIX}:${bagts}|${ognoo}`;
 
-const readDraft = (): Draft | null => {
+const readDraft = (bagts: string, ognoo: string): Draft | null => {
   try {
-    const raw = localStorage.getItem(DRAFT_KEY);
+    const raw = localStorage.getItem(draftKeyOf(bagts, ognoo));
     if (!raw) return null;
     const d = JSON.parse(raw) as Draft;
     if (!d.t || !Array.isArray(d.cells) || Date.now() - d.t > DRAFT_TTL_MS) return null;
@@ -128,10 +133,28 @@ const readDraft = (): Draft | null => {
   }
 };
 const saveDraftLS = (d: Draft) => {
-  try { localStorage.setItem(DRAFT_KEY, JSON.stringify(d)); } catch { /* дүүрсэн/private */ }
+  try { localStorage.setItem(draftKeyOf(d.bagts, d.ognoo), JSON.stringify(d)); } catch { /* дүүрсэн/private */ }
 };
-const clearDraftLS = () => {
-  try { localStorage.removeItem(DRAFT_KEY); } catch { /* байхгүй */ }
+const clearDraftLS = (bagts: string, ognoo: string) => {
+  try { localStorage.removeItem(draftKeyOf(bagts, ognoo)); } catch { /* байхгүй */ }
+};
+const sweepDrafts = () => {
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (!k || !k.startsWith(DRAFT_PREFIX)) continue;
+      let stale = true;
+      try {
+        const d = JSON.parse(localStorage.getItem(k) || "") as Draft;
+        stale = !d?.t || Date.now() - d.t > DRAFT_TTL_MS;
+      } catch {
+        /* эвдэрсэн бичлэг — устгана */
+      }
+      if (stale) localStorage.removeItem(k);
+    }
+  } catch {
+    /* хадгалалт байхгүй */
+  }
 };
 
 // Cell backgrounds: editable cells stay on the surface; calculated columns and
@@ -190,11 +213,6 @@ export default function Pivot() {
   // Undo/redo history of `pending` snapshots.
   const [undoStack, setUndoStack] = useState<Record<string, string>[]>([]);
   const [redoStack, setRedoStack] = useState<Record<string, string>[]>([]);
-  // Locally-added structure (created on Publish, cleared on reload).
-  const [extraBuildings, setExtraBuildings] = useState<string[]>([]);
-  const [extraRows, setExtraRows] = useState<
-    { work: string; weight: number; header: boolean }[]
-  >([]);
   // Per-cell attachment panel (one cell = one feature).
   const [attach, setAttach] = useState<{ ri: number; bld: string } | null>(
     null,
@@ -207,6 +225,9 @@ export default function Pivot() {
   const [pendingFiles, setPendingFiles] = useState<
     Record<string, { file: File; url: string }[]>
   >({});
+
+  // Хугацаа дууссан ноорог-слотуудыг нэг удаа шүүрдэнэ.
+  useEffect(sweepDrafts, []);
 
   // Багц list once.
   useEffect(() => {
@@ -309,8 +330,6 @@ export default function Pivot() {
       });
       setUndoStack([]);
       setRedoStack([]);
-      setExtraRows([]);
-      setExtraBuildings([]);
     } catch (e) {
       // ⚠️ Зөвхөн сүүлийн дуудлага л err/busy-г удирдана — хоцорсон хариу шинэ
       // ачаалалтын busy төлөвийг дутуу цуцалж болохгүй.
@@ -336,15 +355,9 @@ export default function Pivot() {
     })();
   }, [loadSlice]);
 
-  // Version of the current slice (features share one); default 1 for new багц.
-  const sliceVer = feats[0] ? Number(feats[0].attributes[F.ver]) || 1 : 1;
-
   const { buildings, rows } = useMemo(() => {
     const blds = [
-      ...new Set([
-        ...feats.map((f) => s(f.attributes[F.bld])),
-        ...extraBuildings,
-      ]).values(),
+      ...new Set(feats.map((f) => s(f.attributes[F.bld]))).values(),
     ]
       .filter(Boolean)
       .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
@@ -387,27 +400,6 @@ export default function Pivot() {
         };
     }
     const list = [...map.values()];
-    // Locally-added rows (jobs / job-headers), created on Publish.
-    for (const er of extraRows) {
-      list.push({
-        work: er.work,
-        no: "",
-        level: er.header ? 1 : 3,
-        weight: er.weight,
-        totw: null, // locally-added row: no global weight yet
-        tmpl: {
-          [F.bagts]: bagts,
-          [F.ognoo]: ognoo,
-          [F.ver]: sliceVer,
-          [F.level]: er.header ? 1 : 3,
-          [F.work]: er.work,
-          [F.catA]: null,
-          [F.catB]: null,
-          [F.weight]: er.weight,
-        },
-        cells: {},
-      });
-    }
     // Reorder into canonical sheet order: section first, then job within it,
     // falling back to source order (stable) for anything the template misses.
     // Keeps floor sections and their jobs together across the version union.
@@ -425,7 +417,7 @@ export default function Pivot() {
       )
       .map((d) => d.r);
     return { buildings: blds, rows: ordered };
-  }, [feats, extraBuildings, extraRows, bagts, ognoo, sliceVer, tmpl]);
+  }, [feats, tmpl]);
 
   // Excel "Гүйцэтгэлийн хувь": AVERAGE over all building columns, blanks = 0.
   // Uses pending edits so the row total updates live before publishing.
@@ -498,8 +490,8 @@ export default function Pivot() {
     // Слайсын restore шат ӨНГӨРСНИЙГ draft байсан эсэхээс үл хамааран тэмдэглэнэ —
     // эс бөгөөс undo-гоор хоосолсон pending-ийн draft хэзээ ч цэвэрлэгдэхгүй.
     promptedSliceRef.current = sk;
-    const d = readDraft();
-    if (!d || d.bagts !== bagts || d.ognoo !== ognoo) return; // өөр слайсын draft — хөндөхгүй
+    const d = readDraft(bagts, ognoo);
+    if (!d) return;
 
     const byKey = new Map<string, number>();
     rows.forEach((r, i) => byKey.set(rowKey(r), i));
@@ -519,7 +511,7 @@ export default function Pivot() {
       ) { dropped++; continue; }
       next[`${ri}:${bld}`] = v;
     }
-    if (!Object.keys(next).length) { clearDraftLS(); return; }
+    if (!Object.keys(next).length) { clearDraftLS(bagts, ognoo); return; }
 
     const when = new Date(d.t).toLocaleString("mn-MN");
     const msg =
@@ -527,7 +519,7 @@ export default function Pivot() {
       (dropped ? `\n${dropped} нүд хуучирсан тул орхигдоно.` : "") +
       "\nСэргээх үү?";
     if (window.confirm(msg)) setPending(next);
-    else clearDraftLS();
+    else clearDraftLS(bagts, ognoo);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [busy, rows, buildings, bagts, ognoo]);
 
@@ -537,10 +529,8 @@ export default function Pivot() {
   useEffect(() => {
     const keys = Object.keys(pending);
     if (!keys.length) {
-      const d = readDraft();
-      if (d && d.bagts === bagts && d.ognoo === ognoo && promptedSliceRef.current === `${bagts}|${ognoo}`) {
-        clearDraftLS();
-      }
+      // Зөвхөн restore шат өнгөрсөн ИДЭВХТЭЙ зүсмэгийн слот цэвэрлэгдэнэ.
+      if (promptedSliceRef.current === `${bagts}|${ognoo}`) clearDraftLS(bagts, ognoo);
       return;
     }
     const cells: [string, string][] = [];
@@ -596,16 +586,21 @@ export default function Pivot() {
       : null;
   const doneAvg = avg((r, ri) => effDone(ri, r) ?? 0);
 
-  // Next editable (non-header) row index in a direction, or -1.
+  // Next editable (non-header, VISIBLE) row index in a direction, or -1.
+  // ⚠️ Эвхэгдсэн (hidden) мөрөнд редактор нээгдвэл input огт зурагдахгүй
+  // «сохор» edit үлддэг байв — нуугдсан мөрийг алгасна.
   const nextEditable = (from: number, step: number) => {
     for (let i = from + step; i >= 0 && i < rows.length; i += step)
-      if (!isHeaderRow(rows[i])) return i;
+      if (!isHeaderRow(rows[i]) && !hidden[i]) return i;
     return -1;
   };
   // Open a cell for editing, prefilled with its effective value.
   const openCell = (ri: number, b: string) => {
     const r = rows[ri];
-    if (!r) return setEdit(null);
+    // ⚠️ Толгой/нийлбэр мөрийг ЗАСВАРЛАХГҮЙ: хулганаар боломжгүй ч гар удирдлагаар
+    //    (сонголт толгой руу шилжээд Enter) нээгдэж, нийтлэхэд толгойн tmpl-ээс
+    //    ХУУРМАГ шинэ обьект үүсдэг байв.
+    if (!r || isHeaderRow(r)) return setEdit(null);
     const key = `${ri}:${b}`;
     setVal(key in pending ? pending[key] : origStr(r, b));
     setEdit({ ri, bld: b });
@@ -650,21 +645,22 @@ export default function Pivot() {
   const notLatest = !!latestOgnoo && ognoo !== latestOgnoo;
   const oldDateMsg = `Хуучин огноо (${ognoo}) сонгогдсон — засварыг зөвхөн сүүлийн огноо (${latestOgnoo}) дээр хийнэ.`;
 
-  function applyToSelection(value: string) {
+  /** Амжилттай (≥1 нүд шинэчлэгдсэн) бол true — хавсралтын самбар үүгээр шүүнэ. */
+  function applyToSelection(value: string): boolean {
     if (notLatest) {
       setErr(oldDateMsg);
-      return;
+      return false;
     }
     // ⚠️ Тоон шалгалт + 0–100 clamp (commitEdit-тэй ижил): тоо биш утга NaN
     // болж нийтлэхэд null бичигдэн өмнөх утгыг чимээгүй устгадаг байв.
     const t = value.trim().replace(",", ".");
     if (t !== "" && !Number.isFinite(Number(t))) {
       setErr("Тоон утга оруулна уу.");
-      return;
+      return false;
     }
     const norm = t === "" ? "" : String(Math.min(100, Math.max(0, Number(t))));
     const cells = selectedCells();
-    if (!cells.length) return;
+    if (!cells.length) return false;
     // Хязгаараас доош унах нүднүүдийг алгасаад хэдийг нь алгассанаа хэлнэ.
     const ok = cells.filter((c) => belowFloor(c.row, c.b, norm) == null);
     const skipped = cells.length - ok.length;
@@ -673,7 +669,7 @@ export default function Pivot() {
         ? `${skipped} нүд алгасагдав: гүйцэтгэл өмнө бүртгэгдсэн хувиасаа буурч болохгүй.`
         : "",
     );
-    if (!ok.length) return;
+    if (!ok.length) return false;
     setUndoStack((u) => [...u, pending]);
     setRedoStack([]);
     setPending((p) => {
@@ -686,16 +682,20 @@ export default function Pivot() {
       }
       return n;
     });
+    return true;
   }
 
   // Stage a cell edit locally (no service call). Drop the key if it matches the
   // original so Publish stays clean. Pushes an undo snapshot.
-  function commitEdit(row: Row, ri: number, bld: string, raw: string) {
+  // ⚠️ Буцаах утга: утга ХҮЛЭЭН АВСАН бол true — татгалзсан (хуучин огноо,
+  // тоо биш, floor) нүдэнд хавсралтын самбар нээгдэж андуулдаг байсныг
+  // дуудагчид үүгээр шүүнэ.
+  function commitEdit(row: Row, ri: number, bld: string, raw: string): boolean {
     // ⚠️ Хуучин огноон дээр засвар хориглоно (notLatest тайлбарыг дээрээс хар).
     if (notLatest) {
       setEdit(null);
       setErr(oldDateMsg);
-      return;
+      return false;
     }
     // ⚠️ Тоон шалгалт: тоо биш утга нүдийг NaN% болгож, нийтлэхэд null бичигдэн
     // өмнөх утгыг чимээгүй устгадаг байв. Таслалыг цэг болгож, 0–100-д clamp.
@@ -703,14 +703,14 @@ export default function Pivot() {
     if (t !== "" && !Number.isFinite(Number(t))) {
       setEdit(null);
       setErr(`${bld} · ${row.work}: тоон утга оруулна уу.`);
-      return;
+      return false;
     }
     const norm = t === "" ? "" : String(Math.min(100, Math.max(0, Number(t))));
     const floor = belowFloor(row, bld, norm);
     if (floor != null) {
       setEdit(null);
       setErr(`${bld} · ${row.work}: өмнө нь ${floor}% бүртгэгдсэн — гүйцэтгэл буурч болохгүй.`);
-      return; // хуучин утга хэвээр
+      return false; // хуучин утга хэвээр
     }
     setErr("");
     setEdit(null);
@@ -719,10 +719,11 @@ export default function Pivot() {
     const next = { ...pending };
     if (norm === orig) delete next[key];
     else next[key] = norm;
-    if (JSON.stringify(next) === JSON.stringify(pending)) return; // no change
+    if (JSON.stringify(next) === JSON.stringify(pending)) return true; // no change
     setUndoStack((u) => [...u, pending]);
     setRedoStack([]);
     setPending(next);
+    return true;
   }
 
   function undo() {
@@ -807,6 +808,37 @@ export default function Pivot() {
       return copy;
     });
   }
+
+  // Модал нээгдэхэд фокусыг дотогш шилжүүлж, Escape-аар хаана (capture —
+  // сонголт цэвэрлэдэг window keydown-оос ӨМНӨ барина).
+  const modalRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!attach) return;
+    modalRef.current?.focus();
+    const h = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        setAttach(null);
+      }
+    };
+    window.addEventListener("keydown", h, true);
+    return () => window.removeEventListener("keydown", h, true);
+  }, [attach]);
+
+  // ⚠️ Unmount (харагдац солих) үед бэлтгэсэн зургийн objectURL-уудыг чөлөөлнө —
+  // урьд нь blob URL нэвчиж (leak) үлддэг байв. Зургууд нь өөрсдөө нийтлэгдээгүй
+  // бол unmount-д алдагдсан хэвээр — beforeunload зөвхөн таб хаахыг л хамгаалдаг
+  // тул харагдац солих баталгаажуулалтыг порталын навигаци талд шийдэх ёстой.
+  const pendingFilesRef = useRef(pendingFiles);
+  pendingFilesRef.current = pendingFiles;
+  useEffect(
+    () => () => {
+      Object.values(pendingFilesRef.current)
+        .flat()
+        .forEach((f) => URL.revokeObjectURL(f.url));
+    },
+    [],
+  );
 
   // Local (not UTC) YYYY-MM-DD, matching the String Огноо format.
   const todayStr = () => {
@@ -924,6 +956,11 @@ export default function Pivot() {
       // эффектээр явагддаг тул алдаа өмнө нь тэнд бүрэн хаягдаж байв — одоо
       // reload дууссаны ДАРАА хоёр салбарт хоёуланд нь харагдана.
       attachErrsRef.current = attachErrs;
+      // Нийтлэл амжилттай — нийтэлсэн зүсмэгийн draft слотыг цэвэрлэнэ. Огноо
+      // шинэ болж шилжвэл persist эффект хуучин зүсмэгийн draft-ыг цэвэрлэдэггүй тул
+      // энд тодорхой устгана (эс бөгөөс хуучин огноог үзэхэд аль хэдийн нийтэлсэн
+      // нүднүүдийг «сэргээх үү?» гэж худал асуудаг байв).
+      clearDraftLS(bagts, ognoo);
       // Show today (= current merged state). If already viewing today, reload
       // in place; otherwise switch date and let the effect reload as-of today.
       setOgnooList((l) => (l.includes(today) ? l : [...l, today].sort()));
@@ -946,6 +983,18 @@ export default function Pivot() {
 
   const dirtyCount = Object.keys(pending).length;
 
+  // ⚠️ Ctrl+S нээлттэй редакторын утгыг ЭХЛЭЖ commit хийнэ — эс тэгвэл хуучин
+  // pending-ээр нийтлээд, бичиж байсан утга нь blur дээр эргэж dirty болж
+  // хэрэглэгч «хадгалагдсан» гэж андуурдаг байв. commit нь state-д дараагийн
+  // render дээр л тусах тул нийтлэлийг дарааллуулж эффектээр гүйцээнэ.
+  const [publishQueued, setPublishQueued] = useState(false);
+  useEffect(() => {
+    if (!publishQueued || edit) return;
+    setPublishQueued(false);
+    if (!busy && Object.keys(pending).length) publish();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [publishQueued, edit, busy, pending]);
+
   // Ctrl/Cmd+S = publish, Ctrl+Z = undo, Ctrl+Y / Ctrl+Shift+Z = redo.
   // ⚠️ Табууд солигдоход САЛДАГГҮЙ, зөвхөн нуугддаг (Sheet.tsx) тул энэ
   //    сонсогч далд байхдаа ч ажиллана — нуугдсан үед НЭГ Ctrl+S хоёр хуудсыг
@@ -957,7 +1006,11 @@ export default function Pivot() {
       const k = e.key.toLowerCase();
       if (k === "s") {
         e.preventDefault();
-        if (!busy && dirtyCount) publish();
+        if (edit) {
+          const r = rows[edit.ri];
+          if (r) commitEdit(r, edit.ri, edit.bld, val);
+          setPublishQueued(true);
+        } else if (!busy && dirtyCount) publish();
       } else if (k === "z" && !e.shiftKey) {
         e.preventDefault();
         undo();
@@ -969,7 +1022,7 @@ export default function Pivot() {
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [busy, dirtyCount, pending, undoStack, redoStack]);
+  }, [busy, dirtyCount, pending, undoStack, redoStack, edit, val, rows]);
 
   // End a drag-selection anywhere.
   useEffect(() => {
@@ -982,7 +1035,8 @@ export default function Pivot() {
   // Delete to clear, arrows to move / Shift+arrows to extend, Esc to cancel.
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
-      if (edit || !sel || e.ctrlKey || e.metaKey) return;
+      // ⚠️ attach — модал нээлттэй үед Escape нь сонголтыг биш модалыг хаана.
+      if (edit || attach || !sel || e.ctrlKey || e.metaKey) return;
       const k = e.key;
       if (k === "Escape") {
         setFill(null);
@@ -1003,11 +1057,13 @@ export default function Pivot() {
       if (k === "Enter") {
         e.preventDefault();
         if (fill !== null) {
-          applyToSelection(fill);
+          // ⚠️ Татгалзсан (floor/тоон шалгалт) бөглөлтөд зургийн самбар нээхгүй.
+          const ok = applyToSelection(fill);
           setFill(null);
           // Single filled cell → offer the photo panel (optional; close to skip).
           const q = selRect();
           if (
+            ok &&
             q &&
             q.r0 === q.r1 &&
             q.c0 === q.c1 &&
@@ -1022,7 +1078,15 @@ export default function Pivot() {
       const move = (dr: number, dc: number) => {
         e.preventDefault();
         setFill(null);
-        const ri = Math.max(0, Math.min(rows.length - 1, sel.f.ri + dr));
+        // ⚠️ Нуугдсан (эвхэгдсэн) мөр дээр фокус тогтвол outline алга болдог —
+        // босоо шилжилтэд чиглэлийнхээ дараагийн ИЛ мөрийг сонгоно.
+        let ri = sel.f.ri;
+        if (dr !== 0) {
+          let i = ri + dr;
+          while (i >= 0 && i < rows.length && hidden[i]) i += dr;
+          const clamped = Math.max(0, Math.min(rows.length - 1, i));
+          if (!hidden[clamped]) ri = clamped;
+        }
         const bi = Math.max(0, Math.min(buildings.length - 1, biOf(sel.f.b) + dc));
         const nf = { ri, b: buildings[bi] };
         setSel((state) =>
@@ -1038,7 +1102,7 @@ export default function Pivot() {
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sel, fill, edit, pending, rows, buildings]);
+  }, [sel, fill, edit, attach, pending, rows, buildings, hidden]);
 
   // Close the context menu on any click / scroll / Escape.
   useEffect(() => {
@@ -1275,7 +1339,9 @@ export default function Pivot() {
                                 if (e.key === "Escape") return setEdit(null);
                                 if (e.key === "Enter") {
                                   e.preventDefault();
-                                  commitEdit(r, ri, b, val);
+                                  // ⚠️ Зөвхөн ХҮЛЭЭН АВСАН утга дээр үргэлжилнэ —
+                                  // татгалзсан нүдэнд зургийн самбар нээхгүй.
+                                  if (!commitEdit(r, ri, b, val)) return;
                                   // Filled a value → offer the photo panel (optional; close to skip).
                                   if (
                                     val.trim() !== origStr(r, b) &&
@@ -1289,7 +1355,7 @@ export default function Pivot() {
                                   }
                                 } else if (e.key === "Tab") {
                                   e.preventDefault();
-                                  commitEdit(r, ri, b, val);
+                                  if (!commitEdit(r, ri, b, val)) return;
                                   const bi = buildings.indexOf(b);
                                   if (!e.shiftKey) {
                                     if (bi < buildings.length - 1)
@@ -1429,7 +1495,12 @@ export default function Pivot() {
       {menu && (
         <div
           className={st.menu}
-          style={{ top: menu.y, left: menu.x }}
+          // ⚠️ Дэлгэцийн баруун/доод ирмэгт цэс хагас гарч «Нүд устгах» товч
+          // нуугддаг байв — харагдах мужид clamp хийнэ.
+          style={{
+            top: Math.min(menu.y, window.innerHeight - 96),
+            left: Math.min(menu.x, window.innerWidth - 180),
+          }}
           onClick={(e) => e.stopPropagation()}
         >
           {menu.kind === "cell" && (
@@ -1464,7 +1535,15 @@ export default function Pivot() {
           const empty = aFid != null ? attList.length === 0 : local.length === 0;
           return (
             <div className={st.overlay} onClick={() => setAttach(null)}>
-              <div className={st.modal} onClick={(e) => e.stopPropagation()}>
+              <div
+                className={st.modal}
+                role="dialog"
+                aria-modal="true"
+                aria-label="Зургийн хавсралт"
+                tabIndex={-1}
+                ref={modalRef}
+                onClick={(e) => e.stopPropagation()}
+              >
                 <div className={st.modalHead}>
                   <h2 className={st.modalTitle}>
                     Зураг — {rows[attach.ri]?.work ?? ""} · {attach.bld}

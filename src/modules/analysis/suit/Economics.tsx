@@ -78,14 +78,16 @@ export function EconSummary({
         label="Нийт зардал"
         value={zoneCost}
         max={meterMax}
-        color="#f87171"
+        // envhub: зардал/орлого нь ангиллын өнгөөр БИШ — шошго, дарааллаараа
+        // ялгарна; өгөгдлийн ГАНЦ өнгө var(--data)
+        color="var(--data)"
         note={`дэд бүтэц ${money(zoneInfra)} + барилга ${money(zoneBuild)}`}
       />
       <EconMeter
         label="Борлуулалтын орлого"
         value={revenue}
         max={meterMax}
-        color="#fbbf24"
+        color="var(--data)"
         note={`үүнээс орон сууц ${money(revenueRes)}`}
       />
       <EconMeter
@@ -275,7 +277,10 @@ export function EconTune({
             type="range" min={0} max={Math.max(40, Math.ceil((costs.perHa / 1e9) * 1.5))} step={0.5}
             value={perHa / 1e9}
             aria-label="1 га-д зарцуулах төсөв"
-            onChange={(e) => setEconOpt({ pricePerM2: price, perHa: Number(e.target.value) * 1e9 })}
+            // ⚠️ Зөвхөн төсвийн гулсуур хөдлөхөд үнийн null төлөвийг ХАДГАЛНА —
+            //    `price` (=basePrice) бичвэл орон сууцны орлого/«өөрчилсөн» тэмдэг
+            //    ямар ч үнэ хөндөөгүй атал буруу асна.
+            onChange={(e) => setEconOpt({ pricePerM2: econOpt.pricePerM2, perHa: Number(e.target.value) * 1e9 })}
           />
         </div>
 
@@ -299,7 +304,8 @@ export function EconTune({
         <div className={s.pchart}>
           {data.map((r) => {
             const p = r.econ!.profit;
-            const col = p >= 0 ? '#4ade80' : '#ef4444';
+            // Ашиг/алдагдал — утга заасан өнгө тул статус токеноор
+            const col = p >= 0 ? 'var(--good-ink)' : 'var(--bad-ink)';
             const pct = p >= 0 ? (p / totalWin) * 100 : (p / totalLoss) * 100;
             return (
               <button

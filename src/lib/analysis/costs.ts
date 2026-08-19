@@ -10,7 +10,7 @@
  */
 
 import { queryGroup, count, sum } from '@/lib/query';
-import { LAYERS, LAYER_BY_ID, layerUrl, OID, type LayerDef } from '@/lib/services';
+import { LAYERS, costSource, OID, type Cost } from '@/lib/services';
 import { costOf } from '@/lib/totals';
 import { COST_EXCLUDE, COST_GROUP_OF, PROJECT_AREA_HA } from './config';
 
@@ -39,8 +39,8 @@ export type Costs = {
 };
 
 /** Порталын `cost.basis` → эх аппын «kind» ба хуваарь */
-function shape(d: LayerDef): { kind: 'point' | 'line' | 'polygon'; unit: string; divisor: number } {
-  switch (d.cost?.basis) {
+function shape(c: Cost): { kind: 'point' | 'line' | 'polygon'; unit: string; divisor: number } {
+  switch (c.basis) {
     case 'sh': return { kind: 'point', unit: 'ш', divisor: 1 };
     case 'km': return { kind: 'line', unit: 'км', divisor: 1 };
     case 'm100': return { kind: 'line', unit: 'м', divisor: 100 };
@@ -49,29 +49,38 @@ function shape(d: LayerDef): { kind: 'point' | 'line' | 'polygon'; unit: string;
 }
 
 export async function loadCosts(): Promise<Costs> {
+  /**
+   * ⚠️ 2026-08-19: `d.cost`-ийн ОРОНД `costSource(d)`. test_data-гийн миграци нь
+   * `negj_une` талбаргүй болсон ~18 давхаргаас `cost`-ыг устгасан тул энэ шүүлт
+   * ердөө ХОЁР давхарга үлдээж, дэд бүтцийн нийт өртөг (тэр дундаа `perHa`)
+   * олон дахин буурч, Suitability-ийн ашгийн загварыг гажуудуулж байлаа.
+   * `costSource` нь ийм давхаргад миграциас өмнөх (хуучин ET) тодорхойлолтыг
+   * буцаана — өртгийн талбар тэнд бүрэн хэвээр байгааг шалгасан.
+   */
   const defs = LAYERS.filter(
-    (d) => d.topic === 'plan' && d.cost && !COST_EXCLUDE.has(d.id),
+    (d) => d.topic === 'plan' && costSource(d) && !COST_EXCLUDE.has(d.id),
   );
 
   const layers = await Promise.all(defs.map(async (d): Promise<CostLayer> => {
-    const { unit, divisor } = shape(d);
-    const stats = [count(d.oid ?? OID, 'n'), ...(d.qty ? [sum(d.qty.field, 'q')] : [])];
-    const rows = await queryGroup(layerUrl(d), d.cost!.field, stats, '1=1');
+    const cs = costSource(d)!;
+    const { unit, divisor } = shape(cs.cost);
+    const stats = [count(cs.oid ?? OID, 'n'), ...(cs.qty ? [sum(cs.qty.field, 'q')] : [])];
+    const rows = await queryGroup(cs.url, cs.cost.field, stats, '1=1');
 
     let n = 0, qty = 0, total = 0;
     // Хамгийн олон объект эзэлсэн үнийг «давамгайлах нэгж үнэ» болгоно
     let top = { price: 0, n: -1 };
     for (const r of rows) {
-      const price = Number(r[d.cost!.field] ?? 0);
+      const price = Number(r[cs.cost.field] ?? 0);
       const rn = Number(r.n ?? 0);
       const rq = Number(r.q ?? 0);
       n += rn;
       qty += rq;
-      total += costOf(d, rn, rq, price);
+      total += costOf(cs.cost, rn, rq, price);
       if (rn > top.n) top = { price, n: rn };
     }
 
-    const priced = rows.filter((r) => Number(r[d.cost!.field] ?? 0) > 0);
+    const priced = rows.filter((r) => Number(r[cs.cost.field] ?? 0) > 0);
 
     return {
       id: d.id,
@@ -79,7 +88,7 @@ export async function loadCosts(): Promise<Costs> {
       group: COST_GROUP_OF[d.id] ?? 'amenity',
       count: n,
       // Цэгэн давхаргад «хэмжээ» нь ширхэгийн тоо
-      qty: d.cost!.basis === 'sh' ? n : qty,
+      qty: cs.cost.basis === 'sh' ? n : qty,
       qtyUnit: unit,
       unitPrice: top.n >= 0 ? top.price : null,
       uniformPrice: priced.length <= 1,
@@ -110,5 +119,4 @@ export function loadCostsCached(): Promise<Costs> {
   return cache;
 }
 
-/** Давхаргын нэрийг каталогоос — графикийн шошгонд */
-export const layerTitle = (id: string) => LAYER_BY_ID[id]?.title ?? id;
+

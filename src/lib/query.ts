@@ -28,7 +28,7 @@ export class ArcGISError extends Error {
 
 export type Row = Record<string, string | number | null>;
 
-type Body = { features?: { attributes: Row }[]; count?: number; exceededTransferLimit?: boolean; error?: { message?: string } };
+type Body = { features?: { attributes: Row }[]; count?: number; exceededTransferLimit?: boolean; objectIdFieldName?: string; error?: { message?: string } };
 
 /**
  * POST-оор явуулна — where нөхцөл, геометр, outStatistics урт болоход GET-ийн
@@ -190,67 +190,52 @@ export async function queryFeatures(
     returnGeometry: 'false',
     ...spatial(opts.aoi),
   };
-  if (opts.orderBy) params.orderByFields = opts.orderBy;
 
   // ⚠️ ХУУДАСЛАЛТ: сервер maxRecordCount(~2000)-аас олон мөрийг нэг хариунд
   //    өгөхгүй — exceededTransferLimit=true тавиад ТАЙРЧ буцаадаг. Давталтгүй
   //    бол их өгөгдөлтэй давхаргын мөрүүд чимээгүй дутуу ирж, алдаагүй мэт
   //    харагдана. resultOffset-оор үлдсэн хуудсуудыг татаж нэгтгэнэ.
-  const rows: Row[] = [];
-  for (;;) {
-    const page = { ...params };
-    if (rows.length) page.resultOffset = String(rows.length);
-    if (opts.limit) page.resultRecordCount = String(opts.limit - rows.length);
-    const body = await request(url, page);
-    const feats = (body.features ?? []).map((f) => f.attributes);
-    rows.push(...feats);
-    if (!body.exceededTransferLimit) break;
-    if (opts.limit && rows.length >= opts.limit) break;
-    // Хамгаалалт: хоосон хуудас ирвэл мөнхийн давталтаас гарна
-    if (!feats.length) break;
-  }
-  return rows;
-}
-
-/** Полигоны геометрийг WGS84-д татна — орон зайн шүүлтэд эх болгож ашиглана */
-export async function queryPolygon(url: string, where = '1=1'): Promise<Aoi | null> {
-  const body = await request(url, {
-    where,
-    outFields: '',
-    returnGeometry: 'true',
-    outSR: '4326',
-    resultRecordCount: '1',
-  });
-  const g = (body.features as unknown as { geometry?: { rings?: number[][][] } }[] | undefined)?.[0]?.geometry;
-  if (!g?.rings) return null;
-  return { geometry: { rings: g.rings, spatialReference: { wkid: 4326 } }, wkid: 4326 };
-}
-
-export type Point = { attrs: Row; lon: number; lat: number };
-
-/** Цэгэн объектуудыг координаттай нь татна (WGS84) */
-export async function queryPoints(
-  url: string,
-  opts: { where?: string; outFields?: string[]; orderBy?: string; limit?: number; aoi?: Aoi } = {},
-): Promise<Point[]> {
-  const params: Record<string, string> = {
-    where: opts.where ?? '1=1',
-    outFields: (opts.outFields ?? ['*']).join(','),
-    returnGeometry: 'true',
-    outSR: '4326',
-    ...spatial(opts.aoi),
+  //
+  // ⚠️ Эрэмбэгүй resultOffset хуудаслалт ArcGIS-д ТОГТВОРГҮЙ — хуудасны зааг дээр
+  //    мөр давхардах/унах эрсдэлтэй (алдаагүй мэт). Дуудагч orderBy өгөөгүй бол
+  //    давхаргын OID талбараар (хариунаас `objectIdFieldName` олдоно) эрэмбэлж
+  //    тогтворжуулна. OID нэр давхаргаар өөр (OBJECTID/FID/ObjectID) тул хатуу
+  //    нэр бичихгүй — зөвхөн хуудаслах шаардлага гарсан үед л (эхний хуудас
+  //    тайрагдвал) OID-оор эрэмбэлж ЭХНЭЭС нь дахин татна. Нэг хуудасны хариу
+  //    (нийтлэг тохиолдол) огт өөрчлөгдөхгүй.
+  let order = opts.orderBy;
+  const collect = async (): Promise<{ rows: Row[]; oidField?: string; restart: boolean }> => {
+    const rows: Row[] = [];
+    let oidField: string | undefined;
+    for (;;) {
+      const page = { ...params };
+      if (order) page.orderByFields = order;
+      if (rows.length) page.resultOffset = String(rows.length);
+      if (opts.limit) page.resultRecordCount = String(opts.limit - rows.length);
+      const body = await request(url, page);
+      oidField = body.objectIdFieldName ?? oidField;
+      if (!order && rows.length === 0 && body.exceededTransferLimit && oidField) {
+        return { rows: [], oidField, restart: true };
+      }
+      const feats = (body.features ?? []).map((f) => f.attributes);
+      rows.push(...feats);
+      if (!body.exceededTransferLimit) break;
+      if (opts.limit && rows.length >= opts.limit) break;
+      // Хамгаалалт: хоосон хуудас ирвэл мөнхийн давталтаас гарна
+      if (!feats.length) break;
+    }
+    return { rows, restart: false };
   };
-  if (opts.orderBy) params.orderByFields = opts.orderBy;
-  if (opts.limit) params.resultRecordCount = String(opts.limit);
 
-  const body = await request(url, params);
-  const feats = (body.features ?? []) as unknown as { attributes: Row; geometry?: { x: number; y: number } }[];
-  return feats
-    .filter((f) => f.geometry && Number.isFinite(f.geometry.x))
-    .map((f) => ({ attrs: f.attributes, lon: f.geometry!.x, lat: f.geometry!.y }));
+  let res = await collect();
+  if (res.restart && res.oidField) {
+    order = `${res.oidField} ASC`;
+    res = await collect();
+  }
+  return res.rows;
 }
 
-export type ExtentBox = { xmin: number; ymin: number; xmax: number; ymax: number; wkid: number };
+export type ExtentBox ={ xmin: number; ymin: number; xmax: number; ymax: number; wkid: number };
 
 /**
  * Давхаргын хүрээ — заасан проекцоор.

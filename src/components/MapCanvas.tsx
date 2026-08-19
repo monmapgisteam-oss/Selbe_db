@@ -14,6 +14,8 @@ import Graphic from '@arcgis/core/Graphic';
 import Polygon from '@arcgis/core/geometry/Polygon';
 import GroupLayer from '@arcgis/core/layers/GroupLayer';
 import ImageryLayer from '@arcgis/core/layers/ImageryLayer';
+import MapImageLayer from '@arcgis/core/layers/MapImageLayer';
+import VectorTileLayer from '@arcgis/core/layers/VectorTileLayer';
 import IntegratedMeshLayer from '@arcgis/core/layers/IntegratedMeshLayer';
 import BuildingSceneLayer from '@arcgis/core/layers/BuildingSceneLayer';
 import BuildingExplorer from '@arcgis/core/widgets/BuildingExplorer';
@@ -30,6 +32,7 @@ import SketchViewModel from '@arcgis/core/widgets/Sketch/SketchViewModel';
 import BasemapGallery from '@arcgis/core/widgets/BasemapGallery';
 import LocalBasemapsSource from '@arcgis/core/widgets/BasemapGallery/support/LocalBasemapsSource';
 import Expand from '@arcgis/core/widgets/Expand';
+import LayerList from '@arcgis/core/widgets/LayerList';
 import ElevationLayer from '@arcgis/core/layers/ElevationLayer';
 import Ground from '@arcgis/core/Ground';
 import type Layer from '@arcgis/core/layers/Layer';
@@ -40,7 +43,7 @@ import '@arcgis/core/assets/esri/themes/light/main.css';
 
 import {
   LAYERS, LAYER_BY_ID, layerUrl, oidOf, drawOrder, DASH_PATTERN, ALWAYS_ON_IDS, REFERENCE_IDS,
-  HOME, IMAGERY, SCENE, BIM, USAN_SAN, ELEVATION_URL, ZONE_LAYER, zoneWhere,
+  HOME, IMAGERY, IRGED_ORTHO, IRGED_ROAD, IRGED_SCENE, IRGED_TOILET, SCENE, BIM, USAN_SAN, ELEVATION_URL, ZONE_LAYER, zoneWhere,
   ZONE_FIELD, ZONE_NONE, ZONE_TYPE_EMPTY_HUE, OID, BUILDING, SURVEY, PARCEL_LEFT, buildingKey,
   MAP_HUE_OVERRIDES, SOURCE_FS, BASE_MAP_IDS, TOGLOOM_TYPES,
   type LayerDef,
@@ -229,6 +232,215 @@ const dot = (hex: string, size = 9, marker: NonNullable<LayerDef['marker']> = 'c
     color: c(hex, 0.95),
     outline: { color: [255, 255, 255, 0.9], width: ow(1.4) },
   }) as const;
+
+/**
+ * НҮХЭН ЖОРЛОНГИЙН ЦЭГ — 1,675 объект, ХАМГИЙН ЭНГИЙН дүрслэл: жижиг дугуй.
+ *
+ * ⚠️ 2D ба 3D-д НЭГ Л симбол. Урьд нь 3D-д өргөгдсөн бөмбөлөг + callout шугам
+ * тавьж үзсэн — 1,675 шугам хоорондоо солбилцож ЗАМБАРААГҮЙ болсон тул хассан.
+ * Нягт өгөгдөлд чимэглэл нэмэх тусам уншигдац МУУДДАГ.
+ *
+ * ⚠️ ХҮРЭЭГҮЙ (`width: 0`). Цагаан хүрээ нь 3–8px цэгэн дээр дүрсийн жинг хоёр
+ * дахин нэмж, олон цэг зэрэг байхад «үртэс» мэт барзгар харагдуулна.
+ *
+ * ⚠️ Дүүргэлт 0.85 — давхцсан цэг бага зэрэг бараантаж, нягтрал өөрөө
+ * уншигдана. Бүрэн дүүрэн бол давхцал мэдэгдэхгүй.
+ *
+ * ⚠️ Хэмжээ нь ТОГТМОЛ 7px. Урьд нь масштабаар хувьсдаг байсныг ХАСАВ: 2D-д
+ * холоос кластер (`toiletCluster`) орлох болсон тул цэг нь зөвхөн ОЙРООС
+ * харагдана — тэнд нэг хэмжээ хангалттай. Мөн кластерын хэмжээ нь ТООГООР
+ * тодорхойлогддог бөгөөд renderer дээрх масштабын `visualVariables` түүнтэй
+ * зөрчилддөг (бүх кластер ижил хэмжээтэй болно).
+ */
+const toiletDot = (hex: string) =>
+  ({
+    type: 'simple',
+    symbol: {
+      type: 'simple-marker',
+      style: 'circle',
+      size: 7,
+      color: c(hex, 0.85),
+      outline: { width: 0 },
+    },
+  }) as unknown as RendererProp;
+
+/**
+ * 2D-гийн КЛАСТЕР — холоос бүлэглэж, дотор нь ТООГ бичнэ.
+ *
+ * ⚠️ 1,675 цэгийг холоос ганц ганцаар нь харуулах утгагүй: бие биенээ дарж
+ * тасралтгүй толбо болно. Кластер нь «энд хэд байна» гэдгийг ТООГООР хэлнэ.
+ *
+ * ⚠️ Хэмжээ нь ТООГООР — `clusterMinSize`/`clusterMaxSize` хооронд. Тиймээс
+ * `toiletDot` дээр масштабын size visual variable БАЙЖ БОЛОХГҮЙ (дээр хассан).
+ *
+ * ⚠️ Шошгын гэрэлтүүлэг (halo) нь давхаргын өнгөөр — цагаан тоо цэнхэр дугуй
+ * дээр, гадна талд нь цэнхэр хүрээтэй: ортофотогийн ямар ч дэвсгэр дээр
+ * уншигдана.
+ */
+const toiletCluster = (hex: string) =>
+  ({
+    type: 'cluster',
+    clusterRadius: '56px',
+    popupEnabled: false,
+    /**
+     * ⚠️ `maxScale` — кластер энэ масштабаас ОЙР болоход өөрөө УНТАРНА (цэг тус
+     * бүрээрээ гарна). Гараар `view.scale` сонсох шаардлагагүй.
+     */
+    maxScale: TOILET_CLUSTER_SCALE,
+    /**
+     * КЛАСТЕРЫН ӨӨРИЙН RENDERER — хэмжээ БА өнгө хоёулаа `cluster_count`-оос.
+     *
+     * ⚠️ Өөрийн renderer өгсөн үед `clusterMinSize`/`clusterMaxSize` үл
+     * хэрэгсэгдэнэ — хэмжээг size visual variable ӨӨРӨӨ хариуцна.
+     *
+     * ⚠️ Дүүргэлт 50% ТУНГАЛАГ: кластер нь ортофотог дарах ёсгүй — доорх зураг
+     * шууд мэдэгдэнэ.
+     *
+     * ⚠️ Хүрээ нь НИМГЭН, ХАГАС ТУНГАЛАГ цагаан (1px, 0.5). Хатуу цагаан хүрээ
+     * нь дугуйг «таслаад» дотрын тунгалаг байдлыг үгүй хийдэг; огт хүрээгүй бол
+     * бүдэг дугуй ортофотогийн эрээн дэвсгэр дээр ирмэгээ алддаг. Энэ хоёрын
+     * дунд — хэлбэр нь мэдэгдэнэ, доорх зураг ч харагдана.
+     *
+     * ⚠️ Тунгалаг байдал нь БҮХ кластерт ижил (color visual variable ХАСАВ) —
+     * ялгааг зөвхөн ХЭМЖЭЭ хэлнэ. Хоёр суваг (хэмжээ + өнгө) нэг л зүйлийг
+     * давхардуулж хэлэх нь илүүц.
+     *
+     * ⚠️ Доторх ЦАГААН ТОО бүдгэрэхгүй — шошго нь симболын өнгөнөөс ХАМААРАХГҮЙ.
+     */
+    renderer: {
+      type: 'simple',
+      symbol: {
+        type: 'simple-marker',
+        style: 'circle',
+        color: c(hex, 0.5),
+        outline: { color: [255, 255, 255, 0.5], width: 1 },
+      },
+      visualVariables: [{
+        type: 'size',
+        field: 'cluster_count',
+        stops: [
+          { value: 2, size: 16 },
+          { value: 250, size: 40 },
+        ],
+      }],
+    },
+    labelsVisible: true,
+    labelingInfo: [{
+      deconflictionStrategy: 'none',
+      labelExpressionInfo: { expression: "Text($feature.cluster_count, '#,###')" },
+      labelPlacement: 'center-center',
+      symbol: {
+        type: 'text',
+        color: '#ffffff',
+        haloColor: '#0f141a',
+        haloSize: '1px',
+        font: { size: 10, weight: 'bold' },
+      },
+    }],
+  }) as unknown as __esri.FeatureReductionCluster;
+
+/**
+ * Кластер ↔ ганц цэг СОЛИГДОХ масштаб. Үүнээс ХОЛ бол кластер, ОЙР бол цэг
+ * тус бүрээрээ. (3D-гийн callout нь 1:1,000 — өөр, бүр ойрын түвшин.)
+ */
+const TOILET_CLUSTER_SCALE = 2_500;
+
+/**
+ * ГЭРЭЛТҮҮЛЭГ — МАСШТАБААС хамаарна (ArcGIS-ийн scale-dependent effect).
+ *
+ * ⚠️ Нэг тогтмол утга ТААРАХГҮЙ. Холдох тусам кластерууд НЭГДЭЖ томордог
+ * (18px → 42px) бөгөөд том дугуй нь тоотойгоо аль хэдийн хангалттай жинтэй —
+ * тэр дээр хүчтэй bloom тавихад цайж, ДОТОРХ ТОО УНШИГДАХАА БОЛИНО. Харин
+ * ойроос үлдэх 7px-ийн ганц цэг ортофото дээр төөрөх тул гэрэлтэх нь зөв.
+ *
+ * ⚠️ Зогсолтуудыг ArcGIS өөрөө интерполяци хийнэ — гараар сонсох шаардлагагүй,
+ * зум хийхэд алгуур шилжинэ. Дараалал нь масштаб БУУРАХ (хол → ойр) чиглэлд.
+ *
+ * ⚠️ Босго нь (гурав дахь тоо) эсрэгээр өснө: том кластер дээр зөвхөн хамгийн
+ * тод пиксел гэрэлтэж, дугуйн бүх талбай цайхгүй.
+ */
+const TOILET_EFFECT = [
+  { scale: 20_000, value: 'bloom(0.15, 0.4px, 0.35)' },
+  { scale: 8_000, value: 'bloom(0.3, 0.4px, 0.28)' },
+  { scale: 2_500, value: 'bloom(0.55, 0.45px, 0.2)' },
+  { scale: 1_000, value: 'bloom(1.0, 0.5px, 0.1)' },
+] as unknown as __esri.Effect;
+
+/**
+ * НҮХЭН ЖОРЛОН — 3D-гийн ХОЛЫН тэмдэг: газраас БАГА ЗЭРЭГ хөвсөн дугуй.
+ *
+ * ⚠️ 2D-гийн `toiletDot`-ыг 3D-д шууд хэрэглэвэл цэг газарт НААЛДАЖ, мешийн
+ * барилга, хашаа, модны ард нуугдана — өндөр өнцгөөс хагас нь алга болно.
+ * 8px-ийн жижиг `verticalOffset` нь тэдгээрээс дээш өргөж ил гаргана.
+ *
+ * ⚠️ Callout шугам ЭНД БАЙХГҮЙ. 1,675 шугам солбилцоод замбараагүй болдгийг
+ * туршиж үзсэн. Өргөлт нь ЖИЖИГ (8px) тул шугамгүй ч байршил бараг алдагдахгүй;
+ * ойроос (`TOILET_PIN_SCALE`) шугамтай хувилбар (`toiletPin`) орлоно.
+ *
+ * ⚠️ SceneView нь давхаргын `effect`-ийг (bloom) дэмждэггүй тул 3D-д гэрэлтэлт
+ * байхгүй — түүний оронд тунгалаг байдлыг 0.9 болгож бага зэрэг нөхөв.
+ */
+const toiletIcon3D = (hex: string) =>
+  ({
+    type: 'simple',
+    symbol: {
+      type: 'point-3d',
+      symbolLayers: [{
+        type: 'icon',
+        resource: { primitive: 'circle' },
+        material: { color: c(hex, 0.9) },
+        outline: { color: [255, 255, 255, 0.45], size: 0.5 },
+        size: 7,
+      }],
+      verticalOffset: { screenLength: 8, minWorldLength: 2, maxWorldLength: 15 },
+    },
+  }) as unknown as RendererProp;
+
+/**
+ * НҮХЭН ЖОРЛОН — 3D-д ОЙРООС харагдах callout тэмдэг (бөмбөлөг + доош шугам).
+ *
+ * ⚠️ Энэ нь `toiletDot`-ыг ОРЛОХ БИШ, түүнийг ойрын зайд СОЛИХ тусдаа давхарга
+ * (`TOILET_PIN_ID`). Хоёуланг нэг давхаргад багтаах арга ArcGIS-д байхгүй:
+ * renderer нь масштабаар СИМБОЛЫН ТӨРЛӨӨ сольж чаддаггүй. Харин давхаргын
+ * `minScale`/`maxScale` нь энэ солилтыг ЯГ хийдэг — гүйцэтгэлийн нэмэлт ачаалал
+ * ч үгүй, ажиллах явцад юу ч бодогдохгүй.
+ *
+ * ⚠️ Хэмжээ нь ТОГТМОЛ 3 м. Энэ давхарга нь зөвхөн 1:3,000-аас ойр харагддаг
+ * тул масштабын хэлбэлзэл бага — `visualVariables` нэмэх нь дэмий төвөгтэй.
+ *
+ * ⚠️ `screenLength` нь ДЭЛГЭЦИЙН пиксел: шугамын урт ямар ч өнцөгт жигд байна.
+ */
+const toiletPin = (hex: string) =>
+  ({
+    type: 'simple',
+    symbol: {
+      type: 'point-3d',
+      symbolLayers: [{
+        type: 'object',
+        resource: { primitive: 'sphere' },
+        material: { color: hex },
+        width: 3, height: 3, depth: 3,
+      }],
+      verticalOffset: { screenLength: 24, minWorldLength: 6, maxWorldLength: 40 },
+      callout: {
+        type: 'line',
+        size: 1.4,
+        color: hex,
+        border: { color: [255, 255, 255, 0.75] },
+      },
+    },
+  }) as unknown as RendererProp;
+
+/**
+ * Цэг ↔ callout СОЛИГДОХ масштаб.
+ *
+ * ⚠️ 3,000 → 1,200 → 1,000 (2026-08-13). 3,000 дээр хэдэн зуун callout зэрэг
+ * гарч хэт эрт замбараагүй болдог байв; 1,200 ч бага зэрэг эрт байв. Төслийн
+ * бүтэн хүрээ ≈1:12,000 тул 1,000 нь «хэдхэн барилгын дэргэд очсон» түвшин —
+ * callout цөөхөн, тус бүр нь уншигдана.
+ */
+const TOILET_PIN_ID = 'irged:toilet-pin';
+const TOILET_PIN_SCALE = 1_000;
 
 /**
  * ⚠️ ArcGIS 4.34-д давхаргын `renderer` нь ЯЛГАВАРТАЙ НЭГДЭЛ (discriminated
@@ -549,7 +761,13 @@ export const IMAGERY_ID = 'imagery';
 const PASSIVE = new Set<string>([
   'sketch',
   IMAGERY_ID,
+  IRGED_ORTHO.id,
+  // Нүхэн жорлон — зөвхөн байршил харуулна; дарахад атрибут гарах ЁСГҮЙ
+  IRGED_TOILET.id,
+  TOILET_PIN_ID,
+  IRGED_ROAD.id,
   ...SCENE.layers.map((l) => `scene:${l.key}`),
+  ...IRGED_SCENE.layers.map((l) => `scene:${l.key}`),
   ...BIM.layers.map((l) => l.key),
   // Лавлагааны хилүүд — дарж сонгогдохгүй, доорх объектыг халхлахгүй.
   ...REFERENCE_IDS,
@@ -608,6 +826,75 @@ function buildLayers(uniform = false): Layer[] {
     })),
   }));
 
+  /* «Иргэдэд хүрэх үр өгөөж»-ийн ортофото (динамик MapServer) — вектор давхаргын
+     ДООР, эхэндээ УНТРААЛТТАЙ. Тэр харагдац `visible` жагсаалтдаа id-г нь өгч
+     асаана; бусад харагдацад жагсаалтад ороогүй тул унтраалттай хэвээр. */
+  L.push(new MapImageLayer({
+    id: IRGED_ORTHO.id,
+    title: IRGED_ORTHO.title,
+    url: IRGED_ORTHO.url,
+    visible: false,
+    listMode: 'hide',
+    legendEnabled: false,
+  }));
+
+  /* Зам (вектор тайл) — ортофотогийн ДЭЭР, цэгүүдийн ДООР.
+     ⚠️ Загварыг URL-ээс автоматаар уншина (`resources/styles`) тул renderer
+     бичихгүй. Эхэндээ унтраалттай; `visible` жагсаалтаар асаана. */
+  L.push(new VectorTileLayer({
+    id: IRGED_ROAD.id,
+    title: IRGED_ROAD.title,
+    url: IRGED_ROAD.url,
+    visible: false,
+    listMode: 'hide',
+  }));
+
+  /* Нүхэн жорлон — цэгэн давхарга, мөн зөвхөн тэр харагдацад.
+     ⚠️ `outFields: []` = ЗӨВХӨН OID: атрибутын үлдсэн 13 талбар (PLI,
+     Ground_wat, Population…) огт татагдахгүй тул тэдгээр ил гарах ЗАМГҮЙ.
+     `popupEnabled: false` + `PASSIVE` нь дарахад ч юу ч гаргахгүй. */
+  L.push(new FeatureLayer({
+    id: IRGED_TOILET.id,
+    title: IRGED_TOILET.title,
+    url: IRGED_TOILET.url,
+    visible: false,
+    listMode: 'hide',
+    popupEnabled: false,
+    legendEnabled: false,
+    outFields: [],
+    elevationInfo: ON_GROUND,
+    renderer: toiletDot(IRGED_TOILET.hue),
+    /**
+     * ГЭРЭЛТЭХ ЭФФЕКТ (bloom) — цэнхэр цэгүүд ортофотогийн хүрэн-саарал дэвсгэр
+     * дээр гэрэлтэж, жижиг хэмжээтэй ч нүдэнд шууд тусна.
+     *
+     * `bloom(эрчим, радиус, босго)` — зогсолтуудыг `TOILET_EFFECT` дээр
+     * тайлбарлав: холоос (том кластер) сул, ойроос (ганц цэг) хүчтэй.
+     *
+     * ⚠️ ЗӨВХӨН 2D-д үйлчилнэ. Давхаргын `effect` нь MapView-ийн боловсруулалт —
+     * SceneView түүнийг чимээгүй үл тоомсорлоно (алдаа ӨГӨХГҮЙ). 3D талд цэг
+     * хэвийн, гэрэлтэхгүй харагдана.
+     */
+    effect: TOILET_EFFECT,
+  }));
+
+  /* Нүхэн жорлонгийн ОЙРЫН callout хувилбар — ЗӨВХӨН 1:3,000-аас ойр (`minScale`).
+     Холоос давхарга нь ArcGIS-ийн зүгээс огт ачаалагдахгүй тул нэмэлт ачаалалгүй.
+     Ил эсэхийг харагдацын эффект удирдана (зөвхөн 3D-д). */
+  L.push(new FeatureLayer({
+    id: TOILET_PIN_ID,
+    title: IRGED_TOILET.title,
+    url: IRGED_TOILET.url,
+    visible: false,
+    listMode: 'hide',
+    popupEnabled: false,
+    legendEnabled: false,
+    outFields: [],
+    elevationInfo: ON_GROUND,
+    minScale: TOILET_PIN_SCALE,
+    renderer: toiletPin(IRGED_TOILET.hue),
+  }));
+
   /* Сэдэвчилсэн давхаргууд — каталогаас ерөнхийлж */
   const V = LAYERS.map((d) => {
     /**
@@ -618,7 +905,9 @@ function buildLayers(uniform = false): Layer[] {
      * кадастр г.м. webmap-д байхгүй) доорх каталогийн загвараа хэрэглэнэ.
      * Снапшотыг `node tools/webmap_style.mjs`-ээр шинэчилнэ.
      */
-    const web = webmapStyleOf(layerUrl(d));
+    // ⚠️ styleUrl — test_data руу шилжсэн ч webmap-снапшотын ХУУЧИН түлхүүрээр
+    //    хайж, зураг дээрх загварыг 1:1 хадгална (2026-08-13).
+    const web = webmapStyleOf(d.styleUrl ?? layerUrl(d));
     /**
      * ӨНГӨНИЙ OVERRIDE (`MAP_HUE_OVERRIDES`, 2026-07-31): барилгын снапшотын
      * шар (#ffb700, 20% дүүргэлт) нь ортофото дээр ялгарахгүй байсан тул
@@ -804,9 +1093,24 @@ export function MapProvider({ children }: { children: ReactNode }) {
       if (!e || view.destroyed) return;
       // 150 м-ээс нарийн хүрээг тэлнэ — контекстгүй ойртохоос сэргийлнэ
       const MIN = 150;
-      const box = e.width < MIN || e.height < MIN
-        ? e.clone().expand(Math.max(MIN / Math.max(e.width, 1), MIN / Math.max(e.height, 1)))
-        : e.clone().expand(1.6);
+      let box;
+      if (e.width < MIN || e.height < MIN) {
+        // ⚠️ expand() нь хэмжээг ҮРЖҮҮЛДЭГ тул тэг өргөнтэй хүрээ (нэг цэгэн объект)
+        //    дээр 0×factor = 0 хэвээр үлдэж, зураг хамгийн ойрын масштаб руу үсэрдэг.
+        //    Тиймээс төвөөс ГАРААР угсарна: тал бүрийг дор хаяж MIN болгоно (аль
+        //    хэдийн MIN-ээс том талыг богиносгохгүй).
+        const cx = (e.xmin + e.xmax) / 2;
+        const cy = (e.ymin + e.ymax) / 2;
+        const w = Math.max(e.width, MIN);
+        const h = Math.max(e.height, MIN);
+        box = new Extent({
+          xmin: cx - w / 2, xmax: cx + w / 2,
+          ymin: cy - h / 2, ymax: cy + h / 2,
+          spatialReference: e.spatialReference,
+        });
+      } else {
+        box = e.clone().expand(1.6);
+      }
       view.goTo(box).catch(() => {});
     } catch (err) {
       console.error('[selbe] объектын хүрээг тодорхойлж чадсангүй:', err);
@@ -845,6 +1149,7 @@ export const MapCanvas = memo(function MapCanvas({
   onSketch,
   drawToken = 0,
   clearToken = 0,
+  scene,
   children,
 }: {
   dim: Dim;
@@ -878,6 +1183,14 @@ export const MapCanvas = memo(function MapCanvas({
   drawToken?: number;
   /** Утга нэмэгдэхэд зурсан полигоныг арилгана (гадны «Цэвэрлэх» товч) */
   clearToken?: number;
+  /**
+   * 3D горимд зурах IntegratedMesh багц. Байхгүй бол аппын үндсэн `SCENE`.
+   *
+   * ⚠️ Map нь харагдацуудын хооронд КЭШЛЭГДДЭГ тул энэ жагсаалтад БАЙХГҮЙ
+   * `scene:*` давхаргыг эффект нь ЗААВАЛ хасна — эс бөгөөс өмнөх харагдацын
+   * меш үлдэж, хоёр багц давхцан z-fight үүснэ.
+   */
+  scene?: readonly { key: string; title: string; url: string }[];
   children?: ReactNode;
 }) {
   const el = useRef<HTMLDivElement>(null);
@@ -992,6 +1305,8 @@ export const MapCanvas = memo(function MapCanvas({
   const registerRef = useRef(register);
   registerRef.current = register;
 
+
+
   /** 3D-д тодруулга `definitionExpression`-оор явна (featureEffect тэнд ажиллахгүй) */
   const { highlight: hl, ortho, setOrtho } = useContext(Ctx);
   const hlOnly = useMemo(
@@ -1009,8 +1324,40 @@ export const MapCanvas = memo(function MapCanvas({
     if (orthoChkRef.current) orthoChkRef.current.checked = ortho;
   }, [ortho]);
 
+  /**
+   * БҮТЭН ДЭЛГЭЦ (хэрэглэгчийн хүсэлт, 2026-08-18) — зурган дээрх товч дарахад
+   * апп бүхэлдээ browser-ийн бүтэн дэлгэцэд орж, зураг viewport-ыг дүүргэнэ
+   * (`.fs` → position: fixed inset 0; ArcGIS view хэмжээгээ өөрөө дагана).
+   * Давхарга (LayerList) ба суурь зургийн widget хоёулаа зурган дээрээ байгаа
+   * тул бүтэн дэлгэцэд ч бүрэн ажиллана.
+   *
+   * ⚠️ Fullscreen API-г ЗӨВХӨН товчны click дотор дуудна (хэрэглэгчийн үйлдэл
+   * шаарддаг). Esc-ээр гарахад `fullscreenchange` сонсогч төлвийг буцаана.
+   */
+  const [fs, setFs] = useState(false);
+  const toggleFs = useCallback(() => {
+    setFs((cur) => {
+      const next = !cur;
+      if (next) document.documentElement.requestFullscreen?.().catch(() => {});
+      else if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+      return next;
+    });
+  }, []);
+  const toggleFsRef = useRef(toggleFs);
+  toggleFsRef.current = toggleFs;
+  useEffect(() => {
+    const onChange = () => { if (!document.fullscreenElement) setFs(false); };
+    document.addEventListener('fullscreenchange', onChange);
+    return () => document.removeEventListener('fullscreenchange', onChange);
+  }, []);
+
   /** Массивыг эффектийн хамааралд өгч болохгүй (лавлагаа нь рендер бүрт шинэ) */
   const visibleKey = visible.join(',');
+
+  /** Энэ харагдацын 3D меш багц — заагаагүй бол аппын үндсэн `SCENE` */
+  const sceneList = scene ?? SCENE.layers;
+  const sceneKey = sceneList.map((m) => m.key).join(',');
+
 
   /**
    * Map-ыг НЭГ УДАА үүсгэнэ; view нь 2D/3D солигдох бүрд дахин үүснэ.
@@ -1137,6 +1484,39 @@ export const MapCanvas = memo(function MapCanvas({
       mode: 'floating',
     }), 'top-right');
 
+    /**
+     * ДАВХАРГЫН ЖАГСААЛТ (LayerList) — суурь зургийн доор, мөн Expand дотор.
+     * Бүтэн дэлгэцэд порталын каталог руу гарах шаардлагагүйгээр давхаргаа
+     * асааж/унтраана. Ижил SDK-ийн бэлэн widget — view-тэй хамт устна.
+     */
+    const llDiv = document.createElement('div');
+    new LayerList({ view, container: llDiv });
+    view.ui.add(new Expand({
+      view,
+      content: llDiv,
+      expandIcon: 'layers',
+      expandTooltip: 'Давхаргууд',
+      collapseTooltip: 'Хаах',
+      mode: 'floating',
+    }), 'top-right');
+
+    /**
+     * БҮТЭН ДЭЛГЭЦИЙН товч — Esri-ийн widget товчны загвараар (ижил хэмжээ,
+     * ижил дэвсгэр) тул бусад удирдлагатай нэг формат. Toggle нь компонентын
+     * `fs` төлвийг удирдана (`toggleFsRef` — click үргэлж сүүлийн callback-ыг дуудна).
+     */
+    const fsBtn = document.createElement('div');
+    fsBtn.className = 'esri-widget--button esri-widget';
+    fsBtn.setAttribute('role', 'button');
+    fsBtn.setAttribute('tabindex', '0');
+    fsBtn.title = 'Бүтэн дэлгэц';
+    fsBtn.innerHTML =
+      '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">'
+      + '<path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" '
+      + 'stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    fsBtn.addEventListener('click', () => toggleFsRef.current());
+    view.ui.add(fsBtn, 'top-right');
+
     view.when(() => {
       if (view.destroyed) return;
       setReady(true);
@@ -1204,15 +1584,25 @@ export const MapCanvas = memo(function MapCanvas({
      * рендерээс огт хамаарахгүй тул 2D, 3D хоёуланд ижил ажиллана.
      */
     const pickByQuery = async (mapPoint: __esri.Point, tolerance: number) => {
-      const ids = (view.map?.layers.toArray() ?? [])
+      /**
+       * ⚠️ 2026-08-19: Давхаргын ИДЭВХТЭЙ `definitionExpression`-ийг хамт барина.
+       *
+       * Урьд нь энэ fallback нь `where` огт өгдөггүй (=`1=1`) байв. Тэр илэрхийлэлд
+       * (1) бүсийн шүүлт, (2) давхаргын тогтмол `d.where`, (3) 3D-ийн тодруулга
+       * ГУРВУУЛАА агуулагддаг тул зурган дээр ХАРАГДАХГҮЙ обьект сонгогддог байлаа.
+       * 3D-д энэ нь ОНЦГОЙ тохиолдол БИШ — торон гадаргуу `hitTest`-ийг няцаадаг
+       * тул энэ fallback нь ХЭВИЙН зам (дээрх тайлбарыг үз): бүс сонгосон
+       * хэрэглэгч дарахад нуугдсан обьектын самбар нээгддэг байв.
+       */
+      const cand = (view.map?.layers.toArray() ?? [])
         .map((l) => ({ l, id: String(l.id) }))
         // ⚠️ PASSIVE-ийг pickHit-тэй АДИЛ хасна — эс бөгөөс үргэлж ил лавлагааны
         //    хил (khil1) fallback-аар байнга «сонгогдож» зарчим зөрчигдөнө.
         .filter(({ l, id }) => l.visible && !PASSIVE.has(id) && LAYER_BY_ID[id])
-        .map(({ id }) => id)
         // Дээд талынхыг ЭХЭЛЖ шалгана: цэг → шугам → талбай
-        .sort((a, b) => drawOrder(b) - drawOrder(a));
-      if (!ids.length) return null;
+        .sort((a, b) => drawOrder(String(b.id)) - drawOrder(String(a.id)));
+      if (!cand.length) return null;
+      const ids = cand.map(({ id }) => id);
 
       const wkid = mapPoint.spatialReference?.wkid ?? 102100;
       const aoi: Aoi = {
@@ -1223,7 +1613,13 @@ export const MapCanvas = memo(function MapCanvas({
       };
 
       const rows = await Promise.all(
-        ids.map((id) => queryFeatures(layerUrl(LAYER_BY_ID[id]), { aoi, limit: 1 }).catch(() => [])),
+        cand.map(({ l, id }) =>
+          queryFeatures(layerUrl(LAYER_BY_ID[id]), {
+            aoi,
+            limit: 1,
+            where: (l as __esri.FeatureLayer).definitionExpression || '1=1',
+          }).catch(() => []),
+        ),
       );
       for (let i = 0; i < ids.length; i++) {
         if (rows[i].length) return { attrs: rows[i][0] as Record<string, unknown>, id: ids[i] };
@@ -1305,15 +1701,30 @@ export const MapCanvas = memo(function MapCanvas({
     const map = mapRef.current;
     if (!map) return;
 
-    for (const m of SCENE.layers) {
-      const id = `scene:${m.key}`;
-      const existing = map.findLayerById(id);
-      if (dim === '3d' && !existing) {
+    /* ⚠️ `Map` нэр нь ArcGIS-ийн Map-аар дарагдсан (импорт) тул JS-ийн Map-ыг
+       энд ХЭРЭГЛЭХГҮЙ — энгийн массив + Set-ээр шийднэ. */
+    const want = sceneList.map((m) => ({ id: `scene:${m.key}`, m }));
+    const wantIds = new Set(want.map((w) => w.id));
+
+    /**
+     * ⚠️ Эхлээд ХАСНА: 3D биш горим, эсвэл энэ харагдацын жагсаалтад ороогүй
+     * (өмнөх харагдацаас үлдсэн) БҮХ `scene:*` меш. Кэшлэгдсэн Map дээр энэ
+     * цэвэрлэгээгүй бол Сэлбэ1–3 ба Selbewebapp меш зэрэг зурагдана.
+     */
+    for (const l of map.layers.toArray()) {
+      const id = String(l.id);
+      if (!id.startsWith('scene:')) continue;
+      if (dim !== '3d' || !wantIds.has(id)) {
+        map.remove(l);
+        l.destroy();
+      }
+    }
+
+    if (dim === '3d') {
+      for (const { id, m } of want) {
+        if (map.findLayerById(id)) continue;
         // Индекс 1 — ортофотогийн дараа, вектор давхаргуудын өмнө
         map.add(new IntegratedMeshLayer({ id, url: m.url, title: m.title, visible: true }), 1);
-      } else if (dim !== '3d' && existing) {
-        map.remove(existing);
-        existing.destroy();
       }
     }
 
@@ -1435,7 +1846,35 @@ export const MapCanvas = memo(function MapCanvas({
     //    `dim !== '2d'` дээр нэмэх логикийг сэргээнэ.
     const usan = map.findLayerById(USAN_SAN.id);
     if (usan) { map.remove(usan); usan.destroy(); }
-  }, [dim, ready]);
+
+    // ⚠️ dep нь `sceneKey` (мөр) — `sceneList` массив рендер бүрт шинэ лавлагаатай.
+  }, [dim, ready, sceneKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /**
+   * НҮХЭН ЖОРЛОН — 2D-д КЛАСТЕР асаах.
+   *
+   * ⚠️ Кластер ↔ ганц цэг солилтыг `featureReduction.maxScale` ӨӨРӨӨ хийнэ —
+   * `view.scale` сонсох шаардлагагүй. Гэрэлтүүлгийг мөн адил `TOILET_EFFECT`-ийн
+   * масштабын зогсолтууд хариуцна. Тиймээс энд ажиллах явцад юу ч бодогдохгүй,
+   * зөвхөн НЭГ УДААГИЙН оноолт.
+   *
+   * ⚠️ ЗӨВХӨН 2D: SceneView кластер дэмжихгүй. Горим солигдоход энэ эффект
+   * дахин ажиллаж (`dim` хамаарал) кластерыг цэвэрлэнэ.
+   *
+   * ⚠️ Cleanup-д ЗААВАЛ цэвэрлэнэ: Map кэшлэгддэг тул кластер нь өөр харагдацад
+   * үлдэж болзошгүй.
+   */
+  const toiletOn = visibleKey.split(',').includes(IRGED_TOILET.id);
+  useEffect(() => {
+    const view = viewRef.current;
+    const map = mapRef.current;
+    if (!view || !map || !ready || !toiletOn || view.type !== '2d') return;
+    const layer = map.findLayerById(IRGED_TOILET.id) as FeatureLayer | null;
+    if (!layer) return;
+
+    layer.featureReduction = toiletCluster(IRGED_TOILET.hue);
+    return () => { layer.featureReduction = null; };
+  }, [dim, ready, toiletOn]);
 
   /**
    * BuildingExplorer виджет — ЗӨВХӨН BIM горимд.
@@ -2028,6 +2467,37 @@ export const MapCanvas = memo(function MapCanvas({
       if (l.id === 'source:pulse') { l.visible = true; return; }
       // Лавлагааны хилүүд — каталогоос үл хамааран БҮХ зурагт үргэлж ил.
       if ((ALWAYS_ON_IDS as readonly string[]).includes(String(l.id))) { l.visible = true; return; }
+      /**
+       * НҮХЭН ЖОРЛОН — 3D-д зайнаас ЦЭГ, ойроос CALLOUT.
+       *
+       * Солилтыг давхаргын масштабын хязгаараар хийнэ (ажиллах явцад юу ч
+       * бодогдохгүй):
+       *   · цэг     — 3D-д `maxScale = 3,000` тавьж ойртоход АЛГА болно;
+       *               2D-д хязгааргүй (0) тул бүх зумд харагдана.
+       *   · callout — `minScale = 3,000` (build-д тогтоосон) тул зөвхөн ойроос,
+       *               мөн ЗӨВХӨН 3D-д. 2D-д дээрээс харахад босоо шугам
+       *               харагдахгүй тул утгагүй.
+       */
+      if (l.id === IRGED_TOILET.id) {
+        const fl = l as FeatureLayer;
+        fl.visible = on.has(l.id) && dim !== 'bim';
+        fl.maxScale = is3D(dim) ? TOILET_PIN_SCALE : 0;
+        /**
+         * Симбол нь ГОРИМООР өөр:
+         *   · 2D → хавтгай цэг (`toiletDot`) + кластер + bloom
+         *   · 3D → газраас бага зэрэг хөвсөн дугуй (`toiletIcon3D`) — эс бөгөөс
+         *          мешийн барилга, хашааны ард нуугдана
+         * `buildLayers` нь горимыг мэдэхгүй (Map кэшлэгддэг) тул ЭНД тавина.
+         */
+        fl.renderer = (
+          is3D(dim) ? toiletIcon3D(IRGED_TOILET.hue) : toiletDot(IRGED_TOILET.hue)
+        ) as unknown as __esri.Renderer;
+        return;
+      }
+      if (l.id === TOILET_PIN_ID) {
+        l.visible = on.has(IRGED_TOILET.id) && dim === '3d';
+        return;
+      }
       if (l.id.startsWith('scene:')) { l.visible = dim === '3d'; return; }
       if (l.id.startsWith('bim:')) { l.visible = dim === 'bim'; return; }
       // Web scene-ийн 3D давхаргууд — ЗӨВХӨН BIM горимд (SceneView) харагдана.
@@ -2097,7 +2567,11 @@ export const MapCanvas = memo(function MapCanvas({
         const hlOn = is3D(dim) && hl.where && (!hlOnly || hlOnly.includes(l.id))
           ? hl.where
           : null;
-        const parts = [base, hlOn].filter(Boolean) as string[];
+        /* ⚠️ Давхаргын ТОГТМОЛ шүүлт (`LayerDef.where`) — бүсийн болон
+           тодруулгын шүүлтээс ТУСДАА, ҮРГЭЛЖ хүчинтэй. IoT мэдрэгчид үүгээр
+           10,000 давхардсан телеметрийн цэгээс ганц суурилуулалтын мөрийг л
+           үлдээнэ; эс бөгөөс бүсээр шүүхэд энэ нөхцөл алдагдана. */
+        const parts = [d.where ?? null, base, hlOn].filter(Boolean) as string[];
         (l as FeatureLayer).definitionExpression = (
           parts.length ? parts.map((p) => `(${p})`).join(' AND ') : null
         ) as unknown as string;
@@ -2184,9 +2658,12 @@ export const MapCanvas = memo(function MapCanvas({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready || !is3D(dim)) { setMeshError(null); return; }
+    // ⚠️ Меш нь харагдацаас хамаарна (`sceneList`) — үндсэн SCENE-ийг хатуу
+    //    шалгавал «Иргэдэд хүрэх үр өгөөж» дээр байхгүй давхарга хайж, алдааны
+    //    тэмдэг хэзээ ч гарахгүй болно.
     const ids = dim === 'bim'
       ? BIM.layers.map((b) => b.key)
-      : SCENE.layers.map((m) => `scene:${m.key}`);
+      : sceneList.map((m) => `scene:${m.key}`);
     const layers = ids.map((id) => map.findLayerById(id)).filter((l): l is Layer => l != null);
     if (!layers.length) { setMeshError(null); return; }
     let alive = true;
@@ -2196,10 +2673,11 @@ export const MapCanvas = memo(function MapCanvas({
       setMeshError(failed === 0 ? null : failed);
     });
     return () => { alive = false; };
-  }, [dim, ready]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dim, ready, sceneKey]);
 
   return (
-    <div className={s.wrap}>
+    <div className={`${s.wrap} ${fs ? s.fs : ''}`}>
       <div ref={el} className={s.view} />
       {!ready && !initError && <div className={s.loading}>Газрын зураг ачаалж байна…</div>}
 

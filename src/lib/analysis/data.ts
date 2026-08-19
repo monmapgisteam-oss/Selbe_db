@@ -24,10 +24,12 @@ import type Geometry from '@arcgis/core/geometry/Geometry';
 type GeomArg = __esri.GeometryUnion;
 import type Polygon from '@arcgis/core/geometry/Polygon';
 import { layerUrl, LAYER_BY_ID, ZONE_FIELDS, zoneCanon, zoneRefValues, zoneType } from '@/lib/services';
+import { classifyBuilding, buildingTrips } from './transport';
 import {
   WKID, SRC, ENGINEERING_IDS, SOCIAL_FACILITIES, GREEN_CATEGORIES,
   BF, isResidential, isSellable, EXCLUDED_ZONE_TYPES,
   BUILDING_PURPOSES, BUILDING_PURPOSE_OTHER, buildingPurposeKey, ASSUME_MET,
+  SALE_PRICE_PER_M2,
   type ParkingOpt,
 } from './config';
 
@@ -47,7 +49,10 @@ const n = (v: unknown) => (v == null || !Number.isFinite(Number(v)) ? 0 : Number
 const PAGE = 2000;
 async function fetchAll(u: string, outFields: string[], returnGeometry = false): Promise<Feat[]> {
   const out: Feat[] = [];
-  for (let start = 0; ; start += PAGE) {
+  // ⚠️ Дараагийн хуудсыг ИРСЭН бичлэгийн тоогоор ахиулна (PAGE-ээр НЕ).
+  // Сервер хариуны хэмжээгээр таслахад 2000-аас цөөн ирж, exceededTransferLimit
+  // үнэн байдаг — PAGE-ээр ахиулбал дундах бичлэгүүд чимээгүй алдагдана.
+  for (let start = 0; ; ) {
     const q = new Query({
       where: '1=1',
       outFields,
@@ -60,6 +65,7 @@ async function fetchAll(u: string, outFields: string[], returnGeometry = false):
     out.push(...(res.features as unknown as Feat[]));
     if (res.features.length === 0) break;
     if (res.features.length < PAGE && !res.exceededTransferLimit) break;
+    start += res.features.length;
   }
   return out;
 }
@@ -95,11 +101,22 @@ export type Zone = {
   households: number;
   gfaM2: number;
   gfaSaleM2: number;
+  /** Барилгын ХӨЛ талбайн нийлбэр (м²) — полигоны бодит талбай, давхаргүй */
+  builtM2: number;
   salesValue: number;
   salesValueRes: number;
 
   greenByCat: Record<string, number>;
   greenM2: number;
+  /**
+   * НӨЛӨӨЛЛИЙН БҮС — бүсийн ОРОН СУУЦНЫ барилга бүрээс хамгийн ойрын ногоон
+   * байгууламж хүртэлх зай (м) ба тэнд оршин суудаг хүний тоо.
+   *
+   * ⚠️ Радиусыг гулсуураар өөрчилдөг тул ЗАЙГ нэг удаа бодоод хадгална —
+   * хамралт нь дараа нь энгийн шүүлт (`d <= R`) болно. Эс бөгөөс гулсуур
+   * хөдлөх бүрд 800 полигоны union ба 368 зайн тооцоо дахин явна.
+   */
+  greenDist: { pop: number; d: number }[];
 
   /* Орон зайн түүхий утга */
   transitM: number | null;
@@ -166,6 +183,30 @@ export type AnalysisData = {
   greenCats: string[];
   /** Барилгын зориулалтын бүлгүүд — «Барилгын ангилал» карт */
   buildingCats: BuildingPurposeStat[];
+  /** Барилгын цэгүүд — «Байршил» картын шинжилгээ */
+  bldPts: LocationPt[];
+};
+
+/**
+ * БАРИЛГЫН ЦЭГ — «Байршил» картын шинжилгээний нэгж.
+ *
+ * ⚠️ Зайг УРЬДЧИЛАН бодохгүй: хэрэглэгч ЯМАР Ч барилгыг сонгож болох тул бүх
+ * хосын зай (368² ≈ 135,000) хэрэг болно. Оронд нь координатыг өгөөд UI тал
+ * дээр сонгосон барилгаас нь л (368 тооцоо) бодуулна.
+ *
+ * ⚠️ Координат нь UTM 48N (метр, `WKID`) тул зай нь ШУУД метрээр гарна.
+ */
+export type LocationPt = {
+  oid: number;
+  purpose: string;
+  /** Зориулалтын БҮЛЭГ (`BUILDING_PURPOSES`) — өнгө, шүүлтэд */
+  group: string;
+  zone: string | null;
+  pop: number;
+  /** Оргил цагийн хүн-зорчилт (`transport.ts`-ийн загвар) */
+  trips: number;
+  x: number;
+  y: number;
 };
 
 /** Нэг зориулалтын бүлгийн нэгтгэл */
@@ -239,7 +280,7 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
   onProgress('Барилга байгууламж…', 22);
   const buildings = await fetchAll(url(SRC.buildings), [
     'OBJECTID', 'ZONE_ID', BF.population, BF.capacity, BF.households, BF.status,
-    BF.gfa, BF.purpose, BF.price,
+    BF.gfa, BF.purpose, BF.foot,
   ], true);
 
   onProgress('Ногоон байгууламж…', 38);
@@ -247,7 +288,15 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
   //    бүсийн код `RefName_12`-д БҮГД бичигдсэн (кодгүй объект байхгүй), талбай
   //    `Shape__Area` (м²) нь бүсийн хилээр тайрагдсан. Ангилалгүй — бүх объект
   //    `GREEN_CATEGORIES`-ийн ганц түлхүүрт нэгдэнэ.
-  const green = await fetchAll(url(SRC.green), ['RefName_12', 'Shape__Area']);
+  // ⚠️ ГЕОМЕТРТЭЙ: «нөлөөллийн бүс» арга нь ногооноос барилга хүртэлх ЗАЙГ
+  //    хэмждэг тул зөвхөн талбайн тоо хангалтгүй.
+  // ⚠️ АНАЛИЗ нь ХУУЧИН intersect үйлчилгээг ХЭВЭЭР уншина (2026-08-13):
+  //    test_data [35]-д ганц dissolve-полигон, `RefName_12` алга — бүс тус
+  //    бүрийн ногоон талбай тэндээс бодогдохгүй. Зөвхөн ЗУРГИЙН давхарга
+  //    test_data руу шилжсэн; тооцооны эх энэ хаяг хэвээр.
+  const GREEN_DATA_URL =
+    'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/nogoon_baiguulamj/FeatureServer/0';
+  const green = await fetchAll(GREEN_DATA_URL, ['RefName_12', 'Shape__Area'], true);
 
   onProgress('Нийтийн тээврийн зогсоол…', 50);
   const [bus, lrt] = await Promise.all([
@@ -268,6 +317,13 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
   // ⚠️ Нэгтгэсэн (union) геометр — эс бөгөөс бүс бүрд 4,000+ шугам тус бүрээр
   //    зай бодох болж, 52 × 4,000 = 200,000 тооцоо явна.
   const engUnion = engGeoms.length ? geometryEngine.union(engGeoms) : null;
+
+  /**
+   * ⚠️ Ногоон байгууламжийн НЭГТГЭСЭН геометр — «нөлөөллийн бүс» аргад.
+   * 807 полигон тус бүрээр зай бодвол 368 × 807 = 297,000 тооцоо явна.
+   */
+  const greenGeoms = green.map((f) => f.geometry).filter(Boolean) as GeomArg[];
+  const greenUnion = greenGeoms.length ? geometryEngine.union(greenGeoms) : null;
 
   /* ── Ногоон байгууламжийг бүс + ангиллаар ── */
   const zoneIds = new Set(zoneFeats.map((f) => zoneCanon(f.attributes[Z.id])));
@@ -328,6 +384,7 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
       ...emptyAgg(),
       greenByCat: greenByZone.get(id) ?? {},
       greenM2: 0,
+      greenDist: [],
       transitM, engDistM,
       social: null,
       parkingSupply: 0, parkingNeed: null, parkingGap: null,
@@ -340,7 +397,7 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
   aggregateBuildings(zones, buildings);
 
   onProgress('Нийгмийн дэд бүтцийн хүртээмж…', 93);
-  computeSocialAccess(zones, buildings);
+  computeSocialAccess(zones, buildings, greenUnion);
 
   onProgress('Бэлэн', 100);
 
@@ -348,8 +405,38 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
     zones,
     greenCats: [...greenCats].sort(),
     buildingCats: groupBuildingPurposes(buildings),
+    bldPts: locationPts(buildings),
   };
 }
+
+/**
+ * Барилга бүрийн ТӨВ ЦЭГ + шинжилгээнд хэрэгтэй атрибут.
+ *
+ * ⚠️ Төв цэггүй бичлэгийг алгасна — зайн тооцоонд оруулах боломжгүй.
+ */
+function locationPts(buildings: Feat[]): LocationPt[] {
+  const out: LocationPt[] = [];
+  for (const f of buildings) {
+    const cen = (f.geometry as Polygon | null)?.centroid;
+    if (!cen) continue;
+    const a = f.attributes;
+    const purpose = String(a[BF.purpose] ?? '').trim();
+    const pop = n(a[BF.population]);
+    const cap = n(a[BF.capacity]);
+    out.push({
+      oid: n(a.OBJECTID),
+      purpose,
+      group: buildingPurposeKey(purpose),
+      zone: (a._zone as string | undefined) ?? null,
+      pop,
+      trips: buildingTrips(classifyBuilding(purpose), pop, cap),
+      x: cen.x,
+      y: cen.y,
+    });
+  }
+  return out;
+}
+
 
 /**
  * Барилгуудыг ЗОРИУЛАЛТЫН бүлгээр нэгтгэнэ.
@@ -397,7 +484,7 @@ function emptyAgg() {
   return {
     population: 0, residentPop: 0, capacityPop: 0,
     buildingCount: 0, households: 0,
-    gfaM2: 0, gfaSaleM2: 0,
+    gfaM2: 0, gfaSaleM2: 0, builtM2: 0,
     salesValue: 0, salesValueRes: 0,
   };
 }
@@ -453,13 +540,16 @@ function aggregateBuildings(zones: Zone[], buildings: Feat[]) {
     const gfa = n(a[BF.gfa]);
     const res = isResidential(a[BF.purpose]);
     const sell = isSellable(a[BF.status]);
-    const value = sell ? gfa * n(a[BF.price]) : 0;
+    // ⚠️ Урьд нь барилгын `negj_une` талбараас уншдаг байв — тэр нь бүх бичлэгт
+    //    ижил 4.7 сая байсан бөгөөд шинэ давхаргад байхгүй (`SALE_PRICE_PER_M2`).
+    const value = sell ? gfa * SALE_PRICE_PER_M2 : 0;
 
     b.population += pop + cap;
     b.residentPop += pop;
     b.capacityPop += cap;
     b.gfaM2 += gfa;
     if (sell) b.gfaSaleM2 += gfa;
+    b.builtM2 += n(a[BF.foot]);
     b.salesValue += value;
     if (res) b.salesValueRes += value;
     b.households += n(a[BF.households]);
@@ -489,7 +579,7 @@ function aggregateBuildings(zones: Zone[], buildings: Feat[]) {
  * «сургууль хүрэхгүй байна» гэж дүгнэх нь утгагүй. `0%` гэж бичвэл тэр бүс
  * оноололд ХУДЛАА торох болно.
  */
-function computeSocialAccess(zones: Zone[], buildings: Feat[]) {
+function computeSocialAccess(zones: Zone[], buildings: Feat[], greenUnion: GeomArg | null) {
   /** Байгууламжийн төв цэгүүд — төрлөөр */
   const facs: Record<string, __esri.Point[]> = {};
   for (const sf of SOCIAL_FACILITIES) facs[sf.key] = [];
@@ -517,6 +607,11 @@ function computeSocialAccess(zones: Zone[], buildings: Feat[]) {
   for (const z of zones) {
     const res = resByZone.get(z.id) ?? [];
     const pop = res.reduce((a, b) => a + b.pop, 0);
+
+    /* Ногоон хүртэлх зай — «нөлөөллийн бүс» аргын түүхий өгөгдөл */
+    z.greenDist = greenUnion
+      ? res.map((b) => ({ pop: b.pop, d: geometryEngine.distance(greenUnion, b.c, 'meters') }))
+      : [];
 
     const parts: SocialPart[] = SOCIAL_FACILITIES.map((sf) => {
       const pts = facs[sf.key];
@@ -587,7 +682,11 @@ export function computeEconomics(
     const buildCost = z.gfaSaleM2 * buildCostPerM2;
     const cost = infraCost + buildCost;
     const revenue = pricePerM2 == null ? z.salesValue : z.gfaSaleM2 * pricePerM2;
-    const revenueRes = pricePerM2 == null ? z.salesValueRes : 0;
+    // ⚠️ Орон сууцны орлогыг гараар үнэ өөрчлөхөд 0 болгож ХАЯХГҮЙ — `salesValueRes`
+    //    нь орон сууцны зарагдах талбай × SALE_PRICE_PER_M2 тул шинэ үнэд
+    //    ХАРЬЦАНГУЙ бодно (эс бөгөөс «үүнээс орон сууц» задаргаа гэнэт 0 гарна).
+    const revenueRes =
+      pricePerM2 == null ? z.salesValueRes : (z.salesValueRes / SALE_PRICE_PER_M2) * pricePerM2;
     const profit = revenue - cost;
     z.econ = {
       infraCost, buildCost, cost, revenue, revenueRes, profit,
@@ -621,12 +720,24 @@ export function computeRaw(
   scoreTypes?: Set<string>,
 ) {
   for (const z of zones) {
-    // Оноололд орохгүй бүс — түүхий үзүүлэлт бодохгүй (raw хоосон → оноо null → саарал).
-    // Гараар идэвхжүүлсэн ангилал бол ХАСАХГҮЙ (доор бодогдоно).
-    if (z.excluded && !scoreTypes?.has(z.type)) { z.raw = {}; z.rawActual = {}; continue; }
+    /**
+     * ⚠️ НОГООН ТАЛБАЙГ БҮХ БҮСЭД бодно — оноололоос хассан бүсэд ч.
+     *
+     * Урьд нь энэ мөр хасалтын доор байсан тул «Ногоон байгууламж, тохижилт»
+     * ангилалтай 10 бүсийн 16.1 га ногоон нь `greenM2 = 0` болж, төслийн ногоон
+     * 54 га-гийн оронд 36 га гэж харагддаг байв — яг ногоон байгууламжийн бүсийн
+     * ногоон нь тоологдохгүй байсан нь илт буруу.
+     *
+     * ⚠️ ОНООЛОЛТ хэвээр хасагдана: `raw` хоосон үлдэх тул тэр бүс саараар
+     * харагдаж, эрэмбэ/дундажид орохгүй. Энд зөвхөн НЭГТГЭЛ бодогдоно.
+     */
     z.greenM2 = Object.entries(z.greenByCat)
       .filter(([cat]) => activeGreen.has(cat))
       .reduce((a, [, v]) => a + v, 0);
+
+    // Оноололд орохгүй бүс — түүхий үзүүлэлт бодохгүй (raw хоосон → оноо null → саарал).
+    // Гараар идэвхжүүлсэн ангилал бол ХАСАХГҮЙ (доор бодогдоно).
+    if (z.excluded && !scoreTypes?.has(z.type)) { z.raw = {}; z.rawActual = {}; continue; }
 
     z.parkingSupply = z.etNiit;
     z.parkingNeed = parkingNeedOf(z, parking);
@@ -638,8 +749,20 @@ export function computeRaw(
       far: z.zoneFar && z.zoneFar > 0 ? z.zoneFar : null,
       bcr: z.zoneBcr && z.zoneBcr > 0 ? z.zoneBcr : null,
       parking: z.parkingNeed && z.parkingNeed > 0 ? (z.parkingSupply / z.parkingNeed) * 100 : null,
-      // Ногоон — ЗӨВХӨН оршин суугчаар: норм нь «нэг ОРШИН СУУГЧид ногдох м²»
+      /**
+       * НОГООН — ХОЁР ТУСДАА үзүүлэлт, нягтшилтай ЯГ ижил хос:
+       *   · `green`    — нэг ОРШИН СУУГЧид ногдох м² (БНБД 8.2, жинтэй)
+       *   · `greenCap` — нэг ХҮЧИН ЧАДАЛД ногдох м² (лавлагаа, жингүй)
+       *
+       * ⚠️ Хуваарийг НИЙЛҮҮЛЖ БОЛОХГҮЙ (`z.population`): сургуулийн сурагч
+       * ойролцоох орон сууцны оршин суугчтай давхардаж тоологдох тул нэг хүнд
+       * ногдох ногоон хиймлээр буурна.
+       *
+       * ⚠️ Хоёуланг нь ЖИНЛЭВЭЛ нэг ногоон талбай оноонд ХОЁР удаа тоологдоно —
+       * тиймээс `greenCap` нь `ref` (оноололд орохгүй).
+       */
       green: z.residentPop > 0 ? z.greenM2 / z.residentPop : null,
+      greenCap: z.capacityPop > 0 ? z.greenM2 / z.capacityPop : null,
       /**
        * НЯГТШИЛ — ХОЁР ТУСДАА үзүүлэлт (хэрэглэгчийн шийдвэр, 2026-08-12).
        *
@@ -653,6 +776,8 @@ export function computeRaw(
        */
       density: z.polyHa > 0 && z.residentPop > 0 ? z.residentPop / z.polyHa : null,
       densityCap: z.polyHa > 0 && z.capacityPop > 0 ? z.capacityPop / z.polyHa : null,
+      // ⚠️ `transit` үзүүлэлт ОНООЛОЛООС хасагдсан (`INDICATORS`-ыг үз) ч түүхий
+      //    утгыг нь үлдээв: буцаахад ганц мөр (үзүүлэлтийн тодорхойлолт) л хэрэгтэй.
       transit: z.transitM,
       engineering: z.engDistM,
       social: z.social?.score ?? null,
@@ -673,11 +798,6 @@ export function computeRaw(
 }
 
 /** Барилгын давамгайлах нэгж үнэ (₮/м²) — гулсуурын анхны утга */
-export function dominantPrice(zones: Zone[]): number {
-  const total = zones.reduce((a, z) => a + z.gfaSaleM2, 0);
-  const value = zones.reduce((a, z) => a + z.salesValue, 0);
-  return total > 0 ? value / total : 0;
-}
 
 /** Анхдагчаар идэвхтэй ногоон ангиллууд */
 export const defaultGreenCats = () =>

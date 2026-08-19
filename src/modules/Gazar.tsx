@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
 import { Icon } from '@/components/Icon';
 import { Stats, Stat, Donut, Bars, Ring, Empty, Loading } from '@/components/ui';
@@ -8,8 +8,8 @@ import { useAsync } from '@/lib/useAsync';
 import {
   queryStats, queryGroup, groups, count, sum, avg, type Aoi, type Row,
 } from '@/lib/query';
-import { GAZAR_BUILDING, GAZAR_PARCEL, PARCEL_LEFT, PARCEL_PROGRESS_HUES } from '@/lib/services';
-import { num, text, shades } from '@/lib/format';
+import { GAZAR_BUILDING, GAZAR_PARCEL, PARCEL_LEFT } from '@/lib/services';
+import { num, text, shades, CAT_LIGHT, NO_DATA } from '@/lib/format';
 import o from './overview.module.css';
 import g from './gazar.module.css';
 
@@ -33,21 +33,37 @@ const VISIBLE_IDS = ['gazar:parcel', 'gazar:building', 'land:left'];
 /** Полигоноор ШҮҮГДЭХ давхаргууд — featureEffect (бүдгэрүүлэлт) зөвхөн эдгээрт */
 const FILTER_IDS = ['land:left', 'gazar:building', 'gazar:parcel'];
 
-/** `Tuluv` төлөв → өнгө ба нэр (нэгтгэсэн үйлчилгээний гол ангилал) */
+/** `Tuluv` төлөв → өнгө ба нэр (нэгтгэсэн үйлчилгээний гол ангилал).
+ *  ⚠️ envhub: ӨНГӨ = УТГА. «Бүрэн чөлөөлсөн» нь жинхэнэ САЙН төлөв тул
+ *  var(--good), «Үлдсэн» нь барилгад саад буй муу төлөв тул var(--bad),
+ *  завсрын «Цэвэрлэсэн» нь төвийг сахисан өгөгдлийн өнгө var(--data).
+ *  Урьдын чимэглэлийн hex (#22c55e/#0ea5e9/#e11d48) хасагдсан. */
 const STATUS_META = [
-  { value: 'Бүрэн чөлөөлсөн', label: 'Бүрэн чөлөөлсөн', color: '#22c55e' },
-  { value: 'Цэвэрлэсэн нэгж талбар', label: 'Цэвэрлэсэн', color: '#0ea5e9' },
-  { value: 'Үлдсэн нэгж талбар', label: 'Үлдсэн', color: '#e11d48' },
+  { value: 'Бүрэн чөлөөлсөн', label: 'Бүрэн чөлөөлсөн', color: 'var(--good)' },
+  { value: 'Цэвэрлэсэн нэгж талбар', label: 'Цэвэрлэсэн', color: 'var(--data)' },
+  { value: 'Үлдсэн нэгж талбар', label: 'Үлдсэн', color: 'var(--bad)' },
 ] as const;
 
-/** Диаграмын палитр — ангилал бүрд ялгарах өнгө (явцаас бусад талбарт) */
 /**
- * ⚠️ НЭГ ӨНГӨНИЙ СҮҮДЭР — урьд нь 10 өөр солонгон өнгө байсныг хэрэглэгчийн
- * хүсэлтээр Газар чөлөөлөлт харагдацын ногоон акцентын уусгалт болгов. Барилгын
- * төрөл, газар ашиглалтын бүлгүүд өөр «утга»гүй, зөвхөн ялгах хэрэгцээтэй.
- * Явцын өнгө (`PARCEL_PROGRESS_HUES`) нь утга агуулсан тул хэвээр.
+ * ⚠️ Статус баганыг ХАТУУ 3-аар БИШ, өгөгдлөөс ШУУД угсарна. Эх сервист
+ * мэдэгдэж буй 3-аас ГАДНА төлөв (жишээ нь «Гэрээлсэн») эсвэл хоосон утга гарч
+ * ирвэл тэдгээр талбарууд «Нийт»-д тоологдоод график дээр АЛГА болж, баганы
+ * нийлбэр нийт дүнд хүрэхгүй байв. Эдгээр map нь мэдэгдэж буй төлөвүүдэд тогтмол
+ * нэр/өнгө/дараалал өгч, бусдыг нь автоматаар доор нэмнэ — баганууд «Нийт»-тэй
+ * ҮРГЭЛЖ тэнцэнэ (шинэ/устсан төлөвт өөрөө зохицно). */
+const STATUS_ORDER: string[] = STATUS_META.map((m) => m.value);
+const STATUS_LABEL: Record<string, string> = Object.fromEntries(STATUS_META.map((m) => [m.value, m.label]));
+const STATUS_COLOR: Record<string, string> = Object.fromEntries(STATUS_META.map((m) => [m.value, m.color]));
+
+/** Donut-ийн зүсмэгийн палитр — ГАНЦ өгөгдлийн өнгөний (Сэлбэ teal) сүүдэр */
+/**
+ * ⚠️ envhub: өгөгдлийн ГАНЦ өнгө (var(--data)). Урьд нь энэ харагдацын НОГООН
+ * identity-ийн (CAT_LIGHT[3]) уусгалт байсныг --data-гийн эх болох Сэлбэ teal
+ * (CAT_LIGHT[0]) руу шилжүүлэв — Dashboard-ын `shade(ACCENT…)`-тэй ижил хэв.
+ * Зүсмэгүүд утга ялгаагүй тул нэг өнгөний сүүдрээр (зөвхөн Donut-д) зааглагдана;
+ * Bars нь бүр ганц var(--data)-гаар зурагдана.
  */
-const PALETTE = shades('#16a34a', 10);
+const PALETTE = shades(CAT_LIGHT[0], 10);
 
 /** м² → га */
 const ha = (m2: number) => num(m2 / 10_000, 2);
@@ -70,7 +86,7 @@ function toItems(rows: Row[], field: string, valueKey: string, unit = 'ш') {
   }));
 }
 
-type StatusBars = { key: string; label: string; value: number; color: string }[];
+type StatusBars = { key: string; label: string; value: number; color: string; where: string }[];
 type ReasonItems = {
   key: string; label: string; n: number; pct: number; area: number; color: string;
   /** Түүхий утгуудаас урьдчилан бүтээсэн WHERE — дарж зурагт шүүхэд */
@@ -97,7 +113,8 @@ type GazarData = {
   statusAreaBy: StatusBars;
   /** Үлдсэн талбарын ШАЛТГААН (явцын_мэдээ) — тоо/хувь/талбайг тус тусад нь */
   reasons: ReasonItems;
-  b: { n: number; area: number; value: number; floors: number; unitPrice: number };
+  /** ⚠️ area устсан — test_data [96]-д area_m2 талбар байхгүй */
+  b: { n: number; value: number; floors: number; unitPrice: number };
   bType: ReturnType<typeof toItems>;
   bMat: ReturnType<typeof toItems>;
   p: { n: number; area: number };
@@ -191,8 +208,9 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         L.url, L.fields.progress, [count('OBJECTID', 'n'), sum(L.fields.area, 'a')],
         `${L.fields.status}='Үлдсэн нэгж талбар'`, area,
       ),
+      // ⚠️ area_m2 талбар test_data [96]-д устсан тул талбайн нийлбэр асуухгүй
       queryStats(B.url, [
-        count(B.oid, 'n'), sum(B.fields.area, 'area'), sum(B.fields.value, 'val'),
+        count(B.oid, 'n'), sum(B.fields.value, 'val'),
         avg(B.fields.floors, 'fl'), avg(B.fields.unitPrice, 'up'),
       ], '1=1', area),
       queryGroup(B.url, B.fields.type, [count(B.oid, 'n')], '1=1', area),
@@ -201,23 +219,52 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       queryGroup(P.url, P.fields.right, [count(P.oid, 'n')], '1=1', area),
       queryGroup(P.url, P.fields.landuse, [count(P.oid, 'n')], '1=1', area),
     ]);
-    // Төлөв бүрийн тоо/талбай — нэрийн арын зайг арилгаж жиших
-    const st = (value: string) => {
-      const r = lStatus.find((x) => text(x[L.fields.status]).trim() === value);
-      return { n: Number(r?.n ?? 0), a: Number(r?.a ?? 0) };
-    };
+    // ТӨЛӨВ бүрийг ӨГӨГДЛӨӨС нэгтгэнэ (арын зай арилгаж, хоосон/null = «Тодорхойгүй»).
+    // Хатуу 3 биш тул нэг ч талбар графикаас гээгдэхгүй — баганууд «Нийт»-тэй тэнцэнэ.
+    const smap = new Map<string, { n: number; a: number; raws: Set<string> }>();
+    for (const r of lStatus) {
+      const raw = String(r[L.fields.status] ?? ''); // түүхий утга — WHERE-д яг таарна
+      let k = text(r[L.fields.status]).trim();
+      if (!k || k === '—') k = 'Тодорхойгүй';
+      const cur = smap.get(k) ?? { n: 0, a: 0, raws: new Set<string>() };
+      cur.n += Number(r.n ?? 0);
+      cur.a += Number(r.a ?? 0);
+      if (raw.trim() !== '') cur.raws.add(raw);
+      smap.set(k, cur);
+    }
+    const st = (value: string) => smap.get(value) ?? { n: 0, a: 0, raws: new Set<string>() };
     const cleared = st('Бүрэн чөлөөлсөн');
     const cleaned = st('Цэвэрлэсэн нэгж талбар');
     const remaining = st('Үлдсэн нэгж талбар');
-    const statusAreaBy: StatusBars = STATUS_META.map((m) => {
-      const s = st(m.value);
-      const ha2 = Math.round(s.a / 100) / 100;
-      // Тоо ба нэгж (га) ХАМТ — «1,695 талбар · 78.08 га»
-      return {
-        key: m.value, label: m.label, value: ha2,
-        display: `${num(s.n)} талбар · ${num(ha2, 2)} га`, color: m.color,
-      };
-    });
+    // Мэдэгдэж буй 3 төлөв ЭХЭНД (тогтмол өнгө/дараалал), бусад нь тоогоор нь араас.
+    const statusAreaBy: StatusBars = [...smap.entries()]
+      .sort((x, y) => {
+        const ox = STATUS_ORDER.indexOf(x[0]);
+        const oy = STATUS_ORDER.indexOf(y[0]);
+        if (ox !== -1 || oy !== -1) return (ox === -1 ? 99 : ox) - (oy === -1 ? 99 : oy);
+        return y[1].n - x[1].n;
+      })
+      .map(([value, s]) => {
+        const ha2 = Math.round(s.a / 100) / 100;
+        // ⚠️ Дарж шүүхэд WHERE-ийг ТҮҮХИЙ утгуудаас (шалтгааны шүүлттэй ижил) угсарна:
+        //    түлхүүр нь арын зай арилгасан хувилбар тул `Tuluv = '<trim>'` нь зай-мэдрэг
+        //    сан дээр таарахгүй байж болзошгүй. Тодорхойгүй = NULL/хоосон.
+        const eq = [...s.raws].filter((x) => x.trim() !== '')
+          .map((x) => `${L.fields.status} = '${sq(x)}'`);
+        const where = value === 'Тодорхойгүй'
+          ? `(${L.fields.status} IS NULL OR ${L.fields.status} = '')`
+          : eq.length ? `(${eq.join(' OR ')})` : `${L.fields.status} = '${sq(value)}'`;
+        // Тоо ба нэгж (га) ХАМТ — «1,703 талбар · 78.08 га»
+        return {
+          key: value,
+          label: STATUS_LABEL[value] ?? value,
+          value: ha2,
+          display: `${num(s.n)} талбар · ${num(ha2, 2)} га`,
+          // Гэнэтийн шинэ төлөв — утга нь үл мэдэгдэх тул төвийг сахисан өгөгдлийн өнгө
+          color: STATUS_COLOR[value] ?? (value === 'Тодорхойгүй' ? NO_DATA : 'var(--data)'),
+          where,
+        };
+      });
     // Шалтгааны нэрийг цэвэрлэж (арын зай, төгсгөлийн «.») нэгтгэнэ.
     // ⚠️ Түүхий утгуудыг мөн хадгална — дарж шүүхэд WHERE яг таарах ёстой.
     const rmap = new Map<string, { n: number; a: number; raws: Set<string> }>();
@@ -244,7 +291,10 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           n: v.n,
           pct: Math.round((v.n / remN) * 100),
           area: Math.round(v.a / 100) / 100,
-          color: PARCEL_PROGRESS_HUES[label] ?? '#94a3b8',
+          // ⚠️ envhub: шалтгаанууд бүгд «үлдсэн» бүлгийн ДОТООД ангилал — сайн/муу
+          //    утга заахгүй тул ганц өгөгдлийн өнгө; «Тодорхойгүй» нь саарал бэх.
+          //    (Урьдын PARCEL_PROGRESS_HUES солонго нь чимэглэл болж байсан.)
+          color: label === 'Тодорхойгүй' ? NO_DATA : 'var(--data)',
           // Шалтгаан нь зөвхөн ҮЛДСЭН талбарт хамаатай тул төлөвөөр хамт хязгаарлана
           where: `${L.fields.status}='Үлдсэн нэгж талбар' AND (${eq.join(' OR ')})`,
         };
@@ -261,7 +311,7 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       statusAreaBy,
       reasons,
       b: {
-        n: Number(bStat.n ?? 0), area: Number(bStat.area ?? 0),
+        n: Number(bStat.n ?? 0),
         value: Number(bStat.val ?? 0), floors: Number(bStat.fl ?? 0),
         unitPrice: Number(bStat.up ?? 0),
       },
@@ -287,8 +337,8 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     <div className={g.frame}>
       {/* ── ЗҮҮН: Чөлөөлөлт (үлдсэн нэгж талбар) — үзүүлэлт + явц бүгд энд ── */}
       <div className={g.left}>
-        {/* Баганын толгой — баруунтай ИЖИЛ загвар, ӨӨР өнгө (ногоон = чөлөөлөлт) */}
-        <h3 className={g.colHd} style={{ '--tone': '#16a34a' } as CSSProperties}>
+        {/* Баганын толгой — envhub eyebrow: өнгөгүй; багана нь БАЙРЛАЛААРАА ялгарна */}
+        <h3 className={g.colHd}>
           Төслийн талбайн чөлөөлөх нэгж талбар
         </h3>
         <section className={`${g.panel} ${g.panelPrimary}`} aria-label="Төслийн талбайн чөлөөлөх нэгж талбар">
@@ -306,7 +356,8 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                   <Stat value={num(d.left.remaining)} unit="талбар" label="Үлдсэн" />
                 </Stats>
                 <div className={g.ringBox}>
-                  <Ring value={pct} size={148} width={14} color="#16a34a" label="чөлөөлсөн" />
+                  {/* «Чөлөөлсөн» — жинхэнэ САЙН төлөв тул var(--good) (нүүрний ижил цагирагтай нэг өнгө) */}
+                  <Ring value={pct} size={148} width={14} color="var(--good)" label="чөлөөлсөн" />
                   <p className={g.ringNote}>
                     <b className="num">{d ? num(d.left.resolved) : ''}</b> /{' '}
                     <span className="num">{d ? num(d.left.n) : ''}</span> талбар
@@ -314,14 +365,15 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                   </p>
                 </div>
                 <p className={g.subHead}>Талбай (га) төлөвөөр</p>
+                {/* limit БАЙХГҮЙ — бүх төлөв харагдаж, баганы нийлбэр «Нийт»-тэй тэнцэнэ */}
                 <Bars
                   items={d.statusAreaBy}
-                  limit={3}
                   selected={flt?.grp === 'status' ? flt.key : null}
-                  onSelect={(k) => pickFlt({
-                    grp: 'status', key: k, label: `Төлөв: ${k}`,
-                    where: `${PARCEL_LEFT.fields.status} = '${sq(k)}'`, only: ['land:left'],
-                  })}
+                  onSelect={(k) => {
+                    // Шалтгааны шүүлттэй ижил — item-ийн урьдчилан угсарсан (түүхий утгат) WHERE-ийг авна
+                    const it = d.statusAreaBy.find((x) => x.key === k);
+                    if (it) pickFlt({ grp: 'status', key: k, label: `Төлөв: ${k}`, where: it.where, only: ['land:left'] });
+                  }}
                 />
                 {d.reasons.length > 0 && (() => {
                   const selReason = flt?.grp === 'reason' ? flt.key : null;
@@ -443,8 +495,8 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
 
       {/* ── БАРУУН: Барилга + Кадастр (нэгтгэсэн багана) ── */}
       <div className={g.right}>
-        {/* Баганын толгой — зүүнтэй ИЖИЛ загвар, ӨӨР өнгө (цэнхэр = гаднах орчин) */}
-        <h3 className={g.colHd} style={{ '--tone': '#0ea5e9' } as CSSProperties}>
+        {/* Баганын толгой — зүүнтэй ЯГ ижил envhub eyebrow (өнгөт identity байхгүй) */}
+        <h3 className={g.colHd}>
           Төслийн талбайгаас гаднах нэгж талбар, барилга
         </h3>
         <section className={`${g.panel} ${g.panelOuter}`} aria-label="Барилга">
@@ -455,8 +507,9 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           <div className={g.panelBody}>
             {guard(!!d && d.b.n > 0, d && (
               <>
+                {/* «Талбай» stat 2026-08-13-нд хасагдав — area_m2 талбар test_data-д алга */}
                 <Stats cols={2}>
-                  <Stat value={ha(d.b.area)} unit="га" label="Талбай" />
+                  <Stat value={num(d.b.n)} unit="барилга" label="Тоо" />
                   <Stat value={money(d.b.value).v} unit={money(d.b.value).unit} label="Нийт үнэлгээ" />
                   <Stat value={d.b.floors ? num(d.b.floors, 1) : '—'} unit="давхар" label="Дундаж өндөр" />
                   <Stat value={d.b.unitPrice ? money(d.b.unitPrice).v : '—'} unit={d.b.unitPrice ? `${money(d.b.unitPrice).unit}/м²` : ''} label="Дундаж м² үнэ" />
@@ -474,8 +527,9 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                 {d.bMat.length > 0 && (
                   <>
                     <p className={g.subHead}>Материалаар</p>
+                    {/* envhub: Bars нь ГАНЦ өгөгдлийн өнгөөр — ялгааг дараалал, хэмжээ өгнө */}
                     <Bars
-                      items={d.bMat} inline limit={5}
+                      items={d.bMat.map((x) => ({ ...x, color: 'var(--data)' }))} inline limit={5}
                       selected={flt?.grp === 'bMat' ? flt.key : null}
                       onSelect={(k) => pickFlt({
                         grp: 'bMat', key: k, label: `Материал: ${k}`,
@@ -514,8 +568,9 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                 {d.pUse.length > 0 && (
                   <>
                     <p className={g.subHead}>Зориулалтаар</p>
+                    {/* envhub: Bars нь ГАНЦ өгөгдлийн өнгөөр — ялгааг дараалал, хэмжээ өгнө */}
                     <Bars
-                      items={d.pUse} inline limit={5}
+                      items={d.pUse.map((x) => ({ ...x, color: 'var(--data)' }))} inline limit={5}
                       selected={flt?.grp === 'pUse' ? flt.key : null}
                       onSelect={(k) => pickFlt({
                         grp: 'pUse', key: k, label: `Зориулалт: ${k}`,
