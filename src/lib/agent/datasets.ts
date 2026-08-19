@@ -105,29 +105,26 @@ const ALL: Dataset[] = [
     //    (`OBJECTID` БИШ). Буруу нэрээр `COUNT()` асуувал хүсэлт бүхэлдээ унана.
     oid: 'objectid',
     view: 'habea',
-    zoneField: HABEA.labor.fields.bagts,
+    // ⚠️ ӨРГӨН схем — багц нь гүйцэтгэгч тус бүрийн `Bagts_<SFX>` баганад байна.
+    //    Дээд түвшний ГАНЦ «багц» талбар БАЙХГҮЙ тул `zoneField` тавьж болохгүй
+    //    (тавибал `queryGroup` нь «Invalid field» гэж унана).
     synonyms: ['хабэа', 'ажилтан', 'ажиллах хүч', 'техник', 'кран', 'экскаватор'],
     fields: {
       [HABEA.labor.fields.ognoo]: 'Тайлангийн огноо',
-      [HABEA.labor.fields.bagts]: 'Багц',
-      [HABEA.labor.fields.turul]: 'Төрөл',
-      [HABEA.labor.fields.niitAjiltan]: 'Нийт ажилтны тоо',
-      [HABEA.labor.fields.mongol]: 'Монгол ажилтан',
-      [HABEA.labor.fields.gadaad]: 'Гадаад ажилтан',
+      [HABEA.labor.fields.niitAjiltan]: 'Нийт ажилтны тоо (бүх гүйцэтгэгч)',
       [HABEA.labor.fields.hunTsag]: 'Хүн-цаг',
-      [HABEA.labor.fields.niitTehnik]: 'Нийт техник',
-      [HABEA.labor.fields.tsamhagtKran]: 'Цамхагт кран',
-      [HABEA.labor.fields.avtoKran]: 'Авто кран',
-      [HABEA.labor.fields.achaanii]: 'Ачааны автомашин',
-      [HABEA.labor.fields.ekskavator]: 'Экскаватор',
-      [HABEA.labor.fields.kovsh]: 'Ковш',
-      [HABEA.labor.fields.usniMashin]: 'Усны машин',
+      [HABEA.labor.fields.niitTehnik]: 'Нийт техник (бүх гүйцэтгэгч)',
     },
     warn:
-      'Энэ бол ӨДӨР ТУТМЫН тайлан — мөр бүр нэг өдрийн нэг багцын мэдээ. ' +
+      'Энэ бол ӨДӨР ТУТМЫН НЭГДСЭН тайлан — мөр бүр НЭГ өдрийн бүх гүйцэтгэгчийн мэдээ. ' +
       'Ажилтны тоог бүх мөрөөр НИЙЛҮҮЛЭХ нь БУРУУ (нэг ажилтан олон өдөр давтагдана). ' +
-      'Тухайн өдрийн байдлыг асуувал огноогоор шүүнэ; хандлага асуувал огноогоор бүлэглэнэ. ' +
-      'Компани тус бүрийн задаргаа нь дагаварласан талбаруудаар (жиш. `_HHDMGK`) байдаг.',
+      'Тухайн өдрийн байдлыг асуувал СҮҮЛИЙН огноогоор шүүнэ; хандлага асуувал огноогоор эрэмбэлнэ. ' +
+      'Гүйцэтгэгч тус бүрийн задаргаа нь дагаварласан талбаруудаар байна: ' +
+      '`Bagts_<SFX>` (багц), `MNG_ajiltani_too_<SFX>` (монгол), `G_ajiltanii_too_<SFX>` (гадаад), ' +
+      '`Niit_ajiltan_<SFX>` (нийт ажилтан), `Tehnik_<SFX>` (техник) — ' +
+      'SFX ∈ HHDMGK, HBZIT, HBTIT, MSK, NBG, MK, P, MMSE, SC, OSNAAG, GUBB, CHHO. ' +
+      'Техникийн ТӨРЛИЙН (цамхагт кран, экскаватор г.м.) задаргаа энэ маягтад БАЙХГҮЙ — ' +
+      'краны талаар асуувал `Цамхагт_кран` давхаргаас уншина.',
   },
 
   {

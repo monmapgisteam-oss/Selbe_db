@@ -183,28 +183,19 @@ const normCrane = (r: Row): Crane => ({
 
 /* ─────────── Ажилтан · техник (өргөн схем) ─────────── */
 
-const TECH: { key: 'tsamhagtKran' | 'avtoKran' | 'achaanii' | 'ekskavator' | 'kovsh' | 'usniMashin'; label: string }[] = [
-  { key: 'tsamhagtKran', label: 'Цамхагт кран' },
-  { key: 'avtoKran', label: 'Авто кран' },
-  { key: 'achaanii', label: 'Ачааны машин' },
-  { key: 'ekskavator', label: 'Экскаватор' },
-  { key: 'kovsh', label: 'Ковш' },
-  { key: 'usniMashin', label: 'Усны машин' },
-];
-
 type LaborRow = {
   key: string; label: string; code: string; bagtsRaw: string; bagtsK: string;
   mongol: number; gadaad: number; ajiltan: number; tehnik: number;
-  tech: { key: string; label: string; value: number }[];
 };
 
 /**
  * Хүн хүч, техникийн «одоогийн байдал».
  *
- * Үндсэн зам: СҮҮЛИЙН бүртгэлээс (max огноо) гүйцэтгэгч бүрийн баганын бүлгийг
- * задлана — нэг бүртгэл өдрийн НЭГДСЭН тайлан тул нийлбэр нь тухайн өдрийн
- * бүрэн зураг. Бүх бүлэг хоосон бол (маягтыг энгийн талбараар нь бөглөсөн
- * хуучин маягийн өгөгдөл) багц тус бүрийн сүүлийн бүртгэлээс уншина.
+ * СҮҮЛИЙН бүртгэлээс (max огноо) гүйцэтгэгч бүрийн баганын бүлгийг задлана —
+ * нэг бүртгэл өдрийн НЭГДСЭН тайлан тул нийлбэр нь тухайн өдрийн бүрэн зураг.
+ *
+ * ⚠️ Шинэ маягт (2026-08) техникийг ЗӨВХӨН гүйцэтгэгчийн нийт тоогоор хөтөлдөг
+ * (`Tehnik_<SFX>`) — цамхагт кран/экскаватор гэх ТӨРЛИЙН задаргаа БАЙХГҮЙ.
  */
 function laborState(rows: Row[]): { rows: LaborRow[]; asOf: number | null; hunTsag: number } {
   if (!rows.length) return { rows: [], asOf: null, hunTsag: 0 };
@@ -217,38 +208,17 @@ function laborState(rows: Row[]): { rows: LaborRow[]; asOf: number | null; hunTs
       const f = laborCompanyFields(c.sfx);
       const mongol = nn(latest[f.mongol]);
       const gadaad = nn(latest[f.gadaad]);
-      const tech = TECH.map((t) => ({ key: t.key, label: t.label, value: nn(latest[f[t.key]]) }));
       const bagtsRaw = c.bagts ?? text(latest[f.bagts], '');
       return {
         key: c.sfx, label: c.label, code: c.code, bagtsRaw, bagtsK: bagtsKey(bagtsRaw),
         mongol, gadaad,
         ajiltan: nn(latest[f.niitAjiltan]) || mongol + gadaad,
-        tehnik: nn(latest[f.niitTehnik]) || tech.reduce((s, x) => s + x.value, 0),
-        tech,
+        tehnik: nn(latest[f.niitTehnik]),
       };
     })
     .filter((x) => x.ajiltan > 0 || x.tehnik > 0);
 
-  if (comp.length) return { rows: comp, asOf, hunTsag: nn(latest[L.hunTsag]) };
-
-  // Хуучин маягийн энгийн талбарууд — багц тус бүрийн СҮҮЛИЙН бүртгэл
-  const m = new Map<string, Row>();
-  rows.forEach((r) => {
-    const k = text(r[L.bagts], '—');
-    const cur = m.get(k);
-    if (!cur || dOf(r) >= dOf(cur)) m.set(k, r);
-  });
-  const gen: LaborRow[] = [...m.entries()]
-    .map(([bagtsRaw, r]) => ({
-      key: bagtsRaw, label: bagtsRaw, code: bagtsRaw, bagtsRaw, bagtsK: bagtsKey(bagtsRaw),
-      mongol: nn(r[L.mongol]), gadaad: nn(r[L.gadaad]),
-      ajiltan: nn(r[L.niitAjiltan]) || nn(r[L.mongol]) + nn(r[L.gadaad]),
-      tehnik: nn(r[L.niitTehnik]),
-      tech: TECH.map((t) => ({ key: t.key, label: t.label, value: nn(r[L[t.key]]) })),
-    }))
-    .filter((x) => x.ajiltan > 0 || x.tehnik > 0);
-  const hunTsag = [...m.values()].reduce((s, r) => s + nn(r[L.hunTsag]), 0);
-  return { rows: gen, asOf, hunTsag };
+  return { rows: comp, asOf, hunTsag: nn(latest[L.hunTsag]) };
 }
 
 /* ─────────── Туслах дүрслэл ─────────── */
@@ -515,11 +485,9 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     { key: 'mn', label: 'Монгол', value: mongol, color: 'var(--data)' },
     { key: 'fr', label: 'Гадаад', value: gadaad, color: 'var(--ink-3)' },
   ].filter((x) => x.value > 0);
-  const techBreak = TECH
-    .map((t) => ({
-      key: t.key, label: t.label,
-      value: fLabor.reduce((s, x) => s + (x.tech.find((y) => y.key === t.key)?.value ?? 0), 0),
-    }))
+  /* Техник — маягт ТӨРЛӨӨР задалдаггүй тул ГҮЙЦЭТГЭГЧЭЭР харуулна (богино код) */
+  const techByCompany = fLabor
+    .map((x) => ({ key: x.key, label: x.code, value: x.tehnik }))
     .filter((x) => x.value > 0)
     .sort((a, b) => b.value - a.value);
   /* Босоо графикт БОГИНО код — бүтэн нэр нь баганын доор багтахгүй (hover-т гарна) */
@@ -748,8 +716,8 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             ? <Bars items={craneByPkg} selected={pkg} onSelect={togglePkg} />
             : <Empty label="Бүртгэл алга" />}
         </Section>
-        <Section title="Техник — төрлөөр" note={`${num(totalTech)} нэгж`}>
-          {techBreak.length ? <Bars items={techBreak} /> : surveyEmpty}
+        <Section title="Техник — гүйцэтгэгчээр" note={`${num(totalTech)} нэгж`}>
+          {techByCompany.length ? <Bars items={techByCompany} /> : surveyEmpty}
         </Section>
         <Section
           title="Ажилтан — бүрэлдэхүүн"

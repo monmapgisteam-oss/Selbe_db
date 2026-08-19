@@ -2830,13 +2830,23 @@ export const USAN_SAN = {
  */
 export const HABEA = {
   labor: {
-    url: `${HJ}/survey123_732c0391190f4af59033d44b66358cb8/FeatureServer/0`,
+    /**
+     * ⚠️ 2026-08-19: маягт ДАХИН хэвлэгдэж item ID солигдсон. Хуучин
+     * `survey123_732c0391...` нь `CONT_0001 — Item does not exist or is
+     * inaccessible` буцааж, ХАБЭА хуудсыг бүхэлдээ унагаж байсан.
+     */
+    url: `${HJ}/survey123_60cf822671df4c3681cf8f77317bdb4f/FeatureServer/0`,
+    /**
+     * ЗӨВХӨН маягтын НИЙТ (roll-up) талбарууд. Шинэ маягт нь ажилтан/техникийг
+     * ЗӨВХӨН гүйцэтгэгчийн дагавартай баганаар хөтөлдөг тул монгол/гадаад
+     * задаргаа, техникийн ТӨРЛИЙН задаргаа дээд түвшинд БАЙХГҮЙ —
+     * `laborCompanyFields(sfx)`-ээр компани тус бүрээс уншина.
+     */
     fields: {
-      ognoo: "Ognoo", bagts: "Bagts", turul: "Turul",
-      niitAjiltan: "Niit_ajiltan", mongol: "mongol_ajiltani_too", gadaad: "gadaad_ajiltanii_too",
-      hunTsag: "Hun_tsag", niitTehnik: "Niit_tehnik",
-      tsamhagtKran: "tsamhagt_kran", avtoKran: "avto_kran", achaanii: "achaanii_avtomashin",
-      ekskavator: "Ekskavator", kovsh: "kovsh", usniMashin: "usni_mashin",
+      ognoo: "Ognoo",
+      niitAjiltan: "Niit_ajiltan",
+      hunTsag: "Hun_tsag",
+      niitTehnik: "Niit_tehnik",
     },
     /**
      * ӨРГӨН схем: маягтын НЭГ бүртгэл = өдрийн нэгдсэн тайлан бөгөөд ГҮЙЦЭТГЭГЧ
@@ -2892,13 +2902,8 @@ export const laborCompanyFields = (sfx: string) => ({
   mongol: `MNG_ajiltani_too_${sfx}`,
   gadaad: `G_ajiltanii_too_${sfx}`,
   niitAjiltan: `Niit_ajiltan_${sfx}`,
-  niitTehnik: `Niit_tehnik_${sfx}`,
-  tsamhagtKran: `tsamhagt_kran_${sfx}`,
-  avtoKran: `avto_kran_${sfx}`,
-  achaanii: `achaanii_avtomashin_${sfx}`,
-  ekskavator: `Ekskavator_${sfx}`,
-  kovsh: `kovsh_${sfx}`,
-  usniMashin: `usni_mashin_${sfx}`,
+  // ⚠️ Шинэ маягтад техник нь `Tehnik_<SFX>` (`Niit_tehnik_<SFX>` БИШ).
+  niitTehnik: `Tehnik_${sfx}`,
 });
 
 /**
