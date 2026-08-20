@@ -29,6 +29,19 @@ export type SheetRow = {
   unit: number | null;
   money: number | null;
   act: (number | null)[]; // хадгалагдсан блок бүрийн бодит гүйцэтгэл
+  /**
+   * Блок бүрийн ХУРИМТЛАГДСАН обьём (`*_obyem`). Талбар байхгүй бол `null`.
+   * ⚠️ Хуучин мөрүүдэд ХООСОН атлаа гүйцэтгэлийн хувь нь бий — тэднийг
+   *    `baseObyem` нь `хувь × Обьём` болгож сэргээнэ (түүх алдагдахгүй).
+   */
+  obyem: (number | null)[];
+  /**
+   * Үйлчилгээнээс ирсэн БҮХ талбар, хэвээрээ. Архивын шинэ хуулбар үүсгэхэд
+   * (нийтлэх бүрд бүтэн хуудас доор нь нэмэгддэг) энэ мөрийг суурь болгож,
+   * зөвхөн бодогдсон талбаруудыг дарж бичнэ — ингэснээр код мэддэггүй
+   * багана (тайлбар, нэмэлт багана) ч хуулбарт бүрэн үлдэнэ.
+   */
+  raw: Record<string, unknown>;
   start: (number | null)[]; // ms epoch
   end: (number | null)[];
 };
@@ -36,16 +49,47 @@ export type SheetRow = {
 const num = (v: unknown): number | null =>
   v == null || v === "" || !Number.isFinite(Number(v)) ? null : Number(v);
 
+/** `YYYY-MM-DD` → ArcGIS-ийн `timestamp` шүүлт (тухайн ӨДРИЙГ бүхэлд нь). */
+const dayFilter = (fld: string, day: string) =>
+  `${fld} BETWEEN timestamp '${day} 00:00:00' AND timestamp '${day} 23:59:59'`;
+
+/**
+ * Хуудсан дээр ажиллах мөрүүд — СҮҮЛИЙН АГШНЫХ нь.
+ *
+ * ⚠️ Нийтлэх бүрд хуудас бүхэлдээ доор нь ХУУЛБАРЛАГДАЖ нэмэгддэг тул
+ *    үйлчилгээнд олон агшин зэрэг байна. `where=1=1` гэвэл бүх түүх нийлж,
+ *    нэг ажил хэдэн ч удаа давхарлана. Тиймээс хамгийн сүүлийн
+ *    `buglusun_ognoo`-той өдрийг олж, ЗӨВХӨН түүнийг татна.
+ *
+ * Архив эхлээгүй (бүх мөр огноогүй) үед анхны суурь хуудас нь `NULL`
+ * огноотой байх тул түүгээр шүүнэ.
+ */
+async function latestWhere(pkg: Pkg, sc: Schema): Promise<string> {
+  const fld = sc.f.fillDate;
+  if (!fld) return "1=1"; // талбар үүсээгүй үйлчилгээ — хуучин зан төлөв
+  const j = await agsFetch(`${pkg.url}/query`, {
+    where: `${fld} IS NOT NULL`,
+    outStatistics: JSON.stringify([
+      { statisticType: "max", onStatisticField: fld, outStatisticFieldName: "mx" },
+    ]),
+    returnGeometry: "false",
+  });
+  const mx = j.features?.[0]?.attributes?.mx as number | null | undefined;
+  if (mx == null) return `${fld} IS NULL`;
+  return dayFilter(fld, msToDay(mx));
+}
+
 /** Багцын бүх мөрийг татна — maxRecordCount 2000 тул хуудаслая. */
 export async function loadRows(
   pkg: Pkg,
   sc: Schema,
-): Promise<{ rows: SheetRow[]; asOf: number | null }> {
+): Promise<{ rows: SheetRow[]; asOf: number | null; snapshot: number | null }> {
   const tree = TREES[pkg.key] ?? "";
+  const where = await latestWhere(pkg, sc);
   const feats: Feature[] = [];
   for (let offset = 0; ; ) {
     const j = await agsFetch(`${pkg.url}/query`, {
-      where: "1=1",
+      where,
       outFields: "*",
       returnGeometry: "false",
       orderByFields: `${sc.f.oid} ASC`,
@@ -58,18 +102,60 @@ export async function loadRows(
     offset += fs.length;
   }
 
+  /**
+   * ⚠️ ӨДӨРТ ХОЁР УДАА нийтэлбэл (санамсаргүй давхар товшилт, эсвэл алдаа
+   *    засаад дахин нийтлэх) нэг өдөрт хоёр агшин үүснэ. Тэгвэл шүүлт нь
+   *    хоёуланг нь татаж, хуудас ХОЁР ДАХИН уртсаж, шатлал бүхэлдээ
+   *    холилдоно. Хуудасны мөрийн тоо нь `TREES`-ийн уртаар ТОГТМОЛ тул
+   *    илүү гарвал ХАМГИЙН СҮҮЛИЙН бүтэн хуулбарыг л үлдээнэ (ObjectID
+   *    өсөх дараалалтай тул сүүлийнх нь хамгийн шинэ).
+   *
+   *    Устгал хийхгүй — хуучин давхардал үйлчилгээнд үлдэнэ, гэхдээ
+   *    хуудсанд огт нөлөөлөхгүй бөгөөд огноогоор шүүхэд түүх бүтэн хэвээр.
+   */
+  const expect = tree.length;
+  const feats2 = expect > 0 && feats.length > expect ? feats.slice(-expect) : feats;
+
+  /**
+   * ⚠️ Модны шатлал (`TREES`) нь мөрийн БАЙРЛАЛААР зураглагддаг тул ачаалсан
+   *    хуудас нь ЯГ тэр мөрийн тоотой байх ёстой. Зөрвөл бүлэг/ажил хоёр
+   *    хольцолдож, гүйцэтгэл огт өөр мөрөнд наалдана — үүнийг чимээгүй
+   *    өнгөрөөвөл хэрэглэгч буруу газраа бөглөж эхэлнэ.
+   *
+   *    Хоосон хүснэгт (0 мөр) нь тусдаа тохиолдол: суурь өгөгдөл хараахан
+   *    ачаалагдаагүй гэсэн үг тул өөрийн гэсэн мессежтэй.
+   */
+  if (expect > 0 && feats2.length !== expect)
+    throw new Error(
+      feats2.length === 0
+        ? `${pkg.label}: хуудсанд мөр алга — эх хүснэгтийг эхлээд ачаална уу.`
+        : `${pkg.label}: ${feats2.length} мөр ирлээ, ${expect} байх ёстой. ` +
+          "Эх хүснэгтийн мөрийн тоо өөрчлөгдсөн бол шатлалын зураглалыг " +
+          "(bagts.trees.ts) дахин гаргах шаардлагатай — эс бөгөөс бүлэг ба " +
+          "ажлын мөрүүд хоорондоо холилдоно.",
+    );
+
   // Excel-ийн 2-р мөрийн «Шинэчлэгдсэн огноо» ($BH$2 г.м.) нь бүх төлөвлөгөөт
   // хувийн лавлах цэг. Мөр бүрт биш, зөвхөн тэнд бичигдсэн.
   let asOf: number | null = null;
+  let snapshot: number | null = null;
   const rows: SheetRow[] = [];
-  for (const f of feats) {
+  feats2.forEach((f, k) => {
     const a = f.attributes;
     const oid = Number(a[sc.f.oid]);
     if (asOf == null && sc.f.asOf) asOf = num(a[sc.f.asOf]);
+    if (snapshot == null && sc.f.fillDate) snapshot = num(a[sc.f.fillDate]);
     const work = String(a[sc.f.work] ?? "").trim();
     const no = String(a[sc.f.no] ?? "").trim();
-    if (!work && !no) continue; // хуудасны сүүлийн хоосон мөрүүд
-    const ch = tree[oid - 1] ?? "0";
+    if (!work && !no) return; // хуудасны сүүлийн хоосон мөрүүд
+    /**
+     * ⚠️ Модны гүнийг АГШИН ДОТОРХ БАЙРЛАЛААР олно, ObjectID-гаар БИШ.
+     *    Архивын шинэ хуулбар нэмэгдэхэд ObjectID үсэрдэг тул `oid − 1`
+     *    гэвэл бүх бүлэг/ажлын шатлал холилдоно. Агшин бүр хуудсыг
+     *    БҮТНЭЭР нь, ижил дарааллаар агуулдаг тул байрлал нь тогтвортой
+     *    (анхны суурь өгөгдөл дээр `k === oid − 1` — 10 багц дээр шалгасан).
+     */
+    const ch = tree[k] ?? "0";
     const group = ch >= "A" && ch <= "E";
     rows.push({
       oid,
@@ -84,13 +170,15 @@ export async function loadRows(
       unit: num(a[sc.f.unit]),
       money: num(a[sc.f.money]),
       act: sc.act.map((k) => num(a[k])),
+      obyem: sc.obyem.map((k) => (k ? num(a[k]) : null)),
       // ⚠ Огноогүй блок бий (Багц 3.1-ийн 5/2 — excel толгой нь эвдэрсэн);
       //   тэнд төлөвлөгөөт хувь бодогдохгүй, `null` хэвээр үлдэнэ.
-      start: sc.start.map((k) => (k ? num(a[k]) : null)),
-      end: sc.end.map((k) => (k ? num(a[k]) : null)),
+      raw: a,
+      start: sc.start.map((x) => (x ? num(a[x]) : null)),
+      end: sc.end.map((x) => (x ? num(a[x]) : null)),
     });
-  }
-  return { rows, asOf };
+  });
+  return { rows, asOf, snapshot };
 }
 
 // ── Томъёо ───────────────────────────────────────────────────────────────────
@@ -118,6 +206,28 @@ export const dayToMs = (s: string): number | null =>
 export const msToDay = (ms: number | null): string =>
   ms == null ? "" : new Date(ms).toISOString().slice(0, 10);
 
+/**
+ * Нүдэнд бичигдсэн ОБЬЁМ — нийтлээгүй засвар байвал түүнийг, эс бөгөөс
+ * үйлчилгээнд хадгалагдсаныг. Бичигдээгүй бол `null` (тэг БИШ).
+ *
+ * ⚠️ Обьёмыг хувиас нь БУЦААЖ БОДОХГҮЙ. Урьд нь хоосон нүдэнд
+ *    `хувь × Обьём` гэж тооцоолж харуулдаг байсан нь хэрэглэгчийн огт
+ *    бичээгүй тоог (1,300 · 900.48 · 450.24…) бүртгэл мэт харуулж байв.
+ *    Обьём бол ХЭМЖИЛТ — таамаглаж болохгүй, зөвхөн гараар бичигдэнэ.
+ *    Хоосон байхад гүйцэтгэлийн хувь нь хуучнаараа хэвээр үлдэнэ.
+ */
+export const cellObyem = (
+  r: SheetRow,
+  b: number,
+  edits: Record<string, string> = {},
+): number | null => {
+  const e = edits[`${r.oid}:${b}`];
+  if (e === undefined) return r.obyem[b];
+  const t = e.trim();
+  if (t === "") return null;
+  // Сөрөг обьём утгагүй — бичсэн ч 0-оор хаана.
+  return Number.isFinite(Number(t)) ? Math.max(0, Number(t)) : r.obyem[b];
+};
 /** Нийтлээгүй засвар байвал түүнийг, эс бөгөөс хадгалагдсаныг. `""` = арилгах. */
 const pickDate = (edit: string | undefined, stored: number | null) =>
   edit === undefined ? stored : dayToMs(edit);
@@ -133,6 +243,8 @@ export type DateSrc = "own" | "agg" | "none";
 export type Calc = {
   plan: (number | null)[]; // блок бүрийн төлөвлөгөөт
   act: (number | null)[]; // блок бүрийн бодит
+  /** Блок бүрийн ХУРИМТЛАГДСАН обьём (нэмэлт засвар нэмэгдсэн). Бүлэгт `null`. */
+  obyem: (number | null)[];
   start: (number | null)[];
   end: (number | null)[];
   startSrc: DateSrc[];
@@ -203,6 +315,12 @@ export function computeAll(
   asOf: number,
   edits: Record<string, string> = {},
   dateEdits: Record<string, string> = {},
+  /**
+   * Блок бүрд `*_obyem` талбар байгаа эсэх (`Schema.obyem`-ээс). Байхгүй блокт
+   * обьём бичих газаргүй тул нүд ТҮГЖЭЭТЭЙ — хадгалагдсан хувь нь хэвээр
+   * үлдэж, бүлгийн дундажид оролцсоор байна.
+   */
+  hasObyem: readonly boolean[] = [],
 ): Calc[] {
   const kids = childIndexes(rows);
   const par = parentIndexes(rows);
@@ -300,6 +418,10 @@ export function computeAll(
     const r = rows[i];
     const plan: (number | null)[] = new Array(n).fill(null);
     const act: (number | null)[] = new Array(n).fill(null);
+    // ⚠️ Бүлгийн мөрд обьём НИЙЛҮҮЛЭХГҮЙ: дэд ажлууд нь м³ · м² · ш гэсэн ӨӨР
+    //    нэгжтэй тул нийлбэр нь утгагүй тоо гаргана. Бүлэг зөвхөн хувиараа
+    //    (жигнэсэн дундаж) илэрхийлэгдэнэ.
+    const obyem: (number | null)[] = new Array(n).fill(null);
     const start = St[i];
     const end = En[i];
     const startSrc = StSrc[i];
@@ -339,9 +461,40 @@ export function computeAll(
         // Excel `9F`-ийн T багана:
         //   `IF($R$5<=AF,0,IF($R$5>=AG,1,($R$5-AF)/(AG-AF)))`
         plan[b] = planAt(asOf, start[b], end[b]);
-        const e = edits[`${r.oid}:${b}`];
-        act[b] =
-          e === undefined ? r.act[b] : e.trim() === "" ? null : Number(e) / 100;
+
+        /* ── ГҮЙЦЭТГЭЛ ОБЬЁМООР (2026-08-20) ──────────────────────────────
+         * Нүд бүр ХОЁР тусдаа тоог агуулна:
+         *   обьём — бөглөсөн ХУРИМТЛАЛ (`*_obyem`). Хэрэглэгч ЭНЭ УДААГИЙН
+         *           нэмэлтээ бичихэд өссөөр бичигдэнэ.
+         *   хувь  — гүйцэтгэл. Мөрийн `Обьём` (хуваарь) байвал обьёмоос
+         *           бодогдоно, эс бөгөөс гараар бичигдэнэ.
+         *
+         * ⚠️ ОБЬЁМ БҮРТГЭХИЙГ хуваарь байхгүй гэж ХОРИГЛОХГҮЙ. Хийсэн ажлын
+         *    тоо хэмжээ нь өөрөө үнэ цэнтэй бүртгэл; «Обьём» багана хожим
+         *    бөглөгдмөгц хувь нь өөрөө бодогдож эхэлнэ. Урьд нь хуваарьгүй
+         *    нүдийг түгжиж байсан нь хэрэглэгчийг «А. Бэлтгэл ажил»-ын
+         *    мөрүүд дээр хаалттай хана мөргүүлж байв.
+         *
+         * ⚠️ Нэмэлт нь ХУРИМТЛАЛ дээр нэмэгддэг тул суурь нь ҮРГЭЛЖ сая
+         *    татсан мөр байх ёстой — `publish` нийтлэхийн өмнө `loadRows`-оор
+         *    шинэчилдэг нь яг үүний төлөө (хоёр хэрэглэгч зэрэг нэмэхэд
+         *    хоёулангийнх нь нэмэлт хадгалагдана, дарж бичихгүй).
+         *
+         * Түлхүүр: `<oid>:<b>` = блокийн обьём. Мөрийн Обьём ба хувь хоёр нь
+         * засагддаггүй тул түлхүүргүй. */
+        // ⚠️ Мөрийн Обьём нь ЭХ ӨГӨГДЛИЙН тоо хэмжээ — энэ хуудаснаас
+        //    засагддаггүй (эх хүснэгтэд оруулна). Тиймээс шууд уншина.
+        const rVol = r.vol;
+        const hasField = hasObyem[b] === true;
+
+        // 1) ОБЬЁМ — зөвхөн гараар бичигдсэн нь. Бодогдохгүй, таамаглахгүй.
+        const cum = hasField ? cellObyem(r, b, edits) : null;
+        obyem[b] = cum;
+
+        // 2) ХУВЬ — ЗӨВХӨН обьёмоос бодогдоно. Гараар бичих зам БАЙХГҮЙ.
+        //    Хуваарь (мөрийн Обьём) хараахан алга бол хадгалагдсан хувь нь
+        //    хэвээр үлдэнэ — Обьёмыг нь оруулмагц өөрөө бодогдож эхэлнэ.
+        act[b] = cum != null && rVol != null && rVol > 0 ? cum / rVol : r.act[b];
       }
     }
 
@@ -372,6 +525,7 @@ export function computeAll(
     out[i] = {
       plan,
       act,
+      obyem,
       start,
       end,
       startSrc,
@@ -405,6 +559,59 @@ export function touchedIndexes(
     stack.push(i);
   });
   return [...hit].sort((a, b) => a - b);
+}
+
+/**
+ * Хуулбарт ХЭЗЭЭ Ч дамжуулж болохгүй талбарууд — үйлчилгээ өөрөө оноодог.
+ * ObjectID-г дамжуулбал `addFeatures` тэр дугаартай мөр рүү наалдах эсвэл
+ * унах эрсдэлтэй; GlobalID/бүртгэлийн талбарууд ч мөн адил.
+ */
+const SERVER_FIELDS = /^(ObjectID|OBJECTID|GlobalI[Dd]|CreationDate|Creator|EditDate|Editor)$/;
+
+/**
+ * АРХИВЫН ШИНЭ АГШИН — хуудсыг БҮХЭЛД нь доор нь хуулбарлаж нэмнэ.
+ *
+ * ⚠️ Энэ нь `updates`-ээс ЗАРЧМЫН ялгаатай: хуучин мөр дарагдахгүй, түүх
+ *    хэзээ ч алдагдахгүй. Мөр бүрд `buglusun_ognoo` бичигдэх тул огноогоор
+ *    шүүхэд тэр өдрийн бүтэн зураг гарна.
+ *
+ * ⚠️ Мөр бүрийн БҮХ талбарыг (`raw`) хуулж, зөвхөн бодогдсоныг нь дарж
+ *    бичнэ — код мэддэггүй багана ч хуулбарт бүрэн үлдэнэ.
+ */
+export async function applyAdds(
+  pkg: Pkg,
+  features: Record<string, unknown>[],
+): Promise<number> {
+  let added = 0;
+  for (let i = 0; i < features.length; i += 500) {
+    const chunk = features.slice(i, i + 500).map((attributes) => {
+      const a: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(attributes))
+        if (!SERVER_FIELDS.test(k)) a[k] = v;
+      return { attributes: a };
+    });
+    try {
+      const j = await agsFetch(`${pkg.url}/applyEdits`, {
+        adds: JSON.stringify(chunk),
+        rollbackOnFailure: "true",
+      });
+      const res = (j.addResults || []) as { success?: boolean; error?: { description?: string } }[];
+      const bad = res.find((r) => r.success === false);
+      if (bad) throw new Error(bad.error?.description || "Нэмэх амжилтгүй");
+      added += res.length;
+    } catch (e) {
+      // ⚠️ rollbackOnFailure зөвхөн НЭГ chunk дотроо үйлчилнэ — өмнөх
+      //    chunk-ууд аль хэдийн бичигдсэн тул хагас амжилтыг тодруулна.
+      if (added > 0)
+        throw new Error(
+          `${added}/${features.length} мөр нэмэгдэв; үлдсэн нь амжилтгүй (` +
+            String((e as Error).message || e) +
+            ") — дахин Нийтлэх дарж гүйцээнэ үү",
+        );
+      throw e;
+    }
+  }
+  return added;
 }
 
 /** `applyEdits` — 500-аар хуваан илгээнэ. */
