@@ -12,17 +12,25 @@
 
 .shell {
   height: 100%;
+  /* ⚠️ Бариулууд нь grid-ийн НҮДЭНД байрлаж, түүнийхээ ирмэг рүү шилжинэ —
+     absolute хүүхдийн эх нь `.shell` байх ёстой. */
+  position: relative;
   display: grid;
   gap: 8px;
   padding: 8px;
+  /* Өргөн/өндөр нь CSS хувьсагчаар — `usePanes` чирэх явцад ЭДГЭЭРИЙГ шууд
+     бичдэг (React дахин зурахгүй). Хувьсагч тавиагүй бол анхны утга. */
   grid-template-columns:
-    minmax(264px, 316px)   /* зүүн: осол зөрчил */
+    var(--col-l, 316px)    /* зүүн: осол зөрчил */
     minmax(0, 1fr)         /* төв: зураг */
-    minmax(292px, 344px);  /* баруун: кран · хүн хүч */
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  /* KPI зурвас ЗУРГИЙН ӨРГӨНТЭЙ тэнцүү — зүүн/баруун багана ДЭЭД талдаа тулна */
+    var(--col-r, 344px);   /* баруун: кран · хүн хүч */
+  grid-template-rows: auto auto minmax(0, 1fr) var(--row-fin, auto);
+  /* KPI зурвас ба гүйцэтгэгчийн шүүлтүүр ЗУРГИЙН ӨРГӨНТЭЙ тэнцүү — зүүн/баруун
+     багана ДЭЭД талдаа тулна. ⚠️ grid-ийн area нь ТЭГШ ӨНЦӨГТ байх ёстой тул
+     шүүлтийн мөрийг бүтэн өргөнд тавьж болохгүй — тэгвэл `list`/`r` тасална. */
   grid-template-areas:
     'list kpi r'
+    'list flt r'
     'list map r'
     'fin  fin fin';
   background: var(--bg);
@@ -30,6 +38,59 @@
   min-height: 0;
   overflow: hidden;
 }
+
+/* ── Панелийн хэмжээ чирэх БАРИУЛ ──
+   Grid-ийн нүдэнд байрлаж (`style={{ gridArea }}`), тэр нүдний ирмэг рүү
+   шилжинэ. 8px завсрын ДУНД сууна — хөрш картыг халхлахгүй.
+   ⚠️ Панелиуд өөрсдөө `overflow: hidden/auto` тул бариулыг ТЭДНИЙ ДОТОР
+   тавьж болохгүй: таслагдах эсвэл агуулгатай хамт гүйнэ. Тиймээс `.shell`-ийн
+   шууд хүүхэд байна. */
+.gripCol,
+.gripRow {
+  position: absolute;
+  z-index: 7;
+  touch-action: none; /* хүрэлтээр чирэхэд хуудас гүйхгүй */
+}
+/* ⚠️ ГЕОМЕТР: бариулын өргөн нь ЯГ завсрын хэмжээ (8px) бөгөөд `right: -8px`
+   -ээр завсарт бүтнээр нь суудаг. Урьд нь 9px байсан тул 1px нь картын дээр
+   давж, зураас нь картын хүрээтэй нийлж ХАРАГДАХГҮЙ байв. */
+.gripCol {
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: col-resize;
+}
+.gripRow {
+  left: 0;
+  right: 0;
+  height: 8px;
+  cursor: row-resize;
+}
+/* Бариулын зурвас.
+   ⚠️ Ердийн үедээ БҮДЭГ боловч ХАРАГДАНА: эхний хувилбарт бүрэн тунгалаг
+   байсан тул хэрэглэгч чирэх боломжтойг нь олж мэдэхгүй байв. Hover/фокус/
+   чирэх үед өгөгдлийн өнгөөр тодорно. */
+.gripCol::after,
+.gripRow::after {
+  content: '';
+  position: absolute;
+  border-radius: 1px;
+  background: var(--line-strong, var(--line));
+  transition: background 0.12s;
+}
+/* Зураас нь 8px завсрын ЯГ ГОЛД — картын хүрээнээс 3px зайтай тул тусад нь
+   уншигдана. Урт нь картын өндрийн дунд хэсэг (14px-ээр богиносгосон). */
+.gripCol::after { top: 14px; bottom: 14px; left: 3px; width: 2px; }
+.gripRow::after { left: 14px; right: 14px; top: 3px; height: 2px; }
+/* ⚠️ `[data-drag]`-ийг ЗААВАЛ локал ангид уяна: CSS Modules нь дүрэм бүрд дор
+   хаяж нэг локал анги/id шаарддаг («pure selector») — цэвэр атрибутын сонгогч
+   бол build бүхэлдээ унана. */
+.gripCol:hover::after,
+.gripRow:hover::after,
+.gripCol:focus-visible::after,
+.gripRow:focus-visible::after,
+.gripCol[data-drag='1']::after,
+.gripRow[data-drag='1']::after { background: var(--data); }
 
 /* KPI зурвас — зургаан үзүүлэлт ЗААВАЛ НЭГ мөрөнд (бүтэн өргөнийг тэнцүү хуваана) */
 .kpi {
@@ -41,6 +102,52 @@
   min-width: 0;
 }
 
+/* KPI хайрцгийн шошго ба утгыг ГОЛЛУУЛНА — ЗӨВХӨН ХАБЭА.
+   ⚠️ `overview.module.css`-ийн `.tile` нь зүүн тийш зэрэгцүүлдэг бөгөөд түүнийг
+   Багц, Дашбоард, IoT модуль ч хэрэглэдэг тул ТЭНД шууд засвал бүгд өөрчлөгдөнө.
+   ⚠️ Ангийн нэрийг ХОЁР УДАА бичсэн нь санамсаргүй БИШ: `.tile`-тэй адил нэг
+   ангийн жинтэй байвал аль нь давах нь CSS багцлагдах дараалалаас хамаарч
+   тогтворгүй болно. Давхардуулснаар жин нь өснө. */
+.kpiCenter.kpiCenter {
+  align-items: center;
+  text-align: center;
+}
+/* Утгын мөр нь flex (тоо + нэгж) — түүнийг мөн голлуулна */
+.kpiCenter > div { justify-content: center; }
+
+
+/* ── Гүйцэтгэгчийн шүүлтүүрийн мөр — KPI-ийн ЯГ доор, зурагтай ижил өргөн ──
+   Нэг унжих жагсаалт + сонгосон утгын тайлбар. Зурвасын өндөр ТОГТМОЛ тул
+   газрын зураг шахагдахгүй. */
+.filters {
+  grid-area: flt;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 5px 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.filtersLabel {
+  flex: none;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--ink-3);
+  padding-right: 2px;
+}
+.coNote {
+  flex: none;
+  font-size: 11px;
+  color: var(--ink-3);
+  padding-left: 4px;
+}
+
 .list {
   grid-area: list;
   min-width: 0;
@@ -50,14 +157,37 @@
   flex-direction: column;
   gap: 8px;
 }
+/* БАРУУН багана — ГҮЙЛГЭЛТГҮЙ. Дээр нь хоёр донат зэрэгцээ, доор нь «Кран —
+   багцаар» үлдсэн өндрийг эзэлнэ.
+   ⚠️ `overflow: hidden` тул агуулга нь баганадаа ЗААВАЛ багтах ёстой: донатыг
+   110px-ээс 92px болгож, доод хэсэгт `min-height: 0` өгсөн нь үүний тулд. */
 .r {
   grid-area: r;
   min-width: 0;
   min-height: 0;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 8px;
+}
+/* Хосын хоёр карт 20px ӨНДӨР — доод талдаа нэмэлт зайтай.
+   ⚠️ `ui.module.css`-ийн `.section` нь 12px padding-тай тул 32px гэж бичив:
+   `padding-bottom` нь НЭМЭГДДЭГГҮЙ, дардаг. Доод мөр (`Кран — багцаар`) нь
+   `1fr` тул яг тэр 20px-ээр богиносоно — гүйлгэлт үүсэхгүй. */
+.rPair > section { padding-bottom: 32px; }
+
+/* Хоёр донатын зэрэгцээ хос — тэнцүү өргөн */
+.rPair {
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--rp-1, minmax(0, 1fr)) minmax(0, 1fr);
+  gap: 8px;
+  min-width: 0;
+}
+/* Доод карт нь үлдсэн өндрийг эзлээд дотроо хумина (баганыг цухуйлгахгүй) */
+.r > section {
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* Хэсэг (Section) БҮР ТУСДАА КАРТ. Картын гадаргууг ui.module.css-ийн `.section`
@@ -82,14 +212,63 @@
   overflow: hidden;
 }
 
-/* ДООД зурвас: осол багцаар/компаниар НАРИЙН, ажилтан (босоо график) ба
-   зургийн хана ӨРГӨН — 4 карт тогтмол харьцаатай */
+/* ДООД зурвас — 4 карт: зургийн слайдер · осол компаниар · ажилтан өдрөөр ·
+   техник өдрөөр.
+   ⚠️ Хоёр ӨДРИЙН ЦУВАА зэрэгцэж, тус бүр 1.5 хувь эзэлнэ — тэдгээр нь
+   `DAYS_VISIBLE` өдрийг зэрэг харуулах ёстой тул бусад картаас өргөн байх
+   шаардлагатай. */
 .fin {
   grid-area: fin;
   min-width: 0;
+  /* Бариулууд трек бүрийн ирмэгт суух тул эх нь ЭНЭ элемент байх ёстой */
+  position: relative;
   display: grid;
-  grid-template-columns: minmax(200px, 3fr) minmax(220px, 3fr) minmax(0, 4fr) minmax(0, 5fr);
+  /* Эхний ГУРВАН багана хувьсагчаар — чирэхэд px болно; сүүлийнх нь үлдсэнийг
+     эзэлнэ. Хувьсагч тавиагүй бол `fr`-ийн анхны харьцаа хэвээр. */
+  grid-template-columns:
+    var(--fin-1, minmax(0, 1fr))
+    var(--fin-2, minmax(0, 1fr))
+    var(--fin-3, minmax(0, 1.5fr))
+    minmax(0, 1.5fr);
   gap: 8px;
+}
+
+/* «Бүгдийг арилгах» — зурган дээрх шүүлтийн чипүүдийн хажууд, хоёроос дээш
+   шүүлт идэвхтэй үед л гарна. Чипүүдтэй нэг мөрөнд суудаг ч ХҮРЭЭГҮЙ:
+   энэ нь шүүлт биш ҮЙЛДЭЛ. */
+.clearAll {
+  flex: none;
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 99px;
+  background: transparent;
+  color: var(--ink-3);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.clearAll:hover { color: var(--ink); }
+.clearAll:focus-visible { outline: 2px solid var(--data); outline-offset: 1px; }
+
+/* «Ажилтан — өдрөөр» цувааны хэвтээ гүйлгэгч. Багана 200+ болж картын өргөнд
+   багтахгүй тул дотогшоо гүйнэ — карт өөрөө өргөсөхгүй, доод зурвасын дөрвөн
+   нүд тэнцүү хэвээр үлдэнэ. */
+.dayScroll {
+  overflow-x: auto;
+  /* ⚠️ `overflow-y: hidden` нь `overflow-x: auto`-той хамт байхад хэвтээ
+     гүйлгэгч доод талаас ~12px иддэг бөгөөд түүнд орсон агуулга гүйлгэгдэхгүй
+     ТАСАРНА. Огнооны мөр (`seriesTicks`) яг тэнд байрладаг тул доор нь
+     гүйлгэгчийн зайг ЗААВАЛ нөөцлөнө — эс бөгөөс огноо огт харагдахгүй. */
+  overflow-y: hidden;
+  padding-bottom: 14px;
+  scrollbar-width: thin;
+  /* Хуруугаар шудрахад багана бүрд «наалдахгүй» — өдрийн нарийн багана дээр
+     цэг таслалт нь эсрэгээрээ гүйлгэлтийг бартаатай болгоно. */
+  overscroll-behavior-x: contain;
 }
 
 /* Картын доорх нэг мөр тайлбар (кран: дундаж өндөр/сум) */
