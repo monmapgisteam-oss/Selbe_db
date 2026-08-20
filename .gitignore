@@ -22,3 +22,7 @@ agent-proxy/.wrangler/
 
 # Ботоор зөвшөөрсөн Telegram хэрэглэгчид — нэрс/ID тул репод оруулахгүй
 telegram-users.json
+
+# Telegram ботын байршуулалтын нууц (токен, BOT_SECRET) — ЗӨВХӨН `.env.example`
+# репод орно; бодит `.env` ХЭЗЭЭ Ч орохгүй
+deploy/telegram-bot/.env

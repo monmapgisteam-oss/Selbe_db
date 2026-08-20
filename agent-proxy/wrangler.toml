@@ -24,6 +24,13 @@ ARCGIS_ORG_ID = "HJzgwvlNIXssnQar"
 #    эс бөгөөс токен өөр порталынх болж шалгалт унана.
 ARCGIS_PORTAL = "https://www.arcgis.com"
 
+# ⚠️ TELEGRAM БОТЫН НУУЦ — энд БИЧИХГҮЙ, НУУЦ болгож тавина:
+#     npx wrangler secret put BOT_SECRET
+# Бот нь ArcGIS хэрэглэгч биш тул `x-bot-secret` толгойгоор энэ утгаар батална
+# (`worker.mjs`). Тохируулсан үед ArcGIS токенгүйгээр реле рүү хандах цорын ганц
+# зам нь энэ нууц — санамсаргүй урт утга сонго (`openssl rand -hex 32`).
+# Тохируулаагүй бол бот энэ реле рүү холбогдож чадахгүй (401); портал хэвээр.
+
 # Загвар ба гүнзгийрэл — `server.mjs`-ийн анхдагчтай ижил.
 # Туршилтын үед зардал хэмнэхийг хүсвэл AGENT_MODEL = "claude-haiku-4-5"
 AGENT_MODEL = "claude-opus-5"
