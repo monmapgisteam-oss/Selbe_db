@@ -2432,7 +2432,6 @@ const en: Record<string, string> = {
   "Уулзварын геометрээс бодсон {0} ээлж — тал ба ЭСРЭГ тал нь ": "{0} phases derived from the junction geometry — an approach and its OPPOSING approach open ",
   "Уулзварын геометрээс бодсон {0} ээлж — тал бүр дангаараа ": "{0} phases derived from the junction geometry — each approach opens ",
   "Уулзварын хуваарь": "Junction schedule",
-  "Ухаалаг хот": "Smart City",
   "үе шат": "phase",
   "Үе шат": "Phase",
   "Үе шат — {0}, % (0–100)": "Phase — {0}, % (0–100)",

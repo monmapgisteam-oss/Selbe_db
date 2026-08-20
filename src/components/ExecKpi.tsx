@@ -8,7 +8,7 @@ import { loadFinData, contractMonths, lagOf, lagLevel } from '@/modules/Finance'
 import { useBagtsTable, useSuitability } from '@/modules/Dashboard';
 import { HABEA, CASHFLOW2, pkgKeyOf, type ViewKey } from '@/lib/services';
 import { count, queryGroup } from '@/lib/query';
-import { loadVariance, loadOverlaps, loadDamage, VAR_BAD_MNT, OV_BAD_N, DMG_BAD_N } from '@/lib/execTriage';
+import { loadVariance, loadOverlaps, loadDamage, VAR_BAD_MNT, DMG_BAD_N } from '@/lib/execTriage';
 import { scoreLabel } from '@/lib/analysis/score';
 import { num, pct, date } from '@/lib/format';
 import { Bars, HBars, Ring, Spark } from './MiniChart';
@@ -306,7 +306,9 @@ export function ExecKpi({ onView }: { onView: (key: ViewKey) => void }) {
       // ⚠️ Багц ажлын НЭРИЙН хамт (хэрэглэгчийн хүсэлт) — аль багц саадтайг шууд
       note: d.byPkg.slice(0, 3).map((p) => `${p.name} (${num(p.parcels)})`).join(' · ')
         + (d.byPkg.length > 3 ? tr(' · бас {0} багц', num(d.byPkg.length - 3)) : ''),
-      status: d.total >= OV_BAD_N ? 'bad' : 'warn',
+      // ⚠️ Давхцсан талбар БАЙВАЛ шууд «Яаралтай шийдвэрлэх» (2026-08-21) —
+      //    тэр газарт багц ажил эхлэх боломжгүй тул дундын түвшин байхгүй.
+      status: 'bad',
       chart: d.byPkg.length
         ? <HBars items={d.byPkg.slice(0, 4).map((p) => ({ label: p.name, value: p.parcels }))} max={d.byPkg[0].parcels} fmt={(v) => num(v)} />
         : undefined,
@@ -357,7 +359,9 @@ export function ExecKpi({ onView }: { onView: (key: ViewKey) => void }) {
     { ...schedule, view: 'tsogts' },     // хоцрогдолтой багцууд
     { ...finance, view: 'tsogts' },      // санхүүжилт vs гүйцэтгэлийн зөрүү KPI
     { ...clearance, view: 'gazar' },     // газар чөлөөлөлт — чөлөөлсөн/үлдсэн
-    { ...overlap, view: 'bagts' },       // давхцсан үлдсэн нэгж талбар — багцаар
+    // ⚠️ «Багцын хяналт» (tsogts) руу — 'bagts' нь навигацийн жагсаалтад
+    //    байхгүй тул карт дарахад «алга болсон» хуудас нээгддэг байв.
+    { ...overlap, view: 'tsogts' },      // давхцсан үлдсэн нэгж талбар — багцаар
     { ...variance, view: 'guitsetgel' }, // обьёмын зөрүү — гүйцэтгэлийн хяналт
     { ...safety, view: 'habea' },        // осол/зөрчлийн бүртгэл
     { ...damage, view: 'habea' },        // хохирлын бүртгэл

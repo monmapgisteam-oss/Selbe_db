@@ -41,7 +41,9 @@ export function Landing() {
       <main className={s.hero}>
         <h1 className={s.title}>
           {tr('Сэлбэ')}
-          <span className={s.titleSub}>{tr('Ухаалаг хот')}</span>
+          {/* ⚠️ Төслийн албан нэр — толгойн брэндтэй («Сэлбэ 20 минутын хот»)
+              ИЖИЛ. Урьд нь «Ухаалаг хот» гэсэн өөр нэр байв. */}
+          <span className={s.titleSub}>{tr('20 минутын хот')}</span>
         </h1>
 
         <p className={s.tag}>Digital Twin Platform</p>
