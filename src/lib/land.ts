@@ -60,7 +60,14 @@ export function loadLandStatus(): Promise<LandStatus> {
       ),
     ]).then(([statusRows, reasonRows]) => {
       const byStatus = statusRows.map((r) => ({
-        label: text(r[L.fields.status]).trim() || 'Тодорхойгүй',
+        /**
+         * ⚠️ `text(v, '')` — анхдагч «—» БОЛОХГҮЙ. `text()`-ийн анхдагч нь «—»
+         * тул `|| 'Тодорхойгүй'` салаа ХЭЗЭЭ Ч ажиллахгүй байв (энэ мөрөнд
+         * ямар ч хоосон утга «—» болж гарна). Хуучин үйлчилгээнд хоосон `Tuluv`
+         * байгаагүй тул нуугдаж байсныг `selbe_parcel_last0731` (1 хоосон мөр)
+         * ил гаргав. Шошго нь давхаргын `paint.emptyLabel`-тай нэг байх ёстой.
+         */
+        label: text(r[L.fields.status], '').trim() || 'Тодорхойгүй',
         n: Number(r.n ?? 0),
         areaM2: Number(r.a ?? 0),
       }));
