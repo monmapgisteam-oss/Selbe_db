@@ -18,6 +18,7 @@
  */
 
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
+import { t as tr } from '@/lib/i18nCore';
 import { useAsync } from '@/lib/useAsync';
 import { queryFeatures, sqlStr, type Row } from '@/lib/query';
 import {
@@ -29,6 +30,7 @@ import { Section, Bars, Donut, Series, Loading, Empty } from '@/components/ui';
 import { num, date, text } from '@/lib/format';
 import { MapCanvas, type Dim } from '@/components/MapCanvas';
 import { MapTools } from '@/components/MapTools';
+import { useZoomToFilter } from '@/lib/useZoomToFilter';
 import { LayerCatalog } from '@/components/LayerCatalog';
 import { OpacityPanel } from '@/components/OpacityPanel';
 import h from './habea.module.css';
@@ -82,7 +84,7 @@ function topN<T extends { key: string; label: string; value: number }>(items: T[
   const rest = items.slice(n);
   return [
     ...items.slice(0, n),
-    { key: '__other', label: 'Бусад', value: rest.reduce((s, x) => s + x.value, 0) },
+    { key: '__other', label: tr('Бусад'), value: rest.reduce((s, x) => s + x.value, 0) },
   ] as T[];
 }
 
@@ -238,7 +240,7 @@ function byPkg<T extends { bagtsK: string; bagtsRaw: string }>(items: T[], val: 
     if (!x.bagtsK) return;
     const cur = m.get(x.bagtsK);
     if (cur) cur.value += val(x);
-    else m.set(x.bagtsK, { label: x.bagtsRaw || '—', value: val(x) });
+    else m.set(x.bagtsK, { label: tr(x.bagtsRaw) || '—', value: val(x) });
   });
   return [...m.entries()]
     .map(([key, v]) => ({ key, ...v }))
@@ -260,7 +262,7 @@ const loadPhotos = (oid: number): Promise<Photo[]> => {
       .then((j: { attachmentInfos?: { id: number; contentType?: string; name?: string }[] }) =>
         (j.attachmentInfos ?? [])
           .filter((a) => String(a.contentType ?? '').startsWith('image/'))
-          .map((a) => ({ id: a.id, name: a.name ?? `Зураг ${a.id}` })));
+          .map((a) => ({ id: a.id, name: a.name ?? tr('Зураг {0}', a.id) })));
     // ⚠️ АМЖИЛТГҮЙ амлалтыг кэшлэхгүй — үлдээвэл «дахин оролдох» хэзээ ч сэргэхгүй
     p.catch(() => photoCache.delete(oid));
     photoCache.set(oid, p);
@@ -286,8 +288,8 @@ async function loadPhotoBatches<T>(list: Inc[], of: (i: Inc, p: Photo) => T): Pr
 /** Бүртгэлийн хавсаргасан зургууд — дарахад бүтэн хэмжээгээр шинэ цонхонд */
 function IncPhotos({ oid }: { oid: number }) {
   const q = useAsync<Photo[]>(() => loadPhotos(oid), [oid]);
-  if (q.state === 'loading') return <div className={h.photoNote}>Зураг шалгаж байна…</div>;
-  if (q.state === 'error') return <div className={h.photoNote}>Зураг татагдсангүй</div>;
+  if (q.state === 'loading') return <div className={h.photoNote}>{tr('Зураг шалгаж байна…')}</div>;
+  if (q.state === 'error') return <div className={h.photoNote}>{tr('Зураг татагдсангүй')}</div>;
   if (!q.data.length) return null;
   return (
     <div className={h.photos}>
@@ -319,22 +321,22 @@ function PhotoWall({ list }: { list: Inc[] }) {
     () =>
       loadPhotoBatches(list, (i, p) => ({
         src: `${HABEA.incident.url}/${i.oid}/attachments/${p.id}`,
-        cap: `${date(i.d)} · ${i.bagtsRaw}`,
-        tip: `${i.type} — ${i.company}`,
+        cap: `${date(i.d)} · ${tr(i.bagtsRaw)}`,
+        tip: `${tr(i.type)} — ${tr(i.company)}`,
       })),
     [ids],
   );
-  if (q.state === 'loading') return <Loading label="Зураг ачаалж байна…" />;
+  if (q.state === 'loading') return <Loading label={tr('Зураг ачаалж байна…')} />;
   if (q.state === 'error') {
     return (
       <div style={{ display: 'grid', gap: 8, justifyItems: 'start' }}>
-        <Empty label="Зураг татагдсангүй" />
-        {q.retry && <button type="button" className={h.retry} onClick={q.retry}>Дахин оролдох</button>}
+        <Empty label={tr('Зураг татагдсангүй')} />
+        {q.retry && <button type="button" className={h.retry} onClick={q.retry}>{tr('Дахин оролдох')}</button>}
       </div>
     );
   }
   const n = q.data.length;
-  if (!n) return <Empty label="Хавсаргасан зураг алга" />;
+  if (!n) return <Empty label={tr('Хавсаргасан зураг алга')} />;
   const cur = Math.min(idx, n - 1);
   const p = q.data[cur];
   return (
@@ -345,7 +347,7 @@ function PhotoWall({ list }: { list: Inc[] }) {
           className={h.slideNav}
           disabled={n < 2}
           onClick={() => setIdx((cur - 1 + n) % n)}
-          aria-label="Өмнөх зураг"
+          aria-label={tr('Өмнөх зураг')}
         >
           ‹
         </button>
@@ -360,7 +362,7 @@ function PhotoWall({ list }: { list: Inc[] }) {
           className={h.slideNav}
           disabled={n < 2}
           onClick={() => setIdx((cur + 1) % n)}
-          aria-label="Дараагийн зураг"
+          aria-label={tr('Дараагийн зураг')}
         >
           ›
         </button>
@@ -377,24 +379,24 @@ function PhotoWall({ list }: { list: Inc[] }) {
 function pickRows(id: string, a: Record<string, unknown>): [string, string][] {
   if (id === 'habea:osol') {
     return ([
-      ['Огноо', date((a[I.ognoo] ?? a['CreationDate']) as number)],
-      ['Төрөл', text(a[I.turul], '—')],
-      ['Багц', text(a[I.bagts], '—')],
-      ['Компани', clean(a[I.company])],
-      ['Мэдээлэл', text(a[I.medeelel], '—')],
-      ['Шалтгаан', text(a[I.shaltgaan], '—')],
-      ['Арга хэмжээ', text(a[I.argaHemjee], '—')],
+      [tr('Огноо'), date((a[I.ognoo] ?? a['CreationDate']) as number)],
+      [tr('Төрөл'), text(a[I.turul], '—')],
+      [tr('Багц'), text(a[I.bagts], '—')],
+      [tr('Компани'), clean(a[I.company])],
+      [tr('Мэдээлэл'), text(a[I.medeelel], '—')],
+      [tr('Шалтгаан'), text(a[I.shaltgaan], '—')],
+      [tr('Арга хэмжээ'), text(a[I.argaHemjee], '—')],
     ] as [string, string][]).filter(([, v]) => v !== '—');
   }
   const rows: [string, string][] = [
-    ['Багц', text(a[C.bagts], '—')],
-    ['Блок', text(a[C.blok], '—')],
-    ['Төлөв', text(a[C.tuluv], '—')],
-    ['Өндөр', `${num(nn(a[C.undur]))} м`],
+    [tr('Багц'), text(a[C.bagts], '—')],
+    [tr('Блок'), text(a[C.blok], '—')],
+    [tr('Төлөв'), text(a[C.tuluv], '—')],
+    [tr('Өндөр'), tr('{0} м', num(nn(a[C.undur])))],
     // ⚠️ test_data: цэг [8] «сумны», бүс [7] хуучин «суны» нэртэй — хоёуланг унших
-    ['Сумны урт', `${num(nn(a[C.sunUrt] ?? a[C.sunUrtBuf]))} м`],
+    [tr('Сумны урт'), tr('{0} м', num(nn(a[C.sunUrt] ?? a[C.sunUrtBuf])))],
   ];
-  if (id === 'habea:buffer') rows.push(['Аюулгүйн радиус', `${num(nn(a['BUFF_DIST']))} м`]);
+  if (id === 'habea:buffer') rows.push([tr('Аюулгүйн радиус'), tr('{0} м', num(nn(a['BUFF_DIST'])))]);
   return rows;
 }
 
@@ -413,6 +415,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const [layerSel, setLayerSel] = useState<string | null>(null);
   /** Бүсийн шүүлт — бусад харагдацтай ижил (`MapTools`-ийн «Бүс» товч) */
   const [zone, setZone] = useState<string | null>(null);
+
   const totals = usePlanTotals(null, catOpen, CATALOG_IDS);
 
   /* Багцын хөндлөн шүүлт (bagtsKey) + зурган дээрээс сонгосон объект */
@@ -452,6 +455,17 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     return { 'habea:osol': osol, 'habea:crane': kran, 'habea:buffer': kran };
   }, [pkg, inc, cranes]);
 
+  /**
+   * Шүүлт солигдоход зураг тэр объектууд руу нисэнэ.
+   * ⚠️ Багцын шүүлт нь БҮСЭЭС давамгайлна — тэр нь илүү нарийн (тухайн багцын
+   * осол/кран). Багц цуцлагдвал бүсийн шүүлт, тэр ч байхгүй бол бүтэн хүрээ.
+   */
+  useZoomToFilter({
+    zone,
+    layerId: layerWhere ? 'habea:osol' : null,
+    where: layerWhere?.['habea:osol'] ?? null,
+  });
+
   /* Шүүгдсэн олонлогууд — багцын баруудаас БУСАД бүх дүрслэл эдгээрээс тоологдоно */
   const fInc = pkg ? inc.filter((x) => x.bagtsK === pkg) : inc;
   const fCrane = pkg ? cranes.filter((x) => x.bagtsK === pkg) : cranes;
@@ -485,8 +499,8 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const workerMix = [
     // ⚠️ envhub: хоёр ангиллыг хоёр чимэглэлийн өнгөөр будахгүй — ГОЛ бүлэг нь
     //    өгөгдлийн ганц өнгө, нөгөө нь саарал бэх (нийт доторх хувь гэж уншигдана).
-    { key: 'mn', label: 'Монгол', value: mongol, color: 'var(--data)' },
-    { key: 'fr', label: 'Гадаад', value: gadaad, color: 'var(--ink-3)' },
+    { key: 'mn', label: tr('Монгол'), value: mongol, color: 'var(--data)' },
+    { key: 'fr', label: tr('Гадаад'), value: gadaad, color: 'var(--ink-3)' },
   ].filter((x) => x.value > 0);
   /* Техник — маягт ТӨРЛӨӨР задалдаггүй тул ГҮЙЦЭТГЭГЧЭЭР харуулна (богино код) */
   const techByCompany = fLabor
@@ -508,7 +522,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   if (q.state === 'loading') {
     return (
       <div style={{ height: '100%', display: 'grid', placeItems: 'center' }}>
-        <Loading label="ХАБЭА ачаалж байна…" />
+        <Loading label={tr('ХАБЭА ачаалж байна…')} />
       </div>
     );
   }
@@ -516,48 +530,48 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     return (
       <div style={{ height: '100%', display: 'grid', placeItems: 'center' }}>
         <div style={{ display: 'grid', gap: 10, justifyItems: 'center' }}>
-          <Empty label="ХАБЭА ачаалахад алдаа гарлаа" />
+          <Empty label={tr('ХАБЭА ачаалахад алдаа гарлаа')} />
           {q.retry && (
-            <button type="button" className={h.retry} onClick={q.retry}>Дахин оролдох</button>
+            <button type="button" className={h.retry} onClick={q.retry}>{tr('Дахин оролдох')}</button>
           )}
         </div>
       </div>
     );
   }
 
-  const surveyEmpty = <Empty label="Судалгаа бөглөгдөөгүй" />;
+  const surveyEmpty = <Empty label={tr('Судалгаа бөглөгдөөгүй')} />;
 
   return (
     <div className={h.shell}>
       {/* ── KPI зурвас — бүтэн өргөн, зургаан үзүүлэлт ── */}
       <div className={h.kpi}>
-        {kpiTile(num(totalWorkers), 'Нийт ажилтан')}
-        {kpiTile(pkg ? '—' : num(labor.hunTsag), 'Хүн цаг')}
-        {kpiTile(num(totalTech), 'Ажиллаж буй техник')}
-        {kpiTile(num(craneActive), 'Идэвхтэй кран', `/${num(fCrane.length)}`)}
-        {kpiTile(num(fInc.length), 'Осол, зөрчил')}
-        {kpiTile(daysSince == null ? '—' : num(daysSince), 'Сүүлийн ослоос хойш', daysSince == null ? undefined : 'хоног')}
+        {kpiTile(num(totalWorkers), tr('Нийт ажилтан'))}
+        {kpiTile(pkg ? '—' : num(labor.hunTsag), tr('Хүн цаг'))}
+        {kpiTile(num(totalTech), tr('Ажиллаж буй техник'))}
+        {kpiTile(num(craneActive), tr('Идэвхтэй кран'), `/${num(fCrane.length)}`)}
+        {kpiTile(num(fInc.length), tr('Осол, зөрчил'))}
+        {kpiTile(daysSince == null ? '—' : num(daysSince), tr('Сүүлийн ослоос хойш'), daysSince == null ? undefined : tr('хоног'))}
       </div>
 
       {/* ── ЗҮҮН багана: осол зөрчлийн аналитик ── */}
       <div className={h.list}>
-        <Section title="Осол, зөрчил — төрлөөр" note={`${num(fInc.length)} бүртгэл`} tone="primary">
+        <Section title={tr('Осол, зөрчил — төрлөөр')} note={tr('{0} бүртгэл', num(fInc.length))} tone="primary">
           {incByType.length
-            ? <Donut items={incByType} stack size={110} center={num(fInc.length)} centerLabel="нийт" />
-            : <Empty label="Бүртгэл алга" />}
+            ? <Donut items={incByType} stack size={110} center={num(fInc.length)} centerLabel={tr('нийт')} />
+            : <Empty label={tr('Бүртгэл алга')} />}
         </Section>
-        <Section title="Сарын явц" note="бүртгэлийн тоо">
+        <Section title={tr('Сарын явц')} note={tr('бүртгэлийн тоо')}>
           {/* Чартын анхдагч өнгө = var(--data) (envhub: өгөгдлийн ГАНЦ өнгө) */}
           {months.length
             ? <Series items={months} height={72} />
-            : <Empty label="Бүртгэл алга" />}
+            : <Empty label={tr('Бүртгэл алга')} />}
         </Section>
-        <Section title="Шалтгааны төрөл">
+        <Section title={tr('Шалтгааны төрөл')}>
           {incByCause.length
             ? <Bars items={incByCause} />
-            : <Empty label="Бүртгэл алга" />}
+            : <Empty label={tr('Бүртгэл алга')} />}
         </Section>
-        <Section title="Сүүлийн бүртгэлүүд" note="дарж дэлгэрэнгүй">
+        <Section title={tr('Сүүлийн бүртгэлүүд')} note={tr('дарж дэлгэрэнгүй')}>
           {recent.length ? recent.map((x) => {
             // ⚠️ Давхцахгүй ОБЪЕКТ ИД-ээр таних — өмнө нь `огноо|төрөл` байсан тул
             //    нэг өдрийн ижил төрлийн 2 бүртгэл мөргөлдөж, нэгийг дарахад хоёул
@@ -573,21 +587,21 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                   onClick={() => setExpanded(on ? null : id)}
                 >
                   <i className={h.incDot} style={{ background: severityHue(x.type) }} />
-                  <span className={h.incType}>{x.type}</span>
+                  <span className={h.incType}>{tr(x.type)}</span>
                   <span className={h.incDate}>{date(x.d)}</span>
                 </button>
-                <div className={h.incSub}>{x.bagtsRaw} · {x.company}</div>
+                <div className={h.incSub}>{tr(x.bagtsRaw)} · {tr(x.company)}</div>
                 {on && (
                   <div className={h.incBody}>
                     {x.info !== '—' && <p>{x.info}</p>}
-                    {x.reason !== '—' && <p><b>Шалтгаан:</b> {x.reason}</p>}
-                    {x.action !== '—' && <p><b>Арга хэмжээ:</b> {x.action}</p>}
+                    {x.reason !== '—' && <p><b>{tr('Шалтгаан:')}</b> {x.reason}</p>}
+                    {x.action !== '—' && <p><b>{tr('Арга хэмжээ:')}</b> {x.action}</p>}
                     <IncPhotos oid={x.oid} />
                   </div>
                 )}
               </div>
             );
-          }) : <Empty label="Бүртгэл алга" />}
+          }) : <Empty label={tr('Бүртгэл алга')} />}
         </Section>
       </div>
 
@@ -642,12 +656,12 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         {pkg && !catOpen && (
           <div className={o.chipBar}>
             <div className={o.filterChip}>
-              <span className={o.filterLabel}>Багц: {pkgLabel}</span>
+              <span className={o.filterLabel}>{tr('Багц:')} {pkgLabel}</span>
               <button
                 type="button"
                 className={o.filterClear}
                 onClick={() => setPkg(null)}
-                aria-label="Шүүлтийг арилгах"
+                aria-label={tr('Шүүлтийг арилгах')}
               >
                 ×
               </button>
@@ -659,8 +673,8 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         {picked && (
           <div className={h.pick}>
             <header className={h.pickHead}>
-              <b>{LAYER_BY_ID[picked.id]?.title ?? 'Объект'}</b>
-              <button type="button" onClick={() => setPicked(null)} aria-label="Хаах">×</button>
+              <b>{LAYER_BY_ID[picked.id]?.title ?? tr('Объект')}</b>
+              <button type="button" onClick={() => setPicked(null)} aria-label={tr('Хаах')}>×</button>
             </header>
             <dl className={h.pickRows}>
               {pickRows(picked.id, picked.attrs).map(([k, v]) => (
@@ -686,53 +700,53 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
 
       {/* ── БАРУУН багана: кран · техник · хүн хүч ── */}
       <div className={h.r}>
-        <Section title="Цамхагт кран — төлөв" note={`${num(craneActive)}/${num(fCrane.length)} идэвхтэй`}>
+        <Section title={tr('Цамхагт кран — төлөв')} note={tr('{0}/{1} идэвхтэй', num(craneActive), num(fCrane.length))}>
           {craneByStatus.length
-            ? <Donut items={craneByStatus} stack size={110} center={num(fCrane.length)} centerLabel="кран" />
-            : <Empty label="Бүртгэл алга" />}
+            ? <Donut items={craneByStatus} stack size={110} center={num(fCrane.length)} centerLabel={tr('кран')} />
+            : <Empty label={tr('Бүртгэл алга')} />}
           {fCrane.length > 0 && (
-            <div className={h.mini}>Дундаж өндөр {num(avgUndur, 1)} м · сумны урт {num(avgSum, 1)} м</div>
+            <div className={h.mini}>{tr('Дундаж өндөр {0} м · сумны урт {1} м', num(avgUndur, 1), num(avgSum, 1))}</div>
           )}
         </Section>
-        <Section title="Кран — багцаар" note="дарж бүгдийг шүүнэ">
+        <Section title={tr('Кран — багцаар')} note={tr('дарж бүгдийг шүүнэ')}>
           {craneByPkg.length
             ? <Bars items={craneByPkg} selected={pkg} onSelect={togglePkg} />
-            : <Empty label="Бүртгэл алга" />}
+            : <Empty label={tr('Бүртгэл алга')} />}
         </Section>
-        <Section title="Техник — гүйцэтгэгчээр" note={`${num(totalTech)} нэгж`}>
+        <Section title={tr('Техник — гүйцэтгэгчээр')} note={tr('{0} нэгж', num(totalTech))}>
           {techByCompany.length ? <Bars items={techByCompany} /> : surveyEmpty}
         </Section>
         <Section
-          title="Ажилтан — бүрэлдэхүүн"
-          note={labor.asOf ? `сүүлийн бүртгэл ${date(labor.asOf)}` : undefined}
+          title={tr('Ажилтан — бүрэлдэхүүн')}
+          note={labor.asOf ? tr('сүүлийн бүртгэл {0}', date(labor.asOf)) : undefined}
         >
           {workerMix.length
-            ? <Donut items={workerMix} stack size={110} center={num(totalWorkers)} centerLabel="ажилтан" />
+            ? <Donut items={workerMix} stack size={110} center={num(totalWorkers)} centerLabel={tr('ажилтан')} />
             : surveyEmpty}
         </Section>
       </div>
 
       {/* ── ДООД зурвас: багц/компанийн харьцуулал — бүтэн өргөн, хумилтгүй ── */}
       <div className={h.fin}>
-        <Section title="Осол, зөрчил — багцаар" note="дарж бүгдийг шүүнэ">
+        <Section title={tr('Осол, зөрчил — багцаар')} note={tr('дарж бүгдийг шүүнэ')}>
           {incByPkg.length
             ? <Bars items={incByPkg} selected={pkg} onSelect={togglePkg} />
-            : <Empty label="Бүртгэл алга" />}
+            : <Empty label={tr('Бүртгэл алга')} />}
         </Section>
-        <Section title="Осол, зөрчил — компаниар">
+        <Section title={tr('Осол, зөрчил — компаниар')}>
           {incByCompany.length
             ? <Bars items={incByCompany} />
-            : <Empty label="Бүртгэл алга" />}
+            : <Empty label={tr('Бүртгэл алга')} />}
         </Section>
         {/* ⚠️ `fill` + `grow`: доод зурвасын мөрийн өндрийг зургийн хана
             (PhotoWall) тогтоодог тул тогтмол 110px чарт нь картын дөнгөж 40%-ийг
             эзэлж, доор нь ~150px хоосон зай үлдээдэг байв. */}
-        <Section title="Ажилтан — гүйцэтгэгчээр" note={`Монгол ${num(mongol)} · Гадаад ${num(gadaad)}`} fill>
+        <Section title={tr('Ажилтан — гүйцэтгэгчээр')} note={tr('Монгол {0} · Гадаад {1}', num(mongol), num(gadaad))} fill>
           {workersByCompany.length
-            ? <Series items={workersByCompany} height={110} unit="ажилтан" grow />
+            ? <Series items={workersByCompany} height={110} unit={tr('ажилтан')} grow />
             : surveyEmpty}
         </Section>
-        <Section title="Осол, зөрчлийн зураг" note="хавсаргасан зургууд · дарж томруулна">
+        <Section title={tr('Осол, зөрчлийн зураг')} note={tr('хавсаргасан зургууд · дарж томруулна')}>
           <PhotoWall list={[...fInc].sort((a, b) => b.d - a.d)} />
         </Section>
       </div>

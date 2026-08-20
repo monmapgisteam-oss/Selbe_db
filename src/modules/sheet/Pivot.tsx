@@ -349,7 +349,7 @@ export default function Pivot() {
       // ⚠️ publish-ийн ognoo !== today салбар setOgnoo(today) хийж ЭНД дахин
       // ачаалдаг — өмнө нь тэр салбарт хавсралтын алдаа бүрэн хаягдаж байв.
       if (attachErrsRef.current.length) {
-        setErr("Зураг хавсаргахад алдаа: " + attachErrsRef.current[0]);
+        setErr('Зураг хавсаргахад алдаа: ' + attachErrsRef.current[0]);
         attachErrsRef.current = [];
       }
     })();
@@ -516,8 +516,9 @@ export default function Pivot() {
     const when = new Date(d.t).toLocaleString("mn-MN");
     const msg =
       `Нийтлэгдээгүй ${Object.keys(next).length} нүдний засвар олдлоо (${when}).` +
-      (dropped ? `\n${dropped} нүд хуучирсан тул орхигдоно.` : "") +
-      "\nСэргээх үү?";
+      (dropped ? `
+${dropped} нүд хуучирсан тул орхигдоно.` : "") +
+      '\nСэргээх үү?';
     if (window.confirm(msg)) setPending(next);
     else clearDraftLS(bagts, ognoo);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -655,7 +656,7 @@ export default function Pivot() {
     // болж нийтлэхэд null бичигдэн өмнөх утгыг чимээгүй устгадаг байв.
     const t = value.trim().replace(",", ".");
     if (t !== "" && !Number.isFinite(Number(t))) {
-      setErr("Тоон утга оруулна уу.");
+      setErr('Тоон утга оруулна уу.');
       return false;
     }
     const norm = t === "" ? "" : String(Math.min(100, Math.max(0, Number(t))));
@@ -877,7 +878,8 @@ export default function Pivot() {
     if (
       orphaned.length &&
       !window.confirm(
-        `${orphaned.length} нүдэнд зураг бэлтгэсэн ч хувь нь оруулаагүй тул нийтлэхэд хадгалагдахгүй устана.\nҮргэлжлүүлэх үү?`,
+        `${orphaned.length} нүдэнд зураг бэлтгэсэн ч хувь нь оруулаагүй тул нийтлэхэд хадгалагдахгүй устана.
+Үргэлжлүүлэх үү?`,
       )
     ) {
       publishingRef.current = false;
@@ -967,7 +969,7 @@ export default function Pivot() {
       if (ognoo === today) {
         await loadSlice(); // revokes object URLs + clears pendingFiles
         if (attachErrsRef.current.length) {
-          setErr("Зураг хавсаргахад алдаа: " + attachErrsRef.current[0]);
+          setErr('Зураг хавсаргахад алдаа: ' + attachErrsRef.current[0]);
           attachErrsRef.current = [];
         }
       } else {
@@ -1124,7 +1126,7 @@ export default function Pivot() {
     <div className={st.wrap} ref={wrapRef}>
       <div className={st.toolbar}>
         <label className={st.field}>
-          Багц{" "}
+          {'Багц'}{" "}
           <select
             className={st.select}
             value={bagts}
@@ -1136,7 +1138,7 @@ export default function Pivot() {
           </select>
         </label>
         <label className={st.field}>
-          Огноо{" "}
+          {'Огноо'}{" "}
           <select
             className={st.select}
             value={ognoo}
@@ -1148,22 +1150,22 @@ export default function Pivot() {
           </select>
         </label>
         <span className={st.field}>
-          Давхарга
+          {'Давхарга'}
           <span className={st.layerBtns}>
-            <button className={st.layerBtn} onClick={() => collapseToLayer(1)} title="Үе шат">
+            <button className={st.layerBtn} onClick={() => collapseToLayer(1)} title={'Үе шат'}>
               1
             </button>
-            <button className={st.layerBtn} onClick={() => collapseToLayer(2)} title="+ дэд үе шат">
+            <button className={st.layerBtn} onClick={() => collapseToLayer(2)} title={'+ дэд үе шат'}>
               2
             </button>
-            <button className={st.layerBtn} onClick={() => collapseToLayer(3)} title="+ ангилал">
+            <button className={st.layerBtn} onClick={() => collapseToLayer(3)} title={'+ ангилал'}>
               3
             </button>
-            <button className={st.layerBtn} onClick={() => collapseToLayer(4)} title="+ бүлэг (давхар)">
+            <button className={st.layerBtn} onClick={() => collapseToLayer(4)} title={'+ бүлэг (давхар)'}>
               4
             </button>
-            <button className={st.layerBtn} onClick={() => collapseToLayer(5)} title="Бүх ажил дэлгэх">
-              Бүгд
+            <button className={st.layerBtn} onClick={() => collapseToLayer(5)} title={'Бүх ажил дэлгэх'}>
+              {'Бүгд'}
             </button>
           </span>
         </span>
@@ -1171,20 +1173,20 @@ export default function Pivot() {
           <button
             className={st.layerBtn}
             onClick={resetAll}
-            title="Чирж өөрчилсөн бүх баганы өргөнийг анхны хэмжээнд нь буцаана"
+            title={'Чирж өөрчилсөн бүх баганы өргөнийг анхны хэмжээнд нь буцаана'}
           >
-            Өргөн сэргээх
+            {'Өргөн сэргээх'}
           </button>
         )}
         <button
           className={st.publishBtn}
           onClick={publish}
           disabled={busy || dirtyCount === 0}
-          title="Өөрчилсөн нүдүүдийг өнөөдрийн огноогоор хадгална (Ctrl+S)"
+          title={'Өөрчилсөн нүдүүдийг өнөөдрийн огноогоор хадгална (Ctrl+S)'}
         >
-          Нийтлэх{dirtyCount ? ` (${dirtyCount})` : ""}
+          {'Нийтлэх'}{dirtyCount ? ` (${dirtyCount})` : ""}
         </button>
-        {busy && <span className={st.muted}>нийтэлж байна…</span>}
+        {busy && <span className={st.muted}>{'нийтэлж байна…'}</span>}
       </div>
 
       {err && <p className={st.error}>{err}</p>}
@@ -1210,21 +1212,21 @@ export default function Pivot() {
             <thead>
               <tr>
                 <th className={cls("fz c-no")}>№<i {...grip("no")} /></th>
-                <th className={cls("fz c-ajil")}>Ажил<i {...grip("ajil")} /></th>
-                <th className={cls("fz c-jin")} title="Ажлын хувийн жин — дээд мөртөө эзлэх">
-                  Ажлын жин<i {...grip("jin")} />
+                <th className={cls("fz c-ajil")}>{'Ажил'}<i {...grip("ajil")} /></th>
+                <th className={cls("fz c-jin")} title={'Ажлын хувийн жин — дээд мөртөө эзлэх'}>
+                  {'Ажлын жин'}<i {...grip("jin")} />
                 </th>
-                <th className={cls("fz c-totw")} title="Нийт талбайд эзлэх хувийн жин">
-                  Нийт жин<i {...grip("totw")} />
+                <th className={cls("fz c-totw")} title={'Нийт талбайд эзлэх хувийн жин'}>
+                  {'Нийт жин'}<i {...grip("totw")} />
                 </th>
-                <th className={cls("fz c-perf")}>Гүйцэтгэл<i {...grip("perf")} /></th>
+                <th className={cls("fz c-perf")}>{'Гүйцэтгэл'}<i {...grip("perf")} /></th>
                 {buildings.map((b) => (
                   <th key={b} className={cls("bld")}>
                     {b}<i {...grip("bld")} />
                   </th>
                 ))}
-                <th className={cls("fz c-done")}>Хийгдсэн<i {...grip("done")} /></th>
-                <th className={cls("fz c-dutuu")}>Дутуу<i {...grip("dutuu")} /></th>
+                <th className={cls("fz c-done")}>{'Хийгдсэн'}<i {...grip("done")} /></th>
+                <th className={cls("fz c-dutuu")}>{'Дутуу'}<i {...grip("dutuu")} /></th>
               </tr>
             </thead>
             <tbody>
@@ -1474,7 +1476,7 @@ export default function Pivot() {
               <tr style={{ backgroundColor: HEADER_BG, fontWeight: 700 }}>
                 <td className={cls("fz c-no")} />
                 <td className={cls("fz c-ajil")} style={{ paddingLeft: "6px" }}>
-                  Дундаж
+                  {'Дундаж'}
                 </td>
                 <td className={cls("fz c-jin")} />
                 <td className={cls("fz c-totw")} />
@@ -1512,7 +1514,7 @@ export default function Pivot() {
                   setMenu(null);
                 }}
               >
-                📎 Зураг хавсаргах
+                {'📎 Зураг хавсаргах'}
               </button>
               <button
                 className={st.menuItemDanger}
@@ -1521,7 +1523,7 @@ export default function Pivot() {
                   setMenu(null);
                 }}
               >
-                Нүд устгах
+                {'Нүд устгах'}
               </button>
             </>
           )}
@@ -1539,14 +1541,14 @@ export default function Pivot() {
                 className={st.modal}
                 role="dialog"
                 aria-modal="true"
-                aria-label="Зургийн хавсралт"
+                aria-label={'Зургийн хавсралт'}
                 tabIndex={-1}
                 ref={modalRef}
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className={st.modalHead}>
                   <h2 className={st.modalTitle}>
-                    Зураг — {rows[attach.ri]?.work ?? ""} · {attach.bld}
+                    {'Зураг —'} {rows[attach.ri]?.work ?? ""} · {attach.bld}
                   </h2>
                   <button
                     className={st.closeBtn}
@@ -1557,13 +1559,13 @@ export default function Pivot() {
                 </div>
 
                 {aFid == null && (
-                  <p className={st.hint}>Нийтэлсний дараа хадгалагдана.</p>
+                  <p className={st.hint}>{'Нийтэлсний дараа хадгалагдана.'}</p>
                 )}
 
                 {attErr && <p className={st.errorSm}>{attErr}</p>}
 
                 <label className={st.addImgBtn}>
-                  + Зураг нэмэх
+                  {'+ Зураг нэмэх'}
                   <input
                     type="file"
                     accept="image/*"
@@ -1577,10 +1579,10 @@ export default function Pivot() {
                   />
                 </label>
 
-                {attBusy && <p className={st.hint}>ачаалж байна…</p>}
+                {attBusy && <p className={st.hint}>{'ачаалж байна…'}</p>}
 
                 {empty && !attBusy ? (
-                  <p className={st.muted}>Зураг алга.</p>
+                  <p className={st.muted}>{'Зураг алга.'}</p>
                 ) : (
                   <div className={st.imgGrid}>
                     {aFid != null
@@ -1599,7 +1601,7 @@ export default function Pivot() {
                               />
                             </a>
                             <button
-                              title="Устгах"
+                              title={'Устгах'}
                               className={st.imgDel}
                               disabled={attBusy}
                               onClick={() => removeServerAttach(a.id)}
@@ -1617,7 +1619,7 @@ export default function Pivot() {
                               className={st.img}
                             />
                             <button
-                              title="Устгах"
+                              title={'Устгах'}
                               className={st.imgDel}
                               onClick={() => removeLocalAttach(i)}
                             >

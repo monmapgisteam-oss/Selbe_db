@@ -26,7 +26,7 @@ export async function agsFetch(
   try {
     json = await res.json();
   } catch {
-    throw new Error("Үйлчилгээ JSON биш хариу буцаав — сүлжээгээ шалгана уу");
+    throw new Error('Үйлчилгээ JSON биш хариу буцаав — сүлжээгээ шалгана уу');
   }
   if (json.error)
     throw new Error(

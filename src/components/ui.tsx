@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { t as tr } from '@/lib/i18nCore';
 import type { Async } from '@/lib/useAsync';
 import { Icon } from './Icon';
 import s from './ui.module.css';
@@ -150,7 +151,7 @@ function Tip({ x, y, label, value, color, hint }: TipData) {
     >
       <span className={s.tipHd} style={{ background: `color-mix(in oklab, ${c} 10%, transparent)` }}>
         <i className={s.tipDot} style={{ background: c }} />
-        <span className={s.tipName}>{label}</span>
+        <span className={s.tipName}>{tr(label)}</span>
       </span>
       <span className={s.tipBody}>
         <b className={`${s.tipVal} num`} style={{ color: c }}>{value}</b>
@@ -433,7 +434,7 @@ export function Bars({
         const body = (
           <>
             <span className={s.barTop}>
-              <span className={`${s.barName} ${on ? s.barNameOn : ''}`} title={it.label}>{it.label}</span>
+              <span className={`${s.barName} ${on ? s.barNameOn : ''}`} title={tr(it.label)}>{tr(it.label)}</span>
               <span className={`${s.barVal} ${on ? s.barValOn : ''} num`}>{it.display ?? it.value}</span>
             </span>
             <span className={s.barTrack}>
@@ -448,7 +449,7 @@ export function Bars({
           label: it.label,
           value: String(it.display ?? it.value),
           color: it.color ?? color,
-          hint: onSelect ? 'Дарж газрын зурагт шүүнэ' : undefined,
+          hint: onSelect ? tr('Дарж газрын зурагт шүүнэ') : undefined,
         };
         return onSelect ? (
           <button
@@ -472,12 +473,12 @@ export function Bars({
 
       {hidden > 0 && (
         <button type="button" className={s.more} onClick={() => setAll(true)}>
-          Үлдсэн {hidden}-г харах
+          {tr('Үлдсэн')} {hidden}{tr('-г харах')}
         </button>
       )}
       {all && limit != null && items.length > limit && (
         <button type="button" className={s.more} onClick={() => setAll(false)}>
-          Хумих
+          {tr('Хумих')}
         </button>
       )}
     </div>
@@ -537,7 +538,7 @@ export function Stack({
               {...hoverProps(i.key)}
             >
               <span className={s.legendDot} style={{ background: i.color }} />
-              {i.label}
+              {tr(i.label)}
               {/* ⚠️ Хувь нь ЗААВАЛ: --c5/--c6 слотууд цайвар горимд 3:1-ээс
                   доогуур тул өнгө нь дангаараа мэдээлэл дамжуулж болохгүй
                   (globals.css дахь «relief» дүрэм). */}
@@ -690,12 +691,12 @@ export function Donut({
    * `<title>` — тэр нь найдвартай уншигддаггүй).
    */
   const ariaSummary =
-    `Дугуй диаграм. Нийт ${center ?? total}${centerLabel ? ` ${centerLabel}` : ''}. ` +
+    tr('Дугуй диаграм. Нийт {0}{1}. ', center ?? total, centerLabel ? ` ${centerLabel}` : '') +
     slices
       .slice(0, 3)
-      .map((sl) => `${sl.label} ${(sl.frac * 100).toFixed(0)}%`)
+      .map((sl) => `${tr(sl.label)} ${(sl.frac * 100).toFixed(0)}%`)
       .join(', ') +
-    (items.length > 3 ? `, бусад ${items.length - 3} ангилал.` : '.');
+    (items.length > 3 ? tr(', бусад {0} ангилал.', items.length - 3) : '.');
 
   /**
    * LEADER горим — тайлбарыг доор жагсаахын оронд зүсмэг бүрээс зураас татаж
@@ -736,7 +737,7 @@ export function Donut({
                   label: sl.label,
                   value: `${sl.value} · ${sl.frac > 0 && sl.frac < 0.005 ? '<1' : (sl.frac * 100).toFixed(0)}%`,
                   color: sl.color,
-                  hint: onSelect ? 'Дарж газрын зурагт шүүнэ' : undefined,
+                  hint: onSelect ? tr('Дарж газрын зурагт шүүнэ') : undefined,
                 })}
               />
             ))}
@@ -783,10 +784,10 @@ export function Donut({
                       label: sl.label,
                       value: `${sl.value} · ${pct}`,
                       color: sl.color,
-                      hint: onSelect ? 'Дарж газрын зурагт шүүнэ' : undefined,
+                      hint: onSelect ? tr('Дарж газрын зурагт шүүнэ') : undefined,
                     })}
                   >
-                    <span className={s.donutLeadName}>{sl.label}</span>{' '}
+                    <span className={s.donutLeadName}>{tr(sl.label)}</span>{' '}
                     <b className={s.donutLeadPct} style={{ color: sl.color }}>{pct}</b>
                   </div>
                 </foreignObject>
@@ -831,7 +832,7 @@ export function Donut({
                   label: sl.label,
                   value: `${sl.value} · ${sl.frac > 0 && sl.frac < 0.005 ? '<1' : (sl.frac * 100).toFixed(0)}%`,
                   color: sl.color,
-                  hint: onSelect ? 'Дарж газрын зурагт шүүнэ' : undefined,
+                  hint: onSelect ? tr('Дарж газрын зурагт шүүнэ') : undefined,
                 })}
               />
             ))}
@@ -848,7 +849,7 @@ export function Donut({
             return h ? (
               <>
                 <span className={`${s.donutValue} num`}>{h.value}</span>
-                <span className={s.donutLabel} title={h.label}>{h.label}</span>
+                <span className={s.donutLabel} title={tr(h.label)}>{tr(h.label)}</span>
               </>
             ) : (
               <>
@@ -874,7 +875,7 @@ export function Donut({
                   border: `1px solid ${sl.color}`,
                 }}
               />
-              <span className={s.donutName}>{sl.label}</span>
+              <span className={s.donutName}>{tr(sl.label)}</span>
               {/**
                 * ⚠️ `toFixed(0)` ганцаараа ХУДАЛ уншигдана: 3,947-гийн 14 нь
                 * 0.35% тул «0%» болж, зүсмэг нь диаграм дээр харагдсаар атлаа
@@ -1002,7 +1003,7 @@ export function Series({
             label: it.label,
             value: String(it.display ?? it.value) + (unit ? ` ${unit}` : ''),
             color,
-            hint: onSelect ? 'Дарж шүүнэ' : undefined,
+            hint: onSelect ? tr('Дарж шүүнэ') : undefined,
           };
           const inner = <span className={s.seriesBar} style={{ height: barH, opacity: dim ? 0.22 : 1 }} />;
           return onSelect ? (
@@ -1038,7 +1039,7 @@ export function Series({
               key={it.key}
               className={`${s.seriesLabel} num ${on ? s.seriesLabelOn : ''} ${stride > 1 ? s.seriesLabelWide : ''}`}
             >
-              {show ? it.label : ''}
+              {show ? tr(it.label) : ''}
             </span>
           );
         })}
@@ -1199,7 +1200,7 @@ export function Trend({
   //    товч unmount болоход React blur/mouseleave өгдөггүй тул энд цэвэрлэнэ.
   useEffect(() => setHov(null), [points.length]);
 
-  if (points.length < 2) return <Empty label="Цуваа зурахад хангалттай бүртгэл алга." />;
+  if (points.length < 2) return <Empty label={tr('Цуваа зурахад хангалттай бүртгэл алга.')} />;
 
   // Тэнхлэгийн дээд хязгаар нь БҮТЭН аравт — 23%-ийн муруйг 0–100 дээр зурвал
   // шулуун шугам болж, өсөлт нь ялгагдахгүй.
@@ -1242,7 +1243,7 @@ export function Trend({
           {fin(cur.value).toFixed(1)}{unit}
         </span>
         <span className={s.trendMeta}>
-          {cur.label}{cur.note ? ` · ${cur.note}` : ''}
+          {tr(cur.label)}{cur.note ? ` · ${cur.note}` : ''}
         </span>
       </div>
 
@@ -1351,7 +1352,7 @@ export function Ring({
       aria-label={label}
       aria-valuemin={0}
       aria-valuemax={100}
-      {...(has ? { 'aria-valuenow': v, 'aria-valuetext': text } : { 'aria-valuetext': 'өгөгдөлгүй' })}
+      {...(has ? { 'aria-valuenow': v, 'aria-valuetext': text } : { 'aria-valuetext': tr('өгөгдөлгүй') })}
     >
       <svg className={s.ringSvg} width={size} height={size} aria-hidden>
         <circle className={s.ringTrack} cx={size / 2} cy={size / 2} r={r} strokeWidth={width} />
@@ -1458,7 +1459,7 @@ export function ListItem({
 
 /* ── Төлөв ── */
 
-export function Loading({ label = 'Ачаалж байна…' }: { label?: string }) {
+export function Loading({ label = tr('Ачаалж байна…') }: { label?: string }) {
   // ⚠️ `role="status"` — ачаалал дуусахад дэлгэц уншигч мэдэгдэнэ. Урьд нь
   //    зөвхөн нүдэнд харагдах эргэлдэгч байсан.
   return (
@@ -1520,13 +1521,13 @@ export function Data<T>({
   if (q.state === 'error') {
     return (
       <div className={s.state} role="alert">
-        <strong className={s.error}>Өгөгдөл татагдсангүй</strong>
+        <strong className={s.error}>{tr('Өгөгдөл татагдсангүй')}</strong>
         <span className={s.errorMsg}>{q.error.message}</span>
         {/* ArcGIS түр гацах нь энгийн — бүтэн refresh хийлгэхгүйгээр энэ
             хүсэлтийг л дахин явуулна (`useAsync`-ийн retry) */}
         {q.retry && (
           <button type="button" className={s.retryBtn} onClick={q.retry}>
-            Дахин оролдох
+            {tr('Дахин оролдох')}
           </button>
         )}
       </div>

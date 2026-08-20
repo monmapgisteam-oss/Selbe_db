@@ -64,7 +64,7 @@ export function useColWidths(key: string) {
   const grip = useCallback(
     (col: string) => ({
       className: st.grip,
-      title: "Чирж өргөнийг тохируулна · давхар товшвол анхны хэмжээ",
+      title: 'Чирж өргөнийг тохируулна · давхар товшвол анхны хэмжээ',
       onPointerDown: (e: React.PointerEvent<HTMLElement>) => {
         // ⚠️ Толгой дээрх бусад үйлдэл (эрэмбэлэх, нүд сонгох) асахаас сэргийлнэ.
         e.preventDefault();
@@ -103,7 +103,7 @@ export function useColWidths(key: string) {
       // өргөн — урьд нь зөвхөн хулгана/хүрэлтээр л ажилладаг байв.
       role: "separator" as const,
       "aria-orientation": "vertical" as const,
-      "aria-label": "Баганы өргөн",
+      "aria-label": 'Баганы өргөн',
       tabIndex: 0,
       onKeyDown: (e: React.KeyboardEvent<HTMLElement>) => {
         if (e.key === "Enter" || e.key === "Home") {

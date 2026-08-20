@@ -6,6 +6,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import { Icon } from './Icon';
+import { t as tr } from '@/lib/i18nCore';
 import { LayerSwatch } from './LayerSwatch';
 import { useMap } from './MapCanvas';
 import { useAsync, type Async } from '@/lib/useAsync';
@@ -146,33 +147,33 @@ export const LayerCatalog = memo(function LayerCatalog({
   const onCount = visible.filter((id) => all.includes(id)).length;
 
   return (
-    <aside className={`${s.drawer} ${embedded ? s.embedded : ''}`} aria-label="Давхаргын жагсаалт">
+    <aside className={`${s.drawer} ${embedded ? s.embedded : ''}`} aria-label={tr('Давхаргын жагсаалт')}>
       {/* Өргөн тохируулах бариул — баганын БАРУУН ирмэг дээр (зураг руу харсан) */}
       {onResizeStart && (
         <div
           className={`${s.grip} ${resizing ? s.gripOn : ''}`}
           role="separator"
           aria-orientation="vertical"
-          aria-label="Жагсаалтын өргөн"
+          aria-label={tr('Жагсаалтын өргөн')}
           onPointerDown={onResizeStart}
           onDoubleClick={onResizeReset}
-          title="Чирж өргөсгөнө · давхар товшиж анхны хэмжээнд буцаана"
+          title={tr('Чирж өргөсгөнө · давхар товшиж анхны хэмжээнд буцаана')}
         />
       )}
 
       <header className={s.head}>
         <div className={s.headText}>
-          <span className={s.title}>Давхарга</span>
+          <span className={s.title}>{tr('Давхарга')}</span>
           <span className={s.sub}>
-            {num(all.length)} нийт · {num(onCount)} асаалттай
+            {num(all.length)} {tr('нийт ·')} {num(onCount)} {tr('асаалттай')}
             {/* Тоо/хэмжээ хараахан татагдаж байгааг заана — ЖАГСААЛТ өөрөө хүлээхгүй */}
-            {totals.state === 'loading' && <> · тоолж байна…</>}
+            {totals.state === 'loading' && <> {tr('· тоолж байна…')}</>}
             {/* ⚠️ Алдааг «—»-ээр нуухгүй (query.ts-ийн дүрэм) — юу болсныг хэлж,
                 дахин оролдох гарц өгнө. Товч нь текстэн холбоос маягтай тул
                 css модульд шинэ класс нэмэлгүй inline-аар зурав. */}
             {totals.state === 'error' && (
               <>
-                {' · '}<em className={s.rowWarn}>тоо татагдсангүй</em>
+                {' · '}<em className={s.rowWarn}>{tr('тоо татагдсангүй')}</em>
                 {totals.retry && (
                   <>
                     {' '}
@@ -181,7 +182,7 @@ export const LayerCatalog = memo(function LayerCatalog({
                       onClick={totals.retry}
                       style={{ font: 'inherit', color: 'inherit', background: 'none', border: 0, padding: 0, cursor: 'pointer', textDecoration: 'underline' }}
                     >
-                      дахин оролдох
+                      {tr('дахин оролдох')}
                     </button>
                   </>
                 )}
@@ -194,13 +195,13 @@ export const LayerCatalog = memo(function LayerCatalog({
           type="button"
           className={s.close}
           onClick={() => setShut(shut.size ? new Set() : new Set(groups.map((g) => g.key)))}
-          title={shut.size ? 'Бүгдийг дэлгэх' : 'Бүгдийг хураах'}
-          aria-label={shut.size ? 'Бүгдийг дэлгэх' : 'Бүгдийг хураах'}
+          title={shut.size ? tr('Бүгдийг дэлгэх') : tr('Бүгдийг хураах')}
+          aria-label={shut.size ? tr('Бүгдийг дэлгэх') : tr('Бүгдийг хураах')}
         >
           {shut.size ? '▸' : '▾'}
         </button>
         {!pinned && (
-          <button type="button" className={s.close} onClick={onClose} aria-label="Жагсаалтыг хаах">×</button>
+          <button type="button" className={s.close} onClick={onClose} aria-label={tr('Жагсаалтыг хаах')}>×</button>
         )}
       </header>
 
@@ -215,7 +216,7 @@ export const LayerCatalog = memo(function LayerCatalog({
           onClick={() => setVisible((prev) => prev.filter((id) => !all.includes(id)))}
         >
           <Icon name="layers" size={15} />
-          Бүх давхаргыг унтраах
+          {tr('Бүх давхаргыг унтраах')}
           {onCount > 0 && <span className={`${s.allOffCount} num`}>{onCount}</span>}
         </button>
 
@@ -234,8 +235,8 @@ export const LayerCatalog = memo(function LayerCatalog({
             </svg>
           </span>
           <Icon name="layers" size={15} />
-          <span className={s.orthoLabel}>Ортофото зураг</span>
-          <span className={s.orthoState}>{ortho ? 'ил' : 'нуусан'}</span>
+          <span className={s.orthoLabel}>{tr('Ортофото зураг')}</span>
+          <span className={s.orthoState}>{ortho ? tr('ил') : tr('нуусан')}</span>
         </button>
 
         {/**
@@ -279,7 +280,7 @@ export const LayerCatalog = memo(function LayerCatalog({
                       <button
                         type="button"
                         className={s.groupToggle}
-                        title={on === 0 ? 'Багцыг бүхэлд нь асаах' : 'Багцыг бүхэлд нь унтраах'}
+                        title={on === 0 ? tr('Багцыг бүхэлд нь асаах') : tr('Багцыг бүхэлд нь унтраах')}
                         onClick={() => {
                           toggleGroup(ids);
                           // Асаахад мөрүүд нь задарч, унтраахад буцаж хураагдана
@@ -297,8 +298,8 @@ export const LayerCatalog = memo(function LayerCatalog({
                       <button
                         type="button"
                         aria-expanded={open}
-                        aria-label={open ? `${g.title} — жагсаалтыг хураах` : `${g.title} — жагсаалтыг дэлгэх`}
-                        title={open ? 'Жагсаалтыг хураах' : 'Жагсаалтыг дэлгэх'}
+                        aria-label={open ? tr('{0} — жагсаалтыг хураах', g.title) : tr('{0} — жагсаалтыг дэлгэх', g.title)}
+                        title={open ? tr('Жагсаалтыг хураах') : tr('Жагсаалтыг дэлгэх')}
                         className={`${s.groupCaret} ${open ? s.groupCaretOpen : ''}`}
                         onClick={() => setOpenState(g.key, !open)}
                       >
@@ -330,15 +331,15 @@ export const LayerCatalog = memo(function LayerCatalog({
                               type="button"
                               role="switch"
                               aria-checked={isOn}
-                              aria-label={`${d.title} — зурагт харуулах`}
+                              aria-label={tr('{0} — зурагт харуулах', d.title)}
                               className={s.rowMain}
                               onClick={() => toggle(d.id)}
                             >
                               <span className={s.rowTitle}>{d.title}</span>
                               <span className={`${s.rowMeta} num`}>
-                                {t ? `${num(t.n)} ш` : (loadingTotals ? '…' : '—')}
+                                {t ? tr('{0} ш', num(t.n)) : (loadingTotals ? '…' : '—')}
                                 {q ? ` · ${q}` : ''}
-                                {zone && d.noZone && <em className={s.rowWarn}> · бүсгүй</em>}
+                                {zone && d.noZone && <em className={s.rowWarn}> {tr('· бүсгүй')}</em>}
                               </span>
                             </button>
 
@@ -346,8 +347,8 @@ export const LayerCatalog = memo(function LayerCatalog({
                             <button
                               type="button"
                               aria-pressed={selected === d.id}
-                              aria-label={`${d.title} — дэлгэрэнгүй самбар`}
-                              title="Дэлгэрэнгүй самбар"
+                              aria-label={tr('{0} — дэлгэрэнгүй самбар', d.title)}
+                              title={tr('Дэлгэрэнгүй самбар')}
                               className={s.rowChart}
                               onClick={() => onSelect(d.id)}
                             >
@@ -413,7 +414,7 @@ function FacetRows({
 
   const q = useAsync(async () => {
     const rows = await queryGroup(layerUrl(d), f.field, layerStats(d), where);
-    return groups(rows, f.field, 'Бүртгэгдээгүй', ['n', 'q'])
+    return groups(rows, f.field, tr('Бүртгэгдээгүй'), ['n', 'q'])
       .sort((a, b) => b.values.n - a.values.n);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [d.id, where]);
@@ -425,7 +426,7 @@ function FacetRows({
     return (
       <div className={s.facetRows}>
         <button type="button" className={s.facetRow} onClick={q.retry}>
-          <span className={s.facetName}>Ангилал татагдсангүй — дахин оролдох</span>
+          <span className={s.facetName}>{tr('Ангилал татагдсангүй — дахин оролдох')}</span>
         </button>
       </div>
     );

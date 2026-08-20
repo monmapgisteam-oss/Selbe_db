@@ -1,3 +1,4 @@
+import { t as tr } from '@/lib/i18nCore';
 /**
  * ТЭЗҮ ба судалгааны БАРИМТ БИЧГҮҮД — навбарын «ТЭЗҮ» товчны popup-д харагдана.
  *
@@ -17,14 +18,14 @@ export type DocItem = {
 export const DOCS: DocItem[] = [
   {
     key: "tezu",
-    title: "ТЭЗҮ (Rev-01)",
-    sub: "Техник эдийн засгийн үндэслэл",
+    title: tr('ТЭЗҮ (Rev-01)'),
+    sub: tr('Техник эдийн засгийн үндэслэл'),
     file: "tezu-rev-01.pdf",
   },
   {
     key: "deia18",
-    title: "ДБОНҮ 2018",
-    sub: "Байгаль орчны нарийвчилсан үнэлгээ (MN)",
+    title: tr('ДБОНҮ 2018'),
+    sub: tr('Байгаль орчны нарийвчилсан үнэлгээ (MN)'),
     file: "deia-2018-mn.pdf",
   },
   {
@@ -35,8 +36,8 @@ export const DOCS: DocItem[] = [
   },
   {
     key: "bonnu",
-    title: "БОННҮ тайлан",
-    sub: "Хот төлөвлөлтийн институт — хавсралт",
+    title: tr('БОННҮ тайлан'),
+    sub: tr('Хот төлөвлөлтийн институт — хавсралт'),
     file: "bonnu-tailan.pdf",
   },
 ];

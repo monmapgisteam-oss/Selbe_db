@@ -1,6 +1,7 @@
 'use client';
 
 import { Fragment } from 'react';
+import { t as tr } from '@/lib/i18nCore';
 import { Icon } from './Icon';
 import { VIEWS, ALL_MODE_HIDE, type ViewKey } from '@/lib/services';
 import s from './tree.module.css';
@@ -26,6 +27,8 @@ export function ViewRail({
   navScope = 'all',
   onDocs,
   docsActive = false,
+  onAdmin,
+  adminActive = false,
 }: {
   view: ViewKey;
   setView: (v: ViewKey) => void;
@@ -50,6 +53,13 @@ export function ViewRail({
   onDocs?: () => void;
   /** Popup нээлттэй эсэх (идэвхтэй тэмдэг) */
   docsActive?: boolean;
+  /**
+   * Хэрэглэгчийн эрхийн modal нээх — ЗӨВХӨН super admin-д (`Portal` шийднэ:
+   * эрхгүй бол огт дамжуулахгүй тул мөр ч гарахгүй).
+   */
+  onAdmin?: () => void;
+  /** Эрхийн modal нээлттэй эсэх (идэвхтэй тэмдэг) */
+  adminActive?: boolean;
   /** ХУРААГДСАН босоо горим — зөвхөн дүрс үлдэнэ (нэр tooltip-д) */
   collapsed?: boolean;
 }) {
@@ -61,15 +71,15 @@ export function ViewRail({
     <button
       type="button"
       aria-pressed={docsActive}
-      aria-label="ТЭЗҮ-БОНУ баримт бичиг"
-      title="ТЭЗҮ ба судалгааны баримт бичиг"
+      aria-label={tr('ТЭЗҮ-БОНУ баримт бичиг')}
+      title={tr('ТЭЗҮ ба судалгааны баримт бичиг')}
       className={`${s.item} ${s.docItem} ${docsActive ? s.itemOn : ''}`}
       onClick={onDocs}
     >
       {!header && <span className={s.no} aria-hidden />}
       <span className={s.icon}><Icon name="file" /></span>
       <span className={s.text}>
-        <span className={s.title}>ТЭЗҮ-БОНУ</span>
+        <span className={s.title}>{tr('ТЭЗҮ-БОНУ')}</span>
       </span>
     </button>
   ) : null;
@@ -85,8 +95,8 @@ export function ViewRail({
       : VIEWS.filter((v) => navScope.includes(v.key));
 
   return (
-    <nav className={header ? s.railRow : `${s.rail} ${collapsed ? s.railMin : ''}`} aria-label="Харагдац">
-      {!header && <div className={s.railHead}>Харагдац</div>}
+    <nav className={header ? s.railRow : `${s.rail} ${collapsed ? s.railMin : ''}`} aria-label={tr('Харагдац')}>
+      {!header && <div className={s.railHead}>{tr('Харагдац')}</div>}
 
       {shown.map((v, i) => {
         const on = v.key === view;
@@ -129,8 +139,34 @@ export function ViewRail({
              алга болдог байв; одоо сэдвээс үл хамааран төгсгөлд байнга. */}
       {/* envhub-ийн «СИСТЕМ» бүлэг шиг — баримт бичиг нь харагдацуудаас
           зураасаар тусгаарлагдсан ӨӨР төрлийн зүйл (popup, харагдац биш). */}
-      {!header && docsButton && <div className={s.railHead}>Баримт</div>}
+      {!header && docsButton && <div className={s.railHead}>{tr('Баримт')}</div>}
       {docsButton}
+
+      {/* СИСТЕМ — цэсний ХАМГИЙН ДООД бүлэг (жагсаалтын төгсгөл).
+          ⚠️ Босоо (зүүн багана) горимд л гарна: толгойн хэвтээ горимд «доод
+             тал» гэсэн ойлголт байхгүй, 56px өндөрт бас багтахгүй.
+          ⚠️ Сав нь `.railFoot` — зураас, зайг нэг дор өгнө;
+             хураагдсан горимд (`.railMin`) гарчиг нуугдаж зөвхөн дүрс
+             үлдэнэ. */}
+      {!header && onAdmin && (
+        <div className={s.railFoot}>
+          <div className={s.railHead}>{tr('Систем')}</div>
+          <button
+            type="button"
+            aria-pressed={adminActive}
+            aria-label={tr('Хэрэглэгчийн эрх тохируулах')}
+            title={tr('Хэрэглэгчийн эрх тохируулах')}
+            className={`${s.item} ${s.railAction} ${adminActive ? s.itemOn : ''}`}
+            onClick={onAdmin}
+          >
+            <span className={s.no} aria-hidden />
+            <span className={s.icon}><Icon name="users" /></span>
+            <span className={s.text}>
+              <span className={s.title}>{tr('Хэрэглэгчийн эрх тохируулах')}</span>
+            </span>
+          </button>
+        </div>
+      )}
     </nav>
   );
 }

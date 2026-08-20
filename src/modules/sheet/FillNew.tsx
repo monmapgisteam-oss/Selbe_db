@@ -2,10 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  applyUpdates,
+  applyAdds,
   computeAll,
   loadRows,
-  touchedIndexes,
+  msToDay,
   type SheetRow,
 } from "./bagtsSheet";
 import {
@@ -89,6 +89,8 @@ const wt = (v: number | null) => {
 };
 /** Бөөрөнхийлөөгүй бүтэн хувь — tooltip-д (дээд бүлгийн өөрчлөлт жижиг байдаг). */
 const full = (v: number | null) => (v == null ? undefined : (v * 100).toFixed(6) + "%");
+/** Оролтын талбарт тавих бичлэг — мянгатын таслалгүй, задлагдах хэлбэрээр. */
+const qtyRaw = (v: number | null | undefined) => (v == null ? "" : String(v));
 const qty = (v: number | null) =>
   v == null ? "" : Number(v.toFixed(3)).toLocaleString("en-US");
 const dt = (ms: number | null) =>
@@ -101,25 +103,58 @@ const inputToMs = (s: string) => (s ? Date.parse(s + "T00:00:00Z") : null);
  * Зөвхөн «болохгүй» гэж хэлээд орхивол хэрэглэгч алдаа гэж боддог — тиймээс
  * тухайн багана ЮУНААС бодогддгийг, эсвэл ХААНА бөглөхийг заана.
  */
+/**
+ * «Обьём» баганын зохиомол блокийн индекс — нэг `edit` төлөвт блокийн нүд ба
+ * мөрийн обьёмын нүд хоёулаа багтахын тулд. Блокийн индекс ҮРГЭЛЖ >= 0 тул
+ * −1 нь давхцахгүй.
+ */
+/**
+ * Засварлаж болох ЦОРЫН ГАНЦ багана — блокийн ОБЬЁМ.
+ *
+ * ⚠️ Гүйцэтгэлийн ХУВЬ энд байхгүй: «обьём ÷ мөрийн Обьём»-оор бодогдоно.
+ * ⚠️ Мөрийн «Обьём» ч байхгүй: тэр нь ЭХ ӨГӨГДЛИЙН тоо хэмжээ бөгөөд эх
+ *    хүснэгтэд оруулагддаг — энэ хуудас түүнийг зөвхөн УНШИНА.
+ */
+type EditCol = "obyem";
+
+/** Нүдний `pending` түлхүүр. */
+const cellKey = (oid: number, b: number) => `${oid}:${b}`;
+
 const RO = {
-  no: "№ ба Ажлын нэр нь excel-ийн бүтэц — энэ хуудаснаас засагдахгүй.",
-  wC: "Хувийн жин: Мөнгөн дүн ÷ дээд мөрийн дүн. Автоматаар бодогдоно.",
-  wD: "Хувийн жин (нийт төсөлд): Мөнгөн дүн ÷ үе шатны дүн. Автоматаар бодогдоно.",
-  wE: "Одоо байгаа: Хувийн жин × Бодит гүйцэтгэл. Гүйцэтгэл бөглөхөд өөрөө хөдөлнө.",
-  vol: "Обьём нь үйлчилгээнд хадгалагдсан — энэ хуудаснаас засагдахгүй.",
-  vol2: "«Объём_шинэ2» нь үйлчилгээнд хадгалагдсан — энэ хуудаснаас засагдахгүй. Хоосон бол тэр багцад талбар нь үүсээгүй байна.",
-  unit: "Нэгж өртөг нь үйлчилгээнд хадгалагдсан — энэ хуудаснаас засагдахгүй.",
-  money: "Мөнгөн дүн: Обьём × Нэгж өртөг; бүлгийн мөрд дэд мөрүүдийнхээ нийлбэр.",
-  I: "Төлөвлөгөөт гүйцэтгэл нь блокуудын төлөвлөгөөт хувийн дундаж. Огноог засвал өөрчлөгдөнө.",
-  J: "Бодит гүйцэтгэл нь блокуудын бодит хувийн дундаж. Блокийн нүдийг бөглөнө үү.",
-  K: "Төлөвлөгөө биелэлт: Бодит ÷ Төлөвлөгөөт. Автоматаар бодогдоно.",
-  groupAct: "Бүлгийн мөр нь дэд мөрүүдийнхээ жинтэй дунджаар бодогдоно — доод ажлын мөр дээр бөглөнө үү.",
-  blockPlan: "Барилга-төлөвлөгөөт нь эхлэх/дуусах огноо ба шинэчлэгдсэн огноогоор бодогдоно — огноог нь засаарай.",
-  groupDate: "Энэ огноо нь доод ажлуудынхаа хамгийн эрт эхлэх / хамгийн сүүл дуусахаар бодогдож байна — доод ажлынхаа огноог засаарай.",
-  noDateField: "Энэ блокт огнооны багана үйлчилгээнд байхгүй тул хадгалах газаргүй.",
-  asOfRow: "Шинэчлэгдсэн огноо зөвхөн эхний мөрд бичигдэнэ — тэндээс эсвэл дээд талын «Огноо»-гоор солино.",
+  no: '№ ба Ажлын нэр нь excel-ийн бүтэц — энэ хуудаснаас засагдахгүй.',
+  wC: 'Хувийн жин: Мөнгөн дүн ÷ дээд мөрийн дүн. Автоматаар бодогдоно.',
+  wD: 'Хувийн жин (нийт төсөлд): Мөнгөн дүн ÷ үе шатны дүн. Автоматаар бодогдоно.',
+  wE: 'Одоо байгаа: Хувийн жин × Бодит гүйцэтгэл. Гүйцэтгэл бөглөхөд өөрөө хөдөлнө.',
+  vol: 'Обьём нь ЭХ ӨГӨГДЛИЙН тоо хэмжээ — эх хүснэгтэд оруулагдана, энэ хуудаснаас засагдахгүй (жин, мөнгөн дүн бүхэлдээ түүнээс бодогддог).',
+  vol2: '«Объём_шинэ2» нь үйлчилгээнд хадгалагдсан — энэ хуудаснаас засагдахгүй. Хоосон бол тэр багцад талбар нь үүсээгүй байна.',
+  unit: 'Нэгж өртөг нь үйлчилгээнд хадгалагдсан — энэ хуудаснаас засагдахгүй.',
+  money: 'Мөнгөн дүн: Обьём × Нэгж өртөг; бүлгийн мөрд дэд мөрүүдийнхээ нийлбэр.',
+  I: 'Төлөвлөгөөт гүйцэтгэл нь блокуудын төлөвлөгөөт хувийн дундаж. Огноог засвал өөрчлөгдөнө.',
+  J: 'Бодит гүйцэтгэл нь блокуудын бодит хувийн дундаж. Блокийн нүдэнд обьём бөглөнө үү.',
+  K: 'Төлөвлөгөө биелэлт: Бодит ÷ Төлөвлөгөөт. Автоматаар бодогдоно.',
+  groupAct: 'Бүлгийн мөр нь дэд мөрүүдийнхээ жинтэй дунджаар бодогдоно — доод ажлын мөр дээр бөглөнө үү.',
+  noObyemField: 'Энэ блокт обьёмын багана үйлчилгээнд үүсээгүй тул хадгалах газаргүй (AGOL дээр нэмэх шаардлагатай).',
+  pctFromVol: 'Хувь нь «бөглөсөн обьём ÷ мөрийн Обьём»-оор бодогдоно — гараар засагдахгүй.',
+  noRowVol: 'Энэ мөрд «Обьём» бөглөгдөөгүй тул хувь бодогдохгүй. Обьёмын баганад мөрийн нийт тоо хэмжээг оруулмагц хувь нь өөрөө гарч эхэлнэ.',
+  blockPlan: 'Барилга-төлөвлөгөөт нь эхлэх/дуусах огноо ба шинэчлэгдсэн огноогоор бодогдоно — огноог нь засаарай.',
+  groupDate: 'Энэ огноо нь доод ажлуудынхаа хамгийн эрт эхлэх / хамгийн сүүл дуусахаар бодогдож байна — доод ажлынхаа огноог засаарай.',
+  noDateField: 'Энэ блокт огнооны багана үйлчилгээнд байхгүй тул хадгалах газаргүй.',
+  asOfRow: 'Шинэчлэгдсэн огноо зөвхөн эхний мөрд бичигдэнэ — тэндээс эсвэл дээд талын «Огноо»-гоор солино.',
 } as const;
 
+/*
+ * ── ГҮЙЦЭТГЭЛ ОБЬЁМООР (2026-08-20, хэрэглэгчийн шийдвэр) ───────────────────
+ * Урьд нь блокийн нүдэнд ХУВЬ бичдэг байсныг болив. Одоо:
+ *   · нүдэнд ЭНЭ УДААД хийсэн НЭМЭЛТ обьёмыг бичнэ (алдаа засах бол сөрөг тоо),
+ *   · нэмэлт нь үйлчилгээний *_obyem талбар дахь хуримтлал дээр нэмэгдэнэ,
+ *   · хувь нь «хуримтлал ÷ мөрийн Обьём»-оор бодогдож хуучин талбартаа
+ *     хэвээр бичигдэнэ (дашбоард, тайлан бүгд хөндөгдөхгүй).
+ *
+ * ⚠️ Багана нэмэгдэхээс өмнөх бүх гүйцэтгэл ЗӨВХӨН хувиар бүртгэгдсэн тул
+ *    хуримтлалын суурийг «хувь × Обьём»-оор сэргээнэ (bagtsSheet → baseObyem).
+ *    Ингэснээр шилжилтэд нэг ч мөрийн явц буцахгүй — амьд 10 хуудсан дээр
+ *    зөрүү 0 болохыг шалгасан.
+ */
 export default function FillNew() {
   const wrapRef = useRef<HTMLDivElement>(null);
   /** Энэ таб яг одоо нуугдсан уу (`display: none` → `offsetParent` нь null). */
@@ -139,9 +174,31 @@ export default function FillNew() {
   // Огнооны нийтлээгүй засвар, `${oid}:${blok}:s|e` түлхүүрээр («s» = эхлэх,
   // «e» = дуусах). Утга нь «YYYY-MM-DD», "" = огноог арилгах.
   const [pendDate, setPendDate] = useState<Record<string, string>>({});
-  const [edit, setEdit] = useState<{ i: number; b: number } | null>(null);
+  /**
+   * Нээлттэй засварын нүд. `col` нь АЛЬ БАГАНА гэдгийг заана — обьёмгүй
+   * мөрд обьём ба хувь ХОЁУЛАА засагддаг тул мөр+блок ганцаараа хүрэлцэхгүй.
+   */
+  /**
+   * Нээлттэй оролтын DOM зангуу. Бичих үед React-ийн төлөв ХӨДӨЛӨХГҮЙ —
+   * утгыг зөвхөн commit (blur/Enter/Ctrl+S) үед эндээс уншина.
+   */
+  const inputRef = useRef<HTMLInputElement>(null);
+  /** Оролт нээгдэхэд тавих АНХНЫ утга (цаашид ref өөрөө хөтөлнө). */
+  const [edit, setEdit] = useState<{
+    i: number;
+    b: number;
+    col: EditCol;
+  } | null>(null);
   const [val, setVal] = useState("");
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
+  /**
+   * Бүлгийн ХОЁР ШАТЛАЛТ шүүлтүүр (0 = бүгд).
+   *   grpA — ЭЦЭГ бүлэг: «Б1 БАРИЛГЫН АЖИЛ», «3 ТӨМӨР БЕТОН РАМЫН АЖИЛ»…
+   *   grpB — түүний доторх ДЭД бүлэг: «3.2 1F цутгалт», «3.3 2F цутгалт»…
+   * Дэд бүлэг сонгогдвол тэр л муж, эс бөгөөс эцгийн бүтэн муж харагдана.
+   */
+  const [grpA, setGrpA] = useState<number>(0);
+  const [grpB, setGrpB] = useState<number>(0);
   const { style: colStyle, grip, resetAll, resized } = useColWidths("fillnew");
 
   // ── Crosshair — React state БИШ ──
@@ -238,6 +295,8 @@ export default function FillNew() {
         // (1400 мөр × 60 багана зурагдана; удаан санагдвал давхаргын
         // товчнуудаар 1–4 болгож хумина.)
         setCollapsed(new Set());
+        setGrpA(0);
+        setGrpB(0);
       })
       .catch((e) => alive && setErr(String(e.message || e)))
       .finally(() => alive && setBusy(false));
@@ -255,20 +314,114 @@ export default function FillNew() {
 
   const nBld = sc?.bld.length ?? 0;
 
+  /* ── ВИРТУАЛЬ ГҮЙЛГЭЭ ──────────────────────────────────────────────────
+   * 1,400 мөр × 60–100 багана = 137 мянган нүд. Бүгдийг DOM-д барьвал төлөв
+   * өөрчлөгдөх бүрд (нүд нээх, бөглөх) React тэр бүхнийг харьцуулж, хөтөч
+   * дахин байрлуулна — нэг нүд нээхэд 4.5 секунд болж хэмжигдсэн.
+   *
+   * Тиймээс ЗӨВХӨН харагдах мөрүүдийг (+ дээш/доош 25 мөрийн нөөц) зурж,
+   * үлдсэнийг нь өндөртэй ХООСОН мөрөөр орлуулна. Гүйлгэх зурвасны урт ба
+   * байрлал яг хэвээр үлдэнэ.
+   *
+   * ⚠️ Багана бүр CSS-д ТОГТМОЛ өргөнтэй (`--w-*`) тул хэсэг мөр зурсан ч
+   *    багана нарийсаж/өргөсөхгүй. Хэрэв ямар нэг баганад тогтмол өргөн
+   *    өгөхгүй бол гүйлгэх үед багана үсэрч эхэлнэ.
+   */
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const tbodyRef = useRef<HTMLTableSectionElement>(null);
+  const rowHRef = useRef(34);
+  const [win, setWin] = useState({ from: 0, to: 80 });
+  const OVER = 20;
+
+  /** Блок бүрд обьёмын багана бий эсэх — обьёмоор бөглөх боломжийн нөхцөл. */
+  const hasObyem = useMemo(() => (sc ? sc.obyem.map((f) => !!f) : []), [sc]);
+
   const calc = useMemo(
     () =>
       asOf == null || !nBld
         ? []
-        : computeAll(rows, nBld, asOf, pending, pendDate),
-    [rows, nBld, asOf, pending, pendDate],
+        : computeAll(rows, nBld, asOf, pending, pendDate, hasObyem),
+    [rows, nBld, asOf, pending, pendDate, hasObyem],
   );
 
   // Хаагдсан бүлгийн доорх мөрүүд. Гүн буурах хүртэл нуугдана.
+  /**
+   * Бүлгийн МУЖ — тэр мөрөөс эхлээд, өөрөөсөө ижил буюу дээгүүр гүнтэй
+   * дараагийн мөр хүртэл. Мод нь ЗҮРЭГТЭЙ (бүлэг доороо шууд навч агуулж
+   * болно) тул тоогоор нь биш, ГҮНЭЭР нь заагийг олно.
+   */
+  const rangeOf = useCallback(
+    (oid: number) => {
+      if (!oid) return null;
+      const from = rows.findIndex((r) => r.oid === oid);
+      if (from < 0) return null;
+      let to = rows.length;
+      for (let i = from + 1; i < rows.length; i++)
+        if (rows[i].depth <= rows[from].depth) {
+          to = i;
+          break;
+        }
+      return { from, to };
+    },
+    [rows],
+  );
+
+  const labelOf = (r: SheetRow, pad = 0) =>
+    "\u00A0".repeat(pad) + (r.no ? `${r.no} ` : "") + r.work;
+
+  /**
+   * ЭЦЭГ бүлгүүд — үе шат (А./Б.), дэд үе шат (Б1…Б5) ба ангилал (1, 2, 3…).
+   * Гүнээр нь догол мөрлөнө: сонгогч дотор шатлал нь харагдана.
+   */
+  const grpAOpts = useMemo(
+    () =>
+      rows
+        .filter((r) => r.group && r.depth <= 2)
+        .map((r) => ({ oid: r.oid, label: labelOf(r, r.depth * 3) })),
+    [rows],
+  );
+
+  /**
+   * ДЭД бүлгүүд — «3.2 1F цутгалт» маягийн доод шатны бүлгүүд. Эцэг сонгосон
+   * бол ЗӨВХӨН түүний дотоод, эс бөгөөс бүгд.
+   */
+  const grpBOpts = useMemo(() => {
+    const rg = rangeOf(grpA);
+    return rows
+      .map((r, i) => ({ r, i }))
+      .filter(
+        (x) =>
+          x.r.group &&
+          x.r.depth > 2 &&
+          (!rg || (x.i > rg.from && x.i < rg.to)),
+      )
+      .map((x) => ({ oid: x.r.oid, label: labelOf(x.r) }));
+  }, [rows, grpA, rangeOf]);
+
+  /**
+   * Эцэг солигдоход түүнд харьяалагдахгүй дэд сонголт хүчингүй болно.
+   * ⚠️ Үүнийг эффектээр «цэвэрлэвэл» нэмэлт render давалгаа үүсгэнэ —
+   *    жагсаалтад байхгүй бол ЗҮГЭЭР Л «Бүгд» гэж үзнэ.
+   */
+  const grpBEff = grpBOpts.some((o) => o.oid === grpB) ? grpB : 0;
+
+  // Дэд бүлэг сонгогдсон бол тэр нь давамгайлна (эцгийнхээ дотор л байдаг).
+  const grpRange = useMemo(
+    () => rangeOf(grpBEff) ?? rangeOf(grpA),
+    [rangeOf, grpA, grpBEff],
+  );
+
   const hidden = useMemo(() => {
     const h = new Array(rows.length).fill(false);
     let depth = -1;
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
+      // Бүлгийн шүүлтүүр — мужаас гадуурх бүхнийг нууна.
+      if (grpRange && (i < grpRange.from || i >= grpRange.to)) {
+        h[i] = true;
+        continue;
+      }
+
       if (depth >= 0 && r.depth > depth) {
         h[i] = true;
         continue;
@@ -277,7 +430,51 @@ export default function FillNew() {
       if (r.group && collapsed.has(r.oid)) depth = r.depth;
     }
     return h;
-  }, [rows, collapsed]);
+  }, [rows, collapsed, grpRange]);
+
+  /** Зурагдах мөрүүдийн ИНДЕКС (нуугдсаныг хассан). */
+  const vis = useMemo(() => {
+    const out: number[] = [];
+    for (let i = 0; i < rows.length; i++) if (!hidden[i] && calc[i]) out.push(i);
+    return out;
+  }, [rows, hidden, calc]);
+
+  const recalcWin = useCallback(() => {
+    const el = scrollRef.current;
+    const tb = tbodyRef.current;
+    if (!el || !tb) return;
+    const first = tb.querySelector("tr[data-r]") as HTMLElement | null;
+    if (first?.offsetHeight) rowHRef.current = first.offsetHeight;
+    const h = rowHRef.current;
+    // Толгойн өндрийг хасна — tbody нь түүнээс доош эхэлдэг.
+    const top = Math.max(0, el.scrollTop - tb.offsetTop);
+    const from = Math.max(0, Math.floor(top / h) - OVER);
+    const to = Math.ceil((top + el.clientHeight) / h) + OVER;
+    setWin((w) => (w.from === from && w.to === to ? w : { from, to }));
+  }, []);
+
+  // Гүйлгэх бүрд биш, зурагдах хүрээнд НЭГ удаа (rAF) — гүйлгээ жигд байна.
+  const winTick = useRef(0);
+  const onScroll = useCallback(() => {
+    if (winTick.current) return;
+    winTick.current = requestAnimationFrame(() => {
+      winTick.current = 0;
+      recalcWin();
+    });
+  }, [recalcWin]);
+
+  // Мөр/шүүлтүүр солигдоход цонхыг шинэчилнэ.
+  useEffect(() => {
+    recalcWin();
+  }, [vis, recalcWin]);
+
+  /**
+   * Засварлаж буй мөр цонхны ГАДНА үлдэж болохгүй — Enter-ээр доошлоход
+   * оролт нь DOM-д байхгүй бол фокус алдагдаж, бичсэн зүйл үрэгдэнэ.
+   */
+  const editVis = edit ? vis.indexOf(edit.i) : -1;
+  const winFrom = editVis >= 0 ? Math.min(win.from, editVis) : win.from;
+  const winTo = editVis >= 0 ? Math.max(win.to, editVis + 1) : win.to;
 
   const toggle = (oid: number) =>
     setCollapsed((s) => {
@@ -288,54 +485,82 @@ export default function FillNew() {
     });
 
   /** n давхарга харуулна: гүн n−1 дэх бүх бүлгийг хаана. n≥5 = бүрэн дэлгэх. */
-  const collapseToLayer = (n: number) =>
-    setCollapsed(
-      n >= 5
-        ? new Set()
-        : new Set(
-            rows.filter((r) => r.group && r.depth === n - 1).map((r) => r.oid),
-          ),
-    );
 
   const dirtyCount =
     Object.keys(pending).length +
     Object.keys(pendDate).length +
     (asOf !== asOfOrig ? 1 : 0);
 
-  const origStr = (r: SheetRow, b: number) => {
-    const p = r.act[b];
-    return p == null ? "" : String(Math.round(p * 1000) / 10);
-  };
+  /**
+  /**
 
+  /**
+   * ОБЬЁМЫН нүд бичигдэх үү — талбар нь байгаа БҮХ ажлын мөрд ТИЙМ.
+   * Хуудсан дээрх ЦОРЫН ГАНЦ бөглөх цэг (мөрийн Обьёмоос гадна).
+   *
+   * ⚠️ «Мөрийн Обьём байхгүй бол хориглоё» гэж БОЛОХГҮЙ: хийсэн тоо хэмжээ
+   *    нь өөрөө бүртгэл бөгөөд хуваарь нь хожим орж ирж болно. Түгжвэл
+   *    хэрэглэгч хуудсаа нээмэгц бөглөх газаргүй үлддэг.
+   */
+  const volMode = (r: SheetRow, b: number) => !r.group && !!sc?.obyem[b];
+
+
+
+
+
+
+  /**
+   * Нүдний засвар — блокийн ОБЬЁМ эсвэл мөрийн Обьём. Гүйцэтгэлийн хувь
+   * энд ОРОХГҮЙ: тэр нь обьёмоос бодогдоно.
+   */
   const commit = (r: SheetRow, b: number, raw: string) => {
-    const key = `${r.oid}:${b}`;
-    // Утга угаас хувиар илэрхийлэгддэг тул төгсгөлийн «%»-ийг тэвчинэ.
-    const t = raw.trim().replace(",", ".").replace(/\s*%$/, "");
+    const key = cellKey(r.oid, b);
+    const t = raw.trim().replace(",", ".").replace(/^\+/, "").replace(/\s*%$/, "");
     setEdit(null);
+    if (r.group) return;
     if (t !== "" && !Number.isFinite(Number(t))) {
       // Чимээгүй хаявал хэрэглэгч «бичигдлээ» гэж андуурдаг — мэдэгдэнэ.
       setErr(`${sc?.bld[b] ?? ""} · ${r.work}: тоон утга оруулна уу.`);
       return;
     }
-    const v = t === "" ? "" : String(Math.min(100, Math.max(0, Number(t))));
-    // ⚠️ Гүйцэтгэл БУУРАХГҮЙ (floor.check.mjs-ийн дүрэмтэй ижил: хоосон болгох
-    // хамаарахгүй, хязгаар нь ХАДГАЛАГДСАН утга). Pivot шиг хатуу хориглодоггүй
-    // нь санаатай — энд мөрөө шууд (in-place) засдаг тул буруу ӨНДӨР утгыг
-    // засах цорын ганц зам нь яг энэ; андуурлаас баталгаажуулалт хамгаална.
-    const floor = r.act[b];
+
+
+    /* ── ОБЬЁМ — гараар бичсэн ШУУД утга ────────────────────────────────
+     * ⚠️ Хэрэглэгч нүдэнд «одоо болтол хийсэн НИЙТ хэмжээ»-гээ бичнэ.
+     *    Нэмэлт (Δ) байдлаар авдаг байсныг болив: нүдэнд харагдаж буй тоо
+     *    ба бичиж буй тоо хоёр өөр утгатай байх нь эндүүрэл төрүүлдэг.
+     */
+    const stored = r.obyem[b];
+    const v = t === "" ? "" : String(Math.max(0, Number(t)));
+    const vol = r.vol;
     if (
       v !== "" &&
-      floor != null &&
-      Number(v) < Math.round(floor * 1000) / 10 &&
+      stored != null &&
+      Number(v) < stored &&
       !window.confirm(
-        `${sc?.bld[b] ?? ""} · ${r.work}: өмнө нь ${origStr(r, b)}% бүртгэгдсэн — бууруулах гэж байна. Зөв үү?`,
+        `${sc?.bld[b] ?? ""} · ${r.work}:
+өмнө нь ${qty(stored)} бүртгэгдсэн — ${qty(Number(v))} болж БУУРНА.
+Буруу бичсэнээ засаж байна уу?`,
+      )
+    )
+      return;
+    if (
+      v !== "" &&
+      vol != null &&
+      vol > 0 &&
+      Number(v) > vol &&
+      !window.confirm(
+        `${sc?.bld[b] ?? ""} · ${r.work}:
+${qty(Number(v))} нь мөрийн Обьём ${qty(vol)}-оос ХЭТЭРЧ байна (${pc(Number(v) / vol, 1)}).
+Үргэлжлүүлэх үү?`,
       )
     )
       return;
     setErr("");
-    setPending((p) => {
-      const n = { ...p };
-      if (v === origStr(r, b)) delete n[key];
+    setPending((pv) => {
+      const n = { ...pv };
+      // Хадгалагдсантайгаа тэнцүү бол «нийтлээгүй» тэмдэглэгээг арилгана.
+      if (v === "" ? stored == null : Number(v) === stored) delete n[key];
       else n[key] = v;
       return n;
     });
@@ -360,14 +585,16 @@ export default function FillNew() {
       const r = i == null ? undefined : rows[i];
       // Мөр алга болсон, бүлгийн мөр, блок хасагдсан, эсвэл аль хэдийн ижил
       // утгатай (хооронд нь нийтлэгдсэн) бол — хаяна.
-      if (
+      // ⚠️ Бичигдэхгүй болсон нүдний ноорог утгагүй — хаяна.
+      const stale =
         !r ||
-        r.group ||
         !Number.isInteger(b) ||
         b < 0 ||
         b >= nBld ||
-        v === origStr(r, b)
-      ) {
+        r.group ||
+        !Number.isFinite(Number(v)) ||
+        !volMode(r, b);
+      if (stale) {
         dropped++;
         continue;
       }
@@ -380,8 +607,9 @@ export default function FillNew() {
     const when = new Date(d.t).toLocaleString("mn-MN");
     const msg =
       `Нийтлэгдээгүй ${Object.keys(next).length} нүдний засвар олдлоо (${when}).` +
-      (dropped ? `\n${dropped} нүд хуучирсан тул орхигдоно.` : "") +
-      "\nСэргээх үү?";
+      (dropped ? `
+${dropped} нүд хуучирсан тул орхигдоно.` : "") +
+      '\nСэргээх үү?';
     if (window.confirm(msg)) setPending(next);
     else clearDraftLS(pkg.key);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -414,8 +642,9 @@ export default function FillNew() {
   const confirmSwitch = () =>
     dirtyCount === 0 ||
     window.confirm(
-      `Нийтлэгдээгүй ${dirtyCount} өөрчлөлт бий. Багц солих уу?\n` +
-        "(Нүдний засварууд ноорог болон хадгалагдаж, буцаж ирэхэд сэргээхийг санал болгоно.)",
+      `Нийтлэгдээгүй ${dirtyCount} өөрчлөлт бий. Багц солих уу?
+` +
+        '(Нүдний засварууд ноорог болон хадгалагдаж, буцаж ирэхэд сэргээхийг санал болгоно.)',
     );
   /** Огнооны нүдний ХАДГАЛАГДСАН утга «YYYY-MM-DD» хэлбэрээр. */
   const origDay = (r: SheetRow, b: number, k: "s" | "e") =>
@@ -434,79 +663,82 @@ export default function FillNew() {
   };
 
   const publish = useCallback(async () => {
-    // ⚠️ busy — Ctrl+S auto-repeat үед олон зэрэгцээ applyEdits илгээгдэхээс сэргийлнэ.
+    // ⚠️ busy — Ctrl+S auto-repeat үед олон зэрэгцээ бичилт явахаас сэргийлнэ.
     if (busy || asOf == null || dirtyCount === 0 || !sc) return;
     setBusy(true);
     setErr("");
     try {
-      // ⚠️ Зэрэг засварын хамгаалалт: `rows` нь хуудсыг НЭЭХ үеийн хуулбар тул
-      // түүгээр бүтэн мөр бичвэл өөр хэрэглэгчийн хооронд нийтэлсэн нүд хуучин
-      // утгаар дарагдаж чимээгүй буцдаг. Тиймээс нийтлэхийн өмнө мөрүүдийг
-      // ШИНЭЭР татаж, зөвхөн өөрийн pending нүдийг давхарлаад бүлгийн
-      // нийлбэрүүдийг шинэ өгөгдлөөс бодно.
+      /* ── АРХИВЫН АГШИН ──────────────────────────────────────────────────
+       * Нийтлэх бүрд хуудас БҮХЭЛДЭЭ доор нь ХУУЛБАРЛАГДАЖ нэмэгдэнэ; мөр
+       * бүрд бөглөсөн өдрийн огноо бичигдэнэ. Хуучин мөр ХЭЗЭЭ Ч дарагдахгүй
+       * тул огноогоор шүүхэд тэр агшны бүтэн зураг гарч, багцын бүтэн архив
+       * бүрдэнэ.
+       *
+       * ⚠️ Зэрэг засварын хамгаалалт: `rows` нь хуудсыг НЭЭХ үеийн хуулбар
+       *    тул нийтлэхийн өмнө СҮҮЛИЙН агшныг дахин татаж, өөрийн pending
+       *    нүдийг түүн дээр давхарлана. Ингэснээр хооронд нь өөр хүн
+       *    нийтэлсэн утга алдагдахгүй.
+       */
       const fresh = (await loadRows(pkg, sc)).rows;
-      const editedOids = new Set(
-        [...Object.keys(pending), ...Object.keys(pendDate)].map((k) =>
-          Number(k.split(":")[0]),
-        ),
+      const c = computeAll(fresh, nBld, asOf, pending, pendDate, hasObyem);
+      // Бөглөсөн огноо — өдрийн эхэнд (UTC). Өдөрт нэг л удаа бөглөдөг тул
+      // огноо ганцаараа агшны түлхүүр болно.
+      const now = new Date();
+      const fillMs = Date.UTC(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate(),
       );
-      // ⚠️ asOf БҮХ мөрийн төлөвлөгөөт хувьд нөлөөлдөг тул огноо өөрчлөгдсөн
-      // бол бүх мөрийг дахин бичнэ — эс тэгвэл зөвхөн засварласан салбар шинэ
-      // огноогоор, бусад мөрийн төлөвлөгөөт багана хуучнаар үлдэж зөрнө.
-      const idx =
-        asOf !== asOfOrig
-          ? fresh.map((_, i) => i)
-          : touchedIndexes(fresh, editedOids);
-      const c = computeAll(fresh, nBld, asOf, pending, pendDate);
-      const updates = idx.map((i) => {
-        const a: Record<string, unknown> = { [sc.f.oid]: fresh[i].oid };
+
+      const adds = fresh.map((r, i) => {
+        // Мэддэггүй багана ч хуулбарт үлдэхийн тулд БҮХ талбараас эхэлнэ.
+        const a: Record<string, unknown> = { ...r.raw };
         for (let b = 0; b < nBld; b++) {
           a[sc.act[b]] = c[i].act[b];
           a[sc.plan[b]] = c[i].plan[b];
-          // Огноог мөн буцааж бичнэ: энэ мөрд бичигдсэн (`own`) утга ба
-          // бүлгийн мөрийн MIN/MAX (`agg`) — хоёул excel-ийн томъёотой ижил.
-          // Талбаргүй блок бий тул шалгаж байж бичнэ.
+          // Хуримтлагдсан обьём — хувийн ЭХ СУРВАЛЖ. Талбаргүй блок бий тул
+          // шалгаж байж бичнэ; бүлгийн мөрд хоосон (нэгж нь зөрдөг).
+          if (sc.obyem[b]) a[sc.obyem[b]!] = c[i].obyem[b];
+          // Огноог мөн бичнэ: энэ мөрд бичигдсэн (`own`) утга ба бүлгийн
+          // мөрийн MIN/MAX (`agg`) — хоёул excel-ийн томъёотой ижил.
           if (sc.start[b]) a[sc.start[b]!] = c[i].start[b];
           if (sc.end[b]) a[sc.end[b]!] = c[i].end[b];
         }
         a[sc.f.plan] = c[i].I;
         a[sc.f.act] = c[i].J;
         // ⚠️ Зарим багцад «Төлөвлөгөө биелэлт» ба «Одоо байгаа» багана огт
-        //    байхгүй — байхгүй талбар рүү бичвэл applyEdits бүхэлдээ унана.
+        //    байхгүй — байхгүй талбар руу бичвэл багц бүхэлдээ унана.
         if (sc.f.ratio) a[sc.f.ratio] = c[i].K;
         if (sc.f.wE) a[sc.f.wE] = c[i].E; // Одоо байгаа = C × Бодит гүйцэтгэл
+        // Шинэчлэгдсэн огноо — excel-ийн лавлах нүд, зөвхөн 1-р мөрд.
+        if (sc.f.asOf) a[sc.f.asOf] = i === 0 ? asOf : null;
+        // АРХИВЫН ТҮЛХҮҮР — мөр БҮРД.
+        if (sc.f.fillDate) a[sc.f.fillDate] = fillMs;
         return a;
       });
-      // Шинэчлэгдсэн огноо — төлөвлөгөөт хувь бүхэлдээ үүгээр бодогддог тул
-      // өөрчилсөн бол хамт хадгална (эс тэгвэл үйлчилгээ өөртэйгээ зөрнө).
-      if (asOf !== asOfOrig && fresh.length && sc.f.asOf)
-        updates.push({ [sc.f.oid]: fresh[0].oid, [sc.f.asOf]: asOf });
-      await applyUpdates(pkg, updates);
-      // Шинэ татсан мөрүүд дээр хадгалсан утгыг буулгаж локал төлвийг солино —
-      // бусдын зэрэгцээ засвар ч ингэж дэлгэцэнд шинэчлэгдэнэ.
-      // (idx нь бүх мөр байж болох тул includes биш Set — O(n²) болгохгүй.)
-      const idxSet = new Set(idx);
-      setRows(
-        fresh.map((r, i) =>
-          idxSet.has(i)
-            ? {
-                ...r,
-                act: c[i].act.slice(),
-                start: c[i].start.slice(),
-                end: c[i].end.slice(),
-              }
-            : r,
-        ),
-      );
+
+      if (!sc.f.fillDate)
+        throw new Error(
+          "«buglusun_ognoo» багана энэ үйлчилгээнд алга — архив үүсгэх " +
+            "боломжгүй тул нийтлэлийг зогсоов (AGOL дээр багана нэмнэ үү).",
+        );
+      const added = await applyAdds(pkg, adds);
+
+      // Шинэ агшныг татаж дэлгэц дээр буулгана — дараагийн засвар түүн дээр
+      // үргэлжилнэ (нэмэлт нь хуучин сууриас тоологдохгүй).
+      const next = await loadRows(pkg, sc);
+      setRows(next.rows);
+      setAsOf(next.asOf ?? asOf);
+      setAsOfOrig(next.asOf ?? asOf);
       setPending({});
       setPendDate({});
-      setAsOfOrig(asOf);
+      say(`Архивт ${added} мөр нэмэгдэв · ${msToDay(fillMs)}`);
     } catch (e) {
       setErr(String((e as Error).message || e));
     } finally {
       setBusy(false);
     }
-  }, [pkg, sc, nBld, asOf, asOfOrig, pending, dirtyCount, busy]);
+  }, [pkg, sc, nBld, asOf, asOfOrig, pending, pendDate, dirtyCount, busy, hasObyem]);
 
   // Ctrl+S — «Гүйцэтгэл бөглөх»-тэй ижил.
   // ⚠️ Нээлттэй нүдний бичиж буй утгыг ЭХЛЭЖ commit хийнэ — эс тэгвэл хуучин
@@ -516,7 +748,8 @@ export default function FillNew() {
   const [publishQueued, setPublishQueued] = useState(false);
   const flushEditRef = useRef<() => void>(() => {});
   flushEditRef.current = () => {
-    if (edit && rows[edit.i]) commit(rows[edit.i], edit.b, val);
+    if (edit && rows[edit.i])
+      commit(rows[edit.i], edit.b, inputRef.current?.value ?? val);
   };
   useEffect(() => {
     if (!publishQueued || edit) return;
@@ -553,9 +786,15 @@ export default function FillNew() {
   }, [dates, asOf]);
 
   /** Enter/Tab — дараагийн засварлаж болох мөр рүү (баганадаа доошоо). */
-  const nextEditable = (i: number, b: number, step: number) => {
+  /**
+   * Enter/Tab дарахад дараагийн БИЧИГДЭХ нүд. Багана бүр өөрийн дүрэмтэй
+   * тул `col`-оор шүүнэ — эс тэгвэл бичиж болохгүй нүд нээгдэж, бөглөсөн
+   * тоо чимээгүй алдагдана.
+   */
+  const nextEditable = (i: number, b: number, step: number, col: EditCol) => {
+    const ok = (r: SheetRow) => volMode(r, b);
     for (let k = i + step; k >= 0 && k < rows.length; k += step)
-      if (!rows[k].group && !hidden[k]) return { i: k, b };
+      if (!hidden[k] && ok(rows[k])) return { i: k, b, col };
     return null;
   };
 
@@ -565,7 +804,7 @@ export default function FillNew() {
     <div className={st.wrap} ref={wrapRef}>
       <div className={st.toolbar}>
         <label className={st.field}>
-          Багц{" "}
+          {'Багц'}{" "}
           <select
             className={st.select}
             value={pkg.group}
@@ -582,11 +821,11 @@ export default function FillNew() {
         </label>
         {/* Хувилбар — зөвхөн 9F ба 12F ХОЁУЛАА хуудастай багцад (1, 2, 4-2).
             Бусад багцад ганц хувилбартай тул сонгогч ч харагдахгүй.
-            ⚠️ «Давхарга» товчнуудтай андуурахгүйн тулд «Давхар» гэж нэрлээгүй —
-            тэр нь модны гүн, энэ нь барилгын давхрын тоо. */}
+            ⚠️ «Хувилбар» гэдэг нь БАРИЛГЫН давхрын тоо (9F/12F) — модны гүнтэй
+            андуурч «Давхар» гэж нэрлэхээс зайлсхийсэн. */}
         {floorOpts.length > 1 && (
           <label className={st.field}>
-            Хувилбар{" "}
+            {'Хувилбар'}{" "}
             <select
               className={st.select}
               value={pkg.key}
@@ -603,7 +842,7 @@ export default function FillNew() {
           </label>
         )}
         <label className={st.field}>
-          Огноо{" "}
+          {'Огноо'}{" "}
           <select
             className={st.select}
             value={dt(asOf)}
@@ -614,41 +853,70 @@ export default function FillNew() {
               const ms = inputToMs(e.target.value);
               if (ms != null) setAsOf(ms);
             }}
-            title="Төлөвлөгөөт хувь бүхэлдээ энэ огноогоор бодогдоно (excel-ийн «Шинэчлэгдсэн огноо»)"
+            title={'Төлөвлөгөөт хувь бүхэлдээ энэ огноогоор бодогдоно (excel-ийн «Шинэчлэгдсэн огноо»)'}
           >
             {dateOpts.map((d) => (
               <option key={d} value={d}>{d}</option>
             ))}
           </select>
         </label>
-        <span className={st.field}>
-          Давхарга
-          <span className={st.layerBtns}>
-            <button className={st.layerBtn} onClick={() => collapseToLayer(1)} title="Үе шат">1</button>
-            <button className={st.layerBtn} onClick={() => collapseToLayer(2)} title="+ дэд үе шат">2</button>
-            <button className={st.layerBtn} onClick={() => collapseToLayer(3)} title="+ ангилал">3</button>
-            <button className={st.layerBtn} onClick={() => collapseToLayer(4)} title="+ бүлэг">4</button>
-            <button className={st.layerBtn} onClick={() => collapseToLayer(5)} title="Бүх ажил дэлгэх">Бүгд</button>
-          </span>
-        </span>
+        {/* ЭЦЭГ БҮЛЭГ — «Б1 БАРИЛГЫН АЖИЛ», «3 ТӨМӨР БЕТОН РАМЫН АЖИЛ»… */}
+        <label className={st.field}>
+          {'Бүлэг'}{" "}
+          <select
+            className={cls("select selectWide")}
+            value={grpA}
+            disabled={busy}
+            onChange={(e) => setGrpA(Number(e.target.value))}
+            title={'Зөвхөн сонгосон бүлэг ба түүний доод ажлууд харагдана'}
+          >
+            <option value={0}>{'Бүгд'}</option>
+            {grpAOpts.map((g) => (
+              <option key={g.oid} value={g.oid}>
+                {g.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {/* ДЭД БҮЛЭГ — «3.2 1F цутгалт», «4.3 2F хана»… Эцэг сонгогдсон бол
+            зөвхөн түүний доторхи, эс бөгөөс бүх дэд бүлэг жагсаана. */}
+        <label className={st.field}>
+          {'Дэд бүлэг'}{" "}
+          <select
+            className={cls("select selectWide")}
+            value={grpBEff}
+            disabled={busy}
+            onChange={(e) => setGrpB(Number(e.target.value))}
+            title={'Тухайн бүлгийн доторх нэг дэд бүлгийг сонгоно'}
+          >
+            <option value={0}>{'Бүгд'}</option>
+            {grpBOpts.map((g) => (
+              <option key={g.oid} value={g.oid}>
+                {g.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
         {resized && (
           <button
             className={st.layerBtn}
             onClick={resetAll}
-            title="Чирж өөрчилсөн бүх баганы өргөнийг анхны хэмжээнд нь буцаана"
+            title={'Чирж өөрчилсөн бүх баганы өргөнийг анхны хэмжээнд нь буцаана'}
           >
-            Өргөн сэргээх
+            {'Өргөн сэргээх'}
           </button>
         )}
         <button
           className={st.publishBtn}
           onClick={publish}
           disabled={busy || dirtyCount === 0}
-          title="Өөрчилсөн нүд + дээд бүлгүүдийн нийлбэрийг хадгална (Ctrl+S)"
+          title={'Өөрчилсөн нүд + дээд бүлгүүдийн нийлбэрийг хадгална (Ctrl+S)'}
         >
-          Нийтлэх{dirtyCount ? ` (${dirtyCount})` : ""}
+          {'Нийтлэх'}{dirtyCount ? ` (${dirtyCount})` : ""}
         </button>
-        {busy && <span className={st.muted}>ажиллаж байна…</span>}
+        {busy && <span className={st.muted}>{'ажиллаж байна…'}</span>}
       </div>
 
       {err && <p className={st.error}>{err}</p>}
@@ -667,17 +935,16 @@ export default function FillNew() {
 
       {/* Хоосон үр дүнг тайлбаргүй орхивол хэрэглэгч юу болсныг мэдэхгүй гацдаг. */}
       {!busy && !err && sc && rows.length === 0 && (
-        <p className={st.muted}>Энэ багцад мөр олдсонгүй.</p>
+        <p className={st.muted}>{'Энэ багцад мөр олдсонгүй.'}</p>
       )}
       {rows.length > 0 && sc && calc.length === 0 && (
         <p className={st.muted}>
-          Тайлангийн огноо тодорхойлогдоогүй тул хүснэгт бодогдохгүй байна —
-          Огноо сонгоно уу (жагсаалт ачаалагдаагүй бол хуудсыг дахин ачаална уу).
+          {'Тайлангийн огноо тодорхойлогдоогүй тул хүснэгт бодогдохгүй байна — Огноо сонгоно уу (жагсаалт ачаалагдаагүй бол хуудсыг дахин ачаална уу).'}
         </p>
       )}
 
       {rows.length > 0 && sc && calc.length > 0 && (
-        <div className={st.scroll}>
+        <div className={st.scroll} ref={scrollRef} onScroll={onScroll}>
           <div className={st.tableWrap}>
           <div ref={colHlRef} className={st.colHl} aria-hidden="true" />
           <table
@@ -692,22 +959,25 @@ export default function FillNew() {
             <thead>
               <tr>
                 <th rowSpan={4} className={cls("fz c-no")}>№<i {...grip("no")} /></th>
-                <th rowSpan={4} className={cls("fz c-ajil")}>Ажил<i {...grip("ajil")} /></th>
+                <th rowSpan={4} className={cls("fz c-ajil")}>{'Ажил'}<i {...grip("ajil")} /></th>
                 {/* Excel-д C1:D4 — «Хувийн жин» хоёр баганыг бүрэн хамарна.
                     ⚠️ Энд `c-w` өргөний ангилал ТАВИХГҮЙ: 72px нь хоёр баганын
                     НИЙЛБЭР болж уншигдаж, хоёуланг нь шахна. Өргөнийг мөрийн
                     нүднүүд өөрсдөө заана. */}
-                <th rowSpan={4} colSpan={2} className={cls("c-wspan")}>Хувийн жин<i {...grip("w")} /></th>
-                <th rowSpan={4} className={cls("c-now")}>Одоо байгаа хувийн жин<i {...grip("now")} /></th>
-                <th rowSpan={4} className={cls("c-vol")}>Обьём<i {...grip("vol")} /></th>
-                <th rowSpan={4} className={cls("c-vol")}>Обьём шинэ<i {...grip("vol")} /></th>
-                <th rowSpan={4} className={cls("c-calc")}>Төлөвлөгөөт гүйцэтгэл<i {...grip("calc")} /></th>
-                <th rowSpan={4} className={cls("c-calc")}>Бодит гүйцэтгэл<i {...grip("calc")} /></th>
-                <th rowSpan={4} className={cls("c-calc")}>Төлөвлөгөө биелэлт<i {...grip("calc")} /></th>
-                <th colSpan={nBld} className={cls("band")}>Ажил гүйцэтгэл ({nBld} барилга)</th>
-                <th colSpan={nBld} className={cls("band")}>Төлөвлөгөөт гүйцэтгэл ({nBld} барилга)</th>
-                <th colSpan={nBld * 2} className={cls("band")}>Төлөвлөгөөт хуваарь ({nBld} барилга)</th>
-                <th rowSpan={4} className={cls("c-date")}>Шинэчлэгдсэн огноо<i {...grip("date")} /></th>
+                <th rowSpan={4} colSpan={2} className={cls("c-wspan")}>{'Хувийн жин'}<i {...grip("w")} /></th>
+                <th rowSpan={4} className={cls("c-now")}>{'Одоо байгаа хувийн жин'}<i {...grip("now")} /></th>
+                <th rowSpan={4} className={cls("c-vol")}>{'Обьём'}<i {...grip("vol")} /></th>
+                <th rowSpan={4} className={cls("c-vol")}>{'Обьём шинэ'}<i {...grip("vol")} /></th>
+                <th rowSpan={4} className={cls("c-calc")}>{'Төлөвлөгөөт гүйцэтгэл'}<i {...grip("calc")} /></th>
+                <th rowSpan={4} className={cls("c-calc")}>{'Бодит гүйцэтгэл'}<i {...grip("calc")} /></th>
+                <th rowSpan={4} className={cls("c-calc")}>{'Төлөвлөгөө биелэлт'}<i {...grip("calc")} /></th>
+                {/* Обьём (бөглөгддөг) ба түүнээс бодогдсон хувь — ТУСДАА хоёр
+                    бүлэг. Нэг нүдэнд хамт байрлуулж байсныг болив: аль тоо нь
+                    бичигддэг, аль нь бодогддог нь ялгарахгүй байв. */}
+                <th colSpan={nBld} className={cls("band")}>{`Ажил гүйцэтгэл — обьём / хувь (${nBld} барилга)`}</th>
+                <th colSpan={nBld} className={cls("band")}>{`Төлөвлөгөөт гүйцэтгэл (${nBld} барилга)`}</th>
+                <th colSpan={nBld * 2} className={cls("band")}>{`Төлөвлөгөөт хуваарь (${nBld} барилга)`}</th>
+                <th rowSpan={4} className={cls("c-date")}>{'Шинэчлэгдсэн огноо'}<i {...grip("date")} /></th>
               </tr>
               {/* 2-р мөр — барилгын төрөл (блокийн цуваагаар) */}
               <tr>
@@ -727,27 +997,37 @@ export default function FillNew() {
                   <th key={`a${b}`} rowSpan={2} className={cls("bld")}>{b}<i {...grip("bld")} /></th>
                 ))}
                 {sc.bld.map((b) => (
-                  <th key={`p${b}`} rowSpan={2} className={cls("bld")}>{b} барилга<i {...grip("bld")} /></th>
+                  <th key={`p${b}`} rowSpan={2} className={cls("bld")}>{b} {'барилга'}<i {...grip("bld")} /></th>
                 ))}
                 {sc.bld.map((b) => (
-                  <th key={`d${b}`} colSpan={2} className={cls("c-date2")}>{b} барилга</th>
+                  <th key={`d${b}`} colSpan={2} className={cls("c-date2")}>{b} {'барилга'}</th>
                 ))}
               </tr>
               {/* 4-р мөр — хуваарийн Эхлэх/Дуусах */}
               <tr>
                 {sc.bld.map((b) => [
-                  <th key={`s${b}`} className={cls("c-date")}>Эхлэх<i {...grip("date")} /></th>,
-                  <th key={`e${b}`} className={cls("c-date")}>Дуусах<i {...grip("date")} /></th>,
+                  <th key={`s${b}`} className={cls("c-date")}>{'Эхлэх'}<i {...grip("date")} /></th>,
+                  <th key={`e${b}`} className={cls("c-date")}>{'Дуусах'}<i {...grip("date")} /></th>,
                 ])}
               </tr>
             </thead>
-            <tbody>
-              {rows.map((r, i) => {
-                if (hidden[i]) return null;
+            <tbody ref={tbodyRef}>
+              {/* Дээд ЧИГЖЭЭС — зурагдаагүй мөрүүдийн өндрийг орлоно. */}
+              {winFrom > 0 && (
+                <tr aria-hidden="true" style={{ height: winFrom * rowHRef.current }}>
+                  <td colSpan={11 + nBld * 4} style={{ padding: 0, border: 0 }} />
+                </tr>
+              )}
+              {vis.slice(winFrom, winTo).map((i) => {
+                const r = rows[i];
                 const c = calc[i];
                 if (!c) return null;
                 return (
-                  <tr key={r.oid} className={r.group ? st.cat : undefined}>
+                  <tr
+                    key={r.oid}
+                    data-r={i}
+                    className={r.group ? st.cat : undefined}
+                  >
                     <td className={cls("num fz c-no")} {...ro(RO.no)}>{r.no}</td>
                     <td
                       className={cls("fz c-ajil")}
@@ -762,7 +1042,7 @@ export default function FillNew() {
                           type="button"
                           className={st.caret}
                           aria-expanded={!collapsed.has(r.oid)}
-                          aria-label={collapsed.has(r.oid) ? "Дэлгэх" : "Эвхэх"}
+                          aria-label={collapsed.has(r.oid) ? 'Дэлгэх' : 'Эвхэх'}
                           onClick={(e) => {
                             e.stopPropagation();
                             toggle(r.oid);
@@ -782,78 +1062,112 @@ export default function FillNew() {
                     <td className={cls("right c-w calc")} {...ro(RO.wE)} title={full(c.E)}>
                       {wt(c.E)}
                     </td>
-                    <td className={cls("right c-vol")} {...ro(RO.vol)}>{qty(r.vol)}</td>
+                    {/* ОБЬЁМ — ЭХ ӨГӨГДЛИЙН тоо хэмжээ. Эх хүснэгтэд
+                        оруулагдана; энэ хуудас зөвхөн уншина. Түүнээс Мөнгөн
+                        дүн, тэндээс хуудсын БҮХ хувийн жин бодогддог тул энд
+                        засах эрх нээвэл нэг тоо солиход бүх мөрийн жин
+                        чимээгүй шилжинэ. */}
+                    <td className={cls("right c-vol")} {...ro(RO.vol)}>
+                      {qty(r.vol)}
+                    </td>
                     <td className={cls("right c-vol")} {...ro(RO.vol2)}>{qty(r.vol2)}</td>
                     <td className={cls("num c-calc calc")} {...ro(RO.I)}>{pc(c.I, 1)}</td>
                     <td className={cls("num c-calc calc")} {...ro(RO.J)}>{pc(c.J, 1)}</td>
                     <td className={cls("num c-calc calc")} {...ro(RO.K)}>{pc(c.K, 1)}</td>
 
-                    {/* Бодит гүйцэтгэл — цорын ганц засагддаг блок. */}
+                    {/* ГҮЙЦЭТГЭЛИЙН НҮД — обьём ба хувь НЭГ нүдэнд.
+                          дээд мөр (том тоо) = бөглөсөн ОБЬЁМ — ЭНЭ Л бичигдэнэ
+                          доод мөр (жижиг %) = обьём ÷ мөрийн Обьём — зөвхөн үр дүн
+
+                        ⚠️ Хувийг гараар засах зам БАЙХГҮЙ. Хоёр эх сурвалжтай
+                        болбол (гараар бичсэн хувь vs обьёмоос бодогдсон) аль нь
+                        үнэн болох нь тодорхойгүй болж, тайлан зөрнө. */}
                     {sc.bld.map((b, bi) => {
-                      const key = `${r.oid}:${bi}`;
+                      const key = cellKey(r.oid, bi);
                       const dirty = key in pending;
-                      if (edit && edit.i === i && edit.b === bi)
-                        return (
-                          <td key={`a${b}`} data-bi={bi} className={cls("num bld")} style={{ padding: 0 }}>
-                            <input
-                              autoFocus
-                              type="text"
-                              inputMode="decimal"
-                              className={st.cellInput}
-                              value={val}
-                              onChange={(e) => setVal(e.target.value)}
-                              onBlur={() => commit(r, bi, val)}
-                              onKeyDown={(e) => {
-                                if (e.key === "Escape") return setEdit(null);
-                                if (e.key === "Enter" || e.key === "Tab") {
-                                  e.preventDefault();
-                                  commit(r, bi, val);
-                                  const t = nextEditable(i, bi, e.shiftKey ? -1 : 1);
-                                  if (t) {
-                                    setVal(
-                                      pending[`${rows[t.i].oid}:${bi}`] ??
-                                        origStr(rows[t.i], bi),
-                                    );
-                                    setEdit(t);
-                                  }
-                                }
-                              }}
-                            />
-                          </td>
-                        );
+                      const canVol = volMode(r, bi);
+                      const editing =
+                        edit && edit.i === i && edit.b === bi && edit.col === "obyem";
+                      const open = () => {
+                        if (!canVol) return say(r.group ? RO.groupAct : RO.noObyemField);
+                        setVal(pending[key] ?? qtyRaw(r.obyem[bi]));
+                        setEdit({ i, b: bi, col: "obyem" });
+                      };
                       return (
                         <td
                           key={`a${b}`}
                           data-bi={bi}
                           className={cls(
                             "num bld" +
-                              (r.group ? "" : " cursor-cell") +
+                              (canVol ? " editable" : " calc") +
                               (dirty ? " dirty" : ""),
                           )}
-                          // ⚠️ Гар хандалт: Tab-аар очиж Enter/F2-оор нээнэ —
-                          // хулганагүй хэрэглэгч огт орж чаддаггүй байв.
-                          tabIndex={r.group ? undefined : 0}
-                          onClick={() => {
-                            // Бүлгийн мөр бодогдоно — гараар засагдахгүй
-                            if (r.group) return say(RO.groupAct);
-                            setVal(pending[key] ?? origStr(r, bi));
-                            setEdit({ i, b: bi });
+                          /* Нүдний АЛЬ Ч цэгт дарахад нээгдэнэ — хоёр мөрийн
+                             хооронд/ирмэг дээр таарсан товшилт үрэгдэхгүй
+                             (хэрэглэгч үүнийг «хоёр дарж байж нээгддэг» гэж
+                             мэдэрдэг байв). */
+                          tabIndex={canVol ? 0 : undefined}
+                          onClick={open}
+                          onKeyDown={(e) => {
+                            if (!editing && (e.key === "Enter" || e.key === "F2")) {
+                              e.preventDefault();
+                              open();
+                            }
                           }}
-                          onKeyDown={
+                          title={
                             r.group
-                              ? undefined
-                              : (e) => {
-                                  if (e.key === "Enter" || e.key === "F2") {
-                                    e.preventDefault();
-                                    setVal(pending[key] ?? origStr(r, bi));
-                                    setEdit({ i, b: bi });
-                                  }
-                                }
+                              ? RO.groupAct
+                              : !canVol
+                                ? RO.noObyemField
+                                : r.vol
+                                  ? `Мөрийн Обьём ${qty(r.vol)} · бөглөсөн ` +
+                                    `${qty(c.obyem[bi])} = ${pc(c.act[bi], 2)}`
+                                  : RO.noRowVol
                           }
                         >
-                          {/* Аравны нэг — редакторын нарийвчлалтай ижил, эс
-                              тэгвэл 60.5 нүд «61%» харагдаж худал мэт байв. */}
-                          {pc(c.act[bi], 1)}
+                          {editing ? (
+                            <input
+                              {...{
+                                autoFocus: true,
+                                ref: inputRef,
+                                type: "text" as const,
+                                inputMode: "decimal" as const,
+                                className: st.cellInputLine,
+                                placeholder: "обьём",
+                                // Удирдлагагүй: бичихэд re-render гарахгүй.
+                                defaultValue: val,
+                                onBlur: (e: React.FocusEvent<HTMLInputElement>) =>
+                                  commit(r, bi, e.target.value),
+                                onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => {
+                                  if (e.key === "Escape") return setEdit(null);
+                                  if (e.key === "Enter" || e.key === "Tab") {
+                                    e.preventDefault();
+                                    commit(r, bi, e.currentTarget.value);
+                                    const t = nextEditable(i, bi, e.shiftKey ? -1 : 1, "obyem");
+                                    if (t) {
+                                      const nr = rows[t.i];
+                                      setVal(
+                                        pending[cellKey(nr.oid, bi)] ??
+                                          qtyRaw(nr.obyem[bi]),
+                                      );
+                                      setEdit(t);
+                                    }
+                                  }
+                                },
+                              }}
+                            />
+                          ) : (
+                            <span className={st.cellVol}>
+                              {/* Хоосон бол ХООСОН — хайрцгийн хүрээ нь
+                                  «энд бичнэ» гэдгийг хэлчихнэ. */}
+                              {qty(c.obyem[bi])}
+                            </span>
+                          )}
+                          {/* Хувь — ЗӨВХӨН үр дүн. Товшилт нь дээрх нүдний
+                              обьёмын оролтыг нээнэ (td-ийн onClick). */}
+                          <span className={cls("cellPct calcPct")}>
+                            {pc(c.act[bi], 1)}
+                          </span>
                         </td>
                       );
                     })}
@@ -893,7 +1207,7 @@ export default function FillNew() {
                             )}
                             title={
                               editable
-                                ? "Дарж календараар сонгоно"
+                                ? 'Дарж календараар сонгоно'
                                 : src === "agg"
                                   ? RO.groupDate
                                   : RO.noDateField
@@ -924,7 +1238,7 @@ export default function FillNew() {
                             (i === 0 ? " cursor-cell" : "") +
                             (i === 0 && asOf !== asOfOrig ? " dirty" : ""),
                         )}
-                        title={i === 0 ? "Дарж календараар сонгоно" : RO.asOfRow}
+                        title={i === 0 ? 'Дарж календараар сонгоно' : RO.asOfRow}
                         onClick={(e) => {
                           if (i !== 0) return say(RO.asOfRow);
                           setPick({
@@ -942,6 +1256,15 @@ export default function FillNew() {
                   </tr>
                 );
               })}
+              {/* Доод ЧИГЖЭЭС — гүйлгэх зурвасны урт үнэн байлгана. */}
+              {winTo < vis.length && (
+                <tr
+                  aria-hidden="true"
+                  style={{ height: (vis.length - winTo) * rowHRef.current }}
+                >
+                  <td colSpan={11 + nBld * 4} style={{ padding: 0, border: 0 }} />
+                </tr>
+              )}
             </tbody>
           </table>
           </div>
@@ -971,7 +1294,7 @@ export default function FillNew() {
 
       {notice && (
         <div className={st.notice} role="status" onClick={() => setNotice("")}>
-          <b>Энэ нүд засагдахгүй.</b> {notice}
+          <b>{'Энэ нүд засагдахгүй.'}</b> {notice}
         </div>
       )}
     </div>

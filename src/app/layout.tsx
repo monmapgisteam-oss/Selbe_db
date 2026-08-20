@@ -4,6 +4,8 @@ import { Inter } from 'next/font/google';
 //    тэр нь client reference proxy болж, доорх THEME_INIT-д функцын эх код шингэн
 //    inline script эвдэрдэг байв. Заавал энгийн модулиас (themeKey.ts).
 import { ThemeProvider } from '@/lib/theme';
+import { LocaleProvider } from '@/lib/i18n';
+import { SkipLink } from '@/components/SkipLink';
 import { THEME_KEY } from '@/lib/themeKey';
 import './globals.css';
 
@@ -24,10 +26,16 @@ import '@/modules/finance.module.css';
 import '@/modules/tsogts.module.css';
 import '@/modules/habea.module.css';
 import '@/components/auth.module.css';
+import '@/components/locale.module.css';
 import '@/components/home.module.css';
 import '@/components/swatch.module.css';
 import '@/components/opacity.module.css';
 import '@/components/map.module.css';
+// ⚠️ 2026-08-20: `MapTools`-ийн pill. Энэ жагсаалтад ОРООГҮЙ байсан тул зурган
+//    дээрх хэрэгслийн зурвас СТАЙЛГҮЙ (товчнууд босоо овоолсон) гарч байлаа —
+//    файлын толгойд бичсэн яг тэр шалтгаан: модулийн CSS async chunk-д орж,
+//    dev дээр `<head>`-д хүрэхгүй.
+import '@/components/mapTools.module.css';
 import '@/components/ui.module.css';
 import '@/components/catalog.module.css';
 import '@/components/tree.module.css';
@@ -91,10 +99,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT }} />
       </head>
       <body>
-        <a href="#panel" className="skip">
-          Дашбоард руу үсрэх
-        </a>
-        <ThemeProvider>{children}</ThemeProvider>
+        <SkipLink />
+        <LocaleProvider>
+          <ThemeProvider>{children}</ThemeProvider>
+        </LocaleProvider>
       </body>
     </html>
   );

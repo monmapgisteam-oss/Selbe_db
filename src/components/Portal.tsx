@@ -5,10 +5,12 @@ import {
   type CSSProperties, type PointerEvent as ReactPointerEvent,
 } from 'react';
 import { MapCanvas, MapProvider, useMap, type Dim } from '@/components/MapCanvas';
+import { t as tr } from '@/lib/i18nCore';
 import { ViewRail } from '@/components/ViewRail';
 import { LayerCatalog } from '@/components/LayerCatalog';
 import { OpacityPanel } from '@/components/OpacityPanel';
 import { MapTools } from '@/components/MapTools';
+import { useZoomToFilter } from '@/lib/useZoomToFilter';
 import { Suitability } from '@/modules/analysis/Suitability';
 import { Dashboard } from '@/modules/Dashboard';
 import { Bagts } from '@/modules/Bagts';
@@ -23,6 +25,7 @@ import { Tailan } from '@/modules/Tailan';
 import { Icon } from '@/components/Icon';
 import { DocViewer } from '@/components/DocViewer';
 import { UserAdmin } from '@/components/UserAdmin';
+import { LocaleToggle } from '@/components/LocaleToggle';
 import { AgentButton, AgentChat } from '@/components/AgentChat';
 import { useTheme } from '@/lib/theme';
 import { useAsync } from '@/lib/useAsync';
@@ -223,8 +226,8 @@ function Booting() {
         border: '3px solid rgba(148,197,255,0.18)', borderTopColor: '#38bdf8',
         animation: 'selbeSpin .9s linear infinite',
       }} />
-      <div style={{ fontSize: 15, fontWeight: 500, letterSpacing: 0.3 }}>Дашбоард ачаалж байна…</div>
-      <div style={{ fontSize: 12.5, color: '#8aa0bd' }}>Сэлбэ 20 минутын хот · Digital Twin Platform</div>
+      <div style={{ fontSize: 15, fontWeight: 500, letterSpacing: 0.3 }}>{tr('Дашбоард ачаалж байна…')}</div>
+      <div style={{ fontSize: 12.5, color: '#8aa0bd' }}>{tr('Сэлбэ 20 минутын хот · Digital Twin Platform')}</div>
     </div>
   );
 }
@@ -304,6 +307,8 @@ function PortalContent(
 
   /** Сонгосон бүс — БҮХ давхарга, БҮХ тоо үүгээр шүүгдэнэ */
   const [zone, setZone] = useState<string | null>(() => readParam('z'));
+  // Шүүлт солигдоход зураг тэр объектууд руу нисэнэ
+  useZoomToFilter({ zone });
   const [picked, setPicked] = useState<Record<string, unknown> | null>(null);
   const [pickedLayer, setPickedLayer] = useState<string | null>(null);
   const { theme, toggle } = useTheme();
@@ -540,13 +545,13 @@ function PortalContent(
             className={s.brand}
             onClick={onHome}
             disabled={!onHome}
-            title={onHome ? 'Нүүр хуудас руу буцах' : undefined}
+            title={onHome ? tr('Нүүр хуудас руу буцах') : undefined}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/logo.svg" alt="" className={s.logo} />
             <span className={s.brandText}>
-              <h1 className={s.brandName}>Сэлбэ 20 минутын хот</h1>
-              <span className={s.brandSub}>Ерөнхий төлөвлөгөө ба төсвийн портал</span>
+              <h1 className={s.brandName}>{tr('Сэлбэ 20 минутын хот')}</h1>
+              <span className={s.brandSub}>{tr('Ерөнхий төлөвлөгөө ба төсвийн портал')}</span>
             </span>
           </button>
 
@@ -554,31 +559,29 @@ function PortalContent(
               (доорх `<aside className={s.nav}>`) — envhub-ийн хэлтсийн жагсаалт
               шиг босоо. Толгойд зөвхөн брэнд ба хэрэгслийн товчнууд үлдэнэ. */}
 
-          {/* ⚠️ Үзүүлэлтүүд толгойгоос ДООД зурваст (`SummaryBar`) шилжсэн тул
-              шүүлтийн тэмдэг нь баруун тийш түлхэх үүргийг авна. */}
           <ActiveFilterChip />
 
-          {isSuper && (
+          {/* ⚠️ Хэрэгслүүд ЗААВАЛ өөрийн саванд. Урьд нь `ActiveFilterChip` нь
+              баруун тийш түлхэх үүрэг гүйцэтгэдэг байсан ч тэр нь шүүлт
+              идэвхгүй үед `null` буцаадаг — тэгэхээр товчнууд брэндийн ЯГ
+              хажууд наалдаж, толгойн баруун тал хоосон үлддэг байв.
+              `margin-left: auto` нь шүүлт байгаа эсэхээс ҮЛ ХАМААРАН түлхэнэ. */}
+          {/* ⚠️ «Хэрэглэгчийн эрх» ЭНДЭЭС ХАСАГДСАН (2026-08-20) — зүүн цэсний
+              «СИСТЕМ» бүлэгт, хамгийн доод талд шилжив. Толгойд зөвхөн БҮХ
+              хэрэглэгчид хамаатай хоёр солигч (хэл, гэрэлтүүлэг) үлдэнэ. */}
+          <div className={s.headTools}>
+            <LocaleToggle className={s.iconBtn} />
+
             <button
               type="button"
               className={s.iconBtn}
-              onClick={() => setAdminOpen(true)}
-              aria-label="Хэрэглэгчийн эрх"
-              title="Хэрэглэгчийн эрх удирдах"
+              onClick={toggle}
+              aria-label={theme === 'dark' ? tr('Цайвар горим') : tr('Харанхуй горим')}
+              title={theme === 'dark' ? tr('Цайвар горим') : tr('Харанхуй горим')}
             >
-              <Icon name="users" size={17} />
+              <Icon name={theme === 'dark' ? 'sun' : 'moon'} size={17} />
             </button>
-          )}
-
-          <button
-            type="button"
-            className={s.iconBtn}
-            onClick={toggle}
-            aria-label={theme === 'dark' ? 'Цайвар горим' : 'Харанхуй горим'}
-            title={theme === 'dark' ? 'Цайвар горим' : 'Харанхуй горим'}
-          >
-            <Icon name={theme === 'dark' ? 'sun' : 'moon'} size={17} />
-          </button>
+          </div>
         </header>
 
         {/* ── ЗҮҮН БАГАНА: харагдацын жагсаалт ──
@@ -591,11 +594,11 @@ function PortalContent(
             className={s.navFold}
             onClick={toggleNav}
             aria-pressed={navMin}
-            aria-label={navMin ? 'Цэс дэлгэх' : 'Цэс хураах'}
-            title={navMin ? 'Цэс дэлгэх' : 'Цэс хураах'}
+            aria-label={navMin ? tr('Цэс дэлгэх') : tr('Цэс хураах')}
+            title={navMin ? tr('Цэс дэлгэх') : tr('Цэс хураах')}
           >
             <span className={s.navFoldArrow} aria-hidden>{navMin ? '»' : '«'}</span>
-            {!navMin && <span>Хураах</span>}
+            {!navMin && <span>{tr('Хураах')}</span>}
           </button>
           <ViewRail
             view={view}
@@ -605,6 +608,8 @@ function PortalContent(
             collapsed={navMin}
             onDocs={docsAllowed ? () => setDocsOpen(true) : undefined}
             docsActive={docsOpen}
+            onAdmin={isSuper ? () => setAdminOpen(true) : undefined}
+            adminActive={adminOpen}
           />
         </aside>
 
@@ -694,16 +699,16 @@ function PortalContent(
 
             </div>
 
-            <aside className={s.panel} id="panel" aria-label={`${active.title} самбар`}>
+            <aside className={s.panel} id="panel" aria-label={tr('{0} самбар', active.title)}>
               {/* Өргөн тохируулах бариул — самбарын зүүн ирмэг дээр */}
               <div
                 className={`${s.grip} ${panelSize.dragging ? s.gripOn : ''}`}
                 role="separator"
                 aria-orientation="vertical"
-                aria-label="Самбарын өргөн"
+                aria-label={tr('Самбарын өргөн')}
                 onPointerDown={panelSize.onPointerDown}
                 onDoubleClick={panelSize.onDoubleClick}
-                title="Чирж өргөсгөнө · давхар товшиж анхны хэмжээнд буцаана"
+                title={tr('Чирж өргөсгөнө · давхар товшиж анхны хэмжээнд буцаана')}
               />
 
               <header className={s.panelHead}>
@@ -743,7 +748,7 @@ function PortalContent(
 
             {/* «Барилгын хяналт» — нэгтгэсэн үзүүлэлт хуучнаараа доод хүрээнд */}
             {!planPanel && (
-              <footer className={s.dashFoot} aria-label="Нэгтгэсэн үзүүлэлт">
+              <footer className={s.dashFoot} aria-label={tr('Нэгтгэсэн үзүүлэлт')}>
                 <SummaryBar zone={zone} />
               </footer>
             )}
@@ -779,32 +784,32 @@ function MonitorFrame(
   const q = useBuildings();
   return (
     <>
-      <aside className={s.monLeft} aria-label="Барилгын дундаж мэдээлэл">
+      <aside className={s.monLeft} aria-label={tr('Барилгын дундаж мэдээлэл')}>
         {/* Өргөн тохируулах бариул — баганы БАРУУН ирмэг дээр */}
         <div
           className={`${s.grip} ${size.dragging ? s.gripOn : ''}`}
           role="separator"
           aria-orientation="vertical"
-          aria-label="Зүүн баганын өргөн"
+          aria-label={tr('Зүүн баганын өргөн')}
           onPointerDown={size.onPointerDown}
           onDoubleClick={size.onDoubleClick}
-          title="Чирж өргөсгөнө · давхар товшиж анхны хэмжээнд буцаана"
+          title={tr('Чирж өргөсгөнө · давхар товшиж анхны хэмжээнд буцаана')}
         />
         <div className={s.monScroll}>
           <BuildingSummary q={q} />
         </div>
       </aside>
 
-      <section className={s.monTrend} aria-label="Барилга угсралтын явц">
+      <section className={s.monTrend} aria-label={tr('Барилга угсралтын явц')}>
         {/* Өндөр тохируулах бариул — зурвасын ДЭЭД ирмэг дээр */}
         <div
           className={`${s.rowGrip} ${trend.dragging ? s.rowGripOn : ''}`}
           role="separator"
           aria-orientation="horizontal"
-          aria-label="Явцын зурвасын өндөр"
+          aria-label={tr('Явцын зурвасын өндөр')}
           onPointerDown={trend.onPointerDown}
           onDoubleClick={trend.onDoubleClick}
-          title="Чирж өндөрсгөнө · давхар товшиж анхны хэмжээнд буцаана"
+          title={tr('Чирж өндөрсгөнө · давхар товшиж анхны хэмжээнд буцаана')}
         />
         <div className={s.monScroll}>
           <MonitorTrend q={q} />
@@ -834,7 +839,7 @@ function ActiveFilterChip() {
         <span className={s.filterGroup}>{active.group}</span>
         <span className={s.filterLabel}>{active.label}</span>
       </span>
-      <button type="button" className={s.filterClear} onClick={clear} aria-label="Шүүлт цуцлах">
+      <button type="button" className={s.filterClear} onClick={clear} aria-label={tr('Шүүлт цуцлах')}>
         <svg viewBox="0 0 12 12" width="11" height="11" aria-hidden>
           <path
             d="M3 3l6 6M9 3l-6 6"
@@ -890,16 +895,16 @@ function SummaryBar({ zone }: { zone: string | null }) {
   }, [where]);
 
   if (q.state === 'error') {
-    return <div className={s.sumBar} role="alert"><span className={s.sumLabel}>Үзүүлэлт татагдсангүй</span></div>;
+    return <div className={s.sumBar} role="alert"><span className={s.sumLabel}>{tr('Үзүүлэлт татагдсангүй')}</span></div>;
   }
   if (q.state !== 'ready') return <div className={s.sumBar} />;
 
   const items = [
-    { v: num(q.data.ga, 1), l: 'га талбай' },
-    { v: num(q.data.zones), l: 'бүс' },
-    { v: num(q.data.built), l: 'барилга' },
-    { v: num(q.data.ail), l: 'айл' },
-    { v: num(q.data.pop), l: 'хүн ам' },
+    { v: num(q.data.ga, 1), l: tr('га талбай') },
+    { v: num(q.data.zones), l: tr('бүс') },
+    { v: num(q.data.built), l: tr('барилга') },
+    { v: num(q.data.ail), l: tr('айл') },
+    { v: num(q.data.pop), l: tr('хүн ам') },
   ];
 
   return (

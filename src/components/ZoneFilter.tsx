@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, type CSSProperties } from 'react';
+import { t as tr } from '@/lib/i18nCore';
 import { useMap } from './MapCanvas';
 import { Data } from './ui';
 import { Icon } from './Icon';
@@ -70,7 +71,7 @@ function GroupedChips({
   toggle: (label: string) => void;
 }) {
   return (
-    <Data q={q} loading="Бүсүүд…">
+    <Data q={q} loading={tr('Бүсүүд…')}>
       {(gs) => (
         <>
           {gs.map((g) => (
@@ -130,20 +131,20 @@ export function ZoneFilter({
           aria-expanded={open}
           className={`${s.zoneToolBtn} ${sel.length ? s.zoneToolOn : ''}`}
           onClick={() => setOpen((v) => !v)}
-          title="Бүсээр шүүх"
+          title={tr('Бүсээр шүүх')}
         >
           <Icon name="frame" size={14} />
-          Бүс{sel.length ? ` · ${sel.length}` : ''}
+          {tr('Бүс')}{sel.length ? ` · ${sel.length}` : ''}
         </button>
         {open && (
           <div className={s.zoneToolDrop}>
             <div className={s.zoneToolHead}>
-              <span className={s.zoneBarValue}>{sel.length ? sel.join(', ') : 'Бүх бүс'}</span>
+              <span className={s.zoneBarValue}>{sel.length ? sel.join(', ') : tr('Бүх бүс')}</span>
               {sel.length > 0 && (
-                <button type="button" className={s.zoneBarBtn} onClick={() => zoomToZone(zone!)}>Төвлөрөх</button>
+                <button type="button" className={s.zoneBarBtn} onClick={() => zoomToZone(zone!)}>{tr('Төвлөрөх')}</button>
               )}
               {sel.length > 0 && (
-                <button type="button" className={s.zoneBarClear} onClick={() => setZone(null)}>Цуцлах</button>
+                <button type="button" className={s.zoneBarClear} onClick={() => setZone(null)}>{tr('Цуцлах')}</button>
               )}
             </div>
             <GroupedChips q={q} sel={sel} toggle={toggle} />
@@ -156,16 +157,16 @@ export function ZoneFilter({
   /* ── БҮТЭН МӨР хувилбар — самбарын толгойн доор (өмнөх ZoneBar-ын байрлал) ── */
   return (
     <div className={s.zoneBar}>
-      <span className={s.zoneBarLabel}>Бүс</span>
-      <span className={s.zoneBarValue}>{sel.length ? sel.join(', ') : 'Бүгд'}</span>
+      <span className={s.zoneBarLabel}>{tr('Бүс')}</span>
+      <span className={s.zoneBarValue}>{sel.length ? sel.join(', ') : tr('Бүгд')}</span>
       {sel.length > 0 && (
-        <button type="button" className={s.zoneBarBtn} onClick={() => zoomToZone(zone!)}>Төвлөрөх</button>
+        <button type="button" className={s.zoneBarBtn} onClick={() => zoomToZone(zone!)}>{tr('Төвлөрөх')}</button>
       )}
       {sel.length > 0 && (
-        <button type="button" className={s.zoneBarClear} onClick={() => setZone(null)}>Цуцлах</button>
+        <button type="button" className={s.zoneBarClear} onClick={() => setZone(null)}>{tr('Цуцлах')}</button>
       )}
       <button type="button" className={s.zoneBarBtn} aria-expanded={open} onClick={() => setOpen((v) => !v)}>
-        {open ? 'Хаах' : sel.length ? 'Бүс нэмэх' : 'Бүс сонгох'}
+        {open ? tr('Хаах') : sel.length ? tr('Бүс нэмэх') : tr('Бүс сонгох')}
       </button>
 
       {open && (

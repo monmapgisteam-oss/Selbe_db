@@ -1,11 +1,13 @@
 'use client';
 
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { t as tr } from '@/lib/i18nCore';
 import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
 import { MapTools } from '@/components/MapTools';
 import { LayerCatalog } from '@/components/LayerCatalog';
 import { OpacityPanel } from '@/components/OpacityPanel';
 import { useLayerPicks } from '@/lib/useLayerPicks';
+import { useZoomToFilter } from '@/lib/useZoomToFilter';
 import { Section, Col, Note, Stats, Stat, Bars, Rows, List, ListItem, Ring, Data, Empty } from '@/components/ui';
 import { useBuildings, MonitorBagts, type Block } from '@/modules/BuildingPanel';
 import { useAsync, type Async } from '@/lib/useAsync';
@@ -179,6 +181,8 @@ export function Bagts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const [layerSel, setLayerSel] = useState<string | null>(null);
   const [zone, setZone] = useState<string | null>(null);
   const catTotals = usePlanTotals(zone, catOpen);
+  // ⚠️ Багц сонгоход нисэх нь доорх ТУСДАА эффект (өөр гох) — энэ нь БҮСЭД
+  useZoomToFilter({ zone });
   const layerWhere = useMemo<Record<string, string | null>>(
     () => ({ [BLOCK_LAYER]: active?.where ?? null }),
     [active],
@@ -203,30 +207,29 @@ export function Bagts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
 
       {/* ЗҮҮН — багцын сонголт */}
       <aside className={`${o.side} ${o.left}`}>
-        <h2 className={o.colHead}>Багц</h2>
+        <h2 className={o.colHead}>{tr('Багц')}</h2>
         {errQ ? (
-          <Section title="Багцууд"><Data q={errQ}>{() => null}</Data></Section>
+          <Section title={tr('Багцууд')}><Data q={errQ}>{() => null}</Data></Section>
         ) : loading ? (
-          <Section title="Багцууд"><Empty label="Ачаалж байна…" /></Section>
+          <Section title={tr('Багцууд')}><Empty label={tr('Ачаалж байна…')} /></Section>
         ) : (
           <>
             <PackList
-              title="Барилга угсралт"
-              note="блокийн гүйцэтгэл"
+              title={tr('Барилга угсралт')}
+              note={tr('блокийн гүйцэтгэл')}
               packs={packs.filter((p) => p.kind === 'build')}
               sel={sel}
               onSel={setSel}
             />
             <PackList
-              title="Дэд бүтэц ба нийгмийн барилга"
-              note="газрын зургийн давхарга"
+              title={tr('Дэд бүтэц ба нийгмийн барилга')}
+              note={tr('газрын зургийн давхарга')}
               packs={packs.filter((p) => p.kind === 'infra')}
               sel={sel}
               onSel={setSel}
             />
             <Note>
-              Багц дарахад зураг тэр багцын объект руу нисч, баруун талд
-              дэлгэрэнгүй нь гарна. Дахин дарвал бүх багц буцаж харагдана.
+              {tr('Багц дарахад зураг тэр багцын объект руу нисч, баруун талд дэлгэрэнгүй нь гарна. Дахин дарвал бүх багц буцаж харагдана.')}
             </Note>
           </>
         )}
@@ -302,11 +305,11 @@ export function Bagts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
 
       {/* БАРУУН — сонгосон багцын дэлгэрэнгүй */}
       <aside className={`${o.side} ${o.right}`}>
-        <h2 className={o.colHead}>Дэлгэрэнгүй</h2>
+        <h2 className={o.colHead}>{tr('Дэлгэрэнгүй')}</h2>
         {errQ ? (
           <Data q={errQ}>{() => null}</Data>
         ) : !active ? (
-          <Empty label="Багц сонгоогүй байна." />
+          <Empty label={tr('Багц сонгоогүй байна.')} />
         ) : active.kind === 'build' ? (
           <>
             <ContractCard p={active} />
@@ -345,18 +348,18 @@ export function PackList({
 }) {
   if (!packs.length) return null;
   return (
-    <Section title={title} note={`${num(packs.length)} багц · ${note}`}>
+    <Section title={title} note={tr('{0} багц · {1}', num(packs.length), note)}>
       <List>
         {packs.map((p) => (
           <ListItem
             key={p.key}
-            title={p.name}
+            title={tr(p.name)}
             sub={p.kind === 'build'
-              ? `${num(p.blocks.length)} блок · ${num(p.households)} айл`
+              ? tr('{0} блок · {1} айл', num(p.blocks.length), num(p.households))
               : subInfra(p)}
             value={p.kind === 'build'
               ? (p.progress == null ? '—' : pct(p.progress, 0))
-              : (p.layerIds.length ? `${num(p.layerIds.length)} давхарга` : '—')}
+              : (p.layerIds.length ? tr('{0} давхарга', num(p.layerIds.length)) : '—')}
             color={p.kind === 'build' ? levelColor(p.progress) : INFRA_HUE}
             active={p.key === sel}
             onClick={() => onSel(p.key === sel ? null : p.key)}
@@ -369,7 +372,7 @@ export function PackList({
 
 /** Дэд бүтцийн багцын дэд мөр — газрын зургийн давхаргын тоо */
 function subInfra(p: Pack): string {
-  return p.layerIds.length ? `${num(p.layerIds.length)} давхарга` : 'зураггүй';
+  return p.layerIds.length ? tr('{0} давхарга', num(p.layerIds.length)) : tr('зураггүй');
 }
 
 /* ══════════════════ Толгойн үзүүлэлт ══════════════════ */
@@ -390,13 +393,13 @@ export function PackKpi({ active, packs }: { active: Pack | null; packs: Pack[] 
 
   const items = active?.kind === 'infra'
     ? [
-      { v: num(active.layerIds.length), l: 'газрын зургийн давхарга', c: INFRA_HUE },
+      { v: num(active.layerIds.length), l: tr('газрын зургийн давхарга'), c: INFRA_HUE },
     ]
     : [
-      { v: progress == null ? '—' : pct(progress, 1), l: 'гүйцэтгэл', c: levelColor(progress) },
-      { v: num(blocks), l: 'блок', c: HUE },
-      { v: num(households), l: 'айл', c: HUE },
-      { v: num(layers), l: 'дэд бүтцийн давхарга', c: '#0891b2' },
+      { v: progress == null ? '—' : pct(progress, 1), l: tr('гүйцэтгэл'), c: levelColor(progress) },
+      { v: num(blocks), l: tr('блок'), c: HUE },
+      { v: num(households), l: tr('айл'), c: HUE },
+      { v: num(layers), l: tr('дэд бүтцийн давхарга'), c: '#0891b2' },
     ];
 
   return (
@@ -422,16 +425,16 @@ export function ContractCard({ p }: { p: Pack }) {
   // Гүйцэтгэгч — блокийн давхаргын BAR_COMP (багцын бүх блок нэг гүйцэтгэгчтэй)
   const contractor = p.blocks.map((b) => b.contractor).find((c) => c) ?? '—';
   return (
-    <Section tone="primary" title={`${p.name} — гүйцэтгэл`}>
+    <Section tone="primary" title={tr('{0} — гүйцэтгэл', p.name)}>
       <Col gap="sm">
         <div className={o.packRing}>
-          <Ring value={p.progress} size={86} color={levelColor(p.progress)} label="гүйцэтгэл" />
+          <Ring value={p.progress} size={86} color={levelColor(p.progress)} label={tr('гүйцэтгэл')} />
           <Stats cols={2}>
-            <Stat value={num(p.blocks.length)} unit="блок" label="Блок" color={HUE} accent />
-            <Stat value={num(p.households)} unit="айл" label="Айл" color={HUE} accent />
+            <Stat value={num(p.blocks.length)} unit={tr('блок')} label={tr('Блок')} color={HUE} accent />
+            <Stat value={num(p.households)} unit={tr('айл')} label={tr('Айл')} color={HUE} accent />
           </Stats>
         </div>
-        <Rows items={[{ key: 'Гүйцэтгэгч', value: contractor }]} />
+        <Rows items={[{ key: tr('Гүйцэтгэгч'), value: contractor }]} />
       </Col>
     </Section>
   );
@@ -441,7 +444,7 @@ export function ContractCard({ p }: { p: Pack }) {
  * ⚠️ Бөглөгдөөгүй блокийг ХАСАХГҮЙ, 0 гэж ч зурахгүй: «мэдээлэлгүй» гэж бичнэ.
  * 0%-иар зурвал тайлан ирээгүй блок нь ажил эхлээгүйтэй андуурагдана.
  */
-export function BlocksCard({ p, title = 'Блок бүрийн гүйцэтгэл' }: { p: Pack; title?: string }) {
+export function BlocksCard({ p, title = tr('Блок бүрийн гүйцэтгэл') }: { p: Pack; title?: string }) {
   const withData = p.blocks.filter((b) => b.progress != null).length;
   const { zoomToWhere, setHighlight } = useMap();
   /** Сонгосон блок — дарахад зурагт тодруулж ойртоно, дахин дарахад болино */
@@ -455,7 +458,7 @@ export function BlocksCard({ p, title = 'Блок бүрийн гүйцэтгэ�
     zoomToWhere(BLOCK_LAYER, w);
   };
   return (
-    <Section title={title} note={`${num(withData)}/${num(p.blocks.length)} бүртгэлтэй`}>
+    <Section title={title} note={tr('{0}/{1} бүртгэлтэй', num(withData), num(p.blocks.length))}>
       <Bars
         color={HUE}
         max={100}
@@ -470,8 +473,8 @@ export function BlocksCard({ p, title = 'Блок бүрийн гүйцэтгэ�
           value: b.progress ?? 0,
           color: levelColor(b.progress),
           display: b.progress == null
-            ? 'мэдээлэлгүй'
-            : `${pct(b.progress, 0)}${b.floors ? ` · ${b.floors} давхар` : ''}`,
+            ? tr('мэдээлэлгүй')
+            : tr('{0}{1}', pct(b.progress, 0), b.floors ? tr(' · {0} давхар', b.floors) : ''),
         }))}
       />
     </Section>
@@ -487,10 +490,9 @@ export function BlocksCard({ p, title = 'Блок бүрийн гүйцэтгэ�
  */
 export function InvestCard({ p }: { p: Pack }) {
   return (
-    <Section tone="primary" title={p.name}>
+    <Section tone="primary" title={tr(p.name)}>
       <Note>
-        Энэ багцын хөрөнгө оруулалтын дүн түр хасагдсан. Зурагт харагдах давхаргууд
-        доор жагсаав; санхүүжилтийн үзүүлэлт эх өгөгдөл тодруулагдсаны дараа нэмэгдэнэ.
+        {tr('Энэ багцын хөрөнгө оруулалтын дүн түр хасагдсан. Зурагт харагдах давхаргууд доор жагсаав; санхүүжилтийн үзүүлэлт эх өгөгдөл тодруулагдсаны дараа нэмэгдэнэ.')}
       </Note>
     </Section>
   );
@@ -507,19 +509,19 @@ export function LayersCard({ p }: { p: Pack }) {
   const q = usePkgTotals(p.layerIds);
   if (!p.layerIds.length) {
     return (
-      <Section title="Давхарга">
-        <Note>Энэ багцад газрын зургийн давхарга алга — зөвхөн төсвийн мөр бүртгэгдсэн.</Note>
+      <Section title={tr('Давхарга')}>
+        <Note>{tr('Энэ багцад газрын зургийн давхарга алга — зөвхөн төсвийн мөр бүртгэгдсэн.')}</Note>
       </Section>
     );
   }
   return (
-    <Section title="Давхарга ба хэмжээ" note={`${num(p.layerIds.length)} давхарга`}>
-      <Data q={q} loading="Хэмжээ тооцож байна…">
+    <Section title={tr('Давхарга ба хэмжээ')} note={tr('{0} давхарга', num(p.layerIds.length))}>
+      <Data q={q} loading={tr('Хэмжээ тооцож байна…')}>
         {(rows) => (
           <Rows
             items={rows.map((r) => ({
               key: r.title,
-              value: <span className="num">{[`${num(r.n)} ш`, r.qty].filter(Boolean).join(' · ')}</span>,
+              value: <span className="num">{[tr('{0} ш', num(r.n)), r.qty].filter(Boolean).join(' · ')}</span>,
             }))}
           />
         )}

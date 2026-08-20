@@ -20,10 +20,9 @@ export function Sheet() {
       <header className={st.portalHead}>
         <span className={st.portalIcon}><Icon name="pen" size={16} /></span>
         <div className={st.portalText}>
-          <h2 className={st.portalTitle}>Гүйцэтгэл бөглөх</h2>
+          <h2 className={st.portalTitle}>{'Гүйцэтгэл бөглөх'}</h2>
           <p className={st.portalDesc}>
-            Багцын гүйцэтгэлийн өгөгдөл оруулах портал — блок бүрийн явцыг бөглөж
-            нийтлэхэд нийлбэр, жин, дүн автоматаар бодогдоно.
+            {"Багцын гүйцэтгэлийн өгөгдөл оруулах портал — блок бүрийн нүдэнд ЭНЭ УДААД хийсэн ОБЬЁМоо бичихэд гүйцэтгэлийн хувь, нийлбэр, жин, дүн автоматаар бодогдоно."}
           </p>
         </div>
       </header>

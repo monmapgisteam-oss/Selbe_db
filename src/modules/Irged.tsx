@@ -25,8 +25,10 @@
  */
 
 import { useCallback, useMemo, useState } from 'react';
+import { t as tr } from '@/lib/i18nCore';
 import { MapCanvas, type Dim } from '@/components/MapCanvas';
 import { MapTools } from '@/components/MapTools';
+import { useZoomToFilter } from '@/lib/useZoomToFilter';
 import { OpacityPanel } from '@/components/OpacityPanel';
 import { LayerCatalog } from '@/components/LayerCatalog';
 import { useLayerPicks } from '@/lib/useLayerPicks';
@@ -66,7 +68,7 @@ const SOC_IDS = PKG_BY_FAMILY.soc ?? [];
 /** Унтрааж асаах давхаргууд — жагсаалтаас чагтын мөрүүд үүснэ */
 const TOGGLES = [
   { id: IRGED_TOILET.id, label: IRGED_TOILET.title },
-  { id: 'soc', label: 'Нийгмийн дэд бүтэц' },
+  { id: 'soc', label: tr('Нийгмийн дэд бүтэц') },
 ] as const;
 
 /**
@@ -107,6 +109,7 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   /** Тунгалагийн хавтан ба давхарга тус бүрийн opacity (`MapTools`-ийн «Тунгалаг») */
   const [opOpen, setOpOpen] = useState(false);
   const [opacity, setOpacity] = useState<Record<string, number>>({});
+  useZoomToFilter({ zone });
 
   const is2d = dim === '2d';
 
@@ -155,24 +158,24 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       {/* ══════════ ӨМНӨ — одоогийн байдал ══════════ */}
       <div className={i.left}>
         {/* Баганын толгой — хоёр баганад ЯГ ИЖИЛ eyebrow, ялгаа нь зөвхөн ҮГ */}
-        <h3 className={`eyebrow ${i.colHd}`}>Өмнө</h3>
+        <h3 className={`eyebrow ${i.colHd}`}>{tr('Өмнө')}</h3>
 
-        <section className={`${o.panel} ${i.card}`} aria-label="Нүхэн жорлон">
+        <section className={`${o.panel} ${i.card}`} aria-label={tr('Нүхэн жорлон')}>
           <header className={o.panelHead}>
             <h3 className={o.panelTitle}>{IRGED_TOILET.title}</h3>
           </header>
           <div className={o.panelBody}>
-            <Data q={qToilet} loading="Тоолж байна…">
+            <Data q={qToilet} loading={tr('Тоолж байна…')}>
               {(n) => (
                 <Stats cols={2}>
                   {/* ⚠️ envhub: индикаторын тоо var(--ink) — акцент өнгө байхгүй */}
-                  <Stat value={num(n)} unit="ш" label="Бүртгэгдсэн" />
+                  <Stat value={num(n)} unit={tr('ш')} label={tr('Бүртгэгдсэн')} />
                   {/* ⚠️ Тоог ЭНД бичихгүй — `HEADLINE.households` нь толгойн
                       үзүүлэлт, нүүр хуудас, тайлан гурвын ижил эх сурвалж. */}
                   <Stat
                     value={num(HEADLINE.households)}
-                    unit="өрх"
-                    label="Гэрийн зуух, жорлонтой"
+                    unit={tr('өрх')}
+                    label={tr('Гэрийн зуух, жорлонтой')}
                   />
                 </Stats>
               )}
@@ -180,10 +183,10 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           </div>
         </section>
 
-        <section className={`${o.panel} ${i.card}`} aria-label="Одоо байгаа нийгмийн байгууламж">
+        <section className={`${o.panel} ${i.card}`} aria-label={tr('Одоо байгаа нийгмийн байгууламж')}>
           <header className={o.panelHead}>
-            <h3 className={o.panelTitle}>Нийгмийн дэд бүтэц</h3>
-            <span className={o.panelNote}>{SOCIAL.totals.now} байгууламж</span>
+            <h3 className={o.panelTitle}>{tr('Нийгмийн дэд бүтэц')}</h3>
+            <span className={o.panelNote}>{SOCIAL.totals.now} {tr('байгууламж')}</span>
           </header>
           <div className={o.panelBody}>
             {/* «Дараа» талтай ЯГ ИЖИЛ загвар — ялгаа нь зөвхөн утга.
@@ -307,17 +310,17 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       {/* ══════════ ДАРАА — төлөвлөсөн ══════════ */}
       <div className={i.right}>
         {/* Баганын толгой — зүүнтэй ЯГ ИЖИЛ eyebrow, ялгаа нь зөвхөн ҮГ */}
-        <h3 className={`eyebrow ${i.colHd}`}>Дараа</h3>
+        <h3 className={`eyebrow ${i.colHd}`}>{tr('Дараа')}</h3>
 
-        <section className={`${o.panel} ${i.card}`} aria-label="Нийгмийн дэд бүтэц">
+        <section className={`${o.panel} ${i.card}`} aria-label={tr('Нийгмийн дэд бүтэц')}>
           <header className={o.panelHead}>
-            <h3 className={o.panelTitle}>Нийгмийн дэд бүтэц</h3>
-            <span className={o.panelNote}>{SOCIAL.totals.total} байгууламж</span>
+            <h3 className={o.panelTitle}>{tr('Нийгмийн дэд бүтэц')}</h3>
+            <span className={o.panelNote}>{SOCIAL.totals.total} {tr('байгууламж')}</span>
           </header>
           <div className={o.panelBody}>
             <Stats cols={2}>
-              <Stat value={num(SOCIAL.totals.total)} unit="ш" label="Нийт болно" />
-              <Stat value={SOCIAL.totals.add} unit="ш" label="Шинээр нэмэгдэнэ" />
+              <Stat value={num(SOCIAL.totals.total)} unit={tr('ш')} label={tr('Нийт болно')} />
+              <Stat value={SOCIAL.totals.add} unit={tr('ш')} label={tr('Шинээр нэмэгдэнэ')} />
             </Stats>
             {/* «Өмнө» талтай ЯГ ИЖИЛ загвар, НЭГ хэмжүүр (`SOC_MAX`) — хоёр
                 чартын баганыг зэрэгцүүлэн харахад өсөлт шууд уншигдана. */}
@@ -334,9 +337,9 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           </div>
         </section>
 
-        <section className={`${o.panel} ${i.card}`} aria-label="Иргэдийн амьдралын чанар">
+        <section className={`${o.panel} ${i.card}`} aria-label={tr('Иргэдийн амьдралын чанар')}>
           <header className={o.panelHead}>
-            <h3 className={o.panelTitle}>Иргэдийн амьдралын чанар</h3>
+            <h3 className={o.panelTitle}>{tr('Иргэдийн амьдралын чанар')}</h3>
           </header>
           <div className={o.panelBody}>
             {/* ⚠️ `Stats` нь 2/3/4 багана л дэмжинэ — нарийн баганад 2 тохирно */}

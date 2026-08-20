@@ -1,6 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import { t as tr } from '@/lib/i18nCore';
 import { Icon } from './Icon';
 import { ZoneFilter } from './ZoneFilter';
 import type { Dim } from './MapCanvas';
@@ -74,10 +75,10 @@ export function MapTools({
           aria-pressed={layersOpen}
           className={`${s.btn} ${layersOpen ? s.btnOn : ''}`}
           onClick={onLayers}
-          title="Давхаргын жагсаалт"
+          title={tr('Давхаргын жагсаалт')}
         >
           <Icon name="layers" size={15} />
-          Давхарга
+          {tr('Давхарга')}
         </button>
       )}
 
@@ -87,10 +88,10 @@ export function MapTools({
           aria-pressed={opacityOpen}
           className={`${s.btn} ${opacityOpen ? s.btnOn : ''}`}
           onClick={onOpacity}
-          title="Давхаргын тунгалаг"
+          title={tr('Давхаргын тунгалаг')}
         >
           <Icon name="droplet" size={15} />
-          Тунгалаг
+          {tr('Тунгалаг')}
         </button>
       )}
 
@@ -98,7 +99,7 @@ export function MapTools({
 
       {panels && <span className={s.sep} aria-hidden />}
 
-      <div className={s.dims} role="group" aria-label="Газрын зургийн харагдац">
+      <div className={s.dims} role="group" aria-label={tr('Газрын зургийн харагдац')}>
         {dims.map((d) => (
           <button
             key={d}

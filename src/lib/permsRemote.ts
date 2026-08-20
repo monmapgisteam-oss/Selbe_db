@@ -13,6 +13,7 @@
  */
 
 import { AUTH, type Role, type ViewKey } from './services';
+import { t as tr } from '@/lib/i18nCore';
 
 export type RemoteRow = { username: string; role: Role | null; views: ViewKey[] | 'all'; docs: boolean };
 
@@ -57,7 +58,7 @@ async function findTableUrl(token: string): Promise<string | null> {
 async function createTable(token: string, user: string): Promise<string | null> {
   const createParameters = {
     name: TITLE,
-    serviceDescription: 'Сэлбэ порталын хэрэглэгчийн эрх',
+    serviceDescription: tr('Сэлбэ порталын хэрэглэгчийн эрх'),
     hasStaticData: false,
     maxRecordCount: 10000,
     capabilities: 'Query,Editing,Create,Update,Delete',

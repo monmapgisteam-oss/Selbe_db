@@ -10,12 +10,12 @@ import st from "./sheet.module.css";
 // are the only WBS rows the feature service can measure — filled live from the
 // phase-Б header rollup. 6.2.1.7 (Багц 4.2) has no service data → stays static.
 const CON: Record<string, string> = {
-  "6.2.1.1": "Багц 1",
-  "6.2.1.2": "Багц 2",
-  "6.2.1.3": "Багц 3.1",
-  "6.2.1.4": "Багц 3.2",
-  "6.2.1.5": "Багц 3.3",
-  "6.2.1.6": "Багц 4-1",
+  "6.2.1.1": 'Багц 1',
+  "6.2.1.2": 'Багц 2',
+  "6.2.1.3": 'Багц 3.1',
+  "6.2.1.4": 'Багц 3.2',
+  "6.2.1.5": 'Багц 3.3',
+  "6.2.1.6": 'Багц 4-1',
 };
 const CON_PARENT = "6.2.1"; // recomputed from its 7 children when they go live
 
@@ -106,10 +106,10 @@ export default function Wbs() {
   return (
     <div className={st.wrap}>
       <span className={st.layerBtns}>
-        <button className={st.layerBtn} onClick={() => collapseTo(1)} title="Үе шат">1</button>
-        <button className={st.layerBtn} onClick={() => collapseTo(2)} title="+ дэд">2</button>
-        <button className={st.layerBtn} onClick={() => collapseTo(3)} title="+ ангилал">3</button>
-        <button className={st.layerBtn} onClick={() => collapseTo(4)} title="+ багц">4</button>
+        <button className={st.layerBtn} onClick={() => collapseTo(1)} title={'Үе шат'}>1</button>
+        <button className={st.layerBtn} onClick={() => collapseTo(2)} title={'+ дэд'}>2</button>
+        <button className={st.layerBtn} onClick={() => collapseTo(3)} title={'+ ангилал'}>3</button>
+        <button className={st.layerBtn} onClick={() => collapseTo(4)} title={'+ багц'}>4</button>
       </span>
       {err && <p className={st.errorSm}>{err}</p>}
       <div className={st.scroll}>
@@ -117,12 +117,12 @@ export default function Wbs() {
           <thead>
             <tr>
               <th className={cls("c-no")}>№<i {...grip("no")} /></th>
-              <th className={cls("c-ajil")}>Ажлын нэр<i {...grip("ajil")} /></th>
-              <th className={cls("c-jin")}>Хэсэгт<i {...grip("jin")} /></th>
-              <th className={cls("c-jin")}>Төсөлд<i {...grip("jin")} /></th>
-              <th className={cls("c-done")}>Төлөвлөгөө<i {...grip("done")} /></th>
-              <th className={cls("c-done")}>Гүйцэтгэл<i {...grip("done")} /></th>
-              <th className={cls("c-dutuu")}>Биелэлт<i {...grip("dutuu")} /></th>
+              <th className={cls("c-ajil")}>{'Ажлын нэр'}<i {...grip("ajil")} /></th>
+              <th className={cls("c-jin")}>{'Хэсэгт'}<i {...grip("jin")} /></th>
+              <th className={cls("c-jin")}>{'Төсөлд'}<i {...grip("jin")} /></th>
+              <th className={cls("c-done")}>{'Төлөвлөгөө'}<i {...grip("done")} /></th>
+              <th className={cls("c-done")}>{'Гүйцэтгэл'}<i {...grip("done")} /></th>
+              <th className={cls("c-dutuu")}>{'Биелэлт'}<i {...grip("dutuu")} /></th>
             </tr>
           </thead>
           <tbody>

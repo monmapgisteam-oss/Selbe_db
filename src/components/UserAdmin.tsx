@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { t as tr } from '@/lib/i18nCore';
 import { VIEWS, ROLE_ACCESS, type Role, type ViewKey } from '@/lib/services';
 import {
   listUsers,
@@ -17,9 +18,9 @@ const ALL_KEYS: ViewKey[] = VIEWS.map((v) => v.key);
 
 /** Үүргийн preset товчнууд */
 const ROLE_PRESETS: { key: Role; label: string }[] = [
-  { key: 'super', label: 'Супер' },
-  { key: 'beginner', label: 'Энгийн' },
-  { key: 'tolovlolt', label: 'Төлөвлөлт' },
+  { key: 'super', label: tr('Супер') },
+  { key: 'beginner', label: tr('Энгийн') },
+  { key: 'tolovlolt', label: tr('Төлөвлөлт') },
 ];
 
 const hasView = (views: ViewKey[] | 'all', k: ViewKey) => views === 'all' || views.includes(k);
@@ -99,33 +100,33 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
      * өөрийн толгой ба хажуугийн цэстэй бүтэн дэлгэцийн хэсэг. Нээх/хаах logic
      * (isSuper шалгалт, Escape, гүйлгэлт түгжих) хэвээр.
      */
-    <div className={s.page} role="dialog" aria-modal="true" aria-label="Админ портал">
+    <div className={s.page} role="dialog" aria-modal="true" aria-label={tr('Админ портал')}>
       <header className={s.pageHead}>
         <span className={s.pageBrand}>
           <span className={s.pageBadge}><Icon name="users" size={15} /></span>
           <span className={s.pageBrandText}>
-            <b>Админ портал</b>
-            <small>Сэлбэ 20 минутын хот · тохиргоо</small>
+            <b>{tr('Админ портал')}</b>
+            <small>{tr('Сэлбэ 20 минутын хот · тохиргоо')}</small>
           </span>
         </span>
         <button type="button" className={s.back} onClick={onClose}>
-          ← Портал руу буцах
+          {tr('← Портал руу буцах')}
         </button>
       </header>
 
-      <aside className={s.side} aria-label="Админ цэс">
-        <div className={s.sideHead}>Тохиргоо</div>
+      <aside className={s.side} aria-label={tr('Админ цэс')}>
+        <div className={s.sideHead}>{tr('Тохиргоо')}</div>
         <button type="button" className={`${s.sideItem} ${s.sideItemOn}`} aria-current="true">
           <Icon name="users" size={14} />
-          Хэрэглэгчдийн эрх удирдах
+          {tr('Хэрэглэгчдийн эрх удирдах')}
         </button>
       </aside>
 
       <div className={s.main}>
         <header className={s.head}>
-          <h2 className={s.title}>Хэрэглэгчдийн эрх удирдах</h2>
+          <h2 className={s.title}>{tr('Хэрэглэгчдийн эрх удирдах')}</h2>
           <p className={s.subtitle}>
-            Хэрэглэгч бүрд үүргийн багц оноох буюу харагдац тус бүрийг нээж/хаана.
+            {tr('Хэрэглэгч бүрд үүргийн багц оноох буюу харагдац тус бүрийг нээж/хаана.')}
           </p>
         </header>
 
@@ -136,11 +137,11 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
             value={name}
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') add(); }}
-            placeholder="ArcGIS хэрэглэгчийн нэр"
-            aria-label="Шинэ хэрэглэгчийн нэр"
+            placeholder={tr('ArcGIS хэрэглэгчийн нэр')}
+            aria-label={tr('Шинэ хэрэглэгчийн нэр')}
           />
           <button type="button" className={s.addBtn} onClick={add} disabled={!name.trim()}>
-            Нэмэх
+            {tr('Нэмэх')}
           </button>
         </div>
 
@@ -155,9 +156,9 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
                     // ⚠️ ArcGIS бичилт унасан — тусгай CSS класс байхгүй тул inline загвар
                     <span
                       style={{ marginLeft: 8, fontSize: '0.68rem', fontWeight: 550, color: '#fbbf24' }}
-                      title="ArcGIS хүснэгтэд бичиж чадсангүй — өөрчлөлт бусад төхөөрөмжид үйлчлэхгүй"
+                      title={tr('ArcGIS хүснэгтэд бичиж чадсангүй — өөрчлөлт бусад төхөөрөмжид үйлчлэхгүй')}
                     >
-                      ArcGIS-т хадгалагдсангүй — зөвхөн энэ browser-т
+                      {tr('ArcGIS-т хадгалагдсангүй — зөвхөн энэ browser-т')}
                     </span>
                   )}
                 </span>
@@ -168,7 +169,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
                       type="button"
                       className={`${s.preset} ${u.role === r.key ? s.presetOn : ''}`}
                       onClick={() => applyRole(u, r.key)}
-                      title={`${r.label} эрхийн багц`}
+                      title={tr('{0} эрхийн багц', r.label)}
                     >
                       {r.label}
                     </button>
@@ -178,9 +179,9 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
                       type="button"
                       className={s.reset}
                       onClick={() => track(u.username, clearOverride(u.username))}
-                      title="Хатуу тохиргоо руу сэргээх"
+                      title={tr('Хатуу тохиргоо руу сэргээх')}
                     >
-                      Сэргээх
+                      {tr('Сэргээх')}
                     </button>
                   )}
                 </div>
@@ -210,7 +211,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
                   onClick={() => flipDocs(u)}
                 >
                   <span className={s.chipIcon}><Icon name="file" size={14} /></span>
-                  ТЭЗҮ-БОНУ
+                  {tr('ТЭЗҮ-БОНУ')}
                 </button>
               </div>
             </div>
@@ -218,9 +219,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
         </div>
 
         <p className={s.note}>
-          Өөрчлөлт ArcGIS дээрх хуваалцсан хүснэгтэд хадгалагдаж, бүх хэрэглэгчид
-          (өөр төхөөрөмжөөс нэвтэрсэн ч) үйлчилнэ. ArcGIS-т холбогдоогүй үед түр
-          зуур энэ browser-т хадгалагдана.
+          {tr('Өөрчлөлт ArcGIS дээрх хуваалцсан хүснэгтэд хадгалагдаж, бүх хэрэглэгчид (өөр төхөөрөмжөөс нэвтэрсэн ч) үйлчилнэ. ArcGIS-т холбогдоогүй үед түр зуур энэ browser-т хадгалагдана.')}
         </p>
       </div>
     </div>

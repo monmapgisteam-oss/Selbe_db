@@ -10,10 +10,10 @@ const cls = (names: string) =>
 
 // Хоцролтын төрөл — эх файлын кодчлол (`aldaatai` талбарт хадгалагдсан).
 const LATE: Record<string, string> = {
-  "1": "Шийдэл/Захиалагч",
-  "2": "Гүйцэтгэгч",
-  "3": "Газар чөлөөлөлт",
-  "4": "Хуулийн асуудал",
+  "1": 'Шийдэл/Захиалагч',
+  "2": 'Гүйцэтгэгч',
+  "3": 'Газар чөлөөлөлт',
+  "4": 'Хуулийн асуудал',
 };
 
 const s = (v: unknown) => (v == null ? "" : String(v));
@@ -188,7 +188,7 @@ export default function Level5() {
     <div className={st.wrap}>
       <div className={st.toolbar}>
         <label className={st.field}>
-          Багц
+          {'Багц'}
           <select
             className={st.select}
             value={bagts}
@@ -200,13 +200,13 @@ export default function Level5() {
           </select>
         </label>
         <label className={st.field}>
-          Блок
+          {'Блок'}
           <select
             className={st.select}
             value={blok}
             onChange={(e) => setBlok(e.target.value)}
           >
-            <option value="">Бүгд ({bloks.length})</option>
+            <option value="">{'Бүгд ('}{bloks.length})</option>
             {bloks.map((b) => (
               <option key={b}>{b}</option>
             ))}
@@ -216,24 +216,23 @@ export default function Level5() {
           className={st.layerBtn}
           onClick={() => setOpen(new Set(tree.map((a) => a.key)))}
         >
-          Дэлгэх
+          {'Дэлгэх'}
         </button>
         <button className={st.layerBtn} onClick={() => setOpen(new Set())}>
-          Хумих
+          {'Хумих'}
         </button>
-        {busy && <span className={st.muted}>Ачаалж байна…</span>}
+        {busy && <span className={st.muted}>{'Ачаалж байна…'}</span>}
       </div>
 
       {err && <p className={st.errorSm}>{err}</p>}
 
       <p className={st.info}>
-        Жигнэсэн гүйцэтгэл <b>{pct(total.w ? total.wd / total.w : null)}</b> ·{" "}
-        {int(total.n)} ажилбар · хоцролттой {int(lateSum(total.late))}
+        {'Жигнэсэн гүйцэтгэл'} <b>{pct(total.w ? total.wd / total.w : null)}</b> ·{" "}
+        {int(total.n)} {'ажилбар · хоцролттой'} {int(lateSum(total.late))}
         {Object.entries(total.late)
           .sort()
           .map(([c, n]) => ` · ${LATE[c] || c} ${int(n)}`)}
-        . Ач холбогдлын зэргээр (АХЗ) жигнэв; эх өгөгдөл 2026-06-30-ны
-        ажилбарын түвшний экспорт — засварлах боломжгүй.
+        {'. Ач холбогдлын зэргээр (АХЗ) жигнэв; эх өгөгдөл 2026-06-30-ны ажилбарын түвшний экспорт — засварлах боломжгүй.'}
       </p>
 
       <div className={st.scroll}>
@@ -241,11 +240,11 @@ export default function Level5() {
           <thead>
             <tr>
               <th className={cls("c-no")}>Activity ID<i {...grip("no")} /></th>
-              <th className={cls("c-ajil")}>Ажил<i {...grip("ajil")} /></th>
-              <th className={cls("c-jin")}>АХЗ<i {...grip("jin")} /></th>
-              <th className={cls("c-done")}>Гүйцэтгэл<i {...grip("done")} /></th>
-              <th className={cls("c-jin")}>Ажилбар<i {...grip("jin")} /></th>
-              <th className={cls("c-dutuu")}>Хоцролт<i {...grip("dutuu")} /></th>
+              <th className={cls("c-ajil")}>{'Ажил'}<i {...grip("ajil")} /></th>
+              <th className={cls("c-jin")}>{'АХЗ'}<i {...grip("jin")} /></th>
+              <th className={cls("c-done")}>{'Гүйцэтгэл'}<i {...grip("done")} /></th>
+              <th className={cls("c-jin")}>{'Ажилбар'}<i {...grip("jin")} /></th>
+              <th className={cls("c-dutuu")}>{'Хоцролт'}<i {...grip("dutuu")} /></th>
             </tr>
           </thead>
           <tbody>
