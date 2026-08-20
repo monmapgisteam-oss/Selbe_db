@@ -32,7 +32,15 @@
   --nav-h: 56px;
   position: relative;
   isolation: isolate;
-  min-height: 100dvh;
+  /*
+   * ⚠️ ДОТООД гүйлт (2026-08-21): globals-д `body { overflow: hidden }` тул
+   * самбар дэлгэцээс урт болоход хуудас огт гүйдэггүй байв. Биеийн гүйлтийг
+   * нээвэл порталын газрын зургийн бүрхүүл эвдрэх тул НҮҮР ӨӨРӨӨ гүйнэ.
+   * Навибар `sticky` — гүйлгэхэд дээрээ наалдсан хэвээр.
+   */
+  height: 100dvh;
+  overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
   background: var(--bg);
