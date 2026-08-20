@@ -47,6 +47,7 @@ import { num } from '@/lib/format';
  * карт болов — ялгаа нь зөвхөн ГАРЧГИЙН ҮГЭНД.
  */
 import o from './overview.module.css';
+import { SplitGrip, useSideResize } from '@/components/SplitGrip';
 import i from './irged.module.css';
 
 /**
@@ -94,6 +95,8 @@ const headCount = (s: string) => Number(/^\s*(\d+)/.exec(s)?.[1] ?? 0);
 const SOC_MAX = Math.max(...SOCIAL.rows.map((r) => r.total));
 
 export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
+  /** Талын багануудын өргөн — чирж тохируулна, хөтөчид хадгалагдана. */
+  const side = useSideResize('irged');
   /** Асаалттай давхаргууд */
   const [on, setOn] = useState<Record<string, boolean>>(
     () => Object.fromEntries(TOGGLES.map((t) => [t.id, true])),
@@ -138,7 +141,14 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const noop = useCallback(() => {}, []);
 
   return (
-    <div className={i.frame}>
+    /* Талын багануудыг чирж өргөсгөх/нарийсгах бариулууд. */
+    <div
+      ref={side.hostRef}
+      className={`${i.frame} ${side.hostClass}`}
+      style={side.style}
+    >
+      <SplitGrip {...side.left} />
+      <SplitGrip {...side.right} />
       {/* ══════════ ӨМНӨ — одоогийн байдал ══════════ */}
       <div className={i.left}>
         {/* Баганын толгой — хоёр баганад ЯГ ИЖИЛ eyebrow, ялгаа нь зөвхөн ҮГ */}
