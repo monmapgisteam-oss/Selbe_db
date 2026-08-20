@@ -66,6 +66,11 @@
 }
 .sectionNote { font-size: 11.5px; color: var(--ink-3); }
 
+/* Агуулга картын үлдсэн өндрийг дүүргэнэ (`Section fill`) — доторх `.series`
+   зэрэг босоо flex хүүхэд нь `flex: 1` аваад чартын талбайгаа сунгана. */
+.sectionFill { display: flex; flex-direction: column; }
+.sectionFill > :last-child { flex: 1; min-height: 0; }
+
 /* Самбарын ГОЛ хэсэг — модулийн өнгөөр ирмэглэж, бусдаас ялгарна */
 .sectionPrimary {
   background: color-mix(in srgb, var(--hue) 4%, var(--surface));
@@ -345,8 +350,21 @@
   font-size: 12px;
 }
 .row:last-child { border-bottom: none; }
-.rowKey { color: var(--ink-3); flex: none; }
-.rowVal { color: var(--ink); font-weight: 500; text-align: right; overflow-wrap: anywhere; }
+/**
+ * ⚠️ 2026-08-20: ТҮЛХҮҮР нь хумигдаж мөр дамжина, УТГА нь бүтэн үлдэнэ —
+ * урьд нь эсрэгээрээ байв (`.rowKey { flex: none }` + `.rowVal { overflow-wrap:
+ * anywhere }`). Нарийн баганад (дашбоардын 272px хажуугийн карт) урт монгол
+ * түлхүүр бүх зайг эзэлж, «3,935» гэсэн утга нь ТЭМДЭГТ ТУС БҮРЭЭР босоо
+ * тасарч уншигдахаа больдог байлаа.
+ */
+.rowKey { color: var(--ink-3); min-width: 0; }
+.rowVal {
+  color: var(--ink);
+  font-weight: 500;
+  text-align: right;
+  flex: none;
+  white-space: nowrap;
+}
 
 /* ── Chip ── */
 .chip {
@@ -569,7 +587,11 @@
   transition: color 0.12s;
 }
 .seriesLabelOn { color: var(--ink); }
-.seriesUnit { margin-top: 4px; font-size: 10.5px; color: var(--ink-3); text-align: right; }
+/* Цөөлсөн шошго — хөрш ХООСОН нүднүүд рүү тэлж, бүтнээрээ уншигдана
+   (тайрч «25…» болгохын оронд). Зөвхөн `stride > 1` үед тавигдана. */
+.seriesLabelWide { overflow: visible; text-overflow: clip; }
+/* Нэгж = чартын ДЭЭД баруун булангийн тайлбар (тэнхлэгийн шошготой хутгалдахгүй) */
+.seriesUnit { margin-bottom: 4px; font-size: 10.5px; color: var(--ink-3); text-align: right; }
 
 /* ── Сонгогч ── */
 

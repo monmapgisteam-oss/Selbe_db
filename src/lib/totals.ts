@@ -8,7 +8,7 @@
  */
 
 import { queryGroup, queryStats, count, sum } from './query';
-import { layerUrl, OID, PLAN_LAYER_IDS, LAYER_BY_ID, zoneWhere, type LayerDef, type Cost } from './services';
+import { layerUrl, OID, CATALOG_LAYER_IDS, LAYER_BY_ID, zoneWhere, type LayerDef, type Cost } from './services';
 import { num, ha, km } from './format';
 import { useAsync, type Async } from './useAsync';
 
@@ -152,7 +152,12 @@ const totalsCache = new Map<string, Map<string, Totals>>();
 export function usePlanTotals(
   zone: string | null,
   enabled = true,
-  ids: string[] = PLAN_LAYER_IDS,
+  /**
+   * ⚠️ 2026-08-20: Анхдагч нь `PLAN_LAYER_IDS`-ЭЭС `CATALOG_LAYER_IDS` болов.
+   * Каталог одоо БҮХ давхаргыг харуулдаг тул явцуу нийлбэрийн жагсаалтаар
+   * татвал шинээр нээгдсэн 32 мөр тоогоо олохгүй, мөнхөд «…» гэж хүлээнэ.
+   */
+  ids: string[] = CATALOG_LAYER_IDS,
 ): Async<Map<string, Totals>> {
   const key = `${enabled ? 'on' : 'off'}|${zone ?? ''}|${ids.join(',')}`;
   return useAsync(async () => {
@@ -168,6 +173,5 @@ export function usePlanTotals(
     const map = new Map<string, Totals>(entries);
     totalsCache.set(key, map);
     return map;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 }

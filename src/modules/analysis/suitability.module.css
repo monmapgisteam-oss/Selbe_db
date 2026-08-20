@@ -576,43 +576,16 @@
    «Ерөнхий төлөвлөгөө»-тэй ижил зарчим: Давхарга нь дим товчны ӨМНӨ. ДЭЭД-ТӨВД —
    ArcGIS zoom (баруун дээд), масштаб (баруун доод), дэлгэрэнгүй карт (зүүн дээд)-
    той мөргөлдөхгүй. Газрын зураг дээгүүр ХӨВДӨГ тул сүүдэр зөвшөөрөгдөнө. */
-.mapControls {
-  position: absolute;
-  top: 14px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 12;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  background: color-mix(in srgb, var(--surface) 88%, transparent);
-  backdrop-filter: blur(8px);
-  box-shadow: var(--shadow-lg);
-}
+
 
 /* «Давхарга» товч — асаалттай үед дата өнгөөр дүүрнэ */
-.mapBtn {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 6px 11px;
-  border: 0;
-  border-radius: var(--r-sm);
-  background: transparent;
-  color: var(--ink-3);
-  font-size: 12px;
-  font-weight: 600;
-  transition: background .14s, color .14s, transform .1s;
-}
-.mapBtn:hover { background: var(--surface-2); color: var(--ink) }
-.mapBtn:active { transform: scale(.95) }
-.mapBtn svg { width: 15px; height: 15px }
+
+
+
+
 /* Бичиг нь канвасын өнгөөр — data өнгөн дээр хоёр горимд аль алинд нь уншигдана */
-.mapBtnOn { background: var(--data); color: var(--bg) }
-.mapBtnOn:hover { background: var(--data); color: var(--bg) }
+
+
 
 /* Дотоод 2D/3D/BIM сегмент — pill-гүй, зүүн талд нимгэн зураасаар тусгаарлав. */
 .mapDims { display: flex; gap: 3px; padding-left: 4px; border-left: 1px solid var(--line) }
