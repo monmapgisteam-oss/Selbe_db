@@ -8,8 +8,9 @@ import { loadFinData, contractMonths, lagOf, lagLevel } from '@/modules/Finance'
 import { useBagtsTable, useSuitability } from '@/modules/Dashboard';
 import { HABEA, CASHFLOW2, pkgKeyOf, type ViewKey } from '@/lib/services';
 import { count, queryGroup } from '@/lib/query';
+import { loadVariance, loadOverlaps, loadDamage, VAR_BAD_MNT, OV_BAD_N, DMG_BAD_N } from '@/lib/execTriage';
 import { scoreLabel } from '@/lib/analysis/score';
-import { num, pct } from '@/lib/format';
+import { num, pct, date } from '@/lib/format';
 import { Bars, HBars, Ring, Spark } from './MiniChart';
 import s from './execKpi.module.css';
 
@@ -65,6 +66,12 @@ type Card = CardData & { view: ViewKey };
  * ⚠️ Дуудлага нь ЗААВАЛ `state !== 'ready'` хамгаалалтын ДОТОР байна — тэгж
  * байж TypeScript үлдсэн кодод `q.data`-г null БИШ гэж нарийсгана.
  */
+/** Мөнгөн дүнг товч бичих — зөрүүний картад (тэрбум/сая ₮) */
+const money = (v: number): string =>
+  v >= 1e9 ? tr('{0} тэрбум ₮', num(v / 1e9, 2))
+  : v >= 1e6 ? tr('{0} сая ₮', num(v / 1e6, 1))
+  : tr('{0} ₮', num(v, 0));
+
 const notReady = (
   label: string,
   loadingNote: string,
@@ -97,6 +104,13 @@ export function ExecKpi({ onView }: { onView: (key: ViewKey) => void }) {
   const suitQ = useSuitability(true); // арын дэвсгэрт (хүнд, кэшлэнэ)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const clearQ = useAsync(loadClearance, []);
+  /* Гурван түвшний шинэ KPI (2026-08-21) — execTriage модульдаа кэшлэгдэнэ */
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const ovQ = useAsync(loadOverlaps, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const varQ = useAsync(loadVariance, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const dmgQ = useAsync(loadDamage, []);
 
   // 1. Хуваарийн биелэлт — багц бүрийн хоцрогдол (Cashflow төлөвлөгөө vs биет %)
   const schedule = useMemo<CardData>(() => {
@@ -280,24 +294,95 @@ export function ExecKpi({ onView }: { onView: (key: ViewKey) => void }) {
     };
   }, [clearQ]);
 
+  // 7. Давхцсан үлдсэн нэгж талбар — багц ажлын нэрийн хамт (2026-08-21)
+  const overlap = useMemo<CardData>(() => {
+    if (ovQ.state !== 'ready') return notReady(tr('Давхцсан үлдсэн нэгж талбар'), tr('орон зайн огтлолцол бодож байна'), [ovQ]);
+    const d = ovQ.data;
+    if (d.total === 0)
+      return { label: tr('Давхцсан үлдсэн нэгж талбар'), value: tr('Саадгүй'), note: tr('багцын талбайд давхцсан талбар алга'), status: 'good' };
+    return {
+      label: tr('Давхцсан үлдсэн нэгж талбар'),
+      value: tr('{0} талбар', num(d.total)),
+      // ⚠️ Багц ажлын НЭРИЙН хамт (хэрэглэгчийн хүсэлт) — аль багц саадтайг шууд
+      note: d.byPkg.slice(0, 3).map((p) => `${p.name} (${num(p.parcels)})`).join(' · ')
+        + (d.byPkg.length > 3 ? tr(' · бас {0} багц', num(d.byPkg.length - 3)) : ''),
+      status: d.total >= OV_BAD_N ? 'bad' : 'warn',
+      chart: d.byPkg.length
+        ? <HBars items={d.byPkg.slice(0, 4).map((p) => ({ label: p.name, value: p.parcels }))} max={d.byPkg[0].parcels} fmt={(v) => num(v)} />
+        : undefined,
+    };
+  }, [ovQ]);
+
+  // 8. Гүйцэтгэлийн хяналт — обьёмын зөрүү × нэгж өртөг (2026-08-21).
+  //    Обьём = төлөвлөгдсөн ажил, обьёмын нийлбэр = бодит гүйцэтгэлийн утга.
+  //    Хэтэрсэн зөрүүг нэгж өртгөөр мөнгөжүүлж, их бол «Яаралтай» ангилалд.
+  const variance = useMemo<CardData>(() => {
+    if (varQ.state !== 'ready') return notReady(tr('Обьёмын зөрүү — Гүйцэтгэлийн хяналт'), tr('12 багцын хүснэгт уншиж байна'), [varQ]);
+    const d = varQ.data;
+    const failNote = d.failedPkgs ? tr(' · {0} багц уншигдсангүй', num(d.failedPkgs)) : '';
+    if (d.works === 0)
+      return {
+        label: tr('Обьёмын зөрүү — Гүйцэтгэлийн хяналт'),
+        value: tr('Зөрүүгүй'),
+        note: tr('бодит гүйцэтгэл төлөвлөгдсөн обьёмоос хэтрээгүй') + failNote,
+        status: 'good',
+      };
+    const top = d.top[0];
+    return {
+      label: tr('Обьёмын зөрүү — Гүйцэтгэлийн хяналт'),
+      value: money(d.totalMnt),
+      note: tr('{0} ажил хэтэрсэн · топ: {1} — {2}', num(d.works), top.work, money(top.mnt)) + failNote,
+      status: d.totalMnt >= VAR_BAD_MNT ? 'bad' : 'warn',
+      chart: <HBars items={d.top.slice(0, 4).map((w) => ({ label: w.work, value: w.mnt }))} max={d.top[0].mnt} fmt={money} />,
+    };
+  }, [varQ]);
+
+  // 9. ХАБЭА — хохирлын бүртгэл (2026-08-21). Мөнгөн дүнгийн талбар маягтад
+  //    байхгүй тул ТООГООР үнэлнэ (босго нь execTriage.DMG_BAD_N).
+  const damage = useMemo<CardData>(() => {
+    if (dmgQ.state !== 'ready') return notReady(tr('ХАБЭА — хохирол'), tr('ослын бүртгэл уншиж байна'), [dmgQ]);
+    const d = dmgQ.data;
+    if (d.n === 0)
+      return { label: tr('ХАБЭА — хохирол'), value: tr('Бүртгэлгүй'), note: tr('хохирлын төрлийн осол бүртгэгдээгүй'), status: 'good' };
+    return {
+      label: tr('ХАБЭА — хохирол'),
+      value: tr('{0} хохирол', num(d.n)),
+      note: (d.last ? tr('сүүлийнх {0}', date(d.last)) : '') + (d.sample.length ? ' · ' + d.sample[0] : ''),
+      status: d.n >= DMG_BAD_N ? 'bad' : 'warn',
+    };
+  }, [dmgQ]);
+
   // Карт бүр ХОЛБООТОЙ харагдац руу үсэрнэ (дэлгэрэнгүйг тэндээс)
   const cards: Card[] = [
     { ...schedule, view: 'tsogts' },     // хоцрогдолтой багцууд
     { ...finance, view: 'tsogts' },      // санхүүжилт vs гүйцэтгэлийн зөрүү KPI
     { ...clearance, view: 'gazar' },     // газар чөлөөлөлт — чөлөөлсөн/үлдсэн
+    { ...overlap, view: 'bagts' },       // давхцсан үлдсэн нэгж талбар — багцаар
+    { ...variance, view: 'guitsetgel' }, // обьёмын зөрүү — гүйцэтгэлийн хяналт
     { ...safety, view: 'habea' },        // осол/зөрчлийн бүртгэл
+    { ...damage, view: 'habea' },        // хохирлын бүртгэл
     { ...urban, view: 'analysis' },      // тохиромжтой байдлын үнэлгээ
     { ...contractor, view: 'tsogts' },   // багц/гүйцэтгэгчийн задаргаа
   ];
 
-  return (
-    <section className={s.panel} aria-label={tr('Гүйцэтгэлийн үнэлгээ')}>
-      <header className={s.head}>
-        <h2>{tr('Гүйцэтгэлийн үнэлгээ')}</h2>
-      </header>
-      <div className={s.grid}>
-        {cards.map((c) => (
-          <button
+  /**
+   * ГУРВАН ТҮВШИН (2026-08-21, хэрэглэгчийн хүсэлт): картууд үнэлгээгээрээ
+   * бүлэглэгдэнэ — Сайн (ногоон) · Дунд (шар) · Яаралтай шийдвэрлэх (улаан).
+   *
+   * ⚠️ `info` (гэрлэн дохио биш — гүйцэтгэгчийн зэрэглэл) ба `idle` (ачаалж
+   * буй / өгөгдөлгүй) картуудыг түвшинд ХУВААХГҮЙ — «Сайн» гэж бичих нь худал,
+   * «Яаралтай» гэж бичих нь түгшээнэ. Тэднийг доод «Лавлагаа» эгнээнд үлдээнэ.
+   * Алдаатай (retry) карт нь `bad` тул «Яаралтай»-д орж анхаарал татна — зөв.
+   */
+  const TIERS: { st: Status; title: string; tone: string }[] = [
+    { st: 'good', title: tr('Сайн'), tone: 'var(--good)' },
+    { st: 'warn', title: tr('Дунд'), tone: 'var(--warn)' },
+    { st: 'bad', title: tr('Яаралтай шийдвэрлэх'), tone: 'var(--bad)' },
+  ];
+  const rest = cards.filter((c) => c.status === 'info' || c.status === 'idle');
+
+  const card = (c: Card) => (
+    <button
             key={c.label}
             type="button"
             className={s.card}
@@ -324,8 +409,39 @@ export function ExecKpi({ onView }: { onView: (key: ViewKey) => void }) {
               {c.chart && <span className={s.chart}>{c.chart}</span>}
             </div>
           </button>
-        ))}
-      </div>
+  );
+
+  return (
+    <section className={s.panel} aria-label={tr('Гүйцэтгэлийн үнэлгээ')}>
+      <header className={s.head}>
+        <h2>{tr('Гүйцэтгэлийн үнэлгээ')}</h2>
+      </header>
+
+      {TIERS.map((t) => {
+        const list = cards.filter((c) => c.status === t.st);
+        return (
+          <div key={t.st} className={s.tier} style={{ ['--tc']: t.tone } as CSSProperties}>
+            <div className={s.tierHead}>
+              <i className={s.tierDot} aria-hidden />
+              <h3 className={s.tierTitle}>{t.title}</h3>
+              <span className={`${s.tierCount} num`}>{list.length}</span>
+            </div>
+            {list.length
+              ? <div className={s.grid}>{list.map(card)}</div>
+              : <p className={s.tierEmpty}>{tr('Энэ түвшинд үзүүлэлт алга.')}</p>}
+          </div>
+        );
+      })}
+
+      {/* Гэрлэн дохионд хамаарахгүй (info) ба ачаалж буй (idle) картууд */}
+      {rest.length > 0 && (
+        <div className={`${s.tier} ${s.tierRest}`}>
+          <div className={s.tierHead}>
+            <h3 className={s.tierTitle}>{tr('Лавлагаа')}</h3>
+          </div>
+          <div className={s.grid}>{rest.map(card)}</div>
+        </div>
+      )}
     </section>
   );
 }

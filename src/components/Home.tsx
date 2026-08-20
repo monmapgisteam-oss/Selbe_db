@@ -180,11 +180,18 @@ export function Home({
   onEnterAll,
   groups,
   onEnterView,
+  isSuper = false,
 }: {
   /** «Нэвтрэх» / «Орох» — эрхийн дагуу орох цэгт хүргэнэ */
   onEnterAll: () => void;
   groups: HomeGroup[];
   onEnterView: (key: ViewKey) => void;
+  /**
+   * «Төслийн ерөнхий үзүүлэлтүүд» самбар ЗӨВХӨН супер хэрэглэгчид (2026-08-21,
+   * хэрэглэгчийн хүсэлт) — нүүр нь дэд самбар болж, энгийн хэрэглэгчид зөвхөн
+   * платформын хэсгүүдийн навигаци үлдэнэ.
+   */
+  isSuper?: boolean;
 }) {
   const { status, user, signOut } = useAuth();
   const { main, more, progress } = useHomeKpis();
@@ -390,7 +397,8 @@ export function Home({
         </div>
       </header>
 
-      {/* ── Дашбоард ── */}
+      {/* ── Дашбоард — ЗӨВХӨН СУПЕР (дэд самбар, 2026-08-21) ── */}
+      {isSuper && (
       <main className={s.board}>
         <header className={s.boardHead}>
           <div>
@@ -432,6 +440,7 @@ export function Home({
         {/* Удирдлагад зориулсан амьд KPI үнэлгээ — карт дарж холбоотой харагдац руу */}
         <ExecKpi onView={onEnterView} />
       </main>
+      )}
 
       {/* Баримт үзэгч — порталынхтай ИЖИЛ компонент, нэвтрэх шаардлагагүй */}
       <DocViewer open={docs} onClose={() => setDocs(false)} />
