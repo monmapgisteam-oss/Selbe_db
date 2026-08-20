@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { submitForReview } from '@/lib/hyanaltSubmit';
 import {
   applyAdds,
   computeAll,
@@ -126,7 +127,7 @@ const RO = {
   wD: 'Хувийн жин (нийт төсөлд): Мөнгөн дүн ÷ үе шатны дүн. Автоматаар бодогдоно.',
   wE: 'Одоо байгаа: Хувийн жин × Бодит гүйцэтгэл. Гүйцэтгэл бөглөхөд өөрөө хөдөлнө.',
   vol: 'Обьём нь ЭХ ӨГӨГДЛИЙН тоо хэмжээ — эх хүснэгтэд оруулагдана, энэ хуудаснаас засагдахгүй (жин, мөнгөн дүн бүхэлдээ түүнээс бодогддог).',
-  vol2: '«Объём_шинэ2» нь үйлчилгээнд хадгалагдсан — энэ хуудаснаас засагдахгүй. Хоосон бол тэр багцад талбар нь үүсээгүй байна.',
+  obyemSum: 'Обьёмын нийлбэр: тухайн мөрийн БҮХ блокийн бөглөсөн обьёмын нийлбэр. Нийтлэх бүрд өөрөө бодогдож `obyem_sum` талбарт бичигдэнэ.',
   unit: 'Нэгж өртөг нь үйлчилгээнд хадгалагдсан — энэ хуудаснаас засагдахгүй.',
   money: 'Мөнгөн дүн: Обьём × Нэгж өртөг; бүлгийн мөрд дэд мөрүүдийнхээ нийлбэр.',
   I: 'Төлөвлөгөөт гүйцэтгэл нь блокуудын төлөвлөгөөт хувийн дундаж. Огноог засвал өөрчлөгдөнө.',
@@ -704,6 +705,8 @@ ${dropped} нүд хуучирсан тул орхигдоно.` : "") +
           if (sc.start[b]) a[sc.start[b]!] = c[i].start[b];
           if (sc.end[b]) a[sc.end[b]!] = c[i].end[b];
         }
+        // ОБЬЁМЫН НИЙЛБЭР — талбар байвал л бичнэ (шинэ багана, 10/10 багцад бий)
+        if (sc.f.obyemSum) a[sc.f.obyemSum] = c[i].obyemSum;
         a[sc.f.plan] = c[i].I;
         a[sc.f.act] = c[i].J;
         // ⚠️ Зарим багцад «Төлөвлөгөө биелэлт» ба «Одоо байгаа» багана огт
@@ -722,7 +725,17 @@ ${dropped} нүд хуучирсан тул орхигдоно.` : "") +
           "«buglusun_ognoo» багана энэ үйлчилгээнд алга — архив үүсгэх " +
             "боломжгүй тул нийтлэлийг зогсоов (AGOL дээр багана нэмнэ үү).",
         );
-      const added = await applyAdds(pkg, adds);
+      const { added, firstOid } = await applyAdds(pkg, adds);
+
+      /*
+       * ── ХЯНАЛТАД АВТОМАТААР ОРУУЛНА ──────────────────────────────────
+       * Нийтэлсэн даруйд ажил талбайн инженерийн дараалалд орно.
+       *
+       * ⚠️ ХЯНАЛТ УНАВАЛ НИЙТЛЭЛ УНАХГҮЙ. Гүйцэтгэлийн өгөгдөл аль хэдийн
+       * хадгалагдсан байхад «нийтлэгдсэнгүй» гэж харуулбал компани дахин
+       * дарж, архивт давхардсан агшин үүснэ. Тиймээс алдааг зөвхөн МЭДЭГДЭНЭ.
+       */
+      const rv = await submitForReview(pkg.group, fillMs, firstOid);
 
       // Шинэ агшныг татаж дэлгэц дээр буулгана — дараагийн засвар түүн дээр
       // үргэлжилнэ (нэмэлт нь хуучин сууриас тоологдохгүй).
@@ -732,7 +745,9 @@ ${dropped} нүд хуучирсан тул орхигдоно.` : "") +
       setAsOfOrig(next.asOf ?? asOf);
       setPending({});
       setPendDate({});
-      say(`Архивт ${added} мөр нэмэгдэв · ${msToDay(fillMs)}`);
+      say(rv.ok
+        ? `Архивт ${added} мөр нэмэгдэв · ${msToDay(fillMs)} · хяналтад илгээв (${rv.id})`
+        : `Архивт ${added} мөр нэмэгдэв · ${msToDay(fillMs)} · ⚠️ хяналтад илгээгдсэнгүй: ${rv.error}`);
     } catch (e) {
       setErr(String((e as Error).message || e));
     } finally {
@@ -967,7 +982,13 @@ ${dropped} нүд хуучирсан тул орхигдоно.` : "") +
                 <th rowSpan={4} colSpan={2} className={cls("c-wspan")}>{'Хувийн жин'}<i {...grip("w")} /></th>
                 <th rowSpan={4} className={cls("c-now")}>{'Одоо байгаа хувийн жин'}<i {...grip("now")} /></th>
                 <th rowSpan={4} className={cls("c-vol")}>{'Обьём'}<i {...grip("vol")} /></th>
-                <th rowSpan={4} className={cls("c-vol")}>{'Обьём шинэ'}<i {...grip("vol")} /></th>
+                {/* ⚠️ «Нэгж өртөг» ба «Мөнгөн дүн» нь ӨГӨГДӨЛД БАЙСАН ч
+                    хүснэгтэд огт зурагддаггүй байв. Хувийн жин бүхэлдээ
+                    Мөнгөн дүнгээс бодогддог тул түүнийг харуулахгүй бол
+                    жин хаанаас гарсныг шалгах арга үгүй болно. */}
+                <th rowSpan={4} className={cls("c-vol")}>{'Обьёмын нийлбэр'}<i {...grip("vol")} /></th>
+                <th rowSpan={4} className={cls("c-vol")}>{'Нэгж өртөг'}<i {...grip("vol")} /></th>
+                <th rowSpan={4} className={cls("c-money")}>{'Мөнгөн дүн'}<i {...grip("money")} /></th>
                 <th rowSpan={4} className={cls("c-calc")}>{'Төлөвлөгөөт гүйцэтгэл'}<i {...grip("calc")} /></th>
                 <th rowSpan={4} className={cls("c-calc")}>{'Бодит гүйцэтгэл'}<i {...grip("calc")} /></th>
                 <th rowSpan={4} className={cls("c-calc")}>{'Төлөвлөгөө биелэлт'}<i {...grip("calc")} /></th>
@@ -1015,7 +1036,7 @@ ${dropped} нүд хуучирсан тул орхигдоно.` : "") +
               {/* Дээд ЧИГЖЭЭС — зурагдаагүй мөрүүдийн өндрийг орлоно. */}
               {winFrom > 0 && (
                 <tr aria-hidden="true" style={{ height: winFrom * rowHRef.current }}>
-                  <td colSpan={11 + nBld * 4} style={{ padding: 0, border: 0 }} />
+                  <td colSpan={13 + nBld * 4} style={{ padding: 0, border: 0 }} />
                 </tr>
               )}
               {vis.slice(winFrom, winTo).map((i) => {
@@ -1070,7 +1091,9 @@ ${dropped} нүд хуучирсан тул орхигдоно.` : "") +
                     <td className={cls("right c-vol")} {...ro(RO.vol)}>
                       {qty(r.vol)}
                     </td>
-                    <td className={cls("right c-vol")} {...ro(RO.vol2)}>{qty(r.vol2)}</td>
+                    <td className={cls("right c-vol calc")} {...ro(RO.obyemSum)}>{qty(c.obyemSum)}</td>
+                    <td className={cls("right c-vol")} {...ro(RO.unit)}>{qty(r.unit)}</td>
+                    <td className={cls("right c-money")} {...ro(RO.money)}>{qty(r.money)}</td>
                     <td className={cls("num c-calc calc")} {...ro(RO.I)}>{pc(c.I, 1)}</td>
                     <td className={cls("num c-calc calc")} {...ro(RO.J)}>{pc(c.J, 1)}</td>
                     <td className={cls("num c-calc calc")} {...ro(RO.K)}>{pc(c.K, 1)}</td>
@@ -1262,7 +1285,7 @@ ${dropped} нүд хуучирсан тул орхигдоно.` : "") +
                   aria-hidden="true"
                   style={{ height: (vis.length - winTo) * rowHRef.current }}
                 >
-                  <td colSpan={11 + nBld * 4} style={{ padding: 0, border: 0 }} />
+                  <td colSpan={13 + nBld * 4} style={{ padding: 0, border: 0 }} />
                 </tr>
               )}
             </tbody>

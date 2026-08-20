@@ -1,15 +1,16 @@
 'use client';
 
-import { useMemo, type CSSProperties } from 'react';
+import { useMemo, type CSSProperties, type ReactNode } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { useAsync } from '@/lib/useAsync';
 import { loadBudget, loadClearance, loadProjectProgress } from '@/lib/live';
 import { loadFinData, contractMonths, lagOf, lagLevel } from '@/modules/Finance';
 import { useBagtsTable, useSuitability } from '@/modules/Dashboard';
 import { HABEA, CASHFLOW2, pkgKeyOf, type ViewKey } from '@/lib/services';
-import { queryCount } from '@/lib/query';
+import { count, queryGroup } from '@/lib/query';
 import { scoreLabel } from '@/lib/analysis/score';
 import { num, pct } from '@/lib/format';
+import { Bars, HBars, Ring, Spark } from './MiniChart';
 import s from './execKpi.module.css';
 
 /**
@@ -22,7 +23,7 @@ import s from './execKpi.module.css';
  * бусад картууд шууд харагдана.
  */
 
-type Status = 'good' | 'warn' | 'bad' | 'idle';
+type Status = 'good' | 'warn' | 'bad' | 'idle' | 'info';
 /**
  * ⚠️ Токен, hex БИШ. Урьд нь тогтмол hex байсан тул энэ зурвас нь ГАНЦ цайвар
  * горимд тохирч, харанхуйд гэрэлтэж/бүдгэрч байв. Эдгээр нь `--st` гэсэн CSS
@@ -30,12 +31,21 @@ type Status = 'good' | 'warn' | 'bad' | 'idle';
  */
 const TONE: Record<Status, string> = {
   good: 'var(--good)', warn: 'var(--warn)', bad: 'var(--bad)', idle: 'var(--ink-3)',
+  /* ⚠️ `info` нь ГЭРЛЭН ДОХИО БИШ. «Сайн/муу» гэж дүгнэх боломжгүй үзүүлэлтэд
+     (жишээ нь гүйцэтгэгчийн зэрэглэл) саарал биш, брэндийн өнгө тохирно. */
+  info: 'var(--hue)',
 };
 type CardData = {
   label: string;
   value: string;
   note: string;
   status: Status;
+  /**
+   * Картын баруун талын жижиг график.
+   * ⚠️ ЗӨВХӨН бодит цуваа/харьцаа байвал үзүүлнэ. Байхгүй бол ОРХИНО — хоосон
+   * зайг дүүргэхийн тулд хиймэл дүрс ХЭЗЭЭ Ч зурахгүй.
+   */
+  chart?: ReactNode;
   /** Зөвхөн АЛДААТАЙ картад — байвал карт дарахад харагдац солихын оронд дахин татна */
   retry?: () => void;
 };
@@ -75,7 +85,15 @@ export function ExecKpi({ onView }: { onView: (key: ViewKey) => void }) {
   const progQ = useAsync(loadProjectProgress, []);
   const bagtsQ = useBagtsTable();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const incQ = useAsync(() => queryCount(HABEA.incident.url), []);
+  /*
+   * Осол/зөрчлийг ТӨРЛӨӨР нь бүлэглэж татна.
+   * ⚠️ Урьд нь `queryCount` — зөвхөн нийт тоо. Тэгвэл картын график зурах
+   * ЖИНХЭНЭ задаргаа байхгүй байв. Бүлэглэсэн асуулга нь нэг хүсэлтээр нийт
+   * дүн БА задаргаа хоёуланг өгнө (нийт нь бүлгүүдийн нийлбэр).
+   */
+  const incQ = useAsync(() => queryGroup(
+    HABEA.incident.url, HABEA.incident.fields.turul, [count('objectid', 'n')],
+  ), []);
   const suitQ = useSuitability(true); // арын дэвсгэрт (хүнд, кэшлэнэ)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const clearQ = useAsync(loadClearance, []);
@@ -87,21 +105,45 @@ export function ExecKpi({ onView }: { onView: (key: ViewKey) => void }) {
     const d = finQ.data;
     const seen = new Set<string>();
     let red = 0, yellow = 0, worst = 0, total = 0;
+    // ⚠️ Багц бүрийн хоцрогдлыг ХАДГАЛНА — график энэ бодит цуваанаас зурагдана
+    const gaps: number[] = [];
+    /*
+     * САР БҮРИЙН БИЕТ ГҮЙЦЭТГЭЛ — шугаман графикийн бодит эх сурвалж.
+     * ⚠️ Дүн БИШ, ДУНДАЖ: гэрээ бүр өөр өөр сард эхэлдэг тул нийлбэр авбал
+     * зүгээр л гэрээний тоог давхарлан харуулна.
+     */
+    const mn = CASHFLOW2.months.length;
+    const physSum = new Array<number>(mn).fill(0);
+    const physCnt = new Array<number>(mn).fill(0);
     d.contracts.forEach((r) => {
       // ⚠️ `pkgKeyOf` — «БАГЦ 1-4» мэт диапазон мөр `bagtsKey`-ээр «БАГЦ14» болж,
       //    бодит «Багц 14»-ийн оронд тоологдож хоцрогдлын тоог гажуудуулдаг байв.
       const key = pkgKeyOf(r[C.pkg2]) || pkgKeyOf(r[C.pkg]);
       if (!key || key === '0' || seen.has(key)) return;
       seen.add(key);
-      const lag = lagOf(contractMonths(r, d.given, d.phys));
+      const ms = contractMonths(r, d.given, d.phys);
+      ms.forEach((m, i) => { if (m.phys > 0) { physSum[i] += m.phys; physCnt[i] += 1; } });
+      const lag = lagOf(ms);
       if (!lag) return;
       total += 1;
       const lvl = lagLevel(lag.gap);
       if (lvl === 'red') red += 1;
       else if (lvl === 'yellow') yellow += 1;
       if (lag.gap > worst) worst = lag.gap;
+      if (lag.gap > 0) gaps.push(lag.gap);
     });
     const lagging = red + yellow;
+    /*
+     * ⚠️ ХОЁР ТАЛААС нь хоосон саруудыг тайрна.
+     *   ЭХЭНД — төсөл эхлэхээс өмнөх 0-үүд хавтгай сүүл болж өсөлтийг шахна.
+     *   СҮҮЛД — мэдээлэл ирээгүй сар 0 болж бичигдэн ЭГЦ УНАЛТ мэт харагдана.
+     *     «Өгөгдөл алга» гэдэг нь «гүйцэтгэл тэг болов» гэсэн үг БИШ.
+     */
+    const avg = physSum.map((v, i) => (physCnt[i] ? v / physCnt[i] : 0));
+    const first = avg.findIndex((v) => v > 0);
+    let lastIdx = avg.length - 1;
+    while (lastIdx >= 0 && avg[lastIdx] <= 0) lastIdx -= 1;
+    const series = first < 0 || lastIdx < first ? [] : avg.slice(first, lastIdx + 1);
     return {
       label: tr('Хуваарийн биелэлт'),
       value: lagging === 0 ? tr('Хэвийн') : tr('{0} багц хоцорч байна', num(lagging)),
@@ -109,6 +151,11 @@ export function ExecKpi({ onView }: { onView: (key: ViewKey) => void }) {
         ? tr('{0} багц хуваарьтаа нийцэж байна', num(total))
         : tr('{0} эрсдэлтэй · {1} анхаарах · хамгийн муу −{2}%', num(red), num(yellow), worst.toFixed(0)),
       status: red > 0 ? 'bad' : yellow > 0 ? 'warn' : 'good',
+      chart: series.length >= 2
+        ? <Spark data={series} w={104} h={44} />
+        // Цуваа богино бол хоцрогдлын хэмжээг багцаар нь үзүүлнэ
+        : gaps.length ? <Bars data={gaps.sort((a, b) => b - a).slice(0, 10)} w={104} h={44} />
+          : undefined,
     };
   }, [finQ]);
 
@@ -122,6 +169,20 @@ export function ExecKpi({ onView }: { onView: (key: ViewKey) => void }) {
     const finPct = budget > 0 ? (given / budget) * 100 : 0;
     const physPct = progQ.data.actual;
     const gap = finPct - physPct;
+    /*
+     * САР БҮРИЙН IPC олголт — `CASHFLOW2.months`-ийн бодит цуваа.
+     * ⚠️ Өсөлтийн ХАНДЛАГА биш, сар тутмын ДҮН тул шугам биш БАГАНА-аар
+     * үзүүлнэ — шугам нь хуримтлалыг илэрхийлдэг.
+     */
+    const all = CASHFLOW2.months.map((m) => {
+      let sum = 0;
+      finQ.data.given.forEach((byMon) => { sum += byMon.get(m.label) ?? 0; });
+      return sum;
+    });
+    // ⚠️ Сүүлийн хоосон саруудыг тайрна — «олголт зогссон» мэт хуурамч сүүл гарна
+    let mLast = all.length - 1;
+    while (mLast >= 0 && all[mLast] <= 0) mLast -= 1;
+    const monthly = mLast < 0 ? [] : all.slice(0, mLast + 1);
     return {
       label: tr('Санхүүжилт vs гүйцэтгэл'),
       value: tr('Санхүүжилт {0} · Биет {1}', pct(finPct, 0), pct(physPct, 0)),
@@ -129,18 +190,28 @@ export function ExecKpi({ onView }: { onView: (key: ViewKey) => void }) {
         : gap > 0 ? tr('санхүүжилт гүйцэтгэлээс {0}пп түрүүлж байна', gap.toFixed(0))
           : tr('гүйцэтгэл санхүүжилтээс {0}пп түрүүлж байна', (-gap).toFixed(0)),
       status: Math.abs(gap) <= 5 ? 'good' : Math.abs(gap) <= 15 ? 'warn' : 'bad',
+      chart: monthly.some((x) => x > 0) ? <Bars data={monthly} w={104} h={44} /> : undefined,
     };
   }, [finQ, budgetQ, progQ]);
 
   // 3. Аюулгүй ажиллагаа — осол/зөрчлийн бүртгэлийн тоо (ХАБЭА)
   const safety = useMemo<CardData>(() => {
     if (incQ.state !== 'ready') return notReady(tr('Аюулгүй ажиллагаа'), tr('ХАБЭА бүртгэл'), [incQ]);
-    const n = incQ.data;
+    const F = HABEA.incident.fields;
+    // ⚠️ Төрөл ХООСОН мөр ч байж болно — тоолохоос хасахгүй, шошгыг нь л орлуулна
+    const byType = incQ.data
+      .map((r) => ({ label: String(r[F.turul] ?? '') || tr('Тодорхойгүй'), n: Number(r.n) || 0 }))
+      .sort((a, b) => b.n - a.n);
+    const n = byType.reduce((acc, x) => acc + x.n, 0);
+    const top = byType[0];
     return {
       label: tr('Аюулгүй ажиллагаа'),
       value: n === 0 ? tr('Бүртгэлгүй') : tr('{0} осол/зөрчил', num(n)),
-      note: tr('ХАБЭА-гийн нийт бүртгэл'),
+      note: top && n > 0
+        ? tr('{0} төрөл · хамгийн олон нь «{1}» ({2})', num(byType.length), top.label, num(top.n))
+        : tr('ХАБЭА-гийн нийт бүртгэл'),
       status: n === 0 ? 'good' : n <= 5 ? 'warn' : 'bad',
+      chart: n > 0 ? <Bars data={byType.map((x) => x.n)} w={104} h={44} /> : undefined,
     };
   }, [incQ]);
 
@@ -155,6 +226,12 @@ export function ExecKpi({ onView }: { onView: (key: ViewKey) => void }) {
       value: `${Math.round(sc)} / 100`,
       note: tr('{0} · {1} бүсийн дундаж', scoreLabel(sc), num(suitQ.data.zones)),
       status: sc >= 65 ? 'good' : sc >= 45 ? 'warn' : 'bad',
+      /*
+       * ⚠️ Онооны ТҮҮХЭН цуваа БАЙХГҮЙ — өнөөдрийн ганц утга л бий. Өсөлтийн
+       * шугам зурвал болоогүй ахиц зурсан болно. Тиймээс бүсүүдийн онооны
+       * БОДИТ хуваарилалтыг (SCORE_LEVELS тус бүрд хэдэн бүс) үзүүлэв.
+       */
+      chart: <Spark data={suitQ.data.levels.map((L) => L.n)} w={104} h={44} />,
     };
   }, [suitQ]);
 
@@ -180,7 +257,9 @@ export function ExecKpi({ onView }: { onView: (key: ViewKey) => void }) {
       label: tr('Гүйцэтгэгчийн зэрэглэл'),
       value: tr('Тэргүүлэгч {0}', pct(best.p, 0)),
       note: tr('{0} · хойгуур {1} ({2})', tr(best.c), tr(worst.c), pct(worst.p, 0)),
-      status: 'idle',
+      // ⚠️ Зэрэглэл нь «сайн/муу» гэсэн гэрлэн дохио БИШ — `info` өнгө
+      status: 'info',
+      chart: <HBars items={ranked.slice(0, 4).map((r) => ({ label: r.c, value: r.p }))} max={100} />,
     };
   }, [bagtsQ]);
 
@@ -197,6 +276,7 @@ export function ExecKpi({ onView }: { onView: (key: ViewKey) => void }) {
       value: tr('Чөлөөлсөн {0}', pct(d.pct, 1)),
       note: tr('{0} нэгж талбар чөлөөлөгдөөгүй ({1} га)', num(d.remaining), num(d.remainingHa, 1)),
       status: d.pct >= 95 ? 'good' : d.pct >= 80 ? 'warn' : 'bad',
+      chart: <Ring value={d.pct} size={74} width={9} label={pct(d.pct, 0)} />,
     };
   }, [clearQ]);
 
@@ -214,7 +294,6 @@ export function ExecKpi({ onView }: { onView: (key: ViewKey) => void }) {
     <section className={s.panel} aria-label={tr('Гүйцэтгэлийн үнэлгээ')}>
       <header className={s.head}>
         <h2>{tr('Гүйцэтгэлийн үнэлгээ')}</h2>
-        <span>{tr('Багц, гүйцэтгэгч, санхүүжилт, аюулгүй ажиллагаа, төлөвлөлтийн амьд дүгнэлт — дарж дэлгэрэнгүйг үзнэ')}</span>
       </header>
       <div className={s.grid}>
         {cards.map((c) => (
@@ -235,8 +314,15 @@ export function ExecKpi({ onView }: { onView: (key: ViewKey) => void }) {
               <span className={s.label}>{c.label}</span>
               <span className={s.go} aria-hidden>{c.retry ? '⟲' : '→'}</span>
             </div>
-            <span className={s.value}>{c.value}</span>
-            <span className={s.note}>{c.note}</span>
+            {/* ⚠️ График нь `--st` өнгийг `color`-оор өвлөнө — SVG нь
+                `currentColor` ашигладаг тул энд өөр өнгө тавихгүй */}
+            <div className={s.body}>
+              <span className={s.text}>
+                <span className={s.value}>{c.value}</span>
+                <span className={s.note}>{c.note}</span>
+              </span>
+              {c.chart && <span className={s.chart}>{c.chart}</span>}
+            </div>
           </button>
         ))}
       </div>

@@ -1,0 +1,407 @@
+/* ═══════════════════════════════════════════════════════════
+   ГҮЙЦЭТГЭЛИЙН ХЯНАЛТ — олон компанид зориулсан жагсаалтын харагдац.
+
+   ⚠️ Өнгө, радиус, шилжилт бүгд ПОРТАЛЫН токеноос (`globals.css`) — өөр
+   хаанаас ч hex бичихгүй. Ингэснээр гэрэл/харанхуй горим өөрөө дагана.
+   ⚠️ Энэ нь порталын ДОТОР суух тул `min-height: 100vh` БАЙХГҮЙ — эцэг нь
+   өндрөө өгнө.
+   ═══════════════════════════════════════════════════════════ */
+
+.wrap { height: 100%; display: flex; flex-direction: column; min-height: 0; }
+.spacer { flex: 1; }
+
+/* ══════════ Толгой ══════════ */
+.head {
+  display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+  padding: 12px 22px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+.title { font-size: 0.98rem; font-weight: 700; }
+.sub { font-size: 0.76rem; color: var(--ink-3); }
+
+.roles { display: flex; gap: 5px; }
+.role {
+  display: flex; align-items: center; gap: 7px;
+  padding: 7px 14px; border-radius: 8px;
+  font-size: 0.82rem; font-weight: 600;
+  color: var(--ink-2); background: var(--surface-2);
+  border: 1px solid var(--line);
+  transition: background 0.14s, color 0.14s;
+}
+.role:hover { color: var(--ink); }
+.roleOn { background: var(--data); color: #fff; border-color: transparent; }
+.count {
+  padding: 1px 7px; border-radius: 20px;
+  background: rgba(255, 255, 255, 0.18);
+  font-size: 0.72rem; font-variant-numeric: tabular-nums;
+}
+
+/* ══════════ Шүүлтийн зурвас ══════════ */
+.bar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 11px 22px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+.search {
+  flex: 1; min-width: 190px; max-width: 340px;
+  padding: 7px 12px;
+  border: 1px solid var(--line); border-radius: 8px;
+  background: var(--bg); color: var(--ink); font-size: 0.83rem;
+}
+.search:focus { outline: 2px solid var(--data); outline-offset: -1px; }
+.select {
+  padding: 7px 10px;
+  border: 1px solid var(--line); border-radius: 8px;
+  background: var(--bg); color: var(--ink-2); font-size: 0.82rem;
+}
+.select:focus { outline: 2px solid var(--data); outline-offset: -1px; }
+.total { font-size: 0.8rem; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.clear { font-size: 0.8rem; color: var(--data); padding: 6px 4px; }
+.clear:hover { text-decoration: underline; }
+
+/* ══════════ Их бие ══════════ */
+.body { flex: 1; min-height: 0; overflow: auto; padding: 16px 22px 48px; max-width: 1200px; width: 100%; margin: 0 auto; }
+.empty { padding: 54px 0; text-align: center; color: var(--ink-3); }
+.note {
+  margin-bottom: 14px; padding: 10px 13px;
+  border: 1px solid var(--line); border-left: 3px solid var(--data);
+  border-radius: 8px; background: var(--surface);
+  font-size: 0.8rem; color: var(--ink-2);
+}
+.noteBad { border-left-color: var(--bad); }
+
+/* ══════════ Ажлын жагсаалт ══════════ */
+.list {
+  border: 1px solid var(--line); border-radius: var(--r-lg);
+  background: var(--surface); overflow: hidden;
+}
+.groupHead {
+  /* ⚠️ Нэр зүүн, тоо баруун — хоёрын хооронд бүх зай */
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 15px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
+  font-size: 0.76rem; font-weight: 650; color: var(--ink-3);
+  letter-spacing: 0.03em; text-transform: uppercase;
+}
+
+.item { border-bottom: 1px solid var(--line); }
+.item:last-child { border-bottom: 0; }
+
+/* Нэг ажлын мөр — товч, уншихад хялбар */
+.itemHead {
+  display: grid;
+  grid-template-columns: 18px 1fr auto;
+  align-items: center; gap: 12px;
+  width: 100%; padding: 12px 15px; text-align: left;
+  transition: background 0.12s;
+}
+.itemHead:hover { background: var(--surface-2); }
+.chev { color: var(--ink-3); font-size: 0.75rem; }
+
+.who { min-width: 0; }
+.ajil {
+  font-weight: 620; font-size: 0.88rem;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.meta {
+  font-size: 0.77rem; color: var(--ink-3);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+
+.badge {
+  padding: 3px 10px; border-radius: 20px;
+  font-size: 0.73rem; font-weight: 650; white-space: nowrap;
+}
+.bWait { background: rgba(51, 135, 184, 0.18); color: #7db9dd; }
+.bBack { background: rgba(239, 68, 68, 0.16); color: #f78d8d; }
+.bDone { background: rgba(34, 197, 94, 0.16); color: #6ee7a0; }
+
+/* ══════════ Задалсан хэсэг ══════════ */
+.open { background: var(--surface-2); border-top: 1px solid var(--line); }
+
+.actions { padding: 14px 15px; display: flex; flex-direction: column; gap: 10px; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.reasonBox {
+  padding: 9px 12px; border-radius: 8px;
+  background: rgba(239, 68, 68, 0.09); border: 1px solid rgba(239, 68, 68, 0.25);
+  font-size: 0.82rem;
+}
+.reasonLabel { color: var(--ink-3); }
+.reasonText { color: #f0a8a8; }
+
+.btn {
+  padding: 8px 16px; border-radius: 8px;
+  font-size: 0.82rem; font-weight: 650;
+  transition: filter 0.14s, transform 0.08s;
+}
+.btn:active { transform: scale(0.97); }
+.btn:hover { filter: brightness(1.1); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; filter: none; }
+.ok { background: var(--good); color: #06240f; }
+.bad { background: var(--bad); color: #2c0707; }
+.neutral { background: var(--surface); color: var(--ink); border: 1px solid var(--line); }
+
+.field {
+  width: 100%; padding: 9px 12px;
+  border: 1px solid var(--line); border-radius: 8px;
+  background: var(--bg); color: var(--ink);
+  font-size: 0.84rem; resize: vertical;
+}
+.field:focus { outline: 2px solid var(--data); outline-offset: -1px; }
+.error { color: #f78d8d; font-size: 0.8rem; }
+
+/* ══════════ Түүх ══════════ */
+.hHead {
+  padding: 9px 15px; font-size: 0.75rem; color: var(--ink-3);
+  border-top: 1px solid var(--line); letter-spacing: 0.03em; text-transform: uppercase;
+}
+.cycle {
+  display: grid; grid-template-columns: 34px 1fr; gap: 10px;
+  padding: 10px 15px; border-top: 1px solid var(--line);
+  font-size: 0.8rem;
+}
+.cycleNo {
+  color: var(--ink-3); font-variant-numeric: tabular-nums;
+  padding-top: 1px;
+}
+.step { display: flex; gap: 9px; flex-wrap: wrap; margin-bottom: 3px; }
+.step:last-child { margin-bottom: 0; }
+.stepWho { color: var(--ink-2); min-width: 190px; }
+.stepBad { color: #f0a8a8; }
+.time { color: var(--ink-3); font-variant-numeric: tabular-nums; }
+/* ══════════ Түүх ══════════ */
+
+.hist { border-top: 1px solid var(--line); padding: 12px 15px 15px; }
+.histHead {
+  display: flex; align-items: center; gap: 9px; margin-bottom: 10px;
+  font-size: 0.74rem; font-weight: 650; color: var(--ink-3);
+  letter-spacing: 0.05em; text-transform: uppercase;
+}
+
+/* ── Нэг эргэлт = нэг хайрцаг ── */
+.cyc {
+  border: 1px solid var(--line); border-radius: 10px;
+  background: var(--surface); overflow: hidden;
+  margin-bottom: 9px;
+}
+.cyc:last-child { margin-bottom: 0; }
+
+.cycHead {
+  display: flex; align-items: center; gap: 9px;
+  padding: 8px 12px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
+}
+.cycNo {
+  display: grid; place-items: center;
+  width: 20px; height: 20px; border-radius: 50%;
+  background: var(--bg); border: 1px solid var(--line);
+  font-size: 0.7rem; font-weight: 700; color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+.cycTitle { font-size: 0.79rem; font-weight: 620; color: var(--ink-2); }
+.cycId {
+  font-size: 0.71rem; color: var(--ink-3);
+  font-variant-numeric: tabular-nums; letter-spacing: 0.02em;
+}
+
+/* ── Алхмуудын босоо шугам ── */
+.rail { padding: 4px 12px 8px; }
+
+.stepLi {
+  position: relative;
+  display: grid; grid-template-columns: 20px 1fr; gap: 10px;
+  padding: 7px 0;
+}
+/*
+ * Цэгүүдийг холбосон шугам. Сүүлийн алхмаас доош ҮРГЭЛЖЛЭХГҮЙ — эс бөгөөс
+ * эргэлт дуусаагүй мэт харагдана.
+ */
+.stepLi:not(:last-child)::before {
+  content: ''; position: absolute;
+  left: 9px; top: 26px; bottom: -1px; width: 1px;
+  background: var(--line);
+}
+
+.dot {
+  display: grid; place-items: center;
+  width: 19px; height: 19px; border-radius: 50%;
+  font-size: 0.66rem; font-weight: 700; line-height: 1;
+  margin-top: 1px;
+}
+.sent { background: rgba(51, 135, 184, 0.18); color: #8cc4e6; }
+.ok { background: rgba(34, 197, 94, 0.16); color: #6ee7a0; }
+.bad { background: rgba(239, 68, 68, 0.16); color: #f78d8d; }
+
+.stepBody { min-width: 0; }
+.stepTop {
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  font-size: 0.8rem;
+}
+.stepWho { font-weight: 600; color: var(--ink); }
+.verb { color: var(--ink-3); }
+.verbBad { color: #f0a8a8; }
+.gap {
+  padding: 1px 7px; border-radius: 5px;
+  background: var(--surface-2); color: var(--ink-3);
+  font-size: 0.7rem; font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.time {
+  color: var(--ink-3); font-size: 0.75rem;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+
+/* Буцаалтын шалтгаан — хамгийн чухал мэдээлэл тул тод харагдана */
+.why {
+  margin-top: 6px; padding: 7px 11px;
+  border-left: 2px solid var(--bad); border-radius: 0 7px 7px 0;
+  background: rgba(239, 68, 68, 0.08);
+  font-size: 0.8rem; color: #f2b8b8; line-height: 1.45;
+}
+.whyLabel {
+  display: block;
+  font-size: 0.67rem; font-weight: 650; color: var(--ink-3);
+  letter-spacing: 0.05em; text-transform: uppercase;
+  margin-bottom: 2px;
+}
+
+/* Дахин шалгалтын тойрог — компани дахин илгээгээгүйг тэмдэглэнэ */
+.cycTag {
+  padding: 1px 8px; border-radius: 5px;
+  background: rgba(51, 135, 184, 0.16); color: #8cc4e6;
+  font-size: 0.68rem; font-weight: 600; white-space: nowrap;
+}
+
+/* Бүлгийн толгойн баруун талын тоо — нэрээс сулхан, тоо нь эгнэнэ */
+.groupCount {
+  flex: none;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ══════════ Нийтэлсэн гүйцэтгэл ══════════ */
+
+.sub {
+  border-top: 1px solid var(--line);
+  padding: 12px 15px;
+}
+.subHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  font-size: 0.74rem;
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.subMeta {
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  font-variant-numeric: tabular-nums;
+}
+.subMuted {
+  padding: 8px 15px;
+  font-size: 0.78rem;
+  color: var(--ink-3);
+}
+.sub .subMuted { padding: 0 0 6px; }
+
+/* ⚠️ Юу ч бөглөөгүй нийтлэл — зөвшөөрөхийн өмнө анхаарах ЁСТОЙ дохио */
+.subWarn {
+  padding: 8px 11px;
+  border-left: 2px solid var(--warn);
+  border-radius: 0 7px 7px 0;
+  background: color-mix(in srgb, var(--warn) 10%, transparent);
+  font-size: 0.8rem;
+  color: var(--ink-2);
+}
+
+
+/* ⚠️ Хүснэгт нь ӨӨРИЙН хүрээндээ гүйнэ — картыг өргөсгөж, самбарыг эвдэхгүй */
+.subScroll {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+.subTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.76rem;
+  white-space: nowrap;
+}
+.subTable th {
+  padding: 7px 10px;
+  text-align: right;
+  font-size: 0.66rem;
+  font-weight: 650;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+.subTable th:nth-child(1),
+.subTable th:nth-child(2) { text-align: left; }
+.subTable td {
+  padding: 6px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
+  color: var(--ink-2);
+}
+.subTable tr:last-child td { border-bottom: 0; }
+.subTable tr:hover td { background: color-mix(in srgb, var(--data) 6%, transparent); }
+
+/* Ажлын нэр — урт бол таслана; бүтнийг нь `title`-ээс үзнэ */
+.subWork {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--ink);
+}
+.subNum {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+/* Обьёмын нийлбэр — энэ нийтлэлийн ГОЛ тоо */
+.subHi { color: var(--data); font-weight: 650; }
+
+/*
+ * ӨӨРЧЛӨГДСӨН НҮД.
+ * ⚠️ `border` БИШ `box-shadow: inset`. `border-collapse: collapse` дээр энгийн
+ * хүрээ нь хөрш нүдний шугамтай уралдаж, зарим тал нь алга болдог.
+ */
+.subCh {
+  box-shadow: inset 0 0 0 1.5px var(--bad);
+  border-radius: 3px;
+  color: var(--ink);
+  font-weight: 650;
+}
+.subLegend {
+  color: var(--bad);
+}
+
+/* Блокийн бүлгийн нэр — доорх «5/1, 5/2…» юуны тоо болохыг заана */
+.subBand {
+  text-align: center !important;
+  color: var(--ink-2) !important;
+  background: color-mix(in srgb, var(--data) 10%, var(--surface)) !important;
+  border-bottom: 1px solid var(--line);
+}
+.subBlk {
+  text-align: center !important;
+  font-variant-numeric: tabular-nums;
+}

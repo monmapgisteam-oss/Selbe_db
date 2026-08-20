@@ -25,7 +25,6 @@ export type SheetRow = {
   // бодогддог тул уншаад ч ашиглахгүй. Нийтлэхэд `f.wE`-рүү буцааж бичнэ.
   vol: number | null;
   /** «Объём_шинэ2» — зөвхөн ХАРУУЛНА, ямар ч томъёонд ОРОХГҮЙ. */
-  vol2: number | null;
   unit: number | null;
   money: number | null;
   act: (number | null)[]; // хадгалагдсан блок бүрийн бодит гүйцэтгэл
@@ -166,7 +165,6 @@ export async function loadRows(
       wC: num(a[sc.f.wC]),
       wD: num(a[sc.f.wD]),
       vol: num(a[sc.f.vol]),
-      vol2: sc.f.vol2 ? num(a[sc.f.vol2]) : null,
       unit: num(a[sc.f.unit]),
       money: num(a[sc.f.money]),
       act: sc.act.map((k) => num(a[k])),
@@ -245,6 +243,12 @@ export type Calc = {
   act: (number | null)[]; // блок бүрийн бодит
   /** Блок бүрийн ХУРИМТЛАГДСАН обьём (нэмэлт засвар нэмэгдсэн). Бүлэгт `null`. */
   obyem: (number | null)[];
+  /**
+   * Мөрийн блокуудын обьёмын НИЙЛБЭР (`obyem_sum` талбарт бичигдэнэ).
+   * ⚠️ Бүх блок хоосон бол `null` — 0 БИШ. «Тэг обьём» ба «огт бөглөөгүй»
+   * хоёр өөр утга бөгөөд 0 бичвэл бөглөсөн мэт харагдана.
+   */
+  obyemSum: number | null;
   start: (number | null)[];
   end: (number | null)[];
   startSrc: DateSrc[];
@@ -522,10 +526,20 @@ export function computeAll(
       }
     }
 
+    /*
+     * ОБЬЁМЫН НИЙЛБЭР — зөвхөн УТГАТАЙ блокуудыг нэмнэ.
+     * ⚠️ Нэг ч блок бөглөгдөөгүй бол `null` буцаана, 0 БИШ. «Тэг обьём» ба
+     * «огт бөглөөгүй» хоёр өөр утга; 0 бичвэл эх өгөгдөл дээр бөглөсөн мэт
+     * харагдаж, дараагийн нийтлэлд хуримтлалын суурь гажина.
+     */
+    let oSum: number | null = null;
+    for (const v of obyem) if (v != null) oSum = (oSum ?? 0) + v;
+
     out[i] = {
       plan,
       act,
       obyem,
+      obyemSum: oSum,
       start,
       end,
       startSrc,
@@ -581,8 +595,11 @@ const SERVER_FIELDS = /^(ObjectID|OBJECTID|GlobalI[Dd]|CreationDate|Creator|Edit
 export async function applyAdds(
   pkg: Pkg,
   features: Record<string, unknown>[],
-): Promise<number> {
+): Promise<{ added: number; firstOid: number | null }> {
   let added = 0;
+  // ⚠️ ЭХНИЙ мөрийн OBJECTID — хяналтын бүртгэл эх өгөгдөл рүүгээ буцаж
+  //    холбогдоход хэрэгтэй (`hyanaltSubmit`).
+  let firstOid: number | null = null;
   for (let i = 0; i < features.length; i += 500) {
     const chunk = features.slice(i, i + 500).map((attributes) => {
       const a: Record<string, unknown> = {};
@@ -595,9 +612,12 @@ export async function applyAdds(
         adds: JSON.stringify(chunk),
         rollbackOnFailure: "true",
       });
-      const res = (j.addResults || []) as { success?: boolean; error?: { description?: string } }[];
+      const res = (j.addResults || []) as {
+        success?: boolean; objectId?: number; error?: { description?: string };
+      }[];
       const bad = res.find((r) => r.success === false);
       if (bad) throw new Error(bad.error?.description || "Нэмэх амжилтгүй");
+      if (firstOid == null && typeof res[0]?.objectId === "number") firstOid = res[0].objectId;
       added += res.length;
     } catch (e) {
       // ⚠️ rollbackOnFailure зөвхөн НЭГ chunk дотроо үйлчилнэ — өмнөх
@@ -611,7 +631,7 @@ export async function applyAdds(
       throw e;
     }
   }
-  return added;
+  return { added, firstOid };
 }
 
 /** `applyEdits` — 500-аар хуваан илгээнэ. */

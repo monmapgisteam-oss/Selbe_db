@@ -8,6 +8,7 @@ import { t as tr } from '@/lib/i18nCore';
 import dynamic from 'next/dynamic';
 import { useEffect, useReducer, useState } from 'react';
 import { Home } from './Home';
+import { Landing } from './Landing';
 import { AuthNotice, useAuth } from './AuthGate';
 import { resolveAccess, subscribe } from '@/lib/permissions';
 import {
@@ -245,7 +246,22 @@ export default function Root() {
   return (
     <>
       <AuthNotice />
-      {scope && authorized ? (
+      {/*
+        * ⚠️ НЭВТРЭЛТ ШАЛГАГДАЖ БАЙХАД ЮУ Ч ШИЙДЭХГҮЙ. `checking` төлөвт
+        * `authorized` нь `false` тул шууд `Landing` зурвал НЭВТЭРСЭН хэрэглэгч
+        * хуудсаа сэргээх бүрд нээлтийн хуудас АНИВЧААД дараа нь самбар руу
+        * үсэрнэ. Шалгалт дуустал төвийг сахисан мэдэгдэл үзүүлнэ.
+        */}
+      {status === 'checking' ? (
+        <div
+          style={{
+            height: '100dvh', display: 'grid', placeItems: 'center',
+            color: 'var(--ink-3)', fontSize: '0.85rem',
+          }}
+        >
+          {tr('Нэвтрэлтийг шалгаж байна…')}
+        </div>
+      ) : scope && authorized ? (
         noAccess ? (
           <div
             role="alert"
@@ -276,12 +292,19 @@ export default function Root() {
             isSuper={isSuper}
           />
         )
-      ) : (
+      ) : authorized ? (
         <Home
           onEnterAll={enterAll}
           groups={groups}
           onEnterView={enterView}
         />
+      ) : (
+        /*
+         * ⚠️ НЭВТРЭЭГҮЙ бол KPI самбар ХАРАГДАХГҮЙ (хэрэглэгчийн шийдвэр,
+         * 2026-08-20). Урьд нь `Home` нь нэвтрэлтээс үл хамааран нээлттэй
+         * байсан — одоо түүний оронд нээлтийн хуудас гарна.
+         */
+        <Landing />
       )}
     </>
   );
