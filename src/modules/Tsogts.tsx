@@ -1,11 +1,13 @@
 'use client';
 
 import { Fragment, useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { t as tr } from '@/lib/i18nCore';
 import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
 import { MapTools } from '@/components/MapTools';
 import { LayerCatalog } from '@/components/LayerCatalog';
 import { OpacityPanel } from '@/components/OpacityPanel';
 import { useLayerPicks } from '@/lib/useLayerPicks';
+import { useZoomToFilter } from '@/lib/useZoomToFilter';
 import { usePlanTotals } from '@/lib/totals';
 import { Section, Note, Data, Empty, Rows, Bars, List, ListItem } from '@/components/ui';
 import {
@@ -141,7 +143,7 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
     const blocks = build.flatMap((p) => p.blocks);
     return {
       key: '__all',
-      name: 'Бүх багц',
+      name: tr('Бүх багц'),
       kind: 'build',
       layerIds: [BLOCK_LAYER],
       where: null,
@@ -176,6 +178,7 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
   const [layerSel, setLayerSel] = useState<string | null>(null);
   const [zone, setZone] = useState<string | null>(null);
   const catTotals = usePlanTotals(zone, catOpen);
+  useZoomToFilter({ zone });
   const layerWhere = useMemo<Record<string, string | null>>(
     // Багц сонгосон → тэр багц; эс бөгөөс → зөвхөн хоцрогдолтой багцын блокууд
     () => ({ [BLOCK_LAYER]: active?.where ?? alertedWhere }),
@@ -202,10 +205,31 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
     setHighlight(null);
   };
 
+  /**
+   * Сонгосон багц руу нисэх.
+   *
+   * ⚠️ 2026-08-21 ЗАСВАР: урьд нь `zoomToWhere(id, active?.where ?? alertedWhere
+   * ?? '1=1')` байсан тул ЗӨВХӨН БАРИЛГЫН багцад ажилладаг байв.
+   *
+   * Багц ХОЁР ТӨРӨЛТЭЙ (`buildPacks`):
+   *   · `build` — давхарга нь БҮХ блокийн нэг давхарга, багцыг нь `where`
+   *     (блокийн OID жагсаалт) ялгана;
+   *   · `infra` — ДАВХАРГА нь өөрөө багц, тиймээс `where` нь `null`.
+   *
+   * `??` гинж нь дэд бүтцийн багцын `null`-ыг `alertedWhere` руу унагаадаг
+   * байлаа — тэр нь БАРИЛГЫН блокийн OID-ууд. Өөр давхаргын OID-аар шүүх тул
+   * үр дүн хоосон буцаж, зураг огт хөдөлдөггүй байв.
+   *
+   * Одоо: багц сонгосон бол `where` нь ЗӨВХӨН тухайн багцынх (байхгүй бол
+   * давхарга бүхэлдээ); `alertedWhere` нь зөвхөн багц СОНГООГҮЙ үед хүчинтэй.
+   */
   useEffect(() => {
-    const id = active?.layerIds[0] ?? BLOCK_LAYER;
-    // Сонгосон багц → тэр багц руу; эс бөгөөс хоцрогдолтой блокууд руу (байвал)
-    zoomToWhere(id, active?.where ?? alertedWhere ?? '1=1');
+    if (active) {
+      const id = active.layerIds[0];
+      if (id) zoomToWhere(id, active.where ?? '1=1');
+      return;
+    }
+    zoomToWhere(BLOCK_LAYER, alertedWhere ?? '1=1');
   }, [active, alertedWhere, zoomToWhere]);
 
   const loading = q.state === 'loading';
@@ -215,26 +239,26 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
     <div className={ts.pack}>
       {/* ── ДЭЭР: сонгосон багцын KPI ── */}
       <div className={ts.kpi}>
-        {errQ ? null : loading ? <Empty label="Ачаалж байна…" /> : (
+        {errQ ? null : loading ? <Empty label={tr('Ачаалж байна…')} /> : (
           <PackKpi active={active} packs={packs} />
         )}
       </div>
 
       {/* ── ЗҮҮН: багцын жагсаалт ── */}
       <aside className={ts.list}>
-        <h2 className={o.colHead}>Багц</h2>
+        <h2 className={o.colHead}>{tr('Багц')}</h2>
         {errQ ? (
-          <Section title="Багцууд"><Data q={errQ}>{() => null}</Data></Section>
+          <Section title={tr('Багцууд')}><Data q={errQ}>{() => null}</Data></Section>
         ) : loading ? (
-          <Section title="Багцууд"><Empty label="Ачаалж байна…" /></Section>
+          <Section title={tr('Багцууд')}><Empty label={tr('Ачаалж байна…')} /></Section>
         ) : (
           <>
             {/* ⚠ ХОЦРОГДОЛТОЙ багцууд — тусдаа бүлэг, ХАМГИЙН ДЭЭР, карт бүхэлдээ анивчина */}
             {alerted.length > 0 && (
               <div className={ts.alertCard}>
                 <TsPackList
-                  title="⚠ Хоцрогдолтой багц"
-                  note="төлөвлөгөөнөөс хоцорсон"
+                  title={tr('⚠ Хоцрогдолтой багц')}
+                  note={tr('төлөвлөгөөнөөс хоцорсон')}
                   packs={alerted}
                   sel={sel}
                   onSel={pick}
@@ -243,8 +267,8 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
               </div>
             )}
             <TsPackList
-              title="Барилга угсралт"
-              note="блокийн гүйцэтгэл"
+              title={tr('Барилга угсралт')}
+              note={tr('блокийн гүйцэтгэл')}
               packs={packs.filter((p) => p.kind === 'build' && !alertKeys.has(p.key))}
               sel={sel}
               onSel={pick}
@@ -252,17 +276,15 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
             />
             {/* Дэд бүтцийн багцууд — нэг жагсаалт (alert-гүй нь) */}
             <TsPackList
-              title="Дэд бүтэц ба нийгмийн барилга"
-              note="гүйцэтгэлийн хувь"
+              title={tr('Дэд бүтэц ба нийгмийн барилга')}
+              note={tr('гүйцэтгэлийн хувь')}
               packs={infraPacks.filter((p) => !alertKeys.has(p.key))}
               sel={sel}
               onSel={pick}
               finMap={finMap}
             />
             <Note>
-              Багц сонгоход баруунд гэрээ/төсөв, эх үүсвэр, блок бүрийн гүйцэтгэл,
-              доор санхүүгийн график гарна. Зураг дээрх барилга дарахад баруун
-              талд тухайн барилгын хяналт нээгдэнэ.
+              {tr('Багц сонгоход баруунд гэрээ/төсөв, эх үүсвэр, блок бүрийн гүйцэтгэл, доор санхүүгийн график гарна. Зураг дээрх барилга дарахад баруун талд тухайн барилгын хяналт нээгдэнэ.')}
             </Note>
           </>
         )}
@@ -339,7 +361,7 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
         {pb ? (
           <>
             <button type="button" className={ts.backBtn} onClick={backToPack}>
-              ‹ {pb.bagts} · {pb.blok} — багц руу буцах
+              ‹ {pb.bagts} · {pb.blok} {tr('— багц руу буцах')}
             </button>
             <MonitorGeneral b={pb} q={perfQ} />
             <MonitorDetail b={pb} q={perfQ} />
@@ -353,7 +375,7 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
             {allPack && <LevelsCard blocks={allPack.blocks} />}
             {/* Блок бүрийн гүйцэтгэл — БАГЦААР нь бүлэглэсэн (нэг багц = нэг карт) */}
             {packs.filter((p) => p.kind === 'build').map((p) => (
-              <BlocksCard key={p.key} p={p} title={`${p.name} — блокууд`} />
+              <BlocksCard key={p.key} p={p} title={tr('{0} — блокууд', tr(p.name))} />
             ))}
           </>
         ) : active.kind === 'build' ? (
@@ -421,7 +443,7 @@ function TsPackList({
       return rank(a.lvl) - rank(b.lvl) || (b.lag?.gap ?? 0) - (a.lag?.gap ?? 0);
     });
   return (
-    <Section title={title} note={`${num(packs.length)} багц · ${note}`}>
+    <Section title={title} note={tr('{0} багц · {1}', num(packs.length), note)}>
       <List>
         {rows.map(({ p, lag, lvl, execPct }) => {
           /**
@@ -436,10 +458,10 @@ function TsPackList({
           return (
             <Fragment key={p.key}>
             <ListItem
-              title={p.name}
+              title={tr(p.name)}
               sub={p.kind === 'build'
-                ? `${num(p.blocks.length)} блок · ${num(p.households)} айл${lag && lvl ? ` · төл. ${lag.planned.toFixed(0)}% / бодит ${lag.actual.toFixed(0)}%` : ''}`
-                : `${p.layerIds.length ? `${num(p.layerIds.length)} давхарга` : 'зураггүй'}${execPct != null ? '' : ' · санхүү бүртгэлгүй'}`}
+                ? tr('{0} блок · {1} айл{2}', num(p.blocks.length), num(p.households), lag && lvl ? tr(' · төл. {0}% / бодит {1}%', lag.planned.toFixed(0), lag.actual.toFixed(0)) : '')
+                : tr('{0}{1}', p.layerIds.length ? tr('{0} давхарга', num(p.layerIds.length)) : tr('зураггүй'), execPct != null ? '' : tr(' · санхүү бүртгэлгүй'))}
               value={
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                   {execPct == null ? '—' : pct(execPct, 0)}
@@ -452,7 +474,7 @@ function TsPackList({
                   {lvl && lag && (
                     <b
                       className={`${ts.gapBadge} ${lvl === 'red' ? ts.gapRed : ts.gapYellow}`}
-                      title={`${lag.month}: төлөвлөсөн ${lag.planned.toFixed(1)}% · бодит ${lag.actual.toFixed(1)}%`}
+                      title={tr('{0}: төлөвлөсөн {1}% · бодит {2}%', lag.month, lag.planned.toFixed(1), lag.actual.toFixed(1))}
                     >
                       <span className={lvl === 'red' ? ts.alertBlink : undefined}>⚠</span>
                       <span className="num">−{lag.gap.toFixed(1)}%</span>
@@ -472,16 +494,16 @@ function TsPackList({
                 {months && months.length ? (
                   <>
                     <div className={ts.packLegend}>
-                      <span><i style={{ background: cat(2) }} />Төлөвлөгөө</span>
-                      <span><i style={{ background: cat(0) }} />Санхүүжилт</span>
-                      <span><i style={{ background: cat(1) }} />Биет %</span>
+                      <span><i style={{ background: cat(2) }} />{tr('Төлөвлөгөө')}</span>
+                      <span><i style={{ background: cat(0) }} />{tr('Санхүүжилт')}</span>
+                      <span><i style={{ background: cat(1) }} />{tr('Биет %')}</span>
                     </div>
                     {/* ⚠️ Намхан (140px) — жагсаалтын мөр хооронд задарч байгаа тул
                         доод бүтэн графикийн (220px) орлуулга БИШ, товч тойм. */}
                     <ComboChart items={months} height={140} lagMonth={lag?.month} lagLvl={lvl} />
                   </>
                 ) : (
-                  <Empty label="Cashflow-д энэ багцын гэрээ бүртгэлгүй." />
+                  <Empty label={tr('Cashflow-д энэ багцын гэрээ бүртгэлгүй.')} />
                 )}
               </div>
             )}
@@ -536,20 +558,20 @@ function TotalCard({ packs, fin }: { packs: Pack[]; fin: FinData | null }) {
     : totals?.lvl === 'yellow' ? 'var(--warn-ink)' : 'var(--good-ink)';
 
   return (
-    <Section tone="primary" title="Төсөл нийт" note={`${build.length} барилгын багц`}>
+    <Section tone="primary" title={tr('Төсөл нийт')} note={tr('{0} барилгын багц', build.length)}>
       {/* Төслийн хэмжээний гүйцэтгэл — гурван нүд, доод графиктай нэг өнгө */}
       <div className={ts.totKpi}>
         <div>
           <span className={`${ts.totKpiVal} num`} style={{ color: cat(2) }}>
             {totals?.planned == null ? '…' : pct(totals.planned, 1)}
           </span>
-          <span className={ts.totKpiLabel}>Төлөвлөсөн</span>
+          <span className={ts.totKpiLabel}>{tr('Төлөвлөсөн')}</span>
         </div>
         <div>
           <span className={`${ts.totKpiVal} num`} style={{ color: cat(1) }}>
             {totals?.actual == null ? '…' : pct(totals.actual, 1)}
           </span>
-          <span className={ts.totKpiLabel}>Бодит гүйцэтгэл</span>
+          <span className={ts.totKpiLabel}>{tr('Бодит гүйцэтгэл')}</span>
         </div>
         <div>
           <span className={`${ts.totKpiVal} num`} style={{ color: gapTone }}>
@@ -557,15 +579,15 @@ function TotalCard({ packs, fin }: { packs: Pack[]; fin: FinData | null }) {
               ? '…'
               : `${totals.gap >= 0 ? '−' : '+'}${Math.abs(totals.gap).toFixed(1)}%`}
           </span>
-          <span className={ts.totKpiLabel}>Зөрүү</span>
+          <span className={ts.totKpiLabel}>{tr('Зөрүү')}</span>
         </div>
       </div>
       <Rows
         items={[
-          { key: 'Блок', value: <span className="num">{num(blocks)}</span> },
-          { key: 'Айл өрх', value: <span className="num">{num(households)}</span> },
+          { key: tr('Блок'), value: <span className="num">{num(blocks)}</span> },
+          { key: tr('Айл өрх'), value: <span className="num">{num(households)}</span> },
           {
-            key: 'Олгосон санхүүжилт (IPC актаар)',
+            key: tr('Олгосон санхүүжилт (IPC актаар)'),
             value: <span className="num">{fin ? mntShort(given) : '…'}</span>,
           },
         ]}
@@ -583,7 +605,7 @@ function LevelsCard({ blocks }: { blocks: Pack['blocks'] }) {
     counts[Math.min(PROGRESS_LEVELS.length - 1, Math.floor(b.progress / 25))]++;
   });
   return (
-    <Section title="Блокийн төлөв" note={`${blocks.length} блок${noData ? ` · ${noData} мэдээлэлгүй` : ''}`}>
+    <Section title={tr('Блокийн төлөв')} note={tr('{0} блок{1}', blocks.length, noData ? tr(' · {0} мэдээлэлгүй', noData) : '')}>
       <Bars
         color={HUE}
         items={PROGRESS_LEVELS.map((l, i) => ({
@@ -591,7 +613,7 @@ function LevelsCard({ blocks }: { blocks: Pack['blocks'] }) {
           label: `${l.label} ${l.range}`,
           value: counts[i],
           color: shade(HUE, PROGRESS_LEVELS.length - 1 - i, PROGRESS_LEVELS.length),
-          display: `${counts[i]} блок`,
+          display: tr('{0} блок', counts[i]),
         }))}
       />
     </Section>
@@ -665,13 +687,13 @@ function FinCard({ p, finQ }: { p: Pack | null; finQ: Async<FinData> }) {
   // ГАРЧИГ — нэр + (хоцрогдол бол) нэрний ХАЖУУД alert badge
   const title = (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-      {p ? p.name : 'Төсөл нийт'} — санхүүжилт · төлөвлөгөө · гүйцэтгэл
+      {p ? tr(p.name) : tr('Төсөл нийт')} {tr('— санхүүжилт · төлөвлөгөө · гүйцэтгэл')}
       {lag && lvl && (
         <span
           className={`${f.lagBadge} ${lvl === 'red' ? f.lagRed : f.lagYellow}`}
-          title={`${lag.month}: төлөвлөсөн ${lag.planned.toFixed(1)}% · бодит ${lag.actual.toFixed(1)}%`}
+          title={tr('{0}: төлөвлөсөн {1}% · бодит {2}%', lag.month, lag.planned.toFixed(1), lag.actual.toFixed(1))}
         >
-          {lvl === 'red' ? 'Хоцрогдол' : 'Анхаарах'} −{lag.gap.toFixed(1)}%
+          {lvl === 'red' ? tr('Хоцрогдол') : tr('Анхаарах')} −{lag.gap.toFixed(1)}%
         </span>
       )}
     </span>
@@ -680,23 +702,23 @@ function FinCard({ p, finQ }: { p: Pack | null; finQ: Async<FinData> }) {
   const note =
     total > 0 ? (
       <span className={ts.totNote}>
-        Олгогдох нийт: <b>{num(total)} ₮</b>
+        {tr('Олгогдох нийт:')} <b>{num(total)} ₮</b>
       </span>
     ) : undefined;
 
   return (
     <Section tone="primary" title={title} note={note}>
       {finQ.state === 'loading' ? (
-        <Empty label="Санхүүжилтийн дата…" />
+        <Empty label={tr('Санхүүжилтийн дата…')} />
       ) : finQ.state === 'error' ? (
         <Data q={finQ}>{() => null}</Data>
       ) : noRow ? (
-        <Empty label="Cashflow-д энэ багцын гэрээ бүртгэлгүй." />
+        <Empty label={tr('Cashflow-д энэ багцын гэрээ бүртгэлгүй.')} />
       ) : months ? (
         <>
           <div className={ts.finKpi}>
             {[
-              { v: mntShort(total), l: 'Cashflow төлөвлөсөн', c: cat(2) },
+              { v: mntShort(total), l: tr('Cashflow төлөвлөсөн'), c: cat(2) },
               {
                 v: (
                   <>
@@ -714,15 +736,15 @@ function FinCard({ p, finQ }: { p: Pack | null; finQ: Async<FinData> }) {
                     )}
                   </>
                 ),
-                l: 'IPC олгосон',
+                l: tr('IPC олгосон'),
                 c: cat(0),
               },
               /* ⚠️ envhub: эерэг зөрүү нь хэвийн үлдэгдэл тул ТОГТМОЛ warn өнгө
                  нь худал дохио байв — төлөв заадаггүй утга var(--ink)-ээр. */
-              { v: mntShort(finGap), l: 'Санхүүжилтийн зөрүү', c: 'var(--ink)' },
-              { v: plannedPct == null ? '—' : pct(plannedPct, 1), l: 'Төлөвлөгөөт гүйцэтгэл', c: cat(2) },
-              { v: actualPct == null ? '—' : pct(actualPct, 1), l: 'Бодит гүйцэтгэл', c: cat(1) },
-              { v: gapText, l: 'Гүйцэтгэлийн зөрүү', c: gapColor },
+              { v: mntShort(finGap), l: tr('Санхүүжилтийн зөрүү'), c: 'var(--ink)' },
+              { v: plannedPct == null ? '—' : pct(plannedPct, 1), l: tr('Төлөвлөгөөт гүйцэтгэл'), c: cat(2) },
+              { v: actualPct == null ? '—' : pct(actualPct, 1), l: tr('Бодит гүйцэтгэл'), c: cat(1) },
+              { v: gapText, l: tr('Гүйцэтгэлийн зөрүү'), c: gapColor },
             ].map((k) => (
               <div key={k.l}>
                 <span className={`${ts.finKpiVal} num`} style={{ color: k.c }}>{k.v}</span>
@@ -731,9 +753,9 @@ function FinCard({ p, finQ }: { p: Pack | null; finQ: Async<FinData> }) {
             ))}
           </div>
           <div className={ts.finLegend}>
-            <span><i style={{ background: cat(2) }} />Төлөвлөгөө өссөн ₮</span>
-            <span><i style={{ background: cat(0) }} />Санхүүжилт өссөн ₮</span>
-            <span><i style={{ background: cat(1) }} />Биет гүйцэтгэл %</span>
+            <span><i style={{ background: cat(2) }} />{tr('Төлөвлөгөө өссөн ₮')}</span>
+            <span><i style={{ background: cat(0) }} />{tr('Санхүүжилт өссөн ₮')}</span>
+            <span><i style={{ background: cat(1) }} />{tr('Биет гүйцэтгэл %')}</span>
           </div>
           <ComboChart items={months} height={220} lagMonth={lag?.month} lagLvl={lvl} />
         </>

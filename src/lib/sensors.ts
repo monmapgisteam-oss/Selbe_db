@@ -20,6 +20,7 @@
  */
 
 import { queryFeatures, queryCount } from '@/lib/query';
+import { t as tr } from '@/lib/i18nCore';
 
 const IOT = process.env.NEXT_PUBLIC_ARCGIS_IOT
   ?? 'https://services-ap1.arcgis.com/OgVoRiKUkHg9Iokz/arcgis/rest/services';
@@ -49,47 +50,47 @@ export type SensorDef = {
 export const SENSORS: SensorDef[] = [
   {
     key: 'waste',
-    label: 'Хогийн савны дүүрэлт',
+    label: tr('Хогийн савны дүүрэлт'),
     url: `${IOT}/Waste_Sensor/FeatureServer/62`,
     metrics: [
-      { key: 'distance', label: 'Сав хүртэлх зай', field: 'payload_decoded_data_distance', unit: 'мм', dp: 0 },
-      { key: 'battery', label: 'Батерей', field: 'payload_decoded_data_battery', unit: '%', dp: 0 },
+      { key: 'distance', label: tr('Сав хүртэлх зай'), field: 'payload_decoded_data_distance', unit: tr('мм'), dp: 0 },
+      { key: 'battery', label: tr('Батерей'), field: 'payload_decoded_data_battery', unit: '%', dp: 0 },
     ],
   },
   {
     key: 'soil',
-    label: 'Хөрсний мэдрэгч',
+    label: tr('Хөрсний мэдрэгч'),
     url: `${IOT}/Soil_Meter/FeatureServer/63`,
     metrics: [
-      { key: 'moisture', label: 'Хөрсний чийг', field: 'payload_decoded_data_moisture', unit: '%', dp: 1 },
-      { key: 'temperature', label: 'Хөрсний температур', field: 'payload_decoded_data_temperature', unit: '°C', dp: 1 },
-      { key: 'electricity', label: 'Цахилгаан дамжуулалт', field: 'payload_decoded_data_electricity', unit: '', dp: 0 },
+      { key: 'moisture', label: tr('Хөрсний чийг'), field: 'payload_decoded_data_moisture', unit: '%', dp: 1 },
+      { key: 'temperature', label: tr('Хөрсний температур'), field: 'payload_decoded_data_temperature', unit: '°C', dp: 1 },
+      { key: 'electricity', label: tr('Цахилгаан дамжуулалт'), field: 'payload_decoded_data_electricity', unit: '', dp: 0 },
     ],
   },
   {
     key: 'light',
-    label: 'Гэрэлтүүлэг',
+    label: tr('Гэрэлтүүлэг'),
     url: `${IOT}/Light_Sensor/FeatureServer/60`,
     metrics: [
-      { key: 'illumination', label: 'Гэрэлтүүлэг', field: 'payload_decoded_data_illumination', unit: 'lux', dp: 0 },
+      { key: 'illumination', label: tr('Гэрэлтүүлэг'), field: 'payload_decoded_data_illumination', unit: 'lux', dp: 0 },
     ],
   },
   {
     key: 'air',
-    label: 'Агаарын температур, чийг',
+    label: tr('Агаарын температур, чийг'),
     url: `${IOT}/Temp_Humidity/FeatureServer/64`,
     metrics: [
-      { key: 'temperature', label: 'Температур', field: 'payload_decoded_data_temperature', unit: '°C', dp: 1 },
-      { key: 'humidity', label: 'Чийгшил', field: 'payload_decoded_data_humidity', unit: '%', dp: 0 },
+      { key: 'temperature', label: tr('Температур'), field: 'payload_decoded_data_temperature', unit: '°C', dp: 1 },
+      { key: 'humidity', label: tr('Чийгшил'), field: 'payload_decoded_data_humidity', unit: '%', dp: 0 },
     ],
   },
   {
     key: 'water',
-    label: 'Усны тоолуур',
+    label: tr('Усны тоолуур'),
     url: `${IOT}/Water_Meter/FeatureServer/61`,
     metrics: [
-      { key: 'meterReading', label: 'Тоолуурын заалт', field: 'payload_decoded_data_meterReading', unit: 'м³', dp: 2 },
-      { key: 'batteryVoltage', label: 'Батерейн хүчдэл', field: 'payload_decoded_data_batteryVoltage', unit: 'V', dp: 2 },
+      { key: 'meterReading', label: tr('Тоолуурын заалт'), field: 'payload_decoded_data_meterReading', unit: tr('м³'), dp: 2 },
+      { key: 'batteryVoltage', label: tr('Батерейн хүчдэл'), field: 'payload_decoded_data_batteryVoltage', unit: 'V', dp: 2 },
     ],
   },
 ];
@@ -214,7 +215,7 @@ async function loadOne(def: SensorDef, limit: number): Promise<SensorLive> {
       lastAt: null,
       ageHours: null,
       n: 0,
-      error: typeof per === 'string' && per ? per : 'Сервис татагдсангүй',
+      error: typeof per === 'string' && per ? per : tr('Сервис татагдсангүй'),
     };
   }
 

@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState, type ReactNode } from 'react';
+import { t as tr } from '@/lib/i18nCore';
 import { SCORE_LEVELS, levelOf, NO_DATA_COLOR, type Indicator } from '@/lib/analysis/config';
 import { scoreColor } from '@/lib/analysis/score';
 import { nf } from './format';
@@ -54,7 +55,7 @@ export function Ranking({
           key={`grp${lv}`}
           type="button"
           className={`${s.rankGrp} ${hidden ? s.grpOff : ''}`}
-          title={hidden ? 'Дэлгэх' : 'Хураах'}
+          title={hidden ? tr('Дэлгэх') : tr('Хураах')}
           onClick={() => {
             const next = new Set(off);
             if (next.has(lv)) next.delete(lv); else next.add(lv);
@@ -65,7 +66,7 @@ export function Ranking({
               оноог харуулах ёстой болохоос дүгнэлт өгөх ёсгүй. Түвшинг ӨНГӨ ба
               ОНООНЫ ЗУРВАС хоёр л заана. */}
           <i style={{ background: L ? L.color : NO_DATA_COLOR }} />
-          <span>{L ? `${L.min}–${Math.min(100, L.max)} оноо` : 'Өгөгдөлгүй'}</span>
+          <span>{L ? tr('{0}–{1} оноо', L.min, Math.min(100, L.max)) : tr('Өгөгдөлгүй')}</span>
           <em />
 
           <b>{lv < 0 ? noData : perLevel[lv]}</b>
@@ -84,7 +85,7 @@ export function Ranking({
       >
         <span className="rk">{i + 1}</span>
         <span className="nm">{r.id}<i>{r.type}</i></span>
-        <span className="nm2">{r.raw.density == null ? '' : `${nf(r.raw.density)} хүн/га`}</span>
+        <span className="nm2">{r.raw.density == null ? '' : tr('{0} хүн/га', nf(r.raw.density))}</span>
         <span className="tot" style={{ background: scoreColor(tot) }}>{tot == null ? '—' : Math.round(tot)}</span>
       </button>,
     );
@@ -92,7 +93,7 @@ export function Ranking({
 
   return (
     <>
-      <div className={s.rankHead}><span>#</span><span>Бүс</span><span>Нягтшил</span><span>Оноо</span></div>
+      <div className={s.rankHead}><span>#</span><span>{tr('Бүс')}</span><span>{tr('Нягтшил')}</span><span>{tr('Оноо')}</span></div>
       <div className={s.rankList}>{out}</div>
     </>
   );

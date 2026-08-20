@@ -1,10 +1,12 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState } from 'react';
+import { t as tr } from '@/lib/i18nCore';
 import { MapCanvas, type Dim } from '@/components/MapCanvas';
 import { Data, Empty, Trend, Rows, Note, Bars, Donut, Ring, SubHead } from '@/components/ui';
 import { Icon } from '@/components/Icon';
 import { MapTools } from '@/components/MapTools';
+import { useZoomToFilter } from '@/lib/useZoomToFilter';
 import { LayerCatalog } from '@/components/LayerCatalog';
 import { OpacityPanel } from '@/components/OpacityPanel';
 import { useLayerPicks } from '@/lib/useLayerPicks';
@@ -56,10 +58,10 @@ const ageOf = (t: number | null | undefined, now: number): number | null =>
 
 /** Хэр шинэ вэ — 1 цагаас доош минутаар, 48-аас доош цагаар, цаашид хоногоор */
 const freshLabel = (h: number | null): string => {
-  if (h == null) return 'заалт алга';
-  if (h < 1) return `${Math.round(h * 60)} мин өмнө`;
-  if (h < 48) return `${Math.round(h)} цаг өмнө`;
-  return `${Math.round(h / 24)} хоног өмнө`;
+  if (h == null) return tr('заалт алга');
+  if (h < 1) return tr('{0} мин өмнө', Math.round(h * 60));
+  if (h < 48) return tr('{0} цаг өмнө', Math.round(h));
+  return tr('{0} хоног өмнө', Math.round(h / 24));
 };
 
 /**
@@ -185,7 +187,7 @@ function Hero({ c }: { c: Card }) {
         <Spark points={c.m.points} />
         <div className={s.heroSub}>
           {c.s.label} · {freshLabel(ageOf(c.m.latestAt, now))}
-          {d && ` · ${pctLabel(d.pct)} / ${Math.round(d.hours)}ц`}
+          {d && tr(' · {0} / {1}ц', pctLabel(d.pct), Math.round(d.hours))}
         </div>
       </div>
     </div>
@@ -244,7 +246,7 @@ function Cell({ c }: { c: Card }) {
       </div>
       <div className={`${s.metricFoot} num`}>
         <span>
-          {has ? `${num(c.m.min ?? 0, c.m.dp)} … ${num(c.m.max ?? 0, c.m.dp)}` : 'задарсан заалт алга'}
+          {has ? `${num(c.m.min ?? 0, c.m.dp)} … ${num(c.m.max ?? 0, c.m.dp)}` : tr('задарсан заалт алга')}
         </span>
         <span>{d ? pctLabel(d.pct) : ''}</span>
       </div>
@@ -259,7 +261,7 @@ function ChartCard({ c, height = 150 }: { c: Card; height?: number }) {
       <header className={s.cardHd}>
         <h3 className={s.cardTitle}>{c.m.label}</h3>
         <span className={s.cardNote}>
-          {c.s.label} · {num(c.m.points.length)} / {num(c.m.total)} цэг
+          {c.s.label} · {num(c.m.points.length)} / {num(c.m.total)} {tr('цэг')}
         </span>
       </header>
       <div className={s.cardBody}>
@@ -326,6 +328,7 @@ export function Iot({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const [layerSel, setLayerSel] = useState<string | null>(null);
   const [zone, setZone] = useState<string | null>(null);
   const catTotals = usePlanTotals(zone, catOpen);
+  useZoomToFilter({ zone });
 
   return (
     <NowCtx.Provider value={now}>
@@ -337,7 +340,7 @@ export function Iot({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       <section className={`${s.card} ${s.mapCard} ${s.pMap}`}>
         <div className={s.mapBar}>
           <span className={s.mapTitle}>
-            <Icon name="radio" size={14} /> Мэдрэгчийн байршил
+            <Icon name="radio" size={14} /> {tr('Мэдрэгчийн байршил')}
           </span>
         </div>
         <div className={s.mapBox}>
@@ -392,7 +395,7 @@ export function Iot({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         </div>
       </section>
 
-      <Data q={q} loading="Мэдрэгчийн заалт уншиж байна…">
+      <Data q={q} loading={tr('Мэдрэгчийн заалт уншиж байна…')}>
         {(all) => <Board all={all} />}
       </Data>
     </div>
@@ -432,10 +435,10 @@ function Board({ all }: { all: SensorLive[] }) {
     else bucket.stale++;
   }
   const freshItems = [
-    { key: 'fresh', label: '2 цагаас шинэ', value: bucket.fresh, color: 'var(--good)' },
-    { key: 'warn', label: '2–48 цаг', value: bucket.warn, color: 'var(--warn)' },
-    { key: 'stale', label: '48 цагаас хуучин', value: bucket.stale, color: 'var(--bad)' },
-    { key: 'none', label: 'заалт алга', value: bucket.none, color: 'var(--ink-3)' },
+    { key: 'fresh', label: tr('2 цагаас шинэ'), value: bucket.fresh, color: 'var(--good)' },
+    { key: 'warn', label: tr('2–48 цаг'), value: bucket.warn, color: 'var(--warn)' },
+    { key: 'stale', label: tr('48 цагаас хуучин'), value: bucket.stale, color: 'var(--bad)' },
+    { key: 'none', label: tr('заалт алга'), value: bucket.none, color: 'var(--ink-3)' },
   ].filter((x) => x.value > 0);
 
   const livePct = all.length ? (live.length / all.length) * 100 : null;
@@ -460,14 +463,14 @@ function Board({ all }: { all: SensorLive[] }) {
       <div className={s.pTiles}>
         <Tile
           icon="radio"
-          label="Мэдрэгч"
-          value={`${num(all.length)} ш`}
-          pill={`${num(live.length)} идэвхтэй`}
+          label={tr('Мэдрэгч')}
+          value={tr('{0} ш', num(all.length))}
+          pill={tr('{0} идэвхтэй', num(live.length))}
           pillTint={live.length === all.length ? 'var(--good-ink)' : 'var(--warn-ink)'}
         />
         <Tile
           icon="chart"
-          label="Нийт бүртгэл"
+          label={tr('Нийт бүртгэл')}
           value={num(total)}
           pill={freshLabel(freshest)}
           pillTint={freshTone(freshest)}
@@ -477,8 +480,8 @@ function Board({ all }: { all: SensorLive[] }) {
       {/* ── Сүүлийн заалт — газрын зургийн хажууд ── */}
       <section className={`${s.card} ${s.pList}`}>
         <header className={s.cardHd}>
-          <h3 className={s.cardTitle}>Сүүлийн заалт</h3>
-          <span className={s.cardNote}>15 мин тутам</span>
+          <h3 className={s.cardTitle}>{tr('Сүүлийн заалт')}</h3>
+          <span className={s.cardNote}>{tr('15 мин тутам')}</span>
         </header>
         <div className={s.cardBody}>
           <Rows
@@ -491,9 +494,9 @@ function Board({ all }: { all: SensorLive[] }) {
                    тайлбар нь «Холбоо тасраагүй» гэж ХУДАЛ баталгаа өгдөг байв. */
                 <span style={{ color: x.error ? 'var(--bad-ink)' : freshTone(ageOf(x.lastAt, now)) }}>
                   {x.error
-                    ? `татагдсангүй — ${x.error}`
+                    ? tr('татагдсангүй — {0}', x.error)
                     : x.lastAt == null
-                      ? 'заалт алга'
+                      ? tr('заалт алга')
                       : `${stamp(x.lastAt)} · ${freshLabel(ageOf(x.lastAt, now))}`}
                 </span>
               ),
@@ -507,14 +510,12 @@ function Board({ all }: { all: SensorLive[] }) {
             */}
           {failed.length > 0 && (
             <Note>
-              <b>{failed.length}</b> мэдрэгчийн үйлчилгээ татагдсангүй — доорх алдааг үзнэ үү.
-              Энэ нь decoder-ийн хоцролт БИШ, хүсэлт өөрөө амжилтгүй болсон.
+              <b>{failed.length}</b> {tr('мэдрэгчийн үйлчилгээ татагдсангүй — доорх алдааг үзнэ үү. Энэ нь decoder-ийн хоцролт БИШ, хүсэлт өөрөө амжилтгүй болсон.')}
             </Note>
           )}
           {live.length + failed.length < all.length && (
             <Note>
-              <b>{all.length - live.length - failed.length}</b> мэдрэгчээс задарсан утга ирээгүй.
-              Холбоо тасраагүй — түүхий өгөгдөл ирж байгаа ч Mononet-ийн decoder утгыг задлаагүй байна.
+              <b>{all.length - live.length - failed.length}</b> {tr('мэдрэгчээс задарсан утга ирээгүй. Холбоо тасраагүй — түүхий өгөгдөл ирж байгаа ч Mononet-ийн decoder утгыг задлаагүй байна.')}
             </Note>
           )}
           {/**
@@ -523,7 +524,7 @@ function Board({ all }: { all: SensorLive[] }) {
             * Дээрх жагсаалт нь мэдрэгч тус бүрийн ХАМГИЙН ШИНЭ заалтыг харуулдаг тул
             * хоцорсон талбар харагдахгүй өнгөрдөг. Тиймээс задаргааг нь доор нэмэв.
             */}
-          <SubHead>Үзүүлэлт тус бүрээр</SubHead>
+          <SubHead>{tr('Үзүүлэлт тус бүрээр')}</SubHead>
           <Rows
             items={cards.map((c) => ({
               key: c.m.label,
@@ -534,7 +535,7 @@ function Board({ all }: { all: SensorLive[] }) {
           />
         </div>
         <div className={s.cardFoot}>
-          <span>Сүүлд шинэчлэгдсэн</span>
+          <span>{tr('Сүүлд шинэчлэгдсэн')}</span>
           <span className="num" style={{ color: freshTone(freshest) }}>
             {freshLabel(freshest)}
           </span>
@@ -549,7 +550,7 @@ function Board({ all }: { all: SensorLive[] }) {
       ) : (
         <section className={`${s.card} ${s.pTrend}`}>
           <div className={s.cardBody}>
-            <Empty label="Цуваа зурах заалт алга" icon="chart" />
+            <Empty label={tr('Цуваа зурах заалт алга')} icon="chart" />
           </div>
         </section>
       )}
@@ -557,8 +558,8 @@ function Board({ all }: { all: SensorLive[] }) {
       {/* ── Шинэлэг байдал — цагираг ── */}
       <section className={`${s.card} ${s.pDonut}`}>
         <header className={s.cardHd}>
-          <h3 className={s.cardTitle}>Заалтын шинэлэг байдал</h3>
-          <span className={s.cardNote}>{num(cards.length)} үзүүлэлт</span>
+          <h3 className={s.cardTitle}>{tr('Заалтын шинэлэг байдал')}</h3>
+          <span className={s.cardNote}>{num(cards.length)} {tr('үзүүлэлт')}</span>
         </header>
         <div className={s.cardBody}>
           {freshItems.length ? (
@@ -571,9 +572,9 @@ function Board({ all }: { all: SensorLive[] }) {
              *
              * Зүсмэг↔тайлбарын hover холбоо нь `Donut`-ынхад аль хэдийн бий.
              */
-            <Donut items={freshItems} size={150} width={22} centerLabel="үзүүлэлт" />
+            <Donut items={freshItems} size={150} width={22} centerLabel={tr('үзүүлэлт')} />
           ) : (
-            <Empty label="Үзүүлэлт алга" icon="chart" />
+            <Empty label={tr('Үзүүлэлт алга')} icon="chart" />
           )}
         </div>
       </section>
@@ -581,7 +582,7 @@ function Board({ all }: { all: SensorLive[] }) {
       {/* ── Идэвхтэй мэдрэгчийн хувь — бөгж ── */}
       <section className={`${s.card} ${s.pRing}`}>
         <header className={s.cardHd}>
-          <h3 className={s.cardTitle}>Идэвхтэй мэдрэгч</h3>
+          <h3 className={s.cardTitle}>{tr('Идэвхтэй мэдрэгч')}</h3>
           <span className={s.cardNote}>
             {num(live.length)} / {num(all.length)}
           </span>
@@ -593,7 +594,7 @@ function Board({ all }: { all: SensorLive[] }) {
               size={202}
               width={18}
               color={livePct === 100 ? 'var(--good)' : 'var(--warn)'}
-              label="заалт ирсэн"
+              label={tr('заалт ирсэн')}
               decimals={0}
             />
           </div>
@@ -605,13 +606,13 @@ function Board({ all }: { all: SensorLive[] }) {
           */}
         <div className={s.split}>
           <span className={s.splitCell}>
-            <span className={s.splitLabel}>Идэвхтэй</span>
+            <span className={s.splitLabel}>{tr('Идэвхтэй')}</span>
             <span className={`${s.splitVal} num`} style={{ color: 'var(--good-ink)' }}>
               {num(live.length)}
             </span>
           </span>
           <span className={s.splitCell}>
-            <span className={s.splitLabel}>Дүлий</span>
+            <span className={s.splitLabel}>{tr('Дүлий')}</span>
             <span
               className={`${s.splitVal} num`}
               style={{ color: all.length === live.length ? 'var(--ink-3)' : 'var(--bad-ink)' }}
@@ -625,8 +626,8 @@ function Board({ all }: { all: SensorLive[] }) {
       {/* ── Бүх үзүүлэлт — агшны утга ── */}
       <section className={`${s.card} ${s.pCells}`}>
         <header className={s.cardHd}>
-          <h3 className={s.cardTitle}>Бүх үзүүлэлт</h3>
-          <span className={s.cardNote}>сүүлийн утга · доод…дээд · 24ц өөрчлөлт</span>
+          <h3 className={s.cardTitle}>{tr('Бүх үзүүлэлт')}</h3>
+          <span className={s.cardNote}>{tr('сүүлийн утга · доод…дээд · 24ц өөрчлөлт')}</span>
         </header>
         <div className={s.cardBody}>
           <div className={s.grid}>
@@ -640,8 +641,8 @@ function Board({ all }: { all: SensorLive[] }) {
       {/* ── Мэдрэгч тус бүрийн бүртгэл ── */}
       <section className={`${s.card} ${s.pBars}`}>
         <header className={s.cardHd}>
-          <h3 className={s.cardTitle}>Бүртгэл үзүүлэлтээр</h3>
-          <span className={s.cardNote}>нийт {num(total)}</span>
+          <h3 className={s.cardTitle}>{tr('Бүртгэл үзүүлэлтээр')}</h3>
+          <span className={s.cardNote}>{tr('нийт')} {num(total)}</span>
         </header>
         <div className={s.cardBody}>
           {/**

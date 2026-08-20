@@ -1,6 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
+import { t as tr } from '@/lib/i18nCore';
 import { AuthProvider } from '@/components/AuthGate';
 
 /**
@@ -23,7 +24,7 @@ const Root = dynamic(() => import('@/components/Root'), {
         fontSize: '0.85rem',
       }}
     >
-      Сэлбэ порталыг ачаалж байна…
+      {tr('Сэлбэ порталыг ачаалж байна…')}
     </div>
   ),
 });

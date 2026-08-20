@@ -13,6 +13,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { t as tr } from '@/lib/i18nCore';
 import { AGENT_API, ask, relayAlive, type ApiMessage } from '@/lib/agent/client';
 import type { AgentScope } from '@/lib/agent/registry';
 import { AgentMarkdown } from '@/components/AgentMarkdown';
@@ -29,10 +30,10 @@ const WIDE_KEY = 'selbe-agent-wide';
  * бүрэн тойм, санхүү — дөрөв нь дөрвөн өөр зам ажиллуулна.
  */
 const STARTERS = [
-  'Төсөлд нийт хэдэн барилга байгаа вэ?',
-  'Багц 1 мэдээллийг дэлгэрэнгүй харуулаач',
-  'Барилгын төлөв бүрээр хэдэн барилга вэ?',
-  'Багц 6.1-ийн гэрээний дүн хэд вэ?',
+  tr('Төсөлд нийт хэдэн барилга байгаа вэ?'),
+  tr('Багц 1 мэдээллийг дэлгэрэнгүй харуулаач'),
+  tr('Барилгын төлөв бүрээр хэдэн барилга вэ?'),
+  tr('Багц 6.1-ийн гэрээний дүн хэд вэ?'),
 ];
 
 export function AgentChat({
@@ -110,7 +111,7 @@ export function AgentChat({
       setError(null);
       setLog((l) => [...l, { role: 'user', text: q }]);
       setBusy(true);
-      setProgress('Бодож байна…');
+      setProgress(tr('Бодож байна…'));
 
       const controller = new AbortController();
       abort.current = controller;
@@ -167,15 +168,15 @@ export function AgentChat({
   if (!open) return null;
 
   return (
-    <div className={`${s.panel} ${wide ? s.panelWide : ''}`} role="dialog" aria-label="AI туслах">
+    <div className={`${s.panel} ${wide ? s.panelWide : ''}`} role="dialog" aria-label={tr('AI туслах')}>
       <div className={s.head}>
         <span aria-hidden style={{ color: 'var(--hue)', display: 'grid', placeItems: 'center' }}>
           <Spark />
         </span>
         <span>
-          <span className={s.title}>AI туслах</span>
+          <span className={s.title}>{tr('AI туслах')}</span>
           <br />
-          <span className={s.sub}>Төслийн өгөгдлөөс шууд хариулна</span>
+          <span className={s.sub}>{tr('Төслийн өгөгдлөөс шууд хариулна')}</span>
         </span>
         <span className={s.spacer} />
         <button
@@ -183,28 +184,28 @@ export function AgentChat({
           className={s.iconBtn}
           onClick={toggleWide}
           aria-pressed={wide}
-          title={wide ? 'Жижигрүүлэх' : 'Баруун талд өргөтгөх'}
-          aria-label={wide ? 'Жижигрүүлэх' : 'Баруун талд өргөтгөх'}
+          title={wide ? tr('Жижигрүүлэх') : tr('Баруун талд өргөтгөх')}
+          aria-label={wide ? tr('Жижигрүүлэх') : tr('Баруун талд өргөтгөх')}
         >
           <Expand wide={wide} />
         </button>
-        <button type="button" className={s.iconBtn} onClick={clear} title="Яриаг цэвэрлэх" aria-label="Яриаг цэвэрлэх">
+        <button type="button" className={s.iconBtn} onClick={clear} title={tr('Яриаг цэвэрлэх')} aria-label={tr('Яриаг цэвэрлэх')}>
           ⟲
         </button>
-        <button type="button" className={s.iconBtn} onClick={onClose} title="Хаах" aria-label="Хаах">
+        <button type="button" className={s.iconBtn} onClick={onClose} title={tr('Хаах')} aria-label={tr('Хаах')}>
           ✕
         </button>
       </div>
 
       {alive === false && (
         <div className={s.offline}>
-          AI үйлчилгээ ажиллахгүй байна. Локалаар асаахдаа:
+          {tr('AI үйлчилгээ ажиллахгүй байна. Локалаар асаахдаа:')}
           <br />
           <code>cd agent-proxy &amp;&amp; npm install</code>
           <br />
           <code>ANTHROPIC_API_KEY=… node server.mjs</code>
           <br />
-          Хаяг: <code>{AGENT_API}</code>
+          {tr('Хаяг:')} <code>{AGENT_API}</code>
         </div>
       )}
 
@@ -241,7 +242,7 @@ export function AgentChat({
         <textarea
           className={s.input}
           value={input}
-          placeholder="Асуултаа бичнэ үү…"
+          placeholder={tr('Асуултаа бичнэ үү…')}
           rows={1}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
@@ -258,7 +259,7 @@ export function AgentChat({
           disabled={busy || !input.trim()}
           onClick={() => void send(input)}
         >
-          Илгээх
+          {tr('Илгээх')}
         </button>
       </div>
     </div>
@@ -269,9 +270,9 @@ export function AgentChat({
 export function AgentButton({ open, onToggle }: { open: boolean; onToggle: () => void }) {
   if (open) return null;
   return (
-    <button type="button" className={s.fab} onClick={onToggle} aria-pressed={open} title="AI туслах">
+    <button type="button" className={s.fab} onClick={onToggle} aria-pressed={open} title={tr('AI туслах')}>
       <Spark />
-      AI туслах
+      {tr('AI туслах')}
     </button>
   );
 }

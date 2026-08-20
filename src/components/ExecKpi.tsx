@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, type CSSProperties } from 'react';
+import { t as tr } from '@/lib/i18nCore';
 import { useAsync } from '@/lib/useAsync';
 import { loadBudget, loadClearance, loadProjectProgress } from '@/lib/live';
 import { loadFinData, contractMonths, lagOf, lagLevel } from '@/modules/Finance';
@@ -61,7 +62,7 @@ const notReady = (
 ): CardData => {
   const failed = qs.find((q) => q.state === 'error');
   if (failed)
-    return { label, value: '—', note: 'Татагдсангүй — дарж дахин оролдоно уу', status: 'bad', retry: failed.retry };
+    return { label, value: '—', note: tr('Татагдсангүй — дарж дахин оролдоно уу'), status: 'bad', retry: failed.retry };
   return { label, value: '…', note: loadingNote, status: 'idle' };
 };
 
@@ -81,7 +82,7 @@ export function ExecKpi({ onView }: { onView: (key: ViewKey) => void }) {
 
   // 1. Хуваарийн биелэлт — багц бүрийн хоцрогдол (Cashflow төлөвлөгөө vs биет %)
   const schedule = useMemo<CardData>(() => {
-    if (finQ.state !== 'ready') return notReady('Хуваарийн биелэлт', 'Cashflow+IPC ачаалж байна', [finQ]);
+    if (finQ.state !== 'ready') return notReady(tr('Хуваарийн биелэлт'), tr('Cashflow+IPC ачаалж байна'), [finQ]);
     const C = CASHFLOW2.fields;
     const d = finQ.data;
     const seen = new Set<string>();
@@ -102,11 +103,11 @@ export function ExecKpi({ onView }: { onView: (key: ViewKey) => void }) {
     });
     const lagging = red + yellow;
     return {
-      label: 'Хуваарийн биелэлт',
-      value: lagging === 0 ? 'Хэвийн' : `${num(lagging)} багц хоцорч байна`,
+      label: tr('Хуваарийн биелэлт'),
+      value: lagging === 0 ? tr('Хэвийн') : tr('{0} багц хоцорч байна', num(lagging)),
       note: lagging === 0
-        ? `${num(total)} багц хуваарьтаа нийцэж байна`
-        : `${num(red)} эрсдэлтэй · ${num(yellow)} анхаарах · хамгийн муу −${worst.toFixed(0)}%`,
+        ? tr('{0} багц хуваарьтаа нийцэж байна', num(total))
+        : tr('{0} эрсдэлтэй · {1} анхаарах · хамгийн муу −{2}%', num(red), num(yellow), worst.toFixed(0)),
       status: red > 0 ? 'bad' : yellow > 0 ? 'warn' : 'good',
     };
   }, [finQ]);
@@ -114,7 +115,7 @@ export function ExecKpi({ onView }: { onView: (key: ViewKey) => void }) {
   // 2. Санхүүжилт vs гүйцэтгэл — олгосон (IPC) төсвийн %-ийг биет %-тэй харьцуулна
   const finance = useMemo<CardData>(() => {
     if (finQ.state !== 'ready' || budgetQ.state !== 'ready' || progQ.state !== 'ready')
-      return notReady('Санхүүжилт vs гүйцэтгэл', 'тооцож байна', [finQ, budgetQ, progQ]);
+      return notReady(tr('Санхүүжилт vs гүйцэтгэл'), tr('тооцож байна'), [finQ, budgetQ, progQ]);
     let given = 0;
     finQ.data.given.forEach((byMon) => byMon.forEach((v) => { given += v; }));
     const budget = budgetQ.data.total;
@@ -122,44 +123,44 @@ export function ExecKpi({ onView }: { onView: (key: ViewKey) => void }) {
     const physPct = progQ.data.actual;
     const gap = finPct - physPct;
     return {
-      label: 'Санхүүжилт vs гүйцэтгэл',
-      value: `Санхүүжилт ${pct(finPct, 0)} · Биет ${pct(physPct, 0)}`,
-      note: Math.abs(gap) <= 5 ? 'санхүүжилт гүйцэтгэлтэй тэнцвэртэй'
-        : gap > 0 ? `санхүүжилт гүйцэтгэлээс ${gap.toFixed(0)}пп түрүүлж байна`
-          : `гүйцэтгэл санхүүжилтээс ${(-gap).toFixed(0)}пп түрүүлж байна`,
+      label: tr('Санхүүжилт vs гүйцэтгэл'),
+      value: tr('Санхүүжилт {0} · Биет {1}', pct(finPct, 0), pct(physPct, 0)),
+      note: Math.abs(gap) <= 5 ? tr('санхүүжилт гүйцэтгэлтэй тэнцвэртэй')
+        : gap > 0 ? tr('санхүүжилт гүйцэтгэлээс {0}пп түрүүлж байна', gap.toFixed(0))
+          : tr('гүйцэтгэл санхүүжилтээс {0}пп түрүүлж байна', (-gap).toFixed(0)),
       status: Math.abs(gap) <= 5 ? 'good' : Math.abs(gap) <= 15 ? 'warn' : 'bad',
     };
   }, [finQ, budgetQ, progQ]);
 
   // 3. Аюулгүй ажиллагаа — осол/зөрчлийн бүртгэлийн тоо (ХАБЭА)
   const safety = useMemo<CardData>(() => {
-    if (incQ.state !== 'ready') return notReady('Аюулгүй ажиллагаа', 'ХАБЭА бүртгэл', [incQ]);
+    if (incQ.state !== 'ready') return notReady(tr('Аюулгүй ажиллагаа'), tr('ХАБЭА бүртгэл'), [incQ]);
     const n = incQ.data;
     return {
-      label: 'Аюулгүй ажиллагаа',
-      value: n === 0 ? 'Бүртгэлгүй' : `${num(n)} осол/зөрчил`,
-      note: 'ХАБЭА-гийн нийт бүртгэл',
+      label: tr('Аюулгүй ажиллагаа'),
+      value: n === 0 ? tr('Бүртгэлгүй') : tr('{0} осол/зөрчил', num(n)),
+      note: tr('ХАБЭА-гийн нийт бүртгэл'),
       status: n === 0 ? 'good' : n <= 5 ? 'warn' : 'bad',
     };
   }, [incQ]);
 
   // 4. Хот төлөвлөлтийн оноо — тохиромжтой байдлын дундаж (арын дэвсгэрт)
   const urban = useMemo<CardData>(() => {
-    if (suitQ.state !== 'ready') return notReady('Хот төлөвлөлтийн оноо', 'орон зайн анализ бодож байна', [suitQ]);
+    if (suitQ.state !== 'ready') return notReady(tr('Хот төлөвлөлтийн оноо'), tr('орон зайн анализ бодож байна'), [suitQ]);
     const sc = suitQ.data.avgScore;
     if (sc == null)
-      return { label: 'Хот төлөвлөлтийн оноо', value: '—', note: 'өгөгдөл дутуу', status: 'idle' };
+      return { label: tr('Хот төлөвлөлтийн оноо'), value: '—', note: tr('өгөгдөл дутуу'), status: 'idle' };
     return {
-      label: 'Хот төлөвлөлтийн оноо',
+      label: tr('Хот төлөвлөлтийн оноо'),
       value: `${Math.round(sc)} / 100`,
-      note: `${scoreLabel(sc)} · ${num(suitQ.data.zones)} бүсийн дундаж`,
+      note: tr('{0} · {1} бүсийн дундаж', scoreLabel(sc), num(suitQ.data.zones)),
       status: sc >= 65 ? 'good' : sc >= 45 ? 'warn' : 'bad',
     };
   }, [suitQ]);
 
   // 5. Гүйцэтгэгчийн зэрэглэл — блокоор жигнэсэн дундаж явцаар (тэргүүлэгч/хойгуур)
   const contractor = useMemo<CardData>(() => {
-    if (bagtsQ.state !== 'ready') return notReady('Гүйцэтгэгчийн зэрэглэл', 'багц ачаалж байна', [bagtsQ]);
+    if (bagtsQ.state !== 'ready') return notReady(tr('Гүйцэтгэгчийн зэрэглэл'), tr('багц ачаалж байна'), [bagtsQ]);
     const by = new Map<string, { blocks: number; wsum: number }>();
     bagtsQ.data.forEach((r) => {
       if (!r.contractor || r.contractor === '—' || r.progress == null) return;
@@ -172,13 +173,13 @@ export function ExecKpi({ onView }: { onView: (key: ViewKey) => void }) {
       .map(([c, v]) => ({ c, p: v.blocks ? v.wsum / v.blocks : 0 }))
       .sort((a, b) => b.p - a.p);
     if (!ranked.length)
-      return { label: 'Гүйцэтгэгчийн зэрэглэл', value: '—', note: 'мэдээлэл алга', status: 'idle' };
+      return { label: tr('Гүйцэтгэгчийн зэрэглэл'), value: '—', note: tr('мэдээлэл алга'), status: 'idle' };
     const best = ranked[0];
     const worst = ranked[ranked.length - 1];
     return {
-      label: 'Гүйцэтгэгчийн зэрэглэл',
-      value: `Тэргүүлэгч ${pct(best.p, 0)}`,
-      note: `${best.c} · хойгуур ${worst.c} (${pct(worst.p, 0)})`,
+      label: tr('Гүйцэтгэгчийн зэрэглэл'),
+      value: tr('Тэргүүлэгч {0}', pct(best.p, 0)),
+      note: tr('{0} · хойгуур {1} ({2})', tr(best.c), tr(worst.c), pct(worst.p, 0)),
       status: 'idle',
     };
   }, [bagtsQ]);
@@ -187,14 +188,14 @@ export function ExecKpi({ onView }: { onView: (key: ViewKey) => void }) {
   //    хүсэлт, 2026-08-18). Үлдсэн талбар нь барилга эхлүүлэхэд саад тул
   //    статусыг үлдэгдлийн жингээр өгнө.
   const clearance = useMemo<CardData>(() => {
-    if (clearQ.state !== 'ready') return notReady('Газар чөлөөлөлт', 'кадастр ачаалж байна', [clearQ]);
+    if (clearQ.state !== 'ready') return notReady(tr('Газар чөлөөлөлт'), tr('кадастр ачаалж байна'), [clearQ]);
     const d = clearQ.data;
     if (d.pct == null)
-      return { label: 'Газар чөлөөлөлт', value: '—', note: 'өгөгдөл алга', status: 'idle' };
+      return { label: tr('Газар чөлөөлөлт'), value: '—', note: tr('өгөгдөл алга'), status: 'idle' };
     return {
-      label: 'Газар чөлөөлөлт',
-      value: `Чөлөөлсөн ${pct(d.pct, 1)}`,
-      note: `${num(d.remaining)} нэгж талбар чөлөөлөгдөөгүй (${num(d.remainingHa, 1)} га)`,
+      label: tr('Газар чөлөөлөлт'),
+      value: tr('Чөлөөлсөн {0}', pct(d.pct, 1)),
+      note: tr('{0} нэгж талбар чөлөөлөгдөөгүй ({1} га)', num(d.remaining), num(d.remainingHa, 1)),
       status: d.pct >= 95 ? 'good' : d.pct >= 80 ? 'warn' : 'bad',
     };
   }, [clearQ]);
@@ -210,10 +211,10 @@ export function ExecKpi({ onView }: { onView: (key: ViewKey) => void }) {
   ];
 
   return (
-    <section className={s.panel} aria-label="Гүйцэтгэлийн үнэлгээ">
+    <section className={s.panel} aria-label={tr('Гүйцэтгэлийн үнэлгээ')}>
       <header className={s.head}>
-        <h2>Гүйцэтгэлийн үнэлгээ</h2>
-        <span>Багц, гүйцэтгэгч, санхүүжилт, аюулгүй ажиллагаа, төлөвлөлтийн амьд дүгнэлт — дарж дэлгэрэнгүйг үзнэ</span>
+        <h2>{tr('Гүйцэтгэлийн үнэлгээ')}</h2>
+        <span>{tr('Багц, гүйцэтгэгч, санхүүжилт, аюулгүй ажиллагаа, төлөвлөлтийн амьд дүгнэлт — дарж дэлгэрэнгүйг үзнэ')}</span>
       </header>
       <div className={s.grid}>
         {cards.map((c) => (
@@ -227,7 +228,7 @@ export function ExecKpi({ onView }: { onView: (key: ViewKey) => void }) {
                өөрийнх нь даралт л дахин татах үйлдэл болно — сум нь ⟲ болж
                өөрчлөгдөж, юу болохыг урьдчилан хэлнэ. */
             onClick={() => (c.retry ? c.retry() : onView(c.view))}
-            title={c.retry ? `${c.label} — дахин татах` : `${c.label} — дэлгэрэнгүй рүү очих`}
+            title={c.retry ? tr('{0} — дахин татах', c.label) : tr('{0} — дэлгэрэнгүй рүү очих', c.label)}
           >
             <div className={s.top}>
               <i className={s.dot} />

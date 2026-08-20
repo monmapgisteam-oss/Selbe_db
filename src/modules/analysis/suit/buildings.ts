@@ -14,6 +14,7 @@
  */
 
 import { LAYER_BY_ID, layerUrl } from '@/lib/services';
+import { t as tr } from '@/lib/i18nCore';
 import {
   TRANSPORT_FIELDS, classifyBuilding, buildingTrips, vehicleTrips,
   type BuildingCat,
@@ -89,7 +90,7 @@ const num = (v: unknown) => {
  */
 export async function loadBuildings(signal?: AbortSignal): Promise<BuildingPt[]> {
   const def = LAYER_BY_ID[BUILDING_LAYER_ID];
-  if (!def) throw new Error(`Барилгын давхарга каталогт алга: ${BUILDING_LAYER_ID}`);
+  if (!def) throw new Error(tr('Барилгын давхарга каталогт алга: {0}', BUILDING_LAYER_ID));
   const url = layerUrl(def);
 
   const out: BuildingPt[] = [];
@@ -98,7 +99,7 @@ export async function loadBuildings(signal?: AbortSignal): Promise<BuildingPt[]>
   for (let page = 0; page < 20; page++) {
     const r: QueryResp = await fetch(`${url}/query?${pageQuery(page * PAGE)}`, { signal })
       .then((x) => x.json());
-    if (r.error) throw new Error(r.error.message ?? 'ArcGIS query алдаа');
+    if (r.error) throw new Error(r.error.message ?? tr('ArcGIS query алдаа'));
 
     for (const f of r.features ?? []) {
       const c = f.centroid;

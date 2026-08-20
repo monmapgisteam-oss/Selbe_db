@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, type CSSProperties, type Dispatch, type SetStateAction } from 'react';
+import { t as tr } from '@/lib/i18nCore';
 import { Section, Stats, Stat, Bars, Donut, Rows, Data, Empty } from '@/components/ui';
 import { Icon } from '@/components/Icon';
 import { LayerSwatch } from '@/components/LayerSwatch';
@@ -140,28 +141,28 @@ export function ViewPanel({
 const GEOM_CHARTS = [
   {
     geom: 'area' as const,
-    title: 'Талбайн давхарга',
+    title: tr('Талбайн давхарга'),
     /** Индикаторын богино шошго — «Талбай 157.2 га» */
-    short: 'Талбай',
-    note: 'га',
+    short: tr('Талбай'),
+    note: tr('га'),
     /** м² → га */
     value: (d: LayerDef, t: Totals) => (d.qty ? t.q / 10_000 : 0),
-    display: (v: number, t: Totals) => `${num(v, 1)} га · ${num(t.n)}`,
+    display: (v: number, t: Totals) => tr('{0} га · {1}', num(v, 1), num(t.n)),
   },
   {
     geom: 'line' as const,
-    title: 'Шугаман давхарга',
-    short: 'Урт',
-    note: 'км',
+    title: tr('Шугаман давхарга'),
+    short: tr('Урт'),
+    note: tr('км'),
     /** «м» → км; «км» нэгжтэй давхарга шууд */
     value: (d: LayerDef, t: Totals) => (!d.qty ? 0 : d.qty.unit === 'км' ? t.q : t.q / 1_000),
-    display: (v: number, t: Totals) => `${num(v, 1)} км · ${num(t.n)}`,
+    display: (v: number, t: Totals) => tr('{0} км · {1}', num(v, 1), num(t.n)),
   },
   {
     geom: 'point' as const,
-    title: 'Цэгэн давхарга',
-    short: 'Цэг',
-    note: 'ширхэг',
+    title: tr('Цэгэн давхарга'),
+    short: tr('Цэг'),
+    note: tr('ширхэг'),
     /** Цэгт хэмжээ гэж байхгүй — тоо нь өөрөө хэмжигдэхүүн */
     value: (_d: LayerDef, t: Totals) => t.n,
     display: (v: number) => `${num(v)}`,
@@ -175,9 +176,9 @@ const GEOM_CHARTS = [
    */
   {
     geom: 'other' as const,
-    title: 'Хэмжээ бүртгэгдээгүй',
-    short: 'Хэмжээгүй',
-    note: 'ширхэг',
+    title: tr('Хэмжээ бүртгэгдээгүй'),
+    short: tr('Хэмжээгүй'),
+    note: tr('ширхэг'),
     value: (_d: LayerDef, t: Totals) => t.n,
     display: (v: number) => `${num(v)}`,
   },
@@ -241,9 +242,9 @@ function GroupCard({
 }) {
   const x = cardStats(ids, map);
   const rows: { v: string; k: string }[] = [];
-  if (x.km > 0) rows.push({ v: num(x.km, 1), k: 'км' });
-  if (x.ha > 0) rows.push({ v: num(x.ha, 1), k: 'га' });
-  if (x.pts > 0) rows.push({ v: num(x.pts), k: 'цэг' });
+  if (x.km > 0) rows.push({ v: num(x.km, 1), k: tr('км') });
+  if (x.ha > 0) rows.push({ v: num(x.ha, 1), k: tr('га') });
+  if (x.pts > 0) rows.push({ v: num(x.pts), k: tr('цэг') });
 
   const body = (
     <>
@@ -254,7 +255,7 @@ function GroupCard({
       <span className={s.cardStats}>
         <span className={s.cardStat}>
           <span className={`${s.cardVal} num`}>{num(x.layers)}</span>
-          <span className={s.cardKey}>төрөл</span>
+          <span className={s.cardKey}>{tr('төрөл')}</span>
         </span>
         {rows.map((r) => (
           <span key={r.k} className={s.cardStat}>
@@ -266,7 +267,7 @@ function GroupCard({
         {!rows.length && (
           <span className={s.cardStat}>
             <span className={`${s.cardVal} num`}>{num(x.n)}</span>
-            <span className={s.cardKey}>объект</span>
+            <span className={s.cardKey}>{tr('объект')}</span>
           </span>
         )}
       </span>
@@ -354,7 +355,7 @@ function PlanOverview({
   };
 
   return (
-    <Data q={totals} loading="Үзүүлэлт тооцож байна…">
+    <Data q={totals} loading={tr('Үзүүлэлт тооцож байна…')}>
       {(map) => {
         /**
          * ⚠️ Бүс сонгогдсон үед `ZONE_ID`-гүй давхаргыг нийлбэрээс ХАСНА —
@@ -455,7 +456,7 @@ function PlanOverview({
              * сонгогдсон бол задаргаа нь ганц баганатай болох тул алгасна.
              */
             if (x.d.noZone || zone) return [];
-            return [{ d: x.d, f: { field: x.d.zoneField ?? ZONE_FIELD, label: 'Бүсээр' } }];
+            return [{ d: x.d, f: { field: x.d.zoneField ?? ZONE_FIELD, label: tr('Бүсээр') } }];
           });
 
           /**
@@ -485,10 +486,10 @@ function PlanOverview({
         if (untouched || !on.length) {
           return (
             <>
-              <Section title="Ерөнхий үзүүлэлт" note="төсөл бүхэлдээ">
+              <Section title={tr('Ерөнхий үзүүлэлт')} note={tr('төсөл бүхэлдээ')}>
                 <Stats cols={2}>
-                  <Stat value={num(allN)} unit="объект" label="Нийт" accent />
-                  <Stat value={num(PLAN_LAYER_IDS.length)} unit="ш" label="Давхарга" />
+                  <Stat value={num(allN)} unit={tr('объект')} label={tr('Нийт')} accent />
+                  <Stat value={num(PLAN_LAYER_IDS.length)} unit={tr('ш')} label={tr('Давхарга')} />
                 </Stats>
               </Section>
 
@@ -533,8 +534,8 @@ function PlanOverview({
                   * Ганц багцад хуучнаар нэг бүтэн өргөн карт үлдэнэ.
                   */}
                 <Section
-                  title="Сонгосон"
-                  note={`${num(on.length)} давхарга · ${num(totalN)}`}
+                  title={tr('Сонгосон')}
+                  note={tr('{0} давхарга · {1}', num(on.length), num(totalN))}
                 >
                   <div
                     className={pickedGroups.length > 1 ? s.pickedGrid : s.cardGrid}
@@ -604,7 +605,7 @@ function PlanOverview({
                     className={s.zoomBtn}
                     onClick={() => setVisible(VIEW_BY_KEY.plan.initial.slice())}
                   >
-                    Сонголтыг цуцлах · ерөнхий тойм руу
+                    {tr('Сонголтыг цуцлах · ерөнхий тойм руу')}
                   </button>
                 </Section>
           </>
@@ -644,7 +645,7 @@ function LayerTypeCharts({
 
   const q = useAsync(async () => {
     const rows = await queryGroup(layerUrl(d), f.field, layerStats(d), where);
-    const g = groups(rows, f.field, byZone ? 'Тодорхойгүй' : 'Бүртгэгдээгүй', ['n', 'q']);
+    const g = groups(rows, f.field, byZone ? tr('Тодорхойгүй') : tr('Бүртгэгдээгүй'), ['n', 'q']);
     /**
      * ⚠️ «Бүсийн мэдээлэл байхгүй» мөрийг ХАСАХГҮЙ, ЗӨВХӨН нэрийг нь солино.
      * Хасвал чартын нийлбэр картын дүнгээс зөрнө («49.7 км» карт дээр,
@@ -653,7 +654,7 @@ function LayerTypeCharts({
      */
     return g
       .map((x) => (byZone && x.label.trim() === ZONE_NONE.trim()
-        ? { ...x, label: 'Бүсэд хамаарахгүй' }
+        ? { ...x, label: tr('Бүсэд хамаарахгүй') }
         : x))
       .sort((a, b) => b.values.n - a.values.n);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -724,19 +725,19 @@ function LayerTypeCharts({
         <div className={s.facetHead}>
           {d.title}
           <span className={s.facetNote}>
-            {f.label} · {q.data.length} {byZone ? 'бүс' : 'төрөл'}
+            {f.label} · {q.data.length} {byZone ? tr('бүс') : tr('төрөл')}
           </span>
         </div>
 
         {/* Донат — төрлийн эзлэх хувь. 8-аас олон зүсмэг уншигдахгүй тул багана л үлдэнэ. */}
         {items.length <= 8 && (
           <div style={{ margin: '10px 0 12px' }}>
-            <Donut items={items} center={num(total)} centerLabel="ш" selected={selKey} onSelect={pickType} />
+            <Donut items={items} center={num(total)} centerLabel={tr('ш')} selected={selKey} onSelect={pickType} />
           </div>
         )}
 
         <Bars
-          items={items.map((it) => ({ ...it, display: `${num(it.value)} ш` }))}
+          items={items.map((it) => ({ ...it, display: tr('{0} ш', num(it.value)) }))}
           limit={8}
           inline
           selected={selKey}
@@ -748,8 +749,8 @@ function LayerTypeCharts({
         <div className={s.chartBlock}>
           <div className={s.facetHead}>
             {d.qty!.unit === 'м²'
-              ? (byZone ? 'Талбай бүсээр' : 'Талбай төрлөөр')
-              : (byZone ? 'Урт бүсээр' : 'Урт төрлөөр')}
+              ? (byZone ? tr('Талбай бүсээр') : tr('Талбай төрлөөр'))
+              : (byZone ? tr('Урт бүсээр') : tr('Урт төрлөөр'))}
             <span className={s.facetNote}>{qtyText(d, q.data.reduce((a, x) => a + x.values.q, 0))}</span>
           </div>
           {/* ⚠️ Хэмжээний багана нь ӨӨР түлхүүртэй (`:q:`) — шүүлт нь ижил тул
@@ -833,11 +834,11 @@ function LayerDashboard({
 
     const facets = (d.facets ?? []).map((f, i) => ({
       ...f,
-      items: groups(facetRaw[i], f.field, 'Бүртгэгдээгүй', KEYS),
+      items: groups(facetRaw[i], f.field, tr('Бүртгэгдээгүй'), KEYS),
     }));
 
     const byZone = zoneRaw
-      ? groups(zoneRaw, d.zoneField ?? ZONE_FIELD, 'Тодорхойгүй', KEYS)
+      ? groups(zoneRaw, d.zoneField ?? ZONE_FIELD, tr('Тодорхойгүй'), KEYS)
         .filter((x) => x.label.trim() !== ZONE_NONE.trim())
         .sort((a, b) => b.values.n - a.values.n)
       : null;
@@ -872,7 +873,7 @@ function LayerDashboard({
   return (
     <div style={{ '--tone': 'var(--hue)' } as CSSProperties}>
       <div className={s.crumb}>
-        <button type="button" className={s.crumbBack} onClick={onBack}>‹ Жагсаалт</button>
+        <button type="button" className={s.crumbBack} onClick={onBack}>{tr('‹ Жагсаалт')}</button>
         {groupTitle && <span className={s.crumbGroup}>{groupTitle}</span>}
       </div>
 
@@ -882,7 +883,7 @@ function LayerDashboard({
             type="button"
             role="switch"
             aria-checked={on}
-            aria-label={`${d.title} — зурагт харуулах`}
+            aria-label={tr('{0} — зурагт харуулах', d.title)}
             className={`${s.check} ${on ? s.checkOn : ''}`}
             onClick={toggle}
           >
@@ -897,22 +898,22 @@ function LayerDashboard({
             <p className={s.headNote}>
               {geomText(d)}
               {d.note ? ` · ${d.note}` : ''}
-              {!on && ' · зурагт нуугдсан'}
+              {!on && tr(' · зурагт нуугдсан')}
             </p>
           </div>
         </div>
 
         {totals.state === 'error' ? (
-          <Empty label="Үзүүлэлт татагдсангүй." />
+          <Empty label={tr('Үзүүлэлт татагдсангүй.')} />
         ) : (
           <Stats cols={avgQty != null ? 3 : 2}>
-            <Stat value={t ? num(t.n) : '…'} unit="ш" label="Тоо" accent />
-            <Stat value={qty ?? '—'} label={d.qty?.unit === 'м²' ? 'Талбай' : 'Урт'} />
+            <Stat value={t ? num(t.n) : '…'} unit={tr('ш')} label={tr('Тоо')} accent />
+            <Stat value={qty ?? '—'} label={d.qty?.unit === 'м²' ? tr('Талбай') : tr('Урт')} />
             {avgQty != null && (
               <Stat
                 value={num(avgQty, 1)}
                 unit={d.qty!.unit}
-                label={`Дундаж ${d.qty!.unit === 'м²' ? 'талбай' : 'урт'}`}
+                label={tr('Дундаж {0}', d.qty!.unit === 'м²' ? tr('талбай') : tr('урт'))}
               />
             )}
           </Stats>
@@ -920,17 +921,16 @@ function LayerDashboard({
 
         {zone && d.noZone && (
           <p className={s.warnNote}>
-            Энэ давхаргад <b>ZONE_ID</b> талбар байхгүй тул «{zone}» бүсийн шүүлт
-            үйлчлээгүй — дүн нь төслийн бүхэлдээ.
+            {tr('Энэ давхаргад')} <b>ZONE_ID</b> {tr('талбар байхгүй тул «')}{zone}{tr('» бүсийн шүүлт үйлчлээгүй — дүн нь төслийн бүхэлдээ.')}
           </p>
         )}
 
         <button type="button" className={s.zoomBtn} onClick={() => zoomToLayer(d.id)}>
-          Зурагт төвлөрөх
+          {tr('Зурагт төвлөрөх')}
         </button>
       </Section>
 
-      <Data q={q} loading="Задаргаа тооцож байна…">
+      <Data q={q} loading={tr('Задаргаа тооцож байна…')}>
         {(x) => {
           const facets = x.facets.filter((f) => f.items.length >= 2);
           const hasZone = x.byZone && x.byZone.length > 1;
@@ -958,7 +958,7 @@ function LayerDashboard({
                   <Section
                     key={f.label}
                     title={f.label}
-                    note={`${f.items.length} ангилал · дарж зурагт шүүнэ`}
+                    note={tr('{0} ангилал · дарж зурагт шүүнэ', f.items.length)}
                   >
                     {/* Эхний ангиллыг дугуй диаграмаар — эзлэх хувийг нэг дор */}
                     {idx === 0 && f.items.length <= 8 && (
@@ -987,8 +987,8 @@ function LayerDashboard({
               {/* ── Бүсээр ── */}
               {hasZone && (
                 <Section
-                  title="Бүсээр"
-                  note={`${x.byZone!.length} бүс · дарж зурагт шүүнэ`}
+                  title={tr('Бүсээр')}
+                  note={tr('{0} бүс · дарж зурагт шүүнэ', x.byZone!.length)}
                 >
                   <Bars
                     color={d.hue}
@@ -1013,7 +1013,7 @@ function LayerDashboard({
 
               {!facets.length && !hasZone && (
                 <Section>
-                  <Empty label="Энэ давхаргад задлах ангилал бүртгэгдээгүй." />
+                  <Empty label={tr('Энэ давхаргад задлах ангилал бүртгэгдээгүй.')} />
                 </Section>
               )}
             </>
@@ -1124,7 +1124,7 @@ function PickedZone({
     const byStatus = await queryGroup(layerUrl(BUILT_LAYER), B.status, [
       count(oidOf(BUILT_LAYER), 'n'), sum(B.households, 'urh'), sum(B.population, 'pop'),
     ], where);
-    const rows = groups(byStatus, B.status, 'Тодорхойгүй', ['n', 'urh', 'pop']);
+    const rows = groups(byStatus, B.status, tr('Тодорхойгүй'), ['n', 'urh', 'pop']);
     const status = BUILT_STATUS.map((st) => {
       const g = rows.find((r) => r.label === st.value);
       return { ...st, n: g?.values.n ?? 0, urh: g?.values.urh ?? 0, pop: g?.values.pop ?? 0 };
@@ -1144,16 +1144,16 @@ function PickedZone({
   if (!id) return null;
 
   return (
-    <Section title="Сонгосон бүс">
+    <Section title={tr('Сонгосон бүс')}>
       <div className={s.zoneHead} style={{ '--tone': ZONE_TYPES[type] ?? ZONE_TYPE_EMPTY_HUE } as CSSProperties}>
         <span className={s.zoneHeadId}>{id}</span>
         <span className={s.zoneHeadType}>{type}</span>
       </div>
 
       <Stats cols={3}>
-        <Stat value={num(n(F.landHa), 2)} unit="га" label="Талбай" accent />
-        <Stat value={num(n(F.households))} unit="айл" label="Төлөвлөсөн айл" />
-        <Stat value={num(n(F.builtM2) != null ? n(F.builtM2)! / 1000 : null, 0)} unit="мянган м²" label="Барилгын талбай" />
+        <Stat value={num(n(F.landHa), 2)} unit={tr('га')} label={tr('Талбай')} accent />
+        <Stat value={num(n(F.households))} unit={tr('айл')} label={tr('Төлөвлөсөн айл')} />
+        <Stat value={num(n(F.builtM2) != null ? n(F.builtM2)! / 1000 : null, 0)} unit={tr('мянган м²')} label={tr('Барилгын талбай')} />
       </Stats>
 
       <div style={{ marginTop: 10 }}>
@@ -1162,8 +1162,8 @@ function PickedZone({
             { key: 'FAR / BCR', value: <span className="num">{num(n(F.far), 2)} / {num(n(F.bcr), 2)}</span> },
             // ⚠️ Төлөвлөсөн зогсоолын НИЙЛБЭР талбар шинэ бүсийн давхаргад алга —
             //    ил + далдаас угсарна.
-            { key: 'Зогсоол (норм / төлөвлөсөн)', value: <span className="num">{num(n(F.parkNorm))} / {num((n(F.parkPlanOpen) ?? 0) + (n(F.parkPlanUnder) ?? 0))}</span> },
-            ...(n(F.landPending) ? [{ key: 'Газар чөлөөлөлт', value: 'дуусаагүй' }] : []),
+            { key: tr('Зогсоол (норм / төлөвлөсөн)'), value: <span className="num">{num(n(F.parkNorm))} / {num((n(F.parkPlanOpen) ?? 0) + (n(F.parkPlanUnder) ?? 0))}</span> },
+            ...(n(F.landPending) ? [{ key: tr('Газар чөлөөлөлт'), value: tr('дуусаагүй') }] : []),
             // ⚠️ «Батлагдсан төсөв» ба «Гүйцэтгэгч» ХАСАГДСАН: шинэ бүсийн
             //    давхаргад тэр талбарууд байхгүй, санхүүгийн дүн «Тохиромжтой
             //    байдлын үнэлгээ» ба «Хөрөнгө оруулалт» хоёрт төвлөрсөн.
@@ -1171,11 +1171,11 @@ function PickedZone({
         />
       </div>
 
-      <Data q={q} loading="Бүсийн барилга…">
+      <Data q={q} loading={tr('Бүсийн барилга…')}>
         {(x) => x.built === 0 ? null : (
           <div style={{ marginTop: 16 }}>
             <div className={s.facetHead}>
-              Барилга <span className={s.facetNote}>{num(x.built)} ш · {num(x.urh)} өрх · {num(x.pop)} хүн</span>
+              {tr('Барилга')} <span className={s.facetNote}>{num(x.built)} {tr('ш ·')} {num(x.urh)} {tr('өрх ·')} {num(x.pop)} {tr('хүн')}</span>
             </div>
             <Bars
               selected={selSt}
@@ -1192,7 +1192,7 @@ function PickedZone({
 
       {zone !== id && (
         <button type="button" className={s.zoomBtn} onClick={() => setZone(id)}>
-          Энэ бүсээр бүгдийг шүүх
+          {tr('Энэ бүсээр бүгдийг шүүх')}
         </button>
       )}
     </Section>
@@ -1239,16 +1239,16 @@ function PickedFeature({
   const rows: { key: string; value: React.ReactNode }[] = [];
   if (def.qty && attrs[def.qty.field] != null) {
     rows.push({
-      key: def.qty.unit === 'м²' ? 'Талбай' : 'Урт',
+      key: def.qty.unit === 'м²' ? tr('Талбай') : tr('Урт'),
       value: <span className="num">{num(Number(attrs[def.qty.field]), 1)} {def.qty.unit}</span>,
     });
   }
   // ⚠️ «Нэгж үнэ» ХАСАГДСАН — санхүүгийн дүн зөвхөн анализын модульд.
   if (def.id === BUILT_LAYER.id) {
     for (const [f, label] of [
-      [BUILT_FIELDS.floors, 'Давхар'],
-      [BUILT_FIELDS.households, 'Өрхийн тоо'],
-      [BUILT_FIELDS.population, 'Хүн ам'],
+      [BUILT_FIELDS.floors, tr('Давхар')],
+      [BUILT_FIELDS.households, tr('Өрхийн тоо')],
+      [BUILT_FIELDS.population, tr('Хүн ам')],
     ] as [string, string][]) {
       if (attrs[f] == null) continue;
       rows.push({ key: label, value: <span className="num">{num(Number(attrs[f]))}</span> });
@@ -1260,10 +1260,10 @@ function PickedFeature({
   if (def.id === 'land:left') {
     const F = PARCEL_LEFT.fields;
     for (const [f, label] of [
-      [F.parcelNo, 'Нэгж талбарын №'],
-      [F.owner, 'Эзэмшигч'],
-      [F.address, 'Хаяг'],
-      [F.note, 'Тайлбар'],
+      [F.parcelNo, tr('Нэгж талбарын №')],
+      [F.owner, tr('Эзэмшигч')],
+      [F.address, tr('Хаяг')],
+      [F.note, tr('Тайлбар')],
     ] as [string, string][]) {
       const v = text(attrs[f], '').trim();
       if (v) rows.push({ key: label, value: v });
@@ -1285,12 +1285,12 @@ function PickedFeature({
   };
 
   return (
-    <Section title="Сонгосон" note={def.title}>
+    <Section title={tr('Сонгосон')} note={def.title}>
       {hasZone && (
         <button type="button" className={s.zoneJump} onClick={() => setZone(zoneId)}>
-          <span className={s.zoneJumpLabel}>Бүс</span>
+          <span className={s.zoneJumpLabel}>{tr('Бүс')}</span>
           <span className={s.zoneJumpValue}>{zoneId}</span>
-          <span className={s.zoneJumpGo}>шүүх →</span>
+          <span className={s.zoneJumpGo}>{tr('шүүх →')}</span>
         </button>
       )}
 
@@ -1318,7 +1318,7 @@ function PickedFeature({
         </div>
       )}
 
-      {rows.length === 0 && filters.length === 0 && <Empty label="Энэ дээр бүртгэгдсэн талбар алга." />}
+      {rows.length === 0 && filters.length === 0 && <Empty label={tr('Энэ дээр бүртгэгдсэн талбар алга.')} />}
 
       {/**
         * ⚠️ Зураг дээр дарсны дараа «энэ юу вэ» гэдгийг харуулдаг байсан ч тэр
@@ -1327,7 +1327,7 @@ function PickedFeature({
         * харах боломжгүй. Нэг товчоор ЗӨВХӨН тэр давхаргыг үлдээнэ.
         */}
       <button type="button" className={s.zoomBtn} onClick={onIsolate}>
-        {isolated ? 'Бүх давхаргыг буцааж харуулах' : `Зөвхөн «${def.title}»-г харуулах`}
+        {isolated ? tr('Бүх давхаргыг буцааж харуулах') : tr('Зөвхөн «{0}»-г харуулах', def.title)}
       </button>
     </Section>
   );

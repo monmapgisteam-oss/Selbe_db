@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, type ReactNode } from 'react';
+import { t as tr } from '@/lib/i18nCore';
 import {
   CATEGORIES, DENSITY_BY_TYPE, PARKING_SOURCES, GREEN_SOURCES, GREEN_RADII, LOCATION_RADII, BUILDING_PURPOSES, BUILDING_PURPOSE_OTHER,
   type Indicator, type ParkingOpt, type ParkingSource, type CategoryKey,
@@ -41,7 +42,7 @@ function Formula({ children }: { children: ReactNode }) {
         className={`${s.subLabel} ${s.toggleLabel} ${off ? s.toggleOff : ''}`}
         onClick={() => setOff((v) => !v)}
       >
-        <span>Тооцооны томьёо</span><i>▼</i>
+        <span>{tr('Тооцооны томьёо')}</span><i>▼</i>
       </button>
       {!off && <div className={s.parkFormula}>{children}</div>}
     </>
@@ -121,7 +122,7 @@ export function CategoryPie({
         ),
       }))}
       center={overall ?? '—'}
-      centerLabel="дундаж оноо"
+      centerLabel={tr('дундаж оноо')}
       selected={filter}
       onSelect={(k) => setFilter(filter === k ? null : (k as CategoryKey))}
     />
@@ -152,7 +153,7 @@ export function IndicatorPicker({
   return (
     <>
       <div className={s.indHead} style={{ marginTop: 10 }}>
-        <span>Үзүүлэлт</span><span>Жин</span><span>Норм хангасан</span><span />
+        <span>{tr('Үзүүлэлт')}</span><span>{tr('Жин')}</span><span>{tr('Норм хангасан')}</span><span />
       </div>
 
       {groups.map(({ c, items }) => (
@@ -195,8 +196,8 @@ export function IndicatorPicker({
 
       <div className={s.indNote}>
         <div className={s.wReq}>
-          <b>Норм:</b> {normLine(ind)}
-          <span className="wt">жин {((ind.weight / totalW) * 100).toFixed(0)}%</span>
+          <b>{tr('Норм:')}</b> {normLine(ind)}
+          <span className="wt">{tr('жин')} {((ind.weight / totalW) * 100).toFixed(0)}%</span>
         </div>
         <div className={s.wSrc}>{ind.norm}</div>
       </div>
@@ -222,10 +223,10 @@ export function Weights({
       {indicators.filter((i) => !i.ref).map((i) => {
         // Босго засварлах талбарууд — горимоос хамаарч өөр
         const fields: [keyof Indicator, string][] = i.mode === 'band'
-          ? [['optMin', 'Нормын доод'], ['optMax', 'Нормын дээд'], ['hardMin', '0 оноо (доош)'], ['hardMax', '0 оноо (дээш)']]
+          ? [['optMin', tr('Нормын доод')], ['optMax', tr('Нормын дээд')], ['hardMin', tr('0 оноо (доош)')], ['hardMax', tr('0 оноо (дээш)')]]
           : i.mode === 'higher'
-            ? [['target', 'Нормын доод'], ['hardMin', '0 оноо']]
-            : [['best', 'Нормын дээд'], ['hardMax', '0 оноо']];
+            ? [['target', tr('Нормын доод')], ['hardMin', tr('0 оноо')]]
+            : [['best', tr('Нормын дээд')], ['hardMax', tr('0 оноо')]];
 
         return (
           <div key={i.id} className={s.wRow} style={{ opacity: i.weight === 0 ? 0.45 : 1 }}>
@@ -236,10 +237,10 @@ export function Weights({
             <input
               type="range" className={s.wSlider} min={0} max={40} step={1}
               value={i.weight}
-              aria-label={`${i.name} — жин`}
+              aria-label={tr('{0} — жин', i.name)}
               onChange={(e) => patch(i.id, 'weight', Number(e.target.value))}
             />
-            <div className={s.wReq}><b>Норм:</b> {normLine(i)}</div>
+            <div className={s.wReq}><b>{tr('Норм:')}</b> {normLine(i)}</div>
             <div className={s.wSrc}>{i.norm}</div>
 
             {i.byType ? (
@@ -301,15 +302,15 @@ export function Parking({
   const pop = rows.reduce((a, r) => a + r.population, 0);
   /** Хэрэгцээний томьёоны ЗҮҮН тал — сонгосон аргаас хамаарна */
   const needExpr = parking.source === 'households'
-    ? <>{nf(hh)} өрх × {parking.perHousehold.toFixed(2)} зогсоол</>
+    ? <>{nf(hh)} {tr('өрх ×')} {parking.perHousehold.toFixed(2)} {tr('зогсоол')}</>
     : parking.source === 'population'
-      ? <>{nf(pop)} хүн × {parking.per1000} ÷ 1000</>
-      : <>бүх бүсийн нормд заасан зогсоолын нийлбэр</>;
+      ? <>{nf(pop)} {tr('хүн ×')} {parking.per1000} ÷ 1000</>
+      : <>{tr('бүх бүсийн нормд заасан зогсоолын нийлбэр')}</>;
 
   return (
     // ⚠️ `.plain` — бичвэр БҮГД цагаан, онооны ногоон/улаан алга
     <div className={s.plain}>
-      <div className={s.subLabel}>Хэрэгцээг ямар аргаар тооцох вэ?</div>
+      <div className={s.subLabel}>{tr('Хэрэгцээг ямар аргаар тооцох вэ?')}</div>
       <div className={s.toggles}>
         {PARKING_SOURCES.map((src) => (
           <label key={src.key} className={s.chk}>
@@ -326,7 +327,7 @@ export function Parking({
       {parking.source !== 'norm' && (
         <div className={s.sliderRow}>
           <label>
-            <span>{parking.source === 'households' ? 'Нэг өрхөд ногдох зогсоол' : '1000 хүнд ногдох зогсоол'}</span>
+            <span>{parking.source === 'households' ? tr('Нэг өрхөд ногдох зогсоол') : tr('1000 хүнд ногдох зогсоол')}</span>
             <span className="val">
               {parking.source === 'households' ? parking.perHousehold.toFixed(2) : parking.per1000}
             </span>
@@ -337,7 +338,7 @@ export function Parking({
             max={parking.source === 'households' ? 2 : 600}
             step={parking.source === 'households' ? 0.05 : 10}
             value={parking.source === 'households' ? parking.perHousehold : parking.per1000}
-            aria-label="Зогсоолын коэффициент"
+            aria-label={tr('Зогсоолын коэффициент')}
             onChange={(e) => setParking(parking.source === 'households'
               ? { ...parking, perHousehold: Number(e.target.value) }
               : { ...parking, per1000: Number(e.target.value) })}
@@ -351,34 +352,34 @@ export function Parking({
           {pct == null ? '—' : Math.round(pct)}<i>%</i>
         </div>
         <div className={s.parkHeadTxt}>
-          <b>Хэрэгцээ хангасан хувь</b>
-          <span>Төлөвлөгөөнд <b>{nf(supply)}</b> · шаардлагатай <b>{nf(need)}</b> зогсоол</span>
+          <b>{tr('Хэрэгцээ хангасан хувь')}</b>
+          <span>{tr('Төлөвлөгөөнд')} <b>{nf(supply)}</b> {tr('· шаардлагатай')} <b>{nf(need)}</b> {tr('зогсоол')}</span>
         </div>
       </div>
 
-      <div className={s.parkBar} title="Ерөнхий төлөвлөгөөнд тусгагдсан зогсоол нийт хэрэгцээний хэдэн хувийг хангаж байгааг харуулна">
+      <div className={s.parkBar} title={tr('Ерөнхий төлөвлөгөөнд тусгагдсан зогсоол нийт хэрэгцээний хэдэн хувийг хангаж байгааг харуулна')}>
         <span style={{ width: `${pct == null ? 0 : clamp(pct, 0, 100)}%`, background: CHART }} />
       </div>
-      <div className={s.parkScale}><span>0%</span><span>Норм 100%</span></div>
+      <div className={s.parkScale}><span>0%</span><span>{tr('Норм 100%')}</span></div>
 
       {/* ⚠️ БҮТЭН гинж: хэрэгцээ → байгаа → хангалт. Урьд нь зөвхөн хэрэгцээний
           мөр байсан тул дээрх хувь ХААНААС гарсан нь харагддаггүй байв. */}
       <Formula>
-        Хэрэгцээ = {needExpr} = <b>{nf(need)}</b> зогсоол<br />
-        Ерөнхий төлөвлөгөөнд тусгагдсан = {nf(il)} ил + {nf(dald)} далд = <b>{nf(supply)}</b> зогсоол<br />
-        Хангалт = {nf(supply)} ÷ {nf(need)} × 100 = <b>{pct == null ? '—' : `${Math.round(pct)}%`}</b>
+        {tr('Хэрэгцээ =')} {needExpr} = <b>{nf(need)}</b> {tr('зогсоол')}<br />
+        {tr('Ерөнхий төлөвлөгөөнд тусгагдсан =')} {nf(il)} {tr('ил +')} {nf(dald)} {tr('далд =')} <b>{nf(supply)}</b> {tr('зогсоол')}<br />
+        {tr('Хангалт =')} {nf(supply)} ÷ {nf(need)} × 100 = <b>{pct == null ? '—' : `${Math.round(pct)}%`}</b>
       </Formula>
 
       <div className={s.finSummary}>
-        <div><span>Ил болон далд зогсоол</span><b>{nf(il)} / {nf(dald)}</b></div>
+        <div><span>{tr('Ил болон далд зогсоол')}</span><b>{nf(il)} / {nf(dald)}</b></div>
         <div>
-          <span>{gap >= 0 ? 'Илүүдэл' : 'Дутагдал'}</span>
+          <span>{gap >= 0 ? tr('Илүүдэл') : tr('Дутагдал')}</span>
           <b>{gap >= 0 ? '+' : '−'}{nf(Math.abs(gap))}</b>
         </div>
         {/* ⚠️ «N / M» биш ЦЭВЭР ТОО: хуваарь нь хоёр нүдэнд давхардаж, «23/23»
             гэдгийг «23 бүсийн 23» гэхээсээ бутархай мэт уншиж болзошгүй байв. */}
-        <div><span>Дутагдалтай бүс</span><b>{short}</b></div>
-        <div><span>Хангалттай бүс</span><b>{withNeed.length - short}</b></div>
+        <div><span>{tr('Дутагдалтай бүс')}</span><b>{short}</b></div>
+        <div><span>{tr('Хангалттай бүс')}</span><b>{withNeed.length - short}</b></div>
       </div>
     </div>
   );
@@ -411,7 +412,7 @@ export function Green({
   const perPerson = green.source === 'perPerson';
   const buffer = green.source === 'buffer';
   /** Нэгж — «нөлөөллийн бүс» арга нь ХҮН тоолдог, бусад нь м² хэмждэг */
-  const unit = buffer ? 'оршин суугч' : 'м²';
+  const unit = buffer ? tr('оршин суугч') : tr('м²');
 
   /**
    * Бүс бүрийн байгаа ба шаардлагатай хэмжээ. Хэрэгцээгүй бол `null`.
@@ -456,15 +457,15 @@ export function Green({
   const needPop = withNeed.reduce((a, p) => a + p.r.residentPop, 0);
   const needLandM2 = withNeed.reduce((a, p) => a + p.r.polyHa * 10_000, 0);
   const needExpr = buffer
-    ? <>бүсийн бүх оршин суугч</>
+    ? <>{tr('бүсийн бүх оршин суугч')}</>
     : perPerson
-      ? <>{nf(needPop)} оршин суугч × {green.perPerson} м²</>
-      : <>{nf(needLandM2 / 10_000, 1)} га × {green.share}%</>;
+      ? <>{nf(needPop)} {tr('оршин суугч ×')} {green.perPerson} {tr('м²')}</>
+      : <>{nf(needLandM2 / 10_000, 1)} {tr('га ×')} {green.share}%</>;
 
   return (
     // ⚠️ `.plain` — бичвэр БҮГД цагаан, онооны ногоон/улаан алга
     <div className={s.plain}>
-      <div className={s.subLabel}>Хэрэгцээг ямар аргаар тооцох вэ?</div>
+      <div className={s.subLabel}>{tr('Хэрэгцээг ямар аргаар тооцох вэ?')}</div>
       <div className={s.toggles}>
         {GREEN_SOURCES.map((src) => (
           <label key={src.key} className={s.chk}>
@@ -480,9 +481,9 @@ export function Green({
 
       <div className={s.sliderRow}>
         <label>
-          <span>{buffer ? 'Нөлөөллийн бүсийн радиус' : perPerson ? 'Нэг оршин суугчид ногдох ногоон' : 'Талбайд ногоон эзлэх хувь'}</span>
+          <span>{buffer ? tr('Нөлөөллийн бүсийн радиус') : perPerson ? tr('Нэг оршин суугчид ногдох ногоон') : tr('Талбайд ногоон эзлэх хувь')}</span>
           <span className="val">
-            {buffer ? `${green.radius} м` : perPerson ? `${green.perPerson.toFixed(1)} м²` : `${green.share}%`}
+            {buffer ? tr('{0} м', green.radius) : perPerson ? tr('{0} м²', green.perPerson.toFixed(1)) : `${green.share}%`}
           </span>
         </label>
 
@@ -517,7 +518,7 @@ export function Green({
             max={perPerson ? 20 : 60}
             step={perPerson ? 0.5 : 1}
             value={perPerson ? green.perPerson : green.share}
-            aria-label="Ногоон байгууламжийн коэффициент"
+            aria-label={tr('Ногоон байгууламжийн коэффициент')}
             onChange={(e) => {
               const v = Number(e.target.value);
               setGreen(perPerson ? { ...green, perPerson: v } : { ...green, share: v });
@@ -532,44 +533,44 @@ export function Green({
           {pct == null ? '—' : Math.round(pct)}<i>%</i>
         </div>
         <div className={s.parkHeadTxt}>
-          <b>{buffer ? 'Ногоон байгууламжийн хүртээмж' : 'Хэрэгцээ хангасан хувь'}</b>
+          <b>{buffer ? tr('Ногоон байгууламжийн хүртээмж') : tr('Хэрэгцээ хангасан хувь')}</b>
           <span>
-            {buffer ? 'Хамрагдсан' : 'Байгаа'} <b>{nf(haveNeeded)}</b> ·{' '}
-            {buffer ? 'нийт' : 'шаардлагатай'} <b>{nf(need)}</b> {unit}
+            {buffer ? tr('Хамрагдсан') : tr('Байгаа')} <b>{nf(haveNeeded)}</b> ·{' '}
+            {buffer ? tr('нийт') : tr('шаардлагатай')} <b>{nf(need)}</b> {unit}
           </span>
         </div>
       </div>
 
       <div className={s.parkBar} title={buffer
-        ? 'Ногоон байгууламжийн нөлөөллийн бүсэд хамрагдсан оршин суугчийн эзлэх хувь'
-        : 'Байгаа ногоон байгууламж нийт хэрэгцээний хэдэн хувийг хангаж байгааг харуулна'}>
+        ? tr('Ногоон байгууламжийн нөлөөллийн бүсэд хамрагдсан оршин суугчийн эзлэх хувь')
+        : tr('Байгаа ногоон байгууламж нийт хэрэгцээний хэдэн хувийг хангаж байгааг харуулна')}>
         <span style={{ width: `${pct == null ? 0 : clamp(pct, 0, 100)}%`, background: CHART }} />
       </div>
-      <div className={s.parkScale}><span>0%</span><span>Норм 100%</span></div>
+      <div className={s.parkScale}><span>0%</span><span>{tr('Норм 100%')}</span></div>
 
       {/* ⚠️ БҮТЭН гинж — дээрх хувь хаанаас гарсныг мөр мөрөөр нь харуулна */}
       <Formula>
-        {buffer ? 'Нийт' : 'Хэрэгцээ'} = {needExpr} = <b>{nf(need)}</b> {unit}<br />
-        {buffer ? `Хамрагдсан (${green.radius} м дотор)` : 'Байгаа'} = <b>{nf(haveNeeded)}</b> {unit}<br />
-        Хангалт = {nf(haveNeeded)} ÷ {nf(need)} × 100 = <b>{pct == null ? '—' : `${Math.round(pct)}%`}</b>
+        {buffer ? tr('Нийт') : tr('Хэрэгцээ')} = {needExpr} = <b>{nf(need)}</b> {unit}<br />
+        {buffer ? tr('Хамрагдсан ({0} м дотор)', green.radius) : tr('Байгаа')} = <b>{nf(haveNeeded)}</b> {unit}<br />
+        {tr('Хангалт =')} {nf(haveNeeded)} ÷ {nf(need)} × 100 = <b>{pct == null ? '—' : `${Math.round(pct)}%`}</b>
       </Formula>
 
       <div className={s.finSummary}>
         <div>
-          <span>Ногоон эзлэх хувь (төсөл)</span>
+          <span>{tr('Ногоон эзлэх хувь (төсөл)')}</span>
           {/* ⚠️ Энэ нь ХАНГАМЖААС тусдаа тоо: нийт газарт ногоон хэдэн хувийг
               эзэлж байгааг заана («30% ногоон уу?» гэсэн асуултын шууд хариу). */}
           <b>{sharePct == null ? '—' : `${nf(sharePct, 1)}%`}</b>
         </div>
         <div>
-          <span>Ногоон / нийт талбай</span>
-          <b>{nf(haveAll / 10_000, 1)} / {nf(landM2 / 10_000, 1)} га</b>
+          <span>{tr('Ногоон / нийт талбай')}</span>
+          <b>{nf(haveAll / 10_000, 1)} / {nf(landM2 / 10_000, 1)} {tr('га')}</b>
         </div>
         <div>
-          <span>{buffer ? 'Хамрагдаагүй' : gap >= 0 ? 'Илүүдэл' : 'Дутагдал'}</span>
+          <span>{buffer ? tr('Хамрагдаагүй') : gap >= 0 ? tr('Илүүдэл') : tr('Дутагдал')}</span>
           <b>{buffer ? nf(need - haveNeeded) : `${gap >= 0 ? '+' : '−'}${nf(Math.abs(gap))}`} {unit}</b>
         </div>
-        <div><span>Дутагдалтай бүс</span><b>{short}</b></div>
+        <div><span>{tr('Дутагдалтай бүс')}</span><b>{short}</b></div>
       </div>
     </div>
   );
@@ -627,7 +628,7 @@ export function Location({ pts, sel, onSel, radius, setRadius, publicOnly, setPu
         checked={publicOnly}
         onChange={(e) => setPublicOnly(e.target.checked)}
       />
-      <span>Улаан бүсийн барилга</span>
+      <span>{tr('Улаан бүсийн барилга')}</span>
     </label>
   );
 
@@ -635,7 +636,7 @@ export function Location({ pts, sel, onSel, radius, setRadius, publicOnly, setPu
     return (
       <div className={s.plain}>
         {check}
-        <p className={`${s.muted} ${s.small}`}>Барилгын өгөгдөл алга</p>
+        <p className={`${s.muted} ${s.small}`}>{tr('Барилгын өгөгдөл алга')}</p>
       </div>
     );
   }
@@ -667,21 +668,21 @@ export function Location({ pts, sel, onSel, radius, setRadius, publicOnly, setPu
       }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.25 }}>
-            {me.purpose || 'Тодорхойгүй'}
+            {me.purpose || tr('Тодорхойгүй')}
           </div>
           <div style={{ fontSize: 10.5, opacity: 0.7, marginTop: 2 }}>
-            {me.zone ?? '—'} · барилга #{me.oid}
-            {me.pop > 0 ? ` · ${nf(me.pop)} оршин суугч` : ''}
-            {me.trips > 0 ? ` · ${nf(me.trips)} зорчилт/ц` : ''}
+            {me.zone ?? '—'} {tr('· барилга #')}{me.oid}
+            {me.pop > 0 ? tr(' · {0} оршин суугч', nf(me.pop)) : ''}
+            {me.trips > 0 ? tr(' · {0} зорчилт/ц', nf(me.trips)) : ''}
           </div>
         </div>
         <button type="button" className={s.mini} onClick={() => onSel(null)}>
-          Цуцлах
+          {tr('Цуцлах')}
         </button>
       </div>
 
       {/* Радиусын задаргаа — дарж дэлгэрэнгүйг сольно */}
-      <div className={s.subLabel} style={{ marginTop: 11 }}>Эргэн тойрны барилга</div>
+      <div className={s.subLabel} style={{ marginTop: 11 }}>{tr('Эргэн тойрны барилга')}</div>
       <div style={{ display: 'flex', gap: 4 }}>
         {LOCATION_RADII.map((v) => {
           const on = radius === v;
@@ -709,39 +710,39 @@ export function Location({ pts, sel, onSel, radius, setRadius, publicOnly, setPu
         {/* ⚠️ Зай нь ЭНД, шошготойгоо хамт — толгойн «том тоо» байхдаа юуны
             тоо болох нь ойлгомжгүй байв. */}
         <div>
-          <span>Хамгийн ойр барилга</span>
-          <b>{near.length ? `${Math.round(near[0].d)} м` : '—'}</b>
+          <span>{tr('Хамгийн ойр барилга')}</span>
+          <b>{near.length ? tr('{0} м', Math.round(near[0].d)) : '—'}</b>
         </div>
-        <div><span>Өдрийн урсгал</span><b>{nf(flow)} /ц</b></div>
-        <div><span>Ижил зориулалт</span><b>{rivals}</b></div>
-        <div><span>{radius} м доторх</span><b>{list.length} барилга</b></div>
+        <div><span>{tr('Өдрийн урсгал')}</span><b>{nf(flow)} {tr('/ц')}</b></div>
+        <div><span>{tr('Ижил зориулалт')}</span><b>{rivals}</b></div>
+        <div><span>{radius} {tr('м доторх')}</span><b>{list.length} {tr('барилга')}</b></div>
       </div>
 
       {/* Дэлгэрэнгүй жагсаалт — зай + зориулалт */}
       <div className={s.subLabel} style={{ marginTop: 11 }}>
-        {radius} м доторх {list.length} барилга
+        {radius} {tr('м доторх')} {list.length} {tr('барилга')}
       </div>
       <div className={`${s.econChart} ${s.pchart}`}>
         {list.length === 0 && (
-          <p className={`${s.muted} ${s.small}`}>Энэ зайд өөр барилга алга</p>
+          <p className={`${s.muted} ${s.small}`}>{tr('Энэ зайд өөр барилга алга')}</p>
         )}
         {list.map((x) => (
           <button
             key={x.p.oid}
             type="button"
             className={s.econRow}
-            title="Дарвал энэ барилга руу шилжинэ"
+            title={tr('Дарвал энэ барилга руу шилжинэ')}
             onClick={() => onSel(x.p.oid)}
           >
             <div className={s.econRowTop}>
               <i style={{ background: groupColor(x.p.group) }} />
-              <span className="nm">{x.p.purpose || 'Тодорхойгүй'}</span>
+              <span className="nm">{x.p.purpose || tr('Тодорхойгүй')}</span>
               <b>{Math.round(x.d)} м</b>
             </div>
             <div className={s.econMeta}>
               {x.p.zone ?? '—'}
-              {x.p.pop > 0 ? ` · ${nf(x.p.pop)} оршин суугч` : ''}
-              {x.p.trips > 0 ? ` · ${nf(x.p.trips)} зорчилт/ц` : ''}
+              {x.p.pop > 0 ? tr(' · {0} оршин суугч', nf(x.p.pop)) : ''}
+              {x.p.trips > 0 ? tr(' · {0} зорчилт/ц', nf(x.p.trips)) : ''}
             </div>
           </button>
         ))}

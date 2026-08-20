@@ -313,6 +313,28 @@
 }
 .iconBtn:hover { background: var(--surface-2); color: var(--ink); }
 
+/* Толгойн БАРУУН талын хэрэгслийн бүлэг — эрх, хэл, гэрэлтүүлэг.
+   ⚠️ `margin-left: auto` нь `.head` (flex)-ийн үлдсэн зайг бүхэлд нь идэж
+   бүлгийг баруун ирмэг рүү түлхнэ. Урьд нь энэ үүргийг `ActiveFilterChip`
+   гүйцэтгэдэг байсан ч тэр нь шүүлтгүй үед `null` буцаадаг тул товчнууд
+   брэндийн хажууд наалддаг байв. */
+.headTools {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
+/* Хэлний товч — дүрсний оронд хоёр үсэг. Өндөр/өргөн нь `.iconBtn`-тэй
+   ижил тул толгойн товчнуудын эгнээ тэгширсэн хэвээр. */
+.localeCode {
+  font-size: 0.68rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ── Газрын зураг ── */
 .map { grid-area: map; position: relative; display: flex; min-width: 0; }
 

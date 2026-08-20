@@ -1,3 +1,4 @@
+import { t as tr } from '@/lib/i18nCore';
 /**
  * ТЭЭВЭР-ИДЭВХИЙН ШИНЖИЛГЭЭ — барилгын ангилал, хүн-зорчилт (trip) үүсгэлт,
  * тээврийн хуваарь, замын эрэлт, автобусны хүртээмж.
@@ -17,7 +18,7 @@ export const TRANSPORT_FIELDS = {
   purpose: 'Зориулалт_m',
   population: 'Population',
   capacity: 'Huchin_chadal',
-  block: 'Блокы',
+  block: tr('Блокы'),
   zone: 'ZONE_ID',
 } as const;
 
@@ -32,13 +33,13 @@ export const BUILDING_CATS: BuildingCat[] = [
 ];
 
 export const CAT_LABEL: Record<BuildingCat, string> = {
-  residential: 'Орон сууц',
-  school: 'Сургууль',
-  kindergarten: 'Цэцэрлэг',
-  hospital: 'Эмнэлэг',
-  office: 'Оффис',
-  service: 'Худалдаа, үйлчилгээ',
-  other: 'Бусад',
+  residential: tr('Орон сууц'),
+  school: tr('Сургууль'),
+  kindergarten: tr('Цэцэрлэг'),
+  hospital: tr('Эмнэлэг'),
+  office: tr('Оффис'),
+  service: tr('Худалдаа, үйлчилгээ'),
+  other: tr('Бусад'),
 };
 
 /** Ангилал бүрийн дүрслэлийн өнгө (газрын зураг, легенд, KPI) */
@@ -152,11 +153,11 @@ export type VCBand = { max: number; label: string; color: string };
  * улаан руу явна. 1.0-ээс дээш нь хүчин чадал хэтэрсэн — түгжрэл.
  */
 export const VC_BANDS: VCBand[] = [
-  { max: 0.60, label: 'Чөлөөтэй', color: '#16a34a' },
-  { max: 0.80, label: 'Хэвийн', color: '#a3d84a' },
-  { max: 0.90, label: 'Ачаалалтай', color: '#f59e0b' },
-  { max: 1.00, label: 'Хүнд', color: '#ef4444' },
-  { max: Infinity, label: 'Түгжирсэн', color: '#b91c1c' },
+  { max: 0.60, label: tr('Чөлөөтэй'), color: '#16a34a' },
+  { max: 0.80, label: tr('Хэвийн'), color: '#a3d84a' },
+  { max: 0.90, label: tr('Ачаалалтай'), color: '#f59e0b' },
+  { max: 1.00, label: tr('Хүнд'), color: '#ef4444' },
+  { max: Infinity, label: tr('Түгжирсэн'), color: '#b91c1c' },
 ];
 
 export function vcBand(ratio: number): VCBand {
@@ -178,7 +179,7 @@ export function busBand(distM: number): BusBand {
 }
 
 export const BUS_BAND_LABEL: Record<BusBand, string> = {
-  good: 'Сайн хүртээмж (≤400 м)',
-  ok: 'Боломжийн (400–800 м)',
-  poor: 'Үйлчилгээ дутмаг (>800 м)',
+  good: tr('Сайн хүртээмж (≤400 м)'),
+  ok: tr('Боломжийн (400–800 м)'),
+  poor: tr('Үйлчилгээ дутмаг (>800 м)'),
 };

@@ -5,6 +5,7 @@ import {
   type PointerEvent as ReactPointerEvent, type ReactNode,
 } from 'react';
 import { clamp } from '@/lib/analysis/score';
+import { t as tr } from '@/lib/i18nCore';
 import { COLLAPSE_KEY, PANEL_KEY, readSet } from './model';
 import s from '../suitability.module.css';
 
@@ -76,7 +77,7 @@ export function Shell({ left, map, right }: { left: ReactNode; map: ReactNode; r
       <aside className={`${s.panel} ${s.left}`}>{left}</aside>
       <div
         className={`${s.resizer} ${dragging === '--left-w' ? s.resizerActive : ''}`}
-        title="Чирж өргөсгөнө · давхар товшиж анхны хэмжээнд буцаана"
+        title={tr('Чирж өргөсгөнө · давхар товшиж анхны хэмжээнд буцаана')}
         onPointerDown={start('--left-w', 'left')}
         onDoubleClick={reset('--left-w')}
       />
@@ -94,7 +95,7 @@ export function Shell({ left, map, right }: { left: ReactNode; map: ReactNode; r
         <>
           <div
             className={`${s.resizer} ${dragging === '--right-w' ? s.resizerActive : ''}`}
-            title="Чирж өргөсгөнө · давхар товшиж анхны хэмжээнд буцаана"
+            title={tr('Чирж өргөсгөнө · давхар товшиж анхны хэмжээнд буцаана')}
             onPointerDown={start('--right-w', 'right')}
             onDoubleClick={reset('--right-w')}
           />

@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
 import { useMap } from '@/components/MapCanvas';
-import type { ViewKey } from '@/lib/services';
+import { ZONE_LAYER, type ViewKey } from '@/lib/services';
 
 /**
  * Идэвхтэй шүүлтийн ГАНЦ эх сурвалж.
@@ -65,7 +65,7 @@ const Ctx = createContext<FilterApi>({
 export const useFilter = () => useContext(Ctx);
 
 export function FilterProvider({ children }: { children: ReactNode }) {
-  const { setHighlight } = useMap();
+  const { setHighlight, zoomToWhere, zoomToLayer } = useMap();
   const [active, setActive] = useState<ActiveFilter | null>(null);
 
   /**
@@ -74,13 +74,27 @@ export function FilterProvider({ children }: { children: ReactNode }) {
    * ⚠️ `useEffect`-ээр зураг руу тусад нь бичихгүй: тэгвэл нэг render-ийн зайд
    * самбар шинэ сонголтоо, зураг хуучин шүүлтээ харуулж, богино хугацаанд хоёр
    * нь зөрнө. Нэг үйлдэлд хоёуланг нь бичих нь тэр цонхыг бүрмөсөн хаана.
+   *
+   * ⚠️ 2026-08-20 (хэрэглэгчийн хүсэлт): ЗУРАГ БАС НИСНЭ. Урьд нь шүүлт зөвхөн
+   * `setHighlight` дуудаж, багтаагүй объектуудыг БҮДГЭРҮҮЛДЭГ байв — 158 га
+   * дүүрэн бүдэг объектын дунд сонгосон хэдэн объект нь ялгарахгүй, хэрэглэгч
+   * гараар хайж ойртох шаардлагатай байлаа. Одоо шүүлт тавихад тэр объектууд
+   * руу нисч, цуцлахад төслийн бүтэн хүрээ рүү холдоно.
+   *
+   * ⚠️ Нисэх ДАВХАРГЫГ `layerIds`-ийн ЭХНИЙХЭЭР сонгоно: шүүлтийн талбар нь
+   * бүх давхаргад байдаггүй тул (тайлбарыг дээр үз) эхнийх нь тэр шүүлтийн
+   * «эзэн» давхарга байдаг.
    */
   const apply = useCallback(
     (f: ActiveFilter | null) => {
       setActive(f);
       setHighlight(f?.where ?? null, f?.layerIds);
+
+      if (!f) { zoomToLayer(ZONE_LAYER.id); return; }
+      const lid = Array.isArray(f.layerIds) ? f.layerIds[0] : f.layerIds;
+      if (lid && f.where) zoomToWhere(lid, f.where);
     },
-    [setHighlight],
+    [setHighlight, zoomToWhere, zoomToLayer],
   );
 
   const toggle = useCallback(

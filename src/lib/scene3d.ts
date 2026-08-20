@@ -1,3 +1,4 @@
+import { t as tr } from '@/lib/i18nCore';
 /**
  * SCENE3D — Web Scene 'selbe_3D_ 0804' (572442952bcd47d3a2adf68199f62d24)-ээс
  * АВТОМАТААР хуулсан 3D давхаргууд + тэдгээрийн ЯГ scene-ийн renderer (style).
@@ -28,7 +29,7 @@ export type Scene3DLayer = {
 export const SCENE3D_LAYERS: Scene3DLayer[] = [
   {
     "id": "scene3d:16",
-    "title": "Гол",
+    "title": tr('Гол'),
     "group": null,
     "url": "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/selbe_3D__0804_WFL1/FeatureServer/16",
     "opacity": 1,
@@ -56,7 +57,7 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
   },
   {
     "id": "scene3d:15",
-    "title": "Дугуйн_зам",
+    "title": 'Дугуйн_зам',
     "group": null,
     "url": "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/selbe_3D__0804_WFL1/FeatureServer/15",
     "opacity": 1,
@@ -97,7 +98,7 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
   {
     "id": "scene3d:14",
     "title": "Suudrevch_polygon",
-    "group": "Сүүдрэвч",
+    "group": tr('Сүүдрэвч'),
     "url": "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/selbe_3D__0804_WFL1/FeatureServer/14",
     "opacity": 1,
     "elevationInfo": {
@@ -137,7 +138,7 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
   {
     "id": "scene3d:13",
     "title": "Suudrevch_line",
-    "group": "Сүүдрэвч",
+    "group": tr('Сүүдрэвч'),
     "url": "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/selbe_3D__0804_WFL1/FeatureServer/13",
     "opacity": 1,
     "elevationInfo": {
@@ -172,7 +173,7 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
   {
     "id": "scene3d:11",
     "title": "Huuhdiin_togloom_polygon",
-    "group": "Хүүхдийн тоглоом",
+    "group": tr('Хүүхдийн тоглоом'),
     "url": "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/selbe_3D__0804_WFL1/FeatureServer/11",
     "opacity": 1,
     "elevationInfo": {
@@ -212,7 +213,7 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
   {
     "id": "scene3d:10",
     "title": "huuhdiin_togloom_line",
-    "group": "Хүүхдийн тоглоом",
+    "group": tr('Хүүхдийн тоглоом'),
     "url": "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/selbe_3D__0804_WFL1/FeatureServer/10",
     "opacity": 1,
     "elevationInfo": {
@@ -246,8 +247,8 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
   },
   {
     "id": "scene3d:8",
-    "title": "Спорт талбай",
-    "group": "Спорт талбай",
+    "title": tr('Спорт талбай'),
+    "group": tr('Спорт талбай'),
     "url": "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/selbe_3D__0804_WFL1/FeatureServer/8",
     "opacity": 1,
     "elevationInfo": {
@@ -287,7 +288,7 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
   {
     "id": "scene3d:7",
     "title": "sport_area_line",
-    "group": "Спорт талбай",
+    "group": tr('Спорт талбай'),
     "url": "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/selbe_3D__0804_WFL1/FeatureServer/7",
     "opacity": 1,
     "elevationInfo": {
@@ -321,7 +322,7 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
   },
   {
     "id": "scene3d:4",
-    "title": "Барилга",
+    "title": tr('Барилга'),
     "group": null,
     "url": "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/selbe_3D__0804_WFL1/FeatureServer/4",
     "opacity": 1,
@@ -360,7 +361,7 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
   },
   {
     "id": "scene3d:3",
-    "title": "Явган_зам",
+    "title": 'Явган_зам',
     "group": null,
     "url": "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/selbe_3D__0804_WFL1/FeatureServer/3",
     "opacity": 1,
@@ -400,7 +401,7 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
   },
   {
     "id": "scene3d:2",
-    "title": "Автозам",
+    "title": tr('Автозам'),
     "group": null,
     "url": "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/selbe_3D__0804_WFL1/FeatureServer/2",
     "opacity": 1,
@@ -440,7 +441,7 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
   },
   {
     "id": "scene3d:1",
-    "title": "Ногоон_байгууламж",
+    "title": 'Ногоон_байгууламж',
     "group": null,
     "url": "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/selbe_3D__0804_WFL1/FeatureServer/1",
     "opacity": 1,
@@ -483,7 +484,7 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
   },
   {
     "id": "scene3d:5",
-    "title": "Замын цагаан зураас",
+    "title": tr('Замын цагаан зураас'),
     "group": null,
     "url": "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/selbe_3D__0804_WFL1/FeatureServer/5",
     "opacity": 1,
@@ -859,7 +860,7 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
   },
   {
     "id": "scene3d:0",
-    "title": "Мод",
+    "title": tr('Мод'),
     "group": null,
     "url": "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/selbe_3D__0804_WFL1/FeatureServer/0",
     "opacity": 1,
@@ -872,7 +873,7 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
       },
       "type": "uniqueValue",
       "valueExpression": "Text($feature.OBJECTID % 6)",
-      "valueExpressionTitle": "Модны төрөл",
+      "valueExpressionTitle": tr('Модны төрөл'),
       "defaultSymbol": {
         "type": "PointSymbol3D",
         "symbolLayers": [

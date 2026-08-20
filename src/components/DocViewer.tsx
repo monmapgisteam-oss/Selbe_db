@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { t as tr } from '@/lib/i18nCore';
 import { DOCS, docUrl } from '@/lib/docs';
 import { Icon } from './Icon';
 import s from './docviewer.module.css';
@@ -41,17 +42,17 @@ export function DocViewer({ open, onClose }: { open: boolean; onClose: () => voi
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
-        aria-label="ТЭЗҮ ба судалгааны баримт бичиг"
+        aria-label={tr('ТЭЗҮ ба судалгааны баримт бичиг')}
       >
         <header className={s.head}>
           <span className={s.headIcon}><Icon name="file" size={17} /></span>
-          <h2 className={s.title}>ТЭЗҮ ба судалгааны баримт бичиг</h2>
-          <button type="button" className={s.close} onClick={onClose} aria-label="Хаах">✕</button>
+          <h2 className={s.title}>{tr('ТЭЗҮ ба судалгааны баримт бичиг')}</h2>
+          <button type="button" className={s.close} onClick={onClose} aria-label={tr('Хаах')}>✕</button>
         </header>
 
         <div className={s.body}>
           {/* Зүүн — баримт солих жагсаалт */}
-          <nav className={s.side} aria-label="Баримтууд">
+          <nav className={s.side} aria-label={tr('Баримтууд')}>
             {DOCS.map((d) => {
               const on = d.key === active;
               return (
@@ -77,7 +78,7 @@ export function DocViewer({ open, onClose }: { open: boolean; onClose: () => voi
               target="_blank"
               rel="noopener noreferrer"
             >
-              Шинэ таб-д нээх ↗
+              {tr('Шинэ таб-д нээх ↗')}
             </a>
           </nav>
 

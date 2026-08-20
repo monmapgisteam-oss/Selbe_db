@@ -32,16 +32,16 @@ export type Pkg = {
  * ЯГ таарна — зөрвөл мод буруу багцад наалдана.
  */
 export const PKGS: Pkg[] = [
-  { key: "b1_9f", group: "Багц 1", floors: 9, label: "Багц 1 · 9 давхар", url: `${HJ}/Bagts_1_9f/FeatureServer/0` },
-  { key: "b1_12f", group: "Багц 1", floors: 12, label: "Багц 1 · 12 давхар", url: `${HJ}/Bagts_1_12f/FeatureServer/0` },
-  { key: "b2_9f", group: "Багц 2", floors: 9, label: "Багц 2 · 9 давхар", url: `${HJ}/Bagts_2_9f/FeatureServer/0` },
-  { key: "b2_12f", group: "Багц 2", floors: 12, label: "Багц 2 · 12 давхар", url: `${HJ}/Bagts_2_12f/FeatureServer/0` },
-  { key: "b31_9f", group: "Багц 3.1", floors: 9, label: "Багц 3.1 · 9 давхар", url: `${HJ}/Bagts_3_1_9f/FeatureServer/0` },
-  { key: "b32_9f", group: "Багц 3.2", floors: 9, label: "Багц 3.2 · 9 давхар", url: `${HJ}/Bagts_3_2_9f/FeatureServer/0` },
-  { key: "b33_9f", group: "Багц 3.3", floors: 9, label: "Багц 3.3 · 9 давхар", url: `${HJ}/Bagts_3_3_9f/FeatureServer/0` },
-  { key: "b41_9f", group: "Багц 4-1", floors: 9, label: "Багц 4-1 · 9 давхар", url: `${HJ}/Bagts_4_1_9f/FeatureServer/0` },
-  { key: "b42_9f", group: "Багц 4-2", floors: 9, label: "Багц 4-2 · 9 давхар", url: `${HJ}/Bagts_4_2_9f/FeatureServer/0` },
-  { key: "b42_12f", group: "Багц 4-2", floors: 12, label: "Багц 4-2 · 12 давхар", url: `${HJ}/Bagts_4_2_12f/FeatureServer/0` },
+  { key: "b1_9f", group: 'Багц 1', floors: 9, label: 'Багц 1 · 9 давхар', url: `${HJ}/Bagts_1_9f/FeatureServer/0` },
+  { key: "b1_12f", group: 'Багц 1', floors: 12, label: 'Багц 1 · 12 давхар', url: `${HJ}/Bagts_1_12f/FeatureServer/0` },
+  { key: "b2_9f", group: 'Багц 2', floors: 9, label: 'Багц 2 · 9 давхар', url: `${HJ}/Bagts_2_9f/FeatureServer/0` },
+  { key: "b2_12f", group: 'Багц 2', floors: 12, label: 'Багц 2 · 12 давхар', url: `${HJ}/Bagts_2_12f/FeatureServer/0` },
+  { key: "b31_9f", group: 'Багц 3.1', floors: 9, label: 'Багц 3.1 · 9 давхар', url: `${HJ}/Bagts_3_1_9f/FeatureServer/0` },
+  { key: "b32_9f", group: 'Багц 3.2', floors: 9, label: 'Багц 3.2 · 9 давхар', url: `${HJ}/Bagts_3_2_9f/FeatureServer/0` },
+  { key: "b33_9f", group: 'Багц 3.3', floors: 9, label: 'Багц 3.3 · 9 давхар', url: `${HJ}/Bagts_3_3_9f/FeatureServer/0` },
+  { key: "b41_9f", group: 'Багц 4-1', floors: 9, label: 'Багц 4-1 · 9 давхар', url: `${HJ}/Bagts_4_1_9f/FeatureServer/0` },
+  { key: "b42_9f", group: 'Багц 4-2', floors: 9, label: 'Багц 4-2 · 9 давхар', url: `${HJ}/Bagts_4_2_9f/FeatureServer/0` },
+  { key: "b42_12f", group: 'Багц 4-2', floors: 12, label: 'Багц 4-2 · 12 давхар', url: `${HJ}/Bagts_4_2_12f/FeatureServer/0` },
 ];
 
 /** Сонгогчид харагдах 7 багц — давхрын хувилбарууд нь дотроо. */
@@ -59,6 +59,16 @@ export type Schema = {
   act: string[];
   /** Блок тус бүрийн ТӨЛӨВЛӨГӨӨТ талбар */
   plan: string[];
+  /**
+   * Блок тус бүрийн ХУРИМТЛАГДСАН ОБЬЁМ (`F<цуваа>_<блок>…obyem`) — 2026-08-20-нд
+   * үйлчилгээнд нэмэгдсэн. Гүйцэтгэлийн хувийг ЭНДЭЭС бодно:
+   *     хувь = хуримтлагдсан обьём ÷ мөрийн `Обьём`
+   *
+   * ⚠️ Багц 4-2·9F-д зөвхөн 8 багана (`F5_1_9obyem…F5_8_9obyem`) үүссэн атлаа
+   *    хуудас нь 14 блоктой — F6 цувааны 8 блокт талбар БАЙХГҮЙ тул `null`.
+   *    Тэдгээр нүд обьёмоор бөглөгдөхгүй (AGOL дээр багана нэмж өгөх ёстой).
+   */
+  obyem: (string | null)[];
   /** ⚠️ Огноо дутуу блок бий (Багц 3.1-ийн 5/2) — тэнд `null` */
   start: (string | null)[];
   end: (string | null)[];
@@ -85,6 +95,16 @@ export type Schema = {
     ratio: string | null;
     /** ⚠️ Багц 4.2·9F-д толгой нь хоосон тул `F68` гэж нэрлэгдсэн */
     asOf: string | null;
+    /**
+     * БӨГЛӨСӨН ОГНОО (`buglusun_ognoo`) — 2026-08-20-нд нэмэгдсэн, АРХИВЫН
+     * түлхүүр. Нийтлэх бүрд хуудас бүхэлдээ доор нь ХУУЛБАРЛАГДАЖ нэмэгдэх
+     * бөгөөд мөр бүрд тухайн өдрийн огноо бичигдэнэ. Огноогоор шүүхэд тэр
+     * агшны бүтэн зураг гарна.
+     *
+     * ⚠️ Хуучин `asOf` («Шинэчлэгдсэн огноо») нь ЗӨВХӨН 1-р мөрд бичигддэг
+     *    excel-ийн лавлах нүд — агшин ялгах түлхүүр БОЛОХГҮЙ.
+     */
+    fillDate: string | null;
     oid: string;
   };
 };
@@ -115,7 +135,13 @@ export function resolveSchema(fields: FieldMeta[]): Schema {
   };
 
   /* ── Блокийн талбарууд ── */
-  type Slot = { act: string[]; plan: string[]; start: string[]; end: string[] };
+  type Slot = {
+    act: string[];
+    plan: string[];
+    start: string[];
+    end: string[];
+    obyem: string[];
+  };
   const blocks = new Map<string, Slot>();
   const order: { key: string; s: number; n: number }[] = [];
   for (const raw of names) {
@@ -124,14 +150,18 @@ export function resolveSchema(fields: FieldMeta[]): Schema {
     const key = `${m[1]}/${m[2]}`;
     let slot = blocks.get(key);
     if (!slot) {
-      slot = { act: [], plan: [], start: [], end: [] };
+      slot = { act: [], plan: [], start: [], end: [], obyem: [] };
       blocks.set(key, slot);
       order.push({ key, s: Number(m[1]), n: Number(m[2]) });
     }
     const tail = norm(raw.slice(m[0].length));
     // ⚠️ Дараалал чухал: «эхлэх/дуусах» нь «төлөвлөгөөт»-өөс ЭРТ шалгагдана,
     //    учир нь огнооны толгойд «барилга … Дуусах» гэж бичигдсэн байдаг.
-    if (/дуусах$/.test(tail) || /дуусах\d+$/.test(tail)) slot.end.push(raw);
+    // ⚠️ Обьёмын бичлэг багц бүрд өөр: `F5_1_obyem` · `F5_1_9obyem` ·
+    //    `F6_1_12_obyem` — бүгд латинаар төгсдөг тул доорх кирилл
+    //    шалгууруудад баригдахгүй, тиймээс тэднээс өмнө шалгав.
+    if (/obyem$/.test(tail)) slot.obyem.push(raw);
+    else if (/дуусах$/.test(tail) || /дуусах\d+$/.test(tail)) slot.end.push(raw);
     else if (/эхлэх$/.test(tail)) slot.start.push(raw);
     else if (/төлөвлөгө/.test(tail)) slot.plan.push(raw);
     else if (/гүйцэтгэл/.test(tail)) slot.act.push(raw);
@@ -152,10 +182,13 @@ export function resolveSchema(fields: FieldMeta[]): Schema {
   const plan: string[] = [];
   const start: (string | null)[] = [];
   const end: (string | null)[] = [];
+  const obyem: (string | null)[] = [];
   for (const key of bld) {
     const s = blocks.get(key)!;
     act.push(s.act[0]);
     plan.push(s.plan[0]);
+    // Обьёмын багана дутуу байж болно (Багц 4-2·9F) — тэнд нүд түгжигдэнэ.
+    obyem.push(s.obyem[0] ?? null);
     // ⚠️ Багц 3.1-ийн 5/2 блокт ЭХЛЭХ баганын толгойг «Дуусах» гэж буруу
     //    бичсэн тул AGOL хоёр дахийг нь `…Дуусах1` болгосон. Эхлэх байхгүй
     //    атлаа дуусах хоёр байвал эхнийхийг нь ЭХЛЭХ гэж үзнэ (баганы дараалал).
@@ -175,22 +208,22 @@ export function resolveSchema(fields: FieldMeta[]): Schema {
   );
   const f: Schema["f"] = {
     no: byNorm.get("f") ?? "F_",
-    work: byNorm.get("ажил") ?? "Ажил",
-    wC: weights[0] ?? "Хувийн_жин",
-    wD: weights[1] ?? weights[0] ?? "Хувийн_жин1",
+    work: byNorm.get("ажил") ?? 'Ажил',
+    wC: weights[0] ?? 'Хувийн_жин',
+    wD: weights[1] ?? weights[0] ?? 'Хувийн_жин1',
     wE: find((n) => n.startsWith("хувийнжин") && /одоо/.test(n)),
     // ⚠️ `2`-оор төгссөнийг хасна — «Объём_шинэ2» нь тусдаа багана.
-    vol: find((n) => /^об[ьъ]ём/.test(n) && !/2$/.test(n)) ?? "Обьём",
+    vol: find((n) => /^об[ьъ]ём/.test(n) && !/2$/.test(n)) ?? 'Обьём',
     vol2: find((n) => /^об[ьъ]ём/.test(n) && /2$/.test(n)),
-    unit: find((n) => n.startsWith("нэгжөртөг")) ?? "Нэгж_өртөг",
-    money: find((n) => n.startsWith("мөнгөндүн")) ?? "Мөнгөн_дүн",
+    unit: find((n) => n.startsWith("нэгжөртөг")) ?? 'Нэгж_өртөг',
+    money: find((n) => n.startsWith("мөнгөндүн")) ?? 'Мөнгөн_дүн',
     // ⚠️ Гурван бичлэг: `Төлөвлөгөөт_гүйцэтгэл`, бичээсийн алдаатай
     //    `Төлөвлөгөөт_гүйцтэгэл` (Багц 2, 3.1), `…_гүйцэтгэлийн_хувь` (Багц 3.3, 4.x)
     plan:
       find((n) => /^төлөвлөгөөт(гүйцэтгэл|гүйцтэгэл)/.test(n)) ??
-      "Төлөвлөгөөт_гүйцэтгэл",
+      'Төлөвлөгөөт_гүйцэтгэл',
     act:
-      find((n) => /^(бодитгүйцэтгэл|гүйцэтгэл)/.test(n)) ?? "Бодит_гүйцэтгэл",
+      find((n) => /^(бодитгүйцэтгэл|гүйцэтгэл)/.test(n)) ?? 'Бодит_гүйцэтгэл',
     // ⚠️ Багц 4.1-д `Төлөвлөгөө_биеэлэлт` гэж бичигдсэн
     ratio: find((n) => /^төлөвлөгөөбие/.test(n)),
     // Толгойгүй үлдсэн бол AGOL `F<баганын дугаар>` гэж нэрлэдэг — огнооны
@@ -200,10 +233,11 @@ export function resolveSchema(fields: FieldMeta[]): Schema {
       fields.find((x) => /^F\d+$/.test(x.name) && x.type === "esriFieldTypeDate")
         ?.name ??
       null,
+    fillDate: names.find((n) => /^buglusun_ognoo$/i.test(n)) ?? null,
     oid: names.find((n) => /^objectid$/i.test(n)) ?? "ObjectID",
   };
 
-  return { bld, act, plan, start, end, f };
+  return { bld, act, plan, obyem, start, end, f };
 }
 
 /** Үйлчилгээний талбарын жагсаалтыг татаж бүдүүвч болгоно (кэштэй). */

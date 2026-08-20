@@ -13,6 +13,7 @@
  */
 
 import { queryGroup, count, sum } from '@/lib/query';
+import { t as tr } from '@/lib/i18nCore';
 import { PARCEL_LEFT } from '@/lib/services';
 import { text } from '@/lib/format';
 
@@ -39,7 +40,7 @@ let cache: Promise<LandStatus> | null = null;
 /** Шалтгааны нэрийг Gazar-тай ИЖИЛ дүрмээр цэвэрлэнэ (арын зай, төгсгөлийн «.») */
 const cleanReason = (v: unknown): string => {
   const s = text(v).trim().replace(/\.$/, '').trim();
-  return !s || s === '—' ? 'Тодорхойгүй' : s;
+  return !s || s === '—' ? tr('Тодорхойгүй') : s;
 };
 
 /** Нэг удаа татаад кэшлэнэ — олон дашбоард зэрэг дуудахад нэг л багц хүсэлт явна */
@@ -67,16 +68,16 @@ export function loadLandStatus(): Promise<LandStatus> {
          * байгаагүй тул нуугдаж байсныг `selbe_parcel_last0731` (1 хоосон мөр)
          * ил гаргав. Шошго нь давхаргын `paint.emptyLabel`-тай нэг байх ёстой.
          */
-        label: text(r[L.fields.status], '').trim() || 'Тодорхойгүй',
+        label: text(r[L.fields.status], '').trim() || tr('Тодорхойгүй'),
         n: Number(r.n ?? 0),
         areaM2: Number(r.a ?? 0),
       }));
       const of = (v: string) => byStatus.find((x) => x.label === v)?.n ?? 0;
       const total = byStatus.reduce((s, x) => s + x.n, 0);
       const areaM2 = byStatus.reduce((s, x) => s + x.areaM2, 0);
-      const cleared = of('Бүрэн чөлөөлсөн');
-      const cleaned = of('Цэвэрлэсэн нэгж талбар');
-      const remaining = of('Үлдсэн нэгж талбар');
+      const cleared = of(tr('Бүрэн чөлөөлсөн'));
+      const cleaned = of(tr('Цэвэрлэсэн нэгж талбар'));
+      const remaining = of(tr('Үлдсэн нэгж талбар'));
       const resolved = cleared + cleaned;
 
       const rmap = new Map<string, number>();

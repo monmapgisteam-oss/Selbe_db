@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, type MouseEvent } from 'react';
+import { t as tr } from '@/lib/i18nCore';
 import { Data, Empty } from '@/components/ui';
 import { useAsync } from '@/lib/useAsync';
 import { queryFeatures } from '@/lib/query';
@@ -165,7 +166,7 @@ export function ComboChart({
         viewBox={`0 0 ${W} ${H}`}
         preserveAspectRatio="none"
         role="img"
-        aria-label="Өссөн явцын S-муруй: төлөвлөгөө, санхүүжилт, биет гүйцэтгэл (%)"
+        aria-label={tr('Өссөн явцын S-муруй: төлөвлөгөө, санхүүжилт, биет гүйцэтгэл (%)')}
       >
         {/* Хэвтээ тор + Y тэнхлэгийн ₮ (0 → нийт төлөвлөгөө) */}
         {[0, 0.25, 0.5, 0.75, 1].map((t) => {
@@ -327,10 +328,10 @@ export function ComboChart({
           style={{ left: `${(hi! / Math.max(1, N - 1)) * 100}%`, transform: `translateX(${hi! < N / 2 ? '10px' : 'calc(-100% - 10px)'})` }}
         >
           <p className={`num ${f.tipHd}`}>{pt.label}</p>
-          <p className={f.tipRow}><i style={{ background: PLAN }} />Өссөн төлөвлөгөө<b className="num">{pt.planned > 0 ? mntShort(pt.planned) : '—'}</b></p>
-          <p className={f.tipRow}><i style={{ background: ACT }} />Өссөн олгосон<b className="num">{pt.givenCum > 0 ? mntShort(pt.givenCum) : '—'}</b></p>
-          <p className={f.tipRow}><i style={{ background: PHYS }} />Биет гүйцэтгэл<b className="num">{pt.physPct > 0 ? `${pt.physPct.toFixed(1)}%` : '—'}</b></p>
-          <p className={`${f.tipRow} ${f.tipGap}`}><i style={{ background: PLAN }} />Санхүүжилтийн явц<b className="num">{pt.planned > 0 ? `${((pt.givenCum / pt.planned) * 100).toFixed(0)}%` : '—'}</b></p>
+          <p className={f.tipRow}><i style={{ background: PLAN }} />{tr('Өссөн төлөвлөгөө')}<b className="num">{pt.planned > 0 ? mntShort(pt.planned) : '—'}</b></p>
+          <p className={f.tipRow}><i style={{ background: ACT }} />{tr('Өссөн олгосон')}<b className="num">{pt.givenCum > 0 ? mntShort(pt.givenCum) : '—'}</b></p>
+          <p className={f.tipRow}><i style={{ background: PHYS }} />{tr('Биет гүйцэтгэл')}<b className="num">{pt.physPct > 0 ? `${pt.physPct.toFixed(1)}%` : '—'}</b></p>
+          <p className={`${f.tipRow} ${f.tipGap}`}><i style={{ background: PLAN }} />{tr('Санхүүжилтийн явц')}<b className="num">{pt.planned > 0 ? `${((pt.givenCum / pt.planned) * 100).toFixed(0)}%` : '—'}</b></p>
         </div>
       )}
     </div>
@@ -487,7 +488,7 @@ export function Finance() {
 
   return (
     <div className={f.frame}>
-      <Data q={q} loading="Санхүүжилтийн бүртгэл…">
+      <Data q={q} loading={tr('Санхүүжилтийн бүртгэл…')}>
         {(d) => <FinTablesView d={d} />}
       </Data>
     </div>
@@ -597,7 +598,7 @@ function FullTable({
         <span className="num">{subtitle}</span>
       </header>
       {rows.length === 0 || cols.length === 0 ? (
-        <Empty label="Мөр алга." />
+        <Empty label={tr('Мөр алга.')} />
       ) : (
         <div className={f.tblWrap}>
           <table className={f.tbl}>
@@ -634,24 +635,23 @@ function FinTablesView({ d }: { d: FinTables }) {
     <>
       <header className={f.pageHd}>
         <div>
-          <h2>Санхүүжилтийн бүртгэл — Cashflow ба IPC</h2>
+          <h2>{tr('Санхүүжилтийн бүртгэл — Cashflow ба IPC')}</h2>
           <p>
-            Эх үйлчилгээний бүрэн хүснэгт — багана бүр (талбарын нэр), мөр бүр яг
-            байгаагаар. Огноо ба тоон утгыг талбарын төрлөөр форматлав.
+            {tr('Эх үйлчилгээний бүрэн хүснэгт — багана бүр (талбарын нэр), мөр бүр яг байгаагаар. Огноо ба тоон утгыг талбарын төрлөөр форматлав.')}
           </p>
         </div>
       </header>
 
       <FullTable
-        title="Cashflow — гэрээ, захирамжийн санхүүжилт (/106)"
-        subtitle={`${num(d.cashflow.length)} мөр · ${d.cfFields.length} багана`}
+        title={tr('Cashflow — гэрээ, захирамжийн санхүүжилт (/106)')}
+        subtitle={tr('{0} мөр · {1} багана', num(d.cashflow.length), d.cfFields.length)}
         rows={d.cashflow}
         fields={d.cfFields}
       />
 
       <FullTable
-        title="IPC — олгосон акт (/107)"
-        subtitle={`${num(d.ipc.length)} мөр · ${d.ipcFields.length} багана`}
+        title={tr('IPC — олгосон акт (/107)')}
+        subtitle={tr('{0} мөр · {1} багана', num(d.ipc.length), d.ipcFields.length)}
         rows={d.ipc}
         fields={d.ipcFields}
       />
