@@ -8,6 +8,7 @@ import { queryFeatures } from '@/lib/query';
 import { CASHFLOW2, IPC_LOG, TASK_SHEET, bagtsKey, pkgKeyOf } from '@/lib/services';
 import { finFieldLabel } from '@/lib/financeFieldLabels';
 import { mntShort, num, text, cat } from '@/lib/format';
+import { ResizableTable } from '@/components/ResizableTable';
 import f from './finance.module.css';
 
 /* ═══════════════════════════════════════════════════════════
@@ -589,7 +590,13 @@ function FullTable({
         <Empty label={tr('Мөр алга.')} />
       ) : (
         <div className={f.tblWrap}>
-          <table className={f.tbl}>
+          {/* ⚠️ Түлхүүр нь ГАРЧГААС — энэ бүрэлдэхүүн хуудсанд хэд хэдэн
+              удаа зурагддаг тул тогтмол түлхүүр өгвөл хүснэгтүүд нэг
+              хадгалалтыг булаацалдаж, өргөн нь хоорондоо холилдоно. */}
+          <ResizableTable
+            storeKey={`finance.${title.replace(/\s+/g, "-").toLowerCase()}`}
+            className={f.tbl}
+          >
             <thead>
               <tr>
                 {cols.map((c) => (
@@ -610,7 +617,7 @@ function FullTable({
                 </tr>
               ))}
             </tbody>
-          </table>
+          </ResizableTable>
         </div>
       )}
     </section>

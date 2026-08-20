@@ -32,6 +32,7 @@ import { MapCanvas, type Dim } from '@/components/MapCanvas';
 import { LayerCatalog } from '@/components/LayerCatalog';
 import { OpacityPanel } from '@/components/OpacityPanel';
 import { Icon } from '@/components/Icon';
+import { SplitGrip, useSideResize } from '@/components/SplitGrip';
 import h from './habea.module.css';
 import o from './overview.module.css';
 
@@ -403,6 +404,8 @@ const DAY = 86_400_000;
 /* ═══════════════════════ Үндсэн компонент ═══════════════════════ */
 
 export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
+  /** Талын багануудын өргөн — чирж тохируулна, хөтөчид хадгалагдана. */
+  const side = useSideResize('habea');
   const q = useAsync<HabeaData>(loadHabea, []);
 
   /* Газрын зургийн төлөв — бүтэц «Ерөнхий мэдээлэл»-тэй ИЖИЛ */
@@ -526,7 +529,14 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const surveyEmpty = <Empty label={tr('Судалгаа бөглөгдөөгүй')} />;
 
   return (
-    <div className={h.shell}>
+    /* Талын багануудыг чирж өргөсгөх/нарийсгах бариулууд. */
+    <div
+      ref={side.hostRef}
+      className={`${h.shell} ${side.hostClass}`}
+      style={side.style}
+    >
+      <SplitGrip {...side.left} />
+      <SplitGrip {...side.right} />
       {/* ── KPI зурвас — бүтэн өргөн, зургаан үзүүлэлт ── */}
       <div className={h.kpi}>
         {kpiTile(num(totalWorkers), tr('Нийт ажилтан'))}

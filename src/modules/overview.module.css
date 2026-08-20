@@ -1110,14 +1110,17 @@
    ══════════════════════════════════════════════════════════════════ */
 
 .shell[data-detail='0'] {
-  grid-template-columns: 272px minmax(360px, 1fr) 292px;
+  /* ⚠️ Талын өргөн ХАТУУ пиксел байсныг ХУВЬСАГЧ болгов: хэрэглэгч заагийг
+     чирэхэд `--side-l/--side-r` л өөрчлөгддөг тул хатуу утга байвал чирэлт
+     хадгалагдаад ч харагдахгүй байв (дэлгэц дээр юу ч хөдлөхгүй). */
+  grid-template-columns: var(--side-l) minmax(360px, 1fr) var(--side-r);
   grid-template-rows: auto minmax(0, 1fr);
   grid-template-areas:
     'fbar fbar fbar'
     'envl center envr';
 }
 @media (max-width: 1680px) {
-  .shell[data-detail='0'] { grid-template-columns: 248px minmax(340px, 1fr) 268px; }
+  .shell[data-detail='0'] { grid-template-columns: var(--side-l) minmax(340px, 1fr) var(--side-r); }
 }
 
 /* ── Шүүлтүүрийн мөр — envhub FilterBar ── */

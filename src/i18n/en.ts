@@ -2765,7 +2765,8 @@ const en: Record<string, string> = {
   "Previous Certified Amount / Гүйлгээ хүлээлгэгдэж буй нийт хоног": "Previous Certified Amount / Total days transaction pending",
   "Survey123 мобайл аппаас": "From the Survey123 mobile app",
   "urt=урт · ortog/өrtog=өртөг · une=үнэ · tusuv=төсөв · sanhuujilt=санхүүжилт · geree=гэрээ ·": "length=урт · cost=өртөг · price=үнэ · budget=төсөв · funding=санхүүжилт · contract=гэрээ ·",
-  "Σ(жин×гүйц) ÷ Σжин": "Σ(weight×progress) ÷ Σweight"
+  "Σ(жин×гүйц) ÷ Σжин": "Σ(weight×progress) ÷ Σweight",
+  "давхцсан үлдсэн нэгж талбар": "overlapping unreleased parcels"
 };
 
 export default en;

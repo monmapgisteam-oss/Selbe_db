@@ -12,6 +12,7 @@ import {
 } from '@/lib/services';
 import { num, pct, shade, tint, NO_DATA } from '@/lib/format';
 import { readParam, writeParams } from '@/lib/urlState';
+import { overlapLeftParcels, type Overlap } from '@/lib/parcelOverlap';
 import o from './overview.module.css';
 
 /**
@@ -42,6 +43,8 @@ const INFRA_HUE = '#0891b2';
 const BLANK_HUE = NO_DATA;
 // ⚠️ export — «Барилгын цогц хяналт» (Tsogts) мөн энэ давхаргаар ажиллана
 export const BLOCK_LAYER = 'mon:building';
+/** Газар чөлөөлөлтийн нэгж талбарын давхарга — давхцсан талбарыг зурахад. */
+const PARCEL_LAYER = 'land:left';
 
 /** Блокуудыг FID-ээр нэрлэн шүүх — багцын нэр давхаргад бохир бичигдсэн байж болно */
 const oidWhere = (oids: number[]) =>
@@ -164,11 +167,87 @@ export function Bagts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
 
   const active = packs.find((p) => p.key === sel) ?? null;
 
-  /** Сонгосон багц л зурагдана; сонголтгүй бол барилгын бүх блок */
-  const visible = active ? active.layerIds : [BLOCK_LAYER];
+  /**
+   * БАГЦТАЙ ДАВХЦАЖ БУЙ «ҮЛДСЭН НЭГЖ ТАЛБАР» — чөлөөлөгдөөгүй, барилга
+   * эхлүүлэхэд саад болж буй газар. Багц сонгоход орон зайн огтлолцлоор олж,
+   * газрын зурагт зурж, тоог нь KPI-д гаргана.
+   *
+   * ⚠️ Хариу хожуу ирж БУСАД багцын үр дүнг дарж бичихээс `alive` хамгаална
+   *    (хэрэглэгч хурдан дараалан сонгоход).
+   */
+  const [overlap, setOverlap] = useState<Overlap | null>(null);
+  useEffect(() => {
+    let alive = true;
+    setOverlap(null);
+    /* ⚠️ Багц СОНГООГҮЙ үед ч тоолно — тэгэхдээ БҮХ блокоор (`where = null`),
+       өөрөөр хэлбэл төслийн НИЙТ саад. Урьд нь сонголтгүй үед огт тоолохгүй
+       байсан тул хэрэглэгч «нийт хэдэн талбар саад болж байна» гэдгийг
+       мэдэхийн тулд багц бүрийг ээлжлэн сонгох шаардлагатай байв. */
+    /* Багц сонгосон бол ТҮҮНИЙ бүх давхарга; эс бөгөөс БҮХ БАГЦЫНХ —
+       барилгын блокууд + дэд бүтцийн 48 багцын давхаргууд. Зөвхөн блокоор
+       тоолвол шугам хоолой, замын коридор дээрх саад тоологдохгүй үлддэг. */
+    const srcs = active
+      ? active.layerIds.map((id) => ({ layerId: id, where: active.where }))
+      : [
+          { layerId: BLOCK_LAYER, where: null },
+          ...packs.flatMap((pk) =>
+            pk.kind === 'infra' ? pk.layerIds.map((id) => ({ layerId: id, where: pk.where })) : [],
+          ),
+        ];
+    overlapLeftParcels(srcs)
+      .then((r) => alive && setOverlap(r))
+      .catch(() => alive && setOverlap({ oids: [] }));
+    return () => {
+      alive = false;
+    };
+  }, [active]);
+
+  /**
+   * Сонгосон багц л зурагдана; сонголтгүй бол барилгын бүх блок. Давхцсан
+   * үлдсэн нэгж талбар олдвол газар чөлөөлөлтийн давхаргыг НЭМЖ асаана —
+   * инженер аль блок дээр саад байгааг зурган дээр шууд харна.
+   */
+  const visible = useMemo(
+    () =>
+      active
+        ? overlap?.oids.length
+          ? [...active.layerIds, PARCEL_LAYER]
+          : active.layerIds
+        : [BLOCK_LAYER],
+    [active, overlap],
+  );
+  /**
+   * ДАВХЦСАН НЭГЖ ТАЛБАРЫН ХЭВ МАЯГ — барилгын блокоос ЯЛГАРАХ ёстой.
+   *
+   * ⚠️ Анхны загвар нь улаавтар (`#e11d48`) бөгөөд блокууд ч улбар шар
+   *    (`#ea580c`) тул ортофото дээр хоёулаа ижил төстэй харагдаж, аль нь
+   *    барилга, аль нь газар болох нь ялгагдахаа больдог. Тод ягаан + зузаан
+   *    хүрээ нь хоёуланг нь эрс тасалж өгнө.
+   */
+  /** Анивчих давхарга — давхцсан талбар олдсон үед л. */
+  const parcelPulse = useMemo(
+    () => (overlap?.oids.length ? [PARCEL_LAYER] : undefined),
+    [overlap],
+  );
+
+  const parcelStyle = useMemo(
+    () =>
+      overlap?.oids.length
+        ? { [PARCEL_LAYER]: { hue: '#d946ef', fill: 0.22, width: 3.4 } }
+        : undefined,
+    [overlap],
+  );
+
   const layerWhere = useMemo<Record<string, string | null>>(
-    () => ({ [BLOCK_LAYER]: active?.where ?? null }),
-    [active],
+    () => ({
+      [BLOCK_LAYER]: active?.where ?? null,
+      // ⚠️ Давхаргад 2,119 талбар бий — ЗӨВХӨН давхцсаныг үлдээнэ, эс бөгөөс
+      //    бүх хот дүүрэн парсел зурагдаж блокууд дарагдана.
+      [PARCEL_LAYER]: overlap?.oids.length
+        ? `OBJECTID IN (${overlap.oids.join(',')})`
+        : null,
+    }),
+    [active, overlap],
   );
 
   // Багц сонгоход түүний объект руу ниснэ; цуцлахад бүх блок руу холдоно
@@ -185,7 +264,7 @@ export function Bagts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     <div className={o.pack}>
       <div className={o.kpi}>
         {/* ⚠️ Алдаатай үед KPI гаргахгүй — мөнгөн дүн нь худал 0 болно */}
-        {!errQ && <PackKpi active={active} packs={packs} />}
+        {!errQ && <PackKpi active={active} packs={packs} overlap={overlap} />}
       </div>
 
       {/* ЗҮҮН — багцын сонголт */}
@@ -219,7 +298,7 @@ export function Bagts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       </aside>
 
       <div className={o.map}>
-        <MapCanvas dim={dim} visible={visible} zone={null} layerWhere={layerWhere} onPick={() => {}} />
+        <MapCanvas dim={dim} visible={visible} zone={null} layerWhere={layerWhere} layerStyle={parcelStyle} pulseIds={parcelPulse} onPick={() => {}} />
 
         <div className={o.mapDims} role="group" aria-label={tr('Газрын зургийн харагдац')}>
           {(['2d', '3d', 'bim'] as Dim[]).map((d) => (
@@ -333,22 +412,51 @@ function subInfra(p: Pack): string {
  * оруулахгүй). Багцуудын дунджийг дахин дундажлавал блок цөөтэй багц том
  * багцтай ижил жинтэй болж, төслийн явц гажина.
  */
-export function PackKpi({ active, packs }: { active: Pack | null; packs: Pack[] }) {
+export function PackKpi({
+  active,
+  packs,
+  overlap,
+}: {
+  active: Pack | null;
+  packs: Pack[];
+  /** Багцтай давхцсан үлдсэн нэгж талбар — `null` бол хараахан ачаалж байна. */
+  overlap?: Overlap | null;
+}) {
   const scope = active ? [active] : packs;
   const blocks = scope.reduce((s, p) => s + p.blocks.length, 0);
   const households = scope.reduce((s, p) => s + p.households, 0);
   const progress = meanOf(scope.flatMap((p) => p.blocks.map((b) => b.progress)));
   const layers = scope.filter((p) => p.kind === 'infra').reduce((s, p) => s + p.layerIds.length, 0);
 
+  /**
+   * ДАВХЦСАН ҮЛДСЭН НЭГЖ ТАЛБАР — зөвхөн багц сонгосон үед. Тоо нь 0 байсан ч
+   * ХАРУУЛНА: «саад алга» гэдэг нь өөрөө хариулт бөгөөд хоосон нүд үлдээвэл
+   * хэрэглэгч ачаалж байна гэж эндүүрнэ. Ачаалж байх үед «…».
+   */
+  // ⚠️ Зөвхөн prop нь ӨГӨГДСӨН үед л гаргана. `undefined` (огт дамжуулаагүй)
+  //    үед «…» мөнхөд харагдаж, хэрэглэгч ачаалж байна гэж эндүүрдэг байв —
+  //    «Багцын хяналт»-д энэ тоо ДООД санхүүжилтийн картад зөөгдсөн.
+  const blockTile = overlap !== undefined
+    ? [
+      {
+        v: overlap == null ? '…' : num(overlap.oids.length),
+        l: tr('давхцсан үлдсэн нэгж талбар'),
+        c: overlap?.oids.length ? '#e11d48' : '#16a34a',
+      },
+    ]
+    : [];
+
   const items = active?.kind === 'infra'
     ? [
       { v: num(active.layerIds.length), l: tr('газрын зургийн давхарга'), c: INFRA_HUE },
+      ...blockTile,
     ]
     : [
       { v: progress == null ? '—' : pct(progress, 1), l: tr('гүйцэтгэл'), c: levelColor(progress) },
       { v: num(blocks), l: tr('блок'), c: HUE },
       { v: num(households), l: tr('айл'), c: HUE },
       { v: num(layers), l: tr('дэд бүтцийн давхарга'), c: '#0891b2' },
+      ...blockTile,
     ];
 
   return (
