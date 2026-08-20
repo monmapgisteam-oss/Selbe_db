@@ -5,6 +5,7 @@ import { dirname } from 'node:path';
 const nextConfig = {
   // GitHub Pages (selbe.monmap.mn) — бүрэн статик экспорт, сервер шаардлагагүй
   output: 'export',
+  distDir: process.env.NEXT_DIST_DIR || '.next',
   trailingSlash: true,
   images: { unoptimized: true },
 
