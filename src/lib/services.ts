@@ -2884,19 +2884,28 @@ export const HABEA = {
      * domain-д ХАТУУ заагдсан багц; сүүлийн 5 нь багц заагдаагүй гүйцэтгэгч
      * (Bagts_* талбаргүй — bagts: null).
      */
+    /**
+     * ⚠️ `label` нь ГЭРЭЭНИЙ АЛБАН ЁСНЫ нэр (2026-08-20-нд захиалагчийн
+     * жагсаалтаар засав). Урьд нь товчилсон/ойролцоо нэрс байсан — «ХБТИТ»
+     * гэдэг нь үнэндээ Хятадын Барилгын ТАВдугаар Инженерийн Товчоо, «SC» нь
+     * Smart craft, «ЧХО» нь Чингэлтэй хөрөнгө оруулалт байв.
+     * `code` нь маягтын дагаварт тулгуурласан ДОТООД товчлол — албан ёсны
+     * товчлол БИШ тул дүрслэлд `label`-ийг хэрэглэнэ.
+     */
     companies: [
-      { sfx: "HHDMGK", code: "ХХДМГК", label: tr('Хятадын 2-р металлургийн групп'), bagts: 'Багц -1' },
-      { sfx: "HBZIT", code: "ХБЗИТ", label: tr('Хятадын барилгын 6-р трест'), bagts: 'Багц -2' },
-      { sfx: "HBTIT", code: "ХБТИТ", label: tr('ХБТИТ'), bagts: 'Багц -3.1' },
-      { sfx: "MSK", code: "МСК", label: tr('Морин сувд констракшн'), bagts: 'Багц -3.2' },
-      { sfx: "NBG", code: "НБГ", label: tr('«Нутгын буян» групп'), bagts: 'Багц -3.3' },
-      { sfx: "MK", code: "МК", label: "Moncon Construction", bagts: 'Багц -4.1' },
-      { sfx: "P", code: "П", label: tr('Профессионалстрой'), bagts: 'Багц -4.2' },
-      { sfx: "MMSE", code: "ММСЕ", label: tr('ММСЕ'), bagts: null },
-      { sfx: "SC", code: "SC", label: "SC", bagts: null },
+      { sfx: "HHDMGK", code: "ХХДМГК", label: tr('Хятадын хоёр дахь металлурги групп корпорац ХХК'), bagts: 'Багц -1' },
+      { sfx: "HBZIT", code: "ХБЗИТ", label: tr('Хятадын барилгын зургаадугаар инженерийн товчоо ХХК'), bagts: 'Багц -2' },
+      { sfx: "HBTIT", code: "ХБТИТ", label: tr('Хятадын барилгын тавдугаар инженерийн товчоо ХХК'), bagts: 'Багц -3.1' },
+      { sfx: "MSK", code: "МСК", label: tr('Морин сувд констракшн ХХК'), bagts: 'Багц -3.2' },
+      { sfx: "NBG", code: "НБГ", label: tr('Нутгийн буян групп ХХК'), bagts: 'Багц -3.3' },
+      { sfx: "MK", code: "МК", label: tr('Монкон констракшн ХХК'), bagts: 'Багц -4.1' },
+      { sfx: "P", code: "П", label: tr('Професионалстрой ХХК'), bagts: 'Багц -4.2' },
+      // ⚠️ Латин нэрийг `tr()`-ээр боохгүй: англи горимд ч ижил бичигдэнэ
+      { sfx: "MMSE", code: "ММСЕ", label: "MMSE", bagts: null },
+      { sfx: "SC", code: "SC", label: "Smart craft", bagts: null },
       { sfx: "OSNAAG", code: "ОСНААГ", label: tr('ОСНААГ'), bagts: null },
       { sfx: "GUBB", code: "ГУББ", label: tr('ГУББ'), bagts: null },
-      { sfx: "CHHO", code: "ЧХО", label: tr('ЧХО'), bagts: null },
+      { sfx: "CHHO", code: "ЧХО", label: tr('Чингэлтэй хөрөнгө оруулалтын'), bagts: null },
     ],
   },
   incident: {

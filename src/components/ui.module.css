@@ -571,6 +571,75 @@
   background: var(--tone, var(--data));
   transition: height 0.4s var(--ease), opacity 0.12s;
 }
+/* ── Тоймтой хувилбар (`outline`) — ЗАХ нь бүтэн өнгө, дотор нь бүдэг ──
+   Багана дээр байнга тоо бичихэд бүтэн дүүргэлт дээр цифр уншигдахгүй болдог.
+   Зөвхөн `outline` дуудсан дүрслэлд хамаарна; бусад чартын хэл өөрчлөгдөхгүй. */
+.seriesBarOutline {
+  background: color-mix(in oklab, var(--tone, var(--data)) 18%, transparent);
+  border: 1px solid var(--tone, var(--data));
+  border-bottom: 0;
+}
+/* Баганын ОРОЙД суух утга. Багана намхан үед ч уншигдахын тулд баганын ГАДНА
+   талд (дээр нь) байрлана — дотор нь байрлуулбал намхан багананд багтахгүй. */
+.seriesVal {
+  display: block;
+  font-size: 10px;
+  line-height: 1.2;
+  font-weight: 600;
+  text-align: center;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  margin-bottom: 2px;
+}
+/* ── Муруйн горим (`line`) — талбай + зөөлөн шугам + цэг ──
+   Баганын түвшинд хөвж бүтэн талбайг эзэлнэ. `pointer-events: none` — доорх
+   баганын hover/дарах нь хэвээр ажиллах ёстой. */
+.seriesLineSvg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+.seriesLinePath {
+  fill: none;
+  stroke: var(--tone, var(--data));
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  /* ⚠️ `preserveAspectRatio="none"` нь SVG-г сунгадаг тул үүнгүй бол шугамын
+     зузаан хэвтээ ба босоо чиглэлд ӨӨР болно. */
+  vector-effect: non-scaling-stroke;
+}
+.seriesLineDot {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--tone, var(--data));
+  border: 1.5px solid var(--surface);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  transition: opacity 0.12s;
+}
+/* Цэгийн ДЭЭР суух утга. Муруйн дээд зайг `SeriesLine`-ы `pad` гаргаж өгдөг
+   тул хамгийн өндөр цэгийн шошго ч зургийн дотор багтана. */
+.seriesLineVal {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  margin-top: -7px;
+  font-size: 10px;
+  line-height: 1;
+  font-weight: 600;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+  transition: opacity 0.12s;
+}
+
 .seriesClick { cursor: pointer; }
 .seriesClick:hover { background: color-mix(in oklab, var(--tone, var(--data)) 12%, transparent); }
 .seriesTicks { display: flex; gap: 3px; margin-top: 6px; }
@@ -690,3 +759,47 @@
 }
 .trendAxisTick:first-child { transform: none; }
 .trendAxisTick:last-child { transform: translateX(-100%); }
+
+/* ── Trend-ийн хэвтээ гүйлт (`visible` заасан үед) ────────────────────────
+   ⚠️ `padding-bottom` нь ЗААВАЛ: гүйлтийн зурвас ~12px эзэлдэг тул үүнгүй бол
+   тэнхлэгийн доод мөр (цаг) таслагдаж, огноо нь ганцаараа үлдэнэ. Habea-гийн
+   `.dayScroll` дээр яг ижил алдаа гарч байсан. */
+.trendScroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* ⚠️ Хажуугийн 14px — эхний/сүүлийн шошго нь цэгийнхээ голд төвлөрдөг тул
+     тэдний хагас нь агуулагчаас гарч, `overflow-x`-д таслагдана. */
+  padding: 0 14px 12px;
+  overscroll-behavior-x: contain;
+}
+/* Хоёр мөрт шошго — огноо дээр, цаг доор. Нэг мөрийн 14px хүрэхгүй. */
+.trendAxisTwoLine { height: 28px; }
+/* Гүйдэг үед шошго БҮГД цэгийнхээ ЯГ голд — эхний/сүүлийнх нь тусгай
+   шилжилтгүй (тэр нь зөвхөн шахагдсан 6 шошготой хувилбарт ирмэг хамгаалдаг). */
+.trendAxisTwoLine .trendAxisTick,
+.trendAxisTwoLine .trendAxisTick:first-child,
+.trendAxisTwoLine .trendAxisTick:last-child {
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.25;
+}
+.trendTickDay { color: var(--ink-2); }
+.trendTickClock { color: var(--ink-3); font-size: 9px; }
+
+/* Цэгийн утга — муруйн ДЭЭР. `.trendHit` нь 26px өргөн ч энэ бичиг түүнээс
+   гарч болно (товч нь тайрдаггүй); `nowrap` нь «1,234.5»-ыг хугалахгүй.
+   `pointer-events: none` — бичиг нь хөрш цэгийн hover-ыг хулгайлахгүй. */
+.trendVal {
+  position: absolute;
+  left: 50%;
+  transform: translate(-50%, -100%);
+  margin-top: -7px;
+  font-size: 9.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--ink-2);
+  pointer-events: none;
+}
