@@ -12,9 +12,13 @@
  */
 
 .frame {
+  /* Талын багануудын өргөн — хэрэглэгч заагийг чирж тохируулна
+     (`components/SplitGrip`). Хатуу утга байвал чирэлт огт харагдахгүй. */
+  --side-l: 330px;
+  --side-r: 344px;
   display: grid;
   grid-template-areas: "left map right";
-  grid-template-columns: minmax(268px, 330px) minmax(0, 1fr) minmax(268px, 344px);
+  grid-template-columns: var(--side-l) minmax(0, 1fr) var(--side-r);
   grid-template-rows: minmax(0, 1fr);
   gap: 10px;
   height: 100%;

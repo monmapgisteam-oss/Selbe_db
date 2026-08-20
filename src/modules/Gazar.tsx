@@ -12,6 +12,7 @@ import {
 import { GAZAR_BUILDING, GAZAR_PARCEL, PARCEL_LEFT } from '@/lib/services';
 import { num, text, shades, CAT_LIGHT, NO_DATA } from '@/lib/format';
 import o from './overview.module.css';
+import { SplitGrip, useSideResize } from '@/components/SplitGrip';
 import g from './gazar.module.css';
 
 /**
@@ -124,6 +125,8 @@ type GazarData = {
 };
 
 export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
+  /** Талын багануудын өргөн — чирж тохируулна, хөтөчид хадгалагдана. */
+  const side = useSideResize('gazar');
   const { setHighlight } = useMap();
 
   const [aoi, setAoi] = useState<Aoi | null>(null);
@@ -335,7 +338,14 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       : err ? <Empty label={tr('Алдаа гарлаа')} /> : <Loading label={tr('Татаж байна…')} />;
 
   return (
-    <div className={g.frame}>
+    /* Талын багануудыг чирж өргөсгөх/нарийсгах бариулууд. */
+    <div
+      ref={side.hostRef}
+      className={`${g.frame} ${side.hostClass}`}
+      style={side.style}
+    >
+      <SplitGrip {...side.left} />
+      <SplitGrip {...side.right} />
       {/* ── ЗҮҮН: Чөлөөлөлт (үлдсэн нэгж талбар) — үзүүлэлт + явц бүгд энд ── */}
       <div className={g.left}>
         {/* Баганын толгой — envhub eyebrow: өнгөгүй; багана нь БАЙРЛАЛААРАА ялгарна */}
