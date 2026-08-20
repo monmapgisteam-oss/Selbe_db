@@ -2995,6 +2995,7 @@ export type GroupKey =
   | "pkgSite"
   | "pkgSoc"
   | "pkgCom"
+  | "iot"
   | "busad";
 
 export const LAYER_GROUPS: {
@@ -3135,6 +3136,19 @@ export const LAYER_GROUPS: {
     icon: "radio",
     hue: "#7c3aed",
   },
+  /**
+   * IoT МЭДРЭГЧ — Mononet-ийн таван мэдрэгчийн байршил.
+   * ⚠️ `GROUP_LAYERS`-т ХООСОН: эдгээр нь ерөнхий төлөвлөгөөний объект БИШ тул
+   * `PLAN_LAYER_IDS` (өртөг, нийлбэр) руу орох ёсгүй. Каталогт нь `CATALOG_EXTRA`
+   * -аар нэмэгдэнэ — доорх `catalogGroups`-ыг үз.
+   */
+  {
+    key: "iot",
+    title: "IoT мэдрэгч",
+    desc: "Хогийн сав, ус, гэрэлтүүлэг, темп, хөрс",
+    icon: "radio",
+    hue: "#0891b2",
+  },
   /** БУСАД МЭДЭЭЛЭЛ — каталогийн ХАМГИЙН ДООР. Зам гэх мэт нэмэлт давхарга. */
   {
     key: "busad",
@@ -3189,9 +3203,41 @@ export const GROUP_LAYERS: Record<GroupKey, string[]> = {
   pkgSite: pkgIds("site"),
   pkgSoc: pkgIds("soc"),
   pkgCom: pkgIds("com"),
+  iot: [],
   // ⚠️ `bm146`/`bm145`/`bm87` ЭНДЭЭС ГАРСАН — одоо `src` бүлэгт. Хоёуланд
   //    нь байвал каталогт хоёр удаа гарч, `PLAN_LAYER_IDS` давхардана.
   busad: ["khil1", "khil2", "road", "roadOld", "bm128"],
+};
+
+/**
+ * ЗӨВХӨН КАТАЛОГТ нэмэгдэх давхаргууд (бүлэг → id).
+ *
+ * ⚠️ 2026-08-20: ЯАГААД ТУСДАА ЖАГСААЛТ ВЭ. `PLAN_LAYER_IDS` нь `GROUP_LAYERS`
+ * -ээс ШУУД гардаг бөгөөд түүнийг өртгийн нийлбэр, багцын дүн, анализ уншина.
+ * Иймд «каталогт харагдах» ба «нийлбэрт орох» хоёрыг САЛГАХ ёстой: дулаан/бохир/
+ * цэвэр усны 12 давхарга ЗОРИУДААР нийлбэрт ордоггүй (дээрх тайлбарыг үз), гэвч
+ * газрын зурагт үзэх нь бүрэн хэрэгтэй. Эдгээрийг `GROUP_LAYERS`-т нэмбэл
+ * төслийн ӨРТӨГ өөрчлөгдөнө — тиймээс энд.
+ *
+ * ⚠️ Хэмжилт (2026-08-20): каталог 128 давхаргаас ердөө 91-ийг харуулж, 32 нь
+ * ямар ч цонхноос нээгддэггүй байв — барилга (`et:24`), кадастр, инженерийн 12
+ * шугам, шинэ зам, IoT мэдрэгч бүгд «байдаг ч хүрэх аргагүй» байлаа.
+ */
+const CATALOG_EXTRA: Partial<Record<GroupKey, string[]>> = {
+  build: ["et:24"],
+  land: ["gazar:parcel", "gazar:building"],
+  road: ["et:29", "et:5", "et:27", "dugui", "sz:0", "sz:1", "sz:2", "sz:3"],
+  green: ["nogoon", "tree"],
+  orchin: ["tgl"],
+  // Дулаан · цэвэр ус · бохир — ЕТ-ийн инженерийн шугам сүлжээ бүрэн
+  pkgNet: [
+    "et:7", "et:10", "et:9", "et:11", "et:8", "et:4",
+    "et:18", "et:23", "et:17", "et:16", "et:3", "et:19",
+  ],
+  iot: [
+    "iot:waste_sensor", "iot:water_meter", "iot:light_sensor",
+    "iot:temp_humidity", "iot:soil_meter",
+  ],
 };
 
 /** Ерөнхий мэдээллийн БҮХ давхарга — багцын дарааллаар */
@@ -3276,19 +3322,64 @@ export const HABEA_GROUP = {
 export const HABEA_LAYER_IDS: string[] = ["habea:osol", "habea:crane", "habea:buffer"];
 
 /** Каталогт харуулах бүлгүүд — харагдацаас хамаарна */
+/**
+ * Бүлэг бүрийн КАТАЛОГИЙН давхаргууд — нийлбэрийн жагсаалт (`GROUP_LAYERS`) дээр
+ * `CATALOG_EXTRA` нэмэгдэнэ. Давхардлыг арилгана.
+ */
+const catalogIdsOf = (key: GroupKey): string[] =>
+  [...new Set([...GROUP_LAYERS[key], ...(CATALOG_EXTRA[key] ?? [])])]
+    .filter((id) => LAYER_BY_ID[id]);
+
+/**
+ * ⚠️ БҮЛЭГТ ХАМААРААГҮЙ давхарга ҮЛДЭХГҮЙ. Дээрх хоёр жагсаалтын аль алинд нь
+ * ороогүй давхаргыг «Бусад мэдээлэл»-д АВТОМАТААР цуглуулна.
+ *
+ * Яагаад автомат вэ: `LAYERS`-т шинэ давхарга нэмэхэд `GROUP_LAYERS`-т бичихээ
+ * мартвал тэр давхарга ЧИМЭЭГҮЙ алга болдог байсан — яг ингэж 32 давхарга
+ * хаанаас ч нээгдэхгүй хуримтлагдсан юм. Одоо хамгийн муудаа «Бусад»-д гарна.
+ */
+const GROUPED_IDS = new Set(LAYER_GROUPS.flatMap((g) => catalogIdsOf(g.key)));
+const UNGROUPED_IDS = LAYERS.map((l) => l.id).filter(
+  (id) => !GROUPED_IDS.has(id) && !(REFERENCE_IDS as readonly string[]).includes(id),
+);
+
+/** Порталын бүлгүүд — «Бусад»-д бүлэглэгдээгүй бүх давхарга нэмэгдсэн байдлаар */
+const PORTAL_GROUPS = () =>
+  LAYER_GROUPS.map((g) => ({
+    ...g,
+    ids: g.key === "busad"
+      ? [...catalogIdsOf(g.key), ...UNGROUPED_IDS]
+      : catalogIdsOf(g.key),
+  })).filter((g) => g.ids.length > 0);
+
 export const catalogGroups = (view: "plan" | "monitor" | "habea") =>
   view === "monitor"
     ? [
         { ...MONITOR_GROUP, ids: MONITOR_LAYER_IDS },
-        ...LAYER_GROUPS.map((g) => ({ ...g, ids: GROUP_LAYERS[g.key] })),
+        ...PORTAL_GROUPS(),
       ]
     : view === "habea"
       ? [
           { ...HABEA_GROUP, ids: HABEA_LAYER_IDS },
           { ...MONITOR_GROUP, ids: MONITOR_LAYER_IDS },
-          ...LAYER_GROUPS.map((g) => ({ ...g, ids: GROUP_LAYERS[g.key] })),
+          ...PORTAL_GROUPS(),
         ]
-      : LAYER_GROUPS.map((g) => ({ ...g, ids: GROUP_LAYERS[g.key] }));
+      : PORTAL_GROUPS();
+
+/**
+ * КАТАЛОГТ ГАРАХ БҮХ давхарга — тоо/өртгийг татах жагсаалт (`usePlanTotals`).
+ *
+ * ⚠️ `PLAN_LAYER_IDS`-ЭЭС ӨӨР: тэр нь НИЙЛБЭРийн (өртөг, багц) жагсаалт бөгөөд
+ * зориуд явцуу. Энэ нь ХАРАГДАХ жагсаалт — каталогийн мөр бүр тоогоо олох ёстой,
+ * эс бөгөөс шинээр нээгдсэн 32 давхарга «…» гэж мөнхөд хүлээнэ.
+ */
+export const CATALOG_LAYER_IDS: string[] = [
+  ...new Set([
+    ...HABEA_LAYER_IDS,
+    ...MONITOR_LAYER_IDS,
+    ...PORTAL_GROUPS().flatMap((g) => g.ids),
+  ]),
+];
 
 /** Давхарга аль багцад хамаарах вэ (хяналтынх багцгүй) */
 export const groupOf = (id: string): GroupKey | null =>

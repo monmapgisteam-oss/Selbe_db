@@ -279,77 +279,26 @@
 
 
 /* ── Газрын зураг дээрх хэрэгслийн мөр ──
-   Давхарга + 2D/3D/BIM-ийг НЭГ бөөн болгож, зургийн ДЭЭД ТӨВД голлуулж,
-   тод (бүрэн бүдэг дэвсгэр, том сүүдэр) болгож, орж ирэх хөдөлгөөнтэй болгов.
-   ⚠️ ArcGIS-ийн zoom удирдлага зүүн ДЭЭД буланд, BIM виджет баруун дээд буланд
-   байдаг тул ТӨВД байрлуулснаар алинтай нь ч давхцахгүй. */
-.mapTools {
-  position: absolute;
-  top: 16px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 6;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  /* Хагас тунгалаг «шилэн» дэвсгэр — доогуурх зураг бүдэг нэвт харагдана */
-  background: color-mix(in srgb, var(--surface) 86%, transparent);
-  box-shadow: var(--shadow-lg);
-  backdrop-filter: blur(14px) saturate(1.15);
-  -webkit-backdrop-filter: blur(14px) saturate(1.15);
-  animation: mapToolsIn 0.42s var(--ease) both;
-}
-@keyframes mapToolsIn {
-  from { opacity: 0; transform: translate(-50%, -16px) scale(0.94); }
-  to   { opacity: 1; transform: translate(-50%, 0) scale(1); }
-}
+   ⚠️ 2026-08-20: Энэ хэсгийн дүрмүүд (`.mapTools`, `.mapBtn`, `.mapDims`,
+   `.dimBtn`, `.dimOn` ба `mapToolsIn` анимаци) `@/components/mapTools.module.css`
+   руу ШИЛЖСЭН. Тэдгээрийг ес өөр газар хуулж бичдэг байсныг ганц `MapTools`
+   компонент болгосон — жагсаалтыг тэнд үзнэ үү. */
 
-/* Давхаргын каталог нээх товч */
-.mapBtn {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 8px 15px;
-  border: 0;
-  border-radius: var(--r-sm);
-  background: transparent;
-  color: var(--ink-2);
-  font-size: 0.76rem;
-  font-weight: 600;
-  transition: background 0.16s var(--ease), color 0.16s, transform 0.1s;
-}
-.mapBtn:hover { background: var(--surface-2); color: var(--ink); }
-.mapBtn:active { transform: scale(0.95); }
-.mapBtn svg { width: 16px; height: 16px; }
+
+
+
 /* ⚠️ Текст нь `--hue-ink` — харанхуй горимд `--hue` нь ЦАЙВАР cyan тул цагаан
    бичиг 1.7:1 л өгдөг (WCAG 3:1-ээс доогуур). Цайвар горимд токен нь цагаан
    хэвээр тул тэнд харагдац өөрчлөгдөхгүй. */
-.mapBtnOn { background: var(--hue); color: var(--hue-ink); box-shadow: var(--shadow-sm); }
-.mapBtnOn:hover { background: var(--hue); color: var(--hue-ink); filter: brightness(1.07); }
+
+
 
 /* 2D ↔ 3D ↔ BIM — сегментчилсэн удирдлага (саарал зам · цагаан идэвх) */
-.mapDims {
-  display: flex;
-  gap: 2px;
-  padding: 3px;
-  border-radius: var(--r-sm);
-  background: var(--surface-2);
-}
-.dimBtn {
-  padding: 6px 13px;
-  border-radius: 6px;
-  font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  color: var(--ink-3);
-  transition: background 0.16s var(--ease), color 0.16s, transform 0.1s, box-shadow 0.16s;
-}
-.dimBtn:hover { color: var(--ink); }
-.dimBtn:active { transform: scale(0.95); }
-.dimOn { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm); }
+
+
+
+
+
 
 .iconBtn {
   display: grid;

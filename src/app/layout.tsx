@@ -31,6 +31,11 @@ import '@/components/home.module.css';
 import '@/components/swatch.module.css';
 import '@/components/opacity.module.css';
 import '@/components/map.module.css';
+// ⚠️ 2026-08-20: `MapTools`-ийн pill. Энэ жагсаалтад ОРООГҮЙ байсан тул зурган
+//    дээрх хэрэгслийн зурвас СТАЙЛГҮЙ (товчнууд босоо овоолсон) гарч байлаа —
+//    файлын толгойд бичсэн яг тэр шалтгаан: модулийн CSS async chunk-д орж,
+//    dev дээр `<head>`-д хүрэхгүй.
+import '@/components/mapTools.module.css';
 import '@/components/ui.module.css';
 import '@/components/catalog.module.css';
 import '@/components/tree.module.css';

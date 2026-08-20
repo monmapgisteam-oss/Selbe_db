@@ -236,6 +236,7 @@ export function SuitMap({
   bldPick = null,
   onBldClick,
   zoneFaint = false,
+  opacity,
 }: {
   /** 2D (MapView + ортофото) эсвэл 3D (SceneView + IntegratedMesh) */
   dim: Dim;
@@ -314,6 +315,15 @@ export function SuitMap({
    *    чиг баримжаа өгөх ёстой — ортофото, барилга нэвт харагдана.
    */
   zoneFaint?: boolean;
+  /**
+   * Давхарга тус бүрийн ТУНГАЛАГ (0–1), `MAP_LAYERS[].key`-ээр.
+   *
+   * ⚠️ 2026-08-20: Урьд нь энэ зурагт тунгалаг тохируулах арга ОГТ байхгүй тул
+   * «Тохиромжтой байдал» цонхонд «Тунгалаг» товч зурагдаж чаддаггүй байв.
+   * Заагаагүй давхарга нь БҮТЭЭГДЭХ үеийн анхдагч тунгалагаа хадгална
+   * (жиш. барилга 0.3 — доорх бүсийн онооны будалт нэвт харагдана).
+   */
+  opacity?: Record<string, number>;
 }) {
   const el = useRef<HTMLDivElement>(null);
   const tipEl = useRef<HTMLDivElement>(null);
@@ -333,6 +343,11 @@ export function SuitMap({
   // ⚠️ Энэ файлд `Map` нэрийг ArcGIS-ийн `Map` класс эзэлсэн тул JS-ийн Map
   //    ашиглах боломжгүй — энгийн объект хангалттай.
   const ctxRef = useRef<Record<string, Layer>>({});
+  /**
+   * Давхарга бүрийн БҮТЭЭГДЭХ үеийн тунгалаг — «Тунгалаг» цонхны override
+   * арилахад буцаж очих утга (порталын `MapCanvas`-тай ижил зарчим).
+   */
+  const baseOpacityRef = useRef<Record<string, number>>({});
   const [ready, setReady] = useState(false);
 
   // Callback-уудыг ref-ээр — эффектийг дахин ажиллуулахгүйгээр шинэчилнэ
@@ -708,6 +723,16 @@ export function SuitMap({
       lyr.visible = (ALWAYS_ON_IDS as readonly string[]).includes(key) || (layerOn[key] ?? false);
     }
   }, [layerOn]);
+
+  /* ── Давхаргын ТУНГАЛАГ («Тунгалаг» цонх) ──
+     ⚠️ Анхдагчийг НЭГ УДАА тогтооно: override арилахад эх утга руугаа буцна
+     (барилга 0.3 — доорх бүсийн будалт нэвт харагдах ёстой). */
+  useEffect(() => {
+    for (const [key, lyr] of Object.entries(ctxRef.current)) {
+      if (baseOpacityRef.current[key] == null) baseOpacityRef.current[key] = lyr.opacity ?? 1;
+      lyr.opacity = opacity?.[key] ?? baseOpacityRef.current[key];
+    }
+  }, [opacity, ready]);
 
   /* ── Бодит замын vector tile — «Бодит» симуляцад л ил ── */
   useEffect(() => {

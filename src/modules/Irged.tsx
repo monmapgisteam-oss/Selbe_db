@@ -27,8 +27,12 @@
 import { useCallback, useMemo, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { MapCanvas, type Dim } from '@/components/MapCanvas';
-import { Icon } from '@/components/Icon';
-import { ZoneFilter } from '@/components/ZoneFilter';
+import { MapTools } from '@/components/MapTools';
+import { useZoomToFilter } from '@/lib/useZoomToFilter';
+import { OpacityPanel } from '@/components/OpacityPanel';
+import { LayerCatalog } from '@/components/LayerCatalog';
+import { useLayerPicks } from '@/lib/useLayerPicks';
+import { usePlanTotals } from '@/lib/totals';
 import { Bars, Data, Stat, Stats } from '@/components/ui';
 import { HeadKpi, useBagtsTable } from '@/modules/Dashboard';
 import { useAsync } from '@/lib/useAsync';
@@ -105,6 +109,10 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const [layerOpen, setLayerOpen] = useState(false);
   /** Бүсийн шүүлт — toolbar-ын «Бүс» хэрэглүүр */
   const [zone, setZone] = useState<string | null>(null);
+  /** Тунгалагийн хавтан ба давхарга тус бүрийн opacity (`MapTools`-ийн «Тунгалаг») */
+  const [opOpen, setOpOpen] = useState(false);
+  const [opacity, setOpacity] = useState<Record<string, number>>({});
+  useZoomToFilter({ zone });
 
   const is2d = dim === '2d';
 
@@ -116,12 +124,20 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    * `BASE_MAP_IDS`-ийн 14 суурь давхаргыг бүгдийг асаадаг — бүх чагтыг авбал
    * ортофотогийн оронд тэдгээр гарч ирнэ.
    */
-  const visible = useMemo(() => {
+  const base = useMemo(() => {
     const picked = TOGGLES
       .filter((t) => on[t.id])
       .flatMap((t) => (t.id === 'soc' ? (is2d ? SOC_IDS : []) : [t.id]));
     return is2d ? [IRGED_ORTHO.id, ...ALWAYS, ...picked] : [...ALWAYS, ...picked];
   }, [on, is2d]);
+
+  /**
+   * ⚠️ 2026-08-20: Дээрх нь СУУРЬ (энэ цонхны түүх — ортофото, зам, чагтууд);
+   * дээр нь порталын БҮХ давхаргаас каталогоор нэмнэ (`useLayerPicks`).
+   */
+  const [visible, setVisible] = useLayerPicks(base);
+  const [layerSel, setLayerSel] = useState<string | null>(null);
+  const catTotals = usePlanTotals(zone, layerOpen);
 
   /**
    * НҮХЭН ЖОРЛОНГИЙН ТОО — ЗӨВХӨН тоолно (`returnCountOnly`), нэг ч атрибут
@@ -228,38 +244,26 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             onPick={noop}
           />
 
-          {/* Toolbar — бусад цонхтой ЯГ ИЖИЛ: зурган дээр хөвнө */}
-          <div className={o.mapTools}>
-            <button
-              type="button"
-              aria-pressed={layerOpen}
-              className={`${o.mapBtn} ${layerOpen ? o.mapBtnOn : ''}`}
-              onClick={() => setLayerOpen((v) => !v)}
-              title={tr('Давхаргын жагсаалт')}
-            >
-              <Icon name="layers" size={15} />
-              {tr('Давхарга')}
-            </button>
-
-            <div className={o.dimsInline} role="group" aria-label={tr('Газрын зургийн харагдац')}>
-              {(['2d', '3d', 'bim'] as Dim[]).map((x) => (
-                <button
-                  key={x}
-                  type="button"
-                  aria-pressed={dim === x}
-                  className={`${o.dimBtn} ${dim === x ? o.dimOn : ''}`}
-                  onClick={() => setDim(x)}
-                >
-                  {x.toUpperCase()}
-                </button>
-              ))}
-            </div>
-
-            <ZoneFilter zone={zone} setZone={setZone} variant="tool" />
-          </div>
+          {/* Toolbar — бусад цонхтой ЯГ ИЖИЛ (нэгдсэн `MapTools`) */}
+          <MapTools
+            dim={dim}
+            setDim={setDim}
+            layersOpen={layerOpen}
+            onLayers={() => setLayerOpen((v) => !v)}
+            opacityOpen={opOpen}
+            onOpacity={() => setOpOpen((v) => !v)}
+            zone={zone}
+            setZone={setZone}
+          />
 
           {layerOpen && (
-            <div className={o.catPanel}>
+            <div className={`${o.catPanel} ${i.catPanel}`}>
+              {/**
+                * ⚠️ ХОЁР чагт нь ЭНЭ ЦОНХНЫ ӨӨРИЙН давхаргууд (`irged:toilet`,
+                * Багц 19–21) — тэдгээр порталын каталогийн бүлгүүдэд ОРДОГГҮЙ
+                * тул доорх `LayerCatalog`-оор удирдагдахгүй. Иймд хоёулаа
+                * зэрэгцэн байна: дээр нь энэ цонхны түүх, доор нь БҮХ давхарга.
+                */}
               <div className={i.toggles}>
                 {TOGGLES.map((t) => (
                   <label key={t.id} className={i.toggle}>
@@ -272,7 +276,27 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                   </label>
                 ))}
               </div>
+              <LayerCatalog
+                view="plan"
+                totals={catTotals}
+                visible={visible}
+                setVisible={setVisible}
+                selected={layerSel}
+                onSelect={setLayerSel}
+                onClose={() => setLayerOpen(false)}
+                zone={zone}
+                embedded
+              />
             </div>
+          )}
+
+          {opOpen && (
+            <OpacityPanel
+              visible={visible}
+              opacity={opacity}
+              setOpacity={setOpacity}
+              onClose={() => setOpOpen(false)}
+            />
           )}
 
           {/* Тайлбар — зурагт БОДИТ харагдаж буй давхаргууд (дашбоардтай ижил).

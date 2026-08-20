@@ -51,6 +51,8 @@ import { assignRoadDemand } from './suit/roadDemand';
 import { loadBusStopsCached, busAccess, type BusStop } from './suit/busAccess';
 import { SuitLayerCatalog } from './suit/LayerCatalog';
 import { Icon } from '@/components/Icon';
+import { MapTools } from '@/components/MapTools';
+import { OpacityPanel } from '@/components/OpacityPanel';
 import { BlendCard } from './suit/BlendCard';
 import { CategoryPie, IndicatorPicker, Weights, Parking, Green, Location } from './suit/Urban';
 import { EconSummary, EconTune } from './suit/Economics';
@@ -200,6 +202,18 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
    * товчтой ижил зарчим. Хаалттай эхэлж, товч дарахад газрын зурагт хөвж гарна.
    */
   const [layerCatOpen, setLayerCatOpen] = useState(false);
+  /**
+   * ⚠️ 2026-08-20: «Тунгалаг» ЭНЭ ЦОНХОНД НЭМЭГДЭВ. Бусад бүх харагдацад
+   * байсан атал энд байхгүй байв — учир нь `SuitMap` нь `MapCanvas` БИШ, өөрийн
+   * давхаргын моделтой бөгөөд opacity-г огт дэмждэггүй байлаа (одоо дэмжинэ).
+   *
+   * ⚠️ «Бүс» товч энд ЗОРИУДААР БАЙХГҮЙ (хэрэглэгчийн шийдвэр): энэ цонхны
+   * гол дүрслэл нь БҮС бүрийн оноо — бүсийг зурагнаас шүүх нь өөрийнх нь
+   * үндсэн уншилтыг устгана. Бүсээ энд «Бүсийн ангилал»/«Бүсийн эрэмбэ»
+   * картуудаар шүүнэ.
+   */
+  const [opOpen, setOpOpen] = useState(false);
+  const [opacity, setOpacity] = useState<Record<string, number>>({});
 
   /* ── Тооцоо ── */
   const perHa = econOpt.perHa ?? costs?.perHa ?? 0;
@@ -933,6 +947,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
               selected={selected}
               onSelect={setSelected}
               layerOn={layerOn}
+              opacity={opacity}
               zoneTip={zoneTip}
               buildingTip={buildingTip}
               transportTip={transportMode ? transportTip : undefined}
@@ -968,22 +983,41 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
               </div>
             )}
 
+            {/* ⚠️ Жагсаалт нь ЯГ ОДОО асаалттай давхаргууд — `OpacityPanel`
+                өөрөө `LAYER_BY_ID`-д байхгүйг (`zone`/`label` дүрслэл) шүүнэ. */}
+            {opOpen && (
+              <OpacityPanel
+                visible={Object.keys(layerOn).filter((k) => layerOn[k])}
+                opacity={opacity}
+                setOpacity={setOpacity}
+                onClose={() => setOpOpen(false)}
+              />
+            )}
+
             {/* «Давхарга» товч + 2D/3D/BIM — НЭГ мөрөнд, зүүн доод буланд
                 (Давхарга нь дим товчны ӨМНӨ, «Ерөнхий төлөвлөгөө»-тэй ижил).
                 ⚠️ ArcGIS-ийн удирдлага (zoom баруун дээд, масштаб баруун доод,
                 дэлгэрэнгүй карт зүүн дээд)-тай мөргөлдөхгүй зүүн доод буланд. */}
-            <div className={s.mapControls}>
-              <button
-                type="button"
-                aria-pressed={layerCatOpen}
-                className={`${s.mapBtn} ${layerCatOpen ? s.mapBtnOn : ''}`}
-                onClick={() => setLayerCatOpen((v) => !v)}
-                title={tr('Давхаргын жагсаалт')}
-              >
-                <Icon name="layers" size={15} />
-                {tr('Давхарга')}
-              </button>
-
+            {/**
+              * ⚠️ 2026-08-20: Бусад бүх харагдацтай ИЖИЛ зурвас (`MapTools`) —
+              * дээд-төвд хөвөгч pill. Урьд нь энэ цонх дангаараа ЗҮҮН ДООД
+              * буланд өөрийн `mapControls`-ыг зурдаг тул хэлбэр нь ч, байрлал
+              * нь ч бусдаас зөрдөг байв.
+              *
+              * ⚠️ «Тунгалаг» ба «Бүс» ЭНД БАЙХГҮЙ — энэ цонх `MapCanvas` БИШ,
+              * өөрийн `SuitMap`-ыг ашигладаг бөгөөд тэр нь давхаргын opacity ч,
+              * бүсийн `definitionExpression` ч дэмждэггүй. Хуурамч (дарахад юу ч
+              * болохгүй) товч тавихаас илүү нь тэднийг SuitMap-д жинхэнээр
+              * хэрэгжүүлэх — тусдаа ажил.
+              */}
+            <MapTools
+              dim={dim}
+              setDim={setDim}
+              layersOpen={layerCatOpen}
+              onLayers={() => setLayerCatOpen((v) => !v)}
+              opacityOpen={opOpen}
+              onOpacity={() => setOpOpen((v) => !v)}
+            >
               {/* Полигон ↔ дулаан — ЗӨВХӨН «Симуляц» горимд.
                   ⚠️ Гурван самбар бүрд давтахгүй: энэ нь ЗУРГИЙН тохиргоо тул
                   зургийн удирдлагын мөрөнд байх нь зөв. */}
@@ -1011,21 +1045,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
                   })}
                 </div>
               )}
-
-              <div className={s.mapDims} role="group" aria-label={tr('Газрын зургийн харагдац')}>
-                {(['2d', '3d', 'bim'] as Dim[]).map((d) => (
-                  <button
-                    key={d}
-                    type="button"
-                    aria-pressed={dim === d}
-                    className={`${s.dimBtn} ${dim === d ? s.dimOn : ''}`}
-                    onClick={() => setDim(d)}
-                  >
-                    {d.toUpperCase()}
-                  </button>
-                ))}
-              </div>
-            </div>
+            </MapTools>
 
             {active && (
               <SuitDetail

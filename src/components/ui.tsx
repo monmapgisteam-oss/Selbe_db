@@ -27,6 +27,31 @@ const tone = (c?: string) => ({ '--tone': c ?? 'var(--data)' }) as CSSProperties
  */
 const fin = (v: number) => (Number.isFinite(v) ? v : 0);
 
+/**
+ * Элементийн ОДООГИЙН өргөн (px). Хэмжигдэх хүртэл 0.
+ *
+ * ⚠️ 2026-08-20: Тэнхлэгийн шошгыг ХЭД бичих вэ гэдэг нь ЗӨВХӨН өргөнөөс
+ * шалтгаална. Тогтмол тоо нь хоёр талдаа буруу байв: 272px картад «2026-07-20»
+ * гэсэн 6 огноо багтахгүй давхарлана, 800px өргөнтэй IoT-ийн том чартад 6 нь
+ * хэт цөөн. Иймд ТООГ бус, ЗАЙГ шалгуур болгоно.
+ */
+function useWidth<T extends HTMLElement>(): [React.RefObject<T | null>, number] {
+  const ref = useRef<T>(null);
+  const [w, setW] = useState(0);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    // ⚠️ Эхний утгыг ШУУД тавина: ResizeObserver-ийн эхний дуудлага дараагийн
+    //    frame-д ирдэг тул «хэмжээгүй» (хамгийн цөөн шошготой) хувилбар нэг
+    //    кадр анивчиж харагдана.
+    setW(el.getBoundingClientRect().width);
+    const ro = new ResizeObserver(([e]) => setW(e.contentRect.width));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return [ref, w];
+}
+
 /* ── Хулганы тайлбар (tooltip) ─────────────────────────────────────────────
    ЭКСПОРТЛОХГҮЙ дотоод хэрэгсэл. `Bars`/`Stack`/`Series`/`Donut` дөрвүүлээ
    энийг хэрэглэнэ.
@@ -152,15 +177,25 @@ export function Section({
   title,
   note,
   tone,
+  fill,
   children,
 }: {
   title?: ReactNode;
   note?: ReactNode;
   tone?: 'primary';
+  /**
+   * Агуулгыг картын ҮЛДСЭН ӨНДРӨӨР сунгана (босоо flex).
+   *
+   * ⚠️ Тогтмол өндөртэй чарт нь мөрийн бусад картаар СУНГАСАН картын дотор
+   * дээд талд наалдаж, доор нь том хоосон талбай үлдээдэг: ХАБЭА-гийн
+   * «Ажилтан — гүйцэтгэгчээр» дээр 110px чарт нь ~290px картын дөнгөж 40%-ийг
+   * эзэлж байв. `fill` нь тэр зайг чартад өгнө.
+   */
+  fill?: boolean;
   children: ReactNode;
 }) {
   return (
-    <section className={`${s.section} ${tone === 'primary' ? s.sectionPrimary : ''}`}>
+    <section className={`${s.section} ${tone === 'primary' ? s.sectionPrimary : ''} ${fill ? s.sectionFill : ''}`}>
       {title && (
         <header className={s.sectionHead}>
           <h3 className={s.sectionTitle}>{title}</h3>
@@ -298,8 +333,15 @@ export function Tabs({
 /* ── Үзүүлэлт ── */
 
 export function Stats({ cols = 2, children }: { cols?: 2 | 3 | 4; children: ReactNode }) {
+  /**
+   * ⚠️ `statsGrid` — ГЛОБАЛ нэр (CSS модулиар хэшлэгддэггүй). Дуудагч модуль
+   * тухайн БАЙРЛАЛД нь тааруулж баганын тоог дарж бичихэд хэрэгтэй: дашбоардын
+   * дэлгэрэнгүй горимд газрын зургийн ДЭЭД/ДООД нүд нь 1700px өргөн тул тэнд
+   * 2 багана нь картыг 5 мөр өндөрсгөж, хажуугийн 300px баганад 4 багана нь
+   * шахагдана. Эх сурвалж нь `cols` хэвээр — энэ нь зөвхөн байрлалын залруулга.
+   */
   return (
-    <div className={`${s.stats} ${cols === 3 ? s.stats3 : ''} ${cols === 4 ? s.stats4 : ''}`}>
+    <div className={`${s.stats} statsGrid ${cols === 3 ? s.stats3 : ''} ${cols === 4 ? s.stats4 : ''}`}>
       {children}
     </div>
   );
@@ -318,13 +360,20 @@ export function Stat({
   color?: string;
   accent?: boolean;
 }) {
+  /**
+   * ⚠️ `statCard` / `statNum` / `statTag` — ГЛОБАЛ нэрс (`statsGrid`-тэй ижил
+   * зарчим). Дуудагч модуль тухайн харагдацын дизайнд тааруулж дарж бичихэд
+   * хэрэгтэй: Ерөнхий дашбоардын дэлгэрэнгүй горим нь НЯГТ аналитик хэл рүү
+   * шилжсэн тул тэнд өнгөт tint, сийрэг зай, 26px нөөцлөсөн шошгын мөр
+   * гурвуулаа хүчингүй болно (`overview.module.css` → «НЯГТ ХЭЛ»).
+   */
   return (
-    <div className={`${s.stat} ${accent ? s.statAccent : ''}`} style={tone(color)}>
-      <div className={`${s.statValue} num`}>
+    <div className={`${s.stat} statCard ${accent ? s.statAccent : ''}`} style={tone(color)}>
+      <div className={`${s.statValue} statNum num`}>
         {value}
         {unit && <span className={s.statUnit}>{unit}</span>}
       </div>
-      <div className={s.statLabel}>{label}</div>
+      <div className={`${s.statLabel} statTag`}>{label}</div>
     </div>
   );
 }
@@ -370,7 +419,7 @@ export function Bars({
   const shown = hidden > 0 ? items.slice(0, limit) : items;
 
   return (
-    <div className={s.bars}>
+    <div className={`${s.bars} barsList`}>
       {shown.map((it) => {
         const w = Math.max(0, Math.min(100, (fin(it.value) / top) * 100));
         const on = sel.includes(it.key);
@@ -887,6 +936,7 @@ export function Series({
   color,
   height = 96,
   unit,
+  grow = false,
   selected,
   onSelect,
 }: {
@@ -894,6 +944,11 @@ export function Series({
   color?: string;
   height?: number;
   unit?: string;
+  /**
+   * `height`-ийг ХАМГИЙН БАГА өндөр гэж үзэж, картын үлдсэн зайг дүүргэнэ.
+   * Эцэг нь `Section fill` (эсвэл өөр босоо flex) байх ёстой.
+   */
+  grow?: boolean;
   /** Сонгосон баганын key — идэвхтэй бол бусад нь бүдгэрнэ */
   selected?: string | null;
   /** Багана дарахад — байвал цуваа шүүлтийн удирдлага болно */
@@ -901,6 +956,24 @@ export function Series({
 }) {
   const max = Math.max(1, ...items.map((i) => fin(i.value)));
   const tip = useTip();
+  const [ticksRef, ticksW] = useWidth<HTMLDivElement>();
+
+  /**
+   * Шошгыг ХЭД ДАМЖИЖ бичих вэ (1 = бүгд).
+   *
+   * ⚠️ 2026-08-20: Урьд нь шошго бүр өөрийн баганынхаа өргөнд шахагдаж,
+   * `text-overflow: ellipsis`-ээр тайрагддаг байв. ХАБЭА-гийн «Сарын явц»-д
+   * 11 сар нь ~26px багана болж, «25.09» бүгд «25…» болон хувирч тэнхлэг нь
+   * МЭДЭЭЛЭЛГҮЙ үлддэг байлаа. Одоо шошгыг ТАЙРАХГҮЙ — багтахгүй бол ЦӨӨЛНӨ:
+   * зурагдсан шошго нь хөрш хоосон нүднүүд рүү чөлөөтэй тэлнэ (`seriesLabelWide`).
+   *
+   * ⚠️ Сүүлийн баганаас ХОЙШ тоолно — хамгийн сүүлийн (хамгийн шинэ) үе нь
+   * ҮРГЭЛЖ шошготой байх ёстой.
+   */
+  const LBL_CH = 5.6; // 10px Inter — дундаж тэмдэгтийн өргөн
+  const need = Math.max(...items.map((i) => i.label.length)) * LBL_CH + 8;
+  const perCol = ticksW > 0 ? ticksW / items.length : 0;
+  const stride = perCol > 0 ? Math.max(1, Math.ceil(need / perCol)) : 1;
 
   /**
    * ⚠️ 2026-08-17: envhub-ийн BarChart хэл — ТОРГҮЙ, ТЭНХЛЭГГҮЙ, баганан дээр
@@ -908,8 +981,18 @@ export function Series({
    * мөр. Сонгогдоогүй багана 0.22 хүртэл бүдгэрнэ.
    */
   return (
-    <div className={s.series} style={tone(color)}>
-      <div className={s.seriesPlot} style={{ height }}>
+    <div className={`${s.series} seriesChart`} style={tone(color)}>
+      {/**
+        * ⚠️ 2026-08-20: Нэгж нь чартын ДООД талд байсныг ДЭЭШ гаргав. Доор нь
+        * тэнхлэгийн шошгын мөрийн ЯГ дор, баруун тийш зэрэгцэн зурагддаг тул
+        * ХАБЭА-гийн «Ажилтан — гүйцэтгэгчээр» дээр «ажилтан» гэдэг нь сүүлийн
+        * баганын («МСК») нэрийн ХОЁР ДАХЬ МӨР мэт уншигдаж байлаа.
+        */}
+      {unit && <div className={s.seriesUnit}>{unit}</div>}
+      <div
+        className={s.seriesPlot}
+        style={grow ? { flex: 1, minHeight: height } : { height }}
+      >
         {items.map((it) => {
           const on = selected === it.key;
           const dim = selected != null && !on;
@@ -946,17 +1029,21 @@ export function Series({
           );
         })}
       </div>
-      <div className={s.seriesTicks} aria-hidden>
-        {items.map((it) => {
+      <div className={s.seriesTicks} aria-hidden ref={ticksRef}>
+        {items.map((it, i) => {
           const on = selected === it.key;
+          // Сүүлчийнхээс хойш тоолсон алхам — хамгийн шинэ үе ҮРГЭЛЖ бичигдэнэ.
+          const show = (items.length - 1 - i) % stride === 0;
           return (
-            <span key={it.key} className={`${s.seriesLabel} num ${on ? s.seriesLabelOn : ''}`}>
-              {tr(it.label)}
+            <span
+              key={it.key}
+              className={`${s.seriesLabel} num ${on ? s.seriesLabelOn : ''} ${stride > 1 ? s.seriesLabelWide : ''}`}
+            >
+              {show ? tr(it.label) : ''}
             </span>
           );
         })}
       </div>
-      {unit && <div className={s.seriesUnit}>{unit}</div>}
       {tip.node}
     </div>
   );
@@ -1025,26 +1112,69 @@ export type TrendPoint = {
  * тэнхлэг нь уншигдахааргүй бараан зурвас болдог байлаа. Одоо хамгийн ихдээ
  * `MAX_TICKS` ширхгийг тэнцүү алхмаар сонгоно (эхний ба сүүлийнх ЗААВАЛ орно —
  * цувааны хамрах хүрээг тэд хэлнэ), бусад нь хоосон мөр буцаж зурагдахгүй.
+ *
+ * ⚠️ 2026-08-20: ТООГ хязгаарлах нь ХҮРЭЛЦЭЭГҮЙ байв. `Math.round(i * step)`
+ * нь `step < 2` үед ЗЭРГЭЛДЭЭ индексүүдийг сонгодог: 8 цэгтэй цуваанд
+ * `step = 1.4` → {0,1,3,4,6,7} буюу 0–1 ба 6–7 хос нь нэг нэгэн дээрээ
+ * бичигддэг. Ерөнхий дашбоардын «Гүйцэтгэлийн явц» дээр «2025-10-31» ба
+ * «11-02» бүрмөсөн давхарлаж, IoT-ийн 9 чарт дээр тэнхлэг нь бүхэлдээ
+ * будлиантай зурвас болж байлаа.
+ *
+ * Одоо шошгын хоорондох ХАМГИЙН БАГА ЗАЙГ (`TICK_PX`) баталгаажуулна:
+ * хэмжсэн өргөнөөс индексийн алхмыг гаргаж, БҮХЭЛ тоон алхмаар түгээнэ —
+ * ингэснээр дугуйруулалт зайг богиносгох боломжгүй.
  */
 const MAX_TICKS = 6;
-function axisTicks(points: TrendPoint[]): string[] {
+/** 10px Inter — тоо/зураас/цэгийн дундаж өргөн (px). Шошго нь `.num` (tabular). */
+const LBL_CH = 5.6;
+function axisTicks(points: TrendPoint[], width: number): string[] {
   const n = points.length;
-  const keep = new Set<number>();
-  if (n <= MAX_TICKS) {
-    for (let i = 0; i < n; i++) keep.add(i);
-  } else {
-    const step = (n - 1) / (MAX_TICKS - 1);
-    for (let i = 0; i < MAX_TICKS; i++) keep.add(Math.round(i * step));
+  const keep = new Set<number>([0, n - 1]);
+  // Хэмжигдээгүй (эхний кадр) эсвэл 2 цэгтэй бол зөвхөн хоёр ирмэг.
+  if (n > 2 && width > 0) {
+    /**
+     * Шошгонд хэрэгтэй зайг ТОГТМОЛ БИШ, БОДИТ уртаас нь гаргана.
+     *
+     * ⚠️ Тогтмол 62px («2026-07-20») нь IoT-д хүрэлцээгүй байв: тэнд шошго нь
+     * «08-13 19:00» (11 тэмдэгт), оны эхний нь «2026-08-13 19:00» (16 тэмдэгт
+     * ≈ 100px) хүрдэг тул зэргэлдээ хоёр огноо мөргөлдсөөр байлаа. Хамгийн
+     * УРТ хувилбараар хэмжвэл цуваа бүрд өөрийнх нь өргөн хүчинтэй.
+     */
+    const need = Math.max(...points.map((p) => (p.note ?? p.label).length)) * LBL_CH + 10;
+    const perIdx = width / (n - 1); // хоёр хөрш цэгийн хоорондох px
+    const stride = Math.max(1, Math.ceil(need / perIdx));
+    const t = Math.max(2, Math.min(MAX_TICKS, Math.floor((n - 1) / stride) + 1));
+    // ⚠️ БҮХЭЛ алхам (`Math.floor`) — бутархай алхмыг дугуйруулбал зарим хос
+    //    хөрш болж, яг хуучин алдаа руугаа буцна.
+    const step = Math.max(stride, Math.floor((n - 1) / (t - 1)));
+    // ⚠️ `i * step < n - 1` шалгалт ЗААВАЛ: маш нарийн чарт дээр `stride` нь
+    //    цэгийн тооноос ч давж болно (`t` нь 2 болж хязгаарлагдана) — тэгвэл
+    //    индекс массиваас хальж, тэнхлэгийн ГАДНА (left > 100%) шошго үүснэ.
+    for (let i = 1; i < t; i++) if (i * step < n - 1) keep.add(i * step);
+    // ⚠️ Сүүлийн шошго ЗААВАЛ ирмэг дээр. Дотоод сүүлчийнх нь түүнтэй хэт
+    //    ойрхон бол НЭМЭХГҮЙ, ОРЛУУЛНА — эс бөгөөс баруун захад хоёр огноо
+    //    давхарлана (яг «06-04 07-20» болж байсан алдаа).
+    const lastTick = (t - 1) * step;
+    if (n - 1 - lastTick < stride) keep.delete(lastTick);
+    keep.add(n - 1);
   }
+  /**
+   * Он нь ЗӨВХӨН сольсон шошгонд бичигдэнэ.
+   *
+   * ⚠️ Оныг ЗУРАГДАХ шошгуудаар л мөшгинө. Урьд нь бүх цэгээр гүйдэг байсан тул
+   * он солигдсон цэг нь алгасагдвал «2026» гэсэн тэмдэглэгээ ХАМААГҮЙ алга
+   * болж, тэнхлэг дээр он огт харагдахгүй үлддэг байв.
+   */
   let year = '';
-  return points.map((p, i) => {
-    const d = p.note ?? p.label;
+  const out = points.map(() => '');
+  [...keep].sort((a, b) => a - b).forEach((i) => {
+    const d = points[i].note ?? points[i].label;
     const y = d.slice(0, 4);
     const full = !/^\d{4}-/.test(d) || y !== year;
     if (full) year = y;
-    if (!keep.has(i)) return '';
-    return full ? d : d.slice(5);
+    out[i] = full ? d : d.slice(5);
   });
+  return out;
 }
 
 export function Trend({
@@ -1059,6 +1189,8 @@ export function Trend({
   unit?: string;
 }) {
   const [hov, setHov] = useState<number | null>(null);
+  // Тэнхлэгийн БОДИТ өргөн — хэдэн шошго давхцалгүй багтахыг үүгээр шийднэ.
+  const [axisRef, axisW] = useWidth<HTMLDivElement>();
   // ⚠️ Нэг хуудсанд хэд хэдэн Trend байж болно — градиентийн id ДАВТАГДВАЛ
   //    сүүлийнх нь бусдыгаа дардаг (SVG-ийн id нь баримт даяар нэгдмэл).
   //    React 19-ийн `useId` нь CSS/`url(#…)`-д хүчинтэй тэмдэгт л гаргана.
@@ -1162,8 +1294,8 @@ export function Trend({
         ))}
       </div>
 
-      <div className={s.trendAxis}>
-        {axisTicks(points).map((t, i) => (t ? (
+      <div className={s.trendAxis} ref={axisRef}>
+        {axisTicks(points, axisW).map((t, i) => (t ? (
           <span key={i} className={s.trendAxisTick} style={{ left: `${x(i)}%` }}>
             {t}
           </span>
@@ -1253,7 +1385,7 @@ export function Ring({
 
 export function Rows({ items }: { items: { key: string; value: ReactNode }[] }) {
   return (
-    <div className={s.rows}>
+    <div className={`${s.rows} rowsList`}>
       {items.map((r) => (
         <div key={r.key} className={s.row}>
           <span className={s.rowKey}>{r.key}</span>
