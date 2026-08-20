@@ -118,6 +118,51 @@
 }
 
 /* ══════════════ ХЭВЛЭХ ══════════════ */
+/* ══════════════════════════════════════════════════════════
+   АМЬД ТАЙЛАНГИЙН БҮРЭЛДЭХҮҮН — `tailan` салбараас (2026-08-13)
+   ══════════════════════════════════════════════════════════
+   ⚠️ Салбар нь энэ файлыг envhub рүү шилжихээс ӨМНӨ салсан тул эх кодод
+   `8px` радиус, `font-weight: 650` зэрэг хуучин утга байсныг ТОКЕН руу
+   буулгав (`--r`, 600). Бүтэц, зай, утга нь салбарынхаараа хэвээр. */
+
+/* Хүснэгтийн дугаартай тайлбар — ХҮСНЭГТИЙН ДЭЭД талд (албан тайлангийн журам) */
+.caption {
+  margin: 16px 0 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.caption:first-of-type { margin-top: 10px; }
+/* Дугаарын дараах тайлбар — нимгэн, ялгаатай */
+.caption span { font-weight: 400; color: var(--ink-3); }
+
+/* Товч танилцуулга — баримтын тэргүү хэсэг */
+.lead {
+  margin-bottom: 26px;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--hue);
+  border-radius: var(--r);
+  background: var(--surface-2);
+  font-size: 0.87rem;
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+.lead p + p { margin-top: 9px; }
+.lead strong { color: var(--ink); font-weight: 600; }
+
+/* Дүгнэлт — жагсаалт */
+.findings { margin: 4px 0 0; padding-left: 18px; font-size: 0.86rem; color: var(--ink-2); }
+.findings li { margin-bottom: 7px; line-height: 1.55; }
+.findings strong { color: var(--ink); font-weight: 600; }
+
+.note {
+  margin-top: 8px;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--ink-3);
+}
+
 @media print {
   .wrap { background: #fff; padding: 0; overflow: visible; }
   .toolbar { display: none; }
@@ -131,7 +176,9 @@
     color: #000;
     background: #fff;
   }
-  .title, .h2, .docHead { color: #000; }
+  .title, .h2, .docHead, .caption { color: #000; }
+  /* Тэргүү хэсэг — цаасан дээр саарал дэвсгэр, хар зааг (өнгө хэвлэгдэхгүй) */
+  .lead { background: #f6f6f6; border-color: #999; border-left-color: #000; color: #000; }
   .docHead { border-bottom-color: #000; }
   .h2 { border-bottom-color: #999; }
   .table th, .table td { border-color: #999; }
