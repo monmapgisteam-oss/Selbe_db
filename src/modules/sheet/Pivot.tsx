@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { t as tr } from '@/lib/i18nCore';
 import {
   ACTUAL,
   addAttachment,
@@ -350,7 +349,7 @@ export default function Pivot() {
       // ⚠️ publish-ийн ognoo !== today салбар setOgnoo(today) хийж ЭНД дахин
       // ачаалдаг — өмнө нь тэр салбарт хавсралтын алдаа бүрэн хаягдаж байв.
       if (attachErrsRef.current.length) {
-        setErr(tr('Зураг хавсаргахад алдаа: ') + attachErrsRef.current[0]);
+        setErr('Зураг хавсаргахад алдаа: ' + attachErrsRef.current[0]);
         attachErrsRef.current = [];
       }
     })();
@@ -516,9 +515,10 @@ export default function Pivot() {
 
     const when = new Date(d.t).toLocaleString("mn-MN");
     const msg =
-      tr('Нийтлэгдээгүй {0} нүдний засвар олдлоо ({1}).', Object.keys(next).length, when) +
-      (dropped ? tr('\n{0} нүд хуучирсан тул орхигдоно.', dropped) : "") +
-      tr('\nСэргээх үү?');
+      `Нийтлэгдээгүй ${Object.keys(next).length} нүдний засвар олдлоо (${when}).` +
+      (dropped ? `
+${dropped} нүд хуучирсан тул орхигдоно.` : "") +
+      '\nСэргээх үү?';
     if (window.confirm(msg)) setPending(next);
     else clearDraftLS(bagts, ognoo);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -644,7 +644,7 @@ export default function Pivot() {
   // хамгийн сүүлийн огноон дээр зөвшөөрнө.
   const latestOgnoo = ognooList[ognooList.length - 1] || "";
   const notLatest = !!latestOgnoo && ognoo !== latestOgnoo;
-  const oldDateMsg = tr('Хуучин огноо ({0}) сонгогдсон — засварыг зөвхөн сүүлийн огноо ({1}) дээр хийнэ.', ognoo, latestOgnoo);
+  const oldDateMsg = `Хуучин огноо (${ognoo}) сонгогдсон — засварыг зөвхөн сүүлийн огноо (${latestOgnoo}) дээр хийнэ.`;
 
   /** Амжилттай (≥1 нүд шинэчлэгдсэн) бол true — хавсралтын самбар үүгээр шүүнэ. */
   function applyToSelection(value: string): boolean {
@@ -656,7 +656,7 @@ export default function Pivot() {
     // болж нийтлэхэд null бичигдэн өмнөх утгыг чимээгүй устгадаг байв.
     const t = value.trim().replace(",", ".");
     if (t !== "" && !Number.isFinite(Number(t))) {
-      setErr(tr('Тоон утга оруулна уу.'));
+      setErr('Тоон утга оруулна уу.');
       return false;
     }
     const norm = t === "" ? "" : String(Math.min(100, Math.max(0, Number(t))));
@@ -667,7 +667,7 @@ export default function Pivot() {
     const skipped = cells.length - ok.length;
     setErr(
       skipped
-        ? tr('{0} нүд алгасагдав: гүйцэтгэл өмнө бүртгэгдсэн хувиасаа буурч болохгүй.', skipped)
+        ? `${skipped} нүд алгасагдав: гүйцэтгэл өмнө бүртгэгдсэн хувиасаа буурч болохгүй.`
         : "",
     );
     if (!ok.length) return false;
@@ -703,14 +703,14 @@ export default function Pivot() {
     const t = raw.trim().replace(",", ".");
     if (t !== "" && !Number.isFinite(Number(t))) {
       setEdit(null);
-      setErr(tr('{0} · {1}: тоон утга оруулна уу.', bld, row.work));
+      setErr(`${bld} · ${row.work}: тоон утга оруулна уу.`);
       return false;
     }
     const norm = t === "" ? "" : String(Math.min(100, Math.max(0, Number(t))));
     const floor = belowFloor(row, bld, norm);
     if (floor != null) {
       setEdit(null);
-      setErr(tr('{0} · {1}: өмнө нь {2}% бүртгэгдсэн — гүйцэтгэл буурч болохгүй.', bld, row.work, floor));
+      setErr(`${bld} · ${row.work}: өмнө нь ${floor}% бүртгэгдсэн — гүйцэтгэл буурч болохгүй.`);
       return false; // хуучин утга хэвээр
     }
     setErr("");
@@ -878,7 +878,8 @@ export default function Pivot() {
     if (
       orphaned.length &&
       !window.confirm(
-        tr('{0} нүдэнд зураг бэлтгэсэн ч хувь нь оруулаагүй тул нийтлэхэд хадгалагдахгүй устана.\nҮргэлжлүүлэх үү?', orphaned.length),
+        `${orphaned.length} нүдэнд зураг бэлтгэсэн ч хувь нь оруулаагүй тул нийтлэхэд хадгалагдахгүй устана.
+Үргэлжлүүлэх үү?`,
       )
     ) {
       publishingRef.current = false;
@@ -968,7 +969,7 @@ export default function Pivot() {
       if (ognoo === today) {
         await loadSlice(); // revokes object URLs + clears pendingFiles
         if (attachErrsRef.current.length) {
-          setErr(tr('Зураг хавсаргахад алдаа: ') + attachErrsRef.current[0]);
+          setErr('Зураг хавсаргахад алдаа: ' + attachErrsRef.current[0]);
           attachErrsRef.current = [];
         }
       } else {
@@ -1125,7 +1126,7 @@ export default function Pivot() {
     <div className={st.wrap} ref={wrapRef}>
       <div className={st.toolbar}>
         <label className={st.field}>
-          {tr('Багц')}{" "}
+          {'Багц'}{" "}
           <select
             className={st.select}
             value={bagts}
@@ -1137,7 +1138,7 @@ export default function Pivot() {
           </select>
         </label>
         <label className={st.field}>
-          {tr('Огноо')}{" "}
+          {'Огноо'}{" "}
           <select
             className={st.select}
             value={ognoo}
@@ -1149,22 +1150,22 @@ export default function Pivot() {
           </select>
         </label>
         <span className={st.field}>
-          {tr('Давхарга')}
+          {'Давхарга'}
           <span className={st.layerBtns}>
-            <button className={st.layerBtn} onClick={() => collapseToLayer(1)} title={tr('Үе шат')}>
+            <button className={st.layerBtn} onClick={() => collapseToLayer(1)} title={'Үе шат'}>
               1
             </button>
-            <button className={st.layerBtn} onClick={() => collapseToLayer(2)} title={tr('+ дэд үе шат')}>
+            <button className={st.layerBtn} onClick={() => collapseToLayer(2)} title={'+ дэд үе шат'}>
               2
             </button>
-            <button className={st.layerBtn} onClick={() => collapseToLayer(3)} title={tr('+ ангилал')}>
+            <button className={st.layerBtn} onClick={() => collapseToLayer(3)} title={'+ ангилал'}>
               3
             </button>
-            <button className={st.layerBtn} onClick={() => collapseToLayer(4)} title={tr('+ бүлэг (давхар)')}>
+            <button className={st.layerBtn} onClick={() => collapseToLayer(4)} title={'+ бүлэг (давхар)'}>
               4
             </button>
-            <button className={st.layerBtn} onClick={() => collapseToLayer(5)} title={tr('Бүх ажил дэлгэх')}>
-              {tr('Бүгд')}
+            <button className={st.layerBtn} onClick={() => collapseToLayer(5)} title={'Бүх ажил дэлгэх'}>
+              {'Бүгд'}
             </button>
           </span>
         </span>
@@ -1172,20 +1173,20 @@ export default function Pivot() {
           <button
             className={st.layerBtn}
             onClick={resetAll}
-            title={tr('Чирж өөрчилсөн бүх баганы өргөнийг анхны хэмжээнд нь буцаана')}
+            title={'Чирж өөрчилсөн бүх баганы өргөнийг анхны хэмжээнд нь буцаана'}
           >
-            {tr('Өргөн сэргээх')}
+            {'Өргөн сэргээх'}
           </button>
         )}
         <button
           className={st.publishBtn}
           onClick={publish}
           disabled={busy || dirtyCount === 0}
-          title={tr('Өөрчилсөн нүдүүдийг өнөөдрийн огноогоор хадгална (Ctrl+S)')}
+          title={'Өөрчилсөн нүдүүдийг өнөөдрийн огноогоор хадгална (Ctrl+S)'}
         >
-          {tr('Нийтлэх')}{dirtyCount ? ` (${dirtyCount})` : ""}
+          {'Нийтлэх'}{dirtyCount ? ` (${dirtyCount})` : ""}
         </button>
-        {busy && <span className={st.muted}>{tr('нийтэлж байна…')}</span>}
+        {busy && <span className={st.muted}>{'нийтэлж байна…'}</span>}
       </div>
 
       {err && <p className={st.error}>{err}</p>}
@@ -1211,21 +1212,21 @@ export default function Pivot() {
             <thead>
               <tr>
                 <th className={cls("fz c-no")}>№<i {...grip("no")} /></th>
-                <th className={cls("fz c-ajil")}>{tr('Ажил')}<i {...grip("ajil")} /></th>
-                <th className={cls("fz c-jin")} title={tr('Ажлын хувийн жин — дээд мөртөө эзлэх')}>
-                  {tr('Ажлын жин')}<i {...grip("jin")} />
+                <th className={cls("fz c-ajil")}>{'Ажил'}<i {...grip("ajil")} /></th>
+                <th className={cls("fz c-jin")} title={'Ажлын хувийн жин — дээд мөртөө эзлэх'}>
+                  {'Ажлын жин'}<i {...grip("jin")} />
                 </th>
-                <th className={cls("fz c-totw")} title={tr('Нийт талбайд эзлэх хувийн жин')}>
-                  {tr('Нийт жин')}<i {...grip("totw")} />
+                <th className={cls("fz c-totw")} title={'Нийт талбайд эзлэх хувийн жин'}>
+                  {'Нийт жин'}<i {...grip("totw")} />
                 </th>
-                <th className={cls("fz c-perf")}>{tr('Гүйцэтгэл')}<i {...grip("perf")} /></th>
+                <th className={cls("fz c-perf")}>{'Гүйцэтгэл'}<i {...grip("perf")} /></th>
                 {buildings.map((b) => (
                   <th key={b} className={cls("bld")}>
                     {b}<i {...grip("bld")} />
                   </th>
                 ))}
-                <th className={cls("fz c-done")}>{tr('Хийгдсэн')}<i {...grip("done")} /></th>
-                <th className={cls("fz c-dutuu")}>{tr('Дутуу')}<i {...grip("dutuu")} /></th>
+                <th className={cls("fz c-done")}>{'Хийгдсэн'}<i {...grip("done")} /></th>
+                <th className={cls("fz c-dutuu")}>{'Дутуу'}<i {...grip("dutuu")} /></th>
               </tr>
             </thead>
             <tbody>
@@ -1389,7 +1390,7 @@ export default function Pivot() {
                           title={
                             header || floorOf(r, b) == null
                               ? undefined
-                              : tr('Доод хязгаар {0}%', floorOf(r, b))
+                              : `Доод хязгаар ${floorOf(r, b)}%`
                           }
                           // priority: dirty > selected > crosshair > base.
                           style={{
@@ -1475,7 +1476,7 @@ export default function Pivot() {
               <tr style={{ backgroundColor: HEADER_BG, fontWeight: 700 }}>
                 <td className={cls("fz c-no")} />
                 <td className={cls("fz c-ajil")} style={{ paddingLeft: "6px" }}>
-                  {tr('Дундаж')}
+                  {'Дундаж'}
                 </td>
                 <td className={cls("fz c-jin")} />
                 <td className={cls("fz c-totw")} />
@@ -1513,7 +1514,7 @@ export default function Pivot() {
                   setMenu(null);
                 }}
               >
-                {tr('📎 Зураг хавсаргах')}
+                {'📎 Зураг хавсаргах'}
               </button>
               <button
                 className={st.menuItemDanger}
@@ -1522,7 +1523,7 @@ export default function Pivot() {
                   setMenu(null);
                 }}
               >
-                {tr('Нүд устгах')}
+                {'Нүд устгах'}
               </button>
             </>
           )}
@@ -1540,14 +1541,14 @@ export default function Pivot() {
                 className={st.modal}
                 role="dialog"
                 aria-modal="true"
-                aria-label={tr('Зургийн хавсралт')}
+                aria-label={'Зургийн хавсралт'}
                 tabIndex={-1}
                 ref={modalRef}
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className={st.modalHead}>
                   <h2 className={st.modalTitle}>
-                    {tr('Зураг —')} {rows[attach.ri]?.work ?? ""} · {attach.bld}
+                    {'Зураг —'} {rows[attach.ri]?.work ?? ""} · {attach.bld}
                   </h2>
                   <button
                     className={st.closeBtn}
@@ -1558,13 +1559,13 @@ export default function Pivot() {
                 </div>
 
                 {aFid == null && (
-                  <p className={st.hint}>{tr('Нийтэлсний дараа хадгалагдана.')}</p>
+                  <p className={st.hint}>{'Нийтэлсний дараа хадгалагдана.'}</p>
                 )}
 
                 {attErr && <p className={st.errorSm}>{attErr}</p>}
 
                 <label className={st.addImgBtn}>
-                  {tr('+ Зураг нэмэх')}
+                  {'+ Зураг нэмэх'}
                   <input
                     type="file"
                     accept="image/*"
@@ -1578,10 +1579,10 @@ export default function Pivot() {
                   />
                 </label>
 
-                {attBusy && <p className={st.hint}>{tr('ачаалж байна…')}</p>}
+                {attBusy && <p className={st.hint}>{'ачаалж байна…'}</p>}
 
                 {empty && !attBusy ? (
-                  <p className={st.muted}>{tr('Зураг алга.')}</p>
+                  <p className={st.muted}>{'Зураг алга.'}</p>
                 ) : (
                   <div className={st.imgGrid}>
                     {aFid != null
@@ -1600,7 +1601,7 @@ export default function Pivot() {
                               />
                             </a>
                             <button
-                              title={tr('Устгах')}
+                              title={'Устгах'}
                               className={st.imgDel}
                               disabled={attBusy}
                               onClick={() => removeServerAttach(a.id)}
@@ -1618,7 +1619,7 @@ export default function Pivot() {
                               className={st.img}
                             />
                             <button
-                              title={tr('Устгах')}
+                              title={'Устгах'}
                               className={st.imgDel}
                               onClick={() => removeLocalAttach(i)}
                             >
