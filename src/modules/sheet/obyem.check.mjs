@@ -23,7 +23,6 @@ const leaf = (o) => ({
   wC: null,
   wD: null,
   vol: o.vol ?? null,
-  vol2: null,
   unit: o.unit ?? 1,
   money: null,
   act: [o.act ?? null],

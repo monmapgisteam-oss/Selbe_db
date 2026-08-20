@@ -1,0 +1,174 @@
+/* ═══════════════════════════════════════════════════════════
+   НЭЭЛТИЙН ХУУДАС.
+
+   ⚠️ БҮХ ЗҮЙЛ ГОЛДОО БИШ — сонгодог байрлал:
+      зүүн дээд  · лого
+      зүүн дунд  · төслийн нэр, тайлбар, үндсэн товч
+      зүүн доод  · эзэмшигч
+   ═══════════════════════════════════════════════════════════ */
+
+.wrap {
+  position: relative;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--ink);
+  overflow: hidden;
+}
+
+/*
+ * ⚠️ Бүрхүүлийг ТЭЛЭХ шаардлагагүй болов. `-30px` нь зөвхөн `filter: blur()`-ийн
+ * зөөлөрсөн ирмэгийг дэлгэцээс гаргах зорилготой байсан — бүдгэрүүлэлт байхгүй
+ * бол тэр нь зүгээр л зургийн ирмэгийг илүү тайрна.
+ */
+.bg {
+  position: absolute;
+  inset: 0;
+  background:
+    /* Зүүн талыг илүү бараан — бичвэр тэнд суух тул тодрол хэрэгтэй */
+    linear-gradient(100deg,
+      color-mix(in srgb, var(--bg) 58%, transparent) 0%,
+      color-mix(in srgb, var(--bg) 30%, transparent) 46%,
+      color-mix(in srgb, var(--bg) 12%, transparent) 100%),
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--bg) 26%, transparent) 0%,
+      transparent 32%,
+      color-mix(in srgb, var(--bg) 34%, transparent) 100%),
+    url('/home-bg.webp') center center / cover no-repeat;
+  /*
+   * ⚠️ БҮДГЭРҮҮЛЭЛТГҮЙ. Нээлтийн хуудсанд бичвэр цөөн бөгөөд том тул зургийг
+   * бүтнээр нь тод үзүүлж болно. (Самбарын дэвсгэр нь өөр: тэнд нягт бичвэр,
+   * карт дээгүүр нь суух тул `blur(9px)` хэвээр.)
+   */
+}
+
+/* ══════════ Дээд зурвас ══════════ */
+
+.top {
+  position: relative;
+  display: flex;
+  align-items: center;
+  /* Лого зүүн, нэвтрэх баруун — хооронд нь бүх зай */
+  justify-content: space-between;
+  gap: 20px;
+  padding: 20px clamp(22px, 4vw, 56px);
+}
+
+.logo { height: 34px; width: auto; flex: none; }
+
+/* ══════════ Гол хэсэг ══════════ */
+
+/* Бичвэрийн зүүн зөөлт — гарчиг, шошго, алдааны мөрөнд ижил хэмжээгээр */
+.hero {
+  --indent: clamp(0px, 7vw, 120px);
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;      /* ⚠️ ЗҮҮН эгнээ — голд БИШ */
+  justify-content: center;
+  gap: 0;
+  padding: 0 clamp(22px, 4vw, 56px) 60px;
+}
+
+/*
+ * ⚠️ Том үсэгт `letter-spacing` ЭЕРЭГ байна — том үсэг хоорондоо ойртож
+ * харагддаг тул сөрөг зайтай бол шахагдаж уншихад хүндэрнэ.
+ */
+.title {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0 0 0 var(--indent);
+  font-family: var(--cond);
+  font-size: clamp(2.8rem, 12vw, 9.5rem);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  line-height: 0.98;
+  background: linear-gradient(96deg, var(--ink) 26%, var(--data) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.titleSub {
+  font-size: 0.3em;
+  font-weight: 600;
+  letter-spacing: 0.24em;
+  color: var(--ink-2);
+  /* ⚠️ Эцгийн градиентыг ӨВЛӨХГҮЙ — эс бөгөөс энэ мөр ч тунгалаг болно */
+  background: none;
+  -webkit-text-fill-color: var(--ink-2);
+}
+
+/*
+ * Гарчгийн доорх шошго.
+ * ⚠️ Зүүн эгнээтэй тул `letter-spacing`-ийн сүүлийн зайг нөхөх хэрэггүй —
+ * тэр гажилт зөвхөн ГОЛЛУУЛСАН бичвэрт мэдэгддэг.
+ */
+.tag {
+  margin: 18px 0 0 var(--indent);
+  font-size: 1.45rem;
+  font-weight: 600;
+  letter-spacing: 0.36em;
+  text-transform: uppercase;
+  color: var(--data);
+}
+
+/* ══════════ Нэвтрэх ══════════ */
+
+.enter {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid color-mix(in srgb, var(--data) 45%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--data) 16%, transparent);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 650;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.16s, border-color 0.16s, box-shadow 0.16s, transform 0.1s;
+}
+.enter {
+  /* ⚠️ Толгойн зурваст суух тул илүү нягт — гол товч биш, буланд байна */
+  flex: none;
+  padding: 9px 22px;
+  font-size: 0.85rem;
+}
+
+.enter:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--data) 26%, transparent);
+  border-color: color-mix(in srgb, var(--data) 70%, transparent);
+  box-shadow: 0 0 28px color-mix(in srgb, var(--data) 22%, transparent);
+}
+.enter:active:not(:disabled) { transform: translateY(1px); }
+.enter:disabled { opacity: 0.55; cursor: progress; }
+.enter:focus-visible { outline: 2px solid var(--data); outline-offset: 3px; }
+
+.arrow { transition: transform 0.16s var(--ease); }
+.enter:hover:not(:disabled) .arrow { transform: translateX(4px); }
+
+.error {
+  margin: 18px 0 0 var(--indent);
+  max-width: 540px;
+  font-size: 0.82rem;
+  color: var(--bad);
+}
+
+/* ══════════ Хөл ══════════ */
+
+.foot {
+  position: relative;
+  padding: 0 clamp(22px, 4vw, 56px) 22px;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+}
+
+@media (max-width: 620px) {
+  .hero { padding-bottom: 40px; }
+}

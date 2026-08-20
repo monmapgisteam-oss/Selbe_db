@@ -3,10 +3,14 @@
    Карт бүр traffic-light өнгөтэй (--st): ногоон/шар/улаан/саарал.
    ═══════════════════════════════════════════════════════════ */
 
+/*
+ * ⚠️ ӨӨРИЙН `max-width` ТАВИХГҮЙ. Урьд нь 1120px байсан тул дээрх KPI нүднүүд
+ * (`.board` — 1320px) -тэй эгнэхгүй, хоёр талдаа ~100px-ээр доторшиж, самбар
+ * эвдэрсэн мэт харагдаж байв. Өргөнийг ЭЦЭГ элемент л шийднэ.
+ */
 .panel {
   width: 100%;
-  max-width: 1120px;
-  margin: 4px auto 0;
+  margin: 6px 0 0;
   min-width: 0;
 }
 
@@ -15,7 +19,9 @@
   align-items: baseline;
   gap: 10px;
   flex-wrap: wrap;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
 }
 .head h2 {
   font-size: 0.95rem;
@@ -23,38 +29,106 @@
   color: var(--ink);
   letter-spacing: 0.01em;
 }
-.head span {
-  font-size: 0.72rem;
-  color: var(--ink-3);
-  line-height: 1.3;
-}
 
+/*
+ * ⚠️ `auto-fit` ХЭРЭГЛЭХГҮЙ. Карт нь ЯГ ЗУРГАА тул auto-fit нь өргөнөөс
+ * хамаарч 5+1 гэж хуваагдаж, ганцаардсан карт доогуураа сунжирч байв.
+ * Тогтмол багана ашиглавал 3×2 эсвэл 2×3 болж үргэлж бүтэн эгнэнэ.
+ */
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  /* ⚠️ Мөр бүр ижил өндөртэй — эс бөгөөс эгнээ хоорондоо шаталж харагдана */
+  grid-auto-rows: 1fr;
+  gap: 16px;
+}
+@media (min-width: 900px) {
+  .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
+/*
+ * ⚠️ Мөрүүдийг ТОГТМОЛ өндөртэй болгож эгнүүлнэ: шошго нэг картад хоёр мөр
+ * болж мурийвал утга нь доошилж, картууд шатлан харагддаг байв.
+ */
 .card {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 5px;
+  position: relative;
   width: 100%;
-  padding: 12px 14px 12px 15px;
-  border: 1px solid var(--line);
-  border-left: 3px solid var(--st, var(--line));
+  padding: 13px 15px;
+  /*
+   * ⚠️ Зүүн талын 3px зурвасыг ХАСАВ. Дээд ирмэгийн шугам ба булангийн хаалт
+   * гарсны дараа гурав давхар акцент болж, KPI нүднүүдтэй хэв маяг зөрж байв.
+   * Статусын өнгө нь хүрээ, шугам, гэрэлтэлт, цэг дээр хэвээр үлдэнэ.
+   */
+  border: 1px solid color-mix(in srgb, var(--st, var(--line)) 26%, var(--line));
   border-radius: var(--r-lg);
-  background: var(--surface);
+  /* Статусын өнгө нь зөвхөн зурвасаар биш, маш нимгэн дэвсгэрээр ч мэдрэгдэнэ */
+  /* ⚠️ Сүүлийн давхарга нь ХАГАС ТУНГАЛАГ — нүүрийн дэвсгэр зураг мэдэгдэнэ */
+  background:
+    linear-gradient(158deg,
+      color-mix(in srgb, var(--st, transparent) 9%, transparent) 0%,
+      transparent 42%),
+    color-mix(in srgb, var(--surface) 66%, transparent);
   min-width: 0;
-  text-align: left;
+  /* ⚠️ Агуулга ГОЛДОО — KPI нүднүүдтэй ижил зарчим */
+  text-align: center;
   font: inherit;
   color: inherit;
   cursor: pointer;
+  overflow: hidden;
   transition: border-color 0.15s, box-shadow 0.15s, transform 0.1s;
+}
+
+/*
+ * KPI нүднүүдтэй ИЖИЛ хэв маяг: дээд ирмэгийн шугам + зүүн дээд булангийн хаалт.
+ * ⚠️ Өнгө нь `--kpi` БИШ `--st` — эдгээр карт нь гэрлэн дохионы утгатай тул
+ * нэг цэнхэр болговол «эрсдэлтэй / анхаарах» мэдээлэл бүрэн алдагдана.
+ */
+.card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 1px;
+  background: linear-gradient(90deg,
+    var(--st, var(--line)) 0%,
+    color-mix(in srgb, var(--st, var(--line)) 40%, transparent) 26%,
+    transparent 72%);
+}
+.card::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 24px;
+  height: 24px;
+  border-top: 2px solid var(--st, var(--line));
+  border-left: 2px solid var(--st, var(--line));
+  border-top-left-radius: var(--r-lg);
+  opacity: 0.65;
+  pointer-events: none;
 }
 .card:hover {
   border-color: color-mix(in srgb, var(--st) 55%, var(--line));
-  box-shadow: 0 3px 12px color-mix(in srgb, var(--st) 18%, transparent);
+  box-shadow: 0 0 30px color-mix(in srgb, var(--st) 16%, transparent);
+}
+
+/* ⚠️ Гэрэлтэлт ба харанхуй дэвсгэр ЗӨВХӨН харанхуй горимд — KPI нүдтэй адил */
+:global([data-theme='dark']) .card {
+  background:
+    linear-gradient(158deg,
+      color-mix(in srgb, var(--st, transparent) 10%, transparent) 0%,
+      transparent 42%),
+    color-mix(in srgb, #060d14 50%, transparent);
+  box-shadow:
+    0 0 22px color-mix(in srgb, var(--st, transparent) 9%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--st, transparent) 14%, transparent);
+}
+:global([data-theme='dark']) .card:hover {
+  box-shadow:
+    0 0 30px color-mix(in srgb, var(--st) 18%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--st) 22%, transparent);
 }
 .card:hover .go { opacity: 1; transform: translateX(0); }
 .card:active { transform: translateY(1px); }
@@ -66,10 +140,12 @@
 .top {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 7px;
+  /* Бүх картын шошгын мөр ижил өндөртэй — утгууд нэг шугамд эгнэнэ */
+  min-height: 15px;
 }
 .go {
-  margin-left: auto;
   font-size: 0.85rem;
   font-weight: 700;
   color: var(--st, var(--ink-3));
@@ -93,7 +169,7 @@
   line-height: 1.2;
 }
 .value {
-  font-size: 1.02rem;
+  font-size: 1.08rem;
   font-weight: 750;
   line-height: 1.2;
   color: var(--ink);
@@ -101,8 +177,48 @@
   overflow-wrap: anywhere;
 }
 .note {
+  align-self: start;
+  /* ⚠️ ӨГҮҮЛБЭР зүүн эгнээтэй — олон мөр болж мурийхад нүд дагахад хялбар */
+  text-align: left;
   font-size: 0.72rem;
-  color: var(--ink-2);
+  color: var(--ink-3);
   line-height: 1.32;
   overflow-wrap: anywhere;
+}
+
+/* ══════════ Текст + график ══════════ */
+
+/*
+ * ⚠️ График нь `--st`-ийн өнгийг `color`-оор өвлөнө. SVG-үүд `currentColor`
+ * хэрэглэдэг тул тус бүрд нь өнгө дамжуулах шаардлагагүй.
+ */
+.body {
+  display: grid;
+  /*
+   * ⚠️ Графикийн баганад ХУВЬ (%) хэмжээ ӨГӨХГҮЙ. Урьд нь `auto` баганад
+   * `width: clamp(…, 34%, …)` байсан тул хувь нь тодорхойгүй суурь дээр
+   * бодогдож, багана картаас ГАДАГШАА гарч, хэвтээ баганууд алга болж байв.
+   * Тогтмол px өгвөл гарц гарахгүй.
+   */
+  grid-template-columns: minmax(0, auto) 108px;
+  justify-content: center;
+  align-items: center;
+  gap: 14px;
+  color: var(--st, var(--ink-3));
+}
+.text { display: grid; gap: 4px; min-width: 0; align-content: center; }
+.chart {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  width: 108px;
+  /* SVG нь баганынхаа өргөнөөс хэтрэхээс сэргийлнэ */
+  overflow: hidden;
+}
+.chart > * { max-width: 100%; }
+
+@media (max-width: 640px) {
+  /* Нарийн дэлгэцэд график нь тоог шахаж эхэлдэг тул хасна */
+  .body { grid-template-columns: minmax(0, 1fr); }
+  .chart { display: none; }
 }
