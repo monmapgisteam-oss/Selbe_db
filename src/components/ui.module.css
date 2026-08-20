@@ -737,3 +737,47 @@
 }
 .trendAxisTick:first-child { transform: none; }
 .trendAxisTick:last-child { transform: translateX(-100%); }
+
+/* ── Trend-ийн хэвтээ гүйлт (`visible` заасан үед) ────────────────────────
+   ⚠️ `padding-bottom` нь ЗААВАЛ: гүйлтийн зурвас ~12px эзэлдэг тул үүнгүй бол
+   тэнхлэгийн доод мөр (цаг) таслагдаж, огноо нь ганцаараа үлдэнэ. Habea-гийн
+   `.dayScroll` дээр яг ижил алдаа гарч байсан. */
+.trendScroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* ⚠️ Хажуугийн 14px — эхний/сүүлийн шошго нь цэгийнхээ голд төвлөрдөг тул
+     тэдний хагас нь агуулагчаас гарч, `overflow-x`-д таслагдана. */
+  padding: 0 14px 12px;
+  overscroll-behavior-x: contain;
+}
+/* Хоёр мөрт шошго — огноо дээр, цаг доор. Нэг мөрийн 14px хүрэхгүй. */
+.trendAxisTwoLine { height: 28px; }
+/* Гүйдэг үед шошго БҮГД цэгийнхээ ЯГ голд — эхний/сүүлийнх нь тусгай
+   шилжилтгүй (тэр нь зөвхөн шахагдсан 6 шошготой хувилбарт ирмэг хамгаалдаг). */
+.trendAxisTwoLine .trendAxisTick,
+.trendAxisTwoLine .trendAxisTick:first-child,
+.trendAxisTwoLine .trendAxisTick:last-child {
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.25;
+}
+.trendTickDay { color: var(--ink-2); }
+.trendTickClock { color: var(--ink-3); font-size: 9px; }
+
+/* Цэгийн утга — муруйн ДЭЭР. `.trendHit` нь 26px өргөн ч энэ бичиг түүнээс
+   гарч болно (товч нь тайрдаггүй); `nowrap` нь «1,234.5»-ыг хугалахгүй.
+   `pointer-events: none` — бичиг нь хөрш цэгийн hover-ыг хулгайлахгүй. */
+.trendVal {
+  position: absolute;
+  left: 50%;
+  transform: translate(-50%, -100%);
+  margin-top: -7px;
+  font-size: 9.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--ink-2);
+  pointer-events: none;
+}

@@ -1183,11 +1183,22 @@ export function Trend({
   color,
   height = 132,
   unit = '%',
+  visible,
+  showValues = false,
 }: {
   points: TrendPoint[];
   color?: string;
   height?: number;
   unit?: string;
+  /**
+   * Нэг дэлгэцэнд ХЭДЭН цэг багтах вэ. Заавал бол зурагдах талбар нь
+   * хэвтээ гүйдэг болж, тэнхлэгт цэг БҮРИЙН огноо/цаг хоёр мөрөөр гарна.
+   * Орхивол хуучин зан хэвээр: бүх цэг өргөнд шахагдаж, тэнхлэгт хамгийн
+   * ихдээ `MAX_TICKS` шошго л гарна.
+   */
+  visible?: number;
+  /** Цэг бүрийн утгыг муруйн дээр тоогоор бичих эсэх. */
+  showValues?: boolean;
 }) {
   const [hov, setHov] = useState<number | null>(null);
   // ⚠️ Нэг хуудсанд хэд хэдэн Trend байж болно — градиентийн id ДАВТАГДВАЛ
@@ -1199,16 +1210,51 @@ export function Trend({
   //    товч unmount болоход React blur/mouseleave өгдөггүй тул энд цэвэрлэнэ.
   useEffect(() => setHov(null), [points.length]);
 
+  /**
+   * ⚠️ Анхны харагдац нь СҮҮЛИЙН заалт байх ёстой: цаг хугацааны цуваанд
+   * хамгийн эхний хайдаг зүйл нь «одоо хэд байна» гэдэг. Гүйлт нь анхдаа
+   * зүүн (хамгийн ХУУЧИН) ирмэгээс эхэлдэг тул баруун тийш нь шидэв.
+   */
+  const scRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = scRef.current;
+    if (el) el.scrollLeft = el.scrollWidth;
+  }, [points.length]);
+
   if (points.length < 2) return <Empty label={tr('Цуваа зурахад хангалттай бүртгэл алга.')} />;
 
   // Тэнхлэгийн дээд хязгаар нь БҮТЭН аравт — 23%-ийн муруйг 0–100 дээр зурвал
   // шулуун шугам болж, өсөлт нь ялгагдахгүй.
   const peak = Math.max(...points.map((p) => fin(p.value)));
   const top = Math.max(10, Math.ceil(peak / 10) * 10);
+  /**
+   * ⚠️ Утга бичих үед хамгийн өндөр цэг нь y≈0%-д буудаг тул түүний дээрх
+   * бичиг талбайгаас гарч, дээрх уншилтын мөртэй давхарладаг. 1.18 дахин
+   * сунгасан тэнхлэг нь оргилыг ~15%-д буулгаж, бичигт зай гаргана.
+   */
+  const axisTop = showValues ? top * 1.18 : top;
   const x = (i: number) => (i / (points.length - 1)) * 100;
-  const y = (v: number) => 100 - (fin(v) / top) * 100;
+  const y = (v: number) => 100 - (fin(v) / axisTop) * 100;
 
   const path = points.map((p, i) => `${x(i)},${y(p.value)}`).join(' ');
+
+  /**
+   * ХЭВТЭЭ ГҮЙЛТ ба ЦЭГ БҮРИЙН ШОШГО — хоёр ТУСДАА шийдэл.
+   *
+   * ⚠️ `perPoint` (цэг бүрд огноо/цаг хоёр мөрөөр) нь гүйлтээс ХАМААРАХГҮЙ.
+   * 2026-08-21-нд эдгээрийг зориуд салгав: урьд нь зөвхөн гүйдэг үед хуваадаг
+   * байсан тул 8-аас ЦӨӨН цэгтэй цуваа (Тоолуурын заалт, Батерейн хүчдэл)
+   * хуучин замаар явж, «08-13 19:46» гэсэн нэг мөрийн шошгууд нарийн картад
+   * давхарладаг байв.
+   *
+   * ⚠️ `innerW` нь `(n-1)/(visible-1)`, `n/visible` БИШ. `x(i)` нь эцсийн
+   * цэгүүдийг ирмэгт тавьдаг тул зэргэлдээ цэгийн зай нь өргөнийг `n-1`-д
+   * хуваасан нь; `n/visible` гэвэл нэг зайгаар алдаж, 8 дахь цэгийг ирмэгээр
+   * таслуулна.
+   */
+  const perPoint = visible != null && visible > 1;
+  const scroll = perPoint && points.length > visible;
+  const innerW = scroll ? ((points.length - 1) / (visible - 1)) * 100 : 100;
   // ⚠️ Индексийг ХЯЗГААРЛАНА: дээрх цэвэрлэгээ рендерийн ДАРАА ажилладаг тул
   //    богиноссон цуваан дээр хуучин hov-оор шууд индекслэвэл cur undefined
   //    болж бүх React мод унана.
@@ -1231,8 +1277,22 @@ export function Trend({
     e.preventDefault();
     // focus() нь onFocus-оор setHov-ийг өөрөө дуудна; preventScroll — самбарын
     // гүйлтийг үсэргэхгүй (Tabs-ын ижил болгоомжлол).
-    e.currentTarget.querySelectorAll<HTMLButtonElement>('button')[next]
-      ?.focus({ preventScroll: true });
+    const btn = e.currentTarget.querySelectorAll<HTMLButtonElement>('button')[next];
+    btn?.focus({ preventScroll: true });
+    /**
+     * ⚠️ `preventScroll` нь ХӨТЛӨГЧ БҮХ гүйлтийг зогсоодог тул хэвтээ гүйдэг
+     * график дээр сум дарахад фокус нь ХАРАГДАХГҮЙ цэг рүү үсэрдэг байв.
+     * Тиймээс ЗӨВХӨН энэ графикийн гүйгчийг гараар зөөнө — эцэг самбар
+     * хөдлөхгүй (`scrollIntoView` нь бүх өвөг элементийг гүйлгэдэг тул тэрийг
+     * ашиглаж БОЛОХГҮЙ).
+     */
+    const sc = scRef.current;
+    if (!btn || !sc || sc.scrollWidth <= sc.clientWidth) return;
+    const b = btn.getBoundingClientRect();
+    const c = sc.getBoundingClientRect();
+    const PAD = 24; // цэгийн шошго ирмэгт наалдахгүй байх зай
+    if (b.left - PAD < c.left) sc.scrollLeft -= c.left - b.left + PAD;
+    else if (b.right + PAD > c.right) sc.scrollLeft += b.right - c.right + PAD;
   };
 
   return (
@@ -1246,59 +1306,87 @@ export function Trend({
         </span>
       </div>
 
-      <div className={s.trendPlot} style={{ height }} onKeyDown={nav}>
-        <svg className={s.trendSvg} viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
-          {/**
-            * ⚠️ Талбайн бүрхүүл нь ХАВТГАЙ 0.1 тунгалаг байсныг ГРАДИЕНТ болгов:
-            * шугамын дор өтгөн, суурь тэнхлэг дээр уусна. Хавтгай бүрхүүл нь
-            * тор болон суурь тэнхлэгийг бүрхэж, хоёулаа бүдгэрдэг байв.
-            * ⚠️ SVG `fill` тул CSS градиент ажиллахгүй — заавал `<linearGradient>`.
-            * ⚠️ `gradientUnits="userSpaceOnUse"` — эс бөгөөс `preserveAspectRatio
-            * ="none"` сунгалттай хослоод градиентийн тэнхлэг гажина.
-            */}
-          {/* envhub-ийн AreaChart: 0.34→0.02 градиент, ТОРГҮЙ, y-тэнхлэггүй —
-              утгын лавлагаа нь дээрх readout мөр ба hover tooltip. */}
-          <defs>
-            <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="100" gradientUnits="userSpaceOnUse">
-              <stop offset="0%" stopColor="var(--tone, var(--data))" stopOpacity="0.34" />
-              <stop offset="100%" stopColor="var(--tone, var(--data))" stopOpacity="0.02" />
-            </linearGradient>
-          </defs>
-          <polygon points={`0,100 ${path} 100,100`} style={{ fill: `url(#${gradId})` }} />
-          <polyline className={s.trendLine} points={path} />
-        </svg>
+      {/* ⚠️ Гүйдэг үед `trendPlot`/`trendAxis` НЭГ дотоод блокод сууна —
+          тусад нь гүйлгэвэл шошго нь цэгээсээ салж, өөр өөр байрлалд зогсоно. */}
+      <div ref={scRef} className={scroll ? s.trendScroll : undefined}>
+        <div style={scroll ? { width: `${innerW}%` } : undefined}>
+          <div className={s.trendPlot} style={{ height }} onKeyDown={nav}>
+            <svg className={s.trendSvg} viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
+              {/**
+                * ⚠️ Талбайн бүрхүүл нь ХАВТГАЙ 0.1 тунгалаг байсныг ГРАДИЕНТ болгов:
+                * шугамын дор өтгөн, суурь тэнхлэг дээр уусна. Хавтгай бүрхүүл нь
+                * тор болон суурь тэнхлэгийг бүрхэж, хоёулаа бүдгэрдэг байв.
+                * ⚠️ SVG `fill` тул CSS градиент ажиллахгүй — заавал `<linearGradient>`.
+                * ⚠️ `gradientUnits="userSpaceOnUse"` — эс бөгөөс `preserveAspectRatio
+                * ="none"` сунгалттай хослоод градиентийн тэнхлэг гажина.
+                */}
+              {/* envhub-ийн AreaChart: 0.34→0.02 градиент, ТОРГҮЙ, y-тэнхлэггүй —
+                  утгын лавлагаа нь дээрх readout мөр ба hover tooltip. */}
+              <defs>
+                <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="100" gradientUnits="userSpaceOnUse">
+                  <stop offset="0%" stopColor="var(--tone, var(--data))" stopOpacity="0.34" />
+                  <stop offset="100%" stopColor="var(--tone, var(--data))" stopOpacity="0.02" />
+                </linearGradient>
+              </defs>
+              <polygon points={`0,100 ${path} 100,100`} style={{ fill: `url(#${gradId})` }} />
+              <polyline className={s.trendLine} points={path} />
+            </svg>
 
-        {points.map((p, i) => (
-          <button
-            /**
-             * ⚠️ 2026-08-18: түлхүүр нь `p.label` БАЙСАН. Шошго нь ДЭЛГЭЦИЙН текст
-             * тул давтагдаж БОЛНО — IoT-ийн «ММ-ДД ЧЧ:мм» шошготой хоёр заалт нэг
-             * минутад ирэхэд React «two children with the same key» алдаа өгч, нэг
-             * цэг нь зурагдахгүй үлддэг байв. Жагсаалт нь дарааллаа СОЛИХГҮЙ, бүхлээр
-             * нь дахин зурагддаг тул индекс нь найдвартай таних тэмдэг.
-             */
-            key={i}
-            type="button"
-            tabIndex={curIdx === i ? 0 : -1}
-            className={`${s.trendHit} ${hov === i ? s.trendHitOn : ''}`}
-            style={{ left: `${x(i)}%` }}
-            aria-label={`${p.label}: ${fin(p.value).toFixed(1)}${unit}${p.note ? ` · ${p.note}` : ''}`}
-            onMouseEnter={() => setHov(i)}
-            onMouseLeave={() => setHov((h) => (h === i ? null : h))}
-            onFocus={() => setHov(i)}
-            onBlur={() => setHov((h) => (h === i ? null : h))}
-          >
-            <span className={s.trendDot} style={{ top: `${y(p.value)}%` }} />
-          </button>
-        ))}
-      </div>
+            {points.map((p, i) => (
+              <button
+                /**
+                 * ⚠️ 2026-08-18: түлхүүр нь `p.label` БАЙСАН. Шошго нь ДЭЛГЭЦИЙН текст
+                 * тул давтагдаж БОЛНО — IoT-ийн «ММ-ДД ЧЧ:мм» шошготой хоёр заалт нэг
+                 * минутад ирэхэд React «two children with the same key» алдаа өгч, нэг
+                 * цэг нь зурагдахгүй үлддэг байв. Жагсаалт нь дарааллаа СОЛИХГҮЙ, бүхлээр
+                 * нь дахин зурагддаг тул индекс нь найдвартай таних тэмдэг.
+                 */
+                key={i}
+                type="button"
+                tabIndex={curIdx === i ? 0 : -1}
+                className={`${s.trendHit} ${hov === i ? s.trendHitOn : ''}`}
+                style={{ left: `${x(i)}%` }}
+                aria-label={`${p.label}: ${fin(p.value).toFixed(1)}${unit}${p.note ? ` · ${p.note}` : ''}`}
+                onMouseEnter={() => setHov(i)}
+                onMouseLeave={() => setHov((h) => (h === i ? null : h))}
+                onFocus={() => setHov(i)}
+                onBlur={() => setHov((h) => (h === i ? null : h))}
+              >
+                <span className={s.trendDot} style={{ top: `${y(p.value)}%` }} />
+                {showValues ? (
+                  /* ⚠️ Бүхэл тоог «.0»-гүй бичнэ: 8 бичиг зэрэгцэхэд илүү
+                     тэмдэгт бүр давхцлын эрсдэл — «98» нь «98.0»-аас нарийн. */
+                  <span className={s.trendVal} style={{ top: `${y(p.value)}%` }}>
+                    {Number.isInteger(fin(p.value)) ? fin(p.value) : fin(p.value).toFixed(1)}
+                  </span>
+                ) : null}
+              </button>
+            ))}
+          </div>
 
-      <div className={s.trendAxis}>
-        {axisTicks(points).map((t, i) => (t ? (
-          <span key={i} className={s.trendAxisTick} style={{ left: `${x(i)}%` }}>
-            {t}
-          </span>
-        ) : null))}
+          <div className={`${s.trendAxis} ${perPoint ? s.trendAxisTwoLine : ''}`}>
+            {perPoint
+              ? /* Цэг БҮРД шошго — 8 л харагдах тул давхцахгүй. Огноо
+                   эхний мөрөнд, цаг нь дараагийн мөрөнд (нэг мөрөнд бичвэл
+                   «06-27 10:07» нь хөршөө мөргөнө). */
+                points.map((p, i) => {
+                  const sp = p.label.indexOf(' ');
+                  const day = sp < 0 ? p.label : p.label.slice(0, sp);
+                  const clock = sp < 0 ? '' : p.label.slice(sp + 1);
+                  return (
+                    <span key={i} className={s.trendAxisTick} style={{ left: `${x(i)}%` }}>
+                      <span className={s.trendTickDay}>{day}</span>
+                      {clock ? <span className={s.trendTickClock}>{clock}</span> : null}
+                    </span>
+                  );
+                })
+              : axisTicks(points).map((t, i) => (t ? (
+                  <span key={i} className={s.trendAxisTick} style={{ left: `${x(i)}%` }}>
+                    {t}
+                  </span>
+                ) : null))}
+          </div>
+        </div>
       </div>
     </div>
   );
