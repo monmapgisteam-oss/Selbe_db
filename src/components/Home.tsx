@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { LocaleToggle } from '@/components/LocaleToggle';
 import { useAuth } from './AuthGate';
@@ -12,6 +12,7 @@ import { mntShort, num, pct } from '@/lib/format';
 import { DocViewer } from './DocViewer';
 import { ExecKpi } from './ExecKpi';
 import { Icon } from './Icon';
+import { Ring } from './MiniChart';
 import type { ViewKey } from '@/lib/services';
 import s from './home.module.css';
 
@@ -41,8 +42,19 @@ type Kpi = {
   icon: string;
   /** Дарахад очих харагдац — байхгүй бол зөвхөн уншина */
   view?: ViewKey;
-  /** Статусын өнгө — зөвхөн УТГА нь төлөв илэрхийлдэг нүдэнд */
+  /** Статусын өнгө — ЦАГИРАГТ л нөлөөлнө (утга нь нэгдсэн аястай үлдэнэ) */
   tone?: string;
+  /**
+   * Нүдний акцент өнгө. Дүрс, хүрээ, цагираг, утга бүгд үүнээс.
+   * ⚠️ Hex ШУУД бичихгүй — тэр нь гэрэл/харанхуй горимд дагахгүй.
+   */
+  hue?: string;
+  /**
+   * Цагирагт үзүүлэх ХУВЬ (0…100).
+   * ⚠️ ЗӨВХӨН бодит харьцаа байвал. Хүн амын тоо мэт харьцаагүй үзүүлэлтэд
+   * цагираг зурах гэж хуваарь ЗОХИОХГҮЙ.
+   */
+  ring?: number;
 };
 
 /**
@@ -97,6 +109,8 @@ function useHomeKpis(): { main: Kpi[]; more: Kpi[]; progress: number | null } {
         sub: pp ? tr('{0}% багц бүртгэгдсэн', num(pp.coverage, 0)) : undefined,
         icon: 'chart',
         view: 'tsogts',
+        hue: 'var(--data)',
+        ring: pp?.actual,
       },
       {
         key: 'fin',
@@ -105,6 +119,9 @@ function useHomeKpis(): { main: Kpi[]; more: Kpi[]; progress: number | null } {
         sub: contractPct != null ? tr('{0} гэрээлсэн', pct(contractPct, 0)) : undefined,
         icon: 'calc',
         view: 'finance',
+        hue: 'var(--data)',
+        // Цагираг нь НИЙТ ТӨСВИЙГ биш, түүний ГЭРЭЭЛСЭН хувийг үзүүлнэ
+        ring: contractPct ?? undefined,
       },
       {
         key: 'clear',
@@ -113,6 +130,8 @@ function useHomeKpis(): { main: Kpi[]; more: Kpi[]; progress: number | null } {
         sub: cl ? tr('{0} талбар үлдсэн · {1} га', num(cl.remaining), num(cl.remainingHa, 1)) : undefined,
         icon: 'polygon',
         view: 'gazar',
+        hue: 'var(--data)',
+        ring: cl?.pct ?? undefined,
         tone: cl?.pct == null ? undefined
           : cl.pct >= 95 ? 'var(--good)' : cl.pct >= 80 ? 'var(--warn)' : 'var(--bad)',
       },
@@ -123,16 +142,18 @@ function useHomeKpis(): { main: Kpi[]; more: Kpi[]; progress: number | null } {
         sub: hs ? tr('{0} өрхийн орон сууц', num(hs.ail)) : undefined,
         icon: 'users',
         view: 'irged',
+        hue: 'var(--data)',
+        // ⚠️ Цагираг ЗОРИУДААР байхгүй — хүн ам нь хувь БИШ, харьцуулах суурьгүй
       },
     ],
     // НЭМЭЛТ — жижиг нүд, доод эгнээнд
     more: [
-      { key: 'area', value: hd ? tr('{0} га', num(hd.areaHa, 1)) : '…', label: tr('Төслийн талбай'), icon: 'frame', view: 'plan' },
-      { key: 'green', value: hd?.greenHa != null ? tr('{0} га', num(hd.greenHa, 1)) : '…', label: tr('Ногоон байгууламж'), icon: 'droplet', view: 'plan' },
-      { key: 'blocks', value: hs ? num(hs.blocks) : '…', label: tr('Барилгын блок'), icon: 'building', view: 'tsogts' },
-      { key: 'contract', value: bg ? mntShort(bg.contract) : '…', label: tr('Гэрээт дүн'), icon: 'file', view: 'finance' },
-      { key: 'social', value: sc ? num(sc.totalN) : '…', label: tr('Нийгмийн байгууламж'), icon: 'grid', view: 'irged' },
-      { key: 'cleared', value: cl ? num(cl.cleared) : '…', label: tr('Чөлөөлсөн талбар'), icon: 'target', view: 'gazar' },
+      { key: 'area', value: hd ? tr('{0} га', num(hd.areaHa, 1)) : '…', label: tr('Төслийн талбай'), icon: 'frame', view: 'plan', hue: 'var(--data)' },
+      { key: 'green', value: hd?.greenHa != null ? tr('{0} га', num(hd.greenHa, 1)) : '…', label: tr('Ногоон байгууламж'), icon: 'droplet', view: 'plan', hue: 'var(--data)' },
+      { key: 'blocks', value: hs ? num(hs.blocks) : '…', label: tr('Барилгын блок'), icon: 'building', view: 'tsogts', hue: 'var(--data)' },
+      { key: 'contract', value: bg ? mntShort(bg.contract) : '…', label: tr('Гэрээт дүн'), icon: 'file', view: 'finance', hue: 'var(--data)' },
+      { key: 'social', value: sc ? num(sc.totalN) : '…', label: tr('Нийгмийн байгууламж'), icon: 'grid', view: 'irged', hue: 'var(--data)' },
+      { key: 'cleared', value: cl ? num(cl.cleared) : '…', label: tr('Чөлөөлсөн талбар'), icon: 'target', view: 'gazar', hue: 'var(--data)' },
     ],
     progress: pp ? pp.actual : null,
   };
@@ -197,6 +218,15 @@ export function Home({
 
   /** KPI нүд — `view` байвал дарж болох товч, эс бөгөөс зүгээр л уншина */
   const tile = (k: Kpi, big: boolean) => {
+    const text = (
+      <>
+        {/* ⚠️ Утгын өнгө нь НЭГДСЭН аяс (`--kpi`). Статусыг ЦАГИРАГ илэрхийлнэ. */}
+        <span className={`${s.kpiValue} num`} style={{ color: 'var(--kpi, var(--ink))' }}>
+          {k.value}
+        </span>
+        {k.sub && <span className={s.kpiSub}>{k.sub}</span>}
+      </>
+    );
     const inner = (
       <>
         <span className={s.kpiTop}>
@@ -204,25 +234,44 @@ export function Home({
           <span className={s.kpiLabel}>{k.label}</span>
           {k.view && <span className={s.kpiGo} aria-hidden>→</span>}
         </span>
-        <span className={`${s.kpiValue} num`} style={k.tone ? { color: k.tone } : undefined}>
-          {k.value}
-        </span>
-        {k.sub && <span className={s.kpiSub}>{k.sub}</span>}
+        {big ? (
+          <span className={s.kpiBody}>
+            <span className={s.kpiText}>{text}</span>
+            {/*
+              * ⚠️ Цагираг ЗӨВХӨН бодит хувьтай нүдэнд. Харьцаагүй нүдэнд дүрсийг
+              * бүдэг усан тамга болгоно — тэр нь ГРАФИК БИШ, зөвхөн чимэглэл.
+              * ⚠️ Цагираг нь СТАТУСЫН өнгийг (`tone`) барина; SVG нь
+              * `currentColor` ашигладаг тул энд `color` тавихад хангалттай.
+              */}
+            <span
+              className={`${s.kpiArt} ${k.ring == null ? s.kpiArtFaint : ''}`}
+              style={k.tone ? { color: k.tone } : undefined}
+              aria-hidden
+            >
+              {k.ring != null
+                ? <Ring value={k.ring} size={56} width={7} />
+                : <Icon name={k.icon} size={40} />}
+            </span>
+          </span>
+        ) : text}
       </>
     );
     const cls = `${s.kpi} ${big ? s.kpiBig : ''}`;
+    // ⚠️ `--kpi` нь дүрс, хүрээ, цагираг, утгын өнгийг НЭГ ЦЭГЭЭС удирдана
+    const style = k.hue ? ({ ['--kpi']: k.hue } as CSSProperties) : undefined;
     return k.view ? (
       <button
         key={k.key}
         type="button"
         className={cls}
+        style={style}
         onClick={() => onEnterView(k.view!)}
         title={tr('{0} — дэлгэрэнгүй рүү очих', k.label)}
       >
         {inner}
       </button>
     ) : (
-      <div key={k.key} className={cls}>{inner}</div>
+      <div key={k.key} className={cls} style={style}>{inner}</div>
     );
   };
 
@@ -345,9 +394,10 @@ export function Home({
       <main className={s.board}>
         <header className={s.boardHead}>
           <div>
-            <h1 className={s.title}>{tr('Төслийн ерөнхий байдал')}</h1>
+            <h1 className={s.title}>{tr('Төслийн ерөнхий үзүүлэлтүүд')}</h1>
+            {/* ⚠️ Албан ёсны үг хэллэг — бүтэн өгүүлбэр, үйл үгээр төгсөнө */}
             <p className={s.lede}>
-              {tr('Ерөнхий төлөвлөгөө, барилгын явц, инженерийн сүлжээ, газар чөлөөлөлт, санхүүжилтийн амьд нэгтгэл — бүх тоо ArcGIS-ээс шууд.')}
+              {tr('Төслийн үндсэн үзүүлэлтийг ArcGIS мэдээллийн сангаас шууд нэгтгэн харуулав.')}
             </p>
           </div>
           {/* Төслийн нийт гүйцэтгэл — толгойн баруун талд, нэг харцаар */}

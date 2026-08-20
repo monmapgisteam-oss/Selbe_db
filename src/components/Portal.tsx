@@ -20,6 +20,7 @@ import { Finance } from '@/modules/Finance';
 import { Habea } from '@/modules/Habea';
 import { Irged } from '@/modules/Irged';
 import { Iot } from '@/modules/Iot';
+import { Guitsetgel } from '@/modules/Guitsetgel';
 import { Sheet } from '@/modules/sheet/Sheet';
 import { Tailan } from '@/modules/Tailan';
 import { Icon } from '@/components/Icon';
@@ -479,6 +480,7 @@ function PortalContent(
   const isFinance = view === 'finance';
   const isHabea = view === 'habea';
   const isIot = view === 'iot';
+  const isGuitsetgel = view === 'guitsetgel';
   const isTsogts = view === 'tsogts';
   const isIrged = view === 'irged';
   // `standalone` нь эдгээрийг ЯГ тэмдэглэдэг — тусад нь тоолохгүй
@@ -636,7 +638,9 @@ function PortalContent(
                               ? <Irged dim={dim} setDim={setDim} />
                               : isIot
                                 ? <Iot dim={dim} setDim={setDim} />
-                                : <Suitability dim={dim} setDim={setDim} />}
+                                : isGuitsetgel
+                                  ? <Guitsetgel onView={setView} />
+                                  : <Suitability dim={dim} setDim={setDim} />}
           </div>
         )}
 
