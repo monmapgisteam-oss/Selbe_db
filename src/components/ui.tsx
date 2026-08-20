@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import React, { Fragment, useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import type { Async } from '@/lib/useAsync';
 import { Icon } from './Icon';
@@ -882,6 +882,100 @@ export function Donut({
  * `Series` нь БОСОО, цөөн тэмдэгттэй шошготой (он, давхар, эгнээ) цувааг
  * дүрсний хэлбэрээр нь уншуулна — өсөлт/бууралтын хэв маяг шууд харагдана.
  */
+/**
+ * Цэгүүдийг дайрсан ЗӨӨЛӨН муруйн зам (Catmull-Rom → кубик Безье).
+ *
+ * ⚠️ Хяналтын цэгийн уртыг 1/6 гэж авсан нь стандарт Catmull-Rom→Bézier
+ * хувиргалт: үүнээс их авбал муруй цэгийн хооронд «дүүжлэгдэж» өгөгдөлд
+ * байхгүй оргил/хотгор зурна.
+ */
+function smoothPath(pts: { x: number; y: number }[]): string {
+  if (pts.length < 2) return '';
+  let d = `M${pts[0].x},${pts[0].y}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1] ?? pts[i];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[i + 2] ?? p2;
+    const c1x = p1.x + (p2.x - p0.x) / 6;
+    const c1y = p1.y + (p2.y - p0.y) / 6;
+    const c2x = p2.x - (p3.x - p1.x) / 6;
+    const c2y = p2.y - (p3.y - p1.y) / 6;
+    d += `C${c1x},${c1y} ${c2x},${c2y} ${p2.x},${p2.y}`;
+  }
+  return d;
+}
+
+/**
+ * `Series`-ийн МУРУЙН давхарга — талбайн градиент, зөөлөн шугам, цэгүүд.
+ *
+ * Баганын түвшинд (`.seriesPlot`) БҮТЭН талбайг эзэлж хөвнө; hover/дарах нь
+ * доорх баганууд дээр хэвээр ажиллана (энэ давхарга нь `pointer-events: none`).
+ */
+function SeriesLine({
+  items, max, selected, showValues,
+}: {
+  items: { key: string; label: string; value: number; display?: string }[];
+  max: number;
+  selected?: string | null;
+  showValues?: boolean;
+}) {
+  // ⚠️ Нэг хуудсанд хэд хэдэн муруй байж болно — градиентийн id ДАВТАГДВАЛ
+  //    сүүлийнх нь бусдыгаа дардаг (SVG-ийн id баримт даяар нэгдмэл).
+  const gid = `seriesArea${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
+  const n = items.length;
+  if (n < 2) return null;
+  /**
+   * ⚠️ ДЭЭД ЗАЙ: утгыг цэгийн ДЭЭР бичихэд хамгийн өндөр цэгийн шошго зургийн
+   * гадна гарч, `dayScroll`-ын `overflow-y: hidden`-д ТАСАРНА. Тиймээс утга
+   * харуулах үед муруйг 20%-иар доош шахаж толгойн зай гаргана.
+   */
+  const pad = showValues ? 20 : 0;
+  // х нь баганын ТӨВД — доорх огнооны шошготой нэг тэнхлэгт байх ёстой
+  const pts = items.map((it, i) => ({
+    x: ((i + 0.5) / n) * 100,
+    y: pad + (100 - pad) * (1 - fin(it.value) / max),
+  }));
+  const d = smoothPath(pts);
+
+  return (
+    <>
+      <svg className={s.seriesLineSvg} viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
+        <defs>
+          <linearGradient id={gid} x1="0" y1="0" x2="0" y2="100" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stopColor="var(--tone, var(--data))" stopOpacity="0.34" />
+            <stop offset="100%" stopColor="var(--tone, var(--data))" stopOpacity="0.02" />
+          </linearGradient>
+        </defs>
+        {/* Талбай — муруйг доод ирмэг рүү хааж дүүргэнэ */}
+        <path d={`${d} L${pts[n - 1].x},100 L${pts[0].x},100 Z`} fill={`url(#${gid})`} />
+        {/* ⚠️ `vector-effect` — `preserveAspectRatio="none"` нь зурагдлыг сунгадаг
+            тул үүнгүй бол шугамын зузаан хэвтээ/босоо чиглэлд өөр болно. */}
+        <path className={s.seriesLinePath} d={d} />
+      </svg>
+      {pts.map((p, i) => {
+        const dim = selected != null && selected !== items[i].key ? 0.22 : 1;
+        return (
+          <Fragment key={items[i].key}>
+            <span
+              className={s.seriesLineDot}
+              style={{ left: `${p.x}%`, top: `${p.y}%`, opacity: dim }}
+            />
+            {showValues && (
+              <span
+                className={s.seriesLineVal}
+                style={{ left: `${p.x}%`, top: `${p.y}%`, opacity: dim }}
+              >
+                {items[i].display ?? items[i].value}
+              </span>
+            )}
+          </Fragment>
+        );
+      })}
+    </>
+  );
+}
+
 export function Series({
   items,
   color,
@@ -889,6 +983,9 @@ export function Series({
   unit,
   selected,
   onSelect,
+  showValues = false,
+  outline = false,
+  line = false,
 }: {
   items: { key: string; label: string; value: number; display?: string }[];
   color?: string;
@@ -898,6 +995,26 @@ export function Series({
   selected?: string | null;
   /** Багана дарахад — байвал цуваа шүүлтийн удирдлага болно */
   onSelect?: (key: string) => void;
+  /**
+   * Багана бүрийн оройд утгыг БАЙНГА бичих.
+   *
+   * ⚠️ Анхдагчаар УНТРААЛТТАЙ: envhub-ийн BarChart хэл нь утгыг зөвхөн hover-т
+   * харуулдаг (доорх тайлбарыг үз). Багана цөөн, өргөн үед л асаана — олон
+   * нарийн багана дээр цифрүүд бие бие рүүгээ орно.
+   */
+  showValues?: boolean;
+  /** Багана нь бүтэн дүүргэлтгүй — зах нь бүтэн өнгө, дотор нь бүдэг */
+  outline?: boolean;
+  /**
+   * Баганын оронд ЗӨӨЛӨН МУРУЙ (талбайн градиент + цэг).
+   *
+   * ⚠️ Цэгийн х-байрлал нь баганын ТӨВД тааруулагдана (`(i+0.5)/n`) — доорх
+   * огнооны шошготой ЯГ нэг босоо тэнхлэгт байх ёстой. `i/(n-1)` гэвэл эхний
+   * цэг зүүн ирмэг дээр гарч шошгоосоо хагас нүд зөрнө.
+   * ⚠️ `showValues` энэ горимд ҮЙЛЧЛЭХГҮЙ: цэг бүрийн дээр тоо бичвэл олон
+   *    цэгтэй цуваанд давхцана. Утга нь hover-т гарсаар байна.
+   */
+  line?: boolean;
 }) {
   const max = Math.max(1, ...items.map((i) => fin(i.value)));
   const tip = useTip();
@@ -910,6 +1027,7 @@ export function Series({
   return (
     <div className={s.series} style={tone(color)}>
       <div className={s.seriesPlot} style={{ height }}>
+        {line && <SeriesLine items={items} max={max} selected={selected} showValues={showValues} />}
         {items.map((it) => {
           const on = selected === it.key;
           const dim = selected != null && !on;
@@ -922,7 +1040,20 @@ export function Series({
             color,
             hint: onSelect ? tr('Дарж шүүнэ') : undefined,
           };
-          const inner = <span className={s.seriesBar} style={{ height: barH, opacity: dim ? 0.22 : 1 }} />;
+          // Муруйн горимд багана нь ЗӨВХӨН hover/дарах талбай — зурагдахгүй
+          const inner = line ? null : (
+            <>
+              {showValues && (
+                <span className={s.seriesVal} style={{ opacity: dim ? 0.22 : 1 }}>
+                  {it.display ?? it.value}
+                </span>
+              )}
+              <span
+                className={outline ? `${s.seriesBar} ${s.seriesBarOutline}` : s.seriesBar}
+                style={{ height: barH, opacity: dim ? 0.22 : 1 }}
+              />
+            </>
+          );
           return onSelect ? (
             <button
               key={it.key}
