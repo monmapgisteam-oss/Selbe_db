@@ -3,6 +3,12 @@
 import { Fragment, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
+import { MapTools } from '@/components/MapTools';
+import { LayerCatalog } from '@/components/LayerCatalog';
+import { OpacityPanel } from '@/components/OpacityPanel';
+import { useLayerPicks } from '@/lib/useLayerPicks';
+import { useZoomToFilter } from '@/lib/useZoomToFilter';
+import { usePlanTotals } from '@/lib/totals';
 import { Section, Note, Data, Empty, Rows, Bars, List, ListItem } from '@/components/ui';
 import {
   buildPacks, PackKpi, ContractCard, BlocksCard,
@@ -201,18 +207,31 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
   }, [alerted]);
 
   /**
-   * Сонгосон багц л зурагдана. Давхцсан үлдсэн нэгж талбар олдвол газар
-   * чөлөөлөлтийн давхаргыг НЭМЖ асаана — инженер аль блок дээр саад байгааг
-   * зурган дээр шууд харна.
+   * ⚠️ 2026-08-20: Багцын давхаргууд нь СУУРЬ, дээр нь каталогийн сонголт
+   * (`useLayerPicks`). Урьд нь `visible` нь зөвхөн сонгосон багцаас гардаг тул
+   * энэ цонхонд давхаргын каталог огт байхгүй, порталын бусад ~84 давхаргын
+   * нэгийг ч контекст болгон нэмэх арга үгүй байв.
    */
-  const visible = useMemo(
-    () =>
-      active
-        ? overlap?.oids.length
-          ? [...active.layerIds, PARCEL_LAYER]
-          : active.layerIds
-        : [BLOCK_LAYER],
-    [active, overlap],
+  const [visible, setVisible] = useLayerPicks(active ? active.layerIds : [BLOCK_LAYER]);
+  const [catOpen, setCatOpen] = useState(false);
+  const [opOpen, setOpOpen] = useState(false);
+  const [opacity, setOpacity] = useState<Record<string, number>>({});
+  const [layerSel, setLayerSel] = useState<string | null>(null);
+  const [zone, setZone] = useState<string | null>(null);
+  const catTotals = usePlanTotals(zone, catOpen);
+  useZoomToFilter({ zone });
+
+  /**
+   * ЗУРАГТ ӨГӨХ жагсаалт — каталогийн сонголт (`visible`) дээр давхцсан
+   * үлдсэн нэгж талбар олдвол газар чөлөөлөлтийн давхаргыг НЭМНЭ: инженер
+   * аль блок дээр саад байгааг зурган дээр шууд харна.
+   *
+   * ⚠️ `setVisible` рүү БИЧИХГҮЙ — тэр нь хэрэглэгчийн каталогийн сонголт тул
+   * overlap ирэх бүрд бохирдоно. Зөвхөн ГАРАЛТ дээр давхарлана.
+   */
+  const mapVisible = useMemo(
+    () => (overlap?.oids.length ? [...new Set([...visible, PARCEL_LAYER])] : visible),
+    [visible, overlap],
   );
   /**
    * ДАВХЦСАН НЭГЖ ТАЛБАРЫН ХЭВ МАЯГ — барилгын блокоос ЯЛГАРАХ ёстой.
@@ -269,10 +288,31 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
     setHighlight(null);
   };
 
+  /**
+   * Сонгосон багц руу нисэх.
+   *
+   * ⚠️ 2026-08-21 ЗАСВАР: урьд нь `zoomToWhere(id, active?.where ?? alertedWhere
+   * ?? '1=1')` байсан тул ЗӨВХӨН БАРИЛГЫН багцад ажилладаг байв.
+   *
+   * Багц ХОЁР ТӨРӨЛТЭЙ (`buildPacks`):
+   *   · `build` — давхарга нь БҮХ блокийн нэг давхарга, багцыг нь `where`
+   *     (блокийн OID жагсаалт) ялгана;
+   *   · `infra` — ДАВХАРГА нь өөрөө багц, тиймээс `where` нь `null`.
+   *
+   * `??` гинж нь дэд бүтцийн багцын `null`-ыг `alertedWhere` руу унагаадаг
+   * байлаа — тэр нь БАРИЛГЫН блокийн OID-ууд. Өөр давхаргын OID-аар шүүх тул
+   * үр дүн хоосон буцаж, зураг огт хөдөлдөггүй байв.
+   *
+   * Одоо: багц сонгосон бол `where` нь ЗӨВХӨН тухайн багцынх (байхгүй бол
+   * давхарга бүхэлдээ); `alertedWhere` нь зөвхөн багц СОНГООГҮЙ үед хүчинтэй.
+   */
   useEffect(() => {
-    const id = active?.layerIds[0] ?? BLOCK_LAYER;
-    // Сонгосон багц → тэр багц руу; эс бөгөөс хоцрогдолтой блокууд руу (байвал)
-    zoomToWhere(id, active?.where ?? alertedWhere ?? '1=1');
+    if (active) {
+      const id = active.layerIds[0];
+      if (id) zoomToWhere(id, active.where ?? '1=1');
+      return;
+    }
+    zoomToWhere(BLOCK_LAYER, alertedWhere ?? '1=1');
   }, [active, alertedWhere, zoomToWhere]);
 
   const loading = q.state === 'loading';
@@ -342,16 +382,54 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
 
       {/* ── ТӨВ: зураг ── */}
       <div className={ts.map}>
-        <MapCanvas dim={dim} visible={visible} zone={null} layerWhere={layerWhere} layerStyle={parcelStyle} pulseIds={parcelPulse} onPick={onMapPick} />
+        <MapCanvas
+          dim={dim}
+          visible={mapVisible}
+          opacity={opacity}
+          zone={zone}
+          layerWhere={layerWhere}
+          layerStyle={parcelStyle}
+          pulseIds={parcelPulse}
+          onPick={onMapPick}
+        />
 
-        <div className={o.mapDims} role="group" aria-label={tr('Газрын зургийн харагдац')}>
-          {(['2d', '3d', 'bim'] as Dim[]).map((d) => (
-            <button key={d} type="button" aria-pressed={dim === d}
-              className={`${o.dimBtn} ${dim === d ? o.dimOn : ''}`} onClick={() => setDim(d)}>
-              {d.toUpperCase()}
-            </button>
-          ))}
-        </div>
+        {/* ⚠️ 2026-08-20: Урьд нь ЗӨВХӨН 2D/3D/BIM байсан — Давхарга ч, Тунгалаг
+            ч, Бүс ч байхгүй. Одоо бүх харагдацтай ижил нэгдсэн зурвас. */}
+        <MapTools
+          dim={dim}
+          setDim={setDim}
+          layersOpen={catOpen}
+          onLayers={() => setCatOpen((v) => !v)}
+          opacityOpen={opOpen}
+          onOpacity={() => setOpOpen((v) => !v)}
+          zone={zone}
+          setZone={setZone}
+        />
+
+        {catOpen && (
+          <div className={o.catPanel}>
+            <LayerCatalog
+              view="monitor"
+              totals={catTotals}
+              visible={visible}
+              setVisible={setVisible}
+              selected={layerSel}
+              onSelect={setLayerSel}
+              onClose={() => setCatOpen(false)}
+              zone={zone}
+              embedded
+            />
+          </div>
+        )}
+
+        {opOpen && (
+          <OpacityPanel
+            visible={visible}
+            opacity={opacity}
+            setOpacity={setOpacity}
+            onClose={() => setOpOpen(false)}
+          />
+        )}
 
         <div className={o.packLegend}>
           {active?.kind === 'infra'
@@ -746,8 +824,14 @@ function FinCard({
                 v: (
                   <>
                     {mntShort(givenTotal)}
+                    {/**
+                      * ⚠️ 2026-08-20: Хувийг ТУСДАА МӨРӨНД. Урьд нь утгын хажууд
+                      * мөрлөж байсан бөгөөд `.finKpiVal` нь `nowrap` тул
+                      * «314.5 тэрбум ₮ 27%» нь нүдний 1fr өргөнөөс ХАЛЬЖ, «27%»
+                      * баруун хүрээн дээгүүр гарч бичигддэг байв.
+                      */}
                     {givenShare != null && (
-                      <small style={{ fontSize: '0.72em', opacity: 0.7, marginLeft: 4, fontWeight: 600 }}>
+                      <small style={{ display: 'block', fontSize: '0.72em', opacity: 0.7, fontWeight: 600 }}>
                         {givenShare.toFixed(0)}%
                       </small>
                     )}

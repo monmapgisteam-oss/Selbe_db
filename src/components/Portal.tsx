@@ -9,6 +9,8 @@ import { t as tr } from '@/lib/i18nCore';
 import { ViewRail } from '@/components/ViewRail';
 import { LayerCatalog } from '@/components/LayerCatalog';
 import { OpacityPanel } from '@/components/OpacityPanel';
+import { MapTools } from '@/components/MapTools';
+import { useZoomToFilter } from '@/lib/useZoomToFilter';
 import { Suitability } from '@/modules/analysis/Suitability';
 import { Dashboard } from '@/modules/Dashboard';
 import { Bagts } from '@/modules/Bagts';
@@ -33,7 +35,7 @@ import { queryStats, count, sum } from '@/lib/query';
 import { loadHeadline } from '@/lib/live';
 import {
   DEFAULT_VIEW, VIEW_BY_KEY, layerUrl, oidOf, zoneWhere,
-  PLAN_LAYER_IDS, MONITOR_LAYER_IDS, LAYER_BY_ID, groupOf,
+  PLAN_LAYER_IDS, CATALOG_LAYER_IDS, LAYER_BY_ID, groupOf,
   ZONE_LAYER, ZONE_FIELDS, BUILT_LAYER, BUILT_FIELDS,
   type ViewKey,
 } from '@/lib/services';
@@ -305,6 +307,8 @@ function PortalContent(
 
   /** Сонгосон бүс — БҮХ давхарга, БҮХ тоо үүгээр шүүгдэнэ */
   const [zone, setZone] = useState<string | null>(() => readParam('z'));
+  // Шүүлт солигдоход зураг тэр объектууд руу нисэнэ
+  useZoomToFilter({ zone });
   const [picked, setPicked] = useState<Record<string, unknown> | null>(null);
   const [pickedLayer, setPickedLayer] = useState<string | null>(null);
   const { theme, toggle } = useTheme();
@@ -336,7 +340,9 @@ function PortalContent(
   const standalone = !!VIEW_BY_KEY[view].standalone;
 
   const catalogIds = useMemo(
-    () => (view === 'monitor' ? [...MONITOR_LAYER_IDS, ...PLAN_LAYER_IDS] : PLAN_LAYER_IDS),
+    // ⚠️ 2026-08-20: Каталог БҮХ давхаргыг харуулдаг болсон тул тоо/өртгийн
+    //    жагсаалт нь түүнтэй ижил байх ёстой (эс бөгөөс шинэ мөрүүд «…» хэвээр).
+    () => CATALOG_LAYER_IDS,
     [view],
   );
   // ⚠️ Зөвхөн каталог/самбартай харагдацуудад — дашбоард/анализ өөрсдөө татна
@@ -642,46 +648,18 @@ function PortalContent(
             <div className={s.map}>
               <MapCanvas dim={dim} visible={visible} opacity={opacity} zone={zone} onPick={pick} />
 
-              {/* Газрын зураг дээрх хэрэгслүүд — давхарга нээх, тунгалаг, 2D/3D/BIM */}
-              <div className={s.mapTools}>
-                {/* «Давхарга» — БҮХ харагдацад (plan-д ч) каталогийг нуух/харуулна */}
-                <button
-                  type="button"
-                  aria-pressed={catOpen}
-                  className={`${s.mapBtn} ${catOpen ? s.mapBtnOn : ''}`}
-                  onClick={() => setCatalog((v) => !v)}
-                  title={tr('Давхаргын жагсаалт')}
-                >
-                  <Icon name="layers" size={15} />
-                  {tr('Давхарга')}
-                </button>
-
-                {/* «Тунгалаг» — ил давхаргуудын opacity тохируулах цонх нээнэ */}
-                <button
-                  type="button"
-                  aria-pressed={opacityOpen}
-                  className={`${s.mapBtn} ${opacityOpen ? s.mapBtnOn : ''}`}
-                  onClick={() => setOpacityOpen((v) => !v)}
-                  title={tr('Давхаргын тунгалаг')}
-                >
-                  <Icon name="droplet" size={15} />
-                  {tr('Тунгалаг')}
-                </button>
-
-                <div className={s.mapDims} role="group" aria-label={tr('Газрын зургийн харагдац')}>
-                  {(['2d', '3d', 'bim'] as Dim[]).map((d) => (
-                    <button
-                      key={d}
-                      type="button"
-                      aria-pressed={dim === d}
-                      className={`${s.dimBtn} ${dim === d ? s.dimOn : ''}`}
-                      onClick={() => setDim(d)}
-                    >
-                      {d.toUpperCase()}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              {/* Газрын зургийн НЭГДСЭН хэрэгслийн зурвас — бүх харагдацад ижил
+                  (`MapTools`). Урьд нь энэ блок энд гараар бичигдсэн байв. */}
+              <MapTools
+                dim={dim}
+                setDim={setDim}
+                layersOpen={catOpen}
+                onLayers={() => setCatalog((v) => !v)}
+                opacityOpen={opacityOpen}
+                onOpacity={() => setOpacityOpen((v) => !v)}
+                zone={zone}
+                setZone={setZone}
+              />
 
               {/* Тунгалаг тохируулах хөвөгч цонх */}
               {opacityOpen && (

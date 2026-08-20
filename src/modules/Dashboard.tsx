@@ -1,6 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import {
+  Children, Fragment, isValidElement, useCallback, useEffect, useMemo, useState,
+  type ReactNode,
+} from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
 import {
@@ -9,7 +12,10 @@ import {
 } from '@/components/ui';
 import { Icon } from '@/components/Icon';
 import { LayerCatalog } from '@/components/LayerCatalog';
-import { ZoneFilter } from '@/components/ZoneFilter';
+import { MapTools } from '@/components/MapTools';
+import { useLayerPicks } from '@/lib/useLayerPicks';
+import { useZoomToFilter } from '@/lib/useZoomToFilter';
+import { OpacityPanel } from '@/components/OpacityPanel';
 import { useAsync, type Async } from '@/lib/useAsync';
 import { usePlanTotals } from '@/lib/totals';
 import { queryFeatures, type Row } from '@/lib/query';
@@ -440,20 +446,6 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
   const [open, setOpen] = useState<SecKey[]>([]);
 
   /**
-   * Газрын зурагт асаалттай давхаргууд. Хэсэг сонгоход газрын зураг тэр
-   * хэсэг(үүд)-ийн холбогдох давхаргаар ШҮҮГДЭНЭ — нэмэлт биш, REPLACE:
-   * нээлттэй хэсгүүдийн `SECTION_LAYERS` + барилга контекст (`CONTEXT_LAYERS`)
-   * үлдэж, бусад бүх давхарга нуугдана. Юу ч нээлттэй биш бол анхдагч
-   * `BASE_LAYERS` (бүс + барилга). Үндсэн хил (`khil1`) нь `ALWAYS_ON_IDS`-ээр
-   * MapCanvas-д өөрөө үргэлж асаалттай тул энд оруулах шаардлагагүй.
-   *
-   * ⚠️ Синкийг `useEffect`-ээр ХИЙХГҮЙ — тэгвэл хэрэглэгч гараар унтраасан
-   * давхаргыг эффект дахин асааж, товч «ажиллахгүй» мэт болно. Хэрэглэгчийн
-   * ҮЙЛДЭЛ дээр л (`toggle`) өөрчилнө.
-   */
-  const [visible, setVisible] = useState<string[]>(BASE_LAYERS);
-
-  /**
    * «Давхарга» каталог нээлттэй эсэх — «Ерөнхий төлөвлөгөө» дээрх товчтой ИЖИЛ
    * зарчим. Хаалттай эхэлнэ; товч дарахад л нээгдэнэ.
    *
@@ -461,6 +453,15 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
    * `enabled = layerOpen`) — дашбоард нээх бүрд дэмий цохихгүй.
    */
   const [layerOpen, setLayerOpen] = useState(false);
+  /** Тунгалагийн хавтан ба давхарга тус бүрийн opacity (`MapTools`-ийн «Тунгалаг») */
+  const [opOpen, setOpOpen] = useState(false);
+  const [opacity, setOpacity] = useState<Record<string, number>>({});
+  /**
+   * ⚠️ Чарт дарж үүссэн шүүлт нь бүсээс ДАВАМГАЙЛНА — `flt.only[0]` нь тухайн
+   * шүүлтийн зорилтот давхарга, `flt.where` нь SQL. Хоёулаа байвал зураг ЯГ тэр
+   * объектууд руу; эс бөгөөс сонгосон бүс рүү; юу ч байхгүй бол бүтэн хүрээ рүү.
+   */
+  useZoomToFilter({ zone, layerId: flt?.only?.[0] ?? null, where: flt?.where ?? null });
   const [layerSel, setLayerSel] = useState<string | null>(null);
   const totals = usePlanTotals(zone, layerOpen, CATALOG_IDS);
 
@@ -469,6 +470,27 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
     const ids = secs.flatMap((s) => SECTION_LAYERS[s]);
     return secs.length ? [...new Set([...CONTEXT_LAYERS, ...ids])] : BASE_LAYERS;
   }, []);
+
+  /**
+   * Газрын зурагт асаалттай давхаргууд = СУУРЬ ⊕ КАТАЛОГИЙН СОНГОЛТ.
+   *
+   * СУУРЬ нь төлөв БИШ, деривативаар тооцогдоно: чарт-шүүлт өөрийн давхаргатай
+   * бол тэр (`flt.layers`), эс бөгөөс нээлттэй хэсгийн `SECTION_LAYERS`, юу ч
+   * нээлттэй биш бол `BASE_LAYERS` (бүс + барилга). Үндсэн хил (`khil1`) нь
+   * `ALWAYS_ON_IDS`-ээр MapCanvas-д өөрөө үргэлж асаалттай тул энд оруулахгүй.
+   *
+   * ⚠️ 2026-08-21: Урьд нь энгийн `useState` байсан тул `toggle`/`selectFlt`
+   * бүр каталогоос нэмсэн давхаргыг ДАРЖ бичиж, сэдэв солих бүрд алга болгодог
+   * байв. Одоо `useLayerPicks` суурийг солиход хэрэглэгчийн нэмсэн давхаргыг
+   * ХЭВЭЭР үлдээнэ — бусад долоон харагдацтай ижил зарчим.
+   */
+  const base = useMemo(
+    () => (flt?.layers?.length
+      ? [...new Set([...CONTEXT_LAYERS, ...flt.layers])]
+      : layersFor(open)),
+    [flt, open, layersFor],
+  );
+  const [visible, setVisible] = useLayerPicks(base);
 
   /**
    * ⚠️ 2026-08-17: ГАНЦ сонголт (хэрэглэгчийн хүсэлт) — урьд нь хэсгүүдийг
@@ -483,18 +505,11 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
     setOpen(next);
     // Хэсэг солигдоход чарт-шүүлт хүчингүй (өөр контекст) — цэвэрлэнэ.
     setFlt(null);
+    // ⚠️ Давхаргыг ЭНД тавихгүй — `base` нь `open`-оос деривативаар гарна.
+  }, [open]);
 
-    // Хэсэг(үүд) нээлттэй бол газрын зургийг тэдгээрийн холбогдох давхаргаар
-    // ШҮҮНЭ: SECTION_LAYERS + барилга контекст (+ khil1 үндсэн хил always-on).
-    // Юу ч нээлттэй биш бол анхдагч руу (бүс + барилга) буцна.
-    setVisible(layersFor(next));
-  }, [open, layersFor]);
-
-  const clearAll = useCallback(() => {
-    setOpen([]);
-    setFlt(null);
-    setVisible(BASE_LAYERS);
-  }, []);
+  /* ⚠️ `clearAll` УСТГАВ — зөвхөн «Бүгдийг хаах» товч дууддаг байсан. Ганц
+     хэсэг нээгддэг тул хаах нь идэвхтэй нүдийг дахин дарахтай ижил. */
 
   /**
    * Чарт дарахад — ИЖИЛ мөрийг дахин дарвал шүүлт арилна. Давхаргын шүүлттэй
@@ -503,12 +518,34 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
    */
   const selectFlt = useCallback((next: MapFilter) => {
     const off = !!flt && flt.sec === next.sec && flt.key === next.key;
-    const val = off ? null : next;
-    setFlt(val);
-    setVisible(val?.layers?.length
-      ? [...new Set([...CONTEXT_LAYERS, ...val.layers])]
-      : layersFor(open));
-  }, [flt, open, layersFor]);
+    // ⚠️ Давхаргыг ЭНД тавихгүй — `base` нь `flt`-ээс деривативаар гарна.
+    setFlt(off ? null : next);
+  }, [flt]);
+
+  /**
+   * ХЭСГИЙН КАРТУУДЫГ БҮСЭД ХУВААРИЛАХ — картын ТООНООС хамаарна.
+   *
+   * ⚠️ ЗААВАЛ дөрвөн тал байх албагүй (хэрэглэгчийн шийдвэр). Дүрэм:
+   *   · 1-рх карт нь ҮРГЭЛЖ ДЭЭД зурвас (бүх хэсэгт толгойн үзүүлэлтийн эгнээ);
+   *   · үлдсэн БҮГД сөөлжлөн ЗҮҮН/БАРУУН багана; ДООД зурвас БАЙХГҮЙ.
+   *
+   * ⚠️ Доод зурвасыг яагаад хаясан бэ: хажуугийн багана зургийн ХАЖУУД байдаг
+   * тул зургийн өндрийг огт хөндөхгүй; доод зурвас эсрэгээрээ хулгайлдаг.
+   * Хэмжсэнээр доод карт 62–98px нимгэн зурвас болж, зургаас 100–300px аваад
+   * орлуулах юм нэмээгүй байв.
+   */
+  const zones = (() => {
+    const empty = { top: null as ReactNode, left: [] as ReactNode[], right: [] as ReactNode[] };
+    if (!open.length) return empty;
+    const cards = detailPanels(open[0], d, flt, selectFlt);
+    if (!cards.length) return empty;
+    const rest = cards.slice(1);
+    return {
+      top: cards[0],
+      left: rest.filter((_, i) => i % 2 === 0),
+      right: rest.filter((_, i) => i % 2 === 1),
+    };
+  })();
 
   const pick = useCallback((attrs: Record<string, unknown> | null) => {
     if (!attrs) return;
@@ -529,16 +566,21 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
       className={`${o.shell} ${side.hostClass}`}
       style={side.style}
       data-detail={open.length > 0 ? '1' : '0'}
+      /* ⚠️ ХООСОН хажуугийн багана 0 өргөнтэй болно — эс бөгөөс 1-2 карттай
+         хэсэгт 510px багана хоосон зогсож, зураг дэмий шахагдана. */
+      data-zl={zones.left.length ? '1' : '0'}
+      data-zr={zones.right.length ? '1' : '0'}
     >
       <SplitGrip {...side.left} />
       <SplitGrip {...side.right} />
-      {/* ⚠️ 2026-08-18 envhub 100%: анхдагч горимд ДЭЭД мөр нь ШҮҮЛТҮҮРИЙН МӨР
-          (envhub FilterBar); хэсгийн KPI жагсаалт нь дэлгэрэнгүй горимд л гарна. */}
-      {open.length > 0 ? (
-        <SideRail d={d} open={open} toggle={toggle} clear={clearAll} />
-      ) : (
-        <EnvFilterBar d={d} zone={zone} setZone={setZone} openSec={toggle} />
-      )}
+      {/**
+        * ⚠️ ДЭЭД МӨР НЬ ҮРГЭЛЖ НЭГ — 9 хэсэг бүгд ИЛ товчоор.
+        * Урьд нь хоёр өөр мөр солигдоно: нээгээгүй үед «шүүлтүүрийн мөр»
+        * (гарчиг + унждаг цэс + «Шүүлтүүр тавиагүй»), нээсэн үед 9 нүд.
+        * Үүнээс болж хэсэг рүү орох ХОЁР ДАХЬ алхам хэрэгтэй, орсны дараа
+        * дээд мөр бүхэлдээ өөр зүйл болж хувирдаг байв.
+        */}
+      <SideRail d={d} open={open} toggle={toggle} />
 
       {/* ЗҮҮН багана — ангиллын мөр-чартууд (envhub GeoPanel) */}
       {open.length === 0 && <EnvLeft d={d} />}
@@ -555,36 +597,32 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
           {/* ⚠️ zone={null} байсныг заслав (2026-08-10) — бүсийн шүүлт дашбоардын
               зурагт огт хүрдэггүй байв. Одоо давхаргууд бүсээр шүүгдэж,
               noZone давхаргууд орон зайн маскаар бүдгэрнэ. */}
-          <MapCanvas dim={dim} visible={visible} zone={zone} uniform onPick={pick} />
+          <MapCanvas dim={dim} visible={visible} opacity={opacity} zone={zone} uniform onPick={pick} />
 
-          {/* Дээд-төв toolbar — «Давхарга» товч ба 2D/3D/BIM НЭГ мөрөнд
-              («Ерөнхий төлөвлөгөө»-тэй ижил). Товч дарахад каталог доор нь гарна. */}
-          <div className={o.mapTools}>
-            <button
-              type="button"
-              aria-pressed={layerOpen}
-              className={`${o.mapBtn} ${layerOpen ? o.mapBtnOn : ''}`}
-              onClick={() => setLayerOpen((v) => !v)}
-              title={tr('Давхаргын жагсаалт')}
-            >
-              <Icon name="layers" size={15} />
-              {tr('Давхарга')}
-            </button>
+          {/* Дээд-төв toolbar — БҮХ харагдацад нэгдсэн (`MapTools`).
+              ⚠️ «Тунгалаг» ЭНД НЭМЭГДЭВ — урьд нь зөвхөн «Ерөнхий төлөвлөгөө»,
+              ХАБЭА хоёрт байсан тул дашбоард дээр давхаргын тунгалаг тохируулах
+              арга огт байхгүй байлаа. «Бүс» нь бүх горимд (өмнө нь зөвхөн
+              `open.length > 0` дэлгэрэнгүй горимд). */}
+          <MapTools
+            dim={dim}
+            setDim={setDim}
+            layersOpen={layerOpen}
+            onLayers={() => setLayerOpen((v) => !v)}
+            opacityOpen={opOpen}
+            onOpacity={() => setOpOpen((v) => !v)}
+            zone={zone}
+            setZone={setZone}
+          />
 
-            <div className={o.dimsInline} role="group" aria-label={tr('Газрын зургийн харагдац')}>
-              {(['2d', '3d', 'bim'] as Dim[]).map((x) => (
-                <button key={x} type="button" aria-pressed={dim === x}
-                  className={`${o.dimBtn} ${dim === x ? o.dimOn : ''}`} onClick={() => setDim(x)}>
-                  {x.toUpperCase()}
-                </button>
-              ))}
-            </div>
-
-            {/* Бүсийн шүүлт — envhub-д шүүлтүүр нь зөвхөн ДЭЭД МӨРӨНД байдаг тул
-                анхдагч горимд энд ДАВХАРДУУЛАХГҮЙ (fbar дээр бий); дэлгэрэнгүй
-                горимд fbar байхгүй тул зурган дээрээ үлдэнэ. */}
-            {open.length > 0 && <ZoneFilter zone={zone} setZone={setZone} variant="tool" />}
-          </div>
+          {opOpen && (
+            <OpacityPanel
+              visible={visible}
+              opacity={opacity}
+              setOpacity={setOpacity}
+              onClose={() => setOpOpen(false)}
+            />
+          )}
 
           {layerOpen && (
             <div className={o.catPanel}>
@@ -650,18 +688,18 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
         * шууд сүлжээний ХҮҮХЭД болж, тоо нь хэдэн ч байсан өөрөө хуваагдана.
         */}
       {open.length > 0 && (() => {
-        const k = open[0];
-        const s = SECTIONS.find((x) => x.key === k)!;
+        /**
+         * ⚠️ ХЭСГИЙН ТУСДАА ТОЛГОЙН МӨР («01 · Төслийн цар хүрээ ×») ХАСАГДАВ:
+         * бүтэн мөр эзэлж байсан ч шинэ мэдээлэл өгдөггүй — дээрх зурваст
+         * идэвхтэй хэсэг аль хэдийн тодорч, нэр нь бичээстэй байдаг.
+         * ⚠️ ХААХ боломж алдагдаагүй — идэвхтэй нүдийг ДАХИН дарахад хаагдана.
+         */
+        const { top, left, right } = zones;
         return (
           <>
-            <header className={o.ringHd}>
-              <span className={o.colNo}>{s.no}</span>
-              <h2 className={o.colTitle}>{s.title}</h2>
-              <button type="button" className={o.colClose} onClick={() => toggle(k)} aria-label={tr('Хаах')}>×</button>
-            </header>
-            <div className={o.ringCards}>
-              <Detail k={k} d={d} flt={flt} onFlt={selectFlt} />
-            </div>
+            {top && <div className={o.zTop}>{top}</div>}
+            {left.length > 0 && <div className={o.zLeft}>{left}</div>}
+            {right.length > 0 && <div className={o.zRight}>{right}</div>}
           </>
         );
       })()}
@@ -672,19 +710,39 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
 /** Хэсэг бүрийн чарт-шүүлтийн нийтлэг props — БҮХ хэсэг ижил интерфэйстэй */
 type FltProps = { flt: MapFilter | null; onFlt: (f: MapFilter) => void };
 
+/**
+ * ХЭСГИЙН КАРТУУДЫГ МАССИВААР — байрлалыг ЭЦЭГ нь шийднэ.
+ *
+ * ⚠️ Компонентуудыг JSX-ЭЭР БИШ, ЭНГИЙН ФУНКЦ болгон дуудна (`Detail`): эс
+ * бөгөөс эцэгт нь ГАНЦ компонентын элемент ирж, доторх `Panel`-уудыг тоолж ч,
+ * дөрвөн бүсэд хуваарилж ч чадахгүй.
+ *
+ * ⚠️ ЗӨВШӨӨРӨГДӨХ ШАЛТГААН: ес компонентын АЛЬ Ч НЬ hook дууддаггүй
+ * (шалгасан). ЭДГЭЭРТ HOOK НЭМЭХГҮЙ — хэсэг солиход дараалал өөрчлөгдөж унана.
+ */
+function detailPanels(
+  k: SecKey, d: DashData, flt: MapFilter | null, onFlt: (f: MapFilter) => void,
+): ReactNode[] {
+  const out = Detail({ k, d, flt, onFlt });
+  const kids = isValidElement<{ children?: ReactNode }>(out) && out.type === Fragment
+    ? out.props.children
+    : out;
+  return Children.toArray(kids);
+}
+
 function Detail({ k, d, flt, onFlt }: {
   k: SecKey; d: DashData;
 } & FltProps) {
   switch (k) {
-    case 'scope': return <ScopeDetail bagts={d.bagts} d={d} flt={flt} onFlt={onFlt} />;
-    case 'schedule': return <ScheduleDetail project={d.project} />;
-    case 'bagts': return <BagtsDetail q={d.bagts} prog={d.prog} hist={d.hist} flt={flt} onFlt={onFlt} />;
-    case 'land': return <LandDetail parcels={d.parcels} land={d.land} project={d.project} flt={flt} onFlt={onFlt} />;
-    case 'network': return <NetworkDetail project={d.project} bagts={d.bagts} sources={d.sources} flt={flt} onFlt={onFlt} />;
-    case 'power': return <PowerDetail project={d.project} sources={d.sources} prog={d.prog} flt={flt} onFlt={onFlt} />;
-    case 'source': return <SourceDetail sources={d.sources} d={d} flt={flt} onFlt={onFlt} />;
-    case 'finance': return <FinanceDetail budget={d.budget} flt={flt} onFlt={onFlt} />;
-    case 'benefit': return <BenefitDetail bagts={d.bagts} d={d} flt={flt} onFlt={onFlt} />;
+    case 'scope': return ScopeDetail({ bagts: d.bagts, d, flt, onFlt });
+    case 'schedule': return ScheduleDetail({ project: d.project });
+    case 'bagts': return BagtsDetail({ q: d.bagts, prog: d.prog, hist: d.hist, flt, onFlt });
+    case 'land': return LandDetail({ parcels: d.parcels, land: d.land, project: d.project, flt, onFlt });
+    case 'network': return NetworkDetail({ project: d.project, bagts: d.bagts, sources: d.sources, flt, onFlt });
+    case 'power': return PowerDetail({ project: d.project, sources: d.sources, prog: d.prog, flt, onFlt });
+    case 'source': return SourceDetail({ sources: d.sources, d, flt, onFlt });
+    case 'finance': return FinanceDetail({ budget: d.budget, flt, onFlt });
+    case 'benefit': return BenefitDetail({ bagts: d.bagts, d, flt, onFlt });
   }
 }
 
@@ -831,9 +889,9 @@ function railStat(k: SecKey, d: DashData): {
   }
 }
 
-function SideRail({ d, open, toggle, clear }: {
+function SideRail({ d, open, toggle }: {
   d: DashData;
-  open: SecKey[]; toggle: (k: SecKey) => void; clear: () => void;
+  open: SecKey[]; toggle: (k: SecKey) => void;
 }) {
   return (
     <div className={o.rail} role="group" aria-label={tr('Дашбоардын хэсгүүд')}>
@@ -864,13 +922,9 @@ function SideRail({ d, open, toggle, clear }: {
         );
       })}
 
-      {/* Нээлттэй хэсгийг бөөнөөр хаах — мөрийн ТӨГСГӨЛД, зөвхөн хэрэгтэй үед.
-          ⚠️ Байнгын нүд эзэлдэггүй: хэсэг нээгээгүй үед огт байхгүй. */}
-      {open.length > 0 && (
-        <button type="button" className={o.railClear} onClick={clear}>
-          {tr('Бүгдийг хаах (')}{open.length})
-        </button>
-      )}
+      {/* ⚠️ «Бүгдийг хаах (N)» товч ХАСАГДАВ. Ганц л хэсэг нээгддэг тул «бүгд»
+          гэдэг нь ҮРГЭЛЖ нэг байсан бөгөөд түүнийг хаах нь идэвхтэй нүдийг
+          дахин дарахтай ЯГ ижил үйлдэл. */}
     </div>
   );
 }
@@ -878,76 +932,16 @@ function SideRail({ d, open, toggle, clear }: {
 /* ══════════════════ envhub нэг дэлгэцийн бүрэлдэхүүнүүд ══════════════════ */
 
 /**
- * ШҮҮЛТҮҮРИЙН МӨР — envhub-ийн FilterBar-тай ижил: зүүнд гарчиг, дараа нь
- * шүүлтүүрүүд, баруунд идэвхтэй тоолуур + «Цэвэрлэх». «Хэсэг» цэс нь 9 хэсгийн
- * жагсаалт — сонгоход дэлгэрэнгүй горим (data-detail=1) нээгдэнэ.
+ * ⚠️ `EnvFilterBar` (ШҮҮЛТҮҮРИЙН МӨР) БҮРМӨСӨН УСТГАВ.
+ *
+ * Тэр нь хэсэг нээгээгүй үед дээд мөрийг эзэлж, 9 хэсгийг «Дэлгэрэнгүй хэсэг ▾»
+ * гэсэн УНЖДАГ ЦЭС дотор нуудаг байв — хэсэг рүү орох бүрд илүү нэг даралт.
+ * Дээр нь «Шүүлтүүр тавиагүй» / «N идэвхтэй ⟲ Цэвэрлэх» гэсэн төлөвийн бичиг
+ * байсан ч бүсийн шүүлт нь зурган дээрх `MapTools`-ийн «Бүс» товчоор аль
+ * хэдийн ил байдаг тул давхардал байлаа.
+ *
+ * Одоо `SideRail` ганцаараа — 9 хэсэг ҮРГЭЛЖ ил товчоор, дарвал шилжинэ.
  */
-function EnvFilterBar({ d, zone, setZone, openSec }: {
-  d: DashData;
-  zone: string | null;
-  setZone: (z: string | null) => void;
-  openSec: (k: SecKey) => void;
-}) {
-  const [menu, setMenu] = useState(false);
-  useEffect(() => {
-    if (!menu) return;
-    const close = () => setMenu(false);
-    window.addEventListener('pointerdown', close);
-    return () => window.removeEventListener('pointerdown', close);
-  }, [menu]);
-  const active = zone ? 1 : 0;
-  return (
-    <div className={o.fbar}>
-      <span className={o.fbarTitle}>{tr('Ерөнхий дашбоард')}</span>
-      <span className={o.fbarDiv} aria-hidden />
-
-      {/* Бүс — газрын зурган дээрхтэй ИЖИЛ төлөвийг удирдана */}
-      <ZoneFilter zone={zone} setZone={setZone} variant="tool" />
-
-      {/* Хэсэг — 9 дэлгэрэнгүй хэсгийн цэс (envhub FilterMenu хэв) */}
-      <div className={o.fmenu} onPointerDown={(e) => e.stopPropagation()}>
-        <button
-          type="button"
-          className={`${o.fbtn} ${menu ? o.fbtnOn : ''}`}
-          aria-expanded={menu}
-          onClick={() => setMenu((v) => !v)}
-        >
-          {tr('Дэлгэрэнгүй хэсэг')}
-          <span className={`${o.fbtnCaret} ${menu ? o.fbtnCaretOn : ''}`} aria-hidden>▾</span>
-        </button>
-        {menu && (
-          <div className={o.fpanel} role="menu">
-            {SECTIONS.map((s) => (
-              <button
-                key={s.key}
-                type="button"
-                role="menuitem"
-                className={o.fitem}
-                onClick={() => { setMenu(false); openSec(s.key); }}
-              >
-                <span>{s.title}</span>
-                <span className={`${o.fitemVal} num`}>{railStat(s.key, d).value}</span>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div className={o.fbarRight}>
-        {active > 0 ? (
-          <>
-            <span className={`${o.fbarActive} num`}>{active} {tr('идэвхтэй')}</span>
-            <button type="button" className={o.fbarReset} onClick={() => setZone(null)}>
-              {tr('⟲ Цэвэрлэх')}
-            </button>
-          </>
-        ) : (
-          <span className={o.fbarIdle}>{tr('Шүүлтүүр тавиагүй')}</span>
-        )}
-      </div>
-    </div>
-  );
-}
 
 /**
  * ИНДИКАТОРЫН ЗУРВАС — envhub: нэг hairline хайрцагт заагаар тусгаарласан
@@ -1400,7 +1394,6 @@ function ScheduleDetail({ project }: { project: Async<ProjectProgress> }) {
       {/* Бүртгэгдсэн жингийн хамрах хүрээ — урьд нь `p.coverage` дашбоард дээр
           ХААНА Ч хэвлэгддэггүй байсан тул бүртгэгдээгүй ~18.5% нь үл үзэгдэх байв. */}
       <Panel title={tr('Жигнэсэн гүйцэтгэл ба хамрах хүрээ')} note={tr('Σ(жин×гүйц) ÷ Σжин')}>
-        <RingStats value={p?.actual ?? null} label={tr('жигнэсэн гүйцэтгэл')} decimals={2}>
           <Stats cols={2}>
             <Stat accent color={HUE[0]} value={p == null ? '…' : num(p.coverage, 2)} unit="%" label={tr('Бүртгэгдсэн жин')} />
             <Stat color={NO_DATA} value={p == null ? '…' : num(Math.max(0, 100 - p.coverage), 2)} unit="%" label={tr('Хүснэгтэд ороогүй жин')} />
@@ -1411,7 +1404,11 @@ function ScheduleDetail({ project }: { project: Async<ProjectProgress> }) {
               label={tr('Барилга угсралтын жин')}
             />
           </Stats>
-        </RingStats>
+      </Panel>
+
+      {/* ⚠️ Бөгж тоонуудын зурвасаас САЛСАН — хажуугийн баганын карт. */}
+      <Panel title={tr('Жигнэсэн гүйцэтгэл')}>
+        <RingCard value={p?.actual ?? null} label={tr('жигнэсэн гүйцэтгэл')} decimals={2} />
       </Panel>
 
       {/* Үе шатны ЖИН — `byStage[*].weight` нь нэгтгэгддэг байсан ч зурагддаггүй байв */}
@@ -1541,20 +1538,30 @@ const heat = (v: number, max: number) => tint(ACCENT, max > 0 ? v / max : 1);
  * ⚠️ `children` нь ЯГ НЭГ элемент (`<Stats>`) байх ёстой — CSS нь
  * `.landTop > :last-child { flex: 1 1 240px }` гэж СҮҮЛИЙН хүүхдэд найддаг.
  */
-function RingStats({ value, label, color = ACCENT, decimals, children }: {
+/**
+ * БӨГЖНИЙ ТУСДАА КАРТ — газрын зургийн ДЭЭРХ тоонуудын зурваст дугуй диаграм
+ * байх нь эгнээний өндрийг тэлж, тоонуудын нэгдмэл шугамыг эвддэг тул бөгж
+ * ӨӨРИЙН `Panel`-д, картын дарааллын СҮҮЛД тавигдана — `zones` нь эхний
+ * картыг дээд зурваст, үлдсэнийг хажуугийн багануудад тараадаг.
+ */
+function RingCard({ value, label, color = ACCENT, decimals }: {
   value: number | null | undefined;
   label: string;
   color?: string;
   decimals?: number;
-  children: ReactNode;
 }) {
   return (
-    <div className={o.landTop}>
-      <Ring value={value} size={104} width={17} color={color} label={label} decimals={decimals} />
-      {children}
+    <div className={o.ringCard}>
+      <Ring value={value} size={132} width={20} color={color} label={label} decimals={decimals} />
     </div>
   );
 }
+
+/* ⚠️ `RingStats` УСТГАВ: бөгж ба үзүүлэлтийн эгнээг НЭГ хайрцагт наадаг байв.
+   Тэр эгнээ нь одоо газрын зургийн дээрх «тоонуудын зурвас» — дугуй диаграм
+   тэнд эгнээний өндрийг тэлж, тоонуудын нэгдмэл шугамыг эвддэг. Зургаан
+   дуудагч бүгд `RingCard`-ыг ӨӨРИЙН `Panel`-д, дарааллын сүүлд тавьдаг
+   болсон тул бөгж хажуугийн баганад буудаг. */
 
 /** Bars-ын items — `heat()` өнгө нь ЖАГСААЛТЫН дээд утгаар нормчилогдоно */
 function heatBars<T>(
@@ -1603,170 +1610,185 @@ function BagtsDetail({ q, prog, hist, flt, onFlt }: {
   hist: Async<BlockHistory>;
 } & FltProps) {
   const sel = flt?.sec === 'bagts' ? flt.key : null;
+  // ⚠️ 2026-08-20: Бүх биеийг ороосон `<Data>` боодол ЭРТ-БУЦААЛТ болов —
+  //    эс бөгөөс доторх `Panel`-ууд компонентын дээд түвшинд гарахгүй тул
+  //    `detailPanels` тэднийг дөрвөн бүсэд хуваарилж чадахгүй (бүгд нэг
+  //    картад овоолж, зургийн дээд зурвасыг барина).
+  if (q.state !== 'ready') {
+    return (
+      <Panel title={tr('Багцын мэдээлэл')}>
+        <Data q={q} loading={tr('Гурван эх сурвалжийг нэгтгэж байна…')}>{() => null}</Data>
+      </Panel>
+    );
+  }
+  const rows = q.data;
+  const blocks = sumBy(rows, (x) => x.blocks);
+  const ail = sumBy(rows, (x) => x.ail);
+  const avg = blocks ? sumBy(rows, (x) => (x.progress ?? 0) * x.blocks) / blocks : null;
+  // Хамгийн сүүлийн бүртгэлийн огноо — `BlockProgress.date` нь `joinBagts`-д
+  // ХАЯГДДАГ тул `prog`-оос шууд. Ингэснээр «энэ тоо ХЭЗЭЭНИЙ байдлаар» гэсэн
+  // асуулт самбар дээрээ хариултаа авна.
+  const pm = prog.state === 'ready' ? prog.data : null;
+  const asOf = pm ? [...pm.values()].reduce((a, c) => (c.date > a ? c.date : a), '') : '';
+  /** Багц дарахад — газрын зурагт тэр багцын блокуудыг тодруулна */
+  const pick = (key: string) => {
+    const r = rows.find((x) => x.key === key);
+    if (!r) return;
+    onFlt({
+      sec: 'bagts', key, label: tr('Багц: {0}', r.label),
+      where: `${BF.bagts} = '${sq(r.label)}'`, only: ['mon:building'],
+    });
+  };
   return (
-    <Data q={q} loading={tr('Гурван эх сурвалжийг нэгтгэж байна…')}>
-      {(rows) => {
-        const blocks = sumBy(rows, (x) => x.blocks);
-        const ail = sumBy(rows, (x) => x.ail);
-        const avg = blocks ? sumBy(rows, (x) => (x.progress ?? 0) * x.blocks) / blocks : null;
-        // Хамгийн сүүлийн бүртгэлийн огноо — `BlockProgress.date` нь `joinBagts`-д
-        // ХАЯГДДАГ тул `prog`-оос шууд. Ингэснээр «энэ тоо ХЭЗЭЭНИЙ байдлаар» гэсэн
-        // асуулт самбар дээрээ хариултаа авна.
-        const pm = prog.state === 'ready' ? prog.data : null;
-        const asOf = pm ? [...pm.values()].reduce((a, c) => (c.date > a ? c.date : a), '') : '';
-        /** Багц дарахад — газрын зурагт тэр багцын блокуудыг тодруулна */
-        const pick = (key: string) => {
-          const r = rows.find((x) => x.key === key);
-          if (!r) return;
-          onFlt({
-            sec: 'bagts', key, label: tr('Багц: {0}', r.label),
-            where: `${BF.bagts} = '${sq(r.label)}'`, only: ['mon:building'],
-          });
-        };
-        return (
-          <>
-            {/* ⚠️ `missing` ба тайлангийн огноо хоёул `joinBagts`/`loadBlockProgress`-д
-                бодогдоод хаягддаг байв. Эдгээрийг ил гаргаснаар «Барилгын хяналт»-тай
-                зөрдөг МЭДЭГДЭЖ БУЙ зөрүү (тэд тайлангүй блокоо хасч дундажладаг)
-                тайлбарлагдана — хуваарь нь БҮХ блок гэдэг нь толгойд бичигдэв. */}
-            <Panel title={tr('Нийт гүйцэтгэл')} note={tr('хуваарь = БҮХ блок (тайлангүй = 0%)')}>
-              <RingStats value={avg} label={tr('дундаж гүйцэтгэл')} color={cat(0)}>
-                <Stats cols={2}>
-                  <Stat accent color={cat(0)} value={num(blocks)} unit={tr('блок')} label={tr('Барилгын блок')} />
-                  <Stat accent color={cat(3)} value={num(ail)} unit={tr('өрх')} label={tr('Орон сууц')} />
-                  <Stat accent color={sumBy(rows, (r) => r.missing) ? 'var(--bad)' : NO_DATA}
-                        value={num(sumBy(rows, (r) => r.missing))} unit={tr('блок')} label={tr('Тайлан ирээгүй')} />
-                  <Stat value={asOf || '—'} label={tr('Сүүлийн бүртгэл')} />
-                </Stats>
-              </RingStats>
-            </Panel>
+    <>
+      {/* ⚠️ `missing` ба тайлангийн огноо хоёул `joinBagts`/`loadBlockProgress`-д
+          бодогдоод хаягддаг байв. Эдгээрийг ил гаргаснаар «Барилгын хяналт»-тай
+          зөрдөг МЭДЭГДЭЖ БУЙ зөрүү (тэд тайлангүй блокоо хасч дундажладаг)
+          тайлбарлагдана — хуваарь нь БҮХ блок гэдэг нь толгойд бичигдэв. */}
+      <Panel title={tr('Нийт гүйцэтгэл')} note={tr('хуваарь = БҮХ блок (тайлангүй = 0%)')}>
+          <Stats cols={2}>
+            <Stat accent color={cat(0)} value={num(blocks)} unit={tr('блок')} label={tr('Барилгын блок')} />
+            <Stat accent color={cat(3)} value={num(ail)} unit={tr('өрх')} label={tr('Орон сууц')} />
+            <Stat accent color={sumBy(rows, (r) => r.missing) ? 'var(--bad)' : NO_DATA}
+                  value={num(sumBy(rows, (r) => r.missing))} unit={tr('блок')} label={tr('Тайлан ирээгүй')} />
+            <Stat value={asOf || '—'} label={tr('Сүүлийн бүртгэл')} />
+          </Stats>
+      </Panel>
 
-            <Panel title={tr('Багц бүрийн явц')}>
-              <Bars
-                inline
-                max={100}
-                selected={sel}
-                onSelect={pick}
-                items={rows.map((r) => ({
-                  key: r.key,
-                  label: r.label,
-                  value: r.progress ?? 0,
-                  display: pct(r.progress, 1),
-                  color: heat(r.progress ?? 0, 100),
-                }))}
-              />
-            </Panel>
+      {/* ⚠️ Бөгж тоонуудын зурвасаас САЛСАН — хажуугийн баганын карт. */}
+      <Panel title={tr('Дундаж гүйцэтгэл')}>
+        <RingCard value={avg} label={tr('дундаж гүйцэтгэл')} color={cat(0)} />
+      </Panel>
 
-            {/* ДЭД ҮЕ ШАТ Б1–Б5 — `BlockProgress.phases` нь `blockProgress.ts`-д
-                задарч бодогдоод `joinBagts`-д хаягддаг байв. «Барилга бүтэн 18%»
-                гэдгээс «дотор нь ЯМАР ажил хоцорсон» нь хамаагүй ашигтай. */}
-            <Panel title={tr('Дэд үе шатын гүйцэтгэл (Б1–Б5)')}
-                   note={tr('тайлагнасан блокоор дундажлав — Ring нь БҮХ блокоор тул зөрнө')}>
-              {pm == null ? <Empty label={tr('Гүйцэтгэлийн хүснэгт татагдаж байна…')} /> : (() => {
-                // Багц сонгосон бол ТЭР багцаар (cross-filter), эс бөгөөс 7 багц бүгд.
-                const scope = new Set(rows.filter((r) => !sel || r.key === sel).flatMap((r) => r.keys));
-                const ph = [...pm].filter(([k]) => scope.has(k)).flatMap(([, c]) => c.phases);
-                const items = TASK_SHEET.subPhaseNos.map((no) => {
-                  // Нэрийг ХҮСНЭГТЭЭС — гар аргаар бичихгүй (эх excel-ийн нэр л үнэн)
-                  const nm = ph.find((x) => x.no === no && x.name)?.name ?? '';
-                  const hit = ph.filter((x) => x.no === no && x.pct != null);
-                  // Эх excel өөрөө дэд үе шатын жингээр бодсон тул ЭНД дахин жигнэхгүй
-                  const v = hit.length ? sumBy(hit, (x) => x.pct as number) / hit.length : null;
-                  return {
-                    nm, key: no, label: `${no} · ${nm}`, value: v ?? 0,
-                    display: v == null ? tr('бөглөгдөөгүй') : tr('{0} · {1} блок', pct(v, 1), num(hit.length)),
-                    color: v == null ? NO_DATA : heat(v, 100),
-                  };
-                })
-                  // ⚠️ `label`-ээр шүүж БОЛОХГҮЙ: «Б1 ·» !== «Б1» тул шүүлт хоосон гарна
-                  .filter((x) => x.nm !== '');
-                return items.length
-                  ? <Bars inline max={100} items={items} />
-                  : <Empty label={tr('Дэд үе шатын задаргаа бөглөгдөөгүй')} />;
-              })()}
-            </Panel>
+      <Panel title={tr('Багц бүрийн явц')}>
+        <Bars
+          inline
+          max={100}
+          selected={sel}
+          onSelect={pick}
+          items={rows.map((r) => ({
+            key: r.key,
+            label: r.label,
+            value: r.progress ?? 0,
+            display: pct(r.progress, 1),
+            color: heat(r.progress ?? 0, 100),
+          }))}
+        />
+      </Panel>
 
-            <Panel title={tr('Багц бүрийн орон сууц')}>
-              <Bars
-                inline
-                selected={sel}
-                onSelect={pick}
-                items={rows.map((r) => ({
-                  key: r.key,
-                  label: r.label,
-                  value: r.ail,
-                  display: tr('{0} өрх', num(r.ail)),
-                  color: heat(r.ail, maxOf(rows.map((x) => x.ail))),
-                }))}
-              />
-            </Panel>
+      {/* ДЭД ҮЕ ШАТ Б1–Б5 — `BlockProgress.phases` нь `blockProgress.ts`-д
+          задарч бодогдоод `joinBagts`-д хаягддаг байв. «Барилга бүтэн 18%»
+          гэдгээс «дотор нь ЯМАР ажил хоцорсон» нь хамаагүй ашигтай. */}
+      <Panel title={tr('Дэд үе шатын гүйцэтгэл (Б1–Б5)')}
+             note={tr('тайлагнасан блокоор дундажлав — Ring нь БҮХ блокоор тул зөрнө')}>
+        {pm == null ? <Empty label={tr('Гүйцэтгэлийн хүснэгт татагдаж байна…')} /> : (() => {
+          // Багц сонгосон бол ТЭР багцаар (cross-filter), эс бөгөөс 7 багц бүгд.
+          const scope = new Set(rows.filter((r) => !sel || r.key === sel).flatMap((r) => r.keys));
+          const ph = [...pm].filter(([k]) => scope.has(k)).flatMap(([, c]) => c.phases);
+          const items = TASK_SHEET.subPhaseNos.map((no) => {
+            // Нэрийг ХҮСНЭГТЭЭС — гар аргаар бичихгүй (эх excel-ийн нэр л үнэн)
+            const nm = ph.find((x) => x.no === no && x.name)?.name ?? '';
+            const hit = ph.filter((x) => x.no === no && x.pct != null);
+            // Эх excel өөрөө дэд үе шатын жингээр бодсон тул ЭНД дахин жигнэхгүй
+            const v = hit.length ? sumBy(hit, (x) => x.pct as number) / hit.length : null;
+            return {
+              nm, key: no, label: `${no} · ${nm}`, value: v ?? 0,
+              display: v == null ? tr('бөглөгдөөгүй') : tr('{0} · {1} блок', pct(v, 1), num(hit.length)),
+              color: v == null ? NO_DATA : heat(v, 100),
+            };
+          })
+            // ⚠️ `label`-ээр шүүж БОЛОХГҮЙ: «Б1 ·» !== «Б1» тул шүүлт хоосон гарна
+            .filter((x) => x.nm !== '');
+          return items.length
+            ? <Bars inline max={100} items={items} />
+            : <Empty label={tr('Дэд үе шатын задаргаа бөглөгдөөгүй')} />;
+        })()}
+      </Panel>
 
-            {/* ⚠️ ЦУВАА нь 5-Р ХҮҮХДЭЭС ХОЙШ байх ЁСТОЙ: `overview.module.css`-ийн
-                `nth-child(n+5)` л түүнд бүтэн өргөн өгдөг. 1–4 слотод 7 хуваарийн
-                тэнхлэг нь `var(--side-l)` дотор шахагдаж уншигдахаа болино. */}
-            <Panel title={tr('Барилга угсралтын явц')} note={tr('сараар · өссөн дүнгээр')}>
-              <Data q={hist} loading={tr('Бүртгэлийн түүхийг уншиж байна…')}>
-                {(h) => (
-                  <Trend
-                    color={ACCENT}
-                    points={progressSeries(
-                      h,
-                      // ⚠️ `flatMap` — `new Set` болгож ХАСАХГҮЙ. Барилгын давхаргад
-                      //    113 мөр, ялгаатай (багц|блок) хос нь 111 (2 давхардсан).
-                      //    `joinBagts` МӨРӨӨР хуваадаг тул давхардлыг хаявал
-                      //    цувааны хуваарь 111 болж «Нийт гүйцэтгэл» Ring-тэй зөрнө.
-                      rows.flatMap((r) => r.keys),
-                      'month',
-                    ).map((p) => ({
-                      label: p.label,
-                      value: p.overall,
-                      // Сарын шошго бодит хэмжилтийн огноог нуудаг — уншилтын мөрөнд буцаана
-                      note: p.label === p.date ? undefined : p.date,
-                    }))}
-                  />
-                )}
-              </Data>
-            </Panel>
+      <Panel title={tr('Багц бүрийн орон сууц')}>
+        <Bars
+          inline
+          selected={sel}
+          onSelect={pick}
+          items={rows.map((r) => ({
+            key: r.key,
+            label: r.label,
+            value: r.ail,
+            display: tr('{0} өрх', num(r.ail)),
+            color: heat(r.ail, maxOf(rows.map((x) => x.ail))),
+          }))}
+        />
+      </Panel>
 
-            {/* «Багц бүрийн төсөв» panel 2026-08-13-нд хасагдав — BUS_cashflow
-                үйлчилгээ устаж, багцын төсвийн бодит эх сурвалж алга. */}
-            {/* ГҮЙЦЭТГЭГЧИЙН БҮРЭЛДЭХҮҮН — амьд (блок/өрхөөс), BAGTS_ORIGIN нь
-                зөвхөн Гадаад/Үндэсний гэсэн ангилал (тоо биш). */}
-            <Panel title={tr('Гүйцэтгэгчийн бүрэлдэхүүн')}>
-              {(() => {
-                const nat = rows.filter((r) => BAGTS_ORIGIN[r.label.trim()] === 'Үндэсний');
-                const natBlocks = sumBy(nat, (x) => x.blocks);
-                const natAil = sumBy(nat, (x) => x.ail);
-                const allBlocks = sumBy(rows, (x) => x.blocks);
-                const allAil = sumBy(rows, (x) => x.ail);
-                const p100 = (a: number, b: number) => (b ? Math.round((a / b) * 100) : 0);
-                return (
-                  <>
-                    <Stats cols={3}>
-                      <Stat accent color={HUE[0]} value={`${p100(nat.length, rows.length)}%`}
-                        label={tr('Үндэсний багц ({0}/{1})', num(nat.length), num(rows.length))} />
-                      <Stat accent color={HUE[1]} value={`${p100(natBlocks, allBlocks)}%`}
-                        label={tr('Блокийн эзлэх ({0}/{1})', num(natBlocks), num(allBlocks))} />
-                      <Stat accent color={HUE[2]} value={`${p100(natAil, allAil)}%`}
-                        label={tr('Өрхийн эзлэх ({0}/{1})', num(natAil), num(allAil))} />
-                    </Stats>
-                    {/* ГҮЙЦЭТГЭГЧИЙН НЭР — `BAR_COMP` нь татагдаад хаана ч гардаггүй
-                        байв. «Хэдэн хувь үндэсний вэ» гэдгээс «ХЭН нь хийж байна вэ»
-                        гэдэг нь удирдлагад илүү шууд хариулт. */}
-                    <Rows
-                      items={rows.map((r) => ({
-                        key: `${r.label} · ${r.origin}`,   // ⚠️ `r.origin`, дахин lookup БИШ
-                        value: r.contractor,
-                      }))}
-                    />
-                  </>
-                );
-              })()}
-            </Panel>
-          </>
-        );
-      }}
-    </Data>
+      {/* ⚠️ ЦУВАА нь 5-Р ХҮҮХДЭЭС ХОЙШ байх ЁСТОЙ: `overview.module.css`-ийн
+          `nth-child(n+5)` л түүнд бүтэн өргөн өгдөг. 1–4 слотод 7 хуваарийн
+          тэнхлэг нь `var(--side-l)` дотор шахагдаж уншигдахаа болино. */}
+      <Panel title={tr('Барилга угсралтын явц')} note={tr('сараар · өссөн дүнгээр')}>
+        <Data q={hist} loading={tr('Бүртгэлийн түүхийг уншиж байна…')}>
+          {(h) => (
+            <Trend
+              color={ACCENT}
+              points={progressSeries(
+                h,
+                // ⚠️ `flatMap` — `new Set` болгож ХАСАХГҮЙ. Барилгын давхаргад
+                //    113 мөр, ялгаатай (багц|блок) хос нь 111 (2 давхардсан).
+                //    `joinBagts` МӨРӨӨР хуваадаг тул давхардлыг хаявал
+                //    цувааны хуваарь 111 болж «Нийт гүйцэтгэл» Ring-тэй зөрнө.
+                rows.flatMap((r) => r.keys),
+                'month',
+              ).map((p) => ({
+                label: p.label,
+                value: p.overall,
+                // Сарын шошго бодит хэмжилтийн огноог нуудаг — уншилтын мөрөнд буцаана
+                note: p.label === p.date ? undefined : p.date,
+              }))}
+            />
+          )}
+        </Data>
+      </Panel>
+
+      {/* «Багц бүрийн төсөв» panel 2026-08-13-нд хасагдав — BUS_cashflow
+          үйлчилгээ устаж, багцын төсвийн бодит эх сурвалж алга. */}
+      {/* ГҮЙЦЭТГЭГЧИЙН БҮРЭЛДЭХҮҮН — амьд (блок/өрхөөс), BAGTS_ORIGIN нь
+          зөвхөн Гадаад/Үндэсний гэсэн ангилал (тоо биш). */}
+      <Panel title={tr('Гүйцэтгэгчийн бүрэлдэхүүн')}>
+        {(() => {
+          const nat = rows.filter((r) => BAGTS_ORIGIN[r.label.trim()] === 'Үндэсний');
+          const natBlocks = sumBy(nat, (x) => x.blocks);
+          const natAil = sumBy(nat, (x) => x.ail);
+          const allBlocks = sumBy(rows, (x) => x.blocks);
+          const allAil = sumBy(rows, (x) => x.ail);
+          const p100 = (a: number, b: number) => (b ? Math.round((a / b) * 100) : 0);
+          return (
+            <>
+              <Stats cols={3}>
+                <Stat accent color={HUE[0]} value={`${p100(nat.length, rows.length)}%`}
+                  label={tr('Үндэсний багц ({0}/{1})', num(nat.length), num(rows.length))} />
+                <Stat accent color={HUE[1]} value={`${p100(natBlocks, allBlocks)}%`}
+                  label={tr('Блокийн эзлэх ({0}/{1})', num(natBlocks), num(allBlocks))} />
+                <Stat accent color={HUE[2]} value={`${p100(natAil, allAil)}%`}
+                  label={tr('Өрхийн эзлэх ({0}/{1})', num(natAil), num(allAil))} />
+              </Stats>
+            </>
+          );
+        })()}
+      </Panel>
+
+      {/**
+        * ⚠️ ГҮЙЦЭТГЭГЧИЙН НЭРИЙН жагсаалтыг дээрх KPI картаас САЛГАВ (чарт бүр
+        * НЭГ карт). «Хэдэн хувь үндэсний вэ» ба «ХЭН нь хийж байна вэ» гэдэг
+        * хоёр ӨӨР асуулт — нэг хайрцагт хамт байх нь хоёуланг нь бүдгэрүүлж
+        * байлаа.
+        */}
+      <Panel title={tr('Багц бүрийн гүйцэтгэгч')}>
+        <Rows
+          items={rows.map((r) => ({
+            key: `${r.label} · ${r.origin}`,   // ⚠️ `r.origin`, дахин lookup БИШ
+            value: r.contractor,
+          }))}
+        />
+      </Panel>
+    </>
   );
 }
 
@@ -1794,7 +1816,6 @@ function LandDetail({ parcels, land, project, flt, onFlt }: {
         <Data q={land} loading={tr('Татаж байна…')}>
           {(ls) => (
             <>
-              <RingStats value={ls.pct} label={tr('чөлөөлсөн')} color="var(--good)">
                 <Stats cols={2}>
                   <Stat accent color={HUE[0]} value={num(ls.total)} unit={tr('талбар')} label={tr('Нийт нэгж талбар')} />
                   <Stat accent color={PARCEL_STATUS_HUES['Бүрэн чөлөөлсөн']} value={num(ls.cleared)} unit={tr('талбар')} label={tr('Бүрэн чөлөөлсөн')} />
@@ -1810,18 +1831,45 @@ function LandDetail({ parcels, land, project, flt, onFlt }: {
                   />
                   <Stat accent color={PARCEL_STATUS_HUES['Үлдсэн нэгж талбар']} value={num(ls.remaining)} unit={tr('талбар')} label={tr('Үлдсэн')} />
                 </Stats>
-              </RingStats>
-              <Bars
-                inline
-                items={heatBars([...ls.byStatus].sort((a, b) => b.n - a.n), (x) => ({
-                  key: x.label,
-                  label: x.label,
-                  value: x.n,
-                  display: tr('{0} талбар', num(x.n)),
-                }))}
-              />
             </>
           )}
+        </Data>
+      </Panel>
+
+      {/**
+        * ⚠️ Төлөв бүрийн баганан диаграмыг ДЭЭРХ картаас САЛГАВ. Урьд нь бөгж +
+        * 5 нүдтэй KPI + баганан диаграм ГУРВУУЛАА нэг картад давхарлаж, аль нь
+        * юуг хэлж буй нь ялгарахгүй байв (чарт бүр НЭГ карт).
+        */}
+      <Panel title={tr('Нэгж талбар — төлөвөөр')}>
+        <Data q={land} loading={tr('Татаж байна…')}>
+          {(ls) => (
+            <Bars
+              inline
+              selected={flt?.sec === 'land' ? flt.key : null}
+              onSelect={(label) => onFlt({
+                sec: 'land',
+                key: 'st:' + label,
+                label: tr('Төлөв: {0}', label),
+                where: `${PL.status} = '${sq(label)}'`,
+                only: ['land:left'],
+              })}
+              items={heatBars([...ls.byStatus].sort((a, b) => b.n - a.n), (x) => ({
+                key: x.label,
+                label: x.label,
+                value: x.n,
+                display: tr('{0} талбар', num(x.n)),
+              }))}
+            />
+          )}
+        </Data>
+      </Panel>
+
+      {/* ⚠️ Бөгж тоонуудын зурвасаас САЛСАН — утга нь render-prop-ийн дотоод
+          хувьсагч тул өөрийн `Data`-тай хажуугийн баганын карт. */}
+      <Panel title={tr('Чөлөөлөлтийн хувь')}>
+        <Data q={land} loading={tr('Татаж байна…')}>
+          {(ls) => <RingCard value={ls.pct} label={tr('чөлөөлсөн')} color="var(--good)" />}
         </Data>
       </Panel>
 
@@ -1927,6 +1975,17 @@ function LandDetail({ parcels, land, project, flt, onFlt }: {
               <>
                 <Bars
                   inline
+                  /* ⚠️ Дээрх «Нэгж талбар — төлөвөөр»-тэй ИЖИЛ шүүлт (нэг эх
+                     сурвалж, нэг талбар) тул түлхүүрийн угтвар нь ялгаатай —
+                     хоёр чарт бие биенийхээ сонголтыг цуцлахгүй. */
+                  selected={flt?.sec === 'land' ? flt.key : null}
+                  onSelect={(label) => onFlt({
+                    sec: 'land',
+                    key: `ha:${label}`,
+                    label: tr('Төлөв: {0}', label),
+                    where: `${PL.status} = '${sq(label)}'`,
+                    only: ['land:left'],
+                  })}
                   items={rows.map((x) => ({
                     key: x.label,
                     label: x.label,
@@ -2043,7 +2102,6 @@ function NetworkDetail({ project, bagts, sources, flt, onFlt }: {
           const packs = new Set(net.map((r) => r.bagts)).size;
           const gap = w.actual != null && w.planned != null ? w.planned - w.actual : null;
           return (
-            <RingStats value={w.actual} label={tr('жигнэсэн гүйцэтгэл')} color={cat(0)} decimals={1}>
               <Stats cols={2}>
                 <Stat accent color={cat(0)} value={num(packs)} unit={tr('багц')} label={tr('Шугам сүлжээний багц')} />
                 {/* ⚠️ `w.planned` нь сүлжээний БҮХ мөрд `Төлөвлөгөөт_хувь` хоосон
@@ -2054,9 +2112,13 @@ function NetworkDetail({ project, bagts, sources, flt, onFlt }: {
                       label={tr('Төлөвлөгөөнөөс хоцрогдол')} />
                 <Stat accent color={HUE[2]} value={num(w.weight, 2)} unit="%" label={tr('Төсөлд эзлэх жин')} />
               </Stats>
-            </RingStats>
           );
         })()}
+      </Panel>
+
+      {/* ⚠️ Бөгж тоонуудын зурвасаас САЛСАН — хажуугийн баганын карт. */}
+      <Panel title={tr('Жигнэсэн гүйцэтгэл')}>
+        <RingCard value={weighted(net).actual} label={tr('жигнэсэн гүйцэтгэл')} color={cat(0)} decimals={1} />
       </Panel>
 
       <Panel title={tr('Шугам сүлжээ хангах орон сууц')}>
@@ -2127,9 +2189,6 @@ function NetworkDetail({ project, bagts, sources, flt, onFlt }: {
             const heatRows = grab(tr('Дулаан'));
             const waterRows = grab(tr('Ус'));
             const cap = (rs: Row[]) => sumBy(rs, (r) => srcNum(r[F.total]));
-            const notes = [...heatRows, ...waterRows]
-              .map((r) => ({ key: srcStr(r[F.name]), value: srcStr(r[F.note]) }))
-              .filter((x) => x.key && x.value);
             if (!heatRows.length && !waterRows.length) return <Empty label={tr('Эх үүсвэрийн бүртгэл хоосон.')} />;
             return (
               <>
@@ -2142,14 +2201,28 @@ function NetworkDetail({ project, bagts, sources, flt, onFlt }: {
                   <Stat accent color={HUE[4]} value={num(cap(waterRows))} unit={tr('м³/хон')} label={tr('Усны нийт чадал')} />
                   <Stat accent color={HUE[6]} value={num(waterRows.length)} unit={tr('ш')} label={tr('Усны байгууламж')} />
                 </Stats>
-                {notes.length > 0 && (
-                  <>
-                    <p className={o.note}>{tr('Нөөцийн тэмдэглэл (эх үүсвэрийн')} <code>{tr('тайлбар')}</code>):</p>
-                    <Rows items={notes} />
-                  </>
-                )}
               </>
             );
+          }}
+        </Data>
+      </Panel>
+
+      {/**
+        * ⚠️ Нөөцийн тэмдэглэл ДЭЭРХ чадлын картаас САЛГАВ (чарт бүр НЭГ карт).
+        * Тэдгээр нь эх сурвалж бүрийн ЧӨЛӨӨТ БИЧВЭР тул тоон үзүүлэлттэй нэг
+        * хайрцагт байх нь уншилтыг хутгаж байлаа.
+        */}
+      <Panel title={tr('Эх үүсвэрийн нөөцийн тэмдэглэл')}>
+        <Data q={sources} loading={tr('Эх үүсвэрийг татаж байна…')}>
+          {(rows) => {
+            const F = SOURCE_FS.fields;
+            const notes = rows
+              .filter((r) => /^(Дулаан|Ус)/.test(srcStr(r[F.type])))
+              .map((r) => ({ key: srcStr(r[F.name]), value: srcStr(r[F.note]) }))
+              .filter((x) => x.key && x.value);
+            return notes.length
+              ? <Rows items={notes} />
+              : <Empty label={tr('Тэмдэглэл бүртгэгдээгүй.')} />;
           }}
         </Data>
       </Panel>
@@ -2239,11 +2312,6 @@ function PowerDetail({ project, sources, prog, flt, onFlt }: {
             return (
               // ⚠️ Энд 61%, 07-д (`хангах_хувь`-аар) 62% — тиймээс `decimals={0}`
               //    бөгөөд шошго нь «хангамж» БИШ «эх үүсвэрийн чадал».
-              <RingStats
-                value={(plannedMw / capTotal) * 100}
-                label={tr('эх үүсвэрийн чадал шинэ дэд станцаас')}
-                decimals={0}
-              >
                 <Stats cols={3}>
                   <Stat accent color={HUE[0]} value={num(capTotal, 1)} unit={tr('МВт')} label={tr('Нийт эх үүсвэрийн чадал')} />
                   <Stat accent color={HUE[2]} value={num(capTotal - plannedMw, 1)} unit={tr('МВт')}
@@ -2251,7 +2319,29 @@ function PowerDetail({ project, sources, prog, flt, onFlt }: {
                   <Stat accent color={HUE[4]} value={num(plannedMw, 1)} unit={tr('МВт')}
                         label={newOne?.name || tr('Төлөвлөж буй дэд станц')} />
                 </Stats>
-              </RingStats>
+            );
+          }}
+        </Data>
+      </Panel>
+
+      {/* ⚠️ Бөгж тоонуудын зурвасаас САЛСАН — утга нь render-prop-ийн дотоод
+          тооцоо тул өөрийн `Data`-тай хажуугийн баганын карт. */}
+      <Panel title={tr('Шинэ дэд станцын эзлэх хувь')}>
+        <Data q={sources} loading={tr('Эх үүсвэрийг татаж байна…')}>
+          {(rows) => {
+            const F = SOURCE_FS.fields;
+            const cap = rows
+              .filter((r) => srcStr(r[F.type]).startsWith('Цахилгаан'))
+              .map((r) => ({ mw: srcNum(r[F.total]), planned: /Шинээр/.test(srcStr(r[F.name])) }));
+            const capTotal = sumBy(cap, (x) => x.mw);
+            if (!capTotal) return <Empty label={tr('Бүртгэл алга.')} />;
+            const plannedMw = cap.find((x) => x.planned)?.mw ?? 0;
+            return (
+              <RingCard
+                value={(plannedMw / capTotal) * 100}
+                label={tr('эх үүсвэрийн чадал шинэ дэд станцаас')}
+                decimals={0}
+              />
             );
           }}
         </Data>
@@ -2427,175 +2517,181 @@ function SourceDetail({ sources, d, flt, onFlt }: { sources: Async<Row[]>; d: Da
       where: `${F.name} LIKE '${sq(name)}%'`, only: ['source:eh'],
     });
   };
+  // ⚠️ 2026-08-20: Бүх биеийг ороосон `<Data>` боодол ЭРТ-БУЦААЛТ болов —
+  //    эс бөгөөс доторх `Panel`-ууд компонентын дээд түвшинд гарахгүй тул
+  //    `detailPanels` тэднийг дөрвөн бүсэд хуваарилж чадахгүй (бүгд нэг
+  //    картад овоолж, зургийн дээд зурвасыг барина).
+  if (sources.state !== 'ready') {
+    return (
+      <Panel title={tr('Эх үүсвэр')}>
+        <Data q={sources} loading={tr('Эх үүсвэрийн мэдээллийг татаж байна…')} minH={420}>{() => null}</Data>
+      </Panel>
+    );
+  }
+  const rows = sources.data;
+  /**
+   * ⚠️ ДАРААЛАЛ ТОГТМОЛ байх ёстой: `Set`-ийн орох дараалал нь сервисийн
+   * мөрийн эрэмбээс хамаарах тул картууд зүүн/баруун баганын хооронд
+   * санамсаргүй үсэрч байв (`nth-child` слот).
+   */
+  const TYPE_ORDER = [tr('Дулаан'), tr('Цахилгаан'), tr('Ус')];
+  const rank = (t: string) => {
+    const i = TYPE_ORDER.findIndex((x) => t.startsWith(x));
+    return i < 0 ? 99 : i;
+  };
+  const types = [...new Set(rows.map((r) => srcStr(r[F.type])))]
+    .filter(Boolean)
+    .sort((a, b) => rank(a) - rank(b));
+  /**
+   * ⚠️ `torol` ХООСОН мөр нь `types`-д ороогүй тул ЯМАР Ч самбарт
+   * гарахгүй, харин `railStat` нь `rows.length`-ийг бүтнээр тоолдог —
+   * тоо ЗӨРНӨ. Тоог нуухгүй: 1-р картын тайлбарт ил хэлнэ.
+   */
+  const untyped = rows.filter((r) => !srcStr(r[F.type])).length;
+  // ⚠️ Үйлчилгээ 0 мөр буцаавал баганад толгойноос өөр юу ч гарахгүй —
+  //    хэрэглэгч «эвдэрсэн» гэж ойлгохгүйн тулд хоосон төлөвөө ил хэлнэ.
+  if (!types.length) return <Empty label={tr('Эх үүсвэрийн бүртгэл хоосон байна.')} />;
   return (
-    <Data q={sources} loading={tr('Эх үүсвэрийн мэдээллийг татаж байна…')} minH={420}>
-      {(rows) => {
-        /**
-         * ⚠️ ДАРААЛАЛ ТОГТМОЛ байх ёстой: `Set`-ийн орох дараалал нь сервисийн
-         * мөрийн эрэмбээс хамаарах тул картууд зүүн/баруун баганын хооронд
-         * санамсаргүй үсэрч байв (`nth-child` слот).
-         */
-        const TYPE_ORDER = [tr('Дулаан'), tr('Цахилгаан'), tr('Ус')];
-        const rank = (t: string) => {
-          const i = TYPE_ORDER.findIndex((x) => t.startsWith(x));
-          return i < 0 ? 99 : i;
-        };
-        const types = [...new Set(rows.map((r) => srcStr(r[F.type])))]
-          .filter(Boolean)
-          .sort((a, b) => rank(a) - rank(b));
-        /**
-         * ⚠️ `torol` ХООСОН мөр нь `types`-д ороогүй тул ЯМАР Ч самбарт
-         * гарахгүй, харин `railStat` нь `rows.length`-ийг бүтнээр тоолдог —
-         * тоо ЗӨРНӨ. Тоог нуухгүй: 1-р картын тайлбарт ил хэлнэ.
-         */
-        const untyped = rows.filter((r) => !srcStr(r[F.type])).length;
-        // ⚠️ Үйлчилгээ 0 мөр буцаавал баганад толгойноос өөр юу ч гарахгүй —
-        //    хэрэглэгч «эвдэрсэн» гэж ойлгохгүйн тулд хоосон төлөвөө ил хэлнэ.
-        if (!types.length) return <Empty label={tr('Эх үүсвэрийн бүртгэл хоосон байна.')} />;
-        return (
-          <>
-            {/* `нийт_чадал` нь өнөөдөр зөвхөн Donut-ийн нөөц утга — байгууламжийн
-                БҮРЭН чадал нь тоогоор хаана ч гардаггүй байв. */}
-            <Panel title={tr('Эх үүсвэрийн нэгдсэн чадал')}>
-              <Stats cols={3}>
-                {types.map((t, i) => {
-                  const facs = rows.filter((r) => srcStr(r[F.type]) === t);
-                  const unit = t.includes('Ус') ? tr('м³/хон') : tr('МВт');
-                  const cap = sumBy(facs, (r) => srcNum(r[F.total]));
-                  return (
-                    <Stat
-                      key={t}
-                      accent
-                      color={HUE[(i * 2) % HUE.length]}
-                      value={cap ? num(cap, unit === 'МВт' ? 1 : 0) : '—'}
-                      unit={unit}
-                      // ⚠️ Зөвхөн «эх үүсвэр» гэдгийг хасна (картын гарчигт аль хэдийн
-                      //    бий). Харьяалахын нөхцөлийг («ын/ий/н») тайрах гэж
-                      //    оролдвол амьд утга «Усан хангамжийн эх үүсвэр» нь
-                      //    «Усан хангамжий» болж ҮГ ТАСАРНА — нөхцөл нь үлдэх нь зөв.
-                      label={tr('{0} · {1} байгууламж', t.replace(/\s*эх\s+үүсвэр\s*$/u, ''), num(facs.length))}
-                    />
-                  );
-                })}
-              </Stats>
-              <p className={o.note}>
-                {tr('Байгууламжийн БҮРЭН чадал (')}<code>{'нийт_чадал'}</code>{tr(') — доорх картуудын зүсмэг нь системд эзлэх ХУВЬ, багана нь ХЭРЭГЛЭГЧИД хуваарилсан чадал.')}
-                {untyped > 0 && <> {tr('⚠️ Төрөл бүртгэгдээгүй')} <b>{num(untyped)}</b> {tr('байгууламж доорх картуудад ОРООГҮЙ.')}</>}
-              </p>
-            </Panel>
+    <>
+      {/* `нийт_чадал` нь өнөөдөр зөвхөн Donut-ийн нөөц утга — байгууламжийн
+          БҮРЭН чадал нь тоогоор хаана ч гардаггүй байв. */}
+      <Panel title={tr('Эх үүсвэрийн нэгдсэн чадал')}>
+        <Stats cols={3}>
+          {types.map((t, i) => {
+            const facs = rows.filter((r) => srcStr(r[F.type]) === t);
+            const unit = t.includes('Ус') ? tr('м³/хон') : tr('МВт');
+            const cap = sumBy(facs, (r) => srcNum(r[F.total]));
+            return (
+              <Stat
+                key={t}
+                accent
+                color={HUE[(i * 2) % HUE.length]}
+                value={cap ? num(cap, unit === 'МВт' ? 1 : 0) : '—'}
+                unit={unit}
+                // ⚠️ Зөвхөн «эх үүсвэр» гэдгийг хасна (картын гарчигт аль хэдийн
+                //    бий). Харьяалахын нөхцөлийг («ын/ий/н») тайрах гэж
+                //    оролдвол амьд утга «Усан хангамжийн эх үүсвэр» нь
+                //    «Усан хангамжий» болж ҮГ ТАСАРНА — нөхцөл нь үлдэх нь зөв.
+                label={tr('{0} · {1} байгууламж', t.replace(/\s*эх\s+үүсвэр\s*$/u, ''), num(facs.length))}
+              />
+            );
+          })}
+        </Stats>
+        <p className={o.note}>
+          {tr('Байгууламжийн БҮРЭН чадал (')}<code>{'нийт_чадал'}</code>{tr(') — доорх картуудын зүсмэг нь системд эзлэх ХУВЬ, багана нь ХЭРЭГЛЭГЧИД хуваарилсан чадал.')}
+          {untyped > 0 && <> {tr('⚠️ Төрөл бүртгэгдээгүй')} <b>{num(untyped)}</b> {tr('байгууламж доорх картуудад ОРООГҮЙ.')}</>}
+        </p>
+      </Panel>
 
-            {types.map((type) => {
-              const facs = rows.filter((r) => srcStr(r[F.type]) === type);
-              const cons = SOURCE_FS.consumers
-                .map((c) => ({ ...c, value: facs.reduce((a, f) => a + srcNum(f[c.field]), 0) }))
-                .filter((c) => c.value > 0);
-              const maxCon = maxOf(cons.map((c) => c.value));
+      {types.map((type) => {
+        const facs = rows.filter((r) => srcStr(r[F.type]) === type);
+        const cons = SOURCE_FS.consumers
+          .map((c) => ({ ...c, value: facs.reduce((a, f) => a + srcNum(f[c.field]), 0) }))
+          .filter((c) => c.value > 0);
+        const maxCon = maxOf(cons.map((c) => c.value));
+        return (
+          <Panel key={type} title={type}>
+            <Donut
+              size={130}
+              width={22}
+              leaders
+              selected={sel}
+              onSelect={pick}
+              center={`${facs.length}`}
+              centerLabel={tr('байгууламж')}
+              items={facs.map((f, i) => ({
+                key: srcStr(f[F.name]) || `#${i}`,
+                label: srcStr(f[F.name]),
+                value: srcNum(f[F.share]) || srcNum(f[F.total]),
+                display: srcStr(f[F.share]) || srcStr(f[F.total]),
+                color: shade(ACCENT, i, facs.length),
+              }))}
+            />
+            {cons.length > 0 && (() => {
+              // Ус хангамж → м³/хон, дулаан/цахилгаан → МВт
+              const unit = type.includes('Ус') ? tr('м³/хон') : tr('МВт');
+              const consTotal = cons.reduce((a, c) => a + c.value, 0);
               return (
-                <Panel key={type} title={type}>
-                  <Donut
-                    size={130}
-                    width={22}
-                    leaders
-                    selected={sel}
-                    onSelect={pick}
-                    center={`${facs.length}`}
-                    centerLabel={tr('байгууламж')}
-                    items={facs.map((f, i) => ({
-                      key: srcStr(f[F.name]) || `#${i}`,
-                      label: srcStr(f[F.name]),
-                      value: srcNum(f[F.share]) || srcNum(f[F.total]),
-                      display: srcStr(f[F.share]) || srcStr(f[F.total]),
-                      color: shade(ACCENT, i, facs.length),
+                <>
+                  <p className={o.note}>
+                    {tr('Хэрэглэгчид хуваарилсан хүчин чадал — нийт')} <b>{num(consTotal, 1)} {unit}</b>:
+                  </p>
+                  <Bars
+                    inline
+                    items={cons.map((c) => ({
+                      key: c.key,
+                      label: c.label,
+                      value: c.value,
+                      display: `${num(c.value, 1)} ${unit}`,
+                      color: heat(c.value, maxCon),
                     }))}
                   />
-                  {cons.length > 0 && (() => {
-                    // Ус хангамж → м³/хон, дулаан/цахилгаан → МВт
-                    const unit = type.includes('Ус') ? tr('м³/хон') : tr('МВт');
-                    const consTotal = cons.reduce((a, c) => a + c.value, 0);
-                    return (
-                      <>
-                        <p className={o.note}>
-                          {tr('Хэрэглэгчид хуваарилсан хүчин чадал — нийт')} <b>{num(consTotal, 1)} {unit}</b>:
-                        </p>
-                        <Bars
-                          inline
-                          items={cons.map((c) => ({
-                            key: c.key,
-                            label: c.label,
-                            value: c.value,
-                            display: `${num(c.value, 1)} ${unit}`,
-                            color: heat(c.value, maxCon),
-                          }))}
-                        />
-                      </>
-                    );
-                  })()}
-                </Panel>
+                </>
               );
-            })}
-
-            {/* ХҮРЭЛЦЭЭ — чадлыг хүн ам/өрхөд харьцуулна. Хоёулаа `d`-д аль хэдийн
-                татагдсан (`headline`, `bagts`) тул ШИНЭ ХҮСЭЛТ ҮҮСЭХГҮЙ. */}
-            <Panel title={tr('Хангамжийн хүрэлцээ — нэгжид ногдох')}>
-              {(() => {
-                const h = d.headline.state === 'ready' ? d.headline.data : null;
-                const ail = d.bagts.state === 'ready' ? sumBy(d.bagts.data, (x) => x.ail) : null;
-                const capOf = (pre: string) =>
-                  sumBy(rows.filter((r) => srcStr(r[F.type]).startsWith(pre)), (r) => srcNum(r[F.total]));
-                const consOf = (pre: string) => sumBy(
-                  rows.filter((r) => srcStr(r[F.type]).startsWith(pre)),
-                  (r) => sumBy(SOURCE_FS.consumers, (c) => srcNum(r[c.field])),
-                );
-                const heatMw = capOf(tr('Дулаан'));
-                const elMw = capOf(tr('Цахилгаан'));
-                const waterM3 = capOf(tr('Ус'));
-                const share = (a: number, b: number) => (b ? pct((a / b) * 100, 1) : '—');
-                return (
-                  <>
-                    <Rows
-                      items={[
-                        { key: tr('1,000 хүнд ногдох дулаан'),
-                          value: h?.population ? tr('{0} МВт', num(heatMw / (h.population / 1000), 2)) : '…' },
-                        { key: tr('1 өрхөд ногдох цахилгаан'),
-                          value: ail ? tr('{0} кВт', num((elMw * 1000) / ail, 2)) : '…' },
-                        { key: tr('1 хүнд ногдох ус'),
-                          value: h?.population ? tr('{0} л/хоног', num((waterM3 * 1000) / h.population, 0)) : '…' },
-                        { key: tr('Дулаан — хуваарилсан ÷ чадал'), value: share(consOf(tr('Дулаан')), heatMw) },
-                        { key: tr('Цахилгаан — хуваарилсан ÷ чадал'), value: share(consOf(tr('Цахилгаан')), elMw) },
-                        { key: tr('Ус — хуваарилсан ÷ чадал'), value: share(consOf(tr('Ус')), waterM3) },
-                      ]}
-                    />
-                    <p className={o.note}>
-                      ⚠️ <code>{'нийт_чадал'}</code> {tr('нь ТЕКСТ талбар;')} <code>srcNum</code> {tr('нь таслалыг хаядаг («2,5» → 25). Шинэ мөр нэмэгдэхэд нэг утгыг нүдээр шалгах.')}
-                    </p>
-                  </>
-                );
-              })()}
-            </Panel>
-
-            {/* `тайлбар` талбар татагдсан хэрнээ дашбоардад хаана ч гардаггүй байв —
-                нөөц/өргөтгөлийн тэмдэглэл нь эх үүсвэрийн ЧУХАЛ контекст. */}
-            <Panel title={tr('Байгууламжийн тайлбар, нөөц')}>
-              {(() => {
-                const items = rows
-                  .map((r) => {
-                    const unit = srcStr(r[F.type]).includes('Ус') ? tr('м³/хон') : tr('МВт');
-                    const cap = srcNum(r[F.total]);
-                    const note = srcStr(r[F.note]);
-                    return {
-                      key: srcStr(r[F.name]) || '—',
-                      value: [cap ? `${num(cap, 1)} ${unit}` : null, note || null]
-                        .filter(Boolean).join(' · ') || '—',
-                    };
-                  })
-                  .filter((x) => x.key !== '—');
-                return items.length ? <Rows items={items} /> : <Empty label={tr('Байгууламжийн бүртгэл хоосон.')} />;
-              })()}
-            </Panel>
-          </>
+            })()}
+          </Panel>
         );
-      }}
-    </Data>
+      })}
+
+      {/* ХҮРЭЛЦЭЭ — чадлыг хүн ам/өрхөд харьцуулна. Хоёулаа `d`-д аль хэдийн
+          татагдсан (`headline`, `bagts`) тул ШИНЭ ХҮСЭЛТ ҮҮСЭХГҮЙ. */}
+      <Panel title={tr('Хангамжийн хүрэлцээ — нэгжид ногдох')}>
+        {(() => {
+          const h = d.headline.state === 'ready' ? d.headline.data : null;
+          const ail = d.bagts.state === 'ready' ? sumBy(d.bagts.data, (x) => x.ail) : null;
+          const capOf = (pre: string) =>
+            sumBy(rows.filter((r) => srcStr(r[F.type]).startsWith(pre)), (r) => srcNum(r[F.total]));
+          const consOf = (pre: string) => sumBy(
+            rows.filter((r) => srcStr(r[F.type]).startsWith(pre)),
+            (r) => sumBy(SOURCE_FS.consumers, (c) => srcNum(r[c.field])),
+          );
+          const heatMw = capOf(tr('Дулаан'));
+          const elMw = capOf(tr('Цахилгаан'));
+          const waterM3 = capOf(tr('Ус'));
+          const share = (a: number, b: number) => (b ? pct((a / b) * 100, 1) : '—');
+          return (
+            <>
+              <Rows
+                items={[
+                  { key: tr('1,000 хүнд ногдох дулаан'),
+                    value: h?.population ? tr('{0} МВт', num(heatMw / (h.population / 1000), 2)) : '…' },
+                  { key: tr('1 өрхөд ногдох цахилгаан'),
+                    value: ail ? tr('{0} кВт', num((elMw * 1000) / ail, 2)) : '…' },
+                  { key: tr('1 хүнд ногдох ус'),
+                    value: h?.population ? tr('{0} л/хоног', num((waterM3 * 1000) / h.population, 0)) : '…' },
+                  { key: tr('Дулаан — хуваарилсан ÷ чадал'), value: share(consOf(tr('Дулаан')), heatMw) },
+                  { key: tr('Цахилгаан — хуваарилсан ÷ чадал'), value: share(consOf(tr('Цахилгаан')), elMw) },
+                  { key: tr('Ус — хуваарилсан ÷ чадал'), value: share(consOf(tr('Ус')), waterM3) },
+                ]}
+              />
+              <p className={o.note}>
+                ⚠️ <code>{'нийт_чадал'}</code> {tr('нь ТЕКСТ талбар;')} <code>srcNum</code> {tr('нь таслалыг хаядаг («2,5» → 25). Шинэ мөр нэмэгдэхэд нэг утгыг нүдээр шалгах.')}
+              </p>
+            </>
+          );
+        })()}
+      </Panel>
+
+      {/* `тайлбар` талбар татагдсан хэрнээ дашбоардад хаана ч гардаггүй байв —
+          нөөц/өргөтгөлийн тэмдэглэл нь эх үүсвэрийн ЧУХАЛ контекст. */}
+      <Panel title={tr('Байгууламжийн тайлбар, нөөц')}>
+        {(() => {
+          const items = rows
+            .map((r) => {
+              const unit = srcStr(r[F.type]).includes('Ус') ? tr('м³/хон') : tr('МВт');
+              const cap = srcNum(r[F.total]);
+              const note = srcStr(r[F.note]);
+              return {
+                key: srcStr(r[F.name]) || '—',
+                value: [cap ? `${num(cap, 1)} ${unit}` : null, note || null]
+                  .filter(Boolean).join(' · ') || '—',
+              };
+            })
+            .filter((x) => x.key !== '—');
+          return items.length ? <Rows items={items} /> : <Empty label={tr('Байгууламжийн бүртгэл хоосон.')} />;
+        })()}
+      </Panel>
+    </>
   );
 }
 
@@ -2613,127 +2709,135 @@ const tug = (v: number): string =>
       : tr('{0} сая ₮', num(v / 1e6, 1));
 
 function FinanceDetail({ budget, flt, onFlt }: { budget: Async<Budget> } & FltProps) {
+  // ⚠️ 2026-08-20: Бүх биеийг ороосон `<Data>` боодол ЭРТ-БУЦААЛТ болов —
+  //    эс бөгөөс доторх `Panel`-ууд компонентын дээд түвшинд гарахгүй тул
+  //    `detailPanels` тэднийг дөрвөн бүсэд хуваарилж чадахгүй (бүгд нэг
+  //    картад овоолж, зургийн дээд зурвасыг барина).
+  if (budget.state !== 'ready') {
+    return (
+      <Panel title={tr('Санхүүжилт')}>
+        <Data q={budget} loading={tr('Татаж байна…')}>{() => null}</Data>
+      </Panel>
+    );
+  }
+  const bg = budget.data;
   return (
-    <Data q={budget} loading={tr('Татаж байна…')}>
-      {(bg) => (
-        <>
-          <Panel title={tr('Гол үзүүлэлт')}>
-            <Stats cols={2}>
-              <Stat accent color={HUE[0]} value={num(bg.total / 1e12, 2)} unit={tr('их наяд ₮')} label={tr('Төслийн нийт төсөвт өртөг')} />
-              <Stat accent color={HUE[1]} value={num(bg.orderTotal / 1e9, 1)} unit={tr('тэрбум ₮')} label={tr('Захирамжийн нийт дүн')} />
-              <Stat accent color={HUE[2]} value={num(bg.contract / 1e9, 1)} unit={tr('тэрбум ₮')} label={tr('Гэрээ байгуулсан дүн')} />
-              {/* ⚠️ CF028 (мөнгөн дүн) — CF027 (`prevPct`) нь мөр тутмын 0–1
-                  бутархай тул түүнийг ХЭЗЭЭ Ч нийлбэрлэхгүй. */}
-              <Stat accent color={HUE[3]} value={num(bg.transferred / 1e9, 1)} unit={tr('тэрбум ₮')} label={tr('Өмнө шилжүүлсэн')} />
-              {/* Энэ хувь нь урьд нь ЗӨВХӨН зүүн жагсаалтын мөрөнд байсан —
-                  хэсгээ нээхэд алга болдог байв. */}
-              <Stat accent color={HUE[4]}
-                    value={bg.total ? pct((bg.contract / bg.total) * 100, 1) : '—'}
-                    label={tr('Гэрээгээр баталгаажсан эзлэх хувь')} />
-            </Stats>
-          </Panel>
-
-          <Panel title={tr('Санхүүжилтийн шат')} note={tr('суурь = нийт төсөвт өртөг {0}', tug(bg.total))}>
-            <Bars
-              // ⚠️ max = bg.total — 4 багана НЭГ суурьтай тул урт нь шууд харьцуулагдана
-              max={bg.total}
-              items={[
-                { key: 'total', label: tr('Төсөвт өртөг'), value: bg.total },
-                { key: 'order', label: tr('Захирамжаар'), value: bg.orderTotal },
-                { key: 'contract', label: tr('Гэрээгээр'), value: bg.contract },
-                { key: 'paid', label: tr('Шилжүүлсэн'), value: bg.transferred },
-              ].map((x, i, a) => ({
-                ...x,
-                display: `${tug(x.value)} · ${bg.total ? pct((x.value / bg.total) * 100, 1) : '—'}`,
-                color: shade(ACCENT, i, a.length),
-              }))}
-            />
-            <p className={o.note}>
-              {tr('Захирамжгүй')} <b>{tug(Math.max(0, bg.total - bg.orderTotal))}</b> {tr('· гэрээгүй')} <b>{tug(Math.max(0, bg.orderTotal - bg.contract))}</b> {tr('· шилжүүлээгүй')} <b>{tug(Math.max(0, bg.contract - bg.transferred))}</b>.
-            </p>
-          </Panel>
-
-          <Panel title={tr('Санхүүжилтийн эх үүсвэр (захирамжаар)')}>
-            <Donut
-              items={bg.sources.map((s, i) => ({
-                key: s.key, label: s.label, value: s.value,
-                color: shade(ACCENT, i, bg.sources.length),
-                display: tr('{0} тэрбум', num(s.value / 1e9, 1)),
-              }))}
-              center={num(bg.orderTotal / 1e9, 1)} centerLabel={tr('тэрбум ₮')} size={150} width={24} stack
-            />
-          </Panel>
-
-          {/* ⚠️ Шошго нь урт монгол үг тул Donut БИШ Bars — зүсмэгийн шошго
-              таарахгүй. Donut-ыг энэ хэсэгт `sources` карт аль хэдийн эзэлсэн. */}
-          <Panel title={tr('Ажлын төрлөөр — төсөвт өртөг')}>
-            {bg.byType.length === 0 ? <Empty label={tr('Ажлын төрөл бүртгэгдээгүй.')} /> : (
-              <Bars
-                items={heatBars(bg.byType, (t) => ({
-                  key: t.key, label: t.label, value: t.value,
-                  display: tr('{0} · {1} ажил', tug(t.value), num(t.n)),
-                }))}
-              />
-            )}
-          </Panel>
-
-          <Panel title={tr('Санхүүжилтийн хуваарь · өссөн дүн (2025-10 → 2026-09)')}>
-            <Trend
-              color={ACCENT}
-              unit={tr(' тэрбум ₮')}
-              // ⚠️ `note`-ыг ХООСОН үлдээнэ: `axisTicks` нь `note ?? label`-ыг
-              //    хэвлэж, зөвхөн /^\d{4}-/ хэлбэрийг тайрдаг тул огноо биш note
-              //    нь тэнхлэгийн шошго болж эвдэрнэ.
-              points={bg.months.reduce<{ label: string; value: number }[]>((acc, m) => {
-                const prev = acc.length ? acc[acc.length - 1].value : 0;
-                acc.push({ label: m.label, value: prev + m.amount / 1e9 });
-                return acc;
-              }, [])}
-            />
-            <p className={o.note}>
-              {tr('Эх Excel-д 2027-12 хүртэл бий ч сервис CF255-д тасардаг — 2026-09-өөс хойшхи хуваарь НИЙТЛЭГДЭЭГҮЙ тул муруй тэгш болно.')}
-            </p>
-          </Panel>
-
-          <Panel title={tr('Багцаар — төсөвт өртөг')}>
-            {bg.byPkg.length === 0 ? <Empty label={tr('Багцын задаргаа бүртгэгдээгүй.')} /> : (
-              <Bars
-                selected={flt?.sec === 'finance' ? flt.key : null}
-                onSelect={(key) => {
-                  const ids = PKG_BY_BAGTS[key] ?? [];
-                  // ⚠️ `SECTION_LAYERS.finance = []` тул `layers` БАЙХГҮЙ бол
-                  //    зурагт юу ч болохгүй. Давхаргагүй багц дарагдахгүй (доор шүүсэн).
-                  if (ids.length) onFlt({ sec: 'finance', key, label: tr('Багц: {0}', key), layers: ids });
-                }}
-                items={heatBars(bg.byPkg, (t) => {
-                  /**
-                   * ⚠️ ЗАВСРЫН шошго («БАГЦ 1- 4», «БАГЦ 1-4», «БАГЦ 1-6 БАГЦ 8-17»)
-                   * нь «1-ээс 4 хүртэлх багц» гэсэн утгатай атлаа `bagtsKey`-ээр
-                   * «БАГЦ14» болж, зурагт БАЙГАА «Багц 14 · Дулаан хангамжийн
-                   * нэвтрэх суваг»-тай ХУДЛАА тааралдана (63.0 ба 2.2 тэрбумын
-                   * хоёр мөр). Мөн ижил завсар хоёр бичиглэлээр орсон тул React-ын
-                   * `key` ч давхардаж, нэгийг дарахад хоёул тодордог байв.
-                   * Тиймээс завсрын мөрийг ШОШГООРОО түлхүүрлэж, зурагт холбохгүй.
-                   */
-                  const range = /\d\s*[-–]\s*\d/u.test(t.label);
-                  const key = range ? t.label : bagtsKey(t.label);
-                  const ids = range ? [] : (PKG_BY_BAGTS[key] ?? []);
-                  return {
-                    key,
-                    label: ids.length ? `${t.label} ▸` : t.label,
-                    value: t.value,
-                    display: tr('{0} · {1} ажил', tug(t.value), num(t.n)),
-                  };
-                })}
-              />
-            )}
-            <p className={o.note}>
-              {tr('▸ тэмдэгтэй багц нь газрын зурагт давхаргатай — дарж шүүнэ. ⚠️ Задаргаа нь')} <code>CF004</code> {tr('(дэд багцтай),')} <code>CF003</code> {tr('БИШ. ⚠️ «БАГЦ 1-4» гэх завсрын мөр нь ганц багц БИШ тул зурагт холбогдоогүй.')}
-            </p>
-          </Panel>
-        </>
-      )}
-    </Data>
+    <>
+      <Panel title={tr('Гол үзүүлэлт')}>
+        <Stats cols={2}>
+          <Stat accent color={HUE[0]} value={num(bg.total / 1e12, 2)} unit={tr('их наяд ₮')} label={tr('Төслийн нийт төсөвт өртөг')} />
+          <Stat accent color={HUE[1]} value={num(bg.orderTotal / 1e9, 1)} unit={tr('тэрбум ₮')} label={tr('Захирамжийн нийт дүн')} />
+          <Stat accent color={HUE[2]} value={num(bg.contract / 1e9, 1)} unit={tr('тэрбум ₮')} label={tr('Гэрээ байгуулсан дүн')} />
+          {/* ⚠️ CF028 (мөнгөн дүн) — CF027 (`prevPct`) нь мөр тутмын 0–1
+              бутархай тул түүнийг ХЭЗЭЭ Ч нийлбэрлэхгүй. */}
+          <Stat accent color={HUE[3]} value={num(bg.transferred / 1e9, 1)} unit={tr('тэрбум ₮')} label={tr('Өмнө шилжүүлсэн')} />
+          {/* Энэ хувь нь урьд нь ЗӨВХӨН зүүн жагсаалтын мөрөнд байсан —
+              хэсгээ нээхэд алга болдог байв. */}
+          <Stat accent color={HUE[4]}
+                value={bg.total ? pct((bg.contract / bg.total) * 100, 1) : '—'}
+                label={tr('Гэрээгээр баталгаажсан эзлэх хувь')} />
+        </Stats>
+      </Panel>
+  
+      <Panel title={tr('Санхүүжилтийн шат')} note={tr('суурь = нийт төсөвт өртөг {0}', tug(bg.total))}>
+        <Bars
+          // ⚠️ max = bg.total — 4 багана НЭГ суурьтай тул урт нь шууд харьцуулагдана
+          max={bg.total}
+          items={[
+            { key: 'total', label: tr('Төсөвт өртөг'), value: bg.total },
+            { key: 'order', label: tr('Захирамжаар'), value: bg.orderTotal },
+            { key: 'contract', label: tr('Гэрээгээр'), value: bg.contract },
+            { key: 'paid', label: tr('Шилжүүлсэн'), value: bg.transferred },
+          ].map((x, i, a) => ({
+            ...x,
+            display: `${tug(x.value)} · ${bg.total ? pct((x.value / bg.total) * 100, 1) : '—'}`,
+            color: shade(ACCENT, i, a.length),
+          }))}
+        />
+        <p className={o.note}>
+          {tr('Захирамжгүй')} <b>{tug(Math.max(0, bg.total - bg.orderTotal))}</b> {tr('· гэрээгүй')} <b>{tug(Math.max(0, bg.orderTotal - bg.contract))}</b> {tr('· шилжүүлээгүй')} <b>{tug(Math.max(0, bg.contract - bg.transferred))}</b>.
+        </p>
+      </Panel>
+  
+      <Panel title={tr('Санхүүжилтийн эх үүсвэр (захирамжаар)')}>
+        <Donut
+          items={bg.sources.map((s, i) => ({
+            key: s.key, label: s.label, value: s.value,
+            color: shade(ACCENT, i, bg.sources.length),
+            display: tr('{0} тэрбум', num(s.value / 1e9, 1)),
+          }))}
+          center={num(bg.orderTotal / 1e9, 1)} centerLabel={tr('тэрбум ₮')} size={150} width={24} stack
+        />
+      </Panel>
+  
+      {/* ⚠️ Шошго нь урт монгол үг тул Donut БИШ Bars — зүсмэгийн шошго
+          таарахгүй. Donut-ыг энэ хэсэгт `sources` карт аль хэдийн эзэлсэн. */}
+      <Panel title={tr('Ажлын төрлөөр — төсөвт өртөг')}>
+        {bg.byType.length === 0 ? <Empty label={tr('Ажлын төрөл бүртгэгдээгүй.')} /> : (
+          <Bars
+            items={heatBars(bg.byType, (t) => ({
+              key: t.key, label: t.label, value: t.value,
+              display: tr('{0} · {1} ажил', tug(t.value), num(t.n)),
+            }))}
+          />
+        )}
+      </Panel>
+  
+      <Panel title={tr('Санхүүжилтийн хуваарь · өссөн дүн (2025-10 → 2026-09)')}>
+        <Trend
+          color={ACCENT}
+          unit={tr(' тэрбум ₮')}
+          // ⚠️ `note`-ыг ХООСОН үлдээнэ: `axisTicks` нь `note ?? label`-ыг
+          //    хэвлэж, зөвхөн /^\d{4}-/ хэлбэрийг тайрдаг тул огноо биш note
+          //    нь тэнхлэгийн шошго болж эвдэрнэ.
+          points={bg.months.reduce<{ label: string; value: number }[]>((acc, m) => {
+            const prev = acc.length ? acc[acc.length - 1].value : 0;
+            acc.push({ label: m.label, value: prev + m.amount / 1e9 });
+            return acc;
+          }, [])}
+        />
+        <p className={o.note}>
+          {tr('Эх Excel-д 2027-12 хүртэл бий ч сервис CF255-д тасардаг — 2026-09-өөс хойшхи хуваарь НИЙТЛЭГДЭЭГҮЙ тул муруй тэгш болно.')}
+        </p>
+      </Panel>
+  
+      <Panel title={tr('Багцаар — төсөвт өртөг')}>
+        {bg.byPkg.length === 0 ? <Empty label={tr('Багцын задаргаа бүртгэгдээгүй.')} /> : (
+          <Bars
+            selected={flt?.sec === 'finance' ? flt.key : null}
+            onSelect={(key) => {
+              const ids = PKG_BY_BAGTS[key] ?? [];
+              // ⚠️ `SECTION_LAYERS.finance = []` тул `layers` БАЙХГҮЙ бол
+              //    зурагт юу ч болохгүй. Давхаргагүй багц дарагдахгүй (доор шүүсэн).
+              if (ids.length) onFlt({ sec: 'finance', key, label: tr('Багц: {0}', key), layers: ids });
+            }}
+            items={heatBars(bg.byPkg, (t) => {
+              /**
+               * ⚠️ ЗАВСРЫН шошго («БАГЦ 1- 4», «БАГЦ 1-4», «БАГЦ 1-6 БАГЦ 8-17»)
+               * нь «1-ээс 4 хүртэлх багц» гэсэн утгатай атлаа `bagtsKey`-ээр
+               * «БАГЦ14» болж, зурагт БАЙГАА «Багц 14 · Дулаан хангамжийн
+               * нэвтрэх суваг»-тай ХУДЛАА тааралдана (63.0 ба 2.2 тэрбумын
+               * хоёр мөр). Мөн ижил завсар хоёр бичиглэлээр орсон тул React-ын
+               * `key` ч давхардаж, нэгийг дарахад хоёул тодордог байв.
+               * Тиймээс завсрын мөрийг ШОШГООРОО түлхүүрлэж, зурагт холбохгүй.
+               */
+              const range = /\d\s*[-–]\s*\d/u.test(t.label);
+              const key = range ? t.label : bagtsKey(t.label);
+              const ids = range ? [] : (PKG_BY_BAGTS[key] ?? []);
+              return {
+                key,
+                label: ids.length ? `${t.label} ▸` : t.label,
+                value: t.value,
+                display: tr('{0} · {1} ажил', tug(t.value), num(t.n)),
+              };
+            })}
+          />
+        )}
+        <p className={o.note}>
+          {tr('▸ тэмдэгтэй багц нь газрын зурагт давхаргатай — дарж шүүнэ. ⚠️ Задаргаа нь')} <code>CF004</code> {tr('(дэд багцтай),')} <code>CF003</code> {tr('БИШ. ⚠️ «БАГЦ 1-4» гэх завсрын мөр нь ганц багц БИШ тул зурагт холбогдоогүй.')}
+        </p>
+      </Panel>
+    </>
   );
 }
 
@@ -2787,23 +2891,26 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
       {/* Хоёр талбар хоёул `d.headline`-д БИЙ — эзлэх ХУВЬ (1-р картын үнэмлэхүй
           га БИШ) нь «хангалттай юу» гэдэгт хариулна. */}
       <Panel title={tr('Ногоон байгууламжийн хүрэлцээ')}>
-        <RingStats
-          value={h == null || h.greenHa == null || !h.areaHa ? null : (h.greenHa / h.areaHa) * 100}
-          label={tr('төслийн талбайд эзлэх')}
-          decimals={1}
-        >
           <Stats cols={2}>
             <Stat accent color={HUE[1]} value={h == null ? '…' : num(h.areaHa, 1)} unit={tr('га')} label={tr('Төслийн талбай')} />
             <Stat accent color={HUE[2]}
                   value={h?.greenHa == null || !h.population ? '—' : num((h.greenHa * 10_000) / h.population, 1)}
                   unit={tr('м²/хүн')} label={tr('Нэг хүнд ногоон байгууламж')} />
           </Stats>
-        </RingStats>
         <p className={o.note}>
           {/* ⚠️ 9 м²/хүн гэх «стандарт»-тай ЗОРИУДААР харьцуулаагүй — тэр тоо нь
               амьд эх сурвалжгүй, «Тоо бүр ArcGIS-ээс ирнэ» дүрмийг зөрчинө. */}
           {tr('Ногоон талбай нь test_data [35]')} <code>Shape__Area</code> {tr('÷ 10,000; төслийн талбай нь хилийн')} <code>Hec_area</code>.
         </p>
+      </Panel>
+
+      {/* ⚠️ Бөгж тоонуудын зурвасаас САЛСАН — хажуугийн баганын карт. */}
+      <Panel title={tr('Ногоон байгууламжид эзлэх хувь')}>
+        <RingCard
+          value={h == null || h.greenHa == null || !h.areaHa ? null : (h.greenHa / h.areaHa) * 100}
+          label={tr('төслийн талбайд эзлэх')}
+          decimals={1}
+        />
       </Panel>
 
       <Panel title={tr('Нийгмийн дэд бүтэц · шинээр')}>

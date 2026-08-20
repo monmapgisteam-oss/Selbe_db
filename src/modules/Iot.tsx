@@ -5,12 +5,19 @@ import { t as tr } from '@/lib/i18nCore';
 import { MapCanvas, type Dim } from '@/components/MapCanvas';
 import { Data, Empty, Trend, Rows, Note, Bars, Donut, Ring, SubHead } from '@/components/ui';
 import { Icon } from '@/components/Icon';
+import { MapTools } from '@/components/MapTools';
+import { useZoomToFilter } from '@/lib/useZoomToFilter';
+import { LayerCatalog } from '@/components/LayerCatalog';
+import { OpacityPanel } from '@/components/OpacityPanel';
+import { useLayerPicks } from '@/lib/useLayerPicks';
+import { usePlanTotals } from '@/lib/totals';
 import { useAsync } from '@/lib/useAsync';
 import { loadSensors, type SensorLive, type MetricSeries } from '@/lib/sensors';
 import { num } from '@/lib/format';
 import { sumBy } from '@/lib/agg';
 import { VIEW_BY_KEY } from '@/lib/services';
 import s from './iot.module.css';
+import o from './overview.module.css';
 
 /**
  * IoT ХЯНАЛТ — Mononet-ээс 15 минут тутам ингест хийгддэг таван мэдрэгч.
@@ -310,7 +317,18 @@ export function Iot({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   }, []);
 
   const q = useAsync(loadSensors, [tick]);
-  const visible = VIEW_BY_KEY.iot.initial;
+  /**
+   * Мэдрэгчийн 5 давхарга нь СУУРЬ; каталогоос порталын аль ч давхаргыг дээр
+   * нь нэмнэ (`useLayerPicks`) — урьд нь энэ цонхонд каталог огт байхгүй байв.
+   */
+  const [visible, setVisible] = useLayerPicks(VIEW_BY_KEY.iot.initial);
+  const [catOpen, setCatOpen] = useState(false);
+  const [opOpen, setOpOpen] = useState(false);
+  const [opacity, setOpacity] = useState<Record<string, number>>({});
+  const [layerSel, setLayerSel] = useState<string | null>(null);
+  const [zone, setZone] = useState<string | null>(null);
+  const catTotals = usePlanTotals(zone, catOpen);
+  useZoomToFilter({ zone });
 
   return (
     <NowCtx.Provider value={now}>
@@ -324,22 +342,56 @@ export function Iot({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           <span className={s.mapTitle}>
             <Icon name="radio" size={14} /> {tr('Мэдрэгчийн байршил')}
           </span>
-          <div className={s.dims} role="group" aria-label={tr('Газрын зургийн харагдац')}>
-            {(['2d', '3d'] as Dim[]).map((x) => (
-              <button
-                key={x}
-                type="button"
-                aria-pressed={dim === x}
-                className={`${s.dimBtn} ${dim === x ? s.dimOn : ''}`}
-                onClick={() => setDim(x)}
-              >
-                {x.toUpperCase()}
-              </button>
-            ))}
-          </div>
         </div>
         <div className={s.mapBox}>
-          <MapCanvas dim={dim} visible={visible} zone={null} uniform onPick={() => {}} />
+          <MapCanvas
+            dim={dim}
+            visible={visible}
+            opacity={opacity}
+            zone={zone}
+            uniform
+            onPick={() => {}}
+          />
+
+          {/* ⚠️ 2026-08-20: Урьд нь ЗӨВХӨН «2D | 3D» байсан — Давхарга, Тунгалаг,
+              Бүс алга, BIM нь бүр огт байхгүй байв. Одоо бусад харагдацтай яг
+              ижил нэгдсэн зурвас (`MapTools`) бөгөөд мэдрэгчийн цэгүүд дээр
+              порталын аль ч давхаргыг контекст болгон нэмнэ. */}
+          <MapTools
+            dim={dim}
+            setDim={setDim}
+            layersOpen={catOpen}
+            onLayers={() => setCatOpen((v) => !v)}
+            opacityOpen={opOpen}
+            onOpacity={() => setOpOpen((v) => !v)}
+            zone={zone}
+            setZone={setZone}
+          />
+
+          {catOpen && (
+            <div className={o.catPanel}>
+              <LayerCatalog
+                view="plan"
+                totals={catTotals}
+                visible={visible}
+                setVisible={setVisible}
+                selected={layerSel}
+                onSelect={setLayerSel}
+                onClose={() => setCatOpen(false)}
+                zone={zone}
+                embedded
+              />
+            </div>
+          )}
+
+          {opOpen && (
+            <OpacityPanel
+              visible={visible}
+              opacity={opacity}
+              setOpacity={setOpacity}
+              onClose={() => setOpOpen(false)}
+            />
+          )}
         </div>
       </section>
 
@@ -511,18 +563,16 @@ function Board({ all }: { all: SensorLive[] }) {
         </header>
         <div className={s.cardBody}>
           {freshItems.length ? (
-            <>
-              <Donut items={freshItems} size={150} width={22} centerLabel={tr('үзүүлэлт')} />
-              <div className={s.legend}>
-                {freshItems.map((x) => (
-                  <span key={x.key} className={s.legendRow} style={{ ['--tint' as string]: x.color }}>
-                    <span className={s.legendBullet} />
-                    <span className={s.legendName}>{x.label}</span>
-                    <span className={`${s.legendPct} num`}>{num((x.value / cards.length) * 100, 0)}%</span>
-                  </span>
-                ))}
-              </div>
-            </>
+            /**
+             * ⚠️ 2026-08-20: Гараар бичсэн ХОЁР ДАХЬ тайлбарыг ХАСАВ. `Donut`
+             * өөрөө зүсмэг бүрийн нэр/хувийг (`donutLegend`) ҮРГЭЛЖ зурдаг тул
+             * картад яг ижил гурван мөр ХОЁР УДАА — цагирагийн хажууд, дараа нь
+             * доор нь — гарч байлаа. Давхардлаас гадна доод хуулбар нь картын
+             * үлдсэн өндрийг барьж, ~120px хоосон зай үүсгэж байв.
+             *
+             * Зүсмэг↔тайлбарын hover холбоо нь `Donut`-ынхад аль хэдийн бий.
+             */
+            <Donut items={freshItems} size={150} width={22} centerLabel={tr('үзүүлэлт')} />
           ) : (
             <Empty label={tr('Үзүүлэлт алга')} icon="chart" />
           )}

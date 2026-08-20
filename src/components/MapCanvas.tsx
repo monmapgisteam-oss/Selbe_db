@@ -33,7 +33,6 @@ import SketchViewModel from '@arcgis/core/widgets/Sketch/SketchViewModel';
 import BasemapGallery from '@arcgis/core/widgets/BasemapGallery';
 import LocalBasemapsSource from '@arcgis/core/widgets/BasemapGallery/support/LocalBasemapsSource';
 import Expand from '@arcgis/core/widgets/Expand';
-import LayerList from '@arcgis/core/widgets/LayerList';
 import ElevationLayer from '@arcgis/core/layers/ElevationLayer';
 import Ground from '@arcgis/core/Ground';
 import type Layer from '@arcgis/core/layers/Layer';
@@ -1534,20 +1533,22 @@ export const MapCanvas = memo(function MapCanvas({
     }), 'top-right');
 
     /**
-     * ДАВХАРГЫН ЖАГСААЛТ (LayerList) — суурь зургийн доор, мөн Expand дотор.
-     * Бүтэн дэлгэцэд порталын каталог руу гарах шаардлагагүйгээр давхаргаа
-     * асааж/унтраана. Ижил SDK-ийн бэлэн widget — view-тэй хамт устна.
+     * ⚠️ 2026-08-20: ArcGIS-ийн `LayerList` виджет ЭНДЭЭС ХАСАГДАВ.
+     *
+     * Тэр нь баруун дээд буланд ХОЁР ДАХЬ давхарга асаах/унтраах жагсаалт
+     * гаргадаг байсан — порталын «Давхарга» товч/каталогтой яг ижил ажиллагаа,
+     * гэхдээ ӨӨР загвар, ӨӨР нэрлэлт (SDK-ийн түүхий `title`), ӨӨР дараалал.
+     * Хоёр жагсаалт нэг зурагт зөрчилддөг: каталогоос унтраасныг LayerList
+     * дээр асаачихвал каталогийн чагт худал болдог байв.
+     *
+     * Түүнийг үлдээх цорын ганц шалтгаан нь «бүтэн дэлгэцэд каталог руу гарах
+     * шаардлагагүй» байсан; одоо `MapTools` нь ЗУРГАН ДЭЭР хөвдөг тул бүтэн
+     * дэлгэцэд ч «Давхарга» бүрэн ажиллана — шалтгаан нь дуусав.
+     *
+     * ⚠️ Суурь зургийн виджет (`BasemapGallery`, дээр) нь ДАВХАРДАЛГҮЙ —
+     * тэр нь ямар СУУРЬ зураг (хиймэл дагуул/гудамж/топо) вэ гэдгийг сонгодог
+     * бөгөөд үүнийг pill-ийн аль ч товч хийдэггүй. Хэвээр үлдэнэ.
      */
-    const llDiv = document.createElement('div');
-    new LayerList({ view, container: llDiv });
-    view.ui.add(new Expand({
-      view,
-      content: llDiv,
-      expandIcon: 'layers',
-      expandTooltip: tr('Давхаргууд'),
-      collapseTooltip: tr('Хаах'),
-      mode: 'floating',
-    }), 'top-right');
 
     /**
      * БҮТЭН ДЭЛГЭЦИЙН товч — Esri-ийн widget товчны загвараар (ижил хэмжээ,

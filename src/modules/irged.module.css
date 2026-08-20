@@ -107,11 +107,21 @@
 }
 
 /* Давхаргын чагтууд — «Давхарга» товчны панел дотор */
+/**
+ * ⚠️ 2026-08-20: Хавтан дотор ХОЁР блок болов — дээр нь энэ цонхны өөрийн хоёр
+ * чагт, доор нь порталын БҮХ давхаргын каталог. `overview.module.css`-ийн
+ * `.catPanel` нь `display: flex` (хэвтээ) тул баганын чиглэлийг энд дарна.
+ */
+.catPanel { flex-direction: column; }
+
 .toggles {
   display: flex;
   flex-direction: column;
   gap: 2px;
   padding: 4px 2px;
+  /* Каталог доороо гүйлттэй тул чагтууд агшихгүй, тогтмол өндөртэй */
+  flex: none;
+  border-bottom: 1px solid var(--line);
 }
 
 .toggle {

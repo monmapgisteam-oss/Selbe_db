@@ -253,18 +253,9 @@
 
 /* ══════════════════ Тайлбар — төлөвийн өнгөт цэгүүд ══════════════════ */
 
-.legend { display: flex; flex-wrap: wrap; gap: 8px 14px; }
-.legendRow { display: flex; align-items: center; gap: 7px; min-width: 0; }
-/* Дүүргэсэн жижиг цэг — `--tint` нь ТӨЛӨВИЙН токен (good/warn/bad/ink-3), утгатай */
-.legendBullet {
-  flex: none;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--tint);
-}
-.legendName { font-size: 12px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.legendPct { font-size: 11px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+/* ⚠️ 2026-08-20: `.legend*` дүрмүүд УСТСАН. Тэдгээрийг зөвхөн «Заалтын шинэлэг
+   байдал» картын ГАРААР бичсэн тайлбар хэрэглэдэг байсан бөгөөд тэр нь
+   `Donut`-ынхаа өөрийн тайлбарыг ХОЁР ДАХЬ УДАА давтаж байсан тул хасагдав. */
 
 /* ══════════════════ Газрын зураг ══════════════════ */
 
@@ -310,21 +301,11 @@
   color: var(--ink);
   backdrop-filter: blur(6px);
 }
-.dims { display: flex; gap: 1px; padding: 2px; border-radius: var(--r-sm); background: var(--line); }
-.dimBtn {
-  padding: 4px 10px;
-  border: 0;
-  border-radius: var(--r-sm);
-  background: var(--surface);
-  color: var(--ink-2);
-  font: inherit;
-  font-size: 11px;
-  font-weight: 600;
-  cursor: pointer;
-}
+
+
 /* Идэвхтэй = сонголт → өгөгдлийн өнгө. Бичиг нь `--bg` — хоёр горимд өөрөө
    эсрэгээрээ тохирно (цайварт цагаан дээр гүн teal, харанхуйд цайвар cyan дээр гүн). */
-.dimOn { background: var(--data); color: var(--bg); }
+
 
 /* ══════════════════ Байрлал — 12 багана, МӨР БҮР ИЛ ══════════════════ */
 
@@ -352,6 +333,14 @@
 .pCells  { grid-column: 1 / 9;   grid-row: 4; }
 .pBars   { grid-column: 9 / 13;  grid-row: 4; }
 .pCharts { grid-column: 1 / 13;  grid-row: 5; }
+
+/**
+ * ⚠️ 2026-08-20: Цагирагийг картын ДУНД байрлуулав — хажуугийн бөгжний карттай
+ * ижил асуудал (доорх `.ringWrap`-ын тайлбар). 150px цагираг нь мөрийн өндрийг
+ * тогтоодоггүй тул дээд талдаа наалдаж, доор нь ~300px хоосон талбай үлдээж
+ * байлаа (давхардсан тайлбарыг хассны дараа бүр илт болов).
+ */
+.pDonut .cardBody { justify-content: center; }
 
 .chartGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px; }
 /**

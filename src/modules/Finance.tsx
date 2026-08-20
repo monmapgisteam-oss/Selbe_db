@@ -257,7 +257,19 @@ export function ComboChart({
             <g key={`pl-${i}`}>
               <circle cx={x} cy={y} r={3.5} className={f.sDot} vectorEffect="non-scaling-stroke" style={{ fill: PLAN }} />
               {showLabel(i) && (
-                <text x={x} y={y - (i % 2 === 0 ? 8 : 18)} className={f.barVal} textAnchor={anchorFor(i)}>
+                /**
+                 * ⚠️ 2026-08-20: `y` ХЯЗГААРЛАГДАВ. Сүүлийн цэгийн төлөвлөгөө нь
+                 * `yMax` тул `yFor` нь яг `padT` (22) буцаана; сөөлжилсөн мөрөнд
+                 * (18px дээш) шошго нь `y = 4` болж, 10.5px үсгийн ДЭЭД хагас
+                 * SVG-ийн гаднаас тасарч байлаа («1.18 их наяд» хагас харагдана).
+                 * 11 нь суурь мөр — үсгийн орой 3px-т орж бүтэн уншигдана.
+                 */
+                <text
+                  x={x}
+                  y={Math.max(11, y - (i % 2 === 0 ? 8 : 18))}
+                  className={f.barVal}
+                  textAnchor={anchorFor(i)}
+                >
                   {mntShort(r.planned).replace(' ₮', '')}
                 </text>
               )}

@@ -22,16 +22,17 @@ import { t as tr } from '@/lib/i18nCore';
 import { useAsync } from '@/lib/useAsync';
 import { queryFeatures, sqlStr, type Row } from '@/lib/query';
 import {
-  HABEA, HABEA_LAYER_IDS, LAYER_BY_ID, MONITOR_LAYER_IDS, PLAN_LAYER_IDS,
+  HABEA, HABEA_LAYER_IDS, LAYER_BY_ID, CATALOG_LAYER_IDS,
   bagtsKey, laborCompanyFields,
 } from '@/lib/services';
 import { usePlanTotals } from '@/lib/totals';
 import { Section, Bars, Donut, Series, Loading, Empty } from '@/components/ui';
 import { num, date, text } from '@/lib/format';
 import { MapCanvas, type Dim } from '@/components/MapCanvas';
+import { MapTools } from '@/components/MapTools';
+import { useZoomToFilter } from '@/lib/useZoomToFilter';
 import { LayerCatalog } from '@/components/LayerCatalog';
 import { OpacityPanel } from '@/components/OpacityPanel';
-import { Icon } from '@/components/Icon';
 import { SplitGrip, useSideResize } from '@/components/SplitGrip';
 import h from './habea.module.css';
 import o from './overview.module.css';
@@ -41,7 +42,8 @@ const I = HABEA.incident.fields;
 const C = HABEA.crane.fields;
 
 /** «Давхарга» каталогийн тоолуурт орох давхаргууд — ХАБЭА эхэнд, дараа нь контекст */
-const CATALOG_IDS = [...HABEA_LAYER_IDS, ...MONITOR_LAYER_IDS, ...PLAN_LAYER_IDS];
+// ⚠️ 2026-08-20: Каталогийн БҮРЭН жагсаалт (`services.ts`).
+const CATALOG_IDS = CATALOG_LAYER_IDS;
 
 type HabeaData = { labor: Row[]; incident: Row[]; crane: Row[]; fetchedAt: number };
 
@@ -414,6 +416,9 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const [catOpen, setCatOpen] = useState(false);
   const [opOpen, setOpOpen] = useState(false);
   const [layerSel, setLayerSel] = useState<string | null>(null);
+  /** Бүсийн шүүлт — бусад харагдацтай ижил (`MapTools`-ийн «Бүс» товч) */
+  const [zone, setZone] = useState<string | null>(null);
+
   const totals = usePlanTotals(null, catOpen, CATALOG_IDS);
 
   /* Багцын хөндлөн шүүлт (bagtsKey) + зурган дээрээс сонгосон объект */
@@ -452,6 +457,17 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     const kran = inList(cranes.filter((x) => x.bagtsK === pkg).map((x) => x.bagtsRaw), C.bagts);
     return { 'habea:osol': osol, 'habea:crane': kran, 'habea:buffer': kran };
   }, [pkg, inc, cranes]);
+
+  /**
+   * Шүүлт солигдоход зураг тэр объектууд руу нисэнэ.
+   * ⚠️ Багцын шүүлт нь БҮСЭЭС давамгайлна — тэр нь илүү нарийн (тухайн багцын
+   * осол/кран). Багц цуцлагдвал бүсийн шүүлт, тэр ч байхгүй бол бүтэн хүрээ.
+   */
+  useZoomToFilter({
+    zone,
+    layerId: layerWhere ? 'habea:osol' : null,
+    where: layerWhere?.['habea:osol'] ?? null,
+  });
 
   /* Шүүгдсэн олонлогууд — багцын баруудаас БУСАД бүх дүрслэл эдгээрээс тоологдоно */
   const fInc = pkg ? inc.filter((x) => x.bagtsK === pkg) : inc;
@@ -610,36 +626,16 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           onPick={onPick}
         />
 
-        <div className={o.mapTools}>
-          <button
-            type="button"
-            aria-pressed={catOpen}
-            className={`${o.mapBtn} ${catOpen ? o.mapBtnOn : ''}`}
-            onClick={() => setCatOpen((v) => !v)}
-            title={tr('Давхаргын жагсаалт')}
-          >
-            <Icon name="layers" size={15} />
-            {tr('Давхарга')}
-          </button>
-          <button
-            type="button"
-            aria-pressed={opOpen}
-            className={`${o.mapBtn} ${opOpen ? o.mapBtnOn : ''}`}
-            onClick={() => setOpOpen((v) => !v)}
-            title={tr('Давхаргын тунгалаг')}
-          >
-            <Icon name="droplet" size={15} />
-            {tr('Тунгалаг')}
-          </button>
-          <div className={o.dimsInline} role="group" aria-label={tr('Газрын зургийн харагдац')}>
-            {(['2d', '3d', 'bim'] as Dim[]).map((x) => (
-              <button key={x} type="button" aria-pressed={dim === x}
-                className={`${o.dimBtn} ${dim === x ? o.dimOn : ''}`} onClick={() => setDim(x)}>
-                {x.toUpperCase()}
-              </button>
-            ))}
-          </div>
-        </div>
+        <MapTools
+          dim={dim}
+          setDim={setDim}
+          layersOpen={catOpen}
+          onLayers={() => setCatOpen((v) => !v)}
+          opacityOpen={opOpen}
+          onOpacity={() => setOpOpen((v) => !v)}
+          zone={zone}
+          setZone={setZone}
+        />
 
         {catOpen && (
           <div className={o.catPanel}>
@@ -752,9 +748,12 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             ? <Bars items={incByCompany} />
             : <Empty label={tr('Бүртгэл алга')} />}
         </Section>
-        <Section title={tr('Ажилтан — гүйцэтгэгчээр')} note={tr('Монгол {0} · Гадаад {1}', num(mongol), num(gadaad))}>
+        {/* ⚠️ `fill` + `grow`: доод зурвасын мөрийн өндрийг зургийн хана
+            (PhotoWall) тогтоодог тул тогтмол 110px чарт нь картын дөнгөж 40%-ийг
+            эзэлж, доор нь ~150px хоосон зай үлдээдэг байв. */}
+        <Section title={tr('Ажилтан — гүйцэтгэгчээр')} note={tr('Монгол {0} · Гадаад {1}', num(mongol), num(gadaad))} fill>
           {workersByCompany.length
-            ? <Series items={workersByCompany} height={110} unit={tr('ажилтан')} />
+            ? <Series items={workersByCompany} height={110} unit={tr('ажилтан')} grow />
             : surveyEmpty}
         </Section>
         <Section title={tr('Осол, зөрчлийн зураг')} note={tr('хавсаргасан зургууд · дарж томруулна')}>
