@@ -16,9 +16,18 @@ const SRC = pathToFileURL(
   resolvePath(dirname(fileURLToPath(import.meta.url)), '..', 'src') + '/',
 ).href;
 
-/** Өргөтгөлгүй бол туршиж үзэх дараалал */
+/**
+ * Өргөтгөлгүй бол туршиж үзэх дараалал.
+ *
+ * ⚠️ «Цэг байвал өргөтгөлтэй» гэж үзэж БОЛОХГҮЙ: модулийн нэр өөрөө цэгтэй
+ *    байдаг (./bagts.trees, ./bagts.pkg) бөгөөд тэднийг өргөтгөлтэй гэж
+ *    андуурвал .ts хувилбар нь огт туршигдахгүй, тест ERR_MODULE_NOT_FOUND-
+ *    оор унана. Тиймээс ЖИНХЭНЭ өргөтгөлүүдийг нэрээр нь жагсаав.
+ */
 const candidates = (spec) =>
-  /\.[a-z]+$/i.test(spec) ? [spec] : [`${spec}.ts`, `${spec}.tsx`, `${spec}/index.ts`, spec];
+  /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs|json)$/i.test(spec)
+    ? [spec]
+    : [`${spec}.ts`, `${spec}.tsx`, `${spec}/index.ts`, spec];
 
 export async function resolve(specifier, context, next) {
   let spec = specifier;
