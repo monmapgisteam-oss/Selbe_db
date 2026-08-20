@@ -3297,7 +3297,8 @@ export type ViewKey =
   | "finance"
   | "habea"
   | "irged"
-  | "iot";
+  | "iot"
+  | "guitsetgel";
 
 export const VIEWS: {
   key: ViewKey;
@@ -3495,6 +3496,21 @@ export const VIEWS: {
     initial: ["iot:waste_sensor", "iot:water_meter", "iot:light_sensor", "iot:temp_humidity", "iot:soil_meter"],
     standalone: true,
   },
+  {
+    key: "guitsetgel",
+    title: tr('Гүйцэтгэлийн хяналт'),
+    desc: tr('Компани → талбайн инженер → менежер зөвшөөрлийн урсгал'),
+    icon: "pen",
+    hue: "#7c3aed",
+    /*
+     * ⚠️ ГАЗРЫН ЗУРАГГҮЙ. Хяналтын хүснэгт нь `guitsetgel_bugluh_hyanalt`
+     * үйлчилгээнд байх ба геометргүй (table) тул давхарга нэмэх зүйл алга.
+     * `standalone: true` + хоосон `layers` нь порталд бүтэн дэлгэцээр зурагдана.
+     */
+    layers: [],
+    initial: [],
+    standalone: true,
+  },
 ];
 
 export const VIEW_BY_KEY: Record<ViewKey, (typeof VIEWS)[number]> =
@@ -3544,7 +3560,7 @@ export const HOME_SECTIONS: {
    */
   { id: "review", title: tr('Тойм'), views: ["dashboard", "tailan"] },
   { id: "plan", title: tr('Төлөвлөлт'), views: ["plan", "analysis", "irged"] },
-  { id: "build", title: tr('Хэрэгжилт'), views: ["tsogts", "gazar", "habea", "iot"] },
+  { id: "build", title: tr('Хэрэгжилт'), views: ["tsogts", "gazar", "habea", "iot", "guitsetgel"] },
   { id: "money", title: tr('Санхүү'), views: ["finance", "sheet"] },
 ];
 
