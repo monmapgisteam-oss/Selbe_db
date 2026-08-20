@@ -25,3 +25,7 @@ telegram-users.json
 
 # Audit-ийн түр гаралт (2026-08-18) — репод оруулахгүй
 .audit/
+
+# Telegram ботын байршуулалтын нууц (токен, BOT_SECRET) — ЗӨВХӨН `.env.example`
+# репод орно; бодит `.env` ХЭЗЭЭ Ч орохгүй
+deploy/telegram-bot/.env

@@ -1,0 +1,30 @@
+# Сэлбэ Telegram бот — 24/7 (Linux).
+#
+#   cd deploy/telegram-bot
+#   cp .env.example .env      # утгуудаа бөглөнө
+#   docker compose up -d --build
+#   docker compose logs -f
+#
+# `restart: unless-stopped` — унасан ч, Docker демон дахин эхлэх (сервер reboot)
+# үед ч бот өөрөө сэргэнэ. 24/7-ийн үндэс нь энэ.
+
+services:
+  selbe-bot:
+    build:
+      context: ../..
+      dockerfile: deploy/telegram-bot/Dockerfile
+    image: selbe-telegram-bot
+    container_name: selbe-telegram-bot
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      # Зөвшөөрсөн хэрэглэгчийн жагсаалт энд үлдэнэ (redeploy хийхэд ч устахгүй)
+      - bot-data:/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  bot-data:

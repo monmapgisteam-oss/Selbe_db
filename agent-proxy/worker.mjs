@@ -161,11 +161,20 @@ export default {
     }
 
     /*
+     * ⚠️ BROWSER-ГҮЙ ҮЙЛЧЛҮҮЛЭГЧ (Telegram бот). Бот нь ArcGIS хэрэглэгч БИШ тул
+     * `x-arcgis-token` байхгүй — оронд нь `BOT_SECRET` тохируулсан бол
+     * `x-bot-secret` толгойгоор батална. Тохирвол ArcGIS шалгалтыг алгасна.
+     * Ботын хэн ашиглах эрхийг ботын ӨӨРИЙН цагаан жагсаалт (`tools/telegram-bot.mjs`)
+     * барина. `BOT_SECRET` тохируулаагүй бол зан төлөв огт өөрчлөгдөхгүй.
+     */
+    const isBot = env.BOT_SECRET && request.headers.get('x-bot-secret') === env.BOT_SECRET;
+
+    /*
      * ⚠️ ArcGIS НЭВТРЭЛТ. `ARCGIS_ORG_ID` тохируулсан үед л шаардана — ингэснээр
      * локал хөгжүүлэлт (`server.mjs`, тохиргоогүй) хэвээр ажиллана.
      */
     let caller = origin || 'anon';
-    if (env.ARCGIS_ORG_ID) {
+    if (env.ARCGIS_ORG_ID && !isBot) {
       const auth = await checkArcGIS(request.headers.get('x-arcgis-token'), env);
       if (!auth.ok) return json(401, { error: auth.reason, retryable: false }, cors);
       caller = auth.username;

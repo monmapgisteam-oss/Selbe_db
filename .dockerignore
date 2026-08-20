@@ -1,0 +1,14 @@
+# Docker build context-оос ХАСАХ (deploy/telegram-bot/Dockerfile-д хэрэглэгдэнэ).
+# node_modules-ийг хассанаар context хөнгөн болж, image дотор `npm ci` цэврээр
+# суулгана.
+node_modules
+**/node_modules
+.next
+out
+.git
+.wrangler
+agent-proxy/.wrangler
+**/*.log
+deploy/telegram-bot/.env
+telegram-users.json
+*.tsbuildinfo

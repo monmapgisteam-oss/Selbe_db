@@ -26,8 +26,14 @@ import { toHtml, stripHtml } from './telegram-format.mjs';
 const API = 'https://api.telegram.org';
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 
-/** ⚠️ Ажиллах үед зөвшөөрсөн хэрэглэгчид — git-д ОРОХГҮЙ */
-const USERS_FILE = 'telegram-users.json';
+/**
+ * ⚠️ Ажиллах үед зөвшөөрсөн хэрэглэгчид — git-д ОРОХГҮЙ.
+ *
+ * ⚠️ `TELEGRAM_USERS_FILE`-ээр замыг СОЛИНО: Docker/24-7 байршуулалтад энэ файл
+ * тусдаа volume-д (жиш. `/data/telegram-users.json`) байвал контейнер дахин
+ * эхлэх/шинэчлэгдэхэд зөвшөөрсөн жагсаалт УСТАХГҮЙ. Заагаагүй бол CWD-д унана.
+ */
+const USERS_FILE = process.env.TELEGRAM_USERS_FILE || 'telegram-users.json';
 
 /**
  * `.env.local`-ын жагсаалт: `<id>[:<харагдац|харагдац>]` таслалаар.
