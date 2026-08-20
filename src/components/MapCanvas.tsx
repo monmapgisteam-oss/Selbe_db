@@ -1144,6 +1144,8 @@ export const MapCanvas = memo(function MapCanvas({
   opacity,
   zone,
   layerWhere,
+  layerStyle,
+  pulseIds,
   uniform = false,
   onPick,
   sketch = false,
@@ -1170,6 +1172,31 @@ export const MapCanvas = memo(function MapCanvas({
    * шүүгдэнэ. `null`/байхгүй утга = шүүлтгүй.
    */
   layerWhere?: Record<string, string | null>;
+  /**
+   * ДАВХАРГЫН ХЭВ МАЯГИЙГ ХАРАГДАЦААС ДАРЖ БИЧИХ.
+   *
+   * ⚠️ Нэг давхарга ХЭД ХЭДЭН харагдацад дахин ашиглагддаг тул анхны загвар нь
+   *    зарим контекстэд утгаа алддаг: «Багцын хяналт»-д газар чөлөөлөлтийн
+   *    нэгж талбар нь улаан барилгын блокуудын дэргэд ижил төстэй харагдаж,
+   *    хоёулаа ялгагдахаа больдог. Энд өгсөн өнгө/зузаанаар тэр давхаргыг
+   *    ТУХАЙН харагдацад л ялгаж зурна.
+   *
+   * ⚠️ Анхны renderer-ийг ХАДГАЛЖ, дарлага арилахад БУЦААНА — эс бөгөөс
+   *    «Газар чөлөөлөлт» харагдац руу орход тэнд төлөвөөр будсан загвар нь
+   *    алга болж, бүх нэгж талбар нэг өнгөөр харагдана.
+   */
+  layerStyle?: Record<string, { hue: string; fill?: number; width?: number }>;
+  /**
+   * ПУЛЬСЛЭХ (анивчих) ДАВХАРГУУД — анхаарал татах ёстой цөөн объектод.
+   *
+   * «Багцын хяналт»-д багцтай давхцсан нэгж талбар нь 1-2 ширхэг, ортофото
+   * дээр жижиг харагддаг тул зөвхөн өнгөөр ялгах хангалтгүй — амьсгалах
+   * хөдөлгөөн нүд шууд татна.
+   *
+   * ⚠️ Шүүлт (`layerWhere`) солигдоход пульс ДАХИН эхлэх ёстой: эс бөгөөс
+   *    өмнөх багцын талбарын хуулбар зурагдсаар үлдэнэ.
+   */
+  pulseIds?: string[];
   /** Давхарга бүрийг ГАНЦ жигд өнгөөр зурах (ангиллаар олон өнгө хуваахгүй) */
   uniform?: boolean;
   onPick: (attrs: Record<string, unknown> | null, layerId: string | null) => void;
@@ -1206,11 +1233,32 @@ export const MapCanvas = memo(function MapCanvas({
   /** Давхарга бүрийн БҮТЭЭГДЭХ (build-time) тунгалаг — override арилахад буцаана */
   const defaultOpacityRef = useRef<Record<string, number>>({});
   /** Сүүлд ил байсан давхаргын id-ууд — шинээр ил болсныг илрүүлэхэд */
+  /**
+   * Дарж бичихээс ӨМНӨХ renderer — дарлага арилахад буцаана.
+   * ⚠️ JS-ийн `Map` БИШ энгийн объект: энэ файлд ArcGIS-ийн `Map` класс
+   *    импортлогдсон тул нэр нь зөрчилдөнө.
+   */
+  const styleBackup = useRef<Record<string, unknown>>({});
   const prevVisRef = useRef<Set<string>>(new Set());
   /** Одоо пульс-анимаци явж буй давхаргууд — давхар гогцоо эхлэхээс сэргийлнэ */
   const fadingRef = useRef<Set<string>>(new Set());
   /** Идэвхтэй пульс-гогцоог цуцлах функц — unmount дээр rAF-ийг зогсооно */
   const pulseCancelRef = useRef<(() => void) | null>(null);
+  /**
+   * ДАВХАРГА ТУС БҮРИЙН цуцлагч.
+   *
+   * ⚠️ Пульсийн хуулбар нь `source:pulse` гэсэн ТУСДАА графикийн давхаргад
+   *    амьдардаг бөгөөд тэр давхарга ҮРГЭЛЖ ил. Тиймээс эх давхаргыг нуухад
+   *    хуулбар нь ӨӨРӨӨ АРИЛДАГГҮЙ — багцын сонголтыг цуцлахад ягаан талбар
+   *    зураг дээр үлдсээр байв. Нуугдмагц ЭНДЭЭС цуцлана.
+   */
+  const pulseCancels = useRef<Record<string, () => void>>({});
+  /** `pulseLayer` нь useCallback тул props-ыг ref-ээр уншина (лавлагаа тогтвортой). */
+  const pulseIdsRef = useRef<string[]>([]);
+  /** Хэв маягийн дарлага — пульсийн хуулбар ч ижил өнгөтэй байх ёстой. */
+  const layerStyleRef = useRef<Record<string, { hue: string; fill?: number; width?: number }>>({});
+  /** Давхарга бүрийн СҮҮЛД пульсэлсэн шүүлт — солигдвол дахин эхлүүлнэ. */
+  const pulsedWhere = useRef<Record<string, string | null>>({});
 
   const [ready, setReady] = useState(false);
 
@@ -2356,9 +2404,16 @@ export const MapCanvas = memo(function MapCanvas({
    *   unmount дээр `pulseCancelRef`-ээр ГАДНААС цуцлагдана (Map кэштэй тул
    *   давхарга ил үлдэж, гогцоо өөрөө хэзээ ч зогсдоггүй байв).
    */
+  // `pulseLayer` нь тогтвортой лавлагаатай (useCallback) тул props-ыг ref-ээр уншина.
+  pulseIdsRef.current = pulseIds ?? [];
+  layerStyleRef.current = layerStyle ?? {};
+
   const pulseLayer = useCallback((layer: Layer) => {
     const map = mapRef.current;
-    if (!map || layer.id !== 'source:eh') return;
+    // ⚠️ `source:eh` нь ҮРГЭЛЖ пульсэлдэг (эх үүсвэрийн байршил); бусад нь
+    //    зөвхөн харагдац хүсвэл (`pulseIds`).
+    if (!map || (layer.id !== 'source:eh' && !pulseIdsRef.current.includes(layer.id)))
+      return;
     const id = layer.id;
     if (fadingRef.current.has(id)) return;      // аль хэдийн пульсэлж байна
     const d = LAYER_BY_ID[id];
@@ -2390,23 +2445,37 @@ export const MapCanvas = memo(function MapCanvas({
      */
     let cancelled = false;
     let raf = 0;
-    pulseCancelRef.current = () => {
+    const cancel = () => {
       cancelled = true;
       cancelAnimationFrame(raf);
       finish();
+      delete pulseCancels.current[id];
     };
+    pulseCancelRef.current = cancel;
+    pulseCancels.current[id] = cancel;
 
     // 7 объектын геометр + өнгийг НЭГ УДАА татаад пульслэнэ.
-    src.queryFeatures({ where: '1=1', returnGeometry: true, outFields: pfield ? [pfield] : ['*'] })
+    // ⚠️ Давхаргын `definitionExpression`-ийг ЗААВАЛ дагана: давхцсан нэгж
+    //    талбарын давхарга 2,119 объекттой бөгөөд шүүлтгүй асуувал бүх хот
+    //    пульслэнэ.
+    src.queryFeatures({
+      where: (src.definitionExpression as string | null) || '1=1',
+      returnGeometry: true,
+      outFields: pfield ? [pfield] : ['*'],
+    })
       .then((fs) => {
         const items = fs.features
           .map((ft) => {
             const poly = ft.geometry as Polygon | null;
             const c = poly?.centroid;
             if (!poly || !poly.rings || !c) return null;
-            const hue = (pfield && pvals[String(ft.attributes?.[pfield])]) || d.hue;
+            /* ⚠️ Харагдацын дарлага байвал ТҮҮНИЙ өнгөөр — эс бөгөөс пульсийн
+               хуулбар нь давхаргын анхны (төлөвийн) өнгөөр гарч, доорх ялгаж
+               өгсөн өнгөтэй зөрнө. */
+            const ov = layerStyleRef.current[id];
+            const hue = ov?.hue ?? ((pfield && pvals[String(ft.attributes?.[pfield])]) || d.hue);
             return { rings: poly.rings, cx: c.x, cy: c.y, sr: poly.spatialReference,
-              symbol: symbolOf(d, hue) };
+              symbol: ov ? fill(ov.hue, ov.fill ?? 0.25, ov.width ?? 3) : symbolOf(d, hue) };
           })
           .filter(Boolean) as Array<{ rings: number[][][]; cx: number; cy: number;
             sr: __esri.SpatialReference; symbol: unknown }>;
@@ -2450,7 +2519,27 @@ export const MapCanvas = memo(function MapCanvas({
    * дундаа тасарч дахин эхлэхгүй байсан. Давхарга нуугдахад гогцоо `!visible`
    * шалгалтаараа өөрөө зогсоно — энд зөвхөн unmount-ын үүрд-гогцоог хаана.
    */
-  useEffect(() => () => { pulseCancelRef.current?.(); pulseCancelRef.current = null; }, []);
+  useEffect(
+    () => () => {
+      Object.values(pulseCancels.current).forEach((f) => f());
+      pulseCancelRef.current?.();
+      pulseCancelRef.current = null;
+    },
+    [],
+  );
+
+  /**
+   * Пульсийг ДАХИН эхлүүлнэ — шүүлт солигдоход хуучин хуулбарыг таслах ёстой.
+   * ⚠️ `fadingRef` нь «аль хэдийн пульсэлж байна» гэсэн хамгаалалт тул түүнийг
+   *    цэвэрлэхгүй бол шинэ дуудлага чимээгүй буцна.
+   */
+  const restartPulse = useCallback((layer: Layer) => {
+    // ⚠️ ЗӨВХӨН энэ давхаргынхыг — `pulseCancelRef` нь СҮҮЛД эхэлсэн пульсийг
+    //    заадаг тул түүгээр таславал өөр давхаргын (эх үүсвэр) анимаци унтарна.
+    pulseCancels.current[layer.id]?.();
+    fadingRef.current.delete(layer.id);
+    pulseLayer(layer);
+  }, [pulseLayer]);
 
   /* Харагдац ба БҮСИЙН шүүлт */
   useEffect(() => {
@@ -2558,6 +2647,23 @@ export const MapCanvas = memo(function MapCanvas({
          бөгөөд `buildLayers` дээр НЭГ УДАА тавигддаг тул энд солих зүйлгүй. */
       const d = LAYER_BY_ID[l.id];
 
+      /* Харагдацын хэв маягийн дарлага — тухайн давхаргыг ЭНЭ харагдацад л
+         өөр өнгө/зузаанаар зурна (жишээ нь давхцсан нэгж талбар). */
+      if ('renderer' in l) {
+        const ov = layerStyle?.[l.id];
+        const fl = l as FeatureLayer;
+        if (ov) {
+          if (!(l.id in styleBackup.current))
+            styleBackup.current[l.id] = fl.renderer as unknown;
+          fl.renderer = simple(
+            fill(ov.hue, ov.fill ?? 0.25, ov.width ?? 3),
+          ) as unknown as FeatureLayer['renderer'];
+        } else if (l.id in styleBackup.current) {
+          fl.renderer = styleBackup.current[l.id] as FeatureLayer['renderer'];
+          delete styleBackup.current[l.id];
+        }
+      }
+
       if (d && 'definitionExpression' in l) {
         // `layerWhere` заасан бол давхарга бүрийн өөрийн WHERE; эс бөгөөс бүсийн
         // нэгдсэн шүүлт (cross-filter дашбоард нь давхарга тус бүрээ шүүнэ).
@@ -2576,11 +2682,31 @@ export const MapCanvas = memo(function MapCanvas({
         (l as FeatureLayer).definitionExpression = (
           parts.length ? parts.map((p) => `(${p})`).join(' AND ') : null
         ) as unknown as string;
+
+        /* ⚠️ ПУЛЬСИЙГ ЗААВАЛ ЭНД — `definitionExpression` тавигдсаны ДАРАА.
+           Урьд нь дээр байсан тул пульс нь ХУУЧИН (эсвэл огт байхгүй) шүүлтээр
+           асууж, газар чөлөөлөлтийн 2,119 талбарыг БҮГДИЙГ хуулж, зураг
+           бүхэлдээ дүүрдэг байв.
+
+           Мөн зөвхөн «шинээр ил боллоо» гэдэг хангалтгүй: багц солиход давхарга
+           ил хэвээр үлддэг тул ШҮҮЛТ өөрчлөгдөхөд ч дахин эхлүүлнэ. */
+        const lit = l.visible && dim !== 'bim';
+        if (lit && pulseIds?.includes(l.id)) {
+          const w = (l as FeatureLayer).definitionExpression ?? null;
+          if (pulsedWhere.current[l.id] !== w) {
+            pulsedWhere.current[l.id] = w;
+            restartPulse(l);
+          }
+        } else if (!lit && l.id in pulsedWhere.current) {
+          // Давхарга нуугдлаа — анивчих ХУУЛБАРЫГ нь заавал цэвэрлэнэ.
+          pulseCancels.current[l.id]?.();
+          delete pulsedWhere.current[l.id];
+        }
       }
     });
     // Дараагийн өөрчлөлтөд «шинээр ил болсон»-ыг зөв илрүүлэхийн тулд тэмдэглэнэ.
     prevVisRef.current = on;
-  }, [visibleKey, dim, ready, zone, layerWhere, hl, hlOnly, uniform, ortho, pulseLayer]);
+  }, [visibleKey, dim, ready, zone, layerWhere, layerStyle, hl, hlOnly, uniform, ortho, pulseLayer]);
 
   /**
    * ТУНГАЛАГ — давхарга бүрийн `opacity`-г override-оор тавина. Override байхгүй

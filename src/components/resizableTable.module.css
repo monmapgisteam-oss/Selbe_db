@@ -1,0 +1,79 @@
+/* ДУРЫН ХҮСНЭГТИЙН БАГАНЫ ӨРГӨН чирж тохируулах — `ResizableTable`-ийн хэв маяг.
+ *
+ * ⚠️ Өргөнийг нүд бүр дээр биш, БҮРХҮҮЛ дээрх CSS хувьсагчаар (`--cw-1` …)
+ * хадгална. Ингэснээр React-ийн удирддаг DOM-д огт хүрэхгүй: чирэх явцад
+ * зөвхөн хувьсагчийг бичих тул хүснэгт дахин зурагдахгүй, бариул гацахгүй.
+ *
+ * ⚠️ Тодорхойлогдоогүй хувьсагч нь `width`-ийг ХҮЧИНГҮЙ болгодог тул тэр багана
+ * `auto` хэвээр — өөрөөр хэлбэл чирээгүй багана хэвийн ажиллана. Тиймээс
+ * анхны утга оноох шаардлагагүй.
+ */
+.wrap {
+  position: relative;
+}
+
+/* Бариулын давхарга — хүснэгтийн ТОЛГОЙН өндрөөр. Хүснэгтийн DOM-д хүрэхгүйн
+   тулд тусдаа давхарга болгов (React-ийн элемент рүү хүүхэд шургуулбал дахин
+   зурагдахад алга болно). */
+.grips {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 0;
+  pointer-events: none;
+  /* ⚠️ Толгойн нүд ЦАРЦСАН (sticky) хүснэгтүүд бий (Санхүүжилт) — тэдгээр нь
+     өөрийн z-index-тэй тул бариулын давхаргыг БҮРХЭЖ, чирэлт огт эхэлдэггүй
+     байв. Тиймээс тэднээс дээш байрлуулав. */
+  z-index: 6;
+}
+
+/* Баганын ЗААГ дээрх чирэх бариул. Нарийн зураас — хулгана хүргэхэд л тодорно.
+   `pointer-events` нь давхарга дээр унтраалттай тул бариул өөрөө асаана. */
+.grip {
+  position: absolute;
+  top: 0;
+  width: 9px;
+  margin-left: -4px;
+  cursor: col-resize;
+  pointer-events: auto;
+  touch-action: none;
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+.grip::after {
+  content: "";
+  position: absolute;
+  inset: 2px auto 2px 50%;
+  width: 2px;
+  transform: translateX(-50%);
+  background: transparent;
+  border-radius: 1px;
+}
+.grip:hover::after,
+.grip:focus-visible::after,
+.grip[data-drag]::after {
+  background: var(--hue);
+}
+.grip:focus-visible {
+  outline: none;
+}
+
+/* Чирэх үед бүх хуудсаар курсорыг барина — заагаас гарахад сумны дүрс
+   солигдоод чирж байгаа мэдрэмж алдагддаг байв. */
+.dragging,
+.dragging * {
+  cursor: col-resize !important;
+  user-select: none;
+}
+
+/* Нэг ч багана чирэгдсэн бол өргөнийг ЯГ мөрдүүлнэ. Урьд нь `auto` байрлуулалт
+   агуулгаараа буцаан татаж, чирсэн өргөн «наалддаггүй» байв. */
+.fixed table {
+  table-layout: fixed;
+}
+.fixed td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

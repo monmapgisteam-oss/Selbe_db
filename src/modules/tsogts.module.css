@@ -14,10 +14,11 @@
   display: grid;
   gap: 8px;
   padding: 8px;
-  grid-template-columns:
-    minmax(235px, 290px)   /* жагсаалт */
-    minmax(0, 1fr)         /* зураг */
-    minmax(300px, 380px);  /* баруун НЭГ багана (scroll-гүй) */
+  /* Талын багануудын өргөн — хэрэглэгч заагийг чирж тохируулна
+     (`components/SplitGrip`). Хатуу утга байвал чирэлт харагдахгүй. */
+  --side-l: 290px;
+  --side-r: 380px;
+  grid-template-columns: var(--side-l) minmax(0, 1fr) var(--side-r);
   grid-template-rows: auto minmax(0, 1fr) auto;
   /* ЗҮҮН (list) ба БАРУУН (r) баганууд бүтэн өндрийг эзэлнэ. Зүүнд багцын
      жагсаалт + блок бүрийн гүйцэтгэл; голд KPI · зураг · санхүүгийн график. */

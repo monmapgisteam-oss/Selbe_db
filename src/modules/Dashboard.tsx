@@ -39,6 +39,7 @@ import {
   weighted, rollupBy,
   type Headline, type SocialLive, type ProjectProgress, type Budget, type ProgRow,
 } from '@/lib/live';
+import { SplitGrip, useSideResize } from '@/components/SplitGrip';
 import o from './overview.module.css';
 
 /**
@@ -405,6 +406,8 @@ const layersByTitle = (subs: string[]): string[] =>
 export function Dashboard({ dim, setDim, zone, setZone }: {
   dim: Dim; setDim: (d: Dim) => void; zone: string | null; setZone: (z: string | null) => void;
 }) {
+  /** Талын багануудын өргөн — чирж тохируулна, хөтөчид хадгалагдана. */
+  const side = useSideResize('dashboard');
   const d: DashData = {
     bagts: useBagtsTable(),
     project: useProjectProgress(),
@@ -519,7 +522,16 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
    * багана болсон тул чирэх зүйл үлдсэнгүй.
    */
   return (
-    <div className={o.shell} data-detail={open.length > 0 ? '1' : '0'}>
+    /* Талын багануудыг чирж өргөсгөх/нарийсгах — өргөн нь `--side-l/--side-r`
+       хувьсагчаар өгөгддөг тул бариул тэднийг л өөрчилнө. */
+    <div
+      ref={side.hostRef}
+      className={`${o.shell} ${side.hostClass}`}
+      style={side.style}
+      data-detail={open.length > 0 ? '1' : '0'}
+    >
+      <SplitGrip {...side.left} />
+      <SplitGrip {...side.right} />
       {/* ⚠️ 2026-08-18 envhub 100%: анхдагч горимд ДЭЭД мөр нь ШҮҮЛТҮҮРИЙН МӨР
           (envhub FilterBar); хэсгийн KPI жагсаалт нь дэлгэрэнгүй горимд л гарна. */}
       {open.length > 0 ? (

@@ -21,6 +21,8 @@ import { cat, shade, mntShort, num, pct } from '@/lib/format';
 import { readParam, writeParams } from '@/lib/urlState';
 import o from './overview.module.css';
 import f from './finance.module.css';
+import { SplitGrip, useSideResize } from '@/components/SplitGrip';
+import { overlapLeftParcels, type Overlap } from '@/lib/parcelOverlap';
 import ts from './tsogts.module.css';
 
 /**
@@ -41,6 +43,8 @@ import ts from './tsogts.module.css';
  */
 
 const HUE = LAYER_BY_ID[BLOCK_LAYER].hue;
+/** Газар чөлөөлөлтийн нэгж талбарын давхарга — давхцсан талбарыг зурахад. */
+const PARCEL_LAYER = 'land:left';
 
 /** Утгыг тоо руу — ArcGIS Double эсвэл "0" мэт мөр ирдэг */
 const nn = (v: unknown): number => {
@@ -55,6 +59,8 @@ const meanOf = (vals: (number | null)[]) => {
 };
 
 export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
+  /** Талын багануудын өргөн — чирж тохируулна, хөтөчид хадгалагдана. */
+  const side = useSideResize('tsogts');
   const q = useBuildings();
   const finQ = useAsync<FinData>(loadFinData, []);
   const { zoomToWhere, setHighlight } = useMap();
@@ -74,6 +80,41 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
   );
 
   const active = packs.find((p) => p.key === sel) ?? null;
+
+  /**
+   * БАГЦТАЙ ДАВХЦАЖ БУЙ «ҮЛДСЭН НЭГЖ ТАЛБАР» — чөлөөлөгдөөгүй, барилга
+   * эхлүүлэхэд саад болж буй газар. Багц сонгоход орон зайн огтлолцлоор олж,
+   * газрын зурагт зурж, тоог нь KPI-д гаргана.
+   *
+   * ⚠️ Хариу хожуу ирж БУСАД багцын үр дүнг дарж бичихээс `alive` хамгаална
+   *    (хэрэглэгч хурдан дараалан сонгоход).
+   */
+  const [overlap, setOverlap] = useState<Overlap | null>(null);
+  useEffect(() => {
+    let alive = true;
+    setOverlap(null);
+    /* ⚠️ Багц СОНГООГҮЙ үед ч тоолно — тэгэхдээ БҮХ блокоор (`where = null`),
+       өөрөөр хэлбэл төслийн НИЙТ саад. Урьд нь сонголтгүй үед огт тоолохгүй
+       байсан тул хэрэглэгч «нийт хэдэн талбар саад болж байна» гэдгийг
+       мэдэхийн тулд багц бүрийг ээлжлэн сонгох шаардлагатай байв. */
+    /* Багц сонгосон бол ТҮҮНИЙ бүх давхарга; эс бөгөөс БҮХ БАГЦЫНХ —
+       барилгын блокууд + дэд бүтцийн 48 багцын давхаргууд. Зөвхөн блокоор
+       тоолвол шугам хоолой, замын коридор дээрх саад тоологдохгүй үлддэг. */
+    const srcs = active
+      ? active.layerIds.map((id) => ({ layerId: id, where: active.where }))
+      : [
+          { layerId: BLOCK_LAYER, where: null },
+          ...packs.flatMap((pk) =>
+            pk.kind === 'infra' ? pk.layerIds.map((id) => ({ layerId: id, where: pk.where })) : [],
+          ),
+        ];
+    overlapLeftParcels(srcs)
+      .then((r) => alive && setOverlap(r))
+      .catch(() => alive && setOverlap({ oids: [] }));
+    return () => {
+      alive = false;
+    };
+  }, [active]);
 
   /**
    * Багц бүрийн САНХҮҮГИЙН сарын цэгүүд — CASHFLOW2-ийн мөрийг bagtsKey-ээр
@@ -159,11 +200,53 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
     return oids.length ? `${BUILDING.oid} IN (${oids.join(',')})` : null;
   }, [alerted]);
 
-  const visible = active ? active.layerIds : [BLOCK_LAYER];
+  /**
+   * Сонгосон багц л зурагдана. Давхцсан үлдсэн нэгж талбар олдвол газар
+   * чөлөөлөлтийн давхаргыг НЭМЖ асаана — инженер аль блок дээр саад байгааг
+   * зурган дээр шууд харна.
+   */
+  const visible = useMemo(
+    () =>
+      active
+        ? overlap?.oids.length
+          ? [...active.layerIds, PARCEL_LAYER]
+          : active.layerIds
+        : [BLOCK_LAYER],
+    [active, overlap],
+  );
+  /**
+   * ДАВХЦСАН НЭГЖ ТАЛБАРЫН ХЭВ МАЯГ — барилгын блокоос ЯЛГАРАХ ёстой.
+   *
+   * ⚠️ Анхны загвар нь улаавтар (`#e11d48`) бөгөөд блокууд ч улбар шар
+   *    (`#ea580c`) тул ортофото дээр хоёулаа ижил төстэй харагдаж, аль нь
+   *    барилга, аль нь газар болох нь ялгагдахаа больдог. Тод ягаан + зузаан
+   *    хүрээ нь хоёуланг нь эрс тасалж өгнө.
+   */
+  /** Анивчих давхарга — давхцсан талбар олдсон үед л. */
+  const parcelPulse = useMemo(
+    () => (overlap?.oids.length ? [PARCEL_LAYER] : undefined),
+    [overlap],
+  );
+
+  const parcelStyle = useMemo(
+    () =>
+      overlap?.oids.length
+        ? { [PARCEL_LAYER]: { hue: '#d946ef', fill: 0.22, width: 3.4 } }
+        : undefined,
+    [overlap],
+  );
+
   const layerWhere = useMemo<Record<string, string | null>>(
     // Багц сонгосон → тэр багц; эс бөгөөс → зөвхөн хоцрогдолтой багцын блокууд
-    () => ({ [BLOCK_LAYER]: active?.where ?? alertedWhere }),
-    [active, alertedWhere],
+    () => ({
+      [BLOCK_LAYER]: active?.where ?? alertedWhere,
+      // ⚠️ Давхаргад 2,119 талбар бий — ЗӨВХӨН давхцсаныг үлдээнэ, эс бөгөөс
+      //    бүх хот дүүрэн парсел зурагдаж блокууд дарагдана.
+      [PARCEL_LAYER]: overlap?.oids.length
+        ? `OBJECTID IN (${overlap.oids.join(',')})`
+        : null,
+    }),
+    [active, alertedWhere, overlap],
   );
 
   /** Багц солих — барилгын сонголт цуцлагдана (өөр багцын барилга үлдэхгүй) */
@@ -196,7 +279,14 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
   const errQ: Async<unknown> | null = q.state === 'error' ? q : null;
 
   return (
-    <div className={ts.pack}>
+    /* Талын багануудыг чирж өргөсгөх/нарийсгах бариулууд. */
+    <div
+      ref={side.hostRef}
+      className={`${ts.pack} ${side.hostClass}`}
+      style={side.style}
+    >
+      <SplitGrip {...side.left} />
+      <SplitGrip {...side.right} />
       {/* ── ДЭЭР: сонгосон багцын KPI ── */}
       <div className={ts.kpi}>
         {errQ ? null : loading ? <Empty label={tr('Ачаалж байна…')} /> : (
@@ -252,7 +342,7 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
 
       {/* ── ТӨВ: зураг ── */}
       <div className={ts.map}>
-        <MapCanvas dim={dim} visible={visible} zone={null} layerWhere={layerWhere} onPick={onMapPick} />
+        <MapCanvas dim={dim} visible={visible} zone={null} layerWhere={layerWhere} layerStyle={parcelStyle} pulseIds={parcelPulse} onPick={onMapPick} />
 
         <div className={o.mapDims} role="group" aria-label={tr('Газрын зургийн харагдац')}>
           {(['2d', '3d', 'bim'] as Dim[]).map((d) => (
@@ -318,7 +408,7 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
 
       {/* ── ДООД ГОЛ: санхүүгийн график (сонгоогүй бол ТӨСЛИЙН НЭГДСЭН) ── */}
       <div className={ts.fin}>
-        <FinCard p={active} finQ={finQ} />
+        <FinCard p={active} finQ={finQ} overlap={overlap} />
       </div>
     </div>
   );
@@ -550,7 +640,16 @@ function LevelsCard({ blocks }: { blocks: Pack['blocks'] }) {
  * биет нь багцуудын дундаж). CASHFLOW2-ийн мөрийг `bagtsKey`-ээр тааруулна
  * («БАГЦ-4.1» = «Багц 4-1»); хоцрогдлын badge мөн Finance-ийн дүрмээр.
  */
-function FinCard({ p, finQ }: { p: Pack | null; finQ: Async<FinData> }) {
+function FinCard({
+  p,
+  finQ,
+  overlap,
+}: {
+  p: Pack | null;
+  finQ: Async<FinData>;
+  /** Багцтай давхцсан үлдсэн нэгж талбар — `null` бол ачаалж байна. */
+  overlap?: Overlap | null;
+}) {
   const d = finQ.state === 'ready' ? finQ.data : null;
   const C = CASHFLOW2.fields;
 
@@ -663,6 +762,19 @@ function FinCard({ p, finQ }: { p: Pack | null; finQ: Async<FinData> }) {
               { v: plannedPct == null ? '—' : pct(plannedPct, 1), l: tr('Төлөвлөгөөт гүйцэтгэл'), c: cat(2) },
               { v: actualPct == null ? '—' : pct(actualPct, 1), l: tr('Бодит гүйцэтгэл'), c: cat(1) },
               { v: gapText, l: tr('Гүйцэтгэлийн зөрүү'), c: gapColor },
+              /* ДАВХЦСАН ҮЛДСЭН НЭГЖ ТАЛБАР — газар чөлөөлөгдөөгүйгээс болж
+                 барилга эхлэх боломжгүй блокуудын шалтгаан. Дээд KPI-аас энд
+                 зөөв: санхүүжилт/гүйцэтгэлийн хоцрогдлыг ТАЙЛБАРЛАДАГ тоо тул
+                 тэдгээрийн ХАЖУУД байх нь утга учиртай.
+                 ⚠️ 0 байсан ч ХАРУУЛНА — «саад алга» гэдэг нь өөрөө хариулт. */
+              /* ⚠️ Багц сонгоогүй үед ч ГАРНА — тэр үед энэ нь ТӨСЛИЙН НИЙТ
+                 саад (бүх блокоор). Нуувал хэрэглэгч нийт хэдэн талбар саад
+                 болж байгааг мэдэхийн тулд багц бүрийг ээлжлэн сонгох болно. */
+              {
+                v: overlap == null ? '…' : num(overlap.oids.length),
+                l: tr('давхцсан үлдсэн нэгж талбар'),
+                c: overlap?.oids.length ? '#d946ef' : '#16a34a',
+              },
             ].map((k) => (
               <div key={k.l}>
                 <span className={`${ts.finKpiVal} num`} style={{ color: k.c }}>{k.v}</span>
