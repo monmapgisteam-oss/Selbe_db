@@ -1000,7 +1000,7 @@ function EnvLeft({ d }: { d: DashData }) {
       </Panel>
 
       <Panel title={tr('Эх үүсвэр')} note={tr('хүчин чадлын эзлэх хувь')}>
-        <Data q={d.sources} loading={tr('Татаж байна…')}>
+        <Data q={d.sources} loading={tr('Татаж байна…')} minH={215}>
           {(rows) => (
             <Bars
               inline
@@ -2108,7 +2108,7 @@ function NetworkDetail({ project, bagts, sources, flt, onFlt }: {
       {/* `нийт_чадал` ба `тайлбар` нь `useSources`-ийн outFields-д БАЙГАА хэрнээ
           дашбоардын хаана ч зурагддаггүй байв. */}
       <Panel title={tr('Дулаан, ус хангамжийн эх үүсвэрийн чадал')}>
-        <Data q={sources} loading={tr('Эх үүсвэрийг татаж байна…')}>
+        <Data q={sources} loading={tr('Эх үүсвэрийг татаж байна…')} minH={460}>
           {(rows) => {
             const F = SOURCE_FS.fields;
             const grab = (pre: string) => rows.filter((r) => srcStr(r[F.type]).startsWith(pre));
@@ -2208,7 +2208,7 @@ function PowerDetail({ project, sources, prog, flt, onFlt }: {
           БАЙГУУЛАМЖИЙН ТОО бичдэг — МВт чадал ба «шинэ/одоо байгаа» хуваалт
           дашбоардын хаана ч гардаггүй байв. */}
       <Panel title={tr('Цахилгааны эх үүсвэрийн чадал')}>
-        <Data q={sources} loading={tr('Эх үүсвэрийн чадлыг татаж байна…')}>
+        <Data q={sources} loading={tr('Эх үүсвэрийн чадлыг татаж байна…')} minH={300}>
           {(rows) => {
             const F = SOURCE_FS.fields;
             const cap = rows
@@ -2279,7 +2279,7 @@ function PowerDetail({ project, sources, prog, flt, onFlt }: {
       </Panel>
 
       <Panel title={tr('Багцад хуваарилсан чадал (МВт)')}>
-        <Data q={sources} loading={tr('Эх үүсвэрийг татаж байна…')}>
+        <Data q={sources} loading={tr('Эх үүсвэрийг татаж байна…')} minH={460}>
           {(rows) => {
             const F = SOURCE_FS.fields;
             const pw = rows.filter((r) => srcStr(r[F.type]).startsWith('Цахилгаан'));
@@ -2416,7 +2416,7 @@ function SourceDetail({ sources, d, flt, onFlt }: { sources: Async<Row[]>; d: Da
     });
   };
   return (
-    <Data q={sources} loading={tr('Эх үүсвэрийн мэдээллийг татаж байна…')}>
+    <Data q={sources} loading={tr('Эх үүсвэрийн мэдээллийг татаж байна…')} minH={420}>
       {(rows) => {
         /**
          * ⚠️ ДАРААЛАЛ ТОГТМОЛ байх ёстой: `Set`-ийн орох дараалал нь сервисийн

@@ -2979,6 +2979,7 @@ export const BIM = {
  * («0/4») нь тухайн салбар бүхэлдээ асаалттай эсэхийг шууд хэлнэ.
  */
 export type GroupKey =
+  | "src"
   | "zone"
   | "build"
   | "power"
@@ -3003,6 +3004,18 @@ export const LAYER_GROUPS: {
   icon: string;
   hue: string;
 }[] = [
+  /**
+   * ⚠️ ЖАГСААЛТЫН ЭХЭНД (2026-08-21, хэрэглэгчийн хүсэлт). Дулаан/цахилгааны
+   * эх үүсвэрийн станцууд урьд нь «Бусад мэдээлэл»-д нуугдаж, каталог болон
+   * «Ерөнхий үзүүлэлт» торонд тусдаа бичлэг болж ГАРДАГГҮЙ байв.
+   */
+  {
+    key: "src",
+    title: tr('Эх үүсвэр'),
+    desc: tr('Дулаан, цахилгааны эх үүсвэрийн станцууд'),
+    icon: "droplet",
+    hue: "#f97316",
+  },
   {
     key: "zone",
     title: tr('Бүс'),
@@ -3141,6 +3154,8 @@ export const LAYER_GROUPS: {
  * бөгөөд өртгийн загвар ба анализ хэвээр уншина.
  */
 export const GROUP_LAYERS: Record<GroupKey, string[]> = {
+  // Дамбадаржаа ДЦС · Сэлбэ дулаан станц · Шинэ их үүсвэр
+  src: ["bm146", "bm145", "bm87"],
   zone: ["zone"],
   // ⚠️ Ерөнхий төлөвлөгөөний ФИЗИК давхаргууд «Selbe 2D map 0804» webmap-ийн
   //    `sb:*` (selbe_3D__0804_WFL1)-ээр СОЛИГДЛОО — style webmap-аас 100%. Хуучин
@@ -3174,7 +3189,9 @@ export const GROUP_LAYERS: Record<GroupKey, string[]> = {
   pkgSite: pkgIds("site"),
   pkgSoc: pkgIds("soc"),
   pkgCom: pkgIds("com"),
-  busad: ["khil1", "khil2", "road", "roadOld", "bm128", "bm146", "bm145", "bm87"],
+  // ⚠️ `bm146`/`bm145`/`bm87` ЭНДЭЭС ГАРСАН — одоо `src` бүлэгт. Хоёуланд
+  //    нь байвал каталогт хоёр удаа гарч, `PLAN_LAYER_IDS` давхардана.
+  busad: ["khil1", "khil2", "road", "roadOld", "bm128"],
 };
 
 /** Ерөнхий мэдээллийн БҮХ давхарга — багцын дарааллаар */

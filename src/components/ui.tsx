@@ -1327,11 +1327,11 @@ export function ListItem({
 
 /* ── Төлөв ── */
 
-export function Loading({ label = tr('Ачаалж байна…') }: { label?: string }) {
+export function Loading({ label = tr('Ачаалж байна…'), minH }: { label?: string; minH?: number }) {
   // ⚠️ `role="status"` — ачаалал дуусахад дэлгэц уншигч мэдэгдэнэ. Урьд нь
   //    зөвхөн нүдэнд харагдах эргэлдэгч байсан.
   return (
-    <div className={s.state} role="status" aria-live="polite">
+    <div className={s.state} role="status" aria-live="polite" style={minH ? { minHeight: minH } : undefined}>
       <span className={s.spinner} aria-hidden />
       {label}
     </div>
@@ -1380,15 +1380,24 @@ export function Data<T>({
   q,
   children,
   loading,
+  minH,
 }: {
   q: Async<T>;
   children: (data: T) => ReactNode;
   loading?: string;
+  /**
+   * Ачаалах/алдааны төлөвт ЭЗЛЭХ доод өндөр (px).
+   *
+   * ⚠️ Ачаалалтын мөр НАМХАН, ачаалагдсан график ӨНДӨР тул өгөгдөл ирэхэд
+   * самбар үсэрч «анивчсан» мэт харагддаг. Ойролцоо өндрийг урьдчилан
+   * эзэлбэл агуулга зүгээр л дүүрнэ — байрлал хөдлөхгүй.
+   */
+  minH?: number;
 }) {
-  if (q.state === 'loading') return <Loading label={loading} />;
+  if (q.state === 'loading') return <Loading label={loading} minH={minH} />;
   if (q.state === 'error') {
     return (
-      <div className={s.state} role="alert">
+      <div className={s.state} role="alert" style={minH ? { minHeight: minH } : undefined}>
         <strong className={s.error}>{tr('Өгөгдөл татагдсангүй')}</strong>
         <span className={s.errorMsg}>{q.error.message}</span>
         {/* ArcGIS түр гацах нь энгийн — бүтэн refresh хийлгэхгүйгээр энэ
