@@ -2,7 +2,11 @@
 
 import { useCallback, useRef, useState } from 'react';
 import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
-import { Icon } from '@/components/Icon';
+import { MapTools, MapToolBtn } from '@/components/MapTools';
+import { LayerCatalog } from '@/components/LayerCatalog';
+import { OpacityPanel } from '@/components/OpacityPanel';
+import { useLayerPicks } from '@/lib/useLayerPicks';
+import { usePlanTotals } from '@/lib/totals';
 import { Stats, Stat, Donut, Bars, Ring, Empty, Loading } from '@/components/ui';
 import { useAsync } from '@/lib/useAsync';
 import {
@@ -128,6 +132,17 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const [aoi, setAoi] = useState<Aoi | null>(null);
   const [drawToken, setDrawToken] = useState(0);
   const [clearToken, setClearToken] = useState(0);
+  /**
+   * Кадастрын гурван давхарга нь СУУРЬ; каталогоос порталын аль ч давхаргыг
+   * дээр нь нэмнэ (`useLayerPicks`).
+   */
+  const [visible, setVisible] = useLayerPicks(VISIBLE_IDS);
+  const [catOpen, setCatOpen] = useState(false);
+  const [opOpen, setOpOpen] = useState(false);
+  const [opacity, setOpacity] = useState<Record<string, number>>({});
+  const [layerSel, setLayerSel] = useState<string | null>(null);
+  const [zone, setZone] = useState<string | null>(null);
+  const catTotals = usePlanTotals(zone, catOpen);
   const pickRef = useRef<(a: Record<string, unknown> | null, id: string | null) => void>(() => {});
   /**
    * ⚠️ AOI-ийн ТҮҮХИЙ геометр — `pickFlt` (deps-гүй useCallback) дотор state
@@ -434,8 +449,9 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       <main className={g.map}>
         <MapCanvas
           dim={dim}
-          visible={VISIBLE_IDS}
-          zone={null}
+          visible={visible}
+          opacity={opacity}
+          zone={zone}
           uniform
           sketch
           onSketch={onSketch}
@@ -444,37 +460,55 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           onPick={pickRef.current}
         />
 
-        <div className={g.topbar}>
-          <div className={g.dims} role="group" aria-label="Газрын зургийн харагдац">
-            {(['2d', '3d', 'bim'] as Dim[]).map((x) => (
-              <button
-                key={x}
-                type="button"
-                aria-pressed={dim === x}
-                className={`${o.dimBtn} ${dim === x ? o.dimOn : ''}`}
-                onClick={() => setDim(x)}
-              >
-                {x.toUpperCase()}
-              </button>
-            ))}
-          </div>
-
-          <button
-            type="button"
-            className={g.drawBtn}
+        {/* ⚠️ 2026-08-20: Урьд нь ЭНД зөвхөн 2D/3D/BIM + «Полигон зурах» байв —
+            Давхарга ч, Тунгалаг ч, Бүс ч байхгүй тул кадастрын гурван давхаргаас
+            цааш юу ч нэмж харах боломжгүй байлаа. Одоо нэгдсэн зурвас, зурах
+            товчнууд нь түүний ДОТОР (`children`) ижил загвараар. */}
+        <MapTools
+          dim={dim}
+          setDim={setDim}
+          layersOpen={catOpen}
+          onLayers={() => setCatOpen((v) => !v)}
+          opacityOpen={opOpen}
+          onOpacity={() => setOpOpen((v) => !v)}
+          zone={zone}
+          setZone={setZone}
+        >
+          <MapToolBtn
+            icon="polygon"
             onClick={startDraw}
             disabled={dim !== '2d'}
             title={dim !== '2d' ? 'Полигоныг зөвхөн 2D дээр зурна' : 'Газар дээр полигон зурах'}
           >
-            <span className={g.drawIcon} aria-hidden><Icon name="polygon" size={15} /></span>
             {aoi ? 'Дахин зурах' : 'Полигон зурах'}
-          </button>
-          {aoi && (
-            <button type="button" className={g.clearBtn} onClick={clear}>
-              Цэвэрлэх
-            </button>
-          )}
-        </div>
+          </MapToolBtn>
+          {aoi && <MapToolBtn onClick={clear}>Цэвэрлэх</MapToolBtn>}
+        </MapTools>
+
+        {catOpen && (
+          <div className={o.catPanel}>
+            <LayerCatalog
+              view="plan"
+              totals={catTotals}
+              visible={visible}
+              setVisible={setVisible}
+              selected={layerSel}
+              onSelect={setLayerSel}
+              onClose={() => setCatOpen(false)}
+              zone={zone}
+              embedded
+            />
+          </div>
+        )}
+
+        {opOpen && (
+          <OpacityPanel
+            visible={visible}
+            opacity={opacity}
+            setOpacity={setOpacity}
+            onClose={() => setOpOpen(false)}
+          />
+        )}
 
         <div className={`${g.scope} ${aoi ? g.scopeSel : ''}`}>
           <span className={g.scopeDot} aria-hidden />

@@ -175,65 +175,17 @@
 /* ── Дээд удирдлагын зурвас — 2D/3D/BIM + полигон товч (зургийн дээд төвд) ──
    ⚠️ Зураг дээр ХӨВДӨГ хэдий ч envhub-ийн зургийн давхарга шиг СҮҮДЭРГҮЙ:
    хагас тунгалаг surface + blur + hairline л газрын зургаас ялгана. */
-.topbar {
-  position: absolute;
-  top: 10px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 6;
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  max-width: calc(100% - 20px);
-}
-.dims {
-  display: flex;
-  gap: 2px;
-  padding: 3px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  background: color-mix(in srgb, var(--surface) 92%, transparent);
-  backdrop-filter: blur(8px);
-}
-.drawBtn {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 5px 12px;
-  border-radius: var(--r-sm);
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--ink);
-  background: color-mix(in srgb, var(--surface) 92%, transparent);
-  border: 1px solid var(--line-strong);
-  backdrop-filter: blur(8px);
-  transition: border-color 0.14s, transform 0.1s;
-}
-.drawBtn:hover { border-color: var(--ink-3); }
-.drawBtn:active { transform: scale(0.98); }
-.drawBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+
+
+
+
+
 /* Товчны икон — ⚠️ урьдын өнгөт (accent дэвсгэртэй) чип хасагдав: энгийн зураас */
-.drawIcon {
-  display: grid;
-  place-items: center;
-  flex: none;
-  color: var(--ink-3);
-}
-.clearBtn {
-  flex: none;
-  padding: 5px 12px;
-  border-radius: var(--r-sm);
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--ink-2);
-  background: color-mix(in srgb, var(--surface) 92%, transparent);
-  border: 1px solid var(--line-strong);
-  backdrop-filter: blur(8px);
-  transition: color 0.14s, border-color 0.14s, transform 0.1s;
-}
-.clearBtn:hover { color: var(--ink); border-color: var(--ink-3); }
-.clearBtn:active { transform: scale(0.97); }
+
+
+
+
 
 /* ── Хамрах хүрээ — зургийн доод зүүн буланд compact overlay.
    Сонгогдсон төлөв нь ӨГӨГДЛИЙН өнгөөр (var(--data)) тэмдэглэгдэнэ —

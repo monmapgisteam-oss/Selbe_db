@@ -5,7 +5,6 @@ import { Section, Stats, Stat, Bars, Donut, Rows, Data, Empty } from '@/componen
 import { Icon } from '@/components/Icon';
 import { LayerSwatch } from '@/components/LayerSwatch';
 import { useMap } from '@/components/MapCanvas';
-import { ZoneFilter } from '@/components/ZoneFilter';
 import { useFilter } from '@/lib/filter';
 import { useAsync, type Async } from '@/lib/useAsync';
 import { queryGroup, count, sum, groups, groupWhere, sqlStr, type Group } from '@/lib/query';
@@ -74,7 +73,10 @@ export function ViewPanel({
 
   return (
     <>
-      <ZoneFilter zone={zone} setZone={setZone} />
+      {/* ⚠️ 2026-08-20: Самбарын дээд талын «Бүс» мөр ХАСАГДАВ — газрын зурган
+          дээрх `MapTools`-ийн «Бүс» товч ЯГ ИЖИЛ төлөвийг удирддаг тул нэг
+          дэлгэцэд хоёр ижил сонгогч зэрэг байв. Сонгосон бүсийг зурган дээрх
+          чип ба доорх `PickedZone` харуулна. */}
 
       {/* Дарсан объект — ХАМГИЙН ДЭЭР. Зураг дээр дарсан хариу шууд нүдэнд өртөнө. */}
       {picked && pickedLayer && (

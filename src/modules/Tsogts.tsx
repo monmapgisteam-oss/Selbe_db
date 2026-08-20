@@ -2,6 +2,11 @@
 
 import { Fragment, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
+import { MapTools } from '@/components/MapTools';
+import { LayerCatalog } from '@/components/LayerCatalog';
+import { OpacityPanel } from '@/components/OpacityPanel';
+import { useLayerPicks } from '@/lib/useLayerPicks';
+import { usePlanTotals } from '@/lib/totals';
 import { Section, Note, Data, Empty, Rows, Bars, List, ListItem } from '@/components/ui';
 import {
   buildPacks, PackKpi, ContractCard, BlocksCard,
@@ -158,7 +163,19 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
     return oids.length ? `${BUILDING.oid} IN (${oids.join(',')})` : null;
   }, [alerted]);
 
-  const visible = active ? active.layerIds : [BLOCK_LAYER];
+  /**
+   * ⚠️ 2026-08-20: Багцын давхаргууд нь СУУРЬ, дээр нь каталогийн сонголт
+   * (`useLayerPicks`). Урьд нь `visible` нь зөвхөн сонгосон багцаас гардаг тул
+   * энэ цонхонд давхаргын каталог огт байхгүй, порталын бусад ~84 давхаргын
+   * нэгийг ч контекст болгон нэмэх арга үгүй байв.
+   */
+  const [visible, setVisible] = useLayerPicks(active ? active.layerIds : [BLOCK_LAYER]);
+  const [catOpen, setCatOpen] = useState(false);
+  const [opOpen, setOpOpen] = useState(false);
+  const [opacity, setOpacity] = useState<Record<string, number>>({});
+  const [layerSel, setLayerSel] = useState<string | null>(null);
+  const [zone, setZone] = useState<string | null>(null);
+  const catTotals = usePlanTotals(zone, catOpen);
   const layerWhere = useMemo<Record<string, string | null>>(
     // Багц сонгосон → тэр багц; эс бөгөөс → зөвхөн хоцрогдолтой багцын блокууд
     () => ({ [BLOCK_LAYER]: active?.where ?? alertedWhere }),
@@ -253,16 +270,52 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
 
       {/* ── ТӨВ: зураг ── */}
       <div className={ts.map}>
-        <MapCanvas dim={dim} visible={visible} zone={null} layerWhere={layerWhere} onPick={onMapPick} />
+        <MapCanvas
+          dim={dim}
+          visible={visible}
+          opacity={opacity}
+          zone={zone}
+          layerWhere={layerWhere}
+          onPick={onMapPick}
+        />
 
-        <div className={o.mapDims} role="group" aria-label="Газрын зургийн харагдац">
-          {(['2d', '3d', 'bim'] as Dim[]).map((d) => (
-            <button key={d} type="button" aria-pressed={dim === d}
-              className={`${o.dimBtn} ${dim === d ? o.dimOn : ''}`} onClick={() => setDim(d)}>
-              {d.toUpperCase()}
-            </button>
-          ))}
-        </div>
+        {/* ⚠️ 2026-08-20: Урьд нь ЗӨВХӨН 2D/3D/BIM байсан — Давхарга ч, Тунгалаг
+            ч, Бүс ч байхгүй. Одоо бүх харагдацтай ижил нэгдсэн зурвас. */}
+        <MapTools
+          dim={dim}
+          setDim={setDim}
+          layersOpen={catOpen}
+          onLayers={() => setCatOpen((v) => !v)}
+          opacityOpen={opOpen}
+          onOpacity={() => setOpOpen((v) => !v)}
+          zone={zone}
+          setZone={setZone}
+        />
+
+        {catOpen && (
+          <div className={o.catPanel}>
+            <LayerCatalog
+              view="monitor"
+              totals={catTotals}
+              visible={visible}
+              setVisible={setVisible}
+              selected={layerSel}
+              onSelect={setLayerSel}
+              onClose={() => setCatOpen(false)}
+              zone={zone}
+              embedded
+            />
+          </div>
+        )}
+
+        {opOpen && (
+          <OpacityPanel
+            visible={visible}
+            opacity={opacity}
+            setOpacity={setOpacity}
+            onClose={() => setOpOpen(false)}
+          />
+        )}
 
         <div className={o.packLegend}>
           {active?.kind === 'infra'
@@ -648,8 +701,14 @@ function FinCard({ p, finQ }: { p: Pack | null; finQ: Async<FinData> }) {
                 v: (
                   <>
                     {mntShort(givenTotal)}
+                    {/**
+                      * ⚠️ 2026-08-20: Хувийг ТУСДАА МӨРӨНД. Урьд нь утгын хажууд
+                      * мөрлөж байсан бөгөөд `.finKpiVal` нь `nowrap` тул
+                      * «314.5 тэрбум ₮ 27%» нь нүдний 1fr өргөнөөс ХАЛЬЖ, «27%»
+                      * баруун хүрээн дээгүүр гарч бичигддэг байв.
+                      */}
                     {givenShare != null && (
-                      <small style={{ fontSize: '0.72em', opacity: 0.7, marginLeft: 4, fontWeight: 600 }}>
+                      <small style={{ display: 'block', fontSize: '0.72em', opacity: 0.7, fontWeight: 600 }}>
                         {givenShare.toFixed(0)}%
                       </small>
                     )}

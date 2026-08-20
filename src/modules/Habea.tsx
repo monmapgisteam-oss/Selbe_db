@@ -21,16 +21,16 @@ import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { useAsync } from '@/lib/useAsync';
 import { queryFeatures, sqlStr, type Row } from '@/lib/query';
 import {
-  HABEA, HABEA_LAYER_IDS, LAYER_BY_ID, MONITOR_LAYER_IDS, PLAN_LAYER_IDS,
+  HABEA, HABEA_LAYER_IDS, LAYER_BY_ID, CATALOG_LAYER_IDS,
   bagtsKey, laborCompanyFields,
 } from '@/lib/services';
 import { usePlanTotals } from '@/lib/totals';
 import { Section, Bars, Donut, Series, Loading, Empty } from '@/components/ui';
 import { num, date, text } from '@/lib/format';
 import { MapCanvas, type Dim } from '@/components/MapCanvas';
+import { MapTools } from '@/components/MapTools';
 import { LayerCatalog } from '@/components/LayerCatalog';
 import { OpacityPanel } from '@/components/OpacityPanel';
-import { Icon } from '@/components/Icon';
 import h from './habea.module.css';
 import o from './overview.module.css';
 
@@ -39,7 +39,8 @@ const I = HABEA.incident.fields;
 const C = HABEA.crane.fields;
 
 /** «Давхарга» каталогийн тоолуурт орох давхаргууд — ХАБЭА эхэнд, дараа нь контекст */
-const CATALOG_IDS = [...HABEA_LAYER_IDS, ...MONITOR_LAYER_IDS, ...PLAN_LAYER_IDS];
+// ⚠️ 2026-08-20: Каталогийн БҮРЭН жагсаалт (`services.ts`).
+const CATALOG_IDS = CATALOG_LAYER_IDS;
 
 type HabeaData = { labor: Row[]; incident: Row[]; crane: Row[]; fetchedAt: number };
 
@@ -410,6 +411,8 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const [catOpen, setCatOpen] = useState(false);
   const [opOpen, setOpOpen] = useState(false);
   const [layerSel, setLayerSel] = useState<string | null>(null);
+  /** Бүсийн шүүлт — бусад харагдацтай ижил (`MapTools`-ийн «Бүс» товч) */
+  const [zone, setZone] = useState<string | null>(null);
   const totals = usePlanTotals(null, catOpen, CATALOG_IDS);
 
   /* Багцын хөндлөн шүүлт (bagtsKey) + зурган дээрээс сонгосон объект */
@@ -599,36 +602,16 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           onPick={onPick}
         />
 
-        <div className={o.mapTools}>
-          <button
-            type="button"
-            aria-pressed={catOpen}
-            className={`${o.mapBtn} ${catOpen ? o.mapBtnOn : ''}`}
-            onClick={() => setCatOpen((v) => !v)}
-            title="Давхаргын жагсаалт"
-          >
-            <Icon name="layers" size={15} />
-            Давхарга
-          </button>
-          <button
-            type="button"
-            aria-pressed={opOpen}
-            className={`${o.mapBtn} ${opOpen ? o.mapBtnOn : ''}`}
-            onClick={() => setOpOpen((v) => !v)}
-            title="Давхаргын тунгалаг"
-          >
-            <Icon name="droplet" size={15} />
-            Тунгалаг
-          </button>
-          <div className={o.dimsInline} role="group" aria-label="Газрын зургийн харагдац">
-            {(['2d', '3d', 'bim'] as Dim[]).map((x) => (
-              <button key={x} type="button" aria-pressed={dim === x}
-                className={`${o.dimBtn} ${dim === x ? o.dimOn : ''}`} onClick={() => setDim(x)}>
-                {x.toUpperCase()}
-              </button>
-            ))}
-          </div>
-        </div>
+        <MapTools
+          dim={dim}
+          setDim={setDim}
+          layersOpen={catOpen}
+          onLayers={() => setCatOpen((v) => !v)}
+          opacityOpen={opOpen}
+          onOpacity={() => setOpOpen((v) => !v)}
+          zone={zone}
+          setZone={setZone}
+        />
 
         {catOpen && (
           <div className={o.catPanel}>
@@ -741,9 +724,12 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             ? <Bars items={incByCompany} />
             : <Empty label="Бүртгэл алга" />}
         </Section>
-        <Section title="Ажилтан — гүйцэтгэгчээр" note={`Монгол ${num(mongol)} · Гадаад ${num(gadaad)}`}>
+        {/* ⚠️ `fill` + `grow`: доод зурвасын мөрийн өндрийг зургийн хана
+            (PhotoWall) тогтоодог тул тогтмол 110px чарт нь картын дөнгөж 40%-ийг
+            эзэлж, доор нь ~150px хоосон зай үлдээдэг байв. */}
+        <Section title="Ажилтан — гүйцэтгэгчээр" note={`Монгол ${num(mongol)} · Гадаад ${num(gadaad)}`} fill>
           {workersByCompany.length
-            ? <Series items={workersByCompany} height={110} unit="ажилтан" />
+            ? <Series items={workersByCompany} height={110} unit="ажилтан" grow />
             : surveyEmpty}
         </Section>
         <Section title="Осол, зөрчлийн зураг" note="хавсаргасан зургууд · дарж томруулна">

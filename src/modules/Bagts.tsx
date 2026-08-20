@@ -2,10 +2,14 @@
 
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
+import { MapTools } from '@/components/MapTools';
+import { LayerCatalog } from '@/components/LayerCatalog';
+import { OpacityPanel } from '@/components/OpacityPanel';
+import { useLayerPicks } from '@/lib/useLayerPicks';
 import { Section, Col, Note, Stats, Stat, Bars, Rows, List, ListItem, Ring, Data, Empty } from '@/components/ui';
 import { useBuildings, MonitorBagts, type Block } from '@/modules/BuildingPanel';
 import { useAsync, type Async } from '@/lib/useAsync';
-import { layerTotals, qtyText } from '@/lib/totals';
+import { layerTotals, qtyText, usePlanTotals } from '@/lib/totals';
 import {
   BUILDING, PROGRESS_LEVELS, LAYER_BY_ID, PKG_BY_BAGTS, bagtsKey,
 } from '@/lib/services';
@@ -163,8 +167,18 @@ export function Bagts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
 
   const active = packs.find((p) => p.key === sel) ?? null;
 
-  /** Сонгосон багц л зурагдана; сонголтгүй бол барилгын бүх блок */
-  const visible = active ? active.layerIds : [BLOCK_LAYER];
+  /**
+   * Сонгосон багц л зурагдана; сонголтгүй бол барилгын бүх блок.
+   * ⚠️ 2026-08-20: дээр нь давхаргын каталогийн сонголт нэмэгдэнэ
+   * (`useLayerPicks`) — урьд нь энэ цонхонд каталог огт байхгүй байв.
+   */
+  const [visible, setVisible] = useLayerPicks(active ? active.layerIds : [BLOCK_LAYER]);
+  const [catOpen, setCatOpen] = useState(false);
+  const [opOpen, setOpOpen] = useState(false);
+  const [opacity, setOpacity] = useState<Record<string, number>>({});
+  const [layerSel, setLayerSel] = useState<string | null>(null);
+  const [zone, setZone] = useState<string | null>(null);
+  const catTotals = usePlanTotals(zone, catOpen);
   const layerWhere = useMemo<Record<string, string | null>>(
     () => ({ [BLOCK_LAYER]: active?.where ?? null }),
     [active],
@@ -219,16 +233,50 @@ export function Bagts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       </aside>
 
       <div className={o.map}>
-        <MapCanvas dim={dim} visible={visible} zone={null} layerWhere={layerWhere} onPick={() => {}} />
+        <MapCanvas
+          dim={dim}
+          visible={visible}
+          opacity={opacity}
+          zone={zone}
+          layerWhere={layerWhere}
+          onPick={() => {}}
+        />
 
-        <div className={o.mapDims} role="group" aria-label="Газрын зургийн харагдац">
-          {(['2d', '3d', 'bim'] as Dim[]).map((d) => (
-            <button key={d} type="button" aria-pressed={dim === d}
-              className={`${o.dimBtn} ${dim === d ? o.dimOn : ''}`} onClick={() => setDim(d)}>
-              {d.toUpperCase()}
-            </button>
-          ))}
-        </div>
+        <MapTools
+          dim={dim}
+          setDim={setDim}
+          layersOpen={catOpen}
+          onLayers={() => setCatOpen((v) => !v)}
+          opacityOpen={opOpen}
+          onOpacity={() => setOpOpen((v) => !v)}
+          zone={zone}
+          setZone={setZone}
+        />
+
+        {catOpen && (
+          <div className={o.catPanel}>
+            <LayerCatalog
+              view="monitor"
+              totals={catTotals}
+              visible={visible}
+              setVisible={setVisible}
+              selected={layerSel}
+              onSelect={setLayerSel}
+              onClose={() => setCatOpen(false)}
+              zone={zone}
+              embedded
+            />
+          </div>
+        )}
+
+        {opOpen && (
+          <OpacityPanel
+            visible={visible}
+            opacity={opacity}
+            setOpacity={setOpacity}
+            onClose={() => setOpOpen(false)}
+          />
+        )}
 
         {/* ⚠️ Тайлбар нь ЗУРАГТ ЮУ БАЙГААГААС хамаарна: барилгын блок нь
             гүйцэтгэлийн 4 түвшнээр өнгөтэй, дэд бүтцийн давхарга нь өөрийн
