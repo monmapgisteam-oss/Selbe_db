@@ -229,9 +229,9 @@ export function Tailan() {
                     <section className={r.section}>
                       <h2 className={r.h2}>{tr('2. Орон сууцны 7 багц')}</h2>
                       <p className={r.intro}>
-                        {tr('Орон сууцны барилгажилт долоон багцад хуваагдан хэрэгжиж байна. Нийт')} {num(blocks)} {tr('блокт')} {num(ail)} {tr('өрхийн орон сууц төлөвлөгдсөн бөгөөд төсөвт өртөг')} {bn(budget)} {tr('тэрбум ₮ байна. Багц хоорондын гүйцэтгэлийн зөрүү их байна: хамгийн өндөр нь')} {d.bestBagts?.bagts}
+                        {tr('Орон сууцны барилгажилт долоон багцад хуваагдан хэрэгжиж байна. Нийт')} {num(blocks)} {tr('блокт')} {num(ail)} {tr('өрхийн орон сууц төлөвлөгдсөн бөгөөд төсөвт өртөг')} {bn(budget)} {tr('тэрбум ₮ байна. Багц хоорондын гүйцэтгэлийн зөрүү их байна: хамгийн өндөр нь')} {tr(d.bestBagts?.bagts ?? '')}
                         ({pct(d.bestBagts?.pct ?? null, 2)}{tr('), хамгийн бага нь')}
-                        {' '}{d.worstBagts?.bagts} ({pct(d.worstBagts?.pct ?? null, 2)}).
+                        {' '}{tr(d.worstBagts?.bagts ?? '')} ({pct(d.worstBagts?.pct ?? null, 2)}).
                       </p>
                       <Cap no="2">{tr('Багц тус бүрийн блок, өрх, төсөв ба гүйцэтгэл (төсөвт өртгөөр буурах эрэмбээр)')}</Cap>
                       <table className={r.table}>
@@ -247,7 +247,7 @@ export function Tailan() {
                         <tbody>
                           {sorted.map((b) => (
                             <tr key={b.key}>
-                              <td>{b.label}</td>
+                              <td>{tr(b.label)}</td>
                               <td className={r.num}>{num(b.blocks)}</td>
                               <td className={r.num}>{num(b.ail)}</td>
                               <td className={r.num}>{budgetOf(b.key) > 0 ? bn(budgetOf(b.key)) : '—'}</td>
@@ -269,7 +269,7 @@ export function Tailan() {
                     <section className={r.section}>
                       <h2 className={r.h2}>{tr('3. Хэрэгжилтийн үе шат')}</h2>
                       <p className={r.intro}>
-                        {tr('Төсөл нь бэлтгэлээс барилга угсралт хүртэл зургаан үе шаттай. Үе шат бүр төсөлд эзлэх өөрийн жинтэй тул нийт гүйцэтгэл нь энгийн дундаж биш, жин харгалзан тооцсон дүн болно. Одоогийн байдлаар төслийн жингийн')} {pct(d.heavyStage?.weight ?? null, 1)}{tr('-ийг «')}{d.heavyStage?.label}{tr('» үе шат эзэлж байгаа тул нийт гүйцэтгэл голчлон түүнээс хамаарч байна.')}
+                        {tr('Төсөл нь бэлтгэлээс барилга угсралт хүртэл зургаан үе шаттай. Үе шат бүр төсөлд эзлэх өөрийн жинтэй тул нийт гүйцэтгэл нь энгийн дундаж биш, жин харгалзан тооцсон дүн болно. Одоогийн байдлаар төслийн жингийн')} {pct(d.heavyStage?.weight ?? null, 1)}{tr('-ийг «')}{tr(d.heavyStage?.label ?? "")}{tr('» үе шат эзэлж байгаа тул нийт гүйцэтгэл голчлон түүнээс хамаарч байна.')}
                       </p>
                       <Cap no="3">{tr('Үе шатны эзлэх жин, бодит гүйцэтгэл ба төлөвлөгөө')}</Cap>
                       <table className={r.table}>
@@ -285,7 +285,7 @@ export function Tailan() {
                         <tbody>
                           {x.overall.stages.map((s) => (
                             <tr key={s.label}>
-                              <td>{s.label}</td>
+                              <td>{tr(s.label)}</td>
                               <td className={r.num}>{num(s.rows)}</td>
                               <td className={r.num}>{pct(s.weight, 2)}</td>
                               <td className={r.num}>{pct(s.actual, 2)}</td>
@@ -319,7 +319,7 @@ export function Tailan() {
                         <tbody>
                           {x.land.byStatus.map((s) => (
                             <tr key={s.label}>
-                              <td>{s.label}</td>
+                              <td>{tr(s.label)}</td>
                               <td className={r.num}>{num(s.n)}</td>
                               <td className={r.num}>
                                 {x.land.parcels ? pct((s.n / x.land.parcels) * 100, 1) : '—'}
@@ -338,14 +338,14 @@ export function Tailan() {
                         <>
                           <Cap no="4.2">
                             {tr('Шийдвэрлэгдээгүй нэгж талбарын шалтгаан')}
-                            {d.topReason && tr(' — тэргүүлэх шалтгаан «{0}»', d.topReason.label)}
+                            {d.topReason && tr(' — тэргүүлэх шалтгаан «{0}»', tr(d.topReason.label))}
                           </Cap>
                           <table className={r.table}>
                             <thead><tr><th>{tr('Шалтгаан')}</th><th className={r.num}>{tr('Нэгж талбар')}</th></tr></thead>
                             <tbody>
                               {x.land.byReason.map((s) => (
                                 <tr key={s.label}>
-                                  <td>{s.label}</td>
+                                  <td>{tr(s.label)}</td>
                                   <td className={r.num}>{num(s.n)}</td>
                                 </tr>
                               ))}
@@ -369,7 +369,7 @@ export function Tailan() {
                         <tbody>
                           {x.social.rows.map((s) => (
                             <tr key={s.title}>
-                              <td>{s.title}</td>
+                              <td>{tr(s.title)}</td>
                               <td className={r.num}>{num(s.n)}</td>
                               <td className={r.num}>{s.areaM2 > 0 ? num(s.areaM2) : '—'}</td>
                             </tr>
@@ -390,7 +390,7 @@ export function Tailan() {
                         {tr('Хяналтын')} {num(x.progress.blocks)} {tr('блокийн ажлын үе шат тус бүрийн гүйцэтгэлээс тооцсон дундаж')} {pct(x.progress.overall, 2)} {tr('байна')}
                         {x.progress.date && <> {tr('(сүүлийн тайлагнал')} {x.progress.date})</>}.
                         {d.startedPhases.length > 0 && (
-                          <> {tr('Одоогоор «')}{d.startedPhases.join('», «')}{tr('» үе шат эхэлсэн')}</>
+                          <> {tr('Одоогоор «')}{d.startedPhases.map((x: string) => tr(x)).join('», «')}{tr('» үе шат эхэлсэн')}</>
                         )}
                         {d.notStartedPhases.length > 0 && (
                           <> {tr('бөгөөд үлдсэн')} {num(d.notStartedPhases.length)} {tr('үе шат хараахан эхлээгүй байна')}</>
@@ -402,7 +402,7 @@ export function Tailan() {
                         <tbody>
                           {x.progress.byBagts.map((b) => (
                             <tr key={b.bagts}>
-                              <td>{b.bagts}</td>
+                              <td>{tr(b.bagts)}</td>
                               <td className={r.num}>{num(b.blocks)}</td>
                               <td className={r.num}>{pct(b.pct, 2)}</td>
                             </tr>
@@ -421,7 +421,7 @@ export function Tailan() {
                         <tbody>
                           {x.progress.phases.map((p) => (
                             <tr key={p.no}>
-                              <td>{p.no}. {p.name}</td>
+                              <td>{tr(p.no)}. {tr(p.name)}</td>
                               <td className={r.num}>{pct(p.pct, 2)}</td>
                             </tr>
                           ))}
@@ -436,8 +436,8 @@ export function Tailan() {
                         <tbody>
                           {x.progress.slowest.map((b) => (
                             <tr key={`${b.bagts}|${b.block}`}>
-                              <td>{b.bagts}</td>
-                              <td>{b.block}</td>
+                              <td>{tr(b.bagts)}</td>
+                              <td>{tr(b.block)}</td>
                               <td className={r.num}>{pct(b.pct, 2)}</td>
                             </tr>
                           ))}
@@ -454,7 +454,7 @@ export function Tailan() {
                       <p className={r.intro}>
                         {tr('Захирамж, гэрээгээр баталгаажсан')} {num(x.finance.rows)} {tr('ажлын санхүүжилт дөрвөн эх үүсвэрээс бүрдэж байна.')}
                         {d.topSource && (
-                          <> {tr('Санхүүжилтийн дийлэнх хэсгийг «')}{d.topSource.label}{tr('» эх үүсвэр бүрдүүлж, нийт дүнгийн')} {pct(d.topSource.share, 1)}{tr('-ийг эзэлж байна.')}</>
+                          <> {tr('Санхүүжилтийн дийлэнх хэсгийг «')}{tr(d.topSource.label)}{tr('» эх үүсвэр бүрдүүлж, нийт дүнгийн')} {pct(d.topSource.share, 1)}{tr('-ийг эзэлж байна.')}</>
                         )}
                       </p>
                       <Cap no="7.1">{tr('Санхүүжилтийн эх үүсвэрийн бүтэц')}</Cap>
@@ -463,7 +463,7 @@ export function Tailan() {
                         <tbody>
                           {x.finance.sources.map((s) => (
                             <tr key={s.label}>
-                              <td>{s.label}</td>
+                              <td>{tr(s.label)}</td>
                               <td className={r.num}>{bn(s.value)}</td>
                               <td className={r.num}>{srcTotal ? pct((s.value / srcTotal) * 100, 1) : '—'}</td>
                             </tr>
@@ -478,14 +478,14 @@ export function Tailan() {
 
                       <Cap no="7.2">
                         {tr('Сар бүрийн олголт ба хуримтлагдсан дүн')}
-                        {d.peakMonth && tr(' — хамгийн их олголт {0} сард', d.peakMonth.label)}
+                        {d.peakMonth && tr(' — хамгийн их олголт {0} сард', tr(d.peakMonth.label))}
                       </Cap>
                       <table className={r.table}>
                         <thead><tr><th>{tr('Сар')}</th><th className={r.num}>{tr('Олгосон (тэрбум ₮)')}</th><th className={r.num}>{tr('Хуримтлагдсан')}</th></tr></thead>
                         <tbody>
                           {x.finance.months.map((m) => (
                             <tr key={m.label}>
-                              <td>{m.label}</td>
+                              <td>{tr(m.label)}</td>
                               <td className={r.num}>{m.amount > 0 ? bn(m.amount) : '—'}</td>
                               <td className={r.num}>{bn(m.cum)}</td>
                             </tr>
@@ -499,7 +499,7 @@ export function Tailan() {
                         <tbody>
                           {x.finance.byType.map((t) => (
                             <tr key={t.type}>
-                              <td>{t.type}</td>
+                              <td>{tr(t.type)}</td>
                               <td className={r.num}>{num(t.n)}</td>
                               <td className={r.num}>{bnOrDash(t.budget)}</td>
                               <td className={r.num}>{bnOrDash(t.contract)}</td>
@@ -538,7 +538,7 @@ export function Tailan() {
                         <tbody>
                           {x.infra.groups.map((g) => (
                             <tr key={g.key}>
-                              <td>{g.title}</td>
+                              <td>{tr(g.title)}</td>
                               <td className={r.num}>{num(g.layers)}</td>
                               <td className={r.num}>{num(g.n)}</td>
                               <td className={r.num}>{g.len > 0 ? num(g.len) : '—'}</td>
@@ -585,8 +585,8 @@ export function Tailan() {
                         <tbody>
                           {x.habea.byCompany.map((c) => (
                             <tr key={c.label}>
-                              <td>{c.label}</td>
-                              <td>{c.bagts ?? '—'}</td>
+                              <td>{tr(c.label)}</td>
+                              <td>{tr(c.bagts ?? '—')}</td>
                               <td className={r.num}>{num(c.workers)}</td>
                               <td className={r.num}>{num(c.mongol)}</td>
                               <td className={r.num}>{num(c.gadaad)}</td>

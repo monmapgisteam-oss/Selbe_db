@@ -583,7 +583,7 @@ export function buildFindings(x: ReportExtra): Findings {
   }
 
   if (bestBagts && worstBagts && bestBagts.bagts !== worstBagts.bagts) {
-    f.push(tr('Багц хоорондын гүйцэтгэлийн зөрүү {0} нэгж хувь байна: {1} — {2}, {3} — {4}. Хоцорсон багцад нөөц дахин хуваарилах асуудлыг авч үзэх шаардлагатай.', num(bestBagts.pct - worstBagts.pct, 1), bestBagts.bagts, pct(bestBagts.pct, 2), worstBagts.bagts, pct(worstBagts.pct, 2)));
+    f.push(tr('Багц хоорондын гүйцэтгэлийн зөрүү {0} нэгж хувь байна: {1} — {2}, {3} — {4}. Хоцорсон багцад нөөц дахин хуваарилах асуудлыг авч үзэх шаардлагатай.', num(bestBagts.pct - worstBagts.pct, 1), tr(bestBagts.bagts), pct(bestBagts.pct, 2), tr(worstBagts.bagts), pct(worstBagts.pct, 2)));
   }
 
   if (stalled > 0) {
@@ -591,7 +591,7 @@ export function buildFindings(x: ReportExtra): Findings {
   }
 
   if (landLeft > 0) {
-    f.push(tr('Газар чөлөөлөлтөд {0} нэгж талбар шийдвэрлэгдээгүй үлдсэн{1}. Эдгээр нь холбогдох блокийн ажлыг саатуулах эрсдэлтэй тул шуурхай шийдвэрлэх шаардлагатай.', num(landLeft), topReason ? tr('; тэргүүлэх шалтгаан нь «{0}» ({1} нэгж талбар)', topReason.label, num(topReason.n)) : ''));
+    f.push(tr('Газар чөлөөлөлтөд {0} нэгж талбар шийдвэрлэгдээгүй үлдсэн{1}. Эдгээр нь холбогдох блокийн ажлыг саатуулах эрсдэлтэй тул шуурхай шийдвэрлэх шаардлагатай.', num(landLeft), topReason ? tr('; тэргүүлэх шалтгаан нь «{0}» ({1} нэгж талбар)', tr(topReason.label), num(topReason.n)) : ''));
   }
 
   if (contractRate != null && paidRate != null) {
