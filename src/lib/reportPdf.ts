@@ -161,7 +161,7 @@ export function buildReportDoc(
       { table: { headerRows: 1, widths: ['*', 42, 42, 88, 58], body: [
         [th(tr('Багц')), th(tr('Блок'), true), th(tr('Өрх'), true), th(tr('Төсөв (тэрбум төг)'), true), th(tr('Гүйцэтгэл'), true)],
         ...sorted.map((x): TableCell[] => [
-          td(x.label), td(num(x.blocks), true), td(num(x.ail), true),
+          td(tr(x.label)), td(num(x.blocks), true), td(num(x.ail), true),
           td(budgetOf(x.key) > 0 ? bn(budgetOf(x.key)) : '—', true), td(pct(x.progress, 2), true),
         ]),
         [td(tr('Нийт'), false, TOTAL), td(num(blocks), true, TOTAL), td(num(ail), true, TOTAL),
@@ -169,12 +169,12 @@ export function buildReportDoc(
       ] }, layout: tableLayout },
 
       ...section('3', tr('Хэрэгжилтийн үе шат'),
-        tr('Төсөл нь бэлтгэлээс барилга угсралт хүртэл зургаан үе шаттай. Үе шат бүр төсөлд эзлэх өөрийн жинтэй тул нийт гүйцэтгэл нь энгийн дундаж биш, жин харгалзан тооцсон дүн болно.{0}', d.heavyStage ? tr(' Одоогийн байдлаар төслийн жингийн {0}-ийг «{1}» үе шат эзэлж байгаа тул нийт гүйцэтгэл голчлон түүнээс хамаарч байна.', pct(d.heavyStage.weight, 1), d.heavyStage.label) : '')),
+        tr('Төсөл нь бэлтгэлээс барилга угсралт хүртэл зургаан үе шаттай. Үе шат бүр төсөлд эзлэх өөрийн жинтэй тул нийт гүйцэтгэл нь энгийн дундаж биш, жин харгалзан тооцсон дүн болно.{0}', d.heavyStage ? tr(' Одоогийн байдлаар төслийн жингийн {0}-ийг «{1}» үе шат эзэлж байгаа тул нийт гүйцэтгэл голчлон түүнээс хамаарч байна.', pct(d.heavyStage.weight, 1), tr(d.heavyStage.label)) : '')),
       cap('3', tr('Үе шатны эзлэх жин, бодит гүйцэтгэл ба төлөвлөгөө')),
       { table: { headerRows: 1, widths: ['*', 44, 66, 66, 66], body: [
         [th(tr('Үе шат')), th(tr('Ажил'), true), th(tr('Эзлэх жин'), true), th(tr('Гүйцэтгэл'), true), th(tr('Төлөвлөгөө'), true)],
         ...overall.stages.map((s): TableCell[] => [
-          td(s.label), td(num(s.rows), true), td(pct(s.weight, 2), true),
+          td(tr(s.label)), td(num(s.rows), true), td(pct(s.weight, 2), true),
           td(pct(s.actual, 2), true), td(s.planned == null ? '—' : pct(s.planned, 1), true),
         ]),
         [td(tr('Нийт'), false, TOTAL), td(num(overall.rows), true, TOTAL), td(pct(overall.weightSum, 2), true, TOTAL),
@@ -188,17 +188,17 @@ export function buildReportDoc(
       { table: { headerRows: 1, widths: ['*', 90, 80], body: [
         [th(tr('Төлөв')), th(tr('Нэгж талбар'), true), th(tr('Эзлэх хувь'), true)],
         ...land.byStatus.map((s): TableCell[] => [
-          td(s.label), td(num(s.n), true),
+          td(tr(s.label)), td(num(s.n), true),
           td(land.parcels ? pct((s.n / land.parcels) * 100, 1) : '—', true),
         ]),
         [td(tr('Нийт'), false, TOTAL), td(num(land.parcels), true, TOTAL), td('100%', true, TOTAL)],
       ] }, layout: tableLayout },
 
       ...(land.byReason.length ? [
-        cap('4.2', tr('Шийдвэрлэгдээгүй нэгж талбарын шалтгаан{0}', d.topReason ? tr(' — тэргүүлэх шалтгаан «{0}»', d.topReason.label) : '')),
+        cap('4.2', tr('Шийдвэрлэгдээгүй нэгж талбарын шалтгаан{0}', d.topReason ? tr(' — тэргүүлэх шалтгаан «{0}»', tr(d.topReason.label)) : '')),
         { table: { headerRows: 1, widths: ['*', 90], body: [
           [th(tr('Шалтгаан')), th(tr('Нэгж талбар'), true)],
-          ...land.byReason.map((s): TableCell[] => [td(s.label), td(num(s.n), true)]),
+          ...land.byReason.map((s): TableCell[] => [td(tr(s.label)), td(num(s.n), true)]),
         ] }, layout: tableLayout } as Content,
       ] : []),
 
@@ -238,21 +238,21 @@ export function buildReportDoc(
       note(tr('Дундаж нь блок бүрийг тэнцүү жинтэйгээр тооцсон; 2-р хэсгийн багцын гүйцэтгэлтэй нэг эх сурвалжаас гарна.')),
 
       ...section('7', tr('Санхүүжилтийн явц'),
-        tr('Захирамж, гэрээгээр баталгаажсан {0} ажлын санхүүжилт дөрвөн эх үүсвэрээс бүрдэж байна.{1}', num(finance.rows), d.topSource ? tr(' Санхүүжилтийн дийлэнх хэсгийг «{0}» эх үүсвэр бүрдүүлж, нийт дүнгийн {1}-ийг эзэлж байна.', d.topSource.label, pct(d.topSource.share, 1)) : '')),
+        tr('Захирамж, гэрээгээр баталгаажсан {0} ажлын санхүүжилт дөрвөн эх үүсвэрээс бүрдэж байна.{1}', num(finance.rows), d.topSource ? tr(' Санхүүжилтийн дийлэнх хэсгийг «{0}» эх үүсвэр бүрдүүлж, нийт дүнгийн {1}-ийг эзэлж байна.', tr(d.topSource.label), pct(d.topSource.share, 1)) : '')),
       cap('7.1', tr('Санхүүжилтийн эх үүсвэрийн бүтэц')),
       { table: { headerRows: 1, widths: ['*', 110, 70], body: [
         [th(tr('Эх үүсвэр')), th(tr('Дүн (тэрбум төг)'), true), th(tr('Хувь'), true)],
         ...finance.sources.map((s): TableCell[] => [
-          td(s.label), td(bn(s.value), true), td(srcTotal ? pct((s.value / srcTotal) * 100, 1) : '—', true),
+          td(tr(s.label)), td(bn(s.value), true), td(srcTotal ? pct((s.value / srcTotal) * 100, 1) : '—', true),
         ]),
         [td(tr('Нийт'), false, TOTAL), td(bn(srcTotal), true, TOTAL), td('100%', true, TOTAL)],
       ] }, layout: tableLayout },
 
-      cap('7.2', tr('Сар бүрийн олголт ба хуримтлагдсан дүн{0}', d.peakMonth ? tr(' — хамгийн их олголт {0} сард', d.peakMonth.label) : '')),
+      cap('7.2', tr('Сар бүрийн олголт ба хуримтлагдсан дүн{0}', d.peakMonth ? tr(' — хамгийн их олголт {0} сард', tr(d.peakMonth.label)) : '')),
       { table: { headerRows: 1, widths: ['*', 120, 110], body: [
         [th(tr('Сар')), th(tr('Олгосон (тэрбум төг)'), true), th(tr('Хуримтлагдсан'), true)],
         ...finance.months.map((m): TableCell[] => [
-          td(m.label), td(m.amount > 0 ? bn(m.amount) : '—', true), td(bn(m.cum), true),
+          td(tr(m.label)), td(m.amount > 0 ? bn(m.amount) : '—', true), td(bn(m.cum), true),
         ]),
       ] }, layout: tableLayout },
 
@@ -287,7 +287,7 @@ export function buildReportDoc(
       { table: { headerRows: 1, widths: ['*', 62, 58, 52, 52, 52], body: [
         [th(tr('Гүйцэтгэгч')), th(tr('Багц')), th(tr('Ажилтан'), true), th(tr('Дотоод'), true), th(tr('Гадаад'), true), th(tr('Техник'), true)],
         ...habea.byCompany.map((c): TableCell[] => [
-          td(c.label), td(c.bagts ?? '—'), td(num(c.workers), true),
+          td(tr(c.label)), td(tr(c.bagts ?? '—')), td(num(c.workers), true),
           td(num(c.mongol), true), td(num(c.gadaad), true), td(num(c.tehnik), true),
         ]),
         [td(tr('Нийт'), false, TOTAL), td('—', false, TOTAL), td(num(habea.workers), true, TOTAL),
