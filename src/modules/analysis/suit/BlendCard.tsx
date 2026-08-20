@@ -1,6 +1,7 @@
 'use client';
 
 import { SCORE_LEVELS, levelOf } from '@/lib/analysis/config';
+import { t as tr } from '@/lib/i18nCore';
 import { scoreColor, scoreLabel } from '@/lib/analysis/score';
 import { blendScore, econScore, type Mode, type Row } from './model';
 import s from '../suitability.module.css';
@@ -34,28 +35,28 @@ export function BlendCard({
 
   return (
     <section className={s.card}>
-      <h2>Нийлмэл үнэлгээ</h2>
+      <h2>{tr('Нийлмэл үнэлгээ')}</h2>
 
       <div className={s.blendLabels}>
-        <span className={s.bUrban}>Хот төлөвлөлт <b>{100 - econShare}%</b></span>
-        <span className={s.bFin}><b>{econShare}%</b> Эдийн засаг</span>
+        <span className={s.bUrban}>{tr('Хот төлөвлөлт')} <b>{100 - econShare}%</b></span>
+        <span className={s.bFin}><b>{econShare}%</b> {tr('Эдийн засаг')}</span>
       </div>
       <input
         type="range"
         className={s.blendRange}
         min={0} max={100} step={5}
         value={econShare}
-        aria-label="Хот төлөвлөлт ↔ эдийн засгийн хуваарилалт"
+        aria-label={tr('Хот төлөвлөлт ↔ эдийн засгийн хуваарилалт')}
         onChange={(e) => setEconShare(Number(e.target.value))}
       />
 
       <div className={s.blendScores}>
         <button type="button" className={s.blendScore} onClick={() => onPick('urban')}>
-          <span>Хот төлөвлөлт</span>
+          <span>{tr('Хот төлөвлөлт')}</span>
           <b style={{ color: scoreColor(urban) }}>{urban == null ? '—' : Math.round(urban)}</b>
         </button>
         <button type="button" className={s.blendScore} onClick={() => onPick('econ')}>
-          <span>Эдийн засаг</span>
+          <span>{tr('Эдийн засаг')}</span>
           <b style={{ color: scoreColor(econ) }}>{econ == null ? '—' : Math.round(econ)}</b>
         </button>
       </div>
@@ -65,12 +66,12 @@ export function BlendCard({
           {blend == null ? '—' : Math.round(blend)}
         </div>
         <div className={s.parkHeadTxt}>
-          <b>{rows.length} бүсийн дундаж</b>
-          <span>{scoreLabel(blend)} · газрын зураг, эрэмбэ энэ оноогоор</span>
+          <b>{rows.length} {tr('бүсийн дундаж')}</b>
+          <span>{scoreLabel(blend)} {tr('· газрын зураг, эрэмбэ энэ оноогоор')}</span>
         </div>
       </div>
 
-      <div className={s.subLabel}>Түвшний тархалт</div>
+      <div className={s.subLabel}>{tr('Түвшний тархалт')}</div>
       <div className={s.finSummary}>
         {levels.map(({ L, n }) => (
           <div key={L.label}>

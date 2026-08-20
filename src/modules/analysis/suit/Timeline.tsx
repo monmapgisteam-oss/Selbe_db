@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { t as tr } from '@/lib/i18nCore';
 import { DIURNAL, diurnalAt, clockText, wrapMin } from './traffic';
 import c from './simulation.module.css';
 
@@ -122,7 +123,7 @@ export function Timeline({
     <div className={c.console}>
       <div className={c.clockRow}>
         <span className={c.clock}>{clockText(minute)}</span>
-        <span className={c.demand}>эрэлт {Math.round(load * 100)}%</span>
+        <span className={c.demand}>{tr('эрэлт')} {Math.round(load * 100)}%</span>
       </div>
 
       {/* Өдрийн эрэлтийн муруй + одоогийн байрлал */}
@@ -131,7 +132,7 @@ export function Timeline({
         viewBox={`0 0 ${W} ${H}`}
         preserveAspectRatio="none"
         role="img"
-        aria-label={`Өдрийн эрэлтийн муруй, одоо ${clockText(minute)}, эрэлт ${Math.round(load * 100)}%`}
+        aria-label={tr('Өдрийн эрэлтийн муруй, одоо {0}, эрэлт {1}%', clockText(minute), Math.round(load * 100))}
       >
         {/* ⚠️ `vectorEffect` ЗААВАЛ: `preserveAspectRatio="none"` нь зургийг
             хэвтээ тийш сунгадаг тул түүнгүйгээр зураасны өргөн гажина. */}
@@ -164,7 +165,7 @@ export function Timeline({
         step={1}
         value={Math.round(wrapMin(minute))}
         onChange={(e) => seek(Number(e.target.value))}
-        aria-label="Цаг"
+        aria-label={tr('Цаг')}
       />
 
       {/* ▶/⏸ + хурд */}
@@ -175,9 +176,9 @@ export function Timeline({
           aria-pressed={playing}
           onClick={() => setPlaying(!playing)}
         >
-          {playing ? '⏸ Зогсоох' : '▶ Тоглуулах'}
+          {playing ? tr('⏸ Зогсоох') : tr('▶ Тоглуулах')}
         </button>
-        <div className={c.segSm} role="group" aria-label="Хурд">
+        <div className={c.segSm} role="group" aria-label={tr('Хурд')}>
           {SPEEDS.map((sp) => (
             <button
               key={sp}
@@ -185,7 +186,7 @@ export function Timeline({
               aria-pressed={speed === sp}
               className={speed === sp ? c.segSmOn : undefined}
               onClick={() => setSpeed(sp)}
-              title={`Бодит 1 секундэд ${sp} сим-минут`}
+              title={tr('Бодит 1 секундэд {0} сим-минут', sp)}
             >
               ×{sp}
             </button>

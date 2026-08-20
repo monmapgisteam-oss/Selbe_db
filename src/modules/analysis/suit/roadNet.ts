@@ -13,6 +13,7 @@
  */
 
 import { HOME } from '@/lib/services';
+import { t as tr } from '@/lib/i18nCore';
 import type { Network, Pt } from './traffic';
 import { zoneTrips } from './simulation';
 import type { MapRow } from '../SuitMap';
@@ -87,7 +88,7 @@ const pageQuery = (offset: number) => new URLSearchParams({
 export async function loadPathsFrom(url: string, signal?: AbortSignal): Promise<Pt[][]> {
   const fetchPage = async (offset: number): Promise<Pt[][]> => {
     const r: QueryResp = await fetch(`${url}/query?${pageQuery(offset)}`, { signal }).then((x) => x.json());
-    if (r.error) throw new Error(r.error.message ?? 'ArcGIS query алдаа');
+    if (r.error) throw new Error(r.error.message ?? tr('ArcGIS query алдаа'));
     const out: Pt[][] = [];
     for (const f of r.features ?? []) {
       for (const path of f.geometry?.paths ?? []) {
@@ -111,7 +112,7 @@ export async function loadPathsFrom(url: string, signal?: AbortSignal): Promise<
     })}`,
     { signal },
   ).then((x) => x.json());
-  if (cnt.error) throw new Error(cnt.error.message ?? 'ArcGIS count алдаа');
+  if (cnt.error) throw new Error(cnt.error.message ?? tr('ArcGIS count алдаа'));
 
   const pages = Math.max(1, Math.ceil((cnt.count ?? 0) / PAGE));
   const chunks = await Promise.all(

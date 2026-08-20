@@ -8,6 +8,7 @@
  */
 
 import { queryGroup, queryStats, count, sum } from './query';
+import { t as tr } from '@/lib/i18nCore';
 import { layerUrl, OID, PLAN_LAYER_IDS, LAYER_BY_ID, zoneWhere, type LayerDef, type Cost } from './services';
 import { num, ha, km } from './format';
 import { useAsync, type Async } from './useAsync';
@@ -83,22 +84,22 @@ export async function layerTotals(d: LayerDef, where: string): Promise<Totals> {
  */
 export const qtyText = (d: LayerDef, q: number): string | null => {
   if (!d.qty || q <= 0) return null;
-  if (d.qty.unit === 'км') return q < 1 ? `${num(q * 1000)} м` : `${num(q, 1)} км`;
-  if (d.qty.unit === 'м') return q < 1000 ? `${num(q)} м` : `${km(q, 1)} км`;
-  return q < 10_000 ? `${num(q)} м²` : `${ha(q, 1)} га`;
+  if (d.qty.unit === 'км') return q < 1 ? tr('{0} м', num(q * 1000)) : tr('{0} км', num(q, 1));
+  if (d.qty.unit === 'м') return q < 1000 ? tr('{0} м', num(q)) : tr('{0} км', km(q, 1));
+  return q < 10_000 ? tr('{0} м²', num(q)) : tr('{0} га', ha(q, 1));
 };
 
 /** Нэгж үнэ юунд ногдохыг үгээр */
 export const costNote = (d: LayerDef): string => {
   if (!d.cost) return '—';
-  return d.cost.basis === 'sh' ? '1 ш тутамд'
-    : d.cost.basis === 'm100' ? '100 м тутамд'
-      : d.cost.basis === 'km' ? '1 км тутамд' : '1 м² тутамд';
+  return d.cost.basis === 'sh' ? tr('1 ш тутамд')
+    : d.cost.basis === 'm100' ? tr('100 м тутамд')
+      : d.cost.basis === 'km' ? tr('1 км тутамд') : tr('1 м² тутамд');
 };
 
 /** Геометрийн төрөл — дашбоардын толгойд */
 export const geomText = (d: LayerDef): string =>
-  d.geom === 'area' ? 'Талбай' : d.geom === 'line' ? 'Шугам' : 'Цэг';
+  d.geom === 'area' ? tr('Талбай') : d.geom === 'line' ? tr('Шугам') : tr('Цэг');
 
 /**
  * БАГЦЫН нийлбэр хэмжээ — «65.3 км · 26.7 га».
@@ -121,8 +122,8 @@ export function groupQty(ids: string[], map: ReadonlyMap<string, Totals>): strin
     else ha += t.q / 10_000;
   }
   const parts: string[] = [];
-  if (km > 0) parts.push(`${num(km, 1)} км`);
-  if (ha > 0) parts.push(`${num(ha, 1)} га`);
+  if (km > 0) parts.push(tr('{0} км', num(km, 1)));
+  if (ha > 0) parts.push(tr('{0} га', num(ha, 1)));
   return parts.length ? parts.join(' · ') : null;
 }
 

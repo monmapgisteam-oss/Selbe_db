@@ -28,6 +28,7 @@ import {
   type Stat,
 } from '@/lib/query';
 import { resolveSource, type AgentScope, type AgentSource } from './registry';
+import { t as tr } from '@/lib/i18nCore';
 import { zoneOverview } from './overview';
 import { buildingProgress } from './compute';
 
@@ -49,13 +50,13 @@ export const AGENT_TOOLS: ToolDef[] = [
   {
     name: 'describe_feature',
     description:
-      'Давхаргын БОДИТ талбаруудыг ArcGIS үйлчилгээнээс шууд татна (нэр, төрөл, алиас). ' +
-      'Каталогт заагаагүй талбар хэрэгтэй үед, эсвэл талбарын нэрэнд эргэлзэж байвал ЭНЭ ХЭРЭГСЛИЙГ ЭХЛЭЭД дууд. ' +
-      'Талбарын нэрийг таамаглаж `query_feature` дуудвал хүсэлт бүхэлдээ унана.',
+      tr('Давхаргын БОДИТ талбаруудыг ArcGIS үйлчилгээнээс шууд татна (нэр, төрөл, алиас). ') +
+      tr('Каталогт заагаагүй талбар хэрэгтэй үед, эсвэл талбарын нэрэнд эргэлзэж байвал ЭНЭ ХЭРЭГСЛИЙГ ЭХЛЭЭД дууд. ') +
+      tr('Талбарын нэрийг таамаглаж `query_feature` дуудвал хүсэлт бүхэлдээ унана.'),
     input_schema: {
       type: 'object',
       properties: {
-        id: { type: 'string', description: 'Давхаргын id — каталогийн жагсаалтаас (жиш. "et:24")' },
+        id: { type: 'string', description: tr('Давхаргын id — каталогийн жагсаалтаас (жиш. "et:24")') },
       },
       required: ['id'],
     },
@@ -63,14 +64,14 @@ export const AGENT_TOOLS: ToolDef[] = [
   {
     name: 'query_feature',
     description:
-      'Давхаргаас өгөгдөл асууна. Хоёр горим: ' +
-      '(1) НЭГТГЭЛ — `stats` өгвөл ArcGIS дээр тоолол/нийлбэр/дундаж бодогдоно (`groupBy` өгвөл ангиллаар задарна). ' +
-      '(2) ЖАГСААЛТ — `stats` өгөхгүй бол бодит мөрүүд буцна (дээд тал нь ' + MAX_ROWS + '). ' +
-      'Тоон хариулт шаардвал ҮРГЭЛЖ нэгтгэл горимыг ашигла — мөрүүдийг татаад өөрөө нэмэх нь удаан ба алдаатай.',
+      tr('Давхаргаас өгөгдөл асууна. Хоёр горим: ') +
+      tr('(1) НЭГТГЭЛ — `stats` өгвөл ArcGIS дээр тоолол/нийлбэр/дундаж бодогдоно (`groupBy` өгвөл ангиллаар задарна). ') +
+      tr('(2) ЖАГСААЛТ — `stats` өгөхгүй бол бодит мөрүүд буцна (дээд тал нь ') + MAX_ROWS + '). ' +
+      tr('Тоон хариулт шаардвал ҮРГЭЛЖ нэгтгэл горимыг ашигла — мөрүүдийг татаад өөрөө нэмэх нь удаан ба алдаатай.'),
     input_schema: {
       type: 'object',
       properties: {
-        id: { type: 'string', description: 'Давхаргын id (жиш. "et:24")' },
+        id: { type: 'string', description: tr('Давхаргын id (жиш. "et:24")') },
         where: {
           type: 'string',
           description:
@@ -78,25 +79,25 @@ export const AGENT_TOOLS: ToolDef[] = [
         },
         stats: {
           type: 'array',
-          description: 'Нэгтгэлүүд. Байвал НЭГТГЭЛ горим ажиллана.',
+          description: tr('Нэгтгэлүүд. Байвал НЭГТГЭЛ горим ажиллана.'),
           items: {
             type: 'object',
             properties: {
-              op: { type: 'string', enum: ['count', 'sum', 'avg'], description: 'Үйлдэл' },
-              field: { type: 'string', description: 'Талбарын нэр (count-д OID-г ашиглаж болно)' },
-              as: { type: 'string', description: 'Үр дүнгийн баганын нэр (заавал биш)' },
+              op: { type: 'string', enum: ['count', 'sum', 'avg'], description: tr('Үйлдэл') },
+              field: { type: 'string', description: tr('Талбарын нэр (count-д OID-г ашиглаж болно)') },
+              as: { type: 'string', description: tr('Үр дүнгийн баганын нэр (заавал биш)') },
             },
             required: ['op', 'field'],
           },
         },
-        groupBy: { type: 'string', description: 'Ангиллаар задлах талбар (зөвхөн нэгтгэл горимд)' },
+        groupBy: { type: 'string', description: tr('Ангиллаар задлах талбар (зөвхөн нэгтгэл горимд)') },
         outFields: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Жагсаалт горимд буцаах талбарууд. Заавал зааж өг — бүгдийг татах нь үрэлгэн.',
+          description: tr('Жагсаалт горимд буцаах талбарууд. Заавал зааж өг — бүгдийг татах нь үрэлгэн.'),
         },
-        orderBy: { type: 'string', description: 'Эрэмбэ, жиш. "Population DESC" (жагсаалт горимд)' },
-        limit: { type: 'number', description: `Мөрийн тоо (дээд тал нь ${MAX_ROWS})` },
+        orderBy: { type: 'string', description: tr('Эрэмбэ, жиш. "Population DESC" (жагсаалт горимд)') },
+        limit: { type: 'number', description: tr('Мөрийн тоо (дээд тал нь {0})', MAX_ROWS) },
       },
       required: ['id'],
     },
@@ -104,17 +105,17 @@ export const AGENT_TOOLS: ToolDef[] = [
   {
     name: 'zone_overview',
     description:
-      'НЭГ БҮС/БАГЦЫН нэгдсэн тойм — БҮХ эх сурвалжийг нэг дор шүүж, тус бүрийн тоо, хэмжээ, ӨРТГИЙГ буцаана. ' +
-      'Хэрэглэгч «Багц 1-ийн мэдээллийг дэлгэрэнгүй», «Багц-3.2-т юу байна вэ», «энэ бүсийн бүх мэдээлэл» гэх мэтээр ' +
-      'НЭГ бүсийн ЕРӨНХИЙ дүр зургийг асуувал ЭНЭ ХЭРЭГСЛИЙГ дууд — `query_feature`-ээр давхарга бүрийг тусад нь ' +
-      'асуувал эргэлт хүрэлцэхгүй, хариулт хагас дутуу гарна. ' +
-      'Өртөг нь порталын каталогтой ижил загвараар бодогдоно. Тодруулга хэрэгтэй бол дараа нь `query_feature` дууд.',
+      tr('НЭГ БҮС/БАГЦЫН нэгдсэн тойм — БҮХ эх сурвалжийг нэг дор шүүж, тус бүрийн тоо, хэмжээ, ӨРТГИЙГ буцаана. ') +
+      tr('Хэрэглэгч «Багц 1-ийн мэдээллийг дэлгэрэнгүй», «Багц-3.2-т юу байна вэ», «энэ бүсийн бүх мэдээлэл» гэх мэтээр ') +
+      tr('НЭГ бүсийн ЕРӨНХИЙ дүр зургийг асуувал ЭНЭ ХЭРЭГСЛИЙГ дууд — `query_feature`-ээр давхарга бүрийг тусад нь ') +
+      tr('асуувал эргэлт хүрэлцэхгүй, хариулт хагас дутуу гарна. ') +
+      tr('Өртөг нь порталын каталогтой ижил загвараар бодогдоно. Тодруулга хэрэгтэй бол дараа нь `query_feature` дууд.'),
     input_schema: {
       type: 'object',
       properties: {
         zone: {
           type: 'string',
-          description: 'Бүс/багцын нэр — «Багц-1», «Багц 1», «Багц-3.2». Бичиглэлийн зөрөөг систем өөрөө зохицуулна.',
+          description: tr('Бүс/багцын нэр — «Багц-1», «Багц 1», «Багц-3.2». Бичиглэлийн зөрөөг систем өөрөө зохицуулна.'),
         },
       },
       required: ['zone'],
@@ -123,18 +124,18 @@ export const AGENT_TOOLS: ToolDef[] = [
   {
     name: 'compute',
     description:
-      'ArcGIS дээр БАЙХГҮЙ, кодод ТООЦООЛОГДДОГ үзүүлэлтүүд. ' +
-      '`building_progress` — «Барилгын хяналт» дашбоардын БОДИТ гүйцэтгэл: нийт хувь, багц бүрийн ' +
-      'задаргаа, хамгийн хоцорсон блокууд, гүйцэтгэгч компани. ' +
-      '⚠️ Барилгын НИЙТ гүйцэтгэлийг асуувал ЭНЭ ХЭРЭГСЛИЙГ ашигла — `mon:building`-ийн `GUITS_HV`-ийн ' +
-      'дундаж нь дашбоардын тоотой ТААРАХГҮЙ (өөр аргаар бодогддог).',
+      tr('ArcGIS дээр БАЙХГҮЙ, кодод ТООЦООЛОГДДОГ үзүүлэлтүүд. ') +
+      tr('`building_progress` — «Барилгын хяналт» дашбоардын БОДИТ гүйцэтгэл: нийт хувь, багц бүрийн ') +
+      tr('задаргаа, хамгийн хоцорсон блокууд, гүйцэтгэгч компани. ') +
+      tr('⚠️ Барилгын НИЙТ гүйцэтгэлийг асуувал ЭНЭ ХЭРЭГСЛИЙГ ашигла — `mon:building`-ийн `GUITS_HV`-ийн ') +
+      tr('дундаж нь дашбоардын тоотой ТААРАХГҮЙ (өөр аргаар бодогддог).'),
     input_schema: {
       type: 'object',
       properties: {
         kind: {
           type: 'string',
           enum: ['building_progress'],
-          description: 'Тооцооллын төрөл',
+          description: tr('Тооцооллын төрөл'),
         },
       },
       required: ['kind'],
@@ -163,7 +164,7 @@ async function fieldsOf(url: string): Promise<FieldMeta[]> {
   const res = await fetch(`${url}?f=json`);
   if (!res.ok) throw new ArcGISError(`HTTP ${res.status}`, url);
   const body = (await res.json()) as ServiceMeta;
-  if (body.error) throw new ArcGISError(body.error.message ?? 'Мета уншигдсангүй', url);
+  if (body.error) throw new ArcGISError(body.error.message ?? tr('Мета уншигдсангүй'), url);
   const fields = body.fields ?? [];
   metaCache.set(url, { at: Date.now(), fields });
   return fields;
@@ -191,7 +192,7 @@ const ok = (v: unknown): ToolOutcome => ({ text: JSON.stringify(v), isError: fal
 const fail = (msg: string): ToolOutcome => ({ text: msg, isError: true });
 
 const notFound = (id?: string) =>
-  fail(`\`${id}\` гэсэн эх сурвалж байхгүй эсвэл танд үзэх эрх алга.`);
+  fail(tr('`{0}` гэсэн эх сурвалж байхгүй эсвэл танд үзэх эрх алга.', id));
 
 async function runDescribe(input: { id?: string }, scope: AgentScope): Promise<ToolOutcome> {
   const src: AgentSource | null = input.id ? resolveSource(input.id, scope) : null;
@@ -240,8 +241,8 @@ async function runQuery(input: QueryIn, scope: AgentScope): Promise<ToolOutcome>
   const bad = used.filter((f) => f && f !== '*' && !known.has(f));
   if (bad.length) {
     return fail(
-      `Ийм талбар алга: ${bad.join(', ')}. ` +
-        `Байгаа талбарууд: ${[...known].slice(0, 60).join(', ')}`,
+      tr('Ийм талбар алга: {0}. ', bad.join(', ')) +
+        tr('Байгаа талбарууд: {0}', [...known].slice(0, 60).join(', ')),
     );
   }
 
@@ -249,7 +250,7 @@ async function runQuery(input: QueryIn, scope: AgentScope): Promise<ToolOutcome>
     if (input.stats?.length) {
       const stats: Stat[] = input.stats.map((s, i) => {
         const fn = STAT_FN[s.op];
-        if (!fn) throw new Error(`Танихгүй үйлдэл: ${s.op}`);
+        if (!fn) throw new Error(tr('Танихгүй үйлдэл: {0}', s.op));
         return fn(s.field, s.as || `${s.op}_${i}`);
       });
       const rows: Row[] = input.groupBy
@@ -267,8 +268,8 @@ async function runQuery(input: QueryIn, scope: AgentScope): Promise<ToolOutcome>
     });
     return ok({ source: src.id, where, count: rows.length, limit, rows });
   } catch (e) {
-    if (e instanceof ArcGISError) return fail(`ArcGIS алдаа: ${e.message} (${e.url})`);
-    return fail(`Асуулга амжилтгүй: ${e instanceof Error ? e.message : String(e)}`);
+    if (e instanceof ArcGISError) return fail(tr('ArcGIS алдаа: {0} ({1})', e.message, e.url));
+    return fail(tr('Асуулга амжилтгүй: {0}', e instanceof Error ? e.message : String(e)));
   }
 }
 
@@ -283,13 +284,13 @@ export async function runTool(
     if (name === 'query_feature') return await runQuery(input as QueryIn, scope);
     if (name === 'zone_overview') {
       const zone = (input as { zone?: string })?.zone?.trim();
-      if (!zone) return fail('`zone` заагаагүй байна.');
+      if (!zone) return fail(tr('`zone` заагаагүй байна.'));
       const ov = await zoneOverview(zone, scope);
       if (!ov.sources.length) {
         return fail(
-          `«${zone}» бүсээс өгөгдөл олдсонгүй. Бүсийн нэр зөв эсэхийг шалгана уу ` +
-            `(жиш. «Багц-1», «Багц-3.2»). Бүсийн жагсаалтыг \`query_feature\`-ээр ` +
-            `\`zone\` дээрээс groupBy хийж авч болно.`,
+          tr('«{0}» бүсээс өгөгдөл олдсонгүй. Бүсийн нэр зөв эсэхийг шалгана уу ', zone) +
+            tr('(жиш. «Багц-1», «Багц-3.2»). Бүсийн жагсаалтыг `query_feature`-ээр ') +
+            tr('`zone` дээрээс groupBy хийж авч болно.'),
         );
       }
       return ok(ov);
@@ -297,25 +298,25 @@ export async function runTool(
     if (name === 'compute') {
       const kind = (input as { kind?: string })?.kind;
       if (kind === 'building_progress') return ok(await buildingProgress(scope));
-      return fail(`Танихгүй тооцоолол: ${kind}`);
+      return fail(tr('Танихгүй тооцоолол: {0}', kind));
     }
-    return fail(`Танихгүй хэрэгсэл: ${name}`);
+    return fail(tr('Танихгүй хэрэгсэл: {0}', name));
   } catch (e) {
-    if (e instanceof ArcGISError) return fail(`ArcGIS алдаа: ${e.message} (${e.url})`);
-    return fail(`Хэрэгсэл унав: ${e instanceof Error ? e.message : String(e)}`);
+    if (e instanceof ArcGISError) return fail(tr('ArcGIS алдаа: {0} ({1})', e.message, e.url));
+    return fail(tr('Хэрэгсэл унав: {0}', e instanceof Error ? e.message : String(e)));
   }
 }
 
 /** Явцын мөрд харуулах товч тайлбар — хэрэглэгч агент юу хийж байгааг хардаг */
 export function describeCall(name: string, input: unknown): string {
   const i = (input ?? {}) as QueryIn & { zone?: string };
-  if (name === 'zone_overview') return `${i.zone} — бүх эх сурвалжийг шалгаж байна…`;
-  if (name === 'compute') return 'Гүйцэтгэлийг тооцоолж байна…';
-  if (name === 'describe_feature') return `${i.id} давхаргын талбаруудыг шалгаж байна…`;
+  if (name === 'zone_overview') return tr('{0} — бүх эх сурвалжийг шалгаж байна…', i.zone);
+  if (name === 'compute') return tr('Гүйцэтгэлийг тооцоолж байна…');
+  if (name === 'describe_feature') return tr('{0} давхаргын талбаруудыг шалгаж байна…', i.id);
   if (name === 'query_feature') {
     return i.stats?.length
-      ? `${i.id} дээр тооцоо хийж байна…`
-      : `${i.id}-аас мэдээлэл татаж байна…`;
+      ? tr('{0} дээр тооцоо хийж байна…', i.id)
+      : tr('{0}-аас мэдээлэл татаж байна…', i.id);
   }
-  return 'Ажиллаж байна…';
+  return tr('Ажиллаж байна…');
 }

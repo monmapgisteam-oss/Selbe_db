@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, type CSSProperties } from 'react';
+import { t as tr } from '@/lib/i18nCore';
 import { MAP_LAYERS, BUILDING_STATUS_COLORS, type MapLayerDef } from '@/lib/analysis/config';
 import { LAYER_GROUPS, MONITOR_GROUP, LAYER_BY_ID, type LayerDef } from '@/lib/services';
 import { Icon } from '@/components/Icon';
@@ -80,24 +81,24 @@ export function SuitLayerCatalog({
     });
 
   return (
-    <aside className={`${c.drawer} ${c.embedded}`} aria-label="Давхаргын жагсаалт">
+    <aside className={`${c.drawer} ${c.embedded}`} aria-label={tr('Давхаргын жагсаалт')}>
       {/* ⚠️ Урьд нь энд '--hue': '#4fd1c5' гэж дардаг байв — одоо глобал --hue
           нь var(--data) тул хоёр горимд өөрөө тохирно (override хэрэггүй). */}
       <header className={c.head}>
         <div className={c.headText}>
-          <span className={c.title}>Давхарга</span>
-          <span className={c.sub}>{all.length} нийт · {onCount} асаалттай</span>
+          <span className={c.title}>{tr('Давхарга')}</span>
+          <span className={c.sub}>{all.length} {tr('нийт ·')} {onCount} {tr('асаалттай')}</span>
         </div>
         <button
           type="button"
           className={c.close}
           onClick={() => setShut(shut.size ? new Set() : new Set(groups.map((g) => g.key)))}
-          title={shut.size ? 'Бүгдийг дэлгэх' : 'Бүгдийг хураах'}
-          aria-label={shut.size ? 'Бүгдийг дэлгэх' : 'Бүгдийг хураах'}
+          title={shut.size ? tr('Бүгдийг дэлгэх') : tr('Бүгдийг хураах')}
+          aria-label={shut.size ? tr('Бүгдийг дэлгэх') : tr('Бүгдийг хураах')}
         >
           {shut.size ? '▸' : '▾'}
         </button>
-        <button type="button" className={c.close} onClick={onClose} aria-label="Жагсаалтыг хаах">×</button>
+        <button type="button" className={c.close} onClick={onClose} aria-label={tr('Жагсаалтыг хаах')}>×</button>
       </header>
 
       <div className={c.body}>
@@ -122,7 +123,7 @@ export function SuitLayerCatalog({
                   type="button"
                   className={c.groupBtn}
                   onClick={() => toggleGroup(keys)}
-                  title={on === 0 ? 'Бүлгийг бүхэлд нь асаах' : 'Бүлгийг бүхэлд нь унтраах'}
+                  title={on === 0 ? tr('Бүлгийг бүхэлд нь асаах') : tr('Бүлгийг бүхэлд нь унтраах')}
                 >
                   {on}/{keys.length}
                 </button>
@@ -143,7 +144,7 @@ export function SuitLayerCatalog({
                           type="button"
                           role="switch"
                           aria-checked={isOn}
-                          aria-label={`${l.title} — зурагт харуулах`}
+                          aria-label={tr('{0} — зурагт харуулах', l.title)}
                           className={c.check}
                           onClick={() => toggle(l.key)}
                         >

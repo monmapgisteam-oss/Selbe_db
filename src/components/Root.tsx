@@ -3,6 +3,7 @@
 // ⚠️ @arcgis/core-аас ӨМНӨ ачаалагдах ЁСТОЙ — UBHUB ортофотогийн console-алдааг
 // шүүхийн тулд ArcGIS-ийн Logger `console.error`-оо хадгалахаас өмнө patch хийнэ.
 import '@/lib/silenceOrthoLogs';
+import { t as tr } from '@/lib/i18nCore';
 
 import dynamic from 'next/dynamic';
 import { useEffect, useReducer, useState } from 'react';
@@ -39,7 +40,7 @@ const Portal = dynamic(() => import('./Portal'), {
     <div
       style={{ height: '100dvh', display: 'grid', placeItems: 'center', color: 'var(--ink-3)', fontSize: '0.85rem' }}
     >
-      Сэлбэ порталыг ачаалж байна…
+      {tr('Сэлбэ порталыг ачаалж байна…')}
     </div>
   ),
 });
@@ -209,7 +210,7 @@ export default function Root() {
     })),
     {
       id: 'other',
-      title: 'Бусад хэсэг',
+      title: tr('Бусад хэсэг'),
       views: shown.filter((v) => !covered.has(v.key)),
     },
   ]
@@ -254,7 +255,7 @@ export default function Root() {
             }}
           >
             <div style={{ display: 'grid', gap: 14, justifyItems: 'center' }}>
-              <p style={{ margin: 0 }}>Таны эрх энэ хэсгийг үзэхэд хүрэлцэхгүй байна.</p>
+              <p style={{ margin: 0 }}>{tr('Таны эрх энэ хэсгийг үзэхэд хүрэлцэхгүй байна.')}</p>
               <button
                 type="button"
                 onClick={goHome}
@@ -263,7 +264,7 @@ export default function Root() {
                   background: 'transparent', color: 'inherit', font: 'inherit', cursor: 'pointer',
                 }}
               >
-                Нүүр хуудас руу буцах
+                {tr('Нүүр хуудас руу буцах')}
               </button>
             </div>
           </div>

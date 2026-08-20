@@ -1,6 +1,7 @@
 'use client';
 
 import FillNew from "./FillNew";
+import { t as tr } from '@/lib/i18nCore';
 import { Icon } from "@/components/Icon";
 import st from "./sheet.module.css";
 
@@ -20,11 +21,15 @@ export function Sheet() {
       <header className={st.portalHead}>
         <span className={st.portalIcon}><Icon name="pen" size={16} /></span>
         <div className={st.portalText}>
-          <h2 className={st.portalTitle}>Гүйцэтгэл бөглөх</h2>
+          <h2 className={st.portalTitle}>{tr('Гүйцэтгэл бөглөх')}</h2>
           <p className={st.portalDesc}>
+<<<<<<< HEAD
             Багцын гүйцэтгэлийн өгөгдөл оруулах портал — блок бүрийн нүдэнд ЭНЭ
             УДААД хийсэн ОБЬЁМоо бичихэд гүйцэтгэлийн хувь, нийлбэр, жин, дүн
             автоматаар бодогдоно.
+=======
+            {tr('Багцын гүйцэтгэлийн өгөгдөл оруулах портал — блок бүрийн явцыг бөглөж нийтлэхэд нийлбэр, жин, дүн автоматаар бодогдоно.')}
+>>>>>>> main
           </p>
         </div>
       </header>

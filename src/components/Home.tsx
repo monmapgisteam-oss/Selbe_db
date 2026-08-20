@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { t as tr } from '@/lib/i18nCore';
+import { LocaleToggle } from '@/components/LocaleToggle';
 import { useAuth } from './AuthGate';
 import { useAsync } from '@/lib/useAsync';
 import {
@@ -91,24 +93,24 @@ function useHomeKpis(): { main: Kpi[]; more: Kpi[]; progress: number | null } {
       {
         key: 'prog',
         value: pp ? pct(pp.actual, 1) : '…',
-        label: 'Төслийн гүйцэтгэл',
-        sub: pp ? `${num(pp.coverage, 0)}% багц бүртгэгдсэн` : undefined,
+        label: tr('Төслийн гүйцэтгэл'),
+        sub: pp ? tr('{0}% багц бүртгэгдсэн', num(pp.coverage, 0)) : undefined,
         icon: 'chart',
         view: 'tsogts',
       },
       {
         key: 'fin',
         value: bg ? mntShort(bg.total) : '…',
-        label: 'Нийт төсөв',
-        sub: contractPct != null ? `${pct(contractPct, 0)} гэрээлсэн` : undefined,
+        label: tr('Нийт төсөв'),
+        sub: contractPct != null ? tr('{0} гэрээлсэн', pct(contractPct, 0)) : undefined,
         icon: 'calc',
         view: 'finance',
       },
       {
         key: 'clear',
         value: cl?.pct != null ? pct(cl.pct, 1) : '…',
-        label: 'Газар чөлөөлөлт',
-        sub: cl ? `${num(cl.remaining)} талбар үлдсэн · ${num(cl.remainingHa, 1)} га` : undefined,
+        label: tr('Газар чөлөөлөлт'),
+        sub: cl ? tr('{0} талбар үлдсэн · {1} га', num(cl.remaining), num(cl.remainingHa, 1)) : undefined,
         icon: 'polygon',
         view: 'gazar',
         tone: cl?.pct == null ? undefined
@@ -117,20 +119,20 @@ function useHomeKpis(): { main: Kpi[]; more: Kpi[]; progress: number | null } {
       {
         key: 'pop',
         value: hd ? num(hd.population) : '…',
-        label: 'Хамрагдах хүн ам',
-        sub: hs ? `${num(hs.ail)} өрхийн орон сууц` : undefined,
+        label: tr('Хамрагдах хүн ам'),
+        sub: hs ? tr('{0} өрхийн орон сууц', num(hs.ail)) : undefined,
         icon: 'users',
         view: 'irged',
       },
     ],
     // НЭМЭЛТ — жижиг нүд, доод эгнээнд
     more: [
-      { key: 'area', value: hd ? `${num(hd.areaHa, 1)} га` : '…', label: 'Төслийн талбай', icon: 'frame', view: 'plan' },
-      { key: 'green', value: hd?.greenHa != null ? `${num(hd.greenHa, 1)} га` : '…', label: 'Ногоон байгууламж', icon: 'droplet', view: 'plan' },
-      { key: 'blocks', value: hs ? num(hs.blocks) : '…', label: 'Барилгын блок', icon: 'building', view: 'tsogts' },
-      { key: 'contract', value: bg ? mntShort(bg.contract) : '…', label: 'Гэрээт дүн', icon: 'file', view: 'finance' },
-      { key: 'social', value: sc ? num(sc.totalN) : '…', label: 'Нийгмийн байгууламж', icon: 'grid', view: 'irged' },
-      { key: 'cleared', value: cl ? num(cl.cleared) : '…', label: 'Чөлөөлсөн талбар', icon: 'target', view: 'gazar' },
+      { key: 'area', value: hd ? tr('{0} га', num(hd.areaHa, 1)) : '…', label: tr('Төслийн талбай'), icon: 'frame', view: 'plan' },
+      { key: 'green', value: hd?.greenHa != null ? tr('{0} га', num(hd.greenHa, 1)) : '…', label: tr('Ногоон байгууламж'), icon: 'droplet', view: 'plan' },
+      { key: 'blocks', value: hs ? num(hs.blocks) : '…', label: tr('Барилгын блок'), icon: 'building', view: 'tsogts' },
+      { key: 'contract', value: bg ? mntShort(bg.contract) : '…', label: tr('Гэрээт дүн'), icon: 'file', view: 'finance' },
+      { key: 'social', value: sc ? num(sc.totalN) : '…', label: tr('Нийгмийн байгууламж'), icon: 'grid', view: 'irged' },
+      { key: 'cleared', value: cl ? num(cl.cleared) : '…', label: tr('Чөлөөлсөн талбар'), icon: 'target', view: 'gazar' },
     ],
     progress: pp ? pp.actual : null,
   };
@@ -215,7 +217,7 @@ export function Home({
         type="button"
         className={cls}
         onClick={() => onEnterView(k.view!)}
-        title={`${k.label} — дэлгэрэнгүй рүү очих`}
+        title={tr('{0} — дэлгэрэнгүй рүү очих', k.label)}
       >
         {inner}
       </button>
@@ -233,7 +235,7 @@ export function Home({
           <img src="/logo.svg" alt="" className={s.logo} />
           <span className={s.brandDivider} aria-hidden />
           <span className={s.brandText}>
-            <b>СЭЛБЭ</b> 20 минутын хот
+            <b>{tr('СЭЛБЭ')}</b> {tr('20 минутын хот')}
             <small className={s.brandTag}>Digital Twin Platform</small>
           </span>
         </div>
@@ -245,7 +247,7 @@ export function Home({
           <nav
             className={s.menuRow}
             ref={bar}
-            aria-label="Платформын хэсгүүд"
+            aria-label={tr('Платформын хэсгүүд')}
             /**
              * ⚠️ Зөвхөн ХУЛГАНА. Хүрэлтэнд (`touch`) hover гэж байхгүй — хуруу
              * хүрэхэд `pointerenter` мөн буудаг тул шүүхгүй бол цэс нээгдээд,
@@ -303,7 +305,7 @@ export function Home({
               onPointerEnter={(e) => { if (e.pointerType === 'mouse') setOpen(null); }}
               onClick={() => { setOpen(null); setDocs(true); }}
             >
-              Баримт бичиг
+              {tr('Баримт бичиг')}
             </button>
           </nav>
         )}
@@ -311,6 +313,7 @@ export function Home({
         <div className={s.spacer} aria-hidden />
 
         <div className={s.auth}>
+          <LocaleToggle />
           {status === 'signed-in' && user ? (
             <>
               <span className={s.userChip}>
@@ -324,14 +327,14 @@ export function Home({
               </span>
               {/* Нэвтэрсэн хэрэглэгч порталд ОРОХ — эс бөгөөс нүүр хуудсанд гацна */}
               <button type="button" className={`${s.signBtn} ${s.signIn}`} onClick={onEnterAll}>
-                Порталд орох
+                {tr('Порталд орох')}
                 <span className={s.signInArrow} aria-hidden>→</span>
               </button>
-              <button type="button" className={s.signBtn} onClick={signOut}>Гарах</button>
+              <button type="button" className={s.signBtn} onClick={signOut}>{tr('Гарах')}</button>
             </>
           ) : (
             <button type="button" className={`${s.signBtn} ${s.signIn}`} onClick={onEnterAll}>
-              Нэвтрэх
+              {tr('Нэвтрэх')}
               <span className={s.signInArrow} aria-hidden>→</span>
             </button>
           )}
@@ -342,16 +345,15 @@ export function Home({
       <main className={s.board}>
         <header className={s.boardHead}>
           <div>
-            <h1 className={s.title}>Төслийн ерөнхий байдал</h1>
+            <h1 className={s.title}>{tr('Төслийн ерөнхий байдал')}</h1>
             <p className={s.lede}>
-              Ерөнхий төлөвлөгөө, барилгын явц, инженерийн сүлжээ, газар чөлөөлөлт,
-              санхүүжилтийн амьд нэгтгэл — бүх тоо ArcGIS-ээс шууд.
+              {tr('Ерөнхий төлөвлөгөө, барилгын явц, инженерийн сүлжээ, газар чөлөөлөлт, санхүүжилтийн амьд нэгтгэл — бүх тоо ArcGIS-ээс шууд.')}
             </p>
           </div>
           {/* Төслийн нийт гүйцэтгэл — толгойн баруун талд, нэг харцаар */}
           <div className={s.progressBox}>
             <span className={s.progressTop}>
-              <span className={s.progressLabel}>Нийт гүйцэтгэл</span>
+              <span className={s.progressLabel}>{tr('Нийт гүйцэтгэл')}</span>
               <span className={`${s.progressPct} num`}>{progress != null ? pct(progress, 2) : '…'}</span>
             </span>
             <div
@@ -360,7 +362,7 @@ export function Home({
               aria-valuenow={progress ?? 0}
               aria-valuemin={0}
               aria-valuemax={100}
-              aria-label="Төслийн нийт гүйцэтгэл"
+              aria-label={tr('Төслийн нийт гүйцэтгэл')}
             >
               <span className={s.progressFill} style={{ width: `${progress ?? 0}%` }} />
             </div>
@@ -368,12 +370,12 @@ export function Home({
         </header>
 
         {/* ГОЛ дөрөв — том нүд */}
-        <section className={s.kpiMain} aria-label="Гол үзүүлэлт">
+        <section className={s.kpiMain} aria-label={tr('Гол үзүүлэлт')}>
           {main.map((k) => tile(k, true))}
         </section>
 
         {/* НЭМЭЛТ зургаа — жижиг нүд */}
-        <section className={s.kpiMore} aria-label="Нэмэлт үзүүлэлт">
+        <section className={s.kpiMore} aria-label={tr('Нэмэлт үзүүлэлт')}>
           {more.map((k) => tile(k, false))}
         </section>
 

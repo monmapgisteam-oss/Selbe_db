@@ -4,6 +4,8 @@ import { Inter } from 'next/font/google';
 //    тэр нь client reference proxy болж, доорх THEME_INIT-д функцын эх код шингэн
 //    inline script эвдэрдэг байв. Заавал энгийн модулиас (themeKey.ts).
 import { ThemeProvider } from '@/lib/theme';
+import { LocaleProvider } from '@/lib/i18n';
+import { SkipLink } from '@/components/SkipLink';
 import { THEME_KEY } from '@/lib/themeKey';
 import './globals.css';
 
@@ -24,6 +26,7 @@ import '@/modules/finance.module.css';
 import '@/modules/tsogts.module.css';
 import '@/modules/habea.module.css';
 import '@/components/auth.module.css';
+import '@/components/locale.module.css';
 import '@/components/home.module.css';
 import '@/components/swatch.module.css';
 import '@/components/opacity.module.css';
@@ -91,10 +94,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT }} />
       </head>
       <body>
-        <a href="#panel" className="skip">
-          Дашбоард руу үсрэх
-        </a>
-        <ThemeProvider>{children}</ThemeProvider>
+        <SkipLink />
+        <LocaleProvider>
+          <ThemeProvider>{children}</ThemeProvider>
+        </LocaleProvider>
       </body>
     </html>
   );

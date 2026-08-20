@@ -5,6 +5,7 @@ import {
   type CSSProperties, type ReactNode,
 } from 'react';
 import Map from '@arcgis/core/Map';
+import { t as tr } from '@/lib/i18nCore';
 import MapView from '@arcgis/core/views/MapView';
 import SceneView from '@arcgis/core/views/SceneView';
 import FeatureLayer from '@arcgis/core/layers/FeatureLayer';
@@ -562,7 +563,7 @@ const buildingProgressRenderer = (prog: BlockProgressMap): RendererProp => ({
     `Upper(Replace(Replace(Replace($feature.${BUILDING.fields.bagts}, " ", ""), ".", ""), "-", ""))` +
     ` + "|" + Split(Trim($feature.${BUILDING.fields.block}), " ")[0]`,
   defaultSymbol: { type: 'simple-fill', color: c('#94a3b8', 0.22), outline: { color: c('#94a3b8', 0.9), width: ow(0.8) } },
-  defaultLabel: 'Мэдээлэлгүй',
+  defaultLabel: tr('Мэдээлэлгүй'),
   uniqueValueInfos: [...prog.entries()].map(([key, p]) => {
     const [r, g, b] = progColor(p.overall);
     return {
@@ -1455,7 +1456,7 @@ export const MapCanvas = memo(function MapCanvas({
     orthoChkRef.current = orthoChk;
     // ⚠️ `change` дотор setOrtho — context шинэчлэгдэж, харагдацын эффект imagery-г тавина
     orthoChk.addEventListener('change', () => setOrtho(orthoChk.checked));
-    orthoRow.append(orthoChk, document.createTextNode('Ортофото'));
+    orthoRow.append(orthoChk, document.createTextNode(tr('Ортофото')));
     const galleryDiv = document.createElement('div');
     bmPanel.append(orthoRow, galleryDiv);
     new BasemapGallery({
@@ -1479,8 +1480,8 @@ export const MapCanvas = memo(function MapCanvas({
       view,
       content: bmPanel,
       expandIcon: 'basemap',
-      expandTooltip: 'Суурь зураг сонгох',
-      collapseTooltip: 'Хаах',
+      expandTooltip: tr('Суурь зураг сонгох'),
+      collapseTooltip: tr('Хаах'),
       mode: 'floating',
     }), 'top-right');
 
@@ -1495,8 +1496,8 @@ export const MapCanvas = memo(function MapCanvas({
       view,
       content: llDiv,
       expandIcon: 'layers',
-      expandTooltip: 'Давхаргууд',
-      collapseTooltip: 'Хаах',
+      expandTooltip: tr('Давхаргууд'),
+      collapseTooltip: tr('Хаах'),
       mode: 'floating',
     }), 'top-right');
 
@@ -1509,7 +1510,7 @@ export const MapCanvas = memo(function MapCanvas({
     fsBtn.className = 'esri-widget--button esri-widget';
     fsBtn.setAttribute('role', 'button');
     fsBtn.setAttribute('tabindex', '0');
-    fsBtn.title = 'Бүтэн дэлгэц';
+    fsBtn.title = tr('Бүтэн дэлгэц');
     fsBtn.innerHTML =
       '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">'
       + '<path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" '
@@ -1821,7 +1822,7 @@ export const MapCanvas = memo(function MapCanvas({
         map.add(new FeatureLayer({
           id: 'tgl3d',
           url: layerUrl(tglDef),
-          title: 'Хүүхдийн тоглоом (3D)',
+          title: tr('Хүүхдийн тоглоом (3D)'),
           outFields: ['type'],
           popupEnabled: false,
           visible: true,
@@ -1936,12 +1937,12 @@ export const MapCanvas = memo(function MapCanvas({
     type AV = { interactive: boolean; place: (o?: { signal?: AbortSignal }) => Promise<unknown> };
     type Tool = { name: string; type: string; icon: string; analysis: __esri.Analysis; av: AV | null; btn?: HTMLElement };
     const tools: Tool[] = [
-      { name: 'Талбай', type: 'area-measurement', icon: 'esri-icon-measure-area', analysis: new AreaMeasurementAnalysis(), av: null },
-      { name: 'Зай', type: 'direct-line-measurement', icon: 'esri-icon-measure-line', analysis: new DirectLineMeasurementAnalysis(), av: null },
-      { name: 'Харах шугам', type: 'line-of-sight', icon: 'esri-icon-line-of-sight', analysis: new LineOfSightAnalysis(), av: null },
-      { name: 'Харагдац', type: 'viewshed', icon: 'esri-icon-visible', analysis: new ViewshedAnalysis(), av: null },
-      { name: 'Хэмжээс', type: 'dimension', icon: 'esri-icon-measure', analysis: new DimensionAnalysis(), av: null },
-      { name: 'Огтлол', type: 'slice', icon: 'esri-icon-cursor-marquee', analysis: new SliceAnalysis(), av: null },
+      { name: tr('Талбай'), type: 'area-measurement', icon: 'esri-icon-measure-area', analysis: new AreaMeasurementAnalysis(), av: null },
+      { name: tr('Зай'), type: 'direct-line-measurement', icon: 'esri-icon-measure-line', analysis: new DirectLineMeasurementAnalysis(), av: null },
+      { name: tr('Харах шугам'), type: 'line-of-sight', icon: 'esri-icon-line-of-sight', analysis: new LineOfSightAnalysis(), av: null },
+      { name: tr('Харагдац'), type: 'viewshed', icon: 'esri-icon-visible', analysis: new ViewshedAnalysis(), av: null },
+      { name: tr('Хэмжээс'), type: 'dimension', icon: 'esri-icon-measure', analysis: new DimensionAnalysis(), av: null },
+      { name: tr('Огтлол'), type: 'slice', icon: 'esri-icon-cursor-marquee', analysis: new SliceAnalysis(), av: null },
     ];
     tools.forEach((t) => sv.analyses.add(t.analysis));
     void Promise.all(
@@ -1962,7 +1963,7 @@ export const MapCanvas = memo(function MapCanvas({
     // Цэвэр DARK загвар (аппын design token) — хэвтээ ИКОН action-bar
     const panel = mk('div', 'width:238px;padding:15px;display:flex;flex-direction:column;gap:12px;'
       + 'background:var(--surface);color:var(--ink);font-family:inherit');
-    panel.append(mk('div', 'font-size:0.92rem;font-weight:700;color:var(--ink)', 'Шинжилгээ'));
+    panel.append(mk('div', 'font-size:0.92rem;font-weight:700;color:var(--ink)', tr('Шинжилгээ')));
     const bar = mk('div', 'display:flex;gap:6px');
     const iconBtnCss = 'flex:1;height:40px;display:grid;place-items:center;border:1px solid var(--line);'
       + 'border-radius:9px;color:var(--ink-2);cursor:pointer;background:transparent;transition:background .12s,color .12s,border-color .12s';
@@ -1979,11 +1980,11 @@ export const MapCanvas = memo(function MapCanvas({
       bar.append(b);
     });
     panel.append(bar);
-    const prompt = mk('div', 'font-size:0.76rem;line-height:1.5;color:var(--ink-3);min-height:20px', 'Шинжилгээний төрөл сонгоно уу.');
+    const prompt = mk('div', 'font-size:0.76rem;line-height:1.5;color:var(--ink-3);min-height:20px', tr('Шинжилгээний төрөл сонгоно уу.'));
     const controls = mk('div', 'display:flex;gap:8px');
     const cBtnCss = 'flex:1;padding:8px 10px;border-radius:8px;font-size:0.78rem;font-weight:600;cursor:pointer;display:none';
-    const clearBtn = mk('button', cBtnCss + ';border:1px solid var(--line);background:var(--surface-2);color:var(--ink)', 'Арилгах') as HTMLButtonElement;
-    const doneBtn = mk('button', cBtnCss + ';border:1px solid transparent;background:var(--hue);color:#fff', 'Дуусгах') as HTMLButtonElement;
+    const clearBtn = mk('button', cBtnCss + ';border:1px solid var(--line);background:var(--surface-2);color:var(--ink)', tr('Арилгах')) as HTMLButtonElement;
+    const doneBtn = mk('button', cBtnCss + ';border:1px solid transparent;background:var(--hue);color:#fff', tr('Дуусгах')) as HTMLButtonElement;
     controls.append(clearBtn, doneBtn);
     panel.append(prompt, controls);
 
@@ -1998,8 +1999,8 @@ export const MapCanvas = memo(function MapCanvas({
       clearBtn.style.display = active ? 'block' : 'none';
       doneBtn.style.display = active ? 'block' : 'none';
       prompt.textContent = active
-        ? `Зурган дээр дарж «${active.name}» байрлуул.`
-        : 'Шинжилгээний төрөл сонгоно уу.';
+        ? tr('Зурган дээр дарж «{0}» байрлуул.', active.name)
+        : tr('Шинжилгээний төрөл сонгоно уу.');
     };
     const stop = () => {
       abort?.abort();
@@ -2048,7 +2049,7 @@ export const MapCanvas = memo(function MapCanvas({
 
     const expand = new Expand({
       view, content: panel, expandIcon: 'measure',
-      expandTooltip: 'Шинжилгээ', collapseTooltip: 'Хаах', mode: 'floating',
+      expandTooltip: tr('Шинжилгээ'), collapseTooltip: tr('Хаах'), mode: 'floating',
     });
     view.ui.add(expand, 'top-right');
 
@@ -2096,17 +2097,17 @@ export const MapCanvas = memo(function MapCanvas({
 
     const panelV = mk('div', 'width:250px;padding:15px;display:flex;flex-direction:column;gap:11px;'
       + 'background:var(--surface);color:var(--ink)');
-    panelV.append(mk('div', 'font-size:0.92rem;font-weight:700;color:var(--ink)', 'Эзлэхүүн хэмжилт'));
+    panelV.append(mk('div', 'font-size:0.92rem;font-weight:700;color:var(--ink)', tr('Эзлэхүүн хэмжилт')));
     const vPlace = mk('button', 'width:100%;padding:9px;border-radius:8px;border:1px solid transparent;'
-      + 'background:var(--hue);color:#fff;font-size:0.8rem;font-weight:600;cursor:pointer', '＋ Полигон зурж хэмжих') as HTMLButtonElement;
+      + 'background:var(--hue);color:#fff;font-size:0.8rem;font-weight:600;cursor:pointer', tr('＋ Полигон зурж хэмжих')) as HTMLButtonElement;
     panelV.append(vPlace);
     // Нэгж сонгогч (SDK sample шиг)
     const unitRow = mk('div', 'display:flex;align-items:center;justify-content:space-between;gap:8px');
-    unitRow.append(mk('span', 'font-size:0.78rem;color:var(--ink-3)', 'Нэгж'));
+    unitRow.append(mk('span', 'font-size:0.78rem;color:var(--ink-3)', tr('Нэгж')));
     const volUnit = mk('select', 'padding:5px 8px;border:1px solid var(--line);border-radius:6px;'
       + 'background:var(--surface-2);color:var(--ink);font-size:0.76rem;cursor:pointer') as HTMLSelectElement;
-    volUnit.innerHTML = '<option value="metric">Метр</option><option value="cubic-meters">м³</option>'
-      + '<option value="cubic-feet">фут³</option><option value="cubic-yards">ярд³</option>';
+    volUnit.innerHTML = tr('<option value="metric">Метр</option><option value="cubic-meters">м³</option>')
+      + tr('<option value="cubic-feet">фут³</option><option value="cubic-yards">ярд³</option>');
     unitRow.append(volUnit);
     panelV.append(unitRow);
     volUnit.addEventListener('change', () => {
@@ -2122,7 +2123,7 @@ export const MapCanvas = memo(function MapCanvas({
       r.append(mk('span', 'color:var(--ink-3)', label), val);
       return r;
     };
-    results.append(mkRow('Огтлол', cutV), mkRow('Дүүргэлт', fillV), mkRow('Цэвэр', netV));
+    results.append(mkRow(tr('Огтлол'), cutV), mkRow(tr('Дүүргэлт'), fillV), mkRow(tr('Цэвэр'), netV));
     panelV.append(results);
 
     const fmtVol = (v?: { value?: number; unit?: string } | null) =>
@@ -2156,7 +2157,7 @@ export const MapCanvas = memo(function MapCanvas({
 
     const expandV = new Expand({
       view, content: panelV, expandIcon: 'cube',
-      expandTooltip: 'Эзлэхүүн хэмжилт', collapseTooltip: 'Хаах', mode: 'floating',
+      expandTooltip: tr('Эзлэхүүн хэмжилт'), collapseTooltip: tr('Хаах'), mode: 'floating',
     });
     view.ui.add(expandV, 'top-right');
 
@@ -2164,7 +2165,7 @@ export const MapCanvas = memo(function MapCanvas({
     const slides: Slide[] = [];
     const panelS = mk('div', 'width:262px;padding:15px;display:flex;flex-direction:column;gap:11px;'
       + 'max-height:72vh;overflow:auto;background:var(--surface);color:var(--ink)');
-    panelS.append(mk('div', 'font-size:0.92rem;font-weight:700;color:var(--ink)', 'Слайд'));
+    panelS.append(mk('div', 'font-size:0.92rem;font-weight:700;color:var(--ink)', tr('Слайд')));
     const listDiv = mk('div', 'display:flex;flex-direction:column;gap:6px');
     panelS.append(listDiv);
 
@@ -2182,12 +2183,12 @@ export const MapCanvas = memo(function MapCanvas({
       const date = (slide as unknown as { environment?: { lighting?: { date?: Date } } }).environment?.lighting?.date;
       info.append(
         mk('div', 'font-size:0.78rem;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis',
-          slide.title?.text || 'Слайд'),
+          slide.title?.text || tr('Слайд')),
         mk('div', 'font-size:0.66rem;color:var(--ink-3)', fmtSlideDate(date)),
       );
       const del = mk('button', 'flex:none;width:24px;height:24px;display:grid;place-items:center;border:0;'
         + 'background:transparent;color:var(--ink-3);cursor:pointer;font-size:1.15rem;line-height:1', '×') as HTMLButtonElement;
-      del.title = 'Устгах';
+      del.title = tr('Устгах');
       row.append(img, info, del);
       row.addEventListener('click', () => { void slide.applyTo(sv, { speedFactor: 0.6 }); });
       del.addEventListener('click', (e) => {
@@ -2201,13 +2202,13 @@ export const MapCanvas = memo(function MapCanvas({
 
     // Доод хэсэг: «Слайд нэмэх» — нэр + Үүсгэх
     const addWrap = mk('div', 'display:flex;flex-direction:column;gap:6px;padding-top:9px;border-top:1px solid var(--line)');
-    addWrap.append(mk('div', 'font-size:0.72rem;color:var(--ink-3)', 'Слайд нэмэх'));
+    addWrap.append(mk('div', 'font-size:0.72rem;color:var(--ink-3)', tr('Слайд нэмэх')));
     const addRow = mk('div', 'display:flex;gap:6px');
     const nameInput = mk('input', 'flex:1;min-width:0;padding:7px 9px;border:1px solid var(--line);border-radius:7px;'
       + 'background:var(--surface-2);color:var(--ink);font-size:0.78rem') as HTMLInputElement;
-    nameInput.placeholder = 'Нэр оруулах';
+    nameInput.placeholder = tr('Нэр оруулах');
     const createBtn = mk('button', 'flex:none;padding:7px 13px;border-radius:7px;border:1px solid transparent;'
-      + 'background:var(--hue);color:#fff;font-size:0.78rem;font-weight:600;cursor:pointer', 'Үүсгэх') as HTMLButtonElement;
+      + 'background:var(--hue);color:#fff;font-size:0.78rem;font-weight:600;cursor:pointer', tr('Үүсгэх')) as HTMLButtonElement;
     addRow.append(nameInput, createBtn);
     addWrap.append(addRow);
     panelS.append(addWrap);
@@ -2215,7 +2216,7 @@ export const MapCanvas = memo(function MapCanvas({
     createBtn.addEventListener('click', () => {
       void Slide.createFrom(sv).then((slide) => {
         if (disposed) return;
-        slide.title.text = nameInput.value.trim() || `Слайд ${slides.length + 1}`;
+        slide.title.text = nameInput.value.trim() || tr('Слайд {0}', slides.length + 1);
         slides.push(slide);
         addSlideRow(slide);
         nameInput.value = '';
@@ -2224,7 +2225,7 @@ export const MapCanvas = memo(function MapCanvas({
 
     const expandS = new Expand({
       view, content: panelS, expandIcon: 'image',
-      expandTooltip: 'Харагдацын слайд', collapseTooltip: 'Хаах', mode: 'floating',
+      expandTooltip: tr('Харагдацын слайд'), collapseTooltip: tr('Хаах'), mode: 'floating',
     });
     view.ui.add(expandS, 'top-right');
 
@@ -2679,15 +2680,15 @@ export const MapCanvas = memo(function MapCanvas({
   return (
     <div className={`${s.wrap} ${fs ? s.fs : ''}`}>
       <div ref={el} className={s.view} />
-      {!ready && !initError && <div className={s.loading}>Газрын зураг ачаалж байна…</div>}
+      {!ready && !initError && <div className={s.loading}>{tr('Газрын зураг ачаалж байна…')}</div>}
 
       {/* `view.when` унасан — байнгын «ачаалж байна…»-гийн оронд алдааг ил хэлж,
           «Дахин оролдох»-оор view-г дахин үүсгүүлнэ */}
       {!ready && initError && (
         <div className={s.loading} role="alert">
           <div className={`${s.float} ${s.warn}`} style={{ position: 'static' }}>
-            <b className={s.warnTitle}>Газрын зураг үүсгэж чадсангүй</b>
-            <span>Сүлжээ эсвэл газрын зургийн үйлчилгээний алдаа гарлаа.</span>
+            <b className={s.warnTitle}>{tr('Газрын зураг үүсгэж чадсангүй')}</b>
+            <span>{tr('Сүлжээ эсвэл газрын зургийн үйлчилгээний алдаа гарлаа.')}</span>
             <button
               type="button"
               onClick={() => setInitToken((t) => t + 1)}
@@ -2698,7 +2699,7 @@ export const MapCanvas = memo(function MapCanvas({
                 borderRadius: 6,
               }}
             >
-              Дахин оролдох
+              {tr('Дахин оролдох')}
             </button>
           </div>
         </div>
@@ -2706,20 +2707,18 @@ export const MapCanvas = memo(function MapCanvas({
 
       {meshError != null && dim === 'bim' && (
         <div className={`${s.float} ${s.floatBR} ${s.warn}`} role="alert">
-          <b className={s.warnTitle}>Барилгын загвар ачаалагдсангүй ({meshError})</b>
+          <b className={s.warnTitle}>{tr('Барилгын загвар ачаалагдсангүй (')}{meshError})</b>
           <span>
-            <code>tiles.arcgis.com</code> дээрх BuildingSceneLayer-т хандаж чадсангүй.
-            Үйлчилгээ нийтэд ил байгаа эсэхийг шалгана уу.
+            <code>tiles.arcgis.com</code> {tr('дээрх BuildingSceneLayer-т хандаж чадсангүй. Үйлчилгээ нийтэд ил байгаа эсэхийг шалгана уу.')}
           </span>
         </div>
       )}
 
       {meshError != null && dim === '3d' && (
         <div className={`${s.float} ${s.floatBR} ${s.warn}`} role="alert">
-          <b className={s.warnTitle}>3D бодит загвар ачаалагдсангүй ({meshError})</b>
+          <b className={s.warnTitle}>{tr('3D бодит загвар ачаалагдсангүй (')}{meshError})</b>
           <span>
-            <code>arcgis.ubhub.mn:6443</code> руу хандаж чадсангүй. Сервер ажиллаж
-            байгаа эсэх, CORS-ын <b>allowedOrigins</b>-д энэ хаяг байгаа эсэхийг шалгана уу.
+            <code>arcgis.ubhub.mn:6443</code> {tr('руу хандаж чадсангүй. Сервер ажиллаж байгаа эсэх, CORS-ын')} <b>allowedOrigins</b>{tr('-д энэ хаяг байгаа эсэхийг шалгана уу.')}
           </span>
         </div>
       )}
@@ -2728,7 +2727,7 @@ export const MapCanvas = memo(function MapCanvas({
       {progStale && (
         <div className={`${s.float} ${s.floatBL} ${s.stale}`} role="status">
           <span className={s.staleDot} aria-hidden />
-          Гүйцэтгэл: өмнөх дүнгээр · шинэчилж байна…
+          {tr('Гүйцэтгэл: өмнөх дүнгээр · шинэчилж байна…')}
         </div>
       )}
 
@@ -2736,10 +2735,9 @@ export const MapCanvas = memo(function MapCanvas({
           байгааг ил хэлнэ (хуучирсан өнгө «баталгаатай» мэт үлдээхгүй зарчим) */}
       {progError && (
         <div className={`${s.float} ${s.floatBL} ${s.warn}`} role="alert">
-          <b className={s.warnTitle}>Гүйцэтгэл ачаалагдсангүй</b>
+          <b className={s.warnTitle}>{tr('Гүйцэтгэл ачаалагдсангүй')}</b>
           <span>
-            Блокийн гүйцэтгэлийн амьд дүн татагдсангүй тул блокууд «мэдээлэлгүй»
-            саарал өнгөөр харагдаж байна.
+            {tr('Блокийн гүйцэтгэлийн амьд дүн татагдсангүй тул блокууд «мэдээлэлгүй» саарал өнгөөр харагдаж байна.')}
           </span>
         </div>
       )}
@@ -2786,8 +2784,8 @@ function MapTip({
   if (d.qty && attrs[d.qty.field] != null) {
     const q = Number(attrs[d.qty.field]);
     rows.push({
-      k: d.qty.unit === 'м²' ? 'Талбай' : 'Урт',
-      v: d.qty.unit === 'м²' ? `${num(q / 10_000, 2)} га` : `${num(q, 1)} ${d.qty.unit}`,
+      k: d.qty.unit === 'м²' ? tr('Талбай') : tr('Урт'),
+      v: d.qty.unit === 'м²' ? tr('{0} га', num(q / 10_000, 2)) : `${num(q, 1)} ${tr(d.qty.unit)}`,
     });
   }
 
@@ -2797,22 +2795,22 @@ function MapTip({
     // shapefile-ийн хуучирсан GUITS_HV БИШ.
     const blk = text(attrs[F.block]);
     const g = prog?.get(buildingKey(attrs[F.bagts], blk))?.overall ?? null;
-    rows.push({ k: 'Блок', v: blk });
-    rows.push({ k: 'Гүйцэтгэл', v: g == null ? '—' : pct(g, 0) });
-    rows.push({ k: 'Айл', v: num(Number(attrs[F.households] ?? 0)) });
-    rows.push({ k: 'Гүйцэтгэгч', v: text(attrs[F.contractor]) });
+    rows.push({ k: tr('Блок'), v: blk });
+    rows.push({ k: tr('Гүйцэтгэл'), v: g == null ? '—' : pct(g, 0) });
+    rows.push({ k: tr('Айл'), v: num(Number(attrs[F.households] ?? 0)) });
+    rows.push({ k: tr('Гүйцэтгэгч'), v: text(attrs[F.contractor]) });
   } else if (d.id === 'mon:survey') {
     const F = SURVEY.fields;
-    rows.push({ k: 'Огноо', v: date(attrs[F.date] as string) });
-    rows.push({ k: 'Барилга', v: text(attrs[F.building]) });
-    rows.push({ k: 'Гүйцэтгэл', v: pct(Number(attrs[F.total] ?? 0), 0) });
+    rows.push({ k: tr('Огноо'), v: date(attrs[F.date] as string) });
+    rows.push({ k: tr('Барилга'), v: text(attrs[F.building]) });
+    rows.push({ k: tr('Гүйцэтгэл'), v: pct(Number(attrs[F.total] ?? 0), 0) });
   } else if (d.id === 'land:left') {
     // Кадастрын нэр/хаяг нь facets-т ОРОХГҮЙ (117 ба 137 өөр утга — задаргаа
     // болгож болохгүй), гэхдээ талбар дээр хулгана хүргэхэд хамгийн хэрэгтэй
     // мэдээлэл нь ЯГ эдгээр. Тиймээс энд гараар нэмнэ.
     const F = PARCEL_LEFT.fields;
     for (const [f, k] of [
-      [F.progress, 'Явц'], [F.owner, 'Эзэмшигч'], [F.address, 'Хаяг'], [F.note, 'Тайлбар'],
+      [F.progress, tr('Явц')], [F.owner, tr('Эзэмшигч')], [F.address, tr('Хаяг')], [F.note, tr('Тайлбар')],
     ] as [string, string][]) {
       const v = text(attrs[f], '').trim();
       if (v) rows.push({ k, v });
@@ -2823,7 +2821,7 @@ function MapTip({
       rows.push({ k: f.label, v: text(attrs[f.field]) });
     }
     const zoneId = text(attrs[d.zoneField ?? ZONE_FIELD], '').trim();
-    if (zoneId && zoneId !== ZONE_NONE.trim()) rows.push({ k: 'Бүс', v: zoneId });
+    if (zoneId && zoneId !== ZONE_NONE.trim()) rows.push({ k: tr('Бүс'), v: zoneId });
   }
 
   return (

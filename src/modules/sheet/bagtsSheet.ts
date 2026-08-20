@@ -10,6 +10,7 @@
 // мөрийн нүднүүд 4e-05), тиймээс хадгалагдсан утгыг биш, бодсоныг харуулна.
 
 import { agsFetch, type Feature } from "./ags";
+import { t as tr } from '@/lib/i18nCore';
 import { TREES } from "./bagts.trees";
 import type { Pkg, Schema } from "./bagts.pkg";
 
@@ -632,16 +633,16 @@ export async function applyUpdates(
       if (bad)
         throw new Error(
           (bad as { error?: { description?: string } }).error?.description ||
-            "Шинэчлэх амжилтгүй",
+            tr('Шинэчлэх амжилтгүй'),
         );
     } catch (e) {
       // ⚠️ rollbackOnFailure зөвхөн НЭГ chunk дотроо үйлчилнэ — өмнөх chunk-ууд
       // аль хэдийн серверт бичигдсэн тул хагас амжилтыг мессежид тодруулна.
       if (i > 0)
         throw new Error(
-          `${i}/${updates.length} мөр хадгалагдав; үлдсэн нь амжилтгүй (` +
+          tr('{0}/{1} мөр хадгалагдав; үлдсэн нь амжилтгүй (', i, updates.length) +
             String((e as Error).message || e) +
-            ") — дахин Нийтлэх дарж гүйцээнэ үү",
+            tr(') — дахин Нийтлэх дарж гүйцээнэ үү'),
         );
       throw e;
     }

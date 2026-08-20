@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from "react";
+import { t as tr } from '@/lib/i18nCore';
 import {
   ACTUAL,
   applySections,
@@ -199,7 +200,7 @@ export default function Conclusion() {
   return (
     <div className={st.wrap}>
       <label className={st.field}>
-        Багц{" "}
+        {tr('Багц')}{" "}
         <select
           className={st.select}
           value={bagts}
@@ -212,13 +213,11 @@ export default function Conclusion() {
       </label>
 
       <p className={st.info}>
-        Оруулсан ажлын жигнэсэн гүйцэтгэл. Бүлгийн мөр = Σ(Нийт_жин×Гүйцэтгэл) /
-        Σ(Нийт_жин). Бэлтгэл ажлыг нийт дүнд оруулаагүй. Төлөвлөсөн ирээдүйн
-        мөрүүд устгагдсан тул оруулсан ажлын хэмжээгээр тооцно.
+        {tr('Оруулсан ажлын жигнэсэн гүйцэтгэл. Бүлгийн мөр = Σ(Нийт_жин×Гүйцэтгэл) / Σ(Нийт_жин). Бэлтгэл ажлыг нийт дүнд оруулаагүй. Төлөвлөсөн ирээдүйн мөрүүд устгагдсан тул оруулсан ажлын хэмжээгээр тооцно.')}
       </p>
 
       {err && <p className={st.error}>{err}</p>}
-      {busy && <p className={st.muted}>ачаалж байна…</p>}
+      {busy && <p className={st.muted}>{tr('ачаалж байна…')}</p>}
 
       {jobs.length > 0 && (
         <div className={st.scroll}>
@@ -226,10 +225,10 @@ export default function Conclusion() {
             <thead>
               <tr>
                 <th className={cls("c-no")}>№<i {...grip("no")} /></th>
-                <th className={cls("c-ajil")}>Ажил<i {...grip("ajil")} /></th>
-                <th className={cls("c-jin")}>Жин<i {...grip("jin")} /></th>
-                <th className={cls("c-done")}>Гүйцэтгэл<i {...grip("done")} /></th>
-                <th className={cls("c-dutuu")}>Дутуу<i {...grip("dutuu")} /></th>
+                <th className={cls("c-ajil")}>{tr('Ажил')}<i {...grip("ajil")} /></th>
+                <th className={cls("c-jin")}>{tr('Жин')}<i {...grip("jin")} /></th>
+                <th className={cls("c-done")}>{tr('Гүйцэтгэл')}<i {...grip("done")} /></th>
+                <th className={cls("c-dutuu")}>{tr('Дутуу')}<i {...grip("dutuu")} /></th>
               </tr>
             </thead>
             <tbody>
@@ -262,7 +261,7 @@ export default function Conclusion() {
               <tr style={{ background: "var(--sheet-header)", fontWeight: 700 }}>
                 <td className={cls("c-no")} />
                 <td className={cls("c-ajil")} style={{ paddingLeft: 6 }}>
-                  Нийт дүн (Бэлтгэлгүй)
+                  {tr('Нийт дүн (Бэлтгэлгүй)')}
                 </td>
                 <td className={cls("c-jin")} />
                 <td className={cls("num c-done")}>{pctStr(grand)}</td>

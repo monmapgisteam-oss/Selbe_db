@@ -12,6 +12,7 @@
  */
 
 import { type PopBasis } from './simulation';
+import { t as tr } from '@/lib/i18nCore';
 import { buildingValue, tModeDef, type TMode, type TransportCtx } from './transportModes';
 import type { BuildingPt } from './buildings';
 
@@ -19,8 +20,8 @@ import type { BuildingPt } from './buildings';
 export type MapStyle = 'poly' | 'heat';
 
 export const MAP_STYLES: { key: MapStyle; label: string; title: string }[] = [
-  { key: 'poly', label: 'Полигон', title: 'Бүс/барилгын хилээр будна' },
-  { key: 'heat', label: 'Дулаан', title: 'Хилгүй дулааны гадаргуу — төвлөрөл хаана байгааг харуулна' },
+  { key: 'poly', label: tr('Полигон'), title: tr('Бүс/барилгын хилээр будна') },
+  { key: 'heat', label: tr('Дулаан'), title: tr('Хилгүй дулааны гадаргуу — төвлөрөл хаана байгааг харуулна') },
 ];
 
 /** Дулааны гадаргууг тэжээх нэг цэг */

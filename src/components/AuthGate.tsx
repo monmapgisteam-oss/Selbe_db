@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { t as tr } from '@/lib/i18nCore';
 import { AUTH, roleForUser, type Role } from '@/lib/services';
 import { initRemote, hasAccess } from '@/lib/permissions';
 import s from './auth.module.css';
@@ -210,7 +211,7 @@ export function AuthNotice() {
       <div className={s.card}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/logo.svg" alt="" className={s.logo} />
-        <div className={s.title}>Сэлбэ портал</div>
+        <div className={s.title}>{tr('Сэлбэ портал')}</div>
 
         {status === 'denied' && (
           <>
@@ -229,37 +230,36 @@ export function AuthNotice() {
             {noRole ? (
               <>
                 <p className={s.sub}>
-                  Энэ бүртгэлд порталд хандах эрх олгогдоогүй байна. Эрх нээлгэхийг
-                  хүсвэл дараах хэрэглэгчийн нэрийг админд илгээнэ үү.
+                  {tr('Энэ бүртгэлд порталд хандах эрх олгогдоогүй байна. Эрх нээлгэхийг хүсвэл дараах хэрэглэгчийн нэрийг админд илгээнэ үү.')}
                 </p>
-                <p className={s.error}>Хэрэглэгч: {user?.username || '—'}</p>
+                <p className={s.error}>{tr('Хэрэглэгч:')} {user?.username || '—'}</p>
               </>
             ) : (
               <>
                 <p className={s.sub}>
-                  Энэ бүртгэл танай байгууллагын хэрэглэгч биш тул хандах эрхгүй байна.
+                  {tr('Энэ бүртгэл танай байгууллагын хэрэглэгч биш тул хандах эрхгүй байна.')}
                 </p>
                 <p className={s.error}>
-                  Бүртгэлийн orgId: {user?.orgId || '—'} · шаардлагатай: {AUTH.allowedOrgId}
+                  {tr('Бүртгэлийн orgId:')} {user?.orgId || '—'} {tr('· шаардлагатай:')} {AUTH.allowedOrgId}
                 </p>
               </>
             )}
             <button type="button" className={s.btnGhost} onClick={signOut}>
-              Өөр бүртгэлээр нэвтрэх
+              {tr('Өөр бүртгэлээр нэвтрэх')}
             </button>
           </>
         )}
 
         {status === 'signed-out' && error && (
           <>
-            <p className={s.sub}>Нэвтрэх үед алдаа гарлаа.</p>
+            <p className={s.sub}>{tr('Нэвтрэх үед алдаа гарлаа.')}</p>
             <p className={s.error}>{error}</p>
             {/* ⚠️ .screen бүтэн дэлгэцийг халхалдаг тул гарцгүй бол хэрэглэгч F5-гүйгээр гацна */}
             <button type="button" className={s.btn} onClick={signIn} style={{ marginTop: 16 }}>
-              Дахин оролдох
+              {tr('Дахин оролдох')}
             </button>
             <button type="button" className={s.btnGhost} onClick={clearError}>
-              Хаах
+              {tr('Хаах')}
             </button>
           </>
         )}
