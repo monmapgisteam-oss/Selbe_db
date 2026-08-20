@@ -52,6 +52,10 @@
   cursor: pointer;
   transition: border-color 0.15s;
 }
+/* Бүлгийн сонгогч — нэрс урт (догол мөртэй «1.1 Суурь ухлагын ажил») тул
+   өргөнийг нь тусад нь өгнө, гэхдээ хэрэгслийн мөрийг эзлэхгүйгээр. */
+.selectWide { max-width: 260px; }
+
 .select:hover { border-color: var(--line-strong); }
 .select:focus-visible { border-color: var(--hue); }
 
@@ -315,6 +319,12 @@
   --sheet-hl: color-mix(in srgb, var(--hue) 16%, var(--surface));
   --sheet-sel: color-mix(in srgb, var(--hue) 30%, var(--surface));
   --sheet-dirty: color-mix(in srgb, var(--hue) 40%, var(--surface));
+  /* Бөглөгддөг нүд — ОРОЛТЫН ТАЛБАР шиг: цайвар суурь + тодорхой хүрээ.
+     ⚠️ Зөвхөн өнгөний ялгаа хангалтгүй байв: 160 мянган нүдтэй хуудсан
+     дээр бага зэргийн өнгөний зөрүү нүдэнд баригддаггүй. Хүрээ нь
+     «энд бичнэ» гэдгийг нэг харцаар хэлнэ. */
+  --sheet-edit: color-mix(in srgb, var(--ink) 12%, var(--surface));
+  --sheet-edit-line: color-mix(in srgb, var(--ink) 45%, transparent);
   --sheet-header: var(--surface-2);
 
   border-collapse: separate;
@@ -475,11 +485,53 @@
 /* Бодогдох (томъёолсон) нүд — шар тинт.
    ⚠️ `.cat`-ын дүрмээс ХОЙНО, ижил өвөрмөцтэй: бүлгийн мөрөнд ч бодогдох
    багана шар хэвээр (урьд нь inline style ийм дараалалтай байсан). */
-.xl tr td.calc { background: var(--sheet-calc); }
+/* Бодогддог нүд — ХАВТГАЙ, бүдэг. Хүрээ ч, хайрцаг ч байхгүй тул
+   бөглөгддөг нүднүүд түүний дэргэд шууд товойж харагдана. */
+.xl tr td.calc {
+  background: var(--sheet-calc);
+  color: var(--ink-3);
+}
+
+/* ── БӨГЛӨГДДӨГ vs БОДОГДДОГ — НЭГ ХАРЦААР ЯЛГАРАХ ЁСТОЙ ───────────────
+   ⚠️ Зөвхөн дэвсгэрийн өнгөний зөрүү хангалтгүй байв: 137 мянган нүдтэй
+   хуудсан дээр бага зэргийн ханалтын ялгаа нүдэнд огт баригддаггүй.
+   Тиймээс бөглөгддөг нүдэнд ЖИНХЭНЭ ОРОЛТЫН ХАЙРЦАГ зурна — хүрээтэй,
+   мөлгөр өнцөгтэй, нүднээсээ жаахан жижиг. Хүн үүнийг бичвэр уншихаас
+   ӨМНӨ хэлбэрээр нь таньдаг. */
+.xl td.editable {
+  cursor: cell;
+  padding: 2px 3px 1px;
+}
+.xl td.editable .cellVol {
+  background: var(--sheet-edit);
+  border: 1px solid var(--sheet-edit-line);
+  border-radius: 3px;
+  padding: 1px 4px;
+  min-height: 1.5em;
+  color: var(--ink);
+  font-weight: 600;
+}
+/* Хайрцаг дээгүүр хулгана — «эндээс бичнэ» гэдгийг баталгаажуулна. */
+.xl td.editable:hover .cellVol {
+  border-color: var(--hue);
+  background: color-mix(in srgb, var(--hue) 18%, var(--surface));
+}
+/* Хайрцгийн ДООРХ хувь — хайрцгаас гадуур, бүдэг: бодогддог гэдэг нь
+   байрлалаараа ч, өнгөөрөө ч илэрхий. */
+.xl td.editable .cellPct { padding-top: 1px; }
 
 /* Мөрийн crosshair — CSS :hover. Урьд нь нүд бүрийн mouseenter React state
    шинэчилж 1400×60 хүснэгтийг бүхэлд нь дахин зурдаг байв (FillNew). */
 .xl tbody tr:hover td { background: var(--sheet-hl); }
+
+/* ⚠️ ГҮЙЦЭТГЭЛИЙН ГОЛ ТОХИРУУЛГА: 1,400 мөр × 60–100 багана = 137 мянган нүд.
+   Дэлгэцнээс ГАДУУРХ мөрийг хөтөч байрлуулж, зурахаа болино — нүд нээх бүрд
+   бүх хүснэгтийг дахин байрлуулдаг байсныг таслана. `contain-intrinsic-size`
+   нь зураагүй мөрийн ӨНДРИЙГ хадгална: гүйлгэх зурвас үсрэхгүй. */
+.xl tbody tr {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 34px;
+}
 
 /* Дүгнэлт хүснэгт: барилгын баганагүй тул Ажилд илүү зай өгнө.
    Өргөнийг ЗӨВХӨН хувьсагчаар өөрчилнө — `.xl`-ийн дүрэм өөрөө уншина.
@@ -514,6 +566,59 @@
 }
 
 .xl .cursor-cell { cursor: cell; }
+
+/* Гүйцэтгэлийн нүд ХОЁР утга агуулна: бөглөсөн ОБЬЁМ (дээд, гараар бичигдэнэ)
+   ба гүйцэтгэлийн ХУВЬ (доод, ихэвчлэн бодогдоно). Тус тусдаа багана болгосныг
+   болив — 22 блоктой багцад 44 багана болж, аль нь аль болох нь ялгарахаа
+   больдог байв. Мөр бүр нь ӨӨРИЙН гэсэн засварын цэг тул тус тусад нь товшино. */
+/* ⚠️ Нүдний ДОТОР зай үлдээхгүй: мөрүүд өөрсдөө зайгаа авна. Эс тэгвэл
+   нүдний ирмэг дэх хоосон зурвас дээр товшихад юу ч болохгүй бөгөөд
+   хэрэглэгч «хоёр дарж байж нээгддэг» гэж мэдэрдэг. */
+.xl td.bld { padding: 0; }
+.cellVol,
+.cellPct {
+  display: block;
+  width: 100%;
+  padding: 1px 4px;
+  line-height: 1.2;
+  min-height: 1.35em;
+}
+/* ХУВЬ. Бөглөгддөг нүдэнд энэ нь ХОЁРДОГЧ утга (гол нь обьём) тул жижиг;
+   бөглөгддөггүй нүдэнд ЦОРЫН ГАНЦ утга тул БҮТЭН хэмжээтэй, нүдээ дүүрэн
+   эзэлж голлоно. Мөрийн өндөр хоёр тохиолдолд ИЖИЛ байх ёстой — виртуаль
+   гүйлгээ мөрийн өндрийг хэмжиж чигжээсээ бодох тул зөрвөл байрлал алдагдана. */
+.cellPct {
+  font-size: 10px;
+  opacity: 0.7;
+}
+.xl td:not(.editable) .cellVol { display: none; }
+.xl td:not(.editable) .cellPct {
+  font-size: inherit;
+  opacity: 1;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+/* Бодогддог (гараар засагдахгүй) хувь — бусад бодолттой ижил өнгө. */
+.calcPct { color: var(--calc, inherit); opacity: 0.55; }
+
+/* Нүдний НЭГ МӨРИЙГ засах оролт — нүдээ бүтнээр эзэлнэ, нөгөө мөр нь
+   харагдсаар үлдэнэ (юун дээр юу бичиж байгаагаа хардаг). */
+.cellInputLine {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: color-mix(in srgb, var(--hue) 30%, var(--surface));
+  color: var(--ink);
+  padding: 0 2px;
+  text-align: right;
+  outline: none;
+  font: inherit;
+  font-family: var(--mono);
+  line-height: 1.2;
+}
+
 
 /* Нүдэн доторх засварын оролт. */
 .cellInput {
