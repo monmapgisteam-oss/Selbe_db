@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, type CSSProperties } from 'react';
+import { t as tr } from '@/lib/i18nCore';
 import { Card } from './Layout';
 import { Icon } from '@/components/Icon';
 import {
@@ -48,10 +49,10 @@ export function TransportPanel({
   const range = useMemo(() => (ctx ? tRange(mode, ctx) : { min: 0, max: 0 }), [ctx, mode]);
 
   return (
-    <Card title="Тээвэр-идэвхийн шинжилгээ">
+    <Card title={tr('Тээвэр-идэвхийн шинжилгээ')}>
       <div className={c.root} style={{ '--sim': def.hue } as CSSProperties}>
         {/* ── 7 дүрслэлийн сонгогч ── */}
-        <div className={c.seg} role="tablist" aria-label="Тээврийн дүрслэл">
+        <div className={c.seg} role="tablist" aria-label={tr('Тээврийн дүрслэл')}>
           {T_MODES.map((m) => (
             <button
               key={m.key}
@@ -70,13 +71,13 @@ export function TransportPanel({
 
         {!active ? (
           <p className={c.desc} style={{ marginTop: 6 }}>
-            Дэлгэрэнгүй харах бол дээрх дүрслэлийг сонгоно уу.
+            {tr('Дэлгэрэнгүй харах бол дээрх дүрслэлийг сонгоно уу.')}
           </p>
         ) : error ? (
-          <p className={c.err}>Тээврийн өгөгдөл ачаалж чадсангүй: {error}</p>
+          <p className={c.err}>{tr('Тээврийн өгөгдөл ачаалж чадсангүй:')} {error}</p>
         ) : loading || !ctx ? (
           <p className={c.loading}>
-            Барилга ба замын өгөгдөл ачаалж байна
+            {tr('Барилга ба замын өгөгдөл ачаалж байна')}
             <span className={c.dots}><i /><i /><i /></span>
           </p>
         ) : (
@@ -110,12 +111,12 @@ export function TransportPanel({
                 шийдвэр): 363 барилгын жагсаалт нь газрын зурагтай холбогдохгүй тул
                 уншихад хүнд. Объект бүрийн утгыг ЗУРАГ дээр hover хийж уншина. */}
             {itemCount === 0 ? (
-              <p className={c.empty}>Энэ дүрслэлд тохирох объект алга.</p>
+              <p className={c.empty}>{tr('Энэ дүрслэлд тохирох объект алга.')}</p>
             ) : (
               <>
                 <div className={c.secHead}>
-                  Шатлал
-                  <b>{itemCount} {def.target === 'road' ? 'хэрчим' : 'барилга'}</b>
+                  {tr('Шатлал')}
+                  <b>{itemCount} {def.target === 'road' ? tr('хэрчим') : tr('барилга')}</b>
                 </div>
 
                 <Legend mode={mode} min={range.min} max={range.max} unit={def.unit} />
@@ -144,18 +145,17 @@ function Legend({ mode, min, max, unit }: { mode: TMode; min: number; max: numbe
     return (
       <>
         <div className={c.legend}>
-          <span className={c.legendEnd}>0 м</span>
+          <span className={c.legendEnd}>{tr('0 м')}</span>
           <span
             className={c.legendBar}
             style={{
               background: `linear-gradient(90deg, ${BUS_BAND_COLOR.good}, ${BUS_BAND_COLOR.ok} 50%, ${BUS_BAND_COLOR.poor})`,
             }}
           />
-          <span className={c.legendEnd}>{BUS_OK_M} м+</span>
+          <span className={c.legendEnd}>{BUS_OK_M} {tr('м+')}</span>
         </div>
         <p className={c.desc} style={{ marginTop: -2 }}>
-          Дунд цэг = <b>{BUS_GOOD_M} м</b> (БНБД-ийн сайн хүртээмжийн босго).
-          Ажиглагдсан хамгийн хол нь <b>{nf0(max)} м</b>.
+          {tr('Дунд цэг =')} <b>{BUS_GOOD_M} м</b> {tr('(БНБД-ийн сайн хүртээмжийн босго). Ажиглагдсан хамгийн хол нь')} <b>{nf0(max)} м</b>.
         </p>
       </>
     );

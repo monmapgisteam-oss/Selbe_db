@@ -14,6 +14,7 @@
  */
 
 import { AGENT_TOOLS, describeCall, runTool } from './tools';
+import { t as tr } from '@/lib/i18nCore';
 import { buildSystemPrompt, type AgentScope } from './registry';
 import { AUTH } from '@/lib/services';
 
@@ -100,8 +101,8 @@ async function callRelay(
     throw new Error(
       reply.error ??
         (res.status === 401
-          ? 'AI үйлчилгээний түлхүүр буруу байна.'
-          : `Реле алдаа (HTTP ${res.status})`),
+          ? tr('AI үйлчилгээний түлхүүр буруу байна.')
+          : tr('Реле алдаа (HTTP {0})', res.status)),
     );
   }
   return reply;
@@ -144,13 +145,13 @@ export async function ask(opts: {
   const system = buildSystemPrompt(scope);
 
   history.push({ role: 'user', content: question });
-  onProgress?.('Бодож байна…');
+  onProgress?.(tr('Бодож байна…'));
 
   for (let turn = 1; turn <= MAX_TURNS; turn++) {
     const reply = await callRelay({ system, messages: history, tools: AGENT_TOOLS }, signal);
 
     if (reply.stop_reason === 'refusal') {
-      const msg = reply.note ?? 'Энэ хүсэлтэд хариулах боломжгүй байна.';
+      const msg = reply.note ?? tr('Энэ хүсэлтэд хариулах боломжгүй байна.');
       history.push({ role: 'assistant', content: [{ type: 'text', text: msg }] });
       return { text: msg, turns: turn };
     }
@@ -163,7 +164,7 @@ export async function ask(opts: {
     const calls = blocks.filter((b): b is ToolUseBlock => b.type === 'tool_use');
     if (!calls.length) {
       const text = textOf(blocks);
-      return { text: text || 'Хариулт хоосон ирлээ.', turns: turn };
+      return { text: text || tr('Хариулт хоосон ирлээ.'), turns: turn };
     }
 
     onProgress?.(describeCall(calls[0].name, calls[0].input));
@@ -184,10 +185,10 @@ export async function ask(opts: {
     // ⚠️ БҮХ үр дүн НЭГ мессежид орно. Салгавал загвар зэрэгцээ дуудлага
     //    хийхээ болино.
     history.push({ role: 'user', content: results as unknown as ContentBlock[] });
-    onProgress?.('Хариултыг бэлдэж байна…');
+    onProgress?.(tr('Хариултыг бэлдэж байна…'));
   }
 
-  const msg = `Хариулт ${MAX_TURNS} алхамд гарсангүй. Асуултаа илүү тодорхой болгож үзнэ үү.`;
+  const msg = tr('Хариулт {0} алхамд гарсангүй. Асуултаа илүү тодорхой болгож үзнэ үү.', MAX_TURNS);
   history.push({ role: 'assistant', content: [{ type: 'text', text: msg }] });
   return { text: msg, turns: MAX_TURNS };
 }

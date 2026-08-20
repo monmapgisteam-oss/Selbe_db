@@ -10,6 +10,7 @@
  */
 
 import { queryGroup, count, sum } from '@/lib/query';
+import { t as tr } from '@/lib/i18nCore';
 import { LAYERS, costSource, OID, type Cost } from '@/lib/services';
 import { costOf } from '@/lib/totals';
 import { COST_EXCLUDE, COST_GROUP_OF, PROJECT_AREA_HA } from './config';
@@ -41,10 +42,10 @@ export type Costs = {
 /** Порталын `cost.basis` → эх аппын «kind» ба хуваарь */
 function shape(c: Cost): { kind: 'point' | 'line' | 'polygon'; unit: string; divisor: number } {
   switch (c.basis) {
-    case 'sh': return { kind: 'point', unit: 'ш', divisor: 1 };
-    case 'km': return { kind: 'line', unit: 'км', divisor: 1 };
-    case 'm100': return { kind: 'line', unit: 'м', divisor: 100 };
-    default: return { kind: 'polygon', unit: 'м²', divisor: 1 };
+    case 'sh': return { kind: 'point', unit: tr('ш'), divisor: 1 };
+    case 'km': return { kind: 'line', unit: tr('км'), divisor: 1 };
+    case 'm100': return { kind: 'line', unit: tr('м'), divisor: 100 };
+    default: return { kind: 'polygon', unit: tr('м²'), divisor: 1 };
   }
 }
 

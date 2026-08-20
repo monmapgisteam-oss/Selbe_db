@@ -1,6 +1,7 @@
 'use client';
 
 import type { Dispatch, SetStateAction } from 'react';
+import { t as tr } from '@/lib/i18nCore';
 import { LayerSwatch } from './LayerSwatch';
 import { LAYER_BY_ID, REFERENCE_IDS } from '@/lib/services';
 import s from './opacity.module.css';
@@ -35,9 +36,9 @@ export function OpacityPanel({
   const touched = ids.some((id) => opacity[id] != null && opacity[id] !== 1);
 
   return (
-    <aside className={s.panel} aria-label="Давхаргын тунгалаг">
+    <aside className={s.panel} aria-label={tr('Давхаргын тунгалаг')}>
       <header className={s.head}>
-        <span className={s.title}>Тунгалаг</span>
+        <span className={s.title}>{tr('Тунгалаг')}</span>
         {touched && (
           <button
             type="button"
@@ -50,15 +51,15 @@ export function OpacityPanel({
               })
             }
           >
-            Сэргээх
+            {tr('Сэргээх')}
           </button>
         )}
-        <button type="button" className={s.close} onClick={onClose} aria-label="Хаах">×</button>
+        <button type="button" className={s.close} onClick={onClose} aria-label={tr('Хаах')}>×</button>
       </header>
 
       <div className={s.body}>
         {ids.length === 0 ? (
-          <p className={s.empty}>Идэвхтэй давхарга алга. Каталогоос давхарга асаана уу.</p>
+          <p className={s.empty}>{tr('Идэвхтэй давхарга алга. Каталогоос давхарга асаана уу.')}</p>
         ) : (
           ids.map((id) => {
             const d = LAYER_BY_ID[id];
@@ -77,7 +78,7 @@ export function OpacityPanel({
                   step={5}
                   value={pct}
                   className={s.slider}
-                  aria-label={`${d.title} — тунгалаг`}
+                  aria-label={tr('{0} — тунгалаг', d.title)}
                   onChange={(e) => set(id, Number(e.target.value))}
                 />
               </div>

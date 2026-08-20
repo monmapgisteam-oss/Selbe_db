@@ -1,0 +1,31 @@
+/* Хэл солих товч — `LocaleToggle.tsx`.
+   Порталын толгойд `.iconBtn`-ийг гаднаас өгдөг тул `.btn` нь ЗӨВХӨН нүүр
+   хуудасны (өөрийн хэв маягтай) тохиолдолд ажиллана. */
+
+.btn {
+  display: grid;
+  place-items: center;
+  min-width: 38px;
+  height: 32px;
+  padding: 0 0.5rem;
+  flex: none;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  color: var(--ink-2);
+  background: transparent;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.btn:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+  border-color: var(--line-2, var(--line));
+}
+
+.code {
+  font-size: 0.7rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}

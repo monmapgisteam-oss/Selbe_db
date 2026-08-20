@@ -20,6 +20,7 @@
  */
 
 import { count, queryGroup, queryStats, sqlStr, type Stat } from '@/lib/query';
+import { t as tr } from '@/lib/i18nCore';
 import { PKG_BY_BAGTS, bagtsKey, zoneWhere, type LayerDef } from '@/lib/services';
 import { layerTotals, qtyText, whereFor } from '@/lib/totals';
 import { allowedDatasets, allowedLayers, type AgentScope } from './registry';
@@ -79,8 +80,8 @@ export function normalizeZone(input: string): string {
   if (/[А-Яа-яӨөҮү]/.test(s)) return s;
   const num = s.match(/([0-9][0-9.\-]*)/)?.[1];
   if (!num) return s;
-  if (/^\s*(bagts|bagc|bags|bagt)/i.test(s)) return `Багц-${num}`;
-  if (/^\s*(bus|bvs|buus)/i.test(s)) return `Багц-${num}`;
+  if (/^\s*(bagts|bagc|bags|bagt)/i.test(s)) return tr('Багц-{0}', num);
+  if (/^\s*(bus|bvs|buus)/i.test(s)) return tr('Багц-{0}', num);
   return s;
 }
 
@@ -141,7 +142,7 @@ export async function zoneOverview(input: string, scope: AgentScope): Promise<Ov
      * болно. Багцын харьяалал бүсийн шүүлтээс ДЭЭГҮҮР.
      */
     const m = l.title.match(titleRef);
-    if (pkgIds.has(l.id) || (m && bagtsKey(`Багц-${m[1]}`) === key)) {
+    if (pkgIds.has(l.id) || (m && bagtsKey(tr('Багц-{0}', m[1])) === key)) {
       filterable.push({ l, where: '1=1', whole: true });
       continue;
     }
@@ -203,13 +204,13 @@ export async function zoneOverview(input: string, scope: AgentScope): Promise<Ov
   sources.sort((a, b) => (b.cost ?? 0) - (a.cost ?? 0) || b.n - a.n);
 
   const notes: string[] = [];
-  if (overflow) notes.push(`⚠️ ${overflow} эх сурвалж хязгаараас хэтэрсэн тул шалгаагүй.`);
-  if (failed) notes.push(`⚠️ ${failed} эх сурвалж алдаа өгсөн.`);
-  notes.push('Өртөг нь порталын каталогтой ИЖИЛ загвараар бодогдсон (нэгж үнэ × хэмжээ).');
+  if (overflow) notes.push(tr('⚠️ {0} эх сурвалж хязгаараас хэтэрсэн тул шалгаагүй.', overflow));
+  if (failed) notes.push(tr('⚠️ {0} эх сурвалж алдаа өгсөн.', failed));
+  notes.push(tr('Өртөг нь порталын каталогтой ИЖИЛ загвараар бодогдсон (нэгж үнэ × хэмжээ).'));
   if (sources.some((x) => x.whole)) {
     notes.push(
-      '`whole: true` тэмдэгтэй эх сурвалж нь БҮХЭЛДЭЭ энэ багцынх — мөрөөр шүүгээгүй, ' +
-        'давхаргын нийт дүн нь тэр багцынх.',
+      tr('`whole: true` тэмдэгтэй эх сурвалж нь БҮХЭЛДЭЭ энэ багцынх — мөрөөр шүүгээгүй, ') +
+        tr('давхаргын нийт дүн нь тэр багцынх.'),
     );
   }
 

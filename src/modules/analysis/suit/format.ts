@@ -10,6 +10,7 @@
  */
 
 import { DENSITY_BY_TYPE, type Indicator } from '@/lib/analysis/config';
+import { t as tr } from '@/lib/i18nCore';
 import { normText } from '@/lib/analysis/score';
 
 export const nf = (v: number | null | undefined, d = 0) =>
@@ -25,9 +26,9 @@ export const unitMoney = (v: number | null | undefined) =>
 export function money(v: number | null | undefined, d = 1) {
   if (v == null || !Number.isFinite(v)) return '—';
   const a = Math.abs(v), sign = v < 0 ? '−' : '';
-  if (a >= 1e9) return `${sign}${nf(a / 1e9, d)} тэрбум₮`;
-  if (a >= 1e6) return `${sign}${nf(a / 1e6, d)} сая₮`;
-  if (a >= 1e3) return `${sign}${nf(a / 1e3, 0)} мянга₮`;
+  if (a >= 1e9) return tr('{0}{1} тэрбум₮', sign, nf(a / 1e9, d));
+  if (a >= 1e6) return tr('{0}{1} сая₮', sign, nf(a / 1e6, d));
+  if (a >= 1e3) return tr('{0}{1} мянга₮', sign, nf(a / 1e3, 0));
   return `${sign}${nf(a, 0)}₮`;
 }
 
@@ -40,7 +41,7 @@ export function normLine(ind: Indicator): string {
   if (ind.byType) {
     const vals = Object.values(DENSITY_BY_TYPE).map((v) => v[ind.byType!]);
     const u = ind.unit ? ` ${ind.unit}` : '';
-    return `бүсийн төрлөөр ≤ ${nf(Math.min(...vals), ind.decimals)} … ${nf(Math.max(...vals), ind.decimals)}${u}`;
+    return tr('бүсийн төрлөөр ≤ {0} … {1}{2}', nf(Math.min(...vals), ind.decimals), nf(Math.max(...vals), ind.decimals), u);
   }
   return normText(ind, nf);
 }

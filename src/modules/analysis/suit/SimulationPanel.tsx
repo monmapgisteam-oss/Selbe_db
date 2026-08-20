@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, type CSSProperties } from 'react';
+import { t as tr } from '@/lib/i18nCore';
 import { Card } from './Layout';
 import { Icon } from '@/components/Icon';
 import {
@@ -93,7 +94,7 @@ export function Simulation({
   kind,
   setKind,
   kinds,
-  title = 'Симуляц',
+  title = tr('Симуляц'),
   muted = false,
   popBasis,
   setPopBasis,
@@ -161,7 +162,7 @@ export function Simulation({
           нэг дор өөрчлөгдөнө. */}
       <div className={c.root} style={{ '--sim': localHue } as CSSProperties}>
         {/* ── Симуляц сонгох (энэ самбарт хамаарах төрлүүд) ── */}
-        <div className={c.seg} role="tablist" aria-label="Симуляцын төрөл">
+        <div className={c.seg} role="tablist" aria-label={tr('Симуляцын төрөл')}>
           {/* ⚠️ Табын ДАРААЛАЛ нь дуудагчийн `kinds`-ээс — `SIM_KINDS`-ийн
               бүртгэлийн дарааллаас БИШ. Самбар бүр өөрийн эрэмбээ тогтоох
               боломжтой (жиш. «Ачаалал» эхэнд). */}
@@ -187,7 +188,7 @@ export function Simulation({
         {/* Дэлгэрэнгүй нь ЗӨВХӨН идэвхтэй самбарт — нөгөө нь зөвхөн товчоо харуулна */}
         {!activeHere ? (
           <p className={c.desc} style={{ marginTop: 6 }}>
-            Дэлгэрэнгүй харах бол дээрх төрлийг сонгоно уу.
+            {tr('Дэлгэрэнгүй харах бол дээрх төрлийг сонгоно уу.')}
           </p>
         ) : (
         <>
@@ -203,8 +204,8 @@ export function Simulation({
         {/* ── Хүн амын төрөл — зөвхөн «Төвлөрөл»-д ── */}
         {kind === 'density' && (
           <div className={c.pick}>
-            <span className={c.pickLabel}>Хүн ам</span>
-            <div className={c.segSm} role="group" aria-label="Хүн амын төрөл">
+            <span className={c.pickLabel}>{tr('Хүн ам')}</span>
+            <div className={c.segSm} role="group" aria-label={tr('Хүн амын төрөл')}>
               {POP_BASES.map((p) => (
                 <button
                   key={p.key}
@@ -253,14 +254,14 @@ export function Simulation({
             ⚠️ «Ачаалал» табд ХАРАГДАХГҮЙ: тэр нь амьд трафикийн симуляц тул бүсийн
             аялалын эрэмбэ (аялал/ц) утгагүй — уншилт нь машин/хурд/урсгал дээр. */}
         {kind === 'road' ? null : !def.ready ? (
-          <p className={c.empty}>Энэ симуляц удахгүй нэмэгдэнэ.</p>
+          <p className={c.empty}>{tr('Энэ симуляц удахгүй нэмэгдэнэ.')}</p>
         ) : ranked.length === 0 ? (
-          <p className={c.empty}>Тооцоолох өгөгдөл алга.</p>
+          <p className={c.empty}>{tr('Тооцоолох өгөгдөл алга.')}</p>
         ) : (
           <>
             <div className={c.secHead}>
-              Шатлал
-              <b>{ranked.length} бүс</b>
+              {tr('Шатлал')}
+              <b>{ranked.length} {tr('бүс')}</b>
             </div>
 
             {/* Дулааны легенд — «бага/их» биш, БОДИТ хязгаараар */}
@@ -294,10 +295,10 @@ function readout(kind: SimKind, ranked: Ranked[], road?: RoadState): Cell[] {
     const st = road?.stats;
     const flow = st ? Math.round(st.flow * 100) : null;
     return [
-      { k: 'Машин', v: st ? nf0(st.cars) : '—' },
-      { k: 'Дундаж хурд', v: st ? String(Math.round(st.kmh)) : '—', unit: st ? 'км/ц' : undefined },
+      { k: tr('Машин'), v: st ? nf0(st.cars) : '—' },
+      { k: tr('Дундаж хурд'), v: st ? String(Math.round(st.kmh)) : '—', unit: st ? tr('км/ц') : undefined },
       {
-        k: 'Урсгал',
+        k: tr('Урсгал'),
         v: flow == null ? '—' : `${flow}%`,
         // Утга заасан өнгө — статус токеноор (хоёр горимд уншигдана)
         color: flow == null ? undefined : flow > 70 ? 'var(--good-ink)' : flow > 40 ? 'var(--warn-ink)' : 'var(--bad-ink)',
@@ -313,10 +314,10 @@ function readout(kind: SimKind, ranked: Ranked[], road?: RoadState): Cell[] {
     const ok = ranked.filter((x) => x.value <= TRANSIT_NORM_M).length;
     const pct = Math.round((ok / ranked.length) * 100);
     return [
-      { k: 'Дундаж зай', v: nf0(avg), unit: 'м' },
-      { k: 'Хамгийн хол', v: nf0(ranked[0].value), unit: 'м' },
+      { k: tr('Дундаж зай'), v: nf0(avg), unit: tr('м') },
+      { k: tr('Хамгийн хол'), v: nf0(ranked[0].value), unit: tr('м') },
       {
-        k: `${TRANSIT_NORM_M} м дотор`,
+        k: tr('{0} м дотор', TRANSIT_NORM_M),
         v: `${pct}%`,
         // Утга заасан өнгө — статус токеноор (хоёр горимд уншигдана)
         color: pct > 70 ? 'var(--good-ink)' : pct > 40 ? 'var(--warn-ink)' : 'var(--bad-ink)',
@@ -324,9 +325,9 @@ function readout(kind: SimKind, ranked: Ranked[], road?: RoadState): Cell[] {
     ];
   }
   return [
-    { k: 'Хамгийн өндөр', v: nf0(ranked[0].value), unit: 'хүн/га' },
-    { k: 'Дундаж', v: nf0(avg), unit: 'хүн/га' },
-    { k: 'Бүс', v: nf0(ranked.length) },
+    { k: tr('Хамгийн өндөр'), v: nf0(ranked[0].value), unit: tr('хүн/га') },
+    { k: tr('Дундаж'), v: nf0(avg), unit: tr('хүн/га') },
+    { k: tr('Бүс'), v: nf0(ranked.length) },
   ];
 }
 
@@ -341,8 +342,8 @@ function NetSelector({ net }: { net?: NetSel }) {
   if (!net) return null;
   return (
     <div className={c.pick}>
-      <span className={c.pickLabel}>Зам</span>
-      <div className={c.segSm} role="group" aria-label="Харьцуулах замын сүлжээ">
+      <span className={c.pickLabel}>{tr('Зам')}</span>
+      <div className={c.segSm} role="group" aria-label={tr('Харьцуулах замын сүлжээ')}>
         {net.options.map((o) => (
           <button
             key={o.kind}
@@ -351,7 +352,7 @@ function NetSelector({ net }: { net?: NetSel }) {
             className={net.kind === o.kind ? c.segSmOn : undefined}
             disabled={!o.ready}
             onClick={() => net.setKind(o.kind)}
-            title={o.ready ? o.label : `${o.label} — ${o.note ?? 'line хараахан ирээгүй'}`}
+            title={o.ready ? o.label : tr('{0} — {1}', o.label, o.note ?? tr('line хараахан ирээгүй'))}
           >
             {o.short}
           </button>
@@ -375,19 +376,19 @@ function SignalControl({ sig }: { sig?: SignalSel }) {
   return (
     <div className={c.console}>
       <div className={c.secHead}>
-        Гэрлэн дохионы зохицуулалт
+        {tr('Гэрлэн дохионы зохицуулалт')}
       </div>
       <div className={c.pick} style={{ marginTop: 8 }}>
-        <span className={c.pickLabel}>Ээлж</span>
-        <div className={c.segSm} role="group" aria-label="Гэрлэн дохионы ээлж">
+        <span className={c.pickLabel}>{tr('Ээлж')}</span>
+        <div className={c.segSm} role="group" aria-label={tr('Гэрлэн дохионы ээлж')}>
           <button
             type="button"
             aria-pressed={sig.stage == null}
             className={sig.stage == null ? c.segSmOn : undefined}
             onClick={() => sig.setStage(null)}
-            title={`Хуваарийн дагуу эргэлдэнэ (мөчлөг ${sig.plan.cycle}с, ээлж бүр ~${Math.round(green)}с ногоон)`}
+            title={tr('Хуваарийн дагуу эргэлдэнэ (мөчлөг {0}с, ээлж бүр ~{1}с ногоон)', sig.plan.cycle, Math.round(green))}
           >
-            Авто
+            {tr('Авто')}
           </button>
           {sig.plan.stages.map((codes, i) => (
             <button
@@ -396,9 +397,9 @@ function SignalControl({ sig }: { sig?: SignalSel }) {
               aria-pressed={sig.stage === i}
               className={sig.stage === i ? c.segSmOn : undefined}
               onClick={() => sig.setStage(sig.stage === i ? null : i)}
-              title={`${codes.join(', ')} кодын гэрэл НОГООН асна — бусад нь улаан`}
+              title={tr('{0} кодын гэрэл НОГООН асна — бусад нь улаан', codes.join(', '))}
             >
-              {i + 1} ээлж
+              {i + 1} {tr('ээлж')}
             </button>
           ))}
         </div>
@@ -408,7 +409,7 @@ function SignalControl({ sig }: { sig?: SignalSel }) {
           БАРИГДСАН үед л юу болоод буйг нэг мөрөөр сануулна. */}
       {sig.stage != null && (
         <p className={c.desc} style={{ marginTop: 8 }}>
-          {`${sig.stage + 1}-р ээлж баригдав: ${sig.plan.stages[sig.stage].join(', ')} кодын гэрэл ногоон, бусад нь улаан.`}
+          {tr('{0}-р ээлж баригдав: {1} кодын гэрэл ногоон, бусад нь улаан.', sig.stage + 1, sig.plan.stages[sig.stage].join(', '))}
         </p>
       )}
     </div>
@@ -426,7 +427,7 @@ function RoadStatus({ road }: { road?: RoadState }) {
   if (!road) return null;
 
   if (road.error) {
-    return <p className={c.err}>Замын сүлжээ ачаалж чадсангүй: {road.error}</p>;
+    return <p className={c.err}>{tr('Замын сүлжээ ачаалж чадсангүй:')} {road.error}</p>;
   }
   /* ⚠️ Машингүй сүлжээ: line нь одоогийн замтай холбогдоогүй тул хөдөлгөөн
      үүсгэхгүй — үүнийг ХЭЛЖ өгнө, эс бөгөөс «эвдэрсэн» гэж ойлгогдоно. */
@@ -435,8 +436,8 @@ function RoadStatus({ road }: { road?: RoadState }) {
       <p className={c.warn}>
         <Icon name="road" size={14} />
         <span>
-          Шинэ замын санал <b>газрын зурагт</b> харагдана. Хөдөлгөөн зөвхөн
-          <b> Бодит</b> ба <b>Төлөвлөгөө</b> сүлжээнд гүйнэ.
+          {tr('Шинэ замын санал')} <b>{tr('газрын зурагт')}</b> {tr('харагдана. Хөдөлгөөн зөвхөн')}
+          <b> {tr('Бодит')}</b> {tr('ба')} <b>{tr('Төлөвлөгөө')}</b> {tr('сүлжээнд гүйнэ.')}
         </span>
       </p>
     );
@@ -446,7 +447,7 @@ function RoadStatus({ road }: { road?: RoadState }) {
   if (road.edges === null) {
     return (
       <p className={c.loading}>
-        Замын сүлжээ ачаалж байна
+        {tr('Замын сүлжээ ачаалж байна')}
         <span className={c.dots}><i /><i /><i /></span>
       </p>
     );
@@ -454,7 +455,7 @@ function RoadStatus({ road }: { road?: RoadState }) {
   if (road.edges === 0) {
     return (
       <p className={c.err}>
-        Сүлжээнд зам олдсонгүй — давхарга хоосон эсвэл талбайн гадна байна.
+        {tr('Сүлжээнд зам олдсонгүй — давхарга хоосон эсвэл талбайн гадна байна.')}
       </p>
     );
   }
@@ -465,7 +466,7 @@ function RoadStatus({ road }: { road?: RoadState }) {
       {road.flat && (
         <p className={c.warn}>
           <Icon name="road" size={14} />
-          <span>Машины хөдөлгөөн зөвхөн <b>2D</b> харагдацад зурагдана.</span>
+          <span>{tr('Машины хөдөлгөөн зөвхөн')} <b>2D</b> {tr('харагдацад зурагдана.')}</span>
         </p>
       )}
     </>

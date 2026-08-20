@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { t as tr } from '@/lib/i18nCore';
 import * as projection from '@arcgis/core/geometry/projection';
 import SpatialReference from '@arcgis/core/geometry/SpatialReference';
 import type Polygon from '@arcgis/core/geometry/Polygon';
@@ -633,18 +634,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
       const diffTxt = diff == null ? '—'
         : `<b style="color:${diff > 0 ? '#fb923c' : '#4ade80'}">${diff > 0 ? '+' : ''}${Math.round(diff)}%</b>`;
 
-      return `
-        <div class="t">
-          <b>${esc(r.id)}</b>
-          <span class="st" style="background:${simColor(t)};color:#1a1205">${t == null ? '—' : Math.round(t * 100)}</span>
-        </div>
-        <div class="sub2">${esc(r.type)} · ${nf(r.areaHa, 2)} га</div>
-        <dl>
-          ${dt(esc(def.label), `<b>${m.text}</b>`)}
-          ${dt('Дунджаас', diffTxt)}
-          ${dt('Оршин суугч', nf(r.residentPop))}
-          ${dt('Барилга', nf(r.buildingCount))}
-        </dl>`;
+      return tr('\n        <div class="t">\n          <b>{0}</b>\n          <span class="st" style="background:{1};color:#1a1205">{2}</span>\n        </div>\n        <div class="sub2">{3} · {4} га</div>\n        <dl>\n          {5}\n          {6}\n          {7}\n          {8}\n        </dl>', esc(r.id), simColor(t), t == null ? '—' : Math.round(t * 100), esc(r.type), nf(r.areaHa, 2), dt(esc(def.label), `<b>${m.text}</b>`), dt(tr('Дунджаас'), diffTxt), dt(tr('Оршин суугч'), nf(r.residentPop)), dt(tr('Барилга'), nf(r.buildingCount)));
     }
     const row = r as Row;
     const score = valueOf(row, mode, ind, econShare);
@@ -662,20 +652,8 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
       else failed.push({ name: i.short, v: nf(p.value, i.decimals) + (i.unit ? ` ${i.unit}` : '') });
     }
     const dt = (k: string, v: string) => `<dt>${k}</dt><dd>${v}</dd>`;
-    return `
-      <div class="t">
-        <b>${esc(row.id)}</b>
-        <span class="st" style="background:${scoreColor(score)}">${score == null ? '—' : Math.round(score)}</span>
-      </div>
-      <div class="sub2">${esc(row.type)} · ${nf(row.areaHa, 2)} га · ${scoreLabel(score)}</div>
-      <dl>
-        ${dt('Оршин суугч', nf(row.residentPop))}
-        ${dt('Өрх', nf(row.households))}
-        ${dt('Барилга', nf(row.buildingCount))}
-        ${dt('Норм хангасан', `<b style="color:${pass === total ? '#4ade80' : '#f87171'}">${pass} / ${total}</b>`)}
-      </dl>
-      ${failed.length ? `<div class="fails">${failed.map((f) =>
-        `<div><span>✗ ${esc(f.name)}</span><em>${f.v}</em></div>`).join('')}</div>` : ''}`;
+    return tr('\n      <div class="t">\n        <b>{0}</b>\n        <span class="st" style="background:{1}">{2}</span>\n      </div>\n      <div class="sub2">{3} · {4} га · {5}</div>\n      <dl>\n        {6}\n        {7}\n        {8}\n        {9}\n      </dl>\n      {10}', esc(row.id), scoreColor(score), score == null ? '—' : Math.round(score), esc(row.type), nf(row.areaHa, 2), scoreLabel(score), dt(tr('Оршин суугч'), nf(row.residentPop)), dt(tr('Өрх'), nf(row.households)), dt(tr('Барилга'), nf(row.buildingCount)), dt(tr('Норм хангасан'), `<b style="color:${pass === total ? '#4ade80' : '#f87171'}">${pass} / ${total}</b>`), failed.length ? `<div class="fails">${failed.map((f) =>
+        `<div><span>✗ ${esc(f.name)}</span><em>${f.v}</em></div>`).join('')}</div>` : '');
   }, [mode, ind, indicators, econShare, simKind, popBasis, simRng, simAvg]);
 
   /**
@@ -709,12 +687,12 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
         <div class="sub2">${esc(CAT_LABEL[b.cat])}${b.zone ? ` · ${esc(b.zone)}` : ''}</div>
         <dl>
           ${dt(esc(def.label), `${nf(v)} ${def.unit}`)}
-          ${dt(b.cat === 'residential' ? 'Оршин суугч' : 'Хүчин чадал',
+          ${dt(b.cat === 'residential' ? tr('Оршин суугч') : tr('Хүчин чадал'),
         nf(b.cat === 'residential' ? b.population : b.capacity))}
-          ${dt('Хүн-зорчилт', `${nf(b.trips)} /ц`)}
-          ${dt('Машин-зорчилт', `${nf(b.vehTrips)} /ц`)}
-          ${dt('Ойрын зам', link ? `${nf(link.distsM[0])} м` : '<b style="color:#f87171">холбогдоогүй</b>')}
-          ${dt('Автобус', acc ? `${nf(acc.distM)} м · ${esc(BUS_BAND_LABEL[acc.band])}` : '—')}
+          ${dt(tr('Хүн-зорчилт'), tr('{0} /ц', nf(b.trips)))}
+          ${dt(tr('Машин-зорчилт'), tr('{0} /ц', nf(b.vehTrips)))}
+          ${dt(tr('Ойрын зам'), link ? tr('{0} м', nf(link.distsM[0])) : tr('<b style="color:#f87171">холбогдоогүй</b>'))}
+          ${dt(tr('Автобус'), acc ? tr('{0} м · {1}', nf(acc.distM), esc(BUS_BAND_LABEL[acc.band])) : '—')}
         </dl>`;
     }
 
@@ -723,17 +701,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
       const v = tCtx.demand.edgeDemand[idx];
       if (!e || !(v > 0)) return null;
       const t = tCtx.demand.max > 0 ? v / tCtx.demand.max : 0;
-      return `
-        <div class="t">
-          <b>Замын хэрчим</b>
-          <span class="st" style="background:${tColor(tMode, t)};color:#1a1205">${Math.round(t * 100)}</span>
-        </div>
-        <div class="sub2">${nf(e.length / tCtx.net.unitsPerMeter)} м урт</div>
-        <dl>
-          ${dt('Эрэлт', `${nf(v)} машин/ц`)}
-          ${dt('Хамгийн ихээс', `${Math.round(t * 100)}%`)}
-        </dl>
-        <div class="fails"><div><span>Эрэлт — хүчин чадалтай харьцуулаагүй</span><em>V/C биш</em></div></div>`;
+      return tr('\n        <div class="t">\n          <b>Замын хэрчим</b>\n          <span class="st" style="background:{0};color:#1a1205">{1}</span>\n        </div>\n        <div class="sub2">{2} м урт</div>\n        <dl>\n          {3}\n          {4}\n        </dl>\n        <div class="fails"><div><span>Эрэлт — хүчин чадалтай харьцуулаагүй</span><em>V/C биш</em></div></div>', tColor(tMode, t), Math.round(t * 100), nf(e.length / tCtx.net.unitsPerMeter), dt(tr('Эрэлт'), tr('{0} машин/ц', nf(v))), dt(tr('Хамгийн ихээс'), `${Math.round(t * 100)}%`));
     }
 
     const st = tCtx.stops[idx];
@@ -746,19 +714,12 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
       served++;
       if (tCtx.buildings[i].cat === 'residential') servedPop += tCtx.buildings[i].population;
     }
-    return `
-      <div class="t"><b>Автобусны буудал</b></div>
-      <div class="sub2">#${st.oid}</div>
-      <dl>
-        ${dt('Зорчигчийн эрэлт', `${nf(demand)} /ц`)}
-        ${dt('Үйлчлэх барилга', nf(served))}
-        ${dt('Үйлчлэх оршин суугч', nf(servedPop))}
-      </dl>`;
+    return tr('\n      <div class="t"><b>Автобусны буудал</b></div>\n      <div class="sub2">#{0}</div>\n      <dl>\n        {1}\n        {2}\n        {3}\n      </dl>', st.oid, dt(tr('Зорчигчийн эрэлт'), tr('{0} /ц', nf(demand))), dt(tr('Үйлчлэх барилга'), nf(served)), dt(tr('Үйлчлэх оршин суугч'), nf(servedPop)));
   }, [tCtx, tMode]);
 
   const buildingTip = useCallback((a: Record<string, unknown>) => {
     const st = String(a.Barilga_ty ?? '').trim();
-    const purpose = String(a['Зориулалт_m'] ?? '').trim() || 'Тодорхойгүй';
+    const purpose = String(a['Зориулалт_m'] ?? '').trim() || tr('Тодорхойгүй');
     const colors: Record<string, string> = {
       'Төлөвлөсөн': 'rgb(96,165,250)',
       'Баригдаж байгаа': 'rgb(251,146,60)',
@@ -767,19 +728,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
     const pop = Number(a.Total_population ?? 0);
     const isRes = /орон сууц|house/i.test(purpose);
     const dt = (k: string, v: string | number | null) => (v ? `<dt>${k}</dt><dd>${v}</dd>` : '');
-    return `
-      <div class="t">
-        <b>${esc(purpose)}</b>
-        ${st ? `<span class="st" style="background:${colors[st] ?? 'rgb(203,213,225)'}">${esc(st)}</span>` : ''}
-      </div>
-      <dl>
-        ${dt('Нийт талбай', `${nf(Number(a['Барилгын_нийт_талбай_m2'] ?? 0))} м²`)}
-        ${dt('Давхар', Number(a['Давхрын_тоо_max'] ?? 0) || null)}
-        ${dt('Өрх', Number(a.Urhiin_too ?? 0) ? nf(Number(a.Urhiin_too)) : null)}
-        ${dt(isRes ? 'Оршин суугч' : 'Хүчин чадал', pop ? nf(pop) : null)}
-        ${dt('Зогсоол', Number(a.Parking ?? 0) ? nf(Number(a.Parking)) : null)}
-        ${dt('Бүс', esc(a.ZONE_ID ?? '—'))}
-      </dl>`;
+    return tr('\n      <div class="t">\n        <b>{0}</b>\n        {1}\n      </div>\n      <dl>\n        {2}\n        {3}\n        {4}\n        {5}\n        {6}\n        {7}\n      </dl>', esc(purpose), st ? `<span class="st" style="background:${colors[st] ?? 'rgb(203,213,225)'}">${esc(st)}</span>` : '', dt(tr('Нийт талбай'), tr('{0} м²', nf(Number(a['Барилгын_нийт_талбай_m2'] ?? 0)))), dt(tr('Давхар'), Number(a['Давхрын_тоо_max'] ?? 0) || null), dt(tr('Өрх'), Number(a.Urhiin_too ?? 0) ? nf(Number(a.Urhiin_too)) : null), dt(isRes ? tr('Оршин суугч') : tr('Хүчин чадал'), pop ? nf(pop) : null), dt(tr('Зогсоол'), Number(a.Parking ?? 0) ? nf(Number(a.Parking)) : null), dt(tr('Бүс'), esc(a.ZONE_ID ?? '—')));
   }, []);
 
   const active = rows.find((r) => r.id === selected) ?? null;
@@ -845,10 +794,10 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
       {error && (
         <div className={s.loader}>
           <div className={s.loaderBox}>
-            <div className={s.loaderTitle}>Сэлбэ дэд төв</div>
-            <div className={s.loaderSub}>Тохиромжтой байдлын загварчлал</div>
+            <div className={s.loaderTitle}>{tr('Сэлбэ дэд төв')}</div>
+            <div className={s.loaderSub}>{tr('Тохиромжтой байдлын загварчлал')}</div>
             <div className={`${s.loaderMsg} ${s.loaderErr}`}>
-              Алдаа гарлаа: {error}
+              {tr('Алдаа гарлаа:')} {error}
             </div>
           </div>
         </div>
@@ -858,7 +807,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
         <div className={s.brand}>
           <span className={s.brandMark} />
           <div>
-            <h1>Сэлбэ Хот төлөвлөлтийн үзүүлэлтүүд</h1>
+            <h1>{tr('Сэлбэ Хот төлөвлөлтийн үзүүлэлтүүд')}</h1>
           </div>
         </div>
         <nav className={s.tabs}>
@@ -866,9 +815,9 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
               Тэдгээрийн `mode` салаанууд кодод үлдсэн — дахин нээх бол зөвхөн
               энэ жагсаалтад мөрөө нэмнэ. */}
           {([
-            ['urban', 'Хот төлөвлөлт'],
-            ['indicator', 'Үзүүлэлт'],
-            ['simulation', 'Симуляц'],
+            ['urban', tr('Хот төлөвлөлт')],
+            ['indicator', tr('Үзүүлэлт')],
+            ['simulation', tr('Симуляц')],
           ] as const).map(
             ([k, label]) => (
               <button
@@ -907,7 +856,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
                 «Давхарга» товч + каталог руу шилжсэн («Ерөнхий төлөвлөгөө»-тэй
                 ижил зарчим). Доорх `map` слот дахь `SuitLayerCatalog`-ыг үз. */}
             {mode === 'indicator' && (
-              <Card title="Хот төлөвлөлтийн тооцоолол">
+              <Card title={tr('Хот төлөвлөлтийн тооцоолол')}>
                 <CategoryPie
                   rows={scoredRows}
                   indicators={indicators}
@@ -927,13 +876,13 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
             )}
 
             {mode === 'econ' && costs && (
-              <Card title="Дэд бүтцийн төсөвт өртөг">
+              <Card title={tr('Дэд бүтцийн төсөвт өртөг')}>
                 <EconSummary rows={scoredRows} costs={costs} perHa={perHa} buildCost={buildCost} />
               </Card>
             )}
 
             {/* Бүсийн ангилал — Angilal-аар шүүх (газрын зураг + эрэмбэ динамик) */}
-            <Card id="zoneCat" title="Бүсийн ангилал" collapsible>
+            <Card id="zoneCat" title={tr('Бүсийн ангилал')} collapsible>
               <ZoneCatFilter
                 cats={zoneCats}
                 off={catOff}
@@ -944,7 +893,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
 
             {/* Барилгын ангилал — `Зориулалт_m`-ээр газрын зургийн барилгыг шүүх */}
             {bldCats.length > 0 && (
-              <Card id="bldCat" title="Барилгын ангилал" collapsible>
+              <Card id="bldCat" title={tr('Барилгын ангилал')} collapsible>
                 <BuildingCatFilter
                   cats={bldCats}
                   off={bldOff}
@@ -955,11 +904,11 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
 
             {mode !== 'simulation' && (
             <Card
-              title={mode === 'econ' ? 'Бүсийн эрэмбэ «Ашигт байдал»'
-                : mode === 'indicator' ? `Бүсийн эрэмбэ «${ind.short}»`
-                  : mode === 'blend' ? 'Бүсийн эрэмбэ «Нийлмэл»'
-                    : 'Бүсийн эрэмбэ'}
-              pill={`${rankRows.length} бүс`}
+              title={mode === 'econ' ? tr('Бүсийн эрэмбэ «Ашигт байдал»')
+                : mode === 'indicator' ? tr('Бүсийн эрэмбэ «{0}»', ind.short)
+                  : mode === 'blend' ? tr('Бүсийн эрэмбэ «Нийлмэл»')
+                    : tr('Бүсийн эрэмбэ')}
+              pill={tr('{0} бүс', rankRows.length)}
               grow
             >
               <Ranking
@@ -1029,17 +978,17 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
                 aria-pressed={layerCatOpen}
                 className={`${s.mapBtn} ${layerCatOpen ? s.mapBtnOn : ''}`}
                 onClick={() => setLayerCatOpen((v) => !v)}
-                title="Давхаргын жагсаалт"
+                title={tr('Давхаргын жагсаалт')}
               >
                 <Icon name="layers" size={15} />
-                Давхарга
+                {tr('Давхарга')}
               </button>
 
               {/* Полигон ↔ дулаан — ЗӨВХӨН «Симуляц» горимд.
                   ⚠️ Гурван самбар бүрд давтахгүй: энэ нь ЗУРГИЙН тохиргоо тул
                   зургийн удирдлагын мөрөнд байх нь зөв. */}
               {mode === 'simulation' && (
-                <div className={s.mapDims} role="group" aria-label="Симуляцын дүрслэл">
+                <div className={s.mapDims} role="group" aria-label={tr('Симуляцын дүрслэл')}>
                   {MAP_STYLES.map((v) => {
                     // ⚠️ Дулаан нь ЗАЙД (хүртээмж, автобус) ба машин агентын
                     //    симуляцад (ачаалал) утгагүй тул тэнд товч ИДЭВХГҮЙ —
@@ -1051,7 +1000,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
                         type="button"
                         disabled={off}
                         aria-pressed={!off && mapStyle === v.key}
-                        title={off ? 'Энэ дүрслэлд дулааны гадаргуу утгагүй (зай/агент симуляц)' : v.title}
+                        title={off ? tr('Энэ дүрслэлд дулааны гадаргуу утгагүй (зай/агент симуляц)') : v.title}
                         className={`${s.dimBtn} ${!off && mapStyle === v.key ? s.dimOn : ''}`}
                         style={off ? { opacity: 0.4, cursor: 'not-allowed' } : undefined}
                         onClick={() => setMapStyle(v.key)}
@@ -1063,7 +1012,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
                 </div>
               )}
 
-              <div className={s.mapDims} role="group" aria-label="Газрын зургийн харагдац">
+              <div className={s.mapDims} role="group" aria-label={tr('Газрын зургийн харагдац')}>
                 {(['2d', '3d', 'bim'] as Dim[]).map((d) => (
                   <button
                     key={d}
@@ -1098,7 +1047,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
           // ⚠️ Картын гарчигт төрлүүдээ ЖАГСААХГҮЙ — доорх гурван товч аль хэдийн
           //    «Төвлөрөл · Хүртээмж · Ачаалал» гэж бичсэн тул давхардал болно.
           mode === 'simulation' ? (
-            <Simulation {...simCommon} kinds={['road', 'density', 'transit']} title="Бүсийн симуляц" />
+            <Simulation {...simCommon} kinds={['road', 'density', 'transit']} title={tr('Бүсийн симуляц')} />
           ) : (
           <>
             {/* ⚠️ Нийлмэл горимд ЗӨВХӨН хуваарилалтын карт: хот төлөвлөлт болон
@@ -1115,24 +1064,22 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
             {(mode === 'urban' || mode === 'indicator') && (
               <Card
                 id="weights"
-                title="Хот төлөвлөлтийн жин"
+                title={tr('Хот төлөвлөлтийн жин')}
                 collapsible
                 action={
                   <button
                     type="button"
                     className={s.mini}
-                    title="Бүх үзүүлэлтийн жинг анхны (default) утга руу нэг дор буцаана"
+                    title={tr('Бүх үзүүлэлтийн жинг анхны (default) утга руу нэг дор буцаана')}
                     onClick={(e) => { e.stopPropagation(); setIndicators(INDICATORS.map((i) => ({ ...i }))); }}
                   >
                     <Icon name="reset" size={11} />
-                    Анхны утга
+                    {tr('Анхны утга')}
                   </button>
                 }
               >
                 <p className={`${s.muted} ${s.small}`}>
-                  Үзүүлэлт бүр <b>норм хангавал 100 оноо</b>, зөрчвөл 44-өөс дээшгүй оноо авна.
-                  Жин нь нийлбэрээрээ 100% болж автоматаар нормчилогдоно.
-                  Босго утгыг БНБД 30-01-24-өөс авсан бөгөөд доорх талбарт засварлаж болно.
+                  {tr('Үзүүлэлт бүр')} <b>{tr('норм хангавал 100 оноо')}</b>{tr(', зөрчвөл 44-өөс дээшгүй оноо авна. Жин нь нийлбэрээрээ 100% болж автоматаар нормчилогдоно. Босго утгыг БНБД 30-01-24-өөс авсан бөгөөд доорх талбарт засварлаж болно.')}
                 </p>
                 <Weights indicators={indicators} setIndicators={setIndicators} totalW={totalW} />
               </Card>
@@ -1155,19 +1102,19 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
             {(mode === 'urban' || mode === 'indicator') && (
               <Card
                 id="parking"
-                title="Зогсоолын хэрэгцээ"
+                title={tr('Зогсоолын хэрэгцээ')}
                 collapsible
                 action={
                   <button
                     type="button"
                     className={s.mini}
-                    title="Тооцох арга ба коэффициентийг анхны (default) утга руу буцаана"
+                    title={tr('Тооцох арга ба коэффициентийг анхны (default) утга руу буцаана')}
                     // ⚠️ `stopPropagation` — товч нь картын ГАРЧИГ дотор сууж
                     //    байгаа тул үгүй бол карт хураагдана.
                     onClick={(e) => { e.stopPropagation(); setParking({ ...PARKING }); }}
                   >
                     <Icon name="reset" size={11} />
-                    Анхны утга
+                    {tr('Анхны утга')}
                   </button>
                 }
               >
@@ -1183,19 +1130,19 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
             {(mode === 'urban' || mode === 'indicator') && (
               <Card
                 id="green"
-                title="Ногоон байгууламж"
+                title={tr('Ногоон байгууламж')}
                 collapsible
                 action={
                   <button
                     type="button"
                     className={s.mini}
-                    title="Тооцох арга ба коэффициентийг анхны (default) утга руу буцаана"
+                    title={tr('Тооцох арга ба коэффициентийг анхны (default) утга руу буцаана')}
                     // ⚠️ Үзүүлэлтийн нормыг ч БНБД-ийн 6.0 м² руу буцаана —
                     //    эс бөгөөс карт «6» гэж бичээд оноо 10-аар бодогдоно.
                     onClick={(e) => { e.stopPropagation(); applyGreen({ ...GREEN }); }}
                   >
                     <Icon name="reset" size={11} />
-                    Анхны утга
+                    {tr('Анхны утга')}
                   </button>
                 }
               >
@@ -1218,7 +1165,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
                 (2026-08-12). Байрлал нь «Ногоон байгууламж»-ийн ЯГ ДООР;
                 харагдах горим нь ч түүнтэй ижил. */}
             {(mode === 'urban' || mode === 'indicator') && (
-              <Card id="location" title="Байршил" collapsible>
+              <Card id="location" title={tr('Байршил')} collapsible>
                 <Location
                   pts={locPts}
                   sel={locPick}
@@ -1297,11 +1244,11 @@ function ZoneCatFilter({ cats, off, setOff, setScoreOn }: {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
         <span className={`${s.muted} ${s.xsmall}`}>
-          {filtered ? `${visible.length} / ${cats.length} ангилал` : `${cats.length} ангилал`}
+          {filtered ? tr('{0} / {1} ангилал', visible.length, cats.length) : tr('{0} ангилал', cats.length)}
         </span>
         {filtered && (
           <button type="button" className={s.mini} onClick={() => apply([])}>
-            Шүүлт цэвэрлэх
+            {tr('Шүүлт цэвэрлэх')}
           </button>
         )}
       </div>
@@ -1316,10 +1263,10 @@ function ZoneCatFilter({ cats, off, setOff, setScoreOn }: {
             type="button"
             aria-pressed={on}
             title={!filtered
-              ? `Дарвал зөвхөн «${c.type}» үлдэнэ${activatable ? ' (оноололд ч орно)' : ''}`
-              : on && visible.length === 1 ? 'Дарвал шүүлт цэвэрлэгдэнэ'
-                : on ? `Дарвал «${c.type}»-ийг шүүлтээс хасна`
-                  : `Дарвал «${c.type}»-ийг шүүлтэд нэмнэ`}
+              ? tr('Дарвал зөвхөн «{0}» үлдэнэ{1}', c.type, activatable ? tr(' (оноололд ч орно)') : '')
+              : on && visible.length === 1 ? tr('Дарвал шүүлт цэвэрлэгдэнэ')
+                : on ? tr('Дарвал «{0}»-ийг шүүлтээс хасна', c.type)
+                  : tr('Дарвал «{0}»-ийг шүүлтэд нэмнэ', c.type)}
             onClick={() => pick(c.type)}
             style={{
               display: 'flex', alignItems: 'center', gap: 8, width: '100%',
@@ -1339,7 +1286,7 @@ function ZoneCatFilter({ cats, off, setOff, setScoreOn }: {
                 color: on ? 'var(--accent)' : 'var(--muted)',
                 border: '1px solid var(--line)', borderRadius: 2, padding: '0 4px',
               }}>
-                оноол
+                {tr('оноол')}
               </span>
             )}
             <b style={{ fontVariantNumeric: 'tabular-nums', fontSize: 11, color: 'var(--muted)' }}>{c.count}</b>
@@ -1390,11 +1337,11 @@ function BuildingCatFilter({ cats, off, setOff }: {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
         <span className={`${s.muted} ${s.xsmall}`}>
-          {cats.length} ангилал · {nf(shownN)}/{nf(total)} барилга
+          {cats.length} {tr('ангилал ·')} {nf(shownN)}/{nf(total)} {tr('барилга')}
         </span>
         {filtered && (
           <button type="button" className={s.mini} onClick={() => setOff(new Set())}>
-            Шүүлт цэвэрлэх
+            {tr('Шүүлт цэвэрлэх')}
           </button>
         )}
       </div>
@@ -1406,11 +1353,11 @@ function BuildingCatFilter({ cats, off, setOff }: {
             type="button"
             aria-pressed={on}
             // Бүлэгт ЯМАР зориулалтууд багтсаныг нээлгүйгээр харах
-            title={`${!filtered ? `Дарвал зөвхөн «${c.label}» үлдэнэ`
-              : on && visible.length === 1 ? 'Дарвал шүүлт цэвэрлэгдэнэ'
-                : on ? `Дарвал «${c.label}»-ийг шүүлтээс хасна`
-                  : `Дарвал «${c.label}»-ийг шүүлтэд нэмнэ`}\n`
-              + `${nf(c.count)} барилга · ${nf(c.gfaM2)} м²${c.values.length ? `\n${c.values.join(' · ')}` : ''}`}
+            title={tr('{0}\n', !filtered ? tr('Дарвал зөвхөн «{0}» үлдэнэ', c.label)
+              : on && visible.length === 1 ? tr('Дарвал шүүлт цэвэрлэгдэнэ')
+                : on ? tr('Дарвал «{0}»-ийг шүүлтээс хасна', c.label)
+                  : tr('Дарвал «{0}»-ийг шүүлтэд нэмнэ', c.label))
+              + tr('{0} барилга · {1} м²{2}', nf(c.count), nf(c.gfaM2), c.values.length ? `\n${c.values.join(' · ')}` : '')}
             onClick={() => pick(c.key)}
             style={{
               display: 'flex', alignItems: 'center', gap: 8, width: '100%',

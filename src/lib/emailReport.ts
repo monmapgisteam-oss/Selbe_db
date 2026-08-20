@@ -15,6 +15,7 @@
  * pdfmake нь ХҮНД сан тул зөвхөн товч дарахад динамикаар ачаална (`import()`).
  */
 import type { BagtsRow } from '@/modules/Dashboard';
+import { t as tr } from '@/lib/i18nCore';
 import { buildReportDoc } from './reportPdf';
 import type { ReportExtra } from './reportData';
 
@@ -74,9 +75,9 @@ function download(filename: string, blob: Blob): void {
 }
 
 /** Мэйлийн богино гарчиг ба их бие */
-const subjectOf = (dateStr: string) => `Сэлбэ 20 минутын хот — Ерөнхий тайлан (${dateStr})`;
-const bodyText = 'Сайн байна уу,\n\nСэлбэ 20 минутын хотын ерөнхий тайланг (PDF) хавсаргав.\n\nХүндэтгэсэн,';
-const bodyHtml = '<p>Сайн байна уу,</p><p>Сэлбэ 20 минутын хотын ерөнхий тайланг (PDF) хавсаргав.</p><p>Хүндэтгэсэн,</p>';
+const subjectOf = (dateStr: string) => tr('Сэлбэ 20 минутын хот — Ерөнхий тайлан ({0})', dateStr);
+const bodyText = tr('Сайн байна уу,\n\nСэлбэ 20 минутын хотын ерөнхий тайланг (PDF) хавсаргав.\n\nХүндэтгэсэн,');
+const bodyHtml = tr('<p>Сайн байна уу,</p><p>Сэлбэ 20 минутын хотын ерөнхий тайланг (PDF) хавсаргав.</p><p>Хүндэтгэсэн,</p>');
 
 /**
  * CLASSIC OUTLOOK — `.eml` (X-Unsent) татна. Нээхэд Outlook мэйл бичих цонх,
@@ -119,7 +120,7 @@ export async function emailViaMailto(rows: BagtsRow[], dateStr: string, extra: R
   download(PDF_NAME, new Blob([bytes], { type: 'application/pdf' }));
   const url = `mailto:${REPORT_RECIPIENTS.join(',')}`
     + `?subject=${encodeURIComponent(subjectOf(dateStr))}`
-    + `&body=${encodeURIComponent(`${bodyText}\n\n(Татсан ${PDF_NAME}-ийг энэ мэйлд чирж хавсаргана уу.)`)}`;
+    + tr('&body={0}', encodeURIComponent(tr('{0}\n\n(Татсан {1}-ийг энэ мэйлд чирж хавсаргана уу.)', bodyText, PDF_NAME)));
   window.location.href = url;
 }
 

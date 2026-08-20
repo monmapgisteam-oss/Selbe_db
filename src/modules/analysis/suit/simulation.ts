@@ -12,6 +12,7 @@
  */
 
 import type { Zone } from '@/lib/analysis/data';
+import { t as tr } from '@/lib/i18nCore';
 
 export type SimKind = 'density' | 'transit' | 'road';
 
@@ -46,9 +47,9 @@ export type SimDef = {
 export const SIM_KINDS: SimDef[] = [
   {
     key: 'density',
-    label: 'Хүн амын төвлөрөл',
-    short: 'Төвлөрөл',
-    unit: 'хүн/га',
+    label: tr('Хүн амын төвлөрөл'),
+    short: tr('Төвлөрөл'),
+    unit: tr('хүн/га'),
     hue: '#a78bfa',
     icon: 'flame',
     ready: true,
@@ -56,9 +57,9 @@ export const SIM_KINDS: SimDef[] = [
   },
   {
     key: 'transit',
-    label: 'Тээврийн хүртээмж',
-    short: 'Хүртээмж',
-    unit: 'м',
+    label: tr('Тээврийн хүртээмж'),
+    short: tr('Хүртээмж'),
+    unit: tr('м'),
     hue: '#38bdf8',
     icon: 'bus',
     ready: true,
@@ -66,8 +67,8 @@ export const SIM_KINDS: SimDef[] = [
   },
   {
     key: 'road',
-    label: 'Замын ачаалал',
-    short: 'Ачаалал',
+    label: tr('Замын ачаалал'),
+    short: tr('Ачаалал'),
     // ⚠️ Нэгж ЗОРИУДААР хоосон: «Ачаалал» нь амьд симуляц — гарчгийн хажууд
     //    «аялал/ц» гэх бүсийн нэгж төөрөгдүүлж байсан (уншилт нь машин/хурд/урсгал).
     unit: '',
@@ -95,9 +96,9 @@ export const simDef = (kind: SimKind): SimDef =>
 export type PopBasis = 'resident' | 'capacity' | 'total';
 
 export const POP_BASES: { key: PopBasis; label: string; short: string }[] = [
-  { key: 'resident', label: 'Оршин суугч (өрхөөс)', short: 'Оршин суугч' },
-  { key: 'capacity', label: 'Хүчин чадал (барилга)', short: 'Хүчин чадал' },
-  { key: 'total', label: 'Нийт хүн ам', short: 'Нийт' },
+  { key: 'resident', label: tr('Оршин суугч (өрхөөс)'), short: tr('Оршин суугч') },
+  { key: 'capacity', label: tr('Хүчин чадал (барилга)'), short: tr('Хүчин чадал') },
+  { key: 'total', label: tr('Нийт хүн ам'), short: tr('Нийт') },
 ];
 
 const popOf = (z: Zone, basis: PopBasis): number =>
@@ -155,15 +156,15 @@ export type SimMetric = {
 export function simMetric(z: Zone, kind: SimKind, popBasis: PopBasis = 'resident'): SimMetric {
   if (kind === 'density') {
     const v = z.polyHa > 0 ? popOf(z, popBasis) / z.polyHa : null;
-    return { value: v, text: v == null ? '—' : `${Math.round(v)} хүн/га` };
+    return { value: v, text: v == null ? '—' : tr('{0} хүн/га', Math.round(v)) };
   }
   if (kind === 'transit') {
     const v = z.transitM;
-    return { value: v, text: v == null ? '—' : `${Math.round(v)} м` };
+    return { value: v, text: v == null ? '—' : tr('{0} м', Math.round(v)) };
   }
   // Замын ачаалал — бүсийн ОРГИЛ ЦАГИЙН аялал үүсгэлт (машин/цаг)
   const t = zoneTrips(z);
-  return { value: t > 0 ? t : null, text: t > 0 ? `${Math.round(t)} аялал/ц` : '—' };
+  return { value: t > 0 ? t : null, text: t > 0 ? tr('{0} аялал/ц', Math.round(t)) : '—' };
 }
 
 /** Нормчлолын хязгаар — харагдаж буй бүсүүдийн хамгийн бага/их утга. */

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from "react";
+import { t as tr } from '@/lib/i18nCore';
 import { LEVEL5, distinct, level5Rows, type Feature } from "./ags";
 import { useColWidths } from "./colWidths";
 import st from "./sheet.module.css";
@@ -10,10 +11,10 @@ const cls = (names: string) =>
 
 // Хоцролтын төрөл — эх файлын кодчлол (`aldaatai` талбарт хадгалагдсан).
 const LATE: Record<string, string> = {
-  "1": "Шийдэл/Захиалагч",
-  "2": "Гүйцэтгэгч",
-  "3": "Газар чөлөөлөлт",
-  "4": "Хуулийн асуудал",
+  "1": tr('Шийдэл/Захиалагч'),
+  "2": tr('Гүйцэтгэгч'),
+  "3": tr('Газар чөлөөлөлт'),
+  "4": tr('Хуулийн асуудал'),
 };
 
 const s = (v: unknown) => (v == null ? "" : String(v));
@@ -188,7 +189,7 @@ export default function Level5() {
     <div className={st.wrap}>
       <div className={st.toolbar}>
         <label className={st.field}>
-          Багц
+          {tr('Багц')}
           <select
             className={st.select}
             value={bagts}
@@ -200,13 +201,13 @@ export default function Level5() {
           </select>
         </label>
         <label className={st.field}>
-          Блок
+          {tr('Блок')}
           <select
             className={st.select}
             value={blok}
             onChange={(e) => setBlok(e.target.value)}
           >
-            <option value="">Бүгд ({bloks.length})</option>
+            <option value="">{tr('Бүгд (')}{bloks.length})</option>
             {bloks.map((b) => (
               <option key={b}>{b}</option>
             ))}
@@ -216,24 +217,23 @@ export default function Level5() {
           className={st.layerBtn}
           onClick={() => setOpen(new Set(tree.map((a) => a.key)))}
         >
-          Дэлгэх
+          {tr('Дэлгэх')}
         </button>
         <button className={st.layerBtn} onClick={() => setOpen(new Set())}>
-          Хумих
+          {tr('Хумих')}
         </button>
-        {busy && <span className={st.muted}>Ачаалж байна…</span>}
+        {busy && <span className={st.muted}>{tr('Ачаалж байна…')}</span>}
       </div>
 
       {err && <p className={st.errorSm}>{err}</p>}
 
       <p className={st.info}>
-        Жигнэсэн гүйцэтгэл <b>{pct(total.w ? total.wd / total.w : null)}</b> ·{" "}
-        {int(total.n)} ажилбар · хоцролттой {int(lateSum(total.late))}
+        {tr('Жигнэсэн гүйцэтгэл')} <b>{pct(total.w ? total.wd / total.w : null)}</b> ·{" "}
+        {int(total.n)} {tr('ажилбар · хоцролттой')} {int(lateSum(total.late))}
         {Object.entries(total.late)
           .sort()
           .map(([c, n]) => ` · ${LATE[c] || c} ${int(n)}`)}
-        . Ач холбогдлын зэргээр (АХЗ) жигнэв; эх өгөгдөл 2026-06-30-ны
-        ажилбарын түвшний экспорт — засварлах боломжгүй.
+        {tr('. Ач холбогдлын зэргээр (АХЗ) жигнэв; эх өгөгдөл 2026-06-30-ны ажилбарын түвшний экспорт — засварлах боломжгүй.')}
       </p>
 
       <div className={st.scroll}>
@@ -241,11 +241,11 @@ export default function Level5() {
           <thead>
             <tr>
               <th className={cls("c-no")}>Activity ID<i {...grip("no")} /></th>
-              <th className={cls("c-ajil")}>Ажил<i {...grip("ajil")} /></th>
-              <th className={cls("c-jin")}>АХЗ<i {...grip("jin")} /></th>
-              <th className={cls("c-done")}>Гүйцэтгэл<i {...grip("done")} /></th>
-              <th className={cls("c-jin")}>Ажилбар<i {...grip("jin")} /></th>
-              <th className={cls("c-dutuu")}>Хоцролт<i {...grip("dutuu")} /></th>
+              <th className={cls("c-ajil")}>{tr('Ажил')}<i {...grip("ajil")} /></th>
+              <th className={cls("c-jin")}>{tr('АХЗ')}<i {...grip("jin")} /></th>
+              <th className={cls("c-done")}>{tr('Гүйцэтгэл')}<i {...grip("done")} /></th>
+              <th className={cls("c-jin")}>{tr('Ажилбар')}<i {...grip("jin")} /></th>
+              <th className={cls("c-dutuu")}>{tr('Хоцролт')}<i {...grip("dutuu")} /></th>
             </tr>
           </thead>
           <tbody>

@@ -23,6 +23,7 @@
  */
 
 import { LAYER_BY_ID, layerUrl } from '@/lib/services';
+import { t as tr } from '@/lib/i18nCore';
 import {
   buildNetwork, markDuplicates, nodeByIntersection,
   type Network, type Pt, type SignalDef, type SignalLine,
@@ -106,8 +107,8 @@ export type NetSource = {
 export const NET_SOURCES: Record<NetKind, NetSource> = {
   real: {
     kind: 'real',
-    label: 'Одоогийн бодит зам',
-    short: 'Бодит',
+    label: tr('Одоогийн бодит зам'),
+    short: tr('Бодит'),
     hue: '#38bdf8',
     // ① Одоогийн бодит замын line (Monmap_zam_selbe, 113 feature, polyline).
     //    Гэрлэн дохио нь бодит gerlen_dohio service-ээс; геометр энэ давхаргаас.
@@ -118,8 +119,8 @@ export const NET_SOURCES: Record<NetKind, NetSource> = {
   },
   plan: {
     kind: 'plan',
-    label: 'Ерөнхий төлөвлөгөөний зам',
-    short: 'Төлөвлөгөө',
+    label: tr('Ерөнхий төлөвлөгөөний зам'),
+    short: tr('Төлөвлөгөө'),
     hue: '#a78bfa',
     // ② Ерөнхий төлөвлөгөөний машин явах line (selbe_zam_tuluwlult, 205 feature).
     //    et:5 «Замын тэнхлэг»-ийг СОЛЬСОН: энэ нь машин явахаар зурсан жинхэнэ line.
@@ -130,8 +131,8 @@ export const NET_SOURCES: Record<NetKind, NetSource> = {
   },
   relief: {
     kind: 'relief',
-    label: 'Ачаалал бууруулах зам',
-    short: 'Шинэ зам',
+    label: tr('Ачаалал бууруулах зам'),
+    short: tr('Шинэ зам'),
     hue: '#4ade80',
     /* ⚠️ Замын сүлжээ болгож УГСАРДАГГҮЙ (`cars: false`) — line нь `Selbe_shine_zam`
        service дээр 4 тусдаа хэсэг (77 объект) бөгөөд одоо байгаа замтай уулзвараар
@@ -167,7 +168,7 @@ function sourceUrl(s: NetSource): string {
     if (def) return layerUrl(def);
   }
   throw new Error(
-    `«${s.label}» замын line хараахан холбогдоогүй — netSources.ts-д url оруулна уу.`,
+    tr('«{0}» замын line хараахан холбогдоогүй — netSources.ts-д url оруулна уу.', s.label),
   );
 }
 
@@ -268,7 +269,7 @@ async function fetchRealSignals(): Promise<SignalDef[]> {
   });
   const r: { features?: SignalFeature[]; error?: { message?: string } } =
     await fetch(`${SIGNAL_LAYER_URL}/query?${q}`).then((x) => x.json());
-  if (r.error) throw new Error(r.error.message ?? 'гэрлэн дохио query алдаа');
+  if (r.error) throw new Error(r.error.message ?? tr('гэрлэн дохио query алдаа'));
 
   /** Уулзвар бүрийн оройнууд ба approach line-ууд (бүлэгтэй) */
   const groups = new Map<string, { pts: Pt[]; lines: SignalLine[] }>();

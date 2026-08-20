@@ -1,3 +1,4 @@
+import { t as tr } from '@/lib/i18nCore';
 /** Тоо, нэгжийн форматлагч — портал даяар нэг дүрэм. */
 
 const L = 'en-US';
@@ -23,9 +24,9 @@ export const km = (m: number | null | undefined, d = 1): string =>
 export function mnt(v: number | null | undefined): string {
   if (v == null || !Number.isFinite(v) || v === 0) return '—';
   const a = Math.abs(v);
-  if (a >= 1e12) return `${num(v / 1e12, 2)} их наяд ₮`;
-  if (a >= 1e9) return `${num(v / 1e9, 1)} тэрбум ₮`;
-  if (a >= 1e6) return `${num(v / 1e6, 1)} сая ₮`;
+  if (a >= 1e12) return tr('{0} их наяд ₮', num(v / 1e12, 2));
+  if (a >= 1e9) return tr('{0} тэрбум ₮', num(v / 1e9, 1));
+  if (a >= 1e6) return tr('{0} сая ₮', num(v / 1e6, 1));
   return `${num(v)} ₮`;
 }
 

@@ -13,6 +13,7 @@ import {
   CAT_LABEL, BUS_BAND_LABEL, BUS_GOOD_M, BUS_OK_M,
 } from '@/lib/analysis/transport';
 import { simColor } from './simulation';
+import { t as tr } from '@/lib/i18nCore';
 import { demandNorm, type RoadDemand } from './roadDemand';
 import type { BusAccess, BusStop } from './busAccess';
 import type { BuildingPt } from './buildings';
@@ -47,40 +48,40 @@ export type TModeDef = {
 export const T_MODES: TModeDef[] = [
   {
     key: 'population',
-    label: 'Оршин суугчид',
-    short: 'Хүн ам',
-    unit: 'хүн', icon: 'users', hue: '#f59e0b', target: 'building', heatable: true,
+    label: tr('Оршин суугчид'),
+    short: tr('Хүн ам'),
+    unit: tr('хүн'), icon: 'users', hue: '#f59e0b', target: 'building', heatable: true,
   },
   {
     key: 'capacity',
-    label: 'Үйлчилгээний багтаамж',
-    short: 'Багтаамж',
-    unit: 'хүн', icon: 'building', hue: '#60a5fa', target: 'building', heatable: true,
+    label: tr('Үйлчилгээний багтаамж'),
+    short: tr('Багтаамж'),
+    unit: tr('хүн'), icon: 'building', hue: '#60a5fa', target: 'building', heatable: true,
   },
   {
     key: 'trips',
-    label: 'Хүн-зорчилт',
-    short: 'Зорчилт',
-    unit: 'зорчилт/ц', icon: 'target', hue: '#a78bfa', target: 'building', heatable: true,
+    label: tr('Хүн-зорчилт'),
+    short: tr('Зорчилт'),
+    unit: tr('зорчилт/ц'), icon: 'target', hue: '#a78bfa', target: 'building', heatable: true,
   },
   {
     key: 'vehicles',
-    label: 'Машин-зорчилт',
-    short: 'Машин',
-    unit: 'машин/ц', icon: 'car', hue: '#fb923c', target: 'building', heatable: true,
+    label: tr('Машин-зорчилт'),
+    short: tr('Машин'),
+    unit: tr('машин/ц'), icon: 'car', hue: '#fb923c', target: 'building', heatable: true,
   },
   {
     key: 'roadDemand',
-    label: 'Замын эрэлт',
-    short: 'Зам',
-    unit: 'машин/ц', icon: 'road', hue: '#f87171', target: 'road', heatable: true,
+    label: tr('Замын эрэлт'),
+    short: tr('Зам'),
+    unit: tr('машин/ц'), icon: 'road', hue: '#f87171', target: 'road', heatable: true,
   },
   {
     key: 'busAccess',
-    label: 'Автобусны хүртээмж',
-    short: 'Автобус',
+    label: tr('Автобусны хүртээмж'),
+    short: tr('Автобус'),
     // ⚠️ `heatable: false` — жин нь ЗАЙ; дулаан гадаргуу зайг нэмэх нь утгагүй
-    unit: 'м', icon: 'bus', hue: '#38bdf8', target: 'stop', heatable: false,
+    unit: tr('м'), icon: 'bus', hue: '#38bdf8', target: 'stop', heatable: false,
   },
 ];
 
@@ -243,10 +244,10 @@ export function tItems(mode: TMode, ctx: TransportCtx): TItem[] {
       out.push({
         key: `e${i}`,
         idx: i,
-        name: `Хэрчим #${i}`,
-        sub: `${Math.round(ctx.net.edges[i].length / ctx.net.unitsPerMeter)} м`,
+        name: tr('Хэрчим #{0}', i),
+        sub: tr('{0} м', Math.round(ctx.net.edges[i].length / ctx.net.unitsPerMeter)),
         value: v,
-        text: `${nf0(v)} машин/ц`,
+        text: tr('{0} машин/ц', nf0(v)),
         t,
         color: tColor(mode, t),
       });
@@ -267,7 +268,7 @@ export function tItems(mode: TMode, ctx: TransportCtx): TItem[] {
       name: b.purpose || CAT_LABEL[b.cat],
       sub: band ? BUS_BAND_LABEL[band] : CAT_LABEL[b.cat],
       value: v,
-      text: mode === 'busAccess' ? `${Math.round(v)} м` : `${nf0(v)} ${def.unit}`,
+      text: mode === 'busAccess' ? tr('{0} м', Math.round(v)) : `${nf0(v)} ${def.unit}`,
       t,
       color: tColor(mode, t),
     });
@@ -369,12 +370,12 @@ export function tReadout(mode: TMode, ctx: TransportCtx): TCell[] {
     let loaded = 0;
     for (const v of demand.edgeDemand) if (v > 0) loaded++;
     return [
-      { k: 'Ачаалалтай зам', v: nf0(loaded) },
-      { k: 'Хамгийн өндөр', v: nf0(demand.max), unit: 'машин/ц' },
+      { k: tr('Ачаалалтай зам'), v: nf0(loaded) },
+      { k: tr('Хамгийн өндөр'), v: nf0(demand.max), unit: tr('машин/ц') },
       {
-        k: 'Замд холбогдоогүй',
+        k: tr('Замд холбогдоогүй'),
         v: nf0(demand.unlinked.length),
-        unit: 'барилга',
+        unit: tr('барилга'),
         color: demand.unlinked.length ? '#f87171' : '#4ade80',
       },
     ];
@@ -385,9 +386,9 @@ export function tReadout(mode: TMode, ctx: TransportCtx): TCell[] {
     const pct = (v: number) => (resPop > 0 ? Math.round((v / resPop) * 100) : 0);
     const good = pct(bus.popByBand.good);
     return [
-      { k: `≤${BUS_GOOD_M} м доторх`, v: `${good}%`, color: good > 70 ? '#4ade80' : good > 40 ? '#fbbf24' : '#f87171' },
-      { k: `>${BUS_OK_M} м (дутмаг)`, v: nf0(bus.popUnserved), unit: 'хүн' },
-      { k: 'Ачаалалтай буудал', v: nf0(bus.maxStopDemand), unit: 'зорчигч/ц' },
+      { k: tr('≤{0} м доторх', BUS_GOOD_M), v: `${good}%`, color: good > 70 ? '#4ade80' : good > 40 ? '#fbbf24' : '#f87171' },
+      { k: tr('>{0} м (дутмаг)', BUS_OK_M), v: nf0(bus.popUnserved), unit: tr('хүн') },
+      { k: tr('Ачаалалтай буудал'), v: nf0(bus.maxStopDemand), unit: tr('зорчигч/ц') },
     ];
   }
 
@@ -396,8 +397,8 @@ export function tReadout(mode: TMode, ctx: TransportCtx): TCell[] {
   const sum = items.reduce((a, x) => a + x.value, 0);
   const def = tModeDef(mode);
   return [
-    { k: 'Нийт', v: nf0(sum), unit: def.unit },
-    { k: 'Хамгийн өндөр', v: nf0(items[0].value), unit: def.unit },
-    { k: 'Барилга', v: nf0(items.length) },
+    { k: tr('Нийт'), v: nf0(sum), unit: def.unit },
+    { k: tr('Хамгийн өндөр'), v: nf0(items[0].value), unit: def.unit },
+    { k: tr('Барилга'), v: nf0(items.length) },
   ];
 }

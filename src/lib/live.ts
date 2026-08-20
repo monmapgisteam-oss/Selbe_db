@@ -19,6 +19,7 @@
  */
 
 import { queryFeatures, queryStats, queryGroup, count, sum, type Row } from '@/lib/query';
+import { t as tr } from '@/lib/i18nCore';
 import {
   BOUNDARY, BUILT_LAYER, CASHFLOW2, PROJECT_PROGRESS,
   LAYER_BY_ID, PARCEL_LEFT, layerUrl, oidOf, bagtsKey,
@@ -103,7 +104,7 @@ export const loadBudget = cached<Budget>(async () => {
     .sort((a, b) => b.value - a.value);
   // Захирамжийн дүнгээс эх үүсвэр задраагүй үлдэгдэл (зөрүү нуухгүй)
   const rest = orderTotal - sumBy(named, (x) => x.value);
-  if (rest > 0) named.push({ key: 'rest', label: 'Эх үүсвэр задраагүй', value: rest });
+  if (rest > 0) named.push({ key: 'rest', label: tr('Эх үүсвэр задраагүй'), value: rest });
 
   return {
     total,
@@ -115,12 +116,12 @@ export const loadBudget = cached<Budget>(async () => {
     byType: tally(
       g,
       (row) => ({ key: cfLabel(row[CF.type]), value: Number(row.b ?? 0), n: Number(row.n ?? 0) }),
-      'Төрөл тодорхойлоогүй',
+      tr('Төрөл тодорхойлоогүй'),
     ).filter((t) => t.value > 0),
     byPkg: tally(
       g,
       (row) => ({ key: cfLabel(row[CF.pkg2]), value: Number(row.b ?? 0), n: Number(row.n ?? 0) }),
-      'Багц тодорхойлоогүй',
+      tr('Багц тодорхойлоогүй'),
     ).filter((t) => t.value > 0),
     months: CASHFLOW2.months.map((m, i) => ({ label: m.label, amount: Number(r[`m${i}`] ?? 0) })),
   };
@@ -332,10 +333,10 @@ export type SocialLive = { rows: SocialRow[]; totalN: number };
 
 /** test_data-гийн нийгмийн давхаргууд — каталогийн id-гаар (URL нь TD руу шилжсэн) */
 const SOCIAL_GROUPS: { key: string; label: string; ids: string[] }[] = [
-  { key: 'school', label: 'Сургууль', ids: ['pkg:230', 'pkg:228', 'pkg:232'] },
-  { key: 'kinder', label: 'Цэцэрлэг', ids: ['pkg:226', 'pkg:234', 'pkg:235', 'pkg:236', 'pkg:237'] },
-  { key: 'art', label: 'Хүүхдийн урлан бүтээх төв', ids: ['pkg:242'] },
-  { key: 'gov', label: 'Төрийн үйлчилгээ', ids: ['pkg:243'] },
+  { key: 'school', label: tr('Сургууль'), ids: ['pkg:230', 'pkg:228', 'pkg:232'] },
+  { key: 'kinder', label: tr('Цэцэрлэг'), ids: ['pkg:226', 'pkg:234', 'pkg:235', 'pkg:236', 'pkg:237'] },
+  { key: 'art', label: tr('Хүүхдийн урлан бүтээх төв'), ids: ['pkg:242'] },
+  { key: 'gov', label: tr('Төрийн үйлчилгээ'), ids: ['pkg:243'] },
 ];
 
 export const loadSocial = cached<SocialLive>(async () => {
