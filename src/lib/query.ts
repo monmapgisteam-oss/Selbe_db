@@ -1,3 +1,4 @@
+import { t as tr } from '@/lib/i18nCore';
 /**
  * ArcGIS REST асуулгын давхарга.
  *
@@ -93,7 +94,7 @@ async function attemptRequest(url: string, params: Record<string, string>, attem
       await sleep(400 * 2 ** attempt + Math.random() * 200);
       return attemptRequest(url, params, attempt + 1);
     }
-    throw new ArcGISError(body.error.message || 'ArcGIS алдаа', full);
+    throw new ArcGISError(body.error.message || tr('ArcGIS алдаа'), full);
   }
   return body;
 }

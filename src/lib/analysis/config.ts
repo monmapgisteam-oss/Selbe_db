@@ -1,3 +1,4 @@
+import { t as tr } from '@/lib/i18nCore';
 /**
  * АНАЛИЗ — тохиромжтой байдлын загварын тохиргоо.
  *
@@ -118,9 +119,9 @@ const kindOf = (geom: LayerDef['geom']): MapLayerKind =>
  * (`zone`/`et:24` нь порталын каталогт ч байдаг тул доорх derived-ээс ХАСНА.)
  */
 const SPECIAL_LAYERS: MapLayerDef[] = [
-  { key: 'zone', special: 'zone', title: 'Бүсийн үнэлгээ', kind: 'fill', color: [79, 209, 197], on: true, group: 'zone' },
-  { key: 'label', special: 'label', title: 'Бүсийн нэр', kind: 'point', color: [230, 237, 243], on: true, group: 'zone' },
-  { key: 'et:24', n: 24, title: 'Барилга байгууламж', kind: 'building', color: [148, 163, 184], on: true, group: 'build' },
+  { key: 'zone', special: 'zone', title: tr('Бүсийн үнэлгээ'), kind: 'fill', color: [79, 209, 197], on: true, group: 'zone' },
+  { key: 'label', special: 'label', title: tr('Бүсийн нэр'), kind: 'point', color: [230, 237, 243], on: true, group: 'zone' },
+  { key: 'et:24', n: 24, title: tr('Барилга байгууламж'), kind: 'building', color: [148, 163, 184], on: true, group: 'build' },
 ];
 const SPECIAL_KEYS = new Set(SPECIAL_LAYERS.map((s) => s.key));
 
@@ -179,7 +180,7 @@ export const GREEN_LAYER_KEY = SRC.green;
 const GREEN_LAYERS: MapLayerDef[] = [{
   key: GREEN_LAYER_KEY,
   layerId: GREEN_LAYER_KEY,
-  title: LAYER_BY_ID[GREEN_LAYER_KEY]?.title ?? 'Ногоон байгууламж',
+  title: LAYER_BY_ID[GREEN_LAYER_KEY]?.title ?? tr('Ногоон байгууламж'),
   kind: 'fill',
   color: [142, 189, 0],
   on: false,
@@ -205,11 +206,11 @@ export const BUILDING_STATUS_COLORS: Record<string, [number, number, number]> = 
 /* ══════════════════ Өртгийн задаргаа ══════════════════ */
 
 export const COST_GROUPS: Record<string, { label: string; color: string }> = {
-  transit: { label: 'Тээвэр, зам', color: '#facc15' },
-  heat: { label: 'Дулаан', color: '#f87171' },
-  water: { label: 'Ус, ариутгал', color: '#38bdf8' },
-  power: { label: 'Цахилгаан', color: '#c084fc' },
-  amenity: { label: 'Тохижилт', color: '#4ade80' },
+  transit: { label: tr('Тээвэр, зам'), color: '#facc15' },
+  heat: { label: tr('Дулаан'), color: '#f87171' },
+  water: { label: tr('Ус, ариутгал'), color: '#38bdf8' },
+  power: { label: tr('Цахилгаан'), color: '#c084fc' },
+  amenity: { label: tr('Тохижилт'), color: '#4ade80' },
 };
 
 /**
@@ -299,14 +300,14 @@ export const NORM_FAIL_MAX = 44;
  * ашиглана — тасралтгүй градиент байхгүй.
  */
 export const SCORE_LEVELS = [
-  { min: 85, max: 101, label: 'Маш сайн', color: '#16a34a' },
-  { min: 65, max: 85, label: 'Сайн', color: '#a3d84a' },
+  { min: 85, max: 101, label: tr('Маш сайн'), color: '#16a34a' },
+  { min: 65, max: 85, label: tr('Сайн'), color: '#a3d84a' },
   // ⚠️ Доод хоёр түвшний өнгө ЗӨӨЛРҮҮЛСЭН: улбар шар → ШАР, улаан → УЛБАР ШАР.
   //    Оноо багатай бүс «анхаарал шаардсан» гэж уншигдах ёстой болохоос
   //    «муу/аюултай» гэсэн сэтгэгдэл төрүүлэх ёсгүй.
-  { min: 45, max: 65, label: 'Дунд', color: '#facc15' },
-  { min: 25, max: 45, label: 'Муу', color: '#f59e0b' },
-  { min: 0, max: 25, label: 'Маш муу', color: '#b91c1c' },
+  { min: 45, max: 65, label: tr('Дунд'), color: '#facc15' },
+  { min: 25, max: 45, label: tr('Муу'), color: '#f59e0b' },
+  { min: 0, max: 25, label: tr('Маш муу'), color: '#b91c1c' },
 ] as const;
 
 export const NO_DATA_COLOR = '#94a3b8';
@@ -321,11 +322,11 @@ export const NO_DATA_COLOR = '#94a3b8';
  * устгахгүй — «өгөгдөлгүй» цайвар өнгөөр, hover панельгүй харагдана.
  */
 export const EXCLUDED_ZONE_TYPES = new Set<string>([
-  'Ногоон байгууламж, тохижилт',
-  'Нийгмийн дэд бүтцийн бүс',
-  'Одоо байгаа барилга байгууламж',
-  'Дэд бүтэц',
-  'Газар чөлөөлөлт дутуу',
+  tr('Ногоон байгууламж, тохижилт'),
+  tr('Нийгмийн дэд бүтцийн бүс'),
+  tr('Одоо байгаа барилга байгууламж'),
+  tr('Дэд бүтэц'),
+  tr('Газар чөлөөлөлт дутуу'),
 ]);
 
 /**
@@ -336,8 +337,8 @@ export const EXCLUDED_ZONE_TYPES = new Set<string>([
  * `EXCLUDED_ZONE_TYPES`-ийн ДЭД ОЛОНЛОГ байх ёстой.
  */
 export const ACTIVATABLE_ZONE_TYPES = new Set<string>([
-  'Нийгмийн дэд бүтцийн бүс',
-  'Газар чөлөөлөлт дутуу',
+  tr('Нийгмийн дэд бүтцийн бүс'),
+  tr('Газар чөлөөлөлт дутуу'),
 ]);
 
 /**
@@ -365,24 +366,24 @@ export function levelOf(score: number | null | undefined): number {
  */
 export const DENSITY_BY_TYPE: Record<string, { label: string; farMax: number; bcrMax: number }> = {
   'Орон сууцны бүс': {
-    label: 'Олон давхар олон айлын орон сууц (7–16 давхар)',
+    label: tr('Олон давхар олон айлын орон сууц (7–16 давхар)'),
     farMax: 1.2, bcrMax: 40,
   },
   'Олон нийтийн бүс': {
-    label: 'Олон төрлийн (нийгэм, олон нийтийн) барилгажилт',
+    label: tr('Олон төрлийн (нийгэм, олон нийтийн) барилгажилт'),
     farMax: 3.0, bcrMax: 100,
   },
   'Нийгмийн дэд бүтцийн бүс': {
-    label: 'Нийгэм, олон нийтийн төрөлжсөн барилгажилт',
+    label: tr('Нийгэм, олон нийтийн төрөлжсөн барилгажилт'),
     farMax: 2.4, bcrMax: 80,
   },
   // Хүснэгт 6.1-д шууд харгалзах ангилалгүй тул хамгийн ойрын ангиллаар авав
   'Х бүс': {
-    label: 'Олон төрлийн (нийгэм, олон нийтийн) барилгажилт',
+    label: tr('Олон төрлийн (нийгэм, олон нийтийн) барилгажилт'),
     farMax: 3.0, bcrMax: 100,
   },
   'Одоо байгаа барилга байгууламж': {
-    label: 'Олон давхар олон айлын орон сууц (7–16 давхар)',
+    label: tr('Олон давхар олон айлын орон сууц (7–16 давхар)'),
     farMax: 1.2, bcrMax: 40,
   },
 };
@@ -406,9 +407,9 @@ export type IndicatorMode = 'band' | 'higher' | 'lower';
 export type CategoryKey = 'urban' | 'social' | 'engineering';
 
 export const CATEGORIES: { key: CategoryKey; label: string; short: string; color: string }[] = [
-  { key: 'urban', label: 'Хот төлөвлөлтийн үзүүлэлт', short: 'Хот төлөвлөлт', color: '#60a5fa' },
-  { key: 'social', label: 'Нийгмийн дэд бүтэц', short: 'Нийгмийн', color: '#4ade80' },
-  { key: 'engineering', label: 'Инженерийн дэд бүтэц', short: 'Инженер', color: '#fbbf24' },
+  { key: 'urban', label: tr('Хот төлөвлөлтийн үзүүлэлт'), short: tr('Хот төлөвлөлт'), color: '#60a5fa' },
+  { key: 'social', label: tr('Нийгмийн дэд бүтэц'), short: tr('Нийгмийн'), color: '#4ade80' },
+  { key: 'engineering', label: tr('Инженерийн дэд бүтэц'), short: tr('Инженер'), color: '#fbbf24' },
 ];
 
 export type Indicator = {
@@ -451,10 +452,10 @@ export const INDICATORS: Indicator[] = [
   {
     id: 'green',
     cat: 'urban',
-    name: 'Нэг хүнд ногдох ногоон байгууламж',
-    short: 'Ногоон талбай',
-    unit: 'м²/хүн',
-    norm: 'БНБД 30-01-24, Хүснэгт 8.2 — хорооллын ногоон байгууламж 6.0 м²/хүн',
+    name: tr('Нэг хүнд ногдох ногоон байгууламж'),
+    short: tr('Ногоон талбай'),
+    unit: tr('м²/хүн'),
+    norm: tr('БНБД 30-01-24, Хүснэгт 8.2 — хорооллын ногоон байгууламж 6.0 м²/хүн'),
     mode: 'higher',
     weight: 16,
     hardMin: 0,
@@ -479,10 +480,10 @@ export const INDICATORS: Indicator[] = [
      */
     id: 'greenCap',
     cat: 'urban',
-    name: 'Нэг хүчин чадалд ногдох ногоон байгууламж',
-    short: 'Ногоон (чадал)',
-    unit: 'м²/хүн',
-    norm: 'Лавлагаа — үйлчилгээний хүчин чадалд ногдох ногоон (БНБД-д норм заагаагүй)',
+    name: tr('Нэг хүчин чадалд ногдох ногоон байгууламж'),
+    short: tr('Ногоон (чадал)'),
+    unit: tr('м²/хүн'),
+    norm: tr('Лавлагаа — үйлчилгээний хүчин чадалд ногдох ногоон (БНБД-д норм заагаагүй)'),
     mode: 'higher',
     weight: 0,
     ref: true,
@@ -491,10 +492,10 @@ export const INDICATORS: Indicator[] = [
   {
     id: 'density',
     cat: 'urban',
-    name: 'Хүн амын нягтшил (оршин суугч)',
-    short: 'Нягтшил',
-    unit: 'хүн/га',
-    norm: 'БНБД 30-01-24, 6.9 — 4–16 давхар хороолол: 300–450 хүн/га-аас ихгүй',
+    name: tr('Хүн амын нягтшил (оршин суугч)'),
+    short: tr('Нягтшил'),
+    unit: tr('хүн/га'),
+    norm: tr('БНБД 30-01-24, 6.9 — 4–16 давхар хороолол: 300–450 хүн/га-аас ихгүй'),
     mode: 'band',
     weight: 24,
     hardMin: 40, optMin: 300, optMax: 450, hardMax: 700,
@@ -514,10 +515,10 @@ export const INDICATORS: Indicator[] = [
      */
     id: 'densityCap',
     cat: 'urban',
-    name: 'Хүчин чадлын нягтшил',
-    short: 'Хүчин чадал',
-    unit: 'хүн/га',
-    norm: 'Лавлагаа — үйлчилгээний багтаамжийн нягтрал (БНБД-д норм заагаагүй)',
+    name: tr('Хүчин чадлын нягтшил'),
+    short: tr('Хүчин чадал'),
+    unit: tr('хүн/га'),
+    norm: tr('Лавлагаа — үйлчилгээний багтаамжийн нягтрал (БНБД-д норм заагаагүй)'),
     mode: 'band',
     weight: 0,
     ref: true,
@@ -526,10 +527,10 @@ export const INDICATORS: Indicator[] = [
   {
     id: 'far',
     cat: 'urban',
-    name: 'FAR — Барилгажилтын нягтралын коэффициент',
+    name: tr('FAR — Барилгажилтын нягтралын коэффициент'),
     short: 'FAR',
     unit: '',
-    norm: 'БНБД 30-01-24, Хүснэгт 6.1 — бүсийн төрлөөр өөр ДЭЭД хязгаар',
+    norm: tr('БНБД 30-01-24, Хүснэгт 6.1 — бүсийн төрлөөр өөр ДЭЭД хязгаар'),
     mode: 'lower',
     weight: 19,
     byType: 'farMax',
@@ -539,10 +540,10 @@ export const INDICATORS: Indicator[] = [
   {
     id: 'bcr',
     cat: 'urban',
-    name: 'BCR — Барилгажилтын нягтрал',
+    name: tr('BCR — Барилгажилтын нягтрал'),
     short: 'BCR',
     unit: '%',
-    norm: 'БНБД 30-01-24, Хүснэгт 6.1 — бүсийн төрлөөр өөр ДЭЭД хязгаар',
+    norm: tr('БНБД 30-01-24, Хүснэгт 6.1 — бүсийн төрлөөр өөр ДЭЭД хязгаар'),
     mode: 'lower',
     weight: 8,
     byType: 'bcrMax',
@@ -552,10 +553,10 @@ export const INDICATORS: Indicator[] = [
   {
     id: 'parking',
     cat: 'urban',
-    name: 'Зогсоолын хангамж',
-    short: 'Зогсоол',
+    name: tr('Зогсоолын хангамж'),
+    short: tr('Зогсоол'),
     unit: '%',
-    norm: 'БНБД 30-01-24, 10.32 — дахин төлөвлөлтөд өрх бүрд 1.0 зогсоол',
+    norm: tr('БНБД 30-01-24, 10.32 — дахин төлөвлөлтөд өрх бүрд 1.0 зогсоол'),
     mode: 'higher',
     weight: 10,
     hardMin: 0, target: 100,
@@ -574,10 +575,10 @@ export const INDICATORS: Indicator[] = [
   {
     id: 'social',
     cat: 'social',
-    name: 'Нийгмийн дэд бүтцийн хүртээмж',
-    short: 'Нийгмийн үйлчилгээ',
+    name: tr('Нийгмийн дэд бүтцийн хүртээмж'),
+    short: tr('Нийгмийн үйлчилгээ'),
     unit: '%',
-    norm: 'Сургууль, цэцэрлэг, эмнэлгээс 500 м доторх орон сууцны хүн амын хамралт — 100%',
+    norm: tr('Сургууль, цэцэрлэг, эмнэлгээс 500 м доторх орон сууцны хүн амын хамралт — 100%'),
     mode: 'higher',
     weight: 8,
     hardMin: 0, target: 100,
@@ -586,10 +587,10 @@ export const INDICATORS: Indicator[] = [
   {
     id: 'engineering',
     cat: 'engineering',
-    name: 'Инженерийн дэд бүтцийн хүртээмж',
-    short: 'Инженер',
-    unit: 'м',
-    norm: 'Цэвэр ус, бохир, дулааны шугам хүртэлх зай (батлагдаагүй — таамаг)',
+    name: tr('Инженерийн дэд бүтцийн хүртээмж'),
+    short: tr('Инженер'),
+    unit: tr('м'),
+    norm: tr('Цэвэр ус, бохир, дулааны шугам хүртэлх зай (батлагдаагүй — таамаг)'),
     mode: 'lower',
     weight: 7,
     best: 100, hardMax: 500,
@@ -629,9 +630,9 @@ export type SocialFacility = {
 };
 
 export const SOCIAL_FACILITIES: SocialFacility[] = [
-  { key: 'kinder', label: 'Цэцэрлэг', re: /цэцэрлэг/i, radius: BUFFER_M, weight: 34 },
-  { key: 'school', label: 'Сургууль', re: /сургууль/i, radius: BUFFER_M, weight: 33 },
-  { key: 'clinic', label: 'Эмнэлэг', re: /эмнэлэг/i, radius: BUFFER_M, weight: 33 },
+  { key: 'kinder', label: tr('Цэцэрлэг'), re: /цэцэрлэг/i, radius: BUFFER_M, weight: 34 },
+  { key: 'school', label: tr('Сургууль'), re: /сургууль/i, radius: BUFFER_M, weight: 33 },
+  { key: 'clinic', label: tr('Эмнэлэг'), re: /эмнэлэг/i, radius: BUFFER_M, weight: 33 },
 ];
 
 /* ══════════════════ Зогсоол ══════════════════ */
@@ -659,9 +660,9 @@ export const PARKING: ParkingOpt = {
 };
 
 export const PARKING_SOURCES: { key: ParkingSource; label: string; short: string }[] = [
-  { key: 'norm', label: 'Нормд заасан зогсоолын тоо', short: 'Норм' },
-  { key: 'households', label: 'Өрхийн тоогоор (өрх × коэф.)', short: 'өрхөөр' },
-  { key: 'population', label: 'Хүн амаар (1000 хүнд ногдохоор)', short: 'хүн амаар' },
+  { key: 'norm', label: tr('Нормд заасан зогсоолын тоо'), short: tr('Норм') },
+  { key: 'households', label: tr('Өрхийн тоогоор (өрх × коэф.)'), short: tr('өрхөөр') },
+  { key: 'population', label: tr('Хүн амаар (1000 хүнд ногдохоор)'), short: tr('хүн амаар') },
 ];
 
 /* ══════════════════ Ногоон байгууламж ══════════════════ */
@@ -677,7 +678,7 @@ export const PARKING_SOURCES: { key: ParkingSource; label: string; short: string
  * хувилбар нь ET-25 давхаргад л байсан; эх сурвалж энэ үйлчилгээ болсноор устав.)
  */
 export const GREEN_CATEGORIES = [
-  { key: 'Ногоон байгууламж', short: 'Ногоон байгууламж', default: true },
+  { key: 'Ногоон байгууламж', short: tr('Ногоон байгууламж'), default: true },
 ];
 
 /**
@@ -738,7 +739,7 @@ export const LOCATION_RADII = [100, 200, 300, 500];
  * ⚠️ «Таун хаус» нь орон сууцны шинжтэй ч ЗОРИУДААР багтсан: E-5 бүс энэ
  * ангилалтай атлаа шинжилгээнд шаардлагатай (хэрэглэгчийн шийдвэр, 2026-08-12).
  */
-export const LOCATION_ZONE_TYPES = ['Олон нийтийн бүс', 'Таун хаус'];
+export const LOCATION_ZONE_TYPES = [tr('Олон нийтийн бүс'), tr('Таун хаус')];
 
 /**
  * «Байршил»-ын шинжилгээнээс ХАСАХ барилгууд (`OBJECTID`).
@@ -774,9 +775,9 @@ export const LOCATION_EXCLUDE_OIDS = new Set<number>([
 ]);
 
 export const GREEN_SOURCES: { key: GreenSource; label: string; short: string }[] = [
-  { key: 'perPerson', label: 'Нэг хүнд ногдохоор (БНБД 6 м²/хүн)', short: '6 м²/хүн' },
-  { key: 'share', label: 'Талбайн эзлэх хувиар (30% ногоон)', short: 'талбайн %' },
-  { key: 'buffer', label: 'Нөлөөллийн бүс', short: 'нөлөөллийн бүс' },
+  { key: 'perPerson', label: tr('Нэг хүнд ногдохоор (БНБД 6 м²/хүн)'), short: tr('6 м²/хүн') },
+  { key: 'share', label: tr('Талбайн эзлэх хувиар (30% ногоон)'), short: tr('талбайн %') },
+  { key: 'buffer', label: tr('Нөлөөллийн бүс'), short: tr('нөлөөллийн бүс') },
 ];
 
 /* ══════════════════ Эдийн засаг ══════════════════ */
@@ -843,14 +844,14 @@ export function profitScore(margin: number | null | undefined): number | null {
 
 /** Ашгийн байдлыг үгээр — эрэмбэ, дэлгэрэнгүйд */
 export function profitLabel(margin: number | null | undefined): string {
-  if (margin == null) return 'Өгөгдөлгүй';
-  if (margin === -Infinity) return 'Өндөр алдагдалтай';
-  if (!Number.isFinite(margin)) return 'Өгөгдөлгүй';
-  if (margin <= -30) return 'Өндөр алдагдалтай';
-  if (margin < -10) return 'Алдагдалтай';
-  if (margin <= 10) return 'Тэнцүү (balance)';
-  if (margin < 30) return 'Ашигтай';
-  return 'Өндөр ашигтай';
+  if (margin == null) return tr('Өгөгдөлгүй');
+  if (margin === -Infinity) return tr('Өндөр алдагдалтай');
+  if (!Number.isFinite(margin)) return tr('Өгөгдөлгүй');
+  if (margin <= -30) return tr('Өндөр алдагдалтай');
+  if (margin < -10) return tr('Алдагдалтай');
+  if (margin <= 10) return tr('Тэнцүү (balance)');
+  if (margin < 30) return tr('Ашигтай');
+  return tr('Өндөр ашигтай');
 }
 
 /* ⚠️ 2026-08-19: `ECON_SCORE` ХАСАГДАВ. Хаанаас ч ашиглагдахаа больсон атлаа
@@ -955,18 +956,18 @@ export const ASSUME_MET: Record<string, number> = {
  * өөрийн бүлэгтэй — эс бөгөөс жагсаалтын гуравны нэг нь «Бусад» болно.
  */
 export const BUILDING_PURPOSES: { key: string; label: string; color: string; re: RegExp }[] = [
-  { key: 'res', label: 'Орон сууц', color: '#d97706', re: /орон сууц|house/i },
-  { key: 'school', label: 'Сургууль', color: '#8b5cf6', re: /сургууль/i },
-  { key: 'kinder', label: 'Цэцэрлэг', color: '#0891b2', re: /цэцэрлэг/i },
-  { key: 'clinic', label: 'Эмнэлэг', color: '#ef4444', re: /эмнэлэг/i },
-  { key: 'eng', label: 'Инженерийн байгууламж', color: '#0d9488', re: /хтп|уддп|дэд станц|дулааны станц|цэвэрлэх|нцү/i },
-  { key: 'parking', label: 'Авто зогсоол', color: '#64748b', re: /зогсоол/i },
-  { key: 'office', label: 'Оффис, төрийн байгууллага', color: '#3b82f6', re: /оффис|цагдаа|холбоо мэдээ|төрийн/i },
-  { key: 'service', label: 'Үйлчилгээ, худалдаа', color: '#ec4899', re: /үйлчилгээ|худалдаа|зах|спорт|ахмад|хүүхэд|үзвэр/i },
+  { key: 'res', label: tr('Орон сууц'), color: '#d97706', re: /орон сууц|house/i },
+  { key: 'school', label: tr('Сургууль'), color: '#8b5cf6', re: /сургууль/i },
+  { key: 'kinder', label: tr('Цэцэрлэг'), color: '#0891b2', re: /цэцэрлэг/i },
+  { key: 'clinic', label: tr('Эмнэлэг'), color: '#ef4444', re: /эмнэлэг/i },
+  { key: 'eng', label: tr('Инженерийн байгууламж'), color: '#0d9488', re: /хтп|уддп|дэд станц|дулааны станц|цэвэрлэх|нцү/i },
+  { key: 'parking', label: tr('Авто зогсоол'), color: '#64748b', re: /зогсоол/i },
+  { key: 'office', label: tr('Оффис, төрийн байгууллага'), color: '#3b82f6', re: /оффис|цагдаа|холбоо мэдээ|төрийн/i },
+  { key: 'service', label: tr('Үйлчилгээ, худалдаа'), color: '#ec4899', re: /үйлчилгээ|худалдаа|зах|спорт|ахмад|хүүхэд|үзвэр/i },
 ];
 
 /** Аль ч хэв шинжид таараагүй (ба зориулалт хоосон) барилгын бүлэг */
-export const BUILDING_PURPOSE_OTHER = { key: 'other', label: 'Бусад', color: '#94a3b8' } as const;
+export const BUILDING_PURPOSE_OTHER = { key: 'other', label: tr('Бусад'), color: '#94a3b8' } as const;
 
 /** Зориулалтын түүхий утга → бүлгийн түлхүүр */
 export function buildingPurposeKey(purpose: unknown): string {

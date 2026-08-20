@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { t as tr } from '@/lib/i18nCore';
 import {
   applyUpdates,
   computeAll,
@@ -102,22 +103,22 @@ const inputToMs = (s: string) => (s ? Date.parse(s + "T00:00:00Z") : null);
  * тухайн багана ЮУНААС бодогддгийг, эсвэл ХААНА бөглөхийг заана.
  */
 const RO = {
-  no: "№ ба Ажлын нэр нь excel-ийн бүтэц — энэ хуудаснаас засагдахгүй.",
-  wC: "Хувийн жин: Мөнгөн дүн ÷ дээд мөрийн дүн. Автоматаар бодогдоно.",
-  wD: "Хувийн жин (нийт төсөлд): Мөнгөн дүн ÷ үе шатны дүн. Автоматаар бодогдоно.",
-  wE: "Одоо байгаа: Хувийн жин × Бодит гүйцэтгэл. Гүйцэтгэл бөглөхөд өөрөө хөдөлнө.",
-  vol: "Обьём нь үйлчилгээнд хадгалагдсан — энэ хуудаснаас засагдахгүй.",
-  vol2: "«Объём_шинэ2» нь үйлчилгээнд хадгалагдсан — энэ хуудаснаас засагдахгүй. Хоосон бол тэр багцад талбар нь үүсээгүй байна.",
-  unit: "Нэгж өртөг нь үйлчилгээнд хадгалагдсан — энэ хуудаснаас засагдахгүй.",
-  money: "Мөнгөн дүн: Обьём × Нэгж өртөг; бүлгийн мөрд дэд мөрүүдийнхээ нийлбэр.",
-  I: "Төлөвлөгөөт гүйцэтгэл нь блокуудын төлөвлөгөөт хувийн дундаж. Огноог засвал өөрчлөгдөнө.",
-  J: "Бодит гүйцэтгэл нь блокуудын бодит хувийн дундаж. Блокийн нүдийг бөглөнө үү.",
-  K: "Төлөвлөгөө биелэлт: Бодит ÷ Төлөвлөгөөт. Автоматаар бодогдоно.",
-  groupAct: "Бүлгийн мөр нь дэд мөрүүдийнхээ жинтэй дунджаар бодогдоно — доод ажлын мөр дээр бөглөнө үү.",
-  blockPlan: "Барилга-төлөвлөгөөт нь эхлэх/дуусах огноо ба шинэчлэгдсэн огноогоор бодогдоно — огноог нь засаарай.",
-  groupDate: "Энэ огноо нь доод ажлуудынхаа хамгийн эрт эхлэх / хамгийн сүүл дуусахаар бодогдож байна — доод ажлынхаа огноог засаарай.",
-  noDateField: "Энэ блокт огнооны багана үйлчилгээнд байхгүй тул хадгалах газаргүй.",
-  asOfRow: "Шинэчлэгдсэн огноо зөвхөн эхний мөрд бичигдэнэ — тэндээс эсвэл дээд талын «Огноо»-гоор солино.",
+  no: tr('№ ба Ажлын нэр нь excel-ийн бүтэц — энэ хуудаснаас засагдахгүй.'),
+  wC: tr('Хувийн жин: Мөнгөн дүн ÷ дээд мөрийн дүн. Автоматаар бодогдоно.'),
+  wD: tr('Хувийн жин (нийт төсөлд): Мөнгөн дүн ÷ үе шатны дүн. Автоматаар бодогдоно.'),
+  wE: tr('Одоо байгаа: Хувийн жин × Бодит гүйцэтгэл. Гүйцэтгэл бөглөхөд өөрөө хөдөлнө.'),
+  vol: tr('Обьём нь үйлчилгээнд хадгалагдсан — энэ хуудаснаас засагдахгүй.'),
+  vol2: tr('«Объём_шинэ2» нь үйлчилгээнд хадгалагдсан — энэ хуудаснаас засагдахгүй. Хоосон бол тэр багцад талбар нь үүсээгүй байна.'),
+  unit: tr('Нэгж өртөг нь үйлчилгээнд хадгалагдсан — энэ хуудаснаас засагдахгүй.'),
+  money: tr('Мөнгөн дүн: Обьём × Нэгж өртөг; бүлгийн мөрд дэд мөрүүдийнхээ нийлбэр.'),
+  I: tr('Төлөвлөгөөт гүйцэтгэл нь блокуудын төлөвлөгөөт хувийн дундаж. Огноог засвал өөрчлөгдөнө.'),
+  J: tr('Бодит гүйцэтгэл нь блокуудын бодит хувийн дундаж. Блокийн нүдийг бөглөнө үү.'),
+  K: tr('Төлөвлөгөө биелэлт: Бодит ÷ Төлөвлөгөөт. Автоматаар бодогдоно.'),
+  groupAct: tr('Бүлгийн мөр нь дэд мөрүүдийнхээ жинтэй дунджаар бодогдоно — доод ажлын мөр дээр бөглөнө үү.'),
+  blockPlan: tr('Барилга-төлөвлөгөөт нь эхлэх/дуусах огноо ба шинэчлэгдсэн огноогоор бодогдоно — огноог нь засаарай.'),
+  groupDate: tr('Энэ огноо нь доод ажлуудынхаа хамгийн эрт эхлэх / хамгийн сүүл дуусахаар бодогдож байна — доод ажлынхаа огноог засаарай.'),
+  noDateField: tr('Энэ блокт огнооны багана үйлчилгээнд байхгүй тул хадгалах газаргүй.'),
+  asOfRow: tr('Шинэчлэгдсэн огноо зөвхөн эхний мөрд бичигдэнэ — тэндээс эсвэл дээд талын «Огноо»-гоор солино.'),
 } as const;
 
 export default function FillNew() {
@@ -314,7 +315,7 @@ export default function FillNew() {
     setEdit(null);
     if (t !== "" && !Number.isFinite(Number(t))) {
       // Чимээгүй хаявал хэрэглэгч «бичигдлээ» гэж андуурдаг — мэдэгдэнэ.
-      setErr(`${sc?.bld[b] ?? ""} · ${r.work}: тоон утга оруулна уу.`);
+      setErr(tr('{0} · {1}: тоон утга оруулна уу.', sc?.bld[b] ?? "", r.work));
       return;
     }
     const v = t === "" ? "" : String(Math.min(100, Math.max(0, Number(t))));
@@ -328,7 +329,7 @@ export default function FillNew() {
       floor != null &&
       Number(v) < Math.round(floor * 1000) / 10 &&
       !window.confirm(
-        `${sc?.bld[b] ?? ""} · ${r.work}: өмнө нь ${origStr(r, b)}% бүртгэгдсэн — бууруулах гэж байна. Зөв үү?`,
+        tr('{0} · {1}: өмнө нь {2}% бүртгэгдсэн — бууруулах гэж байна. Зөв үү?', sc?.bld[b] ?? "", r.work, origStr(r, b)),
       )
     )
       return;
@@ -379,9 +380,9 @@ export default function FillNew() {
     }
     const when = new Date(d.t).toLocaleString("mn-MN");
     const msg =
-      `Нийтлэгдээгүй ${Object.keys(next).length} нүдний засвар олдлоо (${when}).` +
-      (dropped ? `\n${dropped} нүд хуучирсан тул орхигдоно.` : "") +
-      "\nСэргээх үү?";
+      tr('Нийтлэгдээгүй {0} нүдний засвар олдлоо ({1}).', Object.keys(next).length, when) +
+      (dropped ? tr('\n{0} нүд хуучирсан тул орхигдоно.', dropped) : "") +
+      tr('\nСэргээх үү?');
     if (window.confirm(msg)) setPending(next);
     else clearDraftLS(pkg.key);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -414,8 +415,8 @@ export default function FillNew() {
   const confirmSwitch = () =>
     dirtyCount === 0 ||
     window.confirm(
-      `Нийтлэгдээгүй ${dirtyCount} өөрчлөлт бий. Багц солих уу?\n` +
-        "(Нүдний засварууд ноорог болон хадгалагдаж, буцаж ирэхэд сэргээхийг санал болгоно.)",
+      tr('Нийтлэгдээгүй {0} өөрчлөлт бий. Багц солих уу?\n', dirtyCount) +
+        tr('(Нүдний засварууд ноорог болон хадгалагдаж, буцаж ирэхэд сэргээхийг санал болгоно.)'),
     );
   /** Огнооны нүдний ХАДГАЛАГДСАН утга «YYYY-MM-DD» хэлбэрээр. */
   const origDay = (r: SheetRow, b: number, k: "s" | "e") =>
@@ -565,7 +566,7 @@ export default function FillNew() {
     <div className={st.wrap} ref={wrapRef}>
       <div className={st.toolbar}>
         <label className={st.field}>
-          Багц{" "}
+          {tr('Багц')}{" "}
           <select
             className={st.select}
             value={pkg.group}
@@ -586,7 +587,7 @@ export default function FillNew() {
             тэр нь модны гүн, энэ нь барилгын давхрын тоо. */}
         {floorOpts.length > 1 && (
           <label className={st.field}>
-            Хувилбар{" "}
+            {tr('Хувилбар')}{" "}
             <select
               className={st.select}
               value={pkg.key}
@@ -603,7 +604,7 @@ export default function FillNew() {
           </label>
         )}
         <label className={st.field}>
-          Огноо{" "}
+          {tr('Огноо')}{" "}
           <select
             className={st.select}
             value={dt(asOf)}
@@ -614,7 +615,7 @@ export default function FillNew() {
               const ms = inputToMs(e.target.value);
               if (ms != null) setAsOf(ms);
             }}
-            title="Төлөвлөгөөт хувь бүхэлдээ энэ огноогоор бодогдоно (excel-ийн «Шинэчлэгдсэн огноо»)"
+            title={tr('Төлөвлөгөөт хувь бүхэлдээ энэ огноогоор бодогдоно (excel-ийн «Шинэчлэгдсэн огноо»)')}
           >
             {dateOpts.map((d) => (
               <option key={d} value={d}>{d}</option>
@@ -622,33 +623,33 @@ export default function FillNew() {
           </select>
         </label>
         <span className={st.field}>
-          Давхарга
+          {tr('Давхарга')}
           <span className={st.layerBtns}>
-            <button className={st.layerBtn} onClick={() => collapseToLayer(1)} title="Үе шат">1</button>
-            <button className={st.layerBtn} onClick={() => collapseToLayer(2)} title="+ дэд үе шат">2</button>
-            <button className={st.layerBtn} onClick={() => collapseToLayer(3)} title="+ ангилал">3</button>
-            <button className={st.layerBtn} onClick={() => collapseToLayer(4)} title="+ бүлэг">4</button>
-            <button className={st.layerBtn} onClick={() => collapseToLayer(5)} title="Бүх ажил дэлгэх">Бүгд</button>
+            <button className={st.layerBtn} onClick={() => collapseToLayer(1)} title={tr('Үе шат')}>1</button>
+            <button className={st.layerBtn} onClick={() => collapseToLayer(2)} title={tr('+ дэд үе шат')}>2</button>
+            <button className={st.layerBtn} onClick={() => collapseToLayer(3)} title={tr('+ ангилал')}>3</button>
+            <button className={st.layerBtn} onClick={() => collapseToLayer(4)} title={tr('+ бүлэг')}>4</button>
+            <button className={st.layerBtn} onClick={() => collapseToLayer(5)} title={tr('Бүх ажил дэлгэх')}>{tr('Бүгд')}</button>
           </span>
         </span>
         {resized && (
           <button
             className={st.layerBtn}
             onClick={resetAll}
-            title="Чирж өөрчилсөн бүх баганы өргөнийг анхны хэмжээнд нь буцаана"
+            title={tr('Чирж өөрчилсөн бүх баганы өргөнийг анхны хэмжээнд нь буцаана')}
           >
-            Өргөн сэргээх
+            {tr('Өргөн сэргээх')}
           </button>
         )}
         <button
           className={st.publishBtn}
           onClick={publish}
           disabled={busy || dirtyCount === 0}
-          title="Өөрчилсөн нүд + дээд бүлгүүдийн нийлбэрийг хадгална (Ctrl+S)"
+          title={tr('Өөрчилсөн нүд + дээд бүлгүүдийн нийлбэрийг хадгална (Ctrl+S)')}
         >
-          Нийтлэх{dirtyCount ? ` (${dirtyCount})` : ""}
+          {tr('Нийтлэх')}{dirtyCount ? ` (${dirtyCount})` : ""}
         </button>
-        {busy && <span className={st.muted}>ажиллаж байна…</span>}
+        {busy && <span className={st.muted}>{tr('ажиллаж байна…')}</span>}
       </div>
 
       {err && <p className={st.error}>{err}</p>}
@@ -667,12 +668,11 @@ export default function FillNew() {
 
       {/* Хоосон үр дүнг тайлбаргүй орхивол хэрэглэгч юу болсныг мэдэхгүй гацдаг. */}
       {!busy && !err && sc && rows.length === 0 && (
-        <p className={st.muted}>Энэ багцад мөр олдсонгүй.</p>
+        <p className={st.muted}>{tr('Энэ багцад мөр олдсонгүй.')}</p>
       )}
       {rows.length > 0 && sc && calc.length === 0 && (
         <p className={st.muted}>
-          Тайлангийн огноо тодорхойлогдоогүй тул хүснэгт бодогдохгүй байна —
-          Огноо сонгоно уу (жагсаалт ачаалагдаагүй бол хуудсыг дахин ачаална уу).
+          {tr('Тайлангийн огноо тодорхойлогдоогүй тул хүснэгт бодогдохгүй байна — Огноо сонгоно уу (жагсаалт ачаалагдаагүй бол хуудсыг дахин ачаална уу).')}
         </p>
       )}
 
@@ -692,22 +692,22 @@ export default function FillNew() {
             <thead>
               <tr>
                 <th rowSpan={4} className={cls("fz c-no")}>№<i {...grip("no")} /></th>
-                <th rowSpan={4} className={cls("fz c-ajil")}>Ажил<i {...grip("ajil")} /></th>
+                <th rowSpan={4} className={cls("fz c-ajil")}>{tr('Ажил')}<i {...grip("ajil")} /></th>
                 {/* Excel-д C1:D4 — «Хувийн жин» хоёр баганыг бүрэн хамарна.
                     ⚠️ Энд `c-w` өргөний ангилал ТАВИХГҮЙ: 72px нь хоёр баганын
                     НИЙЛБЭР болж уншигдаж, хоёуланг нь шахна. Өргөнийг мөрийн
                     нүднүүд өөрсдөө заана. */}
-                <th rowSpan={4} colSpan={2} className={cls("c-wspan")}>Хувийн жин<i {...grip("w")} /></th>
-                <th rowSpan={4} className={cls("c-now")}>Одоо байгаа хувийн жин<i {...grip("now")} /></th>
-                <th rowSpan={4} className={cls("c-vol")}>Обьём<i {...grip("vol")} /></th>
-                <th rowSpan={4} className={cls("c-vol")}>Обьём шинэ<i {...grip("vol")} /></th>
-                <th rowSpan={4} className={cls("c-calc")}>Төлөвлөгөөт гүйцэтгэл<i {...grip("calc")} /></th>
-                <th rowSpan={4} className={cls("c-calc")}>Бодит гүйцэтгэл<i {...grip("calc")} /></th>
-                <th rowSpan={4} className={cls("c-calc")}>Төлөвлөгөө биелэлт<i {...grip("calc")} /></th>
-                <th colSpan={nBld} className={cls("band")}>Ажил гүйцэтгэл ({nBld} барилга)</th>
-                <th colSpan={nBld} className={cls("band")}>Төлөвлөгөөт гүйцэтгэл ({nBld} барилга)</th>
-                <th colSpan={nBld * 2} className={cls("band")}>Төлөвлөгөөт хуваарь ({nBld} барилга)</th>
-                <th rowSpan={4} className={cls("c-date")}>Шинэчлэгдсэн огноо<i {...grip("date")} /></th>
+                <th rowSpan={4} colSpan={2} className={cls("c-wspan")}>{tr('Хувийн жин')}<i {...grip("w")} /></th>
+                <th rowSpan={4} className={cls("c-now")}>{tr('Одоо байгаа хувийн жин')}<i {...grip("now")} /></th>
+                <th rowSpan={4} className={cls("c-vol")}>{tr('Обьём')}<i {...grip("vol")} /></th>
+                <th rowSpan={4} className={cls("c-vol")}>{tr('Обьём шинэ')}<i {...grip("vol")} /></th>
+                <th rowSpan={4} className={cls("c-calc")}>{tr('Төлөвлөгөөт гүйцэтгэл')}<i {...grip("calc")} /></th>
+                <th rowSpan={4} className={cls("c-calc")}>{tr('Бодит гүйцэтгэл')}<i {...grip("calc")} /></th>
+                <th rowSpan={4} className={cls("c-calc")}>{tr('Төлөвлөгөө биелэлт')}<i {...grip("calc")} /></th>
+                <th colSpan={nBld} className={cls("band")}>{tr('Ажил гүйцэтгэл (')}{nBld} {tr('барилга)')}</th>
+                <th colSpan={nBld} className={cls("band")}>{tr('Төлөвлөгөөт гүйцэтгэл (')}{nBld} {tr('барилга)')}</th>
+                <th colSpan={nBld * 2} className={cls("band")}>{tr('Төлөвлөгөөт хуваарь (')}{nBld} {tr('барилга)')}</th>
+                <th rowSpan={4} className={cls("c-date")}>{tr('Шинэчлэгдсэн огноо')}<i {...grip("date")} /></th>
               </tr>
               {/* 2-р мөр — барилгын төрөл (блокийн цуваагаар) */}
               <tr>
@@ -727,17 +727,17 @@ export default function FillNew() {
                   <th key={`a${b}`} rowSpan={2} className={cls("bld")}>{b}<i {...grip("bld")} /></th>
                 ))}
                 {sc.bld.map((b) => (
-                  <th key={`p${b}`} rowSpan={2} className={cls("bld")}>{b} барилга<i {...grip("bld")} /></th>
+                  <th key={`p${b}`} rowSpan={2} className={cls("bld")}>{b} {tr('барилга')}<i {...grip("bld")} /></th>
                 ))}
                 {sc.bld.map((b) => (
-                  <th key={`d${b}`} colSpan={2} className={cls("c-date2")}>{b} барилга</th>
+                  <th key={`d${b}`} colSpan={2} className={cls("c-date2")}>{b} {tr('барилга')}</th>
                 ))}
               </tr>
               {/* 4-р мөр — хуваарийн Эхлэх/Дуусах */}
               <tr>
                 {sc.bld.map((b) => [
-                  <th key={`s${b}`} className={cls("c-date")}>Эхлэх<i {...grip("date")} /></th>,
-                  <th key={`e${b}`} className={cls("c-date")}>Дуусах<i {...grip("date")} /></th>,
+                  <th key={`s${b}`} className={cls("c-date")}>{tr('Эхлэх')}<i {...grip("date")} /></th>,
+                  <th key={`e${b}`} className={cls("c-date")}>{tr('Дуусах')}<i {...grip("date")} /></th>,
                 ])}
               </tr>
             </thead>
@@ -762,7 +762,7 @@ export default function FillNew() {
                           type="button"
                           className={st.caret}
                           aria-expanded={!collapsed.has(r.oid)}
-                          aria-label={collapsed.has(r.oid) ? "Дэлгэх" : "Эвхэх"}
+                          aria-label={collapsed.has(r.oid) ? tr('Дэлгэх') : tr('Эвхэх')}
                           onClick={(e) => {
                             e.stopPropagation();
                             toggle(r.oid);
@@ -893,7 +893,7 @@ export default function FillNew() {
                             )}
                             title={
                               editable
-                                ? "Дарж календараар сонгоно"
+                                ? tr('Дарж календараар сонгоно')
                                 : src === "agg"
                                   ? RO.groupDate
                                   : RO.noDateField
@@ -924,7 +924,7 @@ export default function FillNew() {
                             (i === 0 ? " cursor-cell" : "") +
                             (i === 0 && asOf !== asOfOrig ? " dirty" : ""),
                         )}
-                        title={i === 0 ? "Дарж календараар сонгоно" : RO.asOfRow}
+                        title={i === 0 ? tr('Дарж календараар сонгоно') : RO.asOfRow}
                         onClick={(e) => {
                           if (i !== 0) return say(RO.asOfRow);
                           setPick({
@@ -971,7 +971,7 @@ export default function FillNew() {
 
       {notice && (
         <div className={st.notice} role="status" onClick={() => setNotice("")}>
-          <b>Энэ нүд засагдахгүй.</b> {notice}
+          <b>{tr('Энэ нүд засагдахгүй.')}</b> {notice}
         </div>
       )}
     </div>

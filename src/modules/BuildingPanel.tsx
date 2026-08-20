@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { t as tr } from '@/lib/i18nCore';
 import { Section, Stats, Stat, Bars, Stack, Ring, Data, Empty, Col, Note, Split, Tabs, Trend, Select } from '@/components/ui';
 import { useFilter } from '@/lib/filter';
 import { useAsync, type Async } from '@/lib/useAsync';
@@ -25,7 +26,7 @@ const TS = TASK_SHEET.fields;
  */
 
 /** null/хоосон утгыг НЭГ бүлэгт (ArcGIS null ба ' '-г тусад нь буцаадаг) */
-const UNKNOWN = 'Тодорхойгүй';
+const UNKNOWN = tr('Тодорхойгүй');
 
 export type Block = {
   oid: number;
@@ -173,8 +174,8 @@ export function useBuildings() {
 
 /** Хэмжих алхам — бүртгэлийн огноогоор эсвэл сарын эцсийн байдлаар */
 const GRAINS = [
-  { key: 'month', label: 'Сараар' },
-  { key: 'day', label: 'Огноогоор' },
+  { key: 'month', label: tr('Сараар') },
+  { key: 'day', label: tr('Огноогоор') },
 ];
 
 /**
@@ -208,7 +209,7 @@ function ProgressTrend({
     const g = bagts.find((b) => b.key === k);
     if (g) {
       toggle({
-        key: `${BAGTS_FILTER}${k}`, label: k, group: 'Багц',
+        key: `${BAGTS_FILTER}${k}`, label: k, group: tr('Багц'),
         where: oidWhere(g.oids), view: 'monitor', layerIds: 'mon:building', color: HUE,
       });
     }
@@ -219,12 +220,12 @@ function ProgressTrend({
 
   return (
     <Section
-      title="Барилга угсралтын явц"
+      title={tr('Барилга угсралтын явц')}
       note={<Select
-        label="Хамрах хүрээ"
+        label={tr('Хамрах хүрээ')}
         value={scope}
         onChange={pickScope}
-        options={[{ key: '*', label: 'Нийт төсөл' }, ...bagts.map((b) => ({ key: b.key, label: b.key }))]}
+        options={[{ key: '*', label: tr('Нийт төсөл') }, ...bagts.map((b) => ({ key: b.key, label: b.key }))]}
       />}
     >
       {/* ⚠️ Алхмын товч нь диаграмын ХАЖУУД (дээр БИШ), тайлбар бичвэр
@@ -251,7 +252,7 @@ function BlockTrend({ hist, blockKey }: { hist: BlockHistory; blockKey: string }
   if (pts.length < 2) return null;
 
   return (
-    <Section title="Барилга угсралтын явц" note={`${pts.length} хэмжилт`}>
+    <Section title={tr('Барилга угсралтын явц')} note={tr('{0} хэмжилт', pts.length)}>
       <Col gap="md">
         <Tabs value={grain} onChange={setGrain} items={GRAINS} />
         <Trend
@@ -310,20 +311,20 @@ export function BuildingSummary({ q }: { q: Buildings }) {
           <Section tone="primary">
             <Col gap="md">
               <Stats cols={2}>
-                <Stat value={num(d.blocks)} unit="блок" label="Барилгын блок" color={HUE} accent />
-                <Stat value={num(d.households)} unit="айл" label="Айлын тоо" color={HUE} accent />
+                <Stat value={num(d.blocks)} unit={tr('блок')} label={tr('Барилгын блок')} color={HUE} accent />
+                <Stat value={num(d.households)} unit={tr('айл')} label={tr('Айлын тоо')} color={HUE} accent />
               </Stats>
               <Split aside={<Ring value={d.progress} color={HUE} size={78} width={8} />}>
                 <Note>
-                  {num(d.blocks - d.noData)} блокийн «Барилга угсралтын ажил»-ын амьд дундаж{' '}
-                  {pct(d.progress, 1)}{d.asOf ? ` (${d.asOf})` : ''}. Дундаж {num(d.floors, 1)} давхар.
-                  {d.noData > 0 ? ` ${num(d.noData)} блок хараахан бөглөгдөөгүй.` : ''}
+                  {num(d.blocks - d.noData)} {tr('блокийн «Барилга угсралтын ажил»-ын амьд дундаж')}{' '}
+                  {pct(d.progress, 1)}{d.asOf ? ` (${d.asOf})` : ''}{tr('. Дундаж')} {num(d.floors, 1)} {tr('давхар.')}
+                  {d.noData > 0 ? tr(' {0} блок хараахан бөглөгдөөгүй.', num(d.noData)) : ''}
                 </Note>
               </Split>
             </Col>
           </Section>
 
-          <Section title="Гүйцэтгэлийн ангилал" note="дарж шүүнэ">
+          <Section title={tr('Гүйцэтгэлийн ангилал')} note={tr('дарж шүүнэ')}>
             <Col gap="md">
               {/* НЭГ ӨНГӨ (тодоос бүдгэр) — түвшин нь дараалалтай (Эхэлсэн→Дууссан)
                   тул гүйцэтгэл өндөр нь ТОД, бага нь бүдэг болж уусна. */}
@@ -338,60 +339,60 @@ export function BuildingSummary({ q }: { q: Buildings }) {
                 onSelect={(k) => {
                   const i = d.levels.findIndex((x) => x.key === k);
                   const l = d.levels[i];
-                  pick(`building:level:${k}`, `${l.label} · ${l.range}`, 'Гүйцэтгэлийн ангилал', l.oids, lvlHue(i, d.levels.length));
+                  pick(`building:level:${k}`, `${l.label} · ${l.range}`, tr('Гүйцэтгэлийн ангилал'), l.oids, lvlHue(i, d.levels.length));
                 }}
                 items={d.levels.map((l, i) => ({
                   key: l.key,
                   label: `${l.label} · ${l.range}`,
                   value: l.value,
-                  display: `${num(l.value)} блок`,
+                  display: tr('{0} блок', num(l.value)),
                   color: lvlHue(i, d.levels.length),
                 }))}
               />
             </Col>
           </Section>
 
-          <Section title="Багц тус бүрээр" note="дарж шүүнэ">
+          <Section title={tr('Багц тус бүрээр')} note={tr('дарж шүүнэ')}>
             <Bars
               color={HUE}
               max={100}
               selected={selected(BAGTS_FILTER)}
               onSelect={(k) => {
                 const g = d.bagts.find((x) => x.key === k)!;
-                pick(`${BAGTS_FILTER}${k}`, k, 'Багц', g.oids);
+                pick(`${BAGTS_FILTER}${k}`, k, tr('Багц'), g.oids);
               }}
               items={d.bagts.map((b) => {
                 const p = b.progress;
                 return {
                   key: b.key,
-                  label: `${b.key} · ${num(b.blocks)} блок`,
+                  label: tr('{0} · {1} блок', b.key, num(b.blocks)),
                   value: p ?? 0,
                   // null = гүйцэтгэл бүртгэгдээгүй. «0.0%» гэж бичвэл жинхэнэ 0%-аас ялгагдахгүй.
-                  display: p == null ? 'мэдээлэлгүй' : pct(p),
+                  display: p == null ? tr('мэдээлэлгүй') : pct(p),
                 };
               })}
             />
           </Section>
 
-          <Section title="Барилга угсралтын ажил" note="дарж шүүнэ">
+          <Section title={tr('Барилга угсралтын ажил')} note={tr('дарж шүүнэ')}>
             <Bars
               color={HUE}
               max={100}
               selected={selected('building:stage:')}
               onSelect={(k) => {
                 const st = d.stages.find((x) => x.key === k)!;
-                pick(`building:stage:${k}`, st.label, 'Ажлын үе шат', st.oids);
+                pick(`building:stage:${k}`, st.label, tr('Ажлын үе шат'), st.oids);
               }}
               items={d.stages.map((st) => ({
                 key: st.key,
                 label: st.label,
                 value: st.value ?? 0,
-                display: st.value == null ? 'бөглөгдөөгүй' : `${pct(st.value)} · ${num(st.blocks)} блок`,
+                display: st.value == null ? tr('бөглөгдөөгүй') : tr('{0} · {1} блок', pct(st.value), num(st.blocks)),
               }))}
             />
           </Section>
 
-          <Section title="Гүйцэтгэгч компани" note="дарж шүүнэ">
+          <Section title={tr('Гүйцэтгэгч компани')} note={tr('дарж шүүнэ')}>
             <Bars
               color={HUE}
               max={100}
@@ -399,15 +400,15 @@ export function BuildingSummary({ q }: { q: Buildings }) {
               selected={selected('building:comp:')}
               onSelect={(k) => {
                 const c = d.contractors.find((x) => x.key === k)!;
-                pick(`building:comp:${k}`, k, 'Гүйцэтгэгч компани', c.oids);
+                pick(`building:comp:${k}`, k, tr('Гүйцэтгэгч компани'), c.oids);
               }}
               items={d.contractors.map((c) => {
                 const p = c.progress;
                 return {
                   key: c.key,
-                  label: `${c.key} · ${num(c.blocks)} блок`,
+                  label: tr('{0} · {1} блок', c.key, num(c.blocks)),
                   value: p ?? 0,
-                  display: p == null ? 'мэдээлэлгүй' : pct(p),
+                  display: p == null ? tr('мэдээлэлгүй') : pct(p),
                 };
               })}
             />
@@ -536,26 +537,25 @@ function useBagtsWorks(layerBagts: string | null): Async<BagtsData | null> {
 export function MonitorBagts({ bagts }: { bagts: string }) {
   const q = useBagtsWorks(bagts);
   return (
-    <Data q={q} loading="Багцын ажлын гүйцэтгэл татаж байна…">
+    <Data q={q} loading={tr('Багцын ажлын гүйцэтгэл татаж байна…')}>
       {(d) => {
-        if (!d) return <Section title={bagts}><Empty label={`«${bagts}»-ийн ажлын гүйцэтгэл хүснэгтэд бүртгэгдээгүй байна.`} /></Section>;
+        if (!d) return <Section title={bagts}><Empty label={tr('«{0}»-ийн ажлын гүйцэтгэл хүснэгтэд бүртгэгдээгүй байна.', bagts)} /></Section>;
         const done = d.works.filter((w) => w.pct != null);
         return (
           <>
-            <Section tone="primary" title={`${d.name} — ажлын гүйцэтгэл`} note={d.asOf}>
+            <Section tone="primary" title={tr('{0} — ажлын гүйцэтгэл', d.name)} note={d.asOf}>
               <Col gap="sm">
                 <Stats cols={2}>
-                  <Stat value={num(d.blocks)} unit="блок" label="Блок" color={HUE} accent />
-                  <Stat value={num(done.length)} unit="төрөл" label="Ажлын төрөл" color={HUE} accent />
+                  <Stat value={num(d.blocks)} unit={tr('блок')} label={tr('Блок')} color={HUE} accent />
+                  <Stat value={num(done.length)} unit={tr('төрөл')} label={tr('Ажлын төрөл')} color={HUE} accent />
                 </Stats>
                 <Note>
-                  Ажлын төрөл тус бүрийн гүйцэтгэл — багцын блокуудын дундаж
-                  (бүртгэсэн блокоор). Блок бүрд бүх тайлангийн хамгийн их утга.
+                  {tr('Ажлын төрөл тус бүрийн гүйцэтгэл — багцын блокуудын дундаж (бүртгэсэн блокоор). Блок бүрд бүх тайлангийн хамгийн их утга.')}
                 </Note>
               </Col>
             </Section>
 
-            <Section title="Ажлын төрлөөр" note={`${num(d.works.length)} мөр`}>
+            <Section title={tr('Ажлын төрлөөр')} note={tr('{0} мөр', num(d.works.length))}>
               <Bars
                 color={HUE}
                 max={100}
@@ -563,7 +563,7 @@ export function MonitorBagts({ bagts }: { bagts: string }) {
                   key: `${w.no}|${w.name}`,
                   label: w.name,
                   value: w.pct ?? 0,
-                  display: w.pct == null ? 'мэдээлэлгүй' : `${pct(w.pct, 1)} · ${num(w.blocks)} блок`,
+                  display: w.pct == null ? tr('мэдээлэлгүй') : tr('{0} · {1} блок', pct(w.pct, 1), num(w.blocks)),
                 }))}
               />
             </Section>
@@ -718,30 +718,30 @@ export function pickedBuilding(
  */
 export function MonitorGeneral({ b, q }: { b: PickedBuilding | null; q: Async<TaskPerfData | null> }) {
   if (!b) {
-    return <Section><Empty label="Барилга сонгоогүй байна." /></Section>;
+    return <Section><Empty label={tr('Барилга сонгоогүй байна.')} /></Section>;
   }
   return (
-    <Data q={q} loading="Ажлын гүйцэтгэл татаж байна…">
+    <Data q={q} loading={tr('Ажлын гүйцэтгэл татаж байна…')}>
       {(d) => {
-        if (!d) return <Section title="Ажлын гүйцэтгэл"><Empty label={`«${b.blok}» блокийн ажлын гүйцэтгэл хараахан бүртгэгдээгүй байна.`} /></Section>;
+        if (!d) return <Section title={tr('Ажлын гүйцэтгэл')}><Empty label={tr('«{0}» блокийн ажлын гүйцэтгэл хараахан бүртгэгдээгүй байна.', b.blok)} /></Section>;
         return (
           <>
-            <Section tone="primary" title={`${b.blok} — нийт гүйцэтгэл`} note={d.version}>
+            <Section tone="primary" title={tr('{0} — нийт гүйцэтгэл', b.blok)} note={d.version}>
               <Col gap="sm">
-                <Ring value={d.overall ?? 0} color={HUE} size={104} width={11} label="угсралт" />
+                <Ring value={d.overall ?? 0} color={HUE} size={104} width={11} label={tr('угсралт')} />
                 <Note>
                   {d.overall == null
-                    ? 'Барилга угсралтын ажлын гүйцэтгэл хараахан бөглөгдөөгүй.'
-                    : `«Б. Барилга угсралтын ажил» үе шатын гүйцэтгэл (Бэлтгэл ажил ороогүй). Задаргаа «${num(d.taskCount)}» ажлаар.`}
+                    ? tr('Барилга угсралтын ажлын гүйцэтгэл хараахан бөглөгдөөгүй.')
+                    : tr('«Б. Барилга угсралтын ажил» үе шатын гүйцэтгэл (Бэлтгэл ажил ороогүй). Задаргаа «{0}» ажлаар.', num(d.taskCount))}
                 </Note>
               </Col>
             </Section>
 
-            <Section title="Ажлын төлөв" note={`${num(d.taskCount)} ажил`}>
+            <Section title={tr('Ажлын төлөв')} note={tr('{0} ажил', num(d.taskCount))}>
               <Stats cols={3}>
-                <Stat value={num(d.done)} unit="ажил" label="Дууссан" color="var(--good)" />
-                <Stat value={num(d.inProgress)} unit="ажил" label="Явцтай" color={HUE} accent />
-                <Stat value={num(d.notStarted)} unit="ажил" label="Эхлээгүй" color="var(--ink-3)" />
+                <Stat value={num(d.done)} unit={tr('ажил')} label={tr('Дууссан')} color="var(--good)" />
+                <Stat value={num(d.inProgress)} unit={tr('ажил')} label={tr('Явцтай')} color={HUE} accent />
+                <Stat value={num(d.notStarted)} unit={tr('ажил')} label={tr('Эхлээгүй')} color="var(--ink-3)" />
               </Stats>
             </Section>
           </>
@@ -758,19 +758,19 @@ export function MonitorGeneral({ b, q }: { b: PickedBuilding | null; q: Async<Ta
  */
 export function MonitorDetail({ b, q }: { b: PickedBuilding | null; q: Async<TaskPerfData | null> }) {
   if (!b) {
-    return <Section><Empty label="Барилга сонгоогүй байна." /></Section>;
+    return <Section><Empty label={tr('Барилга сонгоогүй байна.')} /></Section>;
   }
   return (
-    <Data q={q} loading="Ажлын гүйцэтгэл татаж байна…">
+    <Data q={q} loading={tr('Ажлын гүйцэтгэл татаж байна…')}>
       {(d) => {
-        if (!d) return <Section title="Гүйцэтгэл үе шатаар"><Empty label="Мэдээлэл алга." /></Section>;
+        if (!d) return <Section title={tr('Гүйцэтгэл үе шатаар')}><Empty label={tr('Мэдээлэл алга.')} /></Section>;
         return (
           <>
             {/* Энэ блокийн «Б.» мөрийн бүртгэл бүхэн — хэзээ хурдалсныг харуулна */}
             <BlockTrend hist={d.hist} blockKey={d.key} />
 
             {d.headers.length > 0 && (
-              <Section title="Барилга угсралтын ажил" note={`${d.headers.length} үе шат · ${d.version}`}>
+              <Section title={tr('Барилга угсралтын ажил')} note={tr('{0} үе шат · {1}', d.headers.length, d.version)}>
                 <Bars
                   color={HUE}
                   max={100}
@@ -778,7 +778,7 @@ export function MonitorDetail({ b, q }: { b: PickedBuilding | null; q: Async<Tas
                     key: `${i}:${h.name}`,
                     label: h.name,
                     value: h.progress ?? 0,
-                    display: h.progress == null ? 'мэдээлэлгүй' : pct(h.progress, 0),
+                    display: h.progress == null ? tr('мэдээлэлгүй') : pct(h.progress, 0),
                   }))}
                 />
               </Section>

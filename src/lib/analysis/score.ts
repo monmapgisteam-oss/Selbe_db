@@ -1,3 +1,4 @@
+import { t as tr } from '@/lib/i18nCore';
 /**
  * АНАЛИЗ — оноолтын логик: түүхий үзүүлэлт → 0..100 оноо → жигнэсэн нийлбэр.
  */
@@ -104,7 +105,7 @@ export function scoreColor(score: number | null | undefined): string {
 /** Оноог үгээр */
 export function scoreLabel(score: number | null | undefined): string {
   const i = levelOf(score);
-  return i < 0 ? 'Өгөгдөлгүй' : SCORE_LEVELS[i].label;
+  return i < 0 ? tr('Өгөгдөлгүй') : SCORE_LEVELS[i].label;
 }
 
 /** Норм хангасан эсэх — оноо биш, ТҮҮХИЙ утгаар шалгана */

@@ -14,6 +14,7 @@
  */
 
 import { loadBlockProgress } from '@/lib/blockProgress';
+import { t as tr } from '@/lib/i18nCore';
 import { queryFeatures } from '@/lib/query';
 import { LAYER_BY_ID, buildingKey, layerUrl } from '@/lib/services';
 import { resolveSource, type AgentScope } from './registry';
@@ -52,7 +53,7 @@ export type BuildingProgress = {
 export async function buildingProgress(scope: AgentScope): Promise<BuildingProgress> {
   // ⚠️ Эрхийн шалгалт — тооцоолсон ч гэсэн эх өгөгдөл нь давхарга
   const src = resolveSource('mon:building', scope);
-  if (!src) throw new Error('`mon:building` давхаргад хандах эрх алга.');
+  if (!src) throw new Error(tr('`mon:building` давхаргад хандах эрх алга.'));
 
   const l = LAYER_BY_ID['mon:building'];
   const [rows, prog] = await Promise.all([
@@ -96,8 +97,8 @@ export async function buildingProgress(scope: AgentScope): Promise<BuildingProgr
       .sort((a, b) => a.actual - b.actual),
     slowest: [...blocks].sort((a, b) => a.actual - b.actual).slice(0, 10),
     note:
-      '`actual` нь АЖЛЫН ХУУДСААС тооцоолсон бодит гүйцэтгэл — дашбоардын толгойн тоо энэ. ' +
-      '`recorded` нь давхаргад бүртгэсэн `GUITS_HV`; хоёр нь өөр аргаар гардаг тул ЗӨРНӨ, ' +
-      'хоёуланг нь нэг мөрөнд харьцуулж болно (аль нь хоцорч байгааг харуулна).',
+      tr('`actual` нь АЖЛЫН ХУУДСААС тооцоолсон бодит гүйцэтгэл — дашбоардын толгойн тоо энэ. ') +
+      tr('`recorded` нь давхаргад бүртгэсэн `GUITS_HV`; хоёр нь өөр аргаар гардаг тул ЗӨРНӨ, ') +
+      tr('хоёуланг нь нэг мөрөнд харьцуулж болно (аль нь хоцорч байгааг харуулна).'),
   };
 }
