@@ -15,8 +15,8 @@
  * Ажиллуулах:  cd agent-proxy && npm install && npm start
  */
 
-import { createServer } from 'node:http';
-import Anthropic from '@anthropic-ai/sdk';
+import { createServer } from "node:http";
+import Anthropic from "@anthropic-ai/sdk";
 
 const PORT = Number(process.env.PORT || 8787);
 
@@ -24,8 +24,10 @@ const PORT = Number(process.env.PORT || 8787);
  * ⚠️ CORS — портал өөр эх (`localhost:8123`, `selbe.monmap.mn`)-ээс дуудна.
  * `ALLOW_ORIGIN`-д таслалаар тусгаарлан жагсаана. Анхдагч нь зөвхөн локал dev.
  */
-const ALLOWED = (process.env.ALLOW_ORIGIN || 'http://localhost:8123,http://127.0.0.1:8123')
-  .split(',')
+const ALLOWED = (
+  process.env.ALLOW_ORIGIN || "http://localhost:8123,http://127.0.0.1:8123"
+)
+  .split(",")
   .map((s) => s.trim())
   .filter(Boolean);
 
@@ -43,9 +45,9 @@ const ALLOWED = (process.env.ALLOW_ORIGIN || 'http://localhost:8123,http://127.0
  * ⚠️ Claude Opus 5-д бодох (thinking) нь АНХНААСАА асаалттай бөгөөд `max_tokens`
  * нь бодолт + хариу ХОЁУЛАНГ хамарна — тиймээс хариултын уртаас хамаагүй өгөөмөр.
  */
-const MODEL = process.env.AGENT_MODEL || 'claude-opus-5';
-const MAX_TOKENS = 8000;
-const EFFORT = process.env.AGENT_EFFORT || 'low';
+const MODEL = process.env.AGENT_MODEL || "claude-opus-5";
+const MAX_TOKENS = 10000;
+const EFFORT = process.env.AGENT_EFFORT || "low";
 /** `effort` дэмждэг эсэх — `worker.mjs`-тэй ижил дүрэм байх ёстой */
 const WITH_EFFORT = Boolean(EFFORT) && !/haiku/i.test(MODEL);
 
@@ -55,19 +57,20 @@ const MAX_BODY = 2 * 1024 * 1024;
 const client = new Anthropic();
 
 const cors = (res, origin) => {
-  if (origin && ALLOWED.includes(origin)) res.setHeader('Access-Control-Allow-Origin', origin);
-  res.setHeader('Vary', 'Origin');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  if (origin && ALLOWED.includes(origin))
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  res.setHeader("Vary", "Origin");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   // ⚠️ `x-arcgis-token` ЗААВАЛ — портал нэвтэрсэн хэрэглэгчийн токеныг энэ
   //    толгойгоор илгээдэг. Жагсаалтад байхгүй бол хөтөч preflight-д татгалзаж,
   //    чат «Failed to fetch» гэж унана (сервер тал огт дуудагдахгүй).
   //    Локал реле токеныг ШАЛГАХГҮЙ ч зөвшөөрөх ЁСТОЙ.
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-arcgis-token');
-  res.setHeader('Access-Control-Max-Age', '86400');
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-arcgis-token");
+  res.setHeader("Access-Control-Max-Age", "86400");
 };
 
 const json = (res, code, body) => {
-  res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' });
+  res.writeHead(code, { "Content-Type": "application/json; charset=utf-8" });
   res.end(JSON.stringify(body));
 };
 
@@ -76,17 +79,17 @@ function readBody(req) {
   return new Promise((resolve, reject) => {
     let size = 0;
     const chunks = [];
-    req.on('data', (c) => {
+    req.on("data", (c) => {
       size += c.length;
       if (size > MAX_BODY) {
-        reject(new Error('Хүсэлтийн бие хэт том'));
+        reject(new Error("Хүсэлтийн бие хэт том"));
         req.destroy();
         return;
       }
       chunks.push(c);
     });
-    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
-    req.on('error', reject);
+    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    req.on("error", reject);
   });
 }
 
@@ -94,23 +97,27 @@ const server = createServer(async (req, res) => {
   const origin = req.headers.origin;
   cors(res, origin);
 
-  if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
+  if (req.method === "OPTIONS") {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
 
   // Эрүүл мэндийн шалгалт — порталын UI реле асаалттай эсэхийг эндээс мэднэ
-  if (req.method === 'GET' && (req.url === '/' || req.url === '/health')) {
+  if (req.method === "GET" && (req.url === "/" || req.url === "/health")) {
     json(res, 200, { ok: true, model: MODEL, effort: EFFORT });
     return;
   }
 
-  if (req.method !== 'POST' || !req.url?.startsWith('/chat')) {
-    json(res, 404, { error: 'Ийм зам байхгүй' });
+  if (req.method !== "POST" || !req.url?.startsWith("/chat")) {
+    json(res, 404, { error: "Ийм зам байхгүй" });
     return;
   }
 
   // ⚠️ Танихгүй эхээс ирсэн хүсэлтийг татгалзана: browser CORS-ыг тойрч
   //    curl-ээр дуудаж болох тул серверт ч шалгана.
   if (origin && !ALLOWED.includes(origin)) {
-    json(res, 403, { error: 'Энэ эх сурвалжид зөвшөөрөл алга' });
+    json(res, 403, { error: "Энэ эх сурвалжид зөвшөөрөл алга" });
     return;
   }
 
@@ -124,7 +131,7 @@ const server = createServer(async (req, res) => {
 
   const { system, messages, tools } = payload ?? {};
   if (!Array.isArray(messages) || !messages.length) {
-    json(res, 400, { error: '`messages` хоосон байна' });
+    json(res, 400, { error: "`messages` хоосон байна" });
     return;
   }
 
@@ -138,7 +145,7 @@ const server = createServer(async (req, res) => {
       // ⚠️ Системийн зааврыг КЭШЛЭНЭ. Тэр нь давхаргын бүртгэл (мянган токен)
       //    агуулдаг бөгөөд яриа бүрт давтагдана — кэшгүй бол удаан ба үнэтэй.
       system: system
-        ? [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }]
+        ? [{ type: "text", text: system, cache_control: { type: "ephemeral" } }]
         : undefined,
       tools,
       messages,
@@ -146,11 +153,11 @@ const server = createServer(async (req, res) => {
 
     // ⚠️ Аюулгүйн ангилагч татгалзвал HTTP 200 боловч `content` хоосон/дутуу
     //    ирнэ — `content[0]`-ыг шууд уншвал эвдэрнэ.
-    if (response.stop_reason === 'refusal') {
+    if (response.stop_reason === "refusal") {
       json(res, 200, {
-        stop_reason: 'refusal',
+        stop_reason: "refusal",
         content: [],
-        note: 'Хүсэлтийг аюулгүй байдлын шалгуур татгалзлаа.',
+        note: "Хүсэлтийг аюулгүй байдлын шалгуур татгалзлаа.",
       });
       return;
     }
@@ -161,8 +168,8 @@ const server = createServer(async (req, res) => {
       usage: response.usage,
     });
   } catch (err) {
-    const msg = err?.message ?? 'Тодорхойгүй алдаа';
-    console.error('[agent-proxy]', msg);
+    const msg = err?.message ?? "Тодорхойгүй алдаа";
+    console.error("[agent-proxy]", msg);
 
     // ⚠️ ИТГЭМЖЛЭЛИЙН алдааг ТУСГАЙЛАН барина — SDK-ийн англи техник мессежийг
     //    дамжуулбал хэрэглэгч юу хийхээ ойлгохгүй. Windows дээрх түгээмэл
@@ -176,8 +183,8 @@ const server = createServer(async (req, res) => {
     ) {
       json(res, 401, {
         error:
-          'AI үйлчилгээний түлхүүр тохируулагдаагүй эсвэл буруу байна. ' +
-          '`agent-proxy/.env.local` файлд `ANTHROPIC_API_KEY=…` бичээд `npm start` ажиллуулна уу.',
+          "AI үйлчилгээний түлхүүр тохируулагдаагүй эсвэл буруу байна. " +
+          "`agent-proxy/.env.local` файлд `ANTHROPIC_API_KEY=…` бичээд `npm start` ажиллуулна уу.",
         retryable: false,
       });
       return;
@@ -187,14 +194,21 @@ const server = createServer(async (req, res) => {
       err instanceof Anthropic.RateLimitError ||
       err instanceof Anthropic.InternalServerError ||
       err instanceof Anthropic.APIConnectionError;
-    json(res, err instanceof Anthropic.APIError ? (err.status ?? 502) : 500, { error: msg, retryable });
+    json(res, err instanceof Anthropic.APIError ? (err.status ?? 502) : 500, {
+      error: msg,
+      retryable,
+    });
   }
 });
 
 server.listen(PORT, () => {
   if (!process.env.ANTHROPIC_API_KEY) {
-    console.warn('[agent-proxy] ⚠️ ANTHROPIC_API_KEY тохируулаагүй байна — хүсэлт бүр татгалзана.');
+    console.warn(
+      "[agent-proxy] ⚠️ ANTHROPIC_API_KEY тохируулаагүй байна — хүсэлт бүр татгалзана.",
+    );
   }
-  console.log(`[agent-proxy] http://localhost:${PORT}  загвар=${MODEL}  effort=${EFFORT}`);
-  console.log(`[agent-proxy] зөвшөөрсөн эх: ${ALLOWED.join(', ')}`);
+  console.log(
+    `[agent-proxy] http://localhost:${PORT}  загвар=${MODEL}  effort=${EFFORT}`,
+  );
+  console.log(`[agent-proxy] зөвшөөрсөн эх: ${ALLOWED.join(", ")}`);
 });
