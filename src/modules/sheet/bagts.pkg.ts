@@ -10,7 +10,6 @@
 // таньж авна. Ингэснээр шинэ багц нэмэгдэхэд зөвхөн `PKGS`-д мөр нэмнэ.
 
 import { agsFetch } from "./ags";
-import { t as tr } from '@/lib/i18nCore';
 
 const HJ = "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services";
 
@@ -33,16 +32,16 @@ export type Pkg = {
  * ЯГ таарна — зөрвөл мод буруу багцад наалдана.
  */
 export const PKGS: Pkg[] = [
-  { key: "b1_9f", group: tr('Багц 1'), floors: 9, label: tr('Багц 1 · 9 давхар'), url: `${HJ}/Bagts_1_9f/FeatureServer/0` },
-  { key: "b1_12f", group: tr('Багц 1'), floors: 12, label: tr('Багц 1 · 12 давхар'), url: `${HJ}/Bagts_1_12f/FeatureServer/0` },
-  { key: "b2_9f", group: tr('Багц 2'), floors: 9, label: tr('Багц 2 · 9 давхар'), url: `${HJ}/Bagts_2_9f/FeatureServer/0` },
-  { key: "b2_12f", group: tr('Багц 2'), floors: 12, label: tr('Багц 2 · 12 давхар'), url: `${HJ}/Bagts_2_12f/FeatureServer/0` },
-  { key: "b31_9f", group: tr('Багц 3.1'), floors: 9, label: tr('Багц 3.1 · 9 давхар'), url: `${HJ}/Bagts_3_1_9f/FeatureServer/0` },
-  { key: "b32_9f", group: tr('Багц 3.2'), floors: 9, label: tr('Багц 3.2 · 9 давхар'), url: `${HJ}/Bagts_3_2_9f/FeatureServer/0` },
-  { key: "b33_9f", group: tr('Багц 3.3'), floors: 9, label: tr('Багц 3.3 · 9 давхар'), url: `${HJ}/Bagts_3_3_9f/FeatureServer/0` },
-  { key: "b41_9f", group: tr('Багц 4-1'), floors: 9, label: tr('Багц 4-1 · 9 давхар'), url: `${HJ}/Bagts_4_1_9f/FeatureServer/0` },
-  { key: "b42_9f", group: tr('Багц 4-2'), floors: 9, label: tr('Багц 4-2 · 9 давхар'), url: `${HJ}/Bagts_4_2_9f/FeatureServer/0` },
-  { key: "b42_12f", group: tr('Багц 4-2'), floors: 12, label: tr('Багц 4-2 · 12 давхар'), url: `${HJ}/Bagts_4_2_12f/FeatureServer/0` },
+  { key: "b1_9f", group: 'Багц 1', floors: 9, label: 'Багц 1 · 9 давхар', url: `${HJ}/Bagts_1_9f/FeatureServer/0` },
+  { key: "b1_12f", group: 'Багц 1', floors: 12, label: 'Багц 1 · 12 давхар', url: `${HJ}/Bagts_1_12f/FeatureServer/0` },
+  { key: "b2_9f", group: 'Багц 2', floors: 9, label: 'Багц 2 · 9 давхар', url: `${HJ}/Bagts_2_9f/FeatureServer/0` },
+  { key: "b2_12f", group: 'Багц 2', floors: 12, label: 'Багц 2 · 12 давхар', url: `${HJ}/Bagts_2_12f/FeatureServer/0` },
+  { key: "b31_9f", group: 'Багц 3.1', floors: 9, label: 'Багц 3.1 · 9 давхар', url: `${HJ}/Bagts_3_1_9f/FeatureServer/0` },
+  { key: "b32_9f", group: 'Багц 3.2', floors: 9, label: 'Багц 3.2 · 9 давхар', url: `${HJ}/Bagts_3_2_9f/FeatureServer/0` },
+  { key: "b33_9f", group: 'Багц 3.3', floors: 9, label: 'Багц 3.3 · 9 давхар', url: `${HJ}/Bagts_3_3_9f/FeatureServer/0` },
+  { key: "b41_9f", group: 'Багц 4-1', floors: 9, label: 'Багц 4-1 · 9 давхар', url: `${HJ}/Bagts_4_1_9f/FeatureServer/0` },
+  { key: "b42_9f", group: 'Багц 4-2', floors: 9, label: 'Багц 4-2 · 9 давхар', url: `${HJ}/Bagts_4_2_9f/FeatureServer/0` },
+  { key: "b42_12f", group: 'Багц 4-2', floors: 12, label: 'Багц 4-2 · 12 давхар', url: `${HJ}/Bagts_4_2_12f/FeatureServer/0` },
 ];
 
 /** Сонгогчид харагдах 7 багц — давхрын хувилбарууд нь дотроо. */
@@ -209,12 +208,12 @@ export function resolveSchema(fields: FieldMeta[]): Schema {
   );
   const f: Schema["f"] = {
     no: byNorm.get("f") ?? "F_",
-    work: byNorm.get("ажил") ?? tr('Ажил'),
+    work: byNorm.get("ажил") ?? 'Ажил',
     wC: weights[0] ?? 'Хувийн_жин',
     wD: weights[1] ?? weights[0] ?? 'Хувийн_жин1',
     wE: find((n) => n.startsWith("хувийнжин") && /одоо/.test(n)),
     // ⚠️ `2`-оор төгссөнийг хасна — «Объём_шинэ2» нь тусдаа багана.
-    vol: find((n) => /^об[ьъ]ём/.test(n) && !/2$/.test(n)) ?? tr('Обьём'),
+    vol: find((n) => /^об[ьъ]ём/.test(n) && !/2$/.test(n)) ?? 'Обьём',
     vol2: find((n) => /^об[ьъ]ём/.test(n) && /2$/.test(n)),
     unit: find((n) => n.startsWith("нэгжөртөг")) ?? 'Нэгж_өртөг',
     money: find((n) => n.startsWith("мөнгөндүн")) ?? 'Мөнгөн_дүн',

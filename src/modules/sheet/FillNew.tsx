@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { t as tr } from '@/lib/i18nCore';
 import {
   applyAdds,
   computeAll,
@@ -122,25 +121,25 @@ type EditCol = "obyem";
 const cellKey = (oid: number, b: number) => `${oid}:${b}`;
 
 const RO = {
-  no: tr('№ ба Ажлын нэр нь excel-ийн бүтэц — энэ хуудаснаас засагдахгүй.'),
-  wC: tr('Хувийн жин: Мөнгөн дүн ÷ дээд мөрийн дүн. Автоматаар бодогдоно.'),
-  wD: tr('Хувийн жин (нийт төсөлд): Мөнгөн дүн ÷ үе шатны дүн. Автоматаар бодогдоно.'),
-  wE: tr('Одоо байгаа: Хувийн жин × Бодит гүйцэтгэл. Гүйцэтгэл бөглөхөд өөрөө хөдөлнө.'),
-  vol: tr('Обьём нь ЭХ ӨГӨГДЛИЙН тоо хэмжээ — эх хүснэгтэд оруулагдана, энэ хуудаснаас засагдахгүй (жин, мөнгөн дүн бүхэлдээ түүнээс бодогддог).'),
-  vol2: tr('«Объём_шинэ2» нь үйлчилгээнд хадгалагдсан — энэ хуудаснаас засагдахгүй. Хоосон бол тэр багцад талбар нь үүсээгүй байна.'),
-  unit: tr('Нэгж өртөг нь үйлчилгээнд хадгалагдсан — энэ хуудаснаас засагдахгүй.'),
-  money: tr('Мөнгөн дүн: Обьём × Нэгж өртөг; бүлгийн мөрд дэд мөрүүдийнхээ нийлбэр.'),
-  I: tr('Төлөвлөгөөт гүйцэтгэл нь блокуудын төлөвлөгөөт хувийн дундаж. Огноог засвал өөрчлөгдөнө.'),
-  J: tr('Бодит гүйцэтгэл нь блокуудын бодит хувийн дундаж. Блокийн нүдэнд обьём бөглөнө үү.'),
-  K: tr('Төлөвлөгөө биелэлт: Бодит ÷ Төлөвлөгөөт. Автоматаар бодогдоно.'),
-  groupAct: tr('Бүлгийн мөр нь дэд мөрүүдийнхээ жинтэй дунджаар бодогдоно — доод ажлын мөр дээр бөглөнө үү.'),
-  noObyemField: tr('Энэ блокт обьёмын багана үйлчилгээнд үүсээгүй тул хадгалах газаргүй (AGOL дээр нэмэх шаардлагатай).'),
-  pctFromVol: tr('Хувь нь «бөглөсөн обьём ÷ мөрийн Обьём»-оор бодогдоно — гараар засагдахгүй.'),
-  noRowVol: tr('Энэ мөрд «Обьём» бөглөгдөөгүй тул хувь бодогдохгүй. Обьёмын баганад мөрийн нийт тоо хэмжээг оруулмагц хувь нь өөрөө гарч эхэлнэ.'),
-  blockPlan: tr('Барилга-төлөвлөгөөт нь эхлэх/дуусах огноо ба шинэчлэгдсэн огноогоор бодогдоно — огноог нь засаарай.'),
-  groupDate: tr('Энэ огноо нь доод ажлуудынхаа хамгийн эрт эхлэх / хамгийн сүүл дуусахаар бодогдож байна — доод ажлынхаа огноог засаарай.'),
-  noDateField: tr('Энэ блокт огнооны багана үйлчилгээнд байхгүй тул хадгалах газаргүй.'),
-  asOfRow: tr('Шинэчлэгдсэн огноо зөвхөн эхний мөрд бичигдэнэ — тэндээс эсвэл дээд талын «Огноо»-гоор солино.'),
+  no: '№ ба Ажлын нэр нь excel-ийн бүтэц — энэ хуудаснаас засагдахгүй.',
+  wC: 'Хувийн жин: Мөнгөн дүн ÷ дээд мөрийн дүн. Автоматаар бодогдоно.',
+  wD: 'Хувийн жин (нийт төсөлд): Мөнгөн дүн ÷ үе шатны дүн. Автоматаар бодогдоно.',
+  wE: 'Одоо байгаа: Хувийн жин × Бодит гүйцэтгэл. Гүйцэтгэл бөглөхөд өөрөө хөдөлнө.',
+  vol: 'Обьём нь ЭХ ӨГӨГДЛИЙН тоо хэмжээ — эх хүснэгтэд оруулагдана, энэ хуудаснаас засагдахгүй (жин, мөнгөн дүн бүхэлдээ түүнээс бодогддог).',
+  vol2: '«Объём_шинэ2» нь үйлчилгээнд хадгалагдсан — энэ хуудаснаас засагдахгүй. Хоосон бол тэр багцад талбар нь үүсээгүй байна.',
+  unit: 'Нэгж өртөг нь үйлчилгээнд хадгалагдсан — энэ хуудаснаас засагдахгүй.',
+  money: 'Мөнгөн дүн: Обьём × Нэгж өртөг; бүлгийн мөрд дэд мөрүүдийнхээ нийлбэр.',
+  I: 'Төлөвлөгөөт гүйцэтгэл нь блокуудын төлөвлөгөөт хувийн дундаж. Огноог засвал өөрчлөгдөнө.',
+  J: 'Бодит гүйцэтгэл нь блокуудын бодит хувийн дундаж. Блокийн нүдэнд обьём бөглөнө үү.',
+  K: 'Төлөвлөгөө биелэлт: Бодит ÷ Төлөвлөгөөт. Автоматаар бодогдоно.',
+  groupAct: 'Бүлгийн мөр нь дэд мөрүүдийнхээ жинтэй дунджаар бодогдоно — доод ажлын мөр дээр бөглөнө үү.',
+  noObyemField: 'Энэ блокт обьёмын багана үйлчилгээнд үүсээгүй тул хадгалах газаргүй (AGOL дээр нэмэх шаардлагатай).',
+  pctFromVol: 'Хувь нь «бөглөсөн обьём ÷ мөрийн Обьём»-оор бодогдоно — гараар засагдахгүй.',
+  noRowVol: 'Энэ мөрд «Обьём» бөглөгдөөгүй тул хувь бодогдохгүй. Обьёмын баганад мөрийн нийт тоо хэмжээг оруулмагц хувь нь өөрөө гарч эхэлнэ.',
+  blockPlan: 'Барилга-төлөвлөгөөт нь эхлэх/дуусах огноо ба шинэчлэгдсэн огноогоор бодогдоно — огноог нь засаарай.',
+  groupDate: 'Энэ огноо нь доод ажлуудынхаа хамгийн эрт эхлэх / хамгийн сүүл дуусахаар бодогдож байна — доод ажлынхаа огноог засаарай.',
+  noDateField: 'Энэ блокт огнооны багана үйлчилгээнд байхгүй тул хадгалах газаргүй.',
+  asOfRow: 'Шинэчлэгдсэн огноо зөвхөн эхний мөрд бичигдэнэ — тэндээс эсвэл дээд талын «Огноо»-гоор солино.',
 } as const;
 
 /*
@@ -521,7 +520,7 @@ export default function FillNew() {
     if (r.group) return;
     if (t !== "" && !Number.isFinite(Number(t))) {
       // Чимээгүй хаявал хэрэглэгч «бичигдлээ» гэж андуурдаг — мэдэгдэнэ.
-      setErr(tr('{0} · {1}: тоон утга оруулна уу.', sc?.bld[b] ?? "", r.work));
+      setErr(`${sc?.bld[b] ?? ""} · ${r.work}: тоон утга оруулна уу.`);
       return;
     }
 
@@ -539,7 +538,9 @@ export default function FillNew() {
       stored != null &&
       Number(v) < stored &&
       !window.confirm(
-        tr('{0} · {1}:\nөмнө нь {2} бүртгэгдсэн — {3} болж БУУРНА.\nБуруу бичсэнээ засаж байна уу?', sc?.bld[b] ?? "", r.work, qty(stored), qty(Number(v))),
+        `${sc?.bld[b] ?? ""} · ${r.work}:
+өмнө нь ${qty(stored)} бүртгэгдсэн — ${qty(Number(v))} болж БУУРНА.
+Буруу бичсэнээ засаж байна уу?`,
       )
     )
       return;
@@ -549,7 +550,9 @@ export default function FillNew() {
       vol > 0 &&
       Number(v) > vol &&
       !window.confirm(
-        tr('{0} · {1}:\n{2} нь мөрийн Обьём {3}-оос ХЭТЭРЧ байна ({4}).\nҮргэлжлүүлэх үү?', sc?.bld[b] ?? "", r.work, qty(Number(v)), qty(vol), pc(Number(v) / vol, 1)),
+        `${sc?.bld[b] ?? ""} · ${r.work}:
+${qty(Number(v))} нь мөрийн Обьём ${qty(vol)}-оос ХЭТЭРЧ байна (${pc(Number(v) / vol, 1)}).
+Үргэлжлүүлэх үү?`,
       )
     )
       return;
@@ -603,9 +606,10 @@ export default function FillNew() {
     }
     const when = new Date(d.t).toLocaleString("mn-MN");
     const msg =
-      tr('Нийтлэгдээгүй {0} нүдний засвар олдлоо ({1}).', Object.keys(next).length, when) +
-      (dropped ? tr('\n{0} нүд хуучирсан тул орхигдоно.', dropped) : "") +
-      tr('\nСэргээх үү?');
+      `Нийтлэгдээгүй ${Object.keys(next).length} нүдний засвар олдлоо (${when}).` +
+      (dropped ? `
+${dropped} нүд хуучирсан тул орхигдоно.` : "") +
+      '\nСэргээх үү?';
     if (window.confirm(msg)) setPending(next);
     else clearDraftLS(pkg.key);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -638,8 +642,9 @@ export default function FillNew() {
   const confirmSwitch = () =>
     dirtyCount === 0 ||
     window.confirm(
-      tr('Нийтлэгдээгүй {0} өөрчлөлт бий. Багц солих уу?\n', dirtyCount) +
-        tr('(Нүдний засварууд ноорог болон хадгалагдаж, буцаж ирэхэд сэргээхийг санал болгоно.)'),
+      `Нийтлэгдээгүй ${dirtyCount} өөрчлөлт бий. Багц солих уу?
+` +
+        '(Нүдний засварууд ноорог болон хадгалагдаж, буцаж ирэхэд сэргээхийг санал болгоно.)',
     );
   /** Огнооны нүдний ХАДГАЛАГДСАН утга «YYYY-MM-DD» хэлбэрээр. */
   const origDay = (r: SheetRow, b: number, k: "s" | "e") =>
@@ -799,7 +804,7 @@ export default function FillNew() {
     <div className={st.wrap} ref={wrapRef}>
       <div className={st.toolbar}>
         <label className={st.field}>
-          {tr('Багц')}{" "}
+          {'Багц'}{" "}
           <select
             className={st.select}
             value={pkg.group}
@@ -820,7 +825,7 @@ export default function FillNew() {
             андуурч «Давхар» гэж нэрлэхээс зайлсхийсэн. */}
         {floorOpts.length > 1 && (
           <label className={st.field}>
-            {tr('Хувилбар')}{" "}
+            {'Хувилбар'}{" "}
             <select
               className={st.select}
               value={pkg.key}
@@ -837,7 +842,7 @@ export default function FillNew() {
           </label>
         )}
         <label className={st.field}>
-          {tr('Огноо')}{" "}
+          {'Огноо'}{" "}
           <select
             className={st.select}
             value={dt(asOf)}
@@ -848,7 +853,7 @@ export default function FillNew() {
               const ms = inputToMs(e.target.value);
               if (ms != null) setAsOf(ms);
             }}
-            title={tr('Төлөвлөгөөт хувь бүхэлдээ энэ огноогоор бодогдоно (excel-ийн «Шинэчлэгдсэн огноо»)')}
+            title={'Төлөвлөгөөт хувь бүхэлдээ энэ огноогоор бодогдоно (excel-ийн «Шинэчлэгдсэн огноо»)'}
           >
             {dateOpts.map((d) => (
               <option key={d} value={d}>{d}</option>
@@ -857,18 +862,18 @@ export default function FillNew() {
         </label>
         {/* ЭЦЭГ БҮЛЭГ — «Б1 БАРИЛГЫН АЖИЛ», «3 ТӨМӨР БЕТОН РАМЫН АЖИЛ»… */}
         <label className={st.field}>
-          {tr('Бүлэг')}{" "}
+          {'Бүлэг'}{" "}
           <select
             className={cls("select selectWide")}
             value={grpA}
             disabled={busy}
             onChange={(e) => setGrpA(Number(e.target.value))}
-            title={tr('Зөвхөн сонгосон бүлэг ба түүний доод ажлууд харагдана')}
+            title={'Зөвхөн сонгосон бүлэг ба түүний доод ажлууд харагдана'}
           >
-            <option value={0}>{tr('Бүгд')}</option>
+            <option value={0}>{'Бүгд'}</option>
             {grpAOpts.map((g) => (
               <option key={g.oid} value={g.oid}>
-                {tr(g.label)}
+                {g.label}
               </option>
             ))}
           </select>
@@ -877,18 +882,18 @@ export default function FillNew() {
         {/* ДЭД БҮЛЭГ — «3.2 1F цутгалт», «4.3 2F хана»… Эцэг сонгогдсон бол
             зөвхөн түүний доторхи, эс бөгөөс бүх дэд бүлэг жагсаана. */}
         <label className={st.field}>
-          {tr('Дэд бүлэг')}{" "}
+          {'Дэд бүлэг'}{" "}
           <select
             className={cls("select selectWide")}
             value={grpBEff}
             disabled={busy}
             onChange={(e) => setGrpB(Number(e.target.value))}
-            title={tr('Тухайн бүлгийн доторх нэг дэд бүлгийг сонгоно')}
+            title={'Тухайн бүлгийн доторх нэг дэд бүлгийг сонгоно'}
           >
-            <option value={0}>{tr('Бүгд')}</option>
+            <option value={0}>{'Бүгд'}</option>
             {grpBOpts.map((g) => (
               <option key={g.oid} value={g.oid}>
-                {tr(g.label)}
+                {g.label}
               </option>
             ))}
           </select>
@@ -898,20 +903,20 @@ export default function FillNew() {
           <button
             className={st.layerBtn}
             onClick={resetAll}
-            title={tr('Чирж өөрчилсөн бүх баганы өргөнийг анхны хэмжээнд нь буцаана')}
+            title={'Чирж өөрчилсөн бүх баганы өргөнийг анхны хэмжээнд нь буцаана'}
           >
-            {tr('Өргөн сэргээх')}
+            {'Өргөн сэргээх'}
           </button>
         )}
         <button
           className={st.publishBtn}
           onClick={publish}
           disabled={busy || dirtyCount === 0}
-          title={tr('Өөрчилсөн нүд + дээд бүлгүүдийн нийлбэрийг хадгална (Ctrl+S)')}
+          title={'Өөрчилсөн нүд + дээд бүлгүүдийн нийлбэрийг хадгална (Ctrl+S)'}
         >
-          {tr('Нийтлэх')}{dirtyCount ? ` (${dirtyCount})` : ""}
+          {'Нийтлэх'}{dirtyCount ? ` (${dirtyCount})` : ""}
         </button>
-        {busy && <span className={st.muted}>{tr('ажиллаж байна…')}</span>}
+        {busy && <span className={st.muted}>{'ажиллаж байна…'}</span>}
       </div>
 
       {err && <p className={st.error}>{err}</p>}
@@ -930,11 +935,11 @@ export default function FillNew() {
 
       {/* Хоосон үр дүнг тайлбаргүй орхивол хэрэглэгч юу болсныг мэдэхгүй гацдаг. */}
       {!busy && !err && sc && rows.length === 0 && (
-        <p className={st.muted}>{tr('Энэ багцад мөр олдсонгүй.')}</p>
+        <p className={st.muted}>{'Энэ багцад мөр олдсонгүй.'}</p>
       )}
       {rows.length > 0 && sc && calc.length === 0 && (
         <p className={st.muted}>
-          {tr('Тайлангийн огноо тодорхойлогдоогүй тул хүснэгт бодогдохгүй байна — Огноо сонгоно уу (жагсаалт ачаалагдаагүй бол хуудсыг дахин ачаална уу).')}
+          {'Тайлангийн огноо тодорхойлогдоогүй тул хүснэгт бодогдохгүй байна — Огноо сонгоно уу (жагсаалт ачаалагдаагүй бол хуудсыг дахин ачаална уу).'}
         </p>
       )}
 
@@ -954,25 +959,25 @@ export default function FillNew() {
             <thead>
               <tr>
                 <th rowSpan={4} className={cls("fz c-no")}>№<i {...grip("no")} /></th>
-                <th rowSpan={4} className={cls("fz c-ajil")}>{tr('Ажил')}<i {...grip("ajil")} /></th>
+                <th rowSpan={4} className={cls("fz c-ajil")}>{'Ажил'}<i {...grip("ajil")} /></th>
                 {/* Excel-д C1:D4 — «Хувийн жин» хоёр баганыг бүрэн хамарна.
                     ⚠️ Энд `c-w` өргөний ангилал ТАВИХГҮЙ: 72px нь хоёр баганын
                     НИЙЛБЭР болж уншигдаж, хоёуланг нь шахна. Өргөнийг мөрийн
                     нүднүүд өөрсдөө заана. */}
-                <th rowSpan={4} colSpan={2} className={cls("c-wspan")}>{tr('Хувийн жин')}<i {...grip("w")} /></th>
-                <th rowSpan={4} className={cls("c-now")}>{tr('Одоо байгаа хувийн жин')}<i {...grip("now")} /></th>
-                <th rowSpan={4} className={cls("c-vol")}>{tr('Обьём')}<i {...grip("vol")} /></th>
-                <th rowSpan={4} className={cls("c-vol")}>{tr('Обьём шинэ')}<i {...grip("vol")} /></th>
-                <th rowSpan={4} className={cls("c-calc")}>{tr('Төлөвлөгөөт гүйцэтгэл')}<i {...grip("calc")} /></th>
-                <th rowSpan={4} className={cls("c-calc")}>{tr('Бодит гүйцэтгэл')}<i {...grip("calc")} /></th>
-                <th rowSpan={4} className={cls("c-calc")}>{tr('Төлөвлөгөө биелэлт')}<i {...grip("calc")} /></th>
+                <th rowSpan={4} colSpan={2} className={cls("c-wspan")}>{'Хувийн жин'}<i {...grip("w")} /></th>
+                <th rowSpan={4} className={cls("c-now")}>{'Одоо байгаа хувийн жин'}<i {...grip("now")} /></th>
+                <th rowSpan={4} className={cls("c-vol")}>{'Обьём'}<i {...grip("vol")} /></th>
+                <th rowSpan={4} className={cls("c-vol")}>{'Обьём шинэ'}<i {...grip("vol")} /></th>
+                <th rowSpan={4} className={cls("c-calc")}>{'Төлөвлөгөөт гүйцэтгэл'}<i {...grip("calc")} /></th>
+                <th rowSpan={4} className={cls("c-calc")}>{'Бодит гүйцэтгэл'}<i {...grip("calc")} /></th>
+                <th rowSpan={4} className={cls("c-calc")}>{'Төлөвлөгөө биелэлт'}<i {...grip("calc")} /></th>
                 {/* Обьём (бөглөгддөг) ба түүнээс бодогдсон хувь — ТУСДАА хоёр
                     бүлэг. Нэг нүдэнд хамт байрлуулж байсныг болив: аль тоо нь
                     бичигддэг, аль нь бодогддог нь ялгарахгүй байв. */}
-                <th colSpan={nBld} className={cls("band")}>{tr('Ажил гүйцэтгэл — обьём / хувь ({0} барилга)', nBld)}</th>
-                <th colSpan={nBld} className={cls("band")}>{tr('Төлөвлөгөөт гүйцэтгэл ({0} барилга)', nBld)}</th>
-                <th colSpan={nBld * 2} className={cls("band")}>{tr('Төлөвлөгөөт хуваарь ({0} барилга)', nBld)}</th>
-                <th rowSpan={4} className={cls("c-date")}>{tr('Шинэчлэгдсэн огноо')}<i {...grip("date")} /></th>
+                <th colSpan={nBld} className={cls("band")}>{`Ажил гүйцэтгэл — обьём / хувь (${nBld} барилга)`}</th>
+                <th colSpan={nBld} className={cls("band")}>{`Төлөвлөгөөт гүйцэтгэл (${nBld} барилга)`}</th>
+                <th colSpan={nBld * 2} className={cls("band")}>{`Төлөвлөгөөт хуваарь (${nBld} барилга)`}</th>
+                <th rowSpan={4} className={cls("c-date")}>{'Шинэчлэгдсэн огноо'}<i {...grip("date")} /></th>
               </tr>
               {/* 2-р мөр — барилгын төрөл (блокийн цуваагаар) */}
               <tr>
@@ -992,17 +997,17 @@ export default function FillNew() {
                   <th key={`a${b}`} rowSpan={2} className={cls("bld")}>{b}<i {...grip("bld")} /></th>
                 ))}
                 {sc.bld.map((b) => (
-                  <th key={`p${b}`} rowSpan={2} className={cls("bld")}>{b} {tr('барилга')}<i {...grip("bld")} /></th>
+                  <th key={`p${b}`} rowSpan={2} className={cls("bld")}>{b} {'барилга'}<i {...grip("bld")} /></th>
                 ))}
                 {sc.bld.map((b) => (
-                  <th key={`d${b}`} colSpan={2} className={cls("c-date2")}>{b} {tr('барилга')}</th>
+                  <th key={`d${b}`} colSpan={2} className={cls("c-date2")}>{b} {'барилга'}</th>
                 ))}
               </tr>
               {/* 4-р мөр — хуваарийн Эхлэх/Дуусах */}
               <tr>
                 {sc.bld.map((b) => [
-                  <th key={`s${b}`} className={cls("c-date")}>{tr('Эхлэх')}<i {...grip("date")} /></th>,
-                  <th key={`e${b}`} className={cls("c-date")}>{tr('Дуусах')}<i {...grip("date")} /></th>,
+                  <th key={`s${b}`} className={cls("c-date")}>{'Эхлэх'}<i {...grip("date")} /></th>,
+                  <th key={`e${b}`} className={cls("c-date")}>{'Дуусах'}<i {...grip("date")} /></th>,
                 ])}
               </tr>
             </thead>
@@ -1037,7 +1042,7 @@ export default function FillNew() {
                           type="button"
                           className={st.caret}
                           aria-expanded={!collapsed.has(r.oid)}
-                          aria-label={collapsed.has(r.oid) ? tr('Дэлгэх') : tr('Эвхэх')}
+                          aria-label={collapsed.has(r.oid) ? 'Дэлгэх' : 'Эвхэх'}
                           onClick={(e) => {
                             e.stopPropagation();
                             toggle(r.oid);
@@ -1202,7 +1207,7 @@ export default function FillNew() {
                             )}
                             title={
                               editable
-                                ? tr('Дарж календараар сонгоно')
+                                ? 'Дарж календараар сонгоно'
                                 : src === "agg"
                                   ? RO.groupDate
                                   : RO.noDateField
@@ -1233,7 +1238,7 @@ export default function FillNew() {
                             (i === 0 ? " cursor-cell" : "") +
                             (i === 0 && asOf !== asOfOrig ? " dirty" : ""),
                         )}
-                        title={i === 0 ? tr('Дарж календараар сонгоно') : RO.asOfRow}
+                        title={i === 0 ? 'Дарж календараар сонгоно' : RO.asOfRow}
                         onClick={(e) => {
                           if (i !== 0) return say(RO.asOfRow);
                           setPick({
@@ -1289,7 +1294,7 @@ export default function FillNew() {
 
       {notice && (
         <div className={st.notice} role="status" onClick={() => setNotice("")}>
-          <b>{tr('Энэ нүд засагдахгүй.')}</b> {notice}
+          <b>{'Энэ нүд засагдахгүй.'}</b> {notice}
         </div>
       )}
     </div>
