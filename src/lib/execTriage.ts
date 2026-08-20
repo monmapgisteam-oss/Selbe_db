@@ -7,8 +7,9 @@
  *   1. ОБЬЁМЫН ЗӨРҮҮ — «Гүйцэтгэл бөглөх» хуудасны 12 багцын хүснэгтээс:
  *      мөрийн төлөвлөгдсөн Обьём vs блокуудад бөглөсөн обьёмын нийлбэр.
  *      Зөрүүг НЭГЖ ӨРТӨГ-т үржүүлж мөнгөн дүнгээр үнэлнэ.
- *   2. ДАВХЦСАН ҮЛДСЭН НЭГЖ ТАЛБАР — багц (барилгын блок) тус бүрээр, нэрийн
- *      хамт. Барилга эхлүүлэхэд саад болж буй газар.
+ *   2. ДАВХЦСАН ҮЛДСЭН НЭГЖ ТАЛБАР — БҮХ багц ажлаар (барилгын блок + дэд
+ *      бүтэц + нийгмийн барилгын давхаргууд), нэрийн хамт. Ажил эхлүүлэхэд
+ *      саад болж буй газар.
  *   3. ХАБЭА-ГИЙН ХОХИРОЛ — ослын бүртгэлээс хохирлын төрлийн тохиолдлууд.
  *
  * ⚠️ Бүх ачаалалт МОДУЛИЙН ТҮВШИНД КЭШЛЭГДЭНЭ: нүүр хуудас руу буцах бүрд
@@ -18,7 +19,7 @@
  */
 
 import { queryFeatures } from './query';
-import { BUILDING, HABEA } from './services';
+import { BUILDING, HABEA, PKG_BY_BAGTS, LAYER_BY_ID } from './services';
 import { overlapLeftParcels } from './parcelOverlap';
 import { PKGS, loadSchema } from '@/modules/sheet/bagts.pkg';
 import { loadRows } from '@/modules/sheet/bagtsSheet';
@@ -105,11 +106,26 @@ export type Overlaps = {
   byPkg: PkgOverlap[];
 };
 
+/**
+ * Багц ажлын НЭР — давхаргын гарчгуудын нийтлэг эхлэлээр (Bagts-ийн
+ * `commonName`-тэй ижил дүрэм): «Багц 6.5 · ХТП/РП А хэсэг — трасс» +
+ * «… — цэг» → «Багц 6.5 · ХТП/РП А хэсэг».
+ */
+const commonName = (titles: string[]): string => {
+  let p = titles[0] ?? '';
+  for (const t of titles.slice(1)) {
+    let i = 0;
+    while (i < p.length && i < t.length && p[i] === t[i]) i += 1;
+    p = p.slice(0, i);
+  }
+  return p.replace(/[\s·—-]+$/u, '').trim() || titles[0] || '';
+};
+
 let ovCache: Promise<Overlaps> | null = null;
 export function loadOverlaps(): Promise<Overlaps> {
   if (ovCache) return ovCache;
   ovCache = (async () => {
-    // Барилгын блокуудыг багцаар нь бүлэглэнэ
+    // ── Барилгын блокуудыг багцаар нь бүлэглэнэ ──
     const rows = await queryFeatures(BUILDING.url, {
       outFields: [BUILDING.oid, BUILDING.fields.bagts],
     });
@@ -122,31 +138,53 @@ export function loadOverlaps(): Promise<Overlaps> {
       const arr = by.get(name);
       if (arr) arr.push(oid); else by.set(name, [oid]);
     }
-    // Багц бүрд орон зайн огтлолцол — зэрэг, унасан багц бусдыг унагахгүй
-    const entries = [...by.entries()];
-    const settled = await Promise.allSettled(entries.map(async ([name, oids]) => ({
+    type Job = { name: string; srcs: { layerId: string; where: string | null }[] };
+    const jobs: Job[] = [...by.entries()].map(([name, oids]) => ({
       name,
-      parcels: (await overlapLeftParcels([
-        { layerId: 'mon:building', where: `${BUILDING.oid} IN (${oids.join(',')})` },
-      ])).oids.length,
+      srcs: [{ layerId: 'mon:building', where: `${BUILDING.oid} IN (${oids.join(',')})` }],
+    }));
+    /**
+     * ── ДЭД БҮТЭЦ БА НИЙГМИЙН БАГЦУУД (2026-08-21, хэрэглэгчийн хүсэлт) ──
+     * Урьд нь зөвхөн барилгын блокоор тоолж байсан тул шугам хоолой, зам,
+     * сургууль зэрэг дээрх саад ОГТ харагддаггүй байв. `PKG_BY_BAGTS` нь
+     * PKG_TABLE-ийн бүх багцын (дэд бүтэц + нийгмийн) давхаргуудыг агуулна.
+     */
+    for (const key of Object.keys(PKG_BY_BAGTS)) {
+      const layerIds = (PKG_BY_BAGTS[key] ?? []).filter((id) => LAYER_BY_ID[id]);
+      if (!layerIds.length) continue;
+      jobs.push({
+        name: commonName(layerIds.map((id) => LAYER_BY_ID[id].title)),
+        srcs: layerIds.map((id) => ({ layerId: id, where: null })),
+      });
+    }
+    // Багц бүрд орон зайн огтлолцол — зэрэг, унасан багц бусдыг унагахгүй
+    const settled = await Promise.allSettled(jobs.map(async (j) => ({
+      name: j.name,
+      parcels: (await overlapLeftParcels(j.srcs)).oids.length,
     })));
     const byPkg = settled
       .filter((x): x is PromiseFulfilledResult<PkgOverlap> => x.status === 'fulfilled')
       .map((x) => x.value)
       .filter((p) => p.parcels > 0)
       .sort((a, b) => b.parcels - a.parcels);
-    // Давхардалгүй нийт — бүх блокоор нэг дор (нэг талбар хоёр багцад тоологдохгүй)
-    const total = (await overlapLeftParcels([{ layerId: 'mon:building', where: null }])).oids.length;
+    // Давхардалгүй нийт — БҮХ эх сурвалжаар нэг дор (нэг талбар хоёр багцад
+    // давхцсан ч нэг л удаа тоологдоно)
+    const total = (await overlapLeftParcels([
+      { layerId: 'mon:building', where: null },
+      ...Object.values(PKG_BY_BAGTS).flat()
+        .filter((id) => LAYER_BY_ID[id])
+        .map((id) => ({ layerId: id, where: null })),
+    ])).oids.length;
     return { total, byPkg };
   })().catch((e) => { ovCache = null; throw e; });
   return ovCache;
 }
 
 /**
- * Давхцсан талбарын босго. 0 → Сайн; цөөн (≤9) → Дунд; ≥10 → Яаралтай —
- * олон талбар саадтай бол барилгын хуваарь бодитоор хойшилно.
+ * ⚠️ 2026-08-21 (хэрэглэгчийн хүсэлт): давхцсан талбар БАЙВАЛ ШУУД «Яаралтай
+ * шийдвэрлэх» — дундын түвшин байхгүй. Давхцсан газар нь тухайн багц ажлыг
+ * эхлүүлэх боломжгүй гэсэн үг тул нэг ч талбар байх нь асуудал.
  */
-export const OV_BAD_N = 10;
 
 /* ══════════════ 3. ХАБЭА — хохирлын бүртгэл ══════════════ */
 
