@@ -1,5 +1,6 @@
 'use client';
 
+import { t as tr } from '@/lib/i18nCore';
 /**
  * ДАШБОАРДЫН НЭГТГЭХ ХЭРЭГСЭЛ — `Dashboard.tsx`-д 20 гаруй удаа давтагдсан
  * `reduce`-уудыг ГАНЦ газар болгов. `live.ts` ч мөн импортолдог тул модуль нь
@@ -24,7 +25,7 @@ export type Group = { key: string; label: string; value: number; n: number };
 export function tally<T>(
   rows: readonly T[],
   pick: (r: T) => { key: string; value: number; n?: number },
-  unknown = 'Тодорхойгүй',
+  unknown = tr('Тодорхойгүй'),
 ): Group[] {
   const m = new Map<string, Group>();
   for (const r of rows) {

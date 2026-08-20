@@ -22,6 +22,7 @@
  */
 
 import { useAsync, type Async } from '@/lib/useAsync';
+import { t as tr } from '@/lib/i18nCore';
 import { num, pct } from '@/lib/format';
 import { queryFeatures } from '@/lib/query';
 import { layerTotals } from '@/lib/totals';
@@ -202,7 +203,7 @@ async function loadLand(pct: number | null): Promise<ReportExtra['land']> {
     rows.forEach((r) => {
       const k = str(r[field]);
       if (!k && skipEmpty) return;
-      m.set(k || 'Тодорхойгүй', (m.get(k || 'Тодорхойгүй') ?? 0) + 1);
+      m.set(k || tr('Тодорхойгүй'), (m.get(k || tr('Тодорхойгүй')) ?? 0) + 1);
     });
     return [...m.entries()].map(([label, n]) => ({ label, n })).sort((a, b) => b.n - a.n);
   };
@@ -470,8 +471,8 @@ export async function loadReportExtra(): Promise<ReportExtra> {
   const fail = (name: string, r: PromiseSettledResult<unknown>) => {
     if (r.status === 'rejected') console.error(`[selbe] тайлан · ${name}:`, r.reason);
   };
-  fail('гүйцэтгэл', p); fail('санхүү', f); fail('дэд бүтэц', i); fail('ХАБЭА', h);
-  fail('газар', l); fail('нийгмийн барилга', s);
+  fail(tr('гүйцэтгэл'), p); fail(tr('санхүү'), f); fail(tr('дэд бүтэц'), i); fail(tr('ХАБЭА'), h);
+  fail(tr('газар'), l); fail(tr('нийгмийн барилга'), s);
 
   return {
     overall: o ?? { pct: 0, weightSum: 0, rows: 0, stages: [] },
@@ -578,36 +579,36 @@ export function buildFindings(x: ReportExtra): Findings {
   const f: string[] = [];
 
   if (build && buildLag != null && buildLag > 0) {
-    f.push(`Барилга угсралтын ажил төлөвлөгөөнөөс ${num(buildLag, 1)} нэгж хувиар хоцорч байна (гүйцэтгэл ${pct(buildActual, 2)}, төлөвлөгөө ${pct(build.planned, 1)}). Энэ үе шат төслийн жингийн ${pct(buildWeight, 1)}-ийг эзэлдэг тул нийт гүйцэтгэлд шууд нөлөөлж байна.`);
+    f.push(tr('Барилга угсралтын ажил төлөвлөгөөнөөс {0} нэгж хувиар хоцорч байна (гүйцэтгэл {1}, төлөвлөгөө {2}). Энэ үе шат төслийн жингийн {3}-ийг эзэлдэг тул нийт гүйцэтгэлд шууд нөлөөлж байна.', num(buildLag, 1), pct(buildActual, 2), pct(build.planned, 1), pct(buildWeight, 1)));
   }
 
   if (bestBagts && worstBagts && bestBagts.bagts !== worstBagts.bagts) {
-    f.push(`Багц хоорондын гүйцэтгэлийн зөрүү ${num(bestBagts.pct - worstBagts.pct, 1)} нэгж хувь байна: ${bestBagts.bagts} — ${pct(bestBagts.pct, 2)}, ${worstBagts.bagts} — ${pct(worstBagts.pct, 2)}. Хоцорсон багцад нөөц дахин хуваарилах асуудлыг авч үзэх шаардлагатай.`);
+    f.push(tr('Багц хоорондын гүйцэтгэлийн зөрүү {0} нэгж хувь байна: {1} — {2}, {3} — {4}. Хоцорсон багцад нөөц дахин хуваарилах асуудлыг авч үзэх шаардлагатай.', num(bestBagts.pct - worstBagts.pct, 1), bestBagts.bagts, pct(bestBagts.pct, 2), worstBagts.bagts, pct(worstBagts.pct, 2)));
   }
 
   if (stalled > 0) {
-    f.push(`${num(stalled)} блокийн гүйцэтгэл 1 хувиас доогуур буюу ажил бодитоор эхлээгүй байна.`);
+    f.push(tr('{0} блокийн гүйцэтгэл 1 хувиас доогуур буюу ажил бодитоор эхлээгүй байна.', num(stalled)));
   }
 
   if (landLeft > 0) {
-    f.push(`Газар чөлөөлөлтөд ${num(landLeft)} нэгж талбар шийдвэрлэгдээгүй үлдсэн${topReason ? `; тэргүүлэх шалтгаан нь «${topReason.label}» (${num(topReason.n)} нэгж талбар)` : ''}. Эдгээр нь холбогдох блокийн ажлыг саатуулах эрсдэлтэй тул шуурхай шийдвэрлэх шаардлагатай.`);
+    f.push(tr('Газар чөлөөлөлтөд {0} нэгж талбар шийдвэрлэгдээгүй үлдсэн{1}. Эдгээр нь холбогдох блокийн ажлыг саатуулах эрсдэлтэй тул шуурхай шийдвэрлэх шаардлагатай.', num(landLeft), topReason ? tr('; тэргүүлэх шалтгаан нь «{0}» ({1} нэгж талбар)', topReason.label, num(topReason.n)) : ''));
   }
 
   if (contractRate != null && paidRate != null) {
-    f.push(`Захирамжаар батлагдсан дүнгийн ${pct(contractRate, 1)} нь гэрээгээр баталгаажсан бөгөөд гэрээний дүнгийн ${pct(paidRate, 1)} нь бодитоор олгогдсон байна. Олгогдоогүй үлдэгдэл ${num((x.finance.contractAmount - x.finance.paid) / 1e9, 1)} тэрбум ₮ байна.`);
+    f.push(tr('Захирамжаар батлагдсан дүнгийн {0} нь гэрээгээр баталгаажсан бөгөөд гэрээний дүнгийн {1} нь бодитоор олгогдсон байна. Олгогдоогүй үлдэгдэл {2} тэрбум ₮ байна.', pct(contractRate, 1), pct(paidRate, 1), num((x.finance.contractAmount - x.finance.paid) / 1e9, 1)));
   }
 
   if (prev3 > 0 && last3 > 0) {
     const k = last3 / prev3;
-    f.push(`Сүүлийн гурван сард ${num(last3 / 1e9, 1)} тэрбум ₮ олгогдсон нь өмнөх гурван сарын ${num(prev3 / 1e9, 1)} тэрбумаас ${num(k, 1)} дахин ${k >= 1 ? 'их' : 'бага'} буюу санхүүжилтийн эрчим ${k >= 1 ? 'нэмэгдсэн' : 'буурсан'} байна.`);
+    f.push(tr('Сүүлийн гурван сард {0} тэрбум ₮ олгогдсон нь өмнөх гурван сарын {1} тэрбумаас {2} дахин {3} буюу санхүүжилтийн эрчим {4} байна.', num(last3 / 1e9, 1), num(prev3 / 1e9, 1), num(k, 1), k >= 1 ? tr('их') : tr('бага'), k >= 1 ? tr('нэмэгдсэн') : tr('буурсан')));
   }
 
   if (noCost > 0) {
-    f.push(`Дэд бүтцийн ${num(noCost)} ажлын бүлэгт нэгж үнэ тогтоогоогүй тул нийт өртгийн дүн бүрэн бус байна. Өртгийн загварыг гүйцээх шаардлагатай.`);
+    f.push(tr('Дэд бүтцийн {0} ажлын бүлэгт нэгж үнэ тогтоогоогүй тул нийт өртгийн дүн бүрэн бус байна. Өртгийн загварыг гүйцээх шаардлагатай.', num(noCost)));
   }
 
   if (x.habea.incidents > 0) {
-    f.push(`Бүртгэлийн хугацаанд ${num(x.habea.incidents)} осол, зөрчил бүртгэгдсэн байна. Хөдөлмөрийн аюулгүй байдлын хяналтыг эрчимжүүлэх шаардлагатай.`);
+    f.push(tr('Бүртгэлийн хугацаанд {0} осол, зөрчил бүртгэгдсэн байна. Хөдөлмөрийн аюулгүй байдлын хяналтыг эрчимжүүлэх шаардлагатай.', num(x.habea.incidents)));
   }
 
   return {

@@ -12,6 +12,7 @@
  */
 
 import Query from '@arcgis/core/rest/support/Query';
+import { t as tr } from '@/lib/i18nCore';
 import * as query from '@arcgis/core/rest/query';
 import * as geometryEngine from '@arcgis/core/geometry/geometryEngine';
 import type Geometry from '@arcgis/core/geometry/Geometry';
@@ -268,7 +269,7 @@ export function loadAnalysisCached(onProgress: Progress = () => {}): Promise<Ana
 }
 
 export async function loadAnalysis(onProgress: Progress = () => {}): Promise<AnalysisData> {
-  onProgress('Бүсийн мэдээлэл…', 6);
+  onProgress(tr('Бүсийн мэдээлэл…'), 6);
   // ⚠️ Талбарын нэрийг ЭНД бичихгүй — бүсийн давхарга солигдоход (`ZONE_ID` →
   //    `RefName_1`, `TOROL` → `Angilal`) энэ жагсаалт чимээгүй хоосон утга буцаана.
   const Z = ZONE_FIELDS;
@@ -277,13 +278,13 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
     Z.parkNorm, Z.parkPlanOpen, Z.parkPlanUnder,
   ], true);
 
-  onProgress('Барилга байгууламж…', 22);
+  onProgress(tr('Барилга байгууламж…'), 22);
   const buildings = await fetchAll(url(SRC.buildings), [
     'OBJECTID', 'ZONE_ID', BF.population, BF.capacity, BF.households, BF.status,
     BF.gfa, BF.purpose, BF.foot,
   ], true);
 
-  onProgress('Ногоон байгууламж…', 38);
+  onProgress(tr('Ногоон байгууламж…'), 38);
   // ⚠️ `nogoon_baiguulamj/0` (`..._intersect`): бүсийн полигонтой огтлолцуулсан тул
   //    бүсийн код `RefName_12`-д БҮГД бичигдсэн (кодгүй объект байхгүй), талбай
   //    `Shape__Area` (м²) нь бүсийн хилээр тайрагдсан. Ангилалгүй — бүх объект
@@ -298,18 +299,18 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
     'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/nogoon_baiguulamj/FeatureServer/0';
   const green = await fetchAll(GREEN_DATA_URL, ['RefName_12', 'Shape__Area'], true);
 
-  onProgress('Нийтийн тээврийн зогсоол…', 50);
+  onProgress(tr('Нийтийн тээврийн зогсоол…'), 50);
   const [bus, lrt] = await Promise.all([
     fetchAll(url(SRC.busStops), ['OBJECTID'], true).catch(() => [] as Feat[]),
     fetchAll(url(SRC.lrtStops), ['OBJECTID'], true).catch(() => [] as Feat[]),
   ]);
 
-  onProgress('Инженерийн дэд бүтэц…', 72);
+  onProgress(tr('Инженерийн дэд бүтэц…'), 72);
   const engResults = await Promise.all(
     ENGINEERING_IDS.map((id) => fetchAll(url(id), ['OBJECTID'], true).catch(() => [] as Feat[])),
   );
 
-  onProgress('Орон зайн үзүүлэлт…', 84);
+  onProgress(tr('Орон зайн үзүүлэлт…'), 84);
 
   const stopGeoms = [...bus, ...lrt].map((f) => f.geometry).filter(Boolean) as GeomArg[];
   const engGeoms = engResults.flat().map((f) => f.geometry).filter(Boolean) as GeomArg[];
@@ -335,7 +336,7 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
     if (!zid) continue;
     // ⚠️ Ангилалгүй эх сурвалж — бүгд `GREEN_CATEGORIES`-ийн ганц түлхүүрт нэгдэнэ
     //    (ЯГ таарах ёстой, эс бөгөөс `computeRaw`-ын `activeGreen` шүүлт 0 болгоно).
-    const cat = 'Ногоон байгууламж';
+    const cat = tr('Ногоон байгууламж');
     greenCats.add(cat);
     const bucket = greenByZone.get(zid) ?? {};
     bucket[cat] = (bucket[cat] ?? 0) + n(a.Shape__Area);
@@ -396,10 +397,10 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
 
   aggregateBuildings(zones, buildings);
 
-  onProgress('Нийгмийн дэд бүтцийн хүртээмж…', 93);
+  onProgress(tr('Нийгмийн дэд бүтцийн хүртээмж…'), 93);
   computeSocialAccess(zones, buildings, greenUnion);
 
-  onProgress('Бэлэн', 100);
+  onProgress(tr('Бэлэн'), 100);
 
   return {
     zones,

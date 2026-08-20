@@ -1,3 +1,4 @@
+import { t as tr } from '@/lib/i18nCore';
 /**
  * PLAN2D — "Selbe 2D map 0804" webmap-ийн 14 давхарга.
  *
@@ -19,42 +20,42 @@ export const PLAN2D_LAYERS: Plan2DLayer[] = [
   {
     "id": "sb:0",
     "sub": 0,
-    "title": "Мод",
+    "title": tr('Мод'),
     "geom": "point",
     "opacity": 1
   },
   {
     "id": "sb:1",
     "sub": 1,
-    "title": "Ногоон байгууламж",
+    "title": tr('Ногоон байгууламж'),
     "geom": "area",
     "opacity": 1
   },
   {
     "id": "sb:2",
     "sub": 2,
-    "title": "Автозам",
+    "title": tr('Автозам'),
     "geom": "area",
     "opacity": 1
   },
   {
     "id": "sb:3",
     "sub": 3,
-    "title": "Явган зам",
+    "title": tr('Явган зам'),
     "geom": "area",
     "opacity": 1
   },
   {
     "id": "sb:4",
     "sub": 4,
-    "title": "Барилга",
+    "title": tr('Барилга'),
     "geom": "area",
     "opacity": 1
   },
   {
     "id": "sb:5",
     "sub": 5,
-    "title": "Замын цагаан зураас",
+    "title": tr('Замын цагаан зураас'),
     "geom": "line",
     "opacity": 1
   },
@@ -68,7 +69,7 @@ export const PLAN2D_LAYERS: Plan2DLayer[] = [
   {
     "id": "sb:8",
     "sub": 8,
-    "title": "Спорт талбай",
+    "title": tr('Спорт талбай'),
     "geom": "area",
     "opacity": 1
   },
@@ -103,14 +104,14 @@ export const PLAN2D_LAYERS: Plan2DLayer[] = [
   {
     "id": "sb:15",
     "sub": 15,
-    "title": "Дугуйн зам",
+    "title": tr('Дугуйн зам'),
     "geom": "area",
     "opacity": 1
   },
   {
     "id": "sb:16",
     "sub": 16,
-    "title": "Гол",
+    "title": tr('Гол'),
     "geom": "area",
     "opacity": 1
   }

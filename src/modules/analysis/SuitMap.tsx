@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { t as tr } from '@/lib/i18nCore';
 import Map from '@arcgis/core/Map';
 import MapView from '@arcgis/core/views/MapView';
 import SceneView from '@arcgis/core/views/SceneView';
@@ -161,7 +162,7 @@ const bldFocusFill = (c: number[]) => ({
 const buildingRenderer = (focus = false) => ({
   type: 'unique-value', field: 'Barilga_ty',
   defaultSymbol: focus ? bldFocusFill([203, 213, 225]) : bldFill([203, 213, 225], BLD_ALPHA_DIM),
-  defaultLabel: 'Бусад',
+  defaultLabel: tr('Бусад'),
   uniqueValueInfos: Object.entries(STATUS_COLORS).map(([value, c]) => ({
     value, label: value, symbol: focus ? bldFocusFill(c) : bldFill(c),
   })),
@@ -348,12 +349,12 @@ export function SuitMap({
     if (!mapRef.current) {
       esriConfig.assetsPath = 'https://js.arcgis.com/4.34/@arcgis/core/assets';
 
-      const zoneLayer = new GraphicsLayer({ title: 'Тохиромжтой байдал', elevationInfo: ON_GROUND });
-      const labelLayer = new GraphicsLayer({ title: 'Шошго', elevationInfo: ON_GROUND });
+      const zoneLayer = new GraphicsLayer({ title: tr('Тохиромжтой байдал'), elevationInfo: ON_GROUND });
+      const labelLayer = new GraphicsLayer({ title: tr('Шошго'), elevationInfo: ON_GROUND });
       // ⚠️ Тээврийн будалт нь барилгын давхаргыг ДАРНА (дээр нь зурагдана) —
       //    эс бөгөөс төлөвийн өнгө (Barilga_ty) шинжилгээний өнгийг бүрхэнэ.
-      const tranLayer = new GraphicsLayer({ title: 'Тээвэр-идэвх', elevationInfo: ON_GROUND });
-      const pickLayer = new GraphicsLayer({ title: 'Сонголт', elevationInfo: ON_GROUND, listMode: 'hide' });
+      const tranLayer = new GraphicsLayer({ title: tr('Тээвэр-идэвх'), elevationInfo: ON_GROUND });
+      const pickLayer = new GraphicsLayer({ title: tr('Сонголт'), elevationInfo: ON_GROUND, listMode: 'hide' });
       pickRef.current = pickLayer;
       zoneRef.current = zoneLayer;
       labelRef.current = labelLayer;
@@ -485,7 +486,7 @@ export function SuitMap({
     const imagery = map.findLayerById('imagery');
     orthoChk.checked = imagery ? imagery.visible : true;
     orthoChk.addEventListener('change', () => { if (imagery) imagery.visible = orthoChk.checked; });
-    orthoRow.append(orthoChk, document.createTextNode('Ортофото'));
+    orthoRow.append(orthoChk, document.createTextNode(tr('Ортофото')));
     const galleryDiv = document.createElement('div');
     bmPanel.append(orthoRow, galleryDiv);
     new BasemapGallery({ view: anyView, container: galleryDiv });
@@ -493,7 +494,7 @@ export function SuitMap({
       view: anyView,
       content: bmPanel,
       expandIcon: 'basemap',
-      expandTooltip: 'Суурь зураг',
+      expandTooltip: tr('Суурь зураг'),
     }), 'top-right');
 
     view.when(() => { if (!view.destroyed) setReady(true); }).catch(() => {});
@@ -863,7 +864,7 @@ export function SuitMap({
 
     const layer = new FeatureLayer({
       id: 'simHeat',
-      title: 'Дулааны гадаргуу',
+      title: tr('Дулааны гадаргуу'),
       source: heat.map((p, i) => new Graphic({
         geometry: { type: 'point', x: p.x, y: p.y, spatialReference: { wkid: 3857 } } as unknown as __esri.Point,
         attributes: { oid: i + 1, w: p.w },

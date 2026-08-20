@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { t as tr } from '@/lib/i18nCore';
 import {
   PARKING_SOURCES, profitScore, profitLabel,
   type Indicator, type ParkingOpt,
@@ -106,7 +107,7 @@ function Radar({ items, center, size = 300 }: {
   return (
     <svg
       className={s.radar} width={size} height={size} viewBox={`0 0 ${size} ${size}`}
-      role="img" aria-label="Үзүүлэлтүүдийн онооны профайл"
+      role="img" aria-label={tr('Үзүүлэлтүүдийн онооны профайл')}
     >
       {/* Тор — 25/50/75/100 онооны олон өнцөгт */}
       {[0.25, 0.5, 0.75, 1].map((f) => <polygon key={f} className={s.radarGrid} points={ring(f)} />)}
@@ -134,7 +135,7 @@ function Radar({ items, center, size = 300 }: {
             key={it.key} cx={p.x} cy={p.y} r={3.2}
             fill={scoreColor(it.score)} style={{ stroke: 'var(--surface)' }} strokeWidth={2}
           >
-            <title>{`${it.label}: ${Math.round(it.score)} оноо`}</title>
+            <title>{tr('{0}: {1} оноо', it.label, Math.round(it.score))}</title>
           </circle>
         );
       })}
@@ -160,7 +161,7 @@ function Radar({ items, center, size = 300 }: {
 
       {/* Гол — нийлмэл оноо */}
       <text className={s.radarCtr} x={c} y={c + 3} textAnchor="middle">{center}</text>
-      <text className={s.radarCtrLbl} x={c} y={c + 15} textAnchor="middle">нийлмэл оноо</text>
+      <text className={s.radarCtrLbl} x={c} y={c + 15} textAnchor="middle">{tr('нийлмэл оноо')}</text>
     </svg>
   );
 }
@@ -293,9 +294,9 @@ export function SuitDetail({
         </div>
         <div>
           <h3>{r.id}</h3>
-          <p>{r.type} · {nf(r.areaHa, 2)} га · {scoreLabel(tot)}</p>
+          <p>{r.type} · {nf(r.areaHa, 2)} {tr('га ·')} {scoreLabel(tot)}</p>
         </div>
-        <button type="button" className={s.dClose} title="Хаах" onClick={onClose}>×</button>
+        <button type="button" className={s.dClose} title={tr('Хаах')} onClick={onClose}>×</button>
       </div>
 
       {urbanModes && (
@@ -304,24 +305,24 @@ export function SuitDetail({
               ашиглалт нь оноололд ордог үзүүлэлт БИШ, бүсийн бүтцийн зураг. */}
           {landM2 > 0 && (
             <div className={s.dSect}>
-              <h4>Үндсэн үзүүлэлт</h4>
+              <h4>{tr('Үндсэн үзүүлэлт')}</h4>
               <div className={`${s.chart} ${s.donutSide}`}>
                 <Donut
                   size={88}
                   width={15}
                   items={[
-                    { key: 'bld', label: 'Барилга', value: builtM2, color: C1, display: landPct(builtM2) },
-                    { key: 'grn', label: 'Ногоон байгууламж', value: greenM2, color: C2, display: landPct(greenM2) },
-                    { key: 'oth', label: 'Бусад', value: otherM2, color: '#64748b', display: landPct(otherM2) },
+                    { key: 'bld', label: tr('Барилга'), value: builtM2, color: C1, display: landPct(builtM2) },
+                    { key: 'grn', label: tr('Ногоон байгууламж'), value: greenM2, color: C2, display: landPct(greenM2) },
+                    { key: 'oth', label: tr('Бусад'), value: otherM2, color: '#64748b', display: landPct(otherM2) },
                   ]}
-                  center={<span style={{ fontSize: 12 }}>{nf(r.polyHa, 1)} га</span>}
+                  center={<span style={{ fontSize: 12 }}>{nf(r.polyHa, 1)} {tr('га')}</span>}
                 />
               </div>
             </div>
           )}
 
           <div className={s.dSect}>
-            <h4>Хот төлөвлөлтийн үзүүлэлт</h4>
+            <h4>{tr('Хот төлөвлөлтийн үзүүлэлт')}</h4>
 
             {/* Онооны профайл — 8 үзүүлэлт нэг дүрсээр */}
             <div className={s.chart}>
@@ -336,9 +337,8 @@ export function SuitDetail({
                 center={tot == null ? '—' : Math.round(tot)}
               />
               <div className={s.chCap}>
-                Тэнхлэг бүр нэг үзүүлэлтийн <b>0–100 оноо</b>: дүрс гадагшаа тэлэх тусам сайн.
-                Дотогшоо хонхойсон тэнхлэг нь тухайн бүсийн сул тал.
-                {missing.length > 0 && ` ${missing.length} үзүүлэлт өгөгдөлгүй тул дүрсэд ороогүй.`}
+                {tr('Тэнхлэг бүр нэг үзүүлэлтийн')} <b>{tr('0–100 оноо')}</b>{tr(': дүрс гадагшаа тэлэх тусам сайн. Дотогшоо хонхойсон тэнхлэг нь тухайн бүсийн сул тал.')}
+                {missing.length > 0 && tr(' {0} үзүүлэлт өгөгдөлгүй тул дүрсэд ороогүй.', missing.length)}
               </div>
             </div>
 
@@ -364,10 +364,10 @@ export function SuitDetail({
                         норм заагаагүй. Харьцуулах босго байвал зөвхөн ҮЗҮҮЛНЭ
                         (жиш. «лавлагаа · ≥ 30 %»), дүгнэлт өгөхгүй. */}
                     {ind.ref || ind.weight <= 0 ? (
-                      <span>лавлагаа{hasNorm(eff) ? ` · ${normText(eff, nf)}` : ' · оноололд ороогүй'}</span>
+                      <span>{tr('лавлагаа')}{hasNorm(eff) ? ` · ${normText(eff, nf)}` : tr(' · оноололд ороогүй')}</span>
                     ) : (
                       <span className={pass == null ? undefined : 'ok'}>
-                        {pass == null ? 'өгөгдөлгүй' : pass ? '✓ норм' : '✗ норм'} {normText(eff, nf)}
+                        {pass == null ? tr('өгөгдөлгүй') : pass ? tr('✓ норм') : tr('✗ норм')} {normText(eff, nf)}
                       </span>
                     )}
                     {/* ⚠️ `ASSUME_MET`-д багтсан үзүүлэлт (нийгмийн ба инженерийн
@@ -381,15 +381,15 @@ export function SuitDetail({
           </div>
 
           <div className={s.dSect}>
-            <h4>Суурь үзүүлэлт</h4>
+            <h4>{tr('Суурь үзүүлэлт')}</h4>
 
             {(r.residentPop > 0 || r.capacityPop > 0) && (() => {
               const max = Math.max(r.residentPop, r.capacityPop);
               return (
                 <>
-                  <IndRow label="Оршин суугч" text={nf(r.residentPop)} v={r.residentPop} max={max} color={C1} />
+                  <IndRow label={tr('Оршин суугч')} text={nf(r.residentPop)} v={r.residentPop} max={max} color={C1} />
                   <IndRow
-                    label="Үйлчилгээний хүчин чадал" text={nf(r.capacityPop)}
+                    label={tr('Үйлчилгээний хүчин чадал')} text={nf(r.capacityPop)}
                     v={r.capacityPop} max={max} color={C1}
                   />
                 </>
@@ -397,15 +397,15 @@ export function SuitDetail({
             })()}
 
             <div className={s.dGrid}>
-              <div><span>Өрхийн тоо</span><b>{nf(r.households)}</b></div>
-              <div><span>Барилгын тоо</span><b>{nf(r.buildingCount)}</b></div>
-              <div><span>Барилгын нийт талбай</span><b>{nf(r.gfaM2)} м²</b></div>
-              <div><span>Ногоон байгууламж</span><b>{nf(r.greenM2)} м²</b></div>
+              <div><span>{tr('Өрхийн тоо')}</span><b>{nf(r.households)}</b></div>
+              <div><span>{tr('Барилгын тоо')}</span><b>{nf(r.buildingCount)}</b></div>
+              <div><span>{tr('Барилгын нийт талбай')}</span><b>{nf(r.gfaM2)} {tr('м²')}</b></div>
+              <div><span>{tr('Ногоон байгууламж')}</span><b>{nf(r.greenM2)} {tr('м²')}</b></div>
             </div>
           </div>
 
           <div className={s.dSect}>
-            <h4>Зогсоол</h4>
+            <h4>{tr('Зогсоол')}</h4>
 
             {/* ⚠️ «Хэрэгцээ» бол НОРМ тул нормын ногооноор. Зурвасын тэнхлэг нь
                 байгаа зогсоолтой НИЙТЛЭГ — байгаа тоо нь доорх цагирагийн голд
@@ -417,8 +417,8 @@ export function SuitDetail({
                   size={88}
                   width={15}
                   items={[
-                    { key: 'il', label: 'Ил зогсоол', value: r.etIl, color: C1, display: nf(r.etIl) },
-                    { key: 'dald', label: 'Далд зогсоол', value: r.etDald, color: C2, display: nf(r.etDald) },
+                    { key: 'il', label: tr('Ил зогсоол'), value: r.etIl, color: C1, display: nf(r.etIl) },
+                    { key: 'dald', label: tr('Далд зогсоол'), value: r.etDald, color: C2, display: nf(r.etDald) },
                   ]}
                   center={nf(supply)}
                 />
@@ -429,18 +429,18 @@ export function SuitDetail({
                 ⚠️ Хэрэгцээ бол ШААРДЛАГА тул ногооноор (C2). */}
             <div className={s.chart}>
               <IndRow
-                label={`Хэрэгцээ (${parkSrc.short})`}
+                label={tr('Хэрэгцээ ({0})', parkSrc.short)}
                 text={r.parkingNeed == null ? '—' : nf(r.parkingNeed)}
                 v={r.parkingNeed ?? 0} max={Math.max(supply, r.parkingNeed ?? 0)} color={C2}
               />
               <div className={s.chCap}>
-                Хангалт <b style={{ color: scoreColor(r.parts.parking?.score) }}>
+                {tr('Хангалт')} <b style={{ color: scoreColor(r.parts.parking?.score) }}>
                   {r.raw.parking == null ? '—' : `${nf(r.raw.parking)}%`}
                 </b> ·{' '}
                 {r.parkingGap == null ? '—' : (
                   <>
-                    {r.parkingGap >= 0 ? 'илүүдэл' : 'дутагдал'}{' '}
-                    <b className={r.parkingGap >= 0 ? s.pos : s.neg}>{nf(Math.abs(r.parkingGap))}</b> зогсоол
+                    {r.parkingGap >= 0 ? tr('илүүдэл') : tr('дутагдал')}{' '}
+                    <b className={r.parkingGap >= 0 ? s.pos : s.neg}>{nf(Math.abs(r.parkingGap))}</b> {tr('зогсоол')}
                   </>
                 )}
               </div>
@@ -454,19 +454,19 @@ export function SuitDetail({
         const econ = r.econ;
         return (
           <div className={s.dSect}>
-            <h4>Эдийн засгийн шинжилгээ</h4>
+            <h4>{tr('Эдийн засгийн шинжилгээ')}</h4>
 
             {/* Зардал ба орлого — нэг тэнхлэг дээр, зөрүү нь ашиг */}
             <div className={s.chart}>
               <Columns
                 items={[
-                  { key: 'cost', label: 'Нийт зардал', v: econ.cost, text: money(econ.cost), color: C1 },
-                  { key: 'rev', label: 'Борлуулалтын үнэлгээ', v: econ.revenue, text: money(econ.revenue), color: C3 },
+                  { key: 'cost', label: tr('Нийт зардал'), v: econ.cost, text: money(econ.cost), color: C1 },
+                  { key: 'rev', label: tr('Борлуулалтын үнэлгээ'), v: econ.revenue, text: money(econ.revenue), color: C3 },
                 ]}
               />
               <div className={s.chCap}>
-                Хоёр багана <b>нэг тэнхлэгтэй</b> — өндрийн зөрүү нь{' '}
-                {econ.profit >= 0 ? 'ашиг' : 'алдагдал'}:{' '}
+                {tr('Хоёр багана')} <b>{tr('нэг тэнхлэгтэй')}</b> {tr('— өндрийн зөрүү нь')}{' '}
+                {econ.profit >= 0 ? tr('ашиг') : tr('алдагдал')}:{' '}
                 <b className={econ.profit >= 0 ? s.pos : s.neg}>{money(econ.profit)}</b>
               </div>
             </div>
@@ -478,35 +478,35 @@ export function SuitDetail({
                   size={88}
                   width={15}
                   items={[
-                    { key: 'infra', label: 'Дэд бүтэц', value: econ.infraCost, color: C1, display: money(econ.infraCost) },
-                    { key: 'build', label: 'Барилга', value: econ.buildCost, color: C2, display: money(econ.buildCost) },
+                    { key: 'infra', label: tr('Дэд бүтэц'), value: econ.infraCost, color: C1, display: money(econ.infraCost) },
+                    { key: 'build', label: tr('Барилга'), value: econ.buildCost, color: C2, display: money(econ.buildCost) },
                   ]}
                   center={<span style={{ fontSize: 11 }}>{money(econ.cost)}</span>}
-                  centerLabel="нийт зардал"
+                  centerLabel={tr('нийт зардал')}
                 />
               </div>
             )}
 
             <div className={s.dGrid}>
               <div>
-                <span>Ашгийн маржа</span>
+                <span>{tr('Ашгийн маржа')}</span>
                 <b style={{ color: scoreColor(profitScore(econ.margin)) }}>
                   {econ.margin == null ? '—'
-                    : !Number.isFinite(econ.margin) ? 'орлогогүй'
+                    : !Number.isFinite(econ.margin) ? tr('орлогогүй')
                       : `${nf(econ.margin, 1)}%`}
                 </b>
               </div>
               <div>
-                <span>Эдийн засгийн үнэлгээ</span>
+                <span>{tr('Эдийн засгийн үнэлгээ')}</span>
                 <b style={{ color: scoreColor(profitScore(econ.margin)) }}>{profitLabel(econ.margin)}</b>
               </div>
             </div>
 
             <div className={s.parkFormula}>
-              Дэд бүтэц: {money(perHa)}/га × <b>{nf(r.areaHa, 2)} га</b> = <b>{money(econ.infraCost)}</b><br />
-              Барилга: <b>{nf(r.gfaSaleM2)} м²</b> × жишиг өртөг = <b>{money(econ.buildCost)}</b><br />
-              Орлого: борлуулах нэгж үнэ × <b>{nf(r.gfaSaleM2)} м²</b> = <b>{money(econ.revenue)}</b>
-              <span className={s.muted}> («Одоо байгаа» барилга хасагдсан)</span>
+              {tr('Дэд бүтэц:')} {money(perHa)}{tr('/га ×')} <b>{nf(r.areaHa, 2)} {tr('га')}</b> = <b>{money(econ.infraCost)}</b><br />
+              {tr('Барилга:')} <b>{nf(r.gfaSaleM2)} {tr('м²')}</b> {tr('× жишиг өртөг =')} <b>{money(econ.buildCost)}</b><br />
+              {tr('Орлого: борлуулах нэгж үнэ ×')} <b>{nf(r.gfaSaleM2)} {tr('м²')}</b> = <b>{money(econ.revenue)}</b>
+              <span className={s.muted}> {tr('(«Одоо байгаа» барилга хасагдсан)')}</span>
             </div>
           </div>
         );
