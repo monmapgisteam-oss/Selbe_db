@@ -222,3 +222,48 @@
   .body { grid-template-columns: minmax(0, 1fr); }
   .chart { display: none; }
 }
+
+/* ══════ ГУРВАН ТҮВШИН (2026-08-21) — Сайн · Дунд · Яаралтай шийдвэрлэх ══════
+   `--tc` нь түвшний өнгө (--good/--warn/--bad) — гарчгийн цэг, тоолуур,
+   зүүн ирмэгийн зурвас гурвуулаа үүнээс уншина. */
+.tier {
+  margin-top: 18px;
+  padding-left: 12px;
+  border-left: 3px solid color-mix(in oklab, var(--tc, var(--ink-3)) 55%, transparent);
+}
+.tierHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.tierDot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--tc);
+  box-shadow: 0 0 8px color-mix(in oklab, var(--tc) 60%, transparent);
+}
+.tierTitle {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+.tierCount {
+  font-size: 0.72rem;
+  font-weight: 650;
+  color: var(--tc, var(--ink-3));
+  background: color-mix(in oklab, var(--tc, var(--ink-3)) 14%, transparent);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+.tierEmpty {
+  margin: 0 0 4px;
+  font-size: 0.76rem;
+  color: var(--ink-3);
+}
+/* «Лавлагаа» — гэрлэн дохионд хамааралгүй картууд: түвшний өнгөгүй */
+.tierRest { border-left-color: var(--line); }

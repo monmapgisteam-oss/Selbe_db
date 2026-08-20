@@ -297,6 +297,7 @@ export default function Root() {
           onEnterAll={enterAll}
           groups={groups}
           onEnterView={enterView}
+          isSuper={isSuper}
         />
       ) : (
         /*

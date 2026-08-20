@@ -194,10 +194,17 @@ export function Spark({
 export function HBars({
   items,
   max,
+  fmt,
 }: {
   items: { label: string; value: number }[];
   /** Тэнхлэгийн дээд утга — өгөөгүй бол хамгийн их гишүүнээр */
   max?: number;
+  /**
+   * Утгын шошгын формат. Анхдагч нь «N%» — гүйцэтгэлийн хувиудад зориулагдсан.
+   * ⚠️ Талбарын ТОО, мөнгөн ДҮН зэрэг хувь-биш утгад заавал өг — эс бөгөөс
+   * «457225%» гэсэн утгагүй шошго гарна (2026-08-21-нд яг ингэж илэрсэн).
+   */
+  fmt?: (v: number) => string;
 }) {
   if (!items.length) return null;
   const top = max ?? Math.max(...items.map((i) => i.value), 1);
@@ -242,7 +249,7 @@ export function HBars({
               textAlign: 'right',
             }}
           >
-            {Math.round(it.value)}%
+            {fmt ? fmt(it.value) : `${Math.round(it.value)}%`}
           </span>
         </div>
       ))}
