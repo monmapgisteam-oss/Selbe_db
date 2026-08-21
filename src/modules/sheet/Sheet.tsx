@@ -1,6 +1,6 @@
 'use client';
 
-import FillNew from "./FillNew";
+import FillNew, { type SheetView } from "./FillNew";
 import { Icon } from "@/components/Icon";
 import st from "./sheet.module.css";
 
@@ -13,10 +13,11 @@ import st from "./sheet.module.css";
  * ба ТООЦООЛОЛ (`bagtsSheet.ts → computeAll`, excel-ийн томъёонууд) ХЭВЭЭР —
  * FillNew дотор ажилладаг хэвээр, зөвхөн навигаци нь хасагдсан.
  */
-export function Sheet() {
+export function Sheet({ view }: { view?: SheetView } = {}) {
   return (
     <div className={st.tabs}>
       {/* Порталын толгой — таб биш, өгөгдөл оруулах хэсгийн тодорхойлолт */}
+      {!view && (
       <header className={st.portalHead}>
         <span className={st.portalIcon}><Icon name="pen" size={16} /></span>
         <div className={st.portalText}>
@@ -26,7 +27,8 @@ export function Sheet() {
           </p>
         </div>
       </header>
-      <FillNew />
+      )}
+      <FillNew view={view} />
     </div>
   );
 }

@@ -3735,7 +3735,34 @@ export const ALL_MODE_HIDE: ViewKey[] = [];
  *   · `beginner`  — төлөвлөлт, багц, хяналт, газар, ТЭЗҮ-БОНУ, тайлан, гүйцэтгэл.
  *   · `tolovlolt` — зөвхөн ерөнхий төлөвлөгөө ба багцын мэдээлэл.
  */
-export type Role = "super" | "beginner" | "tolovlolt";
+/**
+ * ⚠️ Сүүлийн ГУРАВ нь «Гүйцэтгэл» урсгалын үүргүүд. Тэдгээр нь эрхийн зэрэглэл
+ * БИШ, урсгал дахь БАЙРЛАЛ: гүйцэтгэгч бөглөнө → инженер шалгана → менежер
+ * батална. Нэг аккаунт нэг л байрлалтай тул үүргээс нь шууд «энэ хүн юу хийх
+ * ёстой вэ» гарч ирнэ — програм асуух шаардлагагүй.
+ */
+export type Role =
+  | "super"
+  | "beginner"
+  | "tolovlolt"
+  | "guitsetgegch"
+  | "injener"
+  | "menejer"
+  | "eronhii";
+
+/** «Гүйцэтгэл» урсгалын үүрэг → урсгалын шат. Бусад үүрэгт `null`. */
+/**
+ * ⚠️ ДӨРВӨН шат. `menejer` нь БАГЦЫН менежер, `eronhii` нь ЕРӨНХИЙ менежер —
+ *    сүүлийнх нь зөвшөөрснөөр л гүйцэтгэл эх хүснэгтэд бүртгэгдсэнд тооцно.
+ */
+export const ROLE_STAGE: Partial<
+  Record<Role, "company" | "engineer" | "manager" | "director">
+> = {
+  guitsetgegch: "company",
+  injener: "engineer",
+  menejer: "manager",
+  eronhii: "director",
+};
 
 /**
  * ArcGIS хэрэглэгчийн нэр (ЖИЖИГ үсгээр) → үүрэг.
@@ -3754,6 +3781,15 @@ export const ROLE_BY_USER: Record<string, Role> = {
   maralgoo_monmap: "super",
   selbe_et: "beginner",
   selbe_redesign: "tolovlolt",
+  /*
+   * ⚠️ ГҮЙЦЭТГЭЛИЙН УРСГАЛЫН аккаунтууд. Нэрийг нь бодит ArcGIS бүртгэлээр
+   * солино — энд байгаа нь БҮТЭЦ харуулсан жишээ. Аккаунт нэмэхдээ зөвхөн
+   * энэ хүснэгтэд мөр нэмнэ; эрх нь `ROLE_ACCESS`-ээс автоматаар гарна.
+   */
+  selbe_guitsetgegch: "guitsetgegch",
+  selbe_injener: "injener",
+  selbe_menejer: "menejer",
+  selbe_eronhii: "eronhii",
 };
 
 /**
@@ -3775,6 +3811,15 @@ export const ROLE_ACCESS: Record<
     home: "plan",
   },
   tolovlolt: { views: ["plan"], docs: false, home: "plan" },
+  /*
+   * ⚠️ Гурвуулаа ЗӨВХӨН «Гүйцэтгэл» харагдацтай — бөглөх ба хяналт нь тэр НЭГ
+   * хуудсанд нийлсэн тул тусад нь `sheet` өгөх шаардлагагүй. Илүү харагдац
+   * өгвөл урсгалаас гадуур мэдээлэл нээгдэж, үүргийн хил бүдгэрнэ.
+   */
+  guitsetgegch: { views: ["guitsetgel"], docs: false, home: "guitsetgel" },
+  injener: { views: ["guitsetgel"], docs: false, home: "guitsetgel" },
+  menejer: { views: ["guitsetgel"], docs: false, home: "guitsetgel" },
+  eronhii: { views: ["guitsetgel"], docs: false, home: "guitsetgel" },
 };
 
 /** ArcGIS нэрээр үүрэг олох — олдохгүй бол `null` (нэвтрэх эрхгүй) */

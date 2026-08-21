@@ -111,7 +111,6 @@ const en: Record<string, string> = {
   ". Дундаж": ". Average",
   ". Мөрийн шошгонд ХАНГАХ дэд станц.": ". Row labels show the SUPPLYING substation.",
   ". Талбарын ТОО ба ТАЛБАЙ зөрдөг: үлдсэн талбарууд тоогоор их, талбайгаар бага.": ". Parcel COUNT and AREA diverge: the remaining parcels are many in number but small in area.",
-  "… мөн {0} ажил": "… and {0} more",
   "· барилга #": "· building #",
   "· бүсгүй": "· no zone",
   "· газрын зураг, эрэмбэ энэ оноогоор": "· the map and ranking use this score",
@@ -2857,7 +2856,10 @@ const en: Record<string, string> = {
   "Previous Certified Amount / Гүйлгээ хүлээлгэгдэж буй нийт хоног": "Previous Certified Amount / Total days transaction pending",
   "Survey123 мобайл аппаас": "From the Survey123 mobile app",
   "urt=урт · ortog/өrtog=өртөг · une=үнэ · tusuv=төсөв · sanhuujilt=санхүүжилт · geree=гэрээ ·": "length=урт · cost=өртөг · price=үнэ · budget=төсөв · funding=санхүүжилт · contract=гэрээ ·",
-  "Σ(жин×гүйц) ÷ Σжин": "Σ(weight×progress) ÷ Σweight"
+  "Σ(жин×гүйц) ÷ Σжин": "Σ(weight×progress) ÷ Σweight",
+  "Илгээсэн ажил": "Submitted work",
+  "Өөрчлөгдсөн нүд": "Changed cells",
+  "өөрчлөгдсөн нүд: {0}": "changed cells: {0}"
 };
 
 export default en;

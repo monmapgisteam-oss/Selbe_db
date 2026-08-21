@@ -184,6 +184,35 @@ export function clearOverride(username: string): Promise<boolean> {
     .catch(() => false);
 }
 
+/**
+ * ХЭРЭГЛЭГЧИЙН ЭЦСИЙН ҮҮРЭГ — override эхэнд, дараа нь хатуу тохиргоо.
+ *
+ * ⚠️ `roleForUser` (services.ts) нь ЗӨВХӨН хатуу жагсаалтыг хардаг тул
+ *    панелаас өгсөн үүргийг мэдэхгүй. Гүйцэтгэлийн урсгал нь үүргээр
+ *    шатаа тодорхойлдог болохоор энэ ялгааг мэдэхгүй бол панелаас
+ *    томилсон инженер өөрийгөө инженер гэж танихгүй.
+ */
+export function roleOf(username?: string | null): Role | null {
+  if (!username) return null;
+  const ov = loadStore()[username.toLowerCase()];
+  return ov?.role ?? roleForUser(username);
+}
+
+/** Тухайн үүрэгтэй БҮХ аккаунт — хатуу жагсаалт + панелаас нэмсэн. */
+export function usersByRole(role: Role): string[] {
+  const out = new Map<string, string>();
+  for (const [u, r] of Object.entries(ROLE_BY_USER)) {
+    if (r === role) out.set(u.toLowerCase(), u);
+  }
+  for (const [u, ov] of Object.entries(loadStore())) {
+    // ⚠️ Override нь хатуу тохиргоог ДАРНА — үүрэг нь солигдсон бол
+    //    хуучин үүргийн жагсаалтаас ХАСАГДАХ ёстой.
+    if (ov.role === role) out.set(u.toLowerCase(), u);
+    else out.delete(u.toLowerCase());
+  }
+  return [...out.values()].sort((a, b) => a.localeCompare(b));
+}
+
 /** localStorage/өөр таб дахь өөрчлөлтөд захиалах — цэвэрлэх функц буцаана */
 export function subscribe(fn: () => void): () => void {
   if (typeof window === 'undefined') return () => {};
