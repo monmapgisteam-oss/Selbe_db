@@ -761,7 +761,9 @@ function PortalContent(
       </div>
 
       {/* ТЭЗҮ баримт бичгийн глобал popup — fixed тул бүх харагдацыг халхална */}
-      <DocViewer open={docsOpen} onClose={() => setDocsOpen(false)} />
+      {/* ⚠️ `docsAllowed`-ыг ЭНД дахин шалгана (`Home`-той ижил): эрх нь ажиллаж
+          байх үед super admin панелаас буурвал нээлттэй цонх өөрөө хаагдана. */}
+      <DocViewer open={docsAllowed && docsOpen} onClose={() => setDocsOpen(false)} />
 
       {/* Хэрэглэгчийн эрх удирдлага — зөвхөн super admin нээж чадна */}
       {isSuper && <UserAdmin open={adminOpen} onClose={() => setAdminOpen(false)} />}

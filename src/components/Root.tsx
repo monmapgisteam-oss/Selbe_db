@@ -297,6 +297,9 @@ export default function Root() {
           onEnterAll={enterAll}
           groups={groups}
           onEnterView={enterView}
+          /* Порталын хажуугийн цэстэй ЯГ ижил эх сурвалж (мөр 291) — нэг
+             хэрэглэгчийн эрх хоёр газарт өөрөөр тайлбарлагдахаас сэргийлнэ. */
+          docsAllowed={access?.docs ?? true}
           isSuper={isSuper}
         />
       ) : (

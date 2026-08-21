@@ -180,12 +180,23 @@ export function Home({
   onEnterAll,
   groups,
   onEnterView,
+  docsAllowed = true,
   isSuper = false,
 }: {
   /** «Нэвтрэх» / «Орох» — эрхийн дагуу орох цэгт хүргэнэ */
   onEnterAll: () => void;
   groups: HomeGroup[];
   onEnterView: (key: ViewKey) => void;
+  /**
+   * «Баримт бичиг» цэс харагдах эсэх — хэрэглэгчийн `docs` эрх.
+   *
+   * ⚠️ 2026-08-21: Урьд нь энэ товч ЭРХ ШАЛГАЛГҮЙ гардаг байв. Порталын
+   * хажуугийн цэс нь `docsAllowed`-оор зөв хаадаг байсан тул `docs: false`
+   * эрхтэй хэрэглэгч дотор нь орвол баримт бичгийг олохгүй ч, НҮҮР хуудсанд
+   * нь товч нь бүрэн ажиллаж байлаа — эрхийн хязгаарлалт тал хувьдаа л
+   * үйлчилж байсан гэсэн үг.
+   */
+  docsAllowed?: boolean;
   /**
    * «Төслийн ерөнхий үзүүлэлтүүд» самбар ЗӨВХӨН супер хэрэглэгчид (2026-08-21,
    * хэрэглэгчийн хүсэлт) — нүүр нь дэд самбар болж, энгийн хэрэглэгчид зөвхөн
@@ -354,15 +365,19 @@ export function Home({
               );
             })}
 
-            {/* «Баримт бичиг» — задрахгүй, ГАНЦ товч. */}
-            <button
-              type="button"
-              className={s.menuBtn}
-              onPointerEnter={(e) => { if (e.pointerType === 'mouse') setOpen(null); }}
-              onClick={() => { setOpen(null); setDocs(true); }}
-            >
-              {tr('Баримт бичиг')}
-            </button>
+            {/* «Баримт бичиг» — задрахгүй, ГАНЦ товч. `docs` эрхгүй бол ОГТ
+                зурагдахгүй (идэвхгүй болгохгүй): байхгүй эрхийг саарал товчоор
+                сануулах нь хэрэглэгчид ямар ч тус болохгүй. */}
+            {docsAllowed && (
+              <button
+                type="button"
+                className={s.menuBtn}
+                onPointerEnter={(e) => { if (e.pointerType === 'mouse') setOpen(null); }}
+                onClick={() => { setOpen(null); setDocs(true); }}
+              >
+                {tr('Баримт бичиг')}
+              </button>
+            )}
           </nav>
         )}
 
@@ -443,7 +458,9 @@ export function Home({
       )}
 
       {/* Баримт үзэгч — порталынхтай ИЖИЛ компонент, нэвтрэх шаардлагагүй */}
-      <DocViewer open={docs} onClose={() => setDocs(false)} />
+      {/* ⚠️ `docsAllowed`-ыг ЭНД дахин шалгана — эрх нь ажиллаж байх үед (super
+          admin панелаас) буурвал нээлттэй байсан цонх өөрөө хаагдана. */}
+      <DocViewer open={docsAllowed && docs} onClose={() => setDocs(false)} />
     </div>
   );
 }
