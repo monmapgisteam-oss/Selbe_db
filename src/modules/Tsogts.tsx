@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { Fragment, useEffect, useMemo, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
 import { MapTools } from '@/components/MapTools';
@@ -146,6 +146,49 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
     });
     return () => { alive = false; };
   }, [packs]);
+
+  /**
+   * САНХҮҮГИЙН КАРТЫН ӨНДӨР — картын дээд ирмэгийн бариулаар чирч тохируулна
+   * (2026-08-21, хэрэглэгчийн хүсэлт). ДЭЭШ чирвэл график өндөрсөж, газрын
+   * зургийн мөр (1fr) агшина. localStorage-д хадгалагдана; давхар товшилт —
+   * анхны хэмжээ. SplitGrip-ийн хэвтээ хувилбартай ижил зарчим, гэхдээ SVG-д
+   * өндөр нь prop тул CSS хувьсагч бус React төлөв (график цөөн элементтэй
+   * тул чирэлтийн re-render хямд).
+   */
+  const [finH, setFinH] = useState(FIN_H0);
+  useEffect(() => {
+    try {
+      const v = Number(localStorage.getItem(FIN_H_LS));
+      if (Number.isFinite(v) && v >= FIN_H_MIN && v <= FIN_H_MAX) setFinH(v);
+    } catch { /* хувийн горим */ }
+  }, []);
+  const finGripDown = (e: ReactPointerEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    const y0 = e.clientY;
+    const h0 = finH;
+    const grip = e.currentTarget;
+    grip.setPointerCapture(e.pointerId);
+    const move = (ev: globalThis.PointerEvent) => {
+      // Дээш чирэх = өндөрсөх (дэлгэцийн Y доош өсдөг тул хасна)
+      setFinH(Math.min(FIN_H_MAX, Math.max(FIN_H_MIN, Math.round(h0 - (ev.clientY - y0)))));
+    };
+    const up = () => {
+      grip.removeEventListener('pointermove', move);
+      grip.removeEventListener('pointerup', up);
+      grip.removeEventListener('pointercancel', up);
+      setFinH((h) => {
+        try { localStorage.setItem(FIN_H_LS, String(h)); } catch { /* хувийн горим */ }
+        return h;
+      });
+    };
+    grip.addEventListener('pointermove', move);
+    grip.addEventListener('pointerup', up);
+    grip.addEventListener('pointercancel', up);
+  };
+  const finGripReset = () => {
+    setFinH(FIN_H0);
+    try { localStorage.removeItem(FIN_H_LS); } catch { /* хувийн горим */ }
+  };
 
   /**
    * Багц бүрийн САНХҮҮГИЙН сарын цэгүүд — CASHFLOW2-ийн мөрийг bagtsKey-ээр
@@ -539,7 +582,18 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
 
       {/* ── ДООД ГОЛ: санхүүгийн график (сонгоогүй бол ТӨСЛИЙН НЭГДСЭН) ── */}
       <div className={ts.fin}>
-        <FinCard p={active} finQ={finQ} />
+        {/* Өндрийн бариул — картын ДЭЭД ирмэг: дээш чирвэл график томорно */}
+        <button
+          type="button"
+          className={ts.finGrip}
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label={tr('Графикийн өндөр')}
+          title={tr('Чирж өндрийг тохируулна · давхар товшвол анхны хэмжээ')}
+          onPointerDown={finGripDown}
+          onDoubleClick={finGripReset}
+        />
+        <FinCard p={active} finQ={finQ} chartH={finH} />
       </div>
     </div>
   );
@@ -771,12 +825,21 @@ function LevelsCard({ blocks }: { blocks: Pack['blocks'] }) {
  * биет нь багцуудын дундаж). CASHFLOW2-ийн мөрийг `bagtsKey`-ээр тааруулна
  * («БАГЦ-4.1» = «Багц 4-1»); хоцрогдлын badge мөн Finance-ийн дүрмээр.
  */
+/** Санхүүгийн графикийн өндрийн хязгаарууд (px) — чирэх бариул */
+const FIN_H0 = 220;
+const FIN_H_MIN = 140;
+const FIN_H_MAX = 520;
+const FIN_H_LS = 'selbe.finh.tsogts';
+
 function FinCard({
   p,
   finQ,
+  chartH = FIN_H0,
 }: {
   p: Pack | null;
   finQ: Async<FinData>;
+  /** Комбо графикийн өндөр (px) — дээд ирмэгийн чирэх бариулаас (2026-08-21) */
+  chartH?: number;
 }) {
   /**
    * Үзүүлэлтийн мөр нээлттэй эсэх — ЗӨВХӨН энэ мөрөнд үйлчилнэ, доорх график
@@ -931,7 +994,7 @@ function FinCard({
             <span><i style={{ background: cat(0) }} />{tr('Санхүүжилт өссөн ₮')}</span>
             <span><i style={{ background: cat(1) }} />{tr('Биет гүйцэтгэл %')}</span>
           </div>
-          <ComboChart items={months} height={220} lagMonth={lag?.month} lagLvl={lvl} />
+          <ComboChart items={months} height={chartH} lagMonth={lag?.month} lagLvl={lvl} />
         </>
       ) : null}
     </Section>
