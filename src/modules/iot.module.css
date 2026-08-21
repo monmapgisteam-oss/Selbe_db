@@ -83,7 +83,10 @@
 .tile {
   display: flex;
   align-items: center;
-  gap: 10px;
+  /* wrap (2026-08-21): pill («5 идэвхтэй») шошгоны баганыг ~20px болтол шахаж
+     «Мэдрэгч» → «М…» болгодог байв — зай хүрэхгүй бол pill доод мөрөнд бууна */
+  flex-wrap: wrap;
+  gap: 6px 10px;
   min-width: 0;
   padding: 10px 12px;
   background: var(--surface);
@@ -97,7 +100,8 @@
   place-items: center;
   color: var(--ink-3);
 }
-.tileMain { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+/* min-width 84px — шошго дор хаяж «Мэдрэгч» багтах өргөнтэй байж wrap-ийг өдөөнө */
+.tileMain { flex: 1 1 auto; min-width: 84px; display: flex; flex-direction: column; gap: 3px; }
 .tileLabel {
   font-size: 10.5px;
   line-height: 1.3;
@@ -112,7 +116,6 @@
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
-  overflow-wrap: anywhere;
 }
 .tileVal { font-size: 19px; font-weight: 500; color: var(--ink); line-height: 1.1; font-variant-numeric: tabular-nums; }
 
@@ -172,7 +175,6 @@
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
-  overflow-wrap: anywhere;
 }
 .metricAge { flex: none; font-size: 9px; font-variant-numeric: tabular-nums; }
 .metricVal {
