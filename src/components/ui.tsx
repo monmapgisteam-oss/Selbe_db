@@ -173,15 +173,13 @@ function Tip({ x, y, label, value, color, hint }: TipData) {
  * жинтэй байсан тул хэрэглэгч аль нь гол вэ гэдгийг ялгаж чаддаггүй байв —
  * хоёр, гурав нь онцлогдвол тэр асуудал шийдэгдэхгүй, зөвхөн шилжинэ.
  */
-/** Хураагдсан төлвийн localStorage угтвар — самбар дахин нээхэд санана */
-const SEC_LS = 'selbe.sec.';
-
 export function Section({
   title,
   note,
   tone,
   fill,
-  collapseKey,
+  collapsible,
+  defaultClosed,
   children,
 }: {
   title?: ReactNode;
@@ -197,34 +195,24 @@ export function Section({
    */
   fill?: boolean;
   /**
-   * ХУРААГДДАГ хэсэг — өгвөл гарчиг дээр дарж хаах/нээх бөгөөд төлөв нь
-   * localStorage-д энэ түлхүүрээр хадгалагдана (самбар дахин нээхэд санана).
-   * Түлхүүр нь самбар даяар ӨВӨРМӨЦ байх ёстой (жиш. `tsogts.blocks.p1`).
+   * ХУРААГДДАГ хэсэг — гарчиг дээр дарж хаана/нээнэ. ⚠️ САНАДАГГҮЙ
+   * (2026-08-21, хэрэглэгчийн хүсэлт): refresh хийхэд ҮРГЭЛЖ `defaultClosed`
+   * төлөвтөө буцна — «үзье гэсэн нь нээж харна» зарчим.
    */
-  collapseKey?: string;
+  collapsible?: boolean;
+  /** Анхдагч нь ХААЛТТАЙ эхэлнэ (зөвхөн collapsible үед утгатай) */
+  defaultClosed?: boolean;
   children: ReactNode;
 }) {
-  const [closed, setClosed] = useState(false);
-  /* localStorage-ийг ЭФФЕКТЭД уншина — эхний render серверийнхтэй ижил
-     байхгүй бол hydration зөрнө (SplitGrip-тэй ижил дүрэм). */
-  useEffect(() => {
-    if (!collapseKey) return;
-    try { if (localStorage.getItem(SEC_LS + collapseKey) === '1') setClosed(true); } catch { /* хувийн горим */ }
-  }, [collapseKey]);
-  const toggle = () => {
-    const next = !closed;
-    setClosed(next);
-    if (collapseKey) {
-      try { localStorage.setItem(SEC_LS + collapseKey, next ? '1' : '0'); } catch { /* хувийн горим */ }
-    }
-  };
+  const [closed, setClosed] = useState(!!(collapsible && defaultClosed));
+  const toggle = () => setClosed((v) => !v);
   return (
     <section
-      className={`${s.section} ${tone === 'primary' ? s.sectionPrimary : ''} ${fill ? s.sectionFill : ''} ${collapseKey && closed ? s.sectionClosed : ''}`}
+      className={`${s.section} ${tone === 'primary' ? s.sectionPrimary : ''} ${fill ? s.sectionFill : ''} ${collapsible && closed ? s.sectionClosed : ''}`}
     >
       {title && (
         <header className={s.sectionHead}>
-          {collapseKey ? (
+          {collapsible ? (
             /* Гарчиг бүхэлдээ товч — жижиг сум онилохоос хялбар */
             <h3 className={s.sectionTitle}>
               <button type="button" className={s.secToggle} aria-expanded={!closed} onClick={toggle}>
@@ -238,7 +226,7 @@ export function Section({
           {note && <span className={s.sectionNote}>{note}</span>}
         </header>
       )}
-      {(!collapseKey || !closed) && children}
+      {(!collapsible || !closed) && children}
     </section>
   );
 }

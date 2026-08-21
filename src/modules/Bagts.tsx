@@ -559,12 +559,22 @@ export function ContractCard({ p }: { p: Pack }) {
 export function BlocksCard({
   p,
   title = tr('Блок бүрийн гүйцэтгэл'),
-  collapseKey,
+  collapsible,
+  overlapN,
 }: {
   p: Pack;
   title?: string;
-  /** Өгвөл карт хураагддаг болно (Tsogts-ийн «Багц — блокууд» жагсаалт) */
-  collapseKey?: string;
+  /**
+   * Хураагддаг карт — АНХДАГЧ нь ХААЛТТАЙ бөгөөд refresh хийхэд ч хаалттай
+   * эхэлнэ (2026-08-21: «үзье гэсэн нь нээж харна»).
+   */
+  collapsible?: boolean;
+  /**
+   * Багцын ДАВХЦСАН ҮЛДСЭН НЭГЖ ТАЛБАРЫН тоо — өгвөл нээхэд блокуудын ДЭЭР
+   * гарна (`null` = ачаалж байна). FinCard-ын нэгдсэн индикаторыг багцаар
+   * задалж энд зөөв (2026-08-21).
+   */
+  overlapN?: number | null;
 }) {
   const withData = p.blocks.filter((b) => b.progress != null).length;
   const { zoomToWhere, setHighlight } = useMap();
@@ -579,7 +589,13 @@ export function BlocksCard({
     zoomToWhere(BLOCK_LAYER, w);
   };
   return (
-    <Section title={title} collapseKey={collapseKey} note={tr('{0}/{1} бүртгэлтэй', num(withData), num(p.blocks.length))}>
+    <Section title={title} collapsible={collapsible} defaultClosed={collapsible} note={tr('{0}/{1} бүртгэлтэй', num(withData), num(p.blocks.length))}>
+      {overlapN !== undefined && (
+        /* Газар чөлөөлөгдөөгүйгээс энэ багцын ажилд саад буй талбарууд */
+        <Note>
+          {tr('Давхцсан үлдсэн нэгж талбар')}: <b className="num">{overlapN == null ? '…' : num(overlapN)}</b>
+        </Note>
+      )}
       <Bars
         color={HUE}
         max={100}
