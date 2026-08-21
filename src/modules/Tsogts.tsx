@@ -23,7 +23,7 @@ import {
 } from '@/modules/Finance';
 import { useAsync, type Async } from '@/lib/useAsync';
 import { BUILDING, CASHFLOW2, PROGRESS_LEVELS, LAYER_BY_ID, pkgKeyOf } from '@/lib/services';
-import { cat, shade, mntShort, num, pct } from '@/lib/format';
+import { cat, shade, mntAbbr, mntShort, num, pct } from '@/lib/format';
 import { readParam, writeParams } from '@/lib/urlState';
 import o from './overview.module.css';
 import f from './finance.module.css';
@@ -121,6 +121,31 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
       alive = false;
     };
   }, [active]);
+
+  /**
+   * БАГЦ БҮРИЙН давхцсан үлдсэн нэгж талбар — «Багц N — блокууд» картын
+   * толгойд. FinCard-ын нэгдсэн индикаторыг багцаар задалж энд зөөв
+   * (2026-08-21, хэрэглэгчийн хүсэлт). Багц тус бүрд тусдаа огтлолцол тул
+   * зэрэг бодогдож, нэг нь унавал бусдыг унагахгүй (allSettled).
+   */
+  const [ovByPack, setOvByPack] = useState<Map<string, number> | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const builds = packs.filter((pk) => pk.kind === 'build');
+    if (!builds.length) { setOvByPack(new Map()); return; }
+    Promise.allSettled(
+      builds.map(async (pk) => [
+        pk.key,
+        (await overlapLeftParcels(pk.layerIds.map((id) => ({ layerId: id, where: pk.where })))).oids.length,
+      ] as const),
+    ).then((rs) => {
+      if (!alive) return;
+      const m = new Map<string, number>();
+      for (const r of rs) if (r.status === 'fulfilled') m.set(r.value[0], r.value[1]);
+      setOvByPack(m);
+    });
+    return () => { alive = false; };
+  }, [packs]);
 
   /**
    * Багц бүрийн САНХҮҮГИЙН сарын цэгүүд — CASHFLOW2-ийн мөрийг bagtsKey-ээр
@@ -467,15 +492,23 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
             {allPack && <LevelsCard blocks={allPack.blocks} />}
             {/* Блок бүрийн гүйцэтгэл — БАГЦААР нь бүлэглэсэн (нэг багц = нэг карт) */}
             {packs.filter((p) => p.kind === 'build').map((p) => (
-              /* Хураагддаг (2026-08-21) — олон багцын блок нэг баганад маш урт
-                 тул хэрэглэгч сонирхоогүйгоо хаагаад хэрэгтэйгээ тольдоно. */
-              <BlocksCard key={p.key} p={p} title={tr('{0} — блокууд', tr(p.name))} collapseKey={`tsogts.blocks.${p.key}`} />
+              /* АНХДАГЧ нь ХААЛТТАЙ (2026-08-21) — олон багцын блок нэг
+                 баганад маш урт тул үзье гэсэн нь нээж харна; refresh хийхэд
+                 мөн хаалттай эхэлнэ. Нээхэд эхэлж багцын давхцсан үлдсэн
+                 нэгж талбар, доор нь блокуудын мэдээлэл хэвээрээ. */
+              <BlocksCard
+                key={p.key}
+                p={p}
+                title={tr('{0} — блокууд', tr(p.name))}
+                collapsible
+                overlapN={ovByPack == null ? null : (ovByPack.get(p.key) ?? null)}
+              />
             ))}
           </>
         ) : active.kind === 'build' ? (
           <>
             <ContractCard p={active} />
-            <BlocksCard p={active} />
+            <BlocksCard p={active} overlapN={overlap == null ? null : overlap.oids.length} />
             <MonitorBagts bagts={active.name} />
           </>
         ) : (
@@ -488,7 +521,7 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
 
       {/* ── ДООД ГОЛ: санхүүгийн график (сонгоогүй бол ТӨСЛИЙН НЭГДСЭН) ── */}
       <div className={ts.fin}>
-        <FinCard p={active} finQ={finQ} overlap={overlap} />
+        <FinCard p={active} finQ={finQ} />
       </div>
     </div>
   );
@@ -723,13 +756,16 @@ function LevelsCard({ blocks }: { blocks: Pack['blocks'] }) {
 function FinCard({
   p,
   finQ,
-  overlap,
 }: {
   p: Pack | null;
   finQ: Async<FinData>;
-  /** Багцтай давхцсан үлдсэн нэгж талбар — `null` бол ачаалж байна. */
-  overlap?: Overlap | null;
 }) {
+  /**
+   * Үзүүлэлтийн мөр нээлттэй эсэх — ЗӨВХӨН энэ мөрөнд үйлчилнэ, доорх график
+   * ҮРГЭЛЖ харагдана (2026-08-21, хэрэглэгчийн хүсэлт). Санадаггүй — refresh
+   * хийхэд нээлттэй эхэлнэ.
+   */
+  const [kpiOpen, setKpiOpen] = useState(true);
   const d = finQ.state === 'ready' ? finQ.data : null;
   const C = CASHFLOW2.fields;
 
@@ -807,7 +843,7 @@ function FinCard({
     ) : undefined;
 
   return (
-    <Section tone="primary" title={title} note={note} collapseKey="tsogts.fin">
+    <Section tone="primary" title={title} note={note}>
       {finQ.state === 'loading' ? (
         <Empty label={tr('Санхүүжилтийн дата…')} />
       ) : finQ.state === 'error' ? (
@@ -816,16 +852,28 @@ function FinCard({
         <Empty label={tr('Cashflow-д энэ багцын гэрээ бүртгэлгүй.')} />
       ) : months ? (
         <>
+          {/* Үзүүлэлтийн мөрийг нуух/харуулах — ГРАФИКТ огт нөлөөлөхгүй */}
+          <button
+            type="button"
+            className={ts.kpiToggle}
+            aria-expanded={kpiOpen}
+            onClick={() => setKpiOpen((v) => !v)}
+          >
+            <span className={`${ts.kpiCaret} ${kpiOpen ? '' : ts.kpiCaretOff}`} aria-hidden>▾</span>
+            {tr('Үзүүлэлтүүд')}
+          </button>
           {/* ⚠️ 2026-08-21 (хэрэглэгчийн хүсэлт): KPI-ийн утгууд НЭГ өнгөөр —
               урьд нь графикийн цувааны өнгө + төлөвийн улаан/ногоон холилдож
-              байсныг болиулав. Цувааны өнгө legend + график дээрээ үлдэнэ. */}
+              байсныг болиулав. Цувааны өнгө legend + график дээрээ үлдэнэ.
+              Нэгж нь товчилсон («тэрб. ₮») — нарийхан нүдэнд багтана. */}
+          {kpiOpen && (
           <div className={ts.finKpi}>
             {[
-              { v: mntShort(total), l: tr('Cashflow төлөвлөсөн'), c: 'var(--ink)' },
+              { v: mntAbbr(total), l: tr('Cashflow төлөвлөсөн'), c: 'var(--ink)' },
               {
                 v: (
                   <>
-                    {mntShort(givenTotal)}
+                    {mntAbbr(givenTotal)}
                     {/**
                       * ⚠️ 2026-08-20: Хувийг ТУСДАА МӨРӨНД. Урьд нь утгын хажууд
                       * мөрлөж байсан бөгөөд `.finKpiVal` нь `nowrap` тул
@@ -844,23 +892,14 @@ function FinCard({
               },
               /* ⚠️ envhub: эерэг зөрүү нь хэвийн үлдэгдэл тул ТОГТМОЛ warn өнгө
                  нь худал дохио байв — төлөв заадаггүй утга var(--ink)-ээр. */
-              { v: mntShort(finGap), l: tr('Санхүүжилтийн зөрүү'), c: 'var(--ink)' },
+              { v: mntAbbr(finGap), l: tr('Санхүүжилтийн зөрүү'), c: 'var(--ink)' },
               { v: plannedPct == null ? '—' : pct(plannedPct, 1), l: tr('Төлөвлөгөөт гүйцэтгэл'), c: 'var(--ink)' },
               { v: actualPct == null ? '—' : pct(actualPct, 1), l: tr('Бодит гүйцэтгэл'), c: 'var(--ink)' },
               { v: gapText, l: tr('Гүйцэтгэлийн зөрүү'), c: 'var(--ink)' },
-              /* ДАВХЦСАН ҮЛДСЭН НЭГЖ ТАЛБАР — газар чөлөөлөгдөөгүйгээс болж
-                 барилга эхлэх боломжгүй блокуудын шалтгаан. Дээд KPI-аас энд
-                 зөөв: санхүүжилт/гүйцэтгэлийн хоцрогдлыг ТАЙЛБАРЛАДАГ тоо тул
-                 тэдгээрийн ХАЖУУД байх нь утга учиртай.
-                 ⚠️ 0 байсан ч ХАРУУЛНА — «саад алга» гэдэг нь өөрөө хариулт. */
-              /* ⚠️ Багц сонгоогүй үед ч ГАРНА — тэр үед энэ нь ТӨСЛИЙН НИЙТ
-                 саад (бүх блокоор). Нуувал хэрэглэгч нийт хэдэн талбар саад
-                 болж байгааг мэдэхийн тулд багц бүрийг ээлжлэн сонгох болно. */
-              {
-                v: overlap == null ? '…' : num(overlap.oids.length),
-                l: tr('давхцсан үлдсэн нэгж талбар'),
-                c: 'var(--ink)',
-              },
+              /* ⚠️ «Давхцсан үлдсэн нэгж талбар» индикатор ЭНДЭЭС ХАСАГДАВ
+                 (2026-08-21): нэгдсэн тоо нь аль багц саадтайг хэлдэггүй
+                 байсан тул багцаар задарч «Багц N — блокууд» картуудын
+                 толгойд очив. */
             ].map((k) => (
               <div key={k.l}>
                 <span className={`${ts.finKpiVal} num`} style={{ color: k.c }}>{k.v}</span>
@@ -868,6 +907,7 @@ function FinCard({
               </div>
             ))}
           </div>
+          )}
           <div className={ts.finLegend}>
             <span><i style={{ background: cat(2) }} />{tr('Төлөвлөгөө өссөн ₮')}</span>
             <span><i style={{ background: cat(0) }} />{tr('Санхүүжилт өссөн ₮')}</span>

@@ -37,6 +37,20 @@ export function mnt(v: number | null | undefined): string {
  */
 export const mntShort = mnt;
 
+/**
+ * Мөнгөн дүн — ХАМГИЙН товч нэгжтэй: «448.7 тэрб. ₮». KPI-ийн нарийхан нүдэнд
+ * «тэрбум» гэж бүтнээр бичихэд шошго хоёр мөр болж эвдэрдэг тул товчлов
+ * (2026-08-21, хэрэглэгчийн хүсэлт). `mnt`-тэй ИЖИЛ босго — зөвхөн нэгжийн үг өөр.
+ */
+export function mntAbbr(v: number | null | undefined): string {
+  if (v == null || !Number.isFinite(v) || v === 0) return '—';
+  const a = Math.abs(v);
+  if (a >= 1e12) return tr('{0} их н. ₮', num(v / 1e12, 2));
+  if (a >= 1e9) return tr('{0} тэрб. ₮', num(v / 1e9, 1));
+  if (a >= 1e6) return tr('{0} сая ₮', num(v / 1e6, 1));
+  return `${num(v)} ₮`;
+}
+
 /** Огноо: ArcGIS epoch (мс), "2026-07-14" эсвэл DateOnly */
 export function date(v: number | string | null | undefined): string {
   if (v == null || v === '') return '—';
