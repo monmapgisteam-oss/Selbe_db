@@ -225,7 +225,9 @@
 .scopeHint { font-size: 10.5px; color: var(--ink-3); }
 
 /* ── Responsive — нарийн дэлгэцэд frame нурж БОСОО өрөгдөж, гүйнэ ── */
-@media (max-width: 960px) {
+/* Босго 1100 — бүх дашбоардын НЭГДСЭН босго (2026-08-21); бариул мөн нуугдана */
+@media (max-width: 1100px) {
+  .frame > :global(button[class*='splitGrip_grip']) { display: none; }
   .frame {
     grid-template-areas:
       "map"
@@ -239,4 +241,31 @@
   }
   .map { min-height: 52vh; }
   .left, .right { overflow-y: visible; }
+}
+
+/* ══ SplitGrip-ийг сүлжээний НҮДЭНД — завсрын ГОЛД суулгана (2026-08-21):
+   absolute давхарга байхдаа left: calc(var(--side-l) - 5px) гэж баганын
+   ДОТОР тооцогдож картуудын ирмэг дээр давхардаг байв. Одоо grid-ийн
+   өөрийнх нь 10px завсарт төвлөнө — картанд огт хүрэхгүй. ══ */
+.frame > :global(button[class*='splitGrip_grip']) {
+  position: relative;
+  grid-row: 1 / -1;
+  top: auto;
+  bottom: auto;
+  z-index: 6;
+}
+.frame > :global(button[class*='splitGrip_left']) {
+  grid-column: 1 / 2;
+  justify-self: end;
+  left: auto;
+  margin-right: -10.5px;
+}
+.frame > :global(button[class*='splitGrip_right']) {
+  grid-column: 3 / 4;
+  justify-self: start;
+  right: auto;
+  margin-left: -10.5px;
+}
+@media (max-width: 1100px) {
+  .frame > :global(button[class*='splitGrip_grip']) { display: none; }
 }

@@ -8,7 +8,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
 import {
   Donut, Ring, Bars, Data, Stats, Stat, Empty, Rows, List, ListItem,
-  Stack, Series, Trend,
+  Stack, Trend,
 } from '@/components/ui';
 import { Icon } from '@/components/Icon';
 import { LayerCatalog } from '@/components/LayerCatalog';
@@ -640,19 +640,6 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
             </div>
           )}
 
-          {/* Тайлбар — зурагт БОДИТ харагдаж буй давхаргууд */}
-          <div className={o.legend}>
-            {visible.slice(0, 8).map((id) => {
-              const L = LAYER_BY_ID[id];
-              return L ? (
-                <span key={id} className={o.legendItem} title={L.title}>
-                  <i style={{ background: L.hue }} />{L.title}
-                </span>
-              ) : null;
-            })}
-            {visible.length > 8 && <span className={o.legendMore}>+{visible.length - 8}</span>}
-          </div>
-
           {(zone || flt) && (
             <div className={o.chipBar}>
               {zone && (
@@ -679,21 +666,12 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
       {/* БАРУУН багана — цуваа ба санхүүжилт */}
       {open.length === 0 && <EnvRight d={d} />}
 
-      {/**
-        * Сонгосон хэсгийн ЧАРТУУД — газрын зургийг ТОЙРОН, тус бүр өөрийн
-        * картаар (хэрэглэгчийн хүсэлт).
-        *
-        * ⚠️ Хуваарилалт нь CSS-д: `.ringCards > *:nth-child(odd)` → ЗҮҮН багана,
-        * `even` → БАРУУН. `Detail` нь fragment буцаадаг тул доторх `Panel`-ууд
-        * шууд сүлжээний ХҮҮХЭД болж, тоо нь хэдэн ч байсан өөрөө хуваагдана.
-        */}
+      {/* Сонгосон хэсгийн ЧАРТУУД — тойм горимтой ИЖИЛ сонгодог байрлал:
+          зураг голдоо хайрцагтай, картууд хажуугийн баганад (2026-08-21:
+          хөвөгч glass хувилбарыг хэрэглэгч буцаасан; чартуудын шинэ дизайн —
+          Bars, донатын 4 зүсмэгийн дүрэм — хэвээр).
+          ⚠️ ХААХ боломж хэвээр — идэвхтэй нүдийг дахин дарахад хаагдана. */}
       {open.length > 0 && (() => {
-        /**
-         * ⚠️ ХЭСГИЙН ТУСДАА ТОЛГОЙН МӨР («01 · Төслийн цар хүрээ ×») ХАСАГДАВ:
-         * бүтэн мөр эзэлж байсан ч шинэ мэдээлэл өгдөггүй — дээрх зурваст
-         * идэвхтэй хэсэг аль хэдийн тодорч, нэр нь бичээстэй байдаг.
-         * ⚠️ ХААХ боломж алдагдаагүй — идэвхтэй нүдийг ДАХИН дарахад хаагдана.
-         */
         const { top, left, right } = zones;
         return (
           <>
@@ -1306,7 +1284,8 @@ function ScopeDetail({ bagts, d, flt, onFlt }: {
             <Donut
               size={150}
               width={24}
-              stack
+              leaders={items.length <= 4}
+              stack={items.length > 4}
               center={num(sumBy(items, (i) => i.value))}
               centerLabel={tr('багц')}
               items={items.map((x, i) => ({
@@ -1425,14 +1404,16 @@ function ScheduleDetail({ project }: { project: Async<ProjectProgress> }) {
             color: shade(ACCENT, i, keys.length + 1),
             display: tr('{0}% · {1} ажил', num(p.byStage[k].weight, 2), num(p.byStage[k].rows)),
           }));
+          const ws = withRest(slices);
           return (
             <Donut
               size={150}
               width={24}
-              stack
+              leaders={ws.length <= 4}
+              stack={ws.length > 4}
               center={`${num(sumBy(slices, (s) => s.value), 1)}%`}
               centerLabel={tr('бүртгэгдсэн жин')}
-              items={withRest(slices)}
+              items={ws}
             />
           );
         })()}
@@ -2181,27 +2162,57 @@ function NetworkDetail({ project, bagts, sources, flt, onFlt }: {
 
       {/* `нийт_чадал` ба `тайлбар` нь `useSources`-ийн outFields-д БАЙГАА хэрнээ
           дашбоардын хаана ч зурагддаггүй байв. */}
-      <Panel title={tr('Дулаан, ус хангамжийн эх үүсвэрийн чадал')}>
-        <Data q={sources} loading={tr('Эх үүсвэрийг татаж байна…')} minH={460}>
+      {/* 2026-08-21 (хэрэглэгчийн хүсэлт): 4 нүдэн Stats байсныг ТӨРЛӨӨР нь
+          ТУСДАА ХОЁР донат-карт болгов — зүсмэг бүр = байгууламж, гол нь нийт
+          чадал. Нэгж зөрдөг (МВт vs м³/хон) тул нэг диаграмд нийлэхгүй. */}
+      <Panel title={tr('Дулааны эх үүсвэрийн чадал')}>
+        <Data q={sources} loading={tr('Эх үүсвэрийг татаж байна…')} minH={220}>
           {(rows) => {
             const F = SOURCE_FS.fields;
-            const grab = (pre: string) => rows.filter((r) => srcStr(r[F.type]).startsWith(pre));
-            const heatRows = grab(tr('Дулаан'));
-            const waterRows = grab(tr('Ус'));
-            const cap = (rs: Row[]) => sumBy(rs, (r) => srcNum(r[F.total]));
-            if (!heatRows.length && !waterRows.length) return <Empty label={tr('Эх үүсвэрийн бүртгэл хоосон.')} />;
+            const heatRows = rows.filter((r) => srcStr(r[F.type]).startsWith(tr('Дулаан')));
+            if (!heatRows.length) return <Empty label={tr('Эх үүсвэрийн бүртгэл хоосон.')} />;
             return (
-              <>
-                {/* ⚠️ Нэгж нь ЗӨРНӨ (МВт vs м³/хон) — эдгээрийг НЭГ `Bars`-т
-                    нийлүүлж БОЛОХГҮЙ: нэг тэнхлэгт хоёр өөр нэгж харьцуулагдана.
-                    `Stats` бол энд цорын ганц зөв примитив. */}
-                <Stats cols={2}>
-                  <Stat accent color={HUE[0]} value={num(cap(heatRows), 1)} unit={tr('МВт')} label={tr('Дулааны нийт чадал')} />
-                  <Stat accent color={HUE[2]} value={num(heatRows.length)} unit={tr('ш')} label={tr('Дулааны байгууламж')} />
-                  <Stat accent color={HUE[4]} value={num(cap(waterRows))} unit={tr('м³/хон')} label={tr('Усны нийт чадал')} />
-                  <Stat accent color={HUE[6]} value={num(waterRows.length)} unit={tr('ш')} label={tr('Усны байгууламж')} />
-                </Stats>
-              </>
+              <Donut
+                size={140}
+                width={22}
+                leaders={heatRows.length <= 4}
+                stack={heatRows.length > 4}
+                center={num(sumBy(heatRows, (r) => srcNum(r[F.total])), 1)}
+                centerLabel={tr('МВт')}
+                items={heatRows.map((r, i) => ({
+                  key: srcStr(r[F.name]) || String(i),
+                  label: srcStr(r[F.name]) || tr('Нэргүй'),
+                  value: srcNum(r[F.total]),
+                  color: shade(ACCENT, i, heatRows.length),
+                  display: tr('{0} МВт', num(srcNum(r[F.total]), 1)),
+                }))}
+              />
+            );
+          }}
+        </Data>
+      </Panel>
+      <Panel title={tr('Ус хангамжийн эх үүсвэрийн чадал')}>
+        <Data q={sources} loading={tr('Эх үүсвэрийг татаж байна…')} minH={220}>
+          {(rows) => {
+            const F = SOURCE_FS.fields;
+            const waterRows = rows.filter((r) => srcStr(r[F.type]).startsWith(tr('Ус')));
+            if (!waterRows.length) return <Empty label={tr('Эх үүсвэрийн бүртгэл хоосон.')} />;
+            return (
+              <Donut
+                size={140}
+                width={22}
+                leaders={waterRows.length <= 4}
+                stack={waterRows.length > 4}
+                center={num(sumBy(waterRows, (r) => srcNum(r[F.total])))}
+                centerLabel={tr('м³/хон')}
+                items={waterRows.map((r, i) => ({
+                  key: srcStr(r[F.name]) || String(i),
+                  label: srcStr(r[F.name]) || tr('Нэргүй'),
+                  value: srcNum(r[F.total]),
+                  color: shade(ACCENT, i, waterRows.length),
+                  display: tr('{0} м³/хон', num(srcNum(r[F.total]))),
+                }))}
+              />
             );
           }}
         </Data>
@@ -2236,11 +2247,12 @@ function NetworkDetail({ project, bagts, sources, flt, onFlt }: {
             .sort((a, b) => (ORD.indexOf(a.key) + 99 * +(ORD.indexOf(a.key) < 0))
                           - (ORD.indexOf(b.key) + 99 * +(ORD.indexOf(b.key) < 0)));
           return (
-            <Series
+            /* 2026-08-21 (хэрэглэгчийн хүсэлт): босоо Series байсныг бусад
+               карттай ИЖИЛ хэвтээ Bars болгов — нэг самбарт хоёр өөр чартын
+               хэл зэрэгцэж байв. */
+            <Bars
               color={ACCENT}
-              // ⚠️ `unit` ТАВИХГҮЙ: `Series` нь `display`-ийн ХОЙНО unit-ыг залгадаг
-              //    тул «61.4% · жин 1.83% · 22 ажил %» гэсэн сүүлчийн үлдэц % гарна.
-              //    Нэгж нь `display`-д аль хэдийн бий.
+              max={100}
               items={agg.map((x) => ({
                 key: x.key,
                 label: x.key,
@@ -2594,7 +2606,8 @@ function SourceDetail({ sources, d, flt, onFlt }: { sources: Async<Row[]>; d: Da
             <Donut
               size={130}
               width={22}
-              leaders
+              leaders={facs.length <= 4}
+              stack={facs.length > 4}
               selected={sel}
               onSelect={pick}
               center={`${facs.length}`}
@@ -2766,7 +2779,12 @@ function FinanceDetail({ budget, flt, onFlt }: { budget: Async<Budget> } & FltPr
             color: shade(ACCENT, i, bg.sources.length),
             display: tr('{0} тэрбум', num(s.value / 1e9, 1)),
           }))}
-          center={num(bg.orderTotal / 1e9, 1)} centerLabel={tr('тэрбум ₮')} size={150} width={24} stack
+          center={num(bg.orderTotal / 1e9, 1)}
+          centerLabel={tr('тэрбум ₮')}
+          size={150}
+          width={24}
+          leaders={bg.sources.length <= 4}
+          stack={bg.sources.length > 4}
         />
       </Panel>
   

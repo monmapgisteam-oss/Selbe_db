@@ -70,27 +70,44 @@
    ⚠️ Ердийн үедээ БҮДЭГ боловч ХАРАГДАНА: эхний хувилбарт бүрэн тунгалаг
    байсан тул хэрэглэгч чирэх боломжтойг нь олж мэдэхгүй байв. Hover/фокус/
    чирэх үед өгөгдлийн өнгөөр тодорно. */
+/* «Тохиромжтой байдлын үнэлгээ»-гийн .resizer-тэй НЭГ хэл (2026-08-21,
+   хэрэглэгчийн сонголт — тэр нь лавлах хэв): 5px --line зурвас + голдоо
+   26px --line-strong ховил; hover/чирэлтэд зурвас --data, ховил --bg. */
+.gripCol::before,
+.gripRow::before {
+  content: '';
+  position: absolute;
+  background: var(--line);
+  transition: background 0.15s;
+}
+.gripCol::before { top: 0; bottom: 0; left: 50%; width: 5px; transform: translateX(-50%); }
+.gripRow::before { left: 0; right: 0; top: 50%; height: 5px; transform: translateY(-50%); }
 .gripCol::after,
 .gripRow::after {
   content: '';
   position: absolute;
   border-radius: 1px;
   background: var(--line-strong, var(--line));
-  transition: background 0.12s;
+  z-index: 1;
+  transition: background 0.15s;
 }
-/* Зураас нь 8px завсрын ЯГ ГОЛД — картын хүрээнээс 3px зайтай тул тусад нь
-   уншигдана. Урт нь картын өндрийн дунд хэсэг (14px-ээр богиносгосон). */
-.gripCol::after { top: 14px; bottom: 14px; left: 3px; width: 2px; }
-.gripRow::after { left: 14px; right: 14px; top: 3px; height: 2px; }
+.gripCol::after { top: 50%; left: 50%; width: 1px; height: 26px; transform: translate(-50%, -50%); }
+.gripRow::after { top: 50%; left: 50%; width: 26px; height: 1px; transform: translate(-50%, -50%); }
 /* ⚠️ `[data-drag]`-ийг ЗААВАЛ локал ангид уяна: CSS Modules нь дүрэм бүрд дор
    хаяж нэг локал анги/id шаарддаг («pure selector») — цэвэр атрибутын сонгогч
    бол build бүхэлдээ унана. */
+.gripCol:hover::before,
+.gripRow:hover::before,
+.gripCol:focus-visible::before,
+.gripRow:focus-visible::before,
+.gripCol[data-drag='1']::before,
+.gripRow[data-drag='1']::before { background: var(--data); }
 .gripCol:hover::after,
 .gripRow:hover::after,
 .gripCol:focus-visible::after,
 .gripRow:focus-visible::after,
 .gripCol[data-drag='1']::after,
-.gripRow[data-drag='1']::after { background: var(--data); }
+.gripRow[data-drag='1']::after { background: var(--bg); }
 
 /* KPI зурвас — зургаан үзүүлэлт ЗААВАЛ НЭГ мөрөнд (бүтэн өргөнийг тэнцүү хуваана) */
 .kpi {
@@ -486,7 +503,8 @@
 .retry:hover { background: var(--surface-2); }
 
 /* ── Нарийн дэлгэц — босоо цуваа ── */
-@media (max-width: 1080px) {
+/* Босго 1100 — бүх дашбоардын НЭГДСЭН босго (2026-08-21) */
+@media (max-width: 1100px) {
   .shell {
     grid-template-columns: 1fr;
     grid-template-rows: auto auto 52vh auto auto;
@@ -494,6 +512,8 @@
     height: auto;
     overflow: visible;
   }
+  /* Нэг баганад зааг байхгүй — чирэх бариулууд нуугдана */
+  .gripCol, .gripRow { display: none; }
   /* Нэг мөрөнд зургаа багтахгүй — 3×2 тор */
   .kpi {
     grid-auto-flow: row;

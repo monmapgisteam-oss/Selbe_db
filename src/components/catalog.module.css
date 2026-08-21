@@ -39,21 +39,33 @@
   touch-action: none;
   transition: background 0.12s;
 }
+/* Analysis-ийн .resizer-тэй НЭГ хэл (2026-08-21) */
+.grip::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 5px;
+  transform: translateX(-50%);
+  background: var(--line);
+  transition: background 0.15s;
+}
 .grip::after {
   content: '';
   position: absolute;
   top: 50%;
-  right: 2px;
-  width: 2px;
-  height: 30px;
-  margin-top: -15px;
-  border-radius: 2px;
+  left: 50%;
+  width: 1px;
+  height: 26px;
+  transform: translate(-50%, -50%);
+  border-radius: 1px;
   background: var(--line-strong);
-  opacity: 0;
-  transition: opacity 0.15s;
+  z-index: 1;
+  transition: background 0.15s;
 }
-.grip:hover, .gripOn { background: color-mix(in srgb, var(--hue) 22%, transparent); }
-.grip:hover::after, .gripOn::after { opacity: 1; }
+.grip:hover::before, .gripOn::before { background: var(--data); }
+.grip:hover::after, .gripOn::after { background: var(--bg); }
 /* Touch — 6px зурвас хуруунд хэт нарийн тул hit-талбайг тэлнэ */
 @media (pointer: coarse) {
   .grip { width: 18px; right: -6px; }

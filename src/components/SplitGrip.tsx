@@ -146,6 +146,11 @@ export function useSideResize(key: string, hasRight = true) {
         grip.removeEventListener('pointermove', move);
         grip.removeEventListener('pointerup', up);
         grip.removeEventListener('pointercancel', up);
+        grip.removeEventListener('lostpointercapture', up);
+        /* Чирэлтийн дараа фокус үлдээхгүй — фокусын өнгө «асаастай» мэт
+           харагдахаас сэргийлнэ (гар удирдлагад фокус нь Tab-аар ирдэг тул
+           энэ нь саад болохгүй) */
+        grip.blur();
         if (!d || d.px == null) return; // хөдөлгөөнгүй товшилт
         const next = { ...cur.current, [d.s]: d.px };
         setW(next);
@@ -154,6 +159,9 @@ export function useSideResize(key: string, hasRight = true) {
       grip.addEventListener('pointermove', move);
       grip.addEventListener('pointerup', up);
       grip.addEventListener('pointercancel', up);
+      /* ⚠️ capture ямар ч шалтгаанаар алдагдахад (цонхны гадна тавих,
+         alt-tab, iframe) up ЗААВАЛ ажиллана — эс бөгөөс dragging гацна */
+      grip.addEventListener('lostpointercapture', up);
     };
 
   /** Анхны өргөнд нь буцаана — CSS-ийн (дэлгэцийн) утга дахин хүчинтэй болно. */

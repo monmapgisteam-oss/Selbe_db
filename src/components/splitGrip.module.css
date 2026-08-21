@@ -3,6 +3,12 @@
  * Дашбоардууд «зүүн картууд · зураг · баруун картууд» гэсэн НЭГ хэв маягтай
  * бөгөөд өргөн нь CSS хувьсагчаар (`--side-l`, `--side-r`) өгөгддөг. Энэ бариул
  * тэр хувьсагчийг чирж өөрчилнө — бүрхүүлийн бүтэц огт хөндөгдөхгүй.
+ *
+ * ⚠️ 2026-08-21 (хэрэглэгчийн сонголт): харагдах хэл нь «Тохиромжтой байдлын
+ * үнэлгээ»-гийн `.resizer`-тэй (analysis/suitability.module.css) ЯГ ИЖИЛ —
+ * 5px саарал зурвас + голдоо 26px ховил, hover/чирэлтэд --data өнгөөр асна.
+ * Тэр нь сүлжээний жинхэнэ багана, энэ нь давхарласан зурвас гэдгээрээ л
+ * ялгаатай; аль нэгийг нь өөрчилбөл нөгөөг нь ХАМТ өөрчил.
  */
 .grip {
   position: absolute;
@@ -19,42 +25,39 @@
      бариулыг нарийхан байлгаж, зөвхөн заагийг эзэлнэ. */
 }
 
-/* Харагдах зураас — БАЙНГА үл мэдэг харагдана (2026-08-21: урьд нь бүрэн
-   далд байсан тул чирж болдгийг хэрэглэгч огт олдоггүй байв), хүрэхэд тодорно. */
+/* Харагдах зурвас — analysis-ийн .resizer-ийн биетэй ижил 5px, var(--line) */
 .grip::after {
   content: "";
   position: absolute;
   inset: 0 auto 0 50%;
-  width: 2px;
+  width: 5px;
   transform: translateX(-50%);
-  border-radius: 1px;
-  background: color-mix(in srgb, var(--line) 85%, transparent);
-  transition: background 0.12s ease;
+  background: var(--line);
+  transition: background 0.15s;
 }
-/* Голын БАРИУЛ товруу — заагийг «чирж болно» гэж заана */
+/* Голын ховил — 1×26px, зурваснаас тодхон (analysis-ийн ::after-тэй ижил) */
 .grip::before {
   content: "";
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 4px;
-  height: 36px;
+  width: 1px;
+  height: 26px;
   transform: translate(-50%, -50%);
-  border-radius: 3px;
-  background: var(--ink-3);
-  opacity: 0.55;
-  transition: background 0.12s ease, opacity 0.12s ease;
-}
-.grip:hover::before,
-.grip:focus-visible::before,
-.gripOn::before {
-  background: var(--hue);
-  opacity: 1;
+  border-radius: 1px;
+  background: var(--line-strong);
+  z-index: 1;
+  transition: background 0.15s;
 }
 .grip:hover::after,
 .grip:focus-visible::after,
 .gripOn::after {
-  background: var(--hue);
+  background: var(--data);
+}
+.grip:hover::before,
+.grip:focus-visible::before,
+.gripOn::before {
+  background: var(--bg);
 }
 .grip:focus-visible {
   outline: none;
