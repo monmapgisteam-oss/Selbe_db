@@ -110,7 +110,7 @@ function Column({
       {rows.map((r) => (
         <div key={r.user} className={s.aclRow}>
           <div className={s.aclUser}>
-            <span className={s.aclName}>{r.user}</span>
+            <span className={s.aclName} title={r.user}>{r.user}</span>
             <button
               type="button"
               className={s.aclX}

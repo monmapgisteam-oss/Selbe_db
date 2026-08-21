@@ -421,7 +421,11 @@
 /* ---------- Detail card ---------- */
 /* Газрын зураг дээгүүр ХӨВДӨГ карт — сүүдэр зөвшөөрөгдөнө (var(--shadow-lg)) */
 .detail {
-  position: absolute; left: 14px; top: 14px; width: 352px; max-height: calc(100% - 28px);
+  /* Утасны нарийн дэлгэцэд 352px нь зургаас хэвтээгээр хальдаг байв
+     (2026-08-21 аудит) — .catPanel-тай ижил хамгаалалт */
+  position: absolute; left: 14px; top: 14px;
+  width: min(352px, calc(100% - 28px));
+  max-height: calc(100% - 28px);
   background: color-mix(in srgb, var(--surface) 97%, transparent); backdrop-filter: blur(10px);
   border: 1px solid var(--line); border-radius: var(--r-sm); overflow: auto;
   box-shadow: var(--shadow-lg); z-index: 11;

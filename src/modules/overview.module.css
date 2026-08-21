@@ -201,15 +201,16 @@
 }
 .shell[data-detail='1'] :global(.statNum) > span { font-size: 10.5px; }
 .shell[data-detail='1'] :global(.statTag) {
-  /* ⚠️ 26px нөөцлөсөн хоёр мөр → НЭГ мөр, таслалттай */
+  /* Нөөцлөсөн 26px-гүй, гэхдээ шошго «…» болохгүй — 2 мөрөнд бүтэн
+     (2026-08-21 аудит: нэг мөрийн таслалт урт монгол нэрийг иддэг байв) */
   min-height: 0;
   font-size: 9.5px;
   letter-spacing: 0.1em;
   line-height: 1.2;
-  white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
-  display: block;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 /* ── Түлхүүр–утга мөр ── */
@@ -396,7 +397,10 @@
 .zTop {
   grid-column: 2;
   grid-row: 2;
-  max-height: 22vh;
+  /* Намхан дэлгэцэд 22vh нь ~140px болж KPI мөрийг голоор нь таслаж байв
+     (2026-08-21 аудит) — доод шалыг 160px-д тогтоож, хэтэрвэл дотроо гүйлгэнэ */
+  max-height: max(160px, 22vh);
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -752,10 +756,15 @@
 .panelNote {
   font-size: 11.5px;
   color: var(--ink-3);
-  white-space: nowrap;
   min-width: 0;
+  /* 2026-08-21 аудит: нэг мөрийн «…» нь тоо агуулсан тайлбарыг («173 байгууламж»
+     г.м.) иддэг байв. Одоо 2 мөрөнд БҮТЭН бичигдэж, түүнээс хэтэрвэл л таслана —
+     дээрх 2026-08-20-ны халилтын хамгаалалт (min-width:0 + overflow) хэвээр. */
   overflow: hidden;
-  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  text-align: right;
 }
 
 /* ══════════════════ Бэхлэгдсэн үзүүлэлтийн тэмдэг ══════════════════ */
@@ -1212,12 +1221,12 @@
     min-height: 0;
   }
   .zLeft > *, .zRight > * { flex: none; }
-  .hero { height: 52vh; flex: none; }
+  .hero { height: max(240px, 52vh); flex: none; }
   .detail { width: 100%; grid-auto-flow: row; grid-auto-columns: auto; overflow: visible; }
   .col { max-height: 70vh; }
   .pack {
     grid-template-columns: 1fr;
-    grid-template-rows: auto auto 58vh auto;
+    grid-template-rows: auto auto max(260px, 58vh) auto;
     grid-template-areas: 'kpi' 'left' 'map' 'right';
     height: auto;
     overflow: visible;
@@ -1306,7 +1315,10 @@
 .ind {
   flex: none;
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  /* 2026-08-21 аудит: тогтмол repeat(5,1fr) нь 1100–1250px-д нүдийг ~150px-ээс
+     доош шахаж утгыг («158.0 га» → «158…») таслаж байв. auto-fit нь зай хүрэхгүй
+     үед нүдийг дараагийн мөрөнд буулгаж утгыг БҮТЭН үлдээнэ. */
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 1px;
   background: var(--line);
   border: 1px solid var(--line);

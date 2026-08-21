@@ -165,7 +165,7 @@
   .right { overflow-y: visible; }
   /* ⚠️ Мөрийн өндөр `auto` болсон тул зурагт доод хязгаар ЗААВАЛ — эс бөгөөс
      `MapCanvas`-ийн `flex:1` нь 0 өндөрт хумигдаж зураг алга болно. */
-  .mapCol { min-height: 62vh; }
+  .mapCol { min-height: max(260px, 62vh); }
 }
 
 @media (max-width: 760px) {

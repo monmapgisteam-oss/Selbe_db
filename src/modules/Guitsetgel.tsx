@@ -589,8 +589,8 @@ function Item({ work, stage, onFix }: { work: Work; stage: Stage; onFix: () => v
       <button className={s.itemHead} onClick={() => setOpen((v) => !v)}>
         <span className={s.chev}>{open ? '▾' : '▸'}</span>
         <span className={s.who}>
-          <div className={s.ajil}>{work.ajil}</div>
-          <div className={s.meta}>{work.bagts} · {work.company}</div>
+          <div className={s.ajil} title={work.ajil}>{work.ajil}</div>
+          <div className={s.meta} title={`${work.bagts} · ${work.company}`}>{work.bagts} · {work.company}</div>
         </span>
         <Track status={st} stage={stage} />
         <span className={`${s.badge} ${badgeClass(st, stage)}`}>{statusLabel(st, stage)}</span>

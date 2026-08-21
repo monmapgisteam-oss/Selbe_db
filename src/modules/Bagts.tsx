@@ -496,7 +496,7 @@ export function PackKpi({
       {
         v: overlap == null ? '…' : num(overlap.oids.length),
         l: tr('давхцсан үлдсэн нэгж талбар'),
-        c: overlap?.oids.length ? '#e11d48' : '#16a34a',
+        c: overlap?.oids.length ? 'var(--bad-ink)' : 'var(--good-ink)',
       },
     ]
     : [];
@@ -510,7 +510,7 @@ export function PackKpi({
       { v: progress == null ? '—' : pct(progress, 1), l: tr('гүйцэтгэл'), c: levelColor(progress) },
       { v: num(blocks), l: tr('блок'), c: HUE },
       { v: num(households), l: tr('айл'), c: HUE },
-      { v: num(layers), l: tr('дэд бүтцийн давхарга'), c: '#0891b2' },
+      { v: num(layers), l: tr('дэд бүтцийн давхарга'), c: 'var(--data)' },
       ...blockTile,
     ];
 

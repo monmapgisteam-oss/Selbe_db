@@ -137,7 +137,9 @@
 .notice {
   position: fixed;
   right: 24px;
-  bottom: 24px;
+  /* 24 → 76px: AI туслахын FAB (z60, баруун доод 18px) мэдэгдлийг дарж
+     хагасыг нь нуудаг байв (2026-08-21 аудит) — FAB-аас дээгүүр гаргав */
+  bottom: 76px;
   z-index: 40;
   max-width: 360px;
   padding: 10px 14px;
@@ -302,7 +304,9 @@
   --w-jin: 60px;
   --w-totw: 60px;
   --w-perf: 64px;
-  --w-bld: 66px;
+  /* 66 → 74px: «5/1 барилга» гэх мэт толгой 66px-д 5px дутаж «…» болдог байв
+     (2026-08-21 аудит) */
+  --w-bld: 74px;
   --w-done: 64px;
   --w-dutuu: 64px;
 

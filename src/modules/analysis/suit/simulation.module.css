@@ -144,9 +144,10 @@
   font-variant-numeric: tabular-nums;
   letter-spacing: -.2px;
   color: var(--ink);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  /* 330px хажуугийн самбарт 3-4 нүд хуваахад тоон утга («12,400 маш/ц»)
+     «…» болдог байв (2026-08-21 аудит) — нэгжээ дараагийн мөрөнд буулгана */
+  overflow-wrap: anywhere;
+  min-width: 0;
 }
 
 .cellV small { font-size: 10.5px; font-weight: 600; color: var(--ink-3); margin-left: 2px }
@@ -157,9 +158,11 @@
   text-transform: uppercase;
   letter-spacing: .5px;
   color: var(--ink-3);
-  white-space: nowrap;
+  /* Шошго 2 мөрөнд бүтэн — «…» биш (2026-08-21 аудит) */
   overflow: hidden;
-  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 /* ══════════════════ Цагийн консол (замын ачаалал) ══════════════════ */

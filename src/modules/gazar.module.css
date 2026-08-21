@@ -234,12 +234,12 @@
       "left"
       "right";
     grid-template-columns: 1fr;
-    grid-template-rows: 52vh auto auto;
+    grid-template-rows: max(240px, 52vh) auto auto;
     height: auto;
     min-height: 100%;
     overflow-y: auto;
   }
-  .map { min-height: 52vh; }
+  .map { min-height: max(240px, 52vh); }
   .left, .right { overflow-y: visible; }
 }
 

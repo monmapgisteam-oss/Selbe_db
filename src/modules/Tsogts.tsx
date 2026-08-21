@@ -587,8 +587,9 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
               <span className={ts.ovTotLabel}>{tr('Давхцсан үлдсэн нэгж талбар')}</span>
               <b
                 className={`${ts.ovTotVal} num`}
-                /* Хуучин индикаторын өнгө хэвээр: >0 яагаан (саадтай), 0 ногоон */
-                style={{ color: overlap?.oids.length ? '#d946ef' : '#16a34a' }}
+                /* Яагаан нь зурган дээрх давхцлын давхаргатай ИЖИЛ утга — гэхдээ токеноор:
+                   light горимд бараандуу хувилбар нь уншигдана (--overlap, globals.css) */
+                style={{ color: overlap?.oids.length ? 'var(--overlap)' : 'var(--good-ink)' }}
               >
                 {overlap == null ? '…' : num(overlap.oids.length)}
               </b>
