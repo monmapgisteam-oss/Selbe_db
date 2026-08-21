@@ -1492,7 +1492,6 @@ const en: Record<string, string> = {
   "Гэрлэн дохионы зохицуулалт": "Traffic signal control",
   "Гэрлэн дохионы ээлж": "Signal phase",
   "Гэрэлтүүлгийн мэдрэгч": "Lighting sensors",
-  "Гэрэлтүүлэг": "Lighting",
   "гэрээ": "contract",
   "Гэрээ": "Contract",
   "гэрээ {0} / төсөв {1} тэрбум ₮": "contracts {0} / budget {1} bn ₮",
@@ -2263,7 +2262,6 @@ const en: Record<string, string> = {
   "татаж байна": "loading",
   "Татаж байна…": "Loading…",
   "Таун хаус": "Townhouse",
-  "Температур": "Temperature",
   "техник": "equipment",
   "Техник": "Equipment",
   "Техник — өдрөөр": "Equipment — by day",
@@ -2665,7 +2663,6 @@ const en: Record<string, string> = {
   "Цамхагт кран — төлөв": "Tower cranes — status",
   "Цахилгаан": "Electricity",
   "Цахилгаан — хуваарилсан ÷ чадал": "Electricity — allocated ÷ capacity",
-  "Цахилгаан дамжуулалт": "Electrical conductivity",
   "Цахилгаан, ХТП/РП (Багц 6)": "Electricity, HSP/DP (Package 6)",
   "Цахилгааны шугам": "Power lines",
   "Цахилгааны эх үүсвэрийн чадал": "Electrical source capacity",
@@ -2690,7 +2687,6 @@ const en: Record<string, string> = {
   "Чи бол «Сэлбэ 20 минутын хот» төслийн ГИС порталын мэдээллийн туслах.": "You are the data assistant for the GIS portal of the “Selbe 20-Minute City” project.",
   "Чиглэл": "Route",
   "Чиглэл бүр дангаараа ногоон болно — эсрэг урсгалын зөрчилгүй, гэхдээ хүлээлт урт.": "Each approach goes green on its own — no conflict with opposing flows, but longer waits.",
-  "Чийгшил": "Humidity",
   "Чингэлтэй хөрөнгө оруулалтын": "Chingeltei Investment",
   "Чирж өндрийг тохируулна · давхар товшвол анхны хэмжээ": "Drag to adjust the height · double-click to reset",
   "Чирж өндөрсгөнө · давхар товшиж анхны хэмжээнд буцаана": "Drag to make it taller · double-click to reset",
@@ -2870,7 +2866,11 @@ const en: Record<string, string> = {
   "Гадна орчны агаарын харьцангуй чийгшил.": "Outdoor relative air humidity.",
   "Усны хэрэглээний тоолуур. Заалтыг LoRaWAN-аар илгээнэ.": "Water consumption meter. Readings are sent over LoRaWAN.",
   "{0}-аар эхэлсэн": "starts with {0}",
-  "Тоолуурын ХУРИМТЛАГДСАН заалт — өссөн дүн тул хэрэглээ нь хоёр заалтын ЗӨРҮҮ.": "CUMULATIVE meter reading — it only rises, so consumption is the DIFFERENCE between two readings."
+  "Тоолуурын ХУРИМТЛАГДСАН заалт — өссөн дүн тул хэрэглээ нь хоёр заалтын ЗӨРҮҮ.": "CUMULATIVE meter reading — it only rises, so consumption is the DIFFERENCE between two readings.",
+  "Хөрсний цахилгаан дамжуулах чадал": "Soil electrical conductivity",
+  "Орчны гэрэл мэдрэгч": "Ambient light sensor",
+  "Гадна орчны чийгшил": "Outdoor humidity",
+  "Гадна орчны температур": "Outdoor temperature"
 };
 
 export default en;
