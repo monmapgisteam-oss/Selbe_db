@@ -24,6 +24,8 @@ export type Work = {
   /** ⚠️ Шийдвэрийн баганаас тоолно — `Төлөв` явцын туршид өөрчлөгддөг */
   engineerReturns: number;
   managerReturns: number;
+  /** Ерөнхий менежерийн буцаалт — эцсийн шатанд гацсан ажлыг дээш нь гаргана */
+  directorReturns: number;
 };
 
 /**
@@ -72,6 +74,7 @@ export function groupWorks(rows: Row[]): Work[] {
       owner: OWNER[status] ?? 'company',
       engineerReturns: cycles.filter((r) => r[F.engineerDecision] === DECISION.return).length,
       managerReturns: cycles.filter((r) => r[F.managerDecision] === DECISION.return).length,
+      directorReturns: cycles.filter((r) => r[F.directorDecision] === DECISION.return).length,
     });
   }
 
@@ -83,8 +86,8 @@ export function groupWorks(rows: Row[]): Work[] {
     const ac = a.status === STATUS.transferred ? 1 : 0;
     const bc = b.status === STATUS.transferred ? 1 : 0;
     if (ac !== bc) return ac - bc;
-    const ar = a.engineerReturns + a.managerReturns;
-    const br = b.engineerReturns + b.managerReturns;
+    const ar = a.engineerReturns + a.managerReturns + a.directorReturns;
+    const br = b.engineerReturns + b.managerReturns + b.directorReturns;
     if (ar !== br) return br - ar;
     return a.ajil.localeCompare(b.ajil, 'mn');
   });

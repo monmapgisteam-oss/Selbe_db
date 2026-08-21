@@ -15,11 +15,19 @@
  */
 
 import { PKGS, loadSchema } from '@/modules/sheet/bagts.pkg';
+import { TREES } from '@/modules/sheet/bagts.trees';
+import { msToDay } from '@/modules/sheet/bagtsSheet';
 
 /** Нэг мөр — «Гүйцэтгэл бөглөх» хуудасны багануудтай ижил бүрэлдэхүүн */
 export type Filled = {
   no: string;
   work: string;
+  /** Хувийн жин — дээд мөрд эзлэх (excel C) */
+  wC: number | null;
+  /** Хувийн жин — үе шатанд эзлэх (excel D) */
+  wD: number | null;
+  /** Одоо байгаа хувийн жин (excel E) */
+  wE: number | null;
   /** Мөрийн ЭХ обьём (эх хүснэгтээс) */
   vol: number | null;
   /** Блокуудад бөглөсөн обьёмын нийлбэр */
@@ -31,26 +39,63 @@ export type Filled = {
   ratio: number | null;
   /** Блок бүрийн бөглөсөн обьём — `blocks` шошготой ижил дараалалтай */
   cells: (number | null)[];
+  /** Блок бүрийн ГҮЙЦЭТГЭЛИЙН ХУВЬ — бөглөх хуудасны нүдтэй ижил хоёр дахь мөр */
+  acts: (number | null)[];
   /**
    * Тухайн нүд ӨМНӨХ АГШНААС ӨӨРЧЛӨГДСӨН эсэх.
    * ⚠️ Өмнөх агшин байхгүй (анхны нийтлэл) бол утгатай нүд бүр өөрчлөлт.
    */
   changed: boolean[];
+  /** Өмнөх агшны утга — өөрчлөлтийг «юунаас юу болсон» гэж харуулахад. */
+  before: (number | null)[];
+  /** Модны гүн (0–4). Бүлгийн мөр эсэхийг `group`-оос. */
+  depth: number;
+  /** Бүлгийн мөр үү — дэд мөрүүдээсээ бодогддог, бөглөгддөггүй. */
+  group: boolean;
+};
+
+/** Нэг ӨӨРЧЛӨГДСӨН нүд — жагсаалтаас дарж хүснэгт рүү үсрэхэд. */
+export type Change = {
+  /** `rows` доторх мөрийн индекс */
+  row: number;
+  /** Блокийн индекс (`blocks`-той ижил дараалалтай) */
+  col: number;
+  no: string;
+  work: string;
+  block: string;
+  from: number | null;
+  to: number | null;
 };
 
 export type Submission = {
   /** Аль үйлчилгээнээс — «Багц 1 · 9 давхар» */
   pkgLabel: string;
+  /** `PKGS`-ийн түлхүүр — бөглөх хуудсыг ЯГ ТЭР багцаар нээхэд. */
+  pkgKey: string;
+  /**
+   * Аль АГШИН (`YYYY-MM-DD`) — хянагчид бөглөх хуудсыг ЭНЭ өдрөөр нээнэ.
+   * ⚠️ Хамгийн сүүлийн агшнаар нээвэл гүйцэтгэгч дараа нь дахин бөглөсөн
+   *    тохиолдолд хянагч огт өөр тоо хараад батална.
+   */
+  day: string;
   /** Блокийн шошго — «5/1», «5/2» г.м. */
   blocks: string[];
   /** Өмнөх агшинтай жишсэн эсэх (анхны нийтлэлд `false`) */
   compared: boolean;
   /** Архивт нэмэгдсэн нийт мөр */
   rows: number;
-  /** Обьём бөглөгдсөн ажлууд (буурах эрэмбээр, дээд талын хэсэг) */
+  /**
+   * Агшны БҮХ мөр — хуудасны дараалалаар (бүлэг + ажил).
+   *
+   * ⚠️ Урьд нь зөвхөн обьём бөглөгдсөн мөрийг татдаг байсан нь хянагчийг
+   *    «сонгосон хэсгийг» л харуулж, контекстээс салгадаг байв. Хянагч бүтэн
+   *    хүснэгтийг хараад дүгнэх ёстой.
+   */
   filled: Filled[];
-  /** Бөглөгдсөн ажлын НИЙТ тоо (`filled` нь тайрагдсан байж болно) */
+  /** Обьём бөглөгдсөн ажлын тоо */
   filledCount: number;
+  /** Өөрчлөгдсөн нүднүүд — дарж хүснэгт рүү үсрэх жагсаалт */
+  changes: Change[];
 };
 
 /**
@@ -131,23 +176,58 @@ export async function loadSubmission(bagts: string, sheetOid: number): Promise<S
 
       let filled: Filled[] = [];
       let filledCount = 0;
+      const changes: Change[] = [];
       const sum = sc.f.obyemSum;
       if (sum) {
-        // ⚠️ ЗӨВХӨН бөглөгдсөн мөр. Бүх 1370 мөрийг татвал хянагч хайх болно.
-        const w2 = `${where} AND ${sum} > 0`;
-        const c2 = (await post(p.url, { where: w2, returnCountOnly: 'true' })) as { count?: number };
+        const w2 = where;
+        const c2 = (await post(p.url, { where: `${where} AND ${sum} > 0`, returnCountOnly: 'true' })) as { count?: number };
         filledCount = c2.count ?? 0;
-        if (filledCount) {
+        {
           const obs = sc.obyem.filter(Boolean) as string[];
-          const cols = [sc.f.no, sc.f.work, sc.f.vol, sum, sc.f.unit, sc.f.money,
-            sc.f.plan, sc.f.act, sc.f.ratio, ...obs].filter(Boolean) as string[];
-          const q = (await post(p.url, {
-            where: w2,
-            outFields: [...new Set(cols)].join(','),
-            returnGeometry: 'false',
-            orderByFields: `${sum} DESC`,
-            resultRecordCount: '200',
-          })) as { features?: { attributes: Record<string, unknown> }[] };
+          /*
+           * ⚠️ Блокийн ХУВЬ нь обьёмын хажууд ЗААВАЛ хэрэгтэй — «Гүйцэтгэл
+           *    бөглөх» хуудсанд нүд бүр хоёр тоо (обьём + хувь) харуулдаг.
+           *    Зөвхөн обьём үзүүлбэл хянагчийн харж буй хүснэгт бөглөгчийнхөөс
+           *    өөр болж, хоёулаа өөр зүйл ярина.
+           */
+          const acts = sc.obyem.map((o, i) => (o ? sc.act[i] : null)).filter(Boolean) as string[];
+          const cols = [sc.f.no, sc.f.work, sc.f.wC, sc.f.wD, sc.f.wE, sc.f.vol, sum,
+            sc.f.unit, sc.f.money, sc.f.plan, sc.f.act, sc.f.ratio, ...obs, ...acts]
+            .filter(Boolean) as string[];
+          /*
+           * ⚠️ БҮХ мөрийг ХУУДАСНЫ ДАРААЛЛААР (`OBJECTID ASC`). Эрэмбийг
+           *    обьёмоор солибол бүлэг ба ажлын шатлал холилдож, хүснэгт нь
+           *    «Гүйцэтгэл бөглөх»-тэй танигдахаа болино.
+           * ⚠️ 2,000-ийн хязгаараас давдаг тул хуудаслана.
+           */
+          const feats: { attributes: Record<string, unknown> }[] = [];
+          for (let off = 0; ; ) {
+            const page = (await post(p.url, {
+              where: w2,
+              outFields: [...new Set(cols)].join(','),
+              returnGeometry: 'false',
+              orderByFields: 'OBJECTID ASC',
+              resultOffset: String(off),
+              resultRecordCount: '2000',
+            })) as { features?: { attributes: Record<string, unknown> }[] };
+            const got = page.features ?? [];
+            feats.push(...got);
+            if (got.length < 2000) break;
+            off += got.length;
+          }
+          /*
+           * ⚠️ НЭГ АГШИНД ХОЁР ХУУЛБАР БАЙЖ БОЛНО — санамсаргүй давхар
+           *    нийтлэл эсвэл алдаа засаад дахин нийтэлсэн үед. Тэгвэл
+           *    хуудас ХОЁР ДАХИН урт болж, мөрийн индекс нь «Гүйцэтгэл
+           *    бөглөх»-ийнхтэй ЗӨРНӨ: өөрчлөлтийн жагсаалт хоёр дахин
+           *    үржиж, дарахад нь хүснэгтэд тохирох нүд олдохгүй болно.
+           *
+           *    `bagtsSheet.loadRows` ЯГ ижил зүйл хийдэг (`feats2`) — хоёр
+           *    тал НЭГ дүрмээр таслаж байж л индекс нь тэнцэнэ.
+           */
+          const expect = (TREES[p.key] ?? '').length;
+          const feats2 = expect > 0 && feats.length > expect ? feats.slice(-expect) : feats;
+          const q = { features: feats2 };
           /*
            * ӨМНӨХ АГШНЫ ижил мөрүүд — `№`-ээр индекслэнэ.
            * ⚠️ OBJECTID-аар холбож БОЛОХГҮЙ: агшин бүрд мөр ДАХИН хуулагддаг
@@ -155,21 +235,43 @@ export async function loadSubmission(bagts: string, sheetOid: number): Promise<S
            */
           const before = new Map<string, Record<string, unknown>>();
           if (prevAt != null) {
-            const pv = (await post(p.url, {
-              where: `${fill} = ${ts(prevAt)} AND ${sum} > 0`,
-              outFields: [sc.f.no, ...obs].join(','),
-              returnGeometry: 'false',
-              resultRecordCount: '2000',
-            }).catch(() => ({}))) as { features?: { attributes: Record<string, unknown> }[] };
-            for (const x of pv.features ?? []) {
-              before.set(String(x.attributes[sc.f.no] ?? ''), x.attributes);
+            const prevFeats: { attributes: Record<string, unknown> }[] = [];
+            for (let off = 0; ; ) {
+              const pv = (await post(p.url, {
+                where: `${fill} = ${ts(prevAt)}`,
+                outFields: [sc.f.no, sc.f.work, ...obs].join(','),
+                returnGeometry: 'false',
+                orderByFields: 'OBJECTID ASC',
+                resultOffset: String(off),
+                resultRecordCount: '2000',
+              }).catch(() => ({}))) as { features?: { attributes: Record<string, unknown> }[] };
+              const got = pv.features ?? [];
+              /*
+               * ⚠️ Түлхүүр нь № ГАНЦААРАА БИШ — «1», «2» гэсэн дугаар хуудсанд
+               *    хэдэн ч удаа давтагддаг (бүлэг бүрд шинээр эхэлдэг). Тиймээс
+               *    БАЙРЛАЛААР индекслэнэ: агшин бүр хуудсыг бүтнээр, ижил
+               *    дараалалаар агуулдаг тул байрлал тогтвортой.
+               */
+              prevFeats.push(...got);
+              if (got.length < 2000) break;
+              off += got.length;
             }
+            // ⚠️ Өмнөх агшныг ч ИЖИЛ дүрмээр таслана — эс бөгөөс жишилт нь
+            //    өөр хуулбартай харьцуулж, байхгүй өөрчлөлт «олдоно».
+            const pExpect = (TREES[p.key] ?? '').length;
+            const prev2 = pExpect > 0 && prevFeats.length > pExpect
+              ? prevFeats.slice(-pExpect)
+              : prevFeats;
+            prev2.forEach((x, i) => before.set(String(i), x.attributes));
           }
 
-          filled = (q.features ?? []).map((x) => {
+          const tree = TREES[p.key] ?? '';
+          const blkLabels = sc.bld.filter((_, i) => sc.obyem[i]);
+          filled = (q.features ?? []).map((x, ri) => {
             const a = x.attributes;
-            const prev = before.get(String(a[sc.f.no] ?? ''));
+            const prev = before.get(String(ri));
             const cells = obs.map((n) => num(a[n]));
+            const beforeVals = obs.map((n) => (prev ? num(prev[n]) : null));
             const changed = obs.map((n, k) => {
               const now = cells[k];
               if (now == null) return false;
@@ -177,11 +279,32 @@ export async function loadSubmission(bagts: string, sheetOid: number): Promise<S
               if (!prev) return true;
               return num(prev[n]) !== now;
             });
+            const ch = tree[ri] ?? '0';
+            const group = ch >= 'A' && ch <= 'E';
+            changed.forEach((yes, k) => {
+              if (!yes) return;
+              changes.push({
+                row: ri,
+                col: k,
+                no: String(a[sc.f.no] ?? '').trim(),
+                work: String(a[sc.f.work] ?? '').trim() || '—',
+                block: blkLabels[k] ?? String(k + 1),
+                from: beforeVals[k],
+                to: cells[k],
+              });
+            });
             return {
               cells,
+              acts: acts.map((n) => num(a[n])),
               changed,
+              before: beforeVals,
+              depth: group ? ch.charCodeAt(0) - 65 : Number(ch),
+              group,
               no: String(a[sc.f.no] ?? '').trim(),
               work: String(a[sc.f.work] ?? '').trim() || '—',
+              wC: sc.f.wC ? num(a[sc.f.wC]) : null,
+              wD: sc.f.wD ? num(a[sc.f.wD]) : null,
+              wE: sc.f.wE ? num(a[sc.f.wE]) : null,
               vol: num(a[sc.f.vol]),
               sum: num(a[sum]),
               unit: sc.f.unit ? num(a[sc.f.unit]) : null,
@@ -196,11 +319,14 @@ export async function loadSubmission(bagts: string, sheetOid: number): Promise<S
 
       return {
         pkgLabel: p.label,
+        pkgKey: p.key,
+        day: msToDay(at),
         blocks: sc.bld.filter((_, i) => sc.obyem[i]),
         compared: prevAt != null,
         rows: cnt.count ?? 0,
         filled,
         filledCount,
+        changes,
       };
     } catch (e) {
       /*

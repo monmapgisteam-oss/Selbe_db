@@ -236,3 +236,33 @@
   .sideItem { width: auto; }
   .main { padding: 0 16px; }
 }
+
+/* ══════════ ГҮЙЦЭТГЭЛИЙН УРСГАЛЫН МӨР ══════════
+   ⚠️ Харагдацын чипүүдээс ЯЛГАРАХ ёстой: энэ нь «юу үзэх вэ» биш, «ямар
+   үүрэг гүйцэтгэх вэ». Тиймээс тусдаа мөр, шошготой. */
+.flowRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 0 2px;
+  border-top: 1px dashed var(--line);
+  margin-top: 8px;
+}
+.flowLabel {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-right: 4px;
+}
+/* Сонгосон шатны багцын тоо — чипийн дотор жижиг тэмдэглэгээ */
+.flowPk {
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.22);
+  font-size: 0.66rem;
+  font-weight: 600;
+}

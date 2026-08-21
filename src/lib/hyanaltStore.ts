@@ -52,6 +52,11 @@ function toRow(a: Attrs): Row {
     [F.managerReason]: str(a[F.managerReason]),
     [F.managerReturned]: toIso(a[F.managerReturned]),
     [F.managerSent]: toIso(a[F.managerSent]),
+    [F.director]: str(a[F.director]),
+    [F.directorDecision]: str(a[F.directorDecision]) as Decision | '',
+    [F.directorReason]: str(a[F.directorReason]),
+    [F.directorReturned]: toIso(a[F.directorReturned]),
+    [F.directorSent]: toIso(a[F.directorSent]),
     [F.status]: str(a[F.status]) as Status,
   };
 }
@@ -111,10 +116,17 @@ export type Result = { ok: boolean; error?: string };
 
 const fail = (e: unknown): Result => ({ ok: false, error: String((e as Error)?.message ?? e) });
 
-/** Инженер, менежерийн шийдвэрийг бүртгэнэ */
+/**
+ * ХЯНАГЧИЙН ШИЙДВЭРИЙГ БҮРТГЭНЭ — гурван хянах шат тус бүрд.
+ *
+ * ⚠️ ЗӨВШӨӨРӨЛ нь ДАРААГИЙН шат руу, БУЦААЛТ нь ӨМНӨХ шат руу — нэг алхмаар.
+ *    Эцсийн `Шилжүүлсэн` төлөвт ЗӨВХӨН ерөнхий менежер зөвшөөрснөөр хүрнэ:
+ *    гурав дахь шатанд «шилжүүлсэн» гэж тэмдэглэвэл дөрөв дэх хяналт
+ *    хийгдээгүй атлаа бүртгэгдсэн болно.
+ */
 export async function apply(a: {
   oid: number;
-  stage: 'engineer' | 'manager';
+  stage: 'engineer' | 'manager' | 'director';
   decision: Decision;
   /** ⚠️ Буцаах үед ХООСОН БАЙЖ БОЛОХГҮЙ */
   reason?: string;
@@ -139,7 +151,7 @@ export async function apply(a: {
       attrs[F.engineerSent] = t;
       attrs[F.status] = STATUS.managerReview;
     }
-  } else {
+  } else if (a.stage === 'manager') {
     attrs[F.manager] = a.who;
     attrs[F.managerDecision] = a.decision;
     if (returning) {
@@ -149,6 +161,20 @@ export async function apply(a: {
       attrs[F.status] = STATUS.managerReturned;
     } else {
       attrs[F.managerSent] = t;
+      // ⚠️ ШИЛЖҮҮЛСЭН БИШ — ерөнхий менежерийн хяналт үлдэж байна
+      attrs[F.status] = STATUS.directorReview;
+    }
+  } else {
+    attrs[F.director] = a.who;
+    attrs[F.directorDecision] = a.decision;
+    if (returning) {
+      attrs[F.directorReason] = reason;
+      attrs[F.directorReturned] = t;
+      // ⚠️ Инженерт БИШ — багцын менежерт буцна (явсан замаараа)
+      attrs[F.status] = STATUS.directorReturned;
+    } else {
+      attrs[F.directorSent] = t;
+      // ЭЦСИЙН БАТАЛГАА — дөрвөн шат бүгд өнгөрлөө
       attrs[F.status] = STATUS.transferred;
     }
   }
@@ -182,6 +208,12 @@ export async function recheck(
   verdict: 'ok' | 'back',
   reason: string,
   who: string,
+  /**
+   * ХЭН дахин шалгаж байна.
+   * ⚠️ Хоёр газар давтагдана: менежер буцаахад ИНЖЕНЕР, ерөнхий менежер
+   *    буцаахад БАГЦЫН МЕНЕЖЕР. Логик нь ижил, зөвхөн талбар ба шат өөр.
+   */
+  by: 'engineer' | 'manager' = 'engineer',
 ): Promise<Result> {
   const prev = ROWS.find((r) => r.__oid === oid);
   if (!prev) return { ok: false, error: 'Бүртгэл олдсонгүй' };
@@ -195,6 +227,11 @@ export async function recheck(
      * менежерийн буцаалт болон инженерийн анхны зөвшөөрлийн цаг дарагдаж,
      * инженер↔менежер хооронд хэдэн удаа ярвал бүгд алга болно.
      */
+    /* Дахин шалгасны дараа ажил ХААШАА явах вэ — нэг алхам урагш. */
+    const nextStatus = by === 'engineer' ? STATUS.managerReview : STATUS.directorReview;
+    /* Инженерийн илгээсэн огноо — менежер дахин шалгахад ХЭВЭЭР үлдэнэ. */
+    const engPrev = prev[F.engineerSent];
+    const engSent = engPrev ? Date.parse(engPrev) : t;
     const fresh: Attrs = {
       [F.id]: nextId(),
       [F.sheetOid]: prev[F.sheetOid],
@@ -209,15 +246,24 @@ export async function recheck(
        * тойргийг «дахин шалгалт» гэж таньдаг.
        */
       [F.companySent]: sentAt ? Date.parse(sentAt) : null,
-      [F.engineer]: who,
+      /*
+       * ⚠️ ДАХИН ШАЛГАСАН ШАТ хүртэлх бүх түүх ХЭВЭЭР, дараагийн шатнуудынх
+       *    ХООСОН — шинэ хяналт тэднээс эхэлж байна. Хуучин зөвшөөрлийг
+       *    үлдээвэл дараагийн шат «би аль хэдийн баталсан» гэж харагдана.
+       */
+      [F.engineer]: by === 'engineer' ? who : prev[F.engineer],
       [F.engineerDecision]: DECISION.approve,
       [F.engineerReason]: '',
       [F.engineerReturned]: null,
-      [F.engineerSent]: t,
-      // ⚠️ Менежерийн талбарууд ХООСОН — шинэ хяналт эхэлж байна
-      [F.manager]: '', [F.managerDecision]: '', [F.managerReason]: '',
-      [F.managerReturned]: null, [F.managerSent]: null,
-      [F.status]: STATUS.managerReview,
+      [F.engineerSent]: by === 'engineer' ? t : engSent,
+      [F.manager]: by === 'manager' ? who : '',
+      [F.managerDecision]: by === 'manager' ? DECISION.approve : '',
+      [F.managerReason]: '',
+      [F.managerReturned]: null,
+      [F.managerSent]: by === 'manager' ? t : null,
+      [F.director]: '', [F.directorDecision]: '', [F.directorReason]: '',
+      [F.directorReturned]: null, [F.directorSent]: null,
+      [F.status]: nextStatus,
     };
     try {
       await addRows([fresh]);
@@ -229,18 +275,29 @@ export async function recheck(
   // ── Асуудал БАЙНА — компанид буцаана. Мөрийн ЭЦСИЙН үйлдэл тул шинэ мөр
   //    хэрэггүй; компани засаад илгээхэд `resubmit` шинийг үүсгэнэ.
   const why = reason.trim();
-  // ⚠️ Шалтгаангүй буцаалт нь компанийг юу засахаа мэдэхгүй болгоно
-  if (!why) return { ok: false, error: 'Компанид буцаах шалтгаанаа бичнэ үү' };
+  // ⚠️ Шалтгаангүй буцаалт нь хүлээн авагчийг юу засахаа мэдэхгүй болгоно
+  if (!why) return { ok: false, error: 'Буцаах шалтгаанаа бичнэ үү' };
 
-  try {
-    await updateRows([{
+  const back: Attrs = by === 'engineer'
+    ? {
       [HYANALT.oid]: oid,
       [F.engineer]: who,
       [F.engineerDecision]: DECISION.return,
       [F.engineerReason]: why,
       [F.engineerReturned]: t,
       [F.status]: STATUS.engineerReturned,
-    }]);
+    }
+    : {
+      [HYANALT.oid]: oid,
+      [F.manager]: who,
+      [F.managerDecision]: DECISION.return,
+      [F.managerReason]: why,
+      [F.managerReturned]: t,
+      [F.status]: STATUS.managerReturned,
+    };
+
+  try {
+    await updateRows([back]);
     await refresh();
     return { ok: true };
   } catch (e) { return fail(e); }
