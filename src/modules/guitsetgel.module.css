@@ -20,17 +20,6 @@
 .title { font-size: 0.98rem; font-weight: 700; }
 .sub { font-size: 0.76rem; color: var(--ink-3); }
 
-.roles { display: flex; gap: 5px; }
-.role {
-  display: flex; align-items: center; gap: 7px;
-  padding: 7px 14px; border-radius: 8px;
-  font-size: 0.82rem; font-weight: 600;
-  color: var(--ink-2); background: var(--surface-2);
-  border: 1px solid var(--line);
-  transition: background 0.14s, color 0.14s;
-}
-.role:hover { color: var(--ink); }
-.roleOn { background: var(--data); color: #fff; border-color: transparent; }
 .count {
   padding: 1px 7px; border-radius: 20px;
   background: rgba(255, 255, 255, 0.18);
@@ -73,7 +62,6 @@
   border-radius: 8px; background: var(--surface);
   font-size: 0.8rem; color: var(--ink-2);
 }
-.noteBad { border-left-color: var(--bad); }
 
 /* ══════════ Ажлын жагсаалт ══════════ */
 .list {
@@ -151,7 +139,6 @@
 .btn:disabled { opacity: 0.45; cursor: not-allowed; filter: none; }
 .ok { background: var(--good); color: var(--bg); }
 .bad { background: var(--bad); color: var(--bg); }
-.neutral { background: var(--surface); color: var(--ink); border: 1px solid var(--line); }
 
 .field {
   width: 100%; padding: 9px 12px;
@@ -163,23 +150,7 @@
 .error { color: var(--bad-ink); font-size: 0.8rem; }
 
 /* ══════════ Түүх ══════════ */
-.hHead {
-  padding: 9px 15px; font-size: 0.75rem; color: var(--ink-3);
-  border-top: 1px solid var(--line); letter-spacing: 0.03em; text-transform: uppercase;
-}
-.cycle {
-  display: grid; grid-template-columns: 34px 1fr; gap: 10px;
-  padding: 10px 15px; border-top: 1px solid var(--line);
-  font-size: 0.8rem;
-}
-.cycleNo {
-  color: var(--ink-3); font-variant-numeric: tabular-nums;
-  padding-top: 1px;
-}
-.step { display: flex; gap: 9px; flex-wrap: wrap; margin-bottom: 3px; }
-.step:last-child { margin-bottom: 0; }
 .stepWho { color: var(--ink-2); min-width: 190px; }
-.stepBad { color: var(--bad-ink); }
 .time { color: var(--ink-3); font-variant-numeric: tabular-nums; }
 /* ══════════ Түүх ══════════ */
 
@@ -350,18 +321,6 @@
 
 .subLegend {
   color: var(--bad);
-}
-
-/* Блокийн бүлгийн нэр — доорх «5/1, 5/2…» юуны тоо болохыг заана */
-.subBand {
-  text-align: center !important;
-  color: var(--ink-2) !important;
-  background: color-mix(in srgb, var(--data) 10%, var(--surface)) !important;
-  border-bottom: 1px solid var(--line);
-}
-.subBlk {
-  text-align: center !important;
-  font-variant-numeric: tabular-nums;
 }
 
 /* ══════════════ УРСГАЛЫН ЗУРАГЛАЛ ══════════════

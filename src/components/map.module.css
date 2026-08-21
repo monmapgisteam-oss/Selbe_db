@@ -107,14 +107,6 @@
   color: var(--ink-2);
   overflow-wrap: anywhere;
 }
-.tipHint {
-  margin-top: 6px;
-  padding-top: 5px;
-  border-top: 1px solid var(--line);
-  font-size: 0.62rem;
-  color: var(--ink-3);
-}
-
 /* Сануулга — 3D загвар ачаалагдаагүй гэх мэт */
 .warn {
   display: flex;

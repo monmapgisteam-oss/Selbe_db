@@ -5,7 +5,9 @@ import { t as tr } from '@/lib/i18nCore';
 import { useAsync } from '@/lib/useAsync';
 import { loadBudget, loadClearance, loadProjectProgress } from '@/lib/live';
 import { loadFinData, contractMonths, lagOf, lagLevel } from '@/modules/Finance';
-import { useBagtsTable, useSuitability } from '@/modules/Dashboard';
+/* ⚠️ '@/modules/Dashboard' БИШ (2026-08-21): тэр зам MapCanvas → ArcGIS SDK-г
+   бүхэлд нь нэвтрэх хуудасны chunk-д чирдэг байв */
+import { useBagtsTable, useSuitability } from '@/lib/execData';
 import { HABEA, CASHFLOW2, pkgKeyOf, type ViewKey } from '@/lib/services';
 import { count, queryGroup } from '@/lib/query';
 import { loadVariance, loadOverlaps, loadDamage, VAR_BAD_MNT, DMG_BAD_N } from '@/lib/execTriage';
@@ -83,6 +85,18 @@ const notReady = (
   return { label, value: '…', note: loadingNote, status: 'idle' };
 };
 
+/* ⚠️ ХОЙШЛУУЛСАН ачаалагч (2026-08-21 гүйцэтгэлийн аудит): нүүр нээгдмэгц
+   давхцлын ~53 ажил + 10 хүснэгтийн variance зэрэг бууж хөнгөн картуудын
+   асуулгыг хааж, ArcGIS «Too many requests» өдөөдөг байв. Хүнд ачаалагчдыг
+   браузер чөлөөтэй болсны дараа шатлан эхлүүлнэ — хөнгөн картууд эхэлж
+   зурагдана, нийт дуусах хугацаа өөрчлөгдөхгүй. */
+const afterIdle = <T,>(fn: () => Promise<T>, ms: number) => (): Promise<T> =>
+  new Promise<void>((r) => {
+    if (typeof window !== 'undefined' && 'requestIdleCallback' in window)
+      window.requestIdleCallback(() => r(), { timeout: ms });
+    else setTimeout(r, ms);
+  }).then(fn);
+
 export function ExecKpi({ onView }: { onView: (key: ViewKey) => void }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const finQ = useAsync(loadFinData, []);
@@ -104,11 +118,12 @@ export function ExecKpi({ onView }: { onView: (key: ViewKey) => void }) {
   const suitQ = useSuitability(true); // арын дэвсгэрт (хүнд, кэшлэнэ)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const clearQ = useAsync(loadClearance, []);
-  /* Гурван түвшний шинэ KPI (2026-08-21) — execTriage модульдаа кэшлэгдэнэ */
+  /* Гурван түвшний шинэ KPI (2026-08-21) — execTriage модульдаа кэшлэгдэнэ.
+     Хамгийн хүнд хоёр нь хойшлуулалттай (дээрх afterIdle-ийн тайлбар). */
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const ovQ = useAsync(loadOverlaps, []);
+  const ovQ = useAsync(afterIdle(loadOverlaps, 1500), []);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const varQ = useAsync(loadVariance, []);
+  const varQ = useAsync(afterIdle(loadVariance, 2500), []);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const dmgQ = useAsync(loadDamage, []);
 

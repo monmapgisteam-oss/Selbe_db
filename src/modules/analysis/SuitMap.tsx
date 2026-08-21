@@ -390,7 +390,12 @@ export function SuitMap({
           url,
           title: d.title,
           visible: d.on,
-          outFields: ['*'],
+          /* ⚠️ «*» нь мянга мянган объектын БҮХ баганыг татдаг байв (2026-08-21
+             гүйцэтгэлийн аудит). Hover-панель зөвхөн БАРИЛГЫН attrs уншдаг
+             (buildingTip) тул түүнд л бүх талбар; бусад контекст давхаргад
+             outFields огт өгөхгүй — SDK renderer-т хэрэгтэй хамгийн бага
+             олонлогийг өөрөө татна. */
+          ...(d.kind === 'building' ? { outFields: ['*'] } : {}),
           elevationInfo: ON_GROUND,
           renderer: (d.kind === 'building' ? buildingRenderer() : rendererFor(d)) as unknown as RendererProp,
           popupEnabled: false, // popup биш — hover панель

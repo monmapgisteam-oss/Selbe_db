@@ -15,7 +15,7 @@ import { t as tr } from '@/lib/i18nCore';
 
 import {
   ZONE_LAYER, BUILT_LAYER, PROJECT_AREA_HA,
-  LAYER_BY_ID, LAYER_GROUPS, PLAN_LAYER_IDS, MONITOR_LAYER_IDS, MONITOR_GROUP, groupOf,
+  LAYER_BY_ID, PLAN_LAYER_IDS, MONITOR_LAYER_IDS, MONITOR_GROUP, groupOf,
   type LayerDef,
 } from '@/lib/services';
 
@@ -49,19 +49,6 @@ export const ENGINEERING_IDS = ['et:18', 'et:23', 'et:17', 'et:16', 'et:10', 'et
 export const COST_EXCLUDE = new Set<string>([BUILT_LAYER.id]);
 
 /* ══════════════════ Газрын зургийн давхарга ══════════════════ */
-
-/**
- * «Давхарга» карт дахь бүлгүүд — «Ерөнхий төлөвлөгөө»-тэй ИЖИЛ бүлэглэл.
- *
- * ⚠️ Урьд нь анализ өөрийн (дулаан/ус/цахилгаан) бүлэгтэй, зөвхөн 44 давхарга
- * харуулдаг байв. Одоо порталын `LAYER_GROUPS`-ийг ашиглаж, plan-тай ижил бүх
- * давхаргыг (~84) харуулна — `MAP_LAYERS` доор `LAYER_BY_ID`-аас автоматаар
- * үүснэ. Бүсийн ОНООНЫ будалт, барилгын тунгалагшилт, шошго нь ТУСГАЙ хэвээр.
- */
-export const MAP_GROUPS: Record<string, string> = {
-  ...Object.fromEntries(LAYER_GROUPS.map((g) => [g.key, g.title])),
-  [MONITOR_GROUP.key]: MONITOR_GROUP.title,
-};
 
 export type MapLayerKind = 'point' | 'point-lg' | 'line' | 'fill' | 'hatch' | 'building';
 
@@ -160,9 +147,6 @@ export const RELIEF_LAYERS: MapLayerDef[] = ['sz:0', 'sz:1', 'sz:2', 'sz:3'].map
   on: false,
   group: 'road',
 }));
-
-/** «Шинэ зам»-ын давхаргын түлхүүрүүд — сонгоход автоматаар асаах жагсаалт */
-export const RELIEF_LAYER_KEYS: string[] = RELIEF_LAYERS.map((l) => l.key);
 
 /**
  * НОГООН БАЙГУУЛАМЖ — анализын тооцоо уншдаг (`SRC.green`) яг тэр давхарга.

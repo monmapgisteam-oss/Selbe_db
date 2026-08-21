@@ -1652,7 +1652,6 @@ export const MapCanvas = memo(function MapCanvas({
         // Дээд талынхыг ЭХЭЛЖ шалгана: цэг → шугам → талбай
         .sort((a, b) => drawOrder(String(b.id)) - drawOrder(String(a.id)));
       if (!cand.length) return null;
-      const ids = cand.map(({ id }) => id);
 
       const wkid = mapPoint.spatialReference?.wkid ?? 102100;
       const aoi: Aoi = {
@@ -1662,17 +1661,28 @@ export const MapCanvas = memo(function MapCanvas({
         distance: tolerance,
       };
 
-      const rows = await Promise.all(
-        cand.map(({ l, id }) =>
+      /**
+       * ⚠️ 3-ААР БАГЦАЛЖ, эхний олдвор дээр ЗОГСОНО (2026-08-21 гүйцэтгэлийн
+       * аудит): урьд нь бүх ил давхаргад (план дээр ~14, каталогтой 20+) ЗЭРЭГ
+       * асуулга явуулаад зөвхөн эхнийхийг нь авдаг байв — сул товшилт бүр
+       * ~14-20 хүсэлт үрж, 6 слотын хязгаарлагчаар бусад картын асуулгыг
+       * хойшлуулна. Хэрэглэгчийн онилдог цэг/шугам зурах эрэмбийн дээр тул
+       * ихэнхдээ эхний багцаар шийдэгдэнэ; бүрэн хоосон газар л бүх давхаргыг
+       * туулна (бүрхэлт хэвээр — гүнзгий давхарга ч сонгогдоно).
+       */
+      const BATCH = 3;
+      for (let i = 0; i < cand.length; i += BATCH) {
+        const batch = cand.slice(i, i + BATCH);
+        const rows = await Promise.all(batch.map(({ l, id }) =>
           queryFeatures(layerUrl(LAYER_BY_ID[id]), {
             aoi,
             limit: 1,
             where: (l as __esri.FeatureLayer).definitionExpression || '1=1',
-          }).catch(() => []),
-        ),
-      );
-      for (let i = 0; i < ids.length; i++) {
-        if (rows[i].length) return { attrs: rows[i][0] as Record<string, unknown>, id: ids[i] };
+          }).catch(() => [] as Record<string, unknown>[]),
+        ));
+        for (let k = 0; k < batch.length; k++) {
+          if (rows[k].length) return { attrs: rows[k][0] as Record<string, unknown>, id: batch[k].id };
+        }
       }
       return null;
     };

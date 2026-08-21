@@ -23,22 +23,17 @@ import {
   ZONE_LAYER, ZONE_FIELD, ZONE_NONE, BUILT_LAYER, BUILDING,
   LAYER_BY_ID, PARCEL_LEFT, PARCEL_STATUS_HUES, SOURCE_FS, PROJECT_PROGRESS, TASK_SHEET,
   PLAN_LAYER_IDS, MONITOR_LAYER_IDS, INITIAL_MAP_LAYERS,
-  PKG_BY_FAMILY, PKG_BY_BAGTS, LAYERS, bagtsKey, buildingKey, type PkgFamily,
+  PKG_BY_FAMILY, PKG_BY_BAGTS, LAYERS, bagtsKey, type PkgFamily,
 } from '@/lib/services';
-import {
-  INDICATORS, SCORE_LEVELS, levelOf, PARKING, DEFAULT_ECON_SHARE,
-  BUILD_COST_PER_M2, profitScore,
-} from '@/lib/analysis/config';
-import { loadAnalysisCached, computeEconomics, computeRaw, defaultGreenCats } from '@/lib/analysis/data';
-import { loadCostsCached } from '@/lib/analysis/costs';
-import { urbanScore } from '@/lib/analysis/score';
+/* (2026-08-21) analysis/config·data·costs·score импортууд `@/lib/execData` руу
+   нүүсэн — үлдсэн дуудагч нь тэнд байгаа useSuitability байсан. */
 import {
   loadBlockProgress, loadBlockHistory, progressSeries,
   type BlockProgressMap, type BlockHistory,
 } from '@/lib/blockProgress';
 import { sumBy, maxOf, tally } from '@/lib/agg';
 import { loadLandStatus, type LandStatus } from '@/lib/land';
-import { cat, mntShort, num, pct, text, shade, shades, tint, CAT_LIGHT, NO_DATA } from '@/lib/format';
+import { cat, mntShort, num, pct, shade, shades, tint, CAT_LIGHT, NO_DATA } from '@/lib/format';
 import { SCHEDULE, BAGTS_ORIGIN } from '@/lib/brief';
 import {
   loadHeadline, loadSocial, loadProjectProgress, loadBudget, liveStage,
@@ -183,99 +178,14 @@ function Panel({ title, note, grow, children }: {
 const BF = BUILDING.fields;
 const PL = PARCEL_LEFT.fields;
 
-export type BagtsRow = {
-  key: string;
-  label: string;
-  blocks: number;
-  ail: number;
-  contractor: string;
-  /** Гадаад / Үндэсний — илтгэлээс бэхлэгдсэн */
-  origin: string;
-  /**
-   * Барилга угсралтын гүйцэтгэл (%) — «Гүйцэтгэл бөглөх» хуудасны «Б.» мөрөөр.
-   * ⚠️ Хуваарь нь БҮХ блок (тайлангүйг 0%). Зөвхөн тайлагнасан блокоор
-   * дундажлавал шинэ багц бүртгэгдэх бүрд дүн нь БУУНА.
-   * ⚠️ МЭДЭГДЭЖ БУЙ ЗӨРҮҮ: «Барилгын хяналт» (BuildingPanel) ба «Багцын
-   * мэдээлэл» (Bagts) нь тайлангүй блокоо ХАСЧ дундажладаг тул нэг багц тэнд
-   * арай ӨӨР (өндөр) % харагдана. Нэгтгэхдээ энэ «бүх блокоор хуваах» дүрмийг
-   * ГАНЦ helper болгож гурван модульд хамт хэрэглэх — `missing` тэмдэглэл
-   * хэвээр үлдэнэ.
-   */
-  progress: number | null;
-  /** Тайлан ирээгүй блокийн тоо */
-  missing: number;
-  /**
-   * Цувааны хамрах хүрээ — багцын блок бүрийн түлхүүр (`${БАГЦ}|блок`), мөр тутамд нэг.
-   * ⚠️ `joinBagts` аль хэдийн бодож байсныг ХАЯДАГ байв. Цуваа (04·C5) ба дэд
-   * үе шатын карт (04·C3) хоёулаа `BlockProgressMap`-д ЯГ ижил түлхүүрээр
-   * хандах ёстой — гараар дахин зохиовол нэг тэмдэгт зөрөхөд карт хоосорно.
-   */
-  keys: string[];
-};
-
-/**
- * ОРОН СУУЦНЫ 7 БАГЦ — хоёр өгөгдлийн сангийн нийлбэр.
- *
- *   `building_GOL`  → блок, өрх, гүйцэтгэгч (BAGTS · BLOK · AIL_TOO · BAR_COMP)
- *   `Selbe_guitsetgel_consolidated` → «Б.» мөрийн бодит гүйцэтгэл
- *
- * (BUS_cashflow-ийн төсөв/эх үүсвэр 2026-08-13-нд хасагдсан — санхүү нь
- * CASHFLOW2 + IPC-ээс, «Санхүүжилт» ба «Цогц хяналт»-ын графикт амьдаар гарна.)
- *
- * ⚠️ Багцын нэр эх сурвалжуудад өөр бичиглэлтэй («Багц 4.1» / «Багц 4-1»)
- * тул ЗӨВХӨН `bagtsKey()`-ээр жишинэ.
- *
- * ⚠️ Гүйцэтгэлийг давхаргын `GUITS_HV`-ээс АВАХГҮЙ: тэр талбар хуучирсан бөгөөд
- * илтгэлийн дүнгээс 5–14 нэгжээр зөрдөг («Багц 3.2» тэнд 9.25%, бодитоор
- * 24.50%). `loadBlockProgress()` нь «Барилгын хяналт»-ын ашигладаг ЯГ ижил
- * тооцоо — хоёр харагдац ижил тоо харуулна.
- */
-export function useBagtsTable(): Async<BagtsRow[]> {
-  return useAsync(async () => {
-    const [blocks, prog] = await Promise.all([
-      queryFeatures(BUILDING.url, {
-        outFields: [BUILDING.oid, BF.bagts, BF.block, BF.households, BF.contractor],
-      }),
-      loadBlockProgress(),
-    ]);
-    return joinBagts(blocks, prog);
-  }, []);
-}
-
-function joinBagts(blocks: Row[], prog: BlockProgressMap): BagtsRow[] {
-  const by = new Map<string, BagtsRow & { sum: number }>();
-  const slot = (name: string) => {
-    const k = bagtsKey(name);
-    const cur = by.get(k) ?? {
-      key: k, label: name, blocks: 0, ail: 0, contractor: '—',
-      origin: BAGTS_ORIGIN[name.trim()] ?? '—', progress: null, missing: 0, sum: 0,
-      keys: [],
-    };
-    by.set(k, cur);
-    return cur;
-  };
-
-  for (const b of blocks) {
-    const name = text(b[BF.bagts], tr('Тодорхойгүй'));
-    const s = slot(name);
-    s.blocks += 1;
-    s.ail += Number(b[BF.households] ?? 0);
-    // Гүйцэтгэгч — блокийн давхаргын BAR_COMP (багцын бүх блок нэг гүйцэтгэгчтэй)
-    const comp = text(b[BF.contractor], '').trim();
-    if (comp) s.contractor = comp;
-    // Блокийн түлхүүрийг НЭГ УДАА бодож хадгална — цуваа ба дэд үе шатын карт
-    // ижил түлхүүрийн жагсаалтаар ажиллана (`BagtsRow.keys`).
-    const bk = buildingKey(b[BF.bagts], b[BF.block]);
-    s.keys.push(bk);
-    const cell = prog.get(bk);
-    if (cell) s.sum += cell.overall;
-    else s.missing += 1;
-  }
-
-  return [...by.values()]
-    .map(({ sum, ...s }) => ({ ...s, progress: s.blocks ? sum / s.blocks : null }))
-    .sort((a, b) => a.label.localeCompare(b.label, 'mn'));
-}
+/* ⚠️ 2026-08-21: `BagtsRow`/`useBagtsTable`/`SuitSummary`/`useSuitability` нь
+   `@/lib/execData` руу НҮҮСЭН — нүүрийн ExecKpi тэднийг импортлохдоо энэ файлын
+   MapCanvas (ArcGIS SDK ~35 модуль) гинжийг дагуулж нэвтрэх хуудсыг хүндрүүлдэг
+   байв. Хуучин импортын замууд (Irged, Tailan, emailReport г.м.) эвдэрэхгүйн
+   тулд дамжуулан экспортолж, дотооддоо мөн хэрэглэнэ. */
+export { useBagtsTable, useSuitability } from '@/lib/execData';
+export type { BagtsRow, SuitSummary } from '@/lib/execData';
+import { useBagtsTable, type BagtsRow } from '@/lib/execData';
 
 /* ── Төслийн жигнэсэн гүйцэтгэл — тооцоо @/lib/live-д (Тайлан/Нүүр мөн уншина) ── */
 
@@ -299,58 +209,7 @@ function useSources(): Async<Row[]> {
   }), []);
 }
 
-/* ── Тохиромжтой байдлын үнэлгээ (бүсийн орон зайн анализ) ── */
-
-export type SuitSummary = {
-  avgScore: number | null;
-  levels: { label: string; color: string; n: number }[];
-  noData: number;
-  zones: number;
-  profit: number;
-  profitZones: number;
-  ranked: { id: string; type: string; score: number | null }[];
-  byId: Record<string, { score: number | null; type: string }>;
-};
-
-/** Хот төлөвлөлтийн оноо ба ашгийн оноог жинлэн нийлүүлэх */
-const blendOf = (u: number | null, e: number | null): number | null =>
-  u == null && e == null ? null
-    : u == null ? e
-      : e == null ? u
-        : u * (1 - DEFAULT_ECON_SHARE / 100) + e * (DEFAULT_ECON_SHARE / 100);
-
-/**
- * ⚠️ ХҮНД тооцоо: бүх бүсийн геометр, ногоон байгууламж, зогсоол, дэд бүтцийн
- * өртгийг татаж, бүс бүрээр орон зайн огтлолцол бодно. Тиймээс 08-р хэсэг
- * НЭЭГДЭХ хүртэл огт ажиллуулахгүй (`enabled`) — эс бөгөөс дашбоард нээх бүрд
- * хэрэглэгчийн хүсээгүй хэдэн арван хүсэлт явна.
- */
-export function useSuitability(enabled: boolean, onProgress?: (m: string, p: number) => void): Async<SuitSummary> {
-  return useAsync(async () => {
-    if (!enabled) return new Promise<SuitSummary>(() => {});
-    const [data, costs] = await Promise.all([loadAnalysisCached(onProgress), loadCostsCached()]);
-    computeEconomics(data.zones, costs.perHa, null, BUILD_COST_PER_M2);
-    computeRaw(data.zones, defaultGreenCats(), PARKING);
-    const blends = data.zones.map((z) => blendOf(urbanScore(z.raw, INDICATORS, z.type).score, profitScore(z.econ?.margin)));
-    const valid = blends.filter((x): x is number => x != null);
-    const revenue = data.zones.reduce((a, z) => a + (z.econ?.revenue ?? 0), 0);
-    const cost = data.zones.reduce((a, z) => a + (z.econ?.cost ?? 0), 0);
-    return {
-      avgScore: valid.length ? valid.reduce((a, b) => a + b, 0) / valid.length : null,
-      levels: SCORE_LEVELS.map((L, i) => ({
-        label: L.label, color: L.color,
-        n: data.zones.filter((_, j) => levelOf(blends[j]) === i).length,
-      })),
-      noData: blends.filter((b) => levelOf(b) < 0).length,
-      zones: data.zones.length,
-      profit: revenue - cost,
-      profitZones: data.zones.filter((z) => (z.econ?.profit ?? 0) > 0).length,
-      ranked: data.zones.map((z, i) => ({ id: z.id, type: z.type, score: blends[i] })).sort((a, b) => (b.score ?? -1) - (a.score ?? -1)),
-      byId: Object.fromEntries(data.zones.map((z, i) => [z.id, { score: blends[i], type: z.type }])),
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled]);
-}
+/* ── Тохиромжтой байдлын үнэлгээ — тооцоо `@/lib/execData`-д (дээрх тайлбар) ── */
 
 /** Бүх хэсэгт хэрэгтэй өгөгдлийн багц */
 type DashData = {

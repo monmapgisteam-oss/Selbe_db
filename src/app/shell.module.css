@@ -242,8 +242,6 @@
   letter-spacing: 0.05em;
   white-space: nowrap;
 }
-.brandSub { font-size: 0.68rem; color: var(--ink-3); }
-
 /* ── Идэвхтэй шүүлтийн тэмдэг ── */
 .filterChip {
   display: flex;
@@ -336,15 +334,6 @@
   align-items: center;
   gap: 8px;
   flex: none;
-}
-
-/* Хэлний товч — дүрсний оронд хоёр үсэг. Өндөр/өргөн нь `.iconBtn`-тэй
-   ижил тул толгойн товчнуудын эгнээ тэгширсэн хэвээр. */
-.localeCode {
-  font-size: 0.68rem;
-  font-weight: 650;
-  letter-spacing: 0.04em;
-  font-variant-numeric: tabular-nums;
 }
 
 /* ── Газрын зураг ── */
@@ -494,23 +483,13 @@
     height: auto;
     min-height: 100dvh;
   }
-  /* Босоо өрөлт: зураг → каталог → дашбоард (нэгтгэл нь дашбоардын дотор) */
-  .shellCat {
-    grid-template-columns: 1fr;
-    grid-template-rows: var(--head) auto max(240px, 46vh) auto auto;
-    grid-template-areas: 'head' 'nav' 'map' 'cat' 'panel';
-  }
   /* Доод хүрээтэй хувилбар (Барилгын хяналт) — нэгтгэл хамгийн доор */
   .shellFoot {
     grid-template-rows: var(--head) auto max(240px, 46vh) auto auto;
     grid-template-areas: 'head' 'nav' 'map' 'panel' 'foot';
   }
-  .shellFoot.shellCat {
-    grid-template-rows: var(--head) auto max(240px, 46vh) auto auto auto;
-    grid-template-areas: 'head' 'nav' 'map' 'cat' 'panel' 'foot';
-  }
   /* Барилгын хяналт — зураг → муруй → дундаж → самбар → нэгтгэл */
-  .shellMon, .shellMon.shellCat {
+  .shellMon {
     grid-template-columns: 1fr;
     grid-template-rows: var(--head) auto max(240px, 46vh) auto auto auto auto auto;
     grid-template-areas: 'head' 'nav' 'map' 'trend' 'cat' 'monl' 'panel' 'foot';
@@ -533,8 +512,6 @@
   /* Босоо өрөлтөд өргөн чирэх утгагүй */
   .grip { display: none; }
   .filterChip { max-width: 190px; }
-  /* Толгойд зай гаргах: брэндийн дэд гарчгийг нуух (лого + нэр үлдэнэ) */
-  .brandSub { display: none; }
   .head { gap: 10px; padding: 0 12px; }
 }
 

@@ -15,6 +15,7 @@ import Query from '@arcgis/core/rest/support/Query';
 import { t as tr } from '@/lib/i18nCore';
 import * as query from '@arcgis/core/rest/query';
 import * as geometryEngine from '@arcgis/core/geometry/geometryEngine';
+import * as geometryEngineAsync from '@arcgis/core/geometry/geometryEngineAsync';
 import type Geometry from '@arcgis/core/geometry/Geometry';
 
 /**
@@ -317,14 +318,18 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
 
   // ⚠️ Нэгтгэсэн (union) геометр — эс бөгөөс бүс бүрд 4,000+ шугам тус бүрээр
   //    зай бодох болж, 52 × 4,000 = 200,000 тооцоо явна.
-  const engUnion = engGeoms.length ? geometryEngine.union(engGeoms) : null;
-
-  /**
-   * ⚠️ Ногоон байгууламжийн НЭГТГЭСЭН геометр — «нөлөөллийн бүс» аргад.
-   * 807 полигон тус бүрээр зай бодвол 368 × 807 = 297,000 тооцоо явна.
-   */
+  //    async хувилбар (2026-08-21 гүйцэтгэлийн аудит): 4,000+ хэсгийн union нь
+  //    синхроноор main thread-ийг хэдэн секунд царцаадаг байв — worker-т бодно.
+  //    (Хоёр union зэрэг — нэг нь нөгөөгөө хүлээхгүй.)
   const greenGeoms = green.map((f) => f.geometry).filter(Boolean) as GeomArg[];
-  const greenUnion = greenGeoms.length ? geometryEngine.union(greenGeoms) : null;
+  const [engUnion, greenUnion] = await Promise.all([
+    engGeoms.length ? geometryEngineAsync.union(engGeoms) : Promise.resolve(null),
+    /**
+     * ⚠️ Ногоон байгууламжийн НЭГТГЭСЭН геометр — «нөлөөллийн бүс» аргад.
+     * 807 полигон тус бүрээр зай бодвол 368 × 807 = 297,000 тооцоо явна.
+     */
+    greenGeoms.length ? geometryEngineAsync.union(greenGeoms) : Promise.resolve(null),
+  ]);
 
   /* ── Ногоон байгууламжийг бүс + ангиллаар ── */
   const zoneIds = new Set(zoneFeats.map((f) => zoneCanon(f.attributes[Z.id])));

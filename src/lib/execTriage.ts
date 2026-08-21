@@ -62,7 +62,14 @@ export function loadVariance(): Promise<Variance> {
   varCache = (async () => {
     const results = await Promise.allSettled(PKGS.map(async (pkg) => {
       const sc = await loadSchema(pkg);
-      const { rows } = await loadRows(pkg, sc);
+      /* Зөвхөн зөрүү бодоход хэрэгтэй талбарууд — бүтэн «*» татахад мөр ~60+
+         баганатай, 10 багц ~10-20МБ JSON болдог (2026-08-21 аудит) */
+      const need = [
+        sc.f.oid, sc.f.no, sc.f.work, sc.f.vol, sc.f.unit,
+        sc.f.asOf, sc.f.fillDate,
+        ...sc.obyem,
+      ].filter((x): x is string => Boolean(x));
+      const { rows } = await loadRows(pkg, sc, undefined, need);
       const out: VarianceWork[] = [];
       for (const r of rows) {
         // Зөвхөн НАВЧ ажил — бүлгийн мөр нь нэгтгэл тул давхар тоологдоно
@@ -157,25 +164,30 @@ export function loadOverlaps(): Promise<Overlaps> {
         srcs: layerIds.map((id) => ({ layerId: id, where: null })),
       });
     }
-    // Багц бүрд орон зайн огтлолцол — зэрэг, унасан багц бусдыг унагахгүй
+    // Багц бүрд орон зайн огтлолцол — зэрэг, унасан багц бусдыг унагахгүй.
+    // ⚠️ OID-уудыг ХАДГАЛНА (2026-08-21 гүйцэтгэлийн аудит): нийт тоог урьд нь
+    //    БҮХ эх сурвалжийг дахин нэгтгэсэн ТУСДАА аварга ажлаар (~20 chunk
+    //    асуулга) боддог байсан бол огтлолцлуудын нэгдэл = нэгдлийн огтлолцол
+    //    тул багцуудын үр дүнг клиент талд Set-ээр нэгтгэхэд ХАНГАЛТТАЙ.
     const settled = await Promise.allSettled(jobs.map(async (j) => ({
       name: j.name,
-      parcels: (await overlapLeftParcels(j.srcs)).oids.length,
+      oids: (await overlapLeftParcels(j.srcs)).oids,
     })));
-    const byPkg = settled
-      .filter((x): x is PromiseFulfilledResult<PkgOverlap> => x.status === 'fulfilled')
-      .map((x) => x.value)
+    const okJobs = settled
+      .filter((x): x is PromiseFulfilledResult<{ name: string; oids: number[] }> => x.status === 'fulfilled')
+      .map((x) => x.value);
+    const byPkg = okJobs
+      .map(({ name, oids }) => ({ name, parcels: oids.length }))
       .filter((p) => p.parcels > 0)
       .sort((a, b) => b.parcels - a.parcels);
-    // Давхардалгүй нийт — БҮХ эх сурвалжаар нэг дор (нэг талбар хоёр багцад
-    // давхцсан ч нэг л удаа тоологдоно)
-    const total = (await overlapLeftParcels([
-      { layerId: 'mon:building', where: null },
-      ...Object.values(PKG_BY_BAGTS).flat()
-        .filter((id) => LAYER_BY_ID[id])
-        .map((id) => ({ layerId: id, where: null })),
-    ])).oids.length;
-    return { total, byPkg };
+    const union = new Set<number>();
+    for (const j of okJobs) for (const id of j.oids) union.add(id);
+    // Багцын нэргүй блокуудын давхцал нэгдлээс гарчихгүй байхын тулд бүх
+    // блокийн НЭГ ажлыг нэмнэ (нэрлэгдсэн блокуудын үр дүн үүний дэд олонлог)
+    const allBld = await overlapLeftParcels([{ layerId: 'mon:building', where: null }])
+      .catch(() => ({ oids: [] as number[] }));
+    for (const id of allBld.oids) union.add(id);
+    return { total: union.size, byPkg };
   })().catch((e) => { ovCache = null; throw e; });
   return ovCache;
 }

@@ -33,11 +33,17 @@ import { sumBy, tally } from '@/lib/agg';
  */
 const POPULATION_FIELD = 'Population';
 
-/** Кэштэй loader — амжилтгүй амлалтыг кэшлэхгүй («дахин оролдох» сэргэнэ) */
-function cached<T>(fn: () => Promise<T>): () => Promise<T> {
+/** Кэштэй loader — амжилтгүй амлалтыг кэшлэхгүй («дахин оролдох» сэргэнэ).
+ * `ttlMs` өгвөл тэр хугацааны дараа дараагийн дуудалт шинээр татна — харагдац
+ * хооронд шилжихэд дахин татахгүй, гэхдээ өгөгдөл хуучрахгүй.
+ * ⚠️ export (2026-08-21 гүйцэтгэлийн аудит): Finance/Habea зэрэг view бүрийн
+ * mount дээр бүтэн хүснэгтүүдээ ДАХИН татдаг байсныг энэ хэвээр кэшилнэ. */
+export function cached<T>(fn: () => Promise<T>, ttlMs?: number): () => Promise<T> {
   let p: Promise<T> | null = null;
+  let at = 0;
   return () => {
-    if (!p) {
+    if (!p || (ttlMs != null && Date.now() - at > ttlMs)) {
+      at = Date.now();
       p = fn();
       p.catch(() => { p = null; });
     }

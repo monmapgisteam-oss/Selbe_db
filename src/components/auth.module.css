@@ -71,15 +71,3 @@
   font-size: 0.76rem;
   color: var(--bad-ink);
 }
-
-/* Шалгаж байх үеийн эргэлдэгч */
-.spinner {
-  width: 26px;
-  height: 26px;
-  margin: 0 auto;
-  border: 3px solid var(--line);
-  border-top-color: var(--hue);
-  border-radius: 50%;
-  animation: spin 0.7s linear infinite;
-}
-@keyframes spin { to { transform: rotate(360deg); } }

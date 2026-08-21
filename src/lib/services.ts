@@ -443,14 +443,6 @@ export const zoneType = (v: unknown): string => {
   return ZONE_TYPE_CANON[s.toLowerCase()] ?? s;
 };
 
-/** Каноник ангилал → бүсийн давхаргад БОДИТООР бичигдсэн утгууд (SQL шүүлтэд) */
-export const zoneTypeRaw = (canon: string): string[] => {
-  const hits = Object.entries(ZONE_TYPE_CANON)
-    .filter(([, c]) => c === canon)
-    .map(([raw]) => raw);
-  return [...new Set([canon, ...hits])];
-};
-
 /**
  * ⚠️ ГАЗРЫН ЗУРГИЙН болон диаграмын палитр БҮГД бүсийн давхаргад БОДИТООР
  * бичигдсэн (жижиг үсэгтэй) утгаар түлхүүрлэгдэнэ: ArcGIS-ийн `uniqueValue`
@@ -1088,45 +1080,6 @@ export const SURVEY = {
     created: "CreationDate",
   },
 } as const;
-
-/** Survey123 тайлан дахь ажлын хэсгүүд (%) */
-export const SURVEY_SECTIONS: { field: string; label: string }[] = [
-  { field: "beltgel_niit", label: tr('А. Бэлтгэл ажил') },
-  { field: "shoroo_niit", label: tr('1. Газар шороо') },
-  { field: "suuri_niit", label: tr('2. Суурь') },
-  { field: "ram_niit", label: tr('3. Төмөр бетон рам') },
-  { field: "hana_niit", label: tr('4. Хана, хамар хана') },
-  { field: "tsonh_niit", label: tr('5. Хаалга, цонх') },
-  { field: "dotor_niit", label: tr('6. Дотор засал') },
-  { field: "gadna_niit", label: tr('7. Гадна засал') },
-  { field: "deever_niit", label: tr('8. Дээвэр') },
-  { field: "shal_niit", label: tr('9. Шал') },
-  { field: "busad_niit", label: tr('10. Бусад') },
-  { field: "lift_niit", label: tr('11. Лифт') },
-  { field: "has_niit", label: tr('Б2. Халаалт, агаар сэлгэлт') },
-  { field: "tsbu_niit", label: tr('Б3. Цэвэр, бохир ус') },
-  { field: "tsah_niit", label: tr('Б4. Цахилгаан, гэрэлтүүлэг') },
-  { field: "holboo_niit", label: tr('Б5. Холбоо, дохиолол') },
-];
-
-/**
- * Survey123 тайлангийн `barilga` кодыг барилгын давхаргын `BLOK`-той холбоно:
- *   `bagts32_5_1` → `5/1`
- *
- * ⚠️ Багцаар холбож БОЛОХГҮЙ: тайлангийн `bagts` нь `bagts32/33` бөгөөд барилгын
- * давхаргын «Багц 1…4.2»-той огт таарахгүй. Зөвхөн блок найдвартай.
- *
- * ⚠️ SQL `LIKE`-аар ч болохгүй: `_` нь LIKE-д дан тэмдэгтийн орлуулагч бөгөөд
- * үйлчилгээ `ESCAPE` заалтыг дэмждэггүйг шалгасан. Тайлангуудыг татаад клиент
- * талд яг таг шүүнэ (тайлангийн тоо бага).
- */
-export const surveyBlock = (barilga: unknown): string | null => {
-  const m = /^bagts\d+_(.+)$/i.exec(String(barilga ?? "").trim());
-  return m ? m[1].replace(/_/g, "/") : null;
-};
-
-/** Талбайн тайлангийн өнгө — барилгын улбар шараас ялгарна (цэг нь полигон дээр) */
-export const SURVEY_HUE = "#0891b2";
 
 /* ══════════════════════ Дэд бүтцийн багцын каталог ══════════════════════ */
 
@@ -2466,28 +2419,6 @@ export const LAYER_BY_ID: Record<string, LayerDef> = Object.fromEntries(
 export const MAP_HUE_OVERRIDES: ReadonlySet<string> = new Set(["et:24"]);
 
 /**
- * Давхарга асаах/унтраах — ХОЁР бүлэг харилцан үл багтана.
- *
- * Бүлэг доторх олон давхаргыг зэрэг асааж болно, харин «Ерөнхий төлөвлөгөө» ба
- * «Барилгын хяналт» хоёрыг ХОЛИХГҮЙ: нэгээс нь асаахад нөгөөгийнх нь бүгд
- * унтарна.
- *
- * ⚠️ Энэ нь зүгээр нэг тав тух биш, ЗӨВ БАЙДЛЫН асуудал. Хоёр бүлэг өөр
- * өгөгдлийн сангаас ирдэг: `barilga` (368, төлөвлөсөн, өртөгтэй) ба
- * `building_GOL` (113 блок, бодит гүйцэтгэл). Зэрэг асаавал газрын зурагт хоёр
- * өөр «барилга» давхцаж, дашбоард нь тэдгээрийн тоог НЭГ нийлбэрт нэмнэ —
- * харьцуулах ёстой хоёр зүйл нийлбэр болж хувирна.
- *
- * ⚠️ Дүрэм ЭНД байх ёстой: зүүн мод ба зурган дээрх удирдлага хоёулаа үүнийг
- * дуудна. Хоёр газарт хуулбарлавал нэг нь өөрчлөгдөхөд нөгөө нь хоцорно.
- */
-export function toggleLayer(prev: string[], id: string): string[] {
-  if (prev.includes(id)) return prev.filter((x) => x !== id);
-  const topic = LAYER_BY_ID[id]?.topic;
-  return [...prev.filter((x) => LAYER_BY_ID[x]?.topic === topic), id];
-}
-
-/**
  * БҮХ газрын зурагт ҮРГЭЛЖ харагдах давхаргууд (лавлагааны хилүүд).
  *
  * ⚠️ MapCanvas эдгээрийг каталогийн `visible` жагсаалтаас ҮЛ ХАМААРАН хүчээр
@@ -3285,13 +3216,6 @@ export const INITIAL_MAP_LAYERS: string[] = [
   "tree", // Мод
   "tgl", // Хүүхдийн тоглоом (эгц дээрээс харсан дүрс)
 ];
-
-/**
- * Ерөнхий төлөвлөгөө (2D) нээгдэхэд асаалттай давхаргууд — «Selbe 2D map 0804»
- * webmap шиг харагдуулахаар түүний 14 давхаргыг (`sb:*`) бүгдийг асаана.
- * ⚠️ Dashboard-ын `INITIAL_MAP_LAYERS`-ээс ТУСДАА — plan-ыг л webmap-аар сольсон.
- */
-export const PLAN_INITIAL: string[] = PLAN2D_LAYERS.map((l) => l.id);
 
 /**
  * ЗУРГИЙН СУУРЬ ДАВХАРГУУД — «Ерөнхий төлөвлөгөө 2D map»-ийн 14 давхарга БҮХ
