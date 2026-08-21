@@ -94,7 +94,8 @@ export type FinData = { contracts: Row[]; given: GivenMap; phys: PhysMap; physCn
 
 // ═══════════════════════════════════════════════════════════
 //  КОМБО ГРАФИК (envhub хэлээр) — градиентгүй, glow-гүй хавтгай дүрслэл.
-//  Багана = өссөн олгосон ₮ (ACT) · шугам = төлөвлөгөө (PLAN) ба биет (PHYS).
+//  ГУРВАН шугам давхацна: төлөвлөгөө (PLAN) · олгосон санхүүжилт (ACT —
+//  нарийн, цэгтэй; 2026-08-21-нд багана байсныг шугам болгов) · биет (PHYS).
 //  X тэнхлэгт он сар + өссөн хувиуд цуваа өөрийн слотын өнгөөр.
 // ═══════════════════════════════════════════════════════════
 
@@ -208,28 +209,42 @@ export function ComboChart({
           );
         })()}
 
-        {/* САНХҮҮЖИЛТ (IPC) — ӨССӨН ОЛГОСОН ₮ БАГАНА (шугам БИШ) */}
+        {/* САНХҮҮЖИЛТ (IPC) — өссөн олгосон ₮: НАРИЙН ШУГАМ + ЦЭГ
+            (2026-08-21, хэрэглэгчийн хүсэлт — багана байсныг IoT-ийн цуваа
+            шиг шугаман дүрслэлд шилжүүлж, гурван цуваа нэг талбарт давхцаж
+            уншигдана). Шошгын дүрэм хуучнаараа: төлөвлөгөөний цэгээс
+            хангалттай зайтай үед л, эс бөгөөс давхцана. */}
         {(() => {
-          const step = N > 1 ? plotW / (N - 1) : plotW;
-          const bw = Math.min(18, step * 0.5);
-          return rows.map((r, i) => {
-            if (r.givenCum <= 0) return null;
-            const y = yFor(r.givenCum);
-            const hgt = padT + plotH - y;
-            return (
-              <g key={`ipc-${i}`}>
-                <rect x={xFor(i) - bw / 2} y={y} width={bw} height={hgt} rx={2} opacity={0.82} style={{ fill: ACT }} />
-                {/* Баганын шошго — зөвхөн төлөвлөгөөний цэгээс ХАНГАЛТТАЙ доор бол
-                    (эс бөгөөс эхэн үед утга ойролцоо тул төлөвлөгөөнийхтэй давхцана).
-                    Өнгө нь ACT цувааныхаа слот — identity, статус биш. */}
-                {showLabel(i) && y - yFor(r.planned) > 14 && (
-                  <text x={xFor(i)} y={y - 4} className={f.barValG} style={{ fill: ACT }} textAnchor={anchorFor(i)}>
-                    {mntShort(r.givenCum).replace(' ₮', '')}
-                  </text>
-                )}
-              </g>
-            );
-          });
+          const lastG = rows.reduce((a, r, i) => (r.givenCum > 0 ? i : a), -1);
+          if (lastG < 0) return null;
+          const pts = rows.slice(0, lastG + 1)
+            .map((r, i) => ({ x: xFor(i), y: yFor(r.givenCum) }));
+          return (
+            <g>
+              {pts.length > 1 && (
+                <path
+                  d={smoothPath(pts)}
+                  className={f.sLineThin}
+                  vectorEffect="non-scaling-stroke"
+                  style={{ stroke: ACT }}
+                />
+              )}
+              {rows.map((r, i) => {
+                if (i > lastG || r.givenCum <= 0) return null;
+                const y = yFor(r.givenCum);
+                return (
+                  <g key={`ipc-${i}`}>
+                    <circle cx={xFor(i)} cy={y} r={3} className={f.sDot} vectorEffect="non-scaling-stroke" style={{ fill: ACT }} />
+                    {showLabel(i) && y - yFor(r.planned) > 14 && (
+                      <text x={xFor(i)} y={y - 6} className={f.barValG} style={{ fill: ACT }} textAnchor={anchorFor(i)}>
+                        {mntShort(r.givenCum).replace(' ₮', '')}
+                      </text>
+                    )}
+                  </g>
+                );
+              })}
+            </g>
+          );
         })()}
 
         {/* Шугам: төлөвлөгөө (PLAN — индиго) + биет (PHYS — улбар шар);

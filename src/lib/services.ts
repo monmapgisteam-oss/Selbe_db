@@ -1342,6 +1342,19 @@ export const PKG_BY_FAMILY: Record<PkgFamily, string[]> = PKG_TABLE.reduce(
   {} as Record<PkgFamily, string[]>,
 );
 
+/**
+ * Багцын код (нормчилсон) → ГЭР БҮЛ. «Багцын хяналт» багцуудыг «Барилга
+ * угсралт / Дэд бүтэц / Нийгмийн барилга / Өндөржилт» гэж ангилахад ашиглана
+ * (2026-08-21) — блокгүй багцын төрлийг зөвхөн эндээс мэдэж болно.
+ */
+export const PKG_FAMILY_BY_BAGTS: Record<string, PkgFamily> = PKG_TABLE.reduce(
+  (m, [, , , family, bagts]) => {
+    m[bagtsKey(bagts)] = family;
+    return m;
+  },
+  {} as Record<string, PkgFamily>,
+);
+
 const PKG_LAYERS: LayerDef[] = PKG_TABLE.map(
   ([n, geom, title, family, bagts]) => ({
     id: `pkg:${n}`,

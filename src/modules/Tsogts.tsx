@@ -22,8 +22,11 @@ import {
   loadFinData, contractMonths, ComboChart, lagOf, lagLevel, type FinData,
 } from '@/modules/Finance';
 import { useAsync, type Async } from '@/lib/useAsync';
-import { BUILDING, CASHFLOW2, PROGRESS_LEVELS, LAYER_BY_ID, pkgKeyOf } from '@/lib/services';
-import { cat, shade, mntAbbr, mntShort, num, pct } from '@/lib/format';
+import {
+  BUILDING, CASHFLOW2, PROGRESS_LEVELS, LAYER_BY_ID, pkgKeyOf,
+  PKG_FAMILY_BY_BAGTS,
+} from '@/lib/services';
+import { cat, shade, mntAbbr, num, pct } from '@/lib/format';
 import { readParam, writeParams } from '@/lib/urlState';
 import o from './overview.module.css';
 import f from './finance.module.css';
@@ -49,6 +52,27 @@ import ts from './tsogts.module.css';
  */
 
 const HUE = LAYER_BY_ID[BLOCK_LAYER].hue;
+
+/**
+ * БАГЦЫН АНГИЛАЛ (2026-08-21, хэрэглэгчийн хүсэлт) — жагсаалт, «Төслийн
+ * төрөл» chart, «Блокийн төлөв»-ийн асуудалтай талбарын тоолол гурвуулаа
+ * ЭНЭ нэг ангиллыг хэрэглэнэ. Блоктой багц = барилга угсралт; бусад нь
+ * PKG_TABLE-ийн гэр бүлээс: soc = нийгмийн барилга, site = өндөржилт,
+ * үлдсэн (net/pow/src/com) = дэд бүтэц.
+ */
+type PackCat = 'build' | 'infra' | 'soc' | 'site';
+const catOf = (p: Pack): PackCat => {
+  if (p.kind === 'build') return 'build';
+  const fam = PKG_FAMILY_BY_BAGTS[p.key];
+  return fam === 'soc' ? 'soc' : fam === 'site' ? 'site' : 'infra';
+};
+/** Дараалал нь дэлгэцийн дараалал; нэрийг render үед tr()-ээр авна */
+const PACK_CATS: { key: PackCat; name: () => string }[] = [
+  { key: 'build', name: () => tr('Барилга угсралт') },
+  { key: 'infra', name: () => tr('Дэд бүтэц') },
+  { key: 'soc', name: () => tr('Нийгмийн барилга') },
+  { key: 'site', name: () => tr('Өндөржилт') },
+];
 /** Газар чөлөөлөлтийн нэгж талбарын давхарга — давхцсан талбарыг зурахад. */
 const PARCEL_LAYER = 'land:left';
 
@@ -148,6 +172,31 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
   }, [packs]);
 
   /**
+   * АНГИЛАЛ БҮРИЙН асуудалтай (давхцсан үлдсэн) нэгж талбар — «Блокийн
+   * төлөв» картад БАЙНГА харагдана (2026-08-21: блокуудын картууд хаалттай
+   * үед ч уншигдахын тулд). Ангилал бүрд нэг огтлолцол — дөрөвхөн хүсэлт,
+   * нэг нь унавал бусдыг унагахгүй.
+   */
+  const [ovByCat, setOvByCat] = useState<Map<PackCat, number> | null>(null);
+  useEffect(() => {
+    if (!packs.length) return;
+    let alive = true;
+    Promise.allSettled(PACK_CATS.map(async (c) => {
+      const srcs = packs
+        .filter((p) => catOf(p) === c.key)
+        .flatMap((p) => p.layerIds.map((id) => ({ layerId: id, where: p.where })));
+      if (!srcs.length) return [c.key, 0] as const;
+      return [c.key, (await overlapLeftParcels(srcs)).oids.length] as const;
+    })).then((rs) => {
+      if (!alive) return;
+      const m = new Map<PackCat, number>();
+      for (const r of rs) if (r.status === 'fulfilled') m.set(r.value[0], r.value[1]);
+      setOvByCat(m);
+    });
+    return () => { alive = false; };
+  }, [packs]);
+
+  /**
    * САНХҮҮГИЙН КАРТЫН ӨНДӨР — картын дээд ирмэгийн бариулаар чирч тохируулна
    * (2026-08-21, хэрэглэгчийн хүсэлт). ДЭЭШ чирвэл график өндөрсөж, газрын
    * зургийн мөр (1fr) агшина. localStorage-д хадгалагдана; давхар товшилт —
@@ -231,15 +280,7 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
   }, [packs, finMap]);
   const alerted = useMemo(() => packs.filter((p) => alertKeys.has(p.key)), [packs, alertKeys]);
 
-  /**
-   * ДЭД БҮТЦИЙН багцууд — нэг жагсаалт. (Хөрөнгө оруулалтын «Төрөл»-өөр
-   * бүлэглэдэг байсан нь INVEST /249 түр хасагдсанаар устсан; санхүүгийн
-   * гүйцэтгэлийн хувь нь Cashflow /106-оос хэвээр ажиллана.)
-   */
-  const infraPacks = useMemo(
-    () => packs.filter((p) => p.kind === 'infra'),
-    [packs],
-  );
+
 
   /**
    * НЭГДСЭН псевдо-багц — багц СОНГООГҮЙ үед «Блок бүрийн гүйцэтгэл» болон
@@ -395,10 +436,14 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
     >
       <SplitGrip {...side.left} />
       <SplitGrip {...side.right} />
-      {/* ── ДЭЭР: сонгосон багцын KPI ── */}
+      {/* ── ДЭЭР: индикаторууд — сонголтгүй үед төслийн 6 үзүүлэлт
+          (2026-08-21, хэрэглэгчийн жагсаалтаар); багц сонгоход тухайн
+          багцын KPI хэвээр ── */}
       <div className={ts.kpi}>
-        {errQ ? null : loading ? <Empty label={tr('Ачаалж байна…')} /> : (
+        {errQ ? null : loading ? <Empty label={tr('Ачаалж байна…')} /> : active ? (
           <PackKpi active={active} packs={packs} />
+        ) : (
+          <TsKpi packs={packs} fin={finQ.state === 'ready' ? finQ.data : null} />
         )}
       </div>
 
@@ -424,23 +469,19 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                 />
               </div>
             )}
-            <TsPackList
-              title={tr('Барилга угсралт')}
-              note={tr('блокийн гүйцэтгэл')}
-              packs={packs.filter((p) => p.kind === 'build' && !alertKeys.has(p.key))}
-              sel={sel}
-              onSel={pick}
-              finMap={finMap}
-            />
-            {/* Дэд бүтцийн багцууд — нэг жагсаалт (alert-гүй нь) */}
-            <TsPackList
-              title={tr('Дэд бүтэц ба нийгмийн барилга')}
-              note={tr('гүйцэтгэлийн хувь')}
-              packs={infraPacks.filter((p) => !alertKeys.has(p.key))}
-              sel={sel}
-              onSel={pick}
-              finMap={finMap}
-            />
+            {/* ДӨРВӨН АНГИЛЛААР (2026-08-21) — барилга угсралт · дэд бүтэц ·
+                нийгмийн барилга · өндөржилт; alert-тэй нь дээрх бүлэгт */}
+            {PACK_CATS.map((c) => (
+              <TsPackList
+                key={c.key}
+                title={c.name()}
+                note={c.key === 'build' ? tr('блокийн гүйцэтгэл') : tr('гүйцэтгэлийн хувь')}
+                packs={packs.filter((p) => catOf(p) === c.key && !alertKeys.has(p.key))}
+                sel={sel}
+                onSel={pick}
+                finMap={finMap}
+              />
+            ))}
             <Note>
               {tr('Багц сонгоход баруунд гэрээ/төсөв, эх үүсвэр, блок бүрийн гүйцэтгэл, доор санхүүгийн график гарна. Зураг дээрх барилга дарахад баруун талд тухайн барилгын хяналт нээгдэнэ.')}
             </Note>
@@ -531,8 +572,8 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
         ) : !active ? (
           /* Багц сонгоогүй — ТӨСЛИЙН НЭГДСЭН: гэрээ/төсөв · эх үүсвэр · төлөв · блок гүйцэтгэл */
           <>
-            <TotalCard packs={packs} fin={finQ.state === 'ready' ? finQ.data : null} />
-            {allPack && <LevelsCard blocks={allPack.blocks} />}
+            <CatChart packs={packs} finMap={finMap} />
+            {allPack && <LevelsCard blocks={allPack.blocks} ovByCat={ovByCat} />}
             {/* ТӨСЛИЙН НИЙТ давхцсан үлдсэн нэгж талбар — хэрэглэгчийн
                 хүсэлтээр (2026-08-21) ТУСДАА КАРТ болгож БУЦААВ: FinCard-аас
                 хассан нэгдсэн тоо. Багц бүрийн задаргаа нь доорх «Багц N —
@@ -606,6 +647,56 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
  *   · infra багц — санхүүгийн гүйцэтгэл % (олгосон/төлөвлөгөө, CASHFLOW2+IPC)
  * Хоцрогдол = Finance-ийн lagOf дүрэм (CF өссөн төлөвлөгөө vs биет %).
  */
+/**
+ * ДЭЭД ИНДИКАТОРУУД (2026-08-21, хэрэглэгчийн жагсаалтаар) — багц сонгоогүй
+ * үеийн төслийн нэгдсэн 6 үзүүлэлт. Хувиуд нь доод графиктай ИЖИЛ аргачлал
+ * (`aggregateMonths`) тул хоёр газрын тоо зөрөхгүй.
+ */
+function TsKpi({ packs, fin }: { packs: Pack[]; fin: FinData | null }) {
+  const t = useMemo(() => {
+    if (!fin) return null;
+    const months = aggregateMonths(fin);
+    const nowYm = new Date().toISOString().slice(0, 7);
+    let planned: number | null = null;
+    let actual: number | null = null;
+    for (const m of months) {
+      if (m.label > nowYm) continue;
+      if (m.cumPct > 0) planned = m.cumPct;
+      if (m.phys > 0) actual = m.phys;
+    }
+    const gap = planned != null && actual != null ? planned - actual : null;
+    const C = CASHFLOW2.fields;
+    const planTotal =
+      fin.contracts.reduce((a, r) => a + nn(r[C.prevAmount]), 0) +
+      months.reduce((a, m) => a + m.amount, 0);
+    let given = 0;
+    fin.given.forEach((byMon) => byMon.forEach((v) => { given += v; }));
+    return { planned, actual, gap, given, share: planTotal > 0 ? (given / planTotal) * 100 : null };
+  }, [fin]);
+  const items = [
+    { v: num(packs.length), l: tr('нийт төслийн тоо') },
+    { v: t?.actual == null ? '…' : pct(t.actual, 1), l: tr('бодит гүйцэтгэлийн хувь') },
+    { v: t?.planned == null ? '…' : pct(t.planned, 1), l: tr('төлөвлөсөн гүйцэтгэлийн хувь') },
+    {
+      v: t?.gap == null ? '…' : `${t.gap >= 0 ? '−' : '+'}${Math.abs(t.gap).toFixed(1)}%`,
+      l: tr('гүйцэтгэлийн зөрүүгийн хувь'),
+    },
+    { v: t == null ? '…' : mntAbbr(t.given), l: tr('олгосон санхүүжилт') },
+    { v: t?.share == null ? '…' : pct(t.share, 1), l: tr('нийт санхүүжилтийн олгосон хувь') },
+  ];
+  return (
+    <>
+      {items.map((i) => (
+        /* Нэг аяс (--data) — өнгөөр ялгах утга биш, зэрэгцсэн нэг эгнээ */
+        <div key={i.l} className={o.tile} style={{ '--tone': 'var(--data)' } as CSSProperties}>
+          <span className={`${o.tileVal} num`}>{i.v}</span>
+          <span className={o.tileLabel}>{i.l}</span>
+        </div>
+      ))}
+    </>
+  );
+}
+
 function TsPackList({
   title, note, packs, sel, onSel, finMap,
 }: {
@@ -720,83 +811,63 @@ function TsPackList({
  * «Олгосон санхүүжилт» нь БОДИТ IPC актын нийлбэр (CASHFLOW2+IPC — Finance-тэй
  * нэг эх сурвалж). Дэд бүтцийн ХО (INVEST /249) 2026-08-14-нд түр хасагдсан.
  */
-function TotalCard({ packs, fin }: { packs: Pack[]; fin: FinData | null }) {
-  const build = packs.filter((p) => p.kind === 'build');
-  const blocks = build.reduce((s, p) => s + p.blocks.length, 0);
-  const households = build.reduce((s, p) => s + p.households, 0);
-  // IPC-ээр олгосон нийт ₮ — багц бүрийн сар бүрийн net дүнгийн нийлбэр
-  let given = 0;
-  fin?.given.forEach((months) => months.forEach((v) => { given += v; }));
-
-  /**
-   * ⚠️ 2026-08-18 (хэрэглэгчийн хүсэлт): ТӨСЛИЙН ХЭМЖЭЭНИЙ төлөвлөсөн ба бодит
-   * гүйцэтгэлийн хувь. Урьд нь энэ хоёр зөвхөн доод графикийн KPI зурваст л
-   * байсан тул «Төсөл нийт» карт мөнгө ба блокийн тоо гэсэн хоёрхон зүйл
-   * харуулж, төсөл ХЭР хоцорч байгаа нь эндээс уншигдахгүй байв.
-   *
-   * `aggregateMonths` нь доод графиктай ЯГ ижил нэгтгэлийг (блокоор жигнэсэн
-   * биет %) буцаадаг тул хоёр газрын тоо ЗӨРӨХГҮЙ.
-   */
-  const totals = useMemo(() => {
-    if (!fin) return null;
-    const months = aggregateMonths(fin);
-    const nowYm = new Date().toISOString().slice(0, 7);
-    let planned: number | null = null;
-    let actual: number | null = null;
-    for (const m of months) {
-      if (m.label > nowYm) continue;
-      if (m.cumPct > 0) planned = m.cumPct;
-      if (m.phys > 0) actual = m.phys;
+/**
+ * «ТӨСЛИЙН ТӨРӨЛ» — 4 ангиллын гүйцэтгэлийн харьцуулсан багана (2026-08-21,
+ * хуучин «Төсөл нийт» картын оронд, хэрэглэгчийн хүсэлтээр). Барилга угсралт
+ * нь блокийн дундаж %, бусад ангилал нь санхүүгийн гүйцэтгэл % (олгосон ÷
+ * төлөвлөгөө — зүүн жагсаалттай ИЖИЛ дүрэм тул тоо зөрөхгүй). Ангилал бүрд
+ * багцын тоо шошгонд хамт гарна.
+ */
+function CatChart({
+  packs,
+  finMap,
+}: {
+  packs: Pack[];
+  finMap: Map<string, ReturnType<typeof contractMonths>> | null;
+}) {
+  const rows = PACK_CATS.map((c) => {
+    const list = packs.filter((p) => catOf(p) === c.key);
+    const pcts: number[] = [];
+    for (const p of list) {
+      if (p.kind === 'build') {
+        if (p.progress != null) pcts.push(p.progress);
+        continue;
+      }
+      const months = finMap?.get(p.key);
+      if (!months) continue;
+      const plan = months.reduce((a, m) => a + m.amount, 0);
+      const given = months.reduce((a, m) => a + m.given, 0);
+      if (plan > 0) pcts.push((given / plan) * 100);
     }
-    const gap = planned != null && actual != null ? planned - actual : null;
-    return { planned, actual, gap, lvl: gap == null ? null : lagLevel(gap) };
-  }, [fin]);
-
-  // ТЕКСТИЙН өнгө тул -ink хувилбар — light горимд цагаан дээр 4.5:1 хангана
-  const gapTone = totals?.lvl === 'red' ? 'var(--bad-ink)'
-    : totals?.lvl === 'yellow' ? 'var(--warn-ink)' : 'var(--good-ink)';
-
+    const mean = pcts.length ? pcts.reduce((a, b) => a + b, 0) / pcts.length : null;
+    return { c, n: list.length, mean };
+  });
   return (
-    <Section tone="primary" title={tr('Төсөл нийт')} note={tr('{0} барилгын багц', build.length)}>
-      {/* Төслийн хэмжээний гүйцэтгэл — гурван нүд, доод графиктай нэг өнгө */}
-      <div className={ts.totKpi}>
-        <div>
-          <span className={`${ts.totKpiVal} num`} style={{ color: cat(2) }}>
-            {totals?.planned == null ? '…' : pct(totals.planned, 1)}
-          </span>
-          <span className={ts.totKpiLabel}>{tr('Төлөвлөсөн')}</span>
-        </div>
-        <div>
-          <span className={`${ts.totKpiVal} num`} style={{ color: cat(1) }}>
-            {totals?.actual == null ? '…' : pct(totals.actual, 1)}
-          </span>
-          <span className={ts.totKpiLabel}>{tr('Бодит гүйцэтгэл')}</span>
-        </div>
-        <div>
-          <span className={`${ts.totKpiVal} num`} style={{ color: gapTone }}>
-            {totals?.gap == null
-              ? '…'
-              : `${totals.gap >= 0 ? '−' : '+'}${Math.abs(totals.gap).toFixed(1)}%`}
-          </span>
-          <span className={ts.totKpiLabel}>{tr('Зөрүү')}</span>
-        </div>
-      </div>
-      <Rows
-        items={[
-          { key: tr('Блок'), value: <span className="num">{num(blocks)}</span> },
-          { key: tr('Айл өрх'), value: <span className="num">{num(households)}</span> },
-          {
-            key: tr('Олгосон санхүүжилт (IPC актаар)'),
-            value: <span className="num">{fin ? mntShort(given) : '…'}</span>,
-          },
-        ]}
+    <Section tone="primary" title={tr('Төслийн төрөл')} note={tr('{0} багц ажил', num(packs.length))}>
+      <Bars
+        color={HUE}
+        max={100}
+        items={rows.map((r, i) => ({
+          key: r.c.key,
+          label: `${r.c.name()} · ${num(r.n)}`,
+          value: r.mean ?? 0,
+          color: shade(HUE, i, rows.length),
+          display: r.mean == null ? tr('мэдээлэлгүй') : pct(r.mean, 1),
+        }))}
       />
     </Section>
   );
 }
 
 /** Блокийн ТӨЛӨВИЙН тоолол — 113 блок гүйцэтгэлийн 4 түвшнээр (сонгоогүй үед) */
-function LevelsCard({ blocks }: { blocks: Pack['blocks'] }) {
+function LevelsCard({
+  blocks,
+  ovByCat,
+}: {
+  blocks: Pack['blocks'];
+  /** Ангилал бүрийн асуудалтай (давхцсан үлдсэн) нэгж талбар — null = ачаалж байна */
+  ovByCat: Map<PackCat, number> | null;
+}) {
   const counts = PROGRESS_LEVELS.map(() => 0);
   let noData = 0;
   blocks.forEach((b) => {
@@ -813,6 +884,21 @@ function LevelsCard({ blocks }: { blocks: Pack['blocks'] }) {
           value: counts[i],
           color: shade(HUE, PROGRESS_LEVELS.length - 1 - i, PROGRESS_LEVELS.length),
           display: tr('{0} блок', counts[i]),
+        }))}
+      />
+      {/* АСУУДАЛТАЙ НЭГЖ ТАЛБАР — ангиллаар (2026-08-21, хэрэглэгчийн
+          хүсэлт): блокуудын картууд ХААЛТТАЙ үед ч эндээс байнга уншигдана.
+          Тоо нь тухайн ангиллын бүх давхаргатай давхцсан талбарын
+          давхардалгүй тоолол. */}
+      <div className={o.ovDivider} style={{ marginTop: 12 }}>{tr('Асуудалтай нэгж талбар')}</div>
+      <Rows
+        items={PACK_CATS.map((c) => ({
+          key: c.name(),
+          value: (
+            <span className="num">
+              {ovByCat == null ? '…' : num(ovByCat.get(c.key) ?? 0)}
+            </span>
+          ),
         }))}
       />
     </Section>
