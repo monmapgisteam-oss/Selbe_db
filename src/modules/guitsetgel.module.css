@@ -108,13 +108,15 @@
 .chev { color: var(--ink-3); font-size: 0.75rem; }
 
 .who { min-width: 0; }
+/* 2026-08-21 аудит: нэг мөрийн «…» ажлын нэр, багц·компанийг иддэг байв —
+   2 мөрөнд бүтэн (бүтэн бичвэр нь мөн title tooltip-д) */
 .ajil {
   font-weight: 620; font-size: 0.88rem;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
 }
 .meta {
   font-size: 0.77rem; color: var(--ink-3);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
 }
 
 
@@ -122,9 +124,9 @@
   padding: 3px 10px; border-radius: 20px;
   font-size: 0.73rem; font-weight: 650; white-space: nowrap;
 }
-.bWait { background: rgba(51, 135, 184, 0.18); color: #7db9dd; }
-.bBack { background: rgba(239, 68, 68, 0.16); color: #f78d8d; }
-.bDone { background: rgba(34, 197, 94, 0.16); color: #6ee7a0; }
+.bWait { background: color-mix(in srgb, var(--data) 14%, transparent); color: var(--data); }
+.bBack { background: color-mix(in srgb, var(--bad) 13%, transparent); color: var(--bad-ink); }
+.bDone { background: color-mix(in srgb, var(--good) 13%, transparent); color: var(--good-ink); }
 
 /* ══════════ Задалсан хэсэг ══════════ */
 .open { background: var(--surface-2); border-top: 1px solid var(--line); }
@@ -133,11 +135,11 @@
 .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .reasonBox {
   padding: 9px 12px; border-radius: 8px;
-  background: rgba(239, 68, 68, 0.09); border: 1px solid rgba(239, 68, 68, 0.25);
+  background: color-mix(in srgb, var(--bad) 9%, transparent); border: 1px solid color-mix(in srgb, var(--bad) 25%, transparent);
   font-size: 0.82rem;
 }
 .reasonLabel { color: var(--ink-3); }
-.reasonText { color: #f0a8a8; }
+.reasonText { color: var(--bad-ink); }
 
 .btn {
   padding: 8px 16px; border-radius: 8px;
@@ -147,8 +149,8 @@
 .btn:active { transform: scale(0.97); }
 .btn:hover { filter: brightness(1.1); }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; filter: none; }
-.ok { background: var(--good); color: #06240f; }
-.bad { background: var(--bad); color: #2c0707; }
+.ok { background: var(--good); color: var(--bg); }
+.bad { background: var(--bad); color: var(--bg); }
 .neutral { background: var(--surface); color: var(--ink); border: 1px solid var(--line); }
 
 .field {
@@ -158,7 +160,7 @@
   font-size: 0.84rem; resize: vertical;
 }
 .field:focus { outline: 2px solid var(--data); outline-offset: -1px; }
-.error { color: #f78d8d; font-size: 0.8rem; }
+.error { color: var(--bad-ink); font-size: 0.8rem; }
 
 /* ══════════ Түүх ══════════ */
 .hHead {
@@ -177,7 +179,7 @@
 .step { display: flex; gap: 9px; flex-wrap: wrap; margin-bottom: 3px; }
 .step:last-child { margin-bottom: 0; }
 .stepWho { color: var(--ink-2); min-width: 190px; }
-.stepBad { color: #f0a8a8; }
+.stepBad { color: var(--bad-ink); }
 .time { color: var(--ink-3); font-variant-numeric: tabular-nums; }
 /* ══════════ Түүх ══════════ */
 
@@ -239,9 +241,9 @@
   font-size: 0.66rem; font-weight: 700; line-height: 1;
   margin-top: 1px;
 }
-.sent { background: rgba(51, 135, 184, 0.18); color: #8cc4e6; }
-.ok { background: rgba(34, 197, 94, 0.16); color: #6ee7a0; }
-.bad { background: rgba(239, 68, 68, 0.16); color: #f78d8d; }
+.sent { background: color-mix(in srgb, var(--data) 14%, transparent); color: var(--data); }
+.ok { background: color-mix(in srgb, var(--good) 13%, transparent); color: var(--good-ink); }
+.bad { background: color-mix(in srgb, var(--bad) 13%, transparent); color: var(--bad-ink); }
 
 .stepBody { min-width: 0; }
 .stepTop {
@@ -250,7 +252,7 @@
 }
 .stepWho { font-weight: 600; color: var(--ink); }
 .verb { color: var(--ink-3); }
-.verbBad { color: #f0a8a8; }
+.verbBad { color: var(--bad-ink); }
 .gap {
   padding: 1px 7px; border-radius: 5px;
   background: var(--surface-2); color: var(--ink-3);
@@ -265,8 +267,8 @@
 .why {
   margin-top: 6px; padding: 7px 11px;
   border-left: 2px solid var(--bad); border-radius: 0 7px 7px 0;
-  background: rgba(239, 68, 68, 0.08);
-  font-size: 0.8rem; color: #f2b8b8; line-height: 1.45;
+  background: color-mix(in srgb, var(--bad) 8%, transparent);
+  font-size: 0.8rem; color: var(--bad-ink); line-height: 1.45;
 }
 .whyLabel {
   display: block;
@@ -278,7 +280,7 @@
 /* Дахин шалгалтын тойрог — компани дахин илгээгээгүйг тэмдэглэнэ */
 .cycTag {
   padding: 1px 8px; border-radius: 5px;
-  background: rgba(51, 135, 184, 0.16); color: #8cc4e6;
+  background: color-mix(in srgb, var(--data) 13%, transparent); color: var(--data);
   font-size: 0.68rem; font-weight: 600; white-space: nowrap;
 }
 

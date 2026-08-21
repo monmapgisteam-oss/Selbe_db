@@ -207,7 +207,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
                   {unsynced.has(u.username.toLowerCase()) && (
                     // ⚠️ ArcGIS бичилт унасан — тусгай CSS класс байхгүй тул inline загвар
                     <span
-                      style={{ marginLeft: 8, fontSize: '0.68rem', fontWeight: 550, color: '#fbbf24' }}
+                      style={{ marginLeft: 8, fontSize: '0.68rem', fontWeight: 550, color: 'var(--warn-ink)' }}
                       title={tr('ArcGIS хүснэгтэд бичиж чадсангүй — өөрчлөлт бусад төхөөрөмжид үйлчлэхгүй')}
                     >
                       {tr('ArcGIS-т хадгалагдсангүй — зөвхөн энэ browser-т')}

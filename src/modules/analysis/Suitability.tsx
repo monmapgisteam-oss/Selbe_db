@@ -646,7 +646,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
 
       const diff = m.value != null && simAvg > 0 ? ((m.value - simAvg) / simAvg) * 100 : null;
       const diffTxt = diff == null ? '—'
-        : `<b style="color:${diff > 0 ? '#fb923c' : '#4ade80'}">${diff > 0 ? '+' : ''}${Math.round(diff)}%</b>`;
+        : `<b style="color:${diff > 0 ? 'var(--warn-ink)' : 'var(--good-ink)'}">${diff > 0 ? '+' : ''}${Math.round(diff)}%</b>`;
 
       return tr('\n        <div class="t">\n          <b>{0}</b>\n          <span class="st" style="background:{1};color:#1a1205">{2}</span>\n        </div>\n        <div class="sub2">{3} · {4} га</div>\n        <dl>\n          {5}\n          {6}\n          {7}\n          {8}\n        </dl>', esc(r.id), simColor(t), t == null ? '—' : Math.round(t * 100), esc(r.type), nf(r.areaHa, 2), dt(esc(def.label), `<b>${m.text}</b>`), dt(tr('Дунджаас'), diffTxt), dt(tr('Оршин суугч'), nf(r.residentPop)), dt(tr('Барилга'), nf(r.buildingCount)));
     }
@@ -666,7 +666,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
       else failed.push({ name: i.short, v: nf(p.value, i.decimals) + (i.unit ? ` ${i.unit}` : '') });
     }
     const dt = (k: string, v: string) => `<dt>${k}</dt><dd>${v}</dd>`;
-    return tr('\n      <div class="t">\n        <b>{0}</b>\n        <span class="st" style="background:{1}">{2}</span>\n      </div>\n      <div class="sub2">{3} · {4} га · {5}</div>\n      <dl>\n        {6}\n        {7}\n        {8}\n        {9}\n      </dl>\n      {10}', esc(row.id), scoreColor(score), score == null ? '—' : Math.round(score), esc(row.type), nf(row.areaHa, 2), scoreLabel(score), dt(tr('Оршин суугч'), nf(row.residentPop)), dt(tr('Өрх'), nf(row.households)), dt(tr('Барилга'), nf(row.buildingCount)), dt(tr('Норм хангасан'), `<b style="color:${pass === total ? '#4ade80' : '#f87171'}">${pass} / ${total}</b>`), failed.length ? `<div class="fails">${failed.map((f) =>
+    return tr('\n      <div class="t">\n        <b>{0}</b>\n        <span class="st" style="background:{1}">{2}</span>\n      </div>\n      <div class="sub2">{3} · {4} га · {5}</div>\n      <dl>\n        {6}\n        {7}\n        {8}\n        {9}\n      </dl>\n      {10}', esc(row.id), scoreColor(score), score == null ? '—' : Math.round(score), esc(row.type), nf(row.areaHa, 2), scoreLabel(score), dt(tr('Оршин суугч'), nf(row.residentPop)), dt(tr('Өрх'), nf(row.households)), dt(tr('Барилга'), nf(row.buildingCount)), dt(tr('Норм хангасан'), `<b style="color:${pass === total ? 'var(--good-ink)' : 'var(--bad-ink)'}">${pass} / ${total}</b>`), failed.length ? `<div class="fails">${failed.map((f) =>
         `<div><span>✗ ${esc(f.name)}</span><em>${f.v}</em></div>`).join('')}</div>` : '');
   }, [mode, ind, indicators, econShare, simKind, popBasis, simRng, simAvg]);
 
@@ -705,7 +705,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
         nf(b.cat === 'residential' ? b.population : b.capacity))}
           ${dt(tr('Хүн-зорчилт'), tr('{0} /ц', nf(b.trips)))}
           ${dt(tr('Машин-зорчилт'), tr('{0} /ц', nf(b.vehTrips)))}
-          ${dt(tr('Ойрын зам'), link ? tr('{0} м', nf(link.distsM[0])) : tr('<b style="color:#f87171">холбогдоогүй</b>'))}
+          ${dt(tr('Ойрын зам'), link ? tr('{0} м', nf(link.distsM[0])) : tr('<b style="color:var(--bad-ink)">холбогдоогүй</b>'))}
           ${dt(tr('Автобус'), acc ? tr('{0} м · {1}', nf(acc.distM), esc(BUS_BAND_LABEL[acc.band])) : '—')}
         </dl>`;
     }
@@ -1298,7 +1298,8 @@ function ZoneCatFilter({ cats, off, setOff, setScoreOn }: {
             }}
           >
             <span style={{ width: 11, height: 11, borderRadius: 2, flex: 'none', background: c.color, opacity: on ? 1 : 0.35 }} />
-            <span style={{ flex: 1, minWidth: 0, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.type}</span>
+            {/* 2 мөрийн clamp — «Нийгмийн дэд бүтцийн бүс» г.м. урт нэр «…» болохгүй */}
+            <span style={{ flex: 1, minWidth: 0, fontSize: 12, overflow: 'hidden', display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2 }}>{c.type}</span>
             {/* ⚠️ «оноол» шошго — энэ ангилал ХАРАГДВАЛ оноололд ч ордгийг сануулна */}
             {activatable && (
               <span style={{
@@ -1389,7 +1390,8 @@ function BuildingCatFilter({ cats, off, setOff }: {
             }}
           >
             <span style={{ width: 11, height: 11, borderRadius: 2, flex: 'none', background: c.color, opacity: on ? 1 : 0.35 }} />
-            <span style={{ flex: 1, minWidth: 0, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.label}</span>
+            {/* 2 мөрийн clamp — урт ангиллын нэр «…» болохгүй (ZoneCatFilter-тэй ижил) */}
+            <span style={{ flex: 1, minWidth: 0, fontSize: 12, overflow: 'hidden', display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2 }}>{c.label}</span>
             <b style={{ fontVariantNumeric: 'tabular-nums', fontSize: 11, color: 'var(--muted)' }}>{c.count}</b>
             <span style={{ width: 14, textAlign: 'center', color: 'var(--accent)', fontSize: 12 }}>
               {on ? '✓' : ''}

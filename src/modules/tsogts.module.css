@@ -19,7 +19,9 @@
   --side-l: 290px;
   --side-r: 380px;
   grid-template-columns: var(--side-l) minmax(0, 1fr) var(--side-r);
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  /* Зургийн мөрөнд 240px доод шал: намхан дэлгэцэд (≈768px) KPI 2 мөр +
+     санхүүгийн карт зургийг бараг 0 болтол шахдаг байв (2026-08-21 аудит) */
+  grid-template-rows: auto minmax(240px, 1fr) auto;
   /* ЗҮҮН (list) ба БАРУУН (r) баганууд бүтэн өндрийг эзэлнэ. Зүүнд багцын
      жагсаалт + блок бүрийн гүйцэтгэл; голд KPI · зураг · санхүүгийн график. */
   grid-template-areas:
@@ -85,9 +87,12 @@
 .finKpiVal {
   font-size: 16px;
   font-weight: 500;
-  line-height: 1.05;
+  line-height: 1.15;
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+  /* nowrap байхад урт төгрөгийн дүн («1.18 их наяд ₮») нүднээсээ ДУУГҮЙ халж
+     картын хүрээн дээр гарч байв (2026-08-21 аудит) — одоо мөр буулгана */
+  overflow-wrap: anywhere;
+  min-width: 0;
 }
 /* Шошго = eyebrow, утгын ДЭЭР (envhub Indicator-ын дараалал) */
 .finKpiLabel {
@@ -141,7 +146,10 @@
 .fin {
   grid-area: fin;
   min-width: 0;
-  overflow: visible;
+  /* Намхан дэлгэцэд зургийн 240px шалтай хамт багтахгүй бол дотроо гүйнэ —
+     графикийн өндрийг чирж тохируулах боломж хэвээр (2026-08-21) */
+  max-height: 46vh;
+  overflow-y: auto;
 }
 /* Санхүүгийн картын толгойн баруун талын «олгогдох нийт» тэмдэглэгээ
    (график дээр давхардахгүй — Section-ий header дотор) */
@@ -220,7 +228,7 @@
 @media (max-width: 1100px) {
   .pack {
     grid-template-columns: 1fr;
-    grid-template-rows: auto auto 52vh auto auto;
+    grid-template-rows: auto auto max(240px, 52vh) auto auto;
     grid-template-areas: 'kpi' 'list' 'map' 'r' 'fin';
     height: auto;
     overflow: visible;

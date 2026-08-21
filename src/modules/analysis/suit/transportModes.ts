@@ -376,7 +376,7 @@ export function tReadout(mode: TMode, ctx: TransportCtx): TCell[] {
         k: tr('Замд холбогдоогүй'),
         v: nf0(demand.unlinked.length),
         unit: tr('барилга'),
-        color: demand.unlinked.length ? '#f87171' : '#4ade80',
+        color: demand.unlinked.length ? 'var(--bad-ink)' : 'var(--good-ink)',
       },
     ];
   }
@@ -386,7 +386,7 @@ export function tReadout(mode: TMode, ctx: TransportCtx): TCell[] {
     const pct = (v: number) => (resPop > 0 ? Math.round((v / resPop) * 100) : 0);
     const good = pct(bus.popByBand.good);
     return [
-      { k: tr('≤{0} м доторх', BUS_GOOD_M), v: `${good}%`, color: good > 70 ? '#4ade80' : good > 40 ? '#fbbf24' : '#f87171' },
+      { k: tr('≤{0} м доторх', BUS_GOOD_M), v: `${good}%`, color: good > 70 ? 'var(--good-ink)' : good > 40 ? 'var(--warn-ink)' : 'var(--bad-ink)' },
       { k: tr('>{0} м (дутмаг)', BUS_OK_M), v: nf0(bus.popUnserved), unit: tr('хүн') },
       { k: tr('Ачаалалтай буудал'), v: nf0(bus.maxStopDemand), unit: tr('зорчигч/ц') },
     ];

@@ -489,7 +489,7 @@
 @media (max-width: 1180px) {
   .shell {
     grid-template-columns: 1fr;
-    grid-template-rows: var(--head) auto 46vh auto;
+    grid-template-rows: var(--head) auto max(240px, 46vh) auto;
     grid-template-areas: 'head' 'nav' 'map' 'panel';
     height: auto;
     min-height: 100dvh;
@@ -497,22 +497,22 @@
   /* Босоо өрөлт: зураг → каталог → дашбоард (нэгтгэл нь дашбоардын дотор) */
   .shellCat {
     grid-template-columns: 1fr;
-    grid-template-rows: var(--head) auto 46vh auto auto;
+    grid-template-rows: var(--head) auto max(240px, 46vh) auto auto;
     grid-template-areas: 'head' 'nav' 'map' 'cat' 'panel';
   }
   /* Доод хүрээтэй хувилбар (Барилгын хяналт) — нэгтгэл хамгийн доор */
   .shellFoot {
-    grid-template-rows: var(--head) auto 46vh auto auto;
+    grid-template-rows: var(--head) auto max(240px, 46vh) auto auto;
     grid-template-areas: 'head' 'nav' 'map' 'panel' 'foot';
   }
   .shellFoot.shellCat {
-    grid-template-rows: var(--head) auto 46vh auto auto auto;
+    grid-template-rows: var(--head) auto max(240px, 46vh) auto auto auto;
     grid-template-areas: 'head' 'nav' 'map' 'cat' 'panel' 'foot';
   }
   /* Барилгын хяналт — зураг → муруй → дундаж → самбар → нэгтгэл */
   .shellMon, .shellMon.shellCat {
     grid-template-columns: 1fr;
-    grid-template-rows: var(--head) auto 46vh auto auto auto auto auto;
+    grid-template-rows: var(--head) auto max(240px, 46vh) auto auto auto auto auto;
     grid-template-areas: 'head' 'nav' 'map' 'trend' 'cat' 'monl' 'panel' 'foot';
   }
   /* Хэвтээ зурвас — баруун хүрээ хэрэггүй, доод зааг л хэрэгтэй */
