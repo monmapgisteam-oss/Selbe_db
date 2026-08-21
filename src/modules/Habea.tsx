@@ -32,6 +32,7 @@ import {
   bagtsKey, laborCompanyFields,
 } from '@/lib/services';
 import { usePlanTotals } from '@/lib/totals';
+import { cached } from '@/lib/live';
 import { usePanes } from './habeaPanes';
 import { Section, Bars, Donut, Select, Series, Loading, Empty } from '@/components/ui';
 import { num, date, text } from '@/lib/format';
@@ -53,14 +54,16 @@ const CATALOG_IDS = CATALOG_LAYER_IDS;
 
 type HabeaData = { labor: Row[]; incident: Row[]; crane: Row[]; fetchedAt: number };
 
-const loadHabea = (): Promise<HabeaData> =>
+/* 5 мин кэш (2026-08-21 гүйцэтгэлийн аудит): харагдац сэлгэх бүрд 3 бүтэн
+   хүснэгт дахин татагддаг байв */
+const loadHabea = cached((): Promise<HabeaData> =>
   Promise.all([
     queryFeatures(HABEA.labor.url, { outFields: ['*'] }),
     queryFeatures(HABEA.incident.url, { outFields: ['*'] }),
     queryFeatures(HABEA.crane.url, { outFields: ['*'] }),
     // «Осолгүй хоног» render дотор Date.now() дуудаж болохгүй (react-hooks/purity)
     // тул лавлах цэг нь ӨГӨГДӨЛ ТАТСАН мөч — дахин ачаалахад шинэчлэгдэнэ.
-  ]).then(([labor, incident, crane]) => ({ labor, incident, crane, fetchedAt: Date.now() }));
+  ]).then(([labor, incident, crane]) => ({ labor, incident, crane, fetchedAt: Date.now() })), 5 * 60_000);
 
 const nn = (v: unknown): number => {
   const x = Number(v);

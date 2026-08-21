@@ -157,7 +157,11 @@ const sentenceCase = (s: string) => {
  */
 async function loadOverall(): Promise<ReportExtra['overall']> {
   const P = PROJECT_PROGRESS.fields;
-  const rows = await queryFeatures(PROJECT_PROGRESS.url, { outFields: ['*'] });
+  /* Зөвхөн 4 хэрэглэдэг талбар — «*» нь 162 мөрийн бүх баганыг татдаг байв
+     (2026-08-21 гүйцэтгэлийн аудит) */
+  const rows = await queryFeatures(PROJECT_PROGRESS.url, {
+    outFields: [P.stage, P.weight, P.actual, P.planned],
+  });
 
   const w = (r: Record<string, unknown>) => nn(r[P.weight]);
   const done = (rs: typeof rows) => rs.reduce((a, r) => a + w(r) * nn(r[P.actual]) / 100, 0);
@@ -196,7 +200,12 @@ async function loadLand(pct: number | null): Promise<ReportExtra['land']> {
   // ⚠️ `url` нь заавал биш (BuildingSceneLayer г.м. давхаргад байхгүй) — шалгана
   const d = LAYER_BY_ID['land:left'];
   if (!d?.url) return { parcels: 0, areaM2: 0, pct, byStatus: [], byReason: [] };
-  const rows = await queryFeatures(d.url, { outFields: ['*'] });
+  /* Зөвхөн тоолдог 3 талбар (2026-08-21 гүйцэтгэлийн аудит): «*» нь 2,119
+     парселийн БҮХ баганыг (эзний нэр, хаяг зэрэг хувийн мэдээллийг оролцуулаад)
+     ~2-4МБ-аар татдаг байв — тайланд огт хэрэггүй. */
+  const rows = await queryFeatures(d.url, {
+    outFields: ['Tuluv', 'явцын_мэдээ', d.qty?.field ?? 'area_m2'],
+  });
 
   const tally = (field: string, skipEmpty: boolean) => {
     const m = new Map<string, number>();
@@ -413,7 +422,11 @@ async function loadInfra(): Promise<ReportExtra['infra']> {
 async function loadHabeaSummary(): Promise<ReportExtra['habea']> {
   const L = HABEA.labor.fields;
   const [labor, incident] = await Promise.all([
-    queryFeatures(HABEA.labor.url, { outFields: ['*'] }),
+    /* Огноо + компани тус бүрийн тоон талбарууд — «*» бүх баганыг татдаг байв
+       (2026-08-21 гүйцэтгэлийн аудит) */
+    queryFeatures(HABEA.labor.url, {
+      outFields: [L.ognoo, ...HABEA.labor.companies.flatMap((c) => Object.values(laborCompanyFields(c.sfx)))],
+    }),
     queryFeatures(HABEA.incident.url, { outFields: [HABEA.incident.fields.ognoo] }),
   ]);
 

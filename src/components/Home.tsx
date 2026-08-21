@@ -9,8 +9,12 @@ import {
   loadBudget, loadClearance, loadHeadline, loadHousing, loadProjectProgress, loadSocial,
 } from '@/lib/live';
 import { mntShort, num, pct } from '@/lib/format';
+import dynamic from 'next/dynamic';
 import { DocViewer } from './DocViewer';
-import { ExecKpi } from './ExecKpi';
+/* ⚠️ dynamic (2026-08-21 гүйцэтгэлийн аудит): ExecKpi нь analysis стекээ дагуулж
+   ирдэг тул статик импортоор нэвтрэх/нүүр хуудасны эхний chunk-д ордог байв.
+   Зөвхөн супер хэрэглэгчид л харагддаг хэсэг — хэрэгтэй үед нь татна. */
+const ExecKpi = dynamic(() => import('./ExecKpi').then((m) => m.ExecKpi), { ssr: false });
 import { Icon } from './Icon';
 import { Ring } from './MiniChart';
 import type { ViewKey } from '@/lib/services';

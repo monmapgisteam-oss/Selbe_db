@@ -11,18 +11,24 @@ import { LayerCatalog } from '@/components/LayerCatalog';
 import { OpacityPanel } from '@/components/OpacityPanel';
 import { MapTools } from '@/components/MapTools';
 import { useZoomToFilter } from '@/lib/useZoomToFilter';
-import { Suitability } from '@/modules/analysis/Suitability';
+import dynamic from 'next/dynamic';
 import { Dashboard } from '@/modules/Dashboard';
 import { Bagts } from '@/modules/Bagts';
 import { Tsogts } from '@/modules/Tsogts';
 import { Gazar } from '@/modules/Gazar';
-import { Finance } from '@/modules/Finance';
 import { Habea } from '@/modules/Habea';
 import { Irged } from '@/modules/Irged';
 import { Iot } from '@/modules/Iot';
-import { Guitsetgel } from '@/modules/Guitsetgel';
-import { Sheet } from '@/modules/sheet/Sheet';
-import { Tailan } from '@/modules/Tailan';
+/* ⚠️ ТОМ, ховор-эхний харагдацууд dynamic chunk (2026-08-21 гүйцэтгэлийн
+   аудит): Suitability (analysis стек), Sheet/Pivot, Tailan (+reportPdf),
+   Guitsetgel, Finance нийлээд Portal chunk-ийн parse хугацааг ~30-40%
+   нэмдэг байв. Portal нөхцөлт рендэрлэдэг тул unmount үеийн зан өөрчлөгдөхгүй;
+   эхний нээлтэд Booting-той ижил түр төлөв харагдана. */
+const Suitability = dynamic(() => import('@/modules/analysis/Suitability').then((m) => m.Suitability), { ssr: false });
+const Finance = dynamic(() => import('@/modules/Finance').then((m) => m.Finance), { ssr: false });
+const Guitsetgel = dynamic(() => import('@/modules/Guitsetgel').then((m) => m.Guitsetgel), { ssr: false });
+const Sheet = dynamic(() => import('@/modules/sheet/Sheet').then((m) => m.Sheet), { ssr: false });
+const Tailan = dynamic(() => import('@/modules/Tailan').then((m) => m.Tailan), { ssr: false });
 import { Icon } from '@/components/Icon';
 import { DocViewer } from '@/components/DocViewer';
 import { UserAdmin } from '@/components/UserAdmin';

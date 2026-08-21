@@ -89,43 +89,9 @@ export const qtyText = (d: LayerDef, q: number): string | null => {
   return q < 10_000 ? tr('{0} м²', num(q)) : tr('{0} га', ha(q, 1));
 };
 
-/** Нэгж үнэ юунд ногдохыг үгээр */
-export const costNote = (d: LayerDef): string => {
-  if (!d.cost) return '—';
-  return d.cost.basis === 'sh' ? tr('1 ш тутамд')
-    : d.cost.basis === 'm100' ? tr('100 м тутамд')
-      : d.cost.basis === 'km' ? tr('1 км тутамд') : tr('1 м² тутамд');
-};
-
 /** Геометрийн төрөл — дашбоардын толгойд */
 export const geomText = (d: LayerDef): string =>
   d.geom === 'area' ? tr('Талбай') : d.geom === 'line' ? tr('Шугам') : tr('Цэг');
-
-/**
- * БАГЦЫН нийлбэр хэмжээ — «65.3 км · 26.7 га».
- *
- * ⚠️ Урт ба талбайг ТУСАД нь нийлүүлнэ. Багц дотор шугаман (м/км) ба талбайн
- * (м²) давхарга хольцтой байдаг — «Зам, тээвэр»-т замын тэнхлэг (км) ба явган
- * хүний зам (м²) хоёул орно. Тэдгээрийг нэг тоо болгон нэмбэл утгагүй дүн гарна.
- *
- * ⚠️ Цэгэн давхарга (`qty` талбаргүй) энд ОРОХГҮЙ — тэдгээрийн «хэмжээ» нь
- * ширхэгийн тоо бөгөөд мөрөнд аль хэдийн бичигдсэн байдаг.
- */
-export function groupQty(ids: string[], map: ReadonlyMap<string, Totals>): string | null {
-  let km = 0, ha = 0;
-  for (const id of ids) {
-    const d = LAYER_BY_ID[id];
-    const t = map.get(id);
-    if (!d?.qty || !t || t.q <= 0) continue;
-    if (d.qty.unit === 'км') km += t.q;
-    else if (d.qty.unit === 'м') km += t.q / 1_000;
-    else ha += t.q / 10_000;
-  }
-  const parts: string[] = [];
-  if (km > 0) parts.push(tr('{0} км', num(km, 1)));
-  if (ha > 0) parts.push(tr('{0} га', num(ha, 1)));
-  return parts.length ? parts.join(' · ') : null;
-}
 
 /**
  * Ерөнхий мэдээллийн БҮХ давхаргын тоо, хэмжээ, өртөг — НЭГ УДАА.

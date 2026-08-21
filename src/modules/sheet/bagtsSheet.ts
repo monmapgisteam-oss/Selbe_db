@@ -89,6 +89,15 @@ export async function loadRows(
    *    хараад батална — баталсан зүйл нь илгээсэн зүйлээсээ зөрнө.
    */
   atDay?: string,
+  /**
+   * Татах талбаруудын жагсаалт — өгвөл `outFields`-ийг хязгаарлана.
+   * ⚠️ 2026-08-21 гүйцэтгэлийн аудит: мөр ~60+ баганатай, 10 багц нийлээд
+   *    ~10-20МБ JSON болдог. Зөвхөн уншдаг хэрэглэгч (loadVariance) хэрэгтэй
+   *    талбараа заавал payload тал хувиар буурна; заагаагүй бол `*` хэвээр
+   *    (Pivot засварлахдаа бүх талбар хэрэгтэй). Дутуу талбарууд мөрөнд 0/null
+   *    болж уншигдана — `raw` нь мөн хэсэгчилсэн болохыг анхаар.
+   */
+  fields?: string[],
 ): Promise<{ rows: SheetRow[]; asOf: number | null; snapshot: number | null }> {
   const tree = TREES[pkg.key] ?? "";
   const where =
@@ -97,7 +106,7 @@ export async function loadRows(
   for (let offset = 0; ; ) {
     const j = await agsFetch(`${pkg.url}/query`, {
       where,
-      outFields: "*",
+      outFields: fields?.length ? fields.join(",") : "*",
       returnGeometry: "false",
       orderByFields: `${sc.f.oid} ASC`,
       resultRecordCount: "2000",

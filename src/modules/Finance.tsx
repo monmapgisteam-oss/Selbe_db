@@ -5,6 +5,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { Data, Empty } from '@/components/ui';
 import { useAsync } from '@/lib/useAsync';
 import { queryFeatures } from '@/lib/query';
+import { cached } from '@/lib/live';
 import { CASHFLOW2, IPC_LOG, TASK_SHEET, bagtsKey, pkgKeyOf } from '@/lib/services';
 import { finFieldLabel } from '@/lib/financeFieldLabels';
 import { mntShort, num, text, cat } from '@/lib/format';
@@ -381,8 +382,13 @@ function smoothPath(pts: { x: number; y: number }[]): string {
  * Санхүүжилтийн бүх дата — CASHFLOW2 (төлөвлөгөө) + IPC (олгосон, цэвэрлэсэн) +
  * TASK_SHEET (биет гүйцэтгэл, сарын эцсийн байдлаар).
  * ⚠️ export — «Барилгын цогц хяналт» (Tsogts) мөн энэ ГАНЦ ачаалагчийг ашиглана.
+ * ⚠️ 5 мин кэш (2026-08-21 гүйцэтгэлийн аудит): Нүүр (супер) · Tsogts · Санхүү
+ *   гурвуулаа дууддаг тул харагдац сэлгэх бүрд 3 query + O(багц×сар×блок)
+ *   тооцоо ДАХИН хийгддэг байв.
  */
-export async function loadFinData(): Promise<FinData> {
+export const loadFinData = cached(loadFinDataRaw, 5 * 60_000);
+
+async function loadFinDataRaw(): Promise<FinData> {
   const S = TASK_SHEET.fields;
     const [contracts, ipc, sheet] = await Promise.all([
       queryFeatures(CASHFLOW2.url, { outFields: ['*'], orderBy: `${CASHFLOW2.oid} ASC` }),

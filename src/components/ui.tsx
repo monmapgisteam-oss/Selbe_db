@@ -265,16 +265,6 @@ export function Note({ children }: { children: ReactNode }) {
   return <p className={s.noteText}>{children}</p>;
 }
 
-/** Хэсгийн доторх дэд гарчиг — Section-ыг дахин давхарлахгүйгээр бүлэглэнэ */
-export function SubHead({ children, note }: { children: ReactNode; note?: ReactNode }) {
-  return (
-    <div className={s.subHead}>
-      {children}
-      {note && <span className={s.subNote}>{note}</span>}
-    </div>
-  );
-}
-
 /* ── Таб ── */
 
 /**
@@ -1636,16 +1626,6 @@ export function Rows({ items }: { items: { key: string; value: ReactNode }[] }) 
         </div>
       ))}
     </div>
-  );
-}
-
-/* ── Chip ── */
-
-export function Chip({ children, color }: { children: ReactNode; color?: string }) {
-  return (
-    <span className={s.chip} style={tone(color)}>
-      {children}
-    </span>
   );
 }
 

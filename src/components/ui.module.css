@@ -119,17 +119,6 @@
 .noteText { font-size: 0.73rem; line-height: 1.55; color: var(--ink-3); }
 .noteText b { color: var(--ink); font-weight: 600; }
 
-.subHead {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  margin-bottom: 10px;
-  font-size: 0.74rem;
-  font-weight: 600;
-  color: var(--ink-2);
-}
-.subNote { font-size: 0.68rem; font-weight: 400; color: var(--ink-3); }
-
 /* ── Таб ──
    Самбарын биеийг гүйлгэхэд дагаж явна. `--surface` дүүргэлт заавал хэрэгтэй —
    эс бөгөөс доогуур өнгөрөх агуулга нь хагас тунгалаг табын ард харагдана. */
@@ -397,21 +386,6 @@
   text-align: right;
   flex: none;
   white-space: nowrap;
-}
-
-/* ── Chip ── */
-.chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 2px 8px;
-  border-radius: 99px;
-  font-size: 0.68rem;
-  font-weight: 600;
-  white-space: nowrap;
-  color: var(--tone, var(--hue));
-  background: color-mix(in srgb, var(--tone, var(--hue)) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--tone, var(--hue)) 26%, transparent);
 }
 
 /* ── Жагсаалтын мөр (сонгож болох) ── */

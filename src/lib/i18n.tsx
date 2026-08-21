@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 
 import { DEFAULT_LOCALE, type Locale } from './localeKey';
-import { getLocale, setLocale, t } from './i18nCore';
+import { getLocale, setLocale } from './i18nCore';
 
 /**
  * ОЛОН ХЭЛНИЙ REACT ДАВХАРГА.
@@ -38,16 +38,4 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
 /** Хэлний сонголт — товч, солигч UI-д */
 export function useLocale() {
   return { locale: useContext(Ctx), setLocale };
-}
-
-/**
- * Компонент доторх орчуулга.
- *
- * ⚠️ Хэл солиход хуудас дахин ачаалагддаг тул энэ нь модулийн `t`-тэй ЯГ ижил
- * ажиллана. Кодыг уншихад «энд орчуулга явж байна» гэдгийг тод харуулах, мөн
- * ирээдүйд дахин ачаалалтгүй болговол бэлэн байх зорилготой.
- */
-export function useT() {
-  useContext(Ctx);
-  return t;
 }

@@ -677,15 +677,25 @@ export function LayersCard({ p }: { p: Pack }) {
   );
 }
 
+/* Давхарга бүрийн нийлбэрийн сесс-кэш (2026-08-21 гүйцэтгэлийн аудит):
+   нэг багцыг дахин сонгоход ижил stat-асуулгууд дахин явдаг байв. Дүн нь
+   сессийн турш тогтвортой; амжилтгүйг кэшлэхгүй. */
+const pkgTotalCache = new Map<string, Promise<{ title: string; n: number; qty: string | null }>>();
+
 /** Сонгосон багцын давхарга бүрийн тоо ба хэмжээ — сонголт солигдох бүрд */
 function usePkgTotals(ids: string[]): Async<{ title: string; n: number; qty: string | null }[]> {
   const key = ids.join(',');
   return useAsync(async () => {
     if (!ids.length) return [];
-    return Promise.all(ids.map(async (id) => {
-      const d = LAYER_BY_ID[id];
-      const t = await layerTotals(d, '1=1');
-      return { title: d.title, n: t.n, qty: qtyText(d, t.q) };
+    return Promise.all(ids.map((id) => {
+      let p = pkgTotalCache.get(id);
+      if (!p) {
+        const d = LAYER_BY_ID[id];
+        p = layerTotals(d, '1=1').then((t) => ({ title: d.title, n: t.n, qty: qtyText(d, t.q) }));
+        p.catch(() => pkgTotalCache.delete(id));
+        pkgTotalCache.set(id, p);
+      }
+      return p;
     }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);

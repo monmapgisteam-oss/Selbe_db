@@ -46,6 +46,12 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const MAX_CONCURRENT = 6;
 let active = 0;
 const waiters: (() => void)[] = [];
+/** Хязгаарлагчийг ГАДНЫ fetch-үүдэд ч ашиглуулна (parcelOverlap г.м.) —
+ * тойрч гарсан хүсэлт «Too many requests»-ийн шалтгаан болдог (2026-08-21). */
+export async function withSlot<T>(fn: () => Promise<T>): Promise<T> {
+  await acquire();
+  try { return await fn(); } finally { release(); }
+}
 async function acquire() {
   if (active >= MAX_CONCURRENT) {
     // ⚠️ Сэрэхдээ active-ийг ДАХИН нэмэхгүй — release() слотоо шууд гардуулсан

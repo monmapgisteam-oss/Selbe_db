@@ -281,44 +281,6 @@
 .packLegend span { display: inline-flex; align-items: center; gap: 5px; }
 .packLegend i { width: 9px; height: 9px; border-radius: 1px; flex: none; }
 
-/* «Төсөл нийт» — төлөвлөсөн · бодит · зөрүү гурван нүд (hairline-аар
-   тусгаарласан нэг хайрцаг). Утгын өнгө TSX-ээс: cat(1..2) нь доод графикийн
-   цуваатай ижил, зөрүү нь төлөвийн токен — хоёулаа утгатай өнгө. */
-.totKpi {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1px;
-  margin-bottom: 10px;
-  background: var(--line);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  overflow: hidden;
-}
-.totKpi > div {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 8px 11px;
-  background: var(--surface);
-}
-.totKpiVal {
-  font-size: 17px;
-  font-weight: 500;
-  line-height: 1.1;
-  letter-spacing: -0.01em;
-  font-variant-numeric: tabular-nums;
-}
-/* Шошго = eyebrow, утгын ДЭЭР (finKpi-тэй ижил дараалал) */
-.totKpiLabel {
-  order: -1;
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: var(--ink-3);
-  line-height: 1.25;
-}
-
 /* ── Санхүүгийн картын үзүүлэлт нуух/харуулах товч (2026-08-21) —
       зөвхөн KPI мөрөнд үйлчилнэ, доорх график үргэлж нээлттэй ── */
 .kpiToggle {
