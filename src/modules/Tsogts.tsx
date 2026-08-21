@@ -490,6 +490,21 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
           <>
             <TotalCard packs={packs} fin={finQ.state === 'ready' ? finQ.data : null} />
             {allPack && <LevelsCard blocks={allPack.blocks} />}
+            {/* ТӨСЛИЙН НИЙТ давхцсан үлдсэн нэгж талбар — хэрэглэгчийн
+                хүсэлтээр (2026-08-21) ТУСДАА КАРТ болгож БУЦААВ: FinCard-аас
+                хассан нэгдсэн тоо. Багц бүрийн задаргаа нь доорх «Багц N —
+                блокууд» картуудын толгойд; энэ нь бүх багцын НИЙТ (блок + дэд
+                бүтэц, давхардалгүй). Сонголтгүй үед `overlap` яг энэ утга. */}
+            <Section>
+              <span className={ts.ovTotLabel}>{tr('Давхцсан үлдсэн нэгж талбар')}</span>
+              <b
+                className={`${ts.ovTotVal} num`}
+                /* Хуучин индикаторын өнгө хэвээр: >0 яагаан (саадтай), 0 ногоон */
+                style={{ color: overlap?.oids.length ? '#d946ef' : '#16a34a' }}
+              >
+                {overlap == null ? '…' : num(overlap.oids.length)}
+              </b>
+            </Section>
             {/* Блок бүрийн гүйцэтгэл — БАГЦААР нь бүлэглэсэн (нэг багц = нэг карт) */}
             {packs.filter((p) => p.kind === 'build').map((p) => (
               /* АНХДАГЧ нь ХААЛТТАЙ (2026-08-21) — олон багцын блок нэг
