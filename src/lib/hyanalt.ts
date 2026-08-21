@@ -39,11 +39,24 @@ export const F = {
   engineerReturned: 'Инженер_буцаасан_огноо',
   engineerSent: 'Инженер_илгээсэн_огноо',
 
+  /** БАГЦЫН менежер — гурав дахь шат */
   manager: 'Менежер',
   managerDecision: 'Менежерийн_шийдвэр',
   managerReason: 'Менежер_буцаасан_шалтгаан',
   managerReturned: 'Менежер_буцаасан_огноо',
   managerSent: 'Менежер_илгээсэн_огноо',
+
+  /**
+   * ЕРӨНХИЙ МЕНЕЖЕР — дөрөв дэх, ЭЦСИЙН шат.
+   * ⚠️ Эдгээр талбарыг үйлчилгээнд ГАРААР нэмэх шаардлагатай (`DIRECTOR_FIELDS`).
+   *    Байхгүй үед програм нь дөрөв дэх шатыг ХААЖ, шалтгааныг ил хэлнэ —
+   *    чимээгүй унахаас сэргийлнэ.
+   */
+  director: 'Ерөнхий_менежер',
+  directorDecision: 'Ерөнхий_менежерийн_шийдвэр',
+  directorReason: 'Ерөнхий_менежер_буцаасан_шалтгаан',
+  directorReturned: 'Ерөнхий_менежер_буцаасан_огноо',
+  directorSent: 'Ерөнхий_менежер_илгээсэн_огноо',
 
   status: 'Төлөв',
 } as const;
@@ -53,6 +66,9 @@ export const STATUS = {
   engineerReturned: 'Инженер буцаасан',
   managerReview: 'Менежер хянаж байна',
   managerReturned: 'Менежер буцаасан',
+  directorReview: 'Ерөнхий менежер хянаж байна',
+  directorReturned: 'Ерөнхий менежер буцаасан',
+  /** ЭЦСИЙН төлөв — дөрвөн шат бүгд өнгөрсний ДАРАА л энд хүрнэ. */
   transferred: 'Шилжүүлсэн',
 } as const;
 export type Status = (typeof STATUS)[keyof typeof STATUS];
@@ -60,8 +76,16 @@ export type Status = (typeof STATUS)[keyof typeof STATUS];
 export const DECISION = { approve: 'Зөвшөөрсөн', return: 'Буцаасан' } as const;
 export type Decision = (typeof DECISION)[keyof typeof DECISION];
 
-/** Шат — ЗӨВХӨН гурав. Буцаах нь явсан замаараа. */
-export type Stage = 'company' | 'engineer' | 'manager';
+/**
+ * Шат — ДӨРӨВ. Буцаах нь ЯВСАН ЗАМААРАА, нэг алхмаар:
+ *   гүйцэтгэгч → хяналтын инженер → багцын менежер → ерөнхий менежер
+ * ⚠️ Ерөнхий менежер зөвшөөрсний ДАРАА л эх хүснэгтэд бүртгэгдсэнд тооцно
+ *    (`Шилжүүлсэн`). Гурав дахь шатанд зогсоовол хяналт дутуу үлдэнэ.
+ */
+export type Stage = 'company' | 'engineer' | 'manager' | 'director';
+
+/** Шатны ДАРААЛАЛ — нэг эх сурвалж. Буцах чиглэл нь энэ жагсаалтын урвуу. */
+export const STAGE_ORDER: Stage[] = ['company', 'engineer', 'manager', 'director'];
 
 /**
  * Тухайн төлөвт ажил ХЭНИЙ гар дээр байна вэ.
@@ -72,7 +96,10 @@ export const OWNER: Record<Status, Stage> = {
   [STATUS.engineerReturned]: 'company',
   [STATUS.managerReview]: 'manager',
   [STATUS.managerReturned]: 'engineer',
-  [STATUS.transferred]: 'manager',
+  [STATUS.directorReview]: 'director',
+  // ⚠️ Ерөнхий менежер буцаавал БАГЦЫН МЕНЕЖЕРТ — тэр дахин шалгана
+  [STATUS.directorReturned]: 'manager',
+  [STATUS.transferred]: 'director',
 };
 
 export type Row = {
@@ -94,8 +121,42 @@ export type Row = {
   [F.managerReason]: string;
   [F.managerReturned]: string | null;
   [F.managerSent]: string | null;
+  [F.director]: string;
+  [F.directorDecision]: Decision | '';
+  [F.directorReason]: string;
+  [F.directorReturned]: string | null;
+  [F.directorSent]: string | null;
   [F.status]: Status;
 };
+
+/**
+ * ЕРӨНХИЙ МЕНЕЖЕРИЙН ТАЛБАРУУД — үйлчилгээнд байх ЁСТОЙ.
+ *
+ * ⚠️ Эдгээрийг AGOL дээр нэмэхгүй бол дөрөв дэх шатны шийдвэр ХАДГАЛАГДАХГҮЙ.
+ *    Тиймээс програм нь эхлэхдээ шалгаад, дутуу бол товчийг ХААЖ, юу дутууг
+ *    ил бичнэ. Чимээгүй унавал менежер «баталсан» гэж бодох боловч бүртгэл
+ *    үүсээгүй байна гэсэн үг.
+ */
+export const DIRECTOR_FIELDS = [
+  F.director, F.directorDecision, F.directorReason, F.directorReturned, F.directorSent,
+] as const;
+
+let missingCache: string[] | null = null;
+
+/** Үйлчилгээнд дутуу байгаа 4-р шатны талбарууд (хоосон = бүгд бэлэн). */
+export async function missingDirectorFields(): Promise<string[]> {
+  if (missingCache) return missingCache;
+  try {
+    const res = await fetch(`${HYANALT.url}?f=json`);
+    const j = (await res.json()) as { fields?: { name: string }[] };
+    const have = new Set((j.fields ?? []).map((x) => x.name));
+    missingCache = DIRECTOR_FIELDS.filter((x) => !have.has(x));
+  } catch {
+    // Сүлжээний алдаа — «дутуу» гэж мэдэгдэхгүй, хэрэглэгчийг төөрөгдүүлнэ
+    missingCache = [];
+  }
+  return missingCache;
+}
 
 /* ══════════════ ArcGIS REST ══════════════ */
 

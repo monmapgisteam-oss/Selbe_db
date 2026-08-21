@@ -352,10 +352,20 @@ function byDaySeries(rows: Row[], sfx: string | null, key: 'niitAjiltan' | 'niit
     }))
     .filter((x) => x.d > 0)
     .sort((a, b) => a.d - b.d)
-    .map((x) => {
+    /*
+     * ⚠️ НЭГ ӨДӨРТ ОЛОН БҮРТГЭЛ байж болно (компани тус бүр өөрөө илгээх,
+     *    эсвэл засвар). Мөр тус бүрийг ЦЭГ болговол нэг өдөр хэд хэдэн
+     *    багана болж, графикийн х тэнхлэг худал уртсаад зогсохгүй React-д
+     *    ижил түлхүүр давхардана. Тиймээс өдрөөр НЭГТГЭЖ нийлбэрийг авна.
+     */
+    .reduce<{ key: string; label: string; value: number; display: string }[]>((acc, x) => {
       const iso = new Date(x.d).toISOString().slice(0, 10);
-      return { key: iso, label: iso.slice(5).replace('-', '.'), value: x.value, display: num(x.value) };
-    });
+      const last = acc[acc.length - 1];
+      if (last?.key === iso) last.value += x.value;
+      else acc.push({ key: iso, label: iso.slice(5).replace('-', '.'), value: x.value, display: '' });
+      return acc;
+    }, [])
+    .map((x) => ({ ...x, display: num(x.value) }));
 }
 
 /* ─────────── Туслах дүрслэл ─────────── */

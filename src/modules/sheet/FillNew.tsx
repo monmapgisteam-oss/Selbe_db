@@ -17,6 +17,10 @@ import {
   type Pkg,
   type Schema,
 } from "./bagts.pkg";
+import { OWNER, F as HF } from "@/lib/hyanalt";
+import { useHyanaltRows } from "@/lib/hyanaltStore";
+import { bagtsFor, subscribeAcl } from "@/lib/guitsetgelAcl";
+import { useAuth } from "@/components/AuthGate";
 import DatePicker from "./DatePicker";
 import { seriesBands } from "./bagts.bands";
 import { ACTUAL, distinct } from "./ags";
@@ -156,17 +160,110 @@ const RO = {
  *    Ингэснээр шилжилтэд нэг ч мөрийн явц буцахгүй — амьд 10 хуудсан дээр
  *    зөрүү 0 болохыг шалгасан.
  */
-export default function FillNew() {
+/**
+ * ХЯНАЛТЫН ХАРАГДАЦ — бөглөх хуудсыг ЗАСАГДАХГҮЙ горимоор нээнэ.
+ *
+ * ⚠️ Хянагчид ТУСДАА хүснэгт бичихийг болив. Хоёр хэрэгжилт болмогц багана,
+ *    томъёо, толгой нь салан тусгаарлаж эхэлдэг бөгөөд «бөглөгчийн харсан
+ *    хүснэгт» ба «хянагчийн харсан хүснэгт» хоёр өөр зүйл ярина. Одоо
+ *    гүйцэтгэгч, талбайн инженер, менежер ГУРВУУЛАА ЯГ энэ компонентыг
+ *    хардаг — ялгаа нь ЗӨВХӨН `view` өгөгдсөн эсэх.
+ */
+export type SheetView = {
+  /** `PKGS`-ийн түлхүүр — аль багцын хуудас */
+  pkgKey: string;
+  /** Аль АГШИН (`YYYY-MM-DD`) — илгээсэн тэр өдрийн бүтэн хуулбар */
+  day: string;
+  /** Өөрчлөгдсөн нүд: `${мөрийн индекс}:${блокийн шошго}` */
+  changed?: Set<string>;
+  /** Үсрэх хүсэлт — `n` солигдох бүрд шинэ хүсэлт гэж үзнэ */
+  jump?: { row: number; block: string; n: number } | null;
+  /** ЗӨВШӨӨРСӨН нүднүүд — `changed`-тэй ижил түлхүүр. Ногооноор тэмдэглэнэ. */
+  ok?: Set<string>;
+  /**
+   * Өөрчлөгдсөн нүд дээр дарахад — зөвшөөрөл асаах/унтраах.
+   * ⚠️ Хянагч өөрчлөлт БҮРИЙГ гараар харж баталсан байх ёстой. Нэг товчоор
+   *    бүгдийг батлах зам байвал хяналт нь ёсорхуу дарах үйлдэл болно.
+   */
+  onCell?: (row: number, block: string) => void;
+};
+
+export default function FillNew({ view }: { view?: SheetView } = {}) {
+  /** Засагдахгүй (хяналтын) горим уу — бүх бичих зам үүгээр хаагдана. */
+  const locked = !!view;
+
   const wrapRef = useRef<HTMLDivElement>(null);
   /** Энэ таб яг одоо нуугдсан уу (`display: none` → `offsetParent` нь null). */
   const hiddenNow = () => !wrapRef.current?.offsetParent;
-  const [pkg, setPkg] = useState<Pkg>(PKGS[0]); // Багц 1 · 9F — жагсаалтын эхнийх
+  const [pkg, setPkg] = useState<Pkg>(
+    () => (view && PKGS.find((p) => p.key === view.pkgKey)) || PKGS[0],
+  ); // Багц 1 · 9F — жагсаалтын эхнийх
   const [sc, setSc] = useState<Schema | null>(null);
   /** Тайлангийн огноонууд — «Гүйцэтгэл бөглөх» табтай НЭГ эх сурвалжаас. */
   const [dates, setDates] = useState<string[]>([]);
   const [rows, setRows] = useState<SheetRow[]>([]);
   const [asOf, setAsOf] = useState<number | null>(null);
   const [asOfOrig, setAsOfOrig] = useState<number | null>(null);
+  /** Ачаалсан агшны БӨГЛӨСӨН ӨДӨР (`buglusun_ognoo`) — өнөөдрийнх үү гэж шалгана. */
+  const [snapDay, setSnapDay] = useState<string>("");
+  /**
+   * ӨДӨРТ НЭГ УДАА — илгээсэн бол дахин бөглөхгүй.
+   *
+   * ⚠️ Илгээчихээд дахин бөглөвөл хянагч харж байгаа тоо нь хуудсан дээрх
+   *    тооноос ЗӨРНӨ: тэр нэгийг батлах атлаа өгөгдөлд өөр нэг нь сууна.
+   *    Тиймээс өнөөдрийн агшин үүссэн бол хуудас ХААЛТТАЙ.
+   *
+   * ⚠️ ГАНЦ УУЧЛАЛ: буцаалт ирсэн бол ЗААВАЛ засах ёстой — эс бөгөөс
+   *    гүйцэтгэгч буцаалтыг маргааш хүртэл засаж чадахгүй гацна.
+   */
+  /**
+   * БАГЦЫН ХУВААРИЛАЛТ — эрхийн панелаас.
+   * ⚠️ Гүйцэтгэгч зөвхөн ӨӨРТӨӨ хуваарилагдсан багцыг бөглөнө. Бүх багц
+   *    нээлттэй бол нэг компани нөгөөгийнхөө гүйцэтгэлийг бичиж болно.
+   * ⚠️ Хуваарилалт огт хийгээгүй бол ХЯЗГААРГҮЙ — эс бөгөөс шинэ систем
+   *    дээр хэн ч юу ч бөглөж чадахгүй болно.
+   */
+  const { user } = useAuth();
+  const [aclN, setAclN] = useState(0);
+  useEffect(() => subscribeAcl(() => setAclN((n) => n + 1)), []);
+  const myBagts = useMemo(
+    () => bagtsFor(user?.username, "company"),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [user, aclN],
+  );
+  const groupOpts = useMemo(
+    () => (myBagts ? PKG_GROUPS.filter((g) => myBagts.includes(g)) : PKG_GROUPS),
+    [myBagts],
+  );
+
+  /*
+   * ⚠️ Сонгосон багц нь хуваарилалтаас ГАДУУР үлдвэл хуудас нь бөглөж
+   *    болохгүй өгөгдлийг харуулна. Тиймээс зөвшөөрөгдсөн эхнийх рүү өөрөө
+   *    шилжинэ — хэрэглэгч хоосон дэлгэц ширтэхгүй.
+   */
+  useEffect(() => {
+    if (view || groupOpts.includes(pkg.group)) return;
+    const first = PKGS.find((p) => p.group === groupOpts[0]);
+    if (first) setPkg(first);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupOpts]);
+
+  const { rows: hyRows } = useHyanaltRows();
+  const flow = useMemo(() => {
+    const mine = hyRows.filter((r) => r[HF.bagts] === pkg.group);
+    if (!mine.length) return null;
+    // Хамгийн сүүлийн тойрог — OBJECTID хамгийн их нь
+    return mine.reduce((a, b) => (b.__oid > a.__oid ? b : a));
+  }, [hyRows, pkg.group]);
+  const returned = flow ? OWNER[flow[HF.status]] === "company" : false;
+  /*
+   * ⚠️ Өнөөдрийн огноог зурагдах бүрд БИШ, НЭГ л удаа авна — эс бөгөөс
+   *    зурагдалт цэвэр биш болж, шөнө дундаас хойш зөрчил үүснэ.
+   */
+  const [today] = useState(() => msToDay(Date.now()));
+  const sentToday = !!snapDay && snapDay === today;
+  /** Засах эрхгүй — харах л боломжтой. */
+  const noEdit = locked || (sentToday && !returned);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   // Нийтлээгүй засварууд, `${oid}:${barilgaIndex}` түлхүүрээр. Утга нь хувь
@@ -284,12 +381,13 @@ export default function FillNew() {
     setEdit(null);
     loadSchema(pkg)
       .then(async (schema) => {
-        const r = await loadRows(pkg, schema);
+        const r = await loadRows(pkg, schema, view?.day);
         if (!alive) return;
         setSc(schema);
         setRows(r.rows);
         setAsOf(r.asOf);
         setAsOfOrig(r.asOf);
+        setSnapDay(r.snapshot != null ? msToDay(r.snapshot) : "");
         // ⚠️ Анх нээхэд БҮХ давхарга ДЭЛГЭЭСТЭЙ (хэрэглэгчийн шийдвэр,
         // 2026-08-19): урьд нь гүн 2 хүртэл эвхээстэй байсныг болив —
         // бөглөх ажлын мөрүүд шууд харагдах ёстой. Багц солиход мөн адил.
@@ -304,7 +402,7 @@ export default function FillNew() {
     return () => {
       alive = false;
     };
-  }, [pkg]);
+  }, [pkg, view?.day]);
 
   // Үйлчилгээнд огноо огт бичигдээгүй бол `<select>` эхний мөрөө харуулах ч
   // төлөв нь `null` хэвээр үлдэж хүснэгт бүхэлдээ хоосон харагдана. Тиймээс
@@ -473,6 +571,32 @@ export default function FillNew() {
    * Засварлаж буй мөр цонхны ГАДНА үлдэж болохгүй — Enter-ээр доошлоход
    * оролт нь DOM-д байхгүй бол фокус алдагдаж, бичсэн зүйл үрэгдэнэ.
    */
+  /**
+   * ӨӨРЧЛӨГДСӨН НҮД РҮҮ ҮСРЭХ — жагсаалтаас дарахад.
+   * ⚠️ 1,370 мөрийн ЗӨВХӨН харагдах хэсэг л DOM-д байдаг тул `scrollIntoView`
+   *    ажиллахгүй: мөр нь хараахан зурагдаагүй байна. Тиймээс мөрийн
+   *    ИНДЕКСЭЭР байрлалыг тооцож гүйлгэнэ.
+   */
+  const [hitKey, setHitKey] = useState<string | null>(null);
+  const jumpN = view?.jump?.n ?? -1;
+  useEffect(() => {
+    const j = view?.jump;
+    const el = scrollRef.current;
+    const tb = tbodyRef.current;
+    if (!j || !el || !tb || !vis.length) return;
+    const at = vis.indexOf(j.row);
+    if (at < 0) return;
+    el.scrollTo({
+      top: Math.max(0, tb.offsetTop + at * rowHRef.current - el.clientHeight / 2),
+      behavior: "smooth",
+    });
+    const key = `${j.row}:${j.block}`;
+    setHitKey(key);
+    const t = window.setTimeout(() => setHitKey((h) => (h === key ? null : h)), 1800);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jumpN, vis]);
+
   const editVis = edit ? vis.indexOf(edit.i) : -1;
   const winFrom = editVis >= 0 ? Math.min(win.from, editVis) : win.from;
   const winTo = editVis >= 0 ? Math.max(win.to, editVis + 1) : win.to;
@@ -818,6 +942,11 @@ ${dropped} нүд хуучирсан тул орхигдоно.` : "") +
   return (
     <div className={st.wrap} ref={wrapRef}>
       <div className={st.toolbar}>
+        {/* ⚠️ Багц, хувилбар, огноо нь ХЯНАЛТАД тогтмол: илгээсэн агшныг
+            хардаг тул сонгуулбал өөр өгөгдөл гарч, хянаж буй зүйл нь
+            баталж буй зүйлээсээ зөрнө. Шүүлтүүр (Бүлэг/Дэд бүлэг) хэвээр —
+            тэдгээр нь өгөгдлийг биш, харагдацыг л хумина. */}
+        {!locked && (<>
         <label className={st.field}>
           {'Багц'}{" "}
           <select
@@ -829,7 +958,7 @@ ${dropped} нүд хуучирсан тул орхигдоно.` : "") +
               setPkg(pkgFloors(e.target.value)[0]);
             }}
           >
-            {PKG_GROUPS.map((g) => (
+            {groupOpts.map((g) => (
               <option key={g} value={g}>{g}</option>
             ))}
           </select>
@@ -875,6 +1004,8 @@ ${dropped} нүд хуучирсан тул орхигдоно.` : "") +
             ))}
           </select>
         </label>
+        </>
+        )}
         {/* ЭЦЭГ БҮЛЭГ — «Б1 БАРИЛГЫН АЖИЛ», «3 ТӨМӨР БЕТОН РАМЫН АЖИЛ»… */}
         <label className={st.field}>
           {'Бүлэг'}{" "}
@@ -923,17 +1054,33 @@ ${dropped} нүд хуучирсан тул орхигдоно.` : "") +
             {'Өргөн сэргээх'}
           </button>
         )}
+        {!locked && (
         <button
           className={st.publishBtn}
           onClick={publish}
-          disabled={busy || dirtyCount === 0}
+          disabled={busy || noEdit || dirtyCount === 0}
           title={'Өөрчилсөн нүд + дээд бүлгүүдийн нийлбэрийг хадгална (Ctrl+S)'}
         >
           {'Нийтлэх'}{dirtyCount ? ` (${dirtyCount})` : ""}
         </button>
+        )}
         {busy && <span className={st.muted}>{'ажиллаж байна…'}</span>}
       </div>
 
+      {/*
+        * ТҮГЖЭЭГ ЯАГААД ГЭДГИЙГ ХЭЛНЭ. Зүгээр л дарагдахгүй болговол
+        * хэрэглэгч эвдэрсэн гэж бодож, дахин дахин оролдоно.
+        */}
+      {!locked && sentToday && !returned && (
+        <p className={st.lockNote}>
+          {'Өнөөдрийн гүйцэтгэл илгээгдсэн — хяналтад байна. Буцаалт ирвэл энэ хуудас өөрөө нээгдэнэ.'}
+        </p>
+      )}
+      {!locked && returned && (
+        <p className={st.backNote}>
+          {'Хяналтаас БУЦААСАН — засвар оруулаад дахин илгээнэ үү.'}
+        </p>
+      )}
       {err && <p className={st.error}>{err}</p>}
 
       {busy && rows.length === 0 && (
@@ -1111,7 +1258,16 @@ ${dropped} нүд хуучирсан тул орхигдоно.` : "") +
                       const canVol = volMode(r, bi);
                       const editing =
                         edit && edit.i === i && edit.b === bi && edit.col === "obyem";
+                      const changed = !!view?.changed?.has(`${i}:${b}`);
+                      const okd = !!view?.ok?.has(`${i}:${b}`);
                       const open = () => {
+                        // Хяналтын горим: өөрчлөгдсөн нүд нь ЗӨВШӨӨРӨХ товч
+                        if (locked) return changed && view?.onCell?.(i, b);
+                        if (noEdit)
+                          return say(
+                            "Энэ багцын өнөөдрийн гүйцэтгэл аль хэдийн илгээгдсэн — " +
+                              "хяналтаас буцаалт ирэх хүртэл засах боломжгүй.",
+                          );
                         if (!canVol) return say(r.group ? RO.groupAct : RO.noObyemField);
                         setVal(pending[key] ?? qtyRaw(r.obyem[bi]));
                         setEdit({ i, b: bi, col: "obyem" });
@@ -1120,25 +1276,41 @@ ${dropped} нүд хуучирсан тул орхигдоно.` : "") +
                         <td
                           key={`a${b}`}
                           data-bi={bi}
+                          /* ⚠️ `view` нь `editable`-ийн ЗАСАГДАХГҮЙ хувилбар:
+                             хайрцаг, курсор алга — гэхдээ обьём ба хувь
+                             ХОЁУЛАА харагдана (бөглөгчийн харж буй тоо). */
                           className={cls(
                             "num bld" +
-                              (canVol ? " editable" : " calc") +
-                              (dirty ? " dirty" : ""),
+                              (canVol ? (noEdit ? " view" : " editable") : " calc") +
+                              (dirty ? " dirty" : "") +
+                              (changed ? (okd ? " chgOk" : " chg") : "") +
+                              (hitKey === `${i}:${b}` ? " chgHit" : ""),
                           )}
                           /* Нүдний АЛЬ Ч цэгт дарахад нээгдэнэ — хоёр мөрийн
                              хооронд/ирмэг дээр таарсан товшилт үрэгдэхгүй
                              (хэрэглэгч үүнийг «хоёр дарж байж нээгддэг» гэж
                              мэдэрдэг байв). */
-                          tabIndex={canVol ? 0 : undefined}
+                          tabIndex={canVol && !noEdit ? 0 : changed ? 0 : undefined}
                           onClick={open}
                           onKeyDown={(e) => {
+                            if (locked) {
+                              if (changed && (e.key === "Enter" || e.key === " ")) {
+                                e.preventDefault();
+                                view?.onCell?.(i, b);
+                              }
+                              return;
+                            }
                             if (!editing && (e.key === "Enter" || e.key === "F2")) {
                               e.preventDefault();
                               open();
                             }
                           }}
                           title={
-                            r.group
+                            changed
+                              ? okd
+                                ? 'ЗӨВШӨӨРСӨН — дахин дарвал буцаана'
+                                : 'Өмнөх агшнаас ӨӨРЧЛӨГДСӨН — дарж зөвшөөрнө үү'
+                              : r.group
                               ? RO.groupAct
                               : !canVol
                                 ? RO.noObyemField
@@ -1219,7 +1391,7 @@ ${dropped} нүд хуучирсан тул орхигдоно.` : "") +
                         const src = k === "s" ? c.startSrc[bi] : c.endSrc[bi];
                         // Талбар нь үйлчилгээнд байхгүй блок бий (толгой нь
                         // эвдэрсэн) — тэнд хадгалах газаргүй тул засагдахгүй.
-                        const editable = src !== "agg" && !!fld;
+                        const editable = !noEdit && src !== "agg" && !!fld;
                         return (
                           <td
                             key={`${k}${b}`}
@@ -1258,11 +1430,12 @@ ${dropped} нүд хуучирсан тул орхигдоно.` : "") +
                       <td
                         className={cls(
                           "num c-date" +
-                            (i === 0 ? " cursor-cell" : "") +
+                            (i === 0 && !noEdit ? " cursor-cell" : "") +
                             (i === 0 && asOf !== asOfOrig ? " dirty" : ""),
                         )}
                         title={i === 0 ? 'Дарж календараар сонгоно' : RO.asOfRow}
                         onClick={(e) => {
+                          if (noEdit) return;
                           if (i !== 0) return say(RO.asOfRow);
                           setPick({
                             kind: "asOf",

@@ -11,6 +11,12 @@ import {
   type UserPerm,
 } from '@/lib/permissions';
 import { Icon } from './Icon';
+import { GuitsetgelAcl } from '@/modules/GuitsetgelAcl';
+import { STAGE_LABEL } from '@/modules/Guitsetgel';
+import { STAGE_ORDER } from '@/lib/hyanalt';
+import {
+  ALL_BAGTS, bagtsFor, removeAssign, setAssign, stageOfUser, subscribeAcl,
+} from '@/lib/guitsetgelAcl';
 import s from './userAdmin.module.css';
 
 /** Toggle хийж болох бүх харагдац */
@@ -36,6 +42,13 @@ const toggled = (views: ViewKey[] | 'all', k: ViewKey): ViewKey[] => {
  */
 export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [users, setUsers] = useState<UserPerm[]>([]);
+  /**
+   * АЛЬ БҮЛЭГ нээлттэй байна.
+   * ⚠️ Хоёр бүлэг нь ӨӨР асуултад хариулна: «ямар харагдац үзэх вэ» ба
+   *    «аль багцыг бөглөх/хянах вэ». Нэг жагсаалтад хольбол нэгийг засахад
+   *    нөгөө нь өөрчлөгдсөн мэт төөрөгдөл үүснэ.
+   */
+  const [pane, setPane] = useState<'users' | 'guits'>('users');
   const [name, setName] = useState('');
   // ⚠️ ArcGIS хүснэгтэд бичигдэж ЧАДААГҮЙ хэрэглэгчид (жижиг үсгээр) — урьд нь
   //    бичилт унахад ямар ч дохиогүй, өөрчлөлт зөвхөн энэ browser-т үлддэг байв.
@@ -60,6 +73,13 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     };
   }, [open, onClose]);
   useEffect(() => subscribe(() => setUsers(listUsers())), []);
+  /*
+   * ⚠️ Урсгалын томилгоо нь ӨӨР хадгалалттай тул түүнд ч захиалах ёстой.
+   *    Эс бөгөөс энэ жагсаалтаас шат оноосны дараа дэлгэц хуучин хэвээр
+   *    үлдэж, админ «болоогүй» гэж бодон дахин дарна.
+   */
+  const [aclN, setAclN] = useState(0);
+  useEffect(() => subscribeAcl(() => setAclN((n) => n + 1)), []);
 
   if (!open) return null;
 
@@ -116,13 +136,45 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
 
       <aside className={s.side} aria-label={tr('Админ цэс')}>
         <div className={s.sideHead}>{tr('Тохиргоо')}</div>
-        <button type="button" className={`${s.sideItem} ${s.sideItemOn}`} aria-current="true">
+        <button
+          type="button"
+          className={`${s.sideItem} ${pane === 'users' ? s.sideItemOn : ''}`}
+          aria-current={pane === 'users'}
+          onClick={() => setPane('users')}
+        >
           <Icon name="users" size={14} />
           {tr('Хэрэглэгчдийн эрх удирдах')}
+        </button>
+        {/*
+          * ⚠️ ТУСДАА БҮЛЭГ, нэг жагсаалтад ХОЛИОГҮЙ. Дээрх нь «ямар
+          *    харагдац үзэх вэ», энэ нь «аль багцыг бөглөх/хянах вэ».
+          *    Нэг мөрөнд нийлүүлбэл нэгийг засахад нөгөө нь дагаж
+          *    өөрчлөгдсөн мэт төөрөгдөл үүснэ.
+          */}
+        <button
+          type="button"
+          className={`${s.sideItem} ${pane === 'guits' ? s.sideItemOn : ''}`}
+          aria-current={pane === 'guits'}
+          onClick={() => setPane('guits')}
+        >
+          <Icon name="pen" size={14} />
+          {tr('Гүйцэтгэлийн урсгалын эрх')}
         </button>
       </aside>
 
       <div className={s.main}>
+        {pane === 'guits' ? (
+          <>
+            <header className={s.head}>
+              <h2 className={s.title}>{tr('Гүйцэтгэлийн урсгалын эрх')}</h2>
+              <p className={s.subtitle}>
+                {tr('Дөрвөн шат бүрд аккаунт томилж, аль багцыг хариуцахыг зааж өгнө.')}
+              </p>
+            </header>
+            <GuitsetgelAcl />
+          </>
+        ) : (
+          <>
         <header className={s.head}>
           <h2 className={s.title}>{tr('Хэрэглэгчдийн эрх удирдах')}</h2>
           <p className={s.subtitle}>
@@ -187,6 +239,48 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
                 </div>
               </div>
 
+              {/*
+                * ГҮЙЦЭТГЭЛИЙН УРСГАЛ — аккаунтыг ЭНД шууд шатанд томилно.
+                *
+                * ⚠️ Хоёр өөр цонх руу үсрэхийг болив: аккаунт нэмээд тэр
+                *    дороо «энэ хүн юу хийх вэ» гэдгийг шийдэх нь байгалийн
+                *    дараалал. Шат сонгомогц үүрэг ба «Гүйцэтгэлийн хяналт»
+                *    харагдац ӨӨРӨӨ нэмэгдэнэ.
+                * ⚠️ Нэг аккаунт нэг шатанд — өөрийн ажлаа өөрөө батлах
+                *    зам үүсэхээс сэргийлнэ.
+                */}
+              <div className={s.flowRow} data-acl={aclN}>
+                <span className={s.flowLabel}>{tr('Гүйцэтгэлийн урсгал')}</span>
+                {STAGE_ORDER.map((st) => {
+                  const on = stageOfUser(u.username) === st;
+                  const pk = on ? bagtsFor(u.username, st) : null;
+                  return (
+                    <button
+                      key={st}
+                      type="button"
+                      aria-pressed={on}
+                      className={`${s.chip} ${on ? s.chipOn : ''}`}
+                      onClick={() => {
+                        if (on) removeAssign(u.username, st);
+                        else setAssign(u.username, st, [ALL_BAGTS]);
+                      }}
+                      title={
+                        on
+                          ? tr('Дарж хасна')
+                          : tr('{0} шатанд томилно', STAGE_LABEL[st])
+                      }
+                    >
+                      {STAGE_LABEL[st]}
+                      {on && (
+                        <span className={s.flowPk}>
+                          {pk ? tr('{0} багц', String(pk.length)) : tr('бүх багц')}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
               {/* Дээд/дэд сэдвүүдийн унтраалга */}
               <div className={s.toggles}>
                 {VIEWS.map((v) => {
@@ -221,6 +315,8 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
         <p className={s.note}>
           {tr('Өөрчлөлт ArcGIS дээрх хуваалцсан хүснэгтэд хадгалагдаж, бүх хэрэглэгчид (өөр төхөөрөмжөөс нэвтэрсэн ч) үйлчилнэ. ArcGIS-т холбогдоогүй үед түр зуур энэ browser-т хадгалагдана.')}
         </p>
+          </>
+        )}
       </div>
     </div>
   );
