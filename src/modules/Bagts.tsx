@@ -591,10 +591,17 @@ export function BlocksCard({
   return (
     <Section title={title} collapsible={collapsible} defaultClosed={collapsible} note={tr('{0}/{1} бүртгэлтэй', num(withData), num(p.blocks.length))}>
       {overlapN !== undefined && (
-        /* Газар чөлөөлөгдөөгүйгээс энэ багцын ажилд саад буй талбарууд */
-        <Note>
-          {tr('Давхцсан үлдсэн нэгж талбар')}: <b className="num">{overlapN == null ? '…' : num(overlapN)}</b>
-        </Note>
+        <>
+          {/* ДАВХЦЛЫН мэдээлэл — хайрцаглаж, доорх блокийн жагсаалтаас
+              нүдээр илт зааглана. Тоо >0 бол шар аяс — ажилд саад буй. */}
+          <div className={`${o.ovStrip} ${overlapN ? o.ovStripOn : ''}`}>
+            <span>{tr('Давхцсан үлдсэн нэгж талбар')}</span>
+            <b className="num">{overlapN == null ? '…' : num(overlapN)}</b>
+          </div>
+          {/* Жагсаалтын карт («Багц N — блокууд») дээр доорх мөрүүд ЮУ болохыг
+              нэрлэнэ; сонгосон багцын картад гарчиг нь өөрөө хэлдэг тул хэрэггүй */}
+          {collapsible && <div className={o.ovDivider}>{tr('Блок бүрийн гүйцэтгэл')}</div>}
+        </>
       )}
       <Bars
         color={HUE}
