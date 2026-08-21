@@ -105,12 +105,14 @@
   text-transform: uppercase;
   letter-spacing: 0.12em;
   color: var(--ink-3);
-  /* «…» биш — 2 мөрөнд бүтэн бичигдэнэ (2026-08-21 аудит: «САВ ХҮР…» гэх мэт
-     нэр бүх өргөнд тасарч утгаа алддаг байв) */
+  /* «…» биш — 3 мөрөнд бүтэн бичигдэнэ (2026-08-21 аудит: «САВ ХҮР…» гэх мэт
+     нэр бүх өргөнд тасарч утгаа алддаг байв). anywhere — нарийн хавтанд
+     ганц урт үг ирмэгт огтлогдохгүй, дараагийн мөрөнд хуваагдана. */
   overflow: hidden;
   display: -webkit-box;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 3;
+  overflow-wrap: anywhere;
 }
 .tileVal { font-size: 19px; font-weight: 500; color: var(--ink); line-height: 1.1; font-variant-numeric: tabular-nums; }
 
@@ -164,12 +166,13 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--ink-3);
-  /* «…» биш — 2 мөрөнд бүтэн (мэдрэгчийн монгол нэрс урт: «Хөрсний цахилгаан
+  /* «…» биш — 3 мөрөнд бүтэн (мэдрэгчийн монгол нэрс урт: «Хөрсний цахилгаан
      дамжуулах чадал» г.м. бүх өргөнд тасарч байв, 2026-08-21 аудит) */
   overflow: hidden;
   display: -webkit-box;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 3;
+  overflow-wrap: anywhere;
 }
 .metricAge { flex: none; font-size: 9px; font-variant-numeric: tabular-nums; }
 .metricVal {
