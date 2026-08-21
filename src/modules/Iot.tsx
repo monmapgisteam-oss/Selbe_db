@@ -152,7 +152,12 @@ function Cell({ c }: { c: Card }) {
     <div className={s.metric}>
       <div className={s.metricHd}>
         <span className={s.metricDot} />
-        <span className={s.metricName} title={`${c.s.label} · ${c.m.label}`}>
+        {/* ⚠️ Нүд нь нарийн тул тайлбар нь ЗӨВХӨН hover-т багтана — нэрийг нь
+            гурван цэгээр таслах үед бүтэн нэр ч энэ дотор л уншигдана. */}
+        <span
+          className={s.metricName}
+          title={`${c.s.label} · ${c.m.label}${c.m.unit ? ` (${c.m.unit})` : ''}\n${c.m.note}`}
+        >
           {c.m.label}
         </span>
         <span className={`${s.metricAge} num`} style={{ color: freshTone(age) }}>
@@ -178,12 +183,23 @@ function ChartCard({ c, height = 150 }: { c: Card; height?: number }) {
   return (
     <section className={s.card}>
       <header className={s.cardHd}>
-        <h3 className={s.cardTitle}>{c.m.label}</h3>
+        {/* ⚠️ Нэгжийг гарчигт нь оруулав: «Температур» гэдэг нь °C үү, °F үү,
+            «Цахилгаан дамжуулалт» нь юугаараа хэмжигдэж байгаа нь чартын
+            тэнхлэгээс ХАРАГДАХГҮЙ (тоон шошгод нэгж бичигддэггүй). */}
+        <h3 className={s.cardTitle}>
+          {c.m.label}{c.m.unit ? `, ${c.m.unit}` : ''}
+        </h3>
         <span className={s.cardNote}>
-          {c.s.label} · {num(c.m.points.length)} / {num(c.m.total)} {tr('цэг')}
+          {num(c.m.points.length)} / {num(c.m.total)} {tr('цэг')}
         </span>
       </header>
       <div className={s.cardBody}>
+        {/* Мэдрэгч ба хэмжигдэхүүний тайлбар — «энэ тоо ЮУ гэсэн үг вэ».
+            Мэдрэгчийн бүтэн тодорхойлолт ба DevEUI нь нэр дээрх hover-т —
+            сүлжээний талд алдаа хайхад ЯГ тэр дугаараар хайдаг. */}
+        <p className={s.cardDesc}>
+          <b title={`${c.s.note}\nDevEUI: ${c.s.devEui}`}>{c.s.label}</b> · {c.m.note}
+        </p>
         {/* Өнгө заахгүй — `Trend`-ийн анхдагч нь өгөгдлийн ГАНЦ өнгө var(--data) */}
         <Trend
           unit={c.m.unit}

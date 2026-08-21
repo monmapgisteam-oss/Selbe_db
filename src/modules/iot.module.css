@@ -277,3 +277,15 @@
   .pCharts { grid-column: 1 / 13; grid-row: 4; }
   .mapBox { min-height: 320px; }
 }
+
+/* ══════════════════ Чартын тайлбарын мөр ══════════════════ */
+
+/* Картын толгойн доорх нэг мөрийн тайлбар — «энэ тоо ЮУ гэсэн үг вэ» */
+.cardDesc {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ink-3);
+}
+.cardDesc b { font-weight: 600; color: var(--ink-2); }
+

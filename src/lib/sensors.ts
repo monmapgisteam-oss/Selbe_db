@@ -33,12 +33,30 @@ export type Metric = {
   unit: string;
   /** Аравтын орон — дэлгэцэнд */
   dp: number;
+  /**
+   * ЮУГ хэмждэг вэ — картын толгойн доор гарна.
+   *
+   * ⚠️ Заавал: шошго нь «Температур» гэх мэт олон утгатай (хөрсний юу, агаарын
+   * юу?), нэгж нь ч ялгаж өгөхгүй. Тайлбаргүй бол хэрэглэгч зөв мэдрэгчийг
+   * харж байгаагаа ЗӨВХӨН тааварлана.
+   */
+  note: string;
 };
 
 export type SensorDef = {
   key: string;
   label: string;
   url: string;
+  /** Мэдрэгч ӨӨРӨӨ юу вэ — бүх хэмжигдэхүүнд нь нийтлэг тайлбар */
+  note: string;
+  /**
+   * Төхөөрөмжийн DevEUI (LoRaWAN-ы дэлхий даяарх дугаар).
+   *
+   * ⚠️ Усны тоолуур нь ОЛОН төхөөрөмжтэй тул ганц дугаар байхгүй — тэдгээрийг
+   * `825`-аар эхэлсэн угтвараар нь таньдаг. Тиймээс энэ талбар нь чөлөөт
+   * бичвэр, ЗӨВХӨН хүнд харуулах зорилготой (кодод тааруулахад ХЭРЭГЛЭХГҮЙ).
+   */
+  devEui: string;
   /** Гол хэмжигдэхүүн — цуваа ба «сүүлийн заалт» картад энэ гарна */
   metrics: Metric[];
 };
@@ -51,46 +69,99 @@ export const SENSORS: SensorDef[] = [
   {
     key: 'waste',
     label: tr('Хогийн савны дүүрэлт'),
+    note: tr('Ультрасоник зай, түвшин мэдрэгч. Савны амсараас хог хүртэлх зайг хэмжинэ — зай БАГАСАХ нь сав дүүрч байгааг заана.'),
+    devEui: '24e124713c198712',
     url: `${IOT}/Waste_Sensor/FeatureServer/62`,
     metrics: [
-      { key: 'distance', label: tr('Сав хүртэлх зай'), field: 'payload_decoded_data_distance', unit: tr('мм'), dp: 0 },
-      { key: 'battery', label: tr('Батерей'), field: 'payload_decoded_data_battery', unit: '%', dp: 0 },
+      {
+        key: 'distance', label: tr('Сав хүртэлх зай'), field: 'payload_decoded_data_distance',
+        unit: tr('мм'), dp: 0,
+        note: tr('Мэдрэгчээс хогийн гадаргуу хүртэлх зай. Багасах тусам сав дүүрсэн гэсэн үг.'),
+      },
+      /* ⚠️ 2026-08-21: «Батерей» (`payload_decoded_data_battery`) ХАСАГДСАН —
+         захиалагчийн хүсэлт. Талбар нь сервис дээр байсаар байгаа тул хэрэгтэй
+         үед энэ мөрийг сэргээхэд л хангалттай.
+         ⚠️ Үр дагавар: энэ мэдрэгчийн «хэр шинэ вэ» нь ЗӨВХӨН зайн заалтаас
+         тооцогдоно. Батерей нь өдөр бүр ирдэг байсан тул мэдрэгч «шинэхэн»
+         мэт харагдуулж, зайн заалт хэдэн хоног хоцорсныг НУУДАГ байв. */
     ],
   },
   {
     key: 'soil',
     label: tr('Хөрсний мэдрэгч'),
+    note: tr('Хөрсний чийгшил, температур болон цахилгаан дамжуулах чадлыг хэмждэг сенсор.'),
+    devEui: '24e124126c148914',
     url: `${IOT}/Soil_Meter/FeatureServer/63`,
     metrics: [
-      { key: 'moisture', label: tr('Хөрсний чийг'), field: 'payload_decoded_data_moisture', unit: '%', dp: 1 },
-      { key: 'temperature', label: tr('Хөрсний температур'), field: 'payload_decoded_data_temperature', unit: '°C', dp: 1 },
-      { key: 'electricity', label: tr('Цахилгаан дамжуулалт'), field: 'payload_decoded_data_electricity', unit: '', dp: 0 },
+      {
+        key: 'moisture', label: tr('Хөрсний чийг'), field: 'payload_decoded_data_moisture',
+        unit: '%r.h.', dp: 1,
+        note: tr('Хөрсний эзлэхүүний харьцангуй чийгшил.'),
+      },
+      {
+        key: 'temperature', label: tr('Хөрсний температур'), field: 'payload_decoded_data_temperature',
+        unit: '°C', dp: 1,
+        note: tr('Мэдрэгч булагдсан гүн дэх хөрсний температур.'),
+      },
+      {
+        /**
+         * ⚠️ Талбарын нэр нь `electricity` ч утга нь ЦАХИЛГААН ДАМЖУУЛАХ ЧАДАЛ
+         * (EC), хэрэглээний эрчим хүч БИШ. Нэгж нь µs/cm — урьд нь ХООСОН
+         * байсан тул «240» гэсэн тоо ямар хэмжигдэхүүн болох нь мэдэгдэхгүй байв.
+         */
+        key: 'electricity', label: tr('Цахилгаан дамжуулалт'), field: 'payload_decoded_data_electricity',
+        unit: 'µs/cm', dp: 0,
+        note: tr('Хөрсний цахилгаан дамжуулах чадал (EC) — давсжилт, бордооны агууламжийн шууд бус хэмжүүр.'),
+      },
     ],
   },
   {
     key: 'light',
-    label: tr('Гэрэлтүүлэг'),
+    label: tr('Орчны гэрэл'),
+    note: tr('Орчны гэрэл мэдрэгч сенсор.'),
+    devEui: '24e124126c148962',
     url: `${IOT}/Light_Sensor/FeatureServer/60`,
     metrics: [
-      { key: 'illumination', label: tr('Гэрэлтүүлэг'), field: 'payload_decoded_data_illumination', unit: 'lux', dp: 0 },
+      {
+        key: 'illumination', label: tr('Гэрэлтүүлэг'), field: 'payload_decoded_data_illumination',
+        unit: 'lux', dp: 0,
+        note: tr('Мэдрэгч дээр тусах гэрлийн түвшин.'),
+      },
     ],
   },
   {
     key: 'air',
     label: tr('Агаарын температур, чийг'),
+    note: tr('Гадна орчны температур, чийгшил мэдрэгч сенсор.'),
+    devEui: '24e124136c220656',
     url: `${IOT}/Temp_Humidity/FeatureServer/64`,
     metrics: [
-      { key: 'temperature', label: tr('Температур'), field: 'payload_decoded_data_temperature', unit: '°C', dp: 1 },
-      { key: 'humidity', label: tr('Чийгшил'), field: 'payload_decoded_data_humidity', unit: '%', dp: 0 },
+      {
+        key: 'temperature', label: tr('Температур'), field: 'payload_decoded_data_temperature',
+        unit: '°C', dp: 1,
+        note: tr('Гадна орчны агаарын температур.'),
+      },
+      {
+        key: 'humidity', label: tr('Чийгшил'), field: 'payload_decoded_data_humidity',
+        unit: '%r.h.', dp: 0,
+        note: tr('Гадна орчны агаарын харьцангуй чийгшил.'),
+      },
     ],
   },
   {
     key: 'water',
     label: tr('Усны тоолуур'),
+    note: tr('Усны хэрэглээний тоолуур. Заалтыг LoRaWAN-аар илгээнэ.'),
+    devEui: tr('{0}-аар эхэлсэн', '825'),
     url: `${IOT}/Water_Meter/FeatureServer/61`,
     metrics: [
-      { key: 'meterReading', label: tr('Тоолуурын заалт'), field: 'payload_decoded_data_meterReading', unit: tr('м³'), dp: 2 },
-      { key: 'batteryVoltage', label: tr('Батерейн хүчдэл'), field: 'payload_decoded_data_batteryVoltage', unit: 'V', dp: 2 },
+      {
+        key: 'meterReading', label: tr('Тоолуурын заалт'), field: 'payload_decoded_data_meterReading',
+        unit: tr('м³'), dp: 2,
+        note: tr('Тоолуурын ХУРИМТЛАГДСАН заалт — өссөн дүн тул хэрэглээ нь хоёр заалтын ЗӨРҮҮ.'),
+      },
+      /* ⚠️ 2026-08-21: «Батерейн хүчдэл» (`payload_decoded_data_batteryVoltage`)
+         ХАСАГДСАН — захиалагчийн хүсэлт. Дээрхтэй ижил: талбар нь сервист бий. */
     ],
   },
 ];
@@ -160,6 +231,9 @@ function thin<T>(arr: T[], max: number): T[] {
  * байв. Хогийн мэдрэгч дээр: зайтай 1,642 мөр, батерейтай 1,725 — зөвхөн
  * батерейтай 83 мөр БҮРМӨСӨН унтардаг байлаа. Үр дүнд «Батерей» карт 5 хоногийн
  * өмнөх 100%-ийг харуулж байхад 31 минутын өмнөх 98% сервер дээр байсан.
+ *
+ * (Тэр «Батерей» карт 2026-08-21-нд хасагдсан ч ДҮРЭМ нь хэвээр: Mononet-ийн
+ * decoder талбар ТУС БҮРД өөр өөр унтардаг тул нэг where нь бусдыг нь хаана.)
  */
 async function loadOne(def: SensorDef, limit: number): Promise<SensorLive> {
   const per = await Promise.all(

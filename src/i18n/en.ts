@@ -1262,8 +1262,6 @@ const en: Record<string, string> = {
   "Баримтууд": "Documents",
   "Баруун талд өргөтгөх": "Expand to the right",
   "Барьцаа /Retention Deduction": "Retention /Retention Deduction",
-  "Батерей": "Battery",
-  "Батерейн хүчдэл": "Battery voltage",
   "батлагдсанаас": "approved by decree,",
   "биелэлт": "fulfilment",
   "Биет %": "Physical %",
@@ -2857,7 +2855,22 @@ const en: Record<string, string> = {
   "Previous Certified Amount / Гүйлгээ хүлээлгэгдэж буй нийт хоног": "Previous Certified Amount / Total days transaction pending",
   "Survey123 мобайл аппаас": "From the Survey123 mobile app",
   "urt=урт · ortog/өrtog=өртөг · une=үнэ · tusuv=төсөв · sanhuujilt=санхүүжилт · geree=гэрээ ·": "length=урт · cost=өртөг · price=үнэ · budget=төсөв · funding=санхүүжилт · contract=гэрээ ·",
-  "Σ(жин×гүйц) ÷ Σжин": "Σ(weight×progress) ÷ Σweight"
+  "Σ(жин×гүйц) ÷ Σжин": "Σ(weight×progress) ÷ Σweight",
+  "Ультрасоник зай, түвшин мэдрэгч. Савны амсараас хог хүртэлх зайг хэмжинэ — зай БАГАСАХ нь сав дүүрч байгааг заана.": "Ultrasonic distance and level sensor. Measures the gap from the bin rim down to the waste — a SMALLER distance means a fuller bin.",
+  "Мэдрэгчээс хогийн гадаргуу хүртэлх зай. Багасах тусам сав дүүрсэн гэсэн үг.": "Distance from the sensor to the surface of the waste. The smaller it gets, the fuller the bin.",
+  "Хөрсний чийгшил, температур болон цахилгаан дамжуулах чадлыг хэмждэг сенсор.": "Sensor measuring soil moisture, temperature and electrical conductivity.",
+  "Хөрсний эзлэхүүний харьцангуй чийгшил.": "Relative moisture of the soil volume.",
+  "Мэдрэгч булагдсан гүн дэх хөрсний температур.": "Soil temperature at the depth where the sensor is buried.",
+  "Хөрсний цахилгаан дамжуулах чадал (EC) — давсжилт, бордооны агууламжийн шууд бус хэмжүүр.": "Soil electrical conductivity (EC) — an indirect measure of salinity and fertiliser content.",
+  "Орчны гэрэл": "Ambient light",
+  "Орчны гэрэл мэдрэгч сенсор.": "Ambient light sensor.",
+  "Мэдрэгч дээр тусах гэрлийн түвшин.": "Light level falling on the sensor.",
+  "Гадна орчны температур, чийгшил мэдрэгч сенсор.": "Outdoor temperature and humidity sensor.",
+  "Гадна орчны агаарын температур.": "Outdoor air temperature.",
+  "Гадна орчны агаарын харьцангуй чийгшил.": "Outdoor relative air humidity.",
+  "Усны хэрэглээний тоолуур. Заалтыг LoRaWAN-аар илгээнэ.": "Water consumption meter. Readings are sent over LoRaWAN.",
+  "{0}-аар эхэлсэн": "starts with {0}",
+  "Тоолуурын ХУРИМТЛАГДСАН заалт — өссөн дүн тул хэрэглээ нь хоёр заалтын ЗӨРҮҮ.": "CUMULATIVE meter reading — it only rises, so consumption is the DIFFERENCE between two readings."
 };
 
 export default en;
