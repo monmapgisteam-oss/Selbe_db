@@ -66,6 +66,32 @@
 }
 .sectionNote { font-size: 11.5px; color: var(--ink-3); }
 
+/* ── Хураагддаг хэсэг (Section collapseKey) ── */
+.secToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0;
+  border: 0;
+  background: none;
+  /* Гарчгийн typografi-г бүрэн өвлөнө — товч болсон нь харагдахгүй */
+  font: inherit;
+  color: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+}
+.secCaret {
+  font-size: 10px;
+  line-height: 1;
+  color: var(--ink-3);
+  transition: transform 0.14s ease;
+}
+/* Хаалттай үед сум баруун тийш эргэнэ — «нээгдэнэ» гэсэн дохио */
+.secCaretOff { transform: rotate(-90deg); }
+/* Хаалттай карт = зөвхөн гарчгийн зурвас: доод зай, зураас хэрэггүй */
+.sectionClosed .sectionHead { margin-bottom: -12px; border-bottom: 0; }
+
 /* Агуулга картын үлдсэн өндрийг дүүргэнэ (`Section fill`) — доторх `.series`
    зэрэг босоо flex хүүхэд нь `flex: 1` аваад чартын талбайгаа сунгана. */
 .sectionFill { display: flex; flex-direction: column; }

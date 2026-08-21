@@ -467,7 +467,9 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
             {allPack && <LevelsCard blocks={allPack.blocks} />}
             {/* Блок бүрийн гүйцэтгэл — БАГЦААР нь бүлэглэсэн (нэг багц = нэг карт) */}
             {packs.filter((p) => p.kind === 'build').map((p) => (
-              <BlocksCard key={p.key} p={p} title={tr('{0} — блокууд', tr(p.name))} />
+              /* Хураагддаг (2026-08-21) — олон багцын блок нэг баганад маш урт
+                 тул хэрэглэгч сонирхоогүйгоо хаагаад хэрэгтэйгээ тольдоно. */
+              <BlocksCard key={p.key} p={p} title={tr('{0} — блокууд', tr(p.name))} collapseKey={`tsogts.blocks.${p.key}`} />
             ))}
           </>
         ) : active.kind === 'build' ? (
@@ -780,9 +782,6 @@ function FinCard({
   const givenShare = total > 0 ? (givenTotal / total) * 100 : null;
   // Гүйцэтгэлийн зөрүү — төлөвлөгөөт − бодит (%). Эерэг = хоцрогдол.
   const progGap = plannedPct != null && actualPct != null ? plannedPct - actualPct : null;
-  const gapLvl = progGap == null ? null : lagLevel(progGap);
-  // ТЕКСТИЙН өнгө тул -ink хувилбар — light горимд цагаан дээр 4.5:1 хангана
-  const gapColor = gapLvl === 'red' ? 'var(--bad-ink)' : gapLvl === 'yellow' ? 'var(--warn-ink)' : 'var(--good-ink)';
   const gapText = progGap == null ? '—' : `${progGap >= 0 ? '−' : '+'}${Math.abs(progGap).toFixed(1)}%`;
 
   // ГАРЧИГ — нэр + (хоцрогдол бол) нэрний ХАЖУУД alert badge
@@ -808,7 +807,7 @@ function FinCard({
     ) : undefined;
 
   return (
-    <Section tone="primary" title={title} note={note}>
+    <Section tone="primary" title={title} note={note} collapseKey="tsogts.fin">
       {finQ.state === 'loading' ? (
         <Empty label={tr('Санхүүжилтийн дата…')} />
       ) : finQ.state === 'error' ? (
@@ -817,9 +816,12 @@ function FinCard({
         <Empty label={tr('Cashflow-д энэ багцын гэрээ бүртгэлгүй.')} />
       ) : months ? (
         <>
+          {/* ⚠️ 2026-08-21 (хэрэглэгчийн хүсэлт): KPI-ийн утгууд НЭГ өнгөөр —
+              урьд нь графикийн цувааны өнгө + төлөвийн улаан/ногоон холилдож
+              байсныг болиулав. Цувааны өнгө legend + график дээрээ үлдэнэ. */}
           <div className={ts.finKpi}>
             {[
-              { v: mntShort(total), l: tr('Cashflow төлөвлөсөн'), c: cat(2) },
+              { v: mntShort(total), l: tr('Cashflow төлөвлөсөн'), c: 'var(--ink)' },
               {
                 v: (
                   <>
@@ -838,14 +840,14 @@ function FinCard({
                   </>
                 ),
                 l: tr('IPC олгосон'),
-                c: cat(0),
+                c: 'var(--ink)',
               },
               /* ⚠️ envhub: эерэг зөрүү нь хэвийн үлдэгдэл тул ТОГТМОЛ warn өнгө
                  нь худал дохио байв — төлөв заадаггүй утга var(--ink)-ээр. */
               { v: mntShort(finGap), l: tr('Санхүүжилтийн зөрүү'), c: 'var(--ink)' },
-              { v: plannedPct == null ? '—' : pct(plannedPct, 1), l: tr('Төлөвлөгөөт гүйцэтгэл'), c: cat(2) },
-              { v: actualPct == null ? '—' : pct(actualPct, 1), l: tr('Бодит гүйцэтгэл'), c: cat(1) },
-              { v: gapText, l: tr('Гүйцэтгэлийн зөрүү'), c: gapColor },
+              { v: plannedPct == null ? '—' : pct(plannedPct, 1), l: tr('Төлөвлөгөөт гүйцэтгэл'), c: 'var(--ink)' },
+              { v: actualPct == null ? '—' : pct(actualPct, 1), l: tr('Бодит гүйцэтгэл'), c: 'var(--ink)' },
+              { v: gapText, l: tr('Гүйцэтгэлийн зөрүү'), c: 'var(--ink)' },
               /* ДАВХЦСАН ҮЛДСЭН НЭГЖ ТАЛБАР — газар чөлөөлөгдөөгүйгээс болж
                  барилга эхлэх боломжгүй блокуудын шалтгаан. Дээд KPI-аас энд
                  зөөв: санхүүжилт/гүйцэтгэлийн хоцрогдлыг ТАЙЛБАРЛАДАГ тоо тул
@@ -857,7 +859,7 @@ function FinCard({
               {
                 v: overlap == null ? '…' : num(overlap.oids.length),
                 l: tr('давхцсан үлдсэн нэгж талбар'),
-                c: overlap?.oids.length ? '#d946ef' : '#16a34a',
+                c: 'var(--ink)',
               },
             ].map((k) => (
               <div key={k.l}>

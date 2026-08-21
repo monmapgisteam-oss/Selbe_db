@@ -556,7 +556,16 @@ export function ContractCard({ p }: { p: Pack }) {
  * ⚠️ Бөглөгдөөгүй блокийг ХАСАХГҮЙ, 0 гэж ч зурахгүй: «мэдээлэлгүй» гэж бичнэ.
  * 0%-иар зурвал тайлан ирээгүй блок нь ажил эхлээгүйтэй андуурагдана.
  */
-export function BlocksCard({ p, title = tr('Блок бүрийн гүйцэтгэл') }: { p: Pack; title?: string }) {
+export function BlocksCard({
+  p,
+  title = tr('Блок бүрийн гүйцэтгэл'),
+  collapseKey,
+}: {
+  p: Pack;
+  title?: string;
+  /** Өгвөл карт хураагддаг болно (Tsogts-ийн «Багц — блокууд» жагсаалт) */
+  collapseKey?: string;
+}) {
   const withData = p.blocks.filter((b) => b.progress != null).length;
   const { zoomToWhere, setHighlight } = useMap();
   /** Сонгосон блок — дарахад зурагт тодруулж ойртоно, дахин дарахад болино */
@@ -570,7 +579,7 @@ export function BlocksCard({ p, title = tr('Блок бүрийн гүйцэтг
     zoomToWhere(BLOCK_LAYER, w);
   };
   return (
-    <Section title={title} note={tr('{0}/{1} бүртгэлтэй', num(withData), num(p.blocks.length))}>
+    <Section title={title} collapseKey={collapseKey} note={tr('{0}/{1} бүртгэлтэй', num(withData), num(p.blocks.length))}>
       <Bars
         color={HUE}
         max={100}
