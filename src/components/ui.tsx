@@ -173,11 +173,15 @@ function Tip({ x, y, label, value, color, hint }: TipData) {
  * жинтэй байсан тул хэрэглэгч аль нь гол вэ гэдгийг ялгаж чаддаггүй байв —
  * хоёр, гурав нь онцлогдвол тэр асуудал шийдэгдэхгүй, зөвхөн шилжинэ.
  */
+/** Хураагдсан төлвийн localStorage угтвар — самбар дахин нээхэд санана */
+const SEC_LS = 'selbe.sec.';
+
 export function Section({
   title,
   note,
   tone,
   fill,
+  collapseKey,
   children,
 }: {
   title?: ReactNode;
@@ -192,17 +196,49 @@ export function Section({
    * эзэлж байв. `fill` нь тэр зайг чартад өгнө.
    */
   fill?: boolean;
+  /**
+   * ХУРААГДДАГ хэсэг — өгвөл гарчиг дээр дарж хаах/нээх бөгөөд төлөв нь
+   * localStorage-д энэ түлхүүрээр хадгалагдана (самбар дахин нээхэд санана).
+   * Түлхүүр нь самбар даяар ӨВӨРМӨЦ байх ёстой (жиш. `tsogts.blocks.p1`).
+   */
+  collapseKey?: string;
   children: ReactNode;
 }) {
+  const [closed, setClosed] = useState(false);
+  /* localStorage-ийг ЭФФЕКТЭД уншина — эхний render серверийнхтэй ижил
+     байхгүй бол hydration зөрнө (SplitGrip-тэй ижил дүрэм). */
+  useEffect(() => {
+    if (!collapseKey) return;
+    try { if (localStorage.getItem(SEC_LS + collapseKey) === '1') setClosed(true); } catch { /* хувийн горим */ }
+  }, [collapseKey]);
+  const toggle = () => {
+    const next = !closed;
+    setClosed(next);
+    if (collapseKey) {
+      try { localStorage.setItem(SEC_LS + collapseKey, next ? '1' : '0'); } catch { /* хувийн горим */ }
+    }
+  };
   return (
-    <section className={`${s.section} ${tone === 'primary' ? s.sectionPrimary : ''} ${fill ? s.sectionFill : ''}`}>
+    <section
+      className={`${s.section} ${tone === 'primary' ? s.sectionPrimary : ''} ${fill ? s.sectionFill : ''} ${collapseKey && closed ? s.sectionClosed : ''}`}
+    >
       {title && (
         <header className={s.sectionHead}>
-          <h3 className={s.sectionTitle}>{title}</h3>
+          {collapseKey ? (
+            /* Гарчиг бүхэлдээ товч — жижиг сум онилохоос хялбар */
+            <h3 className={s.sectionTitle}>
+              <button type="button" className={s.secToggle} aria-expanded={!closed} onClick={toggle}>
+                <span className={`${s.secCaret} ${closed ? s.secCaretOff : ''}`} aria-hidden>▾</span>
+                {title}
+              </button>
+            </h3>
+          ) : (
+            <h3 className={s.sectionTitle}>{title}</h3>
+          )}
           {note && <span className={s.sectionNote}>{note}</span>}
         </header>
       )}
-      {children}
+      {(!collapseKey || !closed) && children}
     </section>
   );
 }
