@@ -551,9 +551,11 @@ function PortalContent(
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/logo.svg" alt="" className={s.logo} />
+            {/* ⚠️ 2026-08-21: Дэд гарчиг ХАСАГДАВ (хэрэглэгчийн хүсэлт) — толгойд
+                зөвхөн брэндийн нэр үлдэнэ. `brandText`-ийг хэвээр үлдээв: логоны
+                хажуугийн босоо зэрэгцүүлэлт түүнээс хамаарна. */}
             <span className={s.brandText}>
-              <h1 className={s.brandName}>{tr('Сэлбэ 20 минутын хот')}</h1>
-              <span className={s.brandSub}>{tr('Ерөнхий төлөвлөгөө ба төсвийн портал')}</span>
+              <h1 className={s.brandName}>{tr('Сэлбэ ухаалаг хот')}</h1>
             </span>
           </button>
 
