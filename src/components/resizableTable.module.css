@@ -54,7 +54,8 @@
 .grip:hover::after,
 .grip:focus-visible::after,
 .grip[data-drag]::after {
-  background: var(--hue);
+  /* Панелийн бариулуудтай нэг өнгөний хэл (2026-08-21) */
+  background: var(--data);
 }
 .grip:focus-visible {
   outline: none;

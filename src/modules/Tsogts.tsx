@@ -225,6 +225,8 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
       grip.removeEventListener('pointermove', move);
       grip.removeEventListener('pointerup', up);
       grip.removeEventListener('pointercancel', up);
+      grip.removeEventListener('lostpointercapture', up);
+      grip.blur();
       setFinH((h) => {
         try { localStorage.setItem(FIN_H_LS, String(h)); } catch { /* хувийн горим */ }
         return h;
@@ -233,6 +235,8 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
     grip.addEventListener('pointermove', move);
     grip.addEventListener('pointerup', up);
     grip.addEventListener('pointercancel', up);
+    /* capture алдагдсан ч чирэлт ЗААВАЛ дуусна — эс бөгөөс төлөв гацна */
+    grip.addEventListener('lostpointercapture', up);
   };
   const finGripReset = () => {
     setFinH(FIN_H0);
