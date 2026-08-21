@@ -15,13 +15,22 @@
  * төлөвийн өнгө (good/warn/bad) зөвхөн утга нь сайн/муу заадаг газарт.
  */
 
+/**
+ * ⚠️ 2026-08-21: Хүрээ нь ЭЦГИЙНХЭЭ (`shell.module.css` `.suit`) ӨНДРӨӨР
+ * тогтоно — бүтэн дэлгэц доошоо гүйхгүй. Мөр 1 (индикатор + баганан
+ * диаграм) агуулгынхаа өндрөөр, мөр 2 (цуваа | зураг | цуваа) нь ҮЛДСЭН
+ * бүх өндрийг эзэлнэ. Хажуугийн цуваа өөрөө дотроо гүйнэ (`.chartCol`).
+ *
+ * ⚠️ `minmax(0, 1fr)` — цэвэр `1fr` бол мөр нь агуулгынхаа min-content-оос
+ *    доош агшихгүй тул 4 карт (~900px) хүрээг ДАХИН хальгана.
+ */
 .wrap {
   display: grid;
   grid-template-columns: repeat(12, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 10px;
-  align-content: start;
-  padding: 2px 2px 18px;
-  min-height: 100%;
+  height: 100%;
+  padding: 2px 2px 10px;
 }
 
 /* ══════════════════ Карт — envhub Box: толгой hairline-аар, бие дотроо ══════════════════ */
@@ -124,54 +133,56 @@
    * хажуугийн баганан диаграм 341px тул 129px хоосон үлддэг байв. 200px нь 4 багана
    * → 3 мөр → мөрийн өндөр диаграмтайгаа таарна.
    */
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 10px;
+  /* ⚠️ 200 → 150px, зай 10 → 6px (2026-08-21, хүсэлт). Мөр 1 намссанаар
+     доорх зураг/цуваанд илүү өндөр үлдэнэ. */
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 6px;
 }
 /* Дотогш давхарга — surface-2, гүн нь өнгөөр биш давхаргаар */
 .metric {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 3px;
   min-width: 0;
-  padding: 10px 12px;
+  padding: 7px 9px;
   background: var(--surface-2);
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
 }
-.metricHd { display: flex; align-items: center; gap: 8px; }
+.metricHd { display: flex; align-items: center; gap: 6px; }
 /* Өгөгдлийн цэг — бүх нүдэнд НЭГ өнгө var(--data), ангиллын өнгө байхгүй */
-.metricDot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--data); }
+.metricDot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--data); }
 .metricName {
   flex: 1 1 auto;
   min-width: 0;
-  font-size: 10.5px;
+  font-size: 9.5px;
   line-height: 1.3;
   font-weight: 600;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--ink-3);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.metricAge { flex: none; font-size: 10px; font-variant-numeric: tabular-nums; }
+.metricAge { flex: none; font-size: 9px; font-variant-numeric: tabular-nums; }
 .metricVal {
   display: flex;
   align-items: baseline;
-  gap: 4px;
-  font-size: 19px;
+  gap: 3px;
+  font-size: 15px;
   font-weight: 500;
   line-height: 1;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
 }
-.metricUnit { font-size: 11px; font-weight: 500; color: var(--ink-3); }
+.metricUnit { font-size: 10px; font-weight: 500; color: var(--ink-3); }
 .metricFoot {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  font-size: 10.5px;
+  gap: 6px;
+  font-size: 9.5px;
   color: var(--ink-3);
   font-variant-numeric: tabular-nums;
 }
@@ -189,7 +200,10 @@
   position: relative;
   display: flex;
   flex: 1 1 auto;
-  min-height: 420px;
+  /* ⚠️ 420 → 300px. Мөр нь одоо ТОДОРХОЙ өндөртэй (`1fr`) тул зураг
+     түүнийгээ дүүргэнэ; 420-гийн шал нь 1366×768 дэлгэцэнд хүрээг
+     хальгаж, «доошоо гүйхгүй» гэсэн зорилгыг эвдэнэ. */
+  min-height: 300px;
   overflow: hidden;
 }
 .mapBar {
@@ -245,11 +259,58 @@
 /* ⚠️ 2026-08-21: «Мэдрэгч» хайрцаг нь `pCells`-ийн СҮЛЖЭЭНД шилжсэн тул
    `pTiles` боодол алга болов. «Сүүлийн заалт» (`pList`) карт ХАСАГДАЖ,
    түүний байрыг (зургийн хажуу) «Бүртгэл үзүүлэлтээр» (`pBars`) эзлэв. */
-.pCells  { grid-column: 1 / 13;  grid-row: 1; }
-.pMap    { grid-column: 1 / 10;  grid-row: 2; }
-.pBars   { grid-column: 10 / 13; grid-row: 2; }
-.pCharts { grid-column: 1 / 13;  grid-row: 3; }
-.chartGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px; }
+/**
+ * ⚠️ 2026-08-21: Цуваанууд зургийн ДООРООС ХАЖУУ ТАЛУУД РУУ шилжив.
+ * Мөр 2 нь одоо ГУРВАН баганат: зүүн цуваа | зураг | баруун цуваа.
+ * «Бүртгэл үзүүлэлтээр» нь мөр 1-д, «Бүх үзүүлэлт»-ийн баруун талд.
+ *
+ * ⚠️ Мөрийн өндөр нь хажуугийн ӨНДӨР баганаар тодорхойлогдоно (4 карт ≈
+ *    900px) тул зураг нь `min-height: 420px`-аасаа хамаагүй өндөр сунана —
+ *    энэ нь санаатай: зураг том байх тусам ашигтай.
+ */
+.pCells   { grid-column: 1 / 10;  grid-row: 1; }
+.pChartsL { grid-column: 1 / 4;   grid-row: 2; }
+.pMap     { grid-column: 4 / 10;  grid-row: 2; }
+/**
+ * ⚠️ БАРУУН БАГАНА нь ХОЁР МӨРИЙГ дамжина. Тусад нь (мөр 1-д) тавибал
+ * баганан диаграм (8 мөр ≈ 250px) нь мөр 1-ийг өөрийн өндрөөр сунгаж,
+ * индикаторын карт (≈175px)-ын доор ~75px хоосон зай үлдээдэг — зураг ба
+ * зүүн цуваа тэр зайгаар ДООШИЛДОГ байв.
+ *
+ * ⚠️ Мөр дамжсан элемент нь ЗӨВХӨН уян (`1fr`) мөртэй хамт байвал `auto`
+ *    мөрийн хэмжээнд оролцдоггүй (CSS Grid spec). Мөр 2 нь `minmax(0,1fr)`
+ *    тул энэ ажиллана — `auto` болговол хоосон зай ЭРГЭЖ гарна.
+ */
+.pRight {
+  grid-column: 10 / 13;
+  grid-row: 1 / 3;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+}
+/* Баганан диаграм агуулгынхаа өндрөөр; цуваа нь үлдсэнийг эзэлж дотроо гүйнэ */
+.pBars    { flex: none; }
+.pChartsR { flex: 1 1 auto; min-height: 0; }
+
+/* Хажуугийн цуваа — босоо өрлөг (`chartGrid`-ийн auto-fill нь 3 баганат
+   нарийн зурваст ямар ч тус болохгүй, нэг л багана гарна). */
+/* ⚠️ `min-height: 0` ЗААВАЛ: flex/grid хүүхэд нь анхдагчаар агуулгынхаа
+   min-content-оос доош агшдаггүй тул үүнгүй бол `overflow` огт ажиллахгүй,
+   багана нь 4 картын өндрөөр сунаж хүрээг хальгана. */
+.chartCol {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  /* Гүйлтийн зурвас картын хүрээтэй нийлэхээс сэргийлж жижиг зай */
+  padding-right: 3px;
+}
+/* Карт нь гүйдэг баганад агшихгүй — эс бөгөөс 4 чарт шахагдаж уншигдахаа болино */
+.chartCol > * { flex: none; }
 /* ══════════════════ Нарийсах ══════════════════ */
 
 /**
@@ -257,23 +318,40 @@
  * элемент нэг нүдэнд давхарлана (ил байрлалд grid нь мөргөлдөөнийг ЗАСАХГҮЙ).
  */
 @media (max-width: 1500px) {
-  .pCells  { grid-column: 1 / 13;  grid-row: 1; }
-  .pMap    { grid-column: 1 / 10;  grid-row: 2; }
-  .pBars   { grid-column: 10 / 13; grid-row: 2; }
-  .pCharts { grid-column: 1 / 13;  grid-row: 3; }
+  .pCells   { grid-column: 1 / 10;  grid-row: 1; }
+  .pChartsL { grid-column: 1 / 4;   grid-row: 2; }
+  .pMap     { grid-column: 4 / 10;  grid-row: 2; }
+  .pRight   { grid-column: 10 / 13; grid-row: 1 / 3; }
 }
 
+/* ⚠️ Хажуугийн зурвас 3 багана = ~270px болоход чартын огноо/утга давхарлана.
+   Тиймээс энэ өргөнөөс доош гурван баганат бүтэц ЗАДАРНА: цуваанууд зургийн
+   доор, ХОЁР баганаар (зүүн бүлэг · баруун бүлэг зэрэгцээд). */
 @media (max-width: 1180px) {
-  .pCells  { grid-column: 1 / 13; grid-row: 1; }
-  .pMap    { grid-column: 1 / 13; grid-row: 2; }
-  .pBars   { grid-column: 1 / 13; grid-row: 3; }
-  .pCharts { grid-column: 1 / 13; grid-row: 4; }
+  /* ⚠️ Босоо өрлөгт `1fr` мөр нь БУРУУ: 2-р мөр бүх өндрийг иднэ, 3–5-р
+     мөр хүрээнээс гарна. Тиймээс дэлгэцийн өндрийн хязгаарыг ЭНД ТАЙЛНА —
+     нарийн дэлгэцэнд хуудас доошоо гүйх нь хэвийн. */
+  .wrap { grid-template-rows: none; height: auto; min-height: 100%; padding-bottom: 18px; }
+  .chartCol { min-height: auto; overflow-y: visible; padding-right: 0; }
+  /* Баруун блок нь энд ЭНГИЙН мөр — доторх хоёр карт нь дараалан өрөгдөнө */
+  .pRight   { grid-column: 1 / 13; grid-row: 2; }
+  .pChartsR { flex: none; min-height: auto; }
+  .pCells   { grid-column: 1 / 13; grid-row: 1; }
+  .pMap     { grid-column: 1 / 13; grid-row: 3; }
+  .pChartsL { grid-column: 1 / 13; grid-row: 4; }
 }
 
 @media (max-width: 640px) {
-  .pCells  { grid-column: 1 / 13; grid-row: 1; }
-  .pMap    { grid-column: 1 / 13; grid-row: 2; }
-  .pBars   { grid-column: 1 / 13; grid-row: 3; }
-  .pCharts { grid-column: 1 / 13; grid-row: 4; }
+  .pCells   { grid-column: 1 / 13; grid-row: 1; }
+  .pRight   { grid-column: 1 / 13; grid-row: 2; }
+  .pMap     { grid-column: 1 / 13; grid-row: 3; }
+  .pChartsL { grid-column: 1 / 13; grid-row: 4; }
   .mapBox { min-height: 320px; }
 }
+
+
+
+
+/* ⚠️ Нүднүүд картын өндрийг дагаж СУНАХГҮЙ — эс бөгөөс үлдсэн зай нүд бүрийн
+   дотор хуваагдан орж, нягтруулсан индикаторыг эргүүлж томруулна. */
+.pCells .grid { align-content: start; }

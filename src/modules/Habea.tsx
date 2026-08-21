@@ -107,8 +107,16 @@ function topN<T extends { key: string; label: string; value: number }>(items: T[
  *    саарал бэх. Ижил шатлалын хоёр төрөл ИЖИЛ өнгөтэй байх нь зөв: ялгааг
  *    зүсмэгийн 1px зах, дараалал, тайлбар өгнө (өнгө биш).
  */
+/**
+ * АМЬ НАСНЫ эрсдэлтэй төрөл. Тусад нь нэрлэсэн шалтгаан: энэ загварыг ХОЁР
+ * газар хэрэглэнэ — дэлгэрэнгүй жагсаалтын цэг (`severityHue`) ба ослын
+ * төрлийн пайн улаан зүсмэг (`riskRed`). Хоёр тийш хуулбарлавал нэгийг нь
+ * засахад нөгөө нь чимээгүй хоцорч, ижил бүртгэл хоёр өөр өнгөтэй харагдана.
+ */
+const LIFE_RISK = /амь|ноцтой|үйлдвэрлэлийн/i;
+
 const SEVERITY: [RegExp, string][] = [
-  [/амь|ноцтой|үйлдвэрлэлийн/i, 'var(--bad)'],
+  [LIFE_RISK, 'var(--bad)'],
   [/гал/i, 'var(--bad)'],
   [/эмнэлг|гэмтэл|тусламж/i, 'var(--warn)'],
   [/эд хөрөнг|өмч|хохирол/i, 'var(--warn)'],
@@ -153,6 +161,22 @@ function categoryColors<T extends { key: string; label: string }>(items: T[]) {
     ...it,
     color: it.key === '__other' ? 'var(--ink-3)' : `var(--c${(i % 8) + 1})`,
   }));
+}
+
+/**
+ * АМЬ НАСНЫ эрсдэлтэй ангиллыг ангиллын палитрын слотоос ГАРГАЖ улаан
+ * (`var(--bad)`) болгоно — захиалагчийн хүсэлт, 2026-08-21.
+ *
+ * ⚠️ `categoryColors`-ийн ДАРАА дуудна: тэр нь эрэмбийн дугаараар өнгө өгдөг
+ *    тул урьдчилж будсан ч дараа нь дарагдана.
+ * ⚠️ «Бусад» нь ангилал БИШ, олон төрлийн НИЙЛБЭР тул түүнд улаан өгөхгүй —
+ *    дотор нь амь насны эрсдэлтэй бүртгэл байсан ч бүхэл бүлгийг ноцтой гэж
+ *    зарлах нь өгөгдөлд байхгүй мэдэгдэл болно.
+ */
+function riskRed<T extends { key: string; label: string; color: string }>(items: T[]) {
+  return items.map((it) =>
+    it.key !== '__other' && LIFE_RISK.test(it.label) ? { ...it, color: 'var(--bad)' } : it,
+  );
 }
 
 type Inc = {
@@ -769,7 +793,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   });
 
   /* Осол, зөрчил */
-  const incByType = categoryColors(topN(countBy(fInc, (x) => x.type), 4));
+  const incByType = riskRed(categoryColors(topN(countBy(fInc, (x) => x.type), 4)));
   const incByCause = countBy(fInc.filter((x) => x.cause !== '—'), (x) => x.cause);
   /**
    * Шалтгааны төрлийн пай — ТЭРГҮҮЛЭГЧ шалтгаан улаан (`--bad`), бусад нь БҮГД
