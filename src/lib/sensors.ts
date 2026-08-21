@@ -109,7 +109,7 @@ export const SENSORS: SensorDef[] = [
          * (EC), хэрэглээний эрчим хүч БИШ. Нэгж нь µs/cm — урьд нь ХООСОН
          * байсан тул «240» гэсэн тоо ямар хэмжигдэхүүн болох нь мэдэгдэхгүй байв.
          */
-        key: 'electricity', label: tr('Цахилгаан дамжуулалт'), field: 'payload_decoded_data_electricity',
+        key: 'electricity', label: tr('Хөрсний цахилгаан дамжуулах чадал'), field: 'payload_decoded_data_electricity',
         unit: 'µs/cm', dp: 0,
         note: tr('Хөрсний цахилгаан дамжуулах чадал (EC) — давсжилт, бордооны агууламжийн шууд бус хэмжүүр.'),
       },
@@ -123,7 +123,7 @@ export const SENSORS: SensorDef[] = [
     url: `${IOT}/Light_Sensor/FeatureServer/60`,
     metrics: [
       {
-        key: 'illumination', label: tr('Гэрэлтүүлэг'), field: 'payload_decoded_data_illumination',
+        key: 'illumination', label: tr('Орчны гэрэл мэдрэгч'), field: 'payload_decoded_data_illumination',
         unit: 'lux', dp: 0,
         note: tr('Мэдрэгч дээр тусах гэрлийн түвшин.'),
       },
@@ -137,12 +137,12 @@ export const SENSORS: SensorDef[] = [
     url: `${IOT}/Temp_Humidity/FeatureServer/64`,
     metrics: [
       {
-        key: 'temperature', label: tr('Температур'), field: 'payload_decoded_data_temperature',
+        key: 'temperature', label: tr('Гадна орчны температур'), field: 'payload_decoded_data_temperature',
         unit: '°C', dp: 1,
         note: tr('Гадна орчны агаарын температур.'),
       },
       {
-        key: 'humidity', label: tr('Чийгшил'), field: 'payload_decoded_data_humidity',
+        key: 'humidity', label: tr('Гадна орчны чийгшил'), field: 'payload_decoded_data_humidity',
         unit: '%r.h.', dp: 0,
         note: tr('Гадна орчны агаарын харьцангуй чийгшил.'),
       },
