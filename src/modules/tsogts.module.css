@@ -346,3 +346,37 @@
   font-weight: 600;
   line-height: 1;
 }
+
+/* ── Санхүүгийн картын өндрийн чирэх бариул (2026-08-21) — картын дээд
+      ирмэг дээрх хэвтээ зурвас; SplitGrip-тэй ижил дүрэм, чиг нь эгц ── */
+.finGrip {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 10px;
+  margin-bottom: -2px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: row-resize;
+  touch-action: none;
+}
+.finGrip::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 38px;
+  height: 4px;
+  transform: translate(-50%, -50%);
+  border-radius: 3px;
+  background: var(--ink-3);
+  opacity: 0.55;
+  transition: background 0.12s ease, opacity 0.12s ease;
+}
+.finGrip:hover::before,
+.finGrip:focus-visible::before {
+  background: var(--hue);
+  opacity: 1;
+}
+.finGrip:focus-visible { outline: none; }
