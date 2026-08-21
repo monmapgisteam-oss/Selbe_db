@@ -152,7 +152,12 @@ function Cell({ c }: { c: Card }) {
     <div className={s.metric}>
       <div className={s.metricHd}>
         <span className={s.metricDot} />
-        <span className={s.metricName} title={`${c.s.label} · ${c.m.label}`}>
+        {/* ⚠️ Нүд нь нарийн тул тайлбар нь ЗӨВХӨН hover-т багтана — нэрийг нь
+            гурван цэгээр таслах үед бүтэн нэр ч энэ дотор л уншигдана. */}
+        <span
+          className={s.metricName}
+          title={`${c.s.label} · ${c.m.label}${c.m.unit ? ` (${c.m.unit})` : ''}\n${c.m.note}`}
+        >
           {c.m.label}
         </span>
         <span className={`${s.metricAge} num`} style={{ color: freshTone(age) }}>
@@ -178,9 +183,21 @@ function ChartCard({ c, height = 150 }: { c: Card; height?: number }) {
   return (
     <section className={s.card}>
       <header className={s.cardHd}>
-        <h3 className={s.cardTitle}>{c.m.label}</h3>
+        {/* ⚠️ Нэгж нь ГАРЧИГТ — чартын тоон шошгод нэгж бичигддэггүй тул
+            «Гадна орчны температур» нь °C үү, °F үү гэдэг өөр хаанаас ч
+            уншигдахгүй.
+            ⚠️ 2026-08-21: Толгойн доорх тайлбарын МӨР хасагдав (хүсэлт) — карт
+            бүрд 2–3 мөр эзэлж, хажуугийн нарийн баганад чартын өндрийг иддэг
+            байв. Агуулга нь АЛДАГДААГҮЙ: мэдрэгч, түүний тодорхойлолт, DevEUI,
+            хэмжигдэхүүний утга бүгд доорх hover-т үлдэв. */}
+        <h3
+          className={s.cardTitle}
+          title={`${c.s.label} · ${c.m.label}${c.m.unit ? ` (${c.m.unit})` : ''}\n${c.m.note}\n\n${c.s.note}\nDevEUI: ${c.s.devEui}`}
+        >
+          {c.m.label}{c.m.unit ? `, ${c.m.unit}` : ''}
+        </h3>
         <span className={s.cardNote}>
-          {c.s.label} · {num(c.m.points.length)} / {num(c.m.total)} {tr('цэг')}
+          {num(c.m.points.length)} / {num(c.m.total)} {tr('цэг')}
         </span>
       </header>
       <div className={s.cardBody}>
@@ -336,14 +353,24 @@ function Board({ all }: { all: SensorLive[] }) {
   const total = sumBy(all, (x) => x.n);
 
   /**
-   * Чартын сүлжээнд орох үзүүлэлтүүд — БҮГД.
+   * Цувааг зургийн ХОЁР ТАЛД агуулгаар нь хуваана (2026-08-21, хүсэлт).
    *
-   * ⚠️ Урьд нь эхний «hero» үзүүлэлтийг хасдаг байсан: тэр нь зургийн доорх
-   * ТОМ цуваанд тусад нь гардаг байв. Тэр карт 2026-08-21-нд хасагдсан тул
-   * хасалтыг ч зэрэг авав — эс бөгөөс уг үзүүлэлтийн түүх хаанаас ч
-   * харагдахгүй болно.
+   * ⚠️ Үзүүлэлтийг ХАСАХГҮЙ — БҮГД чарттай. Урьд нь эхний «hero» үзүүлэлтийг
+   * хасдаг байсан (тэр нь зургийн доорх ТОМ цуваанд тусад нь гардаг байв);
+   * тэр карт 2026-08-21-нд хасагдахад хасалтыг нь ч зэрэг авсан — эс бөгөөс
+   * уг үзүүлэлтийн түүх хаанаас ч харагдахгүй болно.
+   *
+   * ⚠️ Хуваалт нь МЭДРЭГЧЭЭР — үзүүлэлтийн нэрээр БИШ. Нэрээр хуваавал нэг
+   * мэдрэгчийн заалтууд («Гадна орчны температур» ба «Гадна орчны чийгшил»)
+   * хоёр тийш салж, харьцуулах гэсэн хүн дэлгэц дамжуулан харах болно.
+   *
+   * ЗҮҮН — газар, орчны хэмжилт (хөрс + гэрэл).
+   * БАРУУН — агаар ба нийтийн үйлчилгээний тоолуур (агаар + хог + ус).
    */
-  const rest = cards;
+  const LEFT_SENSORS = new Set(['soil', 'light']);
+  const plotted = cards.filter((c) => c.m.points.length >= 2);
+  const chartsL = plotted.filter((c) => LEFT_SENSORS.has(c.s.key));
+  const chartsR = plotted.filter((c) => !LEFT_SENSORS.has(c.s.key));
 
   return (
     <>
@@ -391,40 +418,52 @@ function Board({ all }: { all: SensorLive[] }) {
           Тэдгээрийн grid-ийн мөр бүхэлдээ хоосорсон тул `iot.module.css`-д
           мөрийн дугаарыг ч дагуулж зассан. */}
 
-      {/* ── Мэдрэгч тус бүрийн бүртгэл ── */}
-      <section className={`${s.card} ${s.pBars}`}>
-        <header className={s.cardHd}>
-          <h3 className={s.cardTitle}>{tr('Бүртгэл үзүүлэлтээр')}</h3>
-          <span className={s.cardNote}>{tr('нийт')} {num(total)}</span>
-        </header>
-        <div className={s.cardBody}>
-          {/**
-            * ⚠️ Урьд нь 5 МЭДРЭГЧЭЭР харуулдаг байсныг 10 ҮЗҮҮЛЭЛТ болгов. Хоёр шалтгаан:
-            * (а) 5 багана нь 470px картын гуравны нэгийг л эзэлж, 268px хоосон үлдээдэг;
-            * (б) decoder нь ТАЛБАР ТУС БҮРД өөрөөр унтардаг тул мэдрэгчийн нийлбэр нь
-            *     аль талбар дутуу ирснийг НУУНА (нэг мэдрэгчийн зай 1,642, батерей 1,725).
-            */}
-          {/* Мөр бүрийн өнгө заахгүй — `Bars`-ын анхдагч нь var(--data), ялгаа нь эрэмбээр */}
-          <Bars
-            items={cards.map((c) => ({
-              key: `${c.s.key}-${c.m.key}`,
-              label: c.m.label,
-              value: c.m.total,
-            }))}
-          />
-        </div>
-      </section>
+      {/* ── ЗҮҮН ЦУВАА — хөрс ба орчны гэрэл ── */}
+      <div className={`${s.chartCol} ${s.pChartsL}`}>
+        {chartsL.map((c) => (
+          <ChartCard key={`${c.s.key}-${c.m.key}`} c={c} />
+        ))}
+      </div>
 
-      {/* ── Үлдсэн үзүүлэлтийн цуваа ── */}
-      <div className={s.pCharts}>
-        <div className={s.chartGrid}>
-          {rest
-            .filter((c) => c.m.points.length >= 2)
-            .map((c) => (
-              <ChartCard key={`${c.s.key}-${c.m.key}`} c={c} />
-            ))}
+      {/* ── БАРУУН БАГАНА — бүртгэлийн диаграм ба агаар/үйлчилгээний цуваа ──
+          ⚠️ Хоёулаа НЭГ блокод, grid-ийн хоёр мөрийг дамжина. Тусад нь тавибал
+          баганан диаграм нь мөр 1-ийг өөрийн өндрөөр сунгаж, зүүн талд
+          индикаторын доор хоосон зай үлдээдэг байв (зураг тэр зайгаар
+          доошилно). */}
+      <div className={s.pRight}>
+        <section className={`${s.card} ${s.pBars}`}>
+          <header className={s.cardHd}>
+            <h3 className={s.cardTitle}>{tr('Бүртгэл үзүүлэлтээр')}</h3>
+            <span className={s.cardNote}>{tr('нийт')} {num(total)}</span>
+          </header>
+          <div className={s.cardBody}>
+            {/**
+              * ⚠️ МЭДРЭГЧЭЭР биш, ҮЗҮҮЛЭЛТ ТУС БҮРЭЭР. Хоёр шалтгаан:
+              * (а) 5 мэдрэгчийн багана нь картын гуравны нэгийг л эзэлж, доод талд
+              *     нь хоосон зай үлдээдэг;
+              * (б) decoder нь ТАЛБАР ТУС БҮРД өөрөөр унтардаг тул мэдрэгчийн нийлбэр
+              *     нь аль талбар дутуу ирснийг НУУНА (усны тоолуур: 287 мөрөөс
+              *     заалттай нь ердөө 11; хогийн мэдрэгч: 10,427-оос 1,647).
+              */}
+            {/* Мөр бүрийн өнгө заахгүй — `Bars`-ын анхдагч нь var(--data), ялгаа нь эрэмбээр */}
+            <Bars
+              items={cards.map((c) => ({
+                key: `${c.s.key}-${c.m.key}`,
+                label: c.m.label,
+                value: c.m.total,
+              }))}
+            />
+          </div>
+        </section>
+
+        <div className={`${s.chartCol} ${s.pChartsR}`}>
+          {chartsR.map((c) => (
+            <ChartCard key={`${c.s.key}-${c.m.key}`} c={c} />
+          ))}
         </div>
       </div>
+
+
     </>
   );
 }
