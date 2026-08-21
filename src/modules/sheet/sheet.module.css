@@ -591,8 +591,19 @@
   font-size: 10px;
   opacity: 0.7;
 }
-.xl td:not(.editable) .cellVol { display: none; }
-.xl td:not(.editable) .cellPct {
+/* ХЯНАЛТЫН ХАРАГДАЦ (`.view`) — засагдахгүй ч ХОЁУЛАА харагдана.
+   ⚠️ Хянагч бөглөгчтэй ЯГ ИЖИЛ тоог харах ёстой: обьёмыг нуувал «хэдийг
+      бөглөв» гэдэг алга болж, зөвхөн бодогдсон хувь үлдэнэ — тэгвэл
+      хянах зүйлгүй болно. Ялгаа нь зөвхөн оролтын хайрцаггүй байх. */
+.xl td.view .cellVol {
+  color: var(--ink);
+  font-weight: 600;
+  text-align: right;
+}
+.xl td.view .cellPct { padding-top: 1px; text-align: right; }
+
+.xl td:not(.editable):not(.view) .cellVol { display: none; }
+.xl td:not(.editable):not(.view) .cellPct {
   font-size: inherit;
   opacity: 1;
   min-height: 32px;
@@ -953,3 +964,57 @@
   color: var(--ink);
 }
 .portalDesc { margin: 3px 0 0; font-size: 11.5px; line-height: 1.45; color: var(--ink-3); }
+
+/* ── ХЯНАГЧИЙН ТЭМДЭГЛЭГЭЭ ─────────────────────────────────────────────
+   ⚠️ `border` БИШ `box-shadow: inset` — `border-collapse: collapse` дээр
+      энгийн хүрээ нь хөрш нүдний шугамтай уралдаж, зарим тал нь алга
+      болдог. Өнгө нь «муу» гэсэн үг БИШ, «ЭНЭ өөрчлөгдсөн» гэсэн заалт. */
+.xl td.chg {
+  box-shadow: inset 0 0 0 2px var(--bad);
+  font-weight: 700;
+}
+.xl td.chg .cellVol { color: var(--ink); }
+.xl td.chg { cursor: pointer; }
+
+/* ЗӨВШӨӨРСӨН өөрчлөлт — ногоон. Улаанаас ЯЛГАРАХ ёстой: хянагч аль нь
+   үлдсэнийг нэг харцаар олох цорын ганц зам. */
+.xl td.chgOk {
+  box-shadow: inset 0 0 0 2px var(--good);
+  background: color-mix(in srgb, var(--good) 14%, transparent);
+  font-weight: 700;
+  cursor: pointer;
+}
+.xl tbody tr:hover td.chgOk {
+  background: color-mix(in srgb, var(--good) 20%, transparent);
+}
+.xl td.chgOk .cellVol { color: var(--ink); }
+/* Ногоон нүд бүр баталгааны тэмдэгтэй — өнгө ялгахад бэрх хүнд ч ойлгомжтой. */
+.xl td.chgOk .cellVol::after { content: " ✓"; color: var(--good); }
+
+/* Жагсаалтаас үсэрч ирсэн нүд — богино анивчилт. Хаана зогссоноо
+   хэрэглэгч нүдээрээ барьж авах цорын ганц зам. */
+.xl td.chgHit { animation: chgHit 1.8s ease-out 1; }
+@keyframes chgHit {
+  0%, 45% { background: var(--warn); }
+  100% { background: transparent; }
+}
+
+/* ТҮГЖЭЭ ба БУЦААЛТЫН ЗУРВАС — хуудас яагаад ийм байгааг НЭГ мөрөөр хэлнэ. */
+.lockNote,
+.backNote {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+.lockNote {
+  background: color-mix(in srgb, var(--warn) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent);
+  color: var(--ink);
+}
+.backNote {
+  background: color-mix(in srgb, var(--bad) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--bad) 45%, transparent);
+  color: var(--ink);
+}

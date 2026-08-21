@@ -82,9 +82,17 @@ async function latestWhere(pkg: Pkg, sc: Schema): Promise<string> {
 export async function loadRows(
   pkg: Pkg,
   sc: Schema,
+  /**
+   * Тодорхой АГШНЫГ (`YYYY-MM-DD`) татах — хяналтын харагдацад.
+   * ⚠️ Хянагч нь «яг илгээсэн тэр агшныг» харах ёстой. Хамгийн сүүлийнхийг
+   *    татвал гүйцэтгэгч дараа нь дахин бөглөсөн бол хянагч огт өөр тоо
+   *    хараад батална — баталсан зүйл нь илгээсэн зүйлээсээ зөрнө.
+   */
+  atDay?: string,
 ): Promise<{ rows: SheetRow[]; asOf: number | null; snapshot: number | null }> {
   const tree = TREES[pkg.key] ?? "";
-  const where = await latestWhere(pkg, sc);
+  const where =
+    atDay && sc.f.fillDate ? dayFilter(sc.f.fillDate, atDay) : await latestWhere(pkg, sc);
   const feats: Feature[] = [];
   for (let offset = 0; ; ) {
     const j = await agsFetch(`${pkg.url}/query`, {

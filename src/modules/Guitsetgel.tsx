@@ -17,20 +17,29 @@
  * Бодит нэвтрэлтээс тогтоохын тулд `ROLE_BY_USER`-т шат нэмэх шаардлагатай.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
-import { DECISION, F, STATUS, type Row, type Stage, type Status } from '@/lib/hyanalt';
+import {
+  DECISION, F, missingDirectorFields, OWNER, STAGE_ORDER, STATUS,
+  type Row, type Stage, type Status,
+} from '@/lib/hyanalt';
+import { useAuth } from '@/components/AuthGate';
+import { ROLE_STAGE } from '@/lib/services';
+import { bagtsFor, subscribeAcl } from '@/lib/guitsetgelAcl';
+import { Sheet } from '@/modules/sheet/Sheet';
 import { groupWorks, optionsOf, type Work } from '@/lib/hyanaltGroup';
 import { apply, recheck, useHyanaltRows } from '@/lib/hyanaltStore';
-import { loadSubmission, type Submission } from '@/lib/hyanaltDetail';
+import { loadSubmission, type Change, type Submission } from '@/lib/hyanaltDetail';
 import s from './guitsetgel.module.css';
 
-const STAGES: Stage[] = ['company', 'engineer', 'manager'];
+const STAGES: Stage[] = ['company', 'engineer', 'manager', 'director'];
 
-const STAGE_LABEL: Record<Stage, string> = {
+/** Шатны нэр — эрхийн панел ч ЭНЭ жагсаалтыг хэрэглэнэ (нэг эх сурвалж). */
+export const STAGE_LABEL: Record<Stage, string> = {
   company: tr('Гүйцэтгэгч компани'),
-  engineer: tr('Талбайн инженер'),
-  manager: tr('Менежер'),
+  engineer: tr('Хяналтын инженер'),
+  manager: tr('Багцын менежер'),
+  director: tr('Ерөнхий менежер'),
 };
 
 /**
@@ -43,13 +52,16 @@ const STATUS_LABEL: Record<Status, string> = {
   [STATUS.engineerReturned]: tr('Инженер буцаасан'),
   [STATUS.managerReview]: tr('Менежер хянаж байна'),
   [STATUS.managerReturned]: tr('Менежер буцаасан'),
+  [STATUS.directorReview]: tr('Ерөнхий менежер хянаж байна'),
+  [STATUS.directorReturned]: tr('Ерөнхий менежер буцаасан'),
   [STATUS.transferred]: tr('Шилжүүлсэн'),
 };
 
 /* ⚠️ Туршилтын нэр — бодит системд нэвтэрсэн хэрэглэгчийн нэр орно */
-const WHO: Record<'engineer' | 'manager', string> = {
+const WHO: Record<'engineer' | 'manager' | 'director', string> = {
   engineer: 'Б.Болд',
   manager: 'С.Отгоо',
+  director: 'Д.Ганбат',
 };
 
 const fmt = (iso: string | null) =>
@@ -66,6 +78,10 @@ const badgeClass = (st: Status, stage: Stage) => {
   // ⚠️ Компанид «Менежер буцаасан» улаанаар ч харагдах ёсгүй — тэр ажил
   //    хараахан компанид ирээгүй, инженер дээр байгаа.
   if (st === STATUS.managerReturned) return stage === 'company' ? s.bWait : s.bBack;
+  // ⚠️ Ерөнхий менежерийн буцаалт нь БАГЦЫН МЕНЕЖЕРТ очно — компани ч,
+  //    инженер ч үүнийг «буцсан» гэж харах ёсгүй: тэдний гар дээр ирээгүй.
+  if (st === STATUS.directorReturned)
+    return stage === 'manager' || stage === 'director' ? s.bBack : s.bWait;
   return st === STATUS.engineerReturned ? s.bBack : s.bWait;
 };
 
@@ -159,7 +175,7 @@ function stepsOf(r: Row, stage: Stage, showSent: boolean): Step[] {
   if (seesManager(stage)) {
     const mgr = `${tr('Менежер')} ${r[F.manager]}`.trim();
     if (r[F.managerSent]) {
-      out.push({ who: mgr, verb: tr('зөвшөөрч шилжүүлэв'), at: r[F.managerSent], reason: '', kind: 'ok' });
+      out.push({ who: mgr, verb: tr('зөвшөөрч ерөнхий менежерт илгээв'), at: r[F.managerSent], reason: '', kind: 'ok' });
     }
     if (r[F.managerReturned]) {
       out.push({
@@ -167,6 +183,20 @@ function stepsOf(r: Row, stage: Stage, showSent: boolean): Step[] {
         verb: tr('инженерт буцаав'),
         at: r[F.managerReturned],
         reason: r[F.managerReason],
+        kind: 'bad',
+      });
+    }
+
+    const dir = `${tr('Ерөнхий менежер')} ${r[F.director]}`.trim();
+    if (r[F.directorSent]) {
+      out.push({ who: dir, verb: tr('баталж бүртгэв'), at: r[F.directorSent], reason: '', kind: 'ok' });
+    }
+    if (r[F.directorReturned]) {
+      out.push({
+        who: dir,
+        verb: tr('багцын менежерт буцаав'),
+        at: r[F.directorReturned],
+        reason: r[F.directorReason],
         kind: 'bad',
       });
     }
@@ -190,7 +220,8 @@ function outcomeOf(r: Row, stage: Stage): { text: string; cls: string } {
     return { text: seesManager(stage) ? tr('Инженер буцаасан') : tr('Буцаасан'), cls: s.bBack };
   }
   if (!seesManager(stage)) return { text: tr('Хянагдаж байна'), cls: s.bWait };
-  return { text: STATUS_LABEL[st] ?? st, cls: st === STATUS.managerReturned ? s.bBack : s.bWait };
+  const back = st === STATUS.managerReturned || st === STATUS.directorReturned;
+  return { text: STATUS_LABEL[st] ?? st, cls: back ? s.bBack : s.bWait };
 }
 
 const DOT: Record<Step['kind'], string> = { sent: '↑', ok: '✓', bad: '✕' };
@@ -268,31 +299,57 @@ const stamp = (iso: string | null) => {
 const qty = (v: number | null) =>
   v == null ? '—' : Number(v.toFixed(3)).toLocaleString('en-US');
 /** ⚠️ Хувь нь үйлчилгээнд 0–1 хооронд — 100-аар үржүүлж харуулна */
-const pc = (v: number | null) =>
-  v == null ? '—' : `${(v * 100).toFixed(1)}%`;
 
 /**
  * ⚠️ ХЯНАГЧ ЮУГ ЗӨВШӨӨРЧ БАЙГААГАА ХАРАХ ЁСТОЙ. Хяналтын бүртгэл нь зөвхөн
  * хэн, хэзээ илгээснийг хэлдэг — компани ЮУ бөглөснийг хэлдэггүй. Түүнгүйгээр
  * зөвшөөрөх товч нь ёсорхуу дарах үйлдэл болно.
  */
-function Submitted(
-  { bagts, sheetOid, sentAt }: { bagts: string; sheetOid: number; sentAt: string | null },
-) {
+function Submitted({
+  bagts,
+  sheetOid,
+  sentAt,
+  ok,
+  onCell,
+  onChanges,
+}: {
+  bagts: string;
+  sheetOid: number;
+  sentAt: string | null;
+  /** Зөвшөөрсөн нүднүүд — эцэг (`Item`) эзэмшинэ: товч түүнд байна. */
+  ok?: Set<string>;
+  onCell?: (row: number, block: string) => void;
+  /** Өөрчлөлтийн жагсаалтыг эцэгт мэдэгдэнэ — «бүгд зөвшөөрөгдсөн үү» гэж бодоход. */
+  onChanges?: (c: Change[]) => void;
+}) {
   const [data, setData] = useState<Submission | null>(null);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(true);
+  /**
+   * ӨӨРЧЛӨГДСӨН НҮД РҮҮ ҮСРЭХ хүсэлт — жагсаалтаас дарахад бөглөх хуудас
+   * тэр мөр рүү гүйж, нүдийг богино анивчилтаар онцолно.
+   * ⚠️ 1,370 мөрөөс өөрчлөгдсөн хэдэн нүдийг гараар олох боломжгүй.
+   */
+  const [jump, setJump] = useState<{ row: number; block: string; n: number } | null>(null);
+  /** Өөрчлөгдсөн нүд: `${мөр}:${блок}` — бөглөх хуудсанд улаанаар тэмдэглэнэ. */
+  /** Хэдийг нь зөвшөөрсөн — толгойд харуулна. */
+  const okCount = (data?.changes ?? []).filter((c) => ok?.has(`${c.row}:${c.block}`)).length;
+  const changedKeys = useMemo(
+    () => new Set((data?.changes ?? []).map((c) => `${c.row}:${c.block}`)),
+    [data],
+  );
 
   useEffect(() => {
     let alive = true;
     setBusy(true);
     setErr('');
     loadSubmission(bagts, sheetOid)
-      .then((d) => { if (alive) setData(d); })
+      .then((d) => { if (alive) { setData(d); onChanges?.(d?.changes ?? []); } })
       .catch((e) => { if (alive) setErr(String((e as Error)?.message ?? e)); })
       .finally(() => { if (alive) setBusy(false); });
     // ⚠️ Задлах бүрд БИШ, нэг л удаа — хамаарал нь зөвхөн бүртгэлийн түлхүүр
     return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bagts, sheetOid]);
 
   if (busy) return <div className={s.subMuted}>{tr('Нийтэлсэн гүйцэтгэлийг татаж байна…')}</div>;
@@ -321,6 +378,16 @@ function Submitted(
             {tr('Нийтэлсэн: {0}', stamp(sentAt))}
             {' · '}
             {tr('Обьём бөглөсөн ажил: {0}', String(data.filledCount))}
+            {' · '}
+            {tr('өөрчлөгдсөн нүд: {0}', String(data.changes.length))}
+            {ok && data.changes.length > 0 && (
+              <>
+                {' · '}
+                <span className={okCount === data.changes.length ? s.okAll : s.okSome}>
+                  {tr('зөвшөөрсөн {0}/{1}', String(okCount), String(data.changes.length))}
+                </span>
+              </>
+            )}
             {data.compared && (
               <>
                 {' · '}
@@ -330,69 +397,91 @@ function Submitted(
               </>
             )}
           </div>
-          {/* ⚠️ Хүснэгт нь ӨӨРИЙН хүрээндээ хөндлөн гүйнэ — карт өргөсгөхгүй */}
-          <div className={s.subScroll}>
-            <table className={s.subTable}>
-              {/*
-                * ⚠️ ХОЁР МӨРТ ТОЛГОЙ — хуудасны бүтэцтэй ижил. Блокийн баганууд
-                * «5/1, 5/2…» гэсэн ганц тоогоор зогсвол тэдгээр нь ЮУНЫ тоо
-                * болох нь мэдэгдэхгүй. Дээр нь бүлгийн нэр заавал байна.
-                */}
-              <thead>
-                <tr>
-                  <th rowSpan={2}>№</th>
-                  <th rowSpan={2}>{tr('Ажил')}</th>
-                  <th rowSpan={2}>{tr('Обьём')}</th>
-                  <th rowSpan={2}>{tr('Обьёмын нийлбэр')}</th>
-                  <th rowSpan={2}>{tr('Нэгж өртөг')}</th>
-                  <th rowSpan={2}>{tr('Мөнгөн дүн')}</th>
-                  <th rowSpan={2}>{tr('Төлөвлөгөөт гүйцэтгэл')}</th>
-                  <th rowSpan={2}>{tr('Бодит гүйцэтгэл')}</th>
-                  <th rowSpan={2}>{tr('Төлөвлөгөө биелэлт')}</th>
-                  <th colSpan={data.blocks.length} className={s.subBand}>
-                    {tr('Ажил гүйцэтгэл — обьём ({0} барилга)', String(data.blocks.length))}
-                  </th>
-                </tr>
-                <tr>
-                  {data.blocks.map((b) => <th key={b} className={s.subBlk}>{b}</th>)}
-                </tr>
-              </thead>
-              <tbody>
-                {data.filled.map((x, i) => (
-                  <tr key={i}>
-                    <td>{x.no}</td>
-                    <td className={s.subWork} title={x.work}>{x.work}</td>
-                    <td className={s.subNum}>{qty(x.vol)}</td>
-                    <td className={`${s.subNum} ${s.subHi}`}>{qty(x.sum)}</td>
-                    <td className={s.subNum}>{qty(x.unit)}</td>
-                    <td className={s.subNum}>{qty(x.money)}</td>
-                    <td className={s.subNum}>{pc(x.plan)}</td>
-                    <td className={s.subNum}>{pc(x.act)}</td>
-                    <td className={s.subNum}>{pc(x.ratio)}</td>
-                    {x.cells.map((v, k) => (
-                      <td
-                        key={k}
-                        /* ⚠️ Өөрчлөгдсөн нүд УЛААН ХҮРЭЭТЭЙ — хянагч юу шинэчлэгдснийг
-                           нэг харцаар олох ёстой. Хүрээг `box-shadow: inset`-ээр өгнө:
-                           `border-collapse: collapse` дээр энгийн `border` нь хөршийн
-                           шугамтай уралдаж, хэсэг талдаа алга болдог. */
-                        className={`${s.subNum} ${x.changed[k] ? s.subCh : ''}`}
-                      >
-                        {qty(v)}
-                      </td>
-                    ))}
-                  </tr>
+          {/* ӨӨРЧЛӨГДСӨН НҮДНҮҮД — дарж хүснэгт рүү үсэрнэ.
+              ⚠️ Бүтэн хуудсанд 1,370 мөр бий; өөрчлөлт нь ихэвчлэн хэдхэн нүд.
+              Жагсаалтгүй бол хянагч тэднийг олох гэж бүх хуудсыг гүйлгэнэ. */}
+          {data.changes.length > 0 && (
+            <div className={s.chList}>
+              <div className={s.chHead}>
+                {tr('Өөрчлөгдсөн нүд')}
+                <span className={s.chCount}>{data.changes.length}</span>
+              </div>
+              <div className={s.chWrap}>
+                {data.changes.map((c, ci) => (
+                  <button
+                    key={`${ci}:${c.row}:${c.col}`}
+                    type="button"
+                    className={`${s.chItem} ${ok?.has(`${c.row}:${c.block}`) ? s.chOk : ''}`}
+                    title={`${c.no} · ${c.work}`}
+                    onClick={() =>
+                      setJump((j) => ({ row: c.row, block: c.block, n: (j?.n ?? 0) + 1 }))
+                    }
+                  >
+                    <span className={s.chBlk}>{c.block}</span>
+                    <span className={s.chWork}>{c.work}</span>
+                    <span className={s.chVal}>
+                      {c.from == null ? '—' : qty(c.from)} → <b>{qty(c.to)}</b>
+                    </span>
+                  </button>
                 ))}
-              </tbody>
-            </table>
-          </div>
-          {data.filledCount > data.filled.length && (
-            <div className={s.subMuted}>
-              {tr('… мөн {0} ажил', String(data.filledCount - data.filled.length))}
+              </div>
             </div>
           )}
+
+          {/* ⚠️ Хүснэгт нь ӨӨРИЙН хүрээндээ хөндлөн гүйнэ — карт өргөсгөхгүй */}
+          {/*
+            * ⚠️ ЭНЭ НЬ «Гүйцэтгэл бөглөх»-ийн ЯГ ТЭР компонент — хуулбар БИШ.
+            *    Гүйцэтгэгч, талбайн инженер, менежер гурвуулаа нэг хүснэгт,
+            *    нэг томъёо, нэг толгойг хардаг. Ялгаа нь ЗӨВХӨН нэг нөхцөл:
+            *    `view` өгөгдсөн бол нүд засагдахгүй.
+            */}
+          <div className={s.subSheet}>
+            <Sheet
+              view={{
+                pkgKey: data.pkgKey,
+                day: data.day,
+                changed: changedKeys,
+                jump,
+                ok,
+                onCell,
+              }}
+            />
+          </div>
+
         </>
       )}
+    </div>
+  );
+}
+
+/**
+ * АЖИЛ ХААНА ЯВААГ 4 ЦЭГЭЭР.
+ *
+ * ⚠️ Гүйцэтгэгчид энэ нь ХАМГИЙН чухал мэдээлэл: «илгээчихсэн, гэхдээ
+ *    хаана байгаа юм бол» гэсэн асуулт нь утасны дуудлага болж хувирдаг.
+ *    Төлөвийн шошго ганцаараа «Менежер хянаж байна» гэж хэлдэг ч ХЭДДЭХ
+ *    түвшин, хэд үлдсэнийг хэлдэггүй.
+ *
+ * ⚠️ Гүйцэтгэгчид дээд шатны НЭР харагдахгүй — «2-р шат», «3-р шат» гэж
+ *    дугаараар л үзүүлнэ. Дотоод бүтэц нь гадагш задрах ёсгүй.
+ */
+function Track({ status, stage }: { status: Status; stage: Stage }) {
+  const done = status === STATUS.transferred;
+  const at = STAGE_ORDER.indexOf(OWNER[status] ?? 'company');
+  return (
+    <div className={s.track} title={statusLabel(status, stage)}>
+      {STAGE_ORDER.map((x, i) => {
+        const state = done || i < at ? s.tkDone : i === at ? s.tkNow : s.tkWait;
+        return (
+          <span
+            key={x}
+            className={`${s.tk} ${state}`}
+            title={seesManager(stage) ? STAGE_LABEL[x] : tr('{0}-р шат', String(i + 1))}
+          >
+            {done || i < at ? '✓' : i + 1}
+          </span>
+        );
+      })}
     </div>
   );
 }
@@ -407,6 +496,58 @@ function Item({ work, stage, onFix }: { work: Work; stage: Stage; onFix: () => v
 
   const cur = work.current;
   const st = work.status;
+
+  /**
+   * НҮД БҮРИЙГ ГАРААР ЗӨВШӨӨРНӨ.
+   *
+   * ⚠️ Урьд нь «Зөвшөөрөх» товч нь өөрчлөлтийг ХАРААГҮЙ ч дарагддаг байв —
+   *    тэгвэл хяналт нь ёсорхуу тамга болно. Одоо өөрчлөгдсөн нүд бүр дээр
+   *    дарж ногоон болгосны дараа л цаашаа шилжинэ. Ногоон болоогүй нүд нь
+   *    АСУУДАЛТАЙ гэсэн үг — тэдгээр нь улаанаараа үлдэж, буцаах шалтгаанд
+   *    өөрсдөө жагсаагдана.
+   */
+  const [changes, setChanges] = useState<Change[]>([]);
+  /**
+   * Үйлчилгээнд 4-р шатны талбар байгаа эсэх.
+   * ⚠️ Байхгүй үед «Батлах» дарвал ArcGIS алдаа буцааж, менежер баталсан
+   *    гэж бодох боловч юу ч хадгалагдахгүй. Тиймээс ӨМНӨӨС нь хаана.
+   */
+  const [lack, setLack] = useState<string[]>([]);
+  useEffect(() => {
+    if (stage !== 'director') return;
+    let alive = true;
+    missingDirectorFields().then((m) => { if (alive) setLack(m); });
+    return () => { alive = false; };
+  }, [stage]);
+  const [okKeys, setOkKeys] = useState<Set<string>>(new Set());
+  const toggleOk = useCallback((row: number, block: string) => {
+    setOkKeys((prev) => {
+      const n = new Set(prev);
+      const k = `${row}:${block}`;
+      if (n.has(k)) n.delete(k);
+      else n.add(k);
+      return n;
+    });
+  }, []);
+  /** Хараахан зөвшөөрөөгүй = асуудалтай гэж үзэх өөрчлөлтүүд */
+  const bad = changes.filter((c) => !okKeys.has(`${c.row}:${c.block}`));
+  const allOk = changes.length > 0 && bad.length === 0;
+
+  /**
+   * Буцаах шалтгаанд асуудалтай нүднүүд ӨӨРСДӨӨ орно.
+   * ⚠️ «Зөв биш байна» гэсэн ганц өгүүлбэр нь гүйцэтгэгчид юу засахыг
+   *    хэлдэггүй — аль блокийн аль ажил нь болохыг нэрлэж өгнө.
+   */
+  const badText = () => {
+    if (!bad.length) return reason.trim();
+    const list = bad
+      .slice(0, 12)
+      .map((c) => `${c.block} · ${c.work} → ${c.to ?? "—"}`)
+      .join("; ");
+    const more = bad.length > 12 ? ` … +${bad.length - 12}` : "";
+    const head = tr("Зөвшөөрөгдөөгүй {0} нүд: ", String(bad.length));
+    return [reason.trim(), head + list + more].filter(Boolean).join(" | ");
+  };
   const mine = work.owner === stage && st !== STATUS.transferred;
 
   const run = async (fn: () => Promise<{ ok: boolean; error?: string }>) => {
@@ -421,15 +562,27 @@ function Item({ work, stage, onFix }: { work: Work; stage: Stage; onFix: () => v
   const review = (decision: (typeof DECISION)[keyof typeof DECISION]) =>
     run(() => apply({
       oid: cur.__oid,
-      stage: stage === 'engineer' ? 'engineer' : 'manager',
+      stage: stage === 'engineer' ? 'engineer' : stage === 'manager' ? 'manager' : 'director',
       decision,
-      reason,
-      who: stage === 'engineer' ? WHO.engineer : WHO.manager,
+      reason: decision === DECISION.return ? badText() : reason,
+      who: stage === 'engineer' ? WHO.engineer : stage === 'manager' ? WHO.manager : WHO.director,
     }));
 
   const reviewing =
     (stage === 'engineer' && st === STATUS.engineerReview) ||
-    (stage === 'manager' && st === STATUS.managerReview);
+    (stage === 'manager' && st === STATUS.managerReview) ||
+    (stage === 'director' && st === STATUS.directorReview);
+
+  /**
+   * ДЭЭД ШАТНААС БУЦСАНЫГ ДАХИН ШАЛГАХ — хоёр газарт давтагдана.
+   * ⚠️ Буцаалт нэг алхам л ухардаг тул дахин шалгагч нь ДАМЖУУЛАГЧ БИШ:
+   *    асуудалгүй бол дээшээ эргүүлж илгээнэ, асуудалтай бол доошоо буцаана.
+   */
+  const rechecking =
+    (stage === 'engineer' && st === STATUS.managerReturned) ||
+    (stage === 'manager' && st === STATUS.directorReturned);
+  const reBy: 'engineer' | 'manager' = stage === 'manager' ? 'manager' : 'engineer';
+  const reWho = stage === 'manager' ? WHO.manager : WHO.engineer;
 
   return (
     <div className={s.item}>
@@ -439,6 +592,7 @@ function Item({ work, stage, onFix }: { work: Work; stage: Stage; onFix: () => v
           <div className={s.ajil}>{work.ajil}</div>
           <div className={s.meta}>{work.bagts} · {work.company}</div>
         </span>
+        <Track status={st} stage={stage} />
         <span className={`${s.badge} ${badgeClass(st, stage)}`}>{statusLabel(st, stage)}</span>
       </button>
 
@@ -457,40 +611,72 @@ function Item({ work, stage, onFix }: { work: Work; stage: Stage; onFix: () => v
                     onChange={(e) => setReason(e.target.value)}
                   />
                   <div className={s.row}>
-                    <button className={`${s.btn} ${s.ok}`} disabled={busy}
+                    {lack.length > 0 && (
+                      <div className={s.error}>
+                        {tr('Үйлчилгээнд дараах талбарууд алга тул баталгаажуулалт хадгалагдахгүй: {0}', lack.join(', '))}
+                      </div>
+                    )}
+                    {/* ⚠️ Бүх өөрчлөлт ногоон болтол ШИЛЖҮҮЛЭХ БОЛОМЖГҮЙ. */}
+                    <button
+                      className={`${s.btn} ${s.ok}`}
+                      disabled={busy || lack.length > 0 || (changes.length > 0 && !allOk)}
+                      title={
+                        changes.length > 0 && !allOk
+                          ? tr('Эхлээд өөрчлөгдсөн нүд бүр дээр дарж зөвшөөрнө үү — үлдсэн {0}', String(bad.length))
+                          : undefined
+                      }
                       onClick={() => review(DECISION.approve)}>
-                      {stage === 'engineer' ? tr('Зөвшөөрч менежерт илгээх') : tr('Зөвшөөрч шилжүүлэх')}
+                      {stage === 'engineer'
+                        ? tr('Зөвшөөрч багцын менежерт илгээх')
+                        : stage === 'manager'
+                          ? tr('Зөвшөөрч ерөнхий менежерт илгээх')
+                          : tr('Баталж бүртгэх')}
+                      {changes.length > 0 && !allOk && ` (${bad.length})`}
                     </button>
                     <button className={`${s.btn} ${s.bad}`} disabled={busy}
+                      title={bad.length ? tr('Зөвшөөрөгдөөгүй нүднүүд шалтгаанд өөрсдөө жагсаана') : undefined}
                       onClick={() => review(DECISION.return)}>
                       {tr('Буцаах')}
+                      {bad.length > 0 && changes.length > 0 && ` (${bad.length})`}
                     </button>
                   </div>
                 </>
               )}
 
               {/* ── Инженер: менежер буцаасныг ДАХИН ШАЛГАНА ── */}
-              {stage === 'engineer' && st === STATUS.managerReturned && (
+              {rechecking && (
                 <>
                   <div className={s.reasonBox}>
-                    <span className={s.reasonLabel}>{tr('Менежер буцаасан')}: </span>
-                    <span className={s.reasonText}>{cur[F.managerReason]}</span>
+                    <span className={s.reasonLabel}>
+                      {stage === 'manager' ? tr('Ерөнхий менежер буцаасан') : tr('Багцын менежер буцаасан')}:{' '}
+                    </span>
+                    <span className={s.reasonText}>
+                      {stage === 'manager' ? cur[F.directorReason] : cur[F.managerReason]}
+                    </span>
                   </div>
                   <textarea
                     className={s.field}
                     rows={2}
-                    placeholder={tr('Компанид буцаах бол шалтгаанаа бичнэ үү (менежерийн бичвэр компанид харагдахгүй)')}
+                    placeholder={
+                      stage === 'manager'
+                        ? tr('Инженерт буцаах бол шалтгаанаа бичнэ үү (дээд шатны бичвэр доошоо дамжихгүй)')
+                        : tr('Компанид буцаах бол шалтгаанаа бичнэ үү (менежерийн бичвэр компанид харагдахгүй)')
+                    }
                     value={reason}
                     onChange={(e) => setReason(e.target.value)}
                   />
                   <div className={s.row}>
                     <button className={`${s.btn} ${s.ok}`} disabled={busy}
-                      onClick={() => run(() => recheck(cur.__oid, 'ok', '', WHO.engineer))}>
-                      {tr('Дахин шалгасан — асуудалгүй, менежерт илгээх')}
+                      onClick={() => run(() => recheck(cur.__oid, 'ok', '', reWho, reBy))}>
+                      {stage === 'manager'
+                        ? tr('Дахин шалгасан — асуудалгүй, ерөнхий менежерт илгээх')
+                        : tr('Дахин шалгасан — асуудалгүй, менежерт илгээх')}
                     </button>
                     <button className={`${s.btn} ${s.bad}`} disabled={busy}
-                      onClick={() => run(() => recheck(cur.__oid, 'back', reason, WHO.engineer))}>
-                      {tr('Асуудал байна — компанид буцаах')}
+                      onClick={() => run(() => recheck(cur.__oid, 'back', reason, reWho, reBy))}>
+                      {stage === 'manager'
+                        ? tr('Асуудал байна — инженерт буцаах')
+                        : tr('Асуудал байна — компанид буцаах')}
                     </button>
                   </div>
                 </>
@@ -522,7 +708,14 @@ function Item({ work, stage, onFix }: { work: Work; stage: Stage; onFix: () => v
             </div>
           )}
 
-          <Submitted bagts={work.bagts} sheetOid={cur[F.sheetOid]} sentAt={cur[F.companySent]} />
+          <Submitted
+            bagts={work.bagts}
+            sheetOid={cur[F.sheetOid]}
+            sentAt={cur[F.companySent]}
+            ok={reviewing ? okKeys : undefined}
+            onCell={reviewing ? toggleOk : undefined}
+            onChanges={setChanges}
+          />
           <History cycles={work.cycles} stage={stage} />
         </div>
       )}
@@ -544,21 +737,91 @@ type StatusOpt = { value: string; label: string; match: Status[] };
 const statusOptions = (stage: Stage): StatusOpt[] =>
   stage === 'company'
     ? [
-      { value: 'w', label: tr('Хянагдаж байна'), match: [STATUS.engineerReview, STATUS.managerReview, STATUS.managerReturned] },
+      { value: 'w', label: tr('Хянагдаж байна'), match: [STATUS.engineerReview, STATUS.managerReview, STATUS.managerReturned, STATUS.directorReview, STATUS.directorReturned] },
       { value: 'b', label: tr('Буцаасан'), match: [STATUS.engineerReturned] },
       { value: 'd', label: tr('Хүлээн авсан'), match: [STATUS.transferred] },
     ]
     : Object.values(STATUS).map((x) => ({ value: x, label: STATUS_LABEL[x], match: [x] }));
 
+/**
+ * УРСГАЛЫН ЗУРАГЛАЛ — гурван шат, тус бүрд хүлээгдэж буй ажлын тоо.
+ *
+ * ⚠️ Энэ бол зөвхөн чимэг БИШ: «миний ажил хаана явааг» хэлдэг ЦОРЫН ГАНЦ
+ *    газар. Урьд нь хэрэглэгч үүргээ гараар сольж, тоог нь тааварлаж байв.
+ *    Одоо гурван шат ЗЭРЭГ харагдана — ажил хаана гацсан нь нэг харцаар ойлгомжтой.
+ */
+function Flow({
+  counts,
+  stage,
+  pick,
+}: {
+  counts: Record<Stage, number>;
+  stage: Stage;
+  /** Үүрэгтэй хэрэглэгчид шат СОЛИГДОХГҮЙ — зөвхөн харна. */
+  pick?: (x: Stage) => void;
+}) {
+  return (
+    <div className={s.flow}>
+      {STAGES.map((x, i) => (
+        <Fragment key={x}>
+          {i > 0 && <span className={s.flowArrow} aria-hidden="true">→</span>}
+          <button
+            type="button"
+            className={`${s.flowStep} ${x === stage ? s.flowOn : ''}`}
+            disabled={!pick}
+            onClick={() => pick?.(x)}
+          >
+            <span className={s.flowName}>{STAGE_LABEL[x]}</span>
+            <span className={s.flowNum}>{counts[x]}</span>
+          </button>
+        </Fragment>
+      ))}
+    </div>
+  );
+}
+
 export function Guitsetgel({ onView }: { onView?: (key: 'sheet') => void }) {
-  const [stage, setStage] = useState<Stage>('engineer');
+  /**
+   * ШАТЫГ АККАУНТЫН ҮҮРГЭЭС авна — гараар сонгохгүй.
+   *
+   * ⚠️ Урьд нь гурван товчоор өөрийгөө «инженер» гэж зарлаж болдог байсан нь
+   *    хяналтын утгыг үгүй хийдэг: зөвшөөрлийг хэн дарсан нь батлагдахгүй.
+   *    Одоо үүрэг нь `ROLE_BY_USER`-аас гарах бөгөөд солих боломжгүй.
+   *
+   * ⚠️ Нэвтрэлт унтраалттай (дев) эсвэл `super` үед л шат солигдоно — бүх
+   *    урсгалыг турших шаардлагатай тул.
+   */
+  const { role, user } = useAuth();
+  const fixed = role ? ROLE_STAGE[role] : undefined;
+  const [stage, setStage] = useState<Stage>(fixed ?? 'engineer');
+  useEffect(() => {
+    if (fixed) setStage(fixed);
+  }, [fixed]);
+  /** Гүйцэтгэгчийн хуудас хоёр талтай: бөглөх ба илгээснээ хянах. */
+  const [tab, setTab] = useState<'fill' | 'sent'>('fill');
   const [q, setQ] = useState('');
   const [bagts, setBagts] = useState(ALL);
   const [company, setCompany] = useState(ALL);
   const [status, setStatus] = useState(ALL);
 
   const { rows, loading, error, reload } = useHyanaltRows();
-  const works = useMemo(() => groupWorks(rows), [rows]);
+  /**
+   * БАГЦААР ХУВААРИЛАХ — хэн юуг хариуцахыг эрхийн панелаас.
+   * ⚠️ Хуваарилалтгүй үед БҮГДИЙГ харуулна: шинэ систем дээр хэн ч юу ч
+   *    харахгүй бол тохируулах хүн өөрөө орж чадахгүй болно.
+   */
+  const [aclN, setAclN] = useState(0);
+  useEffect(() => subscribeAcl(() => setAclN((n) => n + 1)), []);
+  const myBagts = useMemo(
+    () => bagtsFor(user?.username, stage),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [user, stage, aclN],
+  );
+
+  const works = useMemo(() => {
+    const all = groupWorks(rows);
+    return myBagts ? all.filter((w) => myBagts.includes(w.bagts)) : all;
+  }, [rows, myBagts]);
 
   const bagtsList = useMemo(() => optionsOf(works, (w) => w.bagts), [works]);
   const companyList = useMemo(() => optionsOf(works, (w) => w.company), [works]);
@@ -598,20 +861,57 @@ export function Guitsetgel({ onView }: { onView?: (key: 'sheet') => void }) {
       <header className={s.head}>
         <div>
           <div className={s.title}>{tr('Гүйцэтгэлийн хяналт')}</div>
-          <div className={s.sub}>{tr('компани → талбайн инженер → менежер')}</div>
+          <div className={s.sub}>{tr('гүйцэтгэгч → хяналтын инженер → багцын менежер → ерөнхий менежер')}</div>
         </div>
         <span className={s.spacer} />
-        <div className={s.roles}>
-          {STAGES.map((x) => (
-            <button key={x} className={`${s.role} ${stage === x ? s.roleOn : ''}`}
-              onClick={() => { setStage(x); setStatus(ALL); }}>
-              {STAGE_LABEL[x]}
-              {countFor(x) > 0 && <span className={s.count}>{countFor(x)}</span>}
-            </button>
-          ))}
-        </div>
+        {/* Хэн болох нь — үүргээс. Солих товч ЗӨВХӨН үүрэггүй (дев/super) үед. */}
+        {fixed && <span className={s.roleBadge}>{STAGE_LABEL[fixed]}</span>}
+        <Flow
+          counts={{
+            company: countFor('company'),
+            engineer: countFor('engineer'),
+            manager: countFor('manager'),
+            director: countFor('director'),
+          }}
+          stage={stage}
+          pick={fixed ? undefined : (x) => { setStage(x); setStatus(ALL); }}
+        />
       </header>
 
+      {/* ГҮЙЦЭТГЭГЧИЙН ХОЁР ТАЛ — бөглөх ба илгээснээ хянах. Урьд нь эдгээр
+          ХОЁР ТУСДАА харагдац байсан тул компани хуудас хооронд үсэрч,
+          «би юу илгээснээ» хаанаас харахаа мэддэггүй байв. */}
+      <div className={s.tabs}>
+        {stage === 'company' && (
+          <>
+            <button
+              type="button"
+              className={`${s.tab} ${tab === 'fill' ? s.tabOn : ''}`}
+              onClick={() => setTab('fill')}
+            >
+              {tr('Гүйцэтгэл бөглөх')}
+            </button>
+            <button
+              type="button"
+              className={`${s.tab} ${tab === 'sent' ? s.tabOn : ''}`}
+              onClick={() => setTab('sent')}
+            >
+              {tr('Илгээсэн ажил')}
+              {countFor('company') > 0 && <span className={s.count}>{countFor('company')}</span>}
+            </button>
+          </>
+        )}
+        {/* ⚠️ «Эрх тохируулах» ЭНДЭЭС ХАСАГДСАН — Админ портал дотор
+            тусдаа бүлэг болов. Ажлын хуудсанд тохиргооны товч байвал
+            хянагч санамсаргүй дараад хуваарилалт өөрчилнө. */}
+      </div>
+
+      {stage === 'company' && tab === 'fill' ? (
+        <div className={s.fill}>
+          <Sheet />
+        </div>
+      ) : (
+      <>
       <div className={s.bar}>
         <input className={s.search} placeholder={tr('Ажил, багц, компаниар хайх…')}
           value={q} onChange={(e) => setQ(e.target.value)} />
@@ -680,6 +980,8 @@ export function Guitsetgel({ onView }: { onView?: (key: 'sheet') => void }) {
           </>
         )}
       </div>
+      </>
+      )}
     </div>
   );
 }
