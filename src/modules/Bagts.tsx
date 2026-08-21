@@ -560,6 +560,7 @@ export function BlocksCard({
   p,
   title = tr('Блок бүрийн гүйцэтгэл'),
   collapsible,
+  defaultOpen,
   overlapN,
 }: {
   p: Pack;
@@ -569,6 +570,8 @@ export function BlocksCard({
    * эхэлнэ (2026-08-21: «үзье гэсэн нь нээж харна»).
    */
   collapsible?: boolean;
+  /** `collapsible` үед энэ карт АНХНААСАА НЭЭЛТТЭЙ эхэлнэ (бусад нь хаалттай) */
+  defaultOpen?: boolean;
   /**
    * Багцын ДАВХЦСАН ҮЛДСЭН НЭГЖ ТАЛБАРЫН тоо — өгвөл нээхэд блокуудын ДЭЭР
    * гарна (`null` = ачаалж байна). FinCard-ын нэгдсэн индикаторыг багцаар
@@ -589,7 +592,7 @@ export function BlocksCard({
     zoomToWhere(BLOCK_LAYER, w);
   };
   return (
-    <Section title={title} collapsible={collapsible} defaultClosed={collapsible} note={tr('{0}/{1} бүртгэлтэй', num(withData), num(p.blocks.length))}>
+    <Section title={title} collapsible={collapsible} defaultClosed={collapsible && !defaultOpen} note={tr('{0}/{1} бүртгэлтэй', num(withData), num(p.blocks.length))}>
       {overlapN !== undefined && (
         <>
           {/* ДАВХЦЛЫН мэдээлэл — хайрцаглаж, доорх блокийн жагсаалтаас

@@ -516,6 +516,9 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                 p={p}
                 title={tr('{0} — блокууд', tr(p.name))}
                 collapsible
+                /* ЗӨВХӨН «Багц 1» анхнаасаа нээлттэй (2026-08-21, хэрэглэгчийн
+                   хүсэлт) — жагсаалтын эхний багц жишээ болж дэлгэгдэнэ */
+                defaultOpen={p.key === 'БАГЦ1'}
                 overlapN={ovByPack == null ? null : (ovByPack.get(p.key) ?? null)}
               />
             ))}
