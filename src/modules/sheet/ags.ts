@@ -1,9 +1,14 @@
-// Shared ArcGIS client. `base` points straight at the public hosted layer
-// (FeatureServer/0). CORS is open and no token is needed.
+// Shared ArcGIS client. `base` points straight at the hosted layer
+// (FeatureServer/0).
+// ⚠️ 2026-08-24: «no token is needed» гэсэн хуучин тайлбар ХҮЧИНГҮЙ БОЛОВ.
+//    Давхарга нийтэд нээлттэй байхад token шаардлагагүй байсан; «Organization»
+//    болгосны дараа ЗААВАЛ хэрэгтэй. `agsParams` нь нэвтэрсэн хэрэглэгчийн
+//    token-ыг хавсаргана (нэвтрээгүй үед параметр өөрчлөгдөхгүй).
 // ⚠️ URL-ыг services.ts-ийн `TASK_SHEET`-ээс авна — энэ давхаргын ГАНЦ эх сурвалж.
 //    Хатуу бичвэл үйлчилгээ нүүх/нэр солиход энэ модул чимээгүй үхсэн URL руу
 //    хандана (FillNew/Conclusion/Level5 бүгд).
 import { TASK_SHEET } from "@/lib/services";
+import { agsParams, agsToken, withTokenUrl } from "@/lib/agsToken";
 export const base = TASK_SHEET.url;
 
 // ArcGIS returns HTTP 200 even on failure, with {error:{message}}. Check it.
@@ -16,7 +21,7 @@ export async function agsFetch(
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ ...params, f: "json" }),
+    body: new URLSearchParams(await agsParams({ ...params, f: "json" })),
   });
   // ⚠️ Proxy/CDN-ийн 502 эсвэл HTML хариу «SyntaxError: Unexpected token <»
   // болж улаан баннерт гардаг байв — хүнд ойлгомжтой мессеж болгоно.
@@ -224,7 +229,8 @@ export type AttachInfo = {
 };
 
 export async function listAttachments(oid: number): Promise<AttachInfo[]> {
-  const res = await fetch(`${base}/${oid}/attachments?f=json`);
+  const t = await agsToken();
+  const res = await fetch(`${base}/${oid}/attachments?f=json${t ? `&token=${encodeURIComponent(t)}` : ''}`);
   const j = await res.json();
   if (j.error) throw new Error(j.error.message || "ArcGIS error");
   return j.attachmentInfos || [];
@@ -235,6 +241,10 @@ export async function addAttachment(oid: number, file: File) {
   const fd = new FormData();
   fd.append("attachment", file);
   fd.append("f", "json");
+  // ⚠️ БИЧИХ үйлдэл — «Organization» хуваалцалтад token заавал (2026-08-24).
+  //    multipart тул `agsParams` ашиглаж чадахгүй, гараар нэмнэ.
+  const t = await agsToken();
+  if (t) fd.append("token", t);
   const res = await fetch(`${base}/${oid}/addAttachment`, {
     method: "POST",
     body: fd,
@@ -252,6 +262,7 @@ export async function deleteAttachment(oid: number, id: number) {
     throw new Error("delete attachment failed");
 }
 
-// Raw image bytes for <img src> (CORS is open).
+// Raw image bytes for <img src>.
+// ⚠️ 2026-08-24: «Organization» хуваалцалтад token ЗААВАЛ — синхрон хувилбар.
 export const attachmentUrl = (oid: number, id: number) =>
-  `${base}/${oid}/attachments/${id}`;
+  withTokenUrl(`${base}/${oid}/attachments/${id}`);

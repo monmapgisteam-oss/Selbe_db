@@ -17,6 +17,8 @@
  * Эдгээрийг програм БИЧИХГҮЙ — ArcGIS өөрөө бөглөж, засагдахаас хамгаална.
  */
 
+import { agsToken, agsParams } from './agsToken';
+
 export const HYANALT = {
   url: 'https://services-ap1.arcgis.com/ACqsMOmNLi5wIdIh/arcgis/rest/services/guitsetgel_bugluh_hyanalt/FeatureServer/0',
   oid: 'OBJECTID',
@@ -147,7 +149,9 @@ let missingCache: string[] | null = null;
 export async function missingDirectorFields(): Promise<string[]> {
   if (missingCache) return missingCache;
   try {
-    const res = await fetch(`${HYANALT.url}?f=json`);
+    // ⚠️ 2026-08-24: давхаргыг «Organization» болгоход token-гүй мета уншилт 499 болно
+    const t = await agsToken();
+    const res = await fetch(`${HYANALT.url}?f=json${t ? `&token=${encodeURIComponent(t)}` : ''}`);
     const j = (await res.json()) as { fields?: { name: string }[] };
     const have = new Set((j.fields ?? []).map((x) => x.name));
     missingCache = DIRECTOR_FIELDS.filter((x) => !have.has(x));
@@ -178,7 +182,9 @@ async function post(path: string, body: Record<string, string>): Promise<Record<
   const res = await fetch(HYANALT.url + path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ f: 'json', ...body }).toString(),
+    // ⚠️ 2026-08-24 «Organization» хуваалцалт: query БА applyEdits хоёулаа эндүүр
+    //    явдаг тул нэвтэрсэн хэрэглэгчийн token-ыг ЗААВАЛ хавсаргана.
+    body: new URLSearchParams(await agsParams({ f: 'json', ...body })).toString(),
   });
   if (!res.ok) throw new HyanaltError(`HTTP ${res.status}`);
 

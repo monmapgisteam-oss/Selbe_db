@@ -33,6 +33,7 @@ import {
 } from '@/lib/services';
 import { usePlanTotals } from '@/lib/totals';
 import { cached } from '@/lib/live';
+import { agsToken, withTokenUrl } from '@/lib/agsToken';
 import { usePanes } from './habeaPanes';
 import { Section, Bars, Donut, Select, Series, Loading, Empty } from '@/components/ui';
 import { num, date, text } from '@/lib/format';
@@ -430,7 +431,8 @@ const photoCache = new Map<number, Promise<Photo[]>>();
 const loadPhotos = (oid: number): Promise<Photo[]> => {
   let p = photoCache.get(oid);
   if (!p) {
-    p = fetch(`${HABEA.incident.url}/${oid}/attachments?f=json`)
+    p = agsToken()
+      .then((t) => fetch(`${HABEA.incident.url}/${oid}/attachments?f=json${t ? `&token=${encodeURIComponent(t)}` : ''}`))
       .then((r) => r.json())
       .then((j: { attachmentInfos?: { id: number; contentType?: string; name?: string }[] }) =>
         (j.attachmentInfos ?? [])
@@ -467,7 +469,8 @@ function IncPhotos({ oid }: { oid: number }) {
   return (
     <div className={h.photos}>
       {q.data.map((p) => {
-        const src = `${HABEA.incident.url}/${oid}/attachments/${p.id}`;
+        // Token — «Organization» хуваалцалтад зураг татахад ч эрх шаардана (2026-08-24)
+        const src = withTokenUrl(`${HABEA.incident.url}/${oid}/attachments/${p.id}`);
         return (
           <a key={p.id} href={src} target="_blank" rel="noreferrer" title={p.name}>
             {/* Хөндлөнгийн ArcGIS хавсралт тул next/image-ийн оновчлол хамаагүй */}
@@ -493,7 +496,7 @@ function PhotoWall({ list }: { list: Inc[] }) {
   const q = useAsync<{ src: string; cap: string; tip: string }[]>(
     () =>
       loadPhotoBatches(list, (i, p) => ({
-        src: `${HABEA.incident.url}/${i.oid}/attachments/${p.id}`,
+        src: withTokenUrl(`${HABEA.incident.url}/${i.oid}/attachments/${p.id}`),
         cap: `${date(i.d)} · ${tr(i.bagtsRaw)}`,
         tip: `${tr(i.type)} — ${tr(i.company)}`,
       })),

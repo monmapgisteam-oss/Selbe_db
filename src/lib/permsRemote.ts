@@ -14,6 +14,7 @@
 
 import { AUTH, type Role, type ViewKey } from './services';
 import { t as tr } from '@/lib/i18nCore';
+import { agsParams } from './agsToken';
 
 export type RemoteRow = { username: string; role: Role | null; views: ViewKey[] | 'all'; docs: boolean };
 
@@ -35,7 +36,10 @@ async function getToken(): Promise<{ token: string; user: string } | null> {
 }
 
 async function req(url: string, params: Record<string, string>): Promise<Record<string, unknown>> {
-  const body = new URLSearchParams({ f: 'json', ...params });
+  /* ⚠️ 2026-08-24 «Organization» хуваалцалт: дуудагч ихэнхдээ token-оо ӨӨРӨӨ өгдөг
+     (getToken), өгөөгүй тохиолдолд энд хавсаргана. `params` СҮҮЛД тавигдсан тул
+     ил өгсөн token давуу эрхтэй хэвээр. */
+  const body = new URLSearchParams({ ...(await agsParams({ f: 'json' })), ...params });
   const r = await fetch(url, { method: 'POST', body });
   return r.json();
 }

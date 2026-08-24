@@ -20,6 +20,7 @@
 
 import { PARCEL_LEFT, LAYER_BY_ID } from './services';
 import { withSlot } from './query';
+import { agsToken, agsParams } from './agsToken';
 
 /** Барилга эхлүүлэхэд саад болж буй төлөв — газар чөлөөлөлтийн давхаргын утга. */
 export const LEFT_STATUS = 'Үлдсэн нэгж талбар';
@@ -41,7 +42,7 @@ async function post(url: string, params: Record<string, string>) {
     const res = await fetch(`${url}/query`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ ...params, f: 'json' }),
+      body: new URLSearchParams(await agsParams({ ...params, f: 'json' })),
     });
     if (!res.ok) throw new Error(`ArcGIS HTTP ${res.status}`);
     const j = await res.json();
@@ -54,7 +55,8 @@ async function post(url: string, params: Record<string, string>) {
 let srCache: Promise<number> | null = null;
 function parcelSR(): Promise<number> {
   if (!srCache)
-    srCache = fetch(`${PARCEL_LEFT.url}?f=json`)
+    srCache = agsToken()
+      .then((t) => fetch(`${PARCEL_LEFT.url}?f=json${t ? `&token=${encodeURIComponent(t)}` : ''}`))
       .then((r) => r.json())
       .then((m) => {
         const sr = m?.extent?.spatialReference;

@@ -1,4 +1,5 @@
 import { t as tr } from '@/lib/i18nCore';
+import { agsParams } from './agsToken';
 /**
  * ArcGIS REST асуулгын давхарга.
  *
@@ -84,7 +85,10 @@ async function attemptRequest(url: string, params: Record<string, string>, attem
   const res = await fetch(full, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ f: 'json', ...params }),
+    // ⚠️ `agsParams` — нэвтэрсэн хэрэглэгчийн token хавсаргана (2026-08-24).
+    //    Давхаргыг «Organization» болгоход энэ БАЙХГҮЙ бол бүх асуулга 499
+    //    болно; нэвтрээгүй үед параметр өөрчлөгдөхгүй тул зан ижил хэвээр.
+    body: new URLSearchParams(await agsParams({ f: 'json', ...params })),
   });
   if (!res.ok) {
     if ((res.status === 429 || res.status === 503) && attempt < RETRIES) {

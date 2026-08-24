@@ -17,6 +17,7 @@
 import { PKGS, loadSchema } from '@/modules/sheet/bagts.pkg';
 import { TREES } from '@/modules/sheet/bagts.trees';
 import { msToDay } from '@/modules/sheet/bagtsSheet';
+import { agsParams } from './agsToken';
 
 /** Нэг мөр — «Гүйцэтгэл бөглөх» хуудасны багануудтай ижил бүрэлдэхүүн */
 export type Filled = {
@@ -111,7 +112,8 @@ const post = async (url: string, body: Record<string, string>) => {
   const res = await fetch(`${url}/query`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ f: 'json', ...body }).toString(),
+    // ⚠️ 2026-08-24 «Organization» хуваалцалт — нэвтэрсэн бол token хавсаргана
+    body: new URLSearchParams(await agsParams({ f: 'json', ...body })).toString(),
   });
   const j = (await res.json()) as Record<string, unknown> & { error?: { message?: string } };
   // ⚠️ ArcGIS алдааг HTTP 200-гаар буцаадаг

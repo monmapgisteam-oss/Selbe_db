@@ -11,6 +11,7 @@
  */
 
 import { LAYER_BY_ID, layerUrl } from '@/lib/services';
+import { agsToken } from '@/lib/agsToken';
 import { t as tr } from '@/lib/i18nCore';
 import { MODE_SPLIT, busBand, type BusBand } from '@/lib/analysis/transport';
 import type { BuildingPt } from './buildings';
@@ -35,7 +36,10 @@ export async function loadBusStops(signal?: AbortSignal): Promise<BusStop[]> {
     where: '1=1', outFields: 'OBJECTID', returnGeometry: 'true',
     outSR: '3857', resultRecordCount: '2000', f: 'json',
   });
-  const r: QueryResp = await fetch(`${layerUrl(def)}/query?${q}`, { signal }).then((x) => x.json());
+  // ⚠️ 2026-08-24 «Organization» хуваалцалт — нэвтэрсэн бол token нэмнэ
+  const tok = await agsToken();
+  const auth = tok ? `&token=${encodeURIComponent(tok)}` : '';
+  const r: QueryResp = await fetch(`${layerUrl(def)}/query?${q}${auth}`, { signal }).then((x) => x.json());
   if (r.error) throw new Error(r.error.message ?? tr('ArcGIS query алдаа'));
 
   const out: BusStop[] = [];
