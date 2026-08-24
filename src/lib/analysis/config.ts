@@ -41,12 +41,6 @@ export const SRC = {
 /** Инженерийн шугам сүлжээ — «хүртээмж»-ийг эдгээр хүртэлх зайгаар хэмжинэ */
 export const ENGINEERING_IDS = ['et:18', 'et:23', 'et:17', 'et:16', 'et:10', 'et:7'];
 
-/**
- * Дэд бүтцийн өртгийг тооцохдоо ХАСАХ давхарга.
- * ⚠️ Барилга бол дэд бүтэц биш, БОРЛУУЛАХ хөрөнгө — түүний 7.16 их наяд нь
- * зардлын талд орвол бүх бүс алдагдалтай гарна.
- */
-export const COST_EXCLUDE = new Set<string>([BUILT_LAYER.id]);
 
 /* ══════════════════ Газрын зургийн давхарга ══════════════════ */
 
@@ -108,7 +102,10 @@ const kindOf = (geom: LayerDef['geom']): MapLayerKind =>
 const SPECIAL_LAYERS: MapLayerDef[] = [
   { key: 'zone', special: 'zone', title: tr('Бүсийн үнэлгээ'), kind: 'fill', color: [79, 209, 197], on: true, group: 'zone' },
   { key: 'label', special: 'label', title: tr('Бүсийн нэр'), kind: 'point', color: [230, 237, 243], on: true, group: 'zone' },
-  { key: 'et:24', n: 24, title: tr('Барилга байгууламж'), kind: 'building', color: [148, 163, 184], on: true, group: 'build' },
+  /* ⚠️ `layerId` ЗААВАЛ (2026-08-24): үгүй бол `SuitMap` нь `${ET}/24` гэж
+     ХУУЧИН `Selbe_ET_20260721` руу хандана. `et:24` нь нэгтгэсэн `data`/108
+     руу шилжсэн тул `layerUrl()`-ээр шийдэгдэх ёстой. */
+  { key: 'et:24', layerId: 'et:24', n: 24, title: tr('Барилга байгууламж'), kind: 'building', color: [148, 163, 184], on: true, group: 'build' },
 ];
 const SPECIAL_KEYS = new Set(SPECIAL_LAYERS.map((s) => s.key));
 
@@ -130,28 +127,13 @@ const DERIVED_LAYERS: MapLayerDef[] = [...PLAN_LAYER_IDS, ...MONITOR_LAYER_IDS]
     } as MapLayerDef;
   });
 
-/**
- * «АЧААЛАЛ БУУРУУЛАХ ШИНЭ ЗАМ» — `Selbe_shine_zam` service-ийн 4 давхарга.
- *
- * ⚠️ `PLAN_LAYER_IDS`-д БАЙХГҮЙ (батлагдаагүй санал тул ерөнхий төлөвлөгөөний
- * каталог/нийлбэрт орохгүй) — тиймээс `DERIVED_LAYERS`-ээс ирэхгүй, гараар
- * нэмэв. «Ачаалал» табд «Шинэ зам» сонгоход АВТОМАТААР асна
- * (`Suitability.tsx`), мөн давхаргын цэснээс гараар ч асааж болно.
- */
-export const RELIEF_LAYERS: MapLayerDef[] = ['sz:0', 'sz:1', 'sz:2', 'sz:3'].map((id) => ({
-  key: id,
-  layerId: id,
-  title: LAYER_BY_ID[id]?.title ?? id,
-  kind: 'line' as MapLayerKind,
-  color: [74, 222, 128],
-  on: false,
-  group: 'road',
-}));
+/* ⚠️ 2026-08-24: `RELIEF_LAYERS` («Ачаалал бууруулах шинэ зам») УСТГАГДАВ —
+   `Selbe_shine_zam` service төслөөс бүрмөсөн гарсан. */
 
 /**
  * НОГООН БАЙГУУЛАМЖ — анализын тооцоо уншдаг (`SRC.green`) яг тэр давхарга.
  *
- * ⚠️ `RELIEF_LAYERS`-ийн адил `PLAN_LAYER_IDS`-д БАЙХГҮЙ (2026-07-31-ний
+ * ⚠️ `PLAN_LAYER_IDS`-д БАЙХГҮЙ (2026-07-31-ний
  * webmap-ийн шинэчлэлээр каталогийн жагсаалтаас гарсан) тул `DERIVED_LAYERS`-ээс
  * ирэхгүй — гараар нэмэв. «Ногоон байгууламж» картыг хөндөхөд АВТОМАТААР асна
  * (`Suitability.tsx`), давхаргын цэснээс гараар ч асааж болно.
@@ -172,7 +154,7 @@ const GREEN_LAYERS: MapLayerDef[] = [{
 }];
 
 export const MAP_LAYERS: MapLayerDef[] = [
-  ...SPECIAL_LAYERS, ...DERIVED_LAYERS, ...RELIEF_LAYERS, ...GREEN_LAYERS,
+  ...SPECIAL_LAYERS, ...DERIVED_LAYERS, ...GREEN_LAYERS,
 ];
 
 /**
@@ -189,37 +171,7 @@ export const BUILDING_STATUS_COLORS: Record<string, [number, number, number]> = 
 
 /* ══════════════════ Өртгийн задаргаа ══════════════════ */
 
-export const COST_GROUPS: Record<string, { label: string; color: string }> = {
-  transit: { label: tr('Тээвэр, зам'), color: '#facc15' },
-  heat: { label: tr('Дулаан'), color: '#f87171' },
-  water: { label: tr('Ус, ариутгал'), color: '#38bdf8' },
-  power: { label: tr('Цахилгаан'), color: '#c084fc' },
-  amenity: { label: tr('Тохижилт'), color: '#4ade80' },
-};
 
-/**
- * «Дэд бүтцийн төсөвт өртөг» графикт харуулах давхаргууд.
- *
- * ⚠️ `basis`, `priceField`, `qtyField`-ыг ЭНД дахин бичихгүй: порталын
- * `LAYERS[].cost` аль хэдийн тэдгээрийг агуулдаг бөгөөд `layerTotals()` нь
- * сервер тал дээр нэгж үнээр бүлэглэж бодчихдог. Энд зөвхөн ямар давхарга аль
- * САЛБАРТ хамаарахыг л зааж өгнө.
- */
-/**
- * ⚠️ «Дугуйн зам» (`dugui`) ба «Ногоон байгууламж» (`nogoon`) ЭНД БАЙХГҮЙ —
- * 2026-07-31-ний шинэ үйлчилгээнүүдэд `negj_une` талбар огт байхгүй тул
- * `cost`-гүй болж, өртгийн графикаас гарсан (өмнө нь transit/amenity-д байв).
- */
-export const COST_GROUP_OF: Record<string, string> = {
-  'et:1': 'transit', 'et:2': 'transit', 'et:5': 'transit',
-  'et:12': 'transit',
-  'et:4': 'heat', 'et:7': 'heat', 'et:8': 'heat', 'et:9': 'heat',
-  'et:10': 'heat', 'et:11': 'heat',
-  'et:3': 'water', 'et:15': 'water', 'et:16': 'water', 'et:17': 'water',
-  'et:18': 'water', 'et:19': 'water', 'et:23': 'water',
-  'et:124': 'power', 'et:125': 'power', 'et:126': 'power', 'et:127': 'power',
-  'et:26': 'amenity', 'et:27': 'amenity',
-};
 
 /**
  * ⚠️ Төслийн нийт талбай (`PROJECT_AREA_HA`, 158 га) нь `lib/services.ts`-д
@@ -228,40 +180,8 @@ export const COST_GROUP_OF: Record<string, string> = {
  * зөрөх өдөр ирнэ.
  */
 
-/**
- * 1 м² БАРИГДАХ жишиг өртөг (₮) — барилга угсралтын зардлын анхны таамаг.
- *
- * ⚠️ Энэ нь эх өгөгдлөөс ИРДЭГГҮЙ. ArcGIS дээрх `negj_une` (4.7 сая ₮/м²) нь
- * БОРЛУУЛАЛТЫН үнэ; барилгын өөрийн өртгийн талбар байхгүй. Тиймээс энэ нь
- * хэрэглэгчийн тохируулдаг ТААМАГ бөгөөд UI-д гулсуураар ил гаргана —
- * «өгөгдлөөс уншсан тоо» мэт харуулж болохгүй.
- *
- * ⚠️ Барилгын өртгийг зардалд оруулснаар «1 га-д зарцуулах төсөв» нь
- * дэд бүтэц + барилга ХОЁУЛАНГ агуулна. Урьд нь зөвхөн дэд бүтэц ордог байсан
- * тул ашиг 8.35 их наяд ₮ гэж боломжгүй өндөр гардаг байв.
- */
-export const BUILD_COST_PER_M2 = 3_000_000;
 
-/**
- * БОРЛУУЛАХ нэгж үнэ (₮/м²) — төслийн НЭГ жишиг үнэ.
- *
- * ⚠️ Урьд нь барилгын `negj_une` талбараас уншдаг байв. Хэмжилтээр тэр талбар
- * 363/363 бичлэгт ЯГ ИЖИЛ 4,700,000 утгатай байсан — төлөв (баригдаж
- * байгаа/төлөвлөсөн/одоо байгаа), зориулалт (орон сууц/цэцэрлэг/ХТП) үл
- * хамааран. Өөрөөр хэлбэл барилга бүрээр ялгаатай мэдээлэл ОГТ агуулдаггүй
- * байсан тул талбарыг унших шаардлагагүй болов (хэрэглэгчийн шийдвэр,
- * 2026-08-12). Шинэ барилгын давхаргад тэр талбар байхгүй ч ажиллана.
- *
- * ⚠️ Энэ нь БОРЛУУЛАЛТЫН үнэ — барилгын өөрийн ӨРТӨГ БИШ (`BUILD_COST_PER_M2`).
- * «Эдийн засаг» табын гулсуур энэ утгаас эхэлж, хэрэглэгч өөрчилж болно.
- */
-export const SALE_PRICE_PER_M2 = 4_700_000;
 
-/**
- * Нийлмэл үнэлгээний анхны хуваарилалт — «Эдийн засаг»-ийн эзлэх хувь.
- * Хот төлөвлөлт нь үлдсэнийг авна (50/50).
- */
-export const DEFAULT_ECON_SHARE = 50;
 
 /* ══════════════════ Оноолт ══════════════════ */
 
@@ -766,77 +686,8 @@ export const GREEN_SOURCES: { key: GreenSource; label: string; short: string }[]
 
 /* ══════════════════ Эдийн засаг ══════════════════ */
 
-/**
- * ЭДИЙН ЗАСГИЙН ОНОО — дэд бүтцийн зардал борлуулалтын үнэлгээний хэдэн хувийг
- * эзэлж байгаагаар. Бага байх тусам ашигтай. 100% = зардал орлоготойгоо тэнцэж,
- * ашиг тэглэсэн (break-even) тул тэнд оноо 0 болно.
- */
-/**
- * ЭДИЙН ЗАСГИЙН ОНОО — АШГААР.
- *
- * Хэмжигдэхүүн нь **ашгийн маржа** = ашиг ÷ борлуулалтын орлого × 100. Абсолют
- * ашгаар биш маржаар бодох нь чухал: 200 тэрбум ашигтай том бүс, 20 тэрбум
- * ашигтай жижиг бүс хоёр ижил үр ашигтай байж болно.
- *
- * 5 түвшин нь `SCORE_LEVELS`-ийн хилтэй ЯГ таарна:
- *
- * | Маржа | Оноо | Түвшин |
- * |---|---|---|
- * | ≤ −60% | 0 | Маш муу — өндөр алдагдалтай |
- * | −30% | 25 | Муу — алдагдалтай (ашиггүй) |
- * | −10% … +10% | 45–65 | Дунд — тэнцүү (balance) |
- * | +30% | 85 | Сайн — ашигтай |
- * | ≥ +60% | 100 | Маш сайн — өндөр ашигтай |
- *
- * ⚠️ Урьд нь ЗАРДЛЫН ЭЗЛЭХ ХУВИАР (≤20% = 100 оноо) бодож байв. Барилгын өртөг
- * зардалд орсны дараа бүх бүсийн зардал орлогынхоо 70%+ болсон тул бараг бүгд
- * 0 оноо авч, эдийн засгийн тэнхлэг ялгах чадвараа алдсан. Ашгийн маржа нь
- * тэнцүү цэгийг (0%) дунд түвшинд байрлуулж, хоёр тийш нь тэнцвэртэй задарна.
- */
-export const PROFIT_BANDS: { margin: number; score: number }[] = [
-  { margin: -60, score: 0 },
-  { margin: -30, score: 25 },
-  { margin: -10, score: 45 },
-  { margin: 10, score: 65 },
-  { margin: 30, score: 85 },
-  { margin: 60, score: 100 },
-];
 
-/**
- * Ашгийн маржа (%) → 0..100 оноо, хэсэгчилсэн шугаман.
- * `-Infinity` (орлогогүй мөртлөө зардалтай) → 0. `null` → өгөгдөлгүй.
- */
-export function profitScore(margin: number | null | undefined): number | null {
-  if (margin == null) return null;
-  // ⚠️ Орлогогүй бүс нь «өгөгдөлгүй» БИШ, цэвэр алдагдал → хамгийн муу оноо
-  if (margin === -Infinity) return 0;
-  if (!Number.isFinite(margin)) return null;
 
-  const first = PROFIT_BANDS[0], last = PROFIT_BANDS[PROFIT_BANDS.length - 1];
-  if (margin <= first.margin) return first.score;
-  if (margin >= last.margin) return last.score;
-
-  for (let i = 1; i < PROFIT_BANDS.length; i++) {
-    const a = PROFIT_BANDS[i - 1], b = PROFIT_BANDS[i];
-    if (margin <= b.margin) {
-      const t = (margin - a.margin) / (b.margin - a.margin);
-      return a.score + t * (b.score - a.score);
-    }
-  }
-  return last.score;
-}
-
-/** Ашгийн байдлыг үгээр — эрэмбэ, дэлгэрэнгүйд */
-export function profitLabel(margin: number | null | undefined): string {
-  if (margin == null) return tr('Өгөгдөлгүй');
-  if (margin === -Infinity) return tr('Өндөр алдагдалтай');
-  if (!Number.isFinite(margin)) return tr('Өгөгдөлгүй');
-  if (margin <= -30) return tr('Өндөр алдагдалтай');
-  if (margin < -10) return tr('Алдагдалтай');
-  if (margin <= 10) return tr('Тэнцүү (balance)');
-  if (margin < 30) return tr('Ашигтай');
-  return tr('Өндөр ашигтай');
-}
 
 /* ⚠️ 2026-08-19: `ECON_SCORE` ХАСАГДАВ. Хаанаас ч ашиглагдахаа больсон атлаа
    ХУУЧИРСАН тодорхойлолтоо («зардал борлуулалтын ≤20% байвал норм») үлдээж,
@@ -891,15 +742,6 @@ export const BF = {
  */
 export const isResidential = (purpose: unknown) =>
   /орон сууц|house/i.test(String(purpose ?? '').trim());
-
-/**
- * БОРЛУУЛАХ БОЛОМЖТОЙ эсэх.
- * ⚠️ «Одоо байгаа» барилга аль хэдийн зарагдсан/ашиглалтад орсон тул төслийн
- * ирээдүйн орлогод тооцохгүй. Хот төлөвлөлтийн үзүүлэлт (нягтшил, хүн ам,
- * зогсоол…) энэ шүүлтээс ХАМААРАХГҮЙ — тэнд бүх барилга хэвээр тооцогдоно.
- */
-export const isSellable = (status: unknown) =>
-  !/^одоо байгаа/i.test(String(status ?? '').trim());
 
 /**
  * ХҮРТЭЭМЖИЙГ ШУУД «НОРМ ХАНГАСАН» ГЭЖ ҮЗЭХ ҮЗҮҮЛЭЛТҮҮД — ТҮР ЗУУРЫН шийдэл

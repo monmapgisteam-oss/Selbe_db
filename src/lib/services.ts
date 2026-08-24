@@ -50,7 +50,11 @@ const HJ = env(
 export const TD = `${env(
   process.env.NEXT_PUBLIC_ARCGIS_GAZAR,
   "https://services-ap1.arcgis.com/ACqsMOmNLi5wIdIh/arcgis/rest/services",
-)}/test_data/FeatureServer`;
+  /* ⚠️ 2026-08-24: `test_data` → `data`. 118 давхаргыг НЭРЭЭР нь тулгаж
+     шалгасан: дугаар нэг ч шилжээгүй, дутуу давхарга алга, кодын шаарддаг
+     талбарууд бүрэн. Ялгаа нь зөвхөн «Барилга» ([108]) 364 → 368 болж
+     нэмэгдсэн ба барилгын блокийн БҮТЭН хувилбар [112] нэмэгдсэн. */
+)}/data/FeatureServer`;
 
 /** Бүх вектор давхаргын эх — НЭГ FeatureServer */
 export const ET = `${HJ}/Selbe_ET_20260721/FeatureServer`;
@@ -160,38 +164,7 @@ export const PROJECT_AREA_HA = 158;
 
 /* ══════════════════════ Өртгийн загвар ══════════════════════ */
 
-/**
- * Нэгж үнийг тоо хэмжээнд хэрхэн үржүүлэх.
- *
- * ⚠️ Талбарын нэр нь нэгжийг заана, гэхдээ `negj_une` нь ХОЁР ойлголттой:
- * цэгэн давхаргад ширхэгийн үнэ, шугаман давхаргад **100 метрийн** үнэ
- * (хэрэглэгчээс баталгаажуулсан), талбайн давхаргад м²-ийн үнэ. Тиймээс
- * геометрээс биш, ЭНД тодорхой бичнэ.
- */
-export type CostBasis =
-  | "sh" // ширхэг × үнэ
-  | "m100" // (урт_м ÷ 100) × үнэ
-  | "km" // урт_км × үнэ
-  | "m2"; // талбай_м² × үнэ
-
-/**
- * ⚠️ ТАЛБАЙН давхаргын нэгж НЯГТЛАХ ШААРДЛАГАТАЙ.
- *
- * Шугаман давхаргын `negj_une` нь 100 метрийн үнэ гэдгийг баталгаажуулсан.
- * Талбайн давхаргад одоогоор м²-ээр (`m2`) тооцож байгаа боловч 2026-07-21-нд
- * эх өгөгдөл засагдаж, «Ногоон байгууламж»-ийн үнэ 100,000 → 10,000,000 болсон.
- * м²-ээр бодвол тэр давхарга дангаараа 9.7 их наяд ₮ буюу БҮХ барилгын сангаас
- * (7.2 их наяд) илүү гарна — боломжгүй. 100 м²-ээр бодвол 96.8 тэрбум болж,
- * өмнөх утгатай ЯГ таарна.
- *
- * Өөрөөр хэлбэл талбайн давхарга ч «100 нэгжийн үнэ» журамтай байх магадлалтай.
- * Баталгаажсаны дараа `m2` → `m100` маягийн шинэ basis нэмж, доорх талбайн
- * давхаргуудын `basis`-ыг солино. Таамгаар өөрчилвөл мөнгөн дүн 100 дахин
- * гажина тул одоохондоо хэвээр үлдээв.
- */
-
 export type Quantity = { field: string; unit: "м" | "км" | "м²" };
-export type Cost = { field: string; basis: CostBasis };
 
 /* ══════════════════════ Сэдэв ══════════════════════ */
 
@@ -242,7 +215,6 @@ export type LayerDef = {
   /** Зөвхөн ойртоход зурагдана (олон мянган объекттой давхарга) */
   minScale?: number;
   qty?: Quantity;
-  cost?: Cost;
   /** Ангиллын задаргаа — дашбоардад багана болж, дарахад зурагт шүүнэ */
   facets?: { field: string; label: string }[];
   /**
@@ -340,7 +312,6 @@ export type LayerDef = {
    * test_data-гийн талбаруудаар зохиогддог тул хуучин сервист хүчингүй байж
    * болно — тэнд ЭНИЙГ хэрэглэхгүй.
    */
-  costSrc?: { url: string; cost: Cost; qty?: Quantity; oid?: string };
   /**
    * OID талбарын нэр — анхдагч `OBJECTID`.
    * ⚠️ Хуучин үйлчилгээнүүд өөр нэртэй (`FID`, `objectid`). Буруу нэрээр
@@ -482,12 +453,12 @@ const M2: Quantity = { field: "talbai_m2", unit: 'м²' };
 /* ══════════════════════ Барилгын хяналт ══════════════════════ */
 
 /**
- * ⚠️ Эдгээр ХУУЧИН үйлчилгээнд үлдсэн — шинэ `Selbe_ET_20260721`-д гүйцэтгэлийн
- * хувь, үе шат, талбайн тайлан ОГТ БАЙХГҮЙ. Тиймээс ЕТ-ийн давхаргууд ба эдгээр
- * нь өөр өөр өгөгдлийн сан: `barilga` (368, төлөвлөлт ба өртөг) vs
- * `building_GOL_barigdaj_ehelsen` (113 блок, бодит гүйцэтгэл).
+ * ⚠️ Талбайн тайлангийн Survey123 — ХУУЧИН үйлчилгээндээ үлдэнэ: маягт өөрөө
+ * энэ рүү бичдэг тул нэгтгэсэн `data`-д зөөх боломжгүй.
+ *
+ * ⚠️ 2026-08-24: `BUILDING_FS` (`building_GOL_barigdaj_ehelsen`) ХАСАГДАВ —
+ * барилгын блок нэгтгэсэн `data`/112 руу шилжсэн (`BUILDING`-ийг үз).
  */
-const BUILDING_FS = `${HJ}/building_GOL_barigdaj_ehelsen/FeatureServer`;
 const SURVEY_FS = `${HJ}/survey123_e98bd4b642f84c9fb688f754de7cb83a_results/FeatureServer`;
 
 /* ══════════════════════ Газар чөлөөлөлт (тусдаа үйлчилгээ) ══════════════════════ */
@@ -545,9 +516,23 @@ export const GAZAR_PARCEL = {
    байсныг арилгав — нэг хил ХАА Ч нэг эх сурвалж, нэг өнгөтэй байх ёстой. */
 
 /** Барилгын явц · 113 блок */
+/**
+ * Барилгын блок — 113 полигон.
+ *
+ * ⚠️ 2026-08-24: monmap-ын `building_GOL_barigdaj_ehelsen`-ээс нэгтгэсэн
+ * `data`/112 (`building_GOL_barigdaj_ehelsen_08_13`) руу шилжив. Шалгасан:
+ * обьект 113 = 113, БАГЦ|БЛОК-ийн утга зөрүү 0 (тул «Гүйцэтгэл бөглөх»
+ * хүснэгттэй холбогдох `buildingKey()` хэвээр), айлын нийлбэр 8575 = 8575.
+ *
+ * ⚠️ `GUITS_HV`/`GUITS_OGN` шинэ давхаргад БАЙХГҮЙ тул тодорхойлолтоос
+ * ХАСАГДАВ. Аль ч кодод уншигддаггүй байсан: гүйцэтгэлийг `loadBlockProgress()`
+ * нь «Гүйцэтгэл бөглөх» хүснэгтээс авдаг бөгөөд давхаргын `GUITS_HV` нь
+ * хуучирсан (илтгэлийн дүнгээс 5–14 нэгж зөрдөг) гэж 2026-08-13-нд аль хэдийн
+ * хэрэглээнээс гарсан.
+ */
 export const BUILDING = {
-  url: `${BUILDING_FS}/2`,
-  oid: "FID",
+  url: `${TD}/112`,
+  oid: "OBJECTID",
   fields: {
     bagts: "BAGTS",
     block: "BLOK",
@@ -555,9 +540,6 @@ export const BUILDING = {
     floors: "DAVHAR",
     households: "AIL_TOO",
     type: "TOROL",
-    /** Нийт гүйцэтгэл (%) */
-    progress: "GUITS_HV",
-    dueDate: "GUITS_OGN",
   },
 } as const;
 
@@ -1019,25 +1001,11 @@ export const PROGRESS_LEVELS = [
   },
 ] as const;
 
-/** 16 үе шат (%) · `-1` = тухайн ажил төлөвлөгдөөгүй */
-export const BUILDING_STAGES: { field: string; label: string }[] = [
-  { field: "A_BELTGEL", label: tr('Бэлтгэл ажил') },
-  { field: "GAZAR", label: tr('Газар шороо') },
-  { field: "SUURI", label: tr('Суурь') },
-  { field: "KARKAS", label: tr('Каркас') },
-  { field: "HANA", label: tr('Хана') },
-  { field: "DEEVER", label: tr('Дээвэр') },
-  { field: "HAALGA", label: tr('Хаалга, цонх') },
-  { field: "SHAL", label: tr('Шал') },
-  { field: "DOTOR", label: tr('Дотор засал') },
-  { field: "GADNA", label: tr('Гадна засал') },
-  { field: "LIFT", label: tr('Лифт') },
-  { field: "HALAALT", label: tr('Халаалт') },
-  { field: "US", label: tr('Ус, ариутгал') },
-  { field: "TSAHILGAAN", label: tr('Цахилгаан') },
-  { field: "HOLBOO", label: tr('Холбоо') },
-  { field: "BUSAD", label: tr('Бусад') },
-];
+/* ⚠️ 2026-08-24: `BUILDING_STAGES` (16 үе шатын талбар — A_BELTGEL, GAZAR,
+   SUURI … BUSAD) УСТГАГДАВ. Барилгын блок нэгтгэсэн `data`/112 руу шилжсэн
+   бөгөөд тэнд эдгээр талбар БАЙХГҮЙ. Үе шатын гүйцэтгэлийг «Гүйцэтгэл бөглөх»
+   хүснэгт (`TASK_SHEET` → `loadBlockProgress`) блок бүрээр өгдөг тул давхарга
+   дээрх хуулбар аль хэдийн илүүц байсан. */
 export const STAGE_NA = -1;
 
 /**
@@ -1339,6 +1307,165 @@ const PKG_LAYERS: LayerDef[] = PKG_TABLE.map(
   }),
 );
 
+/* ══════════ ЗӨВХӨН test_data-д БАЙДАГ давхаргууд (2026-08-24) ══════════
+ *
+ * ⚠️ Эдгээр нь `TD_LAYER` зураглалаар ШИЛЖСЭН давхарга БИШ: monmap-ын хуучин
+ * үйлчилгээнд огт байгаагүй, зөвхөн нэгтгэсэн `test_data`-д бий. Тиймээс
+ * `n` (ЕТ-ийн дугаар) байхгүй бөгөөд `url` нь ШУУД бичигдэнэ — миграцийн
+ * гогцоо (TD_LAYER) эдгээрийг хөндөхгүй.
+ *
+ * ⚠️ «_po» дагавартай тавыг ЗОРИУДААР `PKG_TABLE`-д нэмээгүй: тэнд нэмбэл
+ * `PKG_BY_BAGTS` дамжин `parcelOverlap`-ийн «давхцсан үлдсэн нэгж талбар»
+ * тоо өөрчлөгдөж, нэг багц ШУГАМ ба ТАЛБАЙ хоёроороо ДАВХАР тоологдоно.
+ * Эдгээр нь каталогийн бие даасан давхарга — зурагдана, нийлбэрт орно,
+ * харин багцын огтлолцлын тооцоог хөндөхгүй.
+ */
+const TD_ONLY_LAYERS: LayerDef[] = [
+  /* ── Багц 5 · гадна дулаан, ус, ариутгах татуурга — ТАЛБАЙН хувилбар.
+       Шугаман хос нь pkg:108/106/104/102 (test_data 76/74/72/70). ── */
+  {
+    id: "po:108",
+    n: 75,
+    url: `${TD}/75`,
+    title: tr('Багц 5.1 · Гадна дулаан, ус, татуурга — худаг, камер'),
+    topic: "plan",
+    geom: "area",
+    hue: PKG_HUE.net,
+    fill: 0.3,
+    width: 0.8,
+    noZone: true,
+    /* ⚠️ `Area_m2` БИШ: CAD-аас гаралтай тэр талбар 82–88% ХООСОН
+       ([75] 15/127 · [73] 27/195 · [71] 55/299 · [69] 38/232) тул түүгээр
+       тоолвол талбай 2.1–2.4 дахин ДУТУУ гарна. SR 32648 (UTM 48N) тул
+       систем талбар нь бодит м². */
+    qty: { field: "Shape__Area", unit: 'м²' },
+    note: 'БАГЦ-5.1',
+  },
+  {
+    id: "po:106",
+    n: 73,
+    url: `${TD}/73`,
+    title: tr('Багц 5.2 · Гадна дулаан, ус, татуурга — худаг, камер'),
+    topic: "plan",
+    geom: "area",
+    hue: PKG_HUE.net,
+    fill: 0.3,
+    width: 0.8,
+    noZone: true,
+    /* ⚠️ `Area_m2` БИШ: CAD-аас гаралтай тэр талбар 82–88% ХООСОН
+       ([75] 15/127 · [73] 27/195 · [71] 55/299 · [69] 38/232) тул түүгээр
+       тоолвол талбай 2.1–2.4 дахин ДУТУУ гарна. SR 32648 (UTM 48N) тул
+       систем талбар нь бодит м². */
+    qty: { field: "Shape__Area", unit: 'м²' },
+    note: 'БАГЦ-5.2',
+  },
+  {
+    id: "po:104",
+    n: 71,
+    url: `${TD}/71`,
+    title: tr('Багц 5.3 · Гадна дулаан, ус, татуурга — худаг, камер'),
+    topic: "plan",
+    geom: "area",
+    hue: PKG_HUE.net,
+    fill: 0.3,
+    width: 0.8,
+    noZone: true,
+    /* ⚠️ `Area_m2` БИШ: CAD-аас гаралтай тэр талбар 82–88% ХООСОН
+       ([75] 15/127 · [73] 27/195 · [71] 55/299 · [69] 38/232) тул түүгээр
+       тоолвол талбай 2.1–2.4 дахин ДУТУУ гарна. SR 32648 (UTM 48N) тул
+       систем талбар нь бодит м². */
+    qty: { field: "Shape__Area", unit: 'м²' },
+    note: 'БАГЦ-5.3',
+  },
+  {
+    id: "po:102",
+    n: 69,
+    url: `${TD}/69`,
+    title: tr('Багц 5.4 · Гадна дулаан, ус, татуурга — худаг, камер'),
+    topic: "plan",
+    geom: "area",
+    hue: PKG_HUE.net,
+    fill: 0.3,
+    width: 0.8,
+    noZone: true,
+    /* ⚠️ `Area_m2` БИШ: CAD-аас гаралтай тэр талбар 82–88% ХООСОН
+       ([75] 15/127 · [73] 27/195 · [71] 55/299 · [69] 38/232) тул түүгээр
+       тоолвол талбай 2.1–2.4 дахин ДУТУУ гарна. SR 32648 (UTM 48N) тул
+       систем талбар нь бодит м². */
+    qty: { field: "Shape__Area", unit: 'м²' },
+    note: 'БАГЦ-5.4',
+  },
+  {
+    id: "po:95",
+    n: 62,
+    url: `${TD}/62`,
+    title: tr('Багц 14 · Дулаан хангамжийн нэвтрэх суваг — худаг, камер'),
+    topic: "plan",
+    geom: "area",
+    hue: PKG_HUE.src,
+    fill: 0.3,
+    width: 0.8,
+    noZone: true,
+    /* ⚠️ `Area_m2` БИШ: CAD-аас гаралтай тэр талбар 82–88% ХООСОН
+       ([75] 15/127 · [73] 27/195 · [71] 55/299 · [69] 38/232) тул түүгээр
+       тоолвол талбай 2.1–2.4 дахин ДУТУУ гарна. SR 32648 (UTM 48N) тул
+       систем талбар нь бодит м². */
+    qty: { field: "Shape__Area", unit: 'м²' },
+    note: 'БАГЦ-14',
+  },
+  /* ── Дугуйн замын ТЭНХЛЭГ. Полигон хувилбар нь `sb:15`/`dugui` ([39]) —
+       энэ нь уртаар хэмжигдэх шугам (`urt_m`), бүсэд хуваарилагдана. ── */
+  {
+    id: "dugui:line",
+    n: 40,
+    url: `${TD}/40`,
+    title: tr('Дугуйн зам — тэнхлэг'),
+    topic: "plan",
+    geom: "line",
+    hue: "#828282",
+    width: 1.4,
+    dash: "solid",
+    /* ⚠️ `zoneField` ЗОРИУДААР БИЧСЭНГҮЙ: `zoneWhere()` нь талбарын нэрээр биш,
+       `zoneField` БАЙГАА ЭСЭХЭЭР `zoneRefValues`/`zoneLegacyValues` салаалдаг
+       (доорх мөр ~2732). test_data [40]-ийн ZONE_ID нь ХУУЧИН кодтой («B-2.1»,
+       «D-8») тул legacy салаа хэрэгтэй — эс бөгөөс «B-2» бүс сонгоход 0 объект.
+       Анхдагч `ZONE_FIELD` нь аль хэдийн "ZONE_ID". */
+    qty: { field: "urt_m", unit: 'м' },
+  },
+  /* ── Усан сан (6 ш). `pkg:96` «Багц 13 · 2000 м³ усан сан» ([64])-ээс
+       ТУСДАА цуглуулга — тэр нь нэг багцын ажил, энэ нь бүх усан сан. ── */
+  {
+    id: "usan-san",
+    n: 89,
+    url: `${TD}/89`,
+    title: tr('Усан сан'),
+    topic: "plan",
+    geom: "area",
+    hue: PKG_HUE.src,
+    fill: 0.35,
+    width: 1,
+    noZone: true,
+    qty: { field: "Shape__Area", unit: 'м²' },
+  },
+  /* ── Гэрлэн дохио. Геометр нь ШУГАМ (уулзварын хэсэг), цэг БИШ. ── */
+  {
+    id: "gerlen-dohio",
+    n: 103,
+    url: `${TD}/103`,
+    title: tr('Гэрлэн дохио'),
+    topic: "plan",
+    geom: "line",
+    hue: "#eab308",
+    width: 2.2,
+    dash: "solid",
+    noZone: true,
+    facets: [
+      { field: "uulzwar_name", label: tr('Уулзвар') },
+      /* ⚠️ `Dohioni_ungu` ХАСАВ — 14/14 мөр NULL (амьдаар шалгав). */
+    ],
+  },
+];
+
 /**
  * Төслийн хил — тайлан хилээс ГАДУУР бичигдсэн эсэхийг шалгахад л ашиглана.
  * ⚠️ Давхарга болгож зурахгүй: шинэ ЕТ-ийн бүсийн давхарга төслийн хамрах
@@ -1484,8 +1611,9 @@ export const LAYERS: LayerDef[] = [
   /* ─────────── Барилгын хяналт (ХУУЧИН үйлчилгээ) ─────────── */
   {
     id: "mon:building",
-    n: 2,
-    url: `${BUILDING_FS}/2`,
+    /* ⚠️ 2026-08-24: нэгтгэсэн `data`/112 — `BUILDING` тогтмолын тайлбарыг үз. */
+    n: 112,
+    url: `${TD}/112`,
     title: tr('Барилгын блок (гүйцэтгэл)'),
     topic: "monitor",
     geom: "area",
@@ -1494,7 +1622,7 @@ export const LAYERS: LayerDef[] = [
     width: 1.4,
     noZone: true,
     detail: "building",
-    oid: "FID",
+    oid: "OBJECTID",
     note: tr('Гүйцэтгэл «Гүйцэтгэл бөглөх» хүснэгтээс амьд'),
     /* ⚠️ `breaks` (GUITS_HV) 2026-08-13-нд ХАСАГДАВ: давхаргын GUITS_HV талбар
        ХУУЧИРСАН (5–14 нэгж зөрдөг) бөгөөд эхний зураглалт болон каталогийн
@@ -1631,7 +1759,6 @@ export const LAYERS: LayerDef[] = [
     dash: "solid",
     width: 2.0,
     qty: M,
-    cost: { field: "negj_une", basis: "m100" },
   },
   {
     id: "et:9",
@@ -1643,7 +1770,6 @@ export const LAYERS: LayerDef[] = [
     dash: "dash",
     width: 1.7,
     qty: M,
-    cost: { field: "negj_une", basis: "m100" },
   },
   {
     id: "et:11",
@@ -1655,7 +1781,6 @@ export const LAYERS: LayerDef[] = [
     dash: "dash-dot",
     width: 1.7,
     qty: M,
-    cost: { field: "negj_une", basis: "m100" },
   },
   {
     id: "et:8",
@@ -1667,7 +1792,6 @@ export const LAYERS: LayerDef[] = [
     dash: "dot",
     width: 1.6,
     qty: M,
-    cost: { field: "negj_une", basis: "m100" },
   },
   {
     id: "et:4",
@@ -1678,7 +1802,6 @@ export const LAYERS: LayerDef[] = [
     hue: "#ef4444",
     marker: "square",
     size: 9,
-    cost: { field: "negj_une", basis: "sh" },
   },
 
   /* ─────────── Инженер · ус ─────────── */
@@ -1692,7 +1815,6 @@ export const LAYERS: LayerDef[] = [
     dash: "solid",
     width: 1.8,
     qty: M,
-    cost: { field: "negj_une", basis: "m100" },
   },
   {
     id: "et:23",
@@ -1704,7 +1826,6 @@ export const LAYERS: LayerDef[] = [
     dash: "solid",
     width: 1.5,
     qty: M,
-    cost: { field: "negj_une", basis: "m100" },
   },
   {
     id: "et:17",
@@ -1716,7 +1837,6 @@ export const LAYERS: LayerDef[] = [
     dash: "dash",
     width: 1.7,
     qty: M,
-    cost: { field: "negj_une", basis: "m100" },
   },
   {
     id: "et:16",
@@ -1728,7 +1848,6 @@ export const LAYERS: LayerDef[] = [
     dash: "dash",
     width: 1.4,
     qty: M,
-    cost: { field: "negj_une", basis: "m100" },
   },
   {
     id: "et:3",
@@ -1739,7 +1858,6 @@ export const LAYERS: LayerDef[] = [
     hue: "#155e75",
     marker: "circle",
     size: 7,
-    cost: { field: "negj_une", basis: "sh" },
   },
   {
     id: "et:19",
@@ -1751,7 +1869,6 @@ export const LAYERS: LayerDef[] = [
     dash: "dot",
     width: 1.6,
     qty: M,
-    cost: { field: "negj_une", basis: "m100" },
   },
 
   /* ─────────── Инженер · цахилгаан ─────────── */
@@ -1770,7 +1887,6 @@ export const LAYERS: LayerDef[] = [
     dash: "dash-dot",
     width: 1.8,
     qty: M,
-    cost: { field: "negj_une", basis: "m100" },
   },
   {
     id: "et:125",
@@ -1783,7 +1899,6 @@ export const LAYERS: LayerDef[] = [
     dash: "dash-dot",
     width: 1.6,
     qty: M,
-    cost: { field: "negj_une", basis: "m100" },
   },
   {
     id: "et:126",
@@ -1796,7 +1911,6 @@ export const LAYERS: LayerDef[] = [
     dash: "dash-dot",
     width: 1.4,
     qty: M,
-    cost: { field: "negj_une", basis: "m100" },
   },
   {
     id: "et:127",
@@ -1809,7 +1923,6 @@ export const LAYERS: LayerDef[] = [
     dash: "dash-dot",
     width: 1.2,
     qty: M,
-    cost: { field: "negj_une", basis: "m100" },
   },
 
   /* ─────────── Инженер · бэлтгэл ─────────── */
@@ -1825,67 +1938,16 @@ export const LAYERS: LayerDef[] = [
     qty: M,
     // ⚠️ Энэ давхаргын нэгж үнэ ангилал бүрт ӨӨР (18–250 сая) — `negj_une_100m`
     //    нь мөр бүрт өөрийн утгатай тул нийлбэрийг сервер тал бодно.
-    cost: { field: "negj_une_100m", basis: "m100" },
     facets: [{ field: "Layer", label: tr('Арга хэмжээний төрөл') }],
     // Каталогт төрлөөрөө задарна — энэ давхарга нэг мөр биш, багц арга хэмжээ
     catalogFacet: true,
   },
 
-  /* ─────────── Ачаалал бууруулах ШИНЭ зам ───────────
-     ⚠️ ТУСДАА service (`Selbe_shine_zam`) — ЕТ-ийн `Selbe_ET` дээр биш тул
-     хаягаа өөрөө авчирна. Дөрвөн давхарга нь төлөвлөж буй шинэ замын хэсгүүд.
-     ⚠️ `GROUP_LAYERS`-т ОРУУЛААГҮЙ: «Ерөнхий төлөвлөгөө»-ний каталог, объектын
-     тоо, багцын нийлбэрт орох ёсгүй (эдгээр нь хараахан батлагдаагүй санал).
-     Зөвхөн анализын «Ачаалал» табын «Шинэ зам» сонголтоор харагдана —
-     `config.ts`-ийн `RELIEF_LAYERS`-ыг үз. */
-  {
-    id: "sz:0",
-    n: 0,
-    title: tr('Шинэ зам — хойд сүлжээ'),
-    topic: "plan",
-    geom: "line",
-    hue: "#4ade80",
-    dash: "solid",
-    width: 1.4,
-    noZone: true,
-    url: "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/Selbe_shine_zam/FeatureServer/0",
-  },
-  {
-    id: "sz:1",
-    n: 1,
-    title: tr('Шинэ зам — Дамба (285 м)'),
-    topic: "plan",
-    geom: "line",
-    hue: "#4ade80",
-    dash: "solid",
-    width: 1.6,
-    noZone: true,
-    url: "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/Selbe_shine_zam/FeatureServer/1",
-  },
-  {
-    id: "sz:2",
-    n: 2,
-    title: tr('Шинэ зам — Сэлбэ (2400 м)'),
-    topic: "plan",
-    geom: "line",
-    hue: "#4ade80",
-    dash: "solid",
-    width: 1.6,
-    noZone: true,
-    url: "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/Selbe_shine_zam/FeatureServer/2",
-  },
-  {
-    id: "sz:3",
-    n: 3,
-    title: tr('Шинэ зам — Дарь эх'),
-    topic: "plan",
-    geom: "line",
-    hue: "#4ade80",
-    dash: "solid",
-    width: 1.6,
-    noZone: true,
-    url: "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/Selbe_shine_zam/FeatureServer/3",
-  },
+  /* ⚠️ 2026-08-24: «Ачаалал бууруулах ШИНЭ зам» (`sz:0`–`sz:3`,
+     `Selbe_shine_zam` service) БҮРМӨСӨН ХАСАГДАВ. Эдгээр нь замын сүлжээ
+     болж угсардаггүй (`cars: false`), ямар ч тооцоо/оноонд ордоггүй —
+     зөвхөн зурган дээр «ийм зам төлөвлөж байна» гэж ҮЗҮҮЛЭХ зориулалттай
+     байв. Эзэмшигчийн шийдвэрээр төслөөс гаргав. */
 
   /* ─────────── Зам ─────────── */
   {
@@ -1913,7 +1975,6 @@ export const LAYERS: LayerDef[] = [
     minScale: 25000,
     noZone: true,
     qty: { field: "urt_km", unit: 'км' },
-    cost: { field: "negjune_km", basis: "km" },
   },
   {
     id: "et:27",
@@ -1925,7 +1986,6 @@ export const LAYERS: LayerDef[] = [
     fill: 0.34,
     width: 0.6,
     qty: M2,
-    cost: { field: "negj_une", basis: "m2" },
   },
   /**
    * ⚠️ 2026-07-31: ЕТ-ийн 14-р давхаргыг ОРЛУУЛСАН — дугуйн зам шинэчлэгдэж
@@ -1959,7 +2019,6 @@ export const LAYERS: LayerDef[] = [
     dash: "solid",
     width: 3.0,
     qty: M,
-    cost: { field: "niit_une_sh", basis: "sh" },
   },
 
   /* ─────────── Тээвэр ─────────── */
@@ -1984,7 +2043,6 @@ export const LAYERS: LayerDef[] = [
     hue: "#8b5cf6",
     marker: "circle",
     size: 10,
-    cost: { field: "negj_une", basis: "sh" },
   },
   {
     id: "et:1",
@@ -1995,7 +2053,6 @@ export const LAYERS: LayerDef[] = [
     hue: "#4f46e5",
     marker: "square",
     size: 11,
-    cost: { field: "negj_une", basis: "sh" },
   },
 
   /* ─────────── Бүс ─────────── */
@@ -2132,19 +2189,9 @@ export const LAYERS: LayerDef[] = [
     zoneField: "RefName_12",
     qty: { field: "Shape__Area", unit: 'м²' },
   },
-  {
-    id: "et:26",
-    n: 26,
-    title: tr('Цэцэрлэгт хүрээлэн, ногоон алхалт'),
-    topic: "plan",
-    geom: "area",
-    hue: "#84cc16",
-    fill: 0.32,
-    width: 0.8,
-    qty: M2,
-    cost: { field: "negj_une", basis: "m2" },
-    facets: [{ field: "Layer", label: tr('Ангилал') }],
-  },
+  /* ⚠️ 2026-08-24: `et:26` «Цэцэрлэгт хүрээлэн, ногоон алхалт» УСТГАГДАВ —
+     эзэмшигчийн шийдвэрээр угаасаа хэрэггүй өгөгдөл байсан. Ногоон
+     байгууламжийг нэгтгэсэн `data`/35 (`sb:1`) хангана. */
 
   /* ─────────── Шинэ feature-ууд (эх webmap) ─────────── */
   /**
@@ -2157,18 +2204,11 @@ export const LAYERS: LayerDef[] = [
    * (`Promise.all` тул нэг давхаргын алдаа бүгдийг нураана). `bm128` ганцаараа
    * `ZONE_ID`-тэй тул шүүлтэд оролцоно.
    */
-  {
-    id: "tree",
-    n: 0,
-    url: `${HJ}/Tree_1/FeatureServer/0`,
-    title: tr('Мод'),
-    topic: "plan",
-    geom: "area",
-    hue: "#adfc74",
-    fill: 1,
-    width: 0.75,
-    noZone: true,
-  },
+  /* ⚠️ 2026-08-24: `tree` (Tree_1 — 4032 ПОЛИГОН мод) УСТГАГДАВ. Яг ижил 4032
+     мод нэгтгэсэн `data`/36-д ЦЭГ хэлбэрээр байгаа бөгөөд `sb:0` id-гаар аль
+     хэдийн каталогт бий — өөрөөр хэлбэл давхардал байв. `plan2d.ts` ч "tree"-г
+     "sb:0" рүү зураглаж байсан. Өртөг/хэмжээний тооцоонд оролцдоггүй байсан тул
+     зөвхөн зурагдах давхарга нэгээр цөөрнө. */
   /**
    * ХҮҮХДИЙН ТОГЛООМ (цэг, 111) — төрлөөр (Гулгуур/Дүүжин/Том гулсууран) ЭГЦ
    * ДЭЭРЭЭС харсан SVG дүрс (MapCanvas тавина). СУУРЬ давхаргын нэг:
@@ -2216,18 +2256,13 @@ export const LAYERS: LayerDef[] = [
     dash: "solid",
     noZone: true,
   },
-  /* «Бусад мэдээлэл» үйлчилгээний бусад 4 давхарга (өнгө нь үйлчилгээний өгөгдмөл) */
-  {
-    id: "bm128",
-    n: 128,
-    url: `${HJ}/${encodeURIComponent('Бусад_мэдээлэл_20260724')}/FeatureServer/128`,
-    title: tr('Тодорхойгүй цахилгааны шугам'),
-    topic: "plan",
-    geom: "line",
-    hue: "#e3b5fc",
-    width: 1,
-    dash: "solid",
-  },
+  /* ⚠️ 2026-08-24: «Бусад_мэдээлэл_20260724» үйлчилгээ төслөөс ГАРСАН.
+     · `bm128` «Тодорхойгүй цахилгааны шугам» (21 хэрчим, 510 м) — хаягдал
+       өгөгдөл байсан тул бүрмөсөн хасав.
+     · `bm145`/`bm87` (Сэлбэ дулаан станц 21МВт, Шинэ их үүсвэр 47.8МВт) —
+       нэгтгэсэн `data`/105 (`source:eh` «Эх үүсвэр») дотор ЧАДЛААРАА ЯГ
+       таарч байсан тул давхардал байв.
+     · `bm146` нь `TD_LAYER`-ээр `data`/41 руу аль хэдийн шилжсэн тул үлдэв. */
   {
     id: "bm146",
     n: 146,
@@ -2238,30 +2273,6 @@ export const LAYERS: LayerDef[] = [
     hue: "#b5fcd6",
     width: 1,
     dash: "solid",
-    noZone: true,
-  },
-  {
-    id: "bm145",
-    n: 145,
-    url: `${HJ}/${encodeURIComponent('Бусад_мэдээлэл_20260724')}/FeatureServer/145`,
-    title: tr('Сэлбэ дулаан станц'),
-    topic: "plan",
-    geom: "area",
-    hue: "#4e4ea3",
-    fill: 0.6,
-    width: 0.7,
-    noZone: true,
-  },
-  {
-    id: "bm87",
-    n: 87,
-    url: `${HJ}/${encodeURIComponent('Бусад_мэдээлэл_20260724')}/FeatureServer/87`,
-    title: tr('Шинэ их үүсвэр'),
-    topic: "plan",
-    geom: "area",
-    hue: "#a82f2f",
-    fill: 0.6,
-    width: 0.7,
     noZone: true,
   },
   /* ── Хил / төлөвлөлтийн талбай (ӨӨР үйлчилгээ) ──
@@ -2301,6 +2312,7 @@ export const LAYERS: LayerDef[] = [
     noZone: true,
   },
   ...PKG_LAYERS,
+  ...TD_ONLY_LAYERS,
   ...IOT_LAYERS,
 ];
 
@@ -2351,8 +2363,6 @@ const TD_LAYER: Record<string, number> = {
   "habea:crane": 8, "habea:buffer": 7,
 };
 
-/** `negj_une*` өртгийн талбараа test_data-д ХАДГАЛСАН цорын ганц давхарга */
-const TD_KEEP_COST = new Set(["et:4"]);
 /** `talbai_m2` атрибут нь [id]-д устсан — системийн Shape__Area-д буулгана */
 const TD_QTY_SYS_AREA = new Set([
   "pkg:226", "pkg:228", "pkg:230", "pkg:232", "pkg:234", "pkg:235",
@@ -2381,13 +2391,6 @@ for (const l of LAYERS) {
   if (n == null) continue;
   l.styleUrl = l.url ?? `${ET}/${l.n}`;
   l.url = `${TD}/${n}`;
-  if (l.cost && !TD_KEEP_COST.has(l.id)) {
-    // ⚠️ Устгахын ӨМНӨ миграциас өмнөх бүтэн тодорхойлолтыг хадгална — өртгийн
-    //    асуулга нь `cost` талбартай зэрэг `qty`/`oid`-г ч ЭНЭ ижил үйлчилгээнээс
-    //    авах ёстой (доорх мөрүүд `qty`/`oid`-г test_data-д тааруулж дарж бичнэ).
-    l.costSrc = { url: l.styleUrl, cost: l.cost, qty: l.qty, oid: l.oid };
-    delete l.cost;
-  }
   if (l.qty && TD_QTY_SYS_AREA.has(l.id)) l.qty = { field: "Shape__Area", unit: 'м²' };
   if (l.qty && TD_QTY_SYS_LENGTH.has(l.id)) l.qty = { field: "Shape__Length", unit: 'м' };
   const qf = TD_QTY_FIELD[l.id];
@@ -2442,19 +2445,8 @@ export const REFERENCE_IDS = ["khil1", "khil2"] as const;
 /** Ихэнх давхарга ЕТ-ээс; хяналтынх нь өөрийн бүтэн хаягтай */
 export const layerUrl = (l: LayerDef) => l.url ?? `${ET}/${l.n}`;
 
-/**
- * ӨРТГИЙН асуулгын эх — одоогийн үйлчилгээ (өртгийн талбар нь үлдсэн бол),
- * эс бөгөөс миграциас өмнөх хуулбар (`costSrc`). Аль нь ч байхгүй бол `null`.
- *
- * ⚠️ ЗӨВХӨН `where='1=1'` хэлбэрийн нэгтгэлд. Шалтгааныг `LayerDef.costSrc`-ийн
- * тайлбараас үзнэ үү.
- */
-export const costSource = (
-  l: LayerDef,
-): { url: string; cost: Cost; qty?: Quantity; oid?: string } | null =>
-  l.cost
-    ? { url: layerUrl(l), cost: l.cost, qty: l.qty, oid: l.oid }
-    : l.costSrc ?? null;
+/* ⚠️ 2026-08-24: `costSource()` УСТГАГДАВ — `LayerDef.cost`/`costSrc` талбарууд
+   ба `negj_une` дээр тогтсон өртгийн загвар бүхэлдээ хасагдсан (зохиомол дата). */
 
 /**
  * Давхаргын OID талбар.
@@ -2704,7 +2696,9 @@ export const IRGED_SCENE = {
 export const IRGED_TOILET = {
   id: "irged:toilet",
   title: tr('Нүхэн жорлон'),
-  url: `${HJ}/selbe_UB_toilet_all/FeatureServer/0`,
+  /* ⚠️ 2026-08-24: monmap-ын `selbe_UB_toilet_all`-аас нэгтгэсэн `toilet`
+     үйлчилгээ рүү шилжив. Обьект 1675 = 1675, талбарууд бүрэн адил. */
+  url: `${GAZAR_FS}/toilet/FeatureServer/115`,
   /**
    * УЛБАР ШАР (хэрэглэгчийн сонголт) — гэрэлтэх эффекттэй хамт ажиллана.
    *
@@ -3153,7 +3147,9 @@ export const LAYER_GROUPS: {
  */
 export const GROUP_LAYERS: Record<GroupKey, string[]> = {
   // Дамбадаржаа ДЦС · Сэлбэ дулаан станц · Шинэ их үүсвэр
-  src: ["bm146", "bm145", "bm87"],
+  /* ⚠️ 2026-08-24: `bm145`/`bm87` оронд нэгтгэсэн `source:eh` (`data`/105,
+     7 эх үүсвэр нэг давхаргад — дашбоардын «Эх үүсвэр» карттай НЭГ эх). */
+  src: ["source:eh", "bm146"],
   zone: ["zone"],
   // ⚠️ Ерөнхий төлөвлөгөөний ФИЗИК давхаргууд «Selbe 2D map 0804» webmap-ийн
   //    `sb:*` (selbe_3D__0804_WFL1)-ээр СОЛИГДЛОО — style webmap-аас 100%. Хуучин
@@ -3167,7 +3163,7 @@ export const GROUP_LAYERS: Record<GroupKey, string[]> = {
   road: ["sb:2", "sb:3", "sb:15", "sb:5", "et:12"],
   transit: ["et:6", "et:2", "et:1"],
   // Ногоон байгууламж · Мод (webmap) + ЕТ ногоон (хэвээр, давхцаагүй)
-  green: ["sb:1", "sb:0", "et:26"],
+  green: ["sb:1", "sb:0"],
   // Тохижилт — Гол · Спорт (полигон/шугам) · Хүүхдийн тоглоом · Сүүдрэвч (webmap)
   orchin: ["sb:16", "sb:8", "sb:7", "sb:11", "sb:10", "sb:14", "sb:13"],
   /**
@@ -3190,7 +3186,7 @@ export const GROUP_LAYERS: Record<GroupKey, string[]> = {
   iot: [],
   // ⚠️ `bm146`/`bm145`/`bm87` ЭНДЭЭС ГАРСАН — одоо `src` бүлэгт. Хоёуланд
   //    нь байвал каталогт хоёр удаа гарч, `PLAN_LAYER_IDS` давхардана.
-  busad: ["khil1", "khil2", "road", "roadOld", "bm128"],
+  busad: ["khil1", "khil2", "road", "roadOld"],
 };
 
 /**
@@ -3210,14 +3206,23 @@ export const GROUP_LAYERS: Record<GroupKey, string[]> = {
 const CATALOG_EXTRA: Partial<Record<GroupKey, string[]>> = {
   build: ["et:24"],
   land: ["gazar:parcel", "gazar:building"],
-  road: ["et:29", "et:5", "et:27", "dugui", "sz:0", "sz:1", "sz:2", "sz:3"],
-  green: ["nogoon", "tree"],
+  // ⚠️ 2026-08-24: `dugui:line` (тэнхлэг) ба `gerlen-dohio` нь зөвхөн test_data-д
+  //    байдаг шинэ давхаргууд — `TD_ONLY_LAYERS`-ийг үзнэ үү.
+  road: [
+    "et:29", "et:5", "et:27", "dugui", "dugui:line", "gerlen-dohio",
+  ],
+  green: ["nogoon"],
   orchin: ["tgl"],
-  // Дулаан · цэвэр ус · бохир — ЕТ-ийн инженерийн шугам сүлжээ бүрэн
+  // Дулаан · цэвэр ус · бохир — ЕТ-ийн инженерийн шугам сүлжээ бүрэн.
+  // ⚠️ `po:*` нь Багц 5/14-ийн ТАЛБАЙН хувилбар (test_data-д л байдаг) — шугаман
+  //    хос нь `pkg:*` дотор. Багцын огтлолцлын тооцоог хөндөхгүй (TD_ONLY_LAYERS).
   pkgNet: [
     "et:7", "et:10", "et:9", "et:11", "et:8", "et:4",
     "et:18", "et:23", "et:17", "et:16", "et:3", "et:19",
+    "po:108", "po:106", "po:104", "po:102", "po:95",
   ],
+  // Усан сан (6 ш) — test_data-д л байдаг, аль нэг багцын ажил БИШ
+  pkgSrc: ["usan-san"],
   iot: [
     "iot:waste_sensor", "iot:water_meter", "iot:light_sensor",
     "iot:temp_humidity", "iot:soil_meter",
@@ -3244,7 +3249,7 @@ export const INITIAL_MAP_LAYERS: string[] = [
   "dugui", // Дугуйн зам
   "et:12", // Гүүрэн байгууламж
   "nogoon", // Ногоон байгууламж
-  "tree", // Мод
+  "sb:0", // Мод (цэг — өмнөх `tree` полигоныг орлов, 2026-08-24)
   "tgl", // Хүүхдийн тоглоом (эгц дээрээс харсан дүрс)
 ];
 

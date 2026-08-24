@@ -51,7 +51,6 @@ export type Overview = {
   emptyCount: number;
   /** Бүсээр шүүх боломжгүй (талбаргүй) эх сурвалжийн тоо */
   skippedCount: number;
-  totalCost: number;
   note: string;
 };
 
@@ -178,7 +177,6 @@ export async function zoneOverview(input: string, scope: AgentScope): Promise<Ov
       title: l.title,
       n: t.n,
       ...(qtyText(l, t.q) ? { qty: qtyText(l, t.q)! } : {}),
-      ...(t.cost > 0 ? { cost: Math.round(t.cost) } : {}),
       ...(whole ? { whole: true } : {}),
     });
   }
@@ -200,13 +198,12 @@ export async function zoneOverview(input: string, scope: AgentScope): Promise<Ov
     sources.push({ id: r.value.d.id, title: r.value.d.title, n: r.value.n });
   }
 
-  // Хамгийн их өртөгтэйг эхэнд — агент юуг түрүүлж дурдахаа мэдэхэд
-  sources.sort((a, b) => (b.cost ?? 0) - (a.cost ?? 0) || b.n - a.n);
+  // Хамгийн олон объекттойг эхэнд — агент юуг түрүүлж дурдахаа мэдэхэд
+  sources.sort((a, b) => b.n - a.n);
 
   const notes: string[] = [];
   if (overflow) notes.push(tr('⚠️ {0} эх сурвалж хязгаараас хэтэрсэн тул шалгаагүй.', overflow));
   if (failed) notes.push(tr('⚠️ {0} эх сурвалж алдаа өгсөн.', failed));
-  notes.push(tr('Өртөг нь порталын каталогтой ИЖИЛ загвараар бодогдсон (нэгж үнэ × хэмжээ).'));
   if (sources.some((x) => x.whole)) {
     notes.push(
       tr('`whole: true` тэмдэгтэй эх сурвалж нь БҮХЭЛДЭЭ энэ багцынх — мөрөөр шүүгээгүй, ') +
@@ -219,7 +216,6 @@ export async function zoneOverview(input: string, scope: AgentScope): Promise<Ov
     sources,
     emptyCount: empty,
     skippedCount: skipped,
-    totalCost: Math.round(sources.reduce((s, x) => s + (x.cost ?? 0), 0)),
     note: notes.join(' '),
   };
 }

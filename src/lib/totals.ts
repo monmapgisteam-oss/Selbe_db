@@ -7,13 +7,13 @@
  * хуулбарлавал каталог дээрх дүн самбар дээрхээс зөрөх өдөр ирнэ.
  */
 
-import { queryGroup, queryStats, count, sum } from './query';
+import { queryStats, count, sum } from './query';
 import { t as tr } from '@/lib/i18nCore';
-import { layerUrl, OID, CATALOG_LAYER_IDS, LAYER_BY_ID, zoneWhere, type LayerDef, type Cost } from './services';
+import { layerUrl, OID, CATALOG_LAYER_IDS, LAYER_BY_ID, zoneWhere, type LayerDef } from './services';
 import { num, ha, km } from './format';
 import { useAsync, type Async } from './useAsync';
 
-export type Totals = { n: number; q: number; cost: number };
+export type Totals = { n: number; q: number };
 
 /**
  * Давхаргад тохирох бүсийн шүүлт.
@@ -28,24 +28,6 @@ export const layerStats = (d: LayerDef) =>
   // ⚠️ OID нь давхарга бүрт ижил БИШ (хуучин үйлчилгээнүүд `FID`, `objectid`)
   [count(d.oid ?? OID, 'n'), ...(d.qty ? [sum(d.qty.field, 'q')] : [])];
 
-/**
- * НЭГ бүлгийн өртөг: нэгж үнийг тоо/хэмжээнд хэрхэн үржүүлэх.
- *
- * ⚠️ Ганц газарт бичнэ: нийт дүн, ангилал бүрийн дүн, нэгж үнийн шатлал гурав
- * бүгд эндээс тооцоно — эс бөгөөс задаргааны нийлбэр нийт дүнтэйгээ зөрнө.
- */
-/**
- * ⚠️ 2026-08-19: Параметр нь `LayerDef` БАЙСАН. `loadCosts` нь одоо миграциас
- * ӨМНӨХ өртгийн тодорхойлолтоор (`costSrc`) ажилладаг тул давхаргын ОДООГИЙН
- * `d.cost` (устсан байж болно) БИШ, шийдэгдсэн `Cost`-ыг шууд авна — эс бөгөөс
- * сэргээсэн давхаргууд бүгд 0 өртөгтэй хэвээр үлдэнэ.
- */
-export function costOf(c: Cost | undefined, n: number, q: number, price: number): number {
-  if (!c || !Number.isFinite(price)) return 0;
-  return c.basis === 'sh' ? n * price
-    : c.basis === 'm100' ? (q / 100) * price
-      : q * price; // 'km' ба 'm2' — хэмжээ шууд үржигдэнэ
-}
 
 /**
  * Давхаргын тоо, хэмжээ, ӨРТГИЙГ нэг хүсэлтээр.
@@ -55,25 +37,11 @@ export function costOf(c: Cost | undefined, n: number, q: number, price: number)
  * арга хэмжээ» 18–250 сая). Нэг ижил хэлбэрээр бүлэглэвэл тэр онцгой тохиолдол
  * өөрөө шийдэгдэнэ — `MAX(үнэ)` авбал тэр давхаргын өртөг 9 дахин хэтэрдэг байв.
  */
+/* ⚠️ 2026-08-24: ӨРТГИЙН тооцоо ХАСАГДАВ. `negj_une` нь зохиомол дата байсан
+   тул давхаргын нийлбэрт зөвхөн ТОО ба ХЭМЖЭЭ үлдэв. */
 export async function layerTotals(d: LayerDef, where: string): Promise<Totals> {
-  const url = layerUrl(d);
-  const stats = layerStats(d);
-
-  if (!d.cost) {
-    const r = await queryStats(url, stats, where);
-    return { n: Number(r.n ?? 0), q: Number(r.q ?? 0), cost: 0 };
-  }
-
-  const rows = await queryGroup(url, d.cost.field, stats, where);
-  let n = 0, q = 0, cost = 0;
-  for (const r of rows) {
-    const rn = Number(r.n ?? 0);
-    const rq = Number(r.q ?? 0);
-    n += rn;
-    q += rq;
-    cost += costOf(d.cost, rn, rq, Number(r[d.cost.field] ?? 0));
-  }
-  return { n, q, cost };
+  const r = await queryStats(layerUrl(d), layerStats(d), where);
+  return { n: Number(r.n ?? 0), q: Number(r.q ?? 0) };
 }
 
 /** Хэмжээг уншихад ойлгомжтой нэгжээр — метрийг км, м²-ыг га болгоно */

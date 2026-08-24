@@ -234,10 +234,11 @@ async function main() {
   check('тойм амжилттай', !ov.isError, ov.text.slice(0, 140));
   const o = ov.isError ? {} : JSON.parse(ov.text);
   check('олон эх сурвалжаас өгөгдөл олов', (o.sources?.length ?? 0) >= 5, `${o.sources?.length}`);
-  check('өртөг тооцоологдов', (o.totalCost ?? 0) > 0, `${o.totalCost}`);
+  // ⚠️ 2026-08-24: «өртөг тооцоологдов» шалгуур ХАСАГДАВ — `negj_une` дээр
+  //    тогтсон өртгийн загвар зохиомол өгөгдөлтэй байсан тул бүрмөсөн устсан.
   check('давхарга БА өгөгдлийн эх сурвалж хоёулаа орсон', o.sources?.some((x) => x.id.startsWith('ds:')) ?? false);
   check('хэмжээ хүний нэгжээр гарав', o.sources?.some((x) => /га|км|м²|м$/.test(x.qty ?? '')) ?? false);
-  console.log(`     → ${o.sources?.length} эх сурвалж · ${((o.totalCost ?? 0) / 1e9).toFixed(1)} тэрбум ₮ · ${((Date.now() - t0) / 1000).toFixed(1)}с`);
+  console.log(`     → ${o.sources?.length} эх сурвалж · ${((Date.now() - t0) / 1000).toFixed(1)}с`);
 
   check(
     'бичиглэл өөр байсан ч таарна («Багц 1»)',
@@ -291,7 +292,9 @@ async function main() {
   //    эсвэл ажлын хуудасны өгөгдөл өөрчлөгдсөн — хүн шалгах ёстой.
   check('нийт гүйцэтгэл дашбоардтай таарна', p.overall >= 15 && p.overall <= 22, `${p.overall}%`);
   check('багц бүрээр задарсан', (p.byBagts?.length ?? 0) === 7, `${p.byBagts?.length}`);
-  check('бүртгэсэн ба бодит хувь ХОЁУЛАА бий', p.byBagts?.every((b) => 'actual' in b && 'recorded' in b));
+  // ⚠️ 2026-08-24: 'recorded' (давхаргын хуучирсан GUITS_HV) эх өгөгдлөөс гарсан —
+  //    нэгтгэсэн data/112-т тэр талбар байхгүй тул зөвхөн 'actual' үлдэв.
+  check('бодит хувь бий', p.byBagts?.every((b) => 'actual' in b));
   check('хамгийн хоцорсон блокууд гарав', (p.slowest?.length ?? 0) > 0);
   check('эрхгүй бол тооцоолол ч хаалттай', (await runTool('compute', { kind: 'building_progress' }, [])).isError);
   console.log(`     → ${p.blocks} блок · ${p.ail} айл · нийт ${p.overall}%`);

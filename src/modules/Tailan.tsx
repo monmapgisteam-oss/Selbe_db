@@ -522,7 +522,7 @@ export function Tailan() {
                       <p className={r.intro}>
                         {tr('Ерөнхий төлөвлөгөөний')} {num(x.infra.totals.layers)} {tr('давхаргад')}
                         {' '}{num(x.infra.totals.n)} {tr('объект бүртгэгдсэн бөгөөд шугам сүлжээний нийт урт')} {num(x.infra.totals.len)} {tr('м, талбайн хэмжээ')}
-                        {' '}{num(x.infra.totals.area)} {tr('м² байна. Өртгийн загвараар тооцсон дүн')} {bn(x.infra.totals.cost)} {tr('тэрбум ₮ байна.')}
+                        {' '}{num(x.infra.totals.area)} {tr('м² байна.')}
                       </p>
                       <Cap no="8">{tr('Ажлын бүлэг тус бүрийн объект, хэмжээ ба төсөвт өртөг')}</Cap>
                       <ResizableTable storeKey="tailan.ajliin-buleg" className={r.table}>
@@ -544,7 +544,6 @@ export function Tailan() {
                               <td className={r.num}>{num(g.n)}</td>
                               <td className={r.num}>{g.len > 0 ? num(g.len) : '—'}</td>
                               <td className={r.num}>{g.area > 0 ? num(g.area) : '—'}</td>
-                              <td className={r.num}>{bnOrDash(g.cost)}</td>
                             </tr>
                           ))}
                           <tr className={r.total}>
@@ -553,7 +552,6 @@ export function Tailan() {
                             <td className={r.num}>{num(x.infra.totals.n)}</td>
                             <td className={r.num}>{num(x.infra.totals.len)}</td>
                             <td className={r.num}>{num(x.infra.totals.area)}</td>
-                            <td className={r.num}>{bnOrDash(x.infra.totals.cost)}</td>
                           </tr>
                         </tbody>
                       </ResizableTable>

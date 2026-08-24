@@ -94,12 +94,14 @@ export type ReportExtra = {
     /** Багцын түлхүүр (`BagtsRow.key`) → урьдчилсан төсөвт өртөг, ₮ */
     byBagts: Record<string, number>;
   };
+  /* ⚠️ 2026-08-24: `cost` талбар ХАСАГДАВ — «Өртгийн загвараар тооцсон дүн»
+     нь зохиомол `negj_une` өгөгдөл дээр тогтдог байсан тул тайлангаас гарсан. */
   infra: {
     groups: {
       key: string; title: string; layers: number;
-      n: number; len: number; area: number; cost: number;
+      n: number; len: number; area: number;
     }[];
-    totals: { layers: number; n: number; len: number; area: number; cost: number };
+    totals: { layers: number; n: number; len: number; area: number };
   };
   habea: {
     date: string;
@@ -401,7 +403,6 @@ async function loadInfra(): Promise<ReportExtra['infra']> {
       // ⚠️ Нэг бүлэгт «м» ба «м²» ХОЛИЛДОНО — нийлбэрлэвэл утгагүй тул тусад нь
       len: ok.filter((p) => p.unit === 'м').reduce((a, p) => a + (p.q ?? 0), 0),
       area: ok.filter((p) => p.unit === 'м²').reduce((a, p) => a + (p.q ?? 0), 0),
-      cost: ok.reduce((a, p) => a + p.cost, 0),
     };
   }));
 
@@ -412,7 +413,6 @@ async function loadInfra(): Promise<ReportExtra['infra']> {
       n: groups.reduce((a, g) => a + g.n, 0),
       len: groups.reduce((a, g) => a + g.len, 0),
       area: groups.reduce((a, g) => a + g.area, 0),
-      cost: groups.reduce((a, g) => a + g.cost, 0),
     },
   };
 }
@@ -497,7 +497,7 @@ export async function loadReportExtra(): Promise<ReportExtra> {
     finance: f.status === 'fulfilled' ? f.value
       : { rows: 0, budget: 0, orderTotal: 0, contractAmount: 0, sources: [], months: [], paid: 0, byType: [], byBagts: {} },
     infra: i.status === 'fulfilled' ? i.value
-      : { groups: [], totals: { layers: 0, n: 0, len: 0, area: 0, cost: 0 } },
+      : { groups: [], totals: { layers: 0, n: 0, len: 0, area: 0 } },
     habea: h.status === 'fulfilled' ? h.value
       : { date: '', workers: 0, mongol: 0, gadaad: 0, tehnik: 0, byCompany: [], incidents: 0 },
   };
@@ -568,7 +568,6 @@ export function buildFindings(x: ReportExtra): Findings {
   const prev3 = months.slice(-6, -3).reduce((a, m) => a + m.amount, 0);
 
   const mongolShare = x.habea.workers ? (x.habea.mongol / x.habea.workers) * 100 : null;
-  const noCost = x.infra.groups.filter((g) => g.cost <= 0).length;
 
   /*
    * ⚠️ Тайлангийн ТАЙЛБАР ӨГҮҮЛБЭРТ «бэлтгэлийн ажил дууссан», «инженерийн
@@ -614,10 +613,6 @@ export function buildFindings(x: ReportExtra): Findings {
   if (prev3 > 0 && last3 > 0) {
     const k = last3 / prev3;
     f.push(tr('Сүүлийн гурван сард {0} тэрбум ₮ олгогдсон нь өмнөх гурван сарын {1} тэрбумаас {2} дахин {3} буюу санхүүжилтийн эрчим {4} байна.', num(last3 / 1e9, 1), num(prev3 / 1e9, 1), num(k, 1), k >= 1 ? tr('их') : tr('бага'), k >= 1 ? tr('нэмэгдсэн') : tr('буурсан')));
-  }
-
-  if (noCost > 0) {
-    f.push(tr('Дэд бүтцийн {0} ажлын бүлэгт нэгж үнэ тогтоогоогүй тул нийт өртгийн дүн бүрэн бус байна. Өртгийн загварыг гүйцээх шаардлагатай.', num(noCost)));
   }
 
   if (x.habea.incidents > 0) {

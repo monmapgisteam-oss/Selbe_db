@@ -267,19 +267,17 @@ export function buildReportDoc(
       ] }, layout: tableLayout },
 
       ...section('8', tr('Дэд бүтцийн хэрэгжилт'),
-        tr('Ерөнхий төлөвлөгөөний {0} давхаргад {1} объект бүртгэгдсэн бөгөөд шугам сүлжээний нийт урт {2} м, талбайн хэмжээ {3} м² байна. Өртгийн загвараар тооцсон дүн {4} тэрбум ₮ байна.', num(infra.totals.layers), num(infra.totals.n), num(infra.totals.len), num(infra.totals.area), bn(infra.totals.cost))),
-      cap('8', tr('Ажлын бүлэг тус бүрийн объект, хэмжээ ба төсөвт өртөг')),
-      { table: { headerRows: 1, widths: ['*', 44, 52, 62, 72, 62], body: [
-        [th(tr('Ажлын бүлэг')), th(tr('Дав.'), true), th(tr('Объект'), true), th(tr('Урт (м)'), true), th(tr('Талбай (м²)'), true), th(tr('Өртөг (тэрбум)'), true)],
+        tr('Ерөнхий төлөвлөгөөний {0} давхаргад {1} объект бүртгэгдсэн бөгөөд шугам сүлжээний нийт урт {2} м, талбайн хэмжээ {3} м² байна.', num(infra.totals.layers), num(infra.totals.n), num(infra.totals.len), num(infra.totals.area))),
+      cap('8', tr('Ажлын бүлэг тус бүрийн объект ба хэмжээ')),
+      { table: { headerRows: 1, widths: ['*', 44, 52, 62, 72], body: [
+        [th(tr('Ажлын бүлэг')), th(tr('Дав.'), true), th(tr('Объект'), true), th(tr('Урт (м)'), true), th(tr('Талбай (м²)'), true)],
         ...infra.groups.map((g): TableCell[] => [
           td(g.title), td(num(g.layers), true), td(num(g.n), true),
           td(g.len > 0 ? num(g.len) : '—', true), td(g.area > 0 ? num(g.area) : '—', true),
-          td(bnOrDash(g.cost), true),
         ]),
         [td(tr('Нийт'), false, TOTAL), td(num(infra.totals.layers), true, TOTAL), td(num(infra.totals.n), true, TOTAL),
-          td(num(infra.totals.len), true, TOTAL), td(num(infra.totals.area), true, TOTAL), td(bnOrDash(infra.totals.cost), true, TOTAL)],
+          td(num(infra.totals.len), true, TOTAL), td(num(infra.totals.area), true, TOTAL)],
       ] }, layout: tableLayout },
-      note(tr('Өртгийн загвар нь нэгж үнэ батлагдсан бүлгүүдийг л хамарна — «—» тэмдэглэгээ нь өртөг тэг гэсэн үг биш, тухайн бүлэгт нэгж үнэ тогтоогоогүйг илэрхийлнэ.')),
 
       ...section('9', tr('Хөдөлмөрийн аюулгүй байдал, эрүүл ахуй'),
         tr('{0}барилгын талбайд {1} ажилтан (дотоодын {2}, гадаадын {3}), {4} нэгж техник ажиллаж байна. Дотоодын ажиллах хүч нийт ажиллагсдын {5}-ийг эзэлж байна.', habea.date ? tr('{0}-ны байдлаар ', habea.date) : '', num(habea.workers), num(habea.mongol), num(habea.gadaad), num(habea.tehnik), pct(d.mongolShare, 1))),

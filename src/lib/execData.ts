@@ -15,11 +15,9 @@ import { useAsync, type Async } from './useAsync';
 import { queryFeatures, type Row } from './query';
 import { BUILDING, bagtsKey, buildingKey } from './services';
 import {
-  INDICATORS, SCORE_LEVELS, levelOf, PARKING, DEFAULT_ECON_SHARE,
-  BUILD_COST_PER_M2, profitScore, ASSUME_MET,
+  INDICATORS, SCORE_LEVELS, levelOf, PARKING, ASSUME_MET,
 } from './analysis/config';
-import { loadAnalysisCached, computeEconomics, computeRaw, defaultGreenCats } from './analysis/data';
-import { loadCostsCached } from './analysis/costs';
+import { loadAnalysisCached, computeRaw, defaultGreenCats } from './analysis/data';
 import { urbanScore, passesNorm, normFor, normGap, normText } from './analysis/score';
 /* ⚠️ `modules`-аас `lib` рүү импорт — `execTriage.ts`-ийн жишиг (bagts.pkg).
    `simulation.ts` нь ЗӨВХӨН `Zone` төрөл ба `tr`-ийг импортолдог тул ямар ч
@@ -177,8 +175,6 @@ export type SuitSummary = {
   levels: { label: string; color: string; n: number }[];
   noData: number;
   zones: number;
-  profit: number;
-  profitZones: number;
   ranked: { id: string; type: string; score: number | null }[];
   byId: Record<string, { score: number | null; type: string }>;
   /**
@@ -217,12 +213,11 @@ export type IndicatorFail = {
   assumed: boolean;
 };
 
-/** Хот төлөвлөлтийн оноо ба ашгийн оноог жинлэн нийлүүлэх */
-const blendOf = (u: number | null, e: number | null): number | null =>
-  u == null && e == null ? null
-    : u == null ? e
-      : e == null ? u
-        : u * (1 - DEFAULT_ECON_SHARE / 100) + e * (DEFAULT_ECON_SHARE / 100);
+/* ⚠️ 2026-08-24: `blendOf` УСТГАГДАВ. Урьд нь оноог «хот төлөвлөлт 50% +
+   ашгийн оноо 50%» гэж нийлүүлдэг байсан бөгөөд ашгийн оноо нь ЗОХИОМОЛ
+   нэгж үнээс (negj_une) гардаг байлаа. Эзэмшигчийн шийдвэрээр эдийн засгийн
+   загвар бүрмөсөн хасагдсан тул оноо нь ОДОО зөвхөн хот төлөвлөлтийн нормоор
+   бодогдоно — зохиомол өгөгдөл онооны тал хувийг эзэлдэг байдал арилав. */
 
 /**
  * ⚠️ ХҮНД тооцоо: бүх бүсийн геометр, ногоон байгууламж, зогсоол, дэд бүтцийн
@@ -233,13 +228,10 @@ const blendOf = (u: number | null, e: number | null): number | null =>
 export function useSuitability(enabled: boolean, onProgress?: (m: string, p: number) => void): Async<SuitSummary> {
   return useAsync(async () => {
     if (!enabled) return new Promise<SuitSummary>(() => {});
-    const [data, costs] = await Promise.all([loadAnalysisCached(onProgress), loadCostsCached()]);
-    computeEconomics(data.zones, costs.perHa, null, BUILD_COST_PER_M2);
+    const data = await loadAnalysisCached(onProgress);
     computeRaw(data.zones, defaultGreenCats(), PARKING);
-    const blends = data.zones.map((z) => blendOf(urbanScore(z.raw, INDICATORS, z.type).score, profitScore(z.econ?.margin)));
+    const blends = data.zones.map((z) => urbanScore(z.raw, INDICATORS, z.type).score);
     const valid = blends.filter((x): x is number => x != null);
-    const revenue = data.zones.reduce((a, z) => a + (z.econ?.revenue ?? 0), 0);
-    const cost = data.zones.reduce((a, z) => a + (z.econ?.cost ?? 0), 0);
     /*
      * ══ ҮЗҮҮЛЭЛТ БҮРЭЭР НОРМ ЗӨРЧИЛ (2026-08-24) ══
      *
@@ -312,8 +304,6 @@ export function useSuitability(enabled: boolean, onProgress?: (m: string, p: num
       })),
       noData: blends.filter((b) => levelOf(b) < 0).length,
       zones: data.zones.length,
-      profit: revenue - cost,
-      profitZones: data.zones.filter((z) => (z.econ?.profit ?? 0) > 0).length,
       ranked: data.zones.map((z, i) => ({ id: z.id, type: z.type, score: blends[i] })).sort((a, b) => (b.score ?? -1) - (a.score ?? -1)),
       byId: Object.fromEntries(data.zones.map((z, i) => [z.id, { score: blends[i], type: z.type }])),
     };

@@ -29,9 +29,8 @@ import { layerUrl, LAYER_BY_ID, ZONE_FIELDS, zoneCanon, zoneRefValues, zoneType 
 import { classifyBuilding, buildingTrips } from './transport';
 import {
   WKID, SRC, ENGINEERING_IDS, SOCIAL_FACILITIES, GREEN_CATEGORIES,
-  BF, isResidential, isSellable, EXCLUDED_ZONE_TYPES,
+  BF, isResidential, EXCLUDED_ZONE_TYPES,
   BUILDING_PURPOSES, BUILDING_PURPOSE_OTHER, buildingPurposeKey, ASSUME_MET,
-  SALE_PRICE_PER_M2,
   type ParkingOpt,
 } from './config';
 
@@ -102,11 +101,8 @@ export type Zone = {
   buildingCount: number;
   households: number;
   gfaM2: number;
-  gfaSaleM2: number;
   /** Барилгын ХӨЛ талбайн нийлбэр (м²) — полигоны бодит талбай, давхаргүй */
   builtM2: number;
-  salesValue: number;
-  salesValueRes: number;
 
   greenByCat: Record<string, number>;
   greenM2: number;
@@ -129,7 +125,6 @@ export type Zone = {
   parkingNeed: number | null;
   parkingGap: number | null;
 
-  econ: Econ | null;
   raw: Record<string, number | null>;
   /**
    * `ASSUME_MET`-ээр ДАРАГДАХААС ӨМНӨХ бодит утгууд.
@@ -158,26 +153,7 @@ export type SocialPart = {
 
 export type SocialResult = { parts: SocialPart[]; score: number | null };
 
-export type Econ = {
-  /** Дэд бүтцийн зардал = 1 га-гийн төсөв × бүсийн талбай */
-  infraCost: number;
-  /** Барилга угсралтын зардал = борлуулах нийт талбай × 1 м² жишиг өртөг */
-  buildCost: number;
-  /** Нийт зардал */
-  cost: number;
-  revenue: number;
-  revenueRes: number;
-  profit: number;
-  /**
-   * АШГИЙН МАРЖА (%) = ашиг ÷ орлого × 100 — эдийн засгийн ОНОО үүн дээр тогтоно.
-   * ⚠️ Орлогогүй мөртлөө зардалтай бол `-Infinity` = цэвэр алдагдал.
-   * Зардал ч орлого ч байхгүй бол `null` = өгөгдөлгүй.
-   */
-  margin: number | null;
-  /** Зардлын эзлэх хувь — зөвхөн ХАРУУЛАХАД (оноололд ордоггүй) */
-  costShare: number | null;
-  roi: number | null;
-};
+/* `Econ` төрөл мөн устгагдав (2026-08-24). */
 
 export type AnalysisData = {
   zones: Zone[];
@@ -292,12 +268,15 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
   //    `GREEN_CATEGORIES`-ийн ганц түлхүүрт нэгдэнэ.
   // ⚠️ ГЕОМЕТРТЭЙ: «нөлөөллийн бүс» арга нь ногооноос барилга хүртэлх ЗАЙГ
   //    хэмждэг тул зөвхөн талбайн тоо хангалтгүй.
-  // ⚠️ АНАЛИЗ нь ХУУЧИН intersect үйлчилгээг ХЭВЭЭР уншина (2026-08-13):
-  //    test_data [35]-д ганц dissolve-полигон, `RefName_12` алга — бүс тус
-  //    бүрийн ногоон талбай тэндээс бодогдохгүй. Зөвхөн ЗУРГИЙН давхарга
-  //    test_data руу шилжсэн; тооцооны эх энэ хаяг хэвээр.
+  // ⚠️ ЗУРГИЙН давхаргаас (`data`/35, `sb:1`) ӨӨР эх сурвалж — тэр нь 807
+  //    хэсгийг НЭГТГЭСЭН ганц полигон, атрибутгүй тул бүс тус бүрийн ногоон
+  //    талбай тэндээс бодогдохгүй. Тиймээс ТООЦООНД зориулсан тусдаа
+  //    үйлчилгээ: нэрийн ард `_analysis` гэж ялгасан.
+  // ⚠️ 2026-08-24: monmap-ын `nogoon_baiguulamj`-аас MUST-ын
+  //    `nogoon_baiguulamj_analysis`/118 руу шилжив. Обьект 807 = 807, талбай
+  //    55 га = 55 га, `RefName_12`/`Angilal`/`Area_hec` талбар бүрэн адил.
   const GREEN_DATA_URL =
-    'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/nogoon_baiguulamj/FeatureServer/0';
+    'https://services-ap1.arcgis.com/ACqsMOmNLi5wIdIh/arcgis/rest/services/nogoon_baiguulamj_analysis/FeatureServer/118';
   const green = await fetchAll(GREEN_DATA_URL, ['RefName_12', 'Shape__Area'], true);
 
   onProgress(tr('Нийтийн тээврийн зогсоол…'), 50);
@@ -394,7 +373,6 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
       transitM, engDistM,
       social: null,
       parkingSupply: 0, parkingNeed: null, parkingGap: null,
-      econ: null,
       raw: {},
       rawActual: {},
     };
@@ -490,8 +468,7 @@ function emptyAgg() {
   return {
     population: 0, residentPop: 0, capacityPop: 0,
     buildingCount: 0, households: 0,
-    gfaM2: 0, gfaSaleM2: 0, builtM2: 0,
-    salesValue: 0, salesValueRes: 0,
+    gfaM2: 0, builtM2: 0,
   };
 }
 
@@ -544,20 +521,12 @@ function aggregateBuildings(zones: Zone[], buildings: Feat[]) {
     const pop = n(a[BF.population]);
     const cap = n(a[BF.capacity]);
     const gfa = n(a[BF.gfa]);
-    const res = isResidential(a[BF.purpose]);
-    const sell = isSellable(a[BF.status]);
-    // ⚠️ Урьд нь барилгын `negj_une` талбараас уншдаг байв — тэр нь бүх бичлэгт
-    //    ижил 4.7 сая байсан бөгөөд шинэ давхаргад байхгүй (`SALE_PRICE_PER_M2`).
-    const value = sell ? gfa * SALE_PRICE_PER_M2 : 0;
 
     b.population += pop + cap;
     b.residentPop += pop;
     b.capacityPop += cap;
     b.gfaM2 += gfa;
-    if (sell) b.gfaSaleM2 += gfa;
     b.builtM2 += n(a[BF.foot]);
-    b.salesValue += value;
-    if (res) b.salesValueRes += value;
     b.households += n(a[BF.households]);
     b.buildingCount += 1;
     byZone.set(hit.id, b);
@@ -657,53 +626,10 @@ function computeSocialAccess(zones: Zone[], buildings: Feat[], greenUnion: GeomA
 
 /* ══════════════════ Эдийн засаг ══════════════════ */
 
-/**
- * Бүс бүрийн эдийн засгийн үзүүлэлт.
- *
- *   дэд бүтцийн зардал = 1 га-гийн төсөв × бүсийн талбай (га)
- *   барилгын зардал    = борлуулах нийт талбай × 1 м² БАРИГДАХ жишиг өртөг
- *   орлого             = борлуулах нийт талбай × 1 м² БОРЛУУЛАХ үнэ
- *
- * ⚠️ Барилгын зардлыг оруулах нь ЗААВАЛ. Урьд нь зөвхөн дэд бүтэц зардалд
- * ордог байсан тул ашиг 8.35 их наяд ₮ гэж боломжгүй өндөр гардаг байв —
- * барилгыг үнэгүй босгодог мэт.
- *
- * ⚠️ Хоёр талд НЭГ ижил талбай (`gfaSaleM2` = `Барилгын_нийт_талбай_m2`,
- * «Одоо байгаа» хасагдсан) ашиглана. Зардалд нийт талбай, орлогод ашигтай
- * талбай гэх мэтээр өөр авбал ашиг зохиомлоор өснө.
- */
-export function computeEconomics(
-  zones: Zone[],
-  perHa: number,
-  pricePerM2: number | null,
-  buildCostPerM2: number,
-  // «Бүсийн ангилал» картаас гараар идэвхжүүлсэн (хасагдсан) ангиллууд — оноолд оруулна
-  scoreTypes?: Set<string>,
-) {
-  for (const z of zones) {
-    // Оноололд орохгүй бүс (ногоон/одоо байгаа) — эдийн засаг тооцохгүй.
-    // Гараар идэвхжүүлсэн ангилал бол ХАСАХГҮЙ (доор бодогдоно).
-    if (z.excluded && !scoreTypes?.has(z.type)) { z.econ = null; continue; }
-    const infraCost = perHa * z.areaHa;
-    const buildCost = z.gfaSaleM2 * buildCostPerM2;
-    const cost = infraCost + buildCost;
-    const revenue = pricePerM2 == null ? z.salesValue : z.gfaSaleM2 * pricePerM2;
-    // ⚠️ Орон сууцны орлогыг гараар үнэ өөрчлөхөд 0 болгож ХАЯХГҮЙ — `salesValueRes`
-    //    нь орон сууцны зарагдах талбай × SALE_PRICE_PER_M2 тул шинэ үнэд
-    //    ХАРЬЦАНГУЙ бодно (эс бөгөөс «үүнээс орон сууц» задаргаа гэнэт 0 гарна).
-    const revenueRes =
-      pricePerM2 == null ? z.salesValueRes : (z.salesValueRes / SALE_PRICE_PER_M2) * pricePerM2;
-    const profit = revenue - cost;
-    z.econ = {
-      infraCost, buildCost, cost, revenue, revenueRes, profit,
-      // ⚠️ Орлогогүй мөртлөө зардалтай бүс нь «өгөгдөлгүй» БИШ, ЦЭВЭР АЛДАГДАЛ.
-      //    `null` гэвэл оноололтоос хасагдаж, ашигтай бүстэй адил харагдана.
-      margin: revenue > 0 ? (profit / revenue) * 100 : (cost > 0 ? -Infinity : null),
-      costShare: revenue > 0 ? (cost / revenue) * 100 : (cost > 0 ? Infinity : null),
-      roi: revenue > 0 && cost > 0 ? profit / cost : null,
-    };
-  }
-}
+/* ⚠️ 2026-08-24: `computeEconomics` УСТГАГДАВ. Дэд бүтцийн зардлыг
+   ЗОХИОМОЛ `negj_une` (нэгж үнэ) талбараас бодож, түүн дээрээ ашиг/маржин
+   тооцдог байсан. Эзэмшигчийн шийдвэрээр эдийн засгийн загвар бүрмөсөн
+   хасагдсан — бүсийн оноо одоо ЗӨВХӨН хот төлөвлөлтийн нормоор бодогдоно. */
 
 /** Зогсоолын хэрэгцээг сонгосон аргаар */
 export function parkingNeedOf(z: Zone, p: ParkingOpt): number | null {
