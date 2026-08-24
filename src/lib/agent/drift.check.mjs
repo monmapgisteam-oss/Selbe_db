@@ -56,7 +56,6 @@ const { AGENT_NOTES } = await import('./notes.ts');
 function declaredFields(l) {
   const f = new Set([oidOf(l)]);
   if (l.qty?.field) f.add(l.qty.field);
-  if (l.cost?.field) f.add(l.cost.field);
   if (l.paint?.field) f.add(l.paint.field);
   if (l.breaks?.field) f.add(l.breaks.field);
   if (l.zoneField) f.add(l.zoneField);

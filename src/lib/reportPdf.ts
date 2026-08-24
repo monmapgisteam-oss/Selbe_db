@@ -23,7 +23,11 @@ import { buildFindings, type ReportExtra } from '@/lib/reportData';
 import { num, pct } from '@/lib/format';
 
 const bn = (v: number) => num(v / 1e9, 1);
-/** Тэг өртөг = «нэгж үнэ загварт ороогүй» — 0 гэж бичихгүй */
+/**
+ * ⚠️ ЗӨВХӨН Cashflow-ийн `budget`/`contract` дүнд хэрэглэнэ: тэг нь «төсөвт
+ * өртөг хараахан батлагдаагүй / гэрээ байгуулагдаагүй» гэсэн утгатай тул 0
+ * гэж бичвэл «үнэгүй ажил» мэт уншигдана — «—» болгоно.
+ */
 const bnOrDash = (v: number) => (v > 0 ? bn(v) : '—');
 
 const HEAD = '#eef1f5';

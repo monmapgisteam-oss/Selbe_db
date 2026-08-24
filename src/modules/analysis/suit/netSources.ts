@@ -23,7 +23,6 @@
  */
 
 import { LAYER_BY_ID, layerUrl } from '@/lib/services';
-import { agsToken } from '@/lib/agsToken';
 import { t as tr } from '@/lib/i18nCore';
 import {
   buildNetwork, markDuplicates, nodeByIntersection,
@@ -255,11 +254,8 @@ async function fetchRealSignals(): Promise<SignalDef[]> {
     outSR: '3857',
     f: 'json',
   });
-  // ⚠️ 2026-08-24 «Organization» хуваалцалт — нэвтэрсэн бол token нэмнэ
-  const tok = await agsToken();
-  const auth = tok ? `&token=${encodeURIComponent(tok)}` : '';
   const r: { features?: SignalFeature[]; error?: { message?: string } } =
-    await fetch(`${SIGNAL_LAYER_URL}/query?${q}${auth}`).then((x) => x.json());
+    await fetch(`${SIGNAL_LAYER_URL}/query?${q}`).then((x) => x.json());
   if (r.error) throw new Error(r.error.message ?? tr('гэрлэн дохио query алдаа'));
 
   /** Уулзвар бүрийн оройнууд ба approach line-ууд (бүлэгтэй) */

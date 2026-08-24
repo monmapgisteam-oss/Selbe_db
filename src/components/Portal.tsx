@@ -347,7 +347,7 @@ function PortalContent(
   const standalone = !!VIEW_BY_KEY[view].standalone;
 
   const catalogIds = useMemo(
-    // ⚠️ 2026-08-20: Каталог БҮХ давхаргыг харуулдаг болсон тул тоо/өртгийн
+    // ⚠️ 2026-08-20: Каталог БҮХ давхаргыг харуулдаг болсон тул тоо/хэмжээний
     //    жагсаалт нь түүнтэй ижил байх ёстой (эс бөгөөс шинэ мөрүүд «…» хэвээр).
     () => CATALOG_LAYER_IDS,
     [view],

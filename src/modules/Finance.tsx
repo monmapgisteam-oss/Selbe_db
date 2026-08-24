@@ -6,7 +6,6 @@ import { Data, Empty } from '@/components/ui';
 import { useAsync } from '@/lib/useAsync';
 import { queryFeatures } from '@/lib/query';
 import { cached } from '@/lib/live';
-import { agsToken } from '@/lib/agsToken';
 import { CASHFLOW2, IPC_LOG, TASK_SHEET, bagtsKey, pkgKeyOf } from '@/lib/services';
 import { finFieldLabel } from '@/lib/financeFieldLabels';
 import { mntShort, num, text, cat } from '@/lib/format';
@@ -484,9 +483,7 @@ type FinTables = {
 /** Давхаргын талбарын метадата (`?f=json`) — alias нь хүний уншихуйц баганын нэр */
 async function loadFields(url: string): Promise<FieldDef[]> {
   try {
-    // Token — «Organization» хуваалцалтад метадата ч эрх шаардана (2026-08-24)
-    const t = await agsToken();
-    const res = await fetch(`${url}?f=json${t ? `&token=${encodeURIComponent(t)}` : ''}`);
+    const res = await fetch(`${url}?f=json`);
     const j = await res.json();
     return Array.isArray(j?.fields)
       ? j.fields.map((x: { name: string; alias?: string; type: string }) => ({

@@ -314,37 +314,10 @@ button.card:active { transform: scale(0.985); }
   border-color: color-mix(in srgb, var(--tone) 55%, var(--line));
 }
 
-/* ── ZoneFilter «tool» хувилбар — газрын зургийн toolbar-т багтах товч + хавтан ── */
-.zoneTool { position: relative; }
-.zoneToolBtn {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 8px 15px;
-  border-radius: var(--r-sm);
-  font-size: 0.76rem;
-  font-weight: 600;
-  color: var(--ink-2);
-  transition: background 0.16s var(--ease), color 0.16s;
-}
-.zoneToolBtn:hover { background: var(--surface-2); color: var(--ink); }
-.zoneToolOn { background: var(--hue); color: #fff; }
-.zoneToolOn:hover { background: var(--hue); color: #fff; filter: brightness(1.07); }
-.zoneToolDrop {
-  position: absolute;
-  top: calc(100% + 10px);
-  left: 50%;
-  transform: translateX(-50%);
-  width: min(400px, 82vw);
-  max-height: 340px;
-  overflow-y: auto;
-  padding: 12px 14px;
-  border-radius: var(--r-sm);
-  border: 1px solid var(--line);
-  background: var(--surface);
-  box-shadow: var(--shadow-lg);
-  z-index: 7;
-}
+/* ── ZoneFilter `panel` хувилбарын толгой (хайрцгийг `MapTools` барина) ──
+   ⚠️ 2026-08-24: `tool` хувилбарын товч ба dropdown (`.zoneTool`,
+   `.zoneToolBtn`, `.zoneToolOn`, `.zoneToolDrop`) ашиглагдахаа больсон тул
+   устгав — 2026-08-23-нд `ZoneFilter`-ээс тэр хувилбар өөрөө хасагдсан. */
 .zoneToolHead {
   display: flex;
   align-items: center;

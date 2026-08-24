@@ -308,7 +308,7 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
    * «Давхарга» каталог нээлттэй эсэх — «Ерөнхий төлөвлөгөө» дээрх товчтой ИЖИЛ
    * зарчим. Хаалттай эхэлнэ; товч дарахад л нээгдэнэ.
    *
-   * ⚠️ Тоо, өртгийн 30 хүсэлт нь каталог НЭЭГДЭХЭД л явна (`usePlanTotals`-ын
+   * ⚠️ Тоо, хэмжээний 30 хүсэлт нь каталог НЭЭГДЭХЭД л явна (`usePlanTotals`-ын
    * `enabled = layerOpen`) — дашбоард нээх бүрд дэмий цохихгүй.
    */
   const [layerOpen, setLayerOpen] = useState(false);

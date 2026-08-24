@@ -14,14 +14,13 @@
  */
 
 import { LAYER_BY_ID, layerUrl } from '@/lib/services';
-import { agsToken } from '@/lib/agsToken';
 import { t as tr } from '@/lib/i18nCore';
 import {
   TRANSPORT_FIELDS, classifyBuilding, buildingTrips, vehicleTrips,
   type BuildingCat,
 } from '@/lib/analysis/transport';
 
-/** Каталог дахь эх давхарга — «Барилга» (`Selbe_ET_20260721`/24) */
+/** Каталог дахь эх давхарга — «Барилга» (нэгтгэсэн `data`/108; `layerUrl()` шийднэ) */
 const BUILDING_LAYER_ID = 'et:24';
 
 /** Нэг хүсэлтэд авах бичлэгийн тоо (үйлчилгээний `maxRecordCount` = 2000) */
@@ -94,15 +93,11 @@ export async function loadBuildings(signal?: AbortSignal): Promise<BuildingPt[]>
   if (!def) throw new Error(tr('Барилгын давхарга каталогт алга: {0}', BUILDING_LAYER_ID));
   const url = layerUrl(def);
 
-  // ⚠️ 2026-08-24 «Organization» хуваалцалт — нэвтэрсэн бол token нэмнэ (нэг л удаа)
-  const tok = await agsToken();
-  const auth = tok ? `&token=${encodeURIComponent(tok)}` : '';
-
   const out: BuildingPt[] = [];
   // ⚠️ 363 барилга нэг хуудсанд багтдаг ч давхарга өсөж болно — `exceededTransferLimit`
   //    дуустал үргэлжлүүлнэ (хязгааргүй давталтаас хамгаалж 20 хуудсаар таслав).
   for (let page = 0; page < 20; page++) {
-    const r: QueryResp = await fetch(`${url}/query?${pageQuery(page * PAGE)}${auth}`, { signal })
+    const r: QueryResp = await fetch(`${url}/query?${pageQuery(page * PAGE)}`, { signal })
       .then((x) => x.json());
     if (r.error) throw new Error(r.error.message ?? tr('ArcGIS query алдаа'));
 

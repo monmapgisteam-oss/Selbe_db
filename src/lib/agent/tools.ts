@@ -27,7 +27,6 @@ import {
   type Row,
   type Stat,
 } from '@/lib/query';
-import { agsToken } from '@/lib/agsToken';
 import { resolveSource, type AgentScope, type AgentSource } from './registry';
 import { t as tr } from '@/lib/i18nCore';
 import { zoneOverview } from './overview';
@@ -106,11 +105,11 @@ export const AGENT_TOOLS: ToolDef[] = [
   {
     name: 'zone_overview',
     description:
-      tr('НЭГ БҮС/БАГЦЫН нэгдсэн тойм — БҮХ эх сурвалжийг нэг дор шүүж, тус бүрийн тоо, хэмжээ, ӨРТГИЙГ буцаана. ') +
+      tr('НЭГ БҮС/БАГЦЫН нэгдсэн тойм — БҮХ эх сурвалжийг нэг дор шүүж, тус бүрийн тоо, хэмжээг буцаана. ') +
       tr('Хэрэглэгч «Багц 1-ийн мэдээллийг дэлгэрэнгүй», «Багц-3.2-т юу байна вэ», «энэ бүсийн бүх мэдээлэл» гэх мэтээр ') +
       tr('НЭГ бүсийн ЕРӨНХИЙ дүр зургийг асуувал ЭНЭ ХЭРЭГСЛИЙГ дууд — `query_feature`-ээр давхарга бүрийг тусад нь ') +
       tr('асуувал эргэлт хүрэлцэхгүй, хариулт хагас дутуу гарна. ') +
-      tr('Өртөг нь порталын каталогтой ижил загвараар бодогдоно. Тодруулга хэрэгтэй бол дараа нь `query_feature` дууд.'),
+      tr('Тодруулга хэрэгтэй бол дараа нь `query_feature` дууд.'),
     input_schema: {
       type: 'object',
       properties: {
@@ -162,10 +161,7 @@ const metaCache = new Map<string, { at: number; fields: FieldMeta[] }>();
 async function fieldsOf(url: string): Promise<FieldMeta[]> {
   const hit = metaCache.get(url);
   if (hit && Date.now() - hit.at < META_TTL) return hit.fields;
-  // ⚠️ 2026-08-24 «Organization» хуваалцалт — token-гүй бол давхаргын мета 499 болж,
-  //    агент талбарын нэрээ шалгаж чадахгүй болно.
-  const t = await agsToken();
-  const res = await fetch(`${url}?f=json${t ? `&token=${encodeURIComponent(t)}` : ''}`);
+  const res = await fetch(`${url}?f=json`);
   if (!res.ok) throw new ArcGISError(`HTTP ${res.status}`, url);
   const body = (await res.json()) as ServiceMeta;
   if (body.error) throw new ArcGISError(body.error.message ?? tr('Мета уншигдсангүй'), url);

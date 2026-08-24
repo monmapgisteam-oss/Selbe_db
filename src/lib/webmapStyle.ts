@@ -22,8 +22,6 @@ export type WebmapStyle = {
   color?: string;
 };
 
-export const WEBMAP_ITEM = "d790321542504a54afd006e277d7a137";
-
 let S: Record<string, WebmapStyle> | null = null;
 let pending: Promise<void> | null = null;
 

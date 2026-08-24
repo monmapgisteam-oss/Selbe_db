@@ -16,7 +16,6 @@
  * л шинэ огноогоор нэмдэг тул нэг барилгын нүднүүд өөр өөр огноотой байж болно.
  */
 import { TASK_SHEET, buildingKey } from './services';
-import { agsParams } from './agsToken';
 
 const TS = TASK_SHEET.fields;
 /** Татах мөрүүд — нийт (Б.) ба таван дэд үе шат */
@@ -30,8 +29,7 @@ async function fetchConstruction(): Promise<Record<string, unknown>[]> {
   const fields = [TS.bagts, TS.no, TS.work, TS.date, TS.block, TS.progress].join(',');
   const inList = NOS.map((n) => `'${n.replace(/'/g, "''")}'`).join(',');
   for (let off = 0; ; ) {
-    // ⚠️ 2026-08-24 «Organization» хуваалцалт — нэвтэрсэн хэрэглэгчийн token нэмнэ
-    const body = new URLSearchParams(await agsParams({
+    const body = new URLSearchParams({
       where: `${TS.no} IN (${inList}) AND ${TS.block} IS NOT NULL`,
       outFields: fields, returnGeometry: 'false',
       // ⚠️ Энэ хүсэлт 2000 мөрийн хязгаараас ХЭТЭРСЭН (одоо 2046) тул хуудаслана.
@@ -40,7 +38,7 @@ async function fetchConstruction(): Promise<Record<string, unknown>[]> {
       // огноо алга болж, хуучин утга харагдана).
       orderByFields: `${TASK_SHEET.oid} ASC`,
       resultRecordCount: '2000', resultOffset: String(off), f: 'json',
-    }));
+    });
     const res = await fetch(`${TASK_SHEET.url}/query`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },

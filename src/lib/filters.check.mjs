@@ -84,8 +84,14 @@ assert.ok(both > 0 && both <= only, `нийлүүлсэн шүүлт ${both}/${o
  * ⚠️ Энэ бол бүх каталогийн facet-д хамаатай: `TRIM()`-ийг эдгээр FeatureServer
  * ТАТГАЛЗДАГ тул хоосон мөр дарахад зурагт юу ч болдоггүй байв. Шинэ нөхцөл нь
  * тоологдсон ЯГ ижил тоог буцаах ёстой. */
-const ET = 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/Selbe_ET_20260721/FeatureServer';
-const FACETS = [[24, 'zoriulalt'], [24, 'Bar_comp'], [28, 'zoriulalt']];
+/* ⚠️ 2026-08-24: эх сурвалж `Selbe_ET_20260721` (monmap) → нэгтгэсэн `data`
+   (MUST). Хуучин үйлчилгээ АЛГА болсон (алдаа 499 «Item does not exist») тул
+   энэ шалгалт чимээгүй 0 давхарга үзэж унаж байв. Давхаргын харгалзаа:
+   ET/24 → data/108 («Барилга байгууламж»), ET/28 → data/106. Хоосон утга
+   агуулсныг амьд шалгаж сонгосон: [108] zoriulalt 158 мөр, [108] Bar_comp
+   315 мөр, [106] zoriulalt 12 мөр. */
+const ET = 'https://services-ap1.arcgis.com/ACqsMOmNLi5wIdIh/arcgis/rest/services/data/FeatureServer';
+const FACETS = [[108, 'zoriulalt'], [108, 'Bar_comp'], [106, 'zoriulalt']];
 
 const post = async (url, p) => {
   const res = await fetch(`${url}/query`, {

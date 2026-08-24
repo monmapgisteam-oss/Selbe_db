@@ -19,7 +19,6 @@
 
 import { BUILDING } from './services';
 import { addRows, queryAll, F, STATUS, type Attrs } from './hyanalt';
-import { agsParams } from './agsToken';
 
 /* ── Багц → гүйцэтгэгч компани ── */
 
@@ -38,16 +37,14 @@ async function companyOf(bagts: string): Promise<string> {
     const res = await fetch(`${BUILDING.url}/query`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      // ⚠️ 2026-08-24 «Organization» хуваалцалт — token-гүй бол энэ асуулга 499 болж,
-      //    гүйцэтгэгч компанийн нэр чимээгүй хоосон үлдэнэ.
-      body: new URLSearchParams(await agsParams({
+      body: new URLSearchParams({
         f: 'json',
         where: '1=1',
         groupByFieldsForStatistics: `${BUILDING.fields.bagts},${BUILDING.fields.contractor}`,
         outStatistics: JSON.stringify([
           { statisticType: 'count', onStatisticField: BUILDING.oid, outStatisticFieldName: 'n' },
         ]),
-      })).toString(),
+      }).toString(),
     });
     const j = (await res.json()) as { features?: { attributes: Attrs }[]; error?: unknown };
     COMPANY = new Map();

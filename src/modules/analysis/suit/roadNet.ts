@@ -13,7 +13,6 @@
  */
 
 import { HOME } from '@/lib/services';
-import { agsToken } from '@/lib/agsToken';
 import { t as tr } from '@/lib/i18nCore';
 import type { Network, Pt } from './traffic';
 import { zoneTrips } from './simulation';
@@ -87,12 +86,8 @@ const pageQuery = (offset: number) => new URLSearchParams({
  * давхаргын URL л өөр. `netSources.ts`-ийн бүртгэл үүнийг дуудна.
  */
 export async function loadPathsFrom(url: string, signal?: AbortSignal): Promise<Pt[][]> {
-  /* Нэвтрэлтийн token — «Organization» хуваалцалтад ЗААВАЛ (2026-08-24).
-     Нэг удаа авна: хуудас бүрд дахин асуух шаардлагагүй. */
-  const tok = await agsToken();
-  const auth = tok ? `&token=${encodeURIComponent(tok)}` : '';
   const fetchPage = async (offset: number): Promise<Pt[][]> => {
-    const r: QueryResp = await fetch(`${url}/query?${pageQuery(offset)}${auth}`, { signal }).then((x) => x.json());
+    const r: QueryResp = await fetch(`${url}/query?${pageQuery(offset)}`, { signal }).then((x) => x.json());
     if (r.error) throw new Error(r.error.message ?? tr('ArcGIS query алдаа'));
     const out: Pt[][] = [];
     for (const f of r.features ?? []) {
@@ -114,7 +109,7 @@ export async function loadPathsFrom(url: string, signal?: AbortSignal): Promise<
       spatialRel: 'esriSpatialRelIntersects',
       returnCountOnly: 'true',
       f: 'json',
-    })}${auth}`,
+    })}`,
     { signal },
   ).then((x) => x.json());
   if (cnt.error) throw new Error(cnt.error.message ?? tr('ArcGIS count алдаа'));

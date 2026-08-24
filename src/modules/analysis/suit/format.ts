@@ -18,10 +18,6 @@ export const nf = (v: number | null | undefined, d = 0) =>
     ? '—'
     : v.toLocaleString('mn-MN', { minimumFractionDigits: d, maximumFractionDigits: d });
 
-/** Нэгж үнэ — товчлолгүй, бүтэн тоогоор (2,500,000,000 ₮) */
-export const unitMoney = (v: number | null | undefined) =>
-  v == null || !Number.isFinite(v) ? '—' : `${nf(v)} ₮`;
-
 /** Мөнгөн дүнг уншихад ойлгомжтой нэгжээр */
 export function money(v: number | null | undefined, d = 1) {
   if (v == null || !Number.isFinite(v)) return '—';

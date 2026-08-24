@@ -2704,7 +2704,7 @@ export const MapCanvas = memo(function MapCanvas({
         l.visible = dim === '2d' && (on.size === 0 || on.has(String(l.id)));
       } else if (is3D(dim) && PLAN2D_ALIASED.has(String(l.id))) {
         /**
-         * План2d ALIAS style-тай давхаргууд (dugui, nogoon, tree, et:24…) — renderer
+         * План2d ALIAS style-тай давхаргууд (dugui, nogoon, et:24, et:27, et:29) — renderer
          * нь зурган текстур (esriPFS/esriPMS) тул SceneView-д дэмжигдэхгүй. 3D/BIM-д
          * НУУНА: асаалттай орхивол «picture-fill is unsupported in 3D» алдаа асгарна.
          */
@@ -2964,7 +2964,7 @@ export const MapCanvas = memo(function MapCanvas({
       {tip && <MapTip x={tip.x} y={tip.y} id={tip.id} attrs={tip.attrs} prog={blockProg} />}
 
       {/* ⚠️ Газрын зураг дээрх «Тайлбар» хайрцгийг ХАССАН: давхаргын каталог
-          багана нь симбол, тоо, өртгийг аль хэдийн хажууд нь харуулж байгаа тул
+          багана нь симбол, тоо, хэмжээг аль хэдийн хажууд нь харуулж байгаа тул
           зураг дээр үгээр давтах нь зургийн талбайг л иддэг байв. */}
       {children}
     </div>

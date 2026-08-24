@@ -1,5 +1,4 @@
 import { t as tr } from '@/lib/i18nCore';
-import { agsParams } from './agsToken';
 /**
  * ArcGIS REST асуулгын давхарга.
  *
@@ -39,8 +38,8 @@ type Body = { features?: { attributes: Row }[]; count?: number; exceededTransfer
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
- * ⚠️ ЗЭРЭГ хүсэлтийн ХЯЗГААРЛАГЧ. Дашбоард нэг дор 40+ хүсэлт (өртөг 24, анализ,
- * газрын зургийн давхаргууд) явуулах үед ArcGIS «Too many requests» гэж
+ * ⚠️ ЗЭРЭГ хүсэлтийн ХЯЗГААРЛАГЧ. Дашбоард нэг дор 40+ хүсэлт (каталогийн
+ * тоо/хэмжээ, анализ, газрын зургийн давхаргууд) явуулах үед ArcGIS «Too many requests» гэж
  * татгалздаг. Зэрэг явах хүсэлтийг хязгаарлавал сервер даахаас гадна үлдсэн нь
  * дараалалд хүлээж, шатлан ордог — бүх карт ба давхарга ачаалагдана.
  */
@@ -71,8 +70,8 @@ function release() {
 }
 
 /**
- * ⚠️ ХУРДНЫ ХЯЗГААР дээр дахин оролдоно. Дашбоард нэг дор олон хүсэлт (өртөг 24,
- * анализ) явуулах үед ArcGIS «Unable to perform query. Too many requests.» гэж
+ * ⚠️ ХУРДНЫ ХЯЗГААР дээр дахин оролдоно. Дашбоард нэг дор олон хүсэлт
+ * (каталогийн тоо/хэмжээ, анализ) явуулах үед ArcGIS «Unable to perform query. Too many requests.» гэж
  * HTTP 200-тай буцаадаг (эсвэл 429/503). Энэ нь ТҮР зуурын тул экспоненциал
  * backoff-той хэдэн удаа дахин оролдвол өөрөө засрана — эс бөгөөс карт чимээгүй
  * алдаа харуулна.
@@ -85,10 +84,7 @@ async function attemptRequest(url: string, params: Record<string, string>, attem
   const res = await fetch(full, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    // ⚠️ `agsParams` — нэвтэрсэн хэрэглэгчийн token хавсаргана (2026-08-24).
-    //    Давхаргыг «Organization» болгоход энэ БАЙХГҮЙ бол бүх асуулга 499
-    //    болно; нэвтрээгүй үед параметр өөрчлөгдөхгүй тул зан ижил хэвээр.
-    body: new URLSearchParams(await agsParams({ f: 'json', ...params })),
+    body: new URLSearchParams({ f: 'json', ...params }),
   });
   if (!res.ok) {
     if ((res.status === 429 || res.status === 503) && attempt < RETRIES) {
