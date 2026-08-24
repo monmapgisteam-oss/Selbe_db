@@ -32,7 +32,12 @@ const toIso = (v: unknown): string | null =>
 const str = (v: unknown): string => (v == null ? '' : String(v));
 const num = (v: unknown): number => (Number.isFinite(Number(v)) ? Number(v) : 0);
 
-function toRow(a: Attrs): Row {
+/**
+ * ⚠️ ЭКСПОРТ (2026-08-24): удирдлагын самбар (`ExecKpi`) нь `queryAll()`-ыг
+ * шууд дуудаж, хүлээгдлийн насыг боддог. Хөрвүүлэлт нь ГАНЦ газар байх ёстой —
+ * тэнд дахин бичвэл огнооны хэлбэр (epoch ms ↔ ISO) хоёр тайлбартай болно.
+ */
+export function toRow(a: Attrs): Row {
   return {
     __oid: num(a[HYANALT.oid]),
     [F.id]: str(a[F.id]),

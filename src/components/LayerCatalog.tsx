@@ -14,7 +14,7 @@ import type { Totals } from '@/lib/totals';
 import { qtyText, whereFor, layerStats } from '@/lib/totals';
 import { useFilter } from '@/lib/filter';
 import { queryGroup, groups, groupWhere } from '@/lib/query';
-import { catalogGroups, INITIAL_MAP_LAYERS, LAYER_BY_ID, layerUrl, type LayerDef } from '@/lib/services';
+import { catalogGroups, INITIAL_MAP_LAYERS, LAYER_BY_ID, layerUrl, type CatalogView, type LayerDef } from '@/lib/services';
 import { num } from '@/lib/format';
 import s from './catalog.module.css';
 
@@ -57,8 +57,12 @@ export const LayerCatalog = memo(function LayerCatalog({
    * ⚠️ «Барилгын хяналт»-д хяналтын багц ЭХЭНД, дараа нь ЕТ-ийн багцууд —
    * тэнд гүйцэтгэлийн давхарга дээр контекст нэмэх нь ердийн хэрэглээ.
    * «ХАБЭА»-д аюулгүй байдлын багц ЭХЭНД, дараа нь хяналт + ЕТ (контекст).
+   *
+   * ⚠️ Сэдэвчилсэн цонх (`gazar`/`iot`/`irged`) ӨӨРИЙНХӨӨ түлхүүрийг дамжуулна —
+   * `'plan'` бичвэл бүтэн порталын каталог гарч, сэдэв нь 18 бүлгийн дунд
+   * булагдана (`catalogGroups`-ын тайлбарыг үз).
    */
-  view: 'plan' | 'monitor' | 'habea';
+  view: CatalogView;
   totals: Async<Map<string, Totals>>;
   visible: string[];
   setVisible: Dispatch<SetStateAction<string[]>>;
@@ -404,7 +408,7 @@ function FacetRows({
 }: {
   d: LayerDef;
   zone: string | null;
-  view: 'plan' | 'monitor' | 'habea';
+  view: CatalogView;
   /** Шүүхийн өмнө давхаргыг зурагт гаргана — унтарсан давхаргыг шүүх нь дэмий */
   onNeedVisible: () => void;
 }) {

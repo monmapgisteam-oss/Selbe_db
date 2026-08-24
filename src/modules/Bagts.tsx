@@ -591,8 +591,33 @@ export function BlocksCard({
     setHighlight(w, BLOCK_LAYER);
     zoomToWhere(BLOCK_LAYER, w);
   };
+  /**
+   * ТОЛГОЙН БАРУУН ГАРЫН ТЭМДЭГЛЭЛ.
+   *
+   * ⚠️ 2026-08-23 (хэрэглэгчийн хүсэлт): «20/20 бүртгэлтэй» гэсэн блокийн
+   * тооллогын ОРОНД ДАВХЦСАН ҮЛДСЭН НЭГЖ ТАЛБАРЫН тоо. Багцын картууд
+   * АНХНААСАА ХААЛТТАЙ эхэлдэг тул саадын тоо урьд нь картыг нээж үзсэн хүнд
+   * л харагддаг байв — одоо жагсаалтыг гүйлгэхэд багц БҮРИЙНХ шууд уншигдана.
+   *
+   * ⚠️ `overlapN` өгөөгүй үед (сонгосон багцын дотоод карт) хуучин тооллого
+   * ХЭВЭЭР: тэнд давхцлын тоо картын дотор аль хэдийн байдаг тул толгойд
+   * давхардуулах шаардлагагүй.
+   *
+   * ⚠️ Өнгө нь УЛААН (`--bad-ink`), ягаан (`--overlap`) БИШ — хэрэглэгчийн
+   * шийдвэр. Тэг үед ногоон: саадгүй нь сайн мэдээ.
+   */
+  const note = overlapN === undefined
+    ? tr('{0}/{1} бүртгэлтэй', num(withData), num(p.blocks.length))
+    : overlapN == null
+      ? tr('давхцал тоолж байна…')
+      : (
+        <span style={{ color: overlapN ? 'var(--bad-ink)' : 'var(--good-ink)' }}>
+          {tr('{0} давхцсан талбар', num(overlapN))}
+        </span>
+      );
+
   return (
-    <Section title={title} collapsible={collapsible} defaultClosed={collapsible && !defaultOpen} note={tr('{0}/{1} бүртгэлтэй', num(withData), num(p.blocks.length))}>
+    <Section title={title} collapsible={collapsible} defaultClosed={collapsible && !defaultOpen} note={note}>
       {overlapN !== undefined && (
         <>
           {/* ДАВХЦЛЫН мэдээлэл — хайрцаглаж, доорх блокийн жагсаалтаас

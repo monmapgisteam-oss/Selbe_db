@@ -16,11 +16,15 @@ import { queryFeatures, type Row } from './query';
 import { BUILDING, bagtsKey, buildingKey } from './services';
 import {
   INDICATORS, SCORE_LEVELS, levelOf, PARKING, DEFAULT_ECON_SHARE,
-  BUILD_COST_PER_M2, profitScore,
+  BUILD_COST_PER_M2, profitScore, ASSUME_MET,
 } from './analysis/config';
 import { loadAnalysisCached, computeEconomics, computeRaw, defaultGreenCats } from './analysis/data';
 import { loadCostsCached } from './analysis/costs';
-import { urbanScore } from './analysis/score';
+import { urbanScore, passesNorm, normFor, normGap, normText } from './analysis/score';
+/* ⚠️ `modules`-аас `lib` рүү импорт — `execTriage.ts`-ийн жишиг (bagts.pkg).
+   `simulation.ts` нь ЗӨВХӨН `Zone` төрөл ба `tr`-ийг импортолдог тул ямар ч
+   хүнд хамаарал (ArcGIS SDK, газрын зураг) дагуулж ирэхгүй. */
+import { zoneTrips } from '@/modules/analysis/suit/simulation';
 import { loadBlockProgress, type BlockProgressMap } from './blockProgress';
 import { text } from './format';
 import { BAGTS_ORIGIN } from './brief';
@@ -118,6 +122,54 @@ function joinBagts(blocks: Row[], prog: BlockProgressMap): BagtsRow[] {
     .sort((a, b) => a.label.localeCompare(b.label, 'mn'));
 }
 
+/* ══════════════ ТӨСЛИЙН АЛБАН ЁСНЫ ГҮЙЦЭТГЭЛ ══════════════ */
+
+export type BuildProgress = {
+  /** Блокоор жигнэсэн гүйцэтгэл (%) — тайлангүй блок 0%-аар ордог */
+  pct: number | null;
+  blocks: number;
+  /** Тайлагнасан блок */
+  reported: number;
+  /** Тайлан ирээгүй блок */
+  missing: number;
+};
+
+/**
+ * ТӨСЛИЙН ГҮЙЦЭТГЭЛИЙН ГАНЦ ТОДОРХОЙЛОЛТ.
+ *
+ * ⚠️ 2026-08-24, хэрэглэгчийн шийдвэр (CEO_KPI_PROMPT §7-A). Системд гурван
+ * өөр гүйцэтгэлийн тоо зэрэг оршиж, CEO хоёр дэлгэц нээгээд өөр хоёр тоо
+ * хардаг байв. Албан ёсны нь болгож сонгосон нь ЭНЭ — `joinBagts`-ийн дүрэм:
+ * хуваарь нь БҮХ блок, тайлан ирээгүй блок 0% гэж тооцогдоно.
+ *
+ * ⚠️ Яагаад «бүх блокоор» вэ: зөвхөн тайлагнасан блокоор дундажлавал шинэ багц
+ * бүртгэгдэх бүрд дүн БУУНА, мөн тайлагнаагүй ажил дүнд ОГТ нөлөөлөхгүй болж
+ * нуугдана. Бүх блокоор хуваах нь болгоомжтой (консерватив) — гүйцэтгэлийг
+ * хэзээ ч хөөрөгдөхгүй.
+ *
+ * ⚠️ `missing` нь ЗААВАЛ хамт харагдана: 0%-аар орж буй блок хэд байгааг
+ * хэлэхгүйгээр энэ тоо төөрөгдүүлнэ.
+ *
+ * ⚠️ `r.progress` нь `sum ÷ r.blocks` тул `progress × blocks` нь түүхий
+ * нийлбэрийг сэргээнэ — багц дамнасан жигнэлт ингэж яг таарна.
+ */
+export function buildProgressOf(rows: readonly BagtsRow[]): BuildProgress {
+  let blocks = 0;
+  let wsum = 0;
+  let missing = 0;
+  for (const r of rows) {
+    blocks += r.blocks;
+    missing += r.missing;
+    if (r.progress != null) wsum += r.progress * r.blocks;
+  }
+  return {
+    pct: blocks ? wsum / blocks : null,
+    blocks,
+    reported: blocks - missing,
+    missing,
+  };
+}
+
 /* ── Тохиромжтой байдлын үнэлгээ (бүсийн орон зайн анализ) ── */
 
 export type SuitSummary = {
@@ -129,6 +181,40 @@ export type SuitSummary = {
   profitZones: number;
   ranked: { id: string; type: string; score: number | null }[];
   byId: Record<string, { score: number | null; type: string }>;
+  /**
+   * ⚠️ ШИНЭ (2026-08-24) — ҮЗҮҮЛЭЛТ БҮРЭЭР нэгтгэсэн норм зөрчил.
+   * Багцаар БИШ, СЭДЭВЭЭР (хэрэглэгчийн хүсэлт): «ногоон байгууламж хэдэн
+   * бүсэд норм хангахгүй байна» гэсэн асуултад хариулна.
+   */
+  byIndicator: IndicatorFail[];
+  /**
+   * ⚠️ ШИНЭ — замын симуляцын ЭРЭЛТИЙН загвар (оргил цагийн машин/цаг).
+   * Амьд машин агентын статистик БИШ (тэр нь анимац ажиллаж байж гарна) —
+   * симуляцыг ТЭЖЭЭДЭГ бүсийн аялал үүсгэлт (`zoneTrips`).
+   */
+  road: { trips: number; top: { zone: string; trips: number }[] };
+};
+
+export type IndicatorFail = {
+  id: string;
+  name: string;
+  short: string;
+  unit: string;
+  weight: number;
+  /** Норм ЗӨРЧСӨН бүсийн тоо */
+  fails: number;
+  /** Утга нь бодогдсон (дүгнэгдэх боломжтой) бүсийн тоо */
+  scored: number;
+  /** Хамгийн их зөрчилтэй бүс — утга · норм · зөрүү гурвыг агуулна */
+  worst: { zone: string; value: number; gap: number } | null;
+  /** Нормын шаардлага текстээр — «≥ 6.0 м²/хүн» */
+  normLabel: string;
+  /**
+   * ⚠️ `ASSUME_MET`-ээр «норм хангасан» гэж ДҮГНЭГДДЭГ үзүүлэлт.
+   * Эх өгөгдөл нь найдваргүй тул (`config.ts:908`) зөрчлийг нь бусадтай ижил
+   * жинтэй үзүүлэхгүй — тусад нь тэмдэглэнэ.
+   */
+  assumed: boolean;
 };
 
 /** Хот төлөвлөлтийн оноо ба ашгийн оноог жинлэн нийлүүлэх */
@@ -154,7 +240,71 @@ export function useSuitability(enabled: boolean, onProgress?: (m: string, p: num
     const valid = blends.filter((x): x is number => x != null);
     const revenue = data.zones.reduce((a, z) => a + (z.econ?.revenue ?? 0), 0);
     const cost = data.zones.reduce((a, z) => a + (z.econ?.cost ?? 0), 0);
+    /*
+     * ══ ҮЗҮҮЛЭЛТ БҮРЭЭР НОРМ ЗӨРЧИЛ (2026-08-24) ══
+     *
+     * ⚠️ `rawActual` уншина, `raw` БИШ. `ASSUME_MET` нь `raw`-д `social`/
+     * `engineering`-ийг хүчээр «норм хангасан» болгодог тул `raw` уншвал тэр
+     * хоёр ХЭЗЭЭ Ч асуудал болж харагдахгүй. Бодит утга `rawActual`-д бүтэн.
+     *
+     * ⚠️ `engineering` БҮРМӨСӨН ХАСАГДСАН (хэрэглэгчийн шийдвэр, 2026-08-24):
+     * түүний 100/500 м норм нь `config.ts`-т БАТЛАГДААГҮЙ таамаг гэж
+     * тэмдэглэгдсэн. Батлагдаагүй нормоор «зөрчил» зарлаж зураг төсөл
+     * өөрчлүүлэх нь эрсдэлтэй.
+     *
+     * ⚠️ `ref` үзүүлэлт (`greenCap`, `densityCap`) — БНБД-д норм заагаагүй тул
+     * зөрчил гэж үзэхгүй. Жин 0 нь мөн адил.
+     *
+     * ⚠️ ХАСАГДСАН бүсийг (`excluded` — ногоон байгууламж, одоо байгаа
+     * барилга) тоолохгүй: тэдгээр нь оноололд ч ордоггүй.
+     */
+    const live = data.zones.filter((z) => !z.excluded);
+    const byIndicator: IndicatorFail[] = INDICATORS
+      .filter((ind) => !ind.ref && ind.weight > 0 && ind.id !== 'engineering')
+      .map((ind) => {
+        let fails = 0;
+        let scored = 0;
+        let worst: IndicatorFail['worst'] = null;
+        for (const z of live) {
+          const eff = normFor(ind, z.type);
+          const v = z.rawActual[ind.id];
+          const ok = passesNorm(v, eff);
+          if (ok == null || v == null) continue;
+          scored += 1;
+          if (ok) continue;
+          fails += 1;
+          const gap = normGap(v, eff) ?? 0;
+          if (!worst || gap > worst.gap) worst = { zone: z.id, value: v, gap };
+        }
+        return {
+          id: ind.id,
+          name: ind.name,
+          short: ind.short,
+          unit: ind.unit ?? '',
+          weight: ind.weight,
+          fails,
+          scored,
+          worst,
+          normLabel: normText(normFor(ind, null), (x, d) => x.toFixed(d ?? 1)),
+          assumed: ind.id in ASSUME_MET,
+        };
+      });
+
+    /* ══ ЗАМЫН СИМУЛЯЦЫН ЭРЭЛТ ══
+       ⚠️ Шинэ хүсэлт НЭМЭХГҮЙ: `zoneTrips` нь бүсийн `residentPop`/`capacityPop`
+       дээр л тогтдог бөгөөд тэдгээр нь энэ ачаалалтад аль хэдийн бий. Замын
+       СҮЛЖЭЭ (`loadNetworkCached`) энд ОГТ хэрэггүй. */
+    const tripRows = live
+      .map((z) => ({ zone: z.id, trips: zoneTrips(z) }))
+      .filter((x) => x.trips > 0)
+      .sort((a, b) => b.trips - a.trips);
+
     return {
+      byIndicator,
+      road: {
+        trips: tripRows.reduce((a, x) => a + x.trips, 0),
+        top: tripRows.slice(0, 6),
+      },
       avgScore: valid.length ? valid.reduce((a, b) => a + b, 0) / valid.length : null,
       levels: SCORE_LEVELS.map((L, i) => ({
         label: L.label, color: L.color,

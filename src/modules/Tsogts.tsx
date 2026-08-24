@@ -587,9 +587,14 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
               <span className={ts.ovTotLabel}>{tr('Давхцсан үлдсэн нэгж талбар')}</span>
               <b
                 className={`${ts.ovTotVal} num`}
-                /* Яагаан нь зурган дээрх давхцлын давхаргатай ИЖИЛ утга — гэхдээ токеноор:
-                   light горимд бараандуу хувилбар нь уншигдана (--overlap, globals.css) */
-                style={{ color: overlap?.oids.length ? 'var(--overlap)' : 'var(--good-ink)' }}
+                /* ⚠️ 2026-08-23 (хэрэглэгчийн хүсэлт): ЯГААН (`--overlap`) → УЛААН
+                   (`--bad-ink`). Урьд нь тоо нь зурган дээрх давхцлын давхаргын
+                   ягаантай ижил утгатай байсан; одоо тоо нь «саад/эрсдэл» гэсэн
+                   статусын хэлээр (улаан) ярина — багцын картуудын толгой дахь
+                   давхцлын тоотой ч нэг өнгө болов (`BlocksCard`).
+                   ⚠️ ГАЗРЫН ЗУРАГ дээрх полигон ЯГААН ХЭВЭЭР: тэр нь улбар шар
+                   блокуудаас ялгарахын тулд зориуд сонгогдсон (`Tsogts.tsx` §350). */
+                style={{ color: overlap?.oids.length ? 'var(--bad-ink)' : 'var(--good-ink)' }}
               >
                 {overlap == null ? '…' : num(overlap.oids.length)}
               </b>

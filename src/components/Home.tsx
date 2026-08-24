@@ -1,22 +1,18 @@
 'use client';
 
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { LocaleToggle } from '@/components/LocaleToggle';
 import { useAuth } from './AuthGate';
-import { useAsync } from '@/lib/useAsync';
-import {
-  loadBudget, loadClearance, loadHeadline, loadHousing, loadProjectProgress, loadSocial,
-} from '@/lib/live';
-import { mntShort, num, pct } from '@/lib/format';
 import dynamic from 'next/dynamic';
 import { DocViewer } from './DocViewer';
 /* ⚠️ dynamic (2026-08-21 гүйцэтгэлийн аудит): ExecKpi нь analysis стекээ дагуулж
    ирдэг тул статик импортоор нэвтрэх/нүүр хуудасны эхний chunk-д ордог байв.
-   Зөвхөн супер хэрэглэгчид л харагддаг хэсэг — хэрэгтэй үед нь татна. */
+   Зөвхөн супер хэрэглэгчид л харагддаг хэсэг — хэрэгтэй үед нь татна.
+   ⚠️ 2026-08-24: ӨГӨГДЛИЙН ачаалагчид ч тийш нүүсэн (`loadHeadline`,
+   `loadHousing`, `loadSocial`…). Ингэснээр нүүрийн эхний chunk улам хөнгөрч,
+   супер БУС хэрэглэгч тэдгээр асуулгыг огт ажиллуулахгүй боллоо. */
 const ExecKpi = dynamic(() => import('./ExecKpi').then((m) => m.ExecKpi), { ssr: false });
-import { Icon } from './Icon';
-import { Ring } from './MiniChart';
 import type { ViewKey } from '@/lib/services';
 import s from './home.module.css';
 
@@ -36,132 +32,19 @@ export type HomeGroup = {
   views: HomeView[];
 };
 
-/** Нэг KPI нүд — бүгд АМЬД (services.ts-ээс), ачаалж байхад «…» */
-type Kpi = {
-  key: string;
-  value: string;
-  label: string;
-  /** Утгын доорх нэмэлт мөр — задаргаа, хувь, эсвэл эх сурвалж */
-  sub?: string;
-  icon: string;
-  /** Дарахад очих харагдац — байхгүй бол зөвхөн уншина */
-  view?: ViewKey;
-  /** Статусын өнгө — ЦАГИРАГТ л нөлөөлнө (утга нь нэгдсэн аястай үлдэнэ) */
-  tone?: string;
-  /**
-   * Нүдний акцент өнгө. Дүрс, хүрээ, цагираг, утга бүгд үүнээс.
-   * ⚠️ Hex ШУУД бичихгүй — тэр нь гэрэл/харанхуй горимд дагахгүй.
-   */
-  hue?: string;
-  /**
-   * Цагирагт үзүүлэх ХУВЬ (0…100).
-   * ⚠️ ЗӨВХӨН бодит харьцаа байвал. Хүн амын тоо мэт харьцаагүй үзүүлэлтэд
-   * цагираг зурах гэж хуваарь ЗОХИОХГҮЙ.
-   */
-  ring?: number;
-};
-
 /**
- * НҮҮРИЙН БҮХ ҮЗҮҮЛЭЛТ — таван ачаалагчаас.
+ * ⚠️ 2026-08-24: `useHomeKpis()` ба түүний `Kpi` төрөл БҮРМӨСӨН УСТСАН
+ * (CEO_KPI_PROMPT §6). Нүүр хуудсанд ХОЁР самбар зэрэгцэж байсан нь асуудал
+ * байв: энд ангилалгүй 10 нүд, доор нь `ExecKpi`-ийн 9 карт. Газар чөлөөлөлт
+ * ГУРВАН газар (`clear` · `cleared` · ExecKpi-ийн `clearance`), гүйцэтгэл ХОЁР
+ * газар давхардаж, «158 га» гэх ХЭМЖЭЭНИЙ тоо статустай үзүүлэлттэй ижил
+ * харагдаж «сайн уу муу юу» гэсэн утгагүй асуулт төрүүлж байлаа.
  *
- * ⚠️ 2026-08-18 (хэрэглэгчийн хүсэлт): нүүр нь «лендинг» биш ЕРӨНХИЙ KPI
- * ДАШБОАРД болов. Тиймээс өмнөх 5 үзүүлэлт дээр бусад хэсгээс (санхүүжилт,
- * газар чөлөөлөлт, нийгмийн үйлчилгээ, орон сууц) гол тоонуудыг ТАТАЖ нэгтгэв —
- * хэрэглэгч дотогш орохоос өмнө төслийн бүтэн зургийг харна.
- *
- * ⚠️ Бүх ачаалагч `cached` тул порталд орсны дараа ДАХИН татагдахгүй — эдгээр
- * нь тэр хэсгүүдийн кэшийг УРЬДЧИЛАН дүүргэж, шилжилтийг хурдасгана.
+ * Одоо БҮХ үзүүлэлт `ExecKpi`-ийн таван сэдэвчилсэн ангилалд амьдарна —
+ * эдгээр нүд «Хамрах хүрээ» ангилалд `neutral` төлөвтэйгээр шингэсэн.
+ * Ачаалагчид (`loadHeadline`, `loadHousing`, `loadSocial` г.м.) тийш нүүсэн
+ * бөгөөд бүгд `cached` тул ХҮСЭЛТИЙН ТОО НЭМЭГДЭЭГҮЙ.
  */
-function useHomeKpis(): { main: Kpi[]; more: Kpi[]; progress: number | null } {
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const h = useAsync(loadHeadline, []);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const hh = useAsync(loadHousing, []);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const p = useAsync(loadProjectProgress, []);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const c = useAsync(loadClearance, []);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const b = useAsync(loadBudget, []);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const so = useAsync(loadSocial, []);
-
-  const hd = h.state === 'ready' ? h.data : null;
-  const hs = hh.state === 'ready' ? hh.data : null;
-  const pp = p.state === 'ready' ? p.data : null;
-  const cl = c.state === 'ready' ? c.data : null;
-  const bg = b.state === 'ready' ? b.data : null;
-  const sc = so.state === 'ready' ? so.data : null;
-
-  /**
-   * Төсвийн ГЭРЭЭЛСЭН хувь — гэрээт дүн ÷ нийт төсөв.
-   *
-   * ⚠️ `transferred` (CF-ийн шилжүүлсэн багана) БИШ: амьд өгөгдөлд тэр нь 0
-   * байгаа тул «0% шилжүүлсэн» гэсэн утгагүй мөр гарч, төсөв огт хөдлөөгүй
-   * мэт төөрөгдүүлж байв. Гэрээлсэн дүн нь бодитоор бөглөгдсөн бөгөөд
-   * төсвийн хэдийг нь ажилд холбосныг шууд хэлнэ.
-   */
-  const contractPct = bg && bg.total > 0 ? (bg.contract / bg.total) * 100 : null;
-
-  return {
-    // ГОЛ ДӨРӨВ — том нүд, дээд эгнээнд
-    main: [
-      {
-        key: 'prog',
-        value: pp ? pct(pp.actual, 1) : '…',
-        label: tr('Төслийн гүйцэтгэл'),
-        sub: pp ? tr('{0}% багц бүртгэгдсэн', num(pp.coverage, 0)) : undefined,
-        icon: 'chart',
-        view: 'tsogts',
-        hue: 'var(--data)',
-        ring: pp?.actual,
-      },
-      {
-        key: 'fin',
-        value: bg ? mntShort(bg.total) : '…',
-        label: tr('Нийт төсөв'),
-        sub: contractPct != null ? tr('{0} гэрээлсэн', pct(contractPct, 0)) : undefined,
-        icon: 'calc',
-        view: 'finance',
-        hue: 'var(--data)',
-        // Цагираг нь НИЙТ ТӨСВИЙГ биш, түүний ГЭРЭЭЛСЭН хувийг үзүүлнэ
-        ring: contractPct ?? undefined,
-      },
-      {
-        key: 'clear',
-        value: cl?.pct != null ? pct(cl.pct, 1) : '…',
-        label: tr('Газар чөлөөлөлт'),
-        sub: cl ? tr('{0} талбар үлдсэн · {1} га', num(cl.remaining), num(cl.remainingHa, 1)) : undefined,
-        icon: 'polygon',
-        view: 'gazar',
-        hue: 'var(--data)',
-        ring: cl?.pct ?? undefined,
-        tone: cl?.pct == null ? undefined
-          : cl.pct >= 95 ? 'var(--good)' : cl.pct >= 80 ? 'var(--warn)' : 'var(--bad)',
-      },
-      {
-        key: 'pop',
-        value: hd ? num(hd.population) : '…',
-        label: tr('Хамрагдах хүн ам'),
-        sub: hs ? tr('{0} өрхийн орон сууц', num(hs.ail)) : undefined,
-        icon: 'users',
-        view: 'irged',
-        hue: 'var(--data)',
-        // ⚠️ Цагираг ЗОРИУДААР байхгүй — хүн ам нь хувь БИШ, харьцуулах суурьгүй
-      },
-    ],
-    // НЭМЭЛТ — жижиг нүд, доод эгнээнд
-    more: [
-      { key: 'area', value: hd ? tr('{0} га', num(hd.areaHa, 1)) : '…', label: tr('Төслийн талбай'), icon: 'frame', view: 'plan', hue: 'var(--data)' },
-      { key: 'green', value: hd?.greenHa != null ? tr('{0} га', num(hd.greenHa, 1)) : '…', label: tr('Ногоон байгууламж'), icon: 'droplet', view: 'plan', hue: 'var(--data)' },
-      { key: 'blocks', value: hs ? num(hs.blocks) : '…', label: tr('Барилгын блок'), icon: 'building', view: 'tsogts', hue: 'var(--data)' },
-      { key: 'contract', value: bg ? mntShort(bg.contract) : '…', label: tr('Гэрээт дүн'), icon: 'file', view: 'finance', hue: 'var(--data)' },
-      { key: 'social', value: sc ? num(sc.totalN) : '…', label: tr('Нийгмийн байгууламж'), icon: 'grid', view: 'irged', hue: 'var(--data)' },
-      { key: 'cleared', value: cl ? num(cl.cleared) : '…', label: tr('Чөлөөлсөн талбар'), icon: 'target', view: 'gazar', hue: 'var(--data)' },
-    ],
-    progress: pp ? pp.actual : null,
-  };
-}
 
 /** Нэрнээс товч үсэг (avatar) — эхний хоёр үгийн эхний үсэг */
 function initials(name: string): string {
@@ -202,14 +85,13 @@ export function Home({
    */
   docsAllowed?: boolean;
   /**
-   * «Төслийн ерөнхий үзүүлэлтүүд» самбар ЗӨВХӨН супер хэрэглэгчид (2026-08-21,
+   * «Сэлбэ ухаалаг хот» самбар ЗӨВХӨН супер хэрэглэгчид (2026-08-21,
    * хэрэглэгчийн хүсэлт) — нүүр нь дэд самбар болж, энгийн хэрэглэгчид зөвхөн
    * платформын хэсгүүдийн навигаци үлдэнэ.
    */
   isSuper?: boolean;
 }) {
   const { status, user, signOut } = useAuth();
-  const { main, more, progress } = useHomeKpis();
 
   /** Нээлттэй сэдвийн id — нэг зэрэг ГАНЦ dropdown */
   const [open, setOpen] = useState<string | null>(null);
@@ -238,65 +120,6 @@ export function Home({
     };
   }, [open]);
 
-  /** KPI нүд — `view` байвал дарж болох товч, эс бөгөөс зүгээр л уншина */
-  const tile = (k: Kpi, big: boolean) => {
-    const text = (
-      <>
-        {/* ⚠️ Утгын өнгө нь НЭГДСЭН аяс (`--kpi`). Статусыг ЦАГИРАГ илэрхийлнэ. */}
-        <span className={`${s.kpiValue} num`} style={{ color: 'var(--kpi, var(--ink))' }}>
-          {k.value}
-        </span>
-        {k.sub && <span className={s.kpiSub}>{k.sub}</span>}
-      </>
-    );
-    const inner = (
-      <>
-        <span className={s.kpiTop}>
-          <span className={s.kpiIcon}><Icon name={k.icon} size={big ? 16 : 14} /></span>
-          <span className={s.kpiLabel}>{k.label}</span>
-          {k.view && <span className={s.kpiGo} aria-hidden>→</span>}
-        </span>
-        {big ? (
-          <span className={s.kpiBody}>
-            <span className={s.kpiText}>{text}</span>
-            {/*
-              * ⚠️ Цагираг ЗӨВХӨН бодит хувьтай нүдэнд. Харьцаагүй нүдэнд дүрсийг
-              * бүдэг усан тамга болгоно — тэр нь ГРАФИК БИШ, зөвхөн чимэглэл.
-              * ⚠️ Цагираг нь СТАТУСЫН өнгийг (`tone`) барина; SVG нь
-              * `currentColor` ашигладаг тул энд `color` тавихад хангалттай.
-              */}
-            <span
-              className={`${s.kpiArt} ${k.ring == null ? s.kpiArtFaint : ''}`}
-              style={k.tone ? { color: k.tone } : undefined}
-              aria-hidden
-            >
-              {k.ring != null
-                ? <Ring value={k.ring} size={56} width={7} />
-                : <Icon name={k.icon} size={40} />}
-            </span>
-          </span>
-        ) : text}
-      </>
-    );
-    const cls = `${s.kpi} ${big ? s.kpiBig : ''}`;
-    // ⚠️ `--kpi` нь дүрс, хүрээ, цагираг, утгын өнгийг НЭГ ЦЭГЭЭС удирдана
-    const style = k.hue ? ({ ['--kpi']: k.hue } as CSSProperties) : undefined;
-    return k.view ? (
-      <button
-        key={k.key}
-        type="button"
-        className={cls}
-        style={style}
-        onClick={() => onEnterView(k.view!)}
-        title={tr('{0} — дэлгэрэнгүй рүү очих', k.label)}
-      >
-        {inner}
-      </button>
-    ) : (
-      <div key={k.key} className={cls} style={style}>{inner}</div>
-    );
-  };
-
   return (
     <div className={s.home}>
       {/* ── Дээд навигацийн зурвас — лого · цэс · нэвтрэлт ── */}
@@ -306,7 +129,13 @@ export function Home({
           <img src="/logo.svg" alt="" className={s.logo} />
           <span className={s.brandDivider} aria-hidden />
           <span className={s.brandText}>
-            <b>{tr('СЭЛБЭ')}</b> {tr('20 минутын хот')}
+            {/* ⚠️ 2026-08-24, хэрэглэгчийн шийдвэр: «20 минутын хот» → «Ухаалаг
+                хот». `Landing.tsx`-ийн дэд гарчиг ЭНЭ мөртэй ижил байх ёстой —
+                хоёрыг зэрэг л өөрчилнө.
+                ⚠️ ЛОГОНЫ дотор бичигдсэн «20 МИНУТЫН ХОТ» нь `public/logo.svg`
+                дахь ЗУРСАН зам (path) тул кодоос өөрчлөгдөхгүй — тэр файлыг
+                дизайнераар шинэчлэх шаардлагатай. */}
+            <b>{tr('СЭЛБЭ')}</b> {tr('Ухаалаг хот')}
             <small className={s.brandTag}>Digital Twin Platform</small>
           </span>
         </div>
@@ -421,42 +250,24 @@ export function Home({
       <main className={s.board}>
         <header className={s.boardHead}>
           <div>
-            <h1 className={s.title}>{tr('Төслийн ерөнхий үзүүлэлтүүд')}</h1>
+            {/* ⚠️ Эх текст нь ЕРДИЙН бичиглэлтэй — `.title` нь
+                `text-transform: uppercase` тул дэлгэцэд «СЭЛБЭ УХААЛАГ ХОТ»
+                болж гарна. Түлхүүрийг том үсгээр бичвэл толь бусад мөрүүдээсээ
+                салж, дараа нь хайхад хэцүү болно. */}
+            <h1 className={s.title}>{tr('Сэлбэ ухаалаг хот')}</h1>
             {/* ⚠️ Албан ёсны үг хэллэг — бүтэн өгүүлбэр, үйл үгээр төгсөнө */}
             <p className={s.lede}>
               {tr('Төслийн үндсэн үзүүлэлтийг ArcGIS мэдээллийн сангаас шууд нэгтгэн харуулав.')}
             </p>
           </div>
-          {/* Төслийн нийт гүйцэтгэл — толгойн баруун талд, нэг харцаар */}
-          <div className={s.progressBox}>
-            <span className={s.progressTop}>
-              <span className={s.progressLabel}>{tr('Нийт гүйцэтгэл')}</span>
-              <span className={`${s.progressPct} num`}>{progress != null ? pct(progress, 2) : '…'}</span>
-            </span>
-            <div
-              className={s.progressTrack}
-              role="progressbar"
-              aria-valuenow={progress ?? 0}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-label={tr('Төслийн нийт гүйцэтгэл')}
-            >
-              <span className={s.progressFill} style={{ width: `${progress ?? 0}%` }} />
-            </div>
-          </div>
+          {/* ⚠️ 2026-08-24: «Нийт гүйцэтгэл» зурвас ЭНДЭЭС ХАСАГДАВ. Тэр нь
+              `loadProjectProgress().actual`-ыг харуулдаг байсан бөгөөд доорх
+              «Хугацаа» ангиллын гүйцэтгэлтэй ХОЁР ӨӨР тоо болж зэрэгцэж байлаа —
+              яг тэр зөрүү нь §7-A асуултын шалтгаан. Гүйцэтгэл одоо ГАНЦ
+              газар: «Хугацаа» ангиллын «Барилга угсралтын гүйцэтгэл». */}
         </header>
 
-        {/* ГОЛ дөрөв — том нүд */}
-        <section className={s.kpiMain} aria-label={tr('Гол үзүүлэлт')}>
-          {main.map((k) => tile(k, true))}
-        </section>
-
-        {/* НЭМЭЛТ зургаа — жижиг нүд */}
-        <section className={s.kpiMore} aria-label={tr('Нэмэлт үзүүлэлт')}>
-          {more.map((k) => tile(k, false))}
-        </section>
-
-        {/* Удирдлагад зориулсан амьд KPI үнэлгээ — карт дарж холбоотой харагдац руу */}
+        {/* Удирдлагын НЭГ самбар — таван сэдэвчилсэн ангилал, гурван түвшний өнгө */}
         <ExecKpi onView={onEnterView} />
       </main>
       )}

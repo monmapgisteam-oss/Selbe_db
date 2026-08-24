@@ -21,7 +21,7 @@
 import { queryFeatures, queryStats, queryGroup, count, sum, type Row } from '@/lib/query';
 import { t as tr } from '@/lib/i18nCore';
 import {
-  BOUNDARY, BUILT_LAYER, CASHFLOW2, PROJECT_PROGRESS,
+  BOUNDARY, BUILT_LAYER, BUILT_FIELDS, BUILT_STATUS, CASHFLOW2, PROJECT_PROGRESS,
   LAYER_BY_ID, PARCEL_LEFT, layerUrl, oidOf, bagtsKey,
 } from '@/lib/services';
 import { sumBy, tally } from '@/lib/agg';
@@ -145,24 +145,64 @@ export type Headline = {
   investConfirmed: number;
   /** Ногоон байгууламжийн талбай, га — test_data [35] */
   greenHa: number | null;
+  /**
+   * ⚠️ ШИНЭ (2026-08-24) — барилгын ТӨЛӨВИЙН задаргаа (`Barilga_ty`):
+   * Төлөвлөсөн / Баригдаж байгаа / Одоо байгаа. `BUILT_STATUS`-ийн дарааллаар,
+   * танигдаагүй утга сүүлд.
+   */
+  byStatus: { label: string; n: number }[];
+  /**
+   * ⚠️ ШИНЭ — барилгажих талбай, м² (`Барилгажсан_талбай` нийлбэр).
+   * ⚠️ Энэ нь давхраар үржсэн НИЙТ шалны талбай (≈152 га), барилгын бодит ХӨЛ
+   *    (геометрийн `Shape__Area`, ≈21 га) БИШ. Өртгийн загвар үүн дээр үржинэ.
+   */
+  usableM2: number;
 };
 
 export const loadHeadline = cached<Headline>(async () => {
   const green = LAYER_BY_ID.nogoon;
-  const [b, pop, budget, gr] = await Promise.all([
+  const [b, built, budget, gr] = await Promise.all([
     queryFeatures(BOUNDARY.plan.url, { outFields: ['Hec_area'] }),
-    queryStats(layerUrl(BUILT_LAYER), [sum(POPULATION_FIELD, 'p')]),
+    /*
+     * ⚠️ 2026-08-24: `queryStats` → `queryGroup`. ХҮСЭЛТИЙН ТОО ӨӨРЧЛӨГДӨӨГҮЙ
+     * (нэг хүсэлт хэвээр) — зөвхөн нэг асуулгаас илүү ихийг авч байна. Урьд нь
+     * зөвхөн хүн амын нийлбэр ирдэг байсныг барилгын ТӨЛӨВӨӨР бүлэглэж, мөрийн
+     * тоо · хүн ам · барилгажих талбай гурвыг зэрэг татав. Нийлбэрүүдийг клиент
+     * талд бүлгүүдээс нэмнэ.
+     *
+     * ⚠️ Шинэ хүсэлт НЭМЭХГҮЙ гэдэг нь CEO_KPI_PROMPT §0-ийн хатуу шаардлага —
+     * тиймээс барилгын төлөвийн задаргааг ТУСДАА асуулга болгосонгүй.
+     */
+    queryGroup(layerUrl(BUILT_LAYER), BUILT_FIELDS.status, [
+      count(oidOf(BUILT_LAYER), 'n'),
+      sum(POPULATION_FIELD, 'p'),
+      sum(BUILT_FIELDS.usable, 'u'),
+    ]),
     loadBudget(),
     green
       ? queryStats(layerUrl(green), [sum('Shape__Area', 'a')]).catch(() => null)
       : Promise.resolve(null),
   ]);
+
+  /* ⚠️ Танигдаагүй/хоосон төлөв ХАЯГДАХГҮЙ — «Тодорхойгүй» болж сүүлд жагсана.
+     Чимээгүй хаявал нийт барилгын тоо задаргааны нийлбэртэй зөрнө. */
+  const order = new Map(BUILT_STATUS.map((x, i) => [x.value, i]));
+  const byStatus = built
+    .map((r) => ({
+      label: String(r[BUILT_FIELDS.status] ?? '').trim() || tr('Тодорхойгүй'),
+      n: Number(r.n ?? 0),
+    }))
+    .filter((x) => x.n > 0)
+    .sort((a, b) => (order.get(a.label) ?? 99) - (order.get(b.label) ?? 99));
+
   return {
     areaHa: Number(b[0]?.Hec_area ?? 0),
-    population: Number(pop.p ?? 0),
+    population: sumBy(built, (r) => Number(r.p ?? 0)),
     investTotal: budget.total,
     investConfirmed: budget.contract,
     greenHa: gr ? Number(gr.a ?? 0) / 10_000 : null,
+    byStatus,
+    usableM2: sumBy(built, (r) => Number(r.u ?? 0)),
   };
 });
 

@@ -313,7 +313,7 @@ export function Iot({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           {catOpen && (
             <div className={o.catPanel}>
               <LayerCatalog
-                view="plan"
+                view="iot"
                 totals={catTotals}
                 visible={visible}
                 setVisible={setVisible}

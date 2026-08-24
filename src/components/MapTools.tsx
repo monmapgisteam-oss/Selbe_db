@@ -1,6 +1,6 @@
 'use client';
 
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { Icon } from './Icon';
 import { ZoneFilter } from './ZoneFilter';
@@ -66,8 +66,32 @@ export function MapTools({
   /** Харагдацын ӨӨРИЙН товчнууд — «Полигон зурах», «Дулаан» гэх мэт */
   children?: ReactNode;
 }) {
-  const panels = Boolean(onLayers || onOpacity || setZone);
+  /**
+   * «Бүс» хавтан нээлттэй эсэх.
+   *
+   * ⚠️ Төлөв нь ЭНД амьдарна — «Давхарга»/«Тунгалаг» хоёрын төлөв модульд
+   * байдаг (тэдний агуулга модулиас хамаардаг), харин бүсийн жагсаалт нь БҮХ
+   * харагдацад ижил тул модуль бүрд `useState` нэмүүлэх шаардлагагүй.
+   */
+  const [zoneOpen, setZoneOpen] = useState(false);
+  const zoneCount = zone ? zone.split(',').filter(Boolean).length : 0;
+
+  /**
+   * Бүсийн хавтан ЖИНХЭНЭ ил үү.
+   *
+   * ⚠️ Гурван хавтан (каталог · тунгалаг · бүс) зурвасын баруун талын НЭГ л
+   * байрлалыг эзэлдэг тул зэрэг нээгдвэл бие бие рүүгээ дарна. Бусад хоёрын
+   * аль нэг нээлттэй үед бүсийнхийг НУУНА.
+   *
+   * ⚠️ Үүнийг `useEffect`-ээр (нөгөө хоёр нээгдэхэд `setZoneOpen(false)`)
+   * хийсэн ч болно, гэхдээ тэр нь илүү дамжлагат рендер үүсгэдэг. ГАРГАЖ АВСАН
+   * утга нь энгийн: хэрэглэгч нөгөө хавтангаа хаахад бүсийнх нь нээлттэй
+   * хэвээрээ буцаж гарч ирнэ — сонголт нь алдагдахгүй.
+   */
+  const zoneShown = zoneOpen && !layersOpen && !opacityOpen;
+
   return (
+    <>
     <div className={s.tools}>
       {onLayers && (
         <button
@@ -95,26 +119,63 @@ export function MapTools({
         </button>
       )}
 
-      {setZone && <ZoneFilter zone={zone ?? null} setZone={setZone} variant="tool" />}
-
-      {panels && <span className={s.sep} aria-hidden />}
-
-      <div className={s.dims} role="group" aria-label={tr('Газрын зургийн харагдац')}>
-        {dims.map((d) => (
-          <button
-            key={d}
-            type="button"
-            aria-pressed={dim === d}
-            className={`${s.dimBtn} ${dim === d ? s.dimOn : ''}`}
-            onClick={() => setDim(d)}
-          >
-            {d.toUpperCase()}
-          </button>
-        ))}
-      </div>
+      {/* «Бүс» — «Давхарга»/«Тунгалаг»-тай ЯГ ижил товч, ижил хэлбэрийн хавтан */}
+      {setZone && (
+        <button
+          type="button"
+          aria-pressed={zoneShown}
+          className={`${s.btn} ${zoneShown ? s.btnOn : ''}`}
+          onClick={() => setZoneOpen((v) => !v)}
+          title={tr('Бүсээр шүүх')}
+        >
+          <Icon name="frame" size={15} />
+          {tr('Бүс')}{zoneCount ? ` · ${zoneCount}` : ''}
+        </button>
+      )}
 
       {children}
     </div>
+
+    {/**
+      * 2D ↔ 3D ↔ BIM — ЗУРВАСААС САЛГАЖ, ГОЛД (хэрэглэгчийн хүсэлт 2026-08-23).
+      * Хэмжээст горим нь «юуг харуулах» биш «ЯАЖ харуулах» сонголт тул панель
+      * нээгчидтэй нэг баганад байхаас илүү тусдаа, өмнөх байрлалдаа тохирно.
+      */}
+    <div className={s.dimsBar} role="group" aria-label={tr('Газрын зургийн харагдац')}>
+      {dims.map((d) => (
+        <button
+          key={d}
+          type="button"
+          aria-pressed={dim === d}
+          className={`${s.dimBtn} ${dim === d ? s.dimOn : ''}`}
+          onClick={() => setDim(d)}
+        >
+          {d.toUpperCase()}
+        </button>
+      ))}
+    </div>
+
+    {/* ⚠️ Хавтан нь `.tools`-ЫН ГАДНА — тэр нь `overflow-y: auto` тул дотор нь
+        байрлуулбал бүсийн жагсаалт гүйлгэх хайрцагт таслагдана. */}
+    {setZone && zoneShown && (
+      <div className={s.zonePanel}>
+        <header className={s.zoneHead}>
+          <span className={s.zoneTitle}>{tr('Бүсээр шүүх')}</span>
+          <button
+            type="button"
+            className={s.zoneClose}
+            onClick={() => setZoneOpen(false)}
+            aria-label={tr('Хаах')}
+          >
+            ×
+          </button>
+        </header>
+        <div className={s.zoneBody}>
+          <ZoneFilter zone={zone ?? null} setZone={setZone} variant="panel" />
+        </div>
+      </div>
+    )}
+    </>
   );
 }
 

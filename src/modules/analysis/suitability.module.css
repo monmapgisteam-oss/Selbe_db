@@ -422,9 +422,15 @@
 /* Газрын зураг дээгүүр ХӨВДӨГ карт — сүүдэр зөвшөөрөгдөнө (var(--shadow-lg)) */
 .detail {
   /* Утасны нарийн дэлгэцэд 352px нь зургаас хэвтээгээр хальдаг байв
-     (2026-08-21 аудит) — .catPanel-тай ижил хамгаалалт */
-  position: absolute; left: 14px; top: 14px;
-  width: min(352px, calc(100% - 28px));
+     (2026-08-21 аудит) — .catPanel-тай ижил хамгаалалт.
+
+     ⚠️ 2026-08-23: `left: 14px` → `200px`. Хэрэгслийн зурвас зүүн ирмэгт
+     босоо багана болж шилжсэн бөгөөд энэ карт z-11 (зурвас z-9) тул хуучин
+     байрлалдаа үлдвэл түүнийг БҮРЭН дарж, «Давхарга»/«2D-3D-BIM» руу хүрэх
+     аргагүй болно. Карт нь чирэгддэг тул хэрэглэгч дурын газраа зөөж болно —
+     энэ бол зөвхөн НЭЭГДЭХ байрлал. */
+  position: absolute; left: 200px; top: 14px;
+  width: min(352px, calc(100% - 214px));
   max-height: calc(100% - 28px);
   background: color-mix(in srgb, var(--surface) 97%, transparent); backdrop-filter: blur(10px);
   border: 1px solid var(--line); border-radius: var(--r-sm); overflow: auto;
@@ -613,12 +619,15 @@
    Газрын зураг дээгүүр хөвдөг тул сүүдэр зөвшөөрөгдөнө. */
 .catPanel {
   position: absolute;
-  left: 0;
+  /* ⚠️ 2026-08-23: `0` БИШ, `200px` — `MapTools` нь 176px өргөнтэй босоо багана
+     болж зүүн ирмэгт шилжсэн. Ирмэгээс эхэлбэл зурвасыг бүрхэж, «Давхарга»
+     товч руу буцаж хүрэх аргагүй болно (`mapTools.module.css`-ийг үз). */
+  left: 200px;
   top: 0;
   bottom: 0;
   z-index: 12;
   width: 300px;
-  max-width: 86%;
+  max-width: calc(100% - 212px);
   display: flex;
   border-right: 1px solid var(--line);
   background: var(--surface);

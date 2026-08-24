@@ -12,23 +12,35 @@
    `--hue-ink` тодролт, 2D/3D/BIM нь бараан замтай сегмент.
    ══════════════════════════════════════════════════════════ */
 
+/**
+ * ⚠️ 2026-08-23: ГОЛООС ЗҮҮН ИРМЭГ РҮҮ, хэвтээгээс БОСОО болов (хэрэглэгчийн
+ * хүсэлт). Зурвас нь одоо «үйл ажиллагааны багана» (VS Code-ийн зарчим):
+ * хамгийн зүүнд нарийн багана, түүний баруун талд хавтангууд нээгдэнэ.
+ *
+ * ⚠️ `top: 96px` нь САНААТАЙ: ArcGIS-ийн zoom (+/−) виджет зүүн дээд буланд
+ * 15px зайтай, хоёр товч ≈64px эзэлдэг. Түүнээс дээш тавибал дарж бичнэ.
+ *
+ * ⚠️ ӨРГӨН ТОГТМОЛ (176px). Хавтангууд (`catPanel`, тунгалагийн цонх) энэ
+ * баганын БАРУУН талаас (200px) эхэлдэг тул өргөн нь агуулгаасаа хамаарч
+ * хэлбэлзвэл давхцал үүснэ. Дотор нь багтахгүй урт нэр таслагдана.
+ */
 .tools {
   position: absolute;
-  top: 16px;
-  left: 50%;
-  transform: translateX(-50%);
-  /* ⚠️ Давхаргын каталогийн хавтангаас (`catPanel`, z-index 8) ДЭЭР. Нарийн
-     зурагтай цонхонд (Иргэд) 320px хавтан нь зурвасын зүүн товчнуудыг бүрхэж,
-     каталогийг ХААХ товч руу хүрэх аргагүй болдог байв. */
+  top: 96px;
+  left: 15px;
+  /* ⚠️ Давхаргын каталогийн хавтангаас (`catPanel`, z-index 8) ДЭЭР. */
   z-index: 9;
   display: flex;
-  align-items: center;
-  gap: 6px;
-  /* ⚠️ Нарийн зурагт (IoT-ийн карт, Газар чөлөөлөлт) зурвас нь хайрцгаасаа
-     халихгүй: багтахгүй бол мөр дамжина, доторх товч бүр бүтэн хэвээр. */
-  flex-wrap: wrap;
-  justify-content: center;
-  max-width: calc(100% - 24px);
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+  width: 176px;
+  /* Товч олонтой харагдацад (нэмэлт `children`) багана зургаас халихгүй.
+     ⚠️ 170px нь дээд 96px + доод ~74px — доод зүүн буланд легенд (`.legend`,
+     `bottom: 12px`) болон хамрах хүрээний overlay байдаг тул тэднийг дарахгүй;
+     багтахгүй бол багана дотроо гүйлгэнэ. */
+  max-height: calc(100% - 170px);
+  overflow-y: auto;
   padding: 4px;
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
@@ -40,15 +52,21 @@
   animation: toolsIn 0.42s var(--ease) both;
 }
 @keyframes toolsIn {
-  from { opacity: 0; transform: translate(-50%, -16px) scale(0.94); }
-  to   { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  from { opacity: 0; transform: translateX(-16px) scale(0.94); }
+  to   { opacity: 1; transform: translateX(0) scale(1); }
 }
 
 .btn {
   display: inline-flex;
   align-items: center;
+  /* ⚠️ Босоо баганад товчнууд бүтэн өргөнөөр сунана — дүрс/бичиг ЗҮҮН талаасаа
+     эгнэнэ. `center` байвал нэр урттай/богинотой товчнууд эрээн харагдана. */
+  justify-content: flex-start;
   gap: 7px;
-  padding: 8px 15px;
+  padding: 8px 11px;
+  /* Багана нарийн тул урт нэр мөр дамжихгүй, таслагдана */
+  overflow: hidden;
+  text-overflow: ellipsis;
   border: 0;
   border-radius: var(--r-sm);
   background: transparent;
@@ -70,13 +88,31 @@
 .btnOn { background: var(--hue); color: var(--hue-ink); box-shadow: var(--shadow-sm); }
 .btnOn:hover { background: var(--hue); color: var(--hue-ink); filter: brightness(1.07); }
 
-/* 2D ↔ 3D ↔ BIM — сегментчилсэн удирдлага (саарал зам · цагаан идэвх) */
-.dims {
+/* ══════ 2D ↔ 3D ↔ BIM — ЗУРАГНЫ ДЭЭД ТӨВД, тусдаа хөвөгч ══════
+   ⚠️ 2026-08-23: зурвас зүүн ирмэг рүү шилжсэн ч ЭНЭ сегмент нь хэрэглэгчийн
+   хүсэлтээр ӨМНӨХ байрлалдаа (дээд-төв) үлдэв. Хэмжээст горим нь «юуг
+   харуулах» биш «ЯАЖ харуулах» сонголт тул панель нээгчидтэй нэг баганад
+   байхаас илүү тусдаа байх нь логиктой. */
+.dimsBar {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9;
   display: flex;
   gap: 2px;
-  padding: 3px;
+  padding: 4px;
+  border: 1px solid var(--line);
   border-radius: var(--r-sm);
-  background: var(--surface-2);
+  background: color-mix(in srgb, var(--surface) 86%, transparent);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(14px) saturate(1.15);
+  -webkit-backdrop-filter: blur(14px) saturate(1.15);
+  animation: dimsIn 0.42s var(--ease) both;
+}
+@keyframes dimsIn {
+  from { opacity: 0; transform: translate(-50%, -16px) scale(0.94); }
+  to   { opacity: 1; transform: translate(-50%, 0) scale(1); }
 }
 .dimBtn {
   padding: 6px 13px;
@@ -91,10 +127,64 @@
 .dimBtn:active { transform: scale(0.95); }
 .dimOn { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm); }
 
-/* Товчнуудын хооронд босоо үс — «панель нээгч» ба «горим сонгогч» хоёрыг ялгана */
-.sep {
-  width: 1px;
-  align-self: stretch;
-  margin: 2px 1px;
-  background: var(--line);
+/* ⚠️ `.sep` ХАСАГДСАН — 2D/3D/BIM сегмент зурвасаас гарч голд шилжсэн тул
+   «панель нээгч» ба «горим сонгогч»-ийг ялгах зураас хэрэггүй болов. */
+
+/* ══════ БҮСИЙН ХАВТАН — «Давхарга»/«Тунгалаг»-тай НЭГ байрлалд ══════
+   ⚠️ 2026-08-23: урьд нь бүсийн жагсаалт нь товчныхоо ДОТОР доош нээгддэг
+   dropdown байв (`ZoneFilter` `tool` хувилбар). Зурвас босоо багана болж
+   `overflow-y: auto` авсны дараа тэр dropdown гүйлгэх хайрцагт ТАСАРЧ,
+   бүсүүд харагдахаа болих байлаа. Одоо каталогтой ижил — зурвасын баруун
+   талд бие даасан хавтан. */
+.zonePanel {
+  position: absolute;
+  top: 96px;
+  left: 200px;
+  z-index: 8;
+  width: 320px;
+  max-width: calc(100% - 212px);
+  max-height: calc(100% - 130px);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  animation: zoneIn 0.24s var(--ease) both;
 }
+@keyframes zoneIn {
+  from { opacity: 0; transform: translateX(-10px) scale(0.98); }
+  to   { opacity: 1; transform: translateX(0) scale(1); }
+}
+.zoneHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.zoneTitle {
+  flex: 1;
+  font-size: 0.62rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--ink-3);
+}
+.zoneClose {
+  flex: none;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--ink-3);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.zoneClose:hover { color: var(--ink); }
+/* Бүсүүд олон (52) тул жагсаалт дотроо гүйлгэнэ */
+.zoneBody { overflow: auto; padding: 10px 12px; }

@@ -2720,6 +2720,37 @@ export const IRGED_TOILET = {
 } as const;
 
 /**
+ * НҮХЭН ЖОРЛОНГИЙН КАТАЛОГИЙН БИЧЛЭГ — давхаргын жагсаалтад мөр болж гарахын тулд.
+ *
+ * ⚠️ `LAYERS`-д ОРУУЛААГҮЙ нь САНААТАЙ. `MapCanvas.buildLayers` нь `LAYERS`-ийг
+ * бүхэлд нь давтаж FeatureLayer барьдаг (`const V = LAYERS.map(…)`, шүүлтгүй) тул
+ * тэнд нэмбэл энэ давхарга ХОЁР удаа үүснэ: нэг нь дээр гараар барьсан тусгай
+ * хувилбар (bloom, кластер, 3D pin, горимоос хамаарсан renderer), нөгөө нь
+ * каталогийн ерөнхий загвартай. ArcGIS давхардсан id-г хүлээж авахгүй.
+ *
+ * Каталог нь мөрөө `LAYER_BY_ID`-аас зурдаг тул ЗӨВХӨН тэнд бүртгэхэд хангалттай —
+ * ил эсэхийг `visible` жагсаалт урьдын адил удирдана (`MapCanvas` дахь
+ * `on.has(IRGED_TOILET.id)` шалгалт хэвээр ажиллана).
+ */
+export const IRGED_TOILET_DEF: LayerDef = {
+  id: IRGED_TOILET.id,
+  n: 0,
+  url: IRGED_TOILET.url,
+  title: IRGED_TOILET.title,
+  topic: "plan",
+  geom: "point",
+  hue: IRGED_TOILET.hue,
+  marker: "circle",
+  size: 7,
+  // ⚠️ Бүсийн талбаргүй — бүсээр шүүвэл давхарга бүхэлдээ унана
+  noZone: true,
+};
+/* ⚠️ Мутаци — `LAYER_BY_ID` дээр (2407-р мөр) зарлагдсан, `IRGED_TOILET` нь
+   түүнээс ХОЙНО тодорхойлогддог тул тэр объектын дотор шууд бичих боломжгүй.
+   `LAYERS`-ийн элементүүдийг мөн ийнхүү дараа нь засдаг (TD_OID гогцоо). */
+LAYER_BY_ID[IRGED_TOILET_DEF.id] = IRGED_TOILET_DEF;
+
+/**
  * ЗАМЫН ТӨЛӨВЛӨЛТ — «Иргэдэд хүрэх үр өгөөж» харагдацын вектор тайл давхарга.
  *
  * ⚠️ `VectorTileLayer` — `capabilities: TilesOnly,Tilemap`, өөрийн загвартай
@@ -3298,19 +3329,77 @@ const PORTAL_GROUPS = () =>
       : catalogIdsOf(g.key),
   })).filter((g) => g.ids.length > 0);
 
-export const catalogGroups = (view: "plan" | "monitor" | "habea") =>
-  view === "monitor"
-    ? [
+/**
+ * «ИРГЭДЭД ХҮРЭХ ҮР ӨГӨӨЖ»-ийн багц — каталогт тусдаа бүлэг.
+ *
+ * ⚠️ `LAYER_GROUPS`-т ОРУУЛААГҮЙ (`MONITOR_GROUP`/`HABEA_GROUP`-тай ижил
+ * шалтгаанаар): тэр жагсаалт `PLAN_LAYER_IDS`-ыг үүсгэдэг бөгөөд нийгмийн
+ * барилгууд тэнд аль хэдийн `pkgSoc`-оор бий — давхар оруулбал өртөг, объектын
+ * тоо хоёр дахин тоологдоно.
+ */
+export const IRGED_GROUP = {
+  key: "irged" as const,
+  title: tr('Иргэдэд хүрэх үр өгөөж'),
+  desc: tr('Нүхэн жорлон · нийгмийн дэд бүтэц'),
+  icon: "users",
+  hue: "#f97316",
+};
+export const IRGED_LAYER_IDS: string[] = [
+  IRGED_TOILET.id,
+  ...(PKG_BY_FAMILY.soc ?? []),
+].filter((id) => LAYER_BY_ID[id]);
+
+/**
+ * Сэдвийн бүлгийг жагсаалтын ТЭРГҮҮНД гаргана.
+ *
+ * ⚠️ Хуулбарлахгүй ЗӨӨНӨ — эс бөгөөс бүлэг каталогт хоёр удаа гарч, нэгийг нь
+ * унтраахад нөгөө нь асаалттай хэвээр харагдана.
+ */
+const hoist = (key: GroupKey) => {
+  const all = PORTAL_GROUPS();
+  const own = all.find((g) => g.key === key);
+  return own ? [own, ...all.filter((g) => g.key !== key)] : all;
+};
+
+export type CatalogView =
+  | "plan" | "monitor" | "habea" | "gazar" | "iot" | "irged";
+
+/**
+ * КАТАЛОГИЙН БҮЛГҮҮД — харагдацаас хамаарна.
+ *
+ * ⚠️ ДҮРЭМ: сэдэвчилсэн цонх ӨӨРИЙН давхаргаа ХАМГИЙН ДЭЭР гаргана, порталын
+ * үлдсэн бүлгүүд доор нь контекст болж үлдэнэ.
+ *
+ * ⚠️ 2026-08-23: Урьд нь `gazar`/`iot`/`irged` гурав нь `view="plan"` дамжуулдаг
+ * байсан тул бүтэн порталын каталог (18 бүлэг) гарч, сэдэв нь дотор нь булагдаж
+ * байв — газар чөлөөлөлт 10-рт, IoT мэдрэгч 17-рт (доороос хоёр дахь), иргэдийнх
+ * нь каталогт ОГТ БАЙХГҮЙ, тусдаа гараар зурсан чагтаар удирдагддаг байлаа.
+ */
+export const catalogGroups = (view: CatalogView) => {
+  switch (view) {
+    case "monitor":
+      return [{ ...MONITOR_GROUP, ids: MONITOR_LAYER_IDS }, ...PORTAL_GROUPS()];
+    case "habea":
+      return [
+        { ...HABEA_GROUP, ids: HABEA_LAYER_IDS },
         { ...MONITOR_GROUP, ids: MONITOR_LAYER_IDS },
         ...PORTAL_GROUPS(),
-      ]
-    : view === "habea"
-      ? [
-          { ...HABEA_GROUP, ids: HABEA_LAYER_IDS },
-          { ...MONITOR_GROUP, ids: MONITOR_LAYER_IDS },
-          ...PORTAL_GROUPS(),
-        ]
-      : PORTAL_GROUPS();
+      ];
+    // Кадастрын нэгж ба барилгын үнэлгээ нь `land` бүлэгт бий — дээш нь гаргана
+    case "gazar":
+      return hoist("land");
+    // Таван мэдрэгч `iot` бүлэгт бий — дээш нь гаргана
+    case "iot":
+      return hoist("iot");
+    /* ⚠️ Иргэдийнх нь `LAYER_GROUPS`-т байхгүй тул `hoist` ажиллахгүй — тусдаа
+       бүлэг болж нэмэгдэнэ. Нийгмийн барилгууд доорх `pkgSoc`-т мөн гарна:
+       энэ нь давхардал БИШ, сэдвийн шууд хандалт (хяналт/ХАБЭА-тай ижил хэв). */
+    case "irged":
+      return [{ ...IRGED_GROUP, ids: IRGED_LAYER_IDS }, ...PORTAL_GROUPS()];
+    default:
+      return PORTAL_GROUPS();
+  }
+};
 
 /**
  * КАТАЛОГТ ГАРАХ БҮХ давхарга — тоо/өртгийг татах жагсаалт (`usePlanTotals`).
@@ -3323,6 +3412,9 @@ export const CATALOG_LAYER_IDS: string[] = [
   ...new Set([
     ...HABEA_LAYER_IDS,
     ...MONITOR_LAYER_IDS,
+    // ⚠️ Нүхэн жорлон нь `PORTAL_GROUPS`-т ОРДОГГҮЙ (зөвхөн иргэдийн бүлэгт) —
+    //    эндээс орхивол тэр мөр тоогоо олохгүй, мөнхөд «…» гэж хүлээнэ.
+    ...IRGED_LAYER_IDS,
     ...PORTAL_GROUPS().flatMap((g) => g.ids),
   ]),
 ];

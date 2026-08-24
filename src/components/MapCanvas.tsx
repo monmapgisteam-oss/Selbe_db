@@ -1224,6 +1224,13 @@ export const MapCanvas = memo(function MapCanvas({
   const mapRef = useRef<Map | null>(null);
   const viewRef = useRef<AnyView | null>(null);
   const bimWidgetRef = useRef<BuildingExplorer | null>(null);
+  /**
+   * BIM удирдлагыг боосон `Expand` — виджет өөрөө нь `bimWidgetRef`-д.
+   * ⚠️ ХОЁУЛАА хэрэгтэй: `Expand.destroy()` нь `content`-оо устгадаггүй тул
+   * зөвхөн Expand-ыг устгавал BuildingExplorer санах ойд үлдэж, горим солих
+   * бүрд шинэ виджет нэмэгдсээр байна.
+   */
+  const bimExpandRef = useRef<Expand | null>(null);
   const sketchVMRef = useRef<SketchViewModel | null>(null);
   const pickRef = useRef(onPick);
   pickRef.current = onPick;
@@ -1953,9 +1960,13 @@ export const MapCanvas = memo(function MapCanvas({
     if (!map || !view || !ready) return;
 
     const clear = () => {
-      if (bimWidgetRef.current) {
+      if (bimExpandRef.current) {
         // ⚠️ view устсан бол `view.ui` null — эхлээд шалгана (unmount-д эвдрэхгүй)
-        if (!view.destroyed) view.ui.remove(bimWidgetRef.current);
+        if (!view.destroyed) view.ui.remove(bimExpandRef.current);
+        bimExpandRef.current.destroy();
+        bimExpandRef.current = null;
+      }
+      if (bimWidgetRef.current) {
         bimWidgetRef.current.destroy();
         bimWidgetRef.current = null;
       }
@@ -1970,10 +1981,53 @@ export const MapCanvas = memo(function MapCanvas({
 
     clear();
     const widget = new BuildingExplorer({ view: view as SceneView, layers });
-    view.ui.add(widget, 'top-right');
+    /**
+     * ⚠️ 2026-08-23: `Expand`-д БООВ (хэрэглэгчийн хүсэлт). Урьд нь виджет
+     * баруун дээд буланд ЗАДГАЙ нэмэгддэг байсан тул 12 барилгын давхар,
+     * дисциплин, категорийн мод нь зургийн баруун талыг байнга эзэлж, BIM
+     * горимд загвараа харах талбай эрс багасдаг байв. Одоо жижиг дүрс —
+     * дарахад л задарна (суурь зураг, хэмжилт, слайдтай ижил хэв маяг).
+     */
+    const expand = new Expand({
+      view,
+      content: widget,
+      expandIcon: 'layers',
+      expandTooltip: tr('BIM давхаргын удирдлага'),
+      collapseTooltip: tr('Хаах'),
+      mode: 'floating',
+    });
+    /* ⚠️ ЭНД `view.ui.add` ХИЙХГҮЙ — байрлуулалт нь доорх ТУСДАА effect-д.
+       Шалтгааныг тэндхийн тайлбараас үз (виджетийн эрэмбэ). */
     bimWidgetRef.current = widget;
+    bimExpandRef.current = expand;
 
-    return clear;
+    /**
+     * «ARCHITECTURAL» ДИСЦИПЛИН — ҮРГЭЛЖ АСААЛТТАЙ (хэрэглэгчийн хүсэлт).
+     *
+     * ⚠️ Давхарга ачаалагдсаны ДАРАА л `allSublayers` дүүрдэг — `when()`-гүйгээр
+     * шууд уншвал жагсаалт ХООСОН байх бөгөөд алдаа ч өгөхгүй, зүгээр л юу ч
+     * болохгүй өнгөрнө.
+     *
+     * ⚠️ Бүлгийг асаахад ХАНГАЛТГҮЙ: бүлгийн `visible` нь зөвхөн хаалт бөгөөд
+     * доторх бүрэлдэхүүн давхарга бүр өөрийн `visible`-тэй. Тиймээс бүлэг ба
+     * хүүхдүүдийг нь ХОЁУЛАНГ нь асаана.
+     */
+    let stale = false;
+    for (const l of layers) {
+      l.when(() => {
+        if (stale) return;
+        const arch = l.allSublayers.find(
+          (sl) => /architectural/i.test(sl.modelName ?? ''),
+        );
+        if (!arch) return;
+        arch.visible = true;
+        const kids = (arch as __esri.BuildingGroupSublayer).sublayers;
+        kids?.forEach((k) => { k.visible = true; });
+        // ⚠️ Алдааг залгина — нэг барилга ачаалагдахгүй бол бусад нь хэвийн
+      }).catch(() => {});
+    }
+
+    return () => { stale = true; clear(); };
   }, [dim, ready]);
 
   /**
@@ -2300,6 +2354,32 @@ export const MapCanvas = memo(function MapCanvas({
       expandV.destroy();
       expandS.destroy();
     };
+  }, [dim, ready]);
+
+  /**
+   * BIM УДИРДЛАГЫГ ВИДЖЕТИЙН БАГЦЫН ХАМГИЙН ДООР БАЙРЛУУЛНА
+   * (хэрэглэгчийн хүсэлт, 2026-08-23).
+   *
+   * ⚠️ ЯАГААД ТУСДАА EFFECT ВЭ. `view.ui.add` нь баруун дээд багцад ДУУДАГДСАН
+   * дарааллаараа өрдөг бөгөөд React нь effect-үүдийг ЗАРЛАГДСАН дарааллаар
+   * ажиллуулдаг. BIM-ийн виджетийг үүсгэдэг effect нь шинжилгээ · эзлэхүүн ·
+   * слайдынхаас ӨМНӨ зарлагдсан тул тэрхүү effect дотроо нэмбэл BIM нь
+   * тэдгээрийн ДЭЭР гарч, багцын дундад үлдэнэ. Энэ effect нь тэднээс ХОЙНО
+   * зарлагдсан тул нэмэлт нь эцэст буюу хамгийн доор очно:
+   *
+   *   суурь зураг · дэлгэц дүүрэн · шинжилгээ · эзлэхүүн · слайд · **BIM**
+   *
+   * ⚠️ `bimExpandRef` нь дээрх effect-д ЯГ ЭНЭ КОММИТ дотор бөглөгддөг —
+   * ref нь хувьсагч тул энд уншихад аль хэдийн бэлэн байна.
+   */
+  useEffect(() => {
+    const view = viewRef.current;
+    const expand = bimExpandRef.current;
+    if (!view || !ready || dim !== 'bim' || !expand) return;
+    view.ui.add(expand, 'top-right');
+    // ⚠️ Хоёр газраас устгагдаж болно (дээрх `clear` ба энд) — `remove` нь
+    //    байхгүй бүрэлдэхүүн дээр аюулгүй, юу ч хийхгүй өнгөрнө.
+    return () => { if (!view.destroyed) view.ui.remove(expand); };
   }, [dim, ready]);
 
   /**

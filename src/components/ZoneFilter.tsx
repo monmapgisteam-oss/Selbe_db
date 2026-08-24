@@ -4,7 +4,6 @@ import { useState, type CSSProperties } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { useMap } from './MapCanvas';
 import { Data } from './ui';
-import { Icon } from './Icon';
 import { useAsync, type Async } from '@/lib/useAsync';
 import { queryFeatures } from '@/lib/query';
 import {
@@ -28,9 +27,15 @@ import s from '@/modules/dashboard.module.css';
  * totals-ын кэш, zoneWhere бүгд өөрчлөгдөлгүй ажиллана.
  *
  * Хоёр хувилбар:
- *   · `bar`  — самбарын бүтэн мөр (Ерөнхий төлөвлөгөө/Барилгын хяналтын байрлал)
- *   · `tool` — газрын зургийн toolbar-т багтах КОМПАКТ товч + доош нээгдэх хавтан
- *              (Ерөнхий дашбоард)
+ *   · `bar`   — самбарын бүтэн мөр (Ерөнхий төлөвлөгөө/Барилгын хяналтын байрлал)
+ *   · `panel` — ЗӨВХӨН агуулга (толгой + чипүүд). Товч ба хайрцгийг `MapTools`
+ *               өөрөө барина — «Давхарга»/«Тунгалаг»-тай яг ижил хэв маягаар.
+ *
+ * ⚠️ 2026-08-23: `tool` хувилбар ХАСАГДСАН. Тэр нь товч ба доош нээгдэх
+ * dropdown-ыг НЭГ элемент дотор барьдаг байсан бөгөөд хэрэгслийн зурвас босоо
+ * багана (`overflow-y: auto`) болсны дараа dropdown нь тэр гүйлгэх хайрцагт
+ * ТАСАРЧ, бүсүүд харагдахаа болих байв. Одоо хавтан нь зурвасаас ГАДУУР,
+ * түүний баруун талд бие даан байрлана.
  */
 
 type ZoneGroups = { type: string; hue: string; zones: string[] }[];
@@ -110,7 +115,7 @@ export function ZoneFilter({
 }: {
   zone: string | null;
   setZone: (z: string | null) => void;
-  variant?: 'bar' | 'tool';
+  variant?: 'bar' | 'panel';
 }) {
   const { zoomToZone } = useMap();
   const [open, setOpen] = useState(false);
@@ -122,35 +127,21 @@ export function ZoneFilter({
     setZone(next.length ? next.join(',') : null);
   };
 
-  /* ── КОМПАКТ хувилбар — газрын зургийн toolbar-т ── */
-  if (variant === 'tool') {
+  /* ── ЗӨВХӨН АГУУЛГА — хайрцаг ба нээх товчийг `MapTools` барина ── */
+  if (variant === 'panel') {
     return (
-      <div className={s.zoneTool}>
-        <button
-          type="button"
-          aria-expanded={open}
-          className={`${s.zoneToolBtn} ${sel.length ? s.zoneToolOn : ''}`}
-          onClick={() => setOpen((v) => !v)}
-          title={tr('Бүсээр шүүх')}
-        >
-          <Icon name="frame" size={14} />
-          {tr('Бүс')}{sel.length ? ` · ${sel.length}` : ''}
-        </button>
-        {open && (
-          <div className={s.zoneToolDrop}>
-            <div className={s.zoneToolHead}>
-              <span className={s.zoneBarValue}>{sel.length ? sel.join(', ') : tr('Бүх бүс')}</span>
-              {sel.length > 0 && (
-                <button type="button" className={s.zoneBarBtn} onClick={() => zoomToZone(zone!)}>{tr('Төвлөрөх')}</button>
-              )}
-              {sel.length > 0 && (
-                <button type="button" className={s.zoneBarClear} onClick={() => setZone(null)}>{tr('Цуцлах')}</button>
-              )}
-            </div>
-            <GroupedChips q={q} sel={sel} toggle={toggle} />
-          </div>
-        )}
-      </div>
+      <>
+        <div className={s.zoneToolHead}>
+          <span className={s.zoneBarValue}>{sel.length ? sel.join(', ') : tr('Бүх бүс')}</span>
+          {sel.length > 0 && (
+            <button type="button" className={s.zoneBarBtn} onClick={() => zoomToZone(zone!)}>{tr('Төвлөрөх')}</button>
+          )}
+          {sel.length > 0 && (
+            <button type="button" className={s.zoneBarClear} onClick={() => setZone(null)}>{tr('Цуцлах')}</button>
+          )}
+        </div>
+        <GroupedChips q={q} sel={sel} toggle={toggle} />
+      </>
     );
   }
 

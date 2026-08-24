@@ -502,7 +502,7 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         {catOpen && (
           <div className={o.catPanel}>
             <LayerCatalog
-              view="plan"
+              view="gazar"
               totals={catTotals}
               visible={visible}
               setVisible={setVisible}
