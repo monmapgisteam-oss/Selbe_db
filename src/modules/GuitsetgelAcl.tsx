@@ -126,7 +126,9 @@ function Column({
             <button
               type="button"
               className={`${s.aclPkg} ${r.bagts.includes(ALL_BAGTS) ? s.aclPkgOn : ''}`}
-              onClick={() => setAssign(r.user, stage, [ALL_BAGTS])}
+              /* grant:false — эрх нь нэмэх үедээ аль хэдийн олгогдсон;
+                 багц солих бүрд ArcGIS руу дахин бичих нь дэмий, бас уралдана */
+              onClick={() => setAssign(r.user, stage, [ALL_BAGTS], false)}
             >
               {tr('Бүх багц')}
             </button>
@@ -141,7 +143,7 @@ function Column({
                     const cur = r.bagts.filter((x) => x !== ALL_BAGTS);
                     const next = on ? cur.filter((x) => x !== g) : [...cur, g];
                     // Бүгдийг унтраавал «бүх багц» руу буцна — хоосон эрх утгагүй
-                    setAssign(r.user, stage, next.length ? next : [ALL_BAGTS]);
+                    setAssign(r.user, stage, next.length ? next : [ALL_BAGTS], false);
                   }}
                 >
                   {g}

@@ -149,6 +149,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => { alive = false; };
   }, []);
 
+  /*
+   * ЭРХИЙН ХҮЧИНГҮЙЖИЛТ — нэвтэрсэн ХЭВЭЭР байхад эрх нь хасагдсаныг барина.
+   *
+   * ⚠️ 2026-08-25: `initRemote` нь ЗӨВХӨН нэвтрэх агшинд ажилладаг байв —
+   * админ аккаунтыг устгасан ч тэр хүн таб хаагаагүй л бол өдөржин порталд
+   * үлддэг байлаа. Одоо 5 минут тутам ба таб идэвхжих бүрд хуваалцсан
+   * хүснэгтийг дахин уншиж, эрх нь алга болсон бол шууд «denied» болгоно.
+   * ⚠️ ArcGIS унасан үед `initRemote` cache-ээ ХЭВЭЭР үлдээдэг тул сүлжээний
+   * түр тасалдал хэрэглэгчийг гаргахгүй.
+   */
+  useEffect(() => {
+    if (status !== 'signed-in' || !user?.username) return;
+    let alive = true;
+    const check = async () => {
+      if (document.visibilityState === 'hidden') return;
+      try {
+        await initRemote(false);
+        if (alive && !hasAccess(user.username)) setStatus('denied');
+      } catch { /* сүлжээний тасалдал — эрхийг хэвээр үлдээнэ */ }
+    };
+    const iv = setInterval(() => { void check(); }, 5 * 60_000);
+    const onVis = () => { if (document.visibilityState === 'visible') void check(); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      alive = false;
+      clearInterval(iv);
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, [status, user?.username]);
+
   const signIn = async () => {
     setError(null);
     sessionStorage.setItem(ATTEMPT_KEY, '1');
