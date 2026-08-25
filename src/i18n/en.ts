@@ -2965,7 +2965,15 @@ const en: Record<string, string> = {
   "{0} хэрэглэгчийн өөрчлөлт хадгалагдаагүй": "Unsaved changes for {0} user(s)",
   "Болих": "Cancel",
   "Хадгалж байна…": "Saving…",
-  "Хадгалах": "Save"
+  "Хадгалах": "Save",
+  "{0} аккаунт хадгалахад УСТГАГДАНА. Үргэлжлүүлэх үү?": "{0} account(s) will be DELETED on save. Continue?",
+  "хадгалахад устгагдана": "will be deleted on save",
+  "Устгалтыг болиулна": "Cancel the deletion",
+  "Аккаунтыг устгана (хадгалахад үйлчилнэ)": "Delete the account (applied on save)",
+  "Болиулах": "Undo",
+  "Устгагдсан аккаунтууд": "Deleted accounts",
+  "Аккаунтыг сэргээж хатуу тохиргооны эрхийг нь буцаана": "Restore the account with its built-in permissions",
+  "Бүх өөрчлөлт хадгалагдсан": "All changes saved",
 };
 
 export default en;

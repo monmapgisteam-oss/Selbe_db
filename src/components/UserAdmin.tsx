@@ -5,11 +5,14 @@ import { t as tr } from '@/lib/i18nCore';
 import { VIEWS, ROLE_ACCESS, type Role, type ViewKey } from '@/lib/services';
 import {
   listUsers,
+  listRemoved,
+  removeUser,
   setUser,
   clearOverride,
   subscribe,
   type UserPerm,
 } from '@/lib/permissions';
+import { useAuth } from './AuthGate';
 import { Icon } from './Icon';
 import { GuitsetgelAcl } from '@/modules/GuitsetgelAcl';
 import { STAGE_LABEL } from '@/modules/Guitsetgel';
@@ -57,6 +60,8 @@ type Draft = {
   stage?: Stage | null;
   /** «Сэргээх» — хадгалахад override-ыг бүрмөсөн устгаж хатуу тохиргоонд буцаана */
   clear?: boolean;
+  /** «Устгах» — хадгалахад аккаунтыг жагсаалтаас хасаж нэвтрэлтийг нь хаана */
+  remove?: boolean;
 };
 
 /**
@@ -66,6 +71,9 @@ type Draft = {
  */
 export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [users, setUsers] = useState<UserPerm[]>([]);
+  /** Нэвтэрсэн админы нэр — ӨӨРИЙН аккаунтад устгах товч гарахгүй (өөрийгөө түгжихээс сэргийлнэ) */
+  const { user: me } = useAuth();
+  const myName = me?.username?.toLowerCase() ?? null;
   /**
    * АЛЬ БҮЛЭГ нээлттэй байна.
    * ⚠️ Хоёр бүлэг нь ӨӨР асуултад хариулна: «ямар харагдац үзэх вэ» ба
@@ -149,6 +157,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     const next = { ...d };
     if (next.stage !== undefined && next.stage === stageOfUser(u.username)) delete next.stage;
     const same = !next.clear
+      && !next.remove
       && next.stage === undefined
       && next.role === u.role
       && next.docs === u.docs
@@ -176,6 +185,10 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     const cur = stageOf(u);
     putDraft(u, { ...draftOf(u), stage: cur === st ? null : st });
   };
+  const flipRemove = (u: UserPerm) => {
+    const d = draftOf(u);
+    putDraft(u, { ...d, remove: !d.remove });
+  };
   const markClear = (u: UserPerm) => {
     // Сэргээх = хатуу тохиргооны суурь руу. Суурьгүй (панелаас нэмсэн) хэрэглэгч
     // жагсаалтаас бүрмөсөн хасагдана — урьдчилан харуулах суурьгүй тул одоогийн
@@ -185,10 +198,20 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
 
   /** ГАНЦ ХАДГАЛАХ — бүх ноорогыг нэг дор ArcGIS + localStorage руу буулгана */
   const saveAll = () => {
+    const removing = [...drafts.values()].filter((d) => d.remove).length;
+    if (removing > 0
+      && !window.confirm(tr('{0} аккаунт хадгалахад УСТГАГДАНА. Үргэлжлүүлэх үү?', String(removing)))) return;
     setSaving(true);
     for (const [key, d] of drafts) {
       const u = users.find((x) => x.username.toLowerCase() === key);
       const uname = u?.username ?? key;
+      // УСТГАХ — урсгалын томилгоог нь цэвэрлээд tombstone/арилгалт хийнэ
+      if (d.remove) {
+        const cur = stageOfUser(uname);
+        if (cur) removeAssign(uname, cur);
+        track(uname, removeUser(uname));
+        continue;
+      }
       // Урсгалын шат — тусдаа хадгалалттай (guitsetgelAcl)
       if (d.stage !== undefined) {
         const cur = stageOfUser(uname);
@@ -301,11 +324,14 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
             const dirty = drafts.has(key);
             const st = stageOf(u);
             return (
-            <div key={key} className={`${s.user} ${dirty ? s.userDirty : ''}`}>
+            <div key={key} className={`${s.user} ${dirty ? s.userDirty : ''} ${d.remove ? s.userRemoving : ''}`}>
               <div className={s.userHead}>
                 <span className={s.uname}>
                   {u.username}
-                  {dirty && (
+                  {d.remove && (
+                    <span className={s.removeBadge}>{tr('хадгалахад устгагдана')}</span>
+                  )}
+                  {dirty && !d.remove && (
                     <span className={s.dirtyDot} title={tr('Хадгалаагүй өөрчлөлттэй')} />
                   )}
                   {unsynced.has(key) && (
@@ -329,7 +355,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
                       {r.label}
                     </button>
                   ))}
-                  {(u.overridden || dirty) && (
+                  {(u.overridden || dirty) && !d.remove && (
                     <button
                       type="button"
                       className={s.reset}
@@ -337,6 +363,18 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
                       title={tr('Хатуу тохиргоо руу сэргээх (хадгалахад үйлчилнэ)')}
                     >
                       {tr('Сэргээх')}
+                    </button>
+                  )}
+                  {key !== myName && (
+                    <button
+                      type="button"
+                      className={`${s.delBtn} ${d.remove ? s.delBtnOn : ''}`}
+                      onClick={() => flipRemove(u)}
+                      title={d.remove
+                        ? tr('Устгалтыг болиулна')
+                        : tr('Аккаунтыг устгана (хадгалахад үйлчилнэ)')}
+                    >
+                      {d.remove ? tr('Болиулах') : tr('Устгах')}
                     </button>
                   )}
                 </div>
@@ -422,16 +460,41 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
           })}
         </div>
 
+        {listRemoved().length > 0 && (
+          <div className={s.removedSec}>
+            <div className={s.removedHead}>{tr('Устгагдсан аккаунтууд')}</div>
+            {listRemoved().map((k) => (
+              <div key={k} className={s.removedRow}>
+                <span className={s.removedName}>{k}</span>
+                <button
+                  type="button"
+                  className={s.reset}
+                  onClick={() => track(k, clearOverride(k))}
+                  title={tr('Аккаунтыг сэргээж хатуу тохиргооны эрхийг нь буцаана')}
+                >
+                  {tr('Буцаах')}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
         <p className={s.note}>
           {tr('Өөрчлөлт ArcGIS дээрх хуваалцсан хүснэгтэд хадгалагдаж, бүх хэрэглэгчид (өөр төхөөрөмжөөс нэвтэрсэн ч) үйлчилнэ. ArcGIS-т холбогдоогүй үед түр зуур энэ browser-т хадгалагдана.')}
         </p>
 
-        {/* ГАНЦ ХАДГАЛАХ ТОВЧ — ноорогтой үед л гарна */}
-        {drafts.size > 0 && (
-          <div className={s.saveBar}>
-            <span className={s.saveInfo}>
-              {tr('{0} хэрэглэгчийн өөрчлөлт хадгалагдаагүй', String(drafts.size))}
-            </span>
+        {/* ҮНДСЭН ХАДГАЛАХ ТОВЧ — ҮРГЭЛЖ доод талд наалдана.
+          * ⚠️ 2026-08-25 (хэрэглэгчийн хүсэлт): урьд нь зөвхөн өөрчлөлттэй үед
+          * гарч ирдэг байсныг БАЙНГА харагдахаар болгов — товч хаана байдгийг
+          * админ үргэлж мэднэ. Өөрчлөлтгүй үед идэвхгүй, тоолуур «бүгд
+          * хадгалагдсан» гэж мэдээлнэ. */}
+        <div className={s.saveBar}>
+          <span className={s.saveInfo}>
+            {drafts.size > 0
+              ? tr('{0} хэрэглэгчийн өөрчлөлт хадгалагдаагүй', String(drafts.size))
+              : tr('Бүх өөрчлөлт хадгалагдсан')}
+          </span>
+          {drafts.size > 0 && (
             <button
               type="button"
               className={s.cancelBtn}
@@ -439,16 +502,16 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
             >
               {tr('Болих')}
             </button>
-            <button
-              type="button"
-              className={s.saveBtn}
-              onClick={saveAll}
-              disabled={saving}
-            >
-              {saving ? tr('Хадгалж байна…') : tr('Хадгалах')}
-            </button>
-          </div>
-        )}
+          )}
+          <button
+            type="button"
+            className={s.saveBtn}
+            onClick={saveAll}
+            disabled={saving || drafts.size === 0}
+          >
+            {saving ? tr('Хадгалж байна…') : tr('Хадгалах')}
+          </button>
+        </div>
           </>
         )}
       </div>
