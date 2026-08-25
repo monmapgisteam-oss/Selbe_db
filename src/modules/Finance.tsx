@@ -105,12 +105,21 @@ export function ComboChart({
   height = 280,
   lagMonth,
   lagLvl,
+  hidePhys = false,
 }: {
   items: MonthPt[];
   height?: number;
   /** Хоцрогдол хэмжсэн сар — тэр сарын БИЕТ багана анивчина */
   lagMonth?: string;
   lagLvl?: 'red' | 'yellow' | null;
+  /**
+   * БИЕТ гүйцэтгэлийн цуваа, шошго, тултипын мөрийг НУУНА.
+   *
+   * ⚠️ 2026-08-21: «Багцын санхүү» харагдац нь ЗӨВХӨН мөнгөний асуултад
+   * хариулна — биет явц нь «Багцын гүйцэтгэл» талд. Цувааг нууснаар график
+   * төлөвлөгөө/олголтын хоёр шугам болж, уншихад ойлгомжтой болно.
+   */
+  hidePhys?: boolean;
 }) {
   const [hi, setHi] = useState<number | null>(null);
   const W = 1600;
@@ -145,12 +154,16 @@ export function ComboChart({
   // Бодит муруйнууд (санхүүжилт, биет) зөвхөн ОДОО хүртэл; төлөвлөгөө л дуустал хүрнэ
   let lastPhys = -1;
   rows.forEach((r, i) => { if (r.physPct > 0) lastPhys = i; });
+  // Нуусан үед сүүлийн биет цэгийг -1 болгоно — доорх бүх зурах нөхцөл унтарна
+  if (hidePhys) lastPhys = -1;
 
   // Шугам зурах цуваа — ТӨЛӨВЛӨГӨӨ + БИЕТ (санхүүжилт нь БАГАНА, доор тусад нь).
-  const series: { key: 'planned' | 'physical'; color: string; end: number }[] = [
-    { key: 'planned', color: PLAN, end: N - 1 },
-    { key: 'physical', color: PHYS, end: lastPhys },
-  ];
+  const series: { key: 'planned' | 'physical'; color: string; end: number }[] = hidePhys
+    ? [{ key: 'planned', color: PLAN, end: N - 1 }]
+    : [
+      { key: 'planned', color: PLAN, end: N - 1 },
+      { key: 'physical', color: PHYS, end: lastPhys },
+    ];
 
   const onMove = (e: MouseEvent<HTMLDivElement>) => {
     const r = e.currentTarget.getBoundingClientRect();
@@ -347,7 +360,7 @@ export function ComboChart({
           <p className={`num ${f.tipHd}`}>{pt.label}</p>
           <p className={f.tipRow}><i style={{ background: PLAN }} />{tr('Өссөн төлөвлөгөө')}<b className="num">{pt.planned > 0 ? mntShort(pt.planned) : '—'}</b></p>
           <p className={f.tipRow}><i style={{ background: ACT }} />{tr('Өссөн олгосон')}<b className="num">{pt.givenCum > 0 ? mntShort(pt.givenCum) : '—'}</b></p>
-          <p className={f.tipRow}><i style={{ background: PHYS }} />{tr('Биет гүйцэтгэл')}<b className="num">{pt.physPct > 0 ? `${pt.physPct.toFixed(1)}%` : '—'}</b></p>
+          {!hidePhys && <p className={f.tipRow}><i style={{ background: PHYS }} />{tr('Биет гүйцэтгэл')}<b className="num">{pt.physPct > 0 ? `${pt.physPct.toFixed(1)}%` : '—'}</b></p>}
           <p className={`${f.tipRow} ${f.tipGap}`}><i style={{ background: PLAN }} />{tr('Санхүүжилтийн явц')}<b className="num">{pt.planned > 0 ? `${((pt.givenCum / pt.planned) * 100).toFixed(0)}%` : '—'}</b></p>
         </div>
       )}

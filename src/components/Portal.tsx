@@ -451,7 +451,7 @@ function PortalContent(
   useEffect(() => {
     // tsogts — багц+хяналтын нэгдсэн харагдац тул мөн ортофототой
     // habea — кран, аюулгүйн бүсийг бодит талбай дээр нь хардаг (2026-08-12)
-    setOrtho(view === 'bagts' || view === 'monitor' || view === 'tsogts' || view === 'habea');
+    setOrtho(view === 'bagts' || view === 'monitor' || view === 'pkgFin' || view === 'pkgProg' || view === 'habea');
   }, [view, setOrtho]);
 
   /* ── Багануудын өргөн ── */
@@ -491,7 +491,9 @@ function PortalContent(
   const isHabea = view === 'habea';
   const isIot = view === 'iot';
   const isGuitsetgel = view === 'guitsetgel';
-  const isTsogts = view === 'tsogts';
+  /* Багцын хоёр харагдац — НЭГ модулиас `mode` пропоор (`services.ts` §pkgFin) */
+  const isPkgFin = view === 'pkgFin';
+  const isPkgProg = view === 'pkgProg';
   const isIrged = view === 'irged';
   // `standalone` нь эдгээрийг ЯГ тэмдэглэдэг — тусад нь тоолохгүй
   const isFull = standalone;
@@ -634,8 +636,8 @@ function PortalContent(
               ? <Dashboard dim={dim} setDim={setDim} zone={zone} setZone={setZone} />
               : isBagts
                 ? <Bagts dim={dim} setDim={setDim} />
-                : isTsogts
-                  ? <Tsogts dim={dim} setDim={setDim} />
+                : isPkgFin || isPkgProg
+                  ? <Tsogts dim={dim} setDim={setDim} mode={isPkgFin ? 'fin' : 'prog'} />
                   : isSheet
                     ? <Sheet />
                     : isTailan

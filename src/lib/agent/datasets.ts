@@ -162,7 +162,7 @@ const ALL: Dataset[] = [
     title: tr('Санхүүжилт — захирамж, гэрээ, сарын урсгал (дашбоардын эх)'),
     url: CASHFLOW2.url,
     oid: CASHFLOW2.oid,
-    view: 'tsogts',
+    view: 'pkgFin',
     sensitive: true,
     zoneField: CASHFLOW2.fields.pkg2,
     synonyms: [tr('санхүүжилт'), tr('захирамж'), tr('гэрээ'), tr('төсөвт өртөг'), tr('олгосон'), tr('сарын урсгал')],

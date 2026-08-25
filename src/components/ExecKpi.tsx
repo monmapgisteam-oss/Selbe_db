@@ -191,7 +191,7 @@ export function ExecKpi({ onView }: { onView: (key: ViewKey) => void }) {
           : undefined,
       },
       {
-        key: 'blocks', cat: 'scope', view: 'tsogts',
+        key: 'blocks', cat: 'scope', view: 'pkgProg',
         label: tr('Барилгын блок'),
         value: dash(!!hs, hs ? num(hs.blocks) : ''),
         note: tr('орон сууцны блокийн тоо'),
@@ -352,7 +352,7 @@ export function ExecKpi({ onView }: { onView: (key: ViewKey) => void }) {
   /* ═══════════════ 3 · ХУГАЦАА ═══════════════ */
 
   const progress = useMemo<Metric>(() => {
-    const base = { key: 'progress', cat: 'time' as const, view: 'tsogts' as ViewKey };
+    const base = { key: 'progress', cat: 'time' as const, view: 'pkgProg' as ViewKey };
     const label = tr('Барилга угсралтын гүйцэтгэл');
     if (bagtsQ.state !== 'ready' || !official)
       return { ...base, ...notReady(label, tr('багц ачаалж байна'), [bagtsQ]) };
@@ -372,7 +372,7 @@ export function ExecKpi({ onView }: { onView: (key: ViewKey) => void }) {
   }, [bagtsQ, official]);
 
   const schedule = useMemo<Metric>(() => {
-    const base = { key: 'schedule', cat: 'time' as const, view: 'tsogts' as ViewKey };
+    const base = { key: 'schedule', cat: 'time' as const, view: 'pkgProg' as ViewKey };
     const label = tr('Хуваарийн биелэлт');
     if (finQ.state !== 'ready') return { ...base, ...notReady(label, tr('Cashflow+IPC ачаалж байна'), [finQ]) };
     const C = CASHFLOW2.fields;
@@ -434,7 +434,7 @@ export function ExecKpi({ onView }: { onView: (key: ViewKey) => void }) {
 
   const stages = useMemo<Metric>(() => {
     /* ⚠️ `ceoOnly` — үе шатын задаргаа нь ажлын гүйцэтгэлийн дотоод бүтэц */
-    const base = { key: 'stages', cat: 'time' as const, view: 'tsogts' as ViewKey, ceoOnly: true as const };
+    const base = { key: 'stages', cat: 'time' as const, view: 'pkgProg' as ViewKey, ceoOnly: true as const };
     const label = tr('Үе шатын задаргаа');
     if (progQ.state !== 'ready') return { ...base, ...notReady(label, tr('гүйцэтгэлийн хүснэгт'), [progQ]) };
     const rows = Object.entries(progQ.data.byStage)
@@ -505,7 +505,7 @@ export function ExecKpi({ onView }: { onView: (key: ViewKey) => void }) {
     /* ⚠️ `ceoOnly` — тайлагналтын бүрэн байдал нь бүртгэлийн сахилга бат.
        ⚠️ `MAYOR_KPI_BENCHMARK` §2 нь хамрах хүрээг ИЛ гаргахыг зөвлөсөн боловч
        хэрэглэгч даргын жагсаалтаас хасахаар шийдсэн (2026-08-24). */
-    const base = { key: 'coverage', cat: 'time' as const, view: 'tsogts' as ViewKey, ceoOnly: true as const };
+    const base = { key: 'coverage', cat: 'time' as const, view: 'pkgProg' as ViewKey, ceoOnly: true as const };
     const label = tr('Тайлангийн хамрах хүрээ');
     if (progQ.state !== 'ready') return { ...base, ...notReady(label, tr('гүйцэтгэлийн хүснэгт'), [progQ]) };
     const cov = progQ.data.coverage;
@@ -540,7 +540,7 @@ export function ExecKpi({ onView }: { onView: (key: ViewKey) => void }) {
   }, [clearQ]);
 
   const overlap = useMemo<Metric>(() => {
-    const base = { key: 'overlap', cat: 'blockers' as const, view: 'tsogts' as ViewKey };
+    const base = { key: 'overlap', cat: 'blockers' as const, view: 'pkgProg' as ViewKey };
     const label = tr('Давхцсан үлдсэн нэгж талбар');
     if (ovQ.state !== 'ready') return { ...base, ...notReady(label, tr('орон зайн огтлолцол бодож байна'), [ovQ]) };
     const d = ovQ.data;
@@ -563,7 +563,7 @@ export function ExecKpi({ onView }: { onView: (key: ViewKey) => void }) {
   const missing = useMemo<Metric>(() => {
     /* ⚠️ `ceoOnly` — тайлагнаагүй блок нь гүйцэтгэгчийн сахилга бат, даргын
        эрх мэдлээр шийдэгддэггүй */
-    const base = { key: 'missing', cat: 'blockers' as const, view: 'tsogts' as ViewKey, ceoOnly: true as const };
+    const base = { key: 'missing', cat: 'blockers' as const, view: 'pkgProg' as ViewKey, ceoOnly: true as const };
     const label = tr('Тайлан ирээгүй блок');
     if (bagtsQ.state !== 'ready' || !official)
       return { ...base, ...notReady(label, tr('багц ачаалж байна'), [bagtsQ]) };
@@ -642,7 +642,7 @@ export function ExecKpi({ onView }: { onView: (key: ViewKey) => void }) {
   }, [dmgQ]);
 
   const contractor = useMemo<Metric>(() => {
-    const base = { key: 'contractor', cat: 'people' as const, view: 'tsogts' as ViewKey };
+    const base = { key: 'contractor', cat: 'people' as const, view: 'pkgProg' as ViewKey };
     const label = tr('Гүйцэтгэгчийн зэрэглэл');
     if (bagtsQ.state !== 'ready') return { ...base, ...notReady(label, tr('багц ачаалж байна'), [bagtsQ]) };
     const by = new Map<string, { blocks: number; wsum: number }>();
