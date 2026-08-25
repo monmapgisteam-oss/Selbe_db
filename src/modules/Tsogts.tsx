@@ -28,7 +28,7 @@ import {
 } from '@/lib/services';
 import { cat, shade, mntAbbr, num, pct } from '@/lib/format';
 import { readParam, writeParams } from '@/lib/urlState';
-import o from './overview.module.css';
+import o from './tsogtsOv.module.css';
 import f from './finance.module.css';
 import { SplitGrip, useSideResize } from '@/components/SplitGrip';
 import { overlapLeftParcels, type Overlap } from '@/lib/parcelOverlap';

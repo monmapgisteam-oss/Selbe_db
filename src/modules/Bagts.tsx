@@ -18,7 +18,7 @@ import {
 import { num, pct, shade, tint, NO_DATA } from '@/lib/format';
 import { readParam, writeParams } from '@/lib/urlState';
 import { overlapLeftParcels, type Overlap } from '@/lib/parcelOverlap';
-import o from './overview.module.css';
+import o from './bagtsOv.module.css';
 
 /**
  * БАГЦЫН МЭДЭЭЛЭЛ — төслийн БҮХ багц нэг хуудсанд.

@@ -41,7 +41,7 @@ import {
   type Headline, type SocialLive, type ProjectProgress, type Budget, type ProgRow,
 } from '@/lib/live';
 import { SplitGrip, useSideResize } from '@/components/SplitGrip';
-import o from './overview.module.css';
+import o from './dashboardOv.module.css';
 
 /**
  * ЕРӨНХИЙ ДАШБОАРД — ЗҮҮН ЖАГСААЛТ · ТӨВД ЗУРАГ · БАРУУНД ДЭЛГЭРЭНГҮЙ.

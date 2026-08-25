@@ -16,7 +16,7 @@ import {
 } from '@/lib/query';
 import { GAZAR_BUILDING, GAZAR_PARCEL, PARCEL_LEFT } from '@/lib/services';
 import { num, text, shades, CAT_LIGHT, NO_DATA } from '@/lib/format';
-import o from './overview.module.css';
+import o from './gazarOv.module.css';
 import { SplitGrip, useSideResize } from '@/components/SplitGrip';
 import g from './gazar.module.css';
 

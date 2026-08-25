@@ -20,7 +20,15 @@ import './globals.css';
 //    ямар ч компонент импортлодоггүй (зөвхөн энд байсан) тул критик замд дэмий
 //    ачаа байлаа. Файл нь өөрөө хэвээр.
 import './shell.module.css';
-import '@/modules/overview.module.css';
+/* ⚠️ 2026-08-25: overview.module.css-ийг сэдэв тус бүрээр салгасан (хэрэглэгчийн
+   хүсэлт — харагдацууд стайл хуваалцахгүй). Урьдчилсан ачаалалд бүгдийг жагсаана. */
+import '@/modules/bagtsOv.module.css';
+import '@/modules/dashboardOv.module.css';
+import '@/modules/gazarOv.module.css';
+import '@/modules/habeaOv.module.css';
+import '@/modules/iotOv.module.css';
+import '@/modules/irgedOv.module.css';
+import '@/modules/tsogtsOv.module.css';
 import '@/modules/dashboard.module.css';
 import '@/modules/analysis/suitability.module.css';
 import '@/modules/sheet/sheet.module.css';

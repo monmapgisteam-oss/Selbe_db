@@ -1,4 +1,13 @@
 /* ══════════════════════════════════════════════════════════
+   «Dashboard» харагдацын бүрхүүл — ЗӨВХӨН энэ харагдацад.
+   ⚠️ 2026-08-25 (хэрэглэгчийн хүсэлт): нэгдсэн overview.module.css-ийг
+   сэдэв тус бүрээр БҮРЭН салгав — харагдацууд хоорондоо ямар ч стайл
+   хуваалцахгүй. Графикийн хэмжээ (өндөр, мөрийн нягт г.м.)-г энд өөрчлөхөд
+   БУСАД харагдацад огт нөлөөлөхгүй тул цөөн/олон өгөгдөлтэй график бүрийг
+   өөрт нь тохируулж болно.
+   ══════════════════════════════════════════════════════════ */
+
+/* ══════════════════════════════════════════════════════════
    Ерөнхий дашбоард — ЗҮҮН ЖАГСААЛТ · ТӨВД ЗУРАГ · БАРУУНД ДЭЛГЭРЭНГҮЙ
 
      ┌──────────┬────────────────────┬─────────────────────┐
@@ -19,7 +28,6 @@
    `.mapDims`, `.dimBtn`, `.dimOn` — эдгээрийг «Багцын мэдээлэл» (`Bagts.tsx`)
    ХУВААЛЦАНА. Устгахаас өмнө тэр файлыг шалга.
    ══════════════════════════════════════════════════════════ */
-
 .shell {
   /* Утга заасан цорын ганц палитр — өөр өнгө нэмэхээсээ өмнө «энэ юу заах вэ?»
      ⚠️ 2026-08-17: envhub — акцент нь ГАНЦ өгөгдлийн өнгө (--data), төлөв нь
@@ -109,8 +117,16 @@
   --side-l: clamp(272px, 16vw, 560px);
   --side-r: clamp(292px, 17vw, 600px);
 }
-@media (max-width: 1680px) { .shell { --side-l: 252px; --side-r: 268px; } }
-@media (max-width: 1440px) { .shell { --side-l: 232px; --side-r: 244px; } }
+
+@media (max-width: 1680px) {
+  .shell { --side-l: 252px; --side-r: 268px; }
+
+}
+
+@media (max-width: 1440px) {
+  .shell { --side-l: 232px; --side-r: 244px; }
+
+}
 
 /* ══ 2026-08-21 (эргэлт): хөвөгч glass загварыг хэрэглэгч БУЦААЖ, тойм
    горимтой ижил сонгодог бүтцийг сонгов — зураг голдоо хайрцагтай, картууд
@@ -168,16 +184,19 @@
      · шошго 9.5px нэг мөр, тоо 21px tabular — мэдээллийн нягт 2.5 дахин.
      · дотоод зай 6–9px, хүрээ 1px, радиус жижиг — Grafana/Metabase-ийн хэл.
    ══════════════════════════════════════════════════════════════════ */
-
 /* ── Карт: нимгэн толгой, нягт бие ── */
 .shell[data-detail='1'] .panel { border-radius: 4px; }
+
 .shell[data-detail='1'] .panelHead { padding: 5px 9px; }
+
 .shell[data-detail='1'] .panelTitle {
   font-size: 10.5px;
   letter-spacing: 0.08em;
   color: var(--ink-2);
 }
+
 .shell[data-detail='1'] .panelNote { font-size: 10px; }
+
 .shell[data-detail='1'] .panelBody { padding: 8px 9px; }
 
 /* ── Үзүүлэлтийн нүд ── */
@@ -191,6 +210,7 @@
   background: var(--surface);
   border-color: var(--line);
 }
+
 .shell[data-detail='1'] :global(.statNum) {
   font-size: 21px;
   font-weight: 600;
@@ -198,7 +218,9 @@
   /* ⚠️ `--tone` БИШ: өнгөт тоо нь харанхуй дэвсгэр дээр контраст алддаг */
   color: var(--ink);
 }
+
 .shell[data-detail='1'] :global(.statNum) > span { font-size: 10.5px; }
+
 .shell[data-detail='1'] :global(.statTag) {
   /* Нөөцлөсөн 26px-гүй, гэхдээ шошго «…» болохгүй — 2 мөрөнд бүтэн
      (2026-08-21 аудит: нэг мөрийн таслалт урт монгол нэрийг иддэг байв) */
@@ -220,14 +242,15 @@
 
 /* ── Баганан жагсаалт: мөр нягт, зам зузаан (уншигдана) ── */
 .shell[data-detail='1'] :global(.barsList) { gap: 2px; }
+
 .shell[data-detail='1'] :global(.barsList) > * { gap: 2px; }
 
 /* Хэсгүүдийн мөр — БҮХ баганыг дамжина (хэсэг сонгогдсон эсэхээс үл хамааран) */
 .rail { grid-area: rail; }
+
 .shell[data-detail='1'] .rail { grid-area: auto; grid-column: 1 / -1; grid-row: 1; }
 
 /* ══════════════════ Зүүн жагсаалт ══════════════════ */
-
 /**
  * ⚠️ 2026-08-17: ХЭВТЭЭ мөр (өмнө нь босоо багана байв).
  * Хэсгүүд нь тэнцүү өргөнтэй нүд болж хуваагдана — 9 хэсэг тул `1fr` бүрд
@@ -255,13 +278,11 @@
    */
   min-height: 68px;
 }
+
 /* ⚠️ `.railHead` («ХЭСГҮҮД» шошго) ХАСАГДСАН — хэвтээ мөрөнд байнгын нүд эзлэх
    нь дэмий байв (хэрэглэгчийн хүсэлт). «Бүгдийг хаах» товч нь одоо мөрийн
    ТӨГСГӨЛД, зөвхөн хэсэг нээлттэй үед гарна. */
 /* «Бүгдийг хаах» — мөрийн төгсгөлийн нарийн нүд, зөвхөн хэсэг нээлттэй үед */
-
-
-
 /**
  * ⚠️ 2026-08-17: ХЭВТЭЭ нүд болов — хүрээгүй (заагийг эцэг нь 1px завсраар
  * зурна), дугаар+нэр дээр, утга том, доор нь 2px hairline зам.
@@ -281,14 +302,18 @@
   border-radius: 0;
   transition: background 0.14s, border-color 0.14s;
 }
+
 .railItem:hover { background: var(--surface-2); }
+
 /* Сонгогдсон — ДООД ирмэгийн заалт + зөөлөн угаалт */
 .railOn {
   background: color-mix(in oklab, var(--accent) 10%, var(--surface));
   border-bottom-color: var(--accent);
 }
+
 /* Дугаар ба нэр — нэг мөрөнд; утга нь ДООД мөрөнд том болж гарна */
 .railTop { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+
 /* ⚠️ `.railNo` (дэс дугаар) ХАСАГДСАН — хэвтээ мөрөнд нэр ба утга л үлдэв.
    Дугаар нь дэлгэрэнгүй самбарын гарчигт (`.colNo`) хэвээр. */
 /* ⚠️ Хэвтээ нүд нарийн (≈150px) тул урт нэрийг ХОЁР мөрөөр таслана. Босоо
@@ -305,7 +330,9 @@
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
 .railOn .railTitle { color: var(--ink); }
+
 /* Утга — envhub-ийн KPI тоо (16px/500), нүдний ГОЛ мэдээлэл */
 .railVal {
   font-size: 15px;
@@ -316,13 +343,12 @@
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+
 /* ⚠️ `.railBar` (явцын зурвас) ба `.railNote` (тайлбар мөр) ХАСАГДСАН —
    хэвтээ мөрөнд нүд бүрд ЗӨВХӨН нэр ба утга л үлдэв (хэрэглэгчийн хүсэлт).
    `railStat()` нь `pct`/`tone`/`note`-оо буцаасаар байгаа: дэлгэрэнгүй самбар
    тэдгээрийг хэрэглэдэг тул тооцооллыг хөндөөгүй. */
-
 /* ══════════════════ Төв — үзүүлэлт ба зураг ══════════════════ */
-
 .center { grid-area: center; display: flex; flex-direction: column; gap: 10px; min-width: 0; min-height: 0; }
 
 /**
@@ -370,7 +396,9 @@
   min-width: 0;
   min-height: 0;
 }
+
 .zLeft { grid-column: 1; }
+
 .zRight { grid-column: 3; }
 
 /**
@@ -380,6 +408,7 @@
  * тал ДҮҮРСЭН болохыг хэлнэ.
  */
 .shell[data-detail='1'][data-zl='0'] { --side-l: 0px; }
+
 .shell[data-detail='1'][data-zr='0'] { --side-r: 0px; }
 
 /**
@@ -399,6 +428,7 @@
 /* Картууд баганын өндрийг ХУВААЖ дүүргэнэ (2026-08-21) — цөөн карттай
    хэсэгт баганын доод тал хөндийрөхгүй; урт жагсаалт .panelBody-доо гүйнэ */
 .zLeft, .zRight { justify-content: flex-start; overflow-y: auto; }
+
 .zLeft > *, .zRight > * { flex: 1 1 auto; min-height: 0; }
 
 /**
@@ -423,6 +453,7 @@
   border: none;
   border-radius: 0;
 }
+
 /* ⚠️ 2026-08-20 (хэрэглэгчийн хүсэлт): Тоонуудын зурвасын БҮЛГИЙН ГАРЧИГ
    («Төслийн цар хүрээ», «Нийт гүйцэтгэл» …) ХАСАГДАВ. Тэр нь давхар илүүц
    байв: хэсгийн нэр яг дээр нь (`.ringHd`) бий, нүд бүр өөрийн eyebrow
@@ -430,6 +461,7 @@
    ⚠️ `:global` БИШ: `.panelHead`/`.panelBody` нь ЭНЭ файлын CSS-модулийн
    класс тул `:global`-аар бичвэл хэшлэгдсэн нэртэй таарахгүй. */
 .shell[data-detail='1'] .zTop .panelHead { display: none; }
+
 .shell[data-detail='1'] .zTop .panelBody { padding: 0; overflow: visible; }
 
 /* Нүднүүдийн хоорондох 1px hairline → 10px завсар + карт бүрд өөрийн хүрээ */
@@ -440,6 +472,7 @@
   border-radius: 0;
   overflow: visible;
 }
+
 .shell[data-detail='1'] .zTop :global(.statsGrid) > * {
   background: var(--surface);
   border: 1px solid var(--line);
@@ -448,6 +481,7 @@
 
 /* Бөгж + үзүүлэлтийн эгнээ — бөгж нь мөн ӨӨРИЙН карт */
 .shell[data-detail='1'] .zTop .landTop { margin-bottom: 0; gap: 10px; align-items: stretch; }
+
 .shell[data-detail='1'] .zTop .landTop > :first-child {
   display: grid;
   place-items: center;
@@ -479,7 +513,6 @@
 .zTop :global(.seriesChart) {
   max-width: 1100px;
 }
-
 
 /**
  * Газрын зураг — ГОЛ багана, чартын бүсүүдийн ДУНД мөр.
@@ -518,6 +551,7 @@
   border-radius: var(--r-sm);
   overflow: hidden;
 }
+
 .head > * { border: none; border-radius: 0; }
 
 /* ⚠️ `--tone` нь СОНГОМОЛ: «Багцын мэдээлэл» хавтан бүрд өөрийн өнгө дамжуулдаг
@@ -539,9 +573,12 @@
   border: 1px solid var(--line);
   border-radius: var(--r);
 }
+
 .tileLabel { order: -1; }
+
 /* Гол үзүүлэлт (нийт гүйцэтгэл) — ГАНЦ онцлох хавтан */
 .tileLead { box-shadow: inset 0 2px 0 var(--accent); }
+
 /* ⚠️ УТГА (`b`) ба НЭГЖ (`i`) тусдаа: «≈2.4 их наяд ₮» бүхэлдээ 1.7rem-ээр
    зурагдвал хавтангаас хальж, эхний тэмдэгт нь тайрагддаг байв. Нэгжийг жижиг
    болгож, суурь дээр нь зэрэгцүүлбэл багтахаас гадна уншихад ч хурдан. */
@@ -552,6 +589,7 @@
   gap: 0 4px;
   min-width: 0;
 }
+
 .tileVal b {
   font-size: 17px;
   font-weight: 500;
@@ -560,11 +598,16 @@
   color: var(--ink);
   font-variant-numeric: tabular-nums;
 }
+
 .tileVal i { font-style: normal; font-size: 11px; font-weight: 400; color: var(--ink-3); white-space: nowrap; }
+
 /* envhub eyebrow — `order:-1`-ээр нүдний дээд мөр болно */
 .tileLabel { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.12em; line-height: 1.25; color: var(--ink-3); }
+
 .tileSub { font-size: 10.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+
 .tileBar { display: block; width: 100%; height: 2px; margin-top: 3px; border-radius: 1px; background: var(--chart-track); overflow: hidden; }
+
 .tileBar i { display: block; height: 100%; border-radius: 1px; background: var(--accent); }
 
 .hero {
@@ -589,7 +632,6 @@
 }
 
 /* ══════════════════ Баруун — дэлгэрэнгүй ══════════════════ */
-
 /* ── Хавтан (баганын дотор) ── */
 /**
  * ⚠️ 2026-08-17: envhub-ийн `Box`+`Head` хэлээр — картын толгой нь бүтэн
@@ -617,6 +659,7 @@
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
 }
+
 /* Картын БИЕ — толгойн доор, ӨӨРӨӨ гүйнэ (envhub: `min-h-0 flex-1
    overflow-y-auto p-3`). Ингэснээр урт жагсаалт нь бүхэл баганыг тэлэхгүй,
    зэрэгцээ картууд ижил өндөртэй үлдэнэ. */
@@ -628,6 +671,7 @@
   /* Радиусын таслалт нь одоо ЭНД (карт өөрөө overflow-гүй болсон) */
   border-radius: 0 0 var(--r-sm) var(--r-sm);
 }
+
 .panelHead {
   display: flex;
   align-items: center;
@@ -637,6 +681,7 @@
   padding: 8px 12px;
   border-bottom: 1px solid var(--line);
 }
+
 .panelTitle {
   font-size: 13.5px;
   line-height: 1;
@@ -645,6 +690,7 @@
   letter-spacing: 0.06em;
   color: var(--ink);
 }
+
 /**
  * ⚠️ 2026-08-20: `min-width: 0` + таслалт НЭМЭГДЭВ. `white-space: nowrap` нь
  * flex нүдний min-content-ыг ТЕКСТИЙН БҮТЭН УРТ болгодог тул нүд агшихаа болиод
@@ -667,12 +713,11 @@
 }
 
 /* ══════════════════ Утга заасан өнгө ══════════════════ */
-
 .done { color: var(--ok); }
+
 .active { color: var(--accent); }
 
 /* ══════════════════ Ерөнхий бүтэц ══════════════════ */
-
 .note {
   margin-top: 9px;
   padding-top: 8px;
@@ -681,75 +726,26 @@
   line-height: 1.55;
   color: var(--ink-3);
 }
+
 .note b { color: var(--ink-2); font-weight: 600; }
 
 /* ══════════════════ 04 · Газар чөлөөлөлт ══════════════════ */
-
 .landTop { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-bottom: 12px; }
+
 /* Ring-ийн ХАЖУУГИЙН Stats/Rows нь үлдсэн зайд шахагдаж багтана; нарийн
    самбарт (basis хүрэхгүй бол) Ring-ийн ДООР бүтэн өргөнөөр буулгаж
    уншигдахуйц хэвээр байлгана — эс бол өргөн тоонууд хүрээг давна. */
 .landTop > :last-child { flex: 1 1 240px; min-width: 0; }
 
-/* ⚠️ Урьд нь энд .bars/.barRow/.barTrack гэсэн ӨӨРИЙН бар диаграм байв —
-   SuitDetail одоо порталын бусад дашбоардтай ижил `ui.tsx`-ийн Bars хэрэглэдэг
-   болсон тул хасагдав (диаграмын нэгдмэл загвар). */
-
-/* ══════════════════ Газрын зурган дээрх удирдлага ══════════════════ */
-
-
-
-
-
-
-
-.legend {
-  position: absolute;
-  left: 12px;
-  bottom: 12px;
-  z-index: 5;
-  display: flex;
-  gap: 12px;
-  max-width: calc(100% - 24px);
-  padding: 7px 10px;
-  background: color-mix(in srgb, var(--surface) 90%, transparent);
-  backdrop-filter: blur(6px);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-}
-.legendItem {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  max-width: 190px;
-  font-size: 0.69rem;
-  color: var(--ink-2);
-  overflow-wrap: anywhere;
-}
-.legendItem i { width: 9px; height: 9px; flex: none; border-radius: 2px; }
-.legendMore { font-size: 0.69rem; font-weight: 700; font-family: var(--mono); color: var(--ink-3); }
-
 /* ══════════════════ Давхаргын самбар (газрын зураг дээр) ══════════════════ */
-
 /* ⚠️ Баруун ДЭЭД буланд — GIS аппуудын ердийн байрлал. Зүүн дээд нь бүсийн
    chip, зүүн доод нь тайлбар, дээд төв нь 2D/3D солигч аль хэдийн эзэлсэн. */
 /* Дээд-төв toolbar — «Давхарга» + 2D/3D/BIM НЭГ pill дотор («Ерөнхий
    төлөвлөгөө»-ийн `mapTools`-той ижил). Bagts-д хэрэглэгддэг `.mapDims`-ийг
    хөндөхгүйн тулд Dashboard дотоод дим нь `.dimsInline` (pill-гүй). */
-
-
 /* «Давхарга» товч — pill доторх ил тод товч (асаалттай үед `--hue`). */
-
-
-
-
-
-
-
 /* Дотоод 2D/3D/BIM сегмент — pill-гүй, тунгалаг (гадна `.mapTools` pill өгнө).
    ⚠️ background нь `.dimOn` (surface-2)-той ижил байвал идэвхтэй товч алга болно. */
-
-
 /* Каталог — «Ерөнхий төлөвлөгөө»-тэй ижил ЗҮҮН талын БҮТЭН ӨНДӨР багана
    (голд хөвөхгүй).
 
@@ -774,10 +770,6 @@
   overflow: hidden;
   animation: catPanelIn 0.24s var(--ease) both;
 }
-@keyframes catPanelIn {
-  from { opacity: 0; transform: translateX(-14px); }
-  to   { opacity: 1; transform: translateX(0); }
-}
 
 .chipBar {
   position: absolute;
@@ -793,6 +785,7 @@
   gap: 6px;
   max-width: calc(100% - 24px);
 }
+
 .filterChip {
   display: flex;
   align-items: center;
@@ -805,7 +798,9 @@
   border-radius: 99px;
   font-size: 0.78rem;
 }
+
 .filterLabel { font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+
 .filterClear {
   display: grid;
   place-items: center;
@@ -818,99 +813,10 @@
   color: var(--ink-3);
   transition: background 0.12s, color 0.12s;
 }
+
 .filterClear:hover { background: var(--sunken); color: var(--ink); }
 
-/* ══════════════════════════════════════════════════════════
-   «Багцын мэдээлэл» (`Bagts.tsx`) — ГУРВАН багана.
-   ⚠️ Дашбоардын бүтэцтэй ХОЛБООГҮЙ, тусдаа сүлжээ.
-   ══════════════════════════════════════════════════════════ */
-
-.pack {
-  height: 100%;
-  display: grid;
-  gap: 10px;
-  padding: 10px;
-  /* ⚠️ ЗҮҮН багана 250px-д хэт нарийн байв: «Багц 17.1 · Гадна тохижилт — Багц 1»
-     гэсэн нэр ба «1.08 тэрбум» гэсэн утга нэг мөрд багтахгүй. */
-  grid-template-columns: minmax(250px, 320px) minmax(0, 1fr) minmax(300px, 400px);
-  grid-template-rows: auto minmax(0, 1fr);
-  grid-template-areas:
-    'kpi  kpi kpi'
-    'left map right';
-  background: var(--bg);
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.kpi {
-  grid-area: kpi;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
-  gap: 10px;
-}
-
-.packLegend {
-  position: absolute;
-  bottom: 12px;
-  left: 12px;
-  z-index: 5;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 12px;
-  max-width: calc(100% - 24px);
-  padding: 7px 10px;
-  border: 1px solid var(--line);
-  border-radius: var(--r);
-  background: color-mix(in srgb, var(--surface) 94%, transparent);
-  backdrop-filter: blur(8px);
-  font-size: 0.68rem;
-  color: var(--ink-2);
-}
-.packLegendItem { display: flex; align-items: center; gap: 5px; }
-.packLegendItem i { width: 9px; height: 9px; border-radius: 2px; flex: none; }
-.packLegendItem b { font-weight: 600; color: var(--ink-3); }
-
-.packRing { display: flex; align-items: center; gap: 12px; }
-.packRing > :last-child { flex: 1; min-width: 0; }
-
-.side {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-height: 0;
-  overflow-y: auto;
-}
-.left { grid-area: left; }
-.right { grid-area: right; }
-
-.colHead {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  margin: -2px 0 -2px;
-  padding: 4px 2px 6px;
-  font-size: 0.7rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--ink-3);
-  background: var(--bg);
-}
-
-.map {
-  grid-area: map;
-  position: relative;
-  display: flex;
-  min-width: 0;
-  min-height: 0;
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  overflow: hidden;
-}
-
 /* ══════════════════ Дэлгэц бага үед ══════════════════ */
-
 /**
  * ⚠️ ЗӨВХӨН ХУВЬСАГЧ дарж бичнэ, `grid-template-columns`-ыг БИШ.
  *
@@ -921,9 +827,10 @@
  */
 @media (max-width: 1400px) {
   .shell {
-    --rail-w: 232px;
-    --detail-w: calc(var(--detail-cols) * 340px + (var(--detail-cols) - 1) * 12px);
-  }
+      --rail-w: 232px;
+      --detail-w: calc(var(--detail-cols) * 340px + (var(--detail-cols) - 1) * 12px);
+    }
+
 }
 
 /* Нарийн дэлгэц — гурван багана БОСОО өрөлт болно */
@@ -932,52 +839,49 @@
      хэсгүүдийн жагсаалт → гарчиг → зураг → чартын картууд.
      Босго 1100 — бүх дашбоардын НЭГДСЭН босго (analysis-тай ижил). */
   .shell,
-  .shell[data-detail='1'] {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto;
-    grid-auto-rows: min-content;
-    grid-template-areas: none;
-    height: auto;
-    overflow-y: auto;
-  }
+    .shell[data-detail='1'] {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: auto;
+      grid-auto-rows: min-content;
+      grid-template-areas: none;
+      height: auto;
+      overflow-y: auto;
+    }
+
   .rail { grid-auto-flow: row; grid-auto-columns: auto; overflow: visible; }
+
   .railItem { width: auto; }
+
   /* Зураг нь наалдахаа болиод жагсаалтын дараа ердийн блок болно */
   .shell[data-detail='1'] .center,
-  /**
-   * ⚠️ 2026-08-20: `.ringCards` устаж, дөрвөн бүсийн сав орлов. Нарийн дэлгэцэд
-   * дөрвүүлээ НЭГ багана болж дараалан өрөгдөнө.
-   *
-   * ⚠️ Ширээний `flex: 1 1 0` (карт бүр баганын өндрийг ХУВААНА) нь энд
-   * хортой: агуулга нь ижил өндөрт шахагдаж, урт жагсаалт бүр дотроо гүйх
-   * болно. Мобайлд карт агуулгаараа өндөрсөж, ХУУДАС гүйх нь зөв.
-   */
-  .zTop, .zLeft, .zRight {
-    grid-column: 1;
-    grid-row: auto;
-    position: static;
-    max-height: none;
-    /* ⚠️ `width` заавал буцаана — ширээний компьютерийн `var(--side-l)` нь
-       мобайлд картыг 232px-т нарийсгаж, дэлгэцийн хагасыг хоосон үлдээж байв. */
-    width: auto;
-    min-height: 0;
-  }
+    /**
+     * ⚠️ 2026-08-20: `.ringCards` устаж, дөрвөн бүсийн сав орлов. Нарийн дэлгэцэд
+     * дөрвүүлээ НЭГ багана болж дараалан өрөгдөнө.
+     *
+     * ⚠️ Ширээний `flex: 1 1 0` (карт бүр баганын өндрийг ХУВААНА) нь энд
+     * хортой: агуулга нь ижил өндөрт шахагдаж, урт жагсаалт бүр дотроо гүйх
+     * болно. Мобайлд карт агуулгаараа өндөрсөж, ХУУДАС гүйх нь зөв.
+     */
+    .zTop, .zLeft, .zRight {
+      grid-column: 1;
+      grid-row: auto;
+      position: static;
+      max-height: none;
+      /* ⚠️ `width` заавал буцаана — ширээний компьютерийн `var(--side-l)` нь
+         мобайлд картыг 232px-т нарийсгаж, дэлгэцийн хагасыг хоосон үлдээж байв. */
+      width: auto;
+      min-height: 0;
+    }
+
   .zLeft > *, .zRight > * { flex: none; }
+
   .hero { height: max(240px, 52vh); flex: none; }
-  .pack {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto auto max(260px, 58vh) auto;
-    grid-template-areas: 'kpi' 'left' 'map' 'right';
-    height: auto;
-    overflow: visible;
-  }
-  .kpi { grid-template-columns: repeat(3, 1fr); }
-  .side { overflow: visible; }
+
 }
 
 @media (max-width: 620px) {
   .head { grid-template-columns: repeat(2, 1fr); }
-  .kpi { grid-template-columns: repeat(2, 1fr); }
+
 }
 
 /* ══════════════════════════════════════════════════════════════════
@@ -995,7 +899,6 @@
    Хэсэг СОНГОСОН үеийн (data-detail=1) бүтэц ХЭВЭЭР — эдгээр гурван
    элемент JSX-д зурагдахгүй тул доорх дүрмүүд огт оролцохгүй.
    ══════════════════════════════════════════════════════════════════ */
-
 .shell[data-detail='0'] {
   /* ⚠️ Талын өргөн ХАТУУ пиксел байсныг ХУВЬСАГЧ болгов: хэрэглэгч заагийг
      чирэхэд `--side-l/--side-r` л өөрчлөгддөг тул хатуу утга байвал чирэлт
@@ -1010,32 +913,14 @@
     'rail rail rail'
     'envl center envr';
 }
+
 @media (max-width: 1680px) {
   .shell[data-detail='0'] { grid-template-columns: var(--side-l) minmax(340px, 1fr) var(--side-r); }
+
 }
 
 /* ── Шүүлтүүрийн мөр — envhub FilterBar ── */
-
-
-
-
-
-
-
-
-
 /* Шүүлтүүрийн товч — envhub FilterMenu (нэр · утга · сум) */
-
-
-
-
-
-
-
-
-
-
-
 /* ── Хажуугийн багана — panel-ууд (сүүлийнх нь сунаж дотроо гүйнэ) ── */
 .envl, .envr {
   display: flex;
@@ -1044,10 +929,15 @@
   min-width: 0;
   min-height: 0;
 }
+
 .envl { grid-area: envl; }
+
 .envr { grid-area: envr; }
+
 .envl > .panel, .envr > .panel { flex: none; }
+
 .envl > .envGrow, .envr > .envGrow { flex: 1; min-height: 120px; }
+
 .envGrow .panelBody { flex: 1; min-height: 0; overflow-y: auto; }
 
 /* ── Индикаторын зурвас — envhub Indicator: нэг hairline хайрцаг, заагтай нүд ── */
@@ -1064,11 +954,16 @@
   border-radius: var(--r-sm);
   overflow: hidden;
 }
+
 .indCell { display: flex; flex-direction: column; padding: 10px 13px; background: var(--surface); min-width: 0; }
+
 /* Гарчигт ХОЁР мөрийн зай нөөцөлнө — зэрэгцээ нүдний тоо нэг шугамд эгнэнэ */
 .indLabel { display: block; min-height: 28px; font-size: 10px; line-height: 1.35; font-weight: 600; letter-spacing: 0.13em; text-transform: uppercase; color: var(--ink-3); }
+
 .indBottom { margin-top: auto; display: flex; align-items: center; gap: 8px; }
+
 .indIcon { flex: none; color: var(--ink-3); display: grid; place-items: center; }
+
 .indVal { font-size: 19px; line-height: 1; font-weight: 500; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Эх сурвалжийн мөр — зургийн доор, дэвсгэргүй (envhub) */
@@ -1078,13 +973,16 @@
    Босго 1100 — бүх дашбоардын НЭГДСЭН босго. */
 @media (max-width: 1100px) {
   .shell[data-detail='0'] {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto auto auto auto;
-    grid-template-areas: 'rail' 'center' 'envl' 'envr';
-    height: auto;
-  }
+      grid-template-columns: 1fr;
+      grid-template-rows: auto auto auto auto;
+      grid-template-areas: 'rail' 'center' 'envl' 'envr';
+      height: auto;
+    }
+
   .shell[data-detail='0'] .hero { min-height: 320px; }
+
   .ind { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+
 }
 
 /* ⚠️ envhub нэг дэлгэцийн горимд зураг ҮЛДСЭН өндрийг бүхэлд нь дүүргэнэ —
@@ -1093,39 +991,6 @@
 
 /* Бөгжний тусдаа карт — картын биеийн голд, амьсгалтай (`RingCard`) */
 .ringCard { display: grid; place-items: center; padding: 6px 0; }
-
-/* ── Багцын давхцсан үлдсэн нэгж талбарын мөр (BlocksCard, 2026-08-21) —
-      блокийн жагсаалтаас ИЛТ зааглагдсан хайрцаг ── */
-.ovStrip {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 8px;
-  padding: 6px 9px;
-  border: 1px solid var(--line);
-  border-left: 3px solid var(--ink-3);
-  border-radius: var(--r-sm, 6px);
-  background: color-mix(in srgb, var(--surface-2) 60%, transparent);
-  font-size: 12px;
-  color: var(--ink-2);
-}
-.ovStrip b { font-size: 13px; color: var(--ink); }
-/* Давхцсан талбар БАЙГАА — шар аяс: газар чөлөөлөгдөөгүй саад гэсэн дохио */
-.ovStripOn {
-  border-color: color-mix(in srgb, var(--warn) 45%, transparent);
-  border-left-color: var(--warn);
-  background: color-mix(in srgb, var(--warn) 10%, transparent);
-}
-/* Доорх мөрүүд «блокууд» гэдгийг нэрлэх жижиг зааглагч гарчиг */
-.ovDivider {
-  margin: 0 0 6px;
-  font-size: 10.5px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--ink-3);
-}
 
 /* ══ SplitGrip-ийг ДАШБОАРДЫН СҮЛЖЭЭНИЙ НҮДЭНД суулгана (2026-08-21) ══
    Урьд нь absolute давхарга бүтэн өндрөөр байж хэсгийн зурвас, KPI мөрийг
@@ -1140,6 +1005,7 @@
   bottom: auto;
   z-index: 6;
 }
+
 .shell > :global(button[class*='splitGrip_left']) {
   grid-column: 1 / 2;
   justify-self: end;
@@ -1147,13 +1013,16 @@
   /* 10px завсрын голд — бариул өөрөө 11px */
   margin-right: -10.5px;
 }
+
 .shell > :global(button[class*='splitGrip_right']) {
   grid-column: 3 / 4;
   justify-self: start;
   right: auto;
   margin-left: -10.5px;
 }
+
 /* Нэг баганат (нарийн) горимд зааг байхгүй тул бариул ч байхгүй */
 @media (max-width: 1100px) {
   .shell > :global(button[class*='splitGrip_grip']) { display: none; }
+
 }

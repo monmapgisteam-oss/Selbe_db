@@ -50,7 +50,7 @@ import { num } from '@/lib/format';
  * «Дараа» цэнхэр гэсэн өнгөт identity бүрмөсөн устаж, хоёр багана одоо ЯГ ИЖИЛ
  * карт болов — ялгаа нь зөвхөн ГАРЧГИЙН ҮГЭНД.
  */
-import o from './overview.module.css';
+import o from './irgedOv.module.css';
 import { SplitGrip, useSideResize } from '@/components/SplitGrip';
 import i from './irged.module.css';
 

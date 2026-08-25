@@ -17,7 +17,7 @@ import { num } from '@/lib/format';
 import { sumBy } from '@/lib/agg';
 import { VIEW_BY_KEY } from '@/lib/services';
 import s from './iot.module.css';
-import o from './overview.module.css';
+import o from './iotOv.module.css';
 
 /**
  * IoT ХЯНАЛТ — Mononet-ээс 15 минут тутам ингест хийгддэг таван мэдрэгч.

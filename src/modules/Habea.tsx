@@ -42,7 +42,7 @@ import { useZoomToFilter } from '@/lib/useZoomToFilter';
 import { LayerCatalog } from '@/components/LayerCatalog';
 import { OpacityPanel } from '@/components/OpacityPanel';
 import h from './habea.module.css';
-import o from './overview.module.css';
+import o from './habeaOv.module.css';
 
 const L = HABEA.labor.fields;
 const I = HABEA.incident.fields;

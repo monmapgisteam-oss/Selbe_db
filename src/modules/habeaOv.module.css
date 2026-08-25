@@ -1,0 +1,167 @@
+/* ══════════════════════════════════════════════════════════
+   «Habea» харагдацын бүрхүүл — ЗӨВХӨН энэ харагдацад.
+   ⚠️ 2026-08-25 (хэрэглэгчийн хүсэлт): нэгдсэн overview.module.css-ийг
+   сэдэв тус бүрээр БҮРЭН салгав — харагдацууд хоорондоо ямар ч стайл
+   хуваалцахгүй. Графикийн хэмжээ (өндөр, мөрийн нягт г.м.)-г энд өөрчлөхөд
+   БУСАД харагдацад огт нөлөөлөхгүй тул цөөн/олон өгөгдөлтэй график бүрийг
+   өөрт нь тохируулж болно.
+   ══════════════════════════════════════════════════════════ */
+
+/* ⚠️ `--tone` нь СОНГОМОЛ: «Багцын мэдээлэл» хавтан бүрд өөрийн өнгө дамжуулдаг
+   тул дээд ирмэг нь өнгөтэй үлдэнэ. Дашбоард `--tone` дамжуулахгүй — өнгөгүй
+   (`--line`) болж, өнгө нь зөвхөн УТГА заах дүрэм хэвээр хадгалагдана. */
+/* ⚠️ 2026-08-12: «Барилгын хяналт» (tsogts)-ын Operations Dashboard индикатортой
+   100% ижил — ГОЛЛУУЛСАН том тоо дээр, ЖИЖИГ uppercase шошго доор. */
+/* ⚠️ 2026-08-17: envhub-ийн KPI нүд — ЗҮҮН зэрэгцүүлсэн, eyebrow шошго ДЭЭР
+   (`order: -1` нь DOM хөндөхгүйгээр дээш гаргана), 17px/500 тоо доор. */
+.tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 5px;
+  text-align: left;
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+}
+
+.tileLabel { order: -1; }
+
+/* ⚠️ УТГА (`b`) ба НЭГЖ (`i`) тусдаа: «≈2.4 их наяд ₮» бүхэлдээ 1.7rem-ээр
+   зурагдвал хавтангаас хальж, эхний тэмдэгт нь тайрагддаг байв. Нэгжийг жижиг
+   болгож, суурь дээр нь зэрэгцүүлбэл багтахаас гадна уншихад ч хурдан. */
+.tileVal {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0 4px;
+  min-width: 0;
+}
+
+.tileVal b {
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.tileVal i { font-style: normal; font-size: 11px; font-weight: 400; color: var(--ink-3); white-space: nowrap; }
+
+/* envhub eyebrow — `order:-1`-ээр нүдний дээд мөр болно */
+.tileLabel { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.12em; line-height: 1.25; color: var(--ink-3); }
+
+/* ⚠️ Урьд нь энд .bars/.barRow/.barTrack гэсэн ӨӨРИЙН бар диаграм байв —
+   SuitDetail одоо порталын бусад дашбоардтай ижил `ui.tsx`-ийн Bars хэрэглэдэг
+   болсон тул хасагдав (диаграмын нэгдмэл загвар). */
+/* ══════════════════ Газрын зурган дээрх удирдлага ══════════════════ */
+.legend {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 5;
+  display: flex;
+  gap: 12px;
+  max-width: calc(100% - 24px);
+  padding: 7px 10px;
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 190px;
+  font-size: 0.69rem;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+.legendItem i { width: 9px; height: 9px; flex: none; border-radius: 2px; }
+
+.legendMore { font-size: 0.69rem; font-weight: 700; font-family: var(--mono); color: var(--ink-3); }
+
+/* ══════════════════ Давхаргын самбар (газрын зураг дээр) ══════════════════ */
+/* ⚠️ Баруун ДЭЭД буланд — GIS аппуудын ердийн байрлал. Зүүн дээд нь бүсийн
+   chip, зүүн доод нь тайлбар, дээд төв нь 2D/3D солигч аль хэдийн эзэлсэн. */
+/* Дээд-төв toolbar — «Давхарга» + 2D/3D/BIM НЭГ pill дотор («Ерөнхий
+   төлөвлөгөө»-ийн `mapTools`-той ижил). Bagts-д хэрэглэгддэг `.mapDims`-ийг
+   хөндөхгүйн тулд Dashboard дотоод дим нь `.dimsInline` (pill-гүй). */
+/* «Давхарга» товч — pill доторх ил тод товч (асаалттай үед `--hue`). */
+/* Дотоод 2D/3D/BIM сегмент — pill-гүй, тунгалаг (гадна `.mapTools` pill өгнө).
+   ⚠️ background нь `.dimOn` (surface-2)-той ижил байвал идэвхтэй товч алга болно. */
+/* Каталог — «Ерөнхий төлөвлөгөө»-тэй ижил ЗҮҮН талын БҮТЭН ӨНДӨР багана
+   (голд хөвөхгүй).
+
+   ⚠️ 2026-08-23: `left: 0` БИШ, `200px`. Хэрэгслийн зурвас (`MapTools`) голоос
+   зүүн ирмэг рүү шилжиж, 176px өргөнтэй босоо багана болсон — хавтан ирмэгээс
+   эхэлбэл түүнийг бүрхэж, «Давхарга» товч руу дахин хүрэх аргагүй болно.
+   Одоо хоёулаа зэрэгцэнэ: зурвас хамгийн зүүнд, хавтан түүний баруун талд. */
+.catPanel {
+  position: absolute;
+  left: 200px;
+  top: 0;
+  bottom: 0;
+  z-index: 8;
+  width: 320px;
+  /* ⚠️ Зурвасын 200px-ыг ХАСНА — эс бөгөөс нарийн зурагт (IoT-ийн карт,
+     Газар чөлөөлөлт) хавтан баруун ирмэгээсээ халина. */
+  max-width: min(calc(100% - 212px), 340px);
+  display: flex;
+  background: var(--surface);
+  border-right: 1px solid var(--line);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  animation: catPanelIn 0.24s var(--ease) both;
+}
+
+.chipBar {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 5;
+  display: flex;
+  /* ⚠️ ХАБЭА-гийн хөндлөн шүүлт нь хэмжээс бүрд НЭГ чип гаргадаг (5 хүртэл) тул
+     мөр дүүрэхэд доош ороогдоно. Ганц чиптэй модульд (Ерөнхий мэдээлэл) энэ нь
+     ямар ч өөрчлөлт үзүүлэхгүй. */
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100% - 24px);
+}
+
+.filterChip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 5px 6px 5px 11px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  font-size: 0.78rem;
+}
+
+.filterLabel { font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+
+.filterClear {
+  display: grid;
+  place-items: center;
+  width: 19px;
+  height: 19px;
+  flex: none;
+  border-radius: 50%;
+  font-size: 1.12rem;
+  line-height: 1;
+  color: var(--ink-3);
+  transition: background 0.12s, color 0.12s;
+}
+
+.filterClear:hover { background: var(--sunken); color: var(--ink); }
