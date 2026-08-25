@@ -13,8 +13,12 @@ import assert from 'node:assert/strict';
 
 const SHEET =
   'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/Selbe_guitsetgel_consolidated/FeatureServer/0';
+/* ⚠️ 2026-08-24: monmap-ын `building_GOL_barigdaj_ehelsen` УСТСАН (алдаа 499).
+   Блокийн бүртгэл нэгтгэсэн `data`/112 руу шилжив — ижил 113 блок, `BAGTS` ба
+   `BLOK` талбар хэвээр тул нийлүүлэх түлхүүр (`buildingKey`) өөрчлөгдөөгүй.
+   OID нь `FID` → `OBJECTID` болсон. */
 const BLDG =
-  'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/building_GOL_barigdaj_ehelsen/FeatureServer/2';
+  'https://services-ap1.arcgis.com/ACqsMOmNLi5wIdIh/arcgis/rest/services/data/FeatureServer/112';
 
 // services.ts-ийн хуулбар — тэндээ өөрчилвөл ЭНДЭЭ ч өөрчил.
 const bagtsKey = (v) => String(v ?? '').toUpperCase().replace(/[^0-9А-ЯӨҮA-Z]/g, '');
@@ -43,7 +47,7 @@ async function query(url, params) {
 
 /* 1 — Барилгын давхарга ↔ хүснэгтийн блок таарч байна уу */
 
-const blocks = await query(BLDG, { where: '1=1', outFields: 'FID,BAGTS,BLOK' });
+const blocks = await query(BLDG, { where: '1=1', outFields: 'OBJECTID,BAGTS,BLOK' });
 const sheetTotals = await query(SHEET, {
   where: "dugaar='Б.' AND barilga_blok IS NOT NULL",
   outFields: 'bagts,barilga_blok,ognoo,guitsetgel',

@@ -11,18 +11,24 @@ import { LayerCatalog } from '@/components/LayerCatalog';
 import { OpacityPanel } from '@/components/OpacityPanel';
 import { MapTools } from '@/components/MapTools';
 import { useZoomToFilter } from '@/lib/useZoomToFilter';
-import { Suitability } from '@/modules/analysis/Suitability';
+import dynamic from 'next/dynamic';
 import { Dashboard } from '@/modules/Dashboard';
 import { Bagts } from '@/modules/Bagts';
 import { Tsogts } from '@/modules/Tsogts';
 import { Gazar } from '@/modules/Gazar';
-import { Finance } from '@/modules/Finance';
 import { Habea } from '@/modules/Habea';
 import { Irged } from '@/modules/Irged';
 import { Iot } from '@/modules/Iot';
-import { Guitsetgel } from '@/modules/Guitsetgel';
-import { Sheet } from '@/modules/sheet/Sheet';
-import { Tailan } from '@/modules/Tailan';
+/* ⚠️ ТОМ, ховор-эхний харагдацууд dynamic chunk (2026-08-21 гүйцэтгэлийн
+   аудит): Suitability (analysis стек), Sheet/Pivot, Tailan (+reportPdf),
+   Guitsetgel, Finance нийлээд Portal chunk-ийн parse хугацааг ~30-40%
+   нэмдэг байв. Portal нөхцөлт рендэрлэдэг тул unmount үеийн зан өөрчлөгдөхгүй;
+   эхний нээлтэд Booting-той ижил түр төлөв харагдана. */
+const Suitability = dynamic(() => import('@/modules/analysis/Suitability').then((m) => m.Suitability), { ssr: false });
+const Finance = dynamic(() => import('@/modules/Finance').then((m) => m.Finance), { ssr: false });
+const Guitsetgel = dynamic(() => import('@/modules/Guitsetgel').then((m) => m.Guitsetgel), { ssr: false });
+const Sheet = dynamic(() => import('@/modules/sheet/Sheet').then((m) => m.Sheet), { ssr: false });
+const Tailan = dynamic(() => import('@/modules/Tailan').then((m) => m.Tailan), { ssr: false });
 import { Icon } from '@/components/Icon';
 import { DocViewer } from '@/components/DocViewer';
 import { UserAdmin } from '@/components/UserAdmin';
@@ -341,7 +347,7 @@ function PortalContent(
   const standalone = !!VIEW_BY_KEY[view].standalone;
 
   const catalogIds = useMemo(
-    // ⚠️ 2026-08-20: Каталог БҮХ давхаргыг харуулдаг болсон тул тоо/өртгийн
+    // ⚠️ 2026-08-20: Каталог БҮХ давхаргыг харуулдаг болсон тул тоо/хэмжээний
     //    жагсаалт нь түүнтэй ижил байх ёстой (эс бөгөөс шинэ мөрүүд «…» хэвээр).
     () => CATALOG_LAYER_IDS,
     [view],
@@ -389,6 +395,10 @@ function PortalContent(
       l: layer,
       d: dim === '2d' ? null : dim,
     }, { push });
+    /* Сүүлд ажилласан харагдац — дараагийн session-д «Орох» дарахад Root
+       эндээс сэргээнэ (үргэлж дашбоардаас эхлэхгүй). Private горимд
+       localStorage хаалттай байж болох тул алдааг залгина. */
+    try { localStorage.setItem('selbe-last-view', view); } catch { /* хаалттай орчин */ }
   }, [view, zone, layer, dim]);
 
   /* URL → төлөв: хөтчийн Back/Forward-д харагдацыг бүтэн сэргээнэ */
@@ -441,7 +451,7 @@ function PortalContent(
   useEffect(() => {
     // tsogts — багц+хяналтын нэгдсэн харагдац тул мөн ортофототой
     // habea — кран, аюулгүйн бүсийг бодит талбай дээр нь хардаг (2026-08-12)
-    setOrtho(view === 'bagts' || view === 'monitor' || view === 'tsogts' || view === 'habea');
+    setOrtho(view === 'bagts' || view === 'monitor' || view === 'pkgFin' || view === 'pkgProg' || view === 'habea');
   }, [view, setOrtho]);
 
   /* ── Багануудын өргөн ── */
@@ -481,7 +491,9 @@ function PortalContent(
   const isHabea = view === 'habea';
   const isIot = view === 'iot';
   const isGuitsetgel = view === 'guitsetgel';
-  const isTsogts = view === 'tsogts';
+  /* Багцын хоёр харагдац — НЭГ модулиас `mode` пропоор (`services.ts` §pkgFin) */
+  const isPkgFin = view === 'pkgFin';
+  const isPkgProg = view === 'pkgProg';
   const isIrged = view === 'irged';
   // `standalone` нь эдгээрийг ЯГ тэмдэглэдэг — тусад нь тоолохгүй
   const isFull = standalone;
@@ -551,9 +563,11 @@ function PortalContent(
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/logo.svg" alt="" className={s.logo} />
+            {/* ⚠️ 2026-08-21: Дэд гарчиг ХАСАГДАВ (хэрэглэгчийн хүсэлт) — толгойд
+                зөвхөн брэндийн нэр үлдэнэ. `brandText`-ийг хэвээр үлдээв: логоны
+                хажуугийн босоо зэрэгцүүлэлт түүнээс хамаарна. */}
             <span className={s.brandText}>
-              <h1 className={s.brandName}>{tr('Сэлбэ 20 минутын хот')}</h1>
-              <span className={s.brandSub}>{tr('Ерөнхий төлөвлөгөө ба төсвийн портал')}</span>
+              <h1 className={s.brandName}>{tr('Сэлбэ ухаалаг хот')}</h1>
             </span>
           </button>
 
@@ -622,8 +636,8 @@ function PortalContent(
               ? <Dashboard dim={dim} setDim={setDim} zone={zone} setZone={setZone} />
               : isBagts
                 ? <Bagts dim={dim} setDim={setDim} />
-                : isTsogts
-                  ? <Tsogts dim={dim} setDim={setDim} />
+                : isPkgFin || isPkgProg
+                  ? <Tsogts dim={dim} setDim={setDim} mode={isPkgFin ? 'fin' : 'prog'} />
                   : isSheet
                     ? <Sheet />
                     : isTailan

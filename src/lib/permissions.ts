@@ -44,7 +44,16 @@ export type UserPerm = {
 const KEY = 'selbe-perms-v1';
 const EVENT = 'selbe-perms-change';
 
-type Store = Record<string, { views: ViewKey[] | 'all'; docs: boolean; role: Role | null }>;
+/**
+ * ⚠️ `removed` — аккаунт УСТГАГДСАН тэмдэглэгээ (tombstone). Хатуу тохиргооны
+ * (`ROLE_BY_USER`) хэрэглэгчийг кодоос хасалгүйгээр админ панелаас устгахад
+ * хэрэгтэй: энгийн delete нь суурь эрхийг нь буцааж «амилуулдаг» байв.
+ * Тэмдэглэгээтэй хэрэглэгч жагсаалтад гарахгүй, `hasAccess` нэвтрэлтийг нь
+ * татгалзана. Панелийн «Буцаах» товч тэмдэглэгээг арилгаж суурь эрхийг сэргээнэ.
+ */
+type Store = Record<string, {
+  views: ViewKey[] | 'all'; docs: boolean; role: Role | null; removed?: boolean;
+}>;
 
 /**
  * Санах ойн CACHE — sync унших цорын ганц эх сурвалж. Эхэндээ `localStorage`-оос
@@ -89,7 +98,9 @@ export async function initRemote(canCreate: boolean): Promise<void> {
   const remote = await fetchAll(canCreate);
   if (!remote) return; // ArcGIS алга — cache хэвээр
   const s: Store = {};
-  for (const [k, r] of Object.entries(remote)) s[k] = { views: r.views, docs: r.docs, role: r.role };
+  for (const [k, r] of Object.entries(remote)) {
+    s[k] = { views: r.views, docs: r.docs, role: r.role, ...(r.removed ? { removed: true } : {}) };
+  }
   cache = s;
   saveLocal(s);
   notify();
@@ -112,8 +123,13 @@ function baseline(username: string): Access | null {
  */
 export function hasAccess(username?: string | null): boolean {
   if (!username) return false;
+  // ⚠️ Тombstone-ыг ХАМГИЙН ТҮРҮҮНД: устгагдсан аккаунт хатуу жагсаалтад
+  //    байсан ч нэвтрэхгүй — эс бөгөөс «устгах» нь зөвхөн нүднээс далдлаад
+  //    нэвтрэлтэд нөлөөгүй худал аюулгүй байдал болно.
+  const ov = loadStore()[username.toLowerCase()];
+  if (ov?.removed) return false;
   if (roleForUser(username)) return true;
-  return !!loadStore()[username.toLowerCase()];
+  return !!ov;
 }
 
 /**
@@ -122,9 +138,11 @@ export function hasAccess(username?: string | null): boolean {
  */
 export function resolveAccess(username?: string | null): Access | null {
   if (!username) return null;
+  const ov = loadStore()[username.toLowerCase()];
+  // Устгагдсан аккаунт — GRANT_ALL ч эрх өгөхгүй
+  if (ov?.removed) return null;
   // ТҮР: бүх нэвтэрсэн аккаунт бүх эрхтэй
   if (GRANT_ALL) return { views: 'all', docs: true };
-  const ov = loadStore()[username.toLowerCase()];
   if (ov) return { views: ov.views, docs: ov.docs };
   return baseline(username);
 }
@@ -145,8 +163,9 @@ export function listUsers(): UserPerm[] {
       overridden: false,
     });
   }
-  // 2) Override — суурийг дарж бичих, шинэ хэрэглэгч нэмэх
+  // 2) Override — суурийг дарж бичих, шинэ хэрэглэгч нэмэх; устгагдсан нь нуугдана
   for (const [uname, ov] of Object.entries(store)) {
+    if (ov.removed) { rows.delete(uname.toLowerCase()); continue; }
     const existing = rows.get(uname.toLowerCase());
     rows.set(uname.toLowerCase(), {
       username: existing?.username ?? uname,
@@ -157,6 +176,33 @@ export function listUsers(): UserPerm[] {
     });
   }
   return [...rows.values()].sort((a, b) => a.username.localeCompare(b.username));
+}
+
+/** УСТГАГДСАН аккаунтууд — панелийн «Буцаах» жагсаалтад */
+export function listRemoved(): string[] {
+  return Object.entries(loadStore())
+    .filter(([, v]) => v.removed)
+    .map(([k]) => k)
+    .sort();
+}
+
+/**
+ * Аккаунтыг УСТГАХ.
+ * · Хатуу тохиргоотой (`ROLE_BY_USER`) хэрэглэгч — tombstone бичнэ (жагсаалтаас
+ *   нуугдаж, нэвтрэлт нь татгалзагдана; «Буцаах»-аар сэргээгдэнэ).
+ * · Панелаас нэмсэн хэрэглэгч — мөрийг бүрмөсөн арилгана (`clearOverride`-той ижил).
+ */
+export function removeUser(username: string): Promise<boolean> {
+  const key = username.toLowerCase();
+  if (roleForUser(username)) {
+    const store = { ...loadStore() };
+    store[key] = { views: [], docs: false, role: null, removed: true };
+    saveStore(store);
+    return import('./permsRemote')
+      .then((m) => m.upsert({ username, role: null, views: [], docs: false, removed: true }))
+      .catch(() => false);
+  }
+  return clearOverride(username);
 }
 
 /**

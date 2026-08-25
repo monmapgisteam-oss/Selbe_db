@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
 import { MapTools } from '@/components/MapTools';
@@ -13,12 +13,12 @@ import { useBuildings, MonitorBagts, type Block } from '@/modules/BuildingPanel'
 import { useAsync, type Async } from '@/lib/useAsync';
 import { layerTotals, qtyText, usePlanTotals } from '@/lib/totals';
 import {
-  BUILDING, PROGRESS_LEVELS, LAYER_BY_ID, PKG_BY_BAGTS, bagtsKey,
+  BUILDING, PROGRESS_LEVELS, LAYER_BY_ID, PKG_BY_BAGTS, bagtsKey, zoneWhere,
 } from '@/lib/services';
 import { num, pct, shade, tint, NO_DATA } from '@/lib/format';
 import { readParam, writeParams } from '@/lib/urlState';
 import { overlapLeftParcels, type Overlap } from '@/lib/parcelOverlap';
-import o from './overview.module.css';
+import o from './bagtsOv.module.css';
 
 /**
  * БАГЦЫН МЭДЭЭЛЭЛ — төслийн БҮХ багц нэг хуудсанд.
@@ -43,6 +43,11 @@ import o from './overview.module.css';
  */
 
 const HUE = LAYER_BY_ID['mon:building'].hue;
+
+/* Даралт хэрэглэдэггүй тул no-op — ГЭХДЭЭ inline () => {} бичвэл render бүрд
+   шинэ лавлагаа үүсч memo(MapCanvas)-ыг эвдэж зураг дэмий дахин зурагддаг.
+   Модулийн түвшний тогтмол тул үргэлж ижил. */
+const noopPick = () => {};
 const INFRA_HUE = '#0891b2';
 /** «Тодорхойгүй / задраагүй» бүлэг — жинхэнэ ангилал мэт өнгөтэй байх ёсгүй */
 const BLANK_HUE = NO_DATA;
@@ -180,7 +185,10 @@ export function Bagts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    * ⚠️ Хариу хожуу ирж БУСАД багцын үр дүнг дарж бичихээс `alive` хамгаална
    *    (хэрэглэгч хурдан дараалан сонгоход).
    */
-  const [overlap, setOverlap] = useState<Overlap | null>(null);
+  /* ⚠️ Алдааг `{oids: []}`-оор ОРЛУУЛАХГҮЙ — «0 саад» нь ногооноор «саад алга»
+     гэсэн ХАРИУЛТ болж уншигддаг тул татаж чадаагүйг жинхэнэ 0-ээс ялгаж
+     `'error'` төлөвт хадгална (KPI/картад саарлаар «тоолж чадсангүй»). */
+  const [overlap, setOverlap] = useState<Overlap | 'error' | null>(null);
   useEffect(() => {
     let alive = true;
     setOverlap(null);
@@ -201,11 +209,14 @@ export function Bagts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         ];
     overlapLeftParcels(srcs)
       .then((r) => alive && setOverlap(r))
-      .catch(() => alive && setOverlap({ oids: [] }));
+      .catch(() => alive && setOverlap('error'));
     return () => {
       alive = false;
     };
   }, [active]);
+
+  /** Амжилттай үр дүн л — зурагт/шүүлтэд алдааны төлөв «хоосон» мэт орохгүй */
+  const ovOk = overlap !== 'error' ? overlap : null;
 
   /**
    * Сонгосон багц л зурагдана; сонголтгүй бол барилгын бүх блок.
@@ -232,8 +243,8 @@ export function Bagts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    * давхарлана.
    */
   const mapVisible = useMemo(
-    () => (overlap?.oids.length ? [...new Set([...visible, PARCEL_LAYER])] : visible),
-    [visible, overlap],
+    () => (ovOk?.oids.length ? [...new Set([...visible, PARCEL_LAYER])] : visible),
+    [visible, ovOk],
   );
   /**
    * ДАВХЦСАН НЭГЖ ТАЛБАРЫН ХЭВ МАЯГ — барилгын блокоос ЯЛГАРАХ ёстой.
@@ -245,28 +256,43 @@ export function Bagts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    */
   /** Анивчих давхарга — давхцсан талбар олдсон үед л. */
   const parcelPulse = useMemo(
-    () => (overlap?.oids.length ? [PARCEL_LAYER] : undefined),
-    [overlap],
+    () => (ovOk?.oids.length ? [PARCEL_LAYER] : undefined),
+    [ovOk],
   );
 
   const parcelStyle = useMemo(
     () =>
-      overlap?.oids.length
+      ovOk?.oids.length
         ? { [PARCEL_LAYER]: { hue: '#d946ef', fill: 0.22, width: 3.4 } }
         : undefined,
-    [overlap],
+    [ovOk],
   );
 
   const layerWhere = useMemo<Record<string, string | null>>(
-    () => ({
-      [BLOCK_LAYER]: active?.where ?? null,
+    () => {
+      /* ⚠️ `layerWhere` өгөгдмөгц MapCanvas бүсийн (zone) fallback-ийг БҮХ
+         давхаргад алгасдаг (жагсаалтад БАЙХГҮЙ давхарга ч `?? null`-аар
+         шүүлтгүй болдог) тул каталогоос асаасан бүсчлэлтэй давхаргууд «Бүс»
+         сонгоход шүүгдэлгүй, каталогийн тоотойгоо зөрдөг байв. Тиймээс бүсийн
+         шүүлтийг давхарга бүрд ЭНДЭЭС өөрсдөө тавина (noZone давхаргад
+         `zoneWhere` null тул зан төрх өөрчлөгдөхгүй — тэдгээрт орон зайн маск
+         хэвээр үйлчилнэ). */
+      const w: Record<string, string | null> = {};
+      if (zone) {
+        for (const id of mapVisible) {
+          const d = LAYER_BY_ID[id];
+          if (d) w[id] = zoneWhere(d, zone);
+        }
+      }
+      w[BLOCK_LAYER] = active?.where ?? null;
       // ⚠️ Давхаргад 2,119 талбар бий — ЗӨВХӨН давхцсаныг үлдээнэ, эс бөгөөс
       //    бүх хот дүүрэн парсел зурагдаж блокууд дарагдана.
-      [PARCEL_LAYER]: overlap?.oids.length
-        ? `OBJECTID IN (${overlap.oids.join(',')})`
-        : null,
-    }),
-    [active, overlap],
+      w[PARCEL_LAYER] = ovOk?.oids.length
+        ? `OBJECTID IN (${ovOk.oids.join(',')})`
+        : null;
+      return w;
+    },
+    [active, ovOk, zone, mapVisible],
   );
 
   // Багц сонгоход түүний объект руу ниснэ; цуцлахад бүх блок руу холдоно
@@ -325,7 +351,7 @@ export function Bagts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           layerWhere={layerWhere}
           layerStyle={parcelStyle}
           pulseIds={parcelPulse}
-          onPick={() => {}}
+          onPick={noopPick}
         />
 
         <MapTools
@@ -474,8 +500,12 @@ export function PackKpi({
 }: {
   active: Pack | null;
   packs: Pack[];
-  /** Багцтай давхцсан үлдсэн нэгж талбар — `null` бол хараахан ачаалж байна. */
-  overlap?: Overlap | null;
+  /**
+   * Багцтай давхцсан үлдсэн нэгж талбар — `null` бол хараахан ачаалж байна,
+   * `'error'` бол тоолж ЧАДААГҮЙ (0-ээр орлуулбал «саад алга» гэсэн худал
+   * сайн мэдээ болно).
+   */
+  overlap?: Overlap | 'error' | null;
 }) {
   const scope = active ? [active] : packs;
   const blocks = scope.reduce((s, p) => s + p.blocks.length, 0);
@@ -493,11 +523,14 @@ export function PackKpi({
   //    «Багцын хяналт»-д энэ тоо ДООД санхүүжилтийн картад зөөгдсөн.
   const blockTile = overlap !== undefined
     ? [
-      {
-        v: overlap == null ? '…' : num(overlap.oids.length),
-        l: tr('давхцсан үлдсэн нэгж талбар'),
-        c: overlap?.oids.length ? '#e11d48' : '#16a34a',
-      },
+      overlap === 'error'
+        /* Алдаа ≠ «0 саад»: ногоон хариултын оронд саарлаар ил хэлнэ */
+        ? { v: '—', l: tr('давхцал тоолж чадсангүй'), c: 'var(--ink-3)' }
+        : {
+          v: overlap == null ? '…' : num(overlap.oids.length),
+          l: tr('давхцсан үлдсэн нэгж талбар'),
+          c: overlap?.oids.length ? 'var(--bad-ink)' : 'var(--good-ink)',
+        },
     ]
     : [];
 
@@ -510,7 +543,7 @@ export function PackKpi({
       { v: progress == null ? '—' : pct(progress, 1), l: tr('гүйцэтгэл'), c: levelColor(progress) },
       { v: num(blocks), l: tr('блок'), c: HUE },
       { v: num(households), l: tr('айл'), c: HUE },
-      { v: num(layers), l: tr('дэд бүтцийн давхарга'), c: '#0891b2' },
+      { v: num(layers), l: tr('дэд бүтцийн давхарга'), c: 'var(--data)' },
       ...blockTile,
     ];
 
@@ -574,15 +607,36 @@ export function BlocksCard({
   defaultOpen?: boolean;
   /**
    * Багцын ДАВХЦСАН ҮЛДСЭН НЭГЖ ТАЛБАРЫН тоо — өгвөл нээхэд блокуудын ДЭЭР
-   * гарна (`null` = ачаалж байна). FinCard-ын нэгдсэн индикаторыг багцаар
-   * задалж энд зөөв (2026-08-21).
+   * гарна (`null` = ачаалж байна, `'error'` = тоолж чадаагүй — 0-оор
+   * орлуулбал «саад алга» гэсэн худал сайн мэдээ болно). FinCard-ын нэгдсэн
+   * индикаторыг багцаар задалж энд зөөв (2026-08-21).
    */
-  overlapN?: number | null;
+  overlapN?: number | 'error' | null;
 }) {
   const withData = p.blocks.filter((b) => b.progress != null).length;
   const { zoomToWhere, setHighlight } = useMap();
   /** Сонгосон блок — дарахад зурагт тодруулж ойртоно, дахин дарахад болино */
   const [selOid, setSelOid] = useState<string | null>(null);
+  /**
+   * ⚠️ Тодруулга ХОЦРОХООС сэргийлнэ (ViewPanel §LayerDashboard-ын загвар).
+   * Блок тодруулсан хэвээр багц солиход/карт unmount болоход хуучин OID-той
+   * featureEffect зурган дээр үлдэж, шинэ багцын шүүлтэд тэр OID байхгүй тул
+   * БҮХ блок бүдгэрч, цуцлах удирдлага ч гарахгүй байв. Cleanup нь ЗӨВХӨН
+   * өөрийн тавьсан тодруулгыг арилгана (ref-ээр шалгана) — эс бөгөөс Tsogts-д
+   * зураг дээрх барилга-даралтын тодруулгыг дайрч цэвэрлэнэ.
+   */
+  const selRef = useRef(selOid);
+  selRef.current = selOid;
+  useEffect(() => () => { if (selRef.current != null) setHighlight(null); }, [setHighlight]);
+  const prevPackRef = useRef(p.key);
+  useEffect(() => {
+    if (prevPackRef.current === p.key) return;
+    prevPackRef.current = p.key;
+    if (selRef.current != null) {
+      setSelOid(null);
+      setHighlight(null);
+    }
+  }, [p.key, setHighlight]);
   const pick = (key: string) => {
     const off = selOid === key;
     setSelOid(off ? null : key);
@@ -591,15 +645,43 @@ export function BlocksCard({
     setHighlight(w, BLOCK_LAYER);
     zoomToWhere(BLOCK_LAYER, w);
   };
+  /**
+   * ТОЛГОЙН БАРУУН ГАРЫН ТЭМДЭГЛЭЛ.
+   *
+   * ⚠️ 2026-08-23 (хэрэглэгчийн хүсэлт): «20/20 бүртгэлтэй» гэсэн блокийн
+   * тооллогын ОРОНД ДАВХЦСАН ҮЛДСЭН НЭГЖ ТАЛБАРЫН тоо. Багцын картууд
+   * АНХНААСАА ХААЛТТАЙ эхэлдэг тул саадын тоо урьд нь картыг нээж үзсэн хүнд
+   * л харагддаг байв — одоо жагсаалтыг гүйлгэхэд багц БҮРИЙНХ шууд уншигдана.
+   *
+   * ⚠️ `overlapN` өгөөгүй үед (сонгосон багцын дотоод карт) хуучин тооллого
+   * ХЭВЭЭР: тэнд давхцлын тоо картын дотор аль хэдийн байдаг тул толгойд
+   * давхардуулах шаардлагагүй.
+   *
+   * ⚠️ Өнгө нь УЛААН (`--bad-ink`), ягаан (`--overlap`) БИШ — хэрэглэгчийн
+   * шийдвэр. Тэг үед ногоон: саадгүй нь сайн мэдээ.
+   */
+  const note = overlapN === undefined
+    ? tr('{0}/{1} бүртгэлтэй', num(withData), num(p.blocks.length))
+    : overlapN == null
+      ? tr('давхцал тоолж байна…')
+      : overlapN === 'error'
+        /* Алдаа ≠ «0 давхцсан» — ногоон сайн мэдээний оронд саарлаар ил хэлнэ */
+        ? <span style={{ color: 'var(--ink-3)' }}>{tr('давхцал тоолж чадсангүй')}</span>
+        : (
+          <span style={{ color: overlapN ? 'var(--bad-ink)' : 'var(--good-ink)' }}>
+            {tr('{0} давхцсан талбар', num(overlapN))}
+          </span>
+        );
+
   return (
-    <Section title={title} collapsible={collapsible} defaultClosed={collapsible && !defaultOpen} note={tr('{0}/{1} бүртгэлтэй', num(withData), num(p.blocks.length))}>
+    <Section title={title} collapsible={collapsible} defaultClosed={collapsible && !defaultOpen} note={note}>
       {overlapN !== undefined && (
         <>
           {/* ДАВХЦЛЫН мэдээлэл — хайрцаглаж, доорх блокийн жагсаалтаас
               нүдээр илт зааглана. Тоо >0 бол шар аяс — ажилд саад буй. */}
-          <div className={`${o.ovStrip} ${overlapN ? o.ovStripOn : ''}`}>
-            <span>{tr('Давхцсан үлдсэн нэгж талбар')}</span>
-            <b className="num">{overlapN == null ? '…' : num(overlapN)}</b>
+          <div className={`${o.ovStrip} ${typeof overlapN === 'number' && overlapN ? o.ovStripOn : ''}`}>
+            <span>{overlapN === 'error' ? tr('Давхцал тоолж чадсангүй') : tr('Давхцсан үлдсэн нэгж талбар')}</span>
+            <b className="num">{overlapN == null ? '…' : overlapN === 'error' ? '—' : num(overlapN)}</b>
           </div>
           {/* Жагсаалтын карт («Багц N — блокууд») дээр доорх мөрүүд ЮУ болохыг
               нэрлэнэ; сонгосон багцын картад гарчиг нь өөрөө хэлдэг тул хэрэггүй */}
@@ -677,15 +759,25 @@ export function LayersCard({ p }: { p: Pack }) {
   );
 }
 
+/* Давхарга бүрийн нийлбэрийн сесс-кэш (2026-08-21 гүйцэтгэлийн аудит):
+   нэг багцыг дахин сонгоход ижил stat-асуулгууд дахин явдаг байв. Дүн нь
+   сессийн турш тогтвортой; амжилтгүйг кэшлэхгүй. */
+const pkgTotalCache = new Map<string, Promise<{ title: string; n: number; qty: string | null }>>();
+
 /** Сонгосон багцын давхарга бүрийн тоо ба хэмжээ — сонголт солигдох бүрд */
 function usePkgTotals(ids: string[]): Async<{ title: string; n: number; qty: string | null }[]> {
   const key = ids.join(',');
   return useAsync(async () => {
     if (!ids.length) return [];
-    return Promise.all(ids.map(async (id) => {
-      const d = LAYER_BY_ID[id];
-      const t = await layerTotals(d, '1=1');
-      return { title: d.title, n: t.n, qty: qtyText(d, t.q) };
+    return Promise.all(ids.map((id) => {
+      let p = pkgTotalCache.get(id);
+      if (!p) {
+        const d = LAYER_BY_ID[id];
+        p = layerTotals(d, '1=1').then((t) => ({ title: d.title, n: t.n, qty: qtyText(d, t.q) }));
+        p.catch(() => pkgTotalCache.delete(id));
+        pkgTotalCache.set(id, p);
+      }
+      return p;
     }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);

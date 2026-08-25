@@ -116,7 +116,6 @@ export function resolveSource(id: string, scope: AgentScope): AgentSource | null
 function layerLine(l: LayerDef): string {
   const bits: string[] = [`- \`${l.id}\` «${l.title}» [${topicTitle(l.topic)}/${l.geom}]`];
   if (l.qty) bits.push(tr('хэмжээ:{0}({1})', l.qty.field, l.qty.unit));
-  if (l.cost) bits.push(tr('нэгж үнэ:{0}({1})', l.cost.field, l.cost.basis));
   if (l.facets?.length) bits.push(tr('ангилал:{0}', l.facets.map((f) => f.field).join(',')));
   if (l.breaks) bits.push(tr('завсар:{0}', l.breaks.field));
   if (l.noZone) bits.push(tr('⚠ZONE_ID байхгүй'));

@@ -1224,6 +1224,13 @@ export const MapCanvas = memo(function MapCanvas({
   const mapRef = useRef<Map | null>(null);
   const viewRef = useRef<AnyView | null>(null);
   const bimWidgetRef = useRef<BuildingExplorer | null>(null);
+  /**
+   * BIM удирдлагыг боосон `Expand` — виджет өөрөө нь `bimWidgetRef`-д.
+   * ⚠️ ХОЁУЛАА хэрэгтэй: `Expand.destroy()` нь `content`-оо устгадаггүй тул
+   * зөвхөн Expand-ыг устгавал BuildingExplorer санах ойд үлдэж, горим солих
+   * бүрд шинэ виджет нэмэгдсээр байна.
+   */
+  const bimExpandRef = useRef<Expand | null>(null);
   const sketchVMRef = useRef<SketchViewModel | null>(null);
   const pickRef = useRef(onPick);
   pickRef.current = onPick;
@@ -1652,7 +1659,6 @@ export const MapCanvas = memo(function MapCanvas({
         // Дээд талынхыг ЭХЭЛЖ шалгана: цэг → шугам → талбай
         .sort((a, b) => drawOrder(String(b.id)) - drawOrder(String(a.id)));
       if (!cand.length) return null;
-      const ids = cand.map(({ id }) => id);
 
       const wkid = mapPoint.spatialReference?.wkid ?? 102100;
       const aoi: Aoi = {
@@ -1662,33 +1668,55 @@ export const MapCanvas = memo(function MapCanvas({
         distance: tolerance,
       };
 
-      const rows = await Promise.all(
-        cand.map(({ l, id }) =>
+      /**
+       * ⚠️ 3-ААР БАГЦАЛЖ, эхний олдвор дээр ЗОГСОНО (2026-08-21 гүйцэтгэлийн
+       * аудит): урьд нь бүх ил давхаргад (план дээр ~14, каталогтой 20+) ЗЭРЭГ
+       * асуулга явуулаад зөвхөн эхнийхийг нь авдаг байв — сул товшилт бүр
+       * ~14-20 хүсэлт үрж, 6 слотын хязгаарлагчаар бусад картын асуулгыг
+       * хойшлуулна. Хэрэглэгчийн онилдог цэг/шугам зурах эрэмбийн дээр тул
+       * ихэнхдээ эхний багцаар шийдэгдэнэ; бүрэн хоосон газар л бүх давхаргыг
+       * туулна (бүрхэлт хэвээр — гүнзгий давхарга ч сонгогдоно).
+       */
+      const BATCH = 3;
+      for (let i = 0; i < cand.length; i += BATCH) {
+        const batch = cand.slice(i, i + BATCH);
+        const rows = await Promise.all(batch.map(({ l, id }) =>
           queryFeatures(layerUrl(LAYER_BY_ID[id]), {
             aoi,
             limit: 1,
             where: (l as __esri.FeatureLayer).definitionExpression || '1=1',
-          }).catch(() => []),
-        ),
-      );
-      for (let i = 0; i < ids.length; i++) {
-        if (rows[i].length) return { attrs: rows[i][0] as Record<string, unknown>, id: ids[i] };
+          }).catch(() => [] as Record<string, unknown>[]),
+        ));
+        for (let k = 0; k < batch.length; k++) {
+          if (rows[k].length) return { attrs: rows[k][0] as Record<string, unknown>, id: batch[k].id };
+        }
       }
       return null;
     };
 
     // ⚠️ `e`-г ИЛ бичнэ: `view` нь MapView|SceneView нэгдэл тул `on()`-ийн
     // overload шийдэгдэхгүй бөгөөд параметр чимээгүй `any` болно.
+    /**
+     * ⚠️ Даралтын ДАРААЛЛЫН токен. `pickByQuery` нь 6 слотын хязгаарлагчаар
+     * цувдаг удаан REST асуулга тул хоцорсон хариу нь ДАРААГИЙН даралтын
+     * сонголтыг дарж бичдэг байв: сул газар (удаан fallback) → объект дээр
+     * дараалан дарахад 1-ийн хожуу ирсэн `null` нь сая нээгдсэн самбарыг
+     * хаана. Зөвхөн СҮҮЛЧИЙН даралтын үр дүн `pickRef`-д хүрнэ.
+     */
+    let clickSeq = 0;
     const click = view.on('click', (e: __esri.ViewClickEvent) => {
+      const seq = ++clickSeq;
       view.hitTest(e)
         .then(async (r) => {
+          // Хоцорсон hitTest — шинэ даралт аль хэдийн явж байна
+          if (seq !== clickSeq) return;
           const hit = pickHit(r);
           if (hit) { pickRef.current(hit.attrs, hit.id); return; }
           if (view.destroyed || !e.mapPoint) { pickRef.current(null, null); return; }
           // ≈6 пикселийн хүлцэл — нимгэн шугам, жижиг цэгийг барихад хангалттай
           const tol = Math.max(2, (view.resolution || 1) * 6);
           const q = await pickByQuery(e.mapPoint, tol);
-          if (!view.destroyed) pickRef.current(q?.attrs ?? null, q?.id ?? null);
+          if (!view.destroyed && seq === clickSeq) pickRef.current(q?.attrs ?? null, q?.id ?? null);
         })
         .catch(() => {/* view устгагдсан — сонголт өөрчлөгдөхгүй */});
     });
@@ -1735,8 +1763,35 @@ export const MapCanvas = memo(function MapCanvas({
   /**
    * Компонент салахад Map-ыг УСТГАХГҮЙ — `mapCache`-д үлдэж дараагийн харагдацад
    * дахин ашиглагдана (view нь [dim] эффектийн cleanup-д тусад нь устна).
+   *
+   * ⚠️ Map амьд үлддэг УЧРААС энэ харагдацын түр дарлагуудыг ЭНД буцаана —
+   * `styleBackup`/`defaultOpacityRef` нь КОМПОНЕНТЫН ref тул unmount-д хамт
+   * устаж, буцаах өөр боломж үлддэггүй:
+   *   · renderer дарлага (`layerStyle`) — эс бөгөөс Багцын ягаан нэгж талбар
+   *     дараагийн харагдацад үлдэж, Tsogts бүр түүнийг «анхны» гэж нөөцөлснөөр
+   *     хуудас refresh хийтэл засрахгүй байв;
+   *   · тунгалагийн override — эс бөгөөс 20% болгосон давхаргыг дараагийн
+   *     mount 20%-ийг «анхдагч» гэж бүртгэж, webmap-ийн жинхэнэ opacity
+   *     session дуустал алдагдана.
+   * (Энэ effect [dim] effect-ээс ХОЙНО зарлагдсан тул cleanup нь view устсаны
+   * дараа, `mapRef` хоосорхоос ӨМНӨ ажиллана.)
    */
-  useEffect(() => () => { mapRef.current = null; }, []);
+  useEffect(() => () => {
+    const map = mapRef.current;
+    if (map) {
+      for (const [id, r] of Object.entries(styleBackup.current)) {
+        const fl = map.findLayerById(id) as FeatureLayer | null;
+        if (fl && 'renderer' in fl) fl.renderer = r as FeatureLayer['renderer'];
+      }
+      for (const [id, v] of Object.entries(defaultOpacityRef.current)) {
+        const l = map.findLayerById(id);
+        if (l && 'opacity' in l) l.opacity = v;
+      }
+    }
+    styleBackup.current = {};
+    defaultOpacityRef.current = {};
+    mapRef.current = null;
+  }, []);
 
   /**
    * 3D давхаргуудыг ЗӨВХӨН тохирох горимд газрын зурагт байлгана.
@@ -1943,9 +1998,13 @@ export const MapCanvas = memo(function MapCanvas({
     if (!map || !view || !ready) return;
 
     const clear = () => {
-      if (bimWidgetRef.current) {
+      if (bimExpandRef.current) {
         // ⚠️ view устсан бол `view.ui` null — эхлээд шалгана (unmount-д эвдрэхгүй)
-        if (!view.destroyed) view.ui.remove(bimWidgetRef.current);
+        if (!view.destroyed) view.ui.remove(bimExpandRef.current);
+        bimExpandRef.current.destroy();
+        bimExpandRef.current = null;
+      }
+      if (bimWidgetRef.current) {
         bimWidgetRef.current.destroy();
         bimWidgetRef.current = null;
       }
@@ -1960,10 +2019,53 @@ export const MapCanvas = memo(function MapCanvas({
 
     clear();
     const widget = new BuildingExplorer({ view: view as SceneView, layers });
-    view.ui.add(widget, 'top-right');
+    /**
+     * ⚠️ 2026-08-23: `Expand`-д БООВ (хэрэглэгчийн хүсэлт). Урьд нь виджет
+     * баруун дээд буланд ЗАДГАЙ нэмэгддэг байсан тул 12 барилгын давхар,
+     * дисциплин, категорийн мод нь зургийн баруун талыг байнга эзэлж, BIM
+     * горимд загвараа харах талбай эрс багасдаг байв. Одоо жижиг дүрс —
+     * дарахад л задарна (суурь зураг, хэмжилт, слайдтай ижил хэв маяг).
+     */
+    const expand = new Expand({
+      view,
+      content: widget,
+      expandIcon: 'layers',
+      expandTooltip: tr('BIM давхаргын удирдлага'),
+      collapseTooltip: tr('Хаах'),
+      mode: 'floating',
+    });
+    /* ⚠️ ЭНД `view.ui.add` ХИЙХГҮЙ — байрлуулалт нь доорх ТУСДАА effect-д.
+       Шалтгааныг тэндхийн тайлбараас үз (виджетийн эрэмбэ). */
     bimWidgetRef.current = widget;
+    bimExpandRef.current = expand;
 
-    return clear;
+    /**
+     * «ARCHITECTURAL» ДИСЦИПЛИН — ҮРГЭЛЖ АСААЛТТАЙ (хэрэглэгчийн хүсэлт).
+     *
+     * ⚠️ Давхарга ачаалагдсаны ДАРАА л `allSublayers` дүүрдэг — `when()`-гүйгээр
+     * шууд уншвал жагсаалт ХООСОН байх бөгөөд алдаа ч өгөхгүй, зүгээр л юу ч
+     * болохгүй өнгөрнө.
+     *
+     * ⚠️ Бүлгийг асаахад ХАНГАЛТГҮЙ: бүлгийн `visible` нь зөвхөн хаалт бөгөөд
+     * доторх бүрэлдэхүүн давхарга бүр өөрийн `visible`-тэй. Тиймээс бүлэг ба
+     * хүүхдүүдийг нь ХОЁУЛАНГ нь асаана.
+     */
+    let stale = false;
+    for (const l of layers) {
+      l.when(() => {
+        if (stale) return;
+        const arch = l.allSublayers.find(
+          (sl) => /architectural/i.test(sl.modelName ?? ''),
+        );
+        if (!arch) return;
+        arch.visible = true;
+        const kids = (arch as __esri.BuildingGroupSublayer).sublayers;
+        kids?.forEach((k) => { k.visible = true; });
+        // ⚠️ Алдааг залгина — нэг барилга ачаалагдахгүй бол бусад нь хэвийн
+      }).catch(() => {});
+    }
+
+    return () => { stale = true; clear(); };
   }, [dim, ready]);
 
   /**
@@ -1998,7 +2100,11 @@ export const MapCanvas = memo(function MapCanvas({
       tools.map(async (t) => {
         t.av = (await sv.whenAnalysisView(t.analysis as never)) as unknown as AV;
       }),
-    );
+    ).catch((err) => {
+      // ⚠️ dim хурдан солигдож view устахад reject ХЭВИЙН — чимээгүй; бусад нь
+      //    жинхэнэ уналт тул unhandled rejection болгохгүй, ил тэмдэглэнэ.
+      if (!view.destroyed) console.error('[analysis]', err);
+    });
 
     let active: Tool | null = null;
     let abort: AbortController | null = null;
@@ -2190,6 +2296,9 @@ export const MapCanvas = memo(function MapCanvas({
         },
         { initial: true },
       );
+    }).catch((err) => {
+      // dim солигдож view устахад reject хэвийн — зөвхөн амьд view-ийн уналтыг мэдээлнэ
+      if (!disposed && !view.destroyed) console.error('[volume]', err);
     });
     vPlace.addEventListener('click', async () => {
       vAbort?.abort();
@@ -2219,8 +2328,21 @@ export const MapCanvas = memo(function MapCanvas({
     panelS.append(listDiv);
 
     // Слайд бүр — thumbnail зураг + нэр + огноо + × устгах (Esri sample шиг)
+    /**
+     * Порталын нэг дүрэм — mn-MN («2026.07.14»); урьд нь en-GB (DD/MM/YYYY)
+     * байж өдөр/сар андуурагдахаар байв.
+     * ⚠️ `timeZone:'UTC'`-г ЗААВАЛ хадгална: энэ нь нарны гэрэлтүүлгийн UTC
+     * агшин тул хаявал Монголд +8 цагаар шилжиж нарны цаг буруу харагдана.
+     */
     const fmtSlideDate = (d?: Date) => {
-      try { return d ? d.toLocaleString('en-GB', { timeZone: 'UTC' }) : ''; } catch { return ''; }
+      try {
+        return d
+          ? d.toLocaleString('mn-MN', {
+            year: 'numeric', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit', timeZone: 'UTC',
+          })
+          : '';
+      } catch { return ''; }
     };
     const addSlideRow = (slide: Slide) => {
       const row = mk('div', 'display:flex;align-items:center;gap:9px;padding:7px;border:1px solid var(--line);'
@@ -2259,16 +2381,25 @@ export const MapCanvas = memo(function MapCanvas({
     const createBtn = mk('button', 'flex:none;padding:7px 13px;border-radius:7px;border:1px solid transparent;'
       + 'background:var(--hue);color:#fff;font-size:0.78rem;font-weight:600;cursor:pointer', tr('Үүсгэх')) as HTMLButtonElement;
     addRow.append(nameInput, createBtn);
-    addWrap.append(addRow);
+    // Снапшот унахад товч «юу ч хийгээгүй» мэт чимээгүй байсан — алдааг ил хэлнэ
+    const slideErr = mk('div', 'display:none;font-size:0.7rem;color:var(--bad-ink)',
+      tr('Слайд үүсгэж чадсангүй — дахин оролдоно уу.'));
+    addWrap.append(addRow, slideErr);
     panelS.append(addWrap);
 
     createBtn.addEventListener('click', () => {
+      slideErr.style.display = 'none';
       void Slide.createFrom(sv).then((slide) => {
         if (disposed) return;
         slide.title.text = nameInput.value.trim() || tr('Слайд {0}', slides.length + 1);
         slides.push(slide);
         addSlideRow(slide);
         nameInput.value = '';
+      }).catch((err) => {
+        // Харагдац солигдох агшны уналт хэрэглэгчид хамаагүй — амьд панел дээр л мэдэгдэнэ
+        if (disposed || view.destroyed) return;
+        slideErr.style.display = 'block';
+        console.error('[slide]', err);
       });
     });
 
@@ -2290,6 +2421,32 @@ export const MapCanvas = memo(function MapCanvas({
       expandV.destroy();
       expandS.destroy();
     };
+  }, [dim, ready]);
+
+  /**
+   * BIM УДИРДЛАГЫГ ВИДЖЕТИЙН БАГЦЫН ХАМГИЙН ДООР БАЙРЛУУЛНА
+   * (хэрэглэгчийн хүсэлт, 2026-08-23).
+   *
+   * ⚠️ ЯАГААД ТУСДАА EFFECT ВЭ. `view.ui.add` нь баруун дээд багцад ДУУДАГДСАН
+   * дарааллаараа өрдөг бөгөөд React нь effect-үүдийг ЗАРЛАГДСАН дарааллаар
+   * ажиллуулдаг. BIM-ийн виджетийг үүсгэдэг effect нь шинжилгээ · эзлэхүүн ·
+   * слайдынхаас ӨМНӨ зарлагдсан тул тэрхүү effect дотроо нэмбэл BIM нь
+   * тэдгээрийн ДЭЭР гарч, багцын дундад үлдэнэ. Энэ effect нь тэднээс ХОЙНО
+   * зарлагдсан тул нэмэлт нь эцэст буюу хамгийн доор очно:
+   *
+   *   суурь зураг · дэлгэц дүүрэн · шинжилгээ · эзлэхүүн · слайд · **BIM**
+   *
+   * ⚠️ `bimExpandRef` нь дээрх effect-д ЯГ ЭНЭ КОММИТ дотор бөглөгддөг —
+   * ref нь хувьсагч тул энд уншихад аль хэдийн бэлэн байна.
+   */
+  useEffect(() => {
+    const view = viewRef.current;
+    const expand = bimExpandRef.current;
+    if (!view || !ready || dim !== 'bim' || !expand) return;
+    view.ui.add(expand, 'top-right');
+    // ⚠️ Хоёр газраас устгагдаж болно (дээрх `clear` ба энд) — `remove` нь
+    //    байхгүй бүрэлдэхүүн дээр аюулгүй, юу ч хийхгүй өнгөрнө.
+    return () => { if (!view.destroyed) view.ui.remove(expand); };
   }, [dim, ready]);
 
   /**
@@ -2614,7 +2771,7 @@ export const MapCanvas = memo(function MapCanvas({
         l.visible = dim === '2d' && (on.size === 0 || on.has(String(l.id)));
       } else if (is3D(dim) && PLAN2D_ALIASED.has(String(l.id))) {
         /**
-         * План2d ALIAS style-тай давхаргууд (dugui, nogoon, tree, et:24…) — renderer
+         * План2d ALIAS style-тай давхаргууд (dugui, nogoon, et:24, et:27, et:29) — renderer
          * нь зурган текстур (esriPFS/esriPMS) тул SceneView-д дэмжигдэхгүй. 3D/BIM-д
          * НУУНА: асаалттай орхивол «picture-fill is unsupported in 3D» алдаа асгарна.
          */
@@ -2874,7 +3031,7 @@ export const MapCanvas = memo(function MapCanvas({
       {tip && <MapTip x={tip.x} y={tip.y} id={tip.id} attrs={tip.attrs} prog={blockProg} />}
 
       {/* ⚠️ Газрын зураг дээрх «Тайлбар» хайрцгийг ХАССАН: давхаргын каталог
-          багана нь симбол, тоо, өртгийг аль хэдийн хажууд нь харуулж байгаа тул
+          багана нь симбол, тоо, хэмжээг аль хэдийн хажууд нь харуулж байгаа тул
           зураг дээр үгээр давтах нь зургийн талбайг л иддэг байв. */}
       {children}
     </div>

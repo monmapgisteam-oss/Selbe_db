@@ -16,7 +16,7 @@ import {
 } from '@/lib/query';
 import { GAZAR_BUILDING, GAZAR_PARCEL, PARCEL_LEFT } from '@/lib/services';
 import { num, text, shades, CAT_LIGHT, NO_DATA } from '@/lib/format';
-import o from './overview.module.css';
+import o from './gazarOv.module.css';
 import { SplitGrip, useSideResize } from '@/components/SplitGrip';
 import g from './gazar.module.css';
 
@@ -46,9 +46,12 @@ const FILTER_IDS = ['land:left', 'gazar:building', 'gazar:parcel'];
  *  завсрын «Цэвэрлэсэн» нь төвийг сахисан өгөгдлийн өнгө var(--data).
  *  Урьдын чимэглэлийн hex (#22c55e/#0ea5e9/#e11d48) хасагдсан. */
 const STATUS_META = [
-  { value: tr('Бүрэн чөлөөлсөн'), label: tr('Бүрэн чөлөөлсөн'), color: 'var(--good)' },
-  { value: tr('Цэвэрлэсэн нэгж талбар'), label: tr('Цэвэрлэсэн'), color: 'var(--data)' },
-  { value: tr('Үлдсэн нэгж талбар'), label: tr('Үлдсэн'), color: 'var(--bad)' },
+  /* ⚠️ value = өгөгдлийн ТҮҮХИЙ утга (Tuluv) — tr()-ээр ОРЧУУЛАХГҮЙ: smap-ийн
+     түлхүүр түүхий тул EN горимд tr() утгаар хайвал таарахгүй, чөлөөлөлт 0%
+     болдог байв. Зөвхөн шошго (label) орчуулагдана. */
+  { value: 'Бүрэн чөлөөлсөн', label: tr('Бүрэн чөлөөлсөн'), color: 'var(--good)' },
+  { value: 'Цэвэрлэсэн нэгж талбар', label: tr('Цэвэрлэсэн'), color: 'var(--data)' },
+  { value: 'Үлдсэн нэгж талбар', label: tr('Үлдсэн'), color: 'var(--bad)' },
 ] as const;
 
 /**
@@ -247,7 +250,7 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     for (const r of lStatus) {
       const raw = String(r[L.fields.status] ?? ''); // түүхий утга — WHERE-д яг таарна
       let k = text(r[L.fields.status]).trim();
-      if (!k || k === '—') k = tr('Тодорхойгүй');
+      if (!k || k === '—') k = 'Тодорхойгүй'; // түүхий түлхүүр — дэлгэцэд tr()
       const cur = smap.get(k) ?? { n: 0, a: 0, raws: new Set<string>() };
       cur.n += Number(r.n ?? 0);
       cur.a += Number(r.a ?? 0);
@@ -255,9 +258,9 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       smap.set(k, cur);
     }
     const st = (value: string) => smap.get(value) ?? { n: 0, a: 0, raws: new Set<string>() };
-    const cleared = st(tr('Бүрэн чөлөөлсөн'));
-    const cleaned = st(tr('Цэвэрлэсэн нэгж талбар'));
-    const remaining = st(tr('Үлдсэн нэгж талбар'));
+    const cleared = st('Бүрэн чөлөөлсөн');
+    const cleaned = st('Цэвэрлэсэн нэгж талбар');
+    const remaining = st('Үлдсэн нэгж талбар');
     // Мэдэгдэж буй 3 төлөв ЭХЭНД (тогтмол өнгө/дараалал), бусад нь тоогоор нь араас.
     const statusAreaBy: StatusBars = [...smap.entries()]
       .sort((x, y) => {
@@ -279,7 +282,7 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         // Тоо ба нэгж (га) ХАМТ — «1,703 талбар · 78.08 га»
         return {
           key: value,
-          label: STATUS_LABEL[value] ?? value,
+          label: STATUS_LABEL[value] ?? tr(value),
           value: ha2,
           display: tr('{0} талбар · {1} га', num(s.n), num(ha2, 2)),
           // Гэнэтийн шинэ төлөв — утга нь үл мэдэгдэх тул төвийг сахисан өгөгдлийн өнгө
@@ -293,7 +296,7 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     for (const r of lReason) {
       const raw = String(r[L.fields.progress] ?? '');
       let k = text(r[L.fields.progress]).trim().replace(/\.$/, '').trim();
-      if (!k || k === '—') k = tr('Тодорхойгүй');
+      if (!k || k === '—') k = 'Тодорхойгүй'; // түүхий түлхүүр — дэлгэцэд tr()
       const cur = rmap.get(k) ?? { n: 0, a: 0, raws: new Set<string>() };
       cur.n += Number(r.n ?? 0);
       cur.a += Number(r.a ?? 0);
@@ -423,7 +426,7 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                       selected={selReason}
                       onSelect={pickReason}
                       items={d.reasons.map((r) => ({
-                        key: r.key, label: r.label, value: r.n,
+                        key: r.key, label: tr(r.label), value: r.n,
                         display: tr('{0} талбар · {1}%', num(r.n), r.pct), color: r.color,
                       }))}
                     />
@@ -434,7 +437,7 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                       selected={selReason}
                       onSelect={pickReason}
                       items={d.reasons.map((r) => ({
-                        key: r.key, label: r.label, value: r.pct,
+                        key: r.key, label: tr(r.label), value: r.pct,
                         display: tr('{0}% · {1} талбар', r.pct, num(r.n)), color: r.color,
                       }))}
                     />
@@ -446,7 +449,7 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                       items={[...d.reasons]
                         .sort((a, b) => b.area - a.area)
                         .map((r) => ({
-                          key: r.key, label: r.label, value: r.area,
+                          key: r.key, label: tr(r.label), value: r.area,
                           display: tr('{0} га · {1} талбар', num(r.area, 2), num(r.n)), color: r.color,
                         }))}
                     />
@@ -502,7 +505,7 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         {catOpen && (
           <div className={o.catPanel}>
             <LayerCatalog
-              view="plan"
+              view="gazar"
               totals={catTotals}
               visible={visible}
               setVisible={setVisible}

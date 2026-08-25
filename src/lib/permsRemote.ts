@@ -15,7 +15,18 @@
 import { AUTH, type Role, type ViewKey } from './services';
 import { t as tr } from '@/lib/i18nCore';
 
-export type RemoteRow = { username: string; role: Role | null; views: ViewKey[] | 'all'; docs: boolean };
+export type RemoteRow = {
+  username: string;
+  role: Role | null;
+  views: ViewKey[] | 'all';
+  docs: boolean;
+  /**
+   * Устгагдсан аккаунтын тэмдэглэгээ — `views` талбарт `removed` гэсэн
+   * (JSON биш) шууд утгаар хадгална: хуучин хувилбарын parser JSON.parse-д
+   * унаад fail-closed `views: []` болгодог тул хуучин клиент дээр ч эрсдэлгүй.
+   */
+  removed?: boolean;
+};
 
 const TITLE = 'Selbe_Permissions';
 const TABLE_NAME = 'permissions';
@@ -129,19 +140,24 @@ export async function fetchAll(canCreate = false): Promise<Record<string, Remote
     for (const f of res.features) {
       const a = f.attributes as { username?: string; role?: string; views?: string; docs?: number };
       if (!a.username) continue;
+      // Устгагдсан аккаунт — `views` талбарт `removed` шууд утга (JSON биш)
+      const removed = a.views === 'removed';
       // ⚠️ FAIL-CLOSED: views талбар хоосон/эвдэрсэн (JSON алдаа, урт таслагдсан)
       //    бол «бүх эрх» БИШ, «эрхгүй» ([]) руу унана — аюулгүй байдлын анхдагч.
       let views: ViewKey[] | 'all' = [];
-      try {
-        const v = a.views ? JSON.parse(a.views) : [];
-        views = v === 'all' ? 'all' : Array.isArray(v) ? (v as ViewKey[]) : [];
-      } catch { views = []; }
+      if (!removed) {
+        try {
+          const v = a.views ? JSON.parse(a.views) : [];
+          views = v === 'all' ? 'all' : Array.isArray(v) ? (v as ViewKey[]) : [];
+        } catch { views = []; }
+      }
       out[a.username.toLowerCase()] = {
         username: a.username,
         role: (a.role as Role) || null,
         views,
         // ⚠️ FAIL-CLOSED: зөвхөн ТОДОРХОЙ 1 (эсвэл true) бол эрх нээнэ; null/хоосон → үгүй
         docs: a.docs === 1 || (a.docs as unknown) === true,
+        ...(removed ? { removed: true } : {}),
       };
     }
     return out;
@@ -159,7 +175,8 @@ export async function upsert(row: RemoteRow): Promise<boolean> {
     const attrs = {
       username: row.username,
       role: row.role ?? null,
-      views: JSON.stringify(row.views),
+      // Устгагдсан аккаунт — JSON биш `removed` шууд утга (RemoteRow-ийн тайлбарыг үз)
+      views: row.removed ? 'removed' : JSON.stringify(row.views),
       docs: row.docs ? 1 : 0,
     };
     const found = await fl.queryFeatures({

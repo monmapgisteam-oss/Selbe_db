@@ -38,14 +38,20 @@ type Body = { features?: { attributes: Row }[]; count?: number; exceededTransfer
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
- * ⚠️ ЗЭРЭГ хүсэлтийн ХЯЗГААРЛАГЧ. Дашбоард нэг дор 40+ хүсэлт (өртөг 24, анализ,
- * газрын зургийн давхаргууд) явуулах үед ArcGIS «Too many requests» гэж
+ * ⚠️ ЗЭРЭГ хүсэлтийн ХЯЗГААРЛАГЧ. Дашбоард нэг дор 40+ хүсэлт (каталогийн
+ * тоо/хэмжээ, анализ, газрын зургийн давхаргууд) явуулах үед ArcGIS «Too many requests» гэж
  * татгалздаг. Зэрэг явах хүсэлтийг хязгаарлавал сервер даахаас гадна үлдсэн нь
  * дараалалд хүлээж, шатлан ордог — бүх карт ба давхарга ачаалагдана.
  */
 const MAX_CONCURRENT = 6;
 let active = 0;
 const waiters: (() => void)[] = [];
+/** Хязгаарлагчийг ГАДНЫ fetch-үүдэд ч ашиглуулна (parcelOverlap г.м.) —
+ * тойрч гарсан хүсэлт «Too many requests»-ийн шалтгаан болдог (2026-08-21). */
+export async function withSlot<T>(fn: () => Promise<T>): Promise<T> {
+  await acquire();
+  try { return await fn(); } finally { release(); }
+}
 async function acquire() {
   if (active >= MAX_CONCURRENT) {
     // ⚠️ Сэрэхдээ active-ийг ДАХИН нэмэхгүй — release() слотоо шууд гардуулсан
@@ -64,26 +70,55 @@ function release() {
 }
 
 /**
- * ⚠️ ХУРДНЫ ХЯЗГААР дээр дахин оролдоно. Дашбоард нэг дор олон хүсэлт (өртөг 24,
- * анализ) явуулах үед ArcGIS «Unable to perform query. Too many requests.» гэж
+ * ⚠️ ХУРДНЫ ХЯЗГААР дээр дахин оролдоно. Дашбоард нэг дор олон хүсэлт
+ * (каталогийн тоо/хэмжээ, анализ) явуулах үед ArcGIS «Unable to perform query. Too many requests.» гэж
  * HTTP 200-тай буцаадаг (эсвэл 429/503). Энэ нь ТҮР зуурын тул экспоненциал
  * backoff-той хэдэн удаа дахин оролдвол өөрөө засрана — эс бөгөөс карт чимээгүй
  * алдаа харуулна.
  */
 const RETRIES = 4;
-const isRateLimit = (msg: string) => /too many requests|rate limit/i.test(msg);
+/** Rate-limit мессеж — энд болон хязгаарлагчаар ордог гадны fetch-үүд (roadNet г.м.) хамт шалгана */
+export const isRateLimit = (msg: string) => /too many requests|rate limit/i.test(msg);
 
-async function attemptRequest(url: string, params: Record<string, string>, attempt: number): Promise<Body> {
+/**
+ * ⚠️ Хүсэлт бүрийн ДЭЭД хугацаа. Timeout-гүй үед гацсан хүсэлт (TCP нээгдсэн ч
+ * хариу ирэхгүй) слотоо суллахгүй тул 6 ийм хүсэлт MAX_CONCURRENT-ийг дүүргэж,
+ * порталын БҮХ дараагийн асуулга waiters дараалалд царцдаг байв. 30с нь
+ * хэмжигдсэн хамгийн хүнд асуулга (~1.8с)-аас хангалттай өгөөмөр; хэтэрвэл
+ * слот finally-гээр суллагдаж, дуудагч UI дээр алдаа харуулна.
+ */
+const TIMEOUT_MS = 30_000;
+
+async function attemptRequest(url: string, params: Record<string, string>, attempt: number, netRetried = false): Promise<Body> {
   const full = `${url}/query`;
-  const res = await fetch(full, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ f: 'json', ...params }),
-  });
+  let res: Response;
+  try {
+    res = await fetch(full, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ f: 'json', ...params }),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+  } catch (e) {
+    // Түр зуурын сүлжээний тасалт (browser-т fetch-ийн network алдаа нь яг
+    // TypeError) — НЭГ удаа богино хүлээгээд дахин оролдоно. Нэг view-ийн олон
+    // асуулгын Promise.all-д ганц глитч бүтэн харагдацыг унагадаг байв.
+    // Rate-limit retry-ээс ТУСДАА тоолуур (netRetried) тул давхардахгүй.
+    if (e instanceof TypeError && !netRetried) {
+      await sleep(300 + Math.random() * 200);
+      return attemptRequest(url, params, attempt, true);
+    }
+    // Timeout-ыг ДАХИН оролдохгүй (аль хэдийн 30с хүлээсэн) — ArcGISError болгож
+    // дуудагчид хүргэнэ: файлын дүрмээр алдаа UI-д харагдах ёстой.
+    if (e instanceof DOMException && e.name === 'TimeoutError') {
+      throw new ArcGISError(tr('Хүсэлтийн хугацаа хэтэрлээ ({0} сек)', TIMEOUT_MS / 1000), full);
+    }
+    throw e;
+  }
   if (!res.ok) {
     if ((res.status === 429 || res.status === 503) && attempt < RETRIES) {
       await sleep(400 * 2 ** attempt + Math.random() * 200);
-      return attemptRequest(url, params, attempt + 1);
+      return attemptRequest(url, params, attempt + 1, netRetried);
     }
     throw new ArcGISError(`HTTP ${res.status}`, full);
   }
@@ -92,7 +127,7 @@ async function attemptRequest(url: string, params: Record<string, string>, attem
   if (body.error) {
     if (isRateLimit(body.error.message ?? '') && attempt < RETRIES) {
       await sleep(400 * 2 ** attempt + Math.random() * 200);
-      return attemptRequest(url, params, attempt + 1);
+      return attemptRequest(url, params, attempt + 1, netRetried);
     }
     throw new ArcGISError(body.error.message || tr('ArcGIS алдаа'), full);
   }

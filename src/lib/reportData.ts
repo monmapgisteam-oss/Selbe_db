@@ -10,6 +10,11 @@
  * (`Cashflow/FeatureServer/106`, 76 мөр)-оос авна — «Цогцолбор» дашбоардын
  * толгойн тоо ч мөн эндээс гардаг.
  *
+ * ⚠️ CASHFLOW2 нь гэрээ бүрийн САНХҮҮЖИЛТИЙН ХУВААРЬ буюу ТӨЛӨВЛӨГӨӨ —
+ * «бодитоор олгосон» дүнг эндээс ХЭЗЭЭ Ч гаргаж болохгүй (ирээдүйн сарууд ч
+ * орсон байдаг). Бодит олголт нь IPC актын лог (`IPC_LOG` /107)-оос гарна —
+ * Finance/ExecKpi/Tsogts бүгд тэндээс уншдаг, тайлан ч мөн адил.
+ *
  * ⚠️ ХӨРӨНГӨ ОРУУЛАЛТЫН ГУРВАН ӨӨР ТОО байдгийг бүү хольж уншаарай:
  *     · 2,333.9 тэрбум — илтгэлийн «гэрээ, захирамжид тусгагдсан» дүн (`brief`)
  *     · 2,541.5 тэрбум — `CASHFLOW2`-ийн ЗАХИРАМЖИЙН дүн (амьд)
@@ -25,9 +30,10 @@ import { useAsync, type Async } from '@/lib/useAsync';
 import { t as tr } from '@/lib/i18nCore';
 import { num, pct } from '@/lib/format';
 import { queryFeatures } from '@/lib/query';
+import { cached } from '@/lib/live';
 import { layerTotals } from '@/lib/totals';
 import {
-  BUILDING, CASHFLOW2, HABEA, LAYER_GROUPS, GROUP_LAYERS, LAYER_BY_ID,
+  BUILDING, CASHFLOW2, HABEA, IPC_LOG, LAYER_GROUPS, GROUP_LAYERS, LAYER_BY_ID,
   PROJECT_PROGRESS, bagtsKey, pkgKeyOf, laborCompanyFields,
 } from '@/lib/services';
 
@@ -88,18 +94,25 @@ export type ReportExtra = {
     orderTotal: number;
     contractAmount: number;
     sources: { label: string; value: number }[];
+    /**
+     * Сар бүрийн САНХҮҮЖИЛТИЙН ХУВААРЬ (төлөвлөгөө) — CASHFLOW2.
+     * ⚠️ Олголт БИШ: ирээдүйн сарууд ч орсон тул «олгосон» гэж шошгохгүй.
+     */
     months: { label: string; amount: number; cum: number }[];
+    /** Бодитоор олгосон санхүүжилт — IPC актын net (IPC40) нийлбэр, ₮ */
     paid: number;
     byType: { type: string; n: number; budget: number; contract: number }[];
     /** Багцын түлхүүр (`BagtsRow.key`) → урьдчилсан төсөвт өртөг, ₮ */
     byBagts: Record<string, number>;
   };
+  /* ⚠️ 2026-08-24: `cost` талбар ХАСАГДАВ — «Өртгийн загвараар тооцсон дүн»
+     нь зохиомол `negj_une` өгөгдөл дээр тогтдог байсан тул тайлангаас гарсан. */
   infra: {
     groups: {
       key: string; title: string; layers: number;
-      n: number; len: number; area: number; cost: number;
+      n: number; len: number; area: number;
     }[];
-    totals: { layers: number; n: number; len: number; area: number; cost: number };
+    totals: { layers: number; n: number; len: number; area: number };
   };
   habea: {
     date: string;
@@ -157,7 +170,11 @@ const sentenceCase = (s: string) => {
  */
 async function loadOverall(): Promise<ReportExtra['overall']> {
   const P = PROJECT_PROGRESS.fields;
-  const rows = await queryFeatures(PROJECT_PROGRESS.url, { outFields: ['*'] });
+  /* Зөвхөн 4 хэрэглэдэг талбар — «*» нь 162 мөрийн бүх баганыг татдаг байв
+     (2026-08-21 гүйцэтгэлийн аудит) */
+  const rows = await queryFeatures(PROJECT_PROGRESS.url, {
+    outFields: [P.stage, P.weight, P.actual, P.planned],
+  });
 
   const w = (r: Record<string, unknown>) => nn(r[P.weight]);
   const done = (rs: typeof rows) => rs.reduce((a, r) => a + w(r) * nn(r[P.actual]) / 100, 0);
@@ -196,7 +213,12 @@ async function loadLand(pct: number | null): Promise<ReportExtra['land']> {
   // ⚠️ `url` нь заавал биш (BuildingSceneLayer г.м. давхаргад байхгүй) — шалгана
   const d = LAYER_BY_ID['land:left'];
   if (!d?.url) return { parcels: 0, areaM2: 0, pct, byStatus: [], byReason: [] };
-  const rows = await queryFeatures(d.url, { outFields: ['*'] });
+  /* Зөвхөн тоолдог 3 талбар (2026-08-21 гүйцэтгэлийн аудит): «*» нь 2,119
+     парселийн БҮХ баганыг (эзний нэр, хаяг зэрэг хувийн мэдээллийг оролцуулаад)
+     ~2-4МБ-аар татдаг байв — тайланд огт хэрэггүй. */
+  const rows = await queryFeatures(d.url, {
+    outFields: ['Tuluv', 'явцын_мэдээ', d.qty?.field ?? 'area_m2'],
+  });
 
   const tally = (field: string, skipEmpty: boolean) => {
     const m = new Map<string, number>();
@@ -306,9 +328,22 @@ async function loadProgress(): Promise<ReportExtra['progress']> {
 
 /* ═══════════════ 9 · Санхүүжилтийн явц ═══════════════ */
 
+/**
+ * Жинхэнэ акт мөн үү — "Contract Price" псевдо-мөр, хоосон мөрийг хасна.
+ * ⚠️ `Finance.tsx`-ийн `isRealAct`-тай ЯГ ИЖИЛ дүрэм (тэнд export-гүй тул энд
+ * давхарлав) — өөрчлөх бол ХОЁУЛАНГ нь хамт засна, эс бөгөөс тайлангийн
+ * «олгосон» дүн бусад дэлгэцээс зөрнө.
+ */
+const isRealAct = (no: unknown) => /^(IPC|APC|АРС)[-\s]?\d+/i.test(String(no ?? '').trim());
+
 async function loadFinance(): Promise<ReportExtra['finance']> {
   const F = CASHFLOW2.fields;
-  const rows = await queryFeatures(CASHFLOW2.url, { outFields: ['*'] });
+  const I = IPC_LOG.fields;
+  const [rows, ipc] = await Promise.all([
+    queryFeatures(CASHFLOW2.url, { outFields: ['*'] }),
+    // Бодит олголтод хэрэглэх 3 талбар л хангалттай — «*» бүх баганыг татна
+    queryFeatures(IPC_LOG.url, { outFields: [I.no, I.net, I.pkg] }),
+  ]);
   const sum = (f: string) => rows.reduce((a, r) => a + nn(r[f]), 0);
 
   let cum = 0;
@@ -317,6 +352,23 @@ async function loadFinance(): Promise<ReportExtra['finance']> {
     cum += amount;
     return { label: m.label, amount, cum };
   });
+
+  /*
+   * «Бодитоор олгосон» — IPC актын логоос, `Finance.tsx`-ийн `loadFinDataRaw`-ын
+   * given-тэй ИЖИЛ шүүлтээр (жинхэнэ акт + net ≠ 0 + багцтай мөр): тэгвэл
+   * ExecKpi/Tsogts-ийн «Олгосон (IPC)» нийлбэртэй яг тэнцэнэ.
+   * ⚠️ Урьд нь CASHFLOW2-ийн сарын ТӨЛӨВЛӨГӨӨГ хуримтлуулж `paid` болгодог
+   * байсан нь бодит олголтоос олон дахин их (ирээдүйн саруудыг ч багтаасан)
+   * худал тоо байв.
+   */
+  const paid = ipc.reduce((a, r) => {
+    if (!isRealAct(r[I.no])) return a;
+    const net = nn(r[I.net]);
+    if (net === 0) return a;
+    const k = bagtsKey(r[I.pkg]);
+    if (!k || k === '0') return a;
+    return a + net;
+  }, 0);
 
   /* Төрлөөр — маягтын хоосон утга («0») хасагдана */
   const typeMap = new Map<string, { n: number; budget: number; contract: number }>();
@@ -359,7 +411,7 @@ async function loadFinance(): Promise<ReportExtra['finance']> {
     contractAmount: sum(F.contractAmount),
     sources: CASHFLOW2.sources.map((s) => ({ label: s.label, value: sum(s.field) })),
     months,
-    paid: cum,
+    paid,
     byType: [...typeMap.entries()]
       .map(([type, v]) => ({ type, ...v }))
       .sort((a, b) => b.budget - a.budget),
@@ -392,7 +444,6 @@ async function loadInfra(): Promise<ReportExtra['infra']> {
       // ⚠️ Нэг бүлэгт «м» ба «м²» ХОЛИЛДОНО — нийлбэрлэвэл утгагүй тул тусад нь
       len: ok.filter((p) => p.unit === 'м').reduce((a, p) => a + (p.q ?? 0), 0),
       area: ok.filter((p) => p.unit === 'м²').reduce((a, p) => a + (p.q ?? 0), 0),
-      cost: ok.reduce((a, p) => a + p.cost, 0),
     };
   }));
 
@@ -403,7 +454,6 @@ async function loadInfra(): Promise<ReportExtra['infra']> {
       n: groups.reduce((a, g) => a + g.n, 0),
       len: groups.reduce((a, g) => a + g.len, 0),
       area: groups.reduce((a, g) => a + g.area, 0),
-      cost: groups.reduce((a, g) => a + g.cost, 0),
     },
   };
 }
@@ -413,7 +463,11 @@ async function loadInfra(): Promise<ReportExtra['infra']> {
 async function loadHabeaSummary(): Promise<ReportExtra['habea']> {
   const L = HABEA.labor.fields;
   const [labor, incident] = await Promise.all([
-    queryFeatures(HABEA.labor.url, { outFields: ['*'] }),
+    /* Огноо + компани тус бүрийн тоон талбарууд — «*» бүх баганыг татдаг байв
+       (2026-08-21 гүйцэтгэлийн аудит) */
+    queryFeatures(HABEA.labor.url, {
+      outFields: [L.ognoo, ...HABEA.labor.companies.flatMap((c) => Object.values(laborCompanyFields(c.sfx)))],
+    }),
     queryFeatures(HABEA.incident.url, { outFields: [HABEA.incident.fields.ognoo] }),
   ]);
 
@@ -452,8 +506,17 @@ async function loadHabeaSummary(): Promise<ReportExtra['habea']> {
 /**
  * Дөрвөн хэсгийг ЗЭРЭГ татна. Нэг нь унавал бүхэл тайлан унахгүй байх нь
  * чухал тул `allSettled` — амжилтгүй хэсэг нь хоосон утгаараа гарна.
+ *
+ * ⚠️ 5 мин кэш (`cached`, гүйцэтгэлийн аудит): «Тайлан» view mount бүрд
+ * `loadInfra` дангаараа ~88 статистик хүсэлт (бүх бүлгийн давхаргад
+ * `layerTotals`) дахин явуулдаг байсан — 6 слотын хязгаарлагч дээр хэдэн
+ * секунд цувдаг. `cached` нь reject-ийг кэшлэхгүй тул «дахин оролдох» сэргэнэ;
+ * `allSettled`-ийн хэсэгчилсэн уналт хоосон утгаараа хамгийн ихдээ TTL
+ * хугацаанд үлдэх нь хүлээн зөвшөөрсөн тохироо.
  */
-export async function loadReportExtra(): Promise<ReportExtra> {
+export const loadReportExtra = cached(loadReportExtraRaw, 5 * 60_000);
+
+async function loadReportExtraRaw(): Promise<ReportExtra> {
   /*
    * ⚠️ Газар чөлөөлөлтийн албан ёсны хувь нь ҮЕ ШАТНЫ хүснэгтээс гардаг тул
    * `loadOverall()` эхэлж дуусах ёстой — бусад нь түүнээс хамаарахгүй.
@@ -484,7 +547,7 @@ export async function loadReportExtra(): Promise<ReportExtra> {
     finance: f.status === 'fulfilled' ? f.value
       : { rows: 0, budget: 0, orderTotal: 0, contractAmount: 0, sources: [], months: [], paid: 0, byType: [], byBagts: {} },
     infra: i.status === 'fulfilled' ? i.value
-      : { groups: [], totals: { layers: 0, n: 0, len: 0, area: 0, cost: 0 } },
+      : { groups: [], totals: { layers: 0, n: 0, len: 0, area: 0 } },
     habea: h.status === 'fulfilled' ? h.value
       : { date: '', workers: 0, mongol: 0, gadaad: 0, tehnik: 0, byCompany: [], incidents: 0 },
   };
@@ -546,16 +609,17 @@ export function buildFindings(x: ReportExtra): Findings {
   const paidRate = x.finance.contractAmount
     ? (x.finance.paid / x.finance.contractAmount) * 100 : null;
 
+  // ⚠️ `months` нь санхүүжилтийн ХУВААРЬ (төлөвлөгөө) — ирээдүйн сарууд ч бий.
+  //    Тиймээс эдгээрээс гарах дүгнэлтийг «олгосон» гэж бичихийг ХОРИГЛОНО.
   const months = x.finance.months;
   const peakMonth = months.length
     ? months.reduce((a, m) => (m.amount > a.amount ? m : a))
     : null;
-  // Сүүлийн улирлыг өмнөхтэй нь жишиж эрчмийг хэмжинэ
+  // Хуваарийн сүүлийн улирлыг өмнөхтэй нь жишиж төлөвлөлтийн эрчмийг хэмжинэ
   const last3 = months.slice(-3).reduce((a, m) => a + m.amount, 0);
   const prev3 = months.slice(-6, -3).reduce((a, m) => a + m.amount, 0);
 
   const mongolShare = x.habea.workers ? (x.habea.mongol / x.habea.workers) * 100 : null;
-  const noCost = x.infra.groups.filter((g) => g.cost <= 0).length;
 
   /*
    * ⚠️ Тайлангийн ТАЙЛБАР ӨГҮҮЛБЭРТ «бэлтгэлийн ажил дууссан», «инженерийн
@@ -600,11 +664,7 @@ export function buildFindings(x: ReportExtra): Findings {
 
   if (prev3 > 0 && last3 > 0) {
     const k = last3 / prev3;
-    f.push(tr('Сүүлийн гурван сард {0} тэрбум ₮ олгогдсон нь өмнөх гурван сарын {1} тэрбумаас {2} дахин {3} буюу санхүүжилтийн эрчим {4} байна.', num(last3 / 1e9, 1), num(prev3 / 1e9, 1), num(k, 1), k >= 1 ? tr('их') : tr('бага'), k >= 1 ? tr('нэмэгдсэн') : tr('буурсан')));
-  }
-
-  if (noCost > 0) {
-    f.push(tr('Дэд бүтцийн {0} ажлын бүлэгт нэгж үнэ тогтоогоогүй тул нийт өртгийн дүн бүрэн бус байна. Өртгийн загварыг гүйцээх шаардлагатай.', num(noCost)));
+    f.push(tr('Хуваарийн сүүлийн гурван сард {0} тэрбум ₮ олгохоор төлөвлөгдсөн нь өмнөх гурван сарын {1} тэрбумаас {2} дахин {3} буюу төлөвлөгөөт санхүүжилтийн эрчим {4} байна.', num(last3 / 1e9, 1), num(prev3 / 1e9, 1), num(k, 1), k >= 1 ? tr('их') : tr('бага'), k >= 1 ? tr('нэмэгдсэн') : tr('буурсан')));
   }
 
   if (x.habea.incidents > 0) {

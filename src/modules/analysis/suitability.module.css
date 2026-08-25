@@ -222,18 +222,9 @@
 .chk :global(.swatch) { width: 8px; height: 3px; border-radius: 2px; flex: none }
 .chk :global(.dot) { width: 9px; height: 9px; border-radius: 50%; flex: none }
 
-/* ---------- Blend slider (нийлмэл үнэлгээ) ---------- */
-.blendLabels { display: flex; justify-content: space-between; font-size: 11.5px; margin-bottom: 7px }
-/* Хоёр туйлын шошго — байрлалаараа (зүүн/баруун) ялгарна, өнгөөр биш */
-.bUrban, .bFin { color: var(--ink) }
-.blendLabels b { font-variant-numeric: tabular-nums }
-/* Урьд нь цэнхэр→шар градиент зам байв — envhub: градиентгүй, нэг hairline зам */
-.blendRange { height: 6px }
-
-.blendScores { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px }
-.blendScore { background: var(--surface-2); border-radius: var(--r-sm); padding: 8px 10px }
-.blendScore span { display: block; font-size: 9.5px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .4px }
-.blendScore b { font-size: 17px; font-variant-numeric: tabular-nums }
+/* ⚠️ 2026-08-24: эдийн засгийн загвар хасагдсаны дараа `BlendCard.tsx`-ийн
+   нийлмэл үнэлгээний гулсуурын ангиуд (`blendLabels`, `bUrban`, `bFin`,
+   `blendRange`, `blendScores`, `blendScore`) устгав. */
 
 /* ---------- Pie chart (3 үндсэн төрөл) ---------- */
 /* ⚠️ Урьд нь энд .pie/.pieWrap/.pieLegend гэсэн ӨӨРИЙН SVG дугуй байв —
@@ -334,17 +325,15 @@
  * ⚠️ Эдгээрт оноолтын ногоон→шар→УЛААН шатлалыг хэрэглэхээ больсон: карт нь
  * хэмжилтийн тайлан болохоос үнэлгээ биш (хэрэглэгчийн шийдвэр, 2026-08-12).
  * Бичвэр БҮГД үндсэн бэхээр, диаграм БҮГД нэг бүдэг өнгөтэй (`Urban.tsx` → `CHART`).
- * ⚠️ Зөвхөн энэ хоёр картад — `finSummary`/`parkHead` зэрэг ангиуд `BlendCard`,
- * `Economics`-д ч хэрэглэгддэг тул хүрээлэлгүйгээр өөрчилж БОЛОХГҮЙ.
+ * ⚠️ Зөвхөн энэ хоёр картад — `finSummary`/`parkHead` зэрэг ангиуд `Urban.tsx`-ийн
+ * бусад картад ч хэрэглэгддэг тул хүрээлэлгүйгээр өөрчилж БОЛОХГҮЙ.
  */
 .plain, .plain span, .plain b, .plain i, .plain em { color: var(--ink) }
 
 /* ---------- Эдийн засгийн шинжилгээ ---------- */
-.econHead { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 2px 0 8px }
-.econBig { background: var(--surface-2); border-radius: var(--r-sm); padding: 8px 10px }
-.econBig span { display: block; font-size: 9.5px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .4px }
-.econBig b { font-size: 15px; font-variant-numeric: tabular-nums; color: var(--data) }
-.econBig b i { font-style: normal; font-size: 10px; color: var(--ink-3); font-weight: 500 }
+/* ⚠️ 2026-08-24: `Economics.tsx` устсаны дараа түүний толгойн ангиуд
+   (`econHead`, `econBig`, `econBar`, `econTune`, `pcOff`, `pchartLgd`,
+   `econGrp`) хасагдав — доорхи мөрийн ангиуд `Urban.tsx`-д амьд үлдэв. */
 
 .econChart { margin-top: 5px; max-height: 340px; overflow-y: auto; padding-right: 3px }
 .econRow { margin-bottom: 9px }
@@ -353,16 +342,7 @@
 .econRowTop :global(.nm) { flex: 1; color: var(--ink-2); overflow-wrap: anywhere; text-align: left }
 .econRowTop b { font-variant-numeric: tabular-nums; color: var(--ink) }
 .econRowTop em { font-style: normal; font-size: 9.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; min-width: 36px; text-align: right }
-.econBar { height: 5px; background: var(--chart-track); border-radius: 99px; overflow: hidden; margin-top: 3px }
-.econBar i { display: block; height: 100%; border-radius: 99px; transition: width 0.6s var(--ease) }
 .econMeta { margin-top: 2px; font-size: 9px; color: var(--ink-3); font-variant-numeric: tabular-nums; text-align: left }
-
-/* Эдийн засгийн загварчлалын карт — үлдсэн өндрийг бүтэн эзэлнэ */
-.econTune { flex: 1; min-height: 0; display: flex; flex-direction: column }
-.econTune > .body { flex: 1; min-height: 0; display: flex; flex-direction: column }
-/* Ашгийн жагсаалт хураагдсан үед карт сунахаа болино */
-.pcOff { flex: 0 0 auto }
-.pcOff .pchart { display: none }
 
 /* Хураадаг дэд гарчиг */
 .toggleLabel {
@@ -382,17 +362,6 @@
 .pchart { margin-top: 5px; flex: 1; min-height: 120px; overflow-y: auto; padding-right: 3px }
 .pchart .econRow { cursor: pointer; padding: 3px 4px; margin: 0 -4px 6px; border-radius: var(--r-sm); width: 100%; background: none; border: 0; color: inherit }
 .pchart .econRow:hover { background: var(--hover) }
-.pchart .econOn { background: var(--sel); box-shadow: inset 2px 0 0 var(--data) }
-.pchartLgd { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 2px; font-size: 9.5px; color: var(--ink-3); font-variant-numeric: tabular-nums }
-
-.econGrp {
-  display: flex; align-items: center; gap: 7px; font-size: 11px; padding: 4px 5px;
-  border-radius: var(--r-sm); background: var(--surface-2); margin-bottom: 3px;
-}
-.econGrp i { width: 8px; height: 8px; border-radius: var(--r-sm); flex: none }
-.econGrp span { flex: 1; color: var(--ink-2) }
-.econGrp b { font-variant-numeric: tabular-nums }
-.econGrp em { font-style: normal; font-size: 9.5px; color: var(--ink-3); min-width: 36px; text-align: right }
 
 /* ---------- Газрын зургийн hover панель ---------- */
 /* Хөвөгч tooltip — сүүдэр зөвшөөрөгдөх ГАНЦ ангилал (var(--shadow-lg)) */
@@ -421,7 +390,17 @@
 /* ---------- Detail card ---------- */
 /* Газрын зураг дээгүүр ХӨВДӨГ карт — сүүдэр зөвшөөрөгдөнө (var(--shadow-lg)) */
 .detail {
-  position: absolute; left: 14px; top: 14px; width: 352px; max-height: calc(100% - 28px);
+  /* Утасны нарийн дэлгэцэд 352px нь зургаас хэвтээгээр хальдаг байв
+     (2026-08-21 аудит) — .catPanel-тай ижил хамгаалалт.
+
+     ⚠️ 2026-08-23: `left: 14px` → `200px`. Хэрэгслийн зурвас зүүн ирмэгт
+     босоо багана болж шилжсэн бөгөөд энэ карт z-11 (зурвас z-9) тул хуучин
+     байрлалдаа үлдвэл түүнийг БҮРЭН дарж, «Давхарга»/«2D-3D-BIM» руу хүрэх
+     аргагүй болно. Карт нь чирэгддэг тул хэрэглэгч дурын газраа зөөж болно —
+     энэ бол зөвхөн НЭЭГДЭХ байрлал. */
+  position: absolute; left: 200px; top: 14px;
+  width: min(352px, calc(100% - 214px));
+  max-height: calc(100% - 28px);
   background: color-mix(in srgb, var(--surface) 97%, transparent); backdrop-filter: blur(10px);
   border: 1px solid var(--line); border-radius: var(--r-sm); overflow: auto;
   box-shadow: var(--shadow-lg); z-index: 11;
@@ -467,9 +446,6 @@
 .mBar i { display: block; height: 100%; border-radius: 99px; transition: width 0.6s var(--ease) }
 .mBar u { position: absolute; top: -2px; width: 1.5px; height: 9px; background: var(--ink); opacity: .55 }
 
-/* Нийгмийн дэд бүтцийн тайлбар мөр */
-.socMeta { margin-top: 3px; font-size: 9.5px; color: var(--ink-3) }
-
 .dGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px }
 .dGrid > div { background: var(--surface-2); border-radius: var(--r-sm); padding: 7px 9px }
 .dGrid span { display: block; font-size: 9.5px; color: var(--ink-3) }
@@ -509,16 +485,9 @@
 .radarCtr { fill: var(--ink); font-size: 20px; font-weight: 700 }
 .radarCtrLbl { fill: var(--ink); font-size: 7.5px }
 
-/* ── БОСОО БАГАНАН диаграм — 2–3 хэмжигдэхүүнийг нэг тэнхлэг дээр ── */
-.cols { display: flex; align-items: flex-end; gap: 14px; height: 88px; border-bottom: 1px solid var(--line) }
-.colItem { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; min-width: 0 }
-.colVal {
-  font-size: 10.5px; font-weight: 600; color: var(--ink); text-align: center;
-  margin-bottom: 3px; font-variant-numeric: tabular-nums; white-space: nowrap;
-}
-.colBar { display: block; min-height: 2px; border-radius: var(--r-sm) var(--r-sm) 0 0; transition: height .6s var(--ease) }
-.colNames { display: flex; gap: 14px; margin-top: 5px }
-.colNames span { flex: 1; min-width: 0; font-size: 9.5px; color: var(--ink-3); text-align: center; line-height: 1.3 }
+/* ⚠️ 2026-08-24: БОСОО БАГАНАН диаграмын ангиуд (`cols`, `colItem`, `colVal`,
+   `colBar`, `colNames`) устгав — `SuitDetail.tsx`-ийн `Columns` компонент
+   эдийн засгийн загвартай хамт хасагдсан. */
 
 /* ---------- Үзүүлэлт сонгох жагсаалт ---------- */
 .indHead {
@@ -609,12 +578,15 @@
    Газрын зураг дээгүүр хөвдөг тул сүүдэр зөвшөөрөгдөнө. */
 .catPanel {
   position: absolute;
-  left: 0;
+  /* ⚠️ 2026-08-23: `0` БИШ, `200px` — `MapTools` нь 176px өргөнтэй босоо багана
+     болж зүүн ирмэгт шилжсэн. Ирмэгээс эхэлбэл зурвасыг бүрхэж, «Давхарга»
+     товч руу буцаж хүрэх аргагүй болно (`mapTools.module.css`-ийг үз). */
+  left: 200px;
   top: 0;
   bottom: 0;
   z-index: 12;
   width: 300px;
-  max-width: 86%;
+  max-width: calc(100% - 212px);
   display: flex;
   border-right: 1px solid var(--line);
   background: var(--surface);

@@ -93,19 +93,10 @@
 .itemOn .chev { color: var(--hue); }
 .chevOn { transform: rotate(90deg); }
 
-.foot {
-  margin-top: auto;
-  padding: 14px 9px 16px;
-  border-top: 1px solid var(--line);
-  font-size: 0.635rem;
-  color: var(--ink-3);
-  line-height: 1.55;
-}
-
 /* Нарийн дэлгэц — босоо жагсаалт ХЭВТЭЭ гүйдэг зурвас болно */
 @media (max-width: 1180px) {
   .rail { flex-direction: row; align-items: center; overflow-x: auto; padding: 6px 8px; min-height: 0; }
-  .railHead, .foot { display: none; }
+  .railHead { display: none; }
   .item {
     width: auto;
     flex: none;

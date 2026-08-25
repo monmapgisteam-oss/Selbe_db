@@ -10,9 +10,8 @@
  * цуглуулна.
  *
  * ⚠️ ТООГ ӨӨРӨӨ БОДОХГҮЙ: `totals.ts`-ийн `layerTotals()`-ыг дууддаг. Тэр нь
- * порталын каталог, дашбоард хоёрын ашигладаг ЯГ ИЖИЛ өртгийн загвар (нэгж
- * үнээр бүлэглэх, basis-ээр үржүүлэх). Тусдаа тооцоо бичвэл агентын дүн
- * дэлгэц дээрхээс зөрж, итгэл алдагдана.
+ * порталын каталог, дашбоард хоёрын ашигладаг ЯГ ИЖИЛ тоо/хэмжээний асуулга.
+ * Тусдаа тооцоо бичвэл агентын дүн дэлгэц дээрхээс зөрж, итгэл алдагдана.
  *
  * ⚠️ БИЧИГЛЭЛИЙН ЗӨРӨӨ: «Багц-1» / «Багц -1» / «БАГЦ-1» / «Багц 1-1» гэж дөрвөн
  * эх сурвалжид дөрвөн янз бичигдсэн. Давхаргад `zoneWhere()` (порталынх) шийднэ;
@@ -34,8 +33,6 @@ export type OverviewRow = {
   n: number;
   /** Хэмжээ — хүн уншихад тохирсон нэгжээр («2.4 км», «1.3 га») */
   qty?: string;
-  /** Өртөг, төгрөгөөр */
-  cost?: number;
   /**
    * Давхарга БҮТНЭЭРЭЭ энэ багцынх (мөрөөр шүүгээгүй).
    * ⚠️ CAD-аас гарсан багцын давхаргууд бүсийн атрибутгүй ч БҮХЭЛДЭЭ нэг багцад
@@ -51,7 +48,6 @@ export type Overview = {
   emptyCount: number;
   /** Бүсээр шүүх боломжгүй (талбаргүй) эх сурвалжийн тоо */
   skippedCount: number;
-  totalCost: number;
   note: string;
 };
 
@@ -178,7 +174,6 @@ export async function zoneOverview(input: string, scope: AgentScope): Promise<Ov
       title: l.title,
       n: t.n,
       ...(qtyText(l, t.q) ? { qty: qtyText(l, t.q)! } : {}),
-      ...(t.cost > 0 ? { cost: Math.round(t.cost) } : {}),
       ...(whole ? { whole: true } : {}),
     });
   }
@@ -200,13 +195,12 @@ export async function zoneOverview(input: string, scope: AgentScope): Promise<Ov
     sources.push({ id: r.value.d.id, title: r.value.d.title, n: r.value.n });
   }
 
-  // Хамгийн их өртөгтэйг эхэнд — агент юуг түрүүлж дурдахаа мэдэхэд
-  sources.sort((a, b) => (b.cost ?? 0) - (a.cost ?? 0) || b.n - a.n);
+  // Хамгийн олон объекттойг эхэнд — агент юуг түрүүлж дурдахаа мэдэхэд
+  sources.sort((a, b) => b.n - a.n);
 
   const notes: string[] = [];
   if (overflow) notes.push(tr('⚠️ {0} эх сурвалж хязгаараас хэтэрсэн тул шалгаагүй.', overflow));
   if (failed) notes.push(tr('⚠️ {0} эх сурвалж алдаа өгсөн.', failed));
-  notes.push(tr('Өртөг нь порталын каталогтой ИЖИЛ загвараар бодогдсон (нэгж үнэ × хэмжээ).'));
   if (sources.some((x) => x.whole)) {
     notes.push(
       tr('`whole: true` тэмдэгтэй эх сурвалж нь БҮХЭЛДЭЭ энэ багцынх — мөрөөр шүүгээгүй, ') +
@@ -219,7 +213,6 @@ export async function zoneOverview(input: string, scope: AgentScope): Promise<Ov
     sources,
     emptyCount: empty,
     skippedCount: skipped,
-    totalCost: Math.round(sources.reduce((s, x) => s + (x.cost ?? 0), 0)),
     note: notes.join(' '),
   };
 }

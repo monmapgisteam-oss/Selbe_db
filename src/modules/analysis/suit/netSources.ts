@@ -30,9 +30,11 @@ import {
 } from './traffic';
 import { loadPathsFrom, WM_UNITS_PER_M } from './roadNet';
 
-export type NetKind = 'real' | 'plan' | 'relief';
+/* ⚠️ 2026-08-24: 'relief' («Ачаалал бууруулах зам») ХАСАГДАВ — эх өгөгдөл нь
+   `Selbe_shine_zam` байсан бөгөөд төслөөс бүрмөсөн гарсан. */
+export type NetKind = 'real' | 'plan';
 
-export const NET_KINDS: NetKind[] = ['real', 'plan', 'relief'];
+export const NET_KINDS: NetKind[] = ['real', 'plan'];
 
 export type NetSource = {
   kind: NetKind;
@@ -67,10 +69,8 @@ export type NetSource = {
   /**
    * Энэ сүлжээн дээр МАШИН ЯВАХ уу. `false` бол зөвхөн газрын зурагт харагдана.
    *
-   * ⚠️ «Шинэ зам» нь одоогоор ЗӨВХӨН ХАРАГДАНА: түүний line (`Selbe_shine_zam`)
-   * нь одоо байгаа замтай хараахан ХОЛБОГДООГҮЙ тусдаа хэсгүүд тул тэнд машин
-   * явуулбал мухарт гацаж, бодит бус дүр зурна. Замын сүлжээ нь бодит/төлөвлөгөөт
-   * замтай уулзвараар холбогдмол цагт `cars` -ыг `true` болгоно.
+   * ⚠️ Одоо бүх сүлжээнд машин явдаг. Зөвхөн харагддаг байсан «Шинэ зам»
+   * (`Selbe_shine_zam`) 2026-08-24-нд төслөөс бүрмөсөн гарсан.
    */
   cars?: boolean;
   /**
@@ -128,19 +128,6 @@ export const NET_SOURCES: Record<NetKind, NetSource> = {
     url: 'https://services-ap1.arcgis.com/ACqsMOmNLi5wIdIh/arcgis/rest/services/test_data/FeatureServer/104',
     nodeIntersections: true, // ⚠️ таслахгүй бол 3.7% холбогдоно; таславал 88.9%
     directed: true, // line сумтай — 141 мухар бүгд 60м дотор гарцтай (тасралтгүй)
-  },
-  relief: {
-    kind: 'relief',
-    label: tr('Ачаалал бууруулах зам'),
-    short: tr('Шинэ зам'),
-    hue: '#4ade80',
-    /* ⚠️ Замын сүлжээ болгож УГСАРДАГГҮЙ (`cars: false`) — line нь `Selbe_shine_zam`
-       service дээр 4 тусдаа хэсэг (77 объект) бөгөөд одоо байгаа замтай уулзвараар
-       холбогдоогүй. Тиймээс энд `url` хэрэггүй: сонгоход доорх давхаргууд асаж,
-       шинэ замын саналыг газрын зураг дээр харуулна. */
-    url: null,
-    cars: false,
-    display: ['sz:0', 'sz:1', 'sz:2', 'sz:3'],
   },
 };
 

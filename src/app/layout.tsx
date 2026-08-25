@@ -6,6 +6,8 @@ import { Inter } from 'next/font/google';
 import { ThemeProvider } from '@/lib/theme';
 import { LocaleProvider } from '@/lib/i18n';
 import { SkipLink } from '@/components/SkipLink';
+import { DocumentTitle } from '@/components/DocumentTitle';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { THEME_KEY } from '@/lib/themeKey';
 import './globals.css';
 
@@ -18,7 +20,15 @@ import './globals.css';
 //    ямар ч компонент импортлодоггүй (зөвхөн энд байсан) тул критик замд дэмий
 //    ачаа байлаа. Файл нь өөрөө хэвээр.
 import './shell.module.css';
-import '@/modules/overview.module.css';
+/* ⚠️ 2026-08-25: overview.module.css-ийг сэдэв тус бүрээр салгасан (хэрэглэгчийн
+   хүсэлт — харагдацууд стайл хуваалцахгүй). Урьдчилсан ачаалалд бүгдийг жагсаана. */
+import '@/modules/bagtsOv.module.css';
+import '@/modules/dashboardOv.module.css';
+import '@/modules/gazarOv.module.css';
+import '@/modules/habeaOv.module.css';
+import '@/modules/iotOv.module.css';
+import '@/modules/irgedOv.module.css';
+import '@/modules/tsogtsOv.module.css';
 import '@/modules/dashboard.module.css';
 import '@/modules/analysis/suitability.module.css';
 import '@/modules/sheet/sheet.module.css';
@@ -100,9 +110,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         <SkipLink />
-        <LocaleProvider>
-          <ThemeProvider>{children}</ThemeProvider>
-        </LocaleProvider>
+        {/* Табын гарчгийг хэлээр нь солино — metadata нь статик prerender тул
+            клиент талд л боломжтой (олдвор #37) */}
+        <DocumentTitle />
+        {/* ⚠️ Хамгийн гадна давхаргын алдааны хашлага (олдвор #9): аль нэг
+            компонентын рендерийн throw бүх root-ыг unmount хийж, статик
+            export тул Next-ийн стайлгүй англи алдааны хуудас л үлддэг байв. */}
+        <ErrorBoundary>
+          <LocaleProvider>
+            <ThemeProvider>{children}</ThemeProvider>
+          </LocaleProvider>
+        </ErrorBoundary>
       </body>
     </html>
   );

@@ -119,17 +119,6 @@
 .noteText { font-size: 0.73rem; line-height: 1.55; color: var(--ink-3); }
 .noteText b { color: var(--ink); font-weight: 600; }
 
-.subHead {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  margin-bottom: 10px;
-  font-size: 0.74rem;
-  font-weight: 600;
-  color: var(--ink-2);
-}
-.subNote { font-size: 0.68rem; font-weight: 400; color: var(--ink-3); }
-
 /* ── Таб ──
    Самбарын биеийг гүйлгэхэд дагаж явна. `--surface` дүүргэлт заавал хэрэгтэй —
    эс бөгөөс доогуур өнгөрөх агуулга нь хагас тунгалаг табын ард харагдана. */
@@ -237,6 +226,10 @@
 .statValue {
   display: flex;
   align-items: baseline;
+  /* Урт утга нүдний ирмэгт ДУУГҮЙ тайрагдахын оронд нэгжээ дараагийн мөрөнд
+     буулгана (2026-08-21 аудит) */
+  flex-wrap: wrap;
+  min-width: 0;
   gap: 4px;
   font-size: 16px;
   font-weight: 500;
@@ -279,14 +272,17 @@
 .barOn { background: transparent; }
 
 .barTop { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; }
-/* envhub: нэрийг таслана (…) — бүтэн нэр нь title/tooltip-д */
+/* 2026-08-21 аудит: нэг мөрийн «…» нь урт нэрийг («Шинээр төлөвлөж буй
+   110/35/10кВ дэд станц» г.м.) хагасаар нь иддэг байв — одоо 2 мөрөнд бүтэн,
+   түүнээс хэтэрсэн ховор тохиолдолд л таслаад бүтэн нэр title/tooltip-д. */
 .barName {
   min-width: 0;
   font-size: 12px;
   color: var(--ink-2);
-  white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   transition: color 0.12s;
 }
 .barNameOn { font-weight: 500; color: var(--ink); }
@@ -390,21 +386,6 @@
   text-align: right;
   flex: none;
   white-space: nowrap;
-}
-
-/* ── Chip ── */
-.chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 2px 8px;
-  border-radius: 99px;
-  font-size: 0.68rem;
-  font-weight: 600;
-  white-space: nowrap;
-  color: var(--tone, var(--hue));
-  background: color-mix(in srgb, var(--tone, var(--hue)) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--tone, var(--hue)) 26%, transparent);
 }
 
 /* ── Жагсаалтын мөр (сонгож болох) ── */

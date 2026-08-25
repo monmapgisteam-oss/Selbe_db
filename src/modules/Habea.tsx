@@ -32,6 +32,7 @@ import {
   bagtsKey, laborCompanyFields,
 } from '@/lib/services';
 import { usePlanTotals } from '@/lib/totals';
+import { cached } from '@/lib/live';
 import { usePanes } from './habeaPanes';
 import { Section, Bars, Donut, Select, Series, Loading, Empty } from '@/components/ui';
 import { num, date, text } from '@/lib/format';
@@ -41,7 +42,7 @@ import { useZoomToFilter } from '@/lib/useZoomToFilter';
 import { LayerCatalog } from '@/components/LayerCatalog';
 import { OpacityPanel } from '@/components/OpacityPanel';
 import h from './habea.module.css';
-import o from './overview.module.css';
+import o from './habeaOv.module.css';
 
 const L = HABEA.labor.fields;
 const I = HABEA.incident.fields;
@@ -53,14 +54,16 @@ const CATALOG_IDS = CATALOG_LAYER_IDS;
 
 type HabeaData = { labor: Row[]; incident: Row[]; crane: Row[]; fetchedAt: number };
 
-const loadHabea = (): Promise<HabeaData> =>
+/* 5 мин кэш (2026-08-21 гүйцэтгэлийн аудит): харагдац сэлгэх бүрд 3 бүтэн
+   хүснэгт дахин татагддаг байв */
+const loadHabea = cached((): Promise<HabeaData> =>
   Promise.all([
     queryFeatures(HABEA.labor.url, { outFields: ['*'] }),
     queryFeatures(HABEA.incident.url, { outFields: ['*'] }),
     queryFeatures(HABEA.crane.url, { outFields: ['*'] }),
     // «Осолгүй хоног» render дотор Date.now() дуудаж болохгүй (react-hooks/purity)
     // тул лавлах цэг нь ӨГӨГДӨЛ ТАТСАН мөч — дахин ачаалахад шинэчлэгдэнэ.
-  ]).then(([labor, incident, crane]) => ({ labor, incident, crane, fetchedAt: Date.now() }));
+  ]).then(([labor, incident, crane]) => ({ labor, incident, crane, fetchedAt: Date.now() })), 5 * 60_000);
 
 const nn = (v: unknown): number => {
   const x = Number(v);
@@ -376,10 +379,20 @@ function byDaySeries(rows: Row[], sfx: string | null, key: 'niitAjiltan' | 'niit
     }))
     .filter((x) => x.d > 0)
     .sort((a, b) => a.d - b.d)
-    .map((x) => {
+    /*
+     * ⚠️ НЭГ ӨДӨРТ ОЛОН БҮРТГЭЛ байж болно (компани тус бүр өөрөө илгээх,
+     *    эсвэл засвар). Мөр тус бүрийг ЦЭГ болговол нэг өдөр хэд хэдэн
+     *    багана болж, графикийн х тэнхлэг худал уртсаад зогсохгүй React-д
+     *    ижил түлхүүр давхардана. Тиймээс өдрөөр НЭГТГЭЖ нийлбэрийг авна.
+     */
+    .reduce<{ key: string; label: string; value: number; display: string }[]>((acc, x) => {
       const iso = new Date(x.d).toISOString().slice(0, 10);
-      return { key: iso, label: iso.slice(5).replace('-', '.'), value: x.value, display: num(x.value) };
-    });
+      const last = acc[acc.length - 1];
+      if (last?.key === iso) last.value += x.value;
+      else acc.push({ key: iso, label: iso.slice(5).replace('-', '.'), value: x.value, display: '' });
+      return acc;
+    }, [])
+    .map((x) => ({ ...x, display: num(x.value) }));
 }
 
 /* ─────────── Туслах дүрслэл ─────────── */

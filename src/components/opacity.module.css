@@ -1,13 +1,16 @@
 /* Тунгалаг тохируулах хөвөгч цонх — газрын зургийн дээд талд (mapTools-ын доор).
    «Тунгалаг» товчоор нээж/хаана; ил давхаргууд тус бүрдээ гулсууртай. */
+/* ⚠️ 2026-08-23: голоос ЗҮҮН тийш. `MapTools` нь 176px өргөнтэй босоо багана
+   болж зүүн ирмэгт шилжсэн тул энэ цонх түүний БАРУУН талаас (200px) эхэлнэ —
+   ирмэгээс эхэлбэл зурвасыг бүрхэж, «Тунгалаг» товч руу хүрэхгүй болно.
+   `top` нь зурвастай НЭГ ШУГАМД (96px) — хоёул zoom-ын доор эгнэнэ. */
 .panel {
   position: absolute;
-  top: 64px;
-  left: 50%;
-  transform: translateX(-50%);
+  top: 96px;
+  left: 200px;
   z-index: 7;
   width: 300px;
-  max-width: calc(100vw - 32px);
+  max-width: calc(100% - 212px);
   max-height: min(60vh, 520px);
   display: flex;
   flex-direction: column;
@@ -18,9 +21,12 @@
   box-shadow: var(--shadow-lg);
   animation: panelIn 0.28s var(--ease) both;
 }
+/* ⚠️ `translate(-50%)` ХАСАГДСАН: цонх голд байхаа больсон. `both` fill-mode нь
+   ТӨГСГӨЛИЙН кадрыг байнга барьдаг тул үлдээвэл хавтан өөрийн өргөний хагасаар
+   зүүн тийш байнга гулсаж, зурвасыг дахин бүрхэх байв. */
 @keyframes panelIn {
-  from { opacity: 0; transform: translate(-50%, -10px) scale(0.96); }
-  to   { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  from { opacity: 0; transform: translateX(-10px) scale(0.96); }
+  to   { opacity: 1; transform: translateX(0) scale(1); }
 }
 
 .head {

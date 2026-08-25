@@ -12,10 +12,10 @@
 
 import { LAYER_BY_ID, layerUrl } from '@/lib/services';
 import { t as tr } from '@/lib/i18nCore';
-import { MODE_SPLIT, busBand, BUS_OK_M, type BusBand } from '@/lib/analysis/transport';
+import { MODE_SPLIT, busBand, type BusBand } from '@/lib/analysis/transport';
 import type { BuildingPt } from './buildings';
 
-/** Каталог дахь эх давхарга — «Автобус_буудал» (`Selbe_ET_20260721`/2) */
+/** Каталог дахь эх давхарга — «Автобус_буудал» (нэгтгэсэн `data`/87; `layerUrl()` шийднэ) */
 const BUS_LAYER_ID = 'et:2';
 
 /** Автобусны буудал — Web Mercator цэг */
@@ -126,6 +126,3 @@ export function busAccess(
   for (const v of stopDemand) if (v > maxStopDemand) maxStopDemand = v;
   return { access, popByBand, popUnserved: popByBand.poor, stopDemand, maxStopDemand };
 }
-
-/** «800 м-ээс хол» гэдгийг нэг эх сурвалжаас (KPI бичвэрт) */
-export const UNSERVED_LABEL = tr('{0} м-ээс хол', BUS_OK_M);

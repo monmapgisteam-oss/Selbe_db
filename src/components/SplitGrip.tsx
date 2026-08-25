@@ -22,6 +22,8 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { t as tr } from '@/lib/i18nCore';
+import { GRIP_TITLE } from './ResizableTable';
 import st from './splitGrip.module.css';
 
 /** Тал хэт нарийсаж/өргөсөхөөс сэргийлнэ (карт уншигдахаа болихгүй). */
@@ -56,7 +58,7 @@ export function SplitGrip({
       role="separator"
       aria-orientation="vertical"
       aria-label={label}
-      title="Чирж өргөнийг тохируулна · давхар товшвол анхны хэмжээ"
+      title={GRIP_TITLE}
       tabIndex={0}
       onPointerDown={onPointerDown}
       onDoubleClick={onDoubleClick}
@@ -146,6 +148,11 @@ export function useSideResize(key: string, hasRight = true) {
         grip.removeEventListener('pointermove', move);
         grip.removeEventListener('pointerup', up);
         grip.removeEventListener('pointercancel', up);
+        grip.removeEventListener('lostpointercapture', up);
+        /* Чирэлтийн дараа фокус үлдээхгүй — фокусын өнгө «асаастай» мэт
+           харагдахаас сэргийлнэ (гар удирдлагад фокус нь Tab-аар ирдэг тул
+           энэ нь саад болохгүй) */
+        grip.blur();
         if (!d || d.px == null) return; // хөдөлгөөнгүй товшилт
         const next = { ...cur.current, [d.s]: d.px };
         setW(next);
@@ -154,6 +161,9 @@ export function useSideResize(key: string, hasRight = true) {
       grip.addEventListener('pointermove', move);
       grip.addEventListener('pointerup', up);
       grip.addEventListener('pointercancel', up);
+      /* ⚠️ capture ямар ч шалтгаанаар алдагдахад (цонхны гадна тавих,
+         alt-tab, iframe) up ЗААВАЛ ажиллана — эс бөгөөс dragging гацна */
+      grip.addEventListener('lostpointercapture', up);
     };
 
   /** Анхны өргөнд нь буцаана — CSS-ийн (дэлгэцийн) утга дахин хүчинтэй болно. */
@@ -202,7 +212,7 @@ export function useSideResize(key: string, hasRight = true) {
       onDoubleClick: reset('l'),
       onKeyDown: bump('l'),
       dragging: dragging === 'l',
-      label: 'Зүүн баганын өргөн',
+      label: tr('Зүүн баганын өргөн'),
     },
     right: {
       side: 'right' as const,
@@ -210,7 +220,7 @@ export function useSideResize(key: string, hasRight = true) {
       onDoubleClick: reset('r'),
       onKeyDown: bump('r'),
       dragging: dragging === 'r',
-      label: 'Баруун баганын өргөн',
+      label: tr('Баруун баганын өргөн'),
     },
     hasRight,
   };

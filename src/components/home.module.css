@@ -234,214 +234,9 @@
   color: var(--ink-3);
 }
 
-/* Нийт гүйцэтгэлийн зурвас — толгойн баруун талд */
-.progressBox {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  flex: none;
-  width: min(100%, 320px);
-  padding: 12px 14px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  background: color-mix(in srgb, var(--surface) 66%, transparent);
-}
-.progressTop { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
-.progressLabel {
-  font-family: var(--cond);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--ink-3);
-}
-.progressPct { font-size: 1.3rem; font-weight: 750; letter-spacing: -0.02em; color: var(--hue); }
-.progressTrack {
-  height: 8px;
-  border-radius: 999px;
-  background: var(--chart-track, var(--surface-2));
-  border: 1px solid var(--line);
-  overflow: hidden;
-}
-.progressFill {
-  display: block;
-  height: 100%;
-  border-radius: 999px;
-  background: linear-gradient(90deg,
-    color-mix(in srgb, var(--hue) 70%, transparent), var(--hue));
-  transition: width 0.5s var(--ease);
-}
-
-/* ══════════════ KPI нүднүүд ══════════════ */
-
-.kpiMain {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(238px, 1fr));
-  gap: 16px;
-}
-.kpiMore {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(158px, 1fr));
-  gap: 14px;
-}
-
-.kpi {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-  padding: 13px 15px;
-  /*
-   * ⚠️ Агуулгыг ГОЛЛУУЛНА. Урьд нь зүүн талд бичвэр, баруун талд график
-   * тусгаарлагдаж, дунд нь хоосон завсар үүсэж байв.
-   */
-  align-items: center;
-  text-align: center;
-  /* Шилэн карт — дэвсгэр зураг сүүмэлзэж, самбар хөвж буй мэт харагдана */
-  background: color-mix(in srgb, var(--surface) 66%, transparent);
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  color: inherit;
-  overflow: hidden;
-  transition: border-color 0.15s, background 0.15s, transform 0.12s;
-}
-/*
- * ГОЛ ДӨРВӨН НҮД — ArcGIS Operations Dashboard маягийн гэрэлтэх хүрээ.
- *
- * Гурван давхарга: (1) дээд ирмэгийн шугам, (2) зүүн дээд булангийн хаалт,
- * (3) гадна зөөлөн гэрэлтэлт. Бүгд `--kpi` өнгөнөөс ургана.
- *
- * ⚠️ Бүгд чимэглэл тул `aria-hidden` шаардлагагүй — псевдо элемент нь
- * хүртээмжийн модонд огт ордоггүй.
- */
-.kpi::before {
-  content: '';
-  position: absolute;
-  inset: 0 0 auto;
-  height: 1px;
-  background: linear-gradient(90deg,
-    var(--kpi, var(--hue)) 0%,
-    color-mix(in srgb, var(--kpi, var(--hue)) 40%, transparent) 26%,
-    transparent 72%);
-}
-/* Зүүн дээд булангийн хаалт — самбарын «техник» шинжийг өгнө */
-.kpi::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 24px;
-  height: 24px;
-  border-top: 2px solid var(--kpi, var(--hue));
-  border-left: 2px solid var(--kpi, var(--hue));
-  border-top-left-radius: var(--r-lg);
-  opacity: 0.65;
-  pointer-events: none;
-}
-/* Том нүдэнд хаалт нь урт — шатлалыг хэмжээгээр нь хадгална */
-.kpiBig::after { width: 34px; height: 34px; }
-
-.kpi {
-  border-color: color-mix(in srgb, var(--kpi, var(--hue)) 26%, var(--line));
-}
-
-/*
- * ⚠️ ГЭРЭЛТЭЛТ ба ХАРАНХУЙ дэвсгэр нь ЗӨВХӨН харанхуй горимд. Цайвар горимд
- * цагаан хуудсан дээр хар карт, неон гэрэлтэлт нь эрс тонгорчихно.
- */
-:global([data-theme='dark']) .kpi {
-  background:
-    linear-gradient(158deg,
-      color-mix(in srgb, var(--kpi) 9%, transparent) 0%,
-      transparent 42%),
-    color-mix(in srgb, #060d14 50%, transparent);
-  box-shadow:
-    0 0 22px color-mix(in srgb, var(--kpi) 9%, transparent),
-    inset 0 1px 0 color-mix(in srgb, var(--kpi) 14%, transparent);
-}
-:global([data-theme='dark']) button.kpi:hover {
-  border-color: color-mix(in srgb, var(--kpi) 55%, var(--line));
-  box-shadow:
-    0 0 30px color-mix(in srgb, var(--kpi) 16%, transparent),
-    inset 0 1px 0 color-mix(in srgb, var(--kpi) 22%, transparent);
-}
-/* ⚠️ Зөвхөн ТОВЧ болсон нүд (view-тэй) hover-ийн хариу өгнө — эс бөгөөс
-   дарж болохгүй нүд дарагдах мэт харагдана. */
-button.kpi { cursor: pointer; }
-button.kpi:hover {
-  border-color: color-mix(in srgb, var(--kpi, var(--hue)) 55%, var(--line));
-  background: var(--surface-2);
-}
-button.kpi:hover .kpiGo { opacity: 1; transform: translateX(2px); }
-
-.kpiBig { padding: 18px 18px 16px; gap: 9px; }
-
-.kpiTop { display: flex; align-items: center; justify-content: center; gap: 8px; min-width: 0; }
-.kpiIcon {
-  display: grid;
-  place-items: center;
-  width: 26px;
-  height: 26px;
-  flex: none;
-  border-radius: var(--r-sm);
-  /* ⚠️ `--kpi` байхгүй нүдэнд брэндийн `--hue` руу уначихна */
-  color: var(--kpi, var(--hue));
-  background: color-mix(in srgb, var(--kpi, var(--hue)) 13%, transparent);
-  border: 1px solid color-mix(in srgb, var(--kpi, var(--hue)) 26%, transparent);
-}
-/*
- * ⚠️ ЦЭГ ТАВЬЖ ТАСЛАХГҮЙ. Урьд нь `white-space: nowrap` + ellipsis байсан тул
- * «Ногоон байгууламж» → «Ногоон байгуула…», «Нийгмийн байгууламж» →
- * «Нийгмийн байгуу…» гэж УНШИГДАХГҮЙ болж байв. Хоёр мөр хүртэл мурийна.
- */
-.kpiLabel {
-  /* ⚠️ `flex: 1` БАЙХГҮЙ — байвал шошго тэлж, сумыг баруун ирмэг рүү түлхэнэ */
-  flex: 0 1 auto;
-  min-width: 0;
-  font-size: 0.73rem;
-  font-weight: 600;
-  line-height: 1.28;
-  color: var(--ink-2);
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-/* Шошго нэг эсвэл хоёр мөр байхаас үл хамааран утгууд НЭГ ШУГАМД эгнэнэ */
-.kpiMore .kpiTop { min-height: 30px; align-items: center; }
-.kpiMain .kpiTop { min-height: 28px; }
-.kpiGo {
-  flex: none;
-  font-size: 0.85rem;
-  color: var(--ink-3);
-  opacity: 0;
-  transition: opacity 0.15s, transform 0.15s var(--ease);
-}
-.kpiValue {
-  font-size: 1.25rem;
-  font-weight: 700;
-  line-height: 1.1;
-  letter-spacing: -0.02em;
-  color: var(--ink);
-}
-/*
- * ⚠️ Хэт том бичвэр нь «2.66 их наяд ₮» мэт УРТ утгыг хоёр мөр болгож хугалдаг.
- * Тэр үед доорх тайлбар мөр цагирагны доогуур гулсаж, карт эвдэрч харагдана.
- */
-.kpiBig .kpiValue { font-size: clamp(1.4rem, 1.75vw, 1.72rem); }
-.kpiSub {
-  /*
-   * ⚠️ ӨГҮҮЛБЭР нь ЗҮҮН ЭГНЭЭТЭЙ. Карт өөрөө голлосон ч олон мөр болж
-   * мурийсан тайлбарыг голлуулбал мөр бүрийн эхлэл өөр өөр байрлаж, нүд
-   * дагахад хүндэрнэ. Тоо, шошго л голлоно.
-   */
-  text-align: left;
-  font-size: 0.68rem;
-  line-height: 1.4;
-  color: var(--ink-3);
-  font-variant-numeric: tabular-nums;
-}
+/* ⚠️ 2026-08-24: ашиглагдахаа больсон `.progress*` (нийт гүйцэтгэлийн зурвас)
+   ба `.kpi*` (нүүрийн өөрийн KPI нүднүүд) бүлгүүд устгав — `Home.tsx`-ээс
+   «Нийт гүйцэтгэл» зурвас хасагдаж, KPI-ууд `ExecKpi`-д бүрэн шилжсэн. */
 
 /* ══════════════ Сэдвийн цэс (navbar дотор) + dropdown ══════════════ */
 
@@ -556,21 +351,17 @@ button.kpi:hover .kpiGo { opacity: 1; transform: translateX(2px); }
 }
 
 /* ── Ачаалах үеийн зөөлөн хөдөлгөөн (stagger) ── */
-.boardHead,
-.kpiMain,
-.kpiMore {
+.boardHead {
   opacity: 0;
   animation: rise 0.5s var(--ease, cubic-bezier(0.22, 1, 0.36, 1)) forwards;
+  animation-delay: 0.02s;
 }
-.boardHead { animation-delay: 0.02s; }
-.kpiMain { animation-delay: 0.1s; }
-.kpiMore { animation-delay: 0.18s; }
 @keyframes rise {
   from { opacity: 0; transform: translateY(12px); }
   to { opacity: 1; transform: translateY(0); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .boardHead, .kpiMain, .kpiMore { opacity: 1; animation: none; }
+  .boardHead { opacity: 1; animation: none; }
 }
 
 /* ── Нарийн дэлгэц ── */
@@ -579,43 +370,10 @@ button.kpi:hover .kpiGo { opacity: 1; transform: translateX(2px); }
   .board { padding: 16px 16px 32px; }
   .brandTag { display: none; }
   .userName { display: none; }
-  .progressBox { width: 100%; }
   /**
    * ⚠️ `overflow-x` тавьж БОЛОХГҮЙ: dropdown нь зурваснаас доош унждаг тул
    * тайрагдана. Оронд нь цэсийг ДООД мөрөнд бүтнээр нь буулгана.
    */
   .menuRow { order: 3; width: 100%; justify-content: flex-start; flex-wrap: wrap; }
   .spacer { display: none; }
-}
-
-/* ══════════════ Том нүдний их бие — утга ба цагираг ══════════════ */
-
-.kpiBody {
-  display: grid;
-  /* ⚠️ Цагирагны багана ТОГТМОЛ — `auto` бол урт тоо түүнийг шахаж мурийлгана */
-  grid-template-columns: minmax(0, auto) 58px;
-  justify-content: center;
-  align-items: center;
-  gap: 14px;
-  /*
-   * ⚠️ Цагираг ба усан тамга SVG нь `currentColor` ашигладаг тул өнгийг ЭНД
-   * нэг удаа тавина. Утгын өнгийг `Home.tsx` тусад нь өгдөг.
-   */
-  color: var(--kpi, var(--hue));
-}
-.kpiText { display: grid; gap: 5px; min-width: 0; }
-.kpiArt { display: grid; place-items: center; flex: none; }
-/*
- * Харьцаагүй нүдний дүрс — ЧИМЭГЛЭЛ, өгөгдөл БИШ. Тиймээс бүдэг байлгана:
- * тод байвал цагирагтай нүднүүдтэй адил жинтэй мэт уншигдана.
- *
- * ⚠️ SVG-ийн атрибутаар (`viewBox`, `width`) сонгохгүй — тэр нь дүрсний дотоод
- * бүтэц өөрчлөгдөхөд ЧИМЭЭГҮЙ эвдэрнэ. Класcыг `Home.tsx` шууд өгнө.
- */
-.kpiArtFaint { opacity: 0.2; }
-
-@media (max-width: 560px) {
-  /* Нарийн дэлгэцэд цагираг зай эзэлж, тоог шахаж эхэлдэг */
-  .kpiArt { display: none; }
-  .kpiBody { grid-template-columns: minmax(0, 1fr); }
 }

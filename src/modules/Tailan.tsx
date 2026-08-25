@@ -36,7 +36,11 @@ import r from './report.module.css';
 
 /** ₮ → тэрбум */
 const bn = (v: number) => num(v / 1e9, 1);
-/** Тэг өртөг = «нэгж үнэ загварт ороогүй» — 0 гэж бичвэл «үнэгүй» мэт уншигдана */
+/**
+ * ⚠️ ЗӨВХӨН Cashflow-ийн `budget`/`contract` дүнд хэрэглэнэ: тэг нь «төсөвт
+ * өртөг хараахан батлагдаагүй / гэрээ байгуулагдаагүй» гэсэн утгатай тул 0
+ * гэж бичвэл «үнэгүй» мэт уншигдана — «—» болгоно.
+ */
 const bnOrDash = (v: number) => (v > 0 ? bn(v) : '—');
 
 /** Хүснэгтийн дугаартай тайлбар — ХҮСНЭГТИЙН ДЭЭД талд байрлана */
@@ -169,7 +173,12 @@ export function Tailan() {
                         {tr('Сэлбэ 20 минутын хотын төслийн хэрэгжилт тайлан үүсгэх өдрийн байдлаар')} <strong>{pct(x.overall.pct, 2)}</strong>{tr('-тай байна. Төслийн жингийн')} <strong>{pct(d.buildWeight, 1)}</strong>{tr('-ийг эзэлдэг барилга угсралтын ажил')} <strong>{pct(d.buildActual, 2)}</strong>{tr('-ийн гүйцэтгэлтэй')}
                         {d.buildLag != null && (
                           <> {tr('буюу төлөвлөгөөнөөс')} <strong>{num(d.buildLag, 1)} {tr('нэгж хувиар')}</strong> {tr('хоцорч байна')}</>
-                        )}{tr('. Газар чөлөөлөлтийн гүйцэтгэл')}
+                        )}
+                        {/* ⚠️ «үе шатны тайлангаар» гэсэн эх сурвалжийн шошго
+                            ЗААВАЛ: энэ хувь нь Төсөл_Гүйцэтгэлийн үе шатны
+                            хүснэгтээс гардаг бөгөөд бусад дашбоардын амьд
+                            кадастрын хувиас зөрдөг (land.ts-ийн тайлбар). */}
+                        {tr('. Газар чөлөөлөлтийн гүйцэтгэл үе шатны тайлангаар')}
                         {x.land.pct != null && <> <strong>{pct(x.land.pct, 1)}</strong></>} {tr('байгаа ч')}
                         {' '}{num(d.landLeft)} {tr('нэгж талбар шийдвэрлэгдээгүй үлдсэн байна.')}
                       </p>
@@ -477,12 +486,15 @@ export function Tailan() {
                         </tbody>
                       </ResizableTable>
 
+                      {/* ⚠️ CASHFLOW2-ийн сарын цуваа нь санхүүжилтийн ХУВААРЬ
+                          (төлөвлөгөө) — «олгосон» гэж шошговол бодит олголтоос
+                          олон дахин их худал тоо хэвлэгдэнэ (reportData.ts). */}
                       <Cap no="7.2">
-                        {tr('Сар бүрийн олголт ба хуримтлагдсан дүн')}
-                        {d.peakMonth && tr(' — хамгийн их олголт {0} сард', tr(d.peakMonth.label))}
+                        {tr('Сар бүрийн санхүүжилтийн хуваарь (төлөвлөгөө) ба хуримтлагдсан дүн')}
+                        {d.peakMonth && tr(' — хамгийн их төлөвлөгөө {0} сард', tr(d.peakMonth.label))}
                       </Cap>
                       <ResizableTable storeKey="tailan.saraar" className={r.table}>
-                        <thead><tr><th>{tr('Сар')}</th><th className={r.num}>{tr('Олгосон (тэрбум ₮)')}</th><th className={r.num}>{tr('Хуримтлагдсан')}</th></tr></thead>
+                        <thead><tr><th>{tr('Сар')}</th><th className={r.num}>{tr('Төлөвлөгөө (тэрбум ₮)')}</th><th className={r.num}>{tr('Хуримтлагдсан')}</th></tr></thead>
                         <tbody>
                           {x.finance.months.map((m) => (
                             <tr key={m.label}>
@@ -493,6 +505,9 @@ export function Tailan() {
                           ))}
                         </tbody>
                       </ResizableTable>
+                      <p className={r.note}>
+                        {tr('Хүснэгт нь гэрээ бүрийн санхүүжилтийн хуваарь буюу төлөвлөгөө; бодитоор олгосон санхүүжилтийг IPC актын дүнгээр 1-р хүснэгтэд харуулав.')}
+                      </p>
 
                       <Cap no="7.3">{tr('Ажлын төрлөөр — төсөв ба гэрээний дүн')}</Cap>
                       <ResizableTable storeKey="tailan.torol" className={r.table}>
@@ -522,9 +537,9 @@ export function Tailan() {
                       <p className={r.intro}>
                         {tr('Ерөнхий төлөвлөгөөний')} {num(x.infra.totals.layers)} {tr('давхаргад')}
                         {' '}{num(x.infra.totals.n)} {tr('объект бүртгэгдсэн бөгөөд шугам сүлжээний нийт урт')} {num(x.infra.totals.len)} {tr('м, талбайн хэмжээ')}
-                        {' '}{num(x.infra.totals.area)} {tr('м² байна. Өртгийн загвараар тооцсон дүн')} {bn(x.infra.totals.cost)} {tr('тэрбум ₮ байна.')}
+                        {' '}{num(x.infra.totals.area)} {tr('м² байна.')}
                       </p>
-                      <Cap no="8">{tr('Ажлын бүлэг тус бүрийн объект, хэмжээ ба төсөвт өртөг')}</Cap>
+                      <Cap no="8">{tr('Ажлын бүлэг тус бүрийн объект ба хэмжээ')}</Cap>
                       <ResizableTable storeKey="tailan.ajliin-buleg" className={r.table}>
                         <thead>
                           <tr>
@@ -533,7 +548,6 @@ export function Tailan() {
                             <th className={r.num}>{tr('Объект')}</th>
                             <th className={r.num}>{tr('Урт (м)')}</th>
                             <th className={r.num}>{tr('Талбай (м²)')}</th>
-                            <th className={r.num}>{tr('Өртөг (тэрбум ₮)')}</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -544,7 +558,6 @@ export function Tailan() {
                               <td className={r.num}>{num(g.n)}</td>
                               <td className={r.num}>{g.len > 0 ? num(g.len) : '—'}</td>
                               <td className={r.num}>{g.area > 0 ? num(g.area) : '—'}</td>
-                              <td className={r.num}>{bnOrDash(g.cost)}</td>
                             </tr>
                           ))}
                           <tr className={r.total}>
@@ -553,12 +566,11 @@ export function Tailan() {
                             <td className={r.num}>{num(x.infra.totals.n)}</td>
                             <td className={r.num}>{num(x.infra.totals.len)}</td>
                             <td className={r.num}>{num(x.infra.totals.area)}</td>
-                            <td className={r.num}>{bnOrDash(x.infra.totals.cost)}</td>
                           </tr>
                         </tbody>
                       </ResizableTable>
                       <p className={r.note}>
-                        {tr('Өртгийн загвар нь нэгж үнэ батлагдсан бүлгүүдийг л хамарна — «—» тэмдэглэгээ нь өртөг тэг гэсэн үг биш, тухайн бүлэгт нэгж үнэ тогтоогоогүйг илэрхийлнэ.')}
+                        {tr('«—» тэмдэглэгээ нь тухайн бүлэгт өгөгдсөн хэмжигдэхүүн хамаарахгүйг илэрхийлнэ (жишээ нь цэгэн объектод урт, талбай байхгүй).')}
                       </p>
                     </section>
 

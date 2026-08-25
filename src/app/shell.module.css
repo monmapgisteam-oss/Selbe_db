@@ -105,21 +105,33 @@
   touch-action: none;
   transition: background 0.12s;
 }
+/* Analysis-ийн .resizer-тэй НЭГ хэл (2026-08-21) — эгц хувилбар */
+.rowGrip::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 5px;
+  transform: translateY(-50%);
+  background: var(--line);
+  transition: background 0.15s;
+}
 .rowGrip::after {
   content: '';
   position: absolute;
   left: 50%;
-  top: 2px;
-  width: 30px;
-  height: 2px;
-  margin-left: -15px;
-  border-radius: 2px;
+  top: 50%;
+  width: 26px;
+  height: 1px;
+  transform: translate(-50%, -50%);
+  border-radius: 1px;
   background: var(--line-strong);
-  opacity: 0;
-  transition: opacity 0.15s;
+  z-index: 1;
+  transition: background 0.15s;
 }
-.rowGrip:hover, .rowGripOn { background: color-mix(in srgb, var(--hue) 22%, transparent); }
-.rowGrip:hover::after, .rowGripOn::after { opacity: 1; }
+.rowGrip:hover::before, .rowGripOn::before { background: var(--data); }
+.rowGrip:hover::after, .rowGripOn::after { background: var(--bg); }
 
 /* ── Доод хүрээ: нэгтгэсэн үзүүлэлт (зөвхөн Барилгын хяналт) ── */
 .dashFoot {
@@ -230,8 +242,6 @@
   letter-spacing: 0.05em;
   white-space: nowrap;
 }
-.brandSub { font-size: 0.68rem; color: var(--ink-3); }
-
 /* ── Идэвхтэй шүүлтийн тэмдэг ── */
 .filterChip {
   display: flex;
@@ -282,23 +292,8 @@
    ⚠️ 2026-08-20: Энэ хэсгийн дүрмүүд (`.mapTools`, `.mapBtn`, `.mapDims`,
    `.dimBtn`, `.dimOn` ба `mapToolsIn` анимаци) `@/components/mapTools.module.css`
    руу ШИЛЖСЭН. Тэдгээрийг ес өөр газар хуулж бичдэг байсныг ганц `MapTools`
-   компонент болгосон — жагсаалтыг тэнд үзнэ үү. */
-
-
-
-
-/* ⚠️ Текст нь `--hue-ink` — харанхуй горимд `--hue` нь ЦАЙВАР cyan тул цагаан
-   бичиг 1.7:1 л өгдөг (WCAG 3:1-ээс доогуур). Цайвар горимд токен нь цагаан
-   хэвээр тул тэнд харагдац өөрчлөгдөхгүй. */
-
-
-
-/* 2D ↔ 3D ↔ BIM — сегментчилсэн удирдлага (саарал зам · цагаан идэвх) */
-
-
-
-
-
+   компонент болгосон — жагсаалтыг тэнд үзнэ үү. Контрастын (`--hue-ink`) ба
+   «2D ↔ 3D ↔ BIM» сегмент удирдлагын тайлбарууд ч тэндээ шилжсэн. */
 
 .iconBtn {
   display: grid;
@@ -324,15 +319,6 @@
   align-items: center;
   gap: 8px;
   flex: none;
-}
-
-/* Хэлний товч — дүрсний оронд хоёр үсэг. Өндөр/өргөн нь `.iconBtn`-тэй
-   ижил тул толгойн товчнуудын эгнээ тэгширсэн хэвээр. */
-.localeCode {
-  font-size: 0.68rem;
-  font-weight: 650;
-  letter-spacing: 0.04em;
-  font-variant-numeric: tabular-nums;
 }
 
 /* ── Газрын зураг ── */
@@ -403,21 +389,33 @@
   touch-action: none;
   transition: background 0.12s;
 }
+/* Analysis-ийн .resizer-тэй НЭГ хэл (2026-08-21) */
+.grip::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 5px;
+  transform: translateX(-50%);
+  background: var(--line);
+  transition: background 0.15s;
+}
 .grip::after {
   content: '';
   position: absolute;
   top: 50%;
-  left: 2px;
-  width: 2px;
-  height: 30px;
-  margin-top: -15px;
-  border-radius: 2px;
+  left: 50%;
+  width: 1px;
+  height: 26px;
+  transform: translate(-50%, -50%);
+  border-radius: 1px;
   background: var(--line-strong);
-  opacity: 0;
-  transition: opacity 0.15s;
+  z-index: 1;
+  transition: background 0.15s;
 }
-.grip:hover, .gripOn { background: color-mix(in srgb, var(--hue) 22%, transparent); }
-.grip:hover::after, .gripOn::after { opacity: 1; }
+.grip:hover::before, .gripOn::before { background: var(--data); }
+.grip:hover::after, .gripOn::after { background: var(--bg); }
 /* Touch төхөөрөмжид 6px зурвасыг хуруугаар барих боломжгүй — hit-талбайг
    ирмэгийг нь даган тэлнэ (overlay тул зохион байгуулалт өөрчлөгдөхгүй). */
 @media (pointer: coarse) {
@@ -465,30 +463,20 @@
 @media (max-width: 1180px) {
   .shell {
     grid-template-columns: 1fr;
-    grid-template-rows: var(--head) auto 46vh auto;
+    grid-template-rows: var(--head) auto max(240px, 46vh) auto;
     grid-template-areas: 'head' 'nav' 'map' 'panel';
     height: auto;
     min-height: 100dvh;
   }
-  /* Босоо өрөлт: зураг → каталог → дашбоард (нэгтгэл нь дашбоардын дотор) */
-  .shellCat {
-    grid-template-columns: 1fr;
-    grid-template-rows: var(--head) auto 46vh auto auto;
-    grid-template-areas: 'head' 'nav' 'map' 'cat' 'panel';
-  }
   /* Доод хүрээтэй хувилбар (Барилгын хяналт) — нэгтгэл хамгийн доор */
   .shellFoot {
-    grid-template-rows: var(--head) auto 46vh auto auto;
+    grid-template-rows: var(--head) auto max(240px, 46vh) auto auto;
     grid-template-areas: 'head' 'nav' 'map' 'panel' 'foot';
   }
-  .shellFoot.shellCat {
-    grid-template-rows: var(--head) auto 46vh auto auto auto;
-    grid-template-areas: 'head' 'nav' 'map' 'cat' 'panel' 'foot';
-  }
   /* Барилгын хяналт — зураг → муруй → дундаж → самбар → нэгтгэл */
-  .shellMon, .shellMon.shellCat {
+  .shellMon {
     grid-template-columns: 1fr;
-    grid-template-rows: var(--head) auto 46vh auto auto auto auto auto;
+    grid-template-rows: var(--head) auto max(240px, 46vh) auto auto auto auto auto;
     grid-template-areas: 'head' 'nav' 'map' 'trend' 'cat' 'monl' 'panel' 'foot';
   }
   /* Хэвтээ зурвас — баруун хүрээ хэрэггүй, доод зааг л хэрэгтэй */
@@ -509,8 +497,6 @@
   /* Босоо өрөлтөд өргөн чирэх утгагүй */
   .grip { display: none; }
   .filterChip { max-width: 190px; }
-  /* Толгойд зай гаргах: брэндийн дэд гарчгийг нуух (лого + нэр үлдэнэ) */
-  .brandSub { display: none; }
   .head { gap: 10px; padding: 0 12px; }
 }
 

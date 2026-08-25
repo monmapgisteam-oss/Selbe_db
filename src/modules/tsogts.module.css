@@ -19,7 +19,9 @@
   --side-l: 290px;
   --side-r: 380px;
   grid-template-columns: var(--side-l) minmax(0, 1fr) var(--side-r);
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  /* Зургийн мөрөнд 240px доод шал: намхан дэлгэцэд (≈768px) KPI 2 мөр +
+     санхүүгийн карт зургийг бараг 0 болтол шахдаг байв (2026-08-21 аудит) */
+  grid-template-rows: auto minmax(240px, 1fr) auto;
   /* ЗҮҮН (list) ба БАРУУН (r) баганууд бүтэн өндрийг эзэлнэ. Зүүнд багцын
      жагсаалт + блок бүрийн гүйцэтгэл; голд KPI · зураг · санхүүгийн график. */
   grid-template-areas:
@@ -85,9 +87,12 @@
 .finKpiVal {
   font-size: 16px;
   font-weight: 500;
-  line-height: 1.05;
+  line-height: 1.15;
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+  /* nowrap байхад урт төгрөгийн дүн («1.18 их наяд ₮») нүднээсээ ДУУГҮЙ халж
+     картын хүрээн дээр гарч байв (2026-08-21 аудит) — одоо мөр буулгана */
+  overflow-wrap: anywhere;
+  min-width: 0;
 }
 /* Шошго = eyebrow, утгын ДЭЭР (envhub Indicator-ын дараалал) */
 .finKpiLabel {
@@ -141,7 +146,10 @@
 .fin {
   grid-area: fin;
   min-width: 0;
-  overflow: visible;
+  /* Намхан дэлгэцэд зургийн 240px шалтай хамт багтахгүй бол дотроо гүйнэ —
+     графикийн өндрийг чирж тохируулах боломж хэвээр (2026-08-21) */
+  max-height: 46vh;
+  overflow-y: auto;
 }
 /* Санхүүгийн картын толгойн баруун талын «олгогдох нийт» тэмдэглэгээ
    (график дээр давхардахгүй — Section-ий header дотор) */
@@ -216,16 +224,20 @@
 .backBtn:hover { color: var(--ink); }
 
 /* ── Нарийн дэлгэц — босоо цуваа ── */
-@media (max-width: 1080px) {
+/* Босго 1100 — бүх дашбоардын НЭГДСЭН босго (2026-08-21) */
+@media (max-width: 1100px) {
   .pack {
     grid-template-columns: 1fr;
-    grid-template-rows: auto auto 52vh auto auto;
+    grid-template-rows: auto auto max(240px, 52vh) auto auto;
     grid-template-areas: 'kpi' 'list' 'map' 'r' 'fin';
     height: auto;
     overflow: visible;
   }
   .list { max-height: none; }
   .fin { max-height: none; }
+  /* Нэг баганад зааг байхгүй — бүх бариул нуугдана */
+  .pack > :global(button[class*='splitGrip_grip']) { display: none; }
+  .finGrip { display: none; }
 }
 
 /* ══════════ 2026-08-18: багцын хоцрогдол ба задаргаа (хэрэглэгчийн хүсэлт) ══════════ */
@@ -268,44 +280,6 @@
 .packLegend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 11px; color: var(--ink-3); }
 .packLegend span { display: inline-flex; align-items: center; gap: 5px; }
 .packLegend i { width: 9px; height: 9px; border-radius: 1px; flex: none; }
-
-/* «Төсөл нийт» — төлөвлөсөн · бодит · зөрүү гурван нүд (hairline-аар
-   тусгаарласан нэг хайрцаг). Утгын өнгө TSX-ээс: cat(1..2) нь доод графикийн
-   цуваатай ижил, зөрүү нь төлөвийн токен — хоёулаа утгатай өнгө. */
-.totKpi {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1px;
-  margin-bottom: 10px;
-  background: var(--line);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  overflow: hidden;
-}
-.totKpi > div {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 8px 11px;
-  background: var(--surface);
-}
-.totKpiVal {
-  font-size: 17px;
-  font-weight: 500;
-  line-height: 1.1;
-  letter-spacing: -0.01em;
-  font-variant-numeric: tabular-nums;
-}
-/* Шошго = eyebrow, утгын ДЭЭР (finKpi-тэй ижил дараалал) */
-.totKpiLabel {
-  order: -1;
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: var(--ink-3);
-  line-height: 1.25;
-}
 
 /* ── Санхүүгийн картын үзүүлэлт нуух/харуулах товч (2026-08-21) —
       зөвхөн KPI мөрөнд үйлчилнэ, доорх график үргэлж нээлттэй ── */
@@ -361,22 +335,72 @@
   cursor: row-resize;
   touch-action: none;
 }
+/* Analysis-ийн .resizer-тэй ИЖИЛ хэл (2026-08-21) — эгц хувилбар:
+   5px саарал зурвас + голдоо 26px ховил, hover-т --data */
+.finGrip::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 5px;
+  transform: translateY(-50%);
+  background: var(--line);
+  transition: background 0.15s;
+}
 .finGrip::before {
   content: "";
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 38px;
-  height: 4px;
+  width: 26px;
+  height: 1px;
   transform: translate(-50%, -50%);
-  border-radius: 3px;
-  background: var(--ink-3);
-  opacity: 0.55;
-  transition: background 0.12s ease, opacity 0.12s ease;
+  border-radius: 1px;
+  background: var(--line-strong);
+  z-index: 1;
+  transition: background 0.15s;
+}
+.finGrip:hover::after,
+.finGrip:focus-visible::after {
+  background: var(--data);
 }
 .finGrip:hover::before,
 .finGrip:focus-visible::before {
-  background: var(--hue);
-  opacity: 1;
+  background: var(--bg);
 }
 .finGrip:focus-visible { outline: none; }
+
+/* Нэг баганат горимд өндрийн бариул нуугдана — файлын төгсгөлд байгаа нь
+   санамсаргүй биш: .finGrip-ийн үндсэн дүрэм дээр бичигдсэн тул дараалалаар
+   давуулахын тулд эндээс хойш зарлав (2026-08-21). */
+@media (max-width: 1100px) {
+  .finGrip { display: none; }
+}
+
+/* ══ SplitGrip-ийг сүлжээний НҮДЭНД — завсрын ГОЛД суулгана (2026-08-21):
+   absolute давхарга байхдаа left: calc(var(--side-l) - 5px) гэж баганын
+   ДОТОР тооцогдож картуудын ирмэг дээр давхардаг байв. Одоо grid-ийн
+   өөрийнх нь 8px завсарт төвлөнө — картанд огт хүрэхгүй. ══ */
+.pack > :global(button[class*='splitGrip_grip']) {
+  position: relative;
+  grid-row: 1 / -1;
+  top: auto;
+  bottom: auto;
+  z-index: 6;
+}
+.pack > :global(button[class*='splitGrip_left']) {
+  grid-column: 1 / 2;
+  justify-self: end;
+  left: auto;
+  margin-right: -9.5px;
+}
+.pack > :global(button[class*='splitGrip_right']) {
+  grid-column: 3 / 4;
+  justify-self: start;
+  right: auto;
+  margin-left: -9.5px;
+}
+@media (max-width: 1100px) {
+  .pack > :global(button[class*='splitGrip_grip']) { display: none; }
+}

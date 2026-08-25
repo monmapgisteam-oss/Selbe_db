@@ -11,12 +11,11 @@ import s from '../suitability.module.css';
 /* ══════════════════ Бүсийн эрэмбэ ══════════════════ */
 
 export function Ranking({
-  rows, mode, ind, econShare, selected, onSelect,
+  rows, mode, ind, selected, onSelect,
 }: {
   rows: Row[];
   mode: Mode;
   ind: Indicator;
-  econShare: number;
   selected: string | null;
   onSelect: (id: string | null) => void;
 }) {
@@ -32,18 +31,18 @@ export function Ranking({
   );
 
   const sorted = useMemo(
-    () => [...rows].sort((a, b) => (valueOf(b, mode, ind, econShare) ?? -1) - (valueOf(a, mode, ind, econShare) ?? -1)),
-    [rows, mode, ind, econShare],
+    () => [...rows].sort((a, b) => (valueOf(b, mode, ind) ?? -1) - (valueOf(a, mode, ind) ?? -1)),
+    [rows, mode, ind],
   );
 
-  const perLevel = SCORE_LEVELS.map((_, i) => sorted.filter((r) => levelOf(valueOf(r, mode, ind, econShare)) === i).length);
-  const noData = sorted.filter((r) => levelOf(valueOf(r, mode, ind, econShare)) < 0).length;
+  const perLevel = SCORE_LEVELS.map((_, i) => sorted.filter((r) => levelOf(valueOf(r, mode, ind)) === i).length);
+  const noData = sorted.filter((r) => levelOf(valueOf(r, mode, ind)) < 0).length;
 
   const out: ReactNode[] = [];
   let last: number | null = null;
 
   sorted.forEach((r, i) => {
-    const tot = valueOf(r, mode, ind, econShare);
+    const tot = valueOf(r, mode, ind);
     const lv = levelOf(tot);
 
     if (lv !== last) {

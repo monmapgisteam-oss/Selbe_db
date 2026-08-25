@@ -13,6 +13,7 @@
  */
 
 import { HOME } from '@/lib/services';
+import { withSlot, isRateLimit } from '@/lib/query';
 import { t as tr } from '@/lib/i18nCore';
 import type { Network, Pt } from './traffic';
 import { zoneTrips } from './simulation';
@@ -85,9 +86,27 @@ const pageQuery = (offset: number) => new URLSearchParams({
  * (`AREA_UTM`), ижил хялбаршуулалт (`SIMPLIFY_M`), ижил CRS-ээр ирнэ. Line
  * давхаргын URL л өөр. `netSources.ts`-ийн бүртгэл үүнийг дуудна.
  */
+/**
+ * ⚠️ Шууд fetch-ийг query.ts-ийн 6 слотын хязгаарлагчаар (`withSlot`) оруулна —
+ * тойрсон хүсэлт «Too many requests»-ийн шалтгаан болдог (query.ts, 2026-08-21).
+ * 13 хуудас Promise.all-аар зэрэг эхэлсэн ч слотоор 6-аараа шатлан цувна.
+ * ArcGIS rate-limit алдааг HTTP 200-тай буцаадаг тул мессежийг шалгаж НЭГ удаа
+ * богино хүлээгээд дахин оролдоно — эс бөгөөс симуляц нээх агшин дашбоардын
+ * асуулгуудтай давхцахад сүлжээ дутуу ачаалагдаж, кэшлэгдэн үлддэг.
+ */
+const slotFetch = <T extends { error?: { message?: string } }>(url: string, signal?: AbortSignal): Promise<T> =>
+  withSlot(async () => {
+    const r: T = await fetch(url, { signal }).then((x) => x.json());
+    if (r.error && isRateLimit(r.error.message ?? '')) {
+      await new Promise((res) => setTimeout(res, 500 + Math.random() * 300));
+      return (await fetch(url, { signal }).then((x) => x.json())) as T;
+    }
+    return r;
+  });
+
 export async function loadPathsFrom(url: string, signal?: AbortSignal): Promise<Pt[][]> {
   const fetchPage = async (offset: number): Promise<Pt[][]> => {
-    const r: QueryResp = await fetch(`${url}/query?${pageQuery(offset)}`, { signal }).then((x) => x.json());
+    const r = await slotFetch<QueryResp>(`${url}/query?${pageQuery(offset)}`, signal);
     if (r.error) throw new Error(r.error.message ?? tr('ArcGIS query алдаа'));
     const out: Pt[][] = [];
     for (const f of r.features ?? []) {
@@ -100,7 +119,7 @@ export async function loadPathsFrom(url: string, signal?: AbortSignal): Promise<
 
   // ⚠️ 24 мянган хэрчим = 13 хуудас. Дараалуулбал 13 удаагийн round-trip болж
   //    таб нээхэд удаан үзэгдэнэ — тоог нь эхлээд асуугаад ЗЭРЭГ татна.
-  const cnt: { count?: number; error?: { message?: string } } = await fetch(
+  const cnt = await slotFetch<{ count?: number; error?: { message?: string } }>(
     `${url}/query?${new URLSearchParams({
       where: '1=1',
       geometry: JSON.stringify({ ...AREA_UTM, spatialReference: { wkid: AREA_WKID } }),
@@ -110,8 +129,8 @@ export async function loadPathsFrom(url: string, signal?: AbortSignal): Promise<
       returnCountOnly: 'true',
       f: 'json',
     })}`,
-    { signal },
-  ).then((x) => x.json());
+    signal,
+  );
   if (cnt.error) throw new Error(cnt.error.message ?? tr('ArcGIS count алдаа'));
 
   const pages = Math.max(1, Math.ceil((cnt.count ?? 0) / PAGE));

@@ -17,7 +17,7 @@ import { num } from '@/lib/format';
 import { sumBy } from '@/lib/agg';
 import { VIEW_BY_KEY } from '@/lib/services';
 import s from './iot.module.css';
-import o from './overview.module.css';
+import o from './iotOv.module.css';
 
 /**
  * IoT ХЯНАЛТ — Mononet-ээс 15 минут тутам ингест хийгддэг таван мэдрэгч.
@@ -109,6 +109,13 @@ function delta(m: MetricSeries): { pct: number; hours: number } | null {
 const pctLabel = (pct: number) => `${pct >= 0 ? '+' : '−'}${num(Math.abs(pct), 1)}%`;
 
 type Card = { s: SensorLive; m: MetricSeries };
+
+/**
+ * ⚠️ `MapCanvas` нь memo() — render бүрд шинэ `() => {}` дамжуулбал memo эвдэрч,
+ * минут тутмын цагийн tick (`setNow`) бүрд 3000+ мөрт компонент дэмий дахин
+ * ажиллана. Тиймээс модулийн түвшний ТОГТВОРТОЙ noop (Irged.tsx-ийн загвар).
+ */
+const noop = () => {};
 
 /* ══════════════════ Жижиг бүрэлдэхүүн ══════════════════ */
 
@@ -292,7 +299,7 @@ export function Iot({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             opacity={opacity}
             zone={zone}
             uniform
-            onPick={() => {}}
+            onPick={noop}
           />
 
           {/* ⚠️ 2026-08-20: Урьд нь ЗӨВХӨН «2D | 3D» байсан — Давхарга, Тунгалаг,
@@ -313,7 +320,7 @@ export function Iot({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           {catOpen && (
             <div className={o.catPanel}>
               <LayerCatalog
-                view="plan"
+                view="iot"
                 totals={catTotals}
                 visible={visible}
                 setVisible={setVisible}
@@ -399,9 +406,23 @@ function Board({ all }: { all: SensorLive[] }) {
               СЭРЭМЖЛҮҮЛГИЙГ энд авчрав. Эдгээргүй бол унасан үйлчилгээ ба
               задраагүй заалт нь ялгагдалгүй, чимээгүй хоосон нүд болж харагдана. */}
           {failed.length > 0 && (
-            <Note>
-              <b>{failed.length}</b> {tr('мэдрэгчийн үйлчилгээ татагдсангүй — доорх алдааг үзнэ үү. Энэ нь decoder-ийн хоцролт БИШ, хүсэлт өөрөө амжилтгүй болсон.')}
-            </Note>
+            <>
+              <Note>
+                <b>{failed.length}</b> {tr('мэдрэгчийн үйлчилгээ татагдсангүй — доорх алдааг үзнэ үү. Энэ нь decoder-ийн хоцролт БИШ, хүсэлт өөрөө амжилтгүй болсон.')}
+              </Note>
+              {/* ⚠️ Дээрх «доорх алдааг үзнэ үү» амлалтын БИЕЛЭЛ. Мэдрэгч бүрийн
+                  алдааны жагсаалт 2026-08-21-нд «Сүүлийн заалт» карттай ХАМТ
+                  устсан тул аль мэдрэгч ямар шалтгаанаар унасан нь хаана ч
+                  харагдахгүй болсон байв — унасан мэдрэгчийн series хоосон тул
+                  дээрх сүлжээнээс нүд нь ч бүрмөсөн алга болдог. Хуучин загварын
+                  (9e884e9) дагуу алдааг улаанаар, мэдрэгч бүрд нэг мөрөөр гаргана. */}
+              {failed.map((x) => (
+                <Note key={x.key}>
+                  <b>{x.label}</b>:{' '}
+                  <span style={{ color: 'var(--bad-ink)' }}>{x.error}</span>
+                </Note>
+              ))}
+            </>
           )}
           {live.length + failed.length < all.length && (
             <Note>

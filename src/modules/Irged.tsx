@@ -50,7 +50,7 @@ import { num } from '@/lib/format';
  * «Дараа» цэнхэр гэсэн өнгөт identity бүрмөсөн устаж, хоёр багана одоо ЯГ ИЖИЛ
  * карт болов — ялгаа нь зөвхөн ГАРЧГИЙН ҮГЭНД.
  */
-import o from './overview.module.css';
+import o from './irgedOv.module.css';
 import { SplitGrip, useSideResize } from '@/components/SplitGrip';
 import i from './irged.module.css';
 
@@ -66,11 +66,12 @@ import i from './irged.module.css';
  */
 const SOC_IDS = PKG_BY_FAMILY.soc ?? [];
 
-/** Унтрааж асаах давхаргууд — жагсаалтаас чагтын мөрүүд үүснэ */
-const TOGGLES = [
-  { id: IRGED_TOILET.id, label: IRGED_TOILET.title },
-  { id: 'soc', label: tr('Нийгмийн дэд бүтэц') },
-] as const;
+/* ⚠️ 2026-08-23: Урьд нь энд `TOGGLES` гэсэн ХОЁР чагтын жагсаалт байв (жорлон,
+   нийгмийн дэд бүтэц) бөгөөд каталогийн ДЭЭР гараар зурагддаг байлаа. Тэр нь
+   нэг цонхонд давхаргын ХОЁР ӨӨР удирдлага (энгийн `<input type=checkbox>` vs
+   каталогийн мөр/симбол/тоо) зэрэгцүүлж, замбараагүй болгож байсан тул
+   каталогт «Иргэдэд хүрэх үр өгөөж» бүлэг (`IRGED_GROUP`) болж НЭГТГЭГДСЭН.
+   Эдгээр давхарга одоо доорх `base`-д орж, анхнаасаа АСААЛТТАЙ хэвээр байна. */
 
 /**
  * Чагтаас үл хамааран ҮРГЭЛЖ ил давхарга — зам нь ортофототой адил СУУРЬ
@@ -101,10 +102,6 @@ const SOC_MAX = Math.max(...SOCIAL.rows.map((r) => r.total));
 export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   /** Талын багануудын өргөн — чирж тохируулна, хөтөчид хадгалагдана. */
   const side = useSideResize('irged');
-  /** Асаалттай давхаргууд */
-  const [on, setOn] = useState<Record<string, boolean>>(
-    () => Object.fromEntries(TOGGLES.map((t) => [t.id, true])),
-  );
   /** «Давхарга» жагсаалт нээлттэй эсэх (бусад цонхтой ижил зан төлөв) */
   const [layerOpen, setLayerOpen] = useState(false);
   /** Бүсийн шүүлт — toolbar-ын «Бүс» хэрэглүүр */
@@ -117,19 +114,23 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const is2d = dim === '2d';
 
   /**
-   * ⚠️ `soc` чагт нь НЭГ id биш, олон давхаргын БҮЛЭГ (Багц 19–21) — жагсаалтад
-   * задалж оруулна. Чагтын id нь зөвхөн товчлуур.
+   * ЭНЭ ЦОНХНЫ СУУРЬ — ортофото, зам, ба сэдвийн хоёр давхарга. Каталогийн
+   * «Иргэдэд хүрэх үр өгөөж» бүлэг яг эдгээрийг удирдана (`IRGED_LAYER_IDS`).
+   *
+   * ⚠️ Суурьт байгаа нь «анхнаасаа асаалттай» гэсэн үг — `useLayerPicks` нь
+   * каталогоос унтраасныг `off`-д бичдэг тул чагтаа авахад хэвийн унтарна.
+   *
+   * ⚠️ Нийгмийн барилга ЗӨВХӨН 2D-д — 3D-д меш газрыг бүрхэх тул полигон нь
+   * дотор нь алга болно (урьдын зан төлөв хэвээр).
    *
    * ⚠️ 2D-д ортофото ҮРГЭЛЖ жагсаалтад: `MapCanvas` нь сонголт ХООСОН үед
    * `BASE_MAP_IDS`-ийн 14 суурь давхаргыг бүгдийг асаадаг — бүх чагтыг авбал
    * ортофотогийн оронд тэдгээр гарч ирнэ.
    */
   const base = useMemo(() => {
-    const picked = TOGGLES
-      .filter((t) => on[t.id])
-      .flatMap((t) => (t.id === 'soc' ? (is2d ? SOC_IDS : []) : [t.id]));
-    return is2d ? [IRGED_ORTHO.id, ...ALWAYS, ...picked] : [...ALWAYS, ...picked];
-  }, [on, is2d]);
+    const own = is2d ? [IRGED_TOILET.id, ...SOC_IDS] : [IRGED_TOILET.id];
+    return is2d ? [IRGED_ORTHO.id, ...ALWAYS, ...own] : [...ALWAYS, ...own];
+  }, [is2d]);
 
   /**
    * ⚠️ 2026-08-20: Дээрх нь СУУРЬ (энэ цонхны түүх — ортофото, зам, чагтууд);
@@ -259,25 +260,13 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           {layerOpen && (
             <div className={`${o.catPanel} ${i.catPanel}`}>
               {/**
-                * ⚠️ ХОЁР чагт нь ЭНЭ ЦОНХНЫ ӨӨРИЙН давхаргууд (`irged:toilet`,
-                * Багц 19–21) — тэдгээр порталын каталогийн бүлгүүдэд ОРДОГГҮЙ
-                * тул доорх `LayerCatalog`-оор удирдагдахгүй. Иймд хоёулаа
-                * зэрэгцэн байна: дээр нь энэ цонхны түүх, доор нь БҮХ давхарга.
+                * ⚠️ 2026-08-23: Энэ цонхны өөрийн давхаргууд (`irged:toilet`,
+                * Багц 19–21) одоо каталогийн ХАМГИЙН ДЭЭД бүлэг болж орсон тул
+                * дээр байсан гараар зурсан хоёр чагт ХАСАГДСАН — давхаргын
+                * удирдлага НЭГ л газар, бусад цонхтой ижил хэлбэртэй боллоо.
                 */}
-              <div className={i.toggles}>
-                {TOGGLES.map((t) => (
-                  <label key={t.id} className={i.toggle}>
-                    <input
-                      type="checkbox"
-                      checked={on[t.id]}
-                      onChange={(e) => setOn((p) => ({ ...p, [t.id]: e.target.checked }))}
-                    />
-                    {t.label}
-                  </label>
-                ))}
-              </div>
               <LayerCatalog
-                view="plan"
+                view="irged"
                 totals={catTotals}
                 visible={visible}
                 setVisible={setVisible}
