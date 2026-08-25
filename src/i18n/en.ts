@@ -2985,6 +2985,21 @@ const en: Record<string, string> = {
   "Устгагдсан аккаунтууд": "Deleted accounts",
   "Аккаунтыг сэргээж хатуу тохиргооны эрхийг нь буцаана": "Restore the account with its built-in permissions",
   "Бүх өөрчлөлт хадгалагдсан": "All changes saved",
+  "«{0}» аль хэдийн жагсаалтад байна.": "“{0}” is already in the list.",
+  "«{0}» устгагдсан — доорх «Буцаах» товчоор сэргээнэ үү.": "“{0}” was deleted — use the “Restore” button below.",
+  "Аккаунт хайх…": "Search accounts…",
+  "Аккаунт хайх": "Search accounts",
+  "{0} сонгосон": "{0} selected",
+  "Сонголт цуцлах": "Clear selection",
+  "Тохирох аккаунт олдсонгүй.": "No matching account.",
+  "{0} сонгох": "Select {0}",
+  "шинэ": "new",
+  "Нээлттэй харагдацын тоо": "Number of enabled views",
+  "Бүгдийг асаах": "Enable all",
+  "Бүгдийг унтраах": "Disable all",
+  "{0} хэрэглэгчийн өөрчлөлт хадгалагдлаа": "Saved changes for {0} user(s)",
+  "Ctrl+S": "Ctrl+S",
+  "{0} хадгалагдав · {1} нь ArcGIS-т хүрсэнгүй": "{0} saved · {1} did not reach ArcGIS"
 };
 
 export default en;

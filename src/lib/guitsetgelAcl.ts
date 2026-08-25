@@ -81,12 +81,18 @@ export const assignsOf = (stage: Stage): Assign[] =>
   load().filter((a) => a.stage === stage);
 
 /**
- * Аккаунт нэмэх/шинэчлэх.
+ * Аккаунт нэмэх/шинэчлэх (шатанд томилох).
  *
  * ⚠️ Нэг аккаунт нэг шатанд ЗӨВХӨН НЭГ мөртэй — багц нь нэг мөрд жагсана.
  *    Хоёр мөр зөвшөөрвөл аль нь үнэн болох нь тодорхойгүй болно.
+ *
+ * @param grant `false` бол порталын эрхийг (`grantFlowAccess`) ЭНД олгохгүй —
+ *   дуудагч өөрөө нэг бичилтэд нэгтгэнэ.
+ *   ⚠️ 2026-08-25: UserAdmin-ы «Хадгалах» нь эрхийг өөрөө бичдэг тул энд
+ *   давхар бичихэд хоёр `setUser` УРАЛДАЖ, аль нь сүүлд буухаас хамаарч
+ *   `guitsetgel` харагдац чимээгүй алга болдог байв.
  */
-export function setAssign(user: string, stage: Stage, bagts: string[]): { ok: boolean; error?: string } {
+export function setAssign(user: string, stage: Stage, bagts: string[], grant = true): { ok: boolean; error?: string } {
   const u = user.trim().toLowerCase();
   if (!u) return { ok: false, error: 'Аккаунтын нэрээ бичнэ үү' };
 
@@ -109,7 +115,7 @@ export function setAssign(user: string, stage: Stage, bagts: string[]): { ok: bo
    *    өгнө. Дарж бичвэл давхар үүрэгтэй хүн (жишээ нь супер админ)
    *    бүх эрхээ алдана.
    */
-  void grantFlowAccess(u, stage);
+  if (grant) void grantFlowAccess(u, stage);
   return { ok: true };
 }
 
