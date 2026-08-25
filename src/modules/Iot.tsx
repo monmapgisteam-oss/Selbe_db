@@ -91,7 +91,7 @@ const axisLabel = (t: number): string => {
  * цагийн өмнөх цагт ХАМГИЙН ОЙР цэгийг суурь болгоно. Цуваа 24 цагаас богино
  * бол хамгийн эхний цэгийг авна (тэр үед `hours` нь бодит зөрүүг хэлнэ).
  */
-function delta(m: MetricSeries): { pct: number; hours: number } | null {
+function delta(m: MetricSeries): { pct: number; diff: number; hours: number } | null {
   const p = m.points;
   if (p.length < 2) return null;
   const last = p[p.length - 1];
@@ -101,12 +101,29 @@ function delta(m: MetricSeries): { pct: number; hours: number } | null {
     if (Math.abs(x.t - want) < Math.abs(base.t - want)) base = x;
   }
   if (base.t === last.t || base.v === 0) return null;
-  return { pct: ((last.v - base.v) / Math.abs(base.v)) * 100, hours: (last.t - base.t) / 3_600_000 };
+  return {
+    pct: ((last.v - base.v) / Math.abs(base.v)) * 100,
+    diff: last.v - base.v,
+    hours: (last.t - base.t) / 3_600_000,
+  };
 }
-
 
 /** Хувийн өөрчлөлт → «+3.4%» / «−1.2%» (минус нь U+2212, зураас биш) */
 const pctLabel = (pct: number) => `${pct >= 0 ? '+' : '−'}${num(Math.abs(pct), 1)}%`;
+
+/**
+ * 24 цагийн өөрчлөлтийн бичиглэл.
+ *
+ * ⚠️ ХУВИАР хэмжигддэг үзүүлэлтийн өөрчлөлтийг ДАХИН хувиар илэрхийлж
+ * БОЛОХГҮЙ. Хогийн сав хоосон (1.8%) байгаад дүүрэхэд (96.9%) харьцангуй
+ * өөрчлөлт нь «+5,212.7%» болно — тоо нь зөв ч утга нь ойлгомжгүй, суурь нь
+ * тэгд ойртох тусам хязгааргүй тэсрэнэ. Тийм үзүүлэлтэд ХУВИЙН НЭГЖ (х.н.)
+ * буюу энгийн ялгавар нь цорын ганц зөв хэмжүүр: «+95 х.н.».
+ */
+const deltaLabel = (m: MetricSeries, d: { pct: number; diff: number }) =>
+  m.unit.startsWith('%')
+    ? `${d.diff >= 0 ? '+' : '−'}${num(Math.abs(d.diff), 0)} ${tr('х.н.')}`
+    : pctLabel(d.pct);
 
 type Card = { s: SensorLive; m: MetricSeries };
 
@@ -179,7 +196,9 @@ function Cell({ c }: { c: Card }) {
         <span>
           {has ? `${num(c.m.min ?? 0, c.m.dp)} … ${num(c.m.max ?? 0, c.m.dp)}` : tr('задарсан заалт алга')}
         </span>
-        <span>{d ? pctLabel(d.pct) : ''}</span>
+        <span title={d ? tr('{0} цагийн өөрчлөлт', num(d.hours, 0)) : ''}>
+          {d ? deltaLabel(c.m, d) : ''}
+        </span>
       </div>
     </div>
   );
@@ -218,6 +237,9 @@ function ChartCard({ c, height = 150 }: { c: Card; height?: number }) {
           visible={8}
           /* Цэг бүрийн заалтыг тоогоор бичнэ — 8 л зэрэг харагдах тул зай хүрнэ */
           showValues
+          /* Босго нь `sensors.ts`-д хэмжигдэхүүн тус бүрд. Оноогоогүй бол
+             (гэрэлтүүлэг, хуримтлагдсан тоолуур) шугам зурагдахгүй. */
+          alert={c.m.alert}
           /* ⚠️ 2026-08-19: `note` тавихгүй. `Trend`-ийн тэнхлэгийн шошго нь
              `note ?? label` гэж уншдаг (Dashboard-д note нь ЖИНХЭНЭ огноо
              байдаг). Энд note-д УТГЫГ өгч байсан тул IoT-ийн график бүрийн

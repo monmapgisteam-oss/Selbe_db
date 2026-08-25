@@ -475,6 +475,65 @@ const simple = (sym: unknown) => ({ type: 'simple', symbol: sym }) as unknown as
 const LINE_PX = 1;
 const DOT_SCALE = 0.7;
 
+/**
+ * IoT МЭДРЭГЧИЙН 3D СИМБОЛ — газраас дээш өргөгдсөн «радар» тэмдэг.
+ *
+ * Хоёр хэсэгтэй:
+ *   · `verticalOffset` — тэмдгийг гадаргаас ДЭЭШ өргөнө (дэлгэцийн 44px,
+ *     бодит ертөнцөд 18…160м-ээр хязгаарлана: ойртоход тэнгэрт хөвөхгүй,
+ *     холдоход газарт булагдахгүй).
+ *   · `callout` — өргөгдсөн тэмдгээс ГАЗАР хүртэл татагдах НАРИЙН шугам.
+ *     Энэ нь ArcGIS-ийн стандарт «leader line»; гараар цилиндр зурахаас
+ *     хамаагүй хямд бөгөөд өнцөг эргүүлэхэд ҮРГЭЛЖ босоо хэвээр байна.
+ *
+ * ⚠️ Радарын долгион нь ГУРВАН давхарласан дугуй — ArcGIS-ийн 3D симбол
+ *    хөдөлгөөн дэмждэггүй тул «тэлж буй цацраг»-ийг ХЭМЖЭЭ + ТУНГАЛАГИЙН
+ *    шаталсан цуваагаар илэрхийлнэ (гадна нь том, бүдэг; дотор нь жижиг,
+ *    цул). Хөдөлгөөнт хувилбар нь HTML давхарга + `toScreen()` шаардана —
+ *    тэр нь 60 fps-д камер бүр хөдлөхөд дахин тооцоологдож, гүйцэтгэлийг
+ *    мэдэгдэхүйц унагана.
+ *
+ * ⚠️ ЗӨВХӨН SceneView-д. MapView нь `point-3d` симбол дэмждэггүй — 2D-д
+ *    тавибал давхарга ОГТ зурагдахгүй. Тиймээс `dim`-ээр сольдог эффект
+ *    (доор) хариуцна.
+ */
+const RADAR_LIFT = 44;
+export const radarSymbol = (hue: string) => {
+  const [r, g, b] = rgb(hue);
+  const ring = (size: number, fillA: number, lineA: number, lineW: number) => ({
+    type: 'icon',
+    resource: { primitive: 'circle' },
+    size,
+    material: { color: [r, g, b, fillA] },
+    outline: { color: [r, g, b, lineA], size: lineW },
+  });
+  return {
+    type: 'point-3d',
+    symbolLayers: [
+      /* гадна долгион — хамгийн том, бараг тунгалаг */
+      ring(30, 0.08, 0.30, 1),
+      /* дунд долгион */
+      ring(19, 0.16, 0.55, 1),
+      /* цөм — цул, цагаан хүрээтэй (аль ч дэвсгэр дээр ялгарна) */
+      {
+        type: 'icon',
+        resource: { primitive: 'circle' },
+        size: 9,
+        material: { color: [r, g, b, 1] },
+        outline: { color: [255, 255, 255, 0.9], size: 1 },
+      },
+    ],
+    verticalOffset: { screenLength: RADAR_LIFT, minWorldLength: 18, maxWorldLength: 160 },
+    callout: {
+      type: 'line',
+      size: 1,
+      color: [r, g, b, 0.85],
+      /* Цайвар хүрээ — бараан меш дээр шугам уусахаас сэргийлнэ */
+      border: { color: [255, 255, 255, 0.45] },
+    },
+  } as unknown as __esri.Symbol3DProperties;
+};
+
 export const symbolOf = (d: LayerDef, hue = d.hue) => {
   const plan = d.topic === 'plan';
   return d.geom === 'line'
@@ -1954,6 +2013,32 @@ export const MapCanvas = memo(function MapCanvas({
 
     // ⚠️ dep нь `sceneKey` (мөр) — `sceneList` массив рендер бүрт шинэ лавлагаатай.
   }, [dim, ready, sceneKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /**
+   * IoT МЭДРЭГЧ — 3D-д газраас дээш өргөгдсөн радар тэмдэг, 2D-д энгийн цэг.
+   *
+   * ⚠️ Давхарга нь НЭГ УДАА үүсдэг бөгөөд MapView ба SceneView ХОЁУЛАА ижил
+   *    инстанцыг хуваалцдаг. `point-3d` симболыг 2D-д үлдээвэл давхарга огт
+   *    зурагдахгүй болно — тиймээс горим солигдох бүрд БУЦААЖ энгийн цэг рүү
+   *    сэргээх нь заавал (эс бөгөөс 3D-ээс 2D руу шилжихэд мэдрэгч алга болно).
+   */
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    const lift = dim !== '2d';
+    for (const d of LAYERS) {
+      if (!d.id.startsWith('iot:')) continue;
+      const l = map.findLayerById(d.id) as __esri.FeatureLayer | undefined;
+      if (!l) continue;
+      l.renderer = simple(lift ? radarSymbol(d.hue) : symbolOf(d)) as never;
+      /**
+       * ⚠️ `relative-to-scene` — меш/барилгын ДЭЭД гадаргаас хэмжинэ. `on-the-ground`
+       * үед `verticalOffset` нь газрын гадарга дээрээс тоологдож, барилгын дээвэр
+       * дээр суусан мэдрэгч дээвэр дотор орж алга болно.
+       */
+      l.elevationInfo = (lift ? { mode: 'relative-to-scene' } : ON_GROUND) as never;
+    }
+  }, [dim, ready]);
 
   /**
    * НҮХЭН ЖОРЛОН — 2D-д КЛАСТЕР асаах.

@@ -800,13 +800,71 @@
    `pointer-events: none` — бичиг нь хөрш цэгийн hover-ыг хулгайлахгүй. */
 .trendVal {
   position: absolute;
+  /* ⚠️ Босгын шошгоос ДООГУУР давхарлана — мөргөлдвөл босго нь дээр гарна */
+  z-index: 1;
   left: 50%;
   transform: translate(-50%, -100%);
   margin-top: -7px;
+  padding: 0 2px;
+  /* Зузаан дэвсгэр — муруй, торон дээр давхарлахад ч уншигдана */
+  background: var(--surface);
+  border-radius: 2px;
   font-size: 9.5px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+  line-height: 1.3;
   white-space: nowrap;
   color: var(--ink-2);
   pointer-events: none;
 }
+
+/* ── Анхааруулгын босго ─────────────────────────────────────────────────────
+   ⚠️ Улаан нь ЭНД «босго давсан» гэсэн ГАНЦ утга үүрнэ. Тиймээс босгогүй
+   чартад улаан ОГТ гарахгүй — өнгө нь мэдээлэл дамжуулж байж утгатай. */
+.trendThresh {
+  fill: none;
+  stroke: var(--bad);
+  stroke-width: 1;
+  /* ⚠️ ШУЛУУН шугам (тасархай БИШ) — захиалагчийн хүсэлт, 2026-08-21 */
+  opacity: 0.8;
+  /* `preserveAspectRatio="none"` нь зузааныг гажуудуулах тул бэхэлнэ */
+  vector-effect: non-scaling-stroke;
+}
+/**
+ * Босгын тоо — шугамын баруун үзүүрт.
+ *
+ * ⚠️ ДАВХЦЛЫН ЭРЭМБЭ. Цэгийн утгын бичиг (`.trendVal`) энэ шошготой мөргөлдөж
+ * болно (цэг нь босгын ойролцоо буувал). Хоёулаа хагас тунгалаг байвал
+ * давхцсан хэсэг нь ЗУУРАЛДАЖ хоёулаа уншигдахаа болино. Тиймээс:
+ *   · шошго нь БҮРЭН ЗУЗААН дэвсгэртэй (`--surface`, тунгалаг биш),
+ *   · `z-index` нь утгын бичгээс ДЭЭГҮҮР — мөргөлдвөл босго нь ялна
+ *     (босго нь тогтмол лавлагаа; утга нь hover-оор дахин уншигдана).
+ */
+.trendThreshTag {
+  position: absolute;
+  z-index: 3;
+  right: 0;
+  transform: translateY(-50%);
+  padding: 1px 5px;
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  border: 1px solid color-mix(in srgb, var(--bad) 35%, transparent);
+  font-size: 9px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+  color: var(--bad-ink);
+  white-space: nowrap;
+  pointer-events: auto;
+  cursor: help;
+}
+/* Босго давсан цэг — томорч, улаан болно (хэмжээ нь өнгө ялгах бэрхшээлтэй
+   хүнд ч мэдэгдэнэ: өнгө ГАНЦААРАА мэдээлэл дамжуулахгүй) */
+.trendDotAlert {
+  background: var(--bad);
+  box-shadow: 0 0 0 2px var(--surface);
+  opacity: 1;
+  transform: scale(1.3);
+}
+.trendValAlert { color: var(--bad-ink); }
+.trendValueAlert { color: var(--bad-ink); }
