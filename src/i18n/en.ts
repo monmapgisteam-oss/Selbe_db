@@ -2440,7 +2440,6 @@ const en: Record<string, string> = {
   "Хариултыг бэлдэж байна…": "Preparing the answer…",
   "Хариултын БИЕ дотор дараахыг ХЭЗЭЭ Ч бичихгүй: талбарын нэр (`GUITS_HV`, `AIL_TOO`, `Population`),": "NEVER write the following in the BODY of an answer: field names (`GUITS_HV`, `AIL_TOO`, `Population`),",
   "Харьцуулах замын сүлжээ": "Road network to compare",
-  "Хатуу тохиргоо руу сэргээх": "Restore the hard-coded settings",
   "Хаяг": "Address",
   "Хаяг:": "Address:",
   "хил": "boundary",
@@ -2546,7 +2545,6 @@ const en: Record<string, string> = {
   "Хэрэглэгч «Багц 1-ийн мэдээллийг дэлгэрэнгүй», «Багц-3.2-т юу байна вэ», «энэ бүсийн бүх мэдээлэл» гэх мэтээр ": "When the user asks for “full details of Package 1”, “what is in Package-3.2”, “everything about this zone” and similar, ",
   "Хэрэглэгч «хүн ам» гэвэл `Population`-ыг ав. Хэрэв нийлбэр үнэхээр хэрэгтэй бол ЗААВАЛ лавлаж асуу — өөрөө шийдэхгүй.": "If the user says “population”, take `Population`. If the sum really is needed, you MUST ask first — do not decide yourself.",
   "Хэрэглэгч бол төслийн удирдлага — тэдэнд `GUITS_HV` гэдэг нь утгагүй чимээ.": "The user is project management — to them `GUITS_HV` is meaningless noise.",
-  "Хэрэглэгч бүрд үүргийн багц оноох буюу харагдац тус бүрийг нээж/хаана.": "Assign a role bundle to each user, or open and close individual views.",
   "Хэрэглэгч монгол хэлээ ЛАТИН үсгээр бичиж болно («bagts 1 medeelel», «guitsetgel hed ve», «hun am hed»).": "The user may type Mongolian in LATIN letters (“bagts 1 medeelel”, “guitsetgel hed ve”, “hun am hed”).",
   "Хэрэглэгч нь төслийн УДИРДЛАГА. Албан тайлангийн найруулгаар бич:": "The user is project MANAGEMENT. Write in the style of a formal report:",
   "Хэрэглэгч төслийн өгөгдлийн талаар монголоор асууна. Чи ArcGIS-ээс бодит тоо татаж, товч бөгөөд ҮНЭН ЗӨВ хариулна.": "The user asks about project data in English. Pull real figures from ArcGIS and answer concisely and ACCURATELY.",
@@ -2959,7 +2957,15 @@ const en: Record<string, string> = {
   "Слайд үүсгэж чадсангүй — дахин оролдоно уу.": "Could not create the slide — please try again.",
   "Хүсэлтийн хугацаа хэтэрлээ ({0} сек)": "Request timed out ({0} s)",
   "Алдаа гарлаа — хуудсыг дахин ачаална уу": "An error occurred — please reload the page",
-  "Сэлбэ — Орон зайн мэдээллийн портал": "Selbe — Spatial Information Portal"
+  "Сэлбэ — Орон зайн мэдээллийн портал": "Selbe — Spatial Information Portal",
+  "Хадгалаагүй өөрчлөлт байна. Хадгалалгүй гарах уу?": "You have unsaved changes. Leave without saving?",
+  "Сэдэв бүрийг унтраалгаар нээж/хааж, доод талын «Хадгалах» товчоор нэг дор хадгална.": "Toggle each topic on or off, then press the “Save” button at the bottom to apply everything at once.",
+  "Хадгалаагүй өөрчлөлттэй": "Has unsaved changes",
+  "Хатуу тохиргоо руу сэргээх (хадгалахад үйлчилнэ)": "Reset to the built-in configuration (applied on save)",
+  "{0} хэрэглэгчийн өөрчлөлт хадгалагдаагүй": "Unsaved changes for {0} user(s)",
+  "Болих": "Cancel",
+  "Хадгалж байна…": "Saving…",
+  "Хадгалах": "Save"
 };
 
 export default en;
