@@ -33,7 +33,19 @@ import {
   useRef,
   useState,
 } from 'react';
+import { t as tr } from '@/lib/i18nCore';
 import st from './resizableTable.module.css';
+
+/**
+ * Чирэх бариулын tooltip/aria бичвэр — НЭГ эхээс.
+ *
+ * ⚠️ Урьд нь яг ижил мөр ResizableTable, SplitGrip, sheet/colWidths гурван
+ * файлд тус тусдаа хатуу бичигдсэн байв: нэгийг нь засахад бусад нь хоцорч,
+ * дээр нь tr()-гүй тул EN горимд монголоор үлддэг байв. Хэл нь модуль ачаалах
+ * үед тогтдог (i18nCore) тул модулийн түвшний tr() аюулгүй.
+ */
+export const GRIP_TITLE = tr('Чирж өргөнийг тохируулна · давхар товшвол анхны хэмжээ');
+export const GRIP_ARIA = tr('Баганы өргөн');
 
 /** Багана уншигдахгүй нарийсахаас сэргийлнэ. */
 const MIN_W = 36;
@@ -231,8 +243,8 @@ export function ResizableTable({ storeKey, className, children }: Props) {
             type="button"
             className={st.grip}
             style={{ left: x, height: headH }}
-            title="Чирж өргөнийг тохируулна · давхар товшвол анхны хэмжээ"
-            aria-label="Баганы өргөн"
+            title={GRIP_TITLE}
+            aria-label={GRIP_ARIA}
             role="separator"
             aria-orientation="vertical"
             onPointerDown={onDown(i)}

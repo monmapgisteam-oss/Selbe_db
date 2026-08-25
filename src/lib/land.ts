@@ -53,13 +53,26 @@ export function loadLandStatus(): Promise<LandStatus> {
         L.fields.status,
         [count('OBJECTID', 'n'), sum(L.fields.area, 'a')],
       ),
+      /**
+       * ⚠️ `areaAlt` НӨХӨЛТ: `area_m2` (кадастр) хоосон ч гараар бичсэн `Талбай`
+       * утгатай мөрүүд бий (2026-08: 9 мөр, 4,328 м²) — эдгээрийг алгасвал
+       * «Нийт талбай» дутуу гарна (services.ts-ийн `areaAlt`-ийн амлалт).
+       * Эдгээр FeatureServer outStatistics-т SQL илэрхийлэл (COALESCE) авдаггүй
+       * тул тусдаа асуулгаар татаж клиент талд нэмнэ.
+       */
+      queryGroup(
+        L.url,
+        L.fields.status,
+        [sum(L.fields.areaAlt, 'a')],
+        `${L.fields.area} IS NULL AND ${L.fields.areaAlt} IS NOT NULL`,
+      ),
       queryGroup(
         L.url,
         L.fields.progress,
         [count('OBJECTID', 'n')],
         `${L.fields.status}='Үлдсэн нэгж талбар'`,
       ),
-    ]).then(([statusRows, reasonRows]) => {
+    ]).then(([statusRows, altRows, reasonRows]) => {
       const byStatus = statusRows.map((r) => ({
         /**
          * ⚠️ `text(v, '')` — анхдагч «—» БОЛОХГҮЙ. `text()`-ийн анхдагч нь «—»
@@ -72,12 +85,25 @@ export function loadLandStatus(): Promise<LandStatus> {
         n: Number(r.n ?? 0),
         areaM2: Number(r.a ?? 0),
       }));
+      // `areaAlt` нөхөлт — area_m2 хоосон мөрийн гараар бичсэн талбайг харгалзах
+      // төлөвт нь нэмнэ (нийт `areaM2` byStatus-аас нийлдэг тул мөн нөхөгдөнө)
+      for (const r of altRows) {
+        const label = text(r[L.fields.status], '').trim() || tr('Тодорхойгүй');
+        const g = byStatus.find((x) => x.label === label);
+        if (g) g.areaM2 += Number(r.a ?? 0);
+      }
       const of = (v: string) => byStatus.find((x) => x.label === v)?.n ?? 0;
       const total = byStatus.reduce((s, x) => s + x.n, 0);
       const areaM2 = byStatus.reduce((s, x) => s + x.areaM2, 0);
-      const cleared = of(tr('Бүрэн чөлөөлсөн'));
-      const cleaned = of(tr('Цэвэрлэсэн нэгж талбар'));
-      const remaining = of(tr('Үлдсэн нэгж талбар'));
+      /**
+       * ⚠️ ТҮҮХИЙ утгаар жишнэ — `tr()` ХЭРЭГЛЭХГҮЙ. `byStatus.label` нь
+       * үйлчилгээний түүхий монгол утга тул EN хэлэнд `tr()`-ээр орчуулсан
+       * түлхүүр («Fully acquired» г.м.) хэзээ ч таарахгүй, чөлөөлөлт 0%
+       * гардаг байв. `tr()` зөвхөн ДЭЛГЭЦИЙН текстэд (loadClearance-ийн загвар).
+       */
+      const cleared = of('Бүрэн чөлөөлсөн');
+      const cleaned = of('Цэвэрлэсэн нэгж талбар');
+      const remaining = of('Үлдсэн нэгж талбар');
       const resolved = cleared + cleaned;
 
       const rmap = new Map<string, number>();

@@ -4,6 +4,7 @@
 //    Хатуу бичвэл үйлчилгээ нүүх/нэр солиход энэ модул чимээгүй үхсэн URL руу
 //    хандана (FillNew/Conclusion/Level5 бүгд).
 import { TASK_SHEET } from "@/lib/services";
+import { t as tr } from "@/lib/i18nCore";
 export const base = TASK_SHEET.url;
 
 // ArcGIS returns HTTP 200 even on failure, with {error:{message}}. Check it.
@@ -26,7 +27,7 @@ export async function agsFetch(
   try {
     json = await res.json();
   } catch {
-    throw new Error('Үйлчилгээ JSON биш хариу буцаав — сүлжээгээ шалгана уу');
+    throw new Error(tr('Үйлчилгээ JSON биш хариу буцаав — сүлжээгээ шалгана уу'));
   }
   if (json.error)
     throw new Error(

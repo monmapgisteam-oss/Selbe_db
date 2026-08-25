@@ -11,11 +11,12 @@
 // хадгалагддаг тул орон нутгийн цагаар бодвол өдөр нэгээр гулсана.
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { t as tr } from "@/lib/i18nCore";
 import st from "./sheet.module.css";
 
 const DAY = 86_400_000;
 /** Даваагаар эхэлсэн 7 хоног — монголд хэвшсэн дараалал. */
-const WD = ['Да', 'Мя', 'Лх', 'Пү', 'Ба', 'Бя', 'Ня'];
+const WD = [tr('Да'), tr('Мя'), tr('Лх'), tr('Пү'), tr('Ба'), tr('Бя'), tr('Ня')];
 
 const ymd = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 /** Орон нутгийн «өнөөдөр»-ийг UTC шөнө дунд болгож буулгана. */
@@ -100,11 +101,11 @@ export default function DatePicker({ value, anchor, onPick, onClose }: PickerPro
       style={{ left: pos?.left ?? -9999, top: pos?.top ?? -9999, visibility: pos ? "visible" : "hidden" }}
     >
       <div className={st.calHead}>
-        <button className={st.calNav} onClick={() => step(-12)} title={'Өмнөх жил'}>«</button>
-        <button className={st.calNav} onClick={() => step(-1)} title={'Өмнөх сар'}>‹</button>
-        <span className={st.calTitle}>{`${view.y} оны ${view.m + 1}-р сар`}</span>
-        <button className={st.calNav} onClick={() => step(1)} title={'Дараа сар'}>›</button>
-        <button className={st.calNav} onClick={() => step(12)} title={'Дараа жил'}>»</button>
+        <button className={st.calNav} onClick={() => step(-12)} title={tr('Өмнөх жил')}>«</button>
+        <button className={st.calNav} onClick={() => step(-1)} title={tr('Өмнөх сар')}>‹</button>
+        <span className={st.calTitle}>{tr('{0} оны {1}-р сар', view.y, view.m + 1)}</span>
+        <button className={st.calNav} onClick={() => step(1)} title={tr('Дараа сар')}>›</button>
+        <button className={st.calNav} onClick={() => step(12)} title={tr('Дараа жил')}>»</button>
       </div>
 
       <div className={st.calGrid}>
@@ -134,8 +135,8 @@ export default function DatePicker({ value, anchor, onPick, onClose }: PickerPro
       </div>
 
       <div className={st.calFoot}>
-        <button className={st.calBtn} onClick={() => onPick("")}>{'Цэвэрлэх'}</button>
-        <button className={st.calBtn} onClick={() => onPick(ymd(today))}>{'Өнөөдөр'}</button>
+        <button className={st.calBtn} onClick={() => onPick("")}>{tr('Цэвэрлэх')}</button>
+        <button className={st.calBtn} onClick={() => onPick(ymd(today))}>{tr('Өнөөдөр')}</button>
       </div>
     </div>
   );

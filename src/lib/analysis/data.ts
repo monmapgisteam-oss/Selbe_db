@@ -320,7 +320,10 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
     if (!zid) continue;
     // ⚠️ Ангилалгүй эх сурвалж — бүгд `GREEN_CATEGORIES`-ийн ганц түлхүүрт нэгдэнэ
     //    (ЯГ таарах ёстой, эс бөгөөс `computeRaw`-ын `activeGreen` шүүлт 0 болгоно).
-    const cat = tr('Ногоон байгууламж');
+    //    `tr()` ХЭРЭГЛЭХГҮЙ: `defaultGreenCats()` орчуулгагүй түүхий key өгдөг тул
+    //    EN хэлэнд tr()-тэй түлхүүр («Green space») таарахгүй, бүх бүсийн ногоон
+    //    0 болдог байв. Энэ түлхүүр дэлгэцэд хэзээ ч гардаггүй — нэр нь `short`-оос.
+    const cat = GREEN_CATEGORIES[0].key;
     greenCats.add(cat);
     const bucket = greenByZone.get(zid) ?? {};
     bucket[cat] = (bucket[cat] ?? 0) + n(a.Shape__Area);

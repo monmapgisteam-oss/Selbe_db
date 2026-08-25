@@ -567,8 +567,10 @@ function PlanOverview({
                             <div className={s.facetHead}>
                               {c.title}
                               <span className={s.facetNote}>
-                                {/* ⚠️ Ширхэг нь БҮХЭЛ тоо — «1,651.0» гэж бичихгүй */}
-                                {c.note === 'ширхэг' ? num(c.sum) : `${num(c.sum, 1)} ${c.note}`}
+                                {/* ⚠️ Ширхэг нь БҮХЭЛ тоо — «1,651.0» гэж бичихгүй.
+                                    `note`-той жишиж болохгүй: тэр нь tr()-ээр орчуулагдсан
+                                    («items») тул EN-д таарахгүй — ГЕОМЕТРЭЭР шалгана. */}
+                                {c.geom === 'point' || c.geom === 'other' ? num(c.sum) : `${num(c.sum, 1)} ${c.note}`}
                               </span>
                             </div>
                             {/**
@@ -916,7 +918,8 @@ function LayerDashboard({
             {avgQty != null && (
               <Stat
                 value={num(avgQty, 1)}
-                unit={d.qty!.unit}
+                /* ⚠️ tr() — config-ийн 'м²'/'км'/'м' EN-д кириллээр үлдэхгүй */
+                unit={tr(d.qty!.unit)}
                 label={tr('Дундаж {0}', d.qty!.unit === 'м²' ? tr('талбай') : tr('урт'))}
               />
             )}
@@ -1244,7 +1247,8 @@ function PickedFeature({
   if (def.qty && attrs[def.qty.field] != null) {
     rows.push({
       key: def.qty.unit === 'м²' ? tr('Талбай') : tr('Урт'),
-      value: <span className="num">{num(Number(attrs[def.qty.field]), 1)} {def.qty.unit}</span>,
+      /* ⚠️ Нэгжийг tr()-ээр — EN-д «м²» кириллээр үлдэхгүй (жишилт нь түүхий хэвээр) */
+      value: <span className="num">{num(Number(attrs[def.qty.field]), 1)} {tr(def.qty.unit)}</span>,
     });
   }
   // ⚠️ «Нэгж үнэ» ХАСАГДСАН — санхүүгийн дүн зөвхөн анализын модульд.

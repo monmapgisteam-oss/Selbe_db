@@ -135,6 +135,13 @@ export const loadBudget = cached<Budget>(async () => {
 });
 
 export type Headline = {
+  /**
+   * ⚠️ 2026-08 аудит (олдвор #22): аль нэг эх сурвалж унавал ТУХАЙН эх
+   * сурвалжийн тоон талбарууд `NaN`-аар тэмдэглэгдэнэ (`byStatus` нь `[]`).
+   * `null` БИШ байх шалтгаан: төрлийг nullable болговол Dashboard зэрэг
+   * хэрэглэгчдийн арифметик (`h.investTotal / 1e12` г.м.) олон газар эвдэрнэ;
+   * NaN нь тэнд аяндаа тархаж, `num()`/`pct()` «—» гэж зурна, guard-уудад falsy.
+   */
   /** Төслийн талбай, га — хилийн `Hec_area` */
   areaHa: number;
   /** Оршин суух хүн ам — барилгуудын `Population` нийлбэр */
@@ -161,7 +168,15 @@ export type Headline = {
 
 export const loadHeadline = cached<Headline>(async () => {
   const green = LAYER_BY_ID.nogoon;
-  const [b, built, budget, gr] = await Promise.all([
+  /*
+   * ⚠️ 2026-08 аудит (олдвор #22): `Promise.all` → `allSettled`. Гурван ӨӨР
+   * үйлчилгээг нэгтгэдэг тул урьд нь Cashflow /106 унахад огт хамааралгүй
+   * «га талбай», «хүн ам» ч хамт унаж, бараг бүх харагдацын SummaryBar
+   * «Үзүүлэлт татагдсангүй» болдог байв. Одоо унасан хэсгийн талбарууд NaN
+   * (дэлгэцэд «—») болж бусад нь хэвийн гарна; БҮГД унавал л throw —
+   * `cached` алдааг кэшлэхгүй тул «дахин оролдох» зам хэвээр.
+   */
+  const [bR, builtR, budgetR, grR] = await Promise.allSettled([
     queryFeatures(BOUNDARY.plan.url, { outFields: ['Hec_area'] }),
     /*
      * ⚠️ 2026-08-24: `queryStats` → `queryGroup`. ХҮСЭЛТИЙН ТОО ӨӨРЧЛӨГДӨӨГҮЙ
@@ -183,11 +198,19 @@ export const loadHeadline = cached<Headline>(async () => {
       ? queryStats(layerUrl(green), [sum('Shape__Area', 'a')]).catch(() => null)
       : Promise.resolve(null),
   ]);
+  /* Бүх гол эх сурвалж унасан — хэсэгчлэн үзүүлэх юм алга, алдаагаар нь
+     дуудагчид (SummaryBar/ExecKpi-ийн error + retry) мэдэгдэнэ */
+  if (bR.status === 'rejected' && builtR.status === 'rejected' && budgetR.status === 'rejected')
+    throw bR.reason;
+  const b = bR.status === 'fulfilled' ? bR.value : null;
+  const built = builtR.status === 'fulfilled' ? builtR.value : null;
+  const budget = budgetR.status === 'fulfilled' ? budgetR.value : null;
+  const gr = grR.status === 'fulfilled' ? grR.value : null;
 
   /* ⚠️ Танигдаагүй/хоосон төлөв ХАЯГДАХГҮЙ — «Тодорхойгүй» болж сүүлд жагсана.
      Чимээгүй хаявал нийт барилгын тоо задаргааны нийлбэртэй зөрнө. */
   const order = new Map(BUILT_STATUS.map((x, i) => [x.value, i]));
-  const byStatus = built
+  const byStatus = (built ?? [])
     .map((r) => ({
       label: String(r[BUILT_FIELDS.status] ?? '').trim() || tr('Тодорхойгүй'),
       n: Number(r.n ?? 0),
@@ -196,15 +219,18 @@ export const loadHeadline = cached<Headline>(async () => {
     .sort((a, b) => (order.get(a.label) ?? 99) - (order.get(b.label) ?? 99));
 
   return {
-    areaHa: Number(b[0]?.Hec_area ?? 0),
-    population: sumBy(built, (r) => Number(r.p ?? 0)),
-    investTotal: budget.total,
-    investConfirmed: budget.contract,
+    areaHa: b ? Number(b[0]?.Hec_area ?? 0) : NaN,
+    population: built ? sumBy(built, (r) => Number(r.p ?? 0)) : NaN,
+    investTotal: budget ? budget.total : NaN,
+    investConfirmed: budget ? budget.contract : NaN,
     greenHa: gr ? Number(gr.a ?? 0) / 10_000 : null,
     byStatus,
-    usableM2: sumBy(built, (r) => Number(r.u ?? 0)),
+    usableM2: built ? sumBy(built, (r) => Number(r.u ?? 0)) : NaN,
   };
-});
+  /* ⚠️ TTL (5 мин) — хэсэгчилсэн (NaN-тай) үр дүн session дуустал кэшлэгдэж
+     «—» гацахаас сэргийлнэ: `cached` зөвхөн reject-ийг л хаядаг тул TTL-гүй
+     бол түр доголдлын үлдэц хэзээ ч засрахгүй байв. */
+}, 5 * 60_000);
 
 /* ══════════════ Төслийн жигнэсэн явц ══════════════ */
 

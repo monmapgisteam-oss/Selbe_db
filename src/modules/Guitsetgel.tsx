@@ -57,13 +57,6 @@ const STATUS_LABEL: Record<Status, string> = {
   [STATUS.transferred]: tr('Шилжүүлсэн'),
 };
 
-/* ⚠️ Туршилтын нэр — бодит системд нэвтэрсэн хэрэглэгчийн нэр орно */
-const WHO: Record<'engineer' | 'manager' | 'director', string> = {
-  engineer: 'Б.Болд',
-  manager: 'С.Отгоо',
-  director: 'Д.Ганбат',
-};
-
 const fmt = (iso: string | null) =>
   iso ? new Date(iso).toLocaleString('mn-MN', {
     year: 'numeric', month: '2-digit', day: '2-digit',
@@ -488,7 +481,7 @@ function Track({ status, stage }: { status: Status; stage: Stage }) {
 
 /* ══════════ Нэг ажил ══════════ */
 
-function Item({ work, stage, onFix }: { work: Work; stage: Stage; onFix: () => void }) {
+function Item({ work, stage, who, onFix }: { work: Work; stage: Stage; who: string; onFix: () => void }) {
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState('');
   const [err, setErr] = useState('');
@@ -565,7 +558,7 @@ function Item({ work, stage, onFix }: { work: Work; stage: Stage; onFix: () => v
       stage: stage === 'engineer' ? 'engineer' : stage === 'manager' ? 'manager' : 'director',
       decision,
       reason: decision === DECISION.return ? badText() : reason,
-      who: stage === 'engineer' ? WHO.engineer : stage === 'manager' ? WHO.manager : WHO.director,
+      who,
     }));
 
   const reviewing =
@@ -582,7 +575,6 @@ function Item({ work, stage, onFix }: { work: Work; stage: Stage; onFix: () => v
     (stage === 'engineer' && st === STATUS.managerReturned) ||
     (stage === 'manager' && st === STATUS.directorReturned);
   const reBy: 'engineer' | 'manager' = stage === 'manager' ? 'manager' : 'engineer';
-  const reWho = stage === 'manager' ? WHO.manager : WHO.engineer;
 
   return (
     <div className={s.item}>
@@ -667,13 +659,13 @@ function Item({ work, stage, onFix }: { work: Work; stage: Stage; onFix: () => v
                   />
                   <div className={s.row}>
                     <button className={`${s.btn} ${s.ok}`} disabled={busy}
-                      onClick={() => run(() => recheck(cur.__oid, 'ok', '', reWho, reBy))}>
+                      onClick={() => run(() => recheck(cur.__oid, 'ok', '', who, reBy))}>
                       {stage === 'manager'
                         ? tr('Дахин шалгасан — асуудалгүй, ерөнхий менежерт илгээх')
                         : tr('Дахин шалгасан — асуудалгүй, менежерт илгээх')}
                     </button>
                     <button className={`${s.btn} ${s.bad}`} disabled={busy}
-                      onClick={() => run(() => recheck(cur.__oid, 'back', reason, reWho, reBy))}>
+                      onClick={() => run(() => recheck(cur.__oid, 'back', reason, who, reBy))}>
                       {stage === 'manager'
                         ? tr('Асуудал байна — инженерт буцаах')
                         : tr('Асуудал байна — компанид буцаах')}
@@ -792,6 +784,16 @@ export function Guitsetgel({ onView }: { onView?: (key: 'sheet') => void }) {
    *    урсгалыг турших шаардлагатай тул.
    */
   const { role, user } = useAuth();
+  /**
+   * Хяналтын бүртгэлд бичигдэх НЭР — нэвтэрсэн хэрэглэгчээс.
+   *
+   * ⚠️ Урьд нь «Б.Болд» гэх мэт туршилтын хатуу нэрс амьд хүснэгтэд бичигдэж,
+   *    зөвшөөрлийн түүх зохиомол хүний нэрээр «баталгаажиж» байв.
+   * ⚠️ tr() ХЭРЭГЛЭХГҮЙ — энэ нь дэлгэцийн бичвэр биш, ArcGIS-д хадгалагдах
+   *    ӨГӨГДӨЛ (төлөвийн утгуудтай ижил дүрэм). Нэвтрэлт унтраалттай (дев)
+   *    үед user байхгүй тул худал хүний нэрийн оронд ерөнхий «Хянагч» орно.
+   */
+  const who = user?.fullName || user?.username || 'Хянагч';
   const fixed = role ? ROLE_STAGE[role] : undefined;
   const [stage, setStage] = useState<Stage>(fixed ?? 'engineer');
   useEffect(() => {
@@ -964,7 +966,7 @@ export function Guitsetgel({ onView }: { onView?: (key: 'sheet') => void }) {
               {mine.length === 0 ? (
                 <div className={s.empty}>{tr('Хүлээгдэж буй ажил алга.')}</div>
               ) : (
-                mine.map((w) => <Item key={w.key} work={w} stage={stage} onFix={goFix} />)
+                mine.map((w) => <Item key={w.key} work={w} stage={stage} who={who} onFix={goFix} />)
               )}
             </div>
 
@@ -974,7 +976,7 @@ export function Guitsetgel({ onView }: { onView?: (key: 'sheet') => void }) {
                 <span>{tr('Бусад ажил')}</span>
                 <span className={s.groupCount}>{others.length}</span>
               </div>
-                {others.map((w) => <Item key={w.key} work={w} stage={stage} onFix={goFix} />)}
+                {others.map((w) => <Item key={w.key} work={w} stage={stage} who={who} onFix={goFix} />)}
               </div>
             )}
           </>

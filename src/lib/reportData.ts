@@ -10,6 +10,11 @@
  * (`Cashflow/FeatureServer/106`, 76 мөр)-оос авна — «Цогцолбор» дашбоардын
  * толгойн тоо ч мөн эндээс гардаг.
  *
+ * ⚠️ CASHFLOW2 нь гэрээ бүрийн САНХҮҮЖИЛТИЙН ХУВААРЬ буюу ТӨЛӨВЛӨГӨӨ —
+ * «бодитоор олгосон» дүнг эндээс ХЭЗЭЭ Ч гаргаж болохгүй (ирээдүйн сарууд ч
+ * орсон байдаг). Бодит олголт нь IPC актын лог (`IPC_LOG` /107)-оос гарна —
+ * Finance/ExecKpi/Tsogts бүгд тэндээс уншдаг, тайлан ч мөн адил.
+ *
  * ⚠️ ХӨРӨНГӨ ОРУУЛАЛТЫН ГУРВАН ӨӨР ТОО байдгийг бүү хольж уншаарай:
  *     · 2,333.9 тэрбум — илтгэлийн «гэрээ, захирамжид тусгагдсан» дүн (`brief`)
  *     · 2,541.5 тэрбум — `CASHFLOW2`-ийн ЗАХИРАМЖИЙН дүн (амьд)
@@ -25,9 +30,10 @@ import { useAsync, type Async } from '@/lib/useAsync';
 import { t as tr } from '@/lib/i18nCore';
 import { num, pct } from '@/lib/format';
 import { queryFeatures } from '@/lib/query';
+import { cached } from '@/lib/live';
 import { layerTotals } from '@/lib/totals';
 import {
-  BUILDING, CASHFLOW2, HABEA, LAYER_GROUPS, GROUP_LAYERS, LAYER_BY_ID,
+  BUILDING, CASHFLOW2, HABEA, IPC_LOG, LAYER_GROUPS, GROUP_LAYERS, LAYER_BY_ID,
   PROJECT_PROGRESS, bagtsKey, pkgKeyOf, laborCompanyFields,
 } from '@/lib/services';
 
@@ -88,7 +94,12 @@ export type ReportExtra = {
     orderTotal: number;
     contractAmount: number;
     sources: { label: string; value: number }[];
+    /**
+     * Сар бүрийн САНХҮҮЖИЛТИЙН ХУВААРЬ (төлөвлөгөө) — CASHFLOW2.
+     * ⚠️ Олголт БИШ: ирээдүйн сарууд ч орсон тул «олгосон» гэж шошгохгүй.
+     */
     months: { label: string; amount: number; cum: number }[];
+    /** Бодитоор олгосон санхүүжилт — IPC актын net (IPC40) нийлбэр, ₮ */
     paid: number;
     byType: { type: string; n: number; budget: number; contract: number }[];
     /** Багцын түлхүүр (`BagtsRow.key`) → урьдчилсан төсөвт өртөг, ₮ */
@@ -317,9 +328,22 @@ async function loadProgress(): Promise<ReportExtra['progress']> {
 
 /* ═══════════════ 9 · Санхүүжилтийн явц ═══════════════ */
 
+/**
+ * Жинхэнэ акт мөн үү — "Contract Price" псевдо-мөр, хоосон мөрийг хасна.
+ * ⚠️ `Finance.tsx`-ийн `isRealAct`-тай ЯГ ИЖИЛ дүрэм (тэнд export-гүй тул энд
+ * давхарлав) — өөрчлөх бол ХОЁУЛАНГ нь хамт засна, эс бөгөөс тайлангийн
+ * «олгосон» дүн бусад дэлгэцээс зөрнө.
+ */
+const isRealAct = (no: unknown) => /^(IPC|APC|АРС)[-\s]?\d+/i.test(String(no ?? '').trim());
+
 async function loadFinance(): Promise<ReportExtra['finance']> {
   const F = CASHFLOW2.fields;
-  const rows = await queryFeatures(CASHFLOW2.url, { outFields: ['*'] });
+  const I = IPC_LOG.fields;
+  const [rows, ipc] = await Promise.all([
+    queryFeatures(CASHFLOW2.url, { outFields: ['*'] }),
+    // Бодит олголтод хэрэглэх 3 талбар л хангалттай — «*» бүх баганыг татна
+    queryFeatures(IPC_LOG.url, { outFields: [I.no, I.net, I.pkg] }),
+  ]);
   const sum = (f: string) => rows.reduce((a, r) => a + nn(r[f]), 0);
 
   let cum = 0;
@@ -328,6 +352,23 @@ async function loadFinance(): Promise<ReportExtra['finance']> {
     cum += amount;
     return { label: m.label, amount, cum };
   });
+
+  /*
+   * «Бодитоор олгосон» — IPC актын логоос, `Finance.tsx`-ийн `loadFinDataRaw`-ын
+   * given-тэй ИЖИЛ шүүлтээр (жинхэнэ акт + net ≠ 0 + багцтай мөр): тэгвэл
+   * ExecKpi/Tsogts-ийн «Олгосон (IPC)» нийлбэртэй яг тэнцэнэ.
+   * ⚠️ Урьд нь CASHFLOW2-ийн сарын ТӨЛӨВЛӨГӨӨГ хуримтлуулж `paid` болгодог
+   * байсан нь бодит олголтоос олон дахин их (ирээдүйн саруудыг ч багтаасан)
+   * худал тоо байв.
+   */
+  const paid = ipc.reduce((a, r) => {
+    if (!isRealAct(r[I.no])) return a;
+    const net = nn(r[I.net]);
+    if (net === 0) return a;
+    const k = bagtsKey(r[I.pkg]);
+    if (!k || k === '0') return a;
+    return a + net;
+  }, 0);
 
   /* Төрлөөр — маягтын хоосон утга («0») хасагдана */
   const typeMap = new Map<string, { n: number; budget: number; contract: number }>();
@@ -370,7 +411,7 @@ async function loadFinance(): Promise<ReportExtra['finance']> {
     contractAmount: sum(F.contractAmount),
     sources: CASHFLOW2.sources.map((s) => ({ label: s.label, value: sum(s.field) })),
     months,
-    paid: cum,
+    paid,
     byType: [...typeMap.entries()]
       .map(([type, v]) => ({ type, ...v }))
       .sort((a, b) => b.budget - a.budget),
@@ -465,8 +506,17 @@ async function loadHabeaSummary(): Promise<ReportExtra['habea']> {
 /**
  * Дөрвөн хэсгийг ЗЭРЭГ татна. Нэг нь унавал бүхэл тайлан унахгүй байх нь
  * чухал тул `allSettled` — амжилтгүй хэсэг нь хоосон утгаараа гарна.
+ *
+ * ⚠️ 5 мин кэш (`cached`, гүйцэтгэлийн аудит): «Тайлан» view mount бүрд
+ * `loadInfra` дангаараа ~88 статистик хүсэлт (бүх бүлгийн давхаргад
+ * `layerTotals`) дахин явуулдаг байсан — 6 слотын хязгаарлагч дээр хэдэн
+ * секунд цувдаг. `cached` нь reject-ийг кэшлэхгүй тул «дахин оролдох» сэргэнэ;
+ * `allSettled`-ийн хэсэгчилсэн уналт хоосон утгаараа хамгийн ихдээ TTL
+ * хугацаанд үлдэх нь хүлээн зөвшөөрсөн тохироо.
  */
-export async function loadReportExtra(): Promise<ReportExtra> {
+export const loadReportExtra = cached(loadReportExtraRaw, 5 * 60_000);
+
+async function loadReportExtraRaw(): Promise<ReportExtra> {
   /*
    * ⚠️ Газар чөлөөлөлтийн албан ёсны хувь нь ҮЕ ШАТНЫ хүснэгтээс гардаг тул
    * `loadOverall()` эхэлж дуусах ёстой — бусад нь түүнээс хамаарахгүй.
@@ -559,11 +609,13 @@ export function buildFindings(x: ReportExtra): Findings {
   const paidRate = x.finance.contractAmount
     ? (x.finance.paid / x.finance.contractAmount) * 100 : null;
 
+  // ⚠️ `months` нь санхүүжилтийн ХУВААРЬ (төлөвлөгөө) — ирээдүйн сарууд ч бий.
+  //    Тиймээс эдгээрээс гарах дүгнэлтийг «олгосон» гэж бичихийг ХОРИГЛОНО.
   const months = x.finance.months;
   const peakMonth = months.length
     ? months.reduce((a, m) => (m.amount > a.amount ? m : a))
     : null;
-  // Сүүлийн улирлыг өмнөхтэй нь жишиж эрчмийг хэмжинэ
+  // Хуваарийн сүүлийн улирлыг өмнөхтэй нь жишиж төлөвлөлтийн эрчмийг хэмжинэ
   const last3 = months.slice(-3).reduce((a, m) => a + m.amount, 0);
   const prev3 = months.slice(-6, -3).reduce((a, m) => a + m.amount, 0);
 
@@ -612,7 +664,7 @@ export function buildFindings(x: ReportExtra): Findings {
 
   if (prev3 > 0 && last3 > 0) {
     const k = last3 / prev3;
-    f.push(tr('Сүүлийн гурван сард {0} тэрбум ₮ олгогдсон нь өмнөх гурван сарын {1} тэрбумаас {2} дахин {3} буюу санхүүжилтийн эрчим {4} байна.', num(last3 / 1e9, 1), num(prev3 / 1e9, 1), num(k, 1), k >= 1 ? tr('их') : tr('бага'), k >= 1 ? tr('нэмэгдсэн') : tr('буурсан')));
+    f.push(tr('Хуваарийн сүүлийн гурван сард {0} тэрбум ₮ олгохоор төлөвлөгдсөн нь өмнөх гурван сарын {1} тэрбумаас {2} дахин {3} буюу төлөвлөгөөт санхүүжилтийн эрчим {4} байна.', num(last3 / 1e9, 1), num(prev3 / 1e9, 1), num(k, 1), k >= 1 ? tr('их') : tr('бага'), k >= 1 ? tr('нэмэгдсэн') : tr('буурсан')));
   }
 
   if (x.habea.incidents > 0) {

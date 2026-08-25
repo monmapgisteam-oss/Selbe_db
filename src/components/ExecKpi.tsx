@@ -4,7 +4,7 @@ import { useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { useAsync } from '@/lib/useAsync';
 import {
-  loadBudget, loadClearance, loadHeadline, loadHousing, loadProjectProgress, loadSocial,
+  cached, loadBudget, loadClearance, loadHeadline, loadHousing, loadProjectProgress, loadSocial,
 } from '@/lib/live';
 import { loadFinData, contractMonths, lagOf, lagLevel } from '@/modules/Finance';
 /* ⚠️ '@/modules/Dashboard' БИШ (2026-08-21): тэр зам MapCanvas → ArcGIS SDK-г
@@ -93,11 +93,17 @@ const notReady = (
  *
  * ⚠️ Мөр бүр НЭГ ТОЙРОГ — нэг ажил 5 удаа буцвал 5 мөр болно. `groupWorks` нь
  * тэдгээрийг нэг ажил болгож, ОДООГИЙН тойргийг нь заана.
+ *
+ * ⚠️ 2026-08 аудит (олдвор #13): `cached` — урьд нь портал → Нүүр буцах бүрд
+ * хяналтын БҮТЭН хүснэгтийг '*'-аар дахин татдаг байв (энэ файлын бусад бүх
+ * ачаалагч кэштэй, энэ ганц нь орхигдсон). `cached` алдааг кэшлэхгүй тул
+ * картын «дахин оролдох» хэвээр ажиллана; 5 мин TTL нь хоног-нарийвчлалтай
+ * хүлээгдлийн үзүүлэлтэд үл мэдэгдэнэ.
  */
-const loadReviewAging = async () => {
+const loadReviewAging = cached(async () => {
   const rows = (await queryAll()).map(toRow);
   return pendingAging(groupWorks(rows), Date.now());
-};
+}, 5 * 60_000);
 
 const afterIdle = <T,>(fn: () => Promise<T>, ms: number) => (): Promise<T> =>
   new Promise<void>((r) => {
@@ -173,10 +179,13 @@ export function ExecKpi({ onView }: { onView: (key: ViewKey) => void }) {
       {
         key: 'status', cat: 'scope', view: 'plan',
         label: tr('Барилгын төлөв'),
-        value: dash(!!hd, hd ? num(hd.byStatus.reduce((a, x) => a + x.n, 0)) : ''),
+        /* ⚠️ `byStatus.length` шалгалт (олдвор #22): `loadHeadline` allSettled
+           болсноос хойш барилгын эх сурвалж унавал `byStatus = []` ирдэг —
+           тэр үед «0» гэж худал тоо биш, «…» (unknown) харуулна. */
+        value: dash(!!hd && hd.byStatus.length > 0, hd ? num(hd.byStatus.reduce((a, x) => a + x.n, 0)) : ''),
         /* ⚠️ Задаргаа нь ТООН уншилтаар — график нь дэмжлэг, дангаараа биш */
-        note: hd ? hd.byStatus.map((x) => `${x.label} ${num(x.n)}`).join(' · ') : tr('Barilga_ty задаргаа'),
-        level: lvl(!!hd),
+        note: hd && hd.byStatus.length ? hd.byStatus.map((x) => `${x.label} ${num(x.n)}`).join(' · ') : tr('Barilga_ty задаргаа'),
+        level: lvl(!!hd && hd.byStatus.length > 0),
         chart: hd && hd.byStatus.length
           ? <Bars data={hd.byStatus.map((x) => x.n)} w={104} h={44} />
           : undefined,

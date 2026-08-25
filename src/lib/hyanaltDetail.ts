@@ -82,6 +82,13 @@ export type Submission = {
   blocks: string[];
   /** Өмнөх агшинтай жишсэн эсэх (анхны нийтлэлд `false`) */
   compared: boolean;
+  /**
+   * Өмнөх агшны асуулга АЛДААТАЙ дууссан — жишилт «тодорхойгүй».
+   * ⚠️ `compared=false` + `prevError=true` нөхцөлийг «анхны нийтлэл» гэж
+   * ойлгож болохгүй: өөрчлөлтийг илрүүлж ЧАДААГҮЙ гэсэн үг тул `changes`
+   * хоосон байх нь «өөрчлөлтгүй» гэсэн баталгаа БИШ.
+   */
+  prevError: boolean;
   /** Архивт нэмэгдсэн нийт мөр */
   rows: number;
   /**
@@ -163,15 +170,29 @@ export async function loadSubmission(bagts: string, sheetOid: number): Promise<S
        * ⚠️ Обьём нь ХУРИМТЛАГДДАГ тул «утгатай = шинэ» гэж үзэж БОЛОХГҮЙ:
        * өчигдрийн 1300 өнөөдөр ч 1300 хэвээр байвал өөрчлөлт БИШ.
        */
-      const prevQ = (await post(p.url, {
-        where: `${fill} < ${ts(at)}`,
-        groupByFieldsForStatistics: fill,
-        outStatistics: JSON.stringify([
-          { statisticType: 'max', onStatisticField: fill, outStatisticFieldName: 'm' },
-        ]),
-        orderByFields: `${fill} DESC`,
-        resultRecordCount: '1',
-      }).catch(() => ({}))) as { features?: { attributes: Record<string, unknown> }[] };
+      /*
+       * ⚠️ Өмнөх агшны асуулгын алдааг ЧИМЭЭГҮЙ залгихгүй — залгивал энэ
+       * нийтлэл «анхны» мэт, эсвэл хагас өгөгдөлтэй жишигдэж, хянагчид
+       * байхгүй «өөрчлөлт» жинхэнэ мэт харагдана. Гэхдээ throw ч хийхгүй:
+       * гадна catch дараагийн үйлчилгээ рүү үсэрч, ажиллаж байгаа энэ
+       * үйлчилгээний БҮТЭН харагдацыг алдагдуулна. Тиймээс «тодорхойгүй»
+       * (prevError) гэж тэмдэглээд үргэлжлүүлнэ.
+       */
+      let prevFailed = false;
+      let prevQ: { features?: { attributes: Record<string, unknown> }[] } = {};
+      try {
+        prevQ = (await post(p.url, {
+          where: `${fill} < ${ts(at)}`,
+          groupByFieldsForStatistics: fill,
+          outStatistics: JSON.stringify([
+            { statisticType: 'max', onStatisticField: fill, outStatisticFieldName: 'm' },
+          ]),
+          orderByFields: `${fill} DESC`,
+          resultRecordCount: '1',
+        })) as { features?: { attributes: Record<string, unknown> }[] };
+      } catch {
+        prevFailed = true;
+      }
       const prevAt = num(prevQ.features?.[0]?.attributes?.[fill]);
 
       let filled: Filled[] = [];
@@ -236,33 +257,45 @@ export async function loadSubmission(bagts: string, sheetOid: number): Promise<S
           const before = new Map<string, Record<string, unknown>>();
           if (prevAt != null) {
             const prevFeats: { attributes: Record<string, unknown> }[] = [];
-            for (let off = 0; ; ) {
-              const pv = (await post(p.url, {
-                where: `${fill} = ${ts(prevAt)}`,
-                outFields: [sc.f.no, sc.f.work, ...obs].join(','),
-                returnGeometry: 'false',
-                orderByFields: 'OBJECTID ASC',
-                resultOffset: String(off),
-                resultRecordCount: '2000',
-              }).catch(() => ({}))) as { features?: { attributes: Record<string, unknown> }[] };
-              const got = pv.features ?? [];
+            try {
+              for (let off = 0; ; ) {
+                const pv = (await post(p.url, {
+                  where: `${fill} = ${ts(prevAt)}`,
+                  outFields: [sc.f.no, sc.f.work, ...obs].join(','),
+                  returnGeometry: 'false',
+                  orderByFields: 'OBJECTID ASC',
+                  resultOffset: String(off),
+                  resultRecordCount: '2000',
+                })) as { features?: { attributes: Record<string, unknown> }[] };
+                const got = pv.features ?? [];
+                /*
+                 * ⚠️ Түлхүүр нь № ГАНЦААРАА БИШ — «1», «2» гэсэн дугаар хуудсанд
+                 *    хэдэн ч удаа давтагддаг (бүлэг бүрд шинээр эхэлдэг). Тиймээс
+                 *    БАЙРЛАЛААР индекслэнэ: агшин бүр хуудсыг бүтнээр, ижил
+                 *    дараалалаар агуулдаг тул байрлал тогтвортой.
+                 */
+                prevFeats.push(...got);
+                if (got.length < 2000) break;
+                off += got.length;
+              }
+            } catch {
               /*
-               * ⚠️ Түлхүүр нь № ГАНЦААРАА БИШ — «1», «2» гэсэн дугаар хуудсанд
-               *    хэдэн ч удаа давтагддаг (бүлэг бүрд шинээр эхэлдэг). Тиймээс
-               *    БАЙРЛАЛААР индекслэнэ: агшин бүр хуудсыг бүтнээр, ижил
-               *    дараалалаар агуулдаг тул байрлал тогтвортой.
+               * ⚠️ Дундаас нэг хуудас унавал prevFeats ДУТУУ — байрлалаар
+               *    индекслэдэг тул дутуу жагсаалттай жишвэл мөр бүр буруу
+               *    хөрштэйгөө тулгарч, зохиомол «өөрчлөлт» гарна. Хагас
+               *    өгөгдлийг бүхэлд нь хаяж «тодорхойгүй» гэж тэмдэглэнэ.
                */
-              prevFeats.push(...got);
-              if (got.length < 2000) break;
-              off += got.length;
+              prevFailed = true;
             }
-            // ⚠️ Өмнөх агшныг ч ИЖИЛ дүрмээр таслана — эс бөгөөс жишилт нь
-            //    өөр хуулбартай харьцуулж, байхгүй өөрчлөлт «олдоно».
-            const pExpect = (TREES[p.key] ?? '').length;
-            const prev2 = pExpect > 0 && prevFeats.length > pExpect
-              ? prevFeats.slice(-pExpect)
-              : prevFeats;
-            prev2.forEach((x, i) => before.set(String(i), x.attributes));
+            if (!prevFailed) {
+              // ⚠️ Өмнөх агшныг ч ИЖИЛ дүрмээр таслана — эс бөгөөс жишилт нь
+              //    өөр хуулбартай харьцуулж, байхгүй өөрчлөлт «олдоно».
+              const pExpect = (TREES[p.key] ?? '').length;
+              const prev2 = pExpect > 0 && prevFeats.length > pExpect
+                ? prevFeats.slice(-pExpect)
+                : prevFeats;
+              prev2.forEach((x, i) => before.set(String(i), x.attributes));
+            }
           }
 
           const tree = TREES[p.key] ?? '';
@@ -275,6 +308,10 @@ export async function loadSubmission(bagts: string, sheetOid: number): Promise<S
             const changed = obs.map((n, k) => {
               const now = cells[k];
               if (now == null) return false;
+              // ⚠️ Өмнөх агшныг ТАТАЖ ЧАДААГҮЙ бол таамаглахгүй — «бүгд
+              //    өөрчлөгдсөн» ч, «өөрчлөлтгүй» ч гэж мэдэгдэх үндэсгүй.
+              //    Төлөв нь `prevError`-оор дуудагчид ил байна.
+              if (prevFailed) return false;
               // Анхны нийтлэлд өмнөх агшин алга — утгатай нүд бүр ШИНЭ
               if (!prev) return true;
               return num(prev[n]) !== now;
@@ -322,7 +359,10 @@ export async function loadSubmission(bagts: string, sheetOid: number): Promise<S
         pkgKey: p.key,
         day: msToDay(at),
         blocks: sc.bld.filter((_, i) => sc.obyem[i]),
-        compared: prevAt != null,
+        // ⚠️ Хуудаслалт унасан бол prevAt олдсон ч ЖИШИГДЭЭГҮЙ — true гэвэл
+        //    UI «улаан хүрээ — өөрчлөгдсөн» гэсэн худал тайлбар үзүүлнэ.
+        compared: prevAt != null && !prevFailed,
+        prevError: prevFailed,
         rows: cnt.count ?? 0,
         filled,
         filledCount,

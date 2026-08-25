@@ -395,6 +395,10 @@ function PortalContent(
       l: layer,
       d: dim === '2d' ? null : dim,
     }, { push });
+    /* Сүүлд ажилласан харагдац — дараагийн session-д «Орох» дарахад Root
+       эндээс сэргээнэ (үргэлж дашбоардаас эхлэхгүй). Private горимд
+       localStorage хаалттай байж болох тул алдааг залгина. */
+    try { localStorage.setItem('selbe-last-view', view); } catch { /* хаалттай орчин */ }
   }, [view, zone, layer, dim]);
 
   /* URL → төлөв: хөтчийн Back/Forward-д харагдацыг бүтэн сэргээнэ */

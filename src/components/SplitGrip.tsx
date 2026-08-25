@@ -22,6 +22,8 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { t as tr } from '@/lib/i18nCore';
+import { GRIP_TITLE } from './ResizableTable';
 import st from './splitGrip.module.css';
 
 /** Тал хэт нарийсаж/өргөсөхөөс сэргийлнэ (карт уншигдахаа болихгүй). */
@@ -56,7 +58,7 @@ export function SplitGrip({
       role="separator"
       aria-orientation="vertical"
       aria-label={label}
-      title="Чирж өргөнийг тохируулна · давхар товшвол анхны хэмжээ"
+      title={GRIP_TITLE}
       tabIndex={0}
       onPointerDown={onPointerDown}
       onDoubleClick={onDoubleClick}
@@ -210,7 +212,7 @@ export function useSideResize(key: string, hasRight = true) {
       onDoubleClick: reset('l'),
       onKeyDown: bump('l'),
       dragging: dragging === 'l',
-      label: 'Зүүн баганын өргөн',
+      label: tr('Зүүн баганын өргөн'),
     },
     right: {
       side: 'right' as const,
@@ -218,7 +220,7 @@ export function useSideResize(key: string, hasRight = true) {
       onDoubleClick: reset('r'),
       onKeyDown: bump('r'),
       dragging: dragging === 'r',
-      label: 'Баруун баганын өргөн',
+      label: tr('Баруун баганын өргөн'),
     },
     hasRight,
   };

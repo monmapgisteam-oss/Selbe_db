@@ -2,6 +2,7 @@
 
 import FillNew, { type SheetView } from "./FillNew";
 import { Icon } from "@/components/Icon";
+import { t as tr } from "@/lib/i18nCore";
 import st from "./sheet.module.css";
 
 /**
@@ -21,9 +22,9 @@ export function Sheet({ view }: { view?: SheetView } = {}) {
       <header className={st.portalHead}>
         <span className={st.portalIcon}><Icon name="pen" size={16} /></span>
         <div className={st.portalText}>
-          <h2 className={st.portalTitle}>{'Гүйцэтгэл бөглөх'}</h2>
+          <h2 className={st.portalTitle}>{tr('Гүйцэтгэл бөглөх')}</h2>
           <p className={st.portalDesc}>
-            {"Багцын гүйцэтгэлийн өгөгдөл оруулах портал — блок бүрийн нүдэнд ЭНЭ УДААД хийсэн ОБЬЁМоо бичихэд гүйцэтгэлийн хувь, нийлбэр, жин, дүн автоматаар бодогдоно."}
+            {tr("Багцын гүйцэтгэлийн өгөгдөл оруулах портал — блок бүрийн нүдэнд ЭНЭ УДААД хийсэн ОБЬЁМоо бичихэд гүйцэтгэлийн хувь, нийлбэр, жин, дүн автоматаар бодогдоно.")}
           </p>
         </div>
       </header>

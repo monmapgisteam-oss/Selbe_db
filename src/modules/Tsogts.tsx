@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useEffect, useMemo, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
 import { MapTools } from '@/components/MapTools';
@@ -24,7 +24,7 @@ import {
 import { useAsync, type Async } from '@/lib/useAsync';
 import {
   BUILDING, CASHFLOW2, PROGRESS_LEVELS, LAYER_BY_ID, pkgKeyOf,
-  PKG_FAMILY_BY_BAGTS,
+  PKG_FAMILY_BY_BAGTS, zoneWhere,
 } from '@/lib/services';
 import { cat, shade, mntAbbr, num, pct } from '@/lib/format';
 import { readParam, writeParams } from '@/lib/urlState';
@@ -119,7 +119,10 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
    * ⚠️ Хариу хожуу ирж БУСАД багцын үр дүнг дарж бичихээс `alive` хамгаална
    *    (хэрэглэгч хурдан дараалан сонгоход).
    */
-  const [overlap, setOverlap] = useState<Overlap | null>(null);
+  /* ⚠️ Алдааг `{oids: []}`-оор ОРЛУУЛАХГҮЙ — «0 саад» нь ногооноор «саад алга»
+     гэсэн ХАРИУЛТ болж уншигддаг тул татаж чадаагүйг жинхэнэ 0-ээс ялгаж
+     `'error'` төлөвт хадгална (KPI/картад саарлаар «тоолж чадсангүй»). */
+  const [overlap, setOverlap] = useState<Overlap | 'error' | null>(null);
   useEffect(() => {
     let alive = true;
     setOverlap(null);
@@ -140,11 +143,14 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
         ];
     overlapLeftParcels(srcs)
       .then((r) => alive && setOverlap(r))
-      .catch(() => alive && setOverlap({ oids: [] }));
+      .catch(() => alive && setOverlap('error'));
     return () => {
       alive = false;
     };
   }, [active]);
+
+  /** Амжилттай үр дүн л — зурагт/шүүлтэд алдааны төлөв «хоосон» мэт орохгүй */
+  const ovOk = overlap !== 'error' ? overlap : null;
 
   /**
    * БАГЦ БҮРИЙН давхцсан үлдсэн нэгж талбар — «Багц N — блокууд» картын
@@ -152,7 +158,7 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
    * (2026-08-21, хэрэглэгчийн хүсэлт). Багц тус бүрд тусдаа огтлолцол тул
    * зэрэг бодогдож, нэг нь унавал бусдыг унагахгүй (allSettled).
    */
-  const [ovByPack, setOvByPack] = useState<Map<string, number> | null>(null);
+  const [ovByPack, setOvByPack] = useState<Map<string, number | 'error'> | null>(null);
   useEffect(() => {
     let alive = true;
     const builds = packs.filter((pk) => pk.kind === 'build');
@@ -164,8 +170,13 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
       ] as const),
     ).then((rs) => {
       if (!alive) return;
-      const m = new Map<string, number>();
-      for (const r of rs) if (r.status === 'fulfilled') m.set(r.value[0], r.value[1]);
+      const m = new Map<string, number | 'error'>();
+      /* ⚠️ Унасныг АЛГАСАХГҮЙ — түлхүүр нь Map-д огт орохгүй бол картын толгой
+         «тоолж байна…» гэж МӨНХӨД хүлээлгэдэг байв; `'error'` = ил хэлнэ. */
+      rs.forEach((r, i) => {
+        if (r.status === 'fulfilled') m.set(r.value[0], r.value[1]);
+        else m.set(builds[i].key, 'error');
+      });
       setOvByPack(m);
     });
     return () => { alive = false; };
@@ -177,7 +188,7 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
    * үед ч уншигдахын тулд). Ангилал бүрд нэг огтлолцол — дөрөвхөн хүсэлт,
    * нэг нь унавал бусдыг унагахгүй.
    */
-  const [ovByCat, setOvByCat] = useState<Map<PackCat, number> | null>(null);
+  const [ovByCat, setOvByCat] = useState<Map<PackCat, number | 'error'> | null>(null);
   useEffect(() => {
     if (!packs.length) return;
     let alive = true;
@@ -189,8 +200,13 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
       return [c.key, (await overlapLeftParcels(srcs)).oids.length] as const;
     })).then((rs) => {
       if (!alive) return;
-      const m = new Map<PackCat, number>();
-      for (const r of rs) if (r.status === 'fulfilled') m.set(r.value[0], r.value[1]);
+      const m = new Map<PackCat, number | 'error'>();
+      /* ⚠️ Унасныг АЛГАСАХГҮЙ — Map-д байхгүй түлхүүр `?? 0`-оор «асуудал 0»
+         гэсэн худал сайн мэдээ болдог байв; `'error'` = «—» саарлаар гарна. */
+      rs.forEach((r, i) => {
+        if (r.status === 'fulfilled') m.set(r.value[0], r.value[1]);
+        else m.set(PACK_CATS[i].key, 'error');
+      });
       setOvByCat(m);
     });
     return () => { alive = false; };
@@ -343,8 +359,8 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
    * overlap ирэх бүрд бохирдоно. Зөвхөн ГАРАЛТ дээр давхарлана.
    */
   const mapVisible = useMemo(
-    () => (overlap?.oids.length ? [...new Set([...visible, PARCEL_LAYER])] : visible),
-    [visible, overlap],
+    () => (ovOk?.oids.length ? [...new Set([...visible, PARCEL_LAYER])] : visible),
+    [visible, ovOk],
   );
   /**
    * ДАВХЦСАН НЭГЖ ТАЛБАРЫН ХЭВ МАЯГ — барилгын блокоос ЯЛГАРАХ ёстой.
@@ -356,29 +372,44 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
    */
   /** Анивчих давхарга — давхцсан талбар олдсон үед л. */
   const parcelPulse = useMemo(
-    () => (overlap?.oids.length ? [PARCEL_LAYER] : undefined),
-    [overlap],
+    () => (ovOk?.oids.length ? [PARCEL_LAYER] : undefined),
+    [ovOk],
   );
 
   const parcelStyle = useMemo(
     () =>
-      overlap?.oids.length
+      ovOk?.oids.length
         ? { [PARCEL_LAYER]: { hue: '#d946ef', fill: 0.22, width: 3.4 } }
         : undefined,
-    [overlap],
+    [ovOk],
   );
 
   const layerWhere = useMemo<Record<string, string | null>>(
-    // Багц сонгосон → тэр багц; эс бөгөөс → зөвхөн хоцрогдолтой багцын блокууд
-    () => ({
-      [BLOCK_LAYER]: active?.where ?? alertedWhere,
+    () => {
+      /* ⚠️ `layerWhere` өгөгдмөгц MapCanvas бүсийн (zone) fallback-ийг БҮХ
+         давхаргад алгасдаг (жагсаалтад БАЙХГҮЙ давхарга ч `?? null`-аар
+         шүүлтгүй болдог) тул каталогоос асаасан бүсчлэлтэй давхаргууд «Бүс»
+         сонгоход шүүгдэлгүй, каталогийн тоотойгоо зөрдөг байв. Тиймээс бүсийн
+         шүүлтийг давхарга бүрд ЭНДЭЭС өөрсдөө тавина (noZone давхаргад
+         `zoneWhere` null тул зан төрх өөрчлөгдөхгүй — тэдгээрт орон зайн маск
+         хэвээр үйлчилнэ). */
+      const w: Record<string, string | null> = {};
+      if (zone) {
+        for (const id of mapVisible) {
+          const d = LAYER_BY_ID[id];
+          if (d) w[id] = zoneWhere(d, zone);
+        }
+      }
+      // Багц сонгосон → тэр багц; эс бөгөөс → зөвхөн хоцрогдолтой багцын блокууд
+      w[BLOCK_LAYER] = active?.where ?? alertedWhere;
       // ⚠️ Давхаргад 2,119 талбар бий — ЗӨВХӨН давхцсаныг үлдээнэ, эс бөгөөс
       //    бүх хот дүүрэн парсел зурагдаж блокууд дарагдана.
-      [PARCEL_LAYER]: overlap?.oids.length
-        ? `OBJECTID IN (${overlap.oids.join(',')})`
-        : null,
-    }),
-    [active, alertedWhere, overlap],
+      w[PARCEL_LAYER] = ovOk?.oids.length
+        ? `OBJECTID IN (${ovOk.oids.join(',')})`
+        : null;
+      return w;
+    },
+    [active, alertedWhere, ovOk, zone, mapVisible],
   );
 
   /** Багц солих — барилгын сонголт цуцлагдана (өөр багцын барилга үлдэхгүй) */
@@ -389,13 +420,16 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
   };
 
   /** Зураг дээрх барилга дарах → баруун талд тухайн барилгын хяналт */
-  const onMapPick = (attrs: Record<string, unknown> | null, layerId: string | null) => {
+  /* useCallback — inline функц render бүрд шинэ лавлагаа болж memo(MapCanvas)-ыг
+     эвддэг (Iot-д 2026-08-24-нд илэрсэн ижил ангиллын алдаа). setPb/setHighlight
+     хоёул тогтвортой тул хамаарал [setHighlight]. */
+  const onMapPick = useCallback((attrs: Record<string, unknown> | null, layerId: string | null) => {
     const b = pickedBuilding(attrs, layerId);
     if (!b) return;
     const oid = Number(attrs?.[BUILDING.oid]);
     setPb(b);
     if (Number.isFinite(oid)) setHighlight(`${BUILDING.oid} = ${oid}`, BLOCK_LAYER);
-  };
+  }, [setHighlight]);
   const backToPack = () => {
     setPb(null);
     setHighlight(null);
@@ -584,7 +618,11 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                 блокууд» картуудын толгойд; энэ нь бүх багцын НИЙТ (блок + дэд
                 бүтэц, давхардалгүй). Сонголтгүй үед `overlap` яг энэ утга. */}
             <Section>
-              <span className={ts.ovTotLabel}>{tr('Давхцсан үлдсэн нэгж талбар')}</span>
+              {/* Алдааны үед шошго нь өөрөө «тоолж чадсангүй» гэж хэлнэ —
+                  «—» дангаараа «0/өгөгдөлгүй»-тэй андуурагдана */}
+              <span className={ts.ovTotLabel}>
+                {overlap === 'error' ? tr('Давхцал тоолж чадсангүй') : tr('Давхцсан үлдсэн нэгж талбар')}
+              </span>
               <b
                 className={`${ts.ovTotVal} num`}
                 /* ⚠️ 2026-08-23 (хэрэглэгчийн хүсэлт): ЯГААН (`--overlap`) → УЛААН
@@ -594,9 +632,9 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                    давхцлын тоотой ч нэг өнгө болов (`BlocksCard`).
                    ⚠️ ГАЗРЫН ЗУРАГ дээрх полигон ЯГААН ХЭВЭЭР: тэр нь улбар шар
                    блокуудаас ялгарахын тулд зориуд сонгогдсон (`Tsogts.tsx` §350). */
-                style={{ color: overlap?.oids.length ? 'var(--bad-ink)' : 'var(--good-ink)' }}
+                style={{ color: overlap === 'error' ? 'var(--ink-3)' : ovOk?.oids.length ? 'var(--bad-ink)' : 'var(--good-ink)' }}
               >
-                {overlap == null ? '…' : num(overlap.oids.length)}
+                {overlap == null ? '…' : overlap === 'error' ? '—' : num(overlap.oids.length)}
               </b>
             </Section>
             {/* Блок бүрийн гүйцэтгэл — БАГЦААР нь бүлэглэсэн (нэг багц = нэг карт) */}
@@ -620,7 +658,7 @@ export function Tsogts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
         ) : active.kind === 'build' ? (
           <>
             <ContractCard p={active} />
-            <BlocksCard p={active} overlapN={overlap == null ? null : overlap.oids.length} />
+            <BlocksCard p={active} overlapN={overlap == null ? null : overlap === 'error' ? 'error' : overlap.oids.length} />
             <MonitorBagts bagts={active.name} />
           </>
         ) : (
@@ -875,8 +913,11 @@ function LevelsCard({
   ovByCat,
 }: {
   blocks: Pack['blocks'];
-  /** Ангилал бүрийн асуудалтай (давхцсан үлдсэн) нэгж талбар — null = ачаалж байна */
-  ovByCat: Map<PackCat, number> | null;
+  /**
+   * Ангилал бүрийн асуудалтай (давхцсан үлдсэн) нэгж талбар — null = ачаалж
+   * байна, `'error'` = тухайн ангиллын тоолол унасан («0» гэж худлахгүй).
+   */
+  ovByCat: Map<PackCat, number | 'error'> | null;
 }) {
   const counts = PROGRESS_LEVELS.map(() => 0);
   let noData = 0;
@@ -902,14 +943,22 @@ function LevelsCard({
           давхардалгүй тоолол. */}
       <div className={o.ovDivider} style={{ marginTop: 12 }}>{tr('Асуудалтай нэгж талбар')}</div>
       <Rows
-        items={PACK_CATS.map((c) => ({
-          key: c.name(),
-          value: (
-            <span className="num">
-              {ovByCat == null ? '…' : num(ovByCat.get(c.key) ?? 0)}
-            </span>
-          ),
-        }))}
+        items={PACK_CATS.map((c) => {
+          const v = ovByCat?.get(c.key);
+          return {
+            key: c.name(),
+            value: (
+              /* Алдаа ≠ «0 асуудалтай» — саарал «—», тайлбар нь title-д */
+              <span
+                className="num"
+                style={v === 'error' ? { color: 'var(--ink-3)' } : undefined}
+                title={v === 'error' ? tr('давхцал тоолж чадсангүй') : undefined}
+              >
+                {ovByCat == null ? '…' : v === 'error' ? '—' : num(v ?? 0)}
+              </span>
+            ),
+          };
+        })}
       />
     </Section>
   );

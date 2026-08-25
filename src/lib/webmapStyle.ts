@@ -29,9 +29,20 @@ let pending: Promise<void> | null = null;
 export function loadWebmapStyle(): Promise<void> {
   if (S) return Promise.resolve();
   pending ??= fetch("/webmap-style.json")
-    .then((r) => (r.ok ? r.json() : {}))
-    .then((j) => { S = j as Record<string, WebmapStyle>; })
-    .catch(() => { S = {}; });
+    .then(async (r) => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      S = (await r.json()) as Record<string, WebmapStyle>;
+    })
+    .catch((e) => {
+      // ⚠️ Алдаанд S-ийг ХООСОН болгож кэшлэхгүй: S truthy болмогц дараагийн
+      //    дуудлагууд шууд resolve болж, сесс дуустал retry огт гардаггүй байв —
+      //    апп нээх агшны нэг глитч бүх давхаргыг SDK-ийн анхдагч загвараар
+      //    (мэдэгдэлгүй «өнгө эвдэрсэн») үлдээдэг. pending-ийг цэвэрлэснээр
+      //    дараагийн mount (MapCanvas/LayerSwatch) дээр дахин татна. Promise нь
+      //    resolve хэвээр тул stylesReady гацахгүй.
+      pending = null;
+      console.warn('[selbe] webmap-style.json татагдсангүй — дараагийн mount дээр дахин оролдоно:', e);
+    });
   return pending;
 }
 

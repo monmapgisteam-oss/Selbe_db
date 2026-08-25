@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { WBS, type WbsRow } from "./wbs.data";
 import { constructionByBagts } from "./ags";
 import { useColWidths } from "./colWidths";
+import { t as tr } from "@/lib/i18nCore";
 import st from "./sheet.module.css";
 
 // Construction leaves (6.2.1.x, Орон сууц барилга угсралт) → service Багц. These
@@ -106,10 +107,10 @@ export default function Wbs() {
   return (
     <div className={st.wrap}>
       <span className={st.layerBtns}>
-        <button className={st.layerBtn} onClick={() => collapseTo(1)} title={'Үе шат'}>1</button>
-        <button className={st.layerBtn} onClick={() => collapseTo(2)} title={'+ дэд'}>2</button>
-        <button className={st.layerBtn} onClick={() => collapseTo(3)} title={'+ ангилал'}>3</button>
-        <button className={st.layerBtn} onClick={() => collapseTo(4)} title={'+ багц'}>4</button>
+        <button className={st.layerBtn} onClick={() => collapseTo(1)} title={tr('Үе шат')}>1</button>
+        <button className={st.layerBtn} onClick={() => collapseTo(2)} title={tr('+ дэд')}>2</button>
+        <button className={st.layerBtn} onClick={() => collapseTo(3)} title={tr('+ ангилал')}>3</button>
+        <button className={st.layerBtn} onClick={() => collapseTo(4)} title={tr('+ багц')}>4</button>
       </span>
       {err && <p className={st.errorSm}>{err}</p>}
       <div className={st.scroll}>
@@ -117,12 +118,12 @@ export default function Wbs() {
           <thead>
             <tr>
               <th className={cls("c-no")}>№<i {...grip("no")} /></th>
-              <th className={cls("c-ajil")}>{'Ажлын нэр'}<i {...grip("ajil")} /></th>
-              <th className={cls("c-jin")}>{'Хэсэгт'}<i {...grip("jin")} /></th>
-              <th className={cls("c-jin")}>{'Төсөлд'}<i {...grip("jin")} /></th>
-              <th className={cls("c-done")}>{'Төлөвлөгөө'}<i {...grip("done")} /></th>
-              <th className={cls("c-done")}>{'Гүйцэтгэл'}<i {...grip("done")} /></th>
-              <th className={cls("c-dutuu")}>{'Биелэлт'}<i {...grip("dutuu")} /></th>
+              <th className={cls("c-ajil")}>{tr('Ажлын нэр')}<i {...grip("ajil")} /></th>
+              <th className={cls("c-jin")}>{tr('Хэсэгт')}<i {...grip("jin")} /></th>
+              <th className={cls("c-jin")}>{tr('Төсөлд')}<i {...grip("jin")} /></th>
+              <th className={cls("c-done")}>{tr('Төлөвлөгөө')}<i {...grip("done")} /></th>
+              <th className={cls("c-done")}>{tr('Гүйцэтгэл')}<i {...grip("done")} /></th>
+              <th className={cls("c-dutuu")}>{tr('Биелэлт')}<i {...grip("dutuu")} /></th>
             </tr>
           </thead>
           <tbody>
@@ -138,9 +139,18 @@ export default function Wbs() {
                     style={{ paddingLeft: `${r.depth * 16 + 6}px` }}
                   >
                     {kids && (
-                      <span className={st.caret} onClick={() => toggle(r.dd)}>
+                      /* button — гараар (Enter/Space) эвхэж дэлгэх боломжтой;
+                         globals-ийн button reset .caret-ийн хэвийг хадгална
+                         (FillNew-ийн caret-тэй ижил хэв). */
+                      <button
+                        type="button"
+                        className={st.caret}
+                        aria-expanded={!collapsed.has(r.dd)}
+                        aria-label={collapsed.has(r.dd) ? tr('Дэлгэх') : tr('Эвхэх')}
+                        onClick={() => toggle(r.dd)}
+                      >
                         {collapsed.has(r.dd) ? "▸" : "▾"}
-                      </span>
+                      </button>
                     )}
                     {r.name}
                   </td>

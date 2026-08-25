@@ -12,6 +12,7 @@
 import { agsFetch, type Feature } from "./ags";
 import { TREES } from "./bagts.trees";
 import type { Pkg, Schema } from "./bagts.pkg";
+import { t as tr } from "@/lib/i18nCore";
 
 export type SheetRow = {
   oid: number;
@@ -144,11 +145,13 @@ export async function loadRows(
   if (expect > 0 && feats2.length !== expect)
     throw new Error(
       feats2.length === 0
-        ? `${pkg.label}: хуудсанд мөр алга — эх хүснэгтийг эхлээд ачаална уу.`
-        : `${pkg.label}: ${feats2.length} мөр ирлээ, ${expect} байх ёстой. ` +
-          "Эх хүснэгтийн мөрийн тоо өөрчлөгдсөн бол шатлалын зураглалыг " +
-          "(bagts.trees.ts) дахин гаргах шаардлагатай — эс бөгөөс бүлэг ба " +
-          "ажлын мөрүүд хоорондоо холилдоно.",
+        ? tr('{0}: хуудсанд мөр алга — эх хүснэгтийг эхлээд ачаална уу.', pkg.label)
+        : tr(
+            '{0}: {1} мөр ирлээ, {2} байх ёстой. Эх хүснэгтийн мөрийн тоо өөрчлөгдсөн бол шатлалын зураглалыг (bagts.trees.ts) дахин гаргах шаардлагатай — эс бөгөөс бүлэг ба ажлын мөрүүд хоорондоо холилдоно.',
+            pkg.label,
+            feats2.length,
+            expect,
+          ),
     );
 
   // Excel-ийн 2-р мөрийн «Шинэчлэгдсэн огноо» ($BH$2 г.м.) нь бүх төлөвлөгөөт
@@ -633,7 +636,7 @@ export async function applyAdds(
         success?: boolean; objectId?: number; error?: { description?: string };
       }[];
       const bad = res.find((r) => r.success === false);
-      if (bad) throw new Error(bad.error?.description || "Нэмэх амжилтгүй");
+      if (bad) throw new Error(bad.error?.description || tr('Нэмэх амжилтгүй'));
       if (firstOid == null && typeof res[0]?.objectId === "number") firstOid = res[0].objectId;
       added += res.length;
     } catch (e) {
@@ -641,9 +644,12 @@ export async function applyAdds(
       //    chunk-ууд аль хэдийн бичигдсэн тул хагас амжилтыг тодруулна.
       if (added > 0)
         throw new Error(
-          `${added}/${features.length} мөр нэмэгдэв; үлдсэн нь амжилтгүй (` +
-            String((e as Error).message || e) +
-            ") — дахин Нийтлэх дарж гүйцээнэ үү",
+          tr(
+            '{0}/{1} мөр нэмэгдэв; үлдсэн нь амжилтгүй ({2}) — дахин Нийтлэх дарж гүйцээнэ үү',
+            added,
+            features.length,
+            String((e as Error).message || e),
+          ),
         );
       throw e;
     }
@@ -669,16 +675,19 @@ export async function applyUpdates(
       if (bad)
         throw new Error(
           (bad as { error?: { description?: string } }).error?.description ||
-            'Шинэчлэх амжилтгүй',
+            tr('Шинэчлэх амжилтгүй'),
         );
     } catch (e) {
       // ⚠️ rollbackOnFailure зөвхөн НЭГ chunk дотроо үйлчилнэ — өмнөх chunk-ууд
       // аль хэдийн серверт бичигдсэн тул хагас амжилтыг мессежид тодруулна.
       if (i > 0)
         throw new Error(
-          `${i}/${updates.length} мөр хадгалагдав; үлдсэн нь амжилтгүй (` +
-            String((e as Error).message || e) +
-            ') — дахин Нийтлэх дарж гүйцээнэ үү',
+          tr(
+            '{0}/{1} мөр хадгалагдав; үлдсэн нь амжилтгүй ({2}) — дахин Нийтлэх дарж гүйцээнэ үү',
+            i,
+            updates.length,
+            String((e as Error).message || e),
+          ),
         );
       throw e;
     }

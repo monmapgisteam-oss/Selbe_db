@@ -37,7 +37,7 @@ import { cat, mntShort, num, pct, shade, shades, tint, CAT_LIGHT, NO_DATA } from
 import { SCHEDULE, BAGTS_ORIGIN } from '@/lib/brief';
 import {
   loadHeadline, loadSocial, loadProjectProgress, loadBudget, liveStage,
-  weighted, rollupBy,
+  weighted, rollupBy, cached,
   type Headline, type SocialLive, type ProjectProgress, type Budget, type ProgRow,
 } from '@/lib/live';
 import { SplitGrip, useSideResize } from '@/components/SplitGrip';
@@ -194,19 +194,33 @@ function useProjectProgress(): Async<ProjectProgress> {
   return useAsync(loadProjectProgress, []);
 }
 
+/* ⚠️ cached() (2026-08-24 гүйцэтгэлийн аудит): Dashboard нь анхдагч харагдац тул
+   өөр харагдац руу ороод буцах бүрд remount болж, PARCEL_LEFT-ийн ~2,119 мөр
+   (хуудаслалттай хэд хэдэн хүсэлт) болон эх үүсвэрүүд ДАХИН татагддаг байв.
+   cached() амжилтгүй амлалтыг кэшлэдэггүй тул «дахин оролдох» хэвээр ажиллана;
+   бусад DashData ачаалагчид (loadBudget/loadHeadline/loadSocial) мөн ижил
+   session-кэштэй тул хуучрал нэг жигд. */
+const loadLeftParcels = cached<Row[]>(
+  () => queryFeatures(PARCEL_LEFT.url, { outFields: [PL.progress, PL.block] }),
+);
+
 function useLeftParcels(): Async<Row[]> {
-  return useAsync(() => queryFeatures(PARCEL_LEFT.url, { outFields: [PL.progress, PL.block] }), []);
+  return useAsync(() => loadLeftParcels(), []);
 }
 
 /** Эх үүсвэрийн байгууламжууд — нэгтгэсэн үйлчилгээнээс (7 объект) */
-function useSources(): Async<Row[]> {
-  return useAsync(() => queryFeatures(SOURCE_FS.url, {
+const loadSources = cached<Row[]>(
+  () => queryFeatures(SOURCE_FS.url, {
     outFields: [
       SOURCE_FS.fields.type, SOURCE_FS.fields.name, SOURCE_FS.fields.share,
       SOURCE_FS.fields.total, SOURCE_FS.fields.note,
       ...SOURCE_FS.consumers.map((c) => c.field),
     ],
-  }), []);
+  }),
+);
+
+function useSources(): Async<Row[]> {
+  return useAsync(() => loadSources(), []);
 }
 
 /* ── Тохиромжтой байдлын үнэлгээ — тооцоо `@/lib/execData`-д (дээрх тайлбар) ── */
@@ -1623,8 +1637,10 @@ function BagtsDetail({ q, prog, hist, flt, onFlt }: {
       <Panel title={tr('Багц бүрийн гүйцэтгэгч')}>
         <Rows
           items={rows.map((r) => ({
-            key: `${r.label} · ${r.origin}`,   // ⚠️ `r.origin`, дахин lookup БИШ
-            value: r.contractor,
+            /* ⚠️ tr() — Rows түүхийгээр зурдаг тул EN-д «Багц 1 · Гадаад» үлдэхгүй;
+               орчуулга дэлгэцийн давхаргад л, өгөгдлийн жишилтэд нөлөөгүй */
+            key: `${tr(r.label)} · ${tr(r.origin)}`,   // ⚠️ `r.origin`, дахин lookup БИШ
+            value: tr(r.contractor),
           }))}
         />
       </Panel>
@@ -1690,7 +1706,9 @@ function LandDetail({ parcels, land, project, flt, onFlt }: {
               onSelect={(label) => onFlt({
                 sec: 'land',
                 key: 'st:' + label,
-                label: tr('Төлөв: {0}', label),
+                /* ⚠️ Утгыг ч tr()-ээр — интерполяци түүхийгээр залгадаг тул EN-д
+                   «Status: Гэрээлсэн» гэж хольмог гардаг байв (where нь түүхий хэвээр) */
+                label: tr('Төлөв: {0}', tr(label)),
                 where: `${PL.status} = '${sq(label)}'`,
                 only: ['land:left'],
               })}
@@ -1782,7 +1800,8 @@ function LandDetail({ parcels, land, project, flt, onFlt }: {
                     onFlt({
                       sec: 'land',
                       key: label,
-                      label: tr('Шалтгаан: {0}', label),
+                      /* ⚠️ Утгыг ч tr()-ээр — EN-д хольмог хэл гарахгүй (where түүхий) */
+                      label: tr('Шалтгаан: {0}', tr(label)),
                       where: `${PL.status} = 'Үлдсэн нэгж талбар' AND ${eq}`,
                       only: ['land:left'],
                     });
@@ -1822,7 +1841,8 @@ function LandDetail({ parcels, land, project, flt, onFlt }: {
                   onSelect={(label) => onFlt({
                     sec: 'land',
                     key: `ha:${label}`,
-                    label: tr('Төлөв: {0}', label),
+                    /* ⚠️ Утгыг ч tr()-ээр — EN-д хольмог хэл гарахгүй (where түүхий) */
+                    label: tr('Төлөв: {0}', tr(label)),
                     where: `${PL.status} = '${sq(label)}'`,
                     only: ['land:left'],
                   })}
@@ -2430,14 +2450,17 @@ function SourceDetail({ sources, d, flt, onFlt }: { sources: Async<Row[]>; d: Da
         <Stats cols={3}>
           {types.map((t, i) => {
             const facs = rows.filter((r) => srcStr(r[F.type]) === t);
-            const unit = t.includes('Ус') ? tr('м³/хон') : tr('МВт');
+            /* ⚠️ Бутархайг ТҮҮХИЙ төрлөөр шийднэ: `unit` нь tr()-ээр орчуулагддаг
+               тул EN-д «MW» болж, `=== 'МВт'` жишилт хэзээ ч биелэхгүй байв */
+            const isWater = t.includes('Ус');
+            const unit = isWater ? tr('м³/хон') : tr('МВт');
             const cap = sumBy(facs, (r) => srcNum(r[F.total]));
             return (
               <Stat
                 key={t}
                 accent
                 color={HUE[(i * 2) % HUE.length]}
-                value={cap ? num(cap, unit === 'МВт' ? 1 : 0) : '—'}
+                value={cap ? num(cap, isWater ? 0 : 1) : '—'}
                 unit={unit}
                 // ⚠️ Зөвхөн «эх үүсвэр» гэдгийг хасна (картын гарчигт аль хэдийн
                 //    бий). Харьяалахын нөхцөлийг («ын/ий/н») тайрах гэж

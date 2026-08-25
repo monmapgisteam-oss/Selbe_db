@@ -96,13 +96,33 @@ export function usePlanTotals(
     if (!enabled) return new Map<string, Totals>();
     const hit = totalsCache.get(key);
     if (hit) return hit;
-    const entries = await Promise.all(
+    // ⚠️ allSettled — Promise.all байхад ~119 хүсэлтийн ГАНЦ нь унахад (нэг
+    //    давхаргын HTTP 500 — rate-limit биш тул query.ts retry хийхгүй) бүхэл
+    //    Map алдаа болж, каталог/дашбоардын БҮХ тоо «татагдсангүй» болдог байв.
+    //    Унасан давхаргыг Map-д оруулахгүй — каталогийн мөр «—» гэж гарна
+    //    (LayerCatalog-ийн «алдвал “—”» тохиролцоо), бусад нь хэвийн үзэгдэнэ.
+    const settled = await Promise.allSettled(
       ids.map(async (id) => {
         const d = LAYER_BY_ID[id];
         return [id, await layerTotals(d, whereFor(d, zone))] as const;
       }),
     );
-    const map = new Map<string, Totals>(entries);
+    const map = new Map<string, Totals>();
+    const failed: string[] = [];
+    settled.forEach((s, i) => {
+      if (s.status === 'fulfilled') map.set(s.value[0], s.value[1]);
+      else failed.push(ids[i]);
+    });
+    if (failed.length) {
+      // Алдааг ЧИМЭЭГҮЙ залгихгүй (query.ts-ийн дүрэм) — ядаж лог үлдээнэ
+      console.warn(`[selbe] usePlanTotals: ${failed.length} давхаргын тоо татагдсангүй: ${failed.join(', ')}`);
+      // БҮГД унасан бол сервер бүхэлдээ унасан гэсэн үг — жинхэнэ алдаа
+      // болгож error UI + «дахин оролдох» товч гаргана
+      if (failed.length === ids.length) throw (settled[0] as PromiseRejectedResult).reason;
+      // ⚠️ Дутуу Map-ыг КЭШЛЭХГҮЙ — дараагийн mount/бүс солиход унасан
+      //    давхаргууд дахин татагдаж, өөрөө эдгэрнэ
+      return map;
+    }
     totalsCache.set(key, map);
     return map;
   }, [key]);

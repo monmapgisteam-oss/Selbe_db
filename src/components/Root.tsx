@@ -146,8 +146,17 @@ export default function Root() {
 
   /** БҮХ сэдэв (Удирдлага) — бүх харагдац навигацид */
   const openAll = () => {
+    /* Сүүлд ажилласан харагдацыг сэргээнэ (Portal хадгалдаг) — өдөр бүр ижил
+       хэсэгт ажилладаг хэрэглэгч «Орох» дараад шууд ажлын цэгтээ очно.
+       ⚠️ localStorage нь гаднын утга: харагдацын түлхүүр мөн эсэхийг
+       Object.hasOwn-оор шалгана (`__proto__` г.м. prototype халдлагаас), мөн
+       навигациас нуугдсан (ALL_MODE_HIDE) харагдацад буцаахгүй. */
+    let last: string | null = null;
+    try { last = localStorage.getItem('selbe-last-view'); } catch { /* хаалттай орчин */ }
+    const v = last && Object.hasOwn(VIEW_BY_KEY, last) && !ALL_MODE_HIDE.includes(last as ViewKey)
+      ? (last as ViewKey) : DEFAULT_VIEW;
     const u = new URL(window.location.href);
-    u.searchParams.set('v', DEFAULT_VIEW);
+    u.searchParams.set('v', v);
     u.searchParams.set('all', '1');
     u.searchParams.delete('g');
     window.history.pushState({}, '', u);

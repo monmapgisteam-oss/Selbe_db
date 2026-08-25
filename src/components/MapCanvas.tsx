@@ -1696,16 +1696,27 @@ export const MapCanvas = memo(function MapCanvas({
 
     // ⚠️ `e`-г ИЛ бичнэ: `view` нь MapView|SceneView нэгдэл тул `on()`-ийн
     // overload шийдэгдэхгүй бөгөөд параметр чимээгүй `any` болно.
+    /**
+     * ⚠️ Даралтын ДАРААЛЛЫН токен. `pickByQuery` нь 6 слотын хязгаарлагчаар
+     * цувдаг удаан REST асуулга тул хоцорсон хариу нь ДАРААГИЙН даралтын
+     * сонголтыг дарж бичдэг байв: сул газар (удаан fallback) → объект дээр
+     * дараалан дарахад 1-ийн хожуу ирсэн `null` нь сая нээгдсэн самбарыг
+     * хаана. Зөвхөн СҮҮЛЧИЙН даралтын үр дүн `pickRef`-д хүрнэ.
+     */
+    let clickSeq = 0;
     const click = view.on('click', (e: __esri.ViewClickEvent) => {
+      const seq = ++clickSeq;
       view.hitTest(e)
         .then(async (r) => {
+          // Хоцорсон hitTest — шинэ даралт аль хэдийн явж байна
+          if (seq !== clickSeq) return;
           const hit = pickHit(r);
           if (hit) { pickRef.current(hit.attrs, hit.id); return; }
           if (view.destroyed || !e.mapPoint) { pickRef.current(null, null); return; }
           // ≈6 пикселийн хүлцэл — нимгэн шугам, жижиг цэгийг барихад хангалттай
           const tol = Math.max(2, (view.resolution || 1) * 6);
           const q = await pickByQuery(e.mapPoint, tol);
-          if (!view.destroyed) pickRef.current(q?.attrs ?? null, q?.id ?? null);
+          if (!view.destroyed && seq === clickSeq) pickRef.current(q?.attrs ?? null, q?.id ?? null);
         })
         .catch(() => {/* view устгагдсан — сонголт өөрчлөгдөхгүй */});
     });
@@ -1752,8 +1763,35 @@ export const MapCanvas = memo(function MapCanvas({
   /**
    * Компонент салахад Map-ыг УСТГАХГҮЙ — `mapCache`-д үлдэж дараагийн харагдацад
    * дахин ашиглагдана (view нь [dim] эффектийн cleanup-д тусад нь устна).
+   *
+   * ⚠️ Map амьд үлддэг УЧРААС энэ харагдацын түр дарлагуудыг ЭНД буцаана —
+   * `styleBackup`/`defaultOpacityRef` нь КОМПОНЕНТЫН ref тул unmount-д хамт
+   * устаж, буцаах өөр боломж үлддэггүй:
+   *   · renderer дарлага (`layerStyle`) — эс бөгөөс Багцын ягаан нэгж талбар
+   *     дараагийн харагдацад үлдэж, Tsogts бүр түүнийг «анхны» гэж нөөцөлснөөр
+   *     хуудас refresh хийтэл засрахгүй байв;
+   *   · тунгалагийн override — эс бөгөөс 20% болгосон давхаргыг дараагийн
+   *     mount 20%-ийг «анхдагч» гэж бүртгэж, webmap-ийн жинхэнэ opacity
+   *     session дуустал алдагдана.
+   * (Энэ effect [dim] effect-ээс ХОЙНО зарлагдсан тул cleanup нь view устсаны
+   * дараа, `mapRef` хоосорхоос ӨМНӨ ажиллана.)
    */
-  useEffect(() => () => { mapRef.current = null; }, []);
+  useEffect(() => () => {
+    const map = mapRef.current;
+    if (map) {
+      for (const [id, r] of Object.entries(styleBackup.current)) {
+        const fl = map.findLayerById(id) as FeatureLayer | null;
+        if (fl && 'renderer' in fl) fl.renderer = r as FeatureLayer['renderer'];
+      }
+      for (const [id, v] of Object.entries(defaultOpacityRef.current)) {
+        const l = map.findLayerById(id);
+        if (l && 'opacity' in l) l.opacity = v;
+      }
+    }
+    styleBackup.current = {};
+    defaultOpacityRef.current = {};
+    mapRef.current = null;
+  }, []);
 
   /**
    * 3D давхаргуудыг ЗӨВХӨН тохирох горимд газрын зурагт байлгана.
@@ -2062,7 +2100,11 @@ export const MapCanvas = memo(function MapCanvas({
       tools.map(async (t) => {
         t.av = (await sv.whenAnalysisView(t.analysis as never)) as unknown as AV;
       }),
-    );
+    ).catch((err) => {
+      // ⚠️ dim хурдан солигдож view устахад reject ХЭВИЙН — чимээгүй; бусад нь
+      //    жинхэнэ уналт тул unhandled rejection болгохгүй, ил тэмдэглэнэ.
+      if (!view.destroyed) console.error('[analysis]', err);
+    });
 
     let active: Tool | null = null;
     let abort: AbortController | null = null;
@@ -2254,6 +2296,9 @@ export const MapCanvas = memo(function MapCanvas({
         },
         { initial: true },
       );
+    }).catch((err) => {
+      // dim солигдож view устахад reject хэвийн — зөвхөн амьд view-ийн уналтыг мэдээлнэ
+      if (!disposed && !view.destroyed) console.error('[volume]', err);
     });
     vPlace.addEventListener('click', async () => {
       vAbort?.abort();
@@ -2283,8 +2328,21 @@ export const MapCanvas = memo(function MapCanvas({
     panelS.append(listDiv);
 
     // Слайд бүр — thumbnail зураг + нэр + огноо + × устгах (Esri sample шиг)
+    /**
+     * Порталын нэг дүрэм — mn-MN («2026.07.14»); урьд нь en-GB (DD/MM/YYYY)
+     * байж өдөр/сар андуурагдахаар байв.
+     * ⚠️ `timeZone:'UTC'`-г ЗААВАЛ хадгална: энэ нь нарны гэрэлтүүлгийн UTC
+     * агшин тул хаявал Монголд +8 цагаар шилжиж нарны цаг буруу харагдана.
+     */
     const fmtSlideDate = (d?: Date) => {
-      try { return d ? d.toLocaleString('en-GB', { timeZone: 'UTC' }) : ''; } catch { return ''; }
+      try {
+        return d
+          ? d.toLocaleString('mn-MN', {
+            year: 'numeric', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit', timeZone: 'UTC',
+          })
+          : '';
+      } catch { return ''; }
     };
     const addSlideRow = (slide: Slide) => {
       const row = mk('div', 'display:flex;align-items:center;gap:9px;padding:7px;border:1px solid var(--line);'
@@ -2323,16 +2381,25 @@ export const MapCanvas = memo(function MapCanvas({
     const createBtn = mk('button', 'flex:none;padding:7px 13px;border-radius:7px;border:1px solid transparent;'
       + 'background:var(--hue);color:#fff;font-size:0.78rem;font-weight:600;cursor:pointer', tr('Үүсгэх')) as HTMLButtonElement;
     addRow.append(nameInput, createBtn);
-    addWrap.append(addRow);
+    // Снапшот унахад товч «юу ч хийгээгүй» мэт чимээгүй байсан — алдааг ил хэлнэ
+    const slideErr = mk('div', 'display:none;font-size:0.7rem;color:var(--bad-ink)',
+      tr('Слайд үүсгэж чадсангүй — дахин оролдоно уу.'));
+    addWrap.append(addRow, slideErr);
     panelS.append(addWrap);
 
     createBtn.addEventListener('click', () => {
+      slideErr.style.display = 'none';
       void Slide.createFrom(sv).then((slide) => {
         if (disposed) return;
         slide.title.text = nameInput.value.trim() || tr('Слайд {0}', slides.length + 1);
         slides.push(slide);
         addSlideRow(slide);
         nameInput.value = '';
+      }).catch((err) => {
+        // Харагдац солигдох агшны уналт хэрэглэгчид хамаагүй — амьд панел дээр л мэдэгдэнэ
+        if (disposed || view.destroyed) return;
+        slideErr.style.display = 'block';
+        console.error('[slide]', err);
       });
     });
 

@@ -6,7 +6,7 @@ import { Data, Empty } from '@/components/ui';
 import { useAsync } from '@/lib/useAsync';
 import { queryFeatures } from '@/lib/query';
 import { cached } from '@/lib/live';
-import { CASHFLOW2, IPC_LOG, TASK_SHEET, bagtsKey, pkgKeyOf } from '@/lib/services';
+import { CASHFLOW2, IPC_LOG, TASK_SHEET, bagtsKey, blockKey, pkgKeyOf } from '@/lib/services';
 import { finFieldLabel } from '@/lib/financeFieldLabels';
 import { mntShort, num, text, cat } from '@/lib/format';
 import { ResizableTable } from '@/components/ResizableTable';
@@ -388,14 +388,32 @@ function smoothPath(pts: { x: number; y: number }[]): string {
  */
 export const loadFinData = cached(loadFinDataRaw, 5 * 60_000);
 
+/**
+ * CASHFLOW2/IPC_LOG-ийн түүхий мөрүүд — НЭГ кэштэй эх (2026-08-24 аудит):
+ * урьд нь `loadFinDataRaw` ба `loadFinRegister` ижил хоёр хүснэгтийг тус
+ * тусдаа '*'-аар татдаг тул Нүүр (ExecKpi) · Tsogts · Санхүү гурвыг дараалан
+ * нээхэд CASHFLOW2/IPC_LOG давхар татагдаж, 6 слотын хязгаарлагчийг дэмий
+ * эзэлдэг байв. ⚠️ `outFields: '*'` ХЭВЭЭР — Санхүүгийн бүртгэл (FullTable)
+ * үйлчилгээний талбар БҮРИЙГ баганаар харуулдаг тул нарийсгаж болохгүй.
+ */
+const loadCashflowRows = cached(
+  () => queryFeatures(CASHFLOW2.url, { outFields: ['*'], orderBy: `${CASHFLOW2.oid} ASC` }),
+  5 * 60_000,
+);
+const loadIpcRows = cached(
+  () => queryFeatures(IPC_LOG.url, { outFields: ['*'] }),
+  5 * 60_000,
+);
+
 async function loadFinDataRaw(): Promise<FinData> {
   const S = TASK_SHEET.fields;
     const [contracts, ipc, sheet] = await Promise.all([
-      queryFeatures(CASHFLOW2.url, { outFields: ['*'], orderBy: `${CASHFLOW2.oid} ASC` }),
-      queryFeatures(IPC_LOG.url, { outFields: ['*'] }),
+      loadCashflowRows(),
+      loadIpcRows(),
       // «Гүйцэтгэл бөглөх» — блок бүрийн НИЙТ гүйцэтгэлийн мөр (Б.), append-лог
       queryFeatures(TASK_SHEET.url, {
-        where: `${S.no}='${TASK_SHEET.constructionNo}'`,
+        // ⚠️ Блокгүй мөр аль ч блокт хамаарахгүй — blockProgress.ts-тэй ижил шүүлт
+        where: `${S.no}='${TASK_SHEET.constructionNo}' AND ${S.block} IS NOT NULL`,
         outFields: [S.bagts, S.block, S.date, S.progress],
       }),
     ]);
@@ -428,15 +446,23 @@ async function loadFinDataRaw(): Promise<FinData> {
     const physCnt: PhysMap = new Map(); // багц·сар → блокийн тоо (жин)
     {
       // багц → блок → [огноо, гүйцэтгэл][] (огноогоор эрэмбэлсэн)
-      const byPkg = new Map<string, Map<string, { d: string; g: number }[]>>();
+      const byPkg = new Map<string, Map<string, { d: string; g: number | null }[]>>();
       sheet.forEach((r) => {
         const k = bagtsKey(r[S.bagts]);
         const d = String(r[S.date] ?? '').slice(0, 10);
-        if (!k || !d) return;
-        const blocks = byPkg.get(k) ?? new Map<string, { d: string; g: number }[]>();
-        const arr = blocks.get(String(r[S.block] ?? '?')) ?? [];
-        arr.push({ d, g: n(r[S.progress]) });
-        blocks.set(String(r[S.block] ?? '?'), blocks.get(String(r[S.block] ?? '?')) ?? arr);
+        /**
+         * ⚠️ `blockKey` (2026-08-24 аудит) — түүхий нэрээр бүлэглэхэд «5/1
+         * барилга» ба «5/1 блок» ХОЁР өөр блок болж, хуучирсан 12-р сарын
+         * өндөр утга давхар тоологдон Багц 4.1-ийн биет % 29.8 гарч байв
+         * (blockProgress-ийн зөв дундаж 21.6) — нэг мөрөнд хоёр өөр тоо.
+         */
+        const b = blockKey(r[S.block]);
+        if (!k || !d || !b) return;
+        const blocks = byPkg.get(k) ?? new Map<string, { d: string; g: number | null }[]>();
+        const arr = blocks.get(b) ?? [];
+        // null = нүд цэвэрлэгдсэн/бөглөгдөөгүй — 0 гэж тоолбол дундаж худал буурна
+        arr.push({ d, g: r[S.progress] == null ? null : n(r[S.progress]) });
+        blocks.set(b, arr);
         byPkg.set(k, blocks);
       });
       byPkg.forEach((blocks, k) => {
@@ -448,12 +474,15 @@ async function loadFinDataRaw(): Promise<FinData> {
           let cnt = 0;
           blocks.forEach((arr) => {
             // тухайн сарын эцсээс өмнөх сүүлийн бичилт
-            let best: { d: string; g: number } | null = null;
+            let best: { d: string; g: number | null } | null = null;
             arr.forEach((e) => {
               if (e.d.slice(0, 7) <= m.label && (!best || e.d > best.d)) best = e;
             });
-            if (best) {
-              sum += (best as { d: string; g: number }).g;
+            // Сүүлийн бичилт нь null бол блок «мэдээлэлгүй» — дунджид ОРУУЛАХГҮЙ
+            // (blockProgress.compute-ийн дүрэмтэй ижил: 0% гэж будвал худал мэдээлэл)
+            const g = (best as { d: string; g: number | null } | null)?.g;
+            if (g != null) {
+              sum += g;
               cnt++;
             }
           });
@@ -495,12 +524,19 @@ async function loadFields(url: string): Promise<FieldDef[]> {
   }
 }
 
-async function loadFinRegister(): Promise<FinTables> {
+/**
+ * ⚠️ 5 мин кэш (2026-08-24 аудит) — урьд нь Санхүү харагдац mount болох бүрд
+ * 4 хүсэлт (метадата ×2 + бүтэн хүснэгт ×2) кэшгүй дахин явдаг байв; мөрүүд нь
+ * одоо `loadCashflowRows`/`loadIpcRows`-оор `loadFinData`-тай хуваалцагдана.
+ */
+const loadFinRegister = cached(loadFinRegisterRaw, 5 * 60_000);
+
+async function loadFinRegisterRaw(): Promise<FinTables> {
   const [cfFields, ipcFields, cashflow, ipc] = await Promise.all([
     loadFields(CASHFLOW2.url),
     loadFields(IPC_LOG.url),
-    queryFeatures(CASHFLOW2.url, { outFields: ['*'], orderBy: `${CASHFLOW2.oid} ASC` }),
-    queryFeatures(IPC_LOG.url, { outFields: ['*'] }),
+    loadCashflowRows(),
+    loadIpcRows(),
   ]);
   return { cashflow, ipc, cfFields, ipcFields };
 }

@@ -25,6 +25,7 @@ import DatePicker from "./DatePicker";
 import { seriesBands } from "./bagts.bands";
 import { ACTUAL, distinct } from "./ags";
 import { useColWidths } from "./colWidths";
+import { t as tr } from "@/lib/i18nCore";
 import st from "./sheet.module.css";
 
 // «Гүйцэтгэл шинэ» — багцуудын `*_final_publish` хуудас excel-ийнхээ бүх
@@ -126,25 +127,25 @@ type EditCol = "obyem";
 const cellKey = (oid: number, b: number) => `${oid}:${b}`;
 
 const RO = {
-  no: '№ ба Ажлын нэр нь excel-ийн бүтэц — энэ хуудаснаас засагдахгүй.',
-  wC: 'Хувийн жин: Мөнгөн дүн ÷ дээд мөрийн дүн. Автоматаар бодогдоно.',
-  wD: 'Хувийн жин (нийт төсөлд): Мөнгөн дүн ÷ үе шатны дүн. Автоматаар бодогдоно.',
-  wE: 'Одоо байгаа: Хувийн жин × Бодит гүйцэтгэл. Гүйцэтгэл бөглөхөд өөрөө хөдөлнө.',
-  vol: 'Обьём нь ЭХ ӨГӨГДЛИЙН тоо хэмжээ — эх хүснэгтэд оруулагдана, энэ хуудаснаас засагдахгүй (жин, мөнгөн дүн бүхэлдээ түүнээс бодогддог).',
-  obyemSum: 'Обьёмын нийлбэр: тухайн мөрийн БҮХ блокийн бөглөсөн обьёмын нийлбэр. Нийтлэх бүрд өөрөө бодогдож `obyem_sum` талбарт бичигдэнэ.',
-  unit: 'Нэгж өртөг нь үйлчилгээнд хадгалагдсан — энэ хуудаснаас засагдахгүй.',
-  money: 'Мөнгөн дүн: Обьём × Нэгж өртөг; бүлгийн мөрд дэд мөрүүдийнхээ нийлбэр.',
-  I: 'Төлөвлөгөөт гүйцэтгэл нь блокуудын төлөвлөгөөт хувийн дундаж. Огноог засвал өөрчлөгдөнө.',
-  J: 'Бодит гүйцэтгэл нь блокуудын бодит хувийн дундаж. Блокийн нүдэнд обьём бөглөнө үү.',
-  K: 'Төлөвлөгөө биелэлт: Бодит ÷ Төлөвлөгөөт. Автоматаар бодогдоно.',
-  groupAct: 'Бүлгийн мөр нь дэд мөрүүдийнхээ жинтэй дунджаар бодогдоно — доод ажлын мөр дээр бөглөнө үү.',
-  noObyemField: 'Энэ блокт обьёмын багана үйлчилгээнд үүсээгүй тул хадгалах газаргүй (AGOL дээр нэмэх шаардлагатай).',
-  pctFromVol: 'Хувь нь «бөглөсөн обьём ÷ мөрийн Обьём»-оор бодогдоно — гараар засагдахгүй.',
-  noRowVol: 'Энэ мөрд «Обьём» бөглөгдөөгүй тул хувь бодогдохгүй. Обьёмын баганад мөрийн нийт тоо хэмжээг оруулмагц хувь нь өөрөө гарч эхэлнэ.',
-  blockPlan: 'Барилга-төлөвлөгөөт нь эхлэх/дуусах огноо ба шинэчлэгдсэн огноогоор бодогдоно — огноог нь засаарай.',
-  groupDate: 'Энэ огноо нь доод ажлуудынхаа хамгийн эрт эхлэх / хамгийн сүүл дуусахаар бодогдож байна — доод ажлынхаа огноог засаарай.',
-  noDateField: 'Энэ блокт огнооны багана үйлчилгээнд байхгүй тул хадгалах газаргүй.',
-  asOfRow: 'Шинэчлэгдсэн огноо зөвхөн эхний мөрд бичигдэнэ — тэндээс эсвэл дээд талын «Огноо»-гоор солино.',
+  no: tr('№ ба Ажлын нэр нь excel-ийн бүтэц — энэ хуудаснаас засагдахгүй.'),
+  wC: tr('Хувийн жин: Мөнгөн дүн ÷ дээд мөрийн дүн. Автоматаар бодогдоно.'),
+  wD: tr('Хувийн жин (нийт төсөлд): Мөнгөн дүн ÷ үе шатны дүн. Автоматаар бодогдоно.'),
+  wE: tr('Одоо байгаа: Хувийн жин × Бодит гүйцэтгэл. Гүйцэтгэл бөглөхөд өөрөө хөдөлнө.'),
+  vol: tr('Обьём нь ЭХ ӨГӨГДЛИЙН тоо хэмжээ — эх хүснэгтэд оруулагдана, энэ хуудаснаас засагдахгүй (жин, мөнгөн дүн бүхэлдээ түүнээс бодогддог).'),
+  obyemSum: tr('Обьёмын нийлбэр: тухайн мөрийн БҮХ блокийн бөглөсөн обьёмын нийлбэр. Нийтлэх бүрд өөрөө бодогдож `obyem_sum` талбарт бичигдэнэ.'),
+  unit: tr('Нэгж өртөг нь үйлчилгээнд хадгалагдсан — энэ хуудаснаас засагдахгүй.'),
+  money: tr('Мөнгөн дүн: Обьём × Нэгж өртөг; бүлгийн мөрд дэд мөрүүдийнхээ нийлбэр.'),
+  I: tr('Төлөвлөгөөт гүйцэтгэл нь блокуудын төлөвлөгөөт хувийн дундаж. Огноог засвал өөрчлөгдөнө.'),
+  J: tr('Бодит гүйцэтгэл нь блокуудын бодит хувийн дундаж. Блокийн нүдэнд обьём бөглөнө үү.'),
+  K: tr('Төлөвлөгөө биелэлт: Бодит ÷ Төлөвлөгөөт. Автоматаар бодогдоно.'),
+  groupAct: tr('Бүлгийн мөр нь дэд мөрүүдийнхээ жинтэй дунджаар бодогдоно — доод ажлын мөр дээр бөглөнө үү.'),
+  noObyemField: tr('Энэ блокт обьёмын багана үйлчилгээнд үүсээгүй тул хадгалах газаргүй (AGOL дээр нэмэх шаардлагатай).'),
+  pctFromVol: tr('Хувь нь «бөглөсөн обьём ÷ мөрийн Обьём»-оор бодогдоно — гараар засагдахгүй.'),
+  noRowVol: tr('Энэ мөрд «Обьём» бөглөгдөөгүй тул хувь бодогдохгүй. Обьёмын баганад мөрийн нийт тоо хэмжээг оруулмагц хувь нь өөрөө гарч эхэлнэ.'),
+  blockPlan: tr('Барилга-төлөвлөгөөт нь эхлэх/дуусах огноо ба шинэчлэгдсэн огноогоор бодогдоно — огноог нь засаарай.'),
+  groupDate: tr('Энэ огноо нь доод ажлуудынхаа хамгийн эрт эхлэх / хамгийн сүүл дуусахаар бодогдож байна — доод ажлынхаа огноог засаарай.'),
+  noDateField: tr('Энэ блокт огнооны багана үйлчилгээнд байхгүй тул хадгалах газаргүй.'),
+  asOfRow: tr('Шинэчлэгдсэн огноо зөвхөн эхний мөрд бичигдэнэ — тэндээс эсвэл дээд талын «Огноо»-гоор солино.'),
 } as const;
 
 /*
@@ -645,7 +646,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     if (r.group) return;
     if (t !== "" && !Number.isFinite(Number(t))) {
       // Чимээгүй хаявал хэрэглэгч «бичигдлээ» гэж андуурдаг — мэдэгдэнэ.
-      setErr(`${sc?.bld[b] ?? ""} · ${r.work}: тоон утга оруулна уу.`);
+      setErr(tr('{0} · {1}: тоон утга оруулна уу.', sc?.bld[b] ?? "", r.work));
       return;
     }
 
@@ -663,9 +664,13 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       stored != null &&
       Number(v) < stored &&
       !window.confirm(
-        `${sc?.bld[b] ?? ""} · ${r.work}:
-өмнө нь ${qty(stored)} бүртгэгдсэн — ${qty(Number(v))} болж БУУРНА.
-Буруу бичсэнээ засаж байна уу?`,
+        tr(
+          '{0} · {1}:\nөмнө нь {2} бүртгэгдсэн — {3} болж БУУРНА.\nБуруу бичсэнээ засаж байна уу?',
+          sc?.bld[b] ?? "",
+          r.work,
+          qty(stored),
+          qty(Number(v)),
+        ),
       )
     )
       return;
@@ -675,9 +680,14 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       vol > 0 &&
       Number(v) > vol &&
       !window.confirm(
-        `${sc?.bld[b] ?? ""} · ${r.work}:
-${qty(Number(v))} нь мөрийн Обьём ${qty(vol)}-оос ХЭТЭРЧ байна (${pc(Number(v) / vol, 1)}).
-Үргэлжлүүлэх үү?`,
+        tr(
+          '{0} · {1}:\n{2} нь мөрийн Обьём {3}-оос ХЭТЭРЧ байна ({4}).\nҮргэлжлүүлэх үү?',
+          sc?.bld[b] ?? "",
+          r.work,
+          qty(Number(v)),
+          qty(vol),
+          pc(Number(v) / vol, 1),
+        ),
       )
     )
       return;
@@ -731,10 +741,9 @@ ${qty(Number(v))} нь мөрийн Обьём ${qty(vol)}-оос ХЭТЭРЧ �
     }
     const when = new Date(d.t).toLocaleString("mn-MN");
     const msg =
-      `Нийтлэгдээгүй ${Object.keys(next).length} нүдний засвар олдлоо (${when}).` +
-      (dropped ? `
-${dropped} нүд хуучирсан тул орхигдоно.` : "") +
-      '\nСэргээх үү?';
+      tr('Нийтлэгдээгүй {0} нүдний засвар олдлоо ({1}).', Object.keys(next).length, when) +
+      (dropped ? "\n" + tr('{0} нүд хуучирсан тул орхигдоно.', dropped) : "") +
+      "\n" + tr('Сэргээх үү?');
     if (window.confirm(msg)) setPending(next);
     else clearDraftLS(pkg.key);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -767,9 +776,8 @@ ${dropped} нүд хуучирсан тул орхигдоно.` : "") +
   const confirmSwitch = () =>
     dirtyCount === 0 ||
     window.confirm(
-      `Нийтлэгдээгүй ${dirtyCount} өөрчлөлт бий. Багц солих уу?
-` +
-        '(Нүдний засварууд ноорог болон хадгалагдаж, буцаж ирэхэд сэргээхийг санал болгоно.)',
+      tr('Нийтлэгдээгүй {0} өөрчлөлт бий. Багц солих уу?', dirtyCount) + "\n" +
+        tr('(Нүдний засварууд ноорог болон хадгалагдаж, буцаж ирэхэд сэргээхийг санал болгоно.)'),
     );
   /** Огнооны нүдний ХАДГАЛАГДСАН утга «YYYY-MM-DD» хэлбэрээр. */
   const origDay = (r: SheetRow, b: number, k: "s" | "e") =>
@@ -846,8 +854,7 @@ ${dropped} нүд хуучирсан тул орхигдоно.` : "") +
 
       if (!sc.f.fillDate)
         throw new Error(
-          "«buglusun_ognoo» багана энэ үйлчилгээнд алга — архив үүсгэх " +
-            "боломжгүй тул нийтлэлийг зогсоов (AGOL дээр багана нэмнэ үү).",
+          tr('«buglusun_ognoo» багана энэ үйлчилгээнд алга — архив үүсгэх боломжгүй тул нийтлэлийг зогсоов (AGOL дээр багана нэмнэ үү).'),
         );
       const { added, firstOid } = await applyAdds(pkg, adds);
 
@@ -870,8 +877,8 @@ ${dropped} нүд хуучирсан тул орхигдоно.` : "") +
       setPending({});
       setPendDate({});
       say(rv.ok
-        ? `Архивт ${added} мөр нэмэгдэв · ${msToDay(fillMs)} · хяналтад илгээв (${rv.id})`
-        : `Архивт ${added} мөр нэмэгдэв · ${msToDay(fillMs)} · ⚠️ хяналтад илгээгдсэнгүй: ${rv.error}`);
+        ? tr('Архивт {0} мөр нэмэгдэв · {1} · хяналтад илгээв ({2})', added, msToDay(fillMs), rv.id)
+        : tr('Архивт {0} мөр нэмэгдэв · {1} · ⚠️ хяналтад илгээгдсэнгүй: {2}', added, msToDay(fillMs), rv.error));
     } catch (e) {
       setErr(String((e as Error).message || e));
     } finally {
@@ -948,7 +955,7 @@ ${dropped} нүд хуучирсан тул орхигдоно.` : "") +
             тэдгээр нь өгөгдлийг биш, харагдацыг л хумина. */}
         {!locked && (<>
         <label className={st.field}>
-          {'Багц'}{" "}
+          {tr('Багц')}{" "}
           <select
             className={st.select}
             value={pkg.group}
@@ -969,7 +976,7 @@ ${dropped} нүд хуучирсан тул орхигдоно.` : "") +
             андуурч «Давхар» гэж нэрлэхээс зайлсхийсэн. */}
         {floorOpts.length > 1 && (
           <label className={st.field}>
-            {'Хувилбар'}{" "}
+            {tr('Хувилбар')}{" "}
             <select
               className={st.select}
               value={pkg.key}
@@ -986,7 +993,7 @@ ${dropped} нүд хуучирсан тул орхигдоно.` : "") +
           </label>
         )}
         <label className={st.field}>
-          {'Огноо'}{" "}
+          {tr('Огноо')}{" "}
           <select
             className={st.select}
             value={dt(asOf)}
@@ -997,7 +1004,7 @@ ${dropped} нүд хуучирсан тул орхигдоно.` : "") +
               const ms = inputToMs(e.target.value);
               if (ms != null) setAsOf(ms);
             }}
-            title={'Төлөвлөгөөт хувь бүхэлдээ энэ огноогоор бодогдоно (excel-ийн «Шинэчлэгдсэн огноо»)'}
+            title={tr('Төлөвлөгөөт хувь бүхэлдээ энэ огноогоор бодогдоно (excel-ийн «Шинэчлэгдсэн огноо»)')}
           >
             {dateOpts.map((d) => (
               <option key={d} value={d}>{d}</option>
@@ -1008,15 +1015,15 @@ ${dropped} нүд хуучирсан тул орхигдоно.` : "") +
         )}
         {/* ЭЦЭГ БҮЛЭГ — «Б1 БАРИЛГЫН АЖИЛ», «3 ТӨМӨР БЕТОН РАМЫН АЖИЛ»… */}
         <label className={st.field}>
-          {'Бүлэг'}{" "}
+          {tr('Бүлэг')}{" "}
           <select
             className={cls("select selectWide")}
             value={grpA}
             disabled={busy}
             onChange={(e) => setGrpA(Number(e.target.value))}
-            title={'Зөвхөн сонгосон бүлэг ба түүний доод ажлууд харагдана'}
+            title={tr('Зөвхөн сонгосон бүлэг ба түүний доод ажлууд харагдана')}
           >
-            <option value={0}>{'Бүгд'}</option>
+            <option value={0}>{tr('Бүгд')}</option>
             {grpAOpts.map((g) => (
               <option key={g.oid} value={g.oid}>
                 {g.label}
@@ -1028,15 +1035,15 @@ ${dropped} нүд хуучирсан тул орхигдоно.` : "") +
         {/* ДЭД БҮЛЭГ — «3.2 1F цутгалт», «4.3 2F хана»… Эцэг сонгогдсон бол
             зөвхөн түүний доторхи, эс бөгөөс бүх дэд бүлэг жагсаана. */}
         <label className={st.field}>
-          {'Дэд бүлэг'}{" "}
+          {tr('Дэд бүлэг')}{" "}
           <select
             className={cls("select selectWide")}
             value={grpBEff}
             disabled={busy}
             onChange={(e) => setGrpB(Number(e.target.value))}
-            title={'Тухайн бүлгийн доторх нэг дэд бүлгийг сонгоно'}
+            title={tr('Тухайн бүлгийн доторх нэг дэд бүлгийг сонгоно')}
           >
-            <option value={0}>{'Бүгд'}</option>
+            <option value={0}>{tr('Бүгд')}</option>
             {grpBOpts.map((g) => (
               <option key={g.oid} value={g.oid}>
                 {g.label}
@@ -1049,9 +1056,9 @@ ${dropped} нүд хуучирсан тул орхигдоно.` : "") +
           <button
             className={st.layerBtn}
             onClick={resetAll}
-            title={'Чирж өөрчилсөн бүх баганы өргөнийг анхны хэмжээнд нь буцаана'}
+            title={tr('Чирж өөрчилсөн бүх баганы өргөнийг анхны хэмжээнд нь буцаана')}
           >
-            {'Өргөн сэргээх'}
+            {tr('Өргөн сэргээх')}
           </button>
         )}
         {!locked && (
@@ -1059,12 +1066,12 @@ ${dropped} нүд хуучирсан тул орхигдоно.` : "") +
           className={st.publishBtn}
           onClick={publish}
           disabled={busy || noEdit || dirtyCount === 0}
-          title={'Өөрчилсөн нүд + дээд бүлгүүдийн нийлбэрийг хадгална (Ctrl+S)'}
+          title={tr('Өөрчилсөн нүд + дээд бүлгүүдийн нийлбэрийг хадгална (Ctrl+S)')}
         >
-          {'Нийтлэх'}{dirtyCount ? ` (${dirtyCount})` : ""}
+          {tr('Нийтлэх')}{dirtyCount ? ` (${dirtyCount})` : ""}
         </button>
         )}
-        {busy && <span className={st.muted}>{'ажиллаж байна…'}</span>}
+        {busy && <span className={st.muted}>{tr('ажиллаж байна…')}</span>}
       </div>
 
       {/*
@@ -1073,12 +1080,12 @@ ${dropped} нүд хуучирсан тул орхигдоно.` : "") +
         */}
       {!locked && sentToday && !returned && (
         <p className={st.lockNote}>
-          {'Өнөөдрийн гүйцэтгэл илгээгдсэн — хяналтад байна. Буцаалт ирвэл энэ хуудас өөрөө нээгдэнэ.'}
+          {tr('Өнөөдрийн гүйцэтгэл илгээгдсэн — хяналтад байна. Буцаалт ирвэл энэ хуудас өөрөө нээгдэнэ.')}
         </p>
       )}
       {!locked && returned && (
         <p className={st.backNote}>
-          {'Хяналтаас БУЦААСАН — засвар оруулаад дахин илгээнэ үү.'}
+          {tr('Хяналтаас БУЦААСАН — засвар оруулаад дахин илгээнэ үү.')}
         </p>
       )}
       {err && <p className={st.error}>{err}</p>}
@@ -1097,11 +1104,11 @@ ${dropped} нүд хуучирсан тул орхигдоно.` : "") +
 
       {/* Хоосон үр дүнг тайлбаргүй орхивол хэрэглэгч юу болсныг мэдэхгүй гацдаг. */}
       {!busy && !err && sc && rows.length === 0 && (
-        <p className={st.muted}>{'Энэ багцад мөр олдсонгүй.'}</p>
+        <p className={st.muted}>{tr('Энэ багцад мөр олдсонгүй.')}</p>
       )}
       {rows.length > 0 && sc && calc.length === 0 && (
         <p className={st.muted}>
-          {'Тайлангийн огноо тодорхойлогдоогүй тул хүснэгт бодогдохгүй байна — Огноо сонгоно уу (жагсаалт ачаалагдаагүй бол хуудсыг дахин ачаална уу).'}
+          {tr('Тайлангийн огноо тодорхойлогдоогүй тул хүснэгт бодогдохгүй байна — Огноо сонгоно уу (жагсаалт ачаалагдаагүй бол хуудсыг дахин ачаална уу).')}
         </p>
       )}
 
@@ -1121,31 +1128,31 @@ ${dropped} нүд хуучирсан тул орхигдоно.` : "") +
             <thead>
               <tr>
                 <th rowSpan={4} className={cls("fz c-no")}>№<i {...grip("no")} /></th>
-                <th rowSpan={4} className={cls("fz c-ajil")}>{'Ажил'}<i {...grip("ajil")} /></th>
+                <th rowSpan={4} className={cls("fz c-ajil")}>{tr('Ажил')}<i {...grip("ajil")} /></th>
                 {/* Excel-д C1:D4 — «Хувийн жин» хоёр баганыг бүрэн хамарна.
                     ⚠️ Энд `c-w` өргөний ангилал ТАВИХГҮЙ: 72px нь хоёр баганын
                     НИЙЛБЭР болж уншигдаж, хоёуланг нь шахна. Өргөнийг мөрийн
                     нүднүүд өөрсдөө заана. */}
-                <th rowSpan={4} colSpan={2} className={cls("c-wspan")}>{'Хувийн жин'}<i {...grip("w")} /></th>
-                <th rowSpan={4} className={cls("c-now")}>{'Одоо байгаа хувийн жин'}<i {...grip("now")} /></th>
-                <th rowSpan={4} className={cls("c-vol")}>{'Обьём'}<i {...grip("vol")} /></th>
+                <th rowSpan={4} colSpan={2} className={cls("c-wspan")}>{tr('Хувийн жин')}<i {...grip("w")} /></th>
+                <th rowSpan={4} className={cls("c-now")}>{tr('Одоо байгаа хувийн жин')}<i {...grip("now")} /></th>
+                <th rowSpan={4} className={cls("c-vol")}>{tr('Обьём')}<i {...grip("vol")} /></th>
                 {/* ⚠️ «Нэгж өртөг» ба «Мөнгөн дүн» нь ӨГӨГДӨЛД БАЙСАН ч
                     хүснэгтэд огт зурагддаггүй байв. Хувийн жин бүхэлдээ
                     Мөнгөн дүнгээс бодогддог тул түүнийг харуулахгүй бол
                     жин хаанаас гарсныг шалгах арга үгүй болно. */}
-                <th rowSpan={4} className={cls("c-vol")}>{'Обьёмын нийлбэр'}<i {...grip("vol")} /></th>
-                <th rowSpan={4} className={cls("c-vol")}>{'Нэгж өртөг'}<i {...grip("vol")} /></th>
-                <th rowSpan={4} className={cls("c-money")}>{'Мөнгөн дүн'}<i {...grip("money")} /></th>
-                <th rowSpan={4} className={cls("c-calc")}>{'Төлөвлөгөөт гүйцэтгэл'}<i {...grip("calc")} /></th>
-                <th rowSpan={4} className={cls("c-calc")}>{'Бодит гүйцэтгэл'}<i {...grip("calc")} /></th>
-                <th rowSpan={4} className={cls("c-calc")}>{'Төлөвлөгөө биелэлт'}<i {...grip("calc")} /></th>
+                <th rowSpan={4} className={cls("c-vol")}>{tr('Обьёмын нийлбэр')}<i {...grip("vol")} /></th>
+                <th rowSpan={4} className={cls("c-vol")}>{tr('Нэгж өртөг')}<i {...grip("vol")} /></th>
+                <th rowSpan={4} className={cls("c-money")}>{tr('Мөнгөн дүн')}<i {...grip("money")} /></th>
+                <th rowSpan={4} className={cls("c-calc")}>{tr('Төлөвлөгөөт гүйцэтгэл')}<i {...grip("calc")} /></th>
+                <th rowSpan={4} className={cls("c-calc")}>{tr('Бодит гүйцэтгэл')}<i {...grip("calc")} /></th>
+                <th rowSpan={4} className={cls("c-calc")}>{tr('Төлөвлөгөө биелэлт')}<i {...grip("calc")} /></th>
                 {/* Обьём (бөглөгддөг) ба түүнээс бодогдсон хувь — ТУСДАА хоёр
                     бүлэг. Нэг нүдэнд хамт байрлуулж байсныг болив: аль тоо нь
                     бичигддэг, аль нь бодогддог нь ялгарахгүй байв. */}
-                <th colSpan={nBld} className={cls("band")}>{`Ажил гүйцэтгэл — обьём / хувь (${nBld} барилга)`}</th>
-                <th colSpan={nBld} className={cls("band")}>{`Төлөвлөгөөт гүйцэтгэл (${nBld} барилга)`}</th>
-                <th colSpan={nBld * 2} className={cls("band")}>{`Төлөвлөгөөт хуваарь (${nBld} барилга)`}</th>
-                <th rowSpan={4} className={cls("c-date")}>{'Шинэчлэгдсэн огноо'}<i {...grip("date")} /></th>
+                <th colSpan={nBld} className={cls("band")}>{tr('Ажил гүйцэтгэл — обьём / хувь ({0} барилга)', nBld)}</th>
+                <th colSpan={nBld} className={cls("band")}>{tr('Төлөвлөгөөт гүйцэтгэл ({0} барилга)', nBld)}</th>
+                <th colSpan={nBld * 2} className={cls("band")}>{tr('Төлөвлөгөөт хуваарь ({0} барилга)', nBld)}</th>
+                <th rowSpan={4} className={cls("c-date")}>{tr('Шинэчлэгдсэн огноо')}<i {...grip("date")} /></th>
               </tr>
               {/* 2-р мөр — барилгын төрөл (блокийн цуваагаар) */}
               <tr>
@@ -1165,17 +1172,17 @@ ${dropped} нүд хуучирсан тул орхигдоно.` : "") +
                   <th key={`a${b}`} rowSpan={2} className={cls("bld")}>{b}<i {...grip("bld")} /></th>
                 ))}
                 {sc.bld.map((b) => (
-                  <th key={`p${b}`} rowSpan={2} className={cls("bld")}>{b} {'барилга'}<i {...grip("bld")} /></th>
+                  <th key={`p${b}`} rowSpan={2} className={cls("bld")}>{b} {tr('барилга')}<i {...grip("bld")} /></th>
                 ))}
                 {sc.bld.map((b) => (
-                  <th key={`d${b}`} colSpan={2} className={cls("c-date2")}>{b} {'барилга'}</th>
+                  <th key={`d${b}`} colSpan={2} className={cls("c-date2")}>{b} {tr('барилга')}</th>
                 ))}
               </tr>
               {/* 4-р мөр — хуваарийн Эхлэх/Дуусах */}
               <tr>
                 {sc.bld.map((b) => [
-                  <th key={`s${b}`} className={cls("c-date")}>{'Эхлэх'}<i {...grip("date")} /></th>,
-                  <th key={`e${b}`} className={cls("c-date")}>{'Дуусах'}<i {...grip("date")} /></th>,
+                  <th key={`s${b}`} className={cls("c-date")}>{tr('Эхлэх')}<i {...grip("date")} /></th>,
+                  <th key={`e${b}`} className={cls("c-date")}>{tr('Дуусах')}<i {...grip("date")} /></th>,
                 ])}
               </tr>
             </thead>
@@ -1210,7 +1217,7 @@ ${dropped} нүд хуучирсан тул орхигдоно.` : "") +
                           type="button"
                           className={st.caret}
                           aria-expanded={!collapsed.has(r.oid)}
-                          aria-label={collapsed.has(r.oid) ? 'Дэлгэх' : 'Эвхэх'}
+                          aria-label={collapsed.has(r.oid) ? tr('Дэлгэх') : tr('Эвхэх')}
                           onClick={(e) => {
                             e.stopPropagation();
                             toggle(r.oid);
@@ -1265,8 +1272,7 @@ ${dropped} нүд хуучирсан тул орхигдоно.` : "") +
                         if (locked) return changed && view?.onCell?.(i, b);
                         if (noEdit)
                           return say(
-                            "Энэ багцын өнөөдрийн гүйцэтгэл аль хэдийн илгээгдсэн — " +
-                              "хяналтаас буцаалт ирэх хүртэл засах боломжгүй.",
+                            tr('Энэ багцын өнөөдрийн гүйцэтгэл аль хэдийн илгээгдсэн — хяналтаас буцаалт ирэх хүртэл засах боломжгүй.'),
                           );
                         if (!canVol) return say(r.group ? RO.groupAct : RO.noObyemField);
                         setVal(pending[key] ?? qtyRaw(r.obyem[bi]));
@@ -1308,15 +1314,14 @@ ${dropped} нүд хуучирсан тул орхигдоно.` : "") +
                           title={
                             changed
                               ? okd
-                                ? 'ЗӨВШӨӨРСӨН — дахин дарвал буцаана'
-                                : 'Өмнөх агшнаас ӨӨРЧЛӨГДСӨН — дарж зөвшөөрнө үү'
+                                ? tr('ЗӨВШӨӨРСӨН — дахин дарвал буцаана')
+                                : tr('Өмнөх агшнаас ӨӨРЧЛӨГДСӨН — дарж зөвшөөрнө үү')
                               : r.group
                               ? RO.groupAct
                               : !canVol
                                 ? RO.noObyemField
                                 : r.vol
-                                  ? `Мөрийн Обьём ${qty(r.vol)} · бөглөсөн ` +
-                                    `${qty(c.obyem[bi])} = ${pc(c.act[bi], 2)}`
+                                  ? tr('Мөрийн Обьём {0} · бөглөсөн {1} = {2}', qty(r.vol), qty(c.obyem[bi]), pc(c.act[bi], 2))
                                   : RO.noRowVol
                           }
                         >
@@ -1328,7 +1333,7 @@ ${dropped} нүд хуучирсан тул орхигдоно.` : "") +
                                 type: "text" as const,
                                 inputMode: "decimal" as const,
                                 className: st.cellInputLine,
-                                placeholder: "обьём",
+                                placeholder: tr('обьём'),
                                 // Удирдлагагүй: бичихэд re-render гарахгүй.
                                 defaultValue: val,
                                 onBlur: (e: React.FocusEvent<HTMLInputElement>) =>
@@ -1402,7 +1407,7 @@ ${dropped} нүд хуучирсан тул орхигдоно.` : "") +
                             )}
                             title={
                               editable
-                                ? 'Дарж календараар сонгоно'
+                                ? tr('Дарж календараар сонгоно')
                                 : src === "agg"
                                   ? RO.groupDate
                                   : RO.noDateField
@@ -1433,7 +1438,7 @@ ${dropped} нүд хуучирсан тул орхигдоно.` : "") +
                             (i === 0 && !noEdit ? " cursor-cell" : "") +
                             (i === 0 && asOf !== asOfOrig ? " dirty" : ""),
                         )}
-                        title={i === 0 ? 'Дарж календараар сонгоно' : RO.asOfRow}
+                        title={i === 0 ? tr('Дарж календараар сонгоно') : RO.asOfRow}
                         onClick={(e) => {
                           if (noEdit) return;
                           if (i !== 0) return say(RO.asOfRow);
@@ -1490,7 +1495,7 @@ ${dropped} нүд хуучирсан тул орхигдоно.` : "") +
 
       {notice && (
         <div className={st.notice} role="status" onClick={() => setNotice("")}>
-          <b>{'Энэ нүд засагдахгүй.'}</b> {notice}
+          <b>{tr('Энэ нүд засагдахгүй.')}</b> {notice}
         </div>
       )}
     </div>

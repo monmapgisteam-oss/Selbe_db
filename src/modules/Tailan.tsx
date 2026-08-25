@@ -173,7 +173,12 @@ export function Tailan() {
                         {tr('Сэлбэ 20 минутын хотын төслийн хэрэгжилт тайлан үүсгэх өдрийн байдлаар')} <strong>{pct(x.overall.pct, 2)}</strong>{tr('-тай байна. Төслийн жингийн')} <strong>{pct(d.buildWeight, 1)}</strong>{tr('-ийг эзэлдэг барилга угсралтын ажил')} <strong>{pct(d.buildActual, 2)}</strong>{tr('-ийн гүйцэтгэлтэй')}
                         {d.buildLag != null && (
                           <> {tr('буюу төлөвлөгөөнөөс')} <strong>{num(d.buildLag, 1)} {tr('нэгж хувиар')}</strong> {tr('хоцорч байна')}</>
-                        )}{tr('. Газар чөлөөлөлтийн гүйцэтгэл')}
+                        )}
+                        {/* ⚠️ «үе шатны тайлангаар» гэсэн эх сурвалжийн шошго
+                            ЗААВАЛ: энэ хувь нь Төсөл_Гүйцэтгэлийн үе шатны
+                            хүснэгтээс гардаг бөгөөд бусад дашбоардын амьд
+                            кадастрын хувиас зөрдөг (land.ts-ийн тайлбар). */}
+                        {tr('. Газар чөлөөлөлтийн гүйцэтгэл үе шатны тайлангаар')}
                         {x.land.pct != null && <> <strong>{pct(x.land.pct, 1)}</strong></>} {tr('байгаа ч')}
                         {' '}{num(d.landLeft)} {tr('нэгж талбар шийдвэрлэгдээгүй үлдсэн байна.')}
                       </p>
@@ -481,12 +486,15 @@ export function Tailan() {
                         </tbody>
                       </ResizableTable>
 
+                      {/* ⚠️ CASHFLOW2-ийн сарын цуваа нь санхүүжилтийн ХУВААРЬ
+                          (төлөвлөгөө) — «олгосон» гэж шошговол бодит олголтоос
+                          олон дахин их худал тоо хэвлэгдэнэ (reportData.ts). */}
                       <Cap no="7.2">
-                        {tr('Сар бүрийн олголт ба хуримтлагдсан дүн')}
-                        {d.peakMonth && tr(' — хамгийн их олголт {0} сард', tr(d.peakMonth.label))}
+                        {tr('Сар бүрийн санхүүжилтийн хуваарь (төлөвлөгөө) ба хуримтлагдсан дүн')}
+                        {d.peakMonth && tr(' — хамгийн их төлөвлөгөө {0} сард', tr(d.peakMonth.label))}
                       </Cap>
                       <ResizableTable storeKey="tailan.saraar" className={r.table}>
-                        <thead><tr><th>{tr('Сар')}</th><th className={r.num}>{tr('Олгосон (тэрбум ₮)')}</th><th className={r.num}>{tr('Хуримтлагдсан')}</th></tr></thead>
+                        <thead><tr><th>{tr('Сар')}</th><th className={r.num}>{tr('Төлөвлөгөө (тэрбум ₮)')}</th><th className={r.num}>{tr('Хуримтлагдсан')}</th></tr></thead>
                         <tbody>
                           {x.finance.months.map((m) => (
                             <tr key={m.label}>
@@ -497,6 +505,9 @@ export function Tailan() {
                           ))}
                         </tbody>
                       </ResizableTable>
+                      <p className={r.note}>
+                        {tr('Хүснэгт нь гэрээ бүрийн санхүүжилтийн хуваарь буюу төлөвлөгөө; бодитоор олгосон санхүүжилтийг IPC актын дүнгээр 1-р хүснэгтэд харуулав.')}
+                      </p>
 
                       <Cap no="7.3">{tr('Ажлын төрлөөр — төсөв ба гэрээний дүн')}</Cap>
                       <ResizableTable storeKey="tailan.torol" className={r.table}>

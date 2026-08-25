@@ -6,6 +6,8 @@ import { Inter } from 'next/font/google';
 import { ThemeProvider } from '@/lib/theme';
 import { LocaleProvider } from '@/lib/i18n';
 import { SkipLink } from '@/components/SkipLink';
+import { DocumentTitle } from '@/components/DocumentTitle';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { THEME_KEY } from '@/lib/themeKey';
 import './globals.css';
 
@@ -100,9 +102,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         <SkipLink />
-        <LocaleProvider>
-          <ThemeProvider>{children}</ThemeProvider>
-        </LocaleProvider>
+        {/* Табын гарчгийг хэлээр нь солино — metadata нь статик prerender тул
+            клиент талд л боломжтой (олдвор #37) */}
+        <DocumentTitle />
+        {/* ⚠️ Хамгийн гадна давхаргын алдааны хашлага (олдвор #9): аль нэг
+            компонентын рендерийн throw бүх root-ыг unmount хийж, статик
+            export тул Next-ийн стайлгүй англи алдааны хуудас л үлддэг байв. */}
+        <ErrorBoundary>
+          <LocaleProvider>
+            <ThemeProvider>{children}</ThemeProvider>
+          </LocaleProvider>
+        </ErrorBoundary>
       </body>
     </html>
   );

@@ -111,8 +111,19 @@ async function checkArcGIS(token, env) {
   const portal = (env.ARCGIS_PORTAL || DEFAULTS.PORTAL).replace(/\/+$/, '');
   let data;
   try {
-    const res = await fetch(`${portal}/sharing/rest/community/self?f=json&token=${encodeURIComponent(token)}`, {
-      headers: { Accept: 'application/json' },
+    /*
+     * ⚠️ Токеныг URL query-д БИЧИХГҮЙ — query string нь ArcGIS-ийн вэб сервер,
+     * завсрын proxy/CDN-ийн access log-д бүрэн хадгалагддаг тул амьд токен
+     * гуравдагчийн логт задарна (CWE-598). ArcGIS REST бүх endpoint дээр
+     * POST + form-urlencoded биед `token`-ийг албан ёсоор хүлээж авдаг.
+     */
+    const res = await fetch(`${portal}/sharing/rest/community/self`, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({ f: 'json', token }).toString(),
     });
     data = await res.json();
   } catch {
