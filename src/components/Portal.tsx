@@ -293,7 +293,9 @@ function PortalContent(
    * зөвхөн дүрс үлдэж 54px болно. Сонголт localStorage-д хадгалагдана.
    * ⚠️ Зөвхөн эффект дотор уншина — статик экспортод localStorage байхгүй.
    */
-  const [navMin, setNavMin] = useState(false);
+  /* ⚠️ 2026-08-25 (хэрэглэгчийн шийдвэр): анх орж ирэхэд зүүн цэс ХУРААСТАЙ —
+     зөвхөн дүрс (54px) харагдаж, газрын зурагт илүү зай өгнө. Товчоор дэлгэнэ. */
+  const [navMin, setNavMin] = useState(true);
   useEffect(() => {
     try { setNavMin(localStorage.getItem('selbe-nav-min') === '1'); } catch { /* private */ }
   }, []);
