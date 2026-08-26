@@ -2160,7 +2160,6 @@ const en: Record<string, string> = {
   "Сүүдрэвч": "Shelters",
   "Сүүлийн бүртгэл": "Latest record",
   "Сүүлийн ослоос хойш": "Since the last incident",
-  "сүүлийн утга · доод…дээд · 24ц өөрчлөлт": "latest value · min…max · 24 h change",
   "сүүлийнх {0}": "latest {0}",
   "Сэлбэ": "Selbe",
   "СЭЛБЭ": "SELBE",
@@ -3005,7 +3004,28 @@ const en: Record<string, string> = {
   "Бүгдийг унтраах": "Disable all",
   "{0} хэрэглэгчийн өөрчлөлт хадгалагдлаа": "Saved changes for {0} user(s)",
   "Ctrl+S": "Ctrl+S",
-  "{0} хадгалагдав · {1} нь ArcGIS-т хүрсэнгүй": "{0} saved · {1} did not reach ArcGIS"
+  "{0} хадгалагдав · {1} нь ArcGIS-т хүрсэнгүй": "{0} saved · {1} did not reach ArcGIS",
+  "мэдрэгч": "sensor",
+  "сенсор": "sensor",
+  "IoT": "IoT",
+  "Хэмжсэн хугацаа (ISO-8601, +08:00) — цуваа ба эрэмбэ ҮҮГЭЭР": "Measurement time (ISO-8601, +08:00) — use THIS for series and ordering",
+  "ArcGIS руу АЧААЛСАН хугацаа — хэмжилтийн хугацаа БИШ, цуваанд хэрэглэхгүй": "Time INGESTED into ArcGIS — NOT the measurement time; do not use for series",
+  "⚠️ Задарсан утга мөр БҮРД БАЙХГҮЙ (Mononet-ийн decoder тогтворгүй) — асуулга бүрд `<талбар> IS NOT NULL` шүүлт ЗААВАЛ тавь, эс бөгөөс дундаж/тоолол хазайна. ": "⚠️ Decoded values are NOT present on every row (the Mononet decoder is unstable) — ALWAYS add a `<field> IS NOT NULL` filter, otherwise averages and counts are skewed. ",
+  "⚠️ Сүүлийн заалт нь ӨНӨӨДРИЙНХ байх албагүй: хэдэн хоногоор хоцорч болно. Хариултад заалтын ОГНООГ заавал дурд. ": "⚠️ The latest reading is not necessarily from today — it can lag by days. Always state the reading DATE in your answer. ",
+  "⚠️ Түүхий талбар нь дэлгэцийн утгаас ӨӨР: «{0}» нь мм-ээр хэмжсэн ЗАЙ бөгөөс дүүрэлтийн хувь БИШ (дүүрэлт = (3015 − зай) / 3015 × 100).": "⚠️ The raw field differs from the displayed value: “{0}” is a DISTANCE in mm, not a fill percentage (fill = (3015 − distance) / 3015 × 100).",
+  "Усны хоногийн хэрэглээ": "Daily water consumption",
+  "Хоног тус бүрийн хамгийн сүүлийн ба хамгийн эхний заалтын ЗӨРҮҮ — тухайн хоногт хэрэглэсэн бодит эзлэхүүн.": "The DIFFERENCE between each day’s last and first meter reading — the actual volume used that day.",
+  "24 цаг": "24 hours",
+  "7 хоног": "7 days",
+  "30 хоног": "30 days",
+  "≈{0} мин": "≈{0} min",
+  "≈{0} цаг": "≈{0} h",
+  "≈{0} хоног": "≈{0} d",
+  "тогтвортой": "steady",
+  "ц": "h",
+  "Одоогийн хурд: {0}": "Current rate: {0}",
+  "{0} дараа {1}{2}": "reaches {1}{2} in {0}",
+  "Хугацааны хүрээ": "Time range"
 };
 
 export default en;

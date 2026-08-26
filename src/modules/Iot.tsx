@@ -12,7 +12,9 @@ import { OpacityPanel } from '@/components/OpacityPanel';
 import { useLayerPicks } from '@/lib/useLayerPicks';
 import { usePlanTotals } from '@/lib/totals';
 import { useAsync } from '@/lib/useAsync';
-import { loadSensors, type SensorLive, type MetricSeries } from '@/lib/sensors';
+import {
+  loadSensors, RANGES, type RangeKey, type SensorLive, type MetricSeries,
+} from '@/lib/sensors';
 import { num } from '@/lib/format';
 import { sumBy } from '@/lib/agg';
 import { VIEW_BY_KEY } from '@/lib/services';
@@ -125,6 +127,34 @@ const deltaLabel = (m: MetricSeries, d: { pct: number; diff: number }) =>
     ? `${d.diff >= 0 ? '+' : '−'}${num(Math.abs(d.diff), 0)} ${tr('х.н.')}`
     : pctLabel(d.pct);
 
+/**
+ * ТААМГИЙН бичиглэл — «≈14 цагийн дараа 80%».
+ *
+ * ⚠️ «≈» тэмдэг ЗААВАЛ: энэ нь одоогийн хурдаар шугаман экстраполяци хийсэн
+ * НӨХЦӨЛТ таамаг болохоос хэмжсэн баримт БИШ. Тэмдэггүй бол хэрэглэгч
+ * хуваарь мэт уншиж, буруу төлөвлөнө.
+ */
+const etaLabel = (h: number): string =>
+  h < 1 ? tr('≈{0} мин', Math.round(h * 60))
+    : h < 48 ? tr('≈{0} цаг', Math.round(h))
+      : tr('≈{0} хоног', Math.round(h / 24));
+
+/** Цаг тутмын хурд — маш бага утгыг «тогтвортой» гэж уншина */
+const rateLabel = (m: MetricSeries, perHour: number): string => {
+  const a = Math.abs(perHour);
+  if (a < 10 ** -(m.dp + 1)) return tr('тогтвортой');
+  const sign = perHour > 0 ? '+' : '−';
+  return `${sign}${num(a, Math.max(m.dp, 2))} ${m.unit}/${tr('ц')}`;
+};
+
+/*
+ * ⚠️ 2026-08-25 (хэрэглэгчийн шийдвэр): газрын зурган дээрх мэдрэгчийн цэгийг
+ * ОДООГИЙН ТӨЛВӨӨР будаж байсныг БУЦААВ — цэгүүд `services.ts`-ийн
+ * `IOT_LAYERS`-д заасан давхарга тус бүрийн ТОГТМОЛ өнгөндөө үлдэнэ (2D, 3D
+ * хоёуланд). Төлвийн мэдээлэл нь ЖАГСААЛТАД хэвээр: нүд бүрийн нас, өнгө
+ * (`freshTone`), унасан/дүлий мэдрэгчийн сэрэмжлүүлэг, Telegram хянагч.
+ */
+
 type Card = { s: SensorLive; m: MetricSeries };
 
 /**
@@ -200,6 +230,14 @@ function Cell({ c }: { c: Card }) {
           {d ? deltaLabel(c.m, d) : ''}
         </span>
       </div>
+      {/* ⚠️ ТААМАГ зөвхөн БОСГОТОЙ, түүнд ОЙРТОЖ буй үзүүлэлтэд гарна —
+          «хэзээ ч хүрэхгүй» тоо нь мөр эзлээд мэдээлэл өгөхгүй. */}
+      {c.m.trend?.etaHours != null && c.m.alert && (
+        <div className={s.metricEta} title={tr('Одоогийн хурд: {0}', rateLabel(c.m, c.m.trend.perHour))}>
+          <Icon name="target" size={11} />
+          {tr('{0} дараа {1}{2}', etaLabel(c.m.trend.etaHours), num(c.m.alert.value, c.m.dp), c.m.unit)}
+        </div>
+      )}
     </div>
   );
 }
@@ -267,6 +305,12 @@ export function Iot({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    * ⚠️ Таб нуугдсан үед тоолуур ЗОГСОНО: арын 10 таб бүгд IoT сервис рүү
    *    цохих нь утгагүй. Таб идэвхжихэд шууд нэг удаа шинэчилнэ.
    */
+  /**
+   * ХАРУУЛАХ ХУГАЦААНЫ ХҮРЭЭ. Анхдагч 7 хоног — 24 цаг нь хэт богино (хогийн
+   * мэдрэгчийн decoder хэдэн өдрөөр хоцордог тул хоосон чарт гарах эрсдэлтэй),
+   * 30 хоног нь эхний ачаалалд хэт хүнд.
+   */
+  const [range, setRange] = useState<RangeKey>('7d');
   const [tick, setTick] = useState(0);
   /** Зурагдах үеийн «одоо» — нас бүрийг үүн дээр бодно (дээрх `NowCtx`) */
   const [now, setNow] = useState(() => Date.now());
@@ -287,7 +331,7 @@ export function Iot({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     };
   }, []);
 
-  const q = useAsync(loadSensors, [tick]);
+  const q = useAsync(() => loadSensors(range), [tick, range]);
   /**
    * Мэдрэгчийн 5 давхарга нь СУУРЬ; каталогоос порталын аль ч давхаргыг дээр
    * нь нэмнэ (`useLayerPicks`) — урьд нь энэ цонхонд каталог огт байхгүй байв.
@@ -367,14 +411,16 @@ export function Iot({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       </section>
 
       <Data q={q} loading={tr('Мэдрэгчийн заалт уншиж байна…')}>
-        {(all) => <Board all={all} />}
+        {(all) => <Board all={all} range={range} setRange={setRange} />}
       </Data>
     </div>
     </NowCtx.Provider>
   );
 }
 
-function Board({ all }: { all: SensorLive[] }) {
+function Board({ all, range, setRange }: {
+  all: SensorLive[]; range: RangeKey; setRange: (r: RangeKey) => void;
+}) {
   const cards: Card[] = all.flatMap((sn) => sn.series.map((m) => ({ s: sn, m })));
   /** Сервис нь ӨӨРӨӨ унасан мэдрэгч — decoder-ийн хоцролтоос ТУСДАА тоологдоно */
   const failed = all.filter((x) => x.error);
@@ -407,7 +453,21 @@ function Board({ all }: { all: SensorLive[] }) {
       <section className={`${s.card} ${s.pCells}`}>
         <header className={s.cardHd}>
           <h3 className={s.cardTitle}>{tr('Бүх үзүүлэлт')}</h3>
-          <span className={s.cardNote}>{tr('сүүлийн утга · доод…дээд · 24ц өөрчлөлт')}</span>
+          {/* ⚠️ Хүрээ нь ЧАРТ ба доод/дээд/дундажид үйлчилнэ — «сүүлийн утга»
+              нь хүрээнээс үл хамааран ҮРГЭЛЖ хамгийн сүүлийн заалт. */}
+          <span className={s.rangeBar} role="group" aria-label={tr('Хугацааны хүрээ')}>
+            {RANGES.map((r) => (
+              <button
+                key={r.key}
+                type="button"
+                aria-pressed={range === r.key}
+                className={`${s.rangeBtn} ${range === r.key ? s.rangeBtnOn : ''}`}
+                onClick={() => setRange(r.key)}
+              >
+                {r.label}
+              </button>
+            ))}
+          </span>
         </header>
         <div className={s.cardBody}>
           <div className={s.grid}>

@@ -68,6 +68,30 @@ export type Metric = {
    * дор зөв нэгжид шилжинэ — UI тал юу ч мэдэх шаардлагагүй.
    */
   derive?: (raw: number) => number;
+  /**
+   * ХУРИМТЛАГДСАН тоолуурыг ХОНОГИЙН ХЭРЭГЛЭЭ болгож ТУСДАА цуваа нэмнэ.
+   *
+   * ⚠️ Хуримтлагдсан заалт дээр босго тавих утгагүй (эрт орой хэзээ нэгэн цагт
+   * давна) — утга учиртай хэмжүүр нь ЗӨРҮҮ. Хоног тус бүрийн дээд ба доод
+   * заалтын зөрүүг авна: 15 минутын алхамд алдагдсан заалт байсан ч хоногийн
+   * нийт хэрэглээ зөв гарна (зэргэлдээ хоёр цэгийн зөрүү нь тэгш бус алхамд
+   * хазайдаг).
+   */
+  dailyDiff?: Omit<Metric, 'field' | 'derive' | 'dailyDiff'>;
+  /**
+   * БОСГО ХҮРЭХ ХУГАЦААГ ТААМАГЛАХ эсэх (`trend.etaHours`).
+   *
+   * ⚠️ ЗӨВХӨН ХУРИМТЛАГДДАГ хэмжигдэхүүнд. Шугаман экстраполяци нь «одоогийн
+   * хандлага цаашид ҮРГЭЛЖИЛНЭ» гэж үздэг — энэ таамаг нь зөвхөн нэг зүг рүү
+   * хуримтлагддаг зүйлд (хогийн сав дүүрэх) үнэн.
+   *
+   * ⚠️ 2026-08-25 (хэрэглэгчийн заавар): АГААРЫН ТЕМПЕРАТУР, ЧИЙГШИЛ зэрэг
+   * ЦИКЛ хэмжигдэхүүнд ХОРИОТОЙ. Тэдгээр нь өдөр/шөнө, цаг агаараар эргэлддэг
+   * тул өдрийн дулаарлыг шугамаар сунгавал «29 цагийн дараа 28°C хүрнэ» гэсэн
+   * ФИЗИК УТГАГҮЙ тоо гарна — шөнө дөхөхөд температур өөрөө буурна. Хөрсний
+   * температур, чийг, гэрэлтүүлэг ч мөн адил циклтэй.
+   */
+  forecast?: boolean;
 };
 
 export type SensorDef = {
@@ -84,6 +108,14 @@ export type SensorDef = {
    * бичвэр, ЗӨВХӨН хүнд харуулах зорилготой (кодод тааруулахад ХЭРЭГЛЭХГҮЙ).
    */
   devEui: string;
+  /**
+   * Газрын зурган дээрх ЦЭГИЙН давхаргын id (`services.ts` → `IOT_LAYERS`).
+   *
+   * ⚠️ Зурагт мэдрэгчийн ОДООГИЙН ТӨЛВИЙГ өнгөөр харуулахад хэрэгтэй —
+   * давхаргын тогтмол өнгө нь «энэ бол хогийн мэдрэгч» гэдгийг л хэлдэг,
+   * харин «энэ сав дүүрсэн үү» гэдгийг хэлдэггүй.
+   */
+  layerId: string;
   /** Гол хэмжигдэхүүн — цуваа ба «сүүлийн заалт» картад энэ гарна */
   metrics: Metric[];
 };
@@ -111,6 +143,7 @@ export const SENSORS: SensorDef[] = [
     label: tr('Хогийн савны дүүрэлт'),
     note: tr('Ультрасоник зай, түвшин мэдрэгч. Савны амсараас хог хүртэлх зайг хэмжинэ — зай БАГАСАХ нь сав дүүрч байгааг заана.'),
     devEui: '24e124713c198712',
+    layerId: 'iot:waste_sensor',
     url: `${IOT}/Waste_Sensor/FeatureServer/62`,
     metrics: [
       {
@@ -138,6 +171,15 @@ export const SENSORS: SensorDef[] = [
          * яг таарч буусан тул төлөв хоёрыг цэвэр тусгаарлана.
          */
         alert: { value: 80, note: tr('Сав ≥80% дүүрсэн — цэвэрлэх шаардлагатай') },
+        /**
+         * ⚠️ ТААМАГЛАХ ЦОРЫН ГАНЦ хэмжигдэхүүн. Хог нь цуглуулах хүртэл нэг
+         * зүг рүү ХУРИМТЛАГДДАГ тул «одоогийн хурдаараа хэдэн цагийн дараа
+         * 80% хүрэх вэ» нь бодит утгатай — маршрут төлөвлөхөд шууд хэрэглэнэ.
+         * (Сав хоослоход утга огцом унана; тэр үед хурд сөрөг болж таамаг
+         * өөрөө алга болно — `eta` нь зөвхөн босго РУУ ойртож байгаа үед
+         * тоо буцаана.)
+         */
+        forecast: true,
       },
       /* ⚠️ 2026-08-21: «Батерей» (`payload_decoded_data_battery`) ХАСАГДСАН —
          захиалагчийн хүсэлт. Талбар нь сервис дээр байсаар байгаа тул хэрэгтэй
@@ -152,6 +194,7 @@ export const SENSORS: SensorDef[] = [
     label: tr('Хөрсний мэдрэгч'),
     note: tr('Хөрсний чийгшил, температур болон цахилгаан дамжуулах чадлыг хэмждэг сенсор.'),
     devEui: '24e124126c148914',
+    layerId: 'iot:soil_meter',
     url: `${IOT}/Soil_Meter/FeatureServer/63`,
     metrics: [
       {
@@ -218,6 +261,7 @@ export const SENSORS: SensorDef[] = [
     label: tr('Орчны гэрэл'),
     note: tr('Орчны гэрэл мэдрэгч сенсор.'),
     devEui: '24e124126c148962',
+    layerId: 'iot:light_sensor',
     url: `${IOT}/Light_Sensor/FeatureServer/60`,
     metrics: [
       {
@@ -238,6 +282,7 @@ export const SENSORS: SensorDef[] = [
     label: tr('Агаарын температур, чийг'),
     note: tr('Гадна орчны температур, чийгшил мэдрэгч сенсор.'),
     devEui: '24e124136c220656',
+    layerId: 'iot:temp_humidity',
     url: `${IOT}/Temp_Humidity/FeatureServer/64`,
     metrics: [
       {
@@ -282,6 +327,7 @@ export const SENSORS: SensorDef[] = [
     label: tr('Усны тоолуур'),
     note: tr('Усны хэрэглээний тоолуур. Заалтыг LoRaWAN-аар илгээнэ.'),
     devEui: tr('{0}-аар эхэлсэн', '825'),
+    layerId: 'iot:water_meter',
     url: `${IOT}/Water_Meter/FeatureServer/61`,
     metrics: [
       {
@@ -294,7 +340,23 @@ export const SENSORS: SensorDef[] = [
          * давна — тэр нь эвдрэл БИШ, зүгээр л хугацаа өнгөрснийг хэлнэ.
          * Утга учиртай босго нь ЗӨРҮҮ (хоногийн хэрэглээ) дээр тавигдах ёстой;
          * тэр цуваа энэ порталд одоогоор бодогддоггүй.
+         *
+         * ⚠️ 2026-08-25: ЗӨРҮҮГИЙН цуваа доорх `dailyDiff`-ээр НЭМЭГДЭВ —
+         * босго тэнд утгатай болно.
          */
+        dailyDiff: {
+          key: 'dailyUse',
+          label: tr('Усны хоногийн хэрэглээ'),
+          unit: tr('м³'),
+          dp: 2,
+          note: tr('Хоног тус бүрийн хамгийн сүүлийн ба хамгийн эхний заалтын ЗӨРҮҮ — тухайн хоногт хэрэглэсэн бодит эзлэхүүн.'),
+          /**
+           * ⚠️ СТАНДАРТ БАЙХГҮЙ — хэрэглээний хэвийн хэмжээ нь холбогдсон
+           * объектын тооноос хамаарна. Босгыг зориуд ОРХИВ: зохиомол тоо нь
+           * өдөр бүр улаан дохио өгч, жинхэнэ алдагдлын дохиог үнэгүйдүүлнэ.
+           * Гэнэтийн өсөлтийг `trend` (цаг тутмын хурд) илрүүлнэ.
+           */
+        },
       },
       /* ⚠️ 2026-08-21: «Батерейн хүчдэл» (`payload_decoded_data_batteryVoltage`)
          ХАСАГДСАН — захиалагчийн хүсэлт. Дээрхтэй ижил: талбар нь сервист бий. */
@@ -318,6 +380,18 @@ export type MetricSeries = Metric & {
   ageHours: number | null;
   /** Серверт БОДИТООР байгаа заалтын тоо (татсан хэмжээ БИШ) */
   total: number;
+  /**
+   * ХАНДЛАГА ба ТААМАГ — сүүлийн 24 цагийн шугаман тэгшитгэлээс.
+   *
+   * ⚠️ Энгийн шугаман экстраполяци: «одоогийн хурдаараа үргэлжилбэл» гэсэн
+   * нөхцөлт таамаг болохоос ирээдүйг МЭДЭХГҮЙ. Хогийн сав дүүрэх, ус хэт
+   * их урсах зэрэг ҮЙЛДЭЛ шаардсан зүйлийг урьдчилан харахад хангалттай ч
+   * богино хугацаанд л хүчинтэй (тиймээс UI-д «≈» тэмдэгтэй гарна).
+   *
+   * `etaHours` — босго хүртэл хэдэн цаг үлдсэн. Босгогүй, эсвэл хурд нь
+   * босгоос ХОЛДОЖ байгаа, эсвэл аль хэдийн давсан бол `null`.
+   */
+  trend: { perHour: number; etaHours: number | null } | null;
 };
 
 export type SensorLive = SensorDef & {
@@ -360,6 +434,108 @@ function thin<T>(arr: T[], max: number): T[] {
   return out;
 }
 
+/* ══════════════════ Хугацааны хүрээ ══════════════════ */
+
+/**
+ * ХАРУУЛАХ ХУГАЦААНЫ ХҮРЭЭ.
+ *
+ * ⚠️ Шүүлтийг СЕРВЕР талд `where`-ээр хийхгүй: `received_datetime` нь STRING
+ * тул огнооны харьцуулалт бичиглэлээс хамаарч чимээгүй хоосон буцаах эрсдэлтэй.
+ * Оронд нь эрэмбэлээд ХАНГАЛТТАЙ мөр татаад клиент дээр огтолно — `limit` нь
+ * хүрээ бүрд 15 минутын алхмаас тооцоологдсон (нөөцтэй).
+ */
+export type RangeKey = '24h' | '7d' | '30d';
+
+export const RANGES: { key: RangeKey; label: string; hours: number; limit: number }[] = [
+  { key: '24h', label: tr('24 цаг'), hours: 24, limit: 400 },
+  { key: '7d', label: tr('7 хоног'), hours: 24 * 7, limit: 1400 },
+  { key: '30d', label: tr('30 хоног'), hours: 24 * 30, limit: 4000 },
+];
+
+const rangeOf = (k: RangeKey) => RANGES.find((r) => r.key === k) ?? RANGES[1];
+
+/**
+ * ХАМГИЙН БАГА КВАДРАТААР шугаман хандлага — сүүлийн `windowH` цагийн цэгүүдээр.
+ *
+ * ⚠️ Зөвхөн ХОЁРООС ДЭЭШ цэгтэй, ХАМГИЙН БАГА 1 цагийн зурвасыг хамарсан үед
+ * бодно. Богино зурваст налуу нь чимээнээс тэсрэх (15 минутад 0.1° хэлбэлзэхэд
+ * «цагт 0.4°» гэж гарна) тул таамаг утгагүй болно.
+ */
+function fit(points: Reading[], windowH = 24): { perHour: number } | null {
+  if (points.length < 3) return null;
+  const last = points[points.length - 1].t;
+  const from = last - windowH * 3_600_000;
+  const w = points.filter((x) => x.t >= from);
+  if (w.length < 3) return null;
+  const spanH = (w[w.length - 1].t - w[0].t) / 3_600_000;
+  if (spanH < 1) return null;
+  // x-ийг ЦАГААР авна — налуу нь шууд «нэгж/цаг» болно
+  const xs = w.map((x) => (x.t - w[0].t) / 3_600_000);
+  const ys = w.map((x) => x.v);
+  const n = xs.length;
+  const mx = xs.reduce((a, b) => a + b, 0) / n;
+  const my = ys.reduce((a, b) => a + b, 0) / n;
+  let num = 0; let den = 0;
+  for (let i = 0; i < n; i++) { num += (xs[i] - mx) * (ys[i] - my); den += (xs[i] - mx) ** 2; }
+  if (den === 0) return null;
+  return { perHour: num / den };
+}
+
+/**
+ * Босго хүртэл хэдэн цаг үлдсэн вэ.
+ * `null` — босгогүй, аль хэдийн давсан, эсвэл хурд нь босгоос ХОЛДОЖ байгаа.
+ * ⚠️ 30 хоногоос цааш таамаглахгүй: тийм хол экстраполяци нь тоо болохоос
+ *    мэдээлэл биш (хурд нь тэр хооронд олон удаа өөрчлөгдөнө).
+ */
+function eta(latest: number | null, perHour: number, alert?: { value: number }): number | null {
+  if (latest == null || !alert) return null;
+  const gap = alert.value - latest;
+  if (gap <= 0) return null;            // аль хэдийн давсан
+  if (perHour <= 0) return null;        // босго руу ойртохгүй байна
+  const h = gap / perHour;
+  return h > 24 * 30 ? null : h;
+}
+
+/** Цуваанаас ХОНОГИЙН зөрүү (дээд − доод) — хуримтлагдсан тоолуурын хэрэглээ */
+function dailyDiffPoints(points: Reading[]): Reading[] {
+  const byDay = new Map<string, { min: number; max: number; t: number }>();
+  for (const r of points) {
+    const d = new Date(r.t);
+    const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+    const cur = byDay.get(key);
+    if (!cur) byDay.set(key, { min: r.v, max: r.v, t: r.t });
+    else {
+      cur.min = Math.min(cur.min, r.v);
+      cur.max = Math.max(cur.max, r.v);
+      cur.t = r.t; // хоногийн СҮҮЛИЙН мөч — цэг тэнд буух нь зөв
+    }
+  }
+  return [...byDay.values()]
+    .map((x) => ({ t: x.t, v: Math.max(0, x.max - x.min) }))
+    .sort((a, b) => a.t - b.t);
+}
+
+/** Цувааны нэгдсэн үзүүлэлт — суурь ба уламжлал хоёулаа үүгээр бүтнэ */
+function summarize(m: Metric, pts: Reading[], total: number): MetricSeries {
+  const vals = pts.map((x) => x.v);
+  const last = pts.length ? pts[pts.length - 1] : null;
+  /* ⚠️ Тугтай хэмжигдэхүүнд Л хандлага бодно — циклтэй өгөгдөл дээр налуу нь
+     тоо гаргах ч утга нь ХУДАЛ (дээрх `forecast`-ийн тайлбарыг үз). */
+  const f = m.forecast ? fit(pts) : null;
+  return {
+    ...m,
+    points: thin(pts, 90),
+    latest: last?.v ?? null,
+    latestAt: last?.t ?? null,
+    ageHours: last ? (Date.now() - last.t) / 3_600_000 : null,
+    total,
+    min: vals.length ? Math.min(...vals) : null,
+    max: vals.length ? Math.max(...vals) : null,
+    avg: vals.length ? vals.reduce((s2, x) => s2 + x, 0) / vals.length : null,
+    trend: f ? { perHour: f.perHour, etaHours: eta(last?.v ?? null, f.perHour, m.alert) } : null,
+  };
+}
+
 /**
  * Нэг мэдрэгч — хэмжигдэхүүн ТУС БҮРД тусдаа query.
  *
@@ -371,9 +547,11 @@ function thin<T>(arr: T[], max: number): T[] {
  * (Тэр «Батерей» карт 2026-08-21-нд хасагдсан ч ДҮРЭМ нь хэвээр: Mononet-ийн
  * decoder талбар ТУС БҮРД өөр өөр унтардаг тул нэг where нь бусдыг нь хаана.)
  */
-async function loadOne(def: SensorDef, limit: number): Promise<SensorLive> {
+async function loadOne(def: SensorDef, range: RangeKey): Promise<SensorLive> {
+  const { hours, limit } = rangeOf(range);
+  const from = Date.now() - hours * 3_600_000;
   const per = await Promise.all(
-    def.metrics.map(async (m): Promise<MetricSeries> => {
+    def.metrics.map(async (m): Promise<MetricSeries[]> => {
       const where = `${m.field} IS NOT NULL`;
       const [rows, total] = await Promise.all([
         queryFeatures(def.url, {
@@ -400,50 +578,51 @@ async function loadOne(def: SensorDef, limit: number): Promise<SensorLive> {
         pts.push({ t, v: m.derive ? m.derive(raw) : raw });
       }
       pts.sort((x, y) => x.t - y.t); // ӨСӨХ — Trend зүүнээс баруун тийш уншина
+      // ⚠️ ХҮРЭЭГЭЭР огтолно (сервер талд БИШ — дээрх `RangeKey`-ийн тайлбарыг үз)
+      const inRange = pts.filter((x) => x.t >= from);
 
-      const vals = pts.map((x) => x.v);
-      const last = pts.length ? pts[pts.length - 1] : null;
-      return {
-        ...m,
-        points: thin(pts, 90),
-        latest: last?.v ?? null,
-        latestAt: last?.t ?? null,
-        ageHours: last ? (Date.now() - last.t) / 3_600_000 : null,
-        total: total || pts.length,
-        min: vals.length ? Math.min(...vals) : null,
-        max: vals.length ? Math.max(...vals) : null,
-        avg: vals.length ? vals.reduce((s2, x) => s2 + x, 0) / vals.length : null,
-      };
+      const out = [summarize(m, inRange, total || inRange.length)];
+      // Хуримтлагдсан тоолуур → ХОНОГИЙН хэрэглээний тусдаа цуваа
+      if (m.dailyDiff) {
+        const dp = dailyDiffPoints(inRange);
+        out.push(summarize(
+          { ...m.dailyDiff, field: m.field },
+          dp,
+          dp.length,
+        ));
+      }
+      return out;
     }),
     // ⚠️ Алдааны ЖИНХЭНЭ мессежийг барина — «Сервис татагдсангүй» гэсэн ерөнхий
     //    мөр нь HTTP 500, эрхийн татгалзал, талбар байхгүй гурвыг ялгагдахгүй
     //    болгодог байв. UI нь энийг хэрэглэгчид ил гаргана (`error`).
   ).catch((e: unknown) => (e instanceof Error ? e.message : String(e)));
 
-  if (typeof per === 'string' || !per) {
+  const flat = Array.isArray(per) ? per.flat() : per;
+  if (typeof flat === 'string' || !flat) {
     return {
       ...def,
       series: [],
       lastAt: null,
       ageHours: null,
       n: 0,
-      error: typeof per === 'string' && per ? per : tr('Сервис татагдсангүй'),
+      error: typeof flat === 'string' && flat ? flat : tr('Сервис татагдсангүй'),
     };
   }
 
-  const lastAt = per.reduce<number | null>(
+  const lastAt = flat.reduce<number | null>(
     (acc, m) => (m.latestAt != null && (acc == null || m.latestAt > acc) ? m.latestAt : acc),
     null,
   );
 
   return {
     ...def,
-    series: per,
+    series: flat,
     lastAt,
     ageHours: lastAt == null ? null : (Date.now() - lastAt) / 3_600_000,
     // Мэдрэгчийн нийт заалт — хэмжигдэхүүнүүдийн ХАМГИЙН ИХ нь (нийлбэр биш:
     // ижил мөр олон утга агуулж болно тул нийлбэрлэвэл давхарлана).
-    n: per.length ? Math.max(...per.map((m) => m.total)) : 0,
+    n: flat.length ? Math.max(...flat.map((m) => m.total)) : 0,
   };
 }
 
@@ -475,6 +654,19 @@ function cached<T>(fn: () => Promise<T>, ttlMs = 5 * 60_000): () => Promise<T> {
  * ⚠️ Нэг нь унасан ч бусад нь гарна (`loadOne` алдааг барьж `error` болгоно) —
  * IoT сервис нь порталын бусад хэсэгтэй ӨӨР байгууллагад тул тусад нь унаж болно.
  */
-export const loadSensors = cached<SensorLive[]>(async () =>
-  Promise.all(SENSORS.map((d) => loadOne(d, 1200))),
-);
+/**
+ * Таван мэдрэгчийг ЗЭРЭГ ачаална — ХҮРЭЭ ТУС БҮРД тусдаа кэштэй.
+ *
+ * ⚠️ Кэш нь хүрээгээр түлхүүрлэгдэнэ: нэг кэш хуваалцвал хэрэглэгч «7 хоног»
+ * дараад «24 цаг» руу буцахад TTL дуустал ХУУЧИН хүрээний өгөгдөл гарна.
+ */
+const byRange = new Map<RangeKey, () => Promise<SensorLive[]>>();
+
+export function loadSensors(range: RangeKey = '7d'): Promise<SensorLive[]> {
+  let f = byRange.get(range);
+  if (!f) {
+    f = cached<SensorLive[]>(() => Promise.all(SENSORS.map((d) => loadOne(d, range))));
+    byRange.set(range, f);
+  }
+  return f();
+}

@@ -369,3 +369,47 @@
 /* ⚠️ Нүднүүд картын өндрийг дагаж СУНАХГҮЙ — эс бөгөөс үлдсэн зай нүд бүрийн
    дотор хуваагдан орж, нягтруулсан индикаторыг эргүүлж томруулна. */
 .pCells .grid { align-content: start; }
+
+/* ══════════════════ ТААМАГ · ХҮРЭЭ · ЗУРГИЙН ТАЙЛБАР (2026-08-25) ══════════════════ */
+
+/* Босго хүрэх таамгийн мөр — нүдний ЁРООЛД, тайван өнгөөр.
+   ⚠️ Улаан БИШ: энэ нь одоогийн эвдрэл биш, УРЬДЧИЛСАН мэдээлэл. Улаанаар
+   зурвал жинхэнэ босго давсан улаантай өрсөлдөж, аль нь яаралтай болох нь
+   ялгагдахаа болино. */
+.metricEta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 5px;
+  padding-top: 5px;
+  border-top: 1px dashed var(--line);
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.metricEta svg { flex: none; opacity: 0.75; }
+
+/* Хугацааны хүрээ — сегментчилсэн удирдлага (MapTools-ийн 2D/3D/BIM хэв маяг) */
+.rangeBar {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+}
+.rangeBtn {
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--ink-3);
+  transition: background 0.14s, color 0.14s;
+}
+.rangeBtn:hover { color: var(--ink-2); }
+.rangeBtnOn {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14);
+}

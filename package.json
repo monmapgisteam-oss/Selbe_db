@@ -18,7 +18,8 @@
     "test:tg": "node tools/telegram-format.check.mjs",
     "test:chart": "node --experimental-transform-types --import ./tools/ts-alias.mjs src/components/chart.check.mjs",
     "i18n:check": "node tools/i18n-extract.mjs",
-    "i18n:prune": "node tools/i18n-extract.mjs --prune"
+    "i18n:prune": "node tools/i18n-extract.mjs --prune",
+    "iot:watch": "node --env-file-if-exists=.env.local --experimental-transform-types --import ./tools/ts-alias.mjs tools/iot-watch.mjs"
   },
   "dependencies": {
     "@arcgis/core": "^4.34.8",

@@ -40,3 +40,9 @@ telegram-users.json
 # Telegram ботын байршуулалтын нууц (токен, BOT_SECRET) — ЗӨВХӨН `.env.example`
 # репод орно; бодит `.env` ХЭЗЭЭ Ч орохгүй
 deploy/telegram-bot/.env
+
+# IoT хянагчийн төлөв — зөвхөн ажиллаж буй хостод хамаарна
+iot-watch-state.json
+
+# Claude-ийн тусдаа build хавтас (хэрэглэгчийн dev .next-ийг дарахгүй)
+.next-claude/
