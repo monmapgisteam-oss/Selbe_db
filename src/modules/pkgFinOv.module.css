@@ -125,13 +125,3 @@
   color: var(--ink-3);
   background: var(--bg);
 }
-
-/* Доорх мөрүүд «блокууд» гэдгийг нэрлэх жижиг зааглагч гарчиг */
-.ovDivider {
-  margin: 0 0 6px;
-  font-size: 10.5px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--ink-3);
-}

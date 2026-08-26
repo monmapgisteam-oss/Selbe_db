@@ -727,6 +727,46 @@ export function Donut({
     const LW = PAD - GAP - GUTTER - 2; // шошгын хайрцгийн өргөн — бүтэн үг багтаана
     const vbW = size + PAD * 2;
     const vbH = size + PADY * 2;
+
+    /*
+     * ── ШОШГЫН ДАВХЦАЛЫГ ТАРААХ ─────────────────────────────────────────
+     * ⚠️ Шошго бүр зүсмэгийнхээ ДУНД ӨНЦГИЙН өндөрт тавигддаг байв. Хоёр
+     *    зүсмэг өнцгөөрөө ойрхон (жижиг хувьтай хөрш зүсмэгүүд) бол шошго
+     *    нь бие бие дээрээ бичигдэж, аль аль нь уншигдахгүй болно —
+     *    цагираг бүрд, ялангуяа нэг эх үүсвэр давамгайлсан үед үргэлж
+     *    тохиолддог.
+     *
+     *    Засвар: тал бүрийг (баруун/зүүн) дээрээс доош эрэмбэлж, хөрш
+     *    хоёрын хооронд `MIN_GAP` зайг АЛБАДНА. Зураас нь зүсмэгээсээ
+     *    шилжсэн шошго руу татагдсаар үлдэх тул холбоо алдагдахгүй.
+     */
+    const MIN_GAP = 26;
+    const laid = slices.map((sl) => {
+      const mid = sl.offset + sl.frac / 2;
+      const th = mid * 2 * Math.PI;
+      const sin = Math.sin(th);
+      const cos = Math.cos(th);
+      const right = sin >= 0;
+      return {
+        sl,
+        sx: cx + Ro * sin,
+        sy: cy - Ro * cos,
+        ex: cx + (Ro + 12) * sin,
+        ey: cy - (Ro + 12) * cos,
+        right,
+        lx: right ? cx + Ro + GAP : cx - Ro - GAP,
+      };
+    });
+    ([true, false] as const).forEach((side) => {
+      const col = laid.filter((x) => x.right === side).sort((a, b) => a.ey - b.ey);
+      for (let i = 1; i < col.length; i += 1) {
+        const need = col[i - 1].ey + MIN_GAP;
+        if (col[i].ey < need) col[i].ey = need;
+      }
+      /* Доод ирмэгээс халисан бол БҮГДИЙГ дээш нь шилжүүлнэ */
+      const over = col.length ? col[col.length - 1].ey - (vbH - PADY - 8) : 0;
+      if (over > 0) col.forEach((x) => { x.ey -= over; });
+    });
     return (
       <div className={s.donutLead}>
         <svg
@@ -760,17 +800,7 @@ export function Donut({
           <text x={cx} y={cy - 1} textAnchor="middle" className={s.donutLeadCtr}>{String(center ?? total)}</text>
           {centerLabel && <text x={cx} y={cy + 12} textAnchor="middle" className={s.donutLeadCtrLbl}>{centerLabel}</text>}
           {/* Зураас + гадна БҮТЭН шошго (foreignObject — HTML мөр даруулна) */}
-          {slices.map((sl) => {
-            const mid = sl.offset + sl.frac / 2;
-            const th = mid * 2 * Math.PI;
-            const sin = Math.sin(th);
-            const cos = Math.cos(th);
-            const sx = cx + Ro * sin;
-            const sy = cy - Ro * cos;
-            const ex = cx + (Ro + 12) * sin;
-            const ey = cy - (Ro + 12) * cos;
-            const right = sin >= 0;
-            const lx = right ? cx + Ro + GAP : cx - Ro - GAP;
+          {laid.map(({ sl, sx, sy, ex, ey, right, lx }) => {
             // Текст зурааснаас GUTTER-ийн зайд — давхацахгүй
             const boxX = right ? lx + GUTTER : -PAD + 2;
             const pct = sl.display ?? `${sl.frac > 0 && sl.frac < 0.005 ? '<1' : (sl.frac * 100).toFixed(0)}%`;

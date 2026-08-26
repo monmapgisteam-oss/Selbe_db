@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useCallback, useEffect, useMemo, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
 import { MapTools } from '@/components/MapTools';
@@ -11,28 +11,28 @@ import { useZoomToFilter } from '@/lib/useZoomToFilter';
 import { usePlanTotals } from '@/lib/totals';
 import { Section, Note, Data, Empty, Rows, Bars, List, ListItem } from '@/components/ui';
 import {
-  buildPacks, PackKpi, ContractCard, BlocksCard,
-  InvestCard, LayersCard, levelColor, BLOCK_LAYER, type Pack,
+  buildPacks, PackKpi, BlocksCard, LayersCard, levelColor, BLOCK_LAYER, type Pack,
 } from '@/modules/Bagts';
 import {
   useBuildings, MonitorBagts, MonitorGeneral, MonitorDetail, useTaskPerf,
   pickedBuilding, type PickedBuilding,
 } from '@/modules/BuildingPanel';
 import {
-  loadFinData, contractMonths, ComboChart, lagOf, lagLevel, type FinData,
+  loadFinData, contractMonths, lagOf, lagLevel, type FinData,
 } from '@/modules/Finance';
 import { useAsync, type Async } from '@/lib/useAsync';
+import { queryFeatures } from '@/lib/query';
+import { ResizableTable } from '@/components/ResizableTable';
 import {
-  BUILDING, CASHFLOW2, PROGRESS_LEVELS, LAYER_BY_ID, pkgKeyOf,
+  BUILDING, CASHFLOW2, PROGRESS_LEVELS, LAYER_BY_ID, pkgKeyOf, TASK_SHEET,
   PKG_FAMILY_BY_BAGTS, zoneWhere,
 } from '@/lib/services';
-import { cat, shade, mntAbbr, num, pct } from '@/lib/format';
+import { cat, shade, num, pct } from '@/lib/format';
 import { readParam, writeParams } from '@/lib/urlState';
-import o from './tsogtsOv.module.css';
-import f from './finance.module.css';
+import o from './pkgProgOv.module.css';
 import { SplitGrip, useSideResize } from '@/components/SplitGrip';
 import { overlapLeftParcels, type Overlap } from '@/lib/parcelOverlap';
-import ts from './tsogts.module.css';
+import ts from './pkgProg.module.css';
 
 /**
  * БАРИЛГЫН ЦОГЦ ХЯНАЛТ — «Багцын мэдээлэл» + «Барилгын хяналт» + «Санхүүжилт»
@@ -89,7 +89,7 @@ const meanOf = (vals: (number | null)[]) => {
 };
 
 /**
- * Багцын харагдацын ГОРИМ.
+ * ⚠️ ЭНЭ МОДУЛЬ ЗӨВХӨН «БАГЦЫН ГҮЙЦЭТГЭЛ»-Д. 
  *
  * ⚠️ 2026-08-21 (хэрэглэгчийн хүсэлт): урьд нь ГАНЦ «Багцын хяналт» цонх гэрээ,
  * санхүүжилт, биет явц, барилгын хяналтыг БҮГДИЙГ багтааж, баруун багана 6-7
@@ -101,20 +101,16 @@ const meanOf = (vals: (number | null)[]) => {
  * Багцын жагсаалт, газрын зураг, өгөгдөл ачаалалт нь ХОЁУЛАНД ижил тул
  * хуваалцагдана — салгасан нь ЗӨВХӨН дээд индикатор ба баруун баганын карт.
  */
-export type PackMode = 'fin' | 'prog';
-
-export function Tsogts({ dim, setDim, mode }: {
+export function PkgProg({ dim, setDim }: {
   dim: Dim;
   setDim: (d: Dim) => void;
-  mode: PackMode;
 }) {
-  const isFin = mode === 'fin';
   /**
    * Талын багануудын өргөн — чирж тохируулна, хөтөчид хадгалагдана.
    * ⚠️ Горим тус бүр ӨӨРИЙН өргөнтэй: санхүүгийн баруун багана нь графиктай,
    * гүйцэтгэлийнх нь блокийн урт жагсаалттай — нэг утга хоёуланд тохирохгүй.
    */
-  const side = useSideResize(isFin ? 'pkgFin' : 'pkgProg');
+  const side = useSideResize('pkgProg');
   const q = useBuildings();
   const finQ = useAsync<FinData>(loadFinData, []);
   const { zoomToWhere, setHighlight } = useMap();
@@ -244,45 +240,6 @@ export function Tsogts({ dim, setDim, mode }: {
    * өндөр нь prop тул CSS хувьсагч бус React төлөв (график цөөн элементтэй
    * тул чирэлтийн re-render хямд).
    */
-  const [finH, setFinH] = useState(FIN_H0);
-  useEffect(() => {
-    try {
-      const v = Number(localStorage.getItem(FIN_H_LS));
-      if (Number.isFinite(v) && v >= FIN_H_MIN && v <= FIN_H_MAX) setFinH(v);
-    } catch { /* хувийн горим */ }
-  }, []);
-  const finGripDown = (e: ReactPointerEvent<HTMLButtonElement>) => {
-    e.preventDefault();
-    const y0 = e.clientY;
-    const h0 = finH;
-    const grip = e.currentTarget;
-    grip.setPointerCapture(e.pointerId);
-    const move = (ev: globalThis.PointerEvent) => {
-      // Дээш чирэх = өндөрсөх (дэлгэцийн Y доош өсдөг тул хасна)
-      setFinH(Math.min(FIN_H_MAX, Math.max(FIN_H_MIN, Math.round(h0 - (ev.clientY - y0)))));
-    };
-    const up = () => {
-      grip.removeEventListener('pointermove', move);
-      grip.removeEventListener('pointerup', up);
-      grip.removeEventListener('pointercancel', up);
-      grip.removeEventListener('lostpointercapture', up);
-      grip.blur();
-      setFinH((h) => {
-        try { localStorage.setItem(FIN_H_LS, String(h)); } catch { /* хувийн горим */ }
-        return h;
-      });
-    };
-    grip.addEventListener('pointermove', move);
-    grip.addEventListener('pointerup', up);
-    grip.addEventListener('pointercancel', up);
-    /* capture алдагдсан ч чирэлт ЗААВАЛ дуусна — эс бөгөөс төлөв гацна */
-    grip.addEventListener('lostpointercapture', up);
-  };
-  const finGripReset = () => {
-    setFinH(FIN_H0);
-    try { localStorage.removeItem(FIN_H_LS); } catch { /* хувийн горим */ }
-  };
-
   /**
    * Багц бүрийн САНХҮҮГИЙН сарын цэгүүд — CASHFLOW2-ийн мөрийг bagtsKey-ээр
    * тааруулж НЭГ УДАА бэлдэнэ. Жагсаалтын гүйцэтгэлийн хувь ба хоцрогдлын
@@ -314,6 +271,12 @@ export function Tsogts({ dim, setDim, mode }: {
   const alertKeys = useMemo(() => {
     const s = new Set<string>();
     if (!finMap) return s;
+    /*
+     * ⚠️ ЭНД ЗӨВХӨН БИЕТ ХОЦРОГДОЛ: төлөвлөсөн явцаас хэдэн хувь хоцорсон.
+     *    Санхүүжилтийн хоцрогдол нь «Багцын санхүү» модулийнх — хоёрыг нэг
+     *    дүрмээр шийдвэл нэг цонхны alert нөгөөгийнхөө асуултад хариулж,
+     *    «яагаад улаан байна вэ» гэдэг нь ойлгогдохгүй болно.
+     */
     packs.forEach((p) => {
       const months = finMap.get(p.key);
       if (!months) return;
@@ -387,12 +350,20 @@ export function Tsogts({ dim, setDim, mode }: {
     [visible, ovOk],
   );
   /**
-   * ДАВХЦСАН НЭГЖ ТАЛБАРЫН ХЭВ МАЯГ — барилгын блокоос ЯЛГАРАХ ёстой.
+   * ДАВХЦСАН НЭГЖ ТАЛБАРЫН ХЭВ МАЯГ — УЛААН (хэрэглэгчийн шийдвэр, 2026-08-25).
    *
-   * ⚠️ Анхны загвар нь улаавтар (`#e11d48`) бөгөөд блокууд ч улбар шар
-   *    (`#ea580c`) тул ортофото дээр хоёулаа ижил төстэй харагдаж, аль нь
-   *    барилга, аль нь газар болох нь ялгагдахаа больдог. Тод ягаан + зузаан
-   *    хүрээ нь хоёуланг нь эрс тасалж өгнө.
+   * ⚠️ Улаан нь энэ порталд «саад / эрсдэл» гэсэн ТӨЛӨВИЙН өнгө бөгөөд
+   *    давхцсан үлдсэн талбарын ТОО аль хэдийн улаанаар бичигддэг
+   *    (`--bad-ink`). Зураг нь өөр өнгөөр (ягаан) ярьж байсан тул тоо ба
+   *    полигон хоёр НЭГ зүйлийг хэлж байгаа нь нүдэнд холбогдохгүй байв.
+   *
+   * ⚠️ Блокууд улбар шар (`#ea580c`) тул ойролцоо өнгөтэй: ЗУЗААН хүрээ
+   *    (4.2) ба өндөр дүүргэлт (0.3) нь ялгааг барина. Дээрээс нь энэ давхарга
+   *    ПУЛЬСЛЭДЭГ тул хөдөлгөөнөөрөө ч ялгарна.
+   *
+   * ⚠️ HEX-ЭЭР бичнэ, CSS хувьсагчаар БИШ: MapCanvas-ийн `rgb()` нь зөвхөн
+   *    `#rrggbb`-г задалдаг тул `var(--bad)` өгвөл NaN болж, полигон огт
+   *    зурагдахгүй. Утга нь `globals.css`-ийн `--bad`-тай ижил.
    */
   /** Анивчих давхарга — давхцсан талбар олдсон үед л. */
   const parcelPulse = useMemo(
@@ -403,7 +374,7 @@ export function Tsogts({ dim, setDim, mode }: {
   const parcelStyle = useMemo(
     () =>
       ovOk?.oids.length
-        ? { [PARCEL_LAYER]: { hue: '#d946ef', fill: 0.22, width: 3.4 } }
+        ? { [PARCEL_LAYER]: { hue: '#dc2626', fill: 0.3, width: 4.2 } }
         : undefined,
     [ovOk],
   );
@@ -437,11 +408,11 @@ export function Tsogts({ dim, setDim, mode }: {
   );
 
   /** Багц солих — барилгын сонголт цуцлагдана (өөр багцын барилга үлдэхгүй) */
-  const pick = (k: string | null) => {
+  const pick = useCallback((k: string | null) => {
     setSel(k);
     setPb(null);
     setHighlight(null);
-  };
+  }, [setHighlight]);
 
   /** Зураг дээрх барилга дарах → баруун талд тухайн барилгын хяналт */
   /* useCallback — inline функц render бүрд шинэ лавлагаа болж memo(MapCanvas)-ыг
@@ -449,11 +420,25 @@ export function Tsogts({ dim, setDim, mode }: {
      хоёул тогтвортой тул хамаарал [setHighlight]. */
   const onMapPick = useCallback((attrs: Record<string, unknown> | null, layerId: string | null) => {
     const b = pickedBuilding(attrs, layerId);
-    if (!b) return;
+    /*
+     * ⚠️ ХООСОН ГАЗАР ДАРВАЛ СОНГОЛТ АРИЛНА. Урьд нь `if (!b) return` байсан
+     *    тул барилга сонгосны дараа зөвхөн дээд талын «‹ багц руу буцах» товч
+     *    л гарц болдог байв — зурган дээр хаана ч дарсан шүүлт хэвээр наалдаж,
+     *    хэрэглэгч «гацсан» гэж мэдэрдэг. Газрын зурагт хоосон газар дарах нь
+     *    «сонголтоо болих» гэсэн ердийн дохио.
+     */
+    if (!b) {
+      /* ⚠️ Багцын сонголтыг БАС арилгана: зөвхөн барилгыг цуцлаад багцын
+         шүүлтийг үлдээвэл зураг тэр багцаараа хумигдсан хэвээр байх тул
+         хэрэглэгч «арилсангүй» гэж мэдэрнэ. Хоосон газар дарах = БҮХ
+         сонголтоо болих. */
+      pick(null);
+      return;
+    }
     const oid = Number(attrs?.[BUILDING.oid]);
     setPb(b);
     if (Number.isFinite(oid)) setHighlight(`${BUILDING.oid} = ${oid}`, BLOCK_LAYER);
-  }, [setHighlight]);
+  }, [setHighlight, pick]);
   const backToPack = () => {
     setPb(null);
     setHighlight(null);
@@ -493,6 +478,9 @@ export function Tsogts({ dim, setDim, mode }: {
     /* Талын багануудыг чирж өргөсгөх/нарийсгах бариулууд. */
     <div
       ref={side.hostRef}
+      /* ⚠️ Горимын класс — хоёр харагдац бүтцээрээ ижил тул ялгах ЦОРЫН ГАНЦ
+         дохио нь өнгө. Хэрэглэгч табаа сольсноо мэдэхгүй бол санхүүгийн тоог
+         гүйцэтгэл гэж уншина. */
       className={`${ts.pack} ${side.hostClass}`}
       style={side.style}
     >
@@ -503,9 +491,11 @@ export function Tsogts({ dim, setDim, mode }: {
           багцын KPI хэвээр ── */}
       <div className={ts.kpi}>
         {errQ ? null : loading ? <Empty label={tr('Ачаалж байна…')} /> : active ? (
+          /* ⚠️ `fin` дамжуулснаар PackKpi нь МӨНГӨНИЙ хавтан гаргана —
+             гүйцэтгэл/блок/айл огт харагдахгүй. */
           <PackKpi active={active} packs={packs} />
         ) : (
-          <TsKpi packs={packs} fin={finQ.state === 'ready' ? finQ.data : null} mode={mode} />
+          <TsKpi packs={packs} fin={finQ.state === 'ready' ? finQ.data : null} />
         )}
       </div>
 
@@ -521,7 +511,7 @@ export function Tsogts({ dim, setDim, mode }: {
             {/* ⚠ ХОЦРОГДОЛТОЙ багцууд — тусдаа бүлэг, ХАМГИЙН ДЭЭР, карт бүхэлдээ анивчина.
                 ⚠️ 2026-08-21: ЗӨВХӨН гүйцэтгэлийн харагдацад — хоцрогдол нь биет
                 явц vs төлөвлөгөөний зөрүү тул санхүүгийн асуултын хэсэг БИШ. */}
-            {!isFin && alerted.length > 0 && (
+            {alerted.length > 0 && (
               <div className={ts.alertCard}>
                 <TsPackList
                   title={tr('⚠ Хоцрогдолтой багц')}
@@ -530,7 +520,6 @@ export function Tsogts({ dim, setDim, mode }: {
                   sel={sel}
                   onSel={pick}
                   finMap={finMap}
-                  finOnly={isFin}
                 />
               </div>
             )}
@@ -540,16 +529,15 @@ export function Tsogts({ dim, setDim, mode }: {
               <TsPackList
                 key={c.key}
                 title={c.name()}
-                note={isFin
-                  ? tr('олгосон / төлөвлөгөө')
-                  : c.key === 'build' ? tr('блокийн гүйцэтгэл') : tr('гүйцэтгэлийн хувь')}
-                /* ⚠️ Санхүүгийн горимд ХОЦРОГДОЛТОЙ бүлэг байхгүй тул тэдгээр
-                   багцыг энд буцааж оруулна — эс бөгөөс жагсаалтаас алга болно. */
-                packs={packs.filter((p) => catOf(p) === c.key && (isFin || !alertKeys.has(p.key)))}
+                /* Дэд бүтэц/нийгмийн барилгад биет хувь байхгүй тул
+                   «гүйцэтгэлийн хувь» гэж амлахгүй — зурагт байгаа зүйлээ л. */
+                note={c.key === 'build' ? tr('блокийн гүйцэтгэл') : tr('зурагт харагдах давхарга')}
+                /* ⚠️ Alert-тай багц нь ДЭЭД бүлэгт гарсан тул эндээс хасагдана —
+                   эс бөгөөс нэг багц хоёр газар давхардаж жагсана. */
+                packs={packs.filter((p) => catOf(p) === c.key && !alertKeys.has(p.key))}
                 sel={sel}
                 onSel={pick}
                 finMap={finMap}
-                finOnly={isFin}
               />
             ))}
             <Note>
@@ -629,27 +617,27 @@ export function Tsogts({ dim, setDim, mode }: {
 
       {/* ── БАРУУН нэг багана: барилга дарсан бол ХЯНАЛТ, эс бөгөөс гэрээ+эх үүсвэр ── */}
       <div className={ts.r}>
-        {pb && !isFin ? (
+        {pb ? (
           <>
             <button type="button" className={ts.backBtn} onClick={backToPack}>
               ‹ {pb.bagts} · {pb.blok} {tr('— багц руу буцах')}
             </button>
             <MonitorGeneral b={pb} q={perfQ} />
             <MonitorDetail b={pb} q={perfQ} />
+            <SourceRows bagts={pb.bagts} blok={pb.blok} />
           </>
         ) : errQ ? (
           <Data q={errQ}>{() => null}</Data>
         ) : !active ? (
           /* Багц сонгоогүй — ТӨСЛИЙН НЭГДСЭН: гэрээ/төсөв · эх үүсвэр · төлөв · блок гүйцэтгэл */
           <>
-            <CatChart packs={packs} finMap={finMap} finOnly={isFin} />
-            {!isFin && allPack && <LevelsCard blocks={allPack.blocks} ovByCat={ovByCat} />}
+            <CatChart packs={packs} />
+            {allPack && <LevelsCard blocks={allPack.blocks} ovByCat={ovByCat} />}
             {/* ТӨСЛИЙН НИЙТ давхцсан үлдсэн нэгж талбар — хэрэглэгчийн
                 хүсэлтээр (2026-08-21) ТУСДАА КАРТ болгож БУЦААВ: FinCard-аас
                 хассан нэгдсэн тоо. Багц бүрийн задаргаа нь доорх «Багц N —
                 блокууд» картуудын толгойд; энэ нь бүх багцын НИЙТ (блок + дэд
                 бүтэц, давхардалгүй). Сонголтгүй үед `overlap` яг энэ утга. */}
-            {!isFin && (
             <Section>
               {/* Алдааны үед шошго нь өөрөө «тоолж чадсангүй» гэж хэлнэ —
                   «—» дангаараа «0/өгөгдөлгүй»-тэй андуурагдана */}
@@ -670,12 +658,10 @@ export function Tsogts({ dim, setDim, mode }: {
                 {overlap == null ? '…' : overlap === 'error' ? '—' : num(overlap.oids.length)}
               </b>
             </Section>
-            )}
-            {isFin && <PkgFinList packs={packs} finMap={finMap} />}
             {/* Блок бүрийн гүйцэтгэл — БАГЦААР нь бүлэглэсэн (нэг багц = нэг карт).
                 ⚠️ Зөвхөн ГҮЙЦЭТГЭЛИЙН харагдацад: блокийн биет явц нь санхүүгийн
                 асуултад хамаарахгүй, харин баганыг маш урт болгодог. */}
-            {!isFin && packs.filter((p) => p.kind === 'build').map((p) => (
+            {packs.filter((p) => p.kind === 'build').map((p) => (
               /* АНХДАГЧ нь ХААЛТТАЙ (2026-08-21) — олон багцын блок нэг
                  баганад маш урт тул үзье гэсэн нь нээж харна; refresh хийхэд
                  мөн хаалттай эхэлнэ. Нээхэд эхэлж багцын давхцсан үлдсэн
@@ -693,40 +679,18 @@ export function Tsogts({ dim, setDim, mode }: {
             ))}
           </>
         ) : active.kind === 'build' ? (
-          /* ⚠️ Гэрээ нь САНХҮҮГИЙН баримт (дүн, хугацаа, гүйцэтгэгч), блокийн
-             жагсаалт ба ажлын хяналт нь БИЕТ явц — тус тусын харагдацад. */
-          isFin ? <ContractCard p={active} /> : (
-            <>
-              <BlocksCard p={active} overlapN={overlap == null ? null : overlap === 'error' ? 'error' : overlap.oids.length} />
-              <MonitorBagts bagts={active.name} />
-            </>
-          )
+          /* Барилгын багц — блокийн жагсаалт ба ажлын хяналт (БИЕТ явц) */
+          <>
+            <BlocksCard p={active} overlapN={overlap == null ? null : overlap === 'error' ? 'error' : overlap.oids.length} />
+            <MonitorBagts bagts={active.name} />
+            <SourceRows bagts={active.name} blok={null} />
+          </>
         ) : (
-          /* Дэд бүтцийн багц: хөрөнгө оруулалт → санхүү, давхаргын бүтэц → гүйцэтгэл */
-          isFin ? <InvestCard p={active} /> : <LayersCard p={active} />
+          /* Дэд бүтцийн багц — давхаргын бүтэц */
+          <LayersCard p={active} />
         )}
       </div>
 
-      {/* ── ДООД ГОЛ: санхүүгийн график (сонгоогүй бол ТӨСЛИЙН НЭГДСЭН).
-             ⚠️ ЗӨВХӨН санхүүгийн харагдацад — CASHFLOW, олгосон дүн, төлбөрийн
-             акт бүгд мөнгөн хэмжигдэхүүн. Гүйцэтгэлийн харагдац доод зурвасгүй
-             тул зураг ба блокийн жагсаалт өндрийг бүтнээр авна. */}
-      {isFin && (
-      <div className={ts.fin}>
-        {/* Өндрийн бариул — картын ДЭЭД ирмэг: дээш чирвэл график томорно */}
-        <button
-          type="button"
-          className={ts.finGrip}
-          role="separator"
-          aria-orientation="horizontal"
-          aria-label={tr('Графикийн өндөр')}
-          title={tr('Чирж өндрийг тохируулна · давхар товшвол анхны хэмжээ')}
-          onPointerDown={finGripDown}
-          onDoubleClick={finGripReset}
-        />
-        <FinCard p={active} finQ={finQ} chartH={finH} finOnly />
-      </div>
-      )}
     </div>
   );
 }
@@ -743,7 +707,7 @@ export function Tsogts({ dim, setDim, mode }: {
  * үеийн төслийн нэгдсэн 6 үзүүлэлт. Хувиуд нь доод графиктай ИЖИЛ аргачлал
  * (`aggregateMonths`) тул хоёр газрын тоо зөрөхгүй.
  */
-function TsKpi({ packs, fin, mode }: { packs: Pack[]; fin: FinData | null; mode: PackMode }) {
+function TsKpi({ packs, fin }: { packs: Pack[]; fin: FinData | null }) {
   const t = useMemo(() => {
     if (!fin) return null;
     const months = aggregateMonths(fin);
@@ -775,24 +739,15 @@ function TsKpi({ packs, fin, mode }: { packs: Pack[]; fin: FinData | null; mode:
    * Гүйцэтгэлийн зөрүү нь БИЕТ vs ТӨЛӨВЛӨГӨӨ тул гүйцэтгэлийн талд; олгосон
    * санхүүжилт ба түүний хувь нь санхүүгийн талд.
    */
-  const items = mode === 'fin'
-    ? [
-      { v: num(packs.length), l: tr('нийт төслийн тоо') },
-      { v: t == null ? '…' : mntAbbr(t.given), l: tr('олгосон санхүүжилт') },
-      { v: t?.share == null ? '…' : pct(t.share, 1), l: tr('нийт санхүүжилтийн олгосон хувь') },
-      /* ⚠️ Гүйцэтгэлийн хувийн оронд МӨНГӨН үлдэгдэл — санхүүгийн харагдацад
-         биет явцын тоо огт гарахгүй (2026-08-21, хэрэглэгчийн хүсэлт). */
-      { v: t == null ? '…' : mntAbbr(t.remain), l: tr('олгогдоогүй үлдэгдэл') },
-    ]
-    : [
+  const items = [
       { v: num(packs.length), l: tr('нийт төслийн тоо') },
       { v: t?.actual == null ? '…' : pct(t.actual, 1), l: tr('бодит гүйцэтгэлийн хувь') },
       { v: t?.planned == null ? '…' : pct(t.planned, 1), l: tr('төлөвлөсөн гүйцэтгэлийн хувь') },
       {
         v: t?.gap == null ? '…' : `${t.gap >= 0 ? '−' : '+'}${Math.abs(t.gap).toFixed(1)}%`,
         l: tr('гүйцэтгэлийн зөрүүгийн хувь'),
-      },
-    ];
+    },
+  ];
   return (
     <>
       {items.map((i) => (
@@ -807,7 +762,7 @@ function TsKpi({ packs, fin, mode }: { packs: Pack[]; fin: FinData | null; mode:
 }
 
 function TsPackList({
-  title, note, packs, sel, onSel, finMap, finOnly = false,
+  title, note, packs, sel, onSel, finMap,
 }: {
   title: string;
   note: string;
@@ -815,14 +770,6 @@ function TsPackList({
   sel: string | null;
   onSel: (k: string | null) => void;
   finMap: Map<string, ReturnType<typeof contractMonths>> | null;
-  /**
-   * САНХҮҮГИЙН хэл: мөр бүрийн утга нь ОЛГОСОН ХУВЬ (мөнгө), дэд мөрөнд
-   * олгосон/төлөвлөгөө ₮. Биет гүйцэтгэл, хоцрогдлын тэмдэг ХАРАГДАХГҮЙ.
-   *
-   * ⚠️ 2026-08-21: хоцрогдол нь биет vs төлөвлөгөөний зөрүү тул «Багцын
-   * гүйцэтгэл» талын ойлголт — санхүүгийн жагсаалтад орох ёсгүй.
-   */
-  finOnly?: boolean;
 }) {
   if (!packs.length) return null;
   /**
@@ -834,47 +781,52 @@ function TsPackList({
   const rows = packs
     .map((p) => {
       const months = finMap?.get(p.key) ?? null;
-      // ⚠️ Санхүүгийн горимд хоцрогдол ОГТ тооцохгүй — тэмдэг ч, эрэмбэ ч
-      const lag = finOnly ? null : (months ? lagOf(months) : null);
+      /* ХОЦРОГДОЛ — БИЕТ явц төлөвлөсөн явцаас хэдэн ХУВЬ хоцорсон */
+      const lag = months ? lagOf(months) : null;
       const lvl = lag ? lagLevel(lag.gap) : null;
-      const plan = months ? months.reduce((a, m) => a + m.amount, 0) : 0;
-      const given = months ? months.reduce((a, m) => a + m.given, 0) : 0;
       let execPct: number | null = null;
-      if (finOnly) {
-        // САНХҮҮ: багцын төрлөөс үл хамааран ОЛГОСОН / ТӨЛӨВЛӨГӨӨ
-        execPct = plan > 0 ? (given / plan) * 100 : null;
-      } else if (p.kind === 'build') execPct = p.progress;
-      else if (months) execPct = plan > 0 ? (given / plan) * 100 : null;
-      return { p, lag, lvl, execPct, plan, given };
+      if (p.kind === 'build') execPct = p.progress;
+      /*
+       * ⚠️ ДЭД БҮТЦИЙН БАГЦАД БИЕТ ЯВЦЫН ӨГӨГДӨЛ БАЙХГҮЙ. Урьд нь түүний
+       *    оронд «олгосон / төлөвлөгөө» МӨНГӨН хувийг «гүйцэтгэл» гэж
+       *    үзүүлдэг байв — гүйцэтгэлийн цонхонд санхүүгийн тоо, дээрээс нь
+       *    ӨӨР нэрээр. Барилгын багцын биет хувьтай нэг баганад зэрэгцэн
+       *    зогсох тул харьцуулж болохгүй хоёр хэмжигдэхүүн холилдож байв.
+       *    Одоо «мэдээлэлгүй» гэж ил хэлнэ.
+       */
+      return { p, lag, lvl, execPct };
     })
     .sort((a, b) => {
       const rank = (l: 'red' | 'yellow' | null) => (l === 'red' ? 0 : l === 'yellow' ? 1 : 2);
+      /* Ижил зэрэглэлд ХОЦРОГДЛЫН ХУВЬ-аар — их нь эхэнд */
       return rank(a.lvl) - rank(b.lvl) || (b.lag?.gap ?? 0) - (a.lag?.gap ?? 0);
     });
   return (
-    <Section title={title} note={tr('{0} багц · {1}', num(packs.length), note)}>
+    /*
+     * ⚠️ БҮХ БҮЛЭГ НЭЭЛТТЭЙ ЭХЭЛНЭ (хэрэглэгчийн шийдвэр, 2026-08-25). Хураах
+     *    нь ЗӨВХӨН хэрэглэгчийн санаачилгаар — гарчиг дээр дарж хаана.
+     *    Анхнаасаа хаалттай байвал зүүн багана хоосон харагдаж, ямар багц
+     *    байгаа нь ч мэдэгдэхгүй байв.
+     */
+    <Section
+      title={title}
+      note={tr('{0} багц · {1}', num(packs.length), note)}
+      collapsible
+    >
       <List>
-        {rows.map(({ p, lag, lvl, execPct, plan, given }) => {
-          /**
-           * ⚠️ 2026-08-18 (хэрэглэгчийн хүсэлт): багц дарахад ЖАГСААЛТЫН ДОТОР,
-           * ЯГ ТЭР МӨРИЙН ДООР сарын цуваа задарна. Урьд нь сонголт зөвхөн
-           * дэлгэцийн ӨӨР хэсэг дэх картуудыг сольдог байсан тул хэрэглэгч
-           * жагсаалтаас нүдээ салгаж, багц хооронд харьцуулах боломжгүй байв.
-           * Одоо хэд хэдэн багцыг ээлжлэн дарж, нэг байрлалд цувааг нь хардаг.
-           */
-          const months = finMap?.get(p.key) ?? null;
+        {rows.map(({ p, lag, lvl, execPct }) => {
+          /* Сонгогдсон эсэх — мөрийг тодруулахад. Сонголтын үр дүн нь доод
+             бүтэн график ба баруун картуудад гарна. */
           const open = p.key === sel;
           return (
             <Fragment key={p.key}>
             <ListItem
               title={tr(p.name)}
-              sub={finOnly
-                ? (plan > 0 || given > 0
-                  ? tr('{0} / {1}', mntAbbr(given), mntAbbr(plan))
-                  : tr('санхүү бүртгэлгүй'))
-                : p.kind === 'build'
+              sub={p.kind === 'build'
                   ? tr('{0} блок · {1} айл{2}', num(p.blocks.length), num(p.households), lag && lvl ? tr(' · төл. {0}% / бодит {1}%', lag.planned.toFixed(0), lag.actual.toFixed(0)) : '')
-                  : tr('{0}{1}', p.layerIds.length ? tr('{0} давхарга', num(p.layerIds.length)) : tr('зураггүй'), execPct != null ? '' : tr(' · санхүү бүртгэлгүй'))}
+                  /* Дэд бүтэц: гүйцэтгэлийн харагдацад мөнгө дурдахгүй —
+                     зөвхөн зурагт хэдэн давхаргатай нь. */
+                  : (p.layerIds.length ? tr('{0} давхарга', num(p.layerIds.length)) : tr('зураггүй'))}
               value={
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                   {execPct == null ? '—' : pct(execPct, 0)}
@@ -898,28 +850,18 @@ function TsPackList({
                   )}
                 </span>
               }
-              color={lvl === 'red' ? 'var(--bad)' : lvl === 'yellow' ? 'var(--warn)' : finOnly ? cat(0) : p.kind === 'build' ? levelColor(p.progress) : cat(2)}
+              color={lvl === 'red' ? 'var(--bad)' : lvl === 'yellow' ? 'var(--warn)' : p.kind === 'build' ? levelColor(p.progress) : cat(2)}
               active={open}
               onClick={() => onSel(open ? null : p.key)}
             />
-            {open && (
-              <div className={ts.packExpand}>
-                {months && months.length ? (
-                  <>
-                    <div className={ts.packLegend}>
-                      <span><i style={{ background: cat(2) }} />{tr('Төлөвлөгөө')}</span>
-                      <span><i style={{ background: cat(0) }} />{tr('Санхүүжилт')}</span>
-                      {!finOnly && <span><i style={{ background: cat(1) }} />{tr('Биет %')}</span>}
-                    </div>
-                    {/* ⚠️ Намхан (140px) — жагсаалтын мөр хооронд задарч байгаа тул
-                        доод бүтэн графикийн (220px) орлуулга БИШ, товч тойм. */}
-                    <ComboChart items={months} height={140} lagMonth={lag?.month} lagLvl={lvl} />
-                  </>
-                ) : (
-                  <Empty label={tr('Cashflow-д энэ багцын гэрээ бүртгэлгүй.')} />
-                )}
-              </div>
-            )}
+            {/*
+              * ⚠️ ЖАГСААЛТЫН ДОТОРХ ЖИЖИГ ГРАФИК ХАСАГДСАН (2026-08-25).
+              *    290px өргөн, 140px өндөр талбайд 12 сарын гурван цуваа
+              *    багтахгүй: шошго нь дүрс болж, муруйнууд нийлж, юу ч
+              *    уншигдахгүй байв. Багц сонгоход доод талын БҮТЭН график
+              *    аль хэдийн тэр багц руу шилждэг — хоёр дахь, муудсан
+              *    хуулбар нь зөвхөн эргэлзээ төрүүлнэ.
+              */}
             </Fragment>
           );
         })}
@@ -951,79 +893,18 @@ function TsPackList({
  * ⚠️ Санхүүгийн бүртгэлгүй багцыг ХАСНА — «0 ₮» гэж харуулбал «олгоогүй»
  * гэсэн ХУДАЛ дохио өгнө; бодит утга нь «гэрээ бүртгэгдээгүй».
  */
-function PkgFinList({
-  packs, finMap,
-}: {
-  packs: Pack[];
-  finMap: Map<string, ReturnType<typeof contractMonths>> | null;
-}) {
-  const rows = useMemo(() => {
-    if (!finMap) return null;
-    return packs
-      .map((p) => {
-        const months = finMap.get(p.key);
-        if (!months) return null;
-        const plan = months.reduce((a, m) => a + m.amount, 0);
-        const given = months.reduce((a, m) => a + m.given, 0);
-        if (plan <= 0 && given <= 0) return null;
-        return { key: p.key, label: tr(p.name), plan, given, pct: plan > 0 ? (given / plan) * 100 : null };
-      })
-      .filter((x): x is NonNullable<typeof x> => x != null)
-      .sort((a, b) => b.given - a.given);
-  }, [packs, finMap]);
-
-  if (!rows) return <Section title={tr('Багц бүрийн санхүүжилт')}><Empty label={tr('Ачаалж байна…')} /></Section>;
-  if (!rows.length) return <Section title={tr('Багц бүрийн санхүүжилт')}><Empty label={tr('Гэрээ бүртгэгдээгүй')} /></Section>;
-
-  return (
-    <Section
-      title={tr('Багц бүрийн санхүүжилт')}
-      note={tr('{0} багц · олгосон ₮', num(rows.length))}
-    >
-      <Bars
-        color={HUE}
-        max={100}
-        items={rows.map((r, i) => ({
-          key: r.key,
-          label: r.label,
-          value: r.pct ?? 0,
-          color: shade(HUE, i, rows.length),
-          display: `${mntAbbr(r.given)} / ${mntAbbr(r.plan)}`,
-        }))}
-      />
-    </Section>
-  );
-}
-
-function CatChart({
-  packs,
-  finMap,
-  finOnly = false,
-}: {
-  packs: Pack[];
-  finMap: Map<string, ReturnType<typeof contractMonths>> | null;
-  /**
-   * САНХҮҮГИЙН хэл: багана бүр ОЛГОСОН / ТӨЛӨВЛӨГӨӨ хувь.
-   *
-   * ⚠️ 2026-08-21: нэгдсэн горимд build багц нь БИЕТ гүйцэтгэлээр, infra нь
-   * санхүүгээр хэмжигддэг тул хоёр өөр хэмжигдэхүүн нэг чартад холилддог байв.
-   * Санхүүгийн харагдацад бүгд НЭГ хэмжүүрээр — мөнгө.
-   */
-  finOnly?: boolean;
-}) {
+function CatChart({ packs }: { packs: Pack[] }) {
   const rows = PACK_CATS.map((c) => {
     const list = packs.filter((p) => catOf(p) === c.key);
     const pcts: number[] = [];
+    /*
+     * ⚠️ ЗӨВХӨН БИЕТ явц. Урьд нь дэд бүтцийн багцад биет өгөгдөл байхгүй тул
+     *    «олгосон / төлөвлөгөө» мөнгөн хувиар нөхөж, барилгын биет хувьтай НЭГ
+     *    баганад нийлүүлдэг байв — хоёр өөр хэмжигдэхүүний дундаж нь юуг ч
+     *    хэмждэггүй тоо.
+     */
     for (const p of list) {
-      if (!finOnly && p.kind === 'build') {
-        if (p.progress != null) pcts.push(p.progress);
-        continue;
-      }
-      const months = finMap?.get(p.key);
-      if (!months) continue;
-      const plan = months.reduce((a, m) => a + m.amount, 0);
-      const given = months.reduce((a, m) => a + m.given, 0);
-      if (plan > 0) pcts.push((given / plan) * 100);
+      if (p.kind === 'build' && p.progress != null) pcts.push(p.progress);
     }
     const mean = pcts.length ? pcts.reduce((a, b) => a + b, 0) / pcts.length : null;
     return { c, n: list.length, mean };
@@ -1032,7 +913,7 @@ function CatChart({
     <Section
       tone="primary"
       title={tr('Төслийн төрөл')}
-      note={finOnly ? tr('олгосон хувь · {0} багц', num(packs.length)) : tr('{0} багц ажил', num(packs.length))}
+      note={tr('{0} багц ажил', num(packs.length))}
     >
       <Bars
         color={HUE}
@@ -1113,201 +994,6 @@ function LevelsCard({
  * («БАГЦ-4.1» = «Багц 4-1»); хоцрогдлын badge мөн Finance-ийн дүрмээр.
  */
 /** Санхүүгийн графикийн өндрийн хязгаарууд (px) — чирэх бариул */
-const FIN_H0 = 220;
-const FIN_H_MIN = 140;
-const FIN_H_MAX = 520;
-const FIN_H_LS = 'selbe.finh.tsogts';
-
-function FinCard({
-  p,
-  finQ,
-  chartH = FIN_H0,
-  finOnly = false,
-}: {
-  p: Pack | null;
-  finQ: Async<FinData>;
-  /** Комбо графикийн өндөр (px) — дээд ирмэгийн чирэх бариулаас (2026-08-21) */
-  chartH?: number;
-  /**
-   * ЗӨВХӨН МӨНГӨНИЙ хэл: биет гүйцэтгэлийн үзүүлэлт, шугам, легенд, хоцрогдлын
-   * тэмдэг бүгд НУУГДАНА.
-   *
-   * ⚠️ 2026-08-21 (хэрэглэгчийн хүсэлт): «Багцын санхүү» харагдац дээр ажлын
-   * гүйцэтгэл ХАРАГДАХ ЁСГҮЙ — тэр бүхэн «Багцын гүйцэтгэл» талд. Хоцрогдол нь
-   * биет vs төлөвлөгөөний ЗӨРҮҮ тул мөн гүйцэтгэлийн ойлголт.
-   */
-  finOnly?: boolean;
-}) {
-  /**
-   * Үзүүлэлтийн мөр нээлттэй эсэх — ЗӨВХӨН энэ мөрөнд үйлчилнэ, доорх график
-   * ҮРГЭЛЖ харагдана (2026-08-21, хэрэглэгчийн хүсэлт). Санадаггүй — refresh
-   * хийхэд нээлттэй эхэлнэ.
-   */
-  const [kpiOpen, setKpiOpen] = useState(true);
-  const d = finQ.state === 'ready' ? finQ.data : null;
-  const C = CASHFLOW2.fields;
-
-  // Дата бэлэн бол сарын цэг, нийт дүн, хоцрогдлыг урьдчилан бодно — badge-ийг
-  // гарчигт (нэрний хажууд) ба note-д (баруун талд) тавихад хэрэгтэй.
-  let months: ReturnType<typeof contractMonths> | null = null;
-  let total = 0;
-  let noRow = false;
-  if (d) {
-    if (p) {
-      const row =
-        d.contracts.find((r) => pkgKeyOf(r[C.pkg2]) === p.key) ??
-        d.contracts.find((r) => pkgKeyOf(r[C.pkg]) === p.key) ??
-        null;
-      if (!row) noRow = true;
-      else {
-        months = contractMonths(row, d.given, d.phys);
-        total = nn(row[C.prevAmount]) + months.reduce((a, m) => a + m.amount, 0);
-      }
-    } else {
-      months = aggregateMonths(d);
-      total =
-        d.contracts.reduce((a, r) => a + nn(r[C.prevAmount]), 0) +
-        months.reduce((a, m) => a + m.amount, 0);
-    }
-  }
-  const lag = months ? lagOf(months) : null;
-  const lvl = lag ? lagLevel(lag.gap) : null;
-
-  /**
-   * KPI — Cashflow (төлөвлөсөн санхүүжилт) ба IPC (олгосон акт)-ын ₮ дүн, тэдгээрийн
-   * ЗӨРҮҮ; мөн ГҮЙЦЭТГЭЛИЙН ХУВЬ хоёр (төлөвлөгөөт = Cashflow-ийн өссөн %, бодит =
-   * биет гүйцэтгэл %) ба тэдгээрийн ЗӨРҮҮ. Хоёр хувийг «одоо» хүртэлх сүүлийн
-   * бөглөгдсөн сараар авна — `lagOf`-той ижил дүрэм тул хоцрогдлын badge-тэй таарна.
-   */
-  const givenTotal = months ? months.reduce((a, m) => a + m.given, 0) : 0;
-  const nowYm = new Date().toISOString().slice(0, 7);
-  let plannedPct: number | null = null;
-  let actualPct: number | null = null;
-  if (months) {
-    for (const m of months) {
-      if (m.label > nowYm) continue;
-      if (m.cumPct > 0) plannedPct = m.cumPct;
-      if (m.phys > 0) actualPct = m.phys;
-    }
-  }
-  // Санхүүжилтийн зөрүү — төлөвлөсөн − олгосон (₮). Эерэг = олгоогүй үлдэгдэл.
-  const finGap = total - givenTotal;
-  // IPC-ийн санхүүжилтийн гүйцэтгэл — олгосон ÷ төлөвлөсөн (%)
-  const givenShare = total > 0 ? (givenTotal / total) * 100 : null;
-  // Гүйцэтгэлийн зөрүү — төлөвлөгөөт − бодит (%). Эерэг = хоцрогдол.
-  const progGap = plannedPct != null && actualPct != null ? plannedPct - actualPct : null;
-  const gapText = progGap == null ? '—' : `${progGap >= 0 ? '−' : '+'}${Math.abs(progGap).toFixed(1)}%`;
-
-  // ГАРЧИГ — нэр + (хоцрогдол бол) нэрний ХАЖУУД alert badge
-  const title = (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-      {p ? tr(p.name) : tr('Төсөл нийт')}{' '}
-      {finOnly ? tr('— санхүүжилт · төлөвлөгөө') : tr('— санхүүжилт · төлөвлөгөө · гүйцэтгэл')}
-      {!finOnly && lag && lvl && (
-        <span
-          className={`${f.lagBadge} ${lvl === 'red' ? f.lagRed : f.lagYellow}`}
-          title={tr('{0}: төлөвлөсөн {1}% · бодит {2}%', lag.month, lag.planned.toFixed(1), lag.actual.toFixed(1))}
-        >
-          {lvl === 'red' ? tr('Хоцрогдол') : tr('Анхаарах')} −{lag.gap.toFixed(1)}%
-        </span>
-      )}
-    </span>
-  );
-  // NOTE — гарчгийн БАРУУН талд «олгогдох нийт санхүүжилт» (график дээр биш)
-  const note =
-    total > 0 ? (
-      <span className={ts.totNote}>
-        {tr('Олгогдох нийт:')} <b>{num(total)} ₮</b>
-      </span>
-    ) : undefined;
-
-  return (
-    <Section tone="primary" title={title} note={note}>
-      {finQ.state === 'loading' ? (
-        <Empty label={tr('Санхүүжилтийн дата…')} />
-      ) : finQ.state === 'error' ? (
-        <Data q={finQ}>{() => null}</Data>
-      ) : noRow ? (
-        <Empty label={tr('Cashflow-д энэ багцын гэрээ бүртгэлгүй.')} />
-      ) : months ? (
-        <>
-          {/* Үзүүлэлтийн мөрийг нуух/харуулах — ГРАФИКТ огт нөлөөлөхгүй */}
-          <button
-            type="button"
-            className={ts.kpiToggle}
-            aria-expanded={kpiOpen}
-            onClick={() => setKpiOpen((v) => !v)}
-          >
-            <span className={`${ts.kpiCaret} ${kpiOpen ? '' : ts.kpiCaretOff}`} aria-hidden>▾</span>
-            {tr('Үзүүлэлтүүд')}
-          </button>
-          {/* ⚠️ 2026-08-21 (хэрэглэгчийн хүсэлт): KPI-ийн утгууд НЭГ өнгөөр —
-              урьд нь графикийн цувааны өнгө + төлөвийн улаан/ногоон холилдож
-              байсныг болиулав. Цувааны өнгө legend + график дээрээ үлдэнэ.
-              Нэгж нь товчилсон («тэрб. ₮») — нарийхан нүдэнд багтана. */}
-          {kpiOpen && (
-          <div className={ts.finKpi}>
-            {[
-              { v: mntAbbr(total), l: tr('Cashflow төлөвлөсөн'), c: 'var(--ink)' },
-              {
-                v: (
-                  <>
-                    {mntAbbr(givenTotal)}
-                    {/**
-                      * ⚠️ 2026-08-20: Хувийг ТУСДАА МӨРӨНД. Урьд нь утгын хажууд
-                      * мөрлөж байсан бөгөөд `.finKpiVal` нь `nowrap` тул
-                      * «314.5 тэрбум ₮ 27%» нь нүдний 1fr өргөнөөс ХАЛЬЖ, «27%»
-                      * баруун хүрээн дээгүүр гарч бичигддэг байв.
-                      */}
-                    {givenShare != null && (
-                      <small style={{ display: 'block', fontSize: '0.72em', opacity: 0.7, fontWeight: 600 }}>
-                        {givenShare.toFixed(0)}%
-                      </small>
-                    )}
-                  </>
-                ),
-                l: tr('IPC олгосон'),
-                c: 'var(--ink)',
-              },
-              /* ⚠️ envhub: эерэг зөрүү нь хэвийн үлдэгдэл тул ТОГТМОЛ warn өнгө
-                 нь худал дохио байв — төлөв заадаггүй утга var(--ink)-ээр. */
-              { v: mntAbbr(finGap), l: tr('Санхүүжилтийн зөрүү'), c: 'var(--ink)' },
-              /* ⚠️ Гүйцэтгэлийн гурван хувь ЗӨВХӨН нэгдсэн горимд — санхүүгийн
-                 харагдацад биет явц огт харагдахгүй (2026-08-21). */
-              ...(finOnly ? [] : [
-                { v: plannedPct == null ? '—' : pct(plannedPct, 1), l: tr('Төлөвлөгөөт гүйцэтгэл'), c: 'var(--ink)' },
-                { v: actualPct == null ? '—' : pct(actualPct, 1), l: tr('Бодит гүйцэтгэл'), c: 'var(--ink)' },
-                { v: gapText, l: tr('Гүйцэтгэлийн зөрүү'), c: 'var(--ink)' },
-              ]),
-              /* ⚠️ «Давхцсан үлдсэн нэгж талбар» индикатор ЭНДЭЭС ХАСАГДАВ
-                 (2026-08-21): нэгдсэн тоо нь аль багц саадтайг хэлдэггүй
-                 байсан тул багцаар задарч «Багц N — блокууд» картуудын
-                 толгойд очив. */
-            ].map((k) => (
-              <div key={k.l}>
-                <span className={`${ts.finKpiVal} num`} style={{ color: k.c }}>{k.v}</span>
-                <span className={ts.finKpiLabel}>{k.l}</span>
-              </div>
-            ))}
-          </div>
-          )}
-          <div className={ts.finLegend}>
-            <span><i style={{ background: cat(2) }} />{tr('Төлөвлөгөө өссөн ₮')}</span>
-            <span><i style={{ background: cat(0) }} />{tr('Санхүүжилт өссөн ₮')}</span>
-            {!finOnly && <span><i style={{ background: cat(1) }} />{tr('Биет гүйцэтгэл %')}</span>}
-          </div>
-          <ComboChart
-            items={months}
-            height={chartH}
-            lagMonth={finOnly ? undefined : lag?.month}
-            lagLvl={finOnly ? null : lvl}
-            hidePhys={finOnly}
-          />
-        </>
-      ) : null}
-    </Section>
-  );
-}
 
 /**
  * ТӨСЛИЙН НЭГДСЭН сарын цэгүүд: төлөвлөгөө = бүх гэрээний сарын нийлбэр,
@@ -1345,3 +1031,103 @@ function aggregateMonths(d: FinData) {
     };
   });
 }
+
+/**
+ * ЭХ ӨГӨГДӨЛ — `Selbe_guitsetgel_consolidated` хүснэгтийн ТҮҮХИЙ мөрүүд.
+ *
+ * ⚠️ Дэлгэц дээрх БҮХ гүйцэтгэлийн хувь (блокийн өнгө, барилгын хяналт, KPI,
+ *    тайлан) ЭНЭ хүснэгтээс гардаг ч хэрэглэгч түүнийг хэзээ ч ХАРЖ
+ *    чаддаггүй байв. «45% гэж хаанаас гарав» гэсэн асуултад хариулах арга
+ *    байхгүй бол тоонд итгэх үндэс ч байхгүй.
+ *
+ * ⚠️ Хүснэгт 122 мянган мөртэй тул БҮГДИЙГ татахгүй: сонгосон багц (эсвэл
+ *    блок)-оор шүүж, хамгийн сүүлийн 300 мөрийг л авна. Толгойд НИЙТ тоо ба
+ *    хамгийн сүүлийн огноог бичнэ — «энэ өгөгдөл хэзээнийх вэ» гэдэг нь
+ *    мөрүүдээс илүү чухал.
+ */
+function SourceRows({ bagts, blok }: { bagts: string; blok: string | null }) {
+  const q = useAsync(async () => {
+    const S = TASK_SHEET.fields;
+    const esc = (v: string) => v.replace(/'/g, "''");
+    const where = [
+      `${S.bagts} = N'${esc(bagts)}'`,
+      blok ? `${S.block} LIKE N'${esc(blok)} %'` : null,
+    ].filter(Boolean).join(' AND ');
+    const rows = await queryFeatures(TASK_SHEET.url, {
+      where,
+      outFields: [
+        S.date, S.version, S.no, S.level, S.work,
+        S.section, S.block, S.weight, S.progress,
+      ],
+      /* Хамгийн сүүлийн бичилт ДЭЭР — хуучин мөрөөр эхэлбэл шинэ өгөгдөл
+         300 мөрийн доор үлдэж, «шинэчлэгдээгүй» мэт харагдана. */
+      orderBy: `${S.date} DESC, ${TASK_SHEET.oid} DESC`,
+      limit: 300,
+    });
+    return rows;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bagts, blok]);
+
+  const S = TASK_SHEET.fields;
+  return (
+    <Section
+      title={tr('Эх өгөгдөл — гүйцэтгэлийн хүснэгт')}
+      note={blok ? tr('{0} · {1}', bagts, blok) : bagts}
+      collapsible
+      defaultClosed
+    >
+      <Data q={q}>
+        {(rows) => {
+          if (!rows.length) return <Empty label={tr('Энэ сонголтод мөр алга.')} />;
+          const last = rows.reduce((m, r) => {
+            const d = String(r[S.date] ?? '');
+            return d > m ? d : m;
+          }, '');
+          return (
+            <>
+              <p className={ts.srcNote}>
+                {tr('{0} мөр харуулав · сүүлийн бичилт {1}', num(rows.length), last || '—')}
+              </p>
+              <div className={ts.srcWrap}>
+                <ResizableTable storeKey={`pkgprog.src.${blok ?? bagts}`} className={ts.srcTbl}>
+                  <thead>
+                    <tr>
+                      <th>{tr('Огноо')}</th>
+                      <th>{tr('Блок')}</th>
+                      <th>{tr('№')}</th>
+                      <th>{tr('Ажил')}</th>
+                      <th>{tr('Хэсэг')}</th>
+                      <th>{tr('Жин')}</th>
+                      <th>{tr('Гүйцэтгэл')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((r, i) => (
+                      <tr key={i}>
+                        <td className="num">{String(r[S.date] ?? '')}</td>
+                        <td>{String(r[S.block] ?? '')}</td>
+                        <td className="num">{String(r[S.no] ?? '')}</td>
+                        <td title={String(r[S.work] ?? '')}>{String(r[S.work] ?? '')}</td>
+                        <td>{String(r[S.section] ?? '')}</td>
+                        <td className="num">{fmtW(r[S.weight])}</td>
+                        {/* ⚠️ Гүйцэтгэл нь 0–1 БУТАРХАЙ — 100-аар үржүүлж хувь болгоно */}
+                        <td className="num">{fmtP(r[S.progress])}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </ResizableTable>
+              </div>
+            </>
+          );
+        }}
+      </Data>
+    </Section>
+  );
+}
+
+/** Хувийн жин — бутархайг хувиар; хоосныг «—» */
+const fmtW = (v: unknown) =>
+  typeof v === 'number' && Number.isFinite(v) ? pct(v * 100, 2) : '—';
+/** Гүйцэтгэл 0–1 → хувь */
+const fmtP = (v: unknown) =>
+  typeof v === 'number' && Number.isFinite(v) ? pct(v * 100, 1) : '—';
