@@ -1329,6 +1329,7 @@ export function Trend({
   unit = '%',
   visible,
   showValues = false,
+  alert,
 }: {
   points: TrendPoint[];
   color?: string;
@@ -1343,6 +1344,11 @@ export function Trend({
   visible?: number;
   /** Цэг бүрийн утгыг муруйн дээр тоогоор бичих эсэх. */
   showValues?: boolean;
+  /**
+   * Анхааруулгын босго — шугам зурж, түүнээс ДЭЭШ гарсан цэгүүдийг улаанаар
+   * онцолно. Чиглэл нь үргэлж «дээш» (дуудагч тал утгаа тэр дагуу сонгоно).
+   */
+  alert?: { value: number; note?: string };
 }) {
   const [hov, setHov] = useState<number | null>(null);
   // Тэнхлэгийн БОДИТ өргөн — хэдэн шошго давхцалгүй багтахыг үүгээр шийднэ.
@@ -1371,7 +1377,12 @@ export function Trend({
 
   // Тэнхлэгийн дээд хязгаар нь БҮТЭН аравт — 23%-ийн муруйг 0–100 дээр зурвал
   // шулуун шугам болж, өсөлт нь ялгагдахгүй.
-  const peak = Math.max(...points.map((p) => fin(p.value)));
+  /**
+   * ⚠️ Босгыг оргилын тооцоонд ЗААВАЛ оруулна: өгөгдлөөс ДЭЭГҮҮР босго
+   * (жишээ нь 26°C хүрдэг агаарт 28°C-ийн шугам) тэнхлэгээс гарч, шугам нь
+   * ОГТ ЗУРАГДАХГҮЙ — хэрэглэгч босго байхгүй гэж эндүүрнэ.
+   */
+  const peak = Math.max(...points.map((p) => fin(p.value)), alert ? alert.value : 0);
   const top = Math.max(10, Math.ceil(peak / 10) * 10);
   /**
    * ⚠️ Утга бичих үед хамгийн өндөр цэг нь y≈0%-д буудаг тул түүний дээрх
@@ -1383,6 +1394,10 @@ export function Trend({
   const y = (v: number) => 100 - (fin(v) / axisTop) * 100;
 
   const path = points.map((p, i) => `${x(i)},${y(p.value)}`).join(' ');
+
+  /** Цэг нь босгоос ДЭЭШ гарсан уу */
+  const over = (v: number) => alert != null && fin(v) > alert.value;
+  const alertY = alert ? y(alert.value) : 0;
 
   /**
    * ХЭВТЭЭ ГҮЙЛТ ба ЦЭГ БҮРИЙН ШОШГО — хоёр ТУСДАА шийдэл.
@@ -1444,7 +1459,9 @@ export function Trend({
   return (
     <div className={s.trend} style={tone(color)}>
       <div className={s.trendHead}>
-        <span className={`${s.trendValue} num`}>
+        {/* Сонгосон цэг анхааруулгын мужид бол уншилтын тоо ч улаанаар —
+            чартаас нүд салгасан хэрэглэгч ч төлөвийг нэг харцаар мэднэ. */}
+        <span className={`${s.trendValue} num ${over(cur.value) ? s.trendValueAlert : ''}`}>
           {fin(cur.value).toFixed(1)}{unit}
         </span>
         <span className={s.trendMeta}>
@@ -1476,7 +1493,28 @@ export function Trend({
               </defs>
               <polygon points={`0,100 ${path} 100,100`} style={{ fill: `url(#${gradId})` }} />
               <polyline className={s.trendLine} points={path} />
+              {/* Босгын шугам — муруйн ДЭЭГҮҮР зурагдана (эс бөгөөс градиент дарна) */}
+              {alert ? (
+                <line
+                  className={s.trendThresh}
+                  x1="0"
+                  y1={alertY}
+                  x2="100"
+                  y2={alertY}
+                />
+              ) : null}
             </svg>
+
+            {/* Босгын тоо — шугамын баруун үзүүрт. `title`-д нь шалтгаан. */}
+            {alert ? (
+              <span
+                className={s.trendThreshTag}
+                style={{ top: `${alertY}%` }}
+                title={alert.note ?? ''}
+              >
+                {alert.value}{unit}
+              </span>
+            ) : null}
 
             {points.map((p, i) => (
               <button
@@ -1498,11 +1536,17 @@ export function Trend({
                 onFocus={() => setHov(i)}
                 onBlur={() => setHov((h) => (h === i ? null : h))}
               >
-                <span className={s.trendDot} style={{ top: `${y(p.value)}%` }} />
+                <span
+                  className={`${s.trendDot} ${over(p.value) ? s.trendDotAlert : ''}`}
+                  style={{ top: `${y(p.value)}%` }}
+                />
                 {showValues ? (
                   /* ⚠️ Бүхэл тоог «.0»-гүй бичнэ: 8 бичиг зэрэгцэхэд илүү
                      тэмдэгт бүр давхцлын эрсдэл — «98» нь «98.0»-аас нарийн. */
-                  <span className={s.trendVal} style={{ top: `${y(p.value)}%` }}>
+                  <span
+                    className={`${s.trendVal} ${over(p.value) ? s.trendValAlert : ''}`}
+                    style={{ top: `${y(p.value)}%` }}
+                  >
                     {Number.isInteger(fin(p.value)) ? fin(p.value) : fin(p.value).toFixed(1)}
                   </span>
                 ) : null}
