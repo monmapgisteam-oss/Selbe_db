@@ -1407,18 +1407,55 @@
 }
 .shell[data-detail='1'][data-sec='network'] .zTop .panelHead { display: none; }
 .shell[data-detail='1'][data-sec='network'] .zTop .panelBody { padding: 0; overflow: visible; }
+/* ⚠️ ТОЙМ ГОРИМЫН `.head` ЗУРВАСЫГ ХУУЛСАН (2026-08-27) — 01–04-тэй ижил.
+ *
+ * 6 үзүүлэлт НЭГ МӨРӨНД: `auto-fit` нь өргөнөөс хамаараад 5 + 1 болж сүүлийн
+ * нүдийг ганцаараа доош унагаадаг тул `grid-auto-flow: column` — хэдэн нүд
+ * байхаас үл хамааран нэг эгнээ. Нүд бүр `minmax(0, 1fr)` тул тэнцүү.
+ *
+ * ⚠️ Загварыг `.head`-тэй ч, хөрш хэсгүүдтэй ч НЭГТГЭЭГҮЙ — ХУУЛСАН. 9 хэсэг
+ * бүр өөрийн загвартай байх ёстой (хэрэглэгчийн шаардлага): нийтлэг селектор
+ * ашиглавал энд хийсэн өөрчлөлт хөрш хэсгүүд рүү чимээгүй тарна. */
 .shell[data-detail='1'][data-sec='network'] .zTop :global(.statsGrid) {
-  grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
-  gap: 9px;
-  background: transparent;
-  border: none;
-  border-radius: 0;
-  overflow: visible;
-}
-.shell[data-detail='1'][data-sec='network'] .zTop :global(.statsGrid) > * {
-  background: var(--surface);
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-template-columns: none;
+  /* Нэг hairline хайрцаг — дотор нь 1px заагтай нүднүүд (тоймын `.head`) */
+  gap: 1px;
+  background: var(--line);
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
+  overflow: hidden;
+}
+/* Нүд бүр өөрийн хүрээгүй — зааг нь савны `gap`-аас гарна; агуулга ГОЛЛУУЛСАН */
+.shell[data-detail='1'][data-sec='network'] .zTop :global(.statsGrid) > * {
+  background: var(--surface);
+  border: none;
+  border-radius: 0;
+  padding: 11px 12px;
+  gap: 7px;
+  align-items: center;
+  text-align: center;
+}
+/* Тоо — зурвасын гол мэдээлэл (тоймын `.tileVal b` 17px-ээс томруулсан) */
+.shell[data-detail='1'][data-sec='network'] .zTop :global(.statNum) {
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+/* Шошго — тоймын `.tileLabel` (10.5px uppercase, eyebrow) */
+.shell[data-detail='1'][data-sec='network'] .zTop :global(.statTag) {
+  width: 100%;
+  text-align: center;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  line-height: 1.25;
+  color: var(--ink-3);
 }
 .shell[data-detail='1'][data-sec='network'] .zTop :global(.barsList),
 .shell[data-detail='1'][data-sec='network'] .zTop :global(.rowsList) {
@@ -1468,18 +1505,57 @@
 }
 .shell[data-detail='1'][data-sec='power'] .zTop .panelHead { display: none; }
 .shell[data-detail='1'][data-sec='power'] .zTop .panelBody { padding: 0; overflow: visible; }
+/* ⚠️ ТОЙМ ГОРИМЫН `.head` ЗУРВАСЫГ ХУУЛСАН (2026-08-27) — 01–05-тай ижил.
+ *
+ * 6 үзүүлэлт НЭГ МӨРӨНД: `auto-fit` нь өргөнөөс хамаараад сүүлийн нүдийг
+ * ганцаараа доош унагаадаг тул `grid-auto-flow: column` — хэдэн нүд байхаас
+ * үл хамааран нэг эгнээ. Нүд бүр `minmax(0, 1fr)` тул тэнцүү хуваагдана.
+ *
+ * ⚠️ Загварыг `.head`-тэй ч, хөрш хэсгүүдтэй ч НЭГТГЭЭГҮЙ — ХУУЛСАН. 9 хэсэг
+ * бүр өөрийн загвартай байх ёстой (хэрэглэгчийн шаардлага): нийтлэг селектор
+ * ашиглавал энд хийсэн өөрчлөлт хөрш хэсгүүд рүү чимээгүй тарна. */
 .shell[data-detail='1'][data-sec='power'] .zTop :global(.statsGrid) {
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 10px;
-  background: transparent;
-  border: none;
-  border-radius: 0;
-  overflow: visible;
-}
-.shell[data-detail='1'][data-sec='power'] .zTop :global(.statsGrid) > * {
-  background: var(--surface);
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-template-columns: none;
+  /* Нэг hairline хайрцаг — дотор нь 1px заагтай нүднүүд (тоймын `.head`) */
+  gap: 1px;
+  background: var(--line);
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
+  overflow: hidden;
+}
+/* Нүд бүр өөрийн хүрээгүй — зааг нь савны `gap`-аас гарна; агуулга ГОЛЛУУЛСАН */
+.shell[data-detail='1'][data-sec='power'] .zTop :global(.statsGrid) > * {
+  background: var(--surface);
+  border: none;
+  border-radius: 0;
+  padding: 11px 12px;
+  gap: 7px;
+  align-items: center;
+  text-align: center;
+}
+/* Тоо — зурвасын гол мэдээлэл (тоймын `.tileVal b` 17px-ээс томруулсан) */
+.shell[data-detail='1'][data-sec='power'] .zTop :global(.statNum) {
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+/* Шошго — тоймын `.tileLabel` (10.5px uppercase, eyebrow).
+   ⚠️ Дэд станцын нэр урт тул хоёр мөрөнд БАГТАНА (`shortSrc` аль хэдийн
+   тайрсан ч «Төгөл 35/10» гэх мэт нэр 1 мөрөнд багтахгүй өргөн байж болно). */
+.shell[data-detail='1'][data-sec='power'] .zTop :global(.statTag) {
+  width: 100%;
+  text-align: center;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  line-height: 1.25;
+  color: var(--ink-3);
 }
 .shell[data-detail='1'][data-sec='power'] .zTop :global(.barsList),
 .shell[data-detail='1'][data-sec='power'] .zTop :global(.rowsList) {
@@ -1527,18 +1603,57 @@
 }
 .shell[data-detail='1'][data-sec='source'] .zTop .panelHead { display: none; }
 .shell[data-detail='1'][data-sec='source'] .zTop .panelBody { padding: 0; overflow: visible; }
+/* ⚠️ ТОЙМ ГОРИМЫН `.head` ЗУРВАСЫГ ХУУЛСАН (2026-08-27) — 01–06-тай ижил.
+ *
+ * 6 үзүүлэлт НЭГ МӨРӨНД: `auto-fit` нь өргөнөөс хамаараад сүүлийн нүдийг
+ * ганцаараа доош унагаадаг тул `grid-auto-flow: column` — хэдэн нүд байхаас
+ * үл хамааран нэг эгнээ. Нүд бүр `minmax(0, 1fr)` тул тэнцүү хуваагдана.
+ *
+ * ⚠️ Загварыг `.head`-тэй ч, хөрш хэсгүүдтэй ч НЭГТГЭЭГҮЙ — ХУУЛСАН. 9 хэсэг
+ * бүр өөрийн загвартай байх ёстой (хэрэглэгчийн шаардлага): нийтлэг селектор
+ * ашиглавал энд хийсэн өөрчлөлт хөрш хэсгүүд рүү чимээгүй тарна. */
 .shell[data-detail='1'][data-sec='source'] .zTop :global(.statsGrid) {
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  gap: 10px;
-  background: transparent;
-  border: none;
-  border-radius: 0;
-  overflow: visible;
-}
-.shell[data-detail='1'][data-sec='source'] .zTop :global(.statsGrid) > * {
-  background: var(--surface);
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-template-columns: none;
+  /* Нэг hairline хайрцаг — дотор нь 1px заагтай нүднүүд (тоймын `.head`) */
+  gap: 1px;
+  background: var(--line);
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
+  overflow: hidden;
+}
+/* Нүд бүр өөрийн хүрээгүй — зааг нь савны `gap`-аас гарна; агуулга ГОЛЛУУЛСАН */
+.shell[data-detail='1'][data-sec='source'] .zTop :global(.statsGrid) > * {
+  background: var(--surface);
+  border: none;
+  border-radius: 0;
+  padding: 11px 12px;
+  gap: 7px;
+  align-items: center;
+  text-align: center;
+}
+/* Тоо — зурвасын гол мэдээлэл (тоймын `.tileVal b` 17px-ээс томруулсан) */
+.shell[data-detail='1'][data-sec='source'] .zTop :global(.statNum) {
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+/* Шошго — тоймын `.tileLabel` (10.5px uppercase, eyebrow).
+   ⚠️ Дэд станцын нэр урт тул хоёр мөрөнд БАГТАНА (`shortSrc` аль хэдийн
+   тайрсан ч «Төгөл 35/10» гэх мэт нэр 1 мөрөнд багтахгүй өргөн байж болно). */
+.shell[data-detail='1'][data-sec='source'] .zTop :global(.statTag) {
+  width: 100%;
+  text-align: center;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  line-height: 1.25;
+  color: var(--ink-3);
 }
 .shell[data-detail='1'][data-sec='source'] .zTop :global(.barsList),
 .shell[data-detail='1'][data-sec='source'] .zTop :global(.rowsList) {
@@ -1588,18 +1703,57 @@
 }
 .shell[data-detail='1'][data-sec='finance'] .zTop .panelHead { display: none; }
 .shell[data-detail='1'][data-sec='finance'] .zTop .panelBody { padding: 0; overflow: visible; }
+/* ⚠️ ТОЙМ ГОРИМЫН `.head` ЗУРВАСЫГ ХУУЛСАН (2026-08-27) — 01–07-тай ижил.
+ *
+ * 6 үзүүлэлт НЭГ МӨРӨНД: `auto-fit` нь өргөнөөс хамаараад сүүлийн нүдийг
+ * ганцаараа доош унагаадаг тул `grid-auto-flow: column` — хэдэн нүд байхаас
+ * үл хамааран нэг эгнээ. Нүд бүр `minmax(0, 1fr)` тул тэнцүү хуваагдана.
+ *
+ * ⚠️ Загварыг `.head`-тэй ч, хөрш хэсгүүдтэй ч НЭГТГЭЭГҮЙ — ХУУЛСАН. 9 хэсэг
+ * бүр өөрийн загвартай байх ёстой (хэрэглэгчийн шаардлага): нийтлэг селектор
+ * ашиглавал энд хийсэн өөрчлөлт хөрш хэсгүүд рүү чимээгүй тарна. */
 .shell[data-detail='1'][data-sec='finance'] .zTop :global(.statsGrid) {
-  grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
-  gap: 10px;
-  background: transparent;
-  border: none;
-  border-radius: 0;
-  overflow: visible;
-}
-.shell[data-detail='1'][data-sec='finance'] .zTop :global(.statsGrid) > * {
-  background: var(--surface);
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-template-columns: none;
+  /* Нэг hairline хайрцаг — дотор нь 1px заагтай нүднүүд (тоймын `.head`) */
+  gap: 1px;
+  background: var(--line);
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
+  overflow: hidden;
+}
+/* Нүд бүр өөрийн хүрээгүй — зааг нь савны `gap`-аас гарна; агуулга ГОЛЛУУЛСАН */
+.shell[data-detail='1'][data-sec='finance'] .zTop :global(.statsGrid) > * {
+  background: var(--surface);
+  border: none;
+  border-radius: 0;
+  padding: 11px 12px;
+  gap: 7px;
+  align-items: center;
+  text-align: center;
+}
+/* Тоо — зурвасын гол мэдээлэл (тоймын `.tileVal b` 17px-ээс томруулсан) */
+.shell[data-detail='1'][data-sec='finance'] .zTop :global(.statNum) {
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+/* Шошго — тоймын `.tileLabel` (10.5px uppercase, eyebrow).
+   ⚠️ Дэд станцын нэр урт тул хоёр мөрөнд БАГТАНА (`shortSrc` аль хэдийн
+   тайрсан ч «Төгөл 35/10» гэх мэт нэр 1 мөрөнд багтахгүй өргөн байж болно). */
+.shell[data-detail='1'][data-sec='finance'] .zTop :global(.statTag) {
+  width: 100%;
+  text-align: center;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  line-height: 1.25;
+  color: var(--ink-3);
 }
 .shell[data-detail='1'][data-sec='finance'] .zTop :global(.barsList),
 .shell[data-detail='1'][data-sec='finance'] .zTop :global(.rowsList) {
@@ -1649,18 +1803,57 @@
 }
 .shell[data-detail='1'][data-sec='benefit'] .zTop .panelHead { display: none; }
 .shell[data-detail='1'][data-sec='benefit'] .zTop .panelBody { padding: 0; overflow: visible; }
+/* ⚠️ ТОЙМ ГОРИМЫН `.head` ЗУРВАСЫГ ХУУЛСАН (2026-08-27) — 01–08-тай ижил.
+ *
+ * 8 үзүүлэлт НЭГ МӨРӨНД: `auto-fit` нь өргөнөөс хамаараад сүүлийн нүдийг
+ * ганцаараа доош унагаадаг тул `grid-auto-flow: column` — хэдэн нүд байхаас
+ * үл хамааран нэг эгнээ. Нүд бүр `minmax(0, 1fr)` тул тэнцүү хуваагдана.
+ *
+ * ⚠️ Загварыг `.head`-тэй ч, хөрш хэсгүүдтэй ч НЭГТГЭЭГҮЙ — ХУУЛСАН. 9 хэсэг
+ * бүр өөрийн загвартай байх ёстой (хэрэглэгчийн шаардлага): нийтлэг селектор
+ * ашиглавал энд хийсэн өөрчлөлт хөрш хэсгүүд рүү чимээгүй тарна. */
 .shell[data-detail='1'][data-sec='benefit'] .zTop :global(.statsGrid) {
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 10px;
-  background: transparent;
-  border: none;
-  border-radius: 0;
-  overflow: visible;
-}
-.shell[data-detail='1'][data-sec='benefit'] .zTop :global(.statsGrid) > * {
-  background: var(--surface);
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-template-columns: none;
+  /* Нэг hairline хайрцаг — дотор нь 1px заагтай нүднүүд (тоймын `.head`) */
+  gap: 1px;
+  background: var(--line);
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
+  overflow: hidden;
+}
+/* Нүд бүр өөрийн хүрээгүй — зааг нь савны `gap`-аас гарна; агуулга ГОЛЛУУЛСАН */
+.shell[data-detail='1'][data-sec='benefit'] .zTop :global(.statsGrid) > * {
+  background: var(--surface);
+  border: none;
+  border-radius: 0;
+  padding: 11px 12px;
+  gap: 7px;
+  align-items: center;
+  text-align: center;
+}
+/* Тоо — зурвасын гол мэдээлэл (тоймын `.tileVal b` 17px-ээс томруулсан) */
+.shell[data-detail='1'][data-sec='benefit'] .zTop :global(.statNum) {
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+/* Шошго — тоймын `.tileLabel` (10.5px uppercase, eyebrow).
+   ⚠️ Дэд станцын нэр урт тул хоёр мөрөнд БАГТАНА (`shortSrc` аль хэдийн
+   тайрсан ч «Төгөл 35/10» гэх мэт нэр 1 мөрөнд багтахгүй өргөн байж болно). */
+.shell[data-detail='1'][data-sec='benefit'] .zTop :global(.statTag) {
+  width: 100%;
+  text-align: center;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  line-height: 1.25;
+  color: var(--ink-3);
 }
 .shell[data-detail='1'][data-sec='benefit'] .zTop :global(.barsList),
 .shell[data-detail='1'][data-sec='benefit'] .zTop :global(.rowsList) {
