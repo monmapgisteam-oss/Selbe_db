@@ -415,8 +415,8 @@ export function computeAll(
     for (let b = 0; b < n; b++) {
       const os = pickDate(dateEdits[`${r.oid}:${b}:s`], r.start[b]);
       const oe = pickDate(dateEdits[`${r.oid}:${b}:e`], r.end[b]);
-      if (os != null) (St[i][b] = os), (StSrc[i][b] = "own");
-      if (oe != null) (En[i][b] = oe), (EnSrc[i][b] = "own");
+      if (os != null) { St[i][b] = os; StSrc[i][b] = "own"; }
+      if (oe != null) { En[i][b] = oe; EnSrc[i][b] = "own"; }
       if (!kids[i].length) continue;
       if (St[i][b] == null) {
         let m: number | null = null;
@@ -424,7 +424,7 @@ export function computeAll(
           const v = St[k][b];
           if (v != null && (m == null || v < m)) m = v;
         }
-        if (m != null) (St[i][b] = m), (StSrc[i][b] = "agg");
+        if (m != null) { St[i][b] = m; StSrc[i][b] = "agg"; }
       }
       if (En[i][b] == null) {
         let m: number | null = null;
@@ -432,7 +432,7 @@ export function computeAll(
           const v = En[k][b];
           if (v != null && (m == null || v > m)) m = v;
         }
-        if (m != null) (En[i][b] = m), (EnSrc[i][b] = "agg");
+        if (m != null) { En[i][b] = m; EnSrc[i][b] = "agg"; }
       }
     }
   }

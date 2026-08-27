@@ -79,7 +79,7 @@ export default function Wbs() {
   const toggle = (dd: string) =>
     setCollapsed((s) => {
       const n = new Set(s);
-      n.has(dd) ? n.delete(dd) : n.add(dd);
+      if (n.has(dd)) n.delete(dd); else n.add(dd);
       return n;
     });
 

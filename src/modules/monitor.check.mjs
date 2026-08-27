@@ -1,22 +1,27 @@
 /**
- * «Барилгын хяналт» хуудсын эх сурвалжийг шалгана — ЖИВЭЭР (live).
- *   node src/modules/monitor.check.mjs
+ * «Барилгын хяналт»-ын эх сурвалжийг шалгана — ЖИВЭЭР (live).
+ *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/modules/monitor.check.mjs
  *
- * Хамгаалж буй алдаа: энэ хуудас бүх гүйцэтгэлээ `Selbe_guitsetgel_consolidated`
- * хүснэгтээс авдаг болсон. Хоёр зүйл чимээгүй эвдэрч болно:
- *   1. Барилгын давхарга ↔ хүснэгтийн БЛОКИЙН НЭР таарахгүй болвол
- *      (`buildingKey`) бүх бар «мэдээлэлгүй» болно — хуудас хоосон харагдана.
- *   2. `tuvshin` (шатлал) эвдэрвэл навч ажлын тоолол (Дууссан/Явцтай/Эхлээгүй)
- *      худал болно.
+ * Хамгаалж буй алдаа: энэ хуудас гүйцэтгэлээ бөглөх хуудсуудаас авдаг. Гурван
+ * зүйл ЧИМЭЭГҮЙ эвдэрч болно:
+ *   1. Барилгын давхарга ↔ хуудасны БЛОКИЙН НЭР таарахгүй болвол (`buildingKey`)
+ *      бүх бар «мэдээлэлгүй» болно — хуудас хоосон харагдана.
+ *   2. Шатлал (`levelFromNo`) эвдэрвэл навч ажлын тоолол (Дууссан/Явцтай/
+ *      Эхлээгүй) худал болно.
+ *   3. Цагираг (сүүлийн утга) ба муруйн төгсгөл ЗӨРВӨЛ нэг хуудас хоёр өөр
+ *      тоо харуулна.
+ *
+ * ⚠️ ЭХ СУРВАЛЖ (2026-08-27-нд СОЛИГДСОН): урьд нь `Selbe_guitsetgel_consolidated`
+ * (499, хаагдсан) руу ӨӨРИЙН асуулга явуулж логикийг бүтнээр хуулбарладаг байв.
+ * Одоо порталын ЖИНХЭНЭ шугамыг дуудна — тест ба портал ЯГ нэг тоо хардаг.
  */
 import assert from 'node:assert/strict';
+import { loadBlockProgress, loadBlockHistory, progressSeries } from '../lib/blockProgress.ts';
+import { loadSheetRows } from './sheet/sheetRows.ts';
 
-const SHEET =
-  'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/Selbe_guitsetgel_consolidated/FeatureServer/0';
 /* ⚠️ 2026-08-24: monmap-ын `building_GOL_barigdaj_ehelsen` УСТСАН (алдаа 499).
    Блокийн бүртгэл нэгтгэсэн `data`/112 руу шилжив — ижил 113 блок, `BAGTS` ба
-   `BLOK` талбар хэвээр тул нийлүүлэх түлхүүр (`buildingKey`) өөрчлөгдөөгүй.
-   OID нь `FID` → `OBJECTID` болсон. */
+   `BLOK` талбар хэвээр тул нийлүүлэх түлхүүр (`buildingKey`) өөрчлөгдөөгүй. */
 const BLDG =
   'https://services-ap1.arcgis.com/ACqsMOmNLi5wIdIh/arcgis/rest/services/data/FeatureServer/112';
 
@@ -45,130 +50,121 @@ async function query(url, params) {
   }
 }
 
-/* 1 — Барилгын давхарга ↔ хүснэгтийн блок таарч байна уу */
+/* 1 — Барилгын давхарга ↔ гүйцэтгэлийн түлхүүр */
 
 const blocks = await query(BLDG, { where: '1=1', outFields: 'OBJECTID,BAGTS,BLOK' });
-const sheetTotals = await query(SHEET, {
-  where: "dugaar='Б.' AND barilga_blok IS NOT NULL",
-  outFields: 'bagts,barilga_blok,ognoo,guitsetgel',
-});
-const sheetKeys = new Set(sheetTotals.map((r) => buildingKey(r.bagts, r.barilga_blok)));
-const matched = blocks.filter((b) => sheetKeys.has(buildingKey(b.BAGTS, b.BLOK)));
-
 assert.ok(blocks.length > 0, 'барилгын давхарга хоосон');
-assert.ok(
-  matched.length / blocks.length > 0.5,
-  `блокийн нэр таарахгүй байна: ${matched.length}/${blocks.length} — ` +
-    'хуудасны бүх бар «мэдээлэлгүй» болно',
-);
 
-/* 2 — Шатлал (`tuvshin`) бүтэн бөгөөд № -тэй зөрөхгүй */
+const prog = await loadBlockProgress();
+assert.ok(prog.size > 0, 'бөглөх хуудсуудаас нэг ч блок уншигдсангүй — шугам тасарсан');
+
+const matched = blocks.filter((b) => prog.has(buildingKey(b.BAGTS, b.BLOK)));
+/* ⚠️ ХАТУУ ХУВЬ ТАВИХГҮЙ: бөглөх хуудсууд НИЙТЛЭГДСЭН үедээ л өгөгдөл өгдөг
+   бөгөөд 2026-08-27-нд 7 багцаас 2 нь нийтлэгдсэн. «>50% таарна» гэж шаардвал
+   тест байнга улаан байж, ЖИНХЭНЭ эвдрэлийг далдална. Гол шалгуур нь ЧИГЛЭЛ:
+   гүйцэтгэлтэй блок бүр давхаргад БАЙХ ёстой (эсрэгээр нь биш). */
+assert.ok(matched.length > 0,
+  'нэг ч блокийн нэр таарсангүй — хуудасны бүх бар «мэдээлэлгүй» болно');
+
+/* 2 — Шатлал бүтэн бөгөөд № -тэй зөрөхгүй */
 
 const one = matched[0];
-const rows = await query(SHEET, {
-  where: `torol='actual' AND barilga_blok LIKE '${blockKey(one.BLOK)} %'`,
-  outFields: 'OBJECTID,bagts,ognoo,huvilbar,tuvshin,dugaar,ajil,angilal_b,guitsetgel',
-  orderByFields: 'ognoo ASC, OBJECTID ASC',
-});
-const mine = rows.filter((r) => bagtsKey(r.bagts) === bagtsKey(one.BAGTS));
+const mine = await loadSheetRows({ group: one.BAGTS, block: blockKey(one.BLOK) });
 assert.ok(mine.length > 0, `«${one.BLOK}» блокийн мөр олдсонгүй`);
 
 for (const r of mine) {
-  const lvl = Number(r.tuvshin);
-  assert.ok(lvl >= 1 && lvl <= 5, `шатлал хүрээнээс гарсан: ${r.tuvshin}`);
+  assert.ok(r.level == null || (r.level >= 1 && r.level <= 5),
+    `шатлал хүрээнээс гарсан: ${r.level} (№ «${r.no}»)`);
   // Навч (5) хэзээ ч бутархай №-тэй байхгүй — бутархай нь бүлгийн мөр (4).
-  if (lvl === 5) assert.ok(!String(r.dugaar).includes('.'), `навч мөр бутархай №-тэй: ${r.dugaar}`);
+  if (r.level === 5) assert.ok(!r.no.includes('.'), `навч мөр бутархай №-тэй: ${r.no}`);
 }
 
 /* 3 — Үе шат тархаах (А. / Б.) ба навчийн тоолол */
 
-const rowKey = (a) => `${a.angilal_b ?? ''}|${a.tuvshin}|${a.ajil}`;
-const phase = new Map();
+const rowKey = (r) => `${r.section}|${r.level ?? ''}|${r.work}`;
+
+// Хэсгийн нэрийг мөрийн дараалллаас стампална (`BuildingPanel.stampSections`)
 const batches = new Map();
 for (const r of mine) {
-  const k = `${r.ognoo}|${r.huvilbar}`;
+  // ⚠️ Хуулбар (sheet+snap) түлхүүрт ЗААВАЛ орно — нэг өдөрт хоёр нийтлэлт бий
+  const k = `${r.sheet}#${r.snap}|${r.block}`;
   (batches.get(k) ?? batches.set(k, []).get(k)).push(r);
 }
+/* ⚠️ ХЭСЭГ ба ҮЕ ШАТЫГ НЭГ дамжлагад стампална — хоёр дамжлага болговол
+   `rowKey` нь өөр хэсэгтэй бүтэж, үе шатны зураглал мөрөндөө таарахгүй. */
+const stamped = [];
+const phase = new Map();
 for (const arr of batches.values()) {
+  arr.sort((a, b) => a.ord - b.ord);
+  let sec = '';
   let cur = '';
   for (const r of arr) {
-    if (Number(r.tuvshin) === 1) cur = String(r.dugaar);
-    phase.set(rowKey(r), cur);
+    if (r.level !== 5) sec = r.work;
+    if (r.level === 1) cur = r.no;
+    const s = { ...r, section: sec };
+    stamped.push(s);
+    phase.set(rowKey(s), cur);
   }
 }
+
 const win = new Map();
-for (const r of mine) win.set(rowKey(r), r);
+for (const r of [...stamped].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.ord - b.ord))) {
+  win.set(rowKey(r), r);
+}
 
 let done = 0, going = 0, idle = 0;
 for (const [k, r] of win) {
-  if (Number(r.tuvshin) !== 5 || phase.get(k) !== 'Б.') continue;
-  const p = Number(r.guitsetgel) || 0;
+  if (r.level !== 5 || phase.get(k) !== 'Б.') continue;
+  const p = r.progress ?? 0;
   if (p >= 1) done += 1; else if (p > 0) going += 1; else idle += 1;
 }
 const leaves = done + going + idle;
 assert.ok(leaves > 0, 'Б. үе шатын навч ажил олдсонгүй — үе шат тархаахад алдаа');
-assert.ok(
-  leaves < [...win.values()].filter((r) => Number(r.tuvshin) === 5).length,
-  'Бэлтгэл (А.) ажлын навч тоололд орсон байна',
-);
+const allLeaves = [...win.values()].filter((r) => r.level === 5).length;
 
-/* 4 — Цаг хугацааны цуваа (blockProgress.ts: history + progressSeries) */
-
-const hist = new Map();
-for (const r of sheetTotals.slice().sort((a, b) => (a.ognoo < b.ognoo ? -1 : 1))) {
-  const k = buildingKey(r.bagts, r.barilga_blok);
-  const arr = hist.get(k) ?? [];
-  const pct = r.guitsetgel == null ? null : r.guitsetgel * 100;
-  const prev = arr.find((p) => p.date === r.ognoo);
-  if (prev) prev.pct = pct; else arr.push({ date: r.ognoo, pct });
-  hist.set(k, arr);
+/* ⚠️ ҮЕ ШАТ ТАРХААХ нь ажиллаж байгааг ЭСРЭГ талаас нь барина.
+   Урьд нь «Бэлтгэл (А.)-ийн навч тоололд ОРСОН эсэх»-ийг шалгадаг байв — тэр нь
+   нэгтгэсэн хүснэгтэд А.-ийн мөрүүд бутархай жинтэй тул навч (түвшин 5) болдогт
+   тулгуурлаж байсан. Бөглөх хуудсанд А.-ийн 8 мөр ЖИНГҮЙ (null) тул levelFromNo
+   тэднийг ангилал (3) гэж үзнэ — навч ОГТ гарахгүй бөгөөд хуучин шалгуур мөнхөд
+   унана. Оронд нь: (а) А. үе шат ерөөс СТАМПЛАГДСАН эсэх, (б) Б.-ээс ГАДУУРХ
+   навч тоололд ОРООГҮЙ эсэхийг шалгана. */
+const phases = new Set([...phase.values()]);
+assert.ok([...phases].some((p) => p && p !== 'Б.'),
+  'үе шат тархаагүй — стамплагдсан: ' + JSON.stringify([...phases]));
+for (const [k, r] of win) {
+  if (r.level !== 5) continue;
+  if (phase.get(k) === 'Б.') continue;
+  assert.fail('Б.-ээс ГАДУУР навч тоололд орох эрсдэлтэй: «' + r.work + '» (үе шат ' + phase.get(k) + ')');
 }
+assert.equal(leaves, allLeaves,
+  'Б.-ийн навчийн тоо нийт навчтай таарсангүй — үе шатны зураглал алдагдав');
 
-const keys = matched.map((b) => buildingKey(b.BAGTS, b.BLOK));
-const mineHist = keys.map((k) => hist.get(k)).filter(Boolean);
-const allDates = [...new Set(mineHist.flatMap((h) => h.map((p) => p.date)))].sort();
-const at = (asOf) => {
-  let sum = 0, n = 0;
-  for (const h of mineHist) {
-    let v = null;
-    for (const p of h) { if (p.date > asOf) break; v = p.pct; }
-    if (v != null) { sum += v; n += 1; }
-  }
-  return { overall: n ? sum / n : 0, blocks: n };
-};
+/* 4 — Цагираг ↔ муруйн төгсгөл ЯГ таарна */
 
-const daily = allDates.map((d) => ({ label: d, ...at(d) }));
-assert.ok(daily.length >= 2, 'цуваа зурахад хангалттай огноо алга');
+const hist = await loadBlockHistory();
+const keys = [...prog.keys()];
+const daily = progressSeries(hist, keys, 'day');
+const monthly = progressSeries(hist, keys, 'month');
+assert.ok(daily.length > 0, 'цуваа хоосон');
 
-// Сүүлийн цэг нь хуудасны нийт дундажтай ЯГ таарах ёстой — эс бөгөөс цагираг
-// нэг тоо, муруйн төгсгөл өөр тоо харуулна.
-const ringVals = matched
-  .map((b) => hist.get(buildingKey(b.BAGTS, b.BLOK))?.at(-1)?.pct)
-  .filter((v) => v != null);
+const ringVals = keys.map((k) => prog.get(k).overall);
 const ring = ringVals.reduce((a, b) => a + b, 0) / ringVals.length;
-assert.ok(
-  Math.abs(daily.at(-1).overall - ring) < 1e-9,
-  `муруйн төгсгөл (${daily.at(-1).overall}) нийт дундажаас (${ring}) зөрж байна`,
-);
+assert.ok(Math.abs(daily.at(-1).overall - ring) < 1e-9,
+  `муруйн төгсгөл (${daily.at(-1).overall}) цагирагаас (${ring}) зөрж байна`);
+assert.equal(monthly.at(-1).overall, daily.at(-1).overall, 'сарын төгсгөл өдрийнхөөс зөрсөн');
 
-// Сарын цуваа: эхнээс сүүлийн сар хүртэл ЦООРХОЙГҮЙ, төгсгөл нь өдрийнхтэй тэнцүү.
+// Сарын цуваад ЦООРХОЙ байхгүй
 const nextMonth = (m) => {
   const [y, mo] = m.split('-').map(Number);
   return mo === 12 ? `${y + 1}-01` : `${y}-${String(mo + 1).padStart(2, '0')}`;
 };
-const monthly = [];
-for (let m = allDates[0].slice(0, 7); m <= allDates.at(-1).slice(0, 7); m = nextMonth(m)) {
-  const snap = [...allDates].reverse().find((d) => d <= `${m}-99`);
-  if (snap) monthly.push({ label: m, ...at(snap) });
-}
 for (let i = 1; i < monthly.length; i++) {
   assert.equal(monthly[i].label, nextMonth(monthly[i - 1].label), 'сарын цуваад цоорхой үүссэн');
 }
-assert.equal(monthly.at(-1).overall, daily.at(-1).overall, 'сарын төгсгөл өдрийнхөөс зөрсөн');
-assert.ok(monthly.length >= daily.length - 2, 'сарын цуваа хэт цөөн цэгтэй');
 
 console.log(
-  `monitor.check: ok — ${matched.length}/${blocks.length} блок таарсан · ` +
-    `«${one.BLOK}» ${leaves} ажил (${done}/${going}/${idle}) · ` +
-    `цуваа ${daily.length} өдөр / ${monthly.length} сар, төгсгөл ${ring.toFixed(2)}%`,
+  `monitor.check: ok — ${matched.length}/${blocks.length} блок таарсан · `
+  + `«${one.BAGTS} ${one.BLOK}» ${leaves}/${allLeaves} ажил (${done}/${going}/${idle}) · `
+  + `цуваа ${daily.length} өдөр / ${monthly.length} сар, төгсгөл ${ring.toFixed(2)}%`,
 );

@@ -34,7 +34,7 @@ import { cached } from '@/lib/live';
 import { layerTotals } from '@/lib/totals';
 import {
   BUILDING, CASHFLOW2, HABEA, IPC_LOG, LAYER_GROUPS, GROUP_LAYERS, LAYER_BY_ID,
-  TASK_SHEET, bagtsKey, pkgKeyOf, laborCompanyFields,
+  bagtsKey, pkgKeyOf, laborCompanyFields,
 } from '@/lib/services';
 
 /* ═══════════════ Төрөл ═══════════════ */
@@ -164,51 +164,46 @@ const sentenceCase = (s: string) => {
 /* ═══════════════ Төслийн нийт гүйцэтгэл ба үе шат ═══════════════ */
 
 /**
- * ТӨСЛИЙН НИЙТ ГҮЙЦЭТГЭЛ — TASK_SHEET («Гүйцэтгэл бөглөх»-ийн нэгтгэл).
+ * ТӨСЛИЙН НИЙТ ГҮЙЦЭТГЭЛ — блок бүрийн «Б.» мөрийн сүүлийн утгыг багцаар нэгтгэнэ.
  *
  * ⚠️ 2026-08-21: `Төсөл_Гүйцэтгэл_` (Excel-ээс гараар импортлогддог 162 мөр)
  * төслөөс БҮРЭН ХАСАГДСАН — жингийн нийлбэр 81.53%, `Төсөл` багана 20 мөрд
- * буруу, төлөвлөгөө 74 мөрд хоосон байсан тест өгөгдөл. Одоо гүйцэтгэл нь
- * порталаас БӨГЛӨГДДӨГ хүснэгтээс гарна.
+ * буруу, төлөвлөгөө 74 мөрд хоосон байсан тест өгөгдөл.
  *
  * ⚠️ ҮЕ ШАТНЫ (ТЭЗҮ · Зөвшөөрөл · Сонгон шалгаруулалт…) задаргаа АЛГА БОЛОВ —
- * тэр бүтэц зөвхөн хуучин хүснэгтэд байсан. Оронд нь БАГЦААР: блок бүрийн
- * «Б.» мөрийн сүүлийн утгыг багцаараа нэгтгэнэ.
+ * тэр бүтэц зөвхөн хуучин хүснэгтэд байсан. Оронд нь БАГЦААР.
+ *
+ * ⚠️ 2026-08-27: энэ функц урьд нь `Selbe_guitsetgel_consolidated` руу ӨӨРИЙН
+ * асуулга явуулж, `loadBlockProgress`-ийн ЯГ ижил тооцоог давтдаг байв. Тэр
+ * үйлчилгээ хаагдсан (499) бөгөөд давхардал нь газрын зураг ↔ тайлангийн тоог
+ * чимээгүй зөрүүлэх эрсдэлтэй байсан тул НЭГ эх сурвалж руу нэгтгэв: одоо
+ * газрын зургийн өнгө ба тайлангийн дүн ЯГ нэг тооноос гарна.
  */
 async function loadOverall(): Promise<ReportExtra['overall']> {
-  const S = TASK_SHEET.fields;
-  const rows = await queryFeatures(TASK_SHEET.url, {
-    outFields: [S.bagts, S.block, S.date, S.progress],
-    where: `${S.no}='${TASK_SHEET.constructionNo}' AND ${S.block} IS NOT NULL`,
-  });
+  const { loadBlockProgress } = await import('@/lib/blockProgress');
+  const cells = await loadBlockProgress();
 
-  /** багц → блок → сүүлийн (огноо, %) */
-  const byPkg = new Map<string, Map<string, { d: string; g: number }>>();
-  for (const r of rows) {
-    const pkg = bagtsKey(r[S.bagts]);
-    const blk = str(r[S.block]).trim();
-    const d = str(r[S.date]).slice(0, 10);
-    const g = nn(r[S.progress]);
-    if (!pkg || !blk || !d) continue;
-    const m = byPkg.get(pkg) ?? new Map<string, { d: string; g: number }>();
-    const cur = m.get(blk);
-    if (!cur || cur.d <= d) m.set(blk, { d, g });
-    byPkg.set(pkg, m);
+  /** багц → блокийн гүйцэтгэлүүд (0–1) */
+  const byPkg = new Map<string, number[]>();
+  for (const [key, cell] of cells) {
+    // Түлхүүр нь `${БАГЦ}|${блок}` (`buildingKey`) — багцын хэсгийг нь авна
+    const pkg = key.split('|')[0];
+    if (!pkg) continue;
+    const arr = byPkg.get(pkg) ?? [];
+    // `overall` нь 0–100; тайлан 0–1 хүлээдэг тул хуваана
+    arr.push(cell.overall / 100);
+    byPkg.set(pkg, arr);
   }
 
   /* Багц бүрийн дундаж — блокоор; төслийн дүн нь блокийн ТООГООР жигнэсэн */
   const stages = [...byPkg.entries()]
-    .map(([pkg, blocks]) => {
-      const list = [...blocks.values()];
-      const sum = list.reduce((x, y) => x + y.g, 0);
-      return {
-        label: pkg,
-        rows: list.length,
-        weight: list.length,
-        actual: list.length ? sum / list.length : 0,
-        planned: null as number | null,
-      };
-    })
+    .map(([pkg, list]) => ({
+      label: pkg,
+      rows: list.length,
+      weight: list.length,
+      actual: list.length ? list.reduce((x, y) => x + y, 0) / list.length : 0,
+      planned: null as number | null,
+    }))
     .sort((x, y) => x.label.localeCompare(y.label, 'mn', { numeric: true }));
 
   const blocksAll = stages.reduce((a2, s2) => a2 + s2.rows, 0);
@@ -219,7 +214,7 @@ async function loadOverall(): Promise<ReportExtra['overall']> {
     /* ⚠️ Хуучин талбар: жингийн нийлбэр байсан. Одоо БЛОКИЙН тоо — тайлан нь
        «хэдэн блокоос бодсон» гэдгийг ил хэлнэ. */
     weightSum: blocksAll,
-    rows: rows.length,
+    rows: blocksAll,
     stages,
   };
 }

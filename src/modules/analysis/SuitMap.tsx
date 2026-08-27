@@ -27,7 +27,7 @@ import { createRenderer as createHeatRenderer } from '@arcgis/core/smartMapping/
 import BuildingSceneLayer from '@arcgis/core/layers/BuildingSceneLayer';
 import BuildingExplorer from '@arcgis/core/widgets/BuildingExplorer';
 import {
-  ET, IMAGERY, SCENE, BIM, ELEVATION_URL, HOME, LAYER_BY_ID, layerUrl, ALWAYS_ON_IDS, REFERENCE_IDS,
+  IMAGERY, SCENE, BIM, ELEVATION_URL, HOME, LAYER_BY_ID, layerUrl, ALWAYS_ON_IDS, REFERENCE_IDS,
 } from '@/lib/services';
 import type { Dim } from '@/components/MapCanvas';
 
@@ -383,9 +383,14 @@ export function SuitMap({
       ctxRef.current.zone = zoneLayer;
       ctxRef.current.label = labelLayer;
 
-      const ctx = MAP_LAYERS.filter((d) => !d.special).map((d) => {
-        // Хяналтын давхаргууд ХУУЧИН үйлчилгээнд тул каталогоос хаягаа авчирна
-        const url = d.layerId ? layerUrl(LAYER_BY_ID[d.layerId]) : `${ET}/${d.n}`;
+      const ctx = MAP_LAYERS.filter((d) => !d.special && d.layerId).map((d) => {
+        /*
+         * ⚠️ Хаяг нь ЗӨВХӨН каталогоос. Урьд нь `layerId` байхгүй үед
+         * `${ET}/${d.n}` гэсэн нөөц зам байсан бөгөөд тэр ЕТ үйлчилгээ
+         * 2026-08-26-нд хаагдсан (499) — нөөц нь чимээгүй хоосон давхарга
+         * үүсгэх байв. Одоо `layerId`-гүй мөрийг зүгээр л АЛГАСНА.
+         */
+        const url = layerUrl(LAYER_BY_ID[d.layerId!]);
         const lyr = new FeatureLayer({
           url,
           title: d.title,

@@ -1,8 +1,21 @@
-// Shared ArcGIS client. `base` points straight at the public hosted layer
-// (FeatureServer/0). CORS is open and no token is needed.
-// ⚠️ URL-ыг services.ts-ийн `TASK_SHEET`-ээс авна — энэ давхаргын ГАНЦ эх сурвалж.
-//    Хатуу бичвэл үйлчилгээ нүүх/нэр солиход энэ модул чимээгүй үхсэн URL руу
-//    хандана (FillNew/Conclusion/Level5 бүгд).
+// Хуваалцсан ArcGIS клиент.
+//
+// ⚠️⚠️ 2026-08-27 — ЭНЭ ФАЙЛЫН ХОЁР ХЭСГИЙГ ЯЛГАЖ ОЙЛГО:
+//
+//   АМЬД (схемээс хараат БУС, чөлөөтэй хэрэглэ):
+//     `agsFetch`  — дурын URL руу POST/query хийх нимгэн бүрхүүл
+//     `levelFromNo`, `isHeaderAttrs`, `qesc`  — цэвэр функцүүд
+//
+//   ХОЙШЛУУЛСАН (`base` = `TASK_SHEET.url` — тэр үйлчилгээ ХААГДСАН, 499):
+//     `base`, `queryAll`, `distinct`, `level5Rows`, `constructionByBagts`,
+//     `applySections`, `ACTUAL`, `LEVEL5`, хавсралтын 4 функц
+//   Эдгээрийг ЗӨВХӨН навигациас хасагдсан хуудсууд (Pivot · Wbs · Level5 ·
+//   Conclusion — `Sheet.tsx`-ийн 2026-08-18-ны шийдвэр) л дууддаг. ШИНЭ КОДОД
+//   ОГТ ХЭРЭГЛЭХГҮЙ — амьд гүйцэтгэлийн өгөгдөл нь `sheetRows.ts`-д байна
+//   (`Bagts_*` бөглөх хуудсууд).
+//
+// ⚠️ URL-ыг services.ts-ийн `TASK_SHEET`-ээс авна — хатуу бичвэл үйлчилгээ
+//    нүүх/нэр солиход энэ модул чимээгүй үхсэн URL руу хандана.
 import { TASK_SHEET } from "@/lib/services";
 import { t as tr } from "@/lib/i18nCore";
 export const base = TASK_SHEET.url;

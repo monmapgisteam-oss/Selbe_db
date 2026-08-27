@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
 import { useMap } from '@/components/MapCanvas';
-import { ZONE_LAYER, type ViewKey } from '@/lib/services';
+import { ZONE_LAYER, type FilterScope } from '@/lib/services';
 
 /**
  * Идэвхтэй шүүлтийн ГАНЦ эх сурвалж.
@@ -32,8 +32,8 @@ export type ActiveFilter = {
   group: string;
   /** Газрын зурагт явуулах SQL */
   where: string;
-  /** Аль харагдацад харьяалагдах — харагдац солиход цэвэрлэхэд хэрэглэнэ */
-  view: ViewKey;
+  /** Аль хэсэгт харьяалагдах — харагдац солиход цэвэрлэхэд хэрэглэнэ */
+  view: FilterScope;
   /**
    * ЗӨВХӨН эдгээр давхаргад хэрэглэнэ. Шүүлтийн талбар нь бүх давхаргад
    * байдаггүй (жишээ нь `Barilga_ty` нь бүсийн давхаргад алга) — заагаагүй бол

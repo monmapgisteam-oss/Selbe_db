@@ -17,7 +17,6 @@ import {
 } from '@/lib/services';
 import { whereFor, qtyText, geomText, layerStats, type Totals } from '@/lib/totals';
 import { num, text, shade } from '@/lib/format';
-import { MonitorGeneral, MonitorDetail, MonitorBagts, BAGTS_FILTER, pickedBuilding, useTaskPerf } from './BuildingPanel';
 import s from './dashboard.module.css';
 
 /** «Бүртгэгдээгүй / Тодорхойгүй» бүлэг — жинхэнэ ангилал мэт харагдах ёсгүй */
@@ -66,10 +65,6 @@ export function ViewPanel({
   //    ТУСДАА компонент — эс бөгөөс түүний дотоод hook-ууд нөхцөлт дуудагдана.
   // ⚠️ «Анализ» энд ОГТ ирэхгүй: тэр харагдац нь `Portal` дээр өөрийн бүрэн
   //    дэлгэцээр (Suitability) зурагддаг тул самбар байхгүй.
-  if (view === 'monitor') {
-    return <MonitorPanel picked={picked} pickedLayer={pickedLayer} />;
-  }
-
   const def = layer ? LAYER_BY_ID[layer] : null;
 
   return (
@@ -1036,48 +1031,6 @@ function LayerDashboard({
    рүү нүүсэн (төрлөөр бүлэглэсэн, dashboard-д ч ажиллана). Энд зөвхөн хэрэглэнэ. */
 
 /* ═════════════════ Барилгын хяналт ═════════════════ */
-
-/**
- * ⚠️ Асинк хүсэлтийг ЭНД нэг удаа дуудаж `BuildingWork` руу дамжуулна.
- * Урьд нь энд бас `SurveyReports`/`SurveyOutside`-ыг ДАХИН зурдаг байсан тул
- * тайлангийн жагсаалт хоёр хувь харагдаж, ижил хүсэлт хоёр удаа явдаг байв.
- */
-function MonitorPanel({
-  picked,
-  pickedLayer,
-}: {
-  picked: Record<string, unknown> | null;
-  pickedLayer: string | null;
-}) {
-  // Баруун панел — СОНГОСОН барилгын бүрэн ажлын гүйцэтгэл (Tusliin table).
-  // Зүүн талд бүх барилгын ДУНДАЖ (`BuildingSummary`, Portal-д).
-  const { active } = useFilter();
-  /**
-   * ⚠️ Хүнд queryAll хүсэлтийг ЭНД нэг удаа дуудаж хоёр компонент руу prop-оор
-   * өгнө. Урьд нь General/Detail тус бүр өөрөө `useTaskPerf(b)` дууддаг байсан
-   * тул барилга сонгох бүрд ижил хуудаслалттай хүсэлт ХОЁР ДАВХАР явдаг байв
-   * (Portal-ын MonitorFrame `useBuildings`-ийг хуваалцдагтай ижил загвар).
-   * Багцын салаанд `b` нь null тул хүсэлт огт явахгүй.
-   */
-  const b = pickedBuilding(picked, pickedLayer);
-  const q = useTaskPerf(b);
-  /**
-   * ⚠️ Барилга сонгоогүй байхад БАГЦ сонгогдвол (зүүн баганын «Багц тус бүрээр»)
-   * энэ самбар хоосон «барилга дээр дарна уу» эсэргүүцэл харуулдаг байв. Одоо
-   * тэр багцын ажлын төрөл бүрийн гүйцэтгэл гарна. Барилга сонгосон нь ДАВУУ:
-   * тодорхой асуулт нь ерөнхийхөөс тэргүүн.
-   */
-  const bagts = active?.key.startsWith(BAGTS_FILTER) ? active.key.slice(BAGTS_FILTER.length) : null;
-  const building = picked != null && pickedLayer === 'mon:building';
-  if (!building && bagts) return <MonitorBagts bagts={bagts} />;
-
-  return (
-    <>
-      <MonitorGeneral b={b} q={q} />
-      <MonitorDetail b={b} q={q} />
-    </>
-  );
-}
 
 /* ═════════════════ Сонгосон бүс ═════════════════ */
 

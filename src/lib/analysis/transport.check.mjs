@@ -10,14 +10,20 @@
  */
 import assert from 'node:assert/strict';
 
-const URL =
-  'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/Selbe_ET_20260721/FeatureServer/24';
+/*
+ * ⚠️ ЭХ СУРВАЛЖ (2026-08-27-нд СОЛИГДСОН): `Selbe_ET_20260721` хаагдсан (499).
+ * Давхаргууд нэгтгэсэн `data` үйлчилгээнд шилжсэн — дугаарын зураглал нь
+ * `services.ts`-ийн `TD_LAYER`-тэй ижил:
+ *     et:24 «Барилга»          → data/108
+ *     et:5  «Замын тэнхлэг»    → data/104
+ *     et:2  «Автобусны буудал» → data/87
+ */
+const TD = 'https://services-ap1.arcgis.com/ACqsMOmNLi5wIdIh/arcgis/rest/services/data/FeatureServer';
+const URL = `${TD}/108`;
 /** «Замын тэнхлэг» — `roadNet.ts`-ийн эх сурвалж (et:5) */
-const ROAD_URL =
-  'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/Selbe_ET_20260721/FeatureServer/5';
+const ROAD_URL = `${TD}/104`;
 /** «Автобус_буудал» — `busAccess.ts`-ийн эх сурвалж (et:2) */
-const BUS_URL =
-  'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/Selbe_ET_20260721/FeatureServer/2';
+const BUS_URL = `${TD}/87`;
 
 /* ── transport.ts-ийн хуулбар логик ── */
 const F = { purpose: 'Зориулалт_m', population: 'Population', capacity: 'Huchin_chadal' };

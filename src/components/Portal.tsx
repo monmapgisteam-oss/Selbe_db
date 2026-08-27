@@ -13,7 +13,6 @@ import { MapTools } from '@/components/MapTools';
 import { useZoomToFilter } from '@/lib/useZoomToFilter';
 import dynamic from 'next/dynamic';
 import { Dashboard } from '@/modules/Dashboard';
-import { Bagts } from '@/modules/Bagts';
 import { PkgFin } from '@/modules/PkgFin';
 import { PkgProg } from '@/modules/PkgProg';
 import { Gazar } from '@/modules/Gazar';
@@ -50,7 +49,6 @@ import {
 import { readParam, writeParams } from '@/lib/urlState';
 import { num } from '@/lib/format';
 import { ViewPanel } from '@/modules/ViewPanel';
-import { BuildingSummary, MonitorTrend, useBuildings } from '@/modules/BuildingPanel';
 
 import s from '@/app/shell.module.css';
 
@@ -71,18 +69,6 @@ const CAT_MIN = 232;
 const CAT_MAX = 560;
 const CAT_DEFAULT = 296;
 const CAT_KEY = 'selbe-catalog-width';
-
-/** «Барилгын хяналт»-ын ЗҮҮН дундаж баганы өргөн (px) */
-const MON_MIN = 240;
-const MON_MAX = 620;
-const MON_DEFAULT = 300;
-const MON_KEY = 'selbe-monleft-width';
-
-/** Зургийн доорх явцын муруйн зурвасын өндөр (px) */
-const TREND_MIN = 140;
-const TREND_MAX = 560;
-const TREND_DEFAULT = 240;
-const TREND_KEY = 'selbe-montrend-height';
 
 /**
  * БАГАНА/МӨР ЧИРЭХ — самбар, каталог, зүүн багана, доод зурвас БҮГД үүнийг.
@@ -454,7 +440,7 @@ function PortalContent(
   useEffect(() => {
     // tsogts — багц+хяналтын нэгдсэн харагдац тул мөн ортофототой
     // habea — кран, аюулгүйн бүсийг бодит талбай дээр нь хардаг (2026-08-12)
-    setOrtho(view === 'bagts' || view === 'monitor' || view === 'pkgFin' || view === 'pkgProg' || view === 'habea');
+    setOrtho(view === 'pkgFin' || view === 'pkgProg' || view === 'habea');
   }, [view, setOrtho]);
 
   /* ── Багануудын өргөн ── */
@@ -467,15 +453,6 @@ function PortalContent(
   const catSize = useColumnResize({
     min: CAT_MIN, max: CAT_MAX, initial: CAT_DEFAULT, storageKey: CAT_KEY, dir: 1,
   });
-  // «Барилгын хяналт»-ын зүүн багана — мөн ЗҮҮН талд тул +1
-  const monSize = useColumnResize({
-    min: MON_MIN, max: MON_MAX, initial: MON_DEFAULT, storageKey: MON_KEY, dir: 1,
-  });
-  // Зургийн доорх муруйн зурвас — ДЭЭШ чирэхэд өндөрснө
-  const trendSize = useColumnResize({
-    min: TREND_MIN, max: TREND_MAX, initial: TREND_DEFAULT, storageKey: TREND_KEY, dir: -1, axis: 'y',
-  });
-
   const active = VIEW_BY_KEY[view];
   /**
    * ⚠️ Бүтэн талбайг эзлэх харагдацууд (ерөнхий дашбоард, анализ) нь ӨӨРСДИЙН
@@ -487,7 +464,6 @@ function PortalContent(
    */
   const isDash = view === 'dashboard';
   const isSheet = view === 'sheet';
-  const isBagts = view === 'bagts';
   const isTailan = view === 'tailan';
   const isGazar = view === 'gazar';
   const isFinance = view === 'finance';
@@ -547,12 +523,10 @@ function PortalContent(
           будагддаг байсныг байгууллагын НЭГ акцентад (globals.css) нэгтгэв.
           Мөн `shellCat` хасагдав: каталог багана биш, зурган дээрх popup боллоо. */}
       <div
-        className={`${s.shell} ${isFull ? s.shellSuit : ''} ${!isFull && !planPanel ? s.shellFoot : ''} ${view === 'monitor' ? s.shellMon : ''} ${navMin ? s.shellNavMin : ''}`}
+        className={`${s.shell} ${isFull ? s.shellSuit : ''} ${!isFull && !planPanel ? s.shellFoot : ''} ${navMin ? s.shellNavMin : ''}`}
         style={{
           '--panel': panelVar,
           '--catalog': `${catSize.width}px`,
-          '--monleft': `${monSize.width}px`,
-          '--montrend': `${trendSize.width}px`,
         } as CSSProperties}
       >
         <header className={s.head}>
@@ -637,12 +611,10 @@ function PortalContent(
           <div className={s.suit}>
             {isDash
               ? <Dashboard dim={dim} setDim={setDim} zone={zone} setZone={setZone} />
-              : isBagts
-                ? <Bagts dim={dim} setDim={setDim} />
-                : isPkgFin
-                  ? <PkgFin dim={dim} setDim={setDim} />
-                  : isPkgProg
-                    ? <PkgProg dim={dim} setDim={setDim} />
+              : isPkgFin
+              ? <PkgFin dim={dim} setDim={setDim} />
+              : isPkgProg
+                ? <PkgProg dim={dim} setDim={setDim} />
                   : isSheet
                     ? <Sheet />
                     : isTailan
@@ -665,9 +637,6 @@ function PortalContent(
 
         {!isFull && (
           <>
-            {/* «Барилгын хяналт» — ЗҮҮН талд дундаж, зургийн ДООР явцын муруй */}
-            {view === 'monitor' && <MonitorFrame size={monSize} trend={trendSize} />}
-
             <div className={s.map}>
               <MapCanvas dim={dim} visible={visible} opacity={opacity} zone={zone} onPick={pick} />
 
@@ -703,7 +672,7 @@ function PortalContent(
               {catOpen && (
                 <div className={s.catPop}>
                   <LayerCatalog
-                    view={view === 'monitor' ? 'monitor' : 'plan'}
+                    view="plan"
                     totals={totals}
                     visible={visible}
                     setVisible={setVisible}
@@ -795,54 +764,6 @@ function PortalContent(
 }
 
 /* ── «Барилгын хяналт»-ын хүрээ ── */
-
-/**
- * ЗҮҮН дундаж багана + газрын зургийн ДООРХ явцын муруй.
- *
- * ⚠️ Хоёулаа НЭГ `useBuildings()`-ээс уншина — тусад нь дуудвал 113 блокийн
- * хүсэлт хоёр удаа явна. Fragment тул grid-ийн шууд хүүхдүүд хэвээр: муруй нь
- * DOM-д зүүн баганын хажууд ч, `grid-area: trend` нь зургийн доор тавина.
- */
-function MonitorFrame(
-  { size, trend }: { size: ReturnType<typeof useColumnResize>; trend: ReturnType<typeof useColumnResize> },
-) {
-  const q = useBuildings();
-  return (
-    <>
-      <aside className={s.monLeft} aria-label={tr('Барилгын дундаж мэдээлэл')}>
-        {/* Өргөн тохируулах бариул — баганы БАРУУН ирмэг дээр */}
-        <div
-          className={`${s.grip} ${size.dragging ? s.gripOn : ''}`}
-          role="separator"
-          aria-orientation="vertical"
-          aria-label={tr('Зүүн баганын өргөн')}
-          onPointerDown={size.onPointerDown}
-          onDoubleClick={size.onDoubleClick}
-          title={tr('Чирж өргөсгөнө · давхар товшиж анхны хэмжээнд буцаана')}
-        />
-        <div className={s.monScroll}>
-          <BuildingSummary q={q} />
-        </div>
-      </aside>
-
-      <section className={s.monTrend} aria-label={tr('Барилга угсралтын явц')}>
-        {/* Өндөр тохируулах бариул — зурвасын ДЭЭД ирмэг дээр */}
-        <div
-          className={`${s.rowGrip} ${trend.dragging ? s.rowGripOn : ''}`}
-          role="separator"
-          aria-orientation="horizontal"
-          aria-label={tr('Явцын зурвасын өндөр')}
-          onPointerDown={trend.onPointerDown}
-          onDoubleClick={trend.onDoubleClick}
-          title={tr('Чирж өндөрсгөнө · давхар товшиж анхны хэмжээнд буцаана')}
-        />
-        <div className={s.monScroll}>
-          <MonitorTrend q={q} />
-        </div>
-      </section>
-    </>
-  );
-}
 
 /* ── Идэвхтэй шүүлт ── */
 

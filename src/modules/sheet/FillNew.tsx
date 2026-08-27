@@ -23,7 +23,7 @@ import { bagtsFor, subscribeAcl } from "@/lib/guitsetgelAcl";
 import { useAuth } from "@/components/AuthGate";
 import DatePicker from "./DatePicker";
 import { seriesBands } from "./bagts.bands";
-import { ACTUAL, distinct } from "./ags";
+import { sheetDates } from "./sheetRows";
 import { useColWidths } from "./colWidths";
 import { t as tr } from "@/lib/i18nCore";
 import st from "./sheet.module.css";
@@ -357,12 +357,19 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     onClick: () => say(msg),
   });
 
-  // Тайлангийн огнооны жагсаалт — нэг л удаа. Алдаа гарвал чимээгүй өнгөрнө:
-  // хадгалагдсан огноо нь доор ямар ч тохиолдолд сонголт болж нэмэгддэг.
+/*
+   * Тайлангийн огнооны жагсаалт — нэг л удаа. Алдаа гарвал чимээгүй өнгөрнө:
+   * хадгалагдсан огноо нь доор ямар ч тохиолдолд сонголт болж нэмэгддэг.
+   *
+   * ⚠️ 2026-08-27: урьд нь `distinct("ognoo", ACTUAL)` буюу нэгтгэсэн
+   * хүснэгтээс авдаг байв. Тэр үйлчилгээ хаагдсан (499) бөгөөд дуудалт нь
+   * `.catch(() => {})`-той тул сонголт ЧИМЭЭГҮЙ хоосорч байсан. Одоо бөглөх
+   * хуудсуудын `buglusun_ognoo`-оос шууд гарна.
+   */
   useEffect(() => {
     let alive = true;
-    distinct("ognoo", ACTUAL)
-      .then((d) => alive && setDates([...new Set(d.map(String).filter(Boolean))].sort()))
+    sheetDates()
+      .then((d) => alive && setDates(d))
       .catch(() => {});
     return () => {
       alive = false;

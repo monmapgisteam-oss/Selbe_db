@@ -212,8 +212,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { default: esriId } = await import('@arcgis/core/identity/IdentityManager');
     esriId.destroyCredentials();
     const back = encodeURIComponent(location.origin + location.pathname);
-    location.href =
-      `${sharingUrl()}/rest/oauth2/signout?client_id=${encodeURIComponent(AUTH.appId)}&redirect_uri=${back}`;
+    /* ⚠️ Энэ бол ArcGIS-ийн ГАДААД гарах хаяг — Next.js-ийн дотоод хуудас БИШ
+       тул `router.push` тохирохгүй: бүтэн навигаци ЗААВАЛ хэрэгтэй (ArcGIS
+       өөрөө cookie-гоо цэвэрлээд бидэн рүү буцаана). Дүрэм нь дотоод/гадаад
+       хаягийг ялгадаггүй тул ЭНД л унтраана — бусад газарт хүчинтэй хэвээр. */
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+    window.location.assign(
+      `${sharingUrl()}/rest/oauth2/signout?client_id=${encodeURIComponent(AUTH.appId)}&redirect_uri=${back}`,
+    );
   };
 
   const authorized = status === 'signed-in' || status === 'off';

@@ -23,8 +23,7 @@
  * л шинэ огноогоор нэмдэг тул нэг барилгын нүднүүд өөр өөр огноотой байж болно.
  */
 import { TASK_SHEET, buildingKey } from './services';
-import { PKGS, loadSchema } from '@/modules/sheet/bagts.pkg';
-import { msToDay } from '@/modules/sheet/bagtsSheet';
+import { loadSheetRows } from '@/modules/sheet/sheetRows';
 
 const TS = TASK_SHEET.fields;
 
@@ -37,78 +36,23 @@ const isValidDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
  * ⚠️ Хуудас бүр 6 мөр × агшин × блокийн тоо — нийтдээ хэдэн мянган цэг.
  *    Навч ажлуудыг ОГТ татахгүй (1,370 мөр × 20 блок = 27 мянга) тул хүсэлт
  *    хөнгөн: 10 хуудас × 1 схем + 1 асуулга.
+ *
+ * ⚠️ Өргөн→урт задаргаа нь `sheet/sheetRows.ts`-д НЭГ УДАА бичигдсэн —
+ *    `BuildingPanel` ч мөн түүнийг ашигладаг. Энд хуулбарлавал шинэ багана
+ *    нэмэгдэх бүрд хоёр газар засах шаардлагатай болно.
  */
 async function fetchConstruction(): Promise<Record<string, unknown>[]> {
-  const out: Record<string, unknown>[] = [];
-  /*
-   * ⚠️ БӨГЛӨХ ХУУДСАНД № ТАЛБАР НЬ ЯЛГААТАЙ: дэд үе шат нь «Б1»…«Б5» гэж
-   *    цэвэр кодтой ч НИЙТ мөр нь «Б. БАРИЛГА УГСРАЛТЫН АЖИЛ» гэсэн БҮТЭН
-   *    шошготой (мөн бүлгийн мөрүүдэд «Ажил» талбар ХООСОН — нэр нь № дотор).
-   *    Тиймээс нийт мөрийг ТЭНЦҮҮГЭЭР биш, LIKE-ээр барина — эс бөгөөс
-   *    гүйцэтгэлийн нийт дүн олдохгүй бөгөөд блок бүр «мэдээлэлгүй» болно.
-   */
-  const subList = TASK_SHEET.subPhaseNos.map((n) => `N'${n.replace(/'/g, "''")}'`).join(',');
-
-  await Promise.all(PKGS.map(async (pkg) => {
-    const sc = await loadSchema(pkg).catch(() => null);
-    if (!sc?.f.fillDate) return;                 // архивын багана үүсээгүй хуудас
-
-    const cols = [sc.f.no, sc.f.work, sc.f.fillDate, ...sc.act.filter(Boolean)];
-    const rows: Record<string, unknown>[] = [];
-    for (let off = 0; ; ) {
-      const res = await fetch(`${pkg.url}/query`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          f: 'json',
-          where: `(${sc.f.no} IN (${subList}) OR ${sc.f.no} LIKE N'Б.%')`
-            + ` AND ${sc.f.fillDate} IS NOT NULL`,
-          outFields: [...new Set(cols)].join(','),
-          returnGeometry: 'false',
-          /* ⚠️ Эрэмбэгүй хуудаслалт ArcGIS-д ТОГТВОРГҮЙ — мөр давхардах/унах
-             боломжтой бөгөөд алдаа нь чимээгүй. */
-          orderByFields: `${sc.f.oid} ASC`,
-          resultRecordCount: '2000',
-          resultOffset: String(off),
-        }),
-      });
-      if (!res.ok) throw new Error(`ArcGIS HTTP ${res.status}`);
-      const j = await res.json();
-      if (j.error) throw new Error(j.error.message || 'ArcGIS error');
-      const fsx = ((j.features || []) as { attributes: Record<string, unknown> }[])
-        .map((x) => x.attributes);
-      rows.push(...fsx);
-      if (!j.exceededTransferLimit || !fsx.length) break;
-      off += fsx.length;
-    }
-
-    /* ӨРГӨН → УРТ: блок бүр өөрийн мөр болно */
-    for (const a of rows) {
-      const ms = a[sc.f.fillDate];
-      if (typeof ms !== 'number') continue;
-      const day = msToDay(ms);
-      /* «Б. БАРИЛГА УГСРАЛТЫН АЖИЛ» → «Б.»; бүлгийн нэр нь № дотор байдаг */
-      const rawNo = String(a[sc.f.no] ?? '').trim();
-      const no = rawNo.startsWith(TASK_SHEET.constructionNo) ? TASK_SHEET.constructionNo : rawNo;
-      const work = String(a[sc.f.work] ?? '').trim() || rawNo;
-      sc.bld.forEach((blk, i) => {
-        const fld = sc.act[i];
-        if (!fld) return;                        // тэр блокт багана үүсээгүй
-        const v = a[fld];
-        out.push({
-          [TS.bagts]: pkg.group,
-          [TS.no]: no,
-          [TS.work]: work,
-          [TS.date]: day,
-          [TS.block]: blk,
-          [TS.progress]: typeof v === 'number' && Number.isFinite(v) ? v : null,
-        });
-      });
-    }
+  const rows = await loadSheetRows({ constructionOnly: true });
+  return rows.map((r) => ({
+    [TS.bagts]: r.bagts,
+    [TS.no]: r.no,
+    [TS.work]: r.work,
+    [TS.date]: r.date,
+    [TS.block]: r.block,
+    [TS.progress]: r.progress,
   }));
-
-  return out;
 }
+
 /** Дэд үе шат — «Б1 · Барилгын ажил · 24%» */
 export type SubPhase = { no: string; name: string; pct: number | null };
 export type BlockProgress = {

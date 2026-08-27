@@ -169,7 +169,7 @@ export default function Level5() {
   const toggle = (k: string) =>
     setOpen((o) => {
       const n = new Set(o);
-      n.has(k) ? n.delete(k) : n.add(k);
+      if (n.has(k)) n.delete(k); else n.add(k);
       return n;
     });
 
