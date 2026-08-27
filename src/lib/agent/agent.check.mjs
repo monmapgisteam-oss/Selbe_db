@@ -17,8 +17,28 @@ import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
 
-const MOCK_PORT = 8799;
-const RELAY_PORT = 8788;
+/**
+ * ⚠️ ПОРТЫГ ХАТУУ БИЧИХГҮЙ. Урьд нь 8799/8788 гэж тогтоосон байсан бөгөөд
+ * өмнөх ажиллалтын үлдэгдэл процесс (эсвэл зэрэг явж буй өөр session) портыг
+ * барьсан бол тест `EADDRINUSE`-ээр УНАДАГ — кодод алдаа байхгүй атал.
+ * Тест унасан шалтгаан нь орчны зөрчил байхад «код эвдэрсэн» гэж уншигдах нь
+ * хамгийн үнэтэй төрлийн худал дохио.
+ *
+ * Хуурамч сервер нь `listen(0)`-оор өөрөө сул порт олно. Реле нь ТУСДАА
+ * процесс тул портоо УРЬДЧИЛАН мэдэх ёстой: сул портыг эзэлж аваад шууд
+ * сулласны дараа хүүхэд процесст дамжуулна.
+ */
+let MOCK_PORT = 0;
+let RELAY_PORT = 0;
+
+/** Үйлдлийн системээс сул порт гуйж аваад шууд сулласны дараа дугаарыг нь буцаана */
+async function freePort() {
+  const srv = createServer();
+  await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+  const { port } = srv.address();
+  await new Promise((r) => srv.close(r));
+  return port;
+}
 
 let failures = 0;
 const check = (label, cond, extra = '') => {
@@ -98,7 +118,9 @@ async function stopRelay() {
 /* ── Ажиллуулах ── */
 
 async function main() {
-  await new Promise((r) => mock.listen(MOCK_PORT, r));
+  await new Promise((r) => mock.listen(0, '127.0.0.1', r));
+  MOCK_PORT = mock.address().port;
+  RELAY_PORT = await freePort();
 
   // ⚠️ Модуль ачаалагдахаас ӨМНӨ — `AGENT_API` нь импортын үед тогтдог
   process.env.NEXT_PUBLIC_AGENT_API = `http://127.0.0.1:${RELAY_PORT}`;

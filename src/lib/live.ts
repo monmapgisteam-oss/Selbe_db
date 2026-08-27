@@ -282,17 +282,18 @@ export const loadPkgProgress = cached<PkgProgressRow[]>(async () => {
     return Number.isFinite(x) ? x : null;
   };
 
-  /** багц → сүүлийн мөр */
-  const last = new Map<string, PkgProgressRow>();
+  /* ⚠️ БҮХ мөрийг буцаана — СҮҮЛИЙНХИЙГ нь БИШ. Хүснэгт нь багц бүрд огноо
+     тутам нэг мөр нэмдэг тул бүтэн түүх нь ЦУВАА зурах цорын ганц эх. Зөвхөн
+     одоогийн байдал хэрэгтэй дуудагч `latestPkgProgress()`-ыг ашиглана —
+     ингэснээр хоёр төрлийн хэрэглэгч НЭГ HTTP хүсэлт хуваалцана. */
+  const out: PkgProgressRow[] = [];
   for (const r of rows) {
     const raw2 = String(r[F.bagts] ?? '').trim();
     const key = bagtsKey(raw2);
     if (!key) continue;
     const ts = r[F.date];
     const date = ts == null ? '' : new Date(Number(ts)).toISOString().slice(0, 10);
-    const cur = last.get(key);
-    if (cur && cur.date > date) continue;
-    last.set(key, {
+    out.push({
       key,
       label: raw2,
       date,
@@ -302,8 +303,24 @@ export const loadPkgProgress = cached<PkgProgressRow[]>(async () => {
       volumePlan: nOrNull(r[F.volumePlan]),
     });
   }
-  return [...last.values()].sort((a, b) => a.key.localeCompare(b.key, 'mn', { numeric: true }));
+  return out.sort((a, b) => a.date.localeCompare(b.date) || a.key.localeCompare(b.key, 'mn', { numeric: true }));
 });
+
+/**
+ * Багц бүрийн ХАМГИЙН СҮҮЛИЙН огноотой мөр — «одоогийн байдал».
+ *
+ * ⚠️ Огноо ижил байвал СҮҮЛД ирсэн мөрийг авна: `loadPkgProgress` нь огноогоор
+ * эрэмбэлж буцаадаг тул энэ нь хүснэгтэд сүүлд нэмэгдсэнтэй тохирно.
+ */
+export const latestPkgProgress = (rows: PkgProgressRow[]): PkgProgressRow[] => {
+  const last = new Map<string, PkgProgressRow>();
+  for (const r of rows) {
+    const cur = last.get(r.key);
+    if (cur && cur.date > r.date) continue;
+    last.set(r.key, r);
+  }
+  return [...last.values()].sort((a, b) => a.key.localeCompare(b.key, 'mn', { numeric: true }));
+};
 
 /* ══════════════ Өрх · блок (building_GOL) ══════════════ */
 
