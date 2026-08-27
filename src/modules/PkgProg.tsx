@@ -172,12 +172,29 @@ export function PkgProg({ dim, setDim }: {
   const ovOk = overlap !== 'error' ? overlap : null;
 
   /**
+   * КАРТААС СОНГОСОН давхцсан талбарууд — газрын зураг ҮҮГЭЭР нарийсна.
+   *
+   * ⚠️ `ovOk` нь ТӨСЛИЙН (эсвэл сонгосон багцын) БҮХ давхцсан талбар. Багцын
+   *    картын зурвас дээр дарахад зөвхөн ТЭР багцынх үлдэх ёстой — эс бөгөөс
+   *    зураг нэг талбар руу ойртсон ч эргэн тойронд өөр багцын хэдэн арван
+   *    улаан полигон зурагдсан хэвээр байна.
+   */
+  const [ovPick, setOvPick] = useState<number[] | null>(null);
+  /* Багц солиход сонголт суллагдана — өөр багцын талбар дээр түгжигдэхгүй */
+  useEffect(() => { setOvPick(null); }, [active]);
+
+  /** Зурагт үзүүлэх давхцсан талбарууд — сонголт байвал түүнийг */
+  const ovShown = ovPick?.length ? ovPick : (ovOk?.oids ?? []);
+
+  /**
    * БАГЦ БҮРИЙН давхцсан үлдсэн нэгж талбар — «Багц N — блокууд» картын
    * толгойд. FinCard-ын нэгдсэн индикаторыг багцаар задалж энд зөөв
    * (2026-08-21, хэрэглэгчийн хүсэлт). Багц тус бүрд тусдаа огтлолцол тул
    * зэрэг бодогдож, нэг нь унавал бусдыг унагахгүй (allSettled).
    */
-  const [ovByPack, setOvByPack] = useState<Map<string, number | 'error'> | null>(null);
+  /* ⚠️ ТОО биш ОБЬЕКТ: картын зурвасыг дарахад тэр багцын давхцсан талбар руу
+     очих тул ObjectID-ууд хэрэгтэй (зөвхөн тоогоор очих газар мэдэгдэхгүй). */
+  const [ovByPack, setOvByPack] = useState<Map<string, Overlap | 'error'> | null>(null);
   useEffect(() => {
     let alive = true;
     const builds = packs.filter((pk) => pk.kind === 'build');
@@ -185,11 +202,11 @@ export function PkgProg({ dim, setDim }: {
     Promise.allSettled(
       builds.map(async (pk) => [
         pk.key,
-        (await overlapLeftParcels(pk.layerIds.map((id) => ({ layerId: id, where: pk.where })))).oids.length,
+        await overlapLeftParcels(pk.layerIds.map((id) => ({ layerId: id, where: pk.where }))),
       ] as const),
     ).then((rs) => {
       if (!alive) return;
-      const m = new Map<string, number | 'error'>();
+      const m = new Map<string, Overlap | 'error'>();
       /* ⚠️ Унасныг АЛГАСАХГҮЙ — түлхүүр нь Map-д огт орохгүй бол картын толгой
          «тоолж байна…» гэж МӨНХӨД хүлээлгэдэг байв; `'error'` = ил хэлнэ. */
       rs.forEach((r, i) => {
@@ -345,8 +362,8 @@ export function PkgProg({ dim, setDim }: {
    * overlap ирэх бүрд бохирдоно. Зөвхөн ГАРАЛТ дээр давхарлана.
    */
   const mapVisible = useMemo(
-    () => (ovOk?.oids.length ? [...new Set([...visible, PARCEL_LAYER])] : visible),
-    [visible, ovOk],
+    () => (ovShown.length ? [...new Set([...visible, PARCEL_LAYER])] : visible),
+    [visible, ovShown],
   );
   /**
    * ДАВХЦСАН НЭГЖ ТАЛБАРЫН ХЭВ МАЯГ — УЛААН (хэрэглэгчийн шийдвэр, 2026-08-25).
@@ -366,16 +383,16 @@ export function PkgProg({ dim, setDim }: {
    */
   /** Анивчих давхарга — давхцсан талбар олдсон үед л. */
   const parcelPulse = useMemo(
-    () => (ovOk?.oids.length ? [PARCEL_LAYER] : undefined),
-    [ovOk],
+    () => (ovShown.length ? [PARCEL_LAYER] : undefined),
+    [ovShown],
   );
 
   const parcelStyle = useMemo(
     () =>
-      ovOk?.oids.length
+      ovShown.length
         ? { [PARCEL_LAYER]: { hue: '#dc2626', fill: 0.3, width: 4.2 } }
         : undefined,
-    [ovOk],
+    [ovShown],
   );
 
   const layerWhere = useMemo<Record<string, string | null>>(
@@ -398,12 +415,13 @@ export function PkgProg({ dim, setDim }: {
       w[BLOCK_LAYER] = active?.where ?? alertedWhere;
       // ⚠️ Давхаргад 2,119 талбар бий — ЗӨВХӨН давхцсаныг үлдээнэ, эс бөгөөс
       //    бүх хот дүүрэн парсел зурагдаж блокууд дарагдана.
-      w[PARCEL_LAYER] = ovOk?.oids.length
-        ? `OBJECTID IN (${ovOk.oids.join(',')})`
+      /* ⚠️ Картаас нэг багц сонгосон бол ТҮҮНИЙ талбарууд; эс бөгөөс бүгд. */
+      w[PARCEL_LAYER] = ovShown.length
+        ? `OBJECTID IN (${ovShown.join(',')})`
         : null;
       return w;
     },
-    [active, alertedWhere, ovOk, zone, mapVisible],
+    [active, alertedWhere, ovShown, zone, mapVisible],
   );
 
   /** Багц солих — барилгын сонголт цуцлагдана (өөр багцын барилга үлдэхгүй) */
@@ -672,14 +690,27 @@ export function PkgProg({ dim, setDim }: {
                 /* ЗӨВХӨН «Багц 1» анхнаасаа нээлттэй (2026-08-21, хэрэглэгчийн
                    хүсэлт) — жагсаалтын эхний багц жишээ болж дэлгэгдэнэ */
                 defaultOpen={p.key === 'БАГЦ1'}
-                overlapN={ovByPack == null ? null : (ovByPack.get(p.key) ?? null)}
+                overlapN={(() => {
+                  const r = ovByPack?.get(p.key);
+                  return ovByPack == null || r === undefined ? null : r === 'error' ? 'error' : r.oids.length;
+                })()}
+                overlapOids={(() => {
+                  const r = ovByPack?.get(p.key);
+                  return r && r !== 'error' ? r.oids : undefined;
+                })()}
+                onOverlapPick={setOvPick}
               />
             ))}
           </>
         ) : active.kind === 'build' ? (
           /* Барилгын багц — блокийн жагсаалт ба ажлын хяналт (БИЕТ явц) */
           <>
-            <BlocksCard p={active} overlapN={overlap == null ? null : overlap === 'error' ? 'error' : overlap.oids.length} />
+            <BlocksCard
+              p={active}
+              overlapN={overlap == null ? null : overlap === 'error' ? 'error' : overlap.oids.length}
+              overlapOids={ovOk?.oids}
+              onOverlapPick={setOvPick}
+            />
             <MonitorBagts bagts={active.name} />
           </>
         ) : (
@@ -726,7 +757,7 @@ function TsKpi({ packs, fin }: { packs: Pack[]; fin: FinData | null }) {
     for (const m of months) {
       if (m.label > nowYm) continue;
       if (m.cumPct > 0) planned = m.cumPct;
-      if (m.phys > 0) actual = m.phys;
+      if (m.phys != null) actual = m.phys;
     }
     const gap = planned != null && actual != null ? planned - actual : null;
     const C = CASHFLOW2.fields;
@@ -1036,7 +1067,9 @@ export function aggregateMonths(d: FinData) {
       amountCum: cum,
       cumPct: planTotal > 0 ? (cum / planTotal) * 100 : 0,
       given,
-      phys: physN > 0 ? physW / physN : 0,
+      // ⚠️ Хэмжилт огт байхгүй сар — `null`. 0 гэж буцаавал график дээр
+      //    «биет гүйцэтгэл тэг» гэсэн худал шугам зурагдана.
+      phys: physN > 0 ? physW / physN : null,
     };
   });
 }
@@ -1061,10 +1094,18 @@ function ProgChart({ months, title }: { months: MonthPt[] | null; title: string 
   }
 
   const rows = months.map((m) => ({ label: m.label, plan: m.cumPct, act: m.phys }));
-  let lastAct = -1;
-  rows.forEach((r, i) => { if (r.act > 0) lastAct = i; });
+  /*
+   * ⚠️ ХЭМЖИГДСЭН сарууд — `act != null`. Урьд нь `act > 0` байсан тул:
+   *   · жинхэнэ 0% (ажил эхлээгүй) нь ХЭМЖИЛТ атлаа муруйнаас таслагдаж,
+   *   · датагүй багц (жиш. бөглөж эхлээгүй Багц 2) дээр «Бодит гүйцэтгэл»
+   *     ба «Зөрүү» ХОЁУЛАА чимээгүй алга болж, зөвхөн төлөвлөгөөний тасархай
+   *     шугам үлддэг — хэрэглэгч графикийг эвдэрсэн гэж үздэг байв.
+   */
+  const measured = rows.map((r, i) => (r.act == null ? -1 : i)).filter((i) => i >= 0);
+  const lastAct = measured.length ? measured[measured.length - 1] : -1;
   const cur = lastAct >= 0 ? rows[lastAct] : null;
-  const curGap = cur ? cur.plan - cur.act : null;
+  const curAct = cur?.act ?? null;
+  const curGap = curAct == null ? null : cur!.plan - curAct;
   const behind = (curGap ?? 0) > 0;
 
   const N = rows.length;
@@ -1080,7 +1121,8 @@ function ProgChart({ months, title }: { months: MonthPt[] | null; title: string 
   const yFor = (v: number) => padT + (1 - Math.max(0, Math.min(100, v)) / 100) * plotH;
 
   const planPts = rows.map((r, i) => ({ x: xFor(i), y: yFor(r.plan) }));
-  const actPts = rows.slice(0, lastAct + 1).map((r, i) => ({ x: xFor(i), y: yFor(r.act) }));
+  /* ⚠️ Зөвхөн ХЭМЖИГДСЭН цэг — дундах цоорхойг 0 гэж дүүргэхгүй */
+  const actPts = measured.map((i) => ({ x: xFor(i), y: yFor(rows[i].act as number) }));
 
   /*
    * ЗӨРҮҮГИЙН ТАЛБАЙ — төлөвлөгөөний муруйгаас бодит муруй хүртэл.
@@ -1088,7 +1130,7 @@ function ProgChart({ months, title }: { months: MonthPt[] | null; title: string 
    *    зөрүү нь ХЭМЖЭЭ болж харагдана.
    */
   const gapArea = actPts.length > 1
-    ? curve(planPts.slice(0, actPts.length))
+    ? curve(measured.map((i) => planPts[i]))
       + ' L ' + [...actPts].reverse().map((q) => q.x.toFixed(1) + ' ' + q.y.toFixed(1)).join(' L ')
       + ' Z'
     : '';
@@ -1096,6 +1138,27 @@ function ProgChart({ months, title }: { months: MonthPt[] | null; title: string 
   const step = Math.max(1, Math.ceil(N / 12));
   const pt = hi != null ? rows[hi] : null;
   const anchor = (i: number): 'start' | 'middle' | 'end' => (i === 0 ? 'start' : i === N - 1 ? 'end' : 'middle');
+
+  /*
+   * ⚠️ ЦЭГ БҮР ДЭЭР УТГА — «Санхүүжилтийн явц» (ComboChart)-ийн ЯГ тэр дүрэм.
+   *
+   *    Тэнд 2026-08-25-нд «зөвхөн эцсийн утга үзүүлэх нь БУРУУ: 12 сарын урт
+   *    графикийг гаргаад ганц тоо уншуулах юм бол график хэрэггүй» гэж
+   *    зассан байсныг энэ график давтаж, дахин ЗӨВХӨН сүүлийн цэгээ
+   *    тоогоор бичдэг байв (2026-08-27).
+   *
+   * ⚠️ Мөргөлдөхөөс сэргийлэх дүрэм: ТӨЛӨВЛӨГӨӨ муруйнхаа ДЭЭР, БОДИТ нь
+   *    ДООР бичигдэнэ — хоёр цуваа ойртсон ч давхцахгүй.
+   * ⚠️ Сүүлийн цэгийг АЛГАСНА: тэнд том шошго тусдаа бичигдэнэ (давхарлахгүй).
+   */
+  const showLabel = (i: number) => i !== N - 1 && (i === 0 || i % step === 0);
+  /**
+   * Шошгын X — ЭХНИЙ цэг дээр торны хувийн шошгоос (0/25/50/75/100%) ЗАЙЛСХИЙНЭ.
+   * ⚠️ Тэдгээр нь мөн `x = padL`-д, `start` тэгшлэлтэй суудаг тул эхний цэгийн
+   *    утга тэнхлэгийн тоон дээр яг таарч, хоёулаа уншигдахгүй болдог байв
+   *    («19%» ба «25%» давхарлаж байлаа).
+   */
+  const labelX = (i: number) => (i === 0 ? xFor(i) + 26 : xFor(i));
 
   return (
     <Section
@@ -1109,10 +1172,23 @@ function ProgChart({ months, title }: { months: MonthPt[] | null; title: string 
       }
     >
       {/* Легенд — тэмдэг нь ШУГАМЫН ХЭЛБЭРИЙГ давтана */}
+      {/*
+        * ⚠️ ЗУРАГДААГҮЙ ЦУВААГ ТАЙЛБАРТ ЖАГСААХГҮЙ. Урьд нь бөглөгдөөгүй
+        *    багц дээр «Бодит гүйцэтгэл» ба «Зөрүү» гэж бичээд, харгалзах
+        *    шугам нь огт байхгүй байсан тул хэрэглэгч дутуу зурагдсан гэж
+        *    ойлгодог байв. Одоо дата байхгүйг ИЛ хэлнэ.
+        */}
       <div className={ts.progLegend}>
         <span><i className={ts.progDash} style={{ borderTopColor: cat(2) }} />{tr('Төлөвлөсөн')}</span>
-        <span><i className={ts.progSolid} style={{ background: cat(1) }} />{tr('Бодит гүйцэтгэл')}</span>
-        <span><i className={behind ? ts.progAreaBad : ts.progAreaGood} />{tr('Зөрүү')}</span>
+        {measured.length > 0 && (
+          <>
+            <span><i className={ts.progSolid} style={{ background: cat(1) }} />{tr('Бодит гүйцэтгэл')}</span>
+            <span><i className={behind ? ts.progAreaBad : ts.progAreaGood} />{tr('Зөрүү')}</span>
+          </>
+        )}
+        {measured.length === 0 && (
+          <span className={ts.progNoData}>{tr('Бодит гүйцэтгэл хараахан бөглөгдөөгүй')}</span>
+        )}
       </div>
 
       <div
@@ -1145,18 +1221,55 @@ function ProgChart({ months, title }: { months: MonthPt[] | null; title: string 
             <path d={curve(actPts)} className={ts.progAct} style={{ stroke: cat(1) }} vectorEffect="non-scaling-stroke" />
           )}
 
-          {/* Сүүлийн цэгүүд — графикийн ЦОРЫН ГАНЦ тогтмол тоо */}
+          {/* ТӨЛӨВЛӨГӨӨНИЙ утга — муруйн ДЭЭР талд */}
+          {rows.map((r, i) => (showLabel(i) ? (
+            <g key={`pl-${i}`}>
+              <circle cx={xFor(i)} cy={yFor(r.plan)} r={2.5} className={ts.progDot} style={{ fill: cat(2) }} />
+              {/* ⚠️ y-г 12-оос дээш барина: дээд ирмэгт хүрсэн цэгийн шошго
+                  SVG-ийн гаднаас тасарч, тоо хагас харагддаг. */}
+              <text
+                x={labelX(i)}
+                y={Math.max(12, yFor(r.plan) - 9)}
+                className={ts.progVal}
+                style={{ fill: cat(2) }}
+                textAnchor={anchor(i)}
+              >
+                {r.plan.toFixed(0)}%
+              </text>
+            </g>
+          ) : null))}
+
+          {/* БОДИТ гүйцэтгэлийн утга — муруйн ДООР талд, зөвхөн ХЭМЖИГДСЭН сард.
+              ⚠️ `i !== lastAct`: сүүлийн хэмжилт дээр доорх ТОМ шошго аль хэдийн
+                 бичигдэнэ — хоёуланг нь зурвал нэг цэг дээр хоёр тоо давхарлана
+                 (2026-08 дээр «0%» хоёр удаа гарч байсан). */}
+          {rows.map((r, i) => (showLabel(i) && i !== lastAct && r.act != null ? (
+            <g key={`ac-${i}`}>
+              <circle cx={xFor(i)} cy={yFor(r.act)} r={2.5} className={ts.progDot} style={{ fill: cat(1) }} />
+              <text
+                x={labelX(i)}
+                y={Math.min(padT + plotH - 4, yFor(r.act) + 16)}
+                className={ts.progVal}
+                style={{ fill: cat(1) }}
+                textAnchor={anchor(i)}
+              >
+                {r.act.toFixed(0)}%
+              </text>
+            </g>
+          ) : null))}
+
+          {/* Сүүлийн цэгүүд — томоор, тодоор */}
           <g>
             <circle cx={xFor(N - 1)} cy={yFor(rows[N - 1].plan)} r={4} className={ts.progDot} style={{ fill: cat(2) }} />
             <text x={xFor(N - 1) + 9} y={yFor(rows[N - 1].plan) + 4} className={ts.progEnd} style={{ fill: cat(2) }}>
               {rows[N - 1].plan.toFixed(0)}%
             </text>
           </g>
-          {cur && (
+          {curAct != null && (
             <g>
-              <circle cx={xFor(lastAct)} cy={yFor(cur.act)} r={4} className={ts.progDot} style={{ fill: cat(1) }} />
-              <text x={xFor(lastAct) + 9} y={yFor(cur.act) + 4} className={ts.progEnd} style={{ fill: cat(1) }}>
-                {cur.act.toFixed(0)}%
+              <circle cx={xFor(lastAct)} cy={yFor(curAct)} r={4} className={ts.progDot} style={{ fill: cat(1) }} />
+              <text x={xFor(lastAct) + 9} y={yFor(curAct) + 4} className={ts.progEnd} style={{ fill: cat(1) }}>
+                {curAct.toFixed(0)}%
               </text>
             </g>
           )}
@@ -1166,8 +1279,8 @@ function ProgChart({ months, title }: { months: MonthPt[] | null; title: string 
             <g>
               <line x1={xFor(hi)} x2={xFor(hi)} y1={padT} y2={padT + plotH} className={ts.progCursor} />
               <circle cx={xFor(hi)} cy={yFor(rows[hi].plan)} r={4} className={ts.progDot} style={{ fill: cat(2) }} />
-              {hi <= lastAct && (
-                <circle cx={xFor(hi)} cy={yFor(rows[hi].act)} r={4} className={ts.progDot} style={{ fill: cat(1) }} />
+              {rows[hi].act != null && (
+                <circle cx={xFor(hi)} cy={yFor(rows[hi].act as number)} r={4} className={ts.progDot} style={{ fill: cat(1) }} />
               )}
             </g>
           )}
@@ -1195,12 +1308,13 @@ function ProgChart({ months, title }: { months: MonthPt[] | null; title: string 
             </p>
             <p className={ts.progTipRow}>
               <i style={{ background: cat(1) }} />
-              {tr('Бодит')}<b className="num">{pt.act > 0 ? `${pt.act.toFixed(1)}%` : '—'}</b>
+              {/* ⚠️ «—» нь ХЭМЖИГДЭЭГҮЙ гэсэн үг; жинхэнэ 0% нь «0.0%» гэж гарна */}
+              {tr('Бодит')}<b className="num">{pt.act == null ? '—' : `${pt.act.toFixed(1)}%`}</b>
             </p>
             <p className={`${ts.progTipRow} ${ts.progTipGap}`}>
               {tr('Зөрүү')}
               <b className="num">
-                {pt.act > 0 ? `${pt.plan - pt.act >= 0 ? '−' : '+'}${Math.abs(pt.plan - pt.act).toFixed(1)}%` : '—'}
+                {pt.act == null ? '—' : `${pt.plan - pt.act >= 0 ? '−' : '+'}${Math.abs(pt.plan - pt.act).toFixed(1)}%`}
               </b>
             </p>
           </div>
@@ -1220,8 +1334,24 @@ function curve(pts: { x: number; y: number }[]): string {
     const p1 = pts[i];
     const p2 = pts[i + 1];
     const p3 = pts[i + 2] ?? p2;
-    d += ` C ${(p1.x + (p2.x - p0.x) / 6).toFixed(1)} ${(p1.y + (p2.y - p0.y) / 6).toFixed(1)}`
-      + ` ${(p2.x - (p3.x - p1.x) / 6).toFixed(1)} ${(p2.y - (p3.y - p1.y) / 6).toFixed(1)}`
+    /*
+     * ⚠️ ХЯНАЛТЫН ЦЭГИЙГ СЕГМЕНТИЙН ХҮРЭЭНД ХАШНА (2026-08-27).
+     *
+     * Catmull-Rom нь хөрш цэгүүдийн ХАЗАЙЛТААР хяналтын цэгээ тавьдаг тул
+     * «тэгш → огцом өсөх» шилжилт дээр муруй хүрээнээсээ ГАРЧ, доошоо
+     * унжина. Гүйцэтгэл/санхүүжилт нь ӨССӨН дүн — буурч харагдах нь
+     * «ажил ухарсан» гэсэн ХУДАЛ уншилт өгнө (Багц 2-ын төлөвлөгөө
+     * 2026-05..06-д 33%-иас доош унжиж байлаа).
+     *
+     * Хашилт нь гөлгөрийг хадгална: зөвхөн ХЭТЭРСЭН тохиолдолд л
+     * сегментийн ирмэг рүү татна.
+     */
+    const clamp = (v: number, a: number, b: number) =>
+      Math.min(Math.max(v, Math.min(a, b)), Math.max(a, b));
+    const c1y = clamp(p1.y + (p2.y - p0.y) / 6, p1.y, p2.y);
+    const c2y = clamp(p2.y - (p3.y - p1.y) / 6, p1.y, p2.y);
+    d += ` C ${(p1.x + (p2.x - p0.x) / 6).toFixed(1)} ${c1y.toFixed(1)}`
+      + ` ${(p2.x - (p3.x - p1.x) / 6).toFixed(1)} ${c2y.toFixed(1)}`
       + ` ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
   }
   return d;

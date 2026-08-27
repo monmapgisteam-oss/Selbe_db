@@ -27,20 +27,19 @@ import { useAuth } from '@/components/AuthGate';
 import { ROLE_STAGE } from '@/lib/services';
 import { bagtsFor, subscribeAcl } from '@/lib/guitsetgelAcl';
 import { Sheet } from '@/modules/sheet/Sheet';
-import { groupWorks, optionsOf, type Work } from '@/lib/hyanaltGroup';
+import { groupWorks, optionsOf, STAGE_LABEL, type Work } from '@/lib/hyanaltGroup';
 import { apply, recheck, useHyanaltRows } from '@/lib/hyanaltStore';
 import { loadSubmission, type Change, type Submission } from '@/lib/hyanaltDetail';
 import s from './guitsetgel.module.css';
 
 const STAGES: Stage[] = ['company', 'engineer', 'manager', 'director'];
 
-/** Шатны нэр — эрхийн панел ч ЭНЭ жагсаалтыг хэрэглэнэ (нэг эх сурвалж). */
-export const STAGE_LABEL: Record<Stage, string> = {
-  company: tr('Гүйцэтгэгч компани'),
-  engineer: tr('Хяналтын инженер'),
-  manager: tr('Багцын менежер'),
-  director: tr('Ерөнхий менежер'),
-};
+/*
+ * ⚠️ ШАТНЫ НЭР ЭНД ТОДОРХОЙЛОГДОХГҮЙ — `lib/hyanaltGroup.ts`-д. Урьд нь
+ * хоёр газар бичигдээд ЗӨРДӨГ байсан («Талбайн» ↔ «Хяналтын инженер»).
+ * Дахин экспортлож байгаа нь ЗӨВХӨН хуучин импортуудыг эвдэхгүйн тулд.
+ */
+export { STAGE_LABEL };
 
 /**
  * ⚠️ Төлөвийн УТГА нь өгөгдөл (ArcGIS-д монголоор хадгалагдана) — дэлгэцэд

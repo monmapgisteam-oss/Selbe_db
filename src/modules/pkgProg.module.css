@@ -394,6 +394,22 @@
 .progDot { stroke: var(--surface); stroke-width: 2; }
 .progEnd { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
 
+/**
+ * ЦЭГ БҮРИЙН УТГА — муруйн дагуух жижиг тоонууд.
+ * ⚠️ `paint-order: stroke` + дэвсгэрийн өнгөт зузаан контур: тоо нь торны
+ * шугам, нөгөө муруйн дээгүүр таарсан ч уншигдана. Үүнгүйгээр 12 сарын
+ * шошго муруйтай нийлж «бохир» болно.
+ */
+.progVal {
+  font-size: 10px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
 /* Гарчгийн баруун талын одоогийн зөрүү */
 .progBad { color: var(--bad-ink, var(--bad)); font-weight: 700; font-variant-numeric: tabular-nums; }
 .progGood { color: var(--good-ink, var(--good)); font-weight: 700; font-variant-numeric: tabular-nums; }
@@ -421,6 +437,16 @@
 }
 .progSwAct { background: var(--good); opacity: 0.85; }
 .progSwLate { background: var(--bad); opacity: 0.85; }
+
+/**
+ * ДАТА АЛГА гэсэн тайлбар — легендийн байрлалд.
+ * ⚠️ Тэмдэггүй (өнгөт дөрвөлжингүй): энэ нь ЦУВАА БИШ, зурагдаагүй гэдгийг
+ * тайлбарлаж буй бичвэр. Тэмдэгтэй болговол дөрөв дэх цуваа мэт уншигдана.
+ */
+.progNoData {
+  font-style: italic;
+  color: var(--ink-3);
+}
 
 /* Tooltip — хөвөгч тул сүүдэр зөвшөөрөгдөнө */
 .progTip {

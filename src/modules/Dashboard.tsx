@@ -1623,7 +1623,7 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
     for (const m of months) {
       if (m.label > nowYm) continue;
       if (m.cumPct > 0) planned = m.cumPct;
-      if (m.phys > 0) actual = m.phys;
+      if (m.phys != null) actual = m.phys;
     }
   }
   const gap = planned != null && actual != null ? planned - actual : null;

@@ -78,7 +78,17 @@ export type MonthPt = {
   amountCum: number; // өссөн төлөвлөгөө ₮
   cumPct: number; // өссөн гүйцэтгэлийн хувь (0–100)
   given: number; // тухайн сард IPC-ээр олгосон ₮ (net)
-  phys: number; // сарын эцсийн байдлаарх БИЕТ гүйцэтгэл % («Гүйцэтгэл бөглөх»); 0 = дата алга
+  /**
+   * Сарын эцсийн байдлаарх БИЕТ гүйцэтгэл, % («Гүйцэтгэл бөглөх»).
+   *
+   * ⚠️ `null` = ТУХАЙН САРД ДАТА АЛГА. Энэ нь 0%-ЭЭС ЯЛГААТАЙ: 0% гэдэг нь
+   *    «ажил эхлээгүй» гэсэн ХЭМЖИЛТ, null нь «хэмжигдээгүй» гэсэн үг.
+   *    Урьд нь хоёуланг нь 0 гэж нэгтгэдэг байсан тул бөглөгдөөгүй багцын
+   *    график дээр «Бодит гүйцэтгэл» ба «Зөрүү» шугам ОГТ зурагдахгүй,
+   *    гэхдээ тайлбар нь тэдгээрийг амлаад зогсдог байв — хэрэглэгч
+   *    графикийг эвдэрсэн гэж үздэг (2026-08-27).
+   */
+  phys: number | null;
 };
 
 /** Багц бүрийн IPC: сар → олгосон нийлбэр */
@@ -150,15 +160,20 @@ export function ComboChart({
       label: it.label,
       planned: it.amountCum, // өссөн төлөвлөгөө ₮
       financing: gsum, // өссөн олгосон санхүүжилт ₮
-      physical: (it.phys / 100) * totalPlan, // биет гүйцэтгэлийн үнэ цэнэ ₮ (өндөр тогтооно)
-      physPct: it.phys, // шошго/тултипт харуулах биет %
+      // ⚠️ Дата алга (null) бол 0 өндөртэй цэг зурвал «биет гүйцэтгэл тэг»
+      //    гэсэн ХУДАЛ уншилт өгнө — доорх `lastPhys` нь ийм саруудыг алгасна.
+      physical: ((it.phys ?? 0) / 100) * totalPlan, // биет гүйцэтгэлийн үнэ цэнэ ₮
+      physPct: it.phys, // шошго/тултипт харуулах биет % (null = хэмжигдээгүй)
       givenCum: gsum,
       it,
     };
   });
   // Бодит муруйнууд (санхүүжилт, биет) зөвхөн ОДОО хүртэл; төлөвлөгөө л дуустал хүрнэ
   let lastPhys = -1;
-  rows.forEach((r, i) => { if (r.physPct > 0) lastPhys = i; });
+  // ⚠️ `> 0` БИШ `!= null`: жинхэнэ 0% (ажил эхлээгүй) нь ХЭМЖИЛТ мөн тул
+  //    муруй түүнээс эхлэх ёстой. Урьд нь эхний бодит тэгүүд таслагдаж,
+  //    муруй хожуу сараас эхэлдэг байв.
+  rows.forEach((r, i) => { if (r.physPct != null) lastPhys = i; });
   // Нуусан үед сүүлийн биет цэгийг -1 болгоно — доорх бүх зурах нөхцөл унтарна
   if (hidePhys) lastPhys = -1;
 
@@ -259,7 +274,7 @@ export function ComboChart({
                 x1={cx} x2={cx} y1={padT} y2={padT + plotH}
                 stroke={color} strokeWidth={1.5} strokeDasharray="4 4" opacity={0.45}
               />
-              {rows[li].physPct > 0 && (
+              {rows[li].physPct != null && (
                 <circle
                   cx={cx} cy={yFor(rows[li].physical)} r={5} fill={color}
                   className={lagLvl === 'red' ? f.barBlinkRed : f.barBlinkYellow}
@@ -320,14 +335,15 @@ export function ComboChart({
           );
         })}
         {rows.map((r, i) => {
-          if (i > lastPhys || r.physPct <= 0 || !showLabel(i)) return null;
+          // ⚠️ `== null` (`<= 0` БИШ): 0% нь бодит хэмжилт тул шошготой байна
+          if (i > lastPhys || r.physPct == null || !showLabel(i)) return null;
           const x = xFor(i);
           const y = yFor(r.physical);
           return (
             <g key={`ph-${i}`}>
               <circle cx={x} cy={y} r={3} className={f.sDot} style={{ fill: PHYS }} vectorEffect="non-scaling-stroke" />
               <text x={x} y={Math.min(padT + plotH - 4, y + 28)} className={f.ptVal} style={{ fill: PHYS }} textAnchor={anchorFor(i)}>
-                {r.physPct.toFixed(0)}%
+                {r.physPct?.toFixed(0)}%
               </text>
             </g>
           );
@@ -343,7 +359,7 @@ export function ComboChart({
             {hi <= lastGiven && (
               <circle cx={xFor(hi)} cy={yFor(rows[hi].givenCum)} r={4} className={f.sDot} style={{ fill: ACT }} vectorEffect="non-scaling-stroke" />
             )}
-            {hi <= lastPhys && rows[hi].physPct > 0 && (
+            {hi <= lastPhys && rows[hi].physPct != null && (
               <circle cx={xFor(hi)} cy={yFor(rows[hi].physical)} r={4} className={f.sDot} style={{ fill: PHYS }} vectorEffect="non-scaling-stroke" />
             )}
           </g>
@@ -368,7 +384,8 @@ export function ComboChart({
           <p className={`num ${f.tipHd}`}>{pt.label}</p>
           <p className={f.tipRow}><i style={{ background: PLAN }} />{tr('Төлөвлөсөн санхүүжилт')}<b className="num">{pt.planned > 0 ? mntShort(pt.planned) : '—'}</b></p>
           <p className={f.tipRow}><i style={{ background: ACT }} />{tr('Олгосон санхүүжилт')}<b className="num">{pt.givenCum > 0 ? mntShort(pt.givenCum) : '—'}</b></p>
-          {!hidePhys && <p className={f.tipRow}><i style={{ background: PHYS }} />{tr('Биет гүйцэтгэл')}<b className="num">{pt.physPct > 0 ? `${pt.physPct.toFixed(1)}%` : '—'}</b></p>}
+          {!hidePhys && <p className={f.tipRow}><i style={{ background: PHYS }} />{/* «—» = ХЭМЖИГДЭЭГҮЙ; жинхэнэ 0% нь «0.0%» гэж гарна */}
+            {tr('Биет гүйцэтгэл')}<b className="num">{pt.physPct == null ? '—' : `${pt.physPct.toFixed(1)}%`}</b></p>}
           <p className={`${f.tipRow} ${f.tipGap}`}>
             {tr('Төлөвлөгөөний биелэлт')}
             <b className="num">{pt.it.cumPct > 0 ? `${pt.it.cumPct.toFixed(1)}%` : '—'}</b>
@@ -615,14 +632,41 @@ export function contractMonths(r: Row, given: GivenMap, phys: PhysMap): MonthPt[
   //    зурдаг байв. Диапазон мөр одоо хоосон түлхүүртэй — юутай ч таарахгүй.
   const byMon = given.get(pkgKeyOf(r[C.pkg2])) ?? given.get(pkgKeyOf(r[C.pkg]));
   const ph = phys.get(pkgKeyOf(r[C.pkg2])) ?? phys.get(pkgKeyOf(r[C.pkg]));
-  return CASHFLOW2.months.map((m) => ({
-    label: m.label,
-    amount: n(r[m.amount]),
-    amountCum: n(r[m.amountCum]),
-    cumPct: pctVal(r[m.pctCum]),
-    given: byMon?.get(m.label) ?? 0,
-    phys: ph?.get(m.label) ?? 0,
-  }));
+
+  /*
+   * ⚠️ ХАДГАЛАГДСАН `pctCum` (CF-ийн «өссөн хувь») БАГАНЫГ ХЭРЭГЛЭХГҮЙ —
+   *    тэр нь ЖИЛ БҮР ТЭГЛЭГДДЭГ. Амьд өгөгдөл (2026-08-27, Багц 2):
+   *
+   *      2025-10..12  19.3%   → 2026-01..06  0.0%   → 2026-09  39.8%
+   *
+   *    Өссөн дүн ДУНДАА 0 болж унана гэдэг боломжгүй — график дээр
+   *    төлөвлөгөөний муруй зургаан сар шалан дээр хэвтээд, эцсийн цэг нь
+   *    100%-ийн оронд 39.8% дээр зогсдог байв. `services.ts` нь `amountCum`-ийн
+   *    хувьд яг энэ занг («ЖИЛ БҮР ТЭГЛЭГДДЭГ») аль хэдийн тэмдэглэсэн
+   *    бөгөөд `loadBudget` түүнийг хэрэглэхээс зайлсхийдэг.
+   *
+   *    Тиймээс өссөн хувийг гэрээний ӨӨРИЙНХ нь сарын дүнгээс бодно —
+   *    үргэлж өсөх ба төгсгөлдөө 100% болно. Төслийн нэгтгэсэн график
+   *    (`aggregateMonths`) аль хэдийн ЯГ ЭНЭ дүрмээр боддог тул хоёр
+   *    график нэг хэлээр ярина.
+   */
+  const amounts = CASHFLOW2.months.map((m) => n(r[m.amount]));
+  const total = amounts.reduce((a, b) => a + b, 0);
+  let cum = 0;
+
+  return CASHFLOW2.months.map((m, i) => {
+    cum += amounts[i];
+    return {
+      label: m.label,
+      amount: amounts[i],
+      amountCum: n(r[m.amountCum]),
+      // ⚠️ Нийт нь 0 бол хувь утгагүй — хадгалагдсан баганад ЭНД Л буцаж
+      //    найдна (сарын хуваарь огт бөглөгдөөгүй гэрээ).
+      cumPct: total > 0 ? (cum / total) * 100 : pctVal(r[m.pctCum]),
+      given: byMon?.get(m.label) ?? 0,
+      phys: ph?.get(m.label) ?? null,
+    };
+  });
 }
 
 /**
@@ -634,14 +678,15 @@ export function lagOf(months: MonthPt[]): { month: string; planned: number; actu
   const nowYm = new Date().toISOString().slice(0, 7);
   let mi = -1;
   months.forEach((m, i) => {
-    if (m.label <= nowYm && m.phys > 0) mi = i;
+    // ⚠️ `!= null`: 0% нь бодит хэмжилт — хоцрогдлын тооцооноос хасахгүй
+    if (m.label <= nowYm && m.phys != null) mi = i;
   });
   if (mi < 0) return null;
   // Төлөвлөгөө: тухайн сар хүртэлх сүүлийн бөглөгдсөн өссөн хувь
   let planned = 0;
   for (let i = 0; i <= mi; i++) if (months[i].cumPct > 0) planned = months[i].cumPct;
   if (planned <= 0) return null;
-  const actual = months[mi].phys;
+  const actual = months[mi].phys ?? 0;
   return { month: months[mi].label, planned, actual, gap: planned - actual };
 }
 

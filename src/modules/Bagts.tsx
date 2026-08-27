@@ -636,6 +636,8 @@ export function BlocksCard({
   collapsible,
   defaultOpen,
   overlapN,
+  overlapOids,
+  onOverlapPick,
 }: {
   p: Pack;
   title?: string;
@@ -653,6 +655,27 @@ export function BlocksCard({
    * индикаторыг багцаар задалж энд зөөв (2026-08-21).
    */
   overlapN?: number | 'error' | null;
+  /**
+   * Давхцсан нэгж талбаруудын ObjectID — өгвөл зурвас ДАРАГДАХ болно:
+   * дарахад газрын зураг тэдгээр талбар руу ойртож, тодруулна.
+   *
+   * ⚠️ Зөвхөн ТОО хангалтгүй байв: «1 талбар саад болж байна» гэдгийг уншсан
+   *    инженер тэр талбарыг ОЛОХЫН тулд зургийг гараар гүйлгэх шаардлагатай
+   *    байлаа. Давхарга дээр аль хэдийн улаанаар зурагдаж байгаа тул очих зам
+   *    л дутуу байсан.
+   */
+  overlapOids?: number[];
+  /**
+   * Зурвасын сонголтыг ЭЦЭГТ мэдэгдэнэ (сонгосон OID-ууд, эс бөгөөс `null`).
+   *
+   * ⚠️ ЗААВАЛ ЭЦЭГТ: газрын зургийн парселийн давхаргын шүүлт
+   *    (`layerWhere`) нь эцэгт бодогддог. Зөвхөн энд `zoomToWhere` дуудвал
+   *    зураг тэр талбар руу ойртоно ГЭХДЭЭ давхарга дээр ТӨСЛИЙН БҮХ
+   *    давхцсан талбар зурагдсан хэвээр үлдэнэ — хэрэглэгч аль нь тухайн
+   *    багцынх болохыг ялгаж чадахгүй (2026-08-27-нд сүлжээний хүсэлтээр
+   *    баталсан: `OBJECTID IN (1821,814,1361,…)` бүтэн жагсаалт явж байв).
+   */
+  onOverlapPick?: (oids: number[] | null) => void;
 }) {
   const withData = p.blocks.filter((b) => b.progress != null).length;
   const { zoomToWhere, setHighlight } = useMap();
@@ -668,7 +691,14 @@ export function BlocksCard({
    */
   const selRef = useRef(selOid);
   selRef.current = selOid;
-  useEffect(() => () => { if (selRef.current != null) setHighlight(null); }, [setHighlight]);
+  const releaseRef = useRef(onOverlapPick);
+  releaseRef.current = onOverlapPick;
+  useEffect(() => () => {
+    if (selRef.current != null) setHighlight(null);
+    // ⚠️ Карт алга болоход парселийн нарийсгалт ҮЛДВЭЛ өөр багц руу
+    //    шилжсэн хэрэглэгч хоосон зураг хараад шалтгааныг нь олохгүй.
+    releaseRef.current?.(null);
+  }, [setHighlight]);
   const prevPackRef = useRef(p.key);
   useEffect(() => {
     if (prevPackRef.current === p.key) return;
@@ -676,16 +706,45 @@ export function BlocksCard({
     if (selRef.current != null) {
       setSelOid(null);
       setHighlight(null);
+      onOverlapPick?.(null);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [p.key, setHighlight]);
   const pick = (key: string) => {
     const off = selOid === key;
     setSelOid(off ? null : key);
+    // ⚠️ Блок сонгоход парселийн нарийсгалтыг тавина — эс бөгөөс зураг
+    //    хуучин нэг талбар дээр түгжээтэй үлдэж, сонгосон блок харагдахгүй.
+    onOverlapPick?.(null);
     if (off) { setHighlight(null); return; }
     const w = `${BUILDING.oid} = ${Number(key)}`;
     setHighlight(w, BLOCK_LAYER);
     zoomToWhere(BLOCK_LAYER, w);
   };
+
+  /**
+   * ДАВХЦСАН ТАЛБАР РУУ ОЧИХ — зурвас дээр дарахад.
+   *
+   * ⚠️ Блокийн сонголттой НЭГ төлөв хуваалцана (`selOid`): хоёулаа
+   *    `setHighlight`-д бичдэг тул тусад нь хөтөлбөл нэг нь нөгөөгийнхөө
+   *    тодруулгыг чимээгүй дарж, аль нь идэвхтэй болох нь мэдэгдэхгүй болно.
+   *    Түлхүүр нь OID биш тул блокийн дугаартай хэзээ ч давхцахгүй.
+   */
+  const OV_KEY = 'overlap';
+  const ovOn = selOid === OV_KEY;
+  const ovGo = overlapOids?.length
+    ? () => {
+      /* ⚠️ Тодруулга (`setHighlight`) БИШ, ШҮҮЛТ. Тодруулга нь таарахгүйг
+         БҮДГЭРҮҮЛДЭГ — 100 гаруй давхцсан талбарын дунд бүдгэрсэн 99 нь
+         зурагдсан хэвээр байж, сонгосон нэг нь тэдний дунд алга болно.
+         Эцгийн `layerWhere` нь тэднийг БҮРМӨСӨН хасна. */
+      setHighlight(null);
+      if (ovOn) { setSelOid(null); onOverlapPick?.(null); return; }
+      setSelOid(OV_KEY);
+      onOverlapPick?.(overlapOids);
+      zoomToWhere(PARCEL_LAYER, `OBJECTID IN (${overlapOids.join(',')})`);
+    }
+    : null;
   /**
    * ТОЛГОЙН БАРУУН ГАРЫН ТЭМДЭГЛЭЛ.
    *
@@ -719,11 +778,26 @@ export function BlocksCard({
       {overlapN !== undefined && (
         <>
           {/* ДАВХЦЛЫН мэдээлэл — хайрцаглаж, доорх блокийн жагсаалтаас
-              нүдээр илт зааглана. Тоо >0 бол шар аяс — ажилд саад буй. */}
-          <div className={`${o.ovStrip} ${typeof overlapN === 'number' && overlapN ? o.ovStripOn : ''}`}>
-            <span>{overlapN === 'error' ? tr('Давхцал тоолж чадсангүй') : tr('Давхцсан үлдсэн нэгж талбар')}</span>
-            <b className="num">{overlapN == null ? '…' : overlapN === 'error' ? '—' : num(overlapN)}</b>
-          </div>
+              нүдээр илт зааглана. Тоо >0 бол шар аяс — ажилд саад буй.
+              ⚠️ Талбарууд мэдэгдэж байвал ДАРЖ тэдгээр рүү очно. Тэг эсвэл
+                 алдааны үед энгийн `div` — дарах юм байхгүй бол товч мэт
+                 харагдах нь худал амлалт. */}
+          {ovGo ? (
+            <button
+              type="button"
+              className={`${o.ovStrip} ${o.ovStripOn} ${o.ovStripBtn} ${ovOn ? o.ovStripSel : ''}`}
+              onClick={ovGo}
+              title={tr('Дарж газрын зураг дээрх давхцсан нэгж талбар руу очно')}
+            >
+              <span>{tr('Давхцсан үлдсэн нэгж талбар')}</span>
+              <b className="num">{num(overlapN as number)}</b>
+            </button>
+          ) : (
+            <div className={`${o.ovStrip} ${typeof overlapN === 'number' && overlapN ? o.ovStripOn : ''}`}>
+              <span>{overlapN === 'error' ? tr('Давхцал тоолж чадсангүй') : tr('Давхцсан үлдсэн нэгж талбар')}</span>
+              <b className="num">{overlapN == null ? '…' : overlapN === 'error' ? '—' : num(overlapN)}</b>
+            </div>
+          )}
           {/* Жагсаалтын карт («Багц N — блокууд») дээр доорх мөрүүд ЮУ болохыг
               нэрлэнэ; сонгосон багцын картад гарчиг нь өөрөө хэлдэг тул хэрэггүй */}
           {collapsible && <div className={o.ovDivider}>{tr('Блок бүрийн гүйцэтгэл')}</div>}

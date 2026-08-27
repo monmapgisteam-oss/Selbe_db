@@ -42,23 +42,44 @@ import {
 export type BlockRow = { block: string; bagts: string; pct: number };
 
 export type ReportExtra = {
-  /** Төслийн НИЙТ гүйцэтгэл ба хэрэгжилтийн үе шат — `Төсөл_Гүйцэтгэл` хүснэгт */
+  /**
+   * Төслийн НИЙТ гүйцэтгэл — БАГЦААР, төсвийн жингээр.
+   *
+   * ⚠️ 2026-08-27: `stages` нь урьд «ТЭЗҮ · Зөвшөөрөл · Барилга угсралт…»
+   * гэсэн ҮЕ ШАТУУД байсан. Тэр бүтэц зөвхөн `Төсөл_Гүйцэтгэл_` хүснэгтэд
+   * байсан бөгөөд тэр нь хасагдсан тул мөр бүр одоо НЭГ БАГЦ.
+   */
+  /*
+   * ⚠️ БҮХ ХУВЬ 0–100. `format.ts::pct()` нь 100-аар ҮРЖҮҮЛДЭГГҮЙ — зөвхөн
+   *    «%» тэмдэг залгадаг тул 0–1 масштабтай утга дамжуулбал 26.3% нь
+   *    «0.3%» болж ЧИМЭЭГҮЙ буурч харагдана.
+   */
   overall: {
-    /** Жингээр нормчилсон нийт гүйцэтгэл, % */
+    /** Жингээр нормчилсон нийт гүйцэтгэл, 0–100 */
     pct: number;
-    /** Жингийн нийлбэр, % — 100 биш болохыг тайлбарт хэлнэ */
+    /**
+     * Жингийн нийлбэр, 0–100 — гүйцэтгэл бүртгэгдсэн багцуудын эзлэх төсвийн
+     * хувь. 100-аас бага бол зарим багц хараахан бөглөгдөөгүй гэсэн үг.
+     */
     weightSum: number;
+    /** Тооцоонд орсон БЛОКИЙН тоо */
     rows: number;
     stages: {
-      label: string; rows: number; weight: number;
-      actual: number; planned: number | null;
+      label: string;
+      /** Тухайн багцын блокийн тоо */
+      rows: number;
+      /** Төслийн төсөвт эзлэх хувь, 0–100 */
+      weight: number;
+      /** Бодит гүйцэтгэл, 0–100 */
+      actual: number;
+      planned: number | null;
     }[];
   };
-  /** Газар чөлөөлөлт — `land:left` давхарга ба үе шатны гүйцэтгэл */
+  /** Газар чөлөөлөлт — `land:left` давхарга */
   land: {
     parcels: number;
     areaM2: number;
-    /** Үе шатны хүснэгтээс гарах албан ёсны гүйцэтгэл, % */
+    /** Шийдвэрлэгдсэн нэгж талбарын эзлэх хувь, 0–100 */
     pct: number | null;
     byStatus: { label: string; n: number }[];
     /** Үлдсэн нэгж талбарын шалтгаан — хоосон нүд орохгүй */
@@ -161,27 +182,70 @@ const sentenceCase = (s: string) => {
     : t;
 };
 
-/* ═══════════════ Төслийн нийт гүйцэтгэл ба үе шат ═══════════════ */
+/* ═══════════════ Багцын нэр ═══════════════ */
 
 /**
- * ТӨСЛИЙН НИЙТ ГҮЙЦЭТГЭЛ — блок бүрийн «Б.» мөрийн сүүлийн утгыг багцаар нэгтгэнэ.
+ * `bagtsKey` → УНШИГДАХ нэр («БАГЦ32» → «Багц 3.2»).
+ *
+ * ⚠️ Гүйцэтгэлийн түлхүүр нь `bagtsKey`-ээр цэг, зай, зураасаа алддаг тул
+ * буцааж сэргээх аргагүй — цорын ганц эх нь барилгын давхаргын `BAGTS` талбар.
+ * ⚠️ `loadOverall` ба `loadProgress` ХОЁУЛАА хэрэглэдэг тул кэштэй: эс бөгөөс
+ * тайлан үүсгэх бүрд 113 мөрийн асуулга хоёр удаа явна.
+ */
+const loadPkgLabels = cached(async (): Promise<Map<string, string>> => {
+  const rows = await queryFeatures(BUILDING.url, { outFields: [BUILDING.fields.bagts] });
+  const m = new Map<string, string>();
+  rows.forEach((b) => {
+    const name = str(b[BUILDING.fields.bagts]);
+    if (name) m.set(bagtsKey(name), name);
+  });
+  return m;
+}, 5 * 60_000);
+
+/* ═══════════════ Төслийн нийт гүйцэтгэл ═══════════════ */
+
+/**
+ * ТӨСЛИЙН НИЙТ ГҮЙЦЭТГЭЛ — багц бүрийн блокийн дундажийг ТӨСВИЙН ЖИНГЭЭР.
  *
  * ⚠️ 2026-08-21: `Төсөл_Гүйцэтгэл_` (Excel-ээс гараар импортлогддог 162 мөр)
  * төслөөс БҮРЭН ХАСАГДСАН — жингийн нийлбэр 81.53%, `Төсөл` багана 20 мөрд
  * буруу, төлөвлөгөө 74 мөрд хоосон байсан тест өгөгдөл.
  *
  * ⚠️ ҮЕ ШАТНЫ (ТЭЗҮ · Зөвшөөрөл · Сонгон шалгаруулалт…) задаргаа АЛГА БОЛОВ —
- * тэр бүтэц зөвхөн хуучин хүснэгтэд байсан. Оронд нь БАГЦААР.
+ * тэр бүтэц зөвхөн хуучин хүснэгтэд байсан. Оронд нь мөр бүр НЭГ БАГЦ.
  *
  * ⚠️ 2026-08-27: энэ функц урьд нь `Selbe_guitsetgel_consolidated` руу ӨӨРИЙН
  * асуулга явуулж, `loadBlockProgress`-ийн ЯГ ижил тооцоог давтдаг байв. Тэр
- * үйлчилгээ хаагдсан (499) бөгөөд давхардал нь газрын зураг ↔ тайлангийн тоог
- * чимээгүй зөрүүлэх эрсдэлтэй байсан тул НЭГ эх сурвалж руу нэгтгэв: одоо
- * газрын зургийн өнгө ба тайлангийн дүн ЯГ нэг тооноос гарна.
+ * үйлчилгээ хаагдсан (499) тул НЭГ эх сурвалж руу нэгтгэв.
+ *
+ * ⚠️ ЖИН нь БЛОКИЙН ТОО БИШ, ТӨСӨВ. Блокоор жигнэвэл 20 блоктой хямд багц
+ * 4 блоктой үнэтэй багцаас таван дахин их нөлөөлнө — төслийн гүйцэтгэлийн
+ * утга нь мөнгө болохоос барилгын ширхэг биш. Мөн блокоор жигнэсэн дүн нь
+ * 6-р хэсгийн энгийн дундажтай ЯГ давхцаж, хоёр хэсэг нэг тоог давтана.
+ *
+ * ⚠️ Төсөвгүй багцад блокийн тоог нөөц жин болгоно — эс бөгөөс тэр багц
+ * нийт дүнд ОГТ оролцохгүй, гүйцэтгэл нь чимээгүй өндөрсөнө.
  */
 async function loadOverall(): Promise<ReportExtra['overall']> {
+  const F = CASHFLOW2.fields;
   const { loadBlockProgress } = await import('@/lib/blockProgress');
-  const cells = await loadBlockProgress();
+  const [cells, labels, cf] = await Promise.all([
+    loadBlockProgress(),
+    loadPkgLabels(),
+    /* Зөвхөн 3 талбар — `loadFinance` нь «*»-оор бүтнээр татдаг ч энэ нь
+       тусдаа кэштэй дуудалт тул хөнгөн байлгав. */
+    queryFeatures(CASHFLOW2.url, { outFields: [F.pkg2, F.pkg, F.budget] }),
+  ]);
+
+  /** багцын түлхүүр → урьдчилсан төсөвт өртөг, ₮ */
+  const budget = new Map<string, number>();
+  cf.forEach((r) => {
+    // ⚠️ `pkgKeyOf` (bagtsKey БИШ): «БАГЦ 1-4» мэт ДИАПАЗОН мөр хоосон түлхүүр
+    //    авах тул бодит «Багц 14»-т харийн төсөв наалдахгүй.
+    const k = pkgKeyOf(r[F.pkg2]) || pkgKeyOf(r[F.pkg]);
+    if (!k || k === '0') return;
+    budget.set(k, (budget.get(k) ?? 0) + nn(r[F.budget]));
+  });
 
   /** багц → блокийн гүйцэтгэлүүд (0–1) */
   const byPkg = new Map<string, number[]>();
@@ -190,41 +254,66 @@ async function loadOverall(): Promise<ReportExtra['overall']> {
     const pkg = key.split('|')[0];
     if (!pkg) continue;
     const arr = byPkg.get(pkg) ?? [];
-    // `overall` нь 0–100; тайлан 0–1 хүлээдэг тул хуваана
-    arr.push(cell.overall / 100);
+    // `cell.overall` нь аль хэдийн 0–100 — хөрвүүлэлт ХЭРЭГГҮЙ
+    arr.push(cell.overall);
     byPkg.set(pkg, arr);
   }
 
-  /* Багц бүрийн дундаж — блокоор; төслийн дүн нь блокийн ТООГООР жигнэсэн */
-  const stages = [...byPkg.entries()]
-    .map(([pkg, list]) => ({
-      label: pkg,
-      rows: list.length,
-      weight: list.length,
-      actual: list.length ? list.reduce((x, y) => x + y, 0) / list.length : 0,
-      planned: null as number | null,
-    }))
-    .sort((x, y) => x.label.localeCompare(y.label, 'mn', { numeric: true }));
+  /* Төсвийн НИЙТ дүн — жинг 0–1 болгож нормчилох хуваарь */
+  const budgetAll = [...budget.values()].reduce((a, b) => a + b, 0);
 
-  const blocksAll = stages.reduce((a2, s2) => a2 + s2.rows, 0);
-  const doneAll = stages.reduce((a2, s2) => a2 + s2.actual * s2.rows, 0);
+  const raw = [...byPkg.entries()].map(([pkg, list]) => ({
+    label: labels.get(pkg) ?? pkg,
+    rows: list.length,
+    /* Төсөв байхгүй бол блокийн тоо — нэгж нь өөр ч доор нормчлогдоно */
+    money: budget.get(pkg) ?? 0,
+    actual: list.length ? list.reduce((x, y) => x + y, 0) / list.length : 0,
+    planned: null as number | null,
+  }));
+
+  /* ⚠️ Аль ч багцад төсөв олдоогүй бол блокийн тоонд БҮРЭН шилжинэ — хагас
+     хагасаар холивол нэгж нь зөрж, жин нь утгагүй болно. */
+  const useMoney = budgetAll > 0 && raw.some((s) => s.money > 0);
+  const denom = useMoney ? budgetAll : raw.reduce((a, s) => a + s.rows, 0);
+
+  const stages = raw
+    .map(({ money, ...s }) => ({
+      ...s,
+      weight: denom ? ((useMoney ? money : s.rows) / denom) * 100 : 0,
+    }))
+    .sort((x, y) => y.weight - x.weight || x.label.localeCompare(y.label, 'mn', { numeric: true }));
+
+  const weightSum = stages.reduce((a, s) => a + s.weight, 0);
+  const done = stages.reduce((a, s) => a + s.weight * s.actual, 0);
 
   return {
-    pct: blocksAll ? doneAll / blocksAll : 0,
-    /* ⚠️ Хуучин талбар: жингийн нийлбэр байсан. Одоо БЛОКИЙН тоо — тайлан нь
-       «хэдэн блокоос бодсон» гэдгийг ил хэлнэ. */
-    weightSum: blocksAll,
-    rows: blocksAll,
+    // ⚠️ Жингийн НИЙЛБЭРТ харьцуулна, 1-д БИШ: бүртгэгдээгүй багцыг «0%
+    //    гүйцэтгэлтэй» гэж тооцвол төслийн дүн худал буурна.
+    pct: weightSum ? done / weightSum : 0,
+    weightSum,
+    rows: stages.reduce((a, s) => a + s.rows, 0),
     stages,
   };
 }
 
 /* ═══════════════ Газар чөлөөлөлт ═══════════════ */
 
-async function loadLand(pct: number | null): Promise<ReportExtra['land']> {
+/** «Үлдсэн нэгж талбар» — шийдвэрлэгдээгүйг таних ЦОРЫН ГАНЦ дүрэм */
+const isLeftParcel = (label: string) => /үлдсэн/i.test(label);
+
+/**
+ * ГАЗАР ЧӨЛӨӨЛӨЛТ.
+ *
+ * ⚠️ 2026-08-27: гүйцэтгэлийн хувийг урьд нь `loadOverall()`-ийн үе шатны
+ * хүснэгтээс («Газар чөлөөлөлт» нэртэй мөр) авдаг байв. Тэр хүснэгт
+ * БАГЦУУДЫН жагсаалт болсон тул тийм нэртэй мөр хэзээ ч олдохгүй бөгөөд
+ * хувь нь ҮРГЭЛЖ `null` — тайланд «—» гэж чимээгүй хоосорч байлаа.
+ * Одоо давхаргын ӨӨРИЙНХ нь төлвөөс бодно: шийдвэрлэгдсэн ÷ нийт.
+ */
+async function loadLand(): Promise<ReportExtra['land']> {
   // ⚠️ `url` нь заавал биш (BuildingSceneLayer г.м. давхаргад байхгүй) — шалгана
   const d = LAYER_BY_ID['land:left'];
-  if (!d?.url) return { parcels: 0, areaM2: 0, pct, byStatus: [], byReason: [] };
+  if (!d?.url) return { parcels: 0, areaM2: 0, pct: null, byStatus: [], byReason: [] };
   /* Зөвхөн тоолдог 3 талбар (2026-08-21 гүйцэтгэлийн аудит): «*» нь 2,119
      парселийн БҮХ баганыг (эзний нэр, хаяг зэрэг хувийн мэдээллийг оролцуулаад)
      ~2-4МБ-аар татдаг байв — тайланд огт хэрэггүй. */
@@ -242,11 +331,15 @@ async function loadLand(pct: number | null): Promise<ReportExtra['land']> {
     return [...m.entries()].map(([label, n]) => ({ label, n })).sort((a, b) => b.n - a.n);
   };
 
+  const byStatus = tally('Tuluv', false);
+  const left = byStatus.filter((s) => isLeftParcel(s.label)).reduce((a, s) => a + s.n, 0);
+
   return {
     parcels: rows.length,
     areaM2: rows.reduce((a, r) => a + nn(r[d.qty?.field ?? 'area_m2']), 0),
-    pct,
-    byStatus: tally('Tuluv', false),
+    // Шийдвэрлэгдсэн = нийт − үлдсэн. Мөр огт байхгүй бол хувь ч утгагүй.
+    pct: rows.length ? ((rows.length - left) / rows.length) * 100 : null,
+    byStatus,
     // «явцын_мэдээ» нь ЗӨВХӨН шийдэгдээгүй нэгж талбарт бөглөгддөг — хоосныг хасна
     byReason: tally('явцын_мэдээ', true),
   };
@@ -276,18 +369,15 @@ async function loadSocial(): Promise<ReportExtra['social']> {
 
 async function loadProgress(): Promise<ReportExtra['progress']> {
   const { loadBlockProgress } = await import('@/lib/blockProgress');
-  const [map, blocks] = await Promise.all([
+  const [map, labelOf] = await Promise.all([
     loadBlockProgress(),
-    // ⚠️ Багцын УНШИГДАХ нэр («Багц 3.2») зөвхөн энэ давхаргад бий: гүйцэтгэлийн
-    // түлхүүр нь `bagtsKey`-ээр цэгээ алдсан («БАГЦ32») тул буцааж сэргээх аргагүй.
-    queryFeatures(BUILDING.url, { outFields: [BUILDING.fields.bagts] }),
+    // ⚠️ Багцын УНШИГДАХ нэр («Багц 3.2») зөвхөн барилгын давхаргад бий:
+    // гүйцэтгэлийн түлхүүр нь `bagtsKey`-ээр цэгээ алдсан («БАГЦ32») тул
+    // буцааж сэргээх аргагүй. `loadOverall` ч мөн үүнийг хэрэглэдэг тул
+    // кэштэй ГАНЦ ачаалагчаар (`loadPkgLabels`) явна.
+    loadPkgLabels(),
   ]);
 
-  const labelOf = new Map<string, string>();
-  blocks.forEach((b) => {
-    const name = str(b[BUILDING.fields.bagts]);
-    if (name) labelOf.set(bagtsKey(name), name);
-  });
   const label = (k: string) => labelOf.get(k) ?? (k || '—');
 
   type Phase = { no: string; name: string; pct: number | null };
@@ -542,29 +632,27 @@ export const loadReportExtra = cached(loadReportExtraRaw, 5 * 60_000);
 
 async function loadReportExtraRaw(): Promise<ReportExtra> {
   /*
-   * ⚠️ Газар чөлөөлөлтийн албан ёсны хувь нь ҮЕ ШАТНЫ хүснэгтээс гардаг тул
-   * `loadOverall()` эхэлж дуусах ёстой — бусад нь түүнээс хамаарахгүй.
+   * ⚠️ 2026-08-27: урьд нь `loadOverall()` ЭХЛЭЖ дуусах ёстой байв — газар
+   * чөлөөлөлтийн хувийг түүний үе шатны хүснэгтээс уншдаг байсан. Тэр
+   * хүснэгт багцуудын жагсаалт болсноор тэр мөр хэзээ ч олдохгүй болсон тул
+   * `loadLand` нь одоо өөрөө боддог. Дараалал шаардлагагүй болсон — бүх
+   * хэсэг ЗЭРЭГ ачаалагдана.
    */
-  const o = await loadOverall().catch((e) => {
-    console.error('[selbe] тайлан · нийт гүйцэтгэл:', e);
-    return null;
-  });
-  const landPct = o?.stages.find((s) => s.label === 'Газар чөлөөлөлт')?.actual ?? null;
-
-  const [p, f, i, h, l, s] = await Promise.allSettled([
-    loadProgress(), loadFinance(), loadInfra(), loadHabeaSummary(),
-    loadLand(landPct), loadSocial(),
+  const [o, p, f, i, h, l, s] = await Promise.allSettled([
+    loadOverall(), loadProgress(), loadFinance(), loadInfra(), loadHabeaSummary(),
+    loadLand(), loadSocial(),
   ]);
   const fail = (name: string, r: PromiseSettledResult<unknown>) => {
     if (r.status === 'rejected') console.error(`[selbe] тайлан · ${name}:`, r.reason);
   };
+  fail(tr('нийт гүйцэтгэл'), o);
   fail(tr('гүйцэтгэл'), p); fail(tr('санхүү'), f); fail(tr('дэд бүтэц'), i); fail(tr('ХАБЭА'), h);
   fail(tr('газар'), l); fail(tr('нийгмийн барилга'), s);
 
   return {
-    overall: o ?? { pct: 0, weightSum: 0, rows: 0, stages: [] },
+    overall: o.status === 'fulfilled' ? o.value : { pct: 0, weightSum: 0, rows: 0, stages: [] },
     land: l.status === 'fulfilled' ? l.value
-      : { parcels: 0, areaM2: 0, pct: landPct, byStatus: [], byReason: [] },
+      : { parcels: 0, areaM2: 0, pct: null, byStatus: [], byReason: [] },
     social: s.status === 'fulfilled' ? s.value : { rows: [], n: 0, areaM2: 0 },
     progress: p.status === 'fulfilled' ? p.value
       : { blocks: 0, overall: 0, date: '', phases: [], byBagts: [], slowest: [], stalled: 0 },
@@ -613,10 +701,26 @@ export type Findings = {
  * тиймээс дүгнэлт хоёр баримтад ЯГ ижил гарна.
  */
 export function buildFindings(x: ReportExtra): Findings {
-  const build = x.overall.stages.find((s) => s.label === 'Барилга угсралт');
-  const buildWeight = build?.weight ?? 0;
-  const buildActual = build?.actual ?? 0;
-  const buildLag = build?.planned != null ? build.planned - build.actual : null;
+  /*
+   * БАРИЛГА УГСРАЛТ.
+   *
+   * ⚠️ 2026-08-27: урьд нь `stages.find(s => s.label === 'Барилга угсралт')`
+   * гэж хайдаг байв. `stages` нь БАГЦУУДЫН жагсаалт болсноор тийм нэртэй мөр
+   * хэзээ ч олдохгүй бөгөөд гурвуулаа 0/null болж, тайлангийн эхний өгүүлбэр
+   * «0.00%-ийн гүйцэтгэлтэй» гэж ЧИМЭЭГҮЙ худал бичдэг байлаа.
+   *
+   * Одоо: гүйцэтгэл нь блокуудын дундаж (6-р хэсэгтэй нэг тоо), жин нь
+   * тэдгээр багцын эзлэх төсвийн хувь (3-р хэсгийн жингийн нийлбэр).
+   */
+  const buildWeight = x.overall.weightSum;
+  const buildActual = x.progress.overall;
+  /*
+   * ⚠️ ТӨЛӨВЛӨГӨӨ ОДООГООР БАЙХГҮЙ. `Төсөл_Гүйцэтгэл_` хасагдсанаас хойш
+   * төлөвлөгөөт хувь нь зөвхөн бөглөх хуудасны мөр бүрд байгаа бөгөөд
+   * багцын түвшинд нэгтгэгдээгүй. Тэг гэж БОДОХГҮЙ — «хоцроогүй» гэсэн
+   * худал дүгнэлт төрүүлнэ; `null` нь дуудагч талд «—» болж гарна.
+   */
+  const buildLag = null as number | null;
 
   const byBagts = x.progress.byBagts;
   const bestBagts = byBagts[0] ?? null;
@@ -624,7 +728,7 @@ export function buildFindings(x: ReportExtra): Findings {
   const stalled = x.progress.stalled;
 
   const landLeft = x.land.byStatus
-    .filter((s) => /үлдсэн/i.test(s.label))
+    .filter((s) => isLeftParcel(s.label))
     .reduce((a, s) => a + s.n, 0);
   const topReason = x.land.byReason[0] ?? null;
 
@@ -666,8 +770,14 @@ export function buildFindings(x: ReportExtra): Findings {
 
   const f: string[] = [];
 
-  if (build && buildLag != null && buildLag > 0) {
-    f.push(tr('Барилга угсралтын ажил төлөвлөгөөнөөс {0} нэгж хувиар хоцорч байна (гүйцэтгэл {1}, төлөвлөгөө {2}). Энэ үе шат төслийн жингийн {3}-ийг эзэлдэг тул нийт гүйцэтгэлд шууд нөлөөлж байна.', num(buildLag, 1), pct(buildActual, 2), pct(build.planned, 1), pct(buildWeight, 1)));
+  /*
+   * ⚠️ Урьд нь энэ дүгнэлт «төлөвлөгөөнөөс хоцорч байна» гэдэг байсныг
+   * болив: төлөвлөгөөт хувь нь багцын түвшинд ОДООГООР байхгүй (`buildLag`
+   * тайлбарыг үз) тул нөхцөл нь хэзээ ч биелдэггүй үхсэн салаа байлаа.
+   * Одоо БАЙГАА хоёр тоо дээр тогтоно: гүйцэтгэл ба түүний төсвийн хамрал.
+   */
+  if (x.progress.blocks > 0) {
+    f.push(tr('Барилга угсралтын ажлын гүйцэтгэл {0} байна (хяналтын {1} блокийн дундаж). Эдгээр багц төслийн төсвийн {2}-ийг эзэлдэг тул нийт гүйцэтгэлд шууд нөлөөлнө.', pct(buildActual, 2), num(x.progress.blocks), pct(buildWeight, 1)));
   }
 
   if (bestBagts && worstBagts && bestBagts.bagts !== worstBagts.bagts) {

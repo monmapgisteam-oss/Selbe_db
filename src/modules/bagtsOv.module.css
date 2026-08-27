@@ -229,6 +229,34 @@
   background: color-mix(in srgb, var(--warn) 10%, transparent);
 }
 
+/**
+ * ДАРАГДАХ зурвас — газрын зураг дээрх давхцсан талбар руу очно.
+ * ⚠️ `button` reset-ийг (globals.css) буцаана: өргөн, тэгшлэлт, курсор.
+ *    Зөвхөн ДАРАХ ЗҮЙЛ БАЙВАЛ энэ класс тавигдана — эс бөгөөс товч мэт
+ *    харагдаад юу ч хийхгүй нь худал амлалт болно.
+ */
+.ovStripBtn {
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.ovStripBtn:hover {
+  background: color-mix(in srgb, var(--warn) 18%, transparent);
+}
+.ovStripBtn:focus-visible {
+  outline: 2px solid var(--warn);
+  outline-offset: 1px;
+}
+
+/* Сонгогдсон — газрын зураг энэ талбар дээр тодруулсан байна */
+.ovStripSel {
+  border-color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 24%, transparent);
+}
+
 /* Доорх мөрүүд «блокууд» гэдгийг нэрлэх жижиг зааглагч гарчиг */
 .ovDivider {
   margin: 0 0 6px;
