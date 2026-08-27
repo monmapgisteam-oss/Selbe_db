@@ -19,6 +19,7 @@ import { Gazar } from '@/modules/Gazar';
 import { Habea } from '@/modules/Habea';
 import { Irged } from '@/modules/Irged';
 import { Iot } from '@/modules/Iot';
+import { Ersdel } from '@/modules/Ersdel';
 /* ⚠️ ТОМ, ховор-эхний харагдацууд dynamic chunk (2026-08-21 гүйцэтгэлийн
    аудит): Suitability (analysis стек), Sheet/Pivot, Tailan (+reportPdf),
    Guitsetgel, Finance нийлээд Portal chunk-ийн parse хугацааг ~30-40%
@@ -469,6 +470,7 @@ function PortalContent(
   const isFinance = view === 'finance';
   const isHabea = view === 'habea';
   const isIot = view === 'iot';
+  const isErsdel = view === 'ersdel';
   const isGuitsetgel = view === 'guitsetgel';
   /* Багцын хоёр харагдац — НЭГ модулиас `mode` пропоор (`services.ts` §pkgFin) */
   const isPkgFin = view === 'pkgFin';
@@ -629,6 +631,8 @@ function PortalContent(
                               ? <Irged dim={dim} setDim={setDim} />
                               : isIot
                                 ? <Iot dim={dim} setDim={setDim} />
+                                : isErsdel
+                                ? <Ersdel dim={dim} setDim={setDim} />
                                 : isGuitsetgel
                                   ? <Guitsetgel onView={setView} />
                                   : <Suitability dim={dim} setDim={setDim} />}

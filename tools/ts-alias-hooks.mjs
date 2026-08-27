@@ -34,9 +34,24 @@ export async function resolve(specifier, context, next) {
 
   if (spec.startsWith('@/')) spec = SRC + spec.slice(2);
 
-  // Зөвхөн ФАЙЛ руу заасан импортод л өргөтгөл нөхнө — `node:*`, багцын нэрийг хөндөхгүй
+  /**
+   * Зөвхөн ФАЙЛ руу заасан импортод л өргөтгөл нөхнө — `node:*`-ыг хөндөхгүй.
+   *
+   * ⚠️ БАГЦЫН нэр нь үл хамаарах зүйлтэй: `@arcgis/core/**` нь webpack-д
+   * өргөтгөлгүй бичигддэг (`@arcgis/core/geometry/geometryEngine`) ч Node-ийн
+   * ESM нь `.js`-гүйгээр олохгүй. Багцын нэрийг ЭХЛЭЭД хэвээр нь туршиж, зөвхөн
+   * УНАСАН тохиолдолд `.js` нэмж дахин үзнэ — бусад багцын шийдвэрлэлт
+   * өөрчлөгдөхгүй.
+   */
   const isFile = spec.startsWith('.') || spec.startsWith('file:');
-  if (!isFile) return next(specifier, context);
+  if (!isFile) {
+    try {
+      return await next(specifier, context);
+    } catch (e) {
+      if (/\.(js|mjs|cjs|json)$/i.test(spec)) throw e;
+      return next(`${spec}.js`, context);
+    }
+  }
 
   let lastErr;
   for (const c of candidates(spec)) {

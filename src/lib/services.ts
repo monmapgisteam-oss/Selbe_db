@@ -3363,7 +3363,7 @@ const hoist = (key: GroupKey) => {
 };
 
 export type CatalogView =
-  | "plan" | "monitor" | "habea" | "gazar" | "iot" | "irged";
+  | "plan" | "monitor" | "habea" | "gazar" | "iot" | "irged" | "ersdel";
 
 /**
  * ШҮҮЛТИЙН ХАМРАХ ХҮРЭЭ — идэвхтэй шүүлт аль хэсэгт харьяалагдахыг заана
@@ -3470,6 +3470,7 @@ export type ViewKey =
   | "habea"
   | "irged"
   | "iot"
+  | "ersdel"
   | "guitsetgel";
 
 export const VIEWS: {
@@ -3691,6 +3692,36 @@ export const VIEWS: {
     initial: ["iot:waste_sensor", "iot:water_meter", "iot:light_sensor", "iot:temp_humidity", "iot:soil_meter"],
     standalone: true,
   },
+  /**
+   * ЭРСДЭЛИЙН ЗАГВАР — IoT-ийн НЭГТГЭСЭН үр дүн (`Ersdel.tsx`). IoT-ийн ЯГ
+   * ДООР байрлана: тэр нь мэдрэгчийн ТҮҮХИЙ заалт, энэ нь тэдгээрийн нэгтгэсэн
+   * дүгнэлт (голын ус + агаарын бохирдол) ба ТААМАГЛАЛЫН хувилбар.
+   *
+   * ⚠️ Порталын самбарыг ашиглахгүй, өөрийн гурван баганатай (горим ↔ зураг ↔
+   * үр дүн) тул `standalone`. Каталог нь ӨӨРИЙН зурган дээр (`catalogGroups`-ын
+   * `default` салаа = порталын бүх бүлэг) — үерийн шинжилгээнд ямар ч давхарга
+   * контекст болж орж чадна.
+   */
+  {
+    key: "ersdel",
+    title: tr('Эрсдэлийн загвар'),
+    desc: tr('Голын ус · агаарын бохирдол — одоогийн байдал ба таамаглал'),
+    icon: "waves",
+    hue: "#0891b2",
+    layers: PLAN_LAYER_IDS,
+    /**
+     * ⚠️ ХООСОН (хэрэглэгчийн хүсэлт, 2026-08-25) — харагдац нь ЗӨВХӨН ортофото
+     * дээр нээгдэнэ. Аюулын муж, өртсөн объект хоёр нь ӨНГӨӨР уншигддаг тул
+     * доор нь план 2D-ийн өнгөт давхаргууд байвал булингартана. Модуль нь
+     * `MapCanvas`-д `bare` тугийг өгч суурь давхаргууд автоматаар асахыг
+     * зогсоож, `setOrtho(true)`-оор ортофотог асаана (`Ersdel.tsx` §INITIAL_IDS).
+     *
+     * ⚠️ Голын геометр нь давхарга асаалттай эсэхээс ҮЛ ХАМААРНА — үерийн
+     * зурвасыг `ersdelGeom.ts` REST-ээр шууд татаж байгуулна.
+     */
+    initial: [],
+    standalone: true,
+  },
   {
     key: "guitsetgel",
     title: tr('Гүйцэтгэлийн хяналт'),
@@ -3755,7 +3786,7 @@ export const HOME_SECTIONS: {
    */
   { id: "review", title: tr('Тойм'), views: ["dashboard", "tailan"] },
   { id: "plan", title: tr('Төлөвлөлт'), views: ["plan", "analysis", "irged"] },
-  { id: "build", title: tr('Хэрэгжилт'), views: ["pkgProg", "gazar", "habea", "iot", "guitsetgel"] },
+  { id: "build", title: tr('Хэрэгжилт'), views: ["pkgProg", "gazar", "habea", "iot", "ersdel", "guitsetgel"] },
   { id: "money", title: tr('Санхүү'), views: ["pkgFin", "finance", "sheet"] },
 ];
 
