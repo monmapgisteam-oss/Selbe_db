@@ -1205,6 +1205,7 @@ export const MapCanvas = memo(function MapCanvas({
   layerStyle,
   pulseIds,
   uniform = false,
+  bare = false,
   onPick,
   sketch = false,
   onSketch,
@@ -1257,6 +1258,18 @@ export const MapCanvas = memo(function MapCanvas({
   pulseIds?: string[];
   /** Давхарга бүрийг ГАНЦ жигд өнгөөр зурах (ангиллаар олон өнгө хуваахгүй) */
   uniform?: boolean;
+  /**
+   * ХООСОН ЭХЛЭЛ — суурь 14 давхаргыг (`BASE_MAP_IDS`) сонголт хоосон үед
+   * АВТОМАТААР асаахгүй.
+   *
+   * ⚠️ Анхдагч зан (`bare: false`) нь «каталог хоосон бол зураг план 2D шигээ
+   * бүрэн» гэсэн дүрэм. «Эрсдэлийн загвар» нь ЭСРЭГ шаардлагатай (хэрэглэгчийн
+   * хүсэлт): зөвхөн ортофото дээр аюулын муж, өртсөн объект хоёрыг цэвэрхэн
+   * харах — суурь 14 давхарга тэдгээрийн өнгийг булингартуулна. Тиймээс энэ
+   * тугтай үед суурь давхарга нь БУСАДТАЙ ижил дүрмээр (зөвхөн сонгосон бол)
+   * харагдана.
+   */
+  bare?: boolean;
   onPick: (attrs: Record<string, unknown> | null, layerId: string | null) => void;
   /**
    * ПОЛИГОН ЗУРАХ чадварыг асаана («Газар чөлөөлөлт»). Зөвхөн 2D-д ажиллана —
@@ -2798,6 +2811,18 @@ export const MapCanvas = memo(function MapCanvas({
       if (l.id === 'sketch') { l.visible = true; return; }
       // Эх үүсвэрийн пульс-хуулбар — өөрийн анимаци удирдана, каталогт үл хамаарна.
       if (l.id === 'source:pulse') { l.visible = true; return; }
+      /**
+       * «Эрсдэлийн загвар»-ын ҮР ДҮНГИЙН давхаргууд (`ersdel:flood` усны
+       * анимаци, `ersdel:band` аюулын муж, `ersdel:damage` өртсөн объект,
+       * `ersdel:station` харуул) — ӨӨРСДӨӨ удирдана, каталогт ХЭЗЭЭ Ч орохгүй.
+       *
+       * ⚠️ Энэ шалгуургүй бол доорх мөр (`on.has(l.id) && dim !== 'bim'`) тэднийг
+       * НУУНА: каталогийн жагсаалтад байхгүй тул `on.has` нь үргэлж `false`.
+       * Үр дүн нь «эхлээд харагдаад, давхарга/бүс/горим солиход алга болдог»
+       * — BIM-д бол `dim !== 'bim'`-ээр бүр байнга алга. `Ersdel.tsx` нь
+       * тэдгээрийг өөрийн эффектээр нэмж/хасдаг тул энд гар хүрэхгүй.
+       */
+      if (String(l.id).startsWith('ersdel:')) { l.visible = true; return; }
       // Лавлагааны хилүүд — каталогоос үл хамааран БҮХ зурагт үргэлж ил.
       if ((ALWAYS_ON_IDS as readonly string[]).includes(String(l.id))) { l.visible = true; return; }
       /**
@@ -2853,7 +2878,8 @@ export const MapCanvas = memo(function MapCanvas({
        * return хийдэг байсан тул бүс сонгоход суурь давхарга шүүгдэхгүй байв.
        */
       if ((BASE_MAP_IDS as readonly string[]).includes(String(l.id))) {
-        l.visible = dim === '2d' && (on.size === 0 || on.has(String(l.id)));
+        l.visible = dim === '2d'
+          && (bare ? on.has(String(l.id)) : on.size === 0 || on.has(String(l.id)));
       } else if (is3D(dim) && PLAN2D_ALIASED.has(String(l.id))) {
         /**
          * План2d ALIAS style-тай давхаргууд (dugui, nogoon, et:24, et:27, et:29) — renderer
@@ -2949,7 +2975,7 @@ export const MapCanvas = memo(function MapCanvas({
     });
     // Дараагийн өөрчлөлтөд «шинээр ил болсон»-ыг зөв илрүүлэхийн тулд тэмдэглэнэ.
     prevVisRef.current = on;
-  }, [visibleKey, dim, ready, zone, layerWhere, layerStyle, hl, hlOnly, uniform, ortho, pulseLayer]);
+  }, [visibleKey, dim, ready, zone, layerWhere, layerStyle, hl, hlOnly, uniform, bare, ortho, pulseLayer]);
 
   /**
    * ТУНГАЛАГ — давхарга бүрийн `opacity`-г override-оор тавина. Override байхгүй
