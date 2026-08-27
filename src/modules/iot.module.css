@@ -78,59 +78,8 @@
 }
 
 
-/* ══════════════════ Дүрст мөр — жижиг indicator ══════════════════ */
-
-.tile {
-  display: flex;
-  align-items: center;
-  /* wrap (2026-08-21): pill («5 идэвхтэй») шошгоны баганыг ~20px болтол шахаж
-     «Мэдрэгч» → «М…» болгодог байв — зай хүрэхгүй бол pill доод мөрөнд бууна */
-  flex-wrap: wrap;
-  gap: 6px 10px;
-  min-width: 0;
-  padding: 10px 12px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-}
-/* Икон нь ижил хэлбэрт мөрүүдийг нүдээр ялгах хэрэгсэл — өнгөт bubble БИШ */
-.tileIcon {
-  flex: none;
-  display: grid;
-  place-items: center;
-  color: var(--ink-3);
-}
-/* min-width 84px — шошго дор хаяж «Мэдрэгч» багтах өргөнтэй байж wrap-ийг өдөөнө */
-.tileMain { flex: 1 1 auto; min-width: 84px; display: flex; flex-direction: column; gap: 3px; }
-.tileLabel {
-  font-size: 10.5px;
-  line-height: 1.3;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: var(--ink-3);
-  /* «…» биш — 3 мөрөнд бүтэн бичигдэнэ (2026-08-21 аудит: «САВ ХҮР…» гэх мэт
-     нэр бүх өргөнд тасарч утгаа алддаг байв). anywhere — нарийн хавтанд
-     ганц урт үг ирмэгт огтлогдохгүй, дараагийн мөрөнд хуваагдана. */
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-}
-.tileVal { font-size: 19px; font-weight: 500; color: var(--ink); line-height: 1.1; font-variant-numeric: tabular-nums; }
-
-/* Төлөвийн шошго — 999px нь зөвхөн энэ жижиг pill-д. `--tint` нь `-ink` токен
-   (текстэд уншигдана), дэвсгэр нь түүний бүдэг tint. */
-.pill {
-  flex: none;
-  padding: 3px 8px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  background: color-mix(in srgb, var(--tint) 14%, transparent);
-  color: var(--tint);
-}
+/* ⚠️ 2026-08-25: «Дүрст мөр» (.tile*, .pill) ХАСАГДАВ — «Мэдрэгч · N ш»
+   хайрцаг устсаны дараа эдгээрийг хаанаас ч хэрэглэхээ больсон. */
 
 /* ══════════════════ Үзүүлэлтийн нүд ══════════════════ */
 
@@ -141,9 +90,11 @@
    * хажуугийн баганан диаграм 341px тул 129px хоосон үлддэг байв. 200px нь 4 багана
    * → 3 мөр → мөрийн өндөр диаграмтайгаа таарна.
    */
-  /* ⚠️ 200 → 150px, зай 10 → 6px (2026-08-21, хүсэлт). Мөр 1 намссанаар
-     доорх зураг/цуваанд илүү өндөр үлдэнэ. */
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  /* ⚠️ 2026-08-26 (хэрэглэгчийн шийдвэр): БҮХ үзүүлэлт НЭГ МӨРӨНД. `auto-flow:
+     column` + `auto-columns: 1fr` нь тоог хатуу бичихгүйгээр (мэдрэгч нэмэгдэж
+     болно) бүгдийг нэг эгнээнд ижил өргөнөөр тараана. */
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
   gap: 6px;
 }
 /* Дотогш давхарга — surface-2, гүн нь өнгөөр биш давхаргаар */
@@ -152,51 +103,61 @@
   flex-direction: column;
   gap: 3px;
   min-width: 0;
-  padding: 7px 9px;
+  padding: 8px 9px;
   background: var(--surface-2);
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
 }
-.metricHd { display: flex; align-items: center; gap: 6px; }
 /* Өгөгдлийн цэг — бүх нүдэнд НЭГ өнгө var(--data), ангиллын өнгө байхгүй */
-.metricDot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--data); }
+.metricDot {
+  flex: none;
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--data);
+  vertical-align: middle;
+}
+/* Нэр — нүдний ДЭЭД талд. 9 багана нь ~170px л өгдөг тул урт нэр 2 мөрөнд
+   бууна (тасрахгүй); 2 мөрөөс хэтэрвэл л «…». */
 .metricName {
-  flex: 1 1 auto;
   min-width: 0;
   font-size: 9.5px;
   line-height: 1.3;
   font-weight: 600;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.02em;
   text-transform: uppercase;
-  color: var(--ink-3);
-  /* «…» биш — 3 мөрөнд бүтэн (мэдрэгчийн монгол нэрс урт: «Хөрсний цахилгаан
-     дамжуулах чадал» г.м. бүх өргөнд тасарч байв, 2026-08-21 аудит) */
+  color: var(--ink-2);
   overflow: hidden;
   display: -webkit-box;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 2;
+  /* Хоёр мөрийн өндрийг ТОГТМОЛ барина — эс бөгөөс богино нэртэй нүд намсаж,
+     эгнээний утгууд шатлан жигдрэхгүй болно. */
+  min-height: calc(2 * 1.3em);
 }
-.metricAge { flex: none; font-size: 9px; font-variant-numeric: tabular-nums; }
+/* Нас — нүдний ёроолд. Өнгө нь шинэлэг байдлыг үүрнэ. */
+.metricAge {
+  font-size: 9px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 .metricVal {
   display: flex;
   align-items: baseline;
   gap: 3px;
-  font-size: 15px;
+  /* ⚠️ Утга нь нүдний ГОЛ мэдээлэл — нэрийн 9.5px-ээс ТОДООР ялгарна. */
+  font-size: 17px;
   font-weight: 500;
-  line-height: 1;
+  line-height: 1.05;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
 }
-.metricUnit { font-size: 10px; font-weight: 500; color: var(--ink-3); }
-.metricFoot {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-  font-size: 9.5px;
-  color: var(--ink-3);
-  font-variant-numeric: tabular-nums;
-}
+.metricUnit { font-size: 11px; font-weight: 500; color: var(--ink-3); }
+/* ⚠️ 2026-08-26: `.metricFoot` ХАСАГДАВ — «доод…дээд · 24ц өөрчлөлт»
+   мөр нүднээс гарсан (чартаас уншигдана). */
 
 /* ══════════════════ Газрын зураг ══════════════════ */
 
@@ -282,7 +243,10 @@
  *    900px) тул зураг нь `min-height: 420px`-аасаа хамаагүй өндөр сунана —
  *    энэ нь санаатай: зураг том байх тусам ашигтай.
  */
-.pCells   { grid-column: 1 / 10;  grid-row: 1; }
+/* ⚠️ 2026-08-26: `pCells` 1/10 → 1/13 (БҮТЭН өргөн, хэрэглэгчийн шийдвэр).
+   `pRight` нь мөр 1-ээс эхэлдэг байсан тул үзүүлэлтийн картыг баруун талаас
+   хааж, 12-оос 9 багана л үлдээдэг байв — одоо мөр 2-оос эхэлнэ. */
+.pCells   { grid-column: 1 / 13;  grid-row: 1; }
 .pChartsL { grid-column: 1 / 4;   grid-row: 2; }
 .pMap     { grid-column: 4 / 10;  grid-row: 2; }
 /**
@@ -297,7 +261,10 @@
  */
 .pRight {
   grid-column: 10 / 13;
-  grid-row: 1 / 3;
+  /* ⚠️ 2026-08-26: 1/3 → 2. Мөр 1-ээс эхэлдэг байсан тул үзүүлэлтийн карт
+     (`pCells`, одоо 1/13) -ыг баруун талаас нь дарж, сүүлийн нүднүүд
+     хайчлагдаж байв. Одоо зөвхөн мөр 2-т — дээд эгнээ чөлөөтэй. */
+  grid-row: 2;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -305,7 +272,7 @@
   min-height: 0;
 }
 /* Баганан диаграм агуулгынхаа өндрөөр; цуваа нь үлдсэнийг эзэлж дотроо гүйнэ */
-.pBars    { flex: none; }
+/* ⚠️ 2026-08-26: `.pBars` ХАСАГДАВ — «Бүртгэл үзүүлэлтээр» карт устсан. */
 .pChartsR { flex: 1 1 auto; min-height: 0; }
 
 /* Хажуугийн цуваа — босоо өрлөг (`chartGrid`-ийн auto-fill нь 3 баганат
@@ -332,10 +299,10 @@
  * элемент нэг нүдэнд давхарлана (ил байрлалд grid нь мөргөлдөөнийг ЗАСАХГҮЙ).
  */
 @media (max-width: 1500px) {
-  .pCells   { grid-column: 1 / 10;  grid-row: 1; }
+  .pCells   { grid-column: 1 / 13;  grid-row: 1; }
   .pChartsL { grid-column: 1 / 4;   grid-row: 2; }
   .pMap     { grid-column: 4 / 10;  grid-row: 2; }
-  .pRight   { grid-column: 10 / 13; grid-row: 1 / 3; }
+  .pRight   { grid-column: 10 / 13; grid-row: 2; }
 }
 
 /* ⚠️ Хажуугийн зурвас 3 багана = ~270px болоход чартын огноо/утга давхарлана.

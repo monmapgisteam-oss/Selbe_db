@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { MapCanvas, type Dim } from '@/components/MapCanvas';
-import { Data, Trend, Note, Bars } from '@/components/ui';
+import { Data, Trend, Note } from '@/components/ui';
 import { Icon } from '@/components/Icon';
 import { MapTools } from '@/components/MapTools';
 import { useZoomToFilter } from '@/lib/useZoomToFilter';
@@ -16,18 +16,19 @@ import {
   loadSensors, RANGES, type RangeKey, type SensorLive, type MetricSeries,
 } from '@/lib/sensors';
 import { num } from '@/lib/format';
-import { sumBy } from '@/lib/agg';
 import { VIEW_BY_KEY } from '@/lib/services';
 import s from './iot.module.css';
 import o from './iotOv.module.css';
 
 /**
- * IoT ХЯНАЛТ — Mononet-ээс 15 минут тутам ингест хийгддэг таван мэдрэгч.
+ * IoT ХЯНАЛТ — Mononet-ээс ингест хийгддэг таван мэдрэгч.
  *
  * ⚠️ ХОЁР ЗҮЙЛИЙГ ИЛ ГАРГАНА (нуухгүй):
  *
- * 1. ХУУЧИРСАН ЗААЛТ. Түүхий мөр 15 минут тутам ирж байгаа ч Mononet-ийн
- *    decoder тогтворгүй тул ЗАДАРСАН утга нь хэдэн өдрөөр хоцорч болно.
+ * 1. ХУУЧИРСАН ЗААЛТ. Түүхий мөр тогтмол ирж байгаа ч Mononet-ийн decoder
+ *    тогтворгүй тул ЗАДАРСАН утга нь хэдэн өдрөөр хоцорч болно. (Задарсан
+ *    заалтын бодит алхам: дөрвөн мэдрэгчид ≈60 мин, усны тоолуурт ≈6 цаг —
+ *    2026-08-26-нд амьд хэмжсэн.)
  *    Сүүлийн заалтыг «одоогийн байдал» гэж чимээгүй харуулбал шийдвэр
  *    гаргагчийг төөрөгдүүлнэ — тиймээс нас (`ageHours`) үзүүлэлт бүр дээр гарна.
  *
@@ -85,47 +86,8 @@ const axisLabel = (t: number): string => {
   return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 };
 
-/**
- * Сүүлийн заалт нь 24 цагийн ӨМНӨХ-ээс хэдэн хувиар зөрсөн бэ.
- *
- * ⚠️ ЗЭРГЭЛДЭЭ хоёр заалтыг харьцуулж БОЛОХГҮЙ: 15 минутын алхам нь чимээ ихтэй
- * тул температур 0.1° хэлбэлзэхэд «+4%» гэж гарна. Тиймээс сүүлийн цэгээс 24
- * цагийн өмнөх цагт ХАМГИЙН ОЙР цэгийг суурь болгоно. Цуваа 24 цагаас богино
- * бол хамгийн эхний цэгийг авна (тэр үед `hours` нь бодит зөрүүг хэлнэ).
- */
-function delta(m: MetricSeries): { pct: number; diff: number; hours: number } | null {
-  const p = m.points;
-  if (p.length < 2) return null;
-  const last = p[p.length - 1];
-  const want = last.t - 24 * 3_600_000;
-  let base = p[0];
-  for (const x of p) {
-    if (Math.abs(x.t - want) < Math.abs(base.t - want)) base = x;
-  }
-  if (base.t === last.t || base.v === 0) return null;
-  return {
-    pct: ((last.v - base.v) / Math.abs(base.v)) * 100,
-    diff: last.v - base.v,
-    hours: (last.t - base.t) / 3_600_000,
-  };
-}
-
-/** Хувийн өөрчлөлт → «+3.4%» / «−1.2%» (минус нь U+2212, зураас биш) */
-const pctLabel = (pct: number) => `${pct >= 0 ? '+' : '−'}${num(Math.abs(pct), 1)}%`;
-
-/**
- * 24 цагийн өөрчлөлтийн бичиглэл.
- *
- * ⚠️ ХУВИАР хэмжигддэг үзүүлэлтийн өөрчлөлтийг ДАХИН хувиар илэрхийлж
- * БОЛОХГҮЙ. Хогийн сав хоосон (1.8%) байгаад дүүрэхэд (96.9%) харьцангуй
- * өөрчлөлт нь «+5,212.7%» болно — тоо нь зөв ч утга нь ойлгомжгүй, суурь нь
- * тэгд ойртох тусам хязгааргүй тэсрэнэ. Тийм үзүүлэлтэд ХУВИЙН НЭГЖ (х.н.)
- * буюу энгийн ялгавар нь цорын ганц зөв хэмжүүр: «+95 х.н.».
- */
-const deltaLabel = (m: MetricSeries, d: { pct: number; diff: number }) =>
-  m.unit.startsWith('%')
-    ? `${d.diff >= 0 ? '+' : '−'}${num(Math.abs(d.diff), 0)} ${tr('х.н.')}`
-    : pctLabel(d.pct);
+/* ⚠️ 2026-08-26: `delta` / `deltaLabel` / `pctLabel` ХАСАГДАВ — «24ц
+   өөрчлөлт» шошго нүднээс гарсны дараа тэдгээрийг хаанаас ч дуудахаа больсон. */
 
 /**
  * ТААМГИЙН бичиглэл — «≈14 цагийн дараа 80%».
@@ -167,69 +129,46 @@ const noop = () => {};
 /* ══════════════════ Жижиг бүрэлдэхүүн ══════════════════ */
 
 
-/** Дүрст мөр — тоо, баруун талдаа шошго */
-function Tile({
-  icon,
-  label,
-  value,
-  pill,
-  pillTint,
-}: {
-  icon: string;
-  label: string;
-  value: string;
-  pill: string;
-  pillTint: string;
-}) {
-  return (
-    <div className={s.tile}>
-      <span className={s.tileIcon}>
-        <Icon name={icon} size={17} />
-      </span>
-      <span className={s.tileMain}>
-        <span className={s.tileLabel}>{label}</span>
-        <span className={`${s.tileVal} num`}>{value}</span>
-      </span>
-      <span className={s.pill} style={{ ['--tint' as string]: pillTint }}>
-        {pill}
-      </span>
-    </div>
-  );
-}
-
 /** Нэг үзүүлэлтийн агшны нүд */
 function Cell({ c }: { c: Card }) {
   const has = c.m.latest != null;
-  const d = delta(c.m);
   const age = ageOf(c.m.latestAt, useNow());
   return (
+    /*
+     * ⚠️ 2026-08-26 (хэрэглэгчийн хүсэлт «хэт ойлгомжгүй»): нүд нь 150px өргөнтэй,
+     * 9.5px үсэгтэй байсан бөгөөд НЭР нь насны шошготой нэг мөрөнд өрсөлдөж
+     * «ХӨРСНИЙ ТЕМПЕРАТУ…», «ЦАХИЛГААН ДАМЖУУ…» гэж тасарч байв. Одоо:
+     *   · нэр ӨӨРИЙН БҮТЭН мөрөнд (нас доошоо буусан),
+     *   · утга нь картын ГОЛ мэдээлэл тул томорсон,
+     *   · нэг мөрөнд цөөн нүд багтахаар өргөн нэмэгдсэн.
+     */
+    /*
+     * ⚠️ 2026-08-26 (хэрэглэгчийн шийдвэр «нэг мөрөнд оруул»): нүд нь нэр ·
+     * утга · нас гэсэн ГУРВАН мөр байсныг НЭГ мөр болгов. Нүд намссан тул
+     * баганыг өргөсгөж (340px) урт нэр («Хөрсний цахилгаан дамжуулах чадал»)
+     * НЭГ мөрөнд бүтэн багтана — тасрахгүй.
+     */
     <div className={s.metric}>
-      <div className={s.metricHd}>
+      <span
+        className={s.metricName}
+        title={`${c.s.label} · ${c.m.label}${c.m.unit ? ` (${c.m.unit})` : ''}\n${c.m.note}`}
+      >
         <span className={s.metricDot} />
-        {/* ⚠️ Нүд нь нарийн тул тайлбар нь ЗӨВХӨН hover-т багтана — нэрийг нь
-            гурван цэгээр таслах үед бүтэн нэр ч энэ дотор л уншигдана. */}
-        <span
-          className={s.metricName}
-          title={`${c.s.label} · ${c.m.label}${c.m.unit ? ` (${c.m.unit})` : ''}\n${c.m.note}`}
-        >
-          {c.m.label}
-        </span>
-        <span className={`${s.metricAge} num`} style={{ color: freshTone(age) }}>
-          {freshLabel(age)}
-        </span>
-      </div>
-      <div className={`${s.metricVal} num`}>
+        {c.m.label}
+      </span>
+      <span className={`${s.metricVal} num`}>
         {has ? num(c.m.latest ?? 0, c.m.dp) : '—'}
         {has && c.m.unit && <span className={s.metricUnit}>{c.m.unit}</span>}
-      </div>
-      <div className={`${s.metricFoot} num`}>
-        <span>
-          {has ? `${num(c.m.min ?? 0, c.m.dp)} … ${num(c.m.max ?? 0, c.m.dp)}` : tr('задарсан заалт алга')}
-        </span>
-        <span title={d ? tr('{0} цагийн өөрчлөлт', num(d.hours, 0)) : ''}>
-          {d ? deltaLabel(c.m, d) : ''}
-        </span>
-      </div>
+      </span>
+      {/* ⚠️ 2026-08-26 (хэрэглэгчийн шийдвэр): «доод … дээд» ба «24ц өөрчлөлт»
+          мөр ХАСАГДАВ. Хоёулаа ЧАРТААС нүдээр уншигдана (муруйн хэлбэр нь
+          өөрчлөлтийг, тэнхлэг нь хязгаарыг харуулна) тул нүдэнд давхардсан
+          жижиг тоо байв. Заалтгүй үеийн «задарсан заалт алга» мэдэгдэл нь
+          утга нь «—» болж харагдахаар хадгалагдана. */}
+      {/* Нас — мөрийн ТӨГСГӨЛД. Өнгө нь шинэлэг байдлыг заана (ногоон/шар/улаан). */}
+      <span className={`${s.metricAge} num`} style={{ color: freshTone(age) }}>
+        {freshLabel(age)}
+      </span>
       {/* ⚠️ ТААМАГ зөвхөн БОСГОТОЙ, түүнд ОЙРТОЖ буй үзүүлэлтэд гарна —
           «хэзээ ч хүрэхгүй» тоо нь мөр эзлээд мэдээлэл өгөхгүй. */}
       {c.m.trend?.etaHours != null && c.m.alert && (
@@ -425,7 +364,6 @@ function Board({ all, range, setRange }: {
   /** Сервис нь ӨӨРӨӨ унасан мэдрэгч — decoder-ийн хоцролтоос ТУСДАА тоологдоно */
   const failed = all.filter((x) => x.error);
   const live = all.filter((x) => x.lastAt != null);
-  const total = sumBy(all, (x) => x.n);
 
   /**
    * Цувааг зургийн ХОЁР ТАЛД агуулгаар нь хуваана (2026-08-21, хүсэлт).
@@ -471,15 +409,10 @@ function Board({ all, range, setRange }: {
         </header>
         <div className={s.cardBody}>
           <div className={s.grid}>
-            {/* ⚠️ 2026-08-21: «Мэдрэгч» хайрцаг зургийн дээрх тусдаа мөрөөс
-                ЭНД, сүлжээний ХАМГИЙН ЭХЭНД шилжив (захиалагчийн хүсэлт). */}
-            <Tile
-              icon="radio"
-              label={tr('Мэдрэгч')}
-              value={tr('{0} ш', num(all.length))}
-              pill={tr('{0} идэвхтэй', num(live.length))}
-              pillTint={live.length === all.length ? 'var(--good-ink)' : 'var(--warn-ink)'}
-            />
+            {/* ⚠️ 2026-08-25 (хэрэглэгчийн шийдвэр): «Мэдрэгч · N ш · N идэвхтэй»
+                хайрцаг ХАСАГДАВ — нүд бүр өөрийн насаа (`freshLabel`) аль хэдийн
+                харуулдаг тул нийт/идэвхтэй тоо давхардсан мэдээлэл байв. Унасан
+                эсвэл дүлий мэдрэгчийн сэрэмжлүүлэг доорх `Note`-д хэвээр. */}
             {cards.map((c) => (
               <Cell key={`${c.s.key}-${c.m.key}`} c={c} />
             ))}
@@ -533,32 +466,10 @@ function Board({ all, range, setRange }: {
           баганан диаграм нь мөр 1-ийг өөрийн өндрөөр сунгаж, зүүн талд
           индикаторын доор хоосон зай үлдээдэг байв (зураг тэр зайгаар
           доошилно). */}
+      {/* ⚠️ 2026-08-26 (хэрэглэгчийн шийдвэр): «Бүртгэл үзүүлэлтээр» баганан
+          диаграм ХАСАГДАВ — заалтын ТОО нь чарт бүрийн толгойд «90 / 292 цэг»
+          гэж аль хэдийн бичигддэг тул давхардсан мэдээлэл байв. */}
       <div className={s.pRight}>
-        <section className={`${s.card} ${s.pBars}`}>
-          <header className={s.cardHd}>
-            <h3 className={s.cardTitle}>{tr('Бүртгэл үзүүлэлтээр')}</h3>
-            <span className={s.cardNote}>{tr('нийт')} {num(total)}</span>
-          </header>
-          <div className={s.cardBody}>
-            {/**
-              * ⚠️ МЭДРЭГЧЭЭР биш, ҮЗҮҮЛЭЛТ ТУС БҮРЭЭР. Хоёр шалтгаан:
-              * (а) 5 мэдрэгчийн багана нь картын гуравны нэгийг л эзэлж, доод талд
-              *     нь хоосон зай үлдээдэг;
-              * (б) decoder нь ТАЛБАР ТУС БҮРД өөрөөр унтардаг тул мэдрэгчийн нийлбэр
-              *     нь аль талбар дутуу ирснийг НУУНА (усны тоолуур: 287 мөрөөс
-              *     заалттай нь ердөө 11; хогийн мэдрэгч: 10,427-оос 1,647).
-              */}
-            {/* Мөр бүрийн өнгө заахгүй — `Bars`-ын анхдагч нь var(--data), ялгаа нь эрэмбээр */}
-            <Bars
-              items={cards.map((c) => ({
-                key: `${c.s.key}-${c.m.key}`,
-                label: c.m.label,
-                value: c.m.total,
-              }))}
-            />
-          </div>
-        </section>
-
         <div className={`${s.chartCol} ${s.pChartsR}`}>
           {chartsR.map((c) => (
             <ChartCard key={`${c.s.key}-${c.m.key}`} c={c} />
