@@ -34,7 +34,7 @@ import { cached } from '@/lib/live';
 import { layerTotals } from '@/lib/totals';
 import {
   BUILDING, CASHFLOW2, HABEA, IPC_LOG, LAYER_GROUPS, GROUP_LAYERS, LAYER_BY_ID,
-  PROJECT_PROGRESS, bagtsKey, pkgKeyOf, laborCompanyFields,
+  TASK_SHEET, bagtsKey, pkgKeyOf, laborCompanyFields,
 } from '@/lib/services';
 
 /* ═══════════════ Төрөл ═══════════════ */
@@ -164,44 +164,61 @@ const sentenceCase = (s: string) => {
 /* ═══════════════ Төслийн нийт гүйцэтгэл ба үе шат ═══════════════ */
 
 /**
- * ⚠️ `Төсөлд_эзлэх_хувь` жингийн нийлбэр 100 БИШ, 81.53% — эх хүснэгтэд
- * бүх ажил бүртгэгдээгүй. Тиймээс нийт гүйцэтгэлийг жингийн НИЙЛБЭРЭЭР
- * нормчилно (22.54 / 81.53 → 27.65%), эс бөгөөс дүн хиймлээр буурна.
+ * ТӨСЛИЙН НИЙТ ГҮЙЦЭТГЭЛ — TASK_SHEET («Гүйцэтгэл бөглөх»-ийн нэгтгэл).
+ *
+ * ⚠️ 2026-08-21: `Төсөл_Гүйцэтгэл_` (Excel-ээс гараар импортлогддог 162 мөр)
+ * төслөөс БҮРЭН ХАСАГДСАН — жингийн нийлбэр 81.53%, `Төсөл` багана 20 мөрд
+ * буруу, төлөвлөгөө 74 мөрд хоосон байсан тест өгөгдөл. Одоо гүйцэтгэл нь
+ * порталаас БӨГЛӨГДДӨГ хүснэгтээс гарна.
+ *
+ * ⚠️ ҮЕ ШАТНЫ (ТЭЗҮ · Зөвшөөрөл · Сонгон шалгаруулалт…) задаргаа АЛГА БОЛОВ —
+ * тэр бүтэц зөвхөн хуучин хүснэгтэд байсан. Оронд нь БАГЦААР: блок бүрийн
+ * «Б.» мөрийн сүүлийн утгыг багцаараа нэгтгэнэ.
  */
 async function loadOverall(): Promise<ReportExtra['overall']> {
-  const P = PROJECT_PROGRESS.fields;
-  /* Зөвхөн 4 хэрэглэдэг талбар — «*» нь 162 мөрийн бүх баганыг татдаг байв
-     (2026-08-21 гүйцэтгэлийн аудит) */
-  const rows = await queryFeatures(PROJECT_PROGRESS.url, {
-    outFields: [P.stage, P.weight, P.actual, P.planned],
+  const S = TASK_SHEET.fields;
+  const rows = await queryFeatures(TASK_SHEET.url, {
+    outFields: [S.bagts, S.block, S.date, S.progress],
+    where: `${S.no}='${TASK_SHEET.constructionNo}' AND ${S.block} IS NOT NULL`,
   });
 
-  const w = (r: Record<string, unknown>) => nn(r[P.weight]);
-  const done = (rs: typeof rows) => rs.reduce((a, r) => a + w(r) * nn(r[P.actual]) / 100, 0);
-  const wSum = (rs: typeof rows) => rs.reduce((a, r) => a + w(r), 0);
+  /** багц → блок → сүүлийн (огноо, %) */
+  const byPkg = new Map<string, Map<string, { d: string; g: number }>>();
+  for (const r of rows) {
+    const pkg = bagtsKey(r[S.bagts]);
+    const blk = str(r[S.block]).trim();
+    const d = str(r[S.date]).slice(0, 10);
+    const g = nn(r[S.progress]);
+    if (!pkg || !blk || !d) continue;
+    const m = byPkg.get(pkg) ?? new Map<string, { d: string; g: number }>();
+    const cur = m.get(blk);
+    if (!cur || cur.d <= d) m.set(blk, { d, g });
+    byPkg.set(pkg, m);
+  }
 
-  const total = wSum(rows);
+  /* Багц бүрийн дундаж — блокоор; төслийн дүн нь блокийн ТООГООР жигнэсэн */
+  const stages = [...byPkg.entries()]
+    .map(([pkg, blocks]) => {
+      const list = [...blocks.values()];
+      const sum = list.reduce((x, y) => x + y.g, 0);
+      return {
+        label: pkg,
+        rows: list.length,
+        weight: list.length,
+        actual: list.length ? sum / list.length : 0,
+        planned: null as number | null,
+      };
+    })
+    .sort((x, y) => x.label.localeCompare(y.label, 'mn', { numeric: true }));
 
-  const stages = PROJECT_PROGRESS.stages.map((s) => {
-    const g = rows.filter((r) => str(r[P.stage]) === s.value);
-    const gw = wSum(g);
-    // ⚠️ `Төлөвлөгөөт_хувь` нь 162-оос 74 мөрд ХООСОН — бөглөсөн мөрөөр л жишинэ
-    const pl = g.filter((r) => r[P.planned] != null && str(r[P.planned]) !== '');
-    const plW = wSum(pl);
-    return {
-      label: s.label,
-      rows: g.length,
-      weight: gw,
-      actual: gw ? (done(g) / gw) * 100 : 0,
-      planned: pl.length && plW
-        ? (pl.reduce((a, r) => a + w(r) * nn(r[P.planned]) / 100, 0) / plW) * 100
-        : null,
-    };
-  });
+  const blocksAll = stages.reduce((a2, s2) => a2 + s2.rows, 0);
+  const doneAll = stages.reduce((a2, s2) => a2 + s2.actual * s2.rows, 0);
 
   return {
-    pct: total ? (done(rows) / total) * 100 : 0,
-    weightSum: total,
+    pct: blocksAll ? doneAll / blocksAll : 0,
+    /* ⚠️ Хуучин талбар: жингийн нийлбэр байсан. Одоо БЛОКИЙН тоо — тайлан нь
+       «хэдэн блокоос бодсон» гэдгийг ил хэлнэ. */
+    weightSum: blocksAll,
     rows: rows.length,
     stages,
   };

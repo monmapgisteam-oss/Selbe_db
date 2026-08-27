@@ -7,8 +7,8 @@ import {
 import { t as tr } from '@/lib/i18nCore';
 import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
 import {
-  Donut, Ring, Bars, Data, Stats, Stat, Empty, Rows, List, ListItem,
-  Stack, Trend,
+  Donut, Ring, Bars, Series, Data, Stats, Stat, Empty, Rows,
+  Trend,
 } from '@/components/ui';
 import { Icon } from '@/components/Icon';
 import { LayerCatalog } from '@/components/LayerCatalog';
@@ -21,24 +21,29 @@ import { usePlanTotals } from '@/lib/totals';
 import { queryFeatures, type Row } from '@/lib/query';
 import {
   ZONE_LAYER, ZONE_FIELD, ZONE_NONE, BUILT_LAYER, BUILDING,
-  LAYER_BY_ID, PARCEL_LEFT, PARCEL_STATUS_HUES, SOURCE_FS, PROJECT_PROGRESS, TASK_SHEET,
+  LAYER_BY_ID, PARCEL_LEFT, PARCEL_STATUS_HUES, SOURCE_FS, TASK_SHEET,
   PLAN_LAYER_IDS, MONITOR_LAYER_IDS, INITIAL_MAP_LAYERS,
-  PKG_BY_FAMILY, PKG_BY_BAGTS, LAYERS, bagtsKey, type PkgFamily,
+  PKG_BY_FAMILY, PKG_BY_BAGTS, LAYERS, PROGRESS_LEVELS, bagtsKey, type PkgFamily,
 } from '@/lib/services';
 /* (2026-08-21) analysis/config·data·costs·score импортууд `@/lib/execData` руу
    нүүсэн — үлдсэн дуудагч нь тэнд байгаа useSuitability байсан. */
+/* ⚠️ Модулиас модуль руу импорт: `loadFinData` нь Finance-д, `aggregateMonths`
+   нь Tsogts-д. Хоёулаа `cached` тул давхар хүсэлт үүсэхгүй — «Багцын санхүү»
+   харагдацын аль хэдийн уншсан үр дүнг хуваалцана. */
+import { loadFinData, type FinData } from '@/modules/Finance';
+import { aggregateMonths } from '@/modules/Tsogts';
 import {
   loadBlockProgress, loadBlockHistory, progressSeries,
   type BlockProgressMap, type BlockHistory,
 } from '@/lib/blockProgress';
-import { sumBy, maxOf, tally } from '@/lib/agg';
+import { sumBy, maxOf } from '@/lib/agg';
 import { loadLandStatus, type LandStatus } from '@/lib/land';
 import { cat, mntShort, num, pct, shade, shades, tint, CAT_LIGHT, NO_DATA } from '@/lib/format';
-import { SCHEDULE, BAGTS_ORIGIN } from '@/lib/brief';
+import { BAGTS_ORIGIN } from '@/lib/brief';
 import {
-  loadHeadline, loadSocial, loadProjectProgress, loadBudget, liveStage,
-  weighted, rollupBy, cached,
-  type Headline, type SocialLive, type ProjectProgress, type Budget, type ProgRow,
+  loadHeadline, loadSocial, loadBudget, loadPkgProgress,
+  cached,
+  type Headline, type SocialLive, type Budget, type PkgProgressRow,
 } from '@/lib/live';
 import { SplitGrip, useSideResize } from '@/components/SplitGrip';
 import o from './dashboardOv.module.css';
@@ -189,9 +194,9 @@ import { useBagtsTable, type BagtsRow } from '@/lib/execData';
 
 /* ── Төслийн жигнэсэн гүйцэтгэл — тооцоо @/lib/live-д (Тайлан/Нүүр мөн уншина) ── */
 
-function useProjectProgress(): Async<ProjectProgress> {
+function useFinData(): Async<FinData> {
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  return useAsync(loadProjectProgress, []);
+  return useAsync(loadFinData, []);
 }
 
 /* ⚠️ cached() (2026-08-24 гүйцэтгэлийн аудит): Dashboard нь анхдагч харагдац тул
@@ -201,7 +206,13 @@ function useProjectProgress(): Async<ProjectProgress> {
    бусад DashData ачаалагчид (loadBudget/loadHeadline/loadSocial) мөн ижил
    session-кэштэй тул хуучрал нэг жигд. */
 const loadLeftParcels = cached<Row[]>(
-  () => queryFeatures(PARCEL_LEFT.url, { outFields: [PL.progress, PL.block] }),
+  /* ⚠️ 2026-08-21: `status`, `area`, `areaAlt` НЭМЭГДЭВ — «Үлдсэн талбарын
+     хэмжээ» карт эдгээрээр шүүдэг. Талбар нэмэхэд ШИНЭ хүсэлт үүсэхгүй, ижил
+     query-д багана л нэмэгдэнэ. Талбай хоёр багананд тарсан (`area` нь 213/224,
+     `areaAlt` нь 179/224 бөглөгдсөн) тул хоёуланг татна. */
+  () => queryFeatures(PARCEL_LEFT.url, {
+    outFields: [PL.progress, PL.block, PL.status, PL.area, PL.areaAlt],
+  }),
 );
 
 function useLeftParcels(): Async<Row[]> {
@@ -228,7 +239,15 @@ function useSources(): Async<Row[]> {
 /** Бүх хэсэгт хэрэгтэй өгөгдлийн багц */
 type DashData = {
   bagts: Async<BagtsRow[]>;
-  project: Async<ProjectProgress>;
+  /**
+   * САНХҮҮ + БИЕТ ГҮЙЦЭТГЭЛ — `CASHFLOW2` (гэрээ) · `IPC_LOG` (олгосон) ·
+   * `TASK_SHEET` («Гүйцэтгэл бөглөх»-ийн нэгтгэл).
+   *
+   * ⚠️ 2026-08-21: `Төсөл_Гүйцэтгэл_` ХАСАГДСАН — Excel-ээс гараар импортлогддог
+   * ТЕСТ өгөгдөл байв (жингийн нийлбэр 81.53%, `Төсөл` багана 20 мөрд буруу,
+   * төлөвлөгөө 74 мөрд хоосон). Гүйцэтгэл одоо порталаас БӨГЛӨГДДӨГ хүснэгтээс.
+   */
+  fin: Async<FinData>;
   parcels: Async<Row[]>;
   /** Газар чөлөөлөлтийн нэгдсэн АМЬД тооцоо — «Газар чөлөөлөлт» харагдацтай НЭГ томьёо */
   land: Async<LandStatus>;
@@ -250,6 +269,15 @@ type DashData = {
    * ⚠️ `loadBlockProgress`-тэй НЭГ `loadRows()` memo-г хуваалцана — 0 хүсэлт.
    */
   hist: Async<BlockHistory>;
+  /**
+   * БАГЦЫН ГҮЙЦЭТГЭЛИЙН НЭГТГЭЛ (`selbe_bagts_guitsetgel_negtgel`) — багц
+   * бүрийн сүүлийн бүртгэл: гүйцэтгэл, ТӨЛӨВЛӨГӨӨ, эзлэхүүн.
+   *
+   * ⚠️ `Төсөл_Гүйцэтгэл_` хасагдсаны дараа ТӨЛӨВЛӨГӨӨ өгдөг цорын ганц эх.
+   * ⚠️ Хүснэгт одоогоор хоосон — карт `Empty` харуулж, өгөгдөл орж эхэлмэгц
+   *    кодын өөрчлөлтгүй ажиллана.
+   */
+  pkgProg: Async<PkgProgressRow[]>;
 };
 
 /* ══════════════════ Газрын зургийн НЭГДСЭН чарт-шүүлт ══════════════════ */
@@ -289,7 +317,9 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
   const side = useSideResize('dashboard');
   const d: DashData = {
     bagts: useBagtsTable(),
-    project: useProjectProgress(),
+    fin: useFinData(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    pkgProg: useAsync(loadPkgProgress, []),
     parcels: useLeftParcels(),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     land: useAsync(loadLandStatus, []),
@@ -443,6 +473,15 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
          хэсэгт 510px багана хоосон зогсож, зураг дэмий шахагдана. */
       data-zl={zones.left.length ? '1' : '0'}
       data-zr={zones.right.length ? '1' : '0'}
+      /**
+       * ⚠️ 2026-08-21 (хэрэглэгчийн хүсэлт): НЭЭЛТТЭЙ ХЭСГИЙН ТҮЛХҮҮР.
+       *
+       * 9 дэд дашбоард нэг ижил стиль хуваалцаж байсан тул мэдээллийн хэмжээ
+       * (Эх үүсвэр 2 чарт · Шугам сүлжээ 6 чарт · Цар хүрээ 9 KPI) зөрөхөд
+       * гажилт үүсдэг байв — чарт шахагдах эсвэл хоосон зай гарах. Одоо CSS
+       * нь `.shell[data-sec='...']` -ээр хэсэг бүрд ТУСДАА тааруулна.
+       */
+      data-sec={open[0] ?? ''}
     >
       <SplitGrip {...side.left} />
       <SplitGrip {...side.right} />
@@ -586,11 +625,11 @@ function Detail({ k, d, flt, onFlt }: {
 } & FltProps) {
   switch (k) {
     case 'scope': return ScopeDetail({ bagts: d.bagts, d, flt, onFlt });
-    case 'schedule': return ScheduleDetail({ project: d.project });
-    case 'bagts': return BagtsDetail({ q: d.bagts, prog: d.prog, hist: d.hist, flt, onFlt });
-    case 'land': return LandDetail({ parcels: d.parcels, land: d.land, project: d.project, flt, onFlt });
-    case 'network': return NetworkDetail({ project: d.project, bagts: d.bagts, sources: d.sources, flt, onFlt });
-    case 'power': return PowerDetail({ project: d.project, sources: d.sources, prog: d.prog, flt, onFlt });
+    case 'schedule': return ScheduleDetail({ fin: d.fin, prog: d.prog, bagts: d.bagts });
+    case 'bagts': return BagtsDetail({ q: d.bagts, prog: d.prog, hist: d.hist, pkgProg: d.pkgProg, flt, onFlt });
+    case 'land': return LandDetail({ parcels: d.parcels, land: d.land, flt, onFlt });
+    case 'network': return NetworkDetail({ fin: d.fin, bagts: d.bagts, sources: d.sources, flt, onFlt });
+    case 'power': return PowerDetail({ fin: d.fin, sources: d.sources, prog: d.prog, flt, onFlt });
     case 'source': return SourceDetail({ sources: d.sources, d, flt, onFlt });
     case 'finance': return FinanceDetail({ budget: d.budget, flt, onFlt });
     case 'benefit': return BenefitDetail({ bagts: d.bagts, d, flt, onFlt });
@@ -641,7 +680,31 @@ function railStat(k: SecKey, d: DashData): {
   tone?: string;
 } {
   const b = d.bagts.state === 'ready' ? d.bagts.data : null;
-  const p = d.project.state === 'ready' ? d.project.data : null;
+  const f = d.fin.state === 'ready' ? d.fin.data : null;
+  const nowYm = new Date().toISOString().slice(0, 7);
+  /**
+   * Багцын биет гүйцэтгэл — «одоо» хүртэлх сүүлийн бөглөгдсөн сарын утга,
+   * блокийн тоогоор жигнэсэн.
+   *
+   * ⚠️ Эх нь TASK_SHEET («Гүйцэтгэл бөглөх») тул зурвасын тоо нь дэлгэрэнгүй
+   * самбарынхтай ЯГ таарна — хоёулаа нэг хүснэгтээс уншина.
+   */
+  const pkgPct = (match: (k: string) => boolean): number | null => {
+    if (!f) return null;
+    let w = 0; let n = 0;
+    f.phys.forEach((byMon, k) => {
+      if (!match(k)) return;
+      let last: number | null = null;
+      [...byMon.entries()].sort(([x], [y]) => x.localeCompare(y)).forEach(([m, v]) => {
+        if (m <= nowYm && v > 0) last = v;
+      });
+      if (last == null) return;
+      const cnt = f.physCnt.get(k)?.get(nowYm) ?? 1;
+      w += last * cnt; n += cnt;
+    });
+    return n ? w / n : null;
+  };
+  const overall = pkgPct(() => true);
   const blocks = b ? b.reduce((a, x) => a + x.blocks, 0) : null;
   const ail = b ? b.reduce((a, x) => a + x.ail, 0) : null;
 
@@ -655,12 +718,12 @@ function railStat(k: SecKey, d: DashData): {
       };
     }
     case 'schedule':
-      // ⚠️ АМЬД — Төсөл_Гүйцэтгэл хүснэгтийн жигнэсэн дундаж (илтгэлийн
-      //    бэхлэгдсэн 36.35% ◆-г хассан, 2026-08-13 хэрэглэгчийн шийдвэр).
+      /* ⚠️ 2026-08-21: эх нь Төсөл_Гүйцэтгэл БИШ, TASK_SHEET («Гүйцэтгэл
+         бөглөх»-ийн нэгтгэл) — багц бүрийн биет %, блокоор жигнэсэн. */
       return {
-        value: p == null ? '…' : pct(p.actual, 2),
-        note: p == null ? '…' : tr('{0} үе шат · жин {1}', SCHEDULE.length, pct(p.coverage, 1)),
-        pct: p?.actual ?? undefined, tone: o.active,
+        value: overall == null ? '…' : pct(overall, 2),
+        note: f == null ? '…' : tr('{0} багц тайлагнасан', num(f.phys.size)),
+        pct: overall ?? undefined, tone: o.active,
       };
     case 'bagts': {
       const bl = b ? b.reduce((a, x) => a + x.blocks, 0) : 0;
@@ -688,7 +751,7 @@ function railStat(k: SecKey, d: DashData): {
       // ⚠️ Урьд нь ЗӨВХӨН давхаргатай багцын ТОО (4) байсан — жагсаалтын бусад
       //    мөр бүгд гүйцэтгэл харуулж байхад энэ ганцаараа өөр төрлийн тоо байв.
       //    Одоо 11 сүлжээний багцын ЖИГНЭСЭН гүйцэтгэл (05·C1-тэй нэг тоо).
-      const nw = weighted(p ? p.rows.filter((r) => isNetworkPack(r.bagts)) : []);
+      const nw = { actual: pkgPct((k) => isNetworkPack(k)) };
       const n = infraPackList(isNetworkPack).length;
       return {
         value: nw.actual == null ? '…' : pct(nw.actual, 1),
@@ -699,7 +762,7 @@ function railStat(k: SecKey, d: DashData): {
     case 'power': {
       // ⚠️ Мөн адил — «Гадна цахилгаан» ажлын 28 мөрийн жигнэсэн гүйцэтгэл
       //    (06·C2-той нэг тоо). `bagts_name` эдгээрт NULL тул `Ажлын_нэр`-ээр.
-      const pw = weighted(p ? p.rows.filter((r) => /Гадна цахилгаан/u.test(r.work)) : []);
+      const pw = { actual: pkgPct((k) => isPowerPack(k)) };
       const n = infraPackList(isPowerPack).length;
       return {
         value: pw.actual == null ? '…' : pct(pw.actual, 1),
@@ -802,7 +865,20 @@ function SideRail({ d, open, toggle }: {
 function IndStrip({ d }: { d: DashData }) {
   const h = d.headline.state === 'ready' ? d.headline.data : null;
   const b = d.bagts.state === 'ready' ? d.bagts.data : null;
-  const p = d.project.state === 'ready' ? d.project.data : null;
+  const f = d.fin.state === 'ready' ? d.fin.data : null;
+  const nowYm = new Date().toISOString().slice(0, 7);
+  /** Төслийн биет гүйцэтгэл — бүх багцын сүүлийн утга, блокоор жигнэсэн */
+  let physW = 0; let physN = 0;
+  f?.phys.forEach((byMon, k) => {
+    let last: number | null = null;
+    [...byMon.entries()].sort(([x], [y]) => x.localeCompare(y)).forEach(([m, v]) => {
+      if (m <= nowYm && v > 0) last = v;
+    });
+    if (last == null) return;
+    const cnt = f.physCnt.get(k)?.get(nowYm) ?? 1;
+    physW += last * cnt; physN += cnt;
+  });
+  const overall = physN ? physW / physN : null;
   const l = d.land.state === 'ready' ? d.land.data : null;
   const blocks = b ? sumBy(b, (x) => x.blocks) : null;
   const clearedPct = l && l.total > 0 ? ((l.cleared + l.cleaned) / l.total) * 100 : null;
@@ -810,7 +886,7 @@ function IndStrip({ d }: { d: DashData }) {
     { icon: 'frame', label: tr('Төслийн нийт талбай'), v: h ? tr('{0} га', num(h.areaHa, 1)) : '…' },
     { icon: 'users', label: tr('Хамрагдах хүн ам'), v: h ? num(h.population) : '…' },
     { icon: 'building', label: tr('Барилгын блок'), v: blocks != null ? num(blocks) : '…' },
-    { icon: 'chart', label: tr('Төслийн гүйцэтгэл'), v: p ? pct(p.actual, 1) : '…' },
+    { icon: 'chart', label: tr('Төслийн гүйцэтгэл'), v: overall == null ? '…' : pct(overall, 1) },
     { icon: 'polygon', label: tr('Газар чөлөөлөлт'), v: clearedPct != null ? pct(clearedPct, 1) : '…' },
   ];
   return (
@@ -856,6 +932,27 @@ function EnvLeft({ d }: { d: DashData }) {
         </Data>
       </Panel>
 
+      {/* ⚠️ Шалтгаан нь урьд ЗӨВХӨН дэлгэрэнгүй самбарт байсан. Тоймд «89.9%
+          чөлөөлсөн» гэдэг сайн мэдээ л харагдаж, ҮЛДСЭН 10%-ийн ШАЛТГААН
+          нуугдаж байв — тоймын гол асуулт бол яг тэр. */}
+      <Panel title={tr('Үлдсэн талбарын шалтгаан')} note={tr('нэгж талбар')}>
+        <Data q={d.land} loading={tr('Татаж байна…')}>
+          {(ls) => (ls.reasons.length ? (
+            <Bars
+              inline
+              color="var(--data)"
+              items={ls.reasons.slice(0, 7).map((x) => ({
+                key: x.label,
+                label: x.label,
+                value: x.n,
+                color: 'var(--data)',
+                display: num(x.n),
+              }))}
+            />
+          ) : <Empty label={tr('Шалтгаан бүртгэгдээгүй')} />)}
+        </Data>
+      </Panel>
+
       <Panel title={tr('Эх үүсвэр')} note={tr('хүчин чадлын эзлэх хувь')}>
         <Data q={d.sources} loading={tr('Татаж байна…')} minH={215}>
           {(rows) => (
@@ -878,6 +975,29 @@ function EnvLeft({ d }: { d: DashData }) {
                 .sort((x, y) => y.value - x.value)}
             />
           )}
+        </Data>
+      </Panel>
+
+      {/* Санхүүжилтийн ЭХ ҮҮСВЭР — `budget.sources` нь татагдсан мөртлөө
+          хаана ч зурагддаггүй байв (зөвхөн нийлбэр нь KPI-д ордог). */}
+      <Panel title={tr('Санхүүжилтийн эх үүсвэр')} note={tr('₮')}>
+        <Data q={d.budget} loading={tr('Татаж байна…')}>
+          {(bg) => (bg.sources.length ? (
+            <Bars
+              inline
+              color="var(--data)"
+              items={[...bg.sources]
+                .sort((x, y) => y.value - x.value)
+                .slice(0, 6)
+                .map((x) => ({
+                  key: x.key,
+                  label: x.label,
+                  value: x.value,
+                  color: 'var(--data)',
+                  display: mntShort(x.value),
+                }))}
+            />
+          ) : <Empty label={tr('Эх үүсвэр задраагүй')} />)}
         </Data>
       </Panel>
 
@@ -948,6 +1068,36 @@ function EnvRight({ d }: { d: DashData }) {
         </Data>
       </Panel>
 
+      {/* САНХҮҮЖИЛТИЙН ҮЕ ШАТ — төсөв → захирамж → гэрээ → шилжүүлсэн.
+          ⚠️ Дөрвөн тоо тус тусдаа KPI болж хаа хаанаа тарж байсныг НЭГ дараалал
+          болгов: мөнгө хаана ГАЦСАН нь зөвхөн харьцуулбал харагдана. */}
+      <Panel title={tr('Санхүүжилтийн үе шат')} note={tr('₮ · төсвөөс')}>
+        <Data q={d.budget} loading={tr('Татаж байна…')}>
+          {(bg) => {
+            const rows = [
+              { key: 'total', label: tr('Урьдчилсан төсөв'), value: bg.total },
+              { key: 'order', label: tr('Захирамжаар'), value: bg.orderTotal },
+              { key: 'contract', label: tr('Гэрээ байгуулах эрх'), value: bg.contract },
+              { key: 'given', label: tr('Шилжүүлсэн'), value: bg.transferred },
+            ].filter((x) => x.value > 0);
+            return rows.length ? (
+              <Bars
+                inline
+                color="var(--data)"
+                max={Math.max(...rows.map((x) => x.value))}
+                items={rows.map((x) => ({
+                  key: x.key,
+                  label: x.label,
+                  value: x.value,
+                  color: 'var(--data)',
+                  display: mntShort(x.value),
+                }))}
+              />
+            ) : <Empty label={tr('Төсвийн задаргаа алга')} />;
+          }}
+        </Data>
+      </Panel>
+
       <Panel title={tr('Санхүүжилт')} note={tr('ажлын төрлөөр · ₮')}>
         <Data q={d.budget} loading={tr('Татаж байна…')}>
           {(bg) => (
@@ -966,6 +1116,35 @@ function EnvRight({ d }: { d: DashData }) {
                 }))}
             />
           )}
+        </Data>
+      </Panel>
+
+      {/* БЛОКИЙН ТАРХАЛТ — `prog` нь 113 блокийн гүйцэтгэлийг агуулдаг мөртлөө
+          тоймд огт зурагддаггүй байв. «Дундаж 27.6%» гэдэг нэг тоо нь бүх блок
+          дунджаараа явж байгаа мэт сэтгэгдэл төрүүлдэг; бодит тархалт өөр. */}
+      <Panel title={tr('Блокийн гүйцэтгэл')} note={tr('түвшнээр · блок')}>
+        <Data q={d.prog} loading={tr('Татаж байна…')}>
+          {(pm) => {
+            const counts = PROGRESS_LEVELS.map(() => 0);
+            pm.forEach((p) => {
+              if (p.overall == null) return;
+              counts[Math.min(PROGRESS_LEVELS.length - 1, Math.floor(p.overall / 25))] += 1;
+            });
+            const tot = counts.reduce((a, b) => a + b, 0);
+            return tot ? (
+              <Bars
+                inline
+                color="var(--data)"
+                items={PROGRESS_LEVELS.map((l, i) => ({
+                  key: l.key,
+                  label: `${l.label} ${l.range}`,
+                  value: counts[i],
+                  color: 'var(--data)',
+                  display: tr('{0} блок', num(counts[i])),
+                }))}
+              />
+            ) : <Empty label={tr('Гүйцэтгэл бүртгэгдээгүй')} />;
+          }}
         </Data>
       </Panel>
 
@@ -1014,9 +1193,10 @@ export function HeadKpi({ bagts }: { bagts: Async<BagtsRow[]> }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const hq = useAsync(loadHeadline, []);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const pq = useAsync(loadProjectProgress, []);
+  const pq = useAsync(loadFinData, []);
   const h = hq.state === 'ready' ? hq.data : null;
-  const p = pq.state === 'ready' ? pq.data : null;
+  /* ⚠️ 2026-08-21: Төсөл_Гүйцэтгэл_ хасагдаж, эх нь TASK_SHEET болов */
+  const p = pkgPhys(pq.state === 'ready' ? pq.data : null, () => true);
 
   /**
    * ⚠️ УТГА ба НЭГЖ нь ТУСДАА талбар — тоо том, нэгж жижиг.
@@ -1033,11 +1213,11 @@ export function HeadKpi({ bagts }: { bagts: Async<BagtsRow[]> }) {
     },
     { v: h == null ? '…' : num(h.population), unit: tr('хүн'), label: tr('Хамрагдах хүн ам') },
     {
-      v: p == null ? '…' : num(p.actual, 2), unit: '%',
+      v: p.actual == null ? '…' : num(p.actual, 2), unit: '%',
       label: tr('Төслийн нийт гүйцэтгэл'),
-      sub: p == null ? undefined : tr('бүртгэгдсэн жин {0}%', num(p.coverage, 1)),
+      sub: p.packs ? tr('{0} багц тайлагнасан', num(p.packs)) : undefined,
       lead: true,
-      bar: p?.actual,
+      bar: p.actual ?? undefined,
     },
     {
       v: h == null ? '…' : num(h.investTotal / 1e12, 2), unit: tr('их наяд ₮'),
@@ -1078,8 +1258,8 @@ function ScopeDetail({ bagts, d, flt, onFlt }: {
   const ail = b ? sumBy(b, (x) => x.ail) : null;
   const h = d.headline.state === 'ready' ? d.headline.data : null;
   const soc = d.social.state === 'ready' ? d.social.data : null;
-  // Нийт гүйцэтгэл — `HeadKpi`-аас нэгдсэн үзүүлэлт (жигнэсэн дундаж)
-  const prog = d.project.state === 'ready' ? d.project.data : null;
+  // Нийт гүйцэтгэл — TASK_SHEET-ийн багц бүрийн биет %, блокоор жигнэсэн
+  const prog = pkgPhys(d.fin.state === 'ready' ? d.fin.data : null, () => true);
   /** Багцын тоо — барилгын 7 + газрын зургийн дэд бүтцийн багцууд (PKG_BY_BAGTS) */
   const packs = b
     ? new Set([...b.map((x) => x.key), ...Object.keys(PKG_BY_BAGTS)]).size
@@ -1154,16 +1334,14 @@ function ScopeDetail({ bagts, d, flt, onFlt }: {
           ];
           if (!items.length) return <Empty label={tr('Багцын хүснэгт хоосон.')} />;
           return (
-            <Donut
-              size={150}
-              width={24}
-              leaders={items.length <= 4}
-              stack={items.length > 4}
-              center={num(sumBy(items, (i) => i.value))}
-              centerLabel={tr('багц')}
-              items={items.map((x, i) => ({
-                ...x,
-                color: shade(ACCENT, i, items.length),
+            /* ⚠️ Донат → ХЭВТЭЭ БАР: гэр бүл ҮРГЭЛЖ 7 тул бөгжинд
+               уншигдахгүй (4+ бол донат хэрэглэхгүй дүрэм). */
+            <Bars
+              inline
+              items={heatBars(items, (x) => ({
+                key: x.key,
+                label: x.label,
+                value: x.value,
                 display: tr('{0} багц', num(x.value)),
               }))}
             />
@@ -1213,6 +1391,142 @@ function ScopeDetail({ bagts, d, flt, onFlt }: {
           )}
         </Data>
       </Panel>
+
+      {/* ГҮЙЦЭТГЭГЧЭЭР — `contractor` нь `BagtsRow`-д татагддаг мөртлөө
+          дашбоардын хаана ч зурагддаггүй байв. «Хэн барьж байна» гэдэг нь
+          цар хүрээний асуултын салшгүй хэсэг. */}
+      <Panel title={tr('Гүйцэтгэгчээр')} note={tr('багцын тоо')}>
+        <Data q={bagts} loading={tr('Татаж байна…')}>
+          {(rows) => {
+            const m = new Map<string, number>();
+            rows.forEach((r) => {
+              const c = (r.contractor || '').trim();
+              if (!c) return;
+              m.set(c, (m.get(c) ?? 0) + 1);
+            });
+            const list = [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
+            return list.length ? (
+              <Bars
+                inline
+                items={heatBars(list, ([label, n]) => ({
+                  key: label,
+                  label,
+                  value: n,
+                  display: tr('{0} багц', num(n)),
+                }))}
+              />
+            ) : <Empty label={tr('Гүйцэтгэгч бүртгэгдээгүй')} />;
+          }}
+        </Data>
+      </Panel>
+
+      {/* НИЙГМИЙН БАЙГУУЛАМЖ — дээд зурваст нийт тоо (11 ш) л байсан; ямар
+          төрлийн, ямар хүчин чадалтай нь задраагүй байв. */}
+      <Panel title={tr('Нийгмийн байгууламж')} note={tr('төрлөөр · хүчин чадал')}>
+        <Data q={d.social} loading={tr('Татаж байна…')}>
+          {(sc) => (sc.rows.length ? (
+            <Bars
+              inline
+              items={heatBars([...sc.rows].sort((a, b) => b.n - a.n), (r) => ({
+                key: r.key,
+                label: r.label,
+                value: r.n,
+                display: r.capacity ? `${num(r.n)} / ${num(r.capacity)}` : num(r.n),
+              }))}
+            />
+          ) : <Empty label={tr('Бүртгэл алга')} />)}
+        </Data>
+      </Panel>
+
+      {/* ТӨСӨВ АЖЛЫН ТӨРЛӨӨР — дээд зурваст «2.66 их наяд ₮» гэсэн НЭГ тоо
+          л байсан; тэр мөнгө ЮУНД зарцуулагдахыг задлаагүй байв. */}
+      <Panel title={tr('Төсөв ажлын төрлөөр')} note={tr('₮')}>
+        <Data q={d.budget} loading={tr('Татаж байна…')}>
+          {(bg) => (bg.byType.length ? (
+            /* ⚠️ Донат → ХЭВТЭЭ БАР: 7 төрөлтэй бөгжинд зүсмэгийн өнцөг
+               харьцуулагдахгүй тул бүх мэдээлэл доод жагсаалтад шилждэг байв. */
+            <Bars
+              inline
+              items={heatBars(
+                [...bg.byType].sort((x, y) => y.value - x.value).slice(0, 7),
+                (x) => ({ key: x.key, label: x.label, value: x.value, display: mntShort(x.value) }),
+              )}
+            />
+          ) : <Empty label={tr('Төсвийн задаргаа алга')} />)}
+        </Data>
+      </Panel>
+
+      {/* ТӨСӨВ БАГЦААР — аль багц хамгийн үнэтэй вэ. `byPkg` нь татагддаг
+          мөртлөө дашбоардын хаана ч зурагддаггүй байв. */}
+      <Panel title={tr('Төсөв багцаар')} note={tr('₮')}>
+        <Data q={d.budget} loading={tr('Татаж байна…')}>
+          {(bg) => (bg.byPkg.length ? (
+            <Bars
+              inline
+              items={heatBars(
+                [...bg.byPkg].sort((x, y) => y.value - x.value).slice(0, 8),
+                (x) => ({ key: x.key, label: x.label, value: x.value, display: mntShort(x.value) }),
+              )}
+            />
+          ) : <Empty label={tr('Багцын задаргаа алга')} />)}
+        </Data>
+      </Panel>
+
+      {/* ГҮЙЦЭТГЭГЧИЙН ХАРЬЯАЛАЛ — `origin` (Гадаад / Үндэсний) нь зөвхөн 04
+          хэсгийн шошгонд орж байсан; цар хүрээнд «хэн барьж байна» гэдэг нь
+          бие даасан асуулт. */}
+      <Panel title={tr('Гүйцэтгэгчийн харьяалал')} note={tr('багцын тоо')}>
+        <Data q={bagts} loading={tr('Татаж байна…')}>
+          {(rows) => {
+            const m = new Map<string, number>();
+            rows.forEach((r) => {
+              const o = (r.origin || '').trim();
+              if (!o) return;
+              m.set(o, (m.get(o) ?? 0) + 1);
+            });
+            const list = [...m.entries()].sort((a, b) => b[1] - a[1]);
+            return list.length ? (
+              /* ⚠️ «Ус хангамжийн эх үүсвэрийн чадал»-тай ИЖИЛ хэлбэр (2026-08-21,
+                 хэрэглэгчийн хүсэлт): том бөгж, тэмдэглэлийг зүсмэг рүү шууд
+                 холбосон шугамаар (`leaders`) — доод жагсаалт БИШ. Зүсмэг цөөн
+                 (2–4) тул шошго хоорондоо мөргөлдөхгүй. */
+              <Donut
+                size={140}
+                width={22}
+                leaders={list.length <= 4}
+                stack={list.length > 4}
+                center={num(list.reduce((a, x) => a + x[1], 0))}
+                centerLabel={tr('багц')}
+                items={list.map(([label, n], i) => ({
+                  key: label,
+                  label: tr(label),
+                  value: n,
+                  color: shade(ACCENT, i, Math.max(2, list.length)),
+                  display: tr('{0} багц', num(n)),
+                }))}
+              />
+            ) : <Empty label={tr('Харьяалал бүртгэгдээгүй')} />;
+          }}
+        </Data>
+      </Panel>
+
+      {/* ГАЗАР ЧӨЛӨӨЛӨЛТИЙН ТӨЛӨВ — цар хүрээний хэсэгт «хэдэн га дээр ажиллаж
+          болох вэ» гэдэг нь талбайн тооноос дутуугүй чухал. */}
+      <Panel title={tr('Газар чөлөөлөлт')} note={tr('төлөв · га')}>
+        <Data q={d.land} loading={tr('Татаж байна…')}>
+          {(ls) => (
+            <Bars
+              inline
+              items={heatBars([...ls.byStatus].sort((a, b) => b.areaM2 - a.areaM2), (x) => ({
+                key: x.label,
+                label: x.label,
+                value: x.areaM2 / 10_000,
+                display: tr('{0} га', num(x.areaM2 / 10_000, 1)),
+              }))}
+            />
+          )}
+        </Data>
+      </Panel>
     </>
   );
 }
@@ -1220,147 +1534,173 @@ function ScopeDetail({ bagts, d, flt, onFlt }: {
 /* ══════════════════ 02 · Master Schedule ══════════════════ */
 
 /**
- * ГҮЙЦЭТГЭЛ БҮГД АМЬД — `Төсөл_Гүйцэтгэл`-ийн жигнэсэн дүн (`liveStage`).
- * Амьд хүснэгтэд БАЙХГҮЙ үе шат (04 Инженерийн дэд бүтэц, 06 Олон нийтийн бүс)
- * «—» гэж гарна — бэхлэгдсэн тоо ХЭВЛЭХГҮЙ (2026-08-13 хэрэглэгчийн шийдвэр).
- * Хугацааны зурвас (`from`–`to`) нь төлөвлөгөөний мета — тоон үзүүлэлт биш.
+ * 02 · ХЭРЭГЖИЛТИЙН ЕРӨНХИЙ ГРАФИК.
+ *
+ * ⚠️ 2026-08-21: `Төсөл_Гүйцэтгэл_` (162 мөрийн Excel хуваарь) ХАСАГДСАН —
+ * тэр нь порталаас шинэчлэгддэггүй тест өгөгдөл байв. Одоо бүх дүн ХОЁР
+ * АМЬД эхээс:
+ *   · `fin`  — CASHFLOW2 (төлөвлөгөө) · IPC_LOG (олгосон) · TASK_SHEET (биет)
+ *   · `prog` — блок бүрийн гүйцэтгэл, мөн TASK_SHEET-ээс
+ *
+ * Хоёулаа «Гүйцэтгэл бөглөх» цонхоор ПОРТАЛААС бөглөгддөг тул тоо нь
+ * бүртгэлтэй нэг агшинд таарна.
  */
-function ScheduleDetail({ project }: { project: Async<ProjectProgress> }) {
-  const p = project.state === 'ready' ? project.data : null;
+function ScheduleDetail({ fin, prog, bagts }: {
+  fin: Async<FinData>;
+  prog: Async<BlockProgressMap>;
+  bagts: Async<BagtsRow[]>;
+}) {
+  const f = fin.state === 'ready' ? fin.data : null;
+  const months = f ? aggregateMonths(f) : null;
 
-  /** Үе шатны дараалал — МЕТАДАТА (хугацааны); жин нь ХҮСНЭГТЭЭС амьдаар */
-  const stageKeys = (only?: (k: string) => boolean) => {
-    if (p == null) return [];
-    const ORD = PROJECT_PROGRESS.stages.map((x) => String(x.value));
-    const keep = (k: string) => (only ? only(k) : true);
-    return [
-      ...ORD.filter((k) => p.byStage[k] && keep(k)),
-      ...Object.keys(p.byStage).filter((k) => !ORD.includes(k) && keep(k)),
-    ];
-  };
-  const stageLabel = (k: string) =>
-    PROJECT_PROGRESS.stages.find((x) => x.value === k)?.label ?? k;
+  /** «Одоо» хүртэлх сүүлийн бөглөгдсөн сарын төлөвлөгөө/биет */
+  const nowYm = new Date().toISOString().slice(0, 7);
+  let planned: number | null = null;
+  let actual: number | null = null;
+  if (months) {
+    for (const m of months) {
+      if (m.label > nowYm) continue;
+      if (m.cumPct > 0) planned = m.cumPct;
+      if (m.phys > 0) actual = m.phys;
+    }
+  }
+  const gap = planned != null && actual != null ? planned - actual : null;
 
   return (
     <>
-      {/* Бүртгэгдсэн жингийн хамрах хүрээ — урьд нь `p.coverage` дашбоард дээр
-          ХААНА Ч хэвлэгддэггүй байсан тул бүртгэгдээгүй ~18.5% нь үл үзэгдэх байв. */}
-      <Panel title={tr('Жигнэсэн гүйцэтгэл ба хамрах хүрээ')} note={tr('Σ(жин×гүйц) ÷ Σжин')}>
-          <Stats cols={2}>
-            <Stat accent color={HUE[0]} value={p == null ? '…' : num(p.coverage, 2)} unit="%" label={tr('Бүртгэгдсэн жин')} />
-            <Stat color={NO_DATA} value={p == null ? '…' : num(Math.max(0, 100 - p.coverage), 2)} unit="%" label={tr('Хүснэгтэд ороогүй жин')} />
-            <Stat value={p == null ? '…' : num(p.rows.length)} unit={tr('ажил')} label={tr('Бүртгэсэн ажлын мөр')} />
-            <Stat
-              value={p?.byStage['Барилга угсралт'] == null ? '…' : num(p.byStage['Барилга угсралт'].weight, 1)}
-              unit="%"
-              label={tr('Барилга угсралтын жин')}
-            />
-          </Stats>
-      </Panel>
-
-      {/* ⚠️ Бөгж тоонуудын зурвасаас САЛСАН — хажуугийн баганын карт. */}
-      <Panel title={tr('Жигнэсэн гүйцэтгэл')}>
-        <RingCard value={p?.actual ?? null} label={tr('жигнэсэн гүйцэтгэл')} decimals={2} />
-      </Panel>
-
-      {/* Үе шатны ЖИН — `byStage[*].weight` нь нэгтгэгддэг байсан ч зурагддаггүй байв */}
-      <Panel title={tr('Үе шатны жин — төсөлд эзлэх хувь')}>
-        {p == null ? (
-          <Empty label={tr('Гүйцэтгэлийн хүснэгт татагдаж байна…')} />
-        ) : (() => {
-          const keys = stageKeys((k) => p.byStage[k].weight > 0);
-          if (!keys.length) return <Empty label={tr('Үе шатны жин бүртгэгдээгүй.')} />;
-          const slices = keys.map((k, i) => ({
-            key: k,
-            label: stageLabel(k),
-            value: Number(p.byStage[k].weight.toFixed(2)),
-            color: shade(ACCENT, i, keys.length + 1),
-            display: tr('{0}% · {1} ажил', num(p.byStage[k].weight, 2), num(p.byStage[k].rows)),
-          }));
-          const ws = withRest(slices);
-          return (
-            <Donut
-              size={150}
-              width={24}
-              leaders={ws.length <= 4}
-              stack={ws.length > 4}
-              center={`${num(sumBy(slices, (s) => s.value), 1)}%`}
-              centerLabel={tr('бүртгэгдсэн жин')}
-              items={ws}
-            />
-          );
-        })()}
-      </Panel>
-
-      {/* ⚠️ Он ЭНДЭЭС хасагдав — доорх «хугацаа ба төлөв» картад уншигдахуйц
-          болж орсон. Урьд нь шошго нь «нэр · 2024–2026» болж хоёр мөр даруулдаг. */}
-      <Panel title={tr('Үндсэн үе шат')}>
-        <Bars
-          max={100}
-          items={SCHEDULE.map((st) => {
-            const v = liveStage(p, st.stages);
-            return {
-              key: st.no,
-              label: st.label,
-              value: v ?? 0,
-              display: v == null ? '—' : pct(v, v >= 1 ? 1 : 0),
-              color: v == null ? NO_DATA : heat(v, 100),
-            };
-          })}
-        />
-      </Panel>
-
-      {/* Хувь нэмэр — үе шат бүр НИЙТ гүйцэтгэлд хэдэн жингийн нэгж нэмсэн */}
-      <Panel
-        title={tr('Гүйцэтгэлийн хувь нэмэр — үе шатаар')}
-        note={p == null ? undefined : tr('дүүрсэн {0} · Σжин {1}', pct(p.actual, 1), num(p.coverage, 1))}
-      >
-        {p == null ? (
-          <Empty label={tr('Гүйцэтгэлийн хүснэгт татагдаж байна…')} />
-        ) : (
-          <Stack
-            // ⚠️ `total={100}` бол ХУДАЛ 22.5% гарна: жингийн нийлбэр 100 БИШ
-            //    (~81.5). Дээд хязгаарыг БҮРТГЭГДСЭН жингээр авбал зурвасын
-            //    дүүрсэн хувь ЯГ `p.actual` болно.
-            total={p.coverage}
-            items={stageKeys().map((k, i) => {
-              const s = p.byStage[k];
-              return {
-                key: k,
-                label: tr('{0} · жин {1}% · {2}', stageLabel(k), num(s.weight, 1), pct(s.actual, 0)),
-                value: Number(((s.weight * s.actual) / 100).toFixed(1)),
-                color: HUE[i % HUE.length],
-              };
-            })}
+      <Panel title={tr('Хэрэгжилтийн ерөнхий график')} note={tr('CASHFLOW · IPC · Гүйцэтгэл бөглөх')}>
+        <Stats cols={2}>
+          <Stat accent color={HUE[0]} value={actual == null ? '…' : num(actual, 2)} unit="%" label={tr('Биет гүйцэтгэл')} />
+          <Stat accent color={HUE[1]} value={planned == null ? '…' : num(planned, 1)} unit="%" label={tr('Төлөвлөсөн гүйцэтгэл')} />
+          <Stat
+            accent
+            color={HUE[2]}
+            value={gap == null ? '…' : `${gap >= 0 ? '−' : '+'}${Math.abs(gap).toFixed(1)}`}
+            unit="%"
+            label={tr('Гүйцэтгэлийн зөрүү')}
           />
-        )}
+          <Stat
+            accent
+            color={HUE[3]}
+            value={f == null ? '…' : num([...f.phys.keys()].length)}
+            unit={tr('багц')}
+            label={tr('Тайлагнасан багц')}
+          />
+        </Stats>
       </Panel>
 
-      {/* Хугацаа ба төлөв — `SCHEDULE.status`/`.tone` нь `brief.ts`-д байсан ч
-          хаана ч зурагддаггүй байв. Мөн 04/06 шат яагаад «—» болохыг ЭНД хэлнэ. */}
-      <Panel title={tr('Үе шатны хугацаа ба төлөв')}>
-        <List>
-          {SCHEDULE.map((st) => {
-            const v = liveStage(p, st.stages);
-            return (
-              <ListItem
-                key={st.no}
-                title={`${st.no}. ${st.label}`}
-                sub={
-                  v == null
-                    ? tr('{0}–{1} · {2}', st.from, st.to, st.stages.length ? tr('амьд бүртгэл тохирсонгүй') : tr('амьд эх сурвалж алга'))
-                    : tr('{0}–{1} · амьд эх: {2}', st.from, st.to, st.stages.join(', '))
-                }
-                value={st.status}
-                color={st.tone === 'done' ? 'var(--good)' : st.tone === 'active' ? ACCENT : NO_DATA}
+      {/* БИЕТ ГҮЙЦЭТГЭЛИЙН ЦУВАА — сарын эцсийн байдлаар, блокоор жигнэсэн */}
+      <Panel title={tr('Биет гүйцэтгэл — сараар')} note={tr('блокоор жигнэсэн %')}>
+        <Data q={fin} loading={tr('Татаж байна…')}>
+          {() => {
+            const pts = (months ?? [])
+              .filter((m) => m.label <= nowYm && m.phys > 0)
+              .map((m) => ({ key: m.label, label: m.label.slice(2), value: m.phys }));
+            return pts.length >= 2
+              ? <Series items={pts} height={120} unit="%" line showValues />
+              : <Empty label={tr('Цуваа зурах бүртгэл алга')} />;
+          }}
+        </Data>
+      </Panel>
+
+      {/* ТӨЛӨВЛӨГӨӨ vs ОЛГОСОН — санхүүгийн явц сараар */}
+      <Panel title={tr('Санхүүжилт — сараар')} note={tr('төлөвлөгөө · олгосон ₮')}>
+        <Data q={fin} loading={tr('Татаж байна…')}>
+          {() => {
+            const pts = (months ?? [])
+              .filter((m) => m.label <= nowYm)
+              .map((m) => ({ key: m.label, label: m.label.slice(2), value: m.given }));
+            return pts.length >= 2
+              ? <Series items={pts} height={110} unit="₮" line />
+              : <Empty label={tr('Олголтын бүртгэл алга')} />;
+          }}
+        </Data>
+      </Panel>
+
+      {/* БЛОКИЙН ГҮЙЦЭТГЭЛИЙН ТАРХАЛТ — «дундаж 27.65%» нь тархалтыг нуудаг */}
+      <Panel title={tr('Блокийн гүйцэтгэл')} note={tr('түвшнээр · блок')}>
+        <Data q={prog} loading={tr('Татаж байна…')}>
+          {(pm) => {
+            const counts = PROGRESS_LEVELS.map(() => 0);
+            pm.forEach((x) => {
+              if (x.overall == null) return;
+              counts[Math.min(PROGRESS_LEVELS.length - 1, Math.floor(x.overall / 25))] += 1;
+            });
+            return counts.some((c) => c > 0) ? (
+              <Bars
+                inline
+                items={heatBars(PROGRESS_LEVELS.map((l, i) => ({ l, n: counts[i] })), (x) => ({
+                  key: x.l.key,
+                  label: `${x.l.label} ${x.l.range}`,
+                  value: x.n,
+                  display: tr('{0} блок', num(x.n)),
+                }))}
               />
-            );
-          })}
-        </List>
+            ) : <Empty label={tr('Гүйцэтгэл бүртгэгдээгүй')} />;
+          }}
+        </Data>
+      </Panel>
+
+      {/* БАГЦААР — биет гүйцэтгэлийн хамгийн сүүлийн утга */}
+      <Panel title={tr('Багцаар — биет гүйцэтгэл')} note={tr('сүүлийн бүртгэл')}>
+        <Data q={fin} loading={tr('Татаж байна…')}>
+          {(d) => {
+            /* Багц бүрийн СҮҮЛИЙН бөглөгдсөн сарын биет % (-тэй ижил дүрэм) */
+            const rows = pkgPhys(d, () => true).rows;
+            return rows.length ? (
+              <Bars
+                inline
+                max={100}
+                items={heatBars(rows, (x) => ({
+                  key: x.key,
+                  label: tr(x.key),
+                  value: x.pct,
+                  display: pct(x.pct, 1),
+                }))}
+              />
+            ) : <Empty label={tr('Багцын бүртгэл алга')} />;
+          }}
+        </Data>
+      </Panel>
+
+      {/* ХОЦОРСОН БЛОК — гүйцэтгэл 0 хэвээрх, айлын тоогоор жигнэсэн */}
+      <Panel title={tr('Хоцорсон блок')} note={tr('гүйцэтгэл 0%')}>
+        <Data q={prog} loading={tr('Татаж байна…')}>
+          {(pm) => {
+            const b = bagts.state === 'ready' ? bagts.data : null;
+            const zero: { key: string; n: number }[] = [];
+            const byPkg = new Map<string, number>();
+            pm.forEach((x, k) => {
+              if (x.overall > 0) return;
+              const pkg = k.split('|')[0] ?? '';
+              byPkg.set(pkg, (byPkg.get(pkg) ?? 0) + 1);
+            });
+            byPkg.forEach((n, k) => {
+              const nm = b?.find((r) => r.key === k)?.label ?? k;
+              zero.push({ key: k, n, ...{ label: nm } } as { key: string; n: number });
+            });
+            const list = [...byPkg.entries()]
+              .map(([k, n]) => ({ key: k, label: b?.find((r) => r.key === k)?.label ?? k, n }))
+              .sort((x, y) => y.n - x.n);
+            void zero;
+            return list.length ? (
+              <Bars
+                inline
+                items={heatBars(list, (x) => ({
+                  key: x.key,
+                  label: tr(x.label),
+                  value: x.n,
+                  display: tr('{0} блок', num(x.n)),
+                }))}
+              />
+            ) : <Empty label={tr('Хоцорсон блок алга')} />;
+          }}
+        </Data>
       </Panel>
     </>
   );
 }
+
 
 /* ══════════════════ 03 · Орон сууцны 7 багц ══════════════════ */
 
@@ -1418,6 +1758,40 @@ function RingCard({ value, label, color = ACCENT, decimals }: {
    болсон тул бөгж хажуугийн баганад буудаг. */
 
 /** Bars-ын items — `heat()` өнгө нь ЖАГСААЛТЫН дээд утгаар нормчилогдоно */
+
+/**
+ * БАГЦЫН БИЕТ ГҮЙЦЭТГЭЛ — «одоо» хүртэлх сүүлийн бөглөгдсөн сарын утга.
+ *
+ * ⚠️ 2026-08-21: `Төсөл_Гүйцэтгэл_` (Excel-ээс импортлогдсон тест хүснэгт)
+ * ХАСАГДСАН. Гүйцэтгэлийн бүх дүн одоо TASK_SHEET («Гүйцэтгэл бөглөх»-ийн
+ * нэгтгэл) дээр — тэр нь порталаас БӨГЛӨГДДӨГ тул дэлгэц бүрийн тоо таарна.
+ */
+function pkgPhys(f: FinData | null, match: (k: string) => boolean): {
+  /** Блокоор жигнэсэн дундаж % (тайлагнаагүй бол `null`) */
+  actual: number | null;
+  /** Тайлагнасан багцын тоо */
+  packs: number;
+  /** Багц бүрийн сүүлийн % — жагсаалтад */
+  rows: { key: string; pct: number }[];
+} {
+  if (!f) return { actual: null, packs: 0, rows: [] };
+  const nowYm = new Date().toISOString().slice(0, 7);
+  const rows: { key: string; pct: number }[] = [];
+  let w = 0; let n = 0;
+  f.phys.forEach((byMon, k) => {
+    if (!match(k)) return;
+    let last: number | null = null;
+    [...byMon.entries()].sort(([x], [y]) => x.localeCompare(y)).forEach(([m, v]) => {
+      if (m <= nowYm && v > 0) last = v;
+    });
+    if (last == null) return;
+    rows.push({ key: k, pct: last });
+    const cnt = f.physCnt.get(k)?.get(nowYm) ?? 1;
+    w += last * cnt; n += cnt;
+  });
+  return { actual: n ? w / n : null, packs: rows.length, rows: rows.sort((a, b) => b.pct - a.pct) };
+}
+
 function heatBars<T>(
   rows: readonly T[],
   m: (r: T) => { key: string; label: string; value: number; display?: string },
@@ -1427,23 +1801,6 @@ function heatBars<T>(
   return items.map((i) => ({ ...i, color: heat(i.value, mx) }));
 }
 
-type Slice = { key: string; label: string; value: number; color: string; display?: ReactNode };
-/**
- * Σ < 100 бол «бүртгэгдээгүй» зүсмэгийг ИЛ нэмнэ — `loadBudget`-ийн «Эх үүсвэр
- * задраагүй» дүрэмтэй ижил: зөрүүг нуухгүй. Эс бөгөөс Donut нь зүсмэгүүдээ
- * 100%-д нормчилж, бүртгэгдээгүй жинг ЧИМЭЭГҮЙ нууна.
- */
-function withRest(items: Slice[], label = tr('Бүртгэгдээгүй жин')): Slice[] {
-  const shown = sumBy(items, (i) => i.value);
-  if (shown >= 99.95) return items;
-  return [...items, {
-    key: 'rest',
-    label,
-    value: Number((100 - shown).toFixed(2)),
-    color: NO_DATA,
-    display: pct(100 - shown, 2),
-  }];
-}
 
 /** Багцын гэр бүлийн нэр — `PKG_HUE`-ийн тайлбар мөрүүдтэй ижил ангилал */
 const FAMILY_LABEL: Record<PkgFamily, string> = {
@@ -1458,10 +1815,11 @@ const FAMILY_LABEL: Record<PkgFamily, string> = {
 const familyPacks = (f: PkgFamily): string[] =>
   [...new Set((PKG_BY_FAMILY[f] ?? []).map((id) => bagtsKey(LAYER_BY_ID[id]?.note)))].filter(Boolean);
 
-function BagtsDetail({ q, prog, hist, flt, onFlt }: {
+function BagtsDetail({ q, prog, hist, pkgProg, flt, onFlt }: {
   q: Async<BagtsRow[]>;
   prog: Async<BlockProgressMap>;
   hist: Async<BlockHistory>;
+  pkgProg: Async<PkgProgressRow[]>;
 } & FltProps) {
   const sel = flt?.sec === 'bagts' ? flt.key : null;
   // ⚠️ 2026-08-20: Бүх биеийг ороосон `<Data>` боодол ЭРТ-БУЦААЛТ болов —
@@ -1634,6 +1992,101 @@ function BagtsDetail({ q, prog, hist, flt, onFlt }: {
         * хоёр ӨӨР асуулт — нэг хайрцагт хамт байх нь хоёуланг нь бүдгэрүүлж
         * байлаа.
         */}
+      {/* ТӨЛӨВЛӨГӨӨ vs БОДИТ — багцын гүйцэтгэлийн нэгтгэлээс.
+          ⚠️ `Төсөл_Гүйцэтгэл_` хасагдсаны дараа төлөвлөгөө өгдөг ЦОРЫН ГАНЦ эх. */}
+      <Panel title={tr('Төлөвлөгөө vs бодит — багцаар')} note={tr('гүйцэтгэлийн нэгтгэл')}>
+        <Data q={pkgProg} loading={tr('Татаж байна…')}>
+          {(list) => {
+            const withPlan = list.filter((x) => x.actual != null || x.planned != null);
+            if (!withPlan.length) return <Empty label={tr('Бүртгэл хоосон байна.')} />;
+            return (
+              <Bars
+                inline
+                max={100}
+                items={heatBars(withPlan, (x) => ({
+                  key: x.key,
+                  label: tr(x.label),
+                  value: x.actual ?? 0,
+                  display: x.planned == null
+                    ? pct(x.actual, 1)
+                    : tr('{0} / төл. {1}', pct(x.actual, 1), pct(x.planned, 1)),
+                }))}
+              />
+            );
+          }}
+        </Data>
+      </Panel>
+
+      {/* ЭЗЛЭХҮҮН — багц бүрийн бодит/төлөвлөгөөт ажлын эзлэхүүн */}
+      <Panel title={tr('Ажлын эзлэхүүн — багцаар')} note={tr('бодит / төлөвлөгөө')}>
+        <Data q={pkgProg} loading={tr('Татаж байна…')}>
+          {(list) => {
+            const withVol = list.filter((x) => (x.volume ?? 0) > 0 || (x.volumePlan ?? 0) > 0);
+            if (!withVol.length) return <Empty label={tr('Эзлэхүүн бүртгэгдээгүй.')} />;
+            return (
+              <Bars
+                inline
+                items={heatBars(withVol, (x) => ({
+                  key: x.key,
+                  label: tr(x.label),
+                  value: x.volume ?? 0,
+                  display: x.volumePlan == null
+                    ? num(x.volume ?? 0)
+                    : tr('{0} / {1}', num(x.volume ?? 0), num(x.volumePlan)),
+                }))}
+              />
+            );
+          }}
+        </Data>
+      </Panel>
+
+      {/* БЛОКИЙН ТАРХАЛТ — «дундаж 27.6%» гэсэн нэг тоо нь 113 блок дунджаараа
+          явж байгаа мэт сэтгэгдэл төрүүлдэг; бодит тархалт өөр. */}
+      <Panel title={tr('Блокийн гүйцэтгэл — түвшнээр')} note={tr('блокийн тоо')}>
+        <Data q={prog} loading={tr('Татаж байна…')}>
+          {(pm) => {
+            const counts = PROGRESS_LEVELS.map(() => 0);
+            pm.forEach((x) => {
+              if (x.overall == null) return;
+              counts[Math.min(PROGRESS_LEVELS.length - 1, Math.floor(x.overall / 25))] += 1;
+            });
+            return counts.some((c) => c > 0) ? (
+              <Bars
+                inline
+                items={heatBars(PROGRESS_LEVELS.map((l, i) => ({ l, n: counts[i] })), (x) => ({
+                  key: x.l.key,
+                  label: `${x.l.label} ${x.l.range}`,
+                  value: x.n,
+                  display: tr('{0} блок', num(x.n)),
+                }))}
+              />
+            ) : <Empty label={tr('Гүйцэтгэл бүртгэгдээгүй')} />;
+          }}
+        </Data>
+      </Panel>
+
+      {/* ТАЙЛАГНАЛТЫН БҮРЭН БАЙДАЛ — багц бүрд хэдэн блок тайлангүй үлдсэн.
+          `missing` нь дээд зурваст НИЙЛБЭР болж л гардаг байв. */}
+      <Panel title={tr('Тайлангүй блок — багцаар')} note={tr('бүртгэгдээгүй')}>
+        {(() => {
+          const list = rows
+            .map((r) => ({ key: r.key, label: tr(r.label), n: r.missing ?? 0 }))
+            .filter((x) => x.n > 0)
+            .sort((a2, b2) => b2.n - a2.n);
+          return list.length ? (
+            <Bars
+              inline
+              items={heatBars(list, (x) => ({
+                key: x.key,
+                label: x.label,
+                value: x.n,
+                display: tr('{0} блок', num(x.n)),
+              }))}
+            />
+          ) : <Empty label={tr('Бүх блок тайлагнасан')} />;
+        })()}
+      </Panel>
+
       <Panel title={tr('Багц бүрийн гүйцэтгэгч')}>
         <Rows
           items={rows.map((r) => ({
@@ -1659,8 +2112,8 @@ function BagtsDetail({ q, prog, hist, flt, onFlt }: {
  * `Чөлөөлөгдөөгүй_нэгж_талбар_20260718` давхаргад 224 мөр бүртгэлтэй, ангилал нь
  * ч өөр. Давхарга нь илтгэлээс ХОЙШ шинэчлэгдсэн тул аль нь ч буруу биш.
  */
-function LandDetail({ parcels, land, project, flt, onFlt }: {
-  parcels: Async<Row[]>; land: Async<LandStatus>; project: Async<ProjectProgress>;
+function LandDetail({ parcels, land, flt, onFlt }: {
+  parcels: Async<Row[]>; land: Async<LandStatus>;
 } & FltProps) {
   const sel = flt?.sec === 'land' ? flt.key : null;
 
@@ -1731,41 +2184,30 @@ function LandDetail({ parcels, land, project, flt, onFlt }: {
         </Data>
       </Panel>
 
-      {/* Хоёр эх сурвалжийн зөрүү — `land.ts`-ийн тайлбар нь хоёр тоо зөрдөг
-          гэдгийг сануулдаг ч ХОЁУЛАНГ нь хаана ч хажуу хажууд харуулдаггүй байв. */}
-      <Panel title={tr('Хоёр эх сурвалжийн зөрүү')}>
+      {/* ⚠️ 2026-08-21: «Хоёр эх сурвалжийн зөрүү» карт ХАСАГДАВ. `Төсөл_Гүйцэтгэл_`
+          (Excel-ээс гараар импортлогддог тест хүснэгт) төслөөс хасагдсаны дараа
+          зөрүүлэх хоёр дахь эх байхгүй болов — чөлөөлөлтийн ГАНЦ үнэн эх нь
+          кадастрын нэгж талбар. Оронд нь тэр эхийн ТООН ТОЙМ. */}
+      <Panel title={tr('Нэгж талбарын тоон тойм')} note={tr('кадастр')}>
         <Data q={land} loading={tr('Татаж байна…')}>
-          {(ls) => {
-            const p = project.state === 'ready' ? project.data : null;
-            const official = liveStage(p, [tr('Газар чөлөөлөлт')]);
-            return (
-              <>
-                <Rows
-                  items={[
-                    { key: tr('Талбарын тоогоор (кадастр)'), value: pct(ls.pct, 2) },
-                    { key: tr('Тайлагнасан (Төсөл_Гүйцэтгэл)'), value: official == null ? '—' : pct(official, 1) },
-                    {
-                      key: tr('Зөрүү'),
-                      value: ls.pct == null || official == null ? '—' : tr('{0} пункт', num(official - ls.pct, 2)),
-                    },
-                    { key: tr('Шийдэгдсэн талбар'), value: `${num(ls.resolved)} / ${num(ls.total)}` },
-                    { key: tr('Үлдсэн талбар'), value: tr('{0} талбар', num(ls.remaining)) },
-                    {
-                      key: tr('Үе шатны төслийн жин'),
-                      value:
-                        p?.byStage['Газар чөлөөлөлт'] == null
-                          ? '—'
-                          : tr('{0}%', num(p.byStage['Газар чөлөөлөлт'].weight, 1)),
-                    },
-                  ]}
-                />
-                <p className={o.note}>
-                  {tr('Дээд мөр нь')} <b>{tr('кадастрын нэгж талбарын тоо')}</b>{tr(', доод нь')}{' '}
-                  <b>{tr('тайлант үе шатны хувь')}</b> {tr('— өөр хуваарьтай хоёр хэмжигдэхүүн. Аль нь ч буруу биш: давхаргад тайлангаас ХОЙШ шинэчлэгдсэн мөр бий.')}
-                </p>
-              </>
-            );
-          }}
+          {(ls) => (
+            <>
+              <Rows
+                items={[
+                  { key: tr('Чөлөөлөлтийн хувь'), value: pct(ls.pct, 2) },
+                  { key: tr('Шийдэгдсэн талбар'), value: tr('{0} / {1}', num(ls.resolved), num(ls.total)) },
+                  { key: tr('Бүрэн чөлөөлсөн'), value: tr('{0} талбар', num(ls.cleared)) },
+                  { key: tr('Цэвэрлэсэн'), value: tr('{0} талбар', num(ls.cleaned)) },
+                  { key: tr('Үлдсэн талбар'), value: tr('{0} талбар', num(ls.remaining)) },
+                  { key: tr('Нийт талбай'), value: tr('{0} га', num(ls.areaM2 / 10_000, 2)) },
+                ]}
+              />
+              <p className={o.note}>
+                {tr('Эх сурвалж:')} <b>{tr('кадастрын нэгж талбарын давхарга')}</b>{' '}
+                {tr('— төлөв бүрийг тоолж бодно. Давхарга шинэчлэгдэх бүрд тоо шууд өөрчлөгдөнө.')}
+              </p>
+            </>
+          )}
         </Data>
       </Panel>
 
@@ -1867,45 +2309,100 @@ function LandDetail({ parcels, land, project, flt, onFlt }: {
 
       {/* Блокоор — `PL.block` нь `useLeftParcels`-ын outFields-д байсан ч хэн ч
           уншдаггүй байв. */}
-      <Panel title={tr('Блокоор — нэгж талбарын төлөв')}>
+      {/* ЯВЦЫН МЭДЭЭ — БҮХ ТАЛБАР. `progress` нь зөвхөн «Үлдсэн» 171 талбарт
+          задарч байсан тул чөлөөлөгдсөн 1,703-ын явц хаана ч харагдахгүй байв. */}
+      <Panel title={tr('Явцын мэдээ — бүх талбар')} note={tr('{0} талбараас', num(2117))}>
         <Data q={parcels} loading={tr('Татаж байна…')}>
           {(rows) => {
-            // ⚠️ `Блок` нь ТООН талбар (1/2/3) ба олон мөрд ХООСОН. Null-ыг ХАЯНА —
-            //    эс бөгөөс «Тодорхойгүй» багана бусдыг нь дарна.
-            const g = tally(
-              rows.filter((r) => r[PL.block] != null && String(r[PL.block]).trim() !== ''),
-              (r) => ({ key: tr('Блок {0}', String(r[PL.block]).trim()), value: 1 }),
-            );
-            if (!g.length) return <Empty label={tr('Блокийн бүртгэл хоосон.')} />;
-            const named = sumBy(g, (x) => x.value);
-            return (
-              <>
-                <p className={o.note}>
-                  {tr('Блок бүртгэгдсэн')} <b>{num(named)}</b> {tr('талбар (')}{num(rows.length)}{tr('-аас). ⚠️ Дүүрэг нь ТУСДАА багана тул «Блок 2» нь СБД-2 ба ЧД-2-ыг НЭГТГЭЖ байна.')}
-                </p>
-                <Bars
-                  inline
-                  selected={sel}
-                  onSelect={(key) => {
-                    const n = key.replace(/\D/g, '');
-                    if (!n) return;
-                    onFlt({
-                      sec: 'land',
-                      key,
-                      label: key,
-                      where: `${PL.block} = ${n}`,
-                      only: ['land:left'],
-                    });
-                  }}
-                  items={heatBars(g, (x) => ({
-                    key: x.key,
-                    label: x.key,
-                    value: x.value,
-                    display: tr('{0} талбар', num(x.value)),
-                  }))}
-                />
-              </>
-            );
+            const m = new Map<string, number>();
+            rows.forEach((r) => {
+              const v = String(r[PL.progress] ?? '').trim().replace(/\.$/, '').trim();
+              const k = v && v !== '—' ? v : tr('Мэдээ оруулаагүй');
+              m.set(k, (m.get(k) ?? 0) + 1);
+            });
+            const list = [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 9);
+            return list.length ? (
+              <Bars
+                inline
+                items={heatBars(list, ([label, n]) => ({
+                  key: label,
+                  label,
+                  value: n,
+                  display: tr('{0} талбар', num(n)),
+                }))}
+              />
+            ) : <Empty label={tr('Явцын мэдээ бүртгэгдээгүй')} />;
+          }}
+        </Data>
+      </Panel>
+
+      {/* ҮЛДСЭН ТАЛБАРЫН ХЭМЖЭЭ — «171 талбар» гэсэн тоо нь ажлын эзэлхүүнийг
+          хэлдэггүй: 171 жижиг хашаа vs 171 том талбай тэс өөр ачаалал. */}
+      <Panel title={tr('Үлдсэн талбарын хэмжээ')} note={tr('м² · талбарын тоо')}>
+        <Data q={parcels} loading={tr('Татаж байна…')}>
+          {(rows) => {
+            const BUCKETS = [
+              { key: 'b1', label: tr('300 м²-ээс бага'), min: 0, max: 300 },
+              { key: 'b2', label: tr('300–500 м²'), min: 300, max: 500 },
+              { key: 'b3', label: tr('500–700 м²'), min: 500, max: 700 },
+              { key: 'b4', label: tr('700–1,000 м²'), min: 700, max: 1000 },
+              { key: 'b5', label: tr('1,000 м²-ээс дээш'), min: 1000, max: Infinity },
+            ];
+            /* ⚠️ `text`/`nn` нь энэ модульд импортлогдоогүй — `String`/`Number`
+               шууд. Талбай нь `area` эсвэл (бөглөгдөөгүй бол) `areaAlt`-аас. */
+            const parcelArea = (r: Row) => Number(r[PL.area]) || Number(r[PL.areaAlt]) || 0;
+            const left = rows.filter((r) => String(r[PL.status] ?? '').trim() === 'Үлдсэн нэгж талбар');
+            const counts = BUCKETS.map((b) => ({
+              ...b,
+              n: left.filter((r) => {
+                const a2 = parcelArea(r);
+                return a2 >= b.min && a2 < b.max;
+              }).length,
+            })).filter((b) => b.n > 0);
+            return counts.length ? (
+              <Bars
+                inline
+                items={heatBars(counts, (b) => ({
+                  key: b.key,
+                  label: b.label,
+                  value: b.n,
+                  display: tr('{0} талбар', num(b.n)),
+                }))}
+              />
+            ) : <Empty label={tr('Хэмжээ бүртгэгдээгүй')} />;
+          }}
+        </Data>
+      </Panel>
+
+      {/* ДУНДАЖ ТАЛБАЙ ТӨЛӨВӨӨР — «тоогоор их, талбайгаар бага» гэсэн
+          тэмдэглэл дээрх картад бий; энэ нь тэр ялгааг ТООГООР харуулна. */}
+
+
+      {/* БЛОК × ТӨЛӨВ — `block` ба `status` хоёулаа татагддаг мөртлөө зөвхөн
+          ТУСДАА зурагддаг байв. Блок бүрд ХЭДЭН талбар ҮЛДСЭН нь «хаана
+          ажиллаж эхэлж болох вэ» гэсэн асуултын шууд хариу. */}
+      <Panel title={tr('Блок × төлөв — үлдсэн талбар')} note={tr('блокоор')}>
+        <Data q={parcels} loading={tr('Татаж байна…')}>
+          {(rows) => {
+            const m = new Map<string, number>();
+            rows.forEach((r) => {
+              if (String(r[PL.status] ?? '').trim() !== 'Үлдсэн нэгж талбар') return;
+              const b = String(r[PL.block] ?? '').trim();
+              if (!b) return;
+              m.set(b, (m.get(b) ?? 0) + 1);
+            });
+            const list = [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10);
+            return list.length ? (
+              <Bars
+                inline
+                items={heatBars(list, ([label, n]) => ({
+                  key: label,
+                  label,
+                  value: n,
+                  display: tr('{0} талбар', num(n)),
+                }))}
+              />
+            ) : <Empty label={tr('Блокийн бүртгэл алга')} />;
           }}
         </Data>
       </Panel>
@@ -1938,8 +2435,8 @@ const NET_SERVES = [
  * `w.ids.length` (1 эсвэл 2) — «энэ багц цэгэн давхаргатай юу» гэдгээс өөр юу ч
  * илэрхийлэхгүй тоо байв. Одоо утга нь `Төсөл_Гүйцэтгэл`-ийн жигнэсэн хувь.
  */
-function NetworkDetail({ project, bagts, sources, flt, onFlt }: {
-  project: Async<ProjectProgress>;
+function NetworkDetail({ fin, bagts, sources, flt, onFlt }: {
+  fin: Async<FinData>;
   bagts: Async<BagtsRow[]>;
   sources: Async<Row[]>;
 } & FltProps) {
@@ -1948,29 +2445,25 @@ function NetworkDetail({ project, bagts, sources, flt, onFlt }: {
     const ids = PKG_BY_BAGTS[key] ?? [];
     if (ids.length) onFlt({ sec: 'network', key, label: tr('Багц: {0}', key), layers: ids });
   };
-  const p = project.state === 'ready' ? project.data : null;
+  const f = fin.state === 'ready' ? fin.data : null;
+  /* ⚠️ 2026-08-21: ажлын МӨРӨӨР задалдаг байсныг БАГЦААР болгов —
+     `Төсөл_Гүйцэтгэл_` хасагдаж, эх нь TASK_SHEET болсон. */
+  const net = pkgPhys(f, isNetworkPack);
   /** 11 сүлжээний багцын мөр — `isNetworkPack` нь bagtsKey-ээр жишдэг */
-  const net: ProgRow[] = p ? p.rows.filter((r) => isNetworkPack(r.bagts)) : [];
 
   return (
     <>
       {/* 05 нь урьд нь ГҮЙЦЭТГЭЛИЙН тоогүй ЦОРЫН ГАНЦ хэсэг байв. */}
       <Panel title={tr('Шугам сүлжээний нэгдсэн явц')}>
-        {p == null ? <Empty label={tr('Гүйцэтгэлийн хүснэгт татагдаж байна…')} /> : (() => {
-          if (!net.length) return <Empty label={tr('Сүлжээний багцын гүйцэтгэлийн мөр алга.')} />;
-          const w = weighted(net);
-          const packs = new Set(net.map((r) => r.bagts)).size;
-          const gap = w.actual != null && w.planned != null ? w.planned - w.actual : null;
+        {f == null ? <Empty label={tr('Татаж байна…')} /> : (() => {
+          if (!net.rows.length) return <Empty label={tr('Сүлжээний багцын бүртгэл алга.')} />;
+          /* ⚠️ 2026-08-21: «Төлөвлөгөөт гүйцэтгэл», «Төсөлд эзлэх жин»,
+             «Төлөвлөгөөнөөс хоцрогдол» ХАСАГДСАН — гурвуулаа зөвхөн хуучин
+             Excel хүснэгтэд байсан. Үлдсэн хоёр нь TASK_SHEET-ээс. */
           return (
               <Stats cols={2}>
-                <Stat accent color={cat(0)} value={num(packs)} unit={tr('багц')} label={tr('Шугам сүлжээний багц')} />
-                {/* ⚠️ `w.planned` нь сүлжээний БҮХ мөрд `Төлөвлөгөөт_хувь` хоосон
-                    үед null — `pct(null)` «—» хэвлэнэ. 0-оор ОРЛУУЛАХГҮЙ: тэр нь
-                    «төлөвлөгөө тэг» гэсэн ХУДАЛ мэдээлэл болно. */}
-                <Stat accent color={cat(2)} value={pct(w.planned, 0)} label={tr('Төлөвлөгөөт гүйцэтгэл')} />
-                <Stat accent color="var(--bad)" value={gap == null ? '—' : num(gap, 1)} unit={tr('пункт')}
-                      label={tr('Төлөвлөгөөнөөс хоцрогдол')} />
-                <Stat accent color={HUE[2]} value={num(w.weight, 2)} unit="%" label={tr('Төсөлд эзлэх жин')} />
+                <Stat accent color={cat(0)} value={num(net.packs)} unit={tr('багц')} label={tr('Шугам сүлжээний багц')} />
+                <Stat accent color={cat(1)} value={pct(net.actual, 1)} label={tr('Биет гүйцэтгэл')} />
               </Stats>
           );
         })()}
@@ -1978,7 +2471,7 @@ function NetworkDetail({ project, bagts, sources, flt, onFlt }: {
 
       {/* ⚠️ Бөгж тоонуудын зурвасаас САЛСАН — хажуугийн баганын карт. */}
       <Panel title={tr('Жигнэсэн гүйцэтгэл')}>
-        <RingCard value={weighted(net).actual} label={tr('жигнэсэн гүйцэтгэл')} color={cat(0)} decimals={1} />
+        <RingCard value={net.actual} label={tr('жигнэсэн гүйцэтгэл')} color={cat(0)} decimals={1} />
       </Panel>
 
       <Panel title={tr('Шугам сүлжээ хангах орон сууц')}>
@@ -2016,7 +2509,7 @@ function NetworkDetail({ project, bagts, sources, flt, onFlt }: {
         {(() => {
           const packs = infraPackList(isNetworkPack);        // давхаргатай багцууд
           if (!packs.length) return <Empty label={tr('Багцын давхарга алга.')} />;
-          const agg = new Map(rollupBy(net, (r) => r.bagts).map((x) => [x.key, x.agg]));
+          const agg = new Map(net.rows.map((x) => [x.key, { actual: x.pct }]));
           return (
             <>
               <p className={o.note}>
@@ -2051,21 +2544,36 @@ function NetworkDetail({ project, bagts, sources, flt, onFlt }: {
             const heatRows = rows.filter((r) => srcStr(r[F.type]).startsWith(tr('Дулаан')));
             if (!heatRows.length) return <Empty label={tr('Эх үүсвэрийн бүртгэл хоосон.')} />;
             return (
-              <Donut
-                size={140}
-                width={22}
-                leaders={heatRows.length <= 4}
-                stack={heatRows.length > 4}
-                center={num(sumBy(heatRows, (r) => srcNum(r[F.total])), 1)}
-                centerLabel={tr('МВт')}
-                items={heatRows.map((r, i) => ({
-                  key: srcStr(r[F.name]) || String(i),
-                  label: srcStr(r[F.name]) || tr('Нэргүй'),
-                  value: srcNum(r[F.total]),
-                  color: shade(ACCENT, i, heatRows.length),
-                  display: tr('{0} МВт', num(srcNum(r[F.total]), 1)),
-                }))}
-              />
+              /* ≤3 бол донат, эс бөгөөс хэвтээ бар (4+ дүрэм) */
+              heatRows.length <= 3 ? (
+                <Donut
+                  size={140}
+                  width={22}
+                  leaders
+                  center={num(sumBy(heatRows, (r) => srcNum(r[F.total])), 1)}
+                  centerLabel={tr('МВт')}
+                  items={heatRows.map((r, i) => ({
+                    key: srcStr(r[F.name]) || String(i),
+                    label: srcStr(r[F.name]) || tr('Нэргүй'),
+                    value: srcNum(r[F.total]),
+                    color: shade(ACCENT, i, heatRows.length),
+                    display: tr('{0} МВт', num(srcNum(r[F.total]), 1)),
+                  }))}
+                />
+              ) : (
+                <Bars
+                  inline
+                  items={heatBars(
+                    [...heatRows].sort((a, b) => srcNum(b[F.total]) - srcNum(a[F.total])),
+                    (r) => ({
+                      key: srcStr(r[F.name]) || tr('Нэргүй'),
+                      label: srcStr(r[F.name]) || tr('Нэргүй'),
+                      value: srcNum(r[F.total]),
+                      display: tr('{0} МВт', num(srcNum(r[F.total]), 1)),
+                    }),
+                  )}
+                />
+              )
             );
           }}
         </Data>
@@ -2077,21 +2585,35 @@ function NetworkDetail({ project, bagts, sources, flt, onFlt }: {
             const waterRows = rows.filter((r) => srcStr(r[F.type]).startsWith(tr('Ус')));
             if (!waterRows.length) return <Empty label={tr('Эх үүсвэрийн бүртгэл хоосон.')} />;
             return (
-              <Donut
-                size={140}
-                width={22}
-                leaders={waterRows.length <= 4}
-                stack={waterRows.length > 4}
-                center={num(sumBy(waterRows, (r) => srcNum(r[F.total])))}
-                centerLabel={tr('м³/хон')}
-                items={waterRows.map((r, i) => ({
-                  key: srcStr(r[F.name]) || String(i),
-                  label: srcStr(r[F.name]) || tr('Нэргүй'),
-                  value: srcNum(r[F.total]),
-                  color: shade(ACCENT, i, waterRows.length),
-                  display: tr('{0} м³/хон', num(srcNum(r[F.total]))),
-                }))}
-              />
+              waterRows.length <= 3 ? (
+                <Donut
+                  size={140}
+                  width={22}
+                  leaders
+                  center={num(sumBy(waterRows, (r) => srcNum(r[F.total])))}
+                  centerLabel={tr('м³/хон')}
+                  items={waterRows.map((r, i) => ({
+                    key: srcStr(r[F.name]) || String(i),
+                    label: srcStr(r[F.name]) || tr('Нэргүй'),
+                    value: srcNum(r[F.total]),
+                    color: shade(ACCENT, i, waterRows.length),
+                    display: tr('{0} м³/хон', num(srcNum(r[F.total]))),
+                  }))}
+                />
+              ) : (
+                <Bars
+                  inline
+                  items={heatBars(
+                    [...waterRows].sort((a, b) => srcNum(b[F.total]) - srcNum(a[F.total])),
+                    (r) => ({
+                      key: srcStr(r[F.name]) || tr('Нэргүй'),
+                      label: srcStr(r[F.name]) || tr('Нэргүй'),
+                      value: srcNum(r[F.total]),
+                      display: tr('{0} м³/хон', num(srcNum(r[F.total]))),
+                    }),
+                  )}
+                />
+              )
             );
           }}
         </Data>
@@ -2117,30 +2639,22 @@ function NetworkDetail({ project, bagts, sources, flt, onFlt }: {
         </Data>
       </Panel>
 
-      {/* Сүлжээний багц бүр ЯГ 7 мөртэй (үе шат тутамд нэг) — `byStage[*].rows`
-          нь нэгтгэгддэг ч хаана ч хэвлэгддэггүй байв. 5-р слот = бүтэн өргөн. */}
-      <Panel title={tr('Үе шатаар — шугам сүлжээний гүйцэтгэл')} note={tr('жигнэсэн, 11 багцын дүнгээр')}>
-        {net.length === 0 ? <Empty label={tr('Гүйцэтгэлийн мөр алга.')} /> : (() => {
-          const ORD = PROJECT_PROGRESS.stages.map((x) => String(x.value));
-          const agg = rollupBy(net, (r) => r.stage)
-            .sort((a, b) => (ORD.indexOf(a.key) + 99 * +(ORD.indexOf(a.key) < 0))
-                          - (ORD.indexOf(b.key) + 99 * +(ORD.indexOf(b.key) < 0)));
-          return (
-            /* 2026-08-21 (хэрэглэгчийн хүсэлт): босоо Series байсныг бусад
-               карттай ИЖИЛ хэвтээ Bars болгов — нэг самбарт хоёр өөр чартын
-               хэл зэрэгцэж байв. */
-            <Bars
-              color={ACCENT}
-              max={100}
-              items={agg.map((x) => ({
-                key: x.key,
-                label: x.key,
-                value: Number((x.agg.actual ?? 0).toFixed(1)),
-                display: tr('{0} · жин {1}% · {2} ажил', pct(x.agg.actual, 1), num(x.agg.weight, 2), num(x.agg.rows)),
-              }))}
-            />
-          );
-        })()}
+      {/* ⚠️ 2026-08-21: «Үе шатаар» задаргаа ХАСАГДСАН — үе шатны бүтэц нь
+          зөвхөн `Төсөл_Гүйцэтгэл_`-д байсан. Одоо БАГЦААР: эх нь TASK_SHEET
+          («Гүйцэтгэл бөглөх»), багц бүрийн сүүлийн бөглөгдсөн биет %. */}
+      <Panel title={tr('Багц бүрийн явц — шугам сүлжээ')} note={tr('биет гүйцэтгэл %')}>
+        {net.rows.length === 0 ? <Empty label={tr('Гүйцэтгэлийн бүртгэл алга.')} /> : (
+          <Bars
+            inline
+            max={100}
+            items={heatBars(net.rows, (x) => ({
+              key: x.key,
+              label: tr(x.key),
+              value: x.pct,
+              display: pct(x.pct, 1),
+            }))}
+          />
+        )}
       </Panel>
     </>
   );
@@ -2167,8 +2681,8 @@ const shortSrc = (n: string) => (n
  * модуль ачаалагдах үед TDZ-д байх ч компонент нь ХОЙШ рендерлэгддэг тул
  * дуудахад аль хэдийн бий. `railStat` ч мөн ижилхэн доороос дуудаж байгаа.
  */
-function PowerDetail({ project, sources, prog, flt, onFlt }: {
-  project: Async<ProjectProgress>;
+function PowerDetail({ fin, sources, prog, flt, onFlt }: {
+  fin: Async<FinData>;
   sources: Async<Row[]>;
   prog: Async<BlockProgressMap>;
 } & FltProps) {
@@ -2238,32 +2752,27 @@ function PowerDetail({ project, sources, prog, flt, onFlt }: {
         </Data>
       </Panel>
 
-      {/* Төслийн ЦОРЫН ГАНЦ ажил тус бүрийн цахилгааны гүйцэтгэл — 28 мөр. */}
-      <Panel title={tr('Гадна цахилгааны ажлын гүйцэтгэл')}>
-        <Data q={project} loading={tr('Гүйцэтгэлийн хүснэгтийг татаж байна…')}>
-          {(p) => {
-            // ⚠️ `bagts_name` нь эдгээр 28 мөрд БҮГДЭД NULL — `Ажлын_нэр`-ээр жишинэ.
-            const pw = p.rows.filter((r) => /Гадна цахилгаан/u.test(r.work));
-            if (!pw.length) return <Empty label={tr('Гадна цахилгааны ажлын мөр алга.')} />;
-            const w = weighted(pw);
-            const agg = rollupBy(pw, (r) => r.work.replace(/\s+/g, ' ').trim());
+      {/* ⚠️ 2026-08-21: «Ажлын нэрээр» задаргаа ХАСАГДСАН — тэр нь
+          `Төсөл_Гүйцэтгэл_`-ийн 28 мөр байв. Одоо БАГЦААР, TASK_SHEET-ээс. */}
+      <Panel title={tr('Багц бүрийн явц — цахилгаан')} note={tr('биет гүйцэтгэл %')}>
+        <Data q={fin} loading={tr('Татаж байна…')}>
+          {() => {
+            const pw = pkgPhys(fin.state === 'ready' ? fin.data : null, isPowerPack);
+            if (!pw.rows.length) return <Empty label={tr('Цахилгааны багцын бүртгэл алга.')} />;
             return (
               <>
                 <p className={o.note}>
-                  {tr('Жигнэсэн')} <b>{pct(w.actual, 1)}</b> {tr('· төсөлд эзлэх жин')}{' '}
-                  <b>{num(w.weight, 2)}%</b> · {num(w.rows)} {tr('ажлын мөр.')}
+                  {tr('Жигнэсэн')} <b>{pct(pw.actual, 1)}</b> · {num(pw.packs)} {tr('багц тайлагнасан.')}
                 </p>
                 <Bars
-                  inline max={100}
-                  items={agg
-                    .sort((a, b) => (b.agg.actual ?? 0) - (a.agg.actual ?? 0))
-                    .map((x) => ({
-                      key: x.key,
-                      label: x.key,
-                      value: x.agg.actual ?? 0,
-                      display: tr('{0} · жин {1}%', pct(x.agg.actual, 1), num(x.agg.weight, 2)),
-                      color: x.agg.actual == null ? NO_DATA : heat(x.agg.actual, 100),
-                    }))}
+                  inline
+                  max={100}
+                  items={heatBars(pw.rows, (x) => ({
+                    key: x.key,
+                    label: tr(x.key),
+                    value: x.pct,
+                    display: pct(x.pct, 1),
+                  }))}
                 />
               </>
             );
@@ -2485,23 +2994,36 @@ function SourceDetail({ sources, d, flt, onFlt }: { sources: Async<Row[]>; d: Da
         const maxCon = maxOf(cons.map((c) => c.value));
         return (
           <Panel key={type} title={type}>
-            <Donut
-              size={130}
-              width={22}
-              leaders={facs.length <= 4}
-              stack={facs.length > 4}
-              selected={sel}
-              onSelect={pick}
-              center={`${facs.length}`}
-              centerLabel={tr('байгууламж')}
-              items={facs.map((f, i) => ({
-                key: srcStr(f[F.name]) || `#${i}`,
-                label: srcStr(f[F.name]),
-                value: srcNum(f[F.share]) || srcNum(f[F.total]),
-                display: srcStr(f[F.share]) || srcStr(f[F.total]),
-                color: shade(ACCENT, i, facs.length),
-              }))}
-            />
+            {facs.length <= 3 ? (
+              <Donut
+                size={130}
+                width={22}
+                leaders
+                selected={sel}
+                onSelect={pick}
+                center={`${facs.length}`}
+                centerLabel={tr('байгууламж')}
+                items={facs.map((f, i) => ({
+                  key: srcStr(f[F.name]) || `#${i}`,
+                  label: srcStr(f[F.name]),
+                  value: srcNum(f[F.share]) || srcNum(f[F.total]),
+                  display: srcStr(f[F.share]) || srcStr(f[F.total]),
+                  color: shade(ACCENT, i, facs.length),
+                }))}
+              />
+            ) : (
+              <Bars
+                inline
+                selected={sel}
+                onSelect={pick}
+                items={heatBars(facs, (f) => ({
+                  key: srcStr(f[F.name]) || tr('Нэргүй'),
+                  label: srcStr(f[F.name]),
+                  value: srcNum(f[F.share]) || srcNum(f[F.total]),
+                  display: srcStr(f[F.share]) || srcStr(f[F.total]),
+                }))}
+              />
+            )}
             {cons.length > 0 && (() => {
               // Ус хангамж → м³/хон, дулаан/цахилгаан → МВт
               const unit = type.includes('Ус') ? tr('м³/хон') : tr('МВт');
@@ -2655,19 +3177,33 @@ function FinanceDetail({ budget, flt, onFlt }: { budget: Async<Budget> } & FltPr
       </Panel>
   
       <Panel title={tr('Санхүүжилтийн эх үүсвэр (захирамжаар)')}>
-        <Donut
-          items={bg.sources.map((s, i) => ({
-            key: s.key, label: s.label, value: s.value,
-            color: shade(ACCENT, i, bg.sources.length),
-            display: tr('{0} тэрбум', num(s.value / 1e9, 1)),
-          }))}
-          center={num(bg.orderTotal / 1e9, 1)}
-          centerLabel={tr('тэрбум ₮')}
-          size={150}
-          width={24}
-          leaders={bg.sources.length <= 4}
-          stack={bg.sources.length > 4}
-        />
+        {bg.sources.length <= 3 ? (
+          <Donut
+            items={bg.sources.map((s, i) => ({
+              key: s.key, label: s.label, value: s.value,
+              color: shade(ACCENT, i, bg.sources.length),
+              display: tr('{0} тэрбум', num(s.value / 1e9, 1)),
+            }))}
+            center={num(bg.orderTotal / 1e9, 1)}
+            centerLabel={tr('тэрбум ₮')}
+            size={150}
+            width={24}
+            leaders
+          />
+        ) : (
+          <Bars
+            inline
+            items={heatBars(
+              [...bg.sources].sort((a, b) => b.value - a.value),
+              (s) => ({
+                key: s.key,
+                label: s.label,
+                value: s.value,
+                display: tr('{0} тэрбум', num(s.value / 1e9, 1)),
+              }),
+            )}
+          />
+        )}
       </Panel>
   
       {/* ⚠️ Шошго нь урт монгол үг тул Donut БИШ Bars — зүсмэгийн шошго
@@ -2869,21 +3405,22 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
         Картуудын `selected` түлхүүр таарахгүй нь ЗОРИУДЫН, нэгтгэх гэж оролдохгүй.
       */}
       <Panel title={tr('Нийгмийн багцын гүйцэтгэл')}>
-        <Data q={d.project} loading={tr('Гүйцэтгэлийн хүснэгтийг татаж байна…')}>
-          {(p) => {
+        {/* ⚠️ 2026-08-21: эх нь `Төсөл_Гүйцэтгэл_` БИШ, TASK_SHEET
+            («Гүйцэтгэл бөглөх»-ийн нэгтгэл). «Төсөлд эзлэх жин» гэсэн үзүүлэлт
+            хасагдав — тэр нь зөвхөн хуучин хүснэгтэд байсан. */}
+        <Data q={d.fin} loading={tr('Татаж байна…')}>
+          {() => {
             // Багцын түлхүүрийг ХҮСНЭГТЭЭС — гараар жагсаавал PKG_TABLE-тай хоцорно
             const socKeys = new Set(
               (PKG_BY_FAMILY.soc ?? []).map((id) => bagtsKey(LAYER_BY_ID[id]?.note)).filter(Boolean),
             );
-            const rows = p.rows.filter((r) => socKeys.has(r.bagts));
-            if (!rows.length) return <Empty label={tr('Нийгмийн багцын гүйцэтгэлийн мөр алга.')} />;
-            const w = weighted(rows);
-            const agg = rollupBy(rows, (r) => r.bagts).sort((a, b) => a.key.localeCompare(b.key, 'mn', { numeric: true }));
+            const sc = pkgPhys(d.fin.state === 'ready' ? d.fin.data : null, (k) => socKeys.has(k));
+            if (!sc.rows.length) return <Empty label={tr('Нийгмийн багцын бүртгэл алга.')} />;
+            const agg = [...sc.rows].sort((a, b) => a.key.localeCompare(b.key, 'mn', { numeric: true }));
             return (
               <>
                 <p className={o.note}>
-                  {tr('Жигнэсэн')} <b>{pct(w.actual, 1)}</b> {tr('· төсөлд эзлэх жин')}{' '}
-                  <b>{num(w.weight, 2)}%</b> · {num(agg.length)} {tr('багц. Бар дарж зурагт шүүнэ.')}
+                  {tr('Жигнэсэн')} <b>{pct(sc.actual, 1)}</b> · {num(agg.length)} {tr('багц. Бар дарж зурагт шүүнэ.')}
                 </p>
                 <Bars
                   inline max={100}
@@ -2892,12 +3429,11 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
                     const ids = PKG_BY_BAGTS[key] ?? [];
                     if (ids.length) onFlt({ sec: 'benefit', key, label: tr('Багц: {0}', key), layers: ids });
                   }}
-                  items={agg.map((x) => ({
+                  items={heatBars(agg, (x) => ({
                     key: x.key,
                     label: LAYER_BY_ID[(PKG_BY_BAGTS[x.key] ?? [])[0]]?.title ?? x.key,
-                    value: x.agg.actual ?? 0,
-                    display: x.agg.actual == null ? '—' : tr('{0} · жин {1}%', pct(x.agg.actual, 1), num(x.agg.weight, 2)),
-                    color: x.agg.actual == null ? NO_DATA : heat(x.agg.actual, 100),
+                    value: x.pct,
+                    display: pct(x.pct, 1),
                   }))}
                 />
               </>

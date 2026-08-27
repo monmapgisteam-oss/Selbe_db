@@ -20,7 +20,6 @@ import { t as tr } from '@/lib/i18nCore';
 import {
   CASHFLOW2,
   HABEA,
-  PROJECT_PROGRESS,
   TASK_SHEET,
   BOUNDARY,
   USAN_SAN,
@@ -30,7 +29,7 @@ import {
 /**
  * ⚠️ ЭМЗЭГ ӨГӨГДЛИЙН ТҮЛХҮҮР ТОВЧ.
  *
- * `true` — санхүү (`CASHFLOW`, `INVEST`) ба төслийн явц (`PROJECT_PROGRESS`)
+ * `true` — санхүү (`CASHFLOW`, `INVEST`)
  * агентад НЭЭЛТТЭЙ. Удирдлага мөнгө, гэрээ, барилгын явцыг асуудаг тул эдгээргүй
  * бол агент үндсэн зорилгоо биелүүлэхгүй (төслийн эзний шийдвэр, 2026-08-13).
  *
@@ -197,30 +196,6 @@ const ALL: Dataset[] = [
   },
 
 
-  {
-    id: 'ds:progress',
-    title: tr('Төслийн гүйцэтгэл — үе шатаар'),
-    url: PROJECT_PROGRESS.url,
-    oid: PROJECT_PROGRESS.oid,
-    view: 'dashboard',
-    sensitive: true,
-    zoneField: PROJECT_PROGRESS.fields.bagts,
-    synonyms: [tr('төслийн явц'), tr('гүйцэтгэл'), tr('үе шат'), tr('биелэлт')],
-    fields: {
-      [PROJECT_PROGRESS.fields.no]: tr('Д/д («6.2.1.1» — эхний тоо нь үе шат)'),
-      [PROJECT_PROGRESS.fields.stage]: tr('Үе шатны нэр'),
-      [PROJECT_PROGRESS.fields.work]: tr('Ажлын нэр'),
-      [PROJECT_PROGRESS.fields.bagts]: tr('Багцын код'),
-      [PROJECT_PROGRESS.fields.sectionWeight]: tr('Үе шат доторх жин (%)'),
-      [PROJECT_PROGRESS.fields.weight]: tr('Төслийн нийт дүнд эзлэх жин (%)'),
-      [PROJECT_PROGRESS.fields.planned]: tr('Төлөвлөгөөт гүйцэтгэл (%)'),
-      [PROJECT_PROGRESS.fields.actual]: tr('Бодит гүйцэтгэл (%)'),
-      [PROJECT_PROGRESS.fields.fulfilment]: tr('Төлөвлөгөөний биелэлт (%)'),
-    },
-    warn:
-      tr('Нийт гүйцэтгэлийг гаргахдаа энгийн ДУНДАЖ авч БОЛОХГҮЙ — ажил бүр өөр жинтэй. ') +
-      tr('`{0}`-ыг `{1}`-ээр жинлэж нэгтгэнэ.', PROJECT_PROGRESS.fields.actual, PROJECT_PROGRESS.fields.weight),
-  },
 ];
 
 /**

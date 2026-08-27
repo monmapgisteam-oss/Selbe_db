@@ -250,93 +250,136 @@
 
 .shell[data-detail='1'] .rail { grid-area: auto; grid-column: 1 / -1; grid-row: 1; }
 
-/* ══════════════════ Зүүн жагсаалт ══════════════════ */
-/**
- * ⚠️ 2026-08-17: ХЭВТЭЭ мөр (өмнө нь босоо багана байв).
- * Хэсгүүд нь тэнцүү өргөнтэй нүд болж хуваагдана — 9 хэсэг тул `1fr` бүрд
- * ~11% (1440px дэлгэцэд ≈150px) хүрнэ. Зай хүрэхгүй бол хэвтээ гүйнэ.
- */
+/* ══════════════════ ХЭСГИЙН ТОВЧНЫ ЗУРВАС ══════════════════
+   9 дэд дашбоардыг сольдог ТОВЧНУУД. Энэ бол KPI хүснэгт БИШ — тоо нь
+   зөвхөн товчны товч агуулгыг хэлнэ, гол үүрэг нь ДАРАГДАХ.
+
+   ⚠️ 2026-08-21: загварыг БҮРЭН дахин бичив. Өмнөх хувилбар нь envhub-ийн
+   KPI зурвасаас гаралтай (hairline тор, 2px радиус, хавтгай нүд) байсан тул
+   хичнээн сүүдэр нэмсэн ч «хүснэгтийн мөр» хэвээр уншигдаж, дарж болохыг
+   хэрэглэгч мэдэхгүй байв. Одоо: капсул хэлбэр, зузаан хүрээ, тод өнгө,
+   зүүн талд төлөвийн цэг, идэвхтэй нь дүүрэн будагдана.
+   ══════════════════════════════════════════════════════════════ */
+
+/* ⚠️ 9 товч ҮРГЭЛЖ НЭГ МӨРӨНД — гүйлт ч байхгүй, доош мөр дамжилт ч
+   байхгүй. Зай хүрэхгүй бол товч бүр АГШИЖ, доторх нэр нь хоёр мөр болно. */
 .rail {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(148px, 1fr);
+  display: flex;
+  flex-wrap: nowrap;
   align-items: stretch;
-  gap: 1px;
+  gap: 7px;
   min-width: 0;
-  /* envhub-ийн KPI зурвас — НЭГ hairline хайрцаг, дотор нь заагтай нүднүүд */
-  background: var(--line);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  overflow-x: auto;
-  overflow-y: hidden;
-  /**
-   * ⚠️ 2026-08-18 ЗААВАЛ. `overflow-x: auto` нь энэ элементийг ӨӨРИЙН гүйлтийн
-   * хүрээ болгодог тул түүний min-content хувь нэмэр 0 болно. `.shell` нь
-   * тодорхой өндөртэй бөгөөд агуулга нь хальдаг үед grid-ийн `auto` мөр нь
-   * min-content хүртэл шахагддаг — үр дүнд хэсэг нээмэгц энэ мөр 2px (зөвхөн
-   * хүрээ) болж, 9 товч бүгд үл үзэгдэх, дарагдахгүй болдог байв.
-   */
-  min-height: 68px;
+  padding: 2px;
 }
 
-/* ⚠️ `.railHead` («ХЭСГҮҮД» шошго) ХАСАГДСАН — хэвтээ мөрөнд байнгын нүд эзлэх
-   нь дэмий байв (хэрэглэгчийн хүсэлт). «Бүгдийг хаах» товч нь одоо мөрийн
-   ТӨГСГӨЛД, зөвхөн хэсэг нээлттэй үед гарна. */
-/* «Бүгдийг хаах» — мөрийн төгсгөлийн нарийн нүд, зөвхөн хэсэг нээлттэй үед */
 /**
- * ⚠️ 2026-08-17: ХЭВТЭЭ нүд болов — хүрээгүй (заагийг эцэг нь 1px завсраар
- * зурна), дугаар+нэр дээр, утга том, доор нь 2px hairline зам.
- * Сонголтыг ДООД ирмэгийн заалтаар заана (босоо байхад зүүн ирмэг байсан).
+ * ТОВЧ — капсул.
+ *
+ * ⚠️ Радиус нь 999px: дурын зузаан хүрээ, дурын өнгөнөөс илүү хүчтэй «энэ бол
+ * товч» гэсэн дохио бол ДУГУЙ ХЭЛБЭР. Тэгш өнцөгт бол хайрцаг, капсул бол товч.
  */
 .railItem {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  gap: 6px;
-  min-width: 0;
-  padding: 8px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  /* ⚠️ АГУУЛГААРАА өргөсөнө (`flex: 0 0 auto`), тэнцүү хуваагдахгүй — нэр
+     таслагдвал аль хэсэг болох нь уншигдахгүй болно. Багтахгүй бол зурвас
+     өөрөө хэвтээ гүйнэ. */
+  /**
+   * ⚠️ АГШИНА, гэхдээ ХЯЗГААРТАЙ: 9 товч нэг мөрөнд багтана, доторх нэр нь
+   * хоёр мөр болно. Доод өргөн нь дэлгэцээс хамаарна — эс бөгөөс нарийн
+   * дэлгэцэд товч 40px болж, нэр нь үсэг тус бүрээр босоо бичигддэг байв.
+   */
+  flex: 1 1 0;
+  min-width: clamp(104px, 9.5vw, 176px);
+  padding: 7px 12px 7px 10px;
   text-align: left;
+
+  background: var(--surface-2);
+  border: 1.5px solid color-mix(in oklab, var(--ink) 22%, transparent);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+/* Зүүн талын ТӨЛӨВИЙН ЦЭГ — идэвхгүй үед хоосон бөгж */
+.railItem::before {
+  content: '';
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in oklab, var(--ink) 32%, transparent);
+  background: none;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.railItem:hover {
   background: var(--surface);
-  border: none;
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
-  transition: background 0.14s, border-color 0.14s;
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
-.railItem:hover { background: var(--surface-2); }
+.railItem:hover::before { border-color: var(--accent); }
 
-/* Сонгогдсон — ДООД ирмэгийн заалт + зөөлөн угаалт */
-.railOn {
-  background: color-mix(in oklab, var(--accent) 10%, var(--surface));
-  border-bottom-color: var(--accent);
+.railItem:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
-/* Дугаар ба нэр — нэг мөрөнд; утга нь ДООД мөрөнд том болж гарна */
-.railTop { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+/* ── ИДЭВХТЭЙ — дүүрэн будагдана ── */
+.railOn,
+.railOn:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+}
 
-/* ⚠️ `.railNo` (дэс дугаар) ХАСАГДСАН — хэвтээ мөрөнд нэр ба утга л үлдэв.
-   Дугаар нь дэлгэрэнгүй самбарын гарчигт (`.colNo`) хэвээр. */
-/* ⚠️ Хэвтээ нүд нарийн (≈150px) тул урт нэрийг ХОЁР мөрөөр таслана. Босоо
-   байхад бүтэн харуулах шаардлага байсан; одоо бүтэн нэр `title`-д. */
+/* Цэг дүүрч «асав» гэж хэлнэ */
+.railOn::before,
+.railOn:hover::before {
+  background: var(--surface);
+  border-color: var(--surface);
+}
+
+/* ── Товчны дотоод бичиг ── */
+/* ⚠️ `.railTop` нь нэрийг агуулна; утга (`.railVal`) түүний ХАЖУУД, баруун
+   талд. Хоёр мөр байсныг нэг мөр болгов — капсул нь намхан байх ёстой. */
+.railTop { display: flex; min-width: 0; }
+
+/**
+ * Нэр — хамгийн ихдээ ХОЁР мөр.
+ *
+ * ⚠️ `overflow-wrap: break-word` ХЭРЭГЛЭХГҮЙ: тэр нь үгийг ҮСГЭЭР таслаад
+ * товч нарийсахад «Т-ө-с-л-и-й-н» гэж босоо бичигдүүлдэг. Зөвхөн ҮГИЙН
+ * ЗААГААР мөр дамжина; хоёр мөрөнд ч багтахгүй бол «…».
+ */
 .railTitle {
-  flex: 1;
   min-width: 0;
-  font-size: 11px;
-  font-weight: 500;
-  line-height: 1.25;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.22;
+  letter-spacing: 0.01em;
   color: var(--ink-2);
+  white-space: normal;
+  overflow-wrap: normal;
+  word-break: keep-all;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
 
-.railOn .railTitle { color: var(--ink); }
+.railItem:hover .railTitle { color: var(--accent); }
 
-/* Утга — envhub-ийн KPI тоо (16px/500), нүдний ГОЛ мэдээлэл */
+.railOn .railTitle,
+.railOn:hover .railTitle { color: var(--surface); }
+
+/* Утга — товчны баруун ирмэгт, нэрээс тодорхой ялгарна */
 .railVal {
-  font-size: 15px;
-  font-weight: 500;
+  flex: none;
+  margin-left: auto;
+  font-size: 12.5px;
+  font-weight: 700;
   line-height: 1;
   letter-spacing: -0.01em;
   color: var(--ink);
@@ -344,10 +387,44 @@
   white-space: nowrap;
 }
 
+.railItem:hover .railVal { color: var(--accent); }
+
+.railOn .railVal,
+.railOn:hover .railVal { color: var(--surface); }
+
 /* ⚠️ `.railBar` (явцын зурвас) ба `.railNote` (тайлбар мөр) ХАСАГДСАН —
-   хэвтээ мөрөнд нүд бүрд ЗӨВХӨН нэр ба утга л үлдэв (хэрэглэгчийн хүсэлт).
-   `railStat()` нь `pct`/`tone`/`note`-оо буцаасаар байгаа: дэлгэрэнгүй самбар
-   тэдгээрийг хэрэглэдэг тул тооцооллыг хөндөөгүй. */
+   товчинд зөвхөн нэр ба утга. `railStat()` нь `pct`/`tone`/`note`-оо
+   буцаасаар байгаа: дэлгэрэнгүй самбар тэдгээрийг хэрэглэдэг. */
+
+
+/**
+ * ── ЗУРВАС — ДЭЛГЭЦИЙН ӨРГӨНӨӨР ──
+ *
+ * 9 товч нэг мөрөнд байх ёстой тул нарийсах тусам зай, фонт, доод өргөн
+ * бүгд жижигрэнэ. 1280px-ээс доош «төлөвийн цэг» хасагдаж зай чөлөөлнө.
+ */
+@media (max-width: 1600px) {
+  .rail { gap: 6px; }
+  .railItem { min-width: clamp(96px, 9vw, 150px); padding: 7px 10px 7px 9px; gap: 7px; }
+  .railTitle { font-size: 11px; }
+  .railVal { font-size: 12px; }
+}
+
+@media (max-width: 1280px) {
+  .rail { gap: 5px; }
+  .railItem { min-width: 84px; padding: 6px 9px; gap: 6px; }
+  /* Цэг хасагдана — 9px + 7px зай нь нарийн товчинд нэрнээс илүү үнэтэй */
+  .railItem::before { display: none; }
+  .railTitle { font-size: 10.5px; line-height: 1.18; }
+  .railVal { font-size: 11.5px; }
+}
+
+@media (max-width: 1024px) {
+  .railItem { min-width: 72px; padding: 6px 8px; gap: 5px; border-width: 1px; }
+  .railTitle { font-size: 10px; }
+  .railVal { font-size: 11px; }
+}
+
 /* ══════════════════ Төв — үзүүлэлт ба зураг ══════════════════ */
 .center { grid-area: center; display: flex; flex-direction: column; gap: 10px; min-width: 0; min-height: 0; }
 
@@ -374,145 +451,13 @@
  * ⚠️ ТАГЛАА ЗААВАЛ: мөр 3 нь `auto` тул зурвасын агуулга хэдийг ч шаардаж
  * болно — зураг нь энэ дэлгэцийн ГОЛ дүрслэл, түүнээс илүү зай авах учиргүй.
  */
-.zTop {
-  grid-column: 2;
-  grid-row: 2;
-  /* Намхан дэлгэцэд 22vh нь ~140px болж KPI мөрийг голоор нь таслаж байв
-     (2026-08-21 аудит) — доод шалыг 160px-д тогтоож, хэтэрвэл дотроо гүйлгэнэ */
-  max-height: max(160px, 22vh);
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-width: 0;
-}
 
-.zLeft, .zRight {
-  /* KPI зурвасын мөрөөс эхэлж, зургийн мөрийг дуустал */
-  grid-row: 2 / span 2;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-width: 0;
-  min-height: 0;
-}
-
-.zLeft { grid-column: 1; }
-
-.zRight { grid-column: 3; }
-
-/**
- * ⚠️ ХООСОН тал 0 өргөнтэй. Хэсэг бүр өөр тооны карттай (2–7) тул тал бүр
- * үргэлж дүүрдэггүй: 2 карттай хэсэгт баруун багана хоосон 542px зогсож,
- * газрын зураг дэмий шахагдана. `Dashboard` нь `data-zl`/`data-zr`-ээр аль
- * тал ДҮҮРСЭН болохыг хэлнэ.
- */
+/* ⚠️ ХООСОН тал 0 өргөнтэй — энэ нь СТИЛЬ бус ЗАН ҮЙЛ (карт байхгүй бол
+   багана огт зурагдахгүй) тул 9 хэсэгт хамаатай, салгаагүй. */
 .shell[data-detail='1'][data-zl='0'] { --side-l: 0px; }
 
 .shell[data-detail='1'][data-zr='0'] { --side-r: 0px; }
 
-/**
- * ⚠️ Карт бүр САВЫН ӨНДРИЙГ ХУВААНА (`flex: 1`), тогтмол өндөртэй биш —
- * ингэснээр 1-2 карттай баганад ч зургийн хажуу бүтэн дүүрнэ. Доторх урт
- * жагсаалт нь `.panelBody { overflow-y: auto }`-оор өөрөө гүйнэ.
- */
-/**
- * ⚠️ 2026-08-20: Картууд баганын өндрийг СУНАЖ дүүргэдэг байсныг АГУУЛГЫН
- * өндрөөр болгов. Сунгалт нь нягт аналитик хэлэнд эсрэг үр дүн өгч байв:
- * 7 мөртэй «Нягтрал» карт 832px өндөр болж, 700px нь ХӨНДИЙ үлдэнэ —
- * хоосон зайг карт болгон хувиргаад л дууссан хэрэг.
- *
- * Одоо карт бүр өөрийн агуулгаараа, багана нь ДЭЭШЭЭ шахагдана; багтахгүй
- * бол багана өөрөө гүйнэ (`overflow-y`).
- */
-/* Картууд баганын өндрийг ХУВААЖ дүүргэнэ (2026-08-21) — цөөн карттай
-   хэсэгт баганын доод тал хөндийрөхгүй; урт жагсаалт .panelBody-доо гүйнэ */
-.zLeft, .zRight { justify-content: flex-start; overflow-y: auto; }
-
-.zLeft > *, .zRight > * { flex: 1 1 auto; min-height: 0; }
-
-/**
- * ⚠️ ДЭЭД/ДООД зурвас нь 1700px+ ӨРГӨН, ~300px нарийн хажуугийн баганаас тэс
- * өөр. Тэнд картын доторх KPI сүлжээг хажуугийн баганынхаар (2 багана)
- * үлдээвэл 9 үзүүлэлт 5 мөр болж карт 400px өндөрсөж, зургийн зайг иддэг.
- * Өргөн зурваст агуулга нь ХЭВТЭЭ тарна.
- */
-.zTop :global(.statsGrid) {
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-}
-
-/* ══════════ ДЭЭД ЗУРВАС — НЭГ карт БИШ, КАРТУУДЫН ЭГНЭЭ ══════════
-   ⚠️ 2026-08-20 (хэрэглэгчийн хүсэлт): дээд мөрөнд 9 хүртэлх үзүүлэлт НЭГ
-   картын дотор нүд болж багтдаг байв. Одоо гадна картын «сав» уусаж, ДОТОРХ
-   элемент бүр (бөгж, үзүүлэлт бүр) ӨӨРИЙН карт болно.
-
-   ⚠️ Зөвхөн ДЭЭД зурваст. Хажуугийн нарийн баганад нүд бүрийг салгавал
-   хүрээ нь агуулгаасаа илүү зай идэж, эсрэгээрээ уншигдахгүй болно. */
-.shell[data-detail='1'] .zTop > * {
-  background: transparent;
-  border: none;
-  border-radius: 0;
-}
-
-/* ⚠️ 2026-08-20 (хэрэглэгчийн хүсэлт): Тоонуудын зурвасын БҮЛГИЙН ГАРЧИГ
-   («Төслийн цар хүрээ», «Нийт гүйцэтгэл» …) ХАСАГДАВ. Тэр нь давхар илүүц
-   байв: хэсгийн нэр яг дээр нь (`.ringHd`) бий, нүд бүр өөрийн eyebrow
-   шошготой. Хасснаар зурвас 30px намсаж, зураг тэр зайг авна.
-   ⚠️ `:global` БИШ: `.panelHead`/`.panelBody` нь ЭНЭ файлын CSS-модулийн
-   класс тул `:global`-аар бичвэл хэшлэгдсэн нэртэй таарахгүй. */
-.shell[data-detail='1'] .zTop .panelHead { display: none; }
-
-.shell[data-detail='1'] .zTop .panelBody { padding: 0; overflow: visible; }
-
-/* Нүднүүдийн хоорондох 1px hairline → 10px завсар + карт бүрд өөрийн хүрээ */
-.shell[data-detail='1'] .zTop :global(.statsGrid) {
-  gap: 10px;
-  background: transparent;
-  border: none;
-  border-radius: 0;
-  overflow: visible;
-}
-
-.shell[data-detail='1'] .zTop :global(.statsGrid) > * {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-}
-
-/* Бөгж + үзүүлэлтийн эгнээ — бөгж нь мөн ӨӨРИЙН карт */
-.shell[data-detail='1'] .zTop .landTop { margin-bottom: 0; gap: 10px; align-items: stretch; }
-
-.shell[data-detail='1'] .zTop .landTop > :first-child {
-  display: grid;
-  place-items: center;
-  padding: 10px 18px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-}
-
-/**
- * ⚠️ ЖАГСААЛТУУД ч мөн адил. 8 багцын мөрийг 2,900px өргөн зурваст НЭГ
- * баганаар өрвөл: зай нь 90% хоосон, өндөр нь зурвасын таглаанаас хальж
- * сүүлийн мөрүүд ХАГАС тайрагдаж «эвдэрсэн» мэт харагдана. Хэвтээ тарааснаар
- * бүгд багтаж, өргөн нь ашиглагдана.
- */
-.zTop :global(.barsList),
-.zTop :global(.rowsList) {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
-  column-gap: 28px;
-  align-content: start;
-}
-
-/**
- * ⚠️ Баганан чарт нь зурвасын БҮТЭН өргөнд сунавал 5 багана нь 500px өргөн
- * «хавтан» болж, хэлбэр нь уншигдахаа болино («Үе шатаар — шугам сүлжээний
- * гүйцэтгэл» дээр яг ийм асар том хоосон блок болж байв).
- */
-.zTop :global(.seriesChart) {
-  max-width: 1100px;
-}
 
 /**
  * Газрын зураг — ГОЛ багана, чартын бүсүүдийн ДУНД мөр.
@@ -666,7 +611,10 @@
 .panelBody {
   min-height: 0;
   flex: 1;
-  overflow-y: auto;
+  /* ⚠️ `overflow-y: auto` ХАСАГДАВ (2026-08-21): карт бүр дотроо гүйвэл нэг
+     баганад 4 тусдаа гүйлт үүсч, агуулга нь хаана ч бүтэн харагдахгүй байв.
+     Одоо карт агуулгаараа өндөрсөж, гүйлт БАГАНАД (`.zLeft`/`.zRight`). */
+  overflow: visible;
   padding: 12px;
   /* Радиусын таслалт нь одоо ЭНД (карт өөрөө overflow-гүй болсон) */
   border-radius: 0 0 var(--r-sm) var(--r-sm);
@@ -938,7 +886,8 @@
 
 .envl > .envGrow, .envr > .envGrow { flex: 1; min-height: 120px; }
 
-.envGrow .panelBody { flex: 1; min-height: 0; overflow-y: auto; }
+/* Тоймын багана мөн адил: гүйлт нь картад БИШ, баганад */
+.envGrow .panelBody { flex: 1; min-height: 0; overflow: visible; }
 
 /* ── Индикаторын зурвас — envhub Indicator: нэг hairline хайрцаг, заагтай нүд ── */
 .ind {
@@ -1026,3 +975,697 @@
   .shell > :global(button[class*='splitGrip_grip']) { display: none; }
 
 }
+
+
+
+
+/* ══════════════════════════════════════════════════════════════════
+   ХЭСЭГ ТУС БҮРИЙН БҮРЭН САЛГАСАН ЗАГВАР  (`data-sec`)
+
+   ⚠️ 2026-08-21 (хэрэглэгчийн хүсэлт): 9 дэд дашбоард стилээ ОГТ
+   ХУВААЛЦАХГҮЙ. Урьд нь `.zTop`, `.zLeft`, `.zRight`, KPI сүлжээ,
+   картын дүүргэлт бүгд нийтлэг байсан тул мэдээллийн хэмжээ зөрөхөд
+   (Эх үүсвэр 2 чарт · Шугам сүлжээ 6 чарт · Цар хүрээ 9 KPI) гажилт
+   үүсэж, нэгийг засахад бусад найм нь хөндөгддөг байв.
+
+   Одоо дүрэм бүр ЭЗЭМШИГЧТЭЙ: нэг хэсгийн багана, зурвас, KPI нүд,
+   картын дүүргэлтийг өөрчлөхөд бусад найм нь ХӨНДӨГДӨХГҮЙ.
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ─── 01 ТӨСЛИЙН ЦАР ХҮРЭЭ ───
+   9 KPI нэг зурвасад — нүд нарийн, зурвас өндөр */
+.shell[data-detail='1'][data-sec='scope'] {
+  --side-l: clamp(252px, 15vw, 480px);
+  --side-r: clamp(252px, 15vw, 480px);
+}
+.shell[data-detail='1'][data-sec='scope'] .zTop {
+  grid-column: 2;
+  grid-row: 2;
+  max-height: max(200px, 26vh);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.shell[data-detail='1'][data-sec='scope'] .zLeft,
+.shell[data-detail='1'][data-sec='scope'] .zRight {
+  grid-row: 2 / span 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+.shell[data-detail='1'][data-sec='scope'] .zLeft { grid-column: 1; }
+.shell[data-detail='1'][data-sec='scope'] .zRight { grid-column: 3; }
+/* ⚠️ Карт СУНАХГҮЙ — агуулгаараа өндөрсөнө. Сунгавал доторх жагсаалт
+   шахагдаж, картын өөрийн гүйлт дахин хэрэгтэй болно. */
+.shell[data-detail='1'][data-sec='scope'] .zLeft > *,
+.shell[data-detail='1'][data-sec='scope'] .zRight > * { flex: 0 0 auto; min-height: 0; }
+.shell[data-detail='1'][data-sec='scope'] .zTop > * {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+}
+.shell[data-detail='1'][data-sec='scope'] .zTop .panelHead { display: none; }
+.shell[data-detail='1'][data-sec='scope'] .zTop .panelBody { padding: 0; overflow: visible; }
+/**
+ * ⚠️ ТОЙМ ГОРИМЫН `.head` ЗУРВАСЫГ ХУУЛСАН (2026-08-21, хэрэглэгчийн хүсэлт).
+ *
+ * 9 үзүүлэлт НЭГ МӨРӨНД: `auto-fit` нь 8 + 1 болж сүүлийн нүдийг ганцаараа
+ * доош унагаадаг тул `grid-auto-flow: column` — хэдэн нүд байхаас үл хамааран
+ * нэг эгнээ. Нүд бүр `minmax(0, 1fr)` тул тэнцүү хуваагдана.
+ *
+ * ⚠️ Загварыг `.head`-тэй НЭГТГЭЭГҮЙ, ХУУЛСАН: 9 хэсэг бүр өөрийн загвартай
+ * байх ёстой тул нийтлэг селектор ашиглавал өөрчлөлт хөрш хэсгүүд рүү тарна.
+ */
+.shell[data-detail='1'][data-sec='scope'] .zTop :global(.statsGrid) {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-template-columns: none;
+  /* Нэг hairline хайрцаг — дотор нь 1px заагтай нүднүүд (тоймын `.head`) */
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+/* Нүд бүр өөрийн хүрээгүй — зааг нь савны `gap`-аас гарна */
+/* ⚠️ 2026-08-21 (хэрэглэгчийн хүсэлт): агуулга ГОЛЛУУЛСАН. Зүүн зэрэгцүүлсэн
+   үед 9 нүдний шошго, тоо хоёулаа тэгш бус тарж, зурвасыг гүйлгэн уншихад
+   нүд байрлалаа тогтоож чаддаггүй байв. */
+.shell[data-detail='1'][data-sec='scope'] .zTop :global(.statsGrid) > * {
+  background: var(--surface);
+  border: none;
+  border-radius: 0;
+  padding: 11px 12px;
+  gap: 7px;
+  align-items: center;
+  text-align: center;
+}
+/* Тоо — тоймын `.tileVal b` (17px/500) */
+/* Тоо — ТОМРУУЛСАН (17 → 24px): зурвасын гол мэдээлэл нь тоо, шошго нь тайлбар */
+.shell[data-detail='1'][data-sec='scope'] .zTop :global(.statNum) {
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+/* Шошго — тоймын `.tileLabel` (10.5px uppercase, eyebrow) */
+.shell[data-detail='1'][data-sec='scope'] .zTop :global(.statTag) {
+  width: 100%;
+  text-align: center;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  line-height: 1.25;
+  color: var(--ink-3);
+}
+.shell[data-detail='1'][data-sec='scope'] .zTop :global(.barsList),
+.shell[data-detail='1'][data-sec='scope'] .zTop :global(.rowsList) {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  column-gap: 22px;
+}
+.shell[data-detail='1'][data-sec='scope'] .zTop :global(.seriesChart) { max-width: 1100px; }
+
+/* ─── 02 ХЭРЭГЖИЛТИЙН ГРАФИК ───
+   цуваа өргөн шаардана — багана өргөн, зурвас намхан */
+.shell[data-detail='1'][data-sec='schedule'] {
+  --side-l: clamp(288px, 17vw, 560px);
+  --side-r: clamp(288px, 17vw, 560px);
+}
+.shell[data-detail='1'][data-sec='schedule'] .zTop {
+  grid-column: 2;
+  grid-row: 2;
+  max-height: max(140px, 18vh);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.shell[data-detail='1'][data-sec='schedule'] .zLeft,
+.shell[data-detail='1'][data-sec='schedule'] .zRight {
+  grid-row: 2 / span 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+.shell[data-detail='1'][data-sec='schedule'] .zLeft { grid-column: 1; }
+.shell[data-detail='1'][data-sec='schedule'] .zRight { grid-column: 3; }
+/* ⚠️ Карт СУНАХГҮЙ — агуулгаараа өндөрсөнө. Сунгавал доторх жагсаалт
+   шахагдаж, картын өөрийн гүйлт дахин хэрэгтэй болно. */
+.shell[data-detail='1'][data-sec='schedule'] .zLeft > *,
+.shell[data-detail='1'][data-sec='schedule'] .zRight > * { flex: 0 0 auto; min-height: 0; }
+.shell[data-detail='1'][data-sec='schedule'] .zTop > * {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+}
+.shell[data-detail='1'][data-sec='schedule'] .zTop .panelHead { display: none; }
+.shell[data-detail='1'][data-sec='schedule'] .zTop .panelBody { padding: 0; overflow: visible; }
+/**
+ * ⚠️ ТОЙМ ГОРИМЫН `.head` ЗУРВАСЫГ ХУУЛСАН (2026-08-21, хэрэглэгчийн хүсэлт).
+ * 4 үзүүлэлт НЭГ МӨРӨНД, нэг hairline хайрцаг дотор 1px заагтай нүднүүд.
+ */
+.shell[data-detail='1'][data-sec='schedule'] .zTop :global(.statsGrid) {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-template-columns: none;
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+/* Нүд — агуулга ГОЛЛУУЛСАН; 4 нүд тул 01-ээс өргөн, зай сул */
+.shell[data-detail='1'][data-sec='schedule'] .zTop :global(.statsGrid) > * {
+  background: var(--surface);
+  border: none;
+  border-radius: 0;
+  padding: 12px 14px;
+  gap: 7px;
+  align-items: center;
+  text-align: center;
+}
+/* Тоо — 4 нүд тул 01-ийн 24px-ээс ТОМ (26px) */
+.shell[data-detail='1'][data-sec='schedule'] .zTop :global(.statNum) {
+  justify-content: center;
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+.shell[data-detail='1'][data-sec='schedule'] .zTop :global(.statTag) {
+  width: 100%;
+  text-align: center;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  line-height: 1.25;
+  color: var(--ink-3);
+}
+.shell[data-detail='1'][data-sec='schedule'] .zTop :global(.barsList),
+.shell[data-detail='1'][data-sec='schedule'] .zTop :global(.rowsList) {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+  column-gap: 22px;
+}
+.shell[data-detail='1'][data-sec='schedule'] .zTop :global(.seriesChart) { max-width: 1100px; }
+
+/* ─── 03 ГАЗАР ЧӨЛӨӨЛӨЛТ ───
+   шалтгаан/төлөвийн жагсаалт урт — зүүн багана өргөн */
+.shell[data-detail='1'][data-sec='land'] {
+  --side-l: clamp(308px, 18.5vw, 600px);
+  --side-r: clamp(272px, 16vw, 520px);
+}
+.shell[data-detail='1'][data-sec='land'] .zTop {
+  grid-column: 2;
+  grid-row: 2;
+  max-height: max(170px, 22vh);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.shell[data-detail='1'][data-sec='land'] .zLeft,
+.shell[data-detail='1'][data-sec='land'] .zRight {
+  grid-row: 2 / span 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+.shell[data-detail='1'][data-sec='land'] .zLeft { grid-column: 1; }
+.shell[data-detail='1'][data-sec='land'] .zRight { grid-column: 3; }
+/* ⚠️ Карт СУНАХГҮЙ — агуулгаараа өндөрсөнө. Сунгавал доторх жагсаалт
+   шахагдаж, картын өөрийн гүйлт дахин хэрэгтэй болно. */
+.shell[data-detail='1'][data-sec='land'] .zLeft > *,
+.shell[data-detail='1'][data-sec='land'] .zRight > * { flex: 0 0 auto; min-height: 0; }
+.shell[data-detail='1'][data-sec='land'] .zTop > * {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+}
+.shell[data-detail='1'][data-sec='land'] .zTop .panelHead { display: none; }
+.shell[data-detail='1'][data-sec='land'] .zTop .panelBody { padding: 0; overflow: visible; }
+/**
+ * ⚠️ ТОЙМ ГОРИМЫН `.head` ЗУРВАСЫГ ХУУЛСАН (2026-08-21, хэрэглэгчийн хүсэлт).
+ * 5 үзүүлэлт НЭГ МӨРӨНД, нэг hairline хайрцаг дотор 1px заагтай нүднүүд.
+ */
+.shell[data-detail='1'][data-sec='land'] .zTop :global(.statsGrid) {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-template-columns: none;
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+/* Нүд — агуулга ГОЛЛУУЛСАН */
+.shell[data-detail='1'][data-sec='land'] .zTop :global(.statsGrid) > * {
+  background: var(--surface);
+  border: none;
+  border-radius: 0;
+  padding: 12px 13px;
+  gap: 7px;
+  align-items: center;
+  text-align: center;
+}
+/* Тоо — 5 нүд тул 25px */
+.shell[data-detail='1'][data-sec='land'] .zTop :global(.statNum) {
+  justify-content: center;
+  font-size: 25px;
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+.shell[data-detail='1'][data-sec='land'] .zTop :global(.statTag) {
+  width: 100%;
+  text-align: center;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  line-height: 1.25;
+  color: var(--ink-3);
+}
+.shell[data-detail='1'][data-sec='land'] .zTop :global(.barsList),
+.shell[data-detail='1'][data-sec='land'] .zTop :global(.rowsList) {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  column-gap: 22px;
+}
+.shell[data-detail='1'][data-sec='land'] .zTop :global(.seriesChart) { max-width: 1100px; }
+
+/* ─── 04 ОРОН СУУЦНЫ БҮС ───
+   9 карт — хамгийн олон; хоёр багана хоёулаа өргөн */
+.shell[data-detail='1'][data-sec='bagts'] {
+  --side-l: clamp(296px, 17.5vw, 580px);
+  --side-r: clamp(296px, 17.5vw, 580px);
+}
+.shell[data-detail='1'][data-sec='bagts'] .zTop {
+  grid-column: 2;
+  grid-row: 2;
+  max-height: max(180px, 23vh);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  min-width: 0;
+}
+.shell[data-detail='1'][data-sec='bagts'] .zLeft,
+.shell[data-detail='1'][data-sec='bagts'] .zRight {
+  grid-row: 2 / span 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 9px;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+.shell[data-detail='1'][data-sec='bagts'] .zLeft { grid-column: 1; }
+.shell[data-detail='1'][data-sec='bagts'] .zRight { grid-column: 3; }
+/* ⚠️ Карт СУНАХГҮЙ — агуулгаараа өндөрсөнө. Сунгавал доторх жагсаалт
+   шахагдаж, картын өөрийн гүйлт дахин хэрэгтэй болно. */
+.shell[data-detail='1'][data-sec='bagts'] .zLeft > *,
+.shell[data-detail='1'][data-sec='bagts'] .zRight > * { flex: 0 0 auto; min-height: 0; }
+.shell[data-detail='1'][data-sec='bagts'] .zTop > * {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+}
+.shell[data-detail='1'][data-sec='bagts'] .zTop .panelHead { display: none; }
+.shell[data-detail='1'][data-sec='bagts'] .zTop .panelBody { padding: 0; overflow: visible; }
+/**
+ * ⚠️ ТОЙМ ГОРИМЫН `.head` ЗУРВАСЫГ ХУУЛСАН (2026-08-21, хэрэглэгчийн хүсэлт).
+ * Үзүүлэлтүүд НЭГ МӨРӨНД, нэг hairline хайрцаг дотор 1px заагтай нүднүүд.
+ */
+.shell[data-detail='1'][data-sec='bagts'] .zTop :global(.statsGrid) {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-template-columns: none;
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+/* Нүд — агуулга ГОЛЛУУЛСАН */
+.shell[data-detail='1'][data-sec='bagts'] .zTop :global(.statsGrid) > * {
+  background: var(--surface);
+  border: none;
+  border-radius: 0;
+  padding: 11px 12px;
+  gap: 7px;
+  align-items: center;
+  text-align: center;
+}
+.shell[data-detail='1'][data-sec='bagts'] .zTop :global(.statNum) {
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+.shell[data-detail='1'][data-sec='bagts'] .zTop :global(.statTag) {
+  width: 100%;
+  text-align: center;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  line-height: 1.25;
+  color: var(--ink-3);
+}
+.shell[data-detail='1'][data-sec='bagts'] .zTop :global(.barsList),
+.shell[data-detail='1'][data-sec='bagts'] .zTop :global(.rowsList) {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  column-gap: 22px;
+}
+.shell[data-detail='1'][data-sec='bagts'] .zTop :global(.seriesChart) { max-width: 1100px; }
+
+/* ─── 05 ШУГАМ СҮЛЖЭЭ ───
+   6 чарт — хамгийн олон; зурвас намхан, чартад зай */
+.shell[data-detail='1'][data-sec='network'] {
+  --side-l: clamp(304px, 18vw, 620px);
+  --side-r: clamp(304px, 18vw, 620px);
+}
+.shell[data-detail='1'][data-sec='network'] .zTop {
+  grid-column: 2;
+  grid-row: 2;
+  max-height: max(130px, 16vh);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  min-width: 0;
+}
+.shell[data-detail='1'][data-sec='network'] .zLeft,
+.shell[data-detail='1'][data-sec='network'] .zRight {
+  grid-row: 2 / span 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 9px;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+.shell[data-detail='1'][data-sec='network'] .zLeft { grid-column: 1; }
+.shell[data-detail='1'][data-sec='network'] .zRight { grid-column: 3; }
+/* ⚠️ Карт СУНАХГҮЙ — агуулгаараа өндөрсөнө. Сунгавал доторх жагсаалт
+   шахагдаж, картын өөрийн гүйлт дахин хэрэгтэй болно. */
+.shell[data-detail='1'][data-sec='network'] .zLeft > *,
+.shell[data-detail='1'][data-sec='network'] .zRight > * { flex: 0 0 auto; min-height: 0; }
+.shell[data-detail='1'][data-sec='network'] .zTop > * {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+}
+.shell[data-detail='1'][data-sec='network'] .zTop .panelHead { display: none; }
+.shell[data-detail='1'][data-sec='network'] .zTop .panelBody { padding: 0; overflow: visible; }
+.shell[data-detail='1'][data-sec='network'] .zTop :global(.statsGrid) {
+  grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+  gap: 9px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  overflow: visible;
+}
+.shell[data-detail='1'][data-sec='network'] .zTop :global(.statsGrid) > * {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+.shell[data-detail='1'][data-sec='network'] .zTop :global(.barsList),
+.shell[data-detail='1'][data-sec='network'] .zTop :global(.rowsList) {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  column-gap: 22px;
+}
+.shell[data-detail='1'][data-sec='network'] .zTop :global(.seriesChart) { max-width: 1100px; }
+
+/* ─── 06 ЦАХИЛГААН ───
+   4 чарт · 6 KPI — тэнцвэртэй */
+.shell[data-detail='1'][data-sec='power'] {
+  --side-l: clamp(284px, 16.5vw, 540px);
+  --side-r: clamp(284px, 16.5vw, 540px);
+}
+.shell[data-detail='1'][data-sec='power'] .zTop {
+  grid-column: 2;
+  grid-row: 2;
+  max-height: max(175px, 22vh);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.shell[data-detail='1'][data-sec='power'] .zLeft,
+.shell[data-detail='1'][data-sec='power'] .zRight {
+  grid-row: 2 / span 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+.shell[data-detail='1'][data-sec='power'] .zLeft { grid-column: 1; }
+.shell[data-detail='1'][data-sec='power'] .zRight { grid-column: 3; }
+/* ⚠️ Карт СУНАХГҮЙ — агуулгаараа өндөрсөнө. Сунгавал доторх жагсаалт
+   шахагдаж, картын өөрийн гүйлт дахин хэрэгтэй болно. */
+.shell[data-detail='1'][data-sec='power'] .zLeft > *,
+.shell[data-detail='1'][data-sec='power'] .zRight > * { flex: 0 0 auto; min-height: 0; }
+.shell[data-detail='1'][data-sec='power'] .zTop > * {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+}
+.shell[data-detail='1'][data-sec='power'] .zTop .panelHead { display: none; }
+.shell[data-detail='1'][data-sec='power'] .zTop .panelBody { padding: 0; overflow: visible; }
+.shell[data-detail='1'][data-sec='power'] .zTop :global(.statsGrid) {
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  overflow: visible;
+}
+.shell[data-detail='1'][data-sec='power'] .zTop :global(.statsGrid) > * {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+.shell[data-detail='1'][data-sec='power'] .zTop :global(.barsList),
+.shell[data-detail='1'][data-sec='power'] .zTop :global(.rowsList) {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  column-gap: 22px;
+}
+.shell[data-detail='1'][data-sec='power'] .zTop :global(.seriesChart) { max-width: 1100px; }
+
+/* ─── 07 ЭХ ҮҮСВЭР ───
+   ХАМГИЙН ЦӨӨН (2 чарт · 1 KPI) — багана нарийн, карт СУНАХГҮЙ */
+.shell[data-detail='1'][data-sec='source'] {
+  --side-l: clamp(244px, 14vw, 440px);
+  --side-r: clamp(244px, 14vw, 440px);
+}
+.shell[data-detail='1'][data-sec='source'] .zTop {
+  grid-column: 2;
+  grid-row: 2;
+  max-height: max(120px, 14vh);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.shell[data-detail='1'][data-sec='source'] .zLeft,
+.shell[data-detail='1'][data-sec='source'] .zRight {
+  grid-row: 2 / span 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+.shell[data-detail='1'][data-sec='source'] .zLeft { grid-column: 1; }
+.shell[data-detail='1'][data-sec='source'] .zRight { grid-column: 3; }
+.shell[data-detail='1'][data-sec='source'] .zLeft > *,
+.shell[data-detail='1'][data-sec='source'] .zRight > * { flex: 0 0 auto; min-height: 0; }
+.shell[data-detail='1'][data-sec='source'] .zTop > * {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+}
+.shell[data-detail='1'][data-sec='source'] .zTop .panelHead { display: none; }
+.shell[data-detail='1'][data-sec='source'] .zTop .panelBody { padding: 0; overflow: visible; }
+.shell[data-detail='1'][data-sec='source'] .zTop :global(.statsGrid) {
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  overflow: visible;
+}
+.shell[data-detail='1'][data-sec='source'] .zTop :global(.statsGrid) > * {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+.shell[data-detail='1'][data-sec='source'] .zTop :global(.barsList),
+.shell[data-detail='1'][data-sec='source'] .zTop :global(.rowsList) {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+  column-gap: 22px;
+}
+.shell[data-detail='1'][data-sec='source'] .zTop :global(.seriesChart) { max-width: 1100px; }
+
+/* ─── 08 ХӨРӨНГӨ ОРУУЛАЛТ, БОНД ───
+   мөнгөн дүн урт (₮) — багана өргөн, KPI нүд өргөн */
+.shell[data-detail='1'][data-sec='finance'] {
+  --side-l: clamp(308px, 18.5vw, 600px);
+  --side-r: clamp(308px, 18.5vw, 600px);
+}
+.shell[data-detail='1'][data-sec='finance'] .zTop {
+  grid-column: 2;
+  grid-row: 2;
+  max-height: max(170px, 21vh);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.shell[data-detail='1'][data-sec='finance'] .zLeft,
+.shell[data-detail='1'][data-sec='finance'] .zRight {
+  grid-row: 2 / span 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+.shell[data-detail='1'][data-sec='finance'] .zLeft { grid-column: 1; }
+.shell[data-detail='1'][data-sec='finance'] .zRight { grid-column: 3; }
+/* ⚠️ Карт СУНАХГҮЙ — агуулгаараа өндөрсөнө. Сунгавал доторх жагсаалт
+   шахагдаж, картын өөрийн гүйлт дахин хэрэгтэй болно. */
+.shell[data-detail='1'][data-sec='finance'] .zLeft > *,
+.shell[data-detail='1'][data-sec='finance'] .zRight > * { flex: 0 0 auto; min-height: 0; }
+.shell[data-detail='1'][data-sec='finance'] .zTop > * {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+}
+.shell[data-detail='1'][data-sec='finance'] .zTop .panelHead { display: none; }
+.shell[data-detail='1'][data-sec='finance'] .zTop .panelBody { padding: 0; overflow: visible; }
+.shell[data-detail='1'][data-sec='finance'] .zTop :global(.statsGrid) {
+  grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+  gap: 10px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  overflow: visible;
+}
+.shell[data-detail='1'][data-sec='finance'] .zTop :global(.statsGrid) > * {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+.shell[data-detail='1'][data-sec='finance'] .zTop :global(.barsList),
+.shell[data-detail='1'][data-sec='finance'] .zTop :global(.rowsList) {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+  column-gap: 22px;
+}
+.shell[data-detail='1'][data-sec='finance'] .zTop :global(.seriesChart) { max-width: 1100px; }
+
+/* ─── 09 НИЙГМИЙН ДЭД БҮТЭЦ ───
+   8 KPI — зурвас өндөр */
+.shell[data-detail='1'][data-sec='benefit'] {
+  --side-l: clamp(276px, 16vw, 520px);
+  --side-r: clamp(276px, 16vw, 520px);
+}
+.shell[data-detail='1'][data-sec='benefit'] .zTop {
+  grid-column: 2;
+  grid-row: 2;
+  max-height: max(195px, 25vh);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.shell[data-detail='1'][data-sec='benefit'] .zLeft,
+.shell[data-detail='1'][data-sec='benefit'] .zRight {
+  grid-row: 2 / span 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+.shell[data-detail='1'][data-sec='benefit'] .zLeft { grid-column: 1; }
+.shell[data-detail='1'][data-sec='benefit'] .zRight { grid-column: 3; }
+/* ⚠️ Карт СУНАХГҮЙ — агуулгаараа өндөрсөнө. Сунгавал доторх жагсаалт
+   шахагдаж, картын өөрийн гүйлт дахин хэрэгтэй болно. */
+.shell[data-detail='1'][data-sec='benefit'] .zLeft > *,
+.shell[data-detail='1'][data-sec='benefit'] .zRight > * { flex: 0 0 auto; min-height: 0; }
+.shell[data-detail='1'][data-sec='benefit'] .zTop > * {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+}
+.shell[data-detail='1'][data-sec='benefit'] .zTop .panelHead { display: none; }
+.shell[data-detail='1'][data-sec='benefit'] .zTop .panelBody { padding: 0; overflow: visible; }
+.shell[data-detail='1'][data-sec='benefit'] .zTop :global(.statsGrid) {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  overflow: visible;
+}
+.shell[data-detail='1'][data-sec='benefit'] .zTop :global(.statsGrid) > * {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+.shell[data-detail='1'][data-sec='benefit'] .zTop :global(.barsList),
+.shell[data-detail='1'][data-sec='benefit'] .zTop :global(.rowsList) {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  column-gap: 22px;
+}
+.shell[data-detail='1'][data-sec='benefit'] .zTop :global(.seriesChart) { max-width: 1100px; }

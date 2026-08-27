@@ -1314,7 +1314,7 @@ function FinCard({
  * олгосон = бүх багцын IPC нийлбэр, өссөн хувь = нийлбэрийн харьцаа,
  * биет = биет дататай багцуудын дундаж.
  */
-function aggregateMonths(d: FinData) {
+export function aggregateMonths(d: FinData) {
   const labels = CASHFLOW2.months;
   const planM = labels.map((m) => d.contracts.reduce((a, r) => a + nn(r[m.amount]), 0));
   const planTotal = planM.reduce((a, b) => a + b, 0);
