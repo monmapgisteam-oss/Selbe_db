@@ -40,15 +40,10 @@ export function GuitsetgelAcl() {
 
   return (
     <div className={s.aclWrap}>
-      {/*
-        * ⚠️ Хаана хадгалагдаж байгааг НУУХГҮЙ. Админ тохируулаад «бусад
-        *    хүнд очсон» гэж бодвол хуваарилалт байхгүй атлаа байгаа мэт
-        *    ажиллана — энэ нь хамгийн үнэтэй төрлийн алдаа.
-        */}
       <p className={s.aclNote}>
         {tr('Шат бүрд хэдэн ч аккаунт нэмнэ. Аккаунт бүрд аль багцыг хариуцахыг зааж өгнө — заагаагүй бол бүх багц.')}
         {' '}
-        {tr('⚠️ Одоогоор энэ тохиргоо зөвхөн энэ browser-т хадгалагдана.')}
+        {tr('Томилгоо ArcGIS дээрх хуваалцсан хүснэгтэд хадгалагдаж, тухайн хүн өөрийн төхөөрөмжөөс нэвтрэхэд шууд үйлчилнэ. Томилохын хамт үүрэг ба «Гүйцэтгэлийн хяналт» харагдац автоматаар олгогдоно; хасахад буцаагдана.')}
       </p>
 
       <div className={s.aclGrid}>
@@ -66,6 +61,13 @@ function Column({
   const rows = assignsOf(stage);
   const [add, setAdd] = useState('');
   const [err, setErr] = useState('');
+  /** ArcGIS бичилт унасан тэмдэг — томилгоо түр зөвхөн энэ browser-т */
+  const [syncWarn, setSyncWarn] = useState(false);
+  /** Remote бичилтийн үр дүнг ажиглана — унавал ИЛ анхааруулна */
+  const watch = (p?: Promise<boolean>) => {
+    if (!p) return;
+    void p.then((ok) => setSyncWarn(!ok)).catch(() => setSyncWarn(true));
+  };
 
   /* Аль хэдийн ямар нэг шатанд томилогдсоныг давхардуулж санал болгохгүй */
   const taken = new Set(listAssigns().map((a) => a.user));
@@ -74,6 +76,7 @@ function Column({
   const push = () => {
     const r = setAssign(add, stage, [ALL_BAGTS]);
     setErr(r.ok ? '' : (r.error ?? ''));
+    watch(r.sync);
     if (r.ok) setAdd('');
   };
 
@@ -104,6 +107,11 @@ function Column({
         </div>
       )}
       {err && <div className={s.aclErr}>{err}</div>}
+      {syncWarn && (
+        <div className={s.aclErr} role="alert">
+          {tr('⚠️ ArcGIS-т бичигдсэнгүй — томилгоо түр зөвхөн энэ browser-т. Холболтоо шалгаад дахин оролдоно уу.')}
+        </div>
+      )}
 
       {rows.length === 0 && <div className={s.aclEmpty}>{tr('Аккаунт томилоогүй')}</div>}
 
@@ -114,8 +122,13 @@ function Column({
             <button
               type="button"
               className={s.aclX}
-              title={tr('Хасах')}
-              onClick={() => removeAssign(r.user, stage)}
+              title={tr('Томилгооноос хасах')}
+              onClick={() => {
+                /* ⚠️ Хасах нь олгосон эрхийг ч буцаадаг болсон (2026-08-27) —
+                   юу болохыг ил хэлж баталгаажуулна. */
+                if (!window.confirm(tr('«{0}»-г {1} шатнаас хасах уу? Олгогдсон үүрэг ба «Гүйцэтгэлийн хяналт» харагдац нь мөн буцаагдана.', r.user, title))) return;
+                watch(removeAssign(r.user, stage).sync);
+              }}
             >
               ✕
             </button>
@@ -127,8 +140,8 @@ function Column({
               type="button"
               className={`${s.aclPkg} ${r.bagts.includes(ALL_BAGTS) ? s.aclPkgOn : ''}`}
               /* grant:false — эрх нь нэмэх үедээ аль хэдийн олгогдсон;
-                 багц солих бүрд ArcGIS руу дахин бичих нь дэмий, бас уралдана */
-              onClick={() => setAssign(r.user, stage, [ALL_BAGTS], false)}
+                 багц солих бүрд эрхийн мөр дахин бичих нь дэмий, бас уралдана */
+              onClick={() => watch(setAssign(r.user, stage, [ALL_BAGTS], false).sync)}
             >
               {tr('Бүх багц')}
             </button>
@@ -143,7 +156,7 @@ function Column({
                     const cur = r.bagts.filter((x) => x !== ALL_BAGTS);
                     const next = on ? cur.filter((x) => x !== g) : [...cur, g];
                     // Бүгдийг унтраавал «бүх багц» руу буцна — хоосон эрх утгагүй
-                    setAssign(r.user, stage, next.length ? next : [ALL_BAGTS], false);
+                    watch(setAssign(r.user, stage, next.length ? next : [ALL_BAGTS], false).sync);
                   }}
                 >
                   {g}

@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { AUTH, roleForUser, type Role } from '@/lib/services';
-import { initRemote, hasAccess } from '@/lib/permissions';
+import { initRemote, hasAccess, roleOf } from '@/lib/permissions';
 import s from './auth.module.css';
 
 /**
@@ -78,6 +78,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   //    PKCE redirect хийдэггүй тул эрт дарсан «Нэвтрэх» race-д унахаас сэргийлж
   //    signIn эхэндээ үүнийг хүлээнэ.
   const oauthReadyRef = useRef<Promise<void> | null>(null);
+  /** Нэвтрэх үеийн байгууллагын шалгалтын дүн — revocation дахин ашиглана */
+  const orgOkRef = useRef(true);
 
   useEffect(() => {
     // Тохируулаагүй бол нэвтрэлтгүйгээр ажиллана
@@ -115,12 +117,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           thumbnail: u?.thumbnailUrl ?? null,
           orgId: u?.orgId ?? null,
         };
-        const r = roleForUser(info.username);
+        const hard = roleForUser(info.username);
         const orgOk = !AUTH.allowedOrgId || info.orgId === AUTH.allowedOrgId;
+        orgOkRef.current = orgOk;
 
         // ⚠️ Эрхийн ХУВААЛЦСАН хүснэгтийг ЭХЭЛЖ татна (super бол байхгүй үед үүсгэнэ)
         //    — панелаас нэмсэн хэрэглэгчийг таних тул нэвтрүүлэхээс ӨМНӨ ачаална.
-        await initRemote(r === 'super');
+        //    Хүснэгт үүсгэх эрхийг ЗӨВХӨН хатуу тохиргооны super-ээр тогтооно.
+        await initRemote(hard === 'super');
+        /*
+         * ҮҮРЭГ — override-ыг тооцсон ГАНЦ эх сурвалж (`roleOf`).
+         * ⚠️ Урьд нь зөвхөн хатуу жагсаалтаас авдаг байсан тул панелаас
+         * нэмсэн урсгалын аккаунтын role нь null үлдэж, «Гүйцэтгэлийн
+         * хяналт» дээр шат сонгогч нээлттэй болдог байв (өөрийн ажлаа
+         * өөрөө батлах зам). initRemote-ийн ДАРАА дуудна — store бэлэн.
+         */
+        const r = roleOf(info.username);
         // Нэвтрэх эрх: хатуу жагсаалт ЭСВЭЛ панелаас нэмсэн (store) хэрэглэгч.
         const admitted = orgOk && hasAccess(info.username);
         console.info('[selbe] нэвтэрсэн:', info.username, '· orgId:', info.orgId, '· үүрэг:', r ?? '—', '· admitted:', admitted);
@@ -159,14 +171,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * ⚠️ ArcGIS унасан үед `initRemote` cache-ээ ХЭВЭЭР үлдээдэг тул сүлжээний
    * түр тасалдал хэрэглэгчийг гаргахгүй.
    */
+  /*
+   * ⚠️ ХЯЗГААР (баримтжуулсан): энэ нь зөвхөн ПОРТАЛЫН UI-г хаадаг — ArcGIS-ийн
+   * OAuth token нь хугацаа дуустлаа хүчинтэй үлдэх тул үйлчилгээ рүү шууд REST
+   * хандалтыг зогсоохгүй. Өгөгдлийн түвшний эрх нь ArcGIS-ийн өөрийн sharing
+   * дээр байх ёстой; энд клиент талд түүнээс чанга хамгаалалт байхгүй.
+   */
   useEffect(() => {
-    if (status !== 'signed-in' || !user?.username) return;
+    if ((status !== 'signed-in' && status !== 'denied') || !user?.username) return;
+    // Байгууллага нь таарахгүй бол poll хийх утгагүй — эрх сэргэх боломжгүй
+    if (!orgOkRef.current) return;
     let alive = true;
     const check = async () => {
       if (document.visibilityState === 'hidden') return;
       try {
         await initRemote(false);
-        if (alive && !hasAccess(user.username)) setStatus('denied');
+        if (!alive) return;
+        const ok = hasAccess(user.username);
+        // Эрх ХАСАГДВАЛ шууд хаана; БУЦААЖ СЭРГЭЭГДВЭЛ F5 шаардалгүй нээнэ
+        setStatus((prev) => {
+          if (prev === 'signed-in' && !ok) return 'denied';
+          if (prev === 'denied' && ok) return 'signed-in';
+          return prev;
+        });
+        // Үүрэг нь солигдсон бол (шатанд томилогдох г.м.) дараагийн нэвтрэлт
+        // хүлээлгүй шинэчилнэ — Гүйцэтгэлийн хяналтын шат зөв түгжигдэнэ.
+        setRole(roleOf(user.username));
       } catch { /* сүлжээний тасалдал — эрхийг хэвээр үлдээнэ */ }
     };
     const iv = setInterval(() => { void check(); }, 5 * 60_000);

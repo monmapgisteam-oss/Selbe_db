@@ -19,7 +19,7 @@ import {
 } from "./bagts.pkg";
 import { OWNER, F as HF } from "@/lib/hyanalt";
 import { useHyanaltRows } from "@/lib/hyanaltStore";
-import { bagtsFor, subscribeAcl } from "@/lib/guitsetgelAcl";
+import { assignsOf, bagtsFor, subscribeAcl } from "@/lib/guitsetgelAcl";
 import { useAuth } from "@/components/AuthGate";
 import DatePicker from "./DatePicker";
 import { seriesBands } from "./bagts.bands";
@@ -314,8 +314,20 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    * хэн ч REST-ээр мөр нэмж чадна.
    */
   const canAddRow = useMemo(() => {
-    const list = bagtsFor(user?.username, "director");
-    return !!list && list.includes(pkg.group);
+    const u = user?.username?.toLowerCase();
+    if (!u) return false;
+    /*
+     * ⚠️ `bagtsFor` нь ХОЁР ЭСРЭГ тохиолдолд ижил `null` буцаадаг:
+     *      (а) хэрэглэгч тэр шатанд ОГТ томилогдоогүй,
+     *      (б) БҮХ багцад томилогдсон (`ALL_BAGTS`) — өөрөөр хэлбэл
+     *          хязгаарлалтгүй.
+     * Тиймээс `null`-ыг «эрхгүй» гэж уншвал бүх багцын эрхтэй Ерөнхий менежер
+     * мөр нэмж чадахгүй болно — эрх ИХТЭЙ хүн эрх БАГАТАЙ болох урвуу алдаа.
+     * Иймд эхлээд ТОМИЛГОО байгаа эсэхийг тусад нь барина.
+     */
+    if (!assignsOf("director").some((a) => a.user === u)) return false;
+    const list = bagtsFor(u, "director");
+    return list == null || list.includes(pkg.group);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, aclN, pkg.group]);
 

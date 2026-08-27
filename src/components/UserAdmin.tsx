@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
-import { VIEWS, ROLE_ACCESS, type Role, type ViewKey } from '@/lib/services';
+import { VIEWS, ROLE_ACCESS, roleForUser, type Role, type ViewKey } from '@/lib/services';
 import {
   listUsers,
   listRemoved,
@@ -10,15 +10,17 @@ import {
   setUser,
   clearOverride,
   subscribe,
+  dirtyKeys,
+  retryDirty,
+  initRemote,
   type UserPerm,
 } from '@/lib/permissions';
 import { useAuth } from './AuthGate';
 import { Icon } from './Icon';
 import { GuitsetgelAcl } from '@/modules/GuitsetgelAcl';
 import { STAGE_LABEL } from '@/modules/Guitsetgel';
-import { STAGE_ORDER, type Stage } from '@/lib/hyanalt';
 import {
-  ALL_BAGTS, STAGE_ROLE, bagtsFor, removeAssign, setAssign, stageOfUser, subscribeAcl,
+  removeAssign, stageOfUser, subscribeAcl,
 } from '@/lib/guitsetgelAcl';
 import s from './userAdmin.module.css';
 
@@ -60,13 +62,20 @@ type Draft = {
   docs: boolean;
   role: Role | null;
   /** undefined = урсгалын шат хөндөгдөөгүй · null = шатгүй болгох */
-  stage?: Stage | null;
   /** «Сэргээх» — хадгалахад override-ыг бүрмөсөн устгаж хатуу тохиргоонд буцаана */
   clear?: boolean;
   /** «Устгах» — хадгалахад аккаунтыг жагсаалтаас хасаж нэвтрэлтийг нь хаана */
   remove?: boolean;
   /** Панелаас ШИНЭЭР нэмсэн, хараахан хадгалаагүй аккаунт */
   isNew?: boolean;
+  /**
+   * Админ «Гүйцэтгэлийн хяналт» унтраалгыг ГАРААР хөндсөн тэмдэг.
+   * ⚠️ Хадгалах үед урсгалын томилгооноос ирсэн `guitsetgel` харагдацыг
+   * ноорог санамсаргүй дарж бичихээс хамгаална: ноорог үүссэний ДАРАА өөр
+   * хуудаснаас томилгоо хийгдсэн бол админ мэдэлгүй эрхийг нь хасчихдаг
+   * байв. Гараар хөндсөн бол админы шийдвэр — хүндэтгэнэ.
+   */
+  touchedGuits?: boolean;
 };
 
 /**
@@ -96,26 +105,46 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
   const [openRows, setOpenRows] = useState<Set<string>>(new Set());
   /** Бөөнөөр засах сонголт */
   const [sel, setSel] = useState<Set<string>>(new Set());
-  // ⚠️ ArcGIS хүснэгтэд бичигдэж ЧАДААГҮЙ хэрэглэгчид (жижиг үсгээр) — урьд нь
-  //    бичилт унахад ямар ч дохиогүй, өөрчлөлт зөвхөн энэ browser-т үлддэг байв.
-  const [unsynced, setUnsynced] = useState<Set<string>>(new Set());
+  /** Remote хүснэгт уншигдсан эсэх — унасан бол offline тэмдэг харуулна */
+  const [remoteOk, setRemoteOk] = useState(true);
+  /** «Дахин синк» ажиллаж байгаа эсэх */
+  const [syncing, setSyncing] = useState(false);
   /** username(жижиг үсгээр) → хадгалаагүй ноорог */
   const [drafts, setDrafts] = useState<Map<string, Draft>>(new Map());
   const [saving, setSaving] = useState(false);
   /** Хамгийн сүүлийн хадгалалтын үр дүн — товчийн доор товч мэдэгдэл */
-  const [saved, setSaved] = useState<{ ok: number; fail: number } | null>(null);
+  const [saved, setSaved] = useState<{ ok: number; fail: number; failed: string[] } | null>(null);
 
   const dialogRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (open) setUsers(listUsers());
+    if (!open) return;
+    setUsers(listUsers());
+    /*
+     * ⚠️ Нээх бүрд remote-оос ДАХИН татна — өөр админы саяын засвар 5 минутын
+     * poll хүлээлгүй харагдана. Уншилт унавал offline тэмдэг гарна (урьд нь
+     * ямар ч дохиогүй, хуучин cache-ийг үнэн мэт харуулдаг байв).
+     */
+    void initRemote(false).then((ok) => { setRemoteOk(ok); setUsers(listUsers()); });
+  }, [open]);
+
+  /** F5/таб хаахад хадгалаагүй ноорог чимээгүй алдагдахаас сэргийлнэ */
+  useEffect(() => {
+    if (!open) return;
+    const onBefore = (e: BeforeUnloadEvent) => {
+      if (draftsRef.current.size === 0) return;
+      e.preventDefault();
+    };
+    window.addEventListener('beforeunload', onBefore);
+    return () => window.removeEventListener('beforeunload', onBefore);
   }, [open]);
 
   /** Хадгалаагүй ноорогтой үед санамсаргүй хаагдахаас хамгаална */
   const draftsRef = useRef(drafts);
   draftsRef.current = drafts;
   const requestClose = () => {
+    if (saving) return; // хадгалалт дуустал хүлээнэ — дундуур гарвал төлөв төөрнө
     if (draftsRef.current.size > 0
       && !window.confirm(tr('Хадгалаагүй өөрчлөлт байна. Хадгалалгүй гарах уу?'))) return;
     setDrafts(new Map());
@@ -176,36 +205,41 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
    * ХАРУУЛАХ МӨРҮҮД — хадгалагдсан хэрэглэгчид + панелаас шинээр нэмсэн
    * (хараахан хадгалаагүй) аккаунтууд, хайлтаар шүүгдсэн.
    */
-  const rows = useMemo(() => {
+  const allRows = useMemo(() => {
     const newOnes: UserPerm[] = [...drafts.entries()]
       .filter(([k, d]) => d.isNew && !users.some((u) => u.username.toLowerCase() === k))
       .map(([k, d]) => ({ username: k, role: d.role, views: d.views, docs: d.docs, overridden: true }));
-    const all = [...newOnes, ...users];
+    return [...newOnes, ...users];
+  }, [users, drafts]);
+  const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    return needle ? all.filter((u) => u.username.toLowerCase().includes(needle)) : all;
-  }, [users, drafts, q]);
+    return needle ? allRows.filter((u) => u.username.toLowerCase().includes(needle)) : allRows;
+  }, [allRows, q]);
 
   if (!open) return null;
 
-  /** ArcGIS бичилтийн үр дүнг хүлээж, унасан мөрийг unsynced-д тэмдэглэнэ */
-  const track = (username: string, ok: boolean) => {
-    const key = username.toLowerCase();
-    setUnsynced((prev) => {
-      if (prev.has(key) === !ok) return prev; // өөрчлөлтгүй — дахин зурахгүй
-      const next = new Set(prev);
-      if (ok) next.delete(key); else next.add(key);
-      return next;
-    });
+  /*
+   * ArcGIS-т хүрээгүй өөрчлөлтүүд — permissions-ийн DIRTY-SET-ээс (localStorage,
+   * refresh давна). Урьд нь энд тусдаа Set хөтөлдөг байсан нь (а) панел дахин
+   * нээхэд мартагддаг, (б) амжилттай retry-г мэддэггүй ХУДАЛ тэмдэг байв.
+   */
+  const dirtyRemote = new Set(dirtyKeys());
+  const retrySync = async () => {
+    if (syncing) return;
+    setSyncing(true);
+    try {
+      const left = await retryDirty();
+      setUsers(listUsers());
+      setSaved(left === 0 ? null : saved);
+    } finally {
+      setSyncing(false);
+    }
   };
 
   /** Хэрэглэгчийн ОДООГИЙН харагдах төлөв — ноорог байвал түүнийг, эс бөгөөс хадгалснаа */
   const draftOf = (u: UserPerm): Draft => {
     const d = drafts.get(u.username.toLowerCase());
     return d ?? { views: u.views, docs: u.docs, role: u.role };
-  };
-  const stageOf = (u: UserPerm): Stage | null => {
-    const d = drafts.get(u.username.toLowerCase());
-    return d?.stage !== undefined ? d.stage : stageOfUser(u.username);
   };
 
   /**
@@ -215,11 +249,9 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
   const putDraft = (u: UserPerm, d: Draft) => {
     const key = u.username.toLowerCase();
     const next = { ...d };
-    if (next.stage !== undefined && next.stage === stageOfUser(u.username)) delete next.stage;
     const same = !next.clear
       && !next.remove
       && !next.isNew
-      && next.stage === undefined
       && next.role === u.role
       && next.docs === u.docs
       && viewsEq(next.views, u.views);
@@ -237,7 +269,12 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
   };
   const flipView = (u: UserPerm, k: ViewKey) => {
     const d = draftOf(u);
-    putDraft(u, { ...d, clear: false, views: toggled(d.views, k) });
+    // Урсгалын шатанд томилогдсон хүний «Гүйцэтгэлийн хяналт»-ыг унтраах нь
+    // түүнийг ажилгүй болгоно — санамсаргүй даралтаас асууж хамгаална.
+    if (k === 'guitsetgel' && hasView(d.views, k) && stageOfUser(u.username)
+      && !window.confirm(tr('Энэ хэрэглэгч урсгалын шатанд томилогдсон. «Гүйцэтгэлийн хяналт»-ыг унтраавал ажлаа хянаж чадахгүй болно. Унтраах уу?'))) return;
+    const touched = k === 'guitsetgel' ? { touchedGuits: true } : null;
+    putDraft(u, { ...d, ...touched, clear: false, views: toggled(d.views, k) });
   };
   const setAllViews = (u: UserPerm, on: boolean) => {
     const d = draftOf(u);
@@ -246,10 +283,6 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
   const flipDocs = (u: UserPerm) => {
     const d = draftOf(u);
     putDraft(u, { ...d, clear: false, docs: !d.docs });
-  };
-  const flipStage = (u: UserPerm, st: Stage) => {
-    const cur = stageOf(u);
-    putDraft(u, { ...draftOf(u), stage: cur === st ? null : st });
   };
   const flipRemove = (u: UserPerm) => {
     const d = draftOf(u);
@@ -262,11 +295,15 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     putDraft(u, { ...draftOf(u), clear: true });
   };
 
-  /* ── Бөөнөөр засах ── */
-  const selRows = rows.filter((u) => sel.has(u.username.toLowerCase()));
+  /* ── Бөөнөөр засах ──
+   * ⚠️ БҮРЭН жагсаалтаас (`allRows`) — хайлтын шүүлтээс ХАМААРАХГҮЙ. Урьд нь
+   * шүүгдэж нуугдсан сонголт чимээгүй алгасагдаж, зурвасын «N сонгосон» тоо
+   * бодит үйлдэлтэй зөрдөг байв. */
+  const selRows = allRows.filter((u) => sel.has(u.username.toLowerCase()));
   const bulkRole = (role: Role) => { selRows.forEach((u) => applyRole(u, role)); setSel(new Set()); };
   const bulkRemove = () => {
-    selRows.filter((u) => u.username.toLowerCase() !== myName)
+    selRows
+      .filter((u) => u.username.toLowerCase() !== myName && roleForUser(u.username) !== 'super')
       .forEach((u) => { if (!draftOf(u).remove) flipRemove(u); });
     setSel(new Set());
   };
@@ -291,61 +328,73 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
       && !window.confirm(tr('{0} аккаунт хадгалахад УСТГАГДАНА. Үргэлжлүүлэх үү?', String(removing)))) return;
     setSaving(true);
     setSaved(null);
+    /*
+     * ⚠️ SNAPSHOT: энэ closure-ийн `drafts` нь товч дарах агшны Map. Хадгалалт
+     * олон remote бичилттэй тул хэдэн секунд үргэлжилж болно — тэр хооронд
+     * админы хийсэн ШИНЭ ноорог төгсгөлийн цэвэрлэгээнд арчигдах ёсгүй.
+     */
+    const snapshot = drafts;
     let ok = 0;
     let fail = 0;
+    const failed: string[] = [];
 
-    for (const [key, d] of drafts) {
+    for (const [key, d] of snapshot) {
       const u = users.find((x) => x.username.toLowerCase() === key);
       const uname = u?.username ?? key;
       try {
-        // УСТГАХ — урсгалын томилгоог нь цэвэрлээд tombstone/арилгалт хийнэ
+        // УСТГАХ — урсгалын томилгоог нь цэвэрлээд tombstone/арилгалт хийнэ.
+        // ⚠️ revoke:false — аккаунт бүхэлдээ устгагдах тул эрх буцаалтын
+        //    бичилт tombstone-той уралдах ёсгүй.
         if (d.remove) {
           const cur = stageOfUser(uname);
-          if (cur) removeAssign(uname, cur);
+          if (cur) removeAssign(uname, cur, false);
           const r = await removeUser(uname);
-          track(uname, r);
-          if (r) ok += 1; else fail += 1;
+          if (r) ok += 1; else { fail += 1; failed.push(uname); }
           continue;
         }
         if (d.clear) {
           const r = await clearOverride(uname);
-          track(uname, r);
-          if (r) ok += 1; else fail += 1;
+          if (r) ok += 1; else { fail += 1; failed.push(uname); }
           continue;
         }
 
         /*
-         * УРСГАЛЫН ШАТ ба ЭРХИЙГ НЭГ БИЧИЛТЭД нэгтгэнэ.
-         * ⚠️ 2026-08-25 ЗАСВАР: урьд нь `setAssign` дотроос `grantFlowAccess`
-         * нэг `setUser` хийж, тэр дороо энэ мөрийн `setUser` ДАХИН бичдэг байв —
-         * хоёр асинхрон бичилт уралдаж, аль нь сүүлд буухаас хамаарч `guitsetgel`
-         * харагдац чимээгүй алга болдог байлаа. Одоо томилгоог `grant: false`-оор
-         * хийж, харагдац/үүргийг эндээс ГАНЦ удаа бичнэ.
+         * ЗӨВХӨН ХАРАГДАЦ ба ҮҮРЭГ — урсгалын ШАТ томилох нь «Гүйцэтгэлийн
+         * урсгалын эрх» хуудсанд НЭГ л газарт (`setAssign` эрхийг дагуулна).
+         *
+         * ⚠️ УРСГАЛЫН УРАЛДААНЫ ХАМГААЛАЛТ: ноорог үүссэний ДАРАА энэ хүн
+         * шатанд томилогдсон бол (өөр хуудас/админ `guitsetgel`-ийг нэмсэн)
+         * хуучин snapshot-той ноорог түүнийг мэдэлгүй дарж бичдэг байв.
+         * Админ унтраалгыг ГАРААР хөндөөгүй (`touchedGuits` биш) л бол
+         * хадгалагдсан `guitsetgel`-ийг үлдээнэ.
          */
         let views = d.views;
-        let role = d.role;
-        if (d.stage !== undefined) {
-          const cur = stageOfUser(uname);
-          if (cur && cur !== d.stage) removeAssign(uname, cur);
-          if (d.stage) {
-            setAssign(uname, d.stage, [ALL_BAGTS], false);
-            role = STAGE_ROLE[d.stage];
-            views = views === 'all' ? 'all' : [...new Set<ViewKey>([...views, 'guitsetgel'])];
-          }
+        if (views !== 'all' && !d.touchedGuits && !views.includes('guitsetgel')
+          && stageOfUser(uname) && u && hasView(u.views, 'guitsetgel')) {
+          views = [...views, 'guitsetgel'];
         }
-        const r = await setUser(uname, { views, docs: d.docs }, role);
-        track(uname, r);
-        if (r) ok += 1; else fail += 1;
+        const r = await setUser(uname, { views, docs: d.docs }, d.role);
+        if (r) ok += 1; else { fail += 1; failed.push(uname); }
       } catch {
         fail += 1;
-        track(uname, false);
+        failed.push(uname);
       }
     }
 
     setUsers(listUsers());
-    setDrafts(new Map());
+    /*
+     * ⚠️ ЗӨВХӨН хадгалагдсан ноорогуудыг хасна: хадгалалтын ДУНД үүссэн шинэ
+     * ноорог (`putDraft` үргэлж шинэ объект үүсгэдэг тул reference зөрнө)
+     * хэвээр үлдэнэ. Урьд нь `new Map()` бүгдийг болзолгүй арчиж, дундуур
+     * хийсэн засвар анхааруулгагүй алга болдог байв.
+     */
+    setDrafts((prev) => {
+      const m = new Map(prev);
+      for (const [k, d] of snapshot) if (m.get(k) === d) m.delete(k);
+      return m;
+    });
     setSaving(false);
-    setSaved({ ok, fail });
+    setSaved({ ok, fail, failed });
   };
   saveRef.current = () => { void saveAll(); };
 
@@ -357,6 +406,16 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
   const add = () => {
     const n = name.trim();
     if (!n) return;
+    /*
+     * ⚠️ ArcGIS username формат: латин үсэг/тоогоор эхэлж, 3+ тэмдэгттэй,
+     * @ . _ - зөвшөөрнө. Кирилл/хоосон зай зэрэг typo-г ЭНД барина — буруу
+     * нэрээр мөр үүсвэл алдаа хэзээ ч гарахгүй атлаа тэр хүн хэзээ ч
+     * нэвтэрч чадахгүй (админ хэдэн долоо хоног анзаардаггүй байв).
+     */
+    if (!/^[A-Za-z0-9][A-Za-z0-9@._-]{2,127}$/.test(n)) {
+      setAddErr(tr('«{0}» нь ArcGIS хэрэглэгчийн нэрийн бүтцэд тохирохгүй (латин үсэг/тоо, 3+ тэмдэгт).', n));
+      return;
+    }
     const key = n.toLowerCase();
     if (users.some((u) => u.username.toLowerCase() === key) || drafts.has(key)) {
       setAddErr(tr('«{0}» аль хэдийн жагсаалтад байна.', n));
@@ -440,6 +499,11 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
           <p className={s.subtitle}>
             {tr('Сэдэв бүрийг унтраалгаар нээж/хааж, доод талын «Хадгалах» товчоор нэг дор хадгална.')}
           </p>
+          {!remoteOk && (
+            <div className={s.addErr} role="alert">
+              {tr('⚠️ ArcGIS хүснэгтээс уншиж чадсангүй — доорх жагсаалт энэ browser-ийн cache. Өөрчлөлт түр локалдоо хадгалагдаж, холболт сэргэхэд автоматаар илгээгдэнэ.')}
+            </div>
+          )}
         </header>
 
         {/* Хайх + шинэ аккаунт нэмэх */}
@@ -497,7 +561,13 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
             const key = u.username.toLowerCase();
             const d = draftOf(u);
             const dirty = drafts.has(key);
-            const st = stageOf(u);
+            /* ⚠️ ЗӨВХӨН ХАРУУЛАХ тэмдэг. Шат томилох нь «Гүйцэтгэлийн урсгалын
+                эрх» гэсэн ТУСДАА хуудсанд — тэнд аль багц хариуцахыг нь бас
+                зааж өгдөг. Урьд нь энэ мөрөнд товчлол байсныг 2026-08-27-нд
+                ХАСАВ: тэр товчлол багц сонгох чадваргүй тул үргэлж «бүх багц»
+                гэж бичиж, тусдаа хуудсан дээр тавьсан хязгаарлалтыг ЧИМЭЭГҮЙ
+                арилгадаг байлаа. */
+            const st = stageOfUser(u.username);
             const expanded = openRows.has(key);
             const on = countOn(d.views);
             return (
@@ -535,14 +605,23 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
                       {`${on}/${ALL_KEYS.length}`}
                     </span>
                   )}
-                  {st && <span className={s.stageBadge}>{STAGE_LABEL[st]}</span>}
+                  {st && (
+                    <button
+                      type="button"
+                      className={s.stageBadge}
+                      onClick={() => setPane('guits')}
+                      title={tr('Урсгалын томилгоог «Гүйцэтгэлийн урсгалын эрх» хуудсанд засна — дарж очно')}
+                    >
+                      {STAGE_LABEL[st]}
+                    </button>
+                  )}
                   {dirty && !d.remove && (
                     <span className={s.dirtyDot} title={tr('Хадгалаагүй өөрчлөлттэй')} />
                   )}
-                  {unsynced.has(key) && (
+                  {dirtyRemote.has(key) && (
                     <span
                       className={s.unsynced}
-                      title={tr('ArcGIS хүснэгтэд бичиж чадсангүй — өөрчлөлт бусад төхөөрөмжид үйлчлэхгүй')}
+                      title={tr('ArcGIS хүснэгтэд бичиж чадсангүй — өөрчлөлт бусад төхөөрөмжид үйлчлэхгүй. «Дахин синк» товчоор дахин илгээнэ.')}
                     >
                       {tr('ArcGIS-т хадгалагдсангүй — зөвхөн энэ browser-т')}
                     </span>
@@ -555,7 +634,9 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
                       type="button"
                       className={`${s.preset} ${d.role === r.key ? s.presetOn : ''}`}
                       onClick={() => applyRole(u, r.key)}
-                      title={tr('{0} эрхийн багц', r.label)}
+                      title={r.key === 'super'
+                        ? tr('Бүх харагдац нээгдэнэ. ⚠️ Админ портал нээх эрх зөвхөн кодын хатуу тохиргооны супер админд бий.')
+                        : tr('{0} эрхийн багц', r.label)}
                     >
                       {r.label}
                     </button>
@@ -570,7 +651,9 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
                       {tr('Сэргээх')}
                     </button>
                   )}
-                  {key !== myName && (
+                  {/* ⚠️ Хатуу тохиргооны super устгагдахгүй — хуваалцсан хүснэгтээр
+                      бүх админыг түгжих замыг хаана; хасах цор ганц зам = код. */}
+                  {key !== myName && roleForUser(u.username) !== 'super' && (
                     <button
                       type="button"
                       className={`${s.delBtn} ${d.remove ? s.delBtnOn : ''}`}
@@ -587,36 +670,6 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
 
               {expanded && !d.remove && (
                 <>
-                  {/*
-                    * ГҮЙЦЭТГЭЛИЙН УРСГАЛ — аккаунтыг ЭНД шууд шатанд томилно.
-                    * ⚠️ Нэг аккаунт нэг шатанд — өөрийн ажлаа өөрөө батлах
-                    *    зам үүсэхээс сэргийлнэ.
-                    */}
-                  <div className={s.flowRow}>
-                    <span className={s.flowLabel}>{tr('Гүйцэтгэлийн урсгал')}</span>
-                    {STAGE_ORDER.map((stg) => {
-                      const stOn = st === stg;
-                      const pk = stOn ? bagtsFor(u.username, stg) : null;
-                      return (
-                        <button
-                          key={stg}
-                          type="button"
-                          aria-pressed={stOn}
-                          className={`${s.chip} ${stOn ? s.chipOn : ''}`}
-                          onClick={() => flipStage(u, stg)}
-                          title={stOn ? tr('Дарж хасна') : tr('{0} шатанд томилно', STAGE_LABEL[stg])}
-                        >
-                          {STAGE_LABEL[stg]}
-                          {stOn && (
-                            <span className={s.flowPk}>
-                              {pk ? tr('{0} багц', String(pk.length)) : tr('бүх багц')}
-                            </span>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-
                   {/*
                     * СЭДВҮҮД — жагсаалт хэлбэрээр, мөр бүрийн АРД унтраалга.
                     * ⚠️ 2026-08-25 (хэрэглэгчийн хүсэлт): chip-үүдийн үүл байсныг
@@ -687,7 +740,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
                 <button
                   type="button"
                   className={s.reset}
-                  onClick={() => { void clearOverride(k).then((r) => { track(k, r); setUsers(listUsers()); }); }}
+                  onClick={() => { void clearOverride(k).then(() => setUsers(listUsers())); }}
                   title={tr('Аккаунтыг сэргээж хатуу тохиргооны эрхийг нь буцаана')}
                 >
                   {tr('Буцаах')}
@@ -712,14 +765,27 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
               ? tr('{0} хэрэглэгчийн өөрчлөлт хадгалагдаагүй', String(drafts.size))
               : saved
                 ? (saved.fail > 0
-                  ? tr('{0} хадгалагдав · {1} нь ArcGIS-т хүрсэнгүй', String(saved.ok), String(saved.fail))
+                  ? tr('{0} хадгалагдав · ArcGIS-т хүрсэнгүй: {1}', String(saved.ok),
+                      saved.failed.slice(0, 3).join(', ') + (saved.failed.length > 3 ? (' +' + String(saved.failed.length - 3)) : ''))
                   : tr('{0} хэрэглэгчийн өөрчлөлт хадгалагдлаа', String(saved.ok)))
                 : tr('Бүх өөрчлөлт хадгалагдсан')}
           </span>
+          {dirtyRemote.size > 0 && (
+            <button
+              type="button"
+              className={s.cancelBtn}
+              disabled={saving || syncing}
+              onClick={() => { void retrySync(); }}
+              title={tr('ArcGIS-т хүрээгүй {0} өөрчлөлтийг дахин илгээнэ', String(dirtyRemote.size))}
+            >
+              {syncing ? tr('Синк хийж байна…') : tr('Дахин синк ({0})', String(dirtyRemote.size))}
+            </button>
+          )}
           {drafts.size > 0 && (
             <button
               type="button"
               className={s.cancelBtn}
+              disabled={saving}
               onClick={() => { setDrafts(new Map()); setSaved(null); }}
             >
               {tr('Болих')}

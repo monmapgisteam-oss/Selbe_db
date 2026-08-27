@@ -7,21 +7,21 @@
  * харагдац үзэх вэ», энэ нь «хэн аль багцын гүйцэтгэлийг бөглөх / хянах вэ».
  * Хоёр нь ТУСДАА хадгалагдана — гэхдээ ХОЛБООТОЙ ажиллана: шатанд томилохдоо
  * `permissions`-д үүрэг ба `guitsetgel` харагдацыг ДАГУУЛЖ өгнө (доорх
- * `grantFlowAccess`). Ингэснээр «томилсон атлаа нэвтрээд юу ч олдохгүй» гэсэн
- * хагас төлөв үүсэхгүй.
+ * `grantFlowAccess`), хасахад БУЦААЖ авна (`revokeFlowAccess`).
  *
  * ⚠️ АККАУНТЫН ТООНД ХЯЗГААР БАЙХГҮЙ. Багц бүрд өөр гүйцэтгэгч, өөр инженер
  * байх тул урьдчилан таамагласан дээд тоо нь заавал буруу гарна.
  *
- * ⚠️ ОДООГООР `localStorage`-д хадгална — ТУХАЙН BROWSER-Т. ArcGIS дээрх
- * хуваалцсан хүснэгт (`permsRemote.ts` загвараар) нэмэгдэх хүртэл өөр
- * төхөөрөмжид дамжихгүй. Тиймээс панел дээр үүнийг ИЛ бичнэ — чимээгүй
- * орхивол админ «тохируулсан» гэж бодох боловч бусдад хүрээгүй байна.
- * Дараа нь зөвхөн `load`/`save` хоёрыг сольж алсын хадгалалт руу залгана.
+ * ⚠️ ХАДГАЛАЛТ (2026-08-27): ArcGIS-ийн ХУВААЛЦСАН хүснэгтэд (`permsRemote`,
+ * `__flow__:` угтвартай мөрүүд) + localStorage (offline cache). Урьд нь ЗӨВХӨН
+ * localStorage байсан тул томилогдсон хүний өөрийнх нь төхөөрөмж дээр томилгоо
+ * огт харагдахгүй — багцын хязгаарлалт хаана ч биелдэггүй, Ерөнхий менежерийн
+ * онцгой эрх (мөр нэмэх г.м.) хэзээ ч асдаггүй байв. Одоо `permissions.initRemote`
+ * нэвтрэх үед + 5 мин тутам татаж `_syncRemoteAssigns`-аар энд буулгана.
  */
 
-import type { Stage } from './hyanalt';
-import { ROLE_ACCESS, type Role, type ViewKey } from './services';
+import { STAGE_ORDER, type Stage } from './hyanalt';
+import { ROLE_ACCESS, roleForUser, type Role, type ViewKey } from './services';
 
 /**
  * ШАТ → ПОРТАЛЫН ҮҮРЭГ.
@@ -36,6 +36,9 @@ export const STAGE_ROLE: Record<Stage, Role> = {
   manager: 'menejer',
   director: 'eronhii',
 };
+
+/** Урсгалын дөрвөн үүрэг — «энэ хүний ажил зөвхөн урсгал» гэж таних олонлог */
+const FLOW_ROLES = new Set<Role>(Object.values(STAGE_ROLE));
 
 /** «Бүх багц» — тодорхой багц сонгоогүй гэсэн утга */
 export const ALL_BAGTS = '*';
@@ -74,11 +77,53 @@ function save(list: Assign[]): void {
   }
 }
 
+const STAGES = new Set<string>(STAGE_ORDER);
+
+/**
+ * REMOTE-ООС ИРСЭН томилгоог cache-д буулгана — `permissions.initRemote` дуудна.
+ *
+ * ⚠️ BOOTSTRAP: remote ХООСОН атлаа энэ browser-т (хуучин localStorage-only
+ * хувилбарын) томилгоо байгаа бол, ЗӨВХӨН super admin (`canSeed`) дээр локал
+ * жагсаалтыг remote руу түлхэж өгнө — шинэчлэлтийн дараа админы хийсэн
+ * тохиргоо алдагдахгүй. Энгийн хэрэглэгчийн хуучирсан localStorage remote-ыг
+ * дарж чадахгүй.
+ */
+export function _syncRemoteAssigns(rows: { user: string; stage: string; bagts: string[] }[], canSeed: boolean): void {
+  const valid: Assign[] = rows
+    .filter((r) => r.user && STAGES.has(r.stage))
+    .map((r) => ({ user: r.user.toLowerCase(), stage: r.stage as Stage, bagts: r.bagts.filter((b) => typeof b === 'string') }));
+
+  if (valid.length === 0 && canSeed) {
+    const local = load();
+    if (local.length > 0) {
+      void (async () => {
+        try {
+          const m = await import('./permsRemote');
+          for (const a of local) await m.flowUpsert(a.user, a.stage, a.bagts);
+        } catch { /* дараагийн initRemote дахин оролдоно */ }
+      })();
+      return; // локал хэвээр — дараагийн таталтаар remote-оос эргэж ирнэ
+    }
+  }
+  save(valid);
+}
+
 export const listAssigns = (): Assign[] => load();
 
 /** Нэг шатны томилгоонууд — панелийн багана */
 export const assignsOf = (stage: Stage): Assign[] =>
   load().filter((a) => a.stage === stage);
+
+/** Томилгоог remote руу бичих — унавал `false` (панел анхааруулга харуулна) */
+async function pushFlow(user: string): Promise<boolean> {
+  try {
+    const m = await import('./permsRemote');
+    const a = load().find((x) => x.user === user);
+    return a ? m.flowUpsert(a.user, a.stage, a.bagts) : m.flowRemove(user);
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Аккаунт нэмэх/шинэчлэх (шатанд томилох).
@@ -87,12 +132,13 @@ export const assignsOf = (stage: Stage): Assign[] =>
  *    Хоёр мөр зөвшөөрвөл аль нь үнэн болох нь тодорхойгүй болно.
  *
  * @param grant `false` бол порталын эрхийг (`grantFlowAccess`) ЭНД олгохгүй —
- *   дуудагч өөрөө нэг бичилтэд нэгтгэнэ.
- *   ⚠️ 2026-08-25: UserAdmin-ы «Хадгалах» нь эрхийг өөрөө бичдэг тул энд
- *   давхар бичихэд хоёр `setUser` УРАЛДАЖ, аль нь сүүлд буухаас хамаарч
- *   `guitsetgel` харагдац чимээгүй алга болдог байв.
+ *   багц солиход эрх аль хэдийн олгогдсон тул дахин бичих нь дэмий.
+ * @returns `ok` — локал бичилт; `sync` — remote бичилтийн амлалт (панел
+ *   `false` үед «ArcGIS-т хадгалагдсангүй» анхааруулга харуулна).
  */
-export function setAssign(user: string, stage: Stage, bagts: string[], grant = true): { ok: boolean; error?: string } {
+export function setAssign(
+  user: string, stage: Stage, bagts: string[], grant = true,
+): { ok: boolean; error?: string; sync?: Promise<boolean> } {
   const u = user.trim().toLowerCase();
   if (!u) return { ok: false, error: 'Аккаунтын нэрээ бичнэ үү' };
 
@@ -111,39 +157,93 @@ export function setAssign(user: string, stage: Stage, bagts: string[], grant = t
 
   /*
    * ЭРХИЙГ ДАГУУЛЖ ӨГНӨ — томилгоо нь ажиллах чадвартай байх ёстой.
-   * ⚠️ Хэрэглэгчийн БУСАД харагдацыг хасахгүй: `guitsetgel`-ийг НЭМЖ л
-   *    өгнө. Дарж бичвэл давхар үүрэгтэй хүн (жишээ нь супер админ)
-   *    бүх эрхээ алдана.
+   * Remote бичилт (`pushFlow`) нь эрх олголттой ЗЭРЭГ явна; хоёулаа өөр
+   * мөрөнд бичдэг тул уралдахгүй.
    */
+  const sync = pushFlow(u);
   if (grant) void grantFlowAccess(u, stage);
-  return { ok: true };
-}
-
-export function removeAssign(user: string, stage: Stage): void {
-  const u = user.trim().toLowerCase();
-  save(load().filter((a) => !(a.stage === stage && a.user === u)));
+  return { ok: true, sync };
 }
 
 /**
- * Урсгалын эрхийг олгоно: үүргийг тавьж, `guitsetgel` харагдацыг НЭМНЭ.
+ * Томилгоог хасах + олгосон эрхийг БУЦААХ.
  *
- * ⚠️ Динамик import — `permissions.ts` нь энэ файлыг импортлодоггүй ч
- *    ирээдүйд гогцоо үүсэхээс сэргийлж, мөн серверийн зурагдалтад
- *    `localStorage` хөндөхгүйн тулд.
+ * ⚠️ 2026-08-27: урьд нь зөвхөн жагсаалтаас хасдаг байв — олгогдсон үүрэг ба
+ * «Гүйцэтгэлийн хяналт» харагдац нь ҮЛДЭЖ, багцын хязгаарлалт нь арилснаар
+ * тэр хүн урсгалаас гарсан атлаа БҮХ багцын хяналтын хуудсыг үзсээр байлаа.
+ *
+ * @param revoke `false` бол олгосон эрхийг БУЦААХГҮЙ — аккаунт бүхэлдээ
+ *   устгагдах гэж байгаа үед (UserAdmin-ы устгах зам) хэрэглэнэ. Эс бөгөөс
+ *   энд бичих `clearOverride`/`setUser` нь дараагийн tombstone бичилттэй
+ *   УРАЛДАЖ, устгагдсан хэрэглэгчийг remote дээр амилуулж болно.
+ */
+export function removeAssign(user: string, stage: Stage, revoke = true): { sync: Promise<boolean> } {
+  const u = user.trim().toLowerCase();
+  save(load().filter((a) => !(a.stage === stage && a.user === u)));
+  const sync = (async () => {
+    let ok = true;
+    try {
+      const m = await import('./permsRemote');
+      ok = await m.flowRemove(u);
+    } catch { ok = false; }
+    if (revoke) await revokeFlowAccess(u, stage).catch(() => {});
+    return ok;
+  })();
+  return { sync };
+}
+
+/**
+ * Урсгалын эрхийг олгоно: үүргийг тавьж, харагдацыг тохируулна.
+ *
+ * ⚠️ ХАРАГДАЦЫН БОДЛОГО: урсгалын хүн (үүрэггүй эсвэл урсгалын үүрэгтэй) —
+ * ЗӨВХӨН `ROLE_ACCESS`-ийн зааснаар (`guitsetgel` л). Урьд нь одоо байгаа
+ * харагдац дээр НЭМДЭГ байсан тул «Төлөвлөлт» preset-тэй хүнийг инженер
+ * болгоход хуучин харагдацууд нь дагаад үлдэж, үүргийн хил бүдгэрдэг байв.
+ * Урсгалын БУС үүрэгтэй (super/beginner/tolovlolt) хүнд харин НЭМЖ өгнө —
+ * давхар үүрэгтэй хүний бусад ажлыг хумихгүй.
+ *
+ * ⚠️ Динамик import — гогцоо болон серверийн зурагдалтад `localStorage`
+ *    хөндөхөөс сэргийлнэ.
  */
 async function grantFlowAccess(user: string, stage: Stage): Promise<boolean> {
   try {
-    const { resolveAccess, setUser } = await import('./permissions');
+    const { resolveAccess, roleOf, setUser } = await import('./permissions');
     const role = STAGE_ROLE[stage];
+    const curRole = roleOf(user);
     const cur = resolveAccess(user);
-    const base = cur?.views ?? ROLE_ACCESS[role].views;
-    // «Бүх эрх»-тэй хүнийг хумихгүй — тэр аль хэдийн бүгдийг үзнэ
-    const views: ViewKey[] | 'all' =
-      base === 'all' ? 'all' : [...new Set<ViewKey>([...base, 'guitsetgel'])];
-    return setUser(user, { views, docs: cur?.docs ?? ROLE_ACCESS[role].docs }, role);
+    const pureFlow = curRole == null || FLOW_ROLES.has(curRole);
+    const views: ViewKey[] | 'all' = pureFlow
+      ? ROLE_ACCESS[role].views
+      : cur?.views === 'all'
+        ? 'all'
+        : [...new Set<ViewKey>([...(cur?.views ?? []), 'guitsetgel'])];
+    const docs = pureFlow ? ROLE_ACCESS[role].docs : (cur?.docs ?? ROLE_ACCESS[role].docs);
+    // Урсгалын бус үүрэгтэй хүний ҮНДСЭН үүргийг нь хадгална (супер хэвээр)
+    const keepRole = pureFlow ? role : curRole;
+    return setUser(user, { views, docs }, keepRole);
   } catch {
     return false;
   }
+}
+
+/**
+ * Урсгалын эрхийг БУЦААНА — томилгооноос хасагдсан хүнд.
+ * · Хатуу тохиргоотой хэрэглэгч → override-ыг арилгаж СУУРЬ эрх рүү нь буцаана.
+ * · Панелаас нэмсэн, зөвхөн урсгалын хүн → `guitsetgel` харагдацыг хасна
+ *   (үлдсэн харагдац нь хэвээр — админ хүсвэл панелаас бүрмөсөн устгана).
+ */
+async function revokeFlowAccess(user: string, stage: Stage): Promise<void> {
+  const { resolveAccess, roleOf, setUser, clearOverride } = await import('./permissions');
+  if (roleForUser(user)) {
+    await clearOverride(user);
+    return;
+  }
+  const cur = resolveAccess(user);
+  if (!cur) return;
+  const views = cur.views === 'all' ? 'all' : cur.views.filter((v) => v !== 'guitsetgel');
+  const curRole = roleOf(user);
+  const role = curRole === STAGE_ROLE[stage] ? null : curRole;
+  await setUser(user, { views, docs: cur.docs }, role);
 }
 
 /** Аккаунт аль шатанд томилогдсон бэ (томилогдоогүй бол `null`) */

@@ -10,9 +10,24 @@
  * ⚠️ Хүснэгт нь super admin ЭХ АНХ нэвтрэхэд автоматаар үүснэ (publish эрхтэй бол).
  * Уншилт нь бүх нэвтэрсэн хэрэглэгчид (org-shared) нээлттэй, бичих нь editor эрхээр.
  * ArcGIS байхгүй/алдаа гарвал дуудагч тал `localStorage`-руу ухарна.
+ *
+ * ⚠️ УРСГАЛЫН ТОМИЛГОО (2026-08-27): «хэн аль шатанд, аль багцад» гэсэн
+ * гүйцэтгэлийн урсгалын томилгоог мөн ЭНЭ хүснэгтэд хадгална — `username`
+ * талбарт `__flow__:` угтвартай нөөц мөрөөр. Урьд нь тэр нь зөвхөн админы
+ * browser-ийн localStorage-д байсан тул томилогдсон хүний ӨӨРИЙНХ нь
+ * төхөөрөмж дээр томилгоо огт харагдахгүй — багцын хязгаарлалт хаана ч
+ * биелдэггүй, Ерөнхий менежерийн эрх (мөр нэмэх г.м.) хэзээ ч асдаггүй байв.
+ * Угтвартай мөрүүд эрхийн уншилтад ОГТ ОРОХГҮЙ (`fetchAll` ялгаж буцаана).
+ *
+ * ⚠️ ХЯЗГААР (баримтжуулсан): бичих эрх нь ArcGIS item-sharing дээр л
+ * тулгуурладаг. Хүснэгтийг олон super admin засах ёстой тул мөрийн эзэмшлийн
+ * хязгаарлалт (ownership-based access control) тавьж болохгүй — тиймээс org
+ * доторх, бичих эрх бүхий хэн боловч REST-ээр шууд засаж чадна. Клиент талын
+ * системд үүнээс чанга хамгаалалт байхгүй; нэвтрэлтийн түвшний эрсдэлийг
+ * `permissions.hasAccess` (хатуу жагсаалт + remote баталгаажилт) барина.
  */
 
-import { AUTH, type Role, type ViewKey } from './services';
+import { AUTH, ROLE_BY_USER, type Role, type ViewKey } from './services';
 import { t as tr } from '@/lib/i18nCore';
 
 export type RemoteRow = {
@@ -28,8 +43,16 @@ export type RemoteRow = {
   removed?: boolean;
 };
 
+/**
+ * Урсгалын нэг томилгоо — permsRemote нь `Stage` төрлөөс санаатай ХАРААТ БУС
+ * (энд зөвхөн тээвэрлэнэ, утгыг нь `guitsetgelAcl` шалгана).
+ */
+export type FlowRow = { user: string; stage: string; bagts: string[] };
+
 const TITLE = 'Selbe_Permissions';
 const TABLE_NAME = 'permissions';
+/** Урсгалын томилгооны мөрийн `username` угтвар — эрхийн мөрөөс ялгана */
+const FLOW_PREFIX = '__flow__:';
 
 let tableUrlCache: string | undefined; // ⚠️ зөвхөн ОЛДСОН URL — null/олдоогүйг кэшлэхгүй (tableUrl-ыг үз)
 
@@ -45,23 +68,46 @@ async function getToken(): Promise<{ token: string; user: string } | null> {
   }
 }
 
+/**
+ * ArcGIS REST дуудлага.
+ * ⚠️ ArcGIS нь алдаагаа HTTP 200 + `{error:{...}}` биеэр буцаадаг — шалгахгүй
+ * бол `createTable` хагас дутуу (талбаргүй, share хийгдээгүй) «хордсон»
+ * хүснэгт үүсгээд URL-ыг нь кэшилдэг байв. Одоо алдаанд ШИДНЭ — дуудагч
+ * тал catch-ээрээ null/false руу ухардаг.
+ */
 async function req(url: string, params: Record<string, string>): Promise<Record<string, unknown>> {
   const body = new URLSearchParams({ f: 'json', ...params });
   const r = await fetch(url, { method: 'POST', body });
-  return r.json();
+  const j = (await r.json()) as Record<string, unknown> & { error?: { message?: string } };
+  if (j.error) throw new Error(j.error.message || 'ArcGIS error');
+  return j;
 }
 
 const restBase = () => `${AUTH.portalUrl.replace(/\/+$/, '')}/sharing/rest`;
 
-/** Хүснэгтийн URL олох — байгаа item-ээс. Олдвол `<serviceUrl>/0`. */
+/** Хатуу тохиргооны super админууд — хүснэгтийн ЖИНХЭНЭ эзэн эдний нэг байх ёстой */
+const SUPER_OWNERS = new Set(
+  Object.entries(ROLE_BY_USER).filter(([, r]) => r === 'super').map(([u]) => u),
+);
+
+/**
+ * Хүснэгтийн URL олох — байгаа item-ээс.
+ *
+ * ⚠️ ЭЗНИЙГ ШАЛГАНА: title хайлт нь org доторх ХЭНИЙ Ч үүсгэсэн ижил нэртэй
+ * item-ыг буцааж болно — халдагч `Selbe_Permissions` нэртэй хуурамч хүснэгт
+ * үүсгэвэл бүх клиент эрхээ түүнээс уншина. Зөвхөн хатуу тохиргооны super
+ * админы эзэмшдэг хүснэгтийг л хүлээн авна.
+ */
 async function findTableUrl(token: string): Promise<string | null> {
   const search = await req(`${restBase()}/search`, {
     q: `title:"${TITLE}" type:"Feature Service"`,
     token,
-    num: '5',
+    num: '10',
   });
-  const results = (search.results as Array<{ url?: string; title?: string }>) ?? [];
-  const hit = results.find((x) => x.title === TITLE && x.url);
+  const results = (search.results as Array<{ url?: string; title?: string; owner?: string }>) ?? [];
+  const hit = results.find(
+    (x) => x.title === TITLE && x.url && SUPER_OWNERS.has(String(x.owner ?? '').toLowerCase()),
+  );
   return hit?.url ? `${hit.url}/0` : null;
 }
 
@@ -124,22 +170,65 @@ async function tableUrl(canCreate: boolean): Promise<string | null> {
 }
 
 type FeatureLayerMod = typeof import('@arcgis/core/layers/FeatureLayer').default;
-async function layer(url: string) {
+type FeatureLayerInst = InstanceType<FeatureLayerMod>;
+async function layer(url: string): Promise<FeatureLayerInst> {
   const { default: FeatureLayer } = (await import('@arcgis/core/layers/FeatureLayer')) as { default: FeatureLayerMod };
   return new FeatureLayer({ url });
 }
 
-/** Бүх мөрийг татаж, эрхийн map болгоно */
-export async function fetchAll(canCreate = false): Promise<Record<string, RemoteRow> | null> {
+type RawAttrs = { OBJECTID?: number; username?: string; role?: string; views?: string; docs?: number };
+
+/**
+ * БҮХ мөрийг хуудаслаж татна.
+ * ⚠️ `maxRecordCount`-аас хэтэрсэн мөрийг чимээгүй хаявал сүүлд нэмэгдсэн
+ * хэрэглэгчид «эрхгүй» болно — хуудаслалт ЗААВАЛ.
+ */
+async function queryAllRows(fl: FeatureLayerInst, where: string): Promise<RawAttrs[]> {
+  const out: RawAttrs[] = [];
+  for (let offset = 0; ; ) {
+    const res = await fl.queryFeatures({
+      where, outFields: ['*'], returnGeometry: false,
+      orderByFields: ['OBJECTID ASC'], start: offset, num: 2000,
+    });
+    out.push(...res.features.map((f) => f.attributes as RawAttrs));
+    if (!res.exceededTransferLimit || res.features.length === 0) break;
+    offset += res.features.length;
+  }
+  return out;
+}
+
+/**
+ * Бүх мөрийг татаж, ЭРХ ба УРСГАЛЫН томилгоо болгон ялгана.
+ *
+ * ⚠️ Нэг л асуулгаар хоёуланг нь авна — `initRemote` 5 минут тутам дуудагддаг
+ * тул давхар round-trip дэмий.
+ */
+export async function fetchAll(
+  canCreate = false,
+): Promise<{ perms: Record<string, RemoteRow>; flow: FlowRow[] } | null> {
   try {
     const url = await tableUrl(canCreate);
     if (!url) return null;
     const fl = await layer(url);
-    const res = await fl.queryFeatures({ where: '1=1', outFields: ['*'], returnGeometry: false });
-    const out: Record<string, RemoteRow> = {};
-    for (const f of res.features) {
-      const a = f.attributes as { username?: string; role?: string; views?: string; docs?: number };
+    const rows = await queryAllRows(fl, '1=1');
+    const perms: Record<string, RemoteRow> = {};
+    const flow: FlowRow[] = [];
+    for (const a of rows) {
       if (!a.username) continue;
+
+      /* ── Урсгалын томилгооны мөр ── */
+      if (a.username.startsWith(FLOW_PREFIX)) {
+        const user = a.username.slice(FLOW_PREFIX.length).toLowerCase();
+        try {
+          const d = JSON.parse(a.views || '{}') as { stage?: string; bagts?: string[] };
+          if (user && d.stage) {
+            flow.push({ user, stage: d.stage, bagts: Array.isArray(d.bagts) ? d.bagts : [] });
+          }
+        } catch { /* эвдэрсэн мөр — алгасна (томилгоо байхгүйтэй ижил, fail-closed) */ }
+        continue;
+      }
+
+      /* ── Эрхийн мөр ── */
       // Устгагдсан аккаунт — `views` талбарт `removed` шууд утга (JSON биш)
       const removed = a.views === 'removed';
       // ⚠️ FAIL-CLOSED: views талбар хоосон/эвдэрсэн (JSON алдаа, урт таслагдсан)
@@ -151,7 +240,7 @@ export async function fetchAll(canCreate = false): Promise<Record<string, Remote
           views = v === 'all' ? 'all' : Array.isArray(v) ? (v as ViewKey[]) : [];
         } catch { views = []; }
       }
-      out[a.username.toLowerCase()] = {
+      perms[a.username.toLowerCase()] = {
         username: a.username,
         role: (a.role as Role) || null,
         views,
@@ -160,57 +249,98 @@ export async function fetchAll(canCreate = false): Promise<Record<string, Remote
         ...(removed ? { removed: true } : {}),
       };
     }
-    return out;
+    return { perms, flow };
   } catch {
     return null;
   }
 }
 
-/** Нэг хэрэглэгчийн мөрийг нэмэх/шинэчлэх (upsert) */
-export async function upsert(row: RemoteRow): Promise<boolean> {
+/**
+ * `username`-ээр таарах БҮХ мөрийн OBJECTID (өсөх эрэмбээр).
+ * ⚠️ Давхар мөр нь зэрэгцээ бичилтийн race-аас үүсдэг бөгөөд `fetchAll`-д
+ * СҮҮЛИЙН (их OID) мөр ялдаг тул засварыг ч мөн их OID-д хийж, бусдыг нь
+ * устгана — эс бөгөөс «хадгалсан ч үйлчлэхгүй» чимээгүй алдаа гардаг байв.
+ */
+async function findOids(fl: FeatureLayerInst, username: string): Promise<number[]> {
+  const found = await fl.queryFeatures({
+    where: `LOWER(username) = '${username.toLowerCase().replace(/'/g, "''")}'`,
+    outFields: ['OBJECTID'], returnGeometry: false, orderByFields: ['OBJECTID ASC'],
+  });
+  return found.features
+    .map((f) => f.attributes?.OBJECTID as number)
+    .filter((x) => typeof x === 'number');
+}
+
+const editOk = (r: { error?: unknown }[] | undefined): boolean =>
+  (r ?? []).every((x) => x.error == null);
+
+/** Нэг түлхүүр (username)-д нэг мөр байлгаж upsert хийнэ; давхардлыг цэвэрлэнэ */
+async function upsertByKey(usernameKey: string, attrs: Record<string, unknown>): Promise<boolean> {
   try {
     const url = await tableUrl(true);
     if (!url) return false;
     const fl = await layer(url);
-    const attrs = {
-      username: row.username,
-      role: row.role ?? null,
-      // Устгагдсан аккаунт — JSON биш `removed` шууд утга (RemoteRow-ийн тайлбарыг үз)
-      views: row.removed ? 'removed' : JSON.stringify(row.views),
-      docs: row.docs ? 1 : 0,
+    const oids = await findOids(fl, usernameKey);
+    const target = oids.length ? oids[oids.length - 1] : null;
+    const dupes = oids.slice(0, -1);
+    const edit = {
+      ...(target != null
+        ? { updateFeatures: [{ attributes: { OBJECTID: target, ...attrs } }] }
+        : { addFeatures: [{ attributes: attrs }] }),
+      ...(dupes.length ? { deleteFeatures: dupes.map((objectId) => ({ objectId })) } : {}),
     };
-    const found = await fl.queryFeatures({
-      where: `LOWER(username) = '${row.username.toLowerCase().replace(/'/g, "''")}'`,
-      outFields: ['OBJECTID'], returnGeometry: false,
-    });
-    const oid = found.features[0]?.attributes?.OBJECTID as number | undefined;
-    const edit = oid != null
-      ? { updateFeatures: [{ attributes: { OBJECTID: oid, ...attrs } }] }
-      : { addFeatures: [{ attributes: attrs }] };
     const r = await fl.applyEdits(edit as Parameters<typeof fl.applyEdits>[0]);
     const ok = [...(r.addFeatureResults ?? []), ...(r.updateFeatureResults ?? [])];
-    return ok.length > 0 && ok.every((x) => x.error == null);
+    return ok.length > 0 && ok.every((x) => x.error == null) && editOk(r.deleteFeatureResults);
   } catch {
     return false;
   }
 }
 
-/** Хэрэглэгчийн мөрийг устгах */
-export async function remove(username: string): Promise<boolean> {
+/** Түлхүүрт таарах БҮХ мөрийг устгана (давхардал ч бас) */
+async function removeByKey(usernameKey: string): Promise<boolean> {
   try {
     const url = await tableUrl(true);
     if (!url) return false;
     const fl = await layer(url);
-    const found = await fl.queryFeatures({
-      where: `LOWER(username) = '${username.toLowerCase().replace(/'/g, "''")}'`,
-      outFields: ['OBJECTID'], returnGeometry: false,
-    });
-    const oid = found.features[0]?.attributes?.OBJECTID as number | undefined;
-    if (oid == null) return true;
-    const del = { deleteFeatures: [{ objectId: oid }] } as Parameters<typeof fl.applyEdits>[0];
+    const oids = await findOids(fl, usernameKey);
+    if (!oids.length) return true;
+    const del = { deleteFeatures: oids.map((objectId) => ({ objectId })) } as Parameters<typeof fl.applyEdits>[0];
     const r = await fl.applyEdits(del);
-    return (r.deleteFeatureResults ?? []).every((x) => x.error == null);
+    return editOk(r.deleteFeatureResults);
   } catch {
     return false;
   }
+}
+
+/** Нэг хэрэглэгчийн эрхийн мөрийг нэмэх/шинэчлэх (upsert) */
+export function upsert(row: RemoteRow): Promise<boolean> {
+  return upsertByKey(row.username, {
+    username: row.username,
+    role: row.role ?? null,
+    // Устгагдсан аккаунт — JSON биш `removed` шууд утга (RemoteRow-ийн тайлбарыг үз)
+    views: row.removed ? 'removed' : JSON.stringify(row.views),
+    docs: row.docs ? 1 : 0,
+  });
+}
+
+/** Хэрэглэгчийн эрхийн мөрийг устгах */
+export function remove(username: string): Promise<boolean> {
+  return removeByKey(username);
+}
+
+/** Урсгалын томилгоог бичих — нэг хэрэглэгч нэг мөр (`__flow__:` угтвартай) */
+export function flowUpsert(user: string, stage: string, bagts: string[]): Promise<boolean> {
+  const key = FLOW_PREFIX + user.toLowerCase();
+  return upsertByKey(key, {
+    username: key,
+    role: null,
+    views: JSON.stringify({ stage, bagts }),
+    docs: 0,
+  });
+}
+
+/** Урсгалын томилгоог арилгах */
+export function flowRemove(user: string): Promise<boolean> {
+  return removeByKey(FLOW_PREFIX + user.toLowerCase());
 }

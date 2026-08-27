@@ -216,6 +216,7 @@
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
+/* Товч болсон (2026-08-27) — дарахад урсгалын эрхийн хуудас руу очно */
 .stageBadge {
   padding: 1px 8px;
   border-radius: 999px;
@@ -223,6 +224,12 @@
   color: var(--ink-2);
   font-size: 0.68rem;
   font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.stageBadge:hover {
+  background: color-mix(in srgb, var(--hue) 16%, transparent);
+  color: var(--ink);
 }
 .newBadge {
   padding: 1px 8px;
@@ -552,36 +559,4 @@
   .sideHead { display: none; }
   .sideItem { width: auto; }
   .main { padding: 0 16px; }
-}
-
-/* ══════════ ГҮЙЦЭТГЭЛИЙН УРСГАЛЫН МӨР ══════════
-   ⚠️ Харагдацын чипүүдээс ЯЛГАРАХ ёстой: энэ нь «юу үзэх вэ» биш, «ямар
-   үүрэг гүйцэтгэх вэ». Тиймээс тусдаа мөр, шошготой. */
-.flowRow {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 0 2px;
-  border-top: 1px dashed var(--line);
-  margin-top: 8px;
-}
-.flowLabel {
-  font-size: 0.7rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--ink-3);
-  margin-right: 4px;
-}
-/* Сонгосон шатны багцын тоо — чипийн дотор жижиг тэмдэглэгээ (нэг акцентын
-   дүрэмд захирагдана: тусдаа өнгө үүсгэхгүй, зөвхөн бэхжүүлсэн саарал) */
-.flowPk {
-  margin-left: 6px;
-  padding: 0 6px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--ink) 10%, transparent);
-  font-size: 0.66rem;
-  font-weight: 600;
-  color: var(--ink-2);
 }
