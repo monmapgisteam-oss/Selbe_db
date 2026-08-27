@@ -15,7 +15,7 @@
 import { useEffect, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { STAGE_ORDER, type Stage } from '@/lib/hyanalt';
-import { STAGE_LABEL } from './Guitsetgel';
+import { STAGE_LABEL } from '@/lib/hyanaltGroup';
 import {
   ALL_BAGTS, assignsOf, listAssigns, removeAssign, setAssign, subscribeAcl,
 } from '@/lib/guitsetgelAcl';

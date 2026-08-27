@@ -15,7 +15,7 @@ import {
 import { useAuth } from './AuthGate';
 import { Icon } from './Icon';
 import { GuitsetgelAcl } from '@/modules/GuitsetgelAcl';
-import { STAGE_LABEL } from '@/modules/Guitsetgel';
+import { STAGE_LABEL } from '@/lib/hyanaltGroup';
 import { STAGE_ORDER, type Stage } from '@/lib/hyanalt';
 import {
   ALL_BAGTS, STAGE_ROLE, bagtsFor, removeAssign, setAssign, stageOfUser, subscribeAcl,

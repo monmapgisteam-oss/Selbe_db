@@ -1561,7 +1561,7 @@ function ScheduleDetail({ fin, prog, bagts }: {
     for (const m of months) {
       if (m.label > nowYm) continue;
       if (m.cumPct > 0) planned = m.cumPct;
-      if (m.phys > 0) actual = m.phys;
+      if (m.phys != null) actual = m.phys;
     }
   }
   const gap = planned != null && actual != null ? planned - actual : null;
@@ -1594,8 +1594,9 @@ function ScheduleDetail({ fin, prog, bagts }: {
         <Data q={fin} loading={tr('Татаж байна…')}>
           {() => {
             const pts = (months ?? [])
-              .filter((m) => m.label <= nowYm && m.phys > 0)
-              .map((m) => ({ key: m.label, label: m.label.slice(2), value: m.phys }));
+              .filter((m) => m.label <= nowYm && m.phys != null)
+              // `filter` нь null-ыг аль хэдийн хассан — Series тоо хүлээдэг
+              .map((m) => ({ key: m.label, label: m.label.slice(2), value: m.phys as number }));
             return pts.length >= 2
               ? <Series items={pts} height={120} unit="%" line showValues />
               : <Empty label={tr('Цуваа зурах бүртгэл алга')} />;

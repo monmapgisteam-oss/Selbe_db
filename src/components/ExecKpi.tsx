@@ -395,7 +395,9 @@ export function ExecKpi({ onView }: { onView: (key: ViewKey) => void }) {
       if (!key || key === '0' || seen.has(key)) return;
       seen.add(key);
       const ms = contractMonths(r, d.given, d.phys);
-      ms.forEach((m, i) => { if (m.phys > 0) { physSum[i] += m.phys; physCnt[i] += 1; } });
+      // ⚠️ `!= null`: жинхэнэ 0% нь ХЭМЖИЛТ тул дундажид орох ёстой;
+      //    хэмжигдээгүй сар л хасагдана (0 гэж тоовол дундаж худал буурна).
+      ms.forEach((m, i) => { if (m.phys != null) { physSum[i] += m.phys; physCnt[i] += 1; } });
       const lag = lagOf(ms);
       if (!lag) return;
       total += 1;

@@ -28,7 +28,6 @@ import { readParam, writeParams } from '@/lib/urlState';
 import o from './pkgFinOv.module.css';
 import f from './finance.module.css';
 import { SplitGrip, useSideResize } from '@/components/SplitGrip';
-import { overlapLeftParcels, type Overlap } from '@/lib/parcelOverlap';
 import ts from './pkgFin.module.css';
 
 /**
@@ -70,9 +69,6 @@ const PACK_CATS: { key: PackCat; name: () => string }[] = [
   { key: 'soc', name: () => tr('Нийгмийн барилга') },
   { key: 'site', name: () => tr('Өндөржилт') },
 ];
-/** Газар чөлөөлөлтийн нэгж талбарын давхарга — давхцсан талбарыг зурахад. */
-const PARCEL_LAYER = 'land:left';
-
 /** Утгыг тоо руу — ArcGIS Double эсвэл "0" мэт мөр ирдэг */
 const nn = (v: unknown): number => {
   const x = Number(v);
@@ -119,46 +115,28 @@ export function PkgFin({ dim, setDim }: {
 
   const active = packs.find((p) => p.key === sel) ?? null;
 
-  /**
-   * БАГЦТАЙ ДАВХЦАЖ БУЙ «ҮЛДСЭН НЭГЖ ТАЛБАР» — чөлөөлөгдөөгүй, барилга
-   * эхлүүлэхэд саад болж буй газар. Багц сонгоход орон зайн огтлолцлоор олж,
-   * газрын зурагт зурж, тоог нь KPI-д гаргана.
+  /*
+   * ⚠️ «ДАВХЦСАН ҮЛДСЭН НЭГЖ ТАЛБАР» ЭНЭ ХАРАГДАЦААС БҮРЭН ХАСАГДАВ
+   *    (2026-08-27, хэрэглэгчийн шийдвэр). Гурван шалтгаан:
    *
-   * ⚠️ Хариу хожуу ирж БУСАД багцын үр дүнг дарж бичихээс `alive` хамгаална
-   *    (хэрэглэгч хурдан дараалан сонгоход).
+   *    1. ТАЙЛБАРГҮЙ ҮЛДСЭН. Тоон индикатор нь 2026-08-21-нд эндээс хасагдаж
+   *       «Багц N — блокууд» картын толгойд нүүсэн боловч тэр карт
+   *       (`BlocksCard`) нь ЗӨВХӨН «Багцын гүйцэтгэл» талд зурагддаг. Үр
+   *       дүнд санхүүгийн зурагт улаан анивчсан полигон гарч ирдэг ч юуных
+   *       болохыг хэлэх тоо ч, шошго ч байхгүй байв.
+   *
+   *    2. СЭДЭВ НЬ ЗӨРСӨН. Чөлөөлөгдөөгүй талбар нь АЖИЛ ЭХЛҮҮЛЭХЭД саад —
+   *       биет явцын ойлголт. Энэ давхарга мөнгөн дүн огт агуулаагүй (газрын
+   *       үнэлгээ нь `GAZAR_BUILDING.NIIT_UNE`, «Газар чөлөөлөлт» харагдацад).
+   *       `finOnly` тугийн дүрэм: санхүүгийн цонхонд гүйцэтгэл харагдахгүй.
+   *
+   *    3. ҮНЭТЭЙ. `overlapLeftParcels` нь блокийн давхарга + дэд бүтцийн ~48
+   *       багцын геометрийг татаж, мянган хэсгээр орон зайн огтлолцол бодуулна.
+   *       Уншигдахгүй үр дүнгийн төлөө төлөх ёсгүй зардал.
+   *
+   *    Саадын мэдээлэл «Багцын гүйцэтгэл» талдаа тоо, тайлбар, дарж очих
+   *    товчтойгоо БҮРЭН хэвээр — энд давхардуулах шаардлагагүй.
    */
-  /* ⚠️ Алдааг `{oids: []}`-оор ОРЛУУЛАХГҮЙ — «0 саад» нь ногооноор «саад алга»
-     гэсэн ХАРИУЛТ болж уншигддаг тул татаж чадаагүйг жинхэнэ 0-ээс ялгаж
-     `'error'` төлөвт хадгална (KPI/картад саарлаар «тоолж чадсангүй»). */
-  const [overlap, setOverlap] = useState<Overlap | 'error' | null>(null);
-  useEffect(() => {
-    let alive = true;
-    setOverlap(null);
-    /* ⚠️ Багц СОНГООГҮЙ үед ч тоолно — тэгэхдээ БҮХ блокоор (`where = null`),
-       өөрөөр хэлбэл төслийн НИЙТ саад. Урьд нь сонголтгүй үед огт тоолохгүй
-       байсан тул хэрэглэгч «нийт хэдэн талбар саад болж байна» гэдгийг
-       мэдэхийн тулд багц бүрийг ээлжлэн сонгох шаардлагатай байв. */
-    /* Багц сонгосон бол ТҮҮНИЙ бүх давхарга; эс бөгөөс БҮХ БАГЦЫНХ —
-       барилгын блокууд + дэд бүтцийн 48 багцын давхаргууд. Зөвхөн блокоор
-       тоолвол шугам хоолой, замын коридор дээрх саад тоологдохгүй үлддэг. */
-    const srcs = active
-      ? active.layerIds.map((id) => ({ layerId: id, where: active.where }))
-      : [
-          { layerId: BLOCK_LAYER, where: null },
-          ...packs.flatMap((pk) =>
-            pk.kind === 'infra' ? pk.layerIds.map((id) => ({ layerId: id, where: pk.where })) : [],
-          ),
-        ];
-    overlapLeftParcels(srcs)
-      .then((r) => alive && setOverlap(r))
-      .catch(() => alive && setOverlap('error'));
-    return () => {
-      alive = false;
-    };
-  }, [active]);
-
-  /** Амжилттай үр дүн л — зурагт/шүүлтэд алдааны төлөв «хоосон» мэт орохгүй */
-  const ovOk = overlap !== 'error' ? overlap : null;
 
   /**
    * САНХҮҮГИЙН КАРТЫН ӨНДӨР — картын дээд ирмэгийн бариулаар чирч тохируулна
@@ -331,46 +309,11 @@ export function PkgFin({ dim, setDim }: {
   useZoomToFilter({ zone });
 
   /**
-   * ЗУРАГТ ӨГӨХ жагсаалт — каталогийн сонголт (`visible`) дээр давхцсан
-   * үлдсэн нэгж талбар олдвол газар чөлөөлөлтийн давхаргыг НЭМНЭ: инженер
-   * аль блок дээр саад байгааг зурган дээр шууд харна.
-   *
-   * ⚠️ `setVisible` рүү БИЧИХГҮЙ — тэр нь хэрэглэгчийн каталогийн сонголт тул
-   * overlap ирэх бүрд бохирдоно. Зөвхөн ГАРАЛТ дээр давхарлана.
+   * ЗУРАГТ ӨГӨХ жагсаалт — каталогийн сонголт шууд.
+   * ⚠️ Урьд нь давхцсан үлдсэн нэгж талбарын давхаргыг ЭНД нэмдэг байсныг
+   *    хассан (дээрх тайлбарыг үз).
    */
-  const mapVisible = useMemo(
-    () => (ovOk?.oids.length ? [...new Set([...visible, PARCEL_LAYER])] : visible),
-    [visible, ovOk],
-  );
-  /**
-   * ДАВХЦСАН НЭГЖ ТАЛБАРЫН ХЭВ МАЯГ — УЛААН (хэрэглэгчийн шийдвэр, 2026-08-25).
-   *
-   * ⚠️ Улаан нь энэ порталд «саад / эрсдэл» гэсэн ТӨЛӨВИЙН өнгө бөгөөд
-   *    давхцсан үлдсэн талбарын ТОО аль хэдийн улаанаар бичигддэг
-   *    (`--bad-ink`). Зураг нь өөр өнгөөр (ягаан) ярьж байсан тул тоо ба
-   *    полигон хоёр НЭГ зүйлийг хэлж байгаа нь нүдэнд холбогдохгүй байв.
-   *
-   * ⚠️ Блокууд улбар шар (`#ea580c`) тул ойролцоо өнгөтэй: ЗУЗААН хүрээ
-   *    (4.2) ба өндөр дүүргэлт (0.3) нь ялгааг барина. Дээрээс нь энэ давхарга
-   *    ПУЛЬСЛЭДЭГ тул хөдөлгөөнөөрөө ч ялгарна.
-   *
-   * ⚠️ HEX-ЭЭР бичнэ, CSS хувьсагчаар БИШ: MapCanvas-ийн `rgb()` нь зөвхөн
-   *    `#rrggbb`-г задалдаг тул `var(--bad)` өгвөл NaN болж, полигон огт
-   *    зурагдахгүй. Утга нь `globals.css`-ийн `--bad`-тай ижил.
-   */
-  /** Анивчих давхарга — давхцсан талбар олдсон үед л. */
-  const parcelPulse = useMemo(
-    () => (ovOk?.oids.length ? [PARCEL_LAYER] : undefined),
-    [ovOk],
-  );
-
-  const parcelStyle = useMemo(
-    () =>
-      ovOk?.oids.length
-        ? { [PARCEL_LAYER]: { hue: '#dc2626', fill: 0.3, width: 4.2 } }
-        : undefined,
-    [ovOk],
-  );
+  const mapVisible = visible;
 
   const layerWhere = useMemo<Record<string, string | null>>(
     () => {
@@ -390,14 +333,9 @@ export function PkgFin({ dim, setDim }: {
       }
       // Багц сонгосон → тэр багц; эс бөгөөс → зөвхөн хоцрогдолтой багцын блокууд
       w[BLOCK_LAYER] = active?.where ?? alertedWhere;
-      // ⚠️ Давхаргад 2,119 талбар бий — ЗӨВХӨН давхцсаныг үлдээнэ, эс бөгөөс
-      //    бүх хот дүүрэн парсел зурагдаж блокууд дарагдана.
-      w[PARCEL_LAYER] = ovOk?.oids.length
-        ? `OBJECTID IN (${ovOk.oids.join(',')})`
-        : null;
       return w;
     },
-    [active, alertedWhere, ovOk, zone, mapVisible],
+    [active, alertedWhere, zone, mapVisible],
   );
 
   /** Багц солих — барилгын сонголт цуцлагдана (өөр багцын барилга үлдэхгүй) */
@@ -550,12 +488,10 @@ export function PkgFin({ dim, setDim }: {
           opacity={opacity}
           zone={zone}
           layerWhere={layerWhere}
-          layerStyle={parcelStyle}
           /* ⚠️ Блокуудыг ГҮЙЦЭТГЭЛЭЭР өнгө ялгахгүй: зураг нь биет явцыг
              ярьвал энэ цонх нэрэндээ үл нийцнэ. Нэг жигд өнгө = «эдгээр нь
              тухайн багцын блокууд» гэсэн БАЙРЛАЛЫН мэдээлэл. */
           uniform
-          pulseIds={parcelPulse}
           onPick={onMapPick}
         />
 
@@ -691,7 +627,7 @@ function TsKpi({ packs, fin }: { packs: Pack[]; fin: FinData | null }) {
     for (const m of months) {
       if (m.label > nowYm) continue;
       if (m.cumPct > 0) planned = m.cumPct;
-      if (m.phys > 0) actual = m.phys;
+      if (m.phys != null) actual = m.phys;
     }
     const gap = planned != null && actual != null ? planned - actual : null;
     const C = CASHFLOW2.fields;
@@ -1338,7 +1274,7 @@ function FinCard({
     for (const m of months) {
       if (m.label > nowYm) continue;
       if (m.cumPct > 0) plannedPct = m.cumPct;
-      if (m.phys > 0) actualPct = m.phys;
+      if (m.phys != null) actualPct = m.phys;
     }
   }
   // Санхүүжилтийн зөрүү — төлөвлөсөн − олгосон (₮). Эерэг = олгоогүй үлдэгдэл.
@@ -1504,7 +1440,9 @@ function aggregateMonths(d: FinData) {
       amountCum: cum,
       cumPct: planTotal > 0 ? (cum / planTotal) * 100 : 0,
       given,
-      phys: physN > 0 ? physW / physN : 0,
+      // ⚠️ Хэмжилт огт байхгүй сар — `null`. 0 гэж буцаавал график дээр
+      //    «биет гүйцэтгэл тэг» гэсэн худал шугам зурагдана.
+      phys: physN > 0 ? physW / physN : null,
     };
   });
 }
