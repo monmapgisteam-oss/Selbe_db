@@ -1008,3 +1008,86 @@
   border: 1px solid color-mix(in srgb, var(--bad) 45%, transparent);
   color: var(--ink);
 }
+
+/* ═══════════ МӨР НЭМЭХ — зөвхөн Ерөнхий менежер ═══════════
+   Барилгын явцын дунд бүлэг дотор шинэ ажил гарч ирдэг. Нэмсэн мөр нь
+   НИЙТЛЭХ хүртэл зөвхөн дэлгэц дээр амьдардаг тул ЯЛГАРЧ харагдах ёстой —
+   эс бөгөөс хэрэглэгч «хадгалагдчихсан» гэж андуурна. */
+
+/** Бүлгийн нэрийн ард гарах «+» — бүлэг дээр хулгана аваачихад л тод болно. */
+.addBtn {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: var(--r-sm);
+  font-size: 0.85rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--ink-3);
+  background: color-mix(in srgb, var(--hue) 12%, transparent);
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity 0.15s, color 0.15s;
+}
+tr:hover > td > .addBtn { opacity: 1; }
+.addBtn:hover { color: var(--hue); background: color-mix(in srgb, var(--hue) 24%, transparent); }
+
+/** Нийтлэгдээгүй шинэ мөрийг буцаах «×» */
+.dropBtn {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: var(--r-sm);
+  font-size: 0.85rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--bad-ink);
+  background: color-mix(in srgb, var(--bad) 14%, transparent);
+  cursor: pointer;
+}
+.dropBtn:hover { background: color-mix(in srgb, var(--bad) 28%, transparent); }
+
+/** Нийтлэгдээгүй ШИНЭ мөр — зүүн ирмэгийн зураас нь «энэ хадгалагдаагүй» гэдгийг хэлнэ */
+.newRow > td:first-child { box-shadow: inset 3px 0 0 var(--good-ink); }
+.newRow > td { background: color-mix(in srgb, var(--good) 8%, transparent); }
+
+/** Маягтын мөр — хүснэгтийн бүтэн өргөнийг эзэлнэ */
+.addRow > td { padding: 8px 10px; background: color-mix(in srgb, var(--hue) 6%, transparent); }
+.addForm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+}
+.addTitle { font-weight: 700; color: var(--ink-2); }
+.addForm input {
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 5px 8px;
+  font-size: 0.8rem;
+  background: var(--surface);
+  color: var(--ink);
+}
+.addForm input:focus { outline: 2px solid var(--hue); outline-offset: -1px; }
+.addNo { width: 72px; }
+.addWork { flex: 1 1 260px; min-width: 180px; }
+.addNum { width: 110px; }
+.addOk {
+  font-weight: 600;
+  color: var(--hue-ink);
+  background: var(--good-ink);
+  border-radius: var(--r-sm);
+  padding: 6px 14px;
+  cursor: pointer;
+}
+.addOk:hover { filter: brightness(1.06); }
+.addNo2 {
+  font-weight: 600;
+  color: var(--ink-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 5px 12px;
+  cursor: pointer;
+}
+.addHint { color: var(--ink-3); font-size: 0.74rem; }

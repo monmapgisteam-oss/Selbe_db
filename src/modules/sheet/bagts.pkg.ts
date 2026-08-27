@@ -105,6 +105,21 @@ export type Schema = {
      *    excel-ийн лавлах нүд — агшин ялгах түлхүүр БОЛОХГҮЙ.
      */
     fillDate: string | null;
+    /**
+     * ШАТЛАЛ (0–4) — мөр бүрийн модны гүн.
+     *
+     * ⚠️ 2026-08-27-нд `tools/bagts-gun.mjs`-ээр нэмэгдсэн. Урьд нь шатлал нь
+     * ЗӨВХӨН `bagts.trees.ts` дахь тогтмол тэмдэгтийн мөрөөс, БАЙРЛАЛААР
+     * гардаг байв — тиймээс хуудсанд мөр нэмэх боломжгүй байлаа (мөрийн тоо
+     * зураглалын урттай зөрөнгүүт хуудас нээгдэхээ болино).
+     *
+     * ⚠️ Багана нэмэгдсэн ч утга нь ЭХЛЭЭД ХООСОН — багц бүрийг нэг удаа
+     * нийтлэхэд `FillNew.publish` мөр бүрд гүнийг нь бичиж дүүргэнэ. Тэр
+     * хүртэл `loadRows` нь `TREES`-рүү нөөцлөн буцна.
+     *
+     * Багана огт үүсээгүй үйлчилгээнд `null`.
+     */
+    gun: string | null;
     oid: string;
   };
 };
@@ -245,6 +260,9 @@ export function resolveSchema(fields: FieldMeta[]): Schema {
         ?.name ??
       null,
     fillDate: names.find((n) => /^buglusun_ognoo$/i.test(n)) ?? null,
+    // ⚠️ Нэр нь латинаар (`gun`) тул `norm()`-ийн кирилл хайлтад орохгүй —
+    //    ШУУД нэрээр нь хайна.
+    gun: names.find((n) => /^gun$/i.test(n)) ?? null,
     oid: names.find((n) => /^objectid$/i.test(n)) ?? "ObjectID",
   };
 

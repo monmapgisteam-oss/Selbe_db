@@ -3065,7 +3065,18 @@ const en: Record<string, string> = {
   "⚠️ Хуудас нь ӨРГӨН хэлбэртэй: мөр = АЖИЛ, багана = БЛОК. Блок бүрийн гүйцэтгэл нь «F5_1_гүйцэтгэл», «F5_2_гүйцэтгэл»… гэсэн ТУСДАА багана бөгөөд багц бүрд блокийн тоо өөр (8–22). Тодорхой блокийн тоог асуувал тухайн багануудыг нэрлэж ав. ": "⚠️ The sheet is WIDE: a row is a TASK and a column is a BLOCK. Each block’s progress is its own column — “F5_1_гүйцэтгэл”, “F5_2_гүйцэтгэл”, … — and the block count differs per package (8–22). When asked about a specific block, name its columns explicitly. ",
   "⚠️ Энэ бол 10 хуудасны ЗӨВХӨН НЭГ нь («{0}»). Бусад багцын тоо ЭНД БАЙХГҮЙ — төслийн нийт дүнг эндээс бодож БОЛОХГҮЙ. ": "⚠️ This is ONLY ONE of the 10 sheets (“{0}”). Other packages’ figures are NOT here — do NOT compute a project total from it. ",
   "⚠️ Гүйцэтгэл 0–1 (хувь БИШ) — харуулахдаа ×100. ": "⚠️ Progress is 0–1 (NOT a percentage) — multiply by 100 to display. ",
-  "⚠️ Нийтлэх бүрд хуудас бүхэлдээ доор нь ХУУЛБАРЛАГДАЖ нэмэгддэг тул нэг ажил ОЛОН мөртэй. Одоогийн байдлыг гаргахдаа «buglusun_ognoo» хамгийн ИХ утгатай мөрийг ав.": "⚠️ Every publish APPENDS a full copy of the sheet, so one task has MANY rows. For the current state, take the row with the LARGEST “buglusun_ognoo”."
+  "⚠️ Нийтлэх бүрд хуудас бүхэлдээ доор нь ХУУЛБАРЛАГДАЖ нэмэгддэг тул нэг ажил ОЛОН мөртэй. Одоогийн байдлыг гаргахдаа «buglusun_ognoo» хамгийн ИХ утгатай мөрийг ав.": "⚠️ Every publish APPENDS a full copy of the sheet, so one task has MANY rows. For the current state, take the row with the LARGEST “buglusun_ognoo”.",
+  "Ажлын нэрийг оруулна уу.": "Please enter the task name.",
+  "№ нь бүхэл тоо байх ёстой (жишээ «12») — бутархай дугаар нь бүлгийн мөрийг заадаг тул ажлын тоололд орохгүй.": "The No. must be a whole number (e.g. “12”) — a decimal number marks a group row, so the task would be left out of the task count.",
+  "Обьём ба Нэгж өртөг нь тоон утга байх ёстой.": "Volume and unit cost must be numbers.",
+  "«{0}» нэмэгдлээ — Нийтлэх дарж хадгална.": "“{0}” added — press Publish to save.",
+  "Энэ бүлэгт шинэ ажлын мөр нэмэх": "Add a new task row to this group",
+  "«{0}» бүлэгт ажил нэмэх": "Add a task to the “{0}” group",
+  "Нийтлэгдээгүй шинэ мөрийг хасах": "Remove the unpublished new row",
+  "«{0}» мөрийг хасах": "Remove the “{0}” row",
+  "«{0}» дотор шинэ ажил": "New task inside “{0}”",
+  "№": "No.",
+  "Хувийн жин ба Мөнгөн дүн автоматаар бодогдоно.": "Weight and amount are computed automatically."
 };
 
 export default en;

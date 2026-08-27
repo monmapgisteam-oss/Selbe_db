@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { submitForReview } from '@/lib/hyanaltSubmit';
 import {
   applyAdds,
@@ -52,7 +52,41 @@ const cls = (names: string) =>
 // бүрд ТУСДАА (Pivot-ын ганц слотын хөндлөн-багц алдагдлыг давтахгүй); нүдний
 // түлхүүр `${oid}:${b}` — oid нь үйлчилгээний ObjectID тул дараагийн
 // ачаалалтад тогтвортой. Огнооны (asOf) өөрчлөлт ноорогт ХАДГАЛАГДАХГҮЙ.
-type Draft = { t: number; cells: [string, string][] };
+type Draft = {
+  t: number;
+  cells: [string, string][];
+  /**
+   * Ерөнхий менежерийн нэмсэн, хараахан нийтлэгдээгүй мөрүүд.
+   * ⚠️ Хуучин ноорогт БАЙХГҮЙ тул заавал сонголттой — уншихдаа `?? []`.
+   */
+  adds?: NewRow[];
+};
+/**
+ * ЕРӨНХИЙ МЕНЕЖЕРИЙН НЭМСЭН, хараахан нийтлэгдээгүй мөр.
+ *
+ * ⚠️ Эцгийг ObjectID-гаар санахгүй: нийтлэх бүрд хуудас бүхэлдээ хуулбарлагдаж
+ * бүх мөр ШИНЭ ObjectID авдаг тул тэр дугаар удаан амьдардаггүй. (№ + ажлын
+ * нэр) хос нь эх excel-ийн бүтэц тул хамаагүй тогтвортой.
+ */
+type NewRow = {
+  /** Түр ObjectID — САРВААХ сөрөг тоо, серверийн дугаартай хэзээ ч мөргөлдөхгүй */
+  oid: number;
+  parentNo: string;
+  parentWork: string;
+  /** Нэрээр олдохгүй үед нөхөх сүүлчийн арга */
+  parentIdx: number;
+  no: string;
+  work: string;
+  vol: number | null;
+  unit: number | null;
+};
+
+/**
+ * Түр ObjectID-ийн тоолуур. Сөрөг тул серверийн (эерэг) дугаартай мөргөлдөхгүй
+ * бөгөөд `cellKey`, `collapsed`, React `key` бүгд хэвийн ажиллана.
+ */
+let tmpOid = -1;
+
 const DRAFT_PREFIX = "selbe-fillnew-draft:";
 const DRAFT_TTL_MS = 3 * 24 * 3600 * 1000;
 const readDraft = (pkgKey: string): Draft | null => {
@@ -62,6 +96,7 @@ const readDraft = (pkgKey: string): Draft | null => {
     const d = JSON.parse(raw) as Draft;
     if (!d.t || !Array.isArray(d.cells) || Date.now() - d.t > DRAFT_TTL_MS)
       return null;
+    if (d.adds != null && !Array.isArray(d.adds)) return null;
     return d;
   } catch {
     return null;
@@ -265,6 +300,28 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   const sentToday = !!snapDay && snapDay === today;
   /** Засах эрхгүй — харах л боломжтой. */
   const noEdit = locked || (sentToday && !returned);
+
+  /**
+   * МӨР НЭМЭХ ЭРХ — ЗӨВХӨН ЕРӨНХИЙ МЕНЕЖЕР.
+   *
+   * ⚠️ Хуудасны бусад засвар нь гүйцэтгэгчийнх (`bagtsFor(user, "company")`)
+   * бол мөр нэмэх нь БҮТЦИЙН өөрчлөлт — жин, мөнгөн дүн бүхэлдээ дахин
+   * бодогдож, түүх дэх харьцуулалтад нөлөөлнө. Тиймээс хяналтын СҮҮЛИЙН шат
+   * (`director` → `eronhii`) л хийнэ.
+   *
+   * ⚠️ Энэ бол ЗӨВХӨН дэлгэцийн хамгаалалт. Жинхэнэ хориг нь ArcGIS-ийн
+   * давхаргын засварлах эрхэд байна — тэднийг тохируулаагүй бол хаяг мэдсэн
+   * хэн ч REST-ээр мөр нэмж чадна.
+   */
+  const canAddRow = useMemo(() => {
+    const list = bagtsFor(user?.username, "director");
+    return !!list && list.includes(pkg.group);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, aclN, pkg.group]);
+
+  /** Мөр нэмэх маягт нээлттэй байгаа БҮЛГИЙН ObjectID (эсвэл `null`) */
+  const [addFor, setAddFor] = useState<number | null>(null);
+  const [addForm, setAddForm] = useState({ no: "", work: "", vol: "", unit: "" });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   // Нийтлээгүй засварууд, `${oid}:${barilgaIndex}` түлхүүрээр. Утга нь хувь
@@ -386,6 +443,10 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     setSc(null);
     setPending({});
     setPendDate({});
+    // ⚠️ Нэмэлт мөр нь БАГЦАД харьяалагдана — багц солиход заавал цэвэрлэнэ,
+    //    эс бөгөөс өөр багцын бүлэгт наалдаж, буруу хуудсанд бичигдэнэ.
+    setAdds([]);
+    setAddFor(null);
     setEdit(null);
     loadSchema(pkg)
       .then(async (schema) => {
@@ -443,12 +504,85 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   /** Блок бүрд обьёмын багана бий эсэх — обьёмоор бөглөх боломжийн нөхцөл. */
   const hasObyem = useMemo(() => (sc ? sc.obyem.map((f) => !!f) : []), [sc]);
 
+  /* ═══════════════ МӨР НЭМЭХ (зөвхөн Ерөнхий менежер) ═══════════════
+   * Барилгын явцын дунд бүлэг дотор шинэ ажил гарч ирдэг. Нэмсэн мөр нь
+   * НИЙТЛЭХ хүртэл зөвхөн энэ төлөвт амьдарна — тэр үед хуудсын бусад
+   * засвартай ХАМТ шинэ архивын агшин болж бичигдэнэ.
+   *
+   * ⚠️ Эцгийг ObjectID-гаар САНАХГҮЙ: нийтлэх бүрд бүх мөр ШИНЭ ObjectID
+   *    авдаг тул нийтлэхийн өмнө дахин татсан хуудсанд тэр дугаар өөр байна.
+   *    Оронд нь (№ + ажлын нэр) хосоор олж, олдохгүй бол индексээр нөхнө.
+   */
+  const [adds, setAdds] = useState<NewRow[]>([]);
+
+  /** Бүлгийн СҮҮЛИЙН удмын дараах индекс — шинэ мөрийг ЭНД оруулна. */
+  const afterGroup = (list: SheetRow[], p: number) => {
+    const d = list[p].depth;
+    let i = p + 1;
+    while (i < list.length && list[i].depth > d) i += 1;
+    return i;
+  };
+
+  /**
+   * Нэмсэн мөрүүдийг жагсаалтад ОРУУЛСАН хувилбар.
+   *
+   * ⚠️ Энэ нь ЗУРАГДАХ ба БОДОГДОХ хоёуланд нь хэрэглэгдэнэ: `computeAll` нь
+   * шинэ мөрийн Обьём×Нэгж өртгийг тооцоод дээд бүлгүүдийн Мөнгөн дүн, улмаар
+   * ХУУДАС ДАХЬ БҮХ хувийн жинг дахин бодно. Тиймээс хэрэглэгч нэмэнгүүт
+   * үр дүнгээ шууд харна.
+   */
+  const withAdds = useCallback(
+    (base: SheetRow[]): SheetRow[] => {
+      if (!adds.length || !sc || !nBld) return base;
+      const out = base.slice();
+      for (const a of adds) {
+        let p = out.findIndex(
+          (r) => r.group && r.no === a.parentNo && r.work === a.parentWork,
+        );
+        // Эцэг нь нэрээрээ олдохгүй бол (эх хүснэгт өөрчлөгдсөн) индексээр
+        if (p < 0 && a.parentIdx < out.length && out[a.parentIdx]?.group) p = a.parentIdx;
+        if (p < 0) continue;                       // эцэг алга — мөрийг алгасна
+        const parent = out[p];
+        out.splice(afterGroup(out, p), 0, {
+          oid: a.oid,
+          no: a.no,
+          work: a.work,
+          depth: parent.depth + 1,
+          group: false,
+          // ⚠️ Жин/мөнгө ОРОХГҮЙ — `computeAll` Обьём×Нэгж өртгөөс өөрөө бодно.
+          wC: null,
+          wD: null,
+          vol: a.vol,
+          unit: a.unit,
+          money: null,
+          act: new Array(nBld).fill(null),
+          obyem: new Array(nBld).fill(null),
+          start: new Array(nBld).fill(null),
+          end: new Array(nBld).fill(null),
+          /* Үйлчилгээнд бичигдэх ЦОРЫН ГАНЦ талбарууд — үлдсэнийг нийтлэх
+             үед `computeAll`-ийн үр дүнгээр бөглөнө. */
+          raw: {
+            [sc.f.no]: a.no,
+            [sc.f.work]: a.work,
+            [sc.f.vol]: a.vol,
+            [sc.f.unit]: a.unit,
+          },
+        });
+      }
+      return out;
+    },
+    [adds, sc, nBld],
+  );
+
+  /** Хуудасны БҮХ мөр — серверийнх + хараахан нийтлэгдээгүй нэмэлт. */
+  const rowsAll = useMemo(() => withAdds(rows), [rows, withAdds]);
+
   const calc = useMemo(
     () =>
       asOf == null || !nBld
         ? []
-        : computeAll(rows, nBld, asOf, pending, pendDate, hasObyem),
-    [rows, nBld, asOf, pending, pendDate, hasObyem],
+        : computeAll(rowsAll, nBld, asOf, pending, pendDate, hasObyem),
+    [rowsAll, nBld, asOf, pending, pendDate, hasObyem],
   );
 
   // Хаагдсан бүлгийн доорх мөрүүд. Гүн буурах хүртэл нуугдана.
@@ -460,17 +594,17 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   const rangeOf = useCallback(
     (oid: number) => {
       if (!oid) return null;
-      const from = rows.findIndex((r) => r.oid === oid);
+      const from = rowsAll.findIndex((r) => r.oid === oid);
       if (from < 0) return null;
-      let to = rows.length;
-      for (let i = from + 1; i < rows.length; i++)
-        if (rows[i].depth <= rows[from].depth) {
+      let to = rowsAll.length;
+      for (let i = from + 1; i < rowsAll.length; i++)
+        if (rowsAll[i].depth <= rowsAll[from].depth) {
           to = i;
           break;
         }
       return { from, to };
     },
-    [rows],
+    [rowsAll],
   );
 
   const labelOf = (r: SheetRow, pad = 0) =>
@@ -482,10 +616,10 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    */
   const grpAOpts = useMemo(
     () =>
-      rows
+      rowsAll
         .filter((r) => r.group && r.depth <= 2)
         .map((r) => ({ oid: r.oid, label: labelOf(r, r.depth * 3) })),
-    [rows],
+    [rowsAll],
   );
 
   /**
@@ -494,7 +628,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    */
   const grpBOpts = useMemo(() => {
     const rg = rangeOf(grpA);
-    return rows
+    return rowsAll
       .map((r, i) => ({ r, i }))
       .filter(
         (x) =>
@@ -503,7 +637,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
           (!rg || (x.i > rg.from && x.i < rg.to)),
       )
       .map((x) => ({ oid: x.r.oid, label: labelOf(x.r) }));
-  }, [rows, grpA, rangeOf]);
+  }, [rowsAll, grpA, rangeOf]);
 
   /**
    * Эцэг солигдоход түүнд харьяалагдахгүй дэд сонголт хүчингүй болно.
@@ -519,10 +653,10 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   );
 
   const hidden = useMemo(() => {
-    const h = new Array(rows.length).fill(false);
+    const h = new Array(rowsAll.length).fill(false);
     let depth = -1;
-    for (let i = 0; i < rows.length; i++) {
-      const r = rows[i];
+    for (let i = 0; i < rowsAll.length; i++) {
+      const r = rowsAll[i];
       // Бүлгийн шүүлтүүр — мужаас гадуурх бүхнийг нууна.
       if (grpRange && (i < grpRange.from || i >= grpRange.to)) {
         h[i] = true;
@@ -537,14 +671,14 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       if (r.group && collapsed.has(r.oid)) depth = r.depth;
     }
     return h;
-  }, [rows, collapsed, grpRange]);
+  }, [rowsAll, collapsed, grpRange]);
 
   /** Зурагдах мөрүүдийн ИНДЕКС (нуугдсаныг хассан). */
   const vis = useMemo(() => {
     const out: number[] = [];
-    for (let i = 0; i < rows.length; i++) if (!hidden[i] && calc[i]) out.push(i);
+    for (let i = 0; i < rowsAll.length; i++) if (!hidden[i] && calc[i]) out.push(i);
     return out;
-  }, [rows, hidden, calc]);
+  }, [rowsAll, hidden, calc]);
 
   const recalcWin = useCallback(() => {
     const el = scrollRef.current;
@@ -622,10 +756,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   const dirtyCount =
     Object.keys(pending).length +
     Object.keys(pendDate).length +
+    adds.length +
     (asOf !== asOfOrig ? 1 : 0);
-
-  /**
-  /**
 
   /**
    * ОБЬЁМЫН нүд бичигдэх үү — талбар нь байгаа БҮХ ажлын мөрд ТИЙМ.
@@ -641,6 +773,51 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
 
 
 
+
+  /**
+   * ШИНЭ МӨРИЙГ БҮЛЭГТ НЭМЭХ.
+   *
+   * ⚠️ № нь БҮХЭЛ ТОО байх ёстой. `ags.levelFromNo` нь бүхэл № + бутархай
+   * жинг «навч ажил (5)» гэж уншдаг; бутархай № («3.2») бол «бүлэг (4)» болж,
+   * `BuildingPanel.useTaskPerf`-ийн ажлын тоололд ОРОХГҮЙ үлдэнэ. Тиймээс
+   * зөрчилтэй №-г ЭНД барина — үйлчилгээнд бичигдсэний дараа засахад хэцүү.
+   */
+  const addRow = (parent: SheetRow, parentIdx: number) => {
+    const no = addForm.no.trim();
+    const work = addForm.work.trim();
+    const n = (s: string) => {
+      const t = s.trim().replace(",", ".");
+      return t === "" ? null : Number.isFinite(Number(t)) ? Number(t) : NaN;
+    };
+    const vol = n(addForm.vol);
+    const unit = n(addForm.unit);
+
+    if (!work) return setErr(tr('Ажлын нэрийг оруулна уу.'));
+    if (!/^d+$/.test(no))
+      return setErr(tr('№ нь бүхэл тоо байх ёстой (жишээ «12») — бутархай дугаар нь бүлгийн мөрийг заадаг тул ажлын тоололд орохгүй.'));
+    if (Number.isNaN(vol) || Number.isNaN(unit))
+      return setErr(tr('Обьём ба Нэгж өртөг нь тоон утга байх ёстой.'));
+
+    setErr("");
+    setAdds((a) => [
+      ...a,
+      { oid: tmpOid--, parentNo: parent.no, parentWork: parent.work, parentIdx, no, work, vol, unit },
+    ]);
+    // ⚠️ Бүлэг ЭВХЭЭСТЭЙ бол шинэ мөр нуугдана — хэрэглэгч «нэмэгдээгүй» гэж
+    //    бодож дахин дарах эрсдэлтэй. Тиймээс автоматаар дэлгэнэ.
+    setCollapsed((s) => {
+      if (!s.has(parent.oid)) return s;
+      const n = new Set(s);
+      n.delete(parent.oid);
+      return n;
+    });
+    setAddFor(null);
+    setAddForm({ no: "", work: "", vol: "", unit: "" });
+    say(tr('«{0}» нэмэгдлээ — Нийтлэх дарж хадгална.', work));
+  };
+
+  /** Нийтлэхээс өмнө нэмсэн мөрийг буцаах */
+  const dropAdd = (oid: number) => setAdds((a) => a.filter((x) => x.oid !== oid));
 
   /**
    * Нүдний засвар — блокийн ОБЬЁМ эсвэл мөрийн Обьём. Гүйцэтгэлийн хувь
@@ -717,6 +894,9 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     promptedPkgRef.current = pkg.key;
     const d = readDraft(pkg.key);
     if (!d) return;
+    // ⚠️ Нэмсэн мөрийг ЗӨВХӨН эрхтэй хүнд сэргээнэ — эрх нь хооронд нь
+    //    хасагдсан бол ноорог дахь мөр дэлгэцэд гарах ёсгүй.
+    if (d.adds?.length && canAddRow) setAdds(d.adds);
     const byOid = new Map(rows.map((r, i) => [r.oid, i] as const));
     const next: Record<string, string> = {};
     let dropped = 0;
@@ -760,12 +940,14 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   // болиулсан) устгана, гэхдээ зөвхөн сэргээх шат ӨНГӨРСӨН багцынхыг: багц
   // солих үеийн setPending({}) шинэ багцын хуучин ноорогийг дарж болохгүй.
   useEffect(() => {
-    if (!Object.keys(pending).length) {
+    // ⚠️ НЭМСЭН МӨР ч ноорогт орно: Ерөнхий менежер ажил нэмээд хуудсаа
+    //    сэргээхэд тэр ажил чимээгүй алга болох ёсгүй.
+    if (!Object.keys(pending).length && !adds.length) {
       if (promptedPkgRef.current === pkg.key) clearDraftLS(pkg.key);
       return;
     }
-    saveDraftLS(pkg.key, { t: Date.now(), cells: Object.entries(pending) });
-  }, [pending, pkg.key]);
+    saveDraftLS(pkg.key, { t: Date.now(), cells: Object.entries(pending), adds });
+  }, [pending, adds, pkg.key]);
 
   // Таб хаах/refresh — нийтлээгүй засвартай үед хөтөч анхааруулна.
   useEffect(() => {
@@ -819,7 +1001,13 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
        *    нүдийг түүн дээр давхарлана. Ингэснээр хооронд нь өөр хүн
        *    нийтэлсэн утга алдагдахгүй.
        */
-      const fresh = (await loadRows(pkg, sc)).rows;
+      /*
+       * ⚠️ НЭМСЭН МӨРИЙГ ШИНЭ ТАТАЛТ ДЭЭР дахин оруулна: `fresh` нь серверийн
+       * хуулбар тул тэдгээр мөр түүнд БАЙХГҮЙ. `withAdds` нь эцгийг (№ +
+       * ажлын нэр)-ээр олж, бүлгийн сүүлийн удмын дараа байрлуулна — тиймээс
+       * хооронд нь өөр хүн нийтэлсэн ч зөв газартаа орно.
+       */
+      const fresh = withAdds((await loadRows(pkg, sc)).rows);
       const c = computeAll(fresh, nBld, asOf, pending, pendDate, hasObyem);
       // Бөглөсөн огноо — өдрийн эхэнд (UTC). Өдөрт нэг л удаа бөглөдөг тул
       // огноо ганцаараа агшны түлхүүр болно.
@@ -852,6 +1040,30 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         //    байхгүй — байхгүй талбар руу бичвэл багц бүхэлдээ унана.
         if (sc.f.ratio) a[sc.f.ratio] = c[i].K;
         if (sc.f.wE) a[sc.f.wE] = c[i].E; // Одоо байгаа = C × Бодит гүйцэтгэл
+        /*
+         * ШАТЛАЛ — мөр БҮРД өөрийн гүнийг нь бичнэ.
+         *
+         * ⚠️ Энэ бол шатлалыг КОДООС (`bagts.trees.ts`) ӨГӨГДӨЛ рүү шилжүүлж
+         * буй алхам. Багана нэмэгдсэний дараах ЭХНИЙ нийтлэлээр л хуудас
+         * бүхэлдээ дүүрнэ; түүнээс хойш мөр нэмэх боломжтой болно (мөрийн тоо
+         * зураглалын урттай зөрөх шаардлагагүй).
+         *
+         * ⚠️ Багана байхгүй үйлчилгээнд бичихгүй — байхгүй талбар руу бичвэл
+         * багц бүхэлдээ унана.
+         */
+        if (sc.f.gun) a[sc.f.gun] = r.depth;
+        /*
+         * ХУВИЙН ЖИН — ЗӨВХӨН ХООСОН үед бөглөнө.
+         *
+         * ⚠️ Хадгалагдсаныг ДАРЖ БИЧИХГҮЙ: `computeAll` нь бодож чадаагүй үедээ
+         * хадгалагдсан утга руу нөөцлөн буцдаг тул дарж бичвэл тэр нөөц замыг
+         * өөрийнхөө бодолтоор аажим гажуудуулна.
+         *
+         * ⚠️ ШИНЭ МӨРД ЭНЭ ЧУХАЛ: `ags.levelFromNo` нь бүхэл № + БУТАРХАЙ жинг
+         * «навч (5)» гэж уншдаг. Жин хоосон бол тэр мөрийг «ангилал (3)» гэж
+         * үзэж, `BuildingPanel.useTaskPerf`-ийн ажлын тоололд ОРОХГҮЙ үлдэнэ.
+         */
+        if (sc.f.wC && a[sc.f.wC] == null && c[i].C != null) a[sc.f.wC] = c[i].C;
         // Шинэчлэгдсэн огноо — excel-ийн лавлах нүд, зөвхөн 1-р мөрд.
         if (sc.f.asOf) a[sc.f.asOf] = i === 0 ? asOf : null;
         // АРХИВЫН ТҮЛХҮҮР — мөр БҮРД.
@@ -883,6 +1095,10 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       setAsOfOrig(next.asOf ?? asOf);
       setPending({});
       setPendDate({});
+      // ⚠️ Нэмэлт мөрүүд аль хэдийн үйлчилгээнд бичигдсэн тул төлөвөөс ХАСНА —
+      //    эс бөгөөс дараагийн нийтлэлд ДАХИН нэмэгдэж давхардана.
+      setAdds([]);
+      setAddFor(null);
       say(rv.ok
         ? tr('Архивт {0} мөр нэмэгдэв · {1} · хяналтад илгээв ({2})', added, msToDay(fillMs), rv.id)
         : tr('Архивт {0} мөр нэмэгдэв · {1} · ⚠️ хяналтад илгээгдсэнгүй: {2}', added, msToDay(fillMs), rv.error));
@@ -891,7 +1107,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     } finally {
       setBusy(false);
     }
-  }, [pkg, sc, nBld, asOf, asOfOrig, pending, pendDate, dirtyCount, busy, hasObyem]);
+  }, [pkg, sc, nBld, asOf, asOfOrig, pending, pendDate, dirtyCount, busy, hasObyem, withAdds]);
 
   // Ctrl+S — «Гүйцэтгэл бөглөх»-тэй ижил.
   // ⚠️ Нээлттэй нүдний бичиж буй утгыг ЭХЛЭЖ commit хийнэ — эс тэгвэл хуучин
@@ -901,8 +1117,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   const [publishQueued, setPublishQueued] = useState(false);
   const flushEditRef = useRef<() => void>(() => {});
   flushEditRef.current = () => {
-    if (edit && rows[edit.i])
-      commit(rows[edit.i], edit.b, inputRef.current?.value ?? val);
+    if (edit && rowsAll[edit.i])
+      commit(rowsAll[edit.i], edit.b, inputRef.current?.value ?? val);
   };
   useEffect(() => {
     if (!publishQueued || edit) return;
@@ -946,8 +1162,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    */
   const nextEditable = (i: number, b: number, step: number, col: EditCol) => {
     const ok = (r: SheetRow) => volMode(r, b);
-    for (let k = i + step; k >= 0 && k < rows.length; k += step)
-      if (!hidden[k] && ok(rows[k])) return { i: k, b, col };
+    for (let k = i + step; k >= 0 && k < rowsAll.length; k += step)
+      if (!hidden[k] && ok(rowsAll[k])) return { i: k, b, col };
     return null;
   };
 
@@ -1201,14 +1417,15 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                 </tr>
               )}
               {vis.slice(winFrom, winTo).map((i) => {
-                const r = rows[i];
+                const r = rowsAll[i];
                 const c = calc[i];
                 if (!c) return null;
+                const isNew = r.oid < 0;
                 return (
+                  <Fragment key={r.oid}>
                   <tr
-                    key={r.oid}
                     data-r={i}
-                    className={r.group ? st.cat : undefined}
+                    className={`${r.group ? st.cat : ""}${isNew ? ` ${st.newRow}` : ""}`.trim() || undefined}
                   >
                     <td className={cls("num fz c-no")} {...ro(RO.no)}>{r.no}</td>
                     <td
@@ -1234,6 +1451,37 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                         </button>
                       )}
                       {r.work}
+                      {/* ── БҮЛЭГТ АЖИЛ НЭМЭХ — зөвхөн Ерөнхий менежер ── */}
+                      {r.group && canAddRow && !noEdit && (
+                        <button
+                          type="button"
+                          className={st.addBtn}
+                          title={tr('Энэ бүлэгт шинэ ажлын мөр нэмэх')}
+                          aria-label={tr('«{0}» бүлэгт ажил нэмэх', r.work)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setAddFor((x) => (x === r.oid ? null : r.oid));
+                            setAddForm({ no: "", work: "", vol: "", unit: "" });
+                          }}
+                        >
+                          +
+                        </button>
+                      )}
+                      {/* Нийтлэгдээгүй шинэ мөрийг буцаах */}
+                      {isNew && (
+                        <button
+                          type="button"
+                          className={st.dropBtn}
+                          title={tr('Нийтлэгдээгүй шинэ мөрийг хасах')}
+                          aria-label={tr('«{0}» мөрийг хасах', r.work)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            dropAdd(r.oid);
+                          }}
+                        >
+                          ×
+                        </button>
+                      )}
                     </td>
                     <td className={cls("right c-w")} {...ro(RO.wC)} title={full(c.C)}>{wt(c.C)}</td>
                     <td className={cls("right c-w")} {...ro(RO.wD)} title={full(c.D)}>{wt(c.D)}</td>
@@ -1352,7 +1600,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                                     commit(r, bi, e.currentTarget.value);
                                     const t = nextEditable(i, bi, e.shiftKey ? -1 : 1, "obyem");
                                     if (t) {
-                                      const nr = rows[t.i];
+                                      const nr = rowsAll[t.i];
                                       setVal(
                                         pending[cellKey(nr.oid, bi)] ??
                                           qtyRaw(nr.obyem[bi]),
@@ -1462,6 +1710,58 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                       </td>
                     }
                   </tr>
+                  {/* ── МӨР НЭМЭХ МАЯГТ — зөвхөн сонгосон бүлгийн доор ── */}
+                  {addFor === r.oid && (
+                    <tr className={st.addRow}>
+                      <td colSpan={13 + nBld * 4}>
+                        <div className={st.addForm}>
+                          <span className={st.addTitle}>{tr('«{0}» дотор шинэ ажил', r.work)}</span>
+                          <input
+                            className={st.addNo}
+                            value={addForm.no}
+                            placeholder={tr('№')}
+                            aria-label={tr('№')}
+                            onChange={(e) => setAddForm((f) => ({ ...f, no: e.target.value }))}
+                          />
+                          <input
+                            className={st.addWork}
+                            value={addForm.work}
+                            placeholder={tr('Ажлын нэр')}
+                            aria-label={tr('Ажлын нэр')}
+                            onChange={(e) => setAddForm((f) => ({ ...f, work: e.target.value }))}
+                          />
+                          <input
+                            className={st.addNum}
+                            value={addForm.vol}
+                            placeholder={tr('Обьём')}
+                            aria-label={tr('Обьём')}
+                            inputMode="decimal"
+                            onChange={(e) => setAddForm((f) => ({ ...f, vol: e.target.value }))}
+                          />
+                          <input
+                            className={st.addNum}
+                            value={addForm.unit}
+                            placeholder={tr('Нэгж өртөг')}
+                            aria-label={tr('Нэгж өртөг')}
+                            inputMode="decimal"
+                            onChange={(e) => setAddForm((f) => ({ ...f, unit: e.target.value }))}
+                          />
+                          <button type="button" className={st.addOk} onClick={() => addRow(r, i)}>
+                            {tr('Нэмэх')}
+                          </button>
+                          <button type="button" className={st.addNo2} onClick={() => setAddFor(null)}>
+                            {tr('Болих')}
+                          </button>
+                          {/* ⚠️ Жин ба Мөнгөн дүн ЭНД БАЙХГҮЙ — Обьём×Нэгж өртгөөс
+                              өөрөө бодогдож, дээд бүлгүүдийн жинг ч дахин тараана. */}
+                          <span className={st.addHint}>
+                            {tr('Хувийн жин ба Мөнгөн дүн автоматаар бодогдоно.')}
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 );
               })}
               {/* Доод ЧИГЖЭЭС — гүйлгэх зурвасны урт үнэн байлгана. */}
