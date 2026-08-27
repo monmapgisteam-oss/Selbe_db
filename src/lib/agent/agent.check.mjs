@@ -152,7 +152,11 @@ async function main() {
   //    (ds:cashflow) ба INVEST (ds:invest) хасагдсан — буцаж ороогүйг барина.
   check('санхүүгийн эх сурвалж каталогт бий', prompt.includes('ds:cashflow2'));
   check('ХАСАГДСАН `ds:invest` каталогт БУЦАЖ ОРООГҮЙ', !prompt.includes('ds:invest'));
-  check('төслийн явц каталогт бий', prompt.includes('ds:progress'));
+  // ⚠️ 2026-08-27: `ds:progress` (`Төсөл_Гүйцэтгэл_` тест хүснэгт) төслөөс
+  //    хасагдаж `ds:pkg_progress` (амьд `selbe_bagts_guitsetgel_negtgel`) орлов.
+  //    Агент гүйцэтгэлийн мэдлэггүй үлдэхийг барих нь энэ шалгуурын зорилго.
+  check('багцын гүйцэтгэл каталогт бий', prompt.includes('ds:pkg_progress'));
+  check('ХАСАГДСАН `ds:progress` каталогт БУЦАЖ ОРООГҮЙ', !prompt.includes('ds:progress'));
 
   /* ── Тест 2: эрхийн хязгаарлалт ── */
   console.log('\n2. Эрхийн хязгаарлалт');

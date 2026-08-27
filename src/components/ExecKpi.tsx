@@ -4,7 +4,7 @@ import { useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { useAsync } from '@/lib/useAsync';
 import {
-  cached, loadBudget, loadClearance, loadHeadline, loadHousing, loadProjectProgress, loadSocial,
+  cached, loadBudget, loadClearance, loadHeadline, loadHousing, loadSocial,
 } from '@/lib/live';
 import { loadFinData, contractMonths, lagOf, lagLevel } from '@/modules/Finance';
 /* ⚠️ '@/modules/Dashboard' БИШ (2026-08-21): тэр зам MapCanvas → ArcGIS SDK-г
@@ -115,7 +115,6 @@ const afterIdle = <T,>(fn: () => Promise<T>, ms: number) => (): Promise<T> =>
 export function ExecKpi({ onView }: { onView: (key: ViewKey) => void }) {
   const finQ = useAsync(loadFinData, []);
   const budgetQ = useAsync(loadBudget, []);
-  const progQ = useAsync(loadProjectProgress, []);
   const bagtsQ = useBagtsTable();
   /* ⚠️ «Хамрах хүрээ» ангиллын ачаалагчид — урьд нь `Home.useHomeKpis()`-д
      байсныг энд ШИЛЖҮҮЛЭВ. Бүгд `cached` тул ХҮСЭЛТИЙН ТОО НЭМЭГДЭХГҮЙ:
@@ -432,27 +431,6 @@ export function ExecKpi({ onView }: { onView: (key: ViewKey) => void }) {
     };
   }, [finQ]);
 
-  const stages = useMemo<Metric>(() => {
-    /* ⚠️ `ceoOnly` — үе шатын задаргаа нь ажлын гүйцэтгэлийн дотоод бүтэц */
-    const base = { key: 'stages', cat: 'time' as const, view: 'pkgProg' as ViewKey, ceoOnly: true as const };
-    const label = tr('Үе шатын задаргаа');
-    if (progQ.state !== 'ready') return { ...base, ...notReady(label, tr('гүйцэтгэлийн хүснэгт'), [progQ]) };
-    const rows = Object.entries(progQ.data.byStage)
-      .map(([k, v]) => ({ label: k, value: v.weight ? v.actual / v.weight : 0 }))
-      .filter((x) => x.value > 0)
-      .sort((a, b) => b.value - a.value);
-    if (!rows.length)
-      return { ...base, label, value: '—', note: tr('өгөгдөл алга'), level: 'unknown' };
-    return {
-      ...base, label,
-      value: tr('{0} үе шат', num(rows.length)),
-      note: tr('тэргүүлэгч {0} ({1})', rows[0].label, pct(rows[0].value, 0)),
-      /* ⚠️ ЗОРИУДААР `neutral` (§3-3) — үе шатууд дарааллаараа гүйцэтгэгддэг тул
-         «бэлтгэл 90%, засал 5%» нь хэвийн явц, эрсдэл БИШ. */
-      level: 'neutral',
-      chart: <HBars items={rows.slice(0, 4)} max={100} fmt={(v) => pct(v, 0)} />,
-    };
-  }, [progQ]);
 
   /**
    * ХЯНАЛТАД ХҮЛЭЭГДЭЖ БУЙ АЖИЛ — хэн дээр хэдэн хоног (хэрэглэгчийн хүсэлт,
@@ -501,25 +479,6 @@ export function ExecKpi({ onView }: { onView: (key: ViewKey) => void }) {
     };
   }, [reviewQ]);
 
-  const coverage = useMemo<Metric>(() => {
-    /* ⚠️ `ceoOnly` — тайлагналтын бүрэн байдал нь бүртгэлийн сахилга бат.
-       ⚠️ `MAYOR_KPI_BENCHMARK` §2 нь хамрах хүрээг ИЛ гаргахыг зөвлөсөн боловч
-       хэрэглэгч даргын жагсаалтаас хасахаар шийдсэн (2026-08-24). */
-    const base = { key: 'coverage', cat: 'time' as const, view: 'pkgProg' as ViewKey, ceoOnly: true as const };
-    const label = tr('Тайлангийн хамрах хүрээ');
-    if (progQ.state !== 'ready') return { ...base, ...notReady(label, tr('гүйцэтгэлийн хүснэгт'), [progQ]) };
-    const cov = progQ.data.coverage;
-    return {
-      ...base, label,
-      value: pct(cov, 1),
-      /* ⚠️ Энэ нь ГҮЙЦЭТГЭЛ БИШ, БҮРТГЭЛИЙН бүрэн байдал: жингийн нийлбэр 100%
-         хүрэхгүй байгаа нь тайлагнаагүй ажил үлдсэн гэсэн үг. Доогуур байвал
-         дээрх бүх дүн дутуу суурин дээр бодогдож байна. */
-      note: tr('бүртгэгдсэн жингийн нийлбэр — үлдсэн нь тайлагнаагүй ажил'),
-      level: pctLevel(cov),
-      chart: <Ring value={cov} size={74} width={9} label={pct(cov, 0)} />,
-    };
-  }, [progQ]);
 
   /* ═══════════════ 4 · СААД ═══════════════ */
 
@@ -802,7 +761,7 @@ export function ExecKpi({ onView }: { onView: (key: ViewKey) => void }) {
   const metrics: Metric[] = [
     ...scope,
     funnel, contractGap, finance, variance,
-    progress, schedule, review, stages, coverage,
+    progress, schedule, review,
     clearance, overlap, missing, failed,
     safety, damage, contractor,
     /* ⚠️ Нэгтгэсэн оноо ЭХЭНД, дараа нь үзүүлэлт бүрийн задаргаа — эрэмбийг

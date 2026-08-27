@@ -21,8 +21,8 @@
 import { queryFeatures, queryStats, queryGroup, count, sum, type Row } from '@/lib/query';
 import { t as tr } from '@/lib/i18nCore';
 import {
-  BOUNDARY, BUILT_LAYER, BUILT_FIELDS, BUILT_STATUS, CASHFLOW2, PROJECT_PROGRESS,
-  LAYER_BY_ID, PARCEL_LEFT, layerUrl, oidOf, bagtsKey,
+  BOUNDARY, BUILT_LAYER, BUILT_FIELDS, BUILT_STATUS, CASHFLOW2,
+  LAYER_BY_ID, PARCEL_LEFT, layerUrl, oidOf,
 } from '@/lib/services';
 import { sumBy, tally } from '@/lib/agg';
 
@@ -234,142 +234,76 @@ export const loadHeadline = cached<Headline>(async () => {
 
 /* ══════════════ Төслийн жигнэсэн явц ══════════════ */
 
-type StageAgg = { weight: number; actual: number; rows: number };
 
-/**
- * `Төсөл_Гүйцэтгэл`-ийн МӨР — задаргаа хэрэгтэй хэсгүүд өөрсдөө нэгтгэнэ.
- *
- * ⚠️ 2026-08-17: Урьд нь `loadProjectProgress` нь мөрүүдийг нэгтгээд ХАЯДАГ
- * байсан тул «Шугам сүлжээ», «Цахилгаан», «Нийгмийн дэд бүтэц» хэсгүүд өөрсдийн
- * зүсэлтээ гаргаж чаддаггүй байв. Одоо түүхий мөрийг ч буцаана — ИЖИЛ ГАНЦ
- * хүсэлт, зөвхөн `outFields` дөрвөөр нэмэгдсэн.
- */
-export type ProgRow = {
-  /**
-   * `Төсөл` — ⚠️ НАЙДВАРГҮЙ багана: 20 мөр «Зөвшөөрөл» гэж бичигдсэн атлаа
-   * «Сонгон шалгаруулалт»-д харьяалагдана. Зөвхөн НЭГТГЭХЭД хэрэглэнэ.
-   */
-  stage: string;
-  work: string;
-  no: string;
-  /** `bagts_name` нормчилсон (`bagtsKey`) — 112/162 мөрд бий, эс бөгөөс '' */
-  bagts: string;
-  weight: number;
-  actual: number;
-  /** ⚠️ 162-оос 74 мөрд ХООСОН — тиймээс `null`, 0 БИШ */
-  planned: number | null;
-};
 
-export type ProjectProgress = {
-  /** Жигнэсэн гүйцэтгэл — БОДИТ жингийн нийлбэрт нормчилсон (%) */
-  actual: number;
-  /** Хүснэгтэд бүртгэгдсэн нийт жин (%) — 100 БИШ (~81.5) */
-  coverage: number;
-  byStage: Record<string, StageAgg>;
-  /** ⚠️ ШИНЭ — түүхий мөрүүд. Хэсэг тус бүр өөрийн зүсэлтээ эндээс бодно. */
-  rows: ProgRow[];
-};
 
-/**
- * ⚠️ Жигнэсэн дүнг `Σ(жин × гүйц) / Σжин` гэж бодно, 100-д ХУВААХГҮЙ:
- * жингийн нийлбэр ~81.5% тул 100-д хуваавал явц чимээгүй доошилно.
- */
-export const loadProjectProgress = cached<ProjectProgress>(async () => {
-  const PP = PROJECT_PROGRESS.fields;
-  const raw = await queryFeatures(PROJECT_PROGRESS.url, {
-    // ⚠️ ИЖИЛ ГАНЦ queryFeatures — 4 талбар нэмэгдсэн, шинэ хүсэлт ҮҮСЭХГҮЙ
-    outFields: [PP.stage, PP.weight, PP.actual, PP.planned, PP.bagts, PP.work, PP.no],
-    limit: 2000,
-  });
-  const rows: ProgRow[] = raw.map((r) => ({
-    stage: String(r[PP.stage] ?? '').trim(),
-    work: String(r[PP.work] ?? '').trim(),
-    no: String(r[PP.no] ?? '').trim(),
-    bagts: bagtsKey(r[PP.bagts]),
-    weight: Number(r[PP.weight]) || 0,
-    actual: Number(r[PP.actual] ?? 0) || 0,
-    planned:
-      r[PP.planned] == null || r[PP.planned] === '' ? null : Number(r[PP.planned]) || 0,
-  }));
 
-  const byStage: Record<string, StageAgg & { wa: number }> = {};
-  let tw = 0;
-  let twa = 0;
-  for (const r of rows) {
-    if (!r.stage) continue;
-    const cur = byStage[r.stage] ?? { weight: 0, actual: 0, rows: 0, wa: 0 };
-    cur.weight += r.weight;
-    cur.wa += r.weight * r.actual;
-    cur.rows += 1;
-    byStage[r.stage] = cur;
-    tw += r.weight;
-    twa += r.weight * r.actual;
-  }
-  for (const k of Object.keys(byStage)) {
-    const s = byStage[k];
-    s.actual = s.weight ? s.wa / s.weight : 0;
-  }
-  return { actual: tw ? twa / tw : 0, coverage: tw, byStage, rows };
-});
 
-/** Жигнэсэн дүн — `Σ(жин×гүйц) ÷ Σжин`. Төлөвлөгөө нь БӨГЛӨГДСӨН мөрөөр л. */
-export type Weighted = {
-  weight: number;
+/* ══════════════ Багцын гүйцэтгэлийн нэгтгэл ══════════════ */
+
+/** Багц бүрийн СҮҮЛИЙН бүртгэл — төлөвлөгөө vs бодит */
+export type PkgProgressRow = {
+  /** `bagtsKey()`-ээр хэвийн болгосон түлхүүр */
+  key: string;
+  /** Түүхий нэр — шошгонд */
+  label: string;
+  /** Бүртгэсэн огноо, `YYYY-MM-DD` */
+  date: string;
+  /** Гүйцэтгэл, % */
   actual: number | null;
-  /**
-   * ⚠️ Зөвхөн `planned != null` мөрийн ЖИНГЭЭР — өөр хуваарьтай хоёр дүнг
-   * зэрэгцүүлбэл «хоцорсон» дүгнэлт хиймлээр гарна (162-оос 74 мөр хоосон).
-   */
+  /** Төлөвлөгөөт гүйцэтгэл, % */
   planned: number | null;
-  /** Төлөвлөгөө бөглөгдсөн мөрийн эзлэх жин — карт дээр ил хэлэхэд */
-  plannedWeight: number;
-  rows: number;
+  /** Бодит эзлэхүүн */
+  volume: number | null;
+  /** Төлөвлөгөөт эзлэхүүн */
+  volumePlan: number | null;
 };
 
-export function weighted(rows: readonly ProgRow[]): Weighted {
-  const w = sumBy(rows, (r) => r.weight);
-  const wa = sumBy(rows, (r) => r.weight * r.actual);
-  const withPlan = rows.filter((r) => r.planned != null);
-  const pw = sumBy(withPlan, (r) => r.weight);
-  const pwa = sumBy(withPlan, (r) => r.weight * (r.planned as number));
-  return {
-    weight: w,
-    actual: w ? wa / w : null,
-    planned: pw ? pwa / pw : null,
-    plannedWeight: pw,
-    rows: rows.length,
+/**
+ * БАГЦЫН ГҮЙЦЭТГЭЛИЙН НЭГТГЭЛ — багц бүрийн ХАМГИЙН СҮҮЛИЙН огноотой мөр.
+ *
+ * ⚠️ Хүснэгт нь append-only: багц бүрд огноо тутам нэг мөр нэмэгддэг тул
+ * сүүлийн мөр л одоогийн байдлыг заана.
+ *
+ * ⚠️ Хүснэгт одоогоор ХООСОН (2026-08-21) — хоосон массив буцаана, дуудагч тал
+ * `Empty` харуулна. Өгөгдөл орж эхэлмэгц кодын өөрчлөлтгүй ажиллана.
+ */
+export const loadPkgProgress = cached<PkgProgressRow[]>(async () => {
+  const { PKG_PROGRESS, bagtsKey } = await import('@/lib/services');
+  const F = PKG_PROGRESS.fields;
+  const rows = await queryFeatures(PKG_PROGRESS.url, {
+    outFields: [F.date, F.pkg, F.actual, F.planned, F.volume, F.volumePlan],
+    limit: 4000,
+  });
+
+  const nOrNull = (v: unknown): number | null => {
+    if (v == null || v === '') return null;
+    const x = Number(v);
+    return Number.isFinite(x) ? x : null;
   };
-}
 
-/** Мөрүүдийг түлхүүрээр бүлэглэж, бүлэг тус бүрд `weighted()` бодно */
-export function rollupBy(
-  rows: readonly ProgRow[],
-  key: (r: ProgRow) => string,
-): { key: string; agg: Weighted }[] {
-  const m = new Map<string, ProgRow[]>();
+  /** багц → сүүлийн мөр */
+  const last = new Map<string, PkgProgressRow>();
   for (const r of rows) {
-    const k = key(r);
-    if (!k) continue;
-    const list = m.get(k);
-    if (list) list.push(r);
-    else m.set(k, [r]);
+    const raw2 = String(r[F.pkg] ?? '').trim();
+    const key = bagtsKey(raw2);
+    if (!key) continue;
+    const ts = r[F.date];
+    const date = ts == null ? '' : new Date(Number(ts)).toISOString().slice(0, 10);
+    const cur = last.get(key);
+    if (cur && cur.date > date) continue;
+    last.set(key, {
+      key,
+      label: raw2,
+      date,
+      actual: nOrNull(r[F.actual]),
+      planned: nOrNull(r[F.planned]),
+      volume: nOrNull(r[F.volume]),
+      volumePlan: nOrNull(r[F.volumePlan]),
+    });
   }
-  return [...m].map(([k, rs]) => ({ key: k, agg: weighted(rs) }));
-}
-
-/** Хэд хэдэн үе шатыг жингээр нь нэгтгэсэн амьд % — таарах шат алга бол null */
-export const liveStage = (p: ProjectProgress | null, keys: readonly string[]): number | null => {
-  if (!p || !keys.length) return null;
-  let tw = 0;
-  let twa = 0;
-  for (const k of keys) {
-    const s = p.byStage[k];
-    if (!s) continue;
-    tw += s.weight;
-    twa += s.weight * s.actual;
-  }
-  return tw ? twa / tw : null;
-};
+  return [...last.values()].sort((a, b) => a.key.localeCompare(b.key, 'mn', { numeric: true }));
+});
 
 /* ══════════════ Өрх · блок (building_GOL) ══════════════ */
 

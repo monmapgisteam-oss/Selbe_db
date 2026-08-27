@@ -21,7 +21,7 @@ import { SENSORS } from '@/lib/sensors';
 import {
   CASHFLOW2,
   HABEA,
-  PROJECT_PROGRESS,
+  PKG_PROGRESS,
   TASK_SHEET,
   BOUNDARY,
   USAN_SAN,
@@ -31,7 +31,7 @@ import {
 /**
  * ⚠️ ЭМЗЭГ ӨГӨГДЛИЙН ТҮЛХҮҮР ТОВЧ.
  *
- * `true` — санхүү (`CASHFLOW`, `INVEST`) ба төслийн явц (`PROJECT_PROGRESS`)
+ * `true` — санхүү (`CASHFLOW`, `INVEST`)
  * агентад НЭЭЛТТЭЙ. Удирдлага мөнгө, гэрээ, барилгын явцыг асуудаг тул эдгээргүй
  * бол агент үндсэн зорилгоо биелүүлэхгүй (төслийн эзний шийдвэр, 2026-08-13).
  *
@@ -197,31 +197,35 @@ const ALL: Dataset[] = [
       tr('Мөнгөн дүн ТӨГРӨГӨӨР; хариултад сая/тэрбум/их наяд гэж хөрвүүлж бич.'),
   },
 
-
+  /* ─────────── БАГЦЫН ГҮЙЦЭТГЭЛ · ТӨЛӨВЛӨГӨӨ ───────────
+   * ⚠️ 2026-08-27: `ds:progress` (`Төсөл_Гүйцэтгэл_` — Excel-ээс гараар
+   * импортлогддог ТЕСТ хүснэгт) хасагдсаны дараа агентын ТӨЛӨВЛӨГӨӨ vs БОДИТ
+   * харьцуулалтын цорын ганц эх нь энэ. Хасалтын хамт үүнийг нэмээгүй бол
+   * агент «төлөвлөгөөнөөс хэр хоцорч байна?» гэсэн асуултад хариулж чадахгүй
+   * болно.
+   */
   {
-    id: 'ds:progress',
-    title: tr('Төслийн гүйцэтгэл — үе шатаар'),
-    url: PROJECT_PROGRESS.url,
-    oid: PROJECT_PROGRESS.oid,
-    view: 'dashboard',
-    sensitive: true,
-    zoneField: PROJECT_PROGRESS.fields.bagts,
-    synonyms: [tr('төслийн явц'), tr('гүйцэтгэл'), tr('үе шат'), tr('биелэлт')],
+    id: 'ds:pkg_progress',
+    title: tr('Багцын гүйцэтгэл — төлөвлөгөө ба бодит'),
+    url: PKG_PROGRESS.url,
+    oid: PKG_PROGRESS.oid,
+    view: 'bagts',
+    zoneField: PKG_PROGRESS.fields.pkg,
+    synonyms: [tr('багцын гүйцэтгэл'), tr('төлөвлөгөө'), tr('биелэлт'), tr('хоцролт'), tr('эзлэхүүн')],
     fields: {
-      [PROJECT_PROGRESS.fields.no]: tr('Д/д («6.2.1.1» — эхний тоо нь үе шат)'),
-      [PROJECT_PROGRESS.fields.stage]: tr('Үе шатны нэр'),
-      [PROJECT_PROGRESS.fields.work]: tr('Ажлын нэр'),
-      [PROJECT_PROGRESS.fields.bagts]: tr('Багцын код'),
-      [PROJECT_PROGRESS.fields.sectionWeight]: tr('Үе шат доторх жин (%)'),
-      [PROJECT_PROGRESS.fields.weight]: tr('Төслийн нийт дүнд эзлэх жин (%)'),
-      [PROJECT_PROGRESS.fields.planned]: tr('Төлөвлөгөөт гүйцэтгэл (%)'),
-      [PROJECT_PROGRESS.fields.actual]: tr('Бодит гүйцэтгэл (%)'),
-      [PROJECT_PROGRESS.fields.fulfilment]: tr('Төлөвлөгөөний биелэлт (%)'),
+      [PKG_PROGRESS.fields.date]: tr('Бүртгэсэн огноо (epoch мс) — багц бүрийн СҮҮЛИЙН мөрийг үүгээр сонго'),
+      [PKG_PROGRESS.fields.pkg]: tr('Багцын нэр («Багц 3-1» гэх мэт)'),
+      [PKG_PROGRESS.fields.actual]: tr('Бодит гүйцэтгэл (%, 0–100)'),
+      [PKG_PROGRESS.fields.planned]: tr('Төлөвлөгөөт гүйцэтгэл (%, 0–100)'),
+      [PKG_PROGRESS.fields.volume]: tr('Бодит эзлэхүүн'),
+      [PKG_PROGRESS.fields.volumePlan]: tr('Төлөвлөгөөт эзлэхүүн'),
     },
     warn:
-      tr('Нийт гүйцэтгэлийг гаргахдаа энгийн ДУНДАЖ авч БОЛОХГҮЙ — ажил бүр өөр жинтэй. ') +
-      tr('`{0}`-ыг `{1}`-ээр жинлэж нэгтгэнэ.', PROJECT_PROGRESS.fields.actual, PROJECT_PROGRESS.fields.weight),
+      tr('⚠️ Хүснэгт нь append-only: багц бүрд огноо тутам мөр НЭМЭГДДЭГ. Одоогийн байдлыг гаргахдаа багц бүрийн ХАМГИЙН СҮҮЛИЙН огноотой мөрийг ав — бүх мөрөөр дундаж авбал хуучин заалт хольж хазайна. ')
+      + tr('⚠️ Хувь нь 0–100 (БУТАРХАЙ 0–1 БИШ) — ×100 хийхгүй. ')
+      + tr('⚠️ Хоцролтыг `{0} − {1}` гэж бод; сөрөг бол төлөвлөгөөнөөс ТҮРҮҮЛСЭН гэсэн үг.', PKG_PROGRESS.fields.actual, PKG_PROGRESS.fields.planned),
   },
+
 
   /* ─────────── IoT МЭДРЭГЧ ───────────
    * ⚠️ `sensors.ts`-ийн бүртгэлээс АВТОМАТААР үүснэ — мэдрэгч нэмэхэд энд
