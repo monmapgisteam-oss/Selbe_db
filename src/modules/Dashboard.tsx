@@ -31,7 +31,7 @@ import {
    нь Tsogts-д. Хоёулаа `cached` тул давхар хүсэлт үүсэхгүй — «Багцын санхүү»
    харагдацын аль хэдийн уншсан үр дүнг хуваалцана. */
 import { loadFinData, type FinData } from '@/modules/Finance';
-import { aggregateMonths } from '@/modules/Tsogts';
+import { aggregateMonths } from '@/modules/PkgProg';
 import {
   loadBlockProgress, loadBlockHistory, progressSeries,
   type BlockProgressMap, type BlockHistory,

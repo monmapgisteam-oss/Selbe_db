@@ -483,7 +483,19 @@ async function loadHabeaSummary(): Promise<ReportExtra['habea']> {
     /* Огноо + компани тус бүрийн тоон талбарууд — «*» бүх баганыг татдаг байв
        (2026-08-21 гүйцэтгэлийн аудит) */
     queryFeatures(HABEA.labor.url, {
-      outFields: [L.ognoo, ...HABEA.labor.companies.flatMap((c) => Object.values(laborCompanyFields(c.sfx)))],
+      /*
+       * ⚠️ `bagts` талбарыг ХАСНА. Сүүлийн 5 гүйцэтгэгчид маягтад багц
+       *    заагдаагүй тул `Bagts_SC` мэт багана ОГТ БАЙХГҮЙ — түүнийг
+       *    асуувал ArcGIS «Invalid query parameters» гэж БҮХ хүсэлтийг
+       *    унагаж, ХАБЭА-гийн тайлан бүхэлдээ хоосон болдог байв.
+       */
+      outFields: [
+        L.ognoo,
+        ...HABEA.labor.companies.flatMap((c) => {
+          const f = laborCompanyFields(c.sfx);
+          return [f.mongol, f.gadaad, f.niitAjiltan, f.niitTehnik];
+        }),
+      ],
     }),
     queryFeatures(HABEA.incident.url, { outFields: [HABEA.incident.fields.ognoo] }),
   ]);

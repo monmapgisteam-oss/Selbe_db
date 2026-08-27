@@ -265,14 +265,14 @@ export type PkgProgressRow = {
  * ⚠️ Хүснэгт нь append-only: багц бүрд огноо тутам нэг мөр нэмэгддэг тул
  * сүүлийн мөр л одоогийн байдлыг заана.
  *
- * ⚠️ Хүснэгт одоогоор ХООСОН (2026-08-21) — хоосон массив буцаана, дуудагч тал
- * `Empty` харуулна. Өгөгдөл орж эхэлмэгц кодын өөрчлөлтгүй ажиллана.
+ * ⚠️ 2026-08-21-нд ХООСОН байсан; 2026-08-27-нд 7 багц бүртгэгдсэн. Дуудагч
+ * тал ҮРГЭЛЖ хоосныг зөвшөөрөх ёстой — бөглөлт үе үе тасалддаг.
  */
 export const loadPkgProgress = cached<PkgProgressRow[]>(async () => {
-  const { PKG_PROGRESS, bagtsKey } = await import('@/lib/services');
-  const F = PKG_PROGRESS.fields;
-  const rows = await queryFeatures(PKG_PROGRESS.url, {
-    outFields: [F.date, F.pkg, F.actual, F.planned, F.volume, F.volumePlan],
+  const { BAGTS_NEGTGEL, bagtsKey } = await import('@/lib/services');
+  const F = BAGTS_NEGTGEL.fields;
+  const rows = await queryFeatures(BAGTS_NEGTGEL.url, {
+    outFields: [F.date, F.bagts, F.progress, F.planned, F.volume, F.volumePlan],
     limit: 4000,
   });
 
@@ -285,7 +285,7 @@ export const loadPkgProgress = cached<PkgProgressRow[]>(async () => {
   /** багц → сүүлийн мөр */
   const last = new Map<string, PkgProgressRow>();
   for (const r of rows) {
-    const raw2 = String(r[F.pkg] ?? '').trim();
+    const raw2 = String(r[F.bagts] ?? '').trim();
     const key = bagtsKey(raw2);
     if (!key) continue;
     const ts = r[F.date];
@@ -296,7 +296,7 @@ export const loadPkgProgress = cached<PkgProgressRow[]>(async () => {
       key,
       label: raw2,
       date,
-      actual: nOrNull(r[F.actual]),
+      actual: nOrNull(r[F.progress]),
       planned: nOrNull(r[F.planned]),
       volume: nOrNull(r[F.volume]),
       volumePlan: nOrNull(r[F.volumePlan]),

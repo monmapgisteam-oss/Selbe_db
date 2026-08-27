@@ -1,0 +1,13 @@
+{
+  "_tailbar": "Selbe_guitsetgel_consolidated/FeatureServer/0 → updateDefinition. ҮЛДЭЖ БУЙ талбаруудын alias ба уртыг зөв болгоно. ⚠️ CSV импортын String талбарууд бүгд 8000 тэмдэгт — тэр нь индексийг хүндрүүлж, AGOL-ийн засварлагчид хэрэглэгдэхгүй өргөн багана болж харагдана. Уртыг БАГАСГАХ нь одоо байгаа өгөгдлийг тайрч болзошгүй тул §7-ийн 2–3 алхам (өгөгдөл цэвэрлэх) ХИЙГДСЭНИЙ ДАРАА ажиллуулна.",
+  "fields": [
+    { "name": "bagts", "type": "esriFieldTypeString", "alias": "Багц", "length": 32, "nullable": false, "editable": true },
+    { "name": "ognoo", "type": "esriFieldTypeDateOnly", "alias": "Бүртгэсэн огноо", "nullable": false, "editable": true },
+    { "name": "dugaar", "type": "esriFieldTypeString", "alias": "№", "length": 16, "nullable": true, "editable": true },
+    { "name": "tuvshin", "type": "esriFieldTypeSmallInteger", "alias": "Түвшин", "nullable": true, "editable": true },
+    { "name": "ajil", "type": "esriFieldTypeString", "alias": "Ажил", "length": 512, "nullable": true, "editable": true },
+    { "name": "huviin_jin", "type": "esriFieldTypeDouble", "alias": "Хувийн жин", "nullable": true, "editable": true },
+    { "name": "niit_jin", "type": "esriFieldTypeDouble", "alias": "Нийт жин", "nullable": true, "editable": true },
+    { "name": "guitsetgel", "type": "esriFieldTypeDouble", "alias": "Бодит гүйцэтгэл", "nullable": true, "editable": true }
+  ]
+}

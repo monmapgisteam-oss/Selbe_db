@@ -1,0 +1,21 @@
+{
+  "_1_tailbar": "ШИНЭ SERVICE ҮҮСГЭХ. AGOL: https://www.arcgis.com/sharing/rest/content/users/<user>/createService?f=json&token=<token> дээр POST, createParameters=<энэ JSON-ы `createParameters` хэсэг>. Дараа нь `burtgel-service-layer.json`-ыг addToDefinition-аар нэмнэ.",
+  "_2_yagaad_table": "ГЕОМЕТРГҮЙ ХҮСНЭГТ (Table) — бүртгэлийн мөр нь өөрөө байрлалгүй. Байрлал нь блокийн давхаргад (`mon:building`) аль хэдийн бий; `bagts_kod + blok`-оор холбогдоно. Геометр давхарлавал нэг барилга хоёр эх сурвалжтай болж, аль нь үнэн болох нь тодорхойгүй болно.",
+
+  "createParameters": {
+    "name": "Selbe_guitsetgel_burtgel",
+    "serviceDescription": "Гүйцэтгэлийн бүртгэлийн нэгтгэл — «Гүйцэтгэл бөглөх»-ийн батлагдсан агшнууд. Мөр бүр = нэг агшинд, нэг блокийн, нэг ажлын үр дүн.",
+    "hasStaticData": false,
+    "maxRecordCount": 4000,
+    "supportedQueryFormats": "JSON",
+    "capabilities": "Query,Create,Update,Delete,Editing,Extract",
+    "allowGeometryUpdates": false,
+    "hasGeometryProperties": false,
+    "units": "esriMeters",
+    "xssPreventionInfo": {
+      "xssPreventionEnabled": true,
+      "xssPreventionRule": "InputOnly",
+      "xssInputRule": "rejectInvalid"
+    }
+  }
+}

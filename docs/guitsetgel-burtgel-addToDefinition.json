@@ -1,0 +1,32 @@
+{
+  "_tailbar": "Selbe_guitsetgel_consolidated/FeatureServer/0 → addToDefinition. AGOL: <serviceUrl>/admin/0/addToDefinition, addToDefinition=<энэ JSON>. Байгаа талбарыг ДАХИН нэмбэл алдаа өгнө — эхлээд deleteFromDefinition ажиллуулна.",
+  "fields": [
+    { "name": "bagts_kod", "type": "esriFieldTypeString", "alias": "Багцын код", "length": 16, "nullable": false, "editable": true },
+    { "name": "davhar", "type": "esriFieldTypeSmallInteger", "alias": "Давхар", "nullable": true, "editable": true },
+    { "name": "blok", "type": "esriFieldTypeString", "alias": "Блок", "length": 16, "nullable": true, "editable": true },
+    { "name": "negj_ortog", "type": "esriFieldTypeDouble", "alias": "Нэгж өртөг", "nullable": true, "editable": true },
+    { "name": "mongon_dun", "type": "esriFieldTypeDouble", "alias": "Мөнгөн дүн", "nullable": true, "editable": true },
+    { "name": "obyem_niit", "type": "esriFieldTypeDouble", "alias": "Нийт обьём", "nullable": true, "editable": true },
+    { "name": "obyem", "type": "esriFieldTypeDouble", "alias": "Гүйцэтгэсэн обьём", "nullable": true, "editable": true },
+
+    { "name": "burtgel_dugaar", "type": "esriFieldTypeString", "alias": "Бүртгэлийн дугаар", "length": 16, "nullable": true, "editable": true },
+    { "name": "ilgeesen", "type": "esriFieldTypeDate", "alias": "Илгээсэн огноо", "nullable": true, "editable": true },
+    { "name": "batalsan", "type": "esriFieldTypeDate", "alias": "Баталсан огноо", "nullable": true, "editable": true },
+    { "name": "guitsetgegch", "type": "esriFieldTypeString", "alias": "Гүйцэтгэгч", "length": 128, "nullable": true, "editable": true },
+    { "name": "injener", "type": "esriFieldTypeString", "alias": "Хяналтын инженер", "length": 128, "nullable": true, "editable": true },
+    { "name": "bagts_menejer", "type": "esriFieldTypeString", "alias": "Багцын менежер", "length": 128, "nullable": true, "editable": true },
+    { "name": "eronhii_menejer", "type": "esriFieldTypeString", "alias": "Ерөнхий менежер", "length": 128, "nullable": true, "editable": true },
+    { "name": "tolov", "type": "esriFieldTypeString", "alias": "Төлөв", "length": 32, "nullable": true, "editable": true },
+
+    { "name": "tuluvluguut", "type": "esriFieldTypeDouble", "alias": "Төлөвлөгөөт гүйцэтгэл", "nullable": true, "editable": true },
+    { "name": "biyelelt", "type": "esriFieldTypeDouble", "alias": "Төлөвлөгөө биелэлт", "nullable": true, "editable": true },
+    { "name": "ehleh", "type": "esriFieldTypeDateOnly", "alias": "Эхлэх огноо", "nullable": true, "editable": true },
+    { "name": "duusah", "type": "esriFieldTypeDateOnly", "alias": "Дуусах огноо", "nullable": true, "editable": true }
+  ],
+  "indexes": [
+    { "name": "ix_bagts_ognoo", "fields": "bagts_kod,ognoo", "isUnique": false, "isAscending": true, "description": "Багцын агшнууд" },
+    { "name": "ix_blok", "fields": "bagts_kod,blok,ognoo", "isUnique": false, "isAscending": true, "description": "Блокийн гүйцэтгэл" },
+    { "name": "ix_burtgel", "fields": "burtgel_dugaar", "isUnique": false, "isAscending": true, "description": "Хяналтын бүртгэл" },
+    { "name": "ix_ognoo", "fields": "ognoo", "isUnique": false, "isAscending": false, "description": "Сүүлийн агшин" }
+  ]
+}

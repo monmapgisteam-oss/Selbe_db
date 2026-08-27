@@ -14,7 +14,8 @@ import { useZoomToFilter } from '@/lib/useZoomToFilter';
 import dynamic from 'next/dynamic';
 import { Dashboard } from '@/modules/Dashboard';
 import { Bagts } from '@/modules/Bagts';
-import { Tsogts } from '@/modules/Tsogts';
+import { PkgFin } from '@/modules/PkgFin';
+import { PkgProg } from '@/modules/PkgProg';
 import { Gazar } from '@/modules/Gazar';
 import { Habea } from '@/modules/Habea';
 import { Irged } from '@/modules/Irged';
@@ -638,8 +639,10 @@ function PortalContent(
               ? <Dashboard dim={dim} setDim={setDim} zone={zone} setZone={setZone} />
               : isBagts
                 ? <Bagts dim={dim} setDim={setDim} />
-                : isPkgFin || isPkgProg
-                  ? <Tsogts dim={dim} setDim={setDim} mode={isPkgFin ? 'fin' : 'prog'} />
+                : isPkgFin
+                  ? <PkgFin dim={dim} setDim={setDim} />
+                  : isPkgProg
+                    ? <PkgProg dim={dim} setDim={setDim} />
                   : isSheet
                     ? <Sheet />
                     : isTailan

@@ -21,7 +21,7 @@ import { SENSORS } from '@/lib/sensors';
 import {
   CASHFLOW2,
   HABEA,
-  PKG_PROGRESS,
+  BAGTS_NEGTGEL,
   TASK_SHEET,
   BOUNDARY,
   USAN_SAN,
@@ -207,23 +207,23 @@ const ALL: Dataset[] = [
   {
     id: 'ds:pkg_progress',
     title: tr('Багцын гүйцэтгэл — төлөвлөгөө ба бодит'),
-    url: PKG_PROGRESS.url,
-    oid: PKG_PROGRESS.oid,
+    url: BAGTS_NEGTGEL.url,
+    oid: BAGTS_NEGTGEL.oid,
     view: 'bagts',
-    zoneField: PKG_PROGRESS.fields.pkg,
+    zoneField: BAGTS_NEGTGEL.fields.bagts,
     synonyms: [tr('багцын гүйцэтгэл'), tr('төлөвлөгөө'), tr('биелэлт'), tr('хоцролт'), tr('эзлэхүүн')],
     fields: {
-      [PKG_PROGRESS.fields.date]: tr('Бүртгэсэн огноо (epoch мс) — багц бүрийн СҮҮЛИЙН мөрийг үүгээр сонго'),
-      [PKG_PROGRESS.fields.pkg]: tr('Багцын нэр («Багц 3-1» гэх мэт)'),
-      [PKG_PROGRESS.fields.actual]: tr('Бодит гүйцэтгэл (%, 0–100)'),
-      [PKG_PROGRESS.fields.planned]: tr('Төлөвлөгөөт гүйцэтгэл (%, 0–100)'),
-      [PKG_PROGRESS.fields.volume]: tr('Бодит эзлэхүүн'),
-      [PKG_PROGRESS.fields.volumePlan]: tr('Төлөвлөгөөт эзлэхүүн'),
+      [BAGTS_NEGTGEL.fields.date]: tr('Бүртгэсэн огноо (epoch мс) — багц бүрийн СҮҮЛИЙН мөрийг үүгээр сонго'),
+      [BAGTS_NEGTGEL.fields.bagts]: tr('Багцын нэр («Багц 3-1» гэх мэт)'),
+      [BAGTS_NEGTGEL.fields.progress]: tr('Бодит гүйцэтгэл (%, 0–100)'),
+      [BAGTS_NEGTGEL.fields.planned]: tr('Төлөвлөгөөт гүйцэтгэл (%, 0–100)'),
+      [BAGTS_NEGTGEL.fields.volume]: tr('Бодит эзлэхүүн'),
+      [BAGTS_NEGTGEL.fields.volumePlan]: tr('Төлөвлөгөөт эзлэхүүн'),
     },
     warn:
       tr('⚠️ Хүснэгт нь append-only: багц бүрд огноо тутам мөр НЭМЭГДДЭГ. Одоогийн байдлыг гаргахдаа багц бүрийн ХАМГИЙН СҮҮЛИЙН огноотой мөрийг ав — бүх мөрөөр дундаж авбал хуучин заалт хольж хазайна. ')
       + tr('⚠️ Хувь нь 0–100 (БУТАРХАЙ 0–1 БИШ) — ×100 хийхгүй. ')
-      + tr('⚠️ Хоцролтыг `{0} − {1}` гэж бод; сөрөг бол төлөвлөгөөнөөс ТҮРҮҮЛСЭН гэсэн үг.', PKG_PROGRESS.fields.actual, PKG_PROGRESS.fields.planned),
+      + tr('⚠️ Хоцролтыг `{0} − {1}` гэж бод; сөрөг бол төлөвлөгөөнөөс ТҮРҮҮЛСЭН гэсэн үг.', BAGTS_NEGTGEL.fields.progress, BAGTS_NEGTGEL.fields.planned),
   },
 
 

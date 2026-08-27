@@ -145,38 +145,74 @@
 /* ── Комбо график (ComboChart — Tsogts хэрэглэнэ) ── */
 .chartWrap { position: relative; width: 100%; }
 .comboSvg { width: 100%; display: block; cursor: crosshair; }
-.curveGrid { stroke: var(--chart-grid); stroke-width: 1; }
+/* ⚠️ Тор нь ЗАДГАЙ БАРИМЖАА: өгөгдлөөс илүү анхаарал татах ёсгүй тул маш
+   бүдэг, 4 шугам. Урьд нь 5 шугам, тод өнгөтэй байв. */
+.curveGrid { stroke: var(--chart-grid); stroke-width: 1; opacity: 0.6; }
 .curveCursor { stroke: var(--ink-3); stroke-width: 1; stroke-dasharray: 3 3; }
+
+/* Он сар — доод ГАНЦ мөр (хувиуд tooltip руу шилжсэн) */
 .axisX { fill: var(--ink-3); font-size: 11px; font-variant-numeric: tabular-nums; }
-/* Тэнхлэгийн % мөрүүд — цуваа ӨӨРИЙН слотын өнгийг tsx-ээс inline (fill) авна
-   (PLAN/PHYS хоёр мөр зэрэгцдэг тул identity хэрэгтэй); энд зөвхөн нөөц бэх. */
-.axisXPct { fill: var(--ink-3); font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; }
-/* Цэгийн ₮ шошго — төлөвлөгөө нь саарал бэхээр (байрлал нь цэг дээрээ),
-   олгосон (barValG) нь ACT цувааны слотыг tsx-ээс inline авна. */
-.barVal { fill: var(--ink-2); font-size: 10.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.barValG { fill: var(--ink-2); font-size: 10.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
 
-/* Санхүүжилтийн НАРИЙН шугам (2026-08-21) — багана байсныг цэгтэй
-   шугам болгосон; үндсэн .sLine-ээс нимгэн тул гурван цуваа давхцахад
-   аль нь туслах болох нь ялгарна */
-.sLineThin {
-  fill: none;
-  stroke-width: 1.4;
-  stroke-linejoin: round;
-  stroke-linecap: round;
-}
-
-/* S-муруйн шугам, цэг */
-.sLine {
-  fill: none;
-  stroke-width: 2.4;
-  stroke-linejoin: round;
-  stroke-linecap: round;
-}
-.sDot { stroke: var(--surface); stroke-width: 2; }
+/* Y тэнхлэгийн ₮ — торны ДЭЭР сууна: тусдаа багана эзлүүлбэл муруйн талбай
+   нарийсдаг. Тиймээс маш бүдэг, жижиг — уншихад хангалттай, саад биш. */
 .sAxisY {
   fill: var(--ink-3);
-  font-size: 10.5px;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
+}
+
+/* ── ЗӨРҮҮГИЙН ТАЛБАЙ ──
+   Төлөвлөгөө ба бодит олголтын хоорондох зай. Энэ нь графикийн ГОЛ өгүүлэмж
+   тул будалттай — өргөсөх тусам хоцрогдол их гэдгийг нүд шууд уншина.
+   ⚠️ Тунгалаг нь БАГА: муруйнууд түүний дээгүүр тод үлдэх ёстой. */
+.gapArea { opacity: 0.1; stroke: none; }
+
+/* ── МУРУЙНУУД — зузаан нь ҮҮРГИЙГ хэлнэ ──
+   төлөвлөгөө = ЛАВЛАГАА (нимгэн, тасархай) · олгосон = БОДИТ ХАРИУЛТ (зузаан)
+   ⚠️ Урьд нь хоёулаа ижил зузаантай байсан тул аль нь зорилт, аль нь баримт
+   болох нь ялгардаггүй байв. */
+.planLine {
+  fill: none;
+  stroke-width: 1.6;
+  stroke-dasharray: 5 4;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  opacity: 0.85;
+}
+.actLine {
+  fill: none;
+  stroke-width: 2.8;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.physLine {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  opacity: 0.9;
+}
+
+.sDot { stroke: var(--surface); stroke-width: 2; }
+
+/* Цэг бүрийн утга — цувааныхаа өнгөөр. Жижиг, tabular тул баганалж уншигдана.
+   ⚠️ Хэт тод болговол муруй бүрхэгдэнэ: жин 600, өнгө нь цувааных. */
+.ptVal {
+  font-size: 10px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+/* Сүүлийн цэгийн шошго — графикийн ЦОРЫН ГАНЦ тогтмол тоо. Цувааныхаа
+   өнгөөр бичигдэнэ (tsx-ээс inline fill) тул аль шугамынх нь эргэлзээгүй. */
+.endVal {
+  font-size: 12px;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 
@@ -219,4 +255,6 @@
 .tipRow { display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--ink-2); line-height: 1.7; }
 .tipRow i { width: 9px; height: 9px; border-radius: 2px; flex: none; }
 .tipRow b { margin-left: auto; font-weight: 600; color: var(--ink); }
+/* Өнгөт дөрвөлжингүй мөр (лавлах тоонууд) — цэгтэй мөрүүдтэй зэрэгцүүлнэ */
+.tipRow:not(:has(i)) { padding-left: 16px; }
 .tipGap { margin-top: 3px; padding-top: 5px; border-top: 1px solid var(--line); }

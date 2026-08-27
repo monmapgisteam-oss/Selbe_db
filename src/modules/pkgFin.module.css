@@ -1,12 +1,13 @@
 /* ══════════════════════════════════════════════════════════
-   БАРИЛГЫН ЦОГЦ ХЯНАЛТ — envhub («хээрийн хэмжих хэрэгсэл») хэлээр.
-   CHART БОЛГОН ТУСДАА ЭЛЕМЕНТ: өөрийн үүр (grid cell), өөрийн гүйлгэлт.
+   «БАГЦЫН САНХҮҮ» — ЗӨВХӨН энэ харагдацын хэв маяг.
+   ⚠️ «Багцын гүйцэтгэл» нь `pkgProg.module.css`-тэй ТУСДАА: хоёр цонх
+      ямар ч дүрэм ХУВААЛЦАХГҮЙ. Энд хэмжээ өөрчлөхөд нөгөө цонх огт
+      хөндөгдөхгүй — тэр нь энэ салгалтын гол зорилго.
 
      ┌────────────── KPI (дээр, бүтэн өргөн) ──────────────┐
-     │ Багцын  │            │ Гэрээ/төсөв │ Эх үүсвэр     │
-     │ жагсаалт│   ЗУРАГ    ├─────────────┼───────────────│
-     │ (зүүн)  │            │ Блок явц    │ Ажлын төрөл   │
-     ├──────── Санхүүгийн график (доор, бүтэн өргөн) ─────┤
+     │ Багцын  │            │ Гэрээ · эх үүсвэр           │
+     │ жагсаалт│   ЗУРАГ    │ актууд · сарын задаргаа     │
+     ├──────── Санхүүжилтийн график (доор, бүтэн өргөн) ──┤
    ══════════════════════════════════════════════════════════ */
 
 .pack {
@@ -129,7 +130,6 @@
 /* Гүйцэтгэлийн Ring — дээд KPI зурвастай ДАВХАРДДАГ тул нуана */
 .r [class*='packRing'] { display: none; }
 
-
 /* ── Төв: зураг — hairline хүрээтэй үүр ── */
 .map {
   grid-area: map;
@@ -208,21 +208,6 @@
   .alertBlink, .alertCard section { animation: none; }
 }
 
-/* Барилгын хяналт руу буцах товч */
-.backBtn {
-  flex: none;
-  align-self: flex-start;
-  padding: 6px 14px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  background: var(--surface-2);
-  color: var(--ink-2);
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-}
-.backBtn:hover { color: var(--ink); }
-
 /* ── Нарийн дэлгэц — босоо цуваа ── */
 /* Босго 1100 — бүх дашбоардын НЭГДСЭН босго (2026-08-21) */
 @media (max-width: 1100px) {
@@ -262,24 +247,8 @@
 .gapRed { background: color-mix(in srgb, var(--bad) 15%, transparent); color: var(--bad-ink, var(--bad)); }
 .gapYellow { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn-ink, var(--warn)); }
 
-/* Багц дарахад ЖАГСААЛТЫН ДОТОР задарсан сарын цуваа — дотогш давхарга
-   (surface-2) + hairline, envhub-ийн гүнийг илэрхийлэх хоёр л хэрэгсэл. */
-.packExpand {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 12px 14px 14px;
-  background: var(--surface-2);
-  border-bottom: 1px solid var(--line);
-  animation: packOpen 0.24s var(--ease) both;
-}
-@keyframes packOpen {
-  from { opacity: 0; transform: translateY(-6px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-.packLegend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 11px; color: var(--ink-3); }
-.packLegend span { display: inline-flex; align-items: center; gap: 5px; }
-.packLegend i { width: 9px; height: 9px; border-radius: 1px; flex: none; }
+/* ⚠️ .packExpand / .packLegend ХАСАГДСАН (2026-08-25): жагсаалтын доторх
+   жижиг график устгагдсан тул түүний бүрхүүл, легенд хэрэггүй болов. */
 
 /* ── Санхүүгийн картын үзүүлэлт нуух/харуулах товч (2026-08-21) —
       зөвхөн KPI мөрөнд үйлчилнэ, доорх график үргэлж нээлттэй ── */
@@ -302,24 +271,6 @@
 .kpiToggle:hover { color: var(--ink); }
 .kpiCaret { font-size: 9px; line-height: 1; transition: transform 0.14s ease; }
 .kpiCaretOff { transform: rotate(-90deg); }
-
-/* ── Төслийн нийт давхцсан үлдсэн нэгж талбарын карт (2026-08-21 буцаав) —
-      envhub Indicator өрлөг: жижиг eyebrow шошго дээр, ТОМ утга доор ── */
-.ovTotLabel {
-  display: block;
-  margin-bottom: 6px;
-  font-size: 10.5px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--ink-3);
-}
-.ovTotVal {
-  display: block;
-  font-size: 26px;
-  font-weight: 600;
-  line-height: 1;
-}
 
 /* ── Санхүүгийн картын өндрийн чирэх бариул (2026-08-21) — картын дээд
       ирмэг дээрх хэвтээ зурвас; SplitGrip-тэй ижил дүрэм, чиг нь эгц ── */
@@ -371,13 +322,6 @@
 }
 .finGrip:focus-visible { outline: none; }
 
-/* Нэг баганат горимд өндрийн бариул нуугдана — файлын төгсгөлд байгаа нь
-   санамсаргүй биш: .finGrip-ийн үндсэн дүрэм дээр бичигдсэн тул дараалалаар
-   давуулахын тулд эндээс хойш зарлав (2026-08-21). */
-@media (max-width: 1100px) {
-  .finGrip { display: none; }
-}
-
 /* ══ SplitGrip-ийг сүлжээний НҮДЭНД — завсрын ГОЛД суулгана (2026-08-21):
    absolute давхарга байхдаа left: calc(var(--side-l) - 5px) гэж баганын
    ДОТОР тооцогдож картуудын ирмэг дээр давхардаг байв. Одоо grid-ийн
@@ -403,4 +347,157 @@
 }
 @media (max-width: 1100px) {
   .pack > :global(button[class*='splitGrip_grip']) { display: none; }
+}
+
+/* ══════════════════════════════════════════════════════════
+   ЗҮҮН БАГАНА — АККОРДЕОН (2026-08-25)
+   Бүлэг бүр хураагддаг болсны дараа энэ багана нь «жагсаалт» биш
+   ЖАГСААЛТУУДЫН ЖАГСААЛТ болсон: хаалттай гарчгууд нь дээр дараалж,
+   нээлттэй нэг нь доош задарна. Тиймээс хэмжээ нь гарчигт тохирно —
+   картын хоорондын зай багасаж, гарчиг өөрөө товчны төрхтэй болно.
+   ⚠️ Дүрэм бүр `.list`-ээр хашигдсан: бусад харагдац бүү хөндөгд.
+   ══════════════════════════════════════════════════════════ */
+
+/* Хаалттай гарчгууд нягт дараалахын тулд зай багасав (10px → 6px) */
+.list { gap: 6px; }
+
+/* Гарчиг нь дарагддаг тул ТОВЧ шиг: бүтэн өргөн, hover-т дэвсгэр өөрчлөгдөнө */
+.list section > header {
+  cursor: pointer;
+  border-radius: var(--r-sm);
+  margin: -2px -4px 6px;
+  padding: 4px;
+  transition: background 0.14s var(--ease, ease);
+}
+.list section > header:hover {
+  background: color-mix(in srgb, var(--hue) 8%, transparent);
+}
+
+/* Хаалттай карт — зөвхөн гарчиг үлдэх тул доод зай хэрэггүй */
+.list section[class*='sectionClosed'] > header { margin-bottom: 0; }
+.list section[class*='sectionClosed'] {
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+/* Сумыг томсгож, эргэлтийг зөөлрүүлэв — хаалттай/нээлттэй нь холоос танигдана */
+.list [class*='secCaret'] {
+  font-size: 11px;
+  color: var(--hue);
+  transition: transform 0.18s var(--ease, ease);
+}
+
+/* «N багц · тайлбар» — гарчгийн баруун талд тоо нь ялгарч зогсоно */
+.list [class*='sectionNote'] {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ⚠️ НААЛДДАГ ГАРЧИГ ХАСАГДСАН (2026-08-25). Бүлэг бүрийн гарчиг
+   `sticky` байсан тул гүйлгэхэд дөрвүүлээ дээд ирмэг дээр ДАРААЛАН
+   овоорч, доорх мөрүүдийг бүрхэж байв. Багана нь дээрээс доош жигд
+   гүйх нь ойлгомжтой — аль бүлэг дотор явааг гарчиг өөрөө хэлнэ. */
+
+/* ── СОНГОСОН БАГЦ — жагсаалтад тод тэмдэглэгдэнэ ──
+   ⚠️ Урьд нь сонголт зөвхөн баруун картаар мэдрэгддэг байсан тул хэрэглэгч
+   жагсаалт руу буцахад аль мөр идэвхтэйг хайдаг байв. */
+.list [aria-pressed='true'] {
+  background: color-mix(in srgb, var(--hue) 10%, transparent);
+  box-shadow: inset 2px 0 0 var(--hue);
+}
+
+/* Дээд KPI зурвасын доогуур нимгэн зурвас — аль горимд байгааг захаас нь
+   хэлнэ. Гарчиг уншихгүйгээр өнгө нь өөрөө ялгана. */
+.kpi {
+  padding-bottom: 8px;
+  border-bottom: 2px solid color-mix(in srgb, var(--hue) 55%, transparent);
+}
+
+/* ── ГРАФИКИЙН ЛЕГЕНД — тэмдэг нь ШУГАМЫН ХЭЛБЭРИЙГ давтана ──
+   ⚠️ Дөрвөлжин цэг нь «энэ өнгө» гэдгээс өөр юу ч хэлдэггүй байв. Одоо
+   тасархай зураас = төлөвлөгөө (лавлагаа), бүтэн зузаан = бодит олголт —
+   графикт харсан хэлбэрээ легендээс шууд таних боломжтой. */
+.finLegend i.legDash,
+.finLegend i.legSolid {
+  width: 18px;
+  height: 3px;
+  border-radius: 2px;
+}
+.finLegend i.legDash {
+  height: 0;
+  border-top: 2px dashed;
+  background: none !important;
+  opacity: 0.85;
+}
+
+/* ══════════════════════════════════════════════════════════
+   БАРУУН БАГАНА — ТЕКСТ ИРМЭГЭЭС ГАРАХГҮЙ (2026-08-25)
+
+   ⚠️ `ui.module.css`-ийн `.rowVal` нь `white-space: nowrap` + `flex: none`:
+      тэр дүрэм нь ТОО-нд зөв (жижиг баганад «3,935» тэмдэгт тус бүрээр
+      босоо тасардаг байсныг зассан). Гэвч санхүүгийн дэлгэрэнгүйд утга нь
+      ТЕКСТ — «Хятадын барилгын 6-р инженерийн товчоо», ажлын бүтэн нэр —
+      бөгөөд тэдгээр нь нэг мөрөнд 380px багананд БАГТАХГҮЙ, картын
+      ирмэгээс халина.
+
+   Тиймээс ЭНЭ БАГАНАД зөвхөн: текст мөр дамжина, тоо nowrap хэвээр.
+   Глобал дүрмийг хөндөхгүй — бусад самбарын зан төлөв хэвээр.
+   ══════════════════════════════════════════════════════════ */
+.r [class*='rowVal'] {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+/* Тоо нь ТАСРАХГҮЙ — `className="num"` глобал класстай утгууд */
+.r [class*='rowVal'] :global(.num) { white-space: nowrap; }
+
+/* Түлхүүр хэт нарийсахаас хамгаална: 40%-иас доош хумигдахгүй */
+.r [class*='rowKey'] { flex: 0 1 auto; max-width: 52%; overflow-wrap: anywhere; }
+
+/* Картын аль ч элемент баганаас ХӨНДЛӨН халихгүй.
+   ⚠️ `overflow: hidden` БАЙЖ БОЛОХГҮЙ: тэр нь картаас өндөр агуулгыг
+      (цагирагийн тайлбар, урт мөрийн жагсаалт) ТАСАЛЖ хаядаг байв. Карт нь
+      агуулгынхаа өндрөөр сунаж, БАГАНА нь бүхэлдээ гүйх ёстой. */
+.r section,
+.r section * { min-width: 0; }
+.r section { overflow-x: clip; }
+
+/* Цагирагийн тайлбар — урт нэр мөр дамжиж багтана */
+.r [class*='donutLegend'] { max-width: 100%; }
+.r [class*='donutName'],
+.r [class*='legendLabel'] { overflow-wrap: anywhere; }
+
+/* Урт текстийг 3 мөрөөр таслах — бүтэн нь `title`-д. Ажлын нэр 163 тэмдэгт
+   хүрдэг тул тасалгаагүй бол ганц мөр картыг бүхэлд нь эзэлнэ. */
+.clamp3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-align: right;
+}
+
+/* Актын хамрах хугацаа — дүнгийн доор жижиг мөр */
+.actPeriod {
+  display: block;
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+/* «Бүртгэл алга» — alert БИШ, ТӨЛӨВ. Улаан/шараас зориуд өнгөгүй: асуудал нь
+   мөнгөнд биш, өгөгдөлд байж болзошгүй тул буруутгах өнгө хэрэглэхгүй. */
+.noRecBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border: 1px dashed var(--line-strong, var(--line));
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--ink-3);
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
 }

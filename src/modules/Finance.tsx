@@ -6,6 +6,7 @@ import { Data, Empty } from '@/components/ui';
 import { useAsync } from '@/lib/useAsync';
 import { queryFeatures } from '@/lib/query';
 import { cached } from '@/lib/live';
+import { loadBlockHistory } from '@/lib/blockProgress';
 import { CASHFLOW2, IPC_LOG, TASK_SHEET, bagtsKey, blockKey, pkgKeyOf } from '@/lib/services';
 import { finFieldLabel } from '@/lib/financeFieldLabels';
 import { mntShort, num, text, cat } from '@/lib/format';
@@ -91,7 +92,21 @@ export type PhysMap = Map<string, Map<string, number>>;
  * Төслийн нэгтгэсэн биет гүйцэтгэлийг багцуудаар блок-жигнэхэд (давхар дунджийг
  * зайлсхийхэд) ашиглана — `phys`-ийн утгыг ХӨНДӨХГҮЙ, зэрэгцээ мэдээлэл.
  */
-export type FinData = { contracts: Row[]; given: GivenMap; phys: PhysMap; physCnt: PhysMap };
+export type FinData = {
+  contracts: Row[];
+  given: GivenMap;
+  phys: PhysMap;
+  physCnt: PhysMap;
+  /**
+   * ГҮЙЦЭТГЭЛИЙН АКТУУД (IPC) — түүхий мөрүүд.
+   *
+   * ⚠️ `given` нь актуудыг сар бүрийн НИЙЛБЭР болгож хураадаг тул
+   *    акт бүрийн дугаар, хамрах хугацаа, барьцаа, үлдэгдэл алдагддаг.
+   *    Санхүүгийн дэлгэрэнгүйд «энэ мөнгө ЯМАР актаар олгогдсон бэ»
+   *    гэдэг нь гол мөрдөх мөр тул түүхий мөрийг ХАДГАЛНА.
+   */
+  acts: Row[];
+};
 
 // ═══════════════════════════════════════════════════════════
 //  КОМБО ГРАФИК (envhub хэлээр) — градиентгүй, glow-гүй хавтгай дүрслэл.
@@ -122,22 +137,12 @@ export function ComboChart({
   hidePhys?: boolean;
 }) {
   const [hi, setHi] = useState<number | null>(null);
-  const W = 1600;
-  const H = height;
-  const padL = 76; // зүүн — Y тэнхлэгийн ₮ шошго (зүүн ирмэгээс эхэлнэ)
-  const padR = 40; // баруун — сүүлийн цэгийн шошго
-  const padT = 22;
-  const padB = 58; // доор — он сар + төлөвлөгөөт % + биет % (3 мөр)
   const N = items.length;
-  const plotW = W - padL - padR;
-  const plotH = H - padT - padB;
-  const xFor = (i: number) => padL + (N <= 1 ? plotW / 2 : (i / (N - 1)) * plotW);
 
   // ── Өссөн S-муруйн өгөгдөл — ₮ ТЭНХЛЭГ (нэг тэнхлэг): төлөвлөгөө · санхүүжилт · биет.
   //    Мөнгө нь ₮-ээр (хуучинтай адил утга); биет нь ₮ өндөртэй ч %-аар шошголно. ──
   const totalPlan = Math.max(1, ...items.map((i) => i.amountCum));
   const yMax = totalPlan;
-  const yFor = (v: number) => padT + (1 - Math.max(0, Math.min(yMax, v)) / yMax) * plotH;
   let gsum = 0;
   const rows = items.map((it) => {
     gsum += it.given;
@@ -157,21 +162,60 @@ export function ComboChart({
   // Нуусан үед сүүлийн биет цэгийг -1 болгоно — доорх бүх зурах нөхцөл унтарна
   if (hidePhys) lastPhys = -1;
 
-  // Шугам зурах цуваа — ТӨЛӨВЛӨГӨӨ + БИЕТ (санхүүжилт нь БАГАНА, доор тусад нь).
-  const series: { key: 'planned' | 'physical'; color: string; end: number }[] = hidePhys
-    ? [{ key: 'planned', color: PLAN, end: N - 1 }]
-    : [
-      { key: 'planned', color: PLAN, end: N - 1 },
-      { key: 'physical', color: PHYS, end: lastPhys },
-    ];
+  /*
+   * ── ХЭМЖЭЭ ─────────────────────────────────────────────────────────────
+   * ⚠️ Тоон шошгыг ЦЭГ БҮР дээр бичихээ БОЛИВ (2026-08-25). 12 сар × 3 цуваа =
+   *    36 шошго нь муруйг бүрхэж, хоорондоо мөргөлдөж, графикийг «тоонуудын
+   *    хана» болгодог байв. Одоо: ЗӨВХӨН сүүлийн цэг тогтмол бичигдэнэ, бусад
+   *    нь hover дээр tooltip-д гарна. Муруй өөрөө үлдэнэ — график нь ЧИГ
+   *    ХАНДЛАГЫГ хэлэх ёстой, задаргааг tooltip хэлнэ.
+   */
+  const W = 1600;
+  const H = height;
+  const padL = 8;   // зүүн — Y шошго торны ДЭЭР суудаг тул зай бага
+  const padR = 30;  // баруун — сүүлийн шошгыг багтаах зай
+  const padT = 26;
+  const padB = 30;  // доор — ЗӨВХӨН он сар (хувиуд tooltip руу шилжсэн)
+
+  const plotW = W - padL - padR;
+  const plotH = H - padT - padB;
+  const xFor = (i: number) => padL + (N <= 1 ? plotW / 2 : (i / (N - 1)) * plotW);
+  const yFor = (v: number) => padT + (1 - Math.max(0, Math.min(yMax, v)) / yMax) * plotH;
+
+  /* Сүүлийн УТГАТАЙ цэгүүд — тэдгээр дээр л шошго, том цэг үлдэнэ */
+  const lastPlan = rows.reduce((a, r, i) => (r.planned > 0 ? i : a), -1);
+  const lastGiven = rows.reduce((a, r, i) => (r.givenCum > 0 ? i : a), -1);
+
+  /* Цэгүүдийг нэг л удаа бодно — зам, талбай, шошго бүгд эндээс */
+  const planPts = rows.slice(0, lastPlan + 1).map((r, i) => ({ x: xFor(i), y: yFor(r.planned) }));
+  const givenPts = rows.slice(0, lastGiven + 1).map((r, i) => ({ x: xFor(i), y: yFor(r.givenCum) }));
+  const physPts = rows.slice(0, lastPhys + 1).map((r, i) => ({ x: xFor(i), y: yFor(r.physical) }));
+
+  /*
+   * ── ЗӨРҮҮГИЙН ТАЛБАЙ ──────────────────────────────────────────────────
+   * ⚠️ Энэ графикийн ГОЛ өгүүлэмж нь «төлөвлөгөө ба бодит олголтын хооронд
+   *    хэдий хэмжээний зай байна вэ» — хоёр шугам ойрхон явахад тэр зай нүдэнд
+   *    ОГТ баригддаггүй байв. Хооронд нь будсанаар зөрүү нь ХЭМЖЭЭ болж
+   *    харагдана: талбай өргөсөх тусам хоцрогдол их.
+   */
+  const gapArea = givenPts.length > 1
+    ? smoothPath(planPts.slice(0, givenPts.length))
+      + ' L ' + [...givenPts].reverse().map((q) => q.x.toFixed(1) + ' ' + q.y.toFixed(1)).join(' L ')
+      + ' Z'
+    : '';
 
   const onMove = (e: MouseEvent<HTMLDivElement>) => {
     const r = e.currentTarget.getBoundingClientRect();
     setHi(Math.max(0, Math.min(N - 1, Math.round(((e.clientX - r.left) / r.width) * (N - 1)))));
   };
   const pt = hi != null ? rows[hi] : null;
-  const showLabel = (i: number) => N <= 15 || i % 2 === 0 || i === N - 1;
-  // Ирмэг дээрх шошго халхлагдахгүй: эхнийх баруун тийш, сүүлчийнх зүүн тийш
+
+  /*
+   * Шошгын нягт — САР БҮР бичигдэнэ. 18-аас олон сартай үед л сөөлжинө:
+   * 1600 өргөнтэй виртуал зурагт 18 хүртэлх шошго зайтай багтана.
+   */
+  const step = Math.max(1, Math.ceil(N / 18));
+  const showLabel = (i: number) => i === 0 || i === N - 1 || i % step === 0;
   const anchorFor = (i: number): 'start' | 'middle' | 'end' => (i === 0 ? 'start' : i === N - 1 ? 'end' : 'middle');
 
   return (
@@ -182,25 +226,28 @@ export function ComboChart({
         viewBox={`0 0 ${W} ${H}`}
         preserveAspectRatio="none"
         role="img"
-        aria-label={tr('Өссөн явцын S-муруй: төлөвлөгөө, санхүүжилт, биет гүйцэтгэл (%)')}
+        aria-label={tr('Санхүүжилтийн явц: төлөвлөсөн, олгосон, биет гүйцэтгэл')}
       >
-        {/* Хэвтээ тор + Y тэнхлэгийн ₮ (0 → нийт төлөвлөгөө) */}
-        {[0, 0.25, 0.5, 0.75, 1].map((t) => {
-          const val = t * yMax;
-          const gy = yFor(val);
+        {/* ── ТОР ба Y тэнхлэг ──
+            ⚠️ Шошго нь торны ДЭЭР, зүүн ирмэгт наалдаж суусан: тусдаа багана
+            эзлүүлбэл 76px алдагдаж, муруйн талбай нарийсдаг байв. Мөн 5 биш
+            4 шугам — нягт тор нь өгөгдлөөс илүү анхаарал татдаг. */}
+        {[0, 1 / 3, 2 / 3, 1].map((t) => {
+          const gy = yFor(t * yMax);
           return (
             <g key={t}>
               <line x1={padL} x2={W - padR} y1={gy} y2={gy} className={f.curveGrid} />
-              {/* Зүүн ирмэгээс эхэлж баруун тийш — хэзээ ч халхлагдахгүй */}
-              <text x={4} y={gy - 4} className={f.sAxisY} textAnchor="start">
-                {t === 0 ? '0' : mntShort(val).replace(' ₮', '')}
+              <text x={padL} y={gy - 5} className={f.sAxisY} textAnchor="start">
+                {t === 0 ? '0' : mntShort(t * yMax).replace(' ₮', '')}
               </text>
             </g>
           );
         })}
 
-        {/* Хоцрогдсон сарын тэмдэг — босоо шугам + биет цэг дээр ЛУГШДАГ статус
-            цэг (glow-гүй; өнгө нь --bad/--warn, зэрэг нь лугшилтын хурдаар) */}
+        {/* ЗӨРҮҮГИЙН ТАЛБАЙ — төлөвлөгөө ба олголтын хоорондох зай */}
+        {gapArea && <path d={gapArea} className={f.gapArea} style={{ fill: PLAN }} />}
+
+        {/* ХОЦРОГДСОН САР — тасархай босоо шугам + лугшдаг цэг */}
         {lagMonth != null && lagLvl != null && (() => {
           const li = rows.findIndex((r) => r.label === lagMonth);
           if (li < 0) return null;
@@ -210,7 +257,7 @@ export function ComboChart({
             <g>
               <line
                 x1={cx} x2={cx} y1={padT} y2={padT + plotH}
-                stroke={color} strokeWidth={1.5} strokeDasharray="4 4" opacity={0.5}
+                stroke={color} strokeWidth={1.5} strokeDasharray="4 4" opacity={0.45}
               />
               {rows[li].physPct > 0 && (
                 <circle
@@ -223,145 +270,118 @@ export function ComboChart({
           );
         })()}
 
-        {/* САНХҮҮЖИЛТ (IPC) — өссөн олгосон ₮: НАРИЙН ШУГАМ + ЦЭГ
-            (2026-08-21, хэрэглэгчийн хүсэлт — багана байсныг IoT-ийн цуваа
-            шиг шугаман дүрслэлд шилжүүлж, гурван цуваа нэг талбарт давхцаж
-            уншигдана). Шошгын дүрэм хуучнаараа: төлөвлөгөөний цэгээс
-            хангалттай зайтай үед л, эс бөгөөс давхцана. */}
-        {(() => {
-          const lastG = rows.reduce((a, r, i) => (r.givenCum > 0 ? i : a), -1);
-          if (lastG < 0) return null;
-          const pts = rows.slice(0, lastG + 1)
-            .map((r, i) => ({ x: xFor(i), y: yFor(r.givenCum) }));
-          return (
-            <g>
-              {pts.length > 1 && (
-                <path
-                  d={smoothPath(pts)}
-                  className={f.sLineThin}
-                  vectorEffect="non-scaling-stroke"
-                  style={{ stroke: ACT }}
-                />
-              )}
-              {rows.map((r, i) => {
-                if (i > lastG || r.givenCum <= 0) return null;
-                const y = yFor(r.givenCum);
-                return (
-                  <g key={`ipc-${i}`}>
-                    <circle cx={xFor(i)} cy={y} r={3} className={f.sDot} vectorEffect="non-scaling-stroke" style={{ fill: ACT }} />
-                    {showLabel(i) && y - yFor(r.planned) > 14 && (
-                      <text x={xFor(i)} y={y - 6} className={f.barValG} style={{ fill: ACT }} textAnchor={anchorFor(i)}>
-                        {mntShort(r.givenCum).replace(' ₮', '')}
-                      </text>
-                    )}
-                  </g>
-                );
-              })}
-            </g>
-          );
-        })()}
+        {/* ── МУРУЙНУУД ──
+            Төлөвлөгөө нь ЛАВЛАГАА тул нимгэн, тасархай; бодит олголт нь ГОЛ
+            хариулт тул зузаан, бүтэн. Урьд нь хоёулаа ижил зузаантай байсан
+            тул аль нь баримт, аль нь зорилт болох нь ялгардаггүй байв. */}
+        {planPts.length > 1 && (
+          <path d={smoothPath(planPts)} className={f.planLine} style={{ stroke: PLAN }} vectorEffect="non-scaling-stroke" />
+        )}
+        {givenPts.length > 1 && (
+          <path d={smoothPath(givenPts)} className={f.actLine} style={{ stroke: ACT }} vectorEffect="non-scaling-stroke" />
+        )}
+        {physPts.length > 1 && (
+          <path d={smoothPath(physPts)} className={f.physLine} style={{ stroke: PHYS }} vectorEffect="non-scaling-stroke" />
+        )}
 
-        {/* Шугам: төлөвлөгөө (PLAN — индиго) + биет (PHYS — улбар шар);
-            санхүүжилт нь багана тул энд алга */}
-        {series.map((sd) => {
-          if (sd.end < 1) return null;
-          const linePts = rows.slice(0, sd.end + 1).map((r, i) => ({ x: xFor(i), y: yFor(r[sd.key]) }));
-          return (
-            <path
-              key={sd.key}
-              d={smoothPath(linePts)}
-              className={f.sLine}
-              vectorEffect="non-scaling-stroke"
-              style={{ stroke: sd.color }}
-            />
-          );
-        })}
-
-        {/* ТӨЛӨВЛӨГӨӨ — цэг бүр дээр ТОЙРОГ + өссөн ₮ (сөөлжилсөн байрлал) */}
+        {/* ── ЦЭГ БҮР ДЭЭР УТГА ──
+            ⚠️ Зөвхөн эцсийн утга үзүүлэх нь БУРУУ байв: 12 сарын урт графикийг
+               гаргаад ганц тоо уншуулах юм бол график хэрэггүй. Сар бүрийн
+               утга нүдэнд харагдах ёстой.
+            ⚠️ Мөргөлдөхөөс сэргийлэх дүрэм: төлөвлөгөө нь муруйнхаа ДЭЭР,
+               олголт нь ДООР бичигдэнэ — хоёр цуваа ойртсон ч давхцахгүй.
+               Биет нь олголттой ойрхон явдаг тул мөн доор, илүү зайтай. */}
         {rows.map((r, i) => {
-          if (r.planned <= 0) return null;
+          if (i > lastPlan || r.planned <= 0 || !showLabel(i)) return null;
           const x = xFor(i);
           const y = yFor(r.planned);
           return (
             <g key={`pl-${i}`}>
-              <circle cx={x} cy={y} r={3.5} className={f.sDot} vectorEffect="non-scaling-stroke" style={{ fill: PLAN }} />
-              {showLabel(i) && (
-                /**
-                 * ⚠️ 2026-08-20: `y` ХЯЗГААРЛАГДАВ. Сүүлийн цэгийн төлөвлөгөө нь
-                 * `yMax` тул `yFor` нь яг `padT` (22) буцаана; сөөлжилсөн мөрөнд
-                 * (18px дээш) шошго нь `y = 4` болж, 10.5px үсгийн ДЭЭД хагас
-                 * SVG-ийн гаднаас тасарч байлаа («1.18 их наяд» хагас харагдана).
-                 * 11 нь суурь мөр — үсгийн орой 3px-т орж бүтэн уншигдана.
-                 */
-                <text
-                  x={x}
-                  y={Math.max(11, y - (i % 2 === 0 ? 8 : 18))}
-                  className={f.barVal}
-                  textAnchor={anchorFor(i)}
-                >
-                  {mntShort(r.planned).replace(' ₮', '')}
-                </text>
-              )}
+              <circle cx={x} cy={y} r={3} className={f.sDot} style={{ fill: PLAN }} vectorEffect="non-scaling-stroke" />
+              {/* ⚠️ y-г 12-оос дээш барина: дээд ирмэгт хүрсэн цэгийн шошго
+                  SVG-ийн гаднаас тасарч, тоо хагас харагддаг байв. */}
+              <text x={x} y={Math.max(12, y - 9)} className={f.ptVal} style={{ fill: PLAN }} textAnchor={anchorFor(i)}>
+                {mntShort(r.planned).replace(' ₮', '')}
+              </text>
+            </g>
+          );
+        })}
+        {rows.map((r, i) => {
+          if (i > lastGiven || r.givenCum <= 0 || !showLabel(i)) return null;
+          const x = xFor(i);
+          const y = yFor(r.givenCum);
+          return (
+            <g key={`gv-${i}`}>
+              <circle cx={x} cy={y} r={3} className={f.sDot} style={{ fill: ACT }} vectorEffect="non-scaling-stroke" />
+              <text x={x} y={Math.min(padT + plotH - 4, y + 16)} className={f.ptVal} style={{ fill: ACT }} textAnchor={anchorFor(i)}>
+                {mntShort(r.givenCum).replace(' ₮', '')}
+              </text>
+            </g>
+          );
+        })}
+        {rows.map((r, i) => {
+          if (i > lastPhys || r.physPct <= 0 || !showLabel(i)) return null;
+          const x = xFor(i);
+          const y = yFor(r.physical);
+          return (
+            <g key={`ph-${i}`}>
+              <circle cx={x} cy={y} r={3} className={f.sDot} style={{ fill: PHYS }} vectorEffect="non-scaling-stroke" />
+              <text x={x} y={Math.min(padT + plotH - 4, y + 28)} className={f.ptVal} style={{ fill: PHYS }} textAnchor={anchorFor(i)}>
+                {r.physPct.toFixed(0)}%
+              </text>
             </g>
           );
         })}
 
-        {/* БИЕТ ГҮЙЦЭТГЭЛ — цэг бүр дээр зөвхөн ТОЙРОГ (% нь доод тэнхлэгийн мөрөнд,
-            баганатай давхцахгүйн тулд) */}
-        {rows.map((r, i) => (i > lastPhys || r.physPct <= 0 ? null : (
-          <circle
-            key={`ph-${i}`}
-            cx={xFor(i)} cy={yFor(r.physical)} r={3.5}
-            className={f.sDot} vectorEffect="non-scaling-stroke" style={{ fill: PHYS }}
-          />
-        )))}
-
-        {/* Hover: crosshair + сарын цэгүүд */}
+        {/* ── HOVER — босоо шугам + цуваа бүрийн цэг ── */}
         {hi != null && (
-          <>
+          <g>
             <line x1={xFor(hi)} x2={xFor(hi)} y1={padT} y2={padT + plotH} className={f.curveCursor} />
-            {series.map((sd) => (hi <= sd.end ? (
-              <circle
-                key={sd.key}
-                cx={xFor(hi)} cy={yFor(rows[hi][sd.key])} r={3.5}
-                className={f.sDot} vectorEffect="non-scaling-stroke" style={{ fill: sd.color }}
-              />
-            ) : null))}
-          </>
-        )}
-
-        {/* X тэнхлэг — 3 мөр: он сар · ТӨЛӨВЛӨГӨӨТ өссөн % · БИЕТ гүйцэтгэл %.
-            Хоёр % мөр зэрэгцдэг тул цуваа бүр ӨӨРИЙН слотын өнгөөр (fill inline) —
-            энэ нь envhub-ийн «өнгө = утга» дүрэмд нийцсэн identity будаг.
-            Хувиудыг ЭНД эмхлэснээр график дотор баганатай давхцахгүй. */}
-        {rows.map((r, i) => (showLabel(i) ? (
-          <g key={r.label}>
-            <text x={xFor(i)} y={H - 36} className={f.axisX} textAnchor="middle">{r.label}</text>
-            {r.it.cumPct > 0 && (
-              <text x={xFor(i)} y={H - 21} className={f.axisXPct} style={{ fill: PLAN }} textAnchor="middle">
-                {r.it.cumPct.toFixed(1)}%
-              </text>
+            {rows[hi].planned > 0 && hi <= lastPlan && (
+              <circle cx={xFor(hi)} cy={yFor(rows[hi].planned)} r={4} className={f.sDot} style={{ fill: PLAN }} vectorEffect="non-scaling-stroke" />
             )}
-            {i <= lastPhys && r.physPct > 0 && (
-              <text x={xFor(i)} y={H - 6} className={f.axisXPct} style={{ fill: PHYS }} textAnchor="middle">
-                {r.physPct.toFixed(1)}%
-              </text>
+            {hi <= lastGiven && (
+              <circle cx={xFor(hi)} cy={yFor(rows[hi].givenCum)} r={4} className={f.sDot} style={{ fill: ACT }} vectorEffect="non-scaling-stroke" />
+            )}
+            {hi <= lastPhys && rows[hi].physPct > 0 && (
+              <circle cx={xFor(hi)} cy={yFor(rows[hi].physical)} r={4} className={f.sDot} style={{ fill: PHYS }} vectorEffect="non-scaling-stroke" />
             )}
           </g>
+        )}
+
+        {/* ── X тэнхлэг — ЗӨВХӨН он сар. Хоёр хувийн мөр tooltip руу шилжсэн:
+            тэдгээр нь харьцуулах биш, лавлах тоо тул байнга харагдах шаардлагагүй
+            бөгөөд график доор гурван мөр эзэлж, муруйд өгөх зайг иддэг байв. */}
+        {rows.map((r, i) => (showLabel(i) ? (
+          <text key={r.label} x={xFor(i)} y={H - 10} className={f.axisX} textAnchor={anchorFor(i)}>
+            {r.label}
+          </text>
         ) : null))}
       </svg>
 
-      {/* Tooltip */}
+      {/* ── TOOLTIP — задаргаа бүхэлдээ энд ── */}
       {pt && (
         <div
           className={f.tip}
           style={{ left: `${(hi! / Math.max(1, N - 1)) * 100}%`, transform: `translateX(${hi! < N / 2 ? '10px' : 'calc(-100% - 10px)'})` }}
         >
           <p className={`num ${f.tipHd}`}>{pt.label}</p>
-          <p className={f.tipRow}><i style={{ background: PLAN }} />{tr('Өссөн төлөвлөгөө')}<b className="num">{pt.planned > 0 ? mntShort(pt.planned) : '—'}</b></p>
-          <p className={f.tipRow}><i style={{ background: ACT }} />{tr('Өссөн олгосон')}<b className="num">{pt.givenCum > 0 ? mntShort(pt.givenCum) : '—'}</b></p>
+          <p className={f.tipRow}><i style={{ background: PLAN }} />{tr('Төлөвлөсөн санхүүжилт')}<b className="num">{pt.planned > 0 ? mntShort(pt.planned) : '—'}</b></p>
+          <p className={f.tipRow}><i style={{ background: ACT }} />{tr('Олгосон санхүүжилт')}<b className="num">{pt.givenCum > 0 ? mntShort(pt.givenCum) : '—'}</b></p>
           {!hidePhys && <p className={f.tipRow}><i style={{ background: PHYS }} />{tr('Биет гүйцэтгэл')}<b className="num">{pt.physPct > 0 ? `${pt.physPct.toFixed(1)}%` : '—'}</b></p>}
-          <p className={`${f.tipRow} ${f.tipGap}`}><i style={{ background: PLAN }} />{tr('Санхүүжилтийн явц')}<b className="num">{pt.planned > 0 ? `${((pt.givenCum / pt.planned) * 100).toFixed(0)}%` : '—'}</b></p>
+          <p className={`${f.tipRow} ${f.tipGap}`}>
+            {tr('Төлөвлөгөөний биелэлт')}
+            <b className="num">{pt.it.cumPct > 0 ? `${pt.it.cumPct.toFixed(1)}%` : '—'}</b>
+          </p>
+          <p className={f.tipRow}>
+            {tr('Олгосон хувь')}
+            <b className="num">{pt.planned > 0 ? `${((pt.givenCum / pt.planned) * 100).toFixed(0)}%` : '—'}</b>
+          </p>
+          {/* ЗӨРҮҮ — графикийн будсан талбайн тоон илэрхийлэл */}
+          <p className={f.tipRow}>
+            {tr('Олгогдоогүй үлдэгдэл')}
+            <b className="num">{pt.planned > pt.givenCum ? mntShort(pt.planned - pt.givenCum) : '—'}</b>
+          </p>
         </div>
       )}
     </div>
@@ -420,15 +440,19 @@ const loadIpcRows = cached(
 
 async function loadFinDataRaw(): Promise<FinData> {
   const S = TASK_SHEET.fields;
-    const [contracts, ipc, sheet] = await Promise.all([
+    const [contracts, ipc, hist] = await Promise.all([
       loadCashflowRows(),
       loadIpcRows(),
-      // «Гүйцэтгэл бөглөх» — блок бүрийн НИЙТ гүйцэтгэлийн мөр (Б.), append-лог
-      queryFeatures(TASK_SHEET.url, {
-        // ⚠️ Блокгүй мөр аль ч блокт хамаарахгүй — blockProgress.ts-тэй ижил шүүлт
-        where: `${S.no}='${TASK_SHEET.constructionNo}' AND ${S.block} IS NOT NULL`,
-        outFields: [S.bagts, S.block, S.date, S.progress],
-      }),
+      /*
+       * БИЕТ ГҮЙЦЭТГЭЛ — блок бүрийн «Б.» мөрийн бүх агшин.
+       *
+       * ⚠️ 2026-08-25: урьд нь `Selbe_guitsetgel_consolidated`-ээс шууд асуудаг
+       *    байв. Тэр хүснэгт CSV-гээр гараар шинэчлэгддэг бөгөөд 2026-07-25-нд
+       *    зогссон тул график сарын өмнөх байдлыг үзүүлсээр байлаа. Одоо
+       *    `loadBlockHistory()` нь `Bagts_*` бөглөх хуудсуудаас уншдаг болсон —
+       *    ижил эх сурвалжийг ДАХИН асуухын оронд түүнийг хуваалцана.
+       */
+      loadBlockHistory(),
     ]);
 
     // IPC → багц бүрд: сар → олгосон net нийлбэр.
@@ -460,6 +484,20 @@ async function loadFinDataRaw(): Promise<FinData> {
     {
       // багц → блок → [огноо, гүйцэтгэл][] (огноогоор эрэмбэлсэн)
       const byPkg = new Map<string, Map<string, { d: string; g: number | null }[]>>();
+      /*
+       * `BlockHistory` нь `${БАГЦ}|${блок}` түлхүүртэй Map — доорх логик УРТ
+       * мөр хүлээдэг тул задалж өгнө. Гүйцэтгэл нь 0–100 хувиар ирдэг ч энэ
+       * тооцоолол 0–1 бутархайг хүлээдэг тул 100-д хуваана.
+       */
+      const sheet = [...hist].flatMap(([key, pts]) => {
+        const [bg, bl] = key.split('|');
+        return pts.map((pt) => ({
+          [S.bagts]: bg,
+          [S.block]: bl,
+          [S.date]: pt.date,
+          [S.progress]: pt.pct == null ? null : pt.pct / 100,
+        }) as Row);
+      });
       sheet.forEach((r) => {
         const k = bagtsKey(r[S.bagts]);
         const d = String(r[S.date] ?? '').slice(0, 10);
@@ -505,8 +543,7 @@ async function loadFinDataRaw(): Promise<FinData> {
         physCnt.set(k, cntMon);
       });
     }
-
-  return { contracts, given, phys, physCnt };
+    return { contracts, given, phys, physCnt, acts: ipc };
 }
 
 /**
@@ -611,6 +648,93 @@ export function lagOf(months: MonthPt[]): { month: string; planned: number; actu
 /** Хоцрогдлын зэрэглэл: ≥10% улаан, 5–10% шар, бусад нь alert биш */
 export const lagLevel = (gap: number): 'red' | 'yellow' | null =>
   gap >= 10 ? 'red' : gap >= 5 ? 'yellow' : null;
+
+/**
+ * САНХҮҮЖИЛТИЙН ХОЦРОГДОЛ — ТӨЛӨВЛӨГӨӨТ ХУВААРЬ vs БОДИТ ОЛГОЛТ.
+ *
+ * ⚠️ `lagOf` нь БИЕТ гүйцэтгэлийн хоцрогдлыг хэмждэг — өөр асуулт.
+ *    Энэ нь: «төлөвлөгөөгөөр авах ёстой байсан хугацаа өнгөрсөн атлаа
+ *    аваагүй» тохиолдлыг барина. Гүйцэтгэгч ажлаа хийсэн ч мөнгө нь
+ *    хугацаандаа гараагүй бол энэ нь САНХҮҮГИЙН асуудал бөгөөд биет
+ *    явцын хоцрогдлоос ТУСДАА мөрдөгдөх ёстой.
+ *
+ * ⚠️ ЗӨВХӨН ӨНГӨРСӨН сарууд. Ирээдүйн төлөвлөгөө «аваагүй» гэж
+ *    тооцогдвол бүх багц улаан болно — хугацаа нь болоогүй мөнгө
+ *    хоцрогдол БИШ.
+ */
+export function finLagOf(months: MonthPt[]): {
+  /** Хугацаа нь өнгөрсөн сүүлийн төлөвлөгөөт сар */
+  month: string;
+  /** Тэр хүртэл авах ЁСТОЙ байсан өссөн дүн ₮ */
+  planned: number;
+  /** Бодитоор олгогдсон өссөн дүн ₮ */
+  given: number;
+  /** Дутуу олгогдсон ₮ (planned − given) */
+  gap: number;
+  /** Дутуугийн ХУВЬ — зэрэглэл үүгээр тогтоно */
+  pct: number;
+  /** Хугацаа нь өнгөрсөн ч дүн нь бүрэн ороогүй сарын тоо */
+  lateMonths: number;
+  /**
+   * ОЛГОЛТЫН БҮРТГЭЛ ОГТ АЛГА (IPC акт нэг ч байхгүй).
+   *
+   * ⚠️ 2026-08-25-нд амьд өгөгдлөөр шалгахад: 65 багцын 41 нь «хоцорсон»
+   *    гэж тэмдэглэгдэж байсны 34 нь ЭНЭ ангилалд байв — 84 актын 63 нь
+   *    дүнгүй. Ийм мөрийг улаанаар тэмдэглэвэл «мөнгө хоцорсон» гэсэн ХУДАЛ
+   *    дүгнэлт гарна: бид «төлөгдөөгүй» ба «бүртгэгдээгүй» хоёрыг ялгаж
+   *    чадахгүй. Тиймээс тусад нь, ӨӨР хэлээр хэлнэ.
+   */
+  noRecord: boolean;
+} | null {
+  const nowYm = new Date().toISOString().slice(0, 7);
+  let planned = 0;
+  let given = 0;
+  let month = "";
+  let lateMonths = 0;
+  let runPlan = 0;
+  let runGiven = 0;
+  for (const m of months) {
+    if (m.label > nowYm) break;      // ирээдүй — хугацаа нь болоогүй
+    runPlan += m.amount;
+    runGiven += m.given;
+    if (m.amount > 0) {
+      month = m.label;
+      planned = runPlan;
+      given = runGiven;
+      // Тэр сар хүртэлх ХУРИМТЛАЛААР дутуу байвал «хоцорсон сар»
+      if (runGiven + 1 < runPlan) lateMonths += 1;
+    }
+  }
+  if (planned <= 0) return null;
+  const gap = planned - given;
+  if (gap <= 0) return null;         // хугацаандаа, эсвэл илүү олгогдсон
+  const noRecord = months.every((m) => m.given === 0);
+  return { month, planned, given, gap, pct: (gap / planned) * 100, lateMonths, noRecord };
+}
+
+/**
+ * Санхүүжилтийн хоцрогдлын зэрэглэл.
+ *
+ * ⚠️ ЗӨВХӨН хувиар БИШ, ДҮНГЭЭР ч шалгана: 500 сая төлөвлөснөөс 100 сая
+ *    дутуу (20%) нь 200 тэрбумаас 20 тэрбум дутуутай (10%) ижил зэрэг
+ *    БИШ. Аль нэг нь босго давбал улаан.
+ */
+export const finLagLevel = (
+  pct: number,
+  gap: number,
+  noRecord = false,
+): 'red' | 'yellow' | null => {
+  /*
+   * ⚠️ БҮРТГЭЛГҮЙ багц ХЭЗЭЭ Ч улаан болохгүй. «Олгоогүй» ба «бүртгээгүй»
+   *    хоёрын аль нь болохыг өгөгдлөөс мэдэх БОЛОМЖГҮЙ тул хамгийн хүнд
+   *    дүгнэлтийг сонгож болохгүй — тэр нь гүйцэтгэгчийг үндэслэлгүйгээр
+   *    буруутгана. Дэлгэц дээр тэдгээр нь «бүртгэл алга» гэж тусдаа гарна.
+   */
+  if (noRecord) return null;
+  if (pct >= 30 || gap >= 10_000_000_000) return 'red';
+  if (pct >= 10 || gap >= 1_000_000_000) return 'yellow';
+  return null;
+};
 
 /* ═══════════════════════════════════════════════════════════
    САНХҮҮЖИЛТ — ХОЁР БҮРЭН ХҮСНЭГТ (Cashflow · IPC), ГРАФИКГҮЙ

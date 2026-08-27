@@ -15,7 +15,7 @@ import { layerTotals, qtyText, usePlanTotals } from '@/lib/totals';
 import {
   BUILDING, PROGRESS_LEVELS, LAYER_BY_ID, PKG_BY_BAGTS, bagtsKey, zoneWhere,
 } from '@/lib/services';
-import { num, pct, shade, tint, NO_DATA } from '@/lib/format';
+import { mntAbbr, num, pct, shade, tint, NO_DATA } from '@/lib/format';
 import { readParam, writeParams } from '@/lib/urlState';
 import { overlapLeftParcels, type Overlap } from '@/lib/parcelOverlap';
 import o from './bagtsOv.module.css';
@@ -497,9 +497,21 @@ export function PackKpi({
   active,
   packs,
   overlap,
+  fin,
 }: {
   active: Pack | null;
   packs: Pack[];
+  /**
+   * САНХҮҮГИЙН ИНДИКАТОР — өгвөл биет явцын оронд ЗӨВХӨН мөнгөний тоо гарна.
+   *
+   * ⚠️ «Багцын санхүү» харагдацад гүйцэтгэлийн хувь, блок, айлын тоо ГАРАХ
+   *    ЁСГҮЙ — тэдгээр нь «Багцын гүйцэтгэл»-ийн хариулт. Урьд нь энэ
+   *    компонент горим мэддэггүй байсан тул багц сонгомогц хоёр харагдац ЯГ
+   *    ижил дөрвөн хавтан үзүүлж, нэрээрээ л ялгардаг байв.
+   *
+   * `undefined` = гүйцэтгэлийн горим (хуучин зан төлөв), `null` = ачаалж байна.
+   */
+  fin?: { plan: number; given: number } | null;
   /**
    * Багцтай давхцсан үлдсэн нэгж талбар — `null` бол хараахан ачаалж байна,
    * `'error'` бол тоолж ЧАДААГҮЙ (0-ээр орлуулбал «саад алга» гэсэн худал
@@ -533,6 +545,35 @@ export function PackKpi({
         },
     ]
     : [];
+
+  if (fin !== undefined) {
+    /*
+     * САНХҮҮГИЙН ГОРИМ. Гэрээ бүртгэгдээгүй бол «…» БИШ «—»: цэг нь «ачаалж
+     * байна» гэсэн утгатай тул мөнхөд эргэлдэж байгаа мэт харагдана.
+     */
+    const has = !!fin && (fin.plan > 0 || fin.given > 0);
+    const share = has && fin!.plan > 0 ? (fin!.given / fin!.plan) * 100 : null;
+    const finItems = [
+      { v: fin == null ? '…' : has ? mntAbbr(fin.plan) : '—', l: tr('төлөвлөгөөт санхүүжилт'), c: 'var(--data)' },
+      { v: fin == null ? '…' : has ? mntAbbr(fin.given) : '—', l: tr('олгосон санхүүжилт'), c: 'var(--good-ink)' },
+      { v: fin == null ? '…' : share == null ? '—' : pct(share, 1), l: tr('олгосон хувь'), c: 'var(--data)' },
+      {
+        v: fin == null ? '…' : has ? mntAbbr(Math.max(0, fin.plan - fin.given)) : '—',
+        l: tr('олгогдоогүй үлдэгдэл'),
+        c: 'var(--warn-ink)',
+      },
+    ];
+    return (
+      <>
+        {finItems.map((i) => (
+          <div key={i.l} className={o.tile} style={{ '--tone': i.c } as CSSProperties}>
+            <span className={`${o.tileVal} num`}>{i.v}</span>
+            <span className={o.tileLabel}>{active ? `${active.name} · ${i.l}` : i.l}</span>
+          </div>
+        ))}
+      </>
+    );
+  }
 
   const items = active?.kind === 'infra'
     ? [
