@@ -2,9 +2,16 @@
  * Барилгын блок бүрийн БАРИЛГА УГСРАЛТЫН АЖЛЫН гүйцэтгэл — газрын зургийн
  * өнгө, tooltip болон баруун самбарын аль алинд ижил эх сурвалж.
  *
- * ⚠️ Эх сурвалж нь shapefile-ийн `GUITS_HV` талбар БИШ (хуучирсан), навчийн
- * жигнэсэн дундаж ч БИШ. «Гүйцэтгэл бөглөх» хуудасны нэгтгэсэн хүснэгтээс
- * № баганын Б-ийн МӨРҮҮДИЙГ шууд авна:
+ * ⚠️ ЭХ СУРВАЛЖ (2026-08-25-нд СОЛИГДСОН): `Bagts_*` БӨГЛӨХ ХУУДСУУД.
+ * Урьд нь `Selbe_guitsetgel_consolidated` нэгтгэсэн хүснэгтээс уншдаг байв —
+ * тэр нь CSV-гээр гараар шинэчлэгддэг бөгөөд 2026-07-25-нд зогссон тул
+ * гүйцэтгэгчийн өдөр бүр бөглөж буй өгөгдөл дэлгэцэд ОГТ хүрэхгүй байлаа.
+ * Одоо бөглөх хуудсуудаас ШУУД уншина — завсрын хүснэгтгүй.
+ *
+ * ⚠️ ХУУДАС нь ӨРГӨН (ажил = мөр, блок = багана `F5_1_гүйцэтгэл`), энэ модуль
+ * УРТ хэлбэр хүлээдэг тул блок бүрийг тусдаа мөр болгож задлана.
+ *
+ * № баганын Б-ийн МӨРҮҮДИЙГ авна:
  *   «Б.»       → нийт гүйцэтгэл (Бэлтгэл ажил ОРОХГҮЙ)
  *   «Б1»…«Б5»  → дэд үе шатууд (барилгын · халаалт · ус · цахилгаан · холбоо)
  * Эх excel өөрөө дэд үе шатын жингээр бодсон дүн тул энд дахин жигнэхгүй.
@@ -16,47 +23,92 @@
  * л шинэ огноогоор нэмдэг тул нэг барилгын нүднүүд өөр өөр огноотой байж болно.
  */
 import { TASK_SHEET, buildingKey } from './services';
+import { PKGS, loadSchema } from '@/modules/sheet/bagts.pkg';
+import { msToDay } from '@/modules/sheet/bagtsSheet';
 
 const TS = TASK_SHEET.fields;
-/** Татах мөрүүд — нийт (Б.) ба таван дэд үе шат */
-const NOS = [TASK_SHEET.constructionNo, ...TASK_SHEET.subPhaseNos];
 
 const t = (v: unknown) => (v == null ? '' : String(v));
 const isValidDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
 
+/**
+ * Бөглөх хуудсуудаас Б-ийн мөрүүдийг татаж УРТ хэлбэрт задална.
+ *
+ * ⚠️ Хуудас бүр 6 мөр × агшин × блокийн тоо — нийтдээ хэдэн мянган цэг.
+ *    Навч ажлуудыг ОГТ татахгүй (1,370 мөр × 20 блок = 27 мянга) тул хүсэлт
+ *    хөнгөн: 10 хуудас × 1 схем + 1 асуулга.
+ */
 async function fetchConstruction(): Promise<Record<string, unknown>[]> {
   const out: Record<string, unknown>[] = [];
-  const fields = [TS.bagts, TS.no, TS.work, TS.date, TS.block, TS.progress].join(',');
-  const inList = NOS.map((n) => `'${n.replace(/'/g, "''")}'`).join(',');
-  for (let off = 0; ; ) {
-    const body = new URLSearchParams({
-      where: `${TS.no} IN (${inList}) AND ${TS.block} IS NOT NULL`,
-      outFields: fields, returnGeometry: 'false',
-      // ⚠️ Энэ хүсэлт 2000 мөрийн хязгаараас ХЭТЭРСЭН (одоо 2046) тул хуудаслана.
-      // Эрэмбэгүй хуудаслалт нь ArcGIS-д ТОГТВОРГҮЙ — хуудасны зааг дээр мөр
-      // давхардах/унах боломжтой бөгөөд алдаа нь чимээгүй (нэг блокийн сүүлийн
-      // огноо алга болж, хуучин утга харагдана).
-      orderByFields: `${TASK_SHEET.oid} ASC`,
-      resultRecordCount: '2000', resultOffset: String(off), f: 'json',
-    });
-    const res = await fetch(`${TASK_SHEET.url}/query`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body,
-    });
-    // ⚠️ HTTP алдаа (429/503 г.м.)-д бие нь JSON биш байж болно — эхлээд res.ok
-    //    шалгахгүй бол res.json() тодорхойгүй SyntaxError шидэж будлиантана.
-    if (!res.ok) throw new Error(`ArcGIS HTTP ${res.status}`);
-    const j = await res.json();
-    if (j.error) throw new Error(j.error.message || 'ArcGIS error');
-    const fs = ((j.features || []) as { attributes: Record<string, unknown> }[]).map((f) => f.attributes);
-    out.push(...fs);
-    if (!j.exceededTransferLimit || !fs.length) break;
-    off += fs.length;
-  }
+  /*
+   * ⚠️ БӨГЛӨХ ХУУДСАНД № ТАЛБАР НЬ ЯЛГААТАЙ: дэд үе шат нь «Б1»…«Б5» гэж
+   *    цэвэр кодтой ч НИЙТ мөр нь «Б. БАРИЛГА УГСРАЛТЫН АЖИЛ» гэсэн БҮТЭН
+   *    шошготой (мөн бүлгийн мөрүүдэд «Ажил» талбар ХООСОН — нэр нь № дотор).
+   *    Тиймээс нийт мөрийг ТЭНЦҮҮГЭЭР биш, LIKE-ээр барина — эс бөгөөс
+   *    гүйцэтгэлийн нийт дүн олдохгүй бөгөөд блок бүр «мэдээлэлгүй» болно.
+   */
+  const subList = TASK_SHEET.subPhaseNos.map((n) => `N'${n.replace(/'/g, "''")}'`).join(',');
+
+  await Promise.all(PKGS.map(async (pkg) => {
+    const sc = await loadSchema(pkg).catch(() => null);
+    if (!sc?.f.fillDate) return;                 // архивын багана үүсээгүй хуудас
+
+    const cols = [sc.f.no, sc.f.work, sc.f.fillDate, ...sc.act.filter(Boolean)];
+    const rows: Record<string, unknown>[] = [];
+    for (let off = 0; ; ) {
+      const res = await fetch(`${pkg.url}/query`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          f: 'json',
+          where: `(${sc.f.no} IN (${subList}) OR ${sc.f.no} LIKE N'Б.%')`
+            + ` AND ${sc.f.fillDate} IS NOT NULL`,
+          outFields: [...new Set(cols)].join(','),
+          returnGeometry: 'false',
+          /* ⚠️ Эрэмбэгүй хуудаслалт ArcGIS-д ТОГТВОРГҮЙ — мөр давхардах/унах
+             боломжтой бөгөөд алдаа нь чимээгүй. */
+          orderByFields: `${sc.f.oid} ASC`,
+          resultRecordCount: '2000',
+          resultOffset: String(off),
+        }),
+      });
+      if (!res.ok) throw new Error(`ArcGIS HTTP ${res.status}`);
+      const j = await res.json();
+      if (j.error) throw new Error(j.error.message || 'ArcGIS error');
+      const fsx = ((j.features || []) as { attributes: Record<string, unknown> }[])
+        .map((x) => x.attributes);
+      rows.push(...fsx);
+      if (!j.exceededTransferLimit || !fsx.length) break;
+      off += fsx.length;
+    }
+
+    /* ӨРГӨН → УРТ: блок бүр өөрийн мөр болно */
+    for (const a of rows) {
+      const ms = a[sc.f.fillDate];
+      if (typeof ms !== 'number') continue;
+      const day = msToDay(ms);
+      /* «Б. БАРИЛГА УГСРАЛТЫН АЖИЛ» → «Б.»; бүлгийн нэр нь № дотор байдаг */
+      const rawNo = String(a[sc.f.no] ?? '').trim();
+      const no = rawNo.startsWith(TASK_SHEET.constructionNo) ? TASK_SHEET.constructionNo : rawNo;
+      const work = String(a[sc.f.work] ?? '').trim() || rawNo;
+      sc.bld.forEach((blk, i) => {
+        const fld = sc.act[i];
+        if (!fld) return;                        // тэр блокт багана үүсээгүй
+        const v = a[fld];
+        out.push({
+          [TS.bagts]: pkg.group,
+          [TS.no]: no,
+          [TS.work]: work,
+          [TS.date]: day,
+          [TS.block]: blk,
+          [TS.progress]: typeof v === 'number' && Number.isFinite(v) ? v : null,
+        });
+      });
+    }
+  }));
+
   return out;
 }
-
 /** Дэд үе шат — «Б1 · Барилгын ажил · 24%» */
 export type SubPhase = { no: string; name: string; pct: number | null };
 export type BlockProgress = {

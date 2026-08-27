@@ -18,13 +18,12 @@ import {
   pickedBuilding, type PickedBuilding,
 } from '@/modules/BuildingPanel';
 import {
-  loadFinData, contractMonths, lagOf, lagLevel, type FinData,
+  loadFinData, contractMonths, lagOf, lagLevel,
+  type FinData, type MonthPt,
 } from '@/modules/Finance';
 import { useAsync, type Async } from '@/lib/useAsync';
-import { queryFeatures } from '@/lib/query';
-import { ResizableTable } from '@/components/ResizableTable';
 import {
-  BUILDING, CASHFLOW2, PROGRESS_LEVELS, LAYER_BY_ID, pkgKeyOf, TASK_SHEET,
+  BUILDING, CASHFLOW2, PROGRESS_LEVELS, LAYER_BY_ID, pkgKeyOf,
   PKG_FAMILY_BY_BAGTS, zoneWhere,
 } from '@/lib/services';
 import { cat, shade, num, pct } from '@/lib/format';
@@ -624,7 +623,6 @@ export function PkgProg({ dim, setDim }: {
             </button>
             <MonitorGeneral b={pb} q={perfQ} />
             <MonitorDetail b={pb} q={perfQ} />
-            <SourceRows bagts={pb.bagts} blok={pb.blok} />
           </>
         ) : errQ ? (
           <Data q={errQ}>{() => null}</Data>
@@ -683,12 +681,23 @@ export function PkgProg({ dim, setDim }: {
           <>
             <BlocksCard p={active} overlapN={overlap == null ? null : overlap === 'error' ? 'error' : overlap.oids.length} />
             <MonitorBagts bagts={active.name} />
-            <SourceRows bagts={active.name} blok={null} />
           </>
         ) : (
           /* Дэд бүтцийн багц — давхаргын бүтэц */
           <LayersCard p={active} />
         )}
+      </div>
+
+      {/* ── ГҮЙЦЭТГЭЛИЙН МУРУЙ — төлөвлөсөн vs бодит, хоорондын ЗӨРҮҮ ── */}
+      <div className={ts.prog}>
+        <ProgChart
+          months={
+            active
+              ? (finMap?.get(active.key) ?? null)
+              : (finQ.state === 'ready' ? aggregateMonths(finQ.data) : null)
+          }
+          title={active ? tr('{0} — гүйцэтгэлийн явц', tr(active.name)) : tr('Төсөл нийт — гүйцэтгэлийн явц')}
+        />
       </div>
 
     </div>
@@ -1032,102 +1041,188 @@ function aggregateMonths(d: FinData) {
   });
 }
 
-/**
- * ЭХ ӨГӨГДӨЛ — `Selbe_guitsetgel_consolidated` хүснэгтийн ТҮҮХИЙ мөрүүд.
- *
- * ⚠️ Дэлгэц дээрх БҮХ гүйцэтгэлийн хувь (блокийн өнгө, барилгын хяналт, KPI,
- *    тайлан) ЭНЭ хүснэгтээс гардаг ч хэрэглэгч түүнийг хэзээ ч ХАРЖ
- *    чаддаггүй байв. «45% гэж хаанаас гарав» гэсэн асуултад хариулах арга
- *    байхгүй бол тоонд итгэх үндэс ч байхгүй.
- *
- * ⚠️ Хүснэгт 122 мянган мөртэй тул БҮГДИЙГ татахгүй: сонгосон багц (эсвэл
- *    блок)-оор шүүж, хамгийн сүүлийн 300 мөрийг л авна. Толгойд НИЙТ тоо ба
- *    хамгийн сүүлийн огноог бичнэ — «энэ өгөгдөл хэзээнийх вэ» гэдэг нь
- *    мөрүүдээс илүү чухал.
- */
-function SourceRows({ bagts, blok }: { bagts: string; blok: string | null }) {
-  const q = useAsync(async () => {
-    const S = TASK_SHEET.fields;
-    const esc = (v: string) => v.replace(/'/g, "''");
-    const where = [
-      `${S.bagts} = N'${esc(bagts)}'`,
-      blok ? `${S.block} LIKE N'${esc(blok)} %'` : null,
-    ].filter(Boolean).join(' AND ');
-    const rows = await queryFeatures(TASK_SHEET.url, {
-      where,
-      outFields: [
-        S.date, S.version, S.no, S.level, S.work,
-        S.section, S.block, S.weight, S.progress,
-      ],
-      /* Хамгийн сүүлийн бичилт ДЭЭР — хуучин мөрөөр эхэлбэл шинэ өгөгдөл
-         300 мөрийн доор үлдэж, «шинэчлэгдээгүй» мэт харагдана. */
-      orderBy: `${S.date} DESC, ${TASK_SHEET.oid} DESC`,
-      limit: 300,
-    });
-    return rows;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bagts, blok]);
 
-  const S = TASK_SHEET.fields;
+/**
+ * ГҮЙЦЭТГЭЛИЙН ЯВЦ — ТӨЛӨВЛӨСӨН vs БОДИТ, хоорондын ЗӨРҮҮ будагдана.
+ *
+ * ⚠️ «Багцын санхүү»-гийн «санхүүжилтийн явц» графиктай ИЖИЛ дүрслэл
+ *    (хэрэглэгчийн шийдвэр, 2026-08-25): тасархай = зорилт, зузаан бүтэн =
+ *    баримт, хоорондын талбай = зөрүү. Хоёр цонхны график нэг хэлээр ярьвал
+ *    хэрэглэгч нэгийг сурчихаад нөгөөг нь дахин тайлах шаардлагагүй.
+ *
+ * ⚠️ ЯЛГАА нь ХЭМЖИГДЭХҮҮНД: тэнд ₮ (хуримтлагдах мөнгө), энд % (биет явц).
+ *    Мөнгө ЭНД ОГТ ГАРАХГҮЙ.
+ */
+function ProgChart({ months, title }: { months: MonthPt[] | null; title: string }) {
+  const [hi, setHi] = useState<number | null>(null);
+
+  if (!months || !months.length) {
+    return <Section title={title}><Empty label={tr('Гүйцэтгэлийн дата алга.')} /></Section>;
+  }
+
+  const rows = months.map((m) => ({ label: m.label, plan: m.cumPct, act: m.phys }));
+  let lastAct = -1;
+  rows.forEach((r, i) => { if (r.act > 0) lastAct = i; });
+  const cur = lastAct >= 0 ? rows[lastAct] : null;
+  const curGap = cur ? cur.plan - cur.act : null;
+  const behind = (curGap ?? 0) > 0;
+
+  const N = rows.length;
+  const W = 1200;
+  const H = 250;
+  const padL = 8;   /* Y шошго торны ДЭЭР сууна — тусдаа багана эзлэхгүй */
+  const padR = 56;  /* сүүлийн цэгийн шошго */
+  const padT = 24;
+  const padB = 30;
+  const plotW = W - padL - padR;
+  const plotH = H - padT - padB;
+  const xFor = (i: number) => padL + (N <= 1 ? plotW / 2 : (i / (N - 1)) * plotW);
+  const yFor = (v: number) => padT + (1 - Math.max(0, Math.min(100, v)) / 100) * plotH;
+
+  const planPts = rows.map((r, i) => ({ x: xFor(i), y: yFor(r.plan) }));
+  const actPts = rows.slice(0, lastAct + 1).map((r, i) => ({ x: xFor(i), y: yFor(r.act) }));
+
+  /*
+   * ЗӨРҮҮГИЙН ТАЛБАЙ — төлөвлөгөөний муруйгаас бодит муруй хүртэл.
+   * ⚠️ Хоёр шугам ойрхон явахад ялгаа нь нүдэнд баригддаггүй; будсанаар
+   *    зөрүү нь ХЭМЖЭЭ болж харагдана.
+   */
+  const gapArea = actPts.length > 1
+    ? curve(planPts.slice(0, actPts.length))
+      + ' L ' + [...actPts].reverse().map((q) => q.x.toFixed(1) + ' ' + q.y.toFixed(1)).join(' L ')
+      + ' Z'
+    : '';
+
+  const step = Math.max(1, Math.ceil(N / 12));
+  const pt = hi != null ? rows[hi] : null;
+  const anchor = (i: number): 'start' | 'middle' | 'end' => (i === 0 ? 'start' : i === N - 1 ? 'end' : 'middle');
+
   return (
     <Section
-      title={tr('Эх өгөгдөл — гүйцэтгэлийн хүснэгт')}
-      note={blok ? tr('{0} · {1}', bagts, blok) : bagts}
-      collapsible
-      defaultClosed
+      title={title}
+      note={
+        curGap == null ? undefined : (
+          <span className={behind ? ts.progBad : ts.progGood}>
+            {behind ? tr('хоцрогдол') : tr('түрүүлсэн')} {Math.abs(curGap).toFixed(1)}%
+          </span>
+        )
+      }
     >
-      <Data q={q}>
-        {(rows) => {
-          if (!rows.length) return <Empty label={tr('Энэ сонголтод мөр алга.')} />;
-          const last = rows.reduce((m, r) => {
-            const d = String(r[S.date] ?? '');
-            return d > m ? d : m;
-          }, '');
-          return (
-            <>
-              <p className={ts.srcNote}>
-                {tr('{0} мөр харуулав · сүүлийн бичилт {1}', num(rows.length), last || '—')}
-              </p>
-              <div className={ts.srcWrap}>
-                <ResizableTable storeKey={`pkgprog.src.${blok ?? bagts}`} className={ts.srcTbl}>
-                  <thead>
-                    <tr>
-                      <th>{tr('Огноо')}</th>
-                      <th>{tr('Блок')}</th>
-                      <th>{tr('№')}</th>
-                      <th>{tr('Ажил')}</th>
-                      <th>{tr('Хэсэг')}</th>
-                      <th>{tr('Жин')}</th>
-                      <th>{tr('Гүйцэтгэл')}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((r, i) => (
-                      <tr key={i}>
-                        <td className="num">{String(r[S.date] ?? '')}</td>
-                        <td>{String(r[S.block] ?? '')}</td>
-                        <td className="num">{String(r[S.no] ?? '')}</td>
-                        <td title={String(r[S.work] ?? '')}>{String(r[S.work] ?? '')}</td>
-                        <td>{String(r[S.section] ?? '')}</td>
-                        <td className="num">{fmtW(r[S.weight])}</td>
-                        {/* ⚠️ Гүйцэтгэл нь 0–1 БУТАРХАЙ — 100-аар үржүүлж хувь болгоно */}
-                        <td className="num">{fmtP(r[S.progress])}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </ResizableTable>
-              </div>
-            </>
-          );
+      {/* Легенд — тэмдэг нь ШУГАМЫН ХЭЛБЭРИЙГ давтана */}
+      <div className={ts.progLegend}>
+        <span><i className={ts.progDash} style={{ borderTopColor: cat(2) }} />{tr('Төлөвлөсөн')}</span>
+        <span><i className={ts.progSolid} style={{ background: cat(1) }} />{tr('Бодит гүйцэтгэл')}</span>
+        <span><i className={behind ? ts.progAreaBad : ts.progAreaGood} />{tr('Зөрүү')}</span>
+      </div>
+
+      <div
+        className={ts.progWrap}
+        onMouseMove={(e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          setHi(Math.max(0, Math.min(N - 1, Math.round(((e.clientX - r.left) / r.width) * (N - 1)))));
         }}
-      </Data>
+        onMouseLeave={() => setHi(null)}
+      >
+        <svg className={ts.progSvg} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label={title}>
+          {/* Тор — 0/25/50/75/100%, шошго торны ДЭЭР (зүүн ирмэгт) */}
+          {[0, 25, 50, 75, 100].map((t) => {
+            const gy = yFor(t);
+            return (
+              <g key={t}>
+                <line x1={padL} x2={W - padR} y1={gy} y2={gy} className={ts.progGrid} />
+                <text x={padL} y={gy - 5} className={ts.progAxisY} textAnchor="start">{t}%</text>
+              </g>
+            );
+          })}
+
+          {/* ЗӨРҮҮ — байрлалаараа өнгөтэй: бодит нь доогуур бол улаан */}
+          {gapArea && <path d={gapArea} className={behind ? ts.progGapBad : ts.progGapGood} />}
+
+          {planPts.length > 1 && (
+            <path d={curve(planPts)} className={ts.progPlan} style={{ stroke: cat(2) }} vectorEffect="non-scaling-stroke" />
+          )}
+          {actPts.length > 1 && (
+            <path d={curve(actPts)} className={ts.progAct} style={{ stroke: cat(1) }} vectorEffect="non-scaling-stroke" />
+          )}
+
+          {/* Сүүлийн цэгүүд — графикийн ЦОРЫН ГАНЦ тогтмол тоо */}
+          <g>
+            <circle cx={xFor(N - 1)} cy={yFor(rows[N - 1].plan)} r={4} className={ts.progDot} style={{ fill: cat(2) }} />
+            <text x={xFor(N - 1) + 9} y={yFor(rows[N - 1].plan) + 4} className={ts.progEnd} style={{ fill: cat(2) }}>
+              {rows[N - 1].plan.toFixed(0)}%
+            </text>
+          </g>
+          {cur && (
+            <g>
+              <circle cx={xFor(lastAct)} cy={yFor(cur.act)} r={4} className={ts.progDot} style={{ fill: cat(1) }} />
+              <text x={xFor(lastAct) + 9} y={yFor(cur.act) + 4} className={ts.progEnd} style={{ fill: cat(1) }}>
+                {cur.act.toFixed(0)}%
+              </text>
+            </g>
+          )}
+
+          {/* Hover — босоо шугам + цуваа бүрийн цэг */}
+          {hi != null && (
+            <g>
+              <line x1={xFor(hi)} x2={xFor(hi)} y1={padT} y2={padT + plotH} className={ts.progCursor} />
+              <circle cx={xFor(hi)} cy={yFor(rows[hi].plan)} r={4} className={ts.progDot} style={{ fill: cat(2) }} />
+              {hi <= lastAct && (
+                <circle cx={xFor(hi)} cy={yFor(rows[hi].act)} r={4} className={ts.progDot} style={{ fill: cat(1) }} />
+              )}
+            </g>
+          )}
+
+          {/* X тэнхлэг — он сар */}
+          {rows.map((r, i) => (i === 0 || i === N - 1 || i % step === 0 ? (
+            <text key={r.label} x={xFor(i)} y={H - 9} className={ts.progAxisX} textAnchor={anchor(i)}>
+              {r.label}
+            </text>
+          ) : null))}
+        </svg>
+
+        {pt && (
+          <div
+            className={ts.progTip}
+            style={{
+              left: `${(hi! / Math.max(1, N - 1)) * 100}%`,
+              transform: `translateX(${hi! < N / 2 ? '10px' : 'calc(-100% - 10px)'})`,
+            }}
+          >
+            <p className={`num ${ts.progTipHd}`}>{pt.label}</p>
+            <p className={ts.progTipRow}>
+              <i style={{ background: cat(2) }} />
+              {tr('Төлөвлөсөн')}<b className="num">{pt.plan.toFixed(1)}%</b>
+            </p>
+            <p className={ts.progTipRow}>
+              <i style={{ background: cat(1) }} />
+              {tr('Бодит')}<b className="num">{pt.act > 0 ? `${pt.act.toFixed(1)}%` : '—'}</b>
+            </p>
+            <p className={`${ts.progTipRow} ${ts.progTipGap}`}>
+              {tr('Зөрүү')}
+              <b className="num">
+                {pt.act > 0 ? `${pt.plan - pt.act >= 0 ? '−' : '+'}${Math.abs(pt.plan - pt.act).toFixed(1)}%` : '—'}
+              </b>
+            </p>
+          </div>
+        )}
+      </div>
     </Section>
   );
 }
 
-/** Хувийн жин — бутархайг хувиар; хоосныг «—» */
-const fmtW = (v: unknown) =>
-  typeof v === 'number' && Number.isFinite(v) ? pct(v * 100, 2) : '—';
-/** Гүйцэтгэл 0–1 → хувь */
-const fmtP = (v: unknown) =>
-  typeof v === 'number' && Number.isFinite(v) ? pct(v * 100, 1) : '—';
+/** Catmull-Rom → куб Безье: муруй жигд, эвдрэлгүй */
+function curve(pts: { x: number; y: number }[]): string {
+  if (!pts.length) return '';
+  if (pts.length === 1) return `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
+  let d = `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
+  for (let i = 0; i < pts.length - 1; i += 1) {
+    const p0 = pts[i - 1] ?? pts[i];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[i + 2] ?? p2;
+    d += ` C ${(p1.x + (p2.x - p0.x) / 6).toFixed(1)} ${(p1.y + (p2.y - p0.y) / 6).toFixed(1)}`
+      + ` ${(p2.x - (p3.x - p1.x) / 6).toFixed(1)} ${(p2.y - (p3.y - p1.y) / 6).toFixed(1)}`
+      + ` ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
+  }
+  return d;
+}

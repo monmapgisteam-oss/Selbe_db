@@ -144,6 +144,12 @@ export async function apply(a: {
 
   const t = Date.now();
   const attrs: Attrs = { [HYANALT.oid]: a.oid };
+  /*
+   * ⚠️ НЭГТГЭЛД ЗӨВХӨН ЭЦСИЙН БАТАЛГААНЫ ДАРАА бичнэ. Дунд шатанд бичвэл
+   *    хараахан батлагдаагүй тоо албан ёсны бүртгэлд орж, дараа нь буцаагдвал
+   *    устгах шаардлагатай болно.
+   */
+  let registerNow = false;
 
   if (a.stage === 'engineer') {
     attrs[F.engineer] = a.who;
@@ -181,11 +187,23 @@ export async function apply(a: {
       attrs[F.directorSent] = t;
       // ЭЦСИЙН БАТАЛГАА — дөрвөн шат бүгд өнгөрлөө
       attrs[F.status] = STATUS.transferred;
+      registerNow = true;
     }
   }
 
   try {
     await updateRows([attrs]);
+    if (registerNow) {
+      /*
+       * ⚠️ БҮРТГЭЛ УНАВАЛ БАТАЛГАА УНАХГҮЙ. Хяналтын шийдвэр аль хэдийн
+       *    хадгалагдсан байхад «болсонгүй» гэж харуулбал менежер дахин дарж,
+       *    давхардсан бүртгэл үүсгэнэ. Алдааг зөвхөн бүртгэнэ.
+       */
+      const prev = ROWS.find((r) => r.__oid === a.oid);
+      const { registerApproved } = await import('./negtgelWrite');
+      const r = await registerApproved(prev?.[F.bagts] ?? '', prev?.[F.sheetOid] ?? 0);
+      if (!r.ok) console.warn('[selbe] нэгтгэлд бүртгэж чадсангүй:', r.error);
+    }
     await refresh();
     return { ok: true };
   } catch (e) { return fail(e); }

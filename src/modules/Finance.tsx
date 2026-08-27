@@ -6,6 +6,7 @@ import { Data, Empty } from '@/components/ui';
 import { useAsync } from '@/lib/useAsync';
 import { queryFeatures } from '@/lib/query';
 import { cached } from '@/lib/live';
+import { loadBlockHistory } from '@/lib/blockProgress';
 import { CASHFLOW2, IPC_LOG, TASK_SHEET, bagtsKey, blockKey, pkgKeyOf } from '@/lib/services';
 import { finFieldLabel } from '@/lib/financeFieldLabels';
 import { mntShort, num, text, cat } from '@/lib/format';
@@ -439,15 +440,19 @@ const loadIpcRows = cached(
 
 async function loadFinDataRaw(): Promise<FinData> {
   const S = TASK_SHEET.fields;
-    const [contracts, ipc, sheet] = await Promise.all([
+    const [contracts, ipc, hist] = await Promise.all([
       loadCashflowRows(),
       loadIpcRows(),
-      // «Гүйцэтгэл бөглөх» — блок бүрийн НИЙТ гүйцэтгэлийн мөр (Б.), append-лог
-      queryFeatures(TASK_SHEET.url, {
-        // ⚠️ Блокгүй мөр аль ч блокт хамаарахгүй — blockProgress.ts-тэй ижил шүүлт
-        where: `${S.no}='${TASK_SHEET.constructionNo}' AND ${S.block} IS NOT NULL`,
-        outFields: [S.bagts, S.block, S.date, S.progress],
-      }),
+      /*
+       * БИЕТ ГҮЙЦЭТГЭЛ — блок бүрийн «Б.» мөрийн бүх агшин.
+       *
+       * ⚠️ 2026-08-25: урьд нь `Selbe_guitsetgel_consolidated`-ээс шууд асуудаг
+       *    байв. Тэр хүснэгт CSV-гээр гараар шинэчлэгддэг бөгөөд 2026-07-25-нд
+       *    зогссон тул график сарын өмнөх байдлыг үзүүлсээр байлаа. Одоо
+       *    `loadBlockHistory()` нь `Bagts_*` бөглөх хуудсуудаас уншдаг болсон —
+       *    ижил эх сурвалжийг ДАХИН асуухын оронд түүнийг хуваалцана.
+       */
+      loadBlockHistory(),
     ]);
 
     // IPC → багц бүрд: сар → олгосон net нийлбэр.
@@ -479,6 +484,20 @@ async function loadFinDataRaw(): Promise<FinData> {
     {
       // багц → блок → [огноо, гүйцэтгэл][] (огноогоор эрэмбэлсэн)
       const byPkg = new Map<string, Map<string, { d: string; g: number | null }[]>>();
+      /*
+       * `BlockHistory` нь `${БАГЦ}|${блок}` түлхүүртэй Map — доорх логик УРТ
+       * мөр хүлээдэг тул задалж өгнө. Гүйцэтгэл нь 0–100 хувиар ирдэг ч энэ
+       * тооцоолол 0–1 бутархайг хүлээдэг тул 100-д хуваана.
+       */
+      const sheet = [...hist].flatMap(([key, pts]) => {
+        const [bg, bl] = key.split('|');
+        return pts.map((pt) => ({
+          [S.bagts]: bg,
+          [S.block]: bl,
+          [S.date]: pt.date,
+          [S.progress]: pt.pct == null ? null : pt.pct / 100,
+        }) as Row);
+      });
       sheet.forEach((r) => {
         const k = bagtsKey(r[S.bagts]);
         const d = String(r[S.date] ?? '').slice(0, 10);
