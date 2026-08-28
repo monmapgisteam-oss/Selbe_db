@@ -3365,7 +3365,12 @@ const en: Record<string, string> = {
   "24ц хур": "24 h rain",
   "Үерийн зурвас": "Inundation belt",
   "Сэрэмжлүүлэх": "Lead time",
-  "Хохирол нь сонгосон түвшний үерийн зурвасаар (голын ирмэгээс {0} м) бодогдов. Доор урсаж буй ус нь ОБЕГ-ын загварчлалын тусдаа үр дүн — хоёулаа нэг зурган дээр харагдана.": "Damage is computed over the inundation belt of the selected level ({0} m from the river edge). The water flowing underneath is a separate result from NEMA's simulation — both are shown on the same map."
+  "Хохирол нь сонгосон түвшний үерийн зурвасаар (голын ирмэгээс {0} м) бодогдов. Доор урсаж буй ус нь ОБЕГ-ын загварчлалын тусдаа үр дүн — хоёулаа нэг зурган дээр харагдана.": "Damage is computed over the inundation belt of the selected level ({0} m from the river edge). The water flowing underneath is a separate result from NEMA's simulation — both are shown on the same map.",
+  "Саад — багцаар": "Blockers by package",
+  "Давхцлыг тоолж байна…": "Counting overlaps…",
+  "Аль ч багц дээр давхцсан үлдсэн нэгж талбар алга.": "No package overlaps an unreleased parcel.",
+  "Давхцлыг тоолж чадсангүй.": "Could not count overlaps.",
+  "{0} багц · {1} талбар": "{0} packages · {1} parcels"
 };
 
 export default en;

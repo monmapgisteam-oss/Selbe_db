@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
 import { MapTools, MapToolBtn } from '@/components/MapTools';
@@ -14,7 +14,13 @@ import { useAsync } from '@/lib/useAsync';
 import {
   queryStats, queryGroup, groups, count, sum, avg, type Aoi, type Row,
 } from '@/lib/query';
-import { GAZAR_BUILDING, GAZAR_PARCEL, PARCEL_LEFT } from '@/lib/services';
+import {
+  GAZAR_BUILDING, GAZAR_PARCEL, PARCEL_LEFT,
+  BUILDING, LAYER_BY_ID, PKG_BY_BAGTS, bagtsKey,
+} from '@/lib/services';
+import { overlapLeftParcels } from '@/lib/parcelOverlap';
+import { queryFeatures } from '@/lib/query';
+import { Section } from '@/components/ui';
 import { num, text, shades, CAT_LIGHT, NO_DATA } from '@/lib/format';
 import o from './gazarOv.module.css';
 import { SplitGrip, useSideResize } from '@/components/SplitGrip';
@@ -33,6 +39,154 @@ import g from './gazar.module.css';
  * ⚠️ Полигон зурахад 3 service ижил талбайгаар шүүгдэнэ (`aoi`), гаднахыг
  * featureEffect-ээр бүдгэрүүлнэ. Полигонгүй үед service бүрийн нийт дүн.
  */
+
+/* ══════════════════ СААД — БАГЦААР ══════════════════ */
+
+/** Чартын нэг мөр: багц, түүний давхаргууд, давхцсан талбарын OID-ууд */
+type PkgOverlap = {
+  key: string;
+  name: string;
+  layerIds: string[];
+  /** Барилгын багцад блокийн OID шүүлт; дэд бүтцийн багцад `null` */
+  where: string | null;
+  oids: number[];
+};
+
+/** Барилгын блокийн давхарга — багц бүрийн блокууд эндээс */
+const BLOCK_LAYER = 'mon:building';
+/** Газар чөлөөлөлтийн нэгж талбарын давхарга — саадыг үүн дээр тэмдэглэнэ */
+const PARCEL_LAYER_ID = 'land:left';
+
+/**
+ * БАГЦУУДЫН ХӨНГӨН БҮРТГЭЛ — нэр, давхарга, шүүлт. ГҮЙЦЭТГЭЛГҮЙ.
+ *
+ * ⚠️ `Bagts.buildPacks` ЭНД ХЭРЭГЛЭХГҮЙ санаатай: тэр нь блок бүрийн
+ *    гүйцэтгэл, айлын тоо, дундажийг шаарддаг тул `useBuildings()` дамжин
+ *    10 бөглөх хуудасны түүхийг (`loadBlockProgress`) татна. Газрын
+ *    харагдацад биет явц ОГТ хэрэггүй — багцын нэр, давхарга л хэрэгтэй.
+ *    Тиймээс барилгын давхаргаас ганц хөнгөн асуулгаар угсарна.
+ *
+ * ⚠️ Дэд бүтцийн багц нь давхаргын бүртгэлээс (`PKG_BY_BAGTS`) шууд гарна —
+ *    сүлжээний хүсэлт огт шаардлагагүй.
+ */
+async function loadPkgOverlaps(): Promise<PkgOverlap[]> {
+  const F = BUILDING.fields;
+  const rows = await queryFeatures(BUILDING.url, {
+    outFields: [BUILDING.oid, F.bagts],
+    limit: 2000,
+  }).catch(() => [] as Row[]);
+
+  /* Барилгын багц — блокуудыг багцаар нь бүлэглэж OID шүүлт болгоно */
+  const byName = new Map<string, number[]>();
+  for (const r of rows) {
+    const name = text(r[F.bagts], '').trim();
+    const oid = Number(r[BUILDING.oid]);
+    if (!name || !Number.isFinite(oid)) continue;
+    const a = byName.get(name);
+    if (a) a.push(oid); else byName.set(name, [oid]);
+  }
+  const build: Omit<PkgOverlap, 'oids'>[] = [...byName].map(([name, oids]) => ({
+    key: bagtsKey(name),
+    name,
+    layerIds: [BLOCK_LAYER],
+    where: `${BUILDING.oid} IN (${oids.join(',')})`,
+  }));
+
+  /* Дэд бүтцийн багц — давхаргын гарчгуудын НИЙТЛЭГ хэсгийг нэр болгоно */
+  const infra: Omit<PkgOverlap, 'oids'>[] = Object.entries(PKG_BY_BAGTS).map(([key, ids]) => ({
+    key,
+    name: ids.length ? (LAYER_BY_ID[ids[0]]?.title ?? key) : key,
+    layerIds: ids,
+    where: null,
+  }));
+
+  const all = [...build, ...infra];
+  /* ⚠️ Багц бүрд ТУСДАА огтлолцол; нэг нь унавал бусад нь үлдэнэ (allSettled) */
+  const res = await Promise.allSettled(
+    all.map((pk) => overlapLeftParcels(pk.layerIds.map((id) => ({ layerId: id, where: pk.where })))),
+  );
+  return all
+    .map((pk, i) => {
+      const r = res[i];
+      return { ...pk, oids: r.status === 'fulfilled' ? r.value.oids : [] };
+    })
+    .filter((x) => x.oids.length > 0)
+    .sort((a, b) => b.oids.length - a.oids.length
+      || a.name.localeCompare(b.name, 'mn', { numeric: true }));
+}
+
+/**
+ * БАГЦ БҮР ДЭЭР ДАВХЦАЖ БУЙ ҮЛДСЭН НЭГЖ ТАЛБАР — газрын зургийн ДООД зурвас.
+ *
+ * ⚠️ ЯАГААД ЭНЭ ХАРАГДАЦАД: «үлдсэн нэгж талбар» нь ГАЗРЫН сэдэв. Багцын
+ *    гүйцэтгэлийн цонхонд байрлуулах оролдлого 2026-08-27-нд хийгдээд
+ *    хэрэглэгчийн шийдвэрээр ЭНД шилжсэн — тэнд газрын өгөгдөл нь харь
+ *    зочин байсан бөгөөд 55 багцын огтлолцол тэр цонхны бусад картыг
+ *    хойшлуулж байв.
+ *
+ * ⚠️ ЗӨВХӨН СААДТАЙ багц жагсаана (`loadPkgOverlaps` шүүсэн): 55 багцын
+ *    дийлэнх нь 0 тул бүгдийг зурвал жинхэнэ саад тэг баганын дунд алга болно.
+ *
+ * ⚠️ Мөр дарахад ЗУРАГ тэр багцын талбарууд руу очиж, багцын ӨӨРИЙН давхарга
+ *    хамт асна — «хаана» гэдгээс гадна «ЮУНД саад болж байгааг» харуулна.
+ */
+function OverlapBars({
+  q,
+  selected,
+  onPick,
+}: {
+  q: ReturnType<typeof useAsync<PkgOverlap[]>>;
+  selected: string | null;
+  onPick: (pk: PkgOverlap | null) => void;
+}) {
+  if (q.state === 'loading') {
+    return (
+      <Section title={tr('Саад — багцаар')}>
+        <Loading label={tr('Давхцлыг тоолж байна…')} />
+      </Section>
+    );
+  }
+  if (q.state !== 'ready') {
+    return (
+      <Section title={tr('Саад — багцаар')}>
+        <Empty label={tr('Давхцлыг тоолж чадсангүй.')} />
+      </Section>
+    );
+  }
+  const rows = q.data;
+  if (!rows.length) {
+    return (
+      <Section title={tr('Саад — багцаар')}>
+        <Empty label={tr('Аль ч багц дээр давхцсан үлдсэн нэгж талбар алга.')} />
+      </Section>
+    );
+  }
+  const total = rows.reduce((a, r) => a + r.oids.length, 0);
+  return (
+    <Section
+      title={tr('Саад — багцаар')}
+      note={<span style={{ color: 'var(--bad-ink)' }}>{tr('{0} багц · {1} талбар', num(rows.length), num(total))}</span>}
+    >
+      <Bars
+        color="var(--bad)"
+        max={Math.max(1, ...rows.map((r) => r.oids.length))}
+        /* ⚠️ Эхний 12 — доод зурвас нь тогтмол өндөртэй; үлдсэнийг товчоор */
+        limit={12}
+        selected={selected}
+        onSelect={(k) => {
+          const r = rows.find((x) => x.key === k);
+          onPick(r && r.key !== selected ? r : null);
+        }}
+        items={rows.map((r) => ({
+          key: r.key,
+          label: tr(r.name),
+          value: r.oids.length,
+          display: tr('{0} талбар', num(r.oids.length)),
+        }))}
+      />
+    </Section>
+  );
+}
 
 /** Газрын зурагт харагдах давхаргууд — чөлөөлөлт + барилга/кадастр.
  *  (Хилүүд `khil1`/`khil2` нь `ALWAYS_ON_IDS`-ээр автоматаар ил тул энд бичихгүй.) */
@@ -135,7 +289,7 @@ type GazarData = {
 export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   /** Талын багануудын өргөн — чирж тохируулна, хөтөчид хадгалагдана. */
   const side = useSideResize('gazar');
-  const { setHighlight } = useMap();
+  const { setHighlight, zoomToWhere } = useMap();
 
   const [aoi, setAoi] = useState<Aoi | null>(null);
   const [drawToken, setDrawToken] = useState(0);
@@ -147,6 +301,44 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const [visible, setVisible] = useLayerPicks(VISIBLE_IDS);
   const [catOpen, setCatOpen] = useState(false);
   const [opOpen, setOpOpen] = useState(false);
+
+  /**
+   * СААД — БАГЦААР (доод зурвас). Сонголт нь ЗУРГИЙГ удирдана: тэр багцын
+   * давхарга асаж, парселийн давхарга түүний талбаруудаар нарийсна.
+   */
+  const ovQ = useAsync(loadPkgOverlaps, []);
+  const [ovPick, setOvPick] = useState<PkgOverlap | null>(null);
+
+  /**
+   * Сонгосон багцын давхаргууд зурагт НЭМЭГДЭНЭ.
+   * ⚠️ `setVisible` рүү БИЧИХГҮЙ — тэр нь хэрэглэгчийн каталогийн сонголт;
+   *    сонголт солигдох бүрд бохирдоно. Зөвхөн ГАРАЛТ дээр давхарлана.
+   */
+  const mapVisible = useMemo(
+    () => (ovPick ? [...new Set([...visible, ...ovPick.layerIds])] : visible),
+    [visible, ovPick],
+  );
+
+  /**
+   * ДАВХАРГА БҮРИЙН ШҮҮЛТ — зөвхөн багц сонгосон үед.
+   * ⚠️ `layerWhere` өгөгдмөгц MapCanvas нь бүсийн (zone) fallback-ийг БҮХ
+   *    давхаргад алгасдаг тул сонголтгүй үед ОГТ өгөхгүй (`undefined`) —
+   *    эс бөгөөс бүсээр шүүх нь чимээгүй унтарна.
+   */
+  const ovWhere = useMemo<Record<string, string | null> | undefined>(() => {
+    if (!ovPick) return undefined;
+    const w: Record<string, string | null> = {};
+    for (const id of ovPick.layerIds) w[id] = ovPick.where;
+    /* Газар чөлөөлөлтийн давхаргаас ЗӨВХӨН саад болж буй талбарууд */
+    w[PARCEL_LAYER_ID] = `OBJECTID IN (${ovPick.oids.join(',')})`;
+    return w;
+  }, [ovPick]);
+
+  /* Сонголт хийхэд зураг тэр талбарууд руу очно */
+  const pickOverlap = useCallback((r: PkgOverlap | null) => {
+    setOvPick(r);
+    if (r) zoomToWhere(PARCEL_LAYER_ID, `OBJECTID IN (${r.oids.join(',')})`);
+  }, [zoomToWhere]);
   const [opacity, setOpacity] = useState<Record<string, number>>({});
   const [layerSel, setLayerSel] = useState<string | null>(null);
   const [zone, setZone] = useState<string | null>(null);
@@ -466,9 +658,13 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       <main className={g.map}>
         <MapCanvas
           dim={dim}
-          visible={visible}
+          visible={mapVisible}
           opacity={opacity}
           zone={zone}
+          layerWhere={ovWhere}
+          /* Сонгосон багцын саадууд УЛААНААР, анивчиж — бусад полигоноос ялгарна */
+          layerStyle={ovPick ? { [PARCEL_LAYER_ID]: { hue: '#dc2626', fill: 0.3, width: 4.2 } } : undefined}
+          pulseIds={ovPick ? [PARCEL_LAYER_ID] : undefined}
           uniform
           sketch
           onSketch={onSketch}
@@ -543,6 +739,11 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           </div>
         )}
       </main>
+
+      {/* ── ЗУРГИЙН ДООД ЗУРВАС: багц бүрийн саад (зургийн өргөнтэй) ── */}
+      <div className={g.chart}>
+        <OverlapBars q={ovQ} selected={ovPick?.key ?? null} onPick={pickOverlap} />
+      </div>
 
       {/* ── БАРУУН: Барилга + Кадастр (нэгтгэсэн багана) ── */}
       <div className={g.right}>

@@ -179,18 +179,36 @@ export function PkgProg({ dim, setDim }: {
    *    зураг нэг талбар руу ойртсон ч эргэн тойронд өөр багцын хэдэн арван
    *    улаан полигон зурагдсан хэвээр байна.
    */
-  const [ovPick, setOvPick] = useState<number[] | null>(null);
+  /**
+   * ⚠️ ЗӨВХӨН OID БИШ, БАГЦЫН ТҮЛХҮҮР ч хамт. Талбарууд нь «хаана саад байна»
+   *    гэдгийг хэлдэг ч «ЮУНД саад болж байна» гэдгийг хэлдэггүй: сонгосон
+   *    багцын ӨӨРИЙН давхарга (цахилгааны шугам, ус хангамжийн цагираг г.м.)
+   *    зурагдахгүй бол хэрэглэгч улаан талбаруудыг хоосон агаарт хараад
+   *    учрыг нь олохгүй (2026-08-27, хэрэглэгчийн заалт).
+   */
+  const [ovPick, setOvPick] = useState<{ key: string; oids: number[] } | null>(null);
   /* Багц солиход сонголт суллагдана — өөр багцын талбар дээр түгжигдэхгүй */
   useEffect(() => { setOvPick(null); }, [active]);
 
+  /** Сонгогдсон багц — түүний давхаргууд зурагт нэмэгдэнэ */
+  const ovPack = useMemo(
+    () => (ovPick ? packs.find((x) => x.key === ovPick.key) ?? null : null),
+    [ovPick, packs],
+  );
+
   /** Зурагт үзүүлэх давхцсан талбарууд — сонголт байвал түүнийг */
-  const ovShown = ovPick?.length ? ovPick : (ovOk?.oids ?? []);
+  const ovShown = ovPick?.oids.length ? ovPick.oids : (ovOk?.oids ?? []);
 
   /**
    * БАГЦ БҮРИЙН давхцсан үлдсэн нэгж талбар — «Багц N — блокууд» картын
-   * толгойд. FinCard-ын нэгдсэн индикаторыг багцаар задалж энд зөөв
-   * (2026-08-21, хэрэглэгчийн хүсэлт). Багц тус бүрд тусдаа огтлолцол тул
+   * толгойд ба «Саад — багцаар» чартад. Багц тус бүрд тусдаа огтлолцол тул
    * зэрэг бодогдож, нэг нь унавал бусдыг унагахгүй (allSettled).
+   *
+   * ⚠️ ЗӨВХӨН БАРИЛГЫН багц (7). Бүх багцаар (55) тоолох оролдлого
+   *    2026-08-27-нд хийгдээд БУЦААГДСАН: карт бэлэн болох хугацаа 14 сек
+   *    болж, 131 хүсэлт порталын нийтлэг 6-слотын дараалалд орж бусад
+   *    картыг хойшлуулж байв. Бүх багцын задаргаа нь «Газар чөлөөлөлт»
+   *    харагдацад (тэнд газрын сэдэв тул байрандаа) шилжсэн.
    */
   /* ⚠️ ТОО биш ОБЬЕКТ: картын зурвасыг дарахад тэр багцын давхцсан талбар руу
      очих тул ObjectID-ууд хэрэгтэй (зөвхөн тоогоор очих газар мэдэгдэхгүй). */
@@ -361,10 +379,15 @@ export function PkgProg({ dim, setDim }: {
    * ⚠️ `setVisible` рүү БИЧИХГҮЙ — тэр нь хэрэглэгчийн каталогийн сонголт тул
    * overlap ирэх бүрд бохирдоно. Зөвхөн ГАРАЛТ дээр давхарлана.
    */
-  const mapVisible = useMemo(
-    () => (ovShown.length ? [...new Set([...visible, PARCEL_LAYER])] : visible),
-    [visible, ovShown],
-  );
+  const mapVisible = useMemo(() => {
+    const ids = [...visible];
+    /* ⚠️ Сонгосон багцын давхарга — саад ЮУНД болж байгааг харуулна. Багц
+       СОНГООГҮЙ (жагсаалтаас) үед энэ нь цорын ганц зам: `visible`-ийн суурь
+       нь зөвхөн блокийн давхарга тул дэд бүтцийн шугам огт зурагдахгүй. */
+    if (ovPack) ids.push(...ovPack.layerIds);
+    if (ovShown.length) ids.push(PARCEL_LAYER);
+    return ids.length === visible.length ? visible : [...new Set(ids)];
+  }, [visible, ovPack, ovShown]);
   /**
    * ДАВХЦСАН НЭГЖ ТАЛБАРЫН ХЭВ МАЯГ — УЛААН (хэрэглэгчийн шийдвэр, 2026-08-25).
    *
@@ -411,8 +434,14 @@ export function PkgProg({ dim, setDim }: {
           if (d) w[id] = zoneWhere(d, zone);
         }
       }
-      // Багц сонгосон → тэр багц; эс бөгөөс → зөвхөн хоцрогдолтой багцын блокууд
-      w[BLOCK_LAYER] = active?.where ?? alertedWhere;
+      /* Багц сонгосон → тэр багц; чартаас багц сонгосон → түүнийх;
+         эс бөгөөс → зөвхөн хоцрогдолтой багцын блокууд */
+      w[BLOCK_LAYER] = active?.where ?? ovPack?.where ?? alertedWhere;
+      /* ⚠️ Чартаас сонгосон багцын БУСАД давхарга (дэд бүтцийн шугам) —
+         давхаргын БҮХ объект биш, зөвхөн тэр багцынхыг үлдээнэ. */
+      if (ovPack) {
+        for (const id of ovPack.layerIds) if (id !== BLOCK_LAYER) w[id] = ovPack.where;
+      }
       // ⚠️ Давхаргад 2,119 талбар бий — ЗӨВХӨН давхцсаныг үлдээнэ, эс бөгөөс
       //    бүх хот дүүрэн парсел зурагдаж блокууд дарагдана.
       /* ⚠️ Картаас нэг багц сонгосон бол ТҮҮНИЙ талбарууд; эс бөгөөс бүгд. */
@@ -421,7 +450,7 @@ export function PkgProg({ dim, setDim }: {
         : null;
       return w;
     },
-    [active, alertedWhere, ovShown, zone, mapVisible],
+    [active, alertedWhere, ovPack, ovShown, zone, mapVisible],
   );
 
   /** Багц солих — барилгын сонголт цуцлагдана (өөр багцын барилга үлдэхгүй) */
@@ -616,8 +645,10 @@ export function PkgProg({ dim, setDim }: {
         )}
 
         <div className={o.packLegend}>
-          {active?.kind === 'infra'
-            ? active.layerIds.map((id) => (
+          {/* ⚠️ Чартаас сонгосон багц ч тайлбартай байна — эс бөгөөс зурагт
+              нэмэгдсэн шугам ямар давхарга болох нь нэргүй үлдэнэ. */}
+          {(active ?? ovPack)?.kind === 'infra'
+            ? (active ?? ovPack)!.layerIds.map((id) => (
               <span key={id} className={o.packLegendItem}>
                 <i style={{ background: LAYER_BY_ID[id].hue } as CSSProperties} />
                 {LAYER_BY_ID[id].title}
@@ -698,7 +729,7 @@ export function PkgProg({ dim, setDim }: {
                   const r = ovByPack?.get(p.key);
                   return r && r !== 'error' ? r.oids : undefined;
                 })()}
-                onOverlapPick={setOvPick}
+                onOverlapPick={(oids) => setOvPick(oids ? { key: p.key, oids } : null)}
               />
             ))}
           </>
@@ -709,7 +740,7 @@ export function PkgProg({ dim, setDim }: {
               p={active}
               overlapN={overlap == null ? null : overlap === 'error' ? 'error' : overlap.oids.length}
               overlapOids={ovOk?.oids}
-              onOverlapPick={setOvPick}
+              onOverlapPick={(oids) => setOvPick(oids && active ? { key: active.key, oids } : null)}
             />
             <MonitorBagts bagts={active.name} />
           </>

@@ -13,9 +13,18 @@
   --side-l: 330px;
   --side-r: 344px;
   display: grid;
-  grid-template-areas: "left map right";
+  /**
+   * ⚠️ ХОЁР МӨР: зургийн ДООР «Саад — багцаар» зурвас, ЗУРГИЙН ӨРГӨНТЭЙ
+   * ЯГ ТЭНЦҮҮ (хэрэглэгчийн шийдвэр, 2026-08-27). Талын хоёр багана нэрээ
+   * хоёр мөрөнд давтсан тул автоматаар БҮТЭН өндрөөр сунана — тусад нь
+   * `grid-row: span 2` бичих шаардлагагүй.
+   */
+  grid-template-areas:
+    "left map   right"
+    "left chart right";
   grid-template-columns: var(--side-l) minmax(0, 1fr) var(--side-r);
-  grid-template-rows: minmax(0, 1fr);
+  /* Зураг үлдсэн зайг эзэлнэ; зурвас агуулгаараа (дээд хязгаартай) */
+  grid-template-rows: minmax(0, 1fr) auto;
   gap: 10px;
   height: 100%;
   min-height: 0;
@@ -63,6 +72,21 @@
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
   overflow: hidden;
+}
+
+/**
+ * ── СААД — БАГЦААР (зургийн доод зурвас) ──
+ * ⚠️ Өндрийг ХЯЗГААРЛАНА: 30 гаруй багц гарвал зурвас нь газрын зургийг
+ * шахаж, харагдац нь жагсаалт болж хувирна. Дотроо гүйнэ.
+ */
+.chart {
+  grid-area: chart;
+  min-width: 0;
+  max-height: 34vh;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
 }
 
 /* ── Панель — envhub Box: surface + hairline, толгой нь доод зураастай ── */
@@ -231,16 +255,20 @@
   .frame {
     grid-template-areas:
       "map"
+      "chart"
       "left"
       "right";
     grid-template-columns: 1fr;
-    grid-template-rows: max(240px, 52vh) auto auto;
+    /* зураг · зурвас · зүүн · баруун — дөрвөн мөр */
+    grid-template-rows: max(240px, 52vh) auto auto auto;
     height: auto;
     min-height: 100%;
     overflow-y: auto;
   }
   .map { min-height: max(240px, 52vh); }
   .left, .right { overflow-y: visible; }
+  /* Босоо өрөлтөд өндөр хязгаарлах утгагүй — агуулгаараа өснө */
+  .chart { max-height: none; overflow-y: visible; }
 }
 
 /* ══ SplitGrip-ийг сүлжээний НҮДЭНД — завсрын ГОЛД суулгана (2026-08-21):
