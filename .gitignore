@@ -46,6 +46,8 @@ iot-watch-state.json
 
 # Claude-ийн тусдаа build хавтас (хэрэглэгчийн dev .next-ийг дарахгүй)
 .next-claude/
+# Claude-ийн шалгалтын dev сервер (порт 8199) — түр хавтас
+.next-claude-dev/
 
 # Caveman skill-үүд (npx skills add) — гуравдагч этгээдийн skill, репод орохгүй
 .agents/

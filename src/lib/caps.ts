@@ -22,7 +22,7 @@ import { AUTH } from './services';
 import type { CapRow } from './permsRemote';
 
 /** Одоогоор нэг эрх — жагсаалт өсөхөд UI автоматаар дагана. */
-export type CapKey = 'addRow' | 'qaqc';
+export type CapKey = 'addRow' | 'qaqc' | 'zovshoorol';
 
 /**
  * Панелд харуулах бүртгэл — ЗӨВХӨН түлхүүр.
@@ -43,6 +43,13 @@ export const CAPS: { key: CapKey; icon: string }[] = [
    * обьём бөглөх бүрд баримтын багана нээгдэж, хэн юуг баталсан нь замхарна.
    */
   { key: 'qaqc', icon: 'shield' },
+  /**
+   * ЗӨВШӨӨРӨЛ — «Зөвшөөрөл» харагдац дээр зөвшөөрөл нэмэх, засах, устгах.
+   *
+   * ⚠️ ХАРАХААС тусдаа: зөвшөөрлийн төлөв нь ажил эхлүүлэх шийдвэрт
+   * шууд нөлөөлдөг тул хардаг бүх хүн засаж чадах ёсгүй.
+   */
+  { key: 'zovshoorol', icon: 'file' },
 ];
 
 const VALID = new Set<string>(CAPS.map((c) => c.key));

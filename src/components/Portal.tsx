@@ -28,7 +28,7 @@ import { Ersdel } from '@/modules/Ersdel';
 const Suitability = dynamic(() => import('@/modules/analysis/Suitability').then((m) => m.Suitability), { ssr: false });
 const Finance = dynamic(() => import('@/modules/Finance').then((m) => m.Finance), { ssr: false });
 const Guitsetgel = dynamic(() => import('@/modules/Guitsetgel').then((m) => m.Guitsetgel), { ssr: false });
-const Sheet = dynamic(() => import('@/modules/sheet/Sheet').then((m) => m.Sheet), { ssr: false });
+const Zovshoorol = dynamic(() => import('@/modules/Zovshoorol').then((m) => m.Zovshoorol), { ssr: false });
 const Tailan = dynamic(() => import('@/modules/Tailan').then((m) => m.Tailan), { ssr: false });
 import { Icon } from '@/components/Icon';
 import { DocViewer } from '@/components/DocViewer';
@@ -468,7 +468,6 @@ function PortalContent(
    *   · dashboard — газрын зургийг тойрсон үзүүлэлтийн самбар
    */
   const isDash = view === 'dashboard';
-  const isSheet = view === 'sheet';
   const isTailan = view === 'tailan';
   const isGazar = view === 'gazar';
   const isFinance = view === 'finance';
@@ -476,6 +475,7 @@ function PortalContent(
   const isIot = view === 'iot';
   const isErsdel = view === 'ersdel';
   const isGuitsetgel = view === 'guitsetgel';
+  const isZovshoorol = view === 'zovshoorol';
   /* Багцын хоёр харагдац — НЭГ модулиас `mode` пропоор (`services.ts` §pkgFin) */
   const isPkgFin = view === 'pkgFin';
   const isPkgProg = view === 'pkgProg';
@@ -621,9 +621,7 @@ function PortalContent(
               ? <PkgFin dim={dim} setDim={setDim} />
               : isPkgProg
                 ? <PkgProg dim={dim} setDim={setDim} />
-                  : isSheet
-                    ? <Sheet />
-                    : isTailan
+                  : isTailan
                       ? <Tailan />
                       : isGazar
                         ? <Gazar dim={dim} setDim={setDim} />
@@ -637,8 +635,10 @@ function PortalContent(
                                 ? <Iot dim={dim} setDim={setDim} />
                                 : isErsdel
                                 ? <Ersdel dim={dim} setDim={setDim} />
+                                : isZovshoorol
+                                  ? <Zovshoorol />
                                 : isGuitsetgel
-                                  ? <Guitsetgel onView={setView} />
+                                  ? <Guitsetgel />
                                   : <Suitability dim={dim} setDim={setDim} />}
           </div>
         )}

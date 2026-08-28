@@ -22,8 +22,9 @@ import {
 } from "./bagts.pkg";
 import { OWNER, F as HF } from "@/lib/hyanalt";
 import { useHyanaltRows } from "@/lib/hyanaltStore";
-import { assignsOf, bagtsFor, subscribeAcl } from "@/lib/guitsetgelAcl";
+import { bagtsScope, subscribeAcl } from "@/lib/guitsetgelAcl";
 import { hasCap, subscribeCaps } from "@/lib/caps";
+import { negjOf } from "./negj";
 import { useAuth } from "@/components/AuthGate";
 import DatePicker from "./DatePicker";
 import { seriesBands } from "./bagts.bands";
@@ -266,16 +267,29 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    * ⚠️ Хуваарилалт огт хийгээгүй бол ХЯЗГААРГҮЙ — эс бөгөөс шинэ систем
    *    дээр хэн ч юу ч бөглөж чадахгүй болно.
    */
-  const { user } = useAuth();
+  const { user, role } = useAuth();
   const [aclN, setAclN] = useState(0);
   useEffect(() => subscribeAcl(() => setAclN((n) => n + 1)), []);
   /* Нэмэлт эрх ArcGIS-аас шинэчлэгдэхэд «+» товч шууд гарч/алга болно */
   const [capN, setCapN] = useState(0);
   useEffect(() => subscribeCaps(() => setCapN((n) => n + 1)), []);
+  /**
+   * БӨГЛӨХ БОЛОМЖТОЙ БАГЦУУД.
+   *
+   * ⚠️ Урьд нь ЗӨВХӨН `company` шатаар шүүдэг байв. «Мөр нэмэх»/«QAQC» эрхээр
+   * орсон өөр шатны ажилтан (Ерөнхий менежер, чанарын инженер) тэгвэл хоосон
+   * жагсаалт хараад шинэ эрх нь утгагүй болно. Тиймээс БҮХ ШАТ дундах
+   * нэгдсэн хүрээг авна (`bagtsScope`).
+   *
+   * ⚠️ АДМИН (`super`) томилгооноос үл хамаарна — эс бөгөөс тохируулагч
+   * өөрөө түгжигдэнэ.
+   *
+   * ⚠️ `null` = хязгааргүй · `[]` = томилгоогүй тул НЭГ Ч багц нээгдэхгүй.
+   */
   const myBagts = useMemo(
-    () => bagtsFor(user?.username, "company"),
+    () => (role === "super" ? null : bagtsScope(user?.username)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [user, aclN],
+    [user, role, aclN],
   );
   const groupOpts = useMemo(
     () => (myBagts ? PKG_GROUPS.filter((g) => myBagts.includes(g)) : PKG_GROUPS),
@@ -341,13 +355,17 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
      * зөвхөн Багц 2-ыг хариуцсан менежер Багц 4-т мөр нэмэх ёсгүй.
      * Томилгоогүй (эрх нь шууд олгогдсон) хүнд хязгаарлалт байхгүй.
      */
-    /* ⚠️ `u` хоосон = нэвтрэлт унтраалттай дев орчин. `hasCap` дээр аль хэдийн
-       шийдэгдсэн тул энд томилгооны хязгаарлалт хайх зүйлгүй. */
-    if (!u || !assignsOf("director").some((a) => a.user === u)) return true;
-    const list = bagtsFor(u, "director");
-    return list == null || list.includes(pkg.group);
+    /*
+     * ⚠️ БАГЦЫН ХҮРЭЭ. `u` хоосон = нэвтрэлт унтраалттай дев орчин (`hasCap`
+     * дээр шийдэгдсэн), админ нь томилгооноос үл хамаарна. Бусад тохиолдолд
+     * зөвхөн ӨӨРТ НЬ хуваарилагдсан багцад мөр нэмнэ — эрх дангаараа бүх
+     * багцыг нээх ёсгүй.
+     */
+    if (!u || role === "super") return true;
+    const scope = bagtsScope(u);
+    return scope == null || scope.includes(pkg.group);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, aclN, capN, pkg.group]);
+  }, [user, role, aclN, capN, pkg.group]);
 
   /**
    * QAQC — Inspection Test Plan (М-акт · FIC · MA · MIR) бөглөх эрх.
@@ -1279,6 +1297,23 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
 
   // ⚠️ Алдаа гарсан ч эрт `return` хийхгүй — эс тэгвэл багц сонгогч алга болж
   // хэрэглэгч өөр багц руу шилжих аргагүй үлдэнэ.
+  /*
+   * ТОМИЛГООГҮЙ ХЭРЭГЛЭГЧ — хоосон хуудас БИШ, шалтгааныг ил хэлнэ.
+   *
+   * ⚠️ Багцын хуваарилалт fail-closed болсноор (2026-08-28) томилогдоогүй хүнд
+   * нэг ч багц нээгдэхгүй. Тайлбаргүй хоосон сонгогч нь «систем эвдэрсэн» гэж
+   * ойлгогдох тул юу хийхийг нь шууд зааж өгнө.
+   */
+  if (!view && groupOpts.length === 0) {
+    return (
+      <div className={st.wrap} ref={wrapRef}>
+        <div className={st.error} role="status">
+          {tr('Танд нэг ч багц хуваарилагдаагүй байна. «Хэрэглэгчдийн эрх удирдах → Гүйцэтгэлийн урсгал» хэсэгт админ таныг шатанд томилж, багц зааж өгсний дараа энэ хуудас нээгдэнэ.')}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={st.wrap} ref={wrapRef}>
       <div className={st.toolbar}>
@@ -1619,10 +1654,25 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                         дүн, тэндээс хуудсын БҮХ хувийн жин бодогддог тул энд
                         засах эрх нээвэл нэг тоо солиход бүх мөрийн жин
                         чимээгүй шилжинэ. */}
+                    {/* ОБЬЁМ — тоо ба ХЭМЖИХ НЭГЖ нэг нүдэнд, «1300 м³» хэлбэрээр.
+                        ⚠️ Бүлгийн мөрд нэгж БИЧИХГҮЙ: бүлэг нь өөр өөр нэгжтэй
+                        ажлуудыг агуулдаг тул нэг нэгж оноох нь худал болно.
+                        ⚠️ Нэгж нь `negj.ts`-ийн дүрмээр ажлын нэрнээс гарна
+                        (хамралт 95.5%); тодорхойлогдоогүй бол зөвхөн тоо. */}
                     <td className={cls("right c-vol")} {...ro(RO.vol)}>
                       {qty(r.vol)}
+                      {!r.group && r.vol != null && negjOf(r.work) && (
+                        <span className={st.negj}>{negjOf(r.work)}</span>
+                      )}
                     </td>
-                    <td className={cls("right c-vol calc")} {...ro(RO.obyemSum)}>{qty(c.obyemSum)}</td>
+                    {/* ОБЬЁМЫН НИЙЛБЭР — блокуудын нийлбэр тул мөрийн Обьёмтой
+                        ИЖИЛ нэгжтэй. */}
+                    <td className={cls("right c-vol calc")} {...ro(RO.obyemSum)}>
+                      {qty(c.obyemSum)}
+                      {!r.group && c.obyemSum != null && negjOf(r.work) && (
+                        <span className={st.negj}>{negjOf(r.work)}</span>
+                      )}
+                    </td>
                     <td className={cls("right c-vol")} {...ro(RO.unit)}>{qty(r.unit)}</td>
                     <td className={cls("right c-money")} {...ro(RO.money)}>{qty(r.money)}</td>
                     <td className={cls("num c-calc calc")} {...ro(RO.I)}>{pc(c.I, 1)}</td>
@@ -1738,6 +1788,12 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                               {/* Хоосон бол ХООСОН — хайрцгийн хүрээ нь
                                   «энд бичнэ» гэдгийг хэлчихнэ. */}
                               {qty(c.obyem[bi])}
+                              {/* ⚠️ Нэгж нь ЗӨВХӨН утга байгаа үед. Хоосон
+                                  нүдэнд ганцаар «м³» гарвал «бөглөсөн» мэт
+                                  харагдаж, бөглөх ёстой нүд нүднээс мултарна. */}
+                              {c.obyem[bi] != null && negjOf(r.work) && (
+                                <span className={st.negj}>{negjOf(r.work)}</span>
+                              )}
                             </span>
                           )}
                           {/* Хувь — ЗӨВХӨН үр дүн. Товшилт нь дээрх нүдний

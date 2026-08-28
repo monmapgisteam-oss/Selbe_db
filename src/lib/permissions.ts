@@ -82,8 +82,26 @@ const VALID_VIEWS = new Set<string>(VIEWS.map((v) => v.key));
  * ⚠️ Эс бөгөөс Root-ийн `clamp` тэр түлхүүрийг navScope-д нэвтрүүлж,
  * Portal `VIEW_BY_KEY[key]` → undefined дээр БҮХЭЛДЭЭ унадаг байв.
  */
-const sanitizeViews = (v: ViewKey[] | 'all'): ViewKey[] | 'all' =>
-  v === 'all' ? 'all' : (Array.isArray(v) ? v.filter((k) => VALID_VIEWS.has(k)) : []);
+/**
+ * ХОЦРОГСДЫН ЗУРАГЛАЛ — устгагдсан харагдацын түлхүүрийг залгамжлагч руу.
+ *
+ * ⚠️ `sheet` («Гүйцэтгэл бөглөх») нь `guitsetgel` дотор ТАБ болж нэгдсэн.
+ * Энэ зураглалгүй бол ArcGIS-т хадгалагдсан хуучин эрх нь `VALID_VIEWS`-д
+ * байхгүй тул чимээгүй хасагдаж, тэр хүн гүйцэтгэлийн хуудсаа бүрмөсөн
+ * алдана — эрх ЧИМЭЭГҮЙ хумигдах нь хамгийн муу төрлийн алдаа.
+ */
+const LEGACY_VIEW: Record<string, ViewKey> = { sheet: 'guitsetgel' };
+
+const sanitizeViews = (v: ViewKey[] | 'all'): ViewKey[] | 'all' => {
+  if (v === 'all') return 'all';
+  if (!Array.isArray(v)) return [];
+  const out: ViewKey[] = [];
+  for (const k of v) {
+    const m = LEGACY_VIEW[k as string] ?? k;
+    if (VALID_VIEWS.has(m) && !out.includes(m)) out.push(m);
+  }
+  return out;
+};
 
 const sanitizeEntry = (e: Entry): Entry => ({ ...e, views: sanitizeViews(e.views) });
 

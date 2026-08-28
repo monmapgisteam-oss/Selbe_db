@@ -3464,13 +3464,13 @@ export type ViewKey =
   | "pkgProg"
   | "gazar"
   | "analysis"
-  | "sheet"
   | "tailan"
   | "finance"
   | "habea"
   | "irged"
   | "iot"
   | "ersdel"
+  | "zovshoorol"
   | "guitsetgel";
 
 export const VIEWS: {
@@ -3626,20 +3626,6 @@ export const VIEWS: {
     initial: [],
     standalone: true,
   },
-  /**
-   * ГҮЙЦЭТГЭЛ БӨГЛӨХ — «Төслийн гүйцэтгэл» хүснэгтийн засварлагч (порт).
-   * ⚠️ Порталын зураг/самбарыг ашиглахгүй, өөрийн бүтэцтэй тул `standalone`.
-   */
-  {
-    key: "sheet",
-    title: tr('Гүйцэтгэл бөглөх'),
-    desc: tr('Ажлын гүйцэтгэлийн хүснэгт — засах, нийтлэх'),
-    icon: "pen",
-    hue: "#0891b2",
-    layers: [],
-    initial: [],
-    standalone: true,
-  },
   /** ТАЙЛАН — тайлангийн хуудас. Порталын зураг/самбаргүй, өөрийн бүтэцтэй. */
   {
     key: "tailan",
@@ -3722,10 +3708,24 @@ export const VIEWS: {
     initial: [],
     standalone: true,
   },
+  /**
+   * ЗӨВШӨӨРӨЛ — багц бүрийн зөвшөөрлүүд шат дараалалаар.
+   * ⚠️ Газрын зураггүй, өөрийн бүтэцтэй тул `standalone`.
+   */
+  {
+    key: "zovshoorol",
+    title: tr('Зөвшөөрөл'),
+    desc: tr('Багц бүрийн зөвшөөрлүүд — шат дараалал, төлөв, дэлгэрэнгүй'),
+    icon: "shield",
+    hue: "#0ea5e9",
+    layers: [],
+    initial: [],
+    standalone: true,
+  },
   {
     key: "guitsetgel",
-    title: tr('Гүйцэтгэлийн хяналт'),
-    desc: tr('Компани → талбайн инженер → менежер зөвшөөрлийн урсгал'),
+    title: tr('Гүйцэтгэл'),
+    desc: tr('Бөглөх, илгээх, зөвшөөрөл — гүйцэтгэлийн бүх урсгал нэг дор'),
     icon: "pen",
     hue: "#7c3aed",
     /*
@@ -3786,8 +3786,8 @@ export const HOME_SECTIONS: {
    */
   { id: "review", title: tr('Тойм'), views: ["dashboard", "tailan"] },
   { id: "plan", title: tr('Төлөвлөлт'), views: ["plan", "analysis", "irged"] },
-  { id: "build", title: tr('Хэрэгжилт'), views: ["pkgProg", "gazar", "habea", "iot", "ersdel", "guitsetgel"] },
-  { id: "money", title: tr('Санхүү'), views: ["pkgFin", "finance", "sheet"] },
+  { id: "build", title: tr('Хэрэгжилт'), views: ["pkgProg", "gazar", "habea", "iot", "ersdel", "guitsetgel", "zovshoorol"] },
+  { id: "money", title: tr('Санхүү'), views: ["pkgFin", "finance"] },
 ];
 
 /**
@@ -3890,7 +3890,10 @@ export const ROLE_ACCESS: Record<
     // ЗӨВХӨН гүйцэтгэлийн тал (`pkgProg`) нээлттэй. Санхүүгийн өгөгдөл
     // (гэрээ, CASHFLOW, төлбөрийн акт) нь `pkgFin` дотор үлдсэн бөгөөд энэ
     // үүрэгт өгөөгүй — урьд нь нэгдсэн цонхоор дуулиангүй нээлттэй байв.
-    views: ["plan", "pkgProg", "habea", "gazar", "tailan", "sheet"],
+    // ⚠️ Урьд нь `sheet` («Гүйцэтгэл бөглөх») байсныг `guitsetgel` болгов —
+    //    хоёр харагдац НЭГ болсон (доорх §ГҮЙЦЭТГЭЛ-ийг үз). Эрх нь
+    //    хумигдаагүй: бөглөх хуудас нь тэр харагдацын нэг таб болсон.
+    views: ["plan", "pkgProg", "habea", "gazar", "tailan", "guitsetgel"],
     docs: true,
     home: "plan",
   },

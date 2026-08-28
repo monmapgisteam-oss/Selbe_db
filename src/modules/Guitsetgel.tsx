@@ -26,6 +26,7 @@ import {
 import { useAuth } from '@/components/AuthGate';
 import { ROLE_STAGE } from '@/lib/services';
 import { bagtsFor, subscribeAcl } from '@/lib/guitsetgelAcl';
+import { hasCap } from '@/lib/caps';
 import { Sheet } from '@/modules/sheet/Sheet';
 import { groupWorks, optionsOf, STAGE_LABEL, type Work } from '@/lib/hyanaltGroup';
 import { apply, recheck, useHyanaltRows } from '@/lib/hyanaltStore';
@@ -480,7 +481,15 @@ function Track({ status, stage }: { status: Status; stage: Stage }) {
 
 /* ══════════ Нэг ажил ══════════ */
 
-function Item({ work, stage, who, onFix }: { work: Work; stage: Stage; who: string; onFix: () => void }) {
+function Item({ work, stage, who, onFix, readOnly }: {
+  work: Work; stage: Stage; who: string; onFix: () => void;
+  /**
+   * ⚠️ ЗӨВХӨН ХАРАХ. Урсгалын шатанд томилогдоогүй үүрэг (жиш. `beginner`)
+   * энэ хуудсыг үзэж чадах ч зөвшөөрөх/буцаах ЁСГҮЙ — эс бөгөөс шат сонгох
+   * товчоор дамжуулан хэн ч хянагч болж чадна.
+   */
+  readOnly?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState('');
   const [err, setErr] = useState('');
@@ -540,7 +549,7 @@ function Item({ work, stage, who, onFix }: { work: Work; stage: Stage; who: stri
     const head = tr("Зөвшөөрөгдөөгүй {0} нүд: ", String(bad.length));
     return [reason.trim(), head + list + more].filter(Boolean).join(" | ");
   };
-  const mine = work.owner === stage && st !== STATUS.transferred;
+  const mine = !readOnly && work.owner === stage && st !== STATUS.transferred;
 
   const run = async (fn: () => Promise<{ ok: boolean; error?: string }>) => {
     if (busy) return;
@@ -771,7 +780,7 @@ function Flow({
   );
 }
 
-export function Guitsetgel({ onView }: { onView?: (key: 'sheet') => void }) {
+export function Guitsetgel() {
   /**
    * ШАТЫГ АККАУНТЫН ҮҮРГЭЭС авна — гараар сонгохгүй.
    *
@@ -794,12 +803,43 @@ export function Guitsetgel({ onView }: { onView?: (key: 'sheet') => void }) {
    */
   const who = user?.fullName || user?.username || 'Хянагч';
   const fixed = role ? ROLE_STAGE[role] : undefined;
+  /**
+   * ХЯНАХ ЭРХ — урсгалын шатанд томилогдсон, эсвэл системийн админ.
+   *
+   * ⚠️ `sheet` ба `guitsetgel` НЭГ болсноор урьд нь зөвхөн хүснэгт үздэг байсан
+   * үүрэг (`beginner`) энэ хуудсанд орох боллоо. Шат сонгох товч нь тэдэнд ч
+   * нээлттэй байсан тул зөвшөөрөх/буцаах товч гарч, ХЯНАГЧ БОЛЖ чадах байв.
+   * Одоо тэдэнд зөвхөн ХАРАГДАНА.
+   */
+  const canReview = !!fixed || role === 'super';
+
   const [stage, setStage] = useState<Stage>(fixed ?? 'engineer');
   useEffect(() => {
     if (fixed) setStage(fixed);
   }, [fixed]);
+
+  /**
+   * БӨГЛӨХ ТАБ ХЭНД ГАРАХ ВЭ.
+   *
+   * ⚠️ Гүйцэтгэгчээс гадна «Мөр нэмэх» эсвэл «QAQC» эрх авсан хүнд ЗААВАЛ
+   * нээгдэнэ. Эс бөгөөс тэр хоёр эрх УТГАГҮЙ болно: Ерөнхий менежер мөр
+   * нэмэх эрхтэй атлаа хуудас руу орох замгүй, чанарын ажилтан Inspection
+   * Test Plan-аа хаанаас ч бөглөж чадахгүй байв.
+   *
+   * ⚠️ Бөглөх ХУУДАС нь өөрөө багцаар шүүгддэг (`FillNew` дэх `bagtsScope`)
+   * тул энэ нь «аль багц» гэдгийг нээхгүй — зөвхөн «энэ таб байна уу».
+   */
+  const canFill = stage === 'company'
+    || hasCap(user?.username, 'addRow')
+    || hasCap(user?.username, 'qaqc');
   /** Гүйцэтгэгчийн хуудас хоёр талтай: бөглөх ба илгээснээ хянах. */
-  const [tab, setTab] = useState<'fill' | 'sent'>('fill');
+  /**
+   * ⚠️ АНХНЫ ТАБ нь «Илгээсэн ажил» — бөглөх нь БИШ. Хуудсанд ороход эхлээд
+   * «миний илгээсэн ажил хаана явж байна» гэдэг харагдах ёстой; бөглөх нь
+   * тэндээс сонгож ордог үйлдэл. Урьд нь шууд бөглөх хуудас нээгддэг тул
+   * гүйцэтгэгч өөрийн илгээлтийн явцыг хардаггүй байв.
+   */
+  const [tab, setTab] = useState<'fill' | 'sent'>('sent');
   const [q, setQ] = useState('');
   const [bagts, setBagts] = useState(ALL);
   const [company, setCompany] = useState(ALL);
@@ -813,16 +853,27 @@ export function Guitsetgel({ onView }: { onView?: (key: 'sheet') => void }) {
    */
   const [aclN, setAclN] = useState(0);
   useEffect(() => subscribeAcl(() => setAclN((n) => n + 1)), []);
+  /**
+   * ⚠️ АДМИН (`super`) нь томилгооноос ҮЛ ХАМААРНА — эс бөгөөс шинэ систем
+   * дээр эсвэл бүх томилгоо санамсаргүй устсан үед тохируулах хүн өөрөө
+   * юу ч харахгүй болж, эрхээ сэргээх аргагүй түгжигдэнэ.
+   *
+   * ⚠️ Бусад бүх үүрэгт томилгоо нь ЗААВАЛ: `bagtsFor` нь томилогдоогүй
+   * хүнд `[]` буцаах тул жагсаалт хоосон болно (fail-closed).
+   */
   const myBagts = useMemo(
-    () => bagtsFor(user?.username, stage),
+    () => (role === 'super' ? null : bagtsFor(user?.username, stage)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [user, stage, aclN],
+    [user, role, stage, aclN],
   );
 
   const works = useMemo(() => {
     const all = groupWorks(rows);
     return myBagts ? all.filter((w) => myBagts.includes(w.bagts)) : all;
   }, [rows, myBagts]);
+
+  /** Нэг ч багц хуваарилагдаагүй — жагсаалт хоосон байгаагийн ШАЛТГААН. */
+  const noScope = Array.isArray(myBagts) && myBagts.length === 0;
 
   const bagtsList = useMemo(() => optionsOf(works, (w) => w.bagts), [works]);
   const companyList = useMemo(() => optionsOf(works, (w) => w.company), [works]);
@@ -846,6 +897,23 @@ export function Guitsetgel({ onView }: { onView?: (key: 'sheet') => void }) {
   const mine = filtered.filter((w) => w.owner === stage && w.status !== STATUS.transferred);
   const others = filtered.filter((w) => !(w.owner === stage && w.status !== STATUS.transferred));
 
+  /*
+   * ГҮЙЦЭТГЭГЧИЙН ХАРАГДАЦ — «миний илгээсэн ажил хаана явж байна вэ».
+   *
+   * ⚠️ Урьд нь илгээсэн ажил нь «Бусад ажил» гэсэн нэг овоонд ордог байв —
+   * тэр нь ӨӨР ХҮНИЙ ажил гэж уншигдах бөгөөд гүйцэтгэгч өөрийн илгээлт ямар
+   * шатанд байгааг хаанаас ч харж чаддаггүй байлаа. Одоо гурав салгав:
+   *   1. `mine`      — буцаагдсан, ЗАСАХ шаардлагатай (дээд талд)
+   *   2. `inReview`  — илгээгдсэн, ХЯНАГДАЖ байна (мөр бүр дээр `Track` нь
+   *                    яг аль шатанд байгааг харуулна)
+   *   3. `done`      — дөрвөн шат өнгөрч ШИЛЖҮҮЛСЭН
+   *
+   * ⚠️ Зөвхөн гүйцэтгэгчид хамаарна: хянагчийн хувьд «бусад» нь үнэхээр
+   * бусдын ажил тул хуучин бүлэглэлт хэвээр.
+   */
+  const inReview = others.filter((w) => w.status !== STATUS.transferred);
+  const done = others.filter((w) => w.status === STATUS.transferred);
+
   const countFor = (x: Stage) =>
     works.filter((w) => w.owner === x && w.status !== STATUS.transferred).length;
 
@@ -855,7 +923,14 @@ export function Guitsetgel({ onView }: { onView?: (key: 'sheet') => void }) {
    * ⚠️ `onView` дамжуулагдаагүй бол (тусад нь ашиглах үед) товч ажиллахгүй
    * байхын оронд ЮУ Ч ХИЙХГҮЙ — унахаас сэргийлнэ.
    */
-  const goFix = () => onView?.('sheet');
+  /*
+   * «ЗАСАХ» — ДОТОГШОО таб солино, гадагш үсрэхгүй.
+   *
+   * ⚠️ Урьд нь тусдаа «Гүйцэтгэл бөглөх» харагдац руу гаргадаг байв. Тэр нь
+   * хоёр хаалга, хоёр эрх шаарддаг байсан бөгөөд буцаж ирэх зам нь ойлгомжгүй
+   * байлаа. Одоо бөглөх нь энэ хуудасны нэг таб тул шилжилт нь газар дээрээ.
+   */
+  const goFix = () => setTab('fill');
 
   return (
     <div className={s.wrap}>
@@ -875,7 +950,7 @@ export function Guitsetgel({ onView }: { onView?: (key: 'sheet') => void }) {
             director: countFor('director'),
           }}
           stage={stage}
-          pick={fixed ? undefined : (x) => { setStage(x); setStatus(ALL); }}
+          pick={fixed || !canReview ? undefined : (x) => { setStage(x); setStatus(ALL); }}
         />
       </header>
 
@@ -883,7 +958,7 @@ export function Guitsetgel({ onView }: { onView?: (key: 'sheet') => void }) {
           ХОЁР ТУСДАА харагдац байсан тул компани хуудас хооронд үсэрч,
           «би юу илгээснээ» хаанаас харахаа мэддэггүй байв. */}
       <div className={s.tabs}>
-        {stage === 'company' && (
+        {canFill && (
           <>
             <button
               type="button"
@@ -907,7 +982,7 @@ export function Guitsetgel({ onView }: { onView?: (key: 'sheet') => void }) {
             хянагч санамсаргүй дараад хуваарилалт өөрчилнө. */}
       </div>
 
-      {stage === 'company' && tab === 'fill' ? (
+      {canFill && tab === 'fill' ? (
         <div className={s.fill}>
           <Sheet />
         </div>
@@ -957,26 +1032,63 @@ export function Guitsetgel({ onView }: { onView?: (key: 'sheet') => void }) {
             <div className={s.list}>
               {/* ⚠️ Нэр ЗҮҮН, тоо БАРУУН — зураасаар холбохгүй */}
               <div className={s.groupHead}>
-                <span>{STAGE_LABEL[stage]}</span>
+                <span>{stage === 'company' ? tr('Засах шаардлагатай — буцаагдсан') : STAGE_LABEL[stage]}</span>
                 <span className={s.groupCount}>
                   {tr('хүлээгдэж буй {0}', String(mine.length))}
                 </span>
               </div>
               {mine.length === 0 ? (
-                <div className={s.empty}>{tr('Хүлээгдэж буй ажил алга.')}</div>
+                <div className={s.empty}>
+                  {/* ⚠️ Томилгоогүй бол жагсаалт ХООСОН байх нь ХЭВИЙН биш —
+                      шалтгааныг нь ялгаж хэлнэ, эс бөгөөс «ажил алга» гэж
+                      ойлгоод хүлээсээр байна. */}
+                  {noScope
+                    ? tr('Танд нэг ч багц хуваарилагдаагүй байна. Админ «Гүйцэтгэлийн урсгал» хэсэгт багц зааж өгсний дараа ажлууд харагдана.')
+                    : stage === 'company'
+                      ? tr('Буцаагдсан ажил алга — бүх илгээлт хэвийн явж байна.')
+                      : tr('Хүлээгдэж буй ажил алга.')}
+                </div>
               ) : (
-                mine.map((w) => <Item key={w.key} work={w} stage={stage} who={who} onFix={goFix} />)
+                mine.map((w) => <Item key={w.key} work={w} stage={stage} who={who} onFix={goFix} readOnly={!canReview} />)
               )}
             </div>
 
-            {others.length > 0 && (
-              <div className={s.list} style={{ marginTop: 18 }}>
-                <div className={s.groupHead}>
-                <span>{tr('Бусад ажил')}</span>
-                <span className={s.groupCount}>{others.length}</span>
-              </div>
-                {others.map((w) => <Item key={w.key} work={w} stage={stage} who={who} onFix={goFix} />)}
-              </div>
+            {/* ── ГҮЙЦЭТГЭГЧ: илгээсэн ажил хаана явж байна ── */}
+            {stage === 'company' ? (
+              <>
+                {inReview.length > 0 && (
+                  <div className={s.list} style={{ marginTop: 18 }}>
+                    <div className={s.groupHead}>
+                      <span>{tr('Илгээсэн — хянагдаж байна')}</span>
+                      <span className={s.groupCount}>{inReview.length}</span>
+                    </div>
+                    {inReview.map((w) => (
+                      <Item key={w.key} work={w} stage={stage} who={who} onFix={goFix} readOnly={!canReview} />
+                    ))}
+                  </div>
+                )}
+                {done.length > 0 && (
+                  <div className={s.list} style={{ marginTop: 18 }}>
+                    <div className={s.groupHead}>
+                      <span>{tr('Батлагдсан — эх хүснэгтэд шилжсэн')}</span>
+                      <span className={s.groupCount}>{done.length}</span>
+                    </div>
+                    {done.map((w) => (
+                      <Item key={w.key} work={w} stage={stage} who={who} onFix={goFix} readOnly={!canReview} />
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : (
+              others.length > 0 && (
+                <div className={s.list} style={{ marginTop: 18 }}>
+                  <div className={s.groupHead}>
+                    <span>{tr('Бусад ажил')}</span>
+                    <span className={s.groupCount}>{others.length}</span>
+                  </div>
+                  {others.map((w) => <Item key={w.key} work={w} stage={stage} who={who} onFix={goFix} readOnly={!canReview} />)}
+                </div>
+              )
             )}
           </>
         )}

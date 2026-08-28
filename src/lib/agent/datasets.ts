@@ -89,7 +89,7 @@ const ALL: Dataset[] = [
     title: tr('Ажлын хуудас (гүйцэтгэл бөглөх)'),
     url: PKGS[0].url,
     oid: 'ObjectID',
-    view: 'sheet',
+    view: 'guitsetgel',
     synonyms: [tr('ажлын хуудас'), tr('гүйцэтгэл бөглөх'), tr('багцын ажил'), tr('шатлал')],
     fields: {
       F_: tr('№ — «A. Бэлтгэл ажил», «Б. Барилга угсралтын ажил», «Б1», «3.2», «7»'),
