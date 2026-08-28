@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useState, useRef, useSyncExternalStore } from 'react';
+import { dataVersion, subscribeData } from '@/lib/dataBus';
 
 export type Async<T> = (
   | { state: 'loading'; data: null; error: null }
@@ -26,6 +27,14 @@ const LOADING = { state: 'loading', data: null, error: null } as const;
 export function useAsync<T>(fn: () => Promise<T>, deps: unknown[]): Async<T> {
   const [result, setResult] = useState<Async<T>>(LOADING);
   /**
+   * ӨГӨГДЛИЙН АВТОБУСЫН хувилбар — хүснэгт рүү бичихэд өснө (`dataBus.ts`).
+   *
+   * ⚠️ deps-т ОРНО: ингэснээр нийтэлсэн даруйд БҮХ дуудагч дахин ажиллана.
+   * Хүчингүй болгоогүй ачаалагч нь хадгалсан амлалтаа шууд буцаах тул нэмэлт
+   * сүлжээний хүсэлт ҮҮСЭХГҮЙ — зөвхөн хаягдсан кэш л дахин татагдана.
+   */
+  const bus = useSyncExternalStore(subscribeData, dataVersion, () => 0);
+  /**
    * Дахин оролдлогын тоолуур — deps-д нэмэгдсэнээр эффект дахин ажиллана.
    * ⚠️ ArcGIS түр гацах нь энгийн үзэгдэл (`query.ts`-ийн rate-limit тайлбар).
    * Урьд нь алдааны дараах цорын ганц арга нь бүтэн хуудас refresh байсан —
@@ -37,9 +46,35 @@ export function useAsync<T>(fn: () => Promise<T>, deps: unknown[]): Async<T> {
   const fnRef = useRef(fn);
   fnRef.current = fn;
 
+  /**
+   * ⚠️ ХУУЧИН УТГЫГ БАРЬЖ ДАХИН ТАТНА (stale-while-revalidate).
+   *
+   * Урьд нь эффект бүрийн эхэнд `setResult(LOADING)` дуудагддаг байв. Тэр нь
+   * ПАРАМЕТР солигдоход зөв (өмнөх багцын тоо шинэ багцынх мэт харагдах ёсгүй),
+   * харин АВТОБУСААР дахин татахад БУРУУ: нийтлэх бүрд дашбоардын бүх карт
+   * «Татаж байна…» болж анивчина. Тиймээс автобусаас үүдсэн дахин татахад
+   * хуучин утгыг дэлгэц дээр үлдээж, шинэ нь ирэхэд чимээгүй солино.
+   *
+   * ⚠️ Хуучин утга ҮҮРД үлдэхгүй: татах нь АЛДВАЛ `error` төлөв рүү шилжиж,
+   * дэлгэц дээрх тоо алга болно — «хуучин тоо чимээгүй үлдэхгүй» дүрэм хэвээр.
+   */
+  /*
+   * ⚠️ Өмнөх хувилбарыг ЭФФЕКТ ДОТОР харьцуулна, зурагдах явцад БИШ.
+   *
+   * Эхэндээ `busRef.current !== bus`-ыг бие дотор бодоод тэр дороо дарж
+   * бичдэг байв. Тэр нь React-ийн дүрэм зөрчсөн (зурагдах явцад ref өөрчлөх)
+   * бөгөөд StrictMode-ийн ДАВХАР зурагдалт дээр эвдэрдэг: эхний зурагдалт
+   * `busRef`-ыг шинэчилчихээд, эффект нь ХОЁР ДАХЬ зурагдалтын `fromBus`
+   * (=false) утгыг хаалтандаа авдаг тул автобусаар татахад ч «Татаж байна…»
+   * анивчина.
+   */
+  const busRef = useRef(bus);
+
   useEffect(() => {
     let alive = true;
-    setResult(LOADING);
+    const fromBus = busRef.current !== bus;
+    busRef.current = bus;
+    if (!fromBus) setResult(LOADING);
     fnRef
       .current()
       .then((data) => {
@@ -55,7 +90,7 @@ export function useAsync<T>(fn: () => Promise<T>, deps: unknown[]): Async<T> {
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [...deps, nonce]);
+  }, [...deps, nonce, bus]);
 
   /**
    * ⚠️ Тогтвортой лавлагаа: рендер бүрт шинэ объект буцаавал `q`-г deps-даа

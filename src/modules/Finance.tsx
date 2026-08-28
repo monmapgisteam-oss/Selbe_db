@@ -1,16 +1,34 @@
 'use client';
 
-import { useState, type MouseEvent } from 'react';
+import { useState, useEffect, type MouseEvent } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { Data, Empty } from '@/components/ui';
 import { useAsync } from '@/lib/useAsync';
 import { queryFeatures } from '@/lib/query';
 import { cached } from '@/lib/live';
+
+/**
+ * ӨДӨР ТУТАМ ЗАСАГДДАГ хүснэгтийн кэшийн хугацаа.
+ *
+ * ⚠️ 5 минут байсныг 1 минут болгов (2026-08-28). Хоёр өөр эрсдэл бий:
+ *   · ӨӨРИЙН засвар — `invalidate()` шууд харуулна, TTL хамаагүй.
+ *   · ӨӨР ХЭРЭГЛЭГЧИЙН засвар — зөвхөн TTL л барина. IPC/CASHFLOW нь өдөр
+ *     бүр олон хүн засдаг тул 5 минут нь хоёр хүн ЗӨРСӨН тоо хараад маргах
+ *     хангалттай урт хугацаа.
+ *
+ * ⚠️ Илүү богиносговол ашиг бага, зардал их: хүснэгт бүтнээрээ (257 талбар)
+ * татагддаг тул минутанд нэгээс олон удаа татах нь сүлжээг дэмий эзэлнэ.
+ */
+const LIVE_TTL = 60_000;
 import { loadBlockHistory } from '@/lib/blockProgress';
 import { CASHFLOW2, IPC_LOG, TASK_SHEET, bagtsKey, blockKey, pkgKeyOf } from '@/lib/services';
 import { finFieldLabel } from '@/lib/financeFieldLabels';
 import { mntShort, num, text, cat } from '@/lib/format';
 import { ResizableTable } from '@/components/ResizableTable';
+import { applyAll } from '@/lib/tableWrite';
+import { invalidate, type DataKey } from '@/lib/dataBus';
+import { hasCap, subscribeCaps } from '@/lib/caps';
+import { useAuth } from '@/components/AuthGate';
 import f from './finance.module.css';
 
 /* ═══════════════════════════════════════════════════════════
@@ -436,7 +454,7 @@ function smoothPath(pts: { x: number; y: number }[]): string {
  *   гурвуулаа дууддаг тул харагдац сэлгэх бүрд 3 query + O(багц×сар×блок)
  *   тооцоо ДАХИН хийгддэг байв.
  */
-export const loadFinData = cached(loadFinDataRaw, 5 * 60_000);
+export const loadFinData = cached(loadFinDataRaw, LIVE_TTL, ['IPC_LOG', 'CASHFLOW2', 'BAGTS_SHEET']);
 
 /**
  * CASHFLOW2/IPC_LOG-ийн түүхий мөрүүд — НЭГ кэштэй эх (2026-08-24 аудит):
@@ -448,11 +466,13 @@ export const loadFinData = cached(loadFinDataRaw, 5 * 60_000);
  */
 const loadCashflowRows = cached(
   () => queryFeatures(CASHFLOW2.url, { outFields: ['*'], orderBy: `${CASHFLOW2.oid} ASC` }),
-  5 * 60_000,
+  LIVE_TTL,
+  ['CASHFLOW2'],
 );
 const loadIpcRows = cached(
   () => queryFeatures(IPC_LOG.url, { outFields: ['*'] }),
-  5 * 60_000,
+  LIVE_TTL,
+  ['IPC_LOG'],
 );
 
 async function loadFinDataRaw(): Promise<FinData> {
@@ -596,7 +616,7 @@ async function loadFields(url: string): Promise<FieldDef[]> {
  * 4 хүсэлт (метадата ×2 + бүтэн хүснэгт ×2) кэшгүй дахин явдаг байв; мөрүүд нь
  * одоо `loadCashflowRows`/`loadIpcRows`-оор `loadFinData`-тай хуваалцагдана.
  */
-const loadFinRegister = cached(loadFinRegisterRaw, 5 * 60_000);
+const loadFinRegister = cached(loadFinRegisterRaw, LIVE_TTL, ['IPC_LOG', 'CASHFLOW2']);
 
 async function loadFinRegisterRaw(): Promise<FinTables> {
   const [cfFields, ipcFields, cashflow, ipc] = await Promise.all([
@@ -614,7 +634,13 @@ export function Finance() {
   return (
     <div className={f.frame}>
       <Data q={q} loading={tr('Санхүүжилтийн бүртгэл…')}>
-        {(d) => <FinTablesView d={d} />}
+        {/*
+          ⚠️ `onSaved` нь `retry` — нийтэлсний дараа энэ хуудасны мөрүүдийг
+          ДАХИН татна. `invalidate()` нь кэшийг аль хэдийн хаясан тул энэ нь
+          үйлчилгээ рүү шинэ хүсэлт болно; `useAsync` хуучин мөрүүдийг барьж
+          байгаад солино (`dataBus`-ийн stale-while-revalidate).
+        */}
+        {(d) => <FinTablesView d={d} onSaved={() => q.retry?.()} />}
       </Data>
     </div>
   );
@@ -787,6 +813,15 @@ export const finLagLevel = (
    талбар БҮР (alias-аар нэрлэсэн, эх дараалалд), мөр нь БҮХ мөр (шүүлтгүй).
    ═══════════════════════════════════════════════════════════ */
 
+/**
+ * ЗАСАХ БОЛОМЖГҮЙ талбарууд — серверийн удирддаг багана.
+ *
+ * ⚠️ `tableWrite.ts` эдгээрийг илгээхийн өмнө ч шүүдэг (давхар хамгаалалт).
+ * Энд шүүх нь UI-д зориулагдсан: засаж болохгүй нүдэнд оролт харуулбал
+ * хэрэглэгч бичээд, дараа нь чимээгүй алга болоход гайхна.
+ */
+const SERVER_RO = /^(objectid|globalid|shape|shape__|creationdate|creator|editdate|editor)/i;
+
 const NUMERIC_TYPES = new Set([
   'esriFieldTypeDouble', 'esriFieldTypeInteger', 'esriFieldTypeSingle',
   'esriFieldTypeSmallInteger', 'esriFieldTypeBigInteger', 'esriFieldTypeOID',
@@ -810,15 +845,172 @@ function fmtCell(v: unknown, type: string): { text: string; num: boolean } {
   return { text: text(v), num: false };
 }
 
-/** Үйлчилгээний БҮРЭН хүснэгт — талбар бүр багана (alias), мөр бүр яг байгаагаар */
+/**
+ * Нүдийг ЗАСАХ талбарт тавих түүхий текст.
+ *
+ * ⚠️ `fmtCell`-ийн гаралтыг ХЭРЭГЛЭХГҮЙ: тэр нь мянгатын таслал нэмдэг
+ * («62,791,703,684») тул засварт оруулбал хадгалахад тоо болж хөрвөхгүй.
+ * Огноог `YYYY-MM-DD` болгоно — оруулахад ч мөн тэр хэлбэрийг хүлээнэ.
+ */
+function editText(v: unknown, type: string): string {
+  if (v == null) return '';
+  if (type === 'esriFieldTypeDate') {
+    const d = typeof v === 'number' ? new Date(v) : new Date(String(v));
+    return Number.isNaN(d.getTime()) ? String(v) : d.toISOString().slice(0, 10);
+  }
+  return String(v);
+}
+
+/**
+ * Засварласан текстийг үйлчилгээ хүлээж авах ТӨРӨЛ рүү хөрвүүлнэ.
+ *
+ * ⚠️ Хоосон нүд нь `null` — хоосон мөр (`''`) БИШ. Тоон талбарт `''` илгээвэл
+ * ArcGIS 0 болгож хадгалдаг: «бөглөөгүй» ба «тэг» хоёр ЗААВАЛ ялгаатай байх
+ * ёстой, эс бөгөөс дашбоардын дундаж чимээгүй гажина.
+ *
+ * ⚠️ Буруу тоо/огноог ЧИМЭЭГҮЙ 0 болгохгүй — `Error` шиднэ, дуудагч тал
+ * тухайн нүдийг тодруулж хэрэглэгчид буцаана.
+ */
+function parseCell(s: string, type: string, label: string): unknown {
+  const v = s.trim();
+  if (v === '') return null;
+  if (type === 'esriFieldTypeDate') {
+    const d = new Date(v.length === 10 ? v + 'T00:00:00Z' : v);
+    if (Number.isNaN(d.getTime())) throw new Error(tr('«{0}» — огноо буруу: {1}', label, v));
+    return d.getTime();
+  }
+  if (NUMERIC_TYPES.has(type)) {
+    /* Хэрэглэгч хуулж тавихад мянгатын таслал/зай дагалдаж болно */
+    const x = Number(v.replace(/[\s,\u00a0]/g, ''));
+    if (!Number.isFinite(x)) throw new Error(tr('«{0}» — тоо буруу: {1}', label, v));
+    return x;
+  }
+  return v;
+}
+
+/**
+ * Үйлчилгээний БҮРЭН хүснэгт — талбар бүр багана (alias), мөр бүр яг байгаагаар.
+ *
+ * ⚠️ ЗАСВАРЫН ГОРИМ (2026-08-28). Эдгээр хоёр хүснэгт нь өдөр тутам засагддаг
+ * тул AGOL руу орохгүйгээр порталаас шууд засах шаардлагатай болов. Гурван
+ * зарчмаар барьсан:
+ *
+ *   1. ЗАСВАР ХУРИМТЛАГДАНА, шууд илгээгдэхгүй (`pend`). Нүд бүрийг тусад нь
+ *      илгээвэл 250 нүд засахад 250 хүсэлт явж, дунд нь тасрахад хагас
+ *      бичигдсэн мөр үлдэнэ. «Нийтлэх» дарахад л нэг багц болж явна.
+ *   2. ЗӨВХӨН ӨӨРЧЛӨГДСӨН талбарыг илгээнэ. Бүтэн мөрийг буцааж бичвэл өөр
+ *      хүний зэрэг зассан багана дарагдана (257 талбартай хүснэгтэд бодит
+ *      эрсдэл).
+ *   3. НИЙТЭЛСНИЙ ДАРАА `invalidate()` — дашбоардын тоо тэр дор нь дагана.
+ *      Эс бөгөөс хэрэглэгч засвараа хараад «бичигдээгүй юм болов уу» гэж
+ *      дахин дарна.
+ */
 function FullTable({
-  title, subtitle, rows, fields,
+  title, subtitle, rows, fields, url, oidField, dataKey, canEdit, canRow, onSaved,
 }: {
   title: string;
   subtitle: string;
   rows: Row[];
   fields: FieldDef[];
+  /** Бичих хаяг — засварын горим үүгээр л боломжтой */
+  url: string;
+  oidField: string;
+  /** Нийтэлсний дараа хүчингүй болгох хүснэгтийн түлхүүр */
+  dataKey: DataKey;
+  canEdit: boolean;
+  canRow: boolean;
+  /** Амжилттай нийтэлсний дараа — эцэг талд дахин татуулна */
+  onSaved: () => void;
 }) {
+  /** Засварын горим асаалттай эсэх — эрхтэй хүнд л товч гарна */
+  const [edit, setEdit] = useState(false);
+  /** `oid:талбар` → шинэ ТЕКСТ. Хоосон мөр ('') нь «null болгоно» гэсэн үг. */
+  const [pend, setPend] = useState<Record<string, string>>({});
+  /** Нийтлээгүй ШИНЭ мөрүүд — сөрөг түр дугаартай */
+  const [adds, setAdds] = useState<Record<string, string>[]>([]);
+  const [del, setDel] = useState<Set<number>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const dirty = Object.keys(pend).length + adds.length + del.size;
+
+  /* ⚠️ Нийтлээгүй засвартай байхад таб хаахад хөтөч анхааруулна — «Гүйцэтгэл
+     бөглөх»-тэй ижил зан. Гараар хийсэн 200 нүдний ажил алдагдах нь эргэж
+     нөхөгдөшгүй. */
+  useEffect(() => {
+    if (!dirty) return;
+    const h = (e: BeforeUnloadEvent) => { e.preventDefault(); };
+    window.addEventListener('beforeunload', h);
+    return () => window.removeEventListener('beforeunload', h);
+  }, [dirty]);
+
+  const reset = () => { setPend({}); setAdds([]); setDel(new Set()); setErr(null); };
+
+  const publish = async () => {
+    if (busy || !dirty) return;
+    /*
+     * ⚠️ УСТГАЛ БУЦААГДАХГҮЙ. Эдгээр үйлчилгээнд хувилбарын түүх асаагүй тул
+     * устгасан мөр бүрмөсөн алга болно — «Нийтлэх (3)» гэсэн тоо нь тэдгээрийн
+     * нэг нь БУЦААГДАШГҮЙ устгал гэдгийг хэлдэггүй. `UserAdmin`, `FillNew`
+     * зэрэгт эргэлт буцалтгүй үйлдлийн өмнө баталгаажуулалт асуудаг дүрэмтэй
+     * ижил.
+     *
+     * ⚠️ Зөвхөн УСТГАЛД асууна: утга засах, мөр нэмэхэд асуувал өдөр тутмын
+     * ажил бүрд шаардлагагүй цонх гарч, хүн уншихаа болино — тэр үед жинхэнэ
+     * анхааруулга ч мөн адил дарагдана.
+     */
+    if (del.size > 0
+      && !window.confirm(tr('{0} мөр БУЦААГДАШГҮЙ устгагдана. Үргэлжлүүлэх үү?', del.size))) return;
+    setBusy(true);
+    setErr(null);
+    setMsg(null);
+    try {
+      const byName = new Map(fields.map((c) => [c.name, c]));
+      const typeOf = (n: string) => byName.get(n)?.type ?? 'esriFieldTypeString';
+      const labelOf = (n: string) => finFieldLabel(n);
+
+      /* ── Засварласан утга — мөрөөр бүлэглэнэ ── */
+      const upd = new Map<number, Record<string, unknown>>();
+      for (const [k, v] of Object.entries(pend)) {
+        const cut = k.indexOf(':');
+        const oid = Number(k.slice(0, cut));
+        const fld = k.slice(cut + 1);
+        if (del.has(oid)) continue;                 // устгах мөрийн засвар утгагүй
+        const a = upd.get(oid) ?? { [oidField]: oid };
+        a[fld] = parseCell(v, typeOf(fld), labelOf(fld));
+        upd.set(oid, a);
+      }
+
+      /* ── Шинэ мөрүүд ── */
+      const newRows = adds.map((a) => {
+        const o: Record<string, unknown> = {};
+        for (const [fld, v] of Object.entries(a)) {
+          if (v.trim() === '') continue;            // хоосон нүд — талбарыг огт илгээхгүй
+          o[fld] = parseCell(v, typeOf(fld), labelOf(fld));
+        }
+        return o;
+      }).filter((o) => Object.keys(o).length > 0);
+
+      /* ⚠️ ГУРВЫГ НЭГ ХҮСЭЛТЭЭР — атомаар. Салгаж явуулбал нэмэлт амжилттай
+         болоод устгал уначихад хэрэглэгч дахин дарж, нэмсэн мөр ДАВХАРДАНА. */
+      const { n } = await applyAll(url, oidField, {
+        updates: [...upd.values()],
+        adds: newRows,
+        deletes: [...del],
+      });
+
+      /* ⚠️ Кэшийг зөвхөн АМЖИЛТТАЙ бичилтийн дараа хаяна */
+      invalidate(dataKey);
+      reset();
+      setMsg(tr('{0} мөр хадгалагдав', n));
+      onSaved();
+    } catch (e) {
+      setErr(String((e as Error).message || e));
+    } finally {
+      setBusy(false);
+    }
+  };
   // Багана нь талбарын метадатагийн дараалалд; ирээгүй бол эхний мөрийн түлхүүрээс.
   // ⚠️ GlobalID баганыг ХАСНА (хэрэглэгчийн хүсэлт — утгагүй UUID).
   const isSkip = (name: string, type: string) =>
@@ -831,12 +1023,67 @@ function FullTable({
         : []
   ).filter((c) => !isSkip(c.name, c.type));
   return (
-    <section className={f.reg}>
+    /*
+     * ⚠️ ЗАСВАРЫН ГОРИМД БҮТЭН ДЭЛГЭЦ (`position: fixed`). Хажуугийн цэс ба
+     * дээд толгой алга болж, хүснэгт нүүрийг бүтнээр эзэлнэ.
+     *
+     * ⚠️ Яагаад overlay вэ, эцэг талын төлөв БИШ: цэс ба толгой нь `Portal`/
+     * `Root`-д, өөр модульд байна. Тэднийг нуухын тулд төлөв дамжуулбал
+     * «хэн юуг нууж байна» гэдэг гурван файлд тарна. `fixed` overlay нь
+     * ЭНЭ ФАЙЛААС гарахгүйгээр яг тэр үр дүнг өгнө.
+     */
+    <section className={`${f.reg} ${edit ? f.regFull : ''}`}>
       <header className={f.regHd}>
         <h2>{title}</h2>
         {/* envhub: бүх тоо «num» (tabular) — мөр·баганын тоолол */}
         <span className="num">{subtitle}</span>
+        {/* ⚠️ Эрхгүй хэрэглэгчид товч ОГТ гарахгүй — унтраасан товч харуулбал
+            «яагаад надад болохгүй байна вэ» гэсэн асуулт төрүүлнэ. */}
+        {canEdit && (
+          <div className={f.regAct}>
+            {!edit ? (
+              <button type="button" className={f.editBtn} onClick={() => setEdit(true)}>
+                {tr('Засах')}
+              </button>
+            ) : (
+              <>
+                {/* ⚠️ «Мөр нэмэх» ТОЛГОЙД. Урьд нь хүснэгтийн доор байсан бөгөөд
+                    бүтэн дэлгэцийн горимд хөвөгч товчнуудтай (хэрэглэгчийн
+                    зураг, «AI туслах») давхцаж, хагас халхлагдаж байв. Бүх
+                    үйлдэл НЭГ мөрөнд байх нь олоход ч хялбар. */}
+                {canRow && (
+                  <button
+                    type="button"
+                    className={f.editBtn}
+                    disabled={busy}
+                    onClick={() => setAdds((s) => [...s, {}])}
+                  >
+                    {tr('+ Мөр нэмэх')}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className={`${f.editBtn} ${dirty > 0 ? f.editBtnOn : ''}`}
+                  disabled={busy || dirty === 0}
+                  onClick={publish}
+                >
+                  {busy ? tr('Хадгалж байна…') : tr('Нийтлэх ({0})', dirty)}
+                </button>
+                <button
+                  type="button"
+                  className={f.editBtn}
+                  disabled={busy}
+                  onClick={() => { reset(); setEdit(false); }}
+                >
+                  {tr('Болих')}
+                </button>
+              </>
+            )}
+          </div>
+        )}
       </header>
+      {err && <p className={f.editErr}>{err}</p>}
+      {msg && !err && <p className={f.editOk}>{msg}</p>}
       {rows.length === 0 || cols.length === 0 ? (
         <Empty label={tr('Мөр алга.')} />
       ) : (
@@ -850,21 +1097,99 @@ function FullTable({
           >
             <thead>
               <tr>
+                {edit && canRow && <th className={f.rowBtnCell} aria-label={tr('Мөр')} />}
                 {cols.map((c) => (
                   <th key={c.name} title={c.name}>{finFieldLabel(c.name)}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {rows.map((r, i) => (
-                <tr key={i}>
-                  {cols.map((c) => {
-                    const cell = fmtCell(r[c.name], c.type);
-                    return (
-                      // envhub: тоон нүд бүр глобал «num» (tabular) + баруун зэрэгцүүлэлт
-                      <td key={c.name} className={cell.num ? `num ${f.cellNum}` : undefined}>{cell.text}</td>
-                    );
-                  })}
+              {rows.map((r, i) => {
+                const oid = typeof r[oidField] === 'number' ? (r[oidField] as number) : null;
+                const dropped = oid != null && del.has(oid);
+                return (
+                  <tr key={oid ?? i} className={dropped ? f.rowDel : undefined}>
+                    {/* ⚠️ Устгах баганыг ЗАСВАРЫН горимд л гаргана — уншиж буй
+                        хэрэглэгчийн хүснэгтийн өргөнийг дэмий иддэггүй. */}
+                    {edit && canRow && (
+                      <td className={f.rowBtnCell}>
+                        <button
+                          type="button"
+                          className={f.rowBtn}
+                          title={dropped ? tr('Устгахаа болих') : tr('Мөр устгах')}
+                          onClick={() => {
+                            if (oid == null) return;
+                            setDel((s) => {
+                              const nx = new Set(s);
+                              if (nx.has(oid)) nx.delete(oid); else nx.add(oid);
+                              return nx;
+                            });
+                          }}
+                        >
+                          {dropped ? '↩' : '×'}
+                        </button>
+                      </td>
+                    )}
+                    {cols.map((c) => {
+                      const key = `${oid}:${c.name}`;
+                      const editable = edit && oid != null && !dropped && !SERVER_RO.test(c.name);
+                      if (editable) {
+                        const cur = key in pend ? pend[key] : editText(r[c.name], c.type);
+                        return (
+                          <td key={c.name} className={f.cellEdit}>
+                            <input
+                              className={`${f.cellInput} ${NUMERIC_TYPES.has(c.type) ? 'num' : ''}`}
+                              value={cur}
+                              onChange={(ev) => {
+                                const v = ev.target.value;
+                                setPend((p) => {
+                                  const nx = { ...p };
+                                  /* Анхны утга руугаа буцвал «засвар» гэж тоолохгүй */
+                                  if (v === editText(r[c.name], c.type)) delete nx[key];
+                                  else nx[key] = v;
+                                  return nx;
+                                });
+                              }}
+                            />
+                          </td>
+                        );
+                      }
+                      const cell = fmtCell(r[c.name], c.type);
+                      return (
+                        // envhub: тоон нүд бүр глобал «num» (tabular) + баруун зэрэгцүүлэлт
+                        <td key={c.name} className={cell.num ? `num ${f.cellNum}` : undefined}>{cell.text}</td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+              {/* ── НИЙТЛЭЭГҮЙ ШИНЭ МӨРҮҮД ── */}
+              {edit && adds.map((a, ai) => (
+                <tr key={`new-${ai}`} className={f.rowNew}>
+                  {canRow && (
+                    <td className={f.rowBtnCell}>
+                      <button
+                        type="button"
+                        className={f.rowBtn}
+                        title={tr('Мөр хасах')}
+                        onClick={() => setAdds((s) => s.filter((_, k) => k !== ai))}
+                      >×</button>
+                    </td>
+                  )}
+                  {cols.map((c) => (
+                    <td key={c.name} className={f.cellEdit}>
+                      {SERVER_RO.test(c.name) ? null : (
+                        <input
+                          className={`${f.cellInput} ${NUMERIC_TYPES.has(c.type) ? 'num' : ''}`}
+                          value={a[c.name] ?? ''}
+                          onChange={(ev) => {
+                            const v = ev.target.value;
+                            setAdds((s) => s.map((x, k) => (k === ai ? { ...x, [c.name]: v } : x)));
+                          }}
+                        />
+                      )}
+                    </td>
+                  ))}
                 </tr>
               ))}
             </tbody>
@@ -875,8 +1200,53 @@ function FullTable({
   );
 }
 
-/** Санхүүжилт — Cashflow ба IPC-ийн БҮРЭН хүснэгт (график огт байхгүй) */
-function FinTablesView({ d }: { d: FinTables }) {
+/**
+ * Санхүүжилт — Cashflow ба IPC-ийн БҮРЭН хүснэгт (график огт байхгүй).
+ *
+ * ⚠️ ЭРХИЙГ ЭНД шалгаж доош дамжуулна, `FullTable` дотор БИШ: тэр бүрэлдэхүүн
+ * дурын үйлчилгээнд ажиллах ёстой тул `caps`-аас хараат байх нь буруу
+ * хамаарал болно.
+ */
+function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
+  const { user, status } = useAuth();
+  /* ⚠️ Эрх нь ArcGIS-ээс АСИНХРОНООР ирдэг (`initRemote`) тул захиалж, ирэхэд
+     дахин зурна — эс бөгөөс админ эрх өгсний дараа хэрэглэгч хуудсаа дахин
+     ачаалж байж товчоо олно. */
+  const [tick, setTick] = useState(0);
+  useEffect(() => subscribeCaps(() => setTick((n) => n + 1)), []);
+  void tick;
+  /**
+   * НЭВТРЭЛТ УНТРААЛТТАЙ үед эрх НЭЭЛТТЭЙ.
+   *
+   * ⚠️ Энэ нь порталын БУСАД хэсэгтэй нийцүүлсэн зан: `Root.tsx` нь
+   * `status === 'off'` үед `views: 'all'`, `docs: true` өгөөд хэрэглэгчийг
+   * СУПЕР АДМИН гэж үздэг (`isSuper`). Зөвхөн санхүүгийн засварыг өөрөөр
+   * хаавал хөгжүүлэлтийн орчинд бүх зүйл нээлттэй атал энэ ганц хуудас
+   * ойлгомжгүй хаалттай үлдэнэ.
+   *
+   * ⚠️ ҮЙЛДВЭРЛЭЛД ЭНЭ САЛАА АЖИЛЛАХГҮЙ: `status === 'off'` нь
+   * `NEXT_PUBLIC_AUTH_APP_ID` ХООСОН үед л үүсдэг бөгөөд тэр нь зөвхөн
+   * `.env.development.local` (`next dev`) дотор хоосон. Статик build нь
+   * `.env`-ийг уншдаг тул нэвтрэлт АСААЛТТАЙ, эрх нь `caps`-аар л шийдэгдэнэ.
+   *
+   * ⚠️ Нэвтэрсэн үед админ ч гэсэн эрхээ панелаас ӨӨРТӨӨ ил асаана
+   * («Гүйцэтгэл бөглөх»-ийн «Мөр нэмэх»-тэй ижил дүрэм) — ингэснээр «хэн
+   * санхүүгийн тоо засаж чадах вэ» гэдэг НЭГ жагсаалтаас бүрэн харагдана.
+   */
+  const devOpen = status === 'off';
+  const canEdit = devOpen || hasCap(user?.username, 'finEdit');
+  const canRow = devOpen || hasCap(user?.username, 'finRow');
+
+  /**
+   * ⚠️ ХОЁР ХҮСНЭГТ ДАРААЛЖ БИШ, СОЛИГДОЖ гарна.
+   *
+   * Урьд нь Cashflow (76 мөр) ба IPC (90 мөр) нэг хуудсанд дараалж
+   * зурагддаг байв. Хоёулаа дотроо хоёр тэнхлэгээр гүйдэг тул хуудас
+   * бүхэлдээ гурван өөр гүйлгэлттэй болж, доод хүснэгтийг олохын тулд
+   * дээдийг нь өнгөрөх шаардлагатай байлаа. Нэг мөчид НЭГ хүснэгт.
+   */
+  const [tab, setTab] = useState<'cf' | 'ipc'>('cf');
+
   return (
     <>
       <header className={f.pageHd}>
@@ -886,21 +1256,56 @@ function FinTablesView({ d }: { d: FinTables }) {
             {tr('Эх үйлчилгээний бүрэн хүснэгт — багана бүр (талбарын нэр), мөр бүр яг байгаагаар. Огноо ба тоон утгыг талбарын төрлөөр форматлав.')}
           </p>
         </div>
+        {/* Хүснэгт солих — идэвхтэй нь дүүргэлттэй */}
+        <div className={f.tabs} role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'cf'}
+            className={`${f.tab} ${tab === 'cf' ? f.tabOn : ''}`}
+            onClick={() => setTab('cf')}
+          >
+            {tr('Cashflow')}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'ipc'}
+            className={`${f.tab} ${tab === 'ipc' ? f.tabOn : ''}`}
+            onClick={() => setTab('ipc')}
+          >
+            {tr('IPC')}
+          </button>
+        </div>
       </header>
 
+      {tab === 'cf' ? (
       <FullTable
         title={tr('Cashflow — гэрээ, захирамжийн санхүүжилт (/106)')}
         subtitle={tr('{0} мөр · {1} багана', num(d.cashflow.length), d.cfFields.length)}
         rows={d.cashflow}
         fields={d.cfFields}
+        url={CASHFLOW2.url}
+        oidField={CASHFLOW2.oid}
+        dataKey="CASHFLOW2"
+        canEdit={canEdit}
+        canRow={canRow}
+        onSaved={onSaved}
       />
-
+      ) : (
       <FullTable
         title={tr('IPC — олгосон акт (/107)')}
         subtitle={tr('{0} мөр · {1} багана', num(d.ipc.length), d.ipcFields.length)}
         rows={d.ipc}
         fields={d.ipcFields}
+        url={IPC_LOG.url}
+        oidField={IPC_LOG.oid}
+        dataKey="IPC_LOG"
+        canEdit={canEdit}
+        canRow={canRow}
+        onSaved={onSaved}
       />
+      )}
     </>
   );
 }

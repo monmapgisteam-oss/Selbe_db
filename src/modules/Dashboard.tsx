@@ -218,6 +218,10 @@ const loadLeftParcels = cached<Row[]>(
   () => queryFeatures(PARCEL_LEFT.url, {
     outFields: [PL.progress, PL.block, PL.status, PL.area, PL.areaAlt, PL.landuse],
   }),
+  undefined,
+  /* ⚠️ `loadClearance` (live.ts) МӨН ЭНЭ хүснэгтээс уншдаг — хоёулаа ижил
+     тагтай байх ёстой, эс бөгөөс нэг нь шинэчлэгдээд нөгөө нь хоцорно. */
+  ['PARCEL_LEFT'],
 );
 
 function useLeftParcels(): Async<Row[]> {
