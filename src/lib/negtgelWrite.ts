@@ -18,6 +18,7 @@
  */
 
 import { BAGTS_NEGTGEL, TASK_SHEET } from './services';
+import { invalidate } from './dataBus';
 import { PKGS, loadSchema } from '@/modules/sheet/bagts.pkg';
 
 const F = BAGTS_NEGTGEL.fields;
@@ -127,6 +128,9 @@ export async function registerApproved(
         },
       }]),
     });
+    /* ⚠️ Нэгтгэлд шинэ мөр орсон тул `loadPkgProgress` хуучирлаа: 02/04
+       дашбоардын төлөвлөгөө-vs-бодит цуваа шууд шинэчлэгдэнэ. */
+    invalidate('BAGTS_NEGTGEL');
     return { ok: true };
   } catch (e) {
     return { ok: false, error: String((e as Error)?.message ?? e) };

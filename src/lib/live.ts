@@ -25,6 +25,7 @@ import {
   LAYER_BY_ID, PARCEL_LEFT, layerUrl, oidOf,
 } from '@/lib/services';
 import { sumBy, tally } from '@/lib/agg';
+import { register, type DataKey } from '@/lib/dataBus';
 
 /**
  * Оршин суух хүн ам — [108]-ийн `Population` талбар.
@@ -33,14 +34,29 @@ import { sumBy, tally } from '@/lib/agg';
  */
 const POPULATION_FIELD = 'Population';
 
-/** Кэштэй loader — амжилтгүй амлалтыг кэшлэхгүй («дахин оролдох» сэргэнэ).
+/**
+ * Кэштэй loader — амжилтгүй амлалтыг кэшлэхгүй («дахин оролдох» сэргэнэ).
+ *
  * `ttlMs` өгвөл тэр хугацааны дараа дараагийн дуудалт шинээр татна — харагдац
  * хооронд шилжихэд дахин татахгүй, гэхдээ өгөгдөл хуучрахгүй.
+ *
  * ⚠️ export (2026-08-21 гүйцэтгэлийн аудит): Finance/Habea зэрэг view бүрийн
- * mount дээр бүтэн хүснэгтүүдээ ДАХИН татдаг байсныг энэ хэвээр кэшилнэ. */
-export function cached<T>(fn: () => Promise<T>, ttlMs?: number): () => Promise<T> {
+ * mount дээр бүтэн хүснэгтүүдээ ДАХИН татдаг байсныг энэ хэвээр кэшилнэ.
+ *
+ * ⚠️ `reads` (2026-08-28) — тухайн ачаалагч ЯМАР хүснэгтээс уншдагийг зарлана.
+ * Тэр хүснэгт рүү бичсэн код `invalidate('…')` дуудахад энэ кэш хаягдаж,
+ * дэлгэц дээрх дуудагчид ДАХИН татна. Тагийг өгөхгүй бол кэш нь урьдын адил
+ * зөвхөн TTL-ээр л шинэчлэгдэнэ — өөрөөр хэлбэл тагийг МАРТВАЛ хуучин зан
+ * хэвээр үлдэнэ, чимээгүй эвдрэхгүй.
+ */
+export function cached<T>(
+  fn: () => Promise<T>,
+  ttlMs?: number,
+  reads: readonly DataKey[] = [],
+): () => Promise<T> {
   let p: Promise<T> | null = null;
   let at = 0;
+  if (reads.length) register(() => { p = null; }, reads);
   return () => {
     if (!p || (ttlMs != null && Date.now() - at > ttlMs)) {
       at = Date.now();
@@ -132,7 +148,7 @@ export const loadBudget = cached<Budget>(async () => {
     months: CASHFLOW2.months.map((m, i) => ({ label: m.label, amount: Number(r[`m${i}`] ?? 0) })),
   };
   // ⚠️ Хяналт: Σ byType.value === total байх ёстой.
-});
+}, undefined, ['CASHFLOW2']);
 
 export type Headline = {
   /**
@@ -304,7 +320,7 @@ export const loadPkgProgress = cached<PkgProgressRow[]>(async () => {
     });
   }
   return out.sort((a, b) => a.date.localeCompare(b.date) || a.key.localeCompare(b.key, 'mn', { numeric: true }));
-});
+}, undefined, ['BAGTS_NEGTGEL']);
 
 /**
  * Багц бүрийн ХАМГИЙН СҮҮЛИЙН огноотой мөр — «одоогийн байдал».
@@ -334,7 +350,7 @@ export const loadHousing = cached<HousingTotals>(async () => {
     sum(BUILDING.fields.households, 'ail'),
   ]);
   return { blocks: Number(s.n ?? 0), ail: Number(s.ail ?? 0) };
-});
+}, undefined, ['BUILDING']);
 
 /* ══════════════ Нийгмийн үйлчилгээний барилга ══════════════ */
 
@@ -441,4 +457,4 @@ export const loadClearance = cached<Clearance>(async () => {
     total,
     pct: total > 0 ? (cleared / total) * 100 : null,
   };
-});
+}, undefined, ['PARCEL_LEFT']);

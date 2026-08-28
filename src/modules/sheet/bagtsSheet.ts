@@ -13,6 +13,7 @@ import { agsFetch, type Feature } from "./ags";
 import { TREES } from "./bagts.trees";
 import type { Pkg, Schema } from "./bagts.pkg";
 import { t as tr } from "@/lib/i18nCore";
+import { invalidate } from "@/lib/dataBus";
 
 export type SheetRow = {
   oid: number;
@@ -824,6 +825,16 @@ export async function applyAdds(
       throw e;
     }
   }
+  /*
+   * ⚠️ БИЧСЭНИЙ ДАРАА ДАШБОАРДЫГ ХУУЧИРСАН ГЭЖ ЗАРЛАНА (`dataBus.ts`).
+   *
+   * Урьд нь нийтэлсний дараа энэ хуудас өөрөө шинэчлэгддэг байсан ч
+   * `loadBlockProgress`/`loadFinData` нар кэшээ барьдаг тул дашбоард дээрх
+   * тоо ХУУЧИН хэвээр үлддэг байв — хуудсыг бүтнээр нь refresh хийж байж л
+   * шинэчлэгдэнэ. Хэрэглэгч өөрийн бичсэн тоог дэлгэц дээр харахгүй бол
+   * бичигдсэн эсэхэд эргэлзэж дахин дардаг — архивт давхардсан агшин үүснэ.
+   */
+  if (added > 0) invalidate('BAGTS_SHEET');
   return { added, firstOid };
 }
 

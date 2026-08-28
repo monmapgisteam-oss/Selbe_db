@@ -258,3 +258,140 @@
 /* Өнгөт дөрвөлжингүй мөр (лавлах тоонууд) — цэгтэй мөрүүдтэй зэрэгцүүлнэ */
 .tipRow:not(:has(i)) { padding-left: 16px; }
 .tipGap { margin-top: 3px; padding-top: 5px; border-top: 1px solid var(--line); }
+
+/* ══════════════════ САНХҮҮГИЙН БҮРТГЭЛИЙН ЗАСВАР ══════════════════
+   ⚠️ Засварын элементүүд УНШИХ горимд ОГТ зурагддаггүй (`edit` төлөв) тул
+   эдгээр дүрэм хүснэгтийн ердийн харагдацад нөлөөлөхгүй. */
+
+/* «Засах» · «Нийтлэх» · «Болих» — толгойн баруун талд */
+.editBtn {
+  flex: none;
+  padding: 4px 11px;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--surface-2);
+  border: 1px solid color-mix(in oklab, var(--ink) 22%, transparent);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.editBtn:hover:not(:disabled) { background: var(--data); border-color: var(--data); color: #fff; }
+/* ⚠️ Идэвхгүй товчийг БҮДГЭРҮҮЛНЭ, нуухгүй: «Нийтлэх (0)» гэж харагдах нь
+   «засвар алга» гэдгийг хэлж байгаа хэрэг. */
+.editBtn:disabled { opacity: 0.45; cursor: default; }
+
+.editErr,
+.editOk {
+  flex: none;
+  margin: 0;
+  padding: 6px 12px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  border-bottom: 1px solid var(--line);
+}
+.editErr { color: #b91c1c; background: color-mix(in oklab, #b91c1c 10%, transparent); }
+.editOk { color: var(--ink-2); background: color-mix(in oklab, var(--data) 12%, transparent); }
+
+/* Нүдний оролт — хүснэгтийн нүдийг БҮТНЭЭР эзэлнэ, өргөн нь баганаас хамаарна */
+.cellEdit { padding: 0; }
+.cellInput {
+  width: 100%;
+  min-width: 0;
+  padding: 3px 6px;
+  font: inherit;
+  font-size: inherit;
+  color: var(--ink);
+  background: transparent;
+  border: none;
+  /* ⚠️ Доод зураас нь «энэ нүд засагдана» гэдгийг хэлнэ; бүтэн хүрээ өгвөл
+     257 баганат хүснэгт торлог даавуу шиг болж уншигдахаа болино. */
+  border-bottom: 1px solid color-mix(in oklab, var(--ink) 18%, transparent);
+  border-radius: 0;
+}
+.cellInput:focus {
+  outline: none;
+  background: color-mix(in oklab, var(--data) 10%, transparent);
+  border-bottom-color: var(--data);
+}
+.cellInput.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Мөр устгах/буцаах товчны багана — нарийн, хүснэгтийн зүүн ирмэгт */
+.rowBtnCell { width: 28px; padding: 0; text-align: center; }
+.rowBtn {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--ink-3);
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.rowBtn:hover { color: #b91c1c; background: color-mix(in oklab, #b91c1c 14%, transparent); }
+
+/* ⚠️ Устгахаар ТЭМДЭГЛЭСЭН мөр — шууд алга болгохгүй, зураастай харуулна:
+   алдаж дарсныг буцаах боломж («↩») харагдаж байх ёстой. */
+.rowDel { opacity: 0.5; text-decoration: line-through; }
+/* Нийтлээгүй ШИНЭ мөр — зүүн ирмэгийн туяагаар ялгана */
+.rowNew { box-shadow: inset 3px 0 0 var(--data); }
+
+/* ⚠️ `.addRow` УСТГАВ — «Мөр нэмэх» товч толгой руу зөөгдөж,
+   `.editBtn` загварыг хуваалцах болсон. */
+
+/* Толгойн товчны бүлэг — `.regHd` нь `space-between` тул товчнуудыг НЭГ
+   саванд боохгүй бол хоёр товч толгойн хоёр өнцөгт тарж очно. */
+.regAct { flex: none; display: flex; align-items: center; gap: 6px; }
+
+/* Хадгалагдаагүй засвартай үед «Нийтлэх» ИДЭВХТЭЙ өнгөтэй — 257 баганат
+   хүснэгтэд гүйж яваад товчоо олохгүй байх нь бодит эрсдэл. */
+.editBtnOn { color: #fff; background: var(--data); border-color: var(--data); }
+.editBtnOn:hover:not(:disabled) { filter: brightness(1.08); }
+
+/* ══════════ ХҮСНЭГТ СОЛИХ ТАБ (Cashflow ↔ IPC) ══════════
+   ⚠️ Хоёр хүснэгт нэг мөчид НЭГ л зурагдана. Урьд нь дараалж зурагдаж,
+   хуудас гурван өөр гүйлгэлттэй болдог байв. */
+.tabs {
+  flex: none;
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  background: var(--sunken);
+  border-radius: 999px;
+}
+.tab {
+  padding: 4px 14px;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink-3);
+  background: transparent;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.tab:hover { color: var(--ink); }
+/* Идэвхтэй таб — дүүргэлттэй «шахмал» (envhub segmented control) */
+.tabOn,
+.tabOn:hover { color: #fff; background: var(--data); }
+
+/* ══════════ ЗАСВАРЫН БҮТЭН ДЭЛГЭЦ ══════════
+   ⚠️ Хажуугийн цэс (`z-index: 10`) ба дээд толгой (`z-index: 20`) дээгүүр
+   гарах ёстой тул 30. Тэдгээр нь `shell.module.css`-д — өөр модульд байгаа
+   тул тоог ЭНД тайлбартай нь бичив, эс бөгөөс дараа нь хэн нэгэн тэндээ
+   z-index өсгөхөд энэ overlay чимээгүй доогуур нь орно. */
+.regFull {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background: var(--bg);
+  /* Хүснэгт нүүрийг БҮТНЭЭР эзэлнэ — карт доторх хязгаарлалт хамаарахгүй */
+  max-height: none;
+}

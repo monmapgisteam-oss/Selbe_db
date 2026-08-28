@@ -192,6 +192,7 @@ const sentenceCase = (s: string) => {
  * ⚠️ `loadOverall` ба `loadProgress` ХОЁУЛАА хэрэглэдэг тул кэштэй: эс бөгөөс
  * тайлан үүсгэх бүрд 113 мөрийн асуулга хоёр удаа явна.
  */
+/* ⚠️ `loadHousing` (live.ts) МӨН `BUILDING`-ээс уншдаг — ижил тагтай. */
 const loadPkgLabels = cached(async (): Promise<Map<string, string>> => {
   const rows = await queryFeatures(BUILDING.url, { outFields: [BUILDING.fields.bagts] });
   const m = new Map<string, string>();
@@ -200,7 +201,7 @@ const loadPkgLabels = cached(async (): Promise<Map<string, string>> => {
     if (name) m.set(bagtsKey(name), name);
   });
   return m;
-}, 5 * 60_000);
+}, 5 * 60_000, ['BUILDING']);
 
 /* ═══════════════ Төслийн нийт гүйцэтгэл ═══════════════ */
 

@@ -24,6 +24,7 @@
  */
 import { TASK_SHEET, buildingKey } from './services';
 import { loadSheetRows } from '@/modules/sheet/sheetRows';
+import { register, type DataKey } from './dataBus';
 
 const TS = TASK_SHEET.fields;
 
@@ -235,9 +236,16 @@ const nextMonth = (m: string) => {
 
 /* ─────────────────────────── Cache ─────────────────────────── */
 
-/** Нэг удаа тооцоод хадгална; алдаа гарвал дараагийн дуудалт ДАХИН оролдоно. */
-function memo<T>(fn: () => Promise<T>): () => Promise<T> {
+/**
+ * Нэг удаа тооцоод хадгална; алдаа гарвал дараагийн дуудалт ДАХИН оролдоно.
+ *
+ * ⚠️ `reads` (2026-08-28) — `dataBus`-д бүртгэнэ. Бөглөх хуудас руу бичсэн
+ * даруйд (`bagtsSheet.applyAdds`) энэ кэш хаягдаж, газрын зургийн блокийн
+ * будалт ба дашбоардын явцын тоо хуудас дахин ачаалахгүйгээр шинэчлэгдэнэ.
+ */
+function memo<T>(fn: () => Promise<T>, reads: readonly DataKey[] = []): () => Promise<T> {
   let p: Promise<T> | null = null;
+  if (reads.length) register(() => { p = null; }, reads);
   return () => (p ??= fn().catch((e) => { p = null; throw e; }));
 }
 
@@ -277,12 +285,16 @@ export function cachedBlockProgress(): BlockProgressMap | null {
 }
 
 /** Түүхий мөрүүд — `loadBlockProgress` ба `loadBlockHistory` ХОЁУЛАА үүнээс. */
-const loadRows = memo(fetchConstruction);
+const loadRows = memo(fetchConstruction, ['BAGTS_SHEET']);
 
 /** Блок бүрийн барилга угсралтын гүйцэтгэл (0–100). */
-export const loadBlockProgress: () => Promise<BlockProgressMap> = memo(() =>
-  loadRows().then(compute).then((m) => { saveCache(m); return m; }));
+export const loadBlockProgress: () => Promise<BlockProgressMap> = memo(
+  () => loadRows().then(compute).then((m) => { saveCache(m); return m; }),
+  ['BAGTS_SHEET'],
+);
 
 /** Блок бүрийн «Б.» мөрийн бүх огноо — цаг хугацааны цувааны эх. */
-export const loadBlockHistory: () => Promise<BlockHistory> = memo(() =>
-  loadRows().then(history));
+export const loadBlockHistory: () => Promise<BlockHistory> = memo(
+  () => loadRows().then(history),
+  ['BAGTS_SHEET'],
+);

@@ -50,6 +50,8 @@ const capLabel = (k: CapKey): string => {
   if (k === 'addRow') return tr('Мөр нэмэх');
   if (k === 'qaqc') return tr('QAQC — Inspection Test Plan');
   if (k === 'zovshoorol') return tr('Зөвшөөрөл засах');
+  if (k === 'finEdit') return tr('Санхүүгийн бүртгэл — утга засах');
+  if (k === 'finRow') return tr('Санхүүгийн бүртгэл — мөр нэмэх, устгах');
   return k;
 };
 const capHint = (k: CapKey): string => {
@@ -61,6 +63,12 @@ const capHint = (k: CapKey): string => {
   }
   if (k === 'zovshoorol') {
     return tr('«Зөвшөөрөл» хуудсанд зөвшөөрөл нэмэх, засах, устгах. Эрхгүй хүн зөвхөн харна.');
+  }
+  if (k === 'finEdit') {
+    return tr('«Санхүүжилт» харагдацын Cashflow (/106) ба IPC (/107) хүснэгтийн нүдний утга засах. Эдгээр нь дашбоардын санхүүгийн БҮХ тооны эх сурвалж тул нэг нүд засахад 02, 08 дашбоард, тайлан бүгд дагаж өөрчлөгдөнө.');
+  }
+  if (k === 'finRow') {
+    return tr('Тэр хоёр хүснэгтэд шинэ мөр нэмэх, байгаа мөрийг устгах. ⚠️ Устгасан мөрийг порталаас буцаах арга БАЙХГҮЙ.');
   }
   return '';
 };
