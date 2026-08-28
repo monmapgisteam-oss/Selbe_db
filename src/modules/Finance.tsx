@@ -1208,34 +1208,24 @@ function FullTable({
  * хамаарал болно.
  */
 function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
-  const { user, status } = useAuth();
+  const { user } = useAuth();
   /* ⚠️ Эрх нь ArcGIS-ээс АСИНХРОНООР ирдэг (`initRemote`) тул захиалж, ирэхэд
      дахин зурна — эс бөгөөс админ эрх өгсний дараа хэрэглэгч хуудсаа дахин
      ачаалж байж товчоо олно. */
   const [tick, setTick] = useState(0);
   useEffect(() => subscribeCaps(() => setTick((n) => n + 1)), []);
   void tick;
-  /**
-   * НЭВТРЭЛТ УНТРААЛТТАЙ үед эрх НЭЭЛТТЭЙ.
-   *
-   * ⚠️ Энэ нь порталын БУСАД хэсэгтэй нийцүүлсэн зан: `Root.tsx` нь
-   * `status === 'off'` үед `views: 'all'`, `docs: true` өгөөд хэрэглэгчийг
-   * СУПЕР АДМИН гэж үздэг (`isSuper`). Зөвхөн санхүүгийн засварыг өөрөөр
-   * хаавал хөгжүүлэлтийн орчинд бүх зүйл нээлттэй атал энэ ганц хуудас
-   * ойлгомжгүй хаалттай үлдэнэ.
-   *
-   * ⚠️ ҮЙЛДВЭРЛЭЛД ЭНЭ САЛАА АЖИЛЛАХГҮЙ: `status === 'off'` нь
-   * `NEXT_PUBLIC_AUTH_APP_ID` ХООСОН үед л үүсдэг бөгөөд тэр нь зөвхөн
-   * `.env.development.local` (`next dev`) дотор хоосон. Статик build нь
-   * `.env`-ийг уншдаг тул нэвтрэлт АСААЛТТАЙ, эрх нь `caps`-аар л шийдэгдэнэ.
+  /*
+   * ⚠️ Нэвтрэлт унтраалттай (дев) үед бүх эрх нээлттэй байх дүрэм нь
+   * `hasCap` дотор — ЭНД давтахгүй. Хоёр газарт бичвэл нэгийг нь өөрчлөхөд
+   * нөгөө нь чимээгүй үлдэнэ.
    *
    * ⚠️ Нэвтэрсэн үед админ ч гэсэн эрхээ панелаас ӨӨРТӨӨ ил асаана
    * («Гүйцэтгэл бөглөх»-ийн «Мөр нэмэх»-тэй ижил дүрэм) — ингэснээр «хэн
    * санхүүгийн тоо засаж чадах вэ» гэдэг НЭГ жагсаалтаас бүрэн харагдана.
    */
-  const devOpen = status === 'off';
-  const canEdit = devOpen || hasCap(user?.username, 'finEdit');
-  const canRow = devOpen || hasCap(user?.username, 'finRow');
+  const canEdit = hasCap(user?.username, 'finEdit');
+  const canRow = hasCap(user?.username, 'finRow');
 
   /**
    * ⚠️ ХОЁР ХҮСНЭГТ ДАРААЛЖ БИШ, СОЛИГДОЖ гарна.
