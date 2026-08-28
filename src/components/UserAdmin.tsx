@@ -49,6 +49,7 @@ const toggled = (views: ViewKey[] | 'all', k: ViewKey): ViewKey[] => {
 const capLabel = (k: CapKey): string => {
   if (k === 'addRow') return tr('Мөр нэмэх');
   if (k === 'qaqc') return tr('QAQC — Inspection Test Plan');
+  if (k === 'plan') return tr('Хуваарь төлөвлөх');
   return k;
 };
 const capHint = (k: CapKey): string => {
@@ -57,6 +58,9 @@ const capHint = (k: CapKey): string => {
   }
   if (k === 'qaqc') {
     return tr('«Гүйцэтгэл бөглөх» хуудасны Inspection Test Plan хэсгийг (М-акт, FIC, MA, MIR) бөглөх. Гүйцэтгэлийн хувь бөглөх эрхээс тусдаа.');
+  }
+  if (k === 'plan') {
+    return tr('«Хуваарь» харагдацад ажлын эхлэх/дуусах огноог засах. Нэг огноо солиход төлөвлөгөөт хувь, тайлан, хоцрогдлын дохио бүгд дахин бодогдоно — тиймээс бөглөх эрхээс тусдаа.');
   }
   return '';
 };

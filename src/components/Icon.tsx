@@ -71,6 +71,8 @@ const P: Record<string, string> = {
   reset: 'M3.5 4.5v6h6M4 15a9 9 0 1 0 1.8-9L3.5 10.5',
   /* Мөр нэмэх — хүснэгтийн мөр дээр нэмэх тэмдэг */
   plus: 'M12 5v14M5 12h14',
+  /* Хуанли — хуваарь төлөвлөх эрхийн тэмдэг */
+  calendar: 'M4.5 5.5h15v15h-15zM4.5 10h15M8.5 3v5M15.5 3v5M8 13.5h.01M12 13.5h.01M16 13.5h.01M8 17h.01M12 17h.01',
 };
 
 export function Icon({ name, size = 20 }: { name: string; size?: number }) {
