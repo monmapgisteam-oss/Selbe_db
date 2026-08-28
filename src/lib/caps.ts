@@ -21,7 +21,7 @@
 import type { CapRow } from './permsRemote';
 
 /** Одоогоор нэг эрх — жагсаалт өсөхөд UI автоматаар дагана. */
-export type CapKey = 'addRow';
+export type CapKey = 'addRow' | 'qaqc';
 
 /**
  * Панелд харуулах бүртгэл — ЗӨВХӨН түлхүүр.
@@ -31,7 +31,18 @@ export type CapKey = 'addRow';
  * зөвхөн ҮСГЭН `tr('…')` дуудлагыг олдог тул текст толиноос хоцорно.
  * Тиймээс дэлгэцийн текст `UserAdmin`-д, зурагдах агшинд бичигдэнэ.
  */
-export const CAPS: { key: CapKey }[] = [{ key: 'addRow' }];
+export const CAPS: { key: CapKey; icon: string }[] = [
+  { key: 'addRow', icon: 'plus' },
+  /**
+   * QAQC — «Гүйцэтгэл бөглөх» хуудасны Inspection Test Plan хэсэг (М-акт,
+   * FIC, MA, MIR баримтын 9 багана) бөглөх эрх.
+   *
+   * ⚠️ Гүйцэтгэлийн хувь бөглөхөөс ТУСДАА: чанарын баримт бичгийг барилгын
+   * гүйцэтгэгч биш, чанарын хяналтын ажилтан хөтөлдөг. Нэг эрхэнд нийлүүлбэл
+   * обьём бөглөх бүрд баримтын багана нээгдэж, хэн юуг баталсан нь замхарна.
+   */
+  { key: 'qaqc', icon: 'shield' },
+];
 
 const VALID = new Set<string>(CAPS.map((c) => c.key));
 const KEY = 'selbe-caps-v1';

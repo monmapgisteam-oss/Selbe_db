@@ -46,11 +46,20 @@ const toggled = (views: ViewKey[] | 'all', k: ViewKey): ViewKey[] => {
 /* ⚠️ Нэмэлт эрхийн текстийг ЗУРАГДАХ агшинд гаргана — `caps.ts`-д биш.
    Модулийн түвшинд `tr()` дуудвал хэл солиход шинэчлэгдэхгүй, мөн i18n
    гаргагч зөвхөн үсгэн дуудлагыг олдог тул толиноос хоцорно. */
-const capLabel = (k: CapKey): string => (k === 'addRow' ? tr('Мөр нэмэх') : k);
-const capHint = (k: CapKey): string =>
-  (k === 'addRow'
-    ? tr('«Гүйцэтгэл бөглөх» хуудсанд бүлэг дотор шинэ ажлын мөр нэмэх. Хуудасны бүтэц өөрчлөгдөж, жин ба мөнгөн дүн бүхэлдээ дахин бодогдоно.')
-    : '');
+const capLabel = (k: CapKey): string => {
+  if (k === 'addRow') return tr('Мөр нэмэх');
+  if (k === 'qaqc') return tr('QAQC — Inspection Test Plan');
+  return k;
+};
+const capHint = (k: CapKey): string => {
+  if (k === 'addRow') {
+    return tr('«Гүйцэтгэл бөглөх» хуудсанд бүлэг дотор шинэ ажлын мөр нэмэх. Хуудасны бүтэц өөрчлөгдөж, жин ба мөнгөн дүн бүхэлдээ дахин бодогдоно.');
+  }
+  if (k === 'qaqc') {
+    return tr('«Гүйцэтгэл бөглөх» хуудасны Inspection Test Plan хэсгийг (М-акт, FIC, MA, MIR) бөглөх. Гүйцэтгэлийн хувь бөглөх эрхээс тусдаа.');
+  }
+  return '';
+};
 
 const viewsEq = (a: ViewKey[] | 'all', b: ViewKey[] | 'all'): boolean =>
   ALL_KEYS.every((k) => hasView(a, k) === hasView(b, k));
@@ -772,7 +781,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
                     {CAPS.map((c) => (
                       <div key={c.key} className={s.topicRow}>
                         <span className={s.topicName} title={capHint(c.key)}>
-                          <span className={s.topicIcon}><Icon name="plus" size={14} /></span>
+                          <span className={s.topicIcon}><Icon name={c.icon} size={14} /></span>
                           {capLabel(c.key)}
                         </span>
                         <button

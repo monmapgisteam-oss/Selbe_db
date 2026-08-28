@@ -186,6 +186,8 @@ const RO = {
   noDateField: tr('Энэ блокт огнооны багана үйлчилгээнд байхгүй тул хадгалах газаргүй.'),
   asOfRow: tr('Шинэчлэгдсэн огноо зөвхөн эхний мөрд бичигдэнэ — тэндээс эсвэл дээд талын «Огноо»-гоор солино.'),
   noDocField: tr('Энэ багана тухайн үйлчилгээнд байхгүй — хадгалах газаргүй тул засагдахгүй. AGOL дээр талбарыг нэмж өгөх шаардлагатай.'),
+  noQaqc: tr('Inspection Test Plan (М-акт, FIC, MA, MIR) бөглөхөд «QAQC» эрх шаардлагатай — «Хэрэглэгчдийн эрх удирдах» хэсгээс олгоно.'),
+  docLocked: tr('Хуудас засагдахгүй горимд байна — өнөөдөр аль хэдийн хяналтад илгээгдсэн (эсвэл зөвхөн харах горим).'),
 } as const;
 
 /*
@@ -345,6 +347,18 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     return list == null || list.includes(pkg.group);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, aclN, capN, pkg.group]);
+
+  /**
+   * QAQC — Inspection Test Plan (М-акт · FIC · MA · MIR) бөглөх эрх.
+   *
+   * ⚠️ Гүйцэтгэлийн хувь бөглөхөөс ТУСДАА олгогдоно: чанарын баримтыг
+   * гүйцэтгэгч биш, чанарын хяналтын ажилтан хөтөлдөг.
+   */
+  const canQaqc = useMemo(
+    () => hasCap(user?.username, "qaqc"),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [user, capN],
+  );
 
   /** Мөр нэмэх маягт нээлттэй байгаа БҮЛГИЙН ObjectID (эсвэл `null`) */
   const [addFor, setAddFor] = useState<number | null>(null);
@@ -1825,7 +1839,9 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                       const ekey = `${i}:${di}`;
                       const editing = editDoc === ekey;
                       const val = key in pendDoc ? pendDoc[key] : (r.docs[di] ?? "");
-                      const editable = !noEdit && !!fld;
+                      /* ⚠️ QAQC эрхгүй бол ЗӨВХӨН ХАРНА — чанарын баримтыг
+                         эрх олгогдсон ажилтан л хөтөлнө. */
+                      const editable = !noEdit && !!fld && canQaqc;
                       return (
                         <td
                           key={dc.name}
@@ -1834,9 +1850,19 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                               (editable ? " cursor-cell" : "") +
                               (key in pendDoc ? " dirty" : ""),
                           )}
-                          title={editable ? tr('{0} — дарж бичнэ', tr(dc.label)) : RO.noDocField}
+                          title={
+                            editable
+                              ? tr('{0} — дарж бичнэ', tr(dc.label))
+                              : !fld
+                                ? RO.noDocField
+                                : !canQaqc
+                                  ? RO.noQaqc
+                                  : RO.docLocked
+                          }
                           onClick={() => {
-                            if (!editable) return say(RO.noDocField);
+                            if (!editable) {
+                              return say(!fld ? RO.noDocField : !canQaqc ? RO.noQaqc : RO.docLocked);
+                            }
                             setEditDoc(ekey);
                           }}
                         >
