@@ -816,6 +816,8 @@
   --w-money: 106px;
   --w-calc: 96px;
   --w-date: 118px;
+  /* Баримт бичгийн текст багана — дугаар, нэр багтахуйц */
+  --w-doc: 150px;
 }
 .b32 .c-ajil {
   /* Ажлын нэр урт — хүснэгт хэвтээ гүйдэг тул мөр таслахгүй, тайрна. */
@@ -836,6 +838,29 @@
 }
 .b32 .c-calc { min-width: var(--w-calc); width: var(--w-calc); max-width: var(--w-calc); }
 .b32 .c-date { min-width: var(--w-date); width: var(--w-date); max-width: var(--w-date); }
+
+/* ── БАРИМТ БИЧГИЙН ТЕКСТ БАГАНУУД (М-акт · FIC · MA · MIR) ──
+   ⚠️ Урт текст мөр таслахгүй, тайрна — эс бөгөөс мөрийн өндөр багана бүрээс
+   хамаарч үсэрч, виртуал гүйлгэлтийн мөрийн өндрийн тооцоо эвдэрнэ. */
+.b32 .c-doc {
+  min-width: var(--w-doc);
+  width: var(--w-doc);
+  max-width: var(--w-doc);
+  text-align: left;
+}
+.b32 .docCell {
+  overflow: hidden;
+  white-space: nowrap;
+  padding: 0 6px;
+}
+.b32 .docCell .docText {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  /* Хоосон үед ч мөрийн өндөр тогтмол байхын тулд */
+  min-height: 1em;
+}
 /* ⚠️ Энэ хуудсанд барилгын багана СУНАХГҮЙ (хүснэгт `width: auto`) — тиймээс
    чирсэн өргөн нь яг мөрдөгдөхийн тулд max-width-ийг ч заана. */
 .b32 .bld { width: var(--w-bld); max-width: var(--w-bld); overflow: hidden; }

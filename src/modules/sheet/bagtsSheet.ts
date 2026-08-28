@@ -44,6 +44,12 @@ export type SheetRow = {
   raw: Record<string, unknown>;
   start: (number | null)[]; // ms epoch
   end: (number | null)[];
+  /**
+   * БАРИМТ БИЧГИЙН текст утгууд — `DOC_COLS`-той ижил дараалалтай.
+   * Хоосон мөр нь `null` (хоосон мөрийн тэмдэгт БИШ) тул «бөглөөгүй» гэдэг
+   * нь харагдалт ба нийтлэх хоёуланд ижил ойлгогдоно.
+   */
+  docs: (string | null)[];
 };
 
 const num = (v: unknown): number | null =>
@@ -351,6 +357,13 @@ export async function loadRows(
       raw: a,
       start: sc.start.map((x) => (x ? num(a[x]) : null)),
       end: sc.end.map((x) => (x ? num(a[x]) : null)),
+      docs: sc.docs.map((x) => {
+        if (!x) return null;
+        const v = a[x];
+        if (v == null) return null;
+        const t = String(v).trim();
+        return t ? t : null;
+      }),
     });
   });
   return { rows, asOf, snapshot };

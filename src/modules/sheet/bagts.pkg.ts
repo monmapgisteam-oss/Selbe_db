@@ -52,6 +52,45 @@ export const pkgFloors = (group: string): Pkg[] =>
   PKGS.filter((p) => p.group === group);
 
 /** Багцын талбарын БҮДҮҮВЧ — нэр бүхэн үйлчилгээнээс танигдсан. */
+/**
+ * БАРИМТ БИЧГИЙН ТЕКСТ БАГАНУУД — 2026-08-28-нд 10/10 үйлчилгээнд нэмэгдсэн.
+ *
+ * ⚠️ Мөр тус бүрд НЭГ утга (блокоор БИШ) — тухайн ажлын М-акт, FIC, MA, MIR
+ * бичиг баримтын дугаар/нэр. Бүгд `String(4000)`, эхлээд бүгд ХООСОН.
+ *
+ * ⚠️ Дараалал нь хуудсанд ЗУРАГДАХ дараалал. Талбар байхгүй үйлчилгээнд
+ * `Schema.docs`-д `null` орж, тэр багана «засагдахгүй» болно (унахгүй).
+ */
+export const DOC_COLS: { name: string; label: string; short: string }[] = [
+  { name: 'Makt_dugaar', label: 'М-акт — М-актын №', short: 'М-актын №' },
+  { name: 'Makt_ner', label: 'М-акт — М-актын нэр', short: 'М-актын нэр' },
+  { name: 'Makt_havsralt', label: 'М-акт — Хавсралт бичиг баримт', short: 'Хавсралт бичиг баримт' },
+  { name: 'FIC_dugaar', label: 'FIC — FIC дугаар', short: 'FIC дугаар' },
+  { name: 'FIC_ner', label: 'FIC — FIC нэр', short: 'FIC нэр' },
+  { name: 'MA_dugaar', label: 'MA Material Approval — MA дугаар', short: 'MA дугаар' },
+  { name: 'MA_ner', label: 'MA Material Approval — MA нэр', short: 'MA нэр' },
+  { name: 'MIR_dugaar', label: 'MIR — MIR дугаар', short: 'MIR дугаар' },
+  { name: 'MIR_ner', label: 'MIR — MIR нэр', short: 'MIR нэр' },
+];
+
+/**
+ * ТОЛГОЙН БҮЛЭГЛЭЛТ — excel-ийн эх загвартай ЯГ ижил.
+ *
+ *   ┌──────────────── Inspection Test Plan ────────────────┐
+ *   │  М-акт (3)  │ FIC (2) │ MA Material Approval (2) │ MIR (2) │
+ *   │ №│нэр│хавсралт│ №│нэр  │ №│нэр                   │ №│нэр   │
+ *
+ * ⚠️ `count`-ийн нийлбэр нь `DOC_COLS.length`-тэй ЗААВАЛ тэнцүү байна —
+ * зөрвөл толгойн нүд баганатайгаа таарахгүй болж хүснэгт бүхэлдээ гулсана.
+ */
+export const DOC_BAND = 'Inspection Test Plan';
+export const DOC_GROUPS: { label: string; count: number }[] = [
+  { label: 'М-акт', count: 3 },
+  { label: 'FIC', count: 2 },
+  { label: 'MA Material Approval', count: 2 },
+  { label: 'MIR', count: 2 },
+];
+
 export type Schema = {
   /** Блокийн шошго — «5/1», «6/8», «29/3» г.м. Excel-ийн толгойтой ижил. */
   bld: string[];
@@ -72,6 +111,11 @@ export type Schema = {
   /** ⚠️ Огноо дутуу блок бий (Багц 3.1-ийн 5/2) — тэнд `null` */
   start: (string | null)[];
   end: (string | null)[];
+  /**
+   * `DOC_COLS`-той ИЖИЛ дараалалтай талбарын нэрс. Үйлчилгээнд байхгүй
+   * баганад `null` — тэр багана харагдах ч засагдахгүй.
+   */
+  docs: (string | null)[];
   /** Мөрийн скаляр талбарууд. Байхгүй бол `null`. */
   f: {
     no: string;
@@ -266,7 +310,15 @@ export function resolveSchema(fields: FieldMeta[]): Schema {
     oid: names.find((n) => /^objectid$/i.test(n)) ?? "ObjectID",
   };
 
-  return { bld, act, plan, obyem, start, end, f };
+  /*
+   * БАРИМТЫН БАГАНУУД — нэр нь ЛАТИНААР (`Makt_dugaar` г.м.) тул `norm()`-ийн
+   * кирилл хайлтад орохгүй; шууд нэрээр нь, том/жижиг үсэг үл ялгаж хайна.
+   */
+  const docs = DOC_COLS.map(
+    (c) => fields.find((x) => x.name.toLowerCase() === c.name.toLowerCase())?.name ?? null,
+  );
+
+  return { bld, act, plan, obyem, start, end, docs, f };
 }
 
 /** Үйлчилгээний талбарын жагсаалтыг татаж бүдүүвч болгоно (кэштэй). */

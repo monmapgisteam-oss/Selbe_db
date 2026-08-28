@@ -3001,6 +3001,8 @@ const en: Record<string, string> = {
   "Мөр нэмэх": "Add row",
   "«Гүйцэтгэл бөглөх» хуудсанд бүлэг дотор шинэ ажлын мөр нэмэх. Хуудасны бүтэц өөрчлөгдөж, жин ба мөнгөн дүн бүхэлдээ дахин бодогдоно.": "Add a new task row inside a group on the “Fill in progress” sheet. The sheet structure changes and all weights and amounts are recomputed.",
   "⚠️ ArcGIS-т бичигдсэнгүй — эрх түр зөвхөн энэ browser-т. Холболтоо шалгаад дахин дарна уу.": "⚠️ Not written to ArcGIS — the permission is temporarily local to this browser. Check your connection and click again.",
+  "Энэ багана тухайн үйлчилгээнд байхгүй — хадгалах газаргүй тул засагдахгүй. AGOL дээр талбарыг нэмж өгөх шаардлагатай.": "This column does not exist in that service — there is nowhere to store it, so it cannot be edited. The field must be added in AGOL.",
+  "{0} — дарж бичнэ": "{0} — click to type",
   "{0}: хуудсанд мөр алга — эх хүснэгтийг эхлээд ачаална уу.": "{0}: the sheet has no rows — load the source table first.",
   "Нэмэх амжилтгүй": "Add failed",
   "{0}/{1} мөр нэмэгдэв; үлдсэн нь амжилтгүй ({2}) — дахин Нийтлэх дарж гүйцээнэ үү": "{0}/{1} rows were added; the rest failed ({2}) — press Publish again to finish",

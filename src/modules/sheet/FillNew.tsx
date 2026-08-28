@@ -10,6 +10,9 @@ import {
   type SheetRow,
 } from "./bagtsSheet";
 import {
+  DOC_BAND,
+  DOC_COLS,
+  DOC_GROUPS,
   loadSchema,
   pkgFloors,
   PKG_GROUPS,
@@ -182,6 +185,7 @@ const RO = {
   groupDate: tr('Энэ огноо нь доод ажлуудынхаа хамгийн эрт эхлэх / хамгийн сүүл дуусахаар бодогдож байна — доод ажлынхаа огноог засаарай.'),
   noDateField: tr('Энэ блокт огнооны багана үйлчилгээнд байхгүй тул хадгалах газаргүй.'),
   asOfRow: tr('Шинэчлэгдсэн огноо зөвхөн эхний мөрд бичигдэнэ — тэндээс эсвэл дээд талын «Огноо»-гоор солино.'),
+  noDocField: tr('Энэ багана тухайн үйлчилгээнд байхгүй — хадгалах газаргүй тул засагдахгүй. AGOL дээр талбарыг нэмж өгөх шаардлагатай.'),
 } as const;
 
 /*
@@ -354,6 +358,14 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   // «e» = дуусах). Утга нь «YYYY-MM-DD», "" = огноог арилгах.
   const [pendDate, setPendDate] = useState<Record<string, string>>({});
   /**
+   * БАРИМТ БИЧГИЙН нийтлээгүй засвар, `${oid}:${баганын индекс}` түлхүүрээр.
+   * ⚠️ Утга нь ЧӨЛӨӨТ текст; "" нь «утгыг арилгах» гэсэн үг (талбарыг NULL
+   * болгоно) — тиймээс `null`-аас ялгаж, түлхүүр байгаа эсэхээр шийднэ.
+   */
+  const [pendDoc, setPendDoc] = useState<Record<string, string>>({});
+  /** Яг одоо засагдаж буй баримтын нүд — `${мөрийн индекс}:${багана}` */
+  const [editDoc, setEditDoc] = useState<string | null>(null);
+  /**
    * Нээлттэй засварын нүд. `col` нь АЛЬ БАГАНА гэдгийг заана — обьёмгүй
    * мөрд обьём ба хувь ХОЁУЛАА засагддаг тул мөр+блок ганцаараа хүрэлцэхгүй.
    */
@@ -466,6 +478,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     setSc(null);
     setPending({});
     setPendDate({});
+    setPendDoc({});
+    setEditDoc(null);
     // ⚠️ Нэмэлт мөр нь БАГЦАД харьяалагдана — багц солиход заавал цэвэрлэнэ,
     //    эс бөгөөс өөр багцын бүлэгт наалдаж, буруу хуудсанд бичигдэнэ.
     setAdds([]);
@@ -601,6 +615,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
           obyem: new Array(nBld).fill(null),
           start: new Array(nBld).fill(null),
           end: new Array(nBld).fill(null),
+          docs: new Array(DOC_COLS.length).fill(null),
           /* Үйлчилгээнд бичигдэх ЦОРЫН ГАНЦ талбарууд — үлдсэнийг нийтлэх
              үед `computeAll`-ийн үр дүнгээр бөглөнө. */
           raw: {
@@ -798,6 +813,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   const dirtyCount =
     Object.keys(pending).length +
     Object.keys(pendDate).length +
+    Object.keys(pendDoc).length +
     adds.length +
     (asOf !== asOfOrig ? 1 : 0);
 
@@ -865,6 +881,24 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    * Нүдний засвар — блокийн ОБЬЁМ эсвэл мөрийн Обьём. Гүйцэтгэлийн хувь
    * энд ОРОХГҮЙ: тэр нь обьёмоос бодогдоно.
    */
+  /**
+   * БАРИМТЫН НҮД БИЧИХ.
+   *
+   * ⚠️ Хадгалагдсантай ИЖИЛ болж буцвал ноорогоос ХАСНА — эс бөгөөс «Нийтлэх»
+   * товч огт өөрчлөлтгүй байхад идэвхжиж, хоосон агшин үүсгэнэ.
+   */
+  const commitDoc = (oid: number, di: number, raw: string) => {
+    const v = raw.trim();
+    const cur = rowsAll.find((x) => x.oid === oid)?.docs[di] ?? "";
+    const key = `${oid}:${di}`;
+    setPendDoc((p) => {
+      const n = { ...p };
+      if (v === cur) delete n[key];
+      else n[key] = v;
+      return n;
+    });
+  };
+
   const commit = (r: SheetRow, b: number, raw: string) => {
     const key = cellKey(r.oid, b);
     const t = raw.trim().replace(",", ".").replace(/^\+/, "").replace(/\s*%$/, "");
@@ -1110,6 +1144,23 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         if (sc.f.asOf) a[sc.f.asOf] = i === 0 ? asOf : null;
         // АРХИВЫН ТҮЛХҮҮР — мөр БҮРД.
         if (sc.f.fillDate) a[sc.f.fillDate] = fillMs;
+        /*
+         * БАРИМТ БИЧГИЙН ТЕКСТ.
+         *
+         * ⚠️ Зөвхөн ЗАСАГДСАН нүдийг дарж бичнэ (`key in pendDoc`): үлдсэнийг
+         * `a` нь серверийн хуулбараас аль хэдийн авчирсан. Болзолгүй бичвэл
+         * хооронд нь өөр хүн бөглөсөн утга устана.
+         *
+         * ⚠️ Хоосон мөр («") нь «утгыг арилгах» гэсэн үг тул `null` болгоно —
+         * ArcGIS-д хоосон тэмдэгт мөр ба NULL хоёр өөр бөгөөд хайлт, тайланд
+         * өөрөөр биелдэг.
+         */
+        DOC_COLS.forEach((_, di) => {
+          const fld = sc.docs[di];
+          if (!fld) return;
+          const key = `${r.oid}:${di}`;
+          if (key in pendDoc) a[fld] = pendDoc[key].trim() || null;
+        });
         return a;
       });
 
@@ -1137,6 +1188,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       setAsOfOrig(next.asOf ?? asOf);
       setPending({});
       setPendDate({});
+      setPendDoc({});
+      setEditDoc(null);
       // ⚠️ Нэмэлт мөрүүд аль хэдийн үйлчилгээнд бичигдсэн тул төлөвөөс ХАСНА —
       //    эс бөгөөс дараагийн нийтлэлд ДАХИН нэмэгдэж давхардана.
       setAdds([]);
@@ -1149,7 +1202,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     } finally {
       setBusy(false);
     }
-  }, [pkg, sc, nBld, asOf, asOfOrig, pending, pendDate, dirtyCount, busy, hasObyem, withAdds]);
+  }, [pkg, sc, nBld, asOf, asOfOrig, pending, pendDate, pendDoc, dirtyCount, busy, hasObyem, withAdds]);
 
   // Ctrl+S — «Гүйцэтгэл бөглөх»-тэй ижил.
   // ⚠️ Нээлттэй нүдний бичиж буй утгыг ЭХЛЭЖ commit хийнэ — эс тэгвэл хуучин
@@ -1418,6 +1471,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                 <th colSpan={nBld} className={cls("band")}>{tr('Төлөвлөгөөт гүйцэтгэл ({0} барилга)', nBld)}</th>
                 <th colSpan={nBld * 2} className={cls("band")}>{tr('Төлөвлөгөөт хуваарь ({0} барилга)', nBld)}</th>
                 <th rowSpan={4} className={cls("c-date")}>{tr('Шинэчлэгдсэн огноо')}<i {...grip("date")} /></th>
+                {/* ── БАРИМТ БИЧИГ — excel-ийн эх загвараар 3 давхар толгой ── */}
+                <th colSpan={DOC_COLS.length} className={cls("band")}>{DOC_BAND}</th>
               </tr>
               {/* 2-р мөр — барилгын төрөл (блокийн цуваагаар) */}
               <tr>
@@ -1430,6 +1485,10 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                 {bands.map((g, gi) => (
                   <th key={`bd${gi}`} colSpan={g.count * 2} className={cls("band2")}>{g.label}</th>
                 ))}
+                {/* Баримтын бүлгүүд — М-акт · FIC · MA · MIR */}
+                {DOC_GROUPS.map((g) => (
+                  <th key={g.label} colSpan={g.count} className={cls("band2")}>{g.label}</th>
+                ))}
               </tr>
               {/* 3-р мөр — блокийн код */}
               <tr>
@@ -1441,6 +1500,12 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                 ))}
                 {sc.bld.map((b) => (
                   <th key={`d${b}`} colSpan={2} className={cls("c-date2")}>{b} {tr('барилга')}</th>
+                ))}
+                {/* Баримтын багана бүрийн нэр — 4-р мөр рүү үргэлжилнэ */}
+                {DOC_COLS.map((dc) => (
+                  <th key={dc.name} rowSpan={2} className={cls("c-doc")} title={tr(dc.label)}>
+                    {tr(dc.short)}<i {...grip("doc")} />
+                  </th>
                 ))}
               </tr>
               {/* 4-р мөр — хуваарийн Эхлэх/Дуусах */}
@@ -1455,7 +1520,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
               {/* Дээд ЧИГЖЭЭС — зурагдаагүй мөрүүдийн өндрийг орлоно. */}
               {winFrom > 0 && (
                 <tr aria-hidden="true" style={{ height: winFrom * rowHRef.current }}>
-                  <td colSpan={13 + nBld * 4} style={{ padding: 0, border: 0 }} />
+                  <td colSpan={13 + nBld * 4 + DOC_COLS.length} style={{ padding: 0, border: 0 }} />
                 </tr>
               )}
               {vis.slice(winFrom, winTo).map((i) => {
@@ -1751,11 +1816,61 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                         {i === 0 ? dt(asOf) : ""}
                       </td>
                     }
+                    {/* ── БАРИМТ БИЧИГ — дарж текст бичнэ ──
+                        ⚠️ Бүлгийн мөрд ч засагдана: М-акт, FIC зэрэг нь ажлын
+                        БҮЛЭГТ олгогдож болох тул хориглосонгүй. */}
+                    {DOC_COLS.map((dc, di) => {
+                      const fld = sc.docs[di];
+                      const key = `${r.oid}:${di}`;
+                      const ekey = `${i}:${di}`;
+                      const editing = editDoc === ekey;
+                      const val = key in pendDoc ? pendDoc[key] : (r.docs[di] ?? "");
+                      const editable = !noEdit && !!fld;
+                      return (
+                        <td
+                          key={dc.name}
+                          className={cls(
+                            "c-doc docCell" +
+                              (editable ? " cursor-cell" : "") +
+                              (key in pendDoc ? " dirty" : ""),
+                          )}
+                          title={editable ? tr('{0} — дарж бичнэ', tr(dc.label)) : RO.noDocField}
+                          onClick={() => {
+                            if (!editable) return say(RO.noDocField);
+                            setEditDoc(ekey);
+                          }}
+                        >
+                          {editing ? (
+                            <input
+                              autoFocus
+                              type="text"
+                              maxLength={4000}
+                              className={st.cellInputLine}
+                              defaultValue={val}
+                              onBlur={(e) => {
+                                commitDoc(r.oid, di, e.target.value);
+                                setEditDoc(null);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Escape") return setEditDoc(null);
+                                if (e.key === "Enter" || e.key === "Tab") {
+                                  e.preventDefault();
+                                  commitDoc(r.oid, di, e.currentTarget.value);
+                                  setEditDoc(null);
+                                }
+                              }}
+                            />
+                          ) : (
+                            <span className={st.docText}>{val}</span>
+                          )}
+                        </td>
+                      );
+                    })}
                   </tr>
                   {/* ── МӨР НЭМЭХ МАЯГТ — зөвхөн сонгосон бүлгийн доор ── */}
                   {addFor === r.oid && (
                     <tr className={st.addRow}>
-                      <td colSpan={13 + nBld * 4}>
+                      <td colSpan={13 + nBld * 4 + DOC_COLS.length}>
                         <div className={st.addForm}>
                           <span className={st.addTitle}>{tr('«{0}» дотор шинэ ажил', r.work)}</span>
                           <input
@@ -1812,7 +1927,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                   aria-hidden="true"
                   style={{ height: (vis.length - winTo) * rowHRef.current }}
                 >
-                  <td colSpan={13 + nBld * 4} style={{ padding: 0, border: 0 }} />
+                  <td colSpan={13 + nBld * 4 + DOC_COLS.length} style={{ padding: 0, border: 0 }} />
                 </tr>
               )}
             </tbody>
