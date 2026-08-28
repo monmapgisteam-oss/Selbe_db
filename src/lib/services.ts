@@ -3464,6 +3464,7 @@ export type ViewKey =
   | "pkgProg"
   | "gazar"
   | "analysis"
+  | "huvaari"
   | "tailan"
   | "finance"
   | "habea"
@@ -3622,6 +3623,30 @@ export const VIEWS: {
     desc: tr('Өмнө · дараа — нийгмийн дэд бүтэц, нүхэн жорлон'),
     icon: "users",
     hue: "#16a34a",
+    layers: [],
+    initial: [],
+    standalone: true,
+  },
+  /**
+   * ХУВААРЬ — ажлын эхлэх/дуусах огноог ТӨЛӨВЛӨХ.
+   *
+   * ⚠️ «Гүйцэтгэл бөглөх»-ЭЭС ТУСДАА (2026-08-28, хэрэглэгчийн шийдвэр).
+   * Тэр хуудас нь 1,400 мөр × 60 багана бөгөөд нэг ажлыг 12–22 блокт
+   * хуваарилахад 24–44 удаа календар дардаг тул амьд өгөгдөлд 10 багцын
+   * 6-д хуваарийн хамралт 6%-иас доогуур байв. Энд гурван тоо (эхлэл ·
+   * хоног · блокийн алхам) өгөхөд систем бүх огноог өөрөө бичнэ.
+   *
+   * ⚠️ Огноог тэр ЖИЖИГ хуудсууд руугаа буцааж бичдэг тул төлөвлөгөөт хувь,
+   * график, тайлан бүгд өөрчлөлтгүй ажиллана — шинэ үйлчилгээ үүсэхгүй.
+   *
+   * ⚠️ Порталын зураг/каталогийг ашиглахгүй, өөрийн бүтэцтэй → `standalone`.
+   */
+  {
+    key: "huvaari",
+    title: tr('Хуваарь'),
+    desc: tr('Ажлын эхлэх, дуусах хугацаа — блокийн хэмнэлээр'),
+    icon: "calendar",
+    hue: "#0891b2",
     layers: [],
     initial: [],
     standalone: true,
@@ -3786,7 +3811,7 @@ export const HOME_SECTIONS: {
    */
   { id: "review", title: tr('Тойм'), views: ["dashboard", "tailan"] },
   { id: "plan", title: tr('Төлөвлөлт'), views: ["plan", "analysis", "irged"] },
-  { id: "build", title: tr('Хэрэгжилт'), views: ["pkgProg", "gazar", "habea", "iot", "ersdel", "guitsetgel", "zovshoorol"] },
+  { id: "build", title: tr('Хэрэгжилт'), views: ["pkgProg", "gazar", "habea", "iot", "ersdel", "guitsetgel", "zovshoorol", "huvaari"] },
   { id: "money", title: tr('Санхүү'), views: ["pkgFin", "finance"] },
 ];
 
@@ -3893,7 +3918,7 @@ export const ROLE_ACCESS: Record<
     // ⚠️ Урьд нь `sheet` («Гүйцэтгэл бөглөх») байсныг `guitsetgel` болгов —
     //    хоёр харагдац НЭГ болсон (доорх §ГҮЙЦЭТГЭЛ-ийг үз). Эрх нь
     //    хумигдаагүй: бөглөх хуудас нь тэр харагдацын нэг таб болсон.
-    views: ["plan", "pkgProg", "habea", "gazar", "tailan", "guitsetgel"],
+    views: ["plan", "pkgProg", "habea", "gazar", "tailan", "guitsetgel", "huvaari"],
     docs: true,
     home: "plan",
   },

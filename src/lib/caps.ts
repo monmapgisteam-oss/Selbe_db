@@ -22,7 +22,13 @@ import { AUTH } from './services';
 import type { CapRow } from './permsRemote';
 
 /** Одоогоор нэг эрх — жагсаалт өсөхөд UI автоматаар дагана. */
-export type CapKey = 'addRow' | 'qaqc' | 'zovshoorol' | 'finEdit' | 'finRow';
+export type CapKey =
+  | 'addRow'
+  | 'qaqc'
+  | 'zovshoorol'
+  | 'finEdit'
+  | 'finRow'
+  | 'plan';
 
 /**
  * Панелд харуулах бүртгэл — ЗӨВХӨН түлхүүр.
@@ -69,6 +75,15 @@ export const CAPS: { key: CapKey; icon: string }[] = [
    * түүх энэ үйлчилгээнд асаагүй). Тиймээс `finEdit`-ээс өндөр эрсдэлтэй.
    */
   { key: 'finRow', icon: 'plus' },
+  /**
+   * ХУВААРЬ ТӨЛӨВЛӨХ — «Хуваарь» харагдацад ажлын эхлэх/дуусах огноог засах.
+   *
+   * ⚠️ Гүйцэтгэл БӨГЛӨХӨӨС тусдаа: нэг огноо солиход тухайн ажлын
+   *    ТӨЛӨВЛӨГӨӨТ хувь дахин бодогдож, тайлан, график, хоцрогдлын дохио
+   *    бүгд хөдөлнө. Бөглөгч нь өөрийн хоцрогдлыг арилгахын тулд хуваарийг
+   *    хойш нь чирэх боломжтой болох ёсгүй — төлөвлөлт нь ӨӨР үүрэг.
+   */
+  { key: 'plan', icon: 'calendar' },
 ];
 
 const VALID = new Set<string>(CAPS.map((c) => c.key));

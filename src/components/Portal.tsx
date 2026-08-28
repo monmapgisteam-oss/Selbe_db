@@ -30,6 +30,9 @@ const Finance = dynamic(() => import('@/modules/Finance').then((m) => m.Finance)
 const Guitsetgel = dynamic(() => import('@/modules/Guitsetgel').then((m) => m.Guitsetgel), { ssr: false });
 const Zovshoorol = dynamic(() => import('@/modules/Zovshoorol').then((m) => m.Zovshoorol), { ssr: false });
 const Tailan = dynamic(() => import('@/modules/Tailan').then((m) => m.Tailan), { ssr: false });
+/* ⚠️ Хуваарь нь 10 бөглөх хуудсын схем + 1,400 мөрийг татдаг тул зөвхөн
+   нээгдэх үедээ ачаалагдана (`dynamic`) — бусад харагдацыг хүндрүүлэхгүй. */
+const Huvaari = dynamic(() => import('@/modules/Huvaari').then((m) => m.Huvaari), { ssr: false });
 import { Icon } from '@/components/Icon';
 import { DocViewer } from '@/components/DocViewer';
 import { UserAdmin } from '@/components/UserAdmin';
@@ -468,6 +471,7 @@ function PortalContent(
    *   · dashboard — газрын зургийг тойрсон үзүүлэлтийн самбар
    */
   const isDash = view === 'dashboard';
+  const isHuvaari = view === 'huvaari';
   const isTailan = view === 'tailan';
   const isGazar = view === 'gazar';
   const isFinance = view === 'finance';
@@ -621,7 +625,9 @@ function PortalContent(
               ? <PkgFin dim={dim} setDim={setDim} />
               : isPkgProg
                 ? <PkgProg dim={dim} setDim={setDim} />
-                  : isTailan
+                  : isHuvaari
+                    ? <Huvaari />
+                    : isTailan
                       ? <Tailan />
                       : isGazar
                         ? <Gazar dim={dim} setDim={setDim} />
