@@ -18,6 +18,7 @@
  * танигдахгүй бол эрх нь ОЛГОГДООГҮЙ гэж үзнэ.
  */
 
+import { AUTH } from './services';
 import type { CapRow } from './permsRemote';
 
 /** Одоогоор нэг эрх — жагсаалт өсөхөд UI автоматаар дагана. */
@@ -87,8 +88,20 @@ export function capsOf(username?: string | null): CapKey[] {
   return cache[username.toLowerCase()] ?? [];
 }
 
-/** Тухайн эрх олгогдсон эсэх. */
+/**
+ * Тухайн эрх олгогдсон эсэх.
+ *
+ * ⚠️ НЭВТРЭЛТ УНТРААЛТТАЙ орчинд (`AUTH.appId` хоосон — дев) БҮХ эрх нээлттэй.
+ * Учир нь тэр үед `AuthGate` нь `status: 'off'` болж, харагдац бүрийг
+ * нэвтрэлтгүйгээр нээдэг бөгөөд `user` нь `null` байна. Хэрэв энд `null`-ыг
+ * «эрхгүй» гэж уншвал бүх зүйл нээлттэй атлаа ЭРХЭЭР хаагдсан цөөн хэдэн
+ * функц (мөр нэмэх, QAQC) л ЧИМЭЭГҮЙ ажиллахгүй болно — яг ийм зөрчил
+ * 2026-08-28-нд «мөр нэмэх ажиллахгүй» гэсэн гомдол болсон.
+ *
+ * ⚠️ Production-д `.env` дэх `appId` дүүрэн тул энэ салаа ХЭЗЭЭ Ч биелэхгүй.
+ */
 export function hasCap(username: string | null | undefined, cap: CapKey): boolean {
+  if (!AUTH.appId) return true;
   return capsOf(username).includes(cap);
 }
 

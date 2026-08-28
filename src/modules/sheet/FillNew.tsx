@@ -325,7 +325,6 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    */
   const canAddRow = useMemo(() => {
     const u = user?.username?.toLowerCase();
-    if (!u) return false;
     /*
      * ⚠️ ТУСДАА ОЛГОГДДОГ ЭРХ. Үүрэг ч, харагдац ч биш — «Хэрэглэгчдийн эрх
      * удирдах» хэсэгт хүн бүрд нэг бүрчлэн асаана. Учир нь мөр нэмэх нь
@@ -342,7 +341,9 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
      * зөвхөн Багц 2-ыг хариуцсан менежер Багц 4-т мөр нэмэх ёсгүй.
      * Томилгоогүй (эрх нь шууд олгогдсон) хүнд хязгаарлалт байхгүй.
      */
-    if (!assignsOf("director").some((a) => a.user === u)) return true;
+    /* ⚠️ `u` хоосон = нэвтрэлт унтраалттай дев орчин. `hasCap` дээр аль хэдийн
+       шийдэгдсэн тул энд томилгооны хязгаарлалт хайх зүйлгүй. */
+    if (!u || !assignsOf("director").some((a) => a.user === u)) return true;
     const list = bagtsFor(u, "director");
     return list == null || list.includes(pkg.group);
     // eslint-disable-next-line react-hooks/exhaustive-deps
