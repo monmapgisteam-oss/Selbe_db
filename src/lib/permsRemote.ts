@@ -49,10 +49,21 @@ export type RemoteRow = {
  */
 export type FlowRow = { user: string; stage: string; bagts: string[] };
 
+/**
+ * НЭМЭЛТ ЭРХИЙН нэг мөр — `__cap__:` угтвартай.
+ *
+ * ⚠️ `caps` нь ЧӨЛӨӨТ мөрийн массив: энэ модуль утгыг нь ШАЛГАХГҮЙ, зөвхөн
+ * тээвэрлэнэ (`caps.ts` танигдахгүйг нь хаяна). Ингэснээр шинэ эрх нэмэхэд
+ * хадгалалтын давхарга хөндөгдөхгүй.
+ */
+export type CapRow = { user: string; caps: string[] };
+
 const TITLE = 'Selbe_Permissions';
 const TABLE_NAME = 'permissions';
 /** Урсгалын томилгооны мөрийн `username` угтвар — эрхийн мөрөөс ялгана */
 const FLOW_PREFIX = '__flow__:';
+/** Нэмэлт эрхийн мөрийн `username` угтвар — эрх ба урсгалын мөрөөс ялгана */
+const CAP_PREFIX = '__cap__:';
 
 let tableUrlCache: string | undefined; // ⚠️ зөвхөн ОЛДСОН URL — null/олдоогүйг кэшлэхгүй (tableUrl-ыг үз)
 
@@ -205,7 +216,7 @@ async function queryAllRows(fl: FeatureLayerInst, where: string): Promise<RawAtt
  */
 export async function fetchAll(
   canCreate = false,
-): Promise<{ perms: Record<string, RemoteRow>; flow: FlowRow[] } | null> {
+): Promise<{ perms: Record<string, RemoteRow>; flow: FlowRow[]; caps: CapRow[] } | null> {
   try {
     const url = await tableUrl(canCreate);
     if (!url) return null;
@@ -213,8 +224,19 @@ export async function fetchAll(
     const rows = await queryAllRows(fl, '1=1');
     const perms: Record<string, RemoteRow> = {};
     const flow: FlowRow[] = [];
+    const caps: CapRow[] = [];
     for (const a of rows) {
       if (!a.username) continue;
+
+      /* ── Нэмэлт эрхийн мөр ── */
+      if (a.username.startsWith(CAP_PREFIX)) {
+        const user = a.username.slice(CAP_PREFIX.length).toLowerCase();
+        try {
+          const d = JSON.parse(a.views || '[]') as unknown;
+          if (user && Array.isArray(d)) caps.push({ user, caps: d as string[] });
+        } catch { /* эвдэрсэн мөр — алгасна (эрхгүйтэй ижил, fail-closed) */ }
+        continue;
+      }
 
       /* ── Урсгалын томилгооны мөр ── */
       if (a.username.startsWith(FLOW_PREFIX)) {
@@ -249,7 +271,7 @@ export async function fetchAll(
         ...(removed ? { removed: true } : {}),
       };
     }
-    return { perms, flow };
+    return { perms, flow, caps };
   } catch {
     return null;
   }
@@ -338,6 +360,22 @@ export function flowUpsert(user: string, stage: string, bagts: string[]): Promis
     views: JSON.stringify({ stage, bagts }),
     docs: 0,
   });
+}
+
+/** Нэмэлт эрхийг бичих — нэг хэрэглэгч нэг мөр (`__cap__:` угтвартай) */
+export function capUpsert(user: string, caps: string[]): Promise<boolean> {
+  const key = CAP_PREFIX + user.toLowerCase();
+  return upsertByKey(key, {
+    username: key,
+    role: null,
+    views: JSON.stringify(caps),
+    docs: 0,
+  });
+}
+
+/** Нэмэлт эрхийг бүрмөсөн арилгах (эрхгүй болгох) */
+export function capRemove(user: string): Promise<boolean> {
+  return removeByKey(CAP_PREFIX + user.toLowerCase());
 }
 
 /** Урсгалын томилгоог арилгах */

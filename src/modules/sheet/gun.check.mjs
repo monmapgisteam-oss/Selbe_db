@@ -129,4 +129,60 @@ const label = (base[gi].no ? base[gi].no + ' ' : '') + base[gi].work;
 console.log(`✅ мөр нэмэхэд дүн дахин бодогдов · ${probe.key} «${label.slice(0, 30)}»`
   + ` · Мөнгөн дүн +${(dH / 1e6).toFixed(1)}сая · шинэ мөрийн жин ${(nw.C * 100).toFixed(2)}%`);
 
+
+/* ═══ 4. МӨР НЭМЭХ ЗЭРЭГЦҮҮЛЭЛТ — багана нэмэхгүйгээр ═══
+   Шатлалыг үйлчилгээнд хадгалахын оронд шинэ мөрийг СУУРЬ АГШИНТАЙ тулгаж
+   таьдаг. Энэ хэсэг тэр зэрэгцүүлэлтийг багц бүр дээр живээр батална:
+     · хуучин мөр бүрийн гүн ХЭВЭЭР үлдэх (нэг ч мөр гулсаагүй),
+     · шинэ мөр нь ах дүүтэйгээ ижил гүнд, эцэг бүлгээсээ яг нэг доор.
+   Зөрвөл гүйцэтгэл огт өөр мөрөнд наалдана — алдаа нь ЧИМЭЭГҮЙ. */
+const align = (cur, ref) => {
+  const map = new Array(cur.length).fill(-1);
+  let j = 0;
+  for (let i = 0; i < cur.length; i += 1) {
+    if (j < ref.length && cur[i] === ref[j]) { map[i] = j; j += 1; }
+  }
+  return j === ref.length ? map : null;
+};
+
+let aligned = 0;
+for (const pkg of PKGS) {
+  const sc = await loadSchema(pkg).catch(() => null);
+  if (!sc) continue;
+  const r = await loadRows(pkg, sc).catch(() => null);
+  if (!r) continue;
+  const t = TREES[pkg.key] ?? '';
+  const dep = (i) => {
+    const c = t[i] ?? '0';
+    return c >= 'A' && c <= 'E' ? c.charCodeAt(0) - 65 : Number(c);
+  };
+  const ref = r.rows.map((x) => `${x.no} ¦ ${x.work}`);
+
+  // Хамгийн гүн бүлгийг олж, СҮҮЛИЙН удмынх нь ард шинэ мөр хийнэ
+  let g = r.rows.findIndex((x) => x.group && x.depth === 3);
+  if (g < 0) g = r.rows.findIndex((x) => x.group);
+  if (g < 0) continue;
+  let end = g + 1;
+  while (end < r.rows.length && r.rows[end].depth > r.rows[g].depth) end += 1;
+  const cur = ref.slice();
+  cur.splice(end, 0, '999 ¦ ШИНЭ ТУРШИЛТЫН АЖИЛ');
+
+  const map = align(cur, ref);
+  assert.ok(map, `${pkg.key}: мөр нэмэхэд зэрэгцүүлэлт бүтсэнгүй`);
+  const d = new Array(cur.length).fill(0);
+  for (let i = 0; i < cur.length; i += 1) {
+    d[i] = map[i] >= 0 ? dep(map[i]) : (i > 0 ? d[i - 1] : 0);
+  }
+  for (let i = 0; i < cur.length; i += 1) {
+    if (map[i] >= 0) {
+      assert.equal(d[i], r.rows[map[i]].depth, `${pkg.key} i=${i}: хуучин мөрийн гүн гулсав`);
+    }
+  }
+  const ni = map.indexOf(-1);
+  assert.equal(d[ni], r.rows[g].depth + 1, `${pkg.key}: шинэ мөрийн гүн эцгээсээ нэг доор биш`);
+  assert.equal(d[ni], d[ni - 1], `${pkg.key}: шинэ мөр ах дүүгээсээ өөр гүнд`);
+  aligned += 1;
+}
+console.log(`✅ мөр нэмэх зэрэгцүүлэлт ${aligned}/${PKGS.length} багцад зөв (багана нэмээгүй)`);
+
 console.log(`\ngun.check: ok · «gun» багана ${withGun}/${PKGS.length} багцад`);

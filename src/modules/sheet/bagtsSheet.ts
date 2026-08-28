@@ -64,6 +64,92 @@ const dayFilter = (fld: string, day: string) =>
  * Архив эхлээгүй (бүх мөр огноогүй) үед анхны суурь хуудас нь `NULL`
  * огноотой байх тул түүгээр шүүнэ.
  */
+/**
+ * ХУУЛБАРЫН СҮҮЛИЙН ЖААЗ.
+ *
+ * Нэг өдөрт хоёр удаа нийтэлбэл хоёр бүтэн хуулбар зэрэг ирнэ. Жаазны эхлэлийг
+ * ЭХНИЙ мөрийн №-ээр таньж, сүүлийн хуулбарыг бүтнээр нь авна — мөрийн тоо ямар
+ * ч байсан (мөр нэмэгдсэн ч) зөв ажиллана.
+ */
+function lastFrame(all: Feature[], noField: string): Feature[] {
+  if (all.length < 2) return all;
+  const first = String(all[0].attributes[noField] ?? "").trim();
+  if (!first) return all;
+  let start = 0;
+  for (let i = 1; i < all.length; i += 1) {
+    if (String(all[i].attributes[noField] ?? "").trim() === first) start = i;
+  }
+  return start > 0 ? all.slice(start) : all;
+}
+
+/** Мөрийн ТАНИХ ТҮЛХҮҮР — № ба Ажлын нэрийн хос. */
+function rowKey(f: Feature, sc: Schema): string {
+  const no = String(f.attributes[sc.f.no] ?? "").trim();
+  const work = String(f.attributes[sc.f.work] ?? "").trim();
+  return `${no} ¦ ${work}`;
+}
+
+/**
+ * СУУРЬ АГШНЫ МӨРИЙН ТҮЛХҮҮРҮҮД (бөглөөгүй анхны хуулбар).
+ *
+ * ⚠️ Энэ бол шатлалын зураглалын ЛАВЛАХ ДАРААЛАЛ. Суурь агшин нь хэзээ ч
+ * бөглөгддөггүй тул мөрийн тоо нь зураглалын урттай үүрд тэнцүү (10/10 багцад
+ * шалгасан). Шинээр нэмэгдсэн мөрийг ЯГ ЭНЭ дарааллаас ялгаж таних учир
+ * үйлчилгээнд ШИНЭ БАГАНА НЭМЭХ ШААРДЛАГАГҮЙ.
+ *
+ * ⚠️ Зөвхөн мөрийн тоо зөрсөн үед л дуудагдана — хэвийн үед нэмэлт хүсэлт огт
+ * явахгүй. Багц тутамд нэг л удаа татаж кэшлэнэ.
+ */
+const baseKeyCache = new Map<string, Promise<string[]>>();
+function loadBaseKeys(pkg: Pkg, sc: Schema): Promise<string[]> {
+  const hit = baseKeyCache.get(pkg.key);
+  if (hit) return hit;
+  const p = (async () => {
+    const fld = sc.f.fillDate;
+    const out: Feature[] = [];
+    for (let offset = 0; ; ) {
+      const j = await agsFetch(`${pkg.url}/query`, {
+        where: fld ? `${fld} IS NULL` : "1=1",
+        outFields: [sc.f.oid, sc.f.no, sc.f.work].join(","),
+        returnGeometry: "false",
+        orderByFields: `${sc.f.oid} ASC`,
+        resultRecordCount: "2000",
+        resultOffset: String(offset),
+      });
+      const fs = (j.features || []) as Feature[];
+      out.push(...fs);
+      if (!j.exceededTransferLimit || fs.length === 0) break;
+      offset += fs.length;
+    }
+    return lastFrame(out, sc.f.no).map((f) => rowKey(f, sc));
+  })();
+  baseKeyCache.set(pkg.key, p);
+  return p;
+}
+
+/**
+ * ЗЭРЭГЦҮҮЛЭЛТ — одоогийн мөрүүдийг лавлах дараалалтай тулгана.
+ *
+ * Буцаах нь `cur`-тай ижил урттай массив: лавлахад ТААРСАН мөрд лавлахын
+ * индекс, ШИНЭЭР НЭМЭГДСЭН мөрд `-1`.
+ *
+ * ⚠️ Зөвхөн НЭМЭЛТИЙГ зөвшөөрнө (устгал биш) — тиймээс энгийн хоёр заагч
+ * хангалттай. Лавлахын БҮХ мөр олдоогүй бол `null` буцаана: тэр нь мөр
+ * нэмэгдсэн биш, эх хүснэгтийн бүтэц өөрчлөгдсөн гэсэн үг тул хуучин хатуу
+ * алдаа руу унана — чимээгүй буруу зэрэгцүүлэлт хийхээс ЭРС дээр.
+ */
+function alignInsertions(cur: string[], ref: string[]): number[] | null {
+  const map = new Array<number>(cur.length).fill(-1);
+  let j = 0;
+  for (let i = 0; i < cur.length; i += 1) {
+    if (j < ref.length && cur[i] === ref[j]) {
+      map[i] = j;
+      j += 1;
+    }
+  }
+  return j === ref.length ? map : null;
+}
+
 async function latestWhere(pkg: Pkg, sc: Schema): Promise<string> {
   const fld = sc.f.fillDate;
   if (!fld) return "1=1"; // талбар үүсээгүй үйлчилгээ — хуучин зан төлөв
@@ -131,7 +217,21 @@ export async function loadRows(
    *    хуудсанд огт нөлөөлөхгүй бөгөөд огноогоор шүүхэд түүх бүтэн хэвээр.
    */
   const expect = tree.length;
-  const feats2 = expect > 0 && feats.length > expect ? feats.slice(-expect) : feats;
+
+  /*
+   * ⚠️ ХУУЛБАРЫН ЗААГ — ХАМГИЙН СҮҮЛИЙН нийтлэлтийг л үлдээнэ.
+   *
+   * `latestWhere` нь ӨДРӨӨР шүүдэг тул нэг өдөрт хоёр удаа нийтэлбэл хоёр
+   * бүтэн хуулбар зэрэг ирнэ (Багц 1-ийн 2026-08-21-нд яг тийм тохиолдсон).
+   *
+   * ⚠️ 2026-08-28 ЗАСВАР: урьд нь `feats.slice(-expect)` гэж ЗУРАГЛАЛЫН УРТААР
+   * огтолдог байв. Мөр НЭМЭГДСЭН хуудсанд (1371 мөр) тэр нь эхний мөрийг
+   * чимээгүй хаяж, тоо нь `expect`-тэй тэнцэх тул доорх хамгаалалт ч
+   * ажиллахгүй — БҮХ мөр нэгээр гулсаж, бүлэг/ажил хольцолдоно. Одоо
+   * хуулбарыг ЖААЗНЫ ЭХНИЙ №-ээр таньж (sheetRows.ts-ийн `snap`-тай ижил
+   * дүрэм), сүүлийн жаазыг бүтнээр нь авна — мөрийн тоо ямар ч байсан зөв.
+   */
+  const feats2 = lastFrame(feats, sc.f.no);
 
   /**
    * ШАТЛАЛ ХААНААС ГАРАХ ВЭ.
@@ -155,17 +255,51 @@ export async function loadRows(
    * ⚠️ Хоосон хүснэгт (0 мөр) нь тусдаа тохиолдол: суурь өгөгдөл хараахан
    *    ачаалагдаагүй гэсэн үг тул өөрийн гэсэн мессежтэй.
    */
-  if (expect > 0 && !hasGun && feats2.length !== expect)
-    throw new Error(
-      feats2.length === 0
-        ? tr('{0}: хуудсанд мөр алга — эх хүснэгтийг эхлээд ачаална уу.', pkg.label)
-        : tr(
-            '{0}: {1} мөр ирлээ, {2} байх ёстой. Эх хүснэгтийн мөрийн тоо өөрчлөгдсөн бол шатлалын зураглалыг (bagts.trees.ts) дахин гаргах шаардлагатай — эс бөгөөс бүлэг ба ажлын мөрүүд хоорондоо холилдоно.',
-            pkg.label,
-            feats2.length,
-            expect,
-          ),
-    );
+  if (expect > 0 && feats2.length === 0)
+    throw new Error(tr('{0}: хуудсанд мөр алга — эх хүснэгтийг эхлээд ачаална уу.', pkg.label));
+
+  /**
+   * МӨР БҮРИЙН ГҮН.
+   *
+   * Гурван эх сурвалж, энэ эрэмбээр:
+   *   1. `gun` багана (байвал) — мөр өөрийн гүнээ авч явна.
+   *   2. Мөрийн тоо зураглалтай ТААРВАЛ — байрлалаар шууд.
+   *   3. ЗӨРВӨЛ — суурь агшинтай зэрэгцүүлж, ШИНЭ мөрийг ялгана. Ерөнхий
+   *      менежер бүлэг дотор ажил нэмэхэд яг энэ зам ажиллана; нэмсэн мөр нь
+   *      ах дүү мөрүүдийнхээ ард залгагддаг тул гүн нь ӨМНӨХ мөрийнхтэй ижил.
+   *
+   * ⚠️ Зэрэгцүүлэлт бүтэхгүй бол (эх хүснэгтийн бүтэц өөрчлөгдсөн) ХУУЧИН
+   * хатуу алдаа руу унана. Чимээгүй буруу шатлалаас алдаа шидэх нь ХАВЬГҮЙ
+   * дээр — эс бөгөөс гүйцэтгэл огт өөр мөрөнд наалдана.
+   */
+  const treeDepth = (i: number): number => {
+    const ch = tree[i] ?? '0';
+    return ch >= 'A' && ch <= 'E' ? ch.charCodeAt(0) - 65 : Number(ch);
+  };
+  const depthArr = new Array<number>(feats2.length).fill(0);
+  if (hasGun) {
+    for (let i = 0; i < feats2.length; i += 1) {
+      depthArr[i] = Number(feats2[i].attributes[sc.f.gun!]) || 0;
+    }
+  } else if (expect > 0 && feats2.length !== expect) {
+    const ref = await loadBaseKeys(pkg, sc);
+    const map =
+      ref.length === expect ? alignInsertions(feats2.map((f) => rowKey(f, sc)), ref) : null;
+    if (!map)
+      throw new Error(
+        tr(
+          '{0}: {1} мөр ирлээ, {2} байх ёстой. Нэмэгдсэн мөрүүдийг суурь агшинтай тулгаж чадсангүй — эх хүснэгтийн бүтэц өөрчлөгдсөн бол шатлалын зураглалыг (bagts.trees.ts) дахин гаргах шаардлагатай.',
+          pkg.label,
+          feats2.length,
+          expect,
+        ),
+      );
+    for (let i = 0; i < feats2.length; i += 1) {
+      depthArr[i] = map[i] >= 0 ? treeDepth(map[i]) : i > 0 ? depthArr[i - 1] : 0;
+    }
+  } else if (expect > 0) {
+    for (let i = 0; i < feats2.length; i += 1) depthArr[i] = treeDepth(i);
+  }
 
   // Excel-ийн 2-р мөрийн «Шинэчлэгдсэн огноо» ($BH$2 г.м.) нь бүх төлөвлөгөөт
   // хувийн лавлах цэг. Мөр бүрт биш, зөвхөн тэнд бичигдсэн.
@@ -194,17 +328,11 @@ export async function loadRows(
      *    хуудсыг БҮТНЭЭР нь, ижил дарааллаар агуулдаг тул байрлал нь
      *    тогтвортой (анхны суурь өгөгдөл дээр `k === oid − 1`).
      */
-    let depth: number;
-    let group: boolean;
-    if (hasGun) {
-      depth = Number(a[sc.f.gun!]) || 0;
-      const nx = feats2[k + 1]?.attributes;
-      group = nx != null && (Number(nx[sc.f.gun!]) || 0) > depth;
-    } else {
-      const ch = tree[k] ?? "0";
-      group = ch >= "A" && ch <= "E";
-      depth = group ? ch.charCodeAt(0) - 65 : Number(ch);
-    }
+    /* «Бүлэг эсэх» нь тусдаа талбаргүй — ДАРААГИЙН мөрийн гүнээс гарна.
+       Энэ дүрэм `TREES`-ийн тэмдэглэгээтэй 14801 мөр дээр ЯГ таарсан
+       (`gun.check.mjs`) тул гурван эх сурвалжийн аль нь ч ижил үр дүн өгнө. */
+    const depth = depthArr[k];
+    const group = k + 1 < depthArr.length && depthArr[k + 1] > depth;
     rows.push({
       oid,
       no,

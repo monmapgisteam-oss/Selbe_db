@@ -20,6 +20,7 @@ import {
 import { OWNER, F as HF } from "@/lib/hyanalt";
 import { useHyanaltRows } from "@/lib/hyanaltStore";
 import { assignsOf, bagtsFor, subscribeAcl } from "@/lib/guitsetgelAcl";
+import { hasCap, subscribeCaps } from "@/lib/caps";
 import { useAuth } from "@/components/AuthGate";
 import DatePicker from "./DatePicker";
 import { seriesBands } from "./bagts.bands";
@@ -262,6 +263,9 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   const { user } = useAuth();
   const [aclN, setAclN] = useState(0);
   useEffect(() => subscribeAcl(() => setAclN((n) => n + 1)), []);
+  /* Нэмэлт эрх ArcGIS-аас шинэчлэгдэхэд «+» товч шууд гарч/алга болно */
+  const [capN, setCapN] = useState(0);
+  useEffect(() => subscribeCaps(() => setCapN((n) => n + 1)), []);
   const myBagts = useMemo(
     () => bagtsFor(user?.username, "company"),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -317,19 +321,26 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     const u = user?.username?.toLowerCase();
     if (!u) return false;
     /*
-     * ⚠️ `bagtsFor` нь ХОЁР ЭСРЭГ тохиолдолд ижил `null` буцаадаг:
-     *      (а) хэрэглэгч тэр шатанд ОГТ томилогдоогүй,
-     *      (б) БҮХ багцад томилогдсон (`ALL_BAGTS`) — өөрөөр хэлбэл
-     *          хязгаарлалтгүй.
-     * Тиймээс `null`-ыг «эрхгүй» гэж уншвал бүх багцын эрхтэй Ерөнхий менежер
-     * мөр нэмж чадахгүй болно — эрх ИХТЭЙ хүн эрх БАГАТАЙ болох урвуу алдаа.
-     * Иймд эхлээд ТОМИЛГОО байгаа эсэхийг тусад нь барина.
+     * ⚠️ ТУСДАА ОЛГОГДДОГ ЭРХ. Үүрэг ч, харагдац ч биш — «Хэрэглэгчдийн эрх
+     * удирдах» хэсэгт хүн бүрд нэг бүрчлэн асаана. Учир нь мөр нэмэх нь
+     * хуудасны БҮТЦИЙГ өөрчилж, жин ба мөнгөн дүн бүхэлдээ дахин бодогддог
+     * эрсдэлтэй үйлдэл — үүргийн урьдчилсан тохиргоогоор чимээгүй тарах ёсгүй.
+     *
+     * ⚠️ Админ (`super`) ч ҮЛ ХАМААРАХГҮЙ: эрхээ панелаас өөртөө ил асаана.
+     * Ингэснээр «хэн мөр нэмж чадах вэ» гэдэг НЭГ жагсаалтаас бүрэн харагдана.
      */
-    if (!assignsOf("director").some((a) => a.user === u)) return false;
+    if (!hasCap(u, "addRow")) return false;
+
+    /*
+     * ⚠️ Урсгалд томилогдсон бол багцын хязгаарлалт нь ХЭВЭЭР үйлчилнэ:
+     * зөвхөн Багц 2-ыг хариуцсан менежер Багц 4-т мөр нэмэх ёсгүй.
+     * Томилгоогүй (эрх нь шууд олгогдсон) хүнд хязгаарлалт байхгүй.
+     */
+    if (!assignsOf("director").some((a) => a.user === u)) return true;
     const list = bagtsFor(u, "director");
     return list == null || list.includes(pkg.group);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, aclN, pkg.group]);
+  }, [user, aclN, capN, pkg.group]);
 
   /** Мөр нэмэх маягт нээлттэй байгаа БҮЛГИЙН ObjectID (эсвэл `null`) */
   const [addFor, setAddFor] = useState<number | null>(null);
@@ -548,12 +559,31 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       if (!adds.length || !sc || !nBld) return base;
       const out = base.slice();
       for (const a of adds) {
-        let p = out.findIndex(
-          (r) => r.group && r.no === a.parentNo && r.work === a.parentWork,
-        );
-        // Эцэг нь нэрээрээ олдохгүй бол (эх хүснэгт өөрчлөгдсөн) индексээр
-        if (p < 0 && a.parentIdx < out.length && out[a.parentIdx]?.group) p = a.parentIdx;
-        if (p < 0) continue;                       // эцэг алга — мөрийг алгасна
+        /*
+         * ЭЦЭГ БҮЛГИЙГ ОЛОХ — нэр БА байрлал ХОЁУЛАНГААР.
+         *
+         * ⚠️ (№ + Ажлын нэр) хос нь ДАВХАРДДАГ. Багц 1 (9 давхар)-д «10 ·
+         * БУСАД АЖИЛ» ба «6 · ТОНОГ ТӨХӨӨРӨМЖ» тус бүр ХОЁР удаа тааралдана
+         * (блок бүрт нэг). Зөвхөн нэрээр хайвал `findIndex` эхнийхийг нь авч,
+         * менежерийн нэмсэн ажил ӨӨР БЛОКИЙН бүлэгт чимээгүй очно.
+         *
+         * ⚠️ Харин зөвхөн байрлалаар (`parentIdx`) ч болохгүй: өмнөх нэмэлт
+         * мөр дээгүүр нь орсон бол индекс гулсана, мөн эх хүснэгт өөрчлөгдөж
+         * болно.
+         *
+         * Тиймээс нэрээр таарах БҮХ нэрийдлийг цуглуулж, дарсан байрлалд
+         * ХАМГИЙН ОЙРХОНЫГ нь сонгоно — хоёр эрсдэлийг зэрэг барина.
+         */
+        const cands: number[] = [];
+        for (let i = 0; i < out.length; i += 1) {
+          const r = out[i];
+          if (r.group && r.no === a.parentNo && r.work === a.parentWork) cands.push(i);
+        }
+        if (!cands.length) continue;               // эцэг алга — мөрийг алгасна
+        let p = cands[0];
+        for (const i of cands) {
+          if (Math.abs(i - a.parentIdx) < Math.abs(p - a.parentIdx)) p = i;
+        }
         const parent = out[p];
         out.splice(afterGroup(out, p), 0, {
           oid: a.oid,
@@ -805,7 +835,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     const unit = n(addForm.unit);
 
     if (!work) return setErr(tr('Ажлын нэрийг оруулна уу.'));
-    if (!/^d+$/.test(no))
+    if (!/^\d+$/.test(no))
       return setErr(tr('№ нь бүхэл тоо байх ёстой (жишээ «12») — бутархай дугаар нь бүлгийн мөрийг заадаг тул ажлын тоололд орохгүй.'));
     if (Number.isNaN(vol) || Number.isNaN(unit))
       return setErr(tr('Обьём ба Нэгж өртөг нь тоон утга байх ёстой.'));

@@ -17,6 +17,7 @@ import {
 } from '@/lib/permissions';
 import { useAuth } from './AuthGate';
 import { Icon } from './Icon';
+import { CAPS, capsOf, subscribeCaps, toggleCap, type CapKey } from '@/lib/caps';
 import { GuitsetgelAcl } from '@/modules/GuitsetgelAcl';
 import { STAGE_LABEL } from '@/lib/hyanaltGroup';
 import {
@@ -42,6 +43,15 @@ const toggled = (views: ViewKey[] | 'all', k: ViewKey): ViewKey[] => {
 };
 
 /** 'all' ба бүрэн жагсаалтыг ИЖИЛ гэж үзэж харьцуулна */
+/* ⚠️ Нэмэлт эрхийн текстийг ЗУРАГДАХ агшинд гаргана — `caps.ts`-д биш.
+   Модулийн түвшинд `tr()` дуудвал хэл солиход шинэчлэгдэхгүй, мөн i18n
+   гаргагч зөвхөн үсгэн дуудлагыг олдог тул толиноос хоцорно. */
+const capLabel = (k: CapKey): string => (k === 'addRow' ? tr('Мөр нэмэх') : k);
+const capHint = (k: CapKey): string =>
+  (k === 'addRow'
+    ? tr('«Гүйцэтгэл бөглөх» хуудсанд бүлэг дотор шинэ ажлын мөр нэмэх. Хуудасны бүтэц өөрчлөгдөж, жин ба мөнгөн дүн бүхэлдээ дахин бодогдоно.')
+    : '');
+
 const viewsEq = (a: ViewKey[] | 'all', b: ViewKey[] | 'all'): boolean =>
   ALL_KEYS.every((k) => hasView(a, k) === hasView(b, k));
 
@@ -111,6 +121,8 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
   const [syncing, setSyncing] = useState(false);
   /** username(жижиг үсгээр) → хадгалаагүй ноорог */
   const [drafts, setDrafts] = useState<Map<string, Draft>>(new Map());
+  /** Нэмэлт эрхийн ArcGIS бичилт унасан хэрэглэгчид */
+  const [capErr, setCapErr] = useState<Map<string, boolean>>(new Map());
   const [saving, setSaving] = useState(false);
   /** Хамгийн сүүлийн хадгалалтын үр дүн — товчийн доор товч мэдэгдэл */
   const [saved, setSaved] = useState<{ ok: number; fail: number; failed: string[] } | null>(null);
@@ -191,6 +203,8 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
   }, [open, onClose]);
 
   useEffect(() => subscribe(() => setUsers(listUsers())), []);
+  // Нэмэлт эрх ArcGIS-аас шинэчлэгдэхэд унтраалгууд дагаж шинэчлэгдэнэ
+  useEffect(() => subscribeCaps(() => setUsers(listUsers())), []);
   /*
    * ⚠️ Урсгалын томилгоо нь ӨӨР хадгалалттай тул түүнд ч захиалах ёстой.
    *    Эс бөгөөс шат хадгалсны дараа дэлгэц хуучин хэвээр үлдэнэ.
@@ -284,6 +298,28 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     const d = draftOf(u);
     putDraft(u, { ...d, clear: false, docs: !d.docs });
   };
+  /**
+   * НЭМЭЛТ ЭРХ — ШУУД үйлчилнэ, «Хадгалах» хүлээхгүй.
+   *
+   * ⚠️ Яагаад бусад унтраалгын адил ноорогт биш вэ: 2026-08-28-нд эрхийг
+   * асаасан ч ажиллаагүй гэсэн гомдол гарсан — унтраалга зөвхөн ноорогт
+   * бичигдээд «Хадгалах» дарагдаагүй байв. Тусад нь олгодог эрх нь тусад нь
+   * хадгалагдах нь ойлгомжтой; үр дүн нь тэр дороо харагдана.
+   *
+   * ⚠️ ArcGIS бичилт унавал ИЛ анхааруулна — эрх зөвхөн энэ browser-т үлдэж,
+   * дараагийн синхрончлолоор чимээгүй арилах тул.
+   */
+  const flipCap = (u: UserPerm, c: CapKey) => {
+    const on = capsOf(u.username).includes(c);
+    void toggleCap(u.username, c, !on).then((r) => {
+      setCapErr((prev) => {
+        const m = new Map(prev);
+        if (r) m.delete(u.username.toLowerCase());
+        else m.set(u.username.toLowerCase(), true);
+        return m;
+      });
+    });
+  };
   const flipRemove = (u: UserPerm) => {
     const d = draftOf(u);
     putDraft(u, { ...d, remove: !d.remove });
@@ -374,6 +410,8 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
           views = [...views, 'guitsetgel'];
         }
         const r = await setUser(uname, { views, docs: d.docs }, d.role);
+        /* ⚠️ НЭМЭЛТ ЭРХ энд БИЧИГДЭХГҮЙ — `flipCap` дарах агшинд шууд
+           хадгалагддаг (`__cap__:` тусдаа мөр). */
         if (r) ok += 1; else { fail += 1; failed.push(uname); }
       } catch {
         fail += 1;
@@ -723,6 +761,32 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
                         <span className={s.swKnob} />
                       </button>
                     </div>
+                    {/* ── НЭМЭЛТ ЭРХҮҮД — харагдацаас ТУСДАА олгоно ──
+                        ⚠️ Үүрэг сонгоход өөрчлөгддөггүй: эрсдэлтэй үйлдлийг
+                        урьдчилсан тохиргоогоор чимээгүй тараах ёсгүй. */}
+                    {capErr.get(u.username.toLowerCase()) && (
+                      <div className={s.capErr} role="alert">
+                        {tr('⚠️ ArcGIS-т бичигдсэнгүй — эрх түр зөвхөн энэ browser-т. Холболтоо шалгаад дахин дарна уу.')}
+                      </div>
+                    )}
+                    {CAPS.map((c) => (
+                      <div key={c.key} className={s.topicRow}>
+                        <span className={s.topicName} title={capHint(c.key)}>
+                          <span className={s.topicIcon}><Icon name="plus" size={14} /></span>
+                          {capLabel(c.key)}
+                        </span>
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={capsOf(u.username).includes(c.key)}
+                          aria-label={capLabel(c.key)}
+                          className={`${s.sw} ${capsOf(u.username).includes(c.key) ? s.swOn : ''}`}
+                          onClick={() => flipCap(u, c.key)}
+                        >
+                          <span className={s.swKnob} />
+                        </button>
+                      </div>
+                    ))}
                   </div>
                 </>
               )}

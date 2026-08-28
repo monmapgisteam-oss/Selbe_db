@@ -46,3 +46,7 @@ iot-watch-state.json
 
 # Claude-ийн тусдаа build хавтас (хэрэглэгчийн dev .next-ийг дарахгүй)
 .next-claude/
+
+# Caveman skill-үүд (npx skills add) — гуравдагч этгээдийн skill, репод орохгүй
+.agents/
+skills-lock.json

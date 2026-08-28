@@ -356,6 +356,17 @@
   border-bottom: 1px solid var(--line);
 }
 .topicRow:hover { background: color-mix(in srgb, var(--ink) 3%, transparent); }
+
+/* Нэмэлт эрхийн алсын бичилт унасан үеийн ИЛ анхааруулга */
+.capErr {
+  margin: 4px 0 2px;
+  padding: 6px 8px;
+  border-radius: var(--r-sm);
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--bad);
+  background: color-mix(in srgb, var(--bad) 12%, transparent);
+}
 .topicName {
   display: inline-flex;
   align-items: center;

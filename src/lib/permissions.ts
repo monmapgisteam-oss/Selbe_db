@@ -236,6 +236,12 @@ export async function initRemote(canCreate: boolean): Promise<boolean> {
     acl._syncRemoteAssigns(remote.flow, canCreate);
   } catch { /* урсгалын модуль ачаалагдаагүй орчинд (тест г.м.) — алгасна */ }
 
+  // 4) Нэмэлт эрхүүд (`__cap__:`) → caps.ts
+  try {
+    const caps = await import('./caps');
+    caps._syncRemoteCaps(remote.caps);
+  } catch { /* модуль ачаалагдаагүй орчин — алгасна */ }
+
   notify();
   return true;
 }
