@@ -250,6 +250,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   const [asOfOrig, setAsOfOrig] = useState<number | null>(null);
   /** Ачаалсан агшны БӨГЛӨСӨН ӨДӨР (`buglusun_ognoo`) — өнөөдрийнх үү гэж шалгана. */
   const [snapDay, setSnapDay] = useState<string>("");
+  /** Ачаалсан агшны бөглөсөн өдөр (ms) — дахин илгээхэд хэрэгтэй */
+  const [snapMs, setSnapMs] = useState<number | null>(null);
   /**
    * ӨДӨРТ НЭГ УДАА — илгээсэн бол дахин бөглөхгүй.
    *
@@ -308,7 +310,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupOpts]);
 
-  const { rows: hyRows } = useHyanaltRows();
+  const { rows: hyRows, reload: reloadHy } = useHyanaltRows();
   const flow = useMemo(() => {
     const mine = hyRows.filter((r) => r[HF.bagts] === pkg.group);
     if (!mine.length) return null;
@@ -324,6 +326,32 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   const sentToday = !!snapDay && snapDay === today;
   /** Засах эрхгүй — харах л боломжтой. */
   const noEdit = locked || (sentToday && !returned);
+
+  /**
+   * ӨНЧИН АГШИН (2026-08-29): нийтлэл амжилттай атлаа хяналтад илгээлт унасан
+   * бол өнөөдрийн хуулбар үйлчилгээнд байгаа ч хянагчийн дараалалд ОРООГҮЙ.
+   * Урьд нь ийм үед гарц байгаагүй: хуудас түгжигдсэн (`sentToday`), хянагч
+   * харахгүй, маргааш дахин нийтэлбэл давхардсан агшин үүснэ. Урсгалын мөр нь
+   * агшны ЭХНИЙ мөрийн OBJECTID-гаар (`sheetOid`) эсвэл илгээсэн өдрөөрөө
+   * танигдана — аль нь ч байхгүй бол өнчин.
+   */
+  const orphan = useMemo(() => {
+    if (locked || !sentToday || !rows.length) return false;
+    const first = rows[0].oid;
+    return !hyRows.some(
+      (r) => r[HF.bagts] === pkg.group
+        && (r[HF.sheetOid] === first || String(r[HF.companySent] ?? "").slice(0, 10) === snapDay),
+    );
+  }, [locked, sentToday, rows, hyRows, pkg.group, snapDay]);
+  const [resending, setResending] = useState(false);
+  const resend = async () => {
+    if (resending || !rows.length || snapMs == null) return;
+    setResending(true);
+    const rv = await submitForReview(pkg.group, snapMs, rows[0].oid);
+    setResending(false);
+    if (rv.ok) { reloadHy(); say(tr('Хяналтад илгээв ({0})', rv.id)); }
+    else setErr(rv.error);
+  };
 
   /**
    * МӨР НЭМЭХ ЭРХ — ЗӨВХӨН ЕРӨНХИЙ МЕНЕЖЕР.
@@ -527,6 +555,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         setAsOf(r.asOf);
         setAsOfOrig(r.asOf);
         setSnapDay(r.snapshot != null ? msToDay(r.snapshot) : "");
+        setSnapMs(r.snapshot ?? null);
         // ⚠️ Анх нээхэд БҮХ давхарга ДЭЛГЭЭСТЭЙ (хэрэглэгчийн шийдвэр,
         // 2026-08-19): урьд нь гүн 2 хүртэл эвхээстэй байсныг болив —
         // бөглөх ажлын мөрүүд шууд харагдах ёстой. Багц солиход мөн адил.
@@ -1136,10 +1165,20 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
           // Хуримтлагдсан обьём — хувийн ЭХ СУРВАЛЖ. Талбаргүй блок бий тул
           // шалгаж байж бичнэ; бүлгийн мөрд хоосон (нэгж нь зөрдөг).
           if (sc.obyem[b]) a[sc.obyem[b]!] = c[i].obyem[b];
-          // Огноог мөн бичнэ: энэ мөрд бичигдсэн (`own`) утга ба бүлгийн
-          // мөрийн MIN/MAX (`agg`) — хоёул excel-ийн томъёотой ижил.
-          if (sc.start[b]) a[sc.start[b]!] = c[i].start[b];
-          if (sc.end[b]) a[sc.end[b]!] = c[i].end[b];
+          /*
+           * ⚠️ БҮЛГИЙН БОДОГДСОН (agg) ОГНООГ ХАДГАЛАХГҮЙ (2026-08-29). Урьд нь
+           * дэд мөрүүдийн MIN/MAX-ыг бүлгийн талбарт бичдэг байв — «excel-ийн
+           * томъёотой ижил» гэсэн үндэслэлээр. Гэвч excel-д тэр нь ТОМЪЁО хэвээр
+           * (динамик), энд ХАДГАЛАГДСАН УТГА болж, дараагийн ачаалалтад `own`
+           * гэж ангилагдана. Үр дагавар: (1) бүлгийн төлөвлөгөөт хувь дэд
+           * мөрүүдийн дунджаас интерполяци руу шилжиж, эхний нийтлэлийн өмнөх
+           * ба дараах тоо зөрнө; (2) «Хуваарь» тэр огноог бүлгийн ЖИНХЭНЭ муж гэж
+           * үзэж, дэд ажлыг өөрсдийнх нь тодорхойлсон завсарт түгжинэ — plan.ts-
+           * ийн хориглосон дугуй логик. Зөвхөн ӨӨРИЙН (own) огноог бичнэ; agg
+           * бол null (өмнө нь материалчилагдсаныг ч цэвэрлэнэ).
+           */
+          if (sc.start[b]) a[sc.start[b]!] = c[i].startSrc[b] === "agg" ? null : c[i].start[b];
+          if (sc.end[b]) a[sc.end[b]!] = c[i].endSrc[b] === "agg" ? null : c[i].end[b];
         }
         // ОБЬЁМЫН НИЙЛБЭР — талбар байвал л бичнэ (шинэ багана, 10/10 багцад бий)
         if (sc.f.obyemSum) a[sc.f.obyemSum] = c[i].obyemSum;
@@ -1448,7 +1487,14 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         */}
       {!locked && sentToday && !returned && (
         <p className={st.lockNote}>
-          {tr('Өнөөдрийн гүйцэтгэл илгээгдсэн — хяналтад байна. Буцаалт ирвэл энэ хуудас өөрөө нээгдэнэ.')}
+          {orphan
+            ? tr('Өнөөдрийн гүйцэтгэл нийтлэгдсэн ч хяналтад ИЛГЭЭГДЭЭГҮЙ байна — хянагч үүнийг харахгүй.')
+            : tr('Өнөөдрийн гүйцэтгэл илгээгдсэн — хяналтад байна. Буцаалт ирвэл энэ хуудас өөрөө нээгдэнэ.')}
+          {orphan && (
+            <button type="button" className={st.resend} onClick={resend} disabled={resending}>
+              {resending ? tr('Илгээж байна…') : tr('Хяналтад илгээх')}
+            </button>
+          )}
         </p>
       )}
       {!locked && returned && (

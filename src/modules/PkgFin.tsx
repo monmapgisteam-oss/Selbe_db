@@ -21,8 +21,7 @@ import {
 import { useAsync, type Async } from '@/lib/useAsync';
 import {
   BUILDING, CASHFLOW2, IPC_LOG, LAYER_BY_ID, pkgKeyOf, bagtsKey,
-  PKG_FAMILY_BY_BAGTS, zoneWhere,
-} from '@/lib/services';
+  PKG_FAMILY_BY_BAGTS, zoneWhere, cfMonthAxis } from '@/lib/services';
 import { cat, shade, date, mntAbbr, num, pct } from '@/lib/format';
 import { readParam, writeParams } from '@/lib/urlState';
 import o from './pkgFinOv.module.css';
@@ -1414,8 +1413,10 @@ function FinCard({
  * биет = биет дататай багцуудын дундаж.
  */
 function aggregateMonths(d: FinData) {
-  const labels = CASHFLOW2.months;
-  const planM = labels.map((m) => d.contracts.reduce((a, r) => a + nn(r[m.amount]), 0));
+  /* ⚠️ Сунгасан тэнхлэг — CF-ийн 12 сараас хойшхи бодит утгууд царцахгүй.
+     Сунгасан сард төлөвлөгөөт багана алга (null) тул төлөвлөгөө 0. */
+  const labels = cfMonthAxis();
+  const planM = labels.map((m) => (m.amount ? d.contracts.reduce((a, r) => a + nn(r[m.amount as string]), 0) : 0));
   const planTotal = planM.reduce((a, b) => a + b, 0);
   let cum = 0;
   return labels.map((m, i) => {

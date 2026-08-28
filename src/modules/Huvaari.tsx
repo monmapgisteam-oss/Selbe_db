@@ -271,11 +271,49 @@ export function Huvaari() {
         setNote(tr('Өөрчлөлт олдсонгүй — хуваарь хэвээрээ.'));
         return;
       }
-      await applyUpdates(pkg, upd);
+      /*
+       * ⚠️ АГШИН СОЛИГДСОН ЭСЭХ (2026-08-29). «Гүйцэтгэл бөглөх» нийтлэх бүрд
+       * хуудсыг БҮТНЭЭР шинэ хуулбар болгож нэмдэг тул энд ачаалсан OBJECTID-ууд
+       * ХУУЧИН хуулбарынх болж болно. Тэр OID руу бичвэл огноо нь хаягдсан
+       * хуулбарт чимээгүй үлдэж, дараагийн нийтлэлд ч алга болно — төлөвлөлтийн
+       * бүхэл сесс алдагдана. Тиймээс хадгалахын өмнө СҮҮЛИЙН агшныг дахин
+       * татаж, мөр бүрийг (№ + ажлын нэр)-ээр шинэ OID руу зөөнө; нэр давхардвал
+       * хуучин байрлалд хамгийн ойрыг сонгоно (withAdds-тай ижил дүрэм).
+       */
+      const fresh = await loadRows(pkg, sc);
+      let remapped = 0;
+      let lost = 0;
+      if (fresh.rows[0]?.oid !== rows[0]?.oid) {
+        const key = (r: SheetRow) => `${r.no}¦${r.work}`;
+        const freshBy = new Map<string, number[]>();
+        fresh.rows.forEach((r, i) => {
+          const k = key(r);
+          if (!freshBy.has(k)) freshBy.set(k, []);
+          freshBy.get(k)!.push(i);
+        });
+        const moved: Record<string, unknown>[] = [];
+        for (const a of upd) {
+          const oldOid = a[sc.f.oid] as number;
+          const orig = byOid.get(oldOid);
+          const cands = orig ? freshBy.get(key(orig)) : undefined;
+          if (!orig || !cands?.length) { lost += 1; continue; }
+          const oldIdx = rows.findIndex((r) => r.oid === oldOid);
+          let best = cands[0];
+          for (const ci of cands) if (Math.abs(ci - oldIdx) < Math.abs(best - oldIdx)) best = ci;
+          moved.push({ ...a, [sc.f.oid]: fresh.rows[best].oid });
+          remapped += 1;
+        }
+        upd.length = 0;
+        upd.push(...moved);
+      }
+      if (upd.length) await applyUpdates(pkg, upd);
       const r = await loadRows(pkg, sc);
       setRows(r.rows);
       setDraft(new Map());
-      setNote(tr('{0} ажлын хуваарь хадгалагдлаа', num(upd.length)));
+      setNote(remapped
+        ? tr('{0} ажлын хуваарь хадгалагдлаа — хуудас хооронд нь шинэчлэгдсэн тул шинэ агшинд зөөв', num(upd.length))
+        : tr('{0} ажлын хуваарь хадгалагдлаа', num(upd.length)));
+      if (lost) setErr(tr('{0} мөр шинэ агшинд олдсонгүй — тэдгээрийн хуваарь хадгалагдсангүй.', num(lost)));
     } catch (e) {
       setErr(String((e as Error).message || e));
     } finally {

@@ -843,6 +843,18 @@ export async function applyUpdates(
   pkg: Pkg,
   updates: Record<string, unknown>[],
 ): Promise<void> {
+  /*
+   * ⚠️ ХЭСЭГЧЛЭН амжилттай байсан ч кэшийг хүчингүй болгоно (2026-08-29).
+   * Урьд нь энэ функц `dataBus`-ыг ОГТ дууддаггүй байв — «Хуваарь» дээр
+   * огноо хадгалсны дараа дашбоард, тайлангийн төлөвлөгөөт тоо хуучин
+   * хэвээр үлдэж, хуудас бүтнээр refresh хийж байж л шинэчлэгддэг байлаа
+   * (нийтлэх зам нь `applyAdds`-аараа зарладаг тул зөвхөн ЭНЭ зам мартагдсан).
+   * Алдааны үед ч эхний chunk-ууд серверт бичигдсэн байж болох тул
+   * `finally` дотор — «бичигдсэн атлаа хуучин тоо харуулах»-аас
+   * «бичигдээгүй атлаа дахин татах» нь хавьгүй хямд.
+   */
+  let written = 0;
+  try {
   for (let i = 0; i < updates.length; i += 500) {
     const chunk = updates.slice(i, i + 500);
     try {
@@ -858,6 +870,7 @@ export async function applyUpdates(
           (bad as { error?: { description?: string } }).error?.description ||
             tr('Шинэчлэх амжилтгүй'),
         );
+      written += chunk.length;
     } catch (e) {
       // ⚠️ rollbackOnFailure зөвхөн НЭГ chunk дотроо үйлчилнэ — өмнөх chunk-ууд
       // аль хэдийн серверт бичигдсэн тул хагас амжилтыг мессежид тодруулна.
@@ -872,5 +885,8 @@ export async function applyUpdates(
         );
       throw e;
     }
+  }
+  } finally {
+    if (written > 0) invalidate('BAGTS_SHEET');
   }
 }

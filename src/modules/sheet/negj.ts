@@ -138,11 +138,23 @@ export const NEGJ_RULES: { unit: Negj; re: RegExp; why: string }[] = [
  *
  * ⚠️ `null`-ыг «нэгжгүй» гэж БИШ, «мэдэхгүй» гэж уншина.
  */
+/**
+ * ⚠️ КЭШ (2026-08-29). Бөглөх хуудас мөр бүрд 6, нүд бүрд 2 удаа дуудна:
+ * 1,400 мөр × 20 блок ≈ 56 мянган дуудлага × 12 regex = ~700 мянган шалгалт
+ * ЗУРАГДАЛТ БҮРД (товшилт, hover бүрд). Ажлын нэр агшин хооронд давтагддаг тул
+ * нэрээр нь кэшлэвэл тэр бүгд нэг Map хайлт болно.
+ */
+const CACHE = new Map<string, Negj | null>();
+
 export function negjOf(work: string | null | undefined): Negj | null {
   if (!work) return null;
+  const hit = CACHE.get(work);
+  if (hit !== undefined) return hit;
   const w = norm(work);
-  for (const r of NEGJ_RULES) if (r.re.test(w)) return r.unit;
-  return null;
+  let out: Negj | null = null;
+  for (const r of NEGJ_RULES) if (r.re.test(w)) { out = r.unit; break; }
+  CACHE.set(work, out);
+  return out;
 }
 
 /** Яагаад тэр нэгж гарсныг тайлбарлана — дэлгэцийн тултипт. */

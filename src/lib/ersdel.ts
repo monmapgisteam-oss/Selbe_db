@@ -338,7 +338,12 @@ const AIR_METRICS = [
 export function aqiOfPm25(c: number): number {
   const bp: [number, number, number, number][] = [
     [0, 9, 0, 50], [9.1, 35.4, 51, 100], [35.5, 55.4, 101, 150],
-    [55.5, 125.4, 151, 200], [125.5, 225.4, 201, 300], [225.5, 500, 301, 500],
+    [55.5, 125.4, 151, 200], [125.5, 225.4, 201, 300],
+    /* ⚠️ EPA 2024: «Аюултай» муж нь 225.5–325.4 → 301–500. Урьд нь 225.5–500
+       гэж сунгаснаас PM2.5=325 үед 373 (зөв нь 500) гарч, хамгийн аюултай
+       агшинд индексийг 130 нэгжээр ДУТУУ харуулдаг байв. 325.4-өөс дээш нь
+       EPA-д «индексээс хальсан» — 500-д тогтооно (доорх return). */
+    [225.5, 325.4, 301, 500],
   ];
   for (const [cl, ch, il, ih] of bp) {
     if (c <= ch) return Math.round(((ih - il) / (ch - cl)) * (c - cl) + il);
@@ -595,7 +600,8 @@ export type AirParams = {
  * бохирдол хуримтлагдана — тиймээс түвшин 1-д `inversion` хамгийн БАГА.
  */
 export const AIR_LEVELS: Record<LevelKey, AirParams> = {
-  1: { pm25: 320, aqi: 371, inversion: 90, wind: 0.6, windDir: 315, plume: 2400, spread: 900, hours: 14 },
+  /* ⚠️ aqi нь aqiOfPm25(320)-тай нийцнэ — EPA 2024 засварын дараа 371 → 489 */
+  1: { pm25: 320, aqi: 489, inversion: 90, wind: 0.6, windDir: 315, plume: 2400, spread: 900, hours: 14 },
   2: { pm25: 165, aqi: 215, inversion: 180, wind: 1.4, windDir: 315, plume: 1600, spread: 620, hours: 9 },
   3: { pm25: 85, aqi: 166, inversion: 320, wind: 2.6, windDir: 300, plume: 1000, spread: 420, hours: 6 },
 };

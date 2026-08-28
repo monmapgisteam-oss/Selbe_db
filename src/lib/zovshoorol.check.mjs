@@ -24,7 +24,7 @@ for (const [b, list] of byBagts(rows)) {
     console.log(`   ${z.shat}. ${z.ner.padEnd(30)} ${i.padEnd(11)} ${z.ognoo ? d(z.ognoo) : ''}  ${z.dugaar}`);
   }
 }
-console.log('\nzovshoorol: ok');
+console.log('амьд уншилт: ok');
 
 /* ── МАЯГТЫН ШАЛГУУР (сүлжээгүй) ── */
 const all = [

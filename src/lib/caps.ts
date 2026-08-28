@@ -18,7 +18,7 @@
  * танигдахгүй бол эрх нь ОЛГОГДООГҮЙ гэж үзнэ.
  */
 
-import { AUTH } from './services';
+import { AUTH, type ViewKey } from './services';
 import type { CapRow } from './permsRemote';
 
 /** Одоогоор нэг эрх — жагсаалт өсөхөд UI автоматаар дагана. */
@@ -85,6 +85,29 @@ export const CAPS: { key: CapKey; icon: string }[] = [
    */
   { key: 'plan', icon: 'calendar' },
 ];
+
+/**
+ * ЭРХ БҮРИЙН «ГЭР» ХАРАГДАЦ — эрх нь зөвхөн тэр харагдац дээр утгатай.
+ *
+ * ⚠️ `resolveAccess` (permissions.ts) эрхтэй хүнд энэ харагдацыг АВТОМАТААР
+ * нээнэ (2026-08-29). Урьд нь админ «Хуваарь төлөвлөх» эрх олгоод «Хуваарь»
+ * харагдацыг мартвал эрх нь чимээгүй утгагүй байв: `eronhii` үүрэг зөвхөн
+ * «Гүйцэтгэл» харагдацтай тул эзэн нь хуудас руу орох замгүй. Эрх олгосон нь
+ * тэр хуудсыг харах зөвшөөрөл гэсэн үг — хоёр удаа асуухгүй.
+ */
+export const CAP_HOST_VIEW: Record<CapKey, ViewKey> = {
+  addRow: 'guitsetgel',
+  qaqc: 'guitsetgel',
+  zovshoorol: 'zovshoorol',
+  finEdit: 'finance',
+  finRow: 'finance',
+  plan: 'huvaari',
+};
+
+/** Хэрэглэгчийн эрхүүдээс гарах харагдацууд (давхардалгүй). */
+export function capViewsOf(username?: string | null): ViewKey[] {
+  return [...new Set(capsOf(username).map((c) => CAP_HOST_VIEW[c]))];
+}
 
 const VALID = new Set<string>(CAPS.map((c) => c.key));
 const KEY = 'selbe-caps-v1';

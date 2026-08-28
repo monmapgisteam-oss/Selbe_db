@@ -30,7 +30,7 @@ import { useAsync, type Async } from '@/lib/useAsync';
 import { t as tr } from '@/lib/i18nCore';
 import { num, pct } from '@/lib/format';
 import { queryFeatures } from '@/lib/query';
-import { cached } from '@/lib/live';
+import { cached, loadClearance } from '@/lib/live';
 import { layerTotals } from '@/lib/totals';
 import {
   BUILDING, CASHFLOW2, HABEA, IPC_LOG, LAYER_GROUPS, GROUP_LAYERS, LAYER_BY_ID,
@@ -300,7 +300,9 @@ async function loadOverall(): Promise<ReportExtra['overall']> {
 /* ═══════════════ Газар чөлөөлөлт ═══════════════ */
 
 /** «Үлдсэн нэгж талбар» — шийдвэрлэгдээгүйг таних ЦОРЫН ГАНЦ дүрэм */
-const isLeftParcel = (label: string) => /үлдсэн/i.test(label);
+/* ⚠️ ЗӨВХӨН тайлбар бичвэрийн «үлдсэн талбарын ТОО»-нд (2026-08-29). Чөлөөлөлтийн
+   ХУВЬ үүгээр бодогдохоо больсон — тэр нь дашбоардтай нэг эх `loadClearance`. */
+const isLeftParcel = (label: string) => /Үлдсэн/i.test(label);
 
 /**
  * ГАЗАР ЧӨЛӨӨЛӨЛТ.
@@ -333,13 +335,19 @@ async function loadLand(): Promise<ReportExtra['land']> {
   };
 
   const byStatus = tally('Tuluv', false);
-  const left = byStatus.filter((s) => isLeftParcel(s.label)).reduce((a, s) => a + s.n, 0);
+  /*
+   * ⚠️ ХУВЬ нь ДАШБОАРДТАЙ НЭГ ЭХ СУРВАЛЖААС (2026-08-29). Урьд нь энд
+   * «нийт − үлдсэн» гэж боддог байсан бол дашбоард/«Газар чөлөөлөлт» нь
+   * «бүрэн чөлөөлсөн + цэвэрлэсэн» гэж тоолдог — хэлэлцээр хийж буй зэрэг
+   * завсрын төлөв нэгэнд нь «шийдэгдсэн», нөгөөд нь «биш» болж тайлан 91.9%,
+   * дашбоард 89.9% гэж зөрдөг байв. Одоо `loadClearance`-ийн ганц дүрэм.
+   */
+  const clearance = await loadClearance();
 
   return {
     parcels: rows.length,
     areaM2: rows.reduce((a, r) => a + nn(r[d.qty?.field ?? 'area_m2']), 0),
-    // Шийдвэрлэгдсэн = нийт − үлдсэн. Мөр огт байхгүй бол хувь ч утгагүй.
-    pct: rows.length ? ((rows.length - left) / rows.length) * 100 : null,
+    pct: clearance.pct,
     byStatus,
     // «явцын_мэдээ» нь ЗӨВХӨН шийдэгдээгүй нэгж талбарт бөглөгддөг — хоосныг хасна
     byReason: tally('явцын_мэдээ', true),
@@ -629,7 +637,13 @@ async function loadHabeaSummary(): Promise<ReportExtra['habea']> {
  * `allSettled`-ийн хэсэгчилсэн уналт хоосон утгаараа хамгийн ихдээ TTL
  * хугацаанд үлдэх нь хүлээн зөвшөөрсөн тохироо.
  */
-export const loadReportExtra = cached(loadReportExtraRaw, 5 * 60_000);
+/*
+ * ⚠️ `reads` (2026-08-29) — урьд нь автобусанд БҮРТГЭГДЭЭГҮЙ тул нийтлэх,
+ * санхүүгийн засвар, хуваарь хадгалсны дараа дашбоард тэр дор нь шинэчлэгдэх
+ * атлаа Тайлан (+PDF) 5 минут хуучин тоогоо барьж, хоёр дэлгэц зөрдөг байв.
+ */
+export const loadReportExtra = cached(loadReportExtraRaw, 5 * 60_000,
+  ['BAGTS_SHEET', 'CASHFLOW2', 'IPC_LOG', 'PARCEL_LEFT', 'HABEA', 'BAGTS_NEGTGEL']);
 
 async function loadReportExtraRaw(): Promise<ReportExtra> {
   /*

@@ -794,6 +794,11 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
                         {tr('⚠️ ArcGIS-т бичигдсэнгүй — эрх түр зөвхөн энэ browser-т. Холболтоо шалгаад дахин дарна уу.')}
                       </div>
                     )}
+                    {/* ⚠️ Эрх бүр өөрийн харагдацыг дагуулдаг (CAP_HOST_VIEW) —
+                        админ харагдацыг тусад нь асаах шаардлагагүй. */}
+                    <div className={s.capNote}>
+                      {tr('Нэмэлт эрх олгоход түүний харагдац (Гүйцэтгэл · Зөвшөөрөл · Санхүүжилт · Хуваарь) тухайн хүнд автоматаар нээгдэнэ.')}
+                    </div>
                     {CAPS.map((c) => (
                       <div key={c.key} className={s.topicRow}>
                         <span className={s.topicName} title={capHint(c.key)}>

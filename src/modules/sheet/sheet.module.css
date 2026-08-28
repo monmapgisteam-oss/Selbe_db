@@ -1126,3 +1126,16 @@ tr:hover > td > .addBtn { opacity: 1; }
   cursor: pointer;
 }
 .addHint { color: var(--ink-3); font-size: 0.74rem; }
+
+/* Өнчин агшныг хяналтад дахин илгээх — түгжээний тэмдэглэлийн доторх товч */
+.resend {
+  margin-left: 10px;
+  padding: 3px 11px;
+  border: 1px solid var(--hue);
+  border-radius: var(--r-sm);
+  color: var(--hue);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.resend:hover { background: color-mix(in srgb, var(--hue) 14%, transparent); }
+.resend:disabled { opacity: 0.5; cursor: default; }

@@ -28,6 +28,7 @@ import {
   type Role,
   type ViewKey,
 } from './services';
+import { capViewsOf } from './caps';
 
 /** Нэг хэрэглэгчийн эрх — харагдацууд ('all' = бүгд) ба ТЭЗҮ-БОНУ баримт */
 export type Access = { views: ViewKey[] | 'all'; docs: boolean };
@@ -305,7 +306,21 @@ export function hasAccess(username?: string | null): boolean {
  * Нэвтэрсэн хэрэглэгчийн эцсийн эрх: override байвал түүнийг, эс бөгөөс хатуу
  * суурийг. Аль нь ч байхгүй бол `null` (нэвтрэх эрхгүй).
  */
+/**
+ * ⚠️ ЭРХИЙН ХАРАГДАЦЫГ НЭГТГЭНЭ (2026-08-29): «Мөр нэмэх», «QAQC», «Зөвшөөрөл
+ * засах», «Санхүү», «Хуваарь» эрхтэй хүнд тухайн эрхийн гэр харагдац
+ * (`CAP_HOST_VIEW`) харагдацын жагсаалтад нь байхгүй ч нээгдэнэ. Эс бөгөөс
+ * эрх олгосон атлаа хуудас руу орох замгүй — эрх чимээгүй утгагүй.
+ * Устгагдсан (tombstone) аккаунт, `'all'` эрхтэй хүнд нөлөөлөхгүй.
+ */
 export function resolveAccess(username?: string | null): Access | null {
+  const base = resolveBaseAccess(username);
+  if (!base || base.views === 'all' || !username) return base;
+  const extra = capViewsOf(username).filter((v) => !(base.views as ViewKey[]).includes(v));
+  return extra.length ? { ...base, views: [...(base.views as ViewKey[]), ...extra] } : base;
+}
+
+function resolveBaseAccess(username?: string | null): Access | null {
   if (!username) return null;
   const ov = loadStore()[username.toLowerCase()];
   // Устгагдсан аккаунт — GRANT_ALL ч эрх өгөхгүй. Хатуу super халдашгүй.

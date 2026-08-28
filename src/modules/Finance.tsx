@@ -21,7 +21,7 @@ import { cached } from '@/lib/live';
  */
 const LIVE_TTL = 60_000;
 import { loadBlockHistory } from '@/lib/blockProgress';
-import { CASHFLOW2, IPC_LOG, TASK_SHEET, bagtsKey, blockKey, pkgKeyOf } from '@/lib/services';
+import { CASHFLOW2, IPC_LOG, TASK_SHEET, bagtsKey, blockKey, pkgKeyOf, cfMonthAxis } from '@/lib/services';
 import { finFieldLabel } from '@/lib/financeFieldLabels';
 import { mntShort, num, text, cat } from '@/lib/format';
 import { ResizableTable } from '@/components/ResizableTable';
@@ -50,10 +50,34 @@ const pctVal = (v: unknown): number => {
 };
 
 /** IPC огноог "YYYY-MM" болгох ("2026.05.04" ба "2026-05-04" 2-уул) */
+/**
+ * IPC-ийн огнооноос «YYYY-MM» сар гаргана.
+ *
+ * ⚠️ Живэ хүснэгтэд ГУРВАН формат зэрэг явдаг (2026-08-29-нд хэмжсэн):
+ *   · `2025-12-28` (ISO) — 62 мөр
+ *   · `5/27/2026` (АМЕРИКАН M/D/YYYY) — 7 мөр: хуучин parser таньдаггүй
+ *     тул эдгээр акт дараагийн талбар руу унаж, БУРУУ САРД бүртгэгддэг байв
+ *   · `20026-06-30` (алдаатай он) — хуучин regex дундаас нь «0026-06» гэж
+ *     таслаад ТӨСЛИЙН ЭХНИЙ САР руу clamp-ладаг байв
+ * Оны утгыг 2000–2100 мужид шалгана — гажигтай нь `null` буцаж, дараагийн
+ * (ихэвчлэн зөв) огнооны талбар хэрэглэгдэнэ.
+ */
 function ym(v: unknown): string | null {
-  const s = String(v ?? '').trim().replace(/\./g, '-');
-  const m = s.match(/(\d{4})-(\d{1,2})/);
-  return m ? `${m[1]}-${m[2].padStart(2, '0')}` : null;
+  if (v == null || v === '' || v === 0) return null;
+  // ArcGIS-ийн Date талбар — ms epoch тоо
+  if (typeof v === 'number' && v > 1e12) {
+    const d = new Date(v);
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+  }
+  const s = String(v).trim().replace(/\./g, '-');
+  const okYear = (y: number) => y >= 2000 && y <= 2100;
+  // ISO: оныг мөрийн ЭХНЭЭС барина — «20026…» гэх гажигт дундаас таслахгүй
+  let m = s.match(/^(\d{4})-(\d{1,2})(?:\D|$)/);
+  if (m && okYear(Number(m[1]))) return `${m[1]}-${m[2].padStart(2, '0')}`;
+  // Американ: M/D/YYYY
+  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (m && okYear(Number(m[3]))) return `${m[3]}-${m[1].padStart(2, '0')}`;
+  return null;
 }
 
 /**
@@ -495,7 +519,11 @@ async function loadFinDataRaw(): Promise<FinData> {
     // IPC → багц бүрд: сар → олгосон net нийлбэр.
     // "Contract Price" псевдо-мөр, дугааргүй мөрийг хасна (services.ts-ийн санамж).
     const F = IPC_LOG.fields;
-    const labels = CASHFLOW2.months.map((m) => m.label);
+    /* ⚠️ СУНГАСАН тэнхлэг (cfMonthAxis) — CF-ийн 12 сар 2026-09-өөр
+       төгсдөг тул түүнээс хойшхи акт, хэмжилт нүхгүй үлдэж, сүүлийн сард
+       овоорч эсвэл царцдаг байв. Сунгалт нь өнөөдрийг хүртэл. */
+    const axis = cfMonthAxis();
+    const labels = axis.map((m) => m.label);
     const first = labels[0];
     const last = labels[labels.length - 1];
     const given: GivenMap = new Map();
@@ -556,7 +584,7 @@ async function loadFinDataRaw(): Promise<FinData> {
       byPkg.forEach((blocks, k) => {
         const byMon = new Map<string, number>();
         const cntMon = new Map<string, number>();
-        CASHFLOW2.months.forEach((m) => {
+        axis.forEach((m) => {
           if (m.label > nowYm) return; // ирээдүйн сард биет дата байхгүй
           let sum = 0;
           let cnt = 0;
@@ -676,19 +704,22 @@ export function contractMonths(r: Row, given: GivenMap, phys: PhysMap): MonthPt[
    *    (`aggregateMonths`) аль хэдийн ЯГ ЭНЭ дүрмээр боддог тул хоёр
    *    график нэг хэлээр ярина.
    */
-  const amounts = CASHFLOW2.months.map((m) => n(r[m.amount]));
+  /* ⚠️ Сунгасан сард CF багана алга (null) — төлөвлөгөө 0, харин олгосон/биет
+     нь жинхэнэ сардаа зурагдана. */
+  const axis = cfMonthAxis();
+  const amounts = axis.map((m) => (m.amount ? n(r[m.amount]) : 0));
   const total = amounts.reduce((a, b) => a + b, 0);
   let cum = 0;
 
-  return CASHFLOW2.months.map((m, i) => {
+  return axis.map((m, i) => {
     cum += amounts[i];
     return {
       label: m.label,
       amount: amounts[i],
-      amountCum: n(r[m.amountCum]),
+      amountCum: m.amountCum ? n(r[m.amountCum]) : cum,
       // ⚠️ Нийт нь 0 бол хувь утгагүй — хадгалагдсан баганад ЭНД Л буцаж
       //    найдна (сарын хуваарь огт бөглөгдөөгүй гэрээ).
-      cumPct: total > 0 ? (cum / total) * 100 : pctVal(r[m.pctCum]),
+      cumPct: total > 0 ? (cum / total) * 100 : m.pctCum ? pctVal(r[m.pctCum]) : 0,
       given: byMon?.get(m.label) ?? 0,
       phys: ph?.get(m.label) ?? null,
     };
