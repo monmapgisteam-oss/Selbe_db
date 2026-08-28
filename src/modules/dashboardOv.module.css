@@ -1862,3 +1862,12 @@
   column-gap: 22px;
 }
 .shell[data-detail='1'][data-sec='benefit'] .zTop :global(.seriesChart) { max-width: 1100px; }
+
+/* ⚠️ ГАР УТАС (2026-08-29): KPI зурвас нарийн дэлгэцэнд нэрсээ «Хэ… е…» болтол
+   тайрдаг байв. Зурвасыг ХЭВТЭЭ ГҮЙЛГЭДЭГ болгож, товч бүр бүтэн нэртэйгээ
+   үлдэнэ — гар утасны стандарт хэв. */
+@media (max-width: 720px) {
+  .rail { overflow-x: auto; scrollbar-width: thin; padding-bottom: 3px; }
+  .railItem { min-width: 104px; flex: 0 0 auto; }
+  .railTitle { white-space: nowrap; overflow: visible; text-overflow: clip; }
+}

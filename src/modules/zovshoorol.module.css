@@ -228,3 +228,15 @@
 /* ── Толгойн мөр ба хоосон багц ── */
 .headRow { display: flex; align-items: center; gap: 12px; }
 
+/* ⚠️ ГАР УТАС (2026-08-29): «Багц 1» нэр хоёр мөр болж, толгойн товч гурван
+   мөр эзэлдэг байв. Мөр тасалж, нэрийг таслахгүй, огноог товчны доор биш
+   ард нь нарийхан үлдээнэ. */
+@media (max-width: 560px) {
+  .headRow { flex-wrap: wrap; }
+  .headRow .primary { flex: 1 1 100%; text-align: center; }
+  .packHead { flex-wrap: wrap; row-gap: 4px; }
+  .packName { white-space: nowrap; }
+  .counts { flex: 1 1 100%; }
+  .chipName { max-width: 52vw; }
+  .chipDate { white-space: nowrap; }
+}

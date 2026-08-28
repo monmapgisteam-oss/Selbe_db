@@ -936,3 +936,14 @@
   .flow { max-height: none; }
   .frame { height: auto; min-height: 100%; overflow-y: auto; }
 }
+
+/* ⚠️ ГАР УТАС (2026-08-29): «08-05 · алхам жигд бус · 12/12» гурван тогтмол
+   багана 360px-д ажлын нэрийг НЭГ тэмдэгт болтол шахдаг байв. Нарийн
+   дэлгэцэнд огноог л үлдээж, тайлбар ба блокийн тоог нууна — тэдгээр нь
+   мөр дээр дарахад хуанлид бүтнээрээ харагдана. */
+@media (max-width: 640px) {
+  .rowPlan { min-width: 0; }
+  .rowPlan .rowDim, .rowPlan .rowIrr, .rowPlan .rowNone { display: none; }
+  .rowBlocks { display: none; }
+  .rowNo { min-width: 26px; }
+}

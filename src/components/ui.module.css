@@ -868,3 +868,10 @@
 }
 .trendValAlert { color: var(--bad-ink); }
 .trendValueAlert { color: var(--bad-ink); }
+
+/* ⚠️ ГАР УТАС (2026-08-29): хэсгийн толгойн тэмдэглэл («2 багц · төлөвлөгөөнөөс
+   хоцорсон») баруун ирмэгт тайрагддаг байв — мөр тасалж доош буулгана. */
+@media (max-width: 560px) {
+  .sectionHead { flex-wrap: wrap; row-gap: 4px; }
+  .sectionNote { flex: 1 1 100%; overflow-wrap: anywhere; }
+}
