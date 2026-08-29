@@ -665,3 +665,47 @@
   background: linear-gradient(90deg,
     rgb(40,195,255) 0%, rgb(10,140,250) 33%, rgb(10,78,232) 67%, rgb(6,36,160) 100%);
 }
+
+/* ══════════════════ Салхи — «Агаарын чанар» самбарт ══════════════════ */
+
+/**
+ * ⚠️ Тусдаа хүрээтэй: доорх харуулын жагсаалт нь ЖИШЭЭ өгөгдөл, салхи нь
+ * ЖИНХЭНЭ. Нүдээр ялгагдаж байж хэрэглэгч хоёрыг андуурахгүй.
+ */
+.wind {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 9px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+.windHd {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ink-3);
+}
+.windHd b { color: var(--ink-2); font-weight: 600; }
+.windSrc { margin: 0; font-size: 9.5px; letter-spacing: 0; text-transform: none; color: var(--ink-3); }
+/* Эх сурвалжийн тэмдэг баруун захад — гарчгаас зайдуу */
+.windHd .windSrc { margin-left: auto; }
+
+.windNow { display: flex; align-items: baseline; gap: 7px; }
+/* Сум — «хаашаа үлээж байна». `inline-block` заавал: `rotate` нь мөрийн
+   элементэд нөлөөлөхгүй. */
+.windArrow {
+  display: inline-block;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--data);
+}
+.windVal { font-size: 20px; font-weight: 500; color: var(--ink); line-height: 1; }
+.windVal i { font-size: 11px; font-style: normal; color: var(--ink-3); margin-left: 2px; }
+.windDir { font-size: 11.5px; color: var(--ink-2); }
+.windNote { margin: 0; font-size: 10.5px; line-height: 1.4; font-weight: 600; }

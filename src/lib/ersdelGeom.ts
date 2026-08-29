@@ -120,7 +120,16 @@ export async function floodBands(level: LevelKey): Promise<Band[]> {
     (d) => geometryEngine.geodesicBuffer(river, d, 'meters') as unknown as Polygon,
   );
   const depth = [p.depth, p.depth * 0.55, p.depth * 0.25];
-  const hue = ['#1d4ed8', '#3b82f6', '#93c5fd'];
+  /**
+   * ⚠️ 2026-08-29: ГУРВАН ӨНГИЙГ НЭГ болгов (хүсэлт: «аюулын бүс адилхан
+   * өнгөөр»). Урьд нь гүнээр гурван цэнхэр (гүн → цайвар) байсан тул төслийн
+   * ХИЛЭЭС ГАДУУР үргэлжлэх захын бүс нь өөр өнгөтэй болж, нэг аюулын муж
+   * ХОЁР ӨӨР зүйл мэт уншигдаж байв.
+   *
+   * ⚠️ Цагирган БҮТЭЦ хэвээр: 3D-ийн өргөлт (`height`) ба тайлбар (`label`)
+   * нь гүний ялгааг үүрсээр байна — зөвхөн ДҮҮРГЭЛТИЙН өнгө нэгдэв.
+   */
+  const hue = ['#1d4ed8', '#1d4ed8', '#1d4ed8'];
   const label = [tr('Гүн ус'), tr('Дунд гүн'), tr('Захын ус')];
 
   const out: Band[] = [];

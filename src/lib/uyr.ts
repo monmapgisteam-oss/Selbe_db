@@ -99,6 +99,29 @@ const DEPTH_STOPS: [number, number, number][] = [
   [6, 36, 160],
 ];
 
+/**
+ * УРСАЦЫН СУМ — торны хэдэн нүд тутамд нэг сум вэ.
+ * ⚠️ 12 нь ~110 м-т нэг сум (нүд 9 м): 512-ийн торонд дээд тал нь 42×42 =
+ *    1,764 сум. Үүнээс нягт болговол сум хоорондоо нийлж «цагаан тор»
+ *    болж, доорх усны гүн уншигдахаа болино.
+ */
+const ARROW_STEP = 12;
+
+/**
+ * Сум зурах ДООД хурд (м/с).
+ * ⚠️ 0-ээс дээш бүх нүдэнд зурвал зогсонги усанд ч чиглэл «байгаа» мэт
+ *    харагдана — тэр нь тоон шуугиан, бодит урсгал БИШ.
+ */
+const ARROW_MIN_MS = 0.12;
+
+/**
+ * СУМНЫ ХЭМЖЭЭ — нүдний алхмын харьцаагаар (2026-08-29: жижигрүүлэв).
+ * ⚠️ `ARROW_MAX` нь ДЭЭД хязгаар: хурдтай урсгалд ч сум хөрш рүүгээ хүрэхгүй.
+ *    1.0-д хүрвэл сумнууд нийлж, тасралтгүй тор мэт харагдана.
+ */
+const ARROW_BASE = 0.20;
+const ARROW_MAX = 0.50;
+
 /** ⚠️ Энэ гүнд өнгө ХАНАНА. Эх өгөгдлийн дээд гүн 2.27 м тул 1.5 м-д ханавал
  *  гүехэн (0.05–0.5 м) хэсэг нь өнгөний ихэнх хүрээг эзэлж, тархалт уншигдана. */
 const SATURATE_M = 1.5;
@@ -208,17 +231,42 @@ export async function loadFloodData(): Promise<FloodData> {
      * ⚠️ Хоёр л хангалттай: 30 фрейм/сек дээр текстур ачаалалт дараагийн
      * фрейм ирэхээс өмнө дуусдаг (512×512 RGBA = 1 МБ).
      */
+    /**
+     * ГӨЛГӨРЖҮҮЛЭЛТ (2026-08-29, хүсэлт).
+     *
+     * ⚠️ Торны нүд нь ~9 м. Түүнийг ArcGIS шууд сунгаж зурахад нүд бүр
+     * ДӨРВӨЛЖИН болж, усны зах шатлан харагдана. Тиймээс торыг ЭНД
+     * `SMOOTH` дахин томруулж, хөтчийн bilinear шүүлтүүрээр (`imageSmoothing`)
+     * дамжуулна — зах нь үргэлжилсэн муруй болно.
+     *
+     * ⚠️ 2 дахин л томруулна: 4 дахин бол 2048² = 16 МБ текстур болж, 20
+     * фрейм/сек дээр 320 МБ/сек GPU ачаалал үүснэ. 2× нь нүдэнд хангалттай.
+     */
+    const SMOOTH = 2;
     const bufs: HTMLCanvasElement[] = [];
     const ctxs: CanvasRenderingContext2D[] = [];
     const imgs: ImageData[] = [];
+    /** Торны түвшний завсрын canvas — `putImageData` зөвхөн энд */
+    const raws: HTMLCanvasElement[] = [];
+    const rawCtxs: CanvasRenderingContext2D[] = [];
     for (let b = 0; b < 2; b++) {
+      const raw = document.createElement('canvas');
+      raw.width = W;
+      raw.height = H;
+      const rcx = raw.getContext('2d')!;
+      raws.push(raw);
+      rawCtxs.push(rcx);
+      imgs.push(rcx.createImageData(W, H));
+
       const c = document.createElement('canvas');
-      c.width = W;
-      c.height = H;
+      c.width = W * SMOOTH;
+      c.height = H * SMOOTH;
       const cx2 = c.getContext('2d')!;
+      /* ⚠️ Анхдагчаар `true` ч ил бичив: false болбол бүх ажил дэмий болно */
+      cx2.imageSmoothingEnabled = true;
+      cx2.imageSmoothingQuality = 'high';
       bufs.push(c);
       ctxs.push(cx2);
-      imgs.push(cx2.createImageData(W, H));
     }
     let turn = 0;
 
@@ -325,7 +373,62 @@ export async function loadFloodData(): Promise<FloodData> {
           px[p + 3] = (150 + ((q * 95) >> 8)) * edge;
         }
       }
-      ctx.putImageData(img, 0, 0);
+      /* Тор → завсрын canvas → ГӨЛГӨР томруулж гаралт руу */
+      rawCtxs[turn].putImageData(img, 0, 0);
+      ctx.clearRect(0, 0, cv.width, cv.height);
+      ctx.drawImage(raws[turn], 0, 0, cv.width, cv.height);
+
+      /**
+       * УРСАЦЫН ЧИГЛЭЛИЙН СУМ (2026-08-29, хүсэлт).
+       *
+       * ⚠️ Яагаад ЭНД (растер дээр), тусдаа `GraphicsLayer` дээр БИШ вэ:
+       *   · `MediaLayer` нь 2D, 3D, BIM гуравт ижил драп болдог — вектор
+       *     графикийн эргэлт (`angle`) SceneView-д найдваргүй.
+       *   · Фрейм тутамд 1,000 график дахин байгуулах нь 20 фрейм/сек дээр
+       *     боломжгүй; canvas дээрх зураас нь ~0.2 мс.
+       *
+       * ⚠️ Сум нь ГАЗРЫН нэгжтэй (растерт шингэсэн) тул ойртоход томорно.
+       *    Энэ нь зориуд: урсгалын талбар бүхэлдээ ижил нягтралтай уншигдана.
+       */
+      const AR = ARROW_STEP;
+      ctx.lineWidth = Math.max(0.8, SMOOTH * 0.4);
+      ctx.strokeStyle = 'rgba(255,255,255,0.72)';
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      for (let y = (AR >> 1); y < H; y += AR) {
+        for (let x = (AR >> 1); x < W; x += AR) {
+          const i = y * W + x;
+          /* Хуурай ба бараг зогсонги нүдэнд сум зурахгүй — «урсгалгүй
+             газар урсгал байгаа» гэсэн ХУДАЛ дүр зураг гаргана */
+          if (d0[i] * w0 + d1[i] * w1 < wetRaw) continue;
+          const ux = (ua[i] * w0 + ub[i] * w1) / su;
+          const vy = (va[i] * w0 + vb[i] * w1) / sv;
+          const sp = Math.hypot(ux, vy);
+          if (sp < ARROW_MIN_MS) continue;
+
+          /* ⚠️ canvas-ийн `y` УРАГШ өсдөг тул хойд бүрэлдэхүүнийг урвуулна */
+          const nx2 = ux / sp;
+          const ny2 = -vy / sp;
+          const cx0 = (x + 0.5) * SMOOTH;
+          const cy0 = (y + 0.5) * SMOOTH;
+          /* Урт нь хурдаас — хүчтэй урсгал урт сумтай */
+          const len = Math.min(AR * SMOOTH * ARROW_MAX, (AR * SMOOTH * ARROW_BASE) * (1 + sp));
+          const hx = cx0 + nx2 * len * 0.5;
+          const hy = cy0 + ny2 * len * 0.5;
+          const tx = cx0 - nx2 * len * 0.5;
+          const ty = cy0 - ny2 * len * 0.5;
+          ctx.moveTo(tx, ty);
+          ctx.lineTo(hx, hy);
+          /* Үзүүр — 30° хоёр сэглээ */
+          const hd = len * 0.40;
+          const a = Math.atan2(ny2, nx2);
+          ctx.moveTo(hx, hy);
+          ctx.lineTo(hx - hd * Math.cos(a - 0.5), hy - hd * Math.sin(a - 0.5));
+          ctx.moveTo(hx, hy);
+          ctx.lineTo(hx - hd * Math.cos(a + 0.5), hy - hd * Math.sin(a + 0.5));
+        }
+      }
+      ctx.stroke();
       return cv;
     };
 

@@ -24,7 +24,7 @@ import ExtentAndRotationGeoreference from '@arcgis/core/layers/support/ExtentAnd
 import Extent from '@arcgis/core/geometry/Extent';
 import Graphic from '@arcgis/core/Graphic';
 import Point from '@arcgis/core/geometry/Point';
-import { useMap, type Dim } from '@/components/MapCanvas';
+import { IMAGERY_ID, useMap, type Dim } from '@/components/MapCanvas';
 import { t as tr } from '@/lib/i18nCore';
 import { bandAt, type Band, type DamageRow } from '@/lib/ersdelGeom';
 import type { Station } from '@/lib/ersdel';
@@ -282,9 +282,21 @@ export function Overlay({
      */
     floodLayerRef.current = layer;
     geoRef.current = geo;
-    /* ⚠️ ХАМГИЙН ДООД давхаргад (index 0): аюулын муж, өртсөн объект, харуул
-       гурвуулаа усны ДЭЭР харагдах ёстой. */
-    view.map.add(layer, 0);
+    /**
+     * ⚠️ ОРТОФОТОГИЙН ЯГ ДЭЭР (2026-08-29 засвар).
+     *
+     * Урьд нь `add(layer, 0)` гэж ХАМГИЙН ДООД индекст тавьдаг байв — санаа нь
+     * «аюулын муж, өртсөн объект, харуул гурвуулаа усны дээр гарах» байсан ч
+     * индекс 0 нь ОРТОФОТОГИЙН БАЙР (`buildLayers`-д `IMAGERY_ID` GroupLayer
+     * хамгийн түрүүнд нэмэгддэг). Үр дүнд ус ортофотогийн ДООР орж, зураг дээр
+     * ОГТ харагддаггүй байлаа — «симуляц урсахгүй байна» гэсний жинхэнэ учир.
+     *
+     * Одоо ортофотог олоод түүний ДАРАА тавина: ус зурган дээр урсах ба
+     * вектор давхаргууд (барилга, зам, муж, харуул) усны дээр хэвээр үлдэнэ.
+     */
+    const ortho = view.map.findLayerById(IMAGERY_ID);
+    const at = ortho ? view.map.layers.indexOf(ortho) + 1 : 0;
+    view.map.add(layer, at);
     return () => {
       if (view.map) view.map.remove(layer);
       layer.destroy();

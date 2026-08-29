@@ -56,6 +56,7 @@ import {
 import {
   depthRisk, flowDeg, flowDir, loadFloodData, type FloodData,
 } from '@/lib/uyr';
+import { dirName, dispersionOf, loadWind, nowHour } from '@/lib/salhi';
 import { Overlay, type Pick } from './ersdel/Overlay';
 import o from './gazarOv.module.css';
 import e from './ersdel.module.css';
@@ -80,12 +81,29 @@ const INITIAL_IDS: string[] = [];
  *
  * ⚠️ Харагдац одоо хоосон эхэлдэг тул «идэвхтэй давхаргаар» гэсэн дүрэм
  * дангаараа бол шинжилгээ ҮРГЭЛЖ хоосон хариу өгнө. Тиймээс: идэвхтэй давхарга
- * БАЙВАЛ түүгээр, эс бөгөөс аппын стандарт эхлэлийн багцаар (барилга, зам,
- * явган зам, дугуйн зам, гүүр, ногоон, мод, тоглоом) тооцно. Аль замаар
- * тооцсоныг үр дүнгийн самбарт ИЛ бичнэ — хэрэглэгч тоо хаанаас гарсныг мэдэх
- * ёстой.
+ * БАЙВАЛ түүгээр, эс бөгөөс энэ багцаар тооцно. Аль замаар тооцсоныг үр дүнгийн
+ * самбарт ИЛ бичнэ — хэрэглэгч тоо хаанаас гарсныг мэдэх ёстой.
+ *
+ * ⚠️ 2026-08-29: ИНЖЕНЕРИЙН СҮЛЖЭЭ нэмэгдэв (хүсэлт: «барилга, дэд бүтэц, зам
+ * зэрэг өртөх зүйлс»). Урьд нь `INITIAL_MAP_LAYERS` буюу зургийн эхлэлийн
+ * багц л ордог байсан — тэнд гадаргуун объект (барилга, зам, ногоон) л байсан
+ * тул үер ГАЗАР ДООРХ шугам сүлжээг үл хөндсөн мэт харагдаж, хохирлын дүн
+ * бодитоос дутуу гардаг байв.
+ *
+ * ⚠️ Эдгээр нь бүгд ШУГАМАН давхарга тул `classOf` нь `pipe` (92,000 ₮/м)
+ * ангилалд оруулна — үнэлгээ нь УРТААР бодогдоно (`DamageRow.length`).
  */
-const ASSESS_IDS: string[] = INITIAL_MAP_LAYERS;
+const ASSESS_IDS: string[] = [
+  ...INITIAL_MAP_LAYERS,
+  // Дулаан хангамж
+  'et:7', 'et:10', 'et:9', 'et:11', 'et:8',
+  // Цэвэр ус
+  'et:4', 'et:23',
+  // Бохир ус, хөрсний ус
+  'et:17', 'et:16', 'et:3',
+  // Цахилгаан
+  'et:124', 'et:125', 'et:126', 'et:127',
+];
 
 /** Хугацааны тэнхлэгийн богино шошго — «08-24 18:00» */
 const axisLabel = (t: number): string => {
@@ -222,6 +240,13 @@ type Result = {
   fallback: boolean;
 };
 
+/**
+ * Ачаалж байх үеийн ТОГТМОЛ хоосон массив — компонентын гадна, ганц удаа.
+ * ⚠️ Дотор нь `[]` гэж бичвэл рендер бүрт шинэ лавлагаа болж, доорх бүх
+ * `useMemo` гинж дэмий дахин ажиллана.
+ */
+const EMPTY_STATIONS: Station[] = [];
+
 export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const side = useSideResize('ersdel');
   const { view, ortho, setOrtho } = useMap();
@@ -305,10 +330,56 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
   sliceRef.current = slice;
 
   const q = useAsync(loadStations, []);
-  const stations: Station[] = q.state === 'ready' ? q.data : [];
+  /**
+   * ⚠️ `useMemo` ЗААВАЛ. Урьд нь `q.state === 'ready' ? q.data : []` гэж шууд
+   * бичдэг байсан — ачаалж байх үед `[]` ЛИТЕРАЛ нь рендер БҮРТ шинэ
+   * лавлагаатай болж, түүнээс хамаарсан бүх `useMemo`/`useCallback` (`live`,
+   * `airHub`, `onPick`) дахин бодогддог байв. Тогтмол хоосон массив нь тэр
+   * гинжийг таслана.
+   */
+  const stations: Station[] = useMemo(
+    () => (q.state === 'ready' ? q.data : EMPTY_STATIONS),
+    [q.state, q.data],
+  );
   const live = useMemo(() => buildLive(stations, now), [stations, now]);
   const water = live.filter((s) => s.kind === 'water');
   const air = live.filter((s) => s.kind === 'air');
+
+  /**
+   * САЛХИ — агаарын харуулуудын ТӨВ цэг дээрх Open-Meteo-гийн заалт.
+   *
+   * ⚠️ Харуул бүрд тусад нь татахгүй: Сэлбэ талбай ~2км-ийн дотор багтдаг тул
+   * 10м өндрийн салхи бүгдэд нь бараг ижил. Нэг дуудлага = API-д хамаагүй
+   * бага ачаалал (үнэгүй, түлхүүргүй тул өдрийн квоттой).
+   *
+   * ⚠️ ЭХ СУРВАЛЖ нь `stations` (татсан массив), `air`/`live` БИШ. `live` нь
+   * `now`-оос хамаарч МИНУТ ТУТАМ дахин бодогддог, `air` нь рендер бүрт шинэ
+   * `filter()` үр дүн — тэднээс хамаарвал `useAsync`-ийн deps рендер бүрт
+   * шинэчлэгдэж, Open-Meteo руу ТАСРАЛТГҮЙ хүсэлт явуулна (setState → рендер
+   * → дахин татах гэсэн давталт). Харуулын БАЙРШИЛ хугацаанаас хамаардаггүй
+   * тул `stations`-оос шууд бодох нь зөв бөгөөс хямд.
+   *
+   * ⚠️ deps нь МӨР (`hubKey`), объект БИШ: `useMemo` буцаасан объект нь
+   * `stations` солигдох бүрд шинэ лавлагаатай болно.
+   */
+  const airHub = useMemo(() => {
+    const pts = stations.filter((s) => s.kind === 'air');
+    if (!pts.length) return null;
+    const lat = pts.reduce((s2, x) => s2 + x.lat, 0) / pts.length;
+    const lon = pts.reduce((s2, x) => s2 + x.lon, 0) / pts.length;
+    return { lat, lon };
+  }, [stations]);
+  const hubKey = airHub ? `${airHub.lat.toFixed(3)},${airHub.lon.toFixed(3)}` : '';
+  const windQ = useAsync(
+    () => {
+      if (!hubKey) return Promise.resolve(null);
+      const [la, lo] = hubKey.split(',').map(Number);
+      return loadWind(la, lo);
+    },
+    [hubKey],
+  );
+  const wind = windQ.state === 'ready' ? windQ.data : null;
+  const windNow = wind ? nowHour(wind) : null;
 
   /** Сонгосон харуул — сонгоогүй бол горимд тохирох эхнийх */
   const current: StationLive | null =
@@ -354,6 +425,27 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
       const { ids, fallback } = activeIds();
       const rows = await damageOf(view, ids, extent, level, hazard);
       setResult({ hazard, level, bands, rows, layers: ids.length, fallback });
+      /**
+       * ⚠️ ӨРТСӨН ДАВХАРГЫГ ЗУРАГТ АСААНА (2026-08-29, хүсэлт).
+       *
+       * Улаан тодруулга нь `Overlay`-гийн ТУСДАА графикаар зурагддаг тул
+       * давхарга нь өөрөө унтраалттай байсан ч улаан контур гарч ирдэг —
+       * гэвч тэр үед хажууд нь өртөөгүй барилга/шугам ХАРАГДАХГҮЙ, улмаас
+       * «юунаас хэд нь өртөв» гэдэг харьцаа алга болно. Тиймээс өртсөн зүйл
+       * ОЛДСОН давхаргуудыг л асаана.
+       *
+       * ⚠️ Хэрэглэгчийн асаасан давхаргыг УНТРААХГҮЙ — зөвхөн НЭМНЭ.
+       */
+      const hit = rows.filter((r) => r.n > 0).map((r) => r.layerId);
+      if (hit.length) setVisible((prev) => [...new Set([...prev, ...hit])]);
+      /**
+       * ⚠️ ҮЕРИЙН шинжилгээ дуусмагц ус ӨӨРӨӨ УРСАЖ эхэлнэ (2026-08-29, хүсэлт).
+       * Урьд нь `playing` нь `false`-ээр эхэлдэг байсан тул хэрэглэгч «▶»
+       * товчийг олж дарах хүртэл зураг дээр ХӨЛДСӨН ганц агшин харагдаж,
+       * загварчлалын гол утга — усны ТАРХАЛТЫН ЯВЦ — нуугдаж байлаа.
+       * Агаарын хувилбарт цаг хугацааны цуваа байхгүй тул хамаарахгүй.
+       */
+      setPlaying(hazard === 'flood');
       // Үр дүн рүү зөөлөн ойртоно — муж дэлгэцээс хальж болзошгүй
       if (!view.destroyed && extent.extent) {
         view.goTo(extent.extent.clone().expand(1.15), { animate: true, duration: 900 }).catch(() => {});
@@ -364,7 +456,7 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
     } finally {
       setBusy(false);
     }
-  }, [view, hazard, level, stations, activeIds]);
+  }, [view, hazard, level, stations, activeIds, setVisible]);
 
   /* ══════════ Зурган дээрх мэдээлэл — «дарж юу вэ гэдгийг мэдэх» ══════════
    *
@@ -663,6 +755,67 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                           </span>
                         </p>
                       </div>
+                      {/**
+                        * ⚠️ САЛХИ нь ЖИНХЭНЭ өгөгдөл (Open-Meteo), харин дээрх
+                        * АЧИ/PM2.5 нь ЖИШЭЭ (харуулын давхаргад утгын талбар
+                        * байхгүй). Хоёрыг зэрэгцүүлэн үзүүлэх тул аль нь
+                        * жинхэнэ болохыг ЗААВАЛ тэмдэглэнэ — эс бөгөөс
+                        * хэрэглэгч бүхэл самбарыг жишээ (эсвэл бүгдийг
+                        * жинхэнэ) гэж эндүүрнэ.
+                        */}
+                      <div className={e.wind}>
+                        <div className={e.windHd}>
+                          <Icon name="radio" size={13} />
+                          <b>{tr('Салхи')}</b>
+                          <span className={e.windSrc}>
+                            {tr('Open-Meteo · жинхэнэ заалт')}
+                          </span>
+                        </div>
+                        {windQ.state === 'loading' ? (
+                          <Loading label={tr('Салхи татаж байна…')} />
+                        ) : windQ.state === 'error' || !windNow ? (
+                          <Note>{tr('Салхины заалт татагдсангүй.')}</Note>
+                        ) : (() => {
+                          const d = dispersionOf(windNow.speed);
+                          return (
+                            <>
+                              <div className={e.windNow}>
+                                {/* Сум нь салхи ХААШАА үлээхийг заана: чиглэл нь
+                                    «хаанаас» тул 180° эргүүлнэ. */}
+                                <span
+                                  className={e.windArrow}
+                                  style={{ transform: `rotate(${windNow.dirDeg + 180}deg)` }}
+                                  aria-hidden
+                                >
+                                  ↑
+                                </span>
+                                <span className={`${e.windVal} num`}>
+                                  {num(windNow.speed, 1)}<i>{tr('м/с')}</i>
+                                </span>
+                                <span className={e.windDir}>
+                                  {tr('{0}-аас', dirName(windNow.dirDeg))}
+                                </span>
+                              </div>
+                              <p className={e.windNote} style={{ color: d.tone }}>{d.label}</p>
+                              {/* 24 цагийн явц — өнөөдрийн урьдчилсан мэдээ */}
+                              <Trend
+                                unit={tr('м/с')}
+                                height={72}
+                                points={wind!.hours.map((h) => ({
+                                  label: `${String(new Date(h.t).getHours()).padStart(2, '0')}:00`,
+                                  value: h.speed,
+                                }))}
+                              />
+                              {wind!.cached ? (
+                                <p className={e.windSrc}>
+                                  {tr('Кэшнээс — сүлжээ татагдсангүй')}
+                                </p>
+                              ) : null}
+                            </>
+                          );
+                        })()}
+                      </div>
+
                       <div className={e.stList}>
                         {air.map((st) => (
                           <StationRow
@@ -732,11 +885,16 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                 {/* Сонгосон хувилбарын БОДИТ параметр — таамгийг ил гаргана */}
                 <p className={e.scenario}>{scenarioNote(hazard, level)}</p>
                 {hazard === 'flood' ? (
+                  /**
+                   * ⚠️ Эдгээр нь ХУВИЛБАРЫН лавлагаа (`FLOOD_LEVELS`), зурган
+                   * дээр урсаж буй ОБЕГ-ын CRF загварчлалын хэмжигдэхүүн БИШ.
+                   * Тэр хоёр нь ТУСДАА зүйл — доорх `Note` үүнийг ил хэлнэ.
+                   */
                   <Stats cols={3}>
+                    <Stat value={num(FLOOD_LEVELS[level].rain)} unit={tr('мм/ц')} label={tr('Хур тунадас')} accent />
                     <Stat value={num(FLOOD_LEVELS[level].period)} unit={tr('жил')} label={tr('Давтагдал')} />
                     <Stat value={num(FLOOD_LEVELS[level].peak)} unit={tr('м³/с')} label={tr('Оргил урсац')} />
                     <Stat value={num(FLOOD_LEVELS[level].depth, 1)} unit={tr('м')} label={tr('Дундаж гүн')} />
-                    <Stat value={num(FLOOD_LEVELS[level].rain)} unit={tr('мм')} label={tr('24ц хур')} />
                     <Stat value={num(FLOOD_LEVELS[level].reach)} unit={tr('м')} label={tr('Үерийн зурвас')} />
                     <Stat value={num(FLOOD_LEVELS[level].lead)} unit={tr('цаг')} label={tr('Сэрэмжлүүлэх')} />
                   </Stats>
@@ -1123,12 +1281,18 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                         <Stat value={num(result.layers)} unit={tr('давхарга')} label={tr('Шинжилсэн')} />
                       )}
                     </Stats>
-                    <div className={e.costBox}>
-                      <span className={e.costLabel}>
-                        {result.hazard === 'air' ? tr('Эрүүл мэндийн зардлын таамаг') : tr('Сэргээн засварлалтын таамаг')}
-                      </span>
-                      <span className={`${e.costVal} num`}>{mntAbbr(sum.cost)}</span>
-                    </div>
+                    {/**
+                      * ⚠️ 2026-08-29: ҮЕРИЙН «Сэргээн засварлалтын таамаг»
+                      * ХАСАГДСАН (хүсэлт). Агаарын хувилбарын «Эрүүл мэндийн
+                      * зардлын таамаг» нь ҮЛДЭНЭ — тэр нь өртсөн ХҮНИЙ тоон
+                      * дээр тогтдог тул тусдаа утгатай үзүүлэлт.
+                      */}
+                    {result.hazard === 'air' && (
+                      <div className={e.costBox}>
+                        <span className={e.costLabel}>{tr('Эрүүл мэндийн зардлын таамаг')}</span>
+                        <span className={`${e.costVal} num`}>{mntAbbr(sum.cost)}</span>
+                      </div>
+                    )}
                     {result.hazard === 'flood' && (
                       /* ⚠️ ХОЁР ӨӨР зүйл нэг зурган дээр байгааг ил хэлнэ:
                          хохирол нь СОНГОСОН ТҮВШНИЙ зурвасаар бодогдоно, харин

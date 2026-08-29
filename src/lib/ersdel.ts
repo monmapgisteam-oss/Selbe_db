@@ -6,7 +6,10 @@
  *
  *   1. ОДООГИЙН БАЙДАЛ   — харуулуудын сүүлийн заалт, 72 цагийн цуваа.
  *   2. ТААМАГЛАЛЫН ЗАГВАР — үер / агаарын бохирдлын ГУРВАН түвшний хувилбар.
- *      ⚠️ Түвшин 1 нь ХАМГИЙН ХҮНД (онц аюултай), 3 нь хамгийн хөнгөн.
+ *      ⚠️ 2026-08-29-нд ЭРГҮҮЛЭВ (хүсэлт): түвшин 1 нь хамгийн ХӨНГӨН
+ *      (анхааруулах), 3 нь ХАМГИЙН ХҮНД (онц аюултай). Зөвхөн шошго БИШ,
+ *      `FLOOD_LEVELS`, `AIR_LEVELS`, `SEVERITY` гурвуулангийн утгыг
+ *      солив — эс бөгөөс «Анхааруулах» нь 100 жилийн үерийг тооцох байв.
  *
  * ══════════════════════ ӨГӨГДЛИЙН ГАРАЛ — ИЛ ХЭЛНЭ ══════════════════════
  *
@@ -530,9 +533,9 @@ export const HAZARDS: { key: HazardKey; title: string; icon: string; desc: strin
 
 /** Түвшний нэр — ⚠️ 1 нь ХАМГИЙН ХҮНД */
 export const LEVELS: { key: LevelKey; title: string; short: string; color: string }[] = [
-  { key: 1, title: tr('1-р түвшин — Онц аюултай'), short: tr('1-р түвшин'), color: 'var(--bad)' },
+  { key: 1, title: tr('1-р түвшин — Анхааруулах'), short: tr('1-р түвшин'), color: 'var(--data)' },
   { key: 2, title: tr('2-р түвшин — Аюултай'), short: tr('2-р түвшин'), color: 'var(--warn)' },
-  { key: 3, title: tr('3-р түвшин — Анхааруулах'), short: tr('3-р түвшин'), color: 'var(--data)' },
+  { key: 3, title: tr('3-р түвшин — Онц аюултай'), short: tr('3-р түвшин'), color: 'var(--bad)' },
 ];
 
 /**
@@ -568,9 +571,14 @@ export type FloodParams = {
 };
 
 export const FLOOD_LEVELS: Record<LevelKey, FloodParams> = {
-  1: { period: 100, rain: 72, peak: 96, rise: 2.6, reach: 135, depth: 1.8, lead: 3 },
-  2: { period: 20, rain: 48, peak: 52, rise: 1.6, reach: 85, depth: 1.1, lead: 6 },
-  3: { period: 5, rain: 31, peak: 26, rise: 0.9, reach: 45, depth: 0.6, lead: 12 },
+  /**
+   * ⚠️ 2026-08-29: `rain` нь 1 ЦАГИЙН хур тунадас (мм/ц) — захиалагчийн өгсөн
+   * 25 / 50 / 100. Үерийн тархалт нь одоо ЭНДЭЭС `uyrCalc.ts`-ээр бодогдоно;
+   * `reach`/`depth` нь зөвхөн ЛАВЛАГАА (хуучин буфер аргын утга) болж үлдэв.
+   */
+  1: { period: 5, rain: 25, peak: 26, rise: 0.9, reach: 45, depth: 0.6, lead: 12 },
+  2: { period: 20, rain: 50, peak: 52, rise: 1.6, reach: 85, depth: 1.1, lead: 6 },
+  3: { period: 100, rain: 100, peak: 96, rise: 2.6, reach: 135, depth: 1.8, lead: 3 },
 };
 
 export type AirParams = {
@@ -595,15 +603,15 @@ export type AirParams = {
 /**
  * АГААРЫН БОХИРДЛЫН ГУРВАН ХУВИЛБАР — халаалтын улирлын инверсийн үзэгдэл.
  *
- * ⚠️ Түвшин 1 нь Улаанбаатарын өвлийн ХАМГИЙН хүнд өдрүүдийн бодит хэмжээнд
+ * ⚠️ Түвшин 3 нь Улаанбаатарын өвлийн ХАМГИЙН хүнд өдрүүдийн бодит хэмжээнд
  * (PM2.5 300+ µg/м³, АЧИ 350+) тохирно. Инверсийн давхарга нам болох тусам
  * бохирдол хуримтлагдана — тиймээс түвшин 1-д `inversion` хамгийн БАГА.
  */
 export const AIR_LEVELS: Record<LevelKey, AirParams> = {
-  /* ⚠️ aqi нь aqiOfPm25(320)-тай нийцнэ — EPA 2024 засварын дараа 371 → 489 */
-  1: { pm25: 320, aqi: 489, inversion: 90, wind: 0.6, windDir: 315, plume: 2400, spread: 900, hours: 14 },
+  1: { pm25: 85, aqi: 166, inversion: 320, wind: 2.6, windDir: 300, plume: 1000, spread: 420, hours: 6 },
   2: { pm25: 165, aqi: 215, inversion: 180, wind: 1.4, windDir: 315, plume: 1600, spread: 620, hours: 9 },
-  3: { pm25: 85, aqi: 166, inversion: 320, wind: 2.6, windDir: 300, plume: 1000, spread: 420, hours: 6 },
+  /* ⚠️ aqi нь aqiOfPm25(320)-тай нийцнэ — EPA 2024 засварын дараа 371 → 489 */
+  3: { pm25: 320, aqi: 489, inversion: 90, wind: 0.6, windDir: 315, plume: 2400, spread: 900, hours: 14 },
 };
 
 /* ══════════════════════ Хохирлын үнэлгээ ══════════════════════ */
@@ -681,8 +689,8 @@ export const classOf = (id: string, geom: 'area' | 'line' | 'point'): DamageClas
  */
 export const FLOOD_SKIP_IDS = new Set(['sb:16', 'usan-san', 'd3:usan_san']);
 
-/** Түвшний эрчим — хохирлын коэффициент (1-р түвшин хамгийн хүнд) */
-export const SEVERITY: Record<LevelKey, number> = { 1: 1, 2: 0.55, 3: 0.25 };
+/** Түвшний эрчим — хохирлын коэффициент (3-р түвшин хамгийн хүнд) */
+export const SEVERITY: Record<LevelKey, number> = { 1: 0.25, 2: 0.55, 3: 1 };
 
 /**
  * АГААРЫН бохирдол нь БАРИЛГЫГ эвддэггүй — хохирол нь ЭРҮҮЛ МЭНДИЙН.
