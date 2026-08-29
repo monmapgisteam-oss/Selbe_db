@@ -17,11 +17,11 @@ import {
 } from '@/lib/permissions';
 import { useAuth } from './AuthGate';
 import { Icon } from './Icon';
-import { CAPS, capsOf, subscribeCaps, toggleCap, type CapKey } from '@/lib/caps';
+import { CAPS, capsOf, capViewsOf, setCaps, subscribeCaps, toggleCap, type CapKey } from '@/lib/caps';
 import { GuitsetgelAcl } from '@/modules/GuitsetgelAcl';
 import { STAGE_LABEL } from '@/lib/hyanaltGroup';
 import {
-  removeAssign, stageOfUser, subscribeAcl,
+  purgeAssign, regrantFlowAccess, stageOfUser, subscribeAcl,
 } from '@/lib/guitsetgelAcl';
 import s from './userAdmin.module.css';
 
@@ -80,9 +80,6 @@ const capHint = (k: CapKey): string => {
 const viewsEq = (a: ViewKey[] | 'all', b: ViewKey[] | 'all'): boolean =>
   ALL_KEYS.every((k) => hasView(a, k) === hasView(b, k));
 
-const countOn = (views: ViewKey[] | 'all'): number =>
-  views === 'all' ? ALL_KEYS.length : ALL_KEYS.filter((k) => views.includes(k)).length;
-
 /**
  * НЭГ хэрэглэгчийн ХАДГАЛААГҮЙ өөрчлөлт (ноорог).
  *
@@ -111,6 +108,13 @@ type Draft = {
    * байв. Гараар хөндсөн бол админы шийдвэр — хүндэтгэнэ.
    */
   touchedGuits?: boolean;
+  /**
+   * Админ үүргийн preset-ийг ГАРААР дарсан тэмдэг (2026-08-29).
+   * ⚠️ Хадгалах үед хөндөөгүй үүргийг ноорогоос биш, хадгалагдсан утгаас нь
+   * дахин уншина — ноорог үүссэний дараа урсгалын хуудаснаас томилогдоход
+   * `grantFlowAccess`-ийн өгсөн үүргийг хуучин snapshot дарж бичдэг байв.
+   */
+  touchedRole?: boolean;
 };
 
 /**
@@ -163,7 +167,9 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
      * poll хүлээлгүй харагдана. Уншилт унавал offline тэмдэг гарна (урьд нь
      * ямар ч дохиогүй, хуучин cache-ийг үнэн мэт харуулдаг байв).
      */
-    void initRemote(false).then((ok) => { setRemoteOk(ok); setUsers(listUsers()); });
+    // trusted=true — панел зөвхөн кодын хатуу super-т нээгддэг (Root.isSuper):
+    // өөрийнх нь dirty-set дахин илгээгдэж, давхарлагдана
+    void initRemote(false, true).then((ok) => { setRemoteOk(ok); setUsers(listUsers()); });
   }, [open]);
 
   /** F5/таб хаахад хадгалаагүй ноорог чимээгүй алдагдахаас сэргийлнэ */
@@ -302,22 +308,43 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     setSaved(null);
   };
 
-  const applyRole = (u: UserPerm, role: Role) => {
+  /**
+   * Урсгалын шатанд томилогдсон хүний «Гүйцэтгэлийн хяналт»-ыг унтраах нь
+   * түүнийг ажилгүй болгоно — санамсаргүй даралтаас асууж хамгаална.
+   * ⚠️ 2026-08-29: урьд нь зөвхөн тухайн унтраалга асуудаг байсан тул preset
+   *    ба «Бүгдийг унтраах» асуулгагүй хасаад, хадгалахад `saveAll`-ийн хамгаалалт
+   *    чимээгүй буцааж нэмдэг — админы харсан ноорог хадгалагдсанаас зөрдөг байв.
+   *    Одоо гурвуулаа асууна; зөвшөөрвөл `touchedGuits` (админы шийдвэр).
+   */
+  const dropsGuits = (u: UserPerm, from: ViewKey[] | 'all', to: ViewKey[] | 'all'): boolean =>
+    hasView(from, 'guitsetgel') && !hasView(to, 'guitsetgel') && !!stageOfUser(u.username);
+  const confirmDropGuits = (): boolean =>
+    window.confirm(tr('Энэ хэрэглэгч урсгалын шатанд томилогдсон. «Гүйцэтгэлийн хяналт»-ыг унтраавал ажлаа хянаж чадахгүй болно. Унтраах уу?'));
+
+  /** @param confirmed бөөнөөр засахад нэг удаа асуусан бол дахин асуухгүй */
+  const applyRole = (u: UserPerm, role: Role, confirmed = false) => {
     const a = ROLE_ACCESS[role];
-    putDraft(u, { ...draftOf(u), clear: false, views: a.views, docs: a.docs, role });
+    const d = draftOf(u);
+    const drop = dropsGuits(u, d.views, a.views);
+    if (drop && !confirmed && !confirmDropGuits()) return;
+    putDraft(u, {
+      ...d, clear: false, views: a.views, docs: a.docs, role, touchedRole: true,
+      ...(drop ? { touchedGuits: true } : null),
+    });
   };
   const flipView = (u: UserPerm, k: ViewKey) => {
     const d = draftOf(u);
-    // Урсгалын шатанд томилогдсон хүний «Гүйцэтгэлийн хяналт»-ыг унтраах нь
-    // түүнийг ажилгүй болгоно — санамсаргүй даралтаас асууж хамгаална.
-    if (k === 'guitsetgel' && hasView(d.views, k) && stageOfUser(u.username)
-      && !window.confirm(tr('Энэ хэрэглэгч урсгалын шатанд томилогдсон. «Гүйцэтгэлийн хяналт»-ыг унтраавал ажлаа хянаж чадахгүй болно. Унтраах уу?'))) return;
+    const next = toggled(d.views, k);
+    if (dropsGuits(u, d.views, next) && !confirmDropGuits()) return;
     const touched = k === 'guitsetgel' ? { touchedGuits: true } : null;
-    putDraft(u, { ...d, ...touched, clear: false, views: toggled(d.views, k) });
+    putDraft(u, { ...d, ...touched, clear: false, views: next });
   };
   const setAllViews = (u: UserPerm, on: boolean) => {
     const d = draftOf(u);
-    putDraft(u, { ...d, clear: false, views: on ? [...ALL_KEYS] : [], docs: on });
+    const next: ViewKey[] = on ? [...ALL_KEYS] : [];
+    const drop = dropsGuits(u, d.views, next);
+    if (drop && !confirmDropGuits()) return;
+    putDraft(u, { ...d, clear: false, views: next, docs: on, ...(drop ? { touchedGuits: true } : null) });
   };
   const flipDocs = (u: UserPerm) => {
     const d = draftOf(u);
@@ -335,6 +362,9 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
    * дараагийн синхрончлолоор чимээгүй арилах тул.
    */
   const flipCap = (u: UserPerm, c: CapKey) => {
+    // ⚠️ Хадгалаагүй ШИНЭ аккаунтад бичихгүй — ноорог цуцлагдвал remote дээр
+    //    өнчин `__cap__:` мөр үлдэж, тэр нэрийг дараа нэмэхэд эрх нь өөрөө асна.
+    if (draftOf(u).isNew) return;
     const on = capsOf(u.username).includes(c);
     void toggleCap(u.username, c, !on).then((r) => {
       setCapErr((prev) => {
@@ -361,7 +391,13 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
    * шүүгдэж нуугдсан сонголт чимээгүй алгасагдаж, зурвасын «N сонгосон» тоо
    * бодит үйлдэлтэй зөрдөг байв. */
   const selRows = allRows.filter((u) => sel.has(u.username.toLowerCase()));
-  const bulkRole = (role: Role) => { selRows.forEach((u) => applyRole(u, role)); setSel(new Set()); };
+  const bulkRole = (role: Role) => {
+    // Томилогдсон хүмүүсийн «Гүйцэтгэлийн хяналт» хасагдах бол НЭГ удаа асууна
+    const hit = selRows.filter((u) => dropsGuits(u, draftOf(u).views, ROLE_ACCESS[role].views));
+    if (hit.length && !window.confirm(tr('{0} — урсгалын шатанд томилогдсон. «Гүйцэтгэлийн хяналт» нь хасагдвал ажлаа хянаж чадахгүй болно. Үргэлжлүүлэх үү?', hit.map((u) => u.username).join(', ')))) return;
+    selRows.forEach((u) => applyRole(u, role, true));
+    setSel(new Set());
+  };
   const bulkRemove = () => {
     selRows
       .filter((u) => u.username.toLowerCase() !== myName && roleForUser(u.username) !== 'super')
@@ -407,15 +443,33 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
         // ⚠️ revoke:false — аккаунт бүхэлдээ устгагдах тул эрх буцаалтын
         //    бичилт tombstone-той уралдах ёсгүй.
         if (d.remove) {
-          const cur = stageOfUser(uname);
-          if (cur) removeAssign(uname, cur, false);
+          /*
+           * ⚠️ 2026-08-29: урсгалын томилгоо ба нэмэлт эрхийг remote-оос ХАМТ
+           * арилгаж, үр дүнг нь ХҮЛЭЭНЭ. Урьд нь `removeAssign` fire-and-forget,
+           * `__cap__:` мөр огт хөндөгддөггүй тул «Буцаах»/дахин нэмэхэд аккаунт
+           * хуучин шат, багц, эрхтэйгээ шууд эргэж ирдэг байв.
+           */
+          const flowOk = await purgeAssign(uname);
+          const capOk = await setCaps(uname, []);
           const r = await removeUser(uname);
-          if (r) ok += 1; else { fail += 1; failed.push(uname); }
+          if (r && flowOk && capOk) ok += 1; else { fail += 1; failed.push(uname); }
           continue;
         }
         if (d.clear) {
+          let bad = false;
+          if (!roleForUser(uname)) {
+            // Суурьгүй (панелаас нэмсэн) аккаунт: сэргээх = устгах → бүгдийг цэвэрлэнэ
+            if (!(await purgeAssign(uname))) bad = true;
+            if (!(await setCaps(uname, []))) bad = true;
+          }
           const r = await clearOverride(uname);
-          if (r) ok += 1; else { fail += 1; failed.push(uname); }
+          /*
+           * ⚠️ Хатуу тохиргоотой, урсгалд томилогдсон хүн: суурь эрхэд нь
+           * `guitsetgel` байхгүй бол (tolovlolt) хуудасгүй үлдэнэ — томилгоо
+           * хэвээр тул урсгалын эрхийг нь дахин дагуулна.
+           */
+          if (r && stageOfUser(uname) && !(await regrantFlowAccess(uname))) bad = true;
+          if (r && !bad) ok += 1; else { fail += 1; failed.push(uname); }
           continue;
         }
 
@@ -434,7 +488,10 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
           && stageOfUser(uname) && u && hasView(u.views, 'guitsetgel')) {
           views = [...views, 'guitsetgel'];
         }
-        const r = await setUser(uname, { views, docs: d.docs }, d.role);
+        // ⚠️ Хөндөөгүй үүргийг ХАДГАЛАГДСАН утгаас — ноорог үүссэний дараа
+        //    урсгалын хуудаснаас олгогдсон үүргийг snapshot дарж бичихгүй.
+        const role = d.touchedRole || !u ? d.role : u.role;
+        const r = await setUser(uname, { views, docs: d.docs }, role);
         /* ⚠️ НЭМЭЛТ ЭРХ энд БИЧИГДЭХГҮЙ — `flipCap` дарах агшинд шууд
            хадгалагддаг (`__cap__:` тусдаа мөр). */
         if (r) ok += 1; else { fail += 1; failed.push(uname); }
@@ -486,6 +543,12 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     }
     if (removed.includes(key)) {
       setAddErr(tr('«{0}» устгагдсан — доорх «Буцаах» товчоор сэргээнэ үү.', n));
+      return;
+    }
+    if (stageOfUser(key)) {
+      // ⚠️ Устгагдсан аккаунтын өнчин томилгоо remote дээр үлдсэн — шинэ аккаунт
+      //    үүсмэгц хуучин шат, багц нь автоматаар наалдана. Эхлээд цэвэрлүүлнэ.
+      setAddErr(tr('«{0}» нэрээр хуучин урсгалын томилгоо үлдсэн байна — «Гүйцэтгэлийн урсгалын эрх» хуудсанд ✕ дарж арилгаад дахин нэмнэ үү.', n));
       return;
     }
     const a = ROLE_ACCESS.tolovlolt;
@@ -632,7 +695,10 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
                 арилгадаг байлаа. */
             const st = stageOfUser(u.username);
             const expanded = openRows.has(key);
-            const on = countOn(d.views);
+            /* Нэмэлт эрхийн гэр харагдац runtime дээр нээлттэй — тоолуур ба
+               унтраалга үүнийг ч тусгана (доорх `implied`) */
+            const capViews = capViewsOf(u.username);
+            const on = ALL_KEYS.filter((k) => hasView(d.views, k) || capViews.includes(k)).length;
             return (
             <div key={key} className={`${s.user} ${dirty ? s.userDirty : ''} ${d.remove ? s.userRemoving : ''}`}>
               <div className={s.userHead}>
@@ -704,7 +770,9 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
                       {r.label}
                     </button>
                   ))}
-                  {(u.overridden || dirty) && !d.remove && !d.isNew && (
+                  {/* ⚠️ Зөвхөн хатуу суурьтай хэрэглэгчид — панелаас нэмсэн аккаунтад
+                      «сэргээх» = чимээгүй устгах байв; тэдэнд «Устгах» л байна */}
+                  {roleForUser(u.username) && (u.overridden || dirty) && !d.remove && !d.isNew && (
                     <button
                       type="button"
                       className={s.reset}
@@ -750,7 +818,13 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
                   </div>
                   <div className={s.topicList}>
                     {VIEWS.map((v) => {
-                      const vOn = hasView(d.views, v.key);
+                      const base = hasView(d.views, v.key);
+                      /* ⚠️ Нэмэлт эрхийн гэр харагдац (CAP_HOST_VIEW) runtime дээр
+                         НЭЭЛТТЭЙ — унтраалга үүнийг ч харуулна, эс бөгөөс админ
+                         «унтраасан» атлаа хэрэглэгч харсаар байдаг байв. Дарвал
+                         суурь жагсаалтад ил орно (эрх хасагдсан ч үлдэнэ). */
+                      const implied = !base && capViews.includes(v.key);
+                      const vOn = base || implied;
                       return (
                         <div key={v.key} className={s.topicRow}>
                           <span className={s.topicName}>
@@ -762,7 +836,8 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
                             role="switch"
                             aria-checked={vOn}
                             aria-label={v.title}
-                            className={`${s.sw} ${vOn ? s.swOn : ''}`}
+                            title={implied ? tr('Нэмэлт эрхээр нээлттэй — хаахын тулд тухайн эрхийг унтраана') : undefined}
+                            className={`${s.sw} ${vOn ? s.swOn : ''} ${implied ? s.swImplied : ''}`}
                             onClick={() => flipView(u, v.key)}
                           >
                             <span className={s.swKnob} />
@@ -799,6 +874,9 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
                     <div className={s.capNote}>
                       {tr('Нэмэлт эрх олгоход түүний харагдац (Гүйцэтгэл · Зөвшөөрөл · Санхүүжилт · Хуваарь) тухайн хүнд автоматаар нээгдэнэ.')}
                     </div>
+                    {d.isNew && (
+                      <div className={s.capNote}>{tr('Нэмэлт эрхийг эхлээд хадгалсны дараа олгоно.')}</div>
+                    )}
                     {CAPS.map((c) => (
                       <div key={c.key} className={s.topicRow}>
                         <span className={s.topicName} title={capHint(c.key)}>
@@ -810,6 +888,8 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
                           role="switch"
                           aria-checked={capsOf(u.username).includes(c.key)}
                           aria-label={capLabel(c.key)}
+                          disabled={!!d.isNew}
+                          title={d.isNew ? tr('Эхлээд хадгална уу — нэмэлт эрх хадгалагдсан аккаунтад олгогдоно') : undefined}
                           className={`${s.sw} ${capsOf(u.username).includes(c.key) ? s.swOn : ''}`}
                           onClick={() => flipCap(u, c.key)}
                         >

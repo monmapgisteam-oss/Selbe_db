@@ -9,6 +9,15 @@
  * `permissions`-д үүрэг ба `guitsetgel` харагдацыг ДАГУУЛЖ өгнө (доорх
  * `grantFlowAccess`), хасахад БУЦААЖ авна (`revokeFlowAccess`).
  *
+ * ⚠️ ШАТЫН ГАНЦ ЭХ СУРВАЛЖ = ТОМИЛГОО (2026-08-29, `resolveFlowStage`).
+ * Урьд нь «Гүйцэтгэлийн хяналт» хуудас шатыг ҮҮРГЭЭС (`ROLE_STAGE[role]`)
+ * гаргадаг байв. Харин томилохдоо урсгалын бус үүрэгтэй (beginner/tolovlolt —
+ * панелаас нэмсэн аккаунт бүр `tolovlolt`) хүний үүргийг САНААТАЙ хэвээр
+ * үлдээдэг тул `selbe_et`-ийг «Гүйцэтгэгч компани · бүх багц» гэж томилсон ч
+ * хуудас нь «Хяналтын инженер» шат руу унаж, «нэг ч багц хуваарилагдаагүй»
+ * гэдэг байлаа. Одоо үүрэг нь ЗӨВХӨН хатуу super-ийг ялгана; шат ба багц нь
+ * томилгооноос гарна.
+ *
  * ⚠️ АККАУНТЫН ТООНД ХЯЗГААР БАЙХГҮЙ. Багц бүрд өөр гүйцэтгэгч, өөр инженер
  * байх тул урьдчилан таамагласан дээд тоо нь заавал буруу гарна.
  *
@@ -18,24 +27,25 @@
  * огт харагдахгүй — багцын хязгаарлалт хаана ч биелдэггүй, Ерөнхий менежерийн
  * онцгой эрх (мөр нэмэх г.м.) хэзээ ч асдаггүй байв. Одоо `permissions.initRemote`
  * нэвтрэх үед + 5 мин тутам татаж `_syncRemoteAssigns`-аар энд буулгана.
+ *
+ * ⚠️ НЭГ ХЭРЭГЛЭГЧИЙН БИЧИЛТҮҮД ДАРААЛНА (2026-08-29, `enqueue`): хасаад шууд
+ * дахин нэмэхэд хойшилсон `revokeFlowAccess` нь шинэ `grantFlowAccess`-ийн
+ * ДАРАА буулгаж, томилогдсон хүнийг харагдацгүй/үүрэггүй орхидог байв. Одоо
+ * нэг аккаунтын remove→revoke→add→grant яг энэ дарааллаар явна.
  */
 
 import { STAGE_ORDER, type Stage } from './hyanalt';
-import { ROLE_ACCESS, roleForUser, type Role, type ViewKey } from './services';
+import {
+  ROLE_ACCESS, ROLE_STAGE, STAGE_ROLE, roleForUser, type Role, type ViewKey,
+} from './services';
 
 /**
- * ШАТ → ПОРТАЛЫН ҮҮРЭГ.
- *
- * ⚠️ Шатанд томилохдоо үүргийг нь БАС өгнө. Эс бөгөөс аккаунт нь урсгалд
- *    жагссан атлаа «Гүйцэтгэлийн хяналт» харагдацыг огт нээж чадахгүй —
- *    админ «томилчихлоо» гэж бодох боловч тэр хүн нэвтрээд юу ч олохгүй.
+ * ⚠️ ШАТ → ҮҮРЭГ хүснэгт нь `services.ts`-д (`STAGE_ROLE`) — урьд нь энд давхар
+ *    бичигдэж, `ROLE_STAGE`-тэй гараар урвуулж хөтөлдөг байв (зөрвөл «томилогдсон
+ *    атлаа зөвхөн харах» чимээгүй алдаа). Шатанд томилохдоо үүргийг нь БАС өгнө —
+ *    эс бөгөөс аккаунт нь урсгалд жагссан атлаа «Гүйцэтгэлийн хяналт» харагдацыг
+ *    огт нээж чадахгүй.
  */
-export const STAGE_ROLE: Record<Stage, Role> = {
-  company: 'guitsetgegch',
-  engineer: 'injener',
-  manager: 'menejer',
-  director: 'eronhii',
-};
 
 /** Урсгалын дөрвөн үүрэг — «энэ хүний ажил зөвхөн урсгал» гэж таних олонлог */
 const FLOW_ROLES = new Set<Role>(Object.values(STAGE_ROLE));
@@ -69,12 +79,14 @@ function load(): Assign[] {
   return cache;
 }
 
+function notify(): void {
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(EVENT));
+}
+
 function save(list: Assign[]): void {
   cache = list;
-  if (typeof window !== 'undefined') {
-    localStorage.setItem(KEY, JSON.stringify(list));
-    window.dispatchEvent(new Event(EVENT));
-  }
+  if (typeof window !== 'undefined') localStorage.setItem(KEY, JSON.stringify(list));
+  notify();
 }
 
 const STAGES = new Set<string>(STAGE_ORDER);
@@ -82,30 +94,28 @@ const STAGES = new Set<string>(STAGE_ORDER);
 /**
  * REMOTE-ООС ИРСЭН томилгоог cache-д буулгана — `permissions.initRemote` дуудна.
  *
- * ⚠️ BOOTSTRAP: remote ХООСОН атлаа энэ browser-т (хуучин localStorage-only
- * хувилбарын) томилгоо байгаа бол, ЗӨВХӨН super admin (`canSeed`) дээр локал
- * жагсаалтыг remote руу түлхэж өгнө — шинэчлэлтийн дараа админы хийсэн
- * тохиргоо алдагдахгүй. Энгийн хэрэглэгчийн хуучирсан localStorage remote-ыг
- * дарж чадахгүй.
+ * ⚠️ REMOTE = ЭЦСИЙН ҮНЭН. 2026-08-27-ны «bootstrap seed» (remote хоосон бол
+ * super-ийн localStorage-оос түлхэх) салаа 2026-08-29-нд ХАСАГДСАН: шилжилт
+ * дууссан (хүснэгтэд `__flow__:` мөрүүд бий), харин тэр салаа нь долоон
+ * super-ийн АЛЬ Ч хуучирсан browser-оос устгагдсан томилгоог амилуулж, мөн
+ * `canSeed` утгаасаа хамаарч нэг сешнд хоёр өөр үр дүн өгдөг байв.
+ *
+ * ⚠️ НЭГ ХЭРЭГЛЭГЧ = НЭГ МӨР: давхар мөр ирвэл СҮҮЛИЙНХ (их OBJECTID) ялна —
+ * `permsRemote.upsertByKey`-ийн бичилтийн дүрэмтэй ижил (урьд нь эхнийх нь
+ * уншигдаж, бичилттэй зөрдөг байв).
  */
-export function _syncRemoteAssigns(rows: { user: string; stage: string; bagts: string[] }[], canSeed: boolean): void {
-  const valid: Assign[] = rows
-    .filter((r) => r.user && STAGES.has(r.stage))
-    .map((r) => ({ user: r.user.toLowerCase(), stage: r.stage as Stage, bagts: r.bagts.filter((b) => typeof b === 'string') }));
-
-  if (valid.length === 0 && canSeed) {
-    const local = load();
-    if (local.length > 0) {
-      void (async () => {
-        try {
-          const m = await import('./permsRemote');
-          for (const a of local) await m.flowUpsert(a.user, a.stage, a.bagts);
-        } catch { /* дараагийн initRemote дахин оролдоно */ }
-      })();
-      return; // локал хэвээр — дараагийн таталтаар remote-оос эргэж ирнэ
-    }
+export function _syncRemoteAssigns(rows: { user: string; stage: string; bagts: string[] }[]): void {
+  const byUser = new Map<string, Assign>();
+  for (const r of rows) {
+    if (!r.user || !STAGES.has(r.stage)) continue;
+    const user = r.user.toLowerCase();
+    byUser.set(user, {
+      user,
+      stage: r.stage as Stage,
+      bagts: (Array.isArray(r.bagts) ? r.bagts : []).filter((b) => typeof b === 'string'),
+    });
   }
-  save(valid);
+  save([...byUser.values()]);
 }
 
 export const listAssigns = (): Assign[] => load();
@@ -114,7 +124,44 @@ export const listAssigns = (): Assign[] => load();
 export const assignsOf = (stage: Stage): Assign[] =>
   load().filter((a) => a.stage === stage);
 
-/** Томилгоог remote руу бичих — унавал `false` (панел анхааруулга харуулна) */
+/* ══════════════ Remote бичилтийн дараалал ба үр дүн ══════════════ */
+
+/**
+ * ArcGIS бичилт нь СҮҮЛД унасан хэрэглэгчид (энэ сешн). Панел мөр бүрд тэмдэг
+ * тавина — урьд нь баганад нэг boolean байсан тул өөр мөрийн дараагийн амжилт
+ * өмнөх мөрийн алдааг чимээгүй арчдаг байв.
+ * ⚠️ Урсгалын мөрд `permissions`-ийн адил dirty-set/retry ХАРААХАН байхгүй —
+ *    унасан бичилт дараагийн `initRemote`-оор remote-оор дарагдана. Тэмдэг нь
+ *    ядаж админд «дахин хий» гэж хэлнэ.
+ */
+const failed = new Set<string>();
+
+function markResult(u: string, ok: boolean): void {
+  const before = failed.has(u);
+  if (ok) failed.delete(u); else failed.add(u);
+  if (before !== failed.has(u)) notify();
+}
+
+/** Remote бичилт нь унасан хэрэглэгчид — панелийн тэмдэг */
+export const flowFailedUsers = (): string[] => [...failed];
+
+/** Нэг хэрэглэгчийн remote үйлдлүүд ДАРААЛНА — remove/add/chip уралдахгүй */
+const chain = new Map<string, Promise<unknown>>();
+
+function enqueue<T>(u: string, fn: () => Promise<T>): Promise<T> {
+  const prev = chain.get(u) ?? Promise.resolve();
+  const p = prev.then(fn, fn);
+  const tail = p.then(() => undefined, () => undefined);
+  chain.set(u, tail);
+  void tail.then(() => { if (chain.get(u) === tail) chain.delete(u); });
+  return p;
+}
+
+/**
+ * Томилгоог remote руу бичих — унавал `false` (панел анхааруулга харуулна).
+ * ⚠️ Жагсаалтыг ГҮЙЦЭТГЭХ агшиндаа уншина: дараалалд хүлээж байх хооронд хэрэглэгч
+ *    хасагдсан/дахин нэмэгдсэн бол сүүлийн байдал нь бичигдэнэ.
+ */
 async function pushFlow(user: string): Promise<boolean> {
   try {
     const m = await import('./permsRemote');
@@ -131,16 +178,24 @@ async function pushFlow(user: string): Promise<boolean> {
  * ⚠️ Нэг аккаунт нэг шатанд ЗӨВХӨН НЭГ мөртэй — багц нь нэг мөрд жагсана.
  *    Хоёр мөр зөвшөөрвөл аль нь үнэн болох нь тодорхойгүй болно.
  *
+ * ⚠️ Хатуу super-ийг ТОМИЛОХГҮЙ: түүнд шат/багцын хязгаар хэзээ ч үйлчилдэггүй
+ *    (`resolveFlowStage`) тул томилгоо нь худал хязгаар харуулаад л дуусна.
+ *
  * @param grant `false` бол порталын эрхийг (`grantFlowAccess`) ЭНД олгохгүй —
  *   багц солиход эрх аль хэдийн олгогдсон тул дахин бичих нь дэмий.
- * @returns `ok` — локал бичилт; `sync` — remote бичилтийн амлалт (панел
- *   `false` үед «ArcGIS-т хадгалагдсангүй» анхааруулга харуулна).
+ * @returns `ok` — локал бичилт; `sync` — remote томилгооны амлалт (панел
+ *   `false` үед «ArcGIS-т хадгалагдсангүй» анхааруулга харуулна); `granted` —
+ *   эрх олголтын амлалт (тестэд хүлээнэ).
  */
 export function setAssign(
   user: string, stage: Stage, bagts: string[], grant = true,
-): { ok: boolean; error?: string; sync?: Promise<boolean> } {
+): { ok: boolean; error?: string; sync?: Promise<boolean>; granted?: Promise<boolean> } {
   const u = user.trim().toLowerCase();
   if (!u) return { ok: false, error: 'Аккаунтын нэрээ бичнэ үү' };
+  if (roleForUser(u) === 'super') {
+    return { ok: false, error: 'Админ (super) томилгооноос үл хамаарна — бүх шат, бүх багц нээлттэй' };
+  }
+  if (!bagts.length) return { ok: false, error: 'Багц сонгоно уу' };
 
   const list = load();
   const exists = list.some((a) => a.stage === stage && a.user === u);
@@ -157,12 +212,17 @@ export function setAssign(
 
   /*
    * ЭРХИЙГ ДАГУУЛЖ ӨГНӨ — томилгоо нь ажиллах чадвартай байх ёстой.
-   * Remote бичилт (`pushFlow`) нь эрх олголттой ЗЭРЭГ явна; хоёулаа өөр
-   * мөрөнд бичдэг тул уралдахгүй.
+   * Remote бичилт (`pushFlow`) ба эрх олголт нэг хэрэглэгчийн дараалалд
+   * (`enqueue`) явна — өмнөх хасалтын revoke-той уралдахгүй.
    */
-  const sync = pushFlow(u);
-  if (grant) void grantFlowAccess(u, stage);
-  return { ok: true, sync };
+  const run = enqueue(u, async () => {
+    const ok = await pushFlow(u);
+    const g = grant ? await grantFlowAccess(u, stage) : true;
+    return { ok, g };
+  });
+  const sync = run.then((r) => { markResult(u, r.ok); return r.ok; });
+  const granted = run.then((r) => r.g);
+  return { ok: true, sync, granted };
 }
 
 /**
@@ -180,17 +240,35 @@ export function setAssign(
 export function removeAssign(user: string, stage: Stage, revoke = true): { sync: Promise<boolean> } {
   const u = user.trim().toLowerCase();
   save(load().filter((a) => !(a.stage === stage && a.user === u)));
-  const sync = (async () => {
-    let ok = true;
-    try {
-      const m = await import('./permsRemote');
-      ok = await m.flowRemove(u);
-    } catch { ok = false; }
+  const sync = enqueue(u, async () => {
+    // Жагсаалтад байхгүй → flowRemove; хооронд нь дахин нэмэгдсэн бол upsert
+    const ok = await pushFlow(u);
     if (revoke) await revokeFlowAccess(u, stage).catch(() => {});
+    markResult(u, ok);
     return ok;
-  })();
+  });
   return { sync };
 }
+
+/**
+ * Аккаунтын томилгоог БҮХ шатнаас (локал + remote) арилгана — эрх буцаахгүй.
+ * ⚠️ UserAdmin-ы «Устгах»/«Сэргээх» зам: локалд томилгоо байхгүй байсан ч remote
+ *    дээрх өнчин `__flow__:` мөрийг устгана — эс бөгөөс аккаунтыг сэргээх/дахин
+ *    нэмэхэд хуучин шат, багц нь өөрөө буцаж наалддаг байв.
+ */
+export function purgeAssign(user: string): Promise<boolean> {
+  const u = user.trim().toLowerCase();
+  if (!u) return Promise.resolve(true);
+  save(load().filter((a) => a.user !== u));
+  return enqueue(u, async () => {
+    const ok = await pushFlow(u);
+    markResult(u, ok);
+    return ok;
+  });
+}
+
+const viewsEqual = (a: ViewKey[] | 'all', b: ViewKey[] | 'all'): boolean =>
+  a === 'all' || b === 'all' ? a === b : a.length === b.length && a.every((v) => b.includes(v));
 
 /**
  * Урсгалын эрхийг олгоно: үүргийг тавьж, харагдацыг тохируулна.
@@ -199,18 +277,23 @@ export function removeAssign(user: string, stage: Stage, revoke = true): { sync:
  * ЗӨВХӨН `ROLE_ACCESS`-ийн зааснаар (`guitsetgel` л). Урьд нь одоо байгаа
  * харагдац дээр НЭМДЭГ байсан тул «Төлөвлөлт» preset-тэй хүнийг инженер
  * болгоход хуучин харагдацууд нь дагаад үлдэж, үүргийн хил бүдгэрдэг байв.
- * Урсгалын БУС үүрэгтэй (super/beginner/tolovlolt) хүнд харин НЭМЖ өгнө —
- * давхар үүрэгтэй хүний бусад ажлыг хумихгүй.
+ * Урсгалын БУС үүрэгтэй (super/beginner/tolovlolt — панелаас нэмсэн аккаунт
+ * бүр `tolovlolt`) хүнд харин `guitsetgel`-ийг НЭМЖ өгөөд ҮҮРГИЙГ НЬ ХЭВЭЭР
+ * үлдээнэ — давхар үүрэгтэй хүний бусад ажлыг хумихгүй. Шат нь үүргээс биш
+ * томилгооноос гардаг (`resolveFlowStage`) тул үүрэг хэвээр байх нь саадгүй.
+ *
+ * ⚠️ `resolveBaseAccess` — cap-аар нэмэгдсэн харагдацыг (finance/huvaari…)
+ *    override мөрөнд БИЧИХГҮЙ; эс бөгөөс эрхийг нь хасахад харагдац үлдэнэ.
  *
  * ⚠️ Динамик import — гогцоо болон серверийн зурагдалтад `localStorage`
  *    хөндөхөөс сэргийлнэ.
  */
 async function grantFlowAccess(user: string, stage: Stage): Promise<boolean> {
   try {
-    const { resolveAccess, roleOf, setUser } = await import('./permissions');
+    const { resolveBaseAccess, roleOf, setUser } = await import('./permissions');
     const role = STAGE_ROLE[stage];
     const curRole = roleOf(user);
-    const cur = resolveAccess(user);
+    const cur = resolveBaseAccess(user);
     const pureFlow = curRole == null || FLOW_ROLES.has(curRole);
     const views: ViewKey[] | 'all' = pureFlow
       ? ROLE_ACCESS[role].views
@@ -228,22 +311,53 @@ async function grantFlowAccess(user: string, stage: Stage): Promise<boolean> {
 
 /**
  * Урсгалын эрхийг БУЦААНА — томилгооноос хасагдсан хүнд.
- * · Хатуу тохиргоотой хэрэглэгч → override-ыг арилгаж СУУРЬ эрх рүү нь буцаана.
+ * · Устгагдсан (tombstone) аккаунт → ЮУ Ч ХИЙХГҮЙ.
+ * · Хатуу УРСГАЛЫН үүрэгтэй хэрэглэгч → override-ыг арилгаж СУУРЬ эрх рүү нь буцаана.
+ * · Хатуу урсгалын БУС үүрэгтэй (super/beginner/tolovlolt) → grant-тай тэгш хэмтэй:
+ *   зөвхөн олгосныг (`guitsetgel`, суурьд нь байхгүй бол) хасна; админы бусад
+ *   тохиргоо (нэмэлт харагдац, баримт) хэвээр. Үр дүн суурьтай ижил бол override
+ *   хэрэггүй тул арилгана.
  * · Панелаас нэмсэн, зөвхөн урсгалын хүн → `guitsetgel` харагдацыг хасна
  *   (үлдсэн харагдац нь хэвээр — админ хүсвэл панелаас бүрмөсөн устгана).
  */
 async function revokeFlowAccess(user: string, stage: Stage): Promise<void> {
-  const { resolveAccess, roleOf, setUser, clearOverride } = await import('./permissions');
-  if (roleForUser(user)) {
+  const { resolveBaseAccess, roleOf, setUser, clearOverride } = await import('./permissions');
+  const cur = resolveBaseAccess(user);
+  /*
+   * ⚠️ TOMBSTONE (2026-08-29): устгагдсан аккаунтад `null` ирнэ — ЮУ Ч ХИЙХГҮЙ.
+   * Урьд нь хатуу тохиргооны устгагдсан хүний хуучирсан томилгоог ✕-ээр хасахад
+   * `clearOverride` tombstone-ыг нь арчиж, тэр хүн дахин нэвтэрдэг байв.
+   */
+  if (!cur) return;
+  const base = roleForUser(user);
+  if (base && FLOW_ROLES.has(base)) {
     await clearOverride(user);
     return;
   }
-  const cur = resolveAccess(user);
-  if (!cur) return;
-  const views = cur.views === 'all' ? 'all' : cur.views.filter((v) => v !== 'guitsetgel');
   const curRole = roleOf(user);
+  const baseViews = base ? ROLE_ACCESS[base].views : null;
+  const keepGuits = baseViews === 'all' || (Array.isArray(baseViews) && baseViews.includes('guitsetgel'));
+  const views = cur.views === 'all' || keepGuits ? cur.views : cur.views.filter((v) => v !== 'guitsetgel');
   const role = curRole === STAGE_ROLE[stage] ? null : curRole;
+  if (base) {
+    const b = ROLE_ACCESS[base];
+    if (role === base && cur.docs === b.docs && viewsEqual(views, b.views)) {
+      await clearOverride(user);
+      return;
+    }
+  }
   await setUser(user, { views, docs: cur.docs }, role);
+}
+
+/**
+ * «Сэргээх»-ийн ДАРАА томилгоотой хүний урсгалын эрхийг дахин олгоно (UserAdmin).
+ * ⚠️ Хатуу `tolovlolt` хэрэглэгчийн суурьд `guitsetgel` байхгүй тул `clearOverride`
+ *    түүнийг хуудасгүй орхидог байв; томилгоо нь хэвээр тул эрхийг нь дагуулна.
+ */
+export function regrantFlowAccess(user: string): Promise<boolean> {
+  const u = user.trim().toLowerCase();
+  const st = stageOfUser(u);
+  return st ? grantFlowAccess(u, st) : Promise.resolve(true);
 }
 
 /** Аккаунт аль шатанд томилогдсон бэ (томилогдоогүй бол `null`) */
@@ -254,18 +368,11 @@ export function stageOfUser(user?: string | null): Stage | null {
 }
 
 /**
- * Тухайн хэрэглэгч энэ шатанд АЛЬ БАГЦУУДЫГ хариуцах вэ.
- *
- * `null` = хязгаарлалт байхгүй (томилгоо огт хийгээгүй, эсвэл «бүх багц»).
- * ⚠️ Томилгоогүй үед ХООСОН массив буцаавал систем шинээр асахад хэн ч юу ч
- *    харахгүй болж, тохируулах хүн өөрөө орж чадахгүй болно.
- */
-/**
  * Тухайн ШАТАНД хэрэглэгчийн харах/бөглөх БАГЦУУД.
  *
  * Буцаах утга:
  *   · `null`   — ХЯЗГААРГҮЙ. Зөвхөн `ALL_BAGTS` («Бүх багц») ил томилсон үед.
- *   · `[]`     — ТОМИЛОГДООГҮЙ. Юу ч харахгүй.
+ *   · `[]`     — ТОМИЛОГДООГҮЙ, эсвэл багц заагаагүй. Юу ч харахгүй.
  *   · `[...]`  — заасан багцууд.
  *
  * ⚠️ 2026-08-28 FAIL-CLOSED БОЛГОВ. Урьд нь томилогдоогүй хүнд `null`
@@ -274,6 +381,11 @@ export function stageOfUser(user?: string | null): Stage | null {
  * ҮҮРГЭЭС гардаг тул нэг ч багц хуваарилагдаагүй `injener` БҮХ багцын
  * гүйцэтгэлийг хараад зөвшөөрч чаддаг байлаа. Одоо томилгоо нь ЗААВАЛ.
  *
+ * ⚠️ 2026-08-29: ХООСОН `bagts` ч fail-closed (`[]`). Урьд нь `[]`-г «бүх багц»
+ * гэж уншдаг байсан тул хүснэгт дээр гараар засагдсан/эвдэрсэн мөр (`bagts`
+ * массив биш → `fetchAll` `[]` болгодог) бүх багцыг нээдэг байв. Панел хоосон
+ * сонголтыг `[ALL_BAGTS]` болгож бичдэг тул UI-д өөрчлөлтгүй.
+ *
  * ⚠️ Админ (`super`) нь энэ функцээр биш, дуудагч талд үл хамаарна — тиймээс
  * систем шинээр асахад тохируулагч түгжигдэхгүй.
  */
@@ -281,7 +393,7 @@ export function bagtsFor(user: string | null | undefined, stage: Stage): string[
   if (!user) return [];
   const a = load().find((x) => x.stage === stage && x.user === user.toLowerCase());
   if (!a) return [];
-  if (a.bagts.includes(ALL_BAGTS) || a.bagts.length === 0) return null;
+  if (a.bagts.includes(ALL_BAGTS)) return null;
   return a.bagts;
 }
 
@@ -302,6 +414,50 @@ export function bagtsScope(user: string | null | undefined): string[] | null {
     b.forEach((x) => out.add(x));
   }
   return [...out];
+}
+
+/** «Гүйцэтгэлийн хяналт» хуудасны шийдвэр — хэн, аль шатанд, аль багцад */
+export type FlowStage = {
+  /** Идэвхтэй шат (`null` = томилогдоогүй, урсгалын үүрэггүй) */
+  stage: Stage | null;
+  /** Зөвшөөрөх/буцаах эрхтэй юу */
+  canReview: boolean;
+  /** Шатыг гараар солих сонгогч нээлттэй юу (зөвхөн админ / дев) */
+  canPick: boolean;
+  /** Багцын хүрээ: `null` = хязгааргүй, `[]` = нэг ч багц */
+  scope: string[] | null;
+};
+
+/**
+ * ХЭРЭГЛЭГЧИЙН УРСГАЛЫН ШАТ — ГАНЦ ЭХ СУРВАЛЖ (2026-08-29).
+ *
+ * Дүрэм:
+ *   1. Хатуу тохиргооны `super` (кодын `ROLE_BY_USER`) эсвэл нэвтрэлт
+ *      унтраалттай дев орчин → сонгогчоор дурын шат, БҮХ багц. Панелаас
+ *      «Супер» preset авсан override-super энд ОРОХГҮЙ: тэр нь зөвхөн
+ *      харагдацын багц; хянах эрх нь томилгооноос л гарна (урьд нь panel-ийн
+ *      «Супер» дөрвөн шатанд дурын багц батлах зам нээдэг байв).
+ *   2. Томилогдсон → тэр шат, тэр багцууд. Үүрэг нь юу ч байсан (beginner,
+ *      tolovlolt, урсгалын үүрэг) — томилгоо ДАВАМГАЙЛНА.
+ *   3. Томилогдоогүй → зөвхөн харна (fail-closed): урсгалын үүрэгтэй бол
+ *      үүргийнхээ шатыг харуулна (толгойн нэр), багц `[]`.
+ *
+ * ⚠️ Цэвэр функц — React-ээс гадуур тестлэгдэнэ (`guitsetgelAcl.check.mjs`).
+ *    Дуудагч нь `subscribeAcl`-аар дахин зурж, томилгоо дараа ирэхэд шинэчилнэ.
+ */
+export function resolveFlowStage(
+  user: string | null | undefined,
+  role: Role | null,
+  picked?: Stage | null,
+  authOff = false,
+): FlowStage {
+  if (authOff || roleForUser(user) === 'super') {
+    return { stage: picked ?? 'engineer', canReview: true, canPick: true, scope: null };
+  }
+  const st = stageOfUser(user);
+  if (st) return { stage: st, canReview: true, canPick: false, scope: bagtsFor(user, st) };
+  const byRole = role ? ROLE_STAGE[role] ?? null : null;
+  return { stage: byRole, canReview: false, canPick: false, scope: [] };
 }
 
 /** Өөрчлөлтөд захиалах — цэвэрлэх функц буцаана */

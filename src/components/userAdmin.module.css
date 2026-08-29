@@ -395,6 +395,9 @@
 .sw:hover { background: color-mix(in srgb, var(--ink) 28%, var(--line-strong)); }
 .swOn { background: var(--hue); }
 .swOn:hover { background: var(--hue); filter: brightness(1.08); }
+.sw:disabled { opacity: 0.45; cursor: not-allowed; }
+/* Нэмэлт эрхээр нээгдсэн харагдац — суурь жагсаалтад байхгүй */
+.swImplied { opacity: 0.7; }
 .swKnob {
   position: absolute;
   top: 2px;

@@ -36,6 +36,7 @@
  * эдгээр суурьнаас template-ээр гардаг тул зөвхөн энд солиход хангалттай.
  */
 import { PLAN2D_LAYERS } from './plan2d';
+import type { Stage } from './hyanalt';
 import { t as tr } from '@/lib/i18nCore';
 
 const env = (v: string | undefined, fallback: string): string =>
@@ -3909,19 +3910,29 @@ export type Role =
   | "menejer"
   | "eronhii";
 
-/** «Гүйцэтгэл» урсгалын үүрэг → урсгалын шат. Бусад үүрэгт `null`. */
 /**
+ * УРСГАЛЫН ШАТ → ПОРТАЛЫН ҮҮРЭГ — ГАНЦ ЭХ СУРВАЛЖ.
+ *
  * ⚠️ ДӨРВӨН шат. `menejer` нь БАГЦЫН менежер, `eronhii` нь ЕРӨНХИЙ менежер —
  *    сүүлийнх нь зөвшөөрснөөр л гүйцэтгэл эх хүснэгтэд бүртгэгдсэнд тооцно.
+ *
+ * ⚠️ 2026-08-29: урьд нь энэ хүснэгт ХОЁР газар (энд `ROLE_STAGE`,
+ *    `guitsetgelAcl.ts`-д `STAGE_ROLE`) гараар урвуулж бичигдсэн байв — нэг нь
+ *    хоцорвол «томилогдсон атлаа зөвхөн харах» гэсэн чимээгүй алдаа гарна.
+ *    Одоо `Record<Stage, Role>` (шат бүрд ЗААВАЛ үүрэг — tsc шалгана) энд,
+ *    урвуу нь түүнээс бодогдоно.
  */
-export const ROLE_STAGE: Partial<
-  Record<Role, "company" | "engineer" | "manager" | "director">
-> = {
-  guitsetgegch: "company",
-  injener: "engineer",
-  menejer: "manager",
-  eronhii: "director",
+export const STAGE_ROLE: Record<Stage, Role> = {
+  company: "guitsetgegch",
+  engineer: "injener",
+  manager: "menejer",
+  director: "eronhii",
 };
+
+/** «Гүйцэтгэл» урсгалын үүрэг → урсгалын шат. Бусад үүрэгт `undefined`. */
+export const ROLE_STAGE: Partial<Record<Role, Stage>> = Object.fromEntries(
+  Object.entries(STAGE_ROLE).map(([s, r]) => [r, s]),
+) as Partial<Record<Role, Stage>>;
 
 /**
  * ArcGIS хэрэглэгчийн нэр (ЖИЖИГ үсгээр) → үүрэг.

@@ -164,7 +164,7 @@ export default function Portal(
   return (
     <MapProvider>
       {/* Нэвтрээд дашбоард (газрын зураг) бэлэн болтол ачаалалтын дэлгэц */}
-      <Booting />
+      <Booting navScope={navScope} />
       <FilterProvider>
         <PortalContent onHome={onHome} navScope={navScope} docsAllowed={docsAllowed} isSuper={isSuper} />
       </FilterProvider>
@@ -178,7 +178,7 @@ export default function Portal(
  * тавигддаг тул түүнийг «дашбоард нээгдлээ» дохио болгоно. Эхний удаа бэлэн
  * болмогц дахин ХАРАГДАХГҮЙ (2D↔3D солиход анивчихгүй).
  */
-function Booting() {
+function Booting({ navScope }: { navScope: 'all' | ViewKey[] }) {
   const { view } = useMap();
   /**
    * ⚠️ Порталын зураггүй standalone харагдац (analysis, sheet, tailan, finance —
@@ -187,7 +187,7 @@ function Booting() {
    * (useState-ийн initializer-т нэг удаа тооцно — hooks-ийн дараалал тогтвортой.)
    */
   const [done, setDone] = useState(() => {
-    const v = VIEW_BY_KEY[initialView()];
+    const v = VIEW_BY_KEY[clampView(initialView(), navScope)];
     return !!v.standalone && !v.layers.length;
   });
   useEffect(() => {
@@ -240,6 +240,15 @@ const initialView = (): ViewKey => {
   return v && VIEW_BY_KEY[v as ViewKey] ? (v as ViewKey) : DEFAULT_VIEW;
 };
 
+/**
+ * Харагдацыг эрхийн хүрээгээр хайчилна.
+ * ⚠️ 2026-08-29: `?v=finance` гүн холбоос эрхгүй хэрэглэгчид ЭХНИЙ commit-д
+ *    зурагдаж (өгөгдлийн effect ч ажиллаад) дараа нь л guard шилжүүлдэг байв —
+ *    initializer-т хайчилснаар эрхгүй агуулга нэг агшин ч гарахгүй.
+ */
+const clampView = (v: ViewKey, scope: 'all' | ViewKey[]): ViewKey =>
+  scope === 'all' || !scope.length || scope.includes(v) ? v : scope[0];
+
 const initialDim = (): Dim => {
   const d = readParam('d');
   return d === '3d' || d === 'bim' ? d : '2d';
@@ -263,8 +272,8 @@ function PortalContent(
    * `visible` нь харагдацын анхны давхаргуудаар дүүрнэ; хэрэглэгч каталогоос
    * нэмж асаана.
    */
-  const [view, setViewState] = useState<ViewKey>(initialView);
-  const [visible, setVisible] = useState<string[]>(() => VIEW_BY_KEY[initialView()].initial);
+  const [view, setViewState] = useState<ViewKey>(() => clampView(initialView(), navScope));
+  const [visible, setVisible] = useState<string[]>(() => VIEW_BY_KEY[clampView(initialView(), navScope)].initial);
 
   /**
    * Каталогийн багана нээлттэй эсэх ба самбарт задалж харуулах давхарга.
@@ -398,14 +407,18 @@ function PortalContent(
   useEffect(() => {
     const onPop = () => {
       // `setView` нь харагдацын бүрэн шинэчлэл (шүүлт цэвэрлэх г.м.) хийдэг
-      setView(initialView());
+      // ⚠️ Эрхгүй харагдац руу Back хийвэл хайчилж, URL-ыг replace-ээр засна
+      //    (push хийвэл доорх guard-тай гогцоо үүснэ)
+      const next = clampView(initialView(), navScope);
+      if (next !== initialView()) lastViewRef.current = next;
+      setView(next);
       setZone(readParam('z'));
       setLayer(initialLayer());
       setDim(initialDim());
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
-  }, [setView]);
+  }, [setView, navScope]);
 
   /**
    * ЭРХИЙН ХАМГААЛАЛТ — идэвхтэй `view` нь навигацийн хүрээнд ЗААВАЛ байна. Гүн

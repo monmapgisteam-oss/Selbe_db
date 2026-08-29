@@ -79,6 +79,33 @@ async function refresh(): Promise<void> {
   emit();
 }
 
+/**
+ * Мөрийг ШИНЭЭР уншиж буцаана (захиалагчдад мэдэгдэхгүй — дуудагч шийднэ).
+ * ⚠️ 2026-08-29: хянагчийн шийдвэрийг хуучирсан `ROWS`-оос бичдэг байсан тул нэг
+ *    багцад хоёр инженер томилогдсон үед А-гийн буцаалтыг Б-гийн «зөвшөөрөх»
+ *    чимээгүй дарж бичиж, эсвэл дахин шалгалт давхар мөр үүсгэж болдог байв.
+ *    Хуудас нэг л удаа ачаалдаг тул мөрийг бичихийн ӨМНӨ заавал дахин уншина.
+ */
+async function liveRow(oid: number): Promise<Row | undefined> {
+  ROWS = (await queryAll()).map(toRow);
+  loaded = true;
+  return ROWS.find((r) => r.__oid === oid);
+}
+
+/**
+ * Шат бүрд хүлээгдэх ЯГ тэр төлөв — өөр төлөвтэй мөрд шийдвэр бичихгүй.
+ * ⚠️ `OWNER`-оор шалгавал «Менежер буцаасан» мөрд инженерийн зөвшөөрөл,
+ *    «Шилжүүлсэн» мөрд ерөнхий менежерийн давхар баталгаа (нэгтгэлд давхар
+ *    бүртгэл) нэвтэрнэ. Дахин шалгалт `recheck`-ээр ШИНЭ мөр үүсгэнэ.
+ */
+const REVIEW_STATUS = {
+  engineer: STATUS.engineerReview,
+  manager: STATUS.managerReview,
+  director: STATUS.directorReview,
+} as const;
+
+const STALE = 'Төлөв өөрчлөгдсөн — жагсаалт шинэчлэгдлээ, дахин шалгана уу';
+
 export function useHyanaltRows(): {
   rows: Row[];
   loading: boolean;
@@ -192,6 +219,11 @@ export async function apply(a: {
   }
 
   try {
+    const cur = await liveRow(a.oid);
+    if (!cur || cur[F.status] !== REVIEW_STATUS[a.stage]) {
+      emit();
+      return { ok: false, error: STALE };
+    }
     await updateRows([attrs]);
     if (registerNow) {
       /*
@@ -199,7 +231,7 @@ export async function apply(a: {
        *    хадгалагдсан байхад «болсонгүй» гэж харуулбал менежер дахин дарж,
        *    давхардсан бүртгэл үүсгэнэ. Алдааг зөвхөн бүртгэнэ.
        */
-      const prev = ROWS.find((r) => r.__oid === a.oid);
+      const prev = cur;
       const { registerApproved } = await import('./negtgelWrite');
       const r = await registerApproved(prev?.[F.bagts] ?? '', prev?.[F.sheetOid] ?? 0);
       if (!r.ok) console.warn('[selbe] нэгтгэлд бүртгэж чадсангүй:', r.error);
@@ -238,8 +270,13 @@ export async function recheck(
    */
   by: 'engineer' | 'manager' = 'engineer',
 ): Promise<Result> {
-  const prev = ROWS.find((r) => r.__oid === oid);
-  if (!prev) return { ok: false, error: 'Бүртгэл олдсонгүй' };
+  let prev: Row | undefined;
+  try { prev = await liveRow(oid); } catch (e) { return fail(e); }
+  if (!prev) { emit(); return { ok: false, error: 'Бүртгэл олдсонгүй' }; }
+  // ⚠️ Зөвхөн ДЭЭД шатнаас буцсан мөрийг дахин шалгана — хуучирсан дэлгэцээс
+  //    давхар дахин шалгалт (давхар мөр) эсвэл өөр төлөвт бичихээс сэргийлнэ.
+  const want = by === 'engineer' ? STATUS.managerReturned : STATUS.directorReturned;
+  if (prev[F.status] !== want) { emit(); return { ok: false, error: STALE }; }
 
   const t = Date.now();
 

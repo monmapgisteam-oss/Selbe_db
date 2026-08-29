@@ -41,6 +41,8 @@ import { t as tr } from '@/lib/i18nCore';
 import { Section, Empty, Loading } from '@/components/ui';
 import { useAuth } from '@/components/AuthGate';
 import { hasCap, subscribeCaps } from '@/lib/caps';
+import { bagtsScope, stageOfUser, subscribeAcl } from '@/lib/guitsetgelAcl';
+import { roleForUser } from '@/lib/services';
 import { num } from '@/lib/format';
 import {
   loadSchema, pkgFloors, PKG_GROUPS, PKGS, type Pkg, type Schema,
@@ -92,19 +94,42 @@ export function Huvaari() {
   const { user, status } = useAuth();
   const [capN, setCapN] = useState(0);
   useEffect(() => subscribeCaps(() => setCapN((x) => x + 1)), []);
+  const [aclN, setAclN] = useState(0);
+  useEffect(() => subscribeAcl(() => setAclN((x) => x + 1)), []);
+  const [pkg, setPkg] = useState<Pkg>(PKGS[0]);
   /**
-   * ЗАСАХ ЭРХ — тусад нь олгодог (`caps`).
+   * БАГЦЫН ХҮРЭЭ (2026-08-29): урсгалд томилогдсон хүн зөвхөн ӨӨРИЙН багцыг
+   * төлөвлөнө — «Багц 2»-ын менежер «Багц 4»-ийн хуваарийг чирэх ёсгүй
+   * (`FillNew`-ийн мөр нэмэх эрхтэй ижил дүрэм).
+   * ⚠️ ТОМИЛОГДООГҮЙ эрхтэн (урсгалын гишүүн биш төлөвлөгч) → бүх багц: энэ бол
+   *    нэрээр олгодог эрх; урсгалын шатанд хүчээр оруулбал «нэг аккаунт нэг шат»
+   *    дүрэмтэй зөрчилдөнө. САНААТАЙ шийдвэр — `[]` болгож «засах» хэрэггүй.
+   * ⚠️ Кодын хатуу `super` ба нэвтрэлт унтраалттай дев → хязгааргүй.
+   */
+  const bagtsLimit = useMemo(
+    () => (status === 'off' || roleForUser(user?.username) === 'super' || !stageOfUser(user?.username)
+      ? null
+      : bagtsScope(user?.username)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [user, status, aclN],
+  );
+  const groupOpts = useMemo(
+    () => (bagtsLimit ? PKG_GROUPS.filter((g) => bagtsLimit.includes(g)) : PKG_GROUPS),
+    [bagtsLimit],
+  );
+  /**
+   * ЗАСАХ ЭРХ — тусад нь олгодог (`caps`) + багцын хүрээ.
    * ⚠️ Нэг огноо солиход БҮХ багцын төлөвлөгөөт хувь, тайлан, хоцрогдлын
    *    дохио дахин бодогдоно. Бөглөх эрхэд дагалдуулж болохгүй: бөглөгч
    *    өөрийн хоцрогдлыг арилгахын тулд хуваарийг хойш чирэх боломжтой болно.
    */
   const canEdit = useMemo(
-    () => status === 'off' || hasCap(user?.username, 'plan'),
+    () => (status === 'off' || hasCap(user?.username, 'plan'))
+      && (bagtsLimit == null || bagtsLimit.includes(pkg.group)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [user, status, capN],
+    [user, status, capN, bagtsLimit, pkg.group],
   );
 
-  const [pkg, setPkg] = useState<Pkg>(PKGS[0]);
   const [sc, setSc] = useState<Schema | null>(null);
   const [rows, setRows] = useState<SheetRow[]>([]);
   const [busy, setBusy] = useState(false);
@@ -124,6 +149,18 @@ export function Huvaari() {
    *    хэрэгсэл. Хоёулаа нэг төлөв хуваалцах ёстой тул эцэгт байрлана.
    */
   const [scope, setScope] = useState<number | null>(null);
+
+  /*
+   * ⚠️ Сонгосон багц хүрээнээс ГАДУУР бол зөвшөөрөгдсөн эхнийх рүү шилжинэ
+   *    (анхдагч нь «Багц 1») — эс бөгөөс хэрэглэгч засах эрхгүй хуудас ширтэнэ.
+   *    Хадгалаагүй ноорогтой үед хөндөхгүй (`askSwitch`-ийн дүрэм).
+   */
+  useEffect(() => {
+    if (groupOpts.includes(pkg.group) || draft.size || !groupOpts.length) return;
+    const first = pkgFloors(groupOpts[0])[0];
+    if (first) setPkg(first);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupOpts]);
 
   useEffect(() => {
     let alive = true;
@@ -353,7 +390,7 @@ export function Huvaari() {
           {tr('Багц')}{' '}
           <select className={h.select} value={pkg.group} disabled={busy}
             onChange={(e) => { if (askSwitch()) setPkg(pkgFloors(e.target.value)[0]); }}>
-            {PKG_GROUPS.map((g) => <option key={g} value={g}>{g}</option>)}
+            {groupOpts.map((g) => <option key={g} value={g}>{g}</option>)}
           </select>
         </label>
         {floors.length > 1 && (

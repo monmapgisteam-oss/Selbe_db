@@ -227,14 +227,26 @@ export async function retryDirty(): Promise<number> {
  * ⚠️ Урсгалын томилгоог (`__flow__:` мөрүүд) мөн эндээс `guitsetgelAcl` руу
  * дамжуулна — нэг таталтаар хоёр дэд систем шинэчлэгдэнэ.
  */
-export async function initRemote(canCreate: boolean): Promise<boolean> {
+/**
+ * @param canCreate хүснэгт байхгүй бол үүсгэх эрх (зөвхөн нэвтрэх агшны хатуу super)
+ * @param trusted  dirty-set-ийг дахин илгээж, давхарлах эрх (хатуу super-ийн сешн).
+ *   ⚠️ 2026-08-29: dirty-set нь localStorage-д байдаг тул org-ийн ЯМАР Ч аккаунт
+ *   өөртөө `role:'super'` мөр тарьж, remote бичилт нь (editor эрхгүй тул) унамагц
+ *   тэр мөр snapshot дээр давхарлагдаж `remoteLoaded=true`-тэй хамт «баталгаажсан»
+ *   болдог байв — өөрийгөө super болгох зам. Итгэмжлэгдээгүй сешнд dirty map-ыг
+ *   ХӨНДӨХГҮЙ (арчихгүй — хуваалцсан компьютер дээрх админы хүлээгдэж буй засвар
+ *   алдагдахгүй), зөвхөн давхарлахгүй, дахин илгээхгүй.
+ *   `canCreate`-ээс ТУСДАА параметр: 5 минутын poll-д `canCreate=true` өгвөл
+ *   транзит хайлтын алдаанд давхар хүснэгт үүсгэх эрсдэлтэй.
+ */
+export async function initRemote(canCreate: boolean, trusted: boolean = canCreate): Promise<boolean> {
   const { fetchAll } = await import('./permsRemote');
   const remote = await fetchAll(canCreate);
   if (!remote) return false; // ArcGIS алга — cache хэвээр
 
   // 1) Унасан локал бичилтүүдийг эхлээд дахин тулгана — «локал үүрд ялна»
   //    биш, retry-then-clear: өөр админы засварыг мөнхөд дарахгүй.
-  const stillDirty = await retryDirtyOnce();
+  const stillDirty: DirtyMap = trusted ? await retryDirtyOnce() : {};
 
   // 2) Remote snapshot + үлдсэн dirty давхарга
   const s: Store = {};
@@ -252,7 +264,7 @@ export async function initRemote(canCreate: boolean): Promise<boolean> {
   // 3) Урсгалын томилгоо → guitsetgelAcl (динамик — SSR/гогцооноос сэргийлнэ)
   try {
     const acl = await import('./guitsetgelAcl');
-    acl._syncRemoteAssigns(remote.flow, canCreate);
+    acl._syncRemoteAssigns(remote.flow);
   } catch { /* урсгалын модуль ачаалагдаагүй орчинд (тест г.м.) — алгасна */ }
 
   // 4) Нэмэлт эрхүүд (`__cap__:`) → caps.ts
@@ -320,7 +332,13 @@ export function resolveAccess(username?: string | null): Access | null {
   return extra.length ? { ...base, views: [...(base.views as ViewKey[]), ...extra] } : base;
 }
 
-function resolveBaseAccess(username?: string | null): Access | null {
+/**
+ * СУУРЬ эрх — нэмэлт эрхийн (`CAP_HOST_VIEW`) харагдацгүйгээр.
+ * ⚠️ Хадгалагдах утга ЭНДЭЭС гарна (`guitsetgelAcl` grant/revoke): `resolveAccess`-ийн
+ *    cap-аар нэмэгдсэн харагдацыг override мөрөнд бичвэл эрхийг нь хасахад харагдац
+ *    нь үлддэг байв (2026-08-29).
+ */
+export function resolveBaseAccess(username?: string | null): Access | null {
   if (!username) return null;
   const ov = loadStore()[username.toLowerCase()];
   // Устгагдсан аккаунт — GRANT_ALL ч эрх өгөхгүй. Хатуу super халдашгүй.

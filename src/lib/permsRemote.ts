@@ -100,6 +100,17 @@ const restBase = () => `${AUTH.portalUrl.replace(/\/+$/, '')}/sharing/rest`;
 const SUPER_OWNERS = new Set(
   Object.entries(ROLE_BY_USER).filter(([, r]) => r === 'super').map(([u]) => u),
 );
+/**
+ * ⚠️ ХУУЧИН ЭЗЭД (2026-08-29): super-ийг `ROLE_BY_USER`-аас хасахад түүний
+ * үүсгэсэн хүснэгт хэнд ч «танигдахгүй» болж, бүх клиент эрх/томилгоо/
+ * tombstone-оо алддаг байв. Super-ийг хасахдаа (а) ArcGIS дээр item-ыг одоогийн
+ * super-т reassign хийнэ, ЭСВЭЛ (б) нэрийг нь энд үлдээнэ — super эрх БУЦАХГҮЙ,
+ * зөвхөн хүснэгт олдох л зорилготой.
+ */
+const FORMER_TABLE_OWNERS: string[] = [];
+const TABLE_OWNERS = new Set([...SUPER_OWNERS, ...FORMER_TABLE_OWNERS.map((u) => u.toLowerCase())]);
+/** Ижил нэртэй боловч танигдахгүй эзэнтэй хүснэгт олдсон — шинээр үүсгэхийг хориглоно */
+let ownerMismatch = false;
 
 /**
  * Хүснэгтийн URL олох — байгаа item-ээс.
@@ -116,9 +127,19 @@ async function findTableUrl(token: string): Promise<string | null> {
     num: '10',
   });
   const results = (search.results as Array<{ url?: string; title?: string; owner?: string }>) ?? [];
-  const hit = results.find(
-    (x) => x.title === TITLE && x.url && SUPER_OWNERS.has(String(x.owner ?? '').toLowerCase()),
-  );
+  const same = results.filter((x) => x.title === TITLE && x.url);
+  const hit = same.find((x) => TABLE_OWNERS.has(String(x.owner ?? '').toLowerCase()));
+  // ⚠️ Ижил нэртэй хүснэгт байгаа ч эзэн нь танигдахгүй → ШИНЭЭР ҮҮСГЭХГҮЙ
+  //    (нэр давхцаж унана, эсвэл салаа хүснэгт үүсэж өгөгдөл хуваагдана).
+  //    Админ item-ыг reassign хийх хүртэл remote унтраалттай — шалтгааныг ил хэлнэ.
+  ownerMismatch = !hit && same.length > 0;
+  if (ownerMismatch) {
+    console.error(
+      '[selbe] Selbe_Permissions хүснэгтийн эзэн танигдсангүй:',
+      same.map((x) => x.owner).join(', '),
+      '— одоогийн super-т reassign хийнэ үү (permsRemote.FORMER_TABLE_OWNERS)',
+    );
+  }
   return hit?.url ? `${hit.url}/0` : null;
 }
 
@@ -175,7 +196,7 @@ async function tableUrl(canCreate: boolean): Promise<string | null> {
   const auth = await getToken();
   if (!auth) return null;
   let url = await findTableUrl(auth.token);
-  if (!url && canCreate) url = await createTable(auth.token, auth.user);
+  if (!url && canCreate && !ownerMismatch) url = await createTable(auth.token, auth.user);
   if (url) tableUrlCache = url;
   return url;
 }
@@ -223,7 +244,14 @@ export async function fetchAll(
     const fl = await layer(url);
     const rows = await queryAllRows(fl, '1=1');
     const perms: Record<string, RemoteRow> = {};
-    const flow: FlowRow[] = [];
+    /*
+     * ⚠️ НЭГ ХЭРЭГЛЭГЧ = НЭГ ТОМИЛГОО (2026-08-29): зэрэгцээ бичилтийн race-аас
+     * давхар `__flow__:` мөр үүсвэл уншилт нь ЭХНИЙХ, бичилт нь СҮҮЛИЙНХ (их OID)
+     * мөрийг авч зөрдөг байв — багцын хязгаар чимээгүй арилах, эсвэл нэг аккаунт
+     * хоёр шатанд. Мөрүүд OBJECTID ASC ирдэг тул Map-д сүүлийнх нь ялна — эрхийн
+     * мөртэй ижил дүрэм (`upsertByKey`).
+     */
+    const flowBy = new Map<string, FlowRow>();
     const caps: CapRow[] = [];
     for (const a of rows) {
       if (!a.username) continue;
@@ -244,7 +272,7 @@ export async function fetchAll(
         try {
           const d = JSON.parse(a.views || '{}') as { stage?: string; bagts?: string[] };
           if (user && d.stage) {
-            flow.push({ user, stage: d.stage, bagts: Array.isArray(d.bagts) ? d.bagts : [] });
+            flowBy.set(user, { user, stage: d.stage, bagts: Array.isArray(d.bagts) ? d.bagts : [] });
           }
         } catch { /* эвдэрсэн мөр — алгасна (томилгоо байхгүйтэй ижил, fail-closed) */ }
         continue;
@@ -271,7 +299,7 @@ export async function fetchAll(
         ...(removed ? { removed: true } : {}),
       };
     }
-    return { perms, flow, caps };
+    return { perms, flow: [...flowBy.values()], caps };
   } catch {
     return null;
   }

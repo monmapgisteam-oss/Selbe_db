@@ -185,7 +185,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const check = async () => {
       if (document.visibilityState === 'hidden') return;
       try {
-        await initRemote(false);
+        // ⚠️ canCreate=false (poll-д хүснэгт үүсгэхгүй), trusted=хатуу super
+        await initRemote(false, roleForUser(user.username) === 'super');
         if (!alive) return;
         const ok = hasAccess(user.username);
         // Эрх ХАСАГДВАЛ шууд хаана; БУЦААЖ СЭРГЭЭГДВЭЛ F5 шаардалгүй нээнэ

@@ -3238,7 +3238,6 @@ const en: Record<string, string> = {
   "ArcGIS-т хүрээгүй {0} өөрчлөлтийг дахин илгээнэ": "Re-send the {0} change(s) that did not reach ArcGIS",
   "Синк хийж байна…": "Syncing…",
   "Дахин синк ({0})": "Re-sync ({0})",
-  "Томилгоо ArcGIS дээрх хуваалцсан хүснэгтэд хадгалагдаж, тухайн хүн өөрийн төхөөрөмжөөс нэвтрэхэд шууд үйлчилнэ. Томилохын хамт үүрэг ба «Гүйцэтгэлийн хяналт» харагдац автоматаар олгогдоно; хасахад буцаагдана.": "Assignments are stored in a shared ArcGIS table and take effect as soon as the person signs in from their own device. Assigning also grants the role and the “Execution review” view automatically; removing revokes them.",
   "⚠️ ArcGIS-т бичигдсэнгүй — томилгоо түр зөвхөн энэ browser-т. Холболтоо шалгаад дахин оролдоно уу.": "⚠️ Not written to ArcGIS — the assignment is only in this browser for now. Check your connection and try again.",
   "Томилгооноос хасах": "Remove from assignment",
   "«{0}»-г {1} шатнаас хасах уу? Олгогдсон үүрэг ба «Гүйцэтгэлийн хяналт» харагдац нь мөн буцаагдана.": "Remove “{0}” from the {1} stage? The granted role and the “Execution review” view will also be revoked.",
@@ -3504,6 +3503,17 @@ const en: Record<string, string> = {
   "Хадгалаагүй {0} өөрчлөлт байна. Хаяад солих уу?": "{0} unsaved changes. Discard them and switch?",
   "Өөрчлөлт олдсонгүй — хуваарь хэвээрээ.": "No changes found — the schedule is unchanged.",
   "{0} мөрийн БҮХ {1} блокийн хуваарь «{2}» блокоос хуулагдана. Тэнд байсан хуваарь дарагдана. Үргэлжлүүлэх үү?": "The schedule of ALL {1} blocks for {0} rows will be copied from block {2}. Any schedule already there will be overwritten. Continue?",
+  "{0} — урсгалын шатанд томилогдсон. «Гүйцэтгэлийн хяналт» нь хасагдвал ажлаа хянаж чадахгүй болно. Үргэлжлүүлэх үү?": "{0} — assigned to a workflow stage. Without “Progress review” they can no longer review their work. Continue?",
+  "«{0}» нэрээр хуучин урсгалын томилгоо үлдсэн байна — «Гүйцэтгэлийн урсгалын эрх» хуудсанд ✕ дарж арилгаад дахин нэмнэ үү.": "A stale workflow assignment remains under “{0}” — remove it with ✕ on the “Progress workflow permissions” page, then add again.",
+  "Нэмэлт эрхээр нээлттэй — хаахын тулд тухайн эрхийг унтраана": "Opened by an extra permission — turn that permission off to close it",
+  "Эхлээд хадгална уу — нэмэлт эрх хадгалагдсан аккаунтад олгогдоно": "Save first — extra permissions are granted to saved accounts",
+  "Нэмэлт эрхийг эхлээд хадгалсны дараа олгоно.": "Extra permissions can be granted after the first save.",
+  "Гүйцэтгэлийн обьём ба огноог зөвхөн энэ багцад томилогдсон гүйцэтгэгч бөглөнө — та зөвхөн Inspection Test Plan / мөр нэмэх эрхийнхээ хүрээнд засна.": "Progress volumes and dates are filled only by the contractor assigned to this package — you may edit only within your Inspection Test Plan / add-row permission.",
+  "Сүүлийн багцыг хасахгүй — бүх багц олгох бол «Бүх багц», томилгооноос хасах бол ✕ дарна уу.": "The last package cannot be removed — press “All packages” to grant all, or ✕ to remove the assignment.",
+  "админ — багцын хязгаар үйлчлэхгүй": "admin — package limits do not apply",
+  "устгагдсан аккаунт — томилгоог ✕-ээр цэвэрлэнэ үү": "deleted account — clear the assignment with ✕",
+  "Эрхийн мөр ArcGIS-т хадгалагдсангүй — «Хэрэглэгчдийн эрх удирдах» → «Дахин синк»": "Permission row not saved to ArcGIS — “Manage user permissions” → “Re-sync”",
+  "Томилгоо ArcGIS дээрх хуваалцсан хүснэгтэд хадгалагдаж, тухайн хүн өөрийн төхөөрөмжөөс нэвтрэхэд шууд үйлчилнэ. Томилохын хамт «Гүйцэтгэлийн хяналт» харагдац автоматаар нээгдэнэ (үүрэггүй аккаунтад урсгалын үүрэг олгогдоно, бусдын үндсэн үүрэг хэвээр); хасахад буцаагдана. Шат ба багц нь ЭНЭ томилгооноос гарна — үүргээс биш.": "Assignments are stored in the shared ArcGIS table and take effect as soon as that person signs in from their own device. Assigning also opens the “Progress review” view automatically (accounts without a role receive the workflow role; others keep their base role); removal revokes it. Stage and packages come from THIS assignment — not from the role.",
 };
 
 export default en;

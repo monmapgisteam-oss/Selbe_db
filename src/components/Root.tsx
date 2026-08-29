@@ -10,7 +10,7 @@ import { useEffect, useReducer, useState } from 'react';
 import { Home } from './Home';
 import { Landing } from './Landing';
 import { AuthNotice, useAuth } from './AuthGate';
-import { resolveAccess, subscribe } from '@/lib/permissions';
+import { resolveAccess, roleOf, subscribe } from '@/lib/permissions';
 import {
   ALL_MODE_HIDE,
   DEFAULT_VIEW,
@@ -120,7 +120,9 @@ export default function Root() {
   const openEntry = () => {
     if (allowed === 'all') { openAll(); return; }
     if (!allowed.length) return;
-    const role = roleForUser(user?.username);
+    // ⚠️ `roleOf` — override-ыг тооцно: панелаас нэмсэн инженер `guitsetgel`
+    //    нүүртэйгээ орно (урьд нь хатуу жагсаалтаас л авдаг тул `plan`-д унадаг байв)
+    const role = roleOf(user?.username);
     const home = role ? ROLE_ACCESS[role]?.home : undefined;
     openView(home && allowed.includes(home) ? home : allowed[0]);
   };

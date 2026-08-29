@@ -12,9 +12,11 @@
  * инженер» хоёрхон шаттай. Менежерийн шийдвэр, нэр, буцаасан шалтгаан нь дотоод
  * хяналтын мэдээлэл.
  *
- * ⚠️ ШАТЫГ ОДООХОНДОО ТОВЧООР СОЛИНО. Порталын үүрэг (`super`/`beginner`/
- * `tolovlolt`) нь компани/инженер/менежер гэсэн ЭНЭ урсгалын шаттай тохирдоггүй.
- * Бодит нэвтрэлтээс тогтоохын тулд `ROLE_BY_USER`-т шат нэмэх шаардлагатай.
+ * ⚠️ ШАТ = АДМИНЫ ТОМИЛГОО (`resolveFlowStage`, 2026-08-29). Урьд нь үүргээс
+ * (`ROLE_STAGE[role]`) гаргадаг байсан тул урсгалын бус үүрэгтэй (beginner —
+ * `selbe_et`, панелаас нэмсэн `tolovlolt`) хүнийг томилсон ч хуудас инженерийн
+ * шат руу унаж «нэг ч багц хуваарилагдаагүй» гэдэг байв. Үүрэг нь зөвхөн кодын
+ * хатуу super-ийг (сонгогч, бүх багц) ялгана.
  */
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
@@ -24,8 +26,7 @@ import {
   type Row, type Stage, type Status,
 } from '@/lib/hyanalt';
 import { useAuth } from '@/components/AuthGate';
-import { ROLE_STAGE } from '@/lib/services';
-import { bagtsFor, subscribeAcl } from '@/lib/guitsetgelAcl';
+import { resolveFlowStage, subscribeAcl } from '@/lib/guitsetgelAcl';
 import { hasCap } from '@/lib/caps';
 import { Sheet } from '@/modules/sheet/Sheet';
 import { groupWorks, optionsOf, STAGE_LABEL, type Work } from '@/lib/hyanaltGroup';
@@ -782,16 +783,20 @@ function Flow({
 
 export function Guitsetgel() {
   /**
-   * ШАТЫГ АККАУНТЫН ҮҮРГЭЭС авна — гараар сонгохгүй.
+   * ШАТЫГ АДМИНЫ ТОМИЛГООНООС авна — гараар сонгохгүй.
    *
    * ⚠️ Урьд нь гурван товчоор өөрийгөө «инженер» гэж зарлаж болдог байсан нь
    *    хяналтын утгыг үгүй хийдэг: зөвшөөрлийг хэн дарсан нь батлагдахгүй.
-   *    Одоо үүрэг нь `ROLE_BY_USER`-аас гарах бөгөөд солих боломжгүй.
+   *    Дараа нь үүргээс (`ROLE_STAGE[role]`) гаргадаг болсон ч томилгоо нь
+   *    урсгалын бус үүргийг санаатай хэвээр үлдээдэг тул `beginner`/`tolovlolt`
+   *    томилогдсон хүн хуудсаа огт харж чаддаггүй байв (2026-08-29). Одоо
+   *    `resolveFlowStage`: томилгоо (`stageOfUser`) ДАВАМГАЙЛНА.
    *
-   * ⚠️ Нэвтрэлт унтраалттай (дев) эсвэл `super` үед л шат солигдоно — бүх
-   *    урсгалыг турших шаардлагатай тул.
+   * ⚠️ Нэвтрэлт унтраалттай (дев) эсвэл КОДЫН хатуу `super` үед л шат солигдоно —
+   *    бүх урсгалыг турших шаардлагатай тул. Панелийн «Супер» preset энд
+   *    хамаарахгүй: хянах эрх зөвхөн томилгооноос.
    */
-  const { role, user } = useAuth();
+  const { role, user, status: authStatus } = useAuth();
   /**
    * Хяналтын бүртгэлд бичигдэх НЭР — нэвтэрсэн хэрэглэгчээс.
    *
@@ -802,21 +807,28 @@ export function Guitsetgel() {
    *    үед user байхгүй тул худал хүний нэрийн оронд ерөнхий «Хянагч» орно.
    */
   const who = user?.fullName || user?.username || 'Хянагч';
-  const fixed = role ? ROLE_STAGE[role] : undefined;
+  /** Томилгоо өөрчлөгдөхөд (5 мин poll, өөр таб) дахин бодно */
+  const [aclN, setAclN] = useState(0);
+  useEffect(() => subscribeAcl(() => setAclN((n) => n + 1)), []);
+  /** Админы сонгогчоор сонгосон шат — зөвхөн `canPick` үед утгатай */
+  const [picked, setPicked] = useState<Stage>('engineer');
+  const flow = useMemo(
+    () => resolveFlowStage(user?.username, role, picked, authStatus === 'off'),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [user, role, picked, authStatus, aclN],
+  );
+  const stage: Stage = flow.stage ?? 'engineer';
+  /** Түгжигдсэн шат (толгойн тэмдэг) — сонгогчтой админд байхгүй */
+  const fixed = flow.canPick ? undefined : flow.stage;
   /**
    * ХЯНАХ ЭРХ — урсгалын шатанд томилогдсон, эсвэл системийн админ.
    *
    * ⚠️ `sheet` ба `guitsetgel` НЭГ болсноор урьд нь зөвхөн хүснэгт үздэг байсан
    * үүрэг (`beginner`) энэ хуудсанд орох боллоо. Шат сонгох товч нь тэдэнд ч
    * нээлттэй байсан тул зөвшөөрөх/буцаах товч гарч, ХЯНАГЧ БОЛЖ чадах байв.
-   * Одоо тэдэнд зөвхөн ХАРАГДАНА.
+   * Одоо томилгоогүй хүнд зөвхөн ХАРАГДАНА (fail-closed).
    */
-  const canReview = !!fixed || role === 'super';
-
-  const [stage, setStage] = useState<Stage>(fixed ?? 'engineer');
-  useEffect(() => {
-    if (fixed) setStage(fixed);
-  }, [fixed]);
+  const canReview = flow.canReview;
 
   /**
    * БӨГЛӨХ ТАБ ХЭНД ГАРАХ ВЭ.
@@ -847,25 +859,16 @@ export function Guitsetgel() {
 
   const { rows, loading, error, reload } = useHyanaltRows();
   /**
-   * БАГЦААР ХУВААРИЛАХ — хэн юуг хариуцахыг эрхийн панелаас.
-   * ⚠️ Хуваарилалтгүй үед БҮГДИЙГ харуулна: шинэ систем дээр хэн ч юу ч
-   *    харахгүй бол тохируулах хүн өөрөө орж чадахгүй болно.
-   */
-  const [aclN, setAclN] = useState(0);
-  useEffect(() => subscribeAcl(() => setAclN((n) => n + 1)), []);
-  /**
-   * ⚠️ АДМИН (`super`) нь томилгооноос ҮЛ ХАМААРНА — эс бөгөөс шинэ систем
-   * дээр эсвэл бүх томилгоо санамсаргүй устсан үед тохируулах хүн өөрөө
+   * БАГЦААР ХУВААРИЛАХ — хэн юуг хариуцахыг эрхийн панелаас (`flow.scope`).
+   *
+   * ⚠️ АДМИН (кодын хатуу `super`) нь томилгооноос ҮЛ ХАМААРНА — эс бөгөөс шинэ
+   * систем дээр эсвэл бүх томилгоо санамсаргүй устсан үед тохируулах хүн өөрөө
    * юу ч харахгүй болж, эрхээ сэргээх аргагүй түгжигдэнэ.
    *
-   * ⚠️ Бусад бүх үүрэгт томилгоо нь ЗААВАЛ: `bagtsFor` нь томилогдоогүй
-   * хүнд `[]` буцаах тул жагсаалт хоосон болно (fail-closed).
+   * ⚠️ Бусад бүх үүрэгт томилгоо нь ЗААВАЛ: томилогдоогүй хүнд `[]` тул
+   * жагсаалт хоосон болно (fail-closed).
    */
-  const myBagts = useMemo(
-    () => (role === 'super' ? null : bagtsFor(user?.username, stage)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [user, role, stage, aclN],
-  );
+  const myBagts = flow.scope;
 
   const works = useMemo(() => {
     const all = groupWorks(rows);
@@ -950,7 +953,7 @@ export function Guitsetgel() {
             director: countFor('director'),
           }}
           stage={stage}
-          pick={fixed || !canReview ? undefined : (x) => { setStage(x); setStatus(ALL); }}
+          pick={flow.canPick ? (x) => { setPicked(x); setStatus(ALL); } : undefined}
         />
       </header>
 

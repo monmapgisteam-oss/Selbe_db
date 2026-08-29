@@ -22,7 +22,8 @@ import {
 } from "./bagts.pkg";
 import { OWNER, F as HF } from "@/lib/hyanalt";
 import { useHyanaltRows } from "@/lib/hyanaltStore";
-import { bagtsScope, subscribeAcl } from "@/lib/guitsetgelAcl";
+import { bagtsFor, bagtsScope, subscribeAcl } from "@/lib/guitsetgelAcl";
+import { roleForUser } from "@/lib/services";
 import { hasCap, subscribeCaps } from "@/lib/caps";
 import { negjOf } from "./negj";
 import { useAuth } from "@/components/AuthGate";
@@ -189,6 +190,7 @@ const RO = {
   noDocField: tr('Энэ багана тухайн үйлчилгээнд байхгүй — хадгалах газаргүй тул засагдахгүй. AGOL дээр талбарыг нэмж өгөх шаардлагатай.'),
   noQaqc: tr('Inspection Test Plan (М-акт, FIC, MA, MIR) бөглөхөд «QAQC» эрх шаардлагатай — «Хэрэглэгчдийн эрх удирдах» хэсгээс олгоно.'),
   docLocked: tr('Хуудас засагдахгүй горимд байна — өнөөдөр аль хэдийн хяналтад илгээгдсэн (эсвэл зөвхөн харах горим).'),
+  noPerf: tr('Гүйцэтгэлийн обьём ба огноог зөвхөн энэ багцад томилогдсон гүйцэтгэгч бөглөнө — та зөвхөн Inspection Test Plan / мөр нэмэх эрхийнхээ хүрээнд засна.'),
 } as const;
 
 /*
@@ -269,7 +271,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    * ⚠️ Хуваарилалт огт хийгээгүй бол ХЯЗГААРГҮЙ — эс бөгөөс шинэ систем
    *    дээр хэн ч юу ч бөглөж чадахгүй болно.
    */
-  const { user, role } = useAuth();
+  const { user, status: authStatus } = useAuth();
   const [aclN, setAclN] = useState(0);
   useEffect(() => subscribeAcl(() => setAclN((n) => n + 1)), []);
   /* Нэмэлт эрх ArcGIS-аас шинэчлэгдэхэд «+» товч шууд гарч/алга болно */
@@ -288,10 +290,17 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    *
    * ⚠️ `null` = хязгааргүй · `[]` = томилгоогүй тул НЭГ Ч багц нээгдэхгүй.
    */
+  /**
+   * ⚠️ ХЯЗГААРГҮЙ = кодын хатуу `super` эсвэл нэвтрэлт унтраалттай дев (2026-08-29).
+   *    Панелийн «Супер» preset (override) энд орохгүй — тэр нь харагдацын багц;
+   *    багцын хүрээ нь томилгооноос. Дев орчинд `user` null тул урьд нь
+   *    `bagtsScope` `[]` өгч нэг ч багц нээгддэггүй байв.
+   */
+  const unrestricted = authStatus === "off" || roleForUser(user?.username) === "super";
   const myBagts = useMemo(
-    () => (role === "super" ? null : bagtsScope(user?.username)),
+    () => (unrestricted ? null : bagtsScope(user?.username)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [user, role, aclN],
+    [user, unrestricted, aclN],
   );
   const groupOpts = useMemo(
     () => (myBagts ? PKG_GROUPS.filter((g) => myBagts.includes(g)) : PKG_GROUPS),
@@ -326,6 +335,23 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   const sentToday = !!snapDay && snapDay === today;
   /** Засах эрхгүй — харах л боломжтой. */
   const noEdit = locked || (sentToday && !returned);
+  /**
+   * ГҮЙЦЭТГЭЛ (обьём, огноо, «шинэчлэгдсэн огноо») БӨГЛӨХ ЭРХ — зөвхөн ЭНЭ багцад
+   * `company` шатанд томилогдсон гүйцэтгэгч (эсвэл админ).
+   *
+   * ⚠️ 2026-08-29: `myBagts` нь бүх шатны нэгдсэн хүрээ (QAQC/мөр нэмэх эрхтэй
+   *    инженер, менежер хуудсаа харах ёстой) тул зөвхөн түүгээр шүүвэл инженер
+   *    өөрийн хянах багцын гүйцэтгэлийг бөглөж, нийтлээд, ӨӨРӨӨ батлах зам
+   *    нээгддэг байв. Баримтын багана (`canQaqc`), мөр нэмэх (`canAddRow`) тусдаа.
+   */
+  const canPerf = useMemo(() => {
+    if (unrestricted) return true;
+    const cb = bagtsFor(user?.username, "company");
+    return cb === null || cb.includes(pkg.group);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, unrestricted, aclN, pkg.group]);
+  /** Гүйцэтгэлийн нүд засагдахгүй: хуудас түгжээтэй ЭСВЭЛ гүйцэтгэгч биш */
+  const noPerf = noEdit || !canPerf;
 
   /**
    * ӨНЧИН АГШИН (2026-08-29): нийтлэл амжилттай атлаа хяналтад илгээлт унасан
@@ -389,11 +415,11 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
      * зөвхөн ӨӨРТ НЬ хуваарилагдсан багцад мөр нэмнэ — эрх дангаараа бүх
      * багцыг нээх ёсгүй.
      */
-    if (!u || role === "super") return true;
+    if (!u || unrestricted) return true;
     const scope = bagtsScope(u);
     return scope == null || scope.includes(pkg.group);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, role, aclN, capN, pkg.group]);
+  }, [user, unrestricted, aclN, capN, pkg.group]);
 
   /**
    * QAQC — Inspection Test Plan (М-акт · FIC · MA · MIR) бөглөх эрх.
@@ -1038,7 +1064,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     const byOid = new Map(rows.map((r, i) => [r.oid, i] as const));
     const next: Record<string, string> = {};
     let dropped = 0;
-    for (const [key, v] of d.cells) {
+    // ⚠️ Гүйцэтгэлийн нүдийг зөвхөн бөглөх эрхтэй хүнд сэргээнэ (`canPerf`)
+    for (const [key, v] of (canPerf ? d.cells : [])) {
       const oid = Number(key.split(":")[0]);
       const b = Number(key.slice(key.indexOf(":") + 1));
       const i = byOid.get(oid);
@@ -1125,6 +1152,12 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   const publish = useCallback(async () => {
     // ⚠️ busy — Ctrl+S auto-repeat үед олон зэрэгцээ бичилт явахаас сэргийлнэ.
     if (busy || asOf == null || dirtyCount === 0 || !sc) return;
+    // ⚠️ Гүйцэтгэлийн өөрчлөлт (обьём/огноо/шинэчлэгдсэн огноо) зөвхөн томилогдсон
+    //    гүйцэтгэгчээс — товчны disabled-аас биш, ЭНД шалгана (Ctrl+S ч энд ирдэг).
+    if (!canPerf && (Object.keys(pending).length || Object.keys(pendDate).length || asOf !== asOfOrig)) {
+      setErr(RO.noPerf);
+      return;
+    }
     setBusy(true);
     setErr("");
     try {
@@ -1274,7 +1307,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     } finally {
       setBusy(false);
     }
-  }, [pkg, sc, nBld, asOf, asOfOrig, pending, pendDate, pendDoc, dirtyCount, busy, hasObyem, withAdds]);
+  }, [pkg, sc, nBld, asOf, asOfOrig, pending, pendDate, pendDoc, dirtyCount, busy, hasObyem, withAdds, canPerf]);
 
   // Ctrl+S — «Гүйцэтгэл бөглөх»-тэй ижил.
   // ⚠️ Нээлттэй нүдний бичиж буй утгыг ЭХЛЭЖ commit хийнэ — эс тэгвэл хуучин
@@ -1404,7 +1437,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
           <select
             className={st.select}
             value={dt(asOf)}
-            disabled={busy}
+            disabled={busy || noPerf}
             onChange={(e) => {
               // ⚠️ Хоосон утга → null болговол calc=[] болж бүх мөр чимээгүй
               // алга болно — тиймээс задлагдахгүй бол хуучнаа хэвээр үлдээнэ.
@@ -1747,6 +1780,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                           return say(
                             tr('Энэ багцын өнөөдрийн гүйцэтгэл аль хэдийн илгээгдсэн — хяналтаас буцаалт ирэх хүртэл засах боломжгүй.'),
                           );
+                        if (!canPerf) return say(RO.noPerf);
                         if (!canVol) return say(r.group ? RO.groupAct : RO.noObyemField);
                         setVal(pending[key] ?? qtyRaw(r.obyem[bi]));
                         setEdit({ i, b: bi, col: "obyem" });
@@ -1760,7 +1794,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                              ХОЁУЛАА харагдана (бөглөгчийн харж буй тоо). */
                           className={cls(
                             "num bld" +
-                              (canVol ? (noEdit ? " view" : " editable") : " calc") +
+                              (canVol ? (noPerf ? " view" : " editable") : " calc") +
                               (dirty ? " dirty" : "") +
                               (changed ? (okd ? " chgOk" : " chg") : "") +
                               (hitKey === `${i}:${b}` ? " chgHit" : ""),
@@ -1769,7 +1803,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                              хооронд/ирмэг дээр таарсан товшилт үрэгдэхгүй
                              (хэрэглэгч үүнийг «хоёр дарж байж нээгддэг» гэж
                              мэдэрдэг байв). */
-                          tabIndex={canVol && !noEdit ? 0 : changed ? 0 : undefined}
+                          tabIndex={canVol && !noPerf ? 0 : changed ? 0 : undefined}
                           onClick={open}
                           onKeyDown={(e) => {
                             if (locked) {
@@ -1875,7 +1909,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                         const src = k === "s" ? c.startSrc[bi] : c.endSrc[bi];
                         // Талбар нь үйлчилгээнд байхгүй блок бий (толгой нь
                         // эвдэрсэн) — тэнд хадгалах газаргүй тул засагдахгүй.
-                        const editable = !noEdit && src !== "agg" && !!fld;
+                        const editable = !noPerf && src !== "agg" && !!fld;
                         return (
                           <td
                             key={`${k}${b}`}
@@ -1914,12 +1948,12 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                       <td
                         className={cls(
                           "num c-date" +
-                            (i === 0 && !noEdit ? " cursor-cell" : "") +
+                            (i === 0 && !noPerf ? " cursor-cell" : "") +
                             (i === 0 && asOf !== asOfOrig ? " dirty" : ""),
                         )}
                         title={i === 0 ? tr('Дарж календараар сонгоно') : RO.asOfRow}
                         onClick={(e) => {
-                          if (noEdit) return;
+                          if (noPerf) return;
                           if (i !== 0) return say(RO.asOfRow);
                           setPick({
                             kind: "asOf",
