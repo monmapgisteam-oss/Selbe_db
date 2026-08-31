@@ -33,6 +33,9 @@ const Tailan = dynamic(() => import('@/modules/Tailan').then((m) => m.Tailan), {
 /* ⚠️ Хуваарь нь 10 бөглөх хуудсын схем + 1,400 мөрийг татдаг тул зөвхөн
    нээгдэх үедээ ачаалагдана (`dynamic`) — бусад харагдацыг хүндрүүлэхгүй. */
 const Huvaari = dynamic(() => import('@/modules/Huvaari').then((m) => m.Huvaari), { ssr: false });
+/* ⚠️ Схем нь зургаан эх сурвалжийн ачаалагчийг дагуулдаг тул порталын үндсэн
+   багцад ОРУУЛАХГҮЙ — зөвхөн нээгдэх үедээ. */
+const Schem = dynamic(() => import('@/modules/Schem').then((m) => m.Schem), { ssr: false });
 import { Icon } from '@/components/Icon';
 import { DocViewer } from '@/components/DocViewer';
 import { UserAdmin } from '@/components/UserAdmin';
@@ -493,6 +496,7 @@ function PortalContent(
   const isErsdel = view === 'ersdel';
   const isGuitsetgel = view === 'guitsetgel';
   const isZovshoorol = view === 'zovshoorol';
+  const isSchem = view === 'schem';
   /* Багцын хоёр харагдац — НЭГ модулиас `mode` пропоор (`services.ts` §pkgFin) */
   const isPkgFin = view === 'pkgFin';
   const isPkgProg = view === 'pkgProg';
@@ -658,6 +662,11 @@ function PortalContent(
                                   ? <Zovshoorol />
                                 : isGuitsetgel
                                   ? <Guitsetgel />
+                                : isSchem
+                                  /* ⚠️ `setView` нь ЗАНГИЛАА ДАРАХАД шилжихэд
+                                     хэрэгтэй. URL-аар тойрч болохгүй — энэ
+                                     функц шүүлт, сонголт, давхаргыг ч цэвэрлэдэг. */
+                                  ? <Schem setView={setView} navScope={navScope} />
                                   : <Suitability dim={dim} setDim={setDim} />}
           </div>
         )}

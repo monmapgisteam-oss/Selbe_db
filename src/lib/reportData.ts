@@ -227,7 +227,20 @@ const loadPkgLabels = cached(async (): Promise<Map<string, string>> => {
  * ⚠️ Төсөвгүй багцад блокийн тоог нөөц жин болгоно — эс бөгөөс тэр багц
  * нийт дүнд ОГТ оролцохгүй, гүйцэтгэл нь чимээгүй өндөрсөнө.
  */
-async function loadOverall(): Promise<ReportExtra['overall']> {
+/**
+ * ⚠️ ЭКСПОРТЛОГДСОН БА ТУСДАА КЭШТЭЙ (2026-08-31).
+ *
+ * Урьд нь эдгээр нь модулийн дотоод, кэшгүй байсан бөгөөд гадагш зөвхөн
+ * `loadReportExtra` гарч байв. Тиймээс энэ дүнгийн ЖИЖИГ хэсэг хэрэгтэй
+ * хэрэглэгч (ж: «Үйл ажиллагааны схем») бүтэн тайланг татах шаардлагатай
+ * болж, дагаад `loadInfra`-ийн ~88 stat хүсэлт явдаг байлаа.
+ *
+ * ⚠️ Тусдаа кэш нь ДАВХАРДАЛ ҮҮСГЭХГҮЙ: `loadReportExtraRaw` нь эдгээр
+ *    ороомгуудыг дуудна тул «Тайлан» ба «Схем» хоёр НЭГ хүсэлт хуваалцана.
+ */
+export const loadOverall = cached(loadOverallRaw, 5 * 60_000, ['BAGTS_SHEET', 'CASHFLOW2']);
+
+async function loadOverallRaw(): Promise<ReportExtra['overall']> {
   const F = CASHFLOW2.fields;
   const { loadBlockProgress } = await import('@/lib/blockProgress');
   const [cells, labels, cf] = await Promise.all([
@@ -313,7 +326,9 @@ const isLeftParcel = (label: string) => /Үлдсэн/i.test(label);
  * хувь нь ҮРГЭЛЖ `null` — тайланд «—» гэж чимээгүй хоосорч байлаа.
  * Одоо давхаргын ӨӨРИЙНХ нь төлвөөс бодно: шийдвэрлэгдсэн ÷ нийт.
  */
-async function loadLand(): Promise<ReportExtra['land']> {
+export const loadLand = cached(loadLandRaw, 5 * 60_000, ['PARCEL_LEFT']);
+
+async function loadLandRaw(): Promise<ReportExtra['land']> {
   // ⚠️ `url` нь заавал биш (BuildingSceneLayer г.м. давхаргад байхгүй) — шалгана
   const d = LAYER_BY_ID['land:left'];
   if (!d?.url) return { parcels: 0, areaM2: 0, pct: null, byStatus: [], byReason: [] };
@@ -376,7 +391,9 @@ async function loadSocial(): Promise<ReportExtra['social']> {
 
 /* ═══════════════ Барилга угсралтын гүйцэтгэл ═══════════════ */
 
-async function loadProgress(): Promise<ReportExtra['progress']> {
+export const loadProgress = cached(loadProgressRaw, 5 * 60_000, ['BAGTS_SHEET']);
+
+async function loadProgressRaw(): Promise<ReportExtra['progress']> {
   const { loadBlockProgress } = await import('@/lib/blockProgress');
   const [map, labelOf] = await Promise.all([
     loadBlockProgress(),
@@ -447,7 +464,9 @@ async function loadProgress(): Promise<ReportExtra['progress']> {
  */
 const isRealAct = (no: unknown) => /^(IPC|APC|АРС)[-\s]?\d+/i.test(String(no ?? '').trim());
 
-async function loadFinance(): Promise<ReportExtra['finance']> {
+export const loadFinance = cached(loadFinanceRaw, 5 * 60_000, ['CASHFLOW2', 'IPC_LOG']);
+
+async function loadFinanceRaw(): Promise<ReportExtra['finance']> {
   const F = CASHFLOW2.fields;
   const I = IPC_LOG.fields;
   const [rows, ipc] = await Promise.all([
@@ -571,7 +590,9 @@ async function loadInfra(): Promise<ReportExtra['infra']> {
 
 /* ═══════════════ 11 · ХАБЭА ═══════════════ */
 
-async function loadHabeaSummary(): Promise<ReportExtra['habea']> {
+export const loadHabeaSummary = cached(loadHabeaSummaryRaw, 5 * 60_000, ['HABEA']);
+
+async function loadHabeaSummaryRaw(): Promise<ReportExtra['habea']> {
   const L = HABEA.labor.fields;
   const [labor, incident] = await Promise.all([
     /* Огноо + компани тус бүрийн тоон талбарууд — «*» бүх баганыг татдаг байв

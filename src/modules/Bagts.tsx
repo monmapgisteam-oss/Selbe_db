@@ -254,16 +254,16 @@ export function Bagts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    *    барилга, аль нь газар болох нь ялгагдахаа больдог. Тод ягаан + зузаан
    *    хүрээ нь хоёуланг нь эрс тасалж өгнө.
    */
-  /** Анивчих давхарга — давхцсан талбар олдсон үед л. */
-  const parcelPulse = useMemo(
-    () => (ovOk?.oids.length ? [PARCEL_LAYER] : undefined),
-    [ovOk],
-  );
+  /**
+   * ⚠️ АНИВЧИЛТ ХАСАГДСАН (2026-08-28, хэрэглэгчийн заавар): пульс нь
+   * талбаруудыг тасралтгүй томруулж жижигрүүлдэг тул хэлбэр, хэмжээг нь
+   * нүдээр уншиж болохгүй болно. Ялгааг өнгө ба зузаан хүрээ барина.
+   */
 
   const parcelStyle = useMemo(
     () =>
       ovOk?.oids.length
-        ? { [PARCEL_LAYER]: { hue: '#d946ef', fill: 0.22, width: 3.4 } }
+        ? { [PARCEL_LAYER]: { hue: '#d946ef', fill: 0.22, width: 1.7 } }
         : undefined,
     [ovOk],
   );
@@ -350,7 +350,6 @@ export function Bagts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           zone={zone}
           layerWhere={layerWhere}
           layerStyle={parcelStyle}
-          pulseIds={parcelPulse}
           onPick={noopPick}
         />
 
@@ -742,7 +741,8 @@ export function BlocksCard({
       if (ovOn) { setSelOid(null); onOverlapPick?.(null); return; }
       setSelOid(OV_KEY);
       onOverlapPick?.(overlapOids);
-      zoomToWhere(PARCEL_LAYER, `OBJECTID IN (${overlapOids.join(',')})`);
+      /* ⚠️ Анимацигүй — [[Gazar]]-тай ижил шалтгаанаар */
+      zoomToWhere(PARCEL_LAYER, `OBJECTID IN (${overlapOids.join(',')})`, { animate: false });
     }
     : null;
   /**

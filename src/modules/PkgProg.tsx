@@ -396,23 +396,22 @@ export function PkgProg({ dim, setDim }: {
    *    полигон хоёр НЭГ зүйлийг хэлж байгаа нь нүдэнд холбогдохгүй байв.
    *
    * ⚠️ Блокууд улбар шар (`#ea580c`) тул ойролцоо өнгөтэй: ЗУЗААН хүрээ
-   *    (4.2) ба өндөр дүүргэлт (0.3) нь ялгааг барина. Дээрээс нь энэ давхарга
-   *    ПУЛЬСЛЭДЭГ тул хөдөлгөөнөөрөө ч ялгарна.
+   *    (4.2) ба өндөр дүүргэлт (0.3) нь ялгааг барина.
    *
    * ⚠️ HEX-ЭЭР бичнэ, CSS хувьсагчаар БИШ: MapCanvas-ийн `rgb()` нь зөвхөн
    *    `#rrggbb`-г задалдаг тул `var(--bad)` өгвөл NaN болж, полигон огт
    *    зурагдахгүй. Утга нь `globals.css`-ийн `--bad`-тай ижил.
    */
-  /** Анивчих давхарга — давхцсан талбар олдсон үед л. */
-  const parcelPulse = useMemo(
-    () => (ovShown.length ? [PARCEL_LAYER] : undefined),
-    [ovShown],
-  );
+  /**
+   * ⚠️ АНИВЧИЛТ ХАСАГДСАН (2026-08-28, хэрэглэгчийн заавар): пульс нь
+   * талбаруудыг тасралтгүй томруулж жижигрүүлдэг тул хэлбэр, хэмжээг нь
+   * нүдээр уншиж болохгүй болно. Ялгааг өнгө ба зузаан хүрээ барина.
+   */
 
   const parcelStyle = useMemo(
     () =>
       ovShown.length
-        ? { [PARCEL_LAYER]: { hue: '#dc2626', fill: 0.3, width: 4.2 } }
+        ? { [PARCEL_LAYER]: { hue: '#dc2626', fill: 0.3, width: 2.1 } }
         : undefined,
     [ovShown],
   );
@@ -601,7 +600,6 @@ export function PkgProg({ dim, setDim }: {
           zone={zone}
           layerWhere={layerWhere}
           layerStyle={parcelStyle}
-          pulseIds={parcelPulse}
           onPick={onMapPick}
         />
 

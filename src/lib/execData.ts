@@ -12,6 +12,7 @@
  */
 
 import { useAsync, type Async } from './useAsync';
+import { cached } from './live';
 import { queryFeatures, type Row } from './query';
 import { BUILDING, bagtsKey, buildingKey } from './services';
 import {
@@ -73,16 +74,23 @@ export type BagtsRow = {
  * илтгэлийн дүнгээс 5–14 нэгжээр зөрдөг. `loadBlockProgress()` нь «Барилгын
  * хяналт»-ын ашигладаг ЯГ ижил тооцоо — хоёр харагдац ижил тоо харуулна.
  */
+/**
+ * ⚠️ ХУКААС ТУСГААРЛАВ (2026-08-31). React-гүй хэрэглэгчид (ж: «Үйл
+ * ажиллагааны схем»-ийн эх сурвалж цуглуулагч) энэ жагсаалт хэрэгтэй боловч
+ * хук дуудаж чадахгүй. Кэш нь хоёр талыг НЭГ хүсэлт хуваалцуулна.
+ */
+export const loadBagtsRows = cached<BagtsRow[]>(async () => {
+  const [blocks, prog] = await Promise.all([
+    queryFeatures(BUILDING.url, {
+      outFields: [BUILDING.oid, BF.bagts, BF.block, BF.households, BF.contractor],
+    }),
+    loadBlockProgress(),
+  ]);
+  return joinBagts(blocks, prog);
+}, 5 * 60_000, ['BAGTS_SHEET']);
+
 export function useBagtsTable(): Async<BagtsRow[]> {
-  return useAsync(async () => {
-    const [blocks, prog] = await Promise.all([
-      queryFeatures(BUILDING.url, {
-        outFields: [BUILDING.oid, BF.bagts, BF.block, BF.households, BF.contractor],
-      }),
-      loadBlockProgress(),
-    ]);
-    return joinBagts(blocks, prog);
-  }, []);
+  return useAsync(loadBagtsRows, []);
 }
 
 function joinBagts(blocks: Row[], prog: BlockProgressMap): BagtsRow[] {
