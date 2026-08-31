@@ -102,20 +102,26 @@ const get = (st, key) => buildMetrics(st, NOW).find((m) => m.key === key);
   }
 }
 
-/* 5. ТҮВШНИЙ ДАРААЛАЛ — 1 нь ХАМГИЙН ХҮНД */
+/* 5. ТҮВШНИЙ ДАРААЛАЛ — 3 нь ХАМГИЙН ХҮНД
+ *
+ * ⚠️ 2026-08-29-нд түвшний шаталбар УРВУУЛАГДСАН (feat: түвшний шаталбар):
+ * урьд нь 1 = 100 жилийн үер байсныг 1 = хөнгөн (5 жил) → 3 = хүнд (100 жил)
+ * болгов — «Анхааруулах» хувилбар 100 жилийн үерээр тооцдог алдааны засвар.
+ * Энэ бүлэг тэр ШИНЭ дарааллыг хамгаална: дахин урвуулбал улаан болно. */
 {
-  assert.ok(FLOOD_LEVELS[1].period > FLOOD_LEVELS[2].period, 'үер: 1-р түвшин ховор давтагдана');
-  assert.ok(FLOOD_LEVELS[1].peak > FLOOD_LEVELS[2].peak && FLOOD_LEVELS[2].peak > FLOOD_LEVELS[3].peak);
-  assert.ok(FLOOD_LEVELS[1].reach > FLOOD_LEVELS[2].reach && FLOOD_LEVELS[2].reach > FLOOD_LEVELS[3].reach);
-  assert.ok(FLOOD_LEVELS[1].depth > FLOOD_LEVELS[3].depth);
+  assert.ok(FLOOD_LEVELS[3].period > FLOOD_LEVELS[2].period && FLOOD_LEVELS[2].period > FLOOD_LEVELS[1].period, 'үер: 3-р түвшин ховор давтагдана');
+  assert.ok(FLOOD_LEVELS[3].peak > FLOOD_LEVELS[2].peak && FLOOD_LEVELS[2].peak > FLOOD_LEVELS[1].peak);
+  assert.ok(FLOOD_LEVELS[3].reach > FLOOD_LEVELS[2].reach && FLOOD_LEVELS[2].reach > FLOOD_LEVELS[1].reach);
+  assert.ok(FLOOD_LEVELS[3].depth > FLOOD_LEVELS[1].depth);
+  assert.ok(FLOOD_LEVELS[3].rain > FLOOD_LEVELS[1].rain);
   // Сэрэмжлүүлэх хугацаа нь ЭСРЭГ: хүнд үер хурдан ирнэ
-  assert.ok(FLOOD_LEVELS[1].lead < FLOOD_LEVELS[3].lead, 'хүнд үерийн сэрэмжлүүлэх хугацаа богино');
+  assert.ok(FLOOD_LEVELS[3].lead < FLOOD_LEVELS[1].lead, 'хүнд үерийн сэрэмжлүүлэх хугацаа богино');
 
-  assert.ok(AIR_LEVELS[1].pm25 > AIR_LEVELS[2].pm25 && AIR_LEVELS[2].pm25 > AIR_LEVELS[3].pm25);
-  // Инверси НАМ болох тусам бохирдол хуримтлагдана — 1-р түвшинд хамгийн нам
-  assert.ok(AIR_LEVELS[1].inversion < AIR_LEVELS[3].inversion, 'хүнд бохирдолд инверси нам');
-  assert.ok(AIR_LEVELS[1].wind < AIR_LEVELS[3].wind, 'хүнд бохирдолд салхи сул');
-  assert.ok(SEVERITY[1] > SEVERITY[2] && SEVERITY[2] > SEVERITY[3]);
+  assert.ok(AIR_LEVELS[3].pm25 > AIR_LEVELS[2].pm25 && AIR_LEVELS[2].pm25 > AIR_LEVELS[1].pm25);
+  // Инверси НАМ болох тусам бохирдол хуримтлагдана — ХҮНД (3) түвшинд хамгийн нам
+  assert.ok(AIR_LEVELS[3].inversion < AIR_LEVELS[1].inversion, 'хүнд бохирдолд инверси нам');
+  assert.ok(AIR_LEVELS[3].wind < AIR_LEVELS[1].wind, 'хүнд бохирдолд салхи сул');
+  assert.ok(SEVERITY[3] > SEVERITY[2] && SEVERITY[2] > SEVERITY[1]);
 }
 
 /* 6. ҮНЭЛГЭЭНИЙ ЧИГЛЭЛ — `higherBetter` эргүүлж уншигдахгүй байх */

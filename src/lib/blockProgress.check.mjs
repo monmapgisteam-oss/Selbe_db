@@ -69,9 +69,21 @@ for (const [key, cell] of prog) {
 //    Гүйцэтгэл гарсан блок давхаргад БАЙХГҮЙ бол зурагт будагдах юмгүй болно.
 const blds = await q(BLDG, { where: '1=1', outFields: 'BAGTS,BLOK', resultRecordCount: '2000' });
 const layerKeys = new Set(blds.map((b) => buildingKey(b.BAGTS, b.BLOK)));
-const orphan = [...prog.keys()].filter((k) => !layerKeys.has(k));
+/*
+ * ⚠️ МЭДЭГДЭЖ БУЙ зөрүүний жагсаалт (2026-08-29). «БАГЦ2|5/8»-д гүйцэтгэл
+ * нийтлэгдсэн ч /112-т 5/8 footprint алга (5/6 хоёр удаа — нэг нь магадгүй
+ * 5/8-ийн бичилтийн алдаа). Өгөгдлийг ЗАСАХГҮЙ гэж хэрэглэгч шийдсэн тул
+ * энэ НЭГ түлхүүрийг л тэсвэрлэнэ: shalguur нь ШИНЭ зөрүү гарвал урьдын адил
+ * улаан болно. Давхаргад 5/8 нэмэгдвэл (эсвэл нэр засагдвал) доорх мөр
+ * ӨӨРӨӨ илүүдэж, «цэвэрлэ» гэж сануулна.
+ */
+const KNOWN_ORPHAN = new Set(['БАГЦ2|5/8']);
+const orphan = [...prog.keys()].filter((k) => !layerKeys.has(k) && !KNOWN_ORPHAN.has(k));
 assert.equal(orphan.length, 0,
   `гүйцэтгэлтэй атлаа давхаргад БАЙХГҮЙ блок: ${orphan.join(', ')}`);
+const healed = [...KNOWN_ORPHAN].filter((k) => layerKeys.has(k) || !prog.has(k));
+if (healed.length) console.log(`⚠️ KNOWN_ORPHAN-ийн ${healed.join(', ')} арилжээ — жагсаалтаас хасаж болно`);
+else console.log(`⚠️ мэдэгдэж буй зөрүү: ${[...KNOWN_ORPHAN].join(', ')} (өгөгдөл засагдтал зурагт наалдахгүй)`);
 
 /* ⚠️ УРВУУ ЧИГЛЭЛД (давхарга → гүйцэтгэл) ХАТУУ ХЯЗГААР ТАВИХГҮЙ. Бөглөх
    хуудсуудад гүйцэтгэл дөнгөж орж эхэлж байгаа (2026-08-27-нд 113 блокоос 26)
