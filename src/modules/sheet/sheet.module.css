@@ -1139,3 +1139,20 @@ tr:hover > td > .addBtn { opacity: 1; }
 }
 .resend:hover { background: color-mix(in srgb, var(--hue) 14%, transparent); }
 .resend:disabled { opacity: 0.5; cursor: default; }
+
+/* Автомат хадгалалтын баталгаа — Нийтлэх товчны хажууд, нам зэрэглэлтэй */
+.autosave {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+.autosave::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--good);
+}

@@ -58,9 +58,27 @@ const cls = (names: string) =>
 // бүрд ТУСДАА (Pivot-ын ганц слотын хөндлөн-багц алдагдлыг давтахгүй); нүдний
 // түлхүүр `${oid}:${b}` — oid нь үйлчилгээний ObjectID тул дараагийн
 // ачаалалтад тогтвортой. Огнооны (asOf) өөрчлөлт ноорогт ХАДГАЛАГДАХГҮЙ.
+/**
+ * НООРОГ — нийтлэхээс ӨМНӨХ бүх засвар.
+ *
+ * ⚠️ 2026-08-29: урьд нь ЗӨВХӨН гүйцэтгэлийн нүд (`cells`) ба нэмсэн мөр
+ * хадгалагддаг байв. Огноо (`dates`), Inspection Test Plan-ийн текст
+ * (`docs`), «Шинэчлэгдсэн огноо» (`asOf`) гурав ноорогт ОРДОГГҮЙ тул
+ * компьютер унтрах, таб хаагдах, багц солиход ЧИМЭЭГҮЙ АЛГА болдог байлаа —
+ * хэрэглэгч хагас цагийн ажлаа алдана. Одоо дөрвүүлээ хамрагдана.
+ *
+ * ⚠️ Талбар бүр СОНГОЛТТОЙ: хуучин хөтөчид хадгалагдсан ноорог задрахгүй.
+ */
 type Draft = {
   t: number;
+  /** Гүйцэтгэлийн нүд — `${oid}:${блокийн индекс}` */
   cells: [string, string][];
+  /** Хуваарийн огноо — `${oid}:${блокийн индекс}:s|e` */
+  dates?: [string, string][];
+  /** Баримт бичгийн текст — `${oid}:${баганын индекс}` */
+  docs?: [string, string][];
+  /** «Шинэчлэгдсэн огноо» (ms) — зөвхөн өөрчлөгдсөн бол */
+  asOf?: number | null;
   /**
    * Ерөнхий менежерийн нэмсэн, хараахан нийтлэгдээгүй мөрүүд.
    * ⚠️ Хуучин ноорогт БАЙХГҮЙ тул заавал сонголттой — уншихдаа `?? []`.
@@ -103,6 +121,11 @@ const readDraft = (pkgKey: string): Draft | null => {
     if (!d.t || !Array.isArray(d.cells) || Date.now() - d.t > DRAFT_TTL_MS)
       return null;
     if (d.adds != null && !Array.isArray(d.adds)) return null;
+    /* ⚠️ Шинэ талбарууд эвдэрсэн бол ноорог БҮХЭЛДЭЭ хаяхгүй — тэр хэсгийг
+       нь л орхино. Нэг талбарын алдаа бусад засварыг устгах ёсгүй. */
+    if (d.dates != null && !Array.isArray(d.dates)) d.dates = undefined;
+    if (d.docs != null && !Array.isArray(d.docs)) d.docs = undefined;
+    if (d.asOf != null && !Number.isFinite(d.asOf)) d.asOf = undefined;
     return d;
   } catch {
     return null;
@@ -450,6 +473,12 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    * болгоно) — тиймээс `null`-аас ялгаж, түлхүүр байгаа эсэхээр шийднэ.
    */
   const [pendDoc, setPendDoc] = useState<Record<string, string>>({});
+  /**
+   * НООРОГ СҮҮЛД ХАДГАЛАГДСАН АГШИН (ms) — зөвхөн дэлгэцийн баталгаа.
+   * ⚠️ Автомат хадгалалт нь ЧИМЭЭГҮЙ бол хэрэглэгч итгэхгүй: «хадгалагдсан
+   * болов уу» гэж эргэлзэн Нийтлэхийг дутуу дарна. Ил тэмдэг хэрэгтэй.
+   */
+  const [savedAt, setSavedAt] = useState<number | null>(null);
   /** Яг одоо засагдаж буй баримтын нүд — `${мөрийн индекс}:${багана}` */
   const [editDoc, setEditDoc] = useState<string | null>(null);
   /**
@@ -1058,9 +1087,6 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     promptedPkgRef.current = pkg.key;
     const d = readDraft(pkg.key);
     if (!d) return;
-    // ⚠️ Нэмсэн мөрийг ЗӨВХӨН эрхтэй хүнд сэргээнэ — эрх нь хооронд нь
-    //    хасагдсан бол ноорог дахь мөр дэлгэцэд гарах ёсгүй.
-    if (d.adds?.length && canAddRow) setAdds(d.adds);
     const byOid = new Map(rows.map((r, i) => [r.oid, i] as const));
     const next: Record<string, string> = {};
     let dropped = 0;
@@ -1087,19 +1113,70 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       }
       next[key] = v;
     }
-    if (!Object.keys(next).length) {
+
+    /* ── ОГНОО (`${oid}:${блок}:s|e`) ──
+       ⚠️ Талбаргүй блок бий (эх хуудасны толгой эвдэрсэн) — тэнд бичих газар
+       байхгүй тул сэргээх нь утгагүй. */
+    const nextDates: Record<string, string> = {};
+    for (const [key, v] of (canPerf ? (d.dates ?? []) : [])) {
+      const [oidS, bS, k] = key.split(":");
+      const b = Number(bS);
+      const i2 = byOid.get(Number(oidS));
+      const r2 = i2 == null ? undefined : rows[i2];
+      const fld = k === "s" ? sc.start[b] : k === "e" ? sc.end[b] : null;
+      if (!r2 || !Number.isInteger(b) || b < 0 || b >= nBld || !fld) { dropped++; continue; }
+      nextDates[key] = v;
+    }
+
+    /* ── БАРИМТ БИЧИГ (`${oid}:${баганын индекс}`) ──
+       ⚠️ ЗӨВХӨН QAQC эрхтэй хүнд: эрх нь хооронд нь хасагдсан бол ноорог
+       дахь текст дэлгэцэд буцаж гарах ёсгүй. */
+    const nextDocs: Record<string, string> = {};
+    for (const [key, v] of (canQaqc ? (d.docs ?? []) : [])) {
+      const di = Number(key.slice(key.indexOf(":") + 1));
+      const i3 = byOid.get(Number(key.split(":")[0]));
+      if (i3 == null || !Number.isInteger(di) || di < 0 || di >= DOC_COLS.length || !sc.docs[di]) {
+        dropped++;
+        continue;
+      }
+      nextDocs[key] = v;
+    }
+
+    /* ── ШИНЭЧЛЭГДСЭН ОГНОО — зөвхөн ачаалсан утгаас ӨӨР бол ── */
+    const draftAsOf = d.asOf != null && d.asOf !== asOfOrig ? d.asOf : null;
+
+    const nCells = Object.keys(next).length;
+    const nDates = Object.keys(nextDates).length;
+    const nDocs = Object.keys(nextDocs).length;
+    const nAdds = canAddRow ? (d.adds?.length ?? 0) : 0;
+    const total = nCells + nDates + nDocs + nAdds + (draftAsOf != null ? 1 : 0);
+    if (!total) {
       clearDraftLS(pkg.key);
       return;
     }
     const when = new Date(d.t).toLocaleString("mn-MN");
+    /* ⚠️ Юу сэргээхийг ЗҮЙЛЧЛЭН хэлнэ — «12 засвар» гэдэг юу байсныг
+       хэлдэггүй тул хэрэглэгч шийдэж чадахгүй. */
+    const parts = [
+      nCells ? tr('{0} гүйцэтгэлийн нүд', nCells) : '',
+      nDates ? tr('{0} огноо', nDates) : '',
+      nDocs ? tr('{0} баримтын нүд', nDocs) : '',
+      nAdds ? tr('{0} шинэ мөр', nAdds) : '',
+      draftAsOf != null ? tr('шинэчлэгдсэн огноо') : '',
+    ].filter(Boolean);
     const msg =
-      tr('Нийтлэгдээгүй {0} нүдний засвар олдлоо ({1}).', Object.keys(next).length, when) +
-      (dropped ? "\n" + tr('{0} нүд хуучирсан тул орхигдоно.', dropped) : "") +
-      "\n" + tr('Сэргээх үү?');
-    if (window.confirm(msg)) setPending(next);
-    else clearDraftLS(pkg.key);
+      tr('Нийтлэгдээгүй засвар олдлоо ({0}):', when) + "\n" + '· ' + parts.join("\n" + '· ') +
+      (dropped ? "\n\n" + tr('{0} нүд хуучирсан тул орхигдоно.', dropped) : '') +
+      "\n\n" + tr('Сэргээх үү?');
+    if (window.confirm(msg)) {
+      if (nAdds) setAdds(d.adds ?? []);
+      if (nCells) setPending(next);
+      if (nDates) setPendDate(nextDates);
+      if (nDocs) setPendDoc(nextDocs);
+      if (draftAsOf != null) setAsOf(draftAsOf);
+    } else clearDraftLS(pkg.key);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [busy, rows, sc, nBld, pkg.key]);
+  }, [busy, rows, sc, nBld, pkg.key, asOfOrig]);
 
   // Ноорог хадгалах — pending өөрчлөгдөх бүрд. Хоосон болоход (нийтэлсэн /
   // болиулсан) устгана, гэхдээ зөвхөн сэргээх шат ӨНГӨРСӨН багцынхыг: багц
@@ -1107,12 +1184,32 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   useEffect(() => {
     // ⚠️ НЭМСЭН МӨР ч ноорогт орно: Ерөнхий менежер ажил нэмээд хуудсаа
     //    сэргээхэд тэр ажил чимээгүй алга болох ёсгүй.
-    if (!Object.keys(pending).length && !adds.length) {
+    /* ⚠️ ХООСОН гэдгийг ДӨРВҮҮЛЭНГЭЭР шалгана: зөвхөн `pending`-ээр шалгавал
+       огноо/баримт засаад гүйцэтгэлийн нүд хөндөөгүй хэрэглэгчийн ноорог
+       хадгалагдахын оронд УСТАНА. */
+    const asOfChanged = asOf !== asOfOrig;
+    if (
+      !Object.keys(pending).length
+      && !Object.keys(pendDate).length
+      && !Object.keys(pendDoc).length
+      && !adds.length
+      && !asOfChanged
+    ) {
       if (promptedPkgRef.current === pkg.key) clearDraftLS(pkg.key);
+      setSavedAt(null);
       return;
     }
-    saveDraftLS(pkg.key, { t: Date.now(), cells: Object.entries(pending), adds });
-  }, [pending, adds, pkg.key]);
+    const at = Date.now();
+    setSavedAt(at);
+    saveDraftLS(pkg.key, {
+      t: at,
+      cells: Object.entries(pending),
+      dates: Object.entries(pendDate),
+      docs: Object.entries(pendDoc),
+      asOf: asOfChanged ? asOf : undefined,
+      adds,
+    });
+  }, [pending, pendDate, pendDoc, adds, asOf, asOfOrig, pkg.key]);
 
   // Таб хаах/refresh — нийтлээгүй засвартай үед хөтөч анхааруулна.
   useEffect(() => {
@@ -1512,6 +1609,18 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         </button>
         )}
         {busy && <span className={st.muted}>{tr('ажиллаж байна…')}</span>}
+        {/* ⚠️ АВТОМАТ ХАДГАЛАЛТЫН БАТАЛГАА. Ноорог нь зөвхөн ЭНЭ хөтөч дээр
+            байдгийг ил хэлнэ — «хадгалагдсан» гэдгийг «илгээгдсэн» гэж
+            ойлговол хэрэглэгч Нийтлэх дарахгүй өнгөрч, ажил нь хянагчид
+            хүрэхгүй үлдэнэ. */}
+        {!locked && savedAt != null && dirtyCount > 0 && (
+          <span
+            className={st.autosave}
+            title={tr('Ноорог зөвхөн энэ компьютерийн хөтөчид хадгалагдсан. Хянагчид хүргэхийн тулд «Нийтлэх» дарна.')}
+          >
+            {tr('ноорог хадгалагдав {0}', new Date(savedAt).toLocaleTimeString('mn-MN', { hour: '2-digit', minute: '2-digit' }))}
+          </span>
+        )}
       </div>
 
       {/*
