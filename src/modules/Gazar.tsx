@@ -337,7 +337,9 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   /* Сонголт хийхэд зураг тэр талбарууд руу очно */
   const pickOverlap = useCallback((r: PkgOverlap | null) => {
     setOvPick(r);
-    if (r) zoomToWhere(PARCEL_LAYER_ID, `OBJECTID IN (${r.oids.join(',')})`);
+    /* ⚠️ Анимацигүй — багц дараалан товшиход гөлгөр нислэг нь
+       хойшлол мэт мэдрэгддэг (2026-08-28, хэрэглэгчийн заавар). */
+    if (r) zoomToWhere(PARCEL_LAYER_ID, `OBJECTID IN (${r.oids.join(',')})`, { animate: false });
   }, [zoomToWhere]);
   const [opacity, setOpacity] = useState<Record<string, number>>({});
   const [layerSel, setLayerSel] = useState<string | null>(null);
@@ -662,9 +664,11 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           opacity={opacity}
           zone={zone}
           layerWhere={ovWhere}
-          /* Сонгосон багцын саадууд УЛААНААР, анивчиж — бусад полигоноос ялгарна */
-          layerStyle={ovPick ? { [PARCEL_LAYER_ID]: { hue: '#dc2626', fill: 0.3, width: 4.2 } } : undefined}
-          pulseIds={ovPick ? [PARCEL_LAYER_ID] : undefined}
+          /* Сонгосон багцын саадууд УЛААНААР ялгарна.
+             ⚠️ АНИВЧИЛТ ХАСАГДСАН (2026-08-28, хэрэглэгчийн заавар): пульс нь
+             талбаруудыг тасралтгүй томруулж жижигрүүлдэг тул хэлбэр, хэмжээг
+             нь нүдээр уншиж болохгүй болно. Улаан өнгө өөрөө хангалттай ялгана. */
+          layerStyle={ovPick ? { [PARCEL_LAYER_ID]: { hue: '#dc2626', fill: 0.3, width: 2.1 } } : undefined}
           uniform
           sketch
           onSketch={onSketch}

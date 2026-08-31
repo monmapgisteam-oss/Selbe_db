@@ -348,10 +348,26 @@ export const ZONE_NONE = tr(' Бүсийн мэдээлэл байхгүй ');
  * тул тэдгээр давхаргад порталын гэр бүлийн өнгө хэвээр (`PKG_HUE`).
  */
 
-/** Барилгын төлөв — хугацааны дарааллаар. Өнгө: эх веб зураг, `Barilga_ty`. */
+/**
+ * Барилгын төлөв — хугацааны дарааллаар. Өнгө: эх веб зураг, `Barilga_ty`.
+ *
+ * ⚠️ «Баригдаж байгаа» нь эх веб зурагт ЦЭВЭР УЛААН (`#ff0000`) байсныг
+ * 2026-08-28-нд УЛБАР ШАР болгов (хэрэглэгчийн заавар). Шалтгаан: «Үлдсэн
+ * нэгж талбар» (`PARCEL_STATUS_HUES` → `#e11d48`) ба түүнийг сонгоход
+ * тодруулдаг өнгө (`#dc2626`) хоёулаа улаан тул газар чөлөөлөлтийн зураг
+ * дээр барилга ба талбар хоёр ЯЛГАГДАХАА больж байв. Улаан нь ЗААВАЛ
+ * «саад/үлдсэн талбар»-ыг заана.
+ *
+ * ⚠️ Сонгосон улбар шар нь дур зоргоор биш: ижил төлөв нь шинжилгээний
+ * харагдацуудад аль хэдийн улбар шараар зурагддаг
+ * (`analysis/config.ts` → `BUILDING_STATUS_COLORS`, `rgb(251,146,60)`), мөн
+ * барилгын блокийн давхарга нь `#ea580c`. Өөрөөр хэлбэл энэ аппд «баригдаж
+ * байгаа» гэдэг нь аль хэдийн улбар шар утгатай — одоо газрын зураг ч
+ * түүнтэй нийцэв.
+ */
 export const BUILT_STATUS: { value: string; hue: string }[] = [
   { value: 'Одоо байгаа', hue: "#000000" },
-  { value: 'Баригдаж байгаа', hue: "#ff0000" },
+  { value: 'Баригдаж байгаа', hue: "#f97316" },
   { value: 'Төлөвлөсөн', hue: "#ffb700" },
 ];
 
@@ -3530,7 +3546,8 @@ export type ViewKey =
   | "iot"
   | "ersdel"
   | "zovshoorol"
-  | "guitsetgel";
+  | "guitsetgel"
+  | "schem";
 
 export const VIEWS: {
   key: ViewKey;
@@ -3820,6 +3837,22 @@ export const VIEWS: {
     initial: [],
     standalone: true,
   },
+  {
+    key: "schem",
+    title: tr('Үйл ажиллагааны схем'),
+    desc: tr('Төлөвлөхөөс тайлагнах хүртэлх урсгал — амьд тоогоор'),
+    icon: "network",
+    hue: "#0891b2",
+    /*
+     * ⚠️ ГАЗРЫН ЗУРАГГҮЙ. Энэ нь харагдацуудын ХООРОНДЫН холбоог зурдаг
+     * бөгөөд өөрийн орон зайн өгөгдөлгүй тул давхарга нэмэх зүйл алга.
+     * ⚠️ `DEFAULT_VIEW` эсвэл аль нэг үүргийн `home` БОЛГОХГҮЙ: нээх бүрд
+     *    зургаан эх сурвалж татдаг тул нэвтрэх хуудас болгоход тохирохгүй.
+     */
+    layers: [],
+    initial: [],
+    standalone: true,
+  },
 ];
 
 export const VIEW_BY_KEY: Record<ViewKey, (typeof VIEWS)[number]> =
@@ -3867,7 +3900,7 @@ export const HOME_SECTIONS: {
    * `Root` нь «Бусад хэсэг» болгон нүүрт гаргана (хүрэх зам алдагдахгүй) — тэр
    * бүлэг харагдвал энд юм дутсаны шинж.
    */
-  { id: "review", title: tr('Тойм'), views: ["dashboard", "tailan"] },
+  { id: "review", title: tr('Тойм'), views: ["schem", "dashboard", "tailan"] },
   { id: "plan", title: tr('Төлөвлөлт'), views: ["plan", "analysis", "irged"] },
   { id: "build", title: tr('Хэрэгжилт'), views: ["pkgProg", "gazar", "habea", "iot", "ersdel", "guitsetgel", "zovshoorol", "huvaari"] },
   { id: "money", title: tr('Санхүү'), views: ["pkgFin", "finance"] },
@@ -3986,7 +4019,7 @@ export const ROLE_ACCESS: Record<
     // ⚠️ Урьд нь `sheet` («Гүйцэтгэл бөглөх») байсныг `guitsetgel` болгов —
     //    хоёр харагдац НЭГ болсон (доорх §ГҮЙЦЭТГЭЛ-ийг үз). Эрх нь
     //    хумигдаагүй: бөглөх хуудас нь тэр харагдацын нэг таб болсон.
-    views: ["plan", "pkgProg", "habea", "gazar", "tailan", "guitsetgel", "huvaari"],
+    views: ["schem", "plan", "pkgProg", "habea", "gazar", "tailan", "guitsetgel", "huvaari"],
     docs: true,
     home: "plan",
   },

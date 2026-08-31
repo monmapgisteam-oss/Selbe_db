@@ -34,6 +34,7 @@ import '@/modules/dashboard.module.css';
 import '@/modules/analysis/suitability.module.css';
 import '@/modules/sheet/sheet.module.css';
 import '@/modules/huvaari.module.css';
+import '@/modules/schem.module.css';
 import '@/modules/finance.module.css';
 import '@/modules/pkgFin.module.css';
 import '@/modules/pkgProg.module.css';
