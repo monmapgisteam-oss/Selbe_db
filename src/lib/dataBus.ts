@@ -33,7 +33,6 @@
 export type DataKey =
   | 'IPC_LOG'
   | 'CASHFLOW2'
-  | 'TASK_SHEET'
   | 'BAGTS_SHEET'
   | 'BAGTS_NEGTGEL'
   | 'BUILDING'
