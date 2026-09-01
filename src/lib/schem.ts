@@ -264,26 +264,48 @@ export const GEO = { w: 220, h: 140, gapX: 78, gapY: 44, pad: 34 } as const;
 
 export type Box = { x: number; y: number; w: number; h: number };
 
-export function layout(nodes: readonly SchemNode[] = NODES): {
-  w: number; h: number; box: Record<SchemId, Box>;
-} {
-  const box = {} as Record<SchemId, Box>;
+export type Geo = { w: number; h: number; gapX: number; gapY: number; pad: number };
+
+/** Байрлалд шаардлагатай ХАМГИЙН БАГА мэдээлэл — бүдүүн ба нарийн хоёр схем ижилхэн хэрэглэнэ */
+export type Placed = { id: string; col: number; row: number };
+
+/**
+ * ЕРӨНХИЙ ТОРЫН БАЙРЛАЛ.
+ *
+ * ⚠️ ХОЁР СХЕМ НЭГ ЛОГИКООР. «Ерөнхий» (10 карт) ба «Дэлгэрэнгүй» (24 карт)
+ * хоёр өөр торон дээр зурагддаг ч тооцоо нь ГАНЦ функц — хоёр газар бичвэл
+ * нэгийг нь зассан үед нөгөө нь чимээгүй зөрж, ирмэг зангилаанаасаа тасарна.
+ */
+export function layoutOf<T extends string>(
+  nodes: readonly (Placed & { id: T })[],
+  geo: Geo,
+): { w: number; h: number; box: Record<T, Box> } {
+  const box = {} as Record<T, Box>;
   let maxC = 0; let maxR = 0;
   for (const n of nodes) {
-    box[n.id] = {
-      x: GEO.pad + n.col * (GEO.w + GEO.gapX),
-      y: GEO.pad + n.row * (GEO.h + GEO.gapY),
-      w: GEO.w,
-      h: GEO.h,
-    };
     if (n.col > maxC) maxC = n.col;
     if (n.row > maxR) maxR = n.row;
   }
+  for (const n of nodes) {
+    box[n.id] = {
+      x: geo.pad + n.col * (geo.w + geo.gapX),
+      y: geo.pad + n.row * (geo.h + geo.gapY),
+      w: geo.w,
+      h: geo.h,
+    };
+  }
   return {
-    w: GEO.pad * 2 + (maxC + 1) * GEO.w + maxC * GEO.gapX,
-    h: GEO.pad * 2 + (maxR + 1) * GEO.h + maxR * GEO.gapY,
+    w: geo.pad * 2 + (maxC + 1) * geo.w + maxC * geo.gapX,
+    h: geo.pad * 2 + (maxR + 1) * geo.h + maxR * geo.gapY,
     box,
   };
+}
+
+/** «Ерөнхий» схемийн байрлал — 10 карт, гараар зохиосон тор */
+export function layout(nodes: readonly SchemNode[] = NODES): {
+  w: number; h: number; box: Record<SchemId, Box>;
+} {
+  return layoutOf<SchemId>(nodes, GEO);
 }
 
 
@@ -347,6 +369,49 @@ export type SchemState = {
 
 export type SchemLive = Record<SchemId, SchemState>;
 
+/**
+ * Багцын мөрөөс схемд хэрэгтэй хэсэг.
+ *
+ * ⚠️ `loadBagtsRows` (`execData.ts`) нь эдгээрээс ГАДНА `origin`, `keys` г.м.
+ * буцаадаг — энд зөвхөн схем ба дэлгэрэнгүй самбарт ХЭРЭГЛЭГДДЭГ талбаруудыг
+ * нэрлэнэ. Урьд нь дөрөв (`key`·`label`·`progress`·`missing`) байсан тул
+ * дэлгэрэнгүй самбарт блокийн тоо, гүйцэтгэгчийг үзүүлэх боломжгүй байв —
+ * өгөгдөл нь аль хэдийн ирсэн атлаа ТӨРӨЛ нь нуудаг байсан.
+ */
+export type BagtsLite = {
+  key: string;
+  label: string;
+  progress: number | null;
+  missing: number;
+  blocks: number;
+  ail: number;
+  contractor: string;
+};
+
+/**
+ * ЭХ СУРВАЛЖИЙН НЭР — унасан үед хэрэглэгчид ЭНЭ нэрээр хэлнэ.
+ *
+ * ⚠️ `schemData.ts`-д БИШ ЭНД байрлана: `SchemSources.failed` нь ЭДГЭЭР мөрийг
+ * агуулдаг тул дэлгэрэнгүй самбар «энэ зангилаа аль эх сурвалжаас гарав, тэр
+ * нь татагдсан уу» гэдгийг тулгахын тулд ижил тольд хүрэх ёстой. Хоёр газар
+ * бичвэл нэгийг нь засахад нөгөө нь чимээгүй зөрж, самбар «бүгд хэвийн» гэж
+ * ХУДАЛ хэлнэ. `schemData.ts` нь сүлжээний модуль тул тэндээс импортлох
+ * боломжгүй (цэвэр загварыг бохирдуулна).
+ */
+export const SOURCE_NAME = {
+  headline: tr('ерөнхий үзүүлэлт'),
+  clearance: tr('газар чөлөөлөлт'),
+  overall: tr('нийт гүйцэтгэл'),
+  progress: tr('блокийн гүйцэтгэл'),
+  finance: tr('санхүү'),
+  habea: tr('ХАБЭА'),
+  zov: tr('зөвшөөрөл'),
+  review: tr('гүйцэтгэлийн хяналт'),
+  bagts: tr('багцын жагсаалт'),
+} as const;
+
+export type SourceKey = keyof typeof SOURCE_NAME;
+
 /** `live.ts` ба `reportData.ts`-ийн хэсгүүд — бүгд ТУСДАА унаж болно */
 export type SchemSources = {
   headline: { areaHa: number; population: number; investTotal: number } | null;
@@ -358,7 +423,7 @@ export type SchemSources = {
   /** ⚠️ `null` = үйлчилгээ унасан; `[]` = мөр байхгүй. ХОЁР ӨӨР УТГА. */
   zov: Zov[] | null;
   review: Record<string, unknown>[] | null;
-  bagts: { key: string; label: string; progress: number | null; missing: number }[] | null;
+  bagts: BagtsLite[] | null;
   /** Унасан эх сурвалжийн НЭР — толгойн зурвасд ил бичигдэнэ */
   failed: string[];
 };
@@ -404,7 +469,7 @@ const share = (a: number | null, b: number | null): number | null =>
  * буй 0» гэж ХУДАЛ НОГООН болно — байхгүй ажлыг «цэвэр» гэж мэдээлнэ.
  * `execData.ts` энэ зангыг аль хэдийн баримтжуулсан, схем түүнийг дагана.
  */
-const samePkg = (v: unknown, pkg: string) => bagtsKey(v) === bagtsKey(pkg);
+export const samePkg = (v: unknown, pkg: string) => bagtsKey(v) === bagtsKey(pkg);
 
 /**
  * Түүхий ArcGIS мөрийг `groupWorks`-ийн хүлээх хэлбэрт оруулна.
@@ -414,7 +479,7 @@ const samePkg = (v: unknown, pkg: string) => bagtsKey(v) === bagtsKey(pkg);
  * ажиллахаа болино. Бүлэглэлтэд ЗӨВХӨН эдгээр талбар хэрэгтэй; огноог
  * хөрвүүлэхгүй.
  */
-const toWork = (r: Record<string, unknown>): Row => ({
+export const toWork = (r: Record<string, unknown>): Row => ({
   ...(r as unknown as Row),
   __oid: Number(r[HYANALT.oid] ?? 0),
   [HF.ergelt]: Number(r[HF.ergelt] ?? 0),
@@ -434,12 +499,23 @@ const toWork = (r: Record<string, unknown>): Row => ({
  * тойргуудыг нэг ажил болгож, ЗӨВХӨН сүүлийн тойргийг тоолдог. Тооллын дүрэм
  * НЭГ байх ёстой тул схем ч мөн `hyanaltGroup`-аас гарна.
  */
-function reviewCounts(rows: Record<string, unknown>[]): {
-  byStage: Record<Stage, number>; pending: number; returned: number;
+export function reviewCounts(rows: Record<string, unknown>[]): {
+  byStage: Record<Stage, number>;
+  /**
+   * ⚠️ Шат бүрд БУЦААГДСАН байгаа ажил. «Дэлгэрэнгүй» схем үүнийг шатны
+   * хайрцаг дээр ил бичнэ — нийт буцаалтын тоо ГАЦАЛ ХААНА байгааг хэлдэггүй.
+   */
+  returnedByStage: Record<Stage, number>;
+  pending: number;
+  returned: number;
+  /** ⚠️ «Шилжүүлсэн» = ДУУССАН ажил. Хүлээгдэж буйд тоологдохгүй тул тусад нь. */
+  done: number;
 } {
   const byStage = { company: 0, engineer: 0, manager: 0, director: 0 } as Record<Stage, number>;
+  const returnedByStage = { company: 0, engineer: 0, manager: 0, director: 0 } as Record<Stage, number>;
   let pending = 0;
   let returned = 0;
+  let done = 0;
   for (const w of groupWorks(rows.map(toWork))) {
     const st = w.status;
     const owner = OWNER[st];
@@ -447,14 +523,17 @@ function reviewCounts(rows: Record<string, unknown>[]): {
     /* ⚠️ «Шилжүүлсэн» нь ДУУССАН ажил — хүлээгдэж буйд ч, аль ч шатны гар
        дээр ч тоологдохгүй. `OWNER[transferred]` нь `director` тул шүүхгүй
        бол дууссан ажлууд «ерөнхий менежерийн гар дээр» гэж хуримтлагдана. */
-    if (st === STATUS.transferred) continue;
+    if (st === STATUS.transferred) { done += 1; continue; }
     byStage[owner] += 1;
     pending += 1;
     if (st === STATUS.engineerReturned
       || st === STATUS.managerReturned
-      || st === STATUS.directorReturned) returned += 1;
+      || st === STATUS.directorReturned) {
+      returned += 1;
+      returnedByStage[owner] += 1;
+    }
   }
-  return { byStage, pending, returned };
+  return { byStage, returnedByStage, pending, returned, done };
 }
 
 /** `hyanalt` зангилааны дотоод дөрвөн цэгийн зурвас — гадуур экспортлоно */

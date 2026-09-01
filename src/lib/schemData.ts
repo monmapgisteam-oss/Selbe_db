@@ -22,20 +22,13 @@ import { queryAll } from '@/lib/hyanalt';
 import { loadZov } from '@/lib/zovshoorol';
 import { loadBagtsRows } from '@/lib/execData';
 import { t as tr } from '@/lib/i18nCore';
-import type { SchemSources } from '@/lib/schem';
+import { SOURCE_NAME, type SchemSources } from '@/lib/schem';
 
-/** Нэг эх сурвалжийн нэр — унасан үед хэрэглэгчид ЭНЭ нэрээр хэлнэ */
-const NAME = {
-  headline: tr('ерөнхий үзүүлэлт'),
-  clearance: tr('газар чөлөөлөлт'),
-  overall: tr('нийт гүйцэтгэл'),
-  progress: tr('блокийн гүйцэтгэл'),
-  finance: tr('санхүү'),
-  habea: tr('ХАБЭА'),
-  zov: tr('зөвшөөрөл'),
-  review: tr('гүйцэтгэлийн хяналт'),
-  bagts: tr('багцын жагсаалт'),
-} as const;
+/**
+ * ⚠️ Нэрсийн толь `schem.ts`-д — дэлгэрэнгүй самбар мөн адил түүнээс уншиж
+ * `failed`-тэй тулгадаг тул ХОЁР газар бичигдэж болохгүй.
+ */
+const NAME = SOURCE_NAME;
 
 export const loadSchemSources = cached<SchemSources>(async () => {
   const [h, c, o, p, f, hb, z, r, b] = await Promise.allSettled([
