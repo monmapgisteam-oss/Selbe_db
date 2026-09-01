@@ -89,6 +89,14 @@
   transition: border-color 0.15s, color 0.15s;
 }
 .layerBtn:hover { border-color: var(--hue); color: var(--hue); }
+/* ⚠️ Идэвхтэй шүүлт нь ИЛ БАЙХ ёстой — хүснэгт хэдхэн мөр харуулж байхад
+   товч нь бусадтай адилхан харагдвал «өгөгдөл алга» гэж уншигдана. */
+.layerBtnOn {
+  color: var(--hue);
+  border-color: var(--hue);
+  background: color-mix(in srgb, var(--hue) 12%, transparent);
+}
+.layerBtnN { font-variant-numeric: tabular-nums; opacity: 0.75; }
 
 .caret {
   display: inline-block;

@@ -22,6 +22,18 @@
   overflow: hidden;
 }
 
+/**
+ * ⚠️ ХҮСНЭГТИЙН КАРТ ҮЛДСЭН ӨНДРИЙГ ЭЗЭЛНЭ. `.frame` нь `overflow: hidden`
+ * бөгөөд цонхны өндрөөр тогтмол — доторх `<section>` нь `flex: 1` авахгүй
+ * бол агуулгаараа сунаж, доод хэсэг нь ГҮЙЛТГҮЙГЭЭР таслагдана (2026-09-01:
+ * хоёр хэсгийг нэгтгэсний дараа яг ийм болсон — `.body` дээр байсан
+ * `flex: 1` карт руу шилжсэнгүй).
+ */
+.frame > section { flex: 1; min-height: 0; }
+
+/* ⚠️ Шүүлт · хэрэгсэл · заавар нь ТОГТМОЛ өндөртэй — зөвхөн хүснэгт сунана. */
+.tabs, .plTop, .plHint { flex: none; }
+
 /* ── Толгойн зурвас ── */
 .head {
   display: flex;
@@ -82,47 +94,6 @@
 .cov b { font-size: 16px; font-variant-numeric: tabular-nums; }
 .covSub { font-size: 11px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
 
-/**
- * ДӨРВӨН АЛХМЫН зурвас — хэрэгсэл өөрийгөө тайлбарлана.
- * ⚠️ Тусдаа заавар унших шаардлагатай багаж нь ажиллахгүй: хэрэглэгч
- * «хуваарийг яаж өөрчлөхийг ойлгохгүй байна» гэж мэдэгдсэн (2026-08-28).
- */
-.steps {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 18px;
-  margin: 0;
-  padding: 7px 12px;
-  list-style: none;
-  font-size: 11.5px;
-  color: var(--ink-2);
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-}
-.steps li { display: inline-flex; align-items: center; gap: 6px; }
-.steps b {
-  display: inline-grid;
-  place-items: center;
-  width: 16px;
-  height: 16px;
-  font-size: 10px;
-  color: #fff;
-  background: var(--data);
-  border-radius: 99px;
-}
-
-/* Хоосон төлөв — ЮУ дарахыг зааж, шууд эхлүүлэх товчтой */
-.emptyHint {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 10px;
-  font-size: 12px;
-  color: var(--ink-2);
-}
-.emptyHint p { margin: 0; line-height: 1.5; }
-
 .err {
   margin: 0;
   padding: 8px 12px;
@@ -142,60 +113,54 @@
   border-radius: var(--r-sm);
 }
 
-/* ── Гол хэсэг: зүүн мод · баруун засварлагч · доод урсгал ── */
-.body {
-  display: grid;
-  grid-template-areas:
-    "list side"
-    "flow flow";
-  /* ⚠️ 380 → 320: баруун талд одоо ЗӨВХӨН асуудлын жагсаалт үлдсэн
-     (засварлагч мөрийн дотор нүүсэн) тул илүү зай эзлэх шаардлагагүй. */
-  grid-template-columns: minmax(0, 1fr) 320px;
-  /* ⚠️ ДООД мөр нь одоо ЗАСАХ талбай (Төлөвлөх хуанли). Зэрэг явах олон
-     ажлыг зэрэг харж төлөвлөх ёстой тул дэлгэцийн ИХ хэсгийг эзэлнэ —
-     жагсаалт нь хайх/шүүх туслах хэрэгсэл болж үлдэв. */
-  /* ⚠️ ТЭНЦҮҮ ХАГАС (хэрэглэгчийн шийдвэр 2026-08-28): дээд тал нь
-     СОНГОХ (жагсаалт + асуудал), доод тал нь ЗАСАХ (төлөвлөх хуанли).
-     Пикселийн доод хязгаар өгвөл намхан дэлгэц дээр хүрээ цонхноос халж,
-     доор нь хоосон гүйлт үүсдэг тул зөвхөн хувиар хуваана. */
-  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 10px;
-  min-height: 0;
-  flex: 1;
-}
+/* ── НЭГ БҮТЭН ХҮСНЭГТ: зүүн ажлын мод · баруун хуанли ── */
 
-.list {
-  grid-area: list;
+/**
+ * ⚠️ ХОЁР ХЭСЭГ БИШ НЭГ (2026-09-01). Урьд нь дээд талд жагсаалт, доод
+ * талд тусдаа хуанли байсан (`.body` сүлжээ). Одоо хоёулаа НЭГ гүйлтийн
+ * дотор: босоо гүйлт ЭНД, хэвтээ гүйлт зөвхөн баруун талд. Ингэснээр
+ * ажлын нэр ба түүний зурвас ҮРГЭЛЖ нэг эгнээнд үлдэнэ.
+ */
+.gWrap {
   display: flex;
-  flex-direction: column;
+  flex: 1;
   min-height: 0;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  overflow: hidden;
+  width: 100%;
+  /* ⚠️ ХОЁУЛАА ЭНД гүйнэ. Хэвтээ гүйлтийг баруун талд нь өгвөл түүний
+     зурвас 1,400 мөр × 30px = 42,000px доор үлдэж, хүрэх аргагүй болно. */
+  overflow: auto;
+  border-top: 1px solid var(--line);
 }
-.side {
-  grid-area: side;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-height: 0;
-  overflow-y: auto;
-}
-.flow {
-  grid-area: flow;
-  display: flex;
-  flex-direction: column;
+/* ⚠️ Зүүн багана ХЭВТЭЭ гүйлтэд ОРОЛЦОХГҮЙ — нэр байрандаа үлдэнэ. */
+/* ⚠️ Зүүн багана хэвтээ гүйлтэд НААЛДАНА — хуанлийг баруун тийш гүйлгэхэд
+   ажлын нэр байрандаа үлдэнэ, эс тэгвээс «энэ зурвас юуных вэ» алдагдана. */
+.gSide {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  flex: 0 0 clamp(240px, 30%, 420px);
   min-width: 0;
-  /* ⚠️ Цонхны өндрөөс ХАМААРАХГҮЙ доод баталгаа: эцгийн гинжин дэх аль
-     нэг тогтворгүй өндөр хуанлийг агшаасан ч энэ нь дэлгэцийн 42%-иас
-     нам болохгүй — доод зай хоосон үлдэхгүй. */
-  min-height: 42dvh;
-  /* ⚠️ Өндөр нь БЛОКИЙН тооноос хамаарна (4–22) — тогтмол утга өгвөл 22
-     блоктой багцад зурвасууд шахагдаж уншигдахаа болино. Дээд хязгаартай. */
-  max-height: 38vh;
-  overflow-y: auto;
+  border-right: 1px solid var(--line);
+  background: var(--surface);
 }
+.gSideHead {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+  font-size: 10.5px;
+  color: var(--ink-3);
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+.gHeadWork { flex: 1; }
+.gHeadPlan { flex: none; width: 56px; text-align: right; }
+.gHeadBlk { flex: none; width: 38px; text-align: right; }
+.gRight { flex: none; }
+.gTrack { position: relative; }
 
 /* ── Шүүлтийн таб ── */
 .tabs {
@@ -234,6 +199,24 @@
   border-radius: var(--r-sm);
 }
 .search::placeholder { color: var(--ink-3); }
+
+/* Шүүлтийн сонголт — таб шиг харагдана, гэхдээ ХОСЛОНО */
+.sel {
+  font: inherit;
+  flex: none;
+  max-width: 148px;
+  padding: 4px 6px;
+  font-size: 11.5px;
+  color: var(--ink-2);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.sel:hover { color: var(--ink); }
+/* ⚠️ Бүлгийн нэр урт (жиш. «Б1 БАРИЛГЫН АЖИЛ») тул илүү өргөн — 148px-д
+   таслагдвал аль бүлэг болох нь танигдахгүй. */
+.selWide { max-width: 260px; }
 .tab:hover { background: var(--surface-2); }
 .tabOn {
   color: var(--ink);
@@ -241,9 +224,6 @@
   border-color: var(--line);
 }
 .tabOn b { color: var(--ink); }
-
-/* ── Ажлын мөр ── */
-.rows { flex: 1; min-height: 0; overflow-y: auto; }
 .row {
   display: flex;
   align-items: center;
@@ -307,14 +287,12 @@
   align-items: baseline;
   gap: 6px;
   flex: none;
-  min-width: 150px;
+  min-width: 56px;
   justify-content: flex-end;
   font-variant-numeric: tabular-nums;
 }
 .rowPlan b { color: var(--ink); }
-.rowDim { font-size: 11px; color: var(--ink-3); }
 .rowNone { font-size: 11px; font-style: italic; color: var(--ink-3); }
-.rowIrr { font-size: 10.5px; color: var(--warn); }
 
 .rowBlocks {
   flex: none;
@@ -323,81 +301,8 @@
   font-size: 11px;
   color: var(--ink-3);
 }
-
-/* Асуудлын тэмдэг — тоо нь хэдэн асуудалтайг хэлнэ */
-.flag {
-  flex: none;
-  min-width: 18px;
-  padding: 0 5px;
-  font-size: 10.5px;
-  font-weight: 700;
-  line-height: 16px;
-  text-align: center;
-  border-radius: 99px;
-  font-variant-numeric: tabular-nums;
-}
-.flagGap { flex: none; min-width: 18px; }
-.flagBad { color: #fff; background: var(--bad); }
-.flagWarn { color: var(--ink); background: color-mix(in srgb, var(--warn) 55%, transparent); }
-
-/**
- * ── МӨРИЙН ДОТОРХ ЗАСВАРЛАГЧ ──
- * ⚠️ Дарсан мөрийн ЯГ ДООР. Урьд нь баруун талын самбарт нээгддэг тул
- * хэрэглэгч дарсан газраа хариу олдоггүй байв. Зүүн ирмэгийн акцент зураас
- * нь «энэ дээрх мөрийнх» гэдгийг холбоно.
- */
-.inline {
-  padding: 10px 12px 12px 14px;
-  background: var(--surface-2);
-  border-bottom: 1px solid var(--line);
-  box-shadow: inset 3px 0 0 var(--data);
-}
-.inlineNote { margin: 0 0 8px; font-size: 12px; line-height: 1.5; color: var(--ink-2); }
-.goKid {
-  font: inherit;
-  font-weight: 600;
-  padding: 5px 12px;
-  color: #fff;
-  background: var(--data);
-  border: 1px solid transparent;
-  border-radius: var(--r-sm);
-  cursor: pointer;
-}
-
-/* Гурван талбар — ЗЭРЭГЦЭЭ, тайлбар нь доороо */
-.fields {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
-}
-.f {
-  display: grid;
-  grid-template-rows: auto auto auto;
-  gap: 2px;
-  min-width: 128px;
-}
-.fLabel {
-  font-size: 10.5px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--ink-3);
-}
 /* ⚠️ Тайлбар нь ЖИШЭЭГЭЭР ярина («5/2 нь 5/1-аас 7 хоногийн дараа») —
    «такт» гэх мэт салбарын нэр томьёо хэрэглэгчид юу ч хэлэхгүй. */
-.fHint { font-size: 10.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
-
-/* Үр дүн — ноорог ӨӨРӨӨ */
-.resHd {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 10px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--ink-2);
-  font-variant-numeric: tabular-nums;
-}
 .dirtyTag {
   padding: 1px 7px;
   font-size: 10px;
@@ -406,36 +311,6 @@
   background: var(--data);
   border-radius: 99px;
 }
-.resRows {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
-  gap: 2px 10px;
-  margin-top: 5px;
-  max-height: 116px;
-  overflow-y: auto;
-}
-.resRow { font-size: 11px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
-.resRow b { color: var(--ink); }
-
-/* ── Засварлагчийн хуучин (самбарын) стайлууд ── */
-.selNo { font-variant-numeric: tabular-nums; color: var(--ink-3); }
-.selWork {
-  margin: 0 0 10px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--ink);
-}
-
-.form { display: flex; flex-direction: column; gap: 8px; }
-.formRow {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: var(--ink-2);
-}
-.formRow > span:first-child { flex: 1; }
-.dateBtn,
 .numIn {
   font: inherit;
   width: 120px;
@@ -447,109 +322,7 @@
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
-.dateBtn { cursor: pointer; }
-.dateBtn:disabled, .numIn:disabled { opacity: 0.5; cursor: default; }
-.hint { flex: none; font-size: 10.5px; color: var(--ink-3); }
-
-/* Блокийн чип — анхдагч нь БҮГД сонгогдсон */
-.blockPick {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px;
-  margin-top: 10px;
-}
-.blockLabel {
-  flex: none;
-  width: 100%;
-  font-size: 10.5px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--ink-3);
-}
-.chip {
-  font: inherit;
-  font-size: 11px;
-  padding: 2px 7px;
-  color: var(--ink-3);
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  cursor: pointer;
-  font-variant-numeric: tabular-nums;
-}
-.chipOn {
-  color: var(--ink);
-  border-color: color-mix(in srgb, var(--data) 45%, var(--line));
-  background: color-mix(in srgb, var(--data) 14%, transparent);
-}
-.chip:disabled { cursor: default; opacity: 0.6; }
-
-/* Урьдчилан харах — дарахаас ӨМНӨ үр дүн */
-.preview {
-  margin-top: 10px;
-  padding: 8px 10px;
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-}
-.previewHd {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  font-size: 10.5px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--ink-3);
-}
-.previewSpan {
-  margin-left: auto;
-  text-transform: none;
-  letter-spacing: 0;
-  font-weight: 500;
-  color: var(--ink-2);
-  font-variant-numeric: tabular-nums;
-}
-.previewRows {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 2px 10px;
-  margin-top: 6px;
-  /* ⚠️ 22 блоктой багцад жагсаалт картыг бүхэлд нь эзэлнэ — дотроо гүйнэ */
-  max-height: 132px;
-  overflow-y: auto;
-}
-.pvRow {
-  font-size: 11px;
-  color: var(--ink-2);
-  font-variant-numeric: tabular-nums;
-}
-.pvRow b { color: var(--ink); }
-
-.actions { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
-.apply {
-  font: inherit;
-  font-weight: 600;
-  padding: 6px 14px;
-  color: #fff;
-  background: var(--data);
-  border: 1px solid transparent;
-  border-radius: var(--r-sm);
-  cursor: pointer;
-}
-.apply:disabled { opacity: 0.45; cursor: default; }
-.clear {
-  font: inherit;
-  padding: 6px 12px;
-  color: var(--ink-2);
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  cursor: pointer;
-}
-.clear:disabled { opacity: 0.45; cursor: default; }
+.numIn:disabled { opacity: 0.5; cursor: default; }
 
 /* ⚠️ ЦУЦЛАХ нь ХАДГАЛАХ-ын дэргэд, гэхдээ АНХААРАЛ ТАТАХГҮЙ: гол үйлдэл нь
    хадгалах. Улаанаар будвал «алдаа» мэт уншигдана. */
@@ -565,83 +338,6 @@
 }
 .discard:hover { color: var(--bad-ink); border-color: var(--bad); }
 .discard:disabled { opacity: 0.45; cursor: default; }
-
-.selIssues {
-  margin: 10px 0 0;
-  padding-left: 16px;
-  font-size: 11.5px;
-}
-.selIssues li { margin: 2px 0; }
-.iErr { color: var(--bad-ink); }
-.iWarn { color: var(--warn); }
-
-/* ── Асуудлын жагсаалт ── */
-.issues { display: flex; flex-direction: column; gap: 1px; }
-.issue {
-  font: inherit;
-  display: flex;
-  align-items: baseline;
-  gap: 7px;
-  padding: 3px 4px;
-  font-size: 11.5px;
-  color: var(--ink-2);
-  text-align: left;
-  background: none;
-  border: 0;
-  border-radius: var(--r-sm);
-  cursor: pointer;
-}
-.issue:hover { background: var(--surface-2); }
-.issueWork {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--ink);
-}
-.issueText { flex: none; color: var(--ink-3); }
-.issueMore { margin: 6px 0 0; font-size: 11px; color: var(--ink-3); }
-
-/* ── БЛОК СОНГОХ ── */
-/* ⚠️ Нэг ажил бүх блокт хамаарахгүй. Сонголтгүй бол «бүгд». */
-.blkPick { margin-top: 10px; }
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin: 4px 0;
-}
-.chip {
-  font: inherit;
-  font-size: 11px;
-  min-width: 30px;
-  padding: 3px 7px;
-  color: var(--ink-2);
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  cursor: pointer;
-}
-/* Хуваарьтай БЛОК — цэг тавьж ялгана */
-.chipHas { border-color: color-mix(in srgb, var(--data) 55%, var(--line)); }
-.chipOn {
-  color: var(--surface);
-  background: var(--data);
-  border-color: var(--data);
-}
-.chip:disabled { opacity: 0.45; cursor: default; }
-
-/* ── БҮЛГИЙН МУЖ ── */
-.parHint {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0 0 8px;
-  font-size: 11.5px;
-  color: var(--ink-2);
-}
-.fitBtn,
 .spreadBtn {
   font: inherit;
   font-size: 11.5px;
@@ -654,19 +350,9 @@
 }
 .spreadBtn { padding: 6px 12px; }
 .spreadBtn:disabled { opacity: 0.4; cursor: default; }
-/* Мужаас ХАЛСАН блокийн мөр */
-.resBad { color: var(--bad-ink); }
 
 /* ── ХУГАЦААНЫ ЗУРВАС ── */
 .flowNote { font-size: 11px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
-.tlTop {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 8px;
-}
 .tlZoom { display: flex; gap: 2px; }
 .tlZoomB {
   font: inherit;
@@ -679,47 +365,6 @@
   cursor: pointer;
 }
 .tlZoomOn { color: var(--surface); background: var(--ink-2); border-color: var(--ink-2); }
-.tlLegend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 11px; color: var(--ink-3); }
-.tlLeg { display: inline-flex; align-items: center; gap: 4px; }
-.tlSwatch {
-  width: 10px;
-  height: 10px;
-  border-radius: 2px;
-  display: inline-block;
-}
-
-/* ⚠️ ЗҮҮН БАГАНА нь гүйлгэхээс ГАДНА — блокийн нэр үргэлж харагдана */
-.tlWrap { display: flex; width: 100%; }
-.tlSide {
-  flex: 0 0 56px;
-  border-right: 1px solid var(--line);
-}
-.tlHeadPad { height: 18px; }
-.tlBlock {
-  display: flex;
-  align-items: center;
-  padding-right: 6px;
-  justify-content: flex-end;
-  font-size: 10px;
-  color: var(--ink-3);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  overflow: hidden;
-}
-.tlScroll { flex: 1; min-width: 0; overflow-x: auto; overflow-y: hidden; }
-.tlTrack { position: relative; }
-.tlHead { position: relative; height: 18px; }
-.tlTick {
-  position: absolute;
-  top: 3px;
-  font-size: 9px;
-  color: var(--ink-3);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  transform: translateX(1px);
-}
-.tlTickBig { color: var(--ink-2); font-weight: 600; }
-.tlLanes { position: relative; }
 .tlGrid {
   position: absolute;
   top: 0;
@@ -728,12 +373,6 @@
   background: color-mix(in srgb, var(--line) 55%, transparent);
 }
 .tlGridBig { background: var(--line); }
-.tlLane {
-  position: absolute;
-  left: 0;
-  right: 0;
-  border-bottom: 1px solid color-mix(in srgb, var(--line) 45%, transparent);
-}
 /* ӨНӨӨДӨР — хуваарийг бодит цагтай холбоно */
 .tlNow {
   position: absolute;
@@ -743,14 +382,6 @@
   border-left: 1.5px dashed var(--bad);
   z-index: 2;
 }
-.tlBarItem {
-  position: absolute;
-  padding: 0;
-  border: 1px solid transparent;
-  border-radius: 2px;
-  cursor: pointer;
-}
-.tlBarItem:hover { filter: brightness(1.1); z-index: 3; }
 .tlBarOn { outline: 1.5px solid var(--ink); outline-offset: 1px; z-index: 3; }
 
 /* ⚠️ ГҮЙЦЭТГЭЛийн төлөв. «Хэмжигдээгүй» нь «эхлээгүй»-ээс ЗУРААСААР ялгарна —
@@ -776,74 +407,23 @@
   gap: 8px;
   margin-bottom: 6px;
 }
-.plPath { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; margin-right: auto; }
-.plCrumb {
-  font: inherit;
-  font-size: 11.5px;
-  padding: 2px 6px;
-  color: var(--ink-2);
-  background: none;
-  border: none;
-  border-radius: var(--r-sm);
-  cursor: pointer;
-}
-.plCrumb:hover { background: var(--surface-2); color: var(--ink); }
-.plSep { color: var(--ink-3); font-size: 11px; }
 .plField { font-size: 11.5px; color: var(--ink-2); display: inline-flex; align-items: center; gap: 4px; }
 .plHint { margin: 0 0 6px; font-size: 11px; color: var(--ink-3); }
 
 /* ⚠️ Зүүн багана нь гүйлгэхээс ГАДНА — ажлын нэр үргэлж харагдана */
 /* ⚠️ Хуанли нь картын ҮЛДСЭН өндрийг бүтнээр эзэлнэ — мөр цөөн үед
    доор нь хоосон талбай үлдээхгүй, олон үед энд дотроо гүйнэ. */
-.plWrap {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  width: 100%;
-  overflow-y: auto;
-}
-.plSide {
-  flex: 0 0 210px;
-  border-right: 1px solid var(--line);
-  overflow: hidden;
-}
-.plHeadPad { height: 34px; border-bottom: 1px solid var(--line); }
-.plName {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  width: 100%;
-  padding-right: 6px;
-  font: inherit;
-  font-size: 11.5px;
-  text-align: left;
-  color: var(--ink-2);
-  background: none;
-  border: none;
-  border-bottom: 1px solid color-mix(in srgb, var(--line) 45%, transparent);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  cursor: pointer;
-}
-.plName:hover { background: var(--surface-2); color: var(--ink); }
-.plNameG { font-weight: 600; color: var(--ink); }
-.plNo {
-  flex: none;
-  min-width: 30px;
-  color: var(--ink-3);
-  font-size: 10px;
-  font-variant-numeric: tabular-nums;
-}
-.plWork { flex: 1; overflow: hidden; text-overflow: ellipsis; }
-.plNameOn { background: color-mix(in srgb, var(--data) 12%, transparent); color: var(--ink); }
-.plInto { color: var(--ink-3); font-size: 9px; }
-
-.plScroll { flex: 1; min-width: 0; overflow-x: auto; }
-.plTrack { position: relative; }
 /* ⚠️ ХОЁР МӨР: дээр нь сар, доор нь хоног. Нэг мөрөнд давхарлавал
    «2026-09» ба «7» хоёр бие бие рүүгээ орж, аль аль нь уншигдахгүй. */
-.plHead { position: relative; height: 34px; border-bottom: 1px solid var(--line); }
+/* ⚠️ Огнооны толгой БОСОО гүйлтэд наалдана — 1,400 мөр гүйлгэхэд «энэ багана ямар сар вэ» алдагдахгүй. */
+.plHead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  height: 30px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
 .plDay {
   position: absolute;
   top: 18px;
@@ -928,12 +508,9 @@
 
 /* ── Responsive — нарийн дэлгэцэд босоо өрөгдөнө ── */
 @media (max-width: 1100px) {
-  .body {
-    grid-template-areas: "list" "side" "flow";
-    grid-template-columns: 1fr;
-    grid-template-rows: auto auto auto;
-  }
-  .flow { max-height: none; }
+  /* ⚠️ Нэг бүтэн хүснэгт болсон тул зөвхөн зүүн баганыг нарийсгана —
+     хуанли нь өөрөө хэвтээ гүйдэг. */
+  .gSide { flex-basis: 190px; }
   .frame { height: auto; min-height: 100%; overflow-y: auto; }
 }
 
@@ -943,7 +520,89 @@
    мөр дээр дарахад хуанлид бүтнээрээ харагдана. */
 @media (max-width: 640px) {
   .rowPlan { min-width: 0; }
-  .rowPlan .rowDim, .rowPlan .rowIrr, .rowPlan .rowNone { display: none; }
+  .rowPlan .rowNone { display: none; }
   .rowBlocks { display: none; }
   .rowNo { min-width: 26px; }
 }
+
+
+/* ── POPUP ХУАНЛИ ── */
+
+/**
+ * ⚠️ Дэлгэцийн ТӨВД, дэвсгэр нь бүдгэрнэ. Мөрийн доор задардаг хувилбар
+ * байсан бол урт жагсаалтад гүйлт үсэрч, дарсан мөр нүднээс алга болно.
+ */
+.mdBack {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: color-mix(in srgb, #000 55%, transparent);
+}
+.md {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(420px, 100%);
+  padding: 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md, 10px);
+  box-shadow: 0 18px 48px rgb(0 0 0 / 45%);
+}
+.mdHead { display: flex; align-items: baseline; gap: 8px; }
+.mdNo {
+  flex: none;
+  color: var(--ink-3);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.mdWork { flex: 1; min-width: 0; font-size: 13px; color: var(--ink); }
+.mdX {
+  font: inherit;
+  flex: none;
+  padding: 0 6px;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--ink-3);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.mdX:hover { color: var(--ink); }
+.mdField { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--ink-2); }
+.mdDates { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.mdDays {
+  font-size: 11.5px;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+.mdBad { color: var(--bad-ink); }
+.mdPar {
+  margin: 0;
+  font-size: 11px;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+.mdPar b { color: var(--ink); }
+.mdParWork { color: var(--ink-3); }
+.mdSnap {
+  font: inherit;
+  margin-left: 6px;
+  padding: 1px 6px;
+  font-size: 10.5px;
+  color: var(--data);
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.mdSnap:hover { background: var(--surface-2); }
+/* ⚠️ Анхааруулга нь АЛДАА БИШ — хадгалахыг хориглохгүй, зөвхөн юу болохыг
+   урьдчилан хэлнэ. Тиймээс улаан биш шар. */
+.mdWarn { margin: 0; font-size: 11px; color: var(--warn); }
+.mdAll { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--ink-2); }
+.mdFoot { display: flex; align-items: center; gap: 8px; }
