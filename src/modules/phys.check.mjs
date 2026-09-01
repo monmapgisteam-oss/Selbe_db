@@ -19,7 +19,12 @@
  */
 import assert from 'node:assert/strict';
 import { loadBlockHistory } from '../lib/blockProgress.ts';
-import { CASHFLOW2, bagtsKey, blockKey } from '../lib/services.ts';
+import { cfMonthAxis, bagtsKey, blockKey } from '../lib/services.ts';
+
+/* ⚠️ 2026-08-31: `AXIS` (12 баганын код) хасагдав — сар нь одоо
+   БАГАНА биш МӨР. Тэнхлэг нь `cfMonthAxis()`: хэмжилтгүй сарыг ч агуулсан
+   тасралтгүй хуанли (2026-01-д мөр байхгүй ч нүд нь үлдэнэ). */
+const AXIS = cfMonthAxis();
 
 const hist = await loadBlockHistory();
 const nowYm = new Date().toISOString().slice(0, 7);
@@ -41,7 +46,7 @@ for (const [key, pts] of hist) {
 const phys = new Map();
 for (const [k, blocks] of byPkg) {
   const byMon = new Map();
-  for (const m of CASHFLOW2.months) {
+  for (const m of AXIS) {
     if (m.label > nowYm) continue;
     let sum = 0, cnt = 0;
     for (const arr of blocks.values()) {
@@ -57,12 +62,12 @@ for (const [k, blocks] of byPkg) {
 /** `contractMonths`-ийн ЯГ тэр мөр: байхгүйг `null`, 0-ээр НӨХӨХГҮЙ */
 const monthsOf = (k) => {
   const ph = phys.get(k);
-  return CASHFLOW2.months.map((m) => ({ label: m.label, phys: ph?.get(m.label) ?? null }));
+  return AXIS.map((m) => ({ label: m.label, phys: ph?.get(m.label) ?? null }));
 };
 
 /* 1. Бүртгэлгүй багц — БҮХ сар `null`, нэг ч 0 БАЙХГҮЙ */
 const empty = monthsOf('ЭНЭ_БАГЦ_БАЙХГҮЙ');
-assert.equal(empty.length, CASHFLOW2.months.length, 'сарын тоо CASHFLOW2-той таарах ёстой');
+assert.equal(empty.length, AXIS.length, 'сарын тоо тэнхлэгтэй таарах ёстой');
 assert.ok(empty.every((m) => m.phys === null),
   'бүртгэлгүй багцын сар бүр null байх ёстой — 0 бол «биет гүйцэтгэл тэг» гэсэн ХУДАЛ уншилт');
 

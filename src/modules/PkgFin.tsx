@@ -21,7 +21,8 @@ import {
 import { useAsync, type Async } from '@/lib/useAsync';
 import {
   BUILDING, CASHFLOW2, IPC_LOG, LAYER_BY_ID, pkgKeyOf, bagtsKey,
-  PKG_FAMILY_BY_BAGTS, zoneWhere, cfMonthAxis } from '@/lib/services';
+  PKG_FAMILY_BY_BAGTS, zoneWhere, cfMonthAxis,
+  ipcCode, ipcNet, ipcDue } from '@/lib/services';
 import { cat, shade, date, mntAbbr, num, pct } from '@/lib/format';
 import { readParam, writeParams } from '@/lib/urlState';
 import o from './pkgFinOv.module.css';
@@ -72,6 +73,23 @@ const PACK_CATS: { key: PackCat; name: () => string }[] = [
 const nn = (v: unknown): number => {
   const x = Number(v);
   return Number.isFinite(x) ? x : 0;
+};
+
+/**
+ * ӨМНӨХ ОНД ШИЛЖҮҮЛСЭН нийт ₮ — ЗӨВХӨН ТӨСЛИЙН нэгдсэн дүн.
+ *
+ * ⚠️ 2026-08-31 (шинэ `cashflow_0813`): гэрээ бүрийн «өмнө шилжүүлсэн»
+ *    дүн/хувийн БАГАНА БАЙХГҮЙ БОЛСОН. Утга нь `CF002 = 'ӨМНӨХ ШИЛЖҮҮЛСЭН'`
+ *    гэсэн ХОЁР мөрөнд (нийт 4,058,800,000 ₮) л үлдсэн тул НЭГ БАГЦАД
+ *    ноогдуулах боломжгүй — багцын картуудад огт харагдахгүй, зөвхөн
+ *    төслийн нийт төсөвт нэмэгдэнэ. Хадгалагдсан утга биш, ЭНД БОДОГДОНО.
+ */
+const prevTotal = (d: FinData): number => {
+  const C = CASHFLOW2.fields;
+  return d.periods.reduce(
+    (a, r) => a + (r[C.rowType] === CASHFLOW2.rows.prev ? nn(r[C.amount]) : 0),
+    0,
+  );
 };
 
 /**
@@ -201,7 +219,7 @@ export function PkgFin({ dim, setDim }: {
       const k2 = pkgKeyOf(r[C.pkg2]);
       const k3 = pkgKeyOf(r[C.pkg]);
       [k2, k3].forEach((k) => {
-        if (k && k !== '0' && !m.has(k)) m.set(k, contractMonths(r, finQ.data.given, finQ.data.phys));
+        if (k && k !== '0' && !m.has(k)) m.set(k, contractMonths(r, finQ.data));
       });
     });
     return m;
@@ -629,12 +647,15 @@ function TsKpi({ packs, fin }: { packs: Pack[]; fin: FinData | null }) {
       if (m.phys != null) actual = m.phys;
     }
     const gap = planned != null && actual != null ? planned - actual : null;
-    const C = CASHFLOW2.fields;
-    const planTotal =
-      fin.contracts.reduce((a, r) => a + nn(r[C.prevAmount]), 0) +
-      months.reduce((a, m) => a + m.amount, 0);
+    /* ⚠️ Нийт төсөв = өмнөх онд шилжүүлсэн (мөрийн төрлөөс БОДОГДОНО) +
+       тэнхлэгийн бүх сарын төлөвлөгөө. */
+    const planTotal = prevTotal(fin) + months.reduce((a, m) => a + m.amount, 0);
+    /* ⚠️ `givenTotal` — `given`-ийн сар бүрийн нийлбэр БИШ: огноогүй актууд
+       (тэдгээрийн нэг нь 9.4 тэрбум ₮) сарын цуваанд ОРДОГГҮЙ (null ≠ 0,
+       сүүлийн сар руу шахвал хуурамч оргил гарна) ч БАГЦЫН/KPI-ийн нийт
+       дүнд ЗААВАЛ ордог. */
     let given = 0;
-    fin.given.forEach((byMon) => byMon.forEach((v) => { given += v; }));
+    fin.givenTotal.forEach((v) => { given += v; });
     return {
       planned, actual, gap, given,
       share: planTotal > 0 ? (given / planTotal) * 100 : null,
@@ -891,16 +912,17 @@ function PkgFinDetail({ row, loading }: { row: Record<string, unknown> | null; l
   push(tr('Захирамжийн дугаар'), txt(row[C.orderNo]), !!txt(row[C.orderNo]));
   push(tr('Захирамжийн нийт дүн'), money(row[C.orderTotal]), nn2(row[C.orderTotal]) > 0);
   push(tr('Гэрээ байгуулах эрх олгосон'), money(row[C.contractAmount]), nn2(row[C.contractAmount]) > 0);
-  push(tr('Өмнө шилжүүлсэн'), money(row[C.prevAmount]), nn2(row[C.prevAmount]) > 0);
-  push(
-    tr('Өмнө шилжүүлсэн хувь'),
-    <span className="num">{pct(nn2(row[C.prevPct]) * 100, 1)}</span>,
-    nn2(row[C.prevPct]) > 0,
-  );
+  /* ⚠️ «Өмнө шилжүүлсэн» дүн ба хувийн ХОЁР мөр 2026-08-31-нд ХАСАГДАВ:
+     шинэ cashflow-д ГЭРЭЭ БҮРИЙН өмнөх шилжүүлгийн багана байхгүй болсон
+     (зөвхөн төслийн нийт 2 мөр — `prevTotal`). Хуучин код нь тэр кодыг
+     уншсаар байвал ЧИМЭЭГҮЙ өөр багана уншина. */
 
   /* ЭХ ҮҮСВЭР — дүнтэй нь л. Өнгө нь services.ts-д тодорхойлогдсон. */
   const src = CASHFLOW2.sources
-    .map((x) => ({ ...x, v: nn2(row[x.field]) }))
+    /* ⚠️ `.field` → `.total`: эх үүсвэр бүр одоо ХОЁР баганатай — ГЭРЭЭ
+       мөрийн нийт (`total`) ба үеийн мөрийн задаргаа (`period`). Энд
+       гэрээний мөр тул `total`. */
+    .map((x) => ({ ...x, v: nn2(row[x.total]) }))
     .filter((x) => x.v > 0);
   const srcTotal = src.reduce((a, x) => a + x.v, 0);
 
@@ -925,7 +947,7 @@ function PkgFinDetail({ row, loading }: { row: Record<string, unknown> | null; l
               `stack` — нарийн баганад тайлбар нь доогуураа бүтэн өргөнөөр. */}
           <Donut
             items={src.map((x) => ({
-              key: x.field,
+              key: x.total,
               label: x.label,
               value: x.v,
               color: x.color,
@@ -973,18 +995,28 @@ function PkgActs({ p, finQ }: { p: Pack; finQ: Async<FinData> }) {
 
   const acts = useMemo(() => {
     if (finQ.state !== 'ready') return null;
+    /* ⚠️ 2026-08-31: АКТЫН ШҮҮЛТ ХАСАГДАВ. Хуучин `ipc_/107`-д 90 мөрийн
+       31 нь акт БИШ байсан тул «дугаартай эсэх» шалгуур зайлшгүй байв;
+       `ipc_0813`-ийн 59 мөр БҮГД жинхэнэ акт учир тэр шалгуур одоо зөвхөн
+       мөр хасна. Багцаа `pkgKeyOf`-оор — ДЭД багц (IPC04) түрүүлж, диапазон
+       бичиглэлийн хамгаалалт хэвээр. */
     return finQ.data.acts
-      .filter((r) => bagtsKey(r[F.pkg]) === p.key)
+      .filter((r) => pkgKeyOf(r[F.pkg2]) === p.key || pkgKeyOf(r[F.pkg]) === p.key)
       .map((r) => ({
-        no: String(r[F.no] ?? '').trim(),
-        from: r[F.periodFrom] as number | null,
-        to: r[F.periodTo] as number | null,
+        /* ⚠️ Дэлгэцийн код нь `ipcCode` — «IPC-03» / «APC-01» (урьдчилгаа).
+           Түүхий `IPC07` нь зөвхөн дугаар тул хоёр төрөл нэг нэрээр гарна. */
+        no: ipcCode(r),
+        /* ⚠️ Огноо нь `esriFieldTypeDateOnly` — «2026-08-10» гэсэн МӨР
+           (epoch БИШ); `date()` мөрийг ч уншина. */
+        from: r[F.periodFrom] as string | null,
+        to: r[F.periodTo] as string | null,
         gross: nn2(r[F.gross]),
         ret: nn2(r[F.retention]),
-        net: nn2(r[F.net]),
-        out: nn2(r[F.outstanding]),
+        /* ⚠️ Хадгалагдсан net/үлдэгдэл багана ХАСАГДСАН — БОДОГДОНО:
+           net = gross − 4 суутгал, үлдэгдэл = net − 3 гүйлгээ. */
+        net: ipcNet(r),
+        out: ipcDue(r),
       }))
-      .filter((x) => x.no)
       .sort((a, b) => a.no.localeCompare(b.no));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [finQ, p.key]);
@@ -1243,14 +1275,15 @@ function FinCard({
         null;
       if (!row) noRow = true;
       else {
-        months = contractMonths(row, d.given, d.phys);
-        total = nn(row[C.prevAmount]) + months.reduce((a, m) => a + m.amount, 0);
+        months = contractMonths(row, d);
+        /* ⚠️ Гэрээний «өмнө шилжүүлсэн» дүн шинэ схемд БАЙХГҮЙ (зөвхөн
+           төслийн нийт) тул багцын нийт төсөв нь сарын төлөвлөгөөний
+           нийлбэр. */
+        total = months.reduce((a, m) => a + m.amount, 0);
       }
     } else {
       months = aggregateMonths(d);
-      total =
-        d.contracts.reduce((a, r) => a + nn(r[C.prevAmount]), 0) +
-        months.reduce((a, m) => a + m.amount, 0);
+      total = prevTotal(d) + months.reduce((a, m) => a + m.amount, 0);
     }
   }
   const lag = months ? lagOf(months) : null;
@@ -1416,7 +1449,15 @@ function aggregateMonths(d: FinData) {
   /* ⚠️ Сунгасан тэнхлэг — CF-ийн 12 сараас хойшхи бодит утгууд царцахгүй.
      Сунгасан сард төлөвлөгөөт багана алга (null) тул төлөвлөгөө 0. */
   const labels = cfMonthAxis();
-  const planM = labels.map((m) => (m.amount ? d.contracts.reduce((a, r) => a + nn(r[m.amount as string]), 0) : 0));
+  /* ⚠️ 2026-08-31: сар нь БАГАНЫН КОД байхаа больж, `fin.plan` (гэрээ → сар
+     → ₮) болсон. Тэнхлэгийн сар бүрийг 0-ээр нөхнө: 2026-01-д хэмжилтийн
+     мөр ОГТ БАЙХГҮЙ тул тэнхлэгийг өгөгдлөөс угсарвал түүнээс хойшхи бүх
+     цэг нэг слот шилжинэ. */
+  const planM = labels.map((m) => {
+    let s = 0;
+    d.plan.forEach((byMon) => { s += byMon.get(m.label) ?? 0; });
+    return s;
+  });
   const planTotal = planM.reduce((a, b) => a + b, 0);
   let cum = 0;
   return labels.map((m, i) => {
