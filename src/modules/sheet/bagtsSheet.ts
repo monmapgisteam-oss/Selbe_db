@@ -510,7 +510,7 @@ export function childIndexes(rows: SheetRow[]): number[][] {
 }
 
 /** Мөр бүрийн дээд мөрийн индекс (дээд мөргүй бол −1). */
-function parentIndexes(rows: SheetRow[]): number[] {
+export function parentIndexes(rows: SheetRow[]): number[] {
   const p = new Array(rows.length).fill(-1);
   const stack: number[] = [];
   rows.forEach((r, i) => {

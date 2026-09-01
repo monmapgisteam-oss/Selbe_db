@@ -7,6 +7,7 @@ import {
   computeAll,
   loadRows,
   msToDay,
+  parentIndexes,
   type SheetRow,
 } from "./bagtsSheet";
 import {
@@ -519,6 +520,20 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    */
   const [grpA, setGrpA] = useState<number>(0);
   const [grpB, setGrpB] = useState<number>(0);
+  /**
+   * ХУВААРИЙН ДАГУУ ШҮҮХ — «Шинэчлэгдсэн огноо»-нд явж байх ЁСТОЙ ажлууд.
+   *
+   * ⚠️ ЯАГААД АНХНААСАА АСААЛТТАЙ (2026-09-01, хэрэглэгчийн шийдвэр): хуудас
+   * нээхэд 1,370–1,675 мөр бүтнээрээ гардаг байсан бөгөөд бөглөгч тухайн өдөр
+   * ажил явж байгаа хэдхэн мөрөө тэр моднаас гүйлгэж хайдаг байв. Бүлгийн
+   * шүүлт (grpA/grpB) нь модны САЛБАР таслана, ХУГАЦААНЫ талаар юу ч хийхгүй.
+   *
+   * ⚠️ Идэвхтэй олонлог нь ЖИЖИГ — хуваарь 2025–2028 оныг дамждаг тул нэг
+   * өдөрт 4–23 мөр (сайн хуваарьтай Багц 3.2-т 757). Тиймээс товч дээр тоог
+   * ИЛ бичиж, хоосон үед тайлбар гаргана: эс бөгөөс «хүснэгт эвдэрсэн» гэж
+   * уншигдана.
+   */
+  const [byPlan, setByPlan] = useState(true);
   const { style: colStyle, grip, resetAll, resized } = useColWidths("fillnew");
 
   // ── Crosshair — React state БИШ ──
@@ -649,6 +664,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         setCollapsed(new Set());
         setGrpA(0);
         setGrpB(0);
+        setByPlan(true);
       })
       .catch((e) => alive && setErr(String(e.message || e)))
       .finally(() => alive && setBusy(false));
@@ -827,6 +843,71 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     [rowsAll, nBld, asOf, pending, pendDate, hasObyem],
   );
 
+  /**
+   * ӨНӨӨДӨР (UTC шөнө дунд) — хуваарийн шүүлтийн лавлах цэг.
+   *
+   * ⚠️ `asOf` БИШ. `asOf` нь ТАЙЛАНГИЙН огноо — тухайн хуудсыг сүүлд хэзээ
+   * бөглөснийг заана (Багц 1-д 2026-07-20, зургаан долоо хоногийн өмнөх).
+   * Түүгээр шүүвэл «өнөөдөр юу бөглөх вэ» гэдэгт биш «сүүлийн тайлангийн
+   * өдөр юу явж байсан бэ» гэдэгт хариулна — хэрэглэгч 2026-07-20 гэсэн
+   * тоог хараад эргэлзсэн (2026-09-01). Тайлангийн огноог хөндөхгүй:
+   * тэр нь хадгалагддаг утга, шүүлт нь зөвхөн ХАРАГДАЦ.
+   */
+  const todayMs = useMemo(() => inputToMs(today) ?? 0, [today]);
+
+  /**
+   * ХУВААРИЙН ДАГУУ — мөр бүр `asOf` огноонд ИДЭВХТЭЙ эсэх.
+   *
+   * ⚠️ ЗӨВХӨН НАВЧ мөрийг шалгана, бүлгийг ДАГУУЛНА. `calc[i].start` нь
+   * бүлэгт хүүхдүүдийнхээ MIN/MAX (`startSrc: "agg"`) тул хоёр хүүхдийн
+   * ХООРОНДОХ ЦООРХОЙД огноо таарвал бүлэг «идэвхтэй» болж, доор нь нэг ч
+   * ажилгүй ХООСОН бүлэг гарна. Тиймээс навчаар шийдээд эцгүүдийг нь дээш
+   * нь тэмдэглэнэ — ингэснээр үлдсэн ажлын бүх эцэг харагдаж, мод бүтэн үлдэнэ.
+   *
+   * ⚠️ Блокоор нэгтгэхдээ АЛЬ НЭГ блокт идэвхтэй бол хангалттай: энэ хуудас
+   * блок бүрийг ЗЭРЭГ (багана болгож) харуулдаг тул нэг блокт явж байгаа
+   * ажлыг нуувал тэр багана бөглөгдөх газаргүй болно.
+   *
+   * ⚠️ `asOf` алга бол шүүлт ОГТ ажиллахгүй — огноогүй үед бүх мөрийг нуувал
+   * хуудас шалтгаангүй хоосон харагдана.
+   */
+  const planKeep = useMemo(() => {
+    const keep = new Array<boolean>(rowsAll.length).fill(false);
+    if (!calc.length) return keep.fill(true);
+    for (let i = 0; i < rowsAll.length; i++) {
+      if (rowsAll[i].group) continue;
+      const c = calc[i];
+      if (!c) continue;
+      for (let b = 0; b < nBld; b++) {
+        const s = c.start[b];
+        const e = c.end[b];
+        /* Хоёр зах ОРНО — эхэлж буй ба дуусч буй өдрийн ажлыг ч бөглөнө. */
+        if (s != null && e != null && s <= todayMs && todayMs <= e) { keep[i] = true; break; }
+      }
+    }
+    const par = parentIndexes(rowsAll);
+    for (let i = rowsAll.length - 1; i >= 0; i--) {
+      if (!keep[i]) continue;
+      for (let p = par[i]; p >= 0; p = par[p]) {
+        if (keep[p]) break;
+        keep[p] = true;
+      }
+    }
+    return keep;
+  }, [rowsAll, calc, nBld, todayMs]);
+
+  /** Хуваарьтай (идэвхтэй) НАВЧ мөрийн тоо — товч дээрх заалт */
+  const planCount = useMemo(() => {
+    let on = 0;
+    let all = 0;
+    for (let i = 0; i < rowsAll.length; i++) {
+      if (rowsAll[i].group) continue;
+      all += 1;
+      if (planKeep[i]) on += 1;
+    }
+    return { on, all };
+  }, [rowsAll, planKeep]);
+
   // Хаагдсан бүлгийн доорх мөрүүд. Гүн буурах хүртэл нуугдана.
   /**
    * Бүлгийн МУЖ — тэр мөрөөс эхлээд, өөрөөсөө ижил буюу дээгүүр гүнтэй
@@ -912,8 +993,16 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       depth = -1;
       if (r.group && collapsed.has(r.oid)) depth = r.depth;
     }
+    /**
+     * ⚠️ ХУВААРИЙН ШҮҮЛТ нь дээрх гогцооны ДАРАА, ТУСДАА дамжилтаар.
+     * Гогцоо дотор нөхцөл нэмбэл `continue` нь эвхэлтийн ГҮНИЙ СТЕКийг
+     * алгасаж, эвхээстэй бүлгийн доорх мөрүүд гэнэт гарч ирнэ.
+     */
+    if (byPlan) {
+      for (let i = 0; i < h.length; i++) if (!planKeep[i]) h[i] = true;
+    }
     return h;
-  }, [rowsAll, collapsed, grpRange]);
+  }, [rowsAll, collapsed, grpRange, byPlan, planKeep]);
 
   /** Зурагдах мөрүүдийн ИНДЕКС (нуугдсаныг хассан). */
   const vis = useMemo(() => {
@@ -1799,6 +1888,21 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
           </select>
         </label>
 
+        {/* ХУВААРИЙН ДАГУУ — тухайн огноонд явах ёстой ажлууд. Тоо нь ИЛ:
+            «18 / 1,370» гэж харуулахгүй бол цөөн мөр гарахад хүснэгт
+            эвдэрсэн мэт уншигдана. */}
+        <button
+          className={cls(byPlan ? "layerBtn layerBtnOn" : "layerBtn")}
+          disabled={busy}
+          onClick={() => setByPlan((v) => !v)}
+          title={tr("Өнөөдөр ({0}) хуваарь нь явж байгаа ажлуудыг л харуулна. Хуваарьгүй ажил нуугдана. Дээрх «Огноо» нь ТАЙЛАНГИЙН огноо — үүнд нөлөөлөхгүй.", today)}
+        >
+          {tr("Хуваарийн дагуу")}{" "}
+          <span className={st.layerBtnN}>
+            {planCount.on.toLocaleString()} / {planCount.all.toLocaleString()}
+          </span>
+        </button>
+
         {resized && (
           <button
             className={st.layerBtn}
@@ -1965,6 +2069,16 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
               </tr>
             </thead>
             <tbody ref={tbodyRef}>
+              {/* ⚠️ ХООСОН ТӨЛӨВ. Хуваарийн шүүлт нэг өдөрт 4 мөр үлдээж
+                  болно (Багц 2·9F) — тайлбаргүй бол «хүснэгт эвдэрсэн» гэж
+                  уншигдаж, хэрэглэгч товчийг унтраахаа мэдэхгүй. */}
+              {vis.length === 0 && byPlan && (
+                <tr>
+                  <td colSpan={13 + nBld * 4 + DOC_COLS.length} className={st.hint} style={{ padding: "14px 10px" }}>
+                    {tr("Өнөөдөр ({0}) хуваарьтай ажил алга. Бүх ажлыг харах бол «Хуваарийн дагуу»-г унтраа.", today)}
+                  </td>
+                </tr>
+              )}
               {/* Дээд ЧИГЖЭЭС — зурагдаагүй мөрүүдийн өндрийг орлоно. */}
               {winFrom > 0 && (
                 <tr aria-hidden="true" style={{ height: winFrom * rowHRef.current }}>
