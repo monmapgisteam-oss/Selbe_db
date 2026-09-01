@@ -23,7 +23,7 @@ import {
   BUILDING, CASHFLOW2, IPC_LOG, LAYER_BY_ID, pkgKeyOf, bagtsKey,
   PKG_FAMILY_BY_BAGTS, zoneWhere, cfMonthAxis,
   ipcCode, ipcNet, ipcDue } from '@/lib/services';
-import { cat, shade, date, mntAbbr, num, pct } from '@/lib/format';
+import { cat, shade, date, mnt, num, pct } from '@/lib/format';
 import { readParam, writeParams } from '@/lib/urlState';
 import o from './pkgFinOv.module.css';
 import f from './finance.module.css';
@@ -671,11 +671,11 @@ function TsKpi({ packs, fin }: { packs: Pack[]; fin: FinData | null }) {
    */
   const items = [
       { v: num(packs.length), l: tr('нийт төслийн тоо') },
-      { v: t == null ? '…' : mntAbbr(t.given), l: tr('олгосон санхүүжилт') },
+      { v: t == null ? '…' : mnt(t.given), l: tr('олгосон санхүүжилт') },
       { v: t?.share == null ? '…' : pct(t.share, 1), l: tr('нийт санхүүжилтийн олгосон хувь') },
       /* ⚠️ Гүйцэтгэлийн хувийн оронд МӨНГӨН үлдэгдэл — санхүүгийн харагдацад
          биет явцын тоо огт гарахгүй (2026-08-21, хэрэглэгчийн хүсэлт). */
-      { v: t == null ? '…' : mntAbbr(t.remain), l: tr('олгогдоогүй үлдэгдэл') },
+      { v: t == null ? '…' : mnt(t.remain), l: tr('олгогдоогүй үлдэгдэл') },
   ];
   return (
     <>
@@ -760,7 +760,7 @@ function TsPackList({
             <ListItem
               title={tr(p.name)}
               sub={plan > 0 || given > 0
-                ? tr('{0} / {1}', mntAbbr(given), mntAbbr(plan))
+                ? tr('{0} / {1}', mnt(given), mnt(plan))
                 : tr('санхүү бүртгэлгүй')}
               value={
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
@@ -775,10 +775,10 @@ function TsPackList({
                   {lvl && fl && (
                     <b
                       className={`${ts.gapBadge} ${lvl === 'red' ? ts.gapRed : ts.gapYellow}`}
-                      title={tr('{0} хүртэл авах ёстой {1}, олгогдсон {2}', fl.month, mntAbbr(fl.planned), mntAbbr(fl.given))}
+                      title={tr('{0} хүртэл авах ёстой {1}, олгогдсон {2}', fl.month, mnt(fl.planned), mnt(fl.given))}
                     >
                       <span className={lvl === 'red' ? ts.alertBlink : undefined}>⚠</span>
-                      <span className="num">−{mntAbbr(fl.gap)}</span>
+                      <span className="num">−{mnt(fl.gap)}</span>
                       <small className="num">{tr('{0} сар', String(fl.lateMonths))}</small>
                     </b>
                   )}
@@ -788,7 +788,7 @@ function TsPackList({
                   {fl?.noRecord && (
                     <b
                       className={ts.noRecBadge}
-                      title={tr('{0} хүртэл {1} авах төлөвлөгөөтэй ч олголтын акт бүртгэгдээгүй', fl.month, mntAbbr(fl.planned))}
+                      title={tr('{0} хүртэл {1} авах төлөвлөгөөтэй ч олголтын акт бүртгэгдээгүй', fl.month, mnt(fl.planned))}
                     >
                       {tr('бүртгэл алга')}
                     </b>
@@ -862,12 +862,12 @@ function PkgFinCard({ p, fin }: { p: Pack; fin: { plan: number; given: number } 
         <Rows
           items={[
             { key: tr('Гүйцэтгэгч'), value: contractor },
-            { key: tr('Төлөвлөгөөт санхүүжилт'), value: <span className="num">{mntAbbr(fin.plan)}</span> },
-            { key: tr('Олгосон санхүүжилт'), value: <span className="num">{mntAbbr(fin.given)}</span> },
+            { key: tr('Төлөвлөгөөт санхүүжилт'), value: <span className="num">{mnt(fin.plan)}</span> },
+            { key: tr('Олгосон санхүүжилт'), value: <span className="num">{mnt(fin.given)}</span> },
             { key: tr('Олгосон хувь'), value: <span className="num">{share == null ? '—' : pct(share, 1)}</span> },
             {
               key: tr('Олгогдоогүй үлдэгдэл'),
-              value: <span className="num">{mntAbbr(Math.max(0, fin.plan - fin.given))}</span>,
+              value: <span className="num">{mnt(Math.max(0, fin.plan - fin.given))}</span>,
             },
           ]}
         />
@@ -900,7 +900,7 @@ function PkgFinDetail({ row, loading }: { row: Record<string, unknown> | null; l
   const long = (v: string) => <span className={ts.clamp3} title={v}>{v}</span>;
   const items: { key: string; value: React.ReactNode }[] = [];
   const push = (k: string, v: React.ReactNode, ok: boolean) => { if (ok) items.push({ key: k, value: v }); };
-  const money = (v: unknown) => <span className="num">{mntAbbr(nn2(v))}</span>;
+  const money = (v: unknown) => <span className="num">{mnt(nn2(v))}</span>;
 
   push(tr('Ажлын нэр'), long(txt(row[C.name])), !!txt(row[C.name]));
   push(tr('Төрөл'), long(txt(row[C.type])), !!txt(row[C.type]));
@@ -951,7 +951,7 @@ function PkgFinDetail({ row, loading }: { row: Record<string, unknown> | null; l
               label: x.label,
               value: x.v,
               color: x.color,
-              display: mntAbbr(x.v),
+              display: mnt(x.v),
             }))}
             size={140}
             width={22}
@@ -967,7 +967,7 @@ function PkgFinDetail({ row, loading }: { row: Record<string, unknown> | null; l
              *    нэр хэдий ч урт байсан багтана, давхцах орон зай ч үгүй.
              */
             stack
-            center={mntAbbr(srcTotal)}
+            center={mnt(srcTotal)}
             centerLabel={tr('нийт')}
           />
         </Section>
@@ -1041,7 +1041,7 @@ function PkgActs({ p, finQ }: { p: Pack; finQ: Async<FinData> }) {
             key: x.no,
             value: (
               <span className="num">
-                {x.net > 0 ? mntAbbr(x.net) : tr('дүнгүй')}
+                {x.net > 0 ? mnt(x.net) : tr('дүнгүй')}
                 {x.from && x.to ? (
                   <small className={ts.actPeriod}>{date(x.from)} – {date(x.to)}</small>
                 ) : null}
@@ -1054,17 +1054,17 @@ function PkgActs({ p, finQ }: { p: Pack; finQ: Async<FinData> }) {
       {/* АКТЫН БҮТЭЦ — олгосон / барьцаа / үлдэгдэл. Барьцаа нь ХОЙШЛУУЛСАН
           мөнгө болохоос алдагдал биш; үлдэгдэл нь төлөгдөөгүй үлдсэн. */}
       {(netTotal > 0 || retTotal > 0 || outTotal > 0) && (
-        <Section title={tr('Актын дүнгийн бүтэц')} note={tr('нийт {0}', mntAbbr(netTotal + retTotal + outTotal))}>
+        <Section title={tr('Актын дүнгийн бүтэц')} note={tr('нийт {0}', mnt(netTotal + retTotal + outTotal))}>
           <Donut
             items={[
-              { key: 'net', label: tr('Олгосон'), value: netTotal, color: cat(0), display: mntAbbr(netTotal) },
-              { key: 'ret', label: tr('Барьцаанд суутгасан'), value: retTotal, color: cat(2), display: mntAbbr(retTotal) },
-              { key: 'out', label: tr('Төлөгдөөгүй үлдэгдэл'), value: outTotal, color: cat(1), display: mntAbbr(outTotal) },
+              { key: 'net', label: tr('Олгосон'), value: netTotal, color: cat(0), display: mnt(netTotal) },
+              { key: 'ret', label: tr('Барьцаанд суутгасан'), value: retTotal, color: cat(2), display: mnt(retTotal) },
+              { key: 'out', label: tr('Төлөгдөөгүй үлдэгдэл'), value: outTotal, color: cat(1), display: mnt(outTotal) },
             ].filter((x) => x.value > 0)}
             size={140}
             width={22}
             stack
-            center={mntAbbr(netTotal)}
+            center={mnt(netTotal)}
             centerLabel={tr('олгосон')}
           />
         </Section>
@@ -1106,9 +1106,9 @@ function PkgMonths({
           key: m.label,
           value: (
             <span className="num">
-              {m.given > 0 ? mntAbbr(m.given) : '—'}
+              {m.given > 0 ? mnt(m.given) : '—'}
               {' / '}
-              {m.amount > 0 ? mntAbbr(m.amount) : '—'}
+              {m.amount > 0 ? mnt(m.amount) : '—'}
             </span>
           ),
         }))}
@@ -1154,7 +1154,10 @@ function PkgFinList({
           label: r.label,
           value: r.pct ?? 0,
           color: shade(HUE, i, rows.length),
-          display: `${mntAbbr(r.given)} / ${mntAbbr(r.plan)}`,
+          // ⚠️ 2026-09-01: мөнгөн дүн бүтнээр бичигдэх болсон тул энэ мөр ~37
+          //    тэмдэгт. `Bars` нь нэр/утгыг БҮТЭН өргөний хоёр захад тавьдаг тул
+          //    багтана; `.barVal` нь мөр таслахгүй (`ui.module.css`).
+          display: `${mnt(r.given)} / ${mnt(r.plan)}`,
         }))}
       />
     </Section>
@@ -1351,9 +1354,9 @@ function FinCard({
       {fl && flLvl && (
         <span
           className={`${f.lagBadge} ${flLvl === 'red' ? f.lagRed : f.lagYellow}`}
-          title={tr('{0} хүртэл авах ёстой {1} · олгогдсон {2} · {3} сар хоцорсон', fl.month, mntAbbr(fl.planned), mntAbbr(fl.given), String(fl.lateMonths))}
+          title={tr('{0} хүртэл авах ёстой {1} · олгогдсон {2} · {3} сар хоцорсон', fl.month, mnt(fl.planned), mnt(fl.given), String(fl.lateMonths))}
         >
-          {tr('Санхүүжилт хоцорсон')} −{mntAbbr(fl.gap)}
+          {tr('Санхүүжилт хоцорсон')} −{mnt(fl.gap)}
         </span>
       )}
     </span>
@@ -1389,15 +1392,17 @@ function FinCard({
           {/* ⚠️ 2026-08-21 (хэрэглэгчийн хүсэлт): KPI-ийн утгууд НЭГ өнгөөр —
               урьд нь графикийн цувааны өнгө + төлөвийн улаан/ногоон холилдож
               байсныг болиулав. Цувааны өнгө legend + график дээрээ үлдэнэ.
-              Нэгж нь товчилсон («тэрб. ₮») — нарийхан нүдэнд багтана. */}
+              ⚠️ 2026-09-01: нэгжийн ТОВЧЛОЛ хасагдав — мөнгөн дүн бүтнээр
+              бичигдэнэ. Нарийхан нүдэнд багтаахыг `.finKpiVal`-ийн фонт
+              шийднэ, тоог богиносгохгүй. */}
           {kpiOpen && (
           <div className={ts.finKpi}>
             {[
-              { v: mntAbbr(total), l: tr('Төлөвлөсөн санхүүжилт'), c: 'var(--ink)' },
+              { v: mnt(total), l: tr('Төлөвлөсөн санхүүжилт'), c: 'var(--ink)' },
               {
                 v: (
                   <>
-                    {mntAbbr(givenTotal)}
+                    {mnt(givenTotal)}
                     {/**
                       * ⚠️ 2026-08-20: Хувийг ТУСДАА МӨРӨНД. Урьд нь утгын хажууд
                       * мөрлөж байсан бөгөөд `.finKpiVal` нь `nowrap` тул
@@ -1416,7 +1421,7 @@ function FinCard({
               },
               /* ⚠️ envhub: эерэг зөрүү нь хэвийн үлдэгдэл тул ТОГТМОЛ warn өнгө
                  нь худал дохио байв — төлөв заадаггүй утга var(--ink)-ээр. */
-              { v: mntAbbr(finGap), l: tr('Олгогдоогүй үлдэгдэл'), c: 'var(--ink)' },
+              { v: mnt(finGap), l: tr('Олгогдоогүй үлдэгдэл'), c: 'var(--ink)' },
               /* ⚠️ Гүйцэтгэлийн гурван хувь ЗӨВХӨН нэгдсэн горимд — санхүүгийн
                  харагдацад биет явц огт харагдахгүй (2026-08-21). */
               ...(finOnly ? [] : [

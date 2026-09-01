@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, type MouseEvent } from 'react';
+import { useState, useEffect, useMemo, type MouseEvent } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { Data, Empty } from '@/components/ui';
 import { useAsync } from '@/lib/useAsync';
@@ -25,7 +25,15 @@ import {
   CASHFLOW2, IPC_LOG, TASK_SHEET, bagtsKey, blockKey, pkgKeyOf, cfMonthAxis, cfMonthKey, ipcNet,
 } from '@/lib/services';
 import { finFieldLabel } from '@/lib/financeFieldLabels';
-import { mntShort, num, text, cat } from '@/lib/format';
+import {
+  FIN_FACETS, EMPTY_FILTER, isDirty as filterDirty,
+  facetValues, distinct, rowMatches,
+  type FinFilter, type Facet, type FacetKey,
+} from '@/lib/finFilter';
+import {
+  buildGroups, type FinKind, type GroupRow,
+} from '@/lib/finGroup';
+import { mnt, num, text, cat } from '@/lib/format';
 import { ResizableTable } from '@/components/ResizableTable';
 import { applyAll } from '@/lib/tableWrite';
 import { invalidate, type DataKey } from '@/lib/dataBus';
@@ -256,7 +264,15 @@ export function ComboChart({
    */
   const W = 1600;
   const H = height;
-  const padL = 8;   // зүүн — Y шошго торны ДЭЭР суудаг тул зай бага
+  /**
+   * Зүүн зай — Y тэнхлэгийн шошгын ТУСДАА багана.
+   * ⚠️ 2026-09-01: урьд нь 8 байсан бөгөөд шошго нь торны ДЭЭР наалддаг байв
+   *    (богино «2.66 их н.» тул зүгээр байсан). Мөнгөн дүн бүтнээр бичигдэх
+   *    болсноор «2,660,000,000,000» нь муруйн эхний саруудыг халхалдаг тул
+   *    тусдаа багана гаргав. 1600 виртуал өргөний 8% — муруйд мэдэгдэхүйц
+   *    нөлөөгүй, харин тоо бүтнээрээ уншигдана.
+   */
+  const padL = 128;
   const padR = 30;  // баруун — сүүлийн шошгыг багтаах зай
   const padT = 26;
   const padB = 30;  // доор — ЗӨВХӨН он сар (хувиуд tooltip руу шилжсэн)
@@ -295,10 +311,14 @@ export function ComboChart({
   const pt = hi != null ? rows[hi] : null;
 
   /*
-   * Шошгын нягт — САР БҮР бичигдэнэ. 18-аас олон сартай үед л сөөлжинө:
-   * 1600 өргөнтэй виртуал зурагт 18 хүртэлх шошго зайтай багтана.
+   * Шошгын нягт.
+   * ⚠️ 2026-09-01: урьд нь 18 шошго багтдаг байсан (богино «314.5 тэрб.»).
+   *    Мөнгөн дүн бүтнээр бичигдэх болсноор шошго ~17 тэмдэгт буюу 1600
+   *    виртуал өргөний ~100 нэгжийг эзэлнэ — 8-аас олон бол давхцана.
+   *    Эхэн ба төгсгөл нь ҮРГЭЛЖ бичигдэх тул дундын цэгүүд алдагдахгүй
+   *    (CLAUDE.md: «зөвхөн төгсгөлийн шошго тавихгүй»).
    */
-  const step = Math.max(1, Math.ceil(N / 18));
+  const step = Math.max(1, Math.ceil(N / 8));
   const showLabel = (i: number) => i === 0 || i === N - 1 || i % step === 0;
   const anchorFor = (i: number): 'start' | 'middle' | 'end' => (i === 0 ? 'start' : i === N - 1 ? 'end' : 'middle');
 
@@ -313,16 +333,18 @@ export function ComboChart({
         aria-label={tr('Санхүүжилтийн явц: төлөвлөсөн, олгосон, биет гүйцэтгэл')}
       >
         {/* ── ТОР ба Y тэнхлэг ──
-            ⚠️ Шошго нь торны ДЭЭР, зүүн ирмэгт наалдаж суусан: тусдаа багана
-            эзлүүлбэл 76px алдагдаж, муруйн талбай нарийсдаг байв. Мөн 5 биш
-            4 шугам — нягт тор нь өгөгдлөөс илүү анхаарал татдаг. */}
+            ⚠️ 2026-09-01: шошго нь урьд торны ДЭЭР, зүүн ирмэгт наалддаг байсан
+            (богино товчилсон дүн тул зай эдийг нь хэмнэдэг байв). Дүн бүтнээр
+            бичигдэх болсноор муруйн эхлэлийг халхалдаг тул ТУСДАА багана
+            (`padL`) гаргаж, баруун зэрэгцүүлэв. Мөн 5 биш 4 шугам — нягт тор
+            нь өгөгдлөөс илүү анхаарал татдаг. */}
         {[0, 1 / 3, 2 / 3, 1].map((t) => {
           const gy = yFor(t * yMax);
           return (
             <g key={t}>
               <line x1={padL} x2={W - padR} y1={gy} y2={gy} className={f.curveGrid} />
-              <text x={padL} y={gy - 5} className={f.sAxisY} textAnchor="start">
-                {t === 0 ? '0' : mntShort(t * yMax).replace(' ₮', '')}
+              <text x={padL - 8} y={gy + 3} className={f.sAxisY} textAnchor="end">
+                {t === 0 ? '0' : num(t * yMax)}
               </text>
             </g>
           );
@@ -385,7 +407,7 @@ export function ComboChart({
               {/* ⚠️ y-г 12-оос дээш барина: дээд ирмэгт хүрсэн цэгийн шошго
                   SVG-ийн гаднаас тасарч, тоо хагас харагддаг байв. */}
               <text x={x} y={Math.max(12, y - 9)} className={f.ptVal} style={{ fill: PLAN }} textAnchor={anchorFor(i)}>
-                {mntShort(r.planned).replace(' ₮', '')}
+                {num(r.planned)}
               </text>
             </g>
           );
@@ -398,7 +420,7 @@ export function ComboChart({
             <g key={`gv-${i}`}>
               <circle cx={x} cy={y} r={3} className={f.sDot} style={{ fill: ACT }} vectorEffect="non-scaling-stroke" />
               <text x={x} y={Math.min(padT + plotH - 4, y + 16)} className={f.ptVal} style={{ fill: ACT }} textAnchor={anchorFor(i)}>
-                {mntShort(r.givenCum).replace(' ₮', '')}
+                {num(r.givenCum)}
               </text>
             </g>
           );
@@ -451,8 +473,8 @@ export function ComboChart({
           style={{ left: `${(hi! / Math.max(1, N - 1)) * 100}%`, transform: `translateX(${hi! < N / 2 ? '10px' : 'calc(-100% - 10px)'})` }}
         >
           <p className={`num ${f.tipHd}`}>{pt.label}</p>
-          <p className={f.tipRow}><i style={{ background: PLAN }} />{tr('Төлөвлөсөн санхүүжилт')}<b className="num">{pt.planned > 0 ? mntShort(pt.planned) : '—'}</b></p>
-          <p className={f.tipRow}><i style={{ background: ACT }} />{tr('Олгосон санхүүжилт')}<b className="num">{pt.givenCum > 0 ? mntShort(pt.givenCum) : '—'}</b></p>
+          <p className={f.tipRow}><i style={{ background: PLAN }} />{tr('Төлөвлөсөн санхүүжилт')}<b className="num">{pt.planned > 0 ? mnt(pt.planned) : '—'}</b></p>
+          <p className={f.tipRow}><i style={{ background: ACT }} />{tr('Олгосон санхүүжилт')}<b className="num">{pt.givenCum > 0 ? mnt(pt.givenCum) : '—'}</b></p>
           {!hidePhys && <p className={f.tipRow}><i style={{ background: PHYS }} />{/* «—» = ХЭМЖИГДЭЭГҮЙ; жинхэнэ 0% нь «0.0%» гэж гарна */}
             {tr('Биет гүйцэтгэл')}<b className="num">{pt.physPct == null ? '—' : `${pt.physPct.toFixed(1)}%`}</b></p>}
           <p className={`${f.tipRow} ${f.tipGap}`}>
@@ -466,7 +488,7 @@ export function ComboChart({
           {/* ЗӨРҮҮ — графикийн будсан талбайн тоон илэрхийлэл */}
           <p className={f.tipRow}>
             {tr('Олгогдоогүй үлдэгдэл')}
-            <b className="num">{pt.planned > pt.givenCum ? mntShort(pt.planned - pt.givenCum) : '—'}</b>
+            <b className="num">{pt.planned > pt.givenCum ? mnt(pt.planned - pt.givenCum) : '—'}</b>
           </p>
         </div>
       )}
@@ -904,7 +926,13 @@ export const finLagLevel = (
 /* ═══════════════════════════════════════════════════════════
    САНХҮҮЖИЛТ — ХОЁР БҮРЭН ХҮСНЭГТ (Cashflow · IPC), ГРАФИКГҮЙ
    ⚠️ Багана/мөрийг ҮЙЛЧИЛГЭЭ ЯГ БАЙГААГААР нь харуулна: багана нь давхаргын
-   талбар БҮР (alias-аар нэрлэсэн, эх дараалалд), мөр нь БҮХ мөр (шүүлтгүй).
+   талбар БҮР (alias-аар нэрлэсэн, эх дараалалд), мөр нь БҮХ мөр.
+
+   ⚠️ 2026-09-01: ШҮҮЛТ нэмэгдэв (хэрэглэгчийн хүсэлт). «Бүх мөр» гэдэг нь
+   ХЭВЭЭР — анхдагч төлөв нь шүүлтгүй, шүүлт нь зөвхөн ХЭРЭГЛЭГЧИЙН сонголт.
+   Шүүлт нь КЛИЕНТ дээр (`finFilter.ts`): бүх мөр аль хэдийн санах ойд байдаг
+   (209 ба 59) тул серверийн `where` руу шилжүүлбэл кэш шүүлт бүрд хүчингүй
+   болж, юу ч олохгүй.
    ═══════════════════════════════════════════════════════════ */
 
 /**
@@ -945,7 +973,39 @@ const dateOnlyText = (v: unknown): string => {
 };
 
 /** Нүдний утгыг талбарын ТӨРЛӨӨР нь форматлана — үйлчилгээ дэх утгыг гажуудуулахгүй */
-function fmtCell(v: unknown, type: string): { text: string; num: boolean } {
+/**
+ * ТООН ТАНИГЧ талбарууд — мянгатын таслал ТАВИХГҮЙ.
+ *
+ * ⚠️ 2026-09-01: «Жил» багана `2,025` гэж гарч байв. `CF003` нь Integer тул
+ *    ерөнхий тоон дүрэмд орж бүлэглэгддэг байсан. Он, сар, актын дугаар нь
+ *    ХЭМЖИГДЭХҮҮН биш ТАНИГЧ — мянгатаар тусгаарлавал утга нь гажина.
+ */
+const PLAIN_INT = new Set<string>([
+  CASHFLOW2.fields.year, CASHFLOW2.fields.monthNo,   // Жил · Сар
+  IPC_LOG.fields.no,                                 // Актын дугаар
+]);
+
+/**
+ * ДЭЛГЭЦЭД ГАРГАХГҮЙ талбарууд.
+ *
+ * ⚠️ GlobalID — утгагүй UUID (хэрэглэгчийн хүсэлт).
+ * ⚠️ 2026-09-01: OBJECTID ба «Гэрээний код» (CF001 · IPC02) мөн ХАСАГДАВ
+ *    («object id, гэрээний код огт хэрэггүй»). Хоёулаа ДОТООД ТАНИГЧ — хүнд
+ *    юу ч хэлдэггүй атлаа 38 баганат хүснэгтийн эхний хоёр байрыг эзэлдэг.
+ * ⚠️ OBJECTID нь ХАРАГДАХГҮЙ болохоос АЛГА болохгүй: засварын түлхүүр
+ *    (`pend`-ийн `oid:талбар`), устгалын жагсаалт, мөрийн `key` бүгд
+ *    `r[oidField]`-ээс ШУУД уншдаг — баганын жагсаалтаас хамаардаггүй.
+ * ⚠️ Модулийн хамрах хүрээнд: бүрэлдэхүүн дотор тодорхойлбол render бүрд
+ *    шинэ функц болж, `cols`-ийн `useMemo` кэш утгагүй болно.
+ */
+const isSkip = (name: string, type: string, oidField: string): boolean =>
+  type === 'esriFieldTypeGlobalID'
+  || /globalid/i.test(name)
+  || name === oidField
+  || name === CASHFLOW2.fields.geree
+  || name === IPC_LOG.fields.geree;
+
+function fmtCell(v: unknown, type: string, name = ''): { text: string; num: boolean } {
   if (v == null || v === '') return { text: '', num: false };
   if (type === 'esriFieldTypeDateOnly') return { text: dateOnlyText(v), num: true };
   if (type === 'esriFieldTypeDate') {
@@ -955,13 +1015,34 @@ function fmtCell(v: unknown, type: string): { text: string; num: boolean } {
   if (NUMERIC_TYPES.has(type)) {
     const x = Number(v);
     if (!Number.isFinite(x)) return { text: String(v), num: true };
-    // ⚠️ Бутархайг ч `num()`-оор — мянгатын таслал ба модулийн локал хадгална
-    //    (өмнө нь `String(x)` бүлэглэлгүй, экспонент хэлбэрт ордог байв).
-    const dec = Math.min(4, String(x).split('.')[1]?.length ?? 0);
+    /*
+     * ⚠️ Бутархайг ч `num()`-оор — мянгатын таслал ба модулийн локал хадгална
+     *    (өмнө нь `String(x)` бүлэглэлгүй, экспонент хэлбэрт ордог байв).
+     *
+     * ⚠️ 2026-09-01: ТОМ дүнгийн бутархайг ХАЯНА. Үйлчилгээнд
+     *    «51776439307.6707» гэсэн утга бодитоор байдаг — 4 аравтын оронтой
+     *    бичихэд 20 тэмдэгт болж нүднээс халж, төгрөгийн мянганы бутархай нь
+     *    ямар ч мэдээлэл өгөхгүй. 1000-аас доош утгад (тоо ширхэг,
+     *    коэффициент) 2 орон хүртэл ҮЛДЭЭНЭ.
+     * ⚠️ Энэ нь зөвхөн ХАРАГДАЦ. `editText` нь `fmtCell`-ийг ХЭРЭГЛЭХГҮЙ тул
+     *    засварын талбарт ТҮҮХИЙ утга бүтнээрээ гарч, хадгалахад бүтэн
+     *    нарийвчлалаараа буцаж бичигдэнэ.
+     */
+    if (PLAIN_INT.has(name)) return { text: String(Math.trunc(x)), num: true };
+    const raw = String(x).split('.')[1]?.length ?? 0;
+    const dec = Math.abs(x) >= 1000 ? 0 : Math.min(2, raw);
     return { text: num(x, dec), num: true };
   }
   return { text: text(v), num: false };
 }
+
+/**
+ * Шүүлтэд өгөх дүрслэл — `finFilter` нь ХАРАГДАХ текстээр жишдэг.
+ * ⚠️ Модулийн хамрах хүрээнд: `useMemo`-ийн хамаарлын жагсаалтад тогтвортой
+ *    байх ёстой (render бүрд шинэ функц үүсгэвэл кэш утгагүй болно).
+ */
+const cellStr = (v: unknown, t: string, n = ''): string => fmtCell(v, t, n).text;
+const isNumericType = (t: string): boolean => NUMERIC_TYPES.has(t);
 
 /**
  * Нүдийг ЗАСАХ талбарт тавих түүхий текст.
@@ -1035,7 +1116,8 @@ function parseCell(s: string, type: string, label: string): unknown {
  *      дахин дарна.
  */
 function FullTable({
-  title, subtitle, rows, fields, url, oidField, dataKey, canEdit, canRow, onSaved,
+  title, subtitle, rows, fields, url, oidField, dataKey, facets,
+  canEdit, canRow, onSaved,
 }: {
   title: string;
   subtitle: string;
@@ -1046,6 +1128,13 @@ function FullTable({
   oidField: string;
   /** Нийтэлсний дараа хүчингүй болгох хүснэгтийн түлхүүр */
   dataKey: DataKey;
+  /**
+   * Шүүлтийн гурван нүүр (багц · он · төрөл) — талбарын код нь үйлчилгээ
+   * бүрд ӨӨР тул ЭЦГЭЭС дамжина. ⚠️ `FullTable` нь дурын үйлчилгээнд
+   * ажиллах ёстой бүрэлдэхүүн — `dataKey`-гээр кодыг энд сонговол
+   * үйлчилгээний мэдлэг нэмэгдэнэ (`caps`-ийн шийдвэртэй ижил зарчим).
+   */
+  facets: Facet[];
   canEdit: boolean;
   canRow: boolean;
   /** Амжилттай нийтэлсний дараа — эцэг талд дахин татуулна */
@@ -1061,6 +1150,25 @@ function FullTable({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+
+  /* ── ХАРАГДАЦ · ШҮҮЛТ · БҮЛЭГЛЭЛТ (2026-09-01) ── */
+  const [flt, setFlt] = useState<FinFilter>(EMPTY_FILTER);
+  /** Багана бүрийн шүүлтийн мөр нээлттэй эсэх — анхдагчаар ХААЛТТАЙ */
+  const [colOpen, setColOpen] = useState(false);
+  /**
+   * БАГЦААР БҮТЭЦЛЭХ — анхдагчаар АСААЛТТАЙ.
+   *
+   * ⚠️ 2026-09-01, хэрэглэгчийн зурсан бүтэц: багцын нэр нь хөндлөн зурвас,
+   *    доор нь тухайн багцын мөрүүд, зүүн талд ОН нь merge нүд; багц бүр
+   *    доошоо дараалан үргэлжилнэ.
+   * ⚠️ БАГАНА ХАСАГДАХГҮЙ. Түр зуур гурван багана (он · ажил · дүн) болгож
+   *    хумьсныг ХЭРЭГЛЭГЧ БУЦААСАН: зураг нь «бүх мэдээллийг ингэж багцална»
+   *    гэсэн санааг л харуулж байсан. Бүлэглэлт нь мөрийг ЭРЭМБЭЛНЭ, өгөгдөл
+   *    хасахгүй — тиймээс засвар ч бүрэн хэвээр.
+   */
+  const [grouped, setGrouped] = useState(true);
+  /** Хураасан бүлгийн шошгууд */
+  const [shut, setShut] = useState<Set<string>>(new Set());
 
   const dirty = Object.keys(pend).length + adds.length + del.size;
 
@@ -1140,17 +1248,243 @@ function FullTable({
       setBusy(false);
     }
   };
-  // Багана нь талбарын метадатагийн дараалалд; ирээгүй бол эхний мөрийн түлхүүрээс.
-  // ⚠️ GlobalID баганыг ХАСНА (хэрэглэгчийн хүсэлт — утгагүй UUID).
-  const isSkip = (name: string, type: string) =>
-    type === 'esriFieldTypeGlobalID' || /globalid/i.test(name);
-  const cols: FieldDef[] = (
+  const cols: FieldDef[] = useMemo(() => (
     fields.length
       ? fields
       : rows[0]
         ? Object.keys(rows[0]).map((k) => ({ name: k, alias: k, type: 'esriFieldTypeString' }))
         : []
-  ).filter((c) => !isSkip(c.name, c.type));
+  ).filter((c) => !isSkip(c.name, c.type, oidField)), [fields, rows, oidField]);
+
+  /* ══════════ ШҮҮЛТ ══════════ */
+
+  /**
+   * Засвартай мөрийн OID-ууд.
+   * ⚠️ Эдгээр мөрийг шүүлт ХЭЗЭЭ Ч нуухгүй. Хэрэглэгч нүд засаад утга нь
+   *    шүүлтэнд таарахаа болиход мөр нь гар доороос алга болвол хийсэн ажил
+   *    нь харагдахгүй үлдэж, «Нийтлэх (3)» гэсэн тоо нь юуг заасныг мэдэхгүй
+   *    болно.
+   */
+  const keepOids = useMemo(() => {
+    const s = new Set<number>(del);
+    for (const k of Object.keys(pend)) {
+      const oid = Number(k.slice(0, k.indexOf(':')));
+      if (Number.isFinite(oid)) s.add(oid);
+    }
+    return s;
+  }, [pend, del]);
+
+  const active = filterDirty(flt);
+
+  const shown: Row[] = useMemo(() => {
+    if (!active) return rows;
+    return rows.filter((r) => {
+      const oid = typeof r[oidField] === 'number' ? (r[oidField] as number) : null;
+      if (oid != null && keepOids.has(oid)) return true;
+      return rowMatches(r, cols, flt, facets, cellStr, isNumericType);
+    });
+  }, [active, rows, cols, flt, facets, oidField, keepOids]);
+
+  /**
+   * Багана бүрийн сонголтын жагсаалт — ялгаатай утга ЦӨӨН бол `<select>`.
+   * ⚠️ Зөвхөн шүүлтийн мөр НЭЭЛТТЭЙ үед бодно: 36 багана × 209 мөр нь хаалттай
+   *    үед дэмий ажил.
+   * ⚠️ Тоон багананд жагсаалт өгөхгүй — тэнд `>1e9` мэтийн хэлээр шүүнэ.
+   */
+  const colOpts = useMemo<Record<string, string[]>>(() => {
+    if (!colOpen) return {};
+    const m: Record<string, string[]> = {};
+    for (const c of cols) {
+      if (isNumericType(c.type)) continue;
+      const vals = distinct(rows, (r) => cellStr(r[c.name], c.type, c.name));
+      if (vals.length > 1 && vals.length <= 25) m[c.name] = vals;
+    }
+    return m;
+  }, [colOpen, cols, rows]);
+
+  /**
+   * Багц → он → мөр. ШҮҮГДСЭН мөрүүдээс байгуулна — шүүлт ба бүлэглэлт
+   * хоорондоо зөрчилдөхгүй.
+   */
+  const kind: FinKind = dataKey === 'IPC_LOG' ? 'ipc' : 'cf';
+  const packs = useMemo(
+    () => (grouped ? buildGroups(shown, kind) : null),
+    [grouped, shown, kind],
+  );
+
+  const setFacet = (k: FacetKey, v: string) =>
+    setFlt((s) => ({ ...s, facet: { ...s.facet, [k]: v } }));
+  const setCol = (name: string, v: string) =>
+    setFlt((s) => ({ ...s, col: { ...s.col, [name]: v } }));
+
+  /**
+   * Нийт баганын тоо — багцын зурвасын `colSpan`.
+   * ⚠️ Бүлэглэсэн үед ЗҮҮН талд «Он» гэсэн НЭМЭЛТ багана нэмэгддэг; засварын
+   *    горимд устгах багана ч нэмэгддэг. Гурвуулаа тооцоогүй бол зурвас
+   *    хүснэгтийн өргөнөөс богино болж, баруун талд цоорхой үлдэнэ.
+   */
+  /**
+   * Нийт баганын тоо — «мөр алга» мөрийн `colSpan`.
+   * ⚠️ Засварын горимд устгах багана НЭМЭГДЭНЭ. Оны merge багана байсныг
+   *    хассан тул түүний +1 ч хасагдав — үлдээвэл зурвас хүснэгтээс өргөн
+   *    болж баруун талд цоорхой үүснэ.
+   */
+  const span = cols.length + (edit && canRow ? 1 : 0);
+
+
+  /**
+   * БАГАНА БҮРИЙН ШҮҮЛТИЙН МӨР — хоёр харагдацад ХУВААЛЦАНА.
+   *
+   * ⚠️ Багцын блокод ч ЗААВАЛ гарна. Урьд нь зөвхөн бүлэглээгүй хүснэгтэд
+   *    байсан тул анхдагч (бүлэглэсэн) горимд «Багана бүрийн шүүлт» товч
+   *    дарахад ЮУ Ч БОЛДОГГҮЙ байв — товч ажиллаж байгаа мэт харагдаад
+   *    үр дүнгүй.
+   * ⚠️ `flt.col` нь ГАНЦ төлөв: аль ч блокт бичсэн шүүлт БҮХ блокт нэгэн
+   *    зэрэг үйлчилнэ. Блок бүр тусдаа гүйдэг тул оролт нь харж буй блокдоо
+   *    харагдах хэрэгтэй — давхардал нь санаатай.
+   * ⚠️ `ResizableTable` нь `thead tr:last-child > th`-ээр баганын өргөнөө
+   *    хэмждэг тул энэ мөр нь `<thead>`-ийн СҮҮЛИЙН `<tr>`, нүд нь ЗААВАЛ
+   *    `<th>` байх ёстой (`<td>` бол хэмжилт хоосон буцаж, бариул алга болно).
+   */
+  const filterRow = () => (
+    <tr className={f.fRow}>
+      {edit && canRow && <th className={f.rowBtnCell} />}
+      {cols.map((c) => {
+        const v = flt.col[c.name] ?? '';
+        const opts = colOpts[c.name];
+        const on = v.trim() !== '';
+        return (
+          <th key={c.name}>
+            {opts ? (
+              <select
+                className={`${f.fCell} ${on ? f.fCellOn : ''}`}
+                aria-label={finFieldLabel(c.name)}
+                value={v}
+                onChange={(e) => setCol(c.name, e.target.value)}
+              >
+                <option value="">{tr('бүгд')}</option>
+                {opts.map((o) => (
+                  <option key={o || '—'} value={o}>{o === '' ? tr('(хоосон)') : o}</option>
+                ))}
+              </select>
+            ) : (
+              <input
+                className={`${f.fCell} ${on ? f.fCellOn : ''} ${isNumericType(c.type) ? 'num' : ''}`}
+                aria-label={finFieldLabel(c.name)}
+                title={isNumericType(c.type)
+                  ? tr('Жишээ: >1000 · <=5e6 · 100..200 · эсвэл текст')
+                  : tr('Агуулах текст')}
+                value={v}
+                onChange={(e) => setCol(c.name, e.target.value)}
+              />
+            )}
+          </th>
+        );
+      })}
+    </tr>
+  );
+
+  /**
+   * НИЙТЛЭЭГҮЙ ШИНЭ МӨРҮҮД — хоёр харагдацад ХУВААЛЦАНА.
+   *
+   * ⚠️ ШҮҮЛТЭЭС ГАДУУР, ҮРГЭЛЖ ТӨГСГӨЛД. Эдгээрт OID ч, утга ч байхгүй тул
+   *    шүүлтэнд оруулбал шүүлт асаангуут алга болж, хэрэглэгч бөглөж байсан
+   *    мөрөө алдана. БАГЦАД ч хамаарахгүй — багц нь хараахан бөглөгдөөгүй.
+   * ⚠️ Бүлэглэсэн харагдацад ЗААВАЛ гарна. Урьд нь зөвхөн бүлэглээгүй
+   *    хүснэгтэд зурагддаг байсан тул анхдагч горимд «+ Мөр нэмэх» дарахад
+   *    «Нийтлэх (1)» гэсэн тоо нэмэгдэх ч МӨР НЬ ХААНА Ч ХАРАГДАХГҮЙ байв —
+   *    хэрэглэгч хоосон мөр нийтлэх эрсдэлтэй.
+   */
+  const addRows = () => adds.map((a, ai) => (
+    <tr key={`new-${ai}`} className={f.rowNew}>
+      {canRow && (
+        <td className={f.rowBtnCell}>
+          <button
+            type="button"
+            className={f.rowBtn}
+            title={tr('Мөр хасах')}
+            onClick={() => setAdds((s) => s.filter((_, k) => k !== ai))}
+          >×</button>
+        </td>
+      )}
+      {cols.map((c) => (
+        <td key={c.name} className={f.cellEdit}>
+          {SERVER_RO.test(c.name) ? null : (
+            <input
+              className={`${f.cellInput} ${NUMERIC_TYPES.has(c.type) ? 'num' : ''}`}
+              value={a[c.name] ?? ''}
+              onChange={(ev) => {
+                const v = ev.target.value;
+                setAdds((s) => s.map((x, k) => (k === ai ? { ...x, [c.name]: v } : x)));
+              }}
+            />
+          )}
+        </td>
+      ))}
+    </tr>
+  ));
+
+  /* ══════════ Мөрийн зурагдалт — бүлэглэсэн ба энгийн горимд ХУВААЛЦАНА ══════════ */
+  const renderRow = (r: Row, i: number) => {
+    const oid = typeof r[oidField] === 'number' ? (r[oidField] as number) : null;
+    const dropped = oid != null && del.has(oid);
+    return (
+      <tr key={oid ?? `i-${i}`} className={`${f.dRow} ${dropped ? f.rowDel : ''}`}>
+        {/* ⚠️ Устгах баганыг ЗАСВАРЫН горимд л гаргана — уншиж буй
+            хэрэглэгчийн хүснэгтийн өргөнийг дэмий иддэггүй. */}
+        {edit && canRow && (
+          <td className={f.rowBtnCell}>
+            <button
+              type="button"
+              className={f.rowBtn}
+              title={dropped ? tr('Устгахаа болих') : tr('Мөр устгах')}
+              onClick={() => {
+                if (oid == null) return;
+                setDel((s) => {
+                  const nx = new Set(s);
+                  if (nx.has(oid)) nx.delete(oid); else nx.add(oid);
+                  return nx;
+                });
+              }}
+            >
+              {dropped ? '↩' : '×'}
+            </button>
+          </td>
+        )}
+        {cols.map((c) => {
+          const key = `${oid}:${c.name}`;
+          const editable = edit && oid != null && !dropped && !SERVER_RO.test(c.name);
+          if (editable) {
+            const cur = key in pend ? pend[key] : editText(r[c.name], c.type);
+            return (
+              <td key={c.name} className={f.cellEdit}>
+                <input
+                  className={`${f.cellInput} ${NUMERIC_TYPES.has(c.type) ? 'num' : ''}`}
+                  value={cur}
+                  onChange={(ev) => {
+                    const v = ev.target.value;
+                    setPend((p) => {
+                      const nx = { ...p };
+                      /* Анхны утга руугаа буцвал «засвар» гэж тоолохгүй */
+                      if (v === editText(r[c.name], c.type)) delete nx[key];
+                      else nx[key] = v;
+                      return nx;
+                    });
+                  }}
+                />
+              </td>
+            );
+          }
+          const cell = fmtCell(r[c.name], c.type, c.name);
+          return (
+            // envhub: тоон нүд бүр глобал «num» (tabular) + баруун зэрэгцүүлэлт
+            <td key={c.name} className={cell.num ? `num ${f.cellNum}` : undefined}>{cell.text}</td>
+          );
+        })}
+      </tr>
+    );
+  };
+
   return (
     /*
      * ⚠️ ЗАСВАРЫН ГОРИМД БҮТЭН ДЭЛГЭЦ (`position: fixed`). Хажуугийн цэс ба
@@ -1213,10 +1547,165 @@ function FullTable({
       </header>
       {err && <p className={f.editErr}>{err}</p>}
       {msg && !err && <p className={f.editOk}>{msg}</p>}
+
+      {/* ══════════ ШҮҮЛТИЙН ЗУРВАС ══════════
+          ⚠️ Тоолол ҮРГЭЛЖ харагдана («209 → 34 мөр»): шүүлт асаалттай гэдгээ
+          мартаад «мөр алга болжээ» гэж эргэлзэх нь энэ хүснэгтийн хамгийн
+          бодит эрсдэл. */}
+      {cols.length > 0 && (
+        <div className={f.finBar}>
+          <input
+            className={f.finSearch}
+            value={flt.q}
+            placeholder={tr('Бүх баганаар хайх…')}
+            aria-label={tr('Бүх баганаар хайх')}
+            onChange={(e) => setFlt((s) => ({ ...s, q: e.target.value }))}
+          />
+          {facets.map((fc) => (
+            <select
+              key={fc.key}
+              className={`${f.finSel} ${flt.facet[fc.key] ? f.finSelOn : ''}`}
+              aria-label={fc.label}
+              title={fc.label}
+              value={flt.facet[fc.key]}
+              onChange={(e) => setFacet(fc.key, e.target.value)}
+            >
+              <option value="">{fc.allLabel}</option>
+              {facetValues(rows, fc).map((v) => (
+                <option key={v || '—'} value={v}>{v === '' ? tr('(хоосон)') : v}</option>
+              ))}
+            </select>
+          ))}
+          {/* ⚠️ Бүлэглэлт нь АНХДАГЧААР асаалттай. Унтраах товчийг үлдээв:
+              бүх мөрийг эх дараалалаар нь харах хэрэгцээ (жишээ нь OID-гоор
+              зөрүү хайх) заримдаа гардаг. */}
+          <button
+            type="button"
+            className={`${f.finTgl} ${grouped ? f.finTglOn : ''}`}
+            aria-pressed={grouped}
+            title={tr('Багц бүрийг тусад нь, он merge нүдтэйгээр харуулна')}
+            onClick={() => setGrouped((v) => !v)}
+          >
+            {tr('Багцаар бүлэглэх')}
+          </button>
+          <button
+            type="button"
+            className={`${f.finTgl} ${colOpen ? f.finTglOn : ''}`}
+            aria-pressed={colOpen}
+            title={tr('Багана бүрд тусад нь шүүлт. Тоон баганад: >1000 · <=5e6 · 100..200')}
+            onClick={() => setColOpen((v) => !v)}
+          >
+            {tr('Багана бүрийн шүүлт')}
+          </button>
+          <span className={`${f.finCount} num`}>
+            {active
+              ? tr('{0} → {1} мөр', num(rows.length), num(shown.length))
+              : tr('{0} мөр', num(rows.length))}
+          </span>
+          {active && (
+            <button
+              type="button"
+              className={f.finClear}
+              onClick={() => setFlt(EMPTY_FILTER)}
+            >
+              {tr('Цэвэрлэх')}
+            </button>
+          )}
+        </div>
+      )}
+
       {rows.length === 0 || cols.length === 0 ? (
         <Empty label={tr('Мөр алга.')} />
       ) : (
-        <div className={f.tblWrap}>
+        <div className={grouped ? f.bWrap : f.tblWrap}>
+          {grouped && packs ? (
+            <>
+            {packs.length === 0 && adds.length === 0 && (
+              <Empty label={tr('Шүүлтэнд тохирох мөр алга.')} />
+            )}
+            {packs.map((p) => {
+              const off = shut.has(p.key);
+              return (
+              <section key={p.key} className={f.bBox}>
+                {/* ⚠️ Багцын нэр нь ХҮСНЭГТЭЭС ГАДУУР: доторх хүснэгт нь хэвтээ
+                    гүйдэг тул `<th>` дотор байвал баруун тийш гүйлгэхэд
+                    нэр нь харагдахаа болино. */}
+                <button
+                  type="button"
+                  className={f.bName}
+                  aria-expanded={!off}
+                  onClick={() => setShut((s) => {
+                    const nx = new Set(s);
+                    if (nx.has(p.key)) nx.delete(p.key); else nx.add(p.key);
+                    return nx;
+                  })}
+                >
+                  <span className={f.grpCaret}>{off ? '▸' : '▾'}</span>
+                  {p.pkg}
+                  <span className={`${f.grpCnt} num`}>{tr('{0} мөр', num(p.count))}</span>
+                </button>
+                {!off && (
+                <div className={f.bScroll}>
+                  <table className={f.tbl}>
+                    <thead>
+                      <tr>
+                        {edit && canRow && <th className={f.rowBtnCell} aria-label={tr('Мөр')} />}
+                        {/* ⚠️ БҮХ багана — багцын БҮХ мэдээлэл харагдана
+                            (хэрэглэгчийн шаардлага). Блок нь өөрөө хэвтээ
+                            гүйнэ, хуудас бүхэлдээ БИШ. */}
+                        {cols.map((c) => (
+                          <th
+                            key={c.name}
+                            title={c.name}
+                            className={flt.col[c.name]?.trim() ? f.thOn : undefined}
+                          >
+                            {finFieldLabel(c.name)}
+                          </th>
+                        ))}
+                      </tr>
+                      {colOpen && filterRow()}
+                    </thead>
+                    <tbody>
+                      {/* ⚠️ ОНООР дэд бүлэг ҮҮСГЭХГҮЙ (хэрэглэгчийн заавар):
+                          мөрүүд эх дараалалаараа урсана, он нь ердийн багана. */}
+                      {p.rows.map((g: GroupRow, i: number) => renderRow(g.row, i))}
+                    </tbody>
+                  </table>
+                </div>
+                )}
+              </section>
+              );
+            })}
+            {/* ── НИЙТЛЭЭГҮЙ ШИНЭ МӨРҮҮД — тусдаа блок ──
+                ⚠️ Багцын блокуудын ГАДНА, төгсгөлд. Шинэ мөрд багц нь
+                хараахан бөглөгдөөгүй тул аль ч блокт хамаарахгүй; блокт
+                оруулбал багц сонгомогц мөр нь өөр блок руу «үсэрч», бөглөж
+                байсан хүн алдана. */}
+            {edit && adds.length > 0 && (
+              <section className={f.bBox}>
+                <div className={f.bName}>
+                  <span className={f.grpCaret}>+</span>
+                  {tr('Нийтлээгүй шинэ мөр')}
+                  <span className={`${f.grpCnt} num`}>{tr('{0} мөр', num(adds.length))}</span>
+                </div>
+                <div className={f.bScroll}>
+                  <table className={f.tbl}>
+                    <thead>
+                      <tr>
+                        {canRow && <th className={f.rowBtnCell} aria-label={tr('Мөр')} />}
+                        {cols.map((c) => (
+                          <th key={c.name} title={c.name}>{finFieldLabel(c.name)}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>{addRows()}</tbody>
+                  </table>
+                </div>
+              </section>
+            )}
+            </>
+          ) : (
+          <>
           {/* ⚠️ Түлхүүр нь ГАРЧГААС — энэ бүрэлдэхүүн хуудсанд хэд хэдэн
               удаа зурагддаг тул тогтмол түлхүүр өгвөл хүснэгтүүд нэг
               хадгалалтыг булаацалдаж, өргөн нь хоорондоо холилдоно. */}
@@ -1228,101 +1717,36 @@ function FullTable({
               <tr>
                 {edit && canRow && <th className={f.rowBtnCell} aria-label={tr('Мөр')} />}
                 {cols.map((c) => (
-                  <th key={c.name} title={c.name}>{finFieldLabel(c.name)}</th>
+                  <th
+                    key={c.name}
+                    title={c.name}
+                    className={flt.col[c.name]?.trim() ? f.thOn : undefined}
+                  >
+                    {finFieldLabel(c.name)}
+                  </th>
                 ))}
               </tr>
+              {colOpen && filterRow()}
             </thead>
             <tbody>
-              {rows.map((r, i) => {
-                const oid = typeof r[oidField] === 'number' ? (r[oidField] as number) : null;
-                const dropped = oid != null && del.has(oid);
-                return (
-                  <tr key={oid ?? i} className={dropped ? f.rowDel : undefined}>
-                    {/* ⚠️ Устгах баганыг ЗАСВАРЫН горимд л гаргана — уншиж буй
-                        хэрэглэгчийн хүснэгтийн өргөнийг дэмий иддэггүй. */}
-                    {edit && canRow && (
-                      <td className={f.rowBtnCell}>
-                        <button
-                          type="button"
-                          className={f.rowBtn}
-                          title={dropped ? tr('Устгахаа болих') : tr('Мөр устгах')}
-                          onClick={() => {
-                            if (oid == null) return;
-                            setDel((s) => {
-                              const nx = new Set(s);
-                              if (nx.has(oid)) nx.delete(oid); else nx.add(oid);
-                              return nx;
-                            });
-                          }}
-                        >
-                          {dropped ? '↩' : '×'}
-                        </button>
-                      </td>
-                    )}
-                    {cols.map((c) => {
-                      const key = `${oid}:${c.name}`;
-                      const editable = edit && oid != null && !dropped && !SERVER_RO.test(c.name);
-                      if (editable) {
-                        const cur = key in pend ? pend[key] : editText(r[c.name], c.type);
-                        return (
-                          <td key={c.name} className={f.cellEdit}>
-                            <input
-                              className={`${f.cellInput} ${NUMERIC_TYPES.has(c.type) ? 'num' : ''}`}
-                              value={cur}
-                              onChange={(ev) => {
-                                const v = ev.target.value;
-                                setPend((p) => {
-                                  const nx = { ...p };
-                                  /* Анхны утга руугаа буцвал «засвар» гэж тоолохгүй */
-                                  if (v === editText(r[c.name], c.type)) delete nx[key];
-                                  else nx[key] = v;
-                                  return nx;
-                                });
-                              }}
-                            />
-                          </td>
-                        );
-                      }
-                      const cell = fmtCell(r[c.name], c.type);
-                      return (
-                        // envhub: тоон нүд бүр глобал «num» (tabular) + баруун зэрэгцүүлэлт
-                        <td key={c.name} className={cell.num ? `num ${f.cellNum}` : undefined}>{cell.text}</td>
-                      );
-                    })}
-                  </tr>
-                );
-              })}
-              {/* ── НИЙТЛЭЭГҮЙ ШИНЭ МӨРҮҮД ── */}
-              {edit && adds.map((a, ai) => (
-                <tr key={`new-${ai}`} className={f.rowNew}>
-                  {canRow && (
-                    <td className={f.rowBtnCell}>
-                      <button
-                        type="button"
-                        className={f.rowBtn}
-                        title={tr('Мөр хасах')}
-                        onClick={() => setAdds((s) => s.filter((_, k) => k !== ai))}
-                      >×</button>
-                    </td>
-                  )}
-                  {cols.map((c) => (
-                    <td key={c.name} className={f.cellEdit}>
-                      {SERVER_RO.test(c.name) ? null : (
-                        <input
-                          className={`${f.cellInput} ${NUMERIC_TYPES.has(c.type) ? 'num' : ''}`}
-                          value={a[c.name] ?? ''}
-                          onChange={(ev) => {
-                            const v = ev.target.value;
-                            setAdds((s) => s.map((x, k) => (k === ai ? { ...x, [c.name]: v } : x)));
-                          }}
-                        />
-                      )}
-                    </td>
-                  ))}
+              {/* ── ШҮҮГДСЭН МӨР АЛГА ── */}
+              {shown.length === 0 && (
+                <tr>
+                  <td colSpan={span} className={f.grpEmpty}>
+                    {tr('Шүүлтэнд тохирох мөр алга.')}
+                  </td>
                 </tr>
-              ))}
+              )}
+
+              {/* ⚠️ Энэ зам нь зөвхөн БҮЛЭГЛЭЭГҮЙ үед — эх дараалалаар.
+                  Бүлэглэсэн үед багц бүр ДЭЭР нь тусдаа блок болж зурагдана. */}
+              {shown.map((r, i) => renderRow(r, i))}
+
+              {edit && addRows()}
             </tbody>
           </ResizableTable>
+          </>
+          )}
         </div>
       )}
     </section>
@@ -1364,6 +1788,15 @@ function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
    * бүхэлдээ гурван өөр гүйлгэлттэй болж, доод хүснэгтийг олохын тулд
    * дээдийг нь өнгөрөх шаардлагатай байлаа. Нэг мөчид НЭГ хүснэгт.
    */
+  /**
+   * ⚠️ ТУСДАА «үзүүлэлтийн» ХАРАГДАЦ ҮҮСГЭХГҮЙ (2026-09-01, хэрэглэгчийн
+   * заавар: «ийм нэмэлт хэсэг хэрэггүй, IPC/Cashflow-ийг дээр нь л засна»).
+   * Богино хугацаанд багц бүрийн нэгтгэсэн үзүүлэлтийг тусдаа таб болгож
+   * үзүүлсэн бөгөөд ХАСАГДСАН: хэрэглэгч эдгээр хүснэгт дээрээ ажилладаг,
+   * зөвхөн уншдаг хуулбар нь ажлын урсгалыг ХОЁР ТАСАЛНА. Уншихад ойлгомжтой
+   * болгох ажил нь ЭНЭ ХОЁР ХҮСНЭГТ ДЭЭРЭЭ хийгдэнэ — шүүлт, багцаар
+   * бүлэглэлт, наалдсан толгой/багана.
+   */
   const [tab, setTab] = useState<'cf' | 'ipc'>('cf');
 
   return (
@@ -1398,8 +1831,13 @@ function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
         </div>
       </header>
 
+      {/* ⚠️ `key` нь ЗААВАЛ: хоёр салаа НЭГ байрлалд, НЭГ төрлийн бүрэлдэхүүн
+          тул React instance-ыг ДАХИН АШИГЛАНА. Түлхүүргүй бол Cashflow-д
+          тавьсан `CF006` шүүлт IPC-д үлдэж, тэнд тийм талбар байхгүй тул
+          хүснэгт ХООСОН гарна — шалтгаан нь огт харагдахгүй. */}
       {tab === 'cf' ? (
       <FullTable
+        key="cf"
         title={tr('Cashflow — гэрээ, захирамжийн санхүүжилт (/173)')}
         subtitle={tr('{0} мөр · {1} багана', num(d.cashflow.length), d.cfFields.length)}
         rows={d.cashflow}
@@ -1407,12 +1845,14 @@ function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
         url={CASHFLOW2.url}
         oidField={CASHFLOW2.oid}
         dataKey="CASHFLOW2"
+        facets={FIN_FACETS.CASHFLOW2}
         canEdit={canEdit}
         canRow={canRow}
         onSaved={onSaved}
       />
       ) : (
       <FullTable
+        key="ipc"
         title={tr('IPC — олгосон акт (/172)')}
         subtitle={tr('{0} мөр · {1} багана', num(d.ipc.length), d.ipcFields.length)}
         rows={d.ipc}
@@ -1420,6 +1860,7 @@ function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
         url={IPC_LOG.url}
         oidField={IPC_LOG.oid}
         dataKey="IPC_LOG"
+        facets={FIN_FACETS.IPC_LOG}
         canEdit={canEdit}
         canRow={canRow}
         onSaved={onSaved}

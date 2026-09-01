@@ -43,7 +43,7 @@ import { useLayerPicks } from '@/lib/useLayerPicks';
 import { usePlanTotals } from '@/lib/totals';
 import { useAsync } from '@/lib/useAsync';
 import { INITIAL_MAP_LAYERS, LAYER_BY_ID } from '@/lib/services';
-import { blank, ha, mntAbbr, num, text } from '@/lib/format';
+import { blank, ha, mnt, num, text } from '@/lib/format';
 import {
   AIR_LEVELS, AQI_BAND, EXPOSURE, FLOOD_LEVELS, GRADE_COLOR, GRADE_LABEL, HAZARDS, KIND_LABEL,
   DAMAGE_RATE, LEVELS, SPAN_H, buildLive, gradeOf, hourOf, loadStations, scenarioNote,
@@ -1342,7 +1342,7 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                     {result.hazard === 'air' && (
                       <div className={e.costBox}>
                         <span className={e.costLabel}>{tr('Эрүүл мэндийн зардлын таамаг')}</span>
-                        <span className={`${e.costVal} num`}>{mntAbbr(sum.cost)}</span>
+                        <span className={`${e.costVal} num`}>{mnt(sum.cost)}</span>
                       </div>
                     )}
                     {result.hazard === 'flood' && (
@@ -1431,7 +1431,7 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                                 : r.geom === 'line' ? tr('{0} км', num(r.length / 1000, 2))
                                   : '—'}
                             </td>
-                            <td className={`${e.tRight} num`}>{r.cost > 0 ? mntAbbr(r.cost) : '—'}</td>
+                            <td className={`${e.tRight} num`}>{r.cost > 0 ? mnt(r.cost) : '—'}</td>
                           </tr>
                         ))}
                       </tbody>

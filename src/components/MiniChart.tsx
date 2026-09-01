@@ -246,6 +246,8 @@ export function HBars({
               fontVariantNumeric: 'tabular-nums',
               color: 'var(--ink-3)',
               minWidth: 26,
+              // Бүтэн мөнгөн дүн (`fmt`) хоёр мөр болж эгнээ өндөрсөхгүй — 2026-09-01
+              whiteSpace: 'nowrap',
               textAlign: 'right',
             }}
           >

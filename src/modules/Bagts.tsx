@@ -15,7 +15,7 @@ import { layerTotals, qtyText, usePlanTotals } from '@/lib/totals';
 import {
   BUILDING, PROGRESS_LEVELS, LAYER_BY_ID, PKG_BY_BAGTS, bagtsKey, zoneWhere,
 } from '@/lib/services';
-import { mntAbbr, num, pct, shade, tint, NO_DATA } from '@/lib/format';
+import { mnt, num, pct, shade, tint, NO_DATA } from '@/lib/format';
 import { readParam, writeParams } from '@/lib/urlState';
 import { overlapLeftParcels, type Overlap } from '@/lib/parcelOverlap';
 import o from './bagtsOv.module.css';
@@ -553,11 +553,11 @@ export function PackKpi({
     const has = !!fin && (fin.plan > 0 || fin.given > 0);
     const share = has && fin!.plan > 0 ? (fin!.given / fin!.plan) * 100 : null;
     const finItems = [
-      { v: fin == null ? '…' : has ? mntAbbr(fin.plan) : '—', l: tr('төлөвлөгөөт санхүүжилт'), c: 'var(--data)' },
-      { v: fin == null ? '…' : has ? mntAbbr(fin.given) : '—', l: tr('олгосон санхүүжилт'), c: 'var(--good-ink)' },
+      { v: fin == null ? '…' : has ? mnt(fin.plan) : '—', l: tr('төлөвлөгөөт санхүүжилт'), c: 'var(--data)' },
+      { v: fin == null ? '…' : has ? mnt(fin.given) : '—', l: tr('олгосон санхүүжилт'), c: 'var(--good-ink)' },
       { v: fin == null ? '…' : share == null ? '—' : pct(share, 1), l: tr('олгосон хувь'), c: 'var(--data)' },
       {
-        v: fin == null ? '…' : has ? mntAbbr(Math.max(0, fin.plan - fin.given)) : '—',
+        v: fin == null ? '…' : has ? mnt(Math.max(0, fin.plan - fin.given)) : '—',
         l: tr('олгогдоогүй үлдэгдэл'),
         c: 'var(--warn-ink)',
       },

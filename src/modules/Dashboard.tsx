@@ -38,7 +38,7 @@ import {
 } from '@/lib/blockProgress';
 import { sumBy, maxOf } from '@/lib/agg';
 import { loadLandStatus, type LandStatus } from '@/lib/land';
-import { cat, mntShort, num, pct, shade, shades, tint, CAT_LIGHT, NO_DATA, km } from '@/lib/format';
+import { cat, mnt, num, pct, shade, shades, tint, CAT_LIGHT, NO_DATA, km } from '@/lib/format';
 import { BAGTS_ORIGIN } from '@/lib/brief';
 import {
   loadHeadline, loadSocial, loadBudget, loadPkgProgress, latestPkgProgress,
@@ -858,7 +858,7 @@ function railStat(k: SecKey, d: DashData): {
       const share = bg && bg.total ? (bg.contract / bg.total) * 100 : null;
       return {
         value: share == null ? '…' : pct(share, 1),
-        note: bg == null ? '…' : tr('гэрээ {0} / төсөв {1} тэрбум ₮', num(bg.contract / 1e9, 1), num(bg.total / 1e9, 1)),
+        note: bg == null ? '…' : tr('гэрээ {0} / төсөв {1}', mnt(bg.contract), mnt(bg.total)),
         pct: share ?? undefined, tone: o.active,
       };
     }
@@ -1066,7 +1066,7 @@ function EnvLeft({ d }: { d: DashData }) {
                   label: x.label,
                   value: x.value,
                   color: 'var(--data)',
-                  display: mntShort(x.value),
+                  display: mnt(x.value),
                 }))}
             />
           ) : <Empty label={tr('Эх үүсвэр задраагүй')} />)}
@@ -1162,7 +1162,7 @@ function EnvRight({ d }: { d: DashData }) {
                   label: x.label,
                   value: x.value,
                   color: 'var(--data)',
-                  display: mntShort(x.value),
+                  display: mnt(x.value),
                 }))}
               />
             ) : <Empty label={tr('Төсвийн задаргаа алга')} />;
@@ -1184,7 +1184,7 @@ function EnvRight({ d }: { d: DashData }) {
                   label: x.label,
                   value: x.value,
                   color: 'var(--data)',
-                  display: mntShort(x.value),
+                  display: mnt(x.value),
                 }))}
             />
           )}
@@ -1272,7 +1272,7 @@ export function HeadKpi({ bagts }: { bagts: Async<BagtsRow[]> }) {
 
   /**
    * ⚠️ УТГА ба НЭГЖ нь ТУСДАА талбар — тоо том, нэгж жижиг.
-   * 2026-08-13: бэхлэгдсэн ◆ (158 га · 44,518 · 36.35% · 2.339 их наяд)
+   * 2026-08-13: бэхлэгдсэн ◆ (158 га · 44,518 · 36.35% · 2,339,000,000,000)
    * БҮГД амьд боллоо: хил [97] · барилгын Population нийлбэр · Төсөл_Гүйцэтгэл
    * жигнэсэн дундаж · INVEST нийлбэр.
    */
@@ -1292,9 +1292,9 @@ export function HeadKpi({ bagts }: { bagts: Async<BagtsRow[]> }) {
       bar: p.actual ?? undefined,
     },
     {
-      v: h == null ? '…' : num(h.investTotal / 1e12, 2), unit: tr('их наяд ₮'),
+      v: h == null ? '…' : num(h.investTotal), unit: tr('₮'),
       label: tr('Төслийн нийт төсөв'),
-      sub: h == null ? undefined : tr('гэрээ байгуулсан {0} тэрбум', num(h.investConfirmed / 1e9, 1)),
+      sub: h == null ? undefined : tr('гэрээ байгуулсан {0}', mnt(h.investConfirmed)),
     },
   ];
 
@@ -1349,7 +1349,7 @@ function ScopeDetail({ bagts, d, flt, onFlt }: {
         <Stats cols={2}>
           <Stat accent color={HUE[0]} value={h == null ? '…' : num(h.areaHa, 1)} unit={tr('га')} label={tr('Төслийн талбай')} />
           <Stat accent color={HUE[1]} value={prog == null ? '…' : num(prog.actual, 2)} unit="%" label={tr('Нийт гүйцэтгэл')} />
-          <Stat accent color={HUE[2]} value={h == null ? '…' : num(h.investTotal / 1e12, 2)} unit={tr('их наяд ₮')} label={tr('Нийт төсөв')} />
+          <Stat accent color={HUE[2]} value={h == null ? '…' : num(h.investTotal)} unit={tr('₮')} label={tr('Нийт төсөв')} />
           <Stat accent color={HUE[3]} value={blocks == null ? '…' : num(blocks)} unit={tr('блок')} label={tr('Орон сууцны блок')} />
           <Stat accent color={HUE[4]} value={ail == null ? '…' : num(ail)} unit={tr('өрх')} label={tr('Айл өрх')} />
           <Stat accent color={HUE[5 % HUE.length]} value={packs == null ? '…' : num(packs)} unit={tr('багц')} label={tr('Нийт багц')} />
@@ -1373,11 +1373,11 @@ function ScopeDetail({ bagts, d, flt, onFlt }: {
             { key: tr('1 га-д ногдох өрх'), value: h?.areaHa && ail ? num(ail / h.areaHa, 1) : '…' },
             {
               key: tr('1 өрхөд ногдох төсөв'),
-              value: h && ail ? tr('{0} сая ₮', num(h.investTotal / ail / 1e6, 1)) : '…',
+              value: h && ail ? mnt(h.investTotal / ail) : '…',
             },
             {
               key: tr('1 га-д ногдох төсөв'),
-              value: h?.areaHa ? tr('{0} тэрбум ₮', num(h.investTotal / h.areaHa / 1e9, 2)) : '…',
+              value: h?.areaHa ? mnt(h.investTotal / h.areaHa) : '…',
             },
             {
               key: tr('Ногоон байгууламжийн эзлэх хувь'),
@@ -1510,7 +1510,7 @@ function ScopeDetail({ bagts, d, flt, onFlt }: {
         </Data>
       </Panel>
 
-      {/* ТӨСӨВ АЖЛЫН ТӨРЛӨӨР — дээд зурваст «2.66 их наяд ₮» гэсэн НЭГ тоо
+      {/* ТӨСӨВ АЖЛЫН ТӨРЛӨӨР — дээд зурваст төслийн НИЙТ төсөв гэсэн НЭГ тоо
           л байсан; тэр мөнгө ЮУНД зарцуулагдахыг задлаагүй байв. */}
       <Panel title={tr('Төсөв ажлын төрлөөр')} note={tr('₮')}>
         <Data q={d.budget} loading={tr('Татаж байна…')}>
@@ -1521,7 +1521,7 @@ function ScopeDetail({ bagts, d, flt, onFlt }: {
               inline
               items={heatBars(
                 [...bg.byType].sort((x, y) => y.value - x.value).slice(0, 7),
-                (x) => ({ key: x.key, label: x.label, value: x.value, display: mntShort(x.value) }),
+                (x) => ({ key: x.key, label: x.label, value: x.value, display: mnt(x.value) }),
               )}
             />
           ) : <Empty label={tr('Төсвийн задаргаа алга')} />)}
@@ -1537,7 +1537,7 @@ function ScopeDetail({ bagts, d, flt, onFlt }: {
               inline
               items={heatBars(
                 [...bg.byPkg].sort((x, y) => y.value - x.value).slice(0, 8),
-                (x) => ({ key: x.key, label: x.label, value: x.value, display: mntShort(x.value) }),
+                (x) => ({ key: x.key, label: x.label, value: x.value, display: mnt(x.value) }),
               )}
             />
           ) : <Empty label={tr('Багцын задаргаа алга')} />)}
@@ -4207,11 +4207,12 @@ function SourceDetail({ sources, d, flt, onFlt }: { sources: Async<Row[]>; d: Da
  * төрлөөр шүүхгүй бол 76 гэрээ 209 удаа тоологдоно (мөнгөн НИЙЛБЭР санамсаргүй
  * зөв гарч, зөвхөн ТООЛОЛ ба дундаж худал болно — нүдээр илрэхгүй алдаа).
  */
-/** ₮ — их наяд / тэрбум / сая, ГАНЦ дүрэм (4 картад давтахгүй) */
-const tug = (v: number): string =>
-  v >= 1e12 ? tr('{0} их наяд ₮', num(v / 1e12, 2))
-    : v >= 1e9 ? tr('{0} тэрбум ₮', num(v / 1e9, 1))
-      : tr('{0} сая ₮', num(v / 1e6, 1));
+/**
+ * ₮ — портал даяарх ГАНЦ дүрэм (`format.mnt`): бүтэн, мянгатын таслалтай.
+ * ⚠️ Урьд нь энд «их наяд / тэрбум / сая» гэсэн ТУСДАА хуулбар байсан. Хэрэглэгч
+ *    2026-09-01-нд бүх мөнгөн дүнг бүтнээр гэж шийдсэн тул `mnt` рүү нэгтгэв.
+ */
+const tug = (v: number): string => mnt(v);
 
 function FinanceDetail({ budget, flt, onFlt }: { budget: Async<Budget> } & FltProps) {
   // ⚠️ 2026-08-20: Бүх биеийг ороосон `<Data>` боодол ЭРТ-БУЦААЛТ болов —
@@ -4230,9 +4231,9 @@ function FinanceDetail({ budget, flt, onFlt }: { budget: Async<Budget> } & FltPr
     <>
       <Panel title={tr('Гол үзүүлэлт')}>
         <Stats cols={2}>
-          <Stat accent color={HUE[0]} value={num(bg.total / 1e12, 2)} unit={tr('их наяд ₮')} label={tr('Төслийн нийт төсөвт өртөг')} />
-          <Stat accent color={HUE[1]} value={num(bg.orderTotal / 1e9, 1)} unit={tr('тэрбум ₮')} label={tr('Захирамжийн нийт дүн')} />
-          <Stat accent color={HUE[2]} value={num(bg.contract / 1e9, 1)} unit={tr('тэрбум ₮')} label={tr('Гэрээ байгуулсан дүн')} />
+          <Stat accent color={HUE[0]} value={num(bg.total)} unit={tr('₮')} label={tr('Төслийн нийт төсөвт өртөг')} />
+          <Stat accent color={HUE[1]} value={num(bg.orderTotal)} unit={tr('₮')} label={tr('Захирамжийн нийт дүн')} />
+          <Stat accent color={HUE[2]} value={num(bg.contract)} unit={tr('₮')} label={tr('Гэрээ байгуулсан дүн')} />
           {/* ⚠️ 2026-08-31: «Өмнө шилжүүлсэн» нь ГЭРЭЭ ТУТМЫН багана БАЙХАА
               БОЛЬСОН. Одоо зөвхөн `CF002 = 'ӨМНӨХ ШИЛЖҮҮЛСЭН'` гэсэн 2 мөр
               бий, дүн нь `CF009`-д (нийт 4,058,800,000 ₮).
@@ -4240,7 +4241,7 @@ function FinanceDetail({ budget, flt, onFlt }: { budget: Async<Budget> } & FltPr
               санхүүжилтийн ЭХ ҮҮСВЭРИЙН («Нийслэлийн төсөв», «НЗД нөөц»)
               гэрээний нийт дүн. Хуучин тайлбарыг дагаж тэднийг «өмнө
               шилжүүлсэн» гэж уншвал алдаа шидэхгүй, зүгээр л худал тоо гарна. */}
-          <Stat accent color={HUE[3]} value={num(bg.transferred / 1e9, 1)} unit={tr('тэрбум ₮')} label={tr('Өмнө шилжүүлсэн')} />
+          <Stat accent color={HUE[3]} value={num(bg.transferred)} unit={tr('₮')} label={tr('Өмнө шилжүүлсэн')} />
           {/* Энэ хувь нь урьд нь ЗӨВХӨН зүүн жагсаалтын мөрөнд байсан —
               хэсгээ нээхэд алга болдог байв. */}
           <Stat accent color={HUE[4]}
@@ -4275,10 +4276,10 @@ function FinanceDetail({ budget, flt, onFlt }: { budget: Async<Budget> } & FltPr
             items={bg.sources.map((s, i) => ({
               key: s.key, label: s.label, value: s.value,
               color: shade(ACCENT, i, bg.sources.length),
-              display: tr('{0} тэрбум', num(s.value / 1e9, 1)),
+              display: mnt(s.value),
             }))}
-            center={num(bg.orderTotal / 1e9, 1)}
-            centerLabel={tr('тэрбум ₮')}
+            center={num(bg.orderTotal)}
+            centerLabel={tr('₮')}
             size={150}
             width={24}
             leaders
@@ -4292,7 +4293,7 @@ function FinanceDetail({ budget, flt, onFlt }: { budget: Async<Budget> } & FltPr
                 key: s.key,
                 label: s.label,
                 value: s.value,
-                display: tr('{0} тэрбум', num(s.value / 1e9, 1)),
+                display: mnt(s.value),
               }),
             )}
           />
@@ -4324,13 +4325,14 @@ function FinanceDetail({ budget, flt, onFlt }: { budget: Async<Budget> } & FltPr
       }>
         <Trend
           color={ACCENT}
-          unit={tr(' тэрбум ₮')}
+          unit={tr(' ₮')}
+          fmt={num}
           // ⚠️ `note`-ыг ХООСОН үлдээнэ: `axisTicks` нь `note ?? label`-ыг
           //    хэвлэж, зөвхөн /^\d{4}-/ хэлбэрийг тайрдаг тул огноо биш note
           //    нь тэнхлэгийн шошго болж эвдэрнэ.
           points={bg.months.reduce<{ label: string; value: number }[]>((acc, m) => {
             const prev = acc.length ? acc[acc.length - 1].value : 0;
-            acc.push({ label: m.label, value: prev + m.amount / 1e9 });
+            acc.push({ label: m.label, value: prev + m.amount });
             return acc;
           }, [])}
         />
@@ -4344,7 +4346,7 @@ function FinanceDetail({ budget, flt, onFlt }: { budget: Async<Budget> } & FltPr
       </Panel>
   
       {/* НЭГ АЖИЛД НОГДОХ ДУНДАЖ ТӨСӨВ — дээрх «Ажлын төрлөөр» карт нь НИЙЛБЭР
-          өгнө: «Инженерийн дэд бүтэц 324.3 тэрбум ₮ · 22 ажил». Нийлбэр нь
+          өгнө: «Инженерийн дэд бүтэц 324,300,000,000 ₮ · 22 ажил». Нийлбэр нь
           ажлын ТООНООС хамаардаг тул төрлүүдийн ЦАР ХҮРЭЭГ жишихэд тохирдоггүй
           — 22 жижиг ажил 7 том ажлаас их гарч болно. Дундаж нь ажил тус бүрийн
           хэмжээг харуулна. */}
@@ -4372,18 +4374,18 @@ function FinanceDetail({ budget, flt, onFlt }: { budget: Async<Budget> } & FltPr
           гэдгийг сайн харуулдаг ч «аль сард хэдэн төгрөг хэрэгтэй вэ» гэсэн
           мөнгөн урсгалын асуултыг НУУНА. Өссөн муруй дээр эгц өгсөх хэсэг нь
           энд өндөр багана болж, төлөвлөлтийн оргил шууд харагдана. */}
-      <Panel title={tr('Сар тутмын санхүүжилтийн хуваарь')} note={tr('тэрбум ₮')}>
+      <Panel title={tr('Сар тутмын санхүүжилтийн хуваарь')} note={tr('₮')}>
         {bg.months.length < 2 ? <Empty label={tr('Хуваарь бүртгэгдээгүй.')} /> : (
           <>
             <Series
               items={bg.months.map((m) => ({
                 key: m.label,
                 label: m.label.slice(2),
-                value: m.amount / 1e9,
+                value: m.amount,
                 display: tug(m.amount),
               }))}
               height={120}
-              unit={tr(' тэрбум ₮')}
+              unit={tr(' ₮')}
             />
             <p className={o.note}>
               {tr('Оргил сар')} <b>{
@@ -4410,7 +4412,7 @@ function FinanceDetail({ budget, flt, onFlt }: { budget: Async<Budget> } & FltPr
                * ⚠️ ЗАВСРЫН шошго («БАГЦ 1- 4», «БАГЦ 1-4», «БАГЦ 1-6 БАГЦ 8-17»)
                * нь «1-ээс 4 хүртэлх багц» гэсэн утгатай атлаа `bagtsKey`-ээр
                * «БАГЦ14» болж, зурагт БАЙГАА «Багц 14 · Дулаан хангамжийн
-               * нэвтрэх суваг»-тай ХУДЛАА тааралдана (63.0 ба 2.2 тэрбумын
+               * нэвтрэх суваг»-тай ХУДЛАА тааралдана (63.0 ба 2.2 тэрбум дүнтэй
                * хоёр мөр). Мөн ижил завсар хоёр бичиглэлээр орсон тул React-ын
                * `key` ч давхардаж, нэгийг дарахад хоёул тодордог байв.
                * Тиймээс завсрын мөрийг ШОШГООРОО түлхүүрлэж, зурагт холбохгүй.
@@ -4535,8 +4537,8 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
                 value={soc == null ? '…' : num(sumBy(soc.rows, (r) => r.capacity ?? 0))}
                 unit={tr('хүчин чадал')} label={tr('Нийгмийн байгууламжийн багтаамж')} />
           <Stat accent color={HUE[5]}
-                value={h && ail ? `${num(h.investTotal / ail / 1e6, 1)}` : '…'}
-                unit={tr('сая ₮')} label={tr('1 өрхөд ногдох төсөв')} />
+                value={h && ail ? num(h.investTotal / ail) : '…'}
+                unit={tr('₮')} label={tr('1 өрхөд ногдох төсөв')} />
           {/* ⚠️ СУУРИЙН ТАЛБАЙ — «хэдэн барилга» гэсэн тоо нь БАРИЛГЫН ХЭМЖЭЭГ
               хэлдэггүй: 960 хүүхдийн сургууль ба 240 ортой цэцэрлэг хоёулаа
               «1 ш». Талбай нь тэр ялгааг гаргана. */}
@@ -4750,7 +4752,7 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
                   label: x.label,
                   value: x.value,
                   display: x.cap > 0
-                    ? tr('{0} · {1} сая ₮/суудал', tug(x.value), num(x.per / 1e6, 1))
+                    ? tr('{0} · {1}/суудал', tug(x.value), mnt(x.per))
                     : tug(x.value),
                 }))}
               />
@@ -4794,7 +4796,7 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
         })()}
       </Panel>
 
-      {/* ТӨСӨВТ ЭЗЛЭХ ХУВЬ — «нийгмийн дэд бүтэц 116.6 тэрбум ₮» гэсэн дүн
+      {/* ТӨСӨВТ ЭЗЛЭХ ХУВЬ — «нийгмийн дэд бүтэц 116,600,000,000 ₮» гэсэн дүн
           08-д бий боловч тэнд ажлын БУСАД төрлүүдийн хажууд байгаа тул
           «төслийн хэдэн хувь вэ» гэсэн асуултад шууд хариулдаггүй. Нийгмийн
           дэд бүтцийн харагдац дээр яг тэр харьцаа хэрэгтэй: иргэдэд хамгийн

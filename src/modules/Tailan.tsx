@@ -34,8 +34,8 @@ import { useReportExtra, buildFindings, type ReportExtra } from '@/lib/reportDat
 import { ResizableTable } from '@/components/ResizableTable';
 import r from './report.module.css';
 
-/** ₮ → тэрбум */
-const bn = (v: number) => num(v / 1e9, 1);
+/** ₮ — БҮТЭН дүн, мянгатын таслалтай (2026-09-01, товчлолыг бүрэн хассан) */
+const bn = (v: number) => num(v);
 /**
  * ⚠️ ЗӨВХӨН Cashflow-ийн `budget`/`contract` дүнд хэрэглэнэ: тэг нь «төсөвт
  * өртөг хараахан батлагдаагүй / гэрээ байгуулагдаагүй» гэсэн утгатай тул 0
@@ -183,10 +183,10 @@ export function Tailan() {
                         {' '}{num(d.landLeft)} {tr('нэгж талбар шийдвэрлэгдээгүй үлдсэн байна.')}
                       </p>
                       <p>
-                        {tr('Санхүүгийн хувьд захирамжаар')} <strong>{bn(x.finance.orderTotal)} {tr('тэрбум ₮')}</strong>
-                        {' '}{tr('батлагдсанаас')} <strong>{bn(x.finance.contractAmount)} {tr('тэрбум')}</strong>
+                        {tr('Санхүүгийн хувьд захирамжаар')} <strong>{bn(x.finance.orderTotal)} {tr('₮')}</strong>
+                        {' '}{tr('батлагдсанаас')} <strong>{bn(x.finance.contractAmount)} {tr('₮')}</strong>
                         {d.contractRate != null && <> ({pct(d.contractRate, 1)})</>} {tr('нь гэрээгээр баталгаажиж,')}
-                        {' '}<strong>{bn(x.finance.paid)} {tr('тэрбум')}</strong>
+                        {' '}<strong>{bn(x.finance.paid)} {tr('₮')}</strong>
                         {d.paidRate != null && <> ({pct(d.paidRate, 1)})</>} {tr('нь бодитоор олгогдсон байна.')}
                       </p>
                       <p>
@@ -218,15 +218,15 @@ export function Tailan() {
                           </tr>
                           <tr>
                             <td>{tr('Захирамжаар батлагдсан дүн')}</td>
-                            <td className={r.num}>{bn(x.finance.orderTotal)} {tr('тэрбум ₮')}</td>
+                            <td className={r.num}>{bn(x.finance.orderTotal)} {tr('₮')}</td>
                           </tr>
                           <tr>
                             <td>{tr('Гэрээгээр байгуулагдсан дүн')}</td>
-                            <td className={r.num}>{bn(x.finance.contractAmount)} {tr('тэрбум ₮')}</td>
+                            <td className={r.num}>{bn(x.finance.contractAmount)} {tr('₮')}</td>
                           </tr>
                           <tr className={r.total}>
                             <td>{tr('Бодитоор олгосон санхүүжилт')}</td>
-                            <td className={r.num}>{bn(x.finance.paid)} {tr('тэрбум ₮')}</td>
+                            <td className={r.num}>{bn(x.finance.paid)} {tr('₮')}</td>
                           </tr>
                         </tbody>
                       </ResizableTable>
@@ -239,7 +239,7 @@ export function Tailan() {
                     <section className={r.section}>
                       <h2 className={r.h2}>{tr('2. Орон сууцны 7 багц')}</h2>
                       <p className={r.intro}>
-                        {tr('Орон сууцны барилгажилт долоон багцад хуваагдан хэрэгжиж байна. Нийт')} {num(blocks)} {tr('блокт')} {num(ail)} {tr('өрхийн орон сууц төлөвлөгдсөн бөгөөд төсөвт өртөг')} {bn(budget)} {tr('тэрбум ₮ байна. Багц хоорондын гүйцэтгэлийн зөрүү их байна: хамгийн өндөр нь')} {tr(d.bestBagts?.bagts ?? '')}
+                        {tr('Орон сууцны барилгажилт долоон багцад хуваагдан хэрэгжиж байна. Нийт')} {num(blocks)} {tr('блокт')} {num(ail)} {tr('өрхийн орон сууц төлөвлөгдсөн бөгөөд төсөвт өртөг')} {bn(budget)} {tr('₮ байна. Багц хоорондын гүйцэтгэлийн зөрүү их байна: хамгийн өндөр нь')} {tr(d.bestBagts?.bagts ?? '')}
                         ({pct(d.bestBagts?.pct ?? null, 2)}{tr('), хамгийн бага нь')}
                         {' '}{tr(d.worstBagts?.bagts ?? '')} ({pct(d.worstBagts?.pct ?? null, 2)}).
                       </p>
@@ -250,7 +250,7 @@ export function Tailan() {
                             <th>{tr('Багц')}</th>
                             <th className={r.num}>{tr('Блок')}</th>
                             <th className={r.num}>{tr('Өрх')}</th>
-                            <th className={r.num}>{tr('Төсөв (тэрбум ₮)')}</th>
+                            <th className={r.num}>{tr('Төсөв (₮)')}</th>
                             <th className={r.num}>{tr('Гүйцэтгэл')}</th>
                           </tr>
                         </thead>
@@ -469,7 +469,7 @@ export function Tailan() {
                       </p>
                       <Cap no="7.1">{tr('Санхүүжилтийн эх үүсвэрийн бүтэц')}</Cap>
                       <ResizableTable storeKey="tailan.eh-uusver" className={r.table}>
-                        <thead><tr><th>{tr('Эх үүсвэр')}</th><th className={r.num}>{tr('Дүн (тэрбум ₮)')}</th><th className={r.num}>{tr('Хувь')}</th></tr></thead>
+                        <thead><tr><th>{tr('Эх үүсвэр')}</th><th className={r.num}>{tr('Дүн (₮)')}</th><th className={r.num}>{tr('Хувь')}</th></tr></thead>
                         <tbody>
                           {x.finance.sources.map((s) => (
                             <tr key={s.label}>
@@ -494,7 +494,7 @@ export function Tailan() {
                         {d.peakMonth && tr(' — хамгийн их төлөвлөгөө {0} сард', tr(d.peakMonth.label))}
                       </Cap>
                       <ResizableTable storeKey="tailan.saraar" className={r.table}>
-                        <thead><tr><th>{tr('Сар')}</th><th className={r.num}>{tr('Төлөвлөгөө (тэрбум ₮)')}</th><th className={r.num}>{tr('Хуримтлагдсан')}</th></tr></thead>
+                        <thead><tr><th>{tr('Сар')}</th><th className={r.num}>{tr('Төлөвлөгөө (₮)')}</th><th className={r.num}>{tr('Хуримтлагдсан')}</th></tr></thead>
                         <tbody>
                           {x.finance.months.map((m) => (
                             <tr key={m.label}>

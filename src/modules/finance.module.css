@@ -395,3 +395,201 @@
   /* Хүснэгт нүүрийг БҮТНЭЭР эзэлнэ — карт доторх хязгаарлалт хамаарахгүй */
   max-height: none;
 }
+
+/* ═══════════════════════════════════════════════════════════
+   ШҮҮЛТ ба БАГЦААР БҮЛЭГЛЭХ (2026-09-01)
+
+   ⚠️ Урьд нь бүртгэлийн хүснэгт нь «үйлчилгээ яг байгаагаар» — шүүлтгүй,
+   бүлэглэлгүй байв. 36 баганат, 209 мөрт хүснэгтээс хэрэгтэй мөрөө олох
+   боломжгүй гэсэн хэрэглэгчийн хүсэлтээр нэмэв. Шүүлт нь КЛИЕНТ дээр
+   (бүх мөр аль хэдийн санах ойд) — серверийн `where` БИШ.
+   ═══════════════════════════════════════════════════════════ */
+
+/* Шүүлтийн зурвас — `guitsetgel.module.css`-ийн зурвасын хэлбэрийг дагав */
+.finBar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.finSearch {
+  flex: 1 1 200px;
+  min-width: 160px;
+  max-width: 300px;
+  padding: 5px 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 12px;
+}
+.finSearch:focus { outline: 2px solid var(--data); outline-offset: -1px; }
+.finSel {
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg);
+  color: var(--ink-2);
+  font-size: 12px;
+  max-width: 190px;
+}
+.finSel:focus { outline: 2px solid var(--data); outline-offset: -1px; }
+/* Сонголт хийгдсэн select — «аль шүүлт асаалттай вэ» нь нэг харцаар */
+.finSelOn { border-color: var(--data); color: var(--ink); }
+/* Асаалт/унтраалттай товч (бүлэглэх · баганын шүүлт) */
+.finTgl {
+  padding: 5px 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg);
+  color: var(--ink-2);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.finTglOn { background: var(--data); border-color: var(--data); color: #fff; }
+/* Тоолол — ҮРГЭЛЖ харагдана: шүүсэн эсэхээ мэдэхгүй үлдэх нь гол эрсдэл */
+.finCount { margin-left: auto; font-size: 11.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.finClear { font-size: 11.5px; color: var(--data); padding: 4px 2px; white-space: nowrap; }
+.finClear:hover { text-decoration: underline; }
+
+/* ── Багана бүрийн шүүлтийн МӨР ──
+   ⚠️ `ResizableTable` нь `thead tr:last-child > th`-ээр өргөнөө хэмждэг тул
+   энэ мөр нь СҮҮЛИЙН `<tr>`, нүд нь `<th>` байх ЁСТОЙ. Баганын тоо ижил тул
+   бариулын байрлал зөв үлдэнэ. */
+.tbl thead tr:first-child th {
+  top: 0;
+  /* 14 + 6 + 6 + 1px хүрээ = 27px — доорх `.fRow th { top }` үүнээс хамаарна */
+  line-height: 14px;
+}
+.tbl thead tr.fRow th {
+  top: 27px;
+  padding: 3px 4px;
+  text-transform: none;
+  letter-spacing: 0;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+.fCell {
+  width: 100%;
+  min-width: 0;
+  padding: 3px 5px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 400;
+}
+.fCell:focus { outline: 2px solid var(--data); outline-offset: -1px; }
+/* Шүүлттэй багана — толгой нь тодорно */
+.fCellOn { border-color: var(--data); }
+.thOn { color: var(--data); }
+
+/* ── Багцын зурвасын дотоод хэсгүүд (`.bName` товчны дотор) ── */
+.grpCnt { margin-left: 8px; font-weight: 400; color: var(--ink-3); }
+.grpCaret { display: inline-block; width: 12px; color: var(--ink-3); }
+
+/* ── Уншихад: сөөлжсөн мөр + наалдсан ЭХНИЙ багана ──
+   ⚠️ Нүд бүрд БҮТЭН хүрээ өгөхгүй (.cellEdit-ийн тайлбар: «торлог даавуу
+   шиг болж уншигдахаа болино») — зөвхөн дэвсгэрийн ялгаа.
+   ⚠️ Сөөлжилтийг .dRow-оор хязгаарлана: бүлгийн мөр нь ч tr тул
+   хамруулбал бүлгийн дэвсгэрийг дарж бичнэ. */
+.tbl tbody tr.dRow:nth-child(even) td { background: color-mix(in srgb, var(--ink) 3.5%, transparent); }
+.tbl tbody tr:hover td { background: var(--surface-2); }
+.tbl tbody tr.dRow td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--surface);
+  box-shadow: 1px 0 0 var(--line);
+}
+.tbl tbody tr.dRow:nth-child(even) td:first-child { background: color-mix(in srgb, var(--ink) 3.5%, var(--surface)); }
+.tbl tbody tr.dRow:hover td:first-child { background: var(--surface-2); }
+/* Толгойн булангийн нүд — ХОЁР тэнхлэгээр наалдана, бусдаас дээгүүр */
+.tbl thead tr th { z-index: 2; }
+.tbl thead th:first-child {
+  left: 0;
+  z-index: 3;
+  box-shadow: 1px 0 0 var(--line);
+}
+.grpEmpty { padding: 18px 12px; text-align: center; color: var(--ink-3); font-size: 12px; }
+
+/* ═══════════════════════════════════════════════════════════
+   БАГЦЫН БЛОКУУД — багц АРААГШАА, багц доторх мөр ДООШОО (2026-09-01)
+
+   Багц бүр өөрийн блоктой: дээр нь багцын нэр, доор нь тухайн багцын БҮХ
+   мэдээлэл ДООШОО. Дараагийн багц нь БАРУУН талд нь.
+
+   ⚠️ ХОЁР ЧИГЛЭЛ ӨӨР бөгөөд хоёулаа ЗААВАЛ: багц нэмэгдэхэд БАРУУН тийш,
+   мөр нэмэгдэхэд ДООШОО. Хоёуланг нь доошоо болгож үзсэн — хэрэглэгч
+   ХАССАН («багцууд араагшаа, багцын доторх мэдээллүүд доошоо»).
+   ═══════════════════════════════════════════════════════════ */
+
+/* ⚠️ align-items: flex-start — блок бүр ӨӨРИЙН мөрийн тоогоор өндөржинө.
+   stretch (анхдагч) бол 4 мөрт багц 33 мөрт багцтай тэнцэж, доор нь хоосон
+   зурвас үлдэнэ. */
+.bWrap {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 10px;
+}
+
+/* ⚠️ Блокийн өргөнийг ТОГТМОЛ барина: агуулгаар нь тавибал багц бүр өөр
+   өргөнтэй болж, зэрэгцүүлэн харах боломж алга болно. Дотроо 38 багана тул
+   блок бүр ӨӨРӨӨ хэвтээ гүйнэ (.bScroll). */
+.bBox {
+  flex: none;
+  width: 620px;
+  max-width: 92vw;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  background: var(--surface);
+}
+
+/* Багцын нэр — хүснэгтээс ГАДУУР тул хэвтээ гүйлгэхэд ч байрандаа үлдэнэ */
+.bName {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 12px;
+  background: color-mix(in srgb, var(--data) 10%, var(--surface-2));
+  border-bottom: 1px solid var(--line);
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-align: left;
+  cursor: pointer;
+}
+.bName:hover { background: color-mix(in srgb, var(--data) 18%, var(--surface-2)); }
+/* ⚠️ Товч БИШ `div` хэлбэрээр ч хэрэглэгддэг («Нийтлээгүй шинэ мөр» блок —
+   хураах утгагүй тул дарагдахгүй) — заагч сумыг зөвхөн ДАРАГДАХ хувилбарт. */
+div.bName { cursor: default; }
+div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-2)); }
+
+/* ⚠️ Гүйлт нь БЛОК ДОТРОО — ХОЁУЛАА (хэвтээ ба босоо).
+
+   Хэвтээ: 38 багана нэг дэлгэцэнд багтахгүй. Хуудсаар гүйлгэвэл багцын
+   нэрүүд ч хамт гулсаж, аль багцыг хараад байгаагаа алдана.
+
+   ⚠️ Босоо гүйлтийг ЭНД тавьсны шалтгаан: `.tbl thead th` нь
+   `position: sticky; top: 0` — наалдах нь ХАМГИЙН ОЙРЫН гүйдэг өвөгөөр
+   тодорхойлогддог. Босоо гүйлт `.bWrap`-д байхад энэ элемент нь хэвтээ
+   гүйлтийн хайрцаг тул толгой нь БАРИГДАХГҮЙ, доош гүйлгэхэд алга болдог
+   байв (хэрэглэгчийн шүүмж). Одоо блок бүр өөрөө босоо гүйж, толгой нь
+   байрандаа үлдэнэ. */
+.bScroll {
+  overflow: auto;
+  max-height: calc(100vh - 300px);
+  min-height: 120px;
+}

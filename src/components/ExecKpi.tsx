@@ -28,7 +28,7 @@ import {
   type Metric, type CategoryKey, type Audience,
 } from '@/lib/kpiModel';
 import { scoreLabel } from '@/lib/analysis/score';
-import { num, pct, date, mntShort } from '@/lib/format';
+import { num, pct, date, mnt } from '@/lib/format';
 import { Icon } from './Icon';
 import { Bars, HBars, Ring, Spark } from './MiniChart';
 import s from './execKpi.module.css';
@@ -50,11 +50,13 @@ import s from './execKpi.module.css';
  * бусад картууд шууд харагдана.
  */
 
-/** Мөнгөн дүнг товч бичих — зөрүүний картад (тэрбум/сая ₮) */
-const money = (v: number): string =>
-  v >= 1e9 ? tr('{0} тэрбум ₮', num(v / 1e9, 2))
-  : v >= 1e6 ? tr('{0} сая ₮', num(v / 1e6, 1))
-  : tr('{0} ₮', num(v, 0));
+/**
+ * Мөнгөн дүн — портал даяарх ГАНЦ дүрэм (`format.mnt`): бүтэн, таслалтай.
+ * ⚠️ Урьд нь энд «{0} тэрбум ₮» гэсэн ТУСДАА хуулбар байсан (1e9 дээр 2 орон —
+ *    `mnt`-ээс ч ялгаатай). 2026-09-01-нд товчлолыг бүрэн хассан тул `mnt` рүү
+ *    нэгтгэв; тусад нь дахин бүү бич.
+ */
+const money = (v: number): string => mnt(v);
 
 /**
  * Ачаалагдаагүй үзүүлэлт — АЧААЛЖ БАЙГАА ба АЛДАА хоёрыг ялгана.
@@ -273,13 +275,13 @@ export function ExecKpi({ onView }: { onView: (key: ViewKey) => void }) {
     return {
       ...base,
       label: tr('Төсвийн мэдээлэл'),
-      value: mntShort(b.total),
+      value: mnt(b.total),
       note: steps.length > 1 && b.total > 0
         ? tr('{0} хүртэл {1} үлдсэн', last.label, pct((last.v / b.total) * 100, 0))
         : tr('батлагдсан төсөвт өртөг'),
       level: 'neutral',
       chart: steps.length > 1
-        ? <HBars items={steps.map((x) => ({ label: x.label, value: x.v }))} max={steps[0].v} fmt={mntShort} />
+        ? <HBars items={steps.map((x) => ({ label: x.label, value: x.v }))} max={steps[0].v} fmt={mnt} />
         : undefined,
     };
   }, [budgetQ, finQ, given]);
