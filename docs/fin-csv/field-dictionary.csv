@@ -11,7 +11,7 @@ cashflow,CF009,dun,Сарын дүн,Double,"Тухайн үеийн мөнгө�
 cashflow,CF010,dun_unet_tsaas,Үүнээс: үнэт цаас,Double,Сарын дүнгийн эх үүсвэрийн задаргаа
 cashflow,CF011,dun_tosliin_orlogo,Үүнээс: төслийн орлого,Double,Сарын дүнгийн эх үүсвэрийн задаргаа
 cashflow,CF012,dun_niislel_tosov,Үүнээс: нийслэлийн төсөв,Double,Сарын дүнгийн эх үүсвэрийн задаргаа
-cashflow,CF013,dun_nzd_nooc,Үүнээс: НЗД-ын нөөц,Double,Сарын дүнгийн эх үүсвэрийн задаргаа
+cashflow,CF013,dun_nzd_nooc,Үүнээс: НЗД-ын нөөц,Double,"Сарын дүнгийн эх үүсвэрийн задаргаа ⚠️ Нийтлэгдсэн үйлчилгээнд Integer (int32, дээд тал 2.147 тэрбум ₮) болсон — эх үүсвэрийн дүн үүнээс ИХ гарч болно. Дараагийн publish-д Double болгож ЗААВАЛ засна."
 cashflow,CF014,ur_olgolt_dun,Урьдчилгаа олголт,Double,Тухайн сард олгосон урьдчилгааны дүн; гэрээний нийлбэр = ur_batalgaa_dun
 cashflow,CF015,ur_ergen_tololt,Урьдчилгааны эргэн төлөлт,Double,Тухайн сард суутгасан эргэн төлөлт
 cashflow,CF016,erh_neesen_dun,Эрх нээсэн дүн,Double,Тухайн үед нээсэн санхүүжилтийн эрх
@@ -26,7 +26,7 @@ cashflow,CF024,zahiramj_dun,Захирамжийн дүн,Double,Зөвхөн Г
 cashflow,CF025,eh_unet_tsaas,Эх үүсвэр: үнэт цаас,Double,Гэрээний нийт эх үүсвэр (ГЭРЭЭ мөрөнд)
 cashflow,CF026,eh_tosliin_orlogo,Эх үүсвэр: төслийн орлого,Double,Гэрээний нийт эх үүсвэр (ГЭРЭЭ мөрөнд)
 cashflow,CF027,eh_niislel_tosov,Эх үүсвэр: нийслэлийн төсөв,Double,Гэрээний нийт эх үүсвэр (ГЭРЭЭ мөрөнд)
-cashflow,CF028,eh_nzd_nooc,Эх үүсвэр: НЗД-ын нөөц,Double,Гэрээний нийт эх үүсвэр (ГЭРЭЭ мөрөнд)
+cashflow,CF028,eh_nzd_nooc,Эх үүсвэр: НЗД-ын нөөц,Double,"Гэрээний нийт эх үүсвэр (ГЭРЭЭ мөрөнд) ⚠️ Нийтлэгдсэн үйлчилгээнд Integer (int32, дээд тал 2.147 тэрбум ₮) болсон — ах дүү багана CF025/CF026 нь 208.6/244.9 тэрбум ₮ хүрдэг. Дараагийн publish-д Double болгож ЗААВАЛ засна."
 cashflow,CF029,zahialagch_hynalt_baiguullaga,Захиалагчийн хяналтын байгууллага,String,Зөвхөн ГЭРЭЭ мөрөнд
 cashflow,CF030,geree_ognoo,Гэрээний огноо,DateOnly,Зөвхөн ГЭРЭЭ мөрөнд
 cashflow,CF031,geree_dugaar,Гэрээний дугаар,String,Зөвхөн ГЭРЭЭ мөрөнд; дугаарт зөвхөн кирилл үсэг
@@ -65,6 +65,6 @@ ipc,IPC27,nhog_dun,НХОГ дүн,Double,
 ipc,IPC28,guilgee1_ognoo,Гүйлгээ 1 огноо,DateOnly,
 ipc,IPC29,guilgee1_dun,Гүйлгээ 1 дүн,Double,"⚠️ 10 актад олгох дүнгээс ИХ — суутгал хасахаас өмнөх бүтэн дүнг бичсэн байна (I02,I03,I06,I15,I16,I21,I27,I28,I29,I30). Бодитоор шилжүүлсэн дүнг бичнэ."
 ipc,IPC30,guilgee2_ognoo,Гүйлгээ 2 огноо,DateOnly,Хоёр дахь гүйлгээ — огноог хугацааны дарааллаар нь дүүргэнэ (цоорхой үлдээхгүй)
-ipc,IPC31,guilgee2_dun,Гүйлгээ 2 дүн,Double,
-ipc,IPC32,guilgee3_ognoo,Гүйлгээ 3 огноо,DateOnly,
-ipc,IPC33,guilgee3_dun,Гүйлгээ 3 дүн,Double,
+ipc,IPC31,guilgee2_dun,Гүйлгээ 2 дүн,Double,"⚠️ Нийтлэгдсэн үйлчилгээнд String болсон (багана хоосон тул AGOL таамагласан). Мянгатын тасалбартай текст хадгалагдвал ipcNet-ийн Number() → NaN → 0 болж үлдэгдэл хөөрөгдөнө. Publish-д Double болгоно."
+ipc,IPC32,guilgee3_ognoo,Гүйлгээ 3 огноо,DateOnly,"⚠️ Нийтлэгдсэн үйлчилгээнд String болсон (багана хоосон тул AGOL таамагласан) — огнооны шүүлт, эрэмбэ ажиллахгүй. Publish-д Date only болгоно."
+ipc,IPC33,guilgee3_dun,Гүйлгээ 3 дүн,Double,"⚠️ Нийтлэгдсэн үйлчилгээнд String болсон (багана хоосон тул AGOL таамагласан) — IPC31-тэй ижил эрсдэл. Publish-д Double болгоно."

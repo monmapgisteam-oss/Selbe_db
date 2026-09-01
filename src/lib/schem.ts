@@ -29,8 +29,12 @@
  */
 
 import { t as tr } from '@/lib/i18nCore';
-import type { ViewKey } from '@/lib/services';
-import { OWNER, STAGE_ORDER, STATUS, F as HF, type Stage, type Status } from '@/lib/hyanalt';
+import { bagtsKey, type ViewKey } from '@/lib/services';
+import {
+  HYANALT, OWNER, STAGE_ORDER, STATUS, F as HF,
+  type Row, type Stage, type Status,
+} from '@/lib/hyanalt';
+import { groupWorks } from '@/lib/hyanaltGroup';
 import { TOLOV, type Zov } from '@/lib/zovshoorol';
 
 /* ══════════════════ Төрөл ══════════════════ */
@@ -391,20 +395,61 @@ export const TH = {
 const share = (a: number | null, b: number | null): number | null =>
   (a == null || b == null || b <= 0 ? null : (a / b) * 100);
 
-/** Хяналтын мөрүүдийг «хэний гар дээр байна» гэж ангилна */
+/**
+ * Багцын шүүлт — ЗӨВХӨН `bagtsKey()`-ээр.
+ *
+ * ⚠️ Багцын нэр эх сурвалж бүрд ӨӨР бичиглэлтэй: `building_GOL.BAGTS` нь
+ * «Багц 4.1», хяналтын хүснэгтийн `Багц` нь «Багц 4-1». Түүхий мөр
+ * харьцуулбал («===») тэр багцын мөрүүд БҮГД шүүгдэж, зангилаа «Хүлээгдэж
+ * буй 0» гэж ХУДАЛ НОГООН болно — байхгүй ажлыг «цэвэр» гэж мэдээлнэ.
+ * `execData.ts` энэ зангыг аль хэдийн баримтжуулсан, схем түүнийг дагана.
+ */
+const samePkg = (v: unknown, pkg: string) => bagtsKey(v) === bagtsKey(pkg);
+
+/**
+ * Түүхий ArcGIS мөрийг `groupWorks`-ийн хүлээх хэлбэрт оруулна.
+ *
+ * ⚠️ `hyanaltStore.toRow`-ыг ЭНД импортлож БОЛОХГҮЙ — тэр модуль React-тай
+ * (`'use client'`, хук) тул схемийн цэвэр загварыг бохирдуулж, `schem.check.mjs`
+ * ажиллахаа болино. Бүлэглэлтэд ЗӨВХӨН эдгээр талбар хэрэгтэй; огноог
+ * хөрвүүлэхгүй.
+ */
+const toWork = (r: Record<string, unknown>): Row => ({
+  ...(r as unknown as Row),
+  __oid: Number(r[HYANALT.oid] ?? 0),
+  [HF.ergelt]: Number(r[HF.ergelt] ?? 0),
+  [HF.bagts]: String(r[HF.bagts] ?? ''),
+  [HF.ajil]: String(r[HF.ajil] ?? ''),
+  [HF.company]: String(r[HF.company] ?? ''),
+  [HF.status]: String(r[HF.status] ?? '') as Status,
+});
+
+/**
+ * Хяналтыг «хэний гар дээр байна» гэж ангилна — АЖЛААР, мөрөөр БИШ.
+ *
+ * ⚠️ Хяналтын хүснэгтэд мөр бүр НЭГ ТОЙРОГ: дахин илгээх, дахин шалгах бүрд
+ * ШИНЭ мөр үүснэ (`hyanaltSubmit.submitForReview`, `hyanaltStore.recheck`).
+ * Мөрөөр тоолвол 8 ажил 30 болж, удирдлагын самбар (`ExecKpi`) ба «Гүйцэтгэл»
+ * харагдац ижил агшинд ӨӨР тоо харуулна — тэд хоёул `groupWorks()`-ээр
+ * тойргуудыг нэг ажил болгож, ЗӨВХӨН сүүлийн тойргийг тоолдог. Тооллын дүрэм
+ * НЭГ байх ёстой тул схем ч мөн `hyanaltGroup`-аас гарна.
+ */
 function reviewCounts(rows: Record<string, unknown>[]): {
   byStage: Record<Stage, number>; pending: number; returned: number;
 } {
   const byStage = { company: 0, engineer: 0, manager: 0, director: 0 } as Record<Stage, number>;
   let pending = 0;
   let returned = 0;
-  for (const r of rows) {
-    const st = String(r[HF.status] ?? '') as Status;
+  for (const w of groupWorks(rows.map(toWork))) {
+    const st = w.status;
     const owner = OWNER[st];
     if (!owner) continue;
+    /* ⚠️ «Шилжүүлсэн» нь ДУУССАН ажил — хүлээгдэж буйд ч, аль ч шатны гар
+       дээр ч тоологдохгүй. `OWNER[transferred]` нь `director` тул шүүхгүй
+       бол дууссан ажлууд «ерөнхий менежерийн гар дээр» гэж хуримтлагдана. */
+    if (st === STATUS.transferred) continue;
     byStage[owner] += 1;
-    /* ⚠️ «Шилжүүлсэн» нь ДУУССАН ажил — хүлээгдэж буйд тоологдохгүй */
-    if (st !== STATUS.transferred) pending += 1;
+    pending += 1;
     if (st === STATUS.engineerReturned
       || st === STATUS.managerReturned
       || st === STATUS.directorReturned) returned += 1;
@@ -416,7 +461,7 @@ function reviewCounts(rows: Record<string, unknown>[]): {
 export function stageRail(src: SchemSources, pkg?: string | null): { stage: Stage; n: number }[] | null {
   if (!src.review) return null;
   const rows = pkg
-    ? src.review.filter((r) => String(r[HF.bagts] ?? '') === pkg)
+    ? src.review.filter((r) => samePkg(r[HF.bagts], pkg))
     : src.review;
   const { byStage } = reviewCounts(rows);
   return STAGE_ORDER.map((s) => ({ stage: s, n: byStage[s] }));
@@ -449,7 +494,8 @@ export function buildSchem(src: SchemSources, pkg: string | null = null): SchemL
 
   /* ── Зөвшөөрөл ── */
   let zovList = src.zov;
-  if (zovList && pkg) zovList = zovList.filter((z) => z.bagts === pkg);
+  /* ⚠️ Түүхий тэнцэл БИШ — `samePkg` (дээрх бичиглэлийн занга) */
+  if (zovList && pkg) zovList = zovList.filter((z) => samePkg(z.bagts, pkg));
   let zovState: SchemState;
   if (!zovList) {
     /* ⚠️ `loadZov()` нь алдаагаа `null`-аар буцаадаг, throw хийдэггүй */
@@ -532,7 +578,7 @@ export function buildSchem(src: SchemSources, pkg: string | null = null): SchemL
 
   /* ── Гүйцэтгэлийн хяналт ── */
   const rows = src.review
-    ? (pkg ? src.review.filter((r) => String(r[HF.bagts] ?? '') === pkg) : src.review)
+    ? (pkg ? src.review.filter((r) => samePkg(r[HF.bagts], pkg)) : src.review)
     : null;
   const rc = rows ? reviewCounts(rows) : null;
   const hyanalt: SchemState = {

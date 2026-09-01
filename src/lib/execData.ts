@@ -16,7 +16,7 @@ import { cached } from './live';
 import { queryFeatures, type Row } from './query';
 import { BUILDING, bagtsKey, buildingKey } from './services';
 import {
-  INDICATORS, SCORE_LEVELS, levelOf, PARKING, ASSUME_MET,
+  INDICATORS, SCORE_LEVELS, levelOf, PARKING, ASSUME_MET, DENSITY_BY_TYPE,
 } from './analysis/config';
 import { loadAnalysisCached, computeRaw, defaultGreenCats } from './analysis/data';
 import { urbanScore, passesNorm, normFor, normGap, normText } from './analysis/score';
@@ -209,9 +209,19 @@ export type IndicatorFail = {
   fails: number;
   /** Утга нь бодогдсон (дүгнэгдэх боломжтой) бүсийн тоо */
   scored: number;
-  /** Хамгийн их зөрчилтэй бүс — утга · норм · зөрүү гурвыг агуулна */
-  worst: { zone: string; value: number; gap: number } | null;
-  /** Нормын шаардлага текстээр — «≥ 6.0 м²/хүн» */
+  /**
+   * Хамгийн их зөрчилтэй бүс — утга · норм · зөрүү гурвыг агуулна.
+   *
+   * ⚠️ `norm` нь ТУХАЙН БҮСИЙН норм: `far`/`bcr` (`byType`) нь бүсийн төрөл
+   * бүрд өөр хязгаартай (1.2 / 2.4 / 3.0 · 40 / 80 / 100). Өмнө нь энэ мөрөнд
+   * ерөнхий `normLabel` бичигддэг байсан тул зөрүүг бүсийн нормоор бодоод
+   * дэлгэцэд ӨӨР норм харуулж, «утга − норм ≠ зөрүү» болдог байв.
+   */
+  worst: { zone: string; value: number; gap: number; norm: string } | null;
+  /**
+   * Нормын шаардлага текстээр — «≥ 6.0 м²/хүн».
+   * `byType` үзүүлэлтэд ганц утга биш МУЖ («≤ 1.2 – 3.0») болно.
+   */
   normLabel: string;
   /**
    * ⚠️ `ASSUME_MET`-ээр «норм хангасан» гэж ДҮГНЭГДДЭГ үзүүлэлт.
@@ -265,6 +275,7 @@ export function useSuitability(enabled: boolean, onProgress?: (m: string, p: num
         let fails = 0;
         let scored = 0;
         let worst: IndicatorFail['worst'] = null;
+        const fmtNorm = (x: number, d?: number) => x.toFixed(d ?? 1);
         for (const z of live) {
           const eff = normFor(ind, z.type);
           const v = z.rawActual[ind.id];
@@ -274,8 +285,22 @@ export function useSuitability(enabled: boolean, onProgress?: (m: string, p: num
           if (ok) continue;
           fails += 1;
           const gap = normGap(v, eff) ?? 0;
-          if (!worst || gap > worst.gap) worst = { zone: z.id, value: v, gap };
+          /* ⚠️ Нормыг ЭНД, `eff`-ээс хамт хадгална — дэлгэцэд бичигдэх норм нь
+             `gap` бодоход ашигласан нормтой ижил байх ЁСТОЙ. */
+          if (!worst || gap > worst.gap) worst = { zone: z.id, value: v, gap, norm: normText(eff, fmtNorm) };
         }
+        /* ⚠️ `byType` (FAR/BCR) үзүүлэлтэд ЕРӨНХИЙ норм гэж байхгүй: бүсийн
+           төрөл бүрд өөр (`DENSITY_BY_TYPE`). Өмнө нь `normFor(ind, null)`
+           буюу орон сууцны хамгийн хатуу нормыг бүх мөрөнд бичдэг байсан тул
+           «Олон нийтийн бүс»-ийн BCR 85% нь зөрчил биш байтал «≤ 40%» гэж
+           худал заагдана. Тиймээс мужаар харуулна. */
+        const capOf = (t: 'farMax' | 'bcrMax') => Object.values(DENSITY_BY_TYPE).map((d) => d[t]);
+        const normLabel = ind.byType
+          ? tr('≤ {0} – {1}{2} (бүсийн төрлөөр)',
+            fmtNorm(Math.min(...capOf(ind.byType)), ind.decimals),
+            fmtNorm(Math.max(...capOf(ind.byType)), ind.decimals),
+            ind.unit ? ` ${ind.unit}` : '')
+          : normText(ind, fmtNorm);
         return {
           id: ind.id,
           name: ind.name,
@@ -285,7 +310,7 @@ export function useSuitability(enabled: boolean, onProgress?: (m: string, p: num
           fails,
           scored,
           worst,
-          normLabel: normText(normFor(ind, null), (x, d) => x.toFixed(d ?? 1)),
+          normLabel,
           assumed: ind.id in ASSUME_MET,
         };
       });

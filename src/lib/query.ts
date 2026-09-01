@@ -250,10 +250,19 @@ export async function queryFeatures(
       if (opts.limit) page.resultRecordCount = String(opts.limit - rows.length);
       const body = await request(url, page);
       oidField = body.objectIdFieldName ?? oidField;
-      if (!order && rows.length === 0 && body.exceededTransferLimit && oidField) {
+      const feats = (body.features ?? []).map((f) => f.attributes);
+      // ⚠️ `exceededTransferLimit` нь ХОЁР ӨӨР шалтгаанаар асдаг: (а) серверийн
+      //    `maxRecordCount` таслав, (б) ДУУДАГЧИЙН `limit` (=`resultRecordCount`)
+      //    таслав. (б) тохиолдолд доорх `break` ажиллаж хуудаслалт ер нь
+      //    эхлэхгүй тул эрэмбэ хэрэггүй — гэтэл ялгалгүй restart хийж байсан тул
+      //    `limit`-тэй дуудлага бүр (жиш. `pickByQuery`-ийн `limit: 1` — цэгэн
+      //    дээр 2+ объект байхад ҮРГЭЛЖ асдаг) хоёр дахин явж, 6 слотын
+      //    хязгаарлагчийг дэмий дүүргэж «Too many requests» руу түлхдэг байв.
+      //    Хуудас нь `limit`-ээр ДҮҮРСЭН эсэхээр л ялгана.
+      const cappedByLimit = opts.limit != null && feats.length >= opts.limit;
+      if (!order && rows.length === 0 && body.exceededTransferLimit && oidField && !cappedByLimit) {
         return { rows: [], oidField, restart: true };
       }
-      const feats = (body.features ?? []).map((f) => f.attributes);
       rows.push(...feats);
       if (!body.exceededTransferLimit) break;
       if (opts.limit && rows.length >= opts.limit) break;

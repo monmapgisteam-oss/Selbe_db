@@ -234,7 +234,15 @@ for (const st of all) {
   assert.ok(STAGE_ORDER.includes(OWNER[st]), `${st}: эзэн нь мэдэгдэхгүй`);
 }
 
-const row = (st, bagts = 'Багц 1') => ({ [HF.status]: st, [HF.bagts]: bagts });
+/**
+ * ⚠️ МӨР БҮР НЭГ ТОЙРОГ, ажил БИШ. Тиймээс өөр ажлыг загварчлахдаа `ajil`-ыг
+ *    ЗААВАЛ ялгана — эс тэгвээс `groupWorks` тэдгээрийг НЭГ ажлын дараалсан
+ *    тойрог гэж үзэж, зөвхөн сүүлийнхийг тоолно.
+ */
+const row = (st, bagts = 'Багц 1', ajil = st) => ({
+  [HF.status]: st, [HF.bagts]: bagts, [HF.ajil]: ajil,
+  [HF.company]: 'Гүйцэтгэгч', [HF.ergelt]: 1,
+});
 const rev = buildSchem({
   ...EMPTY,
   review: [
@@ -254,6 +262,57 @@ assert.equal(done.hyanalt.health, 'good');
 const rail = stageRail({ ...EMPTY, review: [row(STATUS.engineerReview)] });
 assert.equal(rail.length, 4, 'зурвас дөрвөн шаттай');
 assert.equal(rail.find((x) => x.stage === 'engineer').n, 1);
+
+/* «Шилжүүлсэн» нь аль ч шатны гар дээр биш — `OWNER` нь түүнийг `director` гэдэг */
+const railDone = stageRail({ ...EMPTY, review: [row(STATUS.transferred)] });
+assert.equal(
+  railDone.find((x) => x.stage === 'director').n, 0,
+  'дууссан ажил ерөнхий менежерийн гар дээр тоологдов',
+);
+
+/**
+ * ⚠️ НЭГ АЖИЛ = НЭГ ТОО. Дахин илгээх бүрд ШИНЭ мөр үүсдэг тул мөрөөр тоолвол
+ *    удирдлагын самбар 8 ажил харуулж байхад схем ижил агшинд 30 гэж харуулна.
+ */
+const cyc = (st, ergelt, oid) => ({
+  [HF.status]: st, [HF.bagts]: 'Багц 1', [HF.ajil]: 'Суурийн бетон',
+  [HF.company]: 'Гүйцэтгэгч', [HF.ergelt]: ergelt, OBJECTID: oid,
+});
+const cycles = [
+  cyc(STATUS.engineerReturned, 1, 11),
+  cyc(STATUS.engineerReview, 2, 12),
+  cyc(STATUS.managerReview, 3, 13),
+];
+const many = buildSchem({ ...EMPTY, review: cycles });
+assert.equal(many.hyanalt.metrics[0].value, 1, 'нэг ажлын гурван тойрог тус тусад нь тоологдов');
+assert.equal(many.hyanalt.metrics[1].value, 0, 'сүүлийн тойрог буцаагдаагүй');
+const cycRail = stageRail({ ...EMPTY, review: cycles });
+assert.equal(cycRail.find((x) => x.stage === 'manager').n, 1, 'ажил сүүлийн шатандаа байх ёстой');
+assert.equal(cycRail.find((x) => x.stage === 'engineer').n, 0, 'хуучин тойрог зурваст үлдэв');
+
+/**
+ * ⚠️ БИЧИГЛЭЛИЙН ЗӨРҮҮ: `building_GOL` нь «Багц 4.1», хяналтын хүснэгт нь
+ *    «Багц 4-1». Түүхий тэнцлээр шүүвэл хүлээгдэж буй ажлууд алга болж,
+ *    зангилаа ХУДАЛ НОГООН болно.
+ */
+const spell = buildSchem(
+  { ...EMPTY, review: [row(STATUS.engineerReview, 'Багц 4-1')] },
+  'Багц 4.1',
+);
+assert.equal(spell.hyanalt.metrics[0].value, 1, 'багцын бичиглэлийн зөрүү шүүлтийг таслав');
+assert.equal(
+  buildSchem({ ...EMPTY, review: [row(STATUS.engineerReview, 'Багц 3-2')] }, 'Багц 4.1')
+    .hyanalt.metrics[0].value,
+  0,
+  'өөр багцын мөр шүүлтээр орж ирэв',
+);
+
+/* Зөвшөөрлийн багцын шүүлт мөн бичиглэлээс хамаарахгүй */
+assert.equal(
+  buildSchem({ ...EMPTY, zov: [mk(TOLOV.no, 'Багц 4-1')] }, 'Багц 4.1').zovshoorol.health,
+  'bad',
+  'зөвшөөрлийн багцын бичиглэл таарсангүй',
+);
 
 /* ══════════════════ 8. Босго ══════════════════ */
 

@@ -40,6 +40,7 @@ export type DataKey =
   | 'SOURCE_FS'
   | 'HABEA'
   | 'HYANALT'
+  | 'ZOVSHOOROL'
   | 'SURVEY';
 
 /** Бүртгэгдсэн кэш — `cached()` өөрийгөө энд нэмнэ */

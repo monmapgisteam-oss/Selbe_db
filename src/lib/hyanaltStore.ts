@@ -281,6 +281,24 @@ export async function recheck(
   const t = Date.now();
 
   if (verdict === 'ok') {
+    const base = prev;
+    /*
+     * ⚠️ ДАВХАР МӨРӨӨС ХАМГААЛАХ ХОЁР ДАХЬ ШАЛГУУР — төлөвийн шалгуур
+     *    ГАНЦААРАА хангалтгүй. Дахин шалгалт ХУУЧИН мөрийг ЗАСДАГГҮЙ (энэ нь
+     *    санаатай: буцаалтын шалтгаан ба цаг дарагдахгүй), тиймээс эх мөр
+     *    «Менежер буцаасан» ТӨЛӨВТЭЙГЭЭ үлдэж, дараагийн дуудлага дээрх
+     *    `prev[F.status] !== want` шалгуурыг мөн ДАВНА. Нэг багцад хоёр
+     *    инженер томилогдоод хоёул «менежерт илгээх» дарвал ижил
+     *    `Хэддэх_удаа`-тай ХОЁР шинэ мөр үүсдэг байв; `groupWorks` зөвхөн
+     *    хамгийн их OID-тайг «одоогийн» болгодог тул нөгөө нь мөнхөд
+     *    «Менежер хянаж байна» төлөвт үлдэж, тойргийн тоолуурыг гажуудуулна.
+     *    `ROWS` нь дээрх `liveRow`-оос ДӨНГӨЖ ирсэн — хуучирсан биш.
+     */
+    const ergelt = base[F.ergelt] + 1;
+    const twin = ROWS.some((r) => r[F.sheetOid] === base[F.sheetOid]
+      && r[F.bagts] === base[F.bagts] && r[F.ergelt] === ergelt);
+    if (twin) { emit(); return { ok: false, error: STALE }; }
+
     const sentAt = prev[F.companySent];
     /*
      * ⚠️ ХУУЧИН МӨРИЙГ ЗАСАХГҮЙ — ДАХИН ШАЛГАЛТ БҮРТ ШИНЭ МӨР. Хуучныг засвал
@@ -295,7 +313,7 @@ export async function recheck(
     const fresh: Attrs = {
       [F.id]: nextId(),
       [F.sheetOid]: prev[F.sheetOid],
-      [F.ergelt]: prev[F.ergelt] + 1,
+      [F.ergelt]: ergelt,
       [F.bagts]: prev[F.bagts],
       [F.ajil]: prev[F.ajil],
       [F.company]: prev[F.company],

@@ -121,6 +121,19 @@ const readDraft = (pkgKey: string): Draft | null => {
     if (!d.t || !Array.isArray(d.cells) || Date.now() - d.t > DRAFT_TTL_MS)
       return null;
     if (d.adds != null && !Array.isArray(d.adds)) return null;
+    /* ⚠️ Түр ObjectID нь САЛАНГИД СӨРӨГ БҮХЭЛ тоо байх ЁСТОЙ: давхардсан
+       дугаартай хоёр мөр нэг `${oid}:${b}` нүдийг хуваалцаж, нэгд нь бичсэн
+       обьём нөгөөд нь ч орж, нэгийг устгахад хоёулаа устдаг. Зөрчилтэй
+       БИЧЛЭГИЙГ л хаяна — ноорог бүхэлдээ хаягдахгүй. */
+    if (d.adds) {
+      const seen = new Set<number>();
+      d.adds = d.adds.filter((a) => {
+        const o = Number(a?.oid);
+        if (!Number.isInteger(o) || o >= 0 || seen.has(o)) return false;
+        seen.add(o);
+        return true;
+      });
+    }
     /* ⚠️ Шинэ талбарууд эвдэрсэн бол ноорог БҮХЭЛДЭЭ хаяхгүй — тэр хэсгийг
        нь л орхино. Нэг талбарын алдаа бусад засварыг устгах ёсгүй. */
     if (d.dates != null && !Array.isArray(d.dates)) d.dates = undefined;
@@ -584,10 +597,25 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     };
   }, []);
 
+  /**
+   * ЯГ ОДОО `rows` / `sc` төлөвт СУУСАН багцын түлхүүр.
+   *
+   * ⚠️ Багц солиход доорх `setRows([])` / `setSc(null)` нь ДАРААГИЙН render-д
+   *    л тусдаг тул нооргийн СЭРГЭЭХ ба ХАДГАЛАХ эффектүүд нэг агшин ШИНЭ
+   *    `pkg.key`-тэй, ХУУЧИН багцын мөр/бүдүүвч/`nBld`-ээр ажилладаг байв.
+   *    Хохирол нь хоёулаа чимээгүй: (1) хуучин `nBld`, хуучин `sc.obyem`-оор
+   *    шалгахад зорилтот багцын ноорог бүхэлдээ «хуучирсан» болж, `total = 0`
+   *    гэж дүгнэгдээд `clearDraftLS` АСУУЛТГҮЙ устгана; (2) хуучин `pending`
+   *    нь ШИНЭ багцын ноорогийн слот руу бичигдэнэ. Мөр нь ХЭНИЙХ болохыг ил
+   *    тэмдэглэж, хоёр эффектийг хоёуланг нь үүгээр хаана.
+   */
+  const loadedPkgRef = useRef("");
+
   // Багц солигдох бүрд бүдүүвч + мөрүүдийг шинээр татна. Хуучин багцын
   // хариу хожуу ирээд шинийг дарж бичихээс `alive` хамгаална.
   useEffect(() => {
     let alive = true;
+    loadedPkgRef.current = "";
     setBusy(true);
     setErr("");
     setRows([]);
@@ -605,6 +633,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       .then(async (schema) => {
         const r = await loadRows(pkg, schema, view?.day);
         if (!alive) return;
+        // ⚠️ Мөр нь ЭНЭ багцынх болсныг ноорогийн эффектүүдэд мэдэгдэнэ.
+        loadedPkgRef.current = pkg.key;
         setSc(schema);
         setRows(r.rows);
         setAsOf(r.asOf);
@@ -669,12 +699,44 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    */
   const [adds, setAdds] = useState<NewRow[]>([]);
 
-  /** Бүлгийн СҮҮЛИЙН удмын дараах индекс — шинэ мөрийг ЭНД оруулна. */
+  /** Бүлгийн СҮҮЛИЙН удмын дараах индекс — сүүлчийн аргын байрлал. */
   const afterGroup = (list: SheetRow[], p: number) => {
     const d = list[p].depth;
     let i = p + 1;
     while (i < list.length && list[i].depth > d) i += 1;
     return i;
+  };
+
+  /**
+   * ШИНЭ МӨРИЙГ ОРУУЛАХ БАЙРЛАЛ — ЖИНХЭНЭ АХ ДҮҮГИЙНХЭЭ АРД.
+   *
+   * ⚠️ ГҮН НЬ ӨГӨГДӨЛД ХАДГАЛАГДДАГГҮЙ: `gun` багана 10/10 үйлчилгээнд алга
+   *    тул нийтлэхийн `if (sc.f.gun)` салбар хэзээ ч ажилладаггүй. Дараагийн
+   *    ачаалалтад `bagtsSheet.alignInsertions` нэмсэн мөрийг `-1` гэж таниад
+   *    гүнийг нь ӨМНӨХ МӨРИЙНХӨӨР авна (`depthArr[i-1]`). bagtsSheet.ts-ийн
+   *    тайлбар үүнийг «нэмсэн мөр ах дүүгийнхээ ард залгагдана» гэсэн таамаг
+   *    дээр үндэслэсэн.
+   *
+   * ⚠️ Урьд нь мөрийг бүлгийн БҮХ УДМЫН ард (`afterGroup`) тавьдаг байсан тул
+   *    өмнөх мөр нь ах дүү биш, хамгийн сүүлийн АЧ мөр байв. Үр дүнд нь
+   *    нийтэлсний ДАРАА шинэ ажил өөр (илүү гүн) дэд бүлгийн хүүхэд болж
+   *    хувирч, мөнгөн дүн ба хувийн жин нь өөр салбарт наалддаг байлаа —
+   *    нийтлэхийн өмнөх ба дараах тоо бүхэл салбартаа зөрнө.
+   *
+   * Тиймээс өмнөх мөр нь ЯГ `d+1` гүнтэй байх байрлалыг сонгоно: тэр нь
+   * УДАМГҮЙ шууд хүүхдийн ард. `null` = тийм байрлал алга (бүлэг хоосон,
+   * эсвэл шууд хүүхэд бүр өөрөө дэд бүлэг) — тэнд нэмсэн мөр өгөгдөлд
+   * амьд үлдэхгүй.
+   */
+  const siblingSlot = (list: SheetRow[], p: number): number | null => {
+    const d = list[p].depth;
+    let slot: number | null = null;
+    for (let i = p + 1; i < list.length && list[i].depth > d; i += 1) {
+      if (list[i].depth !== d + 1) continue;            // ач мөр — алгасна
+      const next = list[i + 1];
+      if (!next || next.depth <= d + 1) slot = i + 1;   // удамгүй ах дүү
+    }
+    return slot;
   };
 
   /**
@@ -716,11 +778,17 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
           if (Math.abs(i - a.parentIdx) < Math.abs(p - a.parentIdx)) p = i;
         }
         const parent = out[p];
-        out.splice(afterGroup(out, p), 0, {
+        /* ⚠️ ГҮН нь дараагийн ачаалалтад ӨМНӨХ мөрөөс сэргээгддэг тул ЭНД ч
+           яг түүгээр нь өгнө — эс бөгөөс нийтлэхийн өмнөх ба дараах шатлал
+           ЧИМЭЭГҮЙ зөрнө. `siblingSlot` олдсон үед энэ нь `parent.depth + 1`
+           болно; олдоогүй (зөвхөн хуучин ноорогт үлдсэн) мөрд ядаж дэлгэц ба
+           өгөгдөл хоёр НИЙЦНЭ. */
+        const at = siblingSlot(out, p) ?? afterGroup(out, p);
+        out.splice(at, 0, {
           oid: a.oid,
           no: a.no,
           work: a.work,
-          depth: parent.depth + 1,
+          depth: at > 0 ? out[at - 1].depth : parent.depth + 1,
           group: false,
           // ⚠️ Жин/мөнгө ОРОХГҮЙ — `computeAll` Обьём×Нэгж өртгөөс өөрөө бодно.
           wC: null,
@@ -895,23 +963,43 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    */
   const [hitKey, setHitKey] = useState<string | null>(null);
   const jumpN = view?.jump?.n ?? -1;
+  /**
+   * СҮҮЛД БИЕЛСЭН үсрэлтийн дугаар.
+   *
+   * ⚠️ Хамаарлын жагсаалтад `vis` байх ЁСТОЙ: үсрэх мөр хараахан зурагдаагүй
+   *    (эвхээстэй бүлэг, шүүлтүүрийн гадна) байвал жагсаалт шинэчлэгдэхэд л
+   *    байрлалыг олно. Гэвч тэр нь `collapsed`/`grpRange`/`pending` хөдлөх
+   *    БҮРД ХУУЧИН үсрэлтийг дахин биелүүлж, хэрэглэгчийн явсан газраас
+   *    хуудсыг буцааж гүйлгэдэг байв. Тиймээс биелсэн үсрэлтийг тэмдэглэж,
+   *    нэг хүсэлтийг НЭГ л удаа биелүүлнэ.
+   */
+  const doneJumpRef = useRef(-1);
+  const hitT = useRef<number | null>(null);
   useEffect(() => {
     const j = view?.jump;
     const el = scrollRef.current;
     const tb = tbodyRef.current;
     if (!j || !el || !tb || !vis.length) return;
+    if (doneJumpRef.current === jumpN) return;
     const at = vis.indexOf(j.row);
+    // ⚠️ Олдоогүй бол ТЭМДЭГЛЭХГҮЙ — мөр зурагдмагц үсрэлт биелэх ёстой.
     if (at < 0) return;
+    doneJumpRef.current = jumpN;
     el.scrollTo({
       top: Math.max(0, tb.offsetTop + at * rowHRef.current - el.clientHeight / 2),
       behavior: "smooth",
     });
     const key = `${j.row}:${j.block}`;
     setHitKey(key);
-    const t = window.setTimeout(() => setHitKey((h) => (h === key ? null : h)), 1800);
-    return () => window.clearTimeout(t);
+    if (hitT.current) window.clearTimeout(hitT.current);
+    hitT.current = window.setTimeout(() => setHitKey((h) => (h === key ? null : h)), 1800);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jumpN, vis]);
+  // Анивчилтын таймерыг зөвхөн салахад цэвэрлэнэ (эффект бүрд БИШ — эс бөгөөс
+  // жагсаалт хөдлөхөд тэмдэглэгээ мөнхөрнө).
+  useEffect(() => () => {
+    if (hitT.current) window.clearTimeout(hitT.current);
+  }, []);
 
   const editVis = edit ? vis.indexOf(edit.i) : -1;
   const winFrom = editVis >= 0 ? Math.min(win.from, editVis) : win.from;
@@ -942,7 +1030,9 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    *    нь өөрөө бүртгэл бөгөөд хуваарь нь хожим орж ирж болно. Түгжвэл
    *    хэрэглэгч хуудсаа нээмэгц бөглөх газаргүй үлддэг.
    */
-  const volMode = (r: SheetRow, b: number) => !r.group && !!sc?.obyem[b];
+  /* ⚠️ Оролт нь `{ group }`-тай ямар ч мөр: нооргийн сэргээлт серверийн мөр ба
+     хараахан нийтлэгдээгүй НЭМСЭН мөр хоёуланг нь нэг индексээр шалгадаг. */
+  const volMode = (r: { group: boolean }, b: number) => !r.group && !!sc?.obyem[b];
 
 
 
@@ -972,6 +1062,16 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       return setErr(tr('№ нь бүхэл тоо байх ёстой (жишээ «12») — бутархай дугаар нь бүлгийн мөрийг заадаг тул ажлын тоололд орохгүй.'));
     if (Number.isNaN(vol) || Number.isNaN(unit))
       return setErr(tr('Обьём ба Нэгж өртөг нь тоон утга байх ёстой.'));
+    /*
+     * ⚠️ ШАТЛАЛ ӨГӨГДӨЛД ХАДГАЛАГДДАГГҮЙ (`siblingSlot`-ийн тайлбар). Жинхэнэ
+     *    ах дүүгийн ард тавих боломжгүй бүлэгт (хоосон бүлэг, эсвэл шууд
+     *    хүүхэд бүр нь өөрөө дэд бүлэг) нэмсэн мөр нийтэлсний дараа доод дэд
+     *    бүлгийн хүүхэд болж хувирна: мөнгөн дүн ба хувийн жин нь өөр салбарт
+     *    наалдаж, дараагийн харьцуулалт бүр худал болно. Тэр алдагдлыг
+     *    ЧИМЭЭГҮЙ үүсгэхээс нэмэхийг ЗОГСООЖ, хаана нэмэхийг хэлэх нь дээр.
+     */
+    if (siblingSlot(rowsAll, parentIdx) == null)
+      return setErr(tr('«{0}» бүлгийн шууд доор ажил нэмэх боломжгүй: шатлал нь үйлчилгээнд хадгалагддаггүй тул нийтэлсний дараа энэ мөр доод дэд бүлгийн хүүхэд болж, мөнгөн дүн нь өөр салбарт наалдана. Дэд бүлгээ нээгээд түүн дотор нэмнэ үү.', parent.work || parent.no));
 
     setErr("");
     setAdds((a) => [
@@ -1082,20 +1182,35 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   const promptedPkgRef = useRef("");
   useEffect(() => {
     if (busy || !rows.length || !sc) return;
+    // ⚠️ Мөр нь өөр багцынх байх агшин бий — `loadedPkgRef`-ийн тайлбар.
+    if (loadedPkgRef.current !== pkg.key) return;
+    /* ⚠️ ТҮГЖЭЭТЭЙ хуудсанд сэргээхгүй: хяналтын харагдац, эсвэл өнөөдөр аль
+       хэдийн илгээгдсэн хуудсанд `pending` дүүрвэл `dirtyCount > 0` болж,
+       Ctrl+S нь тэр өдрийн ХОЁР ДАХЬ бүтэн агшныг архивт нэмнэ. Ноорог нь
+       localStorage-д ХЭВЭЭР үлдэж, түгжээ тайлагдмагц (буцаалт ирэх / маргааш)
+       санал болгогдоно — тиймээс `promptedPkgRef` ч энд тэмдэглэгдэхгүй. */
+    if (noEdit) return;
     if (promptedPkgRef.current === pkg.key) return;
     // Сэргээх шат өнгөрснийг ноорог байсан эсэхээс үл хамааран тэмдэглэнэ.
     promptedPkgRef.current = pkg.key;
     const d = readDraft(pkg.key);
     if (!d) return;
-    const byOid = new Map(rows.map((r, i) => [r.oid, i] as const));
+    /* ⚠️ ИНДЕКСЭД НЭМСЭН МӨРҮҮД ЗААВАЛ ОРНО. `rows` нь ЗӨВХӨН серверийн мөр
+       бөгөөд ноорогийн шинэ мөрүүд (сөрөг түр oid) түүнд БАЙХГҮЙ. Урьд нь
+       индекс зөвхөн `rows`-оос баригддаг байсан тул нэмсэн мөрийн нүд бүр
+       «хуучирсан» гэж хаягдаж, мөр нь ХООСОН сэргэдэг байв — ноорог өөрөө
+       хамгаалах ёстой өгөгдлөө устгана. */
+    const restoredAdds = canAddRow ? (d.adds ?? []) : [];
+    const byOid = new Map<number, { group: boolean }>();
+    for (const r of rows) byOid.set(r.oid, r);
+    for (const a of restoredAdds) byOid.set(a.oid, { group: false });
     const next: Record<string, string> = {};
     let dropped = 0;
     // ⚠️ Гүйцэтгэлийн нүдийг зөвхөн бөглөх эрхтэй хүнд сэргээнэ (`canPerf`)
     for (const [key, v] of (canPerf ? d.cells : [])) {
       const oid = Number(key.split(":")[0]);
       const b = Number(key.slice(key.indexOf(":") + 1));
-      const i = byOid.get(oid);
-      const r = i == null ? undefined : rows[i];
+      const r = byOid.get(oid);
       // Мөр алга болсон, бүлгийн мөр, блок хасагдсан, эсвэл аль хэдийн ижил
       // утгатай (хооронд нь нийтлэгдсэн) бол — хаяна.
       // ⚠️ Бичигдэхгүй болсон нүдний ноорог утгагүй — хаяна.
@@ -1121,8 +1236,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     for (const [key, v] of (canPerf ? (d.dates ?? []) : [])) {
       const [oidS, bS, k] = key.split(":");
       const b = Number(bS);
-      const i2 = byOid.get(Number(oidS));
-      const r2 = i2 == null ? undefined : rows[i2];
+      const r2 = byOid.get(Number(oidS));
       const fld = k === "s" ? sc.start[b] : k === "e" ? sc.end[b] : null;
       if (!r2 || !Number.isInteger(b) || b < 0 || b >= nBld || !fld) { dropped++; continue; }
       nextDates[key] = v;
@@ -1134,8 +1248,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     const nextDocs: Record<string, string> = {};
     for (const [key, v] of (canQaqc ? (d.docs ?? []) : [])) {
       const di = Number(key.slice(key.indexOf(":") + 1));
-      const i3 = byOid.get(Number(key.split(":")[0]));
-      if (i3 == null || !Number.isInteger(di) || di < 0 || di >= DOC_COLS.length || !sc.docs[di]) {
+      const r3 = byOid.get(Number(key.split(":")[0]));
+      if (!r3 || !Number.isInteger(di) || di < 0 || di >= DOC_COLS.length || !sc.docs[di]) {
         dropped++;
         continue;
       }
@@ -1148,7 +1262,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     const nCells = Object.keys(next).length;
     const nDates = Object.keys(nextDates).length;
     const nDocs = Object.keys(nextDocs).length;
-    const nAdds = canAddRow ? (d.adds?.length ?? 0) : 0;
+    const nAdds = restoredAdds.length;
     const total = nCells + nDates + nDocs + nAdds + (draftAsOf != null ? 1 : 0);
     if (!total) {
       clearDraftLS(pkg.key);
@@ -1169,19 +1283,33 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       (dropped ? "\n\n" + tr('{0} нүд хуучирсан тул орхигдоно.', dropped) : '') +
       "\n\n" + tr('Сэргээх үү?');
     if (window.confirm(msg)) {
-      if (nAdds) setAdds(d.adds ?? []);
+      if (nAdds) {
+        /* ⚠️ ТҮР ObjectID-ийн ТООЛУУРЫГ сэргээсэн мөрүүдээс ЦААШ түлхэнэ:
+           `tmpOid` нь модулийн түвшний бөгөөд хуудас дахин ачаалагдах бүрд
+           −1-ээс эхэлдэг. Урьд нь сэргээлт түүнийг хөдөлгөдөггүй байсан тул
+           дараа нэмсэн мөр сэргээсэн мөртэй ИЖИЛ дугаар авч: нэгэнд нь бичсэн
+           обьём нөгөөд нь ч харагдаж, устгахад хоёулаа устдаг байв. */
+        for (const a of restoredAdds) if (a.oid <= tmpOid) tmpOid = a.oid - 1;
+        setAdds(restoredAdds);
+      }
       if (nCells) setPending(next);
       if (nDates) setPendDate(nextDates);
       if (nDocs) setPendDoc(nextDocs);
       if (draftAsOf != null) setAsOf(draftAsOf);
     } else clearDraftLS(pkg.key);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [busy, rows, sc, nBld, pkg.key, asOfOrig]);
+  }, [busy, rows, sc, nBld, pkg.key, asOfOrig, noEdit]);
 
   // Ноорог хадгалах — pending өөрчлөгдөх бүрд. Хоосон болоход (нийтэлсэн /
   // болиулсан) устгана, гэхдээ зөвхөн сэргээх шат ӨНГӨРСӨН багцынхыг: багц
   // солих үеийн setPending({}) шинэ багцын хуучин ноорогийг дарж болохгүй.
   useEffect(() => {
+    /* ⚠️ ХУУЧИН БАГЦЫН ТӨЛӨВӨӨР ШИНЭ СЛОТ РУУ БИЧИХГҮЙ. Багц солигдсон эхний
+       render дээр `pkg.key` нь ШИНЭ, харин `pending`/`adds` нь ХУУЧИН багцынх
+       (цэвэрлэлт нь дараагийн render-д тусна) — тэр агшинд бичвэл зорилтот
+       багцын ноорог дарагдаж устана. `loadedPkgRef` нь мөр ба төлөв аль
+       багцынх болохыг заана. */
+    if (loadedPkgRef.current !== pkg.key) return;
     // ⚠️ НЭМСЭН МӨР ч ноорогт орно: Ерөнхий менежер ажил нэмээд хуудсаа
     //    сэргээхэд тэр ажил чимээгүй алга болох ёсгүй.
     /* ⚠️ ХООСОН гэдгийг ДӨРВҮҮЛЭНГЭЭР шалгана: зөвхөн `pending`-ээр шалгавал
@@ -1249,6 +1377,18 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   const publish = useCallback(async () => {
     // ⚠️ busy — Ctrl+S auto-repeat үед олон зэрэгцээ бичилт явахаас сэргийлнэ.
     if (busy || asOf == null || dirtyCount === 0 || !sc) return;
+    /*
+     * ⚠️ ТҮГЖЭЭГ ЭНД ШАЛГАНА — товчны `disabled`-д найдаж БОЛОХГҮЙ. Ctrl+S нь
+     *    `publish`-ыг ШУУД дууддаг тул саарал «Нийтлэх» товчийг тойрч гарна.
+     *    Тэгвэл (а) хяналтын харагдацаас (locked) бичилт явж, (б) өнөөдөр аль
+     *    хэдийн илгээсэн хуудаснаас архивт ХОЁР ДАХЬ бүтэн агшин нэмэгдэж,
+     *    хяналтын дараалалд ижил (багц, өдөр)-ийн хоёр мөр үүсдэг байв —
+     *    хянагч нэгийг нь батлах атал өгөгдөлд нөгөө нь сууна.
+     */
+    if (noEdit) {
+      setErr(RO.docLocked);
+      return;
+    }
     // ⚠️ Гүйцэтгэлийн өөрчлөлт (обьём/огноо/шинэчлэгдсэн огноо) зөвхөн томилогдсон
     //    гүйцэтгэгчээс — товчны disabled-аас биш, ЭНД шалгана (Ctrl+S ч энд ирдэг).
     if (!canPerf && (Object.keys(pending).length || Object.keys(pendDate).length || asOf !== asOfOrig)) {
@@ -1275,8 +1415,70 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
        * ажлын нэр)-ээр олж, бүлгийн сүүлийн удмын дараа байрлуулна — тиймээс
        * хооронд нь өөр хүн нийтэлсэн ч зөв газартаа орно.
        */
-      const fresh = withAdds((await loadRows(pkg, sc)).rows);
-      const c = computeAll(fresh, nBld, asOf, pending, pendDate, hasObyem);
+      const freshRows = (await loadRows(pkg, sc)).rows;
+      /*
+       * ── ObjectID ШИЛЖИЛТ ───────────────────────────────────────────────
+       * ⚠️ `pending` · `pendDate` · `pendDoc` бүгд `${oid}:…` түлхүүртэй бөгөөд
+       *    тэр oid нь хуудсыг НЭЭХ үеийн ObjectID. Нийтлэх бүрд хуудас
+       *    БҮХЭЛДЭЭ шинэ мөр болж нэмэгддэг тул хооронд нь өөр хүн нийтэлбэл
+       *    `freshRows` огт ӨӨР ObjectID мужид шилжинэ (жаазууд огтлолцдоггүй).
+       *
+       * ⚠️ Урьд нь тэр үед нэг ч түлхүүр таарахгүй болж БҮХ засвар чимээгүй
+       *    унтарч, хуудас өмнөх хүний нийтэлсэн хэвээрээ дахин бичигдээд
+       *    дэлгэцэд «Архивт N мөр нэмэгдэв · хяналтад илгээв» гэж АМЖИЛТТАЙ
+       *    харагддаг байв — ноорог нь ч цэвэрлэгдэж, өдрийн ажил ул мөргүй
+       *    алга болно. (`Huvaari.tsx:322` ижил аюулыг аль хэдийн таньсан.)
+       *
+       * Тиймээс түлхүүрүүдийг (№ + Ажлын нэр)-ээр шинэ мөрөнд ЗӨӨНӨ; хос нь
+       * давхардвал хуучин байрлалд хамгийн ойрхныг сонгоно. Зөөгдөөгүй нэг ч
+       * түлхүүр үлдвэл нийтлэлийг ЗОГСООНО — чимээгүй амжилт заахгүй.
+       */
+      const oidMap = new Map<number, number>();
+      if (rows.length && freshRows.length && freshRows[0].oid !== rows[0].oid) {
+        const byKey = new Map<string, number[]>();
+        freshRows.forEach((r, i) => {
+          const k = `${r.no} ¦ ${r.work}`;
+          const l = byKey.get(k);
+          if (l) l.push(i);
+          else byKey.set(k, [i]);
+        });
+        rows.forEach((r, i) => {
+          const cand = byKey.get(`${r.no} ¦ ${r.work}`);
+          if (!cand?.length) return;
+          let best = cand[0];
+          for (const j of cand) if (Math.abs(j - i) < Math.abs(best - i)) best = j;
+          oidMap.set(r.oid, freshRows[best].oid);
+        });
+      }
+      /** Нэг түлхүүрийг шинэ oid руу — зөөх боломжгүй бол `null`. */
+      const moveKey = (k: string): string | null => {
+        const at = k.indexOf(":");
+        const oid = Number(k.slice(0, at));
+        // Нэмсэн мөр (сөрөг ТҮР дугаар) `withAdds`-аар шинэ жаазанд дахин
+        // ордог тул түүний түлхүүр хэвээр хүчинтэй.
+        if (!oidMap.size || oid < 0) return k;
+        const to = oidMap.get(oid);
+        return to == null ? null : `${to}${k.slice(at)}`;
+      };
+      const moveAll = (src: Record<string, string>): Record<string, string> | null => {
+        const out: Record<string, string> = {};
+        for (const [k, v] of Object.entries(src)) {
+          const nk = moveKey(k);
+          if (nk == null) return null;
+          out[nk] = v;
+        }
+        return out;
+      };
+      const pend2 = moveAll(pending);
+      const pendDate2 = moveAll(pendDate);
+      const pendDoc2 = moveAll(pendDoc);
+      if (!pend2 || !pendDate2 || !pendDoc2)
+        throw new Error(
+          tr('Хуудас хооронд нь шинэчлэгдсэн (өөр хэрэглэгч нийтэлсэн) тул засваруудыг шинэ мөрүүдэд тулгаж чадсангүй — нийтлэлийг зогсоов. Ноорог хадгалагдсан хэвээр байгаа тул хуудсыг дахин ачаалж, сэргээгээд Нийтлэнэ үү.'),
+        );
+
+      const fresh = withAdds(freshRows);
+      const c = computeAll(fresh, nBld, asOf, pend2, pendDate2, hasObyem);
       // Бөглөсөн огноо — өдрийн эхэнд (UTC). Өдөрт нэг л удаа бөглөдөг тул
       // огноо ганцаараа агшны түлхүүр болно.
       const now = new Date();
@@ -1361,7 +1563,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
           const fld = sc.docs[di];
           if (!fld) return;
           const key = `${r.oid}:${di}`;
-          if (key in pendDoc) a[fld] = pendDoc[key].trim() || null;
+          if (key in pendDoc2) a[fld] = pendDoc2[key].trim() || null;
         });
         return a;
       });
@@ -1388,6 +1590,14 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       setRows(next.rows);
       setAsOf(next.asOf ?? asOf);
       setAsOfOrig(next.asOf ?? asOf);
+      /* ⚠️ ШИНЭ АГШНЫ ӨДРИЙГ ЗААВАЛ ТӨЛӨВТ БУУЛГАНА. Урьд нь `snapDay`/`snapMs`
+         зөвхөн багц ачаалахад л онооогддог байсан тул нийтэлсний ДАРАА `noEdit`
+         худал хэвээр үлдэж, «өдөрт нэг удаа» түгжээ тэр сешнд ОГТ идэвхжихгүй:
+         дараагийн засвар нь тэр өдрийн ХОЁР ДАХЬ бүтэн агшныг архивт нэмнэ.
+         Мөн хяналтад илгээлт унасан (өнчин агшин) үед «дахин илгээх» зам ч
+         зөвхөн эдгээр утгаар ажилладаг. */
+      setSnapDay(next.snapshot != null ? msToDay(next.snapshot) : "");
+      setSnapMs(next.snapshot ?? null);
       setPending({});
       setPendDate({});
       setPendDoc({});
@@ -1404,7 +1614,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     } finally {
       setBusy(false);
     }
-  }, [pkg, sc, nBld, asOf, asOfOrig, pending, pendDate, pendDoc, dirtyCount, busy, hasObyem, withAdds, canPerf]);
+  }, [pkg, sc, nBld, asOf, asOfOrig, pending, pendDate, pendDoc, dirtyCount, busy, hasObyem, withAdds, canPerf, noEdit, rows]);
 
   // Ctrl+S — «Гүйцэтгэл бөглөх»-тэй ижил.
   // ⚠️ Нээлттэй нүдний бичиж буй утгыг ЭХЛЭЖ commit хийнэ — эс тэгвэл хуучин

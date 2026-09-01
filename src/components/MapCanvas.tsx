@@ -1141,10 +1141,24 @@ export function MapProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  /**
+   * ⚠️ Нислэгийн token — `goTo` ба `zoomToWhere` ХОЁУЛАА энэ НЭГ тоолуурыг
+   * хуваалцана. Хоёулаа `extentOf` (→ `query.ts`-ийн 6 слотын дараалал +
+   * дахин оролдлого) хүлээдэг тул хариу ирэх дараалал баталгаагүй: шүүлт
+   * хурдан солиход хоцорсон хүрээ сүүлд ирж зургийг өмнөх сонголт руу буцаадаг
+   * байв (шүүлт цэвэрлэсэн атал объект дээр ойрсон хэвээр үлдэх). Тусдаа
+   * тоолуур өгвөл `zoomToWhere` ↔ `zoomToLayer` хооронд солигдоход
+   * хамгаалалт ажиллахгүй тул ЗААВАЛ нэгийг нь хуваалцана.
+   * (Загвар: `zoneMaskToken`.)
+   */
+  const flyToken = useRef(0);
+
   const goTo = useCallback(async (url: string, w: string) => {
     if (!view || view.destroyed) return;
+    const t = ++flyToken.current;
     try {
       const e = await extentOf(url, view, w);
+      if (flyToken.current !== t) return;
       // Гөлгөр zoom-in анимаци (1.4 сек, easing)
       if (e && !view.destroyed) {
         view.goTo(e.expand(1.2), { animate: true, duration: 1400, easing: 'ease-in-out' }).catch(() => {});
@@ -1178,8 +1192,10 @@ export function MapProvider({ children }: { children: ReactNode }) {
   ) => {
     const d = LAYER_BY_ID[layerId];
     if (!d || !view || view.destroyed) return;
+    const t = ++flyToken.current;
     try {
       const e = await extentOf(layerUrl(d), view, where);
+      if (flyToken.current !== t) return;
       if (!e || view.destroyed) return;
       // 150 м-ээс нарийн хүрээг тэлнэ — контекстгүй ойртохоос сэргийлнэ
       const MIN = 150;

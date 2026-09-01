@@ -1267,6 +1267,18 @@ function FinCard({
   let months: ReturnType<typeof contractMonths> | null = null;
   let total = 0;
   let noRow = false;
+  /**
+   * Олгосон НИЙТ дүн (₮).
+   *
+   * ⚠️ Сарын цувааны (`m.given`) нийлбэр БИШ, `fin.givenTotal`. 59 актын 29-д
+   * ямар ч огноо алга (нэг нь 9.4 тэрбум ₮) тул `Finance.loadFinData` тэдгээрийг
+   * сарын цуваанд ОРУУЛДАГГҮЙ — цуваанаас нийлбэрлэвэл дээд талын `TsKpi`
+   * хавтан ба энэ KPI мөр НЭГ дэлгэц дээр ХОЁР өөр «олгосон санхүүжилт»
+   * харуулж, «олгогдоогүй үлдэгдэл» тэр дүнгээр хөөрөгддөг байв.
+   * График дээрх ЦУВАА нь `m.given` хэвээр (огноогүй актыг сүүлийн сар руу
+   * шахвал хуурамч оргил гарна).
+   */
+  let givenTotal = 0;
   if (d) {
     if (p) {
       const row =
@@ -1280,10 +1292,15 @@ function FinCard({
            төслийн нийт) тул багцын нийт төсөв нь сарын төлөвлөгөөний
            нийлбэр. */
         total = months.reduce((a, m) => a + m.amount, 0);
+        /* Түлхүүрийн уналт нь `contractMonths`-ийн `given.get(...)`-тэй ЯГ ижил */
+        givenTotal = d.givenTotal.get(pkgKeyOf(row[C.pkg2]))
+          ?? d.givenTotal.get(pkgKeyOf(row[C.pkg]))
+          ?? 0;
       }
     } else {
       months = aggregateMonths(d);
       total = prevTotal(d) + months.reduce((a, m) => a + m.amount, 0);
+      d.givenTotal.forEach((v) => { givenTotal += v; });
     }
   }
   const lag = months ? lagOf(months) : null;
@@ -1298,7 +1315,6 @@ function FinCard({
    * биет гүйцэтгэл %) ба тэдгээрийн ЗӨРҮҮ. Хоёр хувийг «одоо» хүртэлх сүүлийн
    * бөглөгдсөн сараар авна — `lagOf`-той ижил дүрэм тул хоцрогдлын badge-тэй таарна.
    */
-  const givenTotal = months ? months.reduce((a, m) => a + m.given, 0) : 0;
   const nowYm = new Date().toISOString().slice(0, 7);
   let plannedPct: number | null = null;
   let actualPct: number | null = null;

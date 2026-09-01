@@ -88,4 +88,4 @@ export const loadSchemSources = cached<SchemSources>(async () => {
     throw new Error(tr('Өгөгдөл татагдсангүй — сүлжээгээ шалгана уу'));
   }
   return src;
-}, 5 * 60_000, ['CASHFLOW2', 'PARCEL_LEFT', 'BAGTS_SHEET', 'BAGTS_NEGTGEL', 'HABEA', 'IPC_LOG', 'HYANALT']);
+}, 5 * 60_000, ['CASHFLOW2', 'PARCEL_LEFT', 'BAGTS_SHEET', 'BAGTS_NEGTGEL', 'HABEA', 'IPC_LOG', 'HYANALT', 'ZOVSHOOROL']);

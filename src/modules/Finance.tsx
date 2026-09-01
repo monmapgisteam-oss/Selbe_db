@@ -921,9 +921,33 @@ const NUMERIC_TYPES = new Set([
   'esriFieldTypeSmallInteger', 'esriFieldTypeBigInteger', 'esriFieldTypeOID',
 ]);
 
+/**
+ * ОГНООНЫ ТАЛБАР — `DateOnly`-г ЗААВАЛ хамруулна.
+ *
+ * ⚠️ 2026-09-01: `cashflow_0813/173` ба `ipc_0813/172`-ийн огнооны 14 талбар
+ * (CF020, CF021, CF022, CF030 · IPC09, IPC10, IPC12, IPC14, IPC16, IPC24,
+ * IPC25, IPC26, IPC28, IPC30) БҮГД `esriFieldTypeDateOnly` — `esriFieldTypeDate`
+ * төрөлтэй талбар хоёуланд НЭГ Ч БАЙХГҮЙ. Урьд нь энд зөвхөн
+ * `esriFieldTypeDate`-г шалгадаг байсан тул огнооны нүд ТЕКСТИЙН салаа руу
+ * унаж, «27.05.2026» эсвэл «2026-13-45» мэт оролт шалгалтгүйгээр серверт
+ * илгээгддэг байв — `parseCell`-ийн «буруу огноог ЧИМЭЭГҮЙ хөрвүүлэхгүй»
+ * баталгаа бодит огнооны багананд ХЭЗЭЭ Ч биелдэггүй байсан.
+ *
+ * `DateOnly` нь epoch БИШ, `YYYY-MM-DD` МӨР — задлахгүйгээр нэг хэвэнд оруулна.
+ */
+const dateOnlyText = (v: unknown): string => {
+  if (typeof v === 'number') {
+    const d = new Date(v);
+    return Number.isNaN(d.getTime()) ? String(v) : d.toISOString().slice(0, 10);
+  }
+  const s = String(v).slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : String(v);
+};
+
 /** Нүдний утгыг талбарын ТӨРЛӨӨР нь форматлана — үйлчилгээ дэх утгыг гажуудуулахгүй */
 function fmtCell(v: unknown, type: string): { text: string; num: boolean } {
   if (v == null || v === '') return { text: '', num: false };
+  if (type === 'esriFieldTypeDateOnly') return { text: dateOnlyText(v), num: true };
   if (type === 'esriFieldTypeDate') {
     const d = typeof v === 'number' ? new Date(v) : new Date(String(v));
     return { text: Number.isNaN(d.getTime()) ? String(v) : d.toISOString().slice(0, 10), num: true };
@@ -948,6 +972,7 @@ function fmtCell(v: unknown, type: string): { text: string; num: boolean } {
  */
 function editText(v: unknown, type: string): string {
   if (v == null) return '';
+  if (type === 'esriFieldTypeDateOnly') return dateOnlyText(v);
   if (type === 'esriFieldTypeDate') {
     const d = typeof v === 'number' ? new Date(v) : new Date(String(v));
     return Number.isNaN(d.getTime()) ? String(v) : d.toISOString().slice(0, 10);
@@ -968,6 +993,16 @@ function editText(v: unknown, type: string): string {
 function parseCell(s: string, type: string, label: string): unknown {
   const v = s.trim();
   if (v === '') return null;
+  /* ⚠️ `DateOnly` — epoch БИШ, `YYYY-MM-DD` МӨР буцаана. Хэлбэрийг хатуу
+     шалгана: «27.05.2026» (Монголд түгээмэл) эсвэл «2026-13-45» нь `new Date`-д
+     чимээгүй хөрвөх/NaN болох тул серверт ирээд шалтгаангүй мэт багц уналт
+     үүсгэдэг байв. */
+  if (type === 'esriFieldTypeDateOnly') {
+    const d = new Date(`${v}T00:00:00Z`);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(v) || Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== v)
+      throw new Error(tr('«{0}» — огноо ЖЖЖЖ-СС-ӨӨ хэлбэрээр байх ёстой: {1}', label, v));
+    return v;
+  }
   if (type === 'esriFieldTypeDate') {
     const d = new Date(v.length === 10 ? v + 'T00:00:00Z' : v);
     if (Number.isNaN(d.getTime())) throw new Error(tr('«{0}» — огноо буруу: {1}', label, v));

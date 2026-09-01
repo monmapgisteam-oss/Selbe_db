@@ -13,7 +13,7 @@
  * тодорхой мессеж гарна — эс бөгөөс «зөвшөөрөл байхгүй» гэж уншигдана.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import {
   URL as ZOV_URL, TOLOV, byBagts, loadZov, summarize, type Zov, type ZovDraft,
@@ -22,6 +22,22 @@ import { hasCap, subscribeCaps } from '@/lib/caps';
 import { useAuth } from '@/components/AuthGate';
 import { ZovshoorolEdit } from './ZovshoorolEdit';
 import s from './zovshoorol.module.css';
+
+/**
+ * ТӨЛӨВИЙН БИЧВЭР.
+ *
+ * ⚠️ `z.tolov` нь ArcGIS-ээс ирдэг МОНГОЛ мөр тул түүхийгээр нь зурвал англи
+ * горимд «Status | Хүлээгдэж буй» гэсэн ХОЛИМОГ мөр гардаг байв. `tr(z.tolov)`
+ * гэсэн ДИНАМИК дуудлага ч хангалтгүй: `i18n-extract` нь зөвхөн статик
+ * `tr('…')`-ыг олдог тул `en.ts`-д түлхүүр орхигдож, «Зөвшөөрөөгүй» нь ХЭЗЭЭ Ч
+ * орчуулагдахгүй үлдэнэ. Тиймээс гурвуулан ИЛ бичигдэнэ.
+ */
+const TOLOV_TEXT: Record<Zov['tolov'], string> = {
+  [TOLOV.wait]: tr('Хүлээгдэж буй'),
+  [TOLOV.ok]: tr('Зөвшөөрсөн'),
+  [TOLOV.no]: tr('Зөвшөөрөөгүй'),
+  unknown: tr('танигдаагүй'),
+};
 
 /** Шинэ зөвшөөрлийн хоосон ноорог — багц нь урьдчилан бөглөгдсөн. */
 const blank = (bagts: string, shat: number): ZovDraft => ({
@@ -64,17 +80,44 @@ function Chip({ z, onPick }: { z: Zov; onPick: (z: Zov) => void }) {
 function Detail({ z, canEdit, onEdit, onClose }: {
   z: Zov; canEdit: boolean; onEdit: () => void; onClose: () => void;
 }) {
-  /* ⚠️ Esc-ээр хаагдана — цонх нээгээд гарах товч хайх шаардлагагүй. */
+  const modalRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+
+  /*
+   * ⚠️ Esc-ээр хаагдана — цонх нээгээд гарах товч хайх шаардлагагүй.
+   *
+   * ⚠️ Мөн Tab-ыг модал дотор БАРИНА, нээгдэхэд фокусыг модал руу ЗӨӨНӨ.
+   *    `aria-modal="true"` нь ард байгаа БҮХ агуулгыг хүртээмжийн модноос
+   *    хасдаг: фокус нь дуудсан chip товчин дээрээ (ард, нуугдсан мужид)
+   *    үлдэхэд дэлгэц уншигч «диалог» гэж зарлаад цааш уншиж юу ч олдоггүй,
+   *    Tab нь харагдахгүй элементүүд рүү явдаг байв (WCAG 2.4.3).
+   *    Загвар: `UserAdmin.tsx`.
+   */
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', h);
-    return () => window.removeEventListener('keydown', h);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { onClose(); return; }
+      const root = modalRef.current;
+      if (e.key !== 'Tab' || !root) return;
+      const f = [...root.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      )].filter((el) => el.offsetParent !== null);
+      if (!f.length) return;
+      const first = f[0]; const last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
+    window.addEventListener('keydown', onKey);
+    const t = setTimeout(() => closeRef.current?.focus(), 60);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener('keydown', onKey);
+    };
   }, [onClose]);
 
   const rows: [string, string][] = [
     [tr('Багц'), z.bagts],
     [tr('Дараалал'), String(z.shat)],
-    [tr('Төлөв'), z.tolov === 'unknown' ? tr('танигдаагүй') : z.tolov],
+    [tr('Төлөв'), TOLOV_TEXT[z.tolov]],
     [tr('Шийдвэрлэсэн огноо'), dt(z.ognoo) || '—'],
     [tr('Зөвшөөрлийн дугаар'), z.dugaar || '—'],
     [tr('Шийдвэрлэх байгууллага'), z.baiguullaga || '—'],
@@ -83,12 +126,20 @@ function Detail({ z, canEdit, onEdit, onClose }: {
     [tr('Тайлбар'), z.tailbar || '—'],
   ];
 
+  /* ⚠️ `aria-labelledby` — нэргүй `role="dialog"` нь дэлгэц уншигчид зүгээр
+     «диалог» гэж уншигддаг: аль зөвшөөрөл нээгдснийг мэдэх арга үлдэхгүй. */
   return (
-    <div className={s.backdrop} role="dialog" aria-modal="true" onClick={onClose}>
-      <div className={s.modal} onClick={(e) => e.stopPropagation()}>
+    <div
+      className={s.backdrop}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={`zov-title-${z.oid}`}
+      onClick={onClose}
+    >
+      <div ref={modalRef} className={s.modal} onClick={(e) => e.stopPropagation()}>
         <div className={s.modalHead}>
-          <span className={s.modalTitle}>{z.ner}</span>
-          <button type="button" className={s.close} onClick={onClose} aria-label={tr('Хаах')}>✕</button>
+          <span id={`zov-title-${z.oid}`} className={s.modalTitle}>{z.ner}</span>
+          <button ref={closeRef} type="button" className={s.close} onClick={onClose} aria-label={tr('Хаах')}>✕</button>
         </div>
         <dl className={s.dl}>
           {rows.map(([k, v]) => (

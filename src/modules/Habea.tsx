@@ -63,7 +63,11 @@ const loadHabea = cached((): Promise<HabeaData> =>
     queryFeatures(HABEA.crane.url, { outFields: ['*'] }),
     // «Осолгүй хоног» render дотор Date.now() дуудаж болохгүй (react-hooks/purity)
     // тул лавлах цэг нь ӨГӨГДӨЛ ТАТСАН мөч — дахин ачаалахад шинэчлэгдэнэ.
-  ]).then(([labor, incident, crane]) => ({ labor, incident, crane, fetchedAt: Date.now() })), 5 * 60_000);
+  ]).then(([labor, incident, crane]) => ({ labor, incident, crane, fetchedAt: Date.now() })),
+  /* ⚠️ `['HABEA']` таг — `reportData.loadHabeaSummary` мөн ЭНЭ хүснэгтээс
+     уншиж `['HABEA']` зарладаг. Хоёр ах дүү ачаалагч ӨӨР тагтай байвал нэг
+     нь шинэчлэгдээд нөгөө нь хоцорч, хоёр газар өөр тоо гарна. */
+  5 * 60_000, ['HABEA']);
 
 const nn = (v: unknown): number => {
   const x = Number(v);
@@ -760,9 +764,14 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    * бөглөгддөггүй) тул нийт нь «Нийт ажилтан» KPI-тай тэнцэхгүй.
    */
   const mixSum = useMemo(() => mixTotals(all ? all.labor : [], co), [all, co]);
+  /* ⚠️ Шошгыг `tr()`-ээр боож бичнэ. `Donut` нь `tr(sl.label)` гэж
+     ДИНАМИКААР орчуулдаг тул түүхий мөр ч ажиллах МЭТ санагддаг — гэвч
+     `i18n-extract` нь ЗӨВХӨН статик `tr('…')` дуудлагыг олдог тул толинд
+     түлхүүр нь ороогүй үлдэж, англи хувилбарт «Монгол / Foreign» гэсэн холимог
+     тайлбар гардаг байв. */
   const mixSlices = [
-    { key: 'mn', label: 'Монгол', value: mixSum.mongol, color: 'var(--c1)' },
-    { key: 'fr', label: 'Гадаад', value: mixSum.gadaad, color: 'var(--c2)' },
+    { key: 'mn', label: tr('Монгол'), value: mixSum.mongol, color: 'var(--c1)' },
+    { key: 'fr', label: tr('Гадаад'), value: mixSum.gadaad, color: 'var(--c2)' },
   ].filter((x) => x.value > 0);
 
   /* Өдөр тутмын цувааnууд — сонгосон гүйцэтгэгчийг дагана */

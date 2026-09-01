@@ -385,6 +385,26 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     return w;
   }, [ovPick]);
 
+  /**
+   * Сонгосон багцын саадууд УЛААНААР ялгарна.
+   *
+   * ⚠️ ЗААВАЛ мемолно. `MapCanvas` нь `memo()` бөгөөд түүний хамгийн хүнд
+   * эффект (127 давхаргын renderer-ийг дахин угсардаг) `layerStyle`-ыг
+   * хамааралдаа авдаг. Inline объект байхад рендер бүрд шинэ лавлагаа болж
+   * memo эвдэрдэг: «Тунгалаг» гулсуурыг чирэхэд pointermove бүрд 2,119
+   * объекттой нэгж талбарын renderer дахин оноогдож, зураг анивчин чирэлт
+   * гацдаг байв. `ovWhere` дээрх мемо ижил зорилготой (мөн PkgProg.tsx /
+   * Bagts.tsx-ийн `parcelStyle`).
+   *
+   * ⚠️ АНИВЧИЛТ ХАСАГДСАН (2026-08-28, хэрэглэгчийн заавар): пульс нь
+   * талбаруудыг тасралтгүй томруулж жижигрүүлдэг тул хэлбэр, хэмжээг нь
+   * нүдээр уншиж болохгүй болно. Улаан өнгө өөрөө хангалттай ялгана.
+   */
+  const parcelStyle = useMemo(
+    () => (ovPick ? { [PARCEL_LAYER_ID]: { hue: '#dc2626', fill: 0.3, width: 2.1 } } : undefined),
+    [ovPick],
+  );
+
   /* Сонголт хийхэд зураг тэр талбарууд руу очно */
   const pickOverlap = useCallback((r: PkgOverlap | null) => {
     setOvPick(r);
@@ -776,11 +796,7 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           opacity={opacity}
           zone={zone}
           layerWhere={ovWhere}
-          /* Сонгосон багцын саадууд УЛААНААР ялгарна.
-             ⚠️ АНИВЧИЛТ ХАСАГДСАН (2026-08-28, хэрэглэгчийн заавар): пульс нь
-             талбаруудыг тасралтгүй томруулж жижигрүүлдэг тул хэлбэр, хэмжээг
-             нь нүдээр уншиж болохгүй болно. Улаан өнгө өөрөө хангалттай ялгана. */
-          layerStyle={ovPick ? { [PARCEL_LAYER_ID]: { hue: '#dc2626', fill: 0.3, width: 2.1 } } : undefined}
+          layerStyle={parcelStyle}
           uniform
           sketch
           onSketch={onSketch}

@@ -695,8 +695,13 @@ type Zoom = keyof typeof ZOOM;
 const ST_CLASS: Record<Status, string> = {
   done: h.tlDone, run: h.tlRun, todo: h.tlTodo, late: h.tlLate, none: h.tlNone,
 };
+/* ⚠️ Утга бүр `tr()`-ээр. Энэ Record нь зөвхөн зураасны `title` дотор
+   `${ST_TEXT[st]}` гэж ордог тул орчуулгын ямар ч зам дайрдаггүй байсан —
+   `i18n-extract` ч статик `tr('…')` дуудлага олохгүй тул «ДУТУУ 0» гэж
+   худал тайлагнаж, англи горимд ганц энэ tooltip монголоор үлддэг байв. */
 const ST_TEXT: Record<Status, string> = {
-  done: 'дууссан', run: 'явж байгаа', todo: 'эхлээгүй', late: 'хоцорсон', none: 'хэмжигдээгүй',
+  done: tr('дууссан'), run: tr('явж байгаа'), todo: tr('эхлээгүй'),
+  late: tr('хоцорсон'), none: tr('хэмжигдээгүй'),
 };
 
 type DragMode = 'new' | 'move' | 'l' | 'r';
@@ -1145,7 +1150,7 @@ function Planner({
                           style={{ left: xOf(sp.start), width: Math.max(10, spanDays(sp) * px - 1) }}
                           onPointerDown={(e) => onDown(e, r, 'move')}
                           aria-label={`${r.work || r.no} · ${blocks[blk]} · ${msToDay(sp.start)} → ${msToDay(sp.end)}`}
-                          title={`${r.work}\n${blocks[blk]} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${spanDays(sp)} хоног) · ${ST_TEXT[st]}`}
+                          title={`${r.work}\n${blocks[blk]} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', spanDays(sp))}) · ${ST_TEXT[st]}`}
                         >
                           <span className={h.plGrip}
                             onPointerDown={(e) => onDown(e, r, 'l')} />

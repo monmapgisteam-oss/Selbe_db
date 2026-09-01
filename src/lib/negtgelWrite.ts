@@ -42,6 +42,27 @@ const num = (v: unknown): number | null =>
 const ts = (ms: number) =>
   `timestamp '${new Date(ms).toISOString().slice(0, 19).replace('T', ' ')}'`;
 
+type Pkg = (typeof PKGS)[number];
+type Schema = NonNullable<Awaited<ReturnType<typeof loadSchema>>>;
+/** Нэг `sheetOid`-д таарсан хуудас — `fill` нь тухайн хуудасны огнооны багана */
+type Hit = { p: Pkg; sc: Schema; at: number; fill: string };
+
+/**
+ * Хэд хэдэн хуудас нэг `sheetOid`-д таарвал ЖИНХЭНЭ эхийг ялгана.
+ *
+ * ⚠️ `sheetOid` нь нийтлэлийн архивын жаазанд бичигдсэн ХАМГИЙН ЭХНИЙ мөрийн
+ *    дугаар (`FillNew` → `submitForReview`). Зөв хуудсанд түүнээс ӨМНӨ ижил
+ *    огноотой мөр БАЙХГҮЙ; санамсаргүй таарсан хуудсанд тэр дугаар жаазны дунд
+ *    буудаг тул өмнөх мөрүүд байна.
+ */
+async function frameHead(h: Hit, sheetOid: number): Promise<boolean> {
+  const q = (await post(`${h.p.url}/query`, {
+    where: `${h.fill} = ${ts(h.at)} AND OBJECTID < ${sheetOid}`,
+    returnCountOnly: 'true',
+  })) as { count?: number };
+  return (q.count ?? 0) === 0;
+}
+
 /**
  * Нэг багцын НЭГ АГШНЫ нэгдсэн дүнг бөглөх хуудаснаас гаргана.
  *
@@ -49,7 +70,18 @@ const ts = (ms: number) =>
  * @param sheetOid Архивт нэмэгдсэн ЭХНИЙ мөрийн OBJECTID (агшныг үүгээр олно)
  */
 async function summaryOf(bagts: string, sheetOid: number) {
-  /* Нэг багцад 9F ба 12F хоёр хуудас байж болно — эх мөр аль нь болохыг хэлнэ */
+  /*
+   * Нэг багцад 9F ба 12F хоёр хуудас байж болно — эх мөр аль нь болохыг олно.
+   *
+   * ⚠️ OBJECTID нь хуудас ТУС БҮРД өөрийн орон зайтай тул нэг дугаар хоёр
+   *    хуудсанд ЗЭРЭГ оршихыг үгүйсгэх аргагүй. Урьд нь эхний таарсан хуудсыг
+   *    шууд авдаг байсан тул «Багц 1 · 12 давхар»-ын батлагдсан гүйцэтгэлийн
+   *    оронд жагсаалтад түрүүлдэг «Багц 1 · 9 давхар»-ын тоо нэгтгэлд
+   *    бичигдэж, 12F-ийн жинхэнэ тоо (багц·огнооны давхардлын хамгаалалтад
+   *    түгжигдээд) ХЭЗЭЭ Ч бүртгэгддэггүй байв. Тиймээс бүх хуудсыг цуглуулж,
+   *    олон таарвал санамсаргүй нэгийг СОНГОХГҮЙ.
+   */
+  const hits: Hit[] = [];
   for (const p of PKGS.filter((x) => x.group === bagts)) {
     const sc = await loadSchema(p).catch(() => null);
     if (!sc?.f.fillDate) continue;
@@ -61,7 +93,29 @@ async function summaryOf(bagts: string, sheetOid: number) {
     })) as { features?: { attributes: Record<string, unknown> }[] };
     const at = head.features?.[0]?.attributes?.[sc.f.fillDate];
     if (typeof at !== 'number') continue;      // энэ хуудсанд тэр мөр алга
+    hits.push({ p, sc, at, fill: sc.f.fillDate });
+  }
+  if (!hits.length) return null;
 
+  let one = hits[0];
+  if (hits.length > 1) {
+    const flags = await Promise.all(hits.map((h) => frameHead(h, sheetOid).catch(() => false)));
+    const heads = hits.filter((_, i) => flags[i]);
+    /*
+     * ⚠️ Ялгагдахгүй бол ЧИМЭЭГҮЙ таамаглахаас илүү ил алдаа. Буруу хуудсын
+     *    тоо нэгтгэлд орвол засах зам байхгүй — давхардлын хамгаалалт тэр
+     *    багц·огноог түгжинэ.
+     */
+    if (heads.length !== 1) {
+      throw new Error(
+        `${bagts}: мөрийн дугаар ${sheetOid} нь ${hits.map((h) => h.p.label).join(' ба ')} хуудсанд зэрэг таарч байна — аль нь болох нь тодорхойгүй`,
+      );
+    }
+    one = heads[0];
+  }
+
+  {
+    const { p, sc, at } = one;
     /*
      * «Б.» мөр = БАРИЛГА УГСРАЛТЫН АЖИЛ — багцын нэгдсэн гүйцэтгэл. Эх excel
      * өөрөө дэд үе шатуудыг жингээр нэгтгэсэн байдаг тул ЭНЭ мөрийг шууд авна.
@@ -75,7 +129,7 @@ async function summaryOf(bagts: string, sheetOid: number) {
       resultRecordCount: '1',
     })) as { features?: { attributes: Record<string, unknown> }[] };
     const a = q.features?.[0]?.attributes;
-    if (!a) continue;
+    if (!a) return null;
 
     /*
      * ⚠️ ОБЬЁМ нь багцын түвшинд ХОЛИМОГ НЭГЖТЭЙ (м³ бетон + м² хана + ш цонх).
@@ -90,7 +144,6 @@ async function summaryOf(bagts: string, sheetOid: number) {
       volumePlan: num(a[sc.f.vol]),
     };
   }
-  return null;
 }
 
 export type NegtgelResult = { ok: true } | { ok: false; error: string };
@@ -116,7 +169,7 @@ export async function registerApproved(
     })) as { count?: number };
     if ((dup.count ?? 0) > 0) return { ok: true };   // аль хэдийн бүртгэгдсэн
 
-    await post(`${BAGTS_NEGTGEL.url}/applyEdits`, {
+    const res = (await post(`${BAGTS_NEGTGEL.url}/applyEdits`, {
       adds: JSON.stringify([{
         attributes: {
           [F.date]: s.at,
@@ -127,7 +180,20 @@ export async function registerApproved(
           [F.volumePlan]: s.volumePlan,
         },
       }]),
-    });
+      rollbackOnFailure: 'true',
+    })) as { addResults?: { success?: boolean; error?: { description?: string } }[] };
+    /*
+     * ⚠️ `applyEdits` нь мөр БҮРИЙН үр дүнг тусад нь буцаана: дээд түвшний
+     *    `error` байхгүй, HTTP 200 ирсэн ч `addResults[0].success` худал байж
+     *    болно (талбарын урт хэтэрсэн, төрөл таарахгүй, editing унтраасан).
+     *    Урьд нь хариу нь ОГТ уншигддаггүй байсан тул `{ok:true}` буцаж,
+     *    хяналтын мөр «Шилжүүлсэн» болоод дахин батлах боломжгүй болдог байв —
+     *    батлагдсан гүйцэтгэл нэгтгэлд ХЭЗЭЭ Ч орохгүй, хаана ч алдаа гарахгүй.
+     */
+    const r = res.addResults?.[0];
+    if (!r || r.success !== true) {
+      throw new Error(r?.error?.description ?? 'Нэгтгэлд мөр нэмэгдсэнгүй');
+    }
     /* ⚠️ Нэгтгэлд шинэ мөр орсон тул `loadPkgProgress` хуучирлаа: 02/04
        дашбоардын төлөвлөгөө-vs-бодит цуваа шууд шинэчлэгдэнэ. */
     invalidate('BAGTS_NEGTGEL');

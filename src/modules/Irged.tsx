@@ -236,9 +236,15 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           * үзүүлэлтийн дээр гарч бүрхдэг байв.
           */}
         <div className={i.mapBox}>
+          {/* ⚠️ `opacity` ЗААВАЛ энд ч дамжина. `MapCanvas` нь тунгалагийг
+              ЗӨВХӨН энэ prop-оор дардаг (MapCanvas.tsx: `const over = opacity ?? {}`)
+              тул урьд нь гулсуурын утга зөвхөн `OpacityPanel`-ийн төлөвт хадгалагдаж,
+              зураг дээр ОГТ нөлөөлдөггүй байв — хэрэглэгч давхарга ачаалагдаагүй
+              гэж боддог. Бусад 9 харагдац хоёуланд нь дамжуулдаг. */}
           <MapCanvas
             dim={dim}
             visible={visible}
+            opacity={opacity}
             zone={zone}
             uniform
             scene={IRGED_SCENE.layers}

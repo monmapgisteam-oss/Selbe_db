@@ -39,9 +39,23 @@ import c from './schem.module.css';
 
 /* ══════════════════ Туслах ══════════════════ */
 
-const HEALTH_TEXT: Record<Health, string> = {
-  good: 'Хэвийн', warn: 'Анхаарах', bad: 'Эрсдэлтэй', none: 'Мэдээлэлгүй',
-};
+/**
+ * Төлөвийн ҮГ — өнгө ганцаараа хангалтгүй (өнгө сохор, хар цагаан хэвлэлт).
+ *
+ * ⚠️ ЭНЭ ЯАГААД ТОЛЬ БИШ, ФУНКЦ ВЭ. Урьд нь `Record<Health, string>` байж
+ * дэлгэцэд толины утгыг `tr()` рүү ДИНАМИКААР дамжуулдаг байв. `i18n-extract`
+ * нь зөвхөн СТАТИК мөрийн аргументыг цуглуулдаг тул эдгээр дөрвөн түлхүүрийг
+ * «хэрэглэгдээгүй» гэж үзэж, «ДУТУУ 0» гэж ХУДАЛ ногоон гаргаж байсан —
+ * улмаар `«Эрсдэлтэй»` нь `en.ts`-д ОГТ ороогүй, англи горимд тайлбарын мөр
+ * «On track · To watch · Эрсдэлтэй · No data» гэж холилдож гардаг байв.
+ * ⚠️ Модулийн түвшинд `tr()` дуудахгүй — хэл солиход дахин бодогдох ёстой.
+ */
+const healthText = (h: Health): string => (
+  h === 'good' ? tr('Хэвийн')
+    : h === 'warn' ? tr('Анхаарах')
+      : h === 'bad' ? tr('Эрсдэлтэй')
+        : tr('Мэдээлэлгүй')
+);
 const HEALTH_TAG: Record<Health, string> = {
   good: c.hGood, warn: c.hWarn, bad: c.hBad, none: c.hNone,
 };
@@ -133,7 +147,7 @@ function Node({
       {st.note && <span className={c.note} title={st.note}>{st.note}</span>}
 
       <span className={c.tags}>
-        <span className={`${c.tag} ${HEALTH_TAG[st.health]}`}>{tr(HEALTH_TEXT[st.health])}</span>
+        <span className={`${c.tag} ${HEALTH_TAG[st.health]}`}>{healthText(st.health)}</span>
         {st.projectWide && <span className={c.tag}>{tr('төслийн нийт')}</span>}
         {!allowed && n.view && <span className={c.tag}>{tr('эрхгүй')}</span>}
       </span>
@@ -318,7 +332,7 @@ export function Schem({
         {(['good', 'warn', 'bad', 'none'] as Health[]).map((h) => (
           <span key={h} className={c.leg}>
             <i className={`${c.legDot} ${HEALTH_SWATCH[h]}`} />
-            {tr(HEALTH_TEXT[h])}
+            {healthText(h)}
           </span>
         ))}
       </div>

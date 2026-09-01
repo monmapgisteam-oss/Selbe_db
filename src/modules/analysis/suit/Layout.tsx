@@ -145,7 +145,25 @@ export function Card({
         {title}
         {pill && <span className={s.pill}>{pill}</span>}
         {action}
-        {collapsible && <span className={s.caret}>▼</span>}
+        {/* ⚠️ Caret нь ЗААВАЛ `button` — гарчиг дээрх `onClick` нь зөвхөн хулганад
+            үйлчилдэг тул өмнө нь Tab-аар фокус авдаггүй, Enter/Space-д хариу
+            өгдөггүй байв. Хураалт `localStorage`-д хадгалагддаг ба
+            `.collapsed > .body { display: none }` тул гараар ажилладаг хэрэглэгч
+            картаа дахин дэлгэх ЯМАР Ч аргагүй үлддэг байсан (WCAG 2.1.1).
+            `h2`-ыг өөрийг нь `role="button"` болгож БОЛОХГҮЙ: `action` дотор
+            жинхэнэ товч сууна (Suitability.tsx-ийн «Анхны утга»).
+            Хэв маяг: FillNew.tsx / Wbs.tsx-ийн caret товч. */}
+        {collapsible && (
+          <button
+            type="button"
+            className={s.caret}
+            aria-expanded={!off}
+            aria-label={off ? tr('Дэлгэх') : tr('Эвхэх')}
+            onClick={(e) => { e.stopPropagation(); toggle(); }}
+          >
+            ▼
+          </button>
+        )}
       </h2>
       <div className={s.body}>{children}</div>
     </section>

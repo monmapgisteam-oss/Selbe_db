@@ -9,6 +9,7 @@
 
 import { agsFetch } from '@/modules/sheet/ags';
 import { t as tr } from '@/lib/i18nCore';
+import { invalidate } from '@/lib/dataBus';
 
 /**
  * ⚠️ Давхаргын дугаар нь 0 БИШ — 171. Нэг үйлчилгээнд олон хүснэгт
@@ -208,6 +209,16 @@ export async function saveZov(d: ZovDraft): Promise<number> {
   if (res.length === 0) throw new Error(tr('Үйлчилгээ хариу буцаасангүй.'));
   const bad = res.find((r) => r.success === false);
   if (bad) throw new Error(bad.error?.description || tr('Хадгалах амжилтгүй боллоо.'));
+  /*
+   * ⚠️ Урьд нь энэ дуудлага БАЙГААГҮЙ: зөвшөөрөл хадгалахад «Үйл
+   * ажиллагааны схем» (`schemData` нь `loadZov`-ыг 5 минут кэшэлдэг)
+   * ХУУЧИН тоо барьж, шинэ зөвшөөрөл ороогүй мэт харагдана.
+   *
+   * ⚠️ `rollbackOnFailure: 'true'` + нэг мөр тул амжилт нь бүхэлдээ —
+   * `hyanalt.ts`-ийн олон мөрийн хагас бичилтээс ЯЛГААТАЙ, тиймээс
+   * зөвхөн амжилтын замд хүчингүй болгоно.
+   */
+  invalidate('ZOVSHOOROL');
   return res[0].objectId ?? d.oid ?? 0;
 }
 
@@ -221,6 +232,7 @@ export async function deleteZov(oid: number): Promise<void> {
   const res = (j.deleteResults ?? []) as { success?: boolean; error?: { description?: string } }[];
   const bad = res.find((r) => r.success === false);
   if (bad) throw new Error(bad.error?.description || tr('Устгах амжилтгүй боллоо.'));
+  invalidate('ZOVSHOOROL');
 }
 
 /**

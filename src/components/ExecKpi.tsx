@@ -103,7 +103,12 @@ const notReady = (
 const loadReviewAging = cached(async () => {
   const rows = (await queryAll()).map(toRow);
   return pendingAging(groupWorks(rows), Date.now());
-}, 5 * 60_000);
+  /*
+   * ⚠️ `['HYANALT']` таг — хянагч шийдвэр гаргамагц энэ карт шинэчлэгдэнэ.
+   * Урьд нь зөвхөн TTL байсан тул батлагдсан ажил 5 минут хүртэл
+   * «хүлээгдэж буй» гэж тоологдож, хүлээгдлийн хоног худал өсдөг байв.
+   */
+}, 5 * 60_000, ['HYANALT']);
 
 const afterIdle = <T,>(fn: () => Promise<T>, ms: number) => (): Promise<T> =>
   new Promise<void>((r) => {
@@ -241,8 +246,12 @@ export function ExecKpi({ onView }: { onView: (key: ViewKey) => void }) {
 
   const funnel = useMemo<Metric>(() => {
     const base = { key: 'funnel', cat: 'money' as const, view: 'finance' as ViewKey };
-    if (budgetQ.state !== 'ready')
-      return { ...base, ...notReady(tr('Төсвийн мэдээлэл'), tr('Cashflow ачаалж байна'), [budgetQ]) };
+    /* ⚠️ `finQ`-г МӨН шалгана: «Олгосон (IPC)» шат нь `given`-ээс гардаг ба
+       санхүүгийн дата бэлэн биш үед тэр нь `null` → `?? 0` → доорх
+       `filter(v > 0)` тэр шатыг ЧИМЭЭГҮЙ хаядаг байв. Юүлүүр дөрвөн шаттай,
+       гэхдээ бүрэн мэт харагдаж, `note` нь өөр шатны нэрээр бичигдэнэ. */
+    if (budgetQ.state !== 'ready' || finQ.state !== 'ready')
+      return { ...base, ...notReady(tr('Төсвийн мэдээлэл'), tr('Cashflow ачаалж байна'), [budgetQ, finQ]) };
     const b = budgetQ.data;
     /*
      * ЮҮЛҮҮРИЙН ЭХНИЙ ШАТ = БАТЛАГДСАН ТӨСӨВ (CF006).
@@ -273,7 +282,7 @@ export function ExecKpi({ onView }: { onView: (key: ViewKey) => void }) {
         ? <HBars items={steps.map((x) => ({ label: x.label, value: x.v }))} max={steps[0].v} fmt={mntShort} />
         : undefined,
     };
-  }, [budgetQ, given]);
+  }, [budgetQ, finQ, given]);
 
   const contractGap = useMemo<Metric>(() => {
     const base = { key: 'contractGap', cat: 'money' as const, view: 'finance' as ViewKey };
@@ -697,9 +706,13 @@ export function ExecKpi({ onView }: { onView: (key: ViewKey) => void }) {
           : f.fails === 0 ? tr('Норм хангасан')
             : tr('{0}/{1} бүс зөрчсөн', num(f.fails), num(f.scored)),
         note: [
+          /* ⚠️ `w.norm` — ТУХАЙН БҮСИЙН норм, `f.normLabel` БИШ. FAR/BCR нь
+             бүсийн төрлөөр 1.2/2.4/3.0 ба 40/80/100 гэж ялгаатай тул ерөнхий
+             шошго бичвэл «утга − норм ≠ зөрүү» болж, зөрчилгүй бүс зөрчсөн мэт
+             уншигдана. */
           w
             ? tr('хамгийн муу {0}: {1}{2} · норм {3} · {4} зөрүү',
-              w.zone, num(w.value, 1), unit, f.normLabel, num(w.gap, 1))
+              w.zone, num(w.value, 1), unit, w.norm, num(w.gap, 1))
             : tr('норм {0}', f.normLabel),
           // ⚠️ Найдваргүй эх өгөгдлийг ИЛ хэлнэ — чимээгүй улаан болговол
           //    зураг төслийг буруу үндэслэлээр өөрчлүүлж болзошгүй

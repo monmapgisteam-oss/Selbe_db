@@ -8,7 +8,8 @@ import { useAsync, type Async } from '@/lib/useAsync';
 import { queryFeatures } from '@/lib/query';
 import { BUILDING, PROGRESS_LEVELS, TASK_SHEET, LAYER_BY_ID, bagtsKey, buildingKey } from '@/lib/services';
 import { loadBlockProgress, loadBlockHistory, progressSeries, type BlockHistory } from '@/lib/blockProgress';
-import { loadSheetRows, sheetBagtsNames, type SheetRow } from '@/modules/sheet/sheetRows';
+import { loadSheetRows, sheetBagtsNames, type SheetRow, type SheetRowOpts } from '@/modules/sheet/sheetRows';
+import { register } from '@/lib/dataBus';
 import { num, pct, text, shade } from '@/lib/format';
 
 const HUE = LAYER_BY_ID['mon:building'].hue;
@@ -32,6 +33,48 @@ const F = BUILDING.fields;
 
 /** null/хоосон утгыг НЭГ бүлэгт (ArcGIS null ба ' '-г тусад нь буцаадаг) */
 const UNKNOWN = tr('Тодорхойгүй');
+
+/* ─────────────── Бөглөх хуудасны мөрийн кэш ─────────────── */
+
+/**
+ * ⚠️ `loadSheetRows` ӨӨРӨӨ КЭШГҮЙ. `block` параметр нь зөвхөн `outFields`-ийг
+ * нарийсгадаг бөгөөд мөрийн тоог ОГТ буулгадаггүй (`where` нь
+ * `fillDate IS NOT NULL`) — нэг блокийн дуудлага ч багцын БҮХ агшны 27,400
+ * мөрийг 14 дараалсан хуудсаар, ~5 МБ-аар татна. `useTaskPerf` нь
+ * `[bagts, blok]`-оор дахин ажилладаг тул барилга дарах БҮРД тэр бүтэн скан
+ * дахин явж, блокоо буцааж дарахад ч дахин татагдаж байв (~11 с, 28 хүсэлт).
+ *
+ * Тиймээс дуудлагын түлхүүрээр кэшлэнэ — `blockProgress.ts`-ийн
+ * `memo(fn, ['BAGTS_SHEET'])` загвараар: бөглөх хуудсанд бичмэгц `dataBus`
+ * кэшийг хаяж, тоо шууд шинэчлэгдэнэ.
+ *
+ * ⚠️ Багтаамжийг ХЯЗГААРЛАНА: бичлэг бүр ~5 МБ тул хязгааргүй өсгөвөл олон
+ * блок дараалан үзэхэд санах ой дүүрнэ. Сүүлийн `MAX_SHEET_CACHE` дуудлага л
+ * үлдэнэ — «нааш цааш дарах» гэсэн бодит хэв маягийг бүрэн барина.
+ */
+const MAX_SHEET_CACHE = 4;
+const sheetCache = new Map<string, Promise<SheetRow[]>>();
+register(() => sheetCache.clear(), ['BAGTS_SHEET']);
+
+function cachedSheetRows(opts: SheetRowOpts): Promise<SheetRow[]> {
+  const key = JSON.stringify([opts.group ?? null, opts.block ?? null, !!opts.constructionOnly, opts.maxLevel ?? null]);
+  const hit = sheetCache.get(key);
+  if (hit) {
+    // Хамгийн сүүлд хэрэглэсэн нь эцэст (LRU)
+    sheetCache.delete(key);
+    sheetCache.set(key, hit);
+    return hit;
+  }
+  // ⚠️ Алдааг кэшлэхгүй: түр зуурын «Too many requests» сесс дуустал наалдана.
+  const p = loadSheetRows(opts).catch((e) => { sheetCache.delete(key); throw e; });
+  sheetCache.set(key, p);
+  while (sheetCache.size > MAX_SHEET_CACHE) {
+    const oldest = sheetCache.keys().next().value;
+    if (oldest === undefined) break;
+    sheetCache.delete(oldest);
+  }
+  return p;
+}
 
 export type Block = {
   oid: number;
@@ -472,7 +515,7 @@ function useBagtsWorks(layerBagts: string | null): Async<BagtsData | null> {
 
     // Түвшин 1–4 — навч ажлууд (түвшин 5) энэ хүснэгтэд ОРОХГҮЙ тул шүүлтийг
     // уншигч дээр өгнө: багц бүрд 20 блок × мянган навч татах шаардлагагүй.
-    const rows = await loadSheetRows({ group: name, maxLevel: 4 });
+    const rows = await cachedSheetRows({ group: name, maxLevel: 4 });
     if (!rows.length) return null;
 
     /** Нэг блокийн нэг агшны мөрүүд — гүн толгойг ЭНД тодорхойлно */
@@ -582,10 +625,20 @@ export type TaskPerfData = {
   version: string;             // «2026-07-20» — сүүлийн бөглөсөн огноо
   overall: number | null;      // «Б. Барилга угсралтын ажил» мөрийн гүйцэтгэл (0–100)
   headers: HeaderWork[];       // Б1…Б5 дэд үе шатууд
+  /** Нийт навч ажил — мэдээлэлгүй (null) нүд ОРНО (`noData`-г үзнэ үү) */
   taskCount: number;
   done: number;                // дууссан (гүйц ≥ 1)
   inProgress: number;          // явцтай (0 < гүйц < 1)
-  notStarted: number;          // эхлээгүй (гүйц ≤ 0)
+  notStarted: number;          // эхлээгүй — ЯГ 0 бичигдсэн (null ОРОХГҮЙ)
+  /**
+   * ⚠️ Бөглөгдөөгүй (null) навч ажил. Урьд нь `progress ?? 0` гэж 0 болгоод
+   * `notStarted` руу нийлүүлдэг байсан тул «хэмжилт байхгүй» ба «эхлээгүй»
+   * хоёр ялгагдахгүй, Багц 1·9F дээр «Эхлээгүй» гэж харагдах нүдний ~93% нь
+   * (20096 null vs 1520 яг 0) хэмжилт БИШ хоосон нүд байв. `sheetRows.ts:47`
+   * дээр энэ талбар «Бөглөөгүй нүд `null`» гэж ил тодорхойлогдсон бөгөөд
+   * `blockProgress.compute`, `Finance`, `meanOf` бүгд null-ыг САНААТАЙ хасдаг.
+   */
+  noData: number;
   /** Энэ блокийн «Б.» мөрийн түүх — явцын муруйд */
   hist: BlockHistory;
   key: string;
@@ -657,7 +710,7 @@ export function useTaskPerf(b: PickedBuilding | null): Async<TaskPerfData | null
     const [raw, prog, hist] = await Promise.all([
       // Зөвхөн ЭНЭ блокийн багана татагдана — уншигч нь `block`-оор outFields-ээ
       // нарийсгадаг тул хүсэлт багц бүхэлдээ татахаас хамаагүй хөнгөн.
-      bagts ? loadSheetRows({ group: bagts, block: blok }) : Promise.resolve([]),
+      bagts ? cachedSheetRows({ group: bagts, block: blok }) : Promise.resolve([]),
       loadBlockProgress().catch(() => null),
       loadBlockHistory(),
     ]);
@@ -696,21 +749,25 @@ export function useTaskPerf(b: PickedBuilding | null): Async<TaskPerfData | null
       if (r.date > maxDate) maxDate = r.date;
     }
 
-    let done = 0, inProgress = 0, notStarted = 0;
+    let done = 0, inProgress = 0, notStarted = 0, noData = 0;
     for (const [k, r] of win) {
       if (r.level !== 5) continue;
       if (phase.get(k) !== TASK_SHEET.constructionNo) continue;
-      const p = r.progress ?? 0;
-      if (p >= 1) done += 1; else if (p > 0) inProgress += 1; else notStarted += 1;
+      // ⚠️ null ≠ 0: бөглөгдөөгүй нүдийг «эхлээгүй» рүү нийлүүлэхгүй.
+      const p = r.progress;
+      if (p == null) noData += 1;
+      else if (p >= 1) done += 1; else if (p > 0) inProgress += 1; else notStarted += 1;
     }
-    const taskCount = done + inProgress + notStarted;
+    // ⚠️ `taskCount` нь НИЙТ навч ажлын тоо (мэдээлэлгүй ч орно) — «задаргаа N
+    //    ажлаар» гэсэн хамрах хүрээг илэрхийлдэг тул тоо нь өөрчлөгдөхгүй.
+    const taskCount = done + inProgress + notStarted + noData;
     if (!taskCount && !cell) return null;
 
     return {
       version: cell?.date || maxDate,
       overall: cell?.overall ?? null,
       headers: phasesOf(cell),
-      taskCount, done, inProgress, notStarted,
+      taskCount, done, inProgress, notStarted, noData,
       hist, key,
     };
   }, [bagts, blok]);
@@ -726,7 +783,7 @@ const emptyPerf = (cell: Cell): Omit<TaskPerfData, 'hist' | 'key'> => ({
   version: cell.date,
   overall: cell.overall,
   headers: phasesOf(cell),
-  taskCount: 0, done: 0, inProgress: 0, notStarted: 0,
+  taskCount: 0, done: 0, inProgress: 0, notStarted: 0, noData: 0,
 });
 
 /** Сонгосон барилга — БАГЦ + БЛОК хосоор (блокийн нэр багц дотор л давтагдахгүй) */
@@ -768,10 +825,13 @@ export function MonitorGeneral({ b, q }: { b: PickedBuilding | null; q: Async<Ta
             </Section>
 
             <Section title={tr('Ажлын төлөв')} note={tr('{0} ажил', num(d.taskCount))}>
-              <Stats cols={3}>
+              {/* ⚠️ «Мэдээлэлгүй» нь ЗААВАЛ тусдаа нүд — бөглөгдөөгүй ажлыг
+                  «Эхлээгүй» рүү нийлүүлбэл тайлан чимээгүй худал болно. */}
+              <Stats cols={4}>
                 <Stat value={num(d.done)} unit={tr('ажил')} label={tr('Дууссан')} color="var(--good)" />
                 <Stat value={num(d.inProgress)} unit={tr('ажил')} label={tr('Явцтай')} color={HUE} accent />
                 <Stat value={num(d.notStarted)} unit={tr('ажил')} label={tr('Эхлээгүй')} color="var(--ink-3)" />
+                <Stat value={num(d.noData)} unit={tr('ажил')} label={tr('Мэдээлэлгүй')} color="var(--ink-3)" />
               </Stats>
             </Section>
           </>

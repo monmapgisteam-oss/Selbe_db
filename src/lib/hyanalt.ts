@@ -17,6 +17,8 @@
  * Эдгээрийг програм БИЧИХГҮЙ — ArcGIS өөрөө бөглөж, засагдахаас хамгаална.
  */
 
+import { invalidate } from './dataBus';
+
 export const HYANALT = {
   url: 'https://services-ap1.arcgis.com/ACqsMOmNLi5wIdIh/arcgis/rest/services/guitsetgel_bugluh_hyanalt/FeatureServer/0',
   oid: 'OBJECTID',
@@ -141,6 +143,7 @@ export const DIRECTOR_FIELDS = [
   F.director, F.directorDecision, F.directorReason, F.directorReturned, F.directorSent,
 ] as const;
 
+/** ⚠️ ЗӨВХӨН амжилттай уншсан үр дүн энд суух ёстой — алдааг кэшлэхгүй. */
 let missingCache: string[] | null = null;
 
 /** Үйлчилгээнд дутуу байгаа 4-р шатны талбарууд (хоосон = бүгд бэлэн). */
@@ -148,14 +151,34 @@ export async function missingDirectorFields(): Promise<string[]> {
   if (missingCache) return missingCache;
   try {
     const res = await fetch(`${HYANALT.url}?f=json`);
-    const j = (await res.json()) as { fields?: { name: string }[] };
-    const have = new Set((j.fields ?? []).map((x) => x.name));
+    if (!res.ok) throw new HyanaltError(`HTTP ${res.status}`);
+    const j = (await res.json()) as {
+      fields?: { name: string }[];
+      error?: { message?: string };
+    };
+    /*
+     * ⚠️ ArcGIS алдааг HTTP 200-ГААР буцаадаг (`{error:{…}}` — «Too many
+     * requests», «Token Required» гэх мэт). Түүнийг шалгахгүй бол `j.fields`
+     * нь `undefined` болж, БҮХ талбар «дутуу» гэж уншигдана: үйлчилгээнд
+     * баганууд бүрэн байтал ерөнхий менежерийн «Баталж бүртгэх» товч хаагдаж,
+     * «AGOL дээр нэмнэ үү» гэсэн ХУДАЛ заавар гарч байв. Доорх `catch` нь
+     * сүлжээний алдааг зөв барьдаг ч 200-алдаа тэр хамгаалалтыг тойрдог.
+     */
+    if (j.error || !Array.isArray(j.fields)) {
+      throw new HyanaltError(j.error?.message ?? 'Талбарын жагсаалт ирсэнгүй');
+    }
+    const have = new Set(j.fields.map((x) => x.name));
     missingCache = DIRECTOR_FIELDS.filter((x) => !have.has(x));
+    return missingCache;
   } catch {
-    // Сүлжээний алдаа — «дутуу» гэж мэдэгдэхгүй, хэрэглэгчийг төөрөгдүүлнэ
-    missingCache = [];
+    /*
+     * ⚠️ Алдааг «дутуу» гэж мэдэгдэхгүй бөгөөд КЭШЛЭХГҮЙ. Урьд нь энд
+     * `missingCache = []` гэж бичдэг байсан тул нэг удаагийн түр зуурын алдаа
+     * хуудас дахин ачаалах хүртэл хадгалагдаж, дараагийн дуудлага үйлчилгээг
+     * огт шалгахаа больдог байв (хоосон массив ч `if (missingCache)`-д үнэн).
+     */
+    return [];
   }
-  return missingCache;
 }
 
 /* ══════════════ ArcGIS REST ══════════════ */
@@ -238,6 +261,18 @@ const edit = async (key: 'adds' | 'updates', rows: Attrs[]) => {
    */
   const results = j[key === 'adds' ? 'addResults' : 'updateResults'] ?? [];
   const bad = results.filter((r) => !r.success);
+  /*
+   * ⚠️ ХАГАС БИЧИГДСЭН ҮЕД Ч ХҮЧИНГҮЙ БОЛГОНО — `bad.length`-ийг шалгахаас
+   * ӨМНӨ. `applyEdits` мөр бүрийг ТУСАД НЬ боддог тул нэг нь унасан ч бусад
+   * нь ArcGIS дээр СУУСАН байна; алдааны замд кэшийг үлдээвэл дэлгэц бодит
+   * байдлаас хоцорно.
+   *
+   * ⚠️ Урьд нь энэ дуудлага ОГТ БАЙГААГҮЙ. Хянагч ажил батлахад ArcGIS
+   * шинэчлэгддэг ч `schemData` («Үйл ажиллагааны схем») ба
+   * `ExecKpi.loadReviewAging` кэшээ барьдаг тул 5 минут хүртэл ХУУЧИН тоо
+   * харагдаж, шийдвэр хийгдээгүй мэт сэтгэгдэл төрүүлж байв.
+   */
+  if (results.some((r) => r.success)) invalidate('HYANALT');
   if (bad.length) {
     throw new HyanaltError(
       `${bad.length} мөр хадгалагдсангүй: ${bad[0].error?.description ?? 'тодорхойгүй'}`,

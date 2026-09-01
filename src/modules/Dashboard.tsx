@@ -761,7 +761,13 @@ function railStat(k: SecKey, d: DashData): {
       if (!match(k)) return;
       let last: number | null = null;
       [...byMon.entries()].sort(([x], [y]) => x.localeCompare(y)).forEach(([m, v]) => {
-        if (m <= nowYm && v > 0) last = v;
+        /* ⚠️ `v > 0` БИШ: `phys` мап нь тухайн сард ЯДАЖ нэг блок хэмжигдсэн
+           үед л мөр үүсгэдэг (`Finance.loadFinData`, `if (cnt > 0)`) тул 0 нь
+           «мэдээлэлгүй» биш ХЭМЖИГДСЭН 0%. Урьд нь 0-ийг алгасдаг байсан тул
+           ажил эхлээгүй багц жигнэлтээс бүрмөсөн хасагдаж, төслийн дундаж
+           гүйцэтгэл хөөрөгдөж харагддаг байв (`aggregateMonths`, `lagOf`
+           хоёр аль хэдийн `!= null`-ыг барьдаг). */
+        if (m <= nowYm) last = v;
       });
       if (last == null) return;
       const cnt = f.physCnt.get(k)?.get(nowYm) ?? 1;
@@ -937,7 +943,8 @@ function IndStrip({ d }: { d: DashData }) {
   f?.phys.forEach((byMon, k) => {
     let last: number | null = null;
     [...byMon.entries()].sort(([x], [y]) => x.localeCompare(y)).forEach(([m, v]) => {
-      if (m <= nowYm && v > 0) last = v;
+      // ⚠️ 0% нь ХЭМЖИГДСЭН утга — алгасвал ажил эхлээгүй багц дунджаас хасагдана
+      if (m <= nowYm) last = v;
     });
     if (last == null) return;
     const cnt = f.physCnt.get(k)?.get(nowYm) ?? 1;
@@ -1989,11 +1996,17 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
               .map((x) => ({
                 key: x.key,
                 label: x.label,
-                pct: ((x.volume ?? 0) / (x.volumePlan as number)) * 100,
-                v: x.volume ?? 0,
+                /* ⚠️ `?? 0` БИШ: `loadPkgProgress` нь эзлэхүүнийг САНААТАЙГААР
+                   `number | null` болгож буцаадаг (`live.ts` `nOrNull`).
+                   Тайлагнаагүй багцыг «0.0% · 0 / N» гэж бичвэл үнэхээр тэг
+                   тайлагнасан багцаас ЯЛГАГДАХГҮЙ болж, эрэмбийн ёроолд бодит
+                   хэмжилт мэт суудаг байв. Дээрх «Төлөвлөгөө vs бодит» самбар
+                   ижил датаг аль хэдийн `null` → «—» гэж харуулдаг. */
+                pct: x.volume == null ? null : (x.volume / (x.volumePlan as number)) * 100,
+                v: x.volume,
                 p: x.volumePlan as number,
               }))
-              .sort((a, b) => b.pct - a.pct);
+              .sort((a, b) => (b.pct ?? -1) - (a.pct ?? -1));
             return rows.length ? (
               <Bars
                 inline
@@ -2001,8 +2014,11 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
                 items={heatBars(rows, (x) => ({
                   key: x.key,
                   label: tr(x.label),
-                  value: x.pct,
-                  display: tr('{0} · {1} / {2}', pct(x.pct, 1), num(x.v), num(x.p)),
+                  // Багана 0 урттай ч ШОШГО нь үнэнийг хэлнэ
+                  value: x.pct ?? 0,
+                  display: x.pct == null
+                    ? tr('{0} · {1} / {2}', tr('мэдээлэлгүй'), num(x.v), num(x.p))
+                    : tr('{0} · {1} / {2}', pct(x.pct, 1), num(x.v), num(x.p)),
                 }))}
               />
             ) : <Empty label={tr('Эзлэхүүн бүртгэгдээгүй.')} />;
@@ -2123,7 +2139,8 @@ function pkgPhys(f: FinData | null, match: (k: string) => boolean): {
     if (!match(k)) return;
     let last: number | null = null;
     [...byMon.entries()].sort(([x], [y]) => x.localeCompare(y)).forEach(([m, v]) => {
-      if (m <= nowYm && v > 0) last = v;
+      // ⚠️ 0% нь ХЭМЖИГДСЭН утга (`phys` мөр зөвхөн cnt>0 үед үүснэ) — хасахгүй
+      if (m <= nowYm) last = v;
     });
     if (last == null) return;
     rows.push({ key: k, pct: last });

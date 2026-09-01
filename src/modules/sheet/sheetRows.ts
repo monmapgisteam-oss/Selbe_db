@@ -26,6 +26,7 @@ import { PKGS, loadSchema, type Pkg } from './bagts.pkg';
 import { msToDay } from './bagtsSheet';
 import { levelFromNo } from './ags';
 import { TASK_SHEET, bagtsKey } from '@/lib/services';
+import { withSlot, isRateLimit } from '@/lib/query';
 
 /** Урт хэлбэрийн НЭГ мөр — нэг ажлын, нэг блокийн, нэг агшны бүртгэл. */
 export type SheetRow = {
@@ -86,6 +87,54 @@ const esc = (v: string) => v.replace(/'/g, "''");
 const nOrNull = (v: unknown): number | null =>
   typeof v === 'number' && Number.isFinite(v) ? v : null;
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Нэг хуудасны хүсэлт — хязгаарлагчийн ДОТОР, rate-limit дээр дахин оролдоно. */
+async function onePage(url: string, params: Record<string, string>) {
+  /*
+   * ⚠️ `withSlot` ЗААВАЛ: энэ модулийн fetch нь `query.ts`-ийн 6 слотын
+   *    хязгаарлагчийг ТОЙРЧ гардаг байв. `loadSheetRows` нь 10 багцыг
+   *    `Promise.all`-аар зэрэг эхлүүлдэг тул дашбоардын ~120 slotted хүсэлтийн
+   *    дээр нэмэгдэж, ArcGIS «Too many requests» гэж татгалздаг. `parcelOverlap`
+   *    ба `suit/roadNet` дээр яг энэ алдаа 2026-08-21-нд аль хэдийн засагдсан —
+   *    энэ зам орхигдсон байлаа.
+   *
+   * ⚠️ ДАХИН ОРОЛДОХ нь мөн заавал: rate-limit нь ТҮР зуурын бөгөөд ArcGIS
+   *    түүнийг HTTP 200 + `{error:…}`-ээр буцаадаг. Урьд нь шууд `throw` хийдэг
+   *    тул `loadBlockProgress` реject болж, MapCanvas кэшээ хаяад бүх блок
+   *    «мэдээлэлгүй» болж саарладаг байв.
+   */
+  const RETRIES = 4;
+  for (let attempt = 0; ; attempt += 1) {
+    const j = await withSlot(async () => {
+      const res = await fetch(`${url}/query`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ f: 'json', ...params }),
+      });
+      // ⚠️ HTTP алдаанд (429/503) бие нь JSON биш байж болно — эхлээд `res.ok`
+      //    шалгахгүй бол `res.json()` тодорхойгүй SyntaxError шидэж будлиантана.
+      if (!res.ok) {
+        if ((res.status === 429 || res.status === 503) && attempt < RETRIES) return null;
+        throw new Error(`ArcGIS HTTP ${res.status}`);
+      }
+      const body = await res.json();
+      // ⚠️ ArcGIS алдааг HTTP 200-аар буцаадаг — биеийг ЗААВАЛ шалгана.
+      if (body.error) {
+        const msg = body.error.message || 'ArcGIS error';
+        if (isRateLimit(msg) && attempt < RETRIES) return null;
+        throw new Error(msg);
+      }
+      return body as {
+        features?: { attributes: Record<string, unknown> }[];
+        exceededTransferLimit?: boolean;
+      };
+    });
+    if (j) return j;
+    await sleep(400 * 2 ** attempt + Math.random() * 200);
+  }
+}
+
 /**
  * Нэг хуудсыг БҮРЭН татна (2000 мөрийн хязгаарыг хуудаслаж давна).
  *
@@ -99,29 +148,21 @@ async function fetchPage(
   where: string,
   outFields: string[],
   orderBy: string,
+  /** ЗӨВХӨН ялгаатай утгууд — огнооны жагсаалт мэт нэгдмэл асуулгад. */
+  distinct = false,
 ): Promise<Record<string, unknown>[]> {
   const out: Record<string, unknown>[] = [];
   for (let off = 0; ; ) {
-    const res = await fetch(`${url}/query`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        f: 'json',
-        where,
-        outFields: [...new Set(outFields)].join(','),
-        returnGeometry: 'false',
-        orderByFields: orderBy,
-        resultRecordCount: '2000',
-        resultOffset: String(off),
-      }),
+    const j = await onePage(url, {
+      where,
+      outFields: [...new Set(outFields)].join(','),
+      returnGeometry: 'false',
+      orderByFields: orderBy,
+      resultRecordCount: '2000',
+      resultOffset: String(off),
+      ...(distinct ? { returnDistinctValues: 'true' } : {}),
     });
-    // ⚠️ HTTP алдаанд (429/503) бие нь JSON биш байж болно — эхлээд `res.ok`
-    //    шалгахгүй бол `res.json()` тодорхойгүй SyntaxError шидэж будлиантана.
-    if (!res.ok) throw new Error(`ArcGIS HTTP ${res.status}`);
-    const j = await res.json();
-    if (j.error) throw new Error(j.error.message || 'ArcGIS error');
-    const rows = ((j.features || []) as { attributes: Record<string, unknown> }[])
-      .map((x) => x.attributes);
+    const rows = (j.features || []).map((x) => x.attributes);
     out.push(...rows);
     if (!j.exceededTransferLimit || !rows.length) break;
     off += rows.length;
@@ -245,11 +286,22 @@ export async function sheetDates(): Promise<string[]> {
   await Promise.all(PKGS.map(async (pkg) => {
     const sc = await loadSchema(pkg).catch(() => null);
     if (!sc?.f.fillDate) return;
+    /*
+     * ⚠️ ЗӨВХӨН ЯЛГААТАЙ ОГНОО (`returnDistinctValues`). Урьд нь хуудас бүрийн
+     *    БҮХ мөрийг (10 багц нийлээд ~39,700 мөр, ~1.8 МБ, ~22 дараалсан
+     *    хүсэлт) татаад 4 огноо ялгаж авдаг байв — Багц 1 дангаараа 14 хуудас,
+     *    4.5 секунд. «Гүйцэтгэл бөглөх» нээх БҮРД бүхэлдээ давтагдана.
+     *    `returnDistinctValues` эдгээр үйлчилгээнд ажилладгийг амьдаар шалгав:
+     *    нэг хүсэлт, 4 мөр, ~0.3 сек.
+     * ⚠️ Хуудаслалт ба `orderByFields` ХЭВЭЭР: ялгаатай утга 2000-аас хэтэрвэл
+     *    (олон жил бөглөгдвөл) хариу чимээгүй тайрагдах ёсгүй.
+     */
     const rows = await fetchPage(
       pkg.url,
       `${sc.f.fillDate} IS NOT NULL`,
       [sc.f.fillDate],
       `${sc.f.fillDate} ASC`,
+      true,
     ).catch(() => []);
     for (const a of rows) {
       const ms = a[sc.f.fillDate as string];
