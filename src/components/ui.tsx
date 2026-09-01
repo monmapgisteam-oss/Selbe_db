@@ -381,9 +381,18 @@ export function Stat({
    * шилжсэн тул тэнд өнгөт tint, сийрэг зай, 26px нөөцлөсөн шошгын мөр
    * гурвуулаа хүчингүй болно (`overview.module.css` → «НЯГТ ХЭЛ»).
    */
+  /**
+   * ⚠️ 2026-09-01: мөнгөн дүн бүтнээр бичигдэх болсноор утга 17 тэмдэгт хүрдэг
+   *    («2,660,000,000,000 ₮») — 16px-ээр нарийхан KPI нүднээс халж, хоёр мөр
+   *    болно. Тайрахгүй (дүн тасарвал ХУДАЛ уншигдана), фонтоо БАГАСГАНА.
+   *    Уртыг зөвхөн энгийн утганд хэмжинэ — `ReactNode` бол мэдэх аргагүй.
+   */
+  const long = typeof value === 'string' || typeof value === 'number'
+    ? String(value).length >= 10
+    : false;
   return (
     <div className={`${s.stat} statCard ${accent ? s.statAccent : ''}`} style={tone(color)}>
-      <div className={`${s.statValue} statNum num`}>
+      <div className={`${s.statValue} ${long ? s.statValueLong : ''} statNum num`}>
         {value}
         {unit && <span className={s.statUnit}>{unit}</span>}
       </div>
@@ -892,12 +901,12 @@ export function Donut({
             const h = hovOn ? slices.find((x) => x.key === hovOn) : null;
             return h ? (
               <>
-                <span className={`${s.donutValue} num`}>{h.value}</span>
+                <span className={`${s.donutValue} ${String(h.value).length >= 10 ? s.donutValueLong : ''} num`}>{h.value}</span>
                 <span className={s.donutLabel} title={tr(h.label)}>{tr(h.label)}</span>
               </>
             ) : (
               <>
-                <span className={`${s.donutValue} num`}>{center ?? total}</span>
+                <span className={`${s.donutValue} ${String(center ?? total).length >= 10 ? s.donutValueLong : ''} num`}>{center ?? total}</span>
                 {centerLabel && <span className={s.donutLabel}>{centerLabel}</span>}
               </>
             );
@@ -1357,6 +1366,7 @@ export function Trend({
   color,
   height = 132,
   unit = '%',
+  fmt,
   visible,
   showValues = false,
   alert,
@@ -1365,6 +1375,12 @@ export function Trend({
   color?: string;
   height?: number;
   unit?: string;
+  /**
+   * Утгыг ХЭРХЭН бичих. Анхдагч нь `.toFixed(1)` — хувь, коэффициентэд тохирно.
+   * ⚠️ 2026-09-01 нэмэв: мөнгөн дүн бүтнээр бичигдэх болсон тул
+   *    `2660000000000.0` гэж гарахаас сэргийлж `format.mnt`-ийг дамжуулна.
+   */
+  fmt?: (v: number) => string;
   /**
    * Нэг дэлгэцэнд ХЭДЭН цэг багтах вэ. Заавал бол зурагдах талбар нь
    * хэвтээ гүйдэг болж, тэнхлэгт цэг БҮРИЙН огноо/цаг хоёр мөрөөр гарна.
@@ -1387,6 +1403,9 @@ export function Trend({
   //    сүүлийнх нь бусдыгаа дардаг (SVG-ийн id нь баримт даяар нэгдмэл).
   //    React 19-ийн `useId` нь CSS/`url(#…)`-д хүчинтэй тэмдэгт л гаргана.
   const gradId = `trendArea${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
+
+  /** Утга бичих дүрэм — өгөөгүй бол хувийн анхдагч (нэг аравтын орон) */
+  const fmtV = fmt ?? ((v: number) => v.toFixed(1));
 
   // ⚠️ Цуваа солигдоход (grain/хамрах хүрээ) хуучин hov хүчингүй болно — цэгийн
   //    товч unmount болоход React blur/mouseleave өгдөггүй тул энд цэвэрлэнэ.
@@ -1492,7 +1511,7 @@ export function Trend({
         {/* Сонгосон цэг анхааруулгын мужид бол уншилтын тоо ч улаанаар —
             чартаас нүд салгасан хэрэглэгч ч төлөвийг нэг харцаар мэднэ. */}
         <span className={`${s.trendValue} num ${over(cur.value) ? s.trendValueAlert : ''}`}>
-          {fin(cur.value).toFixed(1)}{unit}
+          {fmtV(fin(cur.value))}{unit}
         </span>
         <span className={s.trendMeta}>
           {tr(cur.label)}{cur.note ? ` · ${cur.note}` : ''}
@@ -1560,7 +1579,7 @@ export function Trend({
                 tabIndex={curIdx === i ? 0 : -1}
                 className={`${s.trendHit} ${hov === i ? s.trendHitOn : ''}`}
                 style={{ left: `${x(i)}%` }}
-                aria-label={`${p.label}: ${fin(p.value).toFixed(1)}${unit}${p.note ? ` · ${p.note}` : ''}`}
+                aria-label={`${p.label}: ${fmtV(fin(p.value))}${unit}${p.note ? ` · ${p.note}` : ''}`}
                 onMouseEnter={() => setHov(i)}
                 onMouseLeave={() => setHov((h) => (h === i ? null : h))}
                 onFocus={() => setHov(i)}
@@ -1577,7 +1596,7 @@ export function Trend({
                     className={`${s.trendVal} ${over(p.value) ? s.trendValAlert : ''}`}
                     style={{ top: `${y(p.value)}%` }}
                   >
-                    {Number.isInteger(fin(p.value)) ? fin(p.value) : fin(p.value).toFixed(1)}
+                    {fmt ? fmt(fin(p.value)) : (Number.isInteger(fin(p.value)) ? fin(p.value) : fin(p.value).toFixed(1))}
                   </span>
                 ) : null}
               </button>

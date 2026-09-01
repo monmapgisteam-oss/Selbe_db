@@ -22,7 +22,8 @@ import { t as tr } from '@/lib/i18nCore';
 import { buildFindings, type ReportExtra } from '@/lib/reportData';
 import { num, pct } from '@/lib/format';
 
-const bn = (v: number) => num(v / 1e9, 1);
+/** ₮ — БҮТЭН дүн, мянгатын таслалтай (2026-09-01, товчлолыг бүрэн хассан) */
+const bn = (v: number) => num(v);
 /**
  * ⚠️ ЗӨВХӨН Cashflow-ийн `budget`/`contract` дүнд хэрэглэнэ: тэг нь «төсөвт
  * өртөг хараахан батлагдаагүй / гэрээ байгуулагдаагүй» гэсэн утгатай тул 0
@@ -105,7 +106,7 @@ export function buildReportDoc(
      амьд кадастрын хувиас зөрдөг (land.ts-ийн тайлбар). */
   const lead = [
     tr('Сэлбэ 20 минутын хотын төслийн хэрэгжилт тайлан үүсгэх өдрийн байдлаар {0}-тай байна. Төслийн төсвийн {1}-ийг эзэлдэг барилга угсралтын ажил {2}-ийн гүйцэтгэлтэй{3}. Газар чөлөөлөлтийн гүйцэтгэл нэгж талбарын төлвөөр{4} байгаа ч {5} нэгж талбар шийдвэрлэгдээгүй үлдсэн байна.', pct(overall.pct, 2), pct(d.buildWeight, 1), pct(d.buildActual, 2), d.buildLag != null ? tr(' буюу төлөвлөгөөнөөс {0} нэгж хувиар хоцорч байна', num(d.buildLag, 1)) : '', land.pct != null ? ` ${pct(land.pct, 1)}` : '', num(d.landLeft)),
-    tr('Санхүүгийн хувьд захирамжаар {0} тэрбум ₮ батлагдсанаас {1} тэрбум{2} нь гэрээгээр баталгаажиж, {3} тэрбум{4} нь бодитоор олгогдсон байна.', bn(finance.orderTotal), bn(finance.contractAmount), d.contractRate != null ? ` (${pct(d.contractRate, 1)})` : '', bn(finance.paid), d.paidRate != null ? ` (${pct(d.paidRate, 1)})` : ''),
+    tr('Санхүүгийн хувьд захирамжаар {0} ₮ батлагдсанаас {1} ₮{2} нь гэрээгээр баталгаажиж, {3} ₮{4} нь бодитоор олгогдсон байна.', bn(finance.orderTotal), bn(finance.contractAmount), d.contractRate != null ? ` (${pct(d.contractRate, 1)})` : '', bn(finance.paid), d.paidRate != null ? ` (${pct(d.paidRate, 1)})` : ''),
     tr('Барилгын талбайд {0} ажилтан, {1} нэгж техник ажиллаж байгаа бөгөөд орон сууцны {2} блок, {3} өрхийн орон сууц баригдаж байна.', num(habea.workers), num(habea.tehnik), num(blocks), num(ail)),
   ];
 
@@ -156,17 +157,17 @@ export function buildReportDoc(
         [td(tr('Өрхийн орон сууц')), td(num(ail), true)],
         [td(tr('Төслийн нийт гүйцэтгэл')), td(pct(overall.pct, 2), true)],
         [td(tr('Барилга угсралтын гүйцэтгэл')), td(pct(progress.overall, 2), true)],
-        [td(tr('Захирамжаар батлагдсан дүн')), td(tr('{0} тэрбум ₮', bn(finance.orderTotal)), true)],
-        [td(tr('Гэрээгээр байгуулагдсан дүн')), td(tr('{0} тэрбум ₮', bn(finance.contractAmount)), true)],
-        [td(tr('Бодитоор олгосон санхүүжилт'), false, TOTAL), td(tr('{0} тэрбум ₮', bn(finance.paid)), true, TOTAL)],
+        [td(tr('Захирамжаар батлагдсан дүн')), td(tr('{0} ₮', bn(finance.orderTotal)), true)],
+        [td(tr('Гэрээгээр байгуулагдсан дүн')), td(tr('{0} ₮', bn(finance.contractAmount)), true)],
+        [td(tr('Бодитоор олгосон санхүүжилт'), false, TOTAL), td(tr('{0} ₮', bn(finance.paid)), true, TOTAL)],
       ] }, layout: tableLayout },
       note(tr('Төслийн нийт гүйцэтгэл нь {0} блокийг багцынх нь төсвийн жингээр тооцсон дүн (3-р хэсэг); барилга угсралтын гүйцэтгэл нь хяналтын {1} блокийн энгийн дундаж (6-р хэсэг).', num(overall.rows), num(progress.blocks))),
 
       ...section('2', tr('Орон сууцны 7 багц'),
-        tr('Орон сууцны барилгажилт долоон багцад хуваагдан хэрэгжиж байна. Нийт {0} блокт {1} өрхийн орон сууц төлөвлөгдсөн бөгөөд төсөвт өртөг {2} тэрбум ₮ байна. Багц хоорондын гүйцэтгэлийн зөрүү их байна: хамгийн өндөр нь {3} ({4}), хамгийн бага нь {5} ({6}).', num(blocks), num(ail), bn(budget), d.bestBagts?.bagts ?? '—', pct(d.bestBagts?.pct ?? null, 2), d.worstBagts?.bagts ?? '—', pct(d.worstBagts?.pct ?? null, 2))),
+        tr('Орон сууцны барилгажилт долоон багцад хуваагдан хэрэгжиж байна. Нийт {0} блокт {1} өрхийн орон сууц төлөвлөгдсөн бөгөөд төсөвт өртөг {2} ₮ байна. Багц хоорондын гүйцэтгэлийн зөрүү их байна: хамгийн өндөр нь {3} ({4}), хамгийн бага нь {5} ({6}).', num(blocks), num(ail), bn(budget), d.bestBagts?.bagts ?? '—', pct(d.bestBagts?.pct ?? null, 2), d.worstBagts?.bagts ?? '—', pct(d.worstBagts?.pct ?? null, 2))),
       cap('2', tr('Багц тус бүрийн блок, өрх, төсөв ба гүйцэтгэл (төсөвт өртгөөр буурах эрэмбээр)')),
-      { table: { headerRows: 1, widths: ['*', 42, 42, 88, 58], body: [
-        [th(tr('Багц')), th(tr('Блок'), true), th(tr('Өрх'), true), th(tr('Төсөв (тэрбум төг)'), true), th(tr('Гүйцэтгэл'), true)],
+      { table: { headerRows: 1, widths: ['*', 36, 36, 100, 52], body: [
+        [th(tr('Багц')), th(tr('Блок'), true), th(tr('Өрх'), true), th(tr('Төсөв (төг)'), true), th(tr('Гүйцэтгэл'), true)],
         ...sorted.map((x): TableCell[] => [
           td(tr(x.label)), td(num(x.blocks), true), td(num(x.ail), true),
           td(budgetOf(x.key) > 0 ? bn(budgetOf(x.key)) : '—', true), td(pct(x.progress, 2), true),
@@ -248,7 +249,7 @@ export function buildReportDoc(
         tr('Захирамж, гэрээгээр баталгаажсан {0} ажлын санхүүжилт дөрвөн эх үүсвэрээс бүрдэж байна.{1}', num(finance.rows), d.topSource ? tr(' Санхүүжилтийн дийлэнх хэсгийг «{0}» эх үүсвэр бүрдүүлж, нийт дүнгийн {1}-ийг эзэлж байна.', tr(d.topSource.label), pct(d.topSource.share, 1)) : '')),
       cap('7.1', tr('Санхүүжилтийн эх үүсвэрийн бүтэц')),
       { table: { headerRows: 1, widths: ['*', 110, 70], body: [
-        [th(tr('Эх үүсвэр')), th(tr('Дүн (тэрбум төг)'), true), th(tr('Хувь'), true)],
+        [th(tr('Эх үүсвэр')), th(tr('Дүн (төг)'), true), th(tr('Хувь'), true)],
         ...finance.sources.map((s): TableCell[] => [
           td(tr(s.label)), td(bn(s.value), true), td(srcTotal ? pct((s.value / srcTotal) * 100, 1) : '—', true),
         ]),
@@ -260,7 +261,7 @@ export function buildReportDoc(
          хэвлэгдэнэ (reportData.ts). Дэлгэц (Tailan.tsx)-тэй ижил шошго. */
       cap('7.2', tr('Сар бүрийн санхүүжилтийн хуваарь (төлөвлөгөө) ба хуримтлагдсан дүн{0}', d.peakMonth ? tr(' — хамгийн их төлөвлөгөө {0} сард', tr(d.peakMonth.label)) : '')),
       { table: { headerRows: 1, widths: ['*', 120, 110], body: [
-        [th(tr('Сар')), th(tr('Төлөвлөгөө (тэрбум төг)'), true), th(tr('Хуримтлагдсан'), true)],
+        [th(tr('Сар')), th(tr('Төлөвлөгөө (төг)'), true), th(tr('Хуримтлагдсан'), true)],
         ...finance.months.map((m): TableCell[] => [
           td(tr(m.label)), td(m.amount > 0 ? bn(m.amount) : '—', true), td(bn(m.cum), true),
         ]),
@@ -268,7 +269,7 @@ export function buildReportDoc(
       note(tr('Хүснэгт нь гэрээ бүрийн санхүүжилтийн хуваарь буюу төлөвлөгөө; бодитоор олгосон санхүүжилтийг IPC актын дүнгээр 1-р хүснэгтэд харуулав.')),
 
       cap('7.3', tr('Ажлын төрлөөр — төсөв ба гэрээний дүн')),
-      { table: { headerRows: 1, widths: ['*', 45, 78, 78], body: [
+      { table: { headerRows: 1, widths: ['*', 38, 105, 105], body: [
         [th(tr('Төрөл')), th(tr('Ажил'), true), th(tr('Төсөв'), true), th(tr('Гэрээ'), true)],
         ...finance.byType.map((t): TableCell[] => [
           td(t.type), td(num(t.n), true), td(bnOrDash(t.budget), true), td(bnOrDash(t.contract), true),

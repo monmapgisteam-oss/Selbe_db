@@ -86,7 +86,10 @@
   min-width: 0;
 }
 .finKpiVal {
-  font-size: 16px;
+  /* ⚠️ 2026-09-01: 16px → 12.5px. Мөнгөн дүн бүтнээр бичигдэх болсноор
+     «2,660,000,000,000 ₮» нь 17 тэмдэгт — 16px-ээр нарийхан KPI нүднээс халж,
+     `overflow-wrap: anywhere` нь ТООГ дундуур нь тасалдаг (уншигдахгүй). */
+  font-size: 12.5px;
   font-weight: 500;
   line-height: 1.15;
   font-variant-numeric: tabular-nums;

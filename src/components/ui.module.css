@@ -237,6 +237,8 @@
   line-height: 1;
   font-variant-numeric: tabular-nums;
 }
+/* Урт утга (мөнгөн дүн бүтнээр) — 2026-09-01. Тайрахгүй, зөвхөн жижигрүүлнэ. */
+.statValueLong { font-size: 12.5px; letter-spacing: -0.01em; }
 .statUnit { font-size: 11px; font-weight: 400; color: var(--ink-3); letter-spacing: 0; }
 /* envhub eyebrow — 2 мөрийн зай нөөцөлж, олон карт зэрэгцэхэд тоонууд нэг
    суурьт зэрэгцэнэ */
@@ -286,7 +288,8 @@
   transition: color 0.12s;
 }
 .barNameOn { font-weight: 500; color: var(--ink); }
-.barVal { flex: none; font-size: 11.5px; color: var(--ink-3); transition: color 0.12s; }
+/* `flex: none` + `nowrap` — бүтэн мөнгөн дүн шахагдаж мөр таслахгүй (2026-09-01) */
+.barVal { flex: none; white-space: nowrap; font-size: 11.5px; color: var(--ink-3); transition: color 0.12s; }
 .barValOn { color: var(--ink); }
 .barTrack {
   display: block;
@@ -527,6 +530,9 @@
 }
 /* envhub: голын нийлбэр — жижиг, medium (том тод тоо биш) */
 .donutValue { font-size: 13px; font-weight: 500; color: var(--ink); line-height: 1.1; }
+/* Цагирагийн голд бүтэн мөнгөн дүн — нүхэнд багтахгүй тул жижигрүүлж, мөр
+   таслахгүй (тоог хоёр хуваавал уншигдахгүй). 2026-09-01. */
+.donutValueLong { font-size: 9.5px; letter-spacing: -0.02em; white-space: nowrap; }
 .donutLabel { font-size: 10px; color: var(--ink-3); text-align: center; }
 
 .donutLegend { flex: 1; min-width: 130px; display: flex; flex-direction: column; gap: 6px; }
@@ -691,7 +697,8 @@
    0.34→0.02 градиент, 5px цэг (гадаргуун цагирагтай), ТАСАРХАЙ өнгөт crosshair. */
 .trend { display: flex; flex-direction: column; gap: 6px; }
 .trendHead { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-.trendValue { font-size: 17px; font-weight: 500; color: var(--ink); line-height: 1; }
+/* `nowrap` — бүтэн мөнгөн дүн хоёр мөр болж толгойг эвдэхгүй (2026-09-01) */
+.trendValue { font-size: 17px; font-weight: 500; color: var(--ink); line-height: 1; white-space: nowrap; }
 .trendMeta { font-size: 10.5px; color: var(--ink-3); }
 
 /* Хажуугийн зай нь ЭХНИЙ/СҮҮЛИЙН цэгийг ирмэгээр таслуулахгүй байлгана */

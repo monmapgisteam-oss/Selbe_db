@@ -30,7 +30,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { Data } from '@/components/ui';
 import { Icon } from '@/components/Icon';
 import { useAsync } from '@/lib/useAsync';
-import { num, pct, mntAbbr } from '@/lib/format';
+import { num, pct, mnt } from '@/lib/format';
 import type { ViewKey } from '@/lib/services';
 import { STAGE_LABEL } from '@/lib/hyanaltGroup';
 import {
@@ -81,7 +81,7 @@ function show(m: Metric): string {
   if (m.value == null) return '—';
   switch (m.kind) {
     case 'pct': return pct(m.value, 0);
-    case 'mnt': return mntAbbr(m.value);
+    case 'mnt': return mnt(m.value);
     /* ⚠️ `format.ts::ha()` нь м²-ыг га руу ХӨРВҮҮЛДЭГ. Энд ирж буй утга
        (`areaHa`, `remainingHa`) АЛЬ ХЭДИЙН га тул дахин хуваавал 10,000
        дахин жижигрэнэ. */
