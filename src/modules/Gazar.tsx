@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
 import { MapTools, MapToolBtn } from '@/components/MapTools';
@@ -19,6 +19,11 @@ import {
   BUILDING, LAYER_BY_ID, PKG_BY_BAGTS, bagtsKey,
 } from '@/lib/services';
 import { overlapLeftParcels } from '@/lib/parcelOverlap';
+import { cached } from '@/lib/live';
+import { hasCap, subscribeCaps } from '@/lib/caps';
+import { useAuth } from '@/components/AuthGate';
+import { PARCEL_OID, parcelWhere } from '@/lib/parcelEdit';
+import { GazarEdit } from './GazarEdit';
 import { queryFeatures } from '@/lib/query';
 import { Section } from '@/components/ui';
 import { num, text, shades, CAT_LIGHT, NO_DATA } from '@/lib/format';
@@ -69,7 +74,18 @@ const PARCEL_LAYER_ID = 'land:left';
  * ⚠️ Дэд бүтцийн багц нь давхаргын бүртгэлээс (`PKG_BY_BAGTS`) шууд гарна —
  *    сүлжээний хүсэлт огт шаардлагагүй.
  */
-async function loadPkgOverlaps(): Promise<PkgOverlap[]> {
+const loadPkgOverlaps = cached<PkgOverlap[]>(loadPkgOverlapsRaw, undefined, ['PARCEL_LEFT']);
+
+/**
+ * ⚠️ КЭШЛЭГДСЭН (2026-08-31, гүйцэтгэлийн засвар). Энэ функц 55 багц бүрд
+ * геометрийн ОГТЛОЛЦЛЫН хүсэлт явуулдаг — харагдацын хамгийн үнэтэй ажил.
+ * Урьд нь `useAsync(loadPkgOverlaps, [])` гэж шууд дамжуулагдсан тул:
+ *   · харагдац руу ОРОХ БҮРД (өөр рүү очоод буцахад ч) бүхэлдээ дахин ажиллана;
+ *   · нэгж талбар хадгалах бүрд `useAsync`-ийн `bus` шинэчлэгдэж дахин ажиллана.
+ * Одоо кэш нь `PARCEL_LEFT` түлхүүрт бүртгэгдсэн: дахин орох нь ҮНЭГҮЙ, харин
+ * төлөв өөрчлөгдөхөд л шинэчлэгдэнэ — яг хэрэгтэй үедээ.
+ */
+async function loadPkgOverlapsRaw(): Promise<PkgOverlap[]> {
   const F = BUILDING.fields;
   const rows = await queryFeatures(BUILDING.url, {
     outFields: [BUILDING.oid, F.bagts],
@@ -289,7 +305,7 @@ type GazarData = {
 export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   /** Талын багануудын өргөн — чирж тохируулна, хөтөчид хадгалагдана. */
   const side = useSideResize('gazar');
-  const { setHighlight, zoomToWhere } = useMap();
+  const { setHighlight, zoomToWhere, refreshLayer } = useMap();
 
   const [aoi, setAoi] = useState<Aoi | null>(null);
   const [drawToken, setDrawToken] = useState(0);
@@ -310,13 +326,48 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const [ovPick, setOvPick] = useState<PkgOverlap | null>(null);
 
   /**
+   * ЗАСВАРЫН ГОРИМ — «Талбар засах» товчоор асна.
+   *
+   * ⚠️ ГОРИМТОЙ БОЛГОСОН ШАЛТГААН: газрын зураг дээр товших нь энэ харагдацад
+   *    ердийн үйлдэл (полигон зурах, багц сонгох). Товшилт бүрд маягт нээвэл
+   *    зүгээр л газар харж байгаа хүнд саад болно. Горим асаалттай үед л
+   *    товшилт маягт нээнэ.
+   */
+  const [editMode, setEditMode] = useState(false);
+  const [editOid, setEditOid] = useState<number | null>(null);
+  const [saved, setSaved] = useState('');
+
+  const { user, status: authStatus } = useAuth();
+  const [capN, setCapN] = useState(0);
+  useEffect(() => subscribeCaps(() => setCapN((x) => x + 1)), []);
+  /**
+   * ⚠️ ЗАСАХ ЭРХ ТУСДАА (`caps` → `gazar`). Газар чөлөөлөлтийг ХАРАХ нь
+   *    төлөвийг нь СОЛИХ эрх биш: нэг талбарын төлөв солиход чөлөөлөлтийн хувь,
+   *    давхцлын тооцоо, дашбоард, тайлан бүгд дагаж өөрчлөгдөнө.
+   */
+  const canEdit = useMemo(
+    () => authStatus === 'off' || hasCap(user?.username, 'gazar'),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [user, authStatus, capN],
+  );
+
+  /**
    * Сонгосон багцын давхаргууд зурагт НЭМЭГДЭНЭ.
    * ⚠️ `setVisible` рүү БИЧИХГҮЙ — тэр нь хэрэглэгчийн каталогийн сонголт;
    *    сонголт солигдох бүрд бохирдоно. Зөвхөн ГАРАЛТ дээр давхарлана.
    */
   const mapVisible = useMemo(
-    () => (ovPick ? [...new Set([...visible, ...ovPick.layerIds])] : visible),
-    [visible, ovPick],
+    () => {
+      /**
+       * ⚠️ ЗАСВАРЫН ГОРИМД ЗӨВХӨН НЭГЖ ТАЛБАР. Кадастр (`gazar:parcel`) ба
+       * барилга (`gazar:building`) нь энэ давхаргатай бараг бүрэн давхцдаг тул
+       * ил үлдээвэл товшилт тэдний аль нэг дээр буугаад маягт нээгдэхгүй, эсвэл
+       * буруу объект сонгогдоно. Хилүүд (`ALWAYS_ON_IDS`) автоматаар үлдэнэ.
+       */
+      if (editMode) return [PARCEL_LAYER_ID];
+      return ovPick ? [...new Set([...visible, ...ovPick.layerIds])] : visible;
+    },
+    [visible, ovPick, editMode],
   );
 
   /**
@@ -345,7 +396,6 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const [layerSel, setLayerSel] = useState<string | null>(null);
   const [zone, setZone] = useState<string | null>(null);
   const catTotals = usePlanTotals(zone, catOpen);
-  const pickRef = useRef<(a: Record<string, unknown> | null, id: string | null) => void>(() => {});
   /**
    * ⚠️ AOI-ийн ТҮҮХИЙ геометр — `pickFlt` (deps-гүй useCallback) дотор state
    * биш ref-ээс уншина. `setHighlight` нь тодруулгыг БҮРЭН орлуулдаг тул
@@ -377,6 +427,37 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const startDraw = useCallback(() => setDrawToken((t) => t + 1), []);
 
   /**
+   * ГАЗРЫН ЗУРАГ ДЭЭР ТАЛБАР ТОВШИХ.
+   *
+   * ⚠️ `useCallback` ЗААВАЛ: inline функц нь `memo(MapCanvas)`-ийн пропс
+   *    өөрчлөгдсөн гэж үзүүлж, товшилт бүрд газрын зураг бүхэлдээ дахин
+   *    баригдана (`PkgProg.onMapPick`-ийн тайлбар).
+   *
+   * ⚠️ ХООСОН ГАЗАР товшиход `(null, null)` ирнэ — сонголтыг ЦЭВЭРЛЭНЭ,
+   *    `return` хийж хуучин тодруулгыг үлдээхгүй.
+   *
+   * ⚠️ ЗӨВХӨН OID-г авна. `onPick`-ийн атрибут нь давхаргын `outFields`-д
+   *    ачаалагдсанаар хязгаарлагдах тул маягт нь мөрөө ӨӨРӨӨ бүтнээр татна.
+   */
+  const onMapPick = useCallback((a: Record<string, unknown> | null, id: string | null) => {
+    if (!editMode) return;
+    if (!a || id !== PARCEL_LAYER_ID) { setEditOid(null); setHighlight(null); return; }
+    const oid = Number(a[PARCEL_OID]);
+    if (!Number.isFinite(oid)) { setEditOid(null); return; }
+    setEditOid(oid);
+    setHighlight(parcelWhere(oid), PARCEL_LAYER_ID);
+  }, [editMode, setHighlight]);
+
+  const closeEdit = useCallback(() => { setEditOid(null); setHighlight(null); }, [setHighlight]);
+
+  /** Засварын горимоос бүрэн гарах — маягт, тодруулга хоёулаа цэвэрлэгдэнэ */
+  const exitEdit = useCallback(() => {
+    setEditMode(false);
+    setEditOid(null);
+    setHighlight(null);
+  }, [setHighlight]);
+
+  /**
    * Чарт-шүүлт — бар/зүсмэг дарахад холбогдох давхаргад тодруулга тавина.
    * Ижил мөрийг дахин дарвал арилна. Полигон (AOI) шүүлттэй ЗЭРЭГ биш —
    * сүүлд хийсэн үйлдэл нь тодруулгыг эзэмшинэ.
@@ -388,6 +469,25 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   fltRef.current = flt;
   // ⚠️ setState-ийн updater ДОТОР setHighlight дуудаж болохгүй (React render
   //    дундуур өөр компонент шинэчилнэ) — тул ref-ээс уншиж ГАДНА нь дуудна.
+  /**
+   * ЗАСВАРЫН ГОРИМД ОРОХ.
+   *
+   * ⚠️ ИДЭВХТЭЙ ШҮҮЛТҮҮДИЙГ ЗААВАЛ ЦЭВЭРЛЭНЭ. Багц сонгосон байхад
+   * `ovWhere` нь `land:left` давхаргыг «OBJECTID IN (…)» гэж НАРИЙСГАДАГ —
+   * тэр үед засварын горимд ЗӨВХӨН тэр багцын саад болж буй талбарууд
+   * зурагдаж, бусад талбар дээр товшиход ЮУ Ч БОЛОХГҮЙ. Хэрэглэгч «засвар
+   * ажиллахгүй байна» гэж дүгнэнэ. Чартын шүүлт ба полигоны бүдгэрүүлэлт
+   * мөн адил төөрөгдүүлнэ.
+   */
+  const enterEdit = useCallback(() => {
+    setOvPick(null);
+    setFlt(null);
+    fltRef.current = null;
+    setHighlight(null);
+    setEditOid(null);
+    setEditMode(true);
+  }, [setHighlight]);
+
   const pickFlt = useCallback((next: GFlt) => {
     const cur = fltRef.current;
     const val = cur && cur.grp === next.grp && cur.key === next.key ? null : next;
@@ -556,12 +656,23 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     /* Талын багануудыг чирж өргөсгөх/нарийсгах бариулууд. */
     <div
       ref={side.hostRef}
-      className={`${g.frame} ${side.hostClass}`}
+      className={`${g.frame} ${editMode ? g.frameEdit : ''} ${side.hostClass}`}
       style={side.style}
     >
       <SplitGrip {...side.left} />
       <SplitGrip {...side.right} />
-      {/* ── ЗҮҮН: Чөлөөлөлт (үлдсэн нэгж талбар) — үзүүлэлт + явц бүгд энд ── */}
+      {/*
+        * ⚠️ ЗАСВАРЫН ГОРИМД ХАЖУУГИЙН БАГАНУУД БҮРЭН UNMOUNT БОЛНО.
+        * Зөвхөн CSS-ээр нуувал доторх `useAsync` хүсэлтүүд харагдахгүй атлаа
+        * ажилласаар байх бөгөөд хадгалсны дараах `invalidate` тэднийг дахин
+        * татна — засвар хийж буй хүнд хэрэггүй сүлжээний ачаалал.
+        *
+        * ⚠️ Газрын зураг ӨӨРӨӨ unmount БОЛОХГҮЙ: хоёр дахь ArcGIS view үүсгэвэл
+        * WebGL контекст үрэгдэнэ. Тиймээс «шинэ цонх» гэдэг нь БАЙГАА зургаа
+        * дэлгэц дүүрэн болгосон хэлбэр — томруулсан байрлал ч хэвээр үлдэнэ.
+        */}
+      {!editMode && (
+      /* ── ЗҮҮН: Чөлөөлөлт (үлдсэн нэгж талбар) — үзүүлэлт + явц бүгд энд ── */
       <div className={g.left}>
         {/* Баганын толгой — envhub eyebrow: өнгөгүй; багана нь БАЙРЛАЛААРАА ялгарна */}
         <h3 className={g.colHd}>
@@ -655,6 +766,7 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           </div>
         </section>
       </div>
+      )}
 
       {/* ── ТӨВ: Газрын зураг + Полигон ── */}
       <main className={g.map}>
@@ -674,8 +786,33 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           onSketch={onSketch}
           drawToken={drawToken}
           clearToken={clearToken}
-          onPick={pickRef.current}
+          onPick={onMapPick}
         />
+
+        {editOid != null && (
+          <GazarEdit
+            oid={editOid}
+            canEdit={canEdit}
+            onCancel={closeEdit}
+            onDone={(n) => {
+              closeEdit();
+              /**
+               * ⚠️ ДАВХАРГЫГ ДАХИН УНШУУЛНА. FeatureLayer нь татсан объектоо
+               * клиент дээрээ кэшлэдэг бөгөөд бичилт нь SDK-аар биш ШУУД
+               * REST-ээр явсан тул зассан талбар ХУУЧИН ӨНГӨӨРӨӨ үлдэнэ.
+               * Үүнгүй бол хэрэглэгч «хадгалагдсангүй» гэж бодоод бүтэн
+               * хуудсаа refresh хийнэ — газрын зураг, бүх өгөгдөл дахин ачаална.
+               */
+              if (n > 0) refreshLayer(PARCEL_LAYER_ID);
+              /* ⚠️ 0 нь АМЖИЛТГҮЙ биш — юу ч өөрчлөөгүй гэсэн үг. Хоёрыг нэг
+                 мессежээр хэлбэл «хадгалагдсангүй» гэж уншигдана. */
+              setSaved(n > 0
+                ? tr('{0} талбар хадгалагдлаа', num(n))
+                : tr('Өөрчлөлт байсангүй'));
+              window.setTimeout(() => setSaved(''), 4000);
+            }}
+          />
+        )}
 
         {/* ⚠️ 2026-08-20: Урьд нь ЭНД зөвхөн 2D/3D/BIM + «Полигон зурах» байв —
             Давхарга ч, Тунгалаг ч, Бүс ч байхгүй тул кадастрын гурван давхаргаас
@@ -700,7 +837,40 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             {aoi ? tr('Дахин зурах') : tr('Полигон зурах')}
           </MapToolBtn>
           {aoi && <MapToolBtn onClick={clear}>{tr('Цэвэрлэх')}</MapToolBtn>}
+          {/* ⚠️ Эрхгүй хүнд ОГТ харагдахгүй — идэвхгүй товч нь «яагаад
+              болохгүй байна» гэсэн асуулт төрүүлээд хариулахгүй. */}
+          {canEdit && (
+            <MapToolBtn
+              icon="pen"
+              on={editMode}
+              disabled={dim !== '2d'}
+              onClick={() => (editMode ? exitEdit() : enterEdit())}
+              title={dim !== '2d'
+                ? tr('Засварыг зөвхөн 2D дээр хийнэ')
+                : tr('Зөвхөн газрын зураг үлдэж, талбар дарахад төлөв солих цонх нээгдэнэ')}
+            >
+              {tr('Талбар засах')}
+            </MapToolBtn>
+          )}
         </MapTools>
+
+        {/*
+          * ЗАСВАРЫН АЖЛЫН ЗУРВАС — «энэ бол тусдаа цонх» гэдгийг хэлнэ.
+          * Хажуугийн багана, доод зурвас нь unmount болсон тул зөвхөн зураг
+          * үлдэж, энэ зурвас нь гарчиг ба гарах замыг өгнө.
+          */}
+        {editMode && (
+          <div className={g.editBar}>
+            <span className={g.editTitle}>{tr('Нэгж талбар засах')}</span>
+            <span className={g.editHint}>
+              {tr('Газрын зураг дээр нэгж талбар дарна уу')}
+            </span>
+            <button type="button" className={g.editClose} onClick={exitEdit}>
+              {tr('Хаах')}
+            </button>
+          </div>
+        )}
+        {saved && <p className={g.saved} role="status">{saved}</p>}
 
         {catOpen && (
           <div className={o.catPanel}>
@@ -745,11 +915,14 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       </main>
 
       {/* ── ЗУРГИЙН ДООД ЗУРВАС: багц бүрийн саад (зургийн өргөнтэй) ── */}
+      {!editMode && (
       <div className={g.chart}>
         <OverlapBars q={ovQ} selected={ovPick?.key ?? null} onPick={pickOverlap} />
       </div>
+      )}
 
       {/* ── БАРУУН: Барилга + Кадастр (нэгтгэсэн багана) ── */}
+      {!editMode && (
       <div className={g.right}>
         {/* Баганын толгой — зүүнтэй ЯГ ижил envhub eyebrow (өнгөт identity байхгүй) */}
         <h3 className={g.colHd}>
@@ -840,6 +1013,7 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           </div>
         </section>
       </div>
+      )}
     </div>
   );
 }

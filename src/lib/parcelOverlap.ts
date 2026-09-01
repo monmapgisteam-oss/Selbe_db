@@ -20,6 +20,7 @@
 
 import { PARCEL_LEFT, LAYER_BY_ID } from './services';
 import { withSlot } from './query';
+import { register } from './dataBus';
 
 /** Барилга эхлүүлэхэд саад болж буй төлөв — газар чөлөөлөлтийн давхаргын утга. */
 export const LEFT_STATUS = 'Үлдсэн нэгж талбар';
@@ -130,6 +131,15 @@ export async function overlapLeftParcels(sources: Src[]): Promise<Overlap> {
 }
 
 const resultCache = new Map<string, Promise<Overlap>>();
+
+/**
+ * ⚠️ КЭШИЙГ ӨГӨГДЛИЙН АВТОБУСАД ХОЛБОВ (2026-08-31). Хоёулаа модулийн
+ * түвшний Map тул `invalidate('PARCEL_LEFT')` тэднийг хөнддөггүй байв.
+ * Нэгж талбарын `Tuluv`-ыг «Үлдсэн»-ээс өөр болгомогц тэр талбар давхцлын
+ * тооцооноос ГАРАХ ёстой; кэш цэвэрлэгдэхгүй бол «Саад — багцаар» зурвас
+ * сешн дуустал хуучин OID-уудаа харуулж, зассан ажил хийгдээгүй мэт харагдана.
+ */
+register(() => { geomCache.clear(); resultCache.clear(); }, ['PARCEL_LEFT']);
 
 async function overlapUncached(sources: Src[]): Promise<Overlap> {
   const wkid = await parcelSR();
