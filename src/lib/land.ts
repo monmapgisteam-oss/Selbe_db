@@ -16,6 +16,7 @@ import { queryGroup, count, sum } from '@/lib/query';
 import { t as tr } from '@/lib/i18nCore';
 import { PARCEL_LEFT } from '@/lib/services';
 import { text } from '@/lib/format';
+import { register } from '@/lib/dataBus';
 
 export type LandStatus = {
   /** Нийт нэгж талбар (бүх төлөв, хоосон Tuluv орно) */
@@ -36,6 +37,15 @@ export type LandStatus = {
 };
 
 let cache: Promise<LandStatus> | null = null;
+
+/**
+ * ⚠️ КЭШИЙГ ӨГӨГДЛИЙН АВТОБУСАД ХОЛБОВ (2026-08-31). Энэ нь `cached()`-ээр
+ * ороогдоогүй ГАРААР бичсэн кэш тул `invalidate('PARCEL_LEFT')` түүнийг
+ * хөнддөггүй байв. «Газар чөлөөлөлт» дээр нэгж талбарын төлөв засмагц
+ * дашбоард, тайлан бүгд шинэчлэгддэг атлаа ЭНЭ тооцоо сешн дуустал хуучин
+ * хувиа барьж, хоёр газар өөр тоо харуулах болно.
+ */
+register(() => { cache = null; }, ['PARCEL_LEFT']);
 
 /** Шалтгааны нэрийг Gazar-тай ИЖИЛ дүрмээр цэвэрлэнэ (арын зай, төгсгөлийн «.») */
 const cleanReason = (v: unknown): string => {

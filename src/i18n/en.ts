@@ -3074,7 +3074,6 @@ const en: Record<string, string> = {
   "Дахин ачаалах": "Reload",
   "танигдаагүй төлөв": "unrecognised status",
   "Хадгалаагүй өөрчлөлт байна. Хаах уу?": "You have unsaved changes. Close anyway?",
-  "Нэмэлт эрх олгоход түүний харагдац (Гүйцэтгэл · Зөвшөөрөл · Санхүүжилт · Хуваарь) тухайн хүнд автоматаар нээгдэнэ.": "Granting a capability automatically opens its home view (Progress · Permits · Financing · Schedule) for that user.",
   "{0} ажлын хуваарь хадгалагдлаа — хуудас хооронд нь шинэчлэгдсэн тул шинэ агшинд зөөв": "Schedule saved for {0} tasks — the sheet was republished meanwhile, so the changes were moved onto the new snapshot",
   "{0} мөр шинэ агшинд олдсонгүй — тэдгээрийн хуваарь хадгалагдсангүй.": "{0} rows were not found in the new snapshot — their schedule was not saved.",
   "Хяналтад илгээв ({0})": "Submitted for review ({0})",
@@ -3574,7 +3573,26 @@ const en: Record<string, string> = {
   "тэжээх холбоо": "feeds into",
   "буцаах шилжилт": "returned for rework",
   "Схем бэлтгэж байна…": "Building the diagram…",
-  "{0} эх сурвалж татагдсангүй — тэдгээрийн тоо «—» байна.": "These sources could not be loaded: {0}. Their figures show as “—”."
+  "{0} эх сурвалж татагдсангүй — тэдгээрийн тоо «—» байна.": "These sources could not be loaded: {0}. Their figures show as “—”.",
+  "Газрын төлөв засах": "Edit land status",
+  "«Газар чөлөөлөлт» дээр нэгж талбарын төлөв, явцын мэдээ, эзэмшигч, тайлбарыг засах. Нэг талбарын төлөв солиход чөлөөлөлтийн хувь, давхцлын тооцоо, дашбоард, тайлан бүгд дагаж өөрчлөгдөнө.": "Edit a parcel’s status, progress note, owner and remarks in Land clearance. Changing one parcel shifts the clearance percentage, the overlap counts, the dashboard and the report with it.",
+  "Нэмэлт эрх олгоход түүний харагдац (Гүйцэтгэл · Зөвшөөрөл · Санхүүжилт · Хуваарь · Газар чөлөөлөлт) тухайн хүнд автоматаар нээгдэнэ.": "Granting a capability automatically opens its view (Performance · Permits · Funding · Schedule · Land clearance) for that person.",
+  "Төлөв сонгоно уу": "Choose a status",
+  "Танигдахгүй төлөв — жагсаалтаас сонгоно уу": "Unrecognised status — pick one from the list",
+  "{0} талбар хадгалагдлаа": "{0} field(s) saved",
+  "Өөрчлөлт байсангүй": "Nothing changed",
+  "Засварыг зөвхөн 2D дээр хийнэ": "Editing works in 2D only",
+  "Талбар засах": "Edit parcel",
+  "Нэгж талбар олдсонгүй.": "Parcel not found.",
+  "Кадастрын дугаар": "Cadastral number",
+  "Овог, нэр": "Surname, given name",
+  "Явцын мэдээ": "Progress note",
+  "— сонгоогүй —": "— not set —",
+  "Утгууд үйлчилгээнээс уншигдана — бичиглэл нь хэвээр хадгалагдана": "Values are read from the service — the exact spelling is preserved",
+  "Тайлбар (дэлгэрэнгүй)": "Remarks (detailed)",
+  "Зөвхөн газрын зураг үлдэж, талбар дарахад төлөв солих цонх нээгдэнэ": "Leaves only the map — clicking a parcel opens the status dialog",
+  "Нэгж талбар засах": "Edit parcels",
+  "Газрын зураг дээр нэгж талбар дарна уу": "Click a parcel on the map"
 };
 
 export default en;

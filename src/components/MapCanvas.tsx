@@ -107,6 +107,16 @@ type MapApi = {
    */
   zoomToWhere: (layerId: string, where: string, opts?: { animate?: boolean }) => void;
   /**
+   * Давхаргыг СЕРВЕРЭЭС ДАХИН УНШУУЛНА — атрибут гаднаас засагдсаны дараа.
+   *
+   * ⚠️ ЗААВАЛ ХЭРЭГТЭЙ: FeatureLayer нь татсан объектоо клиент дээрээ кэшлэдэг.
+   * Порталын `applyEdits` нь SDK-аар биш ШУУД REST-ээр явдаг тул давхарга
+   * өөрчлөлтийг мэдэхгүй — зассан нэгж талбар ХУУЧИН ӨНГӨӨРӨӨ үлдэнэ.
+   * Хэрэглэгч «хадгалагдсангүй» гэж бодоод бүтэн хуудсаа refresh хийхээс өөр
+   * аргагүй болно.
+   */
+  refreshLayer: (layerId: string) => void;
+  /**
    * ОРТОФОТО ил эсэх ба түүнийг унтраах/асаах.
    * ⚠️ Каталогийн дээд мөр ба «Суурь зураг» товчны чагт ХОЁУЛАА эндээс уншиж
    * бичнэ — нэг эх сурвалж тул хоорондоо синк байна. Анхдагч суурь зураг
@@ -128,6 +138,7 @@ const Ctx = createContext<MapApi>({
   view: null, setHighlight: () => {}, highlight: { where: null },
   zoomToLayer: () => {}, zoomToZone: () => {},
   zoomToWhere: () => {},
+  refreshLayer: () => {},
   ortho: false, setOrtho: () => {},
   setZoneMask: () => {},
 });
@@ -1196,9 +1207,24 @@ export function MapProvider({ children }: { children: ReactNode }) {
     }
   }, [view]);
 
+  /**
+   * ⚠️ 2D-д `refresh()` хангалттай; 3D-д мөн ижил (SceneView нь ижил
+   * FeatureLayer-ийг хуваалцдаг). Давхарга олдоогүй бол ЧИМЭЭГҮЙ өнгөрнө —
+   * тухайн давхарга унтраалттай байхад алдаа шидэх нь утгагүй.
+   */
+  const refreshLayer = useCallback((layerId: string) => {
+    const l = view && !view.destroyed
+      ? (view.map?.findLayerById(layerId) as { refresh?: () => void } | null)
+      : null;
+    l?.refresh?.();
+  }, [view]);
+
   const api = useMemo<MapApi>(
-    () => ({ view, setHighlight, highlight: hl, zoomToLayer, zoomToZone, zoomToWhere, ortho, setOrtho, setZoneMask }),
-    [view, setHighlight, hl, zoomToLayer, zoomToZone, zoomToWhere, ortho],
+    () => ({
+      view, setHighlight, highlight: hl, zoomToLayer, zoomToZone, zoomToWhere,
+      refreshLayer, ortho, setOrtho, setZoneMask,
+    }),
+    [view, setHighlight, hl, zoomToLayer, zoomToZone, zoomToWhere, refreshLayer, ortho],
   );
 
   return (
