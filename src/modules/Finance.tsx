@@ -21,7 +21,9 @@ import { cached } from '@/lib/live';
  */
 const LIVE_TTL = 60_000;
 import { loadBlockHistory } from '@/lib/blockProgress';
-import { CASHFLOW2, IPC_LOG, TASK_SHEET, bagtsKey, blockKey, pkgKeyOf, cfMonthAxis } from '@/lib/services';
+import {
+  CASHFLOW2, IPC_LOG, TASK_SHEET, bagtsKey, blockKey, pkgKeyOf, cfMonthAxis, cfMonthKey, ipcNet,
+} from '@/lib/services';
 import { finFieldLabel } from '@/lib/financeFieldLabels';
 import { mntShort, num, text, cat } from '@/lib/format';
 import { ResizableTable } from '@/components/ResizableTable';
@@ -41,12 +43,6 @@ import f from './finance.module.css';
 const n = (v: unknown): number => {
   const x = Number(v);
   return Number.isFinite(x) ? x : 0;
-};
-
-/** Хувийг хэвшүүлэх: эх дата бутархай (0–1) ба % (0–100) холилдсон */
-const pctVal = (v: unknown): number => {
-  const x = n(v);
-  return x > 0 && x <= 1.5 ? x * 100 : x;
 };
 
 /** IPC огноог "YYYY-MM" болгох ("2026.05.04" ба "2026-05-04" 2-уул) */
@@ -88,8 +84,13 @@ function ym(v: unknown): string | null {
  * аль хэдийн `bagtsKey` хэрэглэдэг байсан — одоо гурвуулаа НЭГ дүрэмтэй.
  */
 
-/** Жинхэнэ акт мөн үү — "Contract Price" псевдо-мөр, хоосон мөрийг хасна */
-const isRealAct = (no: unknown) => /^(IPC|APC|АРС)[-\s]?\d+/i.test(String(no ?? '').trim());
+/*
+ * ⚠️ 2026-08-31: `isRealAct` ХАСАГДАВ. Хуучин `IPC_/107`-д 90 мөрийн 31 нь акт
+ * БИШ байсан («Contract Price» псевдо-мөр, дугааргүй/дүнгүй мөр) тул дуудагч
+ * бүр /^(IPC|APC|АРС)\d+/ шүүлт хийх ёстой байв. `ipc_0813`-ийн 59 мөр БҮГД
+ * жинхэнэ акт — шүүлт хэрэггүй болоод зогсохгүй, шинэ `IPC03` нь багцын НЭР
+ * тул хуучин шүүлт үлдвэл БҮХ мөрийг чимээгүй хаяна.
+ */
 
 /**
  * S-муруйн гурван цуваа — баталгаажсан палитрын слотууд.
@@ -145,8 +146,34 @@ export type PhysMap = Map<string, Map<string, number>>;
  * зайлсхийхэд) ашиглана — `phys`-ийн утгыг ХӨНДӨХГҮЙ, зэрэгцээ мэдээлэл.
  */
 export type FinData = {
+  /**
+   * ГЭРЭЭНИЙ мастер мөрүүд (76) — `CF002='ГЭРЭЭ'`.
+   *
+   * ⚠️ 2026-08-31: `cashflow_0813` нь 209 мөртэй бөгөөд гэрээ бүр 1 мастер +
+   *    үеийн мөрүүдтэй. Энэ талбар нь ЗӨВХӨН мастер мөрүүдийг агуулна —
+   *    гэрээний тоо/төсвийг шүүлтгүй нийлбэрлэвэл 209 мөр тоологдоно.
+   */
   contracts: Row[];
+  /** Хэмжилттэй үеийн мөрүүд (133) — САР + ӨМНӨХ ШИЛЖҮҮЛСЭН */
+  periods: Row[];
+  /**
+   * Гэрээний код (CF001) → «2026-08» → тухайн сарын ТӨЛӨВЛӨГӨӨТ дүн (CF009).
+   *
+   * ⚠️ Хуваарь нь одоо багана биш МӨР тул гэрээний сарын дүнг энэ индексээс
+   *    авна. Хэмжилтгүй сард мөр БАЙХГҮЙ (2026-01 бүхэлдээ алга) — тэнхлэгийг
+   *    `cfMonthAxis()`-ээс аваад дутуу сарыг 0-ээр нөхнө.
+   */
+  plan: Map<string, Map<string, number>>;
   given: GivenMap;
+  /**
+   * Багц → нийт олгосон (цэвэр) дүн — ОГНООГҮЙ актыг ч ОРУУЛНА.
+   *
+   * ⚠️ 59 актын 29-д ямар ч огноо алга (нэг нь 9.4 тэрбумтай). Тэдгээрийг
+   *    `given`-ий сарын цуваанд оруулбал сүүлийн сар дээр хуурамч оргил
+   *    үүснэ (null ≠ 0), огт хаявал нийт дүн дутна — тиймээс цуваанаас
+   *    хасаж, НИЙЛБЭРТ энд үлдээв.
+   */
+  givenTotal: Map<string, number>;
   phys: PhysMap;
   physCnt: PhysMap;
   /**
@@ -501,7 +528,7 @@ const loadIpcRows = cached(
 
 async function loadFinDataRaw(): Promise<FinData> {
   const S = TASK_SHEET.fields;
-    const [contracts, ipc, hist] = await Promise.all([
+    const [cashflow, ipc, hist] = await Promise.all([
       loadCashflowRows(),
       loadIpcRows(),
       /*
@@ -516,26 +543,55 @@ async function loadFinDataRaw(): Promise<FinData> {
       loadBlockHistory(),
     ]);
 
-    // IPC → багц бүрд: сар → олгосон net нийлбэр.
-    // "Contract Price" псевдо-мөр, дугааргүй мөрийг хасна (services.ts-ийн санамж).
+    /*
+     * ГЭРЭЭ vs ҮЕ — `cashflow_0813` нэг хүснэгтэд хоёр грейн агуулна тул
+     * ЭНД САЛГАНА. Дуудагч тал бүрд шүүлт давтуулбал нэг нь мартагдаж
+     * гэрээ 209 удаа тоологдоно.
+     */
+    const CFF = CASHFLOW2.fields;
+    const contracts = cashflow.filter((r) => r[CFF.rowType] === CASHFLOW2.rows.master);
+    const periods = cashflow.filter((r) => r[CFF.rowType] !== CASHFLOW2.rows.master);
+
+    /* Гэрээ → сар → төлөвлөгөөт дүн */
+    const plan = new Map<string, Map<string, number>>();
+    periods.forEach((r) => {
+      const mon = cfMonthKey(r);
+      if (!mon) return; // ӨМНӨХ ШИЛЖҮҮЛСЭН — сарын тэнхлэгт байрлахгүй
+      const g = String(r[CFF.geree] ?? '');
+      const byMon = plan.get(g) ?? new Map<string, number>();
+      byMon.set(mon, (byMon.get(mon) ?? 0) + n(r[CFF.amount]));
+      plan.set(g, byMon);
+    });
+
+    /*
+     * IPC → багц бүрд: сар → олгосон цэвэр дүн.
+     *
+     * ⚠️ Цэвэр дүн одоо БОДОГДОНО (`ipcNet` = гүйцэтгэлийн дүн − 4 суутгал) —
+     *    хуучин хадгалагдсан багана нь засвар бүрд хуучирдаг байсан тул хасав.
+     * ⚠️ Огноогүй актыг сарын цуваанд ОРУУЛАХГҮЙ. Хуучин код нь `?? last`-аар
+     *    сүүлийн сар руу шахдаг байсан — 29 актын мөнгө нэг сарын нүдэнд
+     *    овоорч хуурамч оргил үүсгэнэ. Нийт дүн `givenTotal`-д бүрэн үлдэнэ.
+     */
     const F = IPC_LOG.fields;
-    /* ⚠️ СУНГАСАН тэнхлэг (cfMonthAxis) — CF-ийн 12 сар 2026-09-өөр
-       төгсдөг тул түүнээс хойшхи акт, хэмжилт нүхгүй үлдэж, сүүлийн сард
-       овоорч эсвэл царцдаг байв. Сунгалт нь өнөөдрийг хүртэл. */
+    /* ⚠️ СУНГАСАН тэнхлэг (cfMonthAxis) — хуваарь 2026-09-өөр төгсдөг тул
+       түүнээс хойшхи акт, хэмжилт нүхгүй үлдэж, сүүлийн сард овоорч эсвэл
+       царцдаг байв. Сунгалт нь өнөөдрийг хүртэл. */
     const axis = cfMonthAxis();
     const labels = axis.map((m) => m.label);
     const first = labels[0];
     const last = labels[labels.length - 1];
     const given: GivenMap = new Map();
+    const givenTotal = new Map<string, number>();
     ipc.forEach((r) => {
-      if (!isRealAct(r[F.no])) return;
-      const net = n(r[F.net]);
+      const net = ipcNet(r);
       if (net === 0) return;
-      const k = bagtsKey(r[F.pkg]);
+      /* Багц: дэд багц (навч) → үндсэн багц. Аль нь ч байхгүй бол гэрээгүй акт. */
+      const k = bagtsKey(r[F.pkg2]) || bagtsKey(r[F.pkg]);
       if (!k || k === '0') return;
-      let mon = ym(r[F.submitDate]) ?? ym(r[F.periodTo]) ?? ym(r[F.approvedDate]) ?? last;
-      if (mon < first) mon = first;
-      if (mon > last) mon = last;
+      givenTotal.set(k, (givenTotal.get(k) ?? 0) + net);
+      const raw = ym(r[F.submitDate]) ?? ym(r[F.periodTo]) ?? ym(r[F.approvedDate]) ?? ym(r[F.payDate]);
+      if (!raw) return; // огноогүй — цувааны гадна (дээрх ⚠️)
+      const mon = raw < first ? first : raw > last ? last : raw;
       const byMon = given.get(k) ?? new Map<string, number>();
       byMon.set(mon, (byMon.get(mon) ?? 0) + net);
       given.set(k, byMon);
@@ -608,7 +664,7 @@ async function loadFinDataRaw(): Promise<FinData> {
         physCnt.set(k, cntMon);
       });
     }
-    return { contracts, given, phys, physCnt, acts: ipc };
+    return { contracts, periods, plan, given, givenTotal, phys, physCnt, acts: ipc };
 }
 
 /**
@@ -679,8 +735,9 @@ export function Finance() {
 // ═══════════════════════════════════════════════════════════
 
 /** Гэрээний мөрөөс сарын цэгүүд — ЯГ датаных нь дагуу + IPC олгосон + биет гүйцэтгэл */
-export function contractMonths(r: Row, given: GivenMap, phys: PhysMap): MonthPt[] {
+export function contractMonths(r: Row, fin: FinData): MonthPt[] {
   const C = CASHFLOW2.fields;
+  const { given, phys } = fin;
   // ⚠️ `pkgKeyOf` (bagtsKey БИШ): «БАГЦ 1-4» мэт диапазон мөр нь bagtsKey-ээр
   //    «БАГЦ14» болж, бодит «Багц 14»-ийн олголт/биет гүйцэтгэлийг өөрийн болгон
   //    зурдаг байв. Диапазон мөр одоо хоосон түлхүүртэй — юутай ч таарахгүй.
@@ -704,10 +761,13 @@ export function contractMonths(r: Row, given: GivenMap, phys: PhysMap): MonthPt[
    *    (`aggregateMonths`) аль хэдийн ЯГ ЭНЭ дүрмээр боддог тул хоёр
    *    график нэг хэлээр ярина.
    */
-  /* ⚠️ Сунгасан сард CF багана алга (null) — төлөвлөгөө 0, харин олгосон/биет
-     нь жинхэнэ сардаа зурагдана. */
+  /* ⚠️ Хуваарь одоо БАГАНА биш МӨР — гэрээний сарын дүнг `fin.plan`-аас авна.
+     Хэмжилтгүй сард мөр огт байхгүй (2026-01 бүхэлдээ алга) тул тэнхлэгийг
+     `cfMonthAxis()`-ээс авч, дутуу сарыг 0-ээр нөхнө; эс тэгвээс график нэг
+     сар алгасаад цаашдын бүх цэг зүүн тийш шилжинэ. */
+  const byPlan = fin.plan.get(String(r[C.geree] ?? ''));
   const axis = cfMonthAxis();
-  const amounts = axis.map((m) => (m.amount ? n(r[m.amount]) : 0));
+  const amounts = axis.map((m) => byPlan?.get(m.label) ?? 0);
   const total = amounts.reduce((a, b) => a + b, 0);
   let cum = 0;
 
@@ -716,10 +776,13 @@ export function contractMonths(r: Row, given: GivenMap, phys: PhysMap): MonthPt[
     return {
       label: m.label,
       amount: amounts[i],
-      amountCum: m.amountCum ? n(r[m.amountCum]) : cum,
-      // ⚠️ Нийт нь 0 бол хувь утгагүй — хадгалагдсан баганад ЭНД Л буцаж
-      //    найдна (сарын хуваарь огт бөглөгдөөгүй гэрээ).
-      cumPct: total > 0 ? (cum / total) * 100 : m.pctCum ? pctVal(r[m.pctCum]) : 0,
+      /* ⚠️ Өссөн дүн, өссөн хувь ХОЁУЛАА ЭНД бодогдоно. Хадгалагдсан
+         багануудыг (`amountCum`, `pctCum`) шинэ үйлчилгээнээс ХАСАВ — тэдгээр
+         нь ЖИЛ БҮР ТЭГЛЭГДДЭГ байсан тул төлөвлөгөөний муруй дунд нь 0 руу
+         унаж, эцсийн цэг 100%-ийн оронд 39.8% дээр зогсдог байв (Багц 2,
+         2026-08-27). Өөрийн сарын дүнгээс бодоход үргэлж өсөх ба 100%-д хүрнэ. */
+      amountCum: cum,
+      cumPct: total > 0 ? (cum / total) * 100 : 0,
       given: byMon?.get(m.label) ?? 0,
       phys: ph?.get(m.label) ?? null,
     };

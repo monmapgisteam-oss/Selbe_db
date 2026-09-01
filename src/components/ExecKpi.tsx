@@ -10,7 +10,7 @@ import { loadFinData, contractMonths, lagOf, lagLevel } from '@/modules/Finance'
 /* ⚠️ '@/modules/Dashboard' БИШ (2026-08-21): тэр зам MapCanvas → ArcGIS SDK-г
    бүхэлд нь нэвтрэх хуудасны chunk-д чирдэг байв */
 import { useBagtsTable, useSuitability, buildProgressOf } from '@/lib/execData';
-import { HABEA, CASHFLOW2, pkgKeyOf, type ViewKey } from '@/lib/services';
+import { HABEA, CASHFLOW2, cfMonthAxis, pkgKeyOf, type ViewKey } from '@/lib/services';
 import { count, queryGroup } from '@/lib/query';
 import { loadVariance, loadOverlaps, loadDamage } from '@/lib/execTriage';
 import {
@@ -222,11 +222,20 @@ export function ExecKpi({ onView }: { onView: (key: ViewKey) => void }) {
 
   /* ═══════════════ 2 · МӨНГӨ ═══════════════ */
 
-  /** IPC-ээр ОЛГОСОН нийт дүн — юүлүүрийн дөрөв дэх шат */
+  /**
+   * IPC-ээр ОЛГОСОН нийт дүн — юүлүүрийн дөрөв дэх шат.
+   *
+   * ⚠️ 2026-08-31: сарын задаргаа (`given`) БИШ, `givenTotal`. Шинэ
+   *    `ipc_0813`-ийн 59 актын 29-д ашиглаж болох огноо ОГТ байхгүй бөгөөд
+   *    тэдгээрийн НЭГ нь 9.4 тэрбум ₮ (Багц-4.2) авч явна. Огноогүй актыг
+   *    сарын цуваанд хиймэл сар руу шахахгүй (null ≠ 0) ч НИЙТ дүнгээс хасвал
+   *    юүлүүрийн «Олгосон (IPC)» шат ~3%-иар дутуу гарна — тиймээс KPI-ийн
+   *    нийлбэрийг `givenTotal`-оос, графикийн цувааг `given`-ээс авна.
+   */
   const given = useMemo<number | null>(() => {
     if (finQ.state !== 'ready') return null;
     let g = 0;
-    finQ.data.given.forEach((byMon) => byMon.forEach((v) => { g += v; }));
+    finQ.data.givenTotal.forEach((v) => { g += v; });
     return g;
   }, [finQ]);
 
@@ -298,11 +307,15 @@ export function ExecKpi({ onView }: { onView: (key: ViewKey) => void }) {
       return { ...base, label: tr('Санхүүжилт ба гүйцэтгэлийн зөрүү'), value: '—', note: tr('өгөгдөл дутуу'), level: 'unknown' };
     const gap = finPct - physPct;
     /*
-     * САР БҮРИЙН IPC олголт — `CASHFLOW2.months`-ийн бодит цуваа.
+     * САР БҮРИЙН IPC олголт — `cfMonthAxis()`-ийн бодит цуваа.
      * ⚠️ Өсөлтийн ХАНДЛАГА биш, сар тутмын ДҮН тул шугам биш БАГАНА-аар
      * үзүүлнэ — шугам нь хуримтлалыг илэрхийлдэг.
+     * ⚠️ 2026-08-31: хуучин `CASHFLOW2.months` (12 сарын БАГАНЫН код) устсан —
+     *    сар одоо `CF003`/`CF004` утга. Тэнхлэгийг өгөгдөлд БАЙГАА саруудаас
+     *    угсарч БОЛОХГҮЙ: 2026-01-д ямар ч хэмжилт алга тул график нэг слот
+     *    гулсаж, тэрнээс хойшхи бүх багана буруу сар дээр зогсоно.
      */
-    const all = CASHFLOW2.months.map((m) => {
+    const all = cfMonthAxis().map((m) => {
       let sum = 0;
       finQ.data.given.forEach((byMon) => { sum += byMon.get(m.label) ?? 0; });
       return sum;
@@ -385,16 +398,31 @@ export function ExecKpi({ onView }: { onView: (key: ViewKey) => void }) {
      * ⚠️ Дүн БИШ, ДУНДАЖ: гэрээ бүр өөр өөр сард эхэлдэг тул нийлбэр авбал
      * зүгээр л гэрээний тоог давхарлан харуулна.
      */
-    const mn = CASHFLOW2.months.length;
+    /* ⚠️ Тэнхлэгийн урт нь `contractMonths`-ийнхтой ЯГ ижил байх ёстой (хоёул
+       `cfMonthAxis()`) — эс тэгвээс доорх `physSum[i]` индекс өөр сар руу
+       унана. Хуучин `CASHFLOW2.months` 12 тогтмол багана байсан, одоо
+       өнөөдөр хүртэл сунадаг. */
+    const mn = cfMonthAxis().length;
     const physSum = new Array<number>(mn).fill(0);
     const physCnt = new Array<number>(mn).fill(0);
+    /* ⚠️ `d.contracts` нь ЗӨВХӨН мастер мөрүүд (`CF002 = 'ГЭРЭЭ'`, 76 ш).
+       Шинэ `cashflow_0813` нь гэрээ×үе гриэйнтэй 209 мөртэй тул шүүлтгүй
+       гүйлгэвэл нэг гэрээ 14 удаа тоологдож «хоцорсон багц»-ийн тоо
+       хөөрөгдөнө. Шүүлтийг `loadFinData` хийнэ. */
     d.contracts.forEach((r) => {
       // ⚠️ `pkgKeyOf` — «БАГЦ 1-4» мэт диапазон мөр `bagtsKey`-ээр «БАГЦ14» болж,
       //    бодит «Багц 14»-ийн оронд тоологдож хоцрогдлын тоог гажуудуулдаг байв.
+      //    ⚠️ 2026-08-31: багц одоо CF006 (үндсэн) / CF007 (дэд) — ХУУЧИН
+      //    CF003/CF004 БИШ. Диапазон («БАГЦ 1-4», «БАГЦ 1-6 БАГЦ 8-17»),
+      //    «БҮХ БАГЦ» ба NULL мөрүүд ШИНЭ хүснэгтэд ч ХЭВЭЭР тул хамгаалалт
+      //    үлдэнэ; харин литерал «0» утга алга болсон (шалгасан) — `!key` нь
+      //    NULL-ыг барих тул `key === '0'` зөвхөн хуучин датад зориулсан үлдэц.
       const key = pkgKeyOf(r[C.pkg2]) || pkgKeyOf(r[C.pkg]);
       if (!key || key === '0' || seen.has(key)) return;
       seen.add(key);
-      const ms = contractMonths(r, d.given, d.phys);
+      // ⚠️ 2026-08-31: гарын үсэг өөрчлөгдөв — `contractMonths(r, fin)`.
+      //    Төлөвлөгөө одоо гэрээний мөрөнд БИШ, `fin.plan` (гэрээ → сар → дүн)-д.
+      const ms = contractMonths(r, d);
       // ⚠️ `!= null`: жинхэнэ 0% нь ХЭМЖИЛТ тул дундажид орох ёстой;
       //    хэмжигдээгүй сар л хасагдана (0 гэж тоовол дундаж худал буурна).
       ms.forEach((m, i) => { if (m.phys != null) { physSum[i] += m.phys; physCnt[i] += 1; } });

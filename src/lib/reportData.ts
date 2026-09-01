@@ -7,13 +7,20 @@
  *
  * ⚠️ САНХҮҮ: `CASHFLOW` (BUS_cashflow) хүснэгтийн мөнгөн БҮХ багана өнөөдөр
  * ХООСОН (7 мөр, дүн бүр 0). Тиймээс санхүүг `CASHFLOW2`
- * (`Cashflow/FeatureServer/106`, 76 мөр)-оос авна — «Цогцолбор» дашбоардын
- * толгойн тоо ч мөн эндээс гардаг.
+ * (`cashflow_0813/FeatureServer/173`, 209 мөр)-оос авна — «Цогцолбор»
+ * дашбоардын толгойн тоо ч мөн эндээс гардаг.
+ *
+ * ⚠️ 2026-08-31: CASHFLOW2 нь «нэг гэрээ = нэг мөр» БАЙХАА БОЛИВ — 209 мөрийн
+ * 76 нь ГЭРЭЭ (мастер), 131 нь САР, 2 нь ӨМНӨХ ШИЛЖҮҮЛСЭН. Тиймээс энэ файлын
+ * гэрээний ТООЛОЛТ, багц/төрлийн бүлэглэлт БҮГД `where.master`-аар шүүгдэнэ.
+ * Мөнгөн НИЙЛБЭР шүүлтгүй ч зөв гарна (мастер багана үеийн мөрөнд NULL) тул
+ * алдаа нь зөвхөн ТООНД харагдана — хамгийн чимээгүй төрлийн эвдрэл.
  *
  * ⚠️ CASHFLOW2 нь гэрээ бүрийн САНХҮҮЖИЛТИЙН ХУВААРЬ буюу ТӨЛӨВЛӨГӨӨ —
  * «бодитоор олгосон» дүнг эндээс ХЭЗЭЭ Ч гаргаж болохгүй (ирээдүйн сарууд ч
- * орсон байдаг). Бодит олголт нь IPC актын лог (`IPC_LOG` /107)-оос гарна —
- * Finance/ExecKpi/Tsogts бүгд тэндээс уншдаг, тайлан ч мөн адил.
+ * орсон байдаг). Бодит олголт нь IPC актын лог (`IPC_LOG` — `ipc_0813/172`,
+ * 59 мөр)-оос гарна — Finance/ExecKpi/Tsogts бүгд тэндээс уншдаг, тайлан ч
+ * мөн адил.
  *
  * ⚠️ ХӨРӨНГӨ ОРУУЛАЛТЫН ГУРВАН ӨӨР ТОО байдгийг бүү хольж уншаарай:
  *     · 2,333.9 тэрбум — илтгэлийн «гэрээ, захирамжид тусгагдсан» дүн (`brief`)
@@ -34,7 +41,7 @@ import { cached, loadClearance } from '@/lib/live';
 import { layerTotals } from '@/lib/totals';
 import {
   BUILDING, CASHFLOW2, HABEA, IPC_LOG, LAYER_GROUPS, GROUP_LAYERS, LAYER_BY_ID,
-  bagtsKey, pkgKeyOf, laborCompanyFields,
+  bagtsKey, pkgKeyOf, laborCompanyFields, cfMonthAxis, cfMonthKey, ipcNet,
 } from '@/lib/services';
 
 /* ═══════════════ Төрөл ═══════════════ */
@@ -120,7 +127,11 @@ export type ReportExtra = {
      * ⚠️ Олголт БИШ: ирээдүйн сарууд ч орсон тул «олгосон» гэж шошгохгүй.
      */
     months: { label: string; amount: number; cum: number }[];
-    /** Бодитоор олгосон санхүүжилт — IPC актын net (IPC40) нийлбэр, ₮ */
+    /**
+     * Бодитоор олгосон санхүүжилт — IPC актын НИЙЛБЭР, ₮.
+     * ⚠️ Хадгалсан багана байхгүй болсон тул `ipcNet()`-ээр БОДОГДОНО
+     *    (гүйцэтгэлийн дүн − 4 суутгал).
+     */
     paid: number;
     byType: { type: string; n: number; budget: number; contract: number }[];
     /** Багцын түлхүүр (`BagtsRow.key`) → урьдчилсан төсөвт өртөг, ₮ */
@@ -234,13 +245,21 @@ async function loadOverall(): Promise<ReportExtra['overall']> {
     loadBlockProgress(),
     loadPkgLabels(),
     /* Зөвхөн 3 талбар — `loadFinance` нь «*»-оор бүтнээр татдаг ч энэ нь
-       тусдаа кэштэй дуудалт тул хөнгөн байлгав. */
-    queryFeatures(CASHFLOW2.url, { outFields: [F.pkg2, F.pkg, F.budget] }),
+       тусдаа кэштэй дуудалт тул хөнгөн байлгав.
+       ⚠️ `where.master` ЗААВАЛ: төсөв нь ЗӨВХӨН ГЭРЭЭ мөрөнд бичигдсэн бөгөөд
+       үеийн 133 мөр нь багцаа давтдаг тул шүүлтгүй бол нэг гэрээ олон удаа
+       ирж, жин нь худал өснө. */
+    queryFeatures(CASHFLOW2.url, {
+      where: CASHFLOW2.where.master,
+      outFields: [F.pkg2, F.pkg, F.budget],
+    }),
   ]);
 
   /** багцын түлхүүр → урьдчилсан төсөвт өртөг, ₮ */
   const budget = new Map<string, number>();
   cf.forEach((r) => {
+    // ⚠️ `pkg2` (CF007, НАВЧ) ЭХЭЛЖ: `pkg` (CF006) нь дээд багц тул
+    //    «БАГЦ-16.1…16.7»-г НЭГ түлхүүрт нурааж, багцын жин холилдоно.
     // ⚠️ `pkgKeyOf` (bagtsKey БИШ): «БАГЦ 1-4» мэт ДИАПАЗОН мөр хоосон түлхүүр
     //    авах тул бодит «Багц 14»-т харийн төсөв наалдахгүй.
     const k = pkgKeyOf(r[F.pkg2]) || pkgKeyOf(r[F.pkg]);
@@ -439,51 +458,77 @@ async function loadProgress(): Promise<ReportExtra['progress']> {
 
 /* ═══════════════ 9 · Санхүүжилтийн явц ═══════════════ */
 
-/**
- * Жинхэнэ акт мөн үү — "Contract Price" псевдо-мөр, хоосон мөрийг хасна.
- * ⚠️ `Finance.tsx`-ийн `isRealAct`-тай ЯГ ИЖИЛ дүрэм (тэнд export-гүй тул энд
- * давхарлав) — өөрчлөх бол ХОЁУЛАНГ нь хамт засна, эс бөгөөс тайлангийн
- * «олгосон» дүн бусад дэлгэцээс зөрнө.
+/*
+ * ⚠️ 2026-08-31: `isRealAct` (`/^(IPC|APC|АРС)[-\s]?\d+/`) ХАСАГДАВ. Тэр нь
+ * хуучин `IPC_/107`-гийн 90 мөрөөс 31 хог мөрийг (Contract Price псевдо-мөр,
+ * дугааргүй мөр) хасах зориулалттай байсан. Шинэ `ipc_0813/172`-ийн 59 мөр
+ * БҮГД жинхэнэ акт бөгөөд дугаар нь «1,2,3…» тоо (дэлгэцийн «IPC-03» кодыг
+ * `ipcCode()` угсардаг) тул тэр шүүлт БҮХ мөрийг хаяж, олгосон дүн 0 болно.
  */
-const isRealAct = (no: unknown) => /^(IPC|APC|АРС)[-\s]?\d+/i.test(String(no ?? '').trim());
 
 async function loadFinance(): Promise<ReportExtra['finance']> {
   const F = CASHFLOW2.fields;
   const I = IPC_LOG.fields;
   const [rows, ipc] = await Promise.all([
+    /* ⚠️ Мөрийн ГУРВАН төрөл нэг хүснэгтэд (ГЭРЭЭ · САР · ӨМНӨХ ШИЛЖҮҮЛСЭН)
+       тул нэг удаа татаад ЭНД задална — гэрээний тоо/бүлэглэлт мастер мөрөөс,
+       сарын урсгал үеийн мөрөөс. */
     queryFeatures(CASHFLOW2.url, { outFields: ['*'] }),
-    // Бодит олголтод хэрэглэх 3 талбар л хангалттай — «*» бүх баганыг татна
-    queryFeatures(IPC_LOG.url, { outFields: [I.no, I.net, I.pkg] }),
+    /* ⚠️ Олгох дүн одоо БОДОГДОНО (`ipcNet`) тул суутгалын 4 багана хэрэгтэй —
+       хадгалсан `net` багана байхгүй болсон. */
+    queryFeatures(IPC_LOG.url, { outFields: [I.gross, ...IPC_LOG.deductions] }),
   ]);
-  const sum = (f: string) => rows.reduce((a, r) => a + nn(r[f]), 0);
 
+  /** Гэрээний МАСТЕР мөр (76) — гэрээний бүх шинж зөвхөн энд */
+  const master = rows.filter((r) => str(r[F.rowType]) === CASHFLOW2.rows.master);
+  /** Хэмжилттэй мөрүүд (САР + ӨМНӨХ ШИЛЖҮҮЛСЭН, 133) */
+  const periods = rows.filter((r) => str(r[F.rowType]) !== CASHFLOW2.rows.master);
+  const sum = (f: string) => master.reduce((a, r) => a + nn(r[f]), 0);
+
+  /*
+   * САРЫН ХУВААРЬ — үеийн мөрүүдийг `CF003`/`CF004`-ээр бүлэглэнэ.
+   *
+   * ⚠️ Тэнхлэгийг өгөгдөлд БАЙГАА саруудаас угсарч БОЛОХГҮЙ: 2026-01-д ямар ч
+   *    хэмжилт алга тул график нэг сар алгасаж, түүнээс хойшхи бүх багана нэг
+   *    нүд зүүн тийш шилжинэ. `cfMonthAxis()` нь ТАСРАЛТГҮЙ хуанли өгдөг —
+   *    мөргүй сар 0-ээр нөхөгдөнө.
+   * ⚠️ Өссөн дүн (`cum`) МӨН БОДОГДОНО — хуучин «өссөн» багана хасагдсан.
+   * ⚠️ «ӨМНӨХ ШИЛЖҮҮЛСЭН» мөрд сар байхгүй (`cfMonthKey` → null) тул энэ
+   *    цуваанд ОРОХГҮЙ: тэр нь өмнөх оных бөгөөс аль ч сард ногдуулбал
+   *    хуурамч оргил үүснэ.
+   */
+  const byMonth = new Map<string, number>();
+  periods.forEach((r) => {
+    const k = cfMonthKey(r);
+    if (!k) return;
+    byMonth.set(k, (byMonth.get(k) ?? 0) + nn(r[F.amount]));
+  });
   let cum = 0;
-  const months = CASHFLOW2.months.map((m) => {
-    const amount = sum(m.amount);
+  const months = cfMonthAxis().map((m) => {
+    const amount = byMonth.get(m.label) ?? 0;
     cum += amount;
     return { label: m.label, amount, cum };
   });
 
   /*
-   * «Бодитоор олгосон» — IPC актын логоос, `Finance.tsx`-ийн `loadFinDataRaw`-ын
-   * given-тэй ИЖИЛ шүүлтээр (жинхэнэ акт + net ≠ 0 + багцтай мөр): тэгвэл
-   * ExecKpi/Tsogts-ийн «Олгосон (IPC)» нийлбэртэй яг тэнцэнэ.
+   * «Бодитоор олгосон» — IPC актын логийн олгох дүнгийн нийлбэр.
    * ⚠️ Урьд нь CASHFLOW2-ийн сарын ТӨЛӨВЛӨГӨӨГ хуримтлуулж `paid` болгодог
    * байсан нь бодит олголтоос олон дахин их (ирээдүйн саруудыг ч багтаасан)
    * худал тоо байв.
+   * ⚠️ ШҮҮЛТГҮЙ — 59 мөр бүгд жинхэнэ акт. Багцаар шүүх хуучин хамгаалалт ч
+   *    хасагдав: одоо `IPC03` нь багцын НЭР (утга нь «0» байхаа больсон) тул
+   *    тэр шалгуур бодит актуудыг чимээгүй хаядаг.
    */
-  const paid = ipc.reduce((a, r) => {
-    if (!isRealAct(r[I.no])) return a;
-    const net = nn(r[I.net]);
-    if (net === 0) return a;
-    const k = bagtsKey(r[I.pkg]);
-    if (!k || k === '0') return a;
-    return a + net;
-  }, 0);
+  const paid = ipc.reduce((a, r) => a + ipcNet(r), 0);
 
-  /* Төрлөөр — маягтын хоосон утга («0») хасагдана */
+  /*
+   * Төрлөөр — ЗӨВХӨН мастер мөрөөс (эс тэгвээс нэг гэрээ 14 удаа тоологдоно).
+   * ⚠️ Ангилалгүй 4 гэрээ: хуучин схемд `CF002` нь «0» гэсэн ТЕКСТ байсан,
+   *    шинэд `CF005` нь NULL — `str()` хоёуланг нь хоосон болгодог тул энэ
+   *    шалгуур хэвээр ажиллана.
+   */
   const typeMap = new Map<string, { n: number; budget: number; contract: number }>();
-  rows.forEach((r) => {
+  master.forEach((r) => {
     const t = str(r[F.type]);
     if (!t || t === '0') return;
     const e = typeMap.get(t) ?? { n: 0, budget: 0, contract: 0 };
@@ -507,20 +552,28 @@ async function loadFinance(): Promise<ReportExtra['finance']> {
    * наадаг. Диапазон мөр хоосон түлхүүр авах тул аль ч багцад нэмэгдэхгүй.
    *
    * ⚠️ Нэг багцад олон гэрээ ногдож болно (ТЭЗҮ, барилга…) тул НИЙЛБЭР.
+   *
+   * ⚠️ Дэд багц (`CF007`) ЭХЭЛЖ: `CF006` нь дээд багц тул «БАГЦ-16.1…16.7»
+   *    бүгд нэг түлхүүрт нийлж, багцын хүснэгт нэг мөр болж хумигдана.
+   * ⚠️ ЗӨВХӨН мастер мөрөөс — үеийн мөр багцаа давтдаг тул нэг гэрээний төсөв
+   *    14 дахин нэмэгдэнэ (мөнгөн багана NULL тул НИЙТ дүнд илрэхгүй!).
    */
   const byBagts: Record<string, number> = {};
-  rows.forEach((r) => {
+  master.forEach((r) => {
     const k = pkgKeyOf(r[F.pkg2]) || pkgKeyOf(r[F.pkg]);
     if (!k || k === '0') return;
     byBagts[k] = (byBagts[k] ?? 0) + nn(r[F.budget]);
   });
 
   return {
-    rows: rows.length,
+    // ⚠️ Гэрээний тоо = МАСТЕР мөрийн тоо (76), хүснэгтийн бүх мөр (209) БИШ
+    rows: master.length,
     budget: sum(F.budget),
     orderTotal: sum(F.orderTotal),
     contractAmount: sum(F.contractAmount),
-    sources: CASHFLOW2.sources.map((s) => ({ label: s.label, value: sum(s.field) })),
+    // ⚠️ `s.total` — эх үүсвэрийн ГЭРЭЭНИЙ нийт дүн. `s.period` нь тухайн
+    //    үеийн задаргаа тул мастер мөрөнд хоосон.
+    sources: CASHFLOW2.sources.map((s) => ({ label: s.label, value: sum(s.total) })),
     months,
     paid,
     byType: [...typeMap.entries()]

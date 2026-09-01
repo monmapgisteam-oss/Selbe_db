@@ -289,8 +289,10 @@ export function PkgProg({ dim, setDim }: {
       //    бүртгэлгүй» гэхийн оронд ХУДАЛ гүйцэтгэл харуулдаг байв.
       const k2 = pkgKeyOf(r[C.pkg2]);
       const k3 = pkgKeyOf(r[C.pkg]);
+      // ⚠️ Хуучин `k !== '0'` шүүлт ХАСАГДАВ — «0» sentinel нь ХУУЧИН бүдүүвчийн
+      //    үлдэгдэл. Шинэ CF006/CF007-д бөглөөгүй багц нь NULL (pkgKeyOf → '').
       [k2, k3].forEach((k) => {
-        if (k && k !== '0' && !m.has(k)) m.set(k, contractMonths(r, finQ.data.given, finQ.data.phys));
+        if (k && !m.has(k)) m.set(k, contractMonths(r, finQ.data));
       });
     });
     return m;
@@ -791,9 +793,15 @@ function TsKpi({ packs, fin }: { packs: Pack[]; fin: FinData | null }) {
     }
     const gap = planned != null && actual != null ? planned - actual : null;
     const C = CASHFLOW2.fields;
-    const planTotal =
-      fin.contracts.reduce((a, r) => a + nn(r[C.prevAmount]), 0) +
-      months.reduce((a, m) => a + m.amount, 0);
+    /* ⚠️ «Өмнө шилжүүлсэн» нь ГЭРЭЭ тутмын багана БАЙХАА БОЛЬСОН
+       (2026-08-31): шинэ бүдүүвчид зөвхөн `CF002 = 'ӨМНӨХ ШИЛЖҮҮЛСЭН'`
+       гэсэн 2 мөр бий, дүн нь `CF009`-д. Хуучин `prevAmount` (CF028) код
+       одоо санхүүжилтийн ЭХ ҮҮСВЭРИЙН багана — уншвал чимээгүй буруу тоо. */
+    const prevGiven = fin.periods.reduce(
+      (a, r) => a + (r[C.rowType] === CASHFLOW2.rows.prev ? nn(r[C.amount]) : 0),
+      0,
+    );
+    const planTotal = prevGiven + months.reduce((a, m) => a + m.amount, 0);
     let given = 0;
     fin.given.forEach((byMon) => byMon.forEach((v) => { given += v; }));
     return {
@@ -1071,10 +1079,22 @@ function LevelsCard({
  * биет = биет дататай багцуудын дундаж.
  */
 export function aggregateMonths(d: FinData) {
-  /* ⚠️ Сунгасан тэнхлэг — CF-ийн 12 сараас хойшхи бодит утгууд царцахгүй.
-     Сунгасан сард төлөвлөгөөт багана алга (null) тул төлөвлөгөө 0. */
+  /* ⚠️ Сунгасан тэнхлэг — хуваарийн сүүлийн сараас хойшхи бодит утгууд
+     царцахгүй. Сунгасан сард төлөвлөгөө байхгүй тул 0.
+
+     ⚠️ Сарын төлөвлөгөө одоо БАГАНА БИШ (2026-08-31): `cashflow_0813` нь
+     «гэрээ × үе» тутам НЭГ мөртэй тул дүнг `d.plan` (гэрээ → «2026-08» → ₮)
+     газрын зургаас нийлбэрлэж БОДНО.
+
+     ⚠️ Тэнхлэгийг өгөгдөлд БАЙГАА саруудаас угсрахгүй — хэмжилтгүй сар
+     (2026-01) мөр ҮҮСГЭДЭГГҮЙ тул график нэг нүд шилжинэ. `cfMonthAxis()`-ийн
+     тасралтгүй мужийг авч, мөргүй сарыг 0-оор нөхнө. */
   const labels = cfMonthAxis();
-  const planM = labels.map((m) => (m.amount ? d.contracts.reduce((a, r) => a + nn(r[m.amount as string]), 0) : 0));
+  const planM = labels.map((m) => {
+    let s = 0;
+    d.plan.forEach((byMon) => { s += byMon.get(m.label) ?? 0; });
+    return s;
+  });
   const planTotal = planM.reduce((a, b) => a + b, 0);
   let cum = 0;
   return labels.map((m, i) => {
