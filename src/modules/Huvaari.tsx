@@ -1018,7 +1018,10 @@ export function Huvaari() {
                     key={r.oid}
                     r={r}
                     on={sel === r.i}
-                    dirty={draft.has(r.oid)}
+                    /* ⚠️ УЯЛДААНЫ ноорог ч «хадгалаагүй» тэмдэг авна — эс
+                       бөгөөс зөвхөн уялдаа нь өөрчлөгдсөн мөр цэвэр мэт
+                       харагдаж, юу хадгалагдахыг тоолж болохгүй байв. */
+                    dirty={draft.has(r.oid) || ham.has(r.oid)}
                     collapsed={collapsed.has(r.oid)}
                     onToggle={() => setCollapsed((s) => {
                       const m = new Set(s);
