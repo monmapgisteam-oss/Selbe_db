@@ -18,6 +18,18 @@ import { invalidate } from "@/lib/dataBus";
 export type SheetRow = {
   oid: number;
   no: string;
+  /**
+   * АЖЛЫН КОД (`Des_dugaar`) — жаазан дотор ДАВТАГДАХГҮЙ 1…N.
+   * ⚠️ `no` («№») нь бүлэг бүрд 1-ээс дахин эхэлдэг тул давтагдана; энэ нь
+   *    үгүй. Багана байхгүй эсвэл дүүргээгүй үед `null`.
+   */
+  des: number | null;
+  /**
+   * УЯЛДАА (`Hamaaral`) — «18FS3,22SS-5» түүхий текст. Задлалт нь дэлгэцийн
+   * давхаргад (`deps.ts`), энд түүхийгээр нь авч явна: архивын хуулбарт
+   * `raw`-тай хамт өөрчлөлтгүй дамжина. Хоосон бол `null`.
+   */
+  ham: string | null;
   work: string;
   depth: number;
   group: boolean;
@@ -381,6 +393,13 @@ export async function loadRows(
     rows.push({
       oid,
       no,
+      /**
+       * АЖЛЫН КОД — жаазан дотор давтагдахгүй 1…N.
+       * ⚠️ Багана байхгүй / хоосон үйлчилгээнд `null`. Тэглэж болохгүй:
+       *    «код нь 0» гэж харагдвал бөглөөгүйг бөглөсөнтэй андуурна.
+       */
+      des: sc.f.des ? num(a[sc.f.des]) : null,
+      ham: sc.f.ham ? String(a[sc.f.ham] ?? "").trim() || null : null,
       work,
       depth,
       group,
