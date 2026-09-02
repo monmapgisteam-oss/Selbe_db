@@ -803,6 +803,11 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         out.splice(at, 0, {
           oid: a.oid,
           no: a.no,
+          /* ⚠️ Ажлын код нь СЕРВЕР дээр агшин бүрд 1…N-ээр дүүрдэг тул
+             нийтлээгүй шинэ мөрд хараахан БАЙХГҮЙ — `null`. Энд өөрсдөө
+             таамаглаж дугаар өгвөл нийтлэхэд серверийнхтэй зөрнө. */
+          des: null,
+          ham: null,
           work: a.work,
           depth: at > 0 ? out[at - 1].depth : parent.depth + 1,
           group: false,

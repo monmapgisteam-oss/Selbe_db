@@ -32,13 +32,13 @@
 .frame > section { flex: 1; min-height: 0; }
 
 /* ⚠️ Шүүлт · хэрэгсэл · заавар нь ТОГТМОЛ өндөртэй — зөвхөн хүснэгт сунана. */
-.tabs, .plTop, .plHint { flex: none; }
+.plHint { flex: none; }
 
 /* ── Толгойн зурвас ── */
 .head {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   flex: none;
   flex-wrap: wrap;
   padding: 8px 12px;
@@ -73,26 +73,6 @@
   cursor: pointer;
 }
 .save:disabled { opacity: 0.45; cursor: default; }
-
-/* ── Хамралтын үзүүлэлт ── */
-.cov {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 4px 10px;
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-}
-.covLabel {
-  font-size: 10.5px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--ink-3);
-}
-.cov b { font-size: 16px; font-variant-numeric: tabular-nums; }
-.covSub { font-size: 11px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
 
 .err {
   margin: 0;
@@ -156,22 +136,16 @@
   background: var(--surface);
   border-bottom: 1px solid var(--line);
 }
+/* ⚠️ Толгой ба мөрийн багана ЯГ ижил өргөнтэй байх ёстой (`--des-w`,
+   `--ham-w`) — зөрвөл гарчиг утгынхаа дээр таарахгүй. */
+.gSideHead, .row { --des-w: 66px; --ham-w: 62px; }
+.gHeadDes { flex: none; width: var(--des-w); padding-right: 8px; text-align: right; }
+.gHeadHam { flex: none; width: var(--ham-w); text-align: right; }
 .gHeadWork { flex: 1; }
-.gHeadPlan { flex: none; width: 56px; text-align: right; }
-.gHeadBlk { flex: none; width: 38px; text-align: right; }
 .gRight { flex: none; }
 .gTrack { position: relative; }
 
 /* ── Шүүлтийн таб ── */
-.tabs {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  flex: none;
-  padding: 6px 8px;
-  border-bottom: 1px solid var(--line);
-}
 .tab {
   font: inherit;
   font-size: 11.5px;
@@ -183,22 +157,6 @@
   cursor: pointer;
 }
 .tab b { font-variant-numeric: tabular-nums; color: var(--ink-3); }
-
-/**
- * ХАЙЛТ — 1,266 мөрөөс гүйлгэж олох нь өөрөө саад байсан.
- * ⚠️ Мод дотор биш, ДЭЭР нь: хайж буй хүн бүтцийг биш ажлаа хайж байна.
- */
-.search {
-  font: inherit;
-  flex: 1;
-  min-width: 160px;
-  padding: 4px 9px;
-  color: var(--ink);
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-}
-.search::placeholder { color: var(--ink-3); }
 
 /* Шүүлтийн сонголт — таб шиг харагдана, гэхдээ ХОСЛОНО */
 .sel {
@@ -217,6 +175,17 @@
 /* ⚠️ Бүлгийн нэр урт (жиш. «Б1 БАРИЛГЫН АЖИЛ») тул илүү өргөн — 148px-д
    таслагдвал аль бүлэг болох нь танигдахгүй. */
 .selWide { max-width: 260px; }
+/* ⚠️ ШҮҮЛТ ба ХУАНЛИЙН ХЭРЭГСЛИЙН ЗААГ — хоёр бүлэг нэг мөрөнд нийлсэн тул
+   нүдээр ялгах цорын ганц зүйл. Зурвас хоёр мөр болж эвхэгдвэл (нарийн
+   дэлгэц) шугам мөрийн эхэнд үлддэг ч төөрөгдүүлэхгүй: бүлгүүд өөрсдөө
+   дараалснаараа таних боломжтой хэвээр. */
+.tbSep {
+  width: 1px;
+  flex: none;
+  align-self: stretch;
+  margin: 2px 3px;
+  background: var(--line);
+}
 .tab:hover { background: var(--surface-2); }
 .tabOn {
   color: var(--ink);
@@ -228,9 +197,30 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 3px 10px 3px 0;
+  /* ⚠️ Зүүн дүүргэлт ТОГТМОЛ — шатлалын догол мөр нь `.rowTree`-д шилжсэн тул
+     «Ажлын код» багана мөр бүрд нэг босоо шугамд эгнэнэ. Баруун нь толгойн
+     (`.gSideHead`) 8px-тэй ИЖИЛ — зөрвөл сүүлийн багана гарчгаасаа гулсана. */
+  padding: 3px 8px;
   font-size: 12px;
   border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
+}
+/* АЖЛЫН КОД — давтагдашгүй 1…N. Тоо тул tabular, баруун зэрэгцүүлэлттэй. */
+.rowDes {
+  flex: none;
+  width: var(--des-w);
+  padding-right: 8px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-3);
+}
+.rowGroup .rowDes { color: var(--ink-2); }
+/* Шатлалын догол мөрийг зөвхөн ЭНЭ хэсэг үүрнэ — кодын багана хөдлөхгүй. */
+.rowTree {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
 }
 .row:hover { background: var(--surface-2); }
 .row:hover .rowWork { text-decoration: underline; text-underline-offset: 2px; }
@@ -281,26 +271,28 @@
   white-space: nowrap;
 }
 
-/* Хуваарийн товч дүр — гурван тоо */
-.rowPlan {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
+/* УЯЛДАА — «18FS3,22SS» бичиглэл; урт бол таслагдана, бүтэн нь tooltip-д.
+   ⚠️ ТОВЧ: дарахад popup нээгдэж уялдааг тохируулна. */
+.rowHam {
+  font: inherit;
   flex: none;
-  min-width: 56px;
-  justify-content: flex-end;
-  font-variant-numeric: tabular-nums;
-}
-.rowPlan b { color: var(--ink); }
-.rowNone { font-size: 11px; font-style: italic; color: var(--ink-3); }
-
-.rowBlocks {
-  flex: none;
-  min-width: 44px;
+  width: var(--ham-w);
+  padding: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   text-align: right;
-  font-size: 11px;
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
   color: var(--ink-3);
+  background: none;
+  border: 0;
+  cursor: pointer;
 }
+.rowHam:hover { color: var(--data); text-decoration: underline; text-underline-offset: 2px; }
+/* Хоосон нүд үл үзэгдэх товч болохгүй — мөр дээр хулгана очиход «+» гарна */
+.row:hover .rowHam:empty::before { content: '+'; color: var(--ink-3); }
+.row:hover .rowHam:empty:hover::before { color: var(--data); }
 /* ⚠️ Тайлбар нь ЖИШЭЭГЭЭР ярина («5/2 нь 5/1-аас 7 хоногийн дараа») —
    «такт» гэх мэт салбарын нэр томьёо хэрэглэгчид юу ч хэлэхгүй. */
 .dirtyTag {
@@ -311,10 +303,13 @@
   background: var(--data);
   border-radius: 99px;
 }
+/* ⚠️ 120px байсныг НАРИЙСГАВ (2026-09-02): «Алхам» нь 0–365 гэсэн гуравхан
+   оронтой тоо. Хэрэгслүүд нэг мөрөнд нийлсэн тул илүүдэл өргөн нь хайлтын
+   талбарыг шахаж, эрт эвхэгдэхэд хүргэдэг. */
 .numIn {
   font: inherit;
-  width: 120px;
-  padding: 5px 8px;
+  width: 58px;
+  padding: 4px 6px;
   color: var(--ink);
   background: var(--surface-2);
   border: 1px solid var(--line);
@@ -338,19 +333,6 @@
 }
 .discard:hover { color: var(--bad-ink); border-color: var(--bad); }
 .discard:disabled { opacity: 0.45; cursor: default; }
-.spreadBtn {
-  font: inherit;
-  font-size: 11.5px;
-  padding: 4px 10px;
-  color: var(--surface);
-  background: var(--data);
-  border: 1px solid var(--data);
-  border-radius: var(--r-sm);
-  cursor: pointer;
-}
-.spreadBtn { padding: 6px 12px; }
-.spreadBtn:disabled { opacity: 0.4; cursor: default; }
-
 /* ── ХУГАЦААНЫ ЗУРВАС ── */
 .flowNote { font-size: 11px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
 .tlZoom { display: flex; gap: 2px; }
@@ -400,13 +382,6 @@
 }
 
 /* ── ТӨЛӨВЛӨХ ХУАНЛИ ── */
-.plTop {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
-}
 .plField { font-size: 11.5px; color: var(--ink-2); display: inline-flex; align-items: center; gap: 4px; }
 .plHint { margin: 0 0 6px; font-size: 11px; color: var(--ink-3); }
 
@@ -487,6 +462,49 @@
   overflow: hidden;
 }
 .plBarG .plBarLab { color: var(--ink); }
+/* НЭР + ОГНОО нэг шошгонд.
+   ⚠️ Нэр нь АГШИНА (`min-width:0` + ellipsis), огноо нь АГШИХГҮЙ (`flex:none`).
+   Эсрэгээр бол урт нэртэй ажлын огноо таслагдаж, зурвасны гол мэдээлэл
+   болох хугацаа алга болно. */
+.plBarLab:has(.plBarName) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.plBarName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 600;
+}
+.plBarWhen { flex: none; }
+/* УЯЛДААНЫ ЗӨРЧИЛ — шаардлагаас ӨМНӨ эхэлсэн зурвас. Хориглодоггүй тул
+   зөвхөн тод улаан хүрээ: «энэ огноо урд ажилтайгаа зөрж байна» гэсэн дохио. */
+.plBarViol { outline: 2px dashed var(--bad); outline-offset: 1px; }
+
+/* ── УЯЛДААНЫ СУМУУД ── */
+.depSvg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+.depLine {
+  fill: none;
+  stroke: color-mix(in srgb, var(--ink-2) 65%, transparent);
+  color: color-mix(in srgb, var(--ink-2) 65%, transparent);
+  stroke-width: 1.2;
+}
+/* Сонгосон мөрийн холбоосууд — акцентаар тодорно */
+.depHot { fill: none; stroke: var(--data); color: var(--data); stroke-width: 1.8; }
+.depBad { fill: none; stroke: var(--bad); color: var(--bad); stroke-width: 1.5; }
+/* ⚠️ Хошуу нь шугамаасаа өнгө өвлөдөггүй тул ангилал бүрд тусдаа marker */
+.depArrN { fill: color-mix(in srgb, var(--ink-2) 65%, transparent); }
+.depArrH { fill: var(--data); }
+.depArrB { fill: var(--bad); }
+
 /* ИРМЭГИЙН БАРИУЛ — уртасгах */
 /* ⚠️ Бариул нь ҮРГЭЛЖ харагдана. Урьд нь зөвхөн hover дээр гардаг байсан
    тул «уртасгаж болно» гэдгийг мэдэх арга байгаагүй. */
@@ -514,14 +532,9 @@
   .frame { height: auto; min-height: 100%; overflow-y: auto; }
 }
 
-/* ⚠️ ГАР УТАС (2026-08-29): «08-05 · алхам жигд бус · 12/12» гурван тогтмол
-   багана 360px-д ажлын нэрийг НЭГ тэмдэгт болтол шахдаг байв. Нарийн
-   дэлгэцэнд огноог л үлдээж, тайлбар ба блокийн тоог нууна — тэдгээр нь
-   мөр дээр дарахад хуанлид бүтнээрээ харагдана. */
+/* ⚠️ ГАР УТАС: нарийн дэлгэцэнд №-ийн баганыг шахна («Хуваарь»/«блок»
+   багана 2026-09-03-нд бүрмөсөн устсан тул энд нуух зүйл цөөрсөн). */
 @media (max-width: 640px) {
-  .rowPlan { min-width: 0; }
-  .rowPlan .rowNone { display: none; }
-  .rowBlocks { display: none; }
   .rowNo { min-width: 26px; }
 }
 
@@ -605,4 +618,47 @@
    урьдчилан хэлнэ. Тиймээс улаан биш шар. */
 .mdWarn { margin: 0; font-size: 11px; color: var(--warn); }
 .mdAll { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--ink-2); }
+.mdAllChk { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+
+/* ── УЯЛДАА — popup доторх урьдчилагчдын жагсаалт ── */
+.mdDeps {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 0 2px;
+  border-top: 1px solid var(--line);
+}
+.mdDepsHead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+}
+.mdDepsN {
+  padding: 0 6px;
+  font-variant-numeric: tabular-nums;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.mdDepRow { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--ink-2); }
+/* ⚠️ Ажлын нэр урт — сонгогч нь мөрийн үлдсэн зайг бүгдийг авч агшдаг */
+.mdDepWork { flex: 1; min-width: 0; max-width: 100%; }
+.mdDepD { flex: none; color: var(--ink-3); }
+.mdDepX {
+  font: inherit;
+  flex: none;
+  width: 22px;
+  padding: 2px 0;
+  color: var(--ink-3);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.mdDepX:hover { color: var(--bad-ink); border-color: var(--bad); }
 .mdFoot { display: flex; align-items: center; gap: 8px; }
