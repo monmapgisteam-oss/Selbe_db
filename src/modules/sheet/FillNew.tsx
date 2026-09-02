@@ -856,7 +856,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   const todayMs = useMemo(() => inputToMs(today) ?? 0, [today]);
 
   /**
-   * ХУВААРИЙН ДАГУУ — мөр бүр `asOf` огноонд ИДЭВХТЭЙ эсэх.
+   * ХУВААРИЙН ДАГУУ — мөр бүр ӨНӨӨДРИЙН (`todayMs`) огноонд ИДЭВХТЭЙ эсэх.
    *
    * ⚠️ ЗӨВХӨН НАВЧ мөрийг шалгана, бүлгийг ДАГУУЛНА. `calc[i].start` нь
    * бүлэгт хүүхдүүдийнхээ MIN/MAX (`startSrc: "agg"`) тул хоёр хүүхдийн

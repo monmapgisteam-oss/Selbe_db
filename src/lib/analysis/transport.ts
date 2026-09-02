@@ -20,7 +20,7 @@ export const TRANSPORT_FIELDS = {
   purpose: 'Зориулалт_m',
   population: 'Population',
   capacity: 'Huchin_chadal',
-  block: tr('Блокы'),
+  block: 'Блокы',
   zone: 'ZONE_ID',
 } as const;
 
