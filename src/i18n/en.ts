@@ -3221,6 +3221,23 @@ const en: Record<string, string> = {
   "Багцын менежер дээр": "With the package manager",
   "Ерөнхий менежер дээр": "With the general manager",
   "Тайлангийн нас": "Report age",
+  "Нэргүй гэрээ": "Unnamed contract",
+  "Гэрээний паспорт бүртгэлгүй": "No contract passport on record",
+  "Төлөвлөсөн {0}": "Planned {0}",
+  "Паспорт мөрийг устгах": "Delete the passport row",
+  "НИЙТ": "TOTAL",
+  "Суутгал": "Deductions",
+  "Цэвэр дүн": "Net amount",
+  "Бүх талбарыг дэлгэх": "Expand all fields",
+  "Цэвэр олгосон {0}": "Net certified {0}",
+  "Үндсэн": "General",
+  "Захирамж": "Decree",
+  "Эх үүсвэрийн нийт": "Source totals",
+  "Урьдчилгаа": "Advance",
+  "Хөрөнгө оруулалтын хуваарь": "Investment schedule",
+  "дэд нийлбэр {0}": "subtotal {0}",
+  "{0}-р сар": "Month {0}",
+  "Нэмэлт мэдээлэл алга.": "No additional information.",
 };
 
 export default en;
