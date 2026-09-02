@@ -3213,6 +3213,14 @@ const en: Record<string, string> = {
   "Хуваарийн дагуу": "By schedule",
   "Өнөөдөр ({0}) хуваарь нь явж байгаа ажлуудыг л харуулна. Хуваарьгүй ажил нуугдана. Дээрх «Огноо» нь ТАЙЛАНГИЙН огноо — үүнд нөлөөлөхгүй.": "Shows only the tasks whose planned window covers today ({0}). Unscheduled tasks are hidden. The «Огноо» box above is the REPORT date — it does not affect this.",
   "Өнөөдөр ({0}) хуваарьтай ажил алга. Бүх ажлыг харах бол «Хуваарийн дагуу»-г унтраа.": "No task is scheduled for today ({0}). Turn “By schedule” off to see every task.",
+  "… бас {0} анхааруулга": "… and {0} more alerts",
+  "Процессуудад {0} анхааруулга — картан дээр тэмдэглэв.": "{0} alerts across the processes — flagged on the cards.",
+  "Хамралт": "Coverage",
+  "Гүйцэтгэгч дээр": "With the contractor",
+  "Инженер дээр": "With the engineer",
+  "Багцын менежер дээр": "With the package manager",
+  "Ерөнхий менежер дээр": "With the general manager",
+  "Тайлангийн нас": "Report age",
 };
 
 export default en;

@@ -22,8 +22,9 @@
  */
 
 import assert from 'node:assert/strict';
-import { nodeDetail, NODE_SOURCE } from './schemDetail.ts';
+import { nodeDetail, NODE_SOURCE, alertsByCard, worstTone, cardStat } from './schemDetail.ts';
 import { NODES, SOURCE_NAME } from './schem.ts';
+import { FINE_BY_ID, FINE_NODES } from './schemFine.ts';
 import { STATUS, F as HF } from './hyanalt.ts';
 import { TOLOV } from './zovshoorol.ts';
 
@@ -309,5 +310,116 @@ const cyc = (ergelt, oid, over) => ({
   assert.deepEqual(b, a, 'nodeDetail цэвэр биш');
 }
 
+/* ══════════════════ 7. Картын анхааруулга ══════════════════
+ *
+ * ЯМАР БОДИТ АЛДААНААС ХАМГААЛЖ БАЙНА:
+ *  · `Issue.at` нь байхгүй картыг заах — тэр анхааруулга ХААНА Ч гарахгүй
+ *    алга болно (чимээгүй алдагдал).
+ *  · Бүлгийн анхааруулга бүх дэд картад ДАВХАРДАХ — «Зөвшөөрсөн» ногоон карт
+ *    дээр «төлөв танигдсангүй» гэсэн улаан дохио гарна.
+ *  · Ерөнхий схемд `at` хэрэглэгдэх — тэнд «Тайлангүй блок» гэсэн карт
+ *    БАЙХГҮЙ тул анхааруулга хаана ч буухгүй.
+ */
+{
+  /* Бүх `at` нь бодит карт заана */
+  const live = {
+    ...EMPTY,
+    failed: [],
+    zov: [
+      { bagts: 'Багц 1', ner: 'A', tolov: 'unknown', shat: 1, ognoo: null },
+      { bagts: 'Багц 1', ner: 'B', tolov: TOLOV.wait, shat: 2, ognoo: null },
+    ],
+    clearance: { cleared: 1, remaining: 9, remainingHa: 5, total: 10, pct: 10 },
+    habea: { workers: 10, tehnik: 2, incidents: 3 },
+    progress: { blocks: 10, overall: 20, date: '2026-08-30', stalled: 2 },
+    overall: { pct: 20, weightSum: 50, rows: 8 },
+    bagts: [{ key: 'b1', label: 'Багц 1', progress: 20, blocks: 5, missing: 2, ail: 100, contractor: 'X' }],
+    finance: { budget: 100, contractAmount: 150, paid: 200, byBagts: {} },
+  };
+
+  const fine = alertsByCard(live, null, true);
+  for (const [card, list] of fine) {
+    assert.ok(FINE_BY_ID[card], `анхааруулга байхгүй карт дээр буув: «${card}»`);
+    assert.ok(list.length > 0, `${card}: хоосон анхааруулгын жагсаалт`);
+  }
+
+  /* ⚠️ ЗАДАРСАН картад бүлгийн анхааруулга ДАВХАРДААГҮЙ байх ёстой */
+  assert.ok(!fine.has('zovOk'), '«Зөвшөөрсөн» картад бүлгийн анхааруулга давхардав');
+  assert.ok(fine.get('zovNo')?.length, 'танигдаагүй төлөв өөрийн картдаа буусангүй');
+  assert.ok(fine.get('zovWait')?.length, 'огноогүй хүлээлт өөрийн картдаа буусангүй');
+  assert.ok(fine.get('barNo')?.length, 'тайлангүй блок өөрийн картдаа буусангүй');
+  assert.ok(fine.get('habInc')?.length, 'осол зөрчил өөрийн картдаа буусангүй');
+  assert.ok(fine.get('finPaid')?.length, 'олголтын хэтрэлт өөрийн картдаа буусангүй');
+  assert.ok(fine.get('gazLeft')?.length, 'газрын дутуу чөлөөлөлт өөрийн картдаа буусангүй');
+
+  /* Ерөнхий схем — бүлгээр түлхүүрлэнэ, нэг ч анхааруулга алдагдахгүй */
+  const coarse = alertsByCard(live, null, false);
+  for (const key of coarse.keys()) {
+    assert.ok(NODES.some((n) => n.id === key), `ерөнхий схемд танихгүй түлхүүр: «${key}»`);
+  }
+  const nFine = [...fine.values()].reduce((a, l) => a + l.length, 0);
+  const nCoarse = [...coarse.values()].reduce((a, l) => a + l.length, 0);
+  assert.equal(nCoarse, nFine, 'горим солиход анхааруулгын тоо өөрчлөгдөв');
+
+  /* Хамгийн ноцтой өнгө — `none` нь `good`-оос ДЭЭГҮҮР (тодорхойгүйг сайн гэж уншуулахгүй) */
+  assert.equal(worstTone([{ text: '', tone: 'good' }, { text: '', tone: 'none' }]), 'none');
+  assert.equal(worstTone([{ text: '', tone: 'warn' }, { text: '', tone: 'bad' }]), 'bad');
+  assert.equal(worstTone([]), null, 'хоосон жагсаалт өнгө буцаав');
+}
+
+/* ══════════════════ 8. Картын ҮР ДҮН ══════════════════
+ *
+ * ЯМАР БОДИТ АЛДААНААС ХАМГААЛЖ БАЙНА:
+ *  · Карт нэмэгдээд `cardStat`-д мартагдах — тэр карт мөнхөд хоосон үлдэж,
+ *    «шалгаад хэвийн» ба «тооцоологдоогүй» хоёр ялгагдахаа болино.
+ *  · Эх сурвалж унасан үед ТЭГ гарах (`null` ≠ 0 — репогийн гол дүрэм).
+ *  · Унасан үед төлөв нь `good` болох — тодорхойгүйг «хэвийн» гэж уншуулна.
+ */
+{
+  /* Карт БҮР үр дүнтэй байх ёстой */
+  for (const n of FINE_NODES) {
+    const s = cardStat(EMPTY, null, n.id);
+    assert.ok(s, `«${n.id}» картад үр дүн алга — cardStat-д нэмэгдээгүй`);
+    assert.equal(s.value, null, `${n.id}: эх сурвалж унасан атлаа утга гарлаа (${s.value})`);
+    assert.notEqual(s.tone, 'good', `${n.id}: тооцоологдоогүй атлаа «хэвийн» гэв`);
+    assert.ok(s.label, `${n.id}: шошгогүй үр дүн`);
+  }
+
+  /* Амьд өгөгдөл дээр — тоо ба төлөв нь утгатай */
+  const live = {
+    ...EMPTY,
+    failed: [],
+    zov: [
+      { bagts: 'Багц 1', ner: 'A', tolov: TOLOV.ok, shat: 1, ognoo: 1 },
+      { bagts: 'Багц 1', ner: 'B', tolov: 'unknown', shat: 2, ognoo: null },
+    ],
+    clearance: { cleared: 9, remaining: 0, remainingHa: 0, total: 9, pct: 95 },
+    habea: { workers: 200, tehnik: 30, incidents: 0 },
+    progress: { blocks: 10, overall: 80, date: new Date().toISOString().slice(0, 10), stalled: 0 },
+    overall: { pct: 80, weightSum: 100, rows: 10 },
+    bagts: [{ key: 'b1', label: 'Багц 1', progress: 80, blocks: 10, missing: 0, ail: 50, contractor: 'X' }],
+    finance: { budget: 100, contractAmount: 90, paid: 80, byBagts: {} },
+    review: [],
+  };
+  assert.equal(cardStat(live, null, 'gaz').tone, 'good', 'чөлөөлөлт 95% ногоон болсонгүй');
+  assert.equal(cardStat(live, null, 'gazLeft').tone, 'good', 'үлдэгдэл 0 ногоон болсонгүй');
+  assert.equal(cardStat(live, null, 'habInc').tone, 'good', 'осол 0 ногоон болсонгүй');
+  assert.equal(cardStat(live, null, 'zovNo').value, 1, 'татгалзсан+танигдаагүй нийлсэнгүй');
+  assert.equal(cardStat(live, null, 'barOk').value, 10, 'тайлагнасан блок = нийт − тайлангүй биш');
+  /* ⚠️ Осол нь `warn` БИШ `bad` — хүний аюулгүй байдал бусад хоцрогдолтой нэг зэрэгт орохгүй */
+  const inc = cardStat({ ...live, habea: { workers: 1, tehnik: 1, incidents: 3 } }, null, 'habInc');
+  assert.equal(inc.tone, 'bad', 'осол гарсан үед улаан болсонгүй');
+  /* Хуваарь — амьд эх сурвалжгүй тул ҮРГЭЛЖ «—» (`schem.ts`-ийн шийдвэр) */
+  assert.equal(cardStat(live, null, 'huv').value, null, 'хуваарь тоо гаргав');
+}
+
+/* Бүх эх сурвалж унасан үед ч анхааруулга нь ЖИНХЭНЭ картад буна */
+{
+  const fine = alertsByCard(EMPTY, null, true);
+  for (const card of fine.keys()) {
+    assert.ok(FINE_BY_ID[card], `унасан үеийн анхааруулга байхгүй картад: «${card}»`);
+  }
+}
+
 console.log('schemDetail.check: ok — зураглал ✓ мэдээлэлгүй≠тэг ✓ зөвшөөрөл ✓ '
-  + 'багцын задаргаа ✓ ажил≠мөр ✓ төсөвгүй багц ✓ projectWide ✓');
+  + 'багцын задаргаа ✓ ажил≠мөр ✓ төсөвгүй багц ✓ projectWide ✓ анхааруулга ✓ үр дүн ✓');
