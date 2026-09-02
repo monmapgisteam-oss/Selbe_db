@@ -3213,6 +3213,23 @@ const en: Record<string, string> = {
   "Хуваарийн дагуу": "By schedule",
   "Өнөөдөр ({0}) хуваарь нь явж байгаа ажлуудыг л харуулна. Хуваарьгүй ажил нуугдана. Дээрх «Огноо» нь ТАЙЛАНГИЙН огноо — үүнд нөлөөлөхгүй.": "Shows only the tasks whose planned window covers today ({0}). Unscheduled tasks are hidden. The «Огноо» box above is the REPORT date — it does not affect this.",
   "Өнөөдөр ({0}) хуваарьтай ажил алга. Бүх ажлыг харах бол «Хуваарийн дагуу»-г унтраа.": "No task is scheduled for today ({0}). Turn “By schedule” off to see every task.",
+  "Нэргүй гэрээ": "Unnamed contract",
+  "Гэрээний паспорт бүртгэлгүй": "No contract passport on record",
+  "Төлөвлөсөн {0}": "Planned {0}",
+  "Паспорт мөрийг устгах": "Delete the passport row",
+  "НИЙТ": "TOTAL",
+  "Суутгал": "Deductions",
+  "Цэвэр дүн": "Net amount",
+  "Бүх талбарыг дэлгэх": "Expand all fields",
+  "Цэвэр олгосон {0}": "Net certified {0}",
+  "Үндсэн": "General",
+  "Захирамж": "Decree",
+  "Эх үүсвэрийн нийт": "Source totals",
+  "Урьдчилгаа": "Advance",
+  "Хөрөнгө оруулалтын хуваарь": "Investment schedule",
+  "дэд нийлбэр {0}": "subtotal {0}",
+  "{0}-р сар": "Month {0}",
+  "Нэмэлт мэдээлэл алга.": "No additional information.",
 };
 
 export default en;

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, type MouseEvent } from 'react';
+import { useState, useEffect, useMemo, Fragment, type MouseEvent } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { Data, Empty } from '@/components/ui';
 import { useAsync } from '@/lib/useAsync';
@@ -33,6 +33,11 @@ import {
 import {
   buildGroups, type FinKind, type GroupRow,
 } from '@/lib/finGroup';
+import {
+  CF_PERIOD_FIELDS, IPC_MAIN_FIELDS, splitContracts, sumOrNull, groupPeriodsByYear,
+  usedFields, CF_KPI_FIELDS, CF_PASS_GROUPS,
+  dedOrNull, paidOrNull, netOrNull, netTotalOrNull,
+} from '@/lib/finCard';
 import { mnt, num, text, cat } from '@/lib/format';
 import { ResizableTable } from '@/components/ResizableTable';
 import { applyAll } from '@/lib/tableWrite';
@@ -1169,6 +1174,8 @@ function FullTable({
   const [grouped, setGrouped] = useState(true);
   /** Хураасан бүлгийн шошгууд */
   const [shut, setShut] = useState<Set<string>>(new Set());
+  /** IPC-ийн ДЭЛГЭСЭН актууд — дэлгэрэнгүй талбарууд нь мөрийн доор гарна */
+  const [xp, setXp] = useState<Set<number | string>>(new Set());
 
   const dirty = Object.keys(pend).length + adds.length + del.size;
 
@@ -1335,13 +1342,9 @@ function FullTable({
   /**
    * БАГАНА БҮРИЙН ШҮҮЛТИЙН МӨР — хоёр харагдацад ХУВААЛЦАНА.
    *
-   * ⚠️ Багцын блокод ч ЗААВАЛ гарна. Урьд нь зөвхөн бүлэглээгүй хүснэгтэд
-   *    байсан тул анхдагч (бүлэглэсэн) горимд «Багана бүрийн шүүлт» товч
-   *    дарахад ЮУ Ч БОЛДОГГҮЙ байв — товч ажиллаж байгаа мэт харагдаад
-   *    үр дүнгүй.
-   * ⚠️ `flt.col` нь ГАНЦ төлөв: аль ч блокт бичсэн шүүлт БҮХ блокт нэгэн
-   *    зэрэг үйлчилнэ. Блок бүр тусдаа гүйдэг тул оролт нь харж буй блокдоо
-   *    харагдах хэрэгтэй — давхардал нь санаатай.
+   * ⚠️ 2026-09-02: ЗӨВХӨН хавтгай («Багцаар бүлэглэх» унтраалттай) хүснэгтэд.
+   *    Картын загварт багана гэж байхгүй (паспорт + хуваарь) тул товч нь
+   *    тэнд ОГТ ГАРАХГҮЙ — гарч байгаад юу ч хийхгүй байснаас дээр.
    * ⚠️ `ResizableTable` нь `thead tr:last-child > th`-ээр баганын өргөнөө
    *    хэмждэг тул энэ мөр нь `<thead>`-ийн СҮҮЛИЙН `<tr>`, нүд нь ЗААВАЛ
    *    `<th>` байх ёстой (`<td>` бол хэмжилт хоосон буцаж, бариул алга болно).
@@ -1423,6 +1426,570 @@ function FullTable({
       ))}
     </tr>
   ));
+
+  /**
+   * ═══ ЭРГҮҮЛСЭН ХҮСНЭГТ — талбар нь МӨР, бичлэг нь БАГАНА ═══
+   *
+   * ⚠️ 2026-09-02, хэрэглэгчийн заавар: «багц болгоны дотоод мэдээллийг багана
+   *    бүтэцтэй болго — дээд толгойнууд доош үргэлжилсэн, ард талд нь
+   *    мэдээллүүд нь харагддаг болго». Багана бүр = НЭГ бичлэг тул нэг
+   *    гэрээ/актыг дээрээс доош бүтнээр уншина; давтагддаг утга (ангилал,
+   *    багц, гүйцэтгэгч) хажуугаараа зэрэгцэж ялгаа нь нүдэнд шууд харагдана.
+   *
+   * ⚠️ НҮДНИЙ ЛОГИК нь `renderRow`-тэй ЯГ ИЖИЛ — засварын түлхүүр
+   *    `oid:талбар`, `SERVER_RO`, `editText`, `fmtCell`. Эргүүлэлт нь ЗӨВХӨН
+   *    байрлал; өгөгдлийн давхарга огт хөндөгдөхгүй.
+   *
+   * ⚠️ Баганын толгой нь `#1 … #N` — дараалал. OBJECTID ба Гэрээний код
+   *    хасагдсан (хэрэглэгчийн «огт хэрэггүй») тул илүү утгатай танигч
+   *    байхгүй; ялгах утга нь эхний хэдэн мөрд (Үеийн төрөл · Жил · Сар)
+   *    шууд харагдана.
+   */
+  const xCell = (r: Row, oid: number | null, dropped: boolean, c: FieldDef) => {
+    const key = `${oid}:${c.name}`;
+    if (edit && oid != null && !dropped && !SERVER_RO.test(c.name)) {
+      const cur = key in pend ? pend[key] : editText(r[c.name], c.type);
+      return (
+        <td key={key} className={f.cellEdit}>
+          <input
+            className={`${f.cellInput} ${NUMERIC_TYPES.has(c.type) ? 'num' : ''}`}
+            value={cur}
+            onChange={(ev) => {
+              const v = ev.target.value;
+              setPend((p) => {
+                const nx = { ...p };
+                /* Анхны утга руугаа буцвал «засвар» гэж тоолохгүй */
+                if (v === editText(r[c.name], c.type)) delete nx[key];
+                else nx[key] = v;
+                return nx;
+              });
+            }}
+          />
+        </td>
+      );
+    }
+    const cell = fmtCell(r[c.name], c.type, c.name);
+    return (
+      <td key={key} className={`${dropped ? f.xDel : ''} ${cell.num ? `num ${f.cellNum}` : ''}`}>
+        {cell.text}
+      </td>
+    );
+  };
+
+  /** Талбарын мөрийн зүүн хэсэг — нэр + (нээлттэй үед) шүүлтийн оролт */
+  /**
+   * ═══ «А» ЗАГВАР — ПАСПОРТ + ХУВААРЬ (2026-09-02, хэрэглэгчийн сонголт) ═══
+   *
+   * Багц бүрийн дотор ГЭРЭЭ мөр нь «паспорт» (түлхүүр/утгын тор), САР мөрүүд
+   * нь доор нь цэвэр хуваарийн хүснэгт. IPC-д акт бүр нэг мөр — мөнгөний зам
+   * (гүйцэтгэл → суутгал → цэвэр → шилжүүлсэн), үлдсэн талбар нь мөрийг
+   * дэлгэхэд гарна.
+   *
+   * ⚠️ Яагаад: хоёр төрлийн мөр нэг торонд байхад аль ч чиглэлд нүдний тал нь
+   *    ҮРГЭЛЖ хоосон байв. Салгаснаар хоосон нүд алга болно, талбар ХАСАГДАХГҮЙ.
+   * ⚠️ Засвар хэвээр: нүд бүр эх мөрийн нэг талбар (`oid:талбар`).
+   */
+
+  /** Паспорт/дэлгэрэнгүйн нэг утга — унших эсвэл засах. `xCell`-тэй ИЖИЛ дүрэм. */
+  const passVal = (r: Row, oid: number | null, dropped: boolean, c: FieldDef) => {
+    const key = `${oid}:${c.name}`;
+    if (edit && oid != null && !dropped && !SERVER_RO.test(c.name)) {
+      const cur = key in pend ? pend[key] : editText(r[c.name], c.type);
+      return (
+        <input
+          className={`${f.cellInput} ${NUMERIC_TYPES.has(c.type) ? 'num' : ''}`}
+          value={cur}
+          onChange={(ev) => {
+            const v = ev.target.value;
+            setPend((p) => {
+              const nx = { ...p };
+              if (v === editText(r[c.name], c.type)) delete nx[key];
+              else nx[key] = v;
+              return nx;
+            });
+          }}
+        />
+      );
+    }
+    const cell = fmtCell(r[c.name], c.type, c.name);
+    return cell.text === ''
+      ? <span className={f.pEmpty}>—</span>
+      : <span className={cell.num ? 'num' : undefined}>{cell.text}</span>;
+  };
+
+  /* Багануудын хуваарилалт — хуваарийнх нь `finCard.CF_PERIOD_FIELDS`,
+     үлдсэн нь паспорт. IPC: үндсэн баганууд + дэлгэрэнгүй. */
+  const schedCols = useMemo(
+    () => CF_PERIOD_FIELDS
+      .map((n) => cols.find((c) => c.name === n))
+      .filter((c): c is FieldDef => c != null),
+    [cols],
+  );
+  const passCols = useMemo(
+    () => cols.filter((c) => !CF_PERIOD_FIELDS.includes(c.name)
+      && c.name !== CASHFLOW2.fields.rowType),
+    [cols],
+  );
+  const ipcMainCols = useMemo(
+    () => IPC_MAIN_FIELDS
+      .map((n) => cols.find((c) => c.name === n))
+      .filter((c): c is FieldDef => c != null),
+    [cols],
+  );
+  const ipcDetailCols = useMemo(
+    () => cols.filter((c) => !IPC_MAIN_FIELDS.includes(c.name)),
+    [cols],
+  );
+
+  /** Хуваарийн толгойд «Үүнээс: » угтварыг хасна — багана бүрт давтагдаад нэмэргүй */
+  const shortLabel = (name: string) => finFieldLabel(name).replace(/^Үүнээс:\s*/, '');
+
+  /** Толгой баруун зэрэгцэх үү — мөнгөн багана тийм, он·сар·дугаар үгүй */
+  const thRight = (c: FieldDef) => NUMERIC_TYPES.has(c.type) && !PLAIN_INT.has(c.name);
+
+  const toggleDel = (oid: number) => setDel((sd) => {
+    const nx = new Set(sd);
+    if (nx.has(oid)) nx.delete(oid); else nx.add(oid);
+    return nx;
+  });
+
+  /**
+   * ═══ БАГЦЫН КАРТ — 2026-09-02-нд БҮРЭН ДАХИН загварчилсан ═══
+   *
+   * Хэрэглэгчийн заавар: «багц болгоны бүх мэдээллийг маш ойлгомжтой, бүрэн,
+   * бүгдийг нь харж болохуйц». Уншлагын карт нь ШАТЛАЛТАЙ:
+   *
+   *   1. Нэр + гүйцэтгэгч (толгой)
+   *   2. Мөнгөний ГОЛ дүнгүүд — KPI зурвас (төсөв → захирамж → гэрээ → төлөвлөсөн)
+   *   3. Хөрөнгө оруулалтын хуваарь — ОН ДОТРОО САР САРААР, оны дэд нийлбэртэй
+   *   4. Дэлгэрэнгүй — үлдсэн талбарууд утгаараа бүлэглэгдэж (Захирамж · Гэрээ ·
+   *      Эх үүсвэр · Урьдчилгаа · Бусад)
+   *
+   * ⚠️ ХООСОН талбар уншлагад ГАРАХГҮЙ — хорин «—» нь мэдээлэл биш чимээ байсан
+   *    нь өмнөх загварыг «бүрэн биш» мэт харагдуулж байв. Бүрэн байдлын
+   *    баталгаа нь `finCard.check`: талбар бүр толгой/KPI/бүлгийн аль нэгэнд
+   *    ЗААВАЛ харьяалагдана — утгатай бол ГАРЦААГҮЙ харагдана.
+   * ⚠️ ЗАСВАРЫН горимд карт нь БҮХ талбараа дэлгэнэ (хоосныг нь ч) — эс бөгөөс
+   *    хоосон талбарыг бөглөх боломжгүй болно. Нүд бүр `oid:талбар` хэвээр.
+   */
+
+  /** KPI хавтан — утгагүй бол ОГТ зурагдахгүй (0 худал) */
+  const kpiTile = (label: string, v: number | null) => (v == null ? null : (
+    <div key={label} className={f.kpi}>
+      <span className={f.kpiL}>{label}</span>
+      <span className={`${f.kpiV} num`}>{num(v)} <i>₮</i></span>
+    </div>
+  ));
+
+  /** Тоон утга авах — хоосон/танигдахгүй бол null */
+  const numOrNull = (v: unknown): number | null => {
+    if (v == null || v === '') return null;
+    const x = Number(v);
+    return Number.isFinite(x) ? x : null;
+  };
+
+  const cfCards = (list: GroupRow[]) => splitContracts(list).map((ct, ci) => {
+    const m = ct.master;
+    const mo = m?.oid ?? null;
+    const mDrop = mo != null && del.has(mo);
+    const prows = ct.periods.map((p) => p.row);
+    const planned = sumOrNull(prows, CASHFLOW2.fields.amount);
+    const title = m
+      ? text(m.row[CASHFLOW2.fields.name], tr('Нэргүй гэрээ'))
+      : tr('Гэрээний паспорт бүртгэлгүй');
+    const sub = m
+      ? [text(m.row[CASHFLOW2.fields.contractor], ''), text(m.row[CASHFLOW2.fields.type], '')]
+        .filter(Boolean).join(' · ')
+      : '';
+
+    /* ══ ЗАСВАРЫН ГОРИМ — бүх талбар дэлгэгдэнэ, хоосон нь ч бөглөгдөнө ══ */
+    if (edit) {
+      return (
+        <div key={ct.geree || `c-${ci}`} className={f.cCard}>
+          <div className={f.cHead}>
+            <span className={`${f.cTitle} ${mDrop ? f.xDel : ''}`}>{title}</span>
+            {edit && canRow && mo != null && (
+              <button
+                type="button"
+                className={f.rowBtn}
+                title={mDrop ? tr('Устгахаа болих') : tr('Паспорт мөрийг устгах')}
+                onClick={() => toggleDel(mo)}
+              >
+                {mDrop ? '↩' : '×'}
+              </button>
+            )}
+          </div>
+          {m && (
+            <dl className={f.pass}>
+              {passCols.map((c) => (
+                <div key={c.name} className={f.pf}>
+                  <dt title={c.name}>{finFieldLabel(c.name)}</dt>
+                  <dd>{passVal(m.row, mo, mDrop, c)}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+          {ct.periods.length > 0 && (
+            <div className={f.tscroll}>
+              <table className={`${f.tbl} ${f.sTbl}`}>
+                <thead>
+                  <tr>
+                    {schedCols.map((c) => (
+                      <th key={c.name} title={c.name} className={thRight(c) ? f.thR : undefined}>
+                        {shortLabel(c.name)}
+                      </th>
+                    ))}
+                    {canRow && <th className={f.rowBtnCell} aria-label={tr('Мөр')} />}
+                  </tr>
+                </thead>
+                <tbody>
+                  {ct.periods.map((p, i) => {
+                    const dropped = p.oid != null && del.has(p.oid);
+                    return (
+                      <tr key={p.oid ?? `p-${i}`} className={`${f.dRow} ${dropped ? f.rowDel : ''}`}>
+                        {schedCols.map((c) => xCell(p.row, p.oid, dropped, c))}
+                        {canRow && (
+                          <td className={f.rowBtnCell}>
+                            {p.oid != null && (
+                              <button
+                                type="button"
+                                className={f.rowBtn}
+                                title={dropped ? tr('Устгахаа болих') : tr('Мөр устгах')}
+                                onClick={() => toggleDel(p.oid as number)}
+                              >
+                                {dropped ? '↩' : '×'}
+                              </button>
+                            )}
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    /* ══ УНШЛАГЫН КАРТ ══ */
+    const kpis = [
+      ...CF_KPI_FIELDS.map((n) => kpiTile(finFieldLabel(n), m ? numOrNull(m.row[n]) : null)),
+      kpiTile(tr('Төлөвлөсөн'), planned),
+    ].filter(Boolean);
+
+    /* Хуваарийн баганууд — Сарын дүн ҮРГЭЛЖ, бусад нь утгатай бол л */
+    const schedUse = schedCols.filter((c) => c.name !== CASHFLOW2.fields.year
+      && c.name !== CASHFLOW2.fields.monthNo
+      && (c.name === CASHFLOW2.fields.amount
+        || usedFields(prows, [c.name]).length > 0));
+
+    const detail = m
+      ? CF_PASS_GROUPS
+        .map((gp) => ({
+          label: gp.label,
+          fields: gp.fields
+            .map((n) => cols.find((c) => c.name === n))
+            .filter((c): c is FieldDef => c != null)
+            .filter((c) => {
+              const v = m.row[c.name];
+              return !(v == null || v === '');
+            }),
+        }))
+        .filter((gp) => gp.fields.length > 0)
+      : [];
+
+    return (
+      <div key={ct.geree || `c-${ci}`} className={f.cCard}>
+        <div className={f.cHead2}>
+          <div className={f.cName}>{title}</div>
+          {sub && <div className={f.cSub}>{sub}</div>}
+        </div>
+
+        {kpis.length > 0 && <div className={f.kpiRow}>{kpis}</div>}
+
+        {ct.periods.length > 0 && (
+          <div className={f.secBox}>
+            <div className={f.secLbl}>{tr('Хөрөнгө оруулалтын хуваарь')}</div>
+            <div className={f.tscroll}>
+              <table className={`${f.tbl} ${f.sTbl}`}>
+                <thead>
+                  <tr>
+                    <th>{tr('Сар')}</th>
+                    {schedUse.map((c) => (
+                      <th key={c.name} title={c.name} className={thRight(c) ? f.thR : undefined}>
+                        {shortLabel(c.name)}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                {groupPeriodsByYear(ct.periods).map((yg) => {
+                  const ySum = sumOrNull(yg.rows.map((r2) => r2.row), CASHFLOW2.fields.amount);
+                  return (
+                    <tbody key={yg.year || '—'}>
+                      {/* ОН — секцийн толгой, оны дэд нийлбэртэй */}
+                      <tr className={f.yRow}>
+                        <td colSpan={1 + schedUse.length}>
+                          <b className="num">{yg.year || '—'}</b>
+                          {ySum != null && (
+                            <span className={`${f.ySub} num`}>{tr('дэд нийлбэр {0}', num(ySum))}</span>
+                          )}
+                        </td>
+                      </tr>
+                      {yg.rows.map((p, ri) => (
+                        <tr key={p.oid ?? `p-${yg.year}-${ri}`} className={f.dRow}>
+                          {p.row[CASHFLOW2.fields.rowType] !== CASHFLOW2.rows.month ? (
+                            <td className={f.rowKind}>
+                              {text(p.row[CASHFLOW2.fields.rowType], '—')}
+                            </td>
+                          ) : (
+                            <td className="num">
+                              {tr('{0}-р сар', String(p.row[CASHFLOW2.fields.monthNo] ?? '—'))}
+                            </td>
+                          )}
+                          {schedUse.map((c) => xCell(p.row, p.oid, false, c))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  );
+                })}
+                <tbody>
+                  {/* ⚠️ НИЙТ — бүх мөр хоосон багана «—», 0 БИШ (утгын занга) */}
+                  <tr className={f.sTotal}>
+                    <td>{tr('НИЙТ')}</td>
+                    {schedUse.map((c) => {
+                      const t2 = sumOrNull(prows, c.name);
+                      return (
+                        <td key={c.name} className={`num ${f.cellNum}`}>
+                          {t2 == null ? '—' : num(t2)}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {detail.length > 0 && (
+          <div className={f.detWrap}>
+            {detail.map((gp) => (
+              <div key={gp.label} className={f.dGrp}>
+                <span className={f.dLbl}>{gp.label}</span>
+                <div className={f.dItems}>
+                  {gp.fields.map((c) => {
+                    const cell = fmtCell((m as GroupRow).row[c.name], c.type, c.name);
+                    return (
+                      <span key={c.name} className={f.dItem} title={c.name}>
+                        <i>{finFieldLabel(c.name)}</i>
+                        <b className={cell.num ? 'num' : undefined}>{cell.text || '—'}</b>
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  });
+
+  /** IPC — актын урсгал: дүн → суутгал → цэвэр → шилжүүлсэн; дэлгэхэд бүх талбар */
+  const ipcTable = (list: GroupRow[]) => {
+    const IPS = IPC_LOG.fields;
+    const rowsOnly = list.map((p) => p.row);
+    const grossTot = sumOrNull(rowsOnly, IPS.gross);
+    let dedTot: number | null = null;
+    let paidTot: number | null = null;
+    for (const r of rowsOnly) {
+      const d2 = dedOrNull(r);
+      if (d2 != null) dedTot = (dedTot ?? 0) + d2;
+      const p2 = paidOrNull(r);
+      if (p2 != null) paidTot = (paidTot ?? 0) + p2;
+    }
+    const netTot = netTotalOrNull(rowsOnly);
+    const nCols = 1 + ipcMainCols.length + 3 + (edit && canRow ? 1 : 0);
+    return (
+      <div>
+        {/* Мөнгөний зам — багцын нийлбэрээр: гүйцэтгэл → суутгал → цэвэр → шилжүүлсэн */}
+        <div className={f.kpiRow}>
+          {kpiTile(finFieldLabel(IPS.gross), grossTot)}
+          {kpiTile(tr('Суутгал'), dedTot)}
+          {kpiTile(tr('Цэвэр дүн'), netTot)}
+          {kpiTile(tr('Шилжүүлсэн'), paidTot)}
+        </div>
+      <div className={f.tscroll}>
+        <table className={`${f.tbl} ${f.sTbl}`}>
+          <thead>
+            <tr>
+              <th className={f.xpCell} aria-label={tr('Дэлгэрэнгүй')} />
+              {ipcMainCols.map((c) => (
+                <th key={c.name} title={c.name} className={thRight(c) ? f.thR : undefined}>
+                  {finFieldLabel(c.name)}
+                </th>
+              ))}
+              {/* Бодогдсон баганууд — хадгалагддаг талбар БИШ тул засагдахгүй */}
+              <th className={f.thR}>{tr('Суутгал')}</th>
+              <th className={f.thR}>{tr('Цэвэр дүн')}</th>
+              <th className={f.thR}>{tr('Шилжүүлсэн')}</th>
+              {edit && canRow && <th className={f.rowBtnCell} aria-label={tr('Мөр')} />}
+            </tr>
+          </thead>
+          <tbody>
+            {list.map((p, i) => {
+              const dropped = p.oid != null && del.has(p.oid);
+              const k = p.oid ?? `i-${i}`;
+              const isOpen = xp.has(k);
+              const ded = dedOrNull(p.row);
+              const net = netOrNull(p.row);
+              const paid = paidOrNull(p.row);
+              const stv = text(p.row[IPS.status], '');
+              /* ⚠️ Уншлагад УТГАТАЙ талбар л дэлгэгдэнэ — хорин «—» нь чимээ.
+                 Засварт БҮГД гарна, эс бөгөөс хоосон талбар бөглөгдөхгүй. */
+              const dCols = edit ? ipcDetailCols : ipcDetailCols.filter((c2) => {
+                const v2 = p.row[c2.name];
+                return !(v2 == null || v2 === '');
+              });
+              return (
+                <Fragment key={k}>
+                  <tr className={`${f.dRow} ${dropped ? f.rowDel : ''}`}>
+                    <td className={f.xpCell}>
+                      <button
+                        type="button"
+                        className={f.xpBtn}
+                        aria-expanded={isOpen}
+                        title={tr('Бүх талбарыг дэлгэх')}
+                        onClick={() => setXp((sx) => {
+                          const nx = new Set(sx);
+                          if (nx.has(k)) nx.delete(k); else nx.add(k);
+                          return nx;
+                        })}
+                      >
+                        {isOpen ? '▾' : '▸'}
+                      </button>
+                    </td>
+                    {ipcMainCols.map((c) => {
+                      /* Төлөв нь ЧИП — өнгө = утга (батлагдсан/хянагдаж буй) */
+                      if (c.name === IPS.status && !edit) {
+                        const cls = stv === IPC_LOG.statuses.approved ? f.chipOk
+                          : stv === IPC_LOG.statuses.review ? f.chipWarn : '';
+                        return (
+                          <td key={c.name}>
+                            {stv ? <span className={`${f.chip} ${cls}`}>{stv}</span> : '—'}
+                          </td>
+                        );
+                      }
+                      return xCell(p.row, p.oid, dropped, c);
+                    })}
+                    <td className={`num ${f.cellNum}`}>{ded == null ? '—' : `−${num(ded)}`}</td>
+                    <td className={`num ${f.cellNum} ${f.cellStrong}`}>{net == null ? '—' : num(net)}</td>
+                    <td className={`num ${f.cellNum}`}>{paid == null ? '—' : num(paid)}</td>
+                    {edit && canRow && (
+                      <td className={f.rowBtnCell}>
+                        {p.oid != null && (
+                          <button
+                            type="button"
+                            className={f.rowBtn}
+                            title={dropped ? tr('Устгахаа болих') : tr('Мөр устгах')}
+                            onClick={() => toggleDel(p.oid as number)}
+                          >
+                            {dropped ? '↩' : '×'}
+                          </button>
+                        )}
+                      </td>
+                    )}
+                  </tr>
+                  {isOpen && (
+                    <tr className={f.xpRow}>
+                      <td colSpan={nCols}>
+                        {dCols.length === 0 ? (
+                          <p className={f.cEmpty}>{tr('Нэмэлт мэдээлэл алга.')}</p>
+                        ) : (
+                        <dl className={f.pass}>
+                          {dCols.map((c) => (
+                            <div key={c.name} className={f.pf}>
+                              <dt title={c.name}>{finFieldLabel(c.name)}</dt>
+                              <dd className={NUMERIC_TYPES.has(c.type) ? (PLAIN_INT.has(c.name) ? 'num' : `num ${f.pMoney}`) : undefined}>
+                                {passVal(p.row, p.oid, dropped, c)}
+                              </dd>
+                            </div>
+                          ))}
+                        </dl>
+                        )}
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
+            <tr className={f.sTotal}>
+              <td colSpan={1 + Math.max(0, ipcMainCols.length - 1)}>{tr('НИЙТ')}</td>
+              <td className={`num ${f.cellNum}`}>{grossTot == null ? '—' : num(grossTot)}</td>
+              <td className={`num ${f.cellNum}`}>{dedTot == null ? '—' : `−${num(dedTot)}`}</td>
+              <td className={`num ${f.cellNum}`}>{netTot == null ? '—' : num(netTot)}</td>
+              <td className={`num ${f.cellNum}`}>{paidTot == null ? '—' : num(paidTot)}</td>
+              {edit && canRow && <td className={f.rowBtnCell} />}
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      </div>
+    );
+  };
+
+
+  /**
+   * НИЙТЛЭЭГҮЙ ШИНЭ МӨРҮҮД — мөн ЭРГҮҮЛСЭН.
+   * ⚠️ Эдгээрт OID БАЙХГҮЙ тул засвар нь `pend` биш `adds[ai]`-д бичигдэнэ.
+   *    Хоёрыг холивол нийтлэхэд шинэ мөр «байхгүй OID»-гоор шинэчлэл болж
+   *    сервер алдаа буцаана.
+   */
+  const xAddTable = () => (
+    <table className={`${f.tbl} ${f.xTbl}`}>
+      <thead>
+        <tr>
+          <th className={f.xField} aria-label={tr('Талбар')} />
+          {adds.map((_, ai) => (
+            <th key={`nh-${ai}`} className={f.xHd}>
+              <span className="num">{`#${ai + 1}`}</span>
+              {canRow && (
+                <button
+                  type="button"
+                  className={f.rowBtn}
+                  title={tr('Мөр хасах')}
+                  onClick={() => setAdds((s) => s.filter((_, k) => k !== ai))}
+                >×</button>
+              )}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {cols.map((c) => (
+          <tr key={c.name} className={f.dRow}>
+            <th scope="row" title={c.name} className={f.xField}>{finFieldLabel(c.name)}</th>
+            {adds.map((a, ai) => (
+              <td key={`n-${ai}-${c.name}`} className={f.cellEdit}>
+                {SERVER_RO.test(c.name) ? null : (
+                  <input
+                    className={`${f.cellInput} ${NUMERIC_TYPES.has(c.type) ? 'num' : ''}`}
+                    value={a[c.name] ?? ''}
+                    onChange={(ev) => {
+                      const v = ev.target.value;
+                      setAdds((s) => s.map((x, k) => (k === ai ? { ...x, [c.name]: v } : x)));
+                    }}
+                  />
+                )}
+              </td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
 
   /* ══════════ Мөрийн зурагдалт — бүлэглэсэн ба энгийн горимд ХУВААЛЦАНА ══════════ */
   const renderRow = (r: Row, i: number) => {
@@ -1588,6 +2155,10 @@ function FullTable({
           >
             {tr('Багцаар бүлэглэх')}
           </button>
+          {/* ⚠️ Багана бүрийн шүүлт нь зөвхөн ХАВТГАЙ хүснэгтэд — картын
+              загварт багана биш паспорт/хуваарь тул утгагүй. Багц·он·төрлийн
+              нүүр ба чөлөөт хайлт картад ч үйлчилнэ. */}
+          {!grouped && (
           <button
             type="button"
             className={`${f.finTgl} ${colOpen ? f.finTglOn : ''}`}
@@ -1597,6 +2168,7 @@ function FullTable({
           >
             {tr('Багана бүрийн шүүлт')}
           </button>
+          )}
           <span className={`${f.finCount} num`}>
             {active
               ? tr('{0} → {1} мөр', num(rows.length), num(shown.length))
@@ -1625,6 +2197,10 @@ function FullTable({
             )}
             {packs.map((p) => {
               const off = shut.has(p.key);
+              /* Багцын нийлбэр — бүгд хоосон бол ОГТ бичихгүй (0 худал) */
+              const hdSum = kind === 'cf'
+                ? sumOrNull(p.rows.map((g) => g.row), CASHFLOW2.fields.amount)
+                : netTotalOrNull(p.rows.map((g) => g.row));
               return (
               <section key={p.key} className={f.bBox}>
                 {/* ⚠️ Багцын нэр нь ХҮСНЭГТЭЭС ГАДУУР: доторх хүснэгт нь хэвтээ
@@ -1643,36 +2219,15 @@ function FullTable({
                   <span className={f.grpCaret}>{off ? '▸' : '▾'}</span>
                   {p.pkg}
                   <span className={`${f.grpCnt} num`}>{tr('{0} мөр', num(p.count))}</span>
+                  {hdSum != null && (
+                    <span className={`${f.bSum} num`}>
+                      {kind === 'cf' ? tr('Төлөвлөсөн {0}', mnt(hdSum)) : tr('Цэвэр олгосон {0}', mnt(hdSum))}
+                    </span>
+                  )}
                 </button>
-                {!off && (
-                <div className={f.bScroll}>
-                  <table className={f.tbl}>
-                    <thead>
-                      <tr>
-                        {edit && canRow && <th className={f.rowBtnCell} aria-label={tr('Мөр')} />}
-                        {/* ⚠️ БҮХ багана — багцын БҮХ мэдээлэл харагдана
-                            (хэрэглэгчийн шаардлага). Блок нь өөрөө хэвтээ
-                            гүйнэ, хуудас бүхэлдээ БИШ. */}
-                        {cols.map((c) => (
-                          <th
-                            key={c.name}
-                            title={c.name}
-                            className={flt.col[c.name]?.trim() ? f.thOn : undefined}
-                          >
-                            {finFieldLabel(c.name)}
-                          </th>
-                        ))}
-                      </tr>
-                      {colOpen && filterRow()}
-                    </thead>
-                    <tbody>
-                      {/* ⚠️ ОНООР дэд бүлэг ҮҮСГЭХГҮЙ (хэрэглэгчийн заавар):
-                          мөрүүд эх дараалалаараа урсана, он нь ердийн багана. */}
-                      {p.rows.map((g: GroupRow, i: number) => renderRow(g.row, i))}
-                    </tbody>
-                  </table>
-                </div>
-                )}
+                {/* «А» загвар: Cashflow → гэрээ бүрд паспорт + хуваарь;
+                    IPC → актын урсгал. Хэвтээ гүйлт нь хүснэгт ДОТРОО (`.tscroll`). */}
+                {!off && (kind === 'cf' ? cfCards(p.rows) : ipcTable(p.rows))}
               </section>
               );
             })}
@@ -1688,18 +2243,8 @@ function FullTable({
                   {tr('Нийтлээгүй шинэ мөр')}
                   <span className={`${f.grpCnt} num`}>{tr('{0} мөр', num(adds.length))}</span>
                 </div>
-                <div className={f.bScroll}>
-                  <table className={f.tbl}>
-                    <thead>
-                      <tr>
-                        {canRow && <th className={f.rowBtnCell} aria-label={tr('Мөр')} />}
-                        {cols.map((c) => (
-                          <th key={c.name} title={c.name}>{finFieldLabel(c.name)}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>{addRows()}</tbody>
-                  </table>
+                <div className={f.tscroll}>
+                  {xAddTable()}
                 </div>
               </section>
             )}
