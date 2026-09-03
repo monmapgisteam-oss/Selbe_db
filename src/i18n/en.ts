@@ -2353,7 +2353,6 @@ const en: Record<string, string> = {
   "Энэ багцын өнөөдрийн гүйцэтгэл аль хэдийн илгээгдсэн — хяналтаас буцаалт ирэх хүртэл засах боломжгүй.": "Today's progress for this package has already been submitted — editing is locked until it is returned from review.",
   "ЗӨВШӨӨРСӨН — дахин дарвал буцаана": "APPROVED — click again to undo",
   "Өмнөх агшнаас ӨӨРЧЛӨГДСӨН — дарж зөвшөөрнө үү": "CHANGED from the previous snapshot — click to approve",
-  "Мөрийн Обьём {0} · бөглөсөн {1} = {2}": "Row volume {0} · entered {1} = {2}",
   "обьём": "volume",
   "Дарж календараар сонгоно": "Click to pick from the calendar",
   "Энэ нүд засагдахгүй.": "This cell is not editable.",
@@ -3242,6 +3241,14 @@ const en: Record<string, string> = {
   "Бусад хэсэг ажиллаж байгаа — цэсээр өөр харагдац руу шилжиж болно.": "The rest of the portal is still working — use the menu to switch to another view.",
   "«{0}» нээгдсэнгүй": "“{0}” could not be opened",
   "Самбар нээгдсэнгүй": "The panel could not be opened",
+  "Буулгасан утгууд тоо биш байна — юу ч бичигдсэнгүй.": "The pasted values are not numbers — nothing was written.",
+  "Буулгах боломжтой нүд таарсангүй.": "No editable cell matched the paste.",
+  "{0} нүдэнд утга БУУРНА": "the value DROPS in {0} cells",
+  "{0} нүдэнд мөрийн Обьёмоос ХЭТЭРНЭ": "the row Volume is EXCEEDED in {0} cells",
+  "{0} нүд бичих гэж байна.\n{1}.\nҮргэлжлүүлэх үү?": "About to write {0} cells.\n{1}.\nContinue?",
+  "{0} нүд бичигдлээ · {1} алгасав": "{0} cells written · {1} skipped",
+  "{0} нүд бичигдлээ": "{0} cells written",
+  "Мөрийн Обьём {0} · бөглөсөн {1} = {2}\nExcel-ээс олон нүдийг хуулж Ctrl+V дарж болно.": "Row volume {0} · entered {1} = {2}\nYou can copy a block from Excel and press Ctrl+V."
 };
 
 export default en;
