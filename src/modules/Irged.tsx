@@ -39,7 +39,8 @@ import { useAsync } from '@/lib/useAsync';
 import { queryCount } from '@/lib/query';
 import { BENEFITS, HEADLINE, SOCIAL } from '@/lib/brief';
 import {
-  IRGED_ORTHO, IRGED_ROAD, IRGED_SCENE, IRGED_TOILET, LAYER_BY_ID, PKG_BY_FAMILY,
+  IRGED_BUILT, IRGED_BUILT_DEF, IRGED_ORTHO, IRGED_ROAD, IRGED_SCENE, IRGED_TOILET,
+  LAYER_BY_ID, PKG_BY_FAMILY,
 } from '@/lib/services';
 import { num } from '@/lib/format';
 /**
@@ -128,7 +129,9 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    * ортофотогийн оронд тэдгээр гарч ирнэ.
    */
   const base = useMemo(() => {
-    const own = is2d ? [IRGED_TOILET.id, ...SOC_IDS] : [IRGED_TOILET.id];
+    /* ⚠️ Гэр хорооллын барилга нь ПОЛИГОН — 3D-д меш газрыг бүрхэх тул
+       дотор нь алга болно (нийгмийн барилгатай ЯГ ижил шалтгаан). */
+    const own = is2d ? [IRGED_TOILET.id, IRGED_BUILT.id, ...SOC_IDS] : [IRGED_TOILET.id];
     return is2d ? [IRGED_ORTHO.id, ...ALWAYS, ...own] : [...ALWAYS, ...own];
   }, [is2d]);
 
@@ -145,6 +148,24 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    * татахгүй. Энэ нь «ӨМНӨ» талын цорын ганц АМЬД тоо.
    */
   const qToilet = useAsync<number>(() => queryCount(IRGED_TOILET.url), []);
+
+  /**
+   * ГЭР ХОРООЛЛЫН БАРИЛГА — төрөл тус бүрээр ТУСАД НЬ тоолно.
+   *
+   * ⚠️ Хоёр `returnCountOnly` хүсэлт — атрибут ч, геометр ч татахгүй.
+   *    6,627 полигоныг бүтнээр татвал хэдэн МБ болно; энд зөвхөн тоо.
+   * ⚠️ Утгыг `IRGED_BUILT.types`-ээс авна, мөрөнд бичихгүй: үйлчилгээний
+   *    бичиглэл өөрчлөгдвөл НЭГ газар засахад хангалттай.
+   * ⚠️ `N'…'` угтвар ЗААВАЛ — талбар нь юникод монгол текст.
+   */
+  const qBuilt = useAsync<{ house: number; ger: number }>(async () => {
+    const F = IRGED_BUILT.typeField;
+    const [house, ger] = await Promise.all([
+      queryCount(IRGED_BUILT.url, `${F} = N'${IRGED_BUILT.types.house}'`),
+      queryCount(IRGED_BUILT.url, `${F} = N'${IRGED_BUILT.types.ger}'`),
+    ]);
+    return { house, ger };
+  }, []);
 
   /** Толгойн үзүүлэлтэд — дашбоардтай ижил эх сурвалж */
   const bagts = useBagtsTable();
@@ -194,6 +215,35 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           </div>
         </section>
 
+        <section className={`${o.panel} ${i.card}`} aria-label={IRGED_BUILT.title}>
+          <header className={o.panelHead}>
+            <h3 className={o.panelTitle}>{tr('Одоогийн барилга')}</h3>
+            <span className={o.panelNote}>{tr('гэр хороолол')}</span>
+          </header>
+          <div className={o.panelBody}>
+            {/* ⚠️ Хоёр төрлийг ТУСАД НЬ. Нийлбэрийг ганц тоо болговол
+                «6,627 барилга» гэдэг нь гэр ба байшинг ялгахгүй — чөлөөлөлт,
+                нүүлгэн шилжүүлэлтийн зардал хоёрт нь ЭРС өөр. */}
+            <Data q={qBuilt} loading={tr('Тоолж байна…')}>
+              {(b) => (
+                <Stats cols={2}>
+                  <Stat
+                    value={num(b.house)}
+                    unit={tr('ш')}
+                    label={tr('Байшин')}
+                    color={IRGED_BUILT_DEF.paint?.values[IRGED_BUILT.types.house]}
+                  />
+                  <Stat
+                    value={num(b.ger)}
+                    unit={tr('ш')}
+                    label={tr('Гэр')}
+                    color={IRGED_BUILT_DEF.paint?.values[IRGED_BUILT.types.ger]}
+                  />
+                </Stats>
+              )}
+            </Data>
+          </div>
+        </section>
         <section className={`${o.panel} ${i.card}`} aria-label={tr('Одоо байгаа нийгмийн байгууламж')}>
           <header className={o.panelHead}>
             <h3 className={o.panelTitle}>{tr('Нийгмийн дэд бүтэц')}</h3>

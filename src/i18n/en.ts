@@ -3242,6 +3242,11 @@ const en: Record<string, string> = {
   "Бусад хэсэг ажиллаж байгаа — цэсээр өөр харагдац руу шилжиж болно.": "The rest of the portal is still working — use the menu to switch to another view.",
   "«{0}» нээгдсэнгүй": "“{0}” could not be opened",
   "Самбар нээгдсэнгүй": "The panel could not be opened",
+  "Одоогийн барилга (гэр хороолол)": "Existing structures (ger district)",
+  "Одоогийн барилга": "Existing structures",
+  "гэр хороолол": "ger district",
+  "Байшин": "House",
+  "Гэр": "Ger",
 };
 
 export default en;
