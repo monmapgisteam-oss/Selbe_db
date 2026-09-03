@@ -3248,7 +3248,25 @@ const en: Record<string, string> = {
   "{0} нүд бичих гэж байна.\n{1}.\nҮргэлжлүүлэх үү?": "About to write {0} cells.\n{1}.\nContinue?",
   "{0} нүд бичигдлээ · {1} алгасав": "{0} cells written · {1} skipped",
   "{0} нүд бичигдлээ": "{0} cells written",
-  "Мөрийн Обьём {0} · бөглөсөн {1} = {2}\nExcel-ээс олон нүдийг хуулж Ctrl+V дарж болно.": "Row volume {0} · entered {1} = {2}\nYou can copy a block from Excel and press Ctrl+V."
+  "Мөрийн Обьём {0} · бөглөсөн {1} = {2}\nExcel-ээс олон нүдийг хуулж Ctrl+V дарж болно.": "Row volume {0} · entered {1} = {2}\nYou can copy a block from Excel and press Ctrl+V.",
+  "Захирамжаар батлагдсан": "Approved by decree",
+  "Гэрээгээр байгуулагдсан": "Under contract",
+  "Бодитоор олгосон": "Actually disbursed",
+  "Санхүүжилтийн гурван шат — захирамжаас олголт хүртэл": "The three financing stages — from decree to disbursement",
+  "Санхүүжилтийн гурван шатны харьцуулалт": "Comparison of the three financing stages",
+  "Багц тус бүрийн төсөвт өртөг": "Budget cost of each package",
+  "Багц тус бүрийн гүйцэтгэл — хамгийн өндөр нь тодруулсан": "Progress of each package — the highest is highlighted",
+  "Багц тус бүрийн гүйцэтгэлийн хувь": "Progress percentage of each package",
+  "Багц бүрийн төсөвт эзлэх жин — нийт гүйцэтгэл голчлон эндээс хамаарна": "Budget weight of each package — total progress depends mainly on this",
+  "Багц бүрийн төсөвт эзлэх жин": "Budget weight of each package",
+  "Нэгж талбарын төлөв — шийдвэрлэсэн ба үлдсэн": "Parcel status — resolved and outstanding",
+  "Сар бүрийн санхүүжилтийн хуваарь (төлөвлөгөө)": "Monthly financing schedule (plan)",
+  "Сар бүрийн санхүүжилтийн хуваарь": "Monthly financing schedule",
+  "Ажлын бүлэг тус бүрийн объектын тоо": "Object count of each work group",
+  "Гүйцэтгэгч байгууллага тус бүрийн ажиллах хүч": "Workforce of each contractor",
+  "Гүйцэтгэгч байгууллага тус бүрийн ажилтны тоо": "Worker count of each contractor",
+  "Зураг": "Figure",
+  "Оргил": "Peak"
 };
 
 export default en;
