@@ -33,6 +33,10 @@ import { seriesBands } from "./bagts.bands";
 import { sheetDates } from "./sheetRows";
 import { useColWidths } from "./colWidths";
 import { parseGrid, planPaste } from "./paste";
+import { useFocusTrap } from "@/lib/useFocusTrap";
+import {
+  clearRemoteDraft, loadRemoteDraft, saveRemoteDraft, REMOTE_MAX,
+} from "@/lib/draftRemote";
 import { t as tr } from "@/lib/i18nCore";
 import st from "./sheet.module.css";
 
@@ -86,6 +90,21 @@ type Draft = {
    * ⚠️ Хуучин ноорогт БАЙХГҮЙ тул заавал сонголттой — уншихдаа `?? []`.
    */
   adds?: NewRow[];
+  /**
+   * МӨРИЙН ТАНИГЧ — `oid → "№ ¦ Ажлын нэр"` (2026-09-03-ны аудитын олдвор).
+   *
+   * ⚠️ ЯАГААД ЗААВАЛ: ноорогийн түлхүүр нь `${oid}:${блок}` бөгөөд ObjectID нь
+   * АГШИН БҮРД СОЛИГДДОГ — `applyAdds` нь хуудсыг бүхэлд нь ШИНЭ мөр болгож
+   * нэмдэг. Тиймээс хэн нэгэн тэр багцад нийтэлмэгц ноорогийн БҮХ түлхүүр
+   * «хуучирсан» болж, өмнө нь чимээгүй устдаг байв (40 нүдний ажил, ямар ч
+   * мэдэгдэлгүй). Нийтлэх зам (`oidMap`) энэ аюулыг аль хэдийн таньж
+   * (№ + Ажлын нэр)-ээр зөөдөг ч тэнд ХУУЧИН мөрийн жагсаалт гарт байдаг;
+   * ноорогийг сэргээх үед байхгүй тул танигчийг ноорогтоо хамт хадгална.
+   *
+   * ⚠️ Сонголттой: хуучин ноорогт байхгүй — тэр үед зөөлт хийгдэхгүй, өмнөх
+   * зан хэвээр (гэхдээ одоо чимээгүй устгахын оронд ил мэдэгдэнэ).
+   */
+  rowKeys?: [number, string][];
 };
 /**
  * ЕРӨНХИЙ МЕНЕЖЕРИЙН НЭМСЭН, хараахан нийтлэгдээгүй мөр.
@@ -113,12 +132,44 @@ type NewRow = {
  */
 let tmpOid = -1;
 
+/**
+ * СЭРГЭЭХ ЦОНХНЫ агуулга — шүүгдсэн ноорог ба түүний хүний уншихуйц задаргаа.
+ *
+ * ⚠️ Ноорогийг цонх нээхээс ӨМНӨ шүүж, шалгаж дуусгасан байна: цонх нь зөвхөн
+ *    «тавих уу, үгүй юу» гэдгийг асууна. Ингэснээр хэрэглэгчийн харсан тоо ба
+ *    бодитоор буух өгөгдөл ХОЁР ӨӨР зам явахгүй.
+ */
+type RestorePlan = {
+  /** Ноорог хадгалагдсан хугацаа (хүнд уншигдах) */
+  when: string;
+  /** «9 гүйцэтгэлийн нүд» гэх мэт зүйлчилсэн задаргаа */
+  parts: string[];
+  /** Хуучирсан тул хаягдах нүдний тоо */
+  dropped: number;
+  /**
+   * Аль хадгалалтаас ирсэн — `local` (энэ хөтөч) эсвэл `remote` (ArcGIS).
+   * ⚠️ Хэрэглэгчид ИЛ хэлнэ: «өөр төхөөрөмж дээр үлдээсэн ажил» гэдгийг
+   *    мэдэхгүй бол сэргээх нь эргэлзээтэй санагдана.
+   */
+  source: 'local' | 'remote';
+  cells: Record<string, string>;
+  dates: Record<string, string>;
+  docs: Record<string, string>;
+  adds: NewRow[];
+  asOf: number | null;
+};
+
 const DRAFT_PREFIX = "selbe-fillnew-draft:";
 const DRAFT_TTL_MS = 3 * 24 * 3600 * 1000;
-const readDraft = (pkgKey: string): Draft | null => {
+/**
+ * Түүхий JSON → шалгагдсан `Draft`.
+ *
+ * ⚠️ ЛОКАЛ ба АЛСЫН хоёр эх сурвалж ЯГ ижил шалгуураар орно (2026-09-03):
+ *    алсын хуулбар нь org доторх хэн ч засаж болох хүснэгтээс ирдэг тул
+ *    итгэл нь localStorage-аас ИЛҮҮ БАЙХ ЁСГҮЙ.
+ */
+const parseDraft = (raw: string): Draft | null => {
   try {
-    const raw = localStorage.getItem(DRAFT_PREFIX + pkgKey);
-    if (!raw) return null;
     const d = JSON.parse(raw) as Draft;
     if (!d.t || !Array.isArray(d.cells) || Date.now() - d.t > DRAFT_TTL_MS)
       return null;
@@ -142,6 +193,14 @@ const readDraft = (pkgKey: string): Draft | null => {
     if (d.docs != null && !Array.isArray(d.docs)) d.docs = undefined;
     if (d.asOf != null && !Number.isFinite(d.asOf)) d.asOf = undefined;
     return d;
+  } catch {
+    return null;
+  }
+};
+const readDraft = (pkgKey: string): Draft | null => {
+  try {
+    const raw = localStorage.getItem(DRAFT_PREFIX + pkgKey);
+    return raw ? parseDraft(raw) : null;
   } catch {
     return null;
   }
@@ -228,14 +287,15 @@ const RO = {
   noDocField: tr('Энэ багана тухайн үйлчилгээнд байхгүй — хадгалах газаргүй тул засагдахгүй. AGOL дээр талбарыг нэмж өгөх шаардлагатай.'),
   noQaqc: tr('Inspection Test Plan (М-акт, FIC, MA, MIR) бөглөхөд «QAQC» эрх шаардлагатай — «Хэрэглэгчдийн эрх удирдах» хэсгээс олгоно.'),
   docLocked: tr('Хуудас засагдахгүй горимд байна — өнөөдөр аль хэдийн хяналтад илгээгдсэн (эсвэл зөвхөн харах горим).'),
+  noAddRow: tr('Шинэ мөр нэмэх эрх алга — «Хэрэглэгчдийн эрх удирдах» хэсгээс «Мөр нэмэх» эрхийг олгоно.'),
   noPerf: tr('Гүйцэтгэлийн обьём ба огноог зөвхөн энэ багцад томилогдсон гүйцэтгэгч бөглөнө — та зөвхөн Inspection Test Plan / мөр нэмэх эрхийнхээ хүрээнд засна.'),
 } as const;
 
 /*
  * ── ГҮЙЦЭТГЭЛ ОБЬЁМООР (2026-08-20, хэрэглэгчийн шийдвэр) ───────────────────
  * Урьд нь блокийн нүдэнд ХУВЬ бичдэг байсныг болив. Одоо:
- *   · нүдэнд ЭНЭ УДААД хийсэн НЭМЭЛТ обьёмыг бичнэ (алдаа засах бол сөрөг тоо),
- *   · нэмэлт нь үйлчилгээний *_obyem талбар дахь хуримтлал дээр нэмэгдэнэ,
+ *   · нүдэнд НИЙТ хуримтлагдсан обьёмыг бичнэ,
+ *   · тэр утга үйлчилгээний *_obyem талбарт ШУУД бичигдэнэ,
  *   · хувь нь «хуримтлал ÷ мөрийн Обьём»-оор бодогдож хуучин талбартаа
  *     хэвээр бичигдэнэ (дашбоард, тайлан бүгд хөндөгдөхгүй).
  *
@@ -413,7 +473,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     setResending(true);
     const rv = await submitForReview(pkg.group, snapMs, rows[0].oid);
     setResending(false);
-    if (rv.ok) { reloadHy(); say(tr('Хяналтад илгээв ({0})', rv.id)); }
+    if (rv.ok) { reloadHy(); done(tr('Хяналтад илгээв ({0})', rv.id)); }
     else setErr(rv.error);
   };
 
@@ -575,13 +635,28 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
 
   // Засагдахгүй нүд дарахад «яагаад» гэдгийг хэлнэ. Дараагийн товшилт бүр
   // өмнөх мэдэгдлийг солино; 4 секундын дараа өөрөө арилна.
-  const [notice, setNotice] = useState("");
+  /**
+   * ХӨВӨГЧ МЭДЭГДЭЛ — «яагаад засагдахгүй» ба «юу амжилттай болов» ХОЁУЛАА.
+   *
+   * ⚠️ ТӨРӨЛ ЗААВАЛ (2026-09-03-ны аудитын олдвор): зурвас нь «Энэ нүд
+   * засагдахгүй.» гэсэн угтварыг ХАТУУ бичдэг байсан тул нийтлэлийн амжилт
+   * («Архивт 1,370 мөр нэмэгдэв · хяналтад илгээв»), буулгалтын үр дүн
+   * («22 нүд бичигдлээ»), мөр нэмсэн зэрэг БҮГД тэр худал гарчигтай гарч
+   * байв — өдрийн ажлын гол баталгааг «алдаа» гэж уншуулна.
+   */
+  const [notice, setNotice] = useState<{ kind: 'ro' | 'ok' | 'warn'; msg: string } | null>(null);
   const noticeT = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const say = (msg: string) => {
+  const show = (kind: 'ro' | 'ok' | 'warn', msg: string) => {
     if (noticeT.current) clearTimeout(noticeT.current);
-    setNotice(msg);
-    noticeT.current = setTimeout(() => setNotice(""), 4000);
+    setNotice({ kind, msg });
+    noticeT.current = setTimeout(() => setNotice(null), 4000);
   };
+  /** Засагдахгүй нүдний тайлбар — «Энэ нүд засагдахгүй.» гарчигтай */
+  const say = (msg: string) => show('ro', msg);
+  /** Үр дүнгийн мэдээ (нийтлэл, буулгалт, мөр нэмэх) — амжилтын гарчигтай */
+  const done = (msg: string) => show('ok', msg);
+  /** Үйлдэл БҮТСЭНГҮЙ ч алдаа биш (буулгах нүд таарсангүй г.м.) */
+  const warn = (msg: string) => show('warn', msg);
   useEffect(
     () => () => {
       if (noticeT.current) clearTimeout(noticeT.current);
@@ -626,12 +701,33 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    *    тэмдэглэж, хоёр эффектийг хоёуланг нь үүгээр хаана.
    */
   const loadedPkgRef = useRef("");
+  /**
+   * НООРОГИЙН ХОЁР ТУГ — багц солих эффект ЭДГЭЭРИЙГ цэвэрлэдэг тул
+   * түүнээс ДЭЭР зарлагдана (эс бөгөөс зарлагдахаасаа өмнө ашиглагдана).
+   * · `keepDraft` — «Дараа шийднэ» гэж хаасан ноорогийг автомат
+   *   цэвэрлэлтээс хамгаална (НЭГ багцад л хамаарна).
+   * · `remoteQueue` — алсад илгээх ээлж; багцын тамгатай тул хуучин багцын
+   *   ноорог шинэ багцын слотод хэзээ ч бичигдэхгүй.
+   */
+  const keepDraft = useRef(false);
+  const remoteQueue = useRef<{ pkg: string; draft: Draft } | null>(null);
+  /** Алсын илгээлтийн цохилт ба «хэт том» тэмдэг — дээрх эффектүүд ашиглана */
+  const [remoteTick, setRemoteTick] = useState(0);
+  const [remoteBig, setRemoteBig] = useState(false);
 
   // Багц солигдох бүрд бүдүүвч + мөрүүдийг шинээр татна. Хуучин багцын
   // хариу хожуу ирээд шинийг дарж бичихээс `alive` хамгаална.
   useEffect(() => {
     let alive = true;
     loadedPkgRef.current = "";
+    /* ⚠️ НООРОГИЙН ХОЁР ТУГ ЗААВАЛ ТЭГЛЭГДЭНЭ (2026-09-03-ны аудит):
+       · `remoteQueue` — хуучин багцын ноорог шинэ багцын слотод бичигдэхээс;
+       · `keepDraft` — «Дараа шийднэ» гэсэн шийдвэр НЭГ багцад л хамаарна.
+         Үлдээвэл дараагийн багцыг нийтэлсний дараа түүний ноорог
+         цэвэрлэгдэхгүй үлдэж, нийтлэгдсэн ажил «нийтлэгдээгүй» гэж дахин
+         санал болгогдоно. */
+    remoteQueue.current = null;
+    keepDraft.current = false;
     setBusy(true);
     setErr("");
     setRows([]);
@@ -1183,7 +1279,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     });
     setAddFor(null);
     setAddForm({ no: "", work: "", vol: "", unit: "" });
-    say(tr('«{0}» нэмэгдлээ — Нийтлэх дарж хадгална.', work));
+    done(tr('«{0}» нэмэгдлээ — Нийтлэх дарж хадгална.', work));
   };
 
   /** Нийтлэхээс өмнө нэмсэн мөрийг буцаах */
@@ -1228,6 +1324,14 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
      *    Нэмэлт (Δ) байдлаар авдаг байсныг болив: нүдэнд харагдаж буй тоо
      *    ба бичиж буй тоо хоёр өөр утгатай байх нь эндүүрэл төрүүлдэг.
      */
+    /* ⚠️ СӨРӨГ ТОО — доорх `Math.max(0, …)` түүнийг ЧИМЭЭГҮЙ 0 болгодог тул
+       хэрэглэгч «−5» бичээд «0 бичигдлээ» гэдгийг мэдэхгүй үлддэг байв
+       (2026-09-03-ны аудит). Хуучин Δ (нэмэлт) горимын үлдэц; одоо нүдэнд
+       НИЙТ хуримтлал бичдэг тул сөрөг утга утгагүй — ил хэлж, хаяна. */
+    if (t !== "" && Number(t) < 0) {
+      setErr(tr('{0} · {1}: обьём сөрөг байж болохгүй — нийт хуримтлагдсан хэмжээг бичнэ үү.', sc?.bld[b] ?? "", r.work));
+      return;
+    }
     const stored = r.obyem[b];
     const v = t === "" ? "" : String(Math.max(0, Number(t)));
     const vol = r.vol;
@@ -1275,6 +1379,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
 
   // ── Нооргийн сэргээлт — багц ачаалагдмагц НЭГ удаа санал болгоно ──
   const promptedPkgRef = useRef("");
+  /** Сэргээх цонхонд харуулах ба хүлээгдэж буй ноорог (`null` = цонх хаалттай) */
+  const [restore, setRestore] = useState<RestorePlan | null>(null);
   useEffect(() => {
     if (busy || !rows.length || !sc) return;
     // ⚠️ Мөр нь өөр багцынх байх агшин бий — `loadedPkgRef`-ийн тайлбар.
@@ -1288,8 +1394,32 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     if (promptedPkgRef.current === pkg.key) return;
     // Сэргээх шат өнгөрснийг ноорог байсан эсэхээс үл хамааран тэмдэглэнэ.
     promptedPkgRef.current = pkg.key;
-    const d = readDraft(pkg.key);
-    if (!d) return;
+    /* ⚠️ АЛСЫН ноорогийг ч асууна (2026-09-03): оффисын компьютер дээр
+       бөглөсөн ажил гэрийн компьютерт харагдах ёстой. Хоёулаа байвал АГШНААР
+       нь харьцуулж ШИНИЙГ нь санал болгоно — хуучныг нь тавибал шинэ ажил
+       чимээгүй дарагдана. Алсын уншилт унасан ч локал зам хэвээр ажиллана. */
+    const local = readDraft(pkg.key);
+    let alive = true;
+    void (async () => {
+      const rem = await loadRemoteDraft(pkg.key);
+      if (!alive) return;
+      const remote = rem ? parseDraft(rem.payload) : null;
+      const useRemote = !!remote && (!local || remote.t > local.t);
+      const d = useRemote ? (remote as Draft) : local;
+      if (!d) return;
+      pickDraft(d, useRemote ? 'remote' : 'local');
+    })();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [busy, rows, sc, nBld, pkg.key, asOfOrig, noEdit]);
+
+  /**
+   * Сонгосон ноорогийг ШҮҮЖ, сэргээх цонхонд бэлдэнэ.
+   * ⚠️ Энэ нь дэлгэц зурахаас өмнө БҮХ шалгуурыг өнгөрүүлнэ — цонхонд
+   *    харагдах тоо ба бодитоор буух өгөгдөл хоёр өөр зам явж болохгүй.
+   */
+  const pickDraft = useCallback((d: Draft, source: 'local' | 'remote') => {
+    if (!sc) return;
     /* ⚠️ ИНДЕКСЭД НЭМСЭН МӨРҮҮД ЗААВАЛ ОРНО. `rows` нь ЗӨВХӨН серверийн мөр
        бөгөөд ноорогийн шинэ мөрүүд (сөрөг түр oid) түүнд БАЙХГҮЙ. Урьд нь
        индекс зөвхөн `rows`-оос баригддаг байсан тул нэмсэн мөрийн нүд бүр
@@ -1299,10 +1429,47 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     const byOid = new Map<number, { group: boolean }>();
     for (const r of rows) byOid.set(r.oid, r);
     for (const a of restoredAdds) byOid.set(a.oid, { group: false });
+
+    /**
+     * ⚠️ АГШИН СОЛИГДСОНЫГ НӨХӨХ ЗӨӨЛТ (2026-09-03-ны аудитын олдвор).
+     *
+     * Хэн нэгэн энэ багцад нийтэлбэл `applyAdds` хуудсыг бүхэлд нь ШИНЭ мөр
+     * болгож нэмдэг тул ноорогийн БҮХ ObjectID хуучирна. Урьд нь тэр үед
+     * түлхүүр бүр «олдсонгүй» болж, доорх `total === 0` шалгуур ноорогийг
+     * ЧИМЭЭГҮЙ УСТГАДАГ байв — нэг ч үг гарахгүйгээр өдрийн ажил алга болно.
+     *
+     * Одоо ноорогтоо хамт хадгалсан танигчаар (`rowKeys`, «№ ¦ Ажлын нэр»)
+     * шинэ мөр рүү зөөнө — нийтлэх замын `oidMap`-тай ЯГ ижил дүрэм. Ижил
+     * танигчтай мөр олон бол дарааллаар нь хуваарилна (хуудасны мөрийн
+     * дараалал агшин хооронд хадгалагддаг тул энэ нь тогтвортой).
+     */
+    const oidFix = new Map<number, number>();
+    if (d.rowKeys?.length) {
+      const free = new Map<string, number[]>();
+      for (const r of rows) {
+        const k = `${r.no} ¦ ${r.work}`;
+        const l = free.get(k);
+        if (l) l.push(r.oid); else free.set(k, [r.oid]);
+      }
+      for (const [oldOid, label] of d.rowKeys) {
+        if (byOid.has(oldOid)) continue;      // мөр байрандаа — зөөх шаардлагагүй
+        const cand = free.get(label);
+        if (cand?.length) oidFix.set(oldOid, cand.shift() as number);
+      }
+    }
+    /** Түлхүүрийн ObjectID-г шинэ агшин руу зөөнө (шаардлагагүй бол хэвээр) */
+    const fixKey = (key: string): string => {
+      if (!oidFix.size) return key;
+      const at = key.indexOf(":");
+      const to = oidFix.get(Number(key.slice(0, at)));
+      return to == null ? key : `${to}${key.slice(at)}`;
+    };
+
     const next: Record<string, string> = {};
     let dropped = 0;
     // ⚠️ Гүйцэтгэлийн нүдийг зөвхөн бөглөх эрхтэй хүнд сэргээнэ (`canPerf`)
-    for (const [key, v] of (canPerf ? d.cells : [])) {
+    for (const [key0, v] of (canPerf ? d.cells : [])) {
+      const key = fixKey(key0);
       const oid = Number(key.split(":")[0]);
       const b = Number(key.slice(key.indexOf(":") + 1));
       const r = byOid.get(oid);
@@ -1328,7 +1495,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
        ⚠️ Талбаргүй блок бий (эх хуудасны толгой эвдэрсэн) — тэнд бичих газар
        байхгүй тул сэргээх нь утгагүй. */
     const nextDates: Record<string, string> = {};
-    for (const [key, v] of (canPerf ? (d.dates ?? []) : [])) {
+    for (const [key0, v] of (canPerf ? (d.dates ?? []) : [])) {
+      const key = fixKey(key0);
       const [oidS, bS, k] = key.split(":");
       const b = Number(bS);
       const r2 = byOid.get(Number(oidS));
@@ -1341,7 +1509,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
        ⚠️ ЗӨВХӨН QAQC эрхтэй хүнд: эрх нь хооронд нь хасагдсан бол ноорог
        дахь текст дэлгэцэд буцаж гарах ёсгүй. */
     const nextDocs: Record<string, string> = {};
-    for (const [key, v] of (canQaqc ? (d.docs ?? []) : [])) {
+    for (const [key0, v] of (canQaqc ? (d.docs ?? []) : [])) {
+      const key = fixKey(key0);
       const di = Number(key.slice(key.indexOf(":") + 1));
       const r3 = byOid.get(Number(key.split(":")[0]));
       if (!r3 || !Number.isInteger(di) || di < 0 || di >= DOC_COLS.length || !sc.docs[di]) {
@@ -1360,7 +1529,29 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     const nAdds = restoredAdds.length;
     const total = nCells + nDates + nDocs + nAdds + (draftAsOf != null ? 1 : 0);
     if (!total) {
-      clearDraftLS(pkg.key);
+      /**
+       * ⚠️ ЧИМЭЭГҮЙ УСТГАХГҮЙ (2026-09-03-ны аудитын олдвор).
+       *
+       * Урьд нь энд `clearDraftLS` дуудагдаад ЧИМЭЭГҮЙ буцдаг байв: агшин
+       * солигдоход бүх түлхүүр хуучирч `total = 0` болох тул хэрэглэгчийн
+       * өдрийн ажил нэг ч үг гарахгүйгээр устдаг байлаа. Дээрх зөөлт
+       * (`oidFix`) ихэнх тохиолдлыг нөхнө; нөхөж чадаагүй үед ХЭРЭГЛЭГЧ
+       * шийднэ — цонх нээгдэж, юу ч сэргээгдэхгүйг ил хэлнэ.
+       *
+       * ⚠️ `dropped === 0` (ноорог үнэхээр хоосон байсан) бол цонх гаргах нь
+       * дэмий — тэр үед л цэвэрлэнэ. Алсын хуулбарыг ч ХАМТ цэвэрлэнэ, эс
+       * бөгөөс зомби мөр үлдэж ачаалалт бүрд дахин шүүгдэнэ.
+       */
+      if (!dropped) {
+        clearDraftLS(pkg.key);
+        void clearRemoteDraft(pkg.key);
+        return;
+      }
+      setRestore({
+        when: new Date(d.t).toLocaleString('mn-MN'),
+        parts: [], dropped, source,
+        cells: {}, dates: {}, docs: {}, adds: [], asOf: null,
+      });
       return;
     }
     const when = new Date(d.t).toLocaleString("mn-MN");
@@ -1373,27 +1564,62 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       nAdds ? tr('{0} шинэ мөр', nAdds) : '',
       draftAsOf != null ? tr('шинэчлэгдсэн огноо') : '',
     ].filter(Boolean);
-    const msg =
-      tr('Нийтлэгдээгүй засвар олдлоо ({0}):', when) + "\n" + '· ' + parts.join("\n" + '· ') +
-      (dropped ? "\n\n" + tr('{0} нүд хуучирсан тул орхигдоно.', dropped) : '') +
-      "\n\n" + tr('Сэргээх үү?');
-    if (window.confirm(msg)) {
-      if (nAdds) {
-        /* ⚠️ ТҮР ObjectID-ийн ТООЛУУРЫГ сэргээсэн мөрүүдээс ЦААШ түлхэнэ:
-           `tmpOid` нь модулийн түвшний бөгөөд хуудас дахин ачаалагдах бүрд
-           −1-ээс эхэлдэг. Урьд нь сэргээлт түүнийг хөдөлгөдөггүй байсан тул
-           дараа нэмсэн мөр сэргээсэн мөртэй ИЖИЛ дугаар авч: нэгэнд нь бичсэн
-           обьём нөгөөд нь ч харагдаж, устгахад хоёулаа устдаг байв. */
-        for (const a of restoredAdds) if (a.oid <= tmpOid) tmpOid = a.oid - 1;
-        setAdds(restoredAdds);
-      }
-      if (nCells) setPending(next);
-      if (nDates) setPendDate(nextDates);
-      if (nDocs) setPendDoc(nextDocs);
-      if (draftAsOf != null) setAsOf(draftAsOf);
-    } else clearDraftLS(pkg.key);
+    /* ⚠️ ХӨТЧИЙН `confirm` ХАСАГДСАН (2026-09-03, хэрэглэгч: «сэргээх цонхыг
+       дэлгэцийн голд байрлуулаад дизайныг сайжруул»). Тэр нь (1) дэлгэцийн
+       ДЭЭД ирмэгт наалддаг, (2) зөвхөн нэг эгнээ бичвэр — «9 гүйцэтгэлийн нүд»
+       гэсэн задаргаа нүдэнд ялгарахгүй, (3) Escape нь ЧИМЭЭГҮЙ «Цуцлах» болж
+       ажлыг устгадаг байв. Одоо апп доторх төвлөрсөн цонх: задаргаа нь
+       жагсаалт, сонголт нь гурав — сэргээх · дараа шийдэх · устгах. */
+    setRestore({
+      when, parts, dropped, source,
+      cells: next, dates: nextDates, docs: nextDocs,
+      adds: restoredAdds, asOf: draftAsOf,
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [busy, rows, sc, nBld, pkg.key, asOfOrig, noEdit]);
+  }, [rows, sc, nBld, pkg.key, asOfOrig, canPerf, canQaqc, canAddRow]);
+
+  /** «Сэргээх» — ноорогийг төлөв рүү буулгана */
+  const applyRestore = useCallback(() => {
+    const r = restore;
+    if (!r) return;
+    if (r.adds.length) {
+      /* ⚠️ ТҮР ObjectID-ийн ТООЛУУРЫГ сэргээсэн мөрүүдээс ЦААШ түлхэнэ:
+         `tmpOid` нь модулийн түвшний бөгөөд хуудас дахин ачаалагдах бүрд
+         −1-ээс эхэлдэг. Урьд нь сэргээлт түүнийг хөдөлгөдөггүй байсан тул
+         дараа нэмсэн мөр сэргээсэн мөртэй ИЖИЛ дугаар авч: нэгэнд нь бичсэн
+         обьём нөгөөд нь ч харагдаж, устгахад хоёулаа устдаг байв. */
+      for (const a of r.adds) if (a.oid <= tmpOid) tmpOid = a.oid - 1;
+      setAdds(r.adds);
+    }
+    if (Object.keys(r.cells).length) setPending(r.cells);
+    if (Object.keys(r.dates).length) setPendDate(r.dates);
+    if (Object.keys(r.docs).length) setPendDoc(r.docs);
+    if (r.asOf != null) setAsOf(r.asOf);
+    /* Сэргээгдсэн тул хамгаалалт хэрэггүй — цаашид ердийн дүрмээр хадгалагдана */
+    keepDraft.current = false;
+    setRestore(null);
+  }, [restore]);
+
+  /** «Устгах» — ноорогийг бүрмөсөн хаяна (буцаах зам байхгүй) */
+  const dropRestore = useCallback(() => {
+    clearDraftLS(pkg.key);
+    /* ⚠️ АЛСЫН хуулбарыг ч устгана — эс бөгөөс дараагийн ачаалалтад тэр нь
+       буцаж ирж, хэрэглэгч «устгасан ажил» дахин санал болгогдоно. */
+    void clearRemoteDraft(pkg.key);
+    keepDraft.current = false;
+    setRestore(null);
+  }, [pkg.key]);
+
+  /**
+   * «Дараа шийднэ» — цонхыг хаана, ноорог ХЭВЭЭР үлдэнэ.
+   * ⚠️ Хадгалалтын эффект нь дөрвүүлэн төлөв хоосон үед ноорогийг УСТГАДАГ тул
+   *    (тэр нь «нийтэлсэн/болиулсан» гэсэн утгатай) энд туг тавьж хамгаална —
+   *    эс бөгөөс цонхыг хаамагц ажил чимээгүй алга болно.
+   */
+  const laterRestore = useCallback(() => {
+    keepDraft.current = true;
+    setRestore(null);
+  }, []);
 
   // Ноорог хадгалах — pending өөрчлөгдөх бүрд. Хоосон болоход (нийтэлсэн /
   // болиулсан) устгана, гэхдээ зөвхөн сэргээх шат ӨНГӨРСӨН багцынхыг: багц
@@ -1418,21 +1644,97 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       && !adds.length
       && !asOfChanged
     ) {
-      if (promptedPkgRef.current === pkg.key) clearDraftLS(pkg.key);
+      /* ⚠️ «Дараа шийднэ» гэж хаасан ноорогийг ЭНД устгахгүй: төлөв хоосон нь
+         энэ тохиолдолд «нийтэлсэн/болиулсан» биш «хараахан сэргээгээгүй»
+         гэсэн утгатай. Тугийг зөвхөн сэргээх/устгах шийдвэр тайлна. */
+      if (promptedPkgRef.current === pkg.key && !keepDraft.current) {
+        clearDraftLS(pkg.key);
+        /* ⚠️ Нийтэлсэн/болиулсны дараа АЛСЫН хуулбар ч цэвэрлэгдэнэ — хэрэглэгч:
+           «нийтлэгдэхэд тэр файл хоослогдоно». Эс бөгөөс өөр төхөөрөмж дээр
+           нийтлэгдсэн ажил «нийтлэгдээгүй» гэж дахин санал болгогдоно. */
+        void clearRemoteDraft(pkg.key);
+      }
       setSavedAt(null);
       return;
     }
     const at = Date.now();
     setSavedAt(at);
-    saveDraftLS(pkg.key, {
+    /* ⚠️ Ноорогт хамрагдсан мөр БҮРИЙН танигчийг хамт хадгална — агшин
+       солигдоход (өөр хүн нийтлэхэд) түлхүүрүүдийг шинэ ObjectID руу зөөх
+       ЦОРЫН ГАНЦ зам. Зөвхөн хэрэгтэй мөрийг л бичнэ: 1,400 мөрийн бүтэн
+       толь нь ноорогийг хэдэн зуун KB болгож, алсын хязгаараас хална. */
+    const usedOids = new Set<number>();
+    for (const k of [...Object.keys(pending), ...Object.keys(pendDate), ...Object.keys(pendDoc)]) {
+      const o = Number(k.slice(0, k.indexOf(":")));
+      if (Number.isFinite(o) && o >= 0) usedOids.add(o);
+    }
+    const rowKeys: [number, string][] = [];
+    for (const r of rows) if (usedOids.has(r.oid)) rowKeys.push([r.oid, `${r.no} ¦ ${r.work}`]);
+
+    const draft: Draft = {
       t: at,
       cells: Object.entries(pending),
       dates: Object.entries(pendDate),
       docs: Object.entries(pendDoc),
       asOf: asOfChanged ? asOf : undefined,
       adds,
-    });
-  }, [pending, pendDate, pendDoc, adds, asOf, asOfOrig, pkg.key]);
+      rowKeys,
+    };
+    saveDraftLS(pkg.key, draft);
+    /* ⚠️ АЛСЫН ХУУЛБАРЫГ ЭНД ШУУД БИЧИХГҮЙ — нүд бүрийн товшилтод ArcGIS руу
+       хүсэлт явбал сүлжээ дүүрч, бөглөлт удаашрана. Ноорогийг зөвхөн ТӨЛӨВТ
+       тавиад, доорх завсарлагатай эффект илгээнэ. */
+    /* ⚠️ ДАРААЛАЛД БАГЦЫН ТАМГА ЗААВАЛ (2026-09-03-ны аудитын олдвор): багц
+       солиход энэ дараалал цэвэрлэгддэггүй байсан тул 12 секунд дуусахаас
+       өмнө шилжвэл Багц 1-ийн ноорог ШИНЭ `pkg.key`-ээр буюу Багц 2-ын
+       алсын слотод бичигддэг байв. Дараа нь Багц 2 нээхэд тэр харь ноорог
+       ирж, нэг ч ObjectID таарахгүй тул Багц 2-ын ЖИНХЭНЭ ноорог устана.
+       Локал зам нь яг энэ эрсдэлийг `loadedPkgRef`-ээр аль хэдийн барьсан. */
+    remoteQueue.current = { pkg: pkg.key, draft };
+    setRemoteTick((n) => n + 1);
+    /* ⚠️ `rows` нь хамаарлын жагсаалтад ЗААВАЛ — `rowKeys` түүнээс баригдана.
+       Мөр ачаалагдахаас өмнөх (хоосон) төлөвөөр бичвэл танигчгүй ноорог
+       үүсэж, зөөх боломж дахин алдагдана. */
+  }, [pending, pendDate, pendDoc, adds, asOf, asOfOrig, pkg.key, rows]);
+
+  /**
+   * ── АЛСЫН ХУУЛБАР (ArcGIS) — 12 секундын завсарлагатай ──
+   *
+   * ⚠️ ЯАГААД (2026-09-03, хэрэглэгч: «өөр browser, өөр газраас орход ч draft
+   * хадгалагдаж байх ёстой»): `localStorage` нь НЭГ хөтчид хязгаарлагдана.
+   * Алсын хуулбар нь зөвхөн «өөр төхөөрөмж рүү шилжих» асуудлыг шийднэ —
+   * бөглөлтийн үндсэн зам нь локал хэвээр, сүлжээ унасан ч ажил зогсохгүй.
+   *
+   * ⚠️ ЗАВСАРЛАГАА: бичихээ зогсоод 12 секунд өнгөрөхөд НЭГ удаа илгээнэ.
+   * Тоолуур засвар бүрд дахин эхэлдэг тул тасралтгүй бичиж байхад хүсэлт
+   * явахгүй; хамгийн муудаа 12 секундын ажил алсад хоцорно (локалд ХЭВЭЭР).
+   *
+   * ⚠️ ТАБ НУУГДАХАД шууд илгээнэ: `beforeunload` дээр async хүсэлт эхлэх ч
+   * дуусах баталгаагүй — `visibilitychange` нь таб хаагдахаас өмнө ирдэг тул
+   * бодит боломж энэ.
+   */
+  useEffect(() => {
+    if (!remoteTick) return undefined;
+    const flush = () => {
+      const q = remoteQueue.current;
+      if (!q) return;
+      /* ⚠️ ӨӨР БАГЦЫН ноорог бол ХАЯНА, бичихгүй: дараалалд үлдсэн хуучин
+         багцын ноорогийг одоогийн багцын слотод бичих нь өгөгдөл СОЛИХ
+         алдаа. Локалд аль хэдийн бүрэн хадгалагдсан тул алдагдал үүсэхгүй. */
+      if (q.pkg !== pkg.key) { remoteQueue.current = null; return; }
+      remoteQueue.current = null;
+      const body = JSON.stringify(q.draft);
+      if (body.length > REMOTE_MAX) { setRemoteBig(true); return; }
+      setRemoteBig(false);
+      /* ⚠️ Үр дүнг ХҮЛЭЭХГҮЙ, алдаанд ЧИМЭЭГҮЙ: локал ноорог бүрэн бүтэн тул
+         бөглөгчийг сүлжээний алдаагаар зовоох шаардлагагүй. */
+      void saveRemoteDraft(q.pkg, q.draft.t, body);
+    };
+    const t = setTimeout(flush, 12_000);
+    const onHide = () => { if (document.visibilityState === 'hidden') flush(); };
+    document.addEventListener('visibilitychange', onHide);
+    return () => { clearTimeout(t); document.removeEventListener('visibilitychange', onHide); };
+  }, [remoteTick, pkg.key]);
 
   // Таб хаах/refresh — нийтлээгүй засвартай үед хөтөч анхааруулна.
   useEffect(() => {
@@ -1490,6 +1792,22 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       setErr(RO.noPerf);
       return;
     }
+    /**
+     * ⚠️ БАРИМТ ба МӨР НЭМЭХ эрхийг МӨН энд дахин шалгана (2026-09-03-ны
+     * аудит). Урьд нь зөвхөн `canPerf` шалгагддаг байсан тул сешн дундуур
+     * (`subscribeCaps`/`subscribeAcl`-аар) эрх хасагдахад аль хэдийн төлөвт
+     * суусан `pendDoc`/`adds` цэвэрлэгддэггүй, `dirtyCount`-д тоологдож,
+     * Нийтлэх дарахад үйлчилгээнд бичигддэг байв. Сэргээх зам (`pickDraft`)
+     * гурвуулааг тэгш шалгадаг — энд асимметр байсан.
+     */
+    if (!canQaqc && Object.keys(pendDoc).length) {
+      setErr(RO.noQaqc);
+      return;
+    }
+    if (!canAddRow && adds.length) {
+      setErr(RO.noAddRow);
+      return;
+    }
     setBusy(true);
     setErr("");
     try {
@@ -1510,7 +1828,34 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
        * ажлын нэр)-ээр олж, бүлгийн сүүлийн удмын дараа байрлуулна — тиймээс
        * хооронд нь өөр хүн нийтэлсэн ч зөв газартаа орно.
        */
-      const freshRows = (await loadRows(pkg, sc)).rows;
+      const fresh0 = await loadRows(pkg, sc);
+      const freshRows = fresh0.rows;
+      /**
+       * ⚠️ ШИНЭ АГШНЫ ӨДРИЙГ ЗААВАЛ ШАЛГАНА (2026-09-03-ны аудитын олдвор).
+       *
+       * `noEdit` нь хуудас НЭЭХ үеийн `snapDay`-гаас гардаг тул хооронд нь
+       * өөр хүн нийтэлсэн бол хуучин хэвээр «түгжээгүй» байна. Тэр үед
+       * нийтлэл давж, тэр өдрийн ХОЁР ДАХЬ бүтэн жааз архивт нэмэгдэж,
+       * хяналтын дараалалд «Гүйцэтгэл · YYYY.MM.DD» гэсэн ЯГ ижил хоёр мөр
+       * үүсдэг байв — хянагч нэгийг нь батлах атал өгөгдөлд нөгөө нь сууна.
+       */
+      const freshDay = fresh0.snapshot != null ? msToDay(fresh0.snapshot) : "";
+      if (freshDay && freshDay === today && freshDay !== snapDay) {
+        setSnapDay(freshDay);
+        setSnapMs(fresh0.snapshot ?? null);
+        throw new Error(
+          tr('Энэ багцыг өнөөдөр өөр хэрэглэгч аль хэдийн нийтэлсэн байна. Ноорог хадгалагдсан хэвээр — хуудсыг дахин ачаалж, сэргээгээд үргэлжлүүлнэ үү.'),
+        );
+      }
+      /**
+       * ⚠️ «Шинэчлэгдсэн огноо» — ХУУЧИН утгаар дарж бичихгүй. Өөр хэрэглэгч
+       * түүнийг урагшлуулсан бол бидний төлөвт байгаа хуучин утга бүх мөрийн
+       * ТӨЛӨВЛӨГӨӨТ ХУВИЙГ буцаана (`computeAll` түүгээр бодогддог) — QAQC
+       * засагч ч гэсэн энэ нөлөөг үзүүлнэ, `dirtyCount` үүнийг харахгүй.
+       * Бид өөрсдөө санаатай өөрчилсөн (`asOf !== asOfOrig`) бол л бидний
+       * утга давамгайлна.
+       */
+      const asOfPub = asOf !== asOfOrig ? asOf : (fresh0.asOf ?? asOf);
       /*
        * ── ObjectID ШИЛЖИЛТ ───────────────────────────────────────────────
        * ⚠️ `pending` · `pendDate` · `pendDoc` бүгд `${oid}:…` түлхүүртэй бөгөөд
@@ -1573,7 +1918,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         );
 
       const fresh = withAdds(freshRows);
-      const c = computeAll(fresh, nBld, asOf, pend2, pendDate2, hasObyem);
+      const c = computeAll(fresh, nBld, asOfPub, pend2, pendDate2, hasObyem);
       // Бөглөсөн огноо — өдрийн эхэнд (UTC). Өдөрт нэг л удаа бөглөдөг тул
       // огноо ганцаараа агшны түлхүүр болно.
       const now = new Date();
@@ -1640,7 +1985,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
          */
         if (sc.f.wC && a[sc.f.wC] == null && c[i].C != null) a[sc.f.wC] = c[i].C;
         // Шинэчлэгдсэн огноо — excel-ийн лавлах нүд, зөвхөн 1-р мөрд.
-        if (sc.f.asOf) a[sc.f.asOf] = i === 0 ? asOf : null;
+        if (sc.f.asOf) a[sc.f.asOf] = i === 0 ? asOfPub : null;
         // АРХИВЫН ТҮЛХҮҮР — мөр БҮРД.
         if (sc.f.fillDate) a[sc.f.fillDate] = fillMs;
         /*
@@ -1701,7 +2046,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       //    эс бөгөөс дараагийн нийтлэлд ДАХИН нэмэгдэж давхардана.
       setAdds([]);
       setAddFor(null);
-      say(rv.ok
+      done(rv.ok
         ? tr('Архивт {0} мөр нэмэгдэв · {1} · хяналтад илгээв ({2})', added, msToDay(fillMs), rv.id)
         : tr('Архивт {0} мөр нэмэгдэв · {1} · ⚠️ хяналтад илгээгдсэнгүй: {2}', added, msToDay(fillMs), rv.error));
     } catch (e) {
@@ -1780,10 +2125,27 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    * ЦУГЛУУЛЖ, нэг хураангуй асуултаар шийднэ.
    */
   const pasteBlock = (startI: number, startB: number, text: string): boolean => {
-    if (!sc || locked || noEdit || !canPerf) return false;
+    if (!sc) return false;
+    /* ⚠️ ТҮГЖЭЭТЭЙ үед ЧИМЭЭГҮЙ бүтэлгүйтэхгүй (2026-09-03-ны аудит): Excel-
+       ээс 40 нүд буулгасан хүн юу ч болоогүйг хараад «хуулагдсангүй» гэж
+       эргэлзэнэ. Шалтгааныг нь хэлээд буулгалтыг зогсооно. */
+    if (locked || noEdit || !canPerf) {
+      warn(noEdit && !locked ? RO.docLocked : RO.noPerf);
+      return true;
+    }
     const grid = parseGrid(text);
     /* Нэг нүдний энгийн буулгалт бол ердийн замаар нь явуулна */
-    if (grid.length === 1 && grid[0].length === 1) return false;
+    if (grid.length === 1 && grid[0].length === 1) {
+      /* ⚠️ ХААЛТТАЙ нүдэн дээр (input нээгдээгүй) ганц утга буулгахад урьд нь
+         `preventDefault` дуудагдахгүй тул ЮУ Ч болохгүй, мэдэгдэл ч гарахгүй
+         байв. Нүдийг нээхийн оронд утгыг шууд бичнэ — Excel-ийн зан. */
+      const one = grid[0][0];
+      if (edit || one === '') return false;
+      const r0 = rowsAll[startI];
+      if (!r0 || !volMode(r0, startB)) return false;
+      commit(r0, startB, one);
+      return true;
+    }
 
     /* ⚠️ ЗӨВХӨН ХАРАГДАХ мөрүүд — шүүлт/эвхэлтээр нуугдсаныг алгасвал
        хэрэглэгчийн харж буй эгнээ ба бичигдэх эгнээ хоёр зөрнө. */
@@ -1805,7 +2167,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     }));
 
     if (!hits.length) {
-      say(bad
+      warn(bad
         ? tr("Буулгасан утгууд тоо биш байна — юу ч бичигдсэнгүй.")
         : tr("Буулгах боломжтой нүд таарсангүй."));
       return true;
@@ -1832,7 +2194,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       return n;
     });
     setEdit(null);
-    say(bad || skipped
+    done(bad || skipped
       ? tr("{0} нүд бичигдлээ · {1} алгасав", String(hits.length), String(skipped + bad))
       : tr("{0} нүд бичигдлээ", String(hits.length)));
     return true;
@@ -2012,9 +2374,18 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         {!locked && savedAt != null && dirtyCount > 0 && (
           <span
             className={st.autosave}
-            title={tr('Ноорог зөвхөн энэ компьютерийн хөтөчид хадгалагдсан. Хянагчид хүргэхийн тулд «Нийтлэх» дарна.')}
+            /* ⚠️ Тайлбар нь ҮНЭН байх ёстой: ноорог одоо ArcGIS руу ч
+               хуулагддаг тул «зөвхөн энэ компьютерт» гэдэг нь худал болов. */
+            title={tr('Ноорог энэ хөтөчид, мөн ArcGIS-д хадгалагдана — өөр компьютероос нэвтэрсэн ч сэргээх боломжтой. Хянагчид хүргэхийн тулд «Нийтлэх» дарна.')}
           >
             {tr('ноорог хадгалагдав {0}', new Date(savedAt).toLocaleTimeString('mn-MN', { hour: '2-digit', minute: '2-digit' }))}
+          </span>
+        )}
+        {/* ⚠️ ХЭТ ТОМ ноорог алсад ЯВААГҮЙГ ил хэлнэ — «хадгалагдсан» гэж
+            бодоод өөр машин дээр хоосон хуудас хүлээж авах нь хамгийн муу. */}
+        {remoteBig && (
+          <span className={st.autosaveWarn} role="status">
+            {tr('Ноорог хэт том тул зөвхөн энэ компьютерт хадгалагдлаа.')}
           </span>
         )}
       </div>
@@ -2363,7 +2734,17 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                                 type: "text" as const,
                                 inputMode: "decimal" as const,
                                 className: st.cellInputLine,
-                                placeholder: tr('обьём'),
+                                /**
+                                 * ⚠️ ЛАВЛАХ ТОО НҮДЭНДЭЭ (2026-09-03-ны аудит):
+                                 * бичих утга нь мөрийн «Обьём»-оос хэтрэх ёсгүй,
+                                 * хувь нь түүгээр бодогдоно. Гэтэл тэр багана
+                                 * царцаагүй тул 10-р блок дээр ажиллахад
+                                 * дэлгэцээс гүйлгэгдэн алга болж, ганц зам нь
+                                 * `title`-ийг хулганаар хүлээх байв.
+                                 */
+                                placeholder: r.vol != null && r.vol > 0
+                                  ? tr('{0}-аас', qty(r.vol))
+                                  : tr('обьём'),
                                 // Удирдлагагүй: бичихэд re-render гарахгүй.
                                 defaultValue: val,
                                 onBlur: (e: React.FocusEvent<HTMLInputElement>) =>
@@ -2649,11 +3030,142 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         />
       )}
 
+      {/* ⚠️ ГАРЧИГ нь ТӨРЛӨӨС хамаарна. Урьд нь «Энэ нүд засагдахгүй.» гэж
+          ХАТУУ бичигддэг байсан тул нийтлэлийн амжилт ба буулгалтын үр дүн
+          хүртэл тэр гарчигтай гарч, ажил бүтсэнийг «алдаа» гэж уншуулж байв.
+          ⚠️ Тэмдэг нь өнгөнөөс ГАДНА — өнгө ганцаараа мэдээлэл дамжуулахгүй. */}
       {notice && (
-        <div className={st.notice} role="status" onClick={() => setNotice("")}>
-          <b>{tr('Энэ нүд засагдахгүй.')}</b> {notice}
+        <div
+          className={`${st.notice} ${notice.kind === 'ok' ? st.noticeOk : notice.kind === 'warn' ? st.noticeWarn : ''}`}
+          role={notice.kind === 'ro' ? 'status' : 'alert'}
+          onClick={() => setNotice(null)}
+        >
+          <b>
+            {notice.kind === 'ok' ? '✓ ' : notice.kind === 'warn' ? '⚠ ' : ''}
+            {notice.kind === 'ro' ? tr('Энэ нүд засагдахгүй.') : ''}
+          </b>
+          {' '}{notice.msg}
         </div>
       )}
+
+      {restore && (
+        <RestoreModal
+          plan={restore}
+          onRestore={applyRestore}
+          onLater={laterRestore}
+          onDrop={dropRestore}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ══════════════════ СЭРГЭЭХ ЦОНХ ══════════════════ */
+
+/**
+ * НООРОГ СЭРГЭЭХ ЦОНХ — дэлгэцийн ГОЛД (2026-09-03, хэрэглэгчийн заавар).
+ *
+ * ⚠️ Хөтчийн `confirm`-ыг ОРЛОВ. Тэр нь дэлгэцийн дээд ирмэгт наалдаж,
+ * агуулгыг нэг эгнээ бичвэрээр өгдөг тул «юу сэргэх вэ» гэдэг нүдэнд
+ * ялгардаггүй байв. Мөн Escape нь чимээгүй «Цуцлах» болж ноорогийг УСТГАДАГ
+ * байсан — эргэж нөхөгдөшгүй алдагдал.
+ *
+ * ⚠️ ГУРВАН сонголт, гурвуулаа ИЛ: сэргээх · дараа шийдэх (ноорог үлдэнэ) ·
+ * устгах. Escape ба гадуур товшилт нь «дараа шийдэх» — хамгийн аюулгүй нь
+ * анхдагч байх ёстой, учир нь санамсаргүй товшилт хэдэн цагийн ажлыг
+ * устгаж болно.
+ */
+function RestoreModal({
+  plan, onRestore, onLater, onDrop,
+}: {
+  plan: RestorePlan;
+  onRestore: () => void;
+  onLater: () => void;
+  onDrop: () => void;
+}) {
+  const box = useRef<HTMLDivElement>(null);
+  useFocusTrap(box);
+  useEffect(() => {
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') onLater(); };
+    window.addEventListener('keydown', esc);
+    return () => window.removeEventListener('keydown', esc);
+  }, [onLater]);
+
+  return (
+    <div className={st.overlay} role="presentation" onClick={onLater}>
+      <div
+        ref={box}
+        className={st.rsBox}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="rs-title"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className={st.rsHead}>
+          <span className={st.rsIcon} aria-hidden>↺</span>
+          <div>
+            <h3 className={st.rsTitle} id="rs-title">{tr('Нийтлэгдээгүй засвар байна')}</h3>
+            {/* ⚠️ Хугацаа нь ГОЛ шийдвэрлэх мэдээлэл: хэрэглэгч «энэ миний
+                өчигдрийн ажил мөн үү» гэдгийг үүгээр таньдаг.
+                ⚠️ ЭХ СУРВАЛЖ нь мөн адил чухал: «өөр төхөөрөмж дээр үлдээсэн»
+                гэдгийг мэдэхгүй бол хэрэглэгч энэ ажлыг танихгүй. */}
+            <p className={st.rsWhen}>
+              {plan.when}
+              <span className={st.rsFrom}>
+                {plan.source === 'remote' ? tr('өөр төхөөрөмж') : tr('энэ компьютер')}
+              </span>
+            </p>
+          </div>
+        </div>
+
+        {/* ⚠️ ЗАДАРГАА нь ЖАГСААЛТ — нэг эгнээ бичвэрт «9 гүйцэтгэлийн нүд,
+            2 огноо» гэж нийлүүлбэл юу нь хэд болох нь уншигдахгүй. */}
+        {/* ⚠️ ЗАДАРГАА нь ЖАГСААЛТ — нэг эгнээ бичвэрт «9 гүйцэтгэлийн нүд,
+            2 огноо» гэж нийлүүлбэл юу нь хэд болох нь уншигдахгүй. */}
+        {plan.parts.length > 0 && (
+          <ul className={st.rsList}>
+            {plan.parts.map((p) => (
+              <li key={p} className={st.rsItem}>
+                <span className={st.rsDot} aria-hidden />
+                {p}
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {plan.dropped > 0 && (
+          <p className={st.rsWarn}>
+            {/* ⚠️ Юу ч сэргээгдэхгүй тохиолдлыг ТУСДАА хэлнэ: «орхигдоно»
+                гэдэг нь хэсэг нь сэргэнэ гэсэн утга өгөх тул төөрөгдүүлнэ. */}
+            {plan.parts.length === 0
+              ? tr('Хуудас хооронд нь шинэчлэгдсэн тул ноорогийн {0} нүд шинэ мөрүүдэд тохирсонгүй — сэргээх зүйл үлдсэнгүй.', plan.dropped)
+              : tr('{0} нүд хуучирсан тул орхигдоно.', plan.dropped)}
+          </p>
+        )}
+
+        <p className={st.rsNote}>
+          {tr('Ноорог энэ хөтөчид, мөн ArcGIS-д хадгалагдана — өөр компьютероос нэвтэрсэн ч сэргээх боломжтой. Хянагчид хүргэхийн тулд «Нийтлэх» дарна.')}
+        </p>
+
+        <div className={st.rsFoot}>
+          {/* ⚠️ УСТГАХ нь зүүн, ирмэгт — гол урсгалаас ТУСДАА. Буцаах зам
+              байхгүй үйлдэл нь «Сэргээх»-ийн хажууд зэрэгцэж болохгүй. */}
+          <button type="button" className={st.rsDrop} onClick={onDrop}>
+            {tr('Устгах')}
+          </button>
+          <span className={st.rsGap} />
+          <button type="button" className={st.rsLater} onClick={onLater}>
+            {tr('Дараа шийднэ')}
+          </button>
+          {/* ⚠️ Сэргээх зүйл үлдээгүй бол товч ГАРАХГҮЙ — дарахад юу ч
+              болохгүй товч нь «эвдэрсэн» гэж уншигдана. */}
+          {plan.parts.length > 0 && (
+            <button type="button" className={st.rsGo} onClick={onRestore} autoFocus>
+              {tr('Сэргээх')}
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

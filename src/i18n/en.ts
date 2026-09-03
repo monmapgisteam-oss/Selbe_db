@@ -2427,8 +2427,6 @@ const en: Record<string, string> = {
   "{0} баримтын нүд": "{0} document cells",
   "{0} шинэ мөр": "{0} new rows",
   "шинэчлэгдсэн огноо": "updated date",
-  "Нийтлэгдээгүй засвар олдлоо ({0}):": "Unpublished changes found ({0}):",
-  "Ноорог зөвхөн энэ компьютерийн хөтөчид хадгалагдсан. Хянагчид хүргэхийн тулд «Нийтлэх» дарна.": "The draft is saved only in this computer’s browser. Press “Publish” to send it to reviewers.",
   "ноорог хадгалагдав {0}": "draft saved {0}",
   "{0}: хуудсанд мөр алга — эх хүснэгтийг эхлээд ачаална уу.": "{0}: the sheet has no rows — load the source table first.",
   "Нэмэх амжилтгүй": "Add failed",
@@ -3248,7 +3246,18 @@ const en: Record<string, string> = {
   "{0} нүд бичих гэж байна.\n{1}.\nҮргэлжлүүлэх үү?": "About to write {0} cells.\n{1}.\nContinue?",
   "{0} нүд бичигдлээ · {1} алгасав": "{0} cells written · {1} skipped",
   "{0} нүд бичигдлээ": "{0} cells written",
-  "Мөрийн Обьём {0} · бөглөсөн {1} = {2}\nExcel-ээс олон нүдийг хуулж Ctrl+V дарж болно.": "Row volume {0} · entered {1} = {2}\nYou can copy a block from Excel and press Ctrl+V."
+  "Мөрийн Обьём {0} · бөглөсөн {1} = {2}\nExcel-ээс олон нүдийг хуулж Ctrl+V дарж болно.": "Row volume {0} · entered {1} = {2}\nYou can copy a block from Excel and press Ctrl+V.",
+  "Нийтлэгдээгүй засвар байна": "You have unpublished changes",
+  "Дараа шийднэ": "Decide later",
+  "«Гүйцэтгэл бөглөх»-ийн нийтлэгдээгүй ноорог": "Unpublished drafts for “Fill in progress”",
+  "Ноорог энэ хөтөчид, мөн ArcGIS-д хадгалагдана — өөр компьютероос нэвтэрсэн ч сэргээх боломжтой. Хянагчид хүргэхийн тулд «Нийтлэх» дарна.": "The draft is saved in this browser and in ArcGIS — you can restore it after signing in from another computer. Press “Publish” to send it to reviewers.",
+  "Ноорог хэт том тул зөвхөн энэ компьютерт хадгалагдлаа.": "The draft is too large, so it was saved on this computer only.",
+  "өөр төхөөрөмж": "another device",
+  "энэ компьютер": "this computer",
+  "Шинэ мөр нэмэх эрх алга — «Хэрэглэгчдийн эрх удирдах» хэсгээс «Мөр нэмэх» эрхийг олгоно.": "You do not have the “Add row” right — grant it under “Manage user rights”.",
+  "{0} · {1}: обьём сөрөг байж болохгүй — нийт хуримтлагдсан хэмжээг бичнэ үү.": "{0} · {1}: volume cannot be negative — enter the total accumulated amount.",
+  "Энэ багцыг өнөөдөр өөр хэрэглэгч аль хэдийн нийтэлсэн байна. Ноорог хадгалагдсан хэвээр — хуудсыг дахин ачаалж, сэргээгээд үргэлжлүүлнэ үү.": "Another user has already published this package today. Your draft is still saved — reload the page, restore it and continue.",
+  "Хуудас хооронд нь шинэчлэгдсэн тул ноорогийн {0} нүд шинэ мөрүүдэд тохирсонгүй — сэргээх зүйл үлдсэнгүй.": "The sheet was updated in the meantime, so {0} draft cells could not be matched to the new rows — nothing is left to restore.",
 };
 
 export default en;

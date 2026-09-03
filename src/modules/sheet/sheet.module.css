@@ -162,6 +162,13 @@
   animation: noticeIn 0.14s ease;
 }
 .notice b { font-weight: 650; }
+/* ⚠️ АМЖИЛТ ба БҮТСЭНГҮЙ — зүүн ирмэгийн зураас нь утгаа өнгөөр хэлнэ,
+   гэхдээ ✓ / ⚠ тэмдэг нь өнгө сохор хараанд ч ялгаж өгнө (өнгө ганцаараа
+   мэдээлэл дамжуулахгүй гэсэн төслийн дүрэм). */
+.noticeOk { border-left-color: var(--good); }
+.noticeOk b { color: var(--good); }
+.noticeWarn { border-left-color: var(--warn); }
+.noticeWarn b { color: var(--warn-ink, var(--warn)); }
 @keyframes noticeIn {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: none; }
@@ -345,7 +352,12 @@
   border-left: 1px solid var(--line);
   font-size: 12px;
   color: var(--ink);
-  user-select: none; /* нүд чирж сонгох үед текст сонгогдохгүй */
+  /* ⚠️ `user-select: none` ХАСАГДСАН (2026-09-03-ны аудит). Тэр нь бүх
+     хүснэгтийг ХУУЛЖ АВАХ БОЛОМЖГҮЙ болгож байв: Excel-ЭЭС дотогш буулгах
+     зам нээгдсэн атал ГАДАГШ (ажлын нэр, бөглөсөн тоо, огноо) хуулах бүрэн
+     хаалттай байлаа. Толгойн шошго ба чирэх бариул дээр л хэвээр үлдэнэ
+     (доорх `.b32 th`, `.grip`) — тэнд чирэлт нь текст сонгохтой мөргөлдөнө. */
+  user-select: text;
   /* ⚠️ Цөөн баганатай хүснэгт 100% өргөнд сунана — барилгын багана (тогтмол
      өргөнгүй) илүү зайг эзэлнэ. Багана олон бол натурал өргөн нь давамгайлж,
      `.scroll`-ын overflow-x идэвхжинэ (100% үл хэрэгсэгдэнэ). */
@@ -369,6 +381,10 @@
   position: sticky;
   top: 0;
   z-index: 2;
+  /* ⚠️ Толгойд текст сонгогдохгүй — багана чирэх бариул энд сууна, чирэлт нь
+     текст сонголттой мөргөлдвөл өргөн тохируулах нь эвдэрнэ. Биед (`td`) нь
+     сонгогдоно: бөглөсөн тоогоо Excel рүү буцааж хуулах хэрэгцээ бодит. */
+  user-select: none;
   /* envhub: өнгө = утга — толгойн акцент дүүргэлт чимэглэл байсан тул
      surface-2 давхарга + eyebrow маягийн бичиг болов. */
   background: var(--sheet-header);
@@ -600,8 +616,12 @@
    эзэлж голлоно. Мөрийн өндөр хоёр тохиолдолд ИЖИЛ байх ёстой — виртуаль
    гүйлгээ мөрийн өндрийг хэмжиж чигжээсээ бодох тул зөрвөл байрлал алдагдана. */
 .cellPct {
-  font-size: 10px;
-  opacity: 0.7;
+  /* ⚠️ 10px/0.7 байсныг ТОМСГОВ (2026-09-03-ны аудит): хувь бол энэ хуудасны
+     ГОЛ ГАРАЛТ атал хамгийн жижиг, хамгийн бүдэг элемент байв — WCAG-ийн
+     4.5:1 харьцаанд багтахгүй. Хоёрдогч гэдгийг хэмжээ (11px) хэлж чадна,
+     тунгаралт нэмэх шаардлагагүй. */
+  font-size: 11px;
+  opacity: 0.88;
 }
 /* ХЯНАЛТЫН ХАРАГДАЦ (`.view`) — засагдахгүй ч ХОЁУЛАА харагдана.
    ⚠️ Хянагч бөглөгчтэй ЯГ ИЖИЛ тоог харах ёстой: обьёмыг нуувал «хэдийг
@@ -624,7 +644,9 @@
   justify-content: flex-end;
 }
 /* Бодогддог (гараар засагдахгүй) хувь — бусад бодолттой ижил өнгө. */
-.calcPct { color: var(--calc, inherit); opacity: 0.55; }
+/* ⚠️ `opacity: 0.55` байсныг хасав — бодогддог нүдний өнгө (`--ink-3`) дээр
+   нэмэгдэж хоёр давхар бүдгэрч, бодогдсон хувь бараг уншигдахгүй байв. */
+.calcPct { color: var(--calc, inherit); opacity: 0.8; }
 
 /* Нүдний НЭГ МӨРИЙГ засах оролт — нүдээ бүтнээр эзэлнэ, нөгөө мөр нь
    харагдсаар үлдэнэ (юун дээр юу бичиж байгаагаа хардаг). */
@@ -692,6 +714,115 @@
   transition: background 0.12s;
 }
 .menuItemDanger:hover { background: color-mix(in srgb, var(--bad) 12%, transparent); }
+
+/* ══════════════ НООРОГ СЭРГЭЭХ ЦОНХ ══════════════
+   ⚠️ 2026-09-03: хөтчийн `confirm`-ыг орлов. Тэр нь дэлгэцийн ДЭЭД ирмэгт
+   наалдаж, агуулгаа нэг эгнээ бичвэрээр өгдөг байсан. Энэ цонх нь `.overlay`-ийн
+   голлолтыг хуваалцана — өөр модалтай ижил байрлал, ижил дэвсгэр. */
+.rsBox {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  max-width: 26rem;
+  padding: 18px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-lg);
+}
+.rsHead { display: flex; align-items: flex-start; gap: 12px; }
+/* Дүрс — «буцааж авах» гэсэн утга; өнгө нь мэдээллийнх, анхааруулгынх БИШ:
+   ноорог олдсон нь асуудал биш, боломж. */
+.rsIcon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 99px;
+  font-size: 15px;
+  color: var(--data);
+  background: color-mix(in srgb, var(--data) 14%, transparent);
+}
+.rsTitle { margin: 0; font-size: 0.9rem; font-weight: 600; color: var(--ink); }
+.rsWhen {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 2px 0 0;
+  font-size: 0.72rem;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+/* ЭХ СУРВАЛЖИЙН шошго — «энэ компьютер» / «өөр төхөөрөмж» */
+.rsFrom {
+  padding: 1px 7px;
+  border-radius: 99px;
+  font-size: 0.66rem;
+  color: var(--ink-2);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+}
+.rsList {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 0;
+  padding: 10px 12px;
+  list-style: none;
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+}
+.rsItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.rsDot { flex: none; width: 5px; height: 5px; border-radius: 99px; background: var(--data); }
+/* Хаягдах нүд — АНХААРУУЛГА, гэхдээ үйлдлийг зогсоохгүй */
+.rsWarn {
+  margin: 0;
+  padding: 7px 10px;
+  font-size: 0.73rem;
+  color: var(--warn-ink, var(--warn));
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent);
+  border-radius: var(--r-sm);
+}
+.rsNote { margin: 0; font-size: 0.72rem; line-height: 1.5; color: var(--ink-3); }
+.rsFoot { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
+.rsGap { flex: 1; }
+.rsGo, .rsLater, .rsDrop {
+  font: inherit;
+  font-size: 0.78rem;
+  padding: 7px 14px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.rsLater:hover { color: var(--ink); border-color: var(--line-strong); }
+/* ГОЛ үйлдэл — дүүргэлттэй, цорын ганц тод товч */
+.rsGo {
+  font-weight: 600;
+  color: var(--hue-ink, #fff);
+  background: var(--data);
+  border-color: transparent;
+}
+.rsGo:hover { filter: brightness(1.06); }
+/* УСТГАХ — буцаах замгүй тул анхдагчаар бүдэг, хулгана очиход л улаан болно */
+.rsDrop { border-color: transparent; background: none; color: var(--ink-3); }
+.rsDrop:hover {
+  color: var(--bad-ink, var(--bad));
+  background: color-mix(in srgb, var(--bad) 12%, transparent);
+}
 
 /* ── Хавсралт (зураг) модал ── */
 .overlay {
@@ -1163,4 +1294,18 @@ tr:hover > td > .addBtn { opacity: 1; }
   height: 6px;
   border-radius: 50%;
   background: var(--good);
+}
+/* Ноорог алсад ЯВААГҮЙ — шар, гэхдээ ажлыг зогсоохгүй (локалд бүрэн бүтэн) */
+.autosaveWarn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 8px;
+  padding: 2px 8px;
+  font-size: 11px;
+  white-space: nowrap;
+  color: var(--warn-ink, var(--warn));
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent);
+  border-radius: var(--r-sm);
 }
