@@ -43,7 +43,8 @@ import '@arcgis/core/assets/esri/themes/light/main.css';
 
 import {
   LAYERS, LAYER_BY_ID, layerUrl, oidOf, drawOrder, DASH_PATTERN, ALWAYS_ON_IDS, REFERENCE_IDS,
-  HOME, IMAGERY, IRGED_ORTHO, IRGED_ROAD, IRGED_SCENE, IRGED_TOILET, SCENE, BIM, USAN_SAN, ELEVATION_URL, ZONE_LAYER, zoneWhere,
+  HOME, IMAGERY, IRGED_ORTHO, IRGED_ROAD, IRGED_SCENE, IRGED_TOILET, IRGED_BUILT, IRGED_BUILT_DEF,
+  SCENE, BIM, USAN_SAN, ELEVATION_URL, ZONE_LAYER, zoneWhere,
   ZONE_FIELD, ZONE_NONE, ZONE_TYPE_EMPTY_HUE, OID, BUILDING, SURVEY, PARCEL_LEFT, buildingKey,
   MAP_HUE_OVERRIDES, SOURCE_FS, BASE_MAP_IDS, TOGLOOM_TYPES,
   type LayerDef,
@@ -374,6 +375,23 @@ const TOILET_CLUSTER_SCALE = 2_500;
  * ⚠️ Босго нь (гурав дахь тоо) эсрэгээр өснө: том кластер дээр зөвхөн хамгийн
  * тод пиксел гэрэлтэж, дугуйн бүх талбай цайхгүй.
  */
+/**
+ * ГЭР ХОРООЛЛЫН БАРИЛГА — гэрэлтэх эффект (2026-09-02).
+ *
+ * ⚠️ Тод өнгө ба зузаан хүрээ дангаараа хангалтгүй байв: ортофото нь
+ *    нарийн бүтэцтэй тул нимгэн хүрээ түүн дээр «тасарч» алга болдог.
+ *    Bloom нь хүрээг дэвсгэрээс ТАСАЛЖ, жижиг полигон ч нүдэнд шууд тусна
+ *    (`TOILET_EFFECT`-ийн адил батлагдсан арга).
+ * ⚠️ Жорлонгийнхоос СУЛ: тэр нь ганц цэг, энэ нь 6,627 полигон — ижил
+ *    эрчимтэй бол бүх зураг гэрэлтэж, ортофото уншигдахаа болино.
+ * ⚠️ ЗӨВХӨН 2D-д үйлчилнэ (SceneView `effect`-ийг үл тоомсорлоно).
+ */
+const BUILT_EFFECT = [
+  { scale: 20_000, value: 'bloom(0.2, 0.3px, 0.3)' },
+  { scale: 6_000, value: 'bloom(0.4, 0.35px, 0.2)' },
+  { scale: 1_500, value: 'bloom(0.6, 0.4px, 0.15)' },
+] as unknown as __esri.Effect;
+
 const TOILET_EFFECT = [
   { scale: 20_000, value: 'bloom(0.15, 0.4px, 0.35)' },
   { scale: 8_000, value: 'bloom(0.3, 0.4px, 0.28)' },
@@ -851,6 +869,8 @@ const PASSIVE = new Set<string>([
   // Нүхэн жорлон — зөвхөн байршил харуулна; дарахад атрибут гарах ЁСГҮЙ
   IRGED_TOILET.id,
   TOILET_PIN_ID,
+  // Гэр хорооллын барилга — зөвхөн байршил/төрөл; атрибут ил гаргахгүй
+  IRGED_BUILT.id,
   IRGED_ROAD.id,
   ...SCENE.layers.map((l) => `scene:${l.key}`),
   ...IRGED_SCENE.layers.map((l) => `scene:${l.key}`),
@@ -962,6 +982,31 @@ function buildLayers(uniform = false): Layer[] {
      * хэвийн, гэрэлтэхгүй харагдана.
      */
     effect: TOILET_EFFECT,
+  }));
+
+  /* ГЭР ХОРООЛЛЫН ОДООГИЙН БАРИЛГА — «Иргэдэд хүрэх үр өгөөж»-ийн «ӨМНӨ» тал.
+     6,627 полигон, `Type`-аар өнгө ялгана (Байшин · Гэр).
+
+     ⚠️ `outFields: [Type]` — ЗӨВХӨН ангилал. `Confidence` талбар нь «Гэр»-т
+     ~93, «Байшин»-д БҮГД 0 тул ил гарвал «энэ барилгын итгэл 0%» гэсэн ХУДАЛ
+     уншлага өгнө. Хэрэгтэй ганц атрибутыг л татна.
+
+     ⚠️ `minScale` — 1:20,000-аас хол зумд огт зурагдахгүй. 6,627 полигон нь
+     хотын хэмжээнд ялгагдахгүй хүрэн толбо болж ортофотог далдалдаг; ойртоход
+     л утга гарна. */
+  L.push(new FeatureLayer({
+    id: IRGED_BUILT.id,
+    title: IRGED_BUILT.title,
+    url: IRGED_BUILT.url,
+    visible: false,
+    listMode: 'hide',
+    popupEnabled: false,
+    legendEnabled: false,
+    outFields: [IRGED_BUILT.typeField],
+    elevationInfo: ON_GROUND,
+    minScale: 20_000,
+    renderer: paintRenderer(IRGED_BUILT_DEF),
+    effect: BUILT_EFFECT,
   }));
 
   /* Нүхэн жорлонгийн ОЙРЫН callout хувилбар — ЗӨВХӨН 1:3,000-аас ойр (`minScale`).

@@ -3258,6 +3258,11 @@ const en: Record<string, string> = {
   "{0} · {1}: обьём сөрөг байж болохгүй — нийт хуримтлагдсан хэмжээг бичнэ үү.": "{0} · {1}: volume cannot be negative — enter the total accumulated amount.",
   "Энэ багцыг өнөөдөр өөр хэрэглэгч аль хэдийн нийтэлсэн байна. Ноорог хадгалагдсан хэвээр — хуудсыг дахин ачаалж, сэргээгээд үргэлжлүүлнэ үү.": "Another user has already published this package today. Your draft is still saved — reload the page, restore it and continue.",
   "Хуудас хооронд нь шинэчлэгдсэн тул ноорогийн {0} нүд шинэ мөрүүдэд тохирсонгүй — сэргээх зүйл үлдсэнгүй.": "The sheet was updated in the meantime, so {0} draft cells could not be matched to the new rows — nothing is left to restore.",
+  "Одоогийн барилга (гэр хороолол)": "Existing structures (ger district)",
+  "Одоогийн барилга": "Existing structures",
+  "гэр хороолол": "ger district",
+  "Байшин": "House",
+  "Гэр": "Ger",
 };
 
 export default en;
