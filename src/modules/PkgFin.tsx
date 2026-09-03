@@ -763,7 +763,12 @@ function TsPackList({
                 ? tr('{0} / {1}', mnt(given), mnt(plan))
                 : tr('санхүү бүртгэлгүй')}
               value={
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                /* ⚠️ `flexWrap` — самбар хамгийн нарийн (180px) үедээ ч тэмдэг
+                   картаас хальж гарахгүй: хувь дээрээ, тэмдэг доороо буна. */
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  flexWrap: 'wrap', justifyContent: 'flex-end',
+                }}>
                   {execPct == null ? '—' : pct(execPct, 0)}
                   {/**
                     * ⚠️ 2026-08-18: анхааруулга нь ЗӨВХӨН «⚠» тэмдэг байсныг

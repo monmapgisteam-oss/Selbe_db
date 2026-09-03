@@ -55,6 +55,12 @@ type PkgOverlap = {
   /** Барилгын багцад блокийн OID шүүлт; дэд бүтцийн багцад `null` */
   where: string | null;
   oids: number[];
+  /**
+   * ⚠️ Энэ багцын огтлолцол ТАТАГДСАНГҮЙ (2026-09-03-ны аудит). Хоосон
+   * `oids` нь «давхцал алга» ГЭСЭН УТГАТАЙ тул уналтыг тусад нь тэмдэглэнэ —
+   * эс бөгөөс сүлжээний саат «цэвэр» гэсэн баталгаа болно.
+   */
+  failed: boolean;
 };
 
 /** Барилгын блокийн давхарга — багц бүрийн блокууд эндээс */
@@ -90,7 +96,12 @@ async function loadPkgOverlapsRaw(): Promise<PkgOverlap[]> {
   const rows = await queryFeatures(BUILDING.url, {
     outFields: [BUILDING.oid, F.bagts],
     limit: 2000,
-  }).catch(() => [] as Row[]);
+  /* ⚠️ УНАЛТЫГ ХООСОН ЖАГСААЛТ БОЛГОХГҮЙ (2026-09-03-ны аудит): урьд нь
+     `.catch(() => [])` байсан тул сүлжээ саатахад дэлгэц «Аль ч багц дээр
+     давхцсан нэгж талбар алга» гэсэн БАТАЛГААТАЙ мэдэгдэл гаргадаг байв.
+     `parcelOverlap.ts`-ийн ⚠️ сэрэмжлүүлэг яг үүнийг хориглосон. Одоо
+     алдааг цааш дамжуулж, `useAsync` түүнийг ил харуулна. */
+  });
 
   /* Барилгын багц — блокуудыг багцаар нь бүлэглэж OID шүүлт болгоно */
   const byName = new Map<string, number[]>();
@@ -101,7 +112,7 @@ async function loadPkgOverlapsRaw(): Promise<PkgOverlap[]> {
     const a = byName.get(name);
     if (a) a.push(oid); else byName.set(name, [oid]);
   }
-  const build: Omit<PkgOverlap, 'oids'>[] = [...byName].map(([name, oids]) => ({
+  const build: Omit<PkgOverlap, 'oids' | 'failed'>[] = [...byName].map(([name, oids]) => ({
     key: bagtsKey(name),
     name,
     layerIds: [BLOCK_LAYER],
@@ -109,7 +120,7 @@ async function loadPkgOverlapsRaw(): Promise<PkgOverlap[]> {
   }));
 
   /* Дэд бүтцийн багц — давхаргын гарчгуудын НИЙТЛЭГ хэсгийг нэр болгоно */
-  const infra: Omit<PkgOverlap, 'oids'>[] = Object.entries(PKG_BY_BAGTS).map(([key, ids]) => ({
+  const infra: Omit<PkgOverlap, 'oids' | 'failed'>[] = Object.entries(PKG_BY_BAGTS).map(([key, ids]) => ({
     key,
     name: ids.length ? (LAYER_BY_ID[ids[0]]?.title ?? key) : key,
     layerIds: ids,
@@ -124,9 +135,13 @@ async function loadPkgOverlapsRaw(): Promise<PkgOverlap[]> {
   return all
     .map((pk, i) => {
       const r = res[i];
-      return { ...pk, oids: r.status === 'fulfilled' ? r.value.oids : [] };
+      /* ⚠️ Нэг багцын огтлолцол унасныг «давхцалгүй» гэж бүү ойлго —
+         `failed` тугаар тэмдэглээд дэлгэц дээр ил хэлнэ. */
+      return r.status === 'fulfilled'
+        ? { ...pk, oids: r.value.oids, failed: false }
+        : { ...pk, oids: [] as number[], failed: true };
     })
-    .filter((x) => x.oids.length > 0)
+    .filter((x) => x.oids.length > 0 || x.failed)
     .sort((a, b) => b.oids.length - a.oids.length
       || a.name.localeCompare(b.name, 'mn', { numeric: true }));
 }
@@ -165,7 +180,7 @@ function OverlapBars({
   if (q.state !== 'ready') {
     return (
       <Section title={tr('Саад — багцаар')}>
-        <Empty label={tr('Давхцлыг тоолж чадсангүй.')} />
+        <Empty label={tr('Давхцлыг тоолж чадсангүй.')} onRetry={q.retry} />
       </Section>
     );
   }

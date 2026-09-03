@@ -274,7 +274,10 @@ ul, ol { list-style: none; }
    элемент фокус авмагц дэлгэц дүүрэн 2px цэнхэр хүрээ татаж, түүний ирмэг
    нь картуудын дээгүүр «битүү үргэлжилсэн том зураас» болж харагддаг байв
    (нарийн цонхонд хоёр самбарт хоёр өөр газар илэрсэн). */
-:is(a, button, input, select, textarea, summary,
+/* ⚠️ `td[tabindex]` ЗААВАЛ (2026-09-03-ны аудит): «Гүйцэтгэл бөглөх»-ийн
+   нүднүүд гараар фокуслагддаг ч энэ жагсаалтад ороогүй тул зөвхөн хөтчийн
+   анхдагч тоймтой байв — 1px шугамтай нягт хүснэгтэд бараг ялгарахгүй. */
+:is(a, button, input, select, textarea, summary, td[tabindex], th[tabindex],
   [role='button'], [role='tab'], [role='menuitem'], [role='separator']):focus-visible {
   outline: 2px solid var(--hue);
   outline-offset: 2px;

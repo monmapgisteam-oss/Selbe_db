@@ -1,0 +1,172 @@
+/* ТАЙЛАНГИЙН ГРАФИК — `tailanChart.tsx`-ийн ганц стайл эх сурвалж.
+ *
+ * ⚠️ ӨНГӨНИЙ ЖИШИГ: аппын дизайн систем нь НЭГ өгөгдлийн өнгөтэй (`--data`)
+ * бөгөөд статусын гурав (`--good`/`--warn`/`--bad`). Ангиллын (categorical)
+ * палитр БАЙХГҮЙ — тиймээс бүх харьцуулалт нэг өнгөөр (эмфазисаар ялгана),
+ * зөвхөн хэсэг-бүтэнд ordinal рамп хэрэглэнэ.
+ */
+
+/* ⚠️ ӨӨРИЙН ORDINAL РАМП ХЭРЭГЛЭХГҮЙ. Эхлээд энэ файл teal өнгөний 4 шаттай
+   рампаа зохиосон боловч аппад АЛЬ ХЭДИЙН баталгаажсан 8 слотын ангиллын
+   палитр (`--c1…--c8`, `format.ts`-ийн `cat()`) байсан. Хоёр систем зэрэг
+   байвал тайлан нь дашбоард, «Багцын санхүү»-тэй өөр өнгөний хэлээр ярина.
+   Тиймээс хэсэг-бүтэн зурвас нь `cat(i)`-ийг inline `background`-аар авна. */
+.fig { margin: 0 0 14px; }
+
+/* ── Графикийн тайлбар — хүснэгтийн `Cap`-тай ижил хэмнэл ── */
+.cap {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.cap span { font-weight: 400; color: var(--ink-3); }
+
+/* ══════════ Хэвтээ багана ══════════ */
+.bars { display: grid; gap: 5px; }
+.barRow {
+  display: grid;
+  /* ⚠️ Нэрийн багана ТОГТМОЛ өргөнтэй — эс тэгвээс мөр бүрийн зурвас өөр
+     цэгээс эхэлж, урт нь нүдээр харьцуулагдахаа болино. */
+  grid-template-columns: minmax(0, 13rem) 1fr auto;
+  align-items: center;
+  gap: 10px;
+  font-size: 11.5px;
+}
+.barName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-2);
+}
+.barTrack {
+  position: relative;
+  height: 10px;
+  border-radius: 3px;
+  /* Суурь нь МАШ намуухан — зурвас өөрөө гол дүр */
+  background: color-mix(in srgb, var(--ink-3) 12%, transparent);
+  overflow: hidden;
+}
+.bar {
+  display: block;
+  height: 100%;
+  min-width: 2px;
+  /* ⚠️ ЗӨВХӨН баруун үзүүр нь бөөрөнхий — зүүн тал нь тэнхлэгт наалдана.
+     Хоёр талыг бөөрөнхийлвөл богино зурвас «капсул» болж, урт нь худал
+     нэмэгдэж харагдана. */
+  border-radius: 0 4px 4px 0;
+  /* ⚠️ Нэг цуваа = НЭГ өнгө. Аппын өгөгдлийн өнгө (`--data`) намуухан
+     хувилбараар; эмфазистай багана нь бүтэн тодоор ялгарна. */
+  background: color-mix(in srgb, var(--data) 62%, transparent);
+}
+/* ЭМФАЗИС — «энэ нэг нь гол» гэсэн түүх. Бусад нь намуухан хэвээр. */
+.barHot {
+  background: var(--data);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--data) 45%, transparent);
+}
+.barVal {
+  min-width: 4.5rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  /* ⚠️ ТЕКСТ нь ЦУВААНЫ ӨНГӨ ЗҮҮХГҮЙ — бэхний токеноор. Өнгөт зурвас нь
+     хажуудаа таних тэмдгийг аль хэдийн үүрсэн. */
+  color: var(--ink);
+}
+.na { font-style: italic; color: var(--ink-3); font-size: 10.5px; }
+
+/* ⚠️ ДАВХАРЛАСАН ЗУРВАСЫН (`.stack`/`.seg`/`.legend`…) дүрмүүд 2026-09-03-нд
+   БҮРМӨСӨН УСТСАН — хэрэглэгч тэр хэлбэрийг хассан. Хэсэг-бүтэн харьцааг ч
+   `.bars` (хэвтээ багана) харуулна: бүгд нэг суурьтай тул урт нь шууд
+   харьцуулагдана. Домог хэрэггүй — нэр нь мөр бүрийнхээ зүүн талд бий. */
+
+/* ⚠️ СТАТУСЫН ӨНГӨ — зөвхөн төлөв заана. `Meter`-ийн хоцрогдлын дохиод л
+   үлдэв: хуваарьтайгаа харьцуулахад ард хоцорсныг ӨНГӨӨР анхааруулна. */
+.t_warn { background: var(--warn); }
+
+/* ══════════ Хугацааны цуваа ══════════ */
+.spark { display: block; width: 100%; height: 64px; }
+.area { fill: color-mix(in srgb, var(--data) 18%, transparent); stroke: none; }
+.line {
+  fill: none;
+  stroke: var(--data);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  /* ⚠️ `preserveAspectRatio="none"` нь тэнхлэг тус бүрээр өөр сунгадаг тул
+     зураас гажина — `non-scaling-stroke` нь өргөнийг нь тогтмол барина. */
+  vector-effect: non-scaling-stroke;
+}
+.axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 3px;
+  font-size: 10px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.axis > span { flex: 1; text-align: center; min-width: 0; }
+.axis > span:first-child { text-align: left; }
+.axis > span:last-child { text-align: right; }
+.axHot { color: var(--ink-2); font-weight: 600; }
+.note { margin: 6px 0 0; font-size: 11px; color: var(--ink-3); }
+.note b { color: var(--ink-2); }
+
+/* ══════════ Хэмжүүр ══════════ */
+.meter { display: flex; align-items: center; gap: 10px; margin: 0 0 10px; }
+.meterTrack {
+  position: relative;
+  flex: 1;
+  height: 10px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--ink-3) 12%, transparent);
+}
+.meterFill { display: block; height: 100%; border-radius: 3px 0 0 3px; background: var(--data); }
+/* Төлөвлөгөөт хувийн лавлах зураас */
+.meterPlan {
+  position: absolute;
+  top: -3px;
+  width: 2px;
+  height: 16px;
+  background: var(--ink-2);
+  border-radius: 1px;
+}
+.meterVal { flex: none; font-variant-numeric: tabular-nums; font-weight: 600; color: var(--ink); }
+
+/* ══════════ Үзүүлэлтийн эгнээ ══════════ */
+/* ⚠️ 210px нь МӨНГӨН ДҮНгээр тодорхойлогдсон: «2,541,545,386,714 ₮» нь
+   14.5px tabular фонтоор ~168px. 140px байхад тоо хоёр мөр болж, «₮» нь
+   доор ганцаараа үлддэг байв. `format.ts`-ийн дүрмээр ТООГ БОГИНОСГОХГҮЙ —
+   багтахгүй бол өргөн/фонтоор шийднэ. */
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 8px;
+  margin: 0 0 14px;
+}
+.kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+.kpiLabel { font-size: 10.5px; color: var(--ink-3); }
+.kpiVal {
+  font-size: 14.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  /* Мөнгөн дүн ба «₮» салж хоёр мөр болохгүй */
+  white-space: nowrap;
+}
+.kpiSub { font-size: 10.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+
+/* ⚠️ ХЭВЛЭХ: график нь хүснэгтийн ДАВХАРДАЛ биш НЭМЭЛТ тул хэвлэлтэд ч
+   үлдэнэ. Зөвхөн дэвсгэрийг цайруулж бэх хэмнэнэ. */
+@media print {
+  .kpi { background: none; }
+  .barTrack, .meterTrack { background: #e5e7eb; }
+}

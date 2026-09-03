@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
 import { MapTools } from '@/components/MapTools';
@@ -26,6 +26,7 @@ import {
   BUILDING, CASHFLOW2, PROGRESS_LEVELS, LAYER_BY_ID, pkgKeyOf,
   PKG_FAMILY_BY_BAGTS, zoneWhere, cfMonthAxis } from '@/lib/services';
 import { cat, shade, num, pct } from '@/lib/format';
+import { fitLabels, textW, useChartWidth } from '@/lib/chartFit';
 import { readParam, writeParams } from '@/lib/urlState';
 import o from './pkgProgOv.module.css';
 import { SplitGrip, useSideResize } from '@/components/SplitGrip';
@@ -904,7 +905,12 @@ function TsPackList({
                      зөвхөн зурагт хэдэн давхаргатай нь. */
                   : (p.layerIds.length ? tr('{0} давхарга', num(p.layerIds.length)) : tr('зураггүй'))}
               value={
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                /* ⚠️ `flexWrap` — «Санхүүжилт»-ийн жагсаалттай ЯГ ижил зан:
+                   нарийн самбарт тэмдэг картаас хальж гарахгүй. */
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  flexWrap: 'wrap', justifyContent: 'flex-end',
+                }}>
                   {execPct == null ? '—' : pct(execPct, 0)}
                   {/**
                     * ⚠️ 2026-08-18: анхааруулга нь ЗӨВХӨН «⚠» тэмдэг байсныг
@@ -1138,6 +1144,16 @@ export function aggregateMonths(d: FinData) {
  */
 function ProgChart({ months, title }: { months: MonthPt[] | null; title: string }) {
   const [hi, setHi] = useState<number | null>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  /**
+   * ⚠️ БОДИТ ӨРГӨН (px) — виртуал 1200 БИШ (2026-09-03, зохиомжийн засвар).
+   * `preserveAspectRatio="none"` нь виртуал өргөнийг бодит рүү сунгадаг тул
+   * ҮСЭГ нь хэвтээгээр гажиж, нарийн цонхонд шошго шахагдан уншигдахаа
+   * больдог байв. Одоо 1 нэгж = 1px — «Санхүүжилтийн явц» графиктай ижил.
+   * ⚠️ Доорх «дата алга» гэсэн эрт буцалтаас ДЭЭР дуудагдана: hook нь рендер
+   *    бүрд ИЖИЛ дарааллаар дуудагдах ёстой.
+   */
+  const W = useChartWidth(wrapRef, 1200);
 
   if (!months || !months.length) {
     return <Section title={title}><Empty label={tr('Гүйцэтгэлийн дата алга.')} /></Section>;
@@ -1159,9 +1175,13 @@ function ProgChart({ months, title }: { months: MonthPt[] | null; title: string 
   const behind = (curGap ?? 0) > 0;
 
   const N = rows.length;
-  const W = 1200;
   const H = 250;
-  const padL = 8;   /* Y шошго торны ДЭЭР сууна — тусдаа багана эзлэхгүй */
+  /* ⚠️ Y тэнхлэгт ТУСДАА багана (2026-09-03). Урьд нь шошго нь торны ДЭЭР,
+     графикийн талбай дотор сууж, эхний саруудын муруй ба шошготой давхарладаг
+     байв — тиймээс эхний цэгийн шошгыг 26px хойш түлхэх «labelX» хачирхалтай
+     дүрэм хэрэгтэй болсон. «Санхүүжилтийн явц»-тай ижил бүтэц: тоо нь гадна,
+     муруй нь дотор. */
+  const padL = 40;
   const padR = 56;  /* сүүлийн цэгийн шошго */
   const padT = 24;
   const padB = 30;
@@ -1185,7 +1205,6 @@ function ProgChart({ months, title }: { months: MonthPt[] | null; title: string 
       + ' Z'
     : '';
 
-  const step = Math.max(1, Math.ceil(N / 12));
   const pt = hi != null ? rows[hi] : null;
   const anchor = (i: number): 'start' | 'middle' | 'end' => (i === 0 ? 'start' : i === N - 1 ? 'end' : 'middle');
 
@@ -1201,14 +1220,30 @@ function ProgChart({ months, title }: { months: MonthPt[] | null; title: string 
    *    ДООР бичигдэнэ — хоёр цуваа ойртсон ч давхцахгүй.
    * ⚠️ Сүүлийн цэгийг АЛГАСНА: тэнд том шошго тусдаа бичигдэнэ (давхарлахгүй).
    */
-  const showLabel = (i: number) => i !== N - 1 && (i === 0 || i % step === 0);
   /**
-   * Шошгын X — ЭХНИЙ цэг дээр торны хувийн шошгоос (0/25/50/75/100%) ЗАЙЛСХИЙНЭ.
-   * ⚠️ Тэдгээр нь мөн `x = padL`-д, `start` тэгшлэлтэй суудаг тул эхний цэгийн
-   *    утга тэнхлэгийн тоон дээр яг таарч, хоёулаа уншигдахгүй болдог байв
-   *    («19%» ба «25%» давхарлаж байлаа).
+   * ⚠️ БАГТААМЖААР сонгоно, тогтмол алхмаар БИШ (2026-09-03). Хэдэн сар
+   *    харагдахаас хамааран «25%» гэсэн богино шошго ч нарийн цонхонд
+   *    мөргөлдөнө; жинхэнэ пикселээр хэмжиж багтахыг нь л үлдээнэ.
+   * ⚠️ Сүүлийн цэгийг АЛГАСНА: тэнд том шошго тусдаа бичигдэнэ (давхарлахгүй).
    */
-  const labelX = (i: number) => (i === 0 ? xFor(i) + 26 : xFor(i));
+  const fitPct = (idx: number[], valOf: (i: number) => string) => new Set(
+    fitLabels(idx.map((i) => ({ i, x: xFor(i), w: textW(valOf(i)), anchor: anchor(i) }))),
+  );
+  const planLbl = fitPct(
+    rows.map((_, i) => i).filter((i) => i !== N - 1),
+    (i) => `${rows[i].plan.toFixed(0)}%`,
+  );
+  /* ⚠️ `i !== lastAct`: сүүлийн хэмжилт дээр доорх ТОМ шошго аль хэдийн
+     бичигдэнэ — хоёуланг нь зурвал нэг цэг дээр хоёр тоо давхарлана. */
+  const actLbl = fitPct(
+    measured.filter((i) => i !== N - 1 && i !== lastAct),
+    (i) => `${(rows[i].act as number).toFixed(0)}%`,
+  );
+  /* X тэнхлэгийн он·сар — «2026-09» */
+  const axisLbl = new Set(fitLabels(
+    rows.map((r, i) => ({ i, x: xFor(i), w: textW(r.label, 11), anchor: anchor(i) })),
+    14,
+  ));
 
   return (
     <Section
@@ -1243,20 +1278,29 @@ function ProgChart({ months, title }: { months: MonthPt[] | null; title: string 
 
       <div
         className={ts.progWrap}
+        ref={wrapRef}
+        /* ⚠️ ЗУРАГЛАЛ нь ГРАФИКИЙН ТАЛБАЙГААР — бүтэн өргөнөөр бодоход зүүн
+           тэнхлэгийн багана ба баруун шошгын зайнаас болж заагуур хулганаас
+           хазайж, өөр сарын tooltip гардаг байв. */
         onMouseMove={(e) => {
           const r = e.currentTarget.getBoundingClientRect();
-          setHi(Math.max(0, Math.min(N - 1, Math.round(((e.clientX - r.left) / r.width) * (N - 1)))));
+          const t = (e.clientX - r.left - padL) / Math.max(1, plotW);
+          setHi(Math.max(0, Math.min(N - 1, Math.round(t * (N - 1)))));
         }}
         onMouseLeave={() => setHi(null)}
       >
-        <svg className={ts.progSvg} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label={title}>
+        {/* ⚠️ `preserveAspectRatio="none"` ХАСАГДСАН — `viewBox` нь бодит
+            пикселтэй тэнцүү тул үсэг гажихаа болив. */}
+        <svg className={ts.progSvg} viewBox={`0 0 ${W} ${H}`} role="img" aria-label={title}>
           {/* Тор — 0/25/50/75/100%, шошго торны ДЭЭР (зүүн ирмэгт) */}
           {[0, 25, 50, 75, 100].map((t) => {
             const gy = yFor(t);
             return (
               <g key={t}>
                 <line x1={padL} x2={W - padR} y1={gy} y2={gy} className={ts.progGrid} />
-                <text x={padL} y={gy - 5} className={ts.progAxisY} textAnchor="start">{t}%</text>
+                {/* ⚠️ Торны ЗҮҮН талд, гадна багананд — муруй ба шошготой
+                    давхцахгүй (2026-09-03). Босоо голлолт: `gy + 3`. */}
+                <text x={padL - 8} y={gy + 3} className={ts.progAxisY} textAnchor="end">{t}%</text>
               </g>
             );
           })}
@@ -1272,13 +1316,13 @@ function ProgChart({ months, title }: { months: MonthPt[] | null; title: string 
           )}
 
           {/* ТӨЛӨВЛӨГӨӨНИЙ утга — муруйн ДЭЭР талд */}
-          {rows.map((r, i) => (showLabel(i) ? (
+          {rows.map((r, i) => (planLbl.has(i) ? (
             <g key={`pl-${i}`}>
               <circle cx={xFor(i)} cy={yFor(r.plan)} r={2.5} className={ts.progDot} style={{ fill: cat(2) }} />
               {/* ⚠️ y-г 12-оос дээш барина: дээд ирмэгт хүрсэн цэгийн шошго
                   SVG-ийн гаднаас тасарч, тоо хагас харагддаг. */}
               <text
-                x={labelX(i)}
+                x={xFor(i)}
                 y={Math.max(12, yFor(r.plan) - 9)}
                 className={ts.progVal}
                 style={{ fill: cat(2) }}
@@ -1293,11 +1337,11 @@ function ProgChart({ months, title }: { months: MonthPt[] | null; title: string 
               ⚠️ `i !== lastAct`: сүүлийн хэмжилт дээр доорх ТОМ шошго аль хэдийн
                  бичигдэнэ — хоёуланг нь зурвал нэг цэг дээр хоёр тоо давхарлана
                  (2026-08 дээр «0%» хоёр удаа гарч байсан). */}
-          {rows.map((r, i) => (showLabel(i) && i !== lastAct && r.act != null ? (
+          {rows.map((r, i) => (actLbl.has(i) && r.act != null ? (
             <g key={`ac-${i}`}>
               <circle cx={xFor(i)} cy={yFor(r.act)} r={2.5} className={ts.progDot} style={{ fill: cat(1) }} />
               <text
-                x={labelX(i)}
+                x={xFor(i)}
                 y={Math.min(padT + plotH - 4, yFor(r.act) + 16)}
                 className={ts.progVal}
                 style={{ fill: cat(1) }}
@@ -1336,7 +1380,7 @@ function ProgChart({ months, title }: { months: MonthPt[] | null; title: string 
           )}
 
           {/* X тэнхлэг — он сар */}
-          {rows.map((r, i) => (i === 0 || i === N - 1 || i % step === 0 ? (
+          {rows.map((r, i) => (axisLbl.has(i) ? (
             <text key={r.label} x={xFor(i)} y={H - 9} className={ts.progAxisX} textAnchor={anchor(i)}>
               {r.label}
             </text>

@@ -41,7 +41,10 @@ import {
 import {
   FINE_NODES, FINE_EDGES, FINE_BY_ID, GEO_FINE, fineOrder,
 } from '@/lib/schemFine';
-import { nodeDetail, type Cell } from '@/lib/schemDetail';
+import {
+  alertsByCard, cardStat, nodeDetail, worstTone,
+  type CardStat, type Cell, type Issue,
+} from '@/lib/schemDetail';
 import { loadSchemSources } from '@/lib/schemData';
 import c from './schem.module.css';
 
@@ -122,10 +125,39 @@ type Card = {
   row: number;
 };
 
+/**
+ * КАРТ ДЭЭР ХАРУУЛАХ АНХААРУУЛГЫН ДЭЭД ТОО.
+ *
+ * ⚠️ Хоёроор хязгаарлав: 24 картын зарим нь 40 хүртэл мөртэй байж болно
+ * (жишээ нь «төлөв танигдсангүй» бүр өөрийн мөртэй). Бүгдийг картад бичвэл
+ * зураг уншигдахаа болино. Үлдсэнийг НУУХГҮЙ — «… бас N» гэсэн мөр ил гарч,
+ * бүтэн жагсаалт нь картыг дарахад нээгдэх самбарт байна.
+ */
+const CARD_ALERTS = 2;
+
+/**
+ * ⚠️ ЕРӨНХИЙ схемд ЗӨВХӨН НЭГ мөр. Тэнд карт нь 3–6 метрик, хяналтын зурвас,
+ * тэмдэглэл, шошготой бөгөөд торны өндөр (`GEO.h` = 140) нь тэднээр аль хэдийн
+ * дүүрсэн байдаг. Хоёр мөр нэмэхэд «Барилга угсралт» карт торноосоо хальж
+ * доорх «ХАБЭА»-тай ДАВХЦАЖ байсан (2026-09-02-нд нүдээр барив).
+ */
+const CARD_ALERTS_COARSE = 1;
+
 function Node({
-  card, st, box, rail, fine, allowed, selected, onOpen,
+  card, st, alerts, stat, box, rail, fine, allowed, selected, onOpen,
 }: {
   card: Card;
+  /**
+   * ЭНЭ картад хамаарах анхааруулгууд (`alertsByCard`).
+   * ⚠️ Хоосон массив нь «асуудалгүй», `null` БИШ — тиймээс шошго огт гарахгүй.
+   */
+  alerts: Issue[];
+  /**
+   * КАРТЫН ҮР ДҮН — «энэ ажиллагаа хаана хүрсэн бэ» (`cardStat`).
+   * ⚠️ Зөвхөн НАРИЙН схемд. Ерөнхийд `st.metrics` аль хэдийн 3–6 тоо үзүүлдэг
+   *    тул давхардуулбал нэг карт нэг тоог хоёр удаа бичнэ.
+   */
+  stat: CardStat | null;
   /**
    * Амьд төлөв. `null` бол ПРОЦЕССЫН карт — зөвхөн юу хийгддэг нь бичигдэнэ.
    * ⚠️ Нарийвчилсан схемд ЗОРИУДААР `null`: 24 карт тус бүр 2 тоо, төлвийн
@@ -143,13 +175,47 @@ function Node({
   onOpen: (cardId: string, g: SchemId) => void;
 }) {
   const stacked = box == null;
+  /**
+   * ⚠️ АНХААРУУЛГЫН ӨНГӨ нь метрикийн төлөвөөс ДАВАМГАЙЛАХГҮЙ. Ерөнхий горимд
+   * `st.health` нь тоонуудаас бодогдсон бөгөөд хоёуланг нь зэрэг будвал нэг
+   * карт хоёр өөр өнгө заана. Тиймээс хүрээг зөвхөн `st` БАЙХГҮЙ үед
+   * (нарийвчилсан горим) анхааруулга тодорхойлно.
+   */
+  const tone = alerts.length ? worstTone(alerts) : null;
+  /**
+   * ⚠️ ХҮРЭЭНИЙ ӨНГӨ — эрэмбэ: метрикийн төлөв → анхааруулга → ҮР ДҮНГИЙН
+   * төлөв. Сүүлийнх нь ЗААВАЛ: анхааруулгагүй карт ч «хэвийн» (ногоон) ба
+   * «тооцоологдоогүй» (саарал) хоёрын алийг нь ч хэлэх ёстой — эс бөгөөс
+   * хоёулаа ижилхэн өнгөгүй харагдана.
+   */
+  const border = st ? HEALTH_BORDER[st.health]
+    : tone ? HEALTH_BORDER[tone]
+      : stat ? HEALTH_BORDER[stat.tone] : '';
+  /**
+   * ⚠️ АНХААРУУЛГАТАЙ КАРТ БҮХЭЛДЭЭ ЯЛГАРНА (2026-09-02, хэрэглэгч:
+   * «анхааруулгатай нь ялгагдахгүй байна»). Карт бүр үр дүнгийн өнгөтэй
+   * болсноор зүүн ирмэгийн 2px зураас ганцаараа анхааруулгыг ялгахаа больсон.
+   * Тиймээс warn/bad анхааруулгатай картад бүтэн өнгөт хүрээ + бүдэг өнгөт
+   * дэвсгэр + толгойд «⚠ N» шошго. `none` (эх сурвалж унасан) нь ялгарахгүй —
+   * «мэдээлэлгүй» бол дуудлага биш, саарал байх нь зөв.
+   */
+  const alarm = tone === 'bad' ? c.aBad : tone === 'warn' ? c.aWarn : '';
+  /* ⚠️ Товч бичээст (tooltip) БҮГД орно — картад хоёр л мөр багтана */
+  const tip = [
+    card.desc,
+    ...(stat ? [`${stat.label}: ${show(stat)}`] : []),
+    ...alerts.map((a) => `⚠ ${a.text}`),
+    tr('Дарж дэлгэрэнгүйг харна'),
+  ].join('\n');
+
   return (
     <button
       type="button"
       className={[
         c.node,
         fine ? c.fineNode : '',
-        st ? HEALTH_BORDER[st.health] : '',
+        border,
+        alarm,
         st?.projectWide ? c.wide : '',
         stacked ? c.stackNode : '',
         selected ? c.sel : '',
@@ -160,12 +226,19 @@ function Node({
       /* ⚠️ ЭРХГҮЙ ХЭРЭГЛЭГЧИД Ч ДАРАГДАНА. Самбар нь ЗӨВХӨН уншина — эрх нь
          зөвхөн ХАРАГДАЦ РУУ ШИЛЖИХИЙГ хаана (самбар доторх товч). */
       aria-expanded={selected}
-      title={`${card.desc}\n${tr('Дарж дэлгэрэнгүйг харна')}`}
+      title={tip}
       onClick={() => onOpen(card.id, card.group)}
     >
       <span className={c.nodeHead}>
         <span className={c.nodeIcon}><Icon name={card.icon} size={fine ? 11 : 13} /></span>
         <span className={c.nodeTitle}>{card.title}</span>
+        {/* ⚠️ ТОО нь ЗААВАЛ — «энэ карт дээр ХЭДЭН асуудал вэ» гэдгийг хүрээний
+            өнгө хэлдэггүй; ⚠ тэмдэг нь өнгө сохор хараанд ч ялгаж өгнө. */}
+        {alarm && (
+          <span className={`${c.aBadge} ${tone === 'bad' ? c.hBad : c.hWarn}`}>
+            ⚠ {alerts.length}
+          </span>
+        )}
       </span>
 
       {/**
@@ -176,6 +249,27 @@ function Node({
         * тэнд тайлбар нь hover-ийн бичээс хэвээр.
         */}
       {fine && <span className={c.nodeDesc}>{card.desc}</span>}
+
+      {/**
+        * КАРТЫН ҮР ДҮН (2026-09-02, хэрэглэгч: «карт болгон дээр үр дүнгийн
+        * alert харагдана»).
+        *
+        * ⚠️ КАРТ БҮРД ГАРНА — асуудалгүй ч гэсэн. Урьд нь зөвхөн асуудалтай 6
+        * картад дохио гардаг байсан тул үлдсэн 18 нь «шалгаад хэвийн гарсан»
+        * уу, «огт тооцоологдоогүй» юу гэдэг нь ялгагдахгүй байв.
+        *
+        * ⚠️ ЯГ НЭГ ТОО. 2026-09-01-нд картуудаас метрик хасагдсан шалтгаан
+        * (24 карт × 3 тоо = зураг уншигдахаа болих) хүчинтэй хэвээр — тиймээс
+        * тухайн ажиллагааны ГОЛ үр дүнг л сонгоно, бусад нь самбарт.
+        */}
+      {stat && (
+        <span className={`${c.stat} ${HEALTH_TAG[stat.tone]}`}>
+          <span className={c.statLabel}>{stat.label}</span>
+          <span className={`${c.statValue} ${stat.value == null ? c.mNone : ''}`}>
+            {show(stat)}
+          </span>
+        </span>
+      )}
 
       {/* ХЯНАЛТЫН ДӨРВӨН ЦЭГ — «Ерөнхий» горимд төлөвийн машиныг ил үлдээнэ.
           ⚠️ «Дэлгэрэнгүй» горимд ХЭРЭГГҮЙ: тэнд дөрвөн шат нь бие даасан карт. */}
@@ -204,6 +298,38 @@ function Node({
       )}
 
       {st?.note && <span className={c.note} title={st.note}>{st.note}</span>}
+
+      {/**
+        * ПРОЦЕССЫН АНХААРУУЛГА (2026-09-02, хэрэглэгч: «процессын үед ямар
+        * alert байгааг харуулна»).
+        *
+        * ⚠️ ЗӨВХӨН ӨНГӨ ХАНГАЛТГҮЙ — ҮГ нь заавал гарна. Хүрээний өнгө нь «энд
+        * ямар нэг юм болж байна» гэдгийг л хэлдэг; «юу болж байгааг» уншихын
+        * тулд картыг дарах шаардлагатай байв.
+        *
+        * ⚠️ МЕТРИКИЙН ДАРАА — картын гол агуулга нь ТОО. Урьд нь тодорхойлолтын
+        * доор байсан тул анхааруулга нь тоог доош түлхэж, «Барилга угсралт»
+        * карт торны өндрөөс хальж доорх «ХАБЭА»-тай ДАВХЦАЖ байв.
+        *
+        * ⚠️ ТАСАЛСАН ТООГ НУУХГҮЙ: «… бас N» мөр нь энэ карт дээр илүү олон
+        * асуудал байгааг хэлнэ — эс бөгөөс хэрэглэгч эхний мөрийг «бүгд» гэж
+        * уншина. Бүтэн жагсаалт нь картыг дарахад нээгдэх самбарт.
+        */}
+      {alerts.length > 0 && (
+        <span className={c.alerts}>
+          {alerts.slice(0, fine ? CARD_ALERTS : CARD_ALERTS_COARSE).map((a, i) => (
+            <span key={`${a.tone}-${i}`} className={`${c.alert} ${HEALTH_TAG[a.tone]}`}>
+              <i className={c.alertDot} aria-hidden />
+              <span className={c.alertText}>{a.text}</span>
+            </span>
+          ))}
+          {alerts.length > (fine ? CARD_ALERTS : CARD_ALERTS_COARSE) && (
+            <span className={c.alertMore}>
+              {tr('… бас {0} анхааруулга', alerts.length - (fine ? CARD_ALERTS : CARD_ALERTS_COARSE))}
+            </span>
+          )}
+        </span>
+      )}
 
       {/* ⚠️ ПРОЦЕССЫН КАРТАД ЗӨВХӨН «эрхгүй» шошго. Төлвийн өнгө нь тоогүйгээр
           утгагүй — өнгө ганцаараа юу ч хэлэхгүй гэдэг нь энэ репогийн дүрэм. */}
@@ -336,12 +462,16 @@ function Panel({
 type Wire = { from: string; to: string; kind: EdgeKind; label?: string };
 
 function Diagram({
-  cards, state, edges, geo, rail, fine, allowed, openCard, onOpen,
+  cards, state, alerts, stats, edges, geo, rail, fine, allowed, openCard, onOpen,
 }: {
   /** ⚠️ ТОПОЛОГИЙН дараалалтай — DOM-ийн дараалал = Tab-ийн дараалал */
   cards: Card[];
   /** `null` бол процессын зураг — картууд тоогүй */
   state: Record<string, SchemState> | null;
+  /** Картын id → түүнд хамаарах анхааруулгууд (`alertsByCard`) */
+  alerts: Map<string, Issue[]>;
+  /** Картын id → үр дүн (`cardStat`). Ерөнхий схемд ХООСОН — тэнд метрик бий. */
+  stats: Map<string, CardStat>;
   edges: readonly Wire[];
   geo: Geo;
   rail: { stage: string; n: number }[] | null;
@@ -398,7 +528,9 @@ function Diagram({
   );
 
   const nodeOf = (card: Card, box: Box | null) => (
-    <Node key={card.id} card={card} st={state ? state[card.id] ?? null : null} box={box} fine={fine}
+    <Node key={card.id} card={card} st={state ? state[card.id] ?? null : null}
+      alerts={alerts.get(card.id) ?? []} stat={stats.get(card.id) ?? null}
+      box={box} fine={fine}
       /* ⚠️ Зурвас зөвхөн ЕРӨНХИЙ горимын хяналтын карт дээр */
       rail={!fine && card.id === 'hyanalt' ? rail : null}
       allowed={allowed(card.view)} selected={openCard === card.id} onOpen={onOpen} />
@@ -577,6 +709,21 @@ export function Schem({
              гарахгүй тул тооцох ч шаардлагагүй. */
           const state = fine ? null : buildSchem(src, pkg || null);
           const rail = stageRail(src, pkg || null);
+          /* ⚠️ Горим солиход ДАХИН бодогдоно: ерөнхий схемд бүлгээр,
+             нарийвчилсанд карт бүрээр түлхүүрлэгддэг (`alertsByCard`). */
+          const alerts = alertsByCard(src, pkg || null, fine);
+          const alertN = [...alerts.values()].reduce((a, l) => a + l.length, 0);
+          /**
+           * ⚠️ ЗӨВХӨН НАРИЙН схемд. Ерөнхийд `buildSchem` картад 3–6 метрик
+           * аль хэдийн тавьдаг тул давхардуулбал нэг тоо хоёр удаа бичигдэнэ.
+           */
+          const stats = new Map<string, CardStat>();
+          if (fine) {
+            for (const n of FINE_NODES) {
+              const s = cardStat(src, pkg || null, n.id);
+              if (s) stats.set(n.id, s);
+            }
+          }
           return (
             <>
               {src.failed.length > 0 && (
@@ -584,10 +731,23 @@ export function Schem({
                   {tr('{0} эх сурвалж татагдсангүй — тэдгээрийн тоо «—» байна.', src.failed.join(', '))}
                 </p>
               )}
+              {/**
+                * ⚠️ НИЙТ ТОО — «схем дээр анхаарах зүйл байна уу» гэдэгт нэг
+                * харцаар хариулна. 24 картыг гүйж үзэхээс өмнө мэдэх ёстой
+                * ганц зүйл нь энэ. Тэг бол мөр ОГТ гарахгүй (хоосон зурвас
+                * нь «бүх зүйл сайн» гэдгийг давтаж хэлэх шаардлагагүй).
+                */}
+              {alertN > 0 && (
+                <p className={c.alertBar} role="status">
+                  {tr('Процессуудад {0} анхааруулга — картан дээр тэмдэглэв.', alertN)}
+                </p>
+              )}
               <div className={c.body}>
                 <Diagram
                   cards={fine ? FINE_CARDS : COARSE_CARDS}
                   state={state}
+                  alerts={alerts}
+                  stats={stats}
                   edges={fine ? FINE_EDGES : EDGES}
                   geo={fine ? GEO_FINE : GEO}
                   rail={rail} fine={fine} allowed={allowed}

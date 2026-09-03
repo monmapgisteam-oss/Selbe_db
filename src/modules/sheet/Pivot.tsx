@@ -1189,7 +1189,7 @@ export default function Pivot() {
         {busy && <span className={st.muted}>{tr('нийтэлж байна…')}</span>}
       </div>
 
-      {err && <p className={st.error}>{err}</p>}
+      {err && <p className={st.error} role="alert">{err}</p>}
 
       {busy && rows.length === 0 && (
         <div className={st.scroll}>

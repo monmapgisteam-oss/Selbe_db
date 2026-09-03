@@ -12,20 +12,38 @@ import { OpacityPanel } from '@/components/OpacityPanel';
 import { MapTools } from '@/components/MapTools';
 import { useZoomToFilter } from '@/lib/useZoomToFilter';
 import dynamic from 'next/dynamic';
+/**
+ * ⚠️ `Dashboard` нь СТАТИК ХЭВЭЭР — тэр бол `DEFAULT_VIEW`. Динамик болговол
+ * аппын хамгийн түгээмэл зам дээр нэмэлт сүлжээний эргэлт, нэмэлт спиннер
+ * үүсгэх ба ямар ч байсан татагдана. Мөн `MapCanvas` (+ `@arcgis/core`) нь
+ * түүний дамжсан хамаарал тул эхний ачаалалтад зайлшгүй орно — газрын зураг
+ * бол анхдагч харагдацын гол агуулга.
+ */
 import { Dashboard } from '@/modules/Dashboard';
-import { PkgFin } from '@/modules/PkgFin';
-import { PkgProg } from '@/modules/PkgProg';
-import { Gazar } from '@/modules/Gazar';
-import { Habea } from '@/modules/Habea';
-import { Irged } from '@/modules/Irged';
-import { Iot } from '@/modules/Iot';
-import { Ersdel } from '@/modules/Ersdel';
-import { DedButets } from '@/modules/DedButets';
 /* ⚠️ ТОМ, ховор-эхний харагдацууд dynamic chunk (2026-08-21 гүйцэтгэлийн
    аудит): Suitability (analysis стек), Sheet/Pivot, Tailan (+reportPdf),
    Guitsetgel, Finance нийлээд Portal chunk-ийн parse хугацааг ~30-40%
    нэмдэг байв. Portal нөхцөлт рендэрлэдэг тул unmount үеийн зан өөрчлөгдөхгүй;
-   эхний нээлтэд Booting-той ижил түр төлөв харагдана. */
+   эхний нээлтэд Booting-той ижил түр төлөв харагдана.
+
+   ⚠️ 2026-09-03-ны хэрэглэгч талын аудит: газрын зурагтай ҮЛДСЭН харагдацууд
+   (PkgFin · PkgProg · Gazar · Habea · Irged · Iot · Ersdel) МӨН статик байсан
+   тул тэдгээрийн ~474 KB эх код нь `?v=huvaari` гэж шууд орсон хүнд ч
+   татагддаг байв. Тэдгээр нь `MapCanvas`-ыг ХУВААЛЦДАГ (Dashboard-той нэг
+   chunk) тул динамик болгоход ArcGIS давхардахгүй — зөвхөн өөрсдийнх нь код
+   хойшилно. */
+const PkgFin = dynamic(() => import('@/modules/PkgFin').then((m) => m.PkgFin), { ssr: false });
+const PkgProg = dynamic(() => import('@/modules/PkgProg').then((m) => m.PkgProg), { ssr: false });
+const Gazar = dynamic(() => import('@/modules/Gazar').then((m) => m.Gazar), { ssr: false });
+const Habea = dynamic(() => import('@/modules/Habea').then((m) => m.Habea), { ssr: false });
+const Irged = dynamic(() => import('@/modules/Irged').then((m) => m.Irged), { ssr: false });
+const Iot = dynamic(() => import('@/modules/Iot').then((m) => m.Iot), { ssr: false });
+const Ersdel = dynamic(() => import('@/modules/Ersdel').then((m) => m.Ersdel), { ssr: false });
+/* ⚠️ «Дэд бүтэц» нь бусад газрын зурагтай харагдацтай ИЖИЛ dynamic: модуль
+   нь DedButetsEdit ба butetsEdit.ts-ийг дагуулдаг (~92 KB эх код) бөгөөд
+   `MapCanvas`-ыг тэдэнтэй ХУВААЛЦДАГ тул ArcGIS давхардахгүй. Статик
+   импорт бол `?v=huvaari` гэж орсон хүнд ч татагдана. */
+const DedButets = dynamic(() => import('@/modules/DedButets').then((m) => m.DedButets), { ssr: false });
 const Suitability = dynamic(() => import('@/modules/analysis/Suitability').then((m) => m.Suitability), { ssr: false });
 const Finance = dynamic(() => import('@/modules/Finance').then((m) => m.Finance), { ssr: false });
 const Guitsetgel = dynamic(() => import('@/modules/Guitsetgel').then((m) => m.Guitsetgel), { ssr: false });
@@ -37,6 +55,7 @@ const Huvaari = dynamic(() => import('@/modules/Huvaari').then((m) => m.Huvaari)
 /* ⚠️ Схем нь зургаан эх сурвалжийн ачаалагчийг дагуулдаг тул порталын үндсэн
    багцад ОРУУЛАХГҮЙ — зөвхөн нээгдэх үедээ. */
 const Schem = dynamic(() => import('@/modules/Schem').then((m) => m.Schem), { ssr: false });
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { Icon } from '@/components/Icon';
 import { DocViewer } from '@/components/DocViewer';
 import { UserAdmin } from '@/components/UserAdmin';
@@ -56,7 +75,12 @@ import {
 } from '@/lib/services';
 import { readParam, writeParams } from '@/lib/urlState';
 import { num } from '@/lib/format';
-import { ViewPanel } from '@/modules/ViewPanel';
+/**
+ * ⚠️ `ViewPanel` (64 KB) нь ЗӨВХӨН `standalone` БИШ харагдацуудад зурагдана
+ * (`!isFull` салбар). Анхдагч `dashboard` нь standalone тул эхний ачаалалтад
+ * ХЭРЭГГҮЙ — 2026-09-03-ны аудитаар динамик болгов.
+ */
+const ViewPanel = dynamic(() => import('@/modules/ViewPanel').then((m) => m.ViewPanel), { ssr: false });
 
 import s from '@/app/shell.module.css';
 
@@ -638,6 +662,11 @@ function PortalContent(
         {/* Бүтэн талбайн харагдацууд — ерөнхий дашбоард ба анализ */}
         {isFull && (
           <div className={s.suit}>
+            {/* ⚠️ ХАРАГДАЦ БҮР ТУСДАА ХАШЛАГАД (2026-09-03-ны аудит): нэг
+                модулийн рендерийн throw бүх порталыг үхүүлдэг байв — навигац,
+                каталог, ХАДГАЛААГҮЙ НООРОГ бүгд алга болно. `key={view}` нь
+                харагдац солиход хашлагыг remount хийж, хуучин алдааг арилгана. */}
+            <ErrorBoundary scope="view" key={view} label={tr('«{0}» нээгдсэнгүй', VIEW_BY_KEY[view].title)}>
             {isDash
               ? <Dashboard dim={dim} setDim={setDim} zone={zone} setZone={setZone} />
               : isPkgFin
@@ -672,6 +701,7 @@ function PortalContent(
                                      функц шүүлт, сонголт, давхаргыг ч цэвэрлэдэг. */
                                   ? <Schem setView={setView} navScope={navScope} />
                                   : <Suitability dim={dim} setDim={setDim} />}
+            </ErrorBoundary>
           </div>
         )}
 
@@ -761,7 +791,10 @@ function PortalContent(
                 */}
               {planPanel && <SummaryBar zone={zone} />}
 
+              {/* ⚠️ Баруун самбар нь газрын зурагтай ХАМТ зурагддаг тул
+                  түүний уналт зургийг ч авч унагадаг байв — тусад нь хашина. */}
               <div className={s.panelBody}>
+                <ErrorBoundary scope="view" key={`panel-${view}`} label={tr('Самбар нээгдсэнгүй')}>
                 <ViewPanel
                   view={view}
                   totals={totals}
@@ -775,6 +808,7 @@ function PortalContent(
                   layer={layer}
                   setLayer={setLayer}
                 />
+                </ErrorBoundary>
               </div>
             </aside>
 

@@ -24,7 +24,23 @@ import { t as tr } from '@/lib/i18nCore';
  * (тэдгээр нь root layout-д үргэлж ачаалагдсан байдаг).
  */
 
-type Props = { children: ReactNode };
+type Props = {
+  children: ReactNode;
+  /**
+   * ХАРАГДАЦЫН хүрээнд ажиллах горим (2026-09-03-ны хэрэглэгч талын аудит).
+   *
+   * ⚠️ Урьд нь хашлага ЗӨВХӨН root-д байсан тул нэг модулийн рендерийн throw
+   * бүх порталыг (навигац, каталог, газрын зураг, ХАДГАЛААГҮЙ НООРОГ) бүтэн
+   * дэлгэцийн алдаагаар СОЛИДОГ байв. Модуль бүрийг тусад нь ороосноор
+   * унасан харагдац л мессеж болж, бусад нь ажиллаж үлдэнэ.
+   *
+   * ⚠️ Дуудагч нь харагдац бүрд ӨӨР `key` өгнө: React нь `key` солигдоход
+   * хашлагыг remount хийдэг тул харагдац сольсны дараа хуучин алдаа арилна.
+   */
+  scope?: 'view';
+  /** Дэлгэцэд харагдах нэр — «Санхүүжилт нээгдсэнгүй» гэх мэт */
+  label?: string;
+};
 type State = { error: Error | null };
 
 export class ErrorBoundary extends Component<Props, State> {
@@ -40,6 +56,52 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   render() {
+    if (this.state.error && this.props.scope === 'view') {
+      /* ⚠️ ХАРАГДАЦЫН fallback: бүтэн дэлгэц ЭЗЛЭХГҮЙ, reload ч ХИЙХГҮЙ —
+         навигац амьд үлддэг тул хэрэглэгч өөр харагдац руу шилжиж ажлаа
+         үргэлжлүүлнэ. «Дахин оролдох» нь зөвхөн ЭНЭ хашлагын төлөвийг арилгана
+         (root-ынхоос ялгаатай: тэнд бүтэн reload хэрэгтэй байдаг). */
+      return (
+        <div
+          role="alert"
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 12,
+            minHeight: 240,
+            height: '100%',
+            padding: 24,
+            color: 'var(--ink)',
+            textAlign: 'center',
+          }}
+        >
+          <p style={{ fontSize: 14, fontWeight: 600 }}>
+            {this.props.label ?? tr('Энэ хэсэг нээгдсэнгүй')}
+          </p>
+          <p style={{ fontSize: 12, color: 'var(--ink-3)', maxWidth: 460 }}>
+            {tr('Бусад хэсэг ажиллаж байгаа — цэсээр өөр харагдац руу шилжиж болно.')}
+          </p>
+          <button
+            type="button"
+            onClick={() => this.setState({ error: null })}
+            style={{
+              padding: '6px 16px',
+              borderRadius: 8,
+              border: '1px solid var(--line-strong)',
+              background: 'var(--surface)',
+              color: 'var(--ink)',
+              font: 'inherit',
+              fontSize: 12,
+              cursor: 'pointer',
+            }}
+          >
+            {tr('Дахин оролдох')}
+          </button>
+        </div>
+      );
+    }
     if (this.state.error) {
       return (
         <div

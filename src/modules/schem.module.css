@@ -234,6 +234,143 @@
 .railOn i { background: var(--hue); }
 .railSep { color: var(--ink-3); font-size: 9px; }
 
+/* ══ Анхааруулгатай карт — БҮХЭЛДЭЭ ялгарна ══
+   ⚠️ 2026-09-02, хэрэглэгч: «анхааруулгатай нь ялгагдахгүй байна». Карт бүр
+   үр дүнгийн өнгөт мөртэй болсноор зүүн ирмэгийн 2px зураас ганцаараа
+   анхааруулгыг ялгахаа больсон. Одоо warn/bad карт бүтэн өнгөт хүрээ + бүдэг
+   өнгөт дэвсгэртэй — зурган дээр нэг харцаар «хаана асуудал байна» уншигдана.
+   ⚠️ hover-ийн `border-color: var(--line-strong)` (156-р мөр) эдгээрийг
+   дарж болохгүй тул hover-т өнгөө хадгална. */
+.aWarn {
+  border-color: color-mix(in srgb, var(--warn) 55%, var(--line));
+  border-left-color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 8%, var(--surface));
+}
+.aWarn:enabled:hover { border-color: var(--warn); }
+.aBad {
+  border-color: color-mix(in srgb, var(--bad) 55%, var(--line));
+  border-left-color: var(--bad);
+  background: color-mix(in srgb, var(--bad) 9%, var(--surface));
+  /* ⚠️ УЛААН нь БАГА ЗЭРЭГ АНИВЧИНА (2026-09-02, хэрэглэгчийн хүсэлт) — улаан
+     туяа аажим тэлж замхарна. Зөөлөн, 2.4с — эрч ихэсгэвэл 24 картын дунд
+     тасралтгүй гялалзаад уншихад саад болно. Шар (warn) анивчихгүй: анивчилт
+     нь ЗӨВХӨН хамгийн ноцтойг дуудах ёстой, бүгд анивчвал юу ч ялгарахгүй. */
+  animation: schemPulse 2.4s ease-out infinite;
+}
+.aBad:enabled:hover { border-color: var(--bad); }
+@keyframes schemPulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--bad) 45%, transparent); }
+  60% { box-shadow: 0 0 0 7px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+/* ⚠️ Хөдөлгөөн багасгах тохиргоотой хэрэглэгчид анивчилт таагүй — зогсооно.
+   Өнгөт хүрээ, дэвсгэр, «⚠ N» шошго нь дуудлагыг хэвээр хэлнэ. */
+@media (prefers-reduced-motion: reduce) {
+  .aBad { animation: none; }
+}
+
+/* Толгойн «⚠ N» — өнгө нь `.hWarn`/`.hBad`-аас (хүрээ + бэх) ирнэ */
+.aBadge {
+  margin-left: auto;
+  flex: none;
+  padding: 0 5px;
+  font-size: 9.5px;
+  font-weight: 700;
+  border-radius: 2px;
+  border-width: 1px;
+  border-style: solid;
+  white-space: nowrap;
+}
+
+/* ══ Картын ҮР ДҮН ══
+   ⚠️ КАРТ БҮРД гарна — асуудалгүй ч гэсэн. Урьд нь зөвхөн асуудалтай картад
+   дохио гардаг байсан тул «шалгаад хэвийн» ба «огт тооцоологдоогүй» хоёр
+   ижилхэн хоосон харагддаг байв (2026-09-02). Өнгө нь `.hGood/.hWarn/.hBad/
+   .hNone`-оос ирнэ — тэдгээр нь ХҮРЭЭ ба БЭХИЙГ өгдөг. */
+.stat {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  margin-top: 3px;
+  padding: 2px 5px;
+  border-radius: 2px;
+  border-width: 1px;
+  border-style: solid;
+  background: var(--sunken);
+}
+.statLabel {
+  font-size: 9px;
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.statValue {
+  font-size: 11.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+
+/* ══ Процессын анхааруулга (карт дээр) ══
+   ⚠️ ӨНГӨ + ҮГ хоёулаа. Зөвхөн улаан хүрээ өгвөл «энд ямар нэг юм болжээ»
+   гэдгийг л хэлнэ; юу болсныг мэдэхийн тулд картыг дарах шаардлагатай байв
+   (2026-09-02-ны хүсэлт: «процессын үед ямар alert байгааг харуулна»). */
+.alerts {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 3px;
+  padding-top: 3px;
+  border-top: 1px dashed var(--line);
+  /* ⚠️ Картыг торноосоо хальгахаас сэргийлнэ — хальсан карт нь ДООРХ эгнээтэй
+     давхцаж, хоёр процессын текст бие бие дээрээ буудаг (2026-09-02). Урт
+     жагсаалт нь картыг дарахад нээгдэх самбарт бүтнээрээ байна. */
+  max-height: 46px;
+  overflow: hidden;
+}
+.alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  font-size: 9.5px;
+  line-height: 1.28;
+  /* ⚠️ Өнгө нь `.hWarn`/`.hBad`-аас ирнэ — тэдгээр нь хүрээ ба БЭХИЙГ өгдөг
+     тул энд хүрээг нь буцааж хасна (карт дотор хайрцаг үүсгэхгүй). */
+  border: 0;
+}
+/* Цэг нь ӨНГИЙГ давхар кодлоно — текст саарал болж уншигдвал ч ялгарна */
+.alertDot {
+  flex: none;
+  width: 4px;
+  height: 4px;
+  margin-top: 4px;
+  border-radius: 50%;
+  background: currentColor;
+}
+/* ⚠️ ХОЁР МӨРӨӨР тайрна — бүтэн текст нь hover-ийн бичээст ба самбарт */
+.alertText {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+/* ⚠️ Тасалсан тоог ИЛ үлдээнэ — эс бөгөөс хоёрыг «бүгд» гэж уншина */
+.alertMore { font-size: 9px; color: var(--ink-3); }
+
+/* Толгойн нийт тоо — «схемд анхаарах зүйл байна уу» гэдгийн нэг харцын хариу */
+.alertBar {
+  flex: none;
+  margin: 0;
+  padding: 6px 10px;
+  font-size: 11.5px;
+  color: var(--bad-ink);
+  background: color-mix(in srgb, var(--bad) 10%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--bad) 35%, var(--line));
+  border-radius: var(--r-sm);
+}
+
 /* ── Тэмдэглэл ──
    ⚠️ ХОЁР МӨР ЗӨВШӨӨРНӨ. Нэг мөрөнд тайрахад «Төсвийн жингийн 58% л
    бүртгэгдс…» гэж таслагдаж, тоо нь яагаад бүрэн бус болохыг хэлэхээ болино. */
@@ -444,6 +581,11 @@
 .fineNode .metric { font-size: 10.5px; }
 .fineNode .tag { font-size: 9px; padding: 0 5px; }
 .fineNode .note { font-size: 9px; }
+/* ⚠️ Нарийн картад тодорхойлолт аль хэдийн 5 мөр эзэлдэг тул анхааруулгыг
+   НЭГ мөрөөр тайрна — эс бөгөөс карт торны өндрөөс хоёр дахин тэлж, доорх
+   эгнээ рүү дүрэгдэнэ. Бүтэн текст нь hover ба самбарт хэвээр. */
+.fineNode .alertText { -webkit-line-clamp: 1; }
+.fineNode .alert { font-size: 9px; }
 
 /* ⚠️ ТОДОРХОЙЛОЛТ КАРТ ДЭЭР. Урьд нь зөвхөн hover-ийн бичээст байсан тул
    «Тайлагнасан блок гэж юу вэ» гэсэн асуулт хариултгүй үлддэг байв — хулгана
@@ -454,7 +596,11 @@
   line-height: 1.32;
   color: var(--ink-3);
   display: -webkit-box;
-  -webkit-line-clamp: 5;
+  /* ⚠️ ГУРВАН мөр (5 байсныг 2026-09-02-нд бууруулав): карт бүр үр дүн +
+     анхааруулгатай болсноор 5 мөрт тодорхойлолт картыг торны алхмаас
+     хэтрүүлж, доорх карттай давхцуулж байв. `GEO_FINE`-ийн өндрийн тооцоо
+     ЭНЭ гурван мөр дээр тогтдог — өөрчилбөл хамт шинэчил. */
+  -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }

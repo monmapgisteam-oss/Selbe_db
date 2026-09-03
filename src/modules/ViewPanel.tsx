@@ -905,7 +905,7 @@ function LayerDashboard({
         </div>
 
         {totals.state === 'error' ? (
-          <Empty label={tr('Үзүүлэлт татагдсангүй.')} />
+          <Empty label={tr('Үзүүлэлт татагдсангүй.')} onRetry={totals.retry} />
         ) : (
           <Stats cols={avgQty != null ? 3 : 2}>
             <Stat value={t ? num(t.n) : '…'} unit={tr('ш')} label={tr('Тоо')} accent />

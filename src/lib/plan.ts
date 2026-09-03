@@ -39,6 +39,14 @@ export type PlanRow = {
   i: number;
   oid: number;
   no: string;
+  /** Ажлын код — жаазан дотор давтагдахгүй 1…N. Бөглөөгүй бол `null`. */
+  des: number | null;
+  /**
+   * УЯЛДАА — энэ ажлын урьдчилагчид (`Hamaaral` талбараас задалсан).
+   * ⚠️ `import type` — deps.ts ↔ plan.ts хооронд ажиллах үеийн дугуй
+   *    импорт ҮҮСГЭХГҮЙ: төрөл нь эмхэтгэхэд арилдаг.
+   */
+  deps: import('./deps').Dep[];
   work: string;
   depth: number;
   group: boolean;
