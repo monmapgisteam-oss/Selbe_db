@@ -39,6 +39,7 @@ import {
   dedOrNull, paidOrNull, netOrNull, netTotalOrNull,
 } from '@/lib/finCard';
 import { mnt, num, text, cat } from '@/lib/format';
+import { fitLabels, textW, useChartWidth } from '@/lib/chartFit';
 import { ResizableTable } from '@/components/ResizableTable';
 import { applyAll } from '@/lib/tableWrite';
 import { invalidate, type DataKey } from '@/lib/dataBus';
@@ -229,6 +230,7 @@ export function ComboChart({
   hidePhys?: boolean;
 }) {
   const [hi, setHi] = useState<number | null>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
   const N = items.length;
 
   // ── Өссөн S-муруйн өгөгдөл — ₮ ТЭНХЛЭГ (нэг тэнхлэг): төлөвлөгөө · санхүүжилт · биет.
@@ -267,7 +269,14 @@ export function ComboChart({
    *    нь hover дээр tooltip-д гарна. Муруй өөрөө үлдэнэ — график нь ЧИГ
    *    ХАНДЛАГЫГ хэлэх ёстой, задаргааг tooltip хэлнэ.
    */
-  const W = 1600;
+  /**
+   * ⚠️ БОДИТ ӨРГӨН (px) — виртуал 1600 БИШ. Урьд нь `preserveAspectRatio="none"`
+   * нь виртуал өргөнийг бодит рүү сунгадаг байсан тул үсэг нь хэвтээгээр
+   * шахагдаж («1,176,410,780,272» нарийсаад) уншигдахаа больдог байв. Одоо
+   * 1 нэгж = 1px: гажилт алга, мөн шошгын мөргөлдөөнийг ЖИНХЭНЭ пикселээр
+   * тооцоолж болно (`fitLabels`).
+   */
+  const W = useChartWidth(wrapRef, 1600);
   const H = height;
   /**
    * Зүүн зай — Y тэнхлэгийн шошгын ТУСДАА багана.
@@ -277,7 +286,10 @@ export function ComboChart({
    *    тусдаа багана гаргав. 1600 виртуал өргөний 8% — муруйд мэдэгдэхүйц
    *    нөлөөгүй, харин тоо бүтнээрээ уншигдана.
    */
-  const padL = 128;
+  /* ⚠️ Хамгийн урт Y шошгоос БОДОГДОНО — «1,176,410,780,272» (17 тэмдэгт)
+     нь ~105px. Тогтмол 128 нь өөр төслийн дүнгийн урттай тааруулагдаагүй
+     байсан: богино дүнд хоосон зай, урт дүнд тайралт үүсгэнэ. */
+  const padL = Math.round(textW(num(yMax)) + 16);
   const padR = 30;  // баруун — сүүлийн шошгыг багтаах зай
   const padT = 26;
   const padB = 30;  // доор — ЗӨВХӨН он сар (хувиуд tooltip руу шилжсэн)
@@ -309,31 +321,54 @@ export function ComboChart({
       + ' Z'
     : '';
 
+  /* ⚠️ ЗУРАГЛАЛ нь ГРАФИКИЙН ТАЛБАЙГААР, бүрхүүлийн бүтэн өргөнөөр БИШ:
+     зүүн талд Y тэнхлэгийн ~120px багана, баруунд 30px зай бий. Бүтэн
+     өргөнөөр бодоход заагуурын босоо шугам хулганаас нэг хүртэл сараар
+     хазайж, tooltip нь өөр сарын тоог үзүүлдэг байв. */
   const onMove = (e: MouseEvent<HTMLDivElement>) => {
     const r = e.currentTarget.getBoundingClientRect();
-    setHi(Math.max(0, Math.min(N - 1, Math.round(((e.clientX - r.left) / r.width) * (N - 1)))));
+    const t = (e.clientX - r.left - padL) / Math.max(1, plotW);
+    setHi(Math.max(0, Math.min(N - 1, Math.round(t * (N - 1)))));
   };
   const pt = hi != null ? rows[hi] : null;
 
-  /*
-   * Шошгын нягт.
-   * ⚠️ 2026-09-01: урьд нь 18 шошго багтдаг байсан (богино «314.5 тэрб.»).
-   *    Мөнгөн дүн бүтнээр бичигдэх болсноор шошго ~17 тэмдэгт буюу 1600
-   *    виртуал өргөний ~100 нэгжийг эзэлнэ — 8-аас олон бол давхцана.
-   *    Эхэн ба төгсгөл нь ҮРГЭЛЖ бичигдэх тул дундын цэгүүд алдагдахгүй
-   *    (CLAUDE.md: «зөвхөн төгсгөлийн шошго тавихгүй»).
-   */
-  const step = Math.max(1, Math.ceil(N / 8));
-  const showLabel = (i: number) => i === 0 || i === N - 1 || i % step === 0;
   const anchorFor = (i: number): 'start' | 'middle' | 'end' => (i === 0 ? 'start' : i === N - 1 ? 'end' : 'middle');
 
+  /*
+   * ── ШОШГЫН БАГТААМЖ ──
+   * ⚠️ 2026-09-03: урьд нь `ceil(N/8)` гэсэн ТОГТМОЛ АЛХМААР сонгодог байсан
+   *    бөгөөд дээрээс нь сүүлийн цэгийг үргэлж нэмдэг байв. N=12 үед алхам 2
+   *    болж, 10 ба 11-р цэг ЗЭРЭГЦЭЭ шошготой болно: 17 оронтой дүн ~105px
+   *    эзэлдэг атлаа цэг хоорондын зай ердөө ~104px тул хоёр тоо дээр
+   *    дээрээсээ давхарлан бичигддэг байлаа. Одоо ЖИНХЭНЭ өргөнөөр нь хэмжиж,
+   *    багтахыг нь л үлдээнэ (`fitLabels`) — эхэн ба төгсгөл хэвээр.
+   * ⚠️ Цуваа бүр ТУСДАА: төлөвлөгөө муруйнхаа дээр, олголт доор бичигддэг тул
+   *    хоорондоо мөргөлдөхгүй; нэг цувааны дотор л зай шалгах ёстой.
+   */
+  const fitFor = (last: number, valOf: (r: typeof rows[number]) => string) => new Set(
+    fitLabels(rows.slice(0, last + 1).map((r, i) => ({
+      i,
+      x: xFor(i),
+      w: textW(valOf(r)),
+      anchor: anchorFor(i),
+    }))),
+  );
+  const planLbl = fitFor(lastPlan, (r) => num(r.planned));
+  const givenLbl = fitFor(lastGiven, (r) => num(r.givenCum));
+  const physLbl = fitFor(lastPhys, (r) => `${r.physPct?.toFixed(0) ?? ''}%`);
+  /* X тэнхлэгийн он·сар — «2026-09» тогтмол 7 тэмдэгт */
+  const axisLbl = new Set(fitLabels(rows.map((r, i) => ({
+    i, x: xFor(i), w: textW(r.label, 11), anchor: anchorFor(i),
+  })), 14));
+
   return (
-    <div className={f.chartWrap} onMouseMove={onMove} onMouseLeave={() => setHi(null)}>
+    <div className={f.chartWrap} ref={wrapRef} onMouseMove={onMove} onMouseLeave={() => setHi(null)}>
       <svg
         className={f.comboSvg}
         style={{ height: H }}
         viewBox={`0 0 ${W} ${H}`}
-        preserveAspectRatio="none"
+        /* ⚠️ `preserveAspectRatio="none"` ХАСАГДСАН: `viewBox` нь одоо бодит
+           пикселтэй тэнцүү тул сунгах шаардлагагүй — үсэг гажихаа болив. */
         role="img"
         aria-label={tr('Санхүүжилтийн явц: төлөвлөсөн, олгосон, биет гүйцэтгэл')}
       >
@@ -403,7 +438,7 @@ export function ComboChart({
                олголт нь ДООР бичигдэнэ — хоёр цуваа ойртсон ч давхцахгүй.
                Биет нь олголттой ойрхон явдаг тул мөн доор, илүү зайтай. */}
         {rows.map((r, i) => {
-          if (i > lastPlan || r.planned <= 0 || !showLabel(i)) return null;
+          if (i > lastPlan || r.planned <= 0 || !planLbl.has(i)) return null;
           const x = xFor(i);
           const y = yFor(r.planned);
           return (
@@ -418,7 +453,7 @@ export function ComboChart({
           );
         })}
         {rows.map((r, i) => {
-          if (i > lastGiven || r.givenCum <= 0 || !showLabel(i)) return null;
+          if (i > lastGiven || r.givenCum <= 0 || !givenLbl.has(i)) return null;
           const x = xFor(i);
           const y = yFor(r.givenCum);
           return (
@@ -432,7 +467,7 @@ export function ComboChart({
         })}
         {rows.map((r, i) => {
           // ⚠️ `== null` (`<= 0` БИШ): 0% нь бодит хэмжилт тул шошготой байна
-          if (i > lastPhys || r.physPct == null || !showLabel(i)) return null;
+          if (i > lastPhys || r.physPct == null || !physLbl.has(i)) return null;
           const x = xFor(i);
           const y = yFor(r.physical);
           return (
@@ -464,7 +499,7 @@ export function ComboChart({
         {/* ── X тэнхлэг — ЗӨВХӨН он сар. Хоёр хувийн мөр tooltip руу шилжсэн:
             тэдгээр нь харьцуулах биш, лавлах тоо тул байнга харагдах шаардлагагүй
             бөгөөд график доор гурван мөр эзэлж, муруйд өгөх зайг иддэг байв. */}
-        {rows.map((r, i) => (showLabel(i) ? (
+        {rows.map((r, i) => (axisLbl.has(i) ? (
           <text key={r.label} x={xFor(i)} y={H - 10} className={f.axisX} textAnchor={anchorFor(i)}>
             {r.label}
           </text>
