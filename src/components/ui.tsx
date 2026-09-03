@@ -1776,12 +1776,32 @@ export function ListItem({
 /* ── Төлөв ── */
 
 export function Loading({ label = tr('Ачаалж байна…'), minH }: { label?: string; minH?: number }) {
+  /**
+   * УДААН гэдгийг ил хэлэх (2026-09-02 аудит).
+   *
+   * ⚠️ ArcGIS нь 2000 мөрийн хуудаслалтаар татдаг тул том давхарга 10+ секунд
+   *    авах нь ХЭВИЙН. Эргэлдэгч дангаараа тэр хугацаанд «гацсан» мэт
+   *    уншигддаг бөгөөд хэрэглэгч хуудсаа refresh хийж, ачаалалтыг ЭХНЭЭС нь
+   *    эхлүүлдэг байв. 8 секундын дараа шалтгааныг нь хэлнэ.
+   * ⚠️ Товч БИШ, зөвхөн ТАЙЛБАР: хүсэлт нь ажилласаар байгаа тул «дахин
+   *    оролдох» нь одоо байгаа ачаалалтыг хаяна.
+   */
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setSlow(true), 8000);
+    return () => clearTimeout(t);
+  }, []);
   // ⚠️ `role="status"` — ачаалал дуусахад дэлгэц уншигч мэдэгдэнэ. Урьд нь
   //    зөвхөн нүдэнд харагдах эргэлдэгч байсан.
   return (
     <div className={s.state} role="status" aria-live="polite" style={minH ? { minHeight: minH } : undefined}>
       <span className={s.spinner} aria-hidden />
       {label}
+      {slow && (
+        <span className={s.slowHint}>
+          {tr('Их хэмжээний өгөгдөл татаж байна — сүлжээнээс шалтгаалж хэдэн арван секунд авч болно.')}
+        </span>
+      )}
     </div>
   );
 }
@@ -1800,21 +1820,38 @@ export function Empty({
   label,
   icon = 'chart',
   hint,
+  onRetry,
 }: {
   label: string;
   /** `Icon.tsx`-ийн нэр. Мэдэгдэхгүй нэр өгвөл дүрс нь зүгээр л гарахгүй. */
   icon?: string;
   /** Дараа нь ЮУ хийхийг заана — хоосон дэлгэц бол урилга байх ёстой */
   hint?: ReactNode;
+  /**
+   * АЛДААНААС үүссэн хоосон төлөвт «Дахин оролдох».
+   *
+   * ⚠️ 2026-09-02 аудит: ArcGIS түр гацахад зарим харагдац зөвхөн «татагдсангүй»
+   *    гэж бичээд зогсдог байсан тул хэрэглэгч БҮТЭН хуудсаа refresh хийхээс
+   *    өөр аргагүй байв (`Data`-д retry бий, гараар бичсэн салаанууд нь алга).
+   *    Өгвөл `Data`-гийнхтэй ЯГ ижил товч гарна — нэг л дүр төрх.
+   * ⚠️ ЖИНХЭНЭ хоосон (өгөгдөл нь үнэхээр байхгүй) үед БҮҮ өг — тэнд дахин
+   *    оролдох нь утгагүй бөгөөд «алдаа гарсан» мэт уншигдана.
+   */
+  onRetry?: () => void;
 }) {
   return (
-    <div className={`${s.state} ${s.empty}`}>
+    <div className={`${s.state} ${s.empty}`} role={onRetry ? 'alert' : undefined}>
       {/* `Icon` нь `currentColor`-оор зурагддаг тул өнгийг боодол өгнө */}
       <span className={s.emptyIcon}>
         <Icon name={icon} size={22} />
       </span>
       <span className={s.emptyLabel}>{label}</span>
       {hint && <span className={s.emptyHint}>{hint}</span>}
+      {onRetry && (
+        <button type="button" className={s.retryBtn} onClick={onRetry}>
+          {tr('Дахин оролдох')}
+        </button>
+      )}
     </div>
   );
 }

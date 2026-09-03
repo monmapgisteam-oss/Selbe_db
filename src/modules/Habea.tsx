@@ -466,7 +466,19 @@ async function loadPhotoBatches<T>(list: Inc[], of: (i: Inc, p: Photo) => T): Pr
 function IncPhotos({ oid }: { oid: number }) {
   const q = useAsync<Photo[]>(() => loadPhotos(oid), [oid]);
   if (q.state === 'loading') return <div className={h.photoNote}>{tr('Зураг шалгаж байна…')}</div>;
-  if (q.state === 'error') return <div className={h.photoNote}>{tr('Зураг татагдсангүй')}</div>;
+  /* ⚠️ 2026-09-02: retry нэмэв. Энэ файлын доод талын зургийн хэсэгт (`Photos`)
+     retry аль хэдийн байсан атлаа энд алга байсан — нэг харагдац дотроо зөрж,
+     хэрэглэгч аль нь дахин оролдож болохыг таамаглах хэрэгтэй болдог байв. */
+  if (q.state === 'error') {
+    return (
+      <div className={h.photoNote} role="alert">
+        {tr('Зураг татагдсангүй')}
+        {q.retry && (
+          <button type="button" className={h.retry} onClick={q.retry}>{tr('Дахин оролдох')}</button>
+        )}
+      </div>
+    );
+  }
   if (!q.data.length) return null;
   return (
     <div className={h.photos}>

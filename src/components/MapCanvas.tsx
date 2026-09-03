@@ -1475,6 +1475,16 @@ export const MapCanvas = memo(function MapCanvas({
   }, []);
   /** Ачаалагдаж чадаагүй 3D загварын тоо — null = асуудалгүй */
   const [meshError, setMeshError] = useState<number | null>(null);
+  /**
+   * ЕРДИЙН (2D) давхаргын уналт — унасан давхаргын ГАРЧГУУД.
+   *
+   * ⚠️ 2026-09-02 аудит: 3D/BIM мешийн уналтыг `meshError` барьдаг байсан ч
+   *    ЕРДИЙН FeatureLayer унавал ямар ч тэмдэг гардаггүй байв — зураг зүгээр
+   *    л ХООСОН зурагдаж, хэрэглэгч «өгөгдөл алга» гэж эндүүрдэг. Сүлжээ
+   *    тасрах, үйлчилгээ 499 буцаах нь энэ төсөлд БОДИТООР тохиолддог
+   *    (`Selbe_guitsetgel_consolidated`, `Selbe_ET_20260721` хаалттай).
+   */
+  const [layerFail, setLayerFail] = useState<string[]>([]);
   /** `view.when` унасан — «ачаалж байна…»-гийн оронд алдаа + «Дахин оролдох» */
   const [initError, setInitError] = useState(false);
   /** «Дахин оролдох» — утга нэмэгдэхэд view-г бүхэлд нь дахин үүсгэнэ */
@@ -3112,6 +3122,30 @@ export const MapCanvas = memo(function MapCanvas({
     return () => { alive = false; };
   }, [visibleKey, ready]);
 
+  /**
+   * ДАВХАРГЫН УНАЛТЫГ АЖИГЛАХ.
+   *
+   * ⚠️ Зөвхөн `loadStatus === 'failed'`-ыг тоолно. Харагдахгүй давхарга нь
+   *    `not-loaded` хэвээр үлддэг тул «ачаалаагүй» ба «унасан» хоёр
+   *    ХОЛИЛДОХГҮЙ — зөвхөн ЖИНХЭНЭ уналт л тоологдоно.
+   * ⚠️ Гарчгаар нь харуулна: «3 давхарга унав» гэхээс «Барилга · Зам» гэсэн нь
+   *    аль мэдээлэл дутуу байгааг шууд хэлнэ.
+   */
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) { setLayerFail([]); return; }
+    const handle = reactiveUtils.watch(
+      () => map.allLayers
+        .filter((l) => l.loadStatus === 'failed')
+        .map((l) => l.title || l.id)
+        .toArray()
+        .join('|'),
+      (joined) => setLayerFail(joined ? joined.split('|') : []),
+      { initial: true },
+    );
+    return () => handle.remove();
+  }, [ready]);
+
   /** 3D/BIM загвар ачаалагдсан эсэх — CORS/сүлжээний асуудлыг ил хэлнэ */
   useEffect(() => {
     const map = mapRef.current;
@@ -3176,6 +3210,23 @@ export const MapCanvas = memo(function MapCanvas({
           <b className={s.warnTitle}>{tr('3D бодит загвар ачаалагдсангүй (')}{meshError})</b>
           <span>
             <code>arcgis.ubhub.mn:6443</code> {tr('руу хандаж чадсангүй. Сервер ажиллаж байгаа эсэх, CORS-ын')} <b>allowedOrigins</b>{tr('-д энэ хаяг байгаа эсэхийг шалгана уу.')}
+          </span>
+        </div>
+      )}
+
+      {/* ⚠️ ЕРДИЙН ДАВХАРГЫН УНАЛТ. Үүнгүй бол унасан давхарга зүгээр л
+          ХООСОН зурагдаж, «энэ бүсэд өгөгдөл алга» гэж ХУДАЛ уншигддаг байв
+          (2026-09-02 аудит). Мешийнхтэй ижил байрлал, ижил дүр төрх. */}
+      {layerFail.length > 0 && (
+        <div className={`${s.float} ${s.floatBR} ${s.warn}`} role="alert">
+          <b className={s.warnTitle}>
+            {tr('{0} давхарга ачаалагдсангүй', String(layerFail.length))}
+          </b>
+          <span>
+            {layerFail.slice(0, 4).join(' · ')}
+            {layerFail.length > 4 && tr(' …+{0}', String(layerFail.length - 4))}
+            {' — '}
+            {tr('Эдгээрийн өгөгдөл зурагт ХАРАГДАХГҮЙ. Сүлжээ эсвэл үйлчилгээний хандалтыг шалгана уу.')}
           </span>
         </div>
       )}
