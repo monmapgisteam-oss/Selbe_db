@@ -21,6 +21,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useFocusTrap } from '@/lib/useFocusTrap';
 import { t as tr } from '@/lib/i18nCore';
 import { num } from '@/lib/format';
 import { PARCEL_STATUS_HUES } from '@/lib/services';
@@ -55,6 +56,10 @@ export function GazarEdit({
   const [err, setErr] = useState<Partial<Record<keyof ParcelPatch, string>>>({});
   const [fail, setFail] = useState('');
   const dirty = useRef(false);
+  /* ⚠️ Фокусын урхи (2026-09-03-ны хүртээмжийн аудит) — `aria-modal` нь
+     хөтчийн Tab-д нөлөөлдөггүй, урхигүй бол фокус ард руу гарна. */
+  const mdRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(mdRef);
 
   /**
    * ⚠️ МӨРИЙГ ЭНД ДАХИН ТАТНА. Газрын зургийн `onPick` нь давхаргын
@@ -119,7 +124,7 @@ export function GazarEdit({
 
   return (
     <div className={g.backdrop} role="dialog" aria-modal="true" onClick={tryClose}>
-      <div className={g.modal} onClick={(e) => e.stopPropagation()}>
+      <div ref={mdRef} className={g.modal} onClick={(e) => e.stopPropagation()}>
         <div className={g.modalHead}>
           <span className={g.modalTitle}>{tr('Нэгж талбарын төлөв')}</span>
           {before && <span className={g.modalNo}>{before.parcelNo || `#${before.oid}`}</span>}

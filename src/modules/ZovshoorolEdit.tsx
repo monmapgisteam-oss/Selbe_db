@@ -11,6 +11,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useFocusTrap } from '@/lib/useFocusTrap';
 import type { ReactNode } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { buildPacks } from '@/modules/Bagts';
@@ -49,6 +50,10 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
    * бүгдийг алдаж болно. Өөрчлөлт байвал баталгаажуулна.
    */
   const dirty = useRef(false);
+  /* ⚠️ Фокусын урхи (2026-09-03-ны хүртээмжийн аудит) — `aria-modal` нь
+     хөтчийн Tab-д нөлөөлдөггүй, урхигүй бол фокус ард руу гарна. */
+  const mdRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(mdRef);
   const [err, setErr] = useState<Partial<Record<keyof ZovDraft, string>>>({});
   const [fail, setFail] = useState('');
   const [busy, setBusy] = useState(false);
@@ -149,7 +154,7 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
 
   return (
     <div className={s.backdrop} role="dialog" aria-modal="true" onClick={tryClose}>
-      <div className={s.modal + ' ' + s.modalWide} onClick={(e) => e.stopPropagation()}>
+      <div ref={mdRef} className={s.modal + ' ' + s.modalWide} onClick={(e) => e.stopPropagation()}>
         <div className={s.modalHead}>
           <span className={s.modalTitle}>
             {editing ? tr('Зөвшөөрөл засах') : tr('Зөвшөөрөл нэмэх')}

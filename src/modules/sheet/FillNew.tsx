@@ -1963,7 +1963,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
           {tr('Хяналтаас БУЦААСАН — засвар оруулаад дахин илгээнэ үү.')}
         </p>
       )}
-      {err && <p className={st.error}>{err}</p>}
+      {err && <p className={st.error} role="alert">{err}</p>}
 
       {busy && rows.length === 0 && (
         <div className={st.scroll}>

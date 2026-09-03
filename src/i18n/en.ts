@@ -3233,6 +3233,10 @@ const en: Record<string, string> = {
   "Уялдаа устгах": "Remove link",
   "Уялдаа нэмэх": "Add link",
   "Уялдаа тохируулах": "Set links",
+  "Энэ хэсэг нээгдсэнгүй": "This section could not be opened",
+  "Бусад хэсэг ажиллаж байгаа — цэсээр өөр харагдац руу шилжиж болно.": "The rest of the portal is still working — use the menu to switch to another view.",
+  "«{0}» нээгдсэнгүй": "“{0}” could not be opened",
+  "Самбар нээгдсэнгүй": "The panel could not be opened",
 };
 
 export default en;
