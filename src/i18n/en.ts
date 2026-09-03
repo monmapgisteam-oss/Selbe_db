@@ -3263,6 +3263,24 @@ const en: Record<string, string> = {
   "гэр хороолол": "ger district",
   "Байшин": "House",
   "Гэр": "Ger",
+  "Захирамжаар батлагдсан": "Approved by decree",
+  "Гэрээгээр байгуулагдсан": "Under contract",
+  "Бодитоор олгосон": "Actually disbursed",
+  "Санхүүжилтийн гурван шат — захирамжаас олголт хүртэл": "The three financing stages — from decree to disbursement",
+  "Санхүүжилтийн гурван шатны харьцуулалт": "Comparison of the three financing stages",
+  "Багц тус бүрийн төсөвт өртөг": "Budget cost of each package",
+  "Багц тус бүрийн гүйцэтгэл — хамгийн өндөр нь тодруулсан": "Progress of each package — the highest is highlighted",
+  "Багц тус бүрийн гүйцэтгэлийн хувь": "Progress percentage of each package",
+  "Багц бүрийн төсөвт эзлэх жин — нийт гүйцэтгэл голчлон эндээс хамаарна": "Budget weight of each package — total progress depends mainly on this",
+  "Багц бүрийн төсөвт эзлэх жин": "Budget weight of each package",
+  "Нэгж талбарын төлөв — шийдвэрлэсэн ба үлдсэн": "Parcel status — resolved and outstanding",
+  "Сар бүрийн санхүүжилтийн хуваарь (төлөвлөгөө)": "Monthly financing schedule (plan)",
+  "Сар бүрийн санхүүжилтийн хуваарь": "Monthly financing schedule",
+  "Ажлын бүлэг тус бүрийн объектын тоо": "Object count of each work group",
+  "Гүйцэтгэгч байгууллага тус бүрийн ажиллах хүч": "Workforce of each contractor",
+  "Гүйцэтгэгч байгууллага тус бүрийн ажилтны тоо": "Worker count of each contractor",
+  "Зураг": "Figure",
+  "Оргил": "Peak"
 };
 
 export default en;

@@ -25,6 +25,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
+import { Fig, KpiRow, RankBars, TrendArea } from '@/modules/tailanChart';
 import { Data } from '@/components/ui';
 import { Icon } from '@/components/Icon';
 import { num, pct } from '@/lib/format';
@@ -202,6 +203,30 @@ export function Tailan() {
                       <p className={r.intro}>
                         {tr('Энэ хэсэгт төслийн цар хүрээ, гүйцэтгэл, санхүүжилтийн долоон гол үзүүлэлтийг нэгтгэв. Гүйцэтгэлийн хоёр өөр хэмжүүрийг ялган үзэх нь зүйтэй: төслийн нийт гүйцэтгэл нь багц бүрийг төсвийн жингээр нь тооцсон дүн бол барилга угсралтын гүйцэтгэл нь блокуудын энгийн дундаж.')}
                       </p>
+                      {/* ⚠️ ТОЛГОЙ ТООГ ГРАФИК БОЛГОХГҮЙ: нэг утгыг багана болгон
+                          зурах нь мэдээлэл нэмэхгүй, зөвхөн зай иднэ. Тоо нь өөрөө
+                          «график» — тиймээс үзүүлэлтийн эгнээ. */}
+                      <KpiRow items={[
+                        { label: tr('Орон сууцны блок'), value: num(blocks) },
+                        { label: tr('Өрхийн орон сууц'), value: num(ail) },
+                        { label: tr('Төслийн нийт гүйцэтгэл'), value: pct(x.overall.pct, 2) },
+                        { label: tr('Барилга угсралтын гүйцэтгэл'), value: pct(x.progress.overall, 2) },
+                        { label: tr('Захирамжаар батлагдсан'), value: `${bn(x.finance.orderTotal)} ₮` },
+                        { label: tr('Гэрээгээр байгуулагдсан'), value: `${bn(x.finance.contractAmount)} ₮` },
+                        { label: tr('Бодитоор олгосон'), value: `${bn(x.finance.paid)} ₮` },
+                      ]} />
+                      {/* Санхүүжилтийн гурван шат нь ХООРОНДОО хамаарна:
+                          захирамж ⊇ гэрээ ⊇ олголт. Тиймээс хэсэг-бүтэн БИШ,
+                          нэг тэнхлэг дээрх харьцуулалт. */}
+                      <Fig no="1">{tr('Санхүүжилтийн гурван шат — захирамжаас олголт хүртэл')}</Fig>
+                      <RankBars
+                        title={tr('Санхүүжилтийн гурван шатны харьцуулалт')}
+                        items={[
+                          { label: tr('Захирамжаар батлагдсан'), value: x.finance.orderTotal, text: `${bn(x.finance.orderTotal)} ₮` },
+                          { label: tr('Гэрээгээр байгуулагдсан'), value: x.finance.contractAmount, text: `${bn(x.finance.contractAmount)} ₮` },
+                          { label: tr('Бодитоор олгосон'), value: x.finance.paid, text: `${bn(x.finance.paid)} ₮`, hot: true },
+                        ]}
+                      />
                       <Cap no="1">{tr('Төслийн нэгдсэн үзүүлэлт')}</Cap>
                       <ResizableTable storeKey="tailan.tovch" className={r.table}>
                         <thead><tr><th>{tr('Үзүүлэлт')}</th><th className={r.num}>{tr('Утга')}</th></tr></thead>
@@ -243,6 +268,31 @@ export function Tailan() {
                         ({pct(d.bestBagts?.pct ?? null, 2)}{tr('), хамгийн бага нь')}
                         {' '}{tr(d.worstBagts?.bagts ?? '')} ({pct(d.worstBagts?.pct ?? null, 2)}).
                       </p>
+                      {/* ⚠️ ТӨСӨВ (₮) ба ГҮЙЦЭТГЭЛ (%) нь өөр хэмжигдэхүүн тул
+                          НЭГ зурагт давхарлахгүй — хоёр тэнхлэгтэй график нь
+                          масштабын дурын харьцаагаар байхгүй хамаарлыг зохионо. */}
+                      <Fig no="2.1">{tr('Багц тус бүрийн төсөвт өртөг')}</Fig>
+                      <RankBars
+                        title={tr('Багц тус бүрийн төсөвт өртөг')}
+                        items={sorted.map((b) => ({
+                          label: tr(b.label),
+                          value: budgetOf(b.key) > 0 ? budgetOf(b.key) : null,
+                          text: `${bn(budgetOf(b.key))} ₮`,
+                        }))}
+                      />
+                      <Fig no="2.2">{tr('Багц тус бүрийн гүйцэтгэл — хамгийн өндөр нь тодруулсан')}</Fig>
+                      <RankBars
+                        title={tr('Багц тус бүрийн гүйцэтгэлийн хувь')}
+                        max={100}
+                        items={[...sorted]
+                          .sort((a, b) => (b.progress ?? 0) - (a.progress ?? 0))
+                          .map((b) => ({
+                            label: tr(b.label),
+                            value: b.progress,
+                            text: pct(b.progress, 2),
+                            hot: b.label === d.bestBagts?.bagts,
+                          }))}
+                      />
                       <Cap no="2">{tr('Багц тус бүрийн блок, өрх, төсөв ба гүйцэтгэл (төсөвт өртгөөр буурах эрэмбээр)')}</Cap>
                       <ResizableTable storeKey="tailan.bagts" className={r.table}>
                         <thead>
@@ -281,6 +331,25 @@ export function Tailan() {
                       <p className={r.intro}>
                         {tr('Багц бүр төслийн төсөвт эзлэх өөрийн жинтэй тул нийт гүйцэтгэл нь энгийн дундаж биш, жин харгалзан тооцсон дүн болно. Одоогийн байдлаар төслийн төсвийн')} {pct(d.heavyStage?.weight ?? null, 1)}{tr('-ийг «')}{tr(d.heavyStage?.label ?? "")}{tr('» багц эзэлж байгаа тул нийт гүйцэтгэл голчлон түүнээс хамаарч байна.')}
                       </p>
+                      {/* ⚠️ ДАВХАРЛАСАН НЭГ ЗУРВАС ХЭРЭГЛЭХГҮЙ (2026-09-03,
+                          хэрэглэгчийн заавар). Ойролцоо утгуудыг нэг мөрөнд
+                          хэрчимлэхэд аль нь аль нээсээ том болох нь нүдээр
+                          харьцуулагдахгүй — хэрчим бүр өөр цэгээс эхэлдэг.
+                          Хэвтээ багана нь бүгд НЭГ суурьтай тул урт нь шууд
+                          харьцуулагдана. */}
+                      <Fig no="3">{tr('Багц бүрийн төсөвт эзлэх жин — нийт гүйцэтгэл голчлон эндээс хамаарна')}</Fig>
+                      <RankBars
+                        title={tr('Багц бүрийн төсөвт эзлэх жин')}
+                        items={[...x.overall.stages]
+                          .filter((s) => s.weight != null && s.weight > 0)
+                          .sort((a, b) => (b.weight ?? 0) - (a.weight ?? 0))
+                          .map((s, i) => ({
+                            label: tr(s.label),
+                            value: s.weight ?? 0,
+                            text: pct(s.weight, 1),
+                            hot: i === 0,
+                          }))}
+                      />
                       <Cap no="3">{tr('Багцын эзлэх жин ба бодит гүйцэтгэл')}</Cap>
                       <ResizableTable storeKey="tailan.uyeshat" className={r.table}>
                         <thead>
@@ -323,6 +392,21 @@ export function Tailan() {
                         {tr('Төслийн талбайд нийт')} {num(x.land.parcels)} {tr('нэгж талбар (')}{num(x.land.areaM2)} {tr('м²) бүртгэгдсэн бөгөөд шийдвэрлэгдсэн нь')}
                         {' '}{x.land.pct != null ? pct(x.land.pct, 1) : '—'} {tr('байна. Ажлын үндсэн хэсэг дууссан ч')} {num(d.landLeft)} {tr('нэгж талбар шийдвэрлэгдээгүй хэвээр байгаа нь барилга угсралтын хуваарьт нөлөөлөх эрсдэлтэй.')}
                       </p>
+                      {/* ⚠️ Нийт 2,117-гийн доторх хуваарилалт ч давхарласан зурвас
+                          БИШ: «Бүрэн чөлөөлсөн» 80%-ийг эзлэхэд үлдсэн дөрөв нь
+                          нимгэн хэрчим болж, хооронд нь харьцуулах боломжгүй.
+                          Тусдаа багана нь 1,703 ↔ 201 ↔ 171-ийг ил харуулна. */}
+                      <Fig no="4">{tr('Нэгж талбарын төлөв — шийдвэрлэсэн ба үлдсэн')}</Fig>
+                      <RankBars
+                        title={tr('Нэгж талбарын төлөв')}
+                        items={[...x.land.byStatus]
+                          .sort((a, b) => b.n - a.n)
+                          .map((s) => ({
+                            label: tr(s.label),
+                            value: s.n,
+                            text: `${num(s.n)} · ${x.land.parcels ? pct((s.n / x.land.parcels) * 100, 1) : '—'}`,
+                          }))}
+                      />
                       <Cap no="4.1">{tr('Нэгж талбарын төлөв')}</Cap>
                       <ResizableTable storeKey="tailan.gazar" className={r.table}>
                         <thead><tr><th>{tr('Төлөв')}</th><th className={r.num}>{tr('Нэгж талбар')}</th><th className={r.num}>{tr('Эзлэх хувь')}</th></tr></thead>
@@ -406,6 +490,14 @@ export function Tailan() {
                           <> {tr('бөгөөд үлдсэн')} {num(d.notStartedPhases.length)} {tr('үе шат хараахан эхлээгүй байна')}</>
                         )}.
                       </p>
+                      <Fig no="6.1">{tr('Багц тус бүрийн барилга угсралтын гүйцэтгэл')}</Fig>
+                      <RankBars
+                        title={tr('Багц тус бүрийн барилга угсралтын гүйцэтгэл')}
+                        max={100}
+                        items={[...x.progress.byBagts]
+                          .sort((a, b) => (b.pct ?? 0) - (a.pct ?? 0))
+                          .map((b) => ({ label: tr(b.bagts), value: b.pct, text: pct(b.pct, 2) }))}
+                      />
                       <Cap no="6.1">{tr('Багц тус бүрийн барилга угсралтын гүйцэтгэл')}</Cap>
                       <ResizableTable storeKey="tailan.guits-bagts" className={r.table}>
                         <thead><tr><th>{tr('Багц')}</th><th className={r.num}>{tr('Блок')}</th><th className={r.num}>{tr('Гүйцэтгэл')}</th></tr></thead>
@@ -425,6 +517,12 @@ export function Tailan() {
                         </tbody>
                       </ResizableTable>
 
+                      <Fig no="6.2">{tr('Ажлын үе шат тус бүрийн дундаж гүйцэтгэл')}</Fig>
+                      <RankBars
+                        title={tr('Ажлын үе шат тус бүрийн дундаж гүйцэтгэл')}
+                        max={100}
+                        items={x.progress.phases.map((p) => ({ label: tr(p.name), value: p.pct, text: pct(p.pct, 2) }))}
+                      />
                       <Cap no="6.2">{tr('Ажлын үе шат тус бүрийн дундаж гүйцэтгэл')}</Cap>
                       <ResizableTable storeKey="tailan.guits-shat" className={r.table}>
                         <thead><tr><th>{tr('Үе шат')}</th><th className={r.num}>{tr('Дундаж гүйцэтгэл')}</th></tr></thead>
@@ -467,6 +565,21 @@ export function Tailan() {
                           <> {tr('Санхүүжилтийн дийлэнх хэсгийг «')}{tr(d.topSource.label)}{tr('» эх үүсвэр бүрдүүлж, нийт дүнгийн')} {pct(d.topSource.share, 1)}{tr('-ийг эзэлж байна.')}</>
                         )}
                       </p>
+                      {/* ⚠️ Эх үүсвэрийн 0.2% ба 0.0% нь давхарласан зурваст 2px-ийн
+                          үл үзэгдэх хэрчим болдог байв. Тусдаа багана нь бага утгыг ч
+                          нэртэй нь харуулна. */}
+                      <Fig no="7.1">{tr('Санхүүжилтийн эх үүсвэрийн бүтэц')}</Fig>
+                      <RankBars
+                        title={tr('Санхүүжилтийн эх үүсвэрийн бүтэц')}
+                        items={[...x.finance.sources]
+                          .sort((a, b) => b.value - a.value)
+                          .map((s, i) => ({
+                            label: tr(s.label),
+                            value: s.value,
+                            text: `${bn(s.value)} ₮ · ${srcTotal ? pct((s.value / srcTotal) * 100, 1) : '—'}`,
+                            hot: i === 0,
+                          }))}
+                      />
                       <Cap no="7.1">{tr('Санхүүжилтийн эх үүсвэрийн бүтэц')}</Cap>
                       <ResizableTable storeKey="tailan.eh-uusver" className={r.table}>
                         <thead><tr><th>{tr('Эх үүсвэр')}</th><th className={r.num}>{tr('Дүн (₮)')}</th><th className={r.num}>{tr('Хувь')}</th></tr></thead>
@@ -489,6 +602,14 @@ export function Tailan() {
                       {/* ⚠️ CASHFLOW2-ийн сарын цуваа нь санхүүжилтийн ХУВААРЬ
                           (төлөвлөгөө) — «олгосон» гэж шошговол бодит олголтоос
                           олон дахин их худал тоо хэвлэгдэнэ (reportData.ts). */}
+                      {/* ⚠️ НЭГ цуваа тул домог хэрэггүй — талбай нь өөрөө цувааг заана.
+                          Хэмжилтгүй сарыг 0 гэж ЗУРАХГҮЙ: `TrendArea` цоорхойг таслана. */}
+                      <Fig no="7.2">{tr('Сар бүрийн санхүүжилтийн хуваарь (төлөвлөгөө)')}</Fig>
+                      <TrendArea
+                        title={tr('Сар бүрийн санхүүжилтийн хуваарь')}
+                        fmt={(v) => `${bn(v)} ₮`}
+                        points={x.finance.months.map((m) => ({ label: m.label, value: m.amount || null }))}
+                      />
                       <Cap no="7.2">
                         {tr('Сар бүрийн санхүүжилтийн хуваарь (төлөвлөгөө) ба хуримтлагдсан дүн')}
                         {d.peakMonth && tr(' — хамгийн их төлөвлөгөө {0} сард', tr(d.peakMonth.label))}
@@ -539,6 +660,13 @@ export function Tailan() {
                         {' '}{num(x.infra.totals.n)} {tr('объект бүртгэгдсэн бөгөөд шугам сүлжээний нийт урт')} {num(x.infra.totals.len)} {tr('м, талбайн хэмжээ')}
                         {' '}{num(x.infra.totals.area)} {tr('м² байна.')}
                       </p>
+                      <Fig no="8">{tr('Ажлын бүлэг тус бүрийн объектын тоо')}</Fig>
+                      <RankBars
+                        title={tr('Ажлын бүлэг тус бүрийн объектын тоо')}
+                        items={[...x.infra.groups]
+                          .sort((a, b) => b.n - a.n)
+                          .map((g) => ({ label: tr(g.title), value: g.n, text: num(g.n) }))}
+                      />
                       <Cap no="8">{tr('Ажлын бүлэг тус бүрийн объект ба хэмжээ')}</Cap>
                       <ResizableTable storeKey="tailan.ajliin-buleg" className={r.table}>
                         <thead>
@@ -583,6 +711,15 @@ export function Tailan() {
                         {' '}{num(x.habea.mongol)}{tr(', гадаадын')} {num(x.habea.gadaad)}),
                         {' '}{num(x.habea.tehnik)} {tr('нэгж техник ажиллаж байна. Дотоодын ажиллах хүч нийт ажиллагсдын')} {pct(d.mongolShare, 1)}{tr('-ийг эзэлж байна.')}
                       </p>
+                      {/* ⚠️ Ажилтан ба техник нь өөр нэгжтэй тул НЭГ зурагт давхарлахгүй —
+                          ажиллах хүч нь гол үзүүлэлт учир түүнийг зурав. */}
+                      <Fig no="9">{tr('Гүйцэтгэгч байгууллага тус бүрийн ажиллах хүч')}</Fig>
+                      <RankBars
+                        title={tr('Гүйцэтгэгч байгууллага тус бүрийн ажилтны тоо')}
+                        items={[...x.habea.byCompany]
+                          .sort((a, b) => b.workers - a.workers)
+                          .map((co) => ({ label: tr(co.label), value: co.workers, text: num(co.workers) }))}
+                      />
                       <Cap no="9">{tr('Гүйцэтгэгч байгууллага тус бүрийн хүн хүч, техник')}</Cap>
                       <ResizableTable storeKey="tailan.guitsetgegch" className={r.table}>
                         <thead>
