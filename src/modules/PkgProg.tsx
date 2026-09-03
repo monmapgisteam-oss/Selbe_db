@@ -904,7 +904,12 @@ function TsPackList({
                      зөвхөн зурагт хэдэн давхаргатай нь. */
                   : (p.layerIds.length ? tr('{0} давхарга', num(p.layerIds.length)) : tr('зураггүй'))}
               value={
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                /* ⚠️ `flexWrap` — «Санхүүжилт»-ийн жагсаалттай ЯГ ижил зан:
+                   нарийн самбарт тэмдэг картаас хальж гарахгүй. */
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  flexWrap: 'wrap', justifyContent: 'flex-end',
+                }}>
                   {execPct == null ? '—' : pct(execPct, 0)}
                   {/**
                     * ⚠️ 2026-08-18: анхааруулга нь ЗӨВХӨН «⚠» тэмдэг байсныг

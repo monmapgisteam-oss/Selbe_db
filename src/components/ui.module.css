@@ -397,6 +397,15 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  /**
+   * ⚠️ ЗӨРҮҮЛЖ БУУЛГАНА (2026-09-03). Утга нь нэрийн хажууд багтахгүй бол
+   * ДООШ өөрийн мөрөнд буна — нэрийг шахаж устгахгүй. Ингэхгүй бол «Санхүүжилт
+   * хоцорсон багц» картад «−233,753,870,736 ₮ 4 сар» гэсэн тэмдэг мөрийн
+   * өргөнийг бүхэлд нь идэж, зүүн талын нэр нь тэмдэгт БҮРЭЭР доошоо
+   * («Б·а·г·ц·2») тасарч уншигдахаа больж байв.
+   */
+  flex-wrap: wrap;
+  row-gap: 3px;
   width: 100%;
   padding: 9px 10px;
   border-radius: var(--r-sm);
@@ -415,12 +424,28 @@
  * («Багц 17.1 · Гадна тохи1.08 тэрбумт — Баг»). Блок болгосноор гурвуулаа
  * өөрийн мөртэй болж, таслалт ажиллана.
  */
-.listMain { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+/**
+ * ⚠️ ХАМГИЙН БАГА ӨРГӨН 110px — нэрийн багана үүнээс нарийсахгүй. `min-width: 0`
+ * байхад flex нь нэрийг 0 хүртэл шахдаг байсан бөгөөд `overflow-wrap: anywhere`
+ * тэр агшинд тэмдэгт бүрийг шинэ мөрөнд буулгадаг («Б·а·г·ц»). 110px нь
+ * хажуугийн самбарын хамгийн нарийн өргөнд (`SplitGrip` MIN 180px) ч багтана.
+ */
+.listMain { flex: 1 1 110px; min-width: 110px; display: flex; flex-direction: column; gap: 1px; }
 .listTitle { display: block; font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
 .listSub { display: block; font-size: 0.7rem; color: var(--ink-3); overflow-wrap: anywhere; }
-/* ⚠️ `nowrap` — «62.8 тэрбум» гэх мэт утга хоёр мөр болж мөрийн өндрийг
-   тэлэхгүй; өргөн хэрэгтэй бол гарчиг нь таслагдана, утга нь бүтэн үлдэнэ. */
-.listVal { flex: none; white-space: nowrap; font-weight: 600; font-size: 0.76rem; color: var(--ink); }
+/* ⚠️ `nowrap` — утга нь дундуураа тасрахгүй, ҮРГЭЛЖ БҮТЭН үлдэнэ (мөнгөн дүнг
+   товчлохгүй гэсэн дүрмийн үргэлжлэл).
+   ⚠️ `margin-left: auto` — утга доошоо буусан үедээ ч БАРУУН ирмэгтээ
+   зэрэгцэнэ, эс бөгөөс нэг мөрөнд баруунд, дараагийнхад зүүнд гарч
+   жагсаалтын багана эвдэрнэ. */
+.listVal {
+  flex: none;
+  margin-left: auto;
+  white-space: nowrap;
+  font-weight: 600;
+  font-size: 0.76rem;
+  color: var(--ink);
+}
 
 /* ── Төлөв ── */
 .state {
