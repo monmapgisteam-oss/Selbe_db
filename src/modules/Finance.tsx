@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, Fragment, type MouseEvent } from 'react';
+import { useState, useEffect, useMemo, useRef, Fragment, type MouseEvent } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { Data, Empty } from '@/components/ui';
 import { useAsync } from '@/lib/useAsync';
@@ -1172,8 +1172,18 @@ function FullTable({
    *    хасахгүй — тиймээс засвар ч бүрэн хэвээр.
    */
   const [grouped, setGrouped] = useState(true);
-  /** Хураасан бүлгийн шошгууд */
+  /**
+   * Хураасан бүлгийн шошгууд.
+   *
+   * ⚠️ АНХДАГЧААР ЭХНИЙ 2 БАГЦ л дэлгээстэй (2026-09-02 аудит). Урьд нь
+   *    хоосон эхэлдэг байсан тул Cashflow-ийн 209 мөр × 38 талбар (~7,900
+   *    нүд) НЭГ ДОР зурагдаж, харагдац нээх нь мэдэгдэхүйц удаашрдаг байв.
+   *    Виртуалчлал төсөлд байхгүй тул зурагдах хэмжээг өөрөө хязгаарлана.
+   * ⚠️ Хэрэглэгчийн дараагийн үйлдлээр л өөрчлөгдөнө — `packs` шинэчлэгдэх
+   *    болгонд дахин тооцвол хураасан багцууд нь өөрөө дэлгэгдэнэ.
+   */
   const [shut, setShut] = useState<Set<string>>(new Set());
+  const autoShut = useRef(false);
   /** IPC-ийн ДЭЛГЭСЭН актууд — дэлгэрэнгүй талбарууд нь мөрийн доор гарна */
   const [xp, setXp] = useState<Set<number | string>>(new Set());
 
@@ -1318,6 +1328,14 @@ function FullTable({
     () => (grouped ? buildGroups(shown, kind) : null),
     [grouped, shown, kind],
   );
+
+  /* ⚠️ ЗӨВХӨН НЭГ УДАА — эхний өгөгдөл ирэхэд. Дараа нь хэрэглэгчийн сонголт
+     эзэн: шүүлт солигдох бүрд дахин хуравал дэлгэсэн багц нь хаагдана. */
+  useEffect(() => {
+    if (autoShut.current || !packs || packs.length <= 2) return;
+    autoShut.current = true;
+    setShut(new Set(packs.slice(2).map((p) => p.key)));
+  }, [packs]);
 
   const setFacet = (k: FacetKey, v: string) =>
     setFlt((s) => ({ ...s, facet: { ...s.facet, [k]: v } }));

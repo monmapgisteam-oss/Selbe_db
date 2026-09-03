@@ -100,6 +100,22 @@ export function GazarEdit({
     return () => window.removeEventListener('keydown', h);
   }, [tryClose]);
 
+  /*
+   * ⚠️ Нийтлээгүй засвартай байхад таб ХААХАД/дахин ачаалахад хөтөч
+   *    анхааруулна. `tryClose` нь зөвхөн МОДАЛ хаах үед асуудаг тул F5,
+   *    таб хаах, буцах товчинд бөглөсөн маягт ЧИМЭЭГҮЙ алдагддаг байв
+   *    (2026-09-02 аудит). Finance · Huvaari · FillNew · Pivot · UserAdmin
+   *    бүгд ийм хамгаалалттай — эдгээр маягт л гацсан байсан.
+   * ⚠️ `dirty` нь ref тул render дахин хийгддэггүй. Тиймээс сонсогчийг
+   *    БАЙНГА бүртгэж, дотроос нь ref-ээ уншина: `dirty.current`-ыг deps-д
+   *    тавьбал өөрчлөлт мэдрэгдэхгүй.
+   */
+  useEffect(() => {
+    const h = (e: BeforeUnloadEvent) => { if (dirty.current) e.preventDefault(); };
+    window.addEventListener('beforeunload', h);
+    return () => window.removeEventListener('beforeunload', h);
+  }, []);
+
   const submit = async () => {
     if (!before || !d) return;
     const e = validateParcel(d);

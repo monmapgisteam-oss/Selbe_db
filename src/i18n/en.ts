@@ -3233,6 +3233,11 @@ const en: Record<string, string> = {
   "Уялдаа устгах": "Remove link",
   "Уялдаа нэмэх": "Add link",
   "Уялдаа тохируулах": "Set links",
+  "{0} давхарга ачаалагдсангүй": "{0} layers failed to load",
+  " …+{0}": " …+{0}",
+  "Эдгээрийн өгөгдөл зурагт ХАРАГДАХГҮЙ. Сүлжээ эсвэл үйлчилгээний хандалтыг шалгана уу.": "Their data is NOT shown on the map. Check the network or the service permissions.",
+  "Их хэмжээний өгөгдөл татаж байна — сүлжээнээс шалтгаалж хэдэн арван секунд авч болно.": "Fetching a large dataset — depending on the network this can take tens of seconds.",
+  "Салхины заалт алга.": "No wind reading.",
 };
 
 export default en;

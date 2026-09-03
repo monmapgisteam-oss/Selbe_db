@@ -165,7 +165,7 @@ function OverlapBars({
   if (q.state !== 'ready') {
     return (
       <Section title={tr('Саад — багцаар')}>
-        <Empty label={tr('Давхцлыг тоолж чадсангүй.')} />
+        <Empty label={tr('Давхцлыг тоолж чадсангүй.')} onRetry={q.retry} />
       </Section>
     );
   }

@@ -165,6 +165,21 @@ export function AgentChat({
     setError(null);
   };
 
+  /*
+   * ⚠️ 2026-09-02 аудит: энэ самбар `role="dialog"` гэж зарладаг байсан
+   *    атлаа Escape-ээр хаагддаггүй, `aria-modal` ч байгаагүй. Порталын
+   *    бусад 7 модал хоёуланг нь хийсэн — зөвхөн энэ гацсан байв.
+   * ⚠️ `aria-modal` нь ХУДАЛ: самбар нээлттэй байхад хуудасны бусад хэсэг
+   *    ажилласаар байдаг (хэрэглэгч зурагтай ажиллангаа асуудаг) — тиймээс
+   *    `aria-modal` ОРУУЛААГҮЙ, зөвхөн Escape нэмэв.
+   */
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [open, onClose]);
+
   if (!open) return null;
 
   return (

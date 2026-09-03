@@ -728,7 +728,7 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
               </header>
               <div className={e.panelBody}>
                 {q.state === 'loading' ? <Loading label={tr('Харуул уншиж байна…')} />
-                  : q.state === 'error' ? <Empty label={tr('Харуулын давхарга татагдсангүй')} />
+                  : q.state === 'error' ? <Empty label={tr('Харуулын давхарга татагдсангүй')} onRetry={q.retry} />
                     : water.length === 0 ? <Empty label={tr('Усны харуул алга')} />
                       : (
                         <>
@@ -807,8 +807,12 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                         </div>
                         {windQ.state === 'loading' ? (
                           <Loading label={tr('Салхи татаж байна…')} />
-                        ) : windQ.state === 'error' || !windNow ? (
-                          <Note>{tr('Салхины заалт татагдсангүй.')}</Note>
+                        ) : windQ.state === 'error' ? (
+                          <Empty label={tr('Салхины заалт татагдсангүй.')} onRetry={windQ.retry} />
+                        ) : !windNow ? (
+                          /* ⚠️ Алдаа БИШ — хүсэлт амжилттай ч заалт хоосон.
+                             Retry санал болговол «алдаа гарлаа» гэж уншигдана. */
+                          <Note>{tr('Салхины заалт алга.')}</Note>
                         ) : (() => {
                           const d = dispersionOf(windNow.speed);
                           return (
