@@ -486,6 +486,17 @@
 }
 .chipText { font-weight: 600; }
 .chipSub { color: var(--ink-3); font-variant-numeric: tabular-nums; }
+/* ⚠️ ТАТАГДААГҮЙ давхарга — шар, ⚠ тэмдэгтэй (өнгө ганцаараа мэдээлэл
+   дамжуулахгүй). «Мэдээлэлгүй»-г «эрсдэлгүй»-ээс ялгах цорын ганц дохио. */
+.chipWarn {
+  padding: 1px 7px;
+  border-radius: 99px;
+  font-size: 0.66rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--warn-ink, var(--warn));
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn) 32%, transparent);
+}
 
 /* Нарийн дэлгэц — талын багана хумигдаж, зураг бүтэн өргөнөө авна */
 @media (max-width: 1280px) {

@@ -142,12 +142,46 @@ export const SOURCE_FS = {
  * ArcGIS Online нэвтрэлт (OAuth 2.0, PKCE — сервергүй статик сайтад тохирно).
  * `appId` хоосон бол нэвтрэлт УНТРААЛТТАЙ.
  */
+/**
+ * НЭВТРЭЛТ УНТРААХЫГ ИЛ ТУГААР ЗАРЛАНА (2026-09-03-ны аудит).
+ *
+ * ⚠️ ЯАГААД: `appId`-г хоосон болгоход `caps.hasCap` нь БҮХ эрхийг `true`
+ * буцааж, `permissions` нь БҮХ харагдацыг нээдэг. `.env` нь репод track
+ * хийгддэг файл тул нэг тэмдэгтийн санамсаргүй засвар порталын бүх
+ * хамгаалалтыг ЧИМЭЭГҮЙ унтраана — ямар ч дохио гарахгүй.
+ *
+ * Одоо унтраахын тулд `NEXT_PUBLIC_AUTH_OFF=1` гэж ТУСДАА, санаатай тугийг
+ * тавина. Хоосон `appId` дангаараа хангалтгүй: production build дээр
+ * тэрхүү тохиргоо ил алдаа болж, чимээгүй нээгдэхээс сэргийлнэ.
+ */
+const AUTH_OFF = process.env.NEXT_PUBLIC_AUTH_OFF === "1";
+const AUTH_APP_ID = process.env.NEXT_PUBLIC_AUTH_APP_ID ?? "ZPJRqk1iiYcjYRLv";
+if (!AUTH_OFF && !AUTH_APP_ID) {
+  const msg = "NEXT_PUBLIC_AUTH_APP_ID хоосон байна. Нэвтрэлтийг САНААТАЙ унтраах бол "
+    + "NEXT_PUBLIC_AUTH_OFF=1 гэж ил зарлана уу — эс бөгөөс бүх эрх, бүх "
+    + "харагдац хамгаалалтгүй нээгдэнэ.";
+  /**
+   * ⚠️ ЗӨВХӨН PRODUCTION-Д ШИДНЭ (2026-09-03).
+   *
+   * Энэ хамгаалалтын зорилго нь «нийтэд гарсан build чимээгүй нээлттэй
+   * байхаас сэргийлэх». Эхлээд болзолгүй `throw` бичсэн нь ХӨГЖҮҮЛЭЛТИЙН
+   * орчныг бүхэлд нь унагаав: `.env.development.local`-д appId-г хоосон
+   * орхих нь хөгжүүлэгчийн ХЭВИЙН зан (нэвтрэлтгүй ажиллах) бөгөөд
+   * `services.ts` нь бараг бүх модулийн хамаарал тул 15/15 харагдац
+   * ачаалахаа больж байлаа (хөтчийн шалгалтаар барив).
+   *
+   * Одоо: dev дээр ЗӨВХӨН консолын анхааруулга (ажил зогсохгүй),
+   * production build дээр ШИДНЭ (санамсаргүй нээлттэй хувилбар гарахгүй).
+   */
+  if (process.env.NODE_ENV === "production") throw new Error(msg);
+  console.warn("[selbe]", msg);
+}
 export const AUTH = {
   /**
    * ArcGIS OAuth appId (`NEXT_PUBLIC_AUTH_APP_ID`). Хоосон "" бол нэвтрэлт УНТРААЛТТАЙ.
    * ⚠️ `??` — env-д ЗӨВХӨН хоосон бичвэл унтраана; огт өгөөгүй бол fallback (асаалттай).
    */
-  appId: process.env.NEXT_PUBLIC_AUTH_APP_ID ?? "ZPJRqk1iiYcjYRLv",
+  appId: AUTH_OFF ? "" : AUTH_APP_ID,
   /**
    * ⚠️ Байгууллагын хаяг (`monmap.maps.arcgis.com`) БИШ. Тэр домэйн ArcGIS
    * Online-ы «Allowed origins» цагаан жагсаалтыг мөрддөг тул dev дээр токен

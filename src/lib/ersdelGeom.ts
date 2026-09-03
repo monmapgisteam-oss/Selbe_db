@@ -379,9 +379,17 @@ export async function damageOf(
   hazard: Polygon,
   level: LevelKey,
   kind: HazardKey,
-): Promise<DamageRow[]> {
+/**
+ * ⚠️ БУЦААХ УТГА ӨӨРЧЛӨГДСӨН (2026-09-03-ны аудит): мөрүүдээс ГАДНА
+ * УНАСАН давхаргын нэрсийг ч буцаана. Урьд нь унасан давхарга чимээгүй
+ * алгасагдаж нийлбэрт 0 нэмдэг байсан тул «эрсдэлгүй» гэсэн ХУДАЛ
+ * баталгаа гардаг байв.
+ */
+): Promise<{ rows: DamageRow[]; failed: string[] }> {
   const sev = SEVERITY[level];
   const rows: DamageRow[] = [];
+  /** Татагдаагүй давхаргын гарчиг — «эрсдэлгүй» ба «мэдээлэлгүй»-г ялгана */
+  const failed: string[] = [];
 
   for (const id of layerIds) {
     const def = LAYER_BY_ID[id];
@@ -404,11 +412,18 @@ export async function damageOf(
       // ⚠️ ТООГ тусад нь асууна: `queryFeatures` нь `num`-аар тайрагдана тул
       //    түүний уртыг «нийт» гэж уншвал 1200-аас дээш үед чимээгүй дутуу
       //    тоо гарна.
+      /* ⚠️ ТООЛОЛ УНАСАН нь «тайрагдаагүй» ГЭСЭН ҮГ БИШ (2026-09-03-ны
+         аудит): урьд нь `catch(() => 0)` → `n = 0 || res.features.length`
+         буюу ТҮҮВРИЙН урт «нийт» болж, `truncated = n > fetched` нь худал
+         болдог байв. 1,611 объектын 1,200-г үзсэн ~25% дутуу үнэлгээ
+         БҮТЭН хэмжилт мэт харагдана. Одоо тоолол унавал ТАЙРАГДСАН гэж
+         үзнэ — дутуу үнэлгээг бүтэн гэж зарлахаас илүү аюулгүй. */
       const [res, total] = await Promise.all([
         fl.queryFeatures(q),
-        fl.queryFeatureCount(q).catch(() => 0),
+        fl.queryFeatureCount(q).catch(() => -1),
       ]);
-      const n = total || res.features.length;
+      const countFailed = total < 0;
+      const n = countFailed ? res.features.length : total;
       if (!n) continue;
 
       let area = 0;
@@ -478,12 +493,22 @@ export async function damageOf(
 
       rows.push({
         layerId: id, title: def.title, geom, cls, n, area, length, people, cost, graphics,
-        truncated: n > fetched,
+        truncated: countFailed || n > fetched,
       });
     } catch {
-      // Нэг давхарга унасан нь бусдыг зогсоох ёсгүй — тэр мөр гарахгүй
+      /**
+       * ⚠️ УНАСАН ДАВХАРГЫГ ЧИМЭЭГҮЙ АЛГАСАХГҮЙ (2026-09-03-ны аудит).
+       *
+       * Нэг давхарга унасан нь бусдыг зогсоох ёсгүй нь ЗӨВ. Гэвч урьд нь
+       * зүгээр `continue` хийдэг байсан тул тэр давхарга нийлбэрт 0 нэмж,
+       * дэлгэц нь «N давхарга шинжлэв» гэж БҮТЭН тоо зарладаг байв —
+       * бүгд унавал «өртсөн объект олдсонгүй» гэсэн БАТАЛГАА гарна.
+       * Эрсдэлийн тоо аюулгүй байдлын шийдвэрт ордог тул «мэдээлэлгүй»
+       * ба «эрсдэлгүй» хоёрыг ялгах ёстой. Одоо унасныг нэрээр нь буцаана.
+       */
+      failed.push(def.title || id);
       continue;
     }
   }
-  return rows.sort((a, b) => b.cost - a.cost || b.n - a.n);
+  return { rows: rows.sort((a, b) => b.cost - a.cost || b.n - a.n), failed };
 }

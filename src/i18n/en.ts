@@ -291,7 +291,6 @@ const en: Record<string, string> = {
   "## Хатуу дүрэм": "## Hard rules",
   "## ХЭЛНИЙ ХЭВ МАЯГ — АЛБАН ЁСНЫ": "## REGISTER — FORMAL",
   "`{0}` гэсэн эх сурвалж байхгүй эсвэл танд үзэх эрх алга.": "There is no source `{0}`, or you do not have permission to view it.",
-  "`actual` нь АЖЛЫН ХУУДСААС тооцоолсон бодит гүйцэтгэл — дашбоардын толгойн тоо энэ. ": "`actual` is the real progress computed FROM THE WORK SHEET — this is the headline figure on the dashboard. ",
   "`Bagts_<SFX>` (багц), `MNG_ajiltani_too_<SFX>` (монгол), `G_ajiltanii_too_<SFX>` (гадаад), ": "`Bagts_<SFX>` (package), `MNG_ajiltani_too_<SFX>` (domestic), `G_ajiltanii_too_<SFX>` (foreign), ",
   "`building_progress` — «Барилгын хяналт» дашбоардын БОДИТ гүйцэтгэл: нийт хувь, багц бүрийн ": "`building_progress` — the ACTUAL progress from the “Construction monitoring” dashboard: overall percentage, per-package ",
   "`mon:building` давхаргад хандах эрх алга.": "No permission to access the `mon:building` layer.",
@@ -355,7 +354,6 @@ const en: Record<string, string> = {
   "2 ээлж": "2 phases",
   "2. НЭГ зүйлийн гол үзүүлэлтүүдийг ХОЁР БАГАНАТ хүснэгтээр: `| Үзүүлэлт | Утга |`.": "2. Key indicators of a SINGLE item go in a TWO-COLUMN table: `| Indicator | Value |`.",
   "2. Орон сууцны 7 багц": "2. The seven housing packages",
-  "2. Тоог өөрөө бодохгүй — `query_feature`-ээр ArcGIS дээр бодуулна. Чиний ажил бол зөв эх сурвалж/талбар сонгож, үр дүнг үг болгох.": "2. Do not compute figures yourself — have ArcGIS compute them via `query_feature`. Your job is to pick the right source and field and put the result into words.",
   "300 м²-ээс бага": "Under 300 m²",
   "300–500 м²": "300–500 m²",
   "4–10 дугаар багц": "Packages ranked 4–10",
@@ -3280,7 +3278,16 @@ const en: Record<string, string> = {
   "Гүйцэтгэгч байгууллага тус бүрийн ажиллах хүч": "Workforce of each contractor",
   "Гүйцэтгэгч байгууллага тус бүрийн ажилтны тоо": "Worker count of each contractor",
   "Зураг": "Figure",
-  "Оргил": "Peak"
+  "Оргил": "Peak",
+  "2. НИЙЛБЭР, ДУНДАЖ, ТООЛОЛТЫГ ӨӨРӨӨ БОДОХГҮЙ — `query_feature`-ийн `stats`-аар ArcGIS дээр бодуулна. Чиний ажил бол зөв эх сурвалж/талбар сонгож, үр дүнг үг болгох.": "2. DO NOT compute sums, averages or counts yourself — use `query_feature` with `stats` so ArcGIS computes them. Your job is to pick the right source/fields and turn the result into words.",
+  "2a. Мөр татаж өөрөө бодох ЗӨВХӨН тухайн датасетын заавар тийн хэлсэн үед (жиш. IPC-ийн олгох дүн). Тэр үед `count` ба `limit`-ийг ЗААВАЛ харьцуул: тэнцүү бол үр дүн ТАЙРАГДСАН тул нийлбэр гаргахыг ХОРИГЛОНО — `stats` хэрэглэ, эсвэл тайрагдсаныг хэрэглэгчид ил хэл.": "2a. Compute from fetched rows ONLY when that dataset’s own guidance says so (e.g. IPC payable amounts). In that case ALWAYS compare `count` with `limit`: if they are equal the result is TRUNCATED and you must NOT report a total — use `stats`, or tell the user the result was truncated.",
+  "⚠️ Бүлгүүд ТАЙРАГДСАН — нийт дүн дутуу. Шүүлтээ нарийсга, эсвэл дутуу гэдгийг хэрэглэгчид ил хэл.": "⚠️ Groups were TRUNCATED — the total is incomplete. Narrow the filter, or tell the user the figure is partial.",
+  "⚠️ Үр дүн {0} мөрөөр ТАЙРАГДСАН — энэ мөрүүд дээр нийлбэр/дундаж бодохыг ХОРИГЛОНО. Бүтэн тоо хэрэгтэй бол `stats` хэрэглэ, эсвэл тайрагдсаныг хэрэглэгчид ил хэл.": "⚠️ The result was TRUNCATED at {0} rows — do NOT compute sums or averages from these rows. Use `stats` for a complete figure, or tell the user the result was truncated.",
+  "Тайлангийн {0} эх сурвалж татагдсангүй: {1}. Дутуу тоогоор тайлан гаргахгүй — сүлжээгээ шалгаад дахин оролдоно уу.": "{0} report source(s) could not be loaded: {1}. The report will not be produced with incomplete figures — check your connection and try again.",
+  "`actual` нь АЖЛЫН ХУУДСААС тооцоолсон бодит гүйцэтгэл. ": "`actual` is the real progress computed from the work sheet. ",
+  "⚠️ `overall` ба `byBagts.actual`-ийн ХУВААРЬ нь БҮХ блок: тайлан ирээгүй блок 0% гэж ордог. Порталын зарим дэлгэц (багцын карт, тайлангийн 6.1) зөвхөн ТАЙЛАГНАСАН блокоор дундажладаг тул тэр тоо ЭНЭНЭЭС ӨНДӨР байж болно — «дашбоардын тоо энэ» гэж бүү батал, аль хуваариар бодогдсоныг ил хэл. ": "⚠️ The denominator of `overall` and `byBagts.actual` is ALL blocks: a block with no report counts as 0%. Some portal screens (package cards, report §6.1) average only REPORTED blocks, so their figure can be HIGHER — do not claim “this is the dashboard number”; state which denominator was used. ",
+  "`noReport` нь тайлан ирээгүй блокийн тоо — хариултдаа дурьдвал зөрүү нь ойлгомжтой болно. ": "`noReport` is the number of blocks with no report — mentioning it makes the discrepancy clear. ",
+  "⚠ {0} давхарга татагдсангүй": "⚠ {0} layer(s) could not be loaded",
 };
 
 export default en;

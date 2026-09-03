@@ -377,11 +377,27 @@ function companyTotals(rows: Row[]) {
 function byDaySeries(rows: Row[], sfx: string | null, key: 'niitAjiltan' | 'niitTehnik') {
   const fields = (sfx ? [{ sfx }] : HABEA.labor.companies).map((c) => laborCompanyFields(c.sfx));
   return rows
-    .map((r) => ({
-      d: nn(r[L.ognoo]),
-      value: fields.reduce((s, f) => s + nn(r[f[key]]), 0),
-    }))
-    .filter((x) => x.d > 0)
+    .map((r) => {
+      /**
+       * ⚠️ ТАЙЛАГНААГҮЙ ӨДРИЙГ 0 ГЭЖ ЗУРАХГҮЙ (2026-09-03-ны аудит).
+       *
+       * `nn()` нь `null`-ыг 0 болгодог тул нэг ч компани тайлангаа
+       * өгөөгүй өдөр «0 ажилтан» гэсэн ЦЭГ болж графикт буудаг байв —
+       * энэ файлын өөрийн ⚠️ («хэмжигдээгүйг 0%-иар зурвал ХУДАЛ
+       * уншигдана») үүнийг хориглосон. Одоо БҮХ талбар хоосон бол мөр
+       * `null` утгатай гарч, цувааны цоорхой хэвээр үлдэнэ.
+       */
+      let sum: number | null = null;
+      for (const f of fields) {
+        const v = r[f[key]];
+        if (v == null || v === '') continue;
+        const x = Number(v);
+        if (!Number.isFinite(x)) continue;
+        sum = (sum ?? 0) + x;
+      }
+      return { d: nn(r[L.ognoo]), value: sum };
+    })
+    .filter((x) => x.d > 0 && x.value != null)
     .sort((a, b) => a.d - b.d)
     /*
      * ⚠️ НЭГ ӨДӨРТ ОЛОН БҮРТГЭЛ байж болно (компани тус бүр өөрөө илгээх,
@@ -392,8 +408,10 @@ function byDaySeries(rows: Row[], sfx: string | null, key: 'niitAjiltan' | 'niit
     .reduce<{ key: string; label: string; value: number; display: string }[]>((acc, x) => {
       const iso = new Date(x.d).toISOString().slice(0, 10);
       const last = acc[acc.length - 1];
-      if (last?.key === iso) last.value += x.value;
-      else acc.push({ key: iso, label: iso.slice(5).replace('-', '.'), value: x.value, display: '' });
+      /* ⚠️ Дээрх шүүлт `value != null`-ыг баталсан — энд утга ҮРГЭЛЖ тоо */
+      const v = x.value as number;
+      if (last?.key === iso) last.value += v;
+      else acc.push({ key: iso, label: iso.slice(5).replace('-', '.'), value: v, display: '' });
       return acc;
     }, [])
     .map((x) => ({ ...x, display: num(x.value) }));

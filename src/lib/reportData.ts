@@ -458,7 +458,17 @@ async function loadProgressRaw(): Promise<ReportExtra['progress']> {
     blocks: rows.length,
     overall: mean(rows.map((r) => r.pct)),
     date: rows.map((r) => r.date).filter(Boolean).sort().pop() ?? '',
+    /**
+     * ⚠️ ХЭМЖИЛТГҮЙ ҮЕ ШАТЫГ ОРУУЛАХГҮЙ (2026-09-03-ны аудит).
+     *
+     * `mean([])` нь 0 буцаадаг тул нэг ч блокт хувь бүртгэгдээгүй үе шат
+     * «0.00%» гэж хэвлэгдэж, улмаар тайлангийн дүгнэлтэд «N үе шат
+     * хараахан ЭХЛЭЭГҮЙ байна» гэсэн ХУДАЛ өгүүлбэр болдог байв —
+     * «хэмжигдээгүй» ба «эхлээгүй» хоёр огт өөр утга. Хэмжилттэй үе шат
+     * л жагсаалтад орно.
+     */
     phases: [...phaseMap.values()]
+      .filter((p) => p.xs.length > 0)
       .sort((a, b) => a.no.localeCompare(b.no, 'mn'))
       .map((p) => ({ no: p.no, name: sentenceCase(p.name), pct: mean(p.xs) })),
     byBagts: [...bagtsMap.entries()]
@@ -741,26 +751,47 @@ async function loadReportExtraRaw(): Promise<ReportExtra> {
     loadOverall(), loadProgress(), loadFinance(), loadInfra(), loadHabeaSummary(),
     loadLand(), loadSocial(),
   ]);
-  const fail = (name: string, r: PromiseSettledResult<unknown>) => {
-    if (r.status === 'rejected') console.error(`[selbe] тайлан · ${name}:`, r.reason);
-  };
-  fail(tr('нийт гүйцэтгэл'), o);
-  fail(tr('гүйцэтгэл'), p); fail(tr('санхүү'), f); fail(tr('дэд бүтэц'), i); fail(tr('ХАБЭА'), h);
-  fail(tr('газар'), l); fail(tr('нийгмийн барилга'), s);
+  /**
+   * ⚠️ УНАЛТЫГ ТЭГЭЭР НӨХӨХГҮЙ (2026-09-03-ны аудитын олдвор).
+   *
+   * Урьд нь унасан эх сурвалж бүр `{ pct: 0, paid: 0, blocks: 0, … }` болж,
+   * алдаа нь ЗӨВХӨН `console.error`-т үлддэг байв. Үр дүнд «Бодитоор
+   * олгосон 0 ₮», «нийт гүйцэтгэл 0.00%» гэсэн тоонууд АЛБАН ЁСНЫ PDF ба
+   * мэйлд хэмжилт мэт хэвлэгдэнэ — `Tailan.tsx`-ийн `ready` шалгуур ч тэг
+   * объектыг «бэлэн» гэж үзэж товчийг идэвхжүүлдэг байлаа. Энэ нь
+   * төслийн хамгийн чанга дүрэм (`null ≠ 0`)-ийн хамгийн өндөр эрсдэлтэй
+   * гаралт дээрх зөрчил байв.
+   *
+   * ⚠️ Хэсэгчилсэн тайлан ГАРГАХГҮЙ: аль хэсэг нь дутууг уншигч мэдэхгүй
+   * тул «хагас үнэн» баримт нь худал баримттай ижил эрсдэлтэй. Унасан
+   * эх сурвалжийг НЭРЛЭЖ шиднэ — `useAsync` түүнийг дэлгэцэд гаргаж,
+   * «Дахин оролдох» товч ажиллана.
+   */
+  const parts: [string, PromiseSettledResult<unknown>][] = [
+    [tr('нийт гүйцэтгэл'), o], [tr('гүйцэтгэл'), p], [tr('санхүү'), f],
+    [tr('дэд бүтэц'), i], [tr('ХАБЭА'), h], [tr('газар'), l],
+    [tr('нийгмийн барилга'), s],
+  ];
+  const down = parts.filter(([, r]) => r.status === 'rejected');
+  if (down.length) {
+    for (const [name, r] of down) {
+      console.error(`[selbe] тайлан · ${name}:`, (r as PromiseRejectedResult).reason);
+    }
+    throw new Error(
+      tr('Тайлангийн {0} эх сурвалж татагдсангүй: {1}. Дутуу тоогоор тайлан гаргахгүй — сүлжээгээ шалгаад дахин оролдоно уу.',
+        down.length, down.map(([n]) => n).join(', ')),
+    );
+  }
 
+  /* ⚠️ Энэ цэгт БҮГД амжилттай — доорх хандалтууд аюулгүй. */
   return {
-    overall: o.status === 'fulfilled' ? o.value : { pct: 0, weightSum: 0, rows: 0, stages: [] },
-    land: l.status === 'fulfilled' ? l.value
-      : { parcels: 0, areaM2: 0, pct: null, byStatus: [], byReason: [] },
-    social: s.status === 'fulfilled' ? s.value : { rows: [], n: 0, areaM2: 0 },
-    progress: p.status === 'fulfilled' ? p.value
-      : { blocks: 0, overall: 0, date: '', phases: [], byBagts: [], slowest: [], stalled: 0 },
-    finance: f.status === 'fulfilled' ? f.value
-      : { rows: 0, budget: 0, orderTotal: 0, contractAmount: 0, sources: [], months: [], paid: 0, byType: [], byBagts: {} },
-    infra: i.status === 'fulfilled' ? i.value
-      : { groups: [], totals: { layers: 0, n: 0, len: 0, area: 0 } },
-    habea: h.status === 'fulfilled' ? h.value
-      : { date: '', workers: 0, mongol: 0, gadaad: 0, tehnik: 0, byCompany: [], incidents: 0 },
+    overall: (o as PromiseFulfilledResult<Awaited<ReturnType<typeof loadOverall>>>).value,
+    land: (l as PromiseFulfilledResult<Awaited<ReturnType<typeof loadLand>>>).value,
+    social: (s as PromiseFulfilledResult<Awaited<ReturnType<typeof loadSocial>>>).value,
+    progress: (p as PromiseFulfilledResult<Awaited<ReturnType<typeof loadProgress>>>).value,
+    finance: (f as PromiseFulfilledResult<Awaited<ReturnType<typeof loadFinance>>>).value,
+    infra: (i as PromiseFulfilledResult<Awaited<ReturnType<typeof loadInfra>>>).value,
+    habea: (h as PromiseFulfilledResult<Awaited<ReturnType<typeof loadHabeaSummary>>>).value,
   };
 }
 

@@ -195,14 +195,21 @@ export async function queryStats(url: string, stats: Stat[], where = '1=1', aoi?
   return body.features?.[0]?.attributes ?? {};
 }
 
-/** Талбараар бүлэглэсэн статистик */
-export async function queryGroup(
+/**
+ * Талбараар бүлэглэсэн статистик — ТАЙРАГДСАН эсэхийг ч буцаана.
+ *
+ * ⚠️ 2026-09-03-ны аудит: тайралт зөвхөн `console.warn`-д бичигддэг байсан
+ * тул AI туслах дутуу бүлгүүдийг БҮРЭН гэж үзэж нийлбэр гаргадаг байв.
+ * Дэлгэцийн дуудагчид (`ExecKpi`, `LayerCatalog`, `land`) хуучин
+ * `queryGroup`-ыг хэвээр хэрэглэнэ — тэдэнд бүлгийн тоо цөөн.
+ */
+export async function queryGroupEx(
   url: string,
   groupBy: string,
   stats: Stat[],
   where = '1=1',
   aoi?: Aoi,
-): Promise<Row[]> {
+): Promise<{ rows: Row[]; truncated: boolean }> {
   const body = await request(url, {
     where,
     groupByFieldsForStatistics: groupBy,
@@ -211,8 +218,20 @@ export async function queryGroup(
   });
   // ⚠️ Бүлгийн тоо maxRecordCount-аас хэтэрвэл сервер үр дүнг ЧИМЭЭГҮЙ тайрдаг —
   //    ховор ч тохиолдвол ядаж лог үлдээж мэдэгдэнэ.
-  if (body.exceededTransferLimit) console.warn(`[selbe] queryGroup тайрагдав (exceededTransferLimit): ${url}`);
-  return (body.features ?? []).map((f) => f.attributes);
+  const truncated = !!body.exceededTransferLimit;
+  if (truncated) console.warn(`[selbe] queryGroup тайрагдав (exceededTransferLimit): ${url}`);
+  return { rows: (body.features ?? []).map((f) => f.attributes), truncated };
+}
+
+/** Хуучин гарын үсэг — зөвхөн мөрүүд (дэлгэцийн дуудагчид) */
+export async function queryGroup(
+  url: string,
+  groupBy: string,
+  stats: Stat[],
+  where = '1=1',
+  aoi?: Aoi,
+): Promise<Row[]> {
+  return (await queryGroupEx(url, groupBy, stats, where, aoi)).rows;
 }
 
 /** Бичлэгүүдийг талбартай нь татах */

@@ -251,6 +251,13 @@ type Result = {
   rows: DamageRow[];
   /** Шинжилгээнд орсон давхаргын тоо — «идэвхтэй давхарга» гэдгийг батална */
   layers: number;
+  /**
+   * ⚠️ ТАТАГДААГҮЙ давхаргын гарчиг (2026-09-03-ны аудит). Урьд нь унасан
+   * давхарга чимээгүй алгасагдаж нийлбэрт 0 нэмдэг байсан тул «өртсөн
+   * объект олдсонгүй» гэсэн ХУДАЛ баталгаа гардаг байв. Эрсдэлийн тоо
+   * аюулгүй байдлын шийдвэрт ордог тул дутууг ИЛ хэлнэ.
+   */
+  failed: string[];
   /** Идэвхтэй давхарга байгаагүй тул ҮНДСЭН БАГЦААР тооцов уу */
   fallback: boolean;
 };
@@ -438,8 +445,16 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
       const extent = hazard === 'flood' ? await floodExtent(level) : airExtent(stations, level);
       if (!extent) throw new Error(tr('Аюулын мужийг байгуулж чадсангүй'));
       const { ids, fallback } = activeIds();
-      const rows = await damageOf(view, ids, extent, level, hazard);
-      setResult({ hazard, level, bands, rows, layers: ids.length, fallback });
+      /* ⚠️ `failed` — татагдаагүй давхарга. «Эрсдэлгүй» ба «мэдээлэлгүй»
+         хоёрыг ялгах ёстой тул шинжилсэн давхаргын тоог УНАСНААР нь
+         хасаж, дутууг хэрэглэгчид ил хэлнэ (2026-09-03-ны аудит). */
+      const { rows, failed } = await damageOf(view, ids, extent, level, hazard);
+      setResult({
+        hazard, level, bands, rows,
+        layers: ids.length - failed.length,
+        failed,
+        fallback,
+      });
       /**
        * ⚠️ ӨРТСӨН ДАВХАРГЫГ ЗУРАГТ АСААНА (2026-08-29, хүсэлт).
        *
@@ -1193,6 +1208,15 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
               {LEVELS.find((l) => l.key === result.level)?.short}
             </span>
             <span className={e.chipSub}>{tr('{0} давхарга шинжлэв', num(result.layers))}</span>
+            {/* ⚠️ ТАТАГДААГҮЙ давхаргыг ИЛ хэлнэ (2026-09-03-ны аудит):
+                эс бөгөөс тэдгээр 0 нэмж «эрсдэлгүй» гэсэн худал баталгаа
+                болно. Аюулгүй байдлын шийдвэрт «мэдээлэлгүй» ба
+                «эрсдэлгүй» хоёр ХЭЗЭЭ Ч ижил утгатай биш. */}
+            {result.failed.length > 0 && (
+              <span className={e.chipWarn} title={result.failed.join(" · ")}>
+                {tr('⚠ {0} давхарга татагдсангүй', num(result.failed.length))}
+              </span>
+            )}
           </div>
         )}
 
