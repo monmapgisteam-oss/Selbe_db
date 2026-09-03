@@ -47,6 +47,7 @@ import {
   codeIndex, downstreamCodes, effSpan, formatDeps, hierRelated, parseDeps,
   propagate, reaches, requiredStart, residualDeps, type Dep, type DepType,
 } from '@/lib/deps';
+import { useFocusTrap } from '@/lib/useFocusTrap';
 import h from './huvaari.module.css';
 
 /* ══════════════════ Туслах ══════════════════ */
@@ -106,6 +107,20 @@ type Draft = Map<number, (Span | null)[]>;
  *    өөрчилвөл мөрүүд гулсаж, «энэ зурвас аль ажлынх нь вэ» гэдэг алдагдана.
  */
 const PL_ROW = 30;
+
+/**
+ * ЦОНХЛОЛТЫН НӨӨЦ МӨР — харагдах хүрээний дээр/доор нэмж зурах тоо.
+ *
+ * ⚠️ 2026-09-03-ны хэрэглэгч талын аудит: энэ харагдац 1,266–1,675 мөрийг
+ * БҮГДИЙГ нь зурдаг байв — мөр бүрд зүүн самбарын ~6 элемент + зурвас ⇒
+ * ~20,000 DOM зангилаа. Чирэх бүрд React бүгдийг дахин тооцоолдог тул
+ * «сар» томруулалт дээр зурвас чирэхэд мэдэгдэхүйц гацдаг байлаа.
+ * `FillNew`-ийнхтэй ижил загвар: зөвхөн харагдах хүрээг зурна.
+ *
+ * ⚠️ Мөрийн өндөр ТОГТМОЛ (`PL_ROW`) тул хэмжилт хэрэггүй — `FillNew` дээр
+ * мөр нь агуулгаараа сунадаг тул тэнд `rowHRef` хэмждэг.
+ */
+const PL_OVER = 8;
 
 /**
  * Хоног тутмын өргөн (px) — томруулалт бүрд.
@@ -431,6 +446,48 @@ export function Huvaari() {
     jumped.current = true;
     scrollRef.current.scrollLeft = Math.max(0, xOf(now) - 120);
   }, [now, xOf, visible.length]);
+
+  /* ── ЦОНХЛОЛТ (виртуалчлал) ── */
+  const [win, setWin] = useState({ from: 0, to: 60 });
+  const recalcWin = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    /* ⚠️ Эхний `PL_ROW` нь НААЛДМАЛ толгой (`gSideHead`/`plHead`) — тэр нь
+       урсгалд байдаг тул мөр 0-ийн эхлэл нь `PL_ROW` дээр байна. */
+    const top = Math.max(0, el.scrollTop - PL_ROW);
+    const a = Math.max(0, Math.floor(top / PL_ROW) - PL_OVER);
+    const b = Math.ceil((top + el.clientHeight) / PL_ROW) + PL_OVER;
+    setWin((w) => (w.from === a && w.to === b ? w : { from: a, to: b }));
+  }, []);
+  /* Гүйлгэх бүрд биш, кадр тутам НЭГ удаа — гүйлгээ жигд байна. */
+  const winTick = useRef(0);
+  const onScroll = useCallback(() => {
+    if (winTick.current) return;
+    winTick.current = requestAnimationFrame(() => {
+      winTick.current = 0;
+      recalcWin();
+    });
+  }, [recalcWin]);
+  useEffect(() => () => { if (winTick.current) cancelAnimationFrame(winTick.current); }, []);
+  /* Мөр/шүүлт/эвхэлт солигдоход цонхыг шинэчилнэ */
+  useEffect(() => { recalcWin(); }, [visible.length, recalcWin]);
+
+  /**
+   * ⚠️ ЗАСВАРЛАЖ буй мөр цонхны ГАДНА үлдэж болохгүй: чирэлт нь мөрийн DOM
+   * дээрх pointer capture-д тулгуурладаг тул зурагдахаа больвол `pointermove`
+   * тасарч, чирэлт дундуураа «өлгөгдөнө». Тиймээс сонгосон/чирж буй мөрийг
+   * цонхонд хүчээр багтаана.
+   */
+  const selVis = useMemo(
+    () => (sel == null ? -1 : visible.findIndex((r) => r.i === sel)),
+    [visible, sel],
+  );
+  const winFrom = selVis >= 0 ? Math.min(win.from, selVis) : win.from;
+  const winTo = selVis >= 0 ? Math.max(win.to, selVis + 1) : win.to;
+  const slice = useMemo(
+    () => visible.slice(winFrom, winTo).map((r, k) => ({ r, k: winFrom + k })),
+    [visible, winFrom, winTo],
+  );
 
   /* ── Ноорог ── */
 
@@ -980,8 +1037,8 @@ export function Huvaari() {
         )}
       </header>
 
-      {err && <p className={h.err}>{err}</p>}
-      {note && <p className={h.note} onClick={() => setNote('')}>{note}</p>}
+      {err && <p className={h.err} role="alert">{err}</p>}
+      {note && <p className={h.note} role="status" aria-live="polite" onClick={() => setNote('')}>{note}</p>}
       {!canEdit && (
         <p className={h.note}>
           {tr('Танд хуваарь засах эрх алга — зөвхөн харна. Эрхийг админ «Хуваарь төлөвлөх» гэж тусад нь олгоно.')}
@@ -1006,14 +1063,18 @@ export function Huvaari() {
           {visible.length === 0 ? (
             <Empty label={tr('Мөр алга.')} />
           ) : (
-            <div className={h.gWrap} ref={scrollRef}>
+            <div className={h.gWrap} ref={scrollRef} onScroll={onScroll}>
               <div className={h.gSide}>
                 <div className={h.gSideHead} style={{ height: PL_ROW }}>
                   <span className={h.gHeadDes}>{tr('Ажлын код')}</span>
                   <span className={h.gHeadWork}>{tr('Ажил')}</span>
                   <span className={h.gHeadHam}>{tr('Хамаарал')}</span>
                 </div>
-                {visible.map((r) => (
+                {/* ⚠️ ЗАЙ БАРИГЧ: зүүн мөрүүд УРСГАЛД байдаг тул зурагдаагүй
+                    мөрүүдийн өндрийг орлуулахгүй бол гүйлтийн урт агшиж, зүүн
+                    жагсаалт ба баруун зурвас хоорондоо гулсана. */}
+                {winFrom > 0 && <div aria-hidden style={{ height: winFrom * PL_ROW }} />}
+                {slice.map(({ r }) => (
                   <TaskRow
                     key={r.oid}
                     r={r}
@@ -1031,6 +1092,9 @@ export function Huvaari() {
                     onPick={() => { setSel(r.i); setModal(r.i); }}
                   />
                 ))}
+                {winTo < visible.length && (
+                  <div aria-hidden style={{ height: (visible.length - winTo) * PL_ROW }} />
+                )}
               </div>
 
               <div className={h.gRight}>
@@ -1063,7 +1127,7 @@ export function Huvaari() {
                       <span className={h.tlNow} style={{ left: xOf(now) }} title={msToDay(now)} />
                     )}
 
-                    {visible.map((r, k) => {
+                    {slice.map(({ r, k }) => {
                       const sp = r.spans[blk];
                       const st = sp ? statusOf(sp, r.act?.[blk], now) : 'none';
                       /* Уялдааны зөрчил — шаардлагаас ӨМНӨ эхэлсэн зурвасыг
@@ -1264,6 +1328,12 @@ function PlanModal({
   /** «Тавих»/«Арилгах» — огноо ба/эсвэл уялдаа НЭГ алхамд (null = хөндөхгүй) */
   onApply: (spans: (Span | null)[] | null, deps: Dep[] | null) => void;
 }) {
+  /* ⚠️ ФОКУСЫН УРХИ (2026-09-03-ны аудит): `aria-modal` нь дэлгэц уншигчид л
+     хэлдэг, хөтчийн Tab-д нөлөөгүй — урхигүй үед Tab дарсаар байхад фокус
+     цонхноос гарч ард байгаа 1,400 мөрт төөрдөг байв. */
+  const mdRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(mdRef);
+
   const [a, setA] = useState('');
   const [z, setZ] = useState('');
   const [all, setAll] = useState(false);
@@ -1369,7 +1439,7 @@ function PlanModal({
 
   return (
     <div className={h.mdBack} role="presentation" onClick={onClose}>
-      <div className={h.md} role="dialog" aria-modal="true"
+      <div ref={mdRef} className={h.md} role="dialog" aria-modal="true"
         onClick={(e) => e.stopPropagation()}>
         <header className={h.mdHead}>
           <span className={h.mdNo}>{r.no}</span>

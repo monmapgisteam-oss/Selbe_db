@@ -2130,8 +2130,8 @@ function FullTable({
           </div>
         )}
       </header>
-      {err && <p className={f.editErr}>{err}</p>}
-      {msg && !err && <p className={f.editOk}>{msg}</p>}
+      {err && <p className={f.editErr} role="alert">{err}</p>}
+      {msg && !err && <p className={f.editOk} role="status" aria-live="polite">{msg}</p>}
 
       {/* ══════════ ШҮҮЛТИЙН ЗУРВАС ══════════
           ⚠️ Тоолол ҮРГЭЛЖ харагдана («209 → 34 мөр»): шүүлт асаалттай гэдгээ

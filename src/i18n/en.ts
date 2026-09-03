@@ -3238,6 +3238,10 @@ const en: Record<string, string> = {
   "Эдгээрийн өгөгдөл зурагт ХАРАГДАХГҮЙ. Сүлжээ эсвэл үйлчилгээний хандалтыг шалгана уу.": "Their data is NOT shown on the map. Check the network or the service permissions.",
   "Их хэмжээний өгөгдөл татаж байна — сүлжээнээс шалтгаалж хэдэн арван секунд авч болно.": "Fetching a large dataset — depending on the network this can take tens of seconds.",
   "Салхины заалт алга.": "No wind reading.",
+  "Энэ хэсэг нээгдсэнгүй": "This section could not be opened",
+  "Бусад хэсэг ажиллаж байгаа — цэсээр өөр харагдац руу шилжиж болно.": "The rest of the portal is still working — use the menu to switch to another view.",
+  "«{0}» нээгдсэнгүй": "“{0}” could not be opened",
+  "Самбар нээгдсэнгүй": "The panel could not be opened",
 };
 
 export default en;
