@@ -3431,6 +3431,31 @@ export const INITIAL_MAP_LAYERS: string[] = [
 ];
 
 /**
+ * «Дэд бүтэц» харагдацын ИНЖЕНЕРИЙН 16 ШУГАМ — дулаан · цэвэр ус ·
+ * ариутгах татуурга, хөрсний ус · цахилгаан.
+ *
+ * ⚠️ ЭХ СУРВАЛЖ НЭГ: `VIEWS.dedButets`-ийн `layers`/`initial` ба модулийн
+ * суурь (`DedButets.tsx` §base) хоёулаа эндээс уншина. Хоёр газарт
+ * жагсаавал харагдац солиход зарим шугам чимээгүй унтарна.
+ *
+ * ⚠️ Эхний 14 нь «Эрсдэлийн загвар»-ын хохирлын үнэлгээтэй
+ * (`Ersdel.tsx` §ASSESS_IDS) ЯГ ИЖИЛ — аюулын бүсэд өртөх дэд бүтцийг
+ * тэндээс тоолдог. `et:18`/`et:19` нь тэнд байхгүй (төлөвлөж буй цэвэр ус,
+ * хөрсний ус шүүрүүлэх) боловч каталогийн `pkgNet` бүлэгт бий тул энд
+ * бүрэн дүр зургийн төлөө орсон.
+ */
+export const DED_BUTETS_LAYER_IDS: string[] = [
+  // Дулаан хангамж
+  "et:7", "et:10", "et:9", "et:11", "et:8",
+  // Цэвэр ус хангамж
+  "et:4", "et:18", "et:23",
+  // Ариутгах татуурга, хөрсний ус
+  "et:17", "et:16", "et:3", "et:19",
+  // Цахилгаан хангамж
+  "et:124", "et:125", "et:126", "et:127",
+];
+
+/**
  * ЗУРГИЙН СУУРЬ ДАВХАРГУУД — «Ерөнхий төлөвлөгөө 2D map»-ийн 14 давхарга БҮХ
  * 2D зурагт ҮРГЭЛЖ харагдана (хэрэглэгчийн хүсэлт, 2026-08-10: давхаргын цонх
  * ба зургийн суурь харагдацыг САЛГАВ).
@@ -3546,7 +3571,8 @@ const hoist = (key: GroupKey) => {
 };
 
 export type CatalogView =
-  | "plan" | "monitor" | "habea" | "gazar" | "iot" | "irged" | "ersdel";
+  | "plan" | "monitor" | "habea" | "gazar" | "iot" | "irged" | "ersdel"
+  | "dedButets";
 
 /**
  * ШҮҮЛТИЙН ХАМРАХ ХҮРЭЭ — идэвхтэй шүүлт аль хэсэгт харьяалагдахыг заана
@@ -3591,6 +3617,9 @@ export const catalogGroups = (view: CatalogView) => {
        энэ нь давхардал БИШ, сэдвийн шууд хандалт (хяналт/ХАБЭА-тай ижил хэв). */
     case "irged":
       return [{ ...IRGED_GROUP, ids: IRGED_LAYER_IDS }, ...PORTAL_GROUPS()];
+    /* Инженерийн 16 шугам нь `pkgNet` бүлэгт бий — дээш нь гаргана */
+    case "dedButets":
+      return hoist("pkgNet");
     default:
       return PORTAL_GROUPS();
   }
@@ -3654,6 +3683,7 @@ export type ViewKey =
   | "irged"
   | "iot"
   | "ersdel"
+  | "dedButets"
   | "zovshoorol"
   | "guitsetgel"
   | "schem";
@@ -3921,6 +3951,32 @@ export const VIEWS: {
    * ЗӨВШӨӨРӨЛ — багц бүрийн зөвшөөрлүүд шат дараалалаар.
    * ⚠️ Газрын зураггүй, өөрийн бүтэцтэй тул `standalone`.
    */
+
+  /**
+   * ДЭД БҮТЭЦ — инженерийн шугам сүлжээ ГАЗРЫН ЗУРАГ ДЭЭР.
+   *
+   * ⚠️ `standalone: true` — модуль нь порталын самбар, каталогийг ӨӨРӨӨ
+   * зурдаг (Irged, Gazar, Iot-той ижил хэв). Порталын хуваалт руу оруулбал
+   * гурван баганын зохиомж эвдэрнэ.
+   *
+   * ⚠️ `layers`/`initial` нь ХООСОН БИШ: харагдац солиход `Portal` нь эдгээрээр
+   * шүүлт, давхаргын сонголтыг цэвэрлэдэг. Модулийн өөрийн суурь
+   * (`DedButets.tsx` §base) нь эндхийтэй ЯГ ИЖИЛ байх ёстой.
+   */
+  {
+    key: "dedButets",
+    title: tr('Дэд бүтэц'),
+    desc: tr('Инженерийн шугам сүлжээ — дулаан, ус, ариутгах татуурга, цахилгаан'),
+    icon: "network",
+    hue: "#f97316",
+    /* ⚠️ ЗӨВХӨН ИНЖЕНЕРИЙН ШУГАМ — контекстийн давхарга (`INITIAL_MAP_LAYERS`)
+       ОРООГҮЙ (2026-09-02, хэрэглэгчийн хүсэлт). Модулийн өөрийн суурьтай
+       (`DedButets.tsx` §base) ЯГ ИЖИЛ байх ЁСТОЙ — эс бөгөөс харагдац солиход
+       `Portal` эндхийгээр цэвэрлэж, зурагт өөр давхарга үлдэнэ. */
+    layers: DED_BUTETS_LAYER_IDS,
+    initial: DED_BUTETS_LAYER_IDS,
+    standalone: true,
+  },
   {
     key: "zovshoorol",
     title: tr('Зөвшөөрөл'),
@@ -4011,7 +4067,7 @@ export const HOME_SECTIONS: {
    */
   { id: "review", title: tr('Тойм'), views: ["schem", "dashboard", "tailan"] },
   { id: "plan", title: tr('Төлөвлөлт'), views: ["plan", "analysis", "irged"] },
-  { id: "build", title: tr('Хэрэгжилт'), views: ["pkgProg", "gazar", "habea", "iot", "ersdel", "guitsetgel", "zovshoorol", "huvaari"] },
+  { id: "build", title: tr('Хэрэгжилт'), views: ["pkgProg", "gazar", "habea", "iot", "ersdel", "dedButets", "guitsetgel", "zovshoorol", "huvaari"] },
   { id: "money", title: tr('Санхүү'), views: ["pkgFin", "finance"] },
 ];
 

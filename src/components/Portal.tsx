@@ -20,6 +20,7 @@ import { Habea } from '@/modules/Habea';
 import { Irged } from '@/modules/Irged';
 import { Iot } from '@/modules/Iot';
 import { Ersdel } from '@/modules/Ersdel';
+import { DedButets } from '@/modules/DedButets';
 /* ⚠️ ТОМ, ховор-эхний харагдацууд dynamic chunk (2026-08-21 гүйцэтгэлийн
    аудит): Suitability (analysis стек), Sheet/Pivot, Tailan (+reportPdf),
    Guitsetgel, Finance нийлээд Portal chunk-ийн parse хугацааг ~30-40%
@@ -494,6 +495,7 @@ function PortalContent(
   const isHabea = view === 'habea';
   const isIot = view === 'iot';
   const isErsdel = view === 'ersdel';
+  const isDedButets = view === 'dedButets';
   const isGuitsetgel = view === 'guitsetgel';
   const isZovshoorol = view === 'zovshoorol';
   const isSchem = view === 'schem';
@@ -658,6 +660,8 @@ function PortalContent(
                                 ? <Iot dim={dim} setDim={setDim} />
                                 : isErsdel
                                 ? <Ersdel dim={dim} setDim={setDim} />
+                                : isDedButets
+                                ? <DedButets dim={dim} setDim={setDim} />
                                 : isZovshoorol
                                   ? <Zovshoorol />
                                 : isGuitsetgel

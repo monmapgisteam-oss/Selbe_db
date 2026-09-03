@@ -88,16 +88,50 @@ export async function applyAll(
   url: string,
   oidField: string,
   edit: {
-    adds?: Record<string, unknown>[];
+      /**
+     * Нэмэх мөрүүд. Талбарууд нь атрибут; ТУСГАЙЛСАН `geometry` түлхүүр нь
+     * атрибут БИШ, объектын геометр гэж тайлагдана.
+     *
+     * ⚠️ ЯАГААД ТУСГАЙ ТҮЛХҮҮР ВЭ: `clean()` нь зөвхөн серверийн талбаруудыг
+     * (`objectid`, `shape…`) хасдаг бөгөөд «geometry» тэдгээрт ОРОХГҮЙ. Энэ
+     * заалтгүй бол геометр нь «geometry» нэртэй АТРИБУТ болж илгээгдэж,
+     * ArcGIS бүхэл хүсэлтийг татгалзана.
+     *
+     * ⚠️ Геометр нь `toJSON()`-ы үр дүн байх ёстой — ӨӨРИЙН
+     * `spatialReference`-ийг АГУУЛСАН. Эдгээр үйлчилгээ UTM 48N (32648)-д
+     * хадгалагддаг ч зураг нь Web Mercator (102100) тул SR-гүй илгээвэл
+     * сервер координатыг өөрийн проекц гэж уншиж, объектыг ДЭЛХИЙН ӨӨР
+     * БУЛАНД үүсгэнэ.
+     */
+  adds?: Record<string, unknown>[];
+    /**
+     * Засах мөрүүд. `oidField` ЗААВАЛ агуулна; зөвхөн ӨӨРЧЛӨГДСӨН талбарыг
+     * оруулна. `adds`-тай ижлээр `geometry` түлхүүр нь атрибут БИШ.
+     *
+     * ⚠️ Геометрийг өгөхгүй бол объектын хэлбэр ХЭВЭЭР үлдэнэ — атрибут засах
+     * үед геометрийг дагуулж илгээх ШААРДЛАГАГҮЙ (бас илгээж БОЛОХГҮЙ:
+     * хуучирсан хуулбар байвал өөр хүний хэлбэрийн засварыг буцаана).
+     */
     updates?: Record<string, unknown>[];
     deletes?: number[];
   },
 ): Promise<EditResult> {
-  const adds = (edit.adds ?? []).map((a) => ({ attributes: clean(a) }));
+  const adds = (edit.adds ?? []).map((a) => {
+    const { geometry, ...attrs } = a;
+    return geometry == null
+      ? { attributes: clean(attrs) }
+      : { attributes: clean(attrs), geometry };
+  });
   const updates = (edit.updates ?? []).map((a) => {
-    const oid = a[oidField];
+    const { geometry, ...rest } = a;
+    const oid = rest[oidField];
     if (typeof oid !== 'number') throw new Error(tr('Мөрийн дугаар алга — засварыг илгээх боломжгүй'));
-    return { attributes: { ...clean(a), [oidField]: oid } };
+    const f: Record<string, unknown> = { attributes: { ...clean(rest), [oidField]: oid } };
+    /* ⚠️ Геометр нь `adds`-тай ижил дүрмээр (дээрх тайлбарыг үз): атрибут БИШ,
+       тусдаа түлхүүр. ЗӨВХӨН өгсөн үед — эс бөгөөс атрибут засах бүрд
+       геометрийг `undefined`-ээр дарж бичих эрсдэл үүснэ. */
+    if (geometry != null) f.geometry = geometry;
+    return f;
   });
   const deletes = edit.deletes ?? [];
   if (!adds.length && !updates.length && !deletes.length) return { n: 0, oids: [] };

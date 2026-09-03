@@ -129,7 +129,18 @@ export async function floodBands(level: LevelKey): Promise<Band[]> {
    * ⚠️ Цагирган БҮТЭЦ хэвээр: 3D-ийн өргөлт (`height`) ба тайлбар (`label`)
    * нь гүний ялгааг үүрсээр байна — зөвхөн ДҮҮРГЭЛТИЙН өнгө нэгдэв.
    */
-  const hue = ['#1d4ed8', '#1d4ed8', '#1d4ed8'];
+  /**
+   * ⚠️ 2026-09-03: ХОХИРЛЫН УЛААНТАЙ (`Overlay.DAMAGE` = `#dc2626`) НЭГ
+   * болгов (хэрэглэгчийн хүсэлт). Урьд нь цэнхэр (`#1d4ed8`) байсан тул
+   * зурган дээр «үерийн эрсдэл» гэдэг НЭГ ойлголт хоёр өөр өнгөөр
+   * (цэнхэр муж + улаан объект) зурагдаж, тэдгээр нь ӨӨР зүйл мэт
+   * уншигдаж байв.
+   *
+   * ⚠️ Урсаж буй УС нь ХӨХ хэвээр (`uyr.ts` §DEPTH_STOPS) — тэр нь
+   * загварчлалын БОДИТ үр дүн, эрсдэлийн зурвасаас ӨӨР зүйл тул өнгө нь
+   * ялгаатай байх ЁСТОЙ.
+   */
+  const hue = ['#dc2626', '#dc2626', '#dc2626'];
   const label = [tr('Гүн ус'), tr('Дунд гүн'), tr('Захын ус')];
 
   const out: Band[] = [];
@@ -244,11 +255,70 @@ function plumeRing(
  * ⚠️ Бүсүүд ХООРОНДОО ДАВХЦАХГҮЙ (үертэй ижил дүрэм) — эс бөгөөс агууламжийн
  * зэрэглэл өнгө дээр нийлж уншигдахаа болино.
  */
-export function airBands(stations: Station[], level: LevelKey): Band[] {
+/**
+ * БОДИТ САЛХИ — сэвсгэрийн чиглэл, уртыг үүгээр дарна.
+ *
+ * ⚠️ `dirDeg` нь цаг уурын конвенц: салхи ХААНААС үлээж байгаа (0° = хойноос).
+ * `salhi.ts`-ийн `WindHour` яг ийм утга өгдөг тул хөрвүүлэлгүй дамжина.
+ */
+export type WindNow = { dirDeg: number; speed: number };
+
+/**
+ * САЛХИНЫ ХУРДААР сэвсгэрийн хэлбэрийг тохируулна.
+ *
+ * Гауссын сэвсгэрийн загварын үндсэн зан төлөв: салхи хүчтэй болох тусам
+ * бохирдол ДАГУУ нь сунаж, ХӨНДЛӨН нь нарийсна; намдах тусам эх үүсвэрийн
+ * ойролцоо бөөгнөрч дугуйрна.
+ *
+ * ⚠️ Хувилбарын тогтмолтой (`AIR_LEVELS[level].wind`) ХАРЬЦУУЛЖ бодно —
+ * абсолют хурдаар үржүүлбэл 3-р түвшний (0.6 м/с) намуухан хувилбар 7 м/с-ийн
+ * бодит салхинд 12 дахин сунаж, хувилбарын утга учир алдагдана.
+ *
+ * ⚠️ ХЯЗГААРЛАСАН (0.4…2.5): Open-Meteo-гийн ганц цагийн онцгой заалт
+ * (шуурга эсвэл бүрэн намдалт) загварыг утгагүй хэлбэрт оруулахаас сэргийлнэ.
+ */
+const windFactor = (real: number, assumed: number): number => {
+  if (!Number.isFinite(real) || real <= 0 || assumed <= 0) return 1;
+  return Math.max(0.4, Math.min(2.5, real / assumed));
+};
+
+/**
+ * ХАРУУЛ ТУС БҮРИЙН PM2.5 заалт — `oid` → µg/м³.
+ *
+ * ⚠️ Эдгээр давхаргад утгын талбар БАЙХГҮЙ тул заалт нь `ersdel.ts`-ийн
+ * ДЕТЕРМИНИСТ загвараас гардаг (жишээ өгөгдөл). Гэсэн ч харуул тус бүр
+ * ӨӨР утгатай байдаг нь чухал: бүх сэвсгэрийг нэг тогтмолоор зурвал
+ * «хаана нь илүү бохир вэ» гэсэн асуулт зурган дээр хариултгүй үлдэнэ.
+ */
+export type Pm25ByOid = Record<number, number>;
+
+/**
+ * @param wind БОДИТ салхи (Open-Meteo). Өгөөгүй бол хувилбарын тогтмол
+ *   (`AIR_LEVELS[level].windDir/wind`) хэрэглэгдэнэ — хуучин зан төлөв.
+ * @param pm25 ХАРУУЛ ТУС БҮРИЙН заалт. Өгвөл сэвсгэрийн урт нь тухайн
+ *   харуулын утгаар масштаблагдана — бохир харуулаас урт, цэвэрээс богино.
+ */
+export function airBands(
+  stations: Station[],
+  level: LevelKey,
+  wind?: WindNow | null,
+  pm25?: Pm25ByOid | null,
+): Band[] {
   const p = AIR_LEVELS[level];
   const air = stations.filter((s) => s.kind === 'air');
   if (!air.length) return [];
-  const downwind = (p.windDir + 180) % 360;
+  /**
+   * ⚠️ БОДИТ САЛХИ ДАВАМГАЙЛНА (2026-09-03, хэрэглэгчийн хүсэлт). Урьд нь
+   * зөвхөн `p.windDir` (300°/315° тогтмол) байсан тул сэвсгэр нь бодит
+   * цаг агаараас ҮЛ ХАМААРАН ҮРГЭЛЖ нэг зүг рүү чиглэж, «таамаглал» нь
+   * өдөр бүр ижил зураг гаргадаг байв.
+   */
+  const dirFrom = wind ? wind.dirDeg : p.windDir;
+  const downwind = (dirFrom + 180) % 360;
+  const k = wind ? windFactor(wind.speed, p.wind) : 1;
+  const plumeLen = p.plume * k;
+  /* ⚠️ Хөндлөн тархалт нь урттай ЭСРЭГ — эзлэхүүн ойролцоогоор хадгалагдана */
+  const spreadW = p.spread / Math.sqrt(k);
 
   /** Агууламжийн гурван зэрэглэл — цөм, дунд, зах */
   const steps = [
@@ -257,6 +327,33 @@ export function airBands(stations: Station[], level: LevelKey): Band[] {
     { f: 1, c: p.pm25 * 0.32, hue: '#ca8a04', label: tr('Дунд агууламж') },
   ];
 
+  /**
+   * ХАРУУЛЫН ЗААЛТААР сэвсгэрийн уртыг масштаблана — ХАРУУЛУУДЫН ДУНДЖААС
+   * хэдэн хувь хазайснаар.
+   *
+   * ⚠️ ХУВИЛБАРЫН PM2.5-ТАЙ ХАРЬЦУУЛЖ БОЛОХГҮЙ. Тэгж бодоод амьдаар шалгахад
+   * ДӨРВҮҮЛЭЭ ижил коэффициент (0.60) гарч, харуул хоорондын ялгаа бүрмөсөн
+   * алга болж байв. Учир нь харуулын жишээ заалт нь ЗУНЫ утга (11–15 µg/м³)
+   * бол хувилбарын тоо нь ӨВЛИЙН инверсийнх (85/165/320) — харьцаа нь үргэлж
+   * 0.2-оос бага гарч хязгаартаа шаваад зогсоно.
+   *
+   * ⚠️ Дундажтай харьцуулах нь улирлын түвшнээс ҮЛ ХАМААРНА: «энэ харуул
+   * бусдаасаа 20% бохир» гэдэг нь зун ч өвөл ч ижил утгатай.
+   *
+   * ⚠️ 0.6…1.7-д ХЯЗГААРЛАВ: нэг харуулын онцгой заалт нь бусдаас олон дахин
+   * урт сэвсгэр гаргавал зураг «нэг цэгийн осол» мэт болж, бүсийн ерөнхий
+   * дүр зураг алдагдана.
+   */
+  const vals = air.map((s) => pm25?.[s.oid]).filter(
+    (v): v is number => v != null && Number.isFinite(v) && v > 0,
+  );
+  const mean = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+  const kOf = (oid: number): number => {
+    const v = pm25?.[oid];
+    if (!mean || v == null || !Number.isFinite(v) || v <= 0) return 1;
+    return Math.max(0.6, Math.min(1.7, v / mean));
+  };
+
   const merged: (Polygon | null)[] = steps.map((st) => {
     const polys = air.map((s) => {
       // Харуулын байршил (WGS84) → Web Mercator
@@ -264,7 +361,10 @@ export function airBands(stations: Station[], level: LevelKey): Band[] {
       const y =
         (Math.log(Math.tan(((90 + s.lat) * Math.PI) / 360)) / (Math.PI / 180)) *
         (20037508.34 / 180);
-      const ring = plumeRing(x, y, s.lat, downwind, p.plume * st.f, p.spread * st.f);
+      /* ⚠️ Урт нь харуулын заалтаар, өргөн нь ҮГҮЙ: Гауссын сэвсгэрт
+         хөндлөн тархалт нь агууламжаас БИШ, зайнаас хамаарна. */
+      const k = kOf(s.oid);
+      const ring = plumeRing(x, y, s.lat, downwind, plumeLen * st.f * k, spreadW * st.f);
       /**
        * ⚠️ `simplify` — цагирагийн ЧИГЛЭЛ (ArcGIS-д гадна хүрээ нь цагийн зүүний
        * дагуу) ба өөрийгөө огтлолцлыг ЗАСНА. Хийхгүй бол `union`/`difference`
@@ -304,8 +404,16 @@ export function airBands(stations: Station[], level: LevelKey): Band[] {
 }
 
 /** Агаарын бохирдлын БҮХ бүс (нэгдсэн) — өртсөн объектыг шүүхэд */
-export function airExtent(stations: Station[], level: LevelKey): Polygon | null {
-  const bands = airBands(stations, level);
+export function airExtent(
+  stations: Station[],
+  level: LevelKey,
+  wind?: WindNow | null,
+  pm25?: Pm25ByOid | null,
+): Polygon | null {
+  /* ⚠️ `wind` ба `pm25`-ыг ЗААВАЛ дамжуулна — эс бөгөөс хамрах хүрээ нь
+     зурагдсан бүсээс ӨӨР хэлбэртэй тооцогдож, хохирлын үнэлгээ буруу
+     объект тоолно. */
+  const bands = airBands(stations, level, wind, pm25);
   if (!bands.length) return null;
   const geoms = bands.map((b) => b.geometry);
   return geoms.length > 1
