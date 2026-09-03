@@ -32,6 +32,7 @@ import DatePicker from "./DatePicker";
 import { seriesBands } from "./bagts.bands";
 import { sheetDates } from "./sheetRows";
 import { useColWidths } from "./colWidths";
+import { parseGrid, planPaste } from "./paste";
 import { t as tr } from "@/lib/i18nCore";
 import st from "./sheet.module.css";
 
@@ -1761,6 +1762,82 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    * тул `col`-оор шүүнэ — эс тэгвэл бичиж болохгүй нүд нээгдэж, бөглөсөн
    * тоо чимээгүй алдагдана.
    */
+  /**
+   * ОЛОН НҮДЭНД БУУЛГАХ — Excel-ээс хуулсан БЛОКИЙГ нэг дор бичнэ.
+   *
+   * ⚠️ ЯАГААД (2026-09-03, хэрэглэгчийн хүсэлт): бөглөгч Excel дээрээ 20–40
+   * блокийн тоог бэлдчихээд энд НЭГ НЭГЭЭР нь дардаг байв. Нэг ажлыг 22
+   * блокт бөглөхөд 22 удаа нүд нээж, бичиж, Tab дарна.
+   *
+   * ⚠️ БАЙРЛАЛААР нь буулгана: буулгасан мөр бүр ДЭЛГЭЦЭД ХАРАГДАХ дараагийн
+   * мөрд тохирно (`vis`), багана нь тухайн блокоос БАРУУН тийш. Бүлгийн мөр,
+   * обьёмын талбаргүй блок таарвал утгыг нь ХАЯНА — гэхдээ байрлалаа ЭЗЛЭНЭ.
+   * Ингэснээр дэлгэц дээр харагдаж буй эгнээ хадгалагдана; алгасвал доорх
+   * бүх утга нэг мөр дээшилж, чимээгүй буруу мөрд бичигдэнэ.
+   *
+   * ⚠️ БАТАЛГААЖУУЛАЛТ НЭГ УДАА. `commit` нь нүд тутамд `window.confirm`
+   * асуудаг — 40 нүдэд 40 цонх гарна. Тиймээс энд бууралт/хэтрэлтийг
+   * ЦУГЛУУЛЖ, нэг хураангуй асуултаар шийднэ.
+   */
+  const pasteBlock = (startI: number, startB: number, text: string): boolean => {
+    if (!sc || locked || noEdit || !canPerf) return false;
+    const grid = parseGrid(text);
+    /* Нэг нүдний энгийн буулгалт бол ердийн замаар нь явуулна */
+    if (grid.length === 1 && grid[0].length === 1) return false;
+
+    /* ⚠️ ЗӨВХӨН ХАРАГДАХ мөрүүд — шүүлт/эвхэлтээр нуугдсаныг алгасвал
+       хэрэглэгчийн харж буй эгнээ ба бичигдэх эгнээ хоёр зөрнө. */
+    const from = vis.indexOf(startI);
+    if (from < 0) return false;
+
+    /* ⚠️ Байрлалын логик нь `paste.ts`-д — эгнээ гулсах эрсдэлийг зөвхөн
+       тестээр (`paste.check.mjs`) барина. */
+    const { hits: raw, skipped, bad } = planPaste(
+      grid, vis, sc.bld.length, from, startB,
+      (row, b) => volMode(rowsAll[row], b),
+    );
+    const hits = raw.map((x) => ({
+      key: cellKey(rowsAll[x.row].oid, x.b),
+      v: x.v,
+      r: rowsAll[x.row],
+      b: x.b,
+      stored: rowsAll[x.row].obyem[x.b],
+    }));
+
+    if (!hits.length) {
+      say(bad
+        ? tr("Буулгасан утгууд тоо биш байна — юу ч бичигдсэнгүй.")
+        : tr("Буулгах боломжтой нүд таарсангүй."));
+      return true;
+    }
+
+    /* ── НЭГ УДААГИЙН БАТАЛГААЖУУЛАЛТ ── */
+    const down = hits.filter((x) => x.stored != null && Number(x.v) < (x.stored as number));
+    const over = hits.filter((x) => x.r.vol != null && (x.r.vol as number) > 0 && Number(x.v) > (x.r.vol as number));
+    if (down.length || over.length) {
+      const parts: string[] = [];
+      if (down.length) parts.push(tr("{0} нүдэнд утга БУУРНА", String(down.length)));
+      if (over.length) parts.push(tr("{0} нүдэнд мөрийн Обьёмоос ХЭТЭРНЭ", String(over.length)));
+      if (!window.confirm(tr("{0} нүд бичих гэж байна.\n{1}.\nҮргэлжлүүлэх үү?", String(hits.length), parts.join("; ")))) return true;
+    }
+
+    setErr("");
+    setPending((pv) => {
+      const n = { ...pv };
+      for (const x of hits) {
+        // Хадгалагдсантайгаа тэнцүү бол «нийтлээгүй» тэмдэглэгээг арилгана.
+        if (x.stored != null && Number(x.v) === x.stored) delete n[x.key];
+        else n[x.key] = x.v;
+      }
+      return n;
+    });
+    setEdit(null);
+    say(bad || skipped
+      ? tr("{0} нүд бичигдлээ · {1} алгасав", String(hits.length), String(skipped + bad))
+      : tr("{0} нүд бичигдлээ", String(hits.length)));
+    return true;
+  };
+
   const nextEditable = (i: number, b: number, step: number, col: EditCol) => {
     const ok = (r: SheetRow) => volMode(r, b);
     for (let k = i + step; k >= 0 && k < rowsAll.length; k += step)
@@ -2242,6 +2319,12 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                              (хэрэглэгч үүнийг «хоёр дарж байж нээгддэг» гэж
                              мэдэрдэг байв). */
                           tabIndex={canVol && !noPerf ? 0 : changed ? 0 : undefined}
+                          /* ⚠️ Нүдийг НЭЭЛГҮЙГЭЭР (зөвхөн фокуслаад) буулгаж болно —
+                             Excel-ийн зуршил: нүд сонгоод шууд Ctrl+V. */
+                          onPaste={(e) => {
+                            const t = e.clipboardData.getData("text/plain");
+                            if (pasteBlock(i, bi, t)) e.preventDefault();
+                          }}
                           onClick={open}
                           onKeyDown={(e) => {
                             if (locked) {
@@ -2266,7 +2349,9 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                               : !canVol
                                 ? RO.noObyemField
                                 : r.vol
-                                  ? tr('Мөрийн Обьём {0} · бөглөсөн {1} = {2}', qty(r.vol), qty(c.obyem[bi]), pc(c.act[bi], 2))
+                                  /* ⚠️ Блок буулгах боломжийг ЭНД сануулна —
+                                     эс тэгвээс хэн ч мэдэхгүй далд шинж болно. */
+                                  ? tr('Мөрийн Обьём {0} · бөглөсөн {1} = {2}\nExcel-ээс олон нүдийг хуулж Ctrl+V дарж болно.', qty(r.vol), qty(c.obyem[bi]), pc(c.act[bi], 2))
                                   : RO.noRowVol
                           }
                         >
@@ -2283,6 +2368,12 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                                 defaultValue: val,
                                 onBlur: (e: React.FocusEvent<HTMLInputElement>) =>
                                   commit(r, bi, e.target.value),
+                                /* ⚠️ Нүд НЭЭЛТТЭЙ байхад буулгасан блок — оролт
+                                   нь нэг мөр текст л авдаг тул таслан авна. */
+                                onPaste: (e: React.ClipboardEvent<HTMLInputElement>) => {
+                                  const t = e.clipboardData.getData("text/plain");
+                                  if (pasteBlock(i, bi, t)) e.preventDefault();
+                                },
                                 onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => {
                                   if (e.key === "Escape") return setEdit(null);
                                   if (e.key === "Enter" || e.key === "Tab") {
