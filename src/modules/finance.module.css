@@ -786,3 +786,318 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
 .dItem { font-size: 12px; color: var(--ink-2); }
 .dItem i { font-style: normal; color: var(--ink-3); margin-right: 6px; }
 .dItem b { font-weight: 500; color: var(--ink); overflow-wrap: anywhere; }
+
+/* ═══════════════════════════════════════════════════════════
+   ГЭРЭЭНИЙ БҮРТГЭЛ — EXCEL МАЯГИЙН ХАВТГАЙ ХҮСНЭГТ.
+   ⚠️ Багцаар БҮЛЭГЛЭХГҮЙ: нэг бүтэн хуудас, наалдамхай толгой,
+   нүд бүр хүрээтэй — «Гүйцэтгэл бөглөх»-тэй ижил уншигдац.
+   ═══════════════════════════════════════════════════════════ */
+
+.xlWrap {
+  /* ⚠️ Өндрийг ХЯЗГААРЛАНА — эс бөгөөс 76 мөр хуудсыг сунгаж,
+     наалдамхай толгой утгаа алдана. */
+  max-height: calc(100dvh - 260px);
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+.xlTbl {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: max-content;
+  min-width: 100%;
+  font-size: 0.78rem;
+}
+.xlTbl th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 7px 10px;
+  text-align: left;
+  /*
+   * ⚠️ Толгойг НЭГ МӨРӨНД БАРИХГҮЙ. «Захирамжийн дүн хөрөнгө оруулалтын эх
+   * үүсвэр үнэт цаасны хөрөнгө» мэт урт нэр нэг мөрөнд багтахаар багана
+   * 400px+ болж, хажуугийн багануудыг дэлгэцээс шахан гаргадаг. Доошоо
+   * мурийлгаад өргөнийг хязгаарлана.
+   */
+  white-space: normal;
+  max-width: 170px;
+  /* ⚠️ Толгой олон мөр болж мурийдаг тул БОСОО голлоно — `bottom` байсан үед
+     нэг мөрт нэр нь доод ирмэг дээр наалдаж, эгнээ нь тэгширдэггүй байв. */
+  vertical-align: middle;
+  line-height: 1.25;
+  font-size: 0.68rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  background: var(--surface-2);
+  border-right: 1px solid var(--line-strong);
+  border-bottom: 1px solid var(--line-strong);
+}
+.xlTbl td {
+  padding: 5px 10px;
+  /* Урт утга баганыг сунгахгүй — тасалж, бүтнийг нь `title`-ээс үзнэ */
+  white-space: nowrap;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--ink-2);
+  /*
+   * ⚠️ `--line` дээр ДАХИН `color-mix` хийхгүй. Тэр токен нь өөрөө 13%
+   * тунгалаг тул 60% нь ~8% болж, харанхуй дэвсгэр дээр зураас бараг үл
+   * үзэгдэх болно. Excel маягийн торонд босоо зураас нь голч тул илүү тод
+   * `--line-strong`-оор татна.
+   */
+  border-right: 1px solid var(--line-strong);
+  border-bottom: 1px solid var(--line);
+}
+.xlTbl tr:hover td { background: color-mix(in srgb, var(--data) 6%, transparent); }
+/* Мөрийн дугаар — Excel-ийн зүүн багана шиг наалдана */
+.xlNo {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  /*
+   * ⚠️ ӨРГӨНИЙГ ЗААВАЛ `--fz0`-ЭЭР ТОГТООНО. Дараагийн царцсан багана
+   * `left: var(--fz0)` дээр суудаг тул бодит өргөн нь түүнээс зөрвөл хоёрын
+   * хооронд ЗАЙ (эсвэл давхцал) үүснэ — гүйлгэхэд л мэдэгддэг.
+   */
+  width: var(--fz0);
+  min-width: var(--fz0);
+  max-width: var(--fz0);
+  color: var(--ink-3);
+  background: var(--surface-2);
+  box-shadow: inset -1px 0 0 var(--line-strong);
+  font-variant-numeric: tabular-nums;
+}
+.xlTbl th.xlNo { z-index: 9; }
+
+/*
+ * ЗАССАН НҮД — нийтлэхээс өмнөх өөрчлөлт.
+ * ⚠️ Зөвхөн дэвсгэрээр биш ХҮРЭЭГЭЭР ч тэмдэглэнэ: Excel маягийн нягт торонд
+ * цайвар дэвсгэр нь хөрш нүдтэйгээ ялгарахгүй байх эрсдэлтэй.
+ */
+.cellDirty {
+  background: color-mix(in srgb, var(--good) 16%, transparent) !important;
+  box-shadow: inset 0 0 0 1.5px var(--good);
+}
+.cellDirty input { font-weight: 650; color: var(--good-ink); }
+
+/* ═══════════ ЦАРЦСАН ЭХНИЙ 4 БАГАНА ═══════════
+   ⚠️ `position: sticky` дангаараа хангалтгүй — багана бүрийн `left` нь
+   өмнөхүүдийн ӨРГӨНИЙ НИЙЛБЭР байх ёстой. Тиймээс өргөнийг ТОГТМОЛ зааж,
+   `calc()`-аар шатлан байрлуулна. Өргөн өөрчлөгдвөл зөвхөн эдгээр хувьсагчийг
+   засна — TSX хөндөгдөхгүй. */
+.xlTbl {
+  --fz0: 46px;   /* № */
+  --fz1: 230px;  /* Төрөл */
+  --fz2: 210px;  /* Төсөл */
+  --fz3: 120px;  /* Багц */
+  --fz4: 120px;  /* Дэд багц */
+}
+/*
+ * ⚠️ БОСОО ЗУРААСЫГ `border` БИШ `box-shadow: inset`-ЭЭР татна. Царцсан
+ * баганууд гүйлгэхэд бие биенийхээ ирмэг дээр бага зэрэг давхацдаг ба тэр үед
+ * хөршийн ТУНГАЛАГ БУС дэвсгэр өмнөх нүдний хүрээг дардаг — зураас гүйлгэх
+ * үед алга болно. Дотоод сүүдэр нь элементийн ӨӨРИЙН дэвсгэрийн ДЭЭР зурагддаг
+ * тул ийм байдлаар алга болохгүй.
+ *
+ * ⚠️ z-index нь ЗҮҮНЭЭС БАРУУН ТИЙШ БУУРНА. Давхацсан тохиолдолд зүүн талын
+ * багана дээр үлдэж, зураас нь хадгалагдана.
+ */
+.xlF1, .xlF2, .xlF3, .xlF4 {
+  position: sticky;
+  background: var(--surface);
+  box-shadow: inset -1px 0 0 var(--line-strong);
+  /* Урт утга багануудыг түлхэхгүй — таслаад үзүүлнэ */
+  max-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Толгойн царцсан нүд нь мөрийн царцсан нүд БОЛОН энгийн толгойгоос ДЭЭР */
+.xlTbl thead .xlF1 { z-index: 8; background: var(--surface-2); }
+.xlTbl thead .xlF2 { z-index: 7; background: var(--surface-2); }
+.xlTbl thead .xlF3 { z-index: 6; background: var(--surface-2); }
+.xlTbl thead .xlF4 { z-index: 5; background: var(--surface-2); }
+.xlF1 { left: var(--fz0); width: var(--fz1); min-width: var(--fz1); max-width: var(--fz1); z-index: 4; }
+.xlF2 { left: calc(var(--fz0) + var(--fz1)); width: var(--fz2); min-width: var(--fz2); max-width: var(--fz2); z-index: 3; }
+.xlF3 { left: calc(var(--fz0) + var(--fz1) + var(--fz2)); width: var(--fz3); min-width: var(--fz3); max-width: var(--fz3); z-index: 2; }
+.xlF4 {
+  left: calc(var(--fz0) + var(--fz1) + var(--fz2) + var(--fz3));
+  width: var(--fz4);
+  min-width: var(--fz4);
+  max-width: var(--fz4);
+  z-index: 1;
+  /* Царцсан хэсгийн ХИЛ — гүйж буй багануудаас ялгарна (2px) */
+  box-shadow: inset -2px 0 0 var(--line-strong);
+}
+/* Мөр дээгүүр хулгана — царцсан нүд ч дагана (дэвсгэр нь тунгалаг биш) */
+.xlTbl tbody tr:hover .xlF1,
+.xlTbl tbody tr:hover .xlF2,
+.xlTbl tbody tr:hover .xlF3,
+.xlTbl tbody tr:hover .xlF4 {
+  background: color-mix(in srgb, var(--data) 6%, var(--surface));
+}
+
+@media (max-width: 1100px) {
+  /* ⚠️ Нарийн дэлгэцэд ~730px царцаавал гүйх зай үлдэхгүй — царцаалтыг хаана */
+  .xlF1, .xlF2, .xlF3, .xlF4 {
+    position: static;
+    max-width: none;
+    width: auto;
+    min-width: 0;
+    box-shadow: none;
+  }
+  .xlNo { box-shadow: none; }
+
+}
+
+
+/* ═══════════ ХАВТГАЙ ХҮСНЭГТИЙН ЗЭРЭГЦҮҮЛЭЛТ ═══════════
+   ⚠️ Толгой ГОЛДОО, мөрүүд ЗҮҮН талдаа (хэрэглэгчийн шийдвэр 2026-09-04).
+   Тоон нүдний баруун зэрэгцүүлэлтийг мөн дарж бичнэ — эс бөгөөс нэг хүснэгтэд
+   хоёр өөр зэрэгцүүлэлт зэрэгцэж, нүд харахад тогтворгүй санагдана. */
+.xlTbl th,
+.xlTbl th.thR { text-align: center; }
+
+.xlTbl td,
+.xlTbl td.cellNum,
+.xlTbl td:global(.num) { text-align: left; }
+
+/* Domain-тай талбарын сонгогч — нүдэнд бүрэн багтана */
+.cellPick {
+  width: 100%;
+  padding: 2px 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.76rem;
+  cursor: pointer;
+}
+.cellPick:focus { outline: 2px solid var(--data); outline-offset: -1px; }
+/* ⚠️ Урт сонголтууд нүдийг сунгахгүй — жагсаалт нээгдэхэд л бүтнээр харагдана */
+.cellPick option { font-size: 0.8rem; }
+
+/* ═══════════ ДЭЛГЭСЭН НҮД ═══════════
+   ⚠️ `max-width`-ийг л суллана, `width`-ийг БИШ: багана бүхэлдээ өргөсвөл
+   хүснэгт сунаж, хажуугийн багана дэлгэцээс гарна. Зөвхөн тэр нэг нүд мурийж,
+   мөрийн өндөр нь түр өснө. */
+/* ⚠️ Хязгаарыг JS шууд тавьдаг тул энд зөвхөн ХАРАГДАЦ. Давхардуулж
+   `!important` бичвэл царцсан баганын өргөн эвдэрч, шилжилт зөрнө. */
+.xlOpen {
+  vertical-align: top;
+  background: color-mix(in srgb, var(--data) 10%, var(--surface)) !important;
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--data) 45%, transparent);
+  line-height: 1.4;
+}
+/* Дарж болохыг заана — зөвхөн уншигдах нүдэнд */
+.xlTbl tbody td { cursor: default; }
+.xlTbl tbody td.xlCanOpen { cursor: zoom-in; }
+.xlTbl tbody td.xlOpen { cursor: zoom-out; }
+
+/* НИЙТЛЭХ — хадгалах үйлдэл нь горим солихоос ноцтой тул өөр өнгөтэй */
+.pubBtn {
+  border-color: color-mix(in srgb, var(--good) 55%, transparent);
+  background: color-mix(in srgb, var(--good) 16%, transparent);
+  color: var(--good-ink);
+  font-weight: 700;
+}
+.pubBtn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--good) 26%, transparent);
+  border-color: var(--good);
+}
+/* ⚠️ Засах юмгүй үед бүдгэрнэ — дарж болохгүйг нүдэнд шууд хэлнэ */
+.pubBtn:disabled { opacity: 0.4; }
+
+/* ═══════════ EXCEL ХҮСНЭГТИЙН ЗАСВАРЫН НҮД ═══════════
+   ⚠️ Доод зураасыг ХАСНА. Ерөнхий хүснэгтэд тэр нь «энэ нүд засагдана» гэдгийг
+   заадаг ч энд нүд бүр аль хэдийн бүтэн ТОРТОЙ — зураас нь давхардаж, мөр
+   бүрийн доор хоёр шугам харагдана. Фокус дээрх дэвсгэрийн өнгө нь ямар нүдэнд
+   бичиж байгааг хангалттай заана. */
+.xlTbl .cellInput,
+.xlTbl .cellInput:focus {
+  border-bottom: none;
+  padding: 4px 10px;
+}
+.xlTbl .cellInput:focus {
+  background: color-mix(in srgb, var(--data) 14%, transparent);
+  box-shadow: inset 0 0 0 1.5px var(--data);
+}
+
+/* ── Засах горимын дэлгэгддэг нүд («Нарийвчилсан төрөл») ──
+   ⚠️ `textarea` нь өөрийн гэсэн `resize` бариул, гүйлгэх зурвас, өөр фонт
+   авчирдаг тул нүдэн дотор оролт биш «жижиг цонх» мэт харагдана. Тэднийг
+   тайлж, доорх нэг мөрийн `input`-тай яг ижил байдалтай болгоно. */
+.xlArea {
+  display: block;
+  resize: none;
+  overflow: hidden;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ═══════════ ЗАССАН НҮД — ЭЦСИЙН ДАВАМГАЙ (2026-09-04) ═══════════
+ *
+ * ⚠️ ЭНЭ БЛОК ФАЙЛЫН ТӨГСГӨЛД БАЙХ ЁСТОЙ. Дээрх `.cellDirty` (§ЗАССАН НҮД)
+ * нь `.xlF1–4` (§ЦАРЦСАН БАГАНА), `.cellPick`, `.cellInput:focus` гурваас
+ * ӨМНӨ зарлагдсан тул тэдгээр нь адил жинтэй атлаа СҮҮЛД бичигдсэний хүчээр
+ * ногоон тэмдэглэгээг дардаг байв:
+ *   · `.xlF1–4` нь `box-shadow`-оор ногоон ХҮРЭЭГ бүрэн арчина — гэтэл яг
+ *     тэр дөрөв бол Төрөл · Төсөл · Багц · Дэд багц, өөрөөр хэлбэл хүн
+ *     хамгийн түрүүнд бөглөдөг багана. Тиймээс «заасан ч ногоон болохгүй»
+ *     гэж харагдана.
+ *   · `.cellPick` (сонголтын нүд) нь `background: var(--bg)` — ТУНГАЛАГ БУС
+ *     тул нүдний ногоон дэвсгэрийг бүрэн халхална.
+ *   · `.cellInput:focus` нь `--data` (цэнхэр) дэвсгэр + хүрээ тавьдаг тул
+ *     ЯГ ТЭР АГШИНД, өөрөөр хэлбэл бичиж байх үед ногоон алга болно.
+ *
+ * ⚠️ Дараалал солих БУС, эндээс дарж бичих замыг сонгосон шалтгаан: дээрх
+ * блокуудын дотоод дараалал (z-index, sticky-гийн `left`) нь өөрсдөө нарийн
+ * тохируулагдсан бөгөөд тэднийг зөөвөл царцсан баганын шилжилт эвдэрнэ.
+ */
+.xlTbl td.cellDirty {
+  background: color-mix(in srgb, var(--good) 22%, var(--surface)) !important;
+  /* Ногоон хүрээ — царцсан баганын зураасыг ч дарж, БҮХ багананд адилхан */
+  box-shadow: inset 0 0 0 2px var(--good) !important;
+}
+
+/* Бичиж байх агшинд ч ногоон хэвээр — фокусын цэнхэр нь дээр нь суухгүй */
+.xlTbl td.cellDirty .cellInput,
+.xlTbl td.cellDirty .cellInput:focus {
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--good-ink);
+  font-weight: 650;
+}
+
+/* Сонголтын нүд — тунгалаг болгож ногоон дэвсгэрийг нэвт харуулна */
+.xlTbl td.cellDirty .cellPick {
+  background: transparent !important;
+  color: var(--good-ink);
+  font-weight: 650;
+}
+
+/*
+ * НИЙТЭЛСЭН НҮД — «энэ сешнд юу өөрчлөгдсөн».
+ *
+ * ⚠️ `.cellDirty`-ЭЭС ЯЛГАРНА: ижил ногоон дэвсгэр ч ХҮРЭЭГҮЙ. Хүрээ нь
+ * «хараахан хадгалагдаагүй» гэсэн утгыг үүрдэг тул нийтэлсэн нүдэнд үлдээвэл
+ * хэрэглэгч юугаа нийтлээгүйгээ мэдэхгүй болно. Дэвсгэр нь бага зэрэг
+ * цайвар — анхаарал татахаас илүү «тэмдэглэсэн» гэсэн уншилт.
+ *
+ * ⚠️ Блок нь `.xlF1–4`-ийн ДАРАА байх ёстой (`.cellDirty`-ийн тайлбарыг үз) —
+ * эс бөгөөс царцсан 4 багананд дэвсгэр нь дарагдана.
+ */
+.xlTbl td.cellSaved {
+  background: color-mix(in srgb, var(--good) 14%, var(--surface)) !important;
+}
+.xlTbl td.cellSaved .cellInput,
+.xlTbl td.cellSaved .cellPick {
+  background: transparent !important;
+  color: var(--good-ink);
+}

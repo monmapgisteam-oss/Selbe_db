@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useRef, Fragment, type MouseEvent } from 'react';
+import { useState, useEffect, useMemo, useRef, Fragment, type MouseEvent, type CSSProperties } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { Data, Empty } from '@/components/ui';
 import { useAsync } from '@/lib/useAsync';
@@ -22,9 +22,10 @@ import { cached } from '@/lib/live';
 const LIVE_TTL = 60_000;
 import { loadBlockHistory } from '@/lib/blockProgress';
 import {
-  CASHFLOW2, IPC_LOG, TASK_SHEET, bagtsKey, blockKey, pkgKeyOf, cfMonthAxis, cfMonthKey, ipcNet,
+  CASHFLOW2, CASHFLOW_NEW, IPC_LOG, TASK_SHEET, bagtsKey, blockKey, pkgKeyOf, cfMonthAxis, cfMonthKey, ipcNet,
 } from '@/lib/services';
 import { finFieldLabel } from '@/lib/financeFieldLabels';
+import { useColWidths } from '@/modules/sheet/colWidths';
 import {
   FIN_FACETS, EMPTY_FILTER, isDirty as filterDirty,
   facetValues, distinct, rowMatches,
@@ -582,6 +583,16 @@ const loadCashflowRows = cached(
   LIVE_TTL,
   ['CASHFLOW2'],
 );
+/**
+ * ГЭРЭЭНИЙ ШИНЭ БҮРТГЭЛ — «Санхүүжилт» табын хүснэгт үүнээс уншина.
+ * ⚠️ `loadCashflowRows`-ыг СОЛИХГҮЙ: тэр нь муруй, KPI, тайлангийн тооцоонд
+ * хэрэглэгддэг САРЫН мөрүүдийг өгдөг бөгөөд шинэ хүснэгтэд тэдгээр байхгүй.
+ */
+const loadCashflowNewRows = cached(
+  () => queryFeatures(CASHFLOW_NEW.url, { outFields: ['*'], orderBy: `${CASHFLOW_NEW.oid} ASC` }),
+  LIVE_TTL,
+  ['CASHFLOW_NEW'],
+);
 const loadIpcRows = cached(
   () => queryFeatures(IPC_LOG.url, { outFields: ['*'] }),
   LIVE_TTL,
@@ -736,7 +747,18 @@ async function loadFinDataRaw(): Promise<FinData> {
  * ComboChart нь «Багцын хяналт» (Tsogts)-д ХЭВЭЭР ашиглагдана.
  */
 /** Үйлчилгээний талбарын тодорхойлолт — нэр, харагдах alias, төрөл */
-type FieldDef = { name: string; alias: string; type: string };
+type FieldDef = {
+  name: string;
+  alias: string;
+  type: string;
+  /**
+   * Үйлчилгээний `codedValue` domain-ий сонголтууд — байвал нүд нь чөлөөт
+   * бичвэр биш СОНГОЛТ болно.
+   * ⚠️ `code` БИШ `name`-ийг хадгална: энэ үйлчилгээний өгөгдөлд бичвэр нь
+   * («Гэрээлсэн дүн») сууж байгаа бөгөөд код («1») бичвэл утга нь эвдэрнэ.
+   */
+  choices?: string[];
+};
 type FinTables = {
   cashflow: Row[]; ipc: Row[];
   cfFields: FieldDef[]; ipcFields: FieldDef[];
@@ -748,9 +770,17 @@ async function loadFields(url: string): Promise<FieldDef[]> {
     const res = await fetch(`${url}?f=json`);
     const j = await res.json();
     return Array.isArray(j?.fields)
-      ? j.fields.map((x: { name: string; alias?: string; type: string }) => ({
-          name: x.name, alias: x.alias || x.name, type: x.type,
-        }))
+      ? j.fields.map((x: {
+        name: string; alias?: string; type: string;
+        domain?: { type?: string; codedValues?: { name?: string }[] };
+      }) => ({
+        name: x.name,
+        alias: x.alias || x.name,
+        type: x.type,
+        choices: x.domain?.type === 'codedValue'
+          ? (x.domain.codedValues ?? []).map((v) => String(v.name ?? '')).filter(Boolean)
+          : undefined,
+      }))
       : [];
   } catch {
     return [];
@@ -762,13 +792,13 @@ async function loadFields(url: string): Promise<FieldDef[]> {
  * 4 хүсэлт (метадата ×2 + бүтэн хүснэгт ×2) кэшгүй дахин явдаг байв; мөрүүд нь
  * одоо `loadCashflowRows`/`loadIpcRows`-оор `loadFinData`-тай хуваалцагдана.
  */
-const loadFinRegister = cached(loadFinRegisterRaw, LIVE_TTL, ['IPC_LOG', 'CASHFLOW2']);
+const loadFinRegister = cached(loadFinRegisterRaw, LIVE_TTL, ['IPC_LOG', 'CASHFLOW_NEW']);
 
 async function loadFinRegisterRaw(): Promise<FinTables> {
   const [cfFields, ipcFields, cashflow, ipc] = await Promise.all([
-    loadFields(CASHFLOW2.url),
+    loadFields(CASHFLOW_NEW.url),
     loadFields(IPC_LOG.url),
-    loadCashflowRows(),
+    loadCashflowNewRows(),
     loadIpcRows(),
   ]);
   return { cashflow, ipc, cfFields, ipcFields };
@@ -1184,6 +1214,25 @@ function FullTable({
   const [edit, setEdit] = useState(false);
   /** `oid:талбар` → шинэ ТЕКСТ. Хоосон мөр ('') нь «null болгоно» гэсэн үг. */
   const [pend, setPend] = useState<Record<string, string>>({});
+  /**
+   * НИЙТЭЛСЭН НҮД — «энэ сешнд юу өөрчлөгдсөн» гэдгийн тэмдэг.
+   *
+   * ⚠️ `pend` нь нийтлэхэд ЦЭВЭРЛЭГДДЭГ тул түүгээр л будвал хадгалсан
+   * даруйдаа тэмдэглэгээ алга болж, хэрэглэгч 200 мөрийн дундаас юуг нь
+   * зассанаа олохгүй болно. Тиймээс амжилттай бичигдсэн түлхүүрүүдийг ЭНД
+   * зөөж, ногоон хэвээр үлдээнэ.
+   *
+   * ⚠️ Хоёр төлөв ЯЛГААТАЙ харагдана (`finance.module.css`):
+   *     `.cellDirty` — ХАДГАЛААГҮЙ засвар (ногоон + бүтэн хүрээ)
+   *     `.cellSaved` — НИЙТЭЛСЭН засвар (ногоон, хүрээгүй)
+   * Эс бөгөөс «нийтлэх шаардлагатай» ба «нийтлэгдсэн» хоёр нэг өнгө болж,
+   * хүн юугаа хадгалаагүйгээ мэдэхгүй.
+   *
+   * ⚠️ ЗӨВХӨН СЕШНИЙ ХУГАЦААНД. `Cashflow_0904`-д Editor Tracking асаагүй тул
+   * серверээс «энэ нүд хэзээ өөрчлөгдсөн» гэдгийг мэдэх БОЛОМЖГҮЙ — хуудас
+   * дахин ачаалахад тэмдэглэгээ арилна. Үүнийг ТҮҮХ гэж ойлгож болохгүй.
+   */
+  const [saved, setSaved] = useState<Set<string>>(new Set());
   /** Нийтлээгүй ШИНЭ мөрүүд — сөрөг түр дугаартай */
   const [adds, setAdds] = useState<Record<string, string>[]>([]);
   const [del, setDel] = useState<Set<number>>(new Set());
@@ -1207,6 +1256,16 @@ function FullTable({
    *    хасахгүй — тиймээс засвар ч бүрэн хэвээр.
    */
   const [grouped, setGrouped] = useState(true);
+
+  /**
+   * ⚠️ ГЭРЭЭНИЙ БҮРТГЭЛД «Багцаар бүлэглэх» ТОВЧ БАЙХГҮЙ — хүснэгт нь Excel
+   * шиг НЭГ бүтэн хуудас тул бүлэглэх утгагүй.
+   *
+   * Урсгал нь: «Засах» → нүд засна (өөрчлөлт нь НОГООН) → «Нийтлэх» дарж
+   * үйлчилгээнд хадгална. Нийтлэх хүртэл ямар ч бичилт явахгүй.
+   */
+  const isFlat = dataKey === 'CASHFLOW_NEW';
+
   /**
    * Хураасан бүлгийн шошгууд.
    *
@@ -1218,6 +1277,31 @@ function FullTable({
    *    болгонд дахин тооцвол хураасан багцууд нь өөрөө дэлгэгдэнэ.
    */
   const [shut, setShut] = useState<Set<string>>(new Set());
+
+  /*
+   * ДЭЛГЭСЭН НҮД — урт утгыг бүтнээр нь үзэх.
+   * ⚠️ Багана нь тогтмол өргөнтэй тул урт бичвэр таслагдана. Нүд дээр дарахад
+   * ЗӨВХӨН ТЭР НЭГ нүд мурийж дэлгэгдэнэ; дахин дарах эсвэл өөр нүд дарахад
+   * хураагдана. Багана бүхэлдээ өргөсдөггүй — эс бөгөөс нэг урт утгаас болж
+   * хүснэгт бүхэлдээ сунаж, бусад багана дэлгэцээс гарна.
+   */
+  const [openCell, setOpenCell] = useState<string | null>(null);
+
+  /**
+   * ДЭЛГЭХ БОЛОМЖТОЙ БАГАНА — зөвхөн энд заасан талбарууд.
+   * ⚠️ Бүх баганад асаавал богино утгатай нүд дарахад ч мөр «үсэрч», хүснэгт
+   * тайван байдлаа алддаг. Зөвхөн УРТ бичвэртэй багана хэрэгтэй.
+   */
+  const EXPANDABLE = ['Nariiwchilsan_turul'];
+
+
+  /*
+   * ЭРЭМБЭ — зөвхөн хавтгай хүснэгтэд (гэрээний бүртгэл).
+   * ⚠️ Анхдагчаар ЭХНИЙ багана («Төрөл») өсөхөөр. Бүлэглэлтгүй 76 мөр эмх
+   * замбараагүй байвал ижил төрлийн гэрээ тарж, харьцуулах боломжгүй болно.
+   * ⚠️ `null` = эрэмбэлэхгүй, эх дараалал хэвээр.
+   */
+
   const autoShut = useRef(false);
   /** IPC-ийн ДЭЛГЭСЭН актууд — дэлгэрэнгүй талбарууд нь мөрийн доор гарна */
   const [xp, setXp] = useState<Set<number | string>>(new Set());
@@ -1234,6 +1318,8 @@ function FullTable({
     return () => window.removeEventListener('beforeunload', h);
   }, [dirty]);
 
+  /* ⚠️ `saved`-ыг ЦЭВЭРЛЭХГҮЙ: энэ нь «болих» үйлдэл бөгөөд аль хэдийн
+     нийтлэгдсэн засварыг үгүй хийхгүй — тэмдэглэгээ нь мөн үлдэх ёстой. */
   const reset = () => { setPend({}); setAdds([]); setDel(new Set()); setErr(null); };
 
   const publish = async () => {
@@ -1291,6 +1377,16 @@ function FullTable({
 
       /* ⚠️ Кэшийг зөвхөн АМЖИЛТТАЙ бичилтийн дараа хаяна */
       invalidate(dataKey);
+      /* ⚠️ `reset()`-ЭЭС ӨМНӨ зөөнө — тэр `pend`-ийг хоослоно. Устгасан
+         мөрийн нүд тэмдэглэгдэхгүй: тэр мөр өөрөө алга болсон. */
+      setSaved((prev) => {
+        const nx = new Set(prev);
+        for (const k of Object.keys(pend)) {
+          const oid = Number(k.slice(0, k.indexOf(':')));
+          if (!del.has(oid)) nx.add(k);
+        }
+        return nx;
+      });
       reset();
       setMsg(tr('{0} мөр хадгалагдав', n));
       onSaved();
@@ -1300,13 +1396,70 @@ function FullTable({
       setBusy(false);
     }
   };
-  const cols: FieldDef[] = useMemo(() => (
-    fields.length
-      ? fields
-      : rows[0]
-        ? Object.keys(rows[0]).map((k) => ({ name: k, alias: k, type: 'esriFieldTypeString' }))
-        : []
-  ).filter((c) => !isSkip(c.name, c.type, oidField)), [fields, rows, oidField]);
+  /**
+   * ГЭРЭЭНИЙ БҮРТГЭЛИЙН БАГАНЫ ДАРААЛАЛ (хэрэглэгчийн заавар 2026-09-04).
+   *
+   * ⚠️ Үйлчилгээний метадатагийн дараалал нь ажлын логиктой тохирдоггүй —
+   * «Багц 74» ба «Гүйцэтгэлийн хувь» хоёр хамаагүй хол унасан байдаг. Эхний
+   * зургааг ЭНД тогтооно; үлдсэн нь метадатагийн дарааллаараа хойно нь орно.
+   * ⚠️ Жагсаалтад БАЙХГҮЙ талбар алдагдахгүй — шүүгээд биш ЭРЭМБЭЛЖ байна.
+   */
+  const FLAT_LEAD = [
+    'Turul', 'Tusul', 'Bagts', 'Ded_bagts', 'Bagts_74', 'Guitsetgel_huwi',
+  ];
+
+  const cols: FieldDef[] = useMemo(() => {
+    const base = (
+      fields.length
+        ? fields
+        : rows[0]
+          ? Object.keys(rows[0]).map((k) => ({ name: k, alias: k, type: 'esriFieldTypeString' }))
+          : []
+    ).filter((c) => !isSkip(c.name, c.type, oidField));
+
+    if (dataKey !== 'CASHFLOW_NEW') return base;
+    const rank = (n: string) => {
+      const i = FLAT_LEAD.indexOf(n);
+      return i < 0 ? FLAT_LEAD.length : i;
+    };
+    // ⚠️ Тогтвортой эрэмбэ — тэнцүү зэрэгтэй багана эх дараалалдаа үлдэнэ
+    return base
+      .map((c, i) => ({ c, i }))
+      .sort((x, y) => rank(x.c.name) - rank(y.c.name) || x.i - y.i)
+      .map((x) => x.c);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fields, rows, oidField, dataKey]);
+  /*
+   * БАГАНЫ ӨРГӨН — Excel шиг чирж тохируулна («Гүйцэтгэл бөглөх»-тэй НЭГ
+   * механизм, `localStorage`-д хадгалагдана).
+   *
+   * ⚠️ Багана нь ДИНАМИК (үйлчилгээний метадатагаас) тул CSS-д дүрэм бичих
+   * боломжгүй — өргөнийг нүд бүрд ШУУД тавина.
+   * ⚠️ ЦАРЦСАН баганын `left` нь өмнөх багануудын өргөний НИЙЛБЭР тул
+   *    хэрэглэгч чирэхэд тэр нийлбэрийг ДАГАЖ дахин тооцох ёстой — эс бөгөөс
+   *    царцсан багана хоорондоо зөрж, зай эсвэл давхцал үүснэ.
+   */
+  const { style: colStyle, grip, resetAll, resized } = useColWidths(`fin-${dataKey}`);
+
+  /** Анхны өргөн — эхний 5 багана (№ + царцсан 4) */
+  const FZ_DEF = [46, 230, 210, 120, 120];
+
+  /** Тухайн баганын одоогийн өргөн (чирсэн бол түүнийг, эс бөгөөс анхныхыг) */
+  const colW = (name: string, dflt?: number): number | undefined => {
+    const v = (colStyle as Record<string, string>)[`--w-${name}`];
+    if (v) return parseInt(v, 10);
+    return dflt;
+  };
+
+  /** Царцсан 4 баганын зүүн шилжилт — өргөний нийлбэрээр */
+  const frzLeft = useMemo(() => {
+    const out = [FZ_DEF[0]];
+    for (let i = 0; i < 3; i++) {
+      out.push(out[i] + (colW(cols[i]?.name ?? '', FZ_DEF[i + 1]) ?? FZ_DEF[i + 1]));
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [colStyle, cols]);
 
   /* ══════════ ШҮҮЛТ ══════════ */
 
@@ -1358,7 +1511,13 @@ function FullTable({
    * Багц → он → мөр. ШҮҮГДСЭН мөрүүдээс байгуулна — шүүлт ба бүлэглэлт
    * хоорондоо зөрчилдөхгүй.
    */
-  const kind: FinKind = dataKey === 'IPC_LOG' ? 'ipc' : 'cf';
+  /*
+   * ⚠️ `Cashflow_0904` нь ГЭРЭЭ/САР гэсэн мөрийн төрөлгүй — гэрээ бүр НЭГ мөр.
+   * `cf` горимд зурвал `splitContracts` мастер мөр олохгүй тул хүснэгт ХООСОН
+   * гарна. Тиймээс хавтгай горим.
+   */
+  const kind: FinKind = dataKey === 'IPC_LOG' ? 'ipc'
+    : dataKey === 'CASHFLOW_NEW' ? 'flat' : 'cf';
   const packs = useMemo(
     () => (grouped ? buildGroups(shown, kind) : null),
     [grouped, shown, kind],
@@ -1498,32 +1657,141 @@ function FullTable({
    *    байхгүй; ялгах утга нь эхний хэдэн мөрд (Үеийн төрөл · Жил · Сар)
    *    шууд харагдана.
    */
-  const xCell = (r: Row, oid: number | null, dropped: boolean, c: FieldDef) => {
+  /**
+   * ЦАРЦСАН БАГАНА — эхний дөрөв нь хэвтээ гүйлгэхэд байрандаа үлдэнэ.
+   * ⚠️ Зөвхөн `position: sticky` хангалтгүй: багана бүрийн `left` нь өмнөхүүдийн
+   * ӨРГӨНИЙ НИЙЛБЭР байх ёстой тул өргөнийг CSS-д ТОГТМОЛ зааж, тэндээ
+   * `calc()`-аар байрлуулна (`.xlF1…4`).
+   */
+  const frz = (i: number): string => (i < 4 ? (f[`xlF${i + 1}`] ?? '') : '');
+
+  /** Нүдний өргөн ба (царцсан бол) зүүн шилжилт */
+  const colSty = (c: FieldDef, i: number): CSSProperties => {
+    const w = colW(c.name, i < 4 ? FZ_DEF[i + 1] : undefined);
+    const st: CSSProperties = w != null ? { width: w, minWidth: w, maxWidth: w } : {};
+    if (i < 4) st.left = frzLeft[i];
+    return st;
+  };
+
+  const xCell = (
+    r: Row, oid: number | null, dropped: boolean, c: FieldDef,
+    extra = '', sty?: CSSProperties,
+  ) => {
     const key = `${oid}:${c.name}`;
     if (edit && oid != null && !dropped && !SERVER_RO.test(c.name)) {
       const cur = key in pend ? pend[key] : editText(r[c.name], c.type);
+      /*
+       * ⚠️ ЗАССАН НҮД НОГООН. `pend`-д байгаа эсэхээр л шийднэ: `onChange` нь
+       * анхны утга руугаа буцсан оролтыг `pend`-ээс УСТГАДАГ тул «засаад
+       * буцаасан» нүд ногоон үлдэхгүй.
+       */
+      const touched = key in pend;
+      /* Нийтэлсэн боловч дараа нь дахин заслаагүй нүд — дээрх тайлбарыг үз */
+      const wasSaved = !touched && saved.has(key);
+      const mark = touched ? f.cellDirty : wasSaved ? f.cellSaved : '';
+      const onEdit = (v: string) => setPend((pv) => {
+        const nx = { ...pv };
+        /* Анхны утга руугаа буцвал «засвар» гэж тоолохгүй */
+        if (v === editText(r[c.name], c.type)) delete nx[key];
+        else nx[key] = v;
+        return nx;
+      });
+
+      /*
+       * СОНГОЛТЫН НҮД — үйлчилгээнд domain зарлагдсан талбарт.
+       * ⚠️ Одоогийн утгыг жагсаалтад ЗААВАЛ нэмнэ: domain-д байхгүй хуучин
+       * утгатай мөр байвал сонгогч түүнийг чимээгүй өөр утга руу үсэргэнэ.
+       */
+      if (c.choices?.length) {
+        const opts = c.choices.includes(cur) || cur === '' ? c.choices : [cur, ...c.choices];
+        return (
+          <td key={key} style={sty} className={`${f.cellEdit} ${mark} ${extra}`}>
+            <select
+              className={f.cellPick}
+              value={cur}
+              onChange={(ev) => onEdit(ev.target.value)}
+            >
+              <option value="">—</option>
+              {opts.map((o) => <option key={o} value={o}>{o}</option>)}
+            </select>
+          </td>
+        );
+      }
+
+      /*
+       * ⚠️ ЗАСАХ ГОРИМД Ч ДЭЛГЭНЭ. `Нарийвчилсан төрөл` нь хэдэн өгүүлбэр
+       * урттай тул нэг мөрийн `input`-д зөвхөн эхний үгс нь багтаж,
+       * хэрэглэгч ЮУ ЗАСААД БАЙГААГАА ХАРАХГҮЙ байв. Фокус авмагц нүд
+       * дэлгэгдэж бичвэр мурийна — уншилтын горимын дэлгэлттэй ижил дүрэм.
+       *
+       * ⚠️ Дэлгэлтийг `td`-ийн ДАРАЛТААР БИШ, оролтын ФОКУСААР удирдана:
+       *    засах үед нүд рүү дарах нь «түүчээ тавих» үйлдэл тул дарах бүрд
+       *    хураагдаж/дэлгэгдвэл бичих боломжгүй болно.
+       */
+      if (EXPANDABLE.includes(c.name)) {
+        const open = openCell === key;
+        return (
+          <td
+            key={key}
+            /* Хязгаарын гурвыг хамт суллах шалтгаан — доорх уншилтын нүдтэй ижил */
+            style={open
+              ? { ...sty, width: 'auto', maxWidth: 420, whiteSpace: 'normal', overflow: 'visible' }
+              : sty}
+            className={[
+              f.cellEdit, mark, extra, open ? f.xlOpen : '',
+            ].filter(Boolean).join(' ')}
+          >
+            <textarea
+              className={`${f.cellInput} ${f.xlArea}`}
+              value={cur}
+              rows={open ? 4 : 1}
+              onFocus={() => setOpenCell(key)}
+              onBlur={() => setOpenCell((k) => (k === key ? null : k))}
+              onChange={(ev) => onEdit(ev.target.value)}
+            />
+          </td>
+        );
+      }
+
       return (
-        <td key={key} className={f.cellEdit}>
+        <td key={key} style={sty} className={`${f.cellEdit} ${mark} ${extra}`}>
           <input
             className={`${f.cellInput} ${NUMERIC_TYPES.has(c.type) ? 'num' : ''}`}
             value={cur}
-            onChange={(ev) => {
-              const v = ev.target.value;
-              setPend((p) => {
-                const nx = { ...p };
-                /* Анхны утга руугаа буцвал «засвар» гэж тоолохгүй */
-                if (v === editText(r[c.name], c.type)) delete nx[key];
-                else nx[key] = v;
-                return nx;
-              });
-            }}
+            onChange={(ev) => onEdit(ev.target.value)}
           />
         </td>
       );
     }
     const cell = fmtCell(r[c.name], c.type, c.name);
+    const canOpen = EXPANDABLE.includes(c.name);
+    const open = canOpen && openCell === key;
+    /* ⚠️ `title` — багана тасалж үзүүлдэг тул бүтэн утгыг хулганаар ч үзнэ */
     return (
-      <td key={key} className={`${dropped ? f.xDel : ''} ${cell.num ? `num ${f.cellNum}` : ''}`}>
+      <td
+        key={key}
+        title={cell.text || undefined}
+        /*
+         * ⚠️ ДЭЛГЭСЭН НҮДНИЙ ХЯЗГААРЫГ ЭНД ДАРЖ БИЧНЭ. Царцсан багануудад
+         * өргөнийг ШУУД (inline) тавьдаг тул CSS-ийн `!important` ч
+         * `max-width`-ийг л суллаж, `width` нь хэвээр үлдэж, бичвэр
+         * мурийхгүй байв. Одоо тэр гурвыг хамт суллана.
+         */
+        style={open
+          ? { ...sty, width: 'auto', maxWidth: 420, whiteSpace: 'normal', overflow: 'visible' }
+          : sty}
+        onClick={canOpen ? () => setOpenCell((k) => (k === key ? null : key)) : undefined}
+        className={[
+          dropped ? f.xDel : '',
+          cell.num ? `num ${f.cellNum}` : '',
+          extra,
+          canOpen ? f.xlCanOpen : '',
+          open ? f.xlOpen : '',
+          /* ⚠️ Засах горимоос ГАРСНЫ дараа ч тэмдэглэгээ үлдэнэ — «юу
+             өөрчлөгдсөн»-ийг харах гол агшин нь яг тэр үе. */
+          saved.has(key) ? f.cellSaved : '',
+        ].filter(Boolean).join(' ')}
+      >
         {cell.text}
       </td>
     );
@@ -1851,6 +2119,99 @@ function FullTable({
   });
 
   /** IPC — актын урсгал: дүн → суутгал → цэвэр → шилжүүлсэн; дэлгэхэд бүх талбар */
+  /**
+   * ХАВТГАЙ ХҮСНЭГТ — гэрээний шинэ бүртгэлд (`Cashflow_0904`).
+   * ⚠️ Багана нь метадатагаас (`cols`) ирнэ, гараар жагсаахгүй: үйлчилгээнд
+   * талбар нэмэгдэхэд өөрөө гарч ирнэ.
+   */
+  /**
+   * Хоёр утгыг харьцуулна.
+   * ⚠️ Тоог мөр болгож харьцуулж БОЛОХГҮЙ — «10» нь «9»-ээс өмнө орно.
+   * ⚠️ Хоосон утга ҮРГЭЛЖ ЭЦЭСТ — чиглэлээс үл хамааран. Эс бөгөөс буурахаар
+   *    эрэмбэлэхэд хоосон мөрүүд дээшээ бөөгнөрч, өгөгдөл нь нуугдана.
+   */
+  const cmpVals = (a: unknown, b: unknown): number => {
+    const ea = a == null || a === '';
+    const eb = b == null || b === '';
+    if (ea || eb) return ea === eb ? 0 : (ea ? 1 : -1);
+    if (typeof a === 'number' && typeof b === 'number') return a - b;
+    return String(a).localeCompare(String(b), 'mn', { numeric: true });
+  };
+
+  /**
+   * ЭРЭМБЭ ТОГТМОЛ — эхний багана («Төрөл») БУУРАХААР (хэрэглэгчийн шийдвэр,
+   * 2026-09-04). Толгой дарж солих боломж ЗОРИУДААР БАЙХГҮЙ: бүх хэрэглэгч
+   * НЭГ ижил дарааллыг харах ёстой, эс бөгөөс хоёр хүн өөр өөр зураг харж,
+   * «хэддэх мөр» гэж ярихад ойлголцохгүй.
+   */
+  const sortRows = (list: GroupRow[]): GroupRow[] => {
+    const col = cols[0]?.name;
+    if (!col) return list;
+    // ⚠️ Хуулбарыг эрэмбэлнэ — эх массивыг өөрчилвөл дээд түвшний тооцоо гажна
+    // ⚠️ Тэнцүүг OID-аар тасална — эс бөгөөс дараалал ачаалалт бүрд хөвнө
+    return list.slice().sort((x, y) => cmpVals(y.row[col], x.row[col])
+      || ((x.oid ?? 0) - (y.oid ?? 0)));
+  };
+
+  const flatTable = (raw: GroupRow[]) => {
+    const list = sortRows(raw);
+    return (
+    <div className={f.xlWrap}>
+      <table className={f.xlTbl}>
+        <thead>
+          <tr>
+            <th className={f.xlNo} style={{ width: FZ_DEF[0], minWidth: FZ_DEF[0] }} aria-label="№">№</th>
+            {cols.map((c, ci) => (
+              <th
+                key={c.name}
+                title={c.name}
+                style={colSty(c, ci)}
+                className={[frz(ci), thRight(c) ? f.thR : ''].filter(Boolean).join(' ')}
+              >
+                {/*
+                  * ⚠️ Толинд байхгүй талбар нь ТҮҮХИЙ НЭРЭЭРЭЭ (`Bagts_74`)
+                  * гарахгүй — үйлчилгээний ӨӨРИЙН alias руу уначихна.
+                  * Ингэснээр шинэ багана нэмэгдэхэд код хөндөхгүйгээр
+                  * монголоор харагдана.
+                  */}
+                {finFieldLabel(c.name) === c.name ? c.alias : finFieldLabel(c.name)}
+                {/* Чирэх бариул — давхар товшвол анхны өргөнд буцна */}
+                <i {...grip(c.name)} />
+              </th>
+            ))}
+            {edit && canRow && <th aria-label={tr('Мөр устгах')} />}
+          </tr>
+        </thead>
+        <tbody>
+          {list.map((p, i) => {
+            const dropped = p.oid != null && del.has(p.oid);
+            return (
+              <tr key={p.oid ?? `r${i}`} className={dropped ? f.rowDrop : undefined}>
+                <td className={f.xlNo} style={{ width: FZ_DEF[0], minWidth: FZ_DEF[0] }}>{i + 1}</td>
+                {cols.map((c, ci) => xCell(p.row, p.oid, dropped, c, frz(ci), colSty(c, ci)))}
+                {edit && canRow && (
+                  <td className={f.rowBtnCell}>
+                    {p.oid != null && (
+                      <button
+                        type="button"
+                        className={f.rowBtn}
+                        title={dropped ? tr('Устгахаа болих') : tr('Мөр устгах')}
+                        onClick={() => toggleDel(p.oid as number)}
+                      >
+                        {dropped ? '↺' : '×'}
+                      </button>
+                    )}
+                  </td>
+                )}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+    );
+  };
+
   const ipcTable = (list: GroupRow[]) => {
     const IPS = IPC_LOG.fields;
     const rowsOnly = list.map((p) => p.row);
@@ -2115,14 +2476,55 @@ function FullTable({
      * «хэн юуг нууж байна» гэдэг гурван файлд тарна. `fixed` overlay нь
      * ЭНЭ ФАЙЛААС гарахгүйгээр яг тэр үр дүнг өгнө.
      */
-    <section className={`${f.reg} ${edit ? f.regFull : ''}`}>
+    /*
+     * ⚠️ ГЭРЭЭНИЙ БҮРТГЭЛД БҮТЭН ДЭЛГЭЦИЙН ГОРИМГҮЙ. `regFull` нь
+     * `position: fixed; inset: 0` тул «Засах» дармагц хүснэгт хуудсыг бүрэн
+     * халхалж, хэрэглэгчид ӨӨР ХУУДАС РУУ ШИЛЖСЭН мэт санагддаг. Энэ хүснэгт
+     * аль хэдийн өөрийн хүрээндээ гүйдэг тул байрандаа засагдана.
+     */
+    <section className={`${f.reg} ${edit && !isFlat ? f.regFull : ''}`}>
       <header className={f.regHd}>
         <h2>{title}</h2>
-        {/* envhub: бүх тоо «num» (tabular) — мөр·баганын тоолол */}
-        <span className="num">{subtitle}</span>
+        {/* ⚠️ Гэрээний бүртгэлд мөр·баганын тоолол ХАРАГДАХГҮЙ — хэрэглэгчид
+            хэрэггүй тоо. IPC-д хэвээр. */}
+        {!isFlat && <span className="num">{subtitle}</span>}
+        {/* ⚠️ Зөвхөн ЧИРСЭН үед гарна — хэзээ ч хөндөөгүй хүнд хэрэггүй товч */}
+        {resized && (
+          <button type="button" className={f.finClear} onClick={resetAll}>
+            {tr('Багануудын өргөнийг сэргээх')}
+          </button>
+        )}
         {/* ⚠️ Эрхгүй хэрэглэгчид товч ОГТ гарахгүй — унтраасан товч харуулбал
             «яагаад надад болохгүй байна вэ» гэсэн асуулт төрүүлнэ. */}
-        {canEdit && (
+        {canEdit && isFlat && (
+          /*
+           * ГЭРЭЭНИЙ БҮРТГЭЛИЙН ХЭРЭГСЛҮҮД — хоёр товч ҮРГЭЛЖ зэрэг харагдана.
+           * ⚠️ «Нийтлэх» нь урд, ӨӨР ӨНГӨТЭЙ: хадгалах үйлдэл нь горим солихоос
+           * илүү ноцтой тул нүдэнд шууд ялгарах ёстой.
+           * ⚠️ «Засах» нь ДАРААХ товч (toggle) — «Болих» товчгүй болсон тул
+           * засварыг цуцлах цорын ганц зам нь энэ.
+           */
+          <div className={f.regAct}>
+            <button
+              type="button"
+              className={`${f.editBtn} ${f.pubBtn}`}
+              disabled={busy || dirty === 0}
+              onClick={publish}
+            >
+              {busy ? tr('Хадгалж байна…') : tr('Нийтлэх ({0})', dirty)}
+            </button>
+            <button
+              type="button"
+              className={`${f.editBtn} ${edit ? f.editBtnOn : ''}`}
+              aria-pressed={edit}
+              disabled={busy}
+              onClick={() => { if (edit) reset(); setEdit((v) => !v); }}
+            >
+              {tr('Засах')}
+            </button>
+          </div>
+        )}
+        {canEdit && !isFlat && (
           <div className={f.regAct}>
             {!edit ? (
               <button type="button" className={f.editBtn} onClick={() => setEdit(true)}>
@@ -2134,7 +2536,9 @@ function FullTable({
                     бүтэн дэлгэцийн горимд хөвөгч товчнуудтай (хэрэглэгчийн
                     зураг, «AI туслах») давхцаж, хагас халхлагдаж байв. Бүх
                     үйлдэл НЭГ мөрөнд байх нь олоход ч хялбар. */}
-                {canRow && (
+                {/* ⚠️ Гэрээний бүртгэлд «+ Мөр нэмэх» БАЙХГҮЙ — мөр нь эх
+                    үйлчилгээнд ArcGIS-аас нэмэгддэг, энэ хуудаснаас биш. */}
+                {canRow && !isFlat && (
                   <button
                     type="button"
                     className={f.editBtn}
@@ -2152,6 +2556,10 @@ function FullTable({
                 >
                   {busy ? tr('Хадгалж байна…') : tr('Нийтлэх ({0})', dirty)}
                 </button>
+                {/* ⚠️ Гэрээний бүртгэлд «Болих» БАЙХГҮЙ — хэрэглэгч зөвхөн
+                    «Засах» ба «Нийтлэх» хоёрыг хүссэн. Засварыг цуцлах нь
+                    хуудсыг дахин ачаалахтай тэнцүү. */}
+                {!isFlat && (
                 <button
                   type="button"
                   className={f.editBtn}
@@ -2160,6 +2568,7 @@ function FullTable({
                 >
                   {tr('Болих')}
                 </button>
+                )}
               </>
             )}
           </div>
@@ -2198,7 +2607,8 @@ function FullTable({
           ))}
           {/* ⚠️ Бүлэглэлт нь АНХДАГЧААР асаалттай. Унтраах товчийг үлдээв:
               бүх мөрийг эх дараалалаар нь харах хэрэгцээ (жишээ нь OID-гоор
-              зөрүү хайх) заримдаа гардаг. */}
+              зөрүү хайх) заримдаа гардаг. Гэрээний бүртгэлд УТГАГҮЙ тул алга. */}
+          {!isFlat && (
           <button
             type="button"
             className={`${f.finTgl} ${grouped ? f.finTglOn : ''}`}
@@ -2208,6 +2618,7 @@ function FullTable({
           >
             {tr('Багцаар бүлэглэх')}
           </button>
+          )}
           {/* ⚠️ Багана бүрийн шүүлт нь зөвхөн ХАВТГАЙ хүснэгтэд — картын
               загварт багана биш паспорт/хуваарь тул утгагүй. Багц·он·төрлийн
               нүүр ба чөлөөт хайлт картад ч үйлчилнэ. */}
@@ -2248,7 +2659,16 @@ function FullTable({
             {packs.length === 0 && adds.length === 0 && (
               <Empty label={tr('Шүүлтэнд тохирох мөр алга.')} />
             )}
-            {packs.map((p) => {
+            {/*
+              * ⚠️ ГЭРЭЭНИЙ ШИНЭ БҮРТГЭЛ нь БАГЦААР ХУВААГДАХГҮЙ — Excel шиг НЭГ
+              * бүтэн хүснэгт. Багцын нэр нь «БАГЦ-1», «БАГЦ - 1», «БАГЦ 1-4»
+              * гэх мэт олон хувилбартай тул бүлэглэвэл 76 мөр 56 бүлэгт
+              * бутарч, ганц ганцаараа сууна — уншихад ямар ч ашиггүй.
+              * Багц нь ердийн БАГАНА хэвээр үлдэж, шүүлтээр ажиллана.
+              */}
+            {kind === 'flat'
+              ? flatTable(packs.flatMap((p) => p.rows))
+              : packs.map((p) => {
               const off = shut.has(p.key);
               /* Багцын нийлбэр — бүгд хоосон бол ОГТ бичихгүй (0 худал) */
               const hdSum = kind === 'cf'
@@ -2400,14 +2820,13 @@ function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
   return (
     <>
       <header className={f.pageHd}>
-        <div>
-          <h2>{tr('Санхүүжилтийн бүртгэл — Cashflow ба IPC')}</h2>
-          <p>
-            {tr('Эх үйлчилгээний бүрэн хүснэгт — багана бүр (талбарын нэр), мөр бүр яг байгаагаар. Огноо ба тоон утгыг талбарын төрлөөр форматлав.')}
-          </p>
-        </div>
+        {/*
+          * ⚠️ Гарчиг хасагдсан тул табууд ЗҮҮН тийш үсэрдэг (`space-between`
+          * ганц хүүхэдтэй үед эхэнд нь наана). `margin-left: auto` нь тэднийг
+          * БАРУУН талд нь үлдээнэ.
+          */}
         {/* Хүснэгт солих — идэвхтэй нь дүүргэлттэй */}
-        <div className={f.tabs} role="tablist">
+        <div className={f.tabs} role="tablist" style={{ marginLeft: 'auto' }}>
           <button
             type="button"
             role="tab"
@@ -2436,14 +2855,14 @@ function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
       {tab === 'cf' ? (
       <FullTable
         key="cf"
-        title={tr('Cashflow — гэрээ, захирамжийн санхүүжилт (/173)')}
+        title={tr('Гэрээний бүртгэл — захирамж, гэрээ, санхүүжилтийн эх үүсвэр')}
         subtitle={tr('{0} мөр · {1} багана', num(d.cashflow.length), d.cfFields.length)}
         rows={d.cashflow}
         fields={d.cfFields}
-        url={CASHFLOW2.url}
-        oidField={CASHFLOW2.oid}
-        dataKey="CASHFLOW2"
-        facets={FIN_FACETS.CASHFLOW2}
+        url={CASHFLOW_NEW.url}
+        oidField={CASHFLOW_NEW.oid}
+        dataKey="CASHFLOW_NEW"
+        facets={FIN_FACETS.CASHFLOW_NEW}
         canEdit={canEdit}
         canRow={canRow}
         onSaved={onSaved}

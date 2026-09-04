@@ -60,7 +60,24 @@ const yearOf = (v: unknown): string => {
  *    гаргана — шошгыг «Он (хамрах хугацаа)» гэж ТОДОРХОЙ бичнэ, эс бөгөөс
  *    хэрэглэгч аль огнооны жил болохыг мэдэхгүй.
  */
-export const FIN_FACETS: Record<'CASHFLOW2' | 'IPC_LOG', Facet[]> = {
+export const FIN_FACETS: Record<'CASHFLOW2' | 'CASHFLOW_NEW' | 'IPC_LOG', Facet[]> = {
+  /*
+   * ⚠️ Шинэ хүснэгтэд `CF0xx` код БАЙХГҮЙ — талбарын нэр нь утгатай латин
+   * галиг. Мөн САР гэсэн мөрийн төрөл байхгүй тул «Үеийн төрөл» шүүлтийн
+   * оронд төслийн ангилал (`Turul`) орно.
+   */
+  CASHFLOW_NEW: [
+    { key: 'pkg', label: tr('Багц'), allLabel: tr('Бүх багц'), valueOf: (r) => clean(r.Bagts) },
+    { key: 'type', label: tr('Төрөл'), allLabel: tr('Бүх төрөл'), valueOf: (r) => clean(r.Turul) },
+    {
+      // ⚠️ `FacetKey` нь `pkg|year|type` гурвыг л зөвшөөрнө. Шинэ хүснэгтэд
+      //    он гэсэн тусдаа талбар байхгүй тул захирамжийн огноогоор гаргана.
+      key: 'year',
+      label: tr('Захирамжийн он'),
+      allLabel: tr('Бүх он'),
+      valueOf: (r) => yearOf(r.Zahiramj_ognoo),
+    },
+  ],
   CASHFLOW2: [
     { key: 'pkg', label: tr('Багц'), allLabel: tr('Бүх багц'), valueOf: (r) => clean(r.CF006) },
     { key: 'year', label: tr('Он'), allLabel: tr('Бүх он'), valueOf: (r) => clean(r.CF003) },
