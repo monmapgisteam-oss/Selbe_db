@@ -14,9 +14,20 @@
  *
  * ⚠️ ДАХИН ИЛГЭЭХЭД ХУУЧИН МӨРИЙГ ЗАСАХГҮЙ — ШИНЭ мөр үүснэ. Засвал өмнөх
  * буцаалтын шалтгаан дарагдаж алга болно; хяналтын гол утга нь тэр түүхэнд.
+ *
+ * ⚠️ ЭНЭ МОДУЛЬ (`archiveSubmission`) нь `Bagts_*` АРХИВТ (ҮНДСЭН ДАТА) жааз
+ * бичдэг ЦОРЫН ГАНЦ ГАЗАР болов (2026-09-04). Хэрэглэгчийн шаардлага:
+ * «ноорог ҮНДСЭН ДАТАНД хадгалагдаж болохгүй — 4 шат дамжсаны дараа л дата
+ * хүснэгт буюу үндсэн сервис рүү орно». Урьд нь «Нийтлэх» дармагц
+ * `FillNew.publish` өөрөө `applyAdds` дуудаж бүтэн жаазыг архивт бичдэг байв:
+ * хянагч буцаасан ч, огт хараагүй ч тоо нь үндсэн өгөгдөлд аль хэдийн сууж
+ * байлаа. Одоо «Нийтлэх» нь зөвхөн ИЛГЭЭЛТ (`Selbe_Guitsetgel_Draft`-ийн
+ * `sub|<pkgKey>` мөр, diff) үүсгэнэ; архив руу энд, ерөнхий менежерийн
+ * зөвшөөрлийн үед л бичигдэнэ. `applyAdds`-ыг өөр газраас БҮҮ дууд.
  */
 
 import { useCallback, useEffect, useState } from 'react';
+import { t as tr } from './i18nCore';
 import {
   addRows, queryAll, updateRows,
   DECISION, F, HYANALT, STATUS,
@@ -148,6 +159,120 @@ export type Result = { ok: boolean; error?: string };
 
 const fail = (e: unknown): Result => ({ ok: false, error: String((e as Error)?.message ?? e) });
 
+/** Архивлалтын үр дүн — амжилттай бол нэгтгэлд бүртгэх АРХИВЫН OBJECTID. */
+type Archived = { ok: true; archiveOid: number } | { ok: false; error: string };
+
+/**
+ * ИЛГЭЭЛТИЙГ АРХИВТ БУУЛГАНА — ерөнхий менежер БАТЛАХАД л дуудагдана
+ * (дизайны дүрэм 5a–5e).
+ *
+ * Гурван зам:
+ *   · илгээлт олдохгүй  → LEGACY: `Эх_мөрийн_дугаар` нь архивын OBJECTID
+ *     (энэ өөрчлөлтөөс өмнөх мөрүүд) — жааз аль хэдийн бичигдсэн;
+ *   · илгээлт `done|…`  → аль хэдийн архивлагдсан (idempotent) — дахин бичихгүй;
+ *   · идэвхтэй `sub|…`  → сүүлийн жааз + overlay → шинэ жааз `applyAdds`.
+ *
+ * ⚠️ Модулиудыг ДИНАМИКААР импортолно. `hyanaltStore`-ыг удирдлагын самбар
+ *    (`ExecKpi`) зөвхөн `toRow`-ын төлөө импортолдог тул `bagtsSheet` ·
+ *    `sheetFrame` · `bagts.pkg`-ийг СТАТИКААР оруулбал дашбоардын багц
+ *    бөглөх хуудсыг бүхэлд нь чирнэ.
+ */
+async function archiveSubmission(cur: Row): Promise<Archived> {
+  const subOid = cur[F.sheetOid];
+  const { loadSubmissionByOid, closeSubmission } = await import('./submission');
+  const staged = await loadSubmissionByOid(subOid);
+  /*
+   * ⚠️ ХУУЧИН МӨРД ИЛГЭЭЛТ БАЙХГҮЙ (дүрэм 6). Тэдгээрт `Эх_мөрийн_дугаар` нь
+   *    архивын ЭХНИЙ мөрийн OBJECTID — жааз нь «Нийтлэх» дээр аль хэдийн
+   *    бичигдсэн. Шинэ логикоор дахин бичвэл нэг гүйцэтгэл архивт хоёр
+   *    агшинтай болно. Тиймээс зөвхөн нэгтгэлд бүртгээд өнгөрнө.
+   */
+  if (!staged) return { ok: true, archiveOid: subOid };
+  /*
+   * ⚠️ IDEMPOTENT: илгээлт `done|…` бол (эсвэл `archiveOid` тэмдэглэгдсэн)
+   *    архивт аль хэдийн буусан. Сүлжээ тасарч товч дахин дарагдвал ижил
+   *    жааз ХОЁР удаа бичигдэх байлаа.
+   */
+  if (staged.done || staged.payload.archiveOid != null)
+    return { ok: true, archiveOid: staged.payload.archiveOid ?? 0 };
+
+  const pl = staged.payload;
+  const { PKGS, loadSchema } = await import('@/modules/sheet/bagts.pkg');
+  const pkg = PKGS.find((p) => p.key === pl.pkgKey);
+  if (!pkg) return { ok: false, error: tr('Илгээлтийн багц олдсонгүй: {0}', pl.pkgKey) };
+
+  const [{ loadRows, applyAdds, msToDay }, { overlaySubmission, buildFrame }] = await Promise.all([
+    import('@/modules/sheet/bagtsSheet'),
+    import('@/modules/sheet/sheetFrame'),
+  ]);
+  const sc = await loadSchema(pkg);
+  const nBld = sc.bld.length;
+  const hasObyem = sc.obyem.map((f) => !!f);
+  /*
+   * ⚠️ СҮҮЛИЙН жаазыг татна (өдөр зааж ӨГӨХГҮЙ). Илгээлт нь diff тул суурь нь
+   *    БАТЛАХ агшны хамгийн сүүлийн архив байх ёстой: хооронд нь өөр илгээлт
+   *    батлагдсан бол түүний тоог дарж бичихгүй.
+   */
+  const loaded = await loadRows(pkg, sc);
+  const ov = overlaySubmission(loaded.rows, pl, sc, nBld);
+  /*
+   * ⚠️ Тулгагдаагүй нүд байвал ЗОГСОНО (дүрэм 5b). Хагас буусан diff-ийг
+   *    архивт бичвэл гүйцэтгэгчийн бичсэн тоо ЧИМЭЭГҮЙ алга болж, батлагдсан
+   *    баримт нь илгээснээсээ зөрнө.
+   */
+  if (ov.unmoved > 0)
+    return {
+      ok: false,
+      error: tr('{0} нүдийг шинэ мөрүүдэд тулгаж чадсангүй — архивт бичсэнгүй. Гүйцэтгэгчээр дахин илгээүүлнэ үү.', String(ov.unmoved)),
+    };
+  /*
+   * ⚠️ `asOf` нь `computeAll`-ийн ЛАВЛАХ огноо — байхгүй бол төлөвлөгөөт хувь
+   *    бүхэлдээ утгагүй болно. 0 гэж таамаглахгүй (`null ≠ 0`).
+   */
+  const asOf = ov.asOf ?? loaded.asOf;
+  if (asOf == null)
+    return { ok: false, error: tr('«Шинэчлэгдсэн огноо» алга тул архивт бичих боломжгүй') };
+
+  /*
+   * БӨГЛӨСӨН ӨДӨР — илгээсэн өдөр (`payload.fillMs`).
+   *
+   * ⚠️ Гэхдээ илгээснээс хойш архивт ШИНЭ жааз нэмэгдсэн бол (өөр илгээлт
+   *    эрт батлагдсан, эсвэл хуучин урсгалаар нийтлэгдсэн) тэр өдрөөр бичсэн
+   *    жааз `latestWhere`-ийн «хамгийн сүүлийн өдөр» шүүлтэд ХАРАГДАХГҮЙ:
+   *    батлагдсан гүйцэтгэл архивт орсон мөртөө хуудсанд хэзээ ч гарч ирэхгүй
+   *    алга болно. Тиймээс тийм үед ӨНӨӨДРИЙН өдрөөр бичнэ.
+   */
+  let fillMs = pl.fillMs;
+  const now = new Date();
+  const lastDay = loaded.snapshot != null ? msToDay(loaded.snapshot) : '';
+  if (lastDay && lastDay >= msToDay(fillMs))
+    fillMs = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+
+  const frame = buildFrame(ov.rows, sc, nBld, asOf, hasObyem, fillMs);
+  let firstOid: number | null = null;
+  try {
+    const r = await applyAdds(pkg, frame);
+    firstOid = r.firstOid;
+  } catch (e) {
+    /* ⚠️ Архив УНАВАЛ хяналтын мөр ӨӨРЧЛӨГДӨХГҮЙ — менежер дахин дарж болно. */
+    return { ok: false, error: String((e as Error)?.message ?? e) };
+  }
+  /*
+   * ⚠️ Мөр бичигдсэн ч дугаар ирээгүй бол ЗОГСОХГҮЙ. `{ok:false}` буцаавал
+   *    менежер дахин дарж архивт ХОЁР ижил жааз үүснэ. Нэгтгэлийн бүртгэл нь
+   *    `archiveOid = 0`-д унаж, зөвхөн `console.warn`-оор мэдэгдэнэ.
+   */
+  const cl = await closeSubmission(staged.oid, firstOid ?? 0, Date.now());
+  /*
+   * ⚠️ Илгээлтийг ХААХ алхам унавал батлалт УНАХГҮЙ — жааз аль хэдийн архивт
+   *    бичигдсэн. Нээлттэй үлдсэн `sub|` мөр дараагийн ачаалалтад давхарлагдах
+   *    боловч `overlaySubmission`-ийн давхардал шалгалт (alias) түүнийг барина.
+   */
+  if (!cl.ok) console.warn('[selbe] илгээлтийг хааж чадсангүй:', cl.error);
+
+  return { ok: true, archiveOid: firstOid ?? 0 };
+}
+
 /**
  * ХЯНАГЧИЙН ШИЙДВЭРИЙГ БҮРТГЭНЭ — гурван хянах шат тус бүрд.
  *
@@ -224,16 +349,32 @@ export async function apply(a: {
       emit();
       return { ok: false, error: STALE };
     }
+    /*
+     * ⚠️ АРХИВЛАЛТ нь хяналтын мөрийг засахаас ӨМНӨ (дизайны дүрэм 5d).
+     *    Урвуу дарааллаар хийвэл архив унахад мөр «Шилжүүлсэн» болчихсон
+     *    байх ба дахин батлах зам ХААГДАНА — батлагдсан гүйцэтгэл үндсэн
+     *    дататай хэзээ ч уулзахгүй, хаана ч алдаа үлдэхгүй.
+     */
+    let archiveOid = cur[F.sheetOid];
+    if (registerNow) {
+      const ar = await archiveSubmission(cur);
+      if (!ar.ok) return { ok: false, error: ar.error };
+      archiveOid = ar.archiveOid;
+    }
+
     await updateRows([attrs]);
     if (registerNow) {
       /*
        * ⚠️ БҮРТГЭЛ УНАВАЛ БАТАЛГАА УНАХГҮЙ. Хяналтын шийдвэр аль хэдийн
        *    хадгалагдсан байхад «болсонгүй» гэж харуулбал менежер дахин дарж,
        *    давхардсан бүртгэл үүсгэнэ. Алдааг зөвхөн бүртгэнэ.
+       *
+       * ⚠️ `registerApproved`-д АРХИВЫН OBJECTID өгнө — илгээлтийн мөрийн
+       *    дугаар БИШ (тэр нь өөр үйлчилгээний дугаар; тэгвэл нэгтгэл
+       *    «агшин олдсонгүй» гэж чимээгүй унана).
        */
-      const prev = cur;
       const { registerApproved } = await import('./negtgelWrite');
-      const r = await registerApproved(prev?.[F.bagts] ?? '', prev?.[F.sheetOid] ?? 0);
+      const r = await registerApproved(cur[F.bagts], archiveOid);
       if (!r.ok) console.warn('[selbe] нэгтгэлд бүртгэж чадсангүй:', r.error);
     }
     await refresh();

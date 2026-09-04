@@ -355,7 +355,15 @@ function Submitted({
       <div className={s.subHead}>
         <span>{tr('Нийтэлсэн гүйцэтгэл')}</span>
         <span className={s.subMeta}>
-          {data.pkgLabel} · {tr('{0} мөр архивлав', String(data.rows))}
+          {/*
+            * ⚠️ Хараахан АРХИВЛААГҮЙ илгээлтийг «архивлав» гэж ХЭЛЭХГҮЙ
+            *    (2026-09-04). Гүйцэтгэл нь ерөнхий менежер баталтал үндсэн
+            *    өгөгдөлд ОРООГҮЙ; «архивлав» гэвэл хянагч аль хэдийн
+            *    бүртгэгдсэн баримт хараад байна гэж эндүүрнэ.
+            */}
+          {data.pkgLabel} · {data.subOid
+            ? tr('илгээлт · {0} мөр', String(data.rows))
+            : tr('{0} мөр архивлав', String(data.rows))}
         </span>
       </div>
 
@@ -434,6 +442,13 @@ function Submitted({
               view={{
                 pkgKey: data.pkgKey,
                 day: data.day,
+                /*
+                 * ⚠️ Илгээлт архивт БАЙХГҮЙ тул `day`-гаар нээвэл хуудас
+                 *    хоосон (эсвэл огт өөр агшин) харагдана. `subOid` өгөгдвөл
+                 *    бөглөх хуудас архивын сүүлийн жааз дээр ЯГ энэ илгээлтийг
+                 *    давхарлаж, хянагч ба бөглөгч НЭГ хүснэгт харна.
+                 */
+                subOid: data.subOid,
                 changed: changedKeys,
                 jump,
                 ok,
@@ -624,14 +639,22 @@ function Item({ work, stage, who, onFix, readOnly }: {
                       title={
                         changes.length > 0 && !allOk
                           ? tr('Эхлээд өөрчлөгдсөн нүд бүр дээр дарж зөвшөөрнө үү — үлдсэн {0}', String(bad.length))
-                          : undefined
+                          /*
+                           * ⚠️ ЕРӨНХИЙ МЕНЕЖЕРИЙН товч нь одоо ЖИНХЭНЭ бичилт
+                           *    хийдэг: түүнийг дарж байж л гүйцэтгэл үндсэн
+                           *    өгөгдөлд (архив + нэгтгэл) орно. Хэрэглэгч
+                           *    үүнийг МЭДЭЖ дарах ёстой.
+                           */
+                          : stage === 'director'
+                            ? tr('Баталсны дараа гүйцэтгэл архивт бичигдэж, нэгтгэлд бүртгэгдэнэ — үүнээс өмнө үндсэн өгөгдөлд ОРООГҮЙ')
+                            : undefined
                       }
                       onClick={() => review(DECISION.approve)}>
                       {stage === 'engineer'
                         ? tr('Зөвшөөрч багцын менежерт илгээх')
                         : stage === 'manager'
                           ? tr('Зөвшөөрч ерөнхий менежерт илгээх')
-                          : tr('Баталж бүртгэх')}
+                          : tr('Баталж архивт бүртгэх')}
                       {changes.length > 0 && !allOk && ` (${bad.length})`}
                     </button>
                     <button className={`${s.btn} ${s.bad}`} disabled={busy}

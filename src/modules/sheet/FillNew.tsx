@@ -3,7 +3,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { submitForReview } from '@/lib/hyanaltSubmit';
 import {
-  applyAdds,
   computeAll,
   loadRows,
   msToDay,
@@ -18,7 +17,33 @@ import {
   type Pkg,
   type Schema,
 } from "./bagts.pkg";
-import { OWNER, F as HF } from "@/lib/hyanalt";
+/*
+ * ⚠️ 2026-09-04 — `applyAdds` ЭНД БАЙХГҮЙ, БОЛОХГҮЙ. «Нийтлэх» нь одоо
+ * ИЛГЭЭХ үйлдэл: үндсэн (`Bagts_*`) өгөгдөл рүү бичихгүй, зөвхөн завсрын
+ * хадгалалтад (`Selbe_Guitsetgel_Draft` → `sub|<pkgKey>`) зөрүү (diff)
+ * тавина. Архивт бичих ЦОРЫН ГАНЦ зам нь ерөнхий менежерийн батламж
+ * (`hyanaltStore.apply`). Хэрэглэгчийн шаардлага: «бүх шалгалт дуусаж 4 шат
+ * дамжсаны дараа л дата хүснэгт буюу үндсэн сервис рүү орно».
+ * `draft.check.mjs` энэ файлд `applyAdds(` байхыг ХОРИГЛОЖ шалгана.
+ */
+import {
+  buildOidMap,
+  insertAdds,
+  moveKeys,
+  overlaySubmission,
+  rowKeyOf,
+} from "./sheetFrame";
+import {
+  loadActiveSubmission,
+  loadSubmissionByOid,
+  mergeSubmission,
+  saveSubmission,
+  type NewRow,
+  type StagedSubmission,
+  type SubmissionPayload,
+} from "@/lib/submission";
+import { OWNER, STATUS, F as HF } from "@/lib/hyanalt";
+import { STAGE_LABEL } from "@/lib/hyanaltGroup";
 import { useHyanaltRows } from "@/lib/hyanaltStore";
 import { bagtsFor, bagtsScope, subscribeAcl } from "@/lib/guitsetgelAcl";
 import { roleForUser } from "@/lib/services";
@@ -112,25 +137,19 @@ type Draft = {
    */
   rowKeys?: [number, string][];
 };
-/**
- * ЕРӨНХИЙ МЕНЕЖЕРИЙН НЭМСЭН, хараахан нийтлэгдээгүй мөр.
+/*
+ * ЕРӨНХИЙ МЕНЕЖЕРИЙН НЭМСЭН, хараахан илгээгдээгүй мөр (`NewRow`) —
+ * тодорхойлолт нь `@/lib/submission`-д ШИЛЖСЭН (2026-09-04).
  *
- * ⚠️ Эцгийг ObjectID-гаар санахгүй: нийтлэх бүрд хуудас бүхэлдээ хуулбарлагдаж
- * бүх мөр ШИНЭ ObjectID авдаг тул тэр дугаар удаан амьдардаггүй. (№ + ажлын
- * нэр) хос нь эх excel-ийн бүтэц тул хамаагүй тогтвортой.
+ * ⚠️ НЭГ ЭХ СУРВАЛЖ: илгээлтийн payload (`SubmissionPayload.adds`), жааз
+ * угсрагч (`sheetFrame.insertAdds`) ба энэ хуудас ГУРВУУЛАА ижил хэлбэрээс
+ * уншина. Урьд нь энд ЛОКАЛ хуулбар байсан бөгөөд салбарлавал нэмсэн мөр
+ * илгээлтэд өөр, дэлгэцэд өөр байдлаар буух эрсдэлтэй.
+ *
+ * ⚠️ Эцгийг ObjectID-гаар санахгүй: архивт жааз нэмэгдэх бүрд бүх мөр ШИНЭ
+ * ObjectID авдаг тул тэр дугаар удаан амьдардаггүй. (№ + ажлын нэр) хос нь
+ * эх excel-ийн бүтэц тул хамаагүй тогтвортой.
  */
-type NewRow = {
-  /** Түр ObjectID — САРВААХ сөрөг тоо, серверийн дугаартай хэзээ ч мөргөлдөхгүй */
-  oid: number;
-  parentNo: string;
-  parentWork: string;
-  /** Нэрээр олдохгүй үед нөхөх сүүлчийн арга */
-  parentIdx: number;
-  no: string;
-  work: string;
-  vol: number | null;
-  unit: number | null;
-};
 
 /**
  * Түр ObjectID-ийн тоолуур. Сөрөг тул серверийн (эерэг) дугаартай мөргөлдөхгүй
@@ -349,6 +368,18 @@ export type SheetView = {
   pkgKey: string;
   /** Аль АГШИН (`YYYY-MM-DD`) — илгээсэн тэр өдрийн бүтэн хуулбар */
   day: string;
+  /**
+   * ЗАВСРЫН ИЛГЭЭЛТИЙН мөрийн OBJECTID (`Selbe_Guitsetgel_Draft` → `sub|…`).
+   *
+   * ⚠️ 2026-09-04: илгээлт нь ОДОО архивт бичигдэхгүй тул хянагчид харуулах
+   *    «тэр өдрийн бүтэн хуулбар» гэж байхгүй. Оронд нь АРХИВЫН СҮҮЛИЙН жааз
+   *    дээр илгээлтийн зөрүүг давхарлаж харуулна.
+   *
+   * ⚠️ Өгөгдсөн үед `day`-г ҮЛ ТООНО: илгээлт нь сүүлийн жааз дээрх diff тул
+   *    өөр (хуучин) агшин дээр давхарлавал хянагч огт өөр тоо харна. `day`
+   *    нь зөвхөн ХУУЧИН (архивын OBJECTID-тай) бүртгэлийн зам дээр үлдэнэ.
+   */
+  subOid?: number;
   /** Өөрчлөгдсөн нүд: `${мөрийн индекс}:${блокийн шошго}` */
   changed?: Set<string>;
   /** Үсрэх хүсэлт — `n` солигдох бүрд шинэ хүсэлт гэж үзнэ */
@@ -460,6 +491,40 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     return mine.reduce((a, b) => (b.__oid > a.__oid ? b : a));
   }, [hyRows, pkg.group]);
   const returned = flow ? OWNER[flow[HF.status]] === "company" : false;
+  /** Урсгал ОДОО хэний гар дээр байна вэ (`null` = бүртгэлгүй) */
+  const reviewStage = flow ? OWNER[flow[HF.status]] : null;
+  /**
+   * ИЛГЭЭЛТ ХЯНАЛТАД БАЙНА УУ — ИЛГЭЭХ ХОРИГИЙН цорын ганц шалгуур
+   * (2026-09-04).
+   *
+   * ⚠️ ЯАГААД: илгээлт нь багц бүрд ХАМГИЙН ИХДЭЭ НЭГ идэвхтэй мөр
+   *    (`sub|<pkgKey>`) бөгөөд дахин илгээхэд тэр мөр дээр НЭГТГЭГДЭНЭ. Хэрэв
+   *    инженер/менежер/ерөнхий менежерийн гар дээр байх үед дахин илгээх юм
+   *    бол хянагчийн ЯГ ОДОО харж буй агуулга доор нь чимээгүй солигдоно —
+   *    тэр нэгийг харж байгаад өөр нэгийг батална.
+   *
+   * ⚠️ `Шилжүүлсэн` (батлагдсан) нь хориг БИШ: тэр нь мөчлөг ДУУССАН гэсэн
+   *    үг, дараагийн илгээлт ШИНЭ `sub|` мөр үүсгэнэ.
+   * ⚠️ Буцаалт (`OWNER === 'company'`) ч хориг БИШ — засах ЁСТОЙ.
+   *
+   * ⚠️ Ноорог нь хориотой үед ч ХЭВЭЭР хадгалагдана: хэрэглэгч хүлээж
+   *    байхдаа ажлаа үргэлжлүүлж болно, зөвхөн ИЛГЭЭХ нь хаагдана.
+   */
+  const inReview = !!flow
+    && flow[HF.status] !== STATUS.transferred
+    && reviewStage !== "company";
+  /**
+   * Урсгалын мөрийн ХАМГИЙН СҮҮЛИЙН утга — багц ачаалах эффектэд.
+   *
+   * ⚠️ ЯАГААД REF, ХАМААРАЛ БИШ: `flow` нь `useHyanaltRows`-ийн кэшээс ирдэг
+   *    бөгөөд хяналтын жагсаалт шинэчлэгдэх бүрд ШИНЭ объект болно. Ачаалах
+   *    эффектийн хамаарлын жагсаалтад тавибал 1,400 мөр + илгээлт нь
+   *    бүртгэлийн хөдөлгөөн болгонд ДАХИН татагдаж, хэрэглэгчийн засварын
+   *    дунд `setRows` дуудагдана. Overlay-ийн нөхцөлд зөвхөн эффект АЖИЛЛАХ
+   *    агшны утга хэрэгтэй тул ref хангалттай.
+   */
+  const flowRef = useRef(flow);
+  flowRef.current = flow;
   /*
    * ⚠️ Өнөөдрийн огноог зурагдах бүрд БИШ, НЭГ л удаа авна — эс бөгөөс
    *    зурагдалт цэвэр биш болж, шөнө дундаас хойш зөрчил үүснэ.
@@ -507,20 +572,14 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   /** Гүйцэтгэлийн нүд засагдахгүй: хуудас түгжээтэй ЭСВЭЛ гүйцэтгэгч биш */
   const noPerf = noEdit || !canPerf;
 
-  /**
-   * ЭНЭ АГШИН ХЯНАЛТАД ОРСОН УУ — зөвхөн МЭДЭЭЛЭЛ (түгжээ биш).
-   *
-   * Урсгалын мөр нь агшны ЭХНИЙ мөрийн OBJECTID-гаар (`sheetOid`) эсвэл
-   * илгээсэн өдрөөрөө танигдана.
+  /*
+   * ⚠️ `submittedToday` УСТСАН (2026-09-04). Тэр нь «өнөөдөр архивт агшин
+   *    үүссэн БА хяналтын бүртгэлд тохирох мөр бий юу» гэсэн ӨГӨГДЛИЙН
+   *    таамаг байв — илгээлт архивт бичигдэхээ больсон тул мөрийн OBJECTID
+   *    ч, `buglusun_ognoo` ч илгээлттэй холбогдохоо болив. Одоо байдлыг
+   *    хяналтын урсгалын мөр (`flow`) ШУУД хэлнэ: `inReview` (хянагчийн гар
+   *    дээр) ба `returned` (буцаагдсан) хоёр.
    */
-  const submittedToday = useMemo(() => {
-    if (locked || !publishedToday || !rows.length) return false;
-    const first = rows[0].oid;
-    return hyRows.some(
-      (r) => r[HF.bagts] === pkg.group
-        && (r[HF.sheetOid] === first || String(r[HF.companySent] ?? "").slice(0, 10) === snapDay),
-    );
-  }, [locked, publishedToday, rows, hyRows, pkg.group, snapDay]);
 
   /**
    * ХЯНАЛТАД ИЛГЭЭЛТ УНАСАН уу — ЗӨВХӨН ЭНЭ СЕШНИЙ нийтлэлээс.
@@ -542,10 +601,30 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    */
   const [submitFailed, setSubmitFailed] = useState(false);
   const [resending, setResending] = useState(false);
+  /**
+   * ЭНЭ БАГЦЫН ИДЭВХТЭЙ ИЛГЭЭЛТ (`sub|<pkgKey>`) — ачаалахад уншигдана.
+   *
+   * ⚠️ Хоёр зорилготой: (1) хуудсанд илгээсэн тоог давхарлаж харуулах
+   *    (илгээсэн ажил дэлгэцээс алга болох ЁСГҮЙ); (2) дахин илгээхэд ХУУЧИН
+   *    payload дээр НЭГТГЭХ (`mergeSubmission`) — эс бөгөөс өмнөх илгээлтийн
+   *    нүднүүд чимээгүй унтарна.
+   */
+  const [staged, setStaged] = useState<StagedSubmission | null>(null);
+  /**
+   * ХАДГАЛАГДСАН ч ХЯНАЛТЫН БҮРТГЭЛ ҮҮСЭЭГҮЙ илгээлтийн мөрийн дугаар ба өдөр.
+   *
+   * ⚠️ 2026-09-04: `resend` урьд нь `rows[0].oid` (АРХИВЫН мөр) ба `snapMs`
+   *    (архивын агшин)-ыг явуулдаг байв. Илгээлт архивт бичигдэхээ больсон
+   *    тул тэр хоёр нь одоо БУРУУ заалт өгнө — хянагч огт өөр (хуучин) жааз
+   *    руу заасан бүртгэл авна. Тиймээс дахин илгээх зам нь ЯГ ижил
+   *    (илгээлтийн OBJECTID, бөглөсөн өдөр) хосыг давтана.
+   */
+  const [stagedOid, setStagedOid] = useState<number | null>(null);
+  const [stagedFillMs, setStagedFillMs] = useState<number | null>(null);
   const resend = async () => {
-    if (resending || !rows.length || snapMs == null) return;
+    if (resending || stagedOid == null || stagedFillMs == null) return;
     setResending(true);
-    const rv = await submitForReview(pkg.group, snapMs, rows[0].oid);
+    const rv = await submitForReview(pkg.group, stagedFillMs, stagedOid);
     setResending(false);
     if (rv.ok) { setSubmitFailed(false); reloadHy(); done(tr('Хяналтад илгээв ({0})', rv.id)); }
     else setErr(rv.error);
@@ -788,6 +867,12 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     /* ⚠️ Илгээлт унасны туг нь НЭГ багцынх — үлдээвэл шинэ багцад худал
        анхааруулга үүснэ. */
     setSubmitFailed(false);
+    /* ⚠️ Илгээлтийн төлөв ч БАГЦАД харьяалагдана: хуучин багцын `staged`
+       үлдвэл шинэ багцын илгээлт түүн дээр НЭГТГЭГДЭЖ, өөр багцын нүднүүд
+       буруу payload-д орно. */
+    setStaged(null);
+    setStagedOid(null);
+    setStagedFillMs(null);
     setBusy(true);
     setErr("");
     setRows([]);
@@ -801,14 +886,54 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     setEdit(null);
     loadSchema(pkg)
       .then(async (schema) => {
-        const r = await loadRows(pkg, schema, view?.day);
+        const nb = schema.bld.length;
+        /* ⚠️ `view.subOid` байвал `view.day`-г ҮЛ ТООНО (2026-09-04): илгээлт
+           нь АРХИВЫН СҮҮЛИЙН жааз дээрх зөрүү тул хуучин агшин дээр
+           давхарлавал хянагч огт өөр тоо харна. `day` нь зөвхөн ХУУЧИН
+           (архивын OBJECTID-тай) бүртгэлийн зам дээр үлдэнэ. */
+        const r = await loadRows(pkg, schema, view?.subOid ? undefined : view?.day);
         if (!alive) return;
+        /* ── ИЛГЭЭЛТИЙН OVERLAY ───────────────────────────────────────────
+         * Дүрэм 3 (компанийн хуудас) ба 4 (хянагчийн хуудас): архивын сүүлийн
+         * жааз + илгээлтийн зөрүү.
+         *
+         * ⚠️ Илгээсэн тоо ДЭЛГЭЦЭЭС АЛГА БОЛОХ ЁСГҮЙ: илгээлт архивт
+         *    бичигдэхээ больсон тул давхарлахгүй бол гүйцэтгэгч «миний
+         *    илгээсэн ажил алга болжээ» гэж хараад дахин бөглөнө.
+         *
+         * ⚠️ `done|` (батлагдсан) илгээлтийг давхарлахгүй — түүний утга
+         *    архивын шинэ жаазанд аль хэдийн БАЙГАА тул давхар тоологдоно.
+         *
+         * ⚠️ Уншилт УНАВАЛ чимээгүй (`null`) — суурь жааз нь ямар ч
+         *    тохиолдолд харагдах ёстой; илгээлтгүй хуудас нь хоосон хуудсаас
+         *    хамаагүй дээр.
+         */
+        let sub: StagedSubmission | null = null;
+        try {
+          sub = view?.subOid
+            ? await loadSubmissionByOid(view.subOid)
+            : await loadActiveSubmission(pkg.key);
+        } catch {
+          sub = null;
+        }
+        if (!alive) return;
+        /* ⚠️ `Шилжүүлсэн` (батлагдсан) урсгалын дор давхарлахгүй: тэр мөчлөг
+           дууссан бөгөөд агуулга нь архивт орсон. Хянагчийн харагдац
+           (`view.subOid`) нь ТУХАЙН илгээлтийг заасан тул урсгалаас
+           хамаарахгүй. */
+        const f = flowRef.current;
+        const useSub = !!sub && !sub.done
+          && (!!view?.subOid || !f || f[HF.status] !== STATUS.transferred);
+        const ov = useSub && sub ? overlaySubmission(r.rows, sub.payload, schema, nb) : null;
         // ⚠️ Мөр нь ЭНЭ багцынх болсныг ноорогийн эффектүүдэд мэдэгдэнэ.
         loadedPkgRef.current = pkg.key;
         setSc(schema);
-        setRows(r.rows);
-        setAsOf(r.asOf);
-        setAsOfOrig(r.asOf);
+        setStaged(useSub ? sub : null);
+        setRows(ov ? ov.rows : r.rows);
+        /* ⚠️ `null ≠ 0`: илгээлт «Шинэчлэгдсэн огноо»-г хөндөөгүй бол
+           `ov.asOf` нь `null` — тэр үед архивынхыг АВНА, 0 болгохгүй. */
+        setAsOf(ov?.asOf ?? r.asOf);
+        setAsOfOrig(ov?.asOf ?? r.asOf);
         setSnapDay(r.snapshot != null ? msToDay(r.snapshot) : "");
         setSnapMs(r.snapshot ?? null);
         // ⚠️ Анх нээхэд БҮХ давхарга ДЭЛГЭЭСТЭЙ (хэрэглэгчийн шийдвэр,
@@ -826,7 +951,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     return () => {
       alive = false;
     };
-  }, [pkg, view?.day]);
+  }, [pkg, view?.day, view?.subOid]);
 
   // Үйлчилгээнд огноо огт бичигдээгүй бол `<select>` эхний мөрөө харуулах ч
   // төлөв нь `null` хэвээр үлдэж хүснэгт бүхэлдээ хоосон харагдана. Тиймээс
@@ -870,13 +995,13 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    */
   const [adds, setAdds] = useState<NewRow[]>([]);
 
-  /** Бүлгийн СҮҮЛИЙН удмын дараах индекс — сүүлчийн аргын байрлал. */
-  const afterGroup = (list: SheetRow[], p: number) => {
-    const d = list[p].depth;
-    let i = p + 1;
-    while (i < list.length && list[i].depth > d) i += 1;
-    return i;
-  };
+  /*
+   * ⚠️ `afterGroup` ЭНДЭЭС ХАСАГДСАН (2026-09-04) — `sheetFrame.insertAdds`
+   *    дотор ЯГ ХЭВЭЭР амьдарч байна. Хоёр хуулбар үлдээвэл нэмсэн мөрийн
+   *    байрлал дэлгэц дээр өөр, батлагдахад өөр гарах эрсдэлтэй.
+   *    `siblingSlot` нь ЭНД ҮЛДСЭН: `addRow` нь мөр нэмэхийг ЗӨВШӨӨРӨХ эсэхийг
+   *    (жинхэнэ ах дүүгийн байрлал байгаа эсэх) урьдчилан шалгадаг.
+   */
 
   /**
    * ШИНЭ МӨРИЙГ ОРУУЛАХ БАЙРЛАЛ — ЖИНХЭНЭ АХ ДҮҮГИЙНХЭЭ АРД.
@@ -919,75 +1044,14 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    * үр дүнгээ шууд харна.
    */
   const withAdds = useCallback(
-    (base: SheetRow[]): SheetRow[] => {
-      if (!adds.length || !sc || !nBld) return base;
-      const out = base.slice();
-      for (const a of adds) {
-        /*
-         * ЭЦЭГ БҮЛГИЙГ ОЛОХ — нэр БА байрлал ХОЁУЛАНГААР.
-         *
-         * ⚠️ (№ + Ажлын нэр) хос нь ДАВХАРДДАГ. Багц 1 (9 давхар)-д «10 ·
-         * БУСАД АЖИЛ» ба «6 · ТОНОГ ТӨХӨӨРӨМЖ» тус бүр ХОЁР удаа тааралдана
-         * (блок бүрт нэг). Зөвхөн нэрээр хайвал `findIndex` эхнийхийг нь авч,
-         * менежерийн нэмсэн ажил ӨӨР БЛОКИЙН бүлэгт чимээгүй очно.
-         *
-         * ⚠️ Харин зөвхөн байрлалаар (`parentIdx`) ч болохгүй: өмнөх нэмэлт
-         * мөр дээгүүр нь орсон бол индекс гулсана, мөн эх хүснэгт өөрчлөгдөж
-         * болно.
-         *
-         * Тиймээс нэрээр таарах БҮХ нэрийдлийг цуглуулж, дарсан байрлалд
-         * ХАМГИЙН ОЙРХОНЫГ нь сонгоно — хоёр эрсдэлийг зэрэг барина.
-         */
-        const cands: number[] = [];
-        for (let i = 0; i < out.length; i += 1) {
-          const r = out[i];
-          if (r.group && r.no === a.parentNo && r.work === a.parentWork) cands.push(i);
-        }
-        if (!cands.length) continue;               // эцэг алга — мөрийг алгасна
-        let p = cands[0];
-        for (const i of cands) {
-          if (Math.abs(i - a.parentIdx) < Math.abs(p - a.parentIdx)) p = i;
-        }
-        const parent = out[p];
-        /* ⚠️ ГҮН нь дараагийн ачаалалтад ӨМНӨХ мөрөөс сэргээгддэг тул ЭНД ч
-           яг түүгээр нь өгнө — эс бөгөөс нийтлэхийн өмнөх ба дараах шатлал
-           ЧИМЭЭГҮЙ зөрнө. `siblingSlot` олдсон үед энэ нь `parent.depth + 1`
-           болно; олдоогүй (зөвхөн хуучин ноорогт үлдсэн) мөрд ядаж дэлгэц ба
-           өгөгдөл хоёр НИЙЦНЭ. */
-        const at = siblingSlot(out, p) ?? afterGroup(out, p);
-        out.splice(at, 0, {
-          oid: a.oid,
-          no: a.no,
-          /* ⚠️ Ажлын код нь СЕРВЕР дээр агшин бүрд 1…N-ээр дүүрдэг тул
-             нийтлээгүй шинэ мөрд хараахан БАЙХГҮЙ — `null`. Энд өөрсдөө
-             таамаглаж дугаар өгвөл нийтлэхэд серверийнхтэй зөрнө. */
-          des: null,
-          ham: null,
-          work: a.work,
-          depth: at > 0 ? out[at - 1].depth : parent.depth + 1,
-          group: false,
-          // ⚠️ Жин/мөнгө ОРОХГҮЙ — `computeAll` Обьём×Нэгж өртгөөс өөрөө бодно.
-          wC: null,
-          wD: null,
-          vol: a.vol,
-          unit: a.unit,
-          money: null,
-          act: new Array(nBld).fill(null),
-          obyem: new Array(nBld).fill(null),
-          start: new Array(nBld).fill(null),
-          end: new Array(nBld).fill(null),
-          /* Үйлчилгээнд бичигдэх ЦОРЫН ГАНЦ талбарууд — үлдсэнийг нийтлэх
-             үед `computeAll`-ийн үр дүнгээр бөглөнө. */
-          raw: {
-            [sc.f.no]: a.no,
-            [sc.f.work]: a.work,
-            [sc.f.vol]: a.vol,
-            [sc.f.unit]: a.unit,
-          },
-        });
-      }
-      return out;
-    },
+    /* ⚠️ ХЭРЭГЖИЛТ НЬ `sheetFrame.insertAdds`-Д ШИЛЖСЭН (2026-09-04) —
+       эцэг олох (`parentOf`), ах дүүгийн байрлал (`siblingSlot`), гүн
+       сэргээх бүх дүрэм тайлбартайгаа тэнд бүтнээрээ байна. ЯАГААД: ЯГ ижил
+       оруулалтыг компанийн хуудас (энэ), хянагчийн overlay ба ерөнхий
+       менежерийн батламжийн жааз ГУРВУУЛАА хийдэг — гурван хуулбар
+       салбарлавал нэмсэн ажил гурван өөр газар буух эрсдэлтэй. */
+    (base: SheetRow[]): SheetRow[] =>
+      !sc || !nBld ? base : insertAdds(base, adds, sc, nBld),
     [adds, sc, nBld],
   );
 

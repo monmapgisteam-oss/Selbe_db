@@ -47,7 +47,7 @@ let tableUrlCache: string | undefined;
 let ownerMismatch = false;
 
 /** IdentityManager-аас идэвхтэй token + нэвтэрсэн хэрэглэгч */
-async function getAuth(): Promise<{ token: string; user: string } | null> {
+export async function getAuth(): Promise<{ token: string; user: string } | null> {
   try {
     const { default: esriId } = await import('@arcgis/core/identity/IdentityManager');
     const cred = esriId.findCredential(`${AUTH.portalUrl.replace(/\/+$/, '')}/sharing`);
@@ -161,7 +161,7 @@ async function createTable(token: string, user: string): Promise<string | null> 
  * ⚠️ Зөвхөн ОЛДСОН URL кэшлэгдэнэ: `null`-ыг кэшлэвэл порталын хайлтын түр
  *    саат сешн даяар тогтмолжиж, ноорог хэзээ ч алсад очихгүй болно.
  */
-async function tableUrl(canCreate: boolean): Promise<string | null> {
+export async function tableUrl(canCreate: boolean): Promise<string | null> {
   if (tableUrlCache) return tableUrlCache;
   const auth = await getAuth();
   if (!auth) return null;
@@ -175,14 +175,14 @@ async function tableUrl(canCreate: boolean): Promise<string | null> {
 
 type FeatureLayerMod = typeof import('@arcgis/core/layers/FeatureLayer').default;
 type FeatureLayerInst = InstanceType<FeatureLayerMod>;
-async function layer(url: string): Promise<FeatureLayerInst> {
+export async function layer(url: string): Promise<FeatureLayerInst> {
   const { default: FeatureLayer } = (await import('@arcgis/core/layers/FeatureLayer')) as { default: FeatureLayerMod };
   return new FeatureLayer({ url });
 }
 
 /** «хэрэглэгч|багц» — жижиг үсгээр, SQL-д аюулгүй байхаар хашилт нь давхарлагдана */
 const keyOf = (user: string, pkgKey: string) => `${user.toLowerCase()}|${pkgKey}`;
-const sqlStr = (s: string) => `'${s.replace(/'/g, "''")}'`;
+export const sqlStr = (s: string) => `'${s.replace(/'/g, "''")}'`;
 
 export type RemoteDraft = { at: number; payload: string };
 

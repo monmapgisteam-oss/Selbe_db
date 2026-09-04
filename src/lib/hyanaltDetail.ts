@@ -12,11 +12,21 @@
  * илгээсэн ЯГ АГШИН (UTC), архивын `buglusun_ognoo` нь БӨГЛӨСӨН ӨДӨР
  * (нутгийн цагаар шөнө дунд) — хоёр нь цагийн бүсээс хамаарч ӨӨР өдөрт
  * унаж болно. Эх мөрийн OBJECTID нь тэр агшинд ЯГ хамаарна.
+ *
+ * ⚠️ 2026-09-04: `Эх_мөрийн_дугаар` нь одоо ИЛГЭЭЛТИЙН мөрийн OBJECTID
+ * (`Selbe_Guitsetgel_Draft`-ийн `sub|<pkgKey>`) — гүйцэтгэл нь ерөнхий менежер
+ * баталтал архивт БАЙХГҮЙ. Тиймээс хянагчид «архивын сүүлийн жааз + илгээлтийн
+ * diff» гэсэн ХАРАГДАЦ угсарч өгнө (`loadStaged`). Хуучин (өөрчлөлтөөс өмнөх)
+ * ба батлагдсан (`done|…`) мөрүүд нь архивт байгаа тул хуучин зам (`loadArchived`)
+ * хэвээр ажиллана — гурван зам НЭГ `Submission` бүтэц буцаана.
  */
 
 import { PKGS, loadSchema } from '@/modules/sheet/bagts.pkg';
 import { TREES } from '@/modules/sheet/bagts.trees';
-import { msToDay } from '@/modules/sheet/bagtsSheet';
+import { computeAll, loadRows, msToDay } from '@/modules/sheet/bagtsSheet';
+import { overlaySubmission } from '@/modules/sheet/sheetFrame';
+import { loadSubmissionByOid, type SubmissionPayload } from '@/lib/submission';
+import { t as tr } from '@/lib/i18nCore';
 
 /** Нэг мөр — «Гүйцэтгэл бөглөх» хуудасны багануудтай ижил бүрэлдэхүүн */
 export type Filled = {
@@ -103,6 +113,14 @@ export type Submission = {
   filledCount: number;
   /** Өөрчлөгдсөн нүднүүд — дарж хүснэгт рүү үсрэх жагсаалт */
   changes: Change[];
+  /**
+   * ИЛГЭЭЛТИЙН мөрийн OBJECTID — хараахан архивлагдаагүй (staged) харагдац.
+   *
+   * ⚠️ Байвал бөглөх хуудсыг ӨДРӨӨР биш, ЭНЭ илгээлтээр нээнэ: архивт тэр
+   *    өдрийн жааз БАЙХГҮЙ учир `day`-гаар нээвэл хянагч хоосон (эсвэл огт
+   *    өөр) хуудас харна.
+   */
+  subOid?: number;
 };
 
 /**
@@ -130,12 +148,166 @@ const num = (v: unknown): number | null =>
   typeof v === 'number' && Number.isFinite(v) ? v : null;
 
 /**
+ * ХЯНАГЧИД ХАРУУЛАХ АГУУЛГА — гурван зам (дизайн D).
+ *
+ * 1. `sheetOid` нь ИЛГЭЭЛТИЙН мөр бөгөөд хараахан батлагдаагүй (`sub|…`)
+ *    → `loadStaged`: архивын сүүлийн жааз + илгээлтийн overlay.
+ * 2. Илгээлт батлагдсан (`done|…`) → архивт жааз үүссэн тул `payload.archiveOid`-оор
+ *    ХУУЧИН зам.
+ * 3. Илгээлт огт олдохгүй (энэ өөрчлөлтөөс өмнөх мөрүүд) → `sheetOid` нь өөрөө
+ *    архивын OBJECTID — ХУУЧИН зам.
+ *
+ * @param bagts    хяналтын бүртгэл дэх «Багц» (жиш. «Багц 1»)
+ * @param sheetOid `Эх_мөрийн_дугаар` — илгээлтийн (эсвэл хуучин мөрд архивын) OBJECTID
+ */
+export async function loadSubmission(bagts: string, sheetOid: number): Promise<Submission | null> {
+  /*
+   * ⚠️ Уншилтын алдааг ЗАЛГИХГҮЙ ч ЗОГСООХГҮЙ: `loadSubmissionByOid` нь
+   *    алдаа гарвал өөрөө `null` буцаадаг (илгээлтийн хүснэгт байхгүй орчинд
+   *    хуучин зам ажиллах ёстой).
+   */
+  const staged = await loadSubmissionByOid(sheetOid);
+  if (staged && !staged.done && staged.payload.archiveOid == null)
+    return loadStaged(bagts, sheetOid, staged.payload);
+  /*
+   * ⚠️ Батлагдсан илгээлтийн `archiveOid` нь архивын ЭХНИЙ мөрийн дугаар —
+   *    түүгээр хуучин зам яг тэр агшныг олно. Дугааргүй бол (хаах алхам
+   *    унасан) `sheetOid`-оор оролдоно: тэр нь архивын мөр биш тул `null`
+   *    буцах ба хянагч «агшин олдсонгүй» гэсэн ил мессеж харна.
+   */
+  const oid = staged?.payload.archiveOid ?? sheetOid;
+  return loadArchived(bagts, oid);
+}
+
+/**
+ * ХАРААХАН АРХИВЛАГДААГҮЙ ИЛГЭЭЛТИЙГ хянагчид харуулна.
+ *
+ * Архивын СҮҮЛИЙН жааз дээр илгээлтийн diff-ийг давхарлаж (`overlaySubmission`),
+ * бөглөх хуудсынхтай ЯГ ижил мөрүүдийг угсарна — `FillNew` нь `view.subOid`
+ * үед ЯГ ижил зүйлийг хийдэг тул мөрийн индекс хоёр талд тэнцэнэ (өөрчлөлтийн
+ * жагсаалтаас дарж үсрэх нь тэр индекс дээр тулгуурладаг).
+ *
+ * ⚠️ Тоонуудыг ЭНД `computeAll`-аар бодно — үйлчилгээнээс уншихгүй. Илгээлт нь
+ *    архивт хараахан ороогүй тул уншиж авах газар БАЙХГҮЙ; хянагчийн харах тоо
+ *    нь бөглөгчийн харснаас зөрөх ёсгүй тул ЯГ ижил томъёог (нэг эх сурвалж)
+ *    дуудна.
+ */
+async function loadStaged(
+  bagts: string,
+  subOid: number,
+  pl: SubmissionPayload,
+): Promise<Submission | null> {
+  const pkg = PKGS.find((p) => p.key === pl.pkgKey);
+  if (!pkg) throw new Error(tr('Илгээлтийн багц олдсонгүй: {0}', pl.pkgKey));
+  /*
+   * ⚠️ Багц зөрвөл ЗОГСОНО — өөр багцын гүйцэтгэлийг энэ хяналтын мөрөнд
+   *    харуулбал хянагч огт өөр ажлыг батлана.
+   */
+  if (pkg.group !== bagts)
+    throw new Error(tr('Илгээлт «{0}» багцынх — хяналтын бүртгэл «{1}»', pkg.group, bagts));
+
+  const sc = await loadSchema(pkg);
+  const nBld = sc.bld.length;
+  const hasObyem = sc.obyem.map((f) => !!f);
+  const loaded = await loadRows(pkg, sc);
+  const ov = overlaySubmission(loaded.rows, pl, sc, nBld);
+  const asOf = ov.asOf ?? loaded.asOf;
+  /*
+   * ⚠️ `asOf` байхгүй бол төлөвлөгөөт хувь бүхэлдээ утгагүй — 0 гэж
+   *    таамаглахгүй (`null ≠ 0`), ил алдаа болгоно.
+   */
+  if (asOf == null) throw new Error(tr('«Шинэчлэгдсэн огноо» алга тул гүйцэтгэлийг бодох боломжгүй'));
+  const c = computeAll(ov.rows, nBld, asOf, {}, {}, hasObyem);
+
+  /* Обьёмтой блокуудын дараалал — `blocks`/`cells`/`acts` бүгд ҮҮГЭЭР индекслэгдэнэ. */
+  const blocks = sc.bld.filter((_, i) => sc.obyem[i]);
+  /** Блокийн ЖИНХЭНЭ индекс (`b`) → `blocks` доторх багана; обьёмгүй бол `-1`. */
+  const colOf: number[] = [];
+  {
+    let k = 0;
+    for (let b = 0; b < nBld; b += 1) colOf[b] = sc.obyem[b] ? k++ : -1;
+  }
+  /* Overlay-аас ӨМНӨХ утга — «юунаас юу болсон» гэдгийг зөвхөн үүгээр мэдэнэ. */
+  const baseObyem = new Map<number, (number | null)[]>();
+  for (const r of loaded.rows) baseObyem.set(r.oid, r.obyem);
+  /* Илгээлт БУУСАН нүднүүд — `${oid}:${b}` */
+  const touched = new Set(ov.cellKeys);
+
+  const changes: Change[] = [];
+  const filled: Filled[] = ov.rows.map((r, i) => {
+    const base = baseObyem.get(r.oid);
+    const cells: (number | null)[] = [];
+    const acts: (number | null)[] = [];
+    const before: (number | null)[] = [];
+    const changed: boolean[] = [];
+    for (let b = 0; b < nBld; b += 1) {
+      if (colOf[b] < 0) continue;
+      const to = c[i].obyem[b];
+      /* ⚠️ Шинэ мөрд (нэмсэн ажил) суурь БАЙХГҮЙ — `null` (0 БИШ). */
+      const from = base ? base[b] : null;
+      cells.push(to);
+      acts.push(c[i].act[b]);
+      before.push(from);
+      changed.push(touched.has(`${r.oid}:${b}`) && from !== to);
+    }
+    changed.forEach((yes, k) => {
+      if (!yes) return;
+      changes.push({
+        row: i,
+        col: k,
+        no: r.no,
+        work: r.work || '—',
+        block: blocks[k] ?? String(k + 1),
+        from: before[k],
+        to: cells[k],
+      });
+    });
+    return {
+      cells,
+      acts,
+      changed,
+      before,
+      depth: r.depth,
+      group: r.group,
+      no: r.no,
+      work: r.work || '—',
+      wC: c[i].C,
+      wD: c[i].D,
+      wE: c[i].E,
+      vol: r.vol,
+      sum: c[i].obyemSum,
+      unit: r.unit,
+      money: c[i].H,
+      plan: c[i].I,
+      act: c[i].J,
+      ratio: c[i].K,
+    };
+  });
+
+  return {
+    pkgLabel: pkg.label,
+    pkgKey: pkg.key,
+    /* ⚠️ Мэдээллийн зорилготой — `subOid` байгаа тул бөглөх хуудас үүгээр нээгдэхгүй. */
+    day: msToDay(pl.fillMs),
+    blocks,
+    /* Илгээлт нь суурь жаазтайгаа шууд жишигдсэн — таамаг байхгүй. */
+    compared: true,
+    prevError: false,
+    rows: ov.rows.length,
+    filled,
+    filledCount: filled.filter((f) => (f.sum ?? 0) > 0).length,
+    changes,
+    subOid,
+  };
+}
+
+/**
  * Тухайн хянуулалтын АРХИВЫН АГШНЫГ олж, бөглөсөн ажлуудыг буцаана.
  *
  * @param bagts    хяналтын бүртгэл дэх «Багц» (жиш. «Багц 1»)
- * @param sheetOid `Эх_мөрийн_дугаар` — архивт нэмэгдсэн ЭХНИЙ мөрийн OBJECTID
+ * @param sheetOid архивт нэмэгдсэн ЭХНИЙ мөрийн OBJECTID
  */
-export async function loadSubmission(bagts: string, sheetOid: number): Promise<Submission | null> {
+async function loadArchived(bagts: string, sheetOid: number): Promise<Submission | null> {
   // Нэг багцад 9 ба 12 давхрын ХОЁР үйлчилгээ байж болно — аль нь болохыг эх мөрөөр нь тогтооно
   const cands = PKGS.filter((p) => p.group === bagts);
   if (!cands.length || !sheetOid) return null;
