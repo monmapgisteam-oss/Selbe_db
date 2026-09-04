@@ -51,7 +51,7 @@ import {
   usedFields, CF_KPI_FIELDS, CF_PASS_GROUPS,
   dedOrNull, paidOrNull, netOrNull, netTotalOrNull,
 } from '@/lib/finCard';
-import { mnt, num, text, cat } from '@/lib/format';
+import { mnt, num, text, cat, date } from '@/lib/format';
 import { fitLabels, textW, useChartWidth } from '@/lib/chartFit';
 import { ResizableTable } from '@/components/ResizableTable';
 import { applyAll } from '@/lib/tableWrite';
@@ -1125,6 +1125,31 @@ export const finLagLevel = (
  * хэрэглэгч бичээд, дараа нь чимээгүй алга болоход гайхна.
  */
 const SERVER_RO = /^(objectid|globalid|shape|shape__|creationdate|creator|editdate|editor)/i;
+
+/**
+ * EDITOR TRACKING — «хэн, хэзээ зассан».
+ *
+ * ⚠️ 2026-09-04-нд `Cashflow_0904` дээр асаагдав. Сешний ногоон тэмдэглэгээ
+ * (`cellSaved`) нь хуудас сэргээхэд арилдаг тул удаан хугацааны хариулт нь
+ * ЭНЭ — үйлчилгээ өөрөө мөр бүрийн сүүлийн засварыг тамгалдаг.
+ *
+ * ⚠️ МӨРИЙН түвшний бүртгэл. ArcGIS нь «аль НҮД өөрчлөгдсөн» гэдгийг
+ * ХАДГАЛДАГГҮЙ — зөвхөн мөр хэзээ, хэний гараар сүүлд хөндөгдсөнийг. Тиймээс
+ * нүдний нарийвчлалыг сешний ногооноор нөхөж, мөрийн нарийвчлалыг эндээс авна.
+ * Хоёрыг хольж «энэ нүдийг тэр хүн зассан» гэж бичвэл ХУДАЛ мэдэгдэл болно.
+ *
+ * ⚠️ Талбар БАЙХГҮЙ ч байж болно (Editor Tracking унтраасан үйлчилгээ) —
+ * тэр үед тэмдэглэгээ зүгээр л гарахгүй, хүснэгт хэвийн ажиллана.
+ */
+const ET_FIELDS = { editor: 'Editor', editDate: 'EditDate' } as const;
+
+type EditStamp = { who: string; ms: number } | null;
+
+const editStamp = (r: Row): EditStamp => {
+  const ms = Number(r[ET_FIELDS.editDate]);
+  if (!Number.isFinite(ms) || ms <= 0) return null;
+  return { who: String(r[ET_FIELDS.editor] ?? '').trim(), ms };
+};
 
 const NUMERIC_TYPES = new Set([
   'esriFieldTypeDouble', 'esriFieldTypeInteger', 'esriFieldTypeSingle',
@@ -2299,7 +2324,24 @@ function FullTable({
             const dropped = p.oid != null && del.has(p.oid);
             return (
               <tr key={p.oid ?? `r${i}`} className={dropped ? f.rowDrop : undefined}>
-                <td className={f.xlNo} style={{ width: FZ_DEF[0], minWidth: FZ_DEF[0] }}>{i + 1}</td>
+                {(() => {
+                  /* ⚠️ Тамгыг № БАГАНАД тавина, тусдаа багана НЭМЭХГҮЙ: хүснэгт
+                     аль хэдийн 33 баганатай бөгөөд хоёр багана нэмбэл гол
+                     өгөгдөл улам баруун тийш түлхэгдэнэ. № нь ямар ч тохиолдолд
+                     царцсан тул тамга ҮРГЭЛЖ нүдний өмнө байна. */
+                  const st = editStamp(p.row);
+                  return (
+                    <td
+                      className={`${f.xlNo} ${st ? f.xlNoEdited : ''}`}
+                      style={{ width: FZ_DEF[0], minWidth: FZ_DEF[0] }}
+                      title={st
+                        ? tr('Сүүлд зассан: {0} · {1}', st.who || tr('тодорхойгүй'), date(st.ms))
+                        : undefined}
+                    >
+                      {i + 1}
+                    </td>
+                  );
+                })()}
                 {cols.map((c, ci) => xCell(p.row, p.oid, dropped, c, frz(ci), colSty(c, ci)))}
                 {edit && canRow && (
                   <td className={f.rowBtnCell}>

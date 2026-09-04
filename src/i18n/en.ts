@@ -3497,7 +3497,9 @@ const en: Record<string, string> = {
   "ХАБ": "HSE",
   "Ажиллаж буй хүн": "Workers on site",
   "Техник хэрэгсэл": "Equipment",
-  "Сүүлд бөглөсөн: {0}": "Last reported: {0}"
+  "Сүүлд бөглөсөн: {0}": "Last reported: {0}",
+  "Сүүлд зассан: {0} · {1}": "Last edited: {0} · {1}",
+  "тодорхойгүй": "unknown"
 };
 
 export default en;
