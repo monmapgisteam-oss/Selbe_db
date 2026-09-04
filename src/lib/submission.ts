@@ -135,13 +135,34 @@ const isRowKey = (x: unknown): x is [number, string] =>
   Array.isArray(x) && x.length >= 2 && Number.isInteger(x[0]) && isStr(x[1]);
 
 /**
+ * `fillMs`-ИЙН БОДИТ МУЖ — 2020-01-01-ээс өнөөдөр + 2 хоног.
+ *
+ * ⚠️ ЯАГААД (2026-09-04-ний аудит): `fillMs` нь батлагдахад архивын жаазны
+ *    `buglusun_ognoo` болдог бөгөөд `bagtsSheet.latestWhere` нь ХАМГИЙН ИХ
+ *    өдрийг «одоогийн» гэж сонгодог. Хүснэгт нь байгууллагын хэн ч засаж
+ *    болдог тул `fillMs = Date.UTC(2099,0,1)` гэсэн нэг бичлэг ирээдүйн
+ *    жааз үүсгэж, түүнээс хойш батлагдсан БҮХ жаазыг бөглөх хуудас,
+ *    хуваарь, дашбоардаас мөнхөд нуух байлаа. Илүү туйлын утга
+ *    (|ms| > 8.64e15) нь `msToDay` доторх `toISOString()`-ыг RangeError-оор
+ *    унагана.
+ * ⚠️ Мужаас гарсан бол payload-ыг БҮХЭЛД нь хаяна (fail-closed): илгээсэн
+ *    агшин/өдөр нь мэдэгдэхгүй илгээлтийг батлах боломжгүй. Гүйцэтгэгч
+ *    дахин илгээхэд `sub|` мөр дарж бичигддэг тул сэргээх зам нээлттэй.
+ */
+const FILL_MIN = Date.UTC(2020, 0, 1);
+const FILL_SLACK = 2 * 86_400_000;
+const isFillMs = (x: unknown): x is number =>
+  isFin(x) && Number.isInteger(x) && x >= FILL_MIN && x <= Date.now() + FILL_SLACK;
+
+/**
  * Түүхий JSON → шалгагдсан `SubmissionPayload`; эвдэрсэн бол `null`.
  *
  * ⚠️ FillNew-ийн `parseDraft`-тай ИЖИЛ ЁС: хүснэгт нь org доторх хэн ч засаж
  * болох тул итгэл нь localStorage-аас илүү байх ёсгүй. Нэг талбарын алдаа
  * бусад засварыг устгах ёсгүй — эвдэрсэн ХЭСГИЙГ л хаяна:
- *   · `v !== 1`, `pkgKey` хоосон, `cells` массив биш, `at`/`fillMs` тоо биш
- *     → `null` (илгээлтийн мөн чанар алга — ямар багцад, хэзээ гэдэг нь мэдэгдэхгүй);
+ *   · `v !== 1`, `pkgKey` хоосон, `cells` массив биш, `at` тоо биш, `fillMs`
+ *     бодит мужаас гадуур (`isFillMs`) → `null` (илгээлтийн мөн чанар алга —
+ *     ямар багцад, хэзээ гэдэг нь мэдэгдэхгүй);
  *   · `dates`/`adds`/`rowKeys` массив биш → хоосон массив (тэр хэсэг нь л орхигдоно);
  *   · массив доторх хэлбэргүй бичлэг → тэр бичлэг л хаягдана;
  *   · `adds`-ийн oid САЛАНГИД СӨРӨГ БҮХЭЛ байх ёстой (parseDraft-ийн дүрэм):
@@ -156,7 +177,7 @@ export function parseSubmission(raw: string): SubmissionPayload | null {
     if (d.v !== 1) return null;
     if (!isStr(d.pkgKey) || !d.pkgKey) return null;
     if (!Array.isArray(d.cells)) return null;
-    if (!isFin(d.at) || !isFin(d.fillMs)) return null;
+    if (!isFin(d.at) || !isFillMs(d.fillMs)) return null;
 
     const cells = (d.cells as unknown[]).filter(isPair).map(([k, v]): [string, string] => [k, v]);
     const dates = (Array.isArray(d.dates) ? (d.dates as unknown[]) : [])
@@ -265,20 +286,67 @@ const errMsg = (e: unknown): string => {
 
 type RowAttrs = { OBJECTID?: number; dkey?: string; at?: number; payload?: string };
 
-/** Хүснэгтийн мөр → `StagedSubmission`; payload задрахгүй бол `null` */
-function toStaged(a: RowAttrs | undefined): StagedSubmission | null {
-  if (!a || typeof a.OBJECTID !== 'number' || !a.payload) return null;
+/**
+ * ХАРИУ — «олдсонгүй» ба «уншиж чадсангүй» хоёрыг ЯЛГАНА.
+ *
+ * ⚠️ ЯАГААД (2026-09-04-ний аудитын CRITICAL олдвор): `loadSubmissionByOid`
+ *    нь алдаа гарсан ч, мөр байхгүй ч ялгаагүй `null` буцаадаг байв.
+ *    `hyanaltStore.archiveSubmission` тэр `null`-ыг «хуучин (legacy) мөр —
+ *    жааз нь аль хэдийн архивт бий» гэж тайлбарладаг тул сүлжээ түр тасрах,
+ *    токен дуусах, `tableUrl` null буцаах агшинд БАТЛАГДСАН илгээлт архивт
+ *    ОГТ БИЧИГДЭЛГҮЙ хяналтын мөр «Шилжүүлсэн» болж, дахин батлах зам
+ *    хаагддаг байлаа — компанийн бүтэн өдрийн гүйцэтгэл ул мөргүй алга
+ *    болно, хаана ч алдаа үлдэхгүй.
+ *
+ * Тиймээс БИЧИХ шийдвэр гаргадаг дуудагч (`archiveSubmission`, `publish`)
+ * `read*` хувилбарыг ашиглана; зөвхөн ХАРУУЛАХ зам (`load*`) чимээгүй
+ * `null`-аараа хэвээр.
+ */
+export type SubRead =
+  | { ok: true; sub: StagedSubmission | null }
+  | { ok: false; error: string };
+
+/**
+ * Хүснэгтийн мөр → уншилтын үр дүн.
+ *   · мөр огт алга                        → `{ok:true, sub:null}` (legacy зам зөвшөөрөгдөнө)
+ *   · `dkey` нь `sub|`/`done|` БИШ        → `{ok:true, sub:null}` (ноорогийн мөр — илгээлт биш)
+ *   · илгээлтийн мөр атал payload задрахгүй → `{ok:false}` (ЭНЭ нь илгээлт мөн
+ *     боловч уншигдсангүй — legacy гэж үзвэл гүйцэтгэл алга болно)
+ */
+function readRow(a: RowAttrs | undefined): SubRead {
+  if (!a || typeof a.OBJECTID !== 'number') return { ok: true, sub: null };
   const dkey = String(a.dkey ?? '');
-  if (!isSubmissionKey(dkey)) return null;
-  const payload = parseSubmission(String(a.payload));
-  if (!payload) return null;
+  if (!isSubmissionKey(dkey)) return { ok: true, sub: null };
+  const payload = a.payload ? parseSubmission(String(a.payload)) : null;
+  if (!payload) return { ok: false, error: tr('Илгээлт №{0}-ийн агуулга задарсангүй', a.OBJECTID) };
   /* Мөрийн `at` талбар нь payload.at-тай адил боловч хуучин/эвдэрсэн мөрд
      байхгүй байж болно — payload-оос нөхнө. */
   const at = isFin(a.at) ? Number(a.at) : payload.at;
-  return { oid: a.OBJECTID, at, done: dkey.startsWith(DONE_PREFIX), payload };
+  return { ok: true, sub: { oid: a.OBJECTID, at, done: dkey.startsWith(DONE_PREFIX), payload } };
 }
 
+/* ⚠️ Хуучин `toStaged` (мөр → `StagedSubmission`, алдааг `null` болгодог)
+   ХАСАГДСАН: `readRow` нь «мөр алга» ба «илгээлт атал уншигдсангүй» хоёрыг
+   ялгадаг болсон тул алдааг чимээгүй `null` болгох завсрын функц нь тэр
+   ялгааг буцаагаад устгах эрсдэлтэй. Чимээгүй хувилбар хэрэгтэй дуудагчид
+   `loadActiveSubmission`/`loadSubmissionByOid`-ыг ашиглана. */
+
 const OUT_FIELDS = ['OBJECTID', 'dkey', 'at', 'payload'];
+
+/**
+ * Уншихад бэлэн хүснэгтийн URL — `SubRead`-ийн ёсоор.
+ *
+ * ⚠️ ХОЁР ӨӨР «null»-ыг ЯЛГАНА (`tableUrl` хоёуланг нь `null` гэж нэгтгэдэг):
+ *   · нэвтрээгүй → `{ok:false}` — юу ч мэдэхгүй, шийдвэр гаргаж болохгүй;
+ *   · нэвтэрсэн боловч хүснэгт огт БАЙХГҮЙ → `{ok:true, url:null}` —
+ *     тэр орчинд илгээлт үүсэх БОЛОМЖГҮЙ тул «мөр байхгүй» нь БАТАЛГААТАЙ
+ *     бөгөөд хуучин (legacy) хяналтын мөрүүд хэвийн батлагдана.
+ */
+async function readUrl(): Promise<{ ok: true; url: string | null } | { ok: false; error: string }> {
+  const auth = await getAuth();
+  if (!auth) return { ok: false, error: tr('Нэвтрээгүй тул илгээлтийг уншиж чадсангүй') };
+  return { ok: true, url: await tableUrl(false) };
+}
 
 /**
  * Багцын ИДЭВХТЭЙ илгээлт (`sub|<pkgKey>`) — байхгүй/алдаа бол `null`.
@@ -288,19 +356,33 @@ const OUT_FIELDS = ['OBJECTID', 'dkey', 'at', 'payload'];
  *    хуудас overlay-гүй ч ачаалагдана.
  */
 export async function loadActiveSubmission(pkgKey: string): Promise<StagedSubmission | null> {
+  const r = await readActiveSubmission(pkgKey);
+  return r.ok ? r.sub : null;
+}
+
+/**
+ * Багцын ИДЭВХТЭЙ илгээлт — АЛДААГ ЯЛГАДАГ хувилбар.
+ *
+ * ⚠️ `publish` нь энэ хувилбарыг ашиглана: чимээгүй `null` дээр тулгуурлавал
+ *    уншилт унасан агшинд «идэвхтэй илгээлт байхгүй» гэж дүгнэж, өөр
+ *    хэрэглэгчийн ЯГ ОДОО хянагдаж буй `sub|` мөрийг бүтнээр нь дарж бичдэг
+ *    байв (upsert нь мөрийг dkey-гээр олдог тул тэр мөр рүү л бичнэ).
+ */
+export async function readActiveSubmission(pkgKey: string): Promise<SubRead> {
   try {
-    const url = await tableUrl(false);
-    if (!url) return null;
-    const fl = await layer(url);
+    const u = await readUrl();
+    if (!u.ok) return u;
+    if (!u.url) return { ok: true, sub: null };
+    const fl = await layer(u.url);
     const res = await fl.queryFeatures({
       where: `dkey = ${sqlStr(subKey(pkgKey))}`,
       outFields: OUT_FIELDS,
       returnGeometry: false,
       orderByFields: ['OBJECTID DESC'],
     });
-    return toStaged(res.features[0]?.attributes as RowAttrs | undefined);
-  } catch {
-    return null;
+    return readRow(res.features[0]?.attributes as RowAttrs | undefined);
+  } catch (e) {
+    return { ok: false, error: tr('Илгээлтийн төлөвийг шалгаж чадсангүй: {0}', errMsg(e)) };
   }
 }
 
@@ -314,19 +396,34 @@ export async function loadActiveSubmission(pkgKey: string): Promise<StagedSubmis
  *    (архивын OBJECTID) ажиллана.
  */
 export async function loadSubmissionByOid(oid: number): Promise<StagedSubmission | null> {
-  if (!Number.isInteger(oid) || oid <= 0) return null;
+  const r = await readSubmissionByOid(oid);
+  return r.ok ? r.sub : null;
+}
+
+/**
+ * Илгээлт OBJECTID-оор — АЛДААГ ЯЛГАДАГ хувилбар (`SubRead`).
+ *
+ * ⚠️ ЗӨВХӨН ЭНЭ хувилбарыг «архивт бичих эсэх» шийдвэрт хэрэглэнэ
+ *    (`hyanaltStore.archiveSubmission`, `FillNew`-ийн хянагчийн харагдац):
+ *    `{ok:true, sub:null}` нь «мөр огт байхгүй нь БАТАЛГААЖСАН» гэсэн үг тул
+ *    legacy зам руу унаж болно; `{ok:false}` нь «мэдэхгүй» — тэр үед юу ч
+ *    хийхгүй зогсоно.
+ */
+export async function readSubmissionByOid(oid: number): Promise<SubRead> {
+  if (!Number.isInteger(oid) || oid <= 0) return { ok: true, sub: null };
   try {
-    const url = await tableUrl(false);
-    if (!url) return null;
-    const fl = await layer(url);
+    const u = await readUrl();
+    if (!u.ok) return u;
+    if (!u.url) return { ok: true, sub: null };
+    const fl = await layer(u.url);
     const res = await fl.queryFeatures({
       where: `OBJECTID = ${oid}`,
       outFields: OUT_FIELDS,
       returnGeometry: false,
     });
-    return toStaged(res.features[0]?.attributes as RowAttrs | undefined);
-  } catch {
-    return null;
+    return readRow(res.features[0]?.attributes as RowAttrs | undefined);
+  } catch (e) {
+    return { ok: false, error: tr('Илгээлт №{0}-ийг уншиж чадсангүй: {1}', oid, errMsg(e)) };
   }
 }
 
@@ -345,6 +442,20 @@ export async function loadSubmissionByOid(oid: number): Promise<StagedSubmission
 export async function saveSubmission(
   pkgKey: string,
   payload: SubmissionPayload,
+  /**
+   * ХҮЛЭЭГДЭЖ БУЙ СУУРЬ (optimistic concurrency) — заавал биш.
+   *   · `undefined` → шалгахгүй (хуучин зан төлөв);
+   *   · `null`      → мөр БАЙХГҮЙ байх ёстой;
+   *   · `{at}`      → байгаа мөрийн `at` нь ЯГ энэ байх ёстой.
+   *
+   * ⚠️ ЯАГААД (2026-09-04-ний аудит): дуудагч талын «хуучирсан уу» шалгуур
+   *    нь ХОЁР ТУСДАА уншилтын хооронд (`loadActiveSubmission` → `saveSubmission`)
+   *    задгай цонхтой бөгөөд `payload.at` нь КЛИЕНТИЙН цагаар бичигддэг тул
+   *    цагийн зөрүүтэй хоёр машин дээр эрэмбийн харьцуулалт чимээгүй давдаг
+   *    байв — өөр хэрэглэгчийн илгээсэн нүднүүд ул мөргүй устана. Энд суурийг
+   *    бичих АГШИНД нь дахин тулгана: зөрвөл `ok:false`, юу ч бичигдэхгүй.
+   */
+  expect?: { at: number } | null,
 ): Promise<{ ok: true; oid: number } | { ok: false; error: string }> {
   if (payload.pkgKey !== pkgKey) {
     /* ⚠️ Өөр багцын diff-ийг энэ түлхүүрт бичвэл батлахад буруу багцын архив
@@ -367,15 +478,29 @@ export async function saveSubmission(
     const dkey = subKey(pkgKey);
     const found = await fl.queryFeatures({
       where: `dkey = ${sqlStr(dkey)}`,
-      outFields: ['OBJECTID'],
+      outFields: ['OBJECTID', 'at'],
       returnGeometry: false,
       orderByFields: ['OBJECTID ASC'],
     });
-    const oids = found.features
-      .map((f) => f.attributes?.OBJECTID as number)
-      .filter((x) => typeof x === 'number');
+    const feats = found.features.filter((f) => typeof f.attributes?.OBJECTID === 'number');
+    const oids = feats.map((f) => f.attributes.OBJECTID as number);
     const target = oids.length ? oids[oids.length - 1] : null;
     const dupes = oids.slice(0, -1);
+    /* ⚠️ СУУРИЙН ТУЛГАЛТ — дээрх `expect`-ийн тайлбар. Зөрсөн бол ЮУ Ч
+       бичихгүй буцна: дуудагч хуудсаа дахин ачаалж, нөгөө хүний илгээлт
+       дээр нэгтгэх ёстой. */
+    if (expect !== undefined) {
+      const curAt = target != null ? (feats[feats.length - 1].attributes.at as unknown) : null;
+      const same = expect === null
+        ? target == null
+        : target != null && isFin(curAt) && Number(curAt) === expect.at;
+      if (!same) {
+        return {
+          ok: false,
+          error: tr('Энэ багцад өөр хэрэглэгч илгээлт хийсэн байна — хуудсыг дахин ачаалж, ноорогоо сэргээгээд үргэлжлүүлнэ үү.'),
+        };
+      }
+    }
     const attrs = { dkey, usr: auth.user.toLowerCase(), pkg: pkgKey, at: payload.at, payload: raw };
     const edit = {
       ...(target != null

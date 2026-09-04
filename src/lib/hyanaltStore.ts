@@ -201,7 +201,7 @@ async function archiveSubmission(cur: Row): Promise<Archived> {
   const pkg = PKGS.find((p) => p.key === pl.pkgKey);
   if (!pkg) return { ok: false, error: tr('Илгээлтийн багц олдсонгүй: {0}', pl.pkgKey) };
 
-  const [{ loadRows, applyAdds, msToDay }, { overlaySubmission, buildFrame }] = await Promise.all([
+  const [{ loadRows, applyAdds, applyDeletes, msToDay }, { overlaySubmission, buildFrame }] = await Promise.all([
     import('@/modules/sheet/bagtsSheet'),
     import('@/modules/sheet/sheetFrame'),
   ]);
@@ -250,12 +250,32 @@ async function archiveSubmission(cur: Row): Promise<Archived> {
 
   const frame = buildFrame(ov.rows, sc, nBld, asOf, hasObyem, fillMs);
   let firstOid: number | null = null;
+  /* ⚠️ БИЧИГДСЭН МӨРИЙН ДУГААР — унасан үед буцааж устгахад ЗААВАЛ хэрэгтэй. */
+  const written: number[] = [];
   try {
-    const r = await applyAdds(pkg, frame);
+    const r = await applyAdds(pkg, frame, written);
     firstOid = r.firstOid;
   } catch (e) {
-    /* ⚠️ Архив УНАВАЛ хяналтын мөр ӨӨРЧЛӨГДӨХГҮЙ — менежер дахин дарж болно. */
-    return { ok: false, error: String((e as Error)?.message ?? e) };
+    /*
+     * ⚠️ ХАГАС ЖААЗЫГ БУЦААНА. `rollbackOnFailure` нь зөвхөн нэг 500-мөрийн
+     *    багц дотор үйлчилдэг тул унатал бичигдсэн мөрүүд архивт ҮЛДЭНЭ. Тэр
+     *    хагас жааз нь `loadRows`-ын мөрийн тооны шалгуурыг унагааж багцын
+     *    бөглөх хуудсыг БҮХЭЛД НЬ хаадаг (Багц 2·9F дээр бодитоор тохиолдсон:
+     *    1,000 мөрийн үлдэгдэл, бүтэн нь 1,386).
+     * ⚠️ Хяналтын мөр ӨӨРЧЛӨГДӨХГҮЙ — менежер дахин дарж болно.
+     */
+    const why = String((e as Error)?.message ?? e);
+    if (written.length) {
+      const gone = await applyDeletes(pkg, written);
+      const left = written.length - gone;
+      return {
+        ok: false,
+        error: left > 0
+          ? `${why} · ${tr('Хагас бичигдсэн {0} мөрийн {1}-ийг архиваас устгаж чадсангүй — AGOL дээр гараар цэвэрлэнэ үү', written.length, left)}`
+          : `${why} · ${tr('Хагас бичигдсэн {0} мөрийг архиваас буцаав', written.length)}`,
+      };
+    }
+    return { ok: false, error: why };
   }
   /*
    * ⚠️ Мөр бичигдсэн ч дугаар ирээгүй бол ЗОГСОХГҮЙ. `{ok:false}` буцаавал

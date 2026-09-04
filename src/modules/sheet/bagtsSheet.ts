@@ -978,6 +978,18 @@ const SERVER_FIELDS = /^(ObjectID|OBJECTID|GlobalI[Dd]|CreationDate|Creator|Edit
 export async function applyAdds(
   pkg: Pkg,
   features: Record<string, unknown>[],
+  /**
+   * БИЧИГДСЭН МӨРИЙН OBJECTID-УУД — дуудагчийн массивт цуглуулна (заавал биш).
+   *
+   * ⚠️ ЯАГААД (2026-09-04-ний аудит): `rollbackOnFailure` нь ЗӨВХӨН нэг
+   *    500-мөрийн chunk дотор үйлчилдэг тул дунд нь тасалдвал архивт ХАГАС
+   *    жааз үлдэнэ. Тэр жааз нь `latestWhere`-ийн «хамгийн сүүлийн өдөр»
+   *    шүүлтэд орж, `loadRows` «1000 мөр ирлээ, 1386 байх ёстой» гэж багцыг
+   *    БҮХЭЛД НЬ хаадаг байв (`gun` баганатай үйлчилгээнд бүр дор — дутуу
+   *    жааз хүчинтэй гэж уншигдана). Дуудагч энэ жагсаалтаар яг тэр мөрүүдийг
+   *    устгаж, архивыг унасан нийтлэлийн өмнөх төлөвт эргүүлнэ.
+   */
+  written?: number[],
 ): Promise<{ added: number; firstOid: number | null }> {
   let added = 0;
   // ⚠️ ЭХНИЙ мөрийн OBJECTID — хяналтын бүртгэл эх өгөгдөл рүүгээ буцаж
@@ -998,6 +1010,13 @@ export async function applyAdds(
       const res = (j.addResults || []) as {
         success?: boolean; objectId?: number; error?: { description?: string };
       }[];
+      /* ⚠️ ОБЬЕКТЫН ДУГААРЫГ АЛДААНААС ӨМНӨ цуглуулна: `bad` олдвол доорх
+         `throw` ажиллах ба амжилттай мөрүүд нь СЕРВЕРТ БИЧИГДСЭН хэвээр
+         үлдэнэ (`rollbackOnFailure` нь бүтэн chunk унасан үед л буцаана).
+         Цэвэрлэгээнд тэдгээр нь ч хэрэгтэй. */
+      if (written) {
+        for (const r of res) if (r.success !== false && typeof r.objectId === "number") written.push(r.objectId);
+      }
       const bad = res.find((r) => r.success === false);
       if (bad) throw new Error(bad.error?.description || tr('Нэмэх амжилтгүй'));
       if (firstOid == null && typeof res[0]?.objectId === "number") firstOid = res[0].objectId;
@@ -1028,6 +1047,43 @@ export async function applyAdds(
    */
   if (added > 0) invalidate('BAGTS_SHEET');
   return { added, firstOid };
+}
+
+/**
+ * ХАГАС БИЧИГДСЭН ЖААЗЫГ АРХИВААС УСТГАНА.
+ *
+ * ⚠️ ЯАГААД (2026-09-04): `applyAdds` нь 500 мөрийн багцаар явдаг бөгөөд
+ *    `rollbackOnFailure` нь ЗӨВХӨН нэг багц дотор үйлчилнэ. Дунд нь тасалдвал
+ *    өмнөх багцууд СЕРВЕРТ ҮЛДЭНЭ. Тэр хагас жааз нь `latestWhere`-ийн
+ *    «хамгийн сүүлийн өдөр» шүүлтэд орж, `loadRows` нь мөрийн тоо зөрснөөс
+ *    багцыг БҮХЭЛД НЬ хаадаг — бодит жишээ: Багц 2·9F-д 1,000 мөрийн үлдэгдэл
+ *    (бүтэн нь 1,386). Тиймээс бичигдсэн мөрүүдээ ЗААВАЛ буцааж цэвэрлэнэ.
+ *
+ * ⚠️ Алдааг ШИДЭХГҮЙ: энэ нь аль хэдийн унасан үйлдлийн ЦЭВЭРЛЭГЭЭ. Цэвэрлэгээ
+ *    ч унавал дуудагчид ЖИНХЭНЭ шалтгааныг нь харуулах нь чухал — устгаж
+ *    чадсан мөрийн тоог буцаагаад, үлдсэнийг нь дуудагч мэдэгдэнэ.
+ */
+export async function applyDeletes(pkg: Pkg, oids: number[]): Promise<number> {
+  const ids = oids.filter((x) => Number.isInteger(x) && x > 0);
+  if (!ids.length) return 0;
+  let gone = 0;
+  for (let i = 0; i < ids.length; i += 500) {
+    try {
+      const j = await agsFetch(`${pkg.url}/applyEdits`, {
+        deletes: ids.slice(i, i + 500).join(","),
+        rollbackOnFailure: "false",
+      });
+      const res = (j.deleteResults || []) as { success?: boolean }[];
+      gone += res.filter((r) => r.success === true).length;
+    } catch {
+      /* ⚠️ Үргэлжлүүлнэ: нэг багц унасан нь бусдыг цэвэрлэхээс татгалзах
+         шалтгаан биш — үлдсэн мөр бүр хуудсыг хаах эрсдэлтэй. */
+    }
+  }
+  /* ⚠️ Устгасан бол дашбоардын кэш мөн хуучирлаа — `applyAdds` аль хэдийн
+     зарласан байж болох ч энэ нь тэр зарлалыг БУЦААЖ байгаа өөрчлөлт. */
+  if (gone > 0) invalidate('BAGTS_SHEET');
+  return gone;
 }
 
 /** `applyEdits` — 500-аар хуваан илгээнэ. */

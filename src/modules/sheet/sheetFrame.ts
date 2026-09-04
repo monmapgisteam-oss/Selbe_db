@@ -251,6 +251,14 @@ export type Overlay = {
   dateKeys: string[];
   /** Мөрөнд тулгаж ЧАДААГҮЙ түлхүүрийн тоо — >0 бол батлах ХОРИОТОЙ */
   unmoved: number;
+  /**
+   * Тулгагдаагүй ЯГ ТЭР түлхүүрүүд (`${oid}:${b}` / `${oid}:${b}:s|e`).
+   *
+   * ⚠️ ЗӨВХӨН ТООГООР хангалтгүй (2026-09-04-ний аудит): «3 нүдийг тулгаж
+   *    чадсангүй» гэсэн мессеж хянагчид АЛЬ мөр, АЛЬ блок болохыг хэлдэггүй
+   *    тул засах зам байхгүй, багцын илгээлт бүрмөсөн гацдаг байв.
+   */
+  unmovedKeys: string[];
 };
 
 /**
@@ -289,7 +297,7 @@ export function overlaySubmission(
   const map = needMap ? buildOidMap(rowKeys, rows) : new Map<number, number>();
   const mc = moveKeys(map, Object.fromEntries(sub.cells ?? []));
   const md = moveKeys(map, Object.fromEntries(sub.dates ?? []));
-  let unmoved = mc.unmoved.length + md.unmoved.length;
+  const unmovedKeys: string[] = [...mc.unmoved, ...md.unmoved];
 
   /* ── 2. Нэмсэн мөр — давхардлыг алгасна ── */
   /**
@@ -347,7 +355,7 @@ export function overlaySubmission(
     /* ⚠️ Мөр эсвэл блок олдохгүй бол ЧИМЭЭГҮЙ хаяхгүй — `unmoved`-д тоолно
        (ноорог/илгээлтийн түлхүүр хуучирсан, rowKeys алга г.м.). */
     if (i == null || !Number.isInteger(b) || b < 0 || b >= nBld) {
-      unmoved += 1;
+      unmovedKeys.push(k);
       continue;
     }
     const r = out[i];
@@ -365,7 +373,7 @@ export function overlaySubmission(
     const se = rest[1];
     const i = rowOf(Number(k.slice(0, at)));
     if (i == null || !Number.isInteger(b) || b < 0 || b >= nBld || (se !== "s" && se !== "e")) {
-      unmoved += 1;
+      unmovedKeys.push(k);
       continue;
     }
     const r = out[i];
@@ -375,7 +383,14 @@ export function overlaySubmission(
     dateKeys.push(withOid(k, at, r.oid));
   }
 
-  return { rows: out, asOf: sub.asOf ?? null, cellKeys, dateKeys, unmoved };
+  return {
+    rows: out,
+    asOf: sub.asOf ?? null,
+    cellKeys,
+    dateKeys,
+    unmoved: unmovedKeys.length,
+    unmovedKeys,
+  };
 }
 
 /**
