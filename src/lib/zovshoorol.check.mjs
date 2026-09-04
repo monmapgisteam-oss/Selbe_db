@@ -1,9 +1,38 @@
 import assert from 'node:assert/strict';
-import { loadZov, byBagts, summarize, TOLOV, validateZov } from '@/lib/zovshoorol.ts';
+import { loadZov, byBagts, summarize, TOLOV, validateZov, oidKey, oidField, F, URL as ZURL } from '@/lib/zovshoorol.ts';
 const rows = await loadZov();
 assert.ok(rows, 'татаж чадсангүй');
 assert.ok(rows.length > 0, 'мөр алга');
 console.log(`✅ ${rows.length} мөр уншигдав`);
+
+/* ── OBJECTID ─────────────────────────────────────────────────────────────
+   ⚠️ 2026-09-04: `F.oid` нь `'ObjectID'` гэж бичигдсэн байхад амьд хүснэгт
+   `OBJECTID` (том үсгээр) тул БҮХ мөр `oid = 0` болж, засвар бүр ШИНЭ мөр
+   нэмж, «Устгах» чимээгүй ажиллахгүй байв. Энэ шалгуур тэр ангиллын алдааг
+   дахин гаргахгүй: (1) амьд мөр бүрийн oid > 0, (2) метадатагийн
+   `objectIdField` кодтой таарна, (3) хайлт нь ҮСГИЙН МЭДРЭМЖГҮЙ. */
+const zeroOid = rows.filter((r) => !r.oid);
+assert.equal(zeroOid.length, 0,
+  `${zeroOid.length}/${rows.length} мөрийн OBJECTID уншигдсангүй: ${zeroOid.map((r) => r.ner).join(', ')}`);
+const oids = rows.map((r) => r.oid);
+assert.equal(new Set(oids).size, oids.length, 'OBJECTID давхардав — таних чанараа алдсан');
+console.log(`✅ ${rows.length}/${rows.length} мөрийн oid > 0 ба давхардалгүй (${oids.join(', ')})`);
+
+const meta = await (await fetch(`${ZURL}?f=json`)).json();
+assert.ok(!meta.error, `метадата алдаа: ${JSON.stringify(meta.error)}`);
+assert.ok(/^objectid$/i.test(String(meta.objectIdField)),
+  `метадатагийн objectIdField = ${meta.objectIdField}`);
+assert.equal(await oidField(), meta.objectIdField,
+  `oidField() нь метадататай таарахгүй байна (${await oidField()} ≠ ${meta.objectIdField})`);
+assert.equal(F.oid.toLowerCase(), String(meta.objectIdField).toLowerCase(),
+  `F.oid (${F.oid}) нь амьд талбар (${meta.objectIdField})-аас ЯЛГААТАЙ`);
+console.log(`✅ objectIdField = ${meta.objectIdField} — код ба үйлчилгээ таарав`);
+
+/* ⚠️ Том/жижиг үсгийн ХОЁУЛАНГ нь таних ёстой — үйлчилгээ бүр өөр бичлэгтэй. */
+for (const k of ['OBJECTID', 'ObjectID', 'objectid', 'objectID'])
+  assert.equal(oidKey({ [k]: 7, bagts: 'x' }), k, `oidKey нь «${k}»-г танихгүй байна`);
+assert.equal(oidKey({ OBJECTID_1: 7, FID: 3 }), null, 'oidKey нь буруу талбарыг авах ёсгүй');
+console.log('✅ oidKey — үсгийн 4 хувилбар таарч, ойролцоо нэрийг авахгүй');
 
 const bad = rows.filter((r) => r.tolov === 'unknown');
 assert.equal(bad.length, 0, `танихгүй төлөв: ${bad.map((b) => b.ner).join(', ')}`);

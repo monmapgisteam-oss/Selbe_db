@@ -199,11 +199,35 @@
 }
 .calTitle {
   flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
   text-align: center;
   font-weight: 650;
   font-size: 0.8rem;
   white-space: nowrap;
 }
+/* Он/сарын шууд сонголт — сумаар алхахын оронд нэг товшилтоор.
+   ⚠️ Өндөр нь `.calNav`-тай ижил 22px: толгойн мөр өндөрсвөл календарын
+   байрлал (`useLayoutEffect`) дахин бодогдож, нүднээсээ салж харагдана. */
+.calPick {
+  height: 22px;
+  padding: 0 2px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.calPick:hover { background: color-mix(in srgb, var(--hue) 12%, var(--surface)); }
+.calPick:focus-visible { outline: none; border-color: var(--hue); }
+/* ⚠️ Жагсаалтыг ХӨТӨЧ зурдаг тул өнгийг нь ил өгнө — эс бөгөөс харанхуй
+   загварт цагаан дэвсгэр дээр цагаан бичвэр гарч уншигдахгүй болно. */
+.calPick option { background: var(--surface); color: var(--ink); font-weight: 500; }
 .calNav {
   width: 22px;
   height: 22px;
@@ -647,6 +671,18 @@
 /* ⚠️ `opacity: 0.55` байсныг хасав — бодогддог нүдний өнгө (`--ink-3`) дээр
    нэмэгдэж хоёр давхар бүдгэрч, бодогдсон хувь бараг уншигдахгүй байв. */
 .calcPct { color: var(--calc, inherit); opacity: 0.8; }
+/* 100%-ИАС ИХ бодит гүйцэтгэл — `Calc.actOver`.
+   ⚠️ 2026-09-04: түүхий утга (жиш. 309.9%) нүдэнд ХЭВЭЭР харагдана (алдааг
+      нуухгүй), гэхдээ нэгтгэл нь 100%-иар таслагдсан гэдгийг өнгө + `title`
+      хэлнэ. Өнгө нь `--bad` БИШ `--warn`: систем унасан гэсэн үг биш,
+      эх өгөгдлийн Обьёмыг шалгуулах ёстой гэсэн үг.
+   ⚠️ `.calcPct`-ЫН ДАРАА бичигдэнэ — тэр хоёулаа нэг тодорхойлолттой
+      (single class) тул дараалал нь ялалтыг шийднэ. Дээш бүү зөө. */
+.pctOver {
+  color: var(--warn-ink, var(--warn));
+  font-weight: 700;
+  opacity: 1;
+}
 
 /* Нүдний НЭГ МӨРИЙГ засах оролт — нүдээ бүтнээр эзэлнэ, нөгөө мөр нь
    харагдсаар үлдэнэ (юун дээр юу бичиж байгаагаа хардаг). */

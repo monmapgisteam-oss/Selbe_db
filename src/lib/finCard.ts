@@ -117,8 +117,15 @@ export const dedOrNull = (r: Row): number | null => rowSumOrNull(r, IPC_LOG.dedu
 export const paidOrNull = (r: Row): number | null => rowSumOrNull(r, IPC_LOG.payments);
 
 /**
- * Цэвэр дүн = гүйцэтгэлийн дүн − суутгал. Гүйцэтгэлийн дүн ХООСОН бол `null` —
- * `services.ipcNet` нь null-ыг 0 болгодог тул «дүнгүй акт» 0 гэж худал гардаг.
+ * Цэвэр дүн = гүйцэтгэлийн дүн − суутгал. Гүйцэтгэлийн дүн ХООСОН бол `null`.
+ *
+ * ⚠️ 2026-09-04: урьд нь энд «`services.ipcNet` нь null-ыг 0 болгодог тул
+ *    “дүнгүй акт” 0 гэж худал гардаг» гэж бичсэн байв — тэр нь ОДОО ХУДАЛ:
+ *    `ipcNet` өөрөө `number | null` буцаадаг болов (services.ts:707). Хоёулаа
+ *    нэг дүрэмтэй боллоо; энэ функц тусдаа хэвээр байгаа шалтгаан нь зөвхөн
+ *    давхарга тусгаарлалт (`finCard` нь React-гүй, `finCard.check.mjs` шууд
+ *    Node дээр ачаалдаг) ба суутгалыг `dedOrNull`-аар (null-мэдрэмжтэй) авдаг
+ *    нь — тоон үр дүн `ipcNet`-тэй ижил.
  */
 export function netOrNull(r: Row): number | null {
   const v = r[IP.gross];

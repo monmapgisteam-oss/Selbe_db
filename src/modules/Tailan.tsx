@@ -31,7 +31,14 @@ import { Icon } from '@/components/Icon';
 import { num, pct } from '@/lib/format';
 import { useBagtsTable, type BagtsRow } from '@/modules/Dashboard';
 import { emailViaEml, emailViaMailto, downloadReportPdf } from '@/lib/emailReport';
-import { useReportExtra, buildFindings, type ReportExtra } from '@/lib/reportData';
+import {
+  useReportExtra, buildFindings, type ReportExtra,
+  /* ⚠️ 2026-09-04: эдгээр нь ХҮЛЭЭЛТИЙН ЯВЦЫГ хэмжихэд л хэрэглэгдэнэ — тоог нь
+     хаана ч ХАРУУЛАХГҮЙ (доорх `ReportWaiting`-ийн тайлбарыг үз). Бүгд
+     `cached()`-ээр ороосон тул энд дуудахад ШИНЭ HTTP хүсэлт ҮҮСЭХГҮЙ:
+     `loadReportExtra` өөрөө яг эдгээр амлалтыг хуваалцаж байгаа. */
+  loadOverall, loadProgress, loadFinance, loadLand, loadHabeaSummary,
+} from '@/lib/reportData';
 import { ResizableTable } from '@/components/ResizableTable';
 import r from './report.module.css';
 
@@ -47,6 +54,191 @@ const bnOrDash = (v: number) => (v > 0 ? bn(v) : '—');
 /** Хүснэгтийн дугаартай тайлбар — ХҮСНЭГТИЙН ДЭЭД талд байрлана */
 function Cap({ no, children }: { no: string; children: React.ReactNode }) {
   return <p className={r.caption}>{tr('Хүснэгт')} {no}. <span>{children}</span></p>;
+}
+
+/* ═══════════════ ХҮЛЭЭЛТИЙН ТӨЛӨВ ═══════════════ */
+
+/**
+ * ⚠️ 2026-09-04 (гүйцэтгэлийн аудит, LOW): «Тайлан» харагдац нээгдээд эхний
+ * ~15–20 секундэд бараг ХООСОН байв. Хэмжсэн үзүүлэлт: t=8с үед хуудсанд ердөө
+ * 194 тэмдэгт (3 товч ба «Багцын өгөгдөл нэгтгэж байна…» гэсэн ганц мөр),
+ * t=20с үед л 12,532 тэмдэгт · 38 товч · 133 хүснэгтийн мөр гарч ирдэг байсан.
+ * Явцын ямар ч заалт байхгүй тул хэрэглэгч «эвдэрсэн» гэж бодоод дахин дарах
+ * эсвэл гарч явах эрсдэлтэй байлаа. Одоо ЯВЦ (аль эх сурвалж ирсэн) ба
+ * тайлангийн АРАГ ЯС харагдана.
+ *
+ * ⚠️ ХЭСЭГЧИЛСЭН ТООГ ЭНД ГАРГАХГҮЙ. `reportData.ts` нь «дутуу тоогоор тайлан
+ * гаргахгүй» гэсэн ил шийдвэртэй (хагас үнэн баримт нь худал баримттай ижил
+ * эрсдэлтэй — албан ёсны PDF/мэйлд хэвлэгддэг). Тиймээс энэ хүлээлтийн төлөв
+ * нь ЗӨВХӨН явцыг зурна: араг яс нь бүтцийг л харуулах бөгөөд «хараахан
+ * ирээгүй» гэж ил тэмдэглэгдэнэ — `null ≠ 0`-ийн сүнс: «ирээгүй» ≠ «хоосон».
+ * Хэрэв ирээдүйд §1-ийг эрт гаргах шаардлага гарвал `loadReportExtra`-ийн
+ * бүх-эсвэл-юу-ч-үгүй гэрээг ТЭНД өөрчлөх ёстой, энд БИШ.
+ */
+const PROBES: { key: string; label: () => string; load: () => Promise<unknown> }[] = [
+  { key: 'overall', label: () => tr('Нийт гүйцэтгэл (багцын жингээр)'), load: loadOverall },
+  { key: 'progress', label: () => tr('Барилга угсралтын гүйцэтгэл'), load: loadProgress },
+  { key: 'finance', label: () => tr('Санхүүжилт — захирамж, гэрээ, олголт'), load: loadFinance },
+  { key: 'land', label: () => tr('Газар чөлөөлөлт'), load: loadLand },
+  { key: 'habea', label: () => tr('Хөдөлмөрийн аюулгүй байдал, эрүүл ахуй'), load: loadHabeaSummary },
+];
+
+/**
+ * Аль эх сурвалж БЭЛЭН БОЛСНЫГ хянана.
+ *
+ * ⚠️ Алдааг энд ЗАЛГИНА (`() => {}`) — эх сурвалж унасныг `useReportExtra`
+ * өөрөө барьж, нэрлэсэн алдаа ба «Дахин оролдох» товчийг гаргана. Энд дахин
+ * мэдээлбэл нэг алдаа хоёр газар харагдана.
+ */
+function useSourceProgress(active: boolean): Record<string, boolean> {
+  const [done, setDone] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    if (!active) return;
+    let alive = true;
+    for (const p of PROBES) {
+      p.load().then(
+        () => { if (alive) setDone((d) => (d[p.key] ? d : { ...d, [p.key]: true })); },
+        () => {},
+      );
+    }
+    return () => { alive = false; };
+  }, [active]);
+  return done;
+}
+
+/** Хүлээсэн хугацаа (сек) — «зогссон уу?» гэсэн эргэлзээг арилгах цорын ганц хөдөлгөөн */
+function useElapsed(active: boolean): number {
+  /* ⚠️ Тоолуурыг ЗӨВХӨН таймерын callback-аас шинэчилнэ. Хоёр өөр хувилбар
+     eslint-д унасан: (1) эффектийн биед `setSecs(0)` гэж тэглэх нь
+     `react-hooks/set-state-in-effect`; (2) `useRef` + render дотор `Date.now()`
+     нь `react-hooks/refs` ба «impure function during render» (ЭНЭ нь warning
+     биш АЛДАА). Тиймээс тэглэлтийг ч 0мс-ийн `setTimeout`-оор — кэш хүчингүй
+     болж дахин ачаалахад тоолуур хуучин секундээ барихгүй. */
+  const [secs, setSecs] = useState(0);
+  useEffect(() => {
+    if (!active) return;
+    const t0 = Date.now();
+    const upd = () => setSecs(Math.round((Date.now() - t0) / 1000));
+    const first = setTimeout(upd, 0);
+    const id = setInterval(upd, 1000);
+    return () => { clearTimeout(first); clearInterval(id); };
+  }, [active]);
+  return secs;
+}
+
+/** Араг ясны саарал мөр — өргөнийг өөр өөр өгснөөр текст мэт уншигдана */
+function SkelBar({ w }: { w: string }) {
+  return (
+    <div
+      aria-hidden
+      style={{
+        height: 9, width: w, marginBottom: 7, borderRadius: 4,
+        background: 'var(--surface-2)',
+      }}
+    />
+  );
+}
+
+/**
+ * Хүлээлтийн харагдац — явцын самбар + тайлангийн араг яс.
+ *
+ * ⚠️ Хэсгийн ГАРЧГУУД нь бодит тайлангийнхтай ЯГ ижил мөр (нэг `tr()`
+ * түлхүүр) — уншигч «энэ юу ирэх гэж байна» гэдгийг таньж, ирснийхээ дараа
+ * байрлал үсрэхгүй.
+ */
+function ReportWaiting({ steps, secs }: { steps: { label: string; done: boolean }[]; secs: number }) {
+  const ready = steps.filter((s) => s.done).length;
+  const sections = [
+    tr('1. Үндсэн үзүүлэлт'),
+    tr('2. Орон сууцны 7 багц'),
+    tr('3. Багцын жигнэсэн гүйцэтгэл'),
+    tr('4. Газар чөлөөлөлт'),
+    tr('5. Нийгмийн үйлчилгээний барилга'),
+    tr('6. Барилга угсралтын гүйцэтгэл'),
+    tr('7. Санхүүжилтийн явц'),
+    tr('8. Дэд бүтцийн хэрэгжилт'),
+    tr('9. Хөдөлмөрийн аюулгүй байдал, эрүүл ахуй'),
+    tr('10. Дүгнэлт, анхаарах асуудал'),
+  ];
+  return (
+    <>
+      <div
+        role="status"
+        aria-live="polite"
+        style={{
+          border: '1px solid var(--line)', borderRadius: 'var(--r, 6px)',
+          padding: '14px 16px', marginBottom: 22, background: 'var(--surface-2)',
+        }}
+      >
+        <p style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink)', margin: 0 }}>
+          {tr('Тайлан бэлтгэгдэж байна — {0} эх сурвалжаас {1} нь ирлээ', num(steps.length), num(ready))}
+        </p>
+        {/* Явцын зурвас — тоо ба урт нь ИЖИЛ эх сурвалжаас, зөрөх боломжгүй */}
+        <div
+          aria-hidden
+          style={{
+            height: 5, marginTop: 10, borderRadius: 3, overflow: 'hidden',
+            background: 'color-mix(in srgb, var(--ink-3) 22%, transparent)',
+          }}
+        >
+          <div
+            style={{
+              height: '100%', width: `${(ready / steps.length) * 100}%`,
+              background: 'var(--accent)', transition: 'width .25s ease',
+            }}
+          />
+        </div>
+        <ul style={{ listStyle: 'none', margin: '10px 0 0', padding: 0, fontSize: 11.5 }}>
+          {steps.map((s) => (
+            <li
+              key={s.label}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0',
+                color: s.done ? 'var(--ink-2)' : 'var(--ink-3)',
+              }}
+            >
+              <span
+                aria-hidden
+                style={{
+                  width: 7, height: 7, borderRadius: '50%', flex: 'none',
+                  background: s.done ? 'var(--accent)' : 'transparent',
+                  border: s.done ? 'none' : '1px solid var(--ink-3)',
+                }}
+              />
+              <span>{s.label}</span>
+              <span style={{ marginLeft: 'auto', fontVariantNumeric: 'tabular-nums' }}>
+                {s.done ? tr('бэлэн') : tr('татагдаж байна…')}
+              </span>
+            </li>
+          ))}
+        </ul>
+        <p className={r.note} style={{ marginTop: 10 }}>
+          {tr('Ихэвчлэн 15–25 секунд үргэлжилнэ. Одоогоор {0} секунд болов.', num(secs))}
+          {' '}
+          {/* ⚠️ Дэд бүтэц ба нийгмийн барилгын ачаалагч нь `reportData.ts`-ээс
+              экспортлогдоогүй тул тусад нь хэмжигдэхгүй — «бэлэн» гэж ХУДАЛ
+              тоолохын оронд ил хэлнэ. Экспортлогдвол `PROBES`-д нэмнэ. */}
+          {tr('Дэд бүтэц ба нийгмийн үйлчилгээний давхаргууд мөн зэрэг татагдаж байгаа ч явцыг нь тусад нь хэмждэггүй.')}
+        </p>
+      </div>
+
+      {sections.map((title, i) => (
+        <section key={title} className={r.section}>
+          <h2 className={r.h2} style={{ color: 'var(--ink-3)' }}>
+            {title}
+            <span style={{ float: 'right', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
+              {tr('хараахан ирээгүй')}
+            </span>
+          </h2>
+          <SkelBar w="92%" />
+          <SkelBar w="78%" />
+          {/* Хүснэгттэй хэсгүүд ӨНДӨР тул араг яс нь ч өндөр — өгөгдөл ирэхэд
+              хуудас бага үсэрнэ */}
+          {i !== 9 && <><SkelBar w="60%" /><SkelBar w="86%" /><SkelBar w="45%" /></>}
+        </section>
+      ))}
+    </>
+  );
 }
 
 export function Tailan() {
@@ -100,6 +292,18 @@ export function Tailan() {
   // ⚠️ PDF нь дэлгэцтэй ИЖИЛ байх ёстой тул БҮХ өгөгдөл ачаалагдтал илгээхгүй
   const ready = !!rows && !!extra;
 
+  /* ⚠️ Алдаа гарсан бол хүлээлтийн араг ясыг ХАРУУЛАХГҮЙ — `Data` нь нэрлэсэн
+     алдаа ба «Дахин оролдох» товчийг гаргах ёстой. Эс бөгөөс унасан эх
+     сурвалж «ачаалж байна» мэт мөнхөд харагдана. */
+  const failed = bagts.state === 'error' || ex.state === 'error';
+  const waiting = !failed && (bagts.state === 'loading' || ex.state === 'loading');
+  const doneMap = useSourceProgress(waiting);
+  const secs = useElapsed(waiting);
+  const steps = [
+    { label: tr('Багцын нэгдсэн хүснэгт'), done: bagts.state === 'ready' },
+    ...PROBES.map((p) => ({ label: p.label(), done: !!doneMap[p.key] })),
+  ];
+
   return (
     <div className={r.wrap}>
       <div className={r.toolbar}>
@@ -148,6 +352,7 @@ export function Tailan() {
           </p>
         </header>
 
+        {waiting ? <ReportWaiting steps={steps} secs={secs} /> : (
         <Data q={bagts} loading={tr('Багцын өгөгдөл нэгтгэж байна…')}>
           {(rows) => (
             <Data q={ex} loading={tr('Гүйцэтгэл, санхүү, газар, дэд бүтэц, ХАБЭА-гийн өгөгдөл нэгтгэж байна…')}>
@@ -774,6 +979,7 @@ export function Tailan() {
             </Data>
           )}
         </Data>
+        )}
 
       </article>
     </div>
