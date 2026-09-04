@@ -3759,6 +3759,7 @@ export type ViewKey =
   | "ersdel"
   | "zovshoorol"
   | "guitsetgel"
+  | "qaqc"
   | "schem";
 
 export const VIEWS: {
@@ -4050,6 +4051,30 @@ export const VIEWS: {
     standalone: true,
   },
   {
+    /**
+     * ЧАНАР (QAQC) — Inspection Test Plan-ийн баримт бичиг.
+     *
+     * ⚠️ «Гүйцэтгэл»-ЭЭС ТУСДАА (2026-09-03, хэрэглэгчийн шийдвэр). Урьд нь
+     *    М-акт · FIC · MA · MIR-ийн 9 багана «Гүйцэтгэл бөглөх» хуудасны 60
+     *    баганын хажууд сууж, тэр хуудасны нийтлэх мөчлөгт баригддаг байв —
+     *    гэтэл өгөгдөл нь БҮРЭН ӨӨР үйлчилгээнд (`QAQC`/`QAQC2`), архивгүй,
+     *    мөр нь байрандаа засагддаг. Хоёр өөр амьдралын мөчлөгийг нэг
+     *    хуудсанд шахсан нь: чанарын инженер 60 баганын дундуур 9 нүд хайж,
+     *    гүйцэтгэлийн «өдөрт нэг удаа» түгжээнд саатдаг байлаа.
+     *
+     * ⚠️ ГАЗРЫН ЗУРАГГҮЙ — QAQC хүснэгтүүд геометргүй (table) тул давхарга
+     *    нэмэх зүйл алга. `standalone: true` + хоосон `layers`.
+     */
+    key: "qaqc",
+    title: tr('Чанар (QAQC)'),
+    desc: tr('М-акт · FIC · MA · MIR — Inspection Test Plan-ийн баримт бичиг'),
+    icon: "file",
+    hue: "#d97706",
+    layers: [],
+    initial: [],
+    standalone: true,
+  },
+  {
     key: "schem",
     title: tr('Үйл ажиллагааны схем'),
     desc: tr('Төлөвлөхөөс тайлагнах хүртэлх урсгал — амьд тоогоор'),
@@ -4114,7 +4139,7 @@ export const HOME_SECTIONS: {
    */
   { id: "review", title: tr('Тойм'), views: ["schem", "dashboard", "tailan"] },
   { id: "plan", title: tr('Төлөвлөлт'), views: ["plan", "analysis", "irged"] },
-  { id: "build", title: tr('Хэрэгжилт'), views: ["pkgProg", "gazar", "habea", "iot", "ersdel", "guitsetgel", "zovshoorol", "huvaari"] },
+  { id: "build", title: tr('Хэрэгжилт'), views: ["pkgProg", "gazar", "habea", "iot", "ersdel", "guitsetgel", "qaqc", "zovshoorol", "huvaari"] },
   { id: "money", title: tr('Санхүү'), views: ["pkgFin", "finance"] },
 ];
 

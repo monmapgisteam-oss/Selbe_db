@@ -108,7 +108,10 @@ export const CAPS: { key: CapKey; icon: string }[] = [
  */
 export const CAP_HOST_VIEW: Record<CapKey, ViewKey> = {
   addRow: 'guitsetgel',
-  qaqc: 'guitsetgel',
+  /* ⚠️ 2026-09-03: «Гүйцэтгэл»-ээс ӨӨРИЙН харагдац руу шилжив. Эрх нь энэ
+     харагдацыг автоматаар нээнэ — эс бөгөөс QAQC эрх олгосон инженер
+     чанарын хуудас руу орох замгүй үлдэнэ. */
+  qaqc: 'qaqc',
   zovshoorol: 'zovshoorol',
   finEdit: 'finance',
   finRow: 'finance',

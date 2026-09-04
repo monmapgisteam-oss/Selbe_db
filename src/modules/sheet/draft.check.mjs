@@ -2,8 +2,14 @@
  * НООРОГИЙН БҮРЭН БАЙДАЛ — «Гүйцэтгэл бөглөх».
  *
  * ⚠️ Энэ шалгуур нь 2026-08-29-ны БОДИТ цоорхойг хамгаална: ноорогт зөвхөн
- * гүйцэтгэлийн нүд ба нэмсэн мөр ордог байсан тул ОГНОО, БАРИМТ БИЧИГ,
- * «Шинэчлэгдсэн огноо» гурав компьютер унтрахад чимээгүй алга болдог байв.
+ * гүйцэтгэлийн нүд ба нэмсэн мөр ордог байсан тул ОГНОО ба «Шинэчлэгдсэн
+ * огноо» хоёр компьютер унтрахад чимээгүй алга болдог байв.
+ *
+ * ⚠️ 2026-09-03: БАРИМТ БИЧИГ (`docs`) энэ ноорогоос ГАРСАН — «Чанар (QAQC)»
+ * тусдаа харагдац болов (`src/modules/Qaqc.tsx`). Тэр өгөгдөл нь тусдаа
+ * үйлчилгээнд байрандаа засагддаг тул энэ хуудасны нийтлэх мөчлөгт
+ * харьяалагдахаа больсон. Хуучин ноорогт үлдсэн `docs` талбар нь задлах
+ * шатанд ХАЯГДАХ ёстой — шалгуур түүнийг барина (доорх 6-р хэсэг).
  *
  * ⚠️ React дэлгэцийг энд ажиллуулах боломжгүй тул ГЭРЭЭГ барина: `Draft`
  * бүтэц, хадгалах ба сэргээх талын талбарууд ТААРАХ ёстой. Нэг тал нь
@@ -23,27 +29,27 @@ const between = (a, b, from = 0) => {
 
 /* ── 1. Draft төрөлд бүх засварын төрөл байх ── */
 const typeBlock = between('type Draft = {', 'adds?: NewRow[];');
-for (const f of ['cells:', 'dates?:', 'docs?:', 'asOf?:']) {
+for (const f of ['cells:', 'dates?:', 'asOf?:']) {
   assert.ok(typeBlock.includes(f), `Draft-д «${f}» талбар алга`);
 }
-console.log('✅ Draft төрөл — cells · dates · docs · asOf · adds');
+console.log('✅ Draft төрөл — cells · dates · asOf · adds');
 
 /* ── 2. ХАДГАЛАХ талд дөрвүүлэн бичигдэх ── */
 const saveBlock = between('const draft: Draft = {', '};');
-for (const [f, expr] of [['cells:', 'pending'], ['dates:', 'pendDate'], ['docs:', 'pendDoc'], ['asOf:', 'asOf'], ['adds,', 'adds']]) {
+for (const [f, expr] of [['cells:', 'pending'], ['dates:', 'pendDate'], ['asOf:', 'asOf'], ['adds,', 'adds']]) {
   assert.ok(saveBlock.includes(f), `хадгалалтад «${f}» алга`);
   assert.ok(saveBlock.includes(expr), `хадгалалтад «${expr}» төлөв алга`);
 }
-console.log('✅ хадгалалт — дөрвүүлэн төлөв ноорогт орно');
+console.log('✅ хадгалалт — бүх төлөв ноорогт орно');
 
 /* ── 3. ХООСОН шалгалт дөрвүүлэнгээр ──
    ⚠️ Зөвхөн `pending`-ээр шалгавал огноо/баримт засаад гүйцэтгэлийн нүд
    хөндөөгүй хэрэглэгчийн ноорог хадгалагдахын оронд УСТАНА. */
 const emptyBlock = between('const asOfChanged = asOf !== asOfOrig;', 'const draft: Draft = {');
-for (const st of ['pending', 'pendDate', 'pendDoc', 'adds', 'asOfChanged']) {
+for (const st of ['pending', 'pendDate', 'adds', 'asOfChanged']) {
   assert.ok(emptyBlock.includes(st), `хоосон шалгалтад «${st}» алга`);
 }
-console.log('✅ хоосон шалгалт — дөрвүүлэнгээр');
+console.log('✅ хоосон шалгалт — бүх төлөвөөр');
 
 /* ── 4. СЭРГЭЭХ талд бүх төрөл буцаж тавигдана ──
    ⚠️ 2026-09-03: хөтчийн `confirm` нь апп доторх төвлөрсөн цонх болов
@@ -52,10 +58,10 @@ console.log('✅ хоосон шалгалт — дөрвүүлэнгээр');
    буулгана. Шалгуур нь хоёуланг тусад нь барина. */
 const restore = between('const pickDraft = useCallback', 'setRestore({');
 const apply = between('const applyRestore = useCallback', 'setRestore(null);');
-for (const setter of ['setPending(r.cells)', 'setPendDate(r.dates)', 'setPendDoc(r.docs)', 'setAsOf(r.asOf)', 'setAdds(']) {
+for (const setter of ['setPending(r.cells)', 'setPendDate(r.dates)', 'setAsOf(r.asOf)', 'setAdds(']) {
   assert.ok(apply.includes(setter), `сэргээлтэд «${setter}» алга`);
 }
-console.log('✅ сэргээлт — дөрвүүлэн төлөв буцаж тавигдана');
+console.log('✅ сэргээлт — бүх төлөв буцаж тавигдана');
 
 /* ── 4b. ЦОНХНЫ ГУРВАН ГАРЦ — тус бүр өөр үр дагавартай ──
    ⚠️ Хамгийн аюултай нь «дараа шийднэ»: цонх хаагдахад төлөв хоосон хэвээр
@@ -76,7 +82,7 @@ console.log('✅ цонхны гурван гарц — сэргээх · дар
    Эрх хооронд нь хасагдсан бол ноорог дахь өгөгдөл дэлгэцэд гарах ёсгүй. */
 assert.ok(restore.includes('canPerf ? d.cells'), 'гүйцэтгэлийн нүд canPerf-гүй сэргээгдэж байна');
 assert.ok(restore.includes('canPerf ? (d.dates'), 'огноо canPerf-гүй сэргээгдэж байна');
-assert.ok(restore.includes('canQaqc ? (d.docs'), 'баримт canQaqc-гүй сэргээгдэж байна');
+
 assert.ok(restore.includes('canAddRow ?'), 'нэмсэн мөр canAddRow-гүй сэргээгдэж байна');
 console.log('✅ сэргээлт эрхээр хамгаалагдсан хэвээр');
 
@@ -85,7 +91,12 @@ console.log('✅ сэргээлт эрхээр хамгаалагдсан хэв
    салсан: алсын хуулбар ч ЯГ ижил шалгуураар орох ёстой тул нэг газарт. */
 const readBlock = between('const parseDraft =', 'const readDraft =');
 assert.ok(readBlock.includes('d.dates = undefined'), 'эвдэрсэн dates ноорогийг бүхэлд нь хаяж байна');
-assert.ok(readBlock.includes('d.docs = undefined'), 'эвдэрсэн docs ноорогийг бүхэлд нь хаяж байна');
+/* ⚠️ ХУУЧИН ноорогийн `docs` талбарыг ЗААВАЛ хаяна (2026-09-03). Түүнийг
+   шалгаж унагаавал «Чанар (QAQC)» гарахаас өмнө үлдсэн ноорог бүхэлдээ
+   (гүйцэтгэл, огноо, нэмсэн мөр хамт) устана. */
+assert.ok(readBlock.includes('d.docs = undefined'), 'хуучин docs талбар хаягдахгүй байна');
+assert.ok(!SRC.includes('pendDoc'), 'QAQC-ийн төлөв бөглөх хуудсанд үлдсэн');
+assert.ok(!SRC.includes('DOC_COLS'), 'QAQC-ийн багана бөглөх хуудсанд үлдсэн');
 console.log('✅ эвдэрсэн талбар ноорогийг бүхэлд нь хаяхгүй');
 
 /* ── 6b. АЛСЫН ХУУЛБАР (өөр төхөөрөмжөөс сэргээх) ──

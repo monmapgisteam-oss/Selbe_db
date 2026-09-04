@@ -57,12 +57,10 @@ export type SheetRow = {
   raw: Record<string, unknown>;
   start: (number | null)[]; // ms epoch
   end: (number | null)[];
-  /**
-   * БАРИМТ БИЧГИЙН текст утгууд — `DOC_COLS`-той ижил дараалалтай.
-   * Хоосон мөр нь `null` (хоосон мөрийн тэмдэгт БИШ) тул «бөглөөгүй» гэдэг
-   * нь харагдалт ба нийтлэх хоёуланд ижил ойлгогдоно.
-   */
-  docs: (string | null)[];
+  /* ⚠️ БАРИМТ БИЧГИЙН (Inspection Test Plan) талбарууд ЭНД БАЙХГҮЙ
+     (2026-09-03). Тэдгээр багана `Bagts_*` үйлчилгээнд ОГТ БАЙГААГҮЙ тул
+     энэ жагсаалт үргэлж `null`-аар дүүрдэг байв — хоосон зардал. Чанарын
+     баримт нь `QAQC`/`QAQC2` үйлчилгээнд, `src/lib/qaqc.ts`-ээр уншигдана. */
 };
 
 const num = (v: unknown): number | null =>
@@ -415,13 +413,6 @@ export async function loadRows(
       raw: a,
       start: sc.start.map((x) => (x ? num(a[x]) : null)),
       end: sc.end.map((x) => (x ? num(a[x]) : null)),
-      docs: sc.docs.map((x) => {
-        if (!x) return null;
-        const v = a[x];
-        if (v == null) return null;
-        const t = String(v).trim();
-        return t ? t : null;
-      }),
     });
   });
   return { rows, asOf, snapshot };
