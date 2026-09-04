@@ -767,6 +767,34 @@ export const ipcDue = (r: Row): number | null => {
  *
  * ⚠️ Огноо нь `esriFieldTypeDateOnly` — «2024-04-08» гэсэн МӨР болж ирнэ.
  */
+/**
+ * ГЭРЭЭНИЙ ШИНЭ БҮРТГЭЛ (2026.09.04) — «Санхүүжилт» харагдацын Cashflow таб
+ * ЭНЭ хүснэгтийг харуулна.
+ *
+ * ⚠️ `CASHFLOW2`-ЫГ ОРЛОХГҮЙ, ЗЭРЭГЦЭЖ АЖИЛЛАНА. Бүтэц нь ӨӨР:
+ *     CASHFLOW2      209 мөр — гэрээ (76) + САР (131) + өмнөх шилжүүлсэн (2)
+ *     CASHFLOW_NEW    76 мөр — ЗӨВХӨН гэрээ, сарын хөдөлгөөнгүй
+ * Санхүүжилтийн муруй, «санхүүжилт vs гүйцэтгэл» KPI, IPC-тэй холбоо бүгд
+ * САРЫН мөр ба гэрээний код (`CF001`) дээр тогддог тул тэдгээр нь `CASHFLOW2`
+ * дээрээ үлдэнэ. Сарын өгөгдөл шинэ бүтцэд гарч ирвэл тэндээ шилжүүлнэ.
+ *
+ * ⚠️ Талбарын нэр нь `CF0xx` код БИШ, утгатай латин галиг (`Bagts`, `Turul`,
+ * `Geree_dugaar`…). Alias нь монголоор тул хүснэгтийн толгой уншигдана.
+ */
+export const CASHFLOW_NEW = {
+  url: `${HJ}/Cashflow_0904/FeatureServer/0`,
+  oid: "OBJECTID",
+  fields: {
+    type: "Turul",              // Төрөл — ТЭЗҮ, инженерийн дэд бүтэц…
+    project: "Tusul",           // Төсөл (ажлын нэр)
+    pkg: "Bagts",               // Багц
+    pkg2: "Ded_bagts",          // Дэд багц
+    contractor: "Guitsetgegch_baig",  // Гүйцэтгэгч байгууллага
+    contractNo: "Geree_dugaar", // Гэрээний дугаар
+    contractDate: "Geree_ognoo",
+  },
+} as const;
+
 export const CASHFLOW2 = {
   url: `${HJ}/cashflow_0813/FeatureServer/173`,
   oid: "OBJECTID",
@@ -3968,6 +3996,7 @@ export const groupOf = (id: string): GroupKey | null =>
  * `pkgProg` («Багцын гүйцэтгэл») ба `guitsetgel` авсан.
  */
 export type ViewKey =
+  | "gdash"
   | "dashboard"
   | "plan"
   | "pkgFin"
@@ -4014,12 +4043,32 @@ export const VIEWS: {
    * талбайд зурдаг бөгөөд газрын зургийг ДӨРВӨН талаас (KPI дээр, зүүн/баруун
    * картууд, доод картууд) диаграмаар хүрээлнэ. Тиймээс `standalone`.
    */
+  /**
+   * ЕРӨНХИЙ ДАШБОАРД — ТӨСЛИЙН НЭГ ХУУДАСТ БАГТСАН ТОЙМ (2026-09-04).
+   *
+   * ⚠️ Доорх `dashboard`-ТАЙ ХОЁУЛАА үлдэнэ, аль нэг нь нөгөөгөө орлохгүй:
+   *   · `gdash`     — задрахгүй ТОЙМ: санхүү, газар, төлөвлөгөө, ХАБ нэг
+   *                   дэлгэцэд; хугацааны шүүлт бүх картад нэгэн зэрэг.
+   *   · `dashboard` — 9 дэд хэсэгт задардаг СУДЛАХ хэрэгсэл. Нэр нь
+   *                   «Төслийн дэлгэрэнгүй мэдээлэл» болов (хэрэглэгчийн
+   *                   хүсэлт) — хоёр «Ерөнхий дашбоард» зэрэг байж болохгүй.
+   */
   {
-    key: "dashboard",
+    key: "gdash",
     title: tr('Ерөнхий дашбоард'),
-    desc: tr('Газрын зургийг тойрсон нэгдсэн үзүүлэлт'),
+    desc: tr('Санхүү · газар · төлөвлөгөө · ХАБ — нэг хуудсанд'),
     icon: "grid",
     hue: "#0ea5e9",
+    layers: ["zone", "et:24"],
+    initial: ["zone", "et:24"],
+    standalone: true,
+  },
+  {
+    key: "dashboard",
+    title: tr('Төслийн дэлгэрэнгүй мэдээлэл'),
+    desc: tr('Газрын зургийг тойрсон нэгдсэн үзүүлэлт'),
+    icon: "layers",
+    hue: "#0284c7",
     layers: ["zone", "et:24"],
     initial: ["zone", "et:24"],
     standalone: true,
@@ -4388,7 +4437,7 @@ export const HOME_SECTIONS: {
    * `Root` нь «Бусад хэсэг» болгон нүүрт гаргана (хүрэх зам алдагдахгүй) — тэр
    * бүлэг харагдвал энд юм дутсаны шинж.
    */
-  { id: "review", title: tr('Тойм'), views: ["schem", "dashboard", "tailan"] },
+  { id: "review", title: tr('Тойм'), views: ["gdash", "schem", "dashboard", "tailan"] },
   { id: "plan", title: tr('Төлөвлөлт'), views: ["plan", "analysis", "irged"] },
   { id: "build", title: tr('Хэрэгжилт'), views: ["pkgProg", "gazar", "habea", "iot", "ersdel", "dedButets", "guitsetgel", "qaqc", "zovshoorol", "huvaari"] },
   { id: "money", title: tr('Санхүү'), views: ["pkgFin", "finance"] },
