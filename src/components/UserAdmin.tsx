@@ -48,7 +48,6 @@ const toggled = (views: ViewKey[] | 'all', k: ViewKey): ViewKey[] => {
    гаргагч зөвхөн үсгэн дуудлагыг олдог тул толиноос хоцорно. */
 const capLabel = (k: CapKey): string => {
   if (k === 'addRow') return tr('Мөр нэмэх');
-  if (k === 'qaqc') return tr('QAQC — Inspection Test Plan');
   if (k === 'zovshoorol') return tr('Зөвшөөрөл засах');
   if (k === 'finEdit') return tr('Санхүүгийн бүртгэл — утга засах');
   if (k === 'finRow') return tr('Санхүүгийн бүртгэл — мөр нэмэх, устгах');
@@ -59,9 +58,6 @@ const capLabel = (k: CapKey): string => {
 const capHint = (k: CapKey): string => {
   if (k === 'addRow') {
     return tr('«Гүйцэтгэл бөглөх» хуудсанд бүлэг дотор шинэ ажлын мөр нэмэх. Хуудасны бүтэц өөрчлөгдөж, жин ба мөнгөн дүн бүхэлдээ дахин бодогдоно.');
-  }
-  if (k === 'qaqc') {
-    return tr('«Гүйцэтгэл бөглөх» хуудасны Inspection Test Plan хэсгийг (М-акт, FIC, MA, MIR) бөглөх. Гүйцэтгэлийн хувь бөглөх эрхээс тусдаа.');
   }
   if (k === 'zovshoorol') {
     return tr('«Зөвшөөрөл» хуудсанд зөвшөөрөл нэмэх, засах, устгах. Эрхгүй хүн зөвхөн харна.');

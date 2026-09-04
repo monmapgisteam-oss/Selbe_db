@@ -14,7 +14,7 @@
  *   больж, алдааны бичвэр нь «шатлалын зураглал» гэж БУРУУ шалтгаан заадаг байв.
  */
 import assert from 'node:assert/strict';
-import { lastFrame } from './bagtsSheet.ts';
+import { lastFrame, numLoose } from './bagtsSheet.ts';
 
 const NO = 'dugaar';
 
@@ -102,3 +102,27 @@ const nosOf = (fs) => fs.map((f) => f.attributes[NO]);
 
 console.log('frame.check: ok — ганц ✓ хоёр бүтэн ✓ тасарсан ✓ давхар тасалдал ✓ '
   + 'мөр нэмэгдсэн ✓ нэмэгдээд тасарсан ✓ expect хамгаалалт ✓ суурь ✓ хязгаар ✓');
+
+/* ── ТЕКСТЭЭР ХАДГАЛАГДСАН ТОО (2026-09-03) ──
+   Багц 4.2·12F-ийн «Мөнгөн_дүн» нь String бөгөөд мянгатын таслалтай
+   («13,670,427,055»). Урьд нь Number() NaN өгч, тэр багцын БҮХ 1,593 мөрд
+   мөнгөн дүн null болж багана хоосон харагддаг байв. */
+{
+  const eq = (a, b, m) => assert.equal(a, b, `${m}: ${JSON.stringify(a)} ≠ ${JSON.stringify(b)}`);
+  eq(numLoose('13,670,427,055'), 13670427055, 'мянгатын таслал');
+  eq(numLoose('-58,555,780'), -58555780, 'сөрөг мянгатын таслал');
+  eq(numLoose('1 234 567'), 1234567, 'зайгаар тусгаарласан');
+  eq(numLoose('2,166.943'), 2166.943, 'таслал + аравтын цэг');
+  eq(numLoose(42), 42, 'тоо шууд дамжина');
+  eq(numLoose('42'), 42, 'энгийн тоон мөр');
+  eq(numLoose(0), 0, 'тэг нь null БИШ');
+  /* ⚠️ null ≠ 0 — уншигдахгүйг тэг болгож БОЛОХГҮЙ */
+  eq(numLoose(null), null, 'null хэвээр');
+  eq(numLoose(undefined), null, 'undefined → null');
+  eq(numLoose(''), null, 'хоосон мөр → null');
+  eq(numLoose('   '), null, 'зөвхөн зай → null');
+  eq(numLoose('м³'), null, 'тоо биш текст → null (0 БИШ)');
+  eq(numLoose('12abc'), null, 'хагас тоо → null');
+  eq(numLoose('1,2,3'), 123, 'зөвхөн тоо ба таслал бол нийлүүлнэ');
+  console.log('✅ текстээр хадгалагдсан тоо — мянгатын таслал уншигдана, null≠0 хэвээр');
+}

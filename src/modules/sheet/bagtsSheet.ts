@@ -57,16 +57,42 @@ export type SheetRow = {
   raw: Record<string, unknown>;
   start: (number | null)[]; // ms epoch
   end: (number | null)[];
-  /**
-   * БАРИМТ БИЧГИЙН текст утгууд — `DOC_COLS`-той ижил дараалалтай.
-   * Хоосон мөр нь `null` (хоосон мөрийн тэмдэгт БИШ) тул «бөглөөгүй» гэдэг
-   * нь харагдалт ба нийтлэх хоёуланд ижил ойлгогдоно.
-   */
-  docs: (string | null)[];
 };
 
-const num = (v: unknown): number | null =>
-  v == null || v === "" || !Number.isFinite(Number(v)) ? null : Number(v);
+/**
+ * ҮЙЛЧИЛГЭЭНИЙ УТГА → тоо (эсвэл `null`).
+ *
+ * ⚠️ ТЕКСТЭЭР ХАДГАЛАГДСАН ТООГ ЧУ УНШИНА (2026-09-03-ны шалгалт). Багц 4.2·12F-д
+ *    «Мөнгөн_дүн» талбар нь `Double` биш `String` бөгөөд утга нь МЯНГАТЫН
+ *    ТАСЛАЛТАЙ («13,670,427,055»). `Number("13,670,427,055")` = `NaN` тул тэр
+ *    багцын БҮХ 1,593 мөрд мөнгөн дүн `null` болж, багана дэлгэц дээр БҮРЭН
+ *    ХООСОН харагддаг байв. 1,584 утгын 1,584 нь энэ хэвтэй (аравтын таслал
+ *    нэг ч байхгүй — шалгасан), тиймээс таслал/зайг арилгах нь аюулгүй.
+ *
+ * ⚠️ ЗӨВХӨН МӨРӨН оролтод хэрэглэнэ: тоо шууд дамжина, `null`/`""` нь `null`.
+ * ⚠️ `null` ≠ 0 — уншигдахгүй утгыг 0 болгож БОЛОХГҮЙ (төслийн үндсэн дүрэм):
+ *    «мэдээлэлгүй» ба «тэг» хоёр өөр утга.
+ * ⚠️ Аравтын таслал (жиш. «1,5» = 1.5) хэрэглэдэг өгөгдөл ирвэл энэ дүрэм
+ *    БУРУУ болно — тэр үед үйлчилгээний талбарыг `Double` болгож засах нь зөв.
+ */
+export const numLoose = (v: unknown): number | null => {
+  if (v == null) return null;
+  if (typeof v === "string") {
+    /* ⚠️ ЗАЙ БҮХИЙ ХООСОН МӨР нь `null` — `Number("   ")` нь 0 буцаадаг тул
+       үүнийг ЭХЛЭЭД хаана. Эс бөгөөс «бөглөөгүй» нүд «тэг» болж, дүн ба
+       график дээр худал 0 гарна (төслийн үндсэн дүрэм: null ≠ 0). */
+    const t = v.trim();
+    if (!t) return null;
+    // мянгатын таслал ба (тасрахгүй) зай — ЗӨВХӨН цэвэр тоон мөрөнд
+    const raw = /^-?[\d\s,\u00a0]*\d(\.\d+)?$/.test(t) ? t.replace(/[\s,\u00a0]/g, "") : t;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+  }
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+const num = numLoose;
 
 /** `YYYY-MM-DD` → ArcGIS-ийн `timestamp` шүүлт (тухайн ӨДРИЙГ бүхэлд нь). */
 const dayFilter = (fld: string, day: string) =>
@@ -415,13 +441,6 @@ export async function loadRows(
       raw: a,
       start: sc.start.map((x) => (x ? num(a[x]) : null)),
       end: sc.end.map((x) => (x ? num(a[x]) : null)),
-      docs: sc.docs.map((x) => {
-        if (!x) return null;
-        const v = a[x];
-        if (v == null) return null;
-        const t = String(v).trim();
-        return t ? t : null;
-      }),
     });
   });
   return { rows, asOf, snapshot };

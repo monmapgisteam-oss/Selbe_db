@@ -23,27 +23,27 @@ const between = (a, b, from = 0) => {
 
 /* ── 1. Draft төрөлд бүх засварын төрөл байх ── */
 const typeBlock = between('type Draft = {', 'adds?: NewRow[];');
-for (const f of ['cells:', 'dates?:', 'docs?:', 'asOf?:']) {
+for (const f of ['cells:', 'dates?:', 'asOf?:']) {
   assert.ok(typeBlock.includes(f), `Draft-д «${f}» талбар алга`);
 }
-console.log('✅ Draft төрөл — cells · dates · docs · asOf · adds');
+console.log('✅ Draft төрөл — cells · dates · asOf · adds');
 
 /* ── 2. ХАДГАЛАХ талд дөрвүүлэн бичигдэх ── */
 const saveBlock = between('const draft: Draft = {', '};');
-for (const [f, expr] of [['cells:', 'pending'], ['dates:', 'pendDate'], ['docs:', 'pendDoc'], ['asOf:', 'asOf'], ['adds,', 'adds']]) {
+for (const [f, expr] of [['cells:', 'pending'], ['dates:', 'pendDate'], ['asOf:', 'asOf'], ['adds,', 'adds']]) {
   assert.ok(saveBlock.includes(f), `хадгалалтад «${f}» алга`);
   assert.ok(saveBlock.includes(expr), `хадгалалтад «${expr}» төлөв алга`);
 }
-console.log('✅ хадгалалт — дөрвүүлэн төлөв ноорогт орно');
+console.log('✅ хадгалалт — бүх төлөв ноорогт орно');
 
 /* ── 3. ХООСОН шалгалт дөрвүүлэнгээр ──
-   ⚠️ Зөвхөн `pending`-ээр шалгавал огноо/баримт засаад гүйцэтгэлийн нүд
+   ⚠️ Зөвхөн `pending`-ээр шалгавал огноо засаад гүйцэтгэлийн нүд
    хөндөөгүй хэрэглэгчийн ноорог хадгалагдахын оронд УСТАНА. */
 const emptyBlock = between('const asOfChanged = asOf !== asOfOrig;', 'const draft: Draft = {');
-for (const st of ['pending', 'pendDate', 'pendDoc', 'adds', 'asOfChanged']) {
+for (const st of ['pending', 'pendDate', 'adds', 'asOfChanged']) {
   assert.ok(emptyBlock.includes(st), `хоосон шалгалтад «${st}» алга`);
 }
-console.log('✅ хоосон шалгалт — дөрвүүлэнгээр');
+console.log('✅ хоосон шалгалт — бүх төлөвөөр');
 
 /* ── 4. СЭРГЭЭХ талд бүх төрөл буцаж тавигдана ──
    ⚠️ 2026-09-03: хөтчийн `confirm` нь апп доторх төвлөрсөн цонх болов
@@ -52,10 +52,10 @@ console.log('✅ хоосон шалгалт — дөрвүүлэнгээр');
    буулгана. Шалгуур нь хоёуланг тусад нь барина. */
 const restore = between('const pickDraft = useCallback', 'setRestore({');
 const apply = between('const applyRestore = useCallback', 'setRestore(null);');
-for (const setter of ['setPending(r.cells)', 'setPendDate(r.dates)', 'setPendDoc(r.docs)', 'setAsOf(r.asOf)', 'setAdds(']) {
+for (const setter of ['setPending(r.cells)', 'setPendDate(r.dates)', 'setAsOf(r.asOf)', 'setAdds(']) {
   assert.ok(apply.includes(setter), `сэргээлтэд «${setter}» алга`);
 }
-console.log('✅ сэргээлт — дөрвүүлэн төлөв буцаж тавигдана');
+console.log('✅ сэргээлт — бүх төлөв буцаж тавигдана');
 
 /* ── 4b. ЦОНХНЫ ГУРВАН ГАРЦ — тус бүр өөр үр дагавартай ──
    ⚠️ Хамгийн аюултай нь «дараа шийднэ»: цонх хаагдахад төлөв хоосон хэвээр
@@ -76,7 +76,6 @@ console.log('✅ цонхны гурван гарц — сэргээх · дар
    Эрх хооронд нь хасагдсан бол ноорог дахь өгөгдөл дэлгэцэд гарах ёсгүй. */
 assert.ok(restore.includes('canPerf ? d.cells'), 'гүйцэтгэлийн нүд canPerf-гүй сэргээгдэж байна');
 assert.ok(restore.includes('canPerf ? (d.dates'), 'огноо canPerf-гүй сэргээгдэж байна');
-assert.ok(restore.includes('canQaqc ? (d.docs'), 'баримт canQaqc-гүй сэргээгдэж байна');
 assert.ok(restore.includes('canAddRow ?'), 'нэмсэн мөр canAddRow-гүй сэргээгдэж байна');
 console.log('✅ сэргээлт эрхээр хамгаалагдсан хэвээр');
 
@@ -85,7 +84,6 @@ console.log('✅ сэргээлт эрхээр хамгаалагдсан хэв
    салсан: алсын хуулбар ч ЯГ ижил шалгуураар орох ёстой тул нэг газарт. */
 const readBlock = between('const parseDraft =', 'const readDraft =');
 assert.ok(readBlock.includes('d.dates = undefined'), 'эвдэрсэн dates ноорогийг бүхэлд нь хаяж байна');
-assert.ok(readBlock.includes('d.docs = undefined'), 'эвдэрсэн docs ноорогийг бүхэлд нь хаяж байна');
 console.log('✅ эвдэрсэн талбар ноорогийг бүхэлд нь хаяхгүй');
 
 /* ── 6b. АЛСЫН ХУУЛБАР (өөр төхөөрөмжөөс сэргээх) ──
@@ -109,12 +107,23 @@ assert.ok(SRC.includes('setTimeout(flush, 12_000)'), 'алсын бичилти�
 assert.ok(SRC.includes("document.addEventListener('visibilitychange'"), 'таб хаагдахад илгээхгүй байна');
 /* (3) Нийтэлсэн ба «Устгах» хоёулаа АЛСЫН хуулбарыг цэвэрлэнэ — эс бөгөөс
        нийтлэгдсэн ажил өөр төхөөрөмж дээр «нийтлэгдээгүй» гэж эргэж ирнэ. */
-/* ⚠️ ГУРАВ: нийтлэх/болиулах · «Устгах» товч · хоосон ноорогийн цэвэрлэгээ.
-   Сүүлийнх нь 2026-09-03-нд нэмэгдсэн: зөвхөн локалыг цэвэрлэвэл алсад
-   «зомби» мөр үлдэж, ачаалалт бүрд дахин шүүгдэнэ. */
+/* ⚠️ ДӨРӨВ: нийтлэх/болиулах · «Устгах» товч · хоосон ноорог · ХҮЧИНГҮЙ
+   ноорог. Гурав дахь нь 2026-09-03-нд нэмэгдсэн (зөвхөн локалыг цэвэрлэвэл
+   алсад «зомби» мөр үлдэж, ачаалалт бүрд дахин шүүгдэнэ); дөрөв дэх нь мөн
+   тэр өдөр — TTL дууссан, эвдэрсэн, эсвэл ШИНЭ ЭХЛЭЛЭЭС ӨМНӨХ ноорог
+   (`DRAFT_FRESH_START`) алсад үлдвэл өөр төхөөрөмж дээр буцаж гарна. */
 assert.equal(
-  (SRC.match(/clearRemoteDraft\(pkg\.key\)/g) ?? []).length, 3,
-  'алсын цэвэрлэгээ гурван газарт (нийтлэх · устгах · хоосон ноорог) байх ёстой',
+  (SRC.match(/clearRemoteDraft\(pkg\.key\)/g) ?? []).length, 4,
+  'алсын цэвэрлэгээ дөрвөн газарт (нийтлэх · устгах · хоосон · хүчингүй) байх ёстой',
+);
+/* ── ШИНЭ ЭХЛЭЛ (2026-09-03) ──
+   Хэрэглэгчийн заавар: «гүйцэтгэлийн бүртгэл шинээр эхэлнэ — ноорогийг
+   цэвэрлэ». Цэвэрлэлт нь ноорог
+   тархсан (хөтөч + ArcGIS) тул ЗӨВХӨН кодоор хийгдэнэ. */
+assert.ok(SRC.includes('DRAFT_FRESH_START'), 'шинэ эхлэлийн тогтмол алга');
+assert.ok(
+  SRC.includes('if (d.t < DRAFT_FRESH_START) return null;'),
+  'шинэ эхлэлээс өмнөх ноорог бүхэлдээ хүчингүй болох ёстой',
 );
 /* (4) Хэт том ноорог алсад ЯВАХГҮЙ, тэгснээ ИЛ хэлнэ */
 assert.ok(SRC.includes('REMOTE_MAX'), 'алсын хэмжээний хамгаалалт алга');
@@ -163,3 +172,13 @@ assert.ok(SRC.includes('ноорог хадгалагдав {0}'), 'хадгал
 console.log('✅ автомат хадгалалт дэлгэцэд ил');
 
 console.log('\ndraft.check: ok');
+
+/* ── 9. ЧАНАРЫН ХЭСЭГ (Inspection Test Plan) БУЦАЖ ОРООГҮЙ ──
+   ⚠️ 2026-09-03, хэрэглэгчийн шийдвэр: чанартай холбоотой бүхнийг системээс
+   хасаж, талбаруудыг нь ArcGIS-ээс өөрөө устгана. Хагас сэргээлт (жишээ нь
+   зөвхөн ноорогт `docs` буцаах) нь БАЙХГҮЙ талбар руу бичих оролдлого болж
+   багц бүхэлдээ унагаана. */
+for (const gone of ['DOC_COLS', 'DOC_BAND', 'DOC_GROUPS', 'pendDoc', 'editDoc', 'canQaqc', 'commitDoc']) {
+  assert.ok(!SRC.includes(gone), `чанарын үлдэгдэл: ${gone}`);
+}
+console.log('✅ чанарын хэсэг бүрэн хасагдсан хэвээр');
