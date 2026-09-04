@@ -1,10 +1,31 @@
-// Shared ArcGIS client. `base` points straight at the public hosted layer
-// (FeatureServer/0). CORS is open and no token is needed.
-// ⚠️ URL-ыг services.ts-ийн `TASK_SHEET`-ээс авна — энэ давхаргын ГАНЦ эх сурвалж.
-//    Хатуу бичвэл үйлчилгээ нүүх/нэр солиход энэ модул чимээгүй үхсэн URL руу
-//    хандана (FillNew/Conclusion/Level5 бүгд).
-import { TASK_SHEET } from "@/lib/services";
-export const base = TASK_SHEET.url;
+// Хуваалцсан ArcGIS клиент.
+//
+// ⚠️⚠️ 2026-08-27 — ЭНЭ ФАЙЛЫН ХОЁР ХЭСГИЙГ ЯЛГАЖ ОЙЛГО:
+//
+//   АМЬД (схемээс хараат БУС, чөлөөтэй хэрэглэ):
+//     `agsFetch`  — дурын URL руу POST/query хийх нимгэн бүрхүүл
+//     `levelFromNo`, `isHeaderAttrs`, `qesc`  — цэвэр функцүүд
+//
+//   ХОЙШЛУУЛСАН (`base` = `TASK_SHEET.url` — тэр үйлчилгээ ХААГДСАН, 499):
+//     `base`, `queryAll`, `distinct`, `level5Rows`, `constructionByBagts`,
+//     `applySections`, `ACTUAL`, `LEVEL5`, хавсралтын 4 функц
+//   Эдгээрийг ЗӨВХӨН навигациас хасагдсан хуудсууд (Pivot · Wbs · Level5 ·
+//   Conclusion — `Sheet.tsx`-ийн 2026-08-18-ны шийдвэр) л дууддаг. ШИНЭ КОДОД
+//   ОГТ ХЭРЭГЛЭХГҮЙ — амьд гүйцэтгэлийн өгөгдөл нь `sheetRows.ts`-д байна
+//   (`Bagts_*` бөглөх хуудсууд).
+//
+// ⚠️ 2026-08-29: `base` нь урьд нь `TASK_SHEET.url`-ээс ирдэг байсныг ЭНД
+//    ШУУД бичив. Учир нь `TASK_SHEET`-ээс `url` талбар БҮРМӨСӨН хасагдсан:
+//    тэр объект одоо зөвхөн талбарын нэрсийн бүрдэл бөгөөд амьд өгөгдөл нь
+//    `Bagts_*` хуудсуудаас ирдэг. Хаягийг тэнд үлдээвэл «эх сурвалж нь энэ»
+//    гэж уншигдаж, шинэ код үхсэн үйлчилгээ рүү хандана.
+//
+//    Энэ мөрийг АРХИВЫН зорилгоор л үлдээв — дээрх «ХОЙШЛУУЛСАН» функцууд
+//    навигациас хасагдсан хуудсуудад л хэрэглэгддэг. Тэр үйлчилгээ 499
+//    буцаадаг тул дуудвал алдаа гарна: ШИНЭ КОДОД ОГТ ХЭРЭГЛЭХГҮЙ.
+import { t as tr } from "@/lib/i18nCore";
+export const base =
+  "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/Selbe_guitsetgel_consolidated/FeatureServer/0";
 
 // ArcGIS returns HTTP 200 even on failure, with {error:{message}}. Check it.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -26,7 +47,7 @@ export async function agsFetch(
   try {
     json = await res.json();
   } catch {
-    throw new Error('Үйлчилгээ JSON биш хариу буцаав — сүлжээгээ шалгана уу');
+    throw new Error(tr('Үйлчилгээ JSON биш хариу буцаав — сүлжээгээ шалгана уу'));
   }
   if (json.error)
     throw new Error(

@@ -47,12 +47,20 @@ ok('stack уншигдав',
   parseChart('{"type":"stack","data":[{"label":"Чөлөөлсөн","value":1703},{"label":"Үлдсэн","value":171}]}').type === 'stack');
 ok('gauge НЭГ цэгээр хүчинтэй',
   parseChart('{"type":"gauge","data":[{"label":"Нийт гүйцэтгэл","value":18.2}]}').data.length === 1);
-ok('gauge-ийн бутархай (0.182) хувь болов',
-  parseChart('{"type":"gauge","data":[{"label":"x","value":0.182}]}').data[0].value === 18.2);
-ok('gauge-ийн 18.2 хэвээр (давхар үржүүлэхгүй)',
+/* ⚠️ 2026-09-03: АВТОМАТ ×100 ХӨРВҮҮЛЭЛТ ХАСАГДСАН. Урьд нь `value <= 1`
+   бол «бутархай ирлээ» гэж үзээд 100-аар үржүүлдэг байсан ч энэ төсөлд
+   ЖИНХЭНЭ 1%-иас бага заалт бодитоор тохиолддог — тэдгээр нь чимээгүй
+   40% болж ХУДАЛ уншигдана. Одоо хуваарьт багтахгүйг ТАТГАЛЗАНА. */
+ok('gauge-ийн жинхэнэ 0.182% ХЭВЭЭР (×100 хийхгүй)',
+  parseChart('{"type":"gauge","data":[{"label":"x","value":0.182}]}').data[0].value === 0.182);
+ok('gauge-ийн 18.2 хэвээр',
   parseChart('{"type":"gauge","data":[{"label":"x","value":18.2}]}').data[0].value === 18.2);
-ok('gauge-ийн 1.0 нь 100% болов',
-  parseChart('{"type":"gauge","data":[{"label":"x","value":1}]}').data[0].value === 100);
+ok('gauge-ийн 1.0 нь 1% хэвээр (100 болгохгүй)',
+  parseChart('{"type":"gauge","data":[{"label":"x","value":1}]}').data[0].value === 1);
+ok('gauge 100-аас их бол ТАТГАЛЗАНА',
+  parseChart('{"type":"gauge","data":[{"label":"x","value":118}]}') === null);
+ok('gauge сөрөг бол ТАТГАЛЗАНА',
+  parseChart('{"type":"gauge","data":[{"label":"x","value":-3}]}') === null);
 ok('bar НЭГ цэгээр ХҮЧИНГҮЙ хэвээр',
   parseChart('{"type":"bar","data":[{"label":"a","value":5}]}') === null);
 

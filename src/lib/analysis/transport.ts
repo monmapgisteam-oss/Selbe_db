@@ -3,7 +3,9 @@ import { t as tr } from '@/lib/i18nCore';
  * ТЭЭВЭР-ИДЭВХИЙН ШИНЖИЛГЭЭ — барилгын ангилал, хүн-зорчилт (trip) үүсгэлт,
  * тээврийн хуваарь, замын эрэлт, автобусны хүртээмж.
  *
- * Эх сурвалж: газрын зураг дээрх `barilga` давхарга (et:24, `Selbe_ET_20260721`).
+ * Эх сурвалж: газрын зураг дээрх «Барилга» давхарга (`et:24`) — 2026-08-24-ээс
+ * нэгтгэсэн `data`/108 үйлчилгээнд. Хаягийг ГАРААР бичихгүй: `layerUrl()`
+ * каталогоос угсарна.
  *
  * ⚠️ ХОЁР ТУСДАА талбар:
  *   · `Population`    (alias «Хүн ам»)     — орон сууцны оршин суугчийн тоо
@@ -18,7 +20,7 @@ export const TRANSPORT_FIELDS = {
   purpose: 'Зориулалт_m',
   population: 'Population',
   capacity: 'Huchin_chadal',
-  block: tr('Блокы'),
+  block: 'Блокы',
   zone: 'ZONE_ID',
 } as const;
 
@@ -28,10 +30,6 @@ export type BuildingCat =
   | 'residential' | 'school' | 'kindergarten'
   | 'hospital' | 'office' | 'service' | 'other';
 
-export const BUILDING_CATS: BuildingCat[] = [
-  'residential', 'school', 'kindergarten', 'hospital', 'office', 'service', 'other',
-];
-
 export const CAT_LABEL: Record<BuildingCat, string> = {
   residential: tr('Орон сууц'),
   school: tr('Сургууль'),
@@ -40,17 +38,6 @@ export const CAT_LABEL: Record<BuildingCat, string> = {
   office: tr('Оффис'),
   service: tr('Худалдаа, үйлчилгээ'),
   other: tr('Бусад'),
-};
-
-/** Ангилал бүрийн дүрслэлийн өнгө (газрын зураг, легенд, KPI) */
-export const CAT_HUE: Record<BuildingCat, string> = {
-  residential: '#f59e0b',
-  school: '#60a5fa',
-  kindergarten: '#a78bfa',
-  hospital: '#f87171',
-  office: '#38bdf8',
-  service: '#4ade80',
-  other: '#94a3b8',
 };
 
 /**
@@ -127,42 +114,6 @@ export const ROAD_MAX_DIST_M = 150;
 
 /** Хамгийн ойрын 3 замд хуваарилах жин (1-р/2-р/3-р ойрын) */
 export const ROAD_WEIGHTS = [0.5, 0.3, 0.2] as const;
-
-/* ══════════════════ Замын хүчин чадал ба V/C ══════════════════ */
-
-/**
- * Нэг эгнээний цагийн хүчин чадал (авто/цаг).
- *
- * ⚠️ ЭДГЭЭР ТОГТМОЛУУД НЭГ УДАА ХАСАГДААД БУЦАЖ ОРСОН. Төлөвлөгөөт зам (`et:5`)-д
- * эгнээний тоо байдаггүй тул V/C-г «хамгийн ачаалалтай зам = 1.0» гэж хуурамчаар
- * бодож байсныг 2026-08-03-нд хассан — тэр нь хүчин чадлын мэдээлэлгүй атлаа
- * «хэтэрсэн» гэж уншуулж байв. Эгнээний тоог OSM-ийн бодит замаас авах модуль
- * (`osmNet.ts`) бичигдсэн ч UI-д ХЭЗЭЭ Ч холбогдоогүй тул 2026-08-19-нд үхмэл
- * код болгож хассан (шаардлагатай бол git түүхээс сэргээнэ).
- *
- * ⚠️ Зөвхөн ЭГНЭЭНИЙ ТОО МЭДЭГДЭЖ БУЙ сүлжээнд хэрэглэнэ. Төлөвлөгөөт замд
- * эгнээ хараахан алга — тэнд V/C бодохгүй.
- */
-export const CAPACITY_PER_LANE = 1600;
-
-export type VCBand = { max: number; label: string; color: string };
-
-/**
- * V/C харьцааны ангилал — «Google Maps маягийн» замын өнгө.
- * ⚠️ Дулааны шатлал (`simColor`) БИШ: энэ нь «сайн ↔ муу» утгатай тул ногооноос
- * улаан руу явна. 1.0-ээс дээш нь хүчин чадал хэтэрсэн — түгжрэл.
- */
-export const VC_BANDS: VCBand[] = [
-  { max: 0.60, label: tr('Чөлөөтэй'), color: '#16a34a' },
-  { max: 0.80, label: tr('Хэвийн'), color: '#a3d84a' },
-  { max: 0.90, label: tr('Ачаалалтай'), color: '#f59e0b' },
-  { max: 1.00, label: tr('Хүнд'), color: '#ef4444' },
-  { max: Infinity, label: tr('Түгжирсэн'), color: '#b91c1c' },
-];
-
-export function vcBand(ratio: number): VCBand {
-  return VC_BANDS.find((b) => ratio <= b.max) ?? VC_BANDS[VC_BANDS.length - 1];
-}
 
 /* ══════════════════ Автобусны хүртээмж ══════════════════ */
 

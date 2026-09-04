@@ -28,6 +28,17 @@ export default [
       'react-hooks/set-state-in-effect': 'warn',
       'react-hooks/immutability': 'warn',
       'react-hooks/preserve-manual-memoization': 'warn',
+      /**
+       * САНААТАЙ ХАЯСАН утга — `_` угтвартай нэр. Rest-destructuring-аар
+       * талбар хасахад (`const { color: _c, ...rest } = x`) хаясан хувьсагч
+       * зайлшгүй үүсдэг бөгөөд түүнийг «ашиглаагүй» гэж заах нь ЖИНХЭНЭ
+       * ашиглаагүй хувьсагчийг живүүлнэ.
+       */
+      '@typescript-eslint/no-unused-vars': ['warn', {
+        argsIgnorePattern: '^_',
+        varsIgnorePattern: '^_',
+        caughtErrorsIgnorePattern: '^_',
+      }],
     },
   },
 ];

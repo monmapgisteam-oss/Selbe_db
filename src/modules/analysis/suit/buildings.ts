@@ -20,7 +20,7 @@ import {
   type BuildingCat,
 } from '@/lib/analysis/transport';
 
-/** Каталог дахь эх давхарга — «Барилга» (`Selbe_ET_20260721`/24) */
+/** Каталог дахь эх давхарга — «Барилга» (нэгтгэсэн `data`/108; `layerUrl()` шийднэ) */
 const BUILDING_LAYER_ID = 'et:24';
 
 /** Нэг хүсэлтэд авах бичлэгийн тоо (үйлчилгээний `maxRecordCount` = 2000) */

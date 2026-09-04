@@ -10,7 +10,7 @@ import { useEffect, useReducer, useState } from 'react';
 import { Home } from './Home';
 import { Landing } from './Landing';
 import { AuthNotice, useAuth } from './AuthGate';
-import { resolveAccess, subscribe } from '@/lib/permissions';
+import { resolveAccess, roleOf, subscribe } from '@/lib/permissions';
 import {
   ALL_MODE_HIDE,
   DEFAULT_VIEW,
@@ -120,7 +120,9 @@ export default function Root() {
   const openEntry = () => {
     if (allowed === 'all') { openAll(); return; }
     if (!allowed.length) return;
-    const role = roleForUser(user?.username);
+    // ⚠️ `roleOf` — override-ыг тооцно: панелаас нэмсэн инженер `guitsetgel`
+    //    нүүртэйгээ орно (урьд нь хатуу жагсаалтаас л авдаг тул `plan`-д унадаг байв)
+    const role = roleOf(user?.username);
     const home = role ? ROLE_ACCESS[role]?.home : undefined;
     openView(home && allowed.includes(home) ? home : allowed[0]);
   };
@@ -146,8 +148,17 @@ export default function Root() {
 
   /** БҮХ сэдэв (Удирдлага) — бүх харагдац навигацид */
   const openAll = () => {
+    /* Сүүлд ажилласан харагдацыг сэргээнэ (Portal хадгалдаг) — өдөр бүр ижил
+       хэсэгт ажилладаг хэрэглэгч «Орох» дараад шууд ажлын цэгтээ очно.
+       ⚠️ localStorage нь гаднын утга: харагдацын түлхүүр мөн эсэхийг
+       Object.hasOwn-оор шалгана (`__proto__` г.м. prototype халдлагаас), мөн
+       навигациас нуугдсан (ALL_MODE_HIDE) харагдацад буцаахгүй. */
+    let last: string | null = null;
+    try { last = localStorage.getItem('selbe-last-view'); } catch { /* хаалттай орчин */ }
+    const v = last && Object.hasOwn(VIEW_BY_KEY, last) && !ALL_MODE_HIDE.includes(last as ViewKey)
+      ? (last as ViewKey) : DEFAULT_VIEW;
     const u = new URL(window.location.href);
-    u.searchParams.set('v', DEFAULT_VIEW);
+    u.searchParams.set('v', v);
     u.searchParams.set('all', '1');
     u.searchParams.delete('g');
     window.history.pushState({}, '', u);
@@ -297,6 +308,10 @@ export default function Root() {
           onEnterAll={enterAll}
           groups={groups}
           onEnterView={enterView}
+          /* Порталын хажуугийн цэстэй ЯГ ижил эх сурвалж (мөр 291) — нэг
+             хэрэглэгчийн эрх хоёр газарт өөрөөр тайлбарлагдахаас сэргийлнэ. */
+          docsAllowed={access?.docs ?? true}
+          isSuper={isSuper}
         />
       ) : (
         /*

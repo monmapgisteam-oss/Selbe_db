@@ -1,0 +1,1919 @@
+/* ══════════════════════════════════════════════════════════
+   «Dashboard» харагдацын бүрхүүл — ЗӨВХӨН энэ харагдацад.
+   ⚠️ 2026-08-25 (хэрэглэгчийн хүсэлт): нэгдсэн overview.module.css-ийг
+   сэдэв тус бүрээр БҮРЭН салгав — харагдацууд хоорондоо ямар ч стайл
+   хуваалцахгүй. Графикийн хэмжээ (өндөр, мөрийн нягт г.м.)-г энд өөрчлөхөд
+   БУСАД харагдацад огт нөлөөлөхгүй тул цөөн/олон өгөгдөлтэй график бүрийг
+   өөрт нь тохируулж болно.
+   ══════════════════════════════════════════════════════════ */
+
+/* ══════════════════════════════════════════════════════════
+   Ерөнхий дашбоард — ЗҮҮН ЖАГСААЛТ · ТӨВД ЗУРАГ · БАРУУНД ДЭЛГЭРЭНГҮЙ
+
+     ┌──────────┬────────────────────┬─────────────────────┐
+     │ .rail    │ .center            │ .detail             │
+     │ 7 хэсэг  │  .head (үзүүлэлт)  │ сонголт бүрд .col   │
+     │ + гол тоо│  .hero (зураг)     │ (олон сонголтод     │
+     │          │                    │  багана болж хуваа) │
+     └──────────┴────────────────────┴─────────────────────┘
+
+   ⚠️ ӨНГӨНИЙ ДҮРЭМ — өнгө нь ЗӨВХӨН УТГА заана:
+     `.done/.active`            — үе шатны төлөв
+     `.pHigh/.pMid/.pLow/.pMin` — гүйцэтгэлийн зэрэг
+   Бусад БҮХ тоо саарал шаталбараар (`--ink` → `--ink-3`) ялгарна. Урьд нь
+   үзүүлэлт бүр өөрийн өнгөтэй байсан — 30 гаруй өнгө нэг дэлгэцэд гарч, аль нь
+   чухал болох нь мэдэгдэхээ больжээ. Шинэ өнгө нэмэхээсээ өмнө: энэ ЮУ заах вэ?
+
+   ⚠️ `.pack*`, `.side`, `.left`, `.right`, `.map`, `.kpi`, `.colHead`,
+   `.mapDims`, `.dimBtn`, `.dimOn` — эдгээрийг «Багцын мэдээлэл» (`Bagts.tsx`)
+   ХУВААЛЦАНА. Устгахаас өмнө тэр файлыг шалга.
+   ══════════════════════════════════════════════════════════ */
+.shell {
+  /* Утга заасан цорын ганц палитр — өөр өнгө нэмэхээсээ өмнө «энэ юу заах вэ?»
+     ⚠️ 2026-08-17: envhub — акцент нь ГАНЦ өгөгдлийн өнгө (--data), төлөв нь
+     токеноос. Горим солиход бүгд дагана. */
+  --accent: var(--data);
+  --ok: var(--good);
+  --low: var(--warn-ink);
+  --min: var(--bad);
+
+  /* Баганын өргөн — `Dashboard.tsx` бариулаар дарж бичнэ. */
+  --rail-w: 288px;
+
+  /**
+   * ⚠️ Дэлгэрэнгүй самбар ХАМГИЙН ИХДЭЭ 2 БАГАНЫН өргөнтэй.
+   *
+   * Урьд нь `--cols`-оор хязгааргүй ургадаг байсан тул 3 хэсэг нээхэд 1,164px
+   * хүсэж, газрын зургийг шахдаг байлаа. Одоо 3 ба түүнээс дээш сонгоход самбар
+   * ӨРГӨСӨХӨӨ БОЛЬЖ, илүү багана нь дотроо ХӨНДЛӨН гүйнэ
+   * (`.detail { overflow-x: auto }`). Ингэснээр:
+   *   · газрын зураг ямар ч тооны сонголтод ижил өргөнтэй үлдэнэ
+   *   · багана бүр 360px-ээсээ доош хумигдахгүй тул уншигдсан хэвээр
+   */
+  --detail-cols: min(var(--cols, 1), 2);
+  --detail-w: calc(var(--detail-cols) * 380px + (var(--detail-cols) - 1) * 12px);
+
+  height: 100%;
+  display: grid;
+  /**
+   * ⚠️ 2026-08-17: Хэсгүүдийн жагсаалт ЗҮҮН баганаас ДЭЭД МӨР болов —
+   * порталын зүүн навигаци нэмэгдсэн тул зүүн талд хоёр багана дараалж,
+   * газрын зураг хэт шахагдаж байлаа. Одоо:
+   *   мөр 1 = хэсгүүдийн хэвтээ жагсаалт (бүх өргөнөөр)
+   *   мөр 2 = газрын зураг | (бариул) | дэлгэрэнгүй
+   */
+  grid-template-columns: minmax(360px, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-areas:
+    'rail'
+    'center';
+  /* envhub-ийн нэгдсэн зай: gap-2.5 (10px) */
+  gap: 10px;
+  padding: 10px;
+  background: var(--bg);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/**
+ * ⚠️ ТӨВ БАГАНА нь `minmax(360px, 1fr)` — 0 БИШ.
+ *
+ * Урьд нь `minmax(0, 1fr)` байсан бөгөөд дэлгэрэнгүй самбар нь ТОГТМОЛ өргөнтэй
+ * (`--detail-w`) тул 3+ хэсэг зэрэг нээхэд төв багана 100px хүрэхгүй болж
+ * газрын зураг ба толгойн үзүүлэлт хоёулаа шахагдан эвдэрдэг байв: 3 хэсэг =
+ * 1,164px хүсэх бөгөөд 1440px дэлгэцэд зурагт ердөө ~100px үлдэнэ.
+ *
+ * ⚠️ Дэлгэрэнгүй нь `minmax(0, …)` — ХУМИГДАЖ чадна. Ингэснээр зай хүрэхгүй үед
+ * сүлжээ ЭХЛЭЭД баруун самбарыг нарийсгаж, төв багана 360px-ээ хадгална; багтаж
+ * чадаагүй багана нь самбарын дотор хэвтээгээр гүйнэ (`.detail { overflow-x }`).
+ * 52vw нь бас таг — 68vw дээр ганц хэсэг ч гэсэн зургийг хэт шахаж байлаа.
+ */
+/**
+ * ⚠️ 2026-08-17: Хэсэг СОНГОГДСОН үед — газрын зургийг ТОЙРСОН бүтэц.
+ * Сонгосон хэсгийн чарт бүр өөрийн карт болж, ЗҮҮН/БАРУУН хоёр баганад
+ * сөөлжлөн (odd/even) орно. Газрын зураг голдоо, бүтэн өндрөөр үлдэнэ.
+ *
+ *   мөр 1 = хэсгүүдийн жагсаалт (бүх өргөнөөр)
+ *   мөр 2 = хэсгийн гарчиг (бүх өргөнөөр)
+ *   мөр 3 = чарт(зүүн) | ГАЗРЫН ЗУРАГ | чарт(баруун)
+ *
+ * ⚠️ Зөвхөн ГАНЦ хэсэг нээгдэнэ (`toggle` нь `[k]`-аар орлуулдаг) тул багана
+ * олшрох, зураг шахагдах эрсдэл байхгүй.
+ */
+/* Тал бүрийн чартын баганын өргөн — envhub-ийн `xl:grid-cols-[272px_1fr_292px]`
+   -тай ижил зэрэглэл. Порталын зүүн навигаци (244px) нь дашбоардын зайг аль
+   хэдийн авдаг тул нарийн дэлгэцэд талуудыг зоригтой хумина. */
+/**
+ * ⚠️ 2026-08-20: ТОГТМОЛ 272/292px байсныг ӨРГӨНӨӨС ХАМААРСАН болгов.
+ *
+ * Тогтмол утга нь өргөн дэлгэцэд бүтцийг эвдэж байлаа: 3186px дэлгэцэд газрын
+ * зураг 2338px (өргөний 80%) авч, хажуугийн картууд 272px-т үлдэж «харандаа»
+ * шиг нарийсаад агуулга нь дотроо гүйж, доод зурвасын жагсаалт тайрагдаж
+ * байв. `vw`-тэй холбосноор дэлгэц томрох тусам картууд ч уншигдахаар
+ * томорно; `clamp` нь нарийн дэлгэцэд өмнөх доод хязгаарыг хадгална.
+ */
+.shell {
+  --side-l: clamp(272px, 16vw, 560px);
+  --side-r: clamp(292px, 17vw, 600px);
+}
+
+@media (max-width: 1680px) {
+  .shell { --side-l: 252px; --side-r: 268px; }
+
+}
+
+@media (max-width: 1440px) {
+  .shell { --side-l: 232px; --side-r: 244px; }
+
+}
+
+/* ══ 2026-08-21 (эргэлт): хөвөгч glass загварыг хэрэглэгч БУЦААЖ, тойм
+   горимтой ижил сонгодог бүтцийг сонгов — зураг голдоо хайрцагтай, картууд
+   хажуугийн баганад. Зургийн 62dvh таг энэ горимд мөрийн 1fr-тэй зөрчилдөж
+   доор нь хөндий үлдээдэг байсан тул хүчингүй. */
+.shell[data-detail='1'] .hero { max-height: none; }
+
+.shell[data-detail='1'] {
+  /**
+   * ⚠️ Талын багана `auto` — ХООСОН үед 0 өргөн болж хумигдана. Тогтмол
+   * (`var(--side-l)`) байхад 1-2 карттай хэсэгт баруун багана хоосон 244px
+   * дэмий эзэлж, газрын зураг шахагддаг байв. Өргөнийг картууд өөрсдөө
+   * (`width`) тогтооно — доорх бүсийн дүрмүүдийг үзнэ үү.
+   */
+  /**
+   * ⚠️ 2026-08-18: Талын багана `auto` байсныг ТОГТМОЛ болгов. `auto` нь
+   * зургийн мөр дуусмагц агуулгаараа сунаж, доод картууд 1000px+ өргөн болж
+   * KPI-ийн 3 нүд дэлгэц даяар тарж уншигдахаа больдог байв.
+   */
+  grid-template-columns: var(--side-l) minmax(320px, 1fr) var(--side-r);
+  /*   1 — хэсгүүдийн зурвас (rail) · 2 — KPI зурвас (zTop) ·
+       3 — ЗҮҮН │ ГАЗРЫН ЗУРАГ │ БАРУУН (1fr, үлдсэн өндөр) */
+  grid-template-rows: auto auto minmax(320px, 1fr);
+  grid-template-areas: none;
+  /**
+   * ⚠️ 2026-08-20: `height: auto; min-height: 100%; overflow: visible` байсныг
+   * ТОГТМОЛ өндөр болгов. Тэр үед агуулга дэлгэцээс хальж, эцэг (`.suit`) дээр
+   * гүйлт үүсдэг байсан — хэрэглэгч доод чартаа харахын тулд гүйлгэх шаардлагатай
+   * болж, дээд талд нь зураг хагас гарч байлаа. Одоо БҮХ бүс нэг дэлгэцэд
+   * багтана; урт жагсаалт нь картынхаа биед (`.panelBody`) гүйнэ.
+   */
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   НЯГТ ХЭЛ — Ерөнхий дашбоардын ДЭЛГЭРЭНГҮЙ горим (2026-08-20)
+
+   ⚠️ Хэрэглэгчийн шийдвэр: «одоо байгаа дизайныг бүрэн орхиж 100% шинээр».
+   Бүтэц (зураг голд, чартууд тойрсон) нь ХЭВЭЭР — зөвхөн ДҮРСЛЭЛ солигдов.
+
+   Хуучин хэл юугаараа буруу байсан бэ:
+     · `statAccent` нь РАДИАЛ ГРАДИЕНТ + өнгөт тоо нэмдэг байв. Есөн үзүүлэлт
+       есөн өөр пастель өнгөөр гэрэлтэж, аналитик самбар гэхээсээ илүү
+       танилцуулгын хуудас шиг харагддаг байлаа.
+     · Тоо нь `--hue`-гээр будагдсан тул харанхуй дэвсгэр дээр 2:1 орчим
+       контрасттай — уншихад хүчирхийлэл.
+     · Шошго бүрд 26px НӨӨЦЛӨСӨН (`min-height`) хоёр мөр, нүд бүрд 8/12px
+       дотоод зай → нэг үзүүлэлт 70px өндөр эзэлж, дэлгэц 90% хоосон.
+
+   Шинэ хэл (нягт аналитик):
+     · tint, градиент, өнгөт тоо ОГТ БАЙХГҮЙ — тоо нь var(--ink), хамгийн
+       өндөр контраст. Өнгө нь ЗӨВХӨН төлөв заана (good/warn/bad).
+     · шошго 9.5px нэг мөр, тоо 21px tabular — мэдээллийн нягт 2.5 дахин.
+     · дотоод зай 6–9px, хүрээ 1px, радиус жижиг — Grafana/Metabase-ийн хэл.
+   ══════════════════════════════════════════════════════════════════ */
+/* ── Карт: нимгэн толгой, нягт бие ── */
+.shell[data-detail='1'] .panel { border-radius: 4px; }
+
+.shell[data-detail='1'] .panelHead { padding: 5px 9px; }
+
+.shell[data-detail='1'] .panelTitle {
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  color: var(--ink-2);
+}
+
+.shell[data-detail='1'] .panelNote { font-size: 10px; }
+
+.shell[data-detail='1'] .panelBody { padding: 8px 9px; }
+
+/* ── Үзүүлэлтийн нүд ── */
+.shell[data-detail='1'] :global(.statCard) {
+  gap: 3px;
+  padding: 6px 9px;
+  border-radius: 4px;
+  /* ⚠️ tint-ийг БҮРМӨСӨН унтраана — `statAccent`-ийн градиент, өнгөт хүрээ
+     хоёулаа энд хүчингүй. Дуудагч талын `accent`/`color` пропыг засах
+     шаардлагагүй: бусад харагдацад (Иргэд, Багц) хэвээр ажиллана. */
+  background: var(--surface);
+  border-color: var(--line);
+}
+
+.shell[data-detail='1'] :global(.statNum) {
+  font-size: 21px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  /* ⚠️ `--tone` БИШ: өнгөт тоо нь харанхуй дэвсгэр дээр контраст алддаг */
+  color: var(--ink);
+}
+
+.shell[data-detail='1'] :global(.statNum) > span { font-size: 10.5px; }
+
+.shell[data-detail='1'] :global(.statTag) {
+  /* Нөөцлөсөн 26px-гүй, гэхдээ шошго «…» болохгүй — 2 мөрөнд бүтэн
+     (2026-08-21 аудит: нэг мөрийн таслалт урт монгол нэрийг иддэг байв) */
+  min-height: 0;
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  line-height: 1.2;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+/* ── Түлхүүр–утга мөр ── */
+.shell[data-detail='1'] :global(.rowsList) > * {
+  padding: 4px 0;
+  font-size: 11.5px;
+}
+
+/* ── Баганан жагсаалт: мөр нягт, зам зузаан (уншигдана) ── */
+.shell[data-detail='1'] :global(.barsList) { gap: 2px; }
+
+.shell[data-detail='1'] :global(.barsList) > * { gap: 2px; }
+
+/* Хэсгүүдийн мөр — БҮХ баганыг дамжина (хэсэг сонгогдсон эсэхээс үл хамааран) */
+.rail { grid-area: rail; }
+
+.shell[data-detail='1'] .rail { grid-area: auto; grid-column: 1 / -1; grid-row: 1; }
+
+/* ══════════════════ ХЭСГИЙН ТОВЧНЫ ЗУРВАС ══════════════════
+   9 дэд дашбоардыг сольдог ТОВЧНУУД. Энэ бол KPI хүснэгт БИШ — тоо нь
+   зөвхөн товчны товч агуулгыг хэлнэ, гол үүрэг нь ДАРАГДАХ.
+
+   ⚠️ 2026-08-21: загварыг БҮРЭН дахин бичив. Өмнөх хувилбар нь envhub-ийн
+   KPI зурвасаас гаралтай (hairline тор, 2px радиус, хавтгай нүд) байсан тул
+   хичнээн сүүдэр нэмсэн ч «хүснэгтийн мөр» хэвээр уншигдаж, дарж болохыг
+   хэрэглэгч мэдэхгүй байв. Одоо: капсул хэлбэр, зузаан хүрээ, тод өнгө,
+   зүүн талд төлөвийн цэг, идэвхтэй нь дүүрэн будагдана.
+   ══════════════════════════════════════════════════════════════ */
+
+/* ⚠️ 9 товч ҮРГЭЛЖ НЭГ МӨРӨНД — гүйлт ч байхгүй, доош мөр дамжилт ч
+   байхгүй. Зай хүрэхгүй бол товч бүр АГШИЖ, доторх нэр нь хоёр мөр болно. */
+.rail {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 7px;
+  min-width: 0;
+  padding: 2px;
+}
+
+/**
+ * ТОВЧ — капсул.
+ *
+ * ⚠️ Радиус нь 999px: дурын зузаан хүрээ, дурын өнгөнөөс илүү хүчтэй «энэ бол
+ * товч» гэсэн дохио бол ДУГУЙ ХЭЛБЭР. Тэгш өнцөгт бол хайрцаг, капсул бол товч.
+ */
+.railItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  /* ⚠️ АГУУЛГААРАА өргөсөнө (`flex: 0 0 auto`), тэнцүү хуваагдахгүй — нэр
+     таслагдвал аль хэсэг болох нь уншигдахгүй болно. Багтахгүй бол зурвас
+     өөрөө хэвтээ гүйнэ. */
+  /**
+   * ⚠️ АГШИНА, гэхдээ ХЯЗГААРТАЙ: 9 товч нэг мөрөнд багтана, доторх нэр нь
+   * хоёр мөр болно. Доод өргөн нь дэлгэцээс хамаарна — эс бөгөөс нарийн
+   * дэлгэцэд товч 40px болж, нэр нь үсэг тус бүрээр босоо бичигддэг байв.
+   */
+  flex: 1 1 0;
+  min-width: clamp(104px, 9.5vw, 176px);
+  padding: 7px 12px 7px 10px;
+  text-align: left;
+
+  background: var(--surface-2);
+  border: 1.5px solid color-mix(in oklab, var(--ink) 22%, transparent);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+/* Зүүн талын ТӨЛӨВИЙН ЦЭГ — идэвхгүй үед хоосон бөгж */
+.railItem::before {
+  content: '';
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in oklab, var(--ink) 32%, transparent);
+  background: none;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.railItem:hover {
+  background: var(--surface);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.railItem:hover::before { border-color: var(--accent); }
+
+.railItem:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ── ИДЭВХТЭЙ — дүүрэн будагдана ── */
+.railOn,
+.railOn:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* Цэг дүүрч «асав» гэж хэлнэ */
+.railOn::before,
+.railOn:hover::before {
+  background: var(--surface);
+  border-color: var(--surface);
+}
+
+/* ── Товчны дотоод бичиг ── */
+/* ⚠️ `.railTop` нь нэрийг агуулна; утга (`.railVal`) түүний ХАЖУУД, баруун
+   талд. Хоёр мөр байсныг нэг мөр болгов — капсул нь намхан байх ёстой. */
+.railTop { display: flex; min-width: 0; }
+
+/**
+ * Нэр — хамгийн ихдээ ХОЁР мөр.
+ *
+ * ⚠️ `overflow-wrap: break-word` ХЭРЭГЛЭХГҮЙ: тэр нь үгийг ҮСГЭЭР таслаад
+ * товч нарийсахад «Т-ө-с-л-и-й-н» гэж босоо бичигдүүлдэг. Зөвхөн ҮГИЙН
+ * ЗААГААР мөр дамжина; хоёр мөрөнд ч багтахгүй бол «…».
+ */
+.railTitle {
+  min-width: 0;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.22;
+  letter-spacing: 0.01em;
+  color: var(--ink-2);
+  white-space: normal;
+  overflow-wrap: normal;
+  word-break: keep-all;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.railItem:hover .railTitle { color: var(--accent); }
+
+.railOn .railTitle,
+.railOn:hover .railTitle { color: var(--surface); }
+
+/* Утга — товчны баруун ирмэгт, нэрээс тодорхой ялгарна */
+.railVal {
+  flex: none;
+  margin-left: auto;
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.railItem:hover .railVal { color: var(--accent); }
+
+.railOn .railVal,
+.railOn:hover .railVal { color: var(--surface); }
+
+/* ⚠️ `.railBar` (явцын зурвас) ба `.railNote` (тайлбар мөр) ХАСАГДСАН —
+   товчинд зөвхөн нэр ба утга. `railStat()` нь `pct`/`tone`/`note`-оо
+   буцаасаар байгаа: дэлгэрэнгүй самбар тэдгээрийг хэрэглэдэг. */
+
+
+/**
+ * ── ЗУРВАС — ДЭЛГЭЦИЙН ӨРГӨНӨӨР ──
+ *
+ * 9 товч нэг мөрөнд байх ёстой тул нарийсах тусам зай, фонт, доод өргөн
+ * бүгд жижигрэнэ. 1280px-ээс доош «төлөвийн цэг» хасагдаж зай чөлөөлнө.
+ */
+@media (max-width: 1600px) {
+  .rail { gap: 6px; }
+  .railItem { min-width: clamp(96px, 9vw, 150px); padding: 7px 10px 7px 9px; gap: 7px; }
+  .railTitle { font-size: 11px; }
+  .railVal { font-size: 12px; }
+}
+
+@media (max-width: 1280px) {
+  .rail { gap: 5px; }
+  .railItem { min-width: 84px; padding: 6px 9px; gap: 6px; }
+  /* Цэг хасагдана — 9px + 7px зай нь нарийн товчинд нэрнээс илүү үнэтэй */
+  .railItem::before { display: none; }
+  .railTitle { font-size: 10.5px; line-height: 1.18; }
+  .railVal { font-size: 11.5px; }
+}
+
+@media (max-width: 1024px) {
+  .railItem { min-width: 72px; padding: 6px 8px; gap: 5px; border-width: 1px; }
+  .railTitle { font-size: 10px; }
+  .railVal { font-size: 11px; }
+}
+
+/* ══════════════════ Төв — үзүүлэлт ба зураг ══════════════════ */
+.center { grid-area: center; display: flex; flex-direction: column; gap: 10px; min-width: 0; min-height: 0; }
+
+/**
+ * ── ЧАРТЫН БҮСҮҮД — газрын зургийг ДӨРВӨН талаас нь тойрно ──
+ *
+ * ⚠️ 2026-08-20: Урьд нь `.ringCards { display: contents }` байсан бөгөөд
+ * картуудыг CSS-ийн `nth-child(odd/even)`-ээр зүүн/баруун баганад тараадаг
+ * байв. Хоёр гэмтэлтэй байсан:
+ *   · зургийн ДЭЭД ба ДООД нүд огт ашиглагдахгүй хоосон үлддэг;
+ *   · хажуугийн карт нь ЗӨВХӨН нэг мөр эзэлдэг ч зураг 12 мөр дамждаг тул
+ *     баганын доод хагас хоосон үлдэж, «сул зай их» гомдол үүсгэдэг байлаа.
+ *
+ * Одоо `Dashboard` нь картуудыг ДӨРВӨН БОДИТ САВД хуваарилна (`detailPanels`).
+ * Сав бүр flex багана тул доторх картууд мөрийнхөө өндрийг ХУВААН ДҮҮРГЭНЭ.
+ */
+/**
+ * ⚠️ 2026-08-20 (хэрэглэгчийн хүсэлт): Тоонуудын зурвас нь ЗУРГИЙН ӨРГӨНТЭЙ —
+ * бүтэн дэлгэцийг дамждаг байсныг зөвхөн ТӨВ багана болгов. Ингэснээр:
+ *   · үзүүлэлт бүр зурагтай нэг босоо тэнхлэгт эгнэж, «энэ тоо энэ газарт
+ *     хамаарна» гэдэг холбоо нүдэнд шууд уншигдана;
+ *   · хажуугийн багана ДЭЭШЭЭ сунаж (мөр 3-аас эхэлж) нэмэлт ~150px авна.
+ *
+ * ⚠️ ТАГЛАА ЗААВАЛ: мөр 3 нь `auto` тул зурвасын агуулга хэдийг ч шаардаж
+ * болно — зураг нь энэ дэлгэцийн ГОЛ дүрслэл, түүнээс илүү зай авах учиргүй.
+ */
+
+/* ⚠️ ХООСОН тал 0 өргөнтэй — энэ нь СТИЛЬ бус ЗАН ҮЙЛ (карт байхгүй бол
+   багана огт зурагдахгүй) тул 9 хэсэгт хамаатай, салгаагүй. */
+.shell[data-detail='1'][data-zl='0'] { --side-l: 0px; }
+
+.shell[data-detail='1'][data-zr='0'] { --side-r: 0px; }
+
+
+/**
+ * Газрын зураг — ГОЛ багана, чартын бүсүүдийн ДУНД мөр.
+ *
+ * ⚠️ 2026-08-20: ТОГТМОЛ БАЙРЛАЛ (4-р мөр, 2-р багана). Урьд нь
+ * `grid-row: 3 / span 12` гэж арван хоёр мөр дамждаг байв — мөрүүд нь бүгд
+ * implicit, картууд нь `nth-child`-аар тархдаг байсан тул өөр аргагүй байлаа.
+ * Тэр нь хоёр гэмтэй: зураг өөрийн `min-height`-ээ дамжсан мөрүүддээ ТАРААХ
+ * тул хажуугийн карт мөрөө дүүргэхгүй (баганын доод хагас хоосон), мөн доод
+ * зурвас нь 15-р мөр гэсэн ТААМАГ дугаарт наалддаг байв.
+ *
+ * Одоо мөрүүд ТОДОРХОЙ (`grid-template-rows`) бөгөөд картууд бодит бүсийн
+ * саванд орсон тул зураг ганц мөр эзэлнэ. Мөр нь `1fr` — зураг ҮЛДСЭН
+ * ӨНДРИЙГ бүхэлд нь авах тул `calc(100dvh - …)` таамаг хэрэггүй болов.
+ *
+ * ⚠️ 2026-08-18: `position: sticky` ХАСАГДСАН хэвээр. Позициотой элемент нь
+ * СТАТИК ах дүүсээсээ ДЭЭР зурагддаг тул наалдсан зураг доогуур өнгөрөх
+ * картуудыг дарж будаж байлаа.
+ */
+.shell[data-detail='1'] .center {
+  grid-column: 2;
+  grid-row: 3;
+  align-self: stretch;
+  height: 100%;
+  min-height: 0;
+}
+
+/* ⚠️ 2026-08-17: envhub-ийн KPI зурвас — тусдаа хавтангууд БИШ, НЭГ hairline
+   хайрцаг дотор hairline заагтай нүднүүд (1px завсар + --line дэвсгэр). */
+.head {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(158px, 1fr));
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+
+.head > * { border: none; border-radius: 0; }
+
+/* ⚠️ `--tone` нь СОНГОМОЛ: «Багцын мэдээлэл» хавтан бүрд өөрийн өнгө дамжуулдаг
+   тул дээд ирмэг нь өнгөтэй үлдэнэ. Дашбоард `--tone` дамжуулахгүй — өнгөгүй
+   (`--line`) болж, өнгө нь зөвхөн УТГА заах дүрэм хэвээр хадгалагдана. */
+/* ⚠️ 2026-08-12: «Барилгын хяналт» (tsogts)-ын Operations Dashboard индикатортой
+   100% ижил — ГОЛЛУУЛСАН том тоо дээр, ЖИЖИГ uppercase шошго доор. */
+/* ⚠️ 2026-08-17: envhub-ийн KPI нүд — ЗҮҮН зэрэгцүүлсэн, eyebrow шошго ДЭЭР
+   (`order: -1` нь DOM хөндөхгүйгээр дээш гаргана), 17px/500 тоо доор. */
+.tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 5px;
+  text-align: left;
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+}
+
+.tileLabel { order: -1; }
+
+/* Гол үзүүлэлт (нийт гүйцэтгэл) — ГАНЦ онцлох хавтан */
+.tileLead { box-shadow: inset 0 2px 0 var(--accent); }
+
+/* ⚠️ УТГА (`b`) ба НЭГЖ (`i`) тусдаа: «≈2.4 их наяд ₮» бүхэлдээ 1.7rem-ээр
+   зурагдвал хавтангаас хальж, эхний тэмдэгт нь тайрагддаг байв. Нэгжийг жижиг
+   болгож, суурь дээр нь зэрэгцүүлбэл багтахаас гадна уншихад ч хурдан. */
+.tileVal {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0 4px;
+  min-width: 0;
+}
+
+/* ⚠️ 2026-09-01: 17px → 13px. Мөнгөн дүн бүтнээр («2,660,000,000,000») бичигдэх
+   болсон тул хавтангийн өргөнд багтаахын тулд фонтыг багасгав — тоог
+   богиносгохгүй, тайрахгүй. */
+.tileVal b {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.tileVal i { font-style: normal; font-size: 11px; font-weight: 400; color: var(--ink-3); white-space: nowrap; }
+
+/* envhub eyebrow — `order:-1`-ээр нүдний дээд мөр болно */
+.tileLabel { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.12em; line-height: 1.25; color: var(--ink-3); }
+
+.tileSub { font-size: 10.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+
+.tileBar { display: block; width: 100%; height: 2px; margin-top: 3px; border-radius: 1px; background: var(--chart-track); overflow: hidden; }
+
+.tileBar i { display: block; height: 100%; border-radius: 1px; background: var(--accent); }
+
+.hero {
+  position: relative;
+  display: flex;
+  flex: 1;
+  /* ⚠️ 260px — flex хүүхэд нь min-height: 0 үед 0 хүртэл хумигдаж, зураг огт
+     харагдахгүй болно. Толгойн хавтангууд хоёр эгнээ болоход ч зураг үлдэнэ. */
+  min-height: 260px;
+  /**
+   * ⚠️ 2026-08-18 (хэрэглэгчийн шийдвэр): ДЭЭД ХЯЗГААР нэмэв. Хэсэг СОНГООГҮЙ
+   * үед `.center` нь `.shell`-ийн үлдсэн БҮХ өндрийг авдаг тул зураг 786px
+   * болж дашбоардыг бүхэлд нь эзэлж, «дашбоард» гэхээсээ «газрын зураг» шиг
+   * харагддаг байв. 62dvh нь зургийг гол хэвээр үлдээж, доор нь үзүүлэлт
+   * харагдах зай гаргана. Хэсэг сонгосон үеийн `.center` нь өөрийн ил заасан
+   * өндөртэй (доорх `[data-detail='1']`) тул үүнд ХАМААРАХГҮЙ.
+   */
+  max-height: 62dvh;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  overflow: hidden;
+}
+
+/* ══════════════════ Баруун — дэлгэрэнгүй ══════════════════ */
+/* ── Хавтан (баганын дотор) ── */
+/**
+ * ⚠️ 2026-08-17: envhub-ийн `Box`+`Head` хэлээр — картын толгой нь бүтэн
+ * өргөний hairline зурвас (px-3 py-2), бие нь 12px зайтай бөгөөд ӨӨРӨӨ гүйнэ.
+ * (`Environment/src/components/wells/dashboard.tsx` → `Box`, `Head`, ба
+ * `min-h-0 flex-1 overflow-y-auto p-3` гэсэн биеийн загвар.)
+ */
+.panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  /**
+   * ⚠️ 2026-08-18: `min-height: 0` байсныг ХӨЛ болгов. `overflow: hidden` нь
+   * картыг өөрийн гүйлтийн хүрээ болгодог тул min-content нь 0 — grid-ийн
+   * `auto` мөрөнд орсон карт нь 2px (зөвхөн хүрээ) болж хумигдаж, доторх KPI
+   * бүхэлдээ алга болдог байв. 64px нь толгой + доод зайн доод хязгаар.
+   */
+  /**
+   * ⚠️ 2026-08-18: `overflow: hidden` ЭНДЭЭС ХАСАГДАВ (биедээ шилжсэн).
+   * Гүйлтийн хүрээ болсон элементийн min-content хувь нэмэр нь 0 байдаг тул
+   * `grid-auto-rows: min-content` мөр нь 0 болж нурж, доторх KPI бүхэлдээ
+   * алга болдог байв. Одоо картын өндөр агуулгаараа тодорхойлогдоно.
+   */
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+
+/* Картын БИЕ — толгойн доор, ӨӨРӨӨ гүйнэ (envhub: `min-h-0 flex-1
+   overflow-y-auto p-3`). Ингэснээр урт жагсаалт нь бүхэл баганыг тэлэхгүй,
+   зэрэгцээ картууд ижил өндөртэй үлдэнэ. */
+.panelBody {
+  min-height: 0;
+  flex: 1;
+  /* ⚠️ `overflow-y: auto` ХАСАГДАВ (2026-08-21): карт бүр дотроо гүйвэл нэг
+     баганад 4 тусдаа гүйлт үүсч, агуулга нь хаана ч бүтэн харагдахгүй байв.
+     Одоо карт агуулгаараа өндөрсөж, гүйлт БАГАНАД (`.zLeft`/`.zRight`). */
+  overflow: visible;
+  padding: 12px;
+  /* Радиусын таслалт нь одоо ЭНД (карт өөрөө overflow-гүй болсон) */
+  border-radius: 0 0 var(--r-sm) var(--r-sm);
+}
+
+.panelHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex: none;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.panelTitle {
+  font-size: 13.5px;
+  line-height: 1;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink);
+}
+
+/**
+ * ⚠️ 2026-08-20: `min-width: 0` + таслалт НЭМЭГДЭВ. `white-space: nowrap` нь
+ * flex нүдний min-content-ыг ТЕКСТИЙН БҮТЭН УРТ болгодог тул нүд агшихаа болиод
+ * толгойгоос ХАЛЬДАГ байв: 1440px дэлгэцэд «Гүйцэтгэлийн явц» картын
+ * «блокийн дундаж · сараар» нь цонхны баруун ирмэгээс гарч (R1450 > 1440)
+ * тайрагдаж байлаа. Одоо зай хүрэхгүй бол «…»-ээр төгсөнө.
+ */
+.panelNote {
+  font-size: 11.5px;
+  color: var(--ink-3);
+  min-width: 0;
+  /* 2026-08-21 аудит: нэг мөрийн «…» нь тоо агуулсан тайлбарыг («173 байгууламж»
+     г.м.) иддэг байв. Одоо 2 мөрөнд БҮТЭН бичигдэж, түүнээс хэтэрвэл л таслана —
+     дээрх 2026-08-20-ны халилтын хамгаалалт (min-width:0 + overflow) хэвээр. */
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  text-align: right;
+}
+
+/* ══════════════════ Утга заасан өнгө ══════════════════ */
+.done { color: var(--ok); }
+
+.active { color: var(--accent); }
+
+/* ══════════════════ Ерөнхий бүтэц ══════════════════ */
+.note {
+  margin-top: 9px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  font-size: 0.71rem;
+  line-height: 1.55;
+  color: var(--ink-3);
+}
+
+.note b { color: var(--ink-2); font-weight: 600; }
+
+/* ══════════════════ 04 · Газар чөлөөлөлт ══════════════════ */
+.landTop { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-bottom: 12px; }
+
+/* Ring-ийн ХАЖУУГИЙН Stats/Rows нь үлдсэн зайд шахагдаж багтана; нарийн
+   самбарт (basis хүрэхгүй бол) Ring-ийн ДООР бүтэн өргөнөөр буулгаж
+   уншигдахуйц хэвээр байлгана — эс бол өргөн тоонууд хүрээг давна. */
+.landTop > :last-child { flex: 1 1 240px; min-width: 0; }
+
+/* ══════════════════ Давхаргын самбар (газрын зураг дээр) ══════════════════ */
+/* ⚠️ Баруун ДЭЭД буланд — GIS аппуудын ердийн байрлал. Зүүн дээд нь бүсийн
+   chip, зүүн доод нь тайлбар, дээд төв нь 2D/3D солигч аль хэдийн эзэлсэн. */
+/* Дээд-төв toolbar — «Давхарга» + 2D/3D/BIM НЭГ pill дотор («Ерөнхий
+   төлөвлөгөө»-ийн `mapTools`-той ижил). Bagts-д хэрэглэгддэг `.mapDims`-ийг
+   хөндөхгүйн тулд Dashboard дотоод дим нь `.dimsInline` (pill-гүй). */
+/* «Давхарга» товч — pill доторх ил тод товч (асаалттай үед `--hue`). */
+/* Дотоод 2D/3D/BIM сегмент — pill-гүй, тунгалаг (гадна `.mapTools` pill өгнө).
+   ⚠️ background нь `.dimOn` (surface-2)-той ижил байвал идэвхтэй товч алга болно. */
+/* Каталог — «Ерөнхий төлөвлөгөө»-тэй ижил ЗҮҮН талын БҮТЭН ӨНДӨР багана
+   (голд хөвөхгүй).
+
+   ⚠️ 2026-08-23: `left: 0` БИШ, `200px`. Хэрэгслийн зурвас (`MapTools`) голоос
+   зүүн ирмэг рүү шилжиж, 176px өргөнтэй босоо багана болсон — хавтан ирмэгээс
+   эхэлбэл түүнийг бүрхэж, «Давхарга» товч руу дахин хүрэх аргагүй болно.
+   Одоо хоёулаа зэрэгцэнэ: зурвас хамгийн зүүнд, хавтан түүний баруун талд. */
+.catPanel {
+  position: absolute;
+  left: 200px;
+  top: 0;
+  bottom: 0;
+  z-index: 8;
+  width: 320px;
+  /* ⚠️ Зурвасын 200px-ыг ХАСНА — эс бөгөөс нарийн зурагт (IoT-ийн карт,
+     Газар чөлөөлөлт) хавтан баруун ирмэгээсээ халина. */
+  max-width: min(calc(100% - 212px), 340px);
+  display: flex;
+  background: var(--surface);
+  border-right: 1px solid var(--line);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  animation: catPanelIn 0.24s var(--ease) both;
+}
+
+.chipBar {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 5;
+  display: flex;
+  /* ⚠️ ХАБЭА-гийн хөндлөн шүүлт нь хэмжээс бүрд НЭГ чип гаргадаг (5 хүртэл) тул
+     мөр дүүрэхэд доош ороогдоно. Ганц чиптэй модульд (Ерөнхий мэдээлэл) энэ нь
+     ямар ч өөрчлөлт үзүүлэхгүй. */
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100% - 24px);
+}
+
+.filterChip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 5px 6px 5px 11px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  font-size: 0.78rem;
+}
+
+.filterLabel { font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+
+.filterClear {
+  display: grid;
+  place-items: center;
+  width: 19px;
+  height: 19px;
+  flex: none;
+  border-radius: 50%;
+  font-size: 1.12rem;
+  line-height: 1;
+  color: var(--ink-3);
+  transition: background 0.12s, color 0.12s;
+}
+
+.filterClear:hover { background: var(--sunken); color: var(--ink); }
+
+/* ══════════════════ Дэлгэц бага үед ══════════════════ */
+/**
+ * ⚠️ ЗӨВХӨН ХУВЬСАГЧ дарж бичнэ, `grid-template-columns`-ыг БИШ.
+ *
+ * Урьд нь энд 3 баганат загвар бичигдсэн байв — дэлгэрэнгүй нээлттэй үед сүлжээнд
+ * 5 хүүхэд байдаг тул үлдсэн хоёр нь далд `auto` багана болж, баруун самбар
+ * агуулгынхаа өргөнөөр тэлж зургийг шахдаг байлаа. Мөн `.detail { width }` нь
+ * сүлжээний баганын хэмжээтэй зөрчилдөнө (өргөнийг сүлжээ л шийднэ).
+ */
+@media (max-width: 1400px) {
+  .shell {
+      --rail-w: 232px;
+      --detail-w: calc(var(--detail-cols) * 340px + (var(--detail-cols) - 1) * 12px);
+    }
+
+}
+
+/* Нарийн дэлгэц — гурван багана БОСОО өрөлт болно */
+@media (max-width: 1100px) {
+  /* ⚠️ Нарийн дэлгэцэд «тойрсон» бүтэц ажиллахгүй — БҮГД нэг баганад өрөгдөнө:
+     хэсгүүдийн жагсаалт → гарчиг → зураг → чартын картууд.
+     Босго 1100 — бүх дашбоардын НЭГДСЭН босго (analysis-тай ижил). */
+  .shell,
+    .shell[data-detail='1'] {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: auto;
+      grid-auto-rows: min-content;
+      grid-template-areas: none;
+      height: auto;
+      overflow-y: auto;
+    }
+
+  .rail { grid-auto-flow: row; grid-auto-columns: auto; overflow: visible; }
+
+  .railItem { width: auto; }
+
+  /* Зураг нь наалдахаа болиод жагсаалтын дараа ердийн блок болно */
+  .shell[data-detail='1'] .center,
+    /**
+     * ⚠️ 2026-08-20: `.ringCards` устаж, дөрвөн бүсийн сав орлов. Нарийн дэлгэцэд
+     * дөрвүүлээ НЭГ багана болж дараалан өрөгдөнө.
+     *
+     * ⚠️ Ширээний `flex: 1 1 0` (карт бүр баганын өндрийг ХУВААНА) нь энд
+     * хортой: агуулга нь ижил өндөрт шахагдаж, урт жагсаалт бүр дотроо гүйх
+     * болно. Мобайлд карт агуулгаараа өндөрсөж, ХУУДАС гүйх нь зөв.
+     */
+    .zTop, .zLeft, .zRight {
+      grid-column: 1;
+      grid-row: auto;
+      position: static;
+      max-height: none;
+      /* ⚠️ `width` заавал буцаана — ширээний компьютерийн `var(--side-l)` нь
+         мобайлд картыг 232px-т нарийсгаж, дэлгэцийн хагасыг хоосон үлдээж байв. */
+      width: auto;
+      min-height: 0;
+    }
+
+  .zLeft > *, .zRight > * { flex: none; }
+
+  .hero { height: max(240px, 52vh); flex: none; }
+
+}
+
+@media (max-width: 620px) {
+  .head { grid-template-columns: repeat(2, 1fr); }
+
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   2026-08-18: envhub-ийн НЭГ ДЭЛГЭЦИЙН хэмжих хэрэгслийн бүтэц (100%
+   ижил — хэрэглэгчийн шийдвэр). Хэсэг СОНГООГҮЙ үеийн анхдагч харагдац:
+
+     ┌ .rail — 9 хэсгийн товчны зурвас (ил, унждаг цэсгүй) ────────┐
+     ├ .envl 272px ┬ .center                     ┬ .envr 292px ──┤
+     │ мөр-чартууд │  .ind (индикаторын зурвас)  │ цуваа-чартууд │
+     │ (сүүлийнх   │  .hero (ГАЗРЫН ЗУРАГ)       │ (сүүлийнх     │
+     │  сунана)    │  .srcLine (эх сурвалж)      │  сунана)      │
+     └─────────────┴─────────────────────────────┴───────────────┘
+
+   Хуудас ГҮЙХГҮЙ — жагсаалтууд картын дотроо гүйнэ (envhub-ийн дүрэм).
+   Хэсэг СОНГОСОН үеийн (data-detail=1) бүтэц ХЭВЭЭР — эдгээр гурван
+   элемент JSX-д зурагдахгүй тул доорх дүрмүүд огт оролцохгүй.
+   ══════════════════════════════════════════════════════════════════ */
+.shell[data-detail='0'] {
+  /* ⚠️ Талын өргөн ХАТУУ пиксел байсныг ХУВЬСАГЧ болгов: хэрэглэгч заагийг
+     чирэхэд `--side-l/--side-r` л өөрчлөгддөг тул хатуу утга байвал чирэлт
+     хадгалагдаад ч харагдахгүй байв (дэлгэц дээр юу ч хөдлөхгүй). */
+  grid-template-columns: var(--side-l) minmax(360px, 1fr) var(--side-r);
+  grid-template-rows: auto minmax(0, 1fr);
+  /* ⚠️ 2026-08-20: Дээд мөрийн нэр `fbar` → `rail`. Тэр мөрийг эзэлдэг байсан
+     `EnvFilterBar` устаж, оронд нь 9 хэсгийн товчны зурвас (`SideRail`, `.rail`)
+     ирсэн — нэр таарахгүй бол элемент нэргүй үлдэж, grid-ийн автомат
+     байрлуулагч түүнийг сүүлийн мөрийн хажууд шидэж бүтэц бүхэлдээ эвдэрнэ. */
+  grid-template-areas:
+    'rail rail rail'
+    'envl center envr';
+}
+
+@media (max-width: 1680px) {
+  .shell[data-detail='0'] { grid-template-columns: var(--side-l) minmax(340px, 1fr) var(--side-r); }
+
+}
+
+/* ── Шүүлтүүрийн мөр — envhub FilterBar ── */
+/* Шүүлтүүрийн товч — envhub FilterMenu (нэр · утга · сум) */
+/* ── Хажуугийн багана — panel-ууд (сүүлийнх нь сунаж дотроо гүйнэ) ── */
+.envl, .envr {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.envl { grid-area: envl; }
+
+.envr { grid-area: envr; }
+
+.envl > .panel, .envr > .panel { flex: none; }
+
+.envl > .envGrow, .envr > .envGrow { flex: 1; min-height: 120px; }
+
+/* Тоймын багана мөн адил: гүйлт нь картад БИШ, баганад */
+.envGrow .panelBody { flex: 1; min-height: 0; overflow: visible; }
+
+/* ── Индикаторын зурвас — envhub Indicator: нэг hairline хайрцаг, заагтай нүд ── */
+.ind {
+  flex: none;
+  display: grid;
+  /* 2026-08-21 аудит: тогтмол repeat(5,1fr) нь 1100–1250px-д нүдийг ~150px-ээс
+     доош шахаж утгыг («158.0 га» → «158…») таслаж байв. auto-fit нь зай хүрэхгүй
+     үед нүдийг дараагийн мөрөнд буулгаж утгыг БҮТЭН үлдээнэ. */
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+
+.indCell { display: flex; flex-direction: column; padding: 10px 13px; background: var(--surface); min-width: 0; }
+
+/* Гарчигт ХОЁР мөрийн зай нөөцөлнө — зэрэгцээ нүдний тоо нэг шугамд эгнэнэ */
+.indLabel { display: block; min-height: 28px; font-size: 10px; line-height: 1.35; font-weight: 600; letter-spacing: 0.13em; text-transform: uppercase; color: var(--ink-3); }
+
+.indBottom { margin-top: auto; display: flex; align-items: center; gap: 8px; }
+
+.indIcon { flex: none; color: var(--ink-3); display: grid; place-items: center; }
+
+.indVal { font-size: 19px; line-height: 1; font-weight: 500; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Эх сурвалжийн мөр — зургийн доор, дэвсгэргүй (envhub) */
+.srcLine { flex: none; padding: 0 2px; font-size: 10.5px; line-height: 1.4; color: var(--ink-3); }
+
+/* Нарийн дэлгэц — багана доошоо эвхэгдэнэ, хуудас босоогоор гүйнэ.
+   Босго 1100 — бүх дашбоардын НЭГДСЭН босго. */
+@media (max-width: 1100px) {
+  .shell[data-detail='0'] {
+      grid-template-columns: 1fr;
+      grid-template-rows: auto auto auto auto;
+      grid-template-areas: 'rail' 'center' 'envl' 'envr';
+      height: auto;
+    }
+
+  .shell[data-detail='0'] .hero { min-height: 320px; }
+
+  .ind { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+
+}
+
+/* ⚠️ envhub нэг дэлгэцийн горимд зураг ҮЛДСЭН өндрийг бүхэлд нь дүүргэнэ —
+   62dvh таг нь хуучин (нэг баганат) бүтцийнх тул энд хүчингүй. */
+.shell[data-detail='0'] .hero { max-height: none; }
+
+/* Бөгжний тусдаа карт — картын биеийн голд, амьсгалтай (`RingCard`) */
+.ringCard { display: grid; place-items: center; padding: 6px 0; }
+
+/* ══ SplitGrip-ийг ДАШБОАРДЫН СҮЛЖЭЭНИЙ НҮДЭНД суулгана (2026-08-21) ══
+   Урьд нь absolute давхарга бүтэн өндрөөр байж хэсгийн зурвас, KPI мөрийг
+   дайран картуудын ДЭЭГҮҮР сунаж «хэт урт зураас» болж байв. Одоо зөвхөн
+   агуулгын мөрүүдийг (2 → төгсгөл) эзэлнэ — «Тохиромжтой байдлын үнэлгээ»-
+   гийн resizer шиг өндөр нь баганатайгаа яг таарна. Хоёр горимд (тойм 2 мөр,
+   дэлгэрэнгүй 3 мөр) '2 / -1' ижил ажиллана. */
+.shell > :global(button[class*='splitGrip_grip']) {
+  position: relative;
+  grid-row: 2 / -1;
+  top: auto;
+  bottom: auto;
+  z-index: 6;
+}
+
+.shell > :global(button[class*='splitGrip_left']) {
+  grid-column: 1 / 2;
+  justify-self: end;
+  left: auto;
+  /* 10px завсрын голд — бариул өөрөө 11px */
+  margin-right: -10.5px;
+}
+
+.shell > :global(button[class*='splitGrip_right']) {
+  grid-column: 3 / 4;
+  justify-self: start;
+  right: auto;
+  margin-left: -10.5px;
+}
+
+/* Нэг баганат (нарийн) горимд зааг байхгүй тул бариул ч байхгүй */
+@media (max-width: 1100px) {
+  .shell > :global(button[class*='splitGrip_grip']) { display: none; }
+
+}
+
+
+
+
+/* ══════════════════════════════════════════════════════════════════
+   ХЭСЭГ ТУС БҮРИЙН БҮРЭН САЛГАСАН ЗАГВАР  (`data-sec`)
+
+   ⚠️ 2026-08-21 (хэрэглэгчийн хүсэлт): 9 дэд дашбоард стилээ ОГТ
+   ХУВААЛЦАХГҮЙ. Урьд нь `.zTop`, `.zLeft`, `.zRight`, KPI сүлжээ,
+   картын дүүргэлт бүгд нийтлэг байсан тул мэдээллийн хэмжээ зөрөхөд
+   (Эх үүсвэр 2 чарт · Шугам сүлжээ 6 чарт · Цар хүрээ 9 KPI) гажилт
+   үүсэж, нэгийг засахад бусад найм нь хөндөгддөг байв.
+
+   Одоо дүрэм бүр ЭЗЭМШИГЧТЭЙ: нэг хэсгийн багана, зурвас, KPI нүд,
+   картын дүүргэлтийг өөрчлөхөд бусад найм нь ХӨНДӨГДӨХГҮЙ.
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ─── 01 ТӨСЛИЙН ЦАР ХҮРЭЭ ───
+   9 KPI нэг зурвасад — нүд нарийн, зурвас өндөр */
+.shell[data-detail='1'][data-sec='scope'] {
+  --side-l: clamp(252px, 15vw, 480px);
+  --side-r: clamp(252px, 15vw, 480px);
+}
+.shell[data-detail='1'][data-sec='scope'] .zTop {
+  grid-column: 2;
+  grid-row: 2;
+  max-height: max(200px, 26vh);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.shell[data-detail='1'][data-sec='scope'] .zLeft,
+.shell[data-detail='1'][data-sec='scope'] .zRight {
+  grid-row: 2 / span 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+.shell[data-detail='1'][data-sec='scope'] .zLeft { grid-column: 1; }
+.shell[data-detail='1'][data-sec='scope'] .zRight { grid-column: 3; }
+/* ⚠️ Карт СУНАХГҮЙ — агуулгаараа өндөрсөнө. Сунгавал доторх жагсаалт
+   шахагдаж, картын өөрийн гүйлт дахин хэрэгтэй болно. */
+.shell[data-detail='1'][data-sec='scope'] .zLeft > *,
+.shell[data-detail='1'][data-sec='scope'] .zRight > * { flex: 0 0 auto; min-height: 0; }
+.shell[data-detail='1'][data-sec='scope'] .zTop > * {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+}
+.shell[data-detail='1'][data-sec='scope'] .zTop .panelHead { display: none; }
+.shell[data-detail='1'][data-sec='scope'] .zTop .panelBody { padding: 0; overflow: visible; }
+/**
+ * ⚠️ ТОЙМ ГОРИМЫН `.head` ЗУРВАСЫГ ХУУЛСАН (2026-08-21, хэрэглэгчийн хүсэлт).
+ *
+ * 9 үзүүлэлт НЭГ МӨРӨНД: `auto-fit` нь 8 + 1 болж сүүлийн нүдийг ганцаараа
+ * доош унагаадаг тул `grid-auto-flow: column` — хэдэн нүд байхаас үл хамааран
+ * нэг эгнээ. Нүд бүр `minmax(0, 1fr)` тул тэнцүү хуваагдана.
+ *
+ * ⚠️ Загварыг `.head`-тэй НЭГТГЭЭГҮЙ, ХУУЛСАН: 9 хэсэг бүр өөрийн загвартай
+ * байх ёстой тул нийтлэг селектор ашиглавал өөрчлөлт хөрш хэсгүүд рүү тарна.
+ */
+.shell[data-detail='1'][data-sec='scope'] .zTop :global(.statsGrid) {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-template-columns: none;
+  /* Нэг hairline хайрцаг — дотор нь 1px заагтай нүднүүд (тоймын `.head`) */
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+/* Нүд бүр өөрийн хүрээгүй — зааг нь савны `gap`-аас гарна */
+/* ⚠️ 2026-08-21 (хэрэглэгчийн хүсэлт): агуулга ГОЛЛУУЛСАН. Зүүн зэрэгцүүлсэн
+   үед 9 нүдний шошго, тоо хоёулаа тэгш бус тарж, зурвасыг гүйлгэн уншихад
+   нүд байрлалаа тогтоож чаддаггүй байв. */
+.shell[data-detail='1'][data-sec='scope'] .zTop :global(.statsGrid) > * {
+  background: var(--surface);
+  border: none;
+  border-radius: 0;
+  padding: 11px 12px;
+  gap: 7px;
+  align-items: center;
+  text-align: center;
+}
+/* Тоо — тоймын `.tileVal b` (17px/500) */
+/* Тоо — ТОМРУУЛСАН (17 → 24px): зурвасын гол мэдээлэл нь тоо, шошго нь тайлбар */
+.shell[data-detail='1'][data-sec='scope'] .zTop :global(.statNum) {
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+/* Шошго — тоймын `.tileLabel` (10.5px uppercase, eyebrow) */
+.shell[data-detail='1'][data-sec='scope'] .zTop :global(.statTag) {
+  width: 100%;
+  text-align: center;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  line-height: 1.25;
+  color: var(--ink-3);
+}
+.shell[data-detail='1'][data-sec='scope'] .zTop :global(.barsList),
+.shell[data-detail='1'][data-sec='scope'] .zTop :global(.rowsList) {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  column-gap: 22px;
+}
+.shell[data-detail='1'][data-sec='scope'] .zTop :global(.seriesChart) { max-width: 1100px; }
+
+/* ─── 02 ХЭРЭГЖИЛТИЙН ГРАФИК ───
+   цуваа өргөн шаардана — багана өргөн, зурвас намхан */
+.shell[data-detail='1'][data-sec='schedule'] {
+  --side-l: clamp(288px, 17vw, 560px);
+  --side-r: clamp(288px, 17vw, 560px);
+}
+.shell[data-detail='1'][data-sec='schedule'] .zTop {
+  grid-column: 2;
+  grid-row: 2;
+  max-height: max(140px, 18vh);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.shell[data-detail='1'][data-sec='schedule'] .zLeft,
+.shell[data-detail='1'][data-sec='schedule'] .zRight {
+  grid-row: 2 / span 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+.shell[data-detail='1'][data-sec='schedule'] .zLeft { grid-column: 1; }
+.shell[data-detail='1'][data-sec='schedule'] .zRight { grid-column: 3; }
+/* ⚠️ Карт СУНАХГҮЙ — агуулгаараа өндөрсөнө. Сунгавал доторх жагсаалт
+   шахагдаж, картын өөрийн гүйлт дахин хэрэгтэй болно. */
+.shell[data-detail='1'][data-sec='schedule'] .zLeft > *,
+.shell[data-detail='1'][data-sec='schedule'] .zRight > * { flex: 0 0 auto; min-height: 0; }
+.shell[data-detail='1'][data-sec='schedule'] .zTop > * {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+}
+.shell[data-detail='1'][data-sec='schedule'] .zTop .panelHead { display: none; }
+.shell[data-detail='1'][data-sec='schedule'] .zTop .panelBody { padding: 0; overflow: visible; }
+/**
+ * ⚠️ ТОЙМ ГОРИМЫН `.head` ЗУРВАСЫГ ХУУЛСАН (2026-08-21, хэрэглэгчийн хүсэлт).
+ * 4 үзүүлэлт НЭГ МӨРӨНД, нэг hairline хайрцаг дотор 1px заагтай нүднүүд.
+ */
+.shell[data-detail='1'][data-sec='schedule'] .zTop :global(.statsGrid) {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-template-columns: none;
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+/* Нүд — агуулга ГОЛЛУУЛСАН; 4 нүд тул 01-ээс өргөн, зай сул */
+.shell[data-detail='1'][data-sec='schedule'] .zTop :global(.statsGrid) > * {
+  background: var(--surface);
+  border: none;
+  border-radius: 0;
+  padding: 12px 14px;
+  gap: 7px;
+  align-items: center;
+  text-align: center;
+}
+/* Тоо — 4 нүд тул 01-ийн 24px-ээс ТОМ (26px) */
+.shell[data-detail='1'][data-sec='schedule'] .zTop :global(.statNum) {
+  justify-content: center;
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+.shell[data-detail='1'][data-sec='schedule'] .zTop :global(.statTag) {
+  width: 100%;
+  text-align: center;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  line-height: 1.25;
+  color: var(--ink-3);
+}
+.shell[data-detail='1'][data-sec='schedule'] .zTop :global(.barsList),
+.shell[data-detail='1'][data-sec='schedule'] .zTop :global(.rowsList) {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+  column-gap: 22px;
+}
+.shell[data-detail='1'][data-sec='schedule'] .zTop :global(.seriesChart) { max-width: 1100px; }
+
+/* ─── 03 ГАЗАР ЧӨЛӨӨЛӨЛТ ───
+   шалтгаан/төлөвийн жагсаалт урт — зүүн багана өргөн */
+.shell[data-detail='1'][data-sec='land'] {
+  --side-l: clamp(308px, 18.5vw, 600px);
+  --side-r: clamp(272px, 16vw, 520px);
+}
+.shell[data-detail='1'][data-sec='land'] .zTop {
+  grid-column: 2;
+  grid-row: 2;
+  max-height: max(170px, 22vh);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.shell[data-detail='1'][data-sec='land'] .zLeft,
+.shell[data-detail='1'][data-sec='land'] .zRight {
+  grid-row: 2 / span 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+.shell[data-detail='1'][data-sec='land'] .zLeft { grid-column: 1; }
+.shell[data-detail='1'][data-sec='land'] .zRight { grid-column: 3; }
+/* ⚠️ Карт СУНАХГҮЙ — агуулгаараа өндөрсөнө. Сунгавал доторх жагсаалт
+   шахагдаж, картын өөрийн гүйлт дахин хэрэгтэй болно. */
+.shell[data-detail='1'][data-sec='land'] .zLeft > *,
+.shell[data-detail='1'][data-sec='land'] .zRight > * { flex: 0 0 auto; min-height: 0; }
+.shell[data-detail='1'][data-sec='land'] .zTop > * {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+}
+.shell[data-detail='1'][data-sec='land'] .zTop .panelHead { display: none; }
+.shell[data-detail='1'][data-sec='land'] .zTop .panelBody { padding: 0; overflow: visible; }
+/**
+ * ⚠️ ТОЙМ ГОРИМЫН `.head` ЗУРВАСЫГ ХУУЛСАН (2026-08-21, хэрэглэгчийн хүсэлт).
+ * 5 үзүүлэлт НЭГ МӨРӨНД, нэг hairline хайрцаг дотор 1px заагтай нүднүүд.
+ */
+.shell[data-detail='1'][data-sec='land'] .zTop :global(.statsGrid) {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-template-columns: none;
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+/* Нүд — агуулга ГОЛЛУУЛСАН */
+.shell[data-detail='1'][data-sec='land'] .zTop :global(.statsGrid) > * {
+  background: var(--surface);
+  border: none;
+  border-radius: 0;
+  padding: 12px 13px;
+  gap: 7px;
+  align-items: center;
+  text-align: center;
+}
+/* Тоо — 5 нүд тул 25px */
+.shell[data-detail='1'][data-sec='land'] .zTop :global(.statNum) {
+  justify-content: center;
+  font-size: 25px;
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+.shell[data-detail='1'][data-sec='land'] .zTop :global(.statTag) {
+  width: 100%;
+  text-align: center;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  line-height: 1.25;
+  color: var(--ink-3);
+}
+.shell[data-detail='1'][data-sec='land'] .zTop :global(.barsList),
+.shell[data-detail='1'][data-sec='land'] .zTop :global(.rowsList) {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  column-gap: 22px;
+}
+.shell[data-detail='1'][data-sec='land'] .zTop :global(.seriesChart) { max-width: 1100px; }
+
+/* ─── 04 ОРОН СУУЦНЫ БҮС ───
+   9 карт — хамгийн олон; хоёр багана хоёулаа өргөн */
+.shell[data-detail='1'][data-sec='bagts'] {
+  --side-l: clamp(296px, 17.5vw, 580px);
+  --side-r: clamp(296px, 17.5vw, 580px);
+}
+.shell[data-detail='1'][data-sec='bagts'] .zTop {
+  grid-column: 2;
+  grid-row: 2;
+  max-height: max(180px, 23vh);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  min-width: 0;
+}
+.shell[data-detail='1'][data-sec='bagts'] .zLeft,
+.shell[data-detail='1'][data-sec='bagts'] .zRight {
+  grid-row: 2 / span 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 9px;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+.shell[data-detail='1'][data-sec='bagts'] .zLeft { grid-column: 1; }
+.shell[data-detail='1'][data-sec='bagts'] .zRight { grid-column: 3; }
+/* ⚠️ Карт СУНАХГҮЙ — агуулгаараа өндөрсөнө. Сунгавал доторх жагсаалт
+   шахагдаж, картын өөрийн гүйлт дахин хэрэгтэй болно. */
+.shell[data-detail='1'][data-sec='bagts'] .zLeft > *,
+.shell[data-detail='1'][data-sec='bagts'] .zRight > * { flex: 0 0 auto; min-height: 0; }
+.shell[data-detail='1'][data-sec='bagts'] .zTop > * {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+}
+.shell[data-detail='1'][data-sec='bagts'] .zTop .panelHead { display: none; }
+.shell[data-detail='1'][data-sec='bagts'] .zTop .panelBody { padding: 0; overflow: visible; }
+/**
+ * ⚠️ ТОЙМ ГОРИМЫН `.head` ЗУРВАСЫГ ХУУЛСАН (2026-08-21, хэрэглэгчийн хүсэлт).
+ * Үзүүлэлтүүд НЭГ МӨРӨНД, нэг hairline хайрцаг дотор 1px заагтай нүднүүд.
+ */
+.shell[data-detail='1'][data-sec='bagts'] .zTop :global(.statsGrid) {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-template-columns: none;
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+/* Нүд — агуулга ГОЛЛУУЛСАН */
+.shell[data-detail='1'][data-sec='bagts'] .zTop :global(.statsGrid) > * {
+  background: var(--surface);
+  border: none;
+  border-radius: 0;
+  padding: 11px 12px;
+  gap: 7px;
+  align-items: center;
+  text-align: center;
+}
+.shell[data-detail='1'][data-sec='bagts'] .zTop :global(.statNum) {
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+.shell[data-detail='1'][data-sec='bagts'] .zTop :global(.statTag) {
+  width: 100%;
+  text-align: center;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  line-height: 1.25;
+  color: var(--ink-3);
+}
+.shell[data-detail='1'][data-sec='bagts'] .zTop :global(.barsList),
+.shell[data-detail='1'][data-sec='bagts'] .zTop :global(.rowsList) {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  column-gap: 22px;
+}
+.shell[data-detail='1'][data-sec='bagts'] .zTop :global(.seriesChart) { max-width: 1100px; }
+
+/* ─── 05 ШУГАМ СҮЛЖЭЭ ───
+   6 чарт — хамгийн олон; зурвас намхан, чартад зай */
+.shell[data-detail='1'][data-sec='network'] {
+  --side-l: clamp(304px, 18vw, 620px);
+  --side-r: clamp(304px, 18vw, 620px);
+}
+.shell[data-detail='1'][data-sec='network'] .zTop {
+  grid-column: 2;
+  grid-row: 2;
+  max-height: max(130px, 16vh);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  min-width: 0;
+}
+.shell[data-detail='1'][data-sec='network'] .zLeft,
+.shell[data-detail='1'][data-sec='network'] .zRight {
+  grid-row: 2 / span 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 9px;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+.shell[data-detail='1'][data-sec='network'] .zLeft { grid-column: 1; }
+.shell[data-detail='1'][data-sec='network'] .zRight { grid-column: 3; }
+/* ⚠️ Карт СУНАХГҮЙ — агуулгаараа өндөрсөнө. Сунгавал доторх жагсаалт
+   шахагдаж, картын өөрийн гүйлт дахин хэрэгтэй болно. */
+.shell[data-detail='1'][data-sec='network'] .zLeft > *,
+.shell[data-detail='1'][data-sec='network'] .zRight > * { flex: 0 0 auto; min-height: 0; }
+.shell[data-detail='1'][data-sec='network'] .zTop > * {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+}
+.shell[data-detail='1'][data-sec='network'] .zTop .panelHead { display: none; }
+.shell[data-detail='1'][data-sec='network'] .zTop .panelBody { padding: 0; overflow: visible; }
+/* ⚠️ ТОЙМ ГОРИМЫН `.head` ЗУРВАСЫГ ХУУЛСАН (2026-08-27) — 01–04-тэй ижил.
+ *
+ * 6 үзүүлэлт НЭГ МӨРӨНД: `auto-fit` нь өргөнөөс хамаараад 5 + 1 болж сүүлийн
+ * нүдийг ганцаараа доош унагаадаг тул `grid-auto-flow: column` — хэдэн нүд
+ * байхаас үл хамааран нэг эгнээ. Нүд бүр `minmax(0, 1fr)` тул тэнцүү.
+ *
+ * ⚠️ Загварыг `.head`-тэй ч, хөрш хэсгүүдтэй ч НЭГТГЭЭГҮЙ — ХУУЛСАН. 9 хэсэг
+ * бүр өөрийн загвартай байх ёстой (хэрэглэгчийн шаардлага): нийтлэг селектор
+ * ашиглавал энд хийсэн өөрчлөлт хөрш хэсгүүд рүү чимээгүй тарна. */
+.shell[data-detail='1'][data-sec='network'] .zTop :global(.statsGrid) {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-template-columns: none;
+  /* Нэг hairline хайрцаг — дотор нь 1px заагтай нүднүүд (тоймын `.head`) */
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+/* Нүд бүр өөрийн хүрээгүй — зааг нь савны `gap`-аас гарна; агуулга ГОЛЛУУЛСАН */
+.shell[data-detail='1'][data-sec='network'] .zTop :global(.statsGrid) > * {
+  background: var(--surface);
+  border: none;
+  border-radius: 0;
+  padding: 11px 12px;
+  gap: 7px;
+  align-items: center;
+  text-align: center;
+}
+/* Тоо — зурвасын гол мэдээлэл (тоймын `.tileVal b` 17px-ээс томруулсан) */
+.shell[data-detail='1'][data-sec='network'] .zTop :global(.statNum) {
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+/* Шошго — тоймын `.tileLabel` (10.5px uppercase, eyebrow) */
+.shell[data-detail='1'][data-sec='network'] .zTop :global(.statTag) {
+  width: 100%;
+  text-align: center;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  line-height: 1.25;
+  color: var(--ink-3);
+}
+.shell[data-detail='1'][data-sec='network'] .zTop :global(.barsList),
+.shell[data-detail='1'][data-sec='network'] .zTop :global(.rowsList) {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  column-gap: 22px;
+}
+.shell[data-detail='1'][data-sec='network'] .zTop :global(.seriesChart) { max-width: 1100px; }
+
+/* ─── 06 ЦАХИЛГААН ───
+   4 чарт · 6 KPI — тэнцвэртэй */
+.shell[data-detail='1'][data-sec='power'] {
+  --side-l: clamp(284px, 16.5vw, 540px);
+  --side-r: clamp(284px, 16.5vw, 540px);
+}
+.shell[data-detail='1'][data-sec='power'] .zTop {
+  grid-column: 2;
+  grid-row: 2;
+  max-height: max(175px, 22vh);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.shell[data-detail='1'][data-sec='power'] .zLeft,
+.shell[data-detail='1'][data-sec='power'] .zRight {
+  grid-row: 2 / span 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+.shell[data-detail='1'][data-sec='power'] .zLeft { grid-column: 1; }
+.shell[data-detail='1'][data-sec='power'] .zRight { grid-column: 3; }
+/* ⚠️ Карт СУНАХГҮЙ — агуулгаараа өндөрсөнө. Сунгавал доторх жагсаалт
+   шахагдаж, картын өөрийн гүйлт дахин хэрэгтэй болно. */
+.shell[data-detail='1'][data-sec='power'] .zLeft > *,
+.shell[data-detail='1'][data-sec='power'] .zRight > * { flex: 0 0 auto; min-height: 0; }
+.shell[data-detail='1'][data-sec='power'] .zTop > * {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+}
+.shell[data-detail='1'][data-sec='power'] .zTop .panelHead { display: none; }
+.shell[data-detail='1'][data-sec='power'] .zTop .panelBody { padding: 0; overflow: visible; }
+/* ⚠️ ТОЙМ ГОРИМЫН `.head` ЗУРВАСЫГ ХУУЛСАН (2026-08-27) — 01–05-тай ижил.
+ *
+ * 6 үзүүлэлт НЭГ МӨРӨНД: `auto-fit` нь өргөнөөс хамаараад сүүлийн нүдийг
+ * ганцаараа доош унагаадаг тул `grid-auto-flow: column` — хэдэн нүд байхаас
+ * үл хамааран нэг эгнээ. Нүд бүр `minmax(0, 1fr)` тул тэнцүү хуваагдана.
+ *
+ * ⚠️ Загварыг `.head`-тэй ч, хөрш хэсгүүдтэй ч НЭГТГЭЭГҮЙ — ХУУЛСАН. 9 хэсэг
+ * бүр өөрийн загвартай байх ёстой (хэрэглэгчийн шаардлага): нийтлэг селектор
+ * ашиглавал энд хийсэн өөрчлөлт хөрш хэсгүүд рүү чимээгүй тарна. */
+.shell[data-detail='1'][data-sec='power'] .zTop :global(.statsGrid) {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-template-columns: none;
+  /* Нэг hairline хайрцаг — дотор нь 1px заагтай нүднүүд (тоймын `.head`) */
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+/* Нүд бүр өөрийн хүрээгүй — зааг нь савны `gap`-аас гарна; агуулга ГОЛЛУУЛСАН */
+.shell[data-detail='1'][data-sec='power'] .zTop :global(.statsGrid) > * {
+  background: var(--surface);
+  border: none;
+  border-radius: 0;
+  padding: 11px 12px;
+  gap: 7px;
+  align-items: center;
+  text-align: center;
+}
+/* Тоо — зурвасын гол мэдээлэл (тоймын `.tileVal b` 17px-ээс томруулсан) */
+.shell[data-detail='1'][data-sec='power'] .zTop :global(.statNum) {
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+/* Шошго — тоймын `.tileLabel` (10.5px uppercase, eyebrow).
+   ⚠️ Дэд станцын нэр урт тул хоёр мөрөнд БАГТАНА (`shortSrc` аль хэдийн
+   тайрсан ч «Төгөл 35/10» гэх мэт нэр 1 мөрөнд багтахгүй өргөн байж болно). */
+.shell[data-detail='1'][data-sec='power'] .zTop :global(.statTag) {
+  width: 100%;
+  text-align: center;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  line-height: 1.25;
+  color: var(--ink-3);
+}
+.shell[data-detail='1'][data-sec='power'] .zTop :global(.barsList),
+.shell[data-detail='1'][data-sec='power'] .zTop :global(.rowsList) {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  column-gap: 22px;
+}
+.shell[data-detail='1'][data-sec='power'] .zTop :global(.seriesChart) { max-width: 1100px; }
+
+/* ─── 07 ЭХ ҮҮСВЭР ───
+   ХАМГИЙН ЦӨӨН (2 чарт · 1 KPI) — багана нарийн, карт СУНАХГҮЙ */
+.shell[data-detail='1'][data-sec='source'] {
+  --side-l: clamp(244px, 14vw, 440px);
+  --side-r: clamp(244px, 14vw, 440px);
+}
+.shell[data-detail='1'][data-sec='source'] .zTop {
+  grid-column: 2;
+  grid-row: 2;
+  max-height: max(120px, 14vh);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.shell[data-detail='1'][data-sec='source'] .zLeft,
+.shell[data-detail='1'][data-sec='source'] .zRight {
+  grid-row: 2 / span 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+.shell[data-detail='1'][data-sec='source'] .zLeft { grid-column: 1; }
+.shell[data-detail='1'][data-sec='source'] .zRight { grid-column: 3; }
+.shell[data-detail='1'][data-sec='source'] .zLeft > *,
+.shell[data-detail='1'][data-sec='source'] .zRight > * { flex: 0 0 auto; min-height: 0; }
+.shell[data-detail='1'][data-sec='source'] .zTop > * {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+}
+.shell[data-detail='1'][data-sec='source'] .zTop .panelHead { display: none; }
+.shell[data-detail='1'][data-sec='source'] .zTop .panelBody { padding: 0; overflow: visible; }
+/* ⚠️ ТОЙМ ГОРИМЫН `.head` ЗУРВАСЫГ ХУУЛСАН (2026-08-27) — 01–06-тай ижил.
+ *
+ * 6 үзүүлэлт НЭГ МӨРӨНД: `auto-fit` нь өргөнөөс хамаараад сүүлийн нүдийг
+ * ганцаараа доош унагаадаг тул `grid-auto-flow: column` — хэдэн нүд байхаас
+ * үл хамааран нэг эгнээ. Нүд бүр `minmax(0, 1fr)` тул тэнцүү хуваагдана.
+ *
+ * ⚠️ Загварыг `.head`-тэй ч, хөрш хэсгүүдтэй ч НЭГТГЭЭГҮЙ — ХУУЛСАН. 9 хэсэг
+ * бүр өөрийн загвартай байх ёстой (хэрэглэгчийн шаардлага): нийтлэг селектор
+ * ашиглавал энд хийсэн өөрчлөлт хөрш хэсгүүд рүү чимээгүй тарна. */
+.shell[data-detail='1'][data-sec='source'] .zTop :global(.statsGrid) {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-template-columns: none;
+  /* Нэг hairline хайрцаг — дотор нь 1px заагтай нүднүүд (тоймын `.head`) */
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+/* Нүд бүр өөрийн хүрээгүй — зааг нь савны `gap`-аас гарна; агуулга ГОЛЛУУЛСАН */
+.shell[data-detail='1'][data-sec='source'] .zTop :global(.statsGrid) > * {
+  background: var(--surface);
+  border: none;
+  border-radius: 0;
+  padding: 11px 12px;
+  gap: 7px;
+  align-items: center;
+  text-align: center;
+}
+/* Тоо — зурвасын гол мэдээлэл (тоймын `.tileVal b` 17px-ээс томруулсан) */
+.shell[data-detail='1'][data-sec='source'] .zTop :global(.statNum) {
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+/* Шошго — тоймын `.tileLabel` (10.5px uppercase, eyebrow).
+   ⚠️ Дэд станцын нэр урт тул хоёр мөрөнд БАГТАНА (`shortSrc` аль хэдийн
+   тайрсан ч «Төгөл 35/10» гэх мэт нэр 1 мөрөнд багтахгүй өргөн байж болно). */
+.shell[data-detail='1'][data-sec='source'] .zTop :global(.statTag) {
+  width: 100%;
+  text-align: center;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  line-height: 1.25;
+  color: var(--ink-3);
+}
+.shell[data-detail='1'][data-sec='source'] .zTop :global(.barsList),
+.shell[data-detail='1'][data-sec='source'] .zTop :global(.rowsList) {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+  column-gap: 22px;
+}
+.shell[data-detail='1'][data-sec='source'] .zTop :global(.seriesChart) { max-width: 1100px; }
+
+/* ─── 08 ХӨРӨНГӨ ОРУУЛАЛТ, БОНД ───
+   мөнгөн дүн урт (₮) — багана өргөн, KPI нүд өргөн */
+.shell[data-detail='1'][data-sec='finance'] {
+  --side-l: clamp(308px, 18.5vw, 600px);
+  --side-r: clamp(308px, 18.5vw, 600px);
+}
+.shell[data-detail='1'][data-sec='finance'] .zTop {
+  grid-column: 2;
+  grid-row: 2;
+  max-height: max(170px, 21vh);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.shell[data-detail='1'][data-sec='finance'] .zLeft,
+.shell[data-detail='1'][data-sec='finance'] .zRight {
+  grid-row: 2 / span 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+.shell[data-detail='1'][data-sec='finance'] .zLeft { grid-column: 1; }
+.shell[data-detail='1'][data-sec='finance'] .zRight { grid-column: 3; }
+/* ⚠️ Карт СУНАХГҮЙ — агуулгаараа өндөрсөнө. Сунгавал доторх жагсаалт
+   шахагдаж, картын өөрийн гүйлт дахин хэрэгтэй болно. */
+.shell[data-detail='1'][data-sec='finance'] .zLeft > *,
+.shell[data-detail='1'][data-sec='finance'] .zRight > * { flex: 0 0 auto; min-height: 0; }
+.shell[data-detail='1'][data-sec='finance'] .zTop > * {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+}
+.shell[data-detail='1'][data-sec='finance'] .zTop .panelHead { display: none; }
+.shell[data-detail='1'][data-sec='finance'] .zTop .panelBody { padding: 0; overflow: visible; }
+/* ⚠️ ТОЙМ ГОРИМЫН `.head` ЗУРВАСЫГ ХУУЛСАН (2026-08-27) — 01–07-тай ижил.
+ *
+ * 6 үзүүлэлт НЭГ МӨРӨНД: `auto-fit` нь өргөнөөс хамаараад сүүлийн нүдийг
+ * ганцаараа доош унагаадаг тул `grid-auto-flow: column` — хэдэн нүд байхаас
+ * үл хамааран нэг эгнээ. Нүд бүр `minmax(0, 1fr)` тул тэнцүү хуваагдана.
+ *
+ * ⚠️ Загварыг `.head`-тэй ч, хөрш хэсгүүдтэй ч НЭГТГЭЭГҮЙ — ХУУЛСАН. 9 хэсэг
+ * бүр өөрийн загвартай байх ёстой (хэрэглэгчийн шаардлага): нийтлэг селектор
+ * ашиглавал энд хийсэн өөрчлөлт хөрш хэсгүүд рүү чимээгүй тарна. */
+.shell[data-detail='1'][data-sec='finance'] .zTop :global(.statsGrid) {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-template-columns: none;
+  /* Нэг hairline хайрцаг — дотор нь 1px заагтай нүднүүд (тоймын `.head`) */
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+/* Нүд бүр өөрийн хүрээгүй — зааг нь савны `gap`-аас гарна; агуулга ГОЛЛУУЛСАН */
+.shell[data-detail='1'][data-sec='finance'] .zTop :global(.statsGrid) > * {
+  background: var(--surface);
+  border: none;
+  border-radius: 0;
+  padding: 11px 12px;
+  gap: 7px;
+  align-items: center;
+  text-align: center;
+}
+/* Тоо — зурвасын гол мэдээлэл (тоймын `.tileVal b` 17px-ээс томруулсан) */
+.shell[data-detail='1'][data-sec='finance'] .zTop :global(.statNum) {
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+/* Шошго — тоймын `.tileLabel` (10.5px uppercase, eyebrow).
+   ⚠️ Дэд станцын нэр урт тул хоёр мөрөнд БАГТАНА (`shortSrc` аль хэдийн
+   тайрсан ч «Төгөл 35/10» гэх мэт нэр 1 мөрөнд багтахгүй өргөн байж болно). */
+.shell[data-detail='1'][data-sec='finance'] .zTop :global(.statTag) {
+  width: 100%;
+  text-align: center;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  line-height: 1.25;
+  color: var(--ink-3);
+}
+.shell[data-detail='1'][data-sec='finance'] .zTop :global(.barsList),
+.shell[data-detail='1'][data-sec='finance'] .zTop :global(.rowsList) {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+  column-gap: 22px;
+}
+.shell[data-detail='1'][data-sec='finance'] .zTop :global(.seriesChart) { max-width: 1100px; }
+
+/* ─── 09 НИЙГМИЙН ДЭД БҮТЭЦ ───
+   8 KPI — зурвас өндөр */
+.shell[data-detail='1'][data-sec='benefit'] {
+  --side-l: clamp(276px, 16vw, 520px);
+  --side-r: clamp(276px, 16vw, 520px);
+}
+.shell[data-detail='1'][data-sec='benefit'] .zTop {
+  grid-column: 2;
+  grid-row: 2;
+  max-height: max(195px, 25vh);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.shell[data-detail='1'][data-sec='benefit'] .zLeft,
+.shell[data-detail='1'][data-sec='benefit'] .zRight {
+  grid-row: 2 / span 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+.shell[data-detail='1'][data-sec='benefit'] .zLeft { grid-column: 1; }
+.shell[data-detail='1'][data-sec='benefit'] .zRight { grid-column: 3; }
+/* ⚠️ Карт СУНАХГҮЙ — агуулгаараа өндөрсөнө. Сунгавал доторх жагсаалт
+   шахагдаж, картын өөрийн гүйлт дахин хэрэгтэй болно. */
+.shell[data-detail='1'][data-sec='benefit'] .zLeft > *,
+.shell[data-detail='1'][data-sec='benefit'] .zRight > * { flex: 0 0 auto; min-height: 0; }
+.shell[data-detail='1'][data-sec='benefit'] .zTop > * {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+}
+.shell[data-detail='1'][data-sec='benefit'] .zTop .panelHead { display: none; }
+.shell[data-detail='1'][data-sec='benefit'] .zTop .panelBody { padding: 0; overflow: visible; }
+/* ⚠️ ТОЙМ ГОРИМЫН `.head` ЗУРВАСЫГ ХУУЛСАН (2026-08-27) — 01–08-тай ижил.
+ *
+ * 8 үзүүлэлт НЭГ МӨРӨНД: `auto-fit` нь өргөнөөс хамаараад сүүлийн нүдийг
+ * ганцаараа доош унагаадаг тул `grid-auto-flow: column` — хэдэн нүд байхаас
+ * үл хамааран нэг эгнээ. Нүд бүр `minmax(0, 1fr)` тул тэнцүү хуваагдана.
+ *
+ * ⚠️ Загварыг `.head`-тэй ч, хөрш хэсгүүдтэй ч НЭГТГЭЭГҮЙ — ХУУЛСАН. 9 хэсэг
+ * бүр өөрийн загвартай байх ёстой (хэрэглэгчийн шаардлага): нийтлэг селектор
+ * ашиглавал энд хийсэн өөрчлөлт хөрш хэсгүүд рүү чимээгүй тарна. */
+.shell[data-detail='1'][data-sec='benefit'] .zTop :global(.statsGrid) {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-template-columns: none;
+  /* Нэг hairline хайрцаг — дотор нь 1px заагтай нүднүүд (тоймын `.head`) */
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+/* Нүд бүр өөрийн хүрээгүй — зааг нь савны `gap`-аас гарна; агуулга ГОЛЛУУЛСАН */
+.shell[data-detail='1'][data-sec='benefit'] .zTop :global(.statsGrid) > * {
+  background: var(--surface);
+  border: none;
+  border-radius: 0;
+  padding: 11px 12px;
+  gap: 7px;
+  align-items: center;
+  text-align: center;
+}
+/* Тоо — зурвасын гол мэдээлэл (тоймын `.tileVal b` 17px-ээс томруулсан) */
+.shell[data-detail='1'][data-sec='benefit'] .zTop :global(.statNum) {
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+/* Шошго — тоймын `.tileLabel` (10.5px uppercase, eyebrow).
+   ⚠️ Дэд станцын нэр урт тул хоёр мөрөнд БАГТАНА (`shortSrc` аль хэдийн
+   тайрсан ч «Төгөл 35/10» гэх мэт нэр 1 мөрөнд багтахгүй өргөн байж болно). */
+.shell[data-detail='1'][data-sec='benefit'] .zTop :global(.statTag) {
+  width: 100%;
+  text-align: center;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  line-height: 1.25;
+  color: var(--ink-3);
+}
+.shell[data-detail='1'][data-sec='benefit'] .zTop :global(.barsList),
+.shell[data-detail='1'][data-sec='benefit'] .zTop :global(.rowsList) {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  column-gap: 22px;
+}
+.shell[data-detail='1'][data-sec='benefit'] .zTop :global(.seriesChart) { max-width: 1100px; }
+
+/* ⚠️ ГАР УТАС (2026-08-29): KPI зурвас нарийн дэлгэцэнд нэрсээ «Хэ… е…» болтол
+   тайрдаг байв. Зурвасыг ХЭВТЭЭ ГҮЙЛГЭДЭГ болгож, товч бүр бүтэн нэртэйгээ
+   үлдэнэ — гар утасны стандарт хэв. */
+@media (max-width: 720px) {
+  .rail { overflow-x: auto; scrollbar-width: thin; padding-bottom: 3px; }
+  .railItem { min-width: 104px; flex: 0 0 auto; }
+  .railTitle { white-space: nowrap; overflow: visible; text-overflow: clip; }
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   ГАР УТАС — ХЭСЭГ НЭЭСЭН ҮЕИЙН НЭГ БАГАНАТ ӨРӨЛТ (2026-09-01 ЗАСВАР)
+
+   ⚠️ ЯАГААД ЭНД, ФАЙЛЫН ТӨГСГӨЛД БАЙНА ВЭ.
+   785-р мөрийн `@media (max-width: 1100px)` доторх
+   `.zTop, .zLeft, .zRight { grid-column: 1 }` нь ЭНГИЙН класс сонголт
+   (тодорхойлолтын жин 0,1,0). Харин 974–1868 мөрүүд дэх есөн хэсгийн дүрэм
+   `.shell[data-detail='1'][data-sec='scope'] .zTop { grid-column: 2 }` нь
+   (0,4,0). Тодорхойлолтын жин нь media query-ээс ХАМААРАХГҮЙ тул нарийн
+   дэлгэцэд ч 4-класст дүрэм ялж, `.zTop`/`.zRight` хоёр 2, 3-р ДАЛД багана
+   үүсгэдэг байв. Далд `auto` багана min-content-оороо байр эзэлдэг тул ил
+   `minmax(0,1fr)` багана 0 руу шахагдаж, баруун талын чартын картууд
+   дэлгэцээс гарч `overflow-x: hidden`-д тайрагдана — хэрэглэгч тэдэнд
+   ХҮРЭХ АРГАГҮЙ болно (360px дээр 9 хэсэг бүгд).
+
+   Ижил (0,4,0) жинтэй боловч эх кодод ХОЖУУ байрлах тул энэ блок ялна.
+   `[data-sec]` нь утга заалгүй БАЙГААГ шалгана — есөн хэсэг бүгдэд нэг дор.
+   ══════════════════════════════════════════════════════════════════════ */
+@media (max-width: 1100px) {
+  .shell[data-detail='1'][data-sec] .center,
+  .shell[data-detail='1'][data-sec] .zTop,
+  .shell[data-detail='1'][data-sec] .zLeft,
+  .shell[data-detail='1'][data-sec] .zRight {
+    grid-column: 1;
+    grid-row: auto;
+    position: static;
+    max-height: none;
+    width: auto;
+    min-height: 0;
+  }
+
+  /* ⚠️ Далд багана ҮҮСГЭХГҮЙ болгох давхар хамгаалалт: хэрэв ирээдүйд өөр
+     дүрэм `grid-column: 2` тавибал тэр багана нь бүтэн өргөнтэй болж,
+     мөр болж унана — 0 руу шахагдахгүй. */
+  .shell[data-detail='1'][data-sec] { grid-auto-columns: minmax(0, 1fr); }
+
+  /* ⚠️ `.shell`-ийн суурь `overflow: hidden` нь 785-р мөрд зөвхөн
+     `overflow-y: auto` болж дарагддаг тул `overflow-x` нь `hidden` хэвээр
+     үлдэж, ямар нэг зүйл халивал ХҮРЭХ БОЛОМЖГҮЙ байв. */
+  .shell,
+  .shell[data-detail='1'] { overflow-x: auto; }
+}

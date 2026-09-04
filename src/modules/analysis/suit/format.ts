@@ -1,12 +1,11 @@
 /**
  * АНАЛИЗ модулийн форматлагчид — mn-MN, эх аппын хэлбэрээр.
  *
- * ⚠️ `lib/format.ts`-ээс ЯЛГААТАЙ: тэр нь en-US бүлгийн тусгаарлагчтай, портал
- * даяар хэрэглэгддэг. Анализ модуль нь эх Suitability аппын дизайныг хадгалдаг
- * тул mn-MN бүлэглэл, «тэрбум₮/сая₮» богиносголтой. Хоёр модуль тусдаа
- * форматтай байх нь санаатай — гэхдээ анализ ДОТРОО ганц эх сурвалжтай байх
- * ёстой тул эдгээрийг НЭГ л газар (энд) тодорхойлж, Suitability/SuitDetail
- * хоёулаа эндээс уншина.
+ * ⚠️ 2026-09-01: МӨНГӨН дүн портал даяар НЭГ дүрэмтэй боллоо — бүтэн, мянгатын
+ * ТАСЛАЛТАЙ (хэрэглэгчийн шийдвэр). Урьд нь энэ модуль mn-MN бүлэглэл ба
+ * «тэрбум₮/сая₮» товчлолтой, САНААТАЙ ялгаатай байв; тэр ялгаа ЦУЦЛАГДСАН.
+ * Тоон (мөнгө БИШ) `nf` нь mn-MN хэвээр — эх Suitability аппын харагдац.
+ * Suitability/SuitDetail хоёул эндээс уншина.
  */
 
 import { DENSITY_BY_TYPE, type Indicator } from '@/lib/analysis/config';
@@ -18,18 +17,15 @@ export const nf = (v: number | null | undefined, d = 0) =>
     ? '—'
     : v.toLocaleString('mn-MN', { minimumFractionDigits: d, maximumFractionDigits: d });
 
-/** Нэгж үнэ — товчлолгүй, бүтэн тоогоор (2,500,000,000 ₮) */
-export const unitMoney = (v: number | null | undefined) =>
-  v == null || !Number.isFinite(v) ? '—' : `${nf(v)} ₮`;
-
-/** Мөнгөн дүнг уншихад ойлгомжтой нэгжээр */
-export function money(v: number | null | undefined, d = 1) {
+/**
+ * Мөнгөн дүн — БҮТНЭЭР, мянгатын таслалтай. Хасах утгыг `−` (U+2212) тэмдгээр.
+ * ⚠️ Товчлолгүй: `lib/format.ts`-ийн `mnt`-тэй ижил дүрэм. Ялгаа нь зөвхөн
+ *    хасах тэмдгийн боловсруулалт ба `₮`-г зайгүй наадаг эх аппын хэлбэр.
+ */
+export function money(v: number | null | undefined) {
   if (v == null || !Number.isFinite(v)) return '—';
   const a = Math.abs(v), sign = v < 0 ? '−' : '';
-  if (a >= 1e9) return tr('{0}{1} тэрбум₮', sign, nf(a / 1e9, d));
-  if (a >= 1e6) return tr('{0}{1} сая₮', sign, nf(a / 1e6, d));
-  if (a >= 1e3) return tr('{0}{1} мянга₮', sign, nf(a / 1e3, 0));
-  return `${sign}${nf(a, 0)}₮`;
+  return `${sign}${a.toLocaleString('en-US')}₮`;
 }
 
 /** HTML-д шингээхэд аюулгүй болгох — hover панелийг гараар угсрахад заавал */

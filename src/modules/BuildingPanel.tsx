@@ -8,25 +8,73 @@ import { useAsync, type Async } from '@/lib/useAsync';
 import { queryFeatures } from '@/lib/query';
 import { BUILDING, PROGRESS_LEVELS, TASK_SHEET, LAYER_BY_ID, bagtsKey, buildingKey } from '@/lib/services';
 import { loadBlockProgress, loadBlockHistory, progressSeries, type BlockHistory } from '@/lib/blockProgress';
-import { ACTUAL, applySections, qesc, queryAll, type Feature } from '@/modules/sheet/ags';
+import { loadSheetRows, sheetBagtsNames, type SheetRow, type SheetRowOpts } from '@/modules/sheet/sheetRows';
+import { register } from '@/lib/dataBus';
 import { num, pct, text, shade } from '@/lib/format';
 
 const HUE = LAYER_BY_ID['mon:building'].hue;
 /** Гүйцэтгэлийн түвшний нэг өнгө — сүүлийн (Дууссан) хамгийн тод → эхнийх бүдэг */
 const lvlHue = (i: number, n: number) => shade(HUE, n - 1 - i, n);
 const F = BUILDING.fields;
-const TS = TASK_SHEET.fields;
 
 /**
- * ⚠️ ГҮЙЦЭТГЭЛИЙН БҮХ ТОО «Гүйцэтгэл бөглөх»-ийн нэгтгэсэн хүснэгтээс
- * (`Selbe_guitsetgel_consolidated`) — shapefile-ийн `GUITS_HV` ба 16 үе шатын
- * талбар ХУУЧИРСАН тул энэ хуудсанд ОГТ хэрэглэхгүй. Барилгын давхаргаас зөвхөн
+ * ⚠️ ГҮЙЦЭТГЭЛИЙН БҮХ ТОО «Гүйцэтгэл бөглөх»-ийн `Bagts_*` ХУУДСУУДААС
+ * (`sheet/sheetRows.ts`) — shapefile-ийн `GUITS_HV` ба 16 үе шатын талбар
+ * ХУУЧИРСАН тул энэ хуудсанд ОГТ хэрэглэхгүй. Барилгын давхаргаас зөвхөн
  * гүйцэтгэлгүй шинж чанар (айл, давхар, гүйцэтгэгч, FID) авна — тэдгээр нь
- * хүснэгтэд байхгүй.
+ * бөглөх хуудсанд байхгүй.
+ *
+ * ⚠️ 2026-08-27: урьд нь энэ модуль `Selbe_guitsetgel_consolidated` нэгтгэсэн
+ * хүснэгтээс уншдаг байсныг СОЛИВ — тэр үйлчилгээг эзэн нь дахин зохион
+ * байгуулж эхэлснээр талбарууд алга болж, дараа нь бүхэлдээ хаагдсан (499).
+ * `TASK_SHEET`-ээс одоо зөвхөн ШОШГЫН тогтмол (`constructionNo`, `subPhaseNos`)
+ * л авна — тэр үйлчилгээний URL руу асуулга ЯВАХГҮЙ.
  */
 
 /** null/хоосон утгыг НЭГ бүлэгт (ArcGIS null ба ' '-г тусад нь буцаадаг) */
 const UNKNOWN = tr('Тодорхойгүй');
+
+/* ─────────────── Бөглөх хуудасны мөрийн кэш ─────────────── */
+
+/**
+ * ⚠️ `loadSheetRows` ӨӨРӨӨ КЭШГҮЙ. `block` параметр нь зөвхөн `outFields`-ийг
+ * нарийсгадаг бөгөөд мөрийн тоог ОГТ буулгадаггүй (`where` нь
+ * `fillDate IS NOT NULL`) — нэг блокийн дуудлага ч багцын БҮХ агшны 27,400
+ * мөрийг 14 дараалсан хуудсаар, ~5 МБ-аар татна. `useTaskPerf` нь
+ * `[bagts, blok]`-оор дахин ажилладаг тул барилга дарах БҮРД тэр бүтэн скан
+ * дахин явж, блокоо буцааж дарахад ч дахин татагдаж байв (~11 с, 28 хүсэлт).
+ *
+ * Тиймээс дуудлагын түлхүүрээр кэшлэнэ — `blockProgress.ts`-ийн
+ * `memo(fn, ['BAGTS_SHEET'])` загвараар: бөглөх хуудсанд бичмэгц `dataBus`
+ * кэшийг хаяж, тоо шууд шинэчлэгдэнэ.
+ *
+ * ⚠️ Багтаамжийг ХЯЗГААРЛАНА: бичлэг бүр ~5 МБ тул хязгааргүй өсгөвөл олон
+ * блок дараалан үзэхэд санах ой дүүрнэ. Сүүлийн `MAX_SHEET_CACHE` дуудлага л
+ * үлдэнэ — «нааш цааш дарах» гэсэн бодит хэв маягийг бүрэн барина.
+ */
+const MAX_SHEET_CACHE = 4;
+const sheetCache = new Map<string, Promise<SheetRow[]>>();
+register(() => sheetCache.clear(), ['BAGTS_SHEET']);
+
+function cachedSheetRows(opts: SheetRowOpts): Promise<SheetRow[]> {
+  const key = JSON.stringify([opts.group ?? null, opts.block ?? null, !!opts.constructionOnly, opts.maxLevel ?? null]);
+  const hit = sheetCache.get(key);
+  if (hit) {
+    // Хамгийн сүүлд хэрэглэсэн нь эцэст (LRU)
+    sheetCache.delete(key);
+    sheetCache.set(key, hit);
+    return hit;
+  }
+  // ⚠️ Алдааг кэшлэхгүй: түр зуурын «Too many requests» сесс дуустал наалдана.
+  const p = loadSheetRows(opts).catch((e) => { sheetCache.delete(key); throw e; });
+  sheetCache.set(key, p);
+  while (sheetCache.size > MAX_SHEET_CACHE) {
+    const oldest = sheetCache.keys().next().value;
+    if (oldest === undefined) break;
+    sheetCache.delete(oldest);
+  }
+  return p;
+}
 
 export type Block = {
   oid: number;
@@ -118,8 +166,8 @@ export function useBuildings() {
         key,
         bagts: text(r[F.bagts], '').trim(),
         blok: text(r[F.block], '').trim(),
-        contractor: text(r[F.contractor], '').trim(),
         ail: Number(r[F.households] ?? 0) || 0,
+        contractor: text(r[F.contractor], '').trim(),
         floors: Number.isFinite(dav) && dav > 0 ? dav : null,
         progress: cell?.overall ?? null,
         phases,
@@ -210,7 +258,7 @@ function ProgressTrend({
     if (g) {
       toggle({
         key: `${BAGTS_FILTER}${k}`, label: k, group: tr('Багц'),
-        where: oidWhere(g.oids), view: 'monitor', layerIds: 'mon:building', color: HUE,
+        where: oidWhere(g.oids), view: 'pkgProg', layerIds: 'mon:building', color: HUE,
       });
     }
   };
@@ -302,7 +350,7 @@ export function BuildingSummary({ q }: { q: Buildings }) {
    * тавибал ArcGIS хүсэлт унана.
    */
   const pick = (key: string, label: string, group: string, oids: number[], color = HUE) =>
-    toggle({ key, label, group, where: oidWhere(oids), view: 'monitor', layerIds: 'mon:building', color });
+    toggle({ key, label, group, where: oidWhere(oids), view: 'pkgProg', layerIds: 'mon:building', color });
 
   return (
     <Data q={q}>
@@ -422,15 +470,15 @@ export function BuildingSummary({ q }: { q: Buildings }) {
 /* ═════════════ БАГЦЫН дашбоард — ажлын төрлөөр ═════════════ */
 
 /**
- * Хүснэгтийн багцын нэр нь давхаргынхаас ӨӨР бичигддэг («Багц 4.1» ↔ «Багц 4-1»)
- * тул SQL-д давхаргын нэрийг шууд тавьж болохгүй. Хүснэгтийн БОДИТ нэрсийг нэг
- * удаа татаад `bagtsKey`-ээр жишиж холбоно.
+ * Хуудсын багцын нэр нь давхаргынхаас ӨӨР бичигддэг («Багц 4.1» ↔ «Багц 4-1»)
+ * тул давхаргын нэрийг шууд тааруулж болохгүй — `bagtsKey`-ээр жишнэ.
+ *
+ * ⚠️ Урьд нь нэгтгэсэн хүснэгтээс `returnDistinctValues`-ээр ТАТДАГ байв.
+ * Бөглөх хуудас бүр өөрийн багцтай нэг-нэгээр таарах тул одоо бүртгэлээс шууд
+ * гарна — сүлжээний хүсэлт огт шаардлагагүй.
  */
-let bagtsNames: Promise<string[]> | null = null;
-const loadBagtsNames = () => (bagtsNames ??= queryAll(`${TS.bagts} IS NOT NULL`, {
-  outFields: TS.bagts, returnDistinctValues: 'true', orderByFields: TS.bagts,
-}).then((fs) => fs.map((f) => text(f.attributes[TS.bagts], '').trim()).filter(Boolean))
-  .catch((e) => { bagtsNames = null; throw e; }));
+const matchBagts = (layerBagts: string): string | null =>
+  sheetBagtsNames().find((n) => bagtsKey(n) === bagtsKey(layerBagts)) ?? null;
 
 type BagtsWork = {
   /** № (жишээ «3.2») — блок бүрд өөр байж болно, тиймээс түлхүүр нь НЭР */
@@ -462,33 +510,28 @@ type BagtsData = { name: string; asOf: string; blocks: number; works: BagtsWork[
 function useBagtsWorks(layerBagts: string | null): Async<BagtsData | null> {
   return useAsync(async () => {
     if (!layerBagts) return null;
-    const names = await loadBagtsNames();
-    const name = names.find((n) => bagtsKey(n) === bagtsKey(layerBagts));
+    const name = matchBagts(layerBagts);
     if (!name) return null;
 
-    const feats = await queryAll(
-      `${TS.bagts} = '${qesc(name)}' AND ${TS.level} <= 4 AND ${ACTUAL}`,
-      {
-        outFields: [TASK_SHEET.oid, TS.block, TS.date, TS.level, TS.no, TS.work, TS.progress].join(','),
-        orderByFields: `${TS.date} ASC, ${TASK_SHEET.oid} ASC`,
-      },
-    );
-    if (!feats.length) return null;
+    // Түвшин 1–4 — навч ажлууд (түвшин 5) энэ хүснэгтэд ОРОХГҮЙ тул шүүлтийг
+    // уншигч дээр өгнө: багц бүрд 20 блок × мянган навч татах шаардлагагүй.
+    const rows = await cachedSheetRows({ group: name, maxLevel: 4 });
+    if (!rows.length) return null;
 
-    /** Нэг блокийн нэг тайлангийн мөрүүд — гүн толгойг ЭНД тодорхойлно */
-    const batches = new Map<string, Feature[]>();
+    /** Нэг блокийн нэг агшны мөрүүд — гүн толгойг ЭНД тодорхойлно */
+    const batches = new Map<string, SheetRow[]>();
     let asOf = '';
     const blocks = new Set<string>();
-    for (const f of feats) {
-      const a = f.attributes;
-      const blok = text(a[TS.block], '').trim();
-      const date = text(a[TS.date]);
-      blocks.add(blok);
-      if (date > asOf) asOf = date;
-      const k = `${blok}|${date}`;
+    for (const r of rows) {
+      blocks.add(r.block);
+      if (r.date > asOf) asOf = r.date;
+      const k = `${r.sheet}#${r.snap}|${r.block}`;
       const arr = batches.get(k);
-      if (arr) arr.push(f); else batches.set(k, [f]);
+      if (arr) arr.push(r); else batches.set(k, [r]);
     }
+    // ⚠️ Хуудсын МӨРИЙН ДАРААЛАЛ (`ord`) нь толгой↔навч харьцааг үүрдэг —
+    //    уншигч нь багц бүрийг зэрэг татдаг тул энд дахин эрэмбэлнэ.
+    for (const arr of batches.values()) arr.sort((a, b) => a.ord - b.ord);
 
     /** ажлын нэр → блок → хамгийн их % */
     const byWork = new Map<string, { no: string; order: number; vals: Map<string, number> }>();
@@ -497,18 +540,19 @@ function useBagtsWorks(layerBagts: string | null): Async<BagtsData | null> {
     for (const arr of batches.values()) {
       const seen: string[] = [];
       for (let i = 0; i < arr.length; i += 1) {
-        const a = arr[i].attributes;
-        const next = arr[i + 1]?.attributes;
-        if (next && Number(next[TS.level]) > Number(a[TS.level])) continue; // дэд толгойтой
-        const work = text(a[TS.work], '').trim();
+        const r = arr[i];
+        const next = arr[i + 1];
+        // Дэд толгойтой мөрийг алгасна — «3. ТӨМӨР БЕТОН РАМЫН АЖИЛ» хасагдаж
+        // «3.2 · 1-р давхар цутгалт» үлдэнэ.
+        if (next && Number(next.level) > Number(r.level)) continue;
+        const work = r.work.trim();
         if (!work) continue;
         seen.push(work);
-        const e = byWork.get(work) ?? { no: text(a[TS.no], '').trim(), order: 0, vals: new Map() };
-        const p = a[TS.progress] == null ? null : Number(a[TS.progress]) * 100;
+        const e = byWork.get(work) ?? { no: r.no, order: 0, vals: new Map() };
+        const p = r.progress == null ? null : r.progress * 100;
         if (p != null) {
-          const blok = text(a[TS.block], '').trim();
-          const prev = e.vals.get(blok);
-          e.vals.set(blok, prev == null ? p : Math.max(prev, p));
+          const prev = e.vals.get(r.block);
+          e.vals.set(r.block, prev == null ? p : Math.max(prev, p));
         }
         byWork.set(work, e);
       }
@@ -581,19 +625,65 @@ export type TaskPerfData = {
   version: string;             // «2026-07-20» — сүүлийн бөглөсөн огноо
   overall: number | null;      // «Б. Барилга угсралтын ажил» мөрийн гүйцэтгэл (0–100)
   headers: HeaderWork[];       // Б1…Б5 дэд үе шатууд
+  /** Нийт навч ажил — мэдээлэлгүй (null) нүд ОРНО (`noData`-г үзнэ үү) */
   taskCount: number;
   done: number;                // дууссан (гүйц ≥ 1)
   inProgress: number;          // явцтай (0 < гүйц < 1)
-  notStarted: number;          // эхлээгүй (гүйц ≤ 0)
+  notStarted: number;          // эхлээгүй — ЯГ 0 бичигдсэн (null ОРОХГҮЙ)
+  /**
+   * ⚠️ Бөглөгдөөгүй (null) навч ажил. Урьд нь `progress ?? 0` гэж 0 болгоод
+   * `notStarted` руу нийлүүлдэг байсан тул «хэмжилт байхгүй» ба «эхлээгүй»
+   * хоёр ялгагдахгүй, Багц 1·9F дээр «Эхлээгүй» гэж харагдах нүдний ~93% нь
+   * (20096 null vs 1520 яг 0) хэмжилт БИШ хоосон нүд байв. `sheetRows.ts:47`
+   * дээр энэ талбар «Бөглөөгүй нүд `null`» гэж ил тодорхойлогдсон бөгөөд
+   * `blockProgress.compute`, `Finance`, `meanOf` бүгд null-ыг САНААТАЙ хасдаг.
+   */
+  noData: number;
   /** Энэ блокийн «Б.» мөрийн түүх — явцын муруйд */
   hist: BlockHistory;
   key: string;
 };
 
-/** Мөрийн онц — ажлын нэр давхрын хэсэг тус бүрд ДАВТАГДАНА, тиймээс
- *  `applySections`-ийн стампалсан хэсэг (`angilal_b`) түлхүүрт ЗААВАЛ орно. */
-const rowKey = (a: Record<string, unknown>) =>
-  `${text(a[TS.section])}|${text(a[TS.level])}|${text(a[TS.work])}`;
+/**
+ * Мөрийн онц — ажлын нэр давхрын хэсэг тус бүрд ДАВТАГДАНА («1-р давхрын
+ * цутгалт» барилга бүрд 11 хүртэл удаа), тиймээс ХЭСГИЙН нэр түлхүүрт ЗААВАЛ
+ * орно. Эс бөгөөс өөр давхрын мөрүүд чимээгүй нийлж, ажлын тоо буурна.
+ */
+const rowKey = (r: SectionRow) => `${r.section}|${r.level ?? ''}|${r.work}`;
+
+/** `SheetRow` + тухайн мөрийн ХАРЬЯА ХЭСЭГ (дээрх хамгийн ойрын толгой мөр) */
+type SectionRow = SheetRow & { section: string };
+
+/**
+ * ХЭСГИЙН НЭРИЙГ СТАМПАЛНА — навч мөрийн хэсэг нь хуудасны дараалал дахь
+ * дээрх хамгийн ойрын ТОЛГОЙ мөр (түвшин ≠ 5).
+ *
+ * ⚠️ Урьд нь энэ нь `ags.applySections` байсан бөгөөд нэгтгэсэн хүснэгтийн
+ * `angilal_b` талбарт бичдэг байв. Бөглөх хуудсанд тийм багана БАЙХГҮЙ тул
+ * хэсгийг зөвхөн МӨРИЙН ДАРААЛЛААС гаргана — агшин ба блок тус бүрд тусад нь
+ * (нэг агшны дотор хуудас бүхэлдээ давтагддаг).
+ */
+function stampSections(rows: SheetRow[]): SectionRow[] {
+  const batches = new Map<string, SheetRow[]>();
+  for (const r of rows) {
+      // ⚠️ Батчийн түлхүүрт ХУУЛБАР (`sheet`+`snap`) ЗААВАЛ орно: нэг өдөрт
+      //    хуудас хоёр ч удаа нийтлэгдэж болох бөгөөд зөвхөн огноогоор багцлавал
+      //    хоёр хуулбар нийлж толгой↔навч харьцаа эвдэрнэ.
+    const k = `${r.sheet}#${r.snap}|${r.block}`;
+    const arr = batches.get(k);
+    if (arr) arr.push(r); else batches.set(k, [r]);
+  }
+  const out: SectionRow[] = [];
+  for (const arr of batches.values()) {
+    arr.sort((a, b) => a.ord - b.ord);
+    let sec = '';
+    for (const r of arr) {
+      if (r.level !== 5) { sec = r.work; out.push({ ...r, section: sec }); }
+      else out.push({ ...r, section: sec });
+    }
+  }
+  return out;
+}
 
 /**
  * Тухайн блокийн ажлын гүйцэтгэл — БҮГД «Гүйцэтгэл бөглөх»-ийн нэгтгэсэн
@@ -617,70 +707,67 @@ export function useTaskPerf(b: PickedBuilding | null): Async<TaskPerfData | null
   const bagts = b?.bagts ?? null;
   return useAsync(async () => {
     if (!blok) return null;
-    const [feats, prog, hist] = await Promise.all([
-      // «5/1» → «5/1 барилга» / «5/1 блок». Огноо+OID дараалал нь as-of болон
-      // хэсэг стампалахад ЗААВАЛ шаардлагатай.
-      queryAll(`${TS.block} LIKE '${qesc(blok)} %' AND ${ACTUAL}`, {
-        outFields: [
-          TASK_SHEET.oid, TS.bagts, TS.block, TS.date, TS.version,
-          TS.level, TS.no, TS.work, TS.weight, TS.section, TS.progress,
-        ].join(','),
-        orderByFields: `${TS.date} ASC, ${TASK_SHEET.oid} ASC`,
-      }),
+    const [raw, prog, hist] = await Promise.all([
+      // Зөвхөн ЭНЭ блокийн багана татагдана — уншигч нь `block`-оор outFields-ээ
+      // нарийсгадаг тул хүсэлт багц бүхэлдээ татахаас хамаагүй хөнгөн.
+      bagts ? cachedSheetRows({ group: bagts, block: blok }) : Promise.resolve([]),
       loadBlockProgress().catch(() => null),
       loadBlockHistory(),
     ]);
     const key = buildingKey(bagts, blok);
     const cell = prog?.get(key) ?? null;
-    const mine = feats.filter((f) => bagtsKey(f.attributes[TS.bagts]) === bagtsKey(bagts));
-    if (!mine.length) return cell ? { ...emptyPerf(cell), hist, key } : null;
+    if (!raw.length) return cell ? { ...emptyPerf(cell), hist, key } : null;
 
-    applySections(mine); // давхрын хэсгийг `angilal_b`-д стампална
+    // Давхрын хэсгийг мөрийн дараалллаас стампална (хуудсанд `angilal_b` алга)
+    const mine = stampSections(raw);
 
-    // Үе шат (А. Бэлтгэл / Б. Барилга угсралт) — upload багц бүрд түвшин-1
-    // мөрөөс доош тархана. Ажлын төлөв ЗӨВХӨН Б.-ийн навчаар тоологдоно:
-    // нийт гүйцэтгэл нь мөн Б. үе шатынх (Бэлтгэл ажил ороогүй).
+    // Үе шат (А. Бэлтгэл / Б. Барилга угсралт) — агшин бүрд түвшин-1 мөрөөс
+    // доош тархана. Ажлын төлөв ЗӨВХӨН Б.-ийн навчаар тоологдоно: нийт
+    // гүйцэтгэл нь мөн Б. үе шатынх (Бэлтгэл ажил ороогүй).
     const phase = new Map<string, string>();
-    const batches = new Map<string, Feature[]>();
-    for (const f of mine) {
-      const k = `${text(f.attributes[TS.date])}|${text(f.attributes[TS.version])}`;
+    const batches = new Map<string, SectionRow[]>();
+    for (const r of mine) {
+      const k = `${r.sheet}#${r.snap}|${r.block}`;
       const arr = batches.get(k);
-      if (arr) arr.push(f); else batches.set(k, [f]);
+      if (arr) arr.push(r); else batches.set(k, [r]);
     }
     for (const arr of batches.values()) {
+      arr.sort((a, b) => a.ord - b.ord);
       let cur = '';
-      for (const f of arr) {
-        const a = f.attributes;
-        if (Number(a[TS.level]) === 1) cur = text(a[TS.no]);
-        phase.set(rowKey(a), cur);
+      for (const r of arr) {
+        if (r.level === 1) cur = r.no;
+        phase.set(rowKey(r), cur);
       }
     }
 
-    // As-of: нүд бүрээр СҮҮЛИЙН утга (мөрүүд Огноо ASC, OID ASC тул сүүлийнх ялна)
-    const win = new Map<string, Record<string, unknown>>();
+    // As-of: нүд бүрээр СҮҮЛИЙН утга — огноо ӨСӨХ, дотор нь мөрийн дараалал
+    const byDate = [...mine].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.ord - b.ord));
+    const win = new Map<string, SectionRow>();
     let maxDate = '';
-    for (const f of mine) {
-      const a = f.attributes;
-      win.set(rowKey(a), a);
-      const d = text(a[TS.date]);
-      if (d > maxDate) maxDate = d;
+    for (const r of byDate) {
+      win.set(rowKey(r), r);
+      if (r.date > maxDate) maxDate = r.date;
     }
 
-    let done = 0, inProgress = 0, notStarted = 0;
-    for (const [k, a] of win) {
-      if (Number(a[TS.level]) !== 5) continue;
+    let done = 0, inProgress = 0, notStarted = 0, noData = 0;
+    for (const [k, r] of win) {
+      if (r.level !== 5) continue;
       if (phase.get(k) !== TASK_SHEET.constructionNo) continue;
-      const p = Number(a[TS.progress]) || 0;
-      if (p >= 1) done += 1; else if (p > 0) inProgress += 1; else notStarted += 1;
+      // ⚠️ null ≠ 0: бөглөгдөөгүй нүдийг «эхлээгүй» рүү нийлүүлэхгүй.
+      const p = r.progress;
+      if (p == null) noData += 1;
+      else if (p >= 1) done += 1; else if (p > 0) inProgress += 1; else notStarted += 1;
     }
-    const taskCount = done + inProgress + notStarted;
+    // ⚠️ `taskCount` нь НИЙТ навч ажлын тоо (мэдээлэлгүй ч орно) — «задаргаа N
+    //    ажлаар» гэсэн хамрах хүрээг илэрхийлдэг тул тоо нь өөрчлөгдөхгүй.
+    const taskCount = done + inProgress + notStarted + noData;
     if (!taskCount && !cell) return null;
 
     return {
       version: cell?.date || maxDate,
       overall: cell?.overall ?? null,
       headers: phasesOf(cell),
-      taskCount, done, inProgress, notStarted,
+      taskCount, done, inProgress, notStarted, noData,
       hist, key,
     };
   }, [bagts, blok]);
@@ -696,7 +783,7 @@ const emptyPerf = (cell: Cell): Omit<TaskPerfData, 'hist' | 'key'> => ({
   version: cell.date,
   overall: cell.overall,
   headers: phasesOf(cell),
-  taskCount: 0, done: 0, inProgress: 0, notStarted: 0,
+  taskCount: 0, done: 0, inProgress: 0, notStarted: 0, noData: 0,
 });
 
 /** Сонгосон барилга — БАГЦ + БЛОК хосоор (блокийн нэр багц дотор л давтагдахгүй) */
@@ -738,10 +825,13 @@ export function MonitorGeneral({ b, q }: { b: PickedBuilding | null; q: Async<Ta
             </Section>
 
             <Section title={tr('Ажлын төлөв')} note={tr('{0} ажил', num(d.taskCount))}>
-              <Stats cols={3}>
+              {/* ⚠️ «Мэдээлэлгүй» нь ЗААВАЛ тусдаа нүд — бөглөгдөөгүй ажлыг
+                  «Эхлээгүй» рүү нийлүүлбэл тайлан чимээгүй худал болно. */}
+              <Stats cols={4}>
                 <Stat value={num(d.done)} unit={tr('ажил')} label={tr('Дууссан')} color="var(--good)" />
                 <Stat value={num(d.inProgress)} unit={tr('ажил')} label={tr('Явцтай')} color={HUE} accent />
                 <Stat value={num(d.notStarted)} unit={tr('ажил')} label={tr('Эхлээгүй')} color="var(--ink-3)" />
+                <Stat value={num(d.noData)} unit={tr('ажил')} label={tr('Мэдээлэлгүй')} color="var(--ink-3)" />
               </Stats>
             </Section>
           </>

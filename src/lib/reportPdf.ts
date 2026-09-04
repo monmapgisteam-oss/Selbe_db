@@ -22,8 +22,13 @@ import { t as tr } from '@/lib/i18nCore';
 import { buildFindings, type ReportExtra } from '@/lib/reportData';
 import { num, pct } from '@/lib/format';
 
-const bn = (v: number) => num(v / 1e9, 1);
-/** Тэг өртөг = «нэгж үнэ загварт ороогүй» — 0 гэж бичихгүй */
+/** ₮ — БҮТЭН дүн, мянгатын таслалтай (2026-09-01, товчлолыг бүрэн хассан) */
+const bn = (v: number) => num(v);
+/**
+ * ⚠️ ЗӨВХӨН Cashflow-ийн `budget`/`contract` дүнд хэрэглэнэ: тэг нь «төсөвт
+ * өртөг хараахан батлагдаагүй / гэрээ байгуулагдаагүй» гэсэн утгатай тул 0
+ * гэж бичвэл «үнэгүй ажил» мэт уншигдана — «—» болгоно.
+ */
 const bnOrDash = (v: number) => (v > 0 ? bn(v) : '—');
 
 const HEAD = '#eef1f5';
@@ -95,10 +100,13 @@ export function buildReportDoc(
     : null;
   const srcTotal = finance.sources.reduce((a, s) => a + s.value, 0);
 
-  /* ── Товч танилцуулга — дэлгэцийн `.lead` блоктой ижил гурван догол ── */
+  /* ── Товч танилцуулга — дэлгэцийн `.lead` блоктой ижил гурван догол ──
+     ⚠️ Газар чөлөөлөлтийн хувьд «нэгж талбарын төлвөөр» шошго ЗААВАЛ: энэ хувь
+     нь давхаргын Tuluv талбараас (шийдвэрлэгдсэн ÷ нийт) бодогддог бөгөөд бусад дашбоардын
+     амьд кадастрын хувиас зөрдөг (land.ts-ийн тайлбар). */
   const lead = [
-    tr('Сэлбэ 20 минутын хотын төслийн хэрэгжилт тайлан үүсгэх өдрийн байдлаар {0}-тай байна. Төслийн жингийн {1}-ийг эзэлдэг барилга угсралтын ажил {2}-ийн гүйцэтгэлтэй{3}. Газар чөлөөлөлтийн гүйцэтгэл{4} байгаа ч {5} нэгж талбар шийдвэрлэгдээгүй үлдсэн байна.', pct(overall.pct, 2), pct(d.buildWeight, 1), pct(d.buildActual, 2), d.buildLag != null ? tr(' буюу төлөвлөгөөнөөс {0} нэгж хувиар хоцорч байна', num(d.buildLag, 1)) : '', land.pct != null ? ` ${pct(land.pct, 1)}` : '', num(d.landLeft)),
-    tr('Санхүүгийн хувьд захирамжаар {0} тэрбум ₮ батлагдсанаас {1} тэрбум{2} нь гэрээгээр баталгаажиж, {3} тэрбум{4} нь бодитоор олгогдсон байна.', bn(finance.orderTotal), bn(finance.contractAmount), d.contractRate != null ? ` (${pct(d.contractRate, 1)})` : '', bn(finance.paid), d.paidRate != null ? ` (${pct(d.paidRate, 1)})` : ''),
+    tr('Сэлбэ 20 минутын хотын төслийн хэрэгжилт тайлан үүсгэх өдрийн байдлаар {0}-тай байна. Төслийн төсвийн {1}-ийг эзэлдэг барилга угсралтын ажил {2}-ийн гүйцэтгэлтэй{3}. Газар чөлөөлөлтийн гүйцэтгэл нэгж талбарын төлвөөр{4} байгаа ч {5} нэгж талбар шийдвэрлэгдээгүй үлдсэн байна.', pct(overall.pct, 2), pct(d.buildWeight, 1), pct(d.buildActual, 2), d.buildLag != null ? tr(' буюу төлөвлөгөөнөөс {0} нэгж хувиар хоцорч байна', num(d.buildLag, 1)) : '', land.pct != null ? ` ${pct(land.pct, 1)}` : '', num(d.landLeft)),
+    tr('Санхүүгийн хувьд захирамжаар {0} ₮ батлагдсанаас {1} ₮{2} нь гэрээгээр баталгаажиж, {3} ₮{4} нь бодитоор олгогдсон байна.', bn(finance.orderTotal), bn(finance.contractAmount), d.contractRate != null ? ` (${pct(d.contractRate, 1)})` : '', bn(finance.paid), d.paidRate != null ? ` (${pct(d.paidRate, 1)})` : ''),
     tr('Барилгын талбайд {0} ажилтан, {1} нэгж техник ажиллаж байгаа бөгөөд орон сууцны {2} блок, {3} өрхийн орон сууц баригдаж байна.', num(habea.workers), num(habea.tehnik), num(blocks), num(ail)),
   ];
 
@@ -141,7 +149,7 @@ export function buildReportDoc(
       },
 
       ...section('1', tr('Үндсэн үзүүлэлт'),
-        tr('Энэ хэсэгт төслийн цар хүрээ, гүйцэтгэл, санхүүжилтийн долоон гол үзүүлэлтийг нэгтгэв. Гүйцэтгэлийн хоёр өөр хэмжүүрийг ялган үзэх нь зүйтэй: төслийн нийт гүйцэтгэл нь бүх үе шатыг жин харгалзан тооцсон дүн бол барилга угсралтын гүйцэтгэл нь зөвхөн орон сууцны блокуудыг хамарна.')),
+        tr('Энэ хэсэгт төслийн цар хүрээ, гүйцэтгэл, санхүүжилтийн долоон гол үзүүлэлтийг нэгтгэв. Гүйцэтгэлийн хоёр өөр хэмжүүрийг ялган үзэх нь зүйтэй: төслийн нийт гүйцэтгэл нь багц бүрийг төсвийн жингээр нь тооцсон дүн бол барилга угсралтын гүйцэтгэл нь блокуудын энгийн дундаж.')),
       cap('1', tr('Төслийн нэгдсэн үзүүлэлт')),
       { table: { headerRows: 1, widths: ['*', 160], body: [
         [th(tr('Үзүүлэлт')), th(tr('Утга'), true)],
@@ -149,17 +157,17 @@ export function buildReportDoc(
         [td(tr('Өрхийн орон сууц')), td(num(ail), true)],
         [td(tr('Төслийн нийт гүйцэтгэл')), td(pct(overall.pct, 2), true)],
         [td(tr('Барилга угсралтын гүйцэтгэл')), td(pct(progress.overall, 2), true)],
-        [td(tr('Захирамжаар батлагдсан дүн')), td(tr('{0} тэрбум ₮', bn(finance.orderTotal)), true)],
-        [td(tr('Гэрээгээр байгуулагдсан дүн')), td(tr('{0} тэрбум ₮', bn(finance.contractAmount)), true)],
-        [td(tr('Бодитоор олгосон санхүүжилт'), false, TOTAL), td(tr('{0} тэрбум ₮', bn(finance.paid)), true, TOTAL)],
+        [td(tr('Захирамжаар батлагдсан дүн')), td(tr('{0} ₮', bn(finance.orderTotal)), true)],
+        [td(tr('Гэрээгээр байгуулагдсан дүн')), td(tr('{0} ₮', bn(finance.contractAmount)), true)],
+        [td(tr('Бодитоор олгосон санхүүжилт'), false, TOTAL), td(tr('{0} ₮', bn(finance.paid)), true, TOTAL)],
       ] }, layout: tableLayout },
-      note(tr('Төслийн нийт гүйцэтгэл нь хэрэгжилтийн {0} ажлыг жин харгалзан тооцсон дүн (3-р хэсэг); барилга угсралтын гүйцэтгэл нь хяналтын {1} блокийн дундаж (6-р хэсэг).', num(overall.rows), num(progress.blocks))),
+      note(tr('Төслийн нийт гүйцэтгэл нь {0} блокийг багцынх нь төсвийн жингээр тооцсон дүн (3-р хэсэг); барилга угсралтын гүйцэтгэл нь хяналтын {1} блокийн энгийн дундаж (6-р хэсэг).', num(overall.rows), num(progress.blocks))),
 
       ...section('2', tr('Орон сууцны 7 багц'),
-        tr('Орон сууцны барилгажилт долоон багцад хуваагдан хэрэгжиж байна. Нийт {0} блокт {1} өрхийн орон сууц төлөвлөгдсөн бөгөөд төсөвт өртөг {2} тэрбум ₮ байна. Багц хоорондын гүйцэтгэлийн зөрүү их байна: хамгийн өндөр нь {3} ({4}), хамгийн бага нь {5} ({6}).', num(blocks), num(ail), bn(budget), d.bestBagts?.bagts ?? '—', pct(d.bestBagts?.pct ?? null, 2), d.worstBagts?.bagts ?? '—', pct(d.worstBagts?.pct ?? null, 2))),
+        tr('Орон сууцны барилгажилт долоон багцад хуваагдан хэрэгжиж байна. Нийт {0} блокт {1} өрхийн орон сууц төлөвлөгдсөн бөгөөд төсөвт өртөг {2} ₮ байна. Багц хоорондын гүйцэтгэлийн зөрүү их байна: хамгийн өндөр нь {3} ({4}), хамгийн бага нь {5} ({6}).', num(blocks), num(ail), bn(budget), d.bestBagts?.bagts ?? '—', pct(d.bestBagts?.pct ?? null, 2), d.worstBagts?.bagts ?? '—', pct(d.worstBagts?.pct ?? null, 2))),
       cap('2', tr('Багц тус бүрийн блок, өрх, төсөв ба гүйцэтгэл (төсөвт өртгөөр буурах эрэмбээр)')),
-      { table: { headerRows: 1, widths: ['*', 42, 42, 88, 58], body: [
-        [th(tr('Багц')), th(tr('Блок'), true), th(tr('Өрх'), true), th(tr('Төсөв (тэрбум төг)'), true), th(tr('Гүйцэтгэл'), true)],
+      { table: { headerRows: 1, widths: ['*', 36, 36, 100, 52], body: [
+        [th(tr('Багц')), th(tr('Блок'), true), th(tr('Өрх'), true), th(tr('Төсөв (төг)'), true), th(tr('Гүйцэтгэл'), true)],
         ...sorted.map((x): TableCell[] => [
           td(tr(x.label)), td(num(x.blocks), true), td(num(x.ail), true),
           td(budgetOf(x.key) > 0 ? bn(budgetOf(x.key)) : '—', true), td(pct(x.progress, 2), true),
@@ -168,11 +176,11 @@ export function buildReportDoc(
           td(bn(budget), true, TOTAL), td(pct(bagtsAvg, 2), true, TOTAL)],
       ] }, layout: tableLayout },
 
-      ...section('3', tr('Хэрэгжилтийн үе шат'),
-        tr('Төсөл нь бэлтгэлээс барилга угсралт хүртэл зургаан үе шаттай. Үе шат бүр төсөлд эзлэх өөрийн жинтэй тул нийт гүйцэтгэл нь энгийн дундаж биш, жин харгалзан тооцсон дүн болно.{0}', d.heavyStage ? tr(' Одоогийн байдлаар төслийн жингийн {0}-ийг «{1}» үе шат эзэлж байгаа тул нийт гүйцэтгэл голчлон түүнээс хамаарч байна.', pct(d.heavyStage.weight, 1), tr(d.heavyStage.label)) : '')),
-      cap('3', tr('Үе шатны эзлэх жин, бодит гүйцэтгэл ба төлөвлөгөө')),
+      ...section('3', tr('Багцын жигнэсэн гүйцэтгэл'),
+        tr('Багц бүр төслийн төсөвт эзлэх өөрийн жинтэй тул нийт гүйцэтгэл нь энгийн дундаж биш, жин харгалзан тооцсон дүн болно.{0}', d.heavyStage ? tr(' Одоогийн байдлаар төслийн төсвийн {0}-ийг «{1}» багц эзэлж байгаа тул нийт гүйцэтгэл голчлон түүнээс хамаарч байна.', pct(d.heavyStage.weight, 1), tr(d.heavyStage.label)) : '')),
+      cap('3', tr('Багцын эзлэх жин ба бодит гүйцэтгэл')),
       { table: { headerRows: 1, widths: ['*', 44, 66, 66, 66], body: [
-        [th(tr('Үе шат')), th(tr('Ажил'), true), th(tr('Эзлэх жин'), true), th(tr('Гүйцэтгэл'), true), th(tr('Төлөвлөгөө'), true)],
+        [th(tr('Багц')), th(tr('Блок'), true), th(tr('Эзлэх жин'), true), th(tr('Гүйцэтгэл'), true), th(tr('Төлөвлөгөө'), true)],
         ...overall.stages.map((s): TableCell[] => [
           td(tr(s.label)), td(num(s.rows), true), td(pct(s.weight, 2), true),
           td(pct(s.actual, 2), true), td(s.planned == null ? '—' : pct(s.planned, 1), true),
@@ -180,10 +188,10 @@ export function buildReportDoc(
         [td(tr('Нийт'), false, TOTAL), td(num(overall.rows), true, TOTAL), td(pct(overall.weightSum, 2), true, TOTAL),
           td(pct(overall.pct, 2), true, TOTAL), td('—', true, TOTAL)],
       ] }, layout: tableLayout },
-      note(tr('Эзлэх жингийн нийлбэр {0} — эх хүснэгтэд бүх ажил бүртгэгдээгүй тул нийт гүйцэтгэлийг жингийн нийлбэрт харьцуулан тооцов. Төлөвлөгөө бөглөөгүй үе шатыг «—» тэмдгээр илэрхийлэв.', pct(overall.weightSum, 2))),
+      note(tr('Эзлэх жингийн нийлбэр {0} — гүйцэтгэл хараахан бүртгэгдээгүй багц байгаа тул нийт дүнг жингийн нийлбэрт харьцуулан тооцов. Багцын түвшинд төлөвлөгөөт хувь одоогоор байхгүй тул «—» тэмдгээр илэрхийлэв.', pct(overall.weightSum, 2))),
 
       ...section('4', tr('Газар чөлөөлөлт'),
-        tr('Төслийн талбайд нийт {0} нэгж талбар ({1} м²) бүртгэгдсэн бөгөөд үе шатны гүйцэтгэл {2} байна. Ажлын үндсэн хэсэг дууссан ч {3} нэгж талбар шийдвэрлэгдээгүй хэвээр байгаа нь барилга угсралтын хуваарьт нөлөөлөх эрсдэлтэй.', num(land.parcels), num(land.areaM2), land.pct != null ? pct(land.pct, 1) : '—', num(d.landLeft))),
+        tr('Төслийн талбайд нийт {0} нэгж талбар ({1} м²) бүртгэгдсэн бөгөөд шийдвэрлэгдсэн нь {2} байна. Ажлын үндсэн хэсэг дууссан ч {3} нэгж талбар шийдвэрлэгдээгүй хэвээр байгаа нь барилга угсралтын хуваарьт нөлөөлөх эрсдэлтэй.', num(land.parcels), num(land.areaM2), land.pct != null ? pct(land.pct, 1) : '—', num(d.landLeft))),
       cap('4.1', tr('Нэгж талбарын төлөв')),
       { table: { headerRows: 1, widths: ['*', 90, 80], body: [
         [th(tr('Төлөв')), th(tr('Нэгж талбар'), true), th(tr('Эзлэх хувь'), true)],
@@ -241,23 +249,27 @@ export function buildReportDoc(
         tr('Захирамж, гэрээгээр баталгаажсан {0} ажлын санхүүжилт дөрвөн эх үүсвэрээс бүрдэж байна.{1}', num(finance.rows), d.topSource ? tr(' Санхүүжилтийн дийлэнх хэсгийг «{0}» эх үүсвэр бүрдүүлж, нийт дүнгийн {1}-ийг эзэлж байна.', tr(d.topSource.label), pct(d.topSource.share, 1)) : '')),
       cap('7.1', tr('Санхүүжилтийн эх үүсвэрийн бүтэц')),
       { table: { headerRows: 1, widths: ['*', 110, 70], body: [
-        [th(tr('Эх үүсвэр')), th(tr('Дүн (тэрбум төг)'), true), th(tr('Хувь'), true)],
+        [th(tr('Эх үүсвэр')), th(tr('Дүн (төг)'), true), th(tr('Хувь'), true)],
         ...finance.sources.map((s): TableCell[] => [
           td(tr(s.label)), td(bn(s.value), true), td(srcTotal ? pct((s.value / srcTotal) * 100, 1) : '—', true),
         ]),
         [td(tr('Нийт'), false, TOTAL), td(bn(srcTotal), true, TOTAL), td('100%', true, TOTAL)],
       ] }, layout: tableLayout },
 
-      cap('7.2', tr('Сар бүрийн олголт ба хуримтлагдсан дүн{0}', d.peakMonth ? tr(' — хамгийн их олголт {0} сард', tr(d.peakMonth.label)) : '')),
+      /* ⚠️ CASHFLOW2-ийн сарын цуваа нь санхүүжилтийн ХУВААРЬ (төлөвлөгөө) —
+         «олгосон» гэж шошговол бодит олголтоос олон дахин их худал тоо
+         хэвлэгдэнэ (reportData.ts). Дэлгэц (Tailan.tsx)-тэй ижил шошго. */
+      cap('7.2', tr('Сар бүрийн санхүүжилтийн хуваарь (төлөвлөгөө) ба хуримтлагдсан дүн{0}', d.peakMonth ? tr(' — хамгийн их төлөвлөгөө {0} сард', tr(d.peakMonth.label)) : '')),
       { table: { headerRows: 1, widths: ['*', 120, 110], body: [
-        [th(tr('Сар')), th(tr('Олгосон (тэрбум төг)'), true), th(tr('Хуримтлагдсан'), true)],
+        [th(tr('Сар')), th(tr('Төлөвлөгөө (төг)'), true), th(tr('Хуримтлагдсан'), true)],
         ...finance.months.map((m): TableCell[] => [
           td(tr(m.label)), td(m.amount > 0 ? bn(m.amount) : '—', true), td(bn(m.cum), true),
         ]),
       ] }, layout: tableLayout },
+      note(tr('Хүснэгт нь гэрээ бүрийн санхүүжилтийн хуваарь буюу төлөвлөгөө; бодитоор олгосон санхүүжилтийг IPC актын дүнгээр 1-р хүснэгтэд харуулав.')),
 
       cap('7.3', tr('Ажлын төрлөөр — төсөв ба гэрээний дүн')),
-      { table: { headerRows: 1, widths: ['*', 45, 78, 78], body: [
+      { table: { headerRows: 1, widths: ['*', 38, 105, 105], body: [
         [th(tr('Төрөл')), th(tr('Ажил'), true), th(tr('Төсөв'), true), th(tr('Гэрээ'), true)],
         ...finance.byType.map((t): TableCell[] => [
           td(t.type), td(num(t.n), true), td(bnOrDash(t.budget), true), td(bnOrDash(t.contract), true),
@@ -267,19 +279,17 @@ export function buildReportDoc(
       ] }, layout: tableLayout },
 
       ...section('8', tr('Дэд бүтцийн хэрэгжилт'),
-        tr('Ерөнхий төлөвлөгөөний {0} давхаргад {1} объект бүртгэгдсэн бөгөөд шугам сүлжээний нийт урт {2} м, талбайн хэмжээ {3} м² байна. Өртгийн загвараар тооцсон дүн {4} тэрбум ₮ байна.', num(infra.totals.layers), num(infra.totals.n), num(infra.totals.len), num(infra.totals.area), bn(infra.totals.cost))),
-      cap('8', tr('Ажлын бүлэг тус бүрийн объект, хэмжээ ба төсөвт өртөг')),
-      { table: { headerRows: 1, widths: ['*', 44, 52, 62, 72, 62], body: [
-        [th(tr('Ажлын бүлэг')), th(tr('Дав.'), true), th(tr('Объект'), true), th(tr('Урт (м)'), true), th(tr('Талбай (м²)'), true), th(tr('Өртөг (тэрбум)'), true)],
+        tr('Ерөнхий төлөвлөгөөний {0} давхаргад {1} объект бүртгэгдсэн бөгөөд шугам сүлжээний нийт урт {2} м, талбайн хэмжээ {3} м² байна.', num(infra.totals.layers), num(infra.totals.n), num(infra.totals.len), num(infra.totals.area))),
+      cap('8', tr('Ажлын бүлэг тус бүрийн объект ба хэмжээ')),
+      { table: { headerRows: 1, widths: ['*', 44, 52, 62, 72], body: [
+        [th(tr('Ажлын бүлэг')), th(tr('Дав.'), true), th(tr('Объект'), true), th(tr('Урт (м)'), true), th(tr('Талбай (м²)'), true)],
         ...infra.groups.map((g): TableCell[] => [
           td(g.title), td(num(g.layers), true), td(num(g.n), true),
           td(g.len > 0 ? num(g.len) : '—', true), td(g.area > 0 ? num(g.area) : '—', true),
-          td(bnOrDash(g.cost), true),
         ]),
         [td(tr('Нийт'), false, TOTAL), td(num(infra.totals.layers), true, TOTAL), td(num(infra.totals.n), true, TOTAL),
-          td(num(infra.totals.len), true, TOTAL), td(num(infra.totals.area), true, TOTAL), td(bnOrDash(infra.totals.cost), true, TOTAL)],
+          td(num(infra.totals.len), true, TOTAL), td(num(infra.totals.area), true, TOTAL)],
       ] }, layout: tableLayout },
-      note(tr('Өртгийн загвар нь нэгж үнэ батлагдсан бүлгүүдийг л хамарна — «—» тэмдэглэгээ нь өртөг тэг гэсэн үг биш, тухайн бүлэгт нэгж үнэ тогтоогоогүйг илэрхийлнэ.')),
 
       ...section('9', tr('Хөдөлмөрийн аюулгүй байдал, эрүүл ахуй'),
         tr('{0}барилгын талбайд {1} ажилтан (дотоодын {2}, гадаадын {3}), {4} нэгж техник ажиллаж байна. Дотоодын ажиллах хүч нийт ажиллагсдын {5}-ийг эзэлж байна.', habea.date ? tr('{0}-ны байдлаар ', habea.date) : '', num(habea.workers), num(habea.mongol), num(habea.gadaad), num(habea.tehnik), pct(d.mongolShare, 1))),

@@ -21,7 +21,7 @@ import {
   avg,
   count,
   queryFeatures,
-  queryGroup,
+  queryGroupEx,
   queryStats,
   sum,
   type Row,
@@ -105,11 +105,11 @@ export const AGENT_TOOLS: ToolDef[] = [
   {
     name: 'zone_overview',
     description:
-      tr('НЭГ БҮС/БАГЦЫН нэгдсэн тойм — БҮХ эх сурвалжийг нэг дор шүүж, тус бүрийн тоо, хэмжээ, ӨРТГИЙГ буцаана. ') +
+      tr('НЭГ БҮС/БАГЦЫН нэгдсэн тойм — БҮХ эх сурвалжийг нэг дор шүүж, тус бүрийн тоо, хэмжээг буцаана. ') +
       tr('Хэрэглэгч «Багц 1-ийн мэдээллийг дэлгэрэнгүй», «Багц-3.2-т юу байна вэ», «энэ бүсийн бүх мэдээлэл» гэх мэтээр ') +
       tr('НЭГ бүсийн ЕРӨНХИЙ дүр зургийг асуувал ЭНЭ ХЭРЭГСЛИЙГ дууд — `query_feature`-ээр давхарга бүрийг тусад нь ') +
       tr('асуувал эргэлт хүрэлцэхгүй, хариулт хагас дутуу гарна. ') +
-      tr('Өртөг нь порталын каталогтой ижил загвараар бодогдоно. Тодруулга хэрэгтэй бол дараа нь `query_feature` дууд.'),
+      tr('Тодруулга хэрэгтэй бол дараа нь `query_feature` дууд.'),
     input_schema: {
       type: 'object',
       properties: {
@@ -253,9 +253,23 @@ async function runQuery(input: QueryIn, scope: AgentScope): Promise<ToolOutcome>
         if (!fn) throw new Error(tr('Танихгүй үйлдэл: {0}', s.op));
         return fn(s.field, s.as || `${s.op}_${i}`);
       });
-      const rows: Row[] = input.groupBy
-        ? await queryGroup(url, input.groupBy, stats, where)
-        : [await queryStats(url, stats, where)];
+      /* ⚠️ БҮЛГИЙН ТАЙРАЛТЫГ ч ИЛ хэлнэ — урьд нь зөвхөн `console.warn`-д
+         бичигдэж, загвар дутуу бүлгүүдийг бүрэн гэж үзэж нийлбэр гаргадаг
+         байв (2026-09-03-ны аудит). */
+      if (input.groupBy) {
+        const g = await queryGroupEx(url, input.groupBy, stats, where);
+        return ok({
+          source: src.id,
+          where,
+          groupBy: input.groupBy,
+          truncated: g.truncated,
+          ...(g.truncated
+            ? { warning: tr('⚠️ Бүлгүүд ТАЙРАГДСАН — нийт дүн дутуу. Шүүлтээ нарийсга, эсвэл дутуу гэдгийг хэрэглэгчид ил хэл.') }
+            : {}),
+          rows: g.rows,
+        });
+      }
+      const rows: Row[] = [await queryStats(url, stats, where)];
       return ok({ source: src.id, where, groupBy: input.groupBy, rows });
     }
 
@@ -266,7 +280,29 @@ async function runQuery(input: QueryIn, scope: AgentScope): Promise<ToolOutcome>
       orderBy: input.orderBy,
       limit,
     });
-    return ok({ source: src.id, where, count: rows.length, limit, rows });
+    /**
+     * ⚠️ ТАЙРАГДСАНЫГ ИЛ ХЭЛНЭ (2026-09-03-ны аудит).
+     *
+     * Урьд нь зөвхөн `count`/`limit` буцдаг байсан бөгөөд загварт «тэнцүү бол
+     * дутуу» гэсэн дүрэм байгаагүй. Зарим датасет (IPC — 59 акт) нь бодогдох
+     * баганагүй тул зааврынхаа дагуу МӨР ТАТАЖ бодуулдаг: 59-ийн 40-өөр
+     * бодогдсон «нийт олгосон санхүүжилт» БҮТЭН мэт танилцуулагддаг байв.
+     * Одоо туг ба анхааруулга нь хариунд шууд орж, дүрэм №2a-тай хосолно.
+     */
+    const truncated = rows.length >= limit;
+    return ok({
+      source: src.id,
+      where,
+      count: rows.length,
+      limit,
+      truncated,
+      ...(truncated
+        ? {
+          warning: tr('⚠️ Үр дүн {0} мөрөөр ТАЙРАГДСАН — энэ мөрүүд дээр нийлбэр/дундаж бодохыг ХОРИГЛОНО. Бүтэн тоо хэрэгтэй бол `stats` хэрэглэ, эсвэл тайрагдсаныг хэрэглэгчид ил хэл.', limit),
+        }
+        : {}),
+      rows,
+    });
   } catch (e) {
     if (e instanceof ArcGISError) return fail(tr('ArcGIS алдаа: {0} ({1})', e.message, e.url));
     return fail(tr('Асуулга амжилтгүй: {0}', e instanceof Error ? e.message : String(e)));

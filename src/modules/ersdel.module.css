@@ -1,0 +1,857 @@
+/* «Эрсдэлийн загвар» — газрын зураг ТӨВД, 2 талд нь багана:
+   ЗҮҮН = горим + хувилбарын сонголт, БАРУУН = заалт эсвэл хохирлын үр дүн.
+
+   ⚠️ envhub дизайны хэл («Газар чөлөөлөлт»-тэй ижил): картууд ХАВТГАЙ — сүүдэр,
+   градиент, өнгөт хүрээ байхгүй; гүнийг bg → surface → surface-2 давхарга ба
+   1px hairline л өгнө. ӨНГӨ = УТГА: улаан нь ЗӨВХӨН хохирол, цэнхэр нь ус,
+   улбар шар нь агаар. Багана нь байрлал, гарчгаараа ялгарна. */
+
+.frame {
+  /* Талын багануудын өргөн — `SplitGrip`-ээр чирж тохируулна */
+  --side-l: 336px;
+  --side-r: 350px;
+  display: grid;
+  grid-template-areas: "left map right";
+  grid-template-columns: var(--side-l) minmax(0, 1fr) var(--side-r);
+  grid-template-rows: minmax(0, 1fr);
+  gap: 10px;
+  height: 100%;
+  min-height: 0;
+  padding: 12px;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.left,
+.right {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+}
+.left { grid-area: left; }
+.right { grid-area: right; }
+
+/* Баганын толгой — envhub eyebrow: жижиг, том үсэгт, ӨНГӨГҮЙ */
+.colHd {
+  flex: none;
+  padding: 2px 2px 0;
+  font-size: 10.5px;
+  /* ⚠️ 1 БИШ — кириллийн Й/Ё-гийн дээд тэмдэг тайрагдана */
+  line-height: 1.3;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.13em;
+  color: var(--ink-3);
+}
+
+/* ── Газрын зураг (төв) ──
+   ⚠️ `display:flex` ЗААВАЛ: MapCanvas-ийн `.wrap` нь `flex:1` тул эцэг нь flex
+   байх ёстой. Эс бөгөөс зураг 0 өндөртэй хумигдаж ХАР харагдана. */
+.map {
+  grid-area: map;
+  position: relative;
+  display: flex;
+  min-height: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+
+/* ── Панель — envhub Box ── */
+.panel {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+/* Хохирлын нэгтгэл — ГАНЦ онцлох карт. ⚠️ Өнгөт дэвсгэр БИШ, зөвхөн дээд ирмэг:
+   бүтэн улаан tint нь доторх «улаан = хохирол» гэсэн утгыг угаана. */
+.panelBad {
+  border-top: 2px solid var(--bad);
+}
+.panelHd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex: none;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.panelTitle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13.5px;
+  line-height: 1.3;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink);
+}
+.panelNote {
+  font-size: 11.5px;
+  color: var(--ink-3);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.panelBody {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+/* ── Хэмжигдэхүүний нүд (баруун багана) ── */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: 8px;
+}
+.metric {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding: 7px 9px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+.metricHd { display: flex; align-items: baseline; gap: 6px; }
+.metricName {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 9.5px;
+  line-height: 1.3;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  /* «…» биш — монгол нэрс урт тул 2 мөрөнд бүтэн */
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+/* Үнэлгээ (хэвийн/анхаарах/хэтэрсэн) — өнгө нь TSX-ээс (утгаас) */
+.metricGrade {
+  flex: none;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.metricVal {
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.metricUnit { font-size: 10px; font-weight: 500; color: var(--ink-3); }
+.metricFoot {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 9.5px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Харуулын жагсаалт ── */
+.stList {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.stRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  text-align: left;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 12px;
+}
+.stRow:hover { border-color: var(--line-2, var(--line)); color: var(--ink); }
+/* Сонголт — «сонгогдсон» нь envhub-д зөвшөөрөгдсөн ганц акцент (var(--data)) */
+.stRowOn {
+  border-color: var(--data);
+  color: var(--ink);
+}
+.stDot { flex: none; width: 7px; height: 7px; border-radius: 50%; }
+.stName { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stVal { flex: none; font-size: 11.5px; font-variant-numeric: tabular-nums; color: var(--ink-3); }
+
+/* ── АЧИ-ийн цагираг ── */
+.ringBox {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+.ringNote {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-2);
+  text-align: center;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+}
+.ringNote b { font-size: 15px; font-weight: 600; color: var(--ink); margin-right: 4px; }
+.ringSub {
+  display: block;
+  margin-top: 2px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--ink-3);
+}
+
+/* ── Аюулын төрлийн сонголт ── */
+.pickGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.pick {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  text-align: left;
+  color: var(--ink-3);
+  font: inherit;
+}
+.pick:hover { color: var(--ink-2); }
+.pickOn {
+  border-color: var(--data);
+  color: var(--ink);
+  background: var(--surface);
+}
+.pickTitle { font-size: 12.5px; font-weight: 600; color: var(--ink); }
+.pickDesc {
+  font-size: 10.5px;
+  line-height: 1.4;
+  color: var(--ink-3);
+  /* 3 мөрөөс хэтрэхгүй — хоёр карт ижил өндөртэй үлдэнэ */
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+/* ── Түвшний сонголт ──
+   ⚠️ Түвшний өнгө (`--tone`) нь ЗАГВАРЫН чимэглэл БИШ, эрчмийн зэрэглэл:
+   1 = var(--bad), 2 = var(--warn), 3 = var(--data). Тиймээс сонгогдсон үед
+   зөвхөн ЗҮҮН ирмэг нь тэр өнгөөр — дэвсгэрийг будвал текст уншигдахгүй. */
+.lvGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.lv {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-left: 3px solid transparent;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  text-align: left;
+  color: var(--ink-2);
+  font: inherit;
+}
+.lv:hover { color: var(--ink); }
+.lvOn {
+  border-color: var(--line);
+  border-left-color: var(--tone);
+  background: var(--surface);
+  color: var(--ink);
+}
+.lvNo {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-2);
+}
+.lvOn .lvNo { border-color: var(--tone); color: var(--tone); }
+.lvText { font-size: 12px; line-height: 1.35; }
+
+/* Хувилбарын нэг мөрийн тайлбар — таамгийн параметрийг ил гаргана */
+.scenario {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.hint {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ink-3);
+}
+
+/* ── «Шинжилгээ хийх» ── */
+.runRow { display: flex; gap: 8px; align-items: center; }
+/* ⚠️ ГАНЦ өнгөт товч энэ хуудсанд — үндсэн үйлдэл нэг л байна. */
+.runBtn {
+  flex: 1 1 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 9px 12px;
+  border: 1px solid var(--accent, var(--data));
+  border-radius: var(--r-sm);
+  background: var(--accent, var(--data));
+  color: #fff;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.runBtn:disabled { opacity: 0.5; cursor: default; }
+.clearBtn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.clearBtn:hover { color: var(--ink); }
+
+/* ── Хохирлын дүн ── */
+.costBox {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+.costLabel {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ink-3);
+}
+.costVal {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--bad-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Давхаргын хүснэгт ── */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+.table th {
+  padding: 5px 6px;
+  text-align: left;
+  font-size: 9.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--ink-3);
+  border-bottom: 1px solid var(--line);
+}
+.table td {
+  padding: 5px 6px;
+  color: var(--ink-2);
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+.table tr:last-child td { border-bottom: none; }
+.tRight { text-align: right; }
+/* Зурагт тайрагдсаны тэмдэг — тоо БҮТЭН, зураг л дутуу гэдгийг хэлнэ */
+.trunc {
+  display: block;
+  margin-top: 2px;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--warn-ink);
+}
+
+/* ── Зураг дээрх тайлбар (легенд) — доод зүүн буланд ──
+   ⚠️ envhub: сүүдэргүй, хагас тунгалаг surface + blur + hairline. */
+.legend {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  max-width: min(560px, calc(100% - 20px));
+  padding: 7px 10px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  font-size: 11px;
+  color: var(--ink-2);
+}
+.legItem { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.legItem b { font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.legSwatch {
+  flex: none;
+  width: 12px;
+  height: 9px;
+  border-radius: 2px;
+  border: 1px solid color-mix(in srgb, var(--ink) 25%, transparent);
+}
+/* Харуулын тэмдэг — зурагт ямар ХЭЛБЭРЭЭР харагддагтай ижил (дугуй / ромб) */
+.legDot { width: 10px; height: 10px; border-radius: 50%; }
+.legDia { width: 10px; height: 10px; border-radius: 2px; transform: rotate(45deg); }
+
+/* ── Идэвхтэй хувилбарын чип — зургийн дээд зүүн буланд ── */
+.chip {
+  position: absolute;
+  left: 10px;
+  top: 10px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  font-size: 11.5px;
+  color: var(--ink);
+}
+.chipDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--bad);
+}
+.chipText { font-weight: 600; }
+.chipSub { color: var(--ink-3); font-variant-numeric: tabular-nums; }
+/* ⚠️ ТАТАГДААГҮЙ давхарга — шар, ⚠ тэмдэгтэй (өнгө ганцаараа мэдээлэл
+   дамжуулахгүй). «Мэдээлэлгүй»-г «эрсдэлгүй»-ээс ялгах цорын ганц дохио. */
+.chipWarn {
+  padding: 1px 7px;
+  border-radius: 99px;
+  font-size: 0.66rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--warn-ink, var(--warn));
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn) 32%, transparent);
+}
+
+/* Нарийн дэлгэц — талын багана хумигдаж, зураг бүтэн өргөнөө авна */
+@media (max-width: 1280px) {
+  .frame {
+    --side-l: 300px;
+    --side-r: 306px;
+  }
+}
+
+/* ── Дарсан зүйлийн мэдээлэл — зургийн БАРУУН ДООД буланд ──
+   ⚠️ Легенд нь зүүн доод буланд суудаг тул энэ нь баруун талд: хоёр хайрцаг
+   хоорондоо мөргөлдөхгүй, аль аль нь зургийн төвийг чөлөөтэй үлдээнэ. */
+.info {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 6;
+  width: min(300px, calc(100% - 20px));
+  /* Урт атрибутын жагсаалт хайрцаг ДОТРОО гүйнэ — зургийг халихгүй */
+  max-height: min(52%, 380px);
+  overflow-y: auto;
+  padding: 9px 11px 10px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  font-size: 11.5px;
+  color: var(--ink-2);
+}
+.infoHd {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  /* `--tone` өгөгдсөн үед л зүүн ирмэг өнгөтэй (хохирол = улаан) */
+  /* Гарчгийн зүүн ирмэг — ЗӨВХӨН `--tone` өгөгдсөн үед өнгөтэй (хохирол=улаан).
+     ⚠️ `margin-left: -6px` нь ирмэгийг хайрцгийн дотор талбарын ЯГ ирмэг дээр
+     байрлуулна — эс бөгөөс 6px дотогш орж «хөвсөн» зураас шиг харагдана. */
+  border-left: 2px solid var(--tone, transparent);
+  padding-left: 6px;
+  margin-left: -6px;
+}
+.infoTitle {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.35;
+}
+.infoClose {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-3);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+.infoClose:hover { color: var(--ink); background: var(--surface-2); }
+.infoSub {
+  margin: 2px 0 0;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ink-3);
+}
+.infoRows {
+  margin: 8px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+/* Түлхүүр ↔ утга — хоёр багана. ⚠️ Талбарын нэр урт (`Barilga_ty`,
+   `zoriulalt`…) тул түлхүүр нь хумигдаж, УТГА нь бүтэн үлдэнэ: хэрэглэгчийн
+   унших зүйл нь утга. */
+.infoRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: baseline;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--line);
+}
+.infoRow:last-child { border-bottom: none; }
+.infoKey {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10.5px;
+  color: var(--ink-3);
+}
+.infoVal {
+  text-align: right;
+  font-weight: 500;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+/* ── Цаг хугацааны удирдлага (үерийн загварчлал) ──
+   ⚠️ Esri-ийн `TimeSlider` виджетийг ХЭРЭГЛЭХГҮЙ: тэр нь өөрийн (Esri) загварын
+   хэлээр зурагдаж, аппын envhub хэв маягаас тод ялгарна. Ердийн `range` input
+   нь ижил токенуудаар будагдана. */
+.timeRow {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.playBtn {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--ink);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+.playBtn:hover { border-color: var(--data); color: var(--data); }
+.timeRange {
+  flex: 1 1 auto;
+  min-width: 0;
+  accent-color: var(--data);
+  cursor: pointer;
+}
+.timeVal {
+  flex: none;
+  min-width: 56px;
+  text-align: right;
+  font-size: 11.5px;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Мэдээллийн хайрцаг доторх бяцхан график ── */
+.sparkBox {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+.sparkHd {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin: 6px 0 2px;
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+}
+.sparkHd b { font-weight: 600; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+
+/* ── Гүний өнгөний шатлал (легенд) — үерийн растерын тайлбар ── */
+.ramp {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.rampBar {
+  width: 84px;
+  height: 9px;
+  border-radius: 2px;
+  border: 1px solid color-mix(in srgb, var(--ink) 25%, transparent);
+  /* ⚠️ `uyr.ts`-ийн DEPTH_STOPS-той ЯГ ижил өнгө — зөрвөл тайлбар худал болно */
+  background: linear-gradient(90deg,
+    rgb(40,195,255) 0%, rgb(10,140,250) 33%, rgb(10,78,232) 67%, rgb(6,36,160) 100%);
+}
+
+/* ══════════════════ Салхи — «Агаарын чанар» самбарт ══════════════════ */
+
+/**
+ * ⚠️ Тусдаа хүрээтэй: доорх харуулын жагсаалт нь ЖИШЭЭ өгөгдөл, салхи нь
+ * ЖИНХЭНЭ. Нүдээр ялгагдаж байж хэрэглэгч хоёрыг андуурахгүй.
+ */
+.wind {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 9px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+.windHd {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ink-3);
+}
+.windHd b { color: var(--ink-2); font-weight: 600; }
+.windSrc { margin: 0; font-size: 9.5px; letter-spacing: 0; text-transform: none; color: var(--ink-3); }
+/* Эх сурвалжийн тэмдэг баруун захад — гарчгаас зайдуу */
+.windHd .windSrc { margin-left: auto; }
+
+.windNow { display: flex; align-items: baseline; gap: 7px; }
+/* Сум — «хаашаа үлээж байна». `inline-block` заавал: `rotate` нь мөрийн
+   элементэд нөлөөлөхгүй. */
+.windArrow {
+  display: inline-block;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--data);
+}
+.windVal { font-size: 20px; font-weight: 500; color: var(--ink); line-height: 1; }
+.windVal i { font-size: 11px; font-style: normal; color: var(--ink-3); margin-left: 2px; }
+.windDir { font-size: 11.5px; color: var(--ink-2); }
+.windNote { margin: 0; font-size: 10.5px; line-height: 1.4; font-weight: 600; }
+
+/* ══════════ САЛХИНЫ УРСГАЛЫН УДИРДЛАГА (WIND-MODULE.md §6-гийн timeline) ══════════ */
+
+/**
+ * ⚠️ `flex-wrap` — товч ба цагийн шошго нарийн самбарт (≈300px) багтахгүй бол
+ * мөр таслана. Хугацааны шугам 2026-09-03-нд хасагдсан тул одоо зөвхөн хоёр
+ * элемент байна.
+ */
+.flowBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  margin-top: 7px;
+}
+
+.flowBtn {
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 4px 10px;
+  color: var(--ink-2);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s, background 0.12s;
+}
+.flowBtn:hover { color: var(--ink); border-color: var(--line-strong); }
+
+/* Асаалттай — өгөгдлийн өнгөөр (`--data`), аюулын улаан гэр бүлээс ЗАЙДУУ */
+.flowOn {
+  color: var(--ink);
+  border-color: var(--data);
+  background: color-mix(in srgb, var(--data) 18%, transparent);
+}
+
+.flowHour {
+  font-size: 10.5px;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ══════════════ ХОХИРЛЫН НЭГТГЭЛ — ШАТЛАЛТАЙ КАРТ ══════════════
+   ⚠️ 2026-09-03 (хэрэглэгчийн хүсэлт): урьд нь дөрвөн үзүүлэлт ИЖИЛ
+   хэмжээтэй `Stats` торонд зэрэгцэж, «хэдэн объект өртөв» гэсэн ГОЛ
+   хариулт нь «хэдэн давхарга шинжлэв» гэсэн техникийн тоотой нэг жинтэй
+   харагддаг байв. Одоо шатлал ил: нийт тоо ДЭЭР, хэмжээ ДУНД. */
+
+.hero {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 0 10px;
+}
+
+/**
+ * ⚠️ `font-variant-numeric: tabular-nums` ЗААВАЛ: тоо нь шинжилгээ бүрд
+ * өөрчлөгддөг тул пропорциональ цифрээр бичвэл карт бүхэлдээ бага зэрэг
+ * «үсэрч» харагдана.
+ */
+.heroNum {
+  font-size: 38px;
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--bad-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.heroUnit {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+/* Хоёр-гурван нүд — тэнцүү өргөнтэй, дээд талдаа hairline */
+.heroRow {
+  display: flex;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.heroCell {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.heroVal {
+  font-size: 19px;
+  line-height: 1.1;
+  font-weight: 600;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+/**
+ * ⚠️ Шошго нь 2 мөр болж болно («өртөх оршин суугч») — `min-height` өгснөөр
+ * нүднүүдийн доод ирмэг тэнцүү үлдэж, карт хазайхгүй.
+ */
+.heroLbl {
+  font-size: 10px;
+  line-height: 1.3;
+  min-height: 26px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+}
+
+/* Бүдэгрүүлэх чагт — үр дүнгийн картын дотор, тайлбаруудын дээр */
+.dimRow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid var(--line);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.dimRow:hover { color: var(--ink); }
+.dimRow input {
+  width: 13px;
+  height: 13px;
+  flex: none;
+  accent-color: var(--data);
+  cursor: pointer;
+}

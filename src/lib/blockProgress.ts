@@ -2,9 +2,16 @@
  * Барилгын блок бүрийн БАРИЛГА УГСРАЛТЫН АЖЛЫН гүйцэтгэл — газрын зургийн
  * өнгө, tooltip болон баруун самбарын аль алинд ижил эх сурвалж.
  *
- * ⚠️ Эх сурвалж нь shapefile-ийн `GUITS_HV` талбар БИШ (хуучирсан), навчийн
- * жигнэсэн дундаж ч БИШ. «Гүйцэтгэл бөглөх» хуудасны нэгтгэсэн хүснэгтээс
- * № баганын Б-ийн МӨРҮҮДИЙГ шууд авна:
+ * ⚠️ ЭХ СУРВАЛЖ (2026-08-25-нд СОЛИГДСОН): `Bagts_*` БӨГЛӨХ ХУУДСУУД.
+ * Урьд нь `Selbe_guitsetgel_consolidated` нэгтгэсэн хүснэгтээс уншдаг байв —
+ * тэр нь CSV-гээр гараар шинэчлэгддэг бөгөөд 2026-07-25-нд зогссон тул
+ * гүйцэтгэгчийн өдөр бүр бөглөж буй өгөгдөл дэлгэцэд ОГТ хүрэхгүй байлаа.
+ * Одоо бөглөх хуудсуудаас ШУУД уншина — завсрын хүснэгтгүй.
+ *
+ * ⚠️ ХУУДАС нь ӨРГӨН (ажил = мөр, блок = багана `F5_1_гүйцэтгэл`), энэ модуль
+ * УРТ хэлбэр хүлээдэг тул блок бүрийг тусдаа мөр болгож задлана.
+ *
+ * № баганын Б-ийн МӨРҮҮДИЙГ авна:
  *   «Б.»       → нийт гүйцэтгэл (Бэлтгэл ажил ОРОХГҮЙ)
  *   «Б1»…«Б5»  → дэд үе шатууд (барилгын · халаалт · ус · цахилгаан · холбоо)
  * Эх excel өөрөө дэд үе шатын жингээр бодсон дүн тул энд дахин жигнэхгүй.
@@ -16,45 +23,35 @@
  * л шинэ огноогоор нэмдэг тул нэг барилгын нүднүүд өөр өөр огноотой байж болно.
  */
 import { TASK_SHEET, buildingKey } from './services';
+import { loadSheetRows } from '@/modules/sheet/sheetRows';
+import { register, type DataKey } from './dataBus';
 
 const TS = TASK_SHEET.fields;
-/** Татах мөрүүд — нийт (Б.) ба таван дэд үе шат */
-const NOS = [TASK_SHEET.constructionNo, ...TASK_SHEET.subPhaseNos];
 
 const t = (v: unknown) => (v == null ? '' : String(v));
 const isValidDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
 
+/**
+ * Бөглөх хуудсуудаас Б-ийн мөрүүдийг татаж УРТ хэлбэрт задална.
+ *
+ * ⚠️ Хуудас бүр 6 мөр × агшин × блокийн тоо — нийтдээ хэдэн мянган цэг.
+ *    Навч ажлуудыг ОГТ татахгүй (1,370 мөр × 20 блок = 27 мянга) тул хүсэлт
+ *    хөнгөн: 10 хуудас × 1 схем + 1 асуулга.
+ *
+ * ⚠️ Өргөн→урт задаргаа нь `sheet/sheetRows.ts`-д НЭГ УДАА бичигдсэн —
+ *    `BuildingPanel` ч мөн түүнийг ашигладаг. Энд хуулбарлавал шинэ багана
+ *    нэмэгдэх бүрд хоёр газар засах шаардлагатай болно.
+ */
 async function fetchConstruction(): Promise<Record<string, unknown>[]> {
-  const out: Record<string, unknown>[] = [];
-  const fields = [TS.bagts, TS.no, TS.work, TS.date, TS.block, TS.progress].join(',');
-  const inList = NOS.map((n) => `'${n.replace(/'/g, "''")}'`).join(',');
-  for (let off = 0; ; ) {
-    const body = new URLSearchParams({
-      where: `${TS.no} IN (${inList}) AND ${TS.block} IS NOT NULL`,
-      outFields: fields, returnGeometry: 'false',
-      // ⚠️ Энэ хүсэлт 2000 мөрийн хязгаараас ХЭТЭРСЭН (одоо 2046) тул хуудаслана.
-      // Эрэмбэгүй хуудаслалт нь ArcGIS-д ТОГТВОРГҮЙ — хуудасны зааг дээр мөр
-      // давхардах/унах боломжтой бөгөөд алдаа нь чимээгүй (нэг блокийн сүүлийн
-      // огноо алга болж, хуучин утга харагдана).
-      orderByFields: `${TASK_SHEET.oid} ASC`,
-      resultRecordCount: '2000', resultOffset: String(off), f: 'json',
-    });
-    const res = await fetch(`${TASK_SHEET.url}/query`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body,
-    });
-    // ⚠️ HTTP алдаа (429/503 г.м.)-д бие нь JSON биш байж болно — эхлээд res.ok
-    //    шалгахгүй бол res.json() тодорхойгүй SyntaxError шидэж будлиантана.
-    if (!res.ok) throw new Error(`ArcGIS HTTP ${res.status}`);
-    const j = await res.json();
-    if (j.error) throw new Error(j.error.message || 'ArcGIS error');
-    const fs = ((j.features || []) as { attributes: Record<string, unknown> }[]).map((f) => f.attributes);
-    out.push(...fs);
-    if (!j.exceededTransferLimit || !fs.length) break;
-    off += fs.length;
-  }
-  return out;
+  const rows = await loadSheetRows({ constructionOnly: true });
+  return rows.map((r) => ({
+    [TS.bagts]: r.bagts,
+    [TS.no]: r.no,
+    [TS.work]: r.work,
+    [TS.date]: r.date,
+    [TS.block]: r.block,
+    [TS.progress]: r.progress,
+  }));
 }
 
 /** Дэд үе шат — «Б1 · Барилгын ажил · 24%» */
@@ -239,9 +236,16 @@ const nextMonth = (m: string) => {
 
 /* ─────────────────────────── Cache ─────────────────────────── */
 
-/** Нэг удаа тооцоод хадгална; алдаа гарвал дараагийн дуудалт ДАХИН оролдоно. */
-function memo<T>(fn: () => Promise<T>): () => Promise<T> {
+/**
+ * Нэг удаа тооцоод хадгална; алдаа гарвал дараагийн дуудалт ДАХИН оролдоно.
+ *
+ * ⚠️ `reads` (2026-08-28) — `dataBus`-д бүртгэнэ. Бөглөх хуудас руу бичсэн
+ * даруйд (`bagtsSheet.applyAdds`) энэ кэш хаягдаж, газрын зургийн блокийн
+ * будалт ба дашбоардын явцын тоо хуудас дахин ачаалахгүйгээр шинэчлэгдэнэ.
+ */
+function memo<T>(fn: () => Promise<T>, reads: readonly DataKey[] = []): () => Promise<T> {
   let p: Promise<T> | null = null;
+  if (reads.length) register(() => { p = null; }, reads);
   return () => (p ??= fn().catch((e) => { p = null; throw e; }));
 }
 
@@ -281,12 +285,16 @@ export function cachedBlockProgress(): BlockProgressMap | null {
 }
 
 /** Түүхий мөрүүд — `loadBlockProgress` ба `loadBlockHistory` ХОЁУЛАА үүнээс. */
-const loadRows = memo(fetchConstruction);
+const loadRows = memo(fetchConstruction, ['BAGTS_SHEET']);
 
 /** Блок бүрийн барилга угсралтын гүйцэтгэл (0–100). */
-export const loadBlockProgress: () => Promise<BlockProgressMap> = memo(() =>
-  loadRows().then(compute).then((m) => { saveCache(m); return m; }));
+export const loadBlockProgress: () => Promise<BlockProgressMap> = memo(
+  () => loadRows().then(compute).then((m) => { saveCache(m); return m; }),
+  ['BAGTS_SHEET'],
+);
 
 /** Блок бүрийн «Б.» мөрийн бүх огноо — цаг хугацааны цувааны эх. */
-export const loadBlockHistory: () => Promise<BlockHistory> = memo(() =>
-  loadRows().then(history));
+export const loadBlockHistory: () => Promise<BlockHistory> = memo(
+  () => loadRows().then(history),
+  ['BAGTS_SHEET'],
+);

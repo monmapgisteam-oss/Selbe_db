@@ -1,0 +1,242 @@
+/* ЗӨВШӨӨРЛИЙН ХЯНАЛТ — багц бүрийн шат дараалсан гинж. */
+
+.wrap {
+  height: 100%;
+  overflow-y: auto;
+  padding: 20px 24px 40px;
+  background: var(--bg);
+}
+
+.head { margin-bottom: 18px; }
+.h1 { margin: 0; font-size: 1.15rem; font-weight: 700; color: var(--ink); }
+.sub { margin: 4px 0 0; font-size: 0.82rem; color: var(--ink-3); }
+
+.notice {
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+.notice p { margin: 6px 0 0; color: var(--ink-3); font-size: 0.82rem; }
+.bad { border-color: var(--bad); color: var(--bad); }
+
+/* ── Багцын хэсэг ── */
+.pack {
+  margin-bottom: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+/* ⚠️ Зөвшөөрөөгүй зөвшөөрөлтэй багц нь БҮХЭЛДЭЭ ялгарна — гинж урт байвал
+   асуудалтай товч нүднээс хальж болзошгүй. */
+.packAlert { border-color: color-mix(in srgb, var(--bad) 55%, var(--line)); }
+
+.packHead {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.packName { font-weight: 700; color: var(--ink); }
+.counts { font-size: 0.78rem; color: var(--ink-3); }
+.cOk { color: var(--good); }
+.cWait { color: var(--ink-2); }
+.cNo { color: var(--bad); }
+
+/* ── Гинж ── */
+.chain {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 2px;
+}
+.step { display: inline-flex; align-items: center; }
+.arrow { margin: 0 6px; color: var(--ink-3); font-size: 0.9rem; }
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 13px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.chip:hover { border-color: var(--hue); color: var(--ink); }
+.chipIcon { font-weight: 700; }
+.chipName { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chipDate { color: var(--ink-3); font-size: 0.76rem; }
+
+.ok { border-color: color-mix(in srgb, var(--good) 55%, var(--line)); color: var(--ink); }
+.ok .chipIcon { color: var(--good); }
+.wait { opacity: 0.85; }
+
+/* ⚠️ ЗӨВХӨН «Зөвшөөрөөгүй» анивчина. Хүлээгдэж буй нь хэвийн явц —
+   түүнийг ч анивчуулбал бүх дэлгэц анивчиж, жинхэнэ асуудал алдагдана. */
+.no {
+  border-color: var(--bad);
+  color: var(--bad);
+  animation: zovBlink 1.4s ease-in-out infinite;
+}
+.no .chipIcon { color: var(--bad); }
+@keyframes zovBlink {
+  0%, 100% { background: var(--surface-2); }
+  50% { background: color-mix(in srgb, var(--bad) 22%, transparent); }
+}
+/* ⚠️ Хөдөлгөөн бууруулах тохиргоотой хэрэглэгчид анивчихгүй — хүрээ нь
+   мэдээллийг хэвээр дамжуулна (хүртээмж). */
+@media (prefers-reduced-motion: reduce) {
+  .no { animation: none; background: color-mix(in srgb, var(--bad) 16%, transparent); }
+}
+
+.unknown { border-style: dashed; color: var(--ink-3); }
+
+/* ── Дэлгэрэнгүй цонх ── */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: color-mix(in srgb, #000 55%, transparent);
+}
+.modal {
+  width: min(520px, 100%);
+  max-height: 80vh;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: 0 18px 48px rgb(0 0 0 / 45%);
+}
+.modalHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.modalTitle { flex: 1; font-weight: 700; color: var(--ink); }
+.close {
+  padding: 2px 8px;
+  border-radius: var(--r-sm);
+  color: var(--ink-3);
+  cursor: pointer;
+}
+.close:hover { color: var(--ink); background: var(--surface-2); }
+
+.dl { margin: 0; padding: 8px 16px 16px; }
+.dlRow {
+  display: grid;
+  grid-template-columns: 190px 1fr;
+  gap: 10px;
+  padding: 7px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
+  font-size: 0.85rem;
+}
+.dlRow:last-child { border-bottom: 0; }
+.dlRow dt { color: var(--ink-3); }
+.dlRow dd { margin: 0; color: var(--ink); overflow-wrap: anywhere; }
+
+/* ── ЗАСВАРЫН МАЯГТ ── */
+.modalWide { width: min(680px, 100%); }
+
+.addBtn {
+  padding: 3px 10px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 999px;
+  color: var(--ink-3);
+  font-size: 0.76rem;
+  cursor: pointer;
+}
+.addBtn:hover { border-style: solid; border-color: var(--hue); color: var(--hue); }
+
+.form { padding: 14px 16px; display: grid; gap: 12px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 560px) { .grid2 { grid-template-columns: 1fr; } }
+
+.f { display: grid; gap: 4px; }
+.fLabel { font-size: 0.76rem; color: var(--ink-3); }
+.fHint { font-size: 0.72rem; color: var(--ink-3); }
+/* ⚠️ Алдаа нь сануулгаас ӨНГӨӨРӨӨ ялгарна — хоёул жижиг саарал байвал
+   хэрэглэгч алдааг зөвлөмж гэж уншаад цааш үргэлжлүүлнэ. */
+.fErr { font-size: 0.74rem; color: var(--bad); }
+
+.input {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--ink);
+  font-size: 0.85rem;
+}
+.input:focus { outline: 2px solid var(--hue); outline-offset: -1px; }
+.area { resize: vertical; min-height: 62px; font-family: inherit; }
+
+.radios { display: flex; gap: 6px; flex-wrap: wrap; }
+.radio {
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--ink-3);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.radioOn { border-color: var(--hue); color: var(--ink); background: color-mix(in srgb, var(--hue) 16%, transparent); }
+
+.formErr {
+  padding: 9px 11px;
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--bad) 14%, transparent);
+  color: var(--bad);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--line);
+}
+.spacer { flex: 1; }
+.btn, .primary, .danger {
+  padding: 7px 15px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  font-size: 0.83rem;
+  cursor: pointer;
+}
+.btn { color: var(--ink-2); background: var(--surface-2); }
+.primary { border-color: var(--hue); color: #06202a; background: var(--hue); font-weight: 600; }
+.danger { border-color: color-mix(in srgb, var(--bad) 55%, var(--line)); color: var(--bad); background: transparent; }
+.danger:hover { background: color-mix(in srgb, var(--bad) 14%, transparent); }
+.btn:disabled, .primary:disabled, .danger:disabled { opacity: 0.5; cursor: default; }
+
+/* ── Толгойн мөр ба хоосон багц ── */
+.headRow { display: flex; align-items: center; gap: 12px; }
+
+/* ⚠️ ГАР УТАС (2026-08-29): «Багц 1» нэр хоёр мөр болж, толгойн товч гурван
+   мөр эзэлдэг байв. Мөр тасалж, нэрийг таслахгүй, огноог товчны доор биш
+   ард нь нарийхан үлдээнэ. */
+@media (max-width: 560px) {
+  .headRow { flex-wrap: wrap; }
+  .headRow .primary { flex: 1 1 100%; text-align: center; }
+  .packHead { flex-wrap: wrap; row-gap: 4px; }
+  .packName { white-space: nowrap; }
+  .counts { flex: 1 1 100%; }
+  .chipName { max-width: 52vw; }
+  .chipDate { white-space: nowrap; }
+}

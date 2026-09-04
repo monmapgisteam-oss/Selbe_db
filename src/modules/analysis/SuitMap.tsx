@@ -27,7 +27,7 @@ import { createRenderer as createHeatRenderer } from '@arcgis/core/smartMapping/
 import BuildingSceneLayer from '@arcgis/core/layers/BuildingSceneLayer';
 import BuildingExplorer from '@arcgis/core/widgets/BuildingExplorer';
 import {
-  ET, IMAGERY, SCENE, BIM, ELEVATION_URL, HOME, LAYER_BY_ID, layerUrl, ALWAYS_ON_IDS, REFERENCE_IDS,
+  IMAGERY, SCENE, BIM, ELEVATION_URL, HOME, LAYER_BY_ID, layerUrl, ALWAYS_ON_IDS, REFERENCE_IDS,
 } from '@/lib/services';
 import type { Dim } from '@/components/MapCanvas';
 
@@ -236,6 +236,7 @@ export function SuitMap({
   bldPick = null,
   onBldClick,
   zoneFaint = false,
+  opacity,
 }: {
   /** 2D (MapView + ортофото) эсвэл 3D (SceneView + IntegratedMesh) */
   dim: Dim;
@@ -314,6 +315,15 @@ export function SuitMap({
    *    чиг баримжаа өгөх ёстой — ортофото, барилга нэвт харагдана.
    */
   zoneFaint?: boolean;
+  /**
+   * Давхарга тус бүрийн ТУНГАЛАГ (0–1), `MAP_LAYERS[].key`-ээр.
+   *
+   * ⚠️ 2026-08-20: Урьд нь энэ зурагт тунгалаг тохируулах арга ОГТ байхгүй тул
+   * «Тохиромжтой байдал» цонхонд «Тунгалаг» товч зурагдаж чаддаггүй байв.
+   * Заагаагүй давхарга нь БҮТЭЭГДЭХ үеийн анхдагч тунгалагаа хадгална
+   * (жиш. барилга 0.3 — доорх бүсийн онооны будалт нэвт харагдана).
+   */
+  opacity?: Record<string, number>;
 }) {
   const el = useRef<HTMLDivElement>(null);
   const tipEl = useRef<HTMLDivElement>(null);
@@ -333,6 +343,11 @@ export function SuitMap({
   // ⚠️ Энэ файлд `Map` нэрийг ArcGIS-ийн `Map` класс эзэлсэн тул JS-ийн Map
   //    ашиглах боломжгүй — энгийн объект хангалттай.
   const ctxRef = useRef<Record<string, Layer>>({});
+  /**
+   * Давхарга бүрийн БҮТЭЭГДЭХ үеийн тунгалаг — «Тунгалаг» цонхны override
+   * арилахад буцаж очих утга (порталын `MapCanvas`-тай ижил зарчим).
+   */
+  const baseOpacityRef = useRef<Record<string, number>>({});
   const [ready, setReady] = useState(false);
 
   // Callback-уудыг ref-ээр — эффектийг дахин ажиллуулахгүйгээр шинэчилнэ
@@ -368,14 +383,24 @@ export function SuitMap({
       ctxRef.current.zone = zoneLayer;
       ctxRef.current.label = labelLayer;
 
-      const ctx = MAP_LAYERS.filter((d) => !d.special).map((d) => {
-        // Хяналтын давхаргууд ХУУЧИН үйлчилгээнд тул каталогоос хаягаа авчирна
-        const url = d.layerId ? layerUrl(LAYER_BY_ID[d.layerId]) : `${ET}/${d.n}`;
+      const ctx = MAP_LAYERS.filter((d) => !d.special && d.layerId).map((d) => {
+        /*
+         * ⚠️ Хаяг нь ЗӨВХӨН каталогоос. Урьд нь `layerId` байхгүй үед
+         * `${ET}/${d.n}` гэсэн нөөц зам байсан бөгөөд тэр ЕТ үйлчилгээ
+         * 2026-08-26-нд хаагдсан (499) — нөөц нь чимээгүй хоосон давхарга
+         * үүсгэх байв. Одоо `layerId`-гүй мөрийг зүгээр л АЛГАСНА.
+         */
+        const url = layerUrl(LAYER_BY_ID[d.layerId!]);
         const lyr = new FeatureLayer({
           url,
           title: d.title,
           visible: d.on,
-          outFields: ['*'],
+          /* ⚠️ «*» нь мянга мянган объектын БҮХ баганыг татдаг байв (2026-08-21
+             гүйцэтгэлийн аудит). Hover-панель зөвхөн БАРИЛГЫН attrs уншдаг
+             (buildingTip) тул түүнд л бүх талбар; бусад контекст давхаргад
+             outFields огт өгөхгүй — SDK renderer-т хэрэгтэй хамгийн бага
+             олонлогийг өөрөө татна. */
+          ...(d.kind === 'building' ? { outFields: ['*'] } : {}),
           elevationInfo: ON_GROUND,
           renderer: (d.kind === 'building' ? buildingRenderer() : rendererFor(d)) as unknown as RendererProp,
           popupEnabled: false, // popup биш — hover панель
@@ -708,6 +733,16 @@ export function SuitMap({
       lyr.visible = (ALWAYS_ON_IDS as readonly string[]).includes(key) || (layerOn[key] ?? false);
     }
   }, [layerOn]);
+
+  /* ── Давхаргын ТУНГАЛАГ («Тунгалаг» цонх) ──
+     ⚠️ Анхдагчийг НЭГ УДАА тогтооно: override арилахад эх утга руугаа буцна
+     (барилга 0.3 — доорх бүсийн будалт нэвт харагдах ёстой). */
+  useEffect(() => {
+    for (const [key, lyr] of Object.entries(ctxRef.current)) {
+      if (baseOpacityRef.current[key] == null) baseOpacityRef.current[key] = lyr.opacity ?? 1;
+      lyr.opacity = opacity?.[key] ?? baseOpacityRef.current[key];
+    }
+  }, [opacity, ready]);
 
   /* ── Бодит замын vector tile — «Бодит» симуляцад л ил ── */
   useEffect(() => {

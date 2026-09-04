@@ -6,7 +6,6 @@ import { Section, Stats, Stat, Bars, Donut, Rows, Data, Empty } from '@/componen
 import { Icon } from '@/components/Icon';
 import { LayerSwatch } from '@/components/LayerSwatch';
 import { useMap } from '@/components/MapCanvas';
-import { ZoneFilter } from '@/components/ZoneFilter';
 import { useFilter } from '@/lib/filter';
 import { useAsync, type Async } from '@/lib/useAsync';
 import { queryGroup, count, sum, groups, groupWhere, sqlStr, type Group } from '@/lib/query';
@@ -18,7 +17,6 @@ import {
 } from '@/lib/services';
 import { whereFor, qtyText, geomText, layerStats, type Totals } from '@/lib/totals';
 import { num, text, shade } from '@/lib/format';
-import { MonitorGeneral, MonitorDetail, MonitorBagts, BAGTS_FILTER, pickedBuilding, useTaskPerf } from './BuildingPanel';
 import s from './dashboard.module.css';
 
 /** «Бүртгэгдээгүй / Тодорхойгүй» бүлэг — жинхэнэ ангилал мэт харагдах ёсгүй */
@@ -35,7 +33,7 @@ const monoShades = (d: LayerDef, rows: { label: string; blank?: boolean }[]) =>
 /* ═════════════════ Үндсэн самбар ═════════════════ */
 
 /**
- * ⚠️ Тоо, өртгийг ЭНД татахгүй — `Portal` нэг удаа татаж `totals`-оор өгнө.
+ * ⚠️ Тоо, хэмжээг ЭНД татахгүй — `Portal` нэг удаа татаж `totals`-оор өгнө.
  * Каталогийн багана ба энэ самбар ижил тоо харуулах ёстой.
  */
 export function ViewPanel({
@@ -67,15 +65,14 @@ export function ViewPanel({
   //    ТУСДАА компонент — эс бөгөөс түүний дотоод hook-ууд нөхцөлт дуудагдана.
   // ⚠️ «Анализ» энд ОГТ ирэхгүй: тэр харагдац нь `Portal` дээр өөрийн бүрэн
   //    дэлгэцээр (Suitability) зурагддаг тул самбар байхгүй.
-  if (view === 'monitor') {
-    return <MonitorPanel picked={picked} pickedLayer={pickedLayer} />;
-  }
-
   const def = layer ? LAYER_BY_ID[layer] : null;
 
   return (
     <>
-      <ZoneFilter zone={zone} setZone={setZone} />
+      {/* ⚠️ 2026-08-20: Самбарын дээд талын «Бүс» мөр ХАСАГДАВ — газрын зурган
+          дээрх `MapTools`-ийн «Бүс» товч ЯГ ИЖИЛ төлөвийг удирддаг тул нэг
+          дэлгэцэд хоёр ижил сонгогч зэрэг байв. Сонгосон бүсийг зурган дээрх
+          чип ба доорх `PickedZone` харуулна. */}
 
       {/* Дарсан объект — ХАМГИЙН ДЭЭР. Зураг дээр дарсан хариу шууд нүдэнд өртөнө. */}
       {picked && pickedLayer && (
@@ -565,8 +562,10 @@ function PlanOverview({
                             <div className={s.facetHead}>
                               {c.title}
                               <span className={s.facetNote}>
-                                {/* ⚠️ Ширхэг нь БҮХЭЛ тоо — «1,651.0» гэж бичихгүй */}
-                                {c.note === 'ширхэг' ? num(c.sum) : `${num(c.sum, 1)} ${c.note}`}
+                                {/* ⚠️ Ширхэг нь БҮХЭЛ тоо — «1,651.0» гэж бичихгүй.
+                                    `note`-той жишиж болохгүй: тэр нь tr()-ээр орчуулагдсан
+                                    («items») тул EN-д таарахгүй — ГЕОМЕТРЭЭР шалгана. */}
+                                {c.geom === 'point' || c.geom === 'other' ? num(c.sum) : `${num(c.sum, 1)} ${c.note}`}
                               </span>
                             </div>
                             {/**
@@ -775,10 +774,14 @@ function LayerTypeCharts({
  *   · ангилал бүрээр   — тоо + хэмжээ
  *   · бүсээр           — тоо + хэмжээ
  *
- * ⚠️ ӨРТГИЙН мэдээлэл ЭНД БАЙХГҮЙ. Санхүүгийн бүх тооцоо «Тохиромжтой байдлын
- * үнэлгээ» модульд төвлөрсөн: тэнд нэгж үнэ, барилгын өртөг, ашиг зэрэг нь
- * загварын хэсэг бөгөөд гулсуураар тохируулагддаг. Хоёр газарт мөнгөн дүн
- * үзүүлбэл аль нь эрх мэдэлтэй нь ойлгомжгүй болно.
+ * ⚠️ ӨРТГИЙН мэдээлэл ЭНД БАЙХГҮЙ — ерөнхий мэдээллийн каталогт мөнгөн дүн
+ * ОГТ ГАРАХГҮЙ. 2026-08-24-нд `negj_une` (нэгж үнэ) дээр тогтсон өртгийн
+ * загвар бүхэлдээ хасагдсан (зохиомол дата байсан); «Тохиромжтой байдлын
+ * үнэлгээ» модульд ч санхүүгийн тооцоо үлдээгүй.
+ *
+ * ⚠️ Порталын АМЬД мөнгөн дүн бол ЗӨВХӨН гүйцэтгэлийн тал: Cashflow-ийн
+ * төсөвт өртөг/гэрээний дүн (`Dashboard`, `Tailan`) ба газар чөлөөлөлтийн
+ * үнэлгээ (`Gazar`). Тэдгээрийг энэ самбарт давтахгүй.
  */
 function LayerDashboard({
   d,
@@ -902,7 +905,7 @@ function LayerDashboard({
         </div>
 
         {totals.state === 'error' ? (
-          <Empty label={tr('Үзүүлэлт татагдсангүй.')} />
+          <Empty label={tr('Үзүүлэлт татагдсангүй.')} onRetry={totals.retry} />
         ) : (
           <Stats cols={avgQty != null ? 3 : 2}>
             <Stat value={t ? num(t.n) : '…'} unit={tr('ш')} label={tr('Тоо')} accent />
@@ -910,7 +913,8 @@ function LayerDashboard({
             {avgQty != null && (
               <Stat
                 value={num(avgQty, 1)}
-                unit={d.qty!.unit}
+                /* ⚠️ tr() — config-ийн 'м²'/'км'/'м' EN-д кириллээр үлдэхгүй */
+                unit={tr(d.qty!.unit)}
                 label={tr('Дундаж {0}', d.qty!.unit === 'м²' ? tr('талбай') : tr('урт'))}
               />
             )}
@@ -1027,48 +1031,6 @@ function LayerDashboard({
    рүү нүүсэн (төрлөөр бүлэглэсэн, dashboard-д ч ажиллана). Энд зөвхөн хэрэглэнэ. */
 
 /* ═════════════════ Барилгын хяналт ═════════════════ */
-
-/**
- * ⚠️ Асинк хүсэлтийг ЭНД нэг удаа дуудаж `BuildingWork` руу дамжуулна.
- * Урьд нь энд бас `SurveyReports`/`SurveyOutside`-ыг ДАХИН зурдаг байсан тул
- * тайлангийн жагсаалт хоёр хувь харагдаж, ижил хүсэлт хоёр удаа явдаг байв.
- */
-function MonitorPanel({
-  picked,
-  pickedLayer,
-}: {
-  picked: Record<string, unknown> | null;
-  pickedLayer: string | null;
-}) {
-  // Баруун панел — СОНГОСОН барилгын бүрэн ажлын гүйцэтгэл (Tusliin table).
-  // Зүүн талд бүх барилгын ДУНДАЖ (`BuildingSummary`, Portal-д).
-  const { active } = useFilter();
-  /**
-   * ⚠️ Хүнд queryAll хүсэлтийг ЭНД нэг удаа дуудаж хоёр компонент руу prop-оор
-   * өгнө. Урьд нь General/Detail тус бүр өөрөө `useTaskPerf(b)` дууддаг байсан
-   * тул барилга сонгох бүрд ижил хуудаслалттай хүсэлт ХОЁР ДАВХАР явдаг байв
-   * (Portal-ын MonitorFrame `useBuildings`-ийг хуваалцдагтай ижил загвар).
-   * Багцын салаанд `b` нь null тул хүсэлт огт явахгүй.
-   */
-  const b = pickedBuilding(picked, pickedLayer);
-  const q = useTaskPerf(b);
-  /**
-   * ⚠️ Барилга сонгоогүй байхад БАГЦ сонгогдвол (зүүн баганын «Багц тус бүрээр»)
-   * энэ самбар хоосон «барилга дээр дарна уу» эсэргүүцэл харуулдаг байв. Одоо
-   * тэр багцын ажлын төрөл бүрийн гүйцэтгэл гарна. Барилга сонгосон нь ДАВУУ:
-   * тодорхой асуулт нь ерөнхийхөөс тэргүүн.
-   */
-  const bagts = active?.key.startsWith(BAGTS_FILTER) ? active.key.slice(BAGTS_FILTER.length) : null;
-  const building = picked != null && pickedLayer === 'mon:building';
-  if (!building && bagts) return <MonitorBagts bagts={bagts} />;
-
-  return (
-    <>
-      <MonitorGeneral b={b} q={q} />
-      <MonitorDetail b={b} q={q} />
-    </>
-  );
-}
 
 /* ═════════════════ Сонгосон бүс ═════════════════ */
 
@@ -1238,7 +1200,8 @@ function PickedFeature({
   if (def.qty && attrs[def.qty.field] != null) {
     rows.push({
       key: def.qty.unit === 'м²' ? tr('Талбай') : tr('Урт'),
-      value: <span className="num">{num(Number(attrs[def.qty.field]), 1)} {def.qty.unit}</span>,
+      /* ⚠️ Нэгжийг tr()-ээр — EN-д «м²» кириллээр үлдэхгүй (жишилт нь түүхий хэвээр) */
+      value: <span className="num">{num(Number(attrs[def.qty.field]), 1)} {tr(def.qty.unit)}</span>,
     });
   }
   // ⚠️ «Нэгж үнэ» ХАСАГДСАН — санхүүгийн дүн зөвхөн анализын модульд.

@@ -5,18 +5,25 @@
  * Хамгаалж буй алдаа: буруу SQL нь ArcGIS дээр чимээгүй унадаг — газрын зураг
  * зүгээр л хариу өгөхгүй, консольд ч юу ч гарахгүй. Тиймээс шүүлт бүрийн WHERE
  * -ийг ЖИНХЭНЭ давхарга дээр гүйлгэж, зөвшөөрөгдсөн эсэхийг баталгаажуулна.
- * (Жишээ нь `TRIM()`-ийг энэ FeatureServer таньдаггүй.)
+ * (Жишээ нь `TRIM()`-ийг эдгээр FeatureServer таньдаггүй.)
+ *
+ * ⚠️ 2026-08-24: эх сурвалж `building_GOL_barigdaj_ehelsen` (monmap) УСТСАН
+ * (алдаа 499) — блокийн давхарга нэгтгэсэн `data`/112 руу шилжсэн. Шинэ
+ * давхаргад `GUITS_HV` ба 16 үе шатын талбар БАЙХГҮЙ: гүйцэтгэл, үе шат,
+ * гүйцэтгэгчийн бүлгүүд одоо «Гүйцэтгэл бөглөх» хүснэгтээс КЛИЕНТ дээр
+ * бодогдож, давхаргыг `OBJECTID IN (…)` жагсаалтаар шүүнэ
+ * (`BuildingPanel.tsx`-ийн `oidWhere`). Тиймээс энд шалгах SQL хэлбэрүүд:
+ *   · `BAGTS = '…'`        — багцын шүүлт (`Dashboard.tsx`)
+ *   · `OBJECTID IN (…)`    — бүлгийн тодруулга
+ *   · `(…) AND (…)`        — 3D-ийн нийлүүлсэн definitionExpression
+ *     (`MapCanvas.tsx`: хэсэг бүр хаалтад, ` AND `-ээр залгагдана)
  */
 import assert from 'node:assert/strict';
 
-const URL_ = 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services'
-  + '/building_GOL_barigdaj_ehelsen/FeatureServer/2/query';
+const URL_ = 'https://services-ap1.arcgis.com/ACqsMOmNLi5wIdIh/arcgis/rest/services'
+  + '/data/FeatureServer/112/query';
 
-const STAGE_NA = -1;
-const F = { bagts: 'BAGTS', contractor: 'BAR_COMP', progress: 'GUITS_HV' };
-const STAGES = ['A_BELTGEL', 'GAZAR', 'SUURI', 'KARKAS', 'HANA', 'DEEVER',
-  'HAALGA', 'SHAL', 'DOTOR', 'GADNA', 'LIFT', 'HALAALT'];
-const LEVELS = [[0, 25], [25, 50], [50, 75], [75, 101]];
+const F = { bagts: 'BAGTS', contractor: 'BAR_COMP' };
 const sqlStr = (v) => `'${String(v).replace(/'/g, "''")}'`;
 
 /** WHERE-ийг ЖИНХЭНЭ давхарга дээр гүйлгэнэ — зөвшөөрөгдөөгүй бол алдана. */
@@ -43,39 +50,41 @@ const q = async (p) => {
 };
 
 const total = await count('1=1');
-const rows = await q({ where: '1=1', outFields: `${F.bagts},${F.contractor}`, resultRecordCount: '2000' });
+const rows = await q({
+  where: '1=1',
+  outFields: `OBJECTID,${F.bagts},${F.contractor}`,
+  resultRecordCount: '2000',
+});
+assert.ok(total > 0 && rows.length === total, `давхарга дутуу: ${rows.length}/${total}`);
 
-// 1. Гүйцэтгэлийн ангилал
-for (const [lo, hi] of LEVELS) await count(`${F.progress} >= ${lo} AND ${F.progress} < ${hi}`);
-
-// 2. Багц тус бүрээр
+// 1. Багц тус бүрээр (`Dashboard.tsx`-ийн `BF.bagts = '…'` хэлбэр)
 for (const b of new Set(rows.map((r) => r[F.bagts]))) {
   const n = await count(`${F.bagts} = ${sqlStr(b)}`);
   assert.ok(n > 0, `«${b}» багц юу ч тодруулахгүй`);
 }
 
-// 3. Ажлын үе шат — өмнө нь ДАРЖ БОЛДОГГҮЙ байсан (onSelect алга)
-for (const f of STAGES) {
-  const n = await count(`${f} > ${STAGE_NA}`);
-  assert.ok(n > 0 && n <= total, `«${f}» үе шат ${n}/${total}`);
-}
+// 2. OID жагсаалт (`oidWhere`) — гүйцэтгэл/үе шат/гүйцэтгэгчийн бүлэг бүгд
+//    клиент дээр бодогдоод энэ хэлбэрээр шүүгддэг тул ЯГ тоогоо буцаах ёстой.
+const someOids = rows.slice(0, 25).map((r) => r.OBJECTID);
+const oidN = await count(`OBJECTID IN (${someOids.join(',')})`);
+assert.equal(oidN, someOids.length, `OID жагсаалт ${oidN} ≠ ${someOids.length}`);
+// Хоосон бүлгийн зам — `oidWhere([])` нь `1=0` буцаадаг.
+assert.equal(await count('1=0'), 0, '«1=0» шүүлт 0 биш');
 
-// 4. Гүйцэтгэгч компани — мөн адил дарж болдоггүй байсан
-const comps = new Set(rows.map((r) => String(r[F.contractor] ?? '').trim()));
+// 3. Гүйцэтгэгчийн ТҮҮХИЙ утга SQL-д зөөвөрлөгдөх үү (нэрэнд «"», «'» орсон ч)
+const comps = new Set(rows.map((r) => String(r[F.contractor] ?? '').trim()).values());
 for (const c of comps) {
-  const where = c === ''
-    ? `${F.contractor} IS NULL OR ${F.contractor} = '' OR ${F.contractor} = ' '`
-    : `${F.contractor} = ${sqlStr(c)}`;
-  const n = await count(where);
-  assert.ok(n > 0, `«${c || 'Тодорхойгүй'}» компани юу ч тодруулахгүй`);
+  if (c === '') continue; // хоосон бүлэг OID-оор шүүгддэг
+  const n = await count(`${F.contractor} = ${sqlStr(c)}`);
+  assert.ok(n > 0, `«${c}» компани юу ч тодруулахгүй`);
 }
 // ⚠️ Регресс: `TRIM()`-ийг энэ үйлчилгээ ТАНИХГҮЙ (тиймээс хэрэглэж БОЛОХГҮЙ).
 await assert.rejects(() => count(`TRIM(${F.contractor}) = ''`), /татгалзав/);
 
-// 5. 3D-ийн НИЙЛҮҮЛСЭН хэлбэр: бүсийн шүүлт AND тодруулга нэг definitionExpression-д.
-//    (SceneView `featureEffect`-ийг үл тоомсорлодог тул 3D-д ингэж шүүнэ.)
+// 4. 3D-ийн НИЙЛҮҮЛСЭН хэлбэр: бүсийн шүүлт AND тодруулга нэг
+//    definitionExpression-д (`MapCanvas.tsx` — хэсэг бүр хаалтад).
 const bagts = rows[0][F.bagts];
-const merged = `(${F.bagts} = ${sqlStr(bagts)}) AND (SUURI > ${STAGE_NA})`;
+const merged = `(${F.bagts} = ${sqlStr(bagts)}) AND (OBJECTID IN (${someOids.join(',')}))`;
 const both = await count(merged);
 const only = await count(`${F.bagts} = ${sqlStr(bagts)}`);
 assert.ok(both > 0 && both <= only, `нийлүүлсэн шүүлт ${both}/${only}`);
@@ -84,8 +93,14 @@ assert.ok(both > 0 && both <= only, `нийлүүлсэн шүүлт ${both}/${o
  * ⚠️ Энэ бол бүх каталогийн facet-д хамаатай: `TRIM()`-ийг эдгээр FeatureServer
  * ТАТГАЛЗДАГ тул хоосон мөр дарахад зурагт юу ч болдоггүй байв. Шинэ нөхцөл нь
  * тоологдсон ЯГ ижил тоог буцаах ёстой. */
-const ET = 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/Selbe_ET_20260721/FeatureServer';
-const FACETS = [[24, 'zoriulalt'], [24, 'Bar_comp'], [28, 'zoriulalt']];
+/* ⚠️ 2026-08-24: эх сурвалж `Selbe_ET_20260721` (monmap) → нэгтгэсэн `data`
+   (MUST). Хуучин үйлчилгээ АЛГА болсон (алдаа 499 «Item does not exist») тул
+   энэ шалгалт чимээгүй 0 давхарга үзэж унаж байв. Давхаргын харгалзаа:
+   ET/24 → data/108 («Барилга байгууламж»), ET/28 → data/106. Хоосон утга
+   агуулсныг амьд шалгаж сонгосон: [108] zoriulalt 158 мөр, [108] Bar_comp
+   315 мөр, [106] zoriulalt 12 мөр. */
+const ET = 'https://services-ap1.arcgis.com/ACqsMOmNLi5wIdIh/arcgis/rest/services/data/FeatureServer';
+const FACETS = [[108, 'zoriulalt'], [108, 'Bar_comp'], [106, 'zoriulalt']];
 
 const post = async (url, p) => {
   const res = await fetch(`${url}/query`, {
@@ -122,6 +137,6 @@ for (const [n, field] of FACETS) {
 }
 assert.ok(checked >= 3, `хоосон бүлгийн шалгалт хэт цөөн: ${checked}`);
 
-console.log(`ok · ${LEVELS.length} ангилал, ${new Set(rows.map((r) => r[F.bagts])).size} багц, `
-  + `${STAGES.length} үе шат, ${comps.size} компани, ${checked} хоосон-бүлэг, `
+console.log(`ok · ${new Set(rows.map((r) => r[F.bagts])).size} багц, `
+  + `OID-жагсаалт ${someOids.length}, ${comps.size} компани, ${checked} хоосон-бүлэг, `
   + `3D-нийлүүлэлт — бүгд ${total} блок дээр хүчинтэй`);

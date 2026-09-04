@@ -1,0 +1,35 @@
+# Сэлбэ AI туслах — Telegram бот (systemd, Docker-ГҮЙ хувилбар).
+#
+# Урьдчилсан нөхцөл:
+#   • Node 24+ суулгасан            (node -v)
+#   • Репог /opt/selbe-db-д clone   (git clone … /opt/selbe-db)
+#   • Хараат сан суулгасан          (cd /opt/selbe-db && npm ci --omit=dev)
+#   • Тохиргоо бэлэн                 (deploy/telegram-bot/.env бөглөсөн)
+#
+# Суулгах:
+#   sudo cp deploy/telegram-bot/selbe-bot.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now selbe-bot
+#   journalctl -u selbe-bot -f          # лог
+#
+# ⚠️ `ExecStart`-ын npm зам таны системд өөр байж болно — `which npm`-ээр
+#    шалгаад доор тааруул (жиш. nvm бол /root/.nvm/versions/node/vXX/bin/npm).
+
+[Unit]
+Description=Selbe AI туслах — Telegram бот
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/selbe-db
+EnvironmentFile=/opt/selbe-db/deploy/telegram-bot/.env
+ExecStart=/usr/bin/npm run bot
+Restart=always
+RestartSec=5
+# long-poll гогцоо SIGINT-д цэвэр зогсоно
+KillSignal=SIGINT
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target

@@ -311,11 +311,14 @@ const compatPlan = (net, { perStage = 30, yellow = YELLOW_S, mode = 'split' } = 
   return { key: 'auto', label: 'Авто (зөрчилгүй)', desc: 'Геометрээс', stages, cycle: perStage * stages.length, yellow };
 };
 const PLAN2 = SIGNAL_PLANS.find((p) => p.key === '2');
-const signalStage = (code, plan) => {
+/* ⚠️ `_` угтвар = ЭНЭ ШАЛГУУРТ ашиглагдаагүй ч `traffic.ts`-тэй ПАРИТЕТ
+   хадгалахын тулд үлдээсэн хуулбар. Устгавал эх файлтай мөр мөрөөр жишихэд
+   зөрөх бөгөөд дараагийн синк дээр алдаа гарах эрсдэлтэй. */
+const _signalStage = (code, plan) => {
   for (let i = 0; i < plan.stages.length; i++) if (plan.stages[i].includes(code)) return i;
   return -1;
 };
-const currentStage = (time, plan) => {
+const _currentStage = (time, plan) => {
   const n = plan.stages.length;
   if (n <= 0) return -1;
   const share = plan.cycle / n;
@@ -437,10 +440,10 @@ const PATIENCE_S = 25;
 const TURN_BACK_M = 10;
 const U_TURN_V = 2.5;
 const JUNCTION_R_M = 5;
-const STOP_LINE_M = 2.5;
+const _STOP_LINE_M = 2.5;
 const TAU = 1.0;
 const ACC = 1.8, DEC = 4.5;
-const V_MIN = 30 / 3.6, V_MAX = 50 / 3.6;
+const _V_MIN = 30 / 3.6, V_MAX = 50 / 3.6;
 
 const TURN_SMOOTH_M = 8;
 const carPose = (net, car) => {
@@ -797,7 +800,7 @@ const stepCars = (net, cars, dt, rnd = Math.random, time = 0, plan = DEFAULT_SIG
   }
 };
 
-const carCapacity = (net, util = 0.5) => {
+const _carCapacity = (net, util = 0.5) => {
   const upm = net.unitsPerMeter || 1;
   let lenM = 0;
   for (const e of net.edges) if (!e.dup) lenM += e.length / upm;
@@ -892,7 +895,7 @@ const boundaryEntries = (net) => {
   }
   return out;
 };
-const spawnCarAt = (net, entry, rnd = Math.random) => {
+const spawnCarAt = (net, entry, _rnd = Math.random) => {
   const upm = net.unitsPerMeter || 1;
   const inset = Math.min(2.8 * upm, net.edges[entry.e].length / 2);
   const s0 = entry.dir === 1 ? inset : net.edges[entry.e].length - inset;

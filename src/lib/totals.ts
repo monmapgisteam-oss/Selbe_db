@@ -1,19 +1,20 @@
 'use client';
 
 /**
- * Давхаргын тоо, хэмжээ, ӨРТГИЙН тооцоо.
+ * Давхаргын ТОО ба ХЭМЖЭЭНИЙ тооцоо.
  *
  * ⚠️ Каталогийн багана ба самбарын дашбоард ХОЁУЛАА эндээс уншина. Хоёр газарт
  * хуулбарлавал каталог дээрх дүн самбар дээрхээс зөрөх өдөр ирнэ.
  */
 
-import { queryGroup, queryStats, count, sum } from './query';
+import { queryStats, count, sum } from './query';
 import { t as tr } from '@/lib/i18nCore';
-import { layerUrl, OID, PLAN_LAYER_IDS, LAYER_BY_ID, zoneWhere, type LayerDef, type Cost } from './services';
+import { layerUrl, OID, CATALOG_LAYER_IDS, LAYER_BY_ID, zoneWhere, type LayerDef } from './services';
 import { num, ha, km } from './format';
+import { useSyncExternalStore } from 'react';
 import { useAsync, type Async } from './useAsync';
 
-export type Totals = { n: number; q: number; cost: number };
+export type Totals = { n: number; q: number };
 
 /**
  * Давхаргад тохирох бүсийн шүүлт.
@@ -28,55 +29,20 @@ export const layerStats = (d: LayerDef) =>
   // ⚠️ OID нь давхарга бүрт ижил БИШ (хуучин үйлчилгээнүүд `FID`, `objectid`)
   [count(d.oid ?? OID, 'n'), ...(d.qty ? [sum(d.qty.field, 'q')] : [])];
 
-/**
- * НЭГ бүлгийн өртөг: нэгж үнийг тоо/хэмжээнд хэрхэн үржүүлэх.
- *
- * ⚠️ Ганц газарт бичнэ: нийт дүн, ангилал бүрийн дүн, нэгж үнийн шатлал гурав
- * бүгд эндээс тооцоно — эс бөгөөс задаргааны нийлбэр нийт дүнтэйгээ зөрнө.
- */
-/**
- * ⚠️ 2026-08-19: Параметр нь `LayerDef` БАЙСАН. `loadCosts` нь одоо миграциас
- * ӨМНӨХ өртгийн тодорхойлолтоор (`costSrc`) ажилладаг тул давхаргын ОДООГИЙН
- * `d.cost` (устсан байж болно) БИШ, шийдэгдсэн `Cost`-ыг шууд авна — эс бөгөөс
- * сэргээсэн давхаргууд бүгд 0 өртөгтэй хэвээр үлдэнэ.
- */
-export function costOf(c: Cost | undefined, n: number, q: number, price: number): number {
-  if (!c || !Number.isFinite(price)) return 0;
-  return c.basis === 'sh' ? n * price
-    : c.basis === 'm100' ? (q / 100) * price
-      : q * price; // 'km' ба 'm2' — хэмжээ шууд үржигдэнэ
-}
 
 /**
- * Давхаргын тоо, хэмжээ, ӨРТГИЙГ нэг хүсэлтээр.
+ * Давхаргын ТОО ба ХЭМЖЭЭГ нэг хүсэлтээр (`outStatistics`).
  *
- * ⚠️ Нэгж үнээр БҮЛЭГЛЭЖ асуудаг нь санаатай. Ихэнх давхаргад нэгж үнэ тогтмол
- * боловч зарим давхаргад ангилал бүрт өөр байдаг (жишээ нь «Инженерийн бэлтгэл
- * арга хэмжээ» 18–250 сая). Нэг ижил хэлбэрээр бүлэглэвэл тэр онцгой тохиолдол
- * өөрөө шийдэгдэнэ — `MAX(үнэ)` авбал тэр давхаргын өртөг 9 дахин хэтэрдэг байв.
+ * ⚠️ 2026-08-24: ӨРТГИЙН тооцоо ХАСАГДАВ. `negj_une` нь зохиомол дата байсан
+ * тул давхаргын нийлбэрт зөвхөн ТОО ба ХЭМЖЭЭ үлдэв — үүнээс `Totals` нь
+ * `{ n, q }` хос болов. Урьд нь энэ хүсэлт нэгж үнээр БҮЛЭГЛЭЖ (`GROUP BY`)
+ * явдаг байсан бөгөөд одоо бүлэглэлгүй, ганц мөр буцаана.
  */
 export async function layerTotals(d: LayerDef, where: string): Promise<Totals> {
-  const url = layerUrl(d);
-  const stats = layerStats(d);
-
-  if (!d.cost) {
-    const r = await queryStats(url, stats, where);
-    return { n: Number(r.n ?? 0), q: Number(r.q ?? 0), cost: 0 };
-  }
-
-  const rows = await queryGroup(url, d.cost.field, stats, where);
-  let n = 0, q = 0, cost = 0;
-  for (const r of rows) {
-    const rn = Number(r.n ?? 0);
-    const rq = Number(r.q ?? 0);
-    n += rn;
-    q += rq;
-    cost += costOf(d.cost, rn, rq, Number(r[d.cost.field] ?? 0));
-  }
-  return { n, q, cost };
+  const r = await queryStats(layerUrl(d), layerStats(d), where);
+  return { n: Number(r.n ?? 0), q: Number(r.q ?? 0) };
 }
 
-/** Хэмжээг уншихад ойлгомжтой нэгжээр — метрийг км, м²-ыг га болгоно */
 /**
  * Хэмжээг УХААЛАГ нэгжээр — жижиг утга том нэгжид «0.0» болж бөөрөнхийлөгддөг
  * байсныг зассан (жишээ нь дугуйн замын бүс тус бүрийн 300–2000 м² талбай
@@ -89,46 +55,12 @@ export const qtyText = (d: LayerDef, q: number): string | null => {
   return q < 10_000 ? tr('{0} м²', num(q)) : tr('{0} га', ha(q, 1));
 };
 
-/** Нэгж үнэ юунд ногдохыг үгээр */
-export const costNote = (d: LayerDef): string => {
-  if (!d.cost) return '—';
-  return d.cost.basis === 'sh' ? tr('1 ш тутамд')
-    : d.cost.basis === 'm100' ? tr('100 м тутамд')
-      : d.cost.basis === 'km' ? tr('1 км тутамд') : tr('1 м² тутамд');
-};
-
 /** Геометрийн төрөл — дашбоардын толгойд */
 export const geomText = (d: LayerDef): string =>
   d.geom === 'area' ? tr('Талбай') : d.geom === 'line' ? tr('Шугам') : tr('Цэг');
 
 /**
- * БАГЦЫН нийлбэр хэмжээ — «65.3 км · 26.7 га».
- *
- * ⚠️ Урт ба талбайг ТУСАД нь нийлүүлнэ. Багц дотор шугаман (м/км) ба талбайн
- * (м²) давхарга хольцтой байдаг — «Зам, тээвэр»-т замын тэнхлэг (км) ба явган
- * хүний зам (м²) хоёул орно. Тэдгээрийг нэг тоо болгон нэмбэл утгагүй дүн гарна.
- *
- * ⚠️ Цэгэн давхарга (`qty` талбаргүй) энд ОРОХГҮЙ — тэдгээрийн «хэмжээ» нь
- * ширхэгийн тоо бөгөөд мөрөнд аль хэдийн бичигдсэн байдаг.
- */
-export function groupQty(ids: string[], map: ReadonlyMap<string, Totals>): string | null {
-  let km = 0, ha = 0;
-  for (const id of ids) {
-    const d = LAYER_BY_ID[id];
-    const t = map.get(id);
-    if (!d?.qty || !t || t.q <= 0) continue;
-    if (d.qty.unit === 'км') km += t.q;
-    else if (d.qty.unit === 'м') km += t.q / 1_000;
-    else ha += t.q / 10_000;
-  }
-  const parts: string[] = [];
-  if (km > 0) parts.push(tr('{0} км', num(km, 1)));
-  if (ha > 0) parts.push(tr('{0} га', num(ha, 1)));
-  return parts.length ? parts.join(' · ') : null;
-}
-
-/**
- * Ерөнхий мэдээллийн БҮХ давхаргын тоо, хэмжээ, өртөг — НЭГ УДАА.
+ * Ерөнхий мэдээллийн БҮХ давхаргын тоо ба хэмжээ — НЭГ УДАА.
  *
  * ⚠️ Каталогийн багана, багцын тойм, давхаргын дашбоард гурав ижил тоо
  * хэрэглэдэг. Тус тусад нь татвал (а) 29 хүсэлт хэд дахин явж, (б) гурван
@@ -150,25 +82,83 @@ export function groupQty(ids: string[], map: ReadonlyMap<string, Totals>): strin
  */
 const totalsCache = new Map<string, Map<string, Totals>>();
 
+/**
+ * КЭШИЙГ ХҮЧИНГҮЙ БОЛГОХ ЗАМ — атрибут засварын дараа.
+ *
+ * ⚠️ ЯАГААД `dataBus.invalidate`-ЭЭР БОЛОХГҮЙ ВЭ: дээрх кэш нь `cached()`
+ * слот БИШ, энэ модулийн өөрийн `Map` бөгөөд `useAsync` нь `key` мөрөөр
+ * л дахин татдаг. Кэшийг цэвэрлэхэд `key` өөрчлөгддөггүй тул хуучин утга
+ * ХЭВЭЭР харагдана — тиймээс эрин (`epoch`) тоолуурыг key-д оруулж,
+ * захиалагчдыг сэрээнэ.
+ *
+ * ⚠️ Засвар ҮЙЛЧИЛГЭЭНД амжилттай бичигдсэний ДАРАА л дуудна: амжилтгүй
+ * бичилтийн дараа хаявал сайн өгөгдлийг дэмий 119 хүсэлтээр дахин татна.
+ */
+let totalsEpochN = 0;
+const totalsSubs = new Set<() => void>();
+
+export function dropTotalsCache(): void {
+  totalsCache.clear();
+  totalsEpochN += 1;
+  for (const fn of totalsSubs) fn();
+}
+
+/** `useSyncExternalStore`-д — ЗААВАЛ модулийн түвшний тогтмол лавлагаа байна */
+export function subscribeTotals(fn: () => void): () => void {
+  totalsSubs.add(fn);
+  return () => { totalsSubs.delete(fn); };
+}
+
+export function totalsEpoch(): number {
+  return totalsEpochN;
+}
+
 export function usePlanTotals(
   zone: string | null,
   enabled = true,
-  ids: string[] = PLAN_LAYER_IDS,
+  /**
+   * ⚠️ 2026-08-20: Анхдагч нь `PLAN_LAYER_IDS`-ЭЭС `CATALOG_LAYER_IDS` болов.
+   * Каталог одоо БҮХ давхаргыг харуулдаг тул явцуу нийлбэрийн жагсаалтаар
+   * татвал шинээр нээгдсэн 32 мөр тоогоо олохгүй, мөнхөд «…» гэж хүлээнэ.
+   */
+  ids: string[] = CATALOG_LAYER_IDS,
 ): Async<Map<string, Totals>> {
-  const key = `${enabled ? 'on' : 'off'}|${zone ?? ''}|${ids.join(',')}`;
+  /* ⚠️ `epoch` нь key-д ОРНО — засварын дараа `dropTotalsCache()` дуудахад
+     энэ утга өсөж, `useAsync` дүнг шинээр татна (дээрх тайлбарыг үзнэ үү). */
+  const epoch = useSyncExternalStore(subscribeTotals, totalsEpoch, totalsEpoch);
+  const key = `${enabled ? 'on' : 'off'}|${zone ?? ''}|${epoch}|${ids.join(',')}`;
   return useAsync(async () => {
     if (!enabled) return new Map<string, Totals>();
     const hit = totalsCache.get(key);
     if (hit) return hit;
-    const entries = await Promise.all(
+    // ⚠️ allSettled — Promise.all байхад ~119 хүсэлтийн ГАНЦ нь унахад (нэг
+    //    давхаргын HTTP 500 — rate-limit биш тул query.ts retry хийхгүй) бүхэл
+    //    Map алдаа болж, каталог/дашбоардын БҮХ тоо «татагдсангүй» болдог байв.
+    //    Унасан давхаргыг Map-д оруулахгүй — каталогийн мөр «—» гэж гарна
+    //    (LayerCatalog-ийн «алдвал “—”» тохиролцоо), бусад нь хэвийн үзэгдэнэ.
+    const settled = await Promise.allSettled(
       ids.map(async (id) => {
         const d = LAYER_BY_ID[id];
         return [id, await layerTotals(d, whereFor(d, zone))] as const;
       }),
     );
-    const map = new Map<string, Totals>(entries);
+    const map = new Map<string, Totals>();
+    const failed: string[] = [];
+    settled.forEach((s, i) => {
+      if (s.status === 'fulfilled') map.set(s.value[0], s.value[1]);
+      else failed.push(ids[i]);
+    });
+    if (failed.length) {
+      // Алдааг ЧИМЭЭГҮЙ залгихгүй (query.ts-ийн дүрэм) — ядаж лог үлдээнэ
+      console.warn(`[selbe] usePlanTotals: ${failed.length} давхаргын тоо татагдсангүй: ${failed.join(', ')}`);
+      // БҮГД унасан бол сервер бүхэлдээ унасан гэсэн үг — жинхэнэ алдаа
+      // болгож error UI + «дахин оролдох» товч гаргана
+      if (failed.length === ids.length) throw (settled[0] as PromiseRejectedResult).reason;
+      // ⚠️ Дутуу Map-ыг КЭШЛЭХГҮЙ — дараагийн mount/бүс солиход унасан
+      //    давхаргууд дахин татагдаж, өөрөө эдгэрнэ
+      return map;
+    }
     totalsCache.set(key, map);
     return map;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 }

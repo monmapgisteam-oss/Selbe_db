@@ -7,16 +7,15 @@ import SpatialReference from '@arcgis/core/geometry/SpatialReference';
 import type Polygon from '@arcgis/core/geometry/Polygon';
 
 import {
-  INDICATORS, PARKING, MAP_LAYERS, BUILD_COST_PER_M2, DEFAULT_ECON_SHARE,
+  INDICATORS, PARKING, MAP_LAYERS,
   ACTIVATABLE_ZONE_TYPES, NO_DATA_COLOR, BF, BUILDING_PURPOSE_OTHER,
   GREEN, GREEN_LAYER_KEY, LOCATION_RADII, LOCATION_ZONE_TYPES, LOCATION_EXCLUDE_OIDS,
   type Indicator, type ParkingOpt, type CategoryKey, type GreenOpt,
 } from '@/lib/analysis/config';
 import {
-  loadAnalysisCached, computeEconomics, computeRaw, defaultGreenCats,
+  loadAnalysisCached, computeRaw, defaultGreenCats,
   type AnalysisData, type BuildingPurposeStat,
 } from '@/lib/analysis/data';
-import { loadCostsCached, type Costs } from '@/lib/analysis/costs';
 import { ZONE_TYPES, ZONE_TYPE_EMPTY_HUE, ZONE_FIELD, zoneRefValues } from '@/lib/services';
 import {
   urbanScore, scoreColor, scoreLabel, passesNorm,
@@ -51,9 +50,9 @@ import { assignRoadDemand } from './suit/roadDemand';
 import { loadBusStopsCached, busAccess, type BusStop } from './suit/busAccess';
 import { SuitLayerCatalog } from './suit/LayerCatalog';
 import { Icon } from '@/components/Icon';
-import { BlendCard } from './suit/BlendCard';
+import { MapTools } from '@/components/MapTools';
+import { OpacityPanel } from '@/components/OpacityPanel';
 import { CategoryPie, IndicatorPicker, Weights, Parking, Green, Location } from './suit/Urban';
-import { EconSummary, EconTune } from './suit/Economics';
 import { Ranking } from './suit/Ranking';
 import s from './suitability.module.css';
 
@@ -71,7 +70,6 @@ const LOC_ZONE_GRAY = '#64748b';
 export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   /* ── Ачаалалт ── */
   const [data, setData] = useState<AnalysisData | null>(null);
-  const [costs, setCosts] = useState<Costs | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [projected, setProjected] = useState(false);
   const geomRef = useRef(new Map<string, Polygon | null>());
@@ -93,16 +91,6 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
         setData(d);
         setProjected(true);
 
-        // ⚠️ Өртөг нь ХОЁРДОГЧ өгөгдөл (зөвхөн эдийн засгийн тооцоонд хэрэгтэй):
-        //    унавал бүтэн дэлгэцийн алдаагаар аппыг хаахгүй — зөвхөн warn.
-        //    Кэштэй хувилбар — Dashboard-тай нэг query хуваалцана.
-        try {
-          const c = await loadCostsCached();
-          if (!alive) return;
-          setCosts(c);
-        } catch (ce: unknown) {
-          console.warn('[selbe] өртөг ачаалагдсангүй (эдийн засгийн тооцоо идэвхгүй):', ce);
-        }
       } catch (e: unknown) {
         console.error('[selbe] анализ:', e);
         if (alive) setError(e instanceof Error ? e.message : String(e));
@@ -115,8 +103,6 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
   // ⚠️ Нээгдэх горим = ХОТ ТӨЛӨВЛӨЛТ: «Ерөнхий» (blend) таб хасагдсан тул
   //    түүнээр нээвэл ямар ч табгүй хуудас гарна.
   const [mode, setMode] = useState<Mode>('urban');
-  /** Нийлмэл оноонд ЭДИЙН ЗАСГИЙН эзлэх хувь (үлдсэнийг хот төлөвлөлт авна) */
-  const [econShare, setEconShare] = useState(DEFAULT_ECON_SHARE);
   const [indicators, setIndicators] = useState<Indicator[]>(() => INDICATORS.map((i) => ({ ...i })));
   const [activeIndicator, setActiveIndicator] = useState(INDICATORS[0].id);
   const [catFilter, setCatFilter] = useState<CategoryKey | null>(null);
@@ -181,12 +167,6 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
   /** «Байршил» — зөвхөн олон нийтийн бүсийн барилгыг үзэх */
   const [locPublicOnly, setLocPublicOnly] = useState(false);
 
-  const [econOpt, setEconOpt] = useState<{ pricePerM2: number | null; perHa: number | null }>({
-    pricePerM2: null, perHa: null,
-  });
-  /** 1 м² БАРИГДАХ жишиг өртөг — таамаг, гулсуураар тохируулна */
-  const [buildCost, setBuildCost] = useState(BUILD_COST_PER_M2);
-
   /**
    * Контекст давхаргын ил байдал.
    * ⚠️ Карт нь ХУРААГДСАНААР эхэлнэ: анализын гол мессеж нь бүсийн ОНООНЫ
@@ -200,19 +180,28 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
    * товчтой ижил зарчим. Хаалттай эхэлж, товч дарахад газрын зурагт хөвж гарна.
    */
   const [layerCatOpen, setLayerCatOpen] = useState(false);
+  /**
+   * ⚠️ 2026-08-20: «Тунгалаг» ЭНЭ ЦОНХОНД НЭМЭГДЭВ. Бусад бүх харагдацад
+   * байсан атал энд байхгүй байв — учир нь `SuitMap` нь `MapCanvas` БИШ, өөрийн
+   * давхаргын моделтой бөгөөд opacity-г огт дэмждэггүй байлаа (одоо дэмжинэ).
+   *
+   * ⚠️ «Бүс» товч энд ЗОРИУДААР БАЙХГҮЙ (хэрэглэгчийн шийдвэр): энэ цонхны
+   * гол дүрслэл нь БҮС бүрийн оноо — бүсийг зурагнаас шүүх нь өөрийнх нь
+   * үндсэн уншилтыг устгана. Бүсээ энд «Бүсийн ангилал»/«Бүсийн эрэмбэ»
+   * картуудаар шүүнэ.
+   */
+  const [opOpen, setOpOpen] = useState(false);
+  const [opacity, setOpacity] = useState<Record<string, number>>({});
 
   /* ── Тооцоо ── */
-  const perHa = econOpt.perHa ?? costs?.perHa ?? 0;
-
   const rows = useMemo<Row[]>(() => {
     if (!data || !projected) return [];
-    computeEconomics(data.zones, perHa, econOpt.pricePerM2, buildCost, scoreOn);
     computeRaw(data.zones, greenCats, parking, scoreOn);
     return data.zones.map((z) => {
       const u = urbanScore(z.raw, indicators, z.type);
       return { ...z, urban: u.score, parts: u.parts, displayGeom: geomRef.current.get(z.id) ?? null };
     });
-  }, [data, projected, perHa, econOpt.pricePerM2, buildCost, greenCats, parking, indicators, scoreOn]);
+  }, [data, projected, greenCats, parking, indicators, scoreOn]);
 
   /**
    * Олон нийтийн бүсийн кодууд — чагт асаалттай үед зураг ба картыг хумина.
@@ -353,12 +342,8 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
   const ind = indicators.find((i) => i.id === activeIndicator) ?? indicators[0];
   const totalW = indicators.reduce((a, i) => a + i.weight, 0) || 1;
 
-  /** Барилгын давамгайлах нэгж үнэ — гулсуурын анхны утга */
-  const basePrice = useMemo(() => {
-    const area = scoredRows.reduce((a, r) => a + r.gfaSaleM2, 0);
-    const value = scoredRows.reduce((a, r) => a + r.salesValue, 0);
-    return area > 0 ? value / area : 0;
-  }, [scoredRows]);
+  /* ⚠️ 2026-08-24: `basePrice` (барилгын давамгайлах нэгж үнэ) УСТГАВ —
+     эдийн засгийн гулсуур ба зохиомол `negj_une` загвартай хамт хасагдсан. */
 
   /** Симуляцын хэмжүүрийн хязгаар — нормчилол ба легендэд (харагдах бүсээр). */
   const simRng = useMemo(() => simRange(rows, simKind, popBasis), [rows, simKind, popBasis]);
@@ -597,9 +582,9 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
       if (locPublicOnly) return LOC_ZONE_GRAY;
       return mode === 'simulation'
         ? simColor(simDef(simKind).ready ? simNorm(simMetric(r, simKind, popBasis).value, simRng) : null)
-        : scoreColor(valueOf(r as Row, mode, ind, econShare));
+        : scoreColor(valueOf(r as Row, mode, ind));
     },
-    [mode, ind, econShare, simKind, popBasis, simRng, transportMode, locPublicOnly],
+    [mode, ind, simKind, popBasis, simRng, transportMode, locPublicOnly],
   );
   /**
    * «БОДИТ» замын симуляц — ОДОО БАЙГАА нөхцлийг харуулах тул төлөвлөлтийн
@@ -632,12 +617,12 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
 
       const diff = m.value != null && simAvg > 0 ? ((m.value - simAvg) / simAvg) * 100 : null;
       const diffTxt = diff == null ? '—'
-        : `<b style="color:${diff > 0 ? '#fb923c' : '#4ade80'}">${diff > 0 ? '+' : ''}${Math.round(diff)}%</b>`;
+        : `<b style="color:${diff > 0 ? 'var(--warn-ink)' : 'var(--good-ink)'}">${diff > 0 ? '+' : ''}${Math.round(diff)}%</b>`;
 
       return tr('\n        <div class="t">\n          <b>{0}</b>\n          <span class="st" style="background:{1};color:#1a1205">{2}</span>\n        </div>\n        <div class="sub2">{3} · {4} га</div>\n        <dl>\n          {5}\n          {6}\n          {7}\n          {8}\n        </dl>', esc(r.id), simColor(t), t == null ? '—' : Math.round(t * 100), esc(r.type), nf(r.areaHa, 2), dt(esc(def.label), `<b>${m.text}</b>`), dt(tr('Дунджаас'), diffTxt), dt(tr('Оршин суугч'), nf(r.residentPop)), dt(tr('Барилга'), nf(r.buildingCount)));
     }
     const row = r as Row;
-    const score = valueOf(row, mode, ind, econShare);
+    const score = valueOf(row, mode, ind);
     let pass = 0, total = 0;
     const failed: { name: string; v: string }[] = [];
     for (const i of indicators) {
@@ -652,9 +637,9 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
       else failed.push({ name: i.short, v: nf(p.value, i.decimals) + (i.unit ? ` ${i.unit}` : '') });
     }
     const dt = (k: string, v: string) => `<dt>${k}</dt><dd>${v}</dd>`;
-    return tr('\n      <div class="t">\n        <b>{0}</b>\n        <span class="st" style="background:{1}">{2}</span>\n      </div>\n      <div class="sub2">{3} · {4} га · {5}</div>\n      <dl>\n        {6}\n        {7}\n        {8}\n        {9}\n      </dl>\n      {10}', esc(row.id), scoreColor(score), score == null ? '—' : Math.round(score), esc(row.type), nf(row.areaHa, 2), scoreLabel(score), dt(tr('Оршин суугч'), nf(row.residentPop)), dt(tr('Өрх'), nf(row.households)), dt(tr('Барилга'), nf(row.buildingCount)), dt(tr('Норм хангасан'), `<b style="color:${pass === total ? '#4ade80' : '#f87171'}">${pass} / ${total}</b>`), failed.length ? `<div class="fails">${failed.map((f) =>
+    return tr('\n      <div class="t">\n        <b>{0}</b>\n        <span class="st" style="background:{1}">{2}</span>\n      </div>\n      <div class="sub2">{3} · {4} га · {5}</div>\n      <dl>\n        {6}\n        {7}\n        {8}\n        {9}\n      </dl>\n      {10}', esc(row.id), scoreColor(score), score == null ? '—' : Math.round(score), esc(row.type), nf(row.areaHa, 2), scoreLabel(score), dt(tr('Оршин суугч'), nf(row.residentPop)), dt(tr('Өрх'), nf(row.households)), dt(tr('Барилга'), nf(row.buildingCount)), dt(tr('Норм хангасан'), `<b style="color:${pass === total ? 'var(--good-ink)' : 'var(--bad-ink)'}">${pass} / ${total}</b>`), failed.length ? `<div class="fails">${failed.map((f) =>
         `<div><span>✗ ${esc(f.name)}</span><em>${f.v}</em></div>`).join('')}</div>` : '');
-  }, [mode, ind, indicators, econShare, simKind, popBasis, simRng, simAvg]);
+  }, [mode, ind, indicators, simKind, popBasis, simRng, simAvg]);
 
   /**
    * ТЭЭВЭР-ИДЭВХИЙН hover панель — барилга · замын хэрчим · автобусны буудал.
@@ -691,7 +676,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
         nf(b.cat === 'residential' ? b.population : b.capacity))}
           ${dt(tr('Хүн-зорчилт'), tr('{0} /ц', nf(b.trips)))}
           ${dt(tr('Машин-зорчилт'), tr('{0} /ц', nf(b.vehTrips)))}
-          ${dt(tr('Ойрын зам'), link ? tr('{0} м', nf(link.distsM[0])) : tr('<b style="color:#f87171">холбогдоогүй</b>'))}
+          ${dt(tr('Ойрын зам'), link ? tr('{0} м', nf(link.distsM[0])) : tr('<b style="color:var(--bad-ink)">холбогдоогүй</b>'))}
           ${dt(tr('Автобус'), acc ? tr('{0} м · {1}', nf(acc.distM), esc(BUS_BAND_LABEL[acc.band])) : '—')}
         </dl>`;
     }
@@ -875,12 +860,6 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
               </Card>
             )}
 
-            {mode === 'econ' && costs && (
-              <Card title={tr('Дэд бүтцийн төсөвт өртөг')}>
-                <EconSummary rows={scoredRows} costs={costs} perHa={perHa} buildCost={buildCost} />
-              </Card>
-            )}
-
             {/* Бүсийн ангилал — Angilal-аар шүүх (газрын зураг + эрэмбэ динамик) */}
             <Card id="zoneCat" title={tr('Бүсийн ангилал')} collapsible>
               <ZoneCatFilter
@@ -904,10 +883,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
 
             {mode !== 'simulation' && (
             <Card
-              title={mode === 'econ' ? tr('Бүсийн эрэмбэ «Ашигт байдал»')
-                : mode === 'indicator' ? tr('Бүсийн эрэмбэ «{0}»', ind.short)
-                  : mode === 'blend' ? tr('Бүсийн эрэмбэ «Нийлмэл»')
-                    : tr('Бүсийн эрэмбэ')}
+              title={mode === 'indicator' ? tr('Бүсийн эрэмбэ «{0}»', ind.short) : tr('Бүсийн эрэмбэ')}
               pill={tr('{0} бүс', rankRows.length)}
               grow
             >
@@ -915,7 +891,6 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
                 rows={rankRows}
                 mode={mode}
                 ind={ind}
-                econShare={econShare}
                 selected={selected}
                 onSelect={setSelected}
               />
@@ -933,6 +908,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
               selected={selected}
               onSelect={setSelected}
               layerOn={layerOn}
+              opacity={opacity}
               zoneTip={zoneTip}
               buildingTip={buildingTip}
               transportTip={transportMode ? transportTip : undefined}
@@ -968,22 +944,41 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
               </div>
             )}
 
+            {/* ⚠️ Жагсаалт нь ЯГ ОДОО асаалттай давхаргууд — `OpacityPanel`
+                өөрөө `LAYER_BY_ID`-д байхгүйг (`zone`/`label` дүрслэл) шүүнэ. */}
+            {opOpen && (
+              <OpacityPanel
+                visible={Object.keys(layerOn).filter((k) => layerOn[k])}
+                opacity={opacity}
+                setOpacity={setOpacity}
+                onClose={() => setOpOpen(false)}
+              />
+            )}
+
             {/* «Давхарга» товч + 2D/3D/BIM — НЭГ мөрөнд, зүүн доод буланд
                 (Давхарга нь дим товчны ӨМНӨ, «Ерөнхий төлөвлөгөө»-тэй ижил).
                 ⚠️ ArcGIS-ийн удирдлага (zoom баруун дээд, масштаб баруун доод,
                 дэлгэрэнгүй карт зүүн дээд)-тай мөргөлдөхгүй зүүн доод буланд. */}
-            <div className={s.mapControls}>
-              <button
-                type="button"
-                aria-pressed={layerCatOpen}
-                className={`${s.mapBtn} ${layerCatOpen ? s.mapBtnOn : ''}`}
-                onClick={() => setLayerCatOpen((v) => !v)}
-                title={tr('Давхаргын жагсаалт')}
-              >
-                <Icon name="layers" size={15} />
-                {tr('Давхарга')}
-              </button>
-
+            {/**
+              * ⚠️ 2026-08-20: Бусад бүх харагдацтай ИЖИЛ зурвас (`MapTools`) —
+              * дээд-төвд хөвөгч pill. Урьд нь энэ цонх дангаараа ЗҮҮН ДООД
+              * буланд өөрийн `mapControls`-ыг зурдаг тул хэлбэр нь ч, байрлал
+              * нь ч бусдаас зөрдөг байв.
+              *
+              * ⚠️ «Тунгалаг» ба «Бүс» ЭНД БАЙХГҮЙ — энэ цонх `MapCanvas` БИШ,
+              * өөрийн `SuitMap`-ыг ашигладаг бөгөөд тэр нь давхаргын opacity ч,
+              * бүсийн `definitionExpression` ч дэмждэггүй. Хуурамч (дарахад юу ч
+              * болохгүй) товч тавихаас илүү нь тэднийг SuitMap-д жинхэнээр
+              * хэрэгжүүлэх — тусдаа ажил.
+              */}
+            <MapTools
+              dim={dim}
+              setDim={setDim}
+              layersOpen={layerCatOpen}
+              onLayers={() => setLayerCatOpen((v) => !v)}
+              opacityOpen={opOpen}
+              onOpacity={() => setOpOpen((v) => !v)}
+            >
               {/* Полигон ↔ дулаан — ЗӨВХӨН «Симуляц» горимд.
                   ⚠️ Гурван самбар бүрд давтахгүй: энэ нь ЗУРГИЙН тохиргоо тул
                   зургийн удирдлагын мөрөнд байх нь зөв. */}
@@ -1011,21 +1006,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
                   })}
                 </div>
               )}
-
-              <div className={s.mapDims} role="group" aria-label={tr('Газрын зургийн харагдац')}>
-                {(['2d', '3d', 'bim'] as Dim[]).map((d) => (
-                  <button
-                    key={d}
-                    type="button"
-                    aria-pressed={dim === d}
-                    className={`${s.dimBtn} ${dim === d ? s.dimOn : ''}`}
-                    onClick={() => setDim(d)}
-                  >
-                    {d.toUpperCase()}
-                  </button>
-                ))}
-              </div>
-            </div>
+            </MapTools>
 
             {active && (
               <SuitDetail
@@ -1035,7 +1016,6 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
                 mode={mode}
                 activeIndicator={activeIndicator}
                 parking={parking}
-                perHa={perHa}
                 onClose={() => setSelected(null)}
               />
             )}
@@ -1050,17 +1030,6 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
             <Simulation {...simCommon} kinds={['road', 'density', 'transit']} title={tr('Бүсийн симуляц')} />
           ) : (
           <>
-            {/* ⚠️ Нийлмэл горимд ЗӨВХӨН хуваарилалтын карт: хот төлөвлөлт болон
-                эдийн засгийн нарийн тохиргоо нь тухайн табыг сонгоход нэмэгдэнэ. */}
-            {mode === 'blend' && (
-              <BlendCard
-                rows={scoredRows}
-                econShare={econShare}
-                setEconShare={setEconShare}
-                onPick={setMode}
-              />
-            )}
-
             {(mode === 'urban' || mode === 'indicator') && (
               <Card
                 id="weights"
@@ -1083,20 +1052,6 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
                 </p>
                 <Weights indicators={indicators} setIndicators={setIndicators} totalW={totalW} />
               </Card>
-            )}
-
-            {mode === 'econ' && costs && (
-              <EconTune
-                rows={scoredRows}
-                costs={costs}
-                basePrice={basePrice}
-                econOpt={econOpt}
-                setEconOpt={setEconOpt}
-                buildCost={buildCost}
-                setBuildCost={setBuildCost}
-                selected={selected}
-                onSelect={setSelected}
-              />
             )}
 
             {(mode === 'urban' || mode === 'indicator') && (
@@ -1278,7 +1233,8 @@ function ZoneCatFilter({ cats, off, setOff, setScoreOn }: {
             }}
           >
             <span style={{ width: 11, height: 11, borderRadius: 2, flex: 'none', background: c.color, opacity: on ? 1 : 0.35 }} />
-            <span style={{ flex: 1, minWidth: 0, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.type}</span>
+            {/* 2 мөрийн clamp — «Нийгмийн дэд бүтцийн бүс» г.м. урт нэр «…» болохгүй */}
+            <span style={{ flex: 1, minWidth: 0, fontSize: 12, overflow: 'hidden', display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2 }}>{c.type}</span>
             {/* ⚠️ «оноол» шошго — энэ ангилал ХАРАГДВАЛ оноололд ч ордгийг сануулна */}
             {activatable && (
               <span style={{
@@ -1369,7 +1325,8 @@ function BuildingCatFilter({ cats, off, setOff }: {
             }}
           >
             <span style={{ width: 11, height: 11, borderRadius: 2, flex: 'none', background: c.color, opacity: on ? 1 : 0.35 }} />
-            <span style={{ flex: 1, minWidth: 0, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.label}</span>
+            {/* 2 мөрийн clamp — урт ангиллын нэр «…» болохгүй (ZoneCatFilter-тэй ижил) */}
+            <span style={{ flex: 1, minWidth: 0, fontSize: 12, overflow: 'hidden', display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2 }}>{c.label}</span>
             <b style={{ fontVariantNumeric: 'tabular-nums', fontSize: 11, color: 'var(--muted)' }}>{c.count}</b>
             <span style={{ width: 14, textAlign: 'center', color: 'var(--accent)', fontSize: 12 }}>
               {on ? '✓' : ''}

@@ -47,7 +47,7 @@ async function pool(items, worker) {
   return out;
 }
 
-const { LAYERS, layerUrl, oidOf, ET, ET_PKG } = await import('./../services.ts');
+const { LAYERS, layerUrl, oidOf, TD } = await import('./../services.ts');
 const { DATASETS } = await import('./datasets.ts');
 const { AGENT_NOTES } = await import('./notes.ts');
 
@@ -56,7 +56,6 @@ const { AGENT_NOTES } = await import('./notes.ts');
 function declaredFields(l) {
   const f = new Set([oidOf(l)]);
   if (l.qty?.field) f.add(l.qty.field);
-  if (l.cost?.field) f.add(l.cost.field);
   if (l.paint?.field) f.add(l.paint.field);
   if (l.breaks?.field) f.add(l.breaks.field);
   if (l.zoneField) f.add(l.zoneField);
@@ -113,7 +112,14 @@ const knownUrls = new Set(LAYERS.map((l) => layerUrl(l)));
 const norm = (s) => String(s).replace(/_/g, ' ').toLowerCase().replace(/[^0-9a-zа-яөү]/gi, '');
 const knownNames = new Set(LAYERS.map((l) => norm(l.title)));
 
-for (const base of [...new Set([ET, ET_PKG])]) {
+/*
+ * ⚠️ 2026-08-27: урьд нь энэ хэсэг `Selbe_ET_20260721`/`_20260725` хоёрыг
+ * скан хийдэг байв — тэр хоёр үйлчилгээ хаагдсан тул шалгуур бүрд хоёр
+ * «уншигдсангүй» санамж гаргадаг байсан. Одоо давхаргууд бүгд НЭГТГЭСЭН
+ * `data` үйлчилгээнд байдаг тул түүнийг л скан хийнэ — «үйлчилгээнд бий,
+ * бүртгэлд алга» гэсэн жинхэнэ мэдээлэл эндээс гарна.
+ */
+for (const base of [TD]) {
   try {
     const root = await getJson(`${base}?f=json`);
     const extra = (root.layers ?? [])

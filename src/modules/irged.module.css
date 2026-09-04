@@ -12,9 +12,13 @@
  */
 
 .frame {
+  /* Талын багануудын өргөн — хэрэглэгч заагийг чирж тохируулна
+     (`components/SplitGrip`). Хатуу утга байвал чирэлт огт харагдахгүй. */
+  --side-l: 330px;
+  --side-r: 344px;
   display: grid;
   grid-template-areas: "left map right";
-  grid-template-columns: minmax(268px, 330px) minmax(0, 1fr) minmax(268px, 344px);
+  grid-template-columns: var(--side-l) minmax(0, 1fr) var(--side-r);
   grid-template-rows: minmax(0, 1fr);
   gap: 10px;
   height: 100%;
@@ -103,11 +107,21 @@
 }
 
 /* Давхаргын чагтууд — «Давхарга» товчны панел дотор */
+/**
+ * ⚠️ 2026-08-20: Хавтан дотор ХОЁР блок болов — дээр нь энэ цонхны өөрийн хоёр
+ * чагт, доор нь порталын БҮХ давхаргын каталог. `overview.module.css`-ийн
+ * `.catPanel` нь `display: flex` (хэвтээ) тул баганын чиглэлийг энд дарна.
+ */
+.catPanel { flex-direction: column; }
+
 .toggles {
   display: flex;
   flex-direction: column;
   gap: 2px;
   padding: 4px 2px;
+  /* Каталог доороо гүйлттэй тул чагтууд агшихгүй, тогтмол өндөртэй */
+  flex: none;
+  border-bottom: 1px solid var(--line);
 }
 
 .toggle {
@@ -134,7 +148,9 @@
 
 /* ── Responsive ── */
 @media (max-width: 1320px) {
-  /* Зураг ДЭЭШЭЭ, өмнө/дараа доор нь ЗЭРЭГЦЭЭ — харьцуулалт хэвээр үлдэнэ */
+  /* Зураг ДЭЭШЭЭ, өмнө/дараа доор нь ЗЭРЭГЦЭЭ — харьцуулалт хэвээр үлдэнэ.
+     Талын багана байхгүй болсон тул чирэх бариул мөн нуугдана (2026-08-21). */
+  .frame > :global(button[class*='splitGrip_grip']) { display: none; }
   .frame {
     grid-template-areas:
       "map map"
@@ -149,7 +165,7 @@
   .right { overflow-y: visible; }
   /* ⚠️ Мөрийн өндөр `auto` болсон тул зурагт доод хязгаар ЗААВАЛ — эс бөгөөс
      `MapCanvas`-ийн `flex:1` нь 0 өндөрт хумигдаж зураг алга болно. */
-  .mapCol { min-height: 62vh; }
+  .mapCol { min-height: max(260px, 62vh); }
 }
 
 @media (max-width: 760px) {
@@ -161,4 +177,31 @@
       "right";
     grid-template-columns: 1fr;
   }
+}
+
+/* ══ SplitGrip-ийг сүлжээний НҮДЭНД — завсрын ГОЛД суулгана (2026-08-21):
+   absolute давхарга байхдаа left: calc(var(--side-l) - 5px) гэж баганын
+   ДОТОР тооцогдож картуудын ирмэг дээр давхардаг байв. Одоо grid-ийн
+   өөрийнх нь 10px завсарт төвлөнө — картанд огт хүрэхгүй. ══ */
+.frame > :global(button[class*='splitGrip_grip']) {
+  position: relative;
+  grid-row: 1 / -1;
+  top: auto;
+  bottom: auto;
+  z-index: 6;
+}
+.frame > :global(button[class*='splitGrip_left']) {
+  grid-column: 1 / 2;
+  justify-self: end;
+  left: auto;
+  margin-right: -10.5px;
+}
+.frame > :global(button[class*='splitGrip_right']) {
+  grid-column: 3 / 4;
+  justify-self: start;
+  right: auto;
+  margin-left: -10.5px;
+}
+@media (max-width: 1100px) {
+  .frame > :global(button[class*='splitGrip_grip']) { display: none; }
 }

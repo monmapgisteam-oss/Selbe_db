@@ -27,15 +27,20 @@
 import { useCallback, useMemo, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { MapCanvas, type Dim } from '@/components/MapCanvas';
-import { Icon } from '@/components/Icon';
-import { ZoneFilter } from '@/components/ZoneFilter';
+import { MapTools } from '@/components/MapTools';
+import { useZoomToFilter } from '@/lib/useZoomToFilter';
+import { OpacityPanel } from '@/components/OpacityPanel';
+import { LayerCatalog } from '@/components/LayerCatalog';
+import { useLayerPicks } from '@/lib/useLayerPicks';
+import { usePlanTotals } from '@/lib/totals';
 import { Bars, Data, Stat, Stats } from '@/components/ui';
 import { HeadKpi, useBagtsTable } from '@/modules/Dashboard';
 import { useAsync } from '@/lib/useAsync';
 import { queryCount } from '@/lib/query';
 import { BENEFITS, HEADLINE, SOCIAL } from '@/lib/brief';
 import {
-  IRGED_ORTHO, IRGED_ROAD, IRGED_SCENE, IRGED_TOILET, LAYER_BY_ID, PKG_BY_FAMILY,
+  IRGED_BUILT, IRGED_BUILT_DEF, IRGED_ORTHO, IRGED_ROAD, IRGED_SCENE, IRGED_TOILET,
+  LAYER_BY_ID, PKG_BY_FAMILY,
 } from '@/lib/services';
 import { num } from '@/lib/format';
 /**
@@ -46,7 +51,8 @@ import { num } from '@/lib/format';
  * «Дараа» цэнхэр гэсэн өнгөт identity бүрмөсөн устаж, хоёр багана одоо ЯГ ИЖИЛ
  * карт болов — ялгаа нь зөвхөн ГАРЧГИЙН ҮГЭНД.
  */
-import o from './overview.module.css';
+import o from './irgedOv.module.css';
+import { SplitGrip, useSideResize } from '@/components/SplitGrip';
 import i from './irged.module.css';
 
 /**
@@ -61,11 +67,12 @@ import i from './irged.module.css';
  */
 const SOC_IDS = PKG_BY_FAMILY.soc ?? [];
 
-/** Унтрааж асаах давхаргууд — жагсаалтаас чагтын мөрүүд үүснэ */
-const TOGGLES = [
-  { id: IRGED_TOILET.id, label: IRGED_TOILET.title },
-  { id: 'soc', label: tr('Нийгмийн дэд бүтэц') },
-] as const;
+/* ⚠️ 2026-08-23: Урьд нь энд `TOGGLES` гэсэн ХОЁР чагтын жагсаалт байв (жорлон,
+   нийгмийн дэд бүтэц) бөгөөд каталогийн ДЭЭР гараар зурагддаг байлаа. Тэр нь
+   нэг цонхонд давхаргын ХОЁР ӨӨР удирдлага (энгийн `<input type=checkbox>` vs
+   каталогийн мөр/симбол/тоо) зэрэгцүүлж, замбараагүй болгож байсан тул
+   каталогт «Иргэдэд хүрэх үр өгөөж» бүлэг (`IRGED_GROUP`) болж НЭГТГЭГДСЭН.
+   Эдгээр давхарга одоо доорх `base`-д орж, анхнаасаа АСААЛТТАЙ хэвээр байна. */
 
 /**
  * Чагтаас үл хамааран ҮРГЭЛЖ ил давхарга — зам нь ортофототой адил СУУРЬ
@@ -94,37 +101,71 @@ const headCount = (s: string) => Number(/^\s*(\d+)/.exec(s)?.[1] ?? 0);
 const SOC_MAX = Math.max(...SOCIAL.rows.map((r) => r.total));
 
 export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
-  /** Асаалттай давхаргууд */
-  const [on, setOn] = useState<Record<string, boolean>>(
-    () => Object.fromEntries(TOGGLES.map((t) => [t.id, true])),
-  );
+  /** Талын багануудын өргөн — чирж тохируулна, хөтөчид хадгалагдана. */
+  const side = useSideResize('irged');
   /** «Давхарга» жагсаалт нээлттэй эсэх (бусад цонхтой ижил зан төлөв) */
   const [layerOpen, setLayerOpen] = useState(false);
   /** Бүсийн шүүлт — toolbar-ын «Бүс» хэрэглүүр */
   const [zone, setZone] = useState<string | null>(null);
+  /** Тунгалагийн хавтан ба давхарга тус бүрийн opacity (`MapTools`-ийн «Тунгалаг») */
+  const [opOpen, setOpOpen] = useState(false);
+  const [opacity, setOpacity] = useState<Record<string, number>>({});
+  useZoomToFilter({ zone });
 
   const is2d = dim === '2d';
 
   /**
-   * ⚠️ `soc` чагт нь НЭГ id биш, олон давхаргын БҮЛЭГ (Багц 19–21) — жагсаалтад
-   * задалж оруулна. Чагтын id нь зөвхөн товчлуур.
+   * ЭНЭ ЦОНХНЫ СУУРЬ — ортофото, зам, ба сэдвийн хоёр давхарга. Каталогийн
+   * «Иргэдэд хүрэх үр өгөөж» бүлэг яг эдгээрийг удирдана (`IRGED_LAYER_IDS`).
+   *
+   * ⚠️ Суурьт байгаа нь «анхнаасаа асаалттай» гэсэн үг — `useLayerPicks` нь
+   * каталогоос унтраасныг `off`-д бичдэг тул чагтаа авахад хэвийн унтарна.
+   *
+   * ⚠️ Нийгмийн барилга ЗӨВХӨН 2D-д — 3D-д меш газрыг бүрхэх тул полигон нь
+   * дотор нь алга болно (урьдын зан төлөв хэвээр).
    *
    * ⚠️ 2D-д ортофото ҮРГЭЛЖ жагсаалтад: `MapCanvas` нь сонголт ХООСОН үед
    * `BASE_MAP_IDS`-ийн 14 суурь давхаргыг бүгдийг асаадаг — бүх чагтыг авбал
    * ортофотогийн оронд тэдгээр гарч ирнэ.
    */
-  const visible = useMemo(() => {
-    const picked = TOGGLES
-      .filter((t) => on[t.id])
-      .flatMap((t) => (t.id === 'soc' ? (is2d ? SOC_IDS : []) : [t.id]));
-    return is2d ? [IRGED_ORTHO.id, ...ALWAYS, ...picked] : [...ALWAYS, ...picked];
-  }, [on, is2d]);
+  const base = useMemo(() => {
+    /* ⚠️ Гэр хорооллын барилга нь ПОЛИГОН — 3D-д меш газрыг бүрхэх тул
+       дотор нь алга болно (нийгмийн барилгатай ЯГ ижил шалтгаан). */
+    const own = is2d ? [IRGED_TOILET.id, IRGED_BUILT.id, ...SOC_IDS] : [IRGED_TOILET.id];
+    return is2d ? [IRGED_ORTHO.id, ...ALWAYS, ...own] : [...ALWAYS, ...own];
+  }, [is2d]);
+
+  /**
+   * ⚠️ 2026-08-20: Дээрх нь СУУРЬ (энэ цонхны түүх — ортофото, зам, чагтууд);
+   * дээр нь порталын БҮХ давхаргаас каталогоор нэмнэ (`useLayerPicks`).
+   */
+  const [visible, setVisible] = useLayerPicks(base);
+  const [layerSel, setLayerSel] = useState<string | null>(null);
+  const catTotals = usePlanTotals(zone, layerOpen);
 
   /**
    * НҮХЭН ЖОРЛОНГИЙН ТОО — ЗӨВХӨН тоолно (`returnCountOnly`), нэг ч атрибут
    * татахгүй. Энэ нь «ӨМНӨ» талын цорын ганц АМЬД тоо.
    */
   const qToilet = useAsync<number>(() => queryCount(IRGED_TOILET.url), []);
+
+  /**
+   * ГЭР ХОРООЛЛЫН БАРИЛГА — төрөл тус бүрээр ТУСАД НЬ тоолно.
+   *
+   * ⚠️ Хоёр `returnCountOnly` хүсэлт — атрибут ч, геометр ч татахгүй.
+   *    6,627 полигоныг бүтнээр татвал хэдэн МБ болно; энд зөвхөн тоо.
+   * ⚠️ Утгыг `IRGED_BUILT.types`-ээс авна, мөрөнд бичихгүй: үйлчилгээний
+   *    бичиглэл өөрчлөгдвөл НЭГ газар засахад хангалттай.
+   * ⚠️ `N'…'` угтвар ЗААВАЛ — талбар нь юникод монгол текст.
+   */
+  const qBuilt = useAsync<{ house: number; ger: number }>(async () => {
+    const F = IRGED_BUILT.typeField;
+    const [house, ger] = await Promise.all([
+      queryCount(IRGED_BUILT.url, `${F} = N'${IRGED_BUILT.types.house}'`),
+      queryCount(IRGED_BUILT.url, `${F} = N'${IRGED_BUILT.types.ger}'`),
+    ]);
+    return { house, ger };
+  }, []);
 
   /** Толгойн үзүүлэлтэд — дашбоардтай ижил эх сурвалж */
   const bagts = useBagtsTable();
@@ -138,7 +179,14 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const noop = useCallback(() => {}, []);
 
   return (
-    <div className={i.frame}>
+    /* Талын багануудыг чирж өргөсгөх/нарийсгах бариулууд. */
+    <div
+      ref={side.hostRef}
+      className={`${i.frame} ${side.hostClass}`}
+      style={side.style}
+    >
+      <SplitGrip {...side.left} />
+      <SplitGrip {...side.right} />
       {/* ══════════ ӨМНӨ — одоогийн байдал ══════════ */}
       <div className={i.left}>
         {/* Баганын толгой — хоёр баганад ЯГ ИЖИЛ eyebrow, ялгаа нь зөвхөн ҮГ */}
@@ -167,6 +215,35 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           </div>
         </section>
 
+        <section className={`${o.panel} ${i.card}`} aria-label={IRGED_BUILT.title}>
+          <header className={o.panelHead}>
+            <h3 className={o.panelTitle}>{tr('Одоогийн барилга')}</h3>
+            <span className={o.panelNote}>{tr('гэр хороолол')}</span>
+          </header>
+          <div className={o.panelBody}>
+            {/* ⚠️ Хоёр төрлийг ТУСАД НЬ. Нийлбэрийг ганц тоо болговол
+                «6,627 барилга» гэдэг нь гэр ба байшинг ялгахгүй — чөлөөлөлт,
+                нүүлгэн шилжүүлэлтийн зардал хоёрт нь ЭРС өөр. */}
+            <Data q={qBuilt} loading={tr('Тоолж байна…')}>
+              {(b) => (
+                <Stats cols={2}>
+                  <Stat
+                    value={num(b.house)}
+                    unit={tr('ш')}
+                    label={tr('Байшин')}
+                    color={IRGED_BUILT_DEF.paint?.values[IRGED_BUILT.types.house]}
+                  />
+                  <Stat
+                    value={num(b.ger)}
+                    unit={tr('ш')}
+                    label={tr('Гэр')}
+                    color={IRGED_BUILT_DEF.paint?.values[IRGED_BUILT.types.ger]}
+                  />
+                </Stats>
+              )}
+            </Data>
+          </div>
+        </section>
         <section className={`${o.panel} ${i.card}`} aria-label={tr('Одоо байгаа нийгмийн байгууламж')}>
           <header className={o.panelHead}>
             <h3 className={o.panelTitle}>{tr('Нийгмийн дэд бүтэц')}</h3>
@@ -209,60 +286,62 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           * үзүүлэлтийн дээр гарч бүрхдэг байв.
           */}
         <div className={i.mapBox}>
+          {/* ⚠️ `opacity` ЗААВАЛ энд ч дамжина. `MapCanvas` нь тунгалагийг
+              ЗӨВХӨН энэ prop-оор дардаг (MapCanvas.tsx: `const over = opacity ?? {}`)
+              тул урьд нь гулсуурын утга зөвхөн `OpacityPanel`-ийн төлөвт хадгалагдаж,
+              зураг дээр ОГТ нөлөөлдөггүй байв — хэрэглэгч давхарга ачаалагдаагүй
+              гэж боддог. Бусад 9 харагдац хоёуланд нь дамжуулдаг. */}
           <MapCanvas
             dim={dim}
             visible={visible}
+            opacity={opacity}
             zone={zone}
             uniform
             scene={IRGED_SCENE.layers}
             onPick={noop}
           />
 
-          {/* Toolbar — бусад цонхтой ЯГ ИЖИЛ: зурган дээр хөвнө */}
-          <div className={o.mapTools}>
-            <button
-              type="button"
-              aria-pressed={layerOpen}
-              className={`${o.mapBtn} ${layerOpen ? o.mapBtnOn : ''}`}
-              onClick={() => setLayerOpen((v) => !v)}
-              title={tr('Давхаргын жагсаалт')}
-            >
-              <Icon name="layers" size={15} />
-              {tr('Давхарга')}
-            </button>
-
-            <div className={o.dimsInline} role="group" aria-label={tr('Газрын зургийн харагдац')}>
-              {(['2d', '3d', 'bim'] as Dim[]).map((x) => (
-                <button
-                  key={x}
-                  type="button"
-                  aria-pressed={dim === x}
-                  className={`${o.dimBtn} ${dim === x ? o.dimOn : ''}`}
-                  onClick={() => setDim(x)}
-                >
-                  {x.toUpperCase()}
-                </button>
-              ))}
-            </div>
-
-            <ZoneFilter zone={zone} setZone={setZone} variant="tool" />
-          </div>
+          {/* Toolbar — бусад цонхтой ЯГ ИЖИЛ (нэгдсэн `MapTools`) */}
+          <MapTools
+            dim={dim}
+            setDim={setDim}
+            layersOpen={layerOpen}
+            onLayers={() => setLayerOpen((v) => !v)}
+            opacityOpen={opOpen}
+            onOpacity={() => setOpOpen((v) => !v)}
+            zone={zone}
+            setZone={setZone}
+          />
 
           {layerOpen && (
-            <div className={o.catPanel}>
-              <div className={i.toggles}>
-                {TOGGLES.map((t) => (
-                  <label key={t.id} className={i.toggle}>
-                    <input
-                      type="checkbox"
-                      checked={on[t.id]}
-                      onChange={(e) => setOn((p) => ({ ...p, [t.id]: e.target.checked }))}
-                    />
-                    {t.label}
-                  </label>
-                ))}
-              </div>
+            <div className={`${o.catPanel} ${i.catPanel}`}>
+              {/**
+                * ⚠️ 2026-08-23: Энэ цонхны өөрийн давхаргууд (`irged:toilet`,
+                * Багц 19–21) одоо каталогийн ХАМГИЙН ДЭЭД бүлэг болж орсон тул
+                * дээр байсан гараар зурсан хоёр чагт ХАСАГДСАН — давхаргын
+                * удирдлага НЭГ л газар, бусад цонхтой ижил хэлбэртэй боллоо.
+                */}
+              <LayerCatalog
+                view="irged"
+                totals={catTotals}
+                visible={visible}
+                setVisible={setVisible}
+                selected={layerSel}
+                onSelect={setLayerSel}
+                onClose={() => setLayerOpen(false)}
+                zone={zone}
+                embedded
+              />
             </div>
+          )}
+
+          {opOpen && (
+            <OpacityPanel
+              visible={visible}
+              opacity={opacity}
+              setOpacity={setOpacity}
+              onClose={() => setOpOpen(false)}
+            />
           )}
 
           {/* Тайлбар — зурагт БОДИТ харагдаж буй давхаргууд (дашбоардтай ижил).

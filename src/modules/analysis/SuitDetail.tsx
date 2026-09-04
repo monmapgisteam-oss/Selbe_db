@@ -3,14 +3,14 @@
 import { useEffect, useRef, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import {
-  PARKING_SOURCES, profitScore, profitLabel,
+  PARKING_SOURCES,
   type Indicator, type ParkingOpt,
 } from '@/lib/analysis/config';
 import { scoreColor, scoreLabel, normText, passesNorm, clamp, type Part } from '@/lib/analysis/score';
 import { Donut } from '@/components/ui';
 import type { MapRow } from './SuitMap';
 import type { Mode } from './suit/model';
-import { nf, money } from './suit/format';
+import { nf } from './suit/format';
 import s from './suitability.module.css';
 
 /**
@@ -31,7 +31,6 @@ import s from './suitability.module.css';
  */
 const C1 = '#4f83cc';   // 1-р: гол хэмжигдэхүүн (ил зогсоол · дэд бүтцийн зардал · хүн ам)
 const C2 = '#4f9d72';   // 2-р: хоёрдогч (далд зогсоол · барилгын зардал · хэрэгцээ)
-const C3 = '#ea580c';   // 3-р: орлого
 
 /** Хувь болгох — 0..100 хооронд хашина */
 const pctOf = (v: number, max: number) => (max > 0 ? clamp((v / max) * 100, 0, 100) : 0);
@@ -166,34 +165,8 @@ function Radar({ items, center, size = 300 }: {
   );
 }
 
-/** БОСОО БАГАНАН диаграм — 2–3 хэмжигдэхүүнийг НЭГ тэнхлэг дээр харьцуулна */
-function Columns({ items, max }: {
-  items: { key: string; label: string; v: number; text: string; color: string }[];
-  max?: number;
-}) {
-  const m = max ?? Math.max(...items.map((i) => i.v), 1);
-  // ⚠️ Баганы өндөр PX-ээр: хувиар өгвөл дээрх тооны мөр нэмэгдээд хүрээнээс гарна
-  const H = 62;
-  return (
-    <>
-      <div className={s.cols}>
-        {items.map((it) => (
-          <div key={it.key} className={s.colItem}>
-            <b className={s.colVal}>{it.text}</b>
-            <span
-              className={s.colBar}
-              style={{ height: `${(pctOf(it.v, m) / 100) * H}px`, background: it.color }}
-              title={`${it.label}: ${it.text}`}
-            />
-          </div>
-        ))}
-      </div>
-      <div className={s.colNames}>
-        {items.map((it) => <span key={it.key}>{it.label}</span>)}
-      </div>
-    </>
-  );
-}
+/* ⚠️ 2026-08-24: `Columns` (босоо баганан диаграм) УСТГАВ — зөвхөн эдийн засгийн
+   зардал/орлогын харьцуулалтад хэрэглэгддэг байсан. */
 
 /**
  * Бүсийн дэлгэрэнгүй — зургийн зүүн дээд буланд хөвөх карт.
@@ -207,7 +180,6 @@ export function SuitDetail({
   mode,
   activeIndicator,
   parking,
-  perHa,
   onClose,
 }: {
   r: MapRow & { parts: Record<string, Part> };
@@ -215,7 +187,6 @@ export function SuitDetail({
   mode: Mode;
   activeIndicator: string;
   parking: ParkingOpt;
-  perHa: number;
   onClose: () => void;
 }) {
   const box = useRef<HTMLDivElement>(null);
@@ -257,10 +228,7 @@ export function SuitDetail({
   const tot = r.urban;
   const totalW = indicators.reduce((a, i) => a + i.weight, 0) || 1;
   const parkSrc = PARKING_SOURCES.find((p) => p.key === parking.source)!;
-  // ⚠️ «Ерөнхий» горимд ХОЁУЛАНГ нь харуулна — нийлмэл оноо хоёулангаас гардаг
-  //    тул зөвхөн нэг талыг үзүүлбэл дүн хаанаас гарсан нь ойлгомжгүй.
-  const urbanModes = mode === 'blend' || mode === 'urban' || mode === 'indicator';
-  const econModes = mode === 'blend' || mode === 'econ';
+  const urbanModes = mode === 'urban' || mode === 'indicator';
 
   const missing = indicators.filter((i) => i.weight > 0 && r.parts[i.id]?.score == null);
 
@@ -450,67 +418,10 @@ export function SuitDetail({
         </>
       )}
 
-      {econModes && r.econ && (() => {
-        const econ = r.econ;
-        return (
-          <div className={s.dSect}>
-            <h4>{tr('Эдийн засгийн шинжилгээ')}</h4>
-
-            {/* Зардал ба орлого — нэг тэнхлэг дээр, зөрүү нь ашиг */}
-            <div className={s.chart}>
-              <Columns
-                items={[
-                  { key: 'cost', label: tr('Нийт зардал'), v: econ.cost, text: money(econ.cost), color: C1 },
-                  { key: 'rev', label: tr('Борлуулалтын үнэлгээ'), v: econ.revenue, text: money(econ.revenue), color: C3 },
-                ]}
-              />
-              <div className={s.chCap}>
-                {tr('Хоёр багана')} <b>{tr('нэг тэнхлэгтэй')}</b> {tr('— өндрийн зөрүү нь')}{' '}
-                {econ.profit >= 0 ? tr('ашиг') : tr('алдагдал')}:{' '}
-                <b className={econ.profit >= 0 ? s.pos : s.neg}>{money(econ.profit)}</b>
-              </div>
-            </div>
-
-            {/* Зардлын БҮТЭЦ */}
-            {econ.cost > 0 && (
-              <div className={`${s.chart} ${s.donutSide}`}>
-                <Donut
-                  size={88}
-                  width={15}
-                  items={[
-                    { key: 'infra', label: tr('Дэд бүтэц'), value: econ.infraCost, color: C1, display: money(econ.infraCost) },
-                    { key: 'build', label: tr('Барилга'), value: econ.buildCost, color: C2, display: money(econ.buildCost) },
-                  ]}
-                  center={<span style={{ fontSize: 11 }}>{money(econ.cost)}</span>}
-                  centerLabel={tr('нийт зардал')}
-                />
-              </div>
-            )}
-
-            <div className={s.dGrid}>
-              <div>
-                <span>{tr('Ашгийн маржа')}</span>
-                <b style={{ color: scoreColor(profitScore(econ.margin)) }}>
-                  {econ.margin == null ? '—'
-                    : !Number.isFinite(econ.margin) ? tr('орлогогүй')
-                      : `${nf(econ.margin, 1)}%`}
-                </b>
-              </div>
-              <div>
-                <span>{tr('Эдийн засгийн үнэлгээ')}</span>
-                <b style={{ color: scoreColor(profitScore(econ.margin)) }}>{profitLabel(econ.margin)}</b>
-              </div>
-            </div>
-
-            <div className={s.parkFormula}>
-              {tr('Дэд бүтэц:')} {money(perHa)}{tr('/га ×')} <b>{nf(r.areaHa, 2)} {tr('га')}</b> = <b>{money(econ.infraCost)}</b><br />
-              {tr('Барилга:')} <b>{nf(r.gfaSaleM2)} {tr('м²')}</b> {tr('× жишиг өртөг =')} <b>{money(econ.buildCost)}</b><br />
-              {tr('Орлого: борлуулах нэгж үнэ ×')} <b>{nf(r.gfaSaleM2)} {tr('м²')}</b> = <b>{money(econ.revenue)}</b>
-              <span className={s.muted}> {tr('(«Одоо байгаа» барилга хасагдсан)')}</span>
-            </div>
-          </div>
-        );
-      })()}
+      {/* ⚠️ 2026-08-24: «Эдийн засгийн шинжилгээ» хэсэг УСТГАГДАВ — зардал,
+          орлого, ашиг, ашгийн маржин бүгд ЗОХИОМОЛ `negj_une` өгөгдлөөс
+          гардаг байсан. Эзэмшигчийн шийдвэрээр эдийн засгийн загвар бүрмөсөн
+          хасагдсан (`analysis/costs.ts`, `Economics.tsx` мөн устсан). */}
     </div>
   );
 }

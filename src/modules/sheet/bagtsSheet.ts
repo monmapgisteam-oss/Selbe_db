@@ -12,10 +12,24 @@
 import { agsFetch, type Feature } from "./ags";
 import { TREES } from "./bagts.trees";
 import type { Pkg, Schema } from "./bagts.pkg";
+import { t as tr } from "@/lib/i18nCore";
+import { invalidate } from "@/lib/dataBus";
 
 export type SheetRow = {
   oid: number;
   no: string;
+  /**
+   * АЖЛЫН КОД (`Des_dugaar`) — жаазан дотор ДАВТАГДАХГҮЙ 1…N.
+   * ⚠️ `no` («№») нь бүлэг бүрд 1-ээс дахин эхэлдэг тул давтагдана; энэ нь
+   *    үгүй. Багана байхгүй эсвэл дүүргээгүй үед `null`.
+   */
+  des: number | null;
+  /**
+   * УЯЛДАА (`Hamaaral`) — «18FS3,22SS-5» түүхий текст. Задлалт нь дэлгэцийн
+   * давхаргад (`deps.ts`), энд түүхийгээр нь авч явна: архивын хуулбарт
+   * `raw`-тай хамт өөрчлөлтгүй дамжина. Хоосон бол `null`.
+   */
+  ham: string | null;
   work: string;
   depth: number;
   group: boolean;
@@ -43,10 +57,46 @@ export type SheetRow = {
   raw: Record<string, unknown>;
   start: (number | null)[]; // ms epoch
   end: (number | null)[];
+  /* ⚠️ БАРИМТ БИЧГИЙН (Inspection Test Plan) талбарууд ЭНД БАЙХГҮЙ
+     (2026-09-03). Тэдгээр багана `Bagts_*` үйлчилгээнд ОГТ БАЙГААГҮЙ тул
+     энэ жагсаалт үргэлж `null`-аар дүүрдэг байв — хоосон зардал. Чанарын
+     баримт нь `QAQC`/`QAQC2` үйлчилгээнд, `src/lib/qaqc.ts`-ээр уншигдана. */
 };
 
-const num = (v: unknown): number | null =>
-  v == null || v === "" || !Number.isFinite(Number(v)) ? null : Number(v);
+/**
+ * ҮЙЛЧИЛГЭЭНИЙ УТГА → тоо (эсвэл `null`).
+ *
+ * ⚠️ ТЕКСТЭЭР ХАДГАЛАГДСАН ТООГ ЧУ УНШИНА (2026-09-03-ны шалгалт). Багц 4.2·12F-д
+ *    «Мөнгөн_дүн» талбар нь `Double` биш `String` бөгөөд утга нь МЯНГАТЫН
+ *    ТАСЛАЛТАЙ («13,670,427,055»). `Number("13,670,427,055")` = `NaN` тул тэр
+ *    багцын БҮХ 1,593 мөрд мөнгөн дүн `null` болж, багана дэлгэц дээр БҮРЭН
+ *    ХООСОН харагддаг байв. 1,584 утгын 1,584 нь энэ хэвтэй (аравтын таслал
+ *    нэг ч байхгүй — шалгасан), тиймээс таслал/зайг арилгах нь аюулгүй.
+ *
+ * ⚠️ ЗӨВХӨН МӨРӨН оролтод хэрэглэнэ: тоо шууд дамжина, `null`/`""` нь `null`.
+ * ⚠️ `null` ≠ 0 — уншигдахгүй утгыг 0 болгож БОЛОХГҮЙ (төслийн үндсэн дүрэм):
+ *    «мэдээлэлгүй» ба «тэг» хоёр өөр утга.
+ * ⚠️ Аравтын таслал (жиш. «1,5» = 1.5) хэрэглэдэг өгөгдөл ирвэл энэ дүрэм
+ *    БУРУУ болно — тэр үед үйлчилгээний талбарыг `Double` болгож засах нь зөв.
+ */
+export const numLoose = (v: unknown): number | null => {
+  if (v == null) return null;
+  if (typeof v === "string") {
+    /* ⚠️ ЗАЙ БҮХИЙ ХООСОН МӨР нь `null` — `Number("   ")` нь 0 буцаадаг тул
+       үүнийг ЭХЛЭЭД хаана. Эс бөгөөс «бөглөөгүй» нүд «тэг» болж, дүн ба
+       график дээр худал 0 гарна (төслийн үндсэн дүрэм: null ≠ 0). */
+    const t = v.trim();
+    if (!t) return null;
+    // мянгатын таслал ба (тасрахгүй) зай — ЗӨВХӨН цэвэр тоон мөрөнд
+    const raw = /^-?[\d\s,\u00a0]*\d(\.\d+)?$/.test(t) ? t.replace(/[\s,\u00a0]/g, "") : t;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+  }
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+const num = numLoose;
 
 /** `YYYY-MM-DD` → ArcGIS-ийн `timestamp` шүүлт (тухайн ӨДРИЙГ бүхэлд нь). */
 const dayFilter = (fld: string, day: string) =>
@@ -63,6 +113,128 @@ const dayFilter = (fld: string, day: string) =>
  * Архив эхлээгүй (бүх мөр огноогүй) үед анхны суурь хуудас нь `NULL`
  * огноотой байх тул түүгээр шүүнэ.
  */
+/**
+ * ХУУЛБАРЫН СҮҮЛИЙН БҮТЭН ЖААЗ.
+ *
+ * Нэг өдөрт хоёр удаа нийтэлбэл хоёр бүтэн хуулбар зэрэг ирнэ. Жаазны эхлэлийг
+ * ЭХНИЙ мөрийн №-ээр таньж, сүүлийн хуулбарыг бүтнээр нь авна — мөрийн тоо ямар
+ * ч байсан (мөр нэмэгдсэн ч) зөв ажиллана.
+ *
+ * ⚠️ 2026-09-01 ЗАСВАР — ХАГАС БИЧИГДСЭН ЖААЗЫГ ГЭЭНЭ.
+ *
+ * `applyAdds` нь 500 мөрийн БАГЦААР бичдэг ба `rollbackOnFailure` нь ЗӨВХӨН нэг
+ * багц дотор үйлчилнэ. Нийтлэх дунд нь тасалдвал үйлчилгээнд 500/1000/1500
+ * мөртэй ДУТУУ жааз үлдэнэ. Урьд нь энэ функц зөвхөн «сүүлийн эхлэл»-ийг олж
+ * уртыг нь ОГТ шалгадаггүй байсан тул тэр дутуу жаазыг «хамгийн сүүлийн агшин»
+ * гэж буцаадаг байв.
+ *
+ * Бодит хохирол: `Bagts_2_9f`-ийн 2026-08-29-ны жаазууд [1386, 1386, 1386,
+ * 1000] болж, «Гүйцэтгэл бөглөх», «Хуваарь», хоцрогдлын тооцоо гурвуулаа тэр
+ * багцад НЭЭГДЭХЭЭ БОЛЬСОН. Алдааны бичвэр нь «шатлалын зураглал» гэж БУРУУ
+ * шалтгаан заадаг тул шалтгааныг олоход ч төөрөгдүүлнэ.
+ *
+ * ⚠️ ДҮРЭМ: мөр зөвхөн НЭМЭГДДЭГ, устдаггүй. Тиймээс жаазны урт хэзээ ч
+ * буурахгүй — сүүлийн жааз өмнөхөөсөө БОГИНО бол тэр нь унасан нийтлэл.
+ * Тэгвэл түүнийг алгасаад өмнөх БҮТЭН жаазыг буцаана: хуучин боловч БҮТЭН
+ * агшин харуулах нь хуудсыг бүхэлд нь хаахаас хамаагүй дээр.
+ */
+export function lastFrame(all: Feature[], noField: string, expect = 0): Feature[] {
+  if (all.length < 2) return all;
+  const first = String(all[0].attributes[noField] ?? "").trim();
+  if (!first) return all;
+
+  const starts: number[] = [0];
+  for (let i = 1; i < all.length; i += 1) {
+    if (String(all[i].attributes[noField] ?? "").trim() === first) starts.push(i);
+  }
+  if (starts.length === 1) return all;
+
+  const endOf = (k: number) => (k + 1 < starts.length ? starts[k + 1] : all.length);
+  const lenOf = (k: number) => endOf(k) - starts[k];
+
+  /* Сүүлийн жаазаас ухарч ЭХНИЙ бүтэн жаазыг ол */
+  let k = starts.length - 1;
+  while (k > 0) {
+    const len = lenOf(k);
+    /* Өмнөхөөсөө богино = тасарсан; зураглалаас богино нь ч мөн адил */
+    if (len >= lenOf(k - 1) && (expect <= 0 || len >= expect)) break;
+    console.warn(
+      `[selbe] хагас бичигдсэн жаазыг алгаслаа: ${len} мөр `
+      + `(өмнөх ${lenOf(k - 1)}, хүлээгдэх ${expect || '?'}) — унасан нийтлэлийн үлдэгдэл`,
+    );
+    k -= 1;
+  }
+  return all.slice(starts[k], k + 1 < starts.length ? starts[k + 1] : undefined);
+}
+
+/** Мөрийн ТАНИХ ТҮЛХҮҮР — № ба Ажлын нэрийн хос. */
+function rowKey(f: Feature, sc: Schema): string {
+  const no = String(f.attributes[sc.f.no] ?? "").trim();
+  const work = String(f.attributes[sc.f.work] ?? "").trim();
+  return `${no} ¦ ${work}`;
+}
+
+/**
+ * СУУРЬ АГШНЫ МӨРИЙН ТҮЛХҮҮРҮҮД (бөглөөгүй анхны хуулбар).
+ *
+ * ⚠️ Энэ бол шатлалын зураглалын ЛАВЛАХ ДАРААЛАЛ. Суурь агшин нь хэзээ ч
+ * бөглөгддөггүй тул мөрийн тоо нь зураглалын урттай үүрд тэнцүү (10/10 багцад
+ * шалгасан). Шинээр нэмэгдсэн мөрийг ЯГ ЭНЭ дарааллаас ялгаж таних учир
+ * үйлчилгээнд ШИНЭ БАГАНА НЭМЭХ ШААРДЛАГАГҮЙ.
+ *
+ * ⚠️ Зөвхөн мөрийн тоо зөрсөн үед л дуудагдана — хэвийн үед нэмэлт хүсэлт огт
+ * явахгүй. Багц тутамд нэг л удаа татаж кэшлэнэ.
+ */
+const baseKeyCache = new Map<string, Promise<string[]>>();
+function loadBaseKeys(pkg: Pkg, sc: Schema): Promise<string[]> {
+  const hit = baseKeyCache.get(pkg.key);
+  if (hit) return hit;
+  const p = (async () => {
+    const fld = sc.f.fillDate;
+    const out: Feature[] = [];
+    for (let offset = 0; ; ) {
+      const j = await agsFetch(`${pkg.url}/query`, {
+        where: fld ? `${fld} IS NULL` : "1=1",
+        outFields: [sc.f.oid, sc.f.no, sc.f.work].join(","),
+        returnGeometry: "false",
+        orderByFields: `${sc.f.oid} ASC`,
+        resultRecordCount: "2000",
+        resultOffset: String(offset),
+      });
+      const fs = (j.features || []) as Feature[];
+      out.push(...fs);
+      if (!j.exceededTransferLimit || fs.length === 0) break;
+      offset += fs.length;
+    }
+    return lastFrame(out, sc.f.no).map((f) => rowKey(f, sc));
+  })();
+  baseKeyCache.set(pkg.key, p);
+  return p;
+}
+
+/**
+ * ЗЭРЭГЦҮҮЛЭЛТ — одоогийн мөрүүдийг лавлах дараалалтай тулгана.
+ *
+ * Буцаах нь `cur`-тай ижил урттай массив: лавлахад ТААРСАН мөрд лавлахын
+ * индекс, ШИНЭЭР НЭМЭГДСЭН мөрд `-1`.
+ *
+ * ⚠️ Зөвхөн НЭМЭЛТИЙГ зөвшөөрнө (устгал биш) — тиймээс энгийн хоёр заагч
+ * хангалттай. Лавлахын БҮХ мөр олдоогүй бол `null` буцаана: тэр нь мөр
+ * нэмэгдсэн биш, эх хүснэгтийн бүтэц өөрчлөгдсөн гэсэн үг тул хуучин хатуу
+ * алдаа руу унана — чимээгүй буруу зэрэгцүүлэлт хийхээс ЭРС дээр.
+ */
+function alignInsertions(cur: string[], ref: string[]): number[] | null {
+  const map = new Array<number>(cur.length).fill(-1);
+  let j = 0;
+  for (let i = 0; i < cur.length; i += 1) {
+    if (j < ref.length && cur[i] === ref[j]) {
+      map[i] = j;
+      j += 1;
+    }
+  }
+  return j === ref.length ? map : null;
+}
+
 async function latestWhere(pkg: Pkg, sc: Schema): Promise<string> {
   const fld = sc.f.fillDate;
   if (!fld) return "1=1"; // талбар үүсээгүй үйлчилгээ — хуучин зан төлөв
@@ -82,14 +254,31 @@ async function latestWhere(pkg: Pkg, sc: Schema): Promise<string> {
 export async function loadRows(
   pkg: Pkg,
   sc: Schema,
+  /**
+   * Тодорхой АГШНЫГ (`YYYY-MM-DD`) татах — хяналтын харагдацад.
+   * ⚠️ Хянагч нь «яг илгээсэн тэр агшныг» харах ёстой. Хамгийн сүүлийнхийг
+   *    татвал гүйцэтгэгч дараа нь дахин бөглөсөн бол хянагч огт өөр тоо
+   *    хараад батална — баталсан зүйл нь илгээсэн зүйлээсээ зөрнө.
+   */
+  atDay?: string,
+  /**
+   * Татах талбаруудын жагсаалт — өгвөл `outFields`-ийг хязгаарлана.
+   * ⚠️ 2026-08-21 гүйцэтгэлийн аудит: мөр ~60+ баганатай, 10 багц нийлээд
+   *    ~10-20МБ JSON болдог. Зөвхөн уншдаг хэрэглэгч (loadVariance) хэрэгтэй
+   *    талбараа заавал payload тал хувиар буурна; заагаагүй бол `*` хэвээр
+   *    (Pivot засварлахдаа бүх талбар хэрэгтэй). Дутуу талбарууд мөрөнд 0/null
+   *    болж уншигдана — `raw` нь мөн хэсэгчилсэн болохыг анхаар.
+   */
+  fields?: string[],
 ): Promise<{ rows: SheetRow[]; asOf: number | null; snapshot: number | null }> {
   const tree = TREES[pkg.key] ?? "";
-  const where = await latestWhere(pkg, sc);
+  const where =
+    atDay && sc.f.fillDate ? dayFilter(sc.f.fillDate, atDay) : await latestWhere(pkg, sc);
   const feats: Feature[] = [];
   for (let offset = 0; ; ) {
     const j = await agsFetch(`${pkg.url}/query`, {
       where,
-      outFields: "*",
+      outFields: fields?.length ? fields.join(",") : "*",
       returnGeometry: "false",
       orderByFields: `${sc.f.oid} ASC`,
       resultRecordCount: "2000",
@@ -113,26 +302,91 @@ export async function loadRows(
    *    хуудсанд огт нөлөөлөхгүй бөгөөд огноогоор шүүхэд түүх бүтэн хэвээр.
    */
   const expect = tree.length;
-  const feats2 = expect > 0 && feats.length > expect ? feats.slice(-expect) : feats;
+
+  /*
+   * ⚠️ ХУУЛБАРЫН ЗААГ — ХАМГИЙН СҮҮЛИЙН нийтлэлтийг л үлдээнэ.
+   *
+   * `latestWhere` нь ӨДРӨӨР шүүдэг тул нэг өдөрт хоёр удаа нийтэлбэл хоёр
+   * бүтэн хуулбар зэрэг ирнэ (Багц 1-ийн 2026-08-21-нд яг тийм тохиолдсон).
+   *
+   * ⚠️ 2026-08-28 ЗАСВАР: урьд нь `feats.slice(-expect)` гэж ЗУРАГЛАЛЫН УРТААР
+   * огтолдог байв. Мөр НЭМЭГДСЭН хуудсанд (1371 мөр) тэр нь эхний мөрийг
+   * чимээгүй хаяж, тоо нь `expect`-тэй тэнцэх тул доорх хамгаалалт ч
+   * ажиллахгүй — БҮХ мөр нэгээр гулсаж, бүлэг/ажил хольцолдоно. Одоо
+   * хуулбарыг ЖААЗНЫ ЭХНИЙ №-ээр таньж (sheetRows.ts-ийн `snap`-тай ижил
+   * дүрэм), сүүлийн жаазыг бүтнээр нь авна — мөрийн тоо ямар ч байсан зөв.
+   */
+  /* ⚠️ `expect`-ийг дамжуулна: зураглалаас БОГИНО жааз нь хагас бичигдсэн
+     нийтлэлийн үлдэгдэл тул түүнийг алгасаж өмнөх бүтэн агшныг авна. */
+  const feats2 = lastFrame(feats, sc.f.no, expect);
 
   /**
-   * ⚠️ Модны шатлал (`TREES`) нь мөрийн БАЙРЛАЛААР зураглагддаг тул ачаалсан
-   *    хуудас нь ЯГ тэр мөрийн тоотой байх ёстой. Зөрвөл бүлэг/ажил хоёр
-   *    хольцолдож, гүйцэтгэл огт өөр мөрөнд наалдана — үүнийг чимээгүй
-   *    өнгөрөөвөл хэрэглэгч буруу газраа бөглөж эхэлнэ.
+   * ШАТЛАЛ ХААНААС ГАРАХ ВЭ.
    *
-   *    Хоосон хүснэгт (0 мөр) нь тусдаа тохиолдол: суурь өгөгдөл хараахан
+   * 1. `gun` багана — мөр бүр өөрийн гүнээ АВЧ ЯВНА. Мөрийн тоо чөлөөтэй.
+   * 2. Эс бөгөөс `TREES` — БАЙРЛАЛААР. Мөрийн тоо ТОГТМОЛ байх ёстой.
+   *
+   * ⚠️ 2026-08-27: урьд нь зөвхөн (2) байсан тул хуудсанд мөр нэмэх ОГТ
+   * боломжгүй байв — нэмэнгүүт мөрийн тоо зураглалын урттай зөрж, доорх
+   * шалгуур хуудсыг бүхэлд нь хаадаг байлаа. Ерөнхий менежер бүлэг дотор ажил
+   * нэмэх шаардлага гарсан тул шатлалыг өгөгдөл рүү шилжүүлэв.
+   *
+   * ⚠️ ШАЛГУУРЫГ БҮРЭН УСТГААГҮЙ гэдгийг анхаар: `gun` хоосон байгаа үед тэр
+   * нь ХЭВЭЭР хүчинтэй. Эс бөгөөс эх excel-ийн бүтэц чимээгүй өөрчлөгдөхөд
+   * бүлэг/ажил хольцолдож, гүйцэтгэл огт өөр мөрөнд наалдана.
+   */
+  const hasGun =
+    !!sc.f.gun && feats2.length > 0 && feats2.every((f) => f.attributes[sc.f.gun!] != null);
+
+  /**
+   * ⚠️ Хоосон хүснэгт (0 мөр) нь тусдаа тохиолдол: суурь өгөгдөл хараахан
    *    ачаалагдаагүй гэсэн үг тул өөрийн гэсэн мессежтэй.
    */
-  if (expect > 0 && feats2.length !== expect)
-    throw new Error(
-      feats2.length === 0
-        ? `${pkg.label}: хуудсанд мөр алга — эх хүснэгтийг эхлээд ачаална уу.`
-        : `${pkg.label}: ${feats2.length} мөр ирлээ, ${expect} байх ёстой. ` +
-          "Эх хүснэгтийн мөрийн тоо өөрчлөгдсөн бол шатлалын зураглалыг " +
-          "(bagts.trees.ts) дахин гаргах шаардлагатай — эс бөгөөс бүлэг ба " +
-          "ажлын мөрүүд хоорондоо холилдоно.",
-    );
+  if (expect > 0 && feats2.length === 0)
+    throw new Error(tr('{0}: хуудсанд мөр алга — эх хүснэгтийг эхлээд ачаална уу.', pkg.label));
+
+  /**
+   * МӨР БҮРИЙН ГҮН.
+   *
+   * Гурван эх сурвалж, энэ эрэмбээр:
+   *   1. `gun` багана (байвал) — мөр өөрийн гүнээ авч явна.
+   *   2. Мөрийн тоо зураглалтай ТААРВАЛ — байрлалаар шууд.
+   *   3. ЗӨРВӨЛ — суурь агшинтай зэрэгцүүлж, ШИНЭ мөрийг ялгана. Ерөнхий
+   *      менежер бүлэг дотор ажил нэмэхэд яг энэ зам ажиллана; нэмсэн мөр нь
+   *      ах дүү мөрүүдийнхээ ард залгагддаг тул гүн нь ӨМНӨХ мөрийнхтэй ижил.
+   *
+   * ⚠️ Зэрэгцүүлэлт бүтэхгүй бол (эх хүснэгтийн бүтэц өөрчлөгдсөн) ХУУЧИН
+   * хатуу алдаа руу унана. Чимээгүй буруу шатлалаас алдаа шидэх нь ХАВЬГҮЙ
+   * дээр — эс бөгөөс гүйцэтгэл огт өөр мөрөнд наалдана.
+   */
+  const treeDepth = (i: number): number => {
+    const ch = tree[i] ?? '0';
+    return ch >= 'A' && ch <= 'E' ? ch.charCodeAt(0) - 65 : Number(ch);
+  };
+  const depthArr = new Array<number>(feats2.length).fill(0);
+  if (hasGun) {
+    for (let i = 0; i < feats2.length; i += 1) {
+      depthArr[i] = Number(feats2[i].attributes[sc.f.gun!]) || 0;
+    }
+  } else if (expect > 0 && feats2.length !== expect) {
+    const ref = await loadBaseKeys(pkg, sc);
+    const map =
+      ref.length === expect ? alignInsertions(feats2.map((f) => rowKey(f, sc)), ref) : null;
+    if (!map)
+      throw new Error(
+        tr(
+          '{0}: {1} мөр ирлээ, {2} байх ёстой. Нэмэгдсэн мөрүүдийг суурь агшинтай тулгаж чадсангүй — эх хүснэгтийн бүтэц өөрчлөгдсөн бол шатлалын зураглалыг (bagts.trees.ts) дахин гаргах шаардлагатай.',
+          pkg.label,
+          feats2.length,
+          expect,
+        ),
+      );
+    for (let i = 0; i < feats2.length; i += 1) {
+      depthArr[i] = map[i] >= 0 ? treeDepth(map[i]) : i > 0 ? depthArr[i - 1] : 0;
+    }
+  } else if (expect > 0) {
+    for (let i = 0; i < feats2.length; i += 1) depthArr[i] = treeDepth(i);
+  }
 
   // Excel-ийн 2-р мөрийн «Шинэчлэгдсэн огноо» ($BH$2 г.м.) нь бүх төлөвлөгөөт
   // хувийн лавлах цэг. Мөр бүрт биш, зөвхөн тэнд бичигдсэн.
@@ -148,19 +402,36 @@ export async function loadRows(
     const no = String(a[sc.f.no] ?? "").trim();
     if (!work && !no) return; // хуудасны сүүлийн хоосон мөрүүд
     /**
-     * ⚠️ Модны гүнийг АГШИН ДОТОРХ БАЙРЛАЛААР олно, ObjectID-гаар БИШ.
-     *    Архивын шинэ хуулбар нэмэгдэхэд ObjectID үсэрдэг тул `oid − 1`
-     *    гэвэл бүх бүлэг/ажлын шатлал холилдоно. Агшин бүр хуудсыг
-     *    БҮТНЭЭР нь, ижил дарааллаар агуулдаг тул байрлал нь тогтвортой
-     *    (анхны суурь өгөгдөл дээр `k === oid − 1` — 10 багц дээр шалгасан).
+     * ГҮН ба БҮЛЭГ ЭСЭХ.
+     *
+     * `gun` багана дүүрсэн бол мөрөөс шууд. Тэгэхэд «бүлэг эсэх» нь тусдаа
+     * талбаргүй тул ДАРААГИЙН мөрөөс гарна: дараагийн мөрийн гүн нь өөрөөсөө
+     * ИХ бол энэ мөр бүлэг (дор нь удам бий). Энэ дүрэм нь `childIndexes`-ийн
+     * стек логиктой ЯГ ижил тул хоёр эх сурвалж хэзээ ч зөрөхгүй.
+     *
+     * ⚠️ Нөөц зам (`TREES`): модны гүнийг АГШИН ДОТОРХ БАЙРЛАЛААР олно,
+     *    ObjectID-гаар БИШ. Архивын шинэ хуулбар нэмэгдэхэд ObjectID үсэрдэг
+     *    тул `oid − 1` гэвэл бүх бүлэг/ажлын шатлал холилдоно. Агшин бүр
+     *    хуудсыг БҮТНЭЭР нь, ижил дарааллаар агуулдаг тул байрлал нь
+     *    тогтвортой (анхны суурь өгөгдөл дээр `k === oid − 1`).
      */
-    const ch = tree[k] ?? "0";
-    const group = ch >= "A" && ch <= "E";
+    /* «Бүлэг эсэх» нь тусдаа талбаргүй — ДАРААГИЙН мөрийн гүнээс гарна.
+       Энэ дүрэм `TREES`-ийн тэмдэглэгээтэй 14801 мөр дээр ЯГ таарсан
+       (`gun.check.mjs`) тул гурван эх сурвалжийн аль нь ч ижил үр дүн өгнө. */
+    const depth = depthArr[k];
+    const group = k + 1 < depthArr.length && depthArr[k + 1] > depth;
     rows.push({
       oid,
       no,
+      /**
+       * АЖЛЫН КОД — жаазан дотор давтагдахгүй 1…N.
+       * ⚠️ Багана байхгүй / хоосон үйлчилгээнд `null`. Тэглэж болохгүй:
+       *    «код нь 0» гэж харагдвал бөглөөгүйг бөглөсөнтэй андуурна.
+       */
+      des: sc.f.des ? num(a[sc.f.des]) : null,
+      ham: sc.f.ham ? String(a[sc.f.ham] ?? "").trim() || null : null,
       work,
-      depth: group ? ch.charCodeAt(0) - 65 : Number(ch),
+      depth,
       group,
       wC: num(a[sc.f.wC]),
       wD: num(a[sc.f.wD]),
@@ -281,7 +552,7 @@ export function childIndexes(rows: SheetRow[]): number[][] {
 }
 
 /** Мөр бүрийн дээд мөрийн индекс (дээд мөргүй бол −1). */
-function parentIndexes(rows: SheetRow[]): number[] {
+export function parentIndexes(rows: SheetRow[]): number[] {
   const p = new Array(rows.length).fill(-1);
   const stack: number[] = [];
   rows.forEach((r, i) => {
@@ -313,6 +584,118 @@ function parentIndexes(rows: SheetRow[]): number[] {
  * Тооцооны дараалал чухал: H (доороос дээш) → C, D (дээрээс доош) → бодит
  * гүйцэтгэл ба J (доороос дээш) → E (C ба J-ээс хамаарна, доороос дээш).
  */
+/**
+ * ТӨЛӨВЛӨГӨӨТ ГҮЙЦЭТГЭЛИЙН МУРУЙ — олон огноогоор нэг дор.
+ *
+ * ⚠️ ЯАГААД ТУСДАА ФУНКЦ (2026-09-04): `computeAll`-ыг сар бүрээр дуудвал
+ * 10 багц × 31 сар = 2.8 СЕКУНД (хэмжсэн) — рендерийн замд боломжгүй. Тэр нь
+ * дуудалт бүрд обьём, бодит гүйцэтгэл, мөнгөн дүн, жин, огнооны модыг БҮГДИЙГ
+ * дахин боддог. Гэтэл ЖИН ба ОГНОО нь `asOf`-оос ХАМААРАХГҮЙ — зөвхөн
+ * `planAt()` л хамаарна. Тиймээс модыг НЭГ УДАА барьж, огноо бүрд зөвхөн
+ * нийлбэрийг бодно (~50мс).
+ *
+ * ⚠️ Дүрэм нь `computeAll`-тайгаа ЯГ ИЖИЛ байх ёстой — эс тэгвээс график ба
+ * хуудсан дээрх тоо чимээгүй зөрнө. Тиймээс жин (`D`), огнооны өв (`own`/`agg`),
+ * бүлгийн `own` огноогоор интерполяци хийх онцгой тохиолдол гурвуулаа энд
+ * давтагдсан. `planCurve.check.mjs` хоёрыг тулгаж шалгана.
+ *
+ * @returns огноо бүрийн МӨР бүрийн блокуудын дундаж төлөвлөгөө (0–1). Гадна
+ *   талын массив нь `asOfs`-той, дотоод нь `rows`-той ижил урттай.
+ */
+export function planCurve(
+  rows: SheetRow[],
+  nBld: number,
+  asOfs: readonly number[],
+): (number | null)[][] {
+  const kids = childIndexes(rows);
+  const par = parentIndexes(rows);
+  const n = nBld;
+  const N = rows.length;
+
+  /* ── H · C · D — `computeAll`-ийн 1–2-р алхамтай ижил ── */
+  const H: (number | null)[] = new Array(N).fill(null);
+  for (let i = N - 1; i >= 0; i--) {
+    if (kids[i].length) {
+      let s = 0; let any = false;
+      for (const k of kids[i]) if (H[k] != null) { s += H[k]!; any = true; }
+      H[i] = any ? s : rows[i].money;
+    } else {
+      const r = rows[i];
+      H[i] = r.vol != null && r.unit != null ? r.vol * r.unit : r.money;
+    }
+  }
+  const D: (number | null)[] = new Array(N).fill(null);
+  const rootH: (number | null)[] = new Array(N).fill(null);
+  for (let i = 0; i < N; i++) {
+    const p = par[i];
+    rootH[i] = p < 0 ? H[i] : rootH[p];
+    D[i] = H[i] != null && rootH[i] ? H[i]! / rootH[i]! : rows[i].wD;
+  }
+
+  /* ── Огноо: өөрийн (`own`) эсвэл дэд мөрүүдийн MIN/MAX (`agg`) ── */
+  const St: (number | null)[][] = [];
+  const En: (number | null)[][] = [];
+  const own: boolean[][] = [];
+  for (let i = 0; i < N; i++) {
+    St[i] = new Array(n).fill(null);
+    En[i] = new Array(n).fill(null);
+    own[i] = new Array(n).fill(false);
+  }
+  for (let i = N - 1; i >= 0; i--) {
+    const r = rows[i];
+    for (let b = 0; b < n; b++) {
+      const os = r.start[b];
+      const oe = r.end[b];
+      if (os != null) St[i][b] = os;
+      if (oe != null) En[i][b] = oe;
+      own[i][b] = os != null && oe != null;
+      if (!kids[i].length) continue;
+      if (St[i][b] == null) {
+        let m: number | null = null;
+        for (const k of kids[i]) { const v = St[k][b]; if (v != null && (m == null || v < m)) m = v; }
+        St[i][b] = m;
+      }
+      if (En[i][b] == null) {
+        let m: number | null = null;
+        for (const k of kids[i]) { const v = En[k][b]; if (v != null && (m == null || v > m)) m = v; }
+        En[i][b] = m;
+      }
+    }
+  }
+
+  /* ── Огноо бүрд — зөвхөн `plan` нийлбэр ── */
+  return asOfs.map((asOf) => {
+    const plan: (number | null)[][] = new Array(N);
+    const avgOut: (number | null)[] = new Array(N).fill(null);
+    for (let i = N - 1; i >= 0; i--) {
+      const p: (number | null)[] = new Array(n).fill(null);
+      if (kids[i].length) {
+        const den = kids[i].reduce((s, k) => s + (D[k] ?? 0), 0);
+        for (let b = 0; b < n; b++) {
+          let sp = 0; let cnt = 0;
+          for (const k of kids[i]) {
+            const w = den > 0 ? (D[k] ?? 0) : 1;
+            sp += w * (plan[k][b] ?? 0);
+            cnt += w;
+          }
+          p[b] = cnt > 0 ? sp / cnt : null;
+          /* ⚠️ Бүлэгт ӨӨРИЙНХ нь огноо бичигдсэн бол дундаж БИШ, огноогоор
+             интерполяци — `computeAll`-ийн ижил онцгой тохиолдол. */
+          if (own[i][b] && St[i][b] != null && En[i][b] != null) {
+            p[b] = planAt(asOf, St[i][b], En[i][b]);
+          }
+        }
+      } else {
+        for (let b = 0; b < n; b++) p[b] = planAt(asOf, St[i][b], En[i][b]);
+      }
+      plan[i] = p;
+      /* `AVERAGE(IF(range="",0,range))` — хоосныг 0 гэж үзэн блокийн тоонд хуваана */
+      avgOut[i] = p.reduce<number>((s, x) => s + (x ?? 0), 0) / n;
+    }
+    return avgOut;
+  });
+}
+
 export function computeAll(
   rows: SheetRow[],
   nBld: number,
@@ -395,8 +778,8 @@ export function computeAll(
     for (let b = 0; b < n; b++) {
       const os = pickDate(dateEdits[`${r.oid}:${b}:s`], r.start[b]);
       const oe = pickDate(dateEdits[`${r.oid}:${b}:e`], r.end[b]);
-      if (os != null) (St[i][b] = os), (StSrc[i][b] = "own");
-      if (oe != null) (En[i][b] = oe), (EnSrc[i][b] = "own");
+      if (os != null) { St[i][b] = os; StSrc[i][b] = "own"; }
+      if (oe != null) { En[i][b] = oe; EnSrc[i][b] = "own"; }
       if (!kids[i].length) continue;
       if (St[i][b] == null) {
         let m: number | null = null;
@@ -404,7 +787,7 @@ export function computeAll(
           const v = St[k][b];
           if (v != null && (m == null || v < m)) m = v;
         }
-        if (m != null) (St[i][b] = m), (StSrc[i][b] = "agg");
+        if (m != null) { St[i][b] = m; StSrc[i][b] = "agg"; }
       }
       if (En[i][b] == null) {
         let m: number | null = null;
@@ -412,7 +795,7 @@ export function computeAll(
           const v = En[k][b];
           if (v != null && (m == null || v > m)) m = v;
         }
-        if (m != null) (En[i][b] = m), (EnSrc[i][b] = "agg");
+        if (m != null) { En[i][b] = m; EnSrc[i][b] = "agg"; }
       }
     }
   }
@@ -616,7 +999,7 @@ export async function applyAdds(
         success?: boolean; objectId?: number; error?: { description?: string };
       }[];
       const bad = res.find((r) => r.success === false);
-      if (bad) throw new Error(bad.error?.description || "Нэмэх амжилтгүй");
+      if (bad) throw new Error(bad.error?.description || tr('Нэмэх амжилтгүй'));
       if (firstOid == null && typeof res[0]?.objectId === "number") firstOid = res[0].objectId;
       added += res.length;
     } catch (e) {
@@ -624,13 +1007,26 @@ export async function applyAdds(
       //    chunk-ууд аль хэдийн бичигдсэн тул хагас амжилтыг тодруулна.
       if (added > 0)
         throw new Error(
-          `${added}/${features.length} мөр нэмэгдэв; үлдсэн нь амжилтгүй (` +
-            String((e as Error).message || e) +
-            ") — дахин Нийтлэх дарж гүйцээнэ үү",
+          tr(
+            '{0}/{1} мөр нэмэгдэв; үлдсэн нь амжилтгүй ({2}) — дахин Нийтлэх дарж гүйцээнэ үү',
+            added,
+            features.length,
+            String((e as Error).message || e),
+          ),
         );
       throw e;
     }
   }
+  /*
+   * ⚠️ БИЧСЭНИЙ ДАРАА ДАШБОАРДЫГ ХУУЧИРСАН ГЭЖ ЗАРЛАНА (`dataBus.ts`).
+   *
+   * Урьд нь нийтэлсний дараа энэ хуудас өөрөө шинэчлэгддэг байсан ч
+   * `loadBlockProgress`/`loadFinData` нар кэшээ барьдаг тул дашбоард дээрх
+   * тоо ХУУЧИН хэвээр үлддэг байв — хуудсыг бүтнээр нь refresh хийж байж л
+   * шинэчлэгдэнэ. Хэрэглэгч өөрийн бичсэн тоог дэлгэц дээр харахгүй бол
+   * бичигдсэн эсэхэд эргэлзэж дахин дардаг — архивт давхардсан агшин үүснэ.
+   */
+  if (added > 0) invalidate('BAGTS_SHEET');
   return { added, firstOid };
 }
 
@@ -639,6 +1035,18 @@ export async function applyUpdates(
   pkg: Pkg,
   updates: Record<string, unknown>[],
 ): Promise<void> {
+  /*
+   * ⚠️ ХЭСЭГЧЛЭН амжилттай байсан ч кэшийг хүчингүй болгоно (2026-08-29).
+   * Урьд нь энэ функц `dataBus`-ыг ОГТ дууддаггүй байв — «Хуваарь» дээр
+   * огноо хадгалсны дараа дашбоард, тайлангийн төлөвлөгөөт тоо хуучин
+   * хэвээр үлдэж, хуудас бүтнээр refresh хийж байж л шинэчлэгддэг байлаа
+   * (нийтлэх зам нь `applyAdds`-аараа зарладаг тул зөвхөн ЭНЭ зам мартагдсан).
+   * Алдааны үед ч эхний chunk-ууд серверт бичигдсэн байж болох тул
+   * `finally` дотор — «бичигдсэн атлаа хуучин тоо харуулах»-аас
+   * «бичигдээгүй атлаа дахин татах» нь хавьгүй хямд.
+   */
+  let written = 0;
+  try {
   for (let i = 0; i < updates.length; i += 500) {
     const chunk = updates.slice(i, i + 500);
     try {
@@ -652,18 +1060,25 @@ export async function applyUpdates(
       if (bad)
         throw new Error(
           (bad as { error?: { description?: string } }).error?.description ||
-            'Шинэчлэх амжилтгүй',
+            tr('Шинэчлэх амжилтгүй'),
         );
+      written += chunk.length;
     } catch (e) {
       // ⚠️ rollbackOnFailure зөвхөн НЭГ chunk дотроо үйлчилнэ — өмнөх chunk-ууд
       // аль хэдийн серверт бичигдсэн тул хагас амжилтыг мессежид тодруулна.
       if (i > 0)
         throw new Error(
-          `${i}/${updates.length} мөр хадгалагдав; үлдсэн нь амжилтгүй (` +
-            String((e as Error).message || e) +
-            ') — дахин Нийтлэх дарж гүйцээнэ үү',
+          tr(
+            '{0}/{1} мөр хадгалагдав; үлдсэн нь амжилтгүй ({2}) — дахин Нийтлэх дарж гүйцээнэ үү',
+            i,
+            updates.length,
+            String((e as Error).message || e),
+          ),
         );
       throw e;
     }
+  }
+  } finally {
+    if (written > 0) invalidate('BAGTS_SHEET');
   }
 }

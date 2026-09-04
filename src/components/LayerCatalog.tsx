@@ -14,7 +14,7 @@ import type { Totals } from '@/lib/totals';
 import { qtyText, whereFor, layerStats } from '@/lib/totals';
 import { useFilter } from '@/lib/filter';
 import { queryGroup, groups, groupWhere } from '@/lib/query';
-import { catalogGroups, INITIAL_MAP_LAYERS, LAYER_BY_ID, layerUrl, type LayerDef } from '@/lib/services';
+import { catalogGroups, INITIAL_MAP_LAYERS, LAYER_BY_ID, layerUrl, type CatalogView, type LayerDef } from '@/lib/services';
 import { num } from '@/lib/format';
 import s from './catalog.module.css';
 
@@ -25,7 +25,7 @@ import s from './catalog.module.css';
  * асаах бүрд «юу өөрчлөгдсөнийг» харахын тулд хаах шаардлагатай болдог байлаа.
  * Багана болгосноор чагт дарах бүрд зурагт өөрчлөлт ШУУД харагдана.
  *
- * ⚠️ Тоо, өртгийг ЭНД дахин татахгүй: `totals`-ыг `Portal` нэг удаа дуудаж
+ * ⚠️ Тоо, хэмжээг ЭНД дахин татахгүй: `totals`-ыг `Portal` нэг удаа дуудаж
  * дамжуулна — самбарын дүнтэй зөрөх боломжгүй байх ёстой.
  *
  * Мөр бүр ХОЁР үйлдэлтэй (2026-07-31, хэрэглэгчийн хүсэлт — чагт хасагдсан):
@@ -57,8 +57,12 @@ export const LayerCatalog = memo(function LayerCatalog({
    * ⚠️ «Барилгын хяналт»-д хяналтын багц ЭХЭНД, дараа нь ЕТ-ийн багцууд —
    * тэнд гүйцэтгэлийн давхарга дээр контекст нэмэх нь ердийн хэрэглээ.
    * «ХАБЭА»-д аюулгүй байдлын багц ЭХЭНД, дараа нь хяналт + ЕТ (контекст).
+   *
+   * ⚠️ Сэдэвчилсэн цонх (`gazar`/`iot`/`irged`) ӨӨРИЙНХӨӨ түлхүүрийг дамжуулна —
+   * `'plan'` бичвэл бүтэн порталын каталог гарч, сэдэв нь 18 бүлгийн дунд
+   * булагдана (`catalogGroups`-ын тайлбарыг үз).
    */
-  view: 'plan' | 'monitor' | 'habea';
+  view: CatalogView;
   totals: Async<Map<string, Totals>>;
   visible: string[];
   setVisible: Dispatch<SetStateAction<string[]>>;
@@ -388,7 +392,7 @@ export const LayerCatalog = memo(function LayerCatalog({
  *
  * ⚠️ «Инженерийн бэлтгэл арга хэмжээ» гэдэг нэг мөр нь 180 объект, 18.4 км-ийг
  * нуудаг байв — дотор нь огт өөр арга хэмжээнүүд (хашаа, тэгшилгээ, далан…)
- * багтдаг ба нэгж үнэ нь 18–250 сая хүртэл ялгаатай. Каталогоос тэр задаргаа
+ * багтдаг ба цар хүрээ нь тус бүрдээ эрс өөр. Каталогоос тэр задаргаа
  * харагдахгүй бол хэрэглэгч давхаргыг нээж, баруун самбар руу очиж байж л
  * мэднэ. Одоо зүүн баганаас шууд харагдаж, дарахад зурагт шүүгдэнэ.
  *
@@ -404,7 +408,7 @@ function FacetRows({
 }: {
   d: LayerDef;
   zone: string | null;
-  view: 'plan' | 'monitor' | 'habea';
+  view: CatalogView;
   /** Шүүхийн өмнө давхаргыг зурагт гаргана — унтарсан давхаргыг шүүх нь дэмий */
   onNeedVisible: () => void;
 }) {
@@ -462,7 +466,7 @@ function FacetRows({
           >
             <span className={s.facetName}>{item.label}</span>
             <span className={`${s.facetMeta} num`}>
-              {num(item.values.n)} ш{qty ? ` · ${qty}` : ''}
+              {num(item.values.n)} {tr('ш')}{qty ? ` · ${qty}` : ''}
             </span>
           </button>
         );

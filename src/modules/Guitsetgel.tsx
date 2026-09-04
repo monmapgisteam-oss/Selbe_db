@@ -12,26 +12,36 @@
  * инженер» хоёрхон шаттай. Менежерийн шийдвэр, нэр, буцаасан шалтгаан нь дотоод
  * хяналтын мэдээлэл.
  *
- * ⚠️ ШАТЫГ ОДООХОНДОО ТОВЧООР СОЛИНО. Порталын үүрэг (`super`/`beginner`/
- * `tolovlolt`) нь компани/инженер/менежер гэсэн ЭНЭ урсгалын шаттай тохирдоггүй.
- * Бодит нэвтрэлтээс тогтоохын тулд `ROLE_BY_USER`-т шат нэмэх шаардлагатай.
+ * ⚠️ ШАТ = АДМИНЫ ТОМИЛГОО (`resolveFlowStage`, 2026-08-29). Урьд нь үүргээс
+ * (`ROLE_STAGE[role]`) гаргадаг байсан тул урсгалын бус үүрэгтэй (beginner —
+ * `selbe_et`, панелаас нэмсэн `tolovlolt`) хүнийг томилсон ч хуудас инженерийн
+ * шат руу унаж «нэг ч багц хуваарилагдаагүй» гэдэг байв. Үүрэг нь зөвхөн кодын
+ * хатуу super-ийг (сонгогч, бүх багц) ялгана.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
-import { DECISION, F, STATUS, type Row, type Stage, type Status } from '@/lib/hyanalt';
-import { groupWorks, optionsOf, type Work } from '@/lib/hyanaltGroup';
+import {
+  DECISION, F, missingDirectorFields, OWNER, STAGE_ORDER, STATUS,
+  type Row, type Stage, type Status,
+} from '@/lib/hyanalt';
+import { useAuth } from '@/components/AuthGate';
+import { resolveFlowStage, subscribeAcl } from '@/lib/guitsetgelAcl';
+import { hasCap } from '@/lib/caps';
+import { Sheet } from '@/modules/sheet/Sheet';
+import { groupWorks, optionsOf, STAGE_LABEL, type Work } from '@/lib/hyanaltGroup';
 import { apply, recheck, useHyanaltRows } from '@/lib/hyanaltStore';
-import { loadSubmission, type Submission } from '@/lib/hyanaltDetail';
+import { loadSubmission, type Change, type Submission } from '@/lib/hyanaltDetail';
 import s from './guitsetgel.module.css';
 
-const STAGES: Stage[] = ['company', 'engineer', 'manager'];
+const STAGES: Stage[] = ['company', 'engineer', 'manager', 'director'];
 
-const STAGE_LABEL: Record<Stage, string> = {
-  company: tr('Гүйцэтгэгч компани'),
-  engineer: tr('Талбайн инженер'),
-  manager: tr('Менежер'),
-};
+/*
+ * ⚠️ ШАТНЫ НЭР ЭНД ТОДОРХОЙЛОГДОХГҮЙ — `lib/hyanaltGroup.ts`-д. Урьд нь
+ * хоёр газар бичигдээд ЗӨРДӨГ байсан («Талбайн» ↔ «Хяналтын инженер»).
+ * Дахин экспортлож байгаа нь ЗӨВХӨН хуучин импортуудыг эвдэхгүйн тулд.
+ */
+export { STAGE_LABEL };
 
 /**
  * ⚠️ Төлөвийн УТГА нь өгөгдөл (ArcGIS-д монголоор хадгалагдана) — дэлгэцэд
@@ -43,13 +53,9 @@ const STATUS_LABEL: Record<Status, string> = {
   [STATUS.engineerReturned]: tr('Инженер буцаасан'),
   [STATUS.managerReview]: tr('Менежер хянаж байна'),
   [STATUS.managerReturned]: tr('Менежер буцаасан'),
+  [STATUS.directorReview]: tr('Ерөнхий менежер хянаж байна'),
+  [STATUS.directorReturned]: tr('Ерөнхий менежер буцаасан'),
   [STATUS.transferred]: tr('Шилжүүлсэн'),
-};
-
-/* ⚠️ Туршилтын нэр — бодит системд нэвтэрсэн хэрэглэгчийн нэр орно */
-const WHO: Record<'engineer' | 'manager', string> = {
-  engineer: 'Б.Болд',
-  manager: 'С.Отгоо',
 };
 
 const fmt = (iso: string | null) =>
@@ -66,6 +72,10 @@ const badgeClass = (st: Status, stage: Stage) => {
   // ⚠️ Компанид «Менежер буцаасан» улаанаар ч харагдах ёсгүй — тэр ажил
   //    хараахан компанид ирээгүй, инженер дээр байгаа.
   if (st === STATUS.managerReturned) return stage === 'company' ? s.bWait : s.bBack;
+  // ⚠️ Ерөнхий менежерийн буцаалт нь БАГЦЫН МЕНЕЖЕРТ очно — компани ч,
+  //    инженер ч үүнийг «буцсан» гэж харах ёсгүй: тэдний гар дээр ирээгүй.
+  if (st === STATUS.directorReturned)
+    return stage === 'manager' || stage === 'director' ? s.bBack : s.bWait;
   return st === STATUS.engineerReturned ? s.bBack : s.bWait;
 };
 
@@ -159,7 +169,7 @@ function stepsOf(r: Row, stage: Stage, showSent: boolean): Step[] {
   if (seesManager(stage)) {
     const mgr = `${tr('Менежер')} ${r[F.manager]}`.trim();
     if (r[F.managerSent]) {
-      out.push({ who: mgr, verb: tr('зөвшөөрч шилжүүлэв'), at: r[F.managerSent], reason: '', kind: 'ok' });
+      out.push({ who: mgr, verb: tr('зөвшөөрч ерөнхий менежерт илгээв'), at: r[F.managerSent], reason: '', kind: 'ok' });
     }
     if (r[F.managerReturned]) {
       out.push({
@@ -167,6 +177,20 @@ function stepsOf(r: Row, stage: Stage, showSent: boolean): Step[] {
         verb: tr('инженерт буцаав'),
         at: r[F.managerReturned],
         reason: r[F.managerReason],
+        kind: 'bad',
+      });
+    }
+
+    const dir = `${tr('Ерөнхий менежер')} ${r[F.director]}`.trim();
+    if (r[F.directorSent]) {
+      out.push({ who: dir, verb: tr('баталж бүртгэв'), at: r[F.directorSent], reason: '', kind: 'ok' });
+    }
+    if (r[F.directorReturned]) {
+      out.push({
+        who: dir,
+        verb: tr('багцын менежерт буцаав'),
+        at: r[F.directorReturned],
+        reason: r[F.directorReason],
         kind: 'bad',
       });
     }
@@ -190,7 +214,8 @@ function outcomeOf(r: Row, stage: Stage): { text: string; cls: string } {
     return { text: seesManager(stage) ? tr('Инженер буцаасан') : tr('Буцаасан'), cls: s.bBack };
   }
   if (!seesManager(stage)) return { text: tr('Хянагдаж байна'), cls: s.bWait };
-  return { text: STATUS_LABEL[st] ?? st, cls: st === STATUS.managerReturned ? s.bBack : s.bWait };
+  const back = st === STATUS.managerReturned || st === STATUS.directorReturned;
+  return { text: STATUS_LABEL[st] ?? st, cls: back ? s.bBack : s.bWait };
 }
 
 const DOT: Record<Step['kind'], string> = { sent: '↑', ok: '✓', bad: '✕' };
@@ -268,31 +293,57 @@ const stamp = (iso: string | null) => {
 const qty = (v: number | null) =>
   v == null ? '—' : Number(v.toFixed(3)).toLocaleString('en-US');
 /** ⚠️ Хувь нь үйлчилгээнд 0–1 хооронд — 100-аар үржүүлж харуулна */
-const pc = (v: number | null) =>
-  v == null ? '—' : `${(v * 100).toFixed(1)}%`;
 
 /**
  * ⚠️ ХЯНАГЧ ЮУГ ЗӨВШӨӨРЧ БАЙГААГАА ХАРАХ ЁСТОЙ. Хяналтын бүртгэл нь зөвхөн
  * хэн, хэзээ илгээснийг хэлдэг — компани ЮУ бөглөснийг хэлдэггүй. Түүнгүйгээр
  * зөвшөөрөх товч нь ёсорхуу дарах үйлдэл болно.
  */
-function Submitted(
-  { bagts, sheetOid, sentAt }: { bagts: string; sheetOid: number; sentAt: string | null },
-) {
+function Submitted({
+  bagts,
+  sheetOid,
+  sentAt,
+  ok,
+  onCell,
+  onChanges,
+}: {
+  bagts: string;
+  sheetOid: number;
+  sentAt: string | null;
+  /** Зөвшөөрсөн нүднүүд — эцэг (`Item`) эзэмшинэ: товч түүнд байна. */
+  ok?: Set<string>;
+  onCell?: (row: number, block: string) => void;
+  /** Өөрчлөлтийн жагсаалтыг эцэгт мэдэгдэнэ — «бүгд зөвшөөрөгдсөн үү» гэж бодоход. */
+  onChanges?: (c: Change[]) => void;
+}) {
   const [data, setData] = useState<Submission | null>(null);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(true);
+  /**
+   * ӨӨРЧЛӨГДСӨН НҮД РҮҮ ҮСРЭХ хүсэлт — жагсаалтаас дарахад бөглөх хуудас
+   * тэр мөр рүү гүйж, нүдийг богино анивчилтаар онцолно.
+   * ⚠️ 1,370 мөрөөс өөрчлөгдсөн хэдэн нүдийг гараар олох боломжгүй.
+   */
+  const [jump, setJump] = useState<{ row: number; block: string; n: number } | null>(null);
+  /** Өөрчлөгдсөн нүд: `${мөр}:${блок}` — бөглөх хуудсанд улаанаар тэмдэглэнэ. */
+  /** Хэдийг нь зөвшөөрсөн — толгойд харуулна. */
+  const okCount = (data?.changes ?? []).filter((c) => ok?.has(`${c.row}:${c.block}`)).length;
+  const changedKeys = useMemo(
+    () => new Set((data?.changes ?? []).map((c) => `${c.row}:${c.block}`)),
+    [data],
+  );
 
   useEffect(() => {
     let alive = true;
     setBusy(true);
     setErr('');
     loadSubmission(bagts, sheetOid)
-      .then((d) => { if (alive) setData(d); })
+      .then((d) => { if (alive) { setData(d); onChanges?.(d?.changes ?? []); } })
       .catch((e) => { if (alive) setErr(String((e as Error)?.message ?? e)); })
       .finally(() => { if (alive) setBusy(false); });
     // ⚠️ Задлах бүрд БИШ, нэг л удаа — хамаарал нь зөвхөн бүртгэлийн түлхүүр
     return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bagts, sheetOid]);
 
   if (busy) return <div className={s.subMuted}>{tr('Нийтэлсэн гүйцэтгэлийг татаж байна…')}</div>;
@@ -304,7 +355,15 @@ function Submitted(
       <div className={s.subHead}>
         <span>{tr('Нийтэлсэн гүйцэтгэл')}</span>
         <span className={s.subMeta}>
-          {data.pkgLabel} · {tr('{0} мөр архивлав', String(data.rows))}
+          {/*
+            * ⚠️ Хараахан АРХИВЛААГҮЙ илгээлтийг «архивлав» гэж ХЭЛЭХГҮЙ
+            *    (2026-09-04). Гүйцэтгэл нь ерөнхий менежер баталтал үндсэн
+            *    өгөгдөлд ОРООГҮЙ; «архивлав» гэвэл хянагч аль хэдийн
+            *    бүртгэгдсэн баримт хараад байна гэж эндүүрнэ.
+            */}
+          {data.pkgLabel} · {data.subOid
+            ? tr('илгээлт · {0} мөр', String(data.rows))
+            : tr('{0} мөр архивлав', String(data.rows))}
         </span>
       </div>
 
@@ -321,6 +380,16 @@ function Submitted(
             {tr('Нийтэлсэн: {0}', stamp(sentAt))}
             {' · '}
             {tr('Обьём бөглөсөн ажил: {0}', String(data.filledCount))}
+            {' · '}
+            {tr('өөрчлөгдсөн нүд: {0}', String(data.changes.length))}
+            {ok && data.changes.length > 0 && (
+              <>
+                {' · '}
+                <span className={okCount === data.changes.length ? s.okAll : s.okSome}>
+                  {tr('зөвшөөрсөн {0}/{1}', String(okCount), String(data.changes.length))}
+                </span>
+              </>
+            )}
             {data.compared && (
               <>
                 {' · '}
@@ -330,76 +399,113 @@ function Submitted(
               </>
             )}
           </div>
-          {/* ⚠️ Хүснэгт нь ӨӨРИЙН хүрээндээ хөндлөн гүйнэ — карт өргөсгөхгүй */}
-          <div className={s.subScroll}>
-            <table className={s.subTable}>
-              {/*
-                * ⚠️ ХОЁР МӨРТ ТОЛГОЙ — хуудасны бүтэцтэй ижил. Блокийн баганууд
-                * «5/1, 5/2…» гэсэн ганц тоогоор зогсвол тэдгээр нь ЮУНЫ тоо
-                * болох нь мэдэгдэхгүй. Дээр нь бүлгийн нэр заавал байна.
-                */}
-              <thead>
-                <tr>
-                  <th rowSpan={2}>№</th>
-                  <th rowSpan={2}>{tr('Ажил')}</th>
-                  <th rowSpan={2}>{tr('Обьём')}</th>
-                  <th rowSpan={2}>{tr('Обьёмын нийлбэр')}</th>
-                  <th rowSpan={2}>{tr('Нэгж өртөг')}</th>
-                  <th rowSpan={2}>{tr('Мөнгөн дүн')}</th>
-                  <th rowSpan={2}>{tr('Төлөвлөгөөт гүйцэтгэл')}</th>
-                  <th rowSpan={2}>{tr('Бодит гүйцэтгэл')}</th>
-                  <th rowSpan={2}>{tr('Төлөвлөгөө биелэлт')}</th>
-                  <th colSpan={data.blocks.length} className={s.subBand}>
-                    {tr('Ажил гүйцэтгэл — обьём ({0} барилга)', String(data.blocks.length))}
-                  </th>
-                </tr>
-                <tr>
-                  {data.blocks.map((b) => <th key={b} className={s.subBlk}>{b}</th>)}
-                </tr>
-              </thead>
-              <tbody>
-                {data.filled.map((x, i) => (
-                  <tr key={i}>
-                    <td>{x.no}</td>
-                    <td className={s.subWork} title={x.work}>{x.work}</td>
-                    <td className={s.subNum}>{qty(x.vol)}</td>
-                    <td className={`${s.subNum} ${s.subHi}`}>{qty(x.sum)}</td>
-                    <td className={s.subNum}>{qty(x.unit)}</td>
-                    <td className={s.subNum}>{qty(x.money)}</td>
-                    <td className={s.subNum}>{pc(x.plan)}</td>
-                    <td className={s.subNum}>{pc(x.act)}</td>
-                    <td className={s.subNum}>{pc(x.ratio)}</td>
-                    {x.cells.map((v, k) => (
-                      <td
-                        key={k}
-                        /* ⚠️ Өөрчлөгдсөн нүд УЛААН ХҮРЭЭТЭЙ — хянагч юу шинэчлэгдснийг
-                           нэг харцаар олох ёстой. Хүрээг `box-shadow: inset`-ээр өгнө:
-                           `border-collapse: collapse` дээр энгийн `border` нь хөршийн
-                           шугамтай уралдаж, хэсэг талдаа алга болдог. */
-                        className={`${s.subNum} ${x.changed[k] ? s.subCh : ''}`}
-                      >
-                        {qty(v)}
-                      </td>
-                    ))}
-                  </tr>
+          {/* ӨӨРЧЛӨГДСӨН НҮДНҮҮД — дарж хүснэгт рүү үсэрнэ.
+              ⚠️ Бүтэн хуудсанд 1,370 мөр бий; өөрчлөлт нь ихэвчлэн хэдхэн нүд.
+              Жагсаалтгүй бол хянагч тэднийг олох гэж бүх хуудсыг гүйлгэнэ. */}
+          {data.changes.length > 0 && (
+            <div className={s.chList}>
+              <div className={s.chHead}>
+                {tr('Өөрчлөгдсөн нүд')}
+                <span className={s.chCount}>{data.changes.length}</span>
+              </div>
+              <div className={s.chWrap}>
+                {data.changes.map((c, ci) => (
+                  <button
+                    key={`${ci}:${c.row}:${c.col}`}
+                    type="button"
+                    className={`${s.chItem} ${ok?.has(`${c.row}:${c.block}`) ? s.chOk : ''}`}
+                    title={`${c.no} · ${c.work}`}
+                    onClick={() =>
+                      setJump((j) => ({ row: c.row, block: c.block, n: (j?.n ?? 0) + 1 }))
+                    }
+                  >
+                    <span className={s.chBlk}>{c.block}</span>
+                    <span className={s.chWork}>{c.work}</span>
+                    <span className={s.chVal}>
+                      {c.from == null ? '—' : qty(c.from)} → <b>{qty(c.to)}</b>
+                    </span>
+                  </button>
                 ))}
-              </tbody>
-            </table>
-          </div>
-          {data.filledCount > data.filled.length && (
-            <div className={s.subMuted}>
-              {tr('… мөн {0} ажил', String(data.filledCount - data.filled.length))}
+              </div>
             </div>
           )}
+
+          {/* ⚠️ Хүснэгт нь ӨӨРИЙН хүрээндээ хөндлөн гүйнэ — карт өргөсгөхгүй */}
+          {/*
+            * ⚠️ ЭНЭ НЬ «Гүйцэтгэл бөглөх»-ийн ЯГ ТЭР компонент — хуулбар БИШ.
+            *    Гүйцэтгэгч, талбайн инженер, менежер гурвуулаа нэг хүснэгт,
+            *    нэг томъёо, нэг толгойг хардаг. Ялгаа нь ЗӨВХӨН нэг нөхцөл:
+            *    `view` өгөгдсөн бол нүд засагдахгүй.
+            */}
+          <div className={s.subSheet}>
+            <Sheet
+              view={{
+                pkgKey: data.pkgKey,
+                day: data.day,
+                /*
+                 * ⚠️ Илгээлт архивт БАЙХГҮЙ тул `day`-гаар нээвэл хуудас
+                 *    хоосон (эсвэл огт өөр агшин) харагдана. `subOid` өгөгдвөл
+                 *    бөглөх хуудас архивын сүүлийн жааз дээр ЯГ энэ илгээлтийг
+                 *    давхарлаж, хянагч ба бөглөгч НЭГ хүснэгт харна.
+                 */
+                subOid: data.subOid,
+                changed: changedKeys,
+                jump,
+                ok,
+                onCell,
+              }}
+            />
+          </div>
+
         </>
       )}
     </div>
   );
 }
 
+/**
+ * АЖИЛ ХААНА ЯВААГ 4 ЦЭГЭЭР.
+ *
+ * ⚠️ Гүйцэтгэгчид энэ нь ХАМГИЙН чухал мэдээлэл: «илгээчихсэн, гэхдээ
+ *    хаана байгаа юм бол» гэсэн асуулт нь утасны дуудлага болж хувирдаг.
+ *    Төлөвийн шошго ганцаараа «Менежер хянаж байна» гэж хэлдэг ч ХЭДДЭХ
+ *    түвшин, хэд үлдсэнийг хэлдэггүй.
+ *
+ * ⚠️ Гүйцэтгэгчид дээд шатны НЭР харагдахгүй — «2-р шат», «3-р шат» гэж
+ *    дугаараар л үзүүлнэ. Дотоод бүтэц нь гадагш задрах ёсгүй.
+ */
+function Track({ status, stage }: { status: Status; stage: Stage }) {
+  const done = status === STATUS.transferred;
+  const at = STAGE_ORDER.indexOf(OWNER[status] ?? 'company');
+  return (
+    <div className={s.track} title={statusLabel(status, stage)}>
+      {STAGE_ORDER.map((x, i) => {
+        const state = done || i < at ? s.tkDone : i === at ? s.tkNow : s.tkWait;
+        return (
+          <span
+            key={x}
+            className={`${s.tk} ${state}`}
+            title={seesManager(stage) ? STAGE_LABEL[x] : tr('{0}-р шат', String(i + 1))}
+          >
+            {done || i < at ? '✓' : i + 1}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 /* ══════════ Нэг ажил ══════════ */
 
-function Item({ work, stage, onFix }: { work: Work; stage: Stage; onFix: () => void }) {
+function Item({ work, stage, who, onFix, readOnly }: {
+  work: Work; stage: Stage; who: string; onFix: () => void;
+  /**
+   * ⚠️ ЗӨВХӨН ХАРАХ. Урсгалын шатанд томилогдоогүй үүрэг (жиш. `beginner`)
+   * энэ хуудсыг үзэж чадах ч зөвшөөрөх/буцаах ЁСГҮЙ — эс бөгөөс шат сонгох
+   * товчоор дамжуулан хэн ч хянагч болж чадна.
+   */
+  readOnly?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState('');
   const [err, setErr] = useState('');
@@ -407,7 +513,59 @@ function Item({ work, stage, onFix }: { work: Work; stage: Stage; onFix: () => v
 
   const cur = work.current;
   const st = work.status;
-  const mine = work.owner === stage && st !== STATUS.transferred;
+
+  /**
+   * НҮД БҮРИЙГ ГАРААР ЗӨВШӨӨРНӨ.
+   *
+   * ⚠️ Урьд нь «Зөвшөөрөх» товч нь өөрчлөлтийг ХАРААГҮЙ ч дарагддаг байв —
+   *    тэгвэл хяналт нь ёсорхуу тамга болно. Одоо өөрчлөгдсөн нүд бүр дээр
+   *    дарж ногоон болгосны дараа л цаашаа шилжинэ. Ногоон болоогүй нүд нь
+   *    АСУУДАЛТАЙ гэсэн үг — тэдгээр нь улаанаараа үлдэж, буцаах шалтгаанд
+   *    өөрсдөө жагсаагдана.
+   */
+  const [changes, setChanges] = useState<Change[]>([]);
+  /**
+   * Үйлчилгээнд 4-р шатны талбар байгаа эсэх.
+   * ⚠️ Байхгүй үед «Батлах» дарвал ArcGIS алдаа буцааж, менежер баталсан
+   *    гэж бодох боловч юу ч хадгалагдахгүй. Тиймээс ӨМНӨӨС нь хаана.
+   */
+  const [lack, setLack] = useState<string[]>([]);
+  useEffect(() => {
+    if (stage !== 'director') return;
+    let alive = true;
+    missingDirectorFields().then((m) => { if (alive) setLack(m); });
+    return () => { alive = false; };
+  }, [stage]);
+  const [okKeys, setOkKeys] = useState<Set<string>>(new Set());
+  const toggleOk = useCallback((row: number, block: string) => {
+    setOkKeys((prev) => {
+      const n = new Set(prev);
+      const k = `${row}:${block}`;
+      if (n.has(k)) n.delete(k);
+      else n.add(k);
+      return n;
+    });
+  }, []);
+  /** Хараахан зөвшөөрөөгүй = асуудалтай гэж үзэх өөрчлөлтүүд */
+  const bad = changes.filter((c) => !okKeys.has(`${c.row}:${c.block}`));
+  const allOk = changes.length > 0 && bad.length === 0;
+
+  /**
+   * Буцаах шалтгаанд асуудалтай нүднүүд ӨӨРСДӨӨ орно.
+   * ⚠️ «Зөв биш байна» гэсэн ганц өгүүлбэр нь гүйцэтгэгчид юу засахыг
+   *    хэлдэггүй — аль блокийн аль ажил нь болохыг нэрлэж өгнө.
+   */
+  const badText = () => {
+    if (!bad.length) return reason.trim();
+    const list = bad
+      .slice(0, 12)
+      .map((c) => `${c.block} · ${c.work} → ${c.to ?? "—"}`)
+      .join("; ");
+    const more = bad.length > 12 ? ` … +${bad.length - 12}` : "";
+    const head = tr("Зөвшөөрөгдөөгүй {0} нүд: ", String(bad.length));
+    return [reason.trim(), head + list + more].filter(Boolean).join(" | ");
+  };
+  const mine = !readOnly && work.owner === stage && st !== STATUS.transferred;
 
   const run = async (fn: () => Promise<{ ok: boolean; error?: string }>) => {
     if (busy) return;
@@ -421,24 +579,36 @@ function Item({ work, stage, onFix }: { work: Work; stage: Stage; onFix: () => v
   const review = (decision: (typeof DECISION)[keyof typeof DECISION]) =>
     run(() => apply({
       oid: cur.__oid,
-      stage: stage === 'engineer' ? 'engineer' : 'manager',
+      stage: stage === 'engineer' ? 'engineer' : stage === 'manager' ? 'manager' : 'director',
       decision,
-      reason,
-      who: stage === 'engineer' ? WHO.engineer : WHO.manager,
+      reason: decision === DECISION.return ? badText() : reason,
+      who,
     }));
 
   const reviewing =
     (stage === 'engineer' && st === STATUS.engineerReview) ||
-    (stage === 'manager' && st === STATUS.managerReview);
+    (stage === 'manager' && st === STATUS.managerReview) ||
+    (stage === 'director' && st === STATUS.directorReview);
+
+  /**
+   * ДЭЭД ШАТНААС БУЦСАНЫГ ДАХИН ШАЛГАХ — хоёр газарт давтагдана.
+   * ⚠️ Буцаалт нэг алхам л ухардаг тул дахин шалгагч нь ДАМЖУУЛАГЧ БИШ:
+   *    асуудалгүй бол дээшээ эргүүлж илгээнэ, асуудалтай бол доошоо буцаана.
+   */
+  const rechecking =
+    (stage === 'engineer' && st === STATUS.managerReturned) ||
+    (stage === 'manager' && st === STATUS.directorReturned);
+  const reBy: 'engineer' | 'manager' = stage === 'manager' ? 'manager' : 'engineer';
 
   return (
     <div className={s.item}>
       <button className={s.itemHead} onClick={() => setOpen((v) => !v)}>
         <span className={s.chev}>{open ? '▾' : '▸'}</span>
         <span className={s.who}>
-          <div className={s.ajil}>{work.ajil}</div>
-          <div className={s.meta}>{work.bagts} · {work.company}</div>
+          <div className={s.ajil} title={work.ajil}>{work.ajil}</div>
+          <div className={s.meta} title={`${work.bagts} · ${work.company}`}>{work.bagts} · {work.company}</div>
         </span>
+        <Track status={st} stage={stage} />
         <span className={`${s.badge} ${badgeClass(st, stage)}`}>{statusLabel(st, stage)}</span>
       </button>
 
@@ -457,40 +627,80 @@ function Item({ work, stage, onFix }: { work: Work; stage: Stage; onFix: () => v
                     onChange={(e) => setReason(e.target.value)}
                   />
                   <div className={s.row}>
-                    <button className={`${s.btn} ${s.ok}`} disabled={busy}
+                    {lack.length > 0 && (
+                      <div className={s.error}>
+                        {tr('Үйлчилгээнд дараах талбарууд алга тул баталгаажуулалт хадгалагдахгүй: {0}', lack.join(', '))}
+                      </div>
+                    )}
+                    {/* ⚠️ Бүх өөрчлөлт ногоон болтол ШИЛЖҮҮЛЭХ БОЛОМЖГҮЙ. */}
+                    <button
+                      className={`${s.btn} ${s.ok}`}
+                      disabled={busy || lack.length > 0 || (changes.length > 0 && !allOk)}
+                      title={
+                        changes.length > 0 && !allOk
+                          ? tr('Эхлээд өөрчлөгдсөн нүд бүр дээр дарж зөвшөөрнө үү — үлдсэн {0}', String(bad.length))
+                          /*
+                           * ⚠️ ЕРӨНХИЙ МЕНЕЖЕРИЙН товч нь одоо ЖИНХЭНЭ бичилт
+                           *    хийдэг: түүнийг дарж байж л гүйцэтгэл үндсэн
+                           *    өгөгдөлд (архив + нэгтгэл) орно. Хэрэглэгч
+                           *    үүнийг МЭДЭЖ дарах ёстой.
+                           */
+                          : stage === 'director'
+                            ? tr('Баталсны дараа гүйцэтгэл архивт бичигдэж, нэгтгэлд бүртгэгдэнэ — үүнээс өмнө үндсэн өгөгдөлд ОРООГҮЙ')
+                            : undefined
+                      }
                       onClick={() => review(DECISION.approve)}>
-                      {stage === 'engineer' ? tr('Зөвшөөрч менежерт илгээх') : tr('Зөвшөөрч шилжүүлэх')}
+                      {stage === 'engineer'
+                        ? tr('Зөвшөөрч багцын менежерт илгээх')
+                        : stage === 'manager'
+                          ? tr('Зөвшөөрч ерөнхий менежерт илгээх')
+                          : tr('Баталж архивт бүртгэх')}
+                      {changes.length > 0 && !allOk && ` (${bad.length})`}
                     </button>
                     <button className={`${s.btn} ${s.bad}`} disabled={busy}
+                      title={bad.length ? tr('Зөвшөөрөгдөөгүй нүднүүд шалтгаанд өөрсдөө жагсаана') : undefined}
                       onClick={() => review(DECISION.return)}>
                       {tr('Буцаах')}
+                      {bad.length > 0 && changes.length > 0 && ` (${bad.length})`}
                     </button>
                   </div>
                 </>
               )}
 
               {/* ── Инженер: менежер буцаасныг ДАХИН ШАЛГАНА ── */}
-              {stage === 'engineer' && st === STATUS.managerReturned && (
+              {rechecking && (
                 <>
                   <div className={s.reasonBox}>
-                    <span className={s.reasonLabel}>{tr('Менежер буцаасан')}: </span>
-                    <span className={s.reasonText}>{cur[F.managerReason]}</span>
+                    <span className={s.reasonLabel}>
+                      {stage === 'manager' ? tr('Ерөнхий менежер буцаасан') : tr('Багцын менежер буцаасан')}:{' '}
+                    </span>
+                    <span className={s.reasonText}>
+                      {stage === 'manager' ? cur[F.directorReason] : cur[F.managerReason]}
+                    </span>
                   </div>
                   <textarea
                     className={s.field}
                     rows={2}
-                    placeholder={tr('Компанид буцаах бол шалтгаанаа бичнэ үү (менежерийн бичвэр компанид харагдахгүй)')}
+                    placeholder={
+                      stage === 'manager'
+                        ? tr('Инженерт буцаах бол шалтгаанаа бичнэ үү (дээд шатны бичвэр доошоо дамжихгүй)')
+                        : tr('Компанид буцаах бол шалтгаанаа бичнэ үү (менежерийн бичвэр компанид харагдахгүй)')
+                    }
                     value={reason}
                     onChange={(e) => setReason(e.target.value)}
                   />
                   <div className={s.row}>
                     <button className={`${s.btn} ${s.ok}`} disabled={busy}
-                      onClick={() => run(() => recheck(cur.__oid, 'ok', '', WHO.engineer))}>
-                      {tr('Дахин шалгасан — асуудалгүй, менежерт илгээх')}
+                      onClick={() => run(() => recheck(cur.__oid, 'ok', '', who, reBy))}>
+                      {stage === 'manager'
+                        ? tr('Дахин шалгасан — асуудалгүй, ерөнхий менежерт илгээх')
+                        : tr('Дахин шалгасан — асуудалгүй, менежерт илгээх')}
                     </button>
                     <button className={`${s.btn} ${s.bad}`} disabled={busy}
-                      onClick={() => run(() => recheck(cur.__oid, 'back', reason, WHO.engineer))}>
-                      {tr('Асуудал байна — компанид буцаах')}
+                      onClick={() => run(() => recheck(cur.__oid, 'back', reason, who, reBy))}>
+                      {stage === 'manager'
+                        ? tr('Асуудал байна — инженерт буцаах')
+                        : tr('Асуудал байна — компанид буцаах')}
                     </button>
                   </div>
                 </>
@@ -522,7 +732,14 @@ function Item({ work, stage, onFix }: { work: Work; stage: Stage; onFix: () => v
             </div>
           )}
 
-          <Submitted bagts={work.bagts} sheetOid={cur[F.sheetOid]} sentAt={cur[F.companySent]} />
+          <Submitted
+            bagts={work.bagts}
+            sheetOid={cur[F.sheetOid]}
+            sentAt={cur[F.companySent]}
+            ok={reviewing ? okKeys : undefined}
+            onCell={reviewing ? toggleOk : undefined}
+            onChanges={setChanges}
+          />
           <History cycles={work.cycles} stage={stage} />
         </div>
       )}
@@ -544,21 +761,145 @@ type StatusOpt = { value: string; label: string; match: Status[] };
 const statusOptions = (stage: Stage): StatusOpt[] =>
   stage === 'company'
     ? [
-      { value: 'w', label: tr('Хянагдаж байна'), match: [STATUS.engineerReview, STATUS.managerReview, STATUS.managerReturned] },
+      { value: 'w', label: tr('Хянагдаж байна'), match: [STATUS.engineerReview, STATUS.managerReview, STATUS.managerReturned, STATUS.directorReview, STATUS.directorReturned] },
       { value: 'b', label: tr('Буцаасан'), match: [STATUS.engineerReturned] },
       { value: 'd', label: tr('Хүлээн авсан'), match: [STATUS.transferred] },
     ]
     : Object.values(STATUS).map((x) => ({ value: x, label: STATUS_LABEL[x], match: [x] }));
 
-export function Guitsetgel({ onView }: { onView?: (key: 'sheet') => void }) {
-  const [stage, setStage] = useState<Stage>('engineer');
+/**
+ * УРСГАЛЫН ЗУРАГЛАЛ — гурван шат, тус бүрд хүлээгдэж буй ажлын тоо.
+ *
+ * ⚠️ Энэ бол зөвхөн чимэг БИШ: «миний ажил хаана явааг» хэлдэг ЦОРЫН ГАНЦ
+ *    газар. Урьд нь хэрэглэгч үүргээ гараар сольж, тоог нь тааварлаж байв.
+ *    Одоо гурван шат ЗЭРЭГ харагдана — ажил хаана гацсан нь нэг харцаар ойлгомжтой.
+ */
+function Flow({
+  counts,
+  stage,
+  pick,
+}: {
+  counts: Record<Stage, number>;
+  stage: Stage;
+  /** Үүрэгтэй хэрэглэгчид шат СОЛИГДОХГҮЙ — зөвхөн харна. */
+  pick?: (x: Stage) => void;
+}) {
+  return (
+    <div className={s.flow}>
+      {STAGES.map((x, i) => (
+        <Fragment key={x}>
+          {i > 0 && <span className={s.flowArrow} aria-hidden="true">→</span>}
+          <button
+            type="button"
+            className={`${s.flowStep} ${x === stage ? s.flowOn : ''}`}
+            disabled={!pick}
+            onClick={() => pick?.(x)}
+          >
+            <span className={s.flowName}>{STAGE_LABEL[x]}</span>
+            <span className={s.flowNum}>{counts[x]}</span>
+          </button>
+        </Fragment>
+      ))}
+    </div>
+  );
+}
+
+export function Guitsetgel() {
+  /**
+   * ШАТЫГ АДМИНЫ ТОМИЛГООНООС авна — гараар сонгохгүй.
+   *
+   * ⚠️ Урьд нь гурван товчоор өөрийгөө «инженер» гэж зарлаж болдог байсан нь
+   *    хяналтын утгыг үгүй хийдэг: зөвшөөрлийг хэн дарсан нь батлагдахгүй.
+   *    Дараа нь үүргээс (`ROLE_STAGE[role]`) гаргадаг болсон ч томилгоо нь
+   *    урсгалын бус үүргийг санаатай хэвээр үлдээдэг тул `beginner`/`tolovlolt`
+   *    томилогдсон хүн хуудсаа огт харж чаддаггүй байв (2026-08-29). Одоо
+   *    `resolveFlowStage`: томилгоо (`stageOfUser`) ДАВАМГАЙЛНА.
+   *
+   * ⚠️ Нэвтрэлт унтраалттай (дев) эсвэл КОДЫН хатуу `super` үед л шат солигдоно —
+   *    бүх урсгалыг турших шаардлагатай тул. Панелийн «Супер» preset энд
+   *    хамаарахгүй: хянах эрх зөвхөн томилгооноос.
+   */
+  const { role, user, status: authStatus } = useAuth();
+  /**
+   * Хяналтын бүртгэлд бичигдэх НЭР — нэвтэрсэн хэрэглэгчээс.
+   *
+   * ⚠️ Урьд нь «Б.Болд» гэх мэт туршилтын хатуу нэрс амьд хүснэгтэд бичигдэж,
+   *    зөвшөөрлийн түүх зохиомол хүний нэрээр «баталгаажиж» байв.
+   * ⚠️ tr() ХЭРЭГЛЭХГҮЙ — энэ нь дэлгэцийн бичвэр биш, ArcGIS-д хадгалагдах
+   *    ӨГӨГДӨЛ (төлөвийн утгуудтай ижил дүрэм). Нэвтрэлт унтраалттай (дев)
+   *    үед user байхгүй тул худал хүний нэрийн оронд ерөнхий «Хянагч» орно.
+   */
+  const who = user?.fullName || user?.username || 'Хянагч';
+  /** Томилгоо өөрчлөгдөхөд (5 мин poll, өөр таб) дахин бодно */
+  const [aclN, setAclN] = useState(0);
+  useEffect(() => subscribeAcl(() => setAclN((n) => n + 1)), []);
+  /** Админы сонгогчоор сонгосон шат — зөвхөн `canPick` үед утгатай */
+  const [picked, setPicked] = useState<Stage>('engineer');
+  const flow = useMemo(
+    () => resolveFlowStage(user?.username, role, picked, authStatus === 'off'),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [user, role, picked, authStatus, aclN],
+  );
+  const stage: Stage = flow.stage ?? 'engineer';
+  /** Түгжигдсэн шат (толгойн тэмдэг) — сонгогчтой админд байхгүй */
+  const fixed = flow.canPick ? undefined : flow.stage;
+  /**
+   * ХЯНАХ ЭРХ — урсгалын шатанд томилогдсон, эсвэл системийн админ.
+   *
+   * ⚠️ `sheet` ба `guitsetgel` НЭГ болсноор урьд нь зөвхөн хүснэгт үздэг байсан
+   * үүрэг (`beginner`) энэ хуудсанд орох боллоо. Шат сонгох товч нь тэдэнд ч
+   * нээлттэй байсан тул зөвшөөрөх/буцаах товч гарч, ХЯНАГЧ БОЛЖ чадах байв.
+   * Одоо томилгоогүй хүнд зөвхөн ХАРАГДАНА (fail-closed).
+   */
+  const canReview = flow.canReview;
+
+  /**
+   * БӨГЛӨХ ТАБ ХЭНД ГАРАХ ВЭ.
+   *
+   * ⚠️ Гүйцэтгэгчээс гадна «Мөр нэмэх» эрх авсан хүнд ЗААВАЛ нээгдэнэ. Эс
+   * бөгөөс тэр эрх УТГАГҮЙ болно: Ерөнхий менежер мөр нэмэх эрхтэй атлаа
+   * хуудас руу орох замгүй байв.
+   *
+   * ⚠️ 2026-09-03: урьд нь `qaqc` (Inspection Test Plan) эрх ч энэ табыг
+   *    нээдэг байсныг чанарын хэсэгтэй хамт хассан.
+   *
+   * ⚠️ Бөглөх ХУУДАС нь өөрөө багцаар шүүгддэг (`FillNew` дэх `bagtsScope`)
+   * тул энэ нь «аль багц» гэдгийг нээхгүй — зөвхөн «энэ таб байна уу».
+   */
+  const canFill = stage === 'company' || hasCap(user?.username, 'addRow');
+  /** Гүйцэтгэгчийн хуудас хоёр талтай: бөглөх ба илгээснээ хянах. */
+  /**
+   * ⚠️ АНХНЫ ТАБ нь «Илгээсэн ажил» — бөглөх нь БИШ. Хуудсанд ороход эхлээд
+   * «миний илгээсэн ажил хаана явж байна» гэдэг харагдах ёстой; бөглөх нь
+   * тэндээс сонгож ордог үйлдэл. Урьд нь шууд бөглөх хуудас нээгддэг тул
+   * гүйцэтгэгч өөрийн илгээлтийн явцыг хардаггүй байв.
+   */
+  const [tab, setTab] = useState<'fill' | 'sent'>('sent');
   const [q, setQ] = useState('');
   const [bagts, setBagts] = useState(ALL);
   const [company, setCompany] = useState(ALL);
   const [status, setStatus] = useState(ALL);
 
   const { rows, loading, error, reload } = useHyanaltRows();
-  const works = useMemo(() => groupWorks(rows), [rows]);
+  /**
+   * БАГЦААР ХУВААРИЛАХ — хэн юуг хариуцахыг эрхийн панелаас (`flow.scope`).
+   *
+   * ⚠️ АДМИН (кодын хатуу `super`) нь томилгооноос ҮЛ ХАМААРНА — эс бөгөөс шинэ
+   * систем дээр эсвэл бүх томилгоо санамсаргүй устсан үед тохируулах хүн өөрөө
+   * юу ч харахгүй болж, эрхээ сэргээх аргагүй түгжигдэнэ.
+   *
+   * ⚠️ Бусад бүх үүрэгт томилгоо нь ЗААВАЛ: томилогдоогүй хүнд `[]` тул
+   * жагсаалт хоосон болно (fail-closed).
+   */
+  const myBagts = flow.scope;
+
+  const works = useMemo(() => {
+    const all = groupWorks(rows);
+    return myBagts ? all.filter((w) => myBagts.includes(w.bagts)) : all;
+  }, [rows, myBagts]);
+
+  /** Нэг ч багц хуваарилагдаагүй — жагсаалт хоосон байгаагийн ШАЛТГААН. */
+  const noScope = Array.isArray(myBagts) && myBagts.length === 0;
 
   const bagtsList = useMemo(() => optionsOf(works, (w) => w.bagts), [works]);
   const companyList = useMemo(() => optionsOf(works, (w) => w.company), [works]);
@@ -582,6 +923,23 @@ export function Guitsetgel({ onView }: { onView?: (key: 'sheet') => void }) {
   const mine = filtered.filter((w) => w.owner === stage && w.status !== STATUS.transferred);
   const others = filtered.filter((w) => !(w.owner === stage && w.status !== STATUS.transferred));
 
+  /*
+   * ГҮЙЦЭТГЭГЧИЙН ХАРАГДАЦ — «миний илгээсэн ажил хаана явж байна вэ».
+   *
+   * ⚠️ Урьд нь илгээсэн ажил нь «Бусад ажил» гэсэн нэг овоонд ордог байв —
+   * тэр нь ӨӨР ХҮНИЙ ажил гэж уншигдах бөгөөд гүйцэтгэгч өөрийн илгээлт ямар
+   * шатанд байгааг хаанаас ч харж чаддаггүй байлаа. Одоо гурав салгав:
+   *   1. `mine`      — буцаагдсан, ЗАСАХ шаардлагатай (дээд талд)
+   *   2. `inReview`  — илгээгдсэн, ХЯНАГДАЖ байна (мөр бүр дээр `Track` нь
+   *                    яг аль шатанд байгааг харуулна)
+   *   3. `done`      — дөрвөн шат өнгөрч ШИЛЖҮҮЛСЭН
+   *
+   * ⚠️ Зөвхөн гүйцэтгэгчид хамаарна: хянагчийн хувьд «бусад» нь үнэхээр
+   * бусдын ажил тул хуучин бүлэглэлт хэвээр.
+   */
+  const inReview = others.filter((w) => w.status !== STATUS.transferred);
+  const done = others.filter((w) => w.status === STATUS.transferred);
+
   const countFor = (x: Stage) =>
     works.filter((w) => w.owner === x && w.status !== STATUS.transferred).length;
 
@@ -591,27 +949,71 @@ export function Guitsetgel({ onView }: { onView?: (key: 'sheet') => void }) {
    * ⚠️ `onView` дамжуулагдаагүй бол (тусад нь ашиглах үед) товч ажиллахгүй
    * байхын оронд ЮУ Ч ХИЙХГҮЙ — унахаас сэргийлнэ.
    */
-  const goFix = () => onView?.('sheet');
+  /*
+   * «ЗАСАХ» — ДОТОГШОО таб солино, гадагш үсрэхгүй.
+   *
+   * ⚠️ Урьд нь тусдаа «Гүйцэтгэл бөглөх» харагдац руу гаргадаг байв. Тэр нь
+   * хоёр хаалга, хоёр эрх шаарддаг байсан бөгөөд буцаж ирэх зам нь ойлгомжгүй
+   * байлаа. Одоо бөглөх нь энэ хуудасны нэг таб тул шилжилт нь газар дээрээ.
+   */
+  const goFix = () => setTab('fill');
 
   return (
     <div className={s.wrap}>
       <header className={s.head}>
         <div>
           <div className={s.title}>{tr('Гүйцэтгэлийн хяналт')}</div>
-          <div className={s.sub}>{tr('компани → талбайн инженер → менежер')}</div>
+          <div className={s.sub}>{tr('гүйцэтгэгч → хяналтын инженер → багцын менежер → ерөнхий менежер')}</div>
         </div>
         <span className={s.spacer} />
-        <div className={s.roles}>
-          {STAGES.map((x) => (
-            <button key={x} className={`${s.role} ${stage === x ? s.roleOn : ''}`}
-              onClick={() => { setStage(x); setStatus(ALL); }}>
-              {STAGE_LABEL[x]}
-              {countFor(x) > 0 && <span className={s.count}>{countFor(x)}</span>}
-            </button>
-          ))}
-        </div>
+        {/* Хэн болох нь — үүргээс. Солих товч ЗӨВХӨН үүрэггүй (дев/super) үед. */}
+        {fixed && <span className={s.roleBadge}>{STAGE_LABEL[fixed]}</span>}
+        <Flow
+          counts={{
+            company: countFor('company'),
+            engineer: countFor('engineer'),
+            manager: countFor('manager'),
+            director: countFor('director'),
+          }}
+          stage={stage}
+          pick={flow.canPick ? (x) => { setPicked(x); setStatus(ALL); } : undefined}
+        />
       </header>
 
+      {/* ГҮЙЦЭТГЭГЧИЙН ХОЁР ТАЛ — бөглөх ба илгээснээ хянах. Урьд нь эдгээр
+          ХОЁР ТУСДАА харагдац байсан тул компани хуудас хооронд үсэрч,
+          «би юу илгээснээ» хаанаас харахаа мэддэггүй байв. */}
+      <div className={s.tabs}>
+        {canFill && (
+          <>
+            <button
+              type="button"
+              className={`${s.tab} ${tab === 'fill' ? s.tabOn : ''}`}
+              onClick={() => setTab('fill')}
+            >
+              {tr('Гүйцэтгэл бөглөх')}
+            </button>
+            <button
+              type="button"
+              className={`${s.tab} ${tab === 'sent' ? s.tabOn : ''}`}
+              onClick={() => setTab('sent')}
+            >
+              {tr('Илгээсэн ажил')}
+              {countFor('company') > 0 && <span className={s.count}>{countFor('company')}</span>}
+            </button>
+          </>
+        )}
+        {/* ⚠️ «Эрх тохируулах» ЭНДЭЭС ХАСАГДСАН — Админ портал дотор
+            тусдаа бүлэг болов. Ажлын хуудсанд тохиргооны товч байвал
+            хянагч санамсаргүй дараад хуваарилалт өөрчилнө. */}
+      </div>
+
+      {canFill && tab === 'fill' ? (
+        <div className={s.fill}>
+          <Sheet />
+        </div>
+      ) : (
+      <>
       <div className={s.bar}>
         <input className={s.search} placeholder={tr('Ажил, багц, компаниар хайх…')}
           value={q} onChange={(e) => setQ(e.target.value)} />
@@ -656,30 +1058,69 @@ export function Guitsetgel({ onView }: { onView?: (key: 'sheet') => void }) {
             <div className={s.list}>
               {/* ⚠️ Нэр ЗҮҮН, тоо БАРУУН — зураасаар холбохгүй */}
               <div className={s.groupHead}>
-                <span>{STAGE_LABEL[stage]}</span>
+                <span>{stage === 'company' ? tr('Засах шаардлагатай — буцаагдсан') : STAGE_LABEL[stage]}</span>
                 <span className={s.groupCount}>
                   {tr('хүлээгдэж буй {0}', String(mine.length))}
                 </span>
               </div>
               {mine.length === 0 ? (
-                <div className={s.empty}>{tr('Хүлээгдэж буй ажил алга.')}</div>
+                <div className={s.empty}>
+                  {/* ⚠️ Томилгоогүй бол жагсаалт ХООСОН байх нь ХЭВИЙН биш —
+                      шалтгааныг нь ялгаж хэлнэ, эс бөгөөс «ажил алга» гэж
+                      ойлгоод хүлээсээр байна. */}
+                  {noScope
+                    ? tr('Танд нэг ч багц хуваарилагдаагүй байна. Админ «Гүйцэтгэлийн урсгал» хэсэгт багц зааж өгсний дараа ажлууд харагдана.')
+                    : stage === 'company'
+                      ? tr('Буцаагдсан ажил алга — бүх илгээлт хэвийн явж байна.')
+                      : tr('Хүлээгдэж буй ажил алга.')}
+                </div>
               ) : (
-                mine.map((w) => <Item key={w.key} work={w} stage={stage} onFix={goFix} />)
+                mine.map((w) => <Item key={w.key} work={w} stage={stage} who={who} onFix={goFix} readOnly={!canReview} />)
               )}
             </div>
 
-            {others.length > 0 && (
-              <div className={s.list} style={{ marginTop: 18 }}>
-                <div className={s.groupHead}>
-                <span>{tr('Бусад ажил')}</span>
-                <span className={s.groupCount}>{others.length}</span>
-              </div>
-                {others.map((w) => <Item key={w.key} work={w} stage={stage} onFix={goFix} />)}
-              </div>
+            {/* ── ГҮЙЦЭТГЭГЧ: илгээсэн ажил хаана явж байна ── */}
+            {stage === 'company' ? (
+              <>
+                {inReview.length > 0 && (
+                  <div className={s.list} style={{ marginTop: 18 }}>
+                    <div className={s.groupHead}>
+                      <span>{tr('Илгээсэн — хянагдаж байна')}</span>
+                      <span className={s.groupCount}>{inReview.length}</span>
+                    </div>
+                    {inReview.map((w) => (
+                      <Item key={w.key} work={w} stage={stage} who={who} onFix={goFix} readOnly={!canReview} />
+                    ))}
+                  </div>
+                )}
+                {done.length > 0 && (
+                  <div className={s.list} style={{ marginTop: 18 }}>
+                    <div className={s.groupHead}>
+                      <span>{tr('Батлагдсан — эх хүснэгтэд шилжсэн')}</span>
+                      <span className={s.groupCount}>{done.length}</span>
+                    </div>
+                    {done.map((w) => (
+                      <Item key={w.key} work={w} stage={stage} who={who} onFix={goFix} readOnly={!canReview} />
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : (
+              others.length > 0 && (
+                <div className={s.list} style={{ marginTop: 18 }}>
+                  <div className={s.groupHead}>
+                    <span>{tr('Бусад ажил')}</span>
+                    <span className={s.groupCount}>{others.length}</span>
+                  </div>
+                  {others.map((w) => <Item key={w.key} work={w} stage={stage} who={who} onFix={goFix} readOnly={!canReview} />)}
+                </div>
+              )
             )}
           </>
         )}
       </div>
+      </>
+      )}
     </div>
   );
 }

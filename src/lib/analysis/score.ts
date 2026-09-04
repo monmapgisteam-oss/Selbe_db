@@ -116,6 +116,24 @@ export function passesNorm(value: number | null | undefined, ind: Indicator): bo
   return value <= (ind.best ?? 0);
 }
 
+/**
+ * НОРМООС ХЭР ЗӨРСӨН — үргэлж ЭЕРЭГ тоо (зөрчлийн хэмжээ), хангасан бол 0.
+ *
+ * ⚠️ Оноо нь шалтгаан хэлдэггүй: «35 оноо» гэдгээс юуг хэдээр засахыг мэдэхгүй.
+ * Энэ нь «ногоон 3.9 м²/хүн ДУТУУ» гэсэн үйлдэл болгож болох тоог өгнө.
+ *
+ * ⚠️ `band` горимд хоёр талдаа зөрч болно (нягтшил хэт бага ч, хэт өндөр ч) —
+ * хаана талаас нь давсныг дуудагч тал `value < optMin` гэж өөрөө шалгана.
+ */
+export function normGap(value: number | null | undefined, ind: Indicator): number | null {
+  if (value == null || !Number.isFinite(value)) return null;
+  if (ind.mode === 'higher') return Math.max(0, (ind.target ?? 0) - value);
+  if (ind.mode === 'lower') return Math.max(0, value - (ind.best ?? 0));
+  const lo = ind.optMin ?? 0;
+  const hi = ind.optMax ?? 0;
+  return value < lo ? lo - value : value > hi ? value - hi : 0;
+}
+
 /** Нормын шаардлагыг нэг мөрөнд — дагаврын эгшиг зохицол тул ≥ / ≤ тэмдгээр */
 export function normText(ind: Indicator, fmt: (v: number, d: number) => string): string {
   const u = ind.unit ? ` ${ind.unit}` : '';

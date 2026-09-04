@@ -25,12 +25,15 @@
 .title { font-size: 1.15rem; font-weight: 700; color: var(--ink); margin-bottom: 6px; }
 .sub { font-size: 0.82rem; line-height: 1.55; color: var(--ink-3); margin-bottom: 24px; }
 
+/* ⚠️ Бэх нь `--hue-ink` — харанхуй горимд `--hue` нь ЦАЙВАР cyan (#67d7e4)
+   тул цагаан бичиг 1.69:1 л өгч, нэвтрэх дэлгэцийн ЦОРЫН ГАНЦ товчны бичиг
+   бараг үл ялгардаг байв (WCAG AA 4.5:1). Цайвар горимд токен нь #fff хэвээр. */
 .btn {
   width: 100%;
   padding: 11px 18px;
   font-size: 0.9rem;
   font-weight: 600;
-  color: #fff;
+  color: var(--hue-ink);
   background: var(--hue);
   border-radius: var(--r);
   transition: filter 0.14s;
@@ -71,15 +74,3 @@
   font-size: 0.76rem;
   color: var(--bad-ink);
 }
-
-/* Шалгаж байх үеийн эргэлдэгч */
-.spinner {
-  width: 26px;
-  height: 26px;
-  margin: 0 auto;
-  border: 3px solid var(--line);
-  border-top-color: var(--hue);
-  border-radius: 50%;
-  animation: spin 0.7s linear infinite;
-}
-@keyframes spin { to { transform: rotate(360deg); } }

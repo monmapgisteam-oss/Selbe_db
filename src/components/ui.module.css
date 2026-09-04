@@ -66,6 +66,37 @@
 }
 .sectionNote { font-size: 11.5px; color: var(--ink-3); }
 
+/* ── Хураагддаг хэсэг (Section collapseKey) ── */
+.secToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0;
+  border: 0;
+  background: none;
+  /* Гарчгийн typografi-г бүрэн өвлөнө — товч болсон нь харагдахгүй */
+  font: inherit;
+  color: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+}
+.secCaret {
+  font-size: 10px;
+  line-height: 1;
+  color: var(--ink-3);
+  transition: transform 0.14s ease;
+}
+/* Хаалттай үед сум баруун тийш эргэнэ — «нээгдэнэ» гэсэн дохио */
+.secCaretOff { transform: rotate(-90deg); }
+/* Хаалттай карт = зөвхөн гарчгийн зурвас: доод зай, зураас хэрэггүй */
+.sectionClosed .sectionHead { margin-bottom: -12px; border-bottom: 0; }
+
+/* Агуулга картын үлдсэн өндрийг дүүргэнэ (`Section fill`) — доторх `.series`
+   зэрэг босоо flex хүүхэд нь `flex: 1` аваад чартын талбайгаа сунгана. */
+.sectionFill { display: flex; flex-direction: column; }
+.sectionFill > :last-child { flex: 1; min-height: 0; }
+
 /* Самбарын ГОЛ хэсэг — модулийн өнгөөр ирмэглэж, бусдаас ялгарна */
 .sectionPrimary {
   background: color-mix(in srgb, var(--hue) 4%, var(--surface));
@@ -87,17 +118,6 @@
 
 .noteText { font-size: 0.73rem; line-height: 1.55; color: var(--ink-3); }
 .noteText b { color: var(--ink); font-weight: 600; }
-
-.subHead {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  margin-bottom: 10px;
-  font-size: 0.74rem;
-  font-weight: 600;
-  color: var(--ink-2);
-}
-.subNote { font-size: 0.68rem; font-weight: 400; color: var(--ink-3); }
 
 /* ── Таб ──
    Самбарын биеийг гүйлгэхэд дагаж явна. `--surface` дүүргэлт заавал хэрэгтэй —
@@ -206,6 +226,10 @@
 .statValue {
   display: flex;
   align-items: baseline;
+  /* Урт утга нүдний ирмэгт ДУУГҮЙ тайрагдахын оронд нэгжээ дараагийн мөрөнд
+     буулгана (2026-08-21 аудит) */
+  flex-wrap: wrap;
+  min-width: 0;
   gap: 4px;
   font-size: 16px;
   font-weight: 500;
@@ -213,6 +237,8 @@
   line-height: 1;
   font-variant-numeric: tabular-nums;
 }
+/* Урт утга (мөнгөн дүн бүтнээр) — 2026-09-01. Тайрахгүй, зөвхөн жижигрүүлнэ. */
+.statValueLong { font-size: 12.5px; letter-spacing: -0.01em; }
 .statUnit { font-size: 11px; font-weight: 400; color: var(--ink-3); letter-spacing: 0; }
 /* envhub eyebrow — 2 мөрийн зай нөөцөлж, олон карт зэрэгцэхэд тоонууд нэг
    суурьт зэрэгцэнэ */
@@ -248,18 +274,22 @@
 .barOn { background: transparent; }
 
 .barTop { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; }
-/* envhub: нэрийг таслана (…) — бүтэн нэр нь title/tooltip-д */
+/* 2026-08-21 аудит: нэг мөрийн «…» нь урт нэрийг («Шинээр төлөвлөж буй
+   110/35/10кВ дэд станц» г.м.) хагасаар нь иддэг байв — одоо 2 мөрөнд бүтэн,
+   түүнээс хэтэрсэн ховор тохиолдолд л таслаад бүтэн нэр title/tooltip-д. */
 .barName {
   min-width: 0;
   font-size: 12px;
   color: var(--ink-2);
-  white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   transition: color 0.12s;
 }
 .barNameOn { font-weight: 500; color: var(--ink); }
-.barVal { flex: none; font-size: 11.5px; color: var(--ink-3); transition: color 0.12s; }
+/* `flex: none` + `nowrap` — бүтэн мөнгөн дүн шахагдаж мөр таслахгүй (2026-09-01) */
+.barVal { flex: none; white-space: nowrap; font-size: 11.5px; color: var(--ink-3); transition: color 0.12s; }
 .barValOn { color: var(--ink); }
 .barTrack {
   display: block;
@@ -345,22 +375,20 @@
   font-size: 12px;
 }
 .row:last-child { border-bottom: none; }
-.rowKey { color: var(--ink-3); flex: none; }
-.rowVal { color: var(--ink); font-weight: 500; text-align: right; overflow-wrap: anywhere; }
-
-/* ── Chip ── */
-.chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 2px 8px;
-  border-radius: 99px;
-  font-size: 0.68rem;
-  font-weight: 600;
+/**
+ * ⚠️ 2026-08-20: ТҮЛХҮҮР нь хумигдаж мөр дамжина, УТГА нь бүтэн үлдэнэ —
+ * урьд нь эсрэгээрээ байв (`.rowKey { flex: none }` + `.rowVal { overflow-wrap:
+ * anywhere }`). Нарийн баганад (дашбоардын 272px хажуугийн карт) урт монгол
+ * түлхүүр бүх зайг эзэлж, «3,935» гэсэн утга нь ТЭМДЭГТ ТУС БҮРЭЭР босоо
+ * тасарч уншигдахаа больдог байлаа.
+ */
+.rowKey { color: var(--ink-3); min-width: 0; }
+.rowVal {
+  color: var(--ink);
+  font-weight: 500;
+  text-align: right;
+  flex: none;
   white-space: nowrap;
-  color: var(--tone, var(--hue));
-  background: color-mix(in srgb, var(--tone, var(--hue)) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--tone, var(--hue)) 26%, transparent);
 }
 
 /* ── Жагсаалтын мөр (сонгож болох) ── */
@@ -369,6 +397,15 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  /**
+   * ⚠️ ЗӨРҮҮЛЖ БУУЛГАНА (2026-09-03). Утга нь нэрийн хажууд багтахгүй бол
+   * ДООШ өөрийн мөрөнд буна — нэрийг шахаж устгахгүй. Ингэхгүй бол «Санхүүжилт
+   * хоцорсон багц» картад «−233,753,870,736 ₮ 4 сар» гэсэн тэмдэг мөрийн
+   * өргөнийг бүхэлд нь идэж, зүүн талын нэр нь тэмдэгт БҮРЭЭР доошоо
+   * («Б·а·г·ц·2») тасарч уншигдахаа больж байв.
+   */
+  flex-wrap: wrap;
+  row-gap: 3px;
   width: 100%;
   padding: 9px 10px;
   border-radius: var(--r-sm);
@@ -387,12 +424,28 @@
  * («Багц 17.1 · Гадна тохи1.08 тэрбумт — Баг»). Блок болгосноор гурвуулаа
  * өөрийн мөртэй болж, таслалт ажиллана.
  */
-.listMain { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+/**
+ * ⚠️ ХАМГИЙН БАГА ӨРГӨН 110px — нэрийн багана үүнээс нарийсахгүй. `min-width: 0`
+ * байхад flex нь нэрийг 0 хүртэл шахдаг байсан бөгөөд `overflow-wrap: anywhere`
+ * тэр агшинд тэмдэгт бүрийг шинэ мөрөнд буулгадаг («Б·а·г·ц»). 110px нь
+ * хажуугийн самбарын хамгийн нарийн өргөнд (`SplitGrip` MIN 180px) ч багтана.
+ */
+.listMain { flex: 1 1 110px; min-width: 110px; display: flex; flex-direction: column; gap: 1px; }
 .listTitle { display: block; font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
 .listSub { display: block; font-size: 0.7rem; color: var(--ink-3); overflow-wrap: anywhere; }
-/* ⚠️ `nowrap` — «62.8 тэрбум» гэх мэт утга хоёр мөр болж мөрийн өндрийг
-   тэлэхгүй; өргөн хэрэгтэй бол гарчиг нь таслагдана, утга нь бүтэн үлдэнэ. */
-.listVal { flex: none; white-space: nowrap; font-weight: 600; font-size: 0.76rem; color: var(--ink); }
+/* ⚠️ `nowrap` — утга нь дундуураа тасрахгүй, ҮРГЭЛЖ БҮТЭН үлдэнэ (мөнгөн дүнг
+   товчлохгүй гэсэн дүрмийн үргэлжлэл).
+   ⚠️ `margin-left: auto` — утга доошоо буусан үедээ ч БАРУУН ирмэгтээ
+   зэрэгцэнэ, эс бөгөөс нэг мөрөнд баруунд, дараагийнхад зүүнд гарч
+   жагсаалтын багана эвдэрнэ. */
+.listVal {
+  flex: none;
+  margin-left: auto;
+  white-space: nowrap;
+  font-weight: 600;
+  font-size: 0.76rem;
+  color: var(--ink);
+}
 
 /* ── Төлөв ── */
 .state {
@@ -502,6 +555,9 @@
 }
 /* envhub: голын нийлбэр — жижиг, medium (том тод тоо биш) */
 .donutValue { font-size: 13px; font-weight: 500; color: var(--ink); line-height: 1.1; }
+/* Цагирагийн голд бүтэн мөнгөн дүн — нүхэнд багтахгүй тул жижигрүүлж, мөр
+   таслахгүй (тоог хоёр хуваавал уншигдахгүй). 2026-09-01. */
+.donutValueLong { font-size: 9.5px; letter-spacing: -0.02em; white-space: nowrap; }
 .donutLabel { font-size: 10px; color: var(--ink-3); text-align: center; }
 
 .donutLegend { flex: 1; min-width: 130px; display: flex; flex-direction: column; gap: 6px; }
@@ -553,6 +609,75 @@
   background: var(--tone, var(--data));
   transition: height 0.4s var(--ease), opacity 0.12s;
 }
+/* ── Тоймтой хувилбар (`outline`) — ЗАХ нь бүтэн өнгө, дотор нь бүдэг ──
+   Багана дээр байнга тоо бичихэд бүтэн дүүргэлт дээр цифр уншигдахгүй болдог.
+   Зөвхөн `outline` дуудсан дүрслэлд хамаарна; бусад чартын хэл өөрчлөгдөхгүй. */
+.seriesBarOutline {
+  background: color-mix(in oklab, var(--tone, var(--data)) 18%, transparent);
+  border: 1px solid var(--tone, var(--data));
+  border-bottom: 0;
+}
+/* Баганын ОРОЙД суух утга. Багана намхан үед ч уншигдахын тулд баганын ГАДНА
+   талд (дээр нь) байрлана — дотор нь байрлуулбал намхан багананд багтахгүй. */
+.seriesVal {
+  display: block;
+  font-size: 10px;
+  line-height: 1.2;
+  font-weight: 600;
+  text-align: center;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  margin-bottom: 2px;
+}
+/* ── Муруйн горим (`line`) — талбай + зөөлөн шугам + цэг ──
+   Баганын түвшинд хөвж бүтэн талбайг эзэлнэ. `pointer-events: none` — доорх
+   баганын hover/дарах нь хэвээр ажиллах ёстой. */
+.seriesLineSvg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+.seriesLinePath {
+  fill: none;
+  stroke: var(--tone, var(--data));
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  /* ⚠️ `preserveAspectRatio="none"` нь SVG-г сунгадаг тул үүнгүй бол шугамын
+     зузаан хэвтээ ба босоо чиглэлд ӨӨР болно. */
+  vector-effect: non-scaling-stroke;
+}
+.seriesLineDot {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--tone, var(--data));
+  border: 1.5px solid var(--surface);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  transition: opacity 0.12s;
+}
+/* Цэгийн ДЭЭР суух утга. Муруйн дээд зайг `SeriesLine`-ы `pad` гаргаж өгдөг
+   тул хамгийн өндөр цэгийн шошго ч зургийн дотор багтана. */
+.seriesLineVal {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  margin-top: -7px;
+  font-size: 10px;
+  line-height: 1;
+  font-weight: 600;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+  transition: opacity 0.12s;
+}
+
 .seriesClick { cursor: pointer; }
 .seriesClick:hover { background: color-mix(in oklab, var(--tone, var(--data)) 12%, transparent); }
 .seriesTicks { display: flex; gap: 3px; margin-top: 6px; }
@@ -569,7 +694,11 @@
   transition: color 0.12s;
 }
 .seriesLabelOn { color: var(--ink); }
-.seriesUnit { margin-top: 4px; font-size: 10.5px; color: var(--ink-3); text-align: right; }
+/* Цөөлсөн шошго — хөрш ХООСОН нүднүүд рүү тэлж, бүтнээрээ уншигдана
+   (тайрч «25…» болгохын оронд). Зөвхөн `stride > 1` үед тавигдана. */
+.seriesLabelWide { overflow: visible; text-overflow: clip; }
+/* Нэгж = чартын ДЭЭД баруун булангийн тайлбар (тэнхлэгийн шошготой хутгалдахгүй) */
+.seriesUnit { margin-bottom: 4px; font-size: 10.5px; color: var(--ink-3); text-align: right; }
 
 /* ── Сонгогч ── */
 
@@ -593,7 +722,8 @@
    0.34→0.02 градиент, 5px цэг (гадаргуун цагирагтай), ТАСАРХАЙ өнгөт crosshair. */
 .trend { display: flex; flex-direction: column; gap: 6px; }
 .trendHead { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-.trendValue { font-size: 17px; font-weight: 500; color: var(--ink); line-height: 1; }
+/* `nowrap` — бүтэн мөнгөн дүн хоёр мөр болж толгойг эвдэхгүй (2026-09-01) */
+.trendValue { font-size: 17px; font-weight: 500; color: var(--ink); line-height: 1; white-space: nowrap; }
 .trendMeta { font-size: 10.5px; color: var(--ink-3); }
 
 /* Хажуугийн зай нь ЭХНИЙ/СҮҮЛИЙН цэгийг ирмэгээр таслуулахгүй байлгана */
@@ -668,3 +798,125 @@
 }
 .trendAxisTick:first-child { transform: none; }
 .trendAxisTick:last-child { transform: translateX(-100%); }
+
+/* ── Trend-ийн хэвтээ гүйлт (`visible` заасан үед) ────────────────────────
+   ⚠️ `padding-bottom` нь ЗААВАЛ: гүйлтийн зурвас ~12px эзэлдэг тул үүнгүй бол
+   тэнхлэгийн доод мөр (цаг) таслагдаж, огноо нь ганцаараа үлдэнэ. Habea-гийн
+   `.dayScroll` дээр яг ижил алдаа гарч байсан. */
+.trendScroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* ⚠️ Хажуугийн 14px — эхний/сүүлийн шошго нь цэгийнхээ голд төвлөрдөг тул
+     тэдний хагас нь агуулагчаас гарч, `overflow-x`-д таслагдана. */
+  padding: 0 14px 12px;
+  overscroll-behavior-x: contain;
+}
+/* Хоёр мөрт шошго — огноо дээр, цаг доор. Нэг мөрийн 14px хүрэхгүй. */
+.trendAxisTwoLine { height: 28px; }
+/* Гүйдэг үед шошго БҮГД цэгийнхээ ЯГ голд — эхний/сүүлийнх нь тусгай
+   шилжилтгүй (тэр нь зөвхөн шахагдсан 6 шошготой хувилбарт ирмэг хамгаалдаг). */
+.trendAxisTwoLine .trendAxisTick,
+.trendAxisTwoLine .trendAxisTick:first-child,
+.trendAxisTwoLine .trendAxisTick:last-child {
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.25;
+}
+.trendTickDay { color: var(--ink-2); }
+.trendTickClock { color: var(--ink-3); font-size: 9px; }
+
+/* Цэгийн утга — муруйн ДЭЭР. `.trendHit` нь 26px өргөн ч энэ бичиг түүнээс
+   гарч болно (товч нь тайрдаггүй); `nowrap` нь «1,234.5»-ыг хугалахгүй.
+   `pointer-events: none` — бичиг нь хөрш цэгийн hover-ыг хулгайлахгүй. */
+.trendVal {
+  position: absolute;
+  /* ⚠️ Босгын шошгоос ДООГУУР давхарлана — мөргөлдвөл босго нь дээр гарна */
+  z-index: 1;
+  left: 50%;
+  transform: translate(-50%, -100%);
+  margin-top: -7px;
+  padding: 0 2px;
+  /* Зузаан дэвсгэр — муруй, торон дээр давхарлахад ч уншигдана */
+  background: var(--surface);
+  border-radius: 2px;
+  font-size: 9.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+  white-space: nowrap;
+  color: var(--ink-2);
+  pointer-events: none;
+}
+
+/* ── Анхааруулгын босго ─────────────────────────────────────────────────────
+   ⚠️ Улаан нь ЭНД «босго давсан» гэсэн ГАНЦ утга үүрнэ. Тиймээс босгогүй
+   чартад улаан ОГТ гарахгүй — өнгө нь мэдээлэл дамжуулж байж утгатай. */
+.trendThresh {
+  fill: none;
+  stroke: var(--bad);
+  stroke-width: 1;
+  /* ⚠️ ШУЛУУН шугам (тасархай БИШ) — захиалагчийн хүсэлт, 2026-08-21 */
+  opacity: 0.8;
+  /* `preserveAspectRatio="none"` нь зузааныг гажуудуулах тул бэхэлнэ */
+  vector-effect: non-scaling-stroke;
+}
+/**
+ * Босгын тоо — шугамын баруун үзүүрт.
+ *
+ * ⚠️ ДАВХЦЛЫН ЭРЭМБЭ. Цэгийн утгын бичиг (`.trendVal`) энэ шошготой мөргөлдөж
+ * болно (цэг нь босгын ойролцоо буувал). Хоёулаа хагас тунгалаг байвал
+ * давхцсан хэсэг нь ЗУУРАЛДАЖ хоёулаа уншигдахаа болино. Тиймээс:
+ *   · шошго нь БҮРЭН ЗУЗААН дэвсгэртэй (`--surface`, тунгалаг биш),
+ *   · `z-index` нь утгын бичгээс ДЭЭГҮҮР — мөргөлдвөл босго нь ялна
+ *     (босго нь тогтмол лавлагаа; утга нь hover-оор дахин уншигдана).
+ */
+.trendThreshTag {
+  position: absolute;
+  z-index: 3;
+  right: 0;
+  transform: translateY(-50%);
+  padding: 1px 5px;
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  border: 1px solid color-mix(in srgb, var(--bad) 35%, transparent);
+  font-size: 9px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+  color: var(--bad-ink);
+  white-space: nowrap;
+  pointer-events: auto;
+  cursor: help;
+}
+/* Босго давсан цэг — томорч, улаан болно (хэмжээ нь өнгө ялгах бэрхшээлтэй
+   хүнд ч мэдэгдэнэ: өнгө ГАНЦААРАА мэдээлэл дамжуулахгүй) */
+.trendDotAlert {
+  background: var(--bad);
+  box-shadow: 0 0 0 2px var(--surface);
+  opacity: 1;
+  transform: scale(1.3);
+}
+.trendValAlert { color: var(--bad-ink); }
+.trendValueAlert { color: var(--bad-ink); }
+
+/* ⚠️ ГАР УТАС (2026-08-29): хэсгийн толгойн тэмдэглэл («2 багц · төлөвлөгөөнөөс
+   хоцорсон») баруун ирмэгт тайрагддаг байв — мөр тасалж доош буулгана. */
+@media (max-width: 560px) {
+  .sectionHead { flex-wrap: wrap; row-gap: 4px; }
+  .sectionNote { flex: 1 1 100%; overflow-wrap: anywhere; }
+}
+
+/* Удаан ачаалалтын тайлбар — 8 сек-ийн дараа гарна (2026-09-02 аудит).
+   ⚠️ Эргэлдэгчийн шошгоос ЖИЖИГ, БҮДЭГ: гол мэдээлэл нь «ачаалж байна»
+   хэвээр, энэ нь зөвхөн «гацаагүй» гэдгийг тайвшруулна. */
+.slowHint {
+  display: block;
+  margin-top: 6px;
+  max-width: 44ch;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--ink-3);
+  text-align: center;
+}

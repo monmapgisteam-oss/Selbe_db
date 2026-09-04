@@ -1,18 +1,24 @@
 'use client';
 
-import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
+import { MapTools } from '@/components/MapTools';
+import { LayerCatalog } from '@/components/LayerCatalog';
+import { OpacityPanel } from '@/components/OpacityPanel';
+import { useLayerPicks } from '@/lib/useLayerPicks';
+import { useZoomToFilter } from '@/lib/useZoomToFilter';
 import { Section, Col, Note, Stats, Stat, Bars, Rows, List, ListItem, Ring, Data, Empty } from '@/components/ui';
 import { useBuildings, MonitorBagts, type Block } from '@/modules/BuildingPanel';
 import { useAsync, type Async } from '@/lib/useAsync';
-import { layerTotals, qtyText } from '@/lib/totals';
+import { layerTotals, qtyText, usePlanTotals } from '@/lib/totals';
 import {
-  BUILDING, PROGRESS_LEVELS, LAYER_BY_ID, PKG_BY_BAGTS, bagtsKey,
+  BUILDING, PROGRESS_LEVELS, LAYER_BY_ID, PKG_BY_BAGTS, bagtsKey, zoneWhere,
 } from '@/lib/services';
-import { num, pct, shade, tint, NO_DATA } from '@/lib/format';
+import { mnt, num, pct, shade, tint, NO_DATA } from '@/lib/format';
 import { readParam, writeParams } from '@/lib/urlState';
-import o from './overview.module.css';
+import { overlapLeftParcels, type Overlap } from '@/lib/parcelOverlap';
+import o from './bagtsOv.module.css';
 
 /**
  * БАГЦЫН МЭДЭЭЛЭЛ — төслийн БҮХ багц нэг хуудсанд.
@@ -37,11 +43,18 @@ import o from './overview.module.css';
  */
 
 const HUE = LAYER_BY_ID['mon:building'].hue;
+
+/* Даралт хэрэглэдэггүй тул no-op — ГЭХДЭЭ inline () => {} бичвэл render бүрд
+   шинэ лавлагаа үүсч memo(MapCanvas)-ыг эвдэж зураг дэмий дахин зурагддаг.
+   Модулийн түвшний тогтмол тул үргэлж ижил. */
+const noopPick = () => {};
 const INFRA_HUE = '#0891b2';
 /** «Тодорхойгүй / задраагүй» бүлэг — жинхэнэ ангилал мэт өнгөтэй байх ёсгүй */
 const BLANK_HUE = NO_DATA;
 // ⚠️ export — «Барилгын цогц хяналт» (Tsogts) мөн энэ давхаргаар ажиллана
 export const BLOCK_LAYER = 'mon:building';
+/** Газар чөлөөлөлтийн нэгж талбарын давхарга — давхцсан талбарыг зурахад. */
+const PARCEL_LAYER = 'land:left';
 
 /** Блокуудыг FID-ээр нэрлэн шүүх — багцын нэр давхаргад бохир бичигдсэн байж болно */
 const oidWhere = (oids: number[]) =>
@@ -164,11 +177,122 @@ export function Bagts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
 
   const active = packs.find((p) => p.key === sel) ?? null;
 
-  /** Сонгосон багц л зурагдана; сонголтгүй бол барилгын бүх блок */
-  const visible = active ? active.layerIds : [BLOCK_LAYER];
+  /**
+   * БАГЦТАЙ ДАВХЦАЖ БУЙ «ҮЛДСЭН НЭГЖ ТАЛБАР» — чөлөөлөгдөөгүй, барилга
+   * эхлүүлэхэд саад болж буй газар. Багц сонгоход орон зайн огтлолцлоор олж,
+   * газрын зурагт зурж, тоог нь KPI-д гаргана.
+   *
+   * ⚠️ Хариу хожуу ирж БУСАД багцын үр дүнг дарж бичихээс `alive` хамгаална
+   *    (хэрэглэгч хурдан дараалан сонгоход).
+   */
+  /* ⚠️ Алдааг `{oids: []}`-оор ОРЛУУЛАХГҮЙ — «0 саад» нь ногооноор «саад алга»
+     гэсэн ХАРИУЛТ болж уншигддаг тул татаж чадаагүйг жинхэнэ 0-ээс ялгаж
+     `'error'` төлөвт хадгална (KPI/картад саарлаар «тоолж чадсангүй»). */
+  const [overlap, setOverlap] = useState<Overlap | 'error' | null>(null);
+  useEffect(() => {
+    let alive = true;
+    setOverlap(null);
+    /* ⚠️ Багц СОНГООГҮЙ үед ч тоолно — тэгэхдээ БҮХ блокоор (`where = null`),
+       өөрөөр хэлбэл төслийн НИЙТ саад. Урьд нь сонголтгүй үед огт тоолохгүй
+       байсан тул хэрэглэгч «нийт хэдэн талбар саад болж байна» гэдгийг
+       мэдэхийн тулд багц бүрийг ээлжлэн сонгох шаардлагатай байв. */
+    /* Багц сонгосон бол ТҮҮНИЙ бүх давхарга; эс бөгөөс БҮХ БАГЦЫНХ —
+       барилгын блокууд + дэд бүтцийн 48 багцын давхаргууд. Зөвхөн блокоор
+       тоолвол шугам хоолой, замын коридор дээрх саад тоологдохгүй үлддэг. */
+    const srcs = active
+      ? active.layerIds.map((id) => ({ layerId: id, where: active.where }))
+      : [
+          { layerId: BLOCK_LAYER, where: null },
+          ...packs.flatMap((pk) =>
+            pk.kind === 'infra' ? pk.layerIds.map((id) => ({ layerId: id, where: pk.where })) : [],
+          ),
+        ];
+    overlapLeftParcels(srcs)
+      .then((r) => alive && setOverlap(r))
+      .catch(() => alive && setOverlap('error'));
+    return () => {
+      alive = false;
+    };
+  }, [active]);
+
+  /** Амжилттай үр дүн л — зурагт/шүүлтэд алдааны төлөв «хоосон» мэт орохгүй */
+  const ovOk = overlap !== 'error' ? overlap : null;
+
+  /**
+   * Сонгосон багц л зурагдана; сонголтгүй бол барилгын бүх блок.
+   * ⚠️ 2026-08-20: дээр нь давхаргын каталогийн сонголт нэмэгдэнэ
+   * (`useLayerPicks`) — урьд нь энэ цонхонд каталог огт байхгүй байв.
+   */
+  const [visible, setVisible] = useLayerPicks(active ? active.layerIds : [BLOCK_LAYER]);
+  const [catOpen, setCatOpen] = useState(false);
+  const [opOpen, setOpOpen] = useState(false);
+  const [opacity, setOpacity] = useState<Record<string, number>>({});
+  const [layerSel, setLayerSel] = useState<string | null>(null);
+  const [zone, setZone] = useState<string | null>(null);
+  const catTotals = usePlanTotals(zone, catOpen);
+  // ⚠️ Багц сонгоход нисэх нь доорх ТУСДАА эффект (өөр гох) — энэ нь БҮСЭД
+  useZoomToFilter({ zone });
+
+  /**
+   * ЗУРАГТ ӨГӨХ жагсаалт — каталогийн сонголт (`visible`) дээр давхцсан
+   * үлдсэн нэгж талбар олдвол газар чөлөөлөлтийн давхаргыг НЭМНЭ: инженер
+   * аль блок дээр саад байгааг зурган дээр шууд харна.
+   *
+   * ⚠️ `visible`-д БИЧИХГҮЙ (setVisible дуудаж болохгүй) — тэр нь хэрэглэгчийн
+   * каталогийн сонголт тул overlap ирэх бүрд бохирдоно. Зөвхөн ГАРАЛТ дээр
+   * давхарлана.
+   */
+  const mapVisible = useMemo(
+    () => (ovOk?.oids.length ? [...new Set([...visible, PARCEL_LAYER])] : visible),
+    [visible, ovOk],
+  );
+  /**
+   * ДАВХЦСАН НЭГЖ ТАЛБАРЫН ХЭВ МАЯГ — барилгын блокоос ЯЛГАРАХ ёстой.
+   *
+   * ⚠️ Анхны загвар нь улаавтар (`#e11d48`) бөгөөд блокууд ч улбар шар
+   *    (`#ea580c`) тул ортофото дээр хоёулаа ижил төстэй харагдаж, аль нь
+   *    барилга, аль нь газар болох нь ялгагдахаа больдог. Тод ягаан + зузаан
+   *    хүрээ нь хоёуланг нь эрс тасалж өгнө.
+   */
+  /**
+   * ⚠️ АНИВЧИЛТ ХАСАГДСАН (2026-08-28, хэрэглэгчийн заавар): пульс нь
+   * талбаруудыг тасралтгүй томруулж жижигрүүлдэг тул хэлбэр, хэмжээг нь
+   * нүдээр уншиж болохгүй болно. Ялгааг өнгө ба зузаан хүрээ барина.
+   */
+
+  const parcelStyle = useMemo(
+    () =>
+      ovOk?.oids.length
+        ? { [PARCEL_LAYER]: { hue: '#d946ef', fill: 0.22, width: 1.7 } }
+        : undefined,
+    [ovOk],
+  );
+
   const layerWhere = useMemo<Record<string, string | null>>(
-    () => ({ [BLOCK_LAYER]: active?.where ?? null }),
-    [active],
+    () => {
+      /* ⚠️ `layerWhere` өгөгдмөгц MapCanvas бүсийн (zone) fallback-ийг БҮХ
+         давхаргад алгасдаг (жагсаалтад БАЙХГҮЙ давхарга ч `?? null`-аар
+         шүүлтгүй болдог) тул каталогоос асаасан бүсчлэлтэй давхаргууд «Бүс»
+         сонгоход шүүгдэлгүй, каталогийн тоотойгоо зөрдөг байв. Тиймээс бүсийн
+         шүүлтийг давхарга бүрд ЭНДЭЭС өөрсдөө тавина (noZone давхаргад
+         `zoneWhere` null тул зан төрх өөрчлөгдөхгүй — тэдгээрт орон зайн маск
+         хэвээр үйлчилнэ). */
+      const w: Record<string, string | null> = {};
+      if (zone) {
+        for (const id of mapVisible) {
+          const d = LAYER_BY_ID[id];
+          if (d) w[id] = zoneWhere(d, zone);
+        }
+      }
+      w[BLOCK_LAYER] = active?.where ?? null;
+      // ⚠️ Давхаргад 2,119 талбар бий — ЗӨВХӨН давхцсаныг үлдээнэ, эс бөгөөс
+      //    бүх хот дүүрэн парсел зурагдаж блокууд дарагдана.
+      w[PARCEL_LAYER] = ovOk?.oids.length
+        ? `OBJECTID IN (${ovOk.oids.join(',')})`
+        : null;
+      return w;
+    },
+    [active, ovOk, zone, mapVisible],
   );
 
   // Багц сонгоход түүний объект руу ниснэ; цуцлахад бүх блок руу холдоно
@@ -185,7 +309,7 @@ export function Bagts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     <div className={o.pack}>
       <div className={o.kpi}>
         {/* ⚠️ Алдаатай үед KPI гаргахгүй — мөнгөн дүн нь худал 0 болно */}
-        {!errQ && <PackKpi active={active} packs={packs} />}
+        {!errQ && <PackKpi active={active} packs={packs} overlap={overlap} />}
       </div>
 
       {/* ЗҮҮН — багцын сонголт */}
@@ -219,16 +343,51 @@ export function Bagts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       </aside>
 
       <div className={o.map}>
-        <MapCanvas dim={dim} visible={visible} zone={null} layerWhere={layerWhere} onPick={() => {}} />
+        <MapCanvas
+          dim={dim}
+          visible={mapVisible}
+          opacity={opacity}
+          zone={zone}
+          layerWhere={layerWhere}
+          layerStyle={parcelStyle}
+          onPick={noopPick}
+        />
 
-        <div className={o.mapDims} role="group" aria-label={tr('Газрын зургийн харагдац')}>
-          {(['2d', '3d', 'bim'] as Dim[]).map((d) => (
-            <button key={d} type="button" aria-pressed={dim === d}
-              className={`${o.dimBtn} ${dim === d ? o.dimOn : ''}`} onClick={() => setDim(d)}>
-              {d.toUpperCase()}
-            </button>
-          ))}
-        </div>
+        <MapTools
+          dim={dim}
+          setDim={setDim}
+          layersOpen={catOpen}
+          onLayers={() => setCatOpen((v) => !v)}
+          opacityOpen={opOpen}
+          onOpacity={() => setOpOpen((v) => !v)}
+          zone={zone}
+          setZone={setZone}
+        />
+
+        {catOpen && (
+          <div className={o.catPanel}>
+            <LayerCatalog
+              view="monitor"
+              totals={catTotals}
+              visible={visible}
+              setVisible={setVisible}
+              selected={layerSel}
+              onSelect={setLayerSel}
+              onClose={() => setCatOpen(false)}
+              zone={zone}
+              embedded
+            />
+          </div>
+        )}
+
+        {opOpen && (
+          <OpacityPanel
+            visible={visible}
+            opacity={opacity}
+            setOpacity={setOpacity}
+            onClose={() => setOpOpen(false)}
+          />
+        )}
 
         {/* ⚠️ Тайлбар нь ЗУРАГТ ЮУ БАЙГААГААС хамаарна: барилгын блок нь
             гүйцэтгэлийн 4 түвшнээр өнгөтэй, дэд бүтцийн давхарга нь өөрийн
@@ -333,22 +492,99 @@ function subInfra(p: Pack): string {
  * оруулахгүй). Багцуудын дунджийг дахин дундажлавал блок цөөтэй багц том
  * багцтай ижил жинтэй болж, төслийн явц гажина.
  */
-export function PackKpi({ active, packs }: { active: Pack | null; packs: Pack[] }) {
+export function PackKpi({
+  active,
+  packs,
+  overlap,
+  fin,
+}: {
+  active: Pack | null;
+  packs: Pack[];
+  /**
+   * САНХҮҮГИЙН ИНДИКАТОР — өгвөл биет явцын оронд ЗӨВХӨН мөнгөний тоо гарна.
+   *
+   * ⚠️ «Багцын санхүү» харагдацад гүйцэтгэлийн хувь, блок, айлын тоо ГАРАХ
+   *    ЁСГҮЙ — тэдгээр нь «Багцын гүйцэтгэл»-ийн хариулт. Урьд нь энэ
+   *    компонент горим мэддэггүй байсан тул багц сонгомогц хоёр харагдац ЯГ
+   *    ижил дөрвөн хавтан үзүүлж, нэрээрээ л ялгардаг байв.
+   *
+   * `undefined` = гүйцэтгэлийн горим (хуучин зан төлөв), `null` = ачаалж байна.
+   */
+  fin?: { plan: number; given: number } | null;
+  /**
+   * Багцтай давхцсан үлдсэн нэгж талбар — `null` бол хараахан ачаалж байна,
+   * `'error'` бол тоолж ЧАДААГҮЙ (0-ээр орлуулбал «саад алга» гэсэн худал
+   * сайн мэдээ болно).
+   */
+  overlap?: Overlap | 'error' | null;
+}) {
   const scope = active ? [active] : packs;
   const blocks = scope.reduce((s, p) => s + p.blocks.length, 0);
   const households = scope.reduce((s, p) => s + p.households, 0);
   const progress = meanOf(scope.flatMap((p) => p.blocks.map((b) => b.progress)));
   const layers = scope.filter((p) => p.kind === 'infra').reduce((s, p) => s + p.layerIds.length, 0);
 
+  /**
+   * ДАВХЦСАН ҮЛДСЭН НЭГЖ ТАЛБАР — зөвхөн багц сонгосон үед. Тоо нь 0 байсан ч
+   * ХАРУУЛНА: «саад алга» гэдэг нь өөрөө хариулт бөгөөд хоосон нүд үлдээвэл
+   * хэрэглэгч ачаалж байна гэж эндүүрнэ. Ачаалж байх үед «…».
+   */
+  // ⚠️ Зөвхөн prop нь ӨГӨГДСӨН үед л гаргана. `undefined` (огт дамжуулаагүй)
+  //    үед «…» мөнхөд харагдаж, хэрэглэгч ачаалж байна гэж эндүүрдэг байв —
+  //    «Багцын хяналт»-д энэ тоо ДООД санхүүжилтийн картад зөөгдсөн.
+  const blockTile = overlap !== undefined
+    ? [
+      overlap === 'error'
+        /* Алдаа ≠ «0 саад»: ногоон хариултын оронд саарлаар ил хэлнэ */
+        ? { v: '—', l: tr('давхцал тоолж чадсангүй'), c: 'var(--ink-3)' }
+        : {
+          v: overlap == null ? '…' : num(overlap.oids.length),
+          l: tr('давхцсан үлдсэн нэгж талбар'),
+          c: overlap?.oids.length ? 'var(--bad-ink)' : 'var(--good-ink)',
+        },
+    ]
+    : [];
+
+  if (fin !== undefined) {
+    /*
+     * САНХҮҮГИЙН ГОРИМ. Гэрээ бүртгэгдээгүй бол «…» БИШ «—»: цэг нь «ачаалж
+     * байна» гэсэн утгатай тул мөнхөд эргэлдэж байгаа мэт харагдана.
+     */
+    const has = !!fin && (fin.plan > 0 || fin.given > 0);
+    const share = has && fin!.plan > 0 ? (fin!.given / fin!.plan) * 100 : null;
+    const finItems = [
+      { v: fin == null ? '…' : has ? mnt(fin.plan) : '—', l: tr('төлөвлөгөөт санхүүжилт'), c: 'var(--data)' },
+      { v: fin == null ? '…' : has ? mnt(fin.given) : '—', l: tr('олгосон санхүүжилт'), c: 'var(--good-ink)' },
+      { v: fin == null ? '…' : share == null ? '—' : pct(share, 1), l: tr('олгосон хувь'), c: 'var(--data)' },
+      {
+        v: fin == null ? '…' : has ? mnt(Math.max(0, fin.plan - fin.given)) : '—',
+        l: tr('олгогдоогүй үлдэгдэл'),
+        c: 'var(--warn-ink)',
+      },
+    ];
+    return (
+      <>
+        {finItems.map((i) => (
+          <div key={i.l} className={o.tile} style={{ '--tone': i.c } as CSSProperties}>
+            <span className={`${o.tileVal} num`}>{i.v}</span>
+            <span className={o.tileLabel}>{active ? `${active.name} · ${i.l}` : i.l}</span>
+          </div>
+        ))}
+      </>
+    );
+  }
+
   const items = active?.kind === 'infra'
     ? [
       { v: num(active.layerIds.length), l: tr('газрын зургийн давхарга'), c: INFRA_HUE },
+      ...blockTile,
     ]
     : [
       { v: progress == null ? '—' : pct(progress, 1), l: tr('гүйцэтгэл'), c: levelColor(progress) },
       { v: num(blocks), l: tr('блок'), c: HUE },
       { v: num(households), l: tr('айл'), c: HUE },
-      { v: num(layers), l: tr('дэд бүтцийн давхарга'), c: '#0891b2' },
+      { v: num(layers), l: tr('дэд бүтцийн давхарга'), c: 'var(--data)' },
+      ...blockTile,
     ];
 
   return (
@@ -393,21 +629,180 @@ export function ContractCard({ p }: { p: Pack }) {
  * ⚠️ Бөглөгдөөгүй блокийг ХАСАХГҮЙ, 0 гэж ч зурахгүй: «мэдээлэлгүй» гэж бичнэ.
  * 0%-иар зурвал тайлан ирээгүй блок нь ажил эхлээгүйтэй андуурагдана.
  */
-export function BlocksCard({ p, title = tr('Блок бүрийн гүйцэтгэл') }: { p: Pack; title?: string }) {
+export function BlocksCard({
+  p,
+  title = tr('Блок бүрийн гүйцэтгэл'),
+  collapsible,
+  defaultOpen,
+  overlapN,
+  overlapOids,
+  onOverlapPick,
+}: {
+  p: Pack;
+  title?: string;
+  /**
+   * Хураагддаг карт — АНХДАГЧ нь ХААЛТТАЙ бөгөөд refresh хийхэд ч хаалттай
+   * эхэлнэ (2026-08-21: «үзье гэсэн нь нээж харна»).
+   */
+  collapsible?: boolean;
+  /** `collapsible` үед энэ карт АНХНААСАА НЭЭЛТТЭЙ эхэлнэ (бусад нь хаалттай) */
+  defaultOpen?: boolean;
+  /**
+   * Багцын ДАВХЦСАН ҮЛДСЭН НЭГЖ ТАЛБАРЫН тоо — өгвөл нээхэд блокуудын ДЭЭР
+   * гарна (`null` = ачаалж байна, `'error'` = тоолж чадаагүй — 0-оор
+   * орлуулбал «саад алга» гэсэн худал сайн мэдээ болно). FinCard-ын нэгдсэн
+   * индикаторыг багцаар задалж энд зөөв (2026-08-21).
+   */
+  overlapN?: number | 'error' | null;
+  /**
+   * Давхцсан нэгж талбаруудын ObjectID — өгвөл зурвас ДАРАГДАХ болно:
+   * дарахад газрын зураг тэдгээр талбар руу ойртож, тодруулна.
+   *
+   * ⚠️ Зөвхөн ТОО хангалтгүй байв: «1 талбар саад болж байна» гэдгийг уншсан
+   *    инженер тэр талбарыг ОЛОХЫН тулд зургийг гараар гүйлгэх шаардлагатай
+   *    байлаа. Давхарга дээр аль хэдийн улаанаар зурагдаж байгаа тул очих зам
+   *    л дутуу байсан.
+   */
+  overlapOids?: number[];
+  /**
+   * Зурвасын сонголтыг ЭЦЭГТ мэдэгдэнэ (сонгосон OID-ууд, эс бөгөөс `null`).
+   *
+   * ⚠️ ЗААВАЛ ЭЦЭГТ: газрын зургийн парселийн давхаргын шүүлт
+   *    (`layerWhere`) нь эцэгт бодогддог. Зөвхөн энд `zoomToWhere` дуудвал
+   *    зураг тэр талбар руу ойртоно ГЭХДЭЭ давхарга дээр ТӨСЛИЙН БҮХ
+   *    давхцсан талбар зурагдсан хэвээр үлдэнэ — хэрэглэгч аль нь тухайн
+   *    багцынх болохыг ялгаж чадахгүй (2026-08-27-нд сүлжээний хүсэлтээр
+   *    баталсан: `OBJECTID IN (1821,814,1361,…)` бүтэн жагсаалт явж байв).
+   */
+  onOverlapPick?: (oids: number[] | null) => void;
+}) {
   const withData = p.blocks.filter((b) => b.progress != null).length;
   const { zoomToWhere, setHighlight } = useMap();
   /** Сонгосон блок — дарахад зурагт тодруулж ойртоно, дахин дарахад болино */
   const [selOid, setSelOid] = useState<string | null>(null);
+  /**
+   * ⚠️ Тодруулга ХОЦРОХООС сэргийлнэ (ViewPanel §LayerDashboard-ын загвар).
+   * Блок тодруулсан хэвээр багц солиход/карт unmount болоход хуучин OID-той
+   * featureEffect зурган дээр үлдэж, шинэ багцын шүүлтэд тэр OID байхгүй тул
+   * БҮХ блок бүдгэрч, цуцлах удирдлага ч гарахгүй байв. Cleanup нь ЗӨВХӨН
+   * өөрийн тавьсан тодруулгыг арилгана (ref-ээр шалгана) — эс бөгөөс Tsogts-д
+   * зураг дээрх барилга-даралтын тодруулгыг дайрч цэвэрлэнэ.
+   */
+  const selRef = useRef(selOid);
+  selRef.current = selOid;
+  const releaseRef = useRef(onOverlapPick);
+  releaseRef.current = onOverlapPick;
+  useEffect(() => () => {
+    if (selRef.current != null) setHighlight(null);
+    // ⚠️ Карт алга болоход парселийн нарийсгалт ҮЛДВЭЛ өөр багц руу
+    //    шилжсэн хэрэглэгч хоосон зураг хараад шалтгааныг нь олохгүй.
+    releaseRef.current?.(null);
+  }, [setHighlight]);
+  const prevPackRef = useRef(p.key);
+  useEffect(() => {
+    if (prevPackRef.current === p.key) return;
+    prevPackRef.current = p.key;
+    if (selRef.current != null) {
+      setSelOid(null);
+      setHighlight(null);
+      onOverlapPick?.(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [p.key, setHighlight]);
   const pick = (key: string) => {
     const off = selOid === key;
     setSelOid(off ? null : key);
+    // ⚠️ Блок сонгоход парселийн нарийсгалтыг тавина — эс бөгөөс зураг
+    //    хуучин нэг талбар дээр түгжээтэй үлдэж, сонгосон блок харагдахгүй.
+    onOverlapPick?.(null);
     if (off) { setHighlight(null); return; }
     const w = `${BUILDING.oid} = ${Number(key)}`;
     setHighlight(w, BLOCK_LAYER);
     zoomToWhere(BLOCK_LAYER, w);
   };
+
+  /**
+   * ДАВХЦСАН ТАЛБАР РУУ ОЧИХ — зурвас дээр дарахад.
+   *
+   * ⚠️ Блокийн сонголттой НЭГ төлөв хуваалцана (`selOid`): хоёулаа
+   *    `setHighlight`-д бичдэг тул тусад нь хөтөлбөл нэг нь нөгөөгийнхөө
+   *    тодруулгыг чимээгүй дарж, аль нь идэвхтэй болох нь мэдэгдэхгүй болно.
+   *    Түлхүүр нь OID биш тул блокийн дугаартай хэзээ ч давхцахгүй.
+   */
+  const OV_KEY = 'overlap';
+  const ovOn = selOid === OV_KEY;
+  const ovGo = overlapOids?.length
+    ? () => {
+      /* ⚠️ Тодруулга (`setHighlight`) БИШ, ШҮҮЛТ. Тодруулга нь таарахгүйг
+         БҮДГЭРҮҮЛДЭГ — 100 гаруй давхцсан талбарын дунд бүдгэрсэн 99 нь
+         зурагдсан хэвээр байж, сонгосон нэг нь тэдний дунд алга болно.
+         Эцгийн `layerWhere` нь тэднийг БҮРМӨСӨН хасна. */
+      setHighlight(null);
+      if (ovOn) { setSelOid(null); onOverlapPick?.(null); return; }
+      setSelOid(OV_KEY);
+      onOverlapPick?.(overlapOids);
+      /* ⚠️ Анимацигүй — [[Gazar]]-тай ижил шалтгаанаар */
+      zoomToWhere(PARCEL_LAYER, `OBJECTID IN (${overlapOids.join(',')})`, { animate: false });
+    }
+    : null;
+  /**
+   * ТОЛГОЙН БАРУУН ГАРЫН ТЭМДЭГЛЭЛ.
+   *
+   * ⚠️ 2026-08-23 (хэрэглэгчийн хүсэлт): «20/20 бүртгэлтэй» гэсэн блокийн
+   * тооллогын ОРОНД ДАВХЦСАН ҮЛДСЭН НЭГЖ ТАЛБАРЫН тоо. Багцын картууд
+   * АНХНААСАА ХААЛТТАЙ эхэлдэг тул саадын тоо урьд нь картыг нээж үзсэн хүнд
+   * л харагддаг байв — одоо жагсаалтыг гүйлгэхэд багц БҮРИЙНХ шууд уншигдана.
+   *
+   * ⚠️ `overlapN` өгөөгүй үед (сонгосон багцын дотоод карт) хуучин тооллого
+   * ХЭВЭЭР: тэнд давхцлын тоо картын дотор аль хэдийн байдаг тул толгойд
+   * давхардуулах шаардлагагүй.
+   *
+   * ⚠️ Өнгө нь УЛААН (`--bad-ink`), ягаан (`--overlap`) БИШ — хэрэглэгчийн
+   * шийдвэр. Тэг үед ногоон: саадгүй нь сайн мэдээ.
+   */
+  const note = overlapN === undefined
+    ? tr('{0}/{1} бүртгэлтэй', num(withData), num(p.blocks.length))
+    : overlapN == null
+      ? tr('давхцал тоолж байна…')
+      : overlapN === 'error'
+        /* Алдаа ≠ «0 давхцсан» — ногоон сайн мэдээний оронд саарлаар ил хэлнэ */
+        ? <span style={{ color: 'var(--ink-3)' }}>{tr('давхцал тоолж чадсангүй')}</span>
+        : (
+          <span style={{ color: overlapN ? 'var(--bad-ink)' : 'var(--good-ink)' }}>
+            {tr('{0} давхцсан талбар', num(overlapN))}
+          </span>
+        );
+
   return (
-    <Section title={title} note={tr('{0}/{1} бүртгэлтэй', num(withData), num(p.blocks.length))}>
+    <Section title={title} collapsible={collapsible} defaultClosed={collapsible && !defaultOpen} note={note}>
+      {overlapN !== undefined && (
+        <>
+          {/* ДАВХЦЛЫН мэдээлэл — хайрцаглаж, доорх блокийн жагсаалтаас
+              нүдээр илт зааглана. Тоо >0 бол шар аяс — ажилд саад буй.
+              ⚠️ Талбарууд мэдэгдэж байвал ДАРЖ тэдгээр рүү очно. Тэг эсвэл
+                 алдааны үед энгийн `div` — дарах юм байхгүй бол товч мэт
+                 харагдах нь худал амлалт. */}
+          {ovGo ? (
+            <button
+              type="button"
+              className={`${o.ovStrip} ${o.ovStripOn} ${o.ovStripBtn} ${ovOn ? o.ovStripSel : ''}`}
+              onClick={ovGo}
+              title={tr('Дарж газрын зураг дээрх давхцсан нэгж талбар руу очно')}
+            >
+              <span>{tr('Давхцсан үлдсэн нэгж талбар')}</span>
+              <b className="num">{num(overlapN as number)}</b>
+            </button>
+          ) : (
+            <div className={`${o.ovStrip} ${typeof overlapN === 'number' && overlapN ? o.ovStripOn : ''}`}>
+              <span>{overlapN === 'error' ? tr('Давхцал тоолж чадсангүй') : tr('Давхцсан үлдсэн нэгж талбар')}</span>
+              <b className="num">{overlapN == null ? '…' : overlapN === 'error' ? '—' : num(overlapN)}</b>
+            </div>
+          )}
+          {/* Жагсаалтын карт («Багц N — блокууд») дээр доорх мөрүүд ЮУ болохыг
+              нэрлэнэ; сонгосон багцын картад гарчиг нь өөрөө хэлдэг тул хэрэггүй */}
+          {collapsible && <div className={o.ovDivider}>{tr('Блок бүрийн гүйцэтгэл')}</div>}
+        </>
+      )}
       <Bars
         color={HUE}
         max={100}
@@ -479,15 +874,25 @@ export function LayersCard({ p }: { p: Pack }) {
   );
 }
 
+/* Давхарга бүрийн нийлбэрийн сесс-кэш (2026-08-21 гүйцэтгэлийн аудит):
+   нэг багцыг дахин сонгоход ижил stat-асуулгууд дахин явдаг байв. Дүн нь
+   сессийн турш тогтвортой; амжилтгүйг кэшлэхгүй. */
+const pkgTotalCache = new Map<string, Promise<{ title: string; n: number; qty: string | null }>>();
+
 /** Сонгосон багцын давхарга бүрийн тоо ба хэмжээ — сонголт солигдох бүрд */
 function usePkgTotals(ids: string[]): Async<{ title: string; n: number; qty: string | null }[]> {
   const key = ids.join(',');
   return useAsync(async () => {
     if (!ids.length) return [];
-    return Promise.all(ids.map(async (id) => {
-      const d = LAYER_BY_ID[id];
-      const t = await layerTotals(d, '1=1');
-      return { title: d.title, n: t.n, qty: qtyText(d, t.q) };
+    return Promise.all(ids.map((id) => {
+      let p = pkgTotalCache.get(id);
+      if (!p) {
+        const d = LAYER_BY_ID[id];
+        p = layerTotals(d, '1=1').then((t) => ({ title: d.title, n: t.n, qty: qtyText(d, t.q) }));
+        p.catch(() => pkgTotalCache.delete(id));
+        pkgTotalCache.set(id, p);
+      }
+      return p;
     }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);

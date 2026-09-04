@@ -9,18 +9,54 @@ import { t as tr } from '@/lib/i18nCore';
 import { ViewRail } from '@/components/ViewRail';
 import { LayerCatalog } from '@/components/LayerCatalog';
 import { OpacityPanel } from '@/components/OpacityPanel';
-import { Suitability } from '@/modules/analysis/Suitability';
+import { MapTools } from '@/components/MapTools';
+import { useZoomToFilter } from '@/lib/useZoomToFilter';
+import dynamic from 'next/dynamic';
+/**
+ * ⚠️ `Dashboard` нь СТАТИК ХЭВЭЭР — тэр бол `DEFAULT_VIEW`. Динамик болговол
+ * аппын хамгийн түгээмэл зам дээр нэмэлт сүлжээний эргэлт, нэмэлт спиннер
+ * үүсгэх ба ямар ч байсан татагдана. Мөн `MapCanvas` (+ `@arcgis/core`) нь
+ * түүний дамжсан хамаарал тул эхний ачаалалтад зайлшгүй орно — газрын зураг
+ * бол анхдагч харагдацын гол агуулга.
+ */
 import { Dashboard } from '@/modules/Dashboard';
-import { Bagts } from '@/modules/Bagts';
-import { Tsogts } from '@/modules/Tsogts';
-import { Gazar } from '@/modules/Gazar';
-import { Finance } from '@/modules/Finance';
-import { Habea } from '@/modules/Habea';
-import { Irged } from '@/modules/Irged';
-import { Iot } from '@/modules/Iot';
-import { Guitsetgel } from '@/modules/Guitsetgel';
-import { Sheet } from '@/modules/sheet/Sheet';
-import { Tailan } from '@/modules/Tailan';
+/* ⚠️ ТОМ, ховор-эхний харагдацууд dynamic chunk (2026-08-21 гүйцэтгэлийн
+   аудит): Suitability (analysis стек), Sheet/Pivot, Tailan (+reportPdf),
+   Guitsetgel, Finance нийлээд Portal chunk-ийн parse хугацааг ~30-40%
+   нэмдэг байв. Portal нөхцөлт рендэрлэдэг тул unmount үеийн зан өөрчлөгдөхгүй;
+   эхний нээлтэд Booting-той ижил түр төлөв харагдана.
+
+   ⚠️ 2026-09-03-ны хэрэглэгч талын аудит: газрын зурагтай ҮЛДСЭН харагдацууд
+   (PkgFin · PkgProg · Gazar · Habea · Irged · Iot · Ersdel) МӨН статик байсан
+   тул тэдгээрийн ~474 KB эх код нь `?v=huvaari` гэж шууд орсон хүнд ч
+   татагддаг байв. Тэдгээр нь `MapCanvas`-ыг ХУВААЛЦДАГ (Dashboard-той нэг
+   chunk) тул динамик болгоход ArcGIS давхардахгүй — зөвхөн өөрсдийнх нь код
+   хойшилно. */
+const PkgFin = dynamic(() => import('@/modules/PkgFin').then((m) => m.PkgFin), { ssr: false });
+const PkgProg = dynamic(() => import('@/modules/PkgProg').then((m) => m.PkgProg), { ssr: false });
+const Gazar = dynamic(() => import('@/modules/Gazar').then((m) => m.Gazar), { ssr: false });
+const Habea = dynamic(() => import('@/modules/Habea').then((m) => m.Habea), { ssr: false });
+const Irged = dynamic(() => import('@/modules/Irged').then((m) => m.Irged), { ssr: false });
+const Iot = dynamic(() => import('@/modules/Iot').then((m) => m.Iot), { ssr: false });
+const Ersdel = dynamic(() => import('@/modules/Ersdel').then((m) => m.Ersdel), { ssr: false });
+/* ⚠️ «Дэд бүтэц» нь бусад газрын зурагтай харагдацтай ИЖИЛ dynamic: модуль
+   нь DedButetsEdit ба butetsEdit.ts-ийг дагуулдаг (~92 KB эх код) бөгөөд
+   `MapCanvas`-ыг тэдэнтэй ХУВААЛЦДАГ тул ArcGIS давхардахгүй. Статик
+   импорт бол `?v=huvaari` гэж орсон хүнд ч татагдана. */
+const DedButets = dynamic(() => import('@/modules/DedButets').then((m) => m.DedButets), { ssr: false });
+const Suitability = dynamic(() => import('@/modules/analysis/Suitability').then((m) => m.Suitability), { ssr: false });
+const Finance = dynamic(() => import('@/modules/Finance').then((m) => m.Finance), { ssr: false });
+const Guitsetgel = dynamic(() => import('@/modules/Guitsetgel').then((m) => m.Guitsetgel), { ssr: false });
+const Qaqc = dynamic(() => import('@/modules/Qaqc').then((m) => m.Qaqc), { ssr: false });
+const Zovshoorol = dynamic(() => import('@/modules/Zovshoorol').then((m) => m.Zovshoorol), { ssr: false });
+const Tailan = dynamic(() => import('@/modules/Tailan').then((m) => m.Tailan), { ssr: false });
+/* ⚠️ Хуваарь нь 10 бөглөх хуудсын схем + 1,400 мөрийг татдаг тул зөвхөн
+   нээгдэх үедээ ачаалагдана (`dynamic`) — бусад харагдацыг хүндрүүлэхгүй. */
+const Huvaari = dynamic(() => import('@/modules/Huvaari').then((m) => m.Huvaari), { ssr: false });
+/* ⚠️ Схем нь зургаан эх сурвалжийн ачаалагчийг дагуулдаг тул порталын үндсэн
+   багцад ОРУУЛАХГҮЙ — зөвхөн нээгдэх үедээ. */
+const Schem = dynamic(() => import('@/modules/Schem').then((m) => m.Schem), { ssr: false });
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { Icon } from '@/components/Icon';
 import { DocViewer } from '@/components/DocViewer';
 import { UserAdmin } from '@/components/UserAdmin';
@@ -34,14 +70,18 @@ import { queryStats, count, sum } from '@/lib/query';
 import { loadHeadline } from '@/lib/live';
 import {
   DEFAULT_VIEW, VIEW_BY_KEY, layerUrl, oidOf, zoneWhere,
-  PLAN_LAYER_IDS, MONITOR_LAYER_IDS, LAYER_BY_ID, groupOf,
+  PLAN_LAYER_IDS, CATALOG_LAYER_IDS, LAYER_BY_ID, groupOf,
   ZONE_LAYER, ZONE_FIELDS, BUILT_LAYER, BUILT_FIELDS,
   type ViewKey,
 } from '@/lib/services';
 import { readParam, writeParams } from '@/lib/urlState';
 import { num } from '@/lib/format';
-import { ViewPanel } from '@/modules/ViewPanel';
-import { BuildingSummary, MonitorTrend, useBuildings } from '@/modules/BuildingPanel';
+/**
+ * ⚠️ `ViewPanel` (64 KB) нь ЗӨВХӨН `standalone` БИШ харагдацуудад зурагдана
+ * (`!isFull` салбар). Анхдагч `dashboard` нь standalone тул эхний ачаалалтад
+ * ХЭРЭГГҮЙ — 2026-09-03-ны аудитаар динамик болгов.
+ */
+const ViewPanel = dynamic(() => import('@/modules/ViewPanel').then((m) => m.ViewPanel), { ssr: false });
 
 import s from '@/app/shell.module.css';
 
@@ -62,18 +102,6 @@ const CAT_MIN = 232;
 const CAT_MAX = 560;
 const CAT_DEFAULT = 296;
 const CAT_KEY = 'selbe-catalog-width';
-
-/** «Барилгын хяналт»-ын ЗҮҮН дундаж баганы өргөн (px) */
-const MON_MIN = 240;
-const MON_MAX = 620;
-const MON_DEFAULT = 300;
-const MON_KEY = 'selbe-monleft-width';
-
-/** Зургийн доорх явцын муруйн зурвасын өндөр (px) */
-const TREND_MIN = 140;
-const TREND_MAX = 560;
-const TREND_DEFAULT = 240;
-const TREND_KEY = 'selbe-montrend-height';
 
 /**
  * БАГАНА/МӨР ЧИРЭХ — самбар, каталог, зүүн багана, доод зурвас БҮГД үүнийг.
@@ -165,7 +193,7 @@ export default function Portal(
   return (
     <MapProvider>
       {/* Нэвтрээд дашбоард (газрын зураг) бэлэн болтол ачаалалтын дэлгэц */}
-      <Booting />
+      <Booting navScope={navScope} />
       <FilterProvider>
         <PortalContent onHome={onHome} navScope={navScope} docsAllowed={docsAllowed} isSuper={isSuper} />
       </FilterProvider>
@@ -179,7 +207,7 @@ export default function Portal(
  * тавигддаг тул түүнийг «дашбоард нээгдлээ» дохио болгоно. Эхний удаа бэлэн
  * болмогц дахин ХАРАГДАХГҮЙ (2D↔3D солиход анивчихгүй).
  */
-function Booting() {
+function Booting({ navScope }: { navScope: 'all' | ViewKey[] }) {
   const { view } = useMap();
   /**
    * ⚠️ Порталын зураггүй standalone харагдац (analysis, sheet, tailan, finance —
@@ -188,7 +216,7 @@ function Booting() {
    * (useState-ийн initializer-т нэг удаа тооцно — hooks-ийн дараалал тогтвортой.)
    */
   const [done, setDone] = useState(() => {
-    const v = VIEW_BY_KEY[initialView()];
+    const v = VIEW_BY_KEY[clampView(initialView(), navScope)];
     return !!v.standalone && !v.layers.length;
   });
   useEffect(() => {
@@ -241,9 +269,27 @@ const initialView = (): ViewKey => {
   return v && VIEW_BY_KEY[v as ViewKey] ? (v as ViewKey) : DEFAULT_VIEW;
 };
 
+/**
+ * Харагдацыг эрхийн хүрээгээр хайчилна.
+ * ⚠️ 2026-08-29: `?v=finance` гүн холбоос эрхгүй хэрэглэгчид ЭХНИЙ commit-д
+ *    зурагдаж (өгөгдлийн effect ч ажиллаад) дараа нь л guard шилжүүлдэг байв —
+ *    initializer-т хайчилснаар эрхгүй агуулга нэг агшин ч гарахгүй.
+ */
+const clampView = (v: ViewKey, scope: 'all' | ViewKey[]): ViewKey =>
+  scope === 'all' || !scope.length || scope.includes(v) ? v : scope[0];
+
+/**
+ * ⚠️ IoT нь 3D-ЭЭР эхэлнэ (2026-08-21, хүсэлт): мэдрэгчийн тэмдэг газраас дээш
+ * өргөгдсөн байдгаараа л уншигдана — 2D-д тэр өндөр харагдахгүй тул цэгүүд
+ * ортофото дээр хавтгайрч, аль нь юу болох нь ялгагдахгүй.
+ *
+ * ⚠️ URL-ийн `?d=` нь ҮРГЭЛЖ дээгүүр: хуваалцсан холбоос хүний сонгосон горимыг
+ * хадгална, эс бөгөөс `?v=iot&d=2d` гэсэн холбоос өөрөө 3D болж нээгдэнэ.
+ */
 const initialDim = (): Dim => {
   const d = readParam('d');
-  return d === '3d' || d === 'bim' ? d : '2d';
+  if (d === '3d' || d === 'bim' || d === '2d') return d;
+  return initialView() === 'iot' ? '3d' : '2d';
 };
 const initialLayer = (): string | null => {
   const l = readParam('l');
@@ -264,8 +310,8 @@ function PortalContent(
    * `visible` нь харагдацын анхны давхаргуудаар дүүрнэ; хэрэглэгч каталогоос
    * нэмж асаана.
    */
-  const [view, setViewState] = useState<ViewKey>(initialView);
-  const [visible, setVisible] = useState<string[]>(() => VIEW_BY_KEY[initialView()].initial);
+  const [view, setViewState] = useState<ViewKey>(() => clampView(initialView(), navScope));
+  const [visible, setVisible] = useState<string[]>(() => VIEW_BY_KEY[clampView(initialView(), navScope)].initial);
 
   /**
    * Каталогийн багана нээлттэй эсэх ба самбарт задалж харуулах давхарга.
@@ -285,7 +331,9 @@ function PortalContent(
    * зөвхөн дүрс үлдэж 54px болно. Сонголт localStorage-д хадгалагдана.
    * ⚠️ Зөвхөн эффект дотор уншина — статик экспортод localStorage байхгүй.
    */
-  const [navMin, setNavMin] = useState(false);
+  /* ⚠️ 2026-08-25 (хэрэглэгчийн шийдвэр): анх орж ирэхэд зүүн цэс ХУРААСТАЙ —
+     зөвхөн дүрс (54px) харагдаж, газрын зурагт илүү зай өгнө. Товчоор дэлгэнэ. */
+  const [navMin, setNavMin] = useState(true);
   useEffect(() => {
     try { setNavMin(localStorage.getItem('selbe-nav-min') === '1'); } catch { /* private */ }
   }, []);
@@ -306,6 +354,8 @@ function PortalContent(
 
   /** Сонгосон бүс — БҮХ давхарга, БҮХ тоо үүгээр шүүгдэнэ */
   const [zone, setZone] = useState<string | null>(() => readParam('z'));
+  // Шүүлт солигдоход зураг тэр объектууд руу нисэнэ
+  useZoomToFilter({ zone });
   const [picked, setPicked] = useState<Record<string, unknown> | null>(null);
   const [pickedLayer, setPickedLayer] = useState<string | null>(null);
   const { theme, toggle } = useTheme();
@@ -337,7 +387,9 @@ function PortalContent(
   const standalone = !!VIEW_BY_KEY[view].standalone;
 
   const catalogIds = useMemo(
-    () => (view === 'monitor' ? [...MONITOR_LAYER_IDS, ...PLAN_LAYER_IDS] : PLAN_LAYER_IDS),
+    // ⚠️ 2026-08-20: Каталог БҮХ давхаргыг харуулдаг болсон тул тоо/хэмжээний
+    //    жагсаалт нь түүнтэй ижил байх ёстой (эс бөгөөс шинэ мөрүүд «…» хэвээр).
+    () => CATALOG_LAYER_IDS,
     [view],
   );
   // ⚠️ Зөвхөн каталог/самбартай харагдацуудад — дашбоард/анализ өөрсдөө татна
@@ -361,6 +413,12 @@ function PortalContent(
     // ⚠️ Каталог товчоор удирдагдана. «Ерөнхий төлөвлөгөө» нь давхаргын жагсаалт
     //    гол агуулгатай тул НЭЭЛТТЭЙ эхэлнэ; бусад харагдац хумигдсан.
     setCatalog(v === 'plan');
+    /**
+     * IoT руу орход 3D. ⚠️ ЗӨВХӨН IoT-д тавина — бусад харагдац руу шилжихэд
+     * горимыг ХҮЧЭЭР 2D болгохгүй: хэрэглэгч 3D-г санаатай сонгосон бол тэр
+     * сонголт нь харагдац солих болгонд алга болох ёсгүй.
+     */
+    if (v === 'iot') setDim('3d');
   }, [clearFilter]);
 
   /* ── URL төлөв — хуваалцах холбоос, F5, Back ── */
@@ -383,20 +441,28 @@ function PortalContent(
       l: layer,
       d: dim === '2d' ? null : dim,
     }, { push });
+    /* Сүүлд ажилласан харагдац — дараагийн session-д «Орох» дарахад Root
+       эндээс сэргээнэ (үргэлж дашбоардаас эхлэхгүй). Private горимд
+       localStorage хаалттай байж болох тул алдааг залгина. */
+    try { localStorage.setItem('selbe-last-view', view); } catch { /* хаалттай орчин */ }
   }, [view, zone, layer, dim]);
 
   /* URL → төлөв: хөтчийн Back/Forward-д харагдацыг бүтэн сэргээнэ */
   useEffect(() => {
     const onPop = () => {
       // `setView` нь харагдацын бүрэн шинэчлэл (шүүлт цэвэрлэх г.м.) хийдэг
-      setView(initialView());
+      // ⚠️ Эрхгүй харагдац руу Back хийвэл хайчилж, URL-ыг replace-ээр засна
+      //    (push хийвэл доорх guard-тай гогцоо үүснэ)
+      const next = clampView(initialView(), navScope);
+      if (next !== initialView()) lastViewRef.current = next;
+      setView(next);
       setZone(readParam('z'));
       setLayer(initialLayer());
       setDim(initialDim());
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
-  }, [setView]);
+  }, [setView, navScope]);
 
   /**
    * ЭРХИЙН ХАМГААЛАЛТ — идэвхтэй `view` нь навигацийн хүрээнд ЗААВАЛ байна. Гүн
@@ -426,16 +492,20 @@ function PortalContent(
   const closeCatalog = useCallback(() => setCatalog(false), []);
 
   /**
-   * ОРТОФОТО — харагдац бүрийн анхдагч (хэрэглэгчийн хүсэлт, 2026-07-31):
-   * «Багцын мэдээлэл» ба «Барилгын хяналт» дээр АСААЛТТАЙ (гүйцэтгэлийг бодит
-   * агаарын зурагтай нь тулгаж хардаг), бусад харагдацад унтраалттай (топографи).
+   * ОРТОФОТО — харагдац бүрийн анхдагч.
+   *
+   * ⚠️ 2026-08-28 (хэрэглэгчийн хүсэлт): «Ерөнхий дашбоард» ба «Ерөнхий
+   * төлөвлөгөө» ХОЁРООС БУСАД бүх харагдац эхний оролтод ортофототой нээгдэнэ.
+   * Урьд нь (2026-07-31) зөвхөн pkgFin/pkgProg/habea асаалттай, бусад нь
+   * топографи байв. Тэр хоёр нь төлөвлөлтийн бүсчлэл/давхаргыг өнгөөр уншдаг
+   * тул топографи хэвээр; бусад нь бодит талбайтай тулгаж хардаг.
+   *
    * Харагдац дотроо гараар унтраасан/асаасан нь дараагийн солилт хүртэл үлдэнэ.
+   * `Ersdel` өөрөө ч `setOrtho(true)` хийдэг — энэ дүрэмтэй нийцнэ.
    */
   const { setOrtho } = useMap();
   useEffect(() => {
-    // tsogts — багц+хяналтын нэгдсэн харагдац тул мөн ортофототой
-    // habea — кран, аюулгүйн бүсийг бодит талбай дээр нь хардаг (2026-08-12)
-    setOrtho(view === 'bagts' || view === 'monitor' || view === 'tsogts' || view === 'habea');
+    setOrtho(view !== 'dashboard' && view !== 'plan');
   }, [view, setOrtho]);
 
   /* ── Багануудын өргөн ── */
@@ -448,15 +518,6 @@ function PortalContent(
   const catSize = useColumnResize({
     min: CAT_MIN, max: CAT_MAX, initial: CAT_DEFAULT, storageKey: CAT_KEY, dir: 1,
   });
-  // «Барилгын хяналт»-ын зүүн багана — мөн ЗҮҮН талд тул +1
-  const monSize = useColumnResize({
-    min: MON_MIN, max: MON_MAX, initial: MON_DEFAULT, storageKey: MON_KEY, dir: 1,
-  });
-  // Зургийн доорх муруйн зурвас — ДЭЭШ чирэхэд өндөрснө
-  const trendSize = useColumnResize({
-    min: TREND_MIN, max: TREND_MAX, initial: TREND_DEFAULT, storageKey: TREND_KEY, dir: -1, axis: 'y',
-  });
-
   const active = VIEW_BY_KEY[view];
   /**
    * ⚠️ Бүтэн талбайг эзлэх харагдацууд (ерөнхий дашбоард, анализ) нь ӨӨРСДИЙН
@@ -467,15 +528,21 @@ function PortalContent(
    *   · dashboard — газрын зургийг тойрсон үзүүлэлтийн самбар
    */
   const isDash = view === 'dashboard';
-  const isSheet = view === 'sheet';
-  const isBagts = view === 'bagts';
+  const isHuvaari = view === 'huvaari';
   const isTailan = view === 'tailan';
   const isGazar = view === 'gazar';
   const isFinance = view === 'finance';
   const isHabea = view === 'habea';
   const isIot = view === 'iot';
+  const isErsdel = view === 'ersdel';
+  const isDedButets = view === 'dedButets';
   const isGuitsetgel = view === 'guitsetgel';
-  const isTsogts = view === 'tsogts';
+  const isQaqc = view === 'qaqc';
+  const isZovshoorol = view === 'zovshoorol';
+  const isSchem = view === 'schem';
+  /* Багцын хоёр харагдац — НЭГ модулиас `mode` пропоор (`services.ts` §pkgFin) */
+  const isPkgFin = view === 'pkgFin';
+  const isPkgProg = view === 'pkgProg';
   const isIrged = view === 'irged';
   // `standalone` нь эдгээрийг ЯГ тэмдэглэдэг — тусад нь тоолохгүй
   const isFull = standalone;
@@ -526,12 +593,10 @@ function PortalContent(
           будагддаг байсныг байгууллагын НЭГ акцентад (globals.css) нэгтгэв.
           Мөн `shellCat` хасагдав: каталог багана биш, зурган дээрх popup боллоо. */}
       <div
-        className={`${s.shell} ${isFull ? s.shellSuit : ''} ${!isFull && !planPanel ? s.shellFoot : ''} ${view === 'monitor' ? s.shellMon : ''} ${navMin ? s.shellNavMin : ''}`}
+        className={`${s.shell} ${isFull ? s.shellSuit : ''} ${!isFull && !planPanel ? s.shellFoot : ''} ${navMin ? s.shellNavMin : ''}`}
         style={{
           '--panel': panelVar,
           '--catalog': `${catSize.width}px`,
-          '--monleft': `${monSize.width}px`,
-          '--montrend': `${trendSize.width}px`,
         } as CSSProperties}
       >
         <header className={s.head}>
@@ -545,9 +610,11 @@ function PortalContent(
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/logo.svg" alt="" className={s.logo} />
+            {/* ⚠️ 2026-08-21: Дэд гарчиг ХАСАГДАВ (хэрэглэгчийн хүсэлт) — толгойд
+                зөвхөн брэндийн нэр үлдэнэ. `brandText`-ийг хэвээр үлдээв: логоны
+                хажуугийн босоо зэрэгцүүлэлт түүнээс хамаарна. */}
             <span className={s.brandText}>
-              <h1 className={s.brandName}>{tr('Сэлбэ 20 минутын хот')}</h1>
-              <span className={s.brandSub}>{tr('Ерөнхий төлөвлөгөө ба төсвийн портал')}</span>
+              <h1 className={s.brandName}>{tr('Сэлбэ ухаалаг хот')}</h1>
             </span>
           </button>
 
@@ -612,14 +679,19 @@ function PortalContent(
         {/* Бүтэн талбайн харагдацууд — ерөнхий дашбоард ба анализ */}
         {isFull && (
           <div className={s.suit}>
+            {/* ⚠️ ХАРАГДАЦ БҮР ТУСДАА ХАШЛАГАД (2026-09-03-ны аудит): нэг
+                модулийн рендерийн throw бүх порталыг үхүүлдэг байв — навигац,
+                каталог, ХАДГАЛААГҮЙ НООРОГ бүгд алга болно. `key={view}` нь
+                харагдац солиход хашлагыг remount хийж, хуучин алдааг арилгана. */}
+            <ErrorBoundary scope="view" key={view} label={tr('«{0}» нээгдсэнгүй', VIEW_BY_KEY[view].title)}>
             {isDash
               ? <Dashboard dim={dim} setDim={setDim} zone={zone} setZone={setZone} />
-              : isBagts
-                ? <Bagts dim={dim} setDim={setDim} />
-                : isTsogts
-                  ? <Tsogts dim={dim} setDim={setDim} />
-                  : isSheet
-                    ? <Sheet />
+              : isPkgFin
+              ? <PkgFin dim={dim} setDim={setDim} />
+              : isPkgProg
+                ? <PkgProg dim={dim} setDim={setDim} />
+                  : isHuvaari
+                    ? <Huvaari />
                     : isTailan
                       ? <Tailan />
                       : isGazar
@@ -632,60 +704,43 @@ function PortalContent(
                               ? <Irged dim={dim} setDim={setDim} />
                               : isIot
                                 ? <Iot dim={dim} setDim={setDim} />
+                                : isErsdel
+                                ? <Ersdel dim={dim} setDim={setDim} />
+                                : isDedButets
+                                ? <DedButets dim={dim} setDim={setDim} />
+                                : isZovshoorol
+                                  ? <Zovshoorol />
                                 : isGuitsetgel
-                                  ? <Guitsetgel onView={setView} />
+                                  ? <Guitsetgel />
+                                : isQaqc
+                                  ? <Qaqc />
+                                : isSchem
+                                  /* ⚠️ `setView` нь ЗАНГИЛАА ДАРАХАД шилжихэд
+                                     хэрэгтэй. URL-аар тойрч болохгүй — энэ
+                                     функц шүүлт, сонголт, давхаргыг ч цэвэрлэдэг. */
+                                  ? <Schem setView={setView} navScope={navScope} />
                                   : <Suitability dim={dim} setDim={setDim} />}
+            </ErrorBoundary>
           </div>
         )}
 
         {!isFull && (
           <>
-            {/* «Барилгын хяналт» — ЗҮҮН талд дундаж, зургийн ДООР явцын муруй */}
-            {view === 'monitor' && <MonitorFrame size={monSize} trend={trendSize} />}
-
             <div className={s.map}>
               <MapCanvas dim={dim} visible={visible} opacity={opacity} zone={zone} onPick={pick} />
 
-              {/* Газрын зураг дээрх хэрэгслүүд — давхарга нээх, тунгалаг, 2D/3D/BIM */}
-              <div className={s.mapTools}>
-                {/* «Давхарга» — БҮХ харагдацад (plan-д ч) каталогийг нуух/харуулна */}
-                <button
-                  type="button"
-                  aria-pressed={catOpen}
-                  className={`${s.mapBtn} ${catOpen ? s.mapBtnOn : ''}`}
-                  onClick={() => setCatalog((v) => !v)}
-                  title={tr('Давхаргын жагсаалт')}
-                >
-                  <Icon name="layers" size={15} />
-                  {tr('Давхарга')}
-                </button>
-
-                {/* «Тунгалаг» — ил давхаргуудын opacity тохируулах цонх нээнэ */}
-                <button
-                  type="button"
-                  aria-pressed={opacityOpen}
-                  className={`${s.mapBtn} ${opacityOpen ? s.mapBtnOn : ''}`}
-                  onClick={() => setOpacityOpen((v) => !v)}
-                  title={tr('Давхаргын тунгалаг')}
-                >
-                  <Icon name="droplet" size={15} />
-                  {tr('Тунгалаг')}
-                </button>
-
-                <div className={s.mapDims} role="group" aria-label={tr('Газрын зургийн харагдац')}>
-                  {(['2d', '3d', 'bim'] as Dim[]).map((d) => (
-                    <button
-                      key={d}
-                      type="button"
-                      aria-pressed={dim === d}
-                      className={`${s.dimBtn} ${dim === d ? s.dimOn : ''}`}
-                      onClick={() => setDim(d)}
-                    >
-                      {d.toUpperCase()}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              {/* Газрын зургийн НЭГДСЭН хэрэгслийн зурвас — бүх харагдацад ижил
+                  (`MapTools`). Урьд нь энэ блок энд гараар бичигдсэн байв. */}
+              <MapTools
+                dim={dim}
+                setDim={setDim}
+                layersOpen={catOpen}
+                onLayers={() => setCatalog((v) => !v)}
+                opacityOpen={opacityOpen}
+                onOpacity={() => setOpacityOpen((v) => !v)}
+                zone={zone}
+                setZone={setZone}
+              />
 
               {/* Тунгалаг тохируулах хөвөгч цонх */}
               {opacityOpen && (
@@ -706,7 +761,7 @@ function PortalContent(
               {catOpen && (
                 <div className={s.catPop}>
                   <LayerCatalog
-                    view={view === 'monitor' ? 'monitor' : 'plan'}
+                    view="plan"
                     totals={totals}
                     visible={visible}
                     setVisible={setVisible}
@@ -755,7 +810,10 @@ function PortalContent(
                 */}
               {planPanel && <SummaryBar zone={zone} />}
 
+              {/* ⚠️ Баруун самбар нь газрын зурагтай ХАМТ зурагддаг тул
+                  түүний уналт зургийг ч авч унагадаг байв — тусад нь хашина. */}
               <div className={s.panelBody}>
+                <ErrorBoundary scope="view" key={`panel-${view}`} label={tr('Самбар нээгдсэнгүй')}>
                 <ViewPanel
                   view={view}
                   totals={totals}
@@ -769,6 +827,7 @@ function PortalContent(
                   layer={layer}
                   setLayer={setLayer}
                 />
+                </ErrorBoundary>
               </div>
             </aside>
 
@@ -783,7 +842,9 @@ function PortalContent(
       </div>
 
       {/* ТЭЗҮ баримт бичгийн глобал popup — fixed тул бүх харагдацыг халхална */}
-      <DocViewer open={docsOpen} onClose={() => setDocsOpen(false)} />
+      {/* ⚠️ `docsAllowed`-ыг ЭНД дахин шалгана (`Home`-той ижил): эрх нь ажиллаж
+          байх үед super admin панелаас буурвал нээлттэй цонх өөрөө хаагдана. */}
+      <DocViewer open={docsAllowed && docsOpen} onClose={() => setDocsOpen(false)} />
 
       {/* Хэрэглэгчийн эрх удирдлага — зөвхөн super admin нээж чадна */}
       {isSuper && <UserAdmin open={adminOpen} onClose={() => setAdminOpen(false)} />}
@@ -796,54 +857,6 @@ function PortalContent(
 }
 
 /* ── «Барилгын хяналт»-ын хүрээ ── */
-
-/**
- * ЗҮҮН дундаж багана + газрын зургийн ДООРХ явцын муруй.
- *
- * ⚠️ Хоёулаа НЭГ `useBuildings()`-ээс уншина — тусад нь дуудвал 113 блокийн
- * хүсэлт хоёр удаа явна. Fragment тул grid-ийн шууд хүүхдүүд хэвээр: муруй нь
- * DOM-д зүүн баганын хажууд ч, `grid-area: trend` нь зургийн доор тавина.
- */
-function MonitorFrame(
-  { size, trend }: { size: ReturnType<typeof useColumnResize>; trend: ReturnType<typeof useColumnResize> },
-) {
-  const q = useBuildings();
-  return (
-    <>
-      <aside className={s.monLeft} aria-label={tr('Барилгын дундаж мэдээлэл')}>
-        {/* Өргөн тохируулах бариул — баганы БАРУУН ирмэг дээр */}
-        <div
-          className={`${s.grip} ${size.dragging ? s.gripOn : ''}`}
-          role="separator"
-          aria-orientation="vertical"
-          aria-label={tr('Зүүн баганын өргөн')}
-          onPointerDown={size.onPointerDown}
-          onDoubleClick={size.onDoubleClick}
-          title={tr('Чирж өргөсгөнө · давхар товшиж анхны хэмжээнд буцаана')}
-        />
-        <div className={s.monScroll}>
-          <BuildingSummary q={q} />
-        </div>
-      </aside>
-
-      <section className={s.monTrend} aria-label={tr('Барилга угсралтын явц')}>
-        {/* Өндөр тохируулах бариул — зурвасын ДЭЭД ирмэг дээр */}
-        <div
-          className={`${s.rowGrip} ${trend.dragging ? s.rowGripOn : ''}`}
-          role="separator"
-          aria-orientation="horizontal"
-          aria-label={tr('Явцын зурвасын өндөр')}
-          onPointerDown={trend.onPointerDown}
-          onDoubleClick={trend.onDoubleClick}
-          title={tr('Чирж өндөрсгөнө · давхар товшиж анхны хэмжээнд буцаана')}
-        />
-        <div className={s.monScroll}>
-          <MonitorTrend q={q} />
-        </div>
-      </section>
-    </>
-  );
-}
 
 /* ── Идэвхтэй шүүлт ── */
 

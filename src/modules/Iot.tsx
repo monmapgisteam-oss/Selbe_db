@@ -3,22 +3,32 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { MapCanvas, type Dim } from '@/components/MapCanvas';
-import { Data, Empty, Trend, Rows, Note, Bars, Donut, Ring, SubHead } from '@/components/ui';
+import { Data, Trend, Note } from '@/components/ui';
 import { Icon } from '@/components/Icon';
+import { MapTools } from '@/components/MapTools';
+import { useZoomToFilter } from '@/lib/useZoomToFilter';
+import { LayerCatalog } from '@/components/LayerCatalog';
+import { OpacityPanel } from '@/components/OpacityPanel';
+import { useLayerPicks } from '@/lib/useLayerPicks';
+import { usePlanTotals } from '@/lib/totals';
 import { useAsync } from '@/lib/useAsync';
-import { loadSensors, type SensorLive, type MetricSeries } from '@/lib/sensors';
+import {
+  loadSensors, RANGES, type RangeKey, type SensorLive, type MetricSeries,
+} from '@/lib/sensors';
 import { num } from '@/lib/format';
-import { sumBy } from '@/lib/agg';
 import { VIEW_BY_KEY } from '@/lib/services';
 import s from './iot.module.css';
+import o from './iotOv.module.css';
 
 /**
- * IoT ХЯНАЛТ — Mononet-ээс 15 минут тутам ингест хийгддэг таван мэдрэгч.
+ * IoT ХЯНАЛТ — Mononet-ээс ингест хийгддэг таван мэдрэгч.
  *
  * ⚠️ ХОЁР ЗҮЙЛИЙГ ИЛ ГАРГАНА (нуухгүй):
  *
- * 1. ХУУЧИРСАН ЗААЛТ. Түүхий мөр 15 минут тутам ирж байгаа ч Mononet-ийн
- *    decoder тогтворгүй тул ЗАДАРСАН утга нь хэдэн өдрөөр хоцорч болно.
+ * 1. ХУУЧИРСАН ЗААЛТ. Түүхий мөр тогтмол ирж байгаа ч Mononet-ийн decoder
+ *    тогтворгүй тул ЗАДАРСАН утга нь хэдэн өдрөөр хоцорч болно. (Задарсан
+ *    заалтын бодит алхам: дөрвөн мэдрэгчид ≈60 мин, усны тоолуурт ≈6 цаг —
+ *    2026-08-26-нд амьд хэмжсэн.)
  *    Сүүлийн заалтыг «одоогийн байдал» гэж чимээгүй харуулбал шийдвэр
  *    гаргагчийг төөрөгдүүлнэ — тиймээс нас (`ageHours`) үзүүлэлт бүр дээр гарна.
  *
@@ -69,14 +79,6 @@ const freshTone = (h: number | null): string => {
   return 'var(--bad-ink)';
 };
 
-/** epoch ms → «2026-08-13 19:46» (орон нутгийн бүсээр) */
-const stamp = (t: number | null): string => {
-  if (t == null) return '—';
-  const d = new Date(t);
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
-};
-
 /** `Trend` нь `label`-ыг ШУУД хэвлэдэг тул богино байлгана */
 const axisLabel = (t: number): string => {
   const d = new Date(t);
@@ -84,165 +86,97 @@ const axisLabel = (t: number): string => {
   return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 };
 
+/* ⚠️ 2026-08-26: `delta` / `deltaLabel` / `pctLabel` ХАСАГДАВ — «24ц
+   өөрчлөлт» шошго нүднээс гарсны дараа тэдгээрийг хаанаас ч дуудахаа больсон. */
+
 /**
- * Сүүлийн заалт нь 24 цагийн ӨМНӨХ-ээс хэдэн хувиар зөрсөн бэ.
+ * ТААМГИЙН бичиглэл — «≈14 цагийн дараа 80%».
  *
- * ⚠️ ЗЭРГЭЛДЭЭ хоёр заалтыг харьцуулж БОЛОХГҮЙ: 15 минутын алхам нь чимээ ихтэй
- * тул температур 0.1° хэлбэлзэхэд «+4%» гэж гарна. Тиймээс сүүлийн цэгээс 24
- * цагийн өмнөх цагт ХАМГИЙН ОЙР цэгийг суурь болгоно. Цуваа 24 цагаас богино
- * бол хамгийн эхний цэгийг авна (тэр үед `hours` нь бодит зөрүүг хэлнэ).
+ * ⚠️ «≈» тэмдэг ЗААВАЛ: энэ нь одоогийн хурдаар шугаман экстраполяци хийсэн
+ * НӨХЦӨЛТ таамаг болохоос хэмжсэн баримт БИШ. Тэмдэггүй бол хэрэглэгч
+ * хуваарь мэт уншиж, буруу төлөвлөнө.
  */
-function delta(m: MetricSeries): { pct: number; hours: number } | null {
-  const p = m.points;
-  if (p.length < 2) return null;
-  const last = p[p.length - 1];
-  const want = last.t - 24 * 3_600_000;
-  let base = p[0];
-  for (const x of p) {
-    if (Math.abs(x.t - want) < Math.abs(base.t - want)) base = x;
-  }
-  if (base.t === last.t || base.v === 0) return null;
-  return { pct: ((last.v - base.v) / Math.abs(base.v)) * 100, hours: (last.t - base.t) / 3_600_000 };
-}
+const etaLabel = (h: number): string =>
+  h < 1 ? tr('≈{0} мин', Math.round(h * 60))
+    : h < 48 ? tr('≈{0} цаг', Math.round(h))
+      : tr('≈{0} хоног', Math.round(h / 24));
 
-/** Утга нь ямар төрлийнх болохыг заасан дүрс */
-const ICONS: Record<string, string> = {
-  distance: 'trash',
-  battery: 'bolt',
-  batteryVoltage: 'bolt',
-  moisture: 'droplet',
-  humidity: 'droplet',
-  temperature: 'flame',
-  electricity: 'bolt',
-  illumination: 'sun',
-  meterReading: 'waves',
+/** Цаг тутмын хурд — маш бага утгыг «тогтвортой» гэж уншина */
+const rateLabel = (m: MetricSeries, perHour: number): string => {
+  const a = Math.abs(perHour);
+  if (a < 10 ** -(m.dp + 1)) return tr('тогтвортой');
+  const sign = perHour > 0 ? '+' : '−';
+  return `${sign}${num(a, Math.max(m.dp, 2))} ${m.unit}/${tr('ц')}`;
 };
-const iconOf = (m: MetricSeries) => ICONS[m.key] ?? 'radio';
 
-/** Хувийн өөрчлөлт → «+3.4%» / «−1.2%» (минус нь U+2212, зураас биш) */
-const pctLabel = (pct: number) => `${pct >= 0 ? '+' : '−'}${num(Math.abs(pct), 1)}%`;
+/*
+ * ⚠️ 2026-08-25 (хэрэглэгчийн шийдвэр): газрын зурган дээрх мэдрэгчийн цэгийг
+ * ОДООГИЙН ТӨЛВӨӨР будаж байсныг БУЦААВ — цэгүүд `services.ts`-ийн
+ * `IOT_LAYERS`-д заасан давхарга тус бүрийн ТОГТМОЛ өнгөндөө үлдэнэ (2D, 3D
+ * хоёуланд). Төлвийн мэдээлэл нь ЖАГСААЛТАД хэвээр: нүд бүрийн нас, өнгө
+ * (`freshTone`), унасан/дүлий мэдрэгчийн сэрэмжлүүлэг, Telegram хянагч.
+ */
 
 type Card = { s: SensorLive; m: MetricSeries };
 
+/**
+ * ⚠️ `MapCanvas` нь memo() — render бүрд шинэ `() => {}` дамжуулбал memo эвдэрч,
+ * минут тутмын цагийн tick (`setNow`) бүрд 3000+ мөрт компонент дэмий дахин
+ * ажиллана. Тиймээс модулийн түвшний ТОГТВОРТОЙ noop (Irged.tsx-ийн загвар).
+ */
+const noop = () => {};
+
 /* ══════════════════ Жижиг бүрэлдэхүүн ══════════════════ */
 
-/**
- * Толгой хавтангийн жижиг хандлага. `Trend`-ийг ХЭРЭГЛЭХГҮЙ: тэр нь тэнхлэгийн
- * шошго, торлол, тайлбар зурдаг тул 34px өндөрт уншигдахгүй болно. Энэ нь зөвхөн
- * хэлбэрийг харуулах — тоог доор нь ил бичсэн тул давхар уншилт үүсэхгүй.
- *
- * ⚠️ Хамгийн ихдээ 48 цэг: 34px өндөрт илүү нягт зураас шуугиан болно.
- */
-function Spark({ points }: { points: { t: number; v: number }[] }) {
-  if (points.length < 2) return null;
-  const step = Math.max(1, Math.ceil(points.length / 48));
-  const p = points.filter((_, i) => i % step === 0 || i === points.length - 1);
-  const vs = p.map((x) => x.v);
-  const lo = Math.min(...vs);
-  const hi = Math.max(...vs);
-  // Тогтмол утгатай цуваа — 0-д хуваахаас сэргийлж дунджаар нь шулуун татна
-  const span = hi - lo || 1;
-  const W = 100;
-  const H = 30;
-  const xy = p.map((x, i) => [(i / (p.length - 1)) * W, H - ((x.v - lo) / span) * (H - 4) - 2] as const);
-  const line = xy.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(2)} ${y.toFixed(2)}`).join(' ');
-  const last = xy[xy.length - 1];
-  return (
-    <svg className={s.spark} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" aria-hidden="true">
-      <path className={s.sparkArea} d={`${line} L${W} ${H} L0 ${H} Z`} />
-      <path className={s.sparkLine} d={line} vectorEffect="non-scaling-stroke" />
-      <circle className={s.sparkDot} cx={last[0]} cy={last[1]} r={1.6} vectorEffect="non-scaling-stroke" />
-    </svg>
-  );
-}
-
-/**
- * Тэргүүлэх индикатор карт — хамгийн чухал хоёр заалт.
- * envhub хэв: гадаргуу + hairline + eyebrow + том num + спарклайн var(--data).
- */
-function Hero({ c }: { c: Card }) {
-  const d = delta(c.m);
-  const has = c.m.latest != null;
-  const now = useNow();
-  return (
-    <div className={s.hero}>
-      <div className={s.heroTop}>
-        <span className={s.heroLabel}>{c.m.label}</span>
-        <span className={s.heroIcon}>
-          <Icon name={iconOf(c.m)} size={15} />
-        </span>
-      </div>
-      <div>
-        <div className={`${s.heroVal} num`}>
-          {has ? num(c.m.latest ?? 0, c.m.dp) : '—'}
-          {has && c.m.unit && <span className={s.heroUnit}>{c.m.unit}</span>}
-        </div>
-        <Spark points={c.m.points} />
-        <div className={s.heroSub}>
-          {c.s.label} · {freshLabel(ageOf(c.m.latestAt, now))}
-          {d && tr(' · {0} / {1}ц', pctLabel(d.pct), Math.round(d.hours))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/** Дүрст мөр — тоо, баруун талдаа шошго */
-function Tile({
-  icon,
-  label,
-  value,
-  pill,
-  pillTint,
-}: {
-  icon: string;
-  label: string;
-  value: string;
-  pill: string;
-  pillTint: string;
-}) {
-  return (
-    <div className={s.tile}>
-      <span className={s.tileIcon}>
-        <Icon name={icon} size={17} />
-      </span>
-      <span className={s.tileMain}>
-        <span className={s.tileLabel}>{label}</span>
-        <span className={`${s.tileVal} num`}>{value}</span>
-      </span>
-      <span className={s.pill} style={{ ['--tint' as string]: pillTint }}>
-        {pill}
-      </span>
-    </div>
-  );
-}
 
 /** Нэг үзүүлэлтийн агшны нүд */
 function Cell({ c }: { c: Card }) {
   const has = c.m.latest != null;
-  const d = delta(c.m);
   const age = ageOf(c.m.latestAt, useNow());
   return (
+    /*
+     * ⚠️ 2026-08-26 (хэрэглэгчийн хүсэлт «хэт ойлгомжгүй»): нүд нь 150px өргөнтэй,
+     * 9.5px үсэгтэй байсан бөгөөд НЭР нь насны шошготой нэг мөрөнд өрсөлдөж
+     * «ХӨРСНИЙ ТЕМПЕРАТУ…», «ЦАХИЛГААН ДАМЖУУ…» гэж тасарч байв. Одоо:
+     *   · нэр ӨӨРИЙН БҮТЭН мөрөнд (нас доошоо буусан),
+     *   · утга нь картын ГОЛ мэдээлэл тул томорсон,
+     *   · нэг мөрөнд цөөн нүд багтахаар өргөн нэмэгдсэн.
+     */
+    /*
+     * ⚠️ 2026-08-26 (хэрэглэгчийн шийдвэр «нэг мөрөнд оруул»): нүд нь нэр ·
+     * утга · нас гэсэн ГУРВАН мөр байсныг НЭГ мөр болгов. Нүд намссан тул
+     * баганыг өргөсгөж (340px) урт нэр («Хөрсний цахилгаан дамжуулах чадал»)
+     * НЭГ мөрөнд бүтэн багтана — тасрахгүй.
+     */
     <div className={s.metric}>
-      <div className={s.metricHd}>
+      <span
+        className={s.metricName}
+        title={`${c.s.label} · ${c.m.label}${c.m.unit ? ` (${c.m.unit})` : ''}\n${c.m.note}`}
+      >
         <span className={s.metricDot} />
-        <span className={s.metricName} title={`${c.s.label} · ${c.m.label}`}>
-          {c.m.label}
-        </span>
-        <span className={`${s.metricAge} num`} style={{ color: freshTone(age) }}>
-          {freshLabel(age)}
-        </span>
-      </div>
-      <div className={`${s.metricVal} num`}>
+        {c.m.label}
+      </span>
+      <span className={`${s.metricVal} num`}>
         {has ? num(c.m.latest ?? 0, c.m.dp) : '—'}
         {has && c.m.unit && <span className={s.metricUnit}>{c.m.unit}</span>}
-      </div>
-      <div className={`${s.metricFoot} num`}>
-        <span>
-          {has ? `${num(c.m.min ?? 0, c.m.dp)} … ${num(c.m.max ?? 0, c.m.dp)}` : tr('задарсан заалт алга')}
-        </span>
-        <span>{d ? pctLabel(d.pct) : ''}</span>
-      </div>
+      </span>
+      {/* ⚠️ 2026-08-26 (хэрэглэгчийн шийдвэр): «доод … дээд» ба «24ц өөрчлөлт»
+          мөр ХАСАГДАВ. Хоёулаа ЧАРТААС нүдээр уншигдана (муруйн хэлбэр нь
+          өөрчлөлтийг, тэнхлэг нь хязгаарыг харуулна) тул нүдэнд давхардсан
+          жижиг тоо байв. Заалтгүй үеийн «задарсан заалт алга» мэдэгдэл нь
+          утга нь «—» болж харагдахаар хадгалагдана. */}
+      {/* Нас — мөрийн ТӨГСГӨЛД. Өнгө нь шинэлэг байдлыг заана (ногоон/шар/улаан). */}
+      <span className={`${s.metricAge} num`} style={{ color: freshTone(age) }}>
+        {freshLabel(age)}
+      </span>
+      {/* ⚠️ ТААМАГ зөвхөн БОСГОТОЙ, түүнд ОЙРТОЖ буй үзүүлэлтэд гарна —
+          «хэзээ ч хүрэхгүй» тоо нь мөр эзлээд мэдээлэл өгөхгүй. */}
+      {c.m.trend?.etaHours != null && c.m.alert && (
+        <div className={s.metricEta} title={tr('Одоогийн хурд: {0}', rateLabel(c.m, c.m.trend.perHour))}>
+          <Icon name="target" size={11} />
+          {tr('{0} дараа {1}{2}', etaLabel(c.m.trend.etaHours), num(c.m.alert.value, c.m.dp), c.m.unit)}
+        </div>
+      )}
     </div>
   );
 }
@@ -252,9 +186,21 @@ function ChartCard({ c, height = 150 }: { c: Card; height?: number }) {
   return (
     <section className={s.card}>
       <header className={s.cardHd}>
-        <h3 className={s.cardTitle}>{c.m.label}</h3>
+        {/* ⚠️ Нэгж нь ГАРЧИГТ — чартын тоон шошгод нэгж бичигддэггүй тул
+            «Гадна орчны температур» нь °C үү, °F үү гэдэг өөр хаанаас ч
+            уншигдахгүй.
+            ⚠️ 2026-08-21: Толгойн доорх тайлбарын МӨР хасагдав (хүсэлт) — карт
+            бүрд 2–3 мөр эзэлж, хажуугийн нарийн баганад чартын өндрийг иддэг
+            байв. Агуулга нь АЛДАГДААГҮЙ: мэдрэгч, түүний тодорхойлолт, DevEUI,
+            хэмжигдэхүүний утга бүгд доорх hover-т үлдэв. */}
+        <h3
+          className={s.cardTitle}
+          title={`${c.s.label} · ${c.m.label}${c.m.unit ? ` (${c.m.unit})` : ''}\n${c.m.note}\n\n${c.s.note}\nDevEUI: ${c.s.devEui}`}
+        >
+          {c.m.label}{c.m.unit ? `, ${c.m.unit}` : ''}
+        </h3>
         <span className={s.cardNote}>
-          {c.s.label} · {num(c.m.points.length)} / {num(c.m.total)} {tr('цэг')}
+          {num(c.m.points.length)} / {num(c.m.total)} {tr('цэг')}
         </span>
       </header>
       <div className={s.cardBody}>
@@ -262,6 +208,15 @@ function ChartCard({ c, height = 150 }: { c: Card; height?: number }) {
         <Trend
           unit={c.m.unit}
           height={height}
+          /* ⚠️ 2026-08-21: 90 цэгийг 320px картад шахахад муруй нь ялгагдахгүй
+             шуугиан болж, тэнхлэгийн 6 шошго л үлддэг байв. Одоо 8 цэг харагдаж,
+             үлдсэнийг нь хэвтээ гүйлгэнэ — цэг бүрийн огноо/цаг ч уншигдана. */
+          visible={8}
+          /* Цэг бүрийн заалтыг тоогоор бичнэ — 8 л зэрэг харагдах тул зай хүрнэ */
+          showValues
+          /* Босго нь `sensors.ts`-д хэмжигдэхүүн тус бүрд. Оноогоогүй бол
+             (гэрэлтүүлэг, хуримтлагдсан тоолуур) шугам зурагдахгүй. */
+          alert={c.m.alert}
           /* ⚠️ 2026-08-19: `note` тавихгүй. `Trend`-ийн тэнхлэгийн шошго нь
              `note ?? label` гэж уншдаг (Dashboard-д note нь ЖИНХЭНЭ огноо
              байдаг). Энд note-д УТГЫГ өгч байсан тул IoT-ийн график бүрийн
@@ -289,6 +244,12 @@ export function Iot({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    * ⚠️ Таб нуугдсан үед тоолуур ЗОГСОНО: арын 10 таб бүгд IoT сервис рүү
    *    цохих нь утгагүй. Таб идэвхжихэд шууд нэг удаа шинэчилнэ.
    */
+  /**
+   * ХАРУУЛАХ ХУГАЦААНЫ ХҮРЭЭ. Анхдагч 7 хоног — 24 цаг нь хэт богино (хогийн
+   * мэдрэгчийн decoder хэдэн өдрөөр хоцордог тул хоосон чарт гарах эрсдэлтэй),
+   * 30 хоног нь эхний ачаалалд хэт хүнд.
+   */
+  const [range, setRange] = useState<RangeKey>('7d');
   const [tick, setTick] = useState(0);
   /** Зурагдах үеийн «одоо» — нас бүрийг үүн дээр бодно (дээрх `NowCtx`) */
   const [now, setNow] = useState(() => Date.now());
@@ -309,8 +270,19 @@ export function Iot({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     };
   }, []);
 
-  const q = useAsync(loadSensors, [tick]);
-  const visible = VIEW_BY_KEY.iot.initial;
+  const q = useAsync(() => loadSensors(range), [tick, range]);
+  /**
+   * Мэдрэгчийн 5 давхарга нь СУУРЬ; каталогоос порталын аль ч давхаргыг дээр
+   * нь нэмнэ (`useLayerPicks`) — урьд нь энэ цонхонд каталог огт байхгүй байв.
+   */
+  const [visible, setVisible] = useLayerPicks(VIEW_BY_KEY.iot.initial);
+  const [catOpen, setCatOpen] = useState(false);
+  const [opOpen, setOpOpen] = useState(false);
+  const [opacity, setOpacity] = useState<Record<string, number>>({});
+  const [layerSel, setLayerSel] = useState<string | null>(null);
+  const [zone, setZone] = useState<string | null>(null);
+  const catTotals = usePlanTotals(zone, catOpen);
+  useZoomToFilter({ zone });
 
   return (
     <NowCtx.Provider value={now}>
@@ -324,304 +296,188 @@ export function Iot({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           <span className={s.mapTitle}>
             <Icon name="radio" size={14} /> {tr('Мэдрэгчийн байршил')}
           </span>
-          <div className={s.dims} role="group" aria-label={tr('Газрын зургийн харагдац')}>
-            {(['2d', '3d'] as Dim[]).map((x) => (
-              <button
-                key={x}
-                type="button"
-                aria-pressed={dim === x}
-                className={`${s.dimBtn} ${dim === x ? s.dimOn : ''}`}
-                onClick={() => setDim(x)}
-              >
-                {x.toUpperCase()}
-              </button>
-            ))}
-          </div>
         </div>
         <div className={s.mapBox}>
-          <MapCanvas dim={dim} visible={visible} zone={null} uniform onPick={() => {}} />
+          <MapCanvas
+            dim={dim}
+            visible={visible}
+            opacity={opacity}
+            zone={zone}
+            uniform
+            onPick={noop}
+          />
+
+          {/* ⚠️ 2026-08-20: Урьд нь ЗӨВХӨН «2D | 3D» байсан — Давхарга, Тунгалаг,
+              Бүс алга, BIM нь бүр огт байхгүй байв. Одоо бусад харагдацтай яг
+              ижил нэгдсэн зурвас (`MapTools`) бөгөөд мэдрэгчийн цэгүүд дээр
+              порталын аль ч давхаргыг контекст болгон нэмнэ. */}
+          <MapTools
+            dim={dim}
+            setDim={setDim}
+            layersOpen={catOpen}
+            onLayers={() => setCatOpen((v) => !v)}
+            opacityOpen={opOpen}
+            onOpacity={() => setOpOpen((v) => !v)}
+            zone={zone}
+            setZone={setZone}
+          />
+
+          {catOpen && (
+            <div className={o.catPanel}>
+              <LayerCatalog
+                view="iot"
+                totals={catTotals}
+                visible={visible}
+                setVisible={setVisible}
+                selected={layerSel}
+                onSelect={setLayerSel}
+                onClose={() => setCatOpen(false)}
+                zone={zone}
+                embedded
+              />
+            </div>
+          )}
+
+          {opOpen && (
+            <OpacityPanel
+              visible={visible}
+              opacity={opacity}
+              setOpacity={setOpacity}
+              onClose={() => setOpOpen(false)}
+            />
+          )}
         </div>
       </section>
 
       <Data q={q} loading={tr('Мэдрэгчийн заалт уншиж байна…')}>
-        {(all) => <Board all={all} />}
+        {(all) => <Board all={all} range={range} setRange={setRange} />}
       </Data>
     </div>
     </NowCtx.Provider>
   );
 }
 
-function Board({ all }: { all: SensorLive[] }) {
-  const now = useNow();
+function Board({ all, range, setRange }: {
+  all: SensorLive[]; range: RangeKey; setRange: (r: RangeKey) => void;
+}) {
   const cards: Card[] = all.flatMap((sn) => sn.series.map((m) => ({ s: sn, m })));
   /** Сервис нь ӨӨРӨӨ унасан мэдрэгч — decoder-ийн хоцролтоос ТУСДАА тоологдоно */
   const failed = all.filter((x) => x.error);
-  const withData = cards.filter((c) => c.m.points.length > 0);
   const live = all.filter((x) => x.lastAt != null);
-  const total = sumBy(all, (x) => x.n);
 
   /**
-   * ⚠️ Толгой хавтанд ЗААЛТТАЙ үзүүлэлт л гарна. Тогтмол «агаарын температур»
-   * гэж хатуу сонговол decoder тэр талбарыг задлаагүй өдөр хоёр том хавтан «—»
-   * харуулж, дашбоардын хамгийн тод хэсэг хоосон болдог.
+   * Цувааг зургийн ХОЁР ТАЛД агуулгаар нь хуваана (2026-08-21, хүсэлт).
+   *
+   * ⚠️ Үзүүлэлтийг ХАСАХГҮЙ — БҮГД чарттай. Урьд нь эхний «hero» үзүүлэлтийг
+   * хасдаг байсан (тэр нь зургийн доорх ТОМ цуваанд тусад нь гардаг байв);
+   * тэр карт 2026-08-21-нд хасагдахад хасалтыг нь ч зэрэг авсан — эс бөгөөс
+   * уг үзүүлэлтийн түүх хаанаас ч харагдахгүй болно.
+   *
+   * ⚠️ Хуваалт нь МЭДРЭГЧЭЭР — үзүүлэлтийн нэрээр БИШ. Нэрээр хуваавал нэг
+   * мэдрэгчийн заалтууд («Гадна орчны температур» ба «Гадна орчны чийгшил»)
+   * хоёр тийш салж, харьцуулах гэсэн хүн дэлгэц дамжуулан харах болно.
+   *
+   * ЗҮҮН — газар, орчны хэмжилт (хөрс + гэрэл).
+   * БАРУУН — агаар ба нийтийн үйлчилгээний тоолуур (агаар + хог + ус).
    */
-  const heroes = withData.slice(0, 2);
-  /**
-   * ⚠️ Зөвхөн ЭХНИЙ толгойг хасна. Хоёр дахь толгой хавтан нь спарклайнтай ч
-   * БҮТЭН цуваагүй үлдэж, тэр үзүүлэлтийн түүх хаанаас ч харагдахгүй болдог байв
-   * (эхнийх нь доорх том чартад гарна, хоёр дахь нь хаана ч гарахгүй).
-   */
-  const rest = cards.filter((c) => c !== heroes[0]);
-
-  // Шинэлэг байдлын хуваарилалт — цагирагт
-  const bucket = { fresh: 0, warn: 0, stale: 0, none: 0 };
-  for (const c of cards) {
-    const h = ageOf(c.m.latestAt, now);
-    if (h == null) bucket.none++;
-    else if (h <= 2) bucket.fresh++;
-    else if (h <= 48) bucket.warn++;
-    else bucket.stale++;
-  }
-  const freshItems = [
-    { key: 'fresh', label: tr('2 цагаас шинэ'), value: bucket.fresh, color: 'var(--good)' },
-    { key: 'warn', label: tr('2–48 цаг'), value: bucket.warn, color: 'var(--warn)' },
-    { key: 'stale', label: tr('48 цагаас хуучин'), value: bucket.stale, color: 'var(--bad)' },
-    { key: 'none', label: tr('заалт алга'), value: bucket.none, color: 'var(--ink-3)' },
-  ].filter((x) => x.value > 0);
-
-  const livePct = all.length ? (live.length / all.length) * 100 : null;
-  const freshest = cards.reduce<number | null>(
-    (acc, c) => { const h = ageOf(c.m.latestAt, now); return h != null && (acc == null || h < acc) ? h : acc; },
-    null,
-  );
+  const LEFT_SENSORS = new Set(['soil', 'light']);
+  const plotted = cards.filter((c) => c.m.points.length >= 2);
+  const chartsL = plotted.filter((c) => LEFT_SENSORS.has(c.s.key));
+  const chartsR = plotted.filter((c) => !LEFT_SENSORS.has(c.s.key));
 
   return (
     <>
-      {heroes[0] && (
-        <div className={s.pHeroA}>
-          <Hero c={heroes[0]} />
-        </div>
-      )}
-      {heroes[1] && (
-        <div className={s.pHeroB}>
-          <Hero c={heroes[1]} />
-        </div>
-      )}
-
-      <div className={s.pTiles}>
-        <Tile
-          icon="radio"
-          label={tr('Мэдрэгч')}
-          value={tr('{0} ш', num(all.length))}
-          pill={tr('{0} идэвхтэй', num(live.length))}
-          pillTint={live.length === all.length ? 'var(--good-ink)' : 'var(--warn-ink)'}
-        />
-        <Tile
-          icon="chart"
-          label={tr('Нийт бүртгэл')}
-          value={num(total)}
-          pill={freshLabel(freshest)}
-          pillTint={freshTone(freshest)}
-        />
-      </div>
-
-      {/* ── Сүүлийн заалт — газрын зургийн хажууд ── */}
-      <section className={`${s.card} ${s.pList}`}>
+      {/* ── Бүх үзүүлэлт — агшны утга ── */}
+      <section className={`${s.card} ${s.pCells}`}>
         <header className={s.cardHd}>
-          <h3 className={s.cardTitle}>{tr('Сүүлийн заалт')}</h3>
-          <span className={s.cardNote}>{tr('15 мин тутам')}</span>
+          <h3 className={s.cardTitle}>{tr('Бүх үзүүлэлт')}</h3>
+          {/* ⚠️ Хүрээ нь ЧАРТ ба доод/дээд/дундажид үйлчилнэ — «сүүлийн утга»
+              нь хүрээнээс үл хамааран ҮРГЭЛЖ хамгийн сүүлийн заалт. */}
+          <span className={s.rangeBar} role="group" aria-label={tr('Хугацааны хүрээ')}>
+            {RANGES.map((r) => (
+              <button
+                key={r.key}
+                type="button"
+                aria-pressed={range === r.key}
+                className={`${s.rangeBtn} ${range === r.key ? s.rangeBtnOn : ''}`}
+                onClick={() => setRange(r.key)}
+              >
+                {r.label}
+              </button>
+            ))}
+          </span>
         </header>
         <div className={s.cardBody}>
-          <Rows
-            items={all.map((x) => ({
-              key: x.label,
-              value: (
-                /* ⚠️ 2026-08-19: СЕРВИСИЙН АЛДААГ ил гаргана. Урьд нь `x.error`-ыг
-                   хаана ч уншдаггүй байсан тул үйлчилгээ унасан мэдрэгч «заалт
-                   алга» гэж decoder-ийн хоцролттой ЯГ адилхан харагдаж, доорх
-                   тайлбар нь «Холбоо тасраагүй» гэж ХУДАЛ баталгаа өгдөг байв. */
-                <span style={{ color: x.error ? 'var(--bad-ink)' : freshTone(ageOf(x.lastAt, now)) }}>
-                  {x.error
-                    ? tr('татагдсангүй — {0}', x.error)
-                    : x.lastAt == null
-                      ? tr('заалт алга')
-                      : `${stamp(x.lastAt)} · ${freshLabel(ageOf(x.lastAt, now))}`}
-                </span>
-              ),
-            }))}
-          />
-          {/**
-            * ⚠️ 2026-08-19: Тайлбарыг ХОЁР ТУСДАА шалтгаанд салгав. Урьд нь заалт
-            * ирээгүй БҮХ мэдрэгчийг «Холбоо тасраагүй — decoder задлаагүй» гэж
-            * НЭГ мөрөөр тайлбарладаг байв. Гэтэл сервис нь өөрөө унасан үед тэр
-            * өгүүлбэр нь ХУДАЛ баталгаа: юу ч ирээгүй, decoder ч буруугүй.
-            */}
+          <div className={s.grid}>
+            {/* ⚠️ 2026-08-25 (хэрэглэгчийн шийдвэр): «Мэдрэгч · N ш · N идэвхтэй»
+                хайрцаг ХАСАГДАВ — нүд бүр өөрийн насаа (`freshLabel`) аль хэдийн
+                харуулдаг тул нийт/идэвхтэй тоо давхардсан мэдээлэл байв. Унасан
+                эсвэл дүлий мэдрэгчийн сэрэмжлүүлэг доорх `Note`-д хэвээр. */}
+            {cards.map((c) => (
+              <Cell key={`${c.s.key}-${c.m.key}`} c={c} />
+            ))}
+          </div>
+          {/* ⚠️ 2026-08-21: «Сүүлийн заалт» карт хасагдсан ч ДОТОРХ ХОЁР
+              СЭРЭМЖЛҮҮЛГИЙГ энд авчрав. Эдгээргүй бол унасан үйлчилгээ ба
+              задраагүй заалт нь ялгагдалгүй, чимээгүй хоосон нүд болж харагдана. */}
           {failed.length > 0 && (
-            <Note>
-              <b>{failed.length}</b> {tr('мэдрэгчийн үйлчилгээ татагдсангүй — доорх алдааг үзнэ үү. Энэ нь decoder-ийн хоцролт БИШ, хүсэлт өөрөө амжилтгүй болсон.')}
-            </Note>
+            <>
+              <Note>
+                <b>{failed.length}</b> {tr('мэдрэгчийн үйлчилгээ татагдсангүй — доорх алдааг үзнэ үү. Энэ нь decoder-ийн хоцролт БИШ, хүсэлт өөрөө амжилтгүй болсон.')}
+              </Note>
+              {/* ⚠️ Дээрх «доорх алдааг үзнэ үү» амлалтын БИЕЛЭЛ. Мэдрэгч бүрийн
+                  алдааны жагсаалт 2026-08-21-нд «Сүүлийн заалт» карттай ХАМТ
+                  устсан тул аль мэдрэгч ямар шалтгаанаар унасан нь хаана ч
+                  харагдахгүй болсон байв — унасан мэдрэгчийн series хоосон тул
+                  дээрх сүлжээнээс нүд нь ч бүрмөсөн алга болдог. Хуучин загварын
+                  (9e884e9) дагуу алдааг улаанаар, мэдрэгч бүрд нэг мөрөөр гаргана. */}
+              {failed.map((x) => (
+                <Note key={x.key}>
+                  <b>{x.label}</b>:{' '}
+                  <span style={{ color: 'var(--bad-ink)' }}>{x.error}</span>
+                </Note>
+              ))}
+            </>
           )}
           {live.length + failed.length < all.length && (
             <Note>
               <b>{all.length - live.length - failed.length}</b> {tr('мэдрэгчээс задарсан утга ирээгүй. Холбоо тасраагүй — түүхий өгөгдөл ирж байгаа ч Mononet-ийн decoder утгыг задлаагүй байна.')}
             </Note>
           )}
-          {/**
-            * ⚠️ Мэдрэгчийн нас нь ҮЗҮҮЛЭЛТИЙН насыг НУУНА: нэг мэдрэгчийн хоёр талбар
-            * тэс өөр хугацаанд ирж болно (батерей 31 мин, зай 5 хоног — `sensors.ts`).
-            * Дээрх жагсаалт нь мэдрэгч тус бүрийн ХАМГИЙН ШИНЭ заалтыг харуулдаг тул
-            * хоцорсон талбар харагдахгүй өнгөрдөг. Тиймээс задаргааг нь доор нэмэв.
-            */}
-          <SubHead>{tr('Үзүүлэлт тус бүрээр')}</SubHead>
-          <Rows
-            items={cards.map((c) => ({
-              key: c.m.label,
-              value: (
-                <span style={{ color: freshTone(ageOf(c.m.latestAt, now)) }}>{freshLabel(ageOf(c.m.latestAt, now))}</span>
-              ),
-            }))}
-          />
-        </div>
-        <div className={s.cardFoot}>
-          <span>{tr('Сүүлд шинэчлэгдсэн')}</span>
-          <span className="num" style={{ color: freshTone(freshest) }}>
-            {freshLabel(freshest)}
-          </span>
         </div>
       </section>
 
-      {/* ── Үндсэн цуваа ── */}
-      {heroes[0] ? (
-        <div className={s.pTrend}>
-          <ChartCard c={heroes[0]} height={176} />
-        </div>
-      ) : (
-        <section className={`${s.card} ${s.pTrend}`}>
-          <div className={s.cardBody}>
-            <Empty label={tr('Цуваа зурах заалт алга')} icon="chart" />
-          </div>
-        </section>
-      )}
 
-      {/* ── Шинэлэг байдал — цагираг ── */}
-      <section className={`${s.card} ${s.pDonut}`}>
-        <header className={s.cardHd}>
-          <h3 className={s.cardTitle}>{tr('Заалтын шинэлэг байдал')}</h3>
-          <span className={s.cardNote}>{num(cards.length)} {tr('үзүүлэлт')}</span>
-        </header>
-        <div className={s.cardBody}>
-          {freshItems.length ? (
-            <>
-              <Donut items={freshItems} size={150} width={22} centerLabel={tr('үзүүлэлт')} />
-              <div className={s.legend}>
-                {freshItems.map((x) => (
-                  <span key={x.key} className={s.legendRow} style={{ ['--tint' as string]: x.color }}>
-                    <span className={s.legendBullet} />
-                    <span className={s.legendName}>{x.label}</span>
-                    <span className={`${s.legendPct} num`}>{num((x.value / cards.length) * 100, 0)}%</span>
-                  </span>
-                ))}
-              </div>
-            </>
-          ) : (
-            <Empty label={tr('Үзүүлэлт алга')} icon="chart" />
-          )}
-        </div>
-      </section>
+      {/* ⚠️ Зургийн ДООР байсан гурван карт ХАСАГДСАН (захиалагчийн хүсэлт,
+          2026-08-21): «Сав хүртэлх зай» цуваа (`pTrend`), «Заалтын шинэлэг
+          байдал» цагираг (`pDonut`), «Идэвхтэй мэдрэгч» бөгж (`pRing`).
+          Тэдгээрийн grid-ийн мөр бүхэлдээ хоосорсон тул `iot.module.css`-д
+          мөрийн дугаарыг ч дагуулж зассан. */}
 
-      {/* ── Идэвхтэй мэдрэгчийн хувь — бөгж ── */}
-      <section className={`${s.card} ${s.pRing}`}>
-        <header className={s.cardHd}>
-          <h3 className={s.cardTitle}>{tr('Идэвхтэй мэдрэгч')}</h3>
-          <span className={s.cardNote}>
-            {num(live.length)} / {num(all.length)}
-          </span>
-        </header>
-        <div className={s.cardBody}>
-          <div className={s.ringWrap}>
-            <Ring
-              value={livePct}
-              size={202}
-              width={18}
-              color={livePct === 100 ? 'var(--good)' : 'var(--warn)'}
-              label={tr('заалт ирсэн')}
-              decimals={0}
-            />
-          </div>
-        </div>
-        {/**
-          * ⚠️ Доод мөр НЭГ мөр байсныг ХОЁР нүд болгов: бөгж (132px) нь хажуугийн
-          * чартын карт тогтоосон 332px мөрийг дүүргэдэггүй тул доор нь ~110px хоосон
-          * зай үлддэг байв. Бөгжийг 162px болгож, задаргааг нүд болгон дүүргэв.
-          */}
-        <div className={s.split}>
-          <span className={s.splitCell}>
-            <span className={s.splitLabel}>{tr('Идэвхтэй')}</span>
-            <span className={`${s.splitVal} num`} style={{ color: 'var(--good-ink)' }}>
-              {num(live.length)}
-            </span>
-          </span>
-          <span className={s.splitCell}>
-            <span className={s.splitLabel}>{tr('Дүлий')}</span>
-            <span
-              className={`${s.splitVal} num`}
-              style={{ color: all.length === live.length ? 'var(--ink-3)' : 'var(--bad-ink)' }}
-            >
-              {num(all.length - live.length)}
-            </span>
-          </span>
-        </div>
-      </section>
+      {/* ── ЗҮҮН ЦУВАА — хөрс ба орчны гэрэл ── */}
+      <div className={`${s.chartCol} ${s.pChartsL}`}>
+        {chartsL.map((c) => (
+          <ChartCard key={`${c.s.key}-${c.m.key}`} c={c} />
+        ))}
+      </div>
 
-      {/* ── Бүх үзүүлэлт — агшны утга ── */}
-      <section className={`${s.card} ${s.pCells}`}>
-        <header className={s.cardHd}>
-          <h3 className={s.cardTitle}>{tr('Бүх үзүүлэлт')}</h3>
-          <span className={s.cardNote}>{tr('сүүлийн утга · доод…дээд · 24ц өөрчлөлт')}</span>
-        </header>
-        <div className={s.cardBody}>
-          <div className={s.grid}>
-            {cards.map((c) => (
-              <Cell key={`${c.s.key}-${c.m.key}`} c={c} />
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── Мэдрэгч тус бүрийн бүртгэл ── */}
-      <section className={`${s.card} ${s.pBars}`}>
-        <header className={s.cardHd}>
-          <h3 className={s.cardTitle}>{tr('Бүртгэл үзүүлэлтээр')}</h3>
-          <span className={s.cardNote}>{tr('нийт')} {num(total)}</span>
-        </header>
-        <div className={s.cardBody}>
-          {/**
-            * ⚠️ Урьд нь 5 МЭДРЭГЧЭЭР харуулдаг байсныг 10 ҮЗҮҮЛЭЛТ болгов. Хоёр шалтгаан:
-            * (а) 5 багана нь 470px картын гуравны нэгийг л эзэлж, 268px хоосон үлдээдэг;
-            * (б) decoder нь ТАЛБАР ТУС БҮРД өөрөөр унтардаг тул мэдрэгчийн нийлбэр нь
-            *     аль талбар дутуу ирснийг НУУНА (нэг мэдрэгчийн зай 1,642, батерей 1,725).
-            */}
-          {/* Мөр бүрийн өнгө заахгүй — `Bars`-ын анхдагч нь var(--data), ялгаа нь эрэмбээр */}
-          <Bars
-            items={cards.map((c) => ({
-              key: `${c.s.key}-${c.m.key}`,
-              label: c.m.label,
-              value: c.m.total,
-            }))}
-          />
-        </div>
-      </section>
-
-      {/* ── Үлдсэн үзүүлэлтийн цуваа ── */}
-      <div className={s.pCharts}>
-        <div className={s.chartGrid}>
-          {rest
-            .filter((c) => c.m.points.length >= 2)
-            .map((c) => (
-              <ChartCard key={`${c.s.key}-${c.m.key}`} c={c} />
-            ))}
+      {/* ── БАРУУН БАГАНА — бүртгэлийн диаграм ба агаар/үйлчилгээний цуваа ──
+          ⚠️ Хоёулаа НЭГ блокод, grid-ийн хоёр мөрийг дамжина. Тусад нь тавибал
+          баганан диаграм нь мөр 1-ийг өөрийн өндрөөр сунгаж, зүүн талд
+          индикаторын доор хоосон зай үлдээдэг байв (зураг тэр зайгаар
+          доошилно). */}
+      {/* ⚠️ 2026-08-26 (хэрэглэгчийн шийдвэр): «Бүртгэл үзүүлэлтээр» баганан
+          диаграм ХАСАГДАВ — заалтын ТОО нь чарт бүрийн толгойд «90 / 292 цэг»
+          гэж аль хэдийн бичигддэг тул давхардсан мэдээлэл байв. */}
+      <div className={s.pRight}>
+        <div className={`${s.chartCol} ${s.pChartsR}`}>
+          {chartsR.map((c) => (
+            <ChartCard key={`${c.s.key}-${c.m.key}`} c={c} />
+          ))}
         </div>
       </div>
+
+
     </>
   );
 }

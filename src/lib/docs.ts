@@ -4,8 +4,9 @@ import { t as tr } from '@/lib/i18nCore';
  *
  * ⚠️ Файлууд `public/docs/`-д байрлана (статик экспорт тул `/docs/...` URL-аар
  * дуудагдана). Эх нэр нь кирилл/зайтай тул URL-д найдвартай ASCII slug болгосон.
- * `.gitignore`-т `*.pdf` байгаа тул git-д орохгүй — локал болон локал build-д л
- * ажиллана (deploy-ийн тайлбарыг төлөвлөгөөнөөс үзнэ үү).
+ * `.gitignore`-ийн `!public/docs/*.pdf` тул эдгээр PDF git-д ОРДОГ — deploy-д
+ * хамт явна. ⚠️ Cloudflare Pages-ийн нэг файлын хязгаар 25 MB: түүнээс том
+ * баримт энд нэмж БОЛОХГҮЙ (deploy бүхэлдээ унана).
  */
 export type DocItem = {
   key: string;
@@ -34,12 +35,9 @@ export const DOCS: DocItem[] = [
     sub: "Selbe subcenter final report (EN)",
     file: "selbe-subcenter-deia-2013.pdf",
   },
-  {
-    key: "bonnu",
-    title: tr('БОННҮ тайлан'),
-    sub: tr('Хот төлөвлөлтийн институт — хавсралт'),
-    file: "bonnu-tailan.pdf",
-  },
+  /* ⚠️ 2026-08-25: «БОННҮ тайлан» (bonnu-tailan.pdf, 89.7 MB) ХАСАГДАВ —
+     Cloudflare Pages-ийн нэг файлын 25 MB хязгаараас хэтэрдэг тул deploy-г
+     унагана. Хэрэгтэй болвол R2/өөр хостод байршуулж энд буцааж нэмнэ. */
 ];
 
 /** `public/docs/` дэд замын үндэс */

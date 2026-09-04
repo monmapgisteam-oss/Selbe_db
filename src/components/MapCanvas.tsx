@@ -33,7 +33,6 @@ import SketchViewModel from '@arcgis/core/widgets/Sketch/SketchViewModel';
 import BasemapGallery from '@arcgis/core/widgets/BasemapGallery';
 import LocalBasemapsSource from '@arcgis/core/widgets/BasemapGallery/support/LocalBasemapsSource';
 import Expand from '@arcgis/core/widgets/Expand';
-import LayerList from '@arcgis/core/widgets/LayerList';
 import ElevationLayer from '@arcgis/core/layers/ElevationLayer';
 import Ground from '@arcgis/core/Ground';
 import type Layer from '@arcgis/core/layers/Layer';
@@ -44,7 +43,8 @@ import '@arcgis/core/assets/esri/themes/light/main.css';
 
 import {
   LAYERS, LAYER_BY_ID, layerUrl, oidOf, drawOrder, DASH_PATTERN, ALWAYS_ON_IDS, REFERENCE_IDS,
-  HOME, IMAGERY, IRGED_ORTHO, IRGED_ROAD, IRGED_SCENE, IRGED_TOILET, SCENE, BIM, USAN_SAN, ELEVATION_URL, ZONE_LAYER, zoneWhere,
+  HOME, IMAGERY, IRGED_ORTHO, IRGED_ROAD, IRGED_SCENE, IRGED_TOILET, IRGED_BUILT, IRGED_BUILT_DEF,
+  SCENE, BIM, USAN_SAN, ELEVATION_URL, ZONE_LAYER, zoneWhere,
   ZONE_FIELD, ZONE_NONE, ZONE_TYPE_EMPTY_HUE, OID, BUILDING, SURVEY, PARCEL_LEFT, buildingKey,
   MAP_HUE_OVERRIDES, SOURCE_FS, BASE_MAP_IDS, TOGLOOM_TYPES,
   type LayerDef,
@@ -101,8 +101,22 @@ type MapApi = {
   zoomToLayer: (id: string) => void;
   /** Тодорхой бүсийн хүрээнд аваачих */
   zoomToZone: (zone: string) => void;
-  /** Давхаргын ЯГ ТЭР объект(ууд) руу ойртох — хайлтын үр дүнд шилжихэд */
-  zoomToWhere: (layerId: string, where: string) => void;
+  /**
+   * Давхаргын ЯГ ТЭР объект(ууд) руу ойртох — хайлтын үр дүнд шилжихэд.
+   * `animate: false` — шууд үсэрнэ (нэг жагсаалтаар дараалан товшиход
+   * анимаци нь хойшлол мэт мэдрэгддэг).
+   */
+  zoomToWhere: (layerId: string, where: string, opts?: { animate?: boolean }) => void;
+  /**
+   * Давхаргыг СЕРВЕРЭЭС ДАХИН УНШУУЛНА — атрибут гаднаас засагдсаны дараа.
+   *
+   * ⚠️ ЗААВАЛ ХЭРЭГТЭЙ: FeatureLayer нь татсан объектоо клиент дээрээ кэшлэдэг.
+   * Порталын `applyEdits` нь SDK-аар биш ШУУД REST-ээр явдаг тул давхарга
+   * өөрчлөлтийг мэдэхгүй — зассан нэгж талбар ХУУЧИН ӨНГӨӨРӨӨ үлдэнэ.
+   * Хэрэглэгч «хадгалагдсангүй» гэж бодоод бүтэн хуудсаа refresh хийхээс өөр
+   * аргагүй болно.
+   */
+  refreshLayer: (layerId: string) => void;
   /**
    * ОРТОФОТО ил эсэх ба түүнийг унтраах/асаах.
    * ⚠️ Каталогийн дээд мөр ба «Суурь зураг» товчны чагт ХОЁУЛАА эндээс уншиж
@@ -125,6 +139,7 @@ const Ctx = createContext<MapApi>({
   view: null, setHighlight: () => {}, highlight: { where: null },
   zoomToLayer: () => {}, zoomToZone: () => {},
   zoomToWhere: () => {},
+  refreshLayer: () => {},
   ortho: false, setOrtho: () => {},
   setZoneMask: () => {},
 });
@@ -360,6 +375,23 @@ const TOILET_CLUSTER_SCALE = 2_500;
  * ⚠️ Босго нь (гурав дахь тоо) эсрэгээр өснө: том кластер дээр зөвхөн хамгийн
  * тод пиксел гэрэлтэж, дугуйн бүх талбай цайхгүй.
  */
+/**
+ * ГЭР ХОРООЛЛЫН БАРИЛГА — гэрэлтэх эффект (2026-09-02).
+ *
+ * ⚠️ Тод өнгө ба зузаан хүрээ дангаараа хангалтгүй байв: ортофото нь
+ *    нарийн бүтэцтэй тул нимгэн хүрээ түүн дээр «тасарч» алга болдог.
+ *    Bloom нь хүрээг дэвсгэрээс ТАСАЛЖ, жижиг полигон ч нүдэнд шууд тусна
+ *    (`TOILET_EFFECT`-ийн адил батлагдсан арга).
+ * ⚠️ Жорлонгийнхоос СУЛ: тэр нь ганц цэг, энэ нь 6,627 полигон — ижил
+ *    эрчимтэй бол бүх зураг гэрэлтэж, ортофото уншигдахаа болино.
+ * ⚠️ ЗӨВХӨН 2D-д үйлчилнэ (SceneView `effect`-ийг үл тоомсорлоно).
+ */
+const BUILT_EFFECT = [
+  { scale: 20_000, value: 'bloom(0.2, 0.3px, 0.3)' },
+  { scale: 6_000, value: 'bloom(0.4, 0.35px, 0.2)' },
+  { scale: 1_500, value: 'bloom(0.6, 0.4px, 0.15)' },
+] as unknown as __esri.Effect;
+
 const TOILET_EFFECT = [
   { scale: 20_000, value: 'bloom(0.15, 0.4px, 0.35)' },
   { scale: 8_000, value: 'bloom(0.3, 0.4px, 0.28)' },
@@ -476,6 +508,65 @@ const simple = (sym: unknown) => ({ type: 'simple', symbol: sym }) as unknown as
 const LINE_PX = 1;
 const DOT_SCALE = 0.7;
 
+/**
+ * IoT МЭДРЭГЧИЙН 3D СИМБОЛ — газраас дээш өргөгдсөн «радар» тэмдэг.
+ *
+ * Хоёр хэсэгтэй:
+ *   · `verticalOffset` — тэмдгийг гадаргаас ДЭЭШ өргөнө (дэлгэцийн 44px,
+ *     бодит ертөнцөд 18…160м-ээр хязгаарлана: ойртоход тэнгэрт хөвөхгүй,
+ *     холдоход газарт булагдахгүй).
+ *   · `callout` — өргөгдсөн тэмдгээс ГАЗАР хүртэл татагдах НАРИЙН шугам.
+ *     Энэ нь ArcGIS-ийн стандарт «leader line»; гараар цилиндр зурахаас
+ *     хамаагүй хямд бөгөөд өнцөг эргүүлэхэд ҮРГЭЛЖ босоо хэвээр байна.
+ *
+ * ⚠️ Радарын долгион нь ГУРВАН давхарласан дугуй — ArcGIS-ийн 3D симбол
+ *    хөдөлгөөн дэмждэггүй тул «тэлж буй цацраг»-ийг ХЭМЖЭЭ + ТУНГАЛАГИЙН
+ *    шаталсан цуваагаар илэрхийлнэ (гадна нь том, бүдэг; дотор нь жижиг,
+ *    цул). Хөдөлгөөнт хувилбар нь HTML давхарга + `toScreen()` шаардана —
+ *    тэр нь 60 fps-д камер бүр хөдлөхөд дахин тооцоологдож, гүйцэтгэлийг
+ *    мэдэгдэхүйц унагана.
+ *
+ * ⚠️ ЗӨВХӨН SceneView-д. MapView нь `point-3d` симбол дэмждэггүй — 2D-д
+ *    тавибал давхарга ОГТ зурагдахгүй. Тиймээс `dim`-ээр сольдог эффект
+ *    (доор) хариуцна.
+ */
+const RADAR_LIFT = 44;
+export const radarSymbol = (hue: string) => {
+  const [r, g, b] = rgb(hue);
+  const ring = (size: number, fillA: number, lineA: number, lineW: number) => ({
+    type: 'icon',
+    resource: { primitive: 'circle' },
+    size,
+    material: { color: [r, g, b, fillA] },
+    outline: { color: [r, g, b, lineA], size: lineW },
+  });
+  return {
+    type: 'point-3d',
+    symbolLayers: [
+      /* гадна долгион — хамгийн том, бараг тунгалаг */
+      ring(30, 0.08, 0.30, 1),
+      /* дунд долгион */
+      ring(19, 0.16, 0.55, 1),
+      /* цөм — цул, цагаан хүрээтэй (аль ч дэвсгэр дээр ялгарна) */
+      {
+        type: 'icon',
+        resource: { primitive: 'circle' },
+        size: 9,
+        material: { color: [r, g, b, 1] },
+        outline: { color: [255, 255, 255, 0.9], size: 1 },
+      },
+    ],
+    verticalOffset: { screenLength: RADAR_LIFT, minWorldLength: 18, maxWorldLength: 160 },
+    callout: {
+      type: 'line',
+      size: 1,
+      color: [r, g, b, 0.85],
+      /* Цайвар хүрээ — бараан меш дээр шугам уусахаас сэргийлнэ */
+      border: { color: [255, 255, 255, 0.45] },
+    },
+  } as unknown as __esri.Symbol3DProperties;
+};
+
 export const symbolOf = (d: LayerDef, hue = d.hue) => {
   const plan = d.topic === 'plan';
   return d.geom === 'line'
@@ -526,13 +617,25 @@ const paintRenderer = (d: LayerDef) => ({
    давхарга бүхэлдээ хасагдав — 78 давхарга webmap-тэй 100% ижил зурагдана. */
 
 /**
- * Гүйцэтгэлийн өнгө (0–100%): улаан → шар → ногоон. Хоёр хэсэгт шугаман
+ * Гүйцэтгэлийн өнгө (0–100%): ШАР → ногоон. Хоёр хэсэгт шугаман
  * интерполяци — блок бүрд тасралтгүй өнгө өгнө (unique-value симбол болгонд).
+ *
+ * ⚠️ УЛААН ХАСАГДСАН (2026-08-28, хэрэглэгчийн шийдвэр). Урьд нь 0% нь улаан
+ * (`#dc2626`) байсан бөгөөд энэ нь ХОЁР асуудал үүсгэж байв:
+ *
+ *   1. ӨНГӨНИЙ ДАВХЦАЛ. «Үлдсэн нэгж талбар» (`#e11d48`) ба түүнийг сонгоход
+ *      тодруулах өнгө (`#dc2626`) хоёулаа улаан тул газрын зураг дээр
+ *      «баригдаж буй барилга» ба «саад болж буй талбар» хоёр ялгагдахгүй.
+ *   2. УТГЫН АЛДАА. Улаан нь энэ аппд АЛДАА/САААДЫГ заадаг. Гэтэл сая эхэлсэн
+ *      барилгын 0% нь алдаа биш — хэвийн эхлэл. Барилга нь ЭХЛЭЭГҮЙ-гээс
+ *      ДУУССАН руу явах аяллыг шар → ногоон дулаан-хүйтэн шилжилт илэрхийлнэ.
+ *
+ * Улаан одоо ЗӨВХӨН газар чөлөөлөлтийн саадыг заана.
  */
 const PROG_STOPS: [number, [number, number, number]][] = [
-  [0, [220, 38, 38]],    // #dc2626 улаан
-  [50, [245, 158, 11]],  // #f59e0b хув
-  [100, [22, 163, 74]],  // #16a34a ногоон
+  [0, [250, 204, 21]],   // #facc15 шар — эхлээгүй
+  [50, [163, 230, 53]],  // #a3e635 шаргал ногоон — дунд шат
+  [100, [22, 163, 74]],  // #16a34a ногоон — дууссан
 ];
 const progColor = (v: number): [number, number, number] => {
   const x = Math.max(0, Math.min(100, v));
@@ -747,12 +850,18 @@ const sourceLabels = () =>
   ] as unknown as __esri.LabelClassProperties[];
 
 /**
- * Анхдагч суурь зураг — ТОПОГРАФИ (хэрэглэгчийн хүсэлт). Ортофото нь тусдаа
- * `imagery` давхарга бөгөөд эхэндээ УНТРААЛТТАЙ; хэрэглэгч «Суурь зураг» товчны
- * «Ортофото» чагтаар асаана. Суурь зургийн галерейгаас топо/хиймэл дагуул/гудамж
- * зэрэг сонгож болно.
+ * Анхдагч суурь зураг — ХИЙМЭЛ ДАГУУЛ (2026-09-03, хэрэглэгчийн хүсэлт).
+ *
+ * ⚠️ Урьд нь `topo-vector` байв. Ортофото нь ЗӨВХӨН төслийн талбайг
+ * хамардаг тул топо суурь дээр асаахад тэр талбай тод, гаднах нь зурсан
+ * газрын зураг болж, хоёр өөр ертөнц залгаастай харагддаг байлаа. Хиймэл
+ * дагуулын суурь дээр ортофото нь ИЖИЛ төрлийн зургийн НАРИЙВЧЛАЛТАЙ
+ * хэсэг болж, зааг нь бараг мэдэгдэхгүй.
+ *
+ * ⚠️ Хэрэглэгч «Суурь зураг» товчны галерейгаас топо/гудамж руу буцаж
+ * сонгож болно — энэ нь зөвхөн АНХДАГЧ.
  */
-const baseMap = () => Basemap.fromId('topo-vector');
+const baseMap = () => Basemap.fromId('satellite');
 
 /* ─────────────────── Давхарга үүсгэх ─────────────────── */
 
@@ -766,6 +875,8 @@ const PASSIVE = new Set<string>([
   // Нүхэн жорлон — зөвхөн байршил харуулна; дарахад атрибут гарах ЁСГҮЙ
   IRGED_TOILET.id,
   TOILET_PIN_ID,
+  // Гэр хорооллын барилга — зөвхөн байршил/төрөл; атрибут ил гаргахгүй
+  IRGED_BUILT.id,
   IRGED_ROAD.id,
   ...SCENE.layers.map((l) => `scene:${l.key}`),
   ...IRGED_SCENE.layers.map((l) => `scene:${l.key}`),
@@ -808,9 +919,11 @@ const mapFields = (d: LayerDef): string[] => {
 function buildLayers(uniform = false): Layer[] {
   const L: Layer[] = [];
 
-  /* Ортофото — вектор давхаргын доор. ⚠️ Эхэндээ УНТРААЛТТАЙ (хэрэглэгчийн
-     хүсэлт): анхдагч суурь зураг нь топографи, ортофотог «Суурь зураг» товчны
-     чагтаар асаана. `orthoRef` энэ төлвийг удирдана. */
+  /* Ортофото — вектор давхаргын доор, ХИЙМЭЛ ДАГУУЛЫН суурь зургийн ДЭЭР.
+     ⚠️ `visible: false` нь зөвхөн БАЙГУУЛАХ агшны утга: бодит харагдалтыг
+     `ortho` төлөв удирддаг (доорх давхаргын эффект), тэр нь 2026-09-03-наас
+     АСААЛТТАЙ эхэлнэ. Энд `true` бичвэл «Суурь зураг» товчны чагтаас өмнө
+     эффект ажиллах агшинд анивчилт үүснэ. */
   L.push(new GroupLayer({
     id: IMAGERY_ID,
     title: IMAGERY.title,
@@ -877,6 +990,31 @@ function buildLayers(uniform = false): Layer[] {
      * хэвийн, гэрэлтэхгүй харагдана.
      */
     effect: TOILET_EFFECT,
+  }));
+
+  /* ГЭР ХОРООЛЛЫН ОДООГИЙН БАРИЛГА — «Иргэдэд хүрэх үр өгөөж»-ийн «ӨМНӨ» тал.
+     6,627 полигон, `Type`-аар өнгө ялгана (Байшин · Гэр).
+
+     ⚠️ `outFields: [Type]` — ЗӨВХӨН ангилал. `Confidence` талбар нь «Гэр»-т
+     ~93, «Байшин»-д БҮГД 0 тул ил гарвал «энэ барилгын итгэл 0%» гэсэн ХУДАЛ
+     уншлага өгнө. Хэрэгтэй ганц атрибутыг л татна.
+
+     ⚠️ `minScale` — 1:20,000-аас хол зумд огт зурагдахгүй. 6,627 полигон нь
+     хотын хэмжээнд ялгагдахгүй хүрэн толбо болж ортофотог далдалдаг; ойртоход
+     л утга гарна. */
+  L.push(new FeatureLayer({
+    id: IRGED_BUILT.id,
+    title: IRGED_BUILT.title,
+    url: IRGED_BUILT.url,
+    visible: false,
+    listMode: 'hide',
+    popupEnabled: false,
+    legendEnabled: false,
+    outFields: [IRGED_BUILT.typeField],
+    elevationInfo: ON_GROUND,
+    minScale: 20_000,
+    renderer: paintRenderer(IRGED_BUILT_DEF),
+    effect: BUILT_EFFECT,
   }));
 
   /* Нүхэн жорлонгийн ОЙРЫН callout хувилбар — ЗӨВХӨН 1:3,000-аас ойр (`minScale`).
@@ -994,9 +1132,13 @@ export function MapProvider({ children }: { children: ReactNode }) {
 
   /**
    * Ортофото ил эсэх — каталогийн дээд мөр ба «Суурь зураг» товч ХОЁУЛАА үүнийг
-   * уншиж бичнэ. Анхдагч: унтраалттай (суурь зураг топографи).
+   * уншиж бичнэ.
+   *
+   * ⚠️ Анхдагч: АСААЛТТАЙ (2026-09-03, хэрэглэгчийн хүсэлт) — суурь нь хиймэл
+   * дагуул, түүн ДЭЭР төслийн ортофото. Хоёулаа зургийн давхарга тул зааг нь
+   * мэдэгдэхгүй, харин төслийн талбай нарийвчлалаараа ялгарна.
    */
-  const [ortho, setOrtho] = useState(false);
+  const [ortho, setOrtho] = useState(true);
 
   /** Бүсийн орон зайн маск — noZone давхаргуудын 2D бүдгэрүүлэлтэд (доорх эффект) */
   const [zoneMask, setZoneMask] = useState<unknown>(null);
@@ -1056,10 +1198,24 @@ export function MapProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  /**
+   * ⚠️ Нислэгийн token — `goTo` ба `zoomToWhere` ХОЁУЛАА энэ НЭГ тоолуурыг
+   * хуваалцана. Хоёулаа `extentOf` (→ `query.ts`-ийн 6 слотын дараалал +
+   * дахин оролдлого) хүлээдэг тул хариу ирэх дараалал баталгаагүй: шүүлт
+   * хурдан солиход хоцорсон хүрээ сүүлд ирж зургийг өмнөх сонголт руу буцаадаг
+   * байв (шүүлт цэвэрлэсэн атал объект дээр ойрсон хэвээр үлдэх). Тусдаа
+   * тоолуур өгвөл `zoomToWhere` ↔ `zoomToLayer` хооронд солигдоход
+   * хамгаалалт ажиллахгүй тул ЗААВАЛ нэгийг нь хуваалцана.
+   * (Загвар: `zoneMaskToken`.)
+   */
+  const flyToken = useRef(0);
+
   const goTo = useCallback(async (url: string, w: string) => {
     if (!view || view.destroyed) return;
+    const t = ++flyToken.current;
     try {
       const e = await extentOf(url, view, w);
+      if (flyToken.current !== t) return;
       // Гөлгөр zoom-in анимаци (1.4 сек, easing)
       if (e && !view.destroyed) {
         view.goTo(e.expand(1.2), { animate: true, duration: 1400, easing: 'ease-in-out' }).catch(() => {});
@@ -1086,11 +1242,17 @@ export function MapProvider({ children }: { children: ReactNode }) {
    * зураг хамгийн ойрын масштаб руу үсэрч, хэрэглэгч хаана байгаагаа алдана.
    * Тиймээс `goTo`-г ашиглахгүй, хүрээг өөрөө тэлнэ.
    */
-  const zoomToWhere = useCallback(async (layerId: string, where: string) => {
+  const zoomToWhere = useCallback(async (
+    layerId: string,
+    where: string,
+    opts?: { animate?: boolean },
+  ) => {
     const d = LAYER_BY_ID[layerId];
     if (!d || !view || view.destroyed) return;
+    const t = ++flyToken.current;
     try {
       const e = await extentOf(layerUrl(d), view, where);
+      if (flyToken.current !== t) return;
       if (!e || view.destroyed) return;
       // 150 м-ээс нарийн хүрээг тэлнэ — контекстгүй ойртохоос сэргийлнэ
       const MIN = 150;
@@ -1112,15 +1274,30 @@ export function MapProvider({ children }: { children: ReactNode }) {
       } else {
         box = e.clone().expand(1.6);
       }
-      view.goTo(box).catch(() => {});
+      view.goTo(box, opts?.animate === false ? { animate: false } : undefined).catch(() => {});
     } catch (err) {
       console.error('[selbe] объектын хүрээг тодорхойлж чадсангүй:', err);
     }
   }, [view]);
 
+  /**
+   * ⚠️ 2D-д `refresh()` хангалттай; 3D-д мөн ижил (SceneView нь ижил
+   * FeatureLayer-ийг хуваалцдаг). Давхарга олдоогүй бол ЧИМЭЭГҮЙ өнгөрнө —
+   * тухайн давхарга унтраалттай байхад алдаа шидэх нь утгагүй.
+   */
+  const refreshLayer = useCallback((layerId: string) => {
+    const l = view && !view.destroyed
+      ? (view.map?.findLayerById(layerId) as { refresh?: () => void } | null)
+      : null;
+    l?.refresh?.();
+  }, [view]);
+
   const api = useMemo<MapApi>(
-    () => ({ view, setHighlight, highlight: hl, zoomToLayer, zoomToZone, zoomToWhere, ortho, setOrtho, setZoneMask }),
-    [view, setHighlight, hl, zoomToLayer, zoomToZone, zoomToWhere, ortho],
+    () => ({
+      view, setHighlight, highlight: hl, zoomToLayer, zoomToZone, zoomToWhere,
+      refreshLayer, ortho, setOrtho, setZoneMask,
+    }),
+    [view, setHighlight, hl, zoomToLayer, zoomToZone, zoomToWhere, refreshLayer, ortho],
   );
 
   return (
@@ -1144,11 +1321,19 @@ export const MapCanvas = memo(function MapCanvas({
   opacity,
   zone,
   layerWhere,
+  layerStyle,
+  pulseIds,
   uniform = false,
+  bare = false,
   onPick,
   sketch = false,
   onSketch,
   drawToken = 0,
+  drawKind = 'polygon',
+  reshapeGeometry,
+  reshapeToken = 0,
+  onReshape,
+  sketchUndoToken = 0,
   clearToken = 0,
   scene,
   children,
@@ -1170,8 +1355,64 @@ export const MapCanvas = memo(function MapCanvas({
    * шүүгдэнэ. `null`/байхгүй утга = шүүлтгүй.
    */
   layerWhere?: Record<string, string | null>;
+  /**
+   * ДАВХАРГЫН ХЭВ МАЯГИЙГ ХАРАГДАЦААС ДАРЖ БИЧИХ.
+   *
+   * ⚠️ Нэг давхарга ХЭД ХЭДЭН харагдацад дахин ашиглагддаг тул анхны загвар нь
+   *    зарим контекстэд утгаа алддаг: «Багцын хяналт»-д газар чөлөөлөлтийн
+   *    нэгж талбар нь улаан барилгын блокуудын дэргэд ижил төстэй харагдаж,
+   *    хоёулаа ялгагдахаа больдог. Энд өгсөн өнгө/зузаанаар тэр давхаргыг
+   *    ТУХАЙН харагдацад л ялгаж зурна.
+   *
+   * ⚠️ Анхны renderer-ийг ХАДГАЛЖ, дарлага арилахад БУЦААНА — эс бөгөөс
+   *    «Газар чөлөөлөлт» харагдац руу орход тэнд төлөвөөр будсан загвар нь
+   *    алга болж, бүх нэгж талбар нэг өнгөөр харагдана.
+   */
+  /**
+   * ХАРАГДАЦЫН ХЭВ МАЯГИЙН ДАРЛАГА — тухайн давхаргыг ЗӨВХӨН энэ харагдацад
+   * өөр өнгө/зузаан/хэмжээгээр зурна.
+   *
+   * ⚠️ 2026-09-02: урьд нь дарлага нь ГЕОМЕТРЭЭС ҮЛ ХАМААРАН `fill` (талбайн)
+   * симбол үүсгэдэг байв. Гурван дуудагч (Bagts · Gazar · PkgProg) бүгд
+   * ПОЛИГОН давхаргад (`land:left`) хэрэглэдэг тул илэрдэггүй байсан ч,
+   * шугам/цэгэн давхаргад өгмөгц симбол нь бүрмөсөн буруу төрөл болно. Одоо
+   * `LayerDef.geom`-оор салгана.
+   *
+   * ⚠️ `hue` нь СОНГОЛТТОЙ болов — зөвхөн ХЭМЖЭЭ өөрчлөхөд давхаргын
+   * өөрийн өнгө хэвээр үлдэнэ (`size` дангаараа өгөх боломж).
+   */
+  layerStyle?: Record<string, {
+    hue?: string;
+    fill?: number;
+    width?: number;
+    /** Цэгэн давхаргын диаметр (px) — `DOT_SCALE` ХЭРЭГЛЭГДЭХГҮЙ, шууд утга */
+    size?: number;
+  }>;
+  /**
+   * ПУЛЬСЛЭХ (анивчих) ДАВХАРГУУД — анхаарал татах ёстой цөөн объектод.
+   *
+   * «Багцын хяналт»-д багцтай давхцсан нэгж талбар нь 1-2 ширхэг, ортофото
+   * дээр жижиг харагддаг тул зөвхөн өнгөөр ялгах хангалтгүй — амьсгалах
+   * хөдөлгөөн нүд шууд татна.
+   *
+   * ⚠️ Шүүлт (`layerWhere`) солигдоход пульс ДАХИН эхлэх ёстой: эс бөгөөс
+   *    өмнөх багцын талбарын хуулбар зурагдсаар үлдэнэ.
+   */
+  pulseIds?: string[];
   /** Давхарга бүрийг ГАНЦ жигд өнгөөр зурах (ангиллаар олон өнгө хуваахгүй) */
   uniform?: boolean;
+  /**
+   * ХООСОН ЭХЛЭЛ — суурь 14 давхаргыг (`BASE_MAP_IDS`) сонголт хоосон үед
+   * АВТОМАТААР асаахгүй.
+   *
+   * ⚠️ Анхдагч зан (`bare: false`) нь «каталог хоосон бол зураг план 2D шигээ
+   * бүрэн» гэсэн дүрэм. «Эрсдэлийн загвар» нь ЭСРЭГ шаардлагатай (хэрэглэгчийн
+   * хүсэлт): зөвхөн ортофото дээр аюулын муж, өртсөн объект хоёрыг цэвэрхэн
+   * харах — суурь 14 давхарга тэдгээрийн өнгийг булингартуулна. Тиймээс энэ
+   * тугтай үед суурь давхарга нь БУСАДТАЙ ижил дүрмээр (зөвхөн сонгосон бол)
+   * харагдана.
+   */
+  bare?: boolean;
   onPick: (attrs: Record<string, unknown> | null, layerId: string | null) => void;
   /**
    * ПОЛИГОН ЗУРАХ чадварыг асаана («Газар чөлөөлөлт»). Зөвхөн 2D-д ажиллана —
@@ -1182,6 +1423,49 @@ export const MapCanvas = memo(function MapCanvas({
   onSketch?: (geometry: __esri.Geometry | null) => void;
   /** Утга нэмэгдэхэд полигон зурж эхэлнэ (гадны «Полигон зурах» товч) */
   drawToken?: number;
+  /**
+   * ЯМАР ГЕОМЕТР зурах — `drawToken` өсөх агшинд уншигдана.
+   *
+   * ⚠️ Анхдагч нь `'polygon'`: «Газар чөлөөлөлт», «Багц», «Гүйцэтгэл» гурав
+   * зөвхөн шүүлтийн полигон зурдаг бөгөөд энэ пропыг өгдөггүй — тэдний зан
+   * төлөв ӨӨРЧЛӨГДӨХГҮЙ байх ёстой.
+   *
+   * ⚠️ Утгыг ref-ээр уншина: `drawToken`-ы эффект нь `drawKind`-ыг deps-даа
+   * авбал төрөл солих бүрд ХҮСЭЭГҮЙ зураалт эхэлнэ.
+   */
+  drawKind?: 'point' | 'polyline' | 'polygon';
+  /**
+   * БАЙГАА ОБЪЕКТЫН ГЕОМЕТРИЙГ VERTEX-ЭЭР ЗАСАХ — `reshapeToken` өсөх агшинд
+   * энэ геометрийг зурах давхаргад буулгаж, `SketchViewModel.update()`-ыг
+   * асаана (Esri-ийн «reshape» бариулууд гарч ирнэ).
+   *
+   * ⚠️ Геометр нь `toJSON()` хэлбэрийн ЭНГИЙН объект бөгөөд
+   * `spatialReference`-ээ АГУУЛСАН байх ЁСТОЙ — эс бөгөөс SDK нь зургийн
+   * проекц гэж таамаглаж, өөр газар буулгана.
+   */
+  reshapeGeometry?: unknown;
+  reshapeToken?: number;
+  /**
+   * Vertex засварын үр дүн — чирэх бүрд дуудагдана.
+   *
+   * ⚠️ `onSketch`-ЭЭС ТУСДАА байх нь ЧУХАЛ: тэр нь ШИНЭ дүрс зурж дуусахад
+   * дуудагддаг бөгөөд дуудагч талууд түүгээр «шинэ объект нэмэх» маягт
+   * нээдэг. Хоёуланг нэг callback-т нийлүүлбэл байгаа объектын vertex
+   * хөдөлгөх бүрд шинэ объектын маягт нээгдэнэ.
+   *
+   * ⚠️ Өгөөгүй бол `update` үйл явдал `onSketch` руу очно — «Газар
+   * чөлөөлөлт», «Багц», «Гүйцэтгэл» гурав полигоноо чирж өөрчлөхөд шүүлт
+   * дагаж шинэчлэгддэг зан төлөв нь ХЭВЭЭР үлдэнэ.
+   */
+  onReshape?: (geometry: __esri.Geometry | null) => void;
+  /**
+   * ЗУРААЛТЫН НЭГ АЛХАМ БУЦААХ — өсөх бүрд `SketchViewModel.undo()`.
+   *
+   * ⚠️ Энэ нь ЗӨВХӨН хадгалаагүй зураалтад үйлчилнэ (нэмсэн vertex, чирсэн
+   * цэг). Үйлчилгээнд аль хэдийн бичигдсэн засварыг буцаахгүй — түүнийг
+   * дуудагч тал өөрөө хийнэ (`butetsEdit.applyAttrs`/`saveGeometry`).
+   */
+  sketchUndoToken?: number;
   /** Утга нэмэгдэхэд зурсан полигоныг арилгана (гадны «Цэвэрлэх» товч) */
   clearToken?: number;
   /**
@@ -1198,19 +1482,56 @@ export const MapCanvas = memo(function MapCanvas({
   const mapRef = useRef<Map | null>(null);
   const viewRef = useRef<AnyView | null>(null);
   const bimWidgetRef = useRef<BuildingExplorer | null>(null);
+  /**
+   * BIM удирдлагыг боосон `Expand` — виджет өөрөө нь `bimWidgetRef`-д.
+   * ⚠️ ХОЁУЛАА хэрэгтэй: `Expand.destroy()` нь `content`-оо устгадаггүй тул
+   * зөвхөн Expand-ыг устгавал BuildingExplorer санах ойд үлдэж, горим солих
+   * бүрд шинэ виджет нэмэгдсээр байна.
+   */
+  const bimExpandRef = useRef<Expand | null>(null);
   const sketchVMRef = useRef<SketchViewModel | null>(null);
+  /* ⚠️ Зурах төрлийг REF-ээр — deps-д оруулбал төрөл солих бүрд зураалт эхэлнэ */
+  const drawKindRef = useRef(drawKind);
+  drawKindRef.current = drawKind;
   const pickRef = useRef(onPick);
   pickRef.current = onPick;
   const onSketchRef = useRef(onSketch);
   onSketchRef.current = onSketch;
+  const onReshapeRef = useRef(onReshape);
+  onReshapeRef.current = onReshape;
+  const reshapeGeomRef = useRef(reshapeGeometry);
+  reshapeGeomRef.current = reshapeGeometry;
   /** Давхарга бүрийн БҮТЭЭГДЭХ (build-time) тунгалаг — override арилахад буцаана */
   const defaultOpacityRef = useRef<Record<string, number>>({});
   /** Сүүлд ил байсан давхаргын id-ууд — шинээр ил болсныг илрүүлэхэд */
+  /**
+   * Дарж бичихээс ӨМНӨХ renderer — дарлага арилахад буцаана.
+   * ⚠️ JS-ийн `Map` БИШ энгийн объект: энэ файлд ArcGIS-ийн `Map` класс
+   *    импортлогдсон тул нэр нь зөрчилдөнө.
+   */
+  const styleBackup = useRef<Record<string, unknown>>({});
   const prevVisRef = useRef<Set<string>>(new Set());
   /** Одоо пульс-анимаци явж буй давхаргууд — давхар гогцоо эхлэхээс сэргийлнэ */
   const fadingRef = useRef<Set<string>>(new Set());
   /** Идэвхтэй пульс-гогцоог цуцлах функц — unmount дээр rAF-ийг зогсооно */
   const pulseCancelRef = useRef<(() => void) | null>(null);
+  /**
+   * ДАВХАРГА ТУС БҮРИЙН цуцлагч.
+   *
+   * ⚠️ Пульсийн хуулбар нь `source:pulse` гэсэн ТУСДАА графикийн давхаргад
+   *    амьдардаг бөгөөд тэр давхарга ҮРГЭЛЖ ил. Тиймээс эх давхаргыг нуухад
+   *    хуулбар нь ӨӨРӨӨ АРИЛДАГГҮЙ — багцын сонголтыг цуцлахад ягаан талбар
+   *    зураг дээр үлдсээр байв. Нуугдмагц ЭНДЭЭС цуцлана.
+   */
+  const pulseCancels = useRef<Record<string, () => void>>({});
+  /** `pulseLayer` нь useCallback тул props-ыг ref-ээр уншина (лавлагаа тогтвортой). */
+  const pulseIdsRef = useRef<string[]>([]);
+  /** Хэв маягийн дарлага — пульсийн хуулбар ч ижил өнгөтэй байх ёстой. */
+  const layerStyleRef = useRef<Record<string, {
+    hue?: string; fill?: number; width?: number; size?: number;
+  }>>({});
+  /** Давхарга бүрийн СҮҮЛД пульсэлсэн шүүлт — солигдвол дахин эхлүүлнэ. */
+  const pulsedWhere = useRef<Record<string, string | null>>({});
 
   const [ready, setReady] = useState(false);
 
@@ -1287,6 +1608,16 @@ export const MapCanvas = memo(function MapCanvas({
   }, []);
   /** Ачаалагдаж чадаагүй 3D загварын тоо — null = асуудалгүй */
   const [meshError, setMeshError] = useState<number | null>(null);
+  /**
+   * ЕРДИЙН (2D) давхаргын уналт — унасан давхаргын ГАРЧГУУД.
+   *
+   * ⚠️ 2026-09-02 аудит: 3D/BIM мешийн уналтыг `meshError` барьдаг байсан ч
+   *    ЕРДИЙН FeatureLayer унавал ямар ч тэмдэг гардаггүй байв — зураг зүгээр
+   *    л ХООСОН зурагдаж, хэрэглэгч «өгөгдөл алга» гэж эндүүрдэг. Сүлжээ
+   *    тасрах, үйлчилгээ 499 буцаах нь энэ төсөлд БОДИТООР тохиолддог
+   *    (`Selbe_guitsetgel_consolidated`, `Selbe_ET_20260721` хаалттай).
+   */
+  const [layerFail, setLayerFail] = useState<string[]>([]);
   /** `view.when` унасан — «ачаалж байна…»-гийн оронд алдаа + «Дахин оролдох» */
   const [initError, setInitError] = useState(false);
   /** «Дахин оролдох» — утга нэмэгдэхэд view-г бүхэлд нь дахин үүсгэнэ */
@@ -1486,20 +1817,22 @@ export const MapCanvas = memo(function MapCanvas({
     }), 'top-right');
 
     /**
-     * ДАВХАРГЫН ЖАГСААЛТ (LayerList) — суурь зургийн доор, мөн Expand дотор.
-     * Бүтэн дэлгэцэд порталын каталог руу гарах шаардлагагүйгээр давхаргаа
-     * асааж/унтраана. Ижил SDK-ийн бэлэн widget — view-тэй хамт устна.
+     * ⚠️ 2026-08-20: ArcGIS-ийн `LayerList` виджет ЭНДЭЭС ХАСАГДАВ.
+     *
+     * Тэр нь баруун дээд буланд ХОЁР ДАХЬ давхарга асаах/унтраах жагсаалт
+     * гаргадаг байсан — порталын «Давхарга» товч/каталогтой яг ижил ажиллагаа,
+     * гэхдээ ӨӨР загвар, ӨӨР нэрлэлт (SDK-ийн түүхий `title`), ӨӨР дараалал.
+     * Хоёр жагсаалт нэг зурагт зөрчилддөг: каталогоос унтраасныг LayerList
+     * дээр асаачихвал каталогийн чагт худал болдог байв.
+     *
+     * Түүнийг үлдээх цорын ганц шалтгаан нь «бүтэн дэлгэцэд каталог руу гарах
+     * шаардлагагүй» байсан; одоо `MapTools` нь ЗУРГАН ДЭЭР хөвдөг тул бүтэн
+     * дэлгэцэд ч «Давхарга» бүрэн ажиллана — шалтгаан нь дуусав.
+     *
+     * ⚠️ Суурь зургийн виджет (`BasemapGallery`, дээр) нь ДАВХАРДАЛГҮЙ —
+     * тэр нь ямар СУУРЬ зураг (хиймэл дагуул/гудамж/топо) вэ гэдгийг сонгодог
+     * бөгөөд үүнийг pill-ийн аль ч товч хийдэггүй. Хэвээр үлдэнэ.
      */
-    const llDiv = document.createElement('div');
-    new LayerList({ view, container: llDiv });
-    view.ui.add(new Expand({
-      view,
-      content: llDiv,
-      expandIcon: 'layers',
-      expandTooltip: tr('Давхаргууд'),
-      collapseTooltip: tr('Хаах'),
-      mode: 'floating',
-    }), 'top-right');
 
     /**
      * БҮТЭН ДЭЛГЭЦИЙН товч — Esri-ийн widget товчны загвараар (ижил хэмжээ,
@@ -1603,7 +1936,6 @@ export const MapCanvas = memo(function MapCanvas({
         // Дээд талынхыг ЭХЭЛЖ шалгана: цэг → шугам → талбай
         .sort((a, b) => drawOrder(String(b.id)) - drawOrder(String(a.id)));
       if (!cand.length) return null;
-      const ids = cand.map(({ id }) => id);
 
       const wkid = mapPoint.spatialReference?.wkid ?? 102100;
       const aoi: Aoi = {
@@ -1613,33 +1945,55 @@ export const MapCanvas = memo(function MapCanvas({
         distance: tolerance,
       };
 
-      const rows = await Promise.all(
-        cand.map(({ l, id }) =>
+      /**
+       * ⚠️ 3-ААР БАГЦАЛЖ, эхний олдвор дээр ЗОГСОНО (2026-08-21 гүйцэтгэлийн
+       * аудит): урьд нь бүх ил давхаргад (план дээр ~14, каталогтой 20+) ЗЭРЭГ
+       * асуулга явуулаад зөвхөн эхнийхийг нь авдаг байв — сул товшилт бүр
+       * ~14-20 хүсэлт үрж, 6 слотын хязгаарлагчаар бусад картын асуулгыг
+       * хойшлуулна. Хэрэглэгчийн онилдог цэг/шугам зурах эрэмбийн дээр тул
+       * ихэнхдээ эхний багцаар шийдэгдэнэ; бүрэн хоосон газар л бүх давхаргыг
+       * туулна (бүрхэлт хэвээр — гүнзгий давхарга ч сонгогдоно).
+       */
+      const BATCH = 3;
+      for (let i = 0; i < cand.length; i += BATCH) {
+        const batch = cand.slice(i, i + BATCH);
+        const rows = await Promise.all(batch.map(({ l, id }) =>
           queryFeatures(layerUrl(LAYER_BY_ID[id]), {
             aoi,
             limit: 1,
             where: (l as __esri.FeatureLayer).definitionExpression || '1=1',
-          }).catch(() => []),
-        ),
-      );
-      for (let i = 0; i < ids.length; i++) {
-        if (rows[i].length) return { attrs: rows[i][0] as Record<string, unknown>, id: ids[i] };
+          }).catch(() => [] as Record<string, unknown>[]),
+        ));
+        for (let k = 0; k < batch.length; k++) {
+          if (rows[k].length) return { attrs: rows[k][0] as Record<string, unknown>, id: batch[k].id };
+        }
       }
       return null;
     };
 
     // ⚠️ `e`-г ИЛ бичнэ: `view` нь MapView|SceneView нэгдэл тул `on()`-ийн
     // overload шийдэгдэхгүй бөгөөд параметр чимээгүй `any` болно.
+    /**
+     * ⚠️ Даралтын ДАРААЛЛЫН токен. `pickByQuery` нь 6 слотын хязгаарлагчаар
+     * цувдаг удаан REST асуулга тул хоцорсон хариу нь ДАРААГИЙН даралтын
+     * сонголтыг дарж бичдэг байв: сул газар (удаан fallback) → объект дээр
+     * дараалан дарахад 1-ийн хожуу ирсэн `null` нь сая нээгдсэн самбарыг
+     * хаана. Зөвхөн СҮҮЛЧИЙН даралтын үр дүн `pickRef`-д хүрнэ.
+     */
+    let clickSeq = 0;
     const click = view.on('click', (e: __esri.ViewClickEvent) => {
+      const seq = ++clickSeq;
       view.hitTest(e)
         .then(async (r) => {
+          // Хоцорсон hitTest — шинэ даралт аль хэдийн явж байна
+          if (seq !== clickSeq) return;
           const hit = pickHit(r);
           if (hit) { pickRef.current(hit.attrs, hit.id); return; }
           if (view.destroyed || !e.mapPoint) { pickRef.current(null, null); return; }
           // ≈6 пикселийн хүлцэл — нимгэн шугам, жижиг цэгийг барихад хангалттай
           const tol = Math.max(2, (view.resolution || 1) * 6);
           const q = await pickByQuery(e.mapPoint, tol);
-          if (!view.destroyed) pickRef.current(q?.attrs ?? null, q?.id ?? null);
+          if (!view.destroyed && seq === clickSeq) pickRef.current(q?.attrs ?? null, q?.id ?? null);
         })
         .catch(() => {/* view устгагдсан — сонголт өөрчлөгдөхгүй */});
     });
@@ -1686,8 +2040,35 @@ export const MapCanvas = memo(function MapCanvas({
   /**
    * Компонент салахад Map-ыг УСТГАХГҮЙ — `mapCache`-д үлдэж дараагийн харагдацад
    * дахин ашиглагдана (view нь [dim] эффектийн cleanup-д тусад нь устна).
+   *
+   * ⚠️ Map амьд үлддэг УЧРААС энэ харагдацын түр дарлагуудыг ЭНД буцаана —
+   * `styleBackup`/`defaultOpacityRef` нь КОМПОНЕНТЫН ref тул unmount-д хамт
+   * устаж, буцаах өөр боломж үлддэггүй:
+   *   · renderer дарлага (`layerStyle`) — эс бөгөөс Багцын ягаан нэгж талбар
+   *     дараагийн харагдацад үлдэж, Tsogts бүр түүнийг «анхны» гэж нөөцөлснөөр
+   *     хуудас refresh хийтэл засрахгүй байв;
+   *   · тунгалагийн override — эс бөгөөс 20% болгосон давхаргыг дараагийн
+   *     mount 20%-ийг «анхдагч» гэж бүртгэж, webmap-ийн жинхэнэ opacity
+   *     session дуустал алдагдана.
+   * (Энэ effect [dim] effect-ээс ХОЙНО зарлагдсан тул cleanup нь view устсаны
+   * дараа, `mapRef` хоосорхоос ӨМНӨ ажиллана.)
    */
-  useEffect(() => () => { mapRef.current = null; }, []);
+  useEffect(() => () => {
+    const map = mapRef.current;
+    if (map) {
+      for (const [id, r] of Object.entries(styleBackup.current)) {
+        const fl = map.findLayerById(id) as FeatureLayer | null;
+        if (fl && 'renderer' in fl) fl.renderer = r as FeatureLayer['renderer'];
+      }
+      for (const [id, v] of Object.entries(defaultOpacityRef.current)) {
+        const l = map.findLayerById(id);
+        if (l && 'opacity' in l) l.opacity = v;
+      }
+    }
+    styleBackup.current = {};
+    defaultOpacityRef.current = {};
+    mapRef.current = null;
+  }, []);
 
   /**
    * 3D давхаргуудыг ЗӨВХӨН тохирох горимд газрын зурагт байлгана.
@@ -1852,6 +2233,32 @@ export const MapCanvas = memo(function MapCanvas({
   }, [dim, ready, sceneKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
+   * IoT МЭДРЭГЧ — 3D-д газраас дээш өргөгдсөн радар тэмдэг, 2D-д энгийн цэг.
+   *
+   * ⚠️ Давхарга нь НЭГ УДАА үүсдэг бөгөөд MapView ба SceneView ХОЁУЛАА ижил
+   *    инстанцыг хуваалцдаг. `point-3d` симболыг 2D-д үлдээвэл давхарга огт
+   *    зурагдахгүй болно — тиймээс горим солигдох бүрд БУЦААЖ энгийн цэг рүү
+   *    сэргээх нь заавал (эс бөгөөс 3D-ээс 2D руу шилжихэд мэдрэгч алга болно).
+   */
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    const lift = dim !== '2d';
+    for (const d of LAYERS) {
+      if (!d.id.startsWith('iot:')) continue;
+      const l = map.findLayerById(d.id) as __esri.FeatureLayer | undefined;
+      if (!l) continue;
+      l.renderer = simple(lift ? radarSymbol(d.hue) : symbolOf(d)) as never;
+      /**
+       * ⚠️ `relative-to-scene` — меш/барилгын ДЭЭД гадаргаас хэмжинэ. `on-the-ground`
+       * үед `verticalOffset` нь газрын гадарга дээрээс тоологдож, барилгын дээвэр
+       * дээр суусан мэдрэгч дээвэр дотор орж алга болно.
+       */
+      l.elevationInfo = (lift ? { mode: 'relative-to-scene' } : ON_GROUND) as never;
+    }
+  }, [dim, ready]);
+
+  /**
    * НҮХЭН ЖОРЛОН — 2D-д КЛАСТЕР асаах.
    *
    * ⚠️ Кластер ↔ ганц цэг солилтыг `featureReduction.maxScale` ӨӨРӨӨ хийнэ —
@@ -1894,9 +2301,13 @@ export const MapCanvas = memo(function MapCanvas({
     if (!map || !view || !ready) return;
 
     const clear = () => {
-      if (bimWidgetRef.current) {
+      if (bimExpandRef.current) {
         // ⚠️ view устсан бол `view.ui` null — эхлээд шалгана (unmount-д эвдрэхгүй)
-        if (!view.destroyed) view.ui.remove(bimWidgetRef.current);
+        if (!view.destroyed) view.ui.remove(bimExpandRef.current);
+        bimExpandRef.current.destroy();
+        bimExpandRef.current = null;
+      }
+      if (bimWidgetRef.current) {
         bimWidgetRef.current.destroy();
         bimWidgetRef.current = null;
       }
@@ -1911,10 +2322,53 @@ export const MapCanvas = memo(function MapCanvas({
 
     clear();
     const widget = new BuildingExplorer({ view: view as SceneView, layers });
-    view.ui.add(widget, 'top-right');
+    /**
+     * ⚠️ 2026-08-23: `Expand`-д БООВ (хэрэглэгчийн хүсэлт). Урьд нь виджет
+     * баруун дээд буланд ЗАДГАЙ нэмэгддэг байсан тул 12 барилгын давхар,
+     * дисциплин, категорийн мод нь зургийн баруун талыг байнга эзэлж, BIM
+     * горимд загвараа харах талбай эрс багасдаг байв. Одоо жижиг дүрс —
+     * дарахад л задарна (суурь зураг, хэмжилт, слайдтай ижил хэв маяг).
+     */
+    const expand = new Expand({
+      view,
+      content: widget,
+      expandIcon: 'layers',
+      expandTooltip: tr('BIM давхаргын удирдлага'),
+      collapseTooltip: tr('Хаах'),
+      mode: 'floating',
+    });
+    /* ⚠️ ЭНД `view.ui.add` ХИЙХГҮЙ — байрлуулалт нь доорх ТУСДАА effect-д.
+       Шалтгааныг тэндхийн тайлбараас үз (виджетийн эрэмбэ). */
     bimWidgetRef.current = widget;
+    bimExpandRef.current = expand;
 
-    return clear;
+    /**
+     * «ARCHITECTURAL» ДИСЦИПЛИН — ҮРГЭЛЖ АСААЛТТАЙ (хэрэглэгчийн хүсэлт).
+     *
+     * ⚠️ Давхарга ачаалагдсаны ДАРАА л `allSublayers` дүүрдэг — `when()`-гүйгээр
+     * шууд уншвал жагсаалт ХООСОН байх бөгөөд алдаа ч өгөхгүй, зүгээр л юу ч
+     * болохгүй өнгөрнө.
+     *
+     * ⚠️ Бүлгийг асаахад ХАНГАЛТГҮЙ: бүлгийн `visible` нь зөвхөн хаалт бөгөөд
+     * доторх бүрэлдэхүүн давхарга бүр өөрийн `visible`-тэй. Тиймээс бүлэг ба
+     * хүүхдүүдийг нь ХОЁУЛАНГ нь асаана.
+     */
+    let stale = false;
+    for (const l of layers) {
+      l.when(() => {
+        if (stale) return;
+        const arch = l.allSublayers.find(
+          (sl) => /architectural/i.test(sl.modelName ?? ''),
+        );
+        if (!arch) return;
+        arch.visible = true;
+        const kids = (arch as __esri.BuildingGroupSublayer).sublayers;
+        kids?.forEach((k) => { k.visible = true; });
+        // ⚠️ Алдааг залгина — нэг барилга ачаалагдахгүй бол бусад нь хэвийн
+      }).catch(() => {});
+    }
+
+    return () => { stale = true; clear(); };
   }, [dim, ready]);
 
   /**
@@ -1949,7 +2403,11 @@ export const MapCanvas = memo(function MapCanvas({
       tools.map(async (t) => {
         t.av = (await sv.whenAnalysisView(t.analysis as never)) as unknown as AV;
       }),
-    );
+    ).catch((err) => {
+      // ⚠️ dim хурдан солигдож view устахад reject ХЭВИЙН — чимээгүй; бусад нь
+      //    жинхэнэ уналт тул unhandled rejection болгохгүй, ил тэмдэглэнэ.
+      if (!view.destroyed) console.error('[analysis]', err);
+    });
 
     let active: Tool | null = null;
     let abort: AbortController | null = null;
@@ -2141,6 +2599,9 @@ export const MapCanvas = memo(function MapCanvas({
         },
         { initial: true },
       );
+    }).catch((err) => {
+      // dim солигдож view устахад reject хэвийн — зөвхөн амьд view-ийн уналтыг мэдээлнэ
+      if (!disposed && !view.destroyed) console.error('[volume]', err);
     });
     vPlace.addEventListener('click', async () => {
       vAbort?.abort();
@@ -2170,8 +2631,21 @@ export const MapCanvas = memo(function MapCanvas({
     panelS.append(listDiv);
 
     // Слайд бүр — thumbnail зураг + нэр + огноо + × устгах (Esri sample шиг)
+    /**
+     * Порталын нэг дүрэм — mn-MN («2026.07.14»); урьд нь en-GB (DD/MM/YYYY)
+     * байж өдөр/сар андуурагдахаар байв.
+     * ⚠️ `timeZone:'UTC'`-г ЗААВАЛ хадгална: энэ нь нарны гэрэлтүүлгийн UTC
+     * агшин тул хаявал Монголд +8 цагаар шилжиж нарны цаг буруу харагдана.
+     */
     const fmtSlideDate = (d?: Date) => {
-      try { return d ? d.toLocaleString('en-GB', { timeZone: 'UTC' }) : ''; } catch { return ''; }
+      try {
+        return d
+          ? d.toLocaleString('mn-MN', {
+            year: 'numeric', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit', timeZone: 'UTC',
+          })
+          : '';
+      } catch { return ''; }
     };
     const addSlideRow = (slide: Slide) => {
       const row = mk('div', 'display:flex;align-items:center;gap:9px;padding:7px;border:1px solid var(--line);'
@@ -2210,16 +2684,25 @@ export const MapCanvas = memo(function MapCanvas({
     const createBtn = mk('button', 'flex:none;padding:7px 13px;border-radius:7px;border:1px solid transparent;'
       + 'background:var(--hue);color:#fff;font-size:0.78rem;font-weight:600;cursor:pointer', tr('Үүсгэх')) as HTMLButtonElement;
     addRow.append(nameInput, createBtn);
-    addWrap.append(addRow);
+    // Снапшот унахад товч «юу ч хийгээгүй» мэт чимээгүй байсан — алдааг ил хэлнэ
+    const slideErr = mk('div', 'display:none;font-size:0.7rem;color:var(--bad-ink)',
+      tr('Слайд үүсгэж чадсангүй — дахин оролдоно уу.'));
+    addWrap.append(addRow, slideErr);
     panelS.append(addWrap);
 
     createBtn.addEventListener('click', () => {
+      slideErr.style.display = 'none';
       void Slide.createFrom(sv).then((slide) => {
         if (disposed) return;
         slide.title.text = nameInput.value.trim() || tr('Слайд {0}', slides.length + 1);
         slides.push(slide);
         addSlideRow(slide);
         nameInput.value = '';
+      }).catch((err) => {
+        // Харагдац солигдох агшны уналт хэрэглэгчид хамаагүй — амьд панел дээр л мэдэгдэнэ
+        if (disposed || view.destroyed) return;
+        slideErr.style.display = 'block';
+        console.error('[slide]', err);
       });
     });
 
@@ -2241,6 +2724,32 @@ export const MapCanvas = memo(function MapCanvas({
       expandV.destroy();
       expandS.destroy();
     };
+  }, [dim, ready]);
+
+  /**
+   * BIM УДИРДЛАГЫГ ВИДЖЕТИЙН БАГЦЫН ХАМГИЙН ДООР БАЙРЛУУЛНА
+   * (хэрэглэгчийн хүсэлт, 2026-08-23).
+   *
+   * ⚠️ ЯАГААД ТУСДАА EFFECT ВЭ. `view.ui.add` нь баруун дээд багцад ДУУДАГДСАН
+   * дарааллаараа өрдөг бөгөөд React нь effect-үүдийг ЗАРЛАГДСАН дарааллаар
+   * ажиллуулдаг. BIM-ийн виджетийг үүсгэдэг effect нь шинжилгээ · эзлэхүүн ·
+   * слайдынхаас ӨМНӨ зарлагдсан тул тэрхүү effect дотроо нэмбэл BIM нь
+   * тэдгээрийн ДЭЭР гарч, багцын дундад үлдэнэ. Энэ effect нь тэднээс ХОЙНО
+   * зарлагдсан тул нэмэлт нь эцэст буюу хамгийн доор очно:
+   *
+   *   суурь зураг · дэлгэц дүүрэн · шинжилгээ · эзлэхүүн · слайд · **BIM**
+   *
+   * ⚠️ `bimExpandRef` нь дээрх effect-д ЯГ ЭНЭ КОММИТ дотор бөглөгддөг —
+   * ref нь хувьсагч тул энд уншихад аль хэдийн бэлэн байна.
+   */
+  useEffect(() => {
+    const view = viewRef.current;
+    const expand = bimExpandRef.current;
+    if (!view || !ready || dim !== 'bim' || !expand) return;
+    view.ui.add(expand, 'top-right');
+    // ⚠️ Хоёр газраас устгагдаж болно (дээрх `clear` ба энд) — `remove` нь
+    //    байхгүй бүрэлдэхүүн дээр аюулгүй, юу ч хийхгүй өнгөрнө.
+    return () => { if (!view.destroyed) view.ui.remove(expand); };
   }, [dim, ready]);
 
   /**
@@ -2279,6 +2788,24 @@ export const MapCanvas = memo(function MapCanvas({
         color: [245, 158, 11, 0.08],
         outline: { color: [217, 119, 6, 1], width: 2, style: 'dash' },
       } as unknown as __esri.SimpleFillSymbol,
+      /**
+       * ⚠️ ШУГАМ ба ЦЭГИЙН симбол нь полигонтой ИЖИЛ улбар шар гэр бүлээс —
+       * «энэ бол миний зурж буй зүйл, давхаргын өгөгдөл БИШ» гэдэг нь өнгөөр
+       * шууд уншигдана. Дэд бүтцийн шугамууд улаан/цэнхэр/ягаан тул мөргөлдөхгүй.
+       */
+      polylineSymbol: {
+        type: 'simple-line',
+        color: [217, 119, 6, 1],
+        width: 2.5,
+        style: 'dash',
+      } as unknown as __esri.SimpleLineSymbol,
+      pointSymbol: {
+        type: 'simple-marker',
+        style: 'circle',
+        size: 9,
+        color: [245, 158, 11, 0.9],
+        outline: { color: [217, 119, 6, 1], width: 1.6 },
+      } as unknown as __esri.SimpleMarkerSymbol,
     });
     sketchVMRef.current = svm;
     if (typeof window !== 'undefined') {
@@ -2297,7 +2824,31 @@ export const MapCanvas = memo(function MapCanvas({
     });
     const updated = svm.on('update', (e) => {
       const g = e.graphics?.[0]?.geometry ?? null;
-      if (g) emit(g);
+      if (!g) return;
+      /**
+       * ⚠️ `state === 'start'` БА цуцлагдсаныг АЛГАСНА (2026-09-03 засвар).
+       *
+       * `SketchViewModel` нь `update` үйл явдлыг ГУРВАН төлөвт гаргадаг:
+       * `start` (засвар эхлэв) · `active` (чирж байна) · `complete`
+       * (дуусав, цуцлагдсан бол `aborted: true`). Урьд нь гурвуулангийн
+       * геометрийг ялгалгүй дамжуулдаг байсан тул:
+       *
+       *   · `start` — объект дарангуут ХӨДӨЛГӨӨГҮЙ геометр «засвар» болж
+       *     бүртгэгдэж, «Хэлбэр хадгалах» товч чирэхээс ӨМНӨ идэвхжинэ.
+       *     Дарвал ижил геометр буцаж бичигдэж `editDate` хуурамчаар
+       *     шинэчлэгдэнэ (`DedButets` §commitReshape-ийн хориглосон бичилт).
+       *   · `aborted` — «Болих» дарахад `svm.cancel()` нь `complete`+
+       *     `aborted` гаргадаг тул ЦУЦАЛСАН засвар дахин бүртгэгдэж,
+       *     «Хадгалаагүй өөрчлөлт байна» гэж ХУДАЛ асуудаг байв.
+       *
+       * ⚠️ `emit` (полигон зурах хуучин зам) мөн адил шүүгдэнэ — «Газар
+       * чөлөөлөлт» нь AOI-гаа чирж дуусахад л шинэчлэх ёстой.
+       */
+      const st = (e as unknown as { state?: string; aborted?: boolean });
+      if (st.state === 'start' || st.aborted) return;
+      /* ⚠️ `onReshape` өгөгдсөн бол ЗӨВХӨН тийш — дээрх пропын тайлбарыг үз */
+      if (onReshapeRef.current) onReshapeRef.current(g);
+      else emit(g);
     });
     const deleted = svm.on('delete', () => {
       layer.removeAll();
@@ -2320,8 +2871,53 @@ export const MapCanvas = memo(function MapCanvas({
     const svm = sketchVMRef.current;
     if (!svm) return;
     try { svm.cancel(); } catch { /* идэвхтэй зураалт байхгүй */ }
-    svm.create('polygon');
+    svm.create(drawKindRef.current);
   }, [drawToken]);
+
+  /**
+   * БАЙГАА ОБЪЕКТЫГ VERTEX-ЭЭР ЗАСАХ — `reshapeToken` өсөхөд эхэлнэ.
+   *
+   * ⚠️ Геометрийг `Graphic`-т буулгахдаа СИМБОЛ өгөх ЁСТОЙ: симболгүй график
+   * нь `GraphicsLayer`-т үл үзэгдэх бөгөөд `update()` нь бариулуудыг гаргах ч
+   * хэрэглэгч юуг чирч байгаагаа ХАРАХГҮЙ.
+   *
+   * ⚠️ `svm.update`-ыг `tool: 'reshape'` -ГҮЙ дуудна: анхдагч («transform»)
+   * горим нь БҮХ vertex-ийг бариултай харуулж, дан хөдөлгөх, шинээр нэмэх
+   * хоёуланг нь зөвшөөрдөг. `reshape` нь цэгэн геометрт огт ажиллахгүй.
+   */
+  useEffect(() => {
+    if (!reshapeToken) return;
+    const svm = sketchVMRef.current;
+    const map = mapRef.current;
+    const g = reshapeGeomRef.current as { [k: string]: unknown } | undefined;
+    if (!svm || !map || !g) return;
+    const gl = map.findLayerById('sketch') as GraphicsLayer | null;
+    if (!gl) return;
+    try { svm.cancel(); } catch { /* идэвхтэй зураалт байхгүй */ }
+    gl.removeAll();
+    /* Геометрийн төрлийг талбараас нь таана — `toJSON()` нь `type` бичдэггүй */
+    const kind = 'paths' in g ? 'polyline' : 'rings' in g ? 'polygon' : 'point';
+    const graphic = new Graphic({
+      geometry: { ...g, type: kind } as unknown as __esri.Geometry,
+      /* ⚠️ `as never` — `Graphic`-ийн конструктор нь симбол ПРОПЕРТИЙН нэгдэл
+         хүлээдэг ба SketchViewModel-ийн буцаадаг бэлэн `Symbol` инстанс тэр
+         нэгдэлд орохгүй. Ажиллагаанд зөв (SDK инстансыг шууд авдаг). */
+      symbol: (kind === 'polyline'
+        ? svm.polylineSymbol
+        : kind === 'polygon'
+          ? svm.polygonSymbol
+          : svm.pointSymbol) as never,
+    });
+    gl.add(graphic);
+    try { svm.update([graphic]); } catch { /* геометр танигдсангүй */ }
+  }, [reshapeToken]);
+
+  /** Гадны «Алхам буцаах» товч — зураалтын сүүлийн үйлдлийг цуцална */
+  useEffect(() => {
+    if (!sketchUndoToken) return;
+    /* ⚠️ `svm.canUndo` нь идэвхтэй үйлдэл байхгүй үед `undo()`-г шидүүлдэг */
+    try { sketchVMRef.current?.undo(); } catch { /* буцаах алхам алга */ }
+  }, [sketchUndoToken]);
 
   /** Гадны «Цэвэрлэх» товч — зурсан полигоныг арилгаж, шүүлтийг цуцлана */
   useEffect(() => {
@@ -2356,9 +2952,16 @@ export const MapCanvas = memo(function MapCanvas({
    *   unmount дээр `pulseCancelRef`-ээр ГАДНААС цуцлагдана (Map кэштэй тул
    *   давхарга ил үлдэж, гогцоо өөрөө хэзээ ч зогсдоггүй байв).
    */
+  // `pulseLayer` нь тогтвортой лавлагаатай (useCallback) тул props-ыг ref-ээр уншина.
+  pulseIdsRef.current = pulseIds ?? [];
+  layerStyleRef.current = layerStyle ?? {};
+
   const pulseLayer = useCallback((layer: Layer) => {
     const map = mapRef.current;
-    if (!map || layer.id !== 'source:eh') return;
+    // ⚠️ `source:eh` нь ҮРГЭЛЖ пульсэлдэг (эх үүсвэрийн байршил); бусад нь
+    //    зөвхөн харагдац хүсвэл (`pulseIds`).
+    if (!map || (layer.id !== 'source:eh' && !pulseIdsRef.current.includes(layer.id)))
+      return;
     const id = layer.id;
     if (fadingRef.current.has(id)) return;      // аль хэдийн пульсэлж байна
     const d = LAYER_BY_ID[id];
@@ -2390,23 +2993,39 @@ export const MapCanvas = memo(function MapCanvas({
      */
     let cancelled = false;
     let raf = 0;
-    pulseCancelRef.current = () => {
+    const cancel = () => {
       cancelled = true;
       cancelAnimationFrame(raf);
       finish();
+      delete pulseCancels.current[id];
     };
+    pulseCancelRef.current = cancel;
+    pulseCancels.current[id] = cancel;
 
     // 7 объектын геометр + өнгийг НЭГ УДАА татаад пульслэнэ.
-    src.queryFeatures({ where: '1=1', returnGeometry: true, outFields: pfield ? [pfield] : ['*'] })
+    // ⚠️ Давхаргын `definitionExpression`-ийг ЗААВАЛ дагана: давхцсан нэгж
+    //    талбарын давхарга 2,119 объекттой бөгөөд шүүлтгүй асуувал бүх хот
+    //    пульслэнэ.
+    src.queryFeatures({
+      where: (src.definitionExpression as string | null) || '1=1',
+      returnGeometry: true,
+      outFields: pfield ? [pfield] : ['*'],
+    })
       .then((fs) => {
         const items = fs.features
           .map((ft) => {
             const poly = ft.geometry as Polygon | null;
             const c = poly?.centroid;
             if (!poly || !poly.rings || !c) return null;
-            const hue = (pfield && pvals[String(ft.attributes?.[pfield])]) || d.hue;
+            /* ⚠️ Харагдацын дарлага байвал ТҮҮНИЙ өнгөөр — эс бөгөөс пульсийн
+               хуулбар нь давхаргын анхны (төлөвийн) өнгөөр гарч, доорх ялгаж
+               өгсөн өнгөтэй зөрнө. */
+            const ov = layerStyleRef.current[id];
+            const hue = ov?.hue ?? ((pfield && pvals[String(ft.attributes?.[pfield])]) || d.hue);
+            /* ⚠️ Энэ зам нь ПОЛИГОНЫХ (`poly.rings` уншсан) тул `fill` зөв —
+               дарлагад `hue` байхгүй бол дээр бодогдсон өнгийг хэрэглэнэ. */
             return { rings: poly.rings, cx: c.x, cy: c.y, sr: poly.spatialReference,
-              symbol: symbolOf(d, hue) };
+              symbol: ov ? fill(hue, ov.fill ?? 0.25, ov.width ?? 3) : symbolOf(d, hue) };
           })
           .filter(Boolean) as Array<{ rings: number[][][]; cx: number; cy: number;
             sr: __esri.SpatialReference; symbol: unknown }>;
@@ -2450,7 +3069,27 @@ export const MapCanvas = memo(function MapCanvas({
    * дундаа тасарч дахин эхлэхгүй байсан. Давхарга нуугдахад гогцоо `!visible`
    * шалгалтаараа өөрөө зогсоно — энд зөвхөн unmount-ын үүрд-гогцоог хаана.
    */
-  useEffect(() => () => { pulseCancelRef.current?.(); pulseCancelRef.current = null; }, []);
+  useEffect(
+    () => () => {
+      Object.values(pulseCancels.current).forEach((f) => f());
+      pulseCancelRef.current?.();
+      pulseCancelRef.current = null;
+    },
+    [],
+  );
+
+  /**
+   * Пульсийг ДАХИН эхлүүлнэ — шүүлт солигдоход хуучин хуулбарыг таслах ёстой.
+   * ⚠️ `fadingRef` нь «аль хэдийн пульсэлж байна» гэсэн хамгаалалт тул түүнийг
+   *    цэвэрлэхгүй бол шинэ дуудлага чимээгүй буцна.
+   */
+  const restartPulse = useCallback((layer: Layer) => {
+    // ⚠️ ЗӨВХӨН энэ давхаргынхыг — `pulseCancelRef` нь СҮҮЛД эхэлсэн пульсийг
+    //    заадаг тул түүгээр таславал өөр давхаргын (эх үүсвэр) анимаци унтарна.
+    pulseCancels.current[layer.id]?.();
+    fadingRef.current.delete(layer.id);
+    pulseLayer(layer);
+  }, [pulseLayer]);
 
   /* Харагдац ба БҮСИЙН шүүлт */
   useEffect(() => {
@@ -2466,6 +3105,18 @@ export const MapCanvas = memo(function MapCanvas({
       if (l.id === 'sketch') { l.visible = true; return; }
       // Эх үүсвэрийн пульс-хуулбар — өөрийн анимаци удирдана, каталогт үл хамаарна.
       if (l.id === 'source:pulse') { l.visible = true; return; }
+      /**
+       * «Эрсдэлийн загвар»-ын ҮР ДҮНГИЙН давхаргууд (`ersdel:flood` усны
+       * анимаци, `ersdel:band` аюулын муж, `ersdel:damage` өртсөн объект,
+       * `ersdel:station` харуул) — ӨӨРСДӨӨ удирдана, каталогт ХЭЗЭЭ Ч орохгүй.
+       *
+       * ⚠️ Энэ шалгуургүй бол доорх мөр (`on.has(l.id) && dim !== 'bim'`) тэднийг
+       * НУУНА: каталогийн жагсаалтад байхгүй тул `on.has` нь үргэлж `false`.
+       * Үр дүн нь «эхлээд харагдаад, давхарга/бүс/горим солиход алга болдог»
+       * — BIM-д бол `dim !== 'bim'`-ээр бүр байнга алга. `Ersdel.tsx` нь
+       * тэдгээрийг өөрийн эффектээр нэмж/хасдаг тул энд гар хүрэхгүй.
+       */
+      if (String(l.id).startsWith('ersdel:')) { l.visible = true; return; }
       // Лавлагааны хилүүд — каталогоос үл хамааран БҮХ зурагт үргэлж ил.
       if ((ALWAYS_ON_IDS as readonly string[]).includes(String(l.id))) { l.visible = true; return; }
       /**
@@ -2521,10 +3172,11 @@ export const MapCanvas = memo(function MapCanvas({
        * return хийдэг байсан тул бүс сонгоход суурь давхарга шүүгдэхгүй байв.
        */
       if ((BASE_MAP_IDS as readonly string[]).includes(String(l.id))) {
-        l.visible = dim === '2d' && (on.size === 0 || on.has(String(l.id)));
+        l.visible = dim === '2d'
+          && (bare ? on.has(String(l.id)) : on.size === 0 || on.has(String(l.id)));
       } else if (is3D(dim) && PLAN2D_ALIASED.has(String(l.id))) {
         /**
-         * План2d ALIAS style-тай давхаргууд (dugui, nogoon, tree, et:24…) — renderer
+         * План2d ALIAS style-тай давхаргууд (dugui, nogoon, et:24, et:27, et:29) — renderer
          * нь зурган текстур (esriPFS/esriPMS) тул SceneView-д дэмжигдэхгүй. 3D/BIM-д
          * НУУНА: асаалттай орхивол «picture-fill is unsupported in 3D» алдаа асгарна.
          */
@@ -2558,6 +3210,31 @@ export const MapCanvas = memo(function MapCanvas({
          бөгөөд `buildLayers` дээр НЭГ УДАА тавигддаг тул энд солих зүйлгүй. */
       const d = LAYER_BY_ID[l.id];
 
+      /* Харагдацын хэв маягийн дарлага — тухайн давхаргыг ЭНЭ харагдацад л
+         өөр өнгө/зузаанаар зурна (жишээ нь давхцсан нэгж талбар). */
+      if ('renderer' in l) {
+        const ov = layerStyle?.[l.id];
+        const fl = l as FeatureLayer;
+        if (ov) {
+          if (!(l.id in styleBackup.current))
+            styleBackup.current[l.id] = fl.renderer as unknown;
+          /* ⚠️ ГЕОМЕТРЭЭР салгана — дээрх `layerStyle`-ийн тэмдэглэлийг үзнэ.
+             Давхаргын бүртгэл олдохгүй бол (webmap-аас ирсэн давхарга) хуучин
+             зан төлөв буюу талбайн симбол хэвээр. */
+          const hue = ov.hue ?? d?.hue ?? '#0891b2';
+          fl.renderer = simple(
+            d?.geom === 'point'
+              ? dot(hue, ov.size ?? (d.size ?? 9) * DOT_SCALE, d.marker ?? 'circle')
+              : d?.geom === 'line'
+                ? line(hue, ov.width ?? d.width ?? LINE_PX, d.dash ?? 'solid')
+                : fill(hue, ov.fill ?? 0.25, ov.width ?? 3),
+          ) as unknown as FeatureLayer['renderer'];
+        } else if (l.id in styleBackup.current) {
+          fl.renderer = styleBackup.current[l.id] as FeatureLayer['renderer'];
+          delete styleBackup.current[l.id];
+        }
+      }
+
       if (d && 'definitionExpression' in l) {
         // `layerWhere` заасан бол давхарга бүрийн өөрийн WHERE; эс бөгөөс бүсийн
         // нэгдсэн шүүлт (cross-filter дашбоард нь давхарга тус бүрээ шүүнэ).
@@ -2576,11 +3253,31 @@ export const MapCanvas = memo(function MapCanvas({
         (l as FeatureLayer).definitionExpression = (
           parts.length ? parts.map((p) => `(${p})`).join(' AND ') : null
         ) as unknown as string;
+
+        /* ⚠️ ПУЛЬСИЙГ ЗААВАЛ ЭНД — `definitionExpression` тавигдсаны ДАРАА.
+           Урьд нь дээр байсан тул пульс нь ХУУЧИН (эсвэл огт байхгүй) шүүлтээр
+           асууж, газар чөлөөлөлтийн 2,119 талбарыг БҮГДИЙГ хуулж, зураг
+           бүхэлдээ дүүрдэг байв.
+
+           Мөн зөвхөн «шинээр ил боллоо» гэдэг хангалтгүй: багц солиход давхарга
+           ил хэвээр үлддэг тул ШҮҮЛТ өөрчлөгдөхөд ч дахин эхлүүлнэ. */
+        const lit = l.visible && dim !== 'bim';
+        if (lit && pulseIds?.includes(l.id)) {
+          const w = (l as FeatureLayer).definitionExpression ?? null;
+          if (pulsedWhere.current[l.id] !== w) {
+            pulsedWhere.current[l.id] = w;
+            restartPulse(l);
+          }
+        } else if (!lit && l.id in pulsedWhere.current) {
+          // Давхарга нуугдлаа — анивчих ХУУЛБАРЫГ нь заавал цэвэрлэнэ.
+          pulseCancels.current[l.id]?.();
+          delete pulsedWhere.current[l.id];
+        }
       }
     });
     // Дараагийн өөрчлөлтөд «шинээр ил болсон»-ыг зөв илрүүлэхийн тулд тэмдэглэнэ.
     prevVisRef.current = on;
-  }, [visibleKey, dim, ready, zone, layerWhere, hl, hlOnly, uniform, ortho, pulseLayer]);
+  }, [visibleKey, dim, ready, zone, layerWhere, layerStyle, hl, hlOnly, uniform, bare, ortho, pulseLayer]);
 
   /**
    * ТУНГАЛАГ — давхарга бүрийн `opacity`-г override-оор тавина. Override байхгүй
@@ -2655,6 +3352,30 @@ export const MapCanvas = memo(function MapCanvas({
     return () => { alive = false; };
   }, [visibleKey, ready]);
 
+  /**
+   * ДАВХАРГЫН УНАЛТЫГ АЖИГЛАХ.
+   *
+   * ⚠️ Зөвхөн `loadStatus === 'failed'`-ыг тоолно. Харагдахгүй давхарга нь
+   *    `not-loaded` хэвээр үлддэг тул «ачаалаагүй» ба «унасан» хоёр
+   *    ХОЛИЛДОХГҮЙ — зөвхөн ЖИНХЭНЭ уналт л тоологдоно.
+   * ⚠️ Гарчгаар нь харуулна: «3 давхарга унав» гэхээс «Барилга · Зам» гэсэн нь
+   *    аль мэдээлэл дутуу байгааг шууд хэлнэ.
+   */
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) { setLayerFail([]); return; }
+    const handle = reactiveUtils.watch(
+      () => map.allLayers
+        .filter((l) => l.loadStatus === 'failed')
+        .map((l) => l.title || l.id)
+        .toArray()
+        .join('|'),
+      (joined) => setLayerFail(joined ? joined.split('|') : []),
+      { initial: true },
+    );
+    return () => handle.remove();
+  }, [ready]);
+
   /** 3D/BIM загвар ачаалагдсан эсэх — CORS/сүлжээний асуудлыг ил хэлнэ */
   useEffect(() => {
     const map = mapRef.current;
@@ -2723,6 +3444,23 @@ export const MapCanvas = memo(function MapCanvas({
         </div>
       )}
 
+      {/* ⚠️ ЕРДИЙН ДАВХАРГЫН УНАЛТ. Үүнгүй бол унасан давхарга зүгээр л
+          ХООСОН зурагдаж, «энэ бүсэд өгөгдөл алга» гэж ХУДАЛ уншигддаг байв
+          (2026-09-02 аудит). Мешийнхтэй ижил байрлал, ижил дүр төрх. */}
+      {layerFail.length > 0 && (
+        <div className={`${s.float} ${s.floatBR} ${s.warn}`} role="alert">
+          <b className={s.warnTitle}>
+            {tr('{0} давхарга ачаалагдсангүй', String(layerFail.length))}
+          </b>
+          <span>
+            {layerFail.slice(0, 4).join(' · ')}
+            {layerFail.length > 4 && tr(' …+{0}', String(layerFail.length - 4))}
+            {' — '}
+            {tr('Эдгээрийн өгөгдөл зурагт ХАРАГДАХГҮЙ. Сүлжээ эсвэл үйлчилгээний хандалтыг шалгана уу.')}
+          </span>
+        </div>
+      )}
+
       {/* Кэшээс будсан гүйцэтгэлийн тэмдэг — амьд дүн ирмэгц арилна */}
       {progStale && (
         <div className={`${s.float} ${s.floatBL} ${s.stale}`} role="status">
@@ -2747,7 +3485,7 @@ export const MapCanvas = memo(function MapCanvas({
       {tip && <MapTip x={tip.x} y={tip.y} id={tip.id} attrs={tip.attrs} prog={blockProg} />}
 
       {/* ⚠️ Газрын зураг дээрх «Тайлбар» хайрцгийг ХАССАН: давхаргын каталог
-          багана нь симбол, тоо, өртгийг аль хэдийн хажууд нь харуулж байгаа тул
+          багана нь симбол, тоо, хэмжээг аль хэдийн хажууд нь харуулж байгаа тул
           зураг дээр үгээр давтах нь зургийн талбайг л иддэг байв. */}
       {children}
     </div>

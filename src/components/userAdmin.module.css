@@ -117,6 +117,154 @@
   padding: 14px 0;
   border-bottom: 1px solid var(--line);
 }
+
+/* ── Хайлт — олон аккаунттай үед гол хэрэгсэл, зүүн талд хамгийн өргөн ── */
+.searchWrap {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 1.4;
+  min-width: 0;
+  padding: 0 11px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--ink-3);
+}
+.searchWrap:focus-within { border-color: var(--hue); }
+.search {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 0;
+  background: none;
+  border: none;
+  color: var(--ink);
+  font-size: 0.86rem;
+}
+.search:focus { outline: none; }
+.searchX {
+  flex: none;
+  padding: 2px 4px;
+  color: var(--ink-3);
+  font-size: 0.8rem;
+  line-height: 1;
+}
+.searchX:hover { color: var(--ink); }
+.addErr {
+  padding: 8px 0 0;
+  font-size: 0.76rem;
+  font-weight: 550;
+  color: var(--bad-ink);
+}
+.empty {
+  padding: 26px 4px;
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--ink-3);
+}
+
+/* ══════════ БӨӨНӨӨР ЗАСАХ ЗУРВАС ══════════
+   Сонголттой үед л гарна — тайван, хэт анхаарал татахгүй. */
+.bulkBar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 10px;
+  padding: 9px 12px;
+  border-radius: var(--r-sm);
+  border: 1px solid color-mix(in srgb, var(--hue) 40%, transparent);
+  background: color-mix(in srgb, var(--hue) 7%, transparent);
+}
+.bulkInfo {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.76rem;
+  font-weight: 650;
+  color: var(--ink);
+}
+
+/* ══════════ МӨРИЙН ТОЛГОЙ — сонгох · дэлгэх · шошго ══════════ */
+.pick { flex: none; width: 15px; height: 15px; accent-color: var(--hue); cursor: pointer; }
+.expand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 2px 4px;
+  border-radius: var(--r-sm);
+  color: inherit;
+  text-align: left;
+}
+.expand:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
+.caret {
+  flex: none;
+  font-size: 0.7rem;
+  color: var(--ink-3);
+  transition: transform 0.16s;
+}
+.caretOn { transform: rotate(90deg); }
+
+/* Шошгууд — тоо, шат, төлөв. Өнгө нь МЭДЭЭЛЭЛ, чимэглэл БИШ. */
+.badges { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px; flex: 1; min-width: 0; }
+.countBadge {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--ink-3);
+  font-size: 0.68rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+/* Товч болсон (2026-08-27) — дарахад урсгалын эрхийн хуудас руу очно */
+.stageBadge {
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--hue) 45%, transparent);
+  color: var(--ink-2);
+  font-size: 0.68rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.stageBadge:hover {
+  background: color-mix(in srgb, var(--hue) 16%, transparent);
+  color: var(--ink);
+}
+.newBadge {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--hue) 18%, transparent);
+  color: var(--ink);
+  font-size: 0.66rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* Харагдацын хэсгийн толгой — «бүгдийг асаах/унтраах» */
+.topicHead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 4px 2px;
+}
+.topicHeadLabel {
+  flex: 1;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.linkBtn {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--ink-3);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.linkBtn:hover { color: var(--hue); }
 .input {
   flex: 1;
   padding: 9px 13px;
@@ -146,7 +294,7 @@
   padding: 8px 0 16px;
 }
 .user {
-  padding: 14px 0;
+  padding: 9px 0;
   border-bottom: 1px solid var(--line);
 }
 .user:last-child { border-bottom: none; }
@@ -154,10 +302,9 @@
 .userHead {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
   flex-wrap: wrap;
-  margin-bottom: 10px;
+  margin-bottom: 0;
 }
 .uname { font-size: 0.9rem; font-weight: 600; letter-spacing: 0.01em; }
 
@@ -186,34 +333,225 @@
   color: var(--ink-3);
   border: 1px dashed var(--line-strong);
 }
-.reset:hover { color: var(--bad); border-color: var(--bad); }
+.reset:hover { color: var(--ink); border-color: var(--line-strong); background: var(--surface-2); }
 
-/* Харагдацын унтраалга (chip) — ⚠️ НЭГ акцент (--hue): урьд нь харагдац бүрийн
-   hue-ээр солонго болдог байсныг smart-city нэг өнгөнд нэгтгэв. */
-.toggles { display: flex; flex-wrap: wrap; gap: 7px; }
+/* ══════════ СЭДВҮҮДИЙН ЖАГСААЛТ + УНТРААЛГА ══════════
+   ⚠️ 2026-08-25 (хэрэглэгчийн хүсэлт): chip-үүдийн үүл олон өнгөт хүрээгээр
+   «холилдож» байсныг ЖАГСААЛТ + switch болгов. Өнгөний дүрэм: тайван саарал
+   мөрүүд, ГАНЦХАН акцент нь асаалттай унтраалга (--hue) — нүд юун дээр
+   тогтохоо мэднэ. */
+.topicList {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 4px 22px;
+  padding: 10px 0 2px;
+}
+.topicRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 4px 6px 8px;
+  border-radius: var(--r-sm);
+  border-bottom: 1px solid var(--line);
+}
+.topicRow:hover { background: color-mix(in srgb, var(--ink) 3%, transparent); }
+
+/* Нэмэлт эрхийн алсын бичилт унасан үеийн ИЛ анхааруулга */
+.capErr {
+  margin: 4px 0 2px;
+  padding: 6px 8px;
+  border-radius: var(--r-sm);
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--bad);
+  background: color-mix(in srgb, var(--bad) 12%, transparent);
+}
+.topicName {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.topicIcon { display: inline-flex; flex: none; color: var(--ink-3); }
+
+/* Унтраалга (switch) — track + knob. Асаалттай нь ЦОРЫН ГАНЦ акцент өнгө. */
+.sw {
+  flex: none;
+  position: relative;
+  width: 34px;
+  height: 19px;
+  border-radius: 999px;
+  background: var(--line-strong);
+  transition: background 0.16s;
+  cursor: pointer;
+}
+.sw:hover { background: color-mix(in srgb, var(--ink) 28%, var(--line-strong)); }
+.swOn { background: var(--hue); }
+.swOn:hover { background: var(--hue); filter: brightness(1.08); }
+.sw:disabled { opacity: 0.45; cursor: not-allowed; }
+/* Нэмэлт эрхээр нээгдсэн харагдац — суурь жагсаалтад байхгүй */
+.swImplied { opacity: 0.7; }
+.swKnob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: transform 0.16s;
+}
+.swOn .swKnob { transform: translateX(15px); }
+
+/* Урсгалын chip — ТАЙВАН: хүрээгүй саарал, сонгосон нь л акцент хүрээтэй */
 .chip {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 12px 6px 9px;
+  padding: 5px 11px;
   border-radius: 999px;
-  font-size: 0.76rem;
+  font-size: 0.74rem;
   font-weight: 550;
   color: var(--ink-3);
-  border: 1px solid var(--line);
-  background: var(--surface);
-  transition: background 0.15s, border-color 0.15s, color 0.15s, opacity 0.15s;
-  opacity: 0.75;
+  border: 1px solid transparent;
+  background: var(--surface-2);
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
-.chip:hover { opacity: 1; color: var(--ink-2); }
+.chip:hover { color: var(--ink-2); }
 .chipOn {
-  opacity: 1;
   color: var(--ink);
-  border-color: color-mix(in srgb, var(--hue) 60%, transparent);
-  background: color-mix(in srgb, var(--hue) 15%, transparent);
+  border-color: color-mix(in srgb, var(--hue) 55%, transparent);
+  background: color-mix(in srgb, var(--hue) 12%, transparent);
 }
-.chipIcon { display: inline-flex; color: var(--ink-3); }
-.chipOn .chipIcon { color: var(--hue); }
+
+/* Хадгалаагүй өөрчлөлтийн тэмдэг — нэрийн ард жижиг цэг */
+.dirtyDot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-left: 8px;
+  border-radius: 50%;
+  background: var(--hue);
+  vertical-align: middle;
+}
+.userDirty { background: color-mix(in srgb, var(--hue) 3%, transparent); }
+.unsynced {
+  margin-left: 8px;
+  font-size: 0.68rem;
+  font-weight: 550;
+  color: var(--warn-ink);
+}
+
+/* ══════════ АККАУНТ УСТГАХ ══════════
+   Устгах нь ЦОРЫН ГАНЦ улаан өнгөтэй үйлдэл — аюултайг нь өнгөөрөө хэлнэ.
+   Дарахад шууд устгахгүй: ноорогт тэмдэглэгдэж «Хадгалах»-аар үйлчилнэ. */
+.delBtn {
+  padding: 5px 11px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--ink-3);
+  border: 1px solid var(--line);
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.delBtn:hover { color: var(--bad-ink); border-color: var(--bad); }
+.delBtnOn {
+  color: #fff;
+  background: var(--bad);
+  border-color: var(--bad);
+}
+.delBtnOn:hover { color: #fff; filter: brightness(1.08); }
+/* Устгагдахаар тэмдэглэгдсэн мөр — бүдэг + зурсан нэр */
+.userRemoving { opacity: 0.55; }
+.userRemoving .uname { text-decoration: line-through; }
+.removeBadge {
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.66rem;
+  font-weight: 600;
+  color: var(--bad-ink);
+  border: 1px solid var(--bad);
+}
+
+/* Устгагдсан аккаунтуудыг буцаах хэсэг */
+.removedSec {
+  margin-top: 4px;
+  padding: 10px 12px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-sm);
+}
+.removedHead {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-bottom: 6px;
+}
+.removedRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 0;
+}
+.removedName {
+  font-size: 0.8rem;
+  color: var(--ink-3);
+  text-decoration: line-through;
+}
+
+/* ══════════ ГАНЦ ХАДГАЛАХ ТОВЧ ══════════
+   Ноорогтой үед л доод талд наалдаж гарна — өөр газраас хадгалагдахгүй. */
+.saveBar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 -24px;
+  padding: 11px 24px;
+  background: var(--surface);
+  border-top: 1px solid var(--line-strong);
+  box-shadow: 0 -6px 16px rgba(0, 0, 0, 0.08);
+}
+.saveInfo {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.76rem;
+  font-weight: 550;
+  color: var(--ink-2);
+}
+.cancelBtn {
+  padding: 8px 16px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line-strong);
+  color: var(--ink-2);
+  font-size: 0.8rem;
+  font-weight: 600;
+  transition: background 0.14s, color 0.14s;
+}
+.cancelBtn:hover { background: var(--surface-2); color: var(--ink); }
+.saveBtn {
+  padding: 8px 22px;
+  border-radius: var(--r-sm);
+  background: var(--hue);
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 650;
+  transition: filter 0.15s, opacity 0.15s;
+}
+.saveBtn:hover { filter: brightness(1.08); }
+.saveBtn:disabled { opacity: 0.5; cursor: wait; }
 
 .note {
   margin: 0;
@@ -235,4 +573,12 @@
   .sideHead { display: none; }
   .sideItem { width: auto; }
   .main { padding: 0 16px; }
+}
+
+/* Нэмэлт эрхийн бүлгийн тайлбар — харагдац автоматаар дагадаг гэдгийг сануулна */
+.capNote {
+  margin: 6px 0 2px;
+  font-size: 0.74rem;
+  line-height: 1.4;
+  color: var(--ink-3);
 }

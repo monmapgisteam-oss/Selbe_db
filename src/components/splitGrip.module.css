@@ -1,0 +1,79 @@
+/* ДАШБОАРДЫН ТАЛЫН БАГАНЫГ чирж өргөсгөх/нарийсгах бариул.
+ *
+ * Дашбоардууд «зүүн картууд · зураг · баруун картууд» гэсэн НЭГ хэв маягтай
+ * бөгөөд өргөн нь CSS хувьсагчаар (`--side-l`, `--side-r`) өгөгддөг. Энэ бариул
+ * тэр хувьсагчийг чирж өөрчилнө — бүрхүүлийн бүтэц огт хөндөгдөхгүй.
+ *
+ * ⚠️ 2026-08-21 (хэрэглэгчийн сонголт): харагдах хэл нь «Тохиромжтой байдлын
+ * үнэлгээ»-гийн `.resizer`-тэй (analysis/suitability.module.css) ЯГ ИЖИЛ —
+ * 5px саарал зурвас + голдоо 26px ховил, hover/чирэлтэд --data өнгөөр асна.
+ * Тэр нь сүлжээний жинхэнэ багана, энэ нь давхарласан зурвас гэдгээрээ л
+ * ялгаатай; аль нэгийг нь өөрчилбөл нөгөөг нь ХАМТ өөрчил.
+ */
+.grip {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 11px;
+  z-index: 5;
+  cursor: col-resize;
+  touch-action: none;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  /* ⚠️ Бариул нь картуудын ЗАВСАР дээр сууна. Картууд өөрсдийн товшилттой тул
+     бариулыг нарийхан байлгаж, зөвхөн заагийг эзэлнэ. */
+}
+
+/* Харагдах зурвас — analysis-ийн .resizer-ийн биетэй ижил 5px, var(--line) */
+.grip::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 50%;
+  width: 5px;
+  transform: translateX(-50%);
+  background: var(--line);
+  transition: background 0.15s;
+}
+/* Голын ховил — 1×26px, зурваснаас тодхон (analysis-ийн ::after-тэй ижил) */
+.grip::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 1px;
+  height: 26px;
+  transform: translate(-50%, -50%);
+  border-radius: 1px;
+  background: var(--line-strong);
+  z-index: 1;
+  transition: background 0.15s;
+}
+.grip:hover::after,
+.grip:focus-visible::after,
+.gripOn::after {
+  background: var(--data);
+}
+.grip:hover::before,
+.grip:focus-visible::before,
+.gripOn::before {
+  background: var(--bg);
+}
+.grip:focus-visible {
+  outline: none;
+}
+
+/* Зүүн зааг — талын баганын БАРУУН ирмэг дээр. */
+.left {
+  left: calc(var(--side-l) - 5px);
+}
+/* Баруун зааг — баруун баганын ЗҮҮН ирмэг дээр. */
+.right {
+  right: calc(var(--side-r) - 5px);
+}
+
+/* ⚠️ Бүрхүүл нь `position: relative` байх ЁСТОЙ — эс бөгөөс бариул хуудсын
+   эхэнд очно. Модуль бүрийн CSS-д нэмэхийн оронд энд ганц дүрмээр өгөв. */
+.host {
+  position: relative;
+}

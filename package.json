@@ -9,7 +9,7 @@
     "start": "next start",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
-    "test": "node src/lib/filters.check.mjs && node src/lib/series.check.mjs && node src/lib/blockProgress.check.mjs && node src/modules/bagts.check.mjs && node src/modules/monitor.check.mjs && node src/modules/sheet/floor.check.mjs && npm run test:obyem && node src/modules/analysis/suit/traffic.check.mjs && npm run test:agent && npm run test:drift && npm run test:tg && npm run test:chart",
+    "test": "node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/cfAxis.check.mjs && node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/format.check.mjs && node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/finFilter.check.mjs && node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/finGroup.check.mjs && node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/chartFit.check.mjs && node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/finCard.check.mjs && node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/qaqc.check.mjs && node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/plan.check.mjs && node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/deps.check.mjs && node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/schem.check.mjs && node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/schemDetail.check.mjs && node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/schemFine.check.mjs && node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/parcelEdit.check.mjs && node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/butetsEdit.check.mjs && node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/permissions.check.mjs && node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/series.check.mjs && node --experimental-transform-types --import ./tools/ts-alias.mjs src/modules/bagts.check.mjs && node --experimental-transform-types --import ./tools/ts-alias.mjs src/modules/phys.check.mjs && node src/modules/sheet/floor.check.mjs && node --experimental-transform-types --import ./tools/ts-alias.mjs src/modules/sheet/frame.check.mjs && node src/modules/sheet/draft.check.mjs && node --experimental-transform-types --import ./tools/ts-alias.mjs src/modules/sheet/paste.check.mjs && node --experimental-transform-types --import ./tools/ts-alias.mjs src/modules/sheet/gun.check.mjs && npm run test:obyem && node --experimental-transform-types --import ./tools/ts-alias.mjs src/modules/analysis/suit/traffic.check.mjs && npm run test:tg && npm run test:chart && npm run test:ersdel && node src/lib/dataBus.check.mjs && node src/lib/dataBus.invariant.check.mjs && node src/modules/finEdit.check.mjs && node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/guitsetgelAcl.check.mjs && node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/zovshoorol.check.mjs && node --experimental-transform-types --import ./tools/ts-alias.mjs src/modules/sheet/negj.check.mjs",
     "test:obyem": "node --experimental-transform-types --import ./tools/ts-alias.mjs src/modules/sheet/obyem.check.mjs",
     "test:agent": "node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/agent/agent.check.mjs",
     "test:drift": "node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/agent/drift.check.mjs",
@@ -17,12 +17,17 @@
     "bot": "node --env-file-if-exists=.env.local --experimental-transform-types --import ./tools/ts-alias.mjs tools/telegram-bot.mjs",
     "test:tg": "node tools/telegram-format.check.mjs",
     "test:chart": "node --experimental-transform-types --import ./tools/ts-alias.mjs src/components/chart.check.mjs",
+    "test:ersdel": "node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/ersdel.check.mjs",
     "i18n:check": "node tools/i18n-extract.mjs",
-    "i18n:prune": "node tools/i18n-extract.mjs --prune"
+    "i18n:prune": "node tools/i18n-extract.mjs --prune",
+    "iot:watch": "node --env-file-if-exists=.env.local --experimental-transform-types --import ./tools/ts-alias.mjs tools/iot-watch.mjs",
+    "iot:verify": "node --experimental-transform-types --import ./tools/ts-alias.mjs tools/iot-verify.mjs && node --experimental-transform-types --import ./tools/ts-alias.mjs tools/iot-verify2.mjs",
+    "test:live": "node src/lib/filters.check.mjs && node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/blockProgress.check.mjs && node --experimental-transform-types --import ./tools/ts-alias.mjs src/modules/monitor.check.mjs && node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/analysis/transport.check.mjs && npm run test:agent && npm run test:drift",
+    "test:all": "npm test && npm run test:live"
   },
   "dependencies": {
     "@arcgis/core": "^4.34.8",
-    "next": "^15.5.21",
+    "next": "^15.5.23",
     "pdfmake": "^0.3.11",
     "react": "19.0.0",
     "react-dom": "19.0.0"
@@ -33,7 +38,7 @@
     "@types/react": "19.0.7",
     "@types/react-dom": "19.0.3",
     "eslint": "^9.39.5",
-    "eslint-config-next": "^16.3.0",
+    "eslint-config-next": "^16.3.2",
     "typescript": "5.7.3"
   }
 }

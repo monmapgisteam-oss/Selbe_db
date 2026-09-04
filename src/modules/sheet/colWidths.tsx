@@ -13,6 +13,8 @@
 // Тэдгээр нь ижил төрлийн утга агуулдаг тул үүнийг санаатай ингэв.
 
 import { useCallback, useEffect, useRef, useState } from "react";
+// Бариулын tooltip/aria — 3 файлд давхардаж байсныг нэг эхээс (i18n-тэй).
+import { GRIP_ARIA, GRIP_TITLE } from "@/components/ResizableTable";
 import st from "./sheet.module.css";
 
 /** Багана уншигдахгүй нарийсахаас сэргийлнэ. */
@@ -64,7 +66,7 @@ export function useColWidths(key: string) {
   const grip = useCallback(
     (col: string) => ({
       className: st.grip,
-      title: 'Чирж өргөнийг тохируулна · давхар товшвол анхны хэмжээ',
+      title: GRIP_TITLE,
       onPointerDown: (e: React.PointerEvent<HTMLElement>) => {
         // ⚠️ Толгой дээрх бусад үйлдэл (эрэмбэлэх, нүд сонгох) асахаас сэргийлнэ.
         e.preventDefault();
@@ -103,7 +105,7 @@ export function useColWidths(key: string) {
       // өргөн — урьд нь зөвхөн хулгана/хүрэлтээр л ажилладаг байв.
       role: "separator" as const,
       "aria-orientation": "vertical" as const,
-      "aria-label": 'Баганы өргөн',
+      "aria-label": GRIP_ARIA,
       tabIndex: 0,
       onKeyDown: (e: React.KeyboardEvent<HTMLElement>) => {
         if (e.key === "Enter" || e.key === "Home") {

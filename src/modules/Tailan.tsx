@@ -25,17 +25,23 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
+import { Fig, KpiRow, RankBars, TrendArea } from '@/modules/tailanChart';
 import { Data } from '@/components/ui';
 import { Icon } from '@/components/Icon';
 import { num, pct } from '@/lib/format';
 import { useBagtsTable, type BagtsRow } from '@/modules/Dashboard';
 import { emailViaEml, emailViaMailto, downloadReportPdf } from '@/lib/emailReport';
 import { useReportExtra, buildFindings, type ReportExtra } from '@/lib/reportData';
+import { ResizableTable } from '@/components/ResizableTable';
 import r from './report.module.css';
 
-/** ₮ → тэрбум */
-const bn = (v: number) => num(v / 1e9, 1);
-/** Тэг өртөг = «нэгж үнэ загварт ороогүй» — 0 гэж бичвэл «үнэгүй» мэт уншигдана */
+/** ₮ — БҮТЭН дүн, мянгатын таслалтай (2026-09-01, товчлолыг бүрэн хассан) */
+const bn = (v: number) => num(v);
+/**
+ * ⚠️ ЗӨВХӨН Cashflow-ийн `budget`/`contract` дүнд хэрэглэнэ: тэг нь «төсөвт
+ * өртөг хараахан батлагдаагүй / гэрээ байгуулагдаагүй» гэсэн утгатай тул 0
+ * гэж бичвэл «үнэгүй» мэт уншигдана — «—» болгоно.
+ */
 const bnOrDash = (v: number) => (v > 0 ? bn(v) : '—');
 
 /** Хүснэгтийн дугаартай тайлбар — ХҮСНЭГТИЙН ДЭЭД талд байрлана */
@@ -165,18 +171,23 @@ export function Tailan() {
                     {/* ── Товч танилцуулга ── */}
                     <div className={r.lead}>
                       <p>
-                        {tr('Сэлбэ 20 минутын хотын төслийн хэрэгжилт тайлан үүсгэх өдрийн байдлаар')} <strong>{pct(x.overall.pct, 2)}</strong>{tr('-тай байна. Төслийн жингийн')} <strong>{pct(d.buildWeight, 1)}</strong>{tr('-ийг эзэлдэг барилга угсралтын ажил')} <strong>{pct(d.buildActual, 2)}</strong>{tr('-ийн гүйцэтгэлтэй')}
+                        {tr('Сэлбэ 20 минутын хотын төслийн хэрэгжилт тайлан үүсгэх өдрийн байдлаар')} <strong>{pct(x.overall.pct, 2)}</strong>{tr('-тай байна. Төслийн төсвийн')} <strong>{pct(d.buildWeight, 1)}</strong>{tr('-ийг эзэлдэг барилга угсралтын ажил')} <strong>{pct(d.buildActual, 2)}</strong>{tr('-ийн гүйцэтгэлтэй')}
                         {d.buildLag != null && (
                           <> {tr('буюу төлөвлөгөөнөөс')} <strong>{num(d.buildLag, 1)} {tr('нэгж хувиар')}</strong> {tr('хоцорч байна')}</>
-                        )}{tr('. Газар чөлөөлөлтийн гүйцэтгэл')}
+                        )}
+                        {/* ⚠️ ЭХ СУРВАЛЖИЙН ШОШГО ЗААВАЛ: энэ хувь нь нэгж
+                            талбарын ТӨЛВӨӨС (шийдвэрлэгдсэн ÷ нийт) бодогддог
+                            бөгөөд «Газар чөлөөлөлт» дашбоардын үе шатны
+                            хувиас зөрж болно (land.ts-ийн тайлбар). */}
+                        {tr('. Газар чөлөөлөлтийн гүйцэтгэл нэгж талбарын төлвөөр')}
                         {x.land.pct != null && <> <strong>{pct(x.land.pct, 1)}</strong></>} {tr('байгаа ч')}
                         {' '}{num(d.landLeft)} {tr('нэгж талбар шийдвэрлэгдээгүй үлдсэн байна.')}
                       </p>
                       <p>
-                        {tr('Санхүүгийн хувьд захирамжаар')} <strong>{bn(x.finance.orderTotal)} {tr('тэрбум ₮')}</strong>
-                        {' '}{tr('батлагдсанаас')} <strong>{bn(x.finance.contractAmount)} {tr('тэрбум')}</strong>
+                        {tr('Санхүүгийн хувьд захирамжаар')} <strong>{bn(x.finance.orderTotal)} {tr('₮')}</strong>
+                        {' '}{tr('батлагдсанаас')} <strong>{bn(x.finance.contractAmount)} {tr('₮')}</strong>
                         {d.contractRate != null && <> ({pct(d.contractRate, 1)})</>} {tr('нь гэрээгээр баталгаажиж,')}
-                        {' '}<strong>{bn(x.finance.paid)} {tr('тэрбум')}</strong>
+                        {' '}<strong>{bn(x.finance.paid)} {tr('₮')}</strong>
                         {d.paidRate != null && <> ({pct(d.paidRate, 1)})</>} {tr('нь бодитоор олгогдсон байна.')}
                       </p>
                       <p>
@@ -190,10 +201,34 @@ export function Tailan() {
                     <section className={r.section}>
                       <h2 className={r.h2}>{tr('1. Үндсэн үзүүлэлт')}</h2>
                       <p className={r.intro}>
-                        {tr('Энэ хэсэгт төслийн цар хүрээ, гүйцэтгэл, санхүүжилтийн долоон гол үзүүлэлтийг нэгтгэв. Гүйцэтгэлийн хоёр өөр хэмжүүрийг ялган үзэх нь зүйтэй: төслийн нийт гүйцэтгэл нь бүх үе шатыг жин харгалзан тооцсон дүн бол барилга угсралтын гүйцэтгэл нь зөвхөн орон сууцны блокуудыг хамарна.')}
+                        {tr('Энэ хэсэгт төслийн цар хүрээ, гүйцэтгэл, санхүүжилтийн долоон гол үзүүлэлтийг нэгтгэв. Гүйцэтгэлийн хоёр өөр хэмжүүрийг ялган үзэх нь зүйтэй: төслийн нийт гүйцэтгэл нь багц бүрийг төсвийн жингээр нь тооцсон дүн бол барилга угсралтын гүйцэтгэл нь блокуудын энгийн дундаж.')}
                       </p>
+                      {/* ⚠️ ТОЛГОЙ ТООГ ГРАФИК БОЛГОХГҮЙ: нэг утгыг багана болгон
+                          зурах нь мэдээлэл нэмэхгүй, зөвхөн зай иднэ. Тоо нь өөрөө
+                          «график» — тиймээс үзүүлэлтийн эгнээ. */}
+                      <KpiRow items={[
+                        { label: tr('Орон сууцны блок'), value: num(blocks) },
+                        { label: tr('Өрхийн орон сууц'), value: num(ail) },
+                        { label: tr('Төслийн нийт гүйцэтгэл'), value: pct(x.overall.pct, 2) },
+                        { label: tr('Барилга угсралтын гүйцэтгэл'), value: pct(x.progress.overall, 2) },
+                        { label: tr('Захирамжаар батлагдсан'), value: `${bn(x.finance.orderTotal)} ₮` },
+                        { label: tr('Гэрээгээр байгуулагдсан'), value: `${bn(x.finance.contractAmount)} ₮` },
+                        { label: tr('Бодитоор олгосон'), value: `${bn(x.finance.paid)} ₮` },
+                      ]} />
+                      {/* Санхүүжилтийн гурван шат нь ХООРОНДОО хамаарна:
+                          захирамж ⊇ гэрээ ⊇ олголт. Тиймээс хэсэг-бүтэн БИШ,
+                          нэг тэнхлэг дээрх харьцуулалт. */}
+                      <Fig no="1">{tr('Санхүүжилтийн гурван шат — захирамжаас олголт хүртэл')}</Fig>
+                      <RankBars
+                        title={tr('Санхүүжилтийн гурван шатны харьцуулалт')}
+                        items={[
+                          { label: tr('Захирамжаар батлагдсан'), value: x.finance.orderTotal, text: `${bn(x.finance.orderTotal)} ₮` },
+                          { label: tr('Гэрээгээр байгуулагдсан'), value: x.finance.contractAmount, text: `${bn(x.finance.contractAmount)} ₮` },
+                          { label: tr('Бодитоор олгосон'), value: x.finance.paid, text: `${bn(x.finance.paid)} ₮`, hot: true },
+                        ]}
+                      />
                       <Cap no="1">{tr('Төслийн нэгдсэн үзүүлэлт')}</Cap>
-                      <table className={r.table}>
+                      <ResizableTable storeKey="tailan.tovch" className={r.table}>
                         <thead><tr><th>{tr('Үзүүлэлт')}</th><th className={r.num}>{tr('Утга')}</th></tr></thead>
                         <tbody>
                           <tr><td>{tr('Орон сууцны блок')}</td><td className={r.num}>{num(blocks)}</td></tr>
@@ -208,20 +243,20 @@ export function Tailan() {
                           </tr>
                           <tr>
                             <td>{tr('Захирамжаар батлагдсан дүн')}</td>
-                            <td className={r.num}>{bn(x.finance.orderTotal)} {tr('тэрбум ₮')}</td>
+                            <td className={r.num}>{bn(x.finance.orderTotal)} {tr('₮')}</td>
                           </tr>
                           <tr>
                             <td>{tr('Гэрээгээр байгуулагдсан дүн')}</td>
-                            <td className={r.num}>{bn(x.finance.contractAmount)} {tr('тэрбум ₮')}</td>
+                            <td className={r.num}>{bn(x.finance.contractAmount)} {tr('₮')}</td>
                           </tr>
                           <tr className={r.total}>
                             <td>{tr('Бодитоор олгосон санхүүжилт')}</td>
-                            <td className={r.num}>{bn(x.finance.paid)} {tr('тэрбум ₮')}</td>
+                            <td className={r.num}>{bn(x.finance.paid)} {tr('₮')}</td>
                           </tr>
                         </tbody>
-                      </table>
+                      </ResizableTable>
                       <p className={r.note}>
-                        {tr('Төслийн нийт гүйцэтгэл нь хэрэгжилтийн')} {num(x.overall.rows)} {tr('ажлыг жин харгалзан тооцсон дүн (3-р хэсэг); барилга угсралтын гүйцэтгэл нь хяналтын')} {num(x.progress.blocks)} {tr('блокийн дундаж (6-р хэсэг).')}
+                        {tr('Төслийн нийт гүйцэтгэл нь')} {num(x.overall.rows)} {tr('блокийг багцынх нь төсвийн жингээр тооцсон дүн (3-р хэсэг); барилга угсралтын гүйцэтгэл нь хяналтын')} {num(x.progress.blocks)} {tr('блокийн энгийн дундаж (6-р хэсэг).')}
                       </p>
                     </section>
 
@@ -229,18 +264,43 @@ export function Tailan() {
                     <section className={r.section}>
                       <h2 className={r.h2}>{tr('2. Орон сууцны 7 багц')}</h2>
                       <p className={r.intro}>
-                        {tr('Орон сууцны барилгажилт долоон багцад хуваагдан хэрэгжиж байна. Нийт')} {num(blocks)} {tr('блокт')} {num(ail)} {tr('өрхийн орон сууц төлөвлөгдсөн бөгөөд төсөвт өртөг')} {bn(budget)} {tr('тэрбум ₮ байна. Багц хоорондын гүйцэтгэлийн зөрүү их байна: хамгийн өндөр нь')} {tr(d.bestBagts?.bagts ?? '')}
+                        {tr('Орон сууцны барилгажилт долоон багцад хуваагдан хэрэгжиж байна. Нийт')} {num(blocks)} {tr('блокт')} {num(ail)} {tr('өрхийн орон сууц төлөвлөгдсөн бөгөөд төсөвт өртөг')} {bn(budget)} {tr('₮ байна. Багц хоорондын гүйцэтгэлийн зөрүү их байна: хамгийн өндөр нь')} {tr(d.bestBagts?.bagts ?? '')}
                         ({pct(d.bestBagts?.pct ?? null, 2)}{tr('), хамгийн бага нь')}
                         {' '}{tr(d.worstBagts?.bagts ?? '')} ({pct(d.worstBagts?.pct ?? null, 2)}).
                       </p>
+                      {/* ⚠️ ТӨСӨВ (₮) ба ГҮЙЦЭТГЭЛ (%) нь өөр хэмжигдэхүүн тул
+                          НЭГ зурагт давхарлахгүй — хоёр тэнхлэгтэй график нь
+                          масштабын дурын харьцаагаар байхгүй хамаарлыг зохионо. */}
+                      <Fig no="2.1">{tr('Багц тус бүрийн төсөвт өртөг')}</Fig>
+                      <RankBars
+                        title={tr('Багц тус бүрийн төсөвт өртөг')}
+                        items={sorted.map((b) => ({
+                          label: tr(b.label),
+                          value: budgetOf(b.key) > 0 ? budgetOf(b.key) : null,
+                          text: `${bn(budgetOf(b.key))} ₮`,
+                        }))}
+                      />
+                      <Fig no="2.2">{tr('Багц тус бүрийн гүйцэтгэл — хамгийн өндөр нь тодруулсан')}</Fig>
+                      <RankBars
+                        title={tr('Багц тус бүрийн гүйцэтгэлийн хувь')}
+                        max={100}
+                        items={[...sorted]
+                          .sort((a, b) => (b.progress ?? 0) - (a.progress ?? 0))
+                          .map((b) => ({
+                            label: tr(b.label),
+                            value: b.progress,
+                            text: pct(b.progress, 2),
+                            hot: b.label === d.bestBagts?.bagts,
+                          }))}
+                      />
                       <Cap no="2">{tr('Багц тус бүрийн блок, өрх, төсөв ба гүйцэтгэл (төсөвт өртгөөр буурах эрэмбээр)')}</Cap>
-                      <table className={r.table}>
+                      <ResizableTable storeKey="tailan.bagts" className={r.table}>
                         <thead>
                           <tr>
                             <th>{tr('Багц')}</th>
                             <th className={r.num}>{tr('Блок')}</th>
                             <th className={r.num}>{tr('Өрх')}</th>
-                            <th className={r.num}>{tr('Төсөв (тэрбум ₮)')}</th>
+                            <th className={r.num}>{tr('Төсөв (₮)')}</th>
                             <th className={r.num}>{tr('Гүйцэтгэл')}</th>
                           </tr>
                         </thead>
@@ -262,21 +322,40 @@ export function Tailan() {
                             <td className={r.num}>{pct(bagtsAvg, 2)}</td>
                           </tr>
                         </tbody>
-                      </table>
+                      </ResizableTable>
                     </section>
 
-                    {/* ── 3. Хэрэгжилтийн үе шат ── */}
+                    {/* ── 3. Багцын жигнэсэн гүйцэтгэл ── */}
                     <section className={r.section}>
-                      <h2 className={r.h2}>{tr('3. Хэрэгжилтийн үе шат')}</h2>
+                      <h2 className={r.h2}>{tr('3. Багцын жигнэсэн гүйцэтгэл')}</h2>
                       <p className={r.intro}>
-                        {tr('Төсөл нь бэлтгэлээс барилга угсралт хүртэл зургаан үе шаттай. Үе шат бүр төсөлд эзлэх өөрийн жинтэй тул нийт гүйцэтгэл нь энгийн дундаж биш, жин харгалзан тооцсон дүн болно. Одоогийн байдлаар төслийн жингийн')} {pct(d.heavyStage?.weight ?? null, 1)}{tr('-ийг «')}{tr(d.heavyStage?.label ?? "")}{tr('» үе шат эзэлж байгаа тул нийт гүйцэтгэл голчлон түүнээс хамаарч байна.')}
+                        {tr('Багц бүр төслийн төсөвт эзлэх өөрийн жинтэй тул нийт гүйцэтгэл нь энгийн дундаж биш, жин харгалзан тооцсон дүн болно. Одоогийн байдлаар төслийн төсвийн')} {pct(d.heavyStage?.weight ?? null, 1)}{tr('-ийг «')}{tr(d.heavyStage?.label ?? "")}{tr('» багц эзэлж байгаа тул нийт гүйцэтгэл голчлон түүнээс хамаарч байна.')}
                       </p>
-                      <Cap no="3">{tr('Үе шатны эзлэх жин, бодит гүйцэтгэл ба төлөвлөгөө')}</Cap>
-                      <table className={r.table}>
+                      {/* ⚠️ ДАВХАРЛАСАН НЭГ ЗУРВАС ХЭРЭГЛЭХГҮЙ (2026-09-03,
+                          хэрэглэгчийн заавар). Ойролцоо утгуудыг нэг мөрөнд
+                          хэрчимлэхэд аль нь аль нээсээ том болох нь нүдээр
+                          харьцуулагдахгүй — хэрчим бүр өөр цэгээс эхэлдэг.
+                          Хэвтээ багана нь бүгд НЭГ суурьтай тул урт нь шууд
+                          харьцуулагдана. */}
+                      <Fig no="3">{tr('Багц бүрийн төсөвт эзлэх жин — нийт гүйцэтгэл голчлон эндээс хамаарна')}</Fig>
+                      <RankBars
+                        title={tr('Багц бүрийн төсөвт эзлэх жин')}
+                        items={[...x.overall.stages]
+                          .filter((s) => s.weight != null && s.weight > 0)
+                          .sort((a, b) => (b.weight ?? 0) - (a.weight ?? 0))
+                          .map((s, i) => ({
+                            label: tr(s.label),
+                            value: s.weight ?? 0,
+                            text: pct(s.weight, 1),
+                            hot: i === 0,
+                          }))}
+                      />
+                      <Cap no="3">{tr('Багцын эзлэх жин ба бодит гүйцэтгэл')}</Cap>
+                      <ResizableTable storeKey="tailan.uyeshat" className={r.table}>
                         <thead>
                           <tr>
-                            <th>{tr('Үе шат')}</th>
-                            <th className={r.num}>{tr('Ажил')}</th>
+                            <th>{tr('Багц')}</th>
+                            <th className={r.num}>{tr('Блок')}</th>
                             <th className={r.num}>{tr('Эзлэх жин')}</th>
                             <th className={r.num}>{tr('Гүйцэтгэл')}</th>
                             <th className={r.num}>{tr('Төлөвлөгөө')}</th>
@@ -300,9 +379,9 @@ export function Tailan() {
                             <td className={r.num}>—</td>
                           </tr>
                         </tbody>
-                      </table>
+                      </ResizableTable>
                       <p className={r.note}>
-                        {tr('Эзлэх жингийн нийлбэр')} {pct(x.overall.weightSum, 2)} {tr('— эх хүснэгтэд бүх ажил бүртгэгдээгүй тул нийт гүйцэтгэлийг жингийн нийлбэрээр харьцуулан тооцов. Төлөвлөгөө бөглөөгүй үе шатыг «—» тэмдгээр илэрхийлэв.')}
+                        {tr('Эзлэх жингийн нийлбэр')} {pct(x.overall.weightSum, 2)} {tr('— гүйцэтгэл хараахан бүртгэгдээгүй багц байгаа тул нийт дүнг жингийн нийлбэрт харьцуулан тооцов. Багцын түвшинд төлөвлөгөөт хувь одоогоор байхгүй тул «—» тэмдгээр илэрхийлэв.')}
                       </p>
                     </section>
 
@@ -310,11 +389,26 @@ export function Tailan() {
                     <section className={r.section}>
                       <h2 className={r.h2}>{tr('4. Газар чөлөөлөлт')}</h2>
                       <p className={r.intro}>
-                        {tr('Төслийн талбайд нийт')} {num(x.land.parcels)} {tr('нэгж талбар (')}{num(x.land.areaM2)} {tr('м²) бүртгэгдсэн бөгөөд үе шатны гүйцэтгэл')}
+                        {tr('Төслийн талбайд нийт')} {num(x.land.parcels)} {tr('нэгж талбар (')}{num(x.land.areaM2)} {tr('м²) бүртгэгдсэн бөгөөд шийдвэрлэгдсэн нь')}
                         {' '}{x.land.pct != null ? pct(x.land.pct, 1) : '—'} {tr('байна. Ажлын үндсэн хэсэг дууссан ч')} {num(d.landLeft)} {tr('нэгж талбар шийдвэрлэгдээгүй хэвээр байгаа нь барилга угсралтын хуваарьт нөлөөлөх эрсдэлтэй.')}
                       </p>
+                      {/* ⚠️ Нийт 2,117-гийн доторх хуваарилалт ч давхарласан зурвас
+                          БИШ: «Бүрэн чөлөөлсөн» 80%-ийг эзлэхэд үлдсэн дөрөв нь
+                          нимгэн хэрчим болж, хооронд нь харьцуулах боломжгүй.
+                          Тусдаа багана нь 1,703 ↔ 201 ↔ 171-ийг ил харуулна. */}
+                      <Fig no="4">{tr('Нэгж талбарын төлөв — шийдвэрлэсэн ба үлдсэн')}</Fig>
+                      <RankBars
+                        title={tr('Нэгж талбарын төлөв')}
+                        items={[...x.land.byStatus]
+                          .sort((a, b) => b.n - a.n)
+                          .map((s) => ({
+                            label: tr(s.label),
+                            value: s.n,
+                            text: `${num(s.n)} · ${x.land.parcels ? pct((s.n / x.land.parcels) * 100, 1) : '—'}`,
+                          }))}
+                      />
                       <Cap no="4.1">{tr('Нэгж талбарын төлөв')}</Cap>
-                      <table className={r.table}>
+                      <ResizableTable storeKey="tailan.gazar" className={r.table}>
                         <thead><tr><th>{tr('Төлөв')}</th><th className={r.num}>{tr('Нэгж талбар')}</th><th className={r.num}>{tr('Эзлэх хувь')}</th></tr></thead>
                         <tbody>
                           {x.land.byStatus.map((s) => (
@@ -332,7 +426,7 @@ export function Tailan() {
                             <td className={r.num}>100%</td>
                           </tr>
                         </tbody>
-                      </table>
+                      </ResizableTable>
 
                       {x.land.byReason.length > 0 && (
                         <>
@@ -340,7 +434,7 @@ export function Tailan() {
                             {tr('Шийдвэрлэгдээгүй нэгж талбарын шалтгаан')}
                             {d.topReason && tr(' — тэргүүлэх шалтгаан «{0}»', tr(d.topReason.label))}
                           </Cap>
-                          <table className={r.table}>
+                          <ResizableTable storeKey="tailan.shaltgaan" className={r.table}>
                             <thead><tr><th>{tr('Шалтгаан')}</th><th className={r.num}>{tr('Нэгж талбар')}</th></tr></thead>
                             <tbody>
                               {x.land.byReason.map((s) => (
@@ -350,7 +444,7 @@ export function Tailan() {
                                 </tr>
                               ))}
                             </tbody>
-                          </table>
+                          </ResizableTable>
                         </>
                       )}
                     </section>
@@ -364,7 +458,7 @@ export function Tailan() {
                         {' '}{tr('барилгын талбай')} {num(x.social.areaM2)} {tr('м² тусгагдсан байна. Эдгээр нь сургууль, цэцэрлэг, төрийн үйлчилгээ, хүүхдийн хөгжлийн байгууламжийг хамарна.')}
                       </p>
                       <Cap no="5">{tr('Нийгмийн үйлчилгээний байгууламжийн жагсаалт')}</Cap>
-                      <table className={r.table}>
+                      <ResizableTable storeKey="tailan.niitiin" className={r.table}>
                         <thead><tr><th>{tr('Байгууламж')}</th><th className={r.num}>{tr('Тоо')}</th><th className={r.num}>{tr('Талбай (м²)')}</th></tr></thead>
                         <tbody>
                           {x.social.rows.map((s) => (
@@ -380,7 +474,7 @@ export function Tailan() {
                             <td className={r.num}>{num(x.social.areaM2)}</td>
                           </tr>
                         </tbody>
-                      </table>
+                      </ResizableTable>
                     </section>
 
                     {/* ── 6. Барилга угсралтын гүйцэтгэл ── */}
@@ -396,8 +490,16 @@ export function Tailan() {
                           <> {tr('бөгөөд үлдсэн')} {num(d.notStartedPhases.length)} {tr('үе шат хараахан эхлээгүй байна')}</>
                         )}.
                       </p>
+                      <Fig no="6.1">{tr('Багц тус бүрийн барилга угсралтын гүйцэтгэл')}</Fig>
+                      <RankBars
+                        title={tr('Багц тус бүрийн барилга угсралтын гүйцэтгэл')}
+                        max={100}
+                        items={[...x.progress.byBagts]
+                          .sort((a, b) => (b.pct ?? 0) - (a.pct ?? 0))
+                          .map((b) => ({ label: tr(b.bagts), value: b.pct, text: pct(b.pct, 2) }))}
+                      />
                       <Cap no="6.1">{tr('Багц тус бүрийн барилга угсралтын гүйцэтгэл')}</Cap>
-                      <table className={r.table}>
+                      <ResizableTable storeKey="tailan.guits-bagts" className={r.table}>
                         <thead><tr><th>{tr('Багц')}</th><th className={r.num}>{tr('Блок')}</th><th className={r.num}>{tr('Гүйцэтгэл')}</th></tr></thead>
                         <tbody>
                           {x.progress.byBagts.map((b) => (
@@ -413,10 +515,16 @@ export function Tailan() {
                             <td className={r.num}>{pct(x.progress.overall, 2)}</td>
                           </tr>
                         </tbody>
-                      </table>
+                      </ResizableTable>
 
+                      <Fig no="6.2">{tr('Ажлын үе шат тус бүрийн дундаж гүйцэтгэл')}</Fig>
+                      <RankBars
+                        title={tr('Ажлын үе шат тус бүрийн дундаж гүйцэтгэл')}
+                        max={100}
+                        items={x.progress.phases.map((p) => ({ label: tr(p.name), value: p.pct, text: pct(p.pct, 2) }))}
+                      />
                       <Cap no="6.2">{tr('Ажлын үе шат тус бүрийн дундаж гүйцэтгэл')}</Cap>
-                      <table className={r.table}>
+                      <ResizableTable storeKey="tailan.guits-shat" className={r.table}>
                         <thead><tr><th>{tr('Үе шат')}</th><th className={r.num}>{tr('Дундаж гүйцэтгэл')}</th></tr></thead>
                         <tbody>
                           {x.progress.phases.map((p) => (
@@ -426,12 +534,12 @@ export function Tailan() {
                             </tr>
                           ))}
                         </tbody>
-                      </table>
+                      </ResizableTable>
 
                       <Cap no="6.3">
                         {tr('Гүйцэтгэл хамгийн бага арван блок — анхаарал шаардсан ажлууд')}
                       </Cap>
-                      <table className={r.table}>
+                      <ResizableTable storeKey="tailan.udaan" className={r.table}>
                         <thead><tr><th>{tr('Багц')}</th><th>{tr('Блок')}</th><th className={r.num}>{tr('Гүйцэтгэл')}</th></tr></thead>
                         <tbody>
                           {x.progress.slowest.map((b) => (
@@ -442,7 +550,7 @@ export function Tailan() {
                             </tr>
                           ))}
                         </tbody>
-                      </table>
+                      </ResizableTable>
                       <p className={r.note}>
                         {tr('Дундаж нь блок бүрийг тэнцүү жинтэйгээр тооцсон; 2-р хэсгийн багцын гүйцэтгэлтэй нэг эх сурвалжаас гарна.')}
                       </p>
@@ -457,9 +565,24 @@ export function Tailan() {
                           <> {tr('Санхүүжилтийн дийлэнх хэсгийг «')}{tr(d.topSource.label)}{tr('» эх үүсвэр бүрдүүлж, нийт дүнгийн')} {pct(d.topSource.share, 1)}{tr('-ийг эзэлж байна.')}</>
                         )}
                       </p>
+                      {/* ⚠️ Эх үүсвэрийн 0.2% ба 0.0% нь давхарласан зурваст 2px-ийн
+                          үл үзэгдэх хэрчим болдог байв. Тусдаа багана нь бага утгыг ч
+                          нэртэй нь харуулна. */}
+                      <Fig no="7.1">{tr('Санхүүжилтийн эх үүсвэрийн бүтэц')}</Fig>
+                      <RankBars
+                        title={tr('Санхүүжилтийн эх үүсвэрийн бүтэц')}
+                        items={[...x.finance.sources]
+                          .sort((a, b) => b.value - a.value)
+                          .map((s, i) => ({
+                            label: tr(s.label),
+                            value: s.value,
+                            text: `${bn(s.value)} ₮ · ${srcTotal ? pct((s.value / srcTotal) * 100, 1) : '—'}`,
+                            hot: i === 0,
+                          }))}
+                      />
                       <Cap no="7.1">{tr('Санхүүжилтийн эх үүсвэрийн бүтэц')}</Cap>
-                      <table className={r.table}>
-                        <thead><tr><th>{tr('Эх үүсвэр')}</th><th className={r.num}>{tr('Дүн (тэрбум ₮)')}</th><th className={r.num}>{tr('Хувь')}</th></tr></thead>
+                      <ResizableTable storeKey="tailan.eh-uusver" className={r.table}>
+                        <thead><tr><th>{tr('Эх үүсвэр')}</th><th className={r.num}>{tr('Дүн (₮)')}</th><th className={r.num}>{tr('Хувь')}</th></tr></thead>
                         <tbody>
                           {x.finance.sources.map((s) => (
                             <tr key={s.label}>
@@ -474,14 +597,25 @@ export function Tailan() {
                             <td className={r.num}>100%</td>
                           </tr>
                         </tbody>
-                      </table>
+                      </ResizableTable>
 
+                      {/* ⚠️ CASHFLOW2-ийн сарын цуваа нь санхүүжилтийн ХУВААРЬ
+                          (төлөвлөгөө) — «олгосон» гэж шошговол бодит олголтоос
+                          олон дахин их худал тоо хэвлэгдэнэ (reportData.ts). */}
+                      {/* ⚠️ НЭГ цуваа тул домог хэрэггүй — талбай нь өөрөө цувааг заана.
+                          Хэмжилтгүй сарыг 0 гэж ЗУРАХГҮЙ: `TrendArea` цоорхойг таслана. */}
+                      <Fig no="7.2">{tr('Сар бүрийн санхүүжилтийн хуваарь (төлөвлөгөө)')}</Fig>
+                      <TrendArea
+                        title={tr('Сар бүрийн санхүүжилтийн хуваарь')}
+                        fmt={(v) => `${bn(v)} ₮`}
+                        points={x.finance.months.map((m) => ({ label: m.label, value: m.amount || null }))}
+                      />
                       <Cap no="7.2">
-                        {tr('Сар бүрийн олголт ба хуримтлагдсан дүн')}
-                        {d.peakMonth && tr(' — хамгийн их олголт {0} сард', tr(d.peakMonth.label))}
+                        {tr('Сар бүрийн санхүүжилтийн хуваарь (төлөвлөгөө) ба хуримтлагдсан дүн')}
+                        {d.peakMonth && tr(' — хамгийн их төлөвлөгөө {0} сард', tr(d.peakMonth.label))}
                       </Cap>
-                      <table className={r.table}>
-                        <thead><tr><th>{tr('Сар')}</th><th className={r.num}>{tr('Олгосон (тэрбум ₮)')}</th><th className={r.num}>{tr('Хуримтлагдсан')}</th></tr></thead>
+                      <ResizableTable storeKey="tailan.saraar" className={r.table}>
+                        <thead><tr><th>{tr('Сар')}</th><th className={r.num}>{tr('Төлөвлөгөө (₮)')}</th><th className={r.num}>{tr('Хуримтлагдсан')}</th></tr></thead>
                         <tbody>
                           {x.finance.months.map((m) => (
                             <tr key={m.label}>
@@ -491,10 +625,13 @@ export function Tailan() {
                             </tr>
                           ))}
                         </tbody>
-                      </table>
+                      </ResizableTable>
+                      <p className={r.note}>
+                        {tr('Хүснэгт нь гэрээ бүрийн санхүүжилтийн хуваарь буюу төлөвлөгөө; бодитоор олгосон санхүүжилтийг IPC актын дүнгээр 1-р хүснэгтэд харуулав.')}
+                      </p>
 
                       <Cap no="7.3">{tr('Ажлын төрлөөр — төсөв ба гэрээний дүн')}</Cap>
-                      <table className={r.table}>
+                      <ResizableTable storeKey="tailan.torol" className={r.table}>
                         <thead><tr><th>{tr('Төрөл')}</th><th className={r.num}>{tr('Ажил')}</th><th className={r.num}>{tr('Төсөв')}</th><th className={r.num}>{tr('Гэрээ')}</th></tr></thead>
                         <tbody>
                           {x.finance.byType.map((t) => (
@@ -512,7 +649,7 @@ export function Tailan() {
                             <td className={r.num}>{bn(x.finance.contractAmount)}</td>
                           </tr>
                         </tbody>
-                      </table>
+                      </ResizableTable>
                     </section>
 
                     {/* ── 8. Дэд бүтцийн хэрэгжилт ── */}
@@ -521,10 +658,17 @@ export function Tailan() {
                       <p className={r.intro}>
                         {tr('Ерөнхий төлөвлөгөөний')} {num(x.infra.totals.layers)} {tr('давхаргад')}
                         {' '}{num(x.infra.totals.n)} {tr('объект бүртгэгдсэн бөгөөд шугам сүлжээний нийт урт')} {num(x.infra.totals.len)} {tr('м, талбайн хэмжээ')}
-                        {' '}{num(x.infra.totals.area)} {tr('м² байна. Өртгийн загвараар тооцсон дүн')} {bn(x.infra.totals.cost)} {tr('тэрбум ₮ байна.')}
+                        {' '}{num(x.infra.totals.area)} {tr('м² байна.')}
                       </p>
-                      <Cap no="8">{tr('Ажлын бүлэг тус бүрийн объект, хэмжээ ба төсөвт өртөг')}</Cap>
-                      <table className={r.table}>
+                      <Fig no="8">{tr('Ажлын бүлэг тус бүрийн объектын тоо')}</Fig>
+                      <RankBars
+                        title={tr('Ажлын бүлэг тус бүрийн объектын тоо')}
+                        items={[...x.infra.groups]
+                          .sort((a, b) => b.n - a.n)
+                          .map((g) => ({ label: tr(g.title), value: g.n, text: num(g.n) }))}
+                      />
+                      <Cap no="8">{tr('Ажлын бүлэг тус бүрийн объект ба хэмжээ')}</Cap>
+                      <ResizableTable storeKey="tailan.ajliin-buleg" className={r.table}>
                         <thead>
                           <tr>
                             <th>{tr('Ажлын бүлэг')}</th>
@@ -532,7 +676,6 @@ export function Tailan() {
                             <th className={r.num}>{tr('Объект')}</th>
                             <th className={r.num}>{tr('Урт (м)')}</th>
                             <th className={r.num}>{tr('Талбай (м²)')}</th>
-                            <th className={r.num}>{tr('Өртөг (тэрбум ₮)')}</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -543,7 +686,6 @@ export function Tailan() {
                               <td className={r.num}>{num(g.n)}</td>
                               <td className={r.num}>{g.len > 0 ? num(g.len) : '—'}</td>
                               <td className={r.num}>{g.area > 0 ? num(g.area) : '—'}</td>
-                              <td className={r.num}>{bnOrDash(g.cost)}</td>
                             </tr>
                           ))}
                           <tr className={r.total}>
@@ -552,12 +694,11 @@ export function Tailan() {
                             <td className={r.num}>{num(x.infra.totals.n)}</td>
                             <td className={r.num}>{num(x.infra.totals.len)}</td>
                             <td className={r.num}>{num(x.infra.totals.area)}</td>
-                            <td className={r.num}>{bnOrDash(x.infra.totals.cost)}</td>
                           </tr>
                         </tbody>
-                      </table>
+                      </ResizableTable>
                       <p className={r.note}>
-                        {tr('Өртгийн загвар нь нэгж үнэ батлагдсан бүлгүүдийг л хамарна — «—» тэмдэглэгээ нь өртөг тэг гэсэн үг биш, тухайн бүлэгт нэгж үнэ тогтоогоогүйг илэрхийлнэ.')}
+                        {tr('«—» тэмдэглэгээ нь тухайн бүлэгт өгөгдсөн хэмжигдэхүүн хамаарахгүйг илэрхийлнэ (жишээ нь цэгэн объектод урт, талбай байхгүй).')}
                       </p>
                     </section>
 
@@ -570,8 +711,17 @@ export function Tailan() {
                         {' '}{num(x.habea.mongol)}{tr(', гадаадын')} {num(x.habea.gadaad)}),
                         {' '}{num(x.habea.tehnik)} {tr('нэгж техник ажиллаж байна. Дотоодын ажиллах хүч нийт ажиллагсдын')} {pct(d.mongolShare, 1)}{tr('-ийг эзэлж байна.')}
                       </p>
+                      {/* ⚠️ Ажилтан ба техник нь өөр нэгжтэй тул НЭГ зурагт давхарлахгүй —
+                          ажиллах хүч нь гол үзүүлэлт учир түүнийг зурав. */}
+                      <Fig no="9">{tr('Гүйцэтгэгч байгууллага тус бүрийн ажиллах хүч')}</Fig>
+                      <RankBars
+                        title={tr('Гүйцэтгэгч байгууллага тус бүрийн ажилтны тоо')}
+                        items={[...x.habea.byCompany]
+                          .sort((a, b) => b.workers - a.workers)
+                          .map((co) => ({ label: tr(co.label), value: co.workers, text: num(co.workers) }))}
+                      />
                       <Cap no="9">{tr('Гүйцэтгэгч байгууллага тус бүрийн хүн хүч, техник')}</Cap>
-                      <table className={r.table}>
+                      <ResizableTable storeKey="tailan.guitsetgegch" className={r.table}>
                         <thead>
                           <tr>
                             <th>{tr('Гүйцэтгэгч')}</th>
@@ -602,7 +752,7 @@ export function Tailan() {
                             <td className={r.num}>{num(x.habea.tehnik)}</td>
                           </tr>
                         </tbody>
-                      </table>
+                      </ResizableTable>
                       <p className={r.note}>
                         {tr('Бүртгэлийн эхнээс хойш нийт')} {num(x.habea.incidents)} {tr('осол, зөрчил бүртгэгдсэн байна. Хүн хүчний тоо нь өдөр тутмын хуримтлагдсан үзүүлэлт биш, сүүлийн бүртгэлийн агшны байдлыг илэрхийлнэ.')}
                       </p>

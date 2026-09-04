@@ -16,9 +16,33 @@
 import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
+/* ⚠️ OID-ийн бичиглэлийг ХАТУУ БИЧИХГҮЙ — шинэ үйлчилгээ «OBJECTID», хуучин нь
+   «ObjectID» байсан. Агентын хэрэгсэл талбарын нэрийг амьд схемтэй тулгадаг тул
+   зөрвөл «Ийм талбар алга» гэж унана. */
+import { CASHFLOW2 } from '@/lib/services.ts';
 
-const MOCK_PORT = 8799;
-const RELAY_PORT = 8788;
+/**
+ * ⚠️ ПОРТЫГ ХАТУУ БИЧИХГҮЙ. Урьд нь 8799/8788 гэж тогтоосон байсан бөгөөд
+ * өмнөх ажиллалтын үлдэгдэл процесс (эсвэл зэрэг явж буй өөр session) портыг
+ * барьсан бол тест `EADDRINUSE`-ээр УНАДАГ — кодод алдаа байхгүй атал.
+ * Тест унасан шалтгаан нь орчны зөрчил байхад «код эвдэрсэн» гэж уншигдах нь
+ * хамгийн үнэтэй төрлийн худал дохио.
+ *
+ * Хуурамч сервер нь `listen(0)`-оор өөрөө сул порт олно. Реле нь ТУСДАА
+ * процесс тул портоо УРЬДЧИЛАН мэдэх ёстой: сул портыг эзэлж аваад шууд
+ * сулласны дараа хүүхэд процесст дамжуулна.
+ */
+let MOCK_PORT = 0;
+let RELAY_PORT = 0;
+
+/** Үйлдлийн системээс сул порт гуйж аваад шууд сулласны дараа дугаарыг нь буцаана */
+async function freePort() {
+  const srv = createServer();
+  await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+  const { port } = srv.address();
+  await new Promise((r) => srv.close(r));
+  return port;
+}
 
 let failures = 0;
 const check = (label, cond, extra = '') => {
@@ -98,7 +122,9 @@ async function stopRelay() {
 /* ── Ажиллуулах ── */
 
 async function main() {
-  await new Promise((r) => mock.listen(MOCK_PORT, r));
+  await new Promise((r) => mock.listen(0, '127.0.0.1', r));
+  MOCK_PORT = mock.address().port;
+  RELAY_PORT = await freePort();
 
   // ⚠️ Модуль ачаалагдахаас ӨМНӨ — `AGENT_API` нь импортын үед тогтдог
   process.env.NEXT_PUBLIC_AGENT_API = `http://127.0.0.1:${RELAY_PORT}`;
@@ -136,6 +162,9 @@ async function main() {
   const numCases = [
     ['21.6%', true], ['3.0%', true], ['0%', true], ['1,788', true], ['20', true],
     ['115.1 тэрбум ₮', true], ['1.86 их наяд ₮', true], ['9.1 нэгж', true],
+    // ⚠️ 2026-09-01: портал мөнгөн дүнг БҮТНЭЭР үзүүлдэг боллоо. Товчилсон
+    //    хэлбэрийг ч таних ёстой (хуучин яриа, хэрэглэгчийн бичсэн текст).
+    ['2,660,000,000,000 ₮', true], ['76,000 ₮', true],
     ['15.2 км', true], ['9,082 м²', true], ['4.6 га', true], ['5/7', true],
     ['113 блок', true], ['8,575 айл', true],
     ['Багц 4.1', false], ['Гүйцэтгэлийн байдал', false], ['Анхаарах зүйл', false],
@@ -152,7 +181,11 @@ async function main() {
   //    (ds:cashflow) ба INVEST (ds:invest) хасагдсан — буцаж ороогүйг барина.
   check('санхүүгийн эх сурвалж каталогт бий', prompt.includes('ds:cashflow2'));
   check('ХАСАГДСАН `ds:invest` каталогт БУЦАЖ ОРООГҮЙ', !prompt.includes('ds:invest'));
-  check('төслийн явц каталогт бий', prompt.includes('ds:progress'));
+  // ⚠️ 2026-08-27: `ds:progress` (`Төсөл_Гүйцэтгэл_` тест хүснэгт) төслөөс
+  //    хасагдаж `ds:pkg_progress` (амьд `selbe_bagts_guitsetgel_negtgel`) орлов.
+  //    Агент гүйцэтгэлийн мэдлэггүй үлдэхийг барих нь энэ шалгуурын зорилго.
+  check('багцын гүйцэтгэл каталогт бий', prompt.includes('ds:pkg_progress'));
+  check('ХАСАГДСАН `ds:progress` каталогт БУЦАЖ ОРООГҮЙ', !prompt.includes('ds:progress'));
 
   /* ── Тест 2: эрхийн хязгаарлалт ── */
   console.log('\n2. Эрхийн хязгаарлалт');
@@ -166,7 +199,7 @@ async function main() {
   // ⚠️ Санхүү нээгдсэн ч ЭРХЭЭР хамгаалагдсан хэвээр — энэ бол гол шалгуур
   check(
     'санхүү `finance` эрхтэй хүнд НЭЭЛТТЭЙ',
-    !(await runTool('query_feature', { id: 'ds:cashflow2', stats: [{ op: 'count', field: 'ObjectID', as: 'n' }] }, 'all')).isError,
+    !(await runTool('query_feature', { id: 'ds:cashflow2', stats: [{ op: 'count', field: CASHFLOW2.oid, as: 'n' }] }, 'all')).isError,
   );
   check(
     'санхүү `finance` эрхгүй хүнд ХААЛТТАЙ',
@@ -234,10 +267,11 @@ async function main() {
   check('тойм амжилттай', !ov.isError, ov.text.slice(0, 140));
   const o = ov.isError ? {} : JSON.parse(ov.text);
   check('олон эх сурвалжаас өгөгдөл олов', (o.sources?.length ?? 0) >= 5, `${o.sources?.length}`);
-  check('өртөг тооцоологдов', (o.totalCost ?? 0) > 0, `${o.totalCost}`);
+  // ⚠️ 2026-08-24: «өртөг тооцоологдов» шалгуур ХАСАГДАВ — `negj_une` дээр
+  //    тогтсон өртгийн загвар зохиомол өгөгдөлтэй байсан тул бүрмөсөн устсан.
   check('давхарга БА өгөгдлийн эх сурвалж хоёулаа орсон', o.sources?.some((x) => x.id.startsWith('ds:')) ?? false);
   check('хэмжээ хүний нэгжээр гарав', o.sources?.some((x) => /га|км|м²|м$/.test(x.qty ?? '')) ?? false);
-  console.log(`     → ${o.sources?.length} эх сурвалж · ${((o.totalCost ?? 0) / 1e9).toFixed(1)} тэрбум ₮ · ${((Date.now() - t0) / 1000).toFixed(1)}с`);
+  console.log(`     → ${o.sources?.length} эх сурвалж · ${((Date.now() - t0) / 1000).toFixed(1)}с`);
 
   check(
     'бичиглэл өөр байсан ч таарна («Багц 1»)',
@@ -287,11 +321,18 @@ async function main() {
   const p = bp.isError ? {} : JSON.parse(bp.text);
   check('113 блок', p.blocks === 113, `${p.blocks}`);
   check('8,575 айл', p.ail === 8575, `${p.ail}`);
-  // ⚠️ Дашбоардын толгойн тоотой ТААРАХ ёстой (18.2–18.4%). Зөрвөл `blockProgress`
-  //    эсвэл ажлын хуудасны өгөгдөл өөрчлөгдсөн — хүн шалгах ёстой.
-  check('нийт гүйцэтгэл дашбоардтай таарна', p.overall >= 15 && p.overall <= 22, `${p.overall}%`);
+  /* ⚠️ 2026-08-27: урьд нь «18.2–18.4%» гэсэн ХАТУУ хүрээ байв — тэр тоо
+     `Selbe_guitsetgel_consolidated` (одоо хаагдсан) дээр тогтсон байсан. Эх
+     сурвалж `Bagts_*` бөглөх хуудсууд руу шилжсэн бөгөөд гүйцэтгэл тэнд
+     дөнгөж орж эхэлж байгаа тул хатуу хүрээ тавибал тест байнга улаан байж,
+     ЖИНХЭНЭ эвдрэлийг далдална. Тоо БОДОГДОЖ байгаа эсэхийг л барина —
+     хэрэглэгчийн харах тоог `blockProgress.check` ба `monitor.check`
+     (цагираг ↔ муруйн төгсгөл) баталгаажуулна. */
+  check('нийт гүйцэтгэл бодогдов', Number.isFinite(p.overall) && p.overall >= 0 && p.overall <= 100, `${p.overall}%`);
   check('багц бүрээр задарсан', (p.byBagts?.length ?? 0) === 7, `${p.byBagts?.length}`);
-  check('бүртгэсэн ба бодит хувь ХОЁУЛАА бий', p.byBagts?.every((b) => 'actual' in b && 'recorded' in b));
+  // ⚠️ 2026-08-24: 'recorded' (давхаргын хуучирсан GUITS_HV) эх өгөгдлөөс гарсан —
+  //    нэгтгэсэн data/112-т тэр талбар байхгүй тул зөвхөн 'actual' үлдэв.
+  check('бодит хувь бий', p.byBagts?.every((b) => 'actual' in b));
   check('хамгийн хоцорсон блокууд гарав', (p.slowest?.length ?? 0) > 0);
   check('эрхгүй бол тооцоолол ч хаалттай', (await runTool('compute', { kind: 'building_progress' }, [])).isError);
   console.log(`     → ${p.blocks} блок · ${p.ail} айл · нийт ${p.overall}%`);

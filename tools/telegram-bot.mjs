@@ -26,8 +26,14 @@ import { toHtml, stripHtml } from './telegram-format.mjs';
 const API = 'https://api.telegram.org';
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 
-/** ⚠️ Ажиллах үед зөвшөөрсөн хэрэглэгчид — git-д ОРОХГҮЙ */
-const USERS_FILE = 'telegram-users.json';
+/**
+ * ⚠️ Ажиллах үед зөвшөөрсөн хэрэглэгчид — git-д ОРОХГҮЙ.
+ *
+ * ⚠️ `TELEGRAM_USERS_FILE`-ээр замыг СОЛИНО: Docker/24-7 байршуулалтад энэ файл
+ * тусдаа volume-д (жиш. `/data/telegram-users.json`) байвал контейнер дахин
+ * эхлэх/шинэчлэгдэхэд зөвшөөрсөн жагсаалт УСТАХГҮЙ. Заагаагүй бол CWD-д унана.
+ */
+const USERS_FILE = process.env.TELEGRAM_USERS_FILE || 'telegram-users.json';
 
 /**
  * `.env.local`-ын жагсаалт: `<id>[:<харагдац|харагдац>]` таслалаар.
@@ -50,6 +56,36 @@ function parseList(raw) {
  * зөвшөөрөгдмөгц гинжин урвал болж, хаалга бүрмөсөн нээгдэнэ.
  */
 const ADMINS = parseList(process.env.TELEGRAM_ALLOWED);
+
+/**
+ * ⚠️ «✅ Зөвшөөрөх» ТОВЧНЫ ЭРХ — ИЛ ЖАГСААЛТ, `'all'` БИШ.
+ *
+ * Урьд нь `'all'` хадгалдаг байсан бөгөөд `registry.allowedDatasets` нь
+ * `scope === 'all'` үед DATASETS-ийг ЯМАР Ч шүүлтгүй буцаадаг. Улмаар
+ * `sensitive: true` тэмдэгтэй хоёр датасет — `ds:cashflow2` (гэрээний дүн,
+ * захирамж, сарын хуваарь) ба `ds:ipc` (олгосон санхүүжилт, төлбөр) —
+ * хамт нээгддэг байв. Гэтэл админд харагдах баталгаа нь «санхүүгээс бусад»
+ * гэж бичдэг: товчийг дарсан админ санхүү хаалттай гэж итгээд нээж, шинэ
+ * хэрэглэгч гэрээний дүнг шууд асууж авдаг байлаа. Тэр хоёр датасет
+ * `view: 'pkgFin'` тул ИЛ жагсаалтаас `pkgFin` ба `finance` хоёрыг хасахад
+ * л хаалт бодитоор үйлчилнэ.
+ *
+ * ⚠️ Энэ жагсаалт `services.ts`-ийн `ViewKey`-тэй ГАР АРГААР синк байна —
+ * шинэ харагдац нэмэгдвэл энд бас нэмнэ (санхүүгийнх бол НЭМЭХГҮЙ).
+ * ⚠️ Хуучин `telegram-users.json`-д `"views": "all"` гэж хадгалагдсан
+ * бичлэгүүд ХЭВЭЭР үлдэнэ — шаардвал файлаас нь гараар засна.
+ */
+const FULL_VIEWS = [
+  'dashboard', 'plan', 'pkgProg', 'gazar', 'analysis', 'huvaari',
+  'tailan', 'habea', 'irged', 'iot', 'ersdel', 'zovshoorol', 'guitsetgel', 'schem',
+];
+
+/**
+ * «🔵 Зөвхөн төлөвлөлт».
+ * ⚠️ `'bagts'` нь 2026-08-27-нд `ViewKey`-ээс ХАСАГДСАН хий түлхүүр байсан
+ * (`VIEW_BY_KEY.bagts === undefined`) — үүргийг нь `pkgProg` авсан.
+ */
+const PLAN_VIEWS = ['plan', 'pkgProg'];
 
 if (!TOKEN) {
   console.error('✗ TELEGRAM_BOT_TOKEN алга. `.env.local`-д тавиад `npm run bot`.');
@@ -208,13 +244,13 @@ async function handleCallback(cb) {
     note = 'Татгалзлаа';
     await reply(targetId, 'Хандалтын хүсэлт татгалзагдлаа.').catch(() => {});
   } else {
-    const views = action === 'plan' ? ['plan', 'bagts'] : 'all';
+    const views = action === 'plan' ? PLAN_VIEWS : FULL_VIEWS;
     // Хүсэлт үүсэх үед хадгалсан нэрийг (pending) уншина — `cb.data_name` гэж
     // Telegram callback-т байдаггүй талбар байсан тул нэр үргэлж хоосон үлддэг байв.
     users[targetId] = { views, name: pending.get(targetId) ?? '', at: new Date().toISOString() };
     saveUsers();
     pending.delete(targetId);
-    note = views === 'all' ? 'Бүх эрхээр зөвшөөрлөө' : 'Төлөвлөлтийн эрхээр зөвшөөрлөө';
+    note = action === 'plan' ? 'Төлөвлөлтийн эрхээр зөвшөөрлөө' : 'Санхүүгээс бусад бүх эрхээр зөвшөөрлөө';
     await reply(
       targetId,
       'Хандалт нээгдлээ! 🎉\n\nАсуултаа монголоор бичнэ үү.\n/help — заавар',

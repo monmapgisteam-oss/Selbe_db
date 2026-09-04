@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import React, { Fragment, useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import type { Async } from '@/lib/useAsync';
 import { Icon } from './Icon';
@@ -26,6 +26,31 @@ const tone = (c?: string) => ({ '--tone': c ?? 'var(--data)' }) as CSSProperties
  * харагдаж, алдаа нүдэнд шууд илэрнэ.
  */
 const fin = (v: number) => (Number.isFinite(v) ? v : 0);
+
+/**
+ * Элементийн ОДООГИЙН өргөн (px). Хэмжигдэх хүртэл 0.
+ *
+ * ⚠️ 2026-08-20: Тэнхлэгийн шошгыг ХЭД бичих вэ гэдэг нь ЗӨВХӨН өргөнөөс
+ * шалтгаална. Тогтмол тоо нь хоёр талдаа буруу байв: 272px картад «2026-07-20»
+ * гэсэн 6 огноо багтахгүй давхарлана, 800px өргөнтэй IoT-ийн том чартад 6 нь
+ * хэт цөөн. Иймд ТООГ бус, ЗАЙГ шалгуур болгоно.
+ */
+function useWidth<T extends HTMLElement>(): [React.RefObject<T | null>, number] {
+  const ref = useRef<T>(null);
+  const [w, setW] = useState(0);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    // ⚠️ Эхний утгыг ШУУД тавина: ResizeObserver-ийн эхний дуудлага дараагийн
+    //    frame-д ирдэг тул «хэмжээгүй» (хамгийн цөөн шошготой) хувилбар нэг
+    //    кадр анивчиж харагдана.
+    setW(el.getBoundingClientRect().width);
+    const ro = new ResizeObserver(([e]) => setW(e.contentRect.width));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return [ref, w];
+}
 
 /* ── Хулганы тайлбар (tooltip) ─────────────────────────────────────────────
    ЭКСПОРТЛОХГҮЙ дотоод хэрэгсэл. `Bars`/`Stack`/`Series`/`Donut` дөрвүүлээ
@@ -152,22 +177,56 @@ export function Section({
   title,
   note,
   tone,
+  fill,
+  collapsible,
+  defaultClosed,
   children,
 }: {
   title?: ReactNode;
   note?: ReactNode;
   tone?: 'primary';
+  /**
+   * Агуулгыг картын ҮЛДСЭН ӨНДРӨӨР сунгана (босоо flex).
+   *
+   * ⚠️ Тогтмол өндөртэй чарт нь мөрийн бусад картаар СУНГАСАН картын дотор
+   * дээд талд наалдаж, доор нь том хоосон талбай үлдээдэг: ХАБЭА-гийн
+   * «Ажилтан — гүйцэтгэгчээр» дээр 110px чарт нь ~290px картын дөнгөж 40%-ийг
+   * эзэлж байв. `fill` нь тэр зайг чартад өгнө.
+   */
+  fill?: boolean;
+  /**
+   * ХУРААГДДАГ хэсэг — гарчиг дээр дарж хаана/нээнэ. ⚠️ САНАДАГГҮЙ
+   * (2026-08-21, хэрэглэгчийн хүсэлт): refresh хийхэд ҮРГЭЛЖ `defaultClosed`
+   * төлөвтөө буцна — «үзье гэсэн нь нээж харна» зарчим.
+   */
+  collapsible?: boolean;
+  /** Анхдагч нь ХААЛТТАЙ эхэлнэ (зөвхөн collapsible үед утгатай) */
+  defaultClosed?: boolean;
   children: ReactNode;
 }) {
+  const [closed, setClosed] = useState(!!(collapsible && defaultClosed));
+  const toggle = () => setClosed((v) => !v);
   return (
-    <section className={`${s.section} ${tone === 'primary' ? s.sectionPrimary : ''}`}>
+    <section
+      className={`${s.section} ${tone === 'primary' ? s.sectionPrimary : ''} ${fill ? s.sectionFill : ''} ${collapsible && closed ? s.sectionClosed : ''}`}
+    >
       {title && (
         <header className={s.sectionHead}>
-          <h3 className={s.sectionTitle}>{title}</h3>
+          {collapsible ? (
+            /* Гарчиг бүхэлдээ товч — жижиг сум онилохоос хялбар */
+            <h3 className={s.sectionTitle}>
+              <button type="button" className={s.secToggle} aria-expanded={!closed} onClick={toggle}>
+                <span className={`${s.secCaret} ${closed ? s.secCaretOff : ''}`} aria-hidden>▾</span>
+                {title}
+              </button>
+            </h3>
+          ) : (
+            <h3 className={s.sectionTitle}>{title}</h3>
+          )}
           {note && <span className={s.sectionNote}>{note}</span>}
         </header>
       )}
-      {children}
+      {(!collapsible || !closed) && children}
     </section>
   );
 }
@@ -204,16 +263,6 @@ export function Split(
 /** Хэсгийн доторх тайлбар бичвэр */
 export function Note({ children }: { children: ReactNode }) {
   return <p className={s.noteText}>{children}</p>;
-}
-
-/** Хэсгийн доторх дэд гарчиг — Section-ыг дахин давхарлахгүйгээр бүлэглэнэ */
-export function SubHead({ children, note }: { children: ReactNode; note?: ReactNode }) {
-  return (
-    <div className={s.subHead}>
-      {children}
-      {note && <span className={s.subNote}>{note}</span>}
-    </div>
-  );
 }
 
 /* ── Таб ── */
@@ -298,8 +347,15 @@ export function Tabs({
 /* ── Үзүүлэлт ── */
 
 export function Stats({ cols = 2, children }: { cols?: 2 | 3 | 4; children: ReactNode }) {
+  /**
+   * ⚠️ `statsGrid` — ГЛОБАЛ нэр (CSS модулиар хэшлэгддэггүй). Дуудагч модуль
+   * тухайн БАЙРЛАЛД нь тааруулж баганын тоог дарж бичихэд хэрэгтэй: дашбоардын
+   * дэлгэрэнгүй горимд газрын зургийн ДЭЭД/ДООД нүд нь 1700px өргөн тул тэнд
+   * 2 багана нь картыг 5 мөр өндөрсгөж, хажуугийн 300px баганад 4 багана нь
+   * шахагдана. Эх сурвалж нь `cols` хэвээр — энэ нь зөвхөн байрлалын залруулга.
+   */
   return (
-    <div className={`${s.stats} ${cols === 3 ? s.stats3 : ''} ${cols === 4 ? s.stats4 : ''}`}>
+    <div className={`${s.stats} statsGrid ${cols === 3 ? s.stats3 : ''} ${cols === 4 ? s.stats4 : ''}`}>
       {children}
     </div>
   );
@@ -318,13 +374,29 @@ export function Stat({
   color?: string;
   accent?: boolean;
 }) {
+  /**
+   * ⚠️ `statCard` / `statNum` / `statTag` — ГЛОБАЛ нэрс (`statsGrid`-тэй ижил
+   * зарчим). Дуудагч модуль тухайн харагдацын дизайнд тааруулж дарж бичихэд
+   * хэрэгтэй: Ерөнхий дашбоардын дэлгэрэнгүй горим нь НЯГТ аналитик хэл рүү
+   * шилжсэн тул тэнд өнгөт tint, сийрэг зай, 26px нөөцлөсөн шошгын мөр
+   * гурвуулаа хүчингүй болно (`overview.module.css` → «НЯГТ ХЭЛ»).
+   */
+  /**
+   * ⚠️ 2026-09-01: мөнгөн дүн бүтнээр бичигдэх болсноор утга 17 тэмдэгт хүрдэг
+   *    («2,660,000,000,000 ₮») — 16px-ээр нарийхан KPI нүднээс халж, хоёр мөр
+   *    болно. Тайрахгүй (дүн тасарвал ХУДАЛ уншигдана), фонтоо БАГАСГАНА.
+   *    Уртыг зөвхөн энгийн утганд хэмжинэ — `ReactNode` бол мэдэх аргагүй.
+   */
+  const long = typeof value === 'string' || typeof value === 'number'
+    ? String(value).length >= 10
+    : false;
   return (
-    <div className={`${s.stat} ${accent ? s.statAccent : ''}`} style={tone(color)}>
-      <div className={`${s.statValue} num`}>
+    <div className={`${s.stat} statCard ${accent ? s.statAccent : ''}`} style={tone(color)}>
+      <div className={`${s.statValue} ${long ? s.statValueLong : ''} statNum num`}>
         {value}
         {unit && <span className={s.statUnit}>{unit}</span>}
       </div>
-      <div className={s.statLabel}>{label}</div>
+      <div className={`${s.statLabel} statTag`}>{label}</div>
     </div>
   );
 }
@@ -370,7 +442,7 @@ export function Bars({
   const shown = hidden > 0 ? items.slice(0, limit) : items;
 
   return (
-    <div className={s.bars}>
+    <div className={`${s.bars} barsList`}>
       {shown.map((it) => {
         const w = Math.max(0, Math.min(100, (fin(it.value) / top) * 100));
         const on = sel.includes(it.key);
@@ -664,6 +736,46 @@ export function Donut({
     const LW = PAD - GAP - GUTTER - 2; // шошгын хайрцгийн өргөн — бүтэн үг багтаана
     const vbW = size + PAD * 2;
     const vbH = size + PADY * 2;
+
+    /*
+     * ── ШОШГЫН ДАВХЦАЛЫГ ТАРААХ ─────────────────────────────────────────
+     * ⚠️ Шошго бүр зүсмэгийнхээ ДУНД ӨНЦГИЙН өндөрт тавигддаг байв. Хоёр
+     *    зүсмэг өнцгөөрөө ойрхон (жижиг хувьтай хөрш зүсмэгүүд) бол шошго
+     *    нь бие бие дээрээ бичигдэж, аль аль нь уншигдахгүй болно —
+     *    цагираг бүрд, ялангуяа нэг эх үүсвэр давамгайлсан үед үргэлж
+     *    тохиолддог.
+     *
+     *    Засвар: тал бүрийг (баруун/зүүн) дээрээс доош эрэмбэлж, хөрш
+     *    хоёрын хооронд `MIN_GAP` зайг АЛБАДНА. Зураас нь зүсмэгээсээ
+     *    шилжсэн шошго руу татагдсаар үлдэх тул холбоо алдагдахгүй.
+     */
+    const MIN_GAP = 26;
+    const laid = slices.map((sl) => {
+      const mid = sl.offset + sl.frac / 2;
+      const th = mid * 2 * Math.PI;
+      const sin = Math.sin(th);
+      const cos = Math.cos(th);
+      const right = sin >= 0;
+      return {
+        sl,
+        sx: cx + Ro * sin,
+        sy: cy - Ro * cos,
+        ex: cx + (Ro + 12) * sin,
+        ey: cy - (Ro + 12) * cos,
+        right,
+        lx: right ? cx + Ro + GAP : cx - Ro - GAP,
+      };
+    });
+    ([true, false] as const).forEach((side) => {
+      const col = laid.filter((x) => x.right === side).sort((a, b) => a.ey - b.ey);
+      for (let i = 1; i < col.length; i += 1) {
+        const need = col[i - 1].ey + MIN_GAP;
+        if (col[i].ey < need) col[i].ey = need;
+      }
+      /* Доод ирмэгээс халисан бол БҮГДИЙГ дээш нь шилжүүлнэ */
+      const over = col.length ? col[col.length - 1].ey - (vbH - PADY - 8) : 0;
+      if (over > 0) col.forEach((x) => { x.ey -= over; });
+    });
     return (
       <div className={s.donutLead}>
         <svg
@@ -697,17 +809,7 @@ export function Donut({
           <text x={cx} y={cy - 1} textAnchor="middle" className={s.donutLeadCtr}>{String(center ?? total)}</text>
           {centerLabel && <text x={cx} y={cy + 12} textAnchor="middle" className={s.donutLeadCtrLbl}>{centerLabel}</text>}
           {/* Зураас + гадна БҮТЭН шошго (foreignObject — HTML мөр даруулна) */}
-          {slices.map((sl) => {
-            const mid = sl.offset + sl.frac / 2;
-            const th = mid * 2 * Math.PI;
-            const sin = Math.sin(th);
-            const cos = Math.cos(th);
-            const sx = cx + Ro * sin;
-            const sy = cy - Ro * cos;
-            const ex = cx + (Ro + 12) * sin;
-            const ey = cy - (Ro + 12) * cos;
-            const right = sin >= 0;
-            const lx = right ? cx + Ro + GAP : cx - Ro - GAP;
+          {laid.map(({ sl, sx, sy, ex, ey, right, lx }) => {
             // Текст зурааснаас GUTTER-ийн зайд — давхацахгүй
             const boxX = right ? lx + GUTTER : -PAD + 2;
             const pct = sl.display ?? `${sl.frac > 0 && sl.frac < 0.005 ? '<1' : (sl.frac * 100).toFixed(0)}%`;
@@ -799,12 +901,12 @@ export function Donut({
             const h = hovOn ? slices.find((x) => x.key === hovOn) : null;
             return h ? (
               <>
-                <span className={`${s.donutValue} num`}>{h.value}</span>
+                <span className={`${s.donutValue} ${String(h.value).length >= 10 ? s.donutValueLong : ''} num`}>{h.value}</span>
                 <span className={s.donutLabel} title={tr(h.label)}>{tr(h.label)}</span>
               </>
             ) : (
               <>
-                <span className={`${s.donutValue} num`}>{center ?? total}</span>
+                <span className={`${s.donutValue} ${String(center ?? total).length >= 10 ? s.donutValueLong : ''} num`}>{center ?? total}</span>
                 {centerLabel && <span className={s.donutLabel}>{centerLabel}</span>}
               </>
             );
@@ -882,25 +984,166 @@ export function Donut({
  * `Series` нь БОСОО, цөөн тэмдэгттэй шошготой (он, давхар, эгнээ) цувааг
  * дүрсний хэлбэрээр нь уншуулна — өсөлт/бууралтын хэв маяг шууд харагдана.
  */
+/**
+ * Цэгүүдийг дайрсан ЗӨӨЛӨН муруйн зам (Catmull-Rom → кубик Безье).
+ *
+ * ⚠️ Хяналтын цэгийн уртыг 1/6 гэж авсан нь стандарт Catmull-Rom→Bézier
+ * хувиргалт: үүнээс их авбал муруй цэгийн хооронд «дүүжлэгдэж» өгөгдөлд
+ * байхгүй оргил/хотгор зурна.
+ */
+function smoothPath(pts: { x: number; y: number }[]): string {
+  if (pts.length < 2) return '';
+  let d = `M${pts[0].x},${pts[0].y}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1] ?? pts[i];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[i + 2] ?? p2;
+    const c1x = p1.x + (p2.x - p0.x) / 6;
+    const c1y = p1.y + (p2.y - p0.y) / 6;
+    const c2x = p2.x - (p3.x - p1.x) / 6;
+    const c2y = p2.y - (p3.y - p1.y) / 6;
+    d += `C${c1x},${c1y} ${c2x},${c2y} ${p2.x},${p2.y}`;
+  }
+  return d;
+}
+
+/**
+ * `Series`-ийн МУРУЙН давхарга — талбайн градиент, зөөлөн шугам, цэгүүд.
+ *
+ * Баганын түвшинд (`.seriesPlot`) БҮТЭН талбайг эзэлж хөвнө; hover/дарах нь
+ * доорх баганууд дээр хэвээр ажиллана (энэ давхарга нь `pointer-events: none`).
+ */
+function SeriesLine({
+  items, max, selected, showValues,
+}: {
+  items: { key: string; label: string; value: number; display?: string }[];
+  max: number;
+  selected?: string | null;
+  showValues?: boolean;
+}) {
+  // ⚠️ Нэг хуудсанд хэд хэдэн муруй байж болно — градиентийн id ДАВТАГДВАЛ
+  //    сүүлийнх нь бусдыгаа дардаг (SVG-ийн id баримт даяар нэгдмэл).
+  const gid = `seriesArea${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
+  const n = items.length;
+  if (n < 2) return null;
+  /**
+   * ⚠️ ДЭЭД ЗАЙ: утгыг цэгийн ДЭЭР бичихэд хамгийн өндөр цэгийн шошго зургийн
+   * гадна гарч, `dayScroll`-ын `overflow-y: hidden`-д ТАСАРНА. Тиймээс утга
+   * харуулах үед муруйг 20%-иар доош шахаж толгойн зай гаргана.
+   */
+  const pad = showValues ? 20 : 0;
+  // х нь баганын ТӨВД — доорх огнооны шошготой нэг тэнхлэгт байх ёстой
+  const pts = items.map((it, i) => ({
+    x: ((i + 0.5) / n) * 100,
+    y: pad + (100 - pad) * (1 - fin(it.value) / max),
+  }));
+  const d = smoothPath(pts);
+
+  return (
+    <>
+      <svg className={s.seriesLineSvg} viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
+        <defs>
+          <linearGradient id={gid} x1="0" y1="0" x2="0" y2="100" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stopColor="var(--tone, var(--data))" stopOpacity="0.34" />
+            <stop offset="100%" stopColor="var(--tone, var(--data))" stopOpacity="0.02" />
+          </linearGradient>
+        </defs>
+        {/* Талбай — муруйг доод ирмэг рүү хааж дүүргэнэ */}
+        <path d={`${d} L${pts[n - 1].x},100 L${pts[0].x},100 Z`} fill={`url(#${gid})`} />
+        {/* ⚠️ `vector-effect` — `preserveAspectRatio="none"` нь зурагдлыг сунгадаг
+            тул үүнгүй бол шугамын зузаан хэвтээ/босоо чиглэлд өөр болно. */}
+        <path className={s.seriesLinePath} d={d} />
+      </svg>
+      {pts.map((p, i) => {
+        const dim = selected != null && selected !== items[i].key ? 0.22 : 1;
+        return (
+          <Fragment key={items[i].key}>
+            <span
+              className={s.seriesLineDot}
+              style={{ left: `${p.x}%`, top: `${p.y}%`, opacity: dim }}
+            />
+            {showValues && (
+              <span
+                className={s.seriesLineVal}
+                style={{ left: `${p.x}%`, top: `${p.y}%`, opacity: dim }}
+              >
+                {items[i].display ?? items[i].value}
+              </span>
+            )}
+          </Fragment>
+        );
+      })}
+    </>
+  );
+}
+
 export function Series({
   items,
   color,
   height = 96,
   unit,
+  grow = false,
   selected,
   onSelect,
+  showValues = false,
+  outline = false,
+  line = false,
 }: {
   items: { key: string; label: string; value: number; display?: string }[];
   color?: string;
   height?: number;
   unit?: string;
+  /**
+   * `height`-ийг ХАМГИЙН БАГА өндөр гэж үзэж, картын үлдсэн зайг дүүргэнэ.
+   * Эцэг нь `Section fill` (эсвэл өөр босоо flex) байх ёстой.
+   */
+  grow?: boolean;
   /** Сонгосон баганын key — идэвхтэй бол бусад нь бүдгэрнэ */
   selected?: string | null;
   /** Багана дарахад — байвал цуваа шүүлтийн удирдлага болно */
   onSelect?: (key: string) => void;
+  /**
+   * Багана бүрийн оройд утгыг БАЙНГА бичих.
+   *
+   * ⚠️ Анхдагчаар УНТРААЛТТАЙ: envhub-ийн BarChart хэл нь утгыг зөвхөн hover-т
+   * харуулдаг (доорх тайлбарыг үз). Багана цөөн, өргөн үед л асаана — олон
+   * нарийн багана дээр цифрүүд бие бие рүүгээ орно.
+   */
+  showValues?: boolean;
+  /** Багана нь бүтэн дүүргэлтгүй — зах нь бүтэн өнгө, дотор нь бүдэг */
+  outline?: boolean;
+  /**
+   * Баганын оронд ЗӨӨЛӨН МУРУЙ (талбайн градиент + цэг).
+   *
+   * ⚠️ Цэгийн х-байрлал нь баганын ТӨВД тааруулагдана (`(i+0.5)/n`) — доорх
+   * огнооны шошготой ЯГ нэг босоо тэнхлэгт байх ёстой. `i/(n-1)` гэвэл эхний
+   * цэг зүүн ирмэг дээр гарч шошгоосоо хагас нүд зөрнө.
+   * ⚠️ `showValues` энэ горимд ҮЙЛЧЛЭХГҮЙ: цэг бүрийн дээр тоо бичвэл олон
+   *    цэгтэй цуваанд давхцана. Утга нь hover-т гарсаар байна.
+   */
+  line?: boolean;
 }) {
   const max = Math.max(1, ...items.map((i) => fin(i.value)));
   const tip = useTip();
+  const [ticksRef, ticksW] = useWidth<HTMLDivElement>();
+
+  /**
+   * Шошгыг ХЭД ДАМЖИЖ бичих вэ (1 = бүгд).
+   *
+   * ⚠️ 2026-08-20: Урьд нь шошго бүр өөрийн баганынхаа өргөнд шахагдаж,
+   * `text-overflow: ellipsis`-ээр тайрагддаг байв. ХАБЭА-гийн «Сарын явц»-д
+   * 11 сар нь ~26px багана болж, «25.09» бүгд «25…» болон хувирч тэнхлэг нь
+   * МЭДЭЭЛЭЛГҮЙ үлддэг байлаа. Одоо шошгыг ТАЙРАХГҮЙ — багтахгүй бол ЦӨӨЛНӨ:
+   * зурагдсан шошго нь хөрш хоосон нүднүүд рүү чөлөөтэй тэлнэ (`seriesLabelWide`).
+   *
+   * ⚠️ Сүүлийн баганаас ХОЙШ тоолно — хамгийн сүүлийн (хамгийн шинэ) үе нь
+   * ҮРГЭЛЖ шошготой байх ёстой.
+   */
+  const LBL_CH = 5.6; // 10px Inter — дундаж тэмдэгтийн өргөн
+  const need = Math.max(...items.map((i) => i.label.length)) * LBL_CH + 8;
+  const perCol = ticksW > 0 ? ticksW / items.length : 0;
+  const stride = perCol > 0 ? Math.max(1, Math.ceil(need / perCol)) : 1;
 
   /**
    * ⚠️ 2026-08-17: envhub-ийн BarChart хэл — ТОРГҮЙ, ТЭНХЛЭГГҮЙ, баганан дээр
@@ -908,8 +1151,19 @@ export function Series({
    * мөр. Сонгогдоогүй багана 0.22 хүртэл бүдгэрнэ.
    */
   return (
-    <div className={s.series} style={tone(color)}>
-      <div className={s.seriesPlot} style={{ height }}>
+    <div className={`${s.series} seriesChart`} style={tone(color)}>
+      {/**
+        * ⚠️ 2026-08-20: Нэгж нь чартын ДООД талд байсныг ДЭЭШ гаргав. Доор нь
+        * тэнхлэгийн шошгын мөрийн ЯГ дор, баруун тийш зэрэгцэн зурагддаг тул
+        * ХАБЭА-гийн «Ажилтан — гүйцэтгэгчээр» дээр «ажилтан» гэдэг нь сүүлийн
+        * баганын («МСК») нэрийн ХОЁР ДАХЬ МӨР мэт уншигдаж байлаа.
+        */}
+      {unit && <div className={s.seriesUnit}>{unit}</div>}
+      <div
+        className={s.seriesPlot}
+        style={grow ? { flex: 1, minHeight: height } : { height }}
+      >
+        {line && <SeriesLine items={items} max={max} selected={selected} showValues={showValues} />}
         {items.map((it) => {
           const on = selected === it.key;
           const dim = selected != null && !on;
@@ -922,7 +1176,20 @@ export function Series({
             color,
             hint: onSelect ? tr('Дарж шүүнэ') : undefined,
           };
-          const inner = <span className={s.seriesBar} style={{ height: barH, opacity: dim ? 0.22 : 1 }} />;
+          // Муруйн горимд багана нь ЗӨВХӨН hover/дарах талбай — зурагдахгүй
+          const inner = line ? null : (
+            <>
+              {showValues && (
+                <span className={s.seriesVal} style={{ opacity: dim ? 0.22 : 1 }}>
+                  {it.display ?? it.value}
+                </span>
+              )}
+              <span
+                className={outline ? `${s.seriesBar} ${s.seriesBarOutline}` : s.seriesBar}
+                style={{ height: barH, opacity: dim ? 0.22 : 1 }}
+              />
+            </>
+          );
           return onSelect ? (
             <button
               key={it.key}
@@ -946,17 +1213,21 @@ export function Series({
           );
         })}
       </div>
-      <div className={s.seriesTicks} aria-hidden>
-        {items.map((it) => {
+      <div className={s.seriesTicks} aria-hidden ref={ticksRef}>
+        {items.map((it, i) => {
           const on = selected === it.key;
+          // Сүүлчийнхээс хойш тоолсон алхам — хамгийн шинэ үе ҮРГЭЛЖ бичигдэнэ.
+          const show = (items.length - 1 - i) % stride === 0;
           return (
-            <span key={it.key} className={`${s.seriesLabel} num ${on ? s.seriesLabelOn : ''}`}>
-              {tr(it.label)}
+            <span
+              key={it.key}
+              className={`${s.seriesLabel} num ${on ? s.seriesLabelOn : ''} ${stride > 1 ? s.seriesLabelWide : ''}`}
+            >
+              {show ? tr(it.label) : ''}
             </span>
           );
         })}
       </div>
-      {unit && <div className={s.seriesUnit}>{unit}</div>}
       {tip.node}
     </div>
   );
@@ -1025,26 +1296,69 @@ export type TrendPoint = {
  * тэнхлэг нь уншигдахааргүй бараан зурвас болдог байлаа. Одоо хамгийн ихдээ
  * `MAX_TICKS` ширхгийг тэнцүү алхмаар сонгоно (эхний ба сүүлийнх ЗААВАЛ орно —
  * цувааны хамрах хүрээг тэд хэлнэ), бусад нь хоосон мөр буцаж зурагдахгүй.
+ *
+ * ⚠️ 2026-08-20: ТООГ хязгаарлах нь ХҮРЭЛЦЭЭГҮЙ байв. `Math.round(i * step)`
+ * нь `step < 2` үед ЗЭРГЭЛДЭЭ индексүүдийг сонгодог: 8 цэгтэй цуваанд
+ * `step = 1.4` → {0,1,3,4,6,7} буюу 0–1 ба 6–7 хос нь нэг нэгэн дээрээ
+ * бичигддэг. Ерөнхий дашбоардын «Гүйцэтгэлийн явц» дээр «2025-10-31» ба
+ * «11-02» бүрмөсөн давхарлаж, IoT-ийн 9 чарт дээр тэнхлэг нь бүхэлдээ
+ * будлиантай зурвас болж байлаа.
+ *
+ * Одоо шошгын хоорондох ХАМГИЙН БАГА ЗАЙГ (`TICK_PX`) баталгаажуулна:
+ * хэмжсэн өргөнөөс индексийн алхмыг гаргаж, БҮХЭЛ тоон алхмаар түгээнэ —
+ * ингэснээр дугуйруулалт зайг богиносгох боломжгүй.
  */
 const MAX_TICKS = 6;
-function axisTicks(points: TrendPoint[]): string[] {
+/** 10px Inter — тоо/зураас/цэгийн дундаж өргөн (px). Шошго нь `.num` (tabular). */
+const LBL_CH = 5.6;
+function axisTicks(points: TrendPoint[], width: number): string[] {
   const n = points.length;
-  const keep = new Set<number>();
-  if (n <= MAX_TICKS) {
-    for (let i = 0; i < n; i++) keep.add(i);
-  } else {
-    const step = (n - 1) / (MAX_TICKS - 1);
-    for (let i = 0; i < MAX_TICKS; i++) keep.add(Math.round(i * step));
+  const keep = new Set<number>([0, n - 1]);
+  // Хэмжигдээгүй (эхний кадр) эсвэл 2 цэгтэй бол зөвхөн хоёр ирмэг.
+  if (n > 2 && width > 0) {
+    /**
+     * Шошгонд хэрэгтэй зайг ТОГТМОЛ БИШ, БОДИТ уртаас нь гаргана.
+     *
+     * ⚠️ Тогтмол 62px («2026-07-20») нь IoT-д хүрэлцээгүй байв: тэнд шошго нь
+     * «08-13 19:00» (11 тэмдэгт), оны эхний нь «2026-08-13 19:00» (16 тэмдэгт
+     * ≈ 100px) хүрдэг тул зэргэлдээ хоёр огноо мөргөлдсөөр байлаа. Хамгийн
+     * УРТ хувилбараар хэмжвэл цуваа бүрд өөрийнх нь өргөн хүчинтэй.
+     */
+    const need = Math.max(...points.map((p) => (p.note ?? p.label).length)) * LBL_CH + 10;
+    const perIdx = width / (n - 1); // хоёр хөрш цэгийн хоорондох px
+    const stride = Math.max(1, Math.ceil(need / perIdx));
+    const t = Math.max(2, Math.min(MAX_TICKS, Math.floor((n - 1) / stride) + 1));
+    // ⚠️ БҮХЭЛ алхам (`Math.floor`) — бутархай алхмыг дугуйруулбал зарим хос
+    //    хөрш болж, яг хуучин алдаа руугаа буцна.
+    const step = Math.max(stride, Math.floor((n - 1) / (t - 1)));
+    // ⚠️ `i * step < n - 1` шалгалт ЗААВАЛ: маш нарийн чарт дээр `stride` нь
+    //    цэгийн тооноос ч давж болно (`t` нь 2 болж хязгаарлагдана) — тэгвэл
+    //    индекс массиваас хальж, тэнхлэгийн ГАДНА (left > 100%) шошго үүснэ.
+    for (let i = 1; i < t; i++) if (i * step < n - 1) keep.add(i * step);
+    // ⚠️ Сүүлийн шошго ЗААВАЛ ирмэг дээр. Дотоод сүүлчийнх нь түүнтэй хэт
+    //    ойрхон бол НЭМЭХГҮЙ, ОРЛУУЛНА — эс бөгөөс баруун захад хоёр огноо
+    //    давхарлана (яг «06-04 07-20» болж байсан алдаа).
+    const lastTick = (t - 1) * step;
+    if (n - 1 - lastTick < stride) keep.delete(lastTick);
+    keep.add(n - 1);
   }
+  /**
+   * Он нь ЗӨВХӨН сольсон шошгонд бичигдэнэ.
+   *
+   * ⚠️ Оныг ЗУРАГДАХ шошгуудаар л мөшгинө. Урьд нь бүх цэгээр гүйдэг байсан тул
+   * он солигдсон цэг нь алгасагдвал «2026» гэсэн тэмдэглэгээ ХАМААГҮЙ алга
+   * болж, тэнхлэг дээр он огт харагдахгүй үлддэг байв.
+   */
   let year = '';
-  return points.map((p, i) => {
-    const d = p.note ?? p.label;
+  const out = points.map(() => '');
+  [...keep].sort((a, b) => a - b).forEach((i) => {
+    const d = points[i].note ?? points[i].label;
     const y = d.slice(0, 4);
     const full = !/^\d{4}-/.test(d) || y !== year;
     if (full) year = y;
-    if (!keep.has(i)) return '';
-    return full ? d : d.slice(5);
+    out[i] = full ? d : d.slice(5);
   });
+  return out;
 }
 
 export function Trend({
@@ -1052,32 +1366,105 @@ export function Trend({
   color,
   height = 132,
   unit = '%',
+  fmt,
+  visible,
+  showValues = false,
+  alert,
 }: {
   points: TrendPoint[];
   color?: string;
   height?: number;
   unit?: string;
+  /**
+   * Утгыг ХЭРХЭН бичих. Анхдагч нь `.toFixed(1)` — хувь, коэффициентэд тохирно.
+   * ⚠️ 2026-09-01 нэмэв: мөнгөн дүн бүтнээр бичигдэх болсон тул
+   *    `2660000000000.0` гэж гарахаас сэргийлж `format.mnt`-ийг дамжуулна.
+   */
+  fmt?: (v: number) => string;
+  /**
+   * Нэг дэлгэцэнд ХЭДЭН цэг багтах вэ. Заавал бол зурагдах талбар нь
+   * хэвтээ гүйдэг болж, тэнхлэгт цэг БҮРИЙН огноо/цаг хоёр мөрөөр гарна.
+   * Орхивол хуучин зан хэвээр: бүх цэг өргөнд шахагдаж, тэнхлэгт хамгийн
+   * ихдээ `MAX_TICKS` шошго л гарна.
+   */
+  visible?: number;
+  /** Цэг бүрийн утгыг муруйн дээр тоогоор бичих эсэх. */
+  showValues?: boolean;
+  /**
+   * Анхааруулгын босго — шугам зурж, түүнээс ДЭЭШ гарсан цэгүүдийг улаанаар
+   * онцолно. Чиглэл нь үргэлж «дээш» (дуудагч тал утгаа тэр дагуу сонгоно).
+   */
+  alert?: { value: number; note?: string };
 }) {
   const [hov, setHov] = useState<number | null>(null);
+  // Тэнхлэгийн БОДИТ өргөн — хэдэн шошго давхцалгүй багтахыг үүгээр шийднэ.
+  const [axisRef, axisW] = useWidth<HTMLDivElement>();
   // ⚠️ Нэг хуудсанд хэд хэдэн Trend байж болно — градиентийн id ДАВТАГДВАЛ
   //    сүүлийнх нь бусдыгаа дардаг (SVG-ийн id нь баримт даяар нэгдмэл).
   //    React 19-ийн `useId` нь CSS/`url(#…)`-д хүчинтэй тэмдэгт л гаргана.
   const gradId = `trendArea${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
 
+  /** Утга бичих дүрэм — өгөөгүй бол хувийн анхдагч (нэг аравтын орон) */
+  const fmtV = fmt ?? ((v: number) => v.toFixed(1));
+
   // ⚠️ Цуваа солигдоход (grain/хамрах хүрээ) хуучин hov хүчингүй болно — цэгийн
   //    товч unmount болоход React blur/mouseleave өгдөггүй тул энд цэвэрлэнэ.
   useEffect(() => setHov(null), [points.length]);
+
+  /**
+   * ⚠️ Анхны харагдац нь СҮҮЛИЙН заалт байх ёстой: цаг хугацааны цуваанд
+   * хамгийн эхний хайдаг зүйл нь «одоо хэд байна» гэдэг. Гүйлт нь анхдаа
+   * зүүн (хамгийн ХУУЧИН) ирмэгээс эхэлдэг тул баруун тийш нь шидэв.
+   */
+  const scRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = scRef.current;
+    if (el) el.scrollLeft = el.scrollWidth;
+  }, [points.length]);
 
   if (points.length < 2) return <Empty label={tr('Цуваа зурахад хангалттай бүртгэл алга.')} />;
 
   // Тэнхлэгийн дээд хязгаар нь БҮТЭН аравт — 23%-ийн муруйг 0–100 дээр зурвал
   // шулуун шугам болж, өсөлт нь ялгагдахгүй.
-  const peak = Math.max(...points.map((p) => fin(p.value)));
+  /**
+   * ⚠️ Босгыг оргилын тооцоонд ЗААВАЛ оруулна: өгөгдлөөс ДЭЭГҮҮР босго
+   * (жишээ нь 26°C хүрдэг агаарт 28°C-ийн шугам) тэнхлэгээс гарч, шугам нь
+   * ОГТ ЗУРАГДАХГҮЙ — хэрэглэгч босго байхгүй гэж эндүүрнэ.
+   */
+  const peak = Math.max(...points.map((p) => fin(p.value)), alert ? alert.value : 0);
   const top = Math.max(10, Math.ceil(peak / 10) * 10);
+  /**
+   * ⚠️ Утга бичих үед хамгийн өндөр цэг нь y≈0%-д буудаг тул түүний дээрх
+   * бичиг талбайгаас гарч, дээрх уншилтын мөртэй давхарладаг. 1.18 дахин
+   * сунгасан тэнхлэг нь оргилыг ~15%-д буулгаж, бичигт зай гаргана.
+   */
+  const axisTop = showValues ? top * 1.18 : top;
   const x = (i: number) => (i / (points.length - 1)) * 100;
-  const y = (v: number) => 100 - (fin(v) / top) * 100;
+  const y = (v: number) => 100 - (fin(v) / axisTop) * 100;
 
   const path = points.map((p, i) => `${x(i)},${y(p.value)}`).join(' ');
+
+  /** Цэг нь босгоос ДЭЭШ гарсан уу */
+  const over = (v: number) => alert != null && fin(v) > alert.value;
+  const alertY = alert ? y(alert.value) : 0;
+
+  /**
+   * ХЭВТЭЭ ГҮЙЛТ ба ЦЭГ БҮРИЙН ШОШГО — хоёр ТУСДАА шийдэл.
+   *
+   * ⚠️ `perPoint` (цэг бүрд огноо/цаг хоёр мөрөөр) нь гүйлтээс ХАМААРАХГҮЙ.
+   * 2026-08-21-нд эдгээрийг зориуд салгав: урьд нь зөвхөн гүйдэг үед хуваадаг
+   * байсан тул 8-аас ЦӨӨН цэгтэй цуваа (Тоолуурын заалт, Батерейн хүчдэл)
+   * хуучин замаар явж, «08-13 19:46» гэсэн нэг мөрийн шошгууд нарийн картад
+   * давхарладаг байв.
+   *
+   * ⚠️ `innerW` нь `(n-1)/(visible-1)`, `n/visible` БИШ. `x(i)` нь эцсийн
+   * цэгүүдийг ирмэгт тавьдаг тул зэргэлдээ цэгийн зай нь өргөнийг `n-1`-д
+   * хуваасан нь; `n/visible` гэвэл нэг зайгаар алдаж, 8 дахь цэгийг ирмэгээр
+   * таслуулна.
+   */
+  const perPoint = visible != null && visible > 1;
+  const scroll = perPoint && points.length > visible;
+  const innerW = scroll ? ((points.length - 1) / (visible - 1)) * 100 : 100;
   // ⚠️ Индексийг ХЯЗГААРЛАНА: дээрх цэвэрлэгээ рендерийн ДАРАА ажилладаг тул
   //    богиноссон цуваан дээр хуучин hov-оор шууд индекслэвэл cur undefined
   //    болж бүх React мод унана.
@@ -1100,74 +1487,145 @@ export function Trend({
     e.preventDefault();
     // focus() нь onFocus-оор setHov-ийг өөрөө дуудна; preventScroll — самбарын
     // гүйлтийг үсэргэхгүй (Tabs-ын ижил болгоомжлол).
-    e.currentTarget.querySelectorAll<HTMLButtonElement>('button')[next]
-      ?.focus({ preventScroll: true });
+    const btn = e.currentTarget.querySelectorAll<HTMLButtonElement>('button')[next];
+    btn?.focus({ preventScroll: true });
+    /**
+     * ⚠️ `preventScroll` нь ХӨТЛӨГЧ БҮХ гүйлтийг зогсоодог тул хэвтээ гүйдэг
+     * график дээр сум дарахад фокус нь ХАРАГДАХГҮЙ цэг рүү үсэрдэг байв.
+     * Тиймээс ЗӨВХӨН энэ графикийн гүйгчийг гараар зөөнө — эцэг самбар
+     * хөдлөхгүй (`scrollIntoView` нь бүх өвөг элементийг гүйлгэдэг тул тэрийг
+     * ашиглаж БОЛОХГҮЙ).
+     */
+    const sc = scRef.current;
+    if (!btn || !sc || sc.scrollWidth <= sc.clientWidth) return;
+    const b = btn.getBoundingClientRect();
+    const c = sc.getBoundingClientRect();
+    const PAD = 24; // цэгийн шошго ирмэгт наалдахгүй байх зай
+    if (b.left - PAD < c.left) sc.scrollLeft -= c.left - b.left + PAD;
+    else if (b.right + PAD > c.right) sc.scrollLeft += b.right - c.right + PAD;
   };
 
   return (
     <div className={s.trend} style={tone(color)}>
       <div className={s.trendHead}>
-        <span className={`${s.trendValue} num`}>
-          {fin(cur.value).toFixed(1)}{unit}
+        {/* Сонгосон цэг анхааруулгын мужид бол уншилтын тоо ч улаанаар —
+            чартаас нүд салгасан хэрэглэгч ч төлөвийг нэг харцаар мэднэ. */}
+        <span className={`${s.trendValue} num ${over(cur.value) ? s.trendValueAlert : ''}`}>
+          {fmtV(fin(cur.value))}{unit}
         </span>
         <span className={s.trendMeta}>
           {tr(cur.label)}{cur.note ? ` · ${cur.note}` : ''}
         </span>
       </div>
 
-      <div className={s.trendPlot} style={{ height }} onKeyDown={nav}>
-        <svg className={s.trendSvg} viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
-          {/**
-            * ⚠️ Талбайн бүрхүүл нь ХАВТГАЙ 0.1 тунгалаг байсныг ГРАДИЕНТ болгов:
-            * шугамын дор өтгөн, суурь тэнхлэг дээр уусна. Хавтгай бүрхүүл нь
-            * тор болон суурь тэнхлэгийг бүрхэж, хоёулаа бүдгэрдэг байв.
-            * ⚠️ SVG `fill` тул CSS градиент ажиллахгүй — заавал `<linearGradient>`.
-            * ⚠️ `gradientUnits="userSpaceOnUse"` — эс бөгөөс `preserveAspectRatio
-            * ="none"` сунгалттай хослоод градиентийн тэнхлэг гажина.
-            */}
-          {/* envhub-ийн AreaChart: 0.34→0.02 градиент, ТОРГҮЙ, y-тэнхлэггүй —
-              утгын лавлагаа нь дээрх readout мөр ба hover tooltip. */}
-          <defs>
-            <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="100" gradientUnits="userSpaceOnUse">
-              <stop offset="0%" stopColor="var(--tone, var(--data))" stopOpacity="0.34" />
-              <stop offset="100%" stopColor="var(--tone, var(--data))" stopOpacity="0.02" />
-            </linearGradient>
-          </defs>
-          <polygon points={`0,100 ${path} 100,100`} style={{ fill: `url(#${gradId})` }} />
-          <polyline className={s.trendLine} points={path} />
-        </svg>
+      {/* ⚠️ Гүйдэг үед `trendPlot`/`trendAxis` НЭГ дотоод блокод сууна —
+          тусад нь гүйлгэвэл шошго нь цэгээсээ салж, өөр өөр байрлалд зогсоно. */}
+      <div ref={scRef} className={scroll ? s.trendScroll : undefined}>
+        <div style={scroll ? { width: `${innerW}%` } : undefined}>
+          <div className={s.trendPlot} style={{ height }} onKeyDown={nav}>
+            <svg className={s.trendSvg} viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
+              {/**
+                * ⚠️ Талбайн бүрхүүл нь ХАВТГАЙ 0.1 тунгалаг байсныг ГРАДИЕНТ болгов:
+                * шугамын дор өтгөн, суурь тэнхлэг дээр уусна. Хавтгай бүрхүүл нь
+                * тор болон суурь тэнхлэгийг бүрхэж, хоёулаа бүдгэрдэг байв.
+                * ⚠️ SVG `fill` тул CSS градиент ажиллахгүй — заавал `<linearGradient>`.
+                * ⚠️ `gradientUnits="userSpaceOnUse"` — эс бөгөөс `preserveAspectRatio
+                * ="none"` сунгалттай хослоод градиентийн тэнхлэг гажина.
+                */}
+              {/* envhub-ийн AreaChart: 0.34→0.02 градиент, ТОРГҮЙ, y-тэнхлэггүй —
+                  утгын лавлагаа нь дээрх readout мөр ба hover tooltip. */}
+              <defs>
+                <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="100" gradientUnits="userSpaceOnUse">
+                  <stop offset="0%" stopColor="var(--tone, var(--data))" stopOpacity="0.34" />
+                  <stop offset="100%" stopColor="var(--tone, var(--data))" stopOpacity="0.02" />
+                </linearGradient>
+              </defs>
+              <polygon points={`0,100 ${path} 100,100`} style={{ fill: `url(#${gradId})` }} />
+              <polyline className={s.trendLine} points={path} />
+              {/* Босгын шугам — муруйн ДЭЭГҮҮР зурагдана (эс бөгөөс градиент дарна) */}
+              {alert ? (
+                <line
+                  className={s.trendThresh}
+                  x1="0"
+                  y1={alertY}
+                  x2="100"
+                  y2={alertY}
+                />
+              ) : null}
+            </svg>
 
-        {points.map((p, i) => (
-          <button
-            /**
-             * ⚠️ 2026-08-18: түлхүүр нь `p.label` БАЙСАН. Шошго нь ДЭЛГЭЦИЙН текст
-             * тул давтагдаж БОЛНО — IoT-ийн «ММ-ДД ЧЧ:мм» шошготой хоёр заалт нэг
-             * минутад ирэхэд React «two children with the same key» алдаа өгч, нэг
-             * цэг нь зурагдахгүй үлддэг байв. Жагсаалт нь дарааллаа СОЛИХГҮЙ, бүхлээр
-             * нь дахин зурагддаг тул индекс нь найдвартай таних тэмдэг.
-             */
-            key={i}
-            type="button"
-            tabIndex={curIdx === i ? 0 : -1}
-            className={`${s.trendHit} ${hov === i ? s.trendHitOn : ''}`}
-            style={{ left: `${x(i)}%` }}
-            aria-label={`${p.label}: ${fin(p.value).toFixed(1)}${unit}${p.note ? ` · ${p.note}` : ''}`}
-            onMouseEnter={() => setHov(i)}
-            onMouseLeave={() => setHov((h) => (h === i ? null : h))}
-            onFocus={() => setHov(i)}
-            onBlur={() => setHov((h) => (h === i ? null : h))}
-          >
-            <span className={s.trendDot} style={{ top: `${y(p.value)}%` }} />
-          </button>
-        ))}
-      </div>
+            {/* Босгын тоо — шугамын баруун үзүүрт. `title`-д нь шалтгаан. */}
+            {alert ? (
+              <span
+                className={s.trendThreshTag}
+                style={{ top: `${alertY}%` }}
+                title={alert.note ?? ''}
+              >
+                {alert.value}{unit}
+              </span>
+            ) : null}
 
-      <div className={s.trendAxis}>
-        {axisTicks(points).map((t, i) => (t ? (
-          <span key={i} className={s.trendAxisTick} style={{ left: `${x(i)}%` }}>
-            {t}
-          </span>
-        ) : null))}
+            {points.map((p, i) => (
+              <button
+                /**
+                 * ⚠️ 2026-08-18: түлхүүр нь `p.label` БАЙСАН. Шошго нь ДЭЛГЭЦИЙН текст
+                 * тул давтагдаж БОЛНО — IoT-ийн «ММ-ДД ЧЧ:мм» шошготой хоёр заалт нэг
+                 * минутад ирэхэд React «two children with the same key» алдаа өгч, нэг
+                 * цэг нь зурагдахгүй үлддэг байв. Жагсаалт нь дарааллаа СОЛИХГҮЙ, бүхлээр
+                 * нь дахин зурагддаг тул индекс нь найдвартай таних тэмдэг.
+                 */
+                key={i}
+                type="button"
+                tabIndex={curIdx === i ? 0 : -1}
+                className={`${s.trendHit} ${hov === i ? s.trendHitOn : ''}`}
+                style={{ left: `${x(i)}%` }}
+                aria-label={`${p.label}: ${fmtV(fin(p.value))}${unit}${p.note ? ` · ${p.note}` : ''}`}
+                onMouseEnter={() => setHov(i)}
+                onMouseLeave={() => setHov((h) => (h === i ? null : h))}
+                onFocus={() => setHov(i)}
+                onBlur={() => setHov((h) => (h === i ? null : h))}
+              >
+                <span
+                  className={`${s.trendDot} ${over(p.value) ? s.trendDotAlert : ''}`}
+                  style={{ top: `${y(p.value)}%` }}
+                />
+                {showValues ? (
+                  /* ⚠️ Бүхэл тоог «.0»-гүй бичнэ: 8 бичиг зэрэгцэхэд илүү
+                     тэмдэгт бүр давхцлын эрсдэл — «98» нь «98.0»-аас нарийн. */
+                  <span
+                    className={`${s.trendVal} ${over(p.value) ? s.trendValAlert : ''}`}
+                    style={{ top: `${y(p.value)}%` }}
+                  >
+                    {fmt ? fmt(fin(p.value)) : (Number.isInteger(fin(p.value)) ? fin(p.value) : fin(p.value).toFixed(1))}
+                  </span>
+                ) : null}
+              </button>
+            ))}
+          </div>
+
+          <div className={`${s.trendAxis} ${perPoint ? s.trendAxisTwoLine : ''}`} ref={axisRef}>
+            {perPoint
+              ? /* Цэг БҮРД шошго — 8 л харагдах тул давхцахгүй. Огноо
+                   эхний мөрөнд, цаг нь дараагийн мөрөнд (нэг мөрөнд бичвэл
+                   «06-27 10:07» нь хөршөө мөргөнө). */
+                points.map((p, i) => {
+                  const sp = p.label.indexOf(' ');
+                  const day = sp < 0 ? p.label : p.label.slice(0, sp);
+                  const clock = sp < 0 ? '' : p.label.slice(sp + 1);
+                  return (
+                    <span key={i} className={s.trendAxisTick} style={{ left: `${x(i)}%` }}>
+                      <span className={s.trendTickDay}>{day}</span>
+                      {clock ? <span className={s.trendTickClock}>{clock}</span> : null}
+                    </span>
+                  );
+                })
+              : axisTicks(points, axisW).map((t, i) => (t ? (
+                  <span key={i} className={s.trendAxisTick} style={{ left: `${x(i)}%` }}>
+                    {t}
+                  </span>
+                ) : null))}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -1253,7 +1711,7 @@ export function Ring({
 
 export function Rows({ items }: { items: { key: string; value: ReactNode }[] }) {
   return (
-    <div className={s.rows}>
+    <div className={`${s.rows} rowsList`}>
       {items.map((r) => (
         <div key={r.key} className={s.row}>
           <span className={s.rowKey}>{r.key}</span>
@@ -1261,16 +1719,6 @@ export function Rows({ items }: { items: { key: string; value: ReactNode }[] }) 
         </div>
       ))}
     </div>
-  );
-}
-
-/* ── Chip ── */
-
-export function Chip({ children, color }: { children: ReactNode; color?: string }) {
-  return (
-    <span className={s.chip} style={tone(color)}>
-      {children}
-    </span>
   );
 }
 
@@ -1327,13 +1775,33 @@ export function ListItem({
 
 /* ── Төлөв ── */
 
-export function Loading({ label = tr('Ачаалж байна…') }: { label?: string }) {
+export function Loading({ label = tr('Ачаалж байна…'), minH }: { label?: string; minH?: number }) {
+  /**
+   * УДААН гэдгийг ил хэлэх (2026-09-02 аудит).
+   *
+   * ⚠️ ArcGIS нь 2000 мөрийн хуудаслалтаар татдаг тул том давхарга 10+ секунд
+   *    авах нь ХЭВИЙН. Эргэлдэгч дангаараа тэр хугацаанд «гацсан» мэт
+   *    уншигддаг бөгөөд хэрэглэгч хуудсаа refresh хийж, ачаалалтыг ЭХНЭЭС нь
+   *    эхлүүлдэг байв. 8 секундын дараа шалтгааныг нь хэлнэ.
+   * ⚠️ Товч БИШ, зөвхөн ТАЙЛБАР: хүсэлт нь ажилласаар байгаа тул «дахин
+   *    оролдох» нь одоо байгаа ачаалалтыг хаяна.
+   */
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setSlow(true), 8000);
+    return () => clearTimeout(t);
+  }, []);
   // ⚠️ `role="status"` — ачаалал дуусахад дэлгэц уншигч мэдэгдэнэ. Урьд нь
   //    зөвхөн нүдэнд харагдах эргэлдэгч байсан.
   return (
-    <div className={s.state} role="status" aria-live="polite">
+    <div className={s.state} role="status" aria-live="polite" style={minH ? { minHeight: minH } : undefined}>
       <span className={s.spinner} aria-hidden />
       {label}
+      {slow && (
+        <span className={s.slowHint}>
+          {tr('Их хэмжээний өгөгдөл татаж байна — сүлжээнээс шалтгаалж хэдэн арван секунд авч болно.')}
+        </span>
+      )}
     </div>
   );
 }
@@ -1352,21 +1820,38 @@ export function Empty({
   label,
   icon = 'chart',
   hint,
+  onRetry,
 }: {
   label: string;
   /** `Icon.tsx`-ийн нэр. Мэдэгдэхгүй нэр өгвөл дүрс нь зүгээр л гарахгүй. */
   icon?: string;
   /** Дараа нь ЮУ хийхийг заана — хоосон дэлгэц бол урилга байх ёстой */
   hint?: ReactNode;
+  /**
+   * АЛДААНААС үүссэн хоосон төлөвт «Дахин оролдох».
+   *
+   * ⚠️ 2026-09-02 аудит: ArcGIS түр гацахад зарим харагдац зөвхөн «татагдсангүй»
+   *    гэж бичээд зогсдог байсан тул хэрэглэгч БҮТЭН хуудсаа refresh хийхээс
+   *    өөр аргагүй байв (`Data`-д retry бий, гараар бичсэн салаанууд нь алга).
+   *    Өгвөл `Data`-гийнхтэй ЯГ ижил товч гарна — нэг л дүр төрх.
+   * ⚠️ ЖИНХЭНЭ хоосон (өгөгдөл нь үнэхээр байхгүй) үед БҮҮ өг — тэнд дахин
+   *    оролдох нь утгагүй бөгөөд «алдаа гарсан» мэт уншигдана.
+   */
+  onRetry?: () => void;
 }) {
   return (
-    <div className={`${s.state} ${s.empty}`}>
+    <div className={`${s.state} ${s.empty}`} role={onRetry ? 'alert' : undefined}>
       {/* `Icon` нь `currentColor`-оор зурагддаг тул өнгийг боодол өгнө */}
       <span className={s.emptyIcon}>
         <Icon name={icon} size={22} />
       </span>
       <span className={s.emptyLabel}>{label}</span>
       {hint && <span className={s.emptyHint}>{hint}</span>}
+      {onRetry && (
+        <button type="button" className={s.retryBtn} onClick={onRetry}>
+          {tr('Дахин оролдох')}
+        </button>
+      )}
     </div>
   );
 }
@@ -1380,15 +1865,24 @@ export function Data<T>({
   q,
   children,
   loading,
+  minH,
 }: {
   q: Async<T>;
   children: (data: T) => ReactNode;
   loading?: string;
+  /**
+   * Ачаалах/алдааны төлөвт ЭЗЛЭХ доод өндөр (px).
+   *
+   * ⚠️ Ачаалалтын мөр НАМХАН, ачаалагдсан график ӨНДӨР тул өгөгдөл ирэхэд
+   * самбар үсэрч «анивчсан» мэт харагддаг. Ойролцоо өндрийг урьдчилан
+   * эзэлбэл агуулга зүгээр л дүүрнэ — байрлал хөдлөхгүй.
+   */
+  minH?: number;
 }) {
-  if (q.state === 'loading') return <Loading label={loading} />;
+  if (q.state === 'loading') return <Loading label={loading} minH={minH} />;
   if (q.state === 'error') {
     return (
-      <div className={s.state} role="alert">
+      <div className={s.state} role="alert" style={minH ? { minHeight: minH } : undefined}>
         <strong className={s.error}>{tr('Өгөгдөл татагдсангүй')}</strong>
         <span className={s.errorMsg}>{q.error.message}</span>
         {/* ArcGIS түр гацах нь энгийн — бүтэн refresh хийлгэхгүйгээр энэ

@@ -26,8 +26,6 @@ export type BlockRow = {
   company: string;
   /** Ажлын хуудсаас тооцоолсон БОДИТ гүйцэтгэл, % (0–100) */
   actual: number;
-  /** `mon:building.GUITS_HV` — давхаргад бүртгэсэн хувь */
-  recorded: number;
   /** Хамгийн сүүлийн мэдээний огноо */
   date: string;
 };
@@ -37,9 +35,14 @@ export type BuildingProgress = {
   ail: number;
   /** Бүх блокийн дундаж БОДИТ гүйцэтгэл — дашбоардын толгойн тоо */
   overall: number;
-  byBagts: { bagts: string; blocks: number; ail: number; actual: number; recorded: number }[];
+  byBagts: { bagts: string; blocks: number; ail: number; actual: number }[];
   /** Хамгийн хоцорсон 10 блок */
   slowest: BlockRow[];
+  /**
+   * ⚠️ ТАЙЛАН ИРЭЭГҮЙ блокийн тоо. `overall` нь тэдгээрийг 0% гэж тооцдог
+   * тул хариултад дурдвал порталын өөр тоотой зөрөх шалтгаан ойлгомжтой болно.
+   */
+  noReport: number;
   note: string;
 };
 
@@ -57,7 +60,7 @@ export async function buildingProgress(scope: AgentScope): Promise<BuildingProgr
 
   const l = LAYER_BY_ID['mon:building'];
   const [rows, prog] = await Promise.all([
-    queryFeatures(layerUrl(l), { outFields: ['BAGTS', 'BLOK', 'AIL_TOO', 'GUITS_HV', 'BAR_COMP'] }),
+    queryFeatures(layerUrl(l), { outFields: ['BAGTS', 'BLOK', 'AIL_TOO', 'BAR_COMP'] }),
     loadBlockProgress(),
   ]);
 
@@ -71,7 +74,6 @@ export async function buildingProgress(scope: AgentScope): Promise<BuildingProgr
       ail: Number(r.AIL_TOO ?? 0),
       company: String(r.BAR_COMP ?? ''),
       actual: p ? Math.round(p.overall * 10) / 10 : 0,
-      recorded: Number(r.GUITS_HV ?? 0),
       date: p?.date ?? '',
     };
   });
@@ -92,13 +94,25 @@ export async function buildingProgress(scope: AgentScope): Promise<BuildingProgr
         blocks: v.length,
         ail: v.reduce((s, b) => s + b.ail, 0),
         actual: r1(avg(v.map((b) => b.actual))),
-        recorded: r1(avg(v.map((b) => b.recorded))),
       }))
       .sort((a, b) => a.actual - b.actual),
-    slowest: [...blocks].sort((a, b) => a.actual - b.actual).slice(0, 10),
+    /**
+     * ⚠️ ТАЙЛАН ИРЭЭГҮЙ БЛОКИЙГ «ХОЦОРСОН» ГЭЖ НЭРЛЭХГҮЙ (2026-09-03-ны
+     * аудит). Дээрх дүрмээр бөглөгдөөгүй блок 0% гэж тоологддог тул
+     * эрэмбэлэхэд тэдгээр ҮРГЭЛЖ тэргүүн эгнээнд гарч, «хамгийн хоцорсон
+     * 10 блок» гэж загварт очдог байв — үнэндээ тэдгээр нь ХЭМЖИГДЭЭГҮЙ
+     * (`date` хоосон). Одоо хэмжигдсэнийг нь эрэмбэлж, тайлангүйг тусад нь
+     * тоолж мэдэгдэнэ.
+     */
+    slowest: blocks
+      .filter((b) => b.date !== '')
+      .sort((a, b) => a.actual - b.actual)
+      .slice(0, 10),
+    noReport: blocks.filter((b) => b.date === '').length,
     note:
-      tr('`actual` нь АЖЛЫН ХУУДСААС тооцоолсон бодит гүйцэтгэл — дашбоардын толгойн тоо энэ. ') +
-      tr('`recorded` нь давхаргад бүртгэсэн `GUITS_HV`; хоёр нь өөр аргаар гардаг тул ЗӨРНӨ, ') +
-      tr('хоёуланг нь нэг мөрөнд харьцуулж болно (аль нь хоцорч байгааг харуулна).'),
+      tr('`actual` нь АЖЛЫН ХУУДСААС тооцоолсон бодит гүйцэтгэл. ') +
+      tr('⚠️ `overall` ба `byBagts.actual`-ийн ХУВААРЬ нь БҮХ блок: тайлан ирээгүй блок 0% гэж ордог. Порталын зарим дэлгэц (багцын карт, тайлангийн 6.1) зөвхөн ТАЙЛАГНАСАН блокоор дундажладаг тул тэр тоо ЭНЭНЭЭС ӨНДӨР байж болно — «дашбоардын тоо энэ» гэж бүү батал, аль хуваариар бодогдсоныг ил хэл. ') +
+      tr('`noReport` нь тайлан ирээгүй блокийн тоо — хариултдаа дурьдвал зөрүү нь ойлгомжтой болно. ') +
+      tr('Давхаргын хуучирсан `GUITS_HV` талбар 2026-08-24-нд эх өгөгдлөөс гарсан тул зөвхөн энэ нэг тоо бий.'),
   };
 }

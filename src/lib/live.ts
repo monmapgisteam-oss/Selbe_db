@@ -18,13 +18,14 @@
  *   · ногоон      — test_data [35] Shape__Area
  */
 
-import { queryFeatures, queryStats, queryGroup, count, sum, type Row } from '@/lib/query';
+import { queryFeatures, queryStats, queryGroup, count, sum, sqlStr, type Row } from '@/lib/query';
 import { t as tr } from '@/lib/i18nCore';
 import {
-  BOUNDARY, BUILT_LAYER, CASHFLOW2, PROJECT_PROGRESS,
-  LAYER_BY_ID, PARCEL_LEFT, layerUrl, oidOf, bagtsKey,
+  BOUNDARY, BUILT_LAYER, BUILT_FIELDS, BUILT_STATUS, CASHFLOW2,
+  LAYER_BY_ID, PARCEL_LEFT, layerUrl, oidOf, cfMonthAxis, cfMonthKey,
 } from '@/lib/services';
 import { sumBy, tally } from '@/lib/agg';
+import { register, type DataKey } from '@/lib/dataBus';
 
 /**
  * Оршин суух хүн ам — [108]-ийн `Population` талбар.
@@ -33,11 +34,32 @@ import { sumBy, tally } from '@/lib/agg';
  */
 const POPULATION_FIELD = 'Population';
 
-/** Кэштэй loader — амжилтгүй амлалтыг кэшлэхгүй («дахин оролдох» сэргэнэ) */
-function cached<T>(fn: () => Promise<T>): () => Promise<T> {
+/**
+ * Кэштэй loader — амжилтгүй амлалтыг кэшлэхгүй («дахин оролдох» сэргэнэ).
+ *
+ * `ttlMs` өгвөл тэр хугацааны дараа дараагийн дуудалт шинээр татна — харагдац
+ * хооронд шилжихэд дахин татахгүй, гэхдээ өгөгдөл хуучрахгүй.
+ *
+ * ⚠️ export (2026-08-21 гүйцэтгэлийн аудит): Finance/Habea зэрэг view бүрийн
+ * mount дээр бүтэн хүснэгтүүдээ ДАХИН татдаг байсныг энэ хэвээр кэшилнэ.
+ *
+ * ⚠️ `reads` (2026-08-28) — тухайн ачаалагч ЯМАР хүснэгтээс уншдагийг зарлана.
+ * Тэр хүснэгт рүү бичсэн код `invalidate('…')` дуудахад энэ кэш хаягдаж,
+ * дэлгэц дээрх дуудагчид ДАХИН татна. Тагийг өгөхгүй бол кэш нь урьдын адил
+ * зөвхөн TTL-ээр л шинэчлэгдэнэ — өөрөөр хэлбэл тагийг МАРТВАЛ хуучин зан
+ * хэвээр үлдэнэ, чимээгүй эвдрэхгүй.
+ */
+export function cached<T>(
+  fn: () => Promise<T>,
+  ttlMs?: number,
+  reads: readonly DataKey[] = [],
+): () => Promise<T> {
   let p: Promise<T> | null = null;
+  let at = 0;
+  if (reads.length) register(() => { p = null; }, reads);
   return () => {
-    if (!p) {
+    if (!p || (ttlMs != null && Date.now() - at > ttlMs)) {
+      at = Date.now();
       p = fn();
       p.catch(() => { p = null; });
     }
@@ -45,74 +67,100 @@ function cached<T>(fn: () => Promise<T>): () => Promise<T> {
   };
 }
 
-/* ══════════════ Төсөв — CASHFLOW2 (Cashflow /106) ══════════════ */
+/* ══════════════ Төсөв — CASHFLOW2 (cashflow_0813 /173) ══════════════ */
 
 export type Budget = {
-  /** Урьдчилсан төсөвт өртөг (CF006) — ₮ */
+  /** Урьдчилсан төсөвт өртөг (CF018) — ₮ */
   total: number;
-  /** Захирамжийн нийт дүн (CF012) — ₮ */
+  /** Захирамжийн нийт дүн (CF024) — ₮ */
   orderTotal: number;
-  /** Гэрээ байгуулах эрх олгосон дүн (CF023) — ₮ */
+  /** Гэрээ байгуулах эрх олгосон дүн (CF033) — ₮ */
   contract: number;
   /**
-   * ⚠️ ШИНЭ — Өмнө шилжүүлсэн мөнгөн дүн (CF028), ₮.
-   * ⚠️ CF027 (`prevPct`)-ыг ХЭЗЭЭ Ч нийлбэрлэхгүй: тэр нь мөр тутмын 0–1
-   *    бутархай хувь бөгөөд нийлбэрлэхэд утгагүй тоо гарна.
+   * Өмнө шилжүүлсэн мөнгөн дүн, ₮.
+   *
+   * ⚠️ 2026-08-31: ГЭРЭЭ ТУС БҮРИЙН «өмнө шилжүүлсэн» багана ХАСАГДСАН.
+   *    Одоо энэ нь `CF002 = 'ӨМНӨХ ШИЛЖҮҮЛСЭН'` гэсэн ХОЁР мөрийн `CF009`
+   *    нийлбэр (4,058,800,000 ₮) — гэрээгээр задрах боломж БАЙХГҮЙ.
    */
   transferred: number;
   /** Санхүүжилтийн эх үүсвэр — задраагүй үлдэгдэлтэй */
   sources: { key: string; label: string; value: number }[];
-  /** ⚠️ ШИНЭ — ажлын ТӨРӨЛ (CF002)-өөр төсөвт өртөг */
+  /** ⚠️ ажлын ТӨРӨЛ (CF005)-өөр төсөвт өртөг */
   byType: { key: string; label: string; value: number; n: number }[];
-  /** ⚠️ ШИНЭ — багц (CF004)-аар. `key` нь `bagtsKey()`, `label` нь түүхий нэр. */
+  /** ⚠️ ДЭД багц (CF007)-оор. `key` нь `bagtsKey()`, `label` нь түүхий нэр. */
   byPkg: { key: string; label: string; value: number; n: number }[];
-  /** ⚠️ ШИНЭ — сарын санхүүжилтийн ТӨЛӨВЛӨГӨӨ, ₮ */
+  /**
+   * ⚠️ Сарын санхүүжилтийн ТӨЛӨВЛӨГӨӨ, ₮ — `cfMonthAxis()`-ийн ТАСРАЛТГҮЙ
+   *    тэнхлэгээр. Хэмжилтгүй сар (2026-01) `0` болж БАГТАНА, алгасагдахгүй.
+   */
   months: { label: string; amount: number }[];
 };
 
 /**
- * ТӨСЛИЙН ТӨСВИЙН ЭХ = `Cashflow /106` (CASHFLOW2). «Хөрөнгө оруулалт өртөг»
- * (/249)-ЭЭС ЯЛГААТАЙ: тэр нь олон нийтийн бүсийн хувийн таамаг оруулж 4.16
- * их наяд хөөргөдөг; энэ нь захирамж/гэрээгээр баталгаажсан ТӨСЛИЙН төсөв.
+ * ТӨСЛИЙН ТӨСВИЙН ЭХ = `cashflow_0813 /173` (CASHFLOW2). «Хөрөнгө оруулалт
+ * өртөг» (/249)-ЭЭС ЯЛГААТАЙ: тэр нь олон нийтийн бүсийн хувийн таамаг оруулж
+ * 4.16 их наяд хөөргөдөг; энэ нь захирамж/гэрээгээр баталгаажсан ТӨСЛИЙН төсөв.
  */
-/** CF002/CF004-ийн «0» нь БӨГЛӨӨГҮЙ sentinel — хоосонтой адилаар үзнэ */
+/**
+ * Бүлгийн шошго. ⚠️ Бөглөөгүй нүд ГУРВАН хэлбэртэй: шинэ схемд `null`, хуучин
+ * импортын үлдэгдэлд `'0'` эсвэл хоосон мөр. `tally` нь `''`/`'0'` хоёрыг
+ * «тодорхойгүй» болгодог тул энд `null`-ыг `''` болгож ижил замд оруулна —
+ * эс бөгөөс CF005-гүй 4 гэрээ (63 тэрбум ₮) чимээгүй алдагдана.
+ */
 const cfLabel = (v: unknown) => String(v ?? '').replace(/\s+/g, ' ').trim();
 
 export const loadBudget = cached<Budget>(async () => {
   const CF = CASHFLOW2.fields;
-  const stats = [
-    sum(CF.budget, 'b'), sum(CF.orderTotal, 'o'), sum(CF.contractAmount, 'c'),
-    sum(CF.prevAmount, 'p'),
-    ...CASHFLOW2.sources.map((s, i) => sum(s.field, `s${i}`)),
-    // ⚠️ ЗӨВХӨН `m.amount` — `amountCum` нь ЖИЛ БҮР ТЭГЛЭГДДЭГ (2025-12 → 2026-01)
-    //    тул өссөн дүн гэж нийлбэрлэвэл хөрөөний шүд шиг график гарна.
-    ...CASHFLOW2.months.map((m, i) => sum(m.amount, `m${i}`)),
-  ];
-  const [r, g] = await Promise.all([
-    queryStats(CASHFLOW2.url, stats),
-    // ⚠️ Энэ бол шинээр нэмэгдсэн ЦОРЫН ГАНЦ хүсэлт. Хоёр баганыг НЭГ groupBy-д.
+  /* ⚠️ Асуулга БҮРД мөрийн төрлийн шүүлт ЗААВАЛ: үйлчилгээ 209 мөртэй бөгөөд
+     үүний 76 нь л ГЭРЭЭ. Шүүлтгүй бол мөнгөн НИЙЛБЭР зөв гарна (мастер багана
+     үеийн мөрөнд NULL) ч ТООЛОЛТ (`n`) 2.7 дахин үрждэг — алдаа нь дүнд
+     харагдахгүй, зөвхөн «дундаж/тоо»-д гарна. */
+  const [r, prev, mg, g] = await Promise.all([
+    queryStats(CASHFLOW2.url, [
+      sum(CF.budget, 'b'), sum(CF.orderTotal, 'o'), sum(CF.contractAmount, 'c'),
+      // ⚠️ `s.total` — ГЭРЭЭ мөрийн эх үүсвэрийн нийт дүн. `s.period` (CF010…)
+      //    нь ҮЕИЙН задаргаа тул мастер мөрөнд хоосон.
+      ...CASHFLOW2.sources.map((s, i) => sum(s.total, `s${i}`)),
+    ], CASHFLOW2.where.master),
+    queryStats(CASHFLOW2.url, [sum(CF.amount, 'p')],
+      `${CF.rowType} = ${sqlStr(CASHFLOW2.rows.prev)}`),
+    // ⚠️ Сар нь БАГАНА байхаа больсон — жил/сарын УТГААР бүлэглэнэ.
+    queryGroup(CASHFLOW2.url, `${CF.year},${CF.monthNo}`,
+      [sum(CF.amount, 'a')], CASHFLOW2.where.month),
+    // ⚠️ Хоёр задаргааг НЭГ groupBy-д (63 бүлэг) — тусад нь асуувал хүсэлт илүү
+    //    явна. Огтлолцсон бүлгүүдийг `tally` талбар тус бүрээр нэгтгэнэ.
     queryGroup(CASHFLOW2.url, `${CF.type},${CF.pkg2}`, [
       sum(CF.budget, 'b'), count(CASHFLOW2.oid, 'n'),
-    ]),
+    ], CASHFLOW2.where.master),
   ]);
 
   const total = Number(r.b ?? 0);
   const orderTotal = Number(r.o ?? 0);
   const named: { key: string; label: string; value: number }[] = CASHFLOW2.sources
-    .map((s, i) => ({ key: s.field as string, label: s.label as string, value: Number(r[`s${i}`] ?? 0) }))
+    .map((s, i) => ({ key: s.total as string, label: s.label as string, value: Number(r[`s${i}`] ?? 0) }))
     .filter((x) => x.value > 0)
     .sort((a, b) => b.value - a.value);
   // Захирамжийн дүнгээс эх үүсвэр задраагүй үлдэгдэл (зөрүү нуухгүй)
   const rest = orderTotal - sumBy(named, (x) => x.value);
   if (rest > 0) named.push({ key: 'rest', label: tr('Эх үүсвэр задраагүй'), value: rest });
 
+  /* ⚠️ Сарын цуваа: тэнхлэгийг ӨГӨГДЛӨӨС угсрахгүй. 2026-01-д ямар ч мөр алга
+     тул `mg`-ийн 11 бүлгийг шууд эрэмбэлбэл 01-ээс ХОЙШХИ сар бүр нэг нүдээр
+     ГУЛСАНА. `cfMonthAxis()` нь тасралтгүй хуанли өгдөг — байхгүйг 0-ээр нөхнө. */
+  const byMonth = new Map<string, number>();
+  for (const row of mg) {
+    const k = cfMonthKey(row);
+    if (k) byMonth.set(k, (byMonth.get(k) ?? 0) + Number(row.a ?? 0));
+  }
+
   return {
     total,
     orderTotal,
     contract: Number(r.c ?? 0),
-    transferred: Number(r.p ?? 0),
+    transferred: Number(prev.p ?? 0),
     sources: named,
-    // ⚠️ Мөр бүр = АЖЛЫН мөр, ГЭРЭЭ БИШ (76 мөрийн 50-д CF022 хоосон) → `n` = «ажил»
+    // ⚠️ `n` = ГЭРЭЭНИЙ тоо (мастер мөр), ажлын мөр БИШ — нийт 76.
     byType: tally(
       g,
       (row) => ({ key: cfLabel(row[CF.type]), value: Number(row.b ?? 0), n: Number(row.n ?? 0) }),
@@ -123,180 +171,199 @@ export const loadBudget = cached<Budget>(async () => {
       (row) => ({ key: cfLabel(row[CF.pkg2]), value: Number(row.b ?? 0), n: Number(row.n ?? 0) }),
       tr('Багц тодорхойлоогүй'),
     ).filter((t) => t.value > 0),
-    months: CASHFLOW2.months.map((m, i) => ({ label: m.label, amount: Number(r[`m${i}`] ?? 0) })),
+    months: cfMonthAxis().map((m) => ({ label: m.label, amount: byMonth.get(m.label) ?? 0 })),
   };
-  // ⚠️ Хяналт: Σ byType.value === total байх ёстой.
-});
+  // ⚠️ Хяналт: Σ byType.value === total (2,659,666,902,535 ₮) байх ёстой.
+}, undefined, ['CASHFLOW2']);
 
 export type Headline = {
+  /**
+   * ⚠️ 2026-08 аудит (олдвор #22): аль нэг эх сурвалж унавал ТУХАЙН эх
+   * сурвалжийн тоон талбарууд `NaN`-аар тэмдэглэгдэнэ (`byStatus` нь `[]`).
+   * `null` БИШ байх шалтгаан: төрлийг nullable болговол Dashboard зэрэг
+   * хэрэглэгчдийн арифметик (`h.investTotal / 1e12` г.м.) олон газар эвдэрнэ;
+   * NaN нь тэнд аяндаа тархаж, `num()`/`pct()` «—» гэж зурна, guard-уудад falsy.
+   */
   /** Төслийн талбай, га — хилийн `Hec_area` */
   areaHa: number;
   /** Оршин суух хүн ам — барилгуудын `Population` нийлбэр */
   population: number;
-  /** ТӨСЛИЙН нийт төсөвт өртөг, ₮ — Cashflow /106 (CF006) */
+  /** ТӨСЛИЙН нийт төсөвт өртөг, ₮ — cashflow_0813 /173 (CF018, ГЭРЭЭ мөр) */
   investTotal: number;
-  /** Гэрээгээр баталгаажсан дүн, ₮ — Cashflow /106 (CF023) */
+  /** Гэрээгээр баталгаажсан дүн, ₮ — cashflow_0813 /173 (CF033, ГЭРЭЭ мөр) */
   investConfirmed: number;
   /** Ногоон байгууламжийн талбай, га — test_data [35] */
   greenHa: number | null;
+  /**
+   * ⚠️ ШИНЭ (2026-08-24) — барилгын ТӨЛӨВИЙН задаргаа (`Barilga_ty`):
+   * Төлөвлөсөн / Баригдаж байгаа / Одоо байгаа. `BUILT_STATUS`-ийн дарааллаар,
+   * танигдаагүй утга сүүлд.
+   */
+  byStatus: { label: string; n: number }[];
+  /**
+   * ⚠️ ШИНЭ — барилгажих талбай, м² (`Барилгажсан_талбай` нийлбэр).
+   * ⚠️ Энэ нь давхраар үржсэн НИЙТ шалны талбай (≈152 га), барилгын бодит ХӨЛ
+   *    (геометрийн `Shape__Area`, ≈21 га) БИШ. Өртгийн загвар үүн дээр үржинэ.
+   */
+  usableM2: number;
 };
 
 export const loadHeadline = cached<Headline>(async () => {
   const green = LAYER_BY_ID.nogoon;
-  const [b, pop, budget, gr] = await Promise.all([
+  /*
+   * ⚠️ 2026-08 аудит (олдвор #22): `Promise.all` → `allSettled`. Гурван ӨӨР
+   * үйлчилгээг нэгтгэдэг тул урьд нь cashflow_0813 /173 унахад огт хамааралгүй
+   * «га талбай», «хүн ам» ч хамт унаж, бараг бүх харагдацын SummaryBar
+   * «Үзүүлэлт татагдсангүй» болдог байв. Одоо унасан хэсгийн талбарууд NaN
+   * (дэлгэцэд «—») болж бусад нь хэвийн гарна; БҮГД унавал л throw —
+   * `cached` алдааг кэшлэхгүй тул «дахин оролдох» зам хэвээр.
+   */
+  const [bR, builtR, budgetR, grR] = await Promise.allSettled([
     queryFeatures(BOUNDARY.plan.url, { outFields: ['Hec_area'] }),
-    queryStats(layerUrl(BUILT_LAYER), [sum(POPULATION_FIELD, 'p')]),
+    /*
+     * ⚠️ 2026-08-24: `queryStats` → `queryGroup`. ХҮСЭЛТИЙН ТОО ӨӨРЧЛӨГДӨӨГҮЙ
+     * (нэг хүсэлт хэвээр) — зөвхөн нэг асуулгаас илүү ихийг авч байна. Урьд нь
+     * зөвхөн хүн амын нийлбэр ирдэг байсныг барилгын ТӨЛӨВӨӨР бүлэглэж, мөрийн
+     * тоо · хүн ам · барилгажих талбай гурвыг зэрэг татав. Нийлбэрүүдийг клиент
+     * талд бүлгүүдээс нэмнэ.
+     *
+     * ⚠️ Шинэ хүсэлт НЭМЭХГҮЙ гэдэг нь CEO_KPI_PROMPT §0-ийн хатуу шаардлага —
+     * тиймээс барилгын төлөвийн задаргааг ТУСДАА асуулга болгосонгүй.
+     */
+    queryGroup(layerUrl(BUILT_LAYER), BUILT_FIELDS.status, [
+      count(oidOf(BUILT_LAYER), 'n'),
+      sum(POPULATION_FIELD, 'p'),
+      sum(BUILT_FIELDS.usable, 'u'),
+    ]),
     loadBudget(),
     green
       ? queryStats(layerUrl(green), [sum('Shape__Area', 'a')]).catch(() => null)
       : Promise.resolve(null),
   ]);
+  /* Бүх гол эх сурвалж унасан — хэсэгчлэн үзүүлэх юм алга, алдаагаар нь
+     дуудагчид (SummaryBar/ExecKpi-ийн error + retry) мэдэгдэнэ */
+  if (bR.status === 'rejected' && builtR.status === 'rejected' && budgetR.status === 'rejected')
+    throw bR.reason;
+  const b = bR.status === 'fulfilled' ? bR.value : null;
+  const built = builtR.status === 'fulfilled' ? builtR.value : null;
+  const budget = budgetR.status === 'fulfilled' ? budgetR.value : null;
+  const gr = grR.status === 'fulfilled' ? grR.value : null;
+
+  /* ⚠️ Танигдаагүй/хоосон төлөв ХАЯГДАХГҮЙ — «Тодорхойгүй» болж сүүлд жагсана.
+     Чимээгүй хаявал нийт барилгын тоо задаргааны нийлбэртэй зөрнө. */
+  const order = new Map(BUILT_STATUS.map((x, i) => [x.value, i]));
+  const byStatus = (built ?? [])
+    .map((r) => ({
+      label: String(r[BUILT_FIELDS.status] ?? '').trim() || tr('Тодорхойгүй'),
+      n: Number(r.n ?? 0),
+    }))
+    .filter((x) => x.n > 0)
+    .sort((a, b) => (order.get(a.label) ?? 99) - (order.get(b.label) ?? 99));
+
   return {
-    areaHa: Number(b[0]?.Hec_area ?? 0),
-    population: Number(pop.p ?? 0),
-    investTotal: budget.total,
-    investConfirmed: budget.contract,
+    areaHa: b ? Number(b[0]?.Hec_area ?? 0) : NaN,
+    population: built ? sumBy(built, (r) => Number(r.p ?? 0)) : NaN,
+    investTotal: budget ? budget.total : NaN,
+    investConfirmed: budget ? budget.contract : NaN,
     greenHa: gr ? Number(gr.a ?? 0) / 10_000 : null,
+    byStatus,
+    usableM2: built ? sumBy(built, (r) => Number(r.u ?? 0)) : NaN,
   };
-});
+  /* ⚠️ TTL (5 мин) — хэсэгчилсэн (NaN-тай) үр дүн session дуустал кэшлэгдэж
+     «—» гацахаас сэргийлнэ: `cached` зөвхөн reject-ийг л хаядаг тул TTL-гүй
+     бол түр доголдлын үлдэц хэзээ ч засрахгүй байв. */
+  /* ⚠️ `reads` (2026-08-29): `loadBudget`-ыг нэгтгэдэг тул төсөв өөрчлөгдөхөд
+     энэ ч хуучирна — эс бөгөөс толгойн тоо 5 минут хоцорно. */
+}, 5 * 60_000, ['CASHFLOW2']);
 
 /* ══════════════ Төслийн жигнэсэн явц ══════════════ */
 
-type StageAgg = { weight: number; actual: number; rows: number };
 
-/**
- * `Төсөл_Гүйцэтгэл`-ийн МӨР — задаргаа хэрэгтэй хэсгүүд өөрсдөө нэгтгэнэ.
- *
- * ⚠️ 2026-08-17: Урьд нь `loadProjectProgress` нь мөрүүдийг нэгтгээд ХАЯДАГ
- * байсан тул «Шугам сүлжээ», «Цахилгаан», «Нийгмийн дэд бүтэц» хэсгүүд өөрсдийн
- * зүсэлтээ гаргаж чаддаггүй байв. Одоо түүхий мөрийг ч буцаана — ИЖИЛ ГАНЦ
- * хүсэлт, зөвхөн `outFields` дөрвөөр нэмэгдсэн.
- */
-export type ProgRow = {
-  /**
-   * `Төсөл` — ⚠️ НАЙДВАРГҮЙ багана: 20 мөр «Зөвшөөрөл» гэж бичигдсэн атлаа
-   * «Сонгон шалгаруулалт»-д харьяалагдана. Зөвхөн НЭГТГЭХЭД хэрэглэнэ.
-   */
-  stage: string;
-  work: string;
-  no: string;
-  /** `bagts_name` нормчилсон (`bagtsKey`) — 112/162 мөрд бий, эс бөгөөс '' */
-  bagts: string;
-  weight: number;
-  actual: number;
-  /** ⚠️ 162-оос 74 мөрд ХООСОН — тиймээс `null`, 0 БИШ */
-  planned: number | null;
-};
 
-export type ProjectProgress = {
-  /** Жигнэсэн гүйцэтгэл — БОДИТ жингийн нийлбэрт нормчилсон (%) */
-  actual: number;
-  /** Хүснэгтэд бүртгэгдсэн нийт жин (%) — 100 БИШ (~81.5) */
-  coverage: number;
-  byStage: Record<string, StageAgg>;
-  /** ⚠️ ШИНЭ — түүхий мөрүүд. Хэсэг тус бүр өөрийн зүсэлтээ эндээс бодно. */
-  rows: ProgRow[];
-};
 
-/**
- * ⚠️ Жигнэсэн дүнг `Σ(жин × гүйц) / Σжин` гэж бодно, 100-д ХУВААХГҮЙ:
- * жингийн нийлбэр ~81.5% тул 100-д хуваавал явц чимээгүй доошилно.
- */
-export const loadProjectProgress = cached<ProjectProgress>(async () => {
-  const PP = PROJECT_PROGRESS.fields;
-  const raw = await queryFeatures(PROJECT_PROGRESS.url, {
-    // ⚠️ ИЖИЛ ГАНЦ queryFeatures — 4 талбар нэмэгдсэн, шинэ хүсэлт ҮҮСЭХГҮЙ
-    outFields: [PP.stage, PP.weight, PP.actual, PP.planned, PP.bagts, PP.work, PP.no],
-    limit: 2000,
-  });
-  const rows: ProgRow[] = raw.map((r) => ({
-    stage: String(r[PP.stage] ?? '').trim(),
-    work: String(r[PP.work] ?? '').trim(),
-    no: String(r[PP.no] ?? '').trim(),
-    bagts: bagtsKey(r[PP.bagts]),
-    weight: Number(r[PP.weight]) || 0,
-    actual: Number(r[PP.actual] ?? 0) || 0,
-    planned:
-      r[PP.planned] == null || r[PP.planned] === '' ? null : Number(r[PP.planned]) || 0,
-  }));
 
-  const byStage: Record<string, StageAgg & { wa: number }> = {};
-  let tw = 0;
-  let twa = 0;
-  for (const r of rows) {
-    if (!r.stage) continue;
-    const cur = byStage[r.stage] ?? { weight: 0, actual: 0, rows: 0, wa: 0 };
-    cur.weight += r.weight;
-    cur.wa += r.weight * r.actual;
-    cur.rows += 1;
-    byStage[r.stage] = cur;
-    tw += r.weight;
-    twa += r.weight * r.actual;
-  }
-  for (const k of Object.keys(byStage)) {
-    const s = byStage[k];
-    s.actual = s.weight ? s.wa / s.weight : 0;
-  }
-  return { actual: tw ? twa / tw : 0, coverage: tw, byStage, rows };
-});
 
-/** Жигнэсэн дүн — `Σ(жин×гүйц) ÷ Σжин`. Төлөвлөгөө нь БӨГЛӨГДСӨН мөрөөр л. */
-export type Weighted = {
-  weight: number;
+/* ══════════════ Багцын гүйцэтгэлийн нэгтгэл ══════════════ */
+
+/** Багц бүрийн СҮҮЛИЙН бүртгэл — төлөвлөгөө vs бодит */
+export type PkgProgressRow = {
+  /** `bagtsKey()`-ээр хэвийн болгосон түлхүүр */
+  key: string;
+  /** Түүхий нэр — шошгонд */
+  label: string;
+  /** Бүртгэсэн огноо, `YYYY-MM-DD` */
+  date: string;
+  /** Гүйцэтгэл, % */
   actual: number | null;
-  /**
-   * ⚠️ Зөвхөн `planned != null` мөрийн ЖИНГЭЭР — өөр хуваарьтай хоёр дүнг
-   * зэрэгцүүлбэл «хоцорсон» дүгнэлт хиймлээр гарна (162-оос 74 мөр хоосон).
-   */
+  /** Төлөвлөгөөт гүйцэтгэл, % */
   planned: number | null;
-  /** Төлөвлөгөө бөглөгдсөн мөрийн эзлэх жин — карт дээр ил хэлэхэд */
-  plannedWeight: number;
-  rows: number;
+  /** Бодит эзлэхүүн */
+  volume: number | null;
+  /** Төлөвлөгөөт эзлэхүүн */
+  volumePlan: number | null;
 };
 
-export function weighted(rows: readonly ProgRow[]): Weighted {
-  const w = sumBy(rows, (r) => r.weight);
-  const wa = sumBy(rows, (r) => r.weight * r.actual);
-  const withPlan = rows.filter((r) => r.planned != null);
-  const pw = sumBy(withPlan, (r) => r.weight);
-  const pwa = sumBy(withPlan, (r) => r.weight * (r.planned as number));
-  return {
-    weight: w,
-    actual: w ? wa / w : null,
-    planned: pw ? pwa / pw : null,
-    plannedWeight: pw,
-    rows: rows.length,
+/**
+ * БАГЦЫН ГҮЙЦЭТГЭЛИЙН НЭГТГЭЛ — багц бүрийн ХАМГИЙН СҮҮЛИЙН огноотой мөр.
+ *
+ * ⚠️ Хүснэгт нь append-only: багц бүрд огноо тутам нэг мөр нэмэгддэг тул
+ * сүүлийн мөр л одоогийн байдлыг заана.
+ *
+ * ⚠️ 2026-08-21-нд ХООСОН байсан; 2026-08-27-нд 7 багц бүртгэгдсэн. Дуудагч
+ * тал ҮРГЭЛЖ хоосныг зөвшөөрөх ёстой — бөглөлт үе үе тасалддаг.
+ */
+export const loadPkgProgress = cached<PkgProgressRow[]>(async () => {
+  const { BAGTS_NEGTGEL, bagtsKey } = await import('@/lib/services');
+  const F = BAGTS_NEGTGEL.fields;
+  const rows = await queryFeatures(BAGTS_NEGTGEL.url, {
+    outFields: [F.date, F.bagts, F.progress, F.planned, F.volume, F.volumePlan],
+    limit: 4000,
+  });
+
+  const nOrNull = (v: unknown): number | null => {
+    if (v == null || v === '') return null;
+    const x = Number(v);
+    return Number.isFinite(x) ? x : null;
   };
-}
 
-/** Мөрүүдийг түлхүүрээр бүлэглэж, бүлэг тус бүрд `weighted()` бодно */
-export function rollupBy(
-  rows: readonly ProgRow[],
-  key: (r: ProgRow) => string,
-): { key: string; agg: Weighted }[] {
-  const m = new Map<string, ProgRow[]>();
+  /* ⚠️ БҮХ мөрийг буцаана — СҮҮЛИЙНХИЙГ нь БИШ. Хүснэгт нь багц бүрд огноо
+     тутам нэг мөр нэмдэг тул бүтэн түүх нь ЦУВАА зурах цорын ганц эх. Зөвхөн
+     одоогийн байдал хэрэгтэй дуудагч `latestPkgProgress()`-ыг ашиглана —
+     ингэснээр хоёр төрлийн хэрэглэгч НЭГ HTTP хүсэлт хуваалцана. */
+  const out: PkgProgressRow[] = [];
   for (const r of rows) {
-    const k = key(r);
-    if (!k) continue;
-    const list = m.get(k);
-    if (list) list.push(r);
-    else m.set(k, [r]);
+    const raw2 = String(r[F.bagts] ?? '').trim();
+    const key = bagtsKey(raw2);
+    if (!key) continue;
+    const ts = r[F.date];
+    const date = ts == null ? '' : new Date(Number(ts)).toISOString().slice(0, 10);
+    out.push({
+      key,
+      label: raw2,
+      date,
+      actual: nOrNull(r[F.progress]),
+      planned: nOrNull(r[F.planned]),
+      volume: nOrNull(r[F.volume]),
+      volumePlan: nOrNull(r[F.volumePlan]),
+    });
   }
-  return [...m].map(([k, rs]) => ({ key: k, agg: weighted(rs) }));
-}
+  return out.sort((a, b) => a.date.localeCompare(b.date) || a.key.localeCompare(b.key, 'mn', { numeric: true }));
+}, undefined, ['BAGTS_NEGTGEL']);
 
-/** Хэд хэдэн үе шатыг жингээр нь нэгтгэсэн амьд % — таарах шат алга бол null */
-export const liveStage = (p: ProjectProgress | null, keys: readonly string[]): number | null => {
-  if (!p || !keys.length) return null;
-  let tw = 0;
-  let twa = 0;
-  for (const k of keys) {
-    const s = p.byStage[k];
-    if (!s) continue;
-    tw += s.weight;
-    twa += s.weight * s.actual;
+/**
+ * Багц бүрийн ХАМГИЙН СҮҮЛИЙН огноотой мөр — «одоогийн байдал».
+ *
+ * ⚠️ Огноо ижил байвал СҮҮЛД ирсэн мөрийг авна: `loadPkgProgress` нь огноогоор
+ * эрэмбэлж буцаадаг тул энэ нь хүснэгтэд сүүлд нэмэгдсэнтэй тохирно.
+ */
+export const latestPkgProgress = (rows: PkgProgressRow[]): PkgProgressRow[] => {
+  const last = new Map<string, PkgProgressRow>();
+  for (const r of rows) {
+    const cur = last.get(r.key);
+    if (cur && cur.date > r.date) continue;
+    last.set(r.key, r);
   }
-  return tw ? twa / tw : null;
+  return [...last.values()].sort((a, b) => a.key.localeCompare(b.key, 'mn', { numeric: true }));
 };
 
 /* ══════════════ Өрх · блок (building_GOL) ══════════════ */
@@ -311,7 +378,7 @@ export const loadHousing = cached<HousingTotals>(async () => {
     sum(BUILDING.fields.households, 'ail'),
   ]);
   return { blocks: Number(s.n ?? 0), ail: Number(s.ail ?? 0) };
-});
+}, undefined, ['BUILDING']);
 
 /* ══════════════ Нийгмийн үйлчилгээний барилга ══════════════ */
 
@@ -418,4 +485,4 @@ export const loadClearance = cached<Clearance>(async () => {
     total,
     pct: total > 0 ? (cleared / total) * 100 : null,
   };
-});
+}, undefined, ['PARCEL_LEFT']);

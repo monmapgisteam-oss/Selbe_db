@@ -30,33 +30,82 @@
   letter-spacing: 0.01em;
 }
 
+/* ══ ХЭНИЙ ХАРАГДАЦ — CEO ↔ Хотын дарга (2026-08-24) ══
+   `MapTools`-ийн 2D/3D/BIM сегменттэй ИЖИЛ хэв маяг: саарал зам · цагаан идэвх.
+   Порталд нэг л төрлийн «горим сонгогч» байх ёстой. */
+.aud {
+  margin-left: auto;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+}
+.audBtn {
+  padding: 5px 13px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.03em;
+  color: var(--ink-3);
+  cursor: pointer;
+  transition: background 0.16s var(--ease), color 0.16s, box-shadow 0.16s;
+}
+.audBtn:hover { color: var(--ink); }
+.audOn { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm); }
+
 /*
- * ⚠️ `auto-fit` ХЭРЭГЛЭХГҮЙ. Карт нь ЯГ ЗУРГАА тул auto-fit нь өргөнөөс
- * хамаарч 5+1 гэж хуваагдаж, ганцаардсан карт доогуураа сунжирч байв.
- * Тогтмол багана ашиглавал 3×2 эсвэл 2×3 болж үргэлж бүтэн эгнэнэ.
+ * БОСОО ЖАГСААЛТ — НЭГ багана (2026-08-24, хэрэглэгчийн хүсэлт).
+ *
+ * ⚠️ Урьд нь 2–3 багана байв. Ангилал бүр 4–7 үзүүлэлттэй тул сүүлийн эгнээ
+ * дутуу дүүрч, ганцаардсан карт хажуудаа хоосон зай үлдээдэг байлаа. Мөн
+ * ангиллын дотор эрэмбэ (улаан → шар → ногоон) нь ХЭВТЭЭ уншигдаж, «эхлээд
+ * улааныг хар» гэсэн зарчим алдагддаг байв: нүд зүүнээс баруун тийш биш,
+ * ДЭЭРЭЭС ДООШ уншина.
+ *
+ * ⚠️ Нэг багана болсноор карт бүр бүтэн өргөнтэй тул доорх `.card`/`.body`
+ * голлуулсан байдлаасаа ЗҮҮН эгнээтэй болов — сунасан картад голлуулсан текст
+ * тархай харагдана.
  */
 .grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  /* ⚠️ Мөр бүр ижил өндөртэй — эс бөгөөс эгнээ хоорондоо шаталж харагдана */
-  grid-auto-rows: 1fr;
-  gap: 16px;
-}
-@media (min-width: 900px) {
-  .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
 }
 
 /*
  * ⚠️ Мөрүүдийг ТОГТМОЛ өндөртэй болгож эгнүүлнэ: шошго нэг картад хоёр мөр
  * болж мурийвал утга нь доошилж, картууд шатлан харагддаг байв.
  */
+/*
+ * ХҮСНЭГТИЙН ЭГНЭЭ (2026-08-24, хэрэглэгчийн хүсэлт).
+ *
+ * ⚠️ Багана бүр ТОГТМОЛ — бүх мөрөнд ижил `grid-template-columns` тул нэр,
+ * утга, тайлбар, график нь эгнээ дамжин ЭГНЭНЭ. Тиймээс энэ нь картын
+ * жагсаалт биш, БОДИТ хүснэгт мэт уншигдана: нүд багана дагаж доошилно.
+ *
+ * ⚠️ `1fr` БИШ `minmax(…, Nfr)`: цэвэр `fr` нь агуулгын уртаас хамаарч
+ * мөр бүрд өөр өргөн өгөх БИШ ч, доод хязгааргүй бол урт тайлбартай мөрөнд
+ * нэрийн багана шахагдаж таслагдана. `minmax` нь доод хязгаарыг барина.
+ */
 .card {
   display: grid;
-  grid-template-rows: auto 1fr;
-  gap: 5px;
+  grid-template-columns:
+    16px                 /* түвшний тэмдэг */
+    minmax(132px, 1fr)   /* үзүүлэлтийн нэр */
+    minmax(96px, 0.9fr)  /* гол утга */
+    minmax(0, 1.8fr)     /* тайлбар */
+    108px                /* график (хоосон ч гэсэн нүд үлдэнэ) */
+    64px                 /* түвшний шошго */
+    12px;                /* сум */
+  align-items: center;
+  gap: 12px;
   position: relative;
   width: 100%;
-  padding: 13px 15px;
+  padding: 9px 14px;
   /*
    * ⚠️ Зүүн талын 3px зурвасыг ХАСАВ. Дээд ирмэгийн шугам ба булангийн хаалт
    * гарсны дараа гурав давхар акцент болж, KPI нүднүүдтэй хэв маяг зөрж байв.
@@ -72,8 +121,9 @@
       transparent 42%),
     color-mix(in srgb, var(--surface) 66%, transparent);
   min-width: 0;
-  /* ⚠️ Агуулга ГОЛДОО — KPI нүднүүдтэй ижил зарчим */
-  text-align: center;
+  /* ⚠️ ЗҮҮН эгнээтэй (2026-08-24): босоо жагсаалтад карт бүтэн өргөнтэй тул
+     голлуулсан текст хоёр талдаа том зайтай, тархай харагдана. */
+  text-align: left;
   font: inherit;
   color: inherit;
   cursor: pointer;
@@ -137,14 +187,9 @@
   outline-offset: 2px;
 }
 
-.top {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  /* Бүх картын шошгын мөр ижил өндөртэй — утгууд нэг шугамд эгнэнэ */
-  min-height: 15px;
-}
+/* ⚠️ `.top` / `.body` / `.text` дүрмүүд УСТСАН — тэдгээр үүрлэсэн хайрцгууд
+   мөр бүрд өөрийн дотоод хуваарь үүсгэдэг тул багана эгнэдэггүй байв. Одоо
+   элементүүд нь `.card` grid-ийн ШУУД хүүхдүүд. */
 .go {
   font-size: 0.85rem;
   font-weight: 700;
@@ -153,12 +198,52 @@
   transform: translateX(-3px);
   transition: opacity 0.15s, transform 0.15s;
 }
+/*
+ * ТҮВШНИЙ ТЭМДЭГ — өнгөт цэг БИШ, дотроо тэмдэгт агуулсан жижиг тэмдэг.
+ *
+ * ⚠️ 2026-08-24 (WCAG 1.4.1): урьд нь энэ нь зүгээр л өнгөт цэг байсан тул
+ * улаан/ногоон ялгахгүй хэрэглэгчид (эрэгтэйчүүдийн ~8%) карт бүр ижил
+ * харагддаг байв — самбар нь өнгөнөөс ӨӨР ямар ч дохиогүй байлаа. Одоо
+ * дотор нь `!` / `▲` / `✓` / `·` / `?` гарна.
+ */
 .dot {
-  width: 8px;
-  height: 8px;
+  display: grid;
+  place-items: center;
+  width: 15px;
+  height: 15px;
   border-radius: 50%;
-  background: var(--st, var(--ink-3));
+  background: color-mix(in srgb, var(--st, var(--ink-3)) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--st, var(--ink-3)) 45%, transparent);
+  color: var(--st, var(--ink-3));
   flex: none;
+}
+.mark {
+  font-size: 0.58rem;
+  font-weight: 800;
+  line-height: 1;
+  font-style: normal;
+}
+/* Түвшний ТЕКСТЭН шошго — тэмдгийг нөхөж, утгыг үгээр хэлнэ */
+.lvl {
+  flex: none;
+  font-size: 0.56rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--st, var(--ink-3));
+  opacity: 0.9;
+}
+/* Дэлгэц уншигчид зориулсан — нүдэнд харагдахгүй, DOM-д байна */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }
 .label {
   font-size: 0.64rem;
@@ -169,15 +254,16 @@
   line-height: 1.2;
 }
 .value {
-  font-size: 1.08rem;
+  /* ⚠️ Хүснэгтийн эгнээнд 1.08rem нь мөрийг өндөрсгөж, зэргэлдээ баганын жижиг
+     текстээс хэт салгаж байв — 0.95rem нь мөрийг нягт хэвээр үлдээнэ. */
+  font-size: 0.95rem;
   font-weight: 750;
-  line-height: 1.2;
+  line-height: 1.25;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
 .note {
-  align-self: start;
   /* ⚠️ ӨГҮҮЛБЭР зүүн эгнээтэй — олон мөр болж мурийхад нүд дагахад хялбар */
   text-align: left;
   font-size: 0.72rem;
@@ -186,28 +272,18 @@
   overflow-wrap: anywhere;
 }
 
-/* ══════════ Текст + график ══════════ */
+/* ══════════ График ══════════ */
 
 /*
+ * ⚠️ Графикийн баганад ХУВЬ (%) хэмжээ ӨГӨХГҮЙ. Урьд нь `width: clamp(…, 34%,
+ * …)` байсан тул хувь нь тодорхойгүй суурь дээр бодогдож, багана картаас
+ * ГАДАГШАА гарч, хэвтээ баганууд алга болж байв. Тогтмол px өгвөл гарахгүй.
+ *
  * ⚠️ График нь `--st`-ийн өнгийг `color`-оор өвлөнө. SVG-үүд `currentColor`
  * хэрэглэдэг тул тус бүрд нь өнгө дамжуулах шаардлагагүй.
  */
-.body {
-  display: grid;
-  /*
-   * ⚠️ Графикийн баганад ХУВЬ (%) хэмжээ ӨГӨХГҮЙ. Урьд нь `auto` баганад
-   * `width: clamp(…, 34%, …)` байсан тул хувь нь тодорхойгүй суурь дээр
-   * бодогдож, багана картаас ГАДАГШАА гарч, хэвтээ баганууд алга болж байв.
-   * Тогтмол px өгвөл гарц гарахгүй.
-   */
-  grid-template-columns: minmax(0, auto) 108px;
-  justify-content: center;
-  align-items: center;
-  gap: 14px;
-  color: var(--st, var(--ink-3));
-}
-.text { display: grid; gap: 4px; min-width: 0; align-content: center; }
 .chart {
+  color: var(--st, var(--ink-3));
   display: grid;
   place-items: center;
   min-width: 0;
@@ -217,8 +293,126 @@
 }
 .chart > * { max-width: 100%; }
 
-@media (max-width: 640px) {
+/*
+ * НАРИЙН ДЭЛГЭЦ — долоон багана багтахгүй тул хүснэгтийн эгнээ ЗАДАРНА.
+ *
+ * ⚠️ Багана бүрийг дахин тодорхойлохын оронд `flex-wrap` руу шилжинэ: тэмдэг ·
+ * нэр · утга · түвшин нэгдүгээр мөрөнд, тайлбар нь доор бүтэн мөр эзэлнэ.
+ * ⚠️ `.note`-д `order: 9` — эс бөгөөс тэр 100% эзлээд түвшин ба сумыг ГУРАВ
+ * дахь мөр рүү түлхэнэ.
+ */
+@media (max-width: 1080px) {
+  .card {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 10px;
+    padding: 10px 14px;
+  }
+  .dot { align-self: center; }
+  .label { flex: 1 1 auto; min-width: 0; }
+  .value { flex: none; }
+  /* Түвшин ба сум мөрийн баруун зах руу */
+  .lvl { margin-left: auto; }
+  .note { order: 9; flex: 1 1 100%; }
   /* Нарийн дэлгэцэд график нь тоог шахаж эхэлдэг тул хасна */
-  .body { grid-template-columns: minmax(0, 1fr); }
   .chart { display: none; }
+}
+
+/* ══════ ТАВАН СЭДЭВЧИЛСЭН АНГИЛАЛ (2026-08-24) ══════
+   ⚠️ Хуучин `.tier*` дүрмүүд (Сайн · Дунд · Яаралтай гэсэн СТАТУСААР бүлэглэх)
+   БҮРМӨСӨН УСТСАН. Бүлэг нь одоо СЭДЭВ, түвшин нь картын дотор илэрхийлэгдэнэ
+   (CEO_KPI_PROMPT §2). `--tc` нь ангиллын доторх ХАМГИЙН МУУ түвшний өнгө —
+   зүүн ирмэгийн зурвас, дүрсний хүрээ хоёулаа үүнээс уншина. */
+.cat {
+  margin-top: 22px;
+  padding-left: 13px;
+  border-left: 3px solid color-mix(in oklab, var(--tc, var(--ink-3)) 55%, transparent);
+}
+/* ⚠️ Толгой нь `<button>` — хөтчийн анхдагч товчны загварыг тэглэнэ, эс бөгөөс
+   саарал дэвсгэр, хүрээ, голлуулсан текст өвлөгдөнө. */
+.catHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 11px;
+  flex-wrap: wrap;
+  width: 100%;
+  padding: 3px 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--r-sm);
+}
+.catHead:hover .catTitle { color: var(--tc, var(--ink)); }
+.catHead:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--tc, var(--ink-3)) 60%, transparent);
+  outline-offset: 3px;
+}
+/* Хураах/дэлгэх сум — нээлттэй үед доош, хаалттай үед баруун тийш */
+.catCaret {
+  flex: none;
+  font-size: 0.72rem;
+  line-height: 1;
+  color: var(--ink-3);
+  transform: rotate(-90deg);
+  transition: transform 0.16s var(--ease), color 0.16s;
+}
+.catCaretOpen { transform: rotate(0deg); }
+.catHead:hover .catCaret { color: var(--tc, var(--ink-2)); }
+.catIcon {
+  display: grid;
+  place-items: center;
+  width: 27px;
+  height: 27px;
+  flex: none;
+  border-radius: var(--r-sm);
+  background: color-mix(in oklab, var(--tc, var(--ink-3)) 13%, transparent);
+  border: 1px solid color-mix(in oklab, var(--tc, var(--ink-3)) 34%, transparent);
+  color: var(--tc, var(--ink-3));
+}
+.catText { display: grid; gap: 1px; min-width: 0; }
+.catTitle {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+/* CEO-гийн асуулт — ангилал юунд хариулдгийг нэг мөрөөр */
+.catQ {
+  font-size: 0.7rem;
+  color: var(--ink-3);
+  font-style: italic;
+}
+.catCounts {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+/* `--cc` — тухайн ТООЛУУРЫН түвшний өнгө (ангиллын `--tc`-ээс тусдаа) */
+.catCount {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 9px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--cc, var(--ink-3));
+  background: color-mix(in oklab, var(--cc, var(--ink-3)) 14%, transparent);
+  position: relative;
+}
+.catCount i { font-style: normal; font-size: 0.62rem; }
+/* Гэрлэн дохиогүй ангилал — тоолуурын оронд шалтгаанаа хэлнэ */
+.catNeutral {
+  font-size: 0.68rem;
+  color: var(--ink-3);
+  letter-spacing: 0.03em;
 }
