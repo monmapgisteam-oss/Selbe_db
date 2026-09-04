@@ -561,6 +561,118 @@ export function parentIndexes(rows: SheetRow[]): number[] {
  * Тооцооны дараалал чухал: H (доороос дээш) → C, D (дээрээс доош) → бодит
  * гүйцэтгэл ба J (доороос дээш) → E (C ба J-ээс хамаарна, доороос дээш).
  */
+/**
+ * ТӨЛӨВЛӨГӨӨТ ГҮЙЦЭТГЭЛИЙН МУРУЙ — олон огноогоор нэг дор.
+ *
+ * ⚠️ ЯАГААД ТУСДАА ФУНКЦ (2026-09-04): `computeAll`-ыг сар бүрээр дуудвал
+ * 10 багц × 31 сар = 2.8 СЕКУНД (хэмжсэн) — рендерийн замд боломжгүй. Тэр нь
+ * дуудалт бүрд обьём, бодит гүйцэтгэл, мөнгөн дүн, жин, огнооны модыг БҮГДИЙГ
+ * дахин боддог. Гэтэл ЖИН ба ОГНОО нь `asOf`-оос ХАМААРАХГҮЙ — зөвхөн
+ * `planAt()` л хамаарна. Тиймээс модыг НЭГ УДАА барьж, огноо бүрд зөвхөн
+ * нийлбэрийг бодно (~50мс).
+ *
+ * ⚠️ Дүрэм нь `computeAll`-тайгаа ЯГ ИЖИЛ байх ёстой — эс тэгвээс график ба
+ * хуудсан дээрх тоо чимээгүй зөрнө. Тиймээс жин (`D`), огнооны өв (`own`/`agg`),
+ * бүлгийн `own` огноогоор интерполяци хийх онцгой тохиолдол гурвуулаа энд
+ * давтагдсан. `planCurve.check.mjs` хоёрыг тулгаж шалгана.
+ *
+ * @returns огноо бүрийн МӨР бүрийн блокуудын дундаж төлөвлөгөө (0–1). Гадна
+ *   талын массив нь `asOfs`-той, дотоод нь `rows`-той ижил урттай.
+ */
+export function planCurve(
+  rows: SheetRow[],
+  nBld: number,
+  asOfs: readonly number[],
+): (number | null)[][] {
+  const kids = childIndexes(rows);
+  const par = parentIndexes(rows);
+  const n = nBld;
+  const N = rows.length;
+
+  /* ── H · C · D — `computeAll`-ийн 1–2-р алхамтай ижил ── */
+  const H: (number | null)[] = new Array(N).fill(null);
+  for (let i = N - 1; i >= 0; i--) {
+    if (kids[i].length) {
+      let s = 0; let any = false;
+      for (const k of kids[i]) if (H[k] != null) { s += H[k]!; any = true; }
+      H[i] = any ? s : rows[i].money;
+    } else {
+      const r = rows[i];
+      H[i] = r.vol != null && r.unit != null ? r.vol * r.unit : r.money;
+    }
+  }
+  const D: (number | null)[] = new Array(N).fill(null);
+  const rootH: (number | null)[] = new Array(N).fill(null);
+  for (let i = 0; i < N; i++) {
+    const p = par[i];
+    rootH[i] = p < 0 ? H[i] : rootH[p];
+    D[i] = H[i] != null && rootH[i] ? H[i]! / rootH[i]! : rows[i].wD;
+  }
+
+  /* ── Огноо: өөрийн (`own`) эсвэл дэд мөрүүдийн MIN/MAX (`agg`) ── */
+  const St: (number | null)[][] = [];
+  const En: (number | null)[][] = [];
+  const own: boolean[][] = [];
+  for (let i = 0; i < N; i++) {
+    St[i] = new Array(n).fill(null);
+    En[i] = new Array(n).fill(null);
+    own[i] = new Array(n).fill(false);
+  }
+  for (let i = N - 1; i >= 0; i--) {
+    const r = rows[i];
+    for (let b = 0; b < n; b++) {
+      const os = r.start[b];
+      const oe = r.end[b];
+      if (os != null) St[i][b] = os;
+      if (oe != null) En[i][b] = oe;
+      own[i][b] = os != null && oe != null;
+      if (!kids[i].length) continue;
+      if (St[i][b] == null) {
+        let m: number | null = null;
+        for (const k of kids[i]) { const v = St[k][b]; if (v != null && (m == null || v < m)) m = v; }
+        St[i][b] = m;
+      }
+      if (En[i][b] == null) {
+        let m: number | null = null;
+        for (const k of kids[i]) { const v = En[k][b]; if (v != null && (m == null || v > m)) m = v; }
+        En[i][b] = m;
+      }
+    }
+  }
+
+  /* ── Огноо бүрд — зөвхөн `plan` нийлбэр ── */
+  return asOfs.map((asOf) => {
+    const plan: (number | null)[][] = new Array(N);
+    const avgOut: (number | null)[] = new Array(N).fill(null);
+    for (let i = N - 1; i >= 0; i--) {
+      const p: (number | null)[] = new Array(n).fill(null);
+      if (kids[i].length) {
+        const den = kids[i].reduce((s, k) => s + (D[k] ?? 0), 0);
+        for (let b = 0; b < n; b++) {
+          let sp = 0; let cnt = 0;
+          for (const k of kids[i]) {
+            const w = den > 0 ? (D[k] ?? 0) : 1;
+            sp += w * (plan[k][b] ?? 0);
+            cnt += w;
+          }
+          p[b] = cnt > 0 ? sp / cnt : null;
+          /* ⚠️ Бүлэгт ӨӨРИЙНХ нь огноо бичигдсэн бол дундаж БИШ, огноогоор
+             интерполяци — `computeAll`-ийн ижил онцгой тохиолдол. */
+          if (own[i][b] && St[i][b] != null && En[i][b] != null) {
+            p[b] = planAt(asOf, St[i][b], En[i][b]);
+          }
+        }
+      } else {
+        for (let b = 0; b < n; b++) p[b] = planAt(asOf, St[i][b], En[i][b]);
+      }
+      plan[i] = p;
+      /* `AVERAGE(IF(range="",0,range))` — хоосныг 0 гэж үзэн блокийн тоонд хуваана */
+      avgOut[i] = p.reduce<number>((s, x) => s + (x ?? 0), 0) / n;
+    }
+    return avgOut;
+  });
+}
+
 export function computeAll(
   rows: SheetRow[],
   nBld: number,
