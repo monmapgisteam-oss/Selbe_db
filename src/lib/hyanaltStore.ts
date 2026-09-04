@@ -163,6 +163,34 @@ const fail = (e: unknown): Result => ({ ok: false, error: String((e as Error)?.m
 type Archived = { ok: true; archiveOid: number } | { ok: false; error: string };
 
 /**
+ * ЭНЭ СЕШНД АРХИВЛАГДСАН ИЛГЭЭЛТ — `илгээлтийн oid → архивын oid`.
+ *
+ * ⚠️ ЯАГААД (2026-09-04-ний аудит): idempotency нь ЗӨВХӨН `closeSubmission`
+ *    амжилттай болсон үед тавигддаг (`done|` угтвар эсвэл `payload.archiveOid`).
+ *    Хэрэв `applyAdds` амжилттай болсон АТЛАА `closeSubmission` БА `updateRows`
+ *    хоёул унавал (сүлжээ) `apply` нь `{ok:false}` буцааж, хяналтын мөр
+ *    «Ерөнхий менежер хянаж байна» хэвээр үлдэнэ — менежер дахин дарахад
+ *    БҮТЭН ЖААЗ ХОЁР ДАХЬ УДАА бичигдэнэ. Архивт тийм давхардлын бодит ул мөр
+ *    бий (Bagts_1_9f 2026-08-29 = 16 хуулбар, 21,920 мөр).
+ *
+ * ⚠️ Энэ нь ЗӨВХӨН тухайн хуудасны амьдралын хугацаанд хамгаална (хуудас
+ *    дахин ачаалагдвал алга). Бүрэн шийдэл нь илгээлтийн мөрд `archiveOid`-ыг
+ *    хаахаас ӨМНӨ тэмдэглэх боловч тэр бичилт нь мөн ижил сүлжээгээр явдаг тул
+ *    хамт унана; тиймээс энд сешний хамгаалалт + `closeSubmission`-ийн дахин
+ *    оролдлого хоёулаа тавигдав.
+ *
+ * ⚠️ ТҮЛХҮҮР НЬ ИЛГЭЭЛТИЙН ОID БИШ, `oid:агуулгын-хувилбар` (2026-09-04-ний
+ *    аудитын олдвор): `sub|` мөр нь ДАРААГИЙН илгээлтэд ЯГ ТЭР OBJECTID дээрээ
+ *    дахин бичигддэг. Сүлжээ тасарч `closeSubmission` унасны дараа гүйцэтгэгч
+ *    дутуу тоогоо нэмж ДАХИН илгээвэл ижил oid дээр ӨӨР агуулга тогтоно;
+ *    зөвхөн oid-оор түлхүүрлэсэн үед ерөнхий менежер ТЭР Ж хөтчийн сешнд
+ *    батлахад `{ok:true}` буцаж, ШИНЭ нүднүүд архивт ОГТ бичигдэлгүй хяналтын
+ *    мөр «Шилжүүлсэн» болдог байв — хаана ч алдаа гарахгүй. `staged.at` нь
+ *    илгээлт бүрд шинэчлэгддэг тул агуулгын хувилбарын үүрэг гүйцэтгэнэ.
+ */
+const ARCHIVED = new Map<string, number>();
+
+/**
  * ИЛГЭЭЛТИЙГ АРХИВТ БУУЛГАНА — ерөнхий менежер БАТЛАХАД л дуудагдана
  * (дизайны дүрэм 5a–5e).
  *
@@ -179,13 +207,29 @@ type Archived = { ok: true; archiveOid: number } | { ok: false; error: string };
  */
 async function archiveSubmission(cur: Row): Promise<Archived> {
   const subOid = cur[F.sheetOid];
-  const { loadSubmissionByOid, closeSubmission } = await import('./submission');
-  const staged = await loadSubmissionByOid(subOid);
+  /* ⚠️ `ARCHIVED`-ийн шалгуур нь ЭНД БИШ, илгээлтийг УНШСАНЫ ДАРАА (доор) —
+     түлхүүрт `staged.at` (агуулгын хувилбар) орох ёстой. */
+  const { readSubmissionByOid, closeSubmission } = await import('./submission');
+  /*
+   * ⚠️ АЛДААГ ЯЛГАДАГ ХУВИЛБАР (2026-09-04-ний аудитын CRITICAL олдвор).
+   *    Урьд нь энд `loadSubmissionByOid` дуудагддаг байсан бөгөөд тэр нь
+   *    «мөр байхгүй» ба «уншиж чадсангүй» хоёрыг ялгалгүй `null` буцаадаг:
+   *    сүлжээ түр тасрах, токен дуусах, `tableUrl` null буцаах агшинд
+   *    БАТЛАГДСАН илгээлт архивт ОГТ БИЧИГДЭЛГҮЙ хяналтын мөр «Шилжүүлсэн»
+   *    болж, дахин батлах зам ХААГДДАГ байлаа — компанийн бүтэн өдрийн
+   *    гүйцэтгэл ул мөргүй алга, дэлгэц дээр алдаа ч гарахгүй.
+   *    Одоо «мэдэхгүй» бол ЮУ Ч ХИЙХГҮЙ ЗОГСОНО: менежер дахин дарж болно.
+   */
+  const read = await readSubmissionByOid(subOid);
+  if (!read.ok) return { ok: false, error: read.error };
+  const staged = read.sub;
   /*
    * ⚠️ ХУУЧИН МӨРД ИЛГЭЭЛТ БАЙХГҮЙ (дүрэм 6). Тэдгээрт `Эх_мөрийн_дугаар` нь
    *    архивын ЭХНИЙ мөрийн OBJECTID — жааз нь «Нийтлэх» дээр аль хэдийн
    *    бичигдсэн. Шинэ логикоор дахин бичвэл нэг гүйцэтгэл архивт хоёр
    *    агшинтай болно. Тиймээс зөвхөн нэгтгэлд бүртгээд өнгөрнө.
+   * ⚠️ Энэ салбар руу ЗӨВХӨН `{ok:true, sub:null}` — «мөр байхгүй нь
+   *    БАТАЛГААЖСАН» — үед л унана (дээрх шалгуур).
    */
   if (!staged) return { ok: true, archiveOid: subOid };
   /*
@@ -196,12 +240,31 @@ async function archiveSubmission(cur: Row): Promise<Archived> {
   if (staged.done || staged.payload.archiveOid != null)
     return { ok: true, archiveOid: staged.payload.archiveOid ?? 0 };
 
+  /* ⚠️ Энэ сешнд ЯГ ЭНЭ АГУУЛГА аль хэдийн архивлагдсан бол ДАХИН БИЧИХГҮЙ
+     (дээрх `ARCHIVED`-ийн ⚠️). Агуулга шинэчлэгдсэн бол түлхүүр өөрчлөгдөх
+     тул шинэ илгээлт ЖИНХЭНЭЭР архивлагдана. */
+  const seenKey = `${subOid}:${staged.at}`;
+  const seen = ARCHIVED.get(seenKey);
+  if (seen != null) return { ok: true, archiveOid: seen };
+
   const pl = staged.payload;
   const { PKGS, loadSchema } = await import('@/modules/sheet/bagts.pkg');
   const pkg = PKGS.find((p) => p.key === pl.pkgKey);
   if (!pkg) return { ok: false, error: tr('Илгээлтийн багц олдсонгүй: {0}', pl.pkgKey) };
+  /*
+   * ⚠️ БАГЦЫН ТҮЛХҮҮР ЗААВАЛ ТААРНА (2026-09-04-ний аудит): `Эх_мөрийн_дугаар`
+   *    нь ХОЁР өөр үйлчилгээний OBJECTID-г (илгээлтийн мөр ба архивын мөр) НЭГ
+   *    талбарт хадгалдаг тул хуучин (архивын дугаартай) бүртгэлийн дугаар
+   *    санамсаргүйгээр өөр багцын `sub|` мөр рүү таарч болно. Тэгвэл огт өөр
+   *    багцын гүйцэтгэл ЭНЭ хяналтын мөрөөр архивт бичигдэнэ. Ил зогсооно.
+   */
+  if (pkg.group !== cur[F.bagts])
+    return {
+      ok: false,
+      error: tr('Илгээлт «{0}» багцынх — хяналтын бүртгэл «{1}». Архивт юу ч бичсэнгүй.', pkg.group, cur[F.bagts]),
+    };
 
-  const [{ loadRows, applyAdds, applyDeletes, msToDay }, { overlaySubmission, buildFrame }] = await Promise.all([
+  const [{ loadRows, applyAdds, applyDeletes, msToDay }, { overlaySubmission, buildFrame, assertFrameLength }] = await Promise.all([
     import('@/modules/sheet/bagtsSheet'),
     import('@/modules/sheet/sheetFrame'),
   ]);
@@ -220,11 +283,29 @@ async function archiveSubmission(cur: Row): Promise<Archived> {
    *    архивт бичвэл гүйцэтгэгчийн бичсэн тоо ЧИМЭЭГҮЙ алга болж, батлагдсан
    *    баримт нь илгээснээсээ зөрнө.
    */
-  if (ov.unmoved > 0)
+  if (ov.unmoved > 0) {
+    /*
+     * ⚠️ ЗӨВХӨН ТООГООР ХАНГАЛТГҮЙ (2026-09-04-ний аудит): «3 нүдийг тулгаж
+     *    чадсангүй» гэсэн мессеж нь АЛЬ мөр, АЛЬ блок болохыг хэлдэггүй тул
+     *    гүйцэтгэгчид засах зам байхгүй, багцын илгээлт бүрмөсөн гацдаг байв.
+     *    Түлхүүрийн oid нь ШИНЭ жаазанд байхгүй (тиймдээ л тулгагдаагүй) тул
+     *    нэрийг илгээлтийн ӨӨРИЙНХ нь `rowKeys` толиос авна.
+     */
+    const label = new Map(pl.rowKeys ?? []);
+    const names = ov.unmovedKeys.slice(0, 10).map((k) => {
+      const parts = k.split(':');
+      const oid = Number(parts[0]);
+      const b = Number(parts[1]);
+      const blk = Number.isInteger(b) && sc.bld[b] ? sc.bld[b] : '—';
+      const se = parts[2] === 's' ? tr('эхлэх') : parts[2] === 'e' ? tr('дуусах') : '';
+      return `${label.get(oid) ?? `#${oid}`} · ${blk}${se ? ` · ${se}` : ''}`;
+    });
+    const more = ov.unmovedKeys.length > names.length ? ` … +${ov.unmovedKeys.length - names.length}` : '';
     return {
       ok: false,
-      error: tr('{0} нүдийг шинэ мөрүүдэд тулгаж чадсангүй — архивт бичсэнгүй. Гүйцэтгэгчээр дахин илгээүүлнэ үү.', String(ov.unmoved)),
+      error: tr('{0} нүдийг шинэ мөрүүдэд тулгаж чадсангүй — архивт бичсэнгүй. Гүйцэтгэгчээр дахин илгээүүлнэ үү. Тулгагдаагүй: {1}', String(ov.unmoved), names.join('; ') + more),
     };
+  }
   /*
    * ⚠️ `asOf` нь `computeAll`-ийн ЛАВЛАХ огноо — байхгүй бол төлөвлөгөөт хувь
    *    бүхэлдээ утгагүй болно. 0 гэж таамаглахгүй (`null ≠ 0`).
@@ -249,6 +330,51 @@ async function archiveSubmission(cur: Row): Promise<Archived> {
     fillMs = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
 
   const frame = buildFrame(ov.rows, sc, nBld, asOf, hasObyem, fillMs);
+  /*
+   * ⚠️ ЖААЗНЫ УРТЫГ БИЧИХИЙН ӨМНӨ ТУЛГАНА (2026-09-04-ний аудитын CRITICAL
+   *    олдвор — Багц 3.1 · 9 давхар). `loadRows` нь № ба Ажил хоёул хоосон
+   *    мөрийг алгасдаг тул `rows` нь лавлах зураглалаас нэгээр БОГИНО гарч,
+   *    архивт 1,470-мөрт жааз бичигдээд дараагийн ачаалалт «1470 мөр ирлээ,
+   *    1471 байх ёстой» гэж унаж, тэр багцын бөглөх хуудас БА хянагчийн
+   *    харагдац хоёулаа бүрмөсөн хаагдсан. Богино жааз БИЧИГДСЭНИЙ ДАРАА
+   *    илрэхээс өмнө нь зогсоох нь хамаагүй дээр.
+   * ⚠️ ЛАВЛАХ НЬ `TREES[pkg.key].length` БАЙЖ БОЛОХГҮЙ (энэ хамгаалалтыг
+   *    нэмсэн 2026-09-04-ний эхний хувилбарын алдаа): зураглал нь ХООСОН
+   *    мөрийг ч тоолдог («Багц 3.1 · 9 давхар» = 1471) атлаа `loadRows` № ба
+   *    Ажил хоёул хоосон мөрийг алгасдаг тул жааз ҮРГЭЛЖ 1,470 мөр байна —
+   *    зураглалтай шууд жишсэн шалгуур тэр багцын батлалтыг МӨНХӨД хаана
+   *    («…1470 мөр боловч лавлах 1471…», архивт юу ч бичигдэхгүй). Мөн ерөнхий
+   *    менежер нэг удаа мөр нэмж батлуулсны ДАРАА `loaded.rows.length` нь
+   *    зураглалаас урт болох тул ДАРААГИЙН энгийн батлалт бүр ижил дүрмээр
+   *    хаагдана.
+   * ⚠️ Тиймээс лавлах нь ЭНЭ АЧААЛАЛТЫН мөрийн тоо (`loadRows(...).frameLen`)
+   *    + ЭНЭ илгээлтээр ШИНЭЭР орсон мөр. `bagtsSheet.ts` дахь `frameLen` яг
+   *    үүний тулд нэмэгдсэн.
+   */
+  const added = ov.rows.length - loaded.rows.length;
+  /*
+   * ⚠️ ЖИНХЭНЭ ХАМГААЛАЛТ НЬ «ЖААЗ БОГИНОСОХГҮЙ»: `frame` нь `ov.rows`-ын
+   *    зураглал тул уртын тэнцэл нь бараг үргэлж биелнэ — тиймээс уртын
+   *    шалгуур ГАНЦААРАА хоосон. Архивт ХАГАС/БОГИНО жааз бичигдэхээс
+   *    сэргийлэх цорын ганц утга бүхий нөхцөл нь: шинэ жааз нь ачаалсан
+   *    жаазаасаа БОГИНО байж болохгүй (мөр устгах зам энэ урсгалд БАЙХГҮЙ).
+   *    Богино жааз бичигдвэл дараагийн ачаалалт багцын хуудсыг бүрмөсөн хаана.
+   */
+  if (added < 0)
+    return {
+      ok: false,
+      error: tr(
+        '«{0}»: угсарсан жааз {1} мөр — ачаалсан {2} мөрөөс БОГИНО. Архивт ЮУ Ч бичсэнгүй.',
+        pkg.label,
+        String(frame.length),
+        String(loaded.frameLen),
+      ),
+    };
+  try {
+    assertFrameLength(frame.length, loaded.frameLen + added, pkg.label);
+  } catch (e) {
+    return { ok: false, error: String((e as Error)?.message ?? e) };
+  }
   let firstOid: number | null = null;
   /* ⚠️ БИЧИГДСЭН МӨРИЙН ДУГААР — унасан үед буцааж устгахад ЗААВАЛ хэрэгтэй. */
   const written: number[] = [];
@@ -282,12 +408,22 @@ async function archiveSubmission(cur: Row): Promise<Archived> {
    *    менежер дахин дарж архивт ХОЁР ижил жааз үүснэ. Нэгтгэлийн бүртгэл нь
    *    `archiveOid = 0`-д унаж, зөвхөн `console.warn`-оор мэдэгдэнэ.
    */
-  const cl = await closeSubmission(staged.oid, firstOid ?? 0, Date.now());
+  /*
+   * ⚠️ ЖААЗ БИЧИГДСЭНИЙГ ТЭР ДОР НЬ ТЭМДЭГЛЭНЭ (дээрх `ARCHIVED`-ийн ⚠️):
+   *    доорх алхмуудын аль нэг унаад менежер дахин дарвал ДАВХАР жааз
+   *    бичигдэхгүй.
+   */
+  ARCHIVED.set(seenKey, firstOid ?? 0);
   /*
    * ⚠️ Илгээлтийг ХААХ алхам унавал батлалт УНАХГҮЙ — жааз аль хэдийн архивт
    *    бичигдсэн. Нээлттэй үлдсэн `sub|` мөр дараагийн ачаалалтад давхарлагдах
    *    боловч `overlaySubmission`-ийн давхардал шалгалт (alias) түүнийг барина.
+   * ⚠️ НЭГ УДАА ДАХИН ОРОЛДОНО: хаалт нь idempotency-ийн ЦОРЫН ГАНЦ БАЙНГЫН
+   *    тэмдэг (`done|`) тул түр зуурын сүлжээний саатал нь дараагийн сешнд
+   *    давхар жааз үүсгэх эрсдэл болдог.
    */
+  let cl = await closeSubmission(staged.oid, firstOid ?? 0, Date.now());
+  if (!cl.ok) cl = await closeSubmission(staged.oid, firstOid ?? 0, Date.now());
   if (!cl.ok) console.warn('[selbe] илгээлтийг хааж чадсангүй:', cl.error);
 
   return { ok: true, archiveOid: firstOid ?? 0 };

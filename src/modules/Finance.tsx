@@ -21,6 +21,18 @@ import { cached } from '@/lib/live';
  */
 const LIVE_TTL = 60_000;
 import { loadBlockHistory } from '@/lib/blockProgress';
+/*
+ * ⚠️ ХУВААРИАС бодсон БИЕТ төлөвлөгөөний муруй (2026-09-04). `lagOf` нь урьд
+ *    нь cashflow-ийн ӨССӨН МӨНГӨН хувийг (`cumPct`) БИЕТ гүйцэтгэлийн хувьтай
+ *    хасдаг байв — НЭГЖ нь зөрсөн харьцуулалт. Дээрээс нь `cfMonthAxis()`
+ *    цонх нь 2025-10…2026-09 (12 сар) бөгөөд cashflow-ийн 133 үеийн 131 нь
+ *    түүн дотор багтдаг тул `cumPct` нь 2026-09-д ЯГ 100.0% болно. Амьд
+ *    хэмжилт (2026-09-04): хэмжигдсэн 9 багц ТУС БҮР `planned = 100.0`,
+ *    `gap ≈ 100` → 9/9 нь УЛААН. Мөнгөний хоцрогдлыг `finLagOf` ТУСАД нь
+ *    хэмждэг тул энэ нь давхардал биш, зүгээр л буруу хэмжигдэхүүн байв.
+ *    Импортын мөчлөг үүсэхгүй: `planProgress` нь `Finance`-ээс юу ч авдаггүй.
+ */
+import { loadPlanCurve, type PlanCurve } from '@/lib/planProgress';
 import {
   CASHFLOW2, IPC_LOG, TASK_SHEET, bagtsKey, blockKey, pkgKeyOf, cfMonthAxis, cfMonthKey, ipcNet,
 } from '@/lib/services';
@@ -146,6 +158,21 @@ export type MonthPt = {
    *    графикийг эвдэрсэн гэж үздэг (2026-08-27).
    */
   phys: number | null;
+  /**
+   * БАГЦЫН ТҮЛХҮҮР — `phys` аль багцаас гарсан бэ (`bagtsKey`/`pkgKeyOf`).
+   *
+   * ⚠️ ЗӨВХӨН `lagOf`-д (2026-09-04): хоцрогдлыг бодохдоо ЯГ ТЭР багцын
+   *    хуваарийн муруйг (`PlanCurve.byBagts`) авахад хэрэгтэй. `lagOf(months)`
+   *    гарын үсэг нь ГУРВАН файлд (ExecKpi · PkgProg · PkgFin) хэрэглэгддэг
+   *    тул өөрчилж болохгүй — багцын түлхүүрийг цэг дотроо авч явснаар
+   *    гарын үсэг хэвээр үлдэж, `planned` нь зөв багцынхаа хуваариас гарна.
+   *
+   * ⚠️ `undefined` = ТӨСЛИЙН НЭГТГЭЛ (`aggregateMonths`) — тэр үед төслийн
+   *    нийт муруй (`PlanCurve.months`) хэрэглэгдэнэ. Тиймээс сонголтгүй
+   *    (optional): PkgProg/PkgFin доторх `aggregateMonths` эдгээр файлын
+   *    эзэмшил тул тэднийг хөндөхгүйгээр зөв зан төлөв гарна.
+   */
+  pkg?: string;
 };
 
 /** Багц бүрийн IPC: сар → олгосон нийлбэр */
@@ -588,6 +615,22 @@ const loadIpcRows = cached(
   ['IPC_LOG'],
 );
 
+/**
+ * ХУВААРИЙН МУРУЙН МОДУЛ-ТҮВШНИЙ КЭШ — `lagOf` СИНХРОН тул үүнээс уншина.
+ *
+ * ⚠️ ЯАГААД кэш (2026-09-04): `lagOf(months)` нь гурван файлаас (ExecKpi ·
+ *    PkgProg · PkgFin) синхроноор дуудагддаг ба гарын үсгийг нь өөрчилж
+ *    болохгүй (тэр гурав энэ агентын эзэмшилд биш). Хуваарийн муруй нь
+ *    сүлжээнээс ирдэг тул модулын кэшээр дамжуулна.
+ *
+ * ⚠️ Кэшийг `loadFinDataRaw` дотор ЗААВАЛ бөглөнө — `lagOf`-ийн БҮХ дуудагч
+ *    эхлээд `loadFinData()`-г await хийдэг тул муруй нь хоцорч ирээд «alert
+ *    гарч ирэхгүй» гэсэн уралдаан ҮҮСЭХГҮЙ. Хэрэв ирээдүйд `lagOf`-ийг
+ *    `loadFinData`-гүйгээр дуудвал `null` (хоцрогдол мэдэгдэхгүй) буцна —
+ *    ХУДАЛ УЛААНААС дээр, гэхдээ энэ хамаарлыг санах хэрэгтэй.
+ */
+let planCurveCache: PlanCurve | null = null;
+
 async function loadFinDataRaw(): Promise<FinData> {
   const S = TASK_SHEET.fields;
     const [cashflow, ipc, hist] = await Promise.all([
@@ -603,6 +646,19 @@ async function loadFinDataRaw(): Promise<FinData> {
        *    ижил эх сурвалжийг ДАХИН асуухын оронд түүнийг хуваалцана.
        */
       loadBlockHistory(),
+      /*
+       * ⚠️ Хуваарийн муруйг ЗЭРЭГ татаж кэшлэнэ — `lagOf` үүнийг синхроноор
+       *    уншина. ЖАГСААЛТЫН ТӨГСГӨЛД байх ёстой: дээрх задаргаа
+       *    (`[cashflow, ipc, hist]`) байрлалаар явдаг тул дунд нь оруулбал
+       *    `hist` буруу элемент авна.
+       *
+       * ⚠️ Унавал `planCurveCache` нь `null` үлдэнэ: хоцрогдол харагдахгүй
+       *    болохоос БИШ, буруу (мөнгөн нэгжтэй) тоо гарахгүй. Алдааг залгих
+       *    нь ЗОРИУДЫНХ — санхүүгийн бүх дата хуваарийн улмаас унах ёсгүй.
+       */
+      loadPlanCurve()
+        .then((pc) => { planCurveCache = pc; })
+        .catch(() => { planCurveCache = null; }),
     ]);
 
     /*
@@ -646,7 +702,12 @@ async function loadFinDataRaw(): Promise<FinData> {
     const givenTotal = new Map<string, number>();
     ipc.forEach((r) => {
       const net = ipcNet(r);
-      if (net === 0) return;
+      /* ⚠️ 2026-09-04: `ipcNet` нь `number | null` болов (services.ts) — `null`
+         нь «актын ДҮН ОГТ БӨГЛӨГДӨӨГҮЙ» гэсэн үг, 0₮ олголт БИШ. Хоёуланг
+         нь адилхан алгасна (цувааны гадна), гэхдээ шалтгааныг ялган бичив:
+         `null`-ыг 0 болгож нийлбэрт нэмбэл «олгосон 0₮» гэсэн худал хэмжилт
+         үүснэ. */
+      if (net == null || net === 0) return;
       /* Багц: дэд багц (навч) → үндсэн багц. Аль нь ч байхгүй бол гэрээгүй акт. */
       const k = bagtsKey(r[F.pkg2]) || bagtsKey(r[F.pkg]);
       if (!k || k === '0') return;
@@ -803,8 +864,20 @@ export function contractMonths(r: Row, fin: FinData): MonthPt[] {
   // ⚠️ `pkgKeyOf` (bagtsKey БИШ): «БАГЦ 1-4» мэт диапазон мөр нь bagtsKey-ээр
   //    «БАГЦ14» болж, бодит «Багц 14»-ийн олголт/биет гүйцэтгэлийг өөрийн болгон
   //    зурдаг байв. Диапазон мөр одоо хоосон түлхүүртэй — юутай ч таарахгүй.
-  const byMon = given.get(pkgKeyOf(r[C.pkg2])) ?? given.get(pkgKeyOf(r[C.pkg]));
-  const ph = phys.get(pkgKeyOf(r[C.pkg2])) ?? phys.get(pkgKeyOf(r[C.pkg]));
+  const k2 = pkgKeyOf(r[C.pkg2]);
+  const k3 = pkgKeyOf(r[C.pkg]);
+  const byMon = given.get(k2) ?? given.get(k3);
+  const ph = phys.get(k2) ?? phys.get(k3);
+  /*
+   * ⚠️ ХОЦРОГДЛЫН ТӨЛӨВЛӨГӨӨГ БОДОХ БАГЦЫН ТҮЛХҮҮР (2026-09-04) — `phys` ЯМАР
+   *    багцаас гарсан, ЯГ ТЭР багцынх. `lagOf` нь `planned − actual` бодох
+   *    бөгөөд `actual` нь `phys`-ээс гардаг тул хоёул НЭГ багцынх байх ёстой;
+   *    эс тэгвээс нэг багцын хуваарийг нөгөө багцын гүйцэтгэлээс хасна.
+   *    Дээрх `??` гинжтэй ЯГ ижил дараалал (`k2` тэргүүлнэ, дараа нь `k3`) —
+   *    амьд өгөгдөлд «Багц 3» гэрээ нь `pkg2 = БАГЦ31` тул хуваарь нь
+   *    `byBagts.get('БАГЦ31')` болно (2026-09-04-нд шалгасан).
+   */
+  const pkg = (phys.has(k2) ? k2 : phys.has(k3) ? k3 : (k2 || k3)) || undefined;
 
   /*
    * ⚠️ ХАДГАЛАГДСАН `pctCum` (CF-ийн «өссөн хувь») БАГАНЫГ ХЭРЭГЛЭХГҮЙ —
@@ -847,14 +920,34 @@ export function contractMonths(r: Row, fin: FinData): MonthPt[] {
       cumPct: total > 0 ? (cum / total) * 100 : 0,
       given: byMon?.get(m.label) ?? 0,
       phys: ph?.get(m.label) ?? null,
+      pkg,
     };
   });
 }
 
 /**
- * ХОЦРОГДЛЫН ШАЛГАЛТ — гүйцэтгэлийн ХУВИЙГ жишнэ (дүн биш):
- * сүүлийн биет дататай сар дээр «төлөвлөсөн өссөн хувь (CF)» − «бодит биет %».
+ * ХОЦРОГДЛЫН ШАЛГАЛТ — БИЕТ гүйцэтгэлийн ХУВИЙГ жишнэ (дүн биш):
+ * сүүлийн биет дататай сар дээр «хуваариар байх ЁСТОЙ биет %» − «бодит биет %».
  * Хоёул бөглөгдсөн үед л утга буцаана — өрөөсгөл дататай харьцуулалт хийхгүй.
+ *
+ * ⚠️ 2026-09-04: `planned` нь `months[i].cumPct` (cashflow-ийн ӨССӨН МӨНГӨН
+ *    хувь) байснаа ХУВААРИЙН муруй (`loadPlanCurve` → `planCurveCache`) болов.
+ *    ХОЁР согог зэрэг байв:
+ *      1. НЭГЖ ЗӨРНӨ — мөнгөний өссөн хувийг биет ажлын хувиас хасдаг байв.
+ *      2. `cumPct`-ийн хуваагч нь `cfMonthAxis()`-ийн 12 сарын ЦОНХНЫ нийлбэр
+ *         (2025-10…2026-09). Cashflow-ийн 133 үеийн 131 нь тэр цонхонд багтдаг
+ *         тул `cumPct` нь 2026-09-д ЯГ 100.0% болно.
+ *    Амьд хэмжилт (2026-09-04, хэмжигдсэн 9 багц): ХУУЧИН `planned` нь 9/9-д
+ *    100.0, `gap` 99.9–100.0 → 9/9 УЛААН. ШИНЭ `planned` нь 53.0–79.8
+ *    (хуваарь 2027-12-д дуусдаг), `gap` 53.0–79.8. Бодит биет нь 0.00–0.06%
+ *    тул улаан ХЭВЭЭР ч тоо нь ҮНЭН болов — «100% хоцорсон» гэсэн худал
+ *    ХЭМЖЭЭ арилав.
+ *
+ * ⚠️ Мөнгөний хоцрогдол (төлөвлөсөн ₮ vs олгосон ₮) нь `finLagOf` — ТУСДАА
+ *    асуулт, тусдаа badge. Энэ хоёрыг дахин холихгүй.
+ *
+ * ⚠️ ГАРЫН ҮСЭГ ХЭВЭЭР (`lagOf(months)`) — ExecKpi · PkgProg · PkgFin гурав
+ *    үүнийг дууддаг. Багцын түлхүүр нь `MonthPt.pkg`-ээр цэг дотроо явна.
  */
 export function lagOf(months: MonthPt[]): { month: string; planned: number; actual: number; gap: number } | null {
   const nowYm = new Date().toISOString().slice(0, 7);
@@ -864,10 +957,29 @@ export function lagOf(months: MonthPt[]): { month: string; planned: number; actu
     if (m.label <= nowYm && m.phys != null) mi = i;
   });
   if (mi < 0) return null;
-  // Төлөвлөгөө: тухайн сар хүртэлх сүүлийн бөглөгдсөн өссөн хувь
+  /*
+   * ⚠️ Хуваарийн муруй ирээгүй бол `null` — cashflow руу БУЦАЖ УНАХГҮЙ.
+   *    Тэр fallback нь яг л энэ согогийг (бүх багц улаан) авчирна; «хоцрогдол
+   *    мэдэгдэхгүй» нь «100% хоцорсон гэж худал хэлэх»-ээс дээр.
+   */
+  const pc = planCurveCache;
+  if (!pc) return null;
+  /* Багцын муруй (`pkg` тодорхой) эсвэл ТӨСЛИЙН нийт муруй (`aggregateMonths`) */
+  const key = months.find((m) => m.pkg)?.pkg;
+  const series = key ? pc.byBagts.get(key) : pc.months;
+  if (!series?.length) return null;
+  /* Төлөвлөгөө: ХЭМЖИЛТ ХИЙГДСЭН тэр сарын байдлаар — цаг хугацаагаар тэнцүү
+     харьцуулалт (өнөөдрийн төлөвлөгөөг хуучин хэмжилтээс хасахгүй). */
   let planned = 0;
-  for (let i = 0; i <= mi; i++) if (months[i].cumPct > 0) planned = months[i].cumPct;
-  if (planned <= 0) return null;
+  let found = false;
+  for (const p of series) {
+    if (p.label > months[mi].label) break;
+    planned = p.pct;
+    found = true;
+  }
+  /* ⚠️ `planned <= 0` → `null` нь ХУУЧИН гэрээ (дуудагчид `lag &&`-ээр шалгадаг):
+     хуваарь тэр сард хараахан эхлээгүй бол «хоцрогдол» гэж ярих утгагүй. */
+  if (!found || planned <= 0) return null;
   const actual = months[mi].phys ?? 0;
   return { month: months[mi].label, planned, actual, gap: planned - actual };
 }

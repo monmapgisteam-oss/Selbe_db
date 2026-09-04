@@ -25,7 +25,7 @@
 import { PKGS, loadSchema, type Pkg } from './bagts.pkg';
 import { msToDay } from './bagtsSheet';
 import { levelFromNo } from './ags';
-import { TASK_SHEET, bagtsKey } from '@/lib/services';
+import { TASK_SHEET, bagtsKey, normalizeTaskNo, constructionWhere } from '@/lib/services';
 import { withSlot, isRateLimit } from '@/lib/query';
 
 /** Урт хэлбэрийн НЭГ мөр — нэг ажлын, нэг блокийн, нэг агшны бүртгэл. */
@@ -241,9 +241,15 @@ export async function loadSheetRows(opts: SheetRowOpts = {}): Promise<SheetRow[]
      *    кодтой ч НИЙТ мөр нь «Б. БАРИЛГА УГСРАЛТЫН АЖИЛ» гэсэн БҮТЭН шошготой.
      *    Тиймээс нийт мөрийг ТЭНЦҮҮГЭЭР биш, LIKE-ээр барина — эс бөгөөс
      *    гүйцэтгэлийн нийт дүн олдохгүй бөгөөд блок бүр «мэдээлэлгүй» болно.
+     *
+     * ⚠️ 2026-09-04: LIKE ч хангалтгүй байв — Багц 2·12F ба Багц 3.2·9F-д тэр
+     *    нүд «Б» гэж ЦЭГГҮЙ бичигдсэн тул `LIKE N'Б.%'` 0 мөр өгч, тэр хоёр
+     *    багцын БҮХ блок газрын зурагт «мэдээлэлгүй» саарал үлддэг байлаа
+     *    (амьд хэмжсэн). Одоо предикат нь `services.constructionWhere` —
+     *    цэгтэй ба цэггүй хоёуланг барих ЦОРЫН ГАНЦ дүрэм.
      */
     const where = constructionOnly
-      ? `(${sc.f.no} IN (${subList}) OR ${sc.f.no} LIKE N'${esc(TASK_SHEET.constructionNo)}%')`
+      ? `(${sc.f.no} IN (${subList}) OR ${constructionWhere(sc.f.no)})`
         + ` AND ${sc.f.fillDate} IS NOT NULL`
       : `${sc.f.fillDate} IS NOT NULL`;
 
@@ -263,17 +269,26 @@ export async function loadSheetRows(opts: SheetRowOpts = {}): Promise<SheetRow[]
       const date = msToDay(ms);
 
       const rawNo = String(a[sc.f.no] ?? '').trim();
-      // «Б. БАРИЛГА УГСРАЛТЫН АЖИЛ» → «Б.»; бүлгийн нэр нь № дотор байдаг
-      const no = rawNo.startsWith(TASK_SHEET.constructionNo)
-        ? TASK_SHEET.constructionNo
-        : rawNo;
+      /* «Б. БАРИЛГА УГСРАЛТЫН АЖИЛ» → «Б.»; бүлгийн нэр нь № дотор байдаг.
+       * ⚠️ Нормчлол нь `services.normalizeTaskNo` — «Б» (ЦЭГГҮЙ) хэлбэрийг ч
+       *    барина. Урьд нь `startsWith('Б.')` байсан тул Багц 2·12F ба
+       *    Багц 3.2·9F-ийн нийт мөр «Б» хэвээр үлдэж, `blockProgress`-ийн
+       *    `cells.get('Б.')` undefined болж тэр багцууд дашбоардад ОРДОГГҮЙ
+       *    байв. «Б1»…«Б5» дэд үе шат нь хөндөгдөхгүй. */
+      const no = normalizeTaskNo(rawNo);
       /* ⚠️ Хуулбарын зааг нь ШҮҮЛТЭЭС ӨМНӨ бодогдоно: `maxLevel`-ээр хаясан
          мөр ч жаазны нэг хэсэг тул алгасвал хуулбарын дугаар алдагдана. */
       if (firstNo == null) firstNo = rawNo;
       else if (rawNo === firstNo) snap += 1;
 
       const weight = nOrNull(a[sc.f.wC]);
-      const level = levelFromNo(rawNo, weight);
+      /* ⚠️ Түвшнийг НОРМЧИЛСОН №-ээс бодно: `levelFromNo` нь үе шатыг таниа
+       *    гэхэд үсгийн ард ЦЭГ шаарддаг (`^[үсэг]\.`) тул цэггүй «Б»/«А» нь
+       *    `null` буцааж, тэр багцуудад ТҮВШИН-1 мөр ОЛДОХГҮЙ болдог байв —
+       *    `BuildingPanel`-ийн үе шатын стамп хоосорч, «ажлын төлөв» самбар
+       *    бүхэлдээ 0 ажилтай харагддаг байлаа. Нормчлол нь дэд үе шат
+       *    («Б1»…«Б5» → түвшин 2) ба навч мөрийг хөндөхгүй. */
+      const level = levelFromNo(no, weight);
       if (maxLevel != null && (level == null || level > maxLevel)) continue;
 
       const work = String(a[sc.f.work] ?? '').trim() || rawNo;

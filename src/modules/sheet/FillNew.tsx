@@ -38,12 +38,13 @@ import {
   loadActiveSubmission,
   loadSubmissionByOid,
   mergeSubmission,
+  readActiveSubmission,
   saveSubmission,
   type NewRow,
   type StagedSubmission,
   type SubmissionPayload,
 } from "@/lib/submission";
-import { OWNER, STATUS, F as HF } from "@/lib/hyanalt";
+import { OWNER, STATUS, F as HF, queryAll } from "@/lib/hyanalt";
 import { STAGE_LABEL } from "@/lib/hyanaltGroup";
 import { useHyanaltRows } from "@/lib/hyanaltStore";
 import { bagtsFor, bagtsScope, subscribeAcl } from "@/lib/guitsetgelAcl";
@@ -322,6 +323,32 @@ type EditCol = "obyem";
 /** Нүдний `pending` түлхүүр. */
 const cellKey = (oid: number, b: number) => `${oid}:${b}`;
 
+/**
+ * ТУЛГАГДААГҮЙ ТҮЛХҮҮРИЙГ ХҮНД УНШИГДАХААР НЭРЛЭНЭ.
+ *
+ * ⚠️ Түлхүүрийн oid нь ШИНЭ жаазанд БАЙХГҮЙ (тиймдээ л тулгагдаагүй) тул
+ *    мөрийн нэрийг илгээлтийн ӨӨРИЙНХ нь `rowKeys` толиос авна. Тоо ганцаараа
+ *    («3 нүд буусангүй») хэрэглэгчид засах зам өгдөггүй.
+ */
+const describeUnmoved = (
+  keys: readonly string[],
+  rowKeys: readonly [number, string][],
+  bld: readonly string[],
+  max = 10,
+): string[] => {
+  const label = new Map(rowKeys);
+  const out = keys.slice(0, max).map((k) => {
+    const p = k.split(":");
+    const oid = Number(p[0]);
+    const b = Number(p[1]);
+    const blk = Number.isInteger(b) && bld[b] ? bld[b] : "—";
+    const se = p[2] === "s" ? ` · ${tr('эхлэх')}` : p[2] === "e" ? ` · ${tr('дуусах')}` : "";
+    return `${label.get(oid) ?? `#${oid}`} · ${blk}${se}`;
+  });
+  if (keys.length > out.length) out.push(`… +${keys.length - out.length}`);
+  return out;
+};
+
 const RO = {
   no: tr('№ ба Ажлын нэр нь excel-ийн бүтэц — энэ хуудаснаас засагдахгүй.'),
   wC: tr('Хувийн жин: Мөнгөн дүн ÷ дээд мөрийн дүн. Автоматаар бодогдоно.'),
@@ -489,13 +516,29 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupOpts]);
 
-  const { rows: hyRows, reload: reloadHy } = useHyanaltRows();
+  const { rows: hyRows, loading: hyLoading, error: hyErr, reload: reloadHy } = useHyanaltRows();
   const flow = useMemo(() => {
-    const mine = hyRows.filter((r) => r[HF.bagts] === pkg.group);
+    /*
+     * ⚠️ ХУУДСЫГ ЯЛГАНА (2026-09-04-ний аудит). Хяналтын мөр нь БАГЦААР
+     *    (`Багц 1`) бүртгэгддэг ч илгээлт нь ХУУДСААР (`sub|b1_9f`) явдаг.
+     *    Багц 1 · Багц 2 · Багц 4-2 гурав нь 9 ба 12 давхрын ХОЁР хуудастай
+     *    тул зөвхөн багцаар шүүвэл 12F-ийн илгээлт 9F-ийн «Нийтлэх»-ийг
+     *    бүрмөсөн хаадаг байв («Илгээлт хяналтад байна»).
+     * ⚠️ ХУУЧИН мөрүүдэд хуудсын нэр ОРООГҮЙ — тэдгээр нь багцын БҮХ хуудсанд
+     *    хамаарна (өмнөх зан төлөв хэвээр); зөвхөн ӨӨР хуудсын нэр тодорхой
+     *    бичигдсэн мөрийг хасна.
+     */
+    const others = PKGS.filter((p) => p.group === pkg.group && p.key !== pkg.key);
+    const mine = hyRows.filter((r) => {
+      if (r[HF.bagts] !== pkg.group) return false;
+      const ajil = String(r[HF.ajil] ?? '');
+      if (ajil.includes(pkg.label)) return true;
+      return !others.some((p) => ajil.includes(p.label));
+    });
     if (!mine.length) return null;
     // Хамгийн сүүлийн тойрог — OBJECTID хамгийн их нь
     return mine.reduce((a, b) => (b.__oid > a.__oid ? b : a));
-  }, [hyRows, pkg.group]);
+  }, [hyRows, pkg.group, pkg.key, pkg.label]);
   const returned = flow ? OWNER[flow[HF.status]] === "company" : false;
   /** Урсгал ОДОО хэний гар дээр байна вэ (`null` = бүртгэлгүй) */
   const reviewStage = flow ? OWNER[flow[HF.status]] : null;
@@ -632,10 +675,51 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    */
   const [stagedOid, setStagedOid] = useState<number | null>(null);
   const [stagedFillMs, setStagedFillMs] = useState<number | null>(null);
+  /**
+   * ИЛГЭЭСЭН АТЛАА МӨРӨНД ТУЛГАГДААГҮЙ НҮДНҮҮД (`overlaySubmission.unmovedKeys`).
+   *
+   * ⚠️ ЯАГААД (2026-09-04-ний аудит): `overlaySubmission`-ийн `unmoved`-ыг
+   *    бөглөх хуудас ч, хянагчийн харагдац ч ОГТ шалгадаггүй байв — зөвхөн
+   *    `ov.rows`-ыг авдаг. Архивт хооронд нь шинэ жааз орсон эсвэл `rowKeys`
+   *    дутуу бол зарим нүд мөрөнд буухгүй: гүйцэтгэгч өөрийн илгээсэн тоог
+   *    хуудсан дээр ХАРАХГҮЙ (дахин бөглөнө), хянагч ч тэднийг өөрчлөлтийн
+   *    жагсаалтад харахгүй. Ерөнхий менежер батлах гэж дарахад л
+   *    `hyanaltStore` хатуу зогсоож, тэр үед багц бүхэлдээ ГАЦНА. Тиймээс энэ
+   *    үед ил анхааруулж, ЯГ аль мөр/блок болохыг нэрлэнэ.
+   */
+  const [unmovedWarn, setUnmovedWarn] = useState<string[]>([]);
+  /**
+   * ЭНЭ СЕШНД ХЯНАЛТАД АМЖИЛТТАЙ БҮРТГЭГДСЭН илгээлтийн мөрийн дугаарууд.
+   * ⚠️ «Өнчин илгээлт»-ийн эффект нь хяналтын жагсаалтаас хайдаг бөгөөд
+   *    `reloadHy()` нь асинхрон — нийтэлсний дараах хэдэн зуун миллисекундэд
+   *    мөр хараахан ирээгүй байхад ХУДАЛ анхааруулга гаргах байлаа.
+   */
+  const registeredRef = useRef<Set<number>>(new Set());
   const resend = async () => {
     if (resending || stagedOid == null || stagedFillMs == null) return;
     setResending(true);
-    const rv = await submitForReview(pkg.group, stagedFillMs, stagedOid);
+    /*
+     * ⚠️ ДАХИН ИЛГЭЭХИЙН ӨМНӨ ШИНЭЭР БАТАЛГААЖУУЛНА (2026-09-04-ний аудит):
+     *    дээрх «өнчин илгээлт»-ийн дүгнэлт нь модулийн КЭШЛЭГДСЭН `hyRows`-оос
+     *    уншдаг тул хуудсаа эрт нээсэн хэрэглэгчид ӨӨР хүний саяхан бүртгүүлсэн
+     *    илгээлт харагдахгүй — «бүртгэгдсэнгүй» гэсэн ХУДАЛ анхааруулга гарч,
+     *    товч дарахад нэг илгээлтэд ХОЁР ДАХЬ хяналтын мөр (ergelt=2) үүсч,
+     *    нэг илгээлт хоёр тойрог мэт харагдана. Тиймээс амьд өгөгдлөөс
+     *    шалгана; бүртгэл нь байвал шинэ мөр ҮҮСГЭХГҮЙ, зөвхөн анхааруулгыг
+     *    хаана. (Буцаалтын дараах ЖИНХЭНЭ дахин илгээлт нь энэ товчоор биш,
+     *    «Нийтлэх» замаар явдаг тул энэ шалгуур түүнийг хаахгүй.)
+     */
+    const fresh = await queryAll().catch(() => null);
+    if (fresh?.some((r) => Number(r[HF.sheetOid]) === stagedOid)) {
+      registeredRef.current.add(stagedOid);
+      setSubmitFailed(false);
+      reloadHy();
+      setResending(false);
+      done(tr('Энэ илгээлт хяналтад аль хэдийн бүртгэгдсэн байна'));
+      return;
+    }
+    /* ⚠️ Хуудсын нэр ЗААВАЛ — `flow`-ийн шүүлт түүгээр 9F/12F-ийг ялгадаг. */
+    const rv = await submitForReview(pkg.group, stagedFillMs, stagedOid, pkg.label);
     setResending(false);
     if (rv.ok) { setSubmitFailed(false); reloadHy(); done(tr('Хяналтад илгээв ({0})', rv.id)); }
     else setErr(rv.error);
@@ -884,6 +968,9 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     setStaged(null);
     setStagedOid(null);
     setStagedFillMs(null);
+    /* ⚠️ Тулгагдаагүй нүдний анхааруулга нь НЭГ багцынх — үлдээвэл шинэ багцад
+       худал заалт болно. */
+    setUnmovedWarn([]);
     setBusy(true);
     setErr("");
     setRows([]);
@@ -940,6 +1027,12 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         const useSub = !!sub && !sub.done && sub.payload.pkgKey === pkg.key
           && (!!view?.subOid || !f || f[HF.status] !== STATUS.transferred);
         const ov = useSub && sub ? overlaySubmission(r.rows, sub.payload, schema, nb) : null;
+        /* ⚠️ ТУЛГАГДААГҮЙ НҮД БАЙВАЛ ИЛ ХЭЛНЭ (дээрх `unmovedWarn`-ийн ⚠️) —
+           чимээгүй орхивол гүйцэтгэгч ажлаа алдсанаа мэдэхгүй, зөвхөн ерөнхий
+           менежерийн батлах алхам дээр багц бүхэлдээ гацна. */
+        setUnmovedWarn(ov && ov.unmoved > 0 && sub
+          ? describeUnmoved(ov.unmovedKeys, sub.payload.rowKeys, schema.bld)
+          : []);
         // ⚠️ Мөр нь ЭНЭ багцынх болсныг ноорогийн эффектүүдэд мэдэгдэнэ.
         loadedPkgRef.current = pkg.key;
         setSc(schema);
@@ -973,6 +1066,33 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       alive = false;
     };
   }, [pkg, view?.day, view?.subOid]);
+
+  /**
+   * ӨНЧИН ИЛГЭЭЛТ — хадгалагдсан атлаа хяналтын бүртгэлгүй.
+   *
+   * ⚠️ ЯАГААД (2026-09-04-ний аудит): `submitForReview` унасан үед гарах
+   *    «⚠️ хяналтад бүртгэгдсэнгүй» анхааруулга ба «Хяналтад илгээх» товч нь
+   *    ЗӨВХӨН ЭНЭ СЕШНИЙ төлөвөөс (`submitFailed`, `stagedOid`) уншигддаг
+   *    байв. Хэрэглэгч хуудсаа хааж дахин нээхэд багц ачаалах эффект тэр
+   *    гурвуулангийг тэглэдэг тул анхааруулга ч, товч ч алга болно — `sub|`
+   *    мөр амьд, тоо нь overlay-гаар ХАРАГДСААР байх тул гүйцэтгэгч «илгээсэн»
+   *    гэж бодно; хяналтын дараалалд мөр байхгүй тул хэн ч харахгүй, архивт
+   *    хэзээ ч орохгүй. Тиймээс ӨГӨГДЛӨӨС нь таньж, сэргээх зам нээнэ.
+   *
+   * ⚠️ Жагсаалт ачаалагдаагүй (`hyLoading`) эсвэл АЛДААТАЙ (`hyErr`) үед
+   *    ДҮГНЭХГҮЙ — хоосон жагсаалт нь «бүртгэл алга» гэсэн баталгаа биш.
+   * ⚠️ `registeredRef` — дөнгөж бүртгүүлсэн илгээлтийг «өнчин» гэж
+   *    андуурахгүй (жагсаалтын дахин ачаалалт асинхрон).
+   */
+  useEffect(() => {
+    if (view || !staged || staged.done) return;
+    if (hyLoading || hyErr) return;
+    if (registeredRef.current.has(staged.oid)) return;
+    if (hyRows.some((r) => r[HF.sheetOid] === staged.oid)) return;
+    setSubmitFailed(true);
+    setStagedOid(staged.oid);
+    setStagedFillMs(staged.payload.fillMs);
+  }, [staged, hyRows, hyLoading, hyErr, view]);
 
   // Үйлчилгээнд огноо огт бичигдээгүй бол `<select>` эхний мөрөө харуулах ч
   // төлөв нь `null` хэвээр үлдэж хүснэгт бүхэлдээ хоосон харагдана. Тиймээс
@@ -1977,7 +2097,16 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
        * нэгтгэх суурь (`staged`) хуучирсан — үргэлжлүүлбэл түүний нүднүүд
        * ЧИМЭЭГҮЙ дарагдана.
        */
-      const act = await loadActiveSubmission(pkg.key);
+      /*
+       * ⚠️ АЛДААГ ЯЛГАДАГ ХУВИЛБАР (2026-09-04-ний аудит): `loadActiveSubmission`
+       *    нь уншилт унасныг ч `null` гэж буцаадаг тул тэр агшинд «идэвхтэй
+       *    илгээлт байхгүй» гэж дүгнэж, өөр хэрэглэгчийн ЯГ ОДОО хянагдаж буй
+       *    `sub|` мөрийг бүтнээр нь дарж бичих эрсдэлтэй байв (upsert нь мөрийг
+       *    dkey-гээр олдог тул тэр мөр рүү л бичнэ). Одоо мэдэхгүй бол ЗОГСОНО.
+       */
+      const actR = await readActiveSubmission(pkg.key);
+      if (!actR.ok) throw new Error(actR.error);
+      const act = actR.sub;
       if (act && (!staged || act.at > staged.at))
         throw new Error(
           tr('Энэ багцад өөр хэрэглэгч илгээлт хийсэн байна — хуудсыг дахин ачаалж, ноорогоо сэргээгээд үргэлжлүүлнэ үү.'),
@@ -2077,7 +2206,17 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       /* ⚠️ ХАДГАЛАЛТ УНАВАЛ ЮУ Ч БОЛООГҮЙ: хяналтын бүртгэл үүсгэвэл хянагч
          хоосон илгээлт рүү заасан мөр авна. Тиймээс алдааг ил гаргаж зогсоно
          (ноорог хэвээр). */
-      const sv = await saveSubmission(pkg.key, payload);
+      /*
+       * ⚠️ СУУРИЙН ТУЛГАЛТ (optimistic concurrency, 2026-09-04-ний аудит).
+       *    Дээрх «өөр хэрэглэгч илгээсэн үү» шалгуур нь ХОЁР ТУСДАА уншилтын
+       *    хооронд задгай цонхтой бөгөөд `payload.at` нь КЛИЕНТИЙН цагаар
+       *    бичигддэг тул цагийн зөрүүтэй хоёр машин дээр эрэмбийн харьцуулалт
+       *    чимээгүй давдаг байв — өөр хэрэглэгчийн илгээсэн нүднүүд ул мөргүй
+       *    устана. Тусгайлан бичсэн `expect` параметр нь дуудагдаагүй тул
+       *    ҮХМЭЛ КОД байсныг ЭНД холбов: суурийг БИЧИХ АГШИНД нь дахин тулгана.
+       *    (`null` = «мөр байхгүй байх ёстой».)
+       */
+      const sv = await saveSubmission(pkg.key, payload, staged ? { at: staged.at } : null);
       if (!sv.ok) throw new Error(sv.error);
 
       /*
@@ -2091,7 +2230,12 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
        *    дараалалд давхардсан мөр үүснэ. Оронд нь ил анхааруулж, «Хяналтад
        *    илгээх» товчоор ЯГ ижил хосыг давтана.
        */
-      const rv = await submitForReview(pkg.group, fillMs, sv.oid);
+      /* ⚠️ Хуудсын нэр ЗААВАЛ — `flow`-ийн шүүлт түүгээр 9F/12F-ийг ялгадаг. */
+      const rv = await submitForReview(pkg.group, fillMs, sv.oid, pkg.label);
+      /* ⚠️ Амжилттай бүртгэгдсэн илгээлтийг ТЭМДЭГЛЭНЭ — «өнчин илгээлт»-ийн
+         эффект хяналтын жагсаалт шинэчлэгдэх хүртэлх завсарт ХУДАЛ
+         анхааруулга гаргахгүйн тулд (доорх `registeredRef`-ийн ⚠️). */
+      if (rv.ok) registeredRef.current.add(sv.oid);
       setSubmitFailed(!rv.ok);
       setStagedOid(sv.oid);
       setStagedFillMs(fillMs);
@@ -2107,6 +2251,11 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       const act2 = await loadActiveSubmission(pkg.key);
       const use2 = !!act2 && !act2.done;
       const ov2 = use2 && act2 ? overlaySubmission(next.rows, act2.payload, sc, nBld) : null;
+      /* ⚠️ Илгээсний ДАРАА ч шалгана: тулгагдаагүй нүд үлдвэл батлах шатанд
+         багц гацах тул хэрэглэгч ОДОО мэдэх ёстой (дээрх ⚠️). */
+      setUnmovedWarn(ov2 && ov2.unmoved > 0 && act2
+        ? describeUnmoved(ov2.unmovedKeys, act2.payload.rowKeys, sc.bld)
+        : []);
       setStaged(use2 ? act2 : null);
       setRows(ov2 ? ov2.rows : next.rows);
       /* ⚠️ `null ≠ 0` — илгээлт «Шинэчлэгдсэн огноо»-г хөндөөгүй бол архивынх. */
@@ -2500,6 +2649,13 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
           </button>
         </p>
       )}
+      {/* ⚠️ ТУЛГАГДААГҮЙ НҮД — батлах шатанд багц гацахаас ӨМНӨ хэлнэ
+          (`unmovedWarn`-ийн ⚠️ тайлбар). */}
+      {unmovedWarn.length > 0 && (
+        <p className={st.lockNote} role="alert">
+          {tr('Илгээсэн зарим нүд шинэ мөрүүдэд тулгагдсангүй — эдгээрийг ДАХИН бөглөж илгээнэ үү, эс бөгөөс ерөнхий менежер батлах үед багц бүхэлдээ гацна: {0}', unmovedWarn.join('; '))}
+        </p>
+      )}
       {!locked && !submitFailed && inReview && (
         <p className={st.lockNote}>
           {tr('Илгээлт хяналтад байна — {0}. Засвар ноорогт хадгалагдана; хянагч шийдвэрлэсний дараа дахин илгээж болно.', reviewStage ? STAGE_LABEL[reviewStage] : '')}
@@ -2880,7 +3036,23 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                           )}
                           {/* Хувь — ЗӨВХӨН үр дүн. Товшилт нь дээрх нүдний
                               обьёмын оролтыг нээнэ (td-ийн onClick). */}
-                          <span className={cls("cellPct calcPct")}>
+                          {/* ⚠️ 2026-09-04 (аудит): `c.actOver[bi]` тугийг ЭНД
+                              хэрэглэнэ. Урьд нь `bagtsSheet.computeAll` тугийг
+                              бөглөдөг ч кодын хаана ч УНШИХГҮЙ байв — тиймээс
+                              Багц 1·9F oid 31534 «5/3» нүд 309.9% гэж
+                              харагдаж, эцэг бүлэг ба J нь 100%-иар таслагдсан
+                              (`actAgg`) тоо үзүүлдэг ба ЯАГААД зөрснийг
+                              хэрэглэгчид хэлэх зүйл байсангүй — «бүлгийн дүн
+                              эвдэрсэн» гэж уншигдана. Одоо түүхий утга
+                              анхааруулгын өнгөтэй + `title`-д шалтгаантай.
+                              ⚠️ Нүдний УТГЫГ таслахгүй хэвээр (`c.act`) —
+                              өгөгдлийн алдааг нуухгүй гэсэн дүрэм. */}
+                          <span
+                            className={cls("cellPct calcPct" + (c.actOver[bi] ? " pctOver" : ""))}
+                            title={c.actOver[bi]
+                              ? tr('100%-иас их — нэгтгэлд 100% гэж тооцов. Мөрийн Обьём эсвэл хуримтлалыг шалгана уу.')
+                              : undefined}
+                          >
                             {pc(c.act[bi], 1)}
                           </span>
                         </td>

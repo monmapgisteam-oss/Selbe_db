@@ -22,7 +22,7 @@
  * Нүд бүрээр ХАМГИЙН СҮҮЛИЙН огноог авна: бөглөх хуудас нь өөрчилсөн нүдээ
  * л шинэ огноогоор нэмдэг тул нэг барилгын нүднүүд өөр өөр огноотой байж болно.
  */
-import { TASK_SHEET, buildingKey } from './services';
+import { TASK_SHEET, buildingKey, normalizeTaskNo, isConstructionNo } from './services';
 import { loadSheetRows } from '@/modules/sheet/sheetRows';
 import { register, type DataKey } from './dataBus';
 
@@ -73,7 +73,10 @@ function compute(rows: Record<string, unknown>[]): BlockProgressMap {
   for (const r of rows) {
     const d = t(r[TS.date]);
     if (!isValidDate(d)) continue;
-    const no = t(r[TS.no]);
+    /* ⚠️ № -г ЭНД ч нормчилно: `sheetRows` аль хэдийн нормчилдог ч энэ функц
+     *    түүхий мөр (хуучин кэш, өөр дуудагч) хүлээж авах боломжтой тул нийт
+     *    мөрийн түлхүүр («Б.») хоёр газарт ХОЁР янз бүтэх ёсгүй. */
+    const no = normalizeTaskNo(r[TS.no]);
     const k = buildingKey(r[TS.bagts], r[TS.block]);
     const cells = win.get(k) ?? new Map();
     const prev = cells.get(no);
@@ -125,7 +128,8 @@ export type BlockHistory = Map<string, HistoryPoint[]>;
 function history(rows: Record<string, unknown>[]): BlockHistory {
   const out: BlockHistory = new Map();
   for (const r of rows) {
-    if (t(r[TS.no]) !== TASK_SHEET.constructionNo) continue;
+    /* ⚠️ Нормчлолын НЭГ дүрмээр — «Б» (цэггүй) багцуудын түүх алдагдах ёсгүй */
+    if (!isConstructionNo(r[TS.no])) continue;
     const d = t(r[TS.date]);
     if (!isValidDate(d)) continue;
     const k = buildingKey(r[TS.bagts], r[TS.block]);
