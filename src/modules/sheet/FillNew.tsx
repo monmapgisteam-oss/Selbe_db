@@ -69,6 +69,12 @@ const cls = (names: string) =>
  * ноорогт ОРДОГГҮЙ тул компьютер унтрах, таб хаагдах, багц солиход
  * ЧИМЭЭГҮЙ АЛГА болдог байлаа — хэрэглэгч хагас цагийн ажлаа алдана.
  *
+ * ⚠️ 2026-09-03: Inspection Test Plan-ийн текст (`docs`) нь энэ хуудсаас
+ * БҮРМӨСӨН ГАРСАН — «Чанар (QAQC)» тусдаа харагдацад шилжив. Хуучин
+ * ноорогт үлдсэн `docs` талбарыг УНШИЖ АВААД ХАЯНА (доорх `parseDraft`):
+ * задлах шатанд унагаавал бүтэн ноорог (гүйцэтгэл, огноо, нэмсэн мөр)
+ * хамт устана.
+ *
  * ⚠️ Талбар бүр СОНГОЛТТОЙ: хуучин хөтөчид хадгалагдсан ноорог задрахгүй.
  */
 type Draft = {
@@ -77,6 +83,12 @@ type Draft = {
   cells: [string, string][];
   /** Хуваарийн огноо — `${oid}:${блокийн индекс}:s|e` */
   dates?: [string, string][];
+  /**
+   * ⚠️ ХУУЧИН ноорогт л үлдсэн (Inspection Test Plan). 2026-09-03-наас
+   * хойш БИЧИГДЭХГҮЙ, уншихдаа ЗҮГЭЭР Л АЛГАСНА — тайлбарыг `Draft`-ийн
+   * толгойгоос үзнэ үү.
+   */
+  docs?: unknown;
   /** «Шинэчлэгдсэн огноо» (ms) — зөвхөн өөрчлөгдсөн бол */
   asOf?: number | null;
   /**
@@ -203,6 +215,9 @@ const parseDraft = (raw: string): Draft | null => {
     /* ⚠️ Шинэ талбарууд эвдэрсэн бол ноорог БҮХЭЛДЭЭ хаяхгүй — тэр хэсгийг
        нь л орхино. Нэг талбарын алдаа бусад засварыг устгах ёсгүй. */
     if (d.dates != null && !Array.isArray(d.dates)) d.dates = undefined;
+    /* ⚠️ `docs` нь хуучин ноорогийн үлдэгдэл — ЯМАР Ч хэлбэртэй байсан
+       хамаагүй, зүгээр л хаяна (шалгаад унагаах нь бүтэн ноорог устгана). */
+    d.docs = undefined;
     if (d.asOf != null && !Number.isFinite(d.asOf)) d.asOf = undefined;
     return d;
   } catch {
@@ -362,6 +377,10 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   /** Тайлангийн огноонууд — «Гүйцэтгэл бөглөх» табтай НЭГ эх сурвалжаас. */
   const [dates, setDates] = useState<string[]>([]);
   const [rows, setRows] = useState<SheetRow[]>([]);
+  /* ⚠️ Inspection Test Plan (М-акт · FIC · MA · MIR) ЭНД БАЙХГҮЙ
+     (2026-09-03): «Чанар (QAQC)» тусдаа харагдац болов. Тэр өгөгдөл нь
+     `QAQC`/`QAQC2` үйлчилгээнд, архивгүй, мөр нь байрандаа засагддаг —
+     энэ хуудасны нийтлэх мөчлөгтэй нийцдэггүй. `src/modules/Qaqc.tsx`. */
   const [asOf, setAsOf] = useState<number | null>(null);
   const [asOfOrig, setAsOfOrig] = useState<number | null>(null);
   /** Ачаалсан агшны БӨГЛӨСӨН ӨДӨР (`buglusun_ognoo`) — өнөөдрийнх үү гэж шалгана. */
@@ -476,7 +495,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    * ⚠️ 2026-08-29: `myBagts` нь бүх шатны нэгдсэн хүрээ (QAQC/мөр нэмэх эрхтэй
    *    инженер, менежер хуудсаа харах ёстой) тул зөвхөн түүгээр шүүвэл инженер
    *    өөрийн хянах багцын гүйцэтгэлийг бөглөж, нийтлээд, ӨӨРӨӨ батлах зам
-   *    нээгддэг байв. Мөр нэмэх эрх (`canAddRow`) тусдаа.
+   *    нээгддэг байв. Мөр нэмэх эрх (`canAddRow`) тусдаа; чанарын баримтын
+   *    эрх (`qaqc`) нь одоо «Чанар (QAQC)» тусдаа харагдацад амьдарна.
    */
   const canPerf = useMemo(() => {
     if (unrestricted) return true;
@@ -573,6 +593,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, unrestricted, aclN, capN, pkg.group]);
 
+
   /** Мөр нэмэх маягт нээлттэй байгаа БҮЛГИЙН ObjectID (эсвэл `null`) */
   const [addFor, setAddFor] = useState<number | null>(null);
   const [addForm, setAddForm] = useState({ no: "", work: "", vol: "", unit: "" });
@@ -584,12 +605,14 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   // Огнооны нийтлээгүй засвар, `${oid}:${blok}:s|e` түлхүүрээр («s» = эхлэх,
   // «e» = дуусах). Утга нь «YYYY-MM-DD», "" = огноог арилгах.
   const [pendDate, setPendDate] = useState<Record<string, string>>({});
+
   /**
    * НООРОГ СҮҮЛД ХАДГАЛАГДСАН АГШИН (ms) — зөвхөн дэлгэцийн баталгаа.
    * ⚠️ Автомат хадгалалт нь ЧИМЭЭГҮЙ бол хэрэглэгч итгэхгүй: «хадгалагдсан
    * болов уу» гэж эргэлзэн Нийтлэхийг дутуу дарна. Ил тэмдэг хэрэгтэй.
    */
   const [savedAt, setSavedAt] = useState<number | null>(null);
+
   /**
    * Нээлттэй засварын нүд. `col` нь АЛЬ БАГАНА гэдгийг заана — обьёмгүй
    * мөрд обьём ба хувь ХОЁУЛАА засагддаг тул мөр+блок ганцаараа хүрэлцэхгүй.
@@ -971,6 +994,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   /** Хуудасны БҮХ мөр — серверийнх + хараахан нийтлэгдээгүй нэмэлт. */
   const rowsAll = useMemo(() => withAdds(rows), [rows, withAdds]);
 
+
   const calc = useMemo(
     () =>
       asOf == null || !nBld
@@ -1322,6 +1346,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    * Нүдний засвар — блокийн ОБЬЁМ эсвэл мөрийн Обьём. Гүйцэтгэлийн хувь
    * энд ОРОХГҮЙ: тэр нь обьёмоос бодогдоно.
    */
+
   const commit = (r: SheetRow, b: number, raw: string) => {
     const key = cellKey(r.oid, b);
     const t = raw.trim().replace(",", ".").replace(/^\+/, "").replace(/\s*%$/, "");
@@ -1523,6 +1548,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       if (!r2 || !Number.isInteger(b) || b < 0 || b >= nBld || !fld) { dropped++; continue; }
       nextDates[key] = v;
     }
+
 
     /* ── ШИНЭЧЛЭГДСЭН ОГНОО — зөвхөн ачаалсан утгаас ӨӨР бол ── */
     const draftAsOf = d.asOf != null && d.asOf !== asOfOrig ? d.asOf : null;
@@ -1852,7 +1878,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       const asOfPub = asOf !== asOfOrig ? asOf : (fresh0.asOf ?? asOf);
       /*
        * ── ObjectID ШИЛЖИЛТ ───────────────────────────────────────────────
-       * ⚠️ `pending` ба `pendDate` бүгд `${oid}:…` түлхүүртэй бөгөөд
+       * ⚠️ `pending` ба `pendDate` хоёул `${oid}:…` түлхүүртэй бөгөөд
        *    тэр oid нь хуудсыг НЭЭХ үеийн ObjectID. Нийтлэх бүрд хуудас
        *    БҮХЭЛДЭЭ шинэ мөр болж нэмэгддэг тул хооронд нь өөр хүн нийтэлбэл
        *    `freshRows` огт ӨӨР ObjectID мужид шилжинэ (жаазууд огтлолцдоггүй).
@@ -2035,7 +2061,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     } finally {
       setBusy(false);
     }
-  }, [pkg, sc, nBld, asOf, asOfOrig, pending, pendDate, dirtyCount, busy, hasObyem, withAdds, canPerf, noEdit, rows]);
+  }, [pkg, sc, nBld, asOf, asOfOrig, pending, pendDate, dirtyCount, busy, hasObyem, withAdds, canPerf, canAddRow, noEdit, rows, adds, done]);
 
   // Ctrl+S — «Гүйцэтгэл бөглөх»-тэй ижил.
   // ⚠️ Нээлттэй нүдний бичиж буй утгыг ЭХЛЭЖ commit хийнэ — эс тэгвэл хуучин
@@ -2461,6 +2487,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                 <th colSpan={nBld} className={cls("band")}>{tr('Төлөвлөгөөт гүйцэтгэл ({0} барилга)', nBld)}</th>
                 <th colSpan={nBld * 2} className={cls("band")}>{tr('Төлөвлөгөөт хуваарь ({0} барилга)', nBld)}</th>
                 <th rowSpan={4} className={cls("c-date")}>{tr('Шинэчлэгдсэн огноо')}<i {...grip("date")} /></th>
+                {/* ⚠️ Inspection Test Plan-ийн 9 багана ЭНД БАЙХГҮЙ
+                    (2026-09-03) — «Чанар (QAQC)» тусдаа харагдацад. */}
               </tr>
               {/* 2-р мөр — барилгын төрөл (блокийн цуваагаар) */}
               <tr>
@@ -2473,6 +2501,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                 {bands.map((g, gi) => (
                   <th key={`bd${gi}`} colSpan={g.count * 2} className={cls("band2")}>{g.label}</th>
                 ))}
+
               </tr>
               {/* 3-р мөр — блокийн код */}
               <tr>
@@ -2485,6 +2514,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                 {sc.bld.map((b) => (
                   <th key={`d${b}`} colSpan={2} className={cls("c-date2")}>{b} {tr('барилга')}</th>
                 ))}
+
               </tr>
               {/* 4-р мөр — хуваарийн Эхлэх/Дуусах */}
               <tr>

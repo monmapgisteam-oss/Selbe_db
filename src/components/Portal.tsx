@@ -47,6 +47,7 @@ const DedButets = dynamic(() => import('@/modules/DedButets').then((m) => m.DedB
 const Suitability = dynamic(() => import('@/modules/analysis/Suitability').then((m) => m.Suitability), { ssr: false });
 const Finance = dynamic(() => import('@/modules/Finance').then((m) => m.Finance), { ssr: false });
 const Guitsetgel = dynamic(() => import('@/modules/Guitsetgel').then((m) => m.Guitsetgel), { ssr: false });
+const Qaqc = dynamic(() => import('@/modules/Qaqc').then((m) => m.Qaqc), { ssr: false });
 const Zovshoorol = dynamic(() => import('@/modules/Zovshoorol').then((m) => m.Zovshoorol), { ssr: false });
 const Tailan = dynamic(() => import('@/modules/Tailan').then((m) => m.Tailan), { ssr: false });
 /* ⚠️ Хуваарь нь 10 бөглөх хуудсын схем + 1,400 мөрийг татдаг тул зөвхөн
@@ -521,6 +522,7 @@ function PortalContent(
   const isErsdel = view === 'ersdel';
   const isDedButets = view === 'dedButets';
   const isGuitsetgel = view === 'guitsetgel';
+  const isQaqc = view === 'qaqc';
   const isZovshoorol = view === 'zovshoorol';
   const isSchem = view === 'schem';
   /* Багцын хоёр харагдац — НЭГ модулиас `mode` пропоор (`services.ts` §pkgFin) */
@@ -695,6 +697,8 @@ function PortalContent(
                                   ? <Zovshoorol />
                                 : isGuitsetgel
                                   ? <Guitsetgel />
+                                : isQaqc
+                                  ? <Qaqc />
                                 : isSchem
                                   /* ⚠️ `setView` нь ЗАНГИЛАА ДАРАХАД шилжихэд
                                      хэрэгтэй. URL-аар тойрч болохгүй — энэ

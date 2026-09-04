@@ -57,6 +57,10 @@ export type SheetRow = {
   raw: Record<string, unknown>;
   start: (number | null)[]; // ms epoch
   end: (number | null)[];
+  /* ⚠️ БАРИМТ БИЧГИЙН (Inspection Test Plan) талбарууд ЭНД БАЙХГҮЙ
+     (2026-09-03). Тэдгээр багана `Bagts_*` үйлчилгээнд ОГТ БАЙГААГҮЙ тул
+     энэ жагсаалт үргэлж `null`-аар дүүрдэг байв — хоосон зардал. Чанарын
+     баримт нь `QAQC`/`QAQC2` үйлчилгээнд, `src/lib/qaqc.ts`-ээр уншигдана. */
 };
 
 /**
