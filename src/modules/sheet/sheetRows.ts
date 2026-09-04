@@ -47,6 +47,24 @@ export type SheetRow = {
   /** Гүйцэтгэл 0–1 (ХУВЬ БИШ). Бөглөөгүй нүд `null` */
   progress: number | null;
   /**
+   * ХУВААРЬ — тухайн блокийн эхлэх/дуусах (ms epoch). `withDates` сонголттой
+   * үед л дүүрнэ, эс бөгөөс `null`.
+   *
+   * ⚠️ ЯАГААД ЭНД (2026-09-04): «Гүйцэтгэлийн явц» графикийн ТӨЛӨВЛӨСӨН муруй
+   * нь урьд нь `cashflow`-оос гардаг байсан — тэр нь МӨНГӨний хуваарийн хувь
+   * бөгөөд хуваарийн 12 сарын цонхны нийлбэрт хуваагддаг тул цонх дуусахад
+   * ҮРГЭЛЖ 100% болдог байв («2026-09-д төсөл дуусна» гэсэн худал). Хуваариас
+   * бодвол биет гүйцэтгэлтэй ИЖИЛ нэгжтэй болж, төсөл эхлэхээс дуусах хүртэл
+   * үнэн муж гарна.
+   *
+   * ⚠️ Бүтэн хуудас татах нь 13MB (хэмжсэн) тул БОЛОХГҮЙ. «Б.» мөр нь блок
+   * бүрд өөрийн огноотой байдаг ба 10 багцын 9-д бүтэн модны тооцоотой ЯГ
+   * ижил хариу өгдөг (b1_12f-ийн нэг блок «Б.»-д огноогүй тул 6пп зөрнө —
+   * төслийн нийтэд 0.4пп).
+   */
+  start: number | null;
+  end: number | null;
+  /**
    * Хуудсан дахь МӨРИЙН ДАРААЛАЛ (ObjectID). Толгой↔навч харьцааг зөвхөн
    * дараалал заадаг тул хэсэг/үе шат стампалахад ЗААВАЛ хэрэгтэй.
    */
@@ -79,6 +97,12 @@ export type SheetRowOpts = {
   constructionOnly?: boolean;
   /** Энэ түвшнээс ДЭЭШ мөрийг хаяна (`useBagtsWorks` нь 1–4-ийг хүсдэг) */
   maxLevel?: number;
+  /**
+   * Блокийн ХУВААРИЙН огноог (эхлэх/дуусах) ч татна.
+   * ⚠️ Багана тутам 2 нэмэгдэх тул анхдагчаар УНТРААЛТТАЙ — зөвхөн
+   *    төлөвлөгөөт муруй бодох дуудагч асаана.
+   */
+  withDates?: boolean;
 };
 
 /** `'` тэмдэгтийг SQL-д аюулгүй болгоно */
@@ -178,7 +202,9 @@ async function fetchPage(
  * толгой↔навч харьцааг үүрдэг тул ЭНД алдагдуулж болохгүй.
  */
 export async function loadSheetRows(opts: SheetRowOpts = {}): Promise<SheetRow[]> {
-  const { group = null, block = null, constructionOnly = false, maxLevel } = opts;
+  const {
+    group = null, block = null, constructionOnly = false, maxLevel, withDates = false,
+  } = opts;
 
   const wanted: Pkg[] = group
     ? PKGS.filter((p) => bagtsKey(p.group) === bagtsKey(group))
@@ -203,6 +229,12 @@ export async function loadSheetRows(opts: SheetRowOpts = {}): Promise<SheetRow[]
     }
     const actCols = idx.map((i) => sc.act[i]).filter(Boolean);
     if (!actCols.length) return;
+    /* Хуваарийн багана — зөвхөн хүссэн үед (`withDates`) */
+    /* ⚠️ `filter(Boolean)` нь TS-д төрлийг НАРИЙСГАДАГГҮЙ — предикат хэрэгтэй */
+    const dateCols: string[] = withDates
+      ? [...idx.map((i) => sc.start[i]), ...idx.map((i) => sc.end[i])]
+        .filter((x): x is string => !!x)
+      : [];
 
     /*
      * ⚠️ БӨГЛӨХ ХУУДСАНД № ТАЛБАР ЯЛГААТАЙ: дэд үе шат нь «Б1»…«Б5» гэж цэвэр
@@ -218,7 +250,7 @@ export async function loadSheetRows(opts: SheetRowOpts = {}): Promise<SheetRow[]
     const rows = await fetchPage(
       pkg.url,
       where,
-      [sc.f.no, sc.f.work, sc.f.wC, sc.f.fillDate, sc.f.oid, ...actCols],
+      [sc.f.no, sc.f.work, sc.f.wC, sc.f.fillDate, sc.f.oid, ...actCols, ...dateCols],
       `${sc.f.oid} ASC`,
     );
 
@@ -261,6 +293,9 @@ export async function loadSheetRows(opts: SheetRowOpts = {}): Promise<SheetRow[]
           level,
           weight,
           progress: nOrNull(a[fld]),
+          /* ⚠️ Огноо нь ms epoch — `withDates` унтраалттай бол `null` */
+          start: withDates && sc.start[i] ? nOrNull(a[sc.start[i] as string]) : null,
+          end: withDates && sc.end[i] ? nOrNull(a[sc.end[i] as string]) : null,
           ord,
         });
       }
