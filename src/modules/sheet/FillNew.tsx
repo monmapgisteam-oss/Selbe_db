@@ -3,7 +3,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { submitForReview } from '@/lib/hyanaltSubmit';
 import {
-  applyAdds,
   computeAll,
   loadRows,
   msToDay,
@@ -11,9 +10,6 @@ import {
   type SheetRow,
 } from "./bagtsSheet";
 import {
-  DOC_BAND,
-  DOC_COLS,
-  DOC_GROUPS,
   loadSchema,
   pkgFloors,
   PKG_GROUPS,
@@ -21,7 +17,33 @@ import {
   type Pkg,
   type Schema,
 } from "./bagts.pkg";
-import { OWNER, F as HF } from "@/lib/hyanalt";
+/*
+ * ⚠️ 2026-09-04 — `applyAdds` ЭНД БАЙХГҮЙ, БОЛОХГҮЙ. «Нийтлэх» нь одоо
+ * ИЛГЭЭХ үйлдэл: үндсэн (`Bagts_*`) өгөгдөл рүү бичихгүй, зөвхөн завсрын
+ * хадгалалтад (`Selbe_Guitsetgel_Draft` → `sub|<pkgKey>`) зөрүү (diff)
+ * тавина. Архивт бичих ЦОРЫН ГАНЦ зам нь ерөнхий менежерийн батламж
+ * (`hyanaltStore.apply`). Хэрэглэгчийн шаардлага: «бүх шалгалт дуусаж 4 шат
+ * дамжсаны дараа л дата хүснэгт буюу үндсэн сервис рүү орно».
+ * `draft.check.mjs` энэ файлд `applyAdds(` байхыг ХОРИГЛОЖ шалгана.
+ */
+import {
+  buildOidMap,
+  insertAdds,
+  moveKeys,
+  overlaySubmission,
+  rowKeyOf,
+} from "./sheetFrame";
+import {
+  loadActiveSubmission,
+  loadSubmissionByOid,
+  mergeSubmission,
+  saveSubmission,
+  type NewRow,
+  type StagedSubmission,
+  type SubmissionPayload,
+} from "@/lib/submission";
+import { OWNER, STATUS, F as HF } from "@/lib/hyanalt";
+import { STAGE_LABEL } from "@/lib/hyanaltGroup";
 import { useHyanaltRows } from "@/lib/hyanaltStore";
 import { bagtsFor, bagtsScope, subscribeAcl } from "@/lib/guitsetgelAcl";
 import { roleForUser } from "@/lib/services";
@@ -68,10 +90,15 @@ const cls = (names: string) =>
  * НООРОГ — нийтлэхээс ӨМНӨХ бүх засвар.
  *
  * ⚠️ 2026-08-29: урьд нь ЗӨВХӨН гүйцэтгэлийн нүд (`cells`) ба нэмсэн мөр
- * хадгалагддаг байв. Огноо (`dates`), Inspection Test Plan-ийн текст
- * (`docs`), «Шинэчлэгдсэн огноо» (`asOf`) гурав ноорогт ОРДОГГҮЙ тул
- * компьютер унтрах, таб хаагдах, багц солиход ЧИМЭЭГҮЙ АЛГА болдог байлаа —
- * хэрэглэгч хагас цагийн ажлаа алдана. Одоо дөрвүүлээ хамрагдана.
+ * хадгалагддаг байв. Огноо (`dates`) ба «Шинэчлэгдсэн огноо» (`asOf`)
+ * ноорогт ОРДОГГҮЙ тул компьютер унтрах, таб хаагдах, багц солиход
+ * ЧИМЭЭГҮЙ АЛГА болдог байлаа — хэрэглэгч хагас цагийн ажлаа алдана.
+ *
+ * ⚠️ 2026-09-03: Inspection Test Plan-ийн текст (`docs`) нь энэ хуудсаас
+ * БҮРМӨСӨН ГАРСАН — «Чанар (QAQC)» тусдаа харагдацад шилжив. Хуучин
+ * ноорогт үлдсэн `docs` талбарыг УНШИЖ АВААД ХАЯНА (доорх `parseDraft`):
+ * задлах шатанд унагаавал бүтэн ноорог (гүйцэтгэл, огноо, нэмсэн мөр)
+ * хамт устана.
  *
  * ⚠️ Талбар бүр СОНГОЛТТОЙ: хуучин хөтөчид хадгалагдсан ноорог задрахгүй.
  */
@@ -81,8 +108,12 @@ type Draft = {
   cells: [string, string][];
   /** Хуваарийн огноо — `${oid}:${блокийн индекс}:s|e` */
   dates?: [string, string][];
-  /** Баримт бичгийн текст — `${oid}:${баганын индекс}` */
-  docs?: [string, string][];
+  /**
+   * ⚠️ ХУУЧИН ноорогт л үлдсэн (Inspection Test Plan). 2026-09-03-наас
+   * хойш БИЧИГДЭХГҮЙ, уншихдаа ЗҮГЭЭР Л АЛГАСНА — тайлбарыг `Draft`-ийн
+   * толгойгоос үзнэ үү.
+   */
+  docs?: unknown;
   /** «Шинэчлэгдсэн огноо» (ms) — зөвхөн өөрчлөгдсөн бол */
   asOf?: number | null;
   /**
@@ -106,25 +137,19 @@ type Draft = {
    */
   rowKeys?: [number, string][];
 };
-/**
- * ЕРӨНХИЙ МЕНЕЖЕРИЙН НЭМСЭН, хараахан нийтлэгдээгүй мөр.
+/*
+ * ЕРӨНХИЙ МЕНЕЖЕРИЙН НЭМСЭН, хараахан илгээгдээгүй мөр (`NewRow`) —
+ * тодорхойлолт нь `@/lib/submission`-д ШИЛЖСЭН (2026-09-04).
  *
- * ⚠️ Эцгийг ObjectID-гаар санахгүй: нийтлэх бүрд хуудас бүхэлдээ хуулбарлагдаж
- * бүх мөр ШИНЭ ObjectID авдаг тул тэр дугаар удаан амьдардаггүй. (№ + ажлын
- * нэр) хос нь эх excel-ийн бүтэц тул хамаагүй тогтвортой.
+ * ⚠️ НЭГ ЭХ СУРВАЛЖ: илгээлтийн payload (`SubmissionPayload.adds`), жааз
+ * угсрагч (`sheetFrame.insertAdds`) ба энэ хуудас ГУРВУУЛАА ижил хэлбэрээс
+ * уншина. Урьд нь энд ЛОКАЛ хуулбар байсан бөгөөд салбарлавал нэмсэн мөр
+ * илгээлтэд өөр, дэлгэцэд өөр байдлаар буух эрсдэлтэй.
+ *
+ * ⚠️ Эцгийг ObjectID-гаар санахгүй: архивт жааз нэмэгдэх бүрд бүх мөр ШИНЭ
+ * ObjectID авдаг тул тэр дугаар удаан амьдардаггүй. (№ + ажлын нэр) хос нь
+ * эх excel-ийн бүтэц тул хамаагүй тогтвортой.
  */
-type NewRow = {
-  /** Түр ObjectID — САРВААХ сөрөг тоо, серверийн дугаартай хэзээ ч мөргөлдөхгүй */
-  oid: number;
-  parentNo: string;
-  parentWork: string;
-  /** Нэрээр олдохгүй үед нөхөх сүүлчийн арга */
-  parentIdx: number;
-  no: string;
-  work: string;
-  vol: number | null;
-  unit: number | null;
-};
 
 /**
  * Түр ObjectID-ийн тоолуур. Сөрөг тул серверийн (эерэг) дугаартай мөргөлдөхгүй
@@ -154,13 +179,28 @@ type RestorePlan = {
   source: 'local' | 'remote';
   cells: Record<string, string>;
   dates: Record<string, string>;
-  docs: Record<string, string>;
   adds: NewRow[];
   asOf: number | null;
 };
 
 const DRAFT_PREFIX = "selbe-fillnew-draft:";
 const DRAFT_TTL_MS = 3 * 24 * 3600 * 1000;
+/**
+ * ⚠️ ШИНЭ ЭХЛЭЛ — ЭНЭ АГШНААС ӨМНӨХ НООРОГ ТУРШИЛТЫНХ (2026-09-03 17:10, +08).
+ *
+ * Хэрэглэгчийн заавар: «гүйцэтгэлийн бүртгэл яг одооноос шинээр эхэлнэ —
+ * ноорогийг мөн цэвэрлэ».
+ *
+ * Ноорог нь хэрэглэгчийн ХӨТӨЧИД ба ArcGIS-ийн ноорогийн хүснэгтэд тархсан
+ * тул гараар цэвэрлэх боломжгүй. Тиймээс цэвэрлэлт нь КОДОД: энэ агшнаас
+ * өмнө хадгалагдсан ноорог бүхэлдээ хүчингүй болж, локал ба алсын хуулбар
+ * ХОЁУЛАА устна (`readDraft`, доорх сэргээх эффект).
+ *
+ * ⚠️ Тогтмолыг УРАГШЛУУЛЖ БОЛОХГҮЙ — «одоо» руу шилжүүлбэл хэрэглэгчийн
+ *    ажиллаж буй ноорог устана. Дараагийн цэвэрлэлт шаардлагатай бол ШИНЭ
+ *    тогтмол нэмнэ.
+ */
+const DRAFT_FRESH_START = Date.parse("2026-09-03T17:10:00+08:00");
 /**
  * Түүхий JSON → шалгагдсан `Draft`.
  *
@@ -173,6 +213,10 @@ const parseDraft = (raw: string): Draft | null => {
     const d = JSON.parse(raw) as Draft;
     if (!d.t || !Array.isArray(d.cells) || Date.now() - d.t > DRAFT_TTL_MS)
       return null;
+    /* ── ШИНЭ ЭХЛЭЛИЙН ШҮҮЛТ ──
+       ⚠️ Эхлээд Inspection Test Plan-ийг үлдээдэг байсныг болив: чанарын
+       хэсэг бүхэлдээ хасагдсан тул үлдээх зүйл байхгүй. */
+    if (d.t < DRAFT_FRESH_START) return null;
     if (d.adds != null && !Array.isArray(d.adds)) return null;
     /* ⚠️ Түр ObjectID нь САЛАНГИД СӨРӨГ БҮХЭЛ тоо байх ЁСТОЙ: давхардсан
        дугаартай хоёр мөр нэг `${oid}:${b}` нүдийг хуваалцаж, нэгд нь бичсэн
@@ -190,7 +234,9 @@ const parseDraft = (raw: string): Draft | null => {
     /* ⚠️ Шинэ талбарууд эвдэрсэн бол ноорог БҮХЭЛДЭЭ хаяхгүй — тэр хэсгийг
        нь л орхино. Нэг талбарын алдаа бусад засварыг устгах ёсгүй. */
     if (d.dates != null && !Array.isArray(d.dates)) d.dates = undefined;
-    if (d.docs != null && !Array.isArray(d.docs)) d.docs = undefined;
+    /* ⚠️ `docs` нь хуучин ноорогийн үлдэгдэл — ЯМАР Ч хэлбэртэй байсан
+       хамаагүй, зүгээр л хаяна (шалгаад унагаах нь бүтэн ноорог устгана). */
+    d.docs = undefined;
     if (d.asOf != null && !Number.isFinite(d.asOf)) d.asOf = undefined;
     return d;
   } catch {
@@ -200,7 +246,13 @@ const parseDraft = (raw: string): Draft | null => {
 const readDraft = (pkgKey: string): Draft | null => {
   try {
     const raw = localStorage.getItem(DRAFT_PREFIX + pkgKey);
-    return raw ? parseDraft(raw) : null;
+    if (!raw) return null;
+    const d = parseDraft(raw);
+    /* ⚠️ ХҮЧИНГҮЙ БОЛСОН БИЧЛЭГИЙГ ШУУД УСТГАНА (хугацаа дууссан, эвдэрсэн,
+       эсвэл шинэ эхлэлээс өмнөх). Үлдээвэл ачаалалт бүрд дахин задлагдаж,
+       хөтчийн санд мөнхөд хуримтлагдана. */
+    if (!d) localStorage.removeItem(DRAFT_PREFIX + pkgKey);
+    return d;
   } catch {
     return null;
   }
@@ -284,11 +336,9 @@ const RO = {
   groupDate: tr('Энэ огноо нь доод ажлуудынхаа хамгийн эрт эхлэх / хамгийн сүүл дуусахаар бодогдож байна — доод ажлынхаа огноог засаарай.'),
   noDateField: tr('Энэ блокт огнооны багана үйлчилгээнд байхгүй тул хадгалах газаргүй.'),
   asOfRow: tr('Шинэчлэгдсэн огноо зөвхөн эхний мөрд бичигдэнэ — тэндээс эсвэл дээд талын «Огноо»-гоор солино.'),
-  noDocField: tr('Энэ багана тухайн үйлчилгээнд байхгүй — хадгалах газаргүй тул засагдахгүй. AGOL дээр талбарыг нэмж өгөх шаардлагатай.'),
-  noQaqc: tr('Inspection Test Plan (М-акт, FIC, MA, MIR) бөглөхөд «QAQC» эрх шаардлагатай — «Хэрэглэгчдийн эрх удирдах» хэсгээс олгоно.'),
-  docLocked: tr('Хуудас засагдахгүй горимд байна — өнөөдөр аль хэдийн хяналтад илгээгдсэн (эсвэл зөвхөн харах горим).'),
+  viewOnly: tr('Энэ хуудас зөвхөн ХАРАХ горимд нээгдсэн (хяналтын харагдац) — эндээс засвар хийгдэхгүй.'),
   noAddRow: tr('Шинэ мөр нэмэх эрх алга — «Хэрэглэгчдийн эрх удирдах» хэсгээс «Мөр нэмэх» эрхийг олгоно.'),
-  noPerf: tr('Гүйцэтгэлийн обьём ба огноог зөвхөн энэ багцад томилогдсон гүйцэтгэгч бөглөнө — та зөвхөн Inspection Test Plan / мөр нэмэх эрхийнхээ хүрээнд засна.'),
+  noPerf: tr('Гүйцэтгэлийн обьём ба огноог зөвхөн энэ багцад томилогдсон гүйцэтгэгч бөглөнө — та зөвхөн мөр нэмэх эрхийнхээ хүрээнд засна.'),
 } as const;
 
 /*
@@ -318,6 +368,18 @@ export type SheetView = {
   pkgKey: string;
   /** Аль АГШИН (`YYYY-MM-DD`) — илгээсэн тэр өдрийн бүтэн хуулбар */
   day: string;
+  /**
+   * ЗАВСРЫН ИЛГЭЭЛТИЙН мөрийн OBJECTID (`Selbe_Guitsetgel_Draft` → `sub|…`).
+   *
+   * ⚠️ 2026-09-04: илгээлт нь ОДОО архивт бичигдэхгүй тул хянагчид харуулах
+   *    «тэр өдрийн бүтэн хуулбар» гэж байхгүй. Оронд нь АРХИВЫН СҮҮЛИЙН жааз
+   *    дээр илгээлтийн зөрүүг давхарлаж харуулна.
+   *
+   * ⚠️ Өгөгдсөн үед `day`-г ҮЛ ТООНО: илгээлт нь сүүлийн жааз дээрх diff тул
+   *    өөр (хуучин) агшин дээр давхарлавал хянагч огт өөр тоо харна. `day`
+   *    нь зөвхөн ХУУЧИН (архивын OBJECTID-тай) бүртгэлийн зам дээр үлдэнэ.
+   */
+  subOid?: number;
   /** Өөрчлөгдсөн нүд: `${мөрийн индекс}:${блокийн шошго}` */
   changed?: Set<string>;
   /** Үсрэх хүсэлт — `n` солигдох бүрд шинэ хүсэлт гэж үзнэ */
@@ -346,6 +408,10 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   /** Тайлангийн огноонууд — «Гүйцэтгэл бөглөх» табтай НЭГ эх сурвалжаас. */
   const [dates, setDates] = useState<string[]>([]);
   const [rows, setRows] = useState<SheetRow[]>([]);
+  /* ⚠️ Inspection Test Plan (М-акт · FIC · MA · MIR) ЭНД БАЙХГҮЙ
+     (2026-09-03): «Чанар (QAQC)» тусдаа харагдац болов. Тэр өгөгдөл нь
+     `QAQC`/`QAQC2` үйлчилгээнд, архивгүй, мөр нь байрандаа засагддаг —
+     энэ хуудасны нийтлэх мөчлөгтэй нийцдэггүй. `src/modules/Qaqc.tsx`. */
   const [asOf, setAsOf] = useState<number | null>(null);
   const [asOfOrig, setAsOfOrig] = useState<number | null>(null);
   /** Ачаалсан агшны БӨГЛӨСӨН ӨДӨР (`buglusun_ognoo`) — өнөөдрийнх үү гэж шалгана. */
@@ -425,14 +491,68 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     return mine.reduce((a, b) => (b.__oid > a.__oid ? b : a));
   }, [hyRows, pkg.group]);
   const returned = flow ? OWNER[flow[HF.status]] === "company" : false;
+  /** Урсгал ОДОО хэний гар дээр байна вэ (`null` = бүртгэлгүй) */
+  const reviewStage = flow ? OWNER[flow[HF.status]] : null;
+  /**
+   * ИЛГЭЭЛТ ХЯНАЛТАД БАЙНА УУ — ИЛГЭЭХ ХОРИГИЙН цорын ганц шалгуур
+   * (2026-09-04).
+   *
+   * ⚠️ ЯАГААД: илгээлт нь багц бүрд ХАМГИЙН ИХДЭЭ НЭГ идэвхтэй мөр
+   *    (`sub|<pkgKey>`) бөгөөд дахин илгээхэд тэр мөр дээр НЭГТГЭГДЭНЭ. Хэрэв
+   *    инженер/менежер/ерөнхий менежерийн гар дээр байх үед дахин илгээх юм
+   *    бол хянагчийн ЯГ ОДОО харж буй агуулга доор нь чимээгүй солигдоно —
+   *    тэр нэгийг харж байгаад өөр нэгийг батална.
+   *
+   * ⚠️ `Шилжүүлсэн` (батлагдсан) нь хориг БИШ: тэр нь мөчлөг ДУУССАН гэсэн
+   *    үг, дараагийн илгээлт ШИНЭ `sub|` мөр үүсгэнэ.
+   * ⚠️ Буцаалт (`OWNER === 'company'`) ч хориг БИШ — засах ЁСТОЙ.
+   *
+   * ⚠️ Ноорог нь хориотой үед ч ХЭВЭЭР хадгалагдана: хэрэглэгч хүлээж
+   *    байхдаа ажлаа үргэлжлүүлж болно, зөвхөн ИЛГЭЭХ нь хаагдана.
+   */
+  const inReview = !!flow
+    && flow[HF.status] !== STATUS.transferred
+    && reviewStage !== "company";
+  /**
+   * Урсгалын мөрийн ХАМГИЙН СҮҮЛИЙН утга — багц ачаалах эффектэд.
+   *
+   * ⚠️ ЯАГААД REF, ХАМААРАЛ БИШ: `flow` нь `useHyanaltRows`-ийн кэшээс ирдэг
+   *    бөгөөд хяналтын жагсаалт шинэчлэгдэх бүрд ШИНЭ объект болно. Ачаалах
+   *    эффектийн хамаарлын жагсаалтад тавибал 1,400 мөр + илгээлт нь
+   *    бүртгэлийн хөдөлгөөн болгонд ДАХИН татагдаж, хэрэглэгчийн засварын
+   *    дунд `setRows` дуудагдана. Overlay-ийн нөхцөлд зөвхөн эффект АЖИЛЛАХ
+   *    агшны утга хэрэгтэй тул ref хангалттай.
+   */
+  const flowRef = useRef(flow);
+  flowRef.current = flow;
   /*
    * ⚠️ Өнөөдрийн огноог зурагдах бүрд БИШ, НЭГ л удаа авна — эс бөгөөс
    *    зурагдалт цэвэр биш болж, шөнө дундаас хойш зөрчил үүснэ.
    */
   const [today] = useState(() => msToDay(Date.now()));
-  const sentToday = !!snapDay && snapDay === today;
-  /** Засах эрхгүй — харах л боломжтой. */
-  const noEdit = locked || (sentToday && !returned);
+  /**
+   * Өнөөдөр архивт агшин үүссэн үү.
+   * ⚠️ Энэ нь «НИЙТЛЭГДСЭН» гэсэн үг — «ИЛГЭЭГДСЭН» гэсэн үг БИШ. Хоёрыг
+   *    андуурсан нь доорх хоёр алдааны эх үндэс байсан.
+   */
+  const publishedToday = !!snapDay && snapDay === today;
+  /**
+   * Засах эрхгүй — харах л боломжтой.
+   *
+   * ⚠️ «ӨДӨРТ НЭГ УДАА» ТҮГЖЭЭ ХАСАГДСАН (2026-09-03, хэрэглэгчийн шууд
+   *    заавар: «өдөрт 2 удаа бөглөх боломжтой болго»).
+   *
+   *    Урьд нь `locked || (sentToday && !returned)` байв: тухайн өдөр агшин
+   *    үүсмэгц хуудас БҮРМӨСӨН хаагдаж, өглөө бөглөсөн гүйцэтгэлээ үдээс хойш
+   *    засах ямар ч зам үлдэхгүй — зөвхөн хянагч буцаавал л нээгддэг байлаа.
+   *
+   *    ⚠️ ХАДГАЛАГДСАН ЭРСДЭЛ: нэг өдөрт хоёр агшин үүсвэл хянагч тэр өдрийн
+   *    СҮҮЛИЙНХИЙГ хардаг (`loadRows` → `lastFrame`) тул илгээсэн агшин ба
+   *    хянагдах агшин зөрж болно. Нийтлэл БҮР тусдаа хяналтын бүртгэл
+   *    үүсгэдэг (`submitForReview`) тул бүртгэл алдагдахгүй, харин хоёр
+   *    бүртгэл нэг л (сүүлийн) агшин руу заана.
+   */
+  const noEdit = locked;
   /**
    * ГҮЙЦЭТГЭЛ (обьём, огноо, «шинэчлэгдсэн огноо») БӨГЛӨХ ЭРХ — зөвхөн ЭНЭ багцад
    * `company` шатанд томилогдсон гүйцэтгэгч (эсвэл админ).
@@ -440,7 +560,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    * ⚠️ 2026-08-29: `myBagts` нь бүх шатны нэгдсэн хүрээ (QAQC/мөр нэмэх эрхтэй
    *    инженер, менежер хуудсаа харах ёстой) тул зөвхөн түүгээр шүүвэл инженер
    *    өөрийн хянах багцын гүйцэтгэлийг бөглөж, нийтлээд, ӨӨРӨӨ батлах зам
-   *    нээгддэг байв. Баримтын багана (`canQaqc`), мөр нэмэх (`canAddRow`) тусдаа.
+   *    нээгддэг байв. Мөр нэмэх эрх (`canAddRow`) тусдаа; чанарын баримтын
+   *    эрх (`qaqc`) нь одоо «Чанар (QAQC)» тусдаа харагдацад амьдарна.
    */
   const canPerf = useMemo(() => {
     if (unrestricted) return true;
@@ -451,29 +572,61 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   /** Гүйцэтгэлийн нүд засагдахгүй: хуудас түгжээтэй ЭСВЭЛ гүйцэтгэгч биш */
   const noPerf = noEdit || !canPerf;
 
-  /**
-   * ӨНЧИН АГШИН (2026-08-29): нийтлэл амжилттай атлаа хяналтад илгээлт унасан
-   * бол өнөөдрийн хуулбар үйлчилгээнд байгаа ч хянагчийн дараалалд ОРООГҮЙ.
-   * Урьд нь ийм үед гарц байгаагүй: хуудас түгжигдсэн (`sentToday`), хянагч
-   * харахгүй, маргааш дахин нийтэлбэл давхардсан агшин үүснэ. Урсгалын мөр нь
-   * агшны ЭХНИЙ мөрийн OBJECTID-гаар (`sheetOid`) эсвэл илгээсэн өдрөөрөө
-   * танигдана — аль нь ч байхгүй бол өнчин.
+  /*
+   * ⚠️ `submittedToday` УСТСАН (2026-09-04). Тэр нь «өнөөдөр архивт агшин
+   *    үүссэн БА хяналтын бүртгэлд тохирох мөр бий юу» гэсэн ӨГӨГДЛИЙН
+   *    таамаг байв — илгээлт архивт бичигдэхээ больсон тул мөрийн OBJECTID
+   *    ч, `buglusun_ognoo` ч илгээлттэй холбогдохоо болив. Одоо байдлыг
+   *    хяналтын урсгалын мөр (`flow`) ШУУД хэлнэ: `inReview` (хянагчийн гар
+   *    дээр) ба `returned` (буцаагдсан) хоёр.
    */
-  const orphan = useMemo(() => {
-    if (locked || !sentToday || !rows.length) return false;
-    const first = rows[0].oid;
-    return !hyRows.some(
-      (r) => r[HF.bagts] === pkg.group
-        && (r[HF.sheetOid] === first || String(r[HF.companySent] ?? "").slice(0, 10) === snapDay),
-    );
-  }, [locked, sentToday, rows, hyRows, pkg.group, snapDay]);
+
+  /**
+   * ХЯНАЛТАД ИЛГЭЭЛТ УНАСАН уу — ЗӨВХӨН ЭНЭ СЕШНИЙ нийтлэлээс.
+   *
+   * ⚠️ 2026-09-03 — ЭНЭ ТУГ ЯАГААД ӨГӨГДЛӨӨС УНШИГДАХГҮЙ БОЛОВ.
+   *
+   * Урьд нь «өнчин агшин» нь ӨГӨГДЛИЙН харьцуулалтаар тодорхойлогддог байв:
+   * «өнөөдрийн агшин архивт байгаа атал хяналтын бүртгэлд алга бол өнчин».
+   * Хяналтын бүртгэлийг цэвэрлээд (ашиглалт шинээр эхлэх) архивын хуучин
+   * агшнууд үлдэхэд тэр шалгуур БҮХ багцад ҮНЭН болж, «Өнөөдрийн гүйцэтгэл
+   * нийтлэгдсэн ч хяналтад ИЛГЭЭГДЭЭГҮЙ» гэсэн шар анхааруулга мөнхөд
+   * гацаж, хуудас нь бас түгжээтэй байсан тул гарц үлдээгүй.
+   *
+   * Илгээлт унасан эсэхийг ЯГ мэддэг цорын ганц газар нь нийтлэлийн зам
+   * (`submitForReview`-ийн хариу). Тиймээс анхааруулгыг тэндээс л асаана —
+   * архивт үлдсэн хуучин өгөгдөл дэлгэц дээр худал сэрэмжлүүлэг үүсгэхээ
+   * болино. Түгжээ хасагдсан тул унасан үед хэрэглэгч зүгээр дахин
+   * «Нийтлэх» дарж болно.
+   */
+  const [submitFailed, setSubmitFailed] = useState(false);
   const [resending, setResending] = useState(false);
+  /**
+   * ЭНЭ БАГЦЫН ИДЭВХТЭЙ ИЛГЭЭЛТ (`sub|<pkgKey>`) — ачаалахад уншигдана.
+   *
+   * ⚠️ Хоёр зорилготой: (1) хуудсанд илгээсэн тоог давхарлаж харуулах
+   *    (илгээсэн ажил дэлгэцээс алга болох ЁСГҮЙ); (2) дахин илгээхэд ХУУЧИН
+   *    payload дээр НЭГТГЭХ (`mergeSubmission`) — эс бөгөөс өмнөх илгээлтийн
+   *    нүднүүд чимээгүй унтарна.
+   */
+  const [staged, setStaged] = useState<StagedSubmission | null>(null);
+  /**
+   * ХАДГАЛАГДСАН ч ХЯНАЛТЫН БҮРТГЭЛ ҮҮСЭЭГҮЙ илгээлтийн мөрийн дугаар ба өдөр.
+   *
+   * ⚠️ 2026-09-04: `resend` урьд нь `rows[0].oid` (АРХИВЫН мөр) ба `snapMs`
+   *    (архивын агшин)-ыг явуулдаг байв. Илгээлт архивт бичигдэхээ больсон
+   *    тул тэр хоёр нь одоо БУРУУ заалт өгнө — хянагч огт өөр (хуучин) жааз
+   *    руу заасан бүртгэл авна. Тиймээс дахин илгээх зам нь ЯГ ижил
+   *    (илгээлтийн OBJECTID, бөглөсөн өдөр) хосыг давтана.
+   */
+  const [stagedOid, setStagedOid] = useState<number | null>(null);
+  const [stagedFillMs, setStagedFillMs] = useState<number | null>(null);
   const resend = async () => {
-    if (resending || !rows.length || snapMs == null) return;
+    if (resending || stagedOid == null || stagedFillMs == null) return;
     setResending(true);
-    const rv = await submitForReview(pkg.group, snapMs, rows[0].oid);
+    const rv = await submitForReview(pkg.group, stagedFillMs, stagedOid);
     setResending(false);
-    if (rv.ok) { reloadHy(); done(tr('Хяналтад илгээв ({0})', rv.id)); }
+    if (rv.ok) { setSubmitFailed(false); reloadHy(); done(tr('Хяналтад илгээв ({0})', rv.id)); }
     else setErr(rv.error);
   };
 
@@ -519,17 +672,6 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, unrestricted, aclN, capN, pkg.group]);
 
-  /**
-   * QAQC — Inspection Test Plan (М-акт · FIC · MA · MIR) бөглөх эрх.
-   *
-   * ⚠️ Гүйцэтгэлийн хувь бөглөхөөс ТУСДАА олгогдоно: чанарын баримтыг
-   * гүйцэтгэгч биш, чанарын хяналтын ажилтан хөтөлдөг.
-   */
-  const canQaqc = useMemo(
-    () => hasCap(user?.username, "qaqc"),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [user, capN],
-  );
 
   /** Мөр нэмэх маягт нээлттэй байгаа БҮЛГИЙН ObjectID (эсвэл `null`) */
   const [addFor, setAddFor] = useState<number | null>(null);
@@ -542,20 +684,14 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   // Огнооны нийтлээгүй засвар, `${oid}:${blok}:s|e` түлхүүрээр («s» = эхлэх,
   // «e» = дуусах). Утга нь «YYYY-MM-DD», "" = огноог арилгах.
   const [pendDate, setPendDate] = useState<Record<string, string>>({});
-  /**
-   * БАРИМТ БИЧГИЙН нийтлээгүй засвар, `${oid}:${баганын индекс}` түлхүүрээр.
-   * ⚠️ Утга нь ЧӨЛӨӨТ текст; "" нь «утгыг арилгах» гэсэн үг (талбарыг NULL
-   * болгоно) — тиймээс `null`-аас ялгаж, түлхүүр байгаа эсэхээр шийднэ.
-   */
-  const [pendDoc, setPendDoc] = useState<Record<string, string>>({});
+
   /**
    * НООРОГ СҮҮЛД ХАДГАЛАГДСАН АГШИН (ms) — зөвхөн дэлгэцийн баталгаа.
    * ⚠️ Автомат хадгалалт нь ЧИМЭЭГҮЙ бол хэрэглэгч итгэхгүй: «хадгалагдсан
    * болов уу» гэж эргэлзэн Нийтлэхийг дутуу дарна. Ил тэмдэг хэрэгтэй.
    */
   const [savedAt, setSavedAt] = useState<number | null>(null);
-  /** Яг одоо засагдаж буй баримтын нүд — `${мөрийн индекс}:${багана}` */
-  const [editDoc, setEditDoc] = useState<string | null>(null);
+
   /**
    * Нээлттэй засварын нүд. `col` нь АЛЬ БАГАНА гэдгийг заана — обьёмгүй
    * мөрд обьём ба хувь ХОЁУЛАА засагддаг тул мөр+блок ганцаараа хүрэлцэхгүй.
@@ -728,14 +864,21 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
          санал болгогдоно. */
     remoteQueue.current = null;
     keepDraft.current = false;
+    /* ⚠️ Илгээлт унасны туг нь НЭГ багцынх — үлдээвэл шинэ багцад худал
+       анхааруулга үүснэ. */
+    setSubmitFailed(false);
+    /* ⚠️ Илгээлтийн төлөв ч БАГЦАД харьяалагдана: хуучин багцын `staged`
+       үлдвэл шинэ багцын илгээлт түүн дээр НЭГТГЭГДЭЖ, өөр багцын нүднүүд
+       буруу payload-д орно. */
+    setStaged(null);
+    setStagedOid(null);
+    setStagedFillMs(null);
     setBusy(true);
     setErr("");
     setRows([]);
     setSc(null);
     setPending({});
     setPendDate({});
-    setPendDoc({});
-    setEditDoc(null);
     // ⚠️ Нэмэлт мөр нь БАГЦАД харьяалагдана — багц солиход заавал цэвэрлэнэ,
     //    эс бөгөөс өөр багцын бүлэгт наалдаж, буруу хуудсанд бичигдэнэ.
     setAdds([]);
@@ -743,14 +886,54 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     setEdit(null);
     loadSchema(pkg)
       .then(async (schema) => {
-        const r = await loadRows(pkg, schema, view?.day);
+        const nb = schema.bld.length;
+        /* ⚠️ `view.subOid` байвал `view.day`-г ҮЛ ТООНО (2026-09-04): илгээлт
+           нь АРХИВЫН СҮҮЛИЙН жааз дээрх зөрүү тул хуучин агшин дээр
+           давхарлавал хянагч огт өөр тоо харна. `day` нь зөвхөн ХУУЧИН
+           (архивын OBJECTID-тай) бүртгэлийн зам дээр үлдэнэ. */
+        const r = await loadRows(pkg, schema, view?.subOid ? undefined : view?.day);
         if (!alive) return;
+        /* ── ИЛГЭЭЛТИЙН OVERLAY ───────────────────────────────────────────
+         * Дүрэм 3 (компанийн хуудас) ба 4 (хянагчийн хуудас): архивын сүүлийн
+         * жааз + илгээлтийн зөрүү.
+         *
+         * ⚠️ Илгээсэн тоо ДЭЛГЭЦЭЭС АЛГА БОЛОХ ЁСГҮЙ: илгээлт архивт
+         *    бичигдэхээ больсон тул давхарлахгүй бол гүйцэтгэгч «миний
+         *    илгээсэн ажил алга болжээ» гэж хараад дахин бөглөнө.
+         *
+         * ⚠️ `done|` (батлагдсан) илгээлтийг давхарлахгүй — түүний утга
+         *    архивын шинэ жаазанд аль хэдийн БАЙГАА тул давхар тоологдоно.
+         *
+         * ⚠️ Уншилт УНАВАЛ чимээгүй (`null`) — суурь жааз нь ямар ч
+         *    тохиолдолд харагдах ёстой; илгээлтгүй хуудас нь хоосон хуудсаас
+         *    хамаагүй дээр.
+         */
+        let sub: StagedSubmission | null = null;
+        try {
+          sub = view?.subOid
+            ? await loadSubmissionByOid(view.subOid)
+            : await loadActiveSubmission(pkg.key);
+        } catch {
+          sub = null;
+        }
+        if (!alive) return;
+        /* ⚠️ `Шилжүүлсэн` (батлагдсан) урсгалын дор давхарлахгүй: тэр мөчлөг
+           дууссан бөгөөд агуулга нь архивт орсон. Хянагчийн харагдац
+           (`view.subOid`) нь ТУХАЙН илгээлтийг заасан тул урсгалаас
+           хамаарахгүй. */
+        const f = flowRef.current;
+        const useSub = !!sub && !sub.done
+          && (!!view?.subOid || !f || f[HF.status] !== STATUS.transferred);
+        const ov = useSub && sub ? overlaySubmission(r.rows, sub.payload, schema, nb) : null;
         // ⚠️ Мөр нь ЭНЭ багцынх болсныг ноорогийн эффектүүдэд мэдэгдэнэ.
         loadedPkgRef.current = pkg.key;
         setSc(schema);
-        setRows(r.rows);
-        setAsOf(r.asOf);
-        setAsOfOrig(r.asOf);
+        setStaged(useSub ? sub : null);
+        setRows(ov ? ov.rows : r.rows);
+        /* ⚠️ `null ≠ 0`: илгээлт «Шинэчлэгдсэн огноо»-г хөндөөгүй бол
+           `ov.asOf` нь `null` — тэр үед архивынхыг АВНА, 0 болгохгүй. */
+        setAsOf(ov?.asOf ?? r.asOf);
+        setAsOfOrig(ov?.asOf ?? r.asOf);
         setSnapDay(r.snapshot != null ? msToDay(r.snapshot) : "");
         setSnapMs(r.snapshot ?? null);
         // ⚠️ Анх нээхэд БҮХ давхарга ДЭЛГЭЭСТЭЙ (хэрэглэгчийн шийдвэр,
@@ -768,7 +951,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     return () => {
       alive = false;
     };
-  }, [pkg, view?.day]);
+  }, [pkg, view?.day, view?.subOid]);
 
   // Үйлчилгээнд огноо огт бичигдээгүй бол `<select>` эхний мөрөө харуулах ч
   // төлөв нь `null` хэвээр үлдэж хүснэгт бүхэлдээ хоосон харагдана. Тиймээс
@@ -812,13 +995,13 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    */
   const [adds, setAdds] = useState<NewRow[]>([]);
 
-  /** Бүлгийн СҮҮЛИЙН удмын дараах индекс — сүүлчийн аргын байрлал. */
-  const afterGroup = (list: SheetRow[], p: number) => {
-    const d = list[p].depth;
-    let i = p + 1;
-    while (i < list.length && list[i].depth > d) i += 1;
-    return i;
-  };
+  /*
+   * ⚠️ `afterGroup` ЭНДЭЭС ХАСАГДСАН (2026-09-04) — `sheetFrame.insertAdds`
+   *    дотор ЯГ ХЭВЭЭР амьдарч байна. Хоёр хуулбар үлдээвэл нэмсэн мөрийн
+   *    байрлал дэлгэц дээр өөр, батлагдахад өөр гарах эрсдэлтэй.
+   *    `siblingSlot` нь ЭНД ҮЛДСЭН: `addRow` нь мөр нэмэхийг ЗӨВШӨӨРӨХ эсэхийг
+   *    (жинхэнэ ах дүүгийн байрлал байгаа эсэх) урьдчилан шалгадаг.
+   */
 
   /**
    * ШИНЭ МӨРИЙГ ОРУУЛАХ БАЙРЛАЛ — ЖИНХЭНЭ АХ ДҮҮГИЙНХЭЭ АРД.
@@ -861,81 +1044,20 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    * үр дүнгээ шууд харна.
    */
   const withAdds = useCallback(
-    (base: SheetRow[]): SheetRow[] => {
-      if (!adds.length || !sc || !nBld) return base;
-      const out = base.slice();
-      for (const a of adds) {
-        /*
-         * ЭЦЭГ БҮЛГИЙГ ОЛОХ — нэр БА байрлал ХОЁУЛАНГААР.
-         *
-         * ⚠️ (№ + Ажлын нэр) хос нь ДАВХАРДДАГ. Багц 1 (9 давхар)-д «10 ·
-         * БУСАД АЖИЛ» ба «6 · ТОНОГ ТӨХӨӨРӨМЖ» тус бүр ХОЁР удаа тааралдана
-         * (блок бүрт нэг). Зөвхөн нэрээр хайвал `findIndex` эхнийхийг нь авч,
-         * менежерийн нэмсэн ажил ӨӨР БЛОКИЙН бүлэгт чимээгүй очно.
-         *
-         * ⚠️ Харин зөвхөн байрлалаар (`parentIdx`) ч болохгүй: өмнөх нэмэлт
-         * мөр дээгүүр нь орсон бол индекс гулсана, мөн эх хүснэгт өөрчлөгдөж
-         * болно.
-         *
-         * Тиймээс нэрээр таарах БҮХ нэрийдлийг цуглуулж, дарсан байрлалд
-         * ХАМГИЙН ОЙРХОНЫГ нь сонгоно — хоёр эрсдэлийг зэрэг барина.
-         */
-        const cands: number[] = [];
-        for (let i = 0; i < out.length; i += 1) {
-          const r = out[i];
-          if (r.group && r.no === a.parentNo && r.work === a.parentWork) cands.push(i);
-        }
-        if (!cands.length) continue;               // эцэг алга — мөрийг алгасна
-        let p = cands[0];
-        for (const i of cands) {
-          if (Math.abs(i - a.parentIdx) < Math.abs(p - a.parentIdx)) p = i;
-        }
-        const parent = out[p];
-        /* ⚠️ ГҮН нь дараагийн ачаалалтад ӨМНӨХ мөрөөс сэргээгддэг тул ЭНД ч
-           яг түүгээр нь өгнө — эс бөгөөс нийтлэхийн өмнөх ба дараах шатлал
-           ЧИМЭЭГҮЙ зөрнө. `siblingSlot` олдсон үед энэ нь `parent.depth + 1`
-           болно; олдоогүй (зөвхөн хуучин ноорогт үлдсэн) мөрд ядаж дэлгэц ба
-           өгөгдөл хоёр НИЙЦНЭ. */
-        const at = siblingSlot(out, p) ?? afterGroup(out, p);
-        out.splice(at, 0, {
-          oid: a.oid,
-          no: a.no,
-          /* ⚠️ Ажлын код нь СЕРВЕР дээр агшин бүрд 1…N-ээр дүүрдэг тул
-             нийтлээгүй шинэ мөрд хараахан БАЙХГҮЙ — `null`. Энд өөрсдөө
-             таамаглаж дугаар өгвөл нийтлэхэд серверийнхтэй зөрнө. */
-          des: null,
-          ham: null,
-          work: a.work,
-          depth: at > 0 ? out[at - 1].depth : parent.depth + 1,
-          group: false,
-          // ⚠️ Жин/мөнгө ОРОХГҮЙ — `computeAll` Обьём×Нэгж өртгөөс өөрөө бодно.
-          wC: null,
-          wD: null,
-          vol: a.vol,
-          unit: a.unit,
-          money: null,
-          act: new Array(nBld).fill(null),
-          obyem: new Array(nBld).fill(null),
-          start: new Array(nBld).fill(null),
-          end: new Array(nBld).fill(null),
-          docs: new Array(DOC_COLS.length).fill(null),
-          /* Үйлчилгээнд бичигдэх ЦОРЫН ГАНЦ талбарууд — үлдсэнийг нийтлэх
-             үед `computeAll`-ийн үр дүнгээр бөглөнө. */
-          raw: {
-            [sc.f.no]: a.no,
-            [sc.f.work]: a.work,
-            [sc.f.vol]: a.vol,
-            [sc.f.unit]: a.unit,
-          },
-        });
-      }
-      return out;
-    },
+    /* ⚠️ ХЭРЭГЖИЛТ НЬ `sheetFrame.insertAdds`-Д ШИЛЖСЭН (2026-09-04) —
+       эцэг олох (`parentOf`), ах дүүгийн байрлал (`siblingSlot`), гүн
+       сэргээх бүх дүрэм тайлбартайгаа тэнд бүтнээрээ байна. ЯАГААД: ЯГ ижил
+       оруулалтыг компанийн хуудас (энэ), хянагчийн overlay ба ерөнхий
+       менежерийн батламжийн жааз ГУРВУУЛАА хийдэг — гурван хуулбар
+       салбарлавал нэмсэн ажил гурван өөр газар буух эрсдэлтэй. */
+    (base: SheetRow[]): SheetRow[] =>
+      !sc || !nBld ? base : insertAdds(base, adds, sc, nBld),
     [adds, sc, nBld],
   );
 
   /** Хуудасны БҮХ мөр — серверийнх + хараахан нийтлэгдээгүй нэмэлт. */
   const rowsAll = useMemo(() => withAdds(rows), [rows, withAdds]);
+
 
   const calc = useMemo(
     () =>
@@ -1209,7 +1331,6 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   const dirtyCount =
     Object.keys(pending).length +
     Object.keys(pendDate).length +
-    Object.keys(pendDoc).length +
     adds.length +
     (asOf !== asOfOrig ? 1 : 0);
 
@@ -1289,23 +1410,6 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    * Нүдний засвар — блокийн ОБЬЁМ эсвэл мөрийн Обьём. Гүйцэтгэлийн хувь
    * энд ОРОХГҮЙ: тэр нь обьёмоос бодогдоно.
    */
-  /**
-   * БАРИМТЫН НҮД БИЧИХ.
-   *
-   * ⚠️ Хадгалагдсантай ИЖИЛ болж буцвал ноорогоос ХАСНА — эс бөгөөс «Нийтлэх»
-   * товч огт өөрчлөлтгүй байхад идэвхжиж, хоосон агшин үүсгэнэ.
-   */
-  const commitDoc = (oid: number, di: number, raw: string) => {
-    const v = raw.trim();
-    const cur = rowsAll.find((x) => x.oid === oid)?.docs[di] ?? "";
-    const key = `${oid}:${di}`;
-    setPendDoc((p) => {
-      const n = { ...p };
-      if (v === cur) delete n[key];
-      else n[key] = v;
-      return n;
-    });
-  };
 
   const commit = (r: SheetRow, b: number, raw: string) => {
     const key = cellKey(r.oid, b);
@@ -1404,6 +1508,10 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       const rem = await loadRemoteDraft(pkg.key);
       if (!alive) return;
       const remote = rem ? parseDraft(rem.payload) : null;
+      /* ⚠️ АЛСЫН ЗОМБИ — хүчингүй болсон хуулбарыг ArcGIS-ээс ч устгана.
+         Локал талыг `readDraft` цэвэрлэдэг; энэ мөргүй бол шинэ эхлэлээс
+         өмнөх ноорог хүснэгтэд үлдэж, өөр төхөөрөмж дээр буцаж гарна. */
+      if (rem && !remote) void clearRemoteDraft(pkg.key);
       const useRemote = !!remote && (!local || remote.t > local.t);
       const d = useRemote ? (remote as Draft) : local;
       if (!d) return;
@@ -1505,29 +1613,14 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       nextDates[key] = v;
     }
 
-    /* ── БАРИМТ БИЧИГ (`${oid}:${баганын индекс}`) ──
-       ⚠️ ЗӨВХӨН QAQC эрхтэй хүнд: эрх нь хооронд нь хасагдсан бол ноорог
-       дахь текст дэлгэцэд буцаж гарах ёсгүй. */
-    const nextDocs: Record<string, string> = {};
-    for (const [key0, v] of (canQaqc ? (d.docs ?? []) : [])) {
-      const key = fixKey(key0);
-      const di = Number(key.slice(key.indexOf(":") + 1));
-      const r3 = byOid.get(Number(key.split(":")[0]));
-      if (!r3 || !Number.isInteger(di) || di < 0 || di >= DOC_COLS.length || !sc.docs[di]) {
-        dropped++;
-        continue;
-      }
-      nextDocs[key] = v;
-    }
 
     /* ── ШИНЭЧЛЭГДСЭН ОГНОО — зөвхөн ачаалсан утгаас ӨӨР бол ── */
     const draftAsOf = d.asOf != null && d.asOf !== asOfOrig ? d.asOf : null;
 
     const nCells = Object.keys(next).length;
     const nDates = Object.keys(nextDates).length;
-    const nDocs = Object.keys(nextDocs).length;
     const nAdds = restoredAdds.length;
-    const total = nCells + nDates + nDocs + nAdds + (draftAsOf != null ? 1 : 0);
+    const total = nCells + nDates + nAdds + (draftAsOf != null ? 1 : 0);
     if (!total) {
       /**
        * ⚠️ ЧИМЭЭГҮЙ УСТГАХГҮЙ (2026-09-03-ны аудитын олдвор).
@@ -1550,7 +1643,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       setRestore({
         when: new Date(d.t).toLocaleString('mn-MN'),
         parts: [], dropped, source,
-        cells: {}, dates: {}, docs: {}, adds: [], asOf: null,
+        cells: {}, dates: {}, adds: [], asOf: null,
       });
       return;
     }
@@ -1560,7 +1653,6 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     const parts = [
       nCells ? tr('{0} гүйцэтгэлийн нүд', nCells) : '',
       nDates ? tr('{0} огноо', nDates) : '',
-      nDocs ? tr('{0} баримтын нүд', nDocs) : '',
       nAdds ? tr('{0} шинэ мөр', nAdds) : '',
       draftAsOf != null ? tr('шинэчлэгдсэн огноо') : '',
     ].filter(Boolean);
@@ -1572,11 +1664,11 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
        жагсаалт, сонголт нь гурав — сэргээх · дараа шийдэх · устгах. */
     setRestore({
       when, parts, dropped, source,
-      cells: next, dates: nextDates, docs: nextDocs,
+      cells: next, dates: nextDates,
       adds: restoredAdds, asOf: draftAsOf,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, sc, nBld, pkg.key, asOfOrig, canPerf, canQaqc, canAddRow]);
+  }, [rows, sc, nBld, pkg.key, asOfOrig, canPerf, canAddRow]);
 
   /** «Сэргээх» — ноорогийг төлөв рүү буулгана */
   const applyRestore = useCallback(() => {
@@ -1593,7 +1685,6 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     }
     if (Object.keys(r.cells).length) setPending(r.cells);
     if (Object.keys(r.dates).length) setPendDate(r.dates);
-    if (Object.keys(r.docs).length) setPendDoc(r.docs);
     if (r.asOf != null) setAsOf(r.asOf);
     /* Сэргээгдсэн тул хамгаалалт хэрэггүй — цаашид ердийн дүрмээр хадгалагдана */
     keepDraft.current = false;
@@ -1640,7 +1731,6 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     if (
       !Object.keys(pending).length
       && !Object.keys(pendDate).length
-      && !Object.keys(pendDoc).length
       && !adds.length
       && !asOfChanged
     ) {
@@ -1664,7 +1754,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
        ЦОРЫН ГАНЦ зам. Зөвхөн хэрэгтэй мөрийг л бичнэ: 1,400 мөрийн бүтэн
        толь нь ноорогийг хэдэн зуун KB болгож, алсын хязгаараас хална. */
     const usedOids = new Set<number>();
-    for (const k of [...Object.keys(pending), ...Object.keys(pendDate), ...Object.keys(pendDoc)]) {
+    for (const k of [...Object.keys(pending), ...Object.keys(pendDate)]) {
       const o = Number(k.slice(0, k.indexOf(":")));
       if (Number.isFinite(o) && o >= 0) usedOids.add(o);
     }
@@ -1675,7 +1765,6 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       t: at,
       cells: Object.entries(pending),
       dates: Object.entries(pendDate),
-      docs: Object.entries(pendDoc),
       asOf: asOfChanged ? asOf : undefined,
       adds,
       rowKeys,
@@ -1695,7 +1784,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     /* ⚠️ `rows` нь хамаарлын жагсаалтад ЗААВАЛ — `rowKeys` түүнээс баригдана.
        Мөр ачаалагдахаас өмнөх (хоосон) төлөвөөр бичвэл танигчгүй ноорог
        үүсэж, зөөх боломж дахин алдагдана. */
-  }, [pending, pendDate, pendDoc, adds, asOf, asOfOrig, pkg.key, rows]);
+  }, [pending, pendDate, adds, asOf, asOfOrig, pkg.key, rows]);
 
   /**
    * ── АЛСЫН ХУУЛБАР (ArcGIS) — 12 секундын завсарлагатай ──
@@ -1783,7 +1872,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
      *    хянагч нэгийг нь батлах атал өгөгдөлд нөгөө нь сууна.
      */
     if (noEdit) {
-      setErr(RO.docLocked);
+      setErr(RO.viewOnly);
       return;
     }
     // ⚠️ Гүйцэтгэлийн өөрчлөлт (обьём/огноо/шинэчлэгдсэн огноо) зөвхөн томилогдсон
@@ -1793,17 +1882,12 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       return;
     }
     /**
-     * ⚠️ БАРИМТ ба МӨР НЭМЭХ эрхийг МӨН энд дахин шалгана (2026-09-03-ны
-     * аудит). Урьд нь зөвхөн `canPerf` шалгагддаг байсан тул сешн дундуур
+     * ⚠️ МӨР НЭМЭХ эрхийг МӨН энд дахин шалгана (2026-09-03-ны аудит).
+     * Урьд нь зөвхөн `canPerf` шалгагддаг байсан тул сешн дундуур
      * (`subscribeCaps`/`subscribeAcl`-аар) эрх хасагдахад аль хэдийн төлөвт
-     * суусан `pendDoc`/`adds` цэвэрлэгддэггүй, `dirtyCount`-д тоологдож,
-     * Нийтлэх дарахад үйлчилгээнд бичигддэг байв. Сэргээх зам (`pickDraft`)
-     * гурвуулааг тэгш шалгадаг — энд асимметр байсан.
+     * суусан `adds` цэвэрлэгддэггүй, `dirtyCount`-д тоологдож, Нийтлэх
+     * дарахад үйлчилгээнд бичигддэг байв.
      */
-    if (!canQaqc && Object.keys(pendDoc).length) {
-      setErr(RO.noQaqc);
-      return;
-    }
     if (!canAddRow && adds.length) {
       setErr(RO.noAddRow);
       return;
@@ -1858,7 +1942,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       const asOfPub = asOf !== asOfOrig ? asOf : (fresh0.asOf ?? asOf);
       /*
        * ── ObjectID ШИЛЖИЛТ ───────────────────────────────────────────────
-       * ⚠️ `pending` · `pendDate` · `pendDoc` бүгд `${oid}:…` түлхүүртэй бөгөөд
+       * ⚠️ `pending` ба `pendDate` хоёул `${oid}:…` түлхүүртэй бөгөөд
        *    тэр oid нь хуудсыг НЭЭХ үеийн ObjectID. Нийтлэх бүрд хуудас
        *    БҮХЭЛДЭЭ шинэ мөр болж нэмэгддэг тул хооронд нь өөр хүн нийтэлбэл
        *    `freshRows` огт ӨӨР ObjectID мужид шилжинэ (жаазууд огтлолцдоггүй).
@@ -1911,8 +1995,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       };
       const pend2 = moveAll(pending);
       const pendDate2 = moveAll(pendDate);
-      const pendDoc2 = moveAll(pendDoc);
-      if (!pend2 || !pendDate2 || !pendDoc2)
+      if (!pend2 || !pendDate2)
         throw new Error(
           tr('Хуудас хооронд нь шинэчлэгдсэн (өөр хэрэглэгч нийтэлсэн) тул засваруудыг шинэ мөрүүдэд тулгаж чадсангүй — нийтлэлийг зогсоов. Ноорог хадгалагдсан хэвээр байгаа тул хуудсыг дахин ачаалж, сэргээгээд Нийтлэнэ үү.'),
         );
@@ -1988,23 +2071,6 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         if (sc.f.asOf) a[sc.f.asOf] = i === 0 ? asOfPub : null;
         // АРХИВЫН ТҮЛХҮҮР — мөр БҮРД.
         if (sc.f.fillDate) a[sc.f.fillDate] = fillMs;
-        /*
-         * БАРИМТ БИЧГИЙН ТЕКСТ.
-         *
-         * ⚠️ Зөвхөн ЗАСАГДСАН нүдийг дарж бичнэ (`key in pendDoc`): үлдсэнийг
-         * `a` нь серверийн хуулбараас аль хэдийн авчирсан. Болзолгүй бичвэл
-         * хооронд нь өөр хүн бөглөсөн утга устана.
-         *
-         * ⚠️ Хоосон мөр («") нь «утгыг арилгах» гэсэн үг тул `null` болгоно —
-         * ArcGIS-д хоосон тэмдэгт мөр ба NULL хоёр өөр бөгөөд хайлт, тайланд
-         * өөрөөр биелдэг.
-         */
-        DOC_COLS.forEach((_, di) => {
-          const fld = sc.docs[di];
-          if (!fld) return;
-          const key = `${r.oid}:${di}`;
-          if (key in pendDoc2) a[fld] = pendDoc2[key].trim() || null;
-        });
         return a;
       });
 
@@ -2023,6 +2089,13 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
        * дарж, архивт давхардсан агшин үүснэ. Тиймээс алдааг зөвхөн МЭДЭГДЭНЭ.
        */
       const rv = await submitForReview(pkg.group, fillMs, firstOid);
+      /* ⚠️ Анхааруулгын ЦОРЫН ГАНЦ эх сурвалж — доорх шар мөр эндээс асна.
+         Амжилттай үед ЗААВАЛ унтраана: өмнөх оролдлогын туг үлдвэл
+         илгээгдсэн ажил «илгээгдээгүй» гэж харагдана. */
+      setSubmitFailed(!rv.ok);
+      /* Хяналтын жагсаалтыг шинэчилнэ — `hyanalt.addRows` нь `hyanaltStore`-ын
+         кэшийг мэддэггүй тул үүнгүйгээр «хяналтад байна» мэдэгдэл гарахгүй. */
+      if (rv.ok) reloadHy();
 
       // Шинэ агшныг татаж дэлгэц дээр буулгана — дараагийн засвар түүн дээр
       // үргэлжилнэ (нэмэлт нь хуучин сууриас тоологдохгүй).
@@ -2040,8 +2113,6 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       setSnapMs(next.snapshot ?? null);
       setPending({});
       setPendDate({});
-      setPendDoc({});
-      setEditDoc(null);
       // ⚠️ Нэмэлт мөрүүд аль хэдийн үйлчилгээнд бичигдсэн тул төлөвөөс ХАСНА —
       //    эс бөгөөс дараагийн нийтлэлд ДАХИН нэмэгдэж давхардана.
       setAdds([]);
@@ -2054,7 +2125,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     } finally {
       setBusy(false);
     }
-  }, [pkg, sc, nBld, asOf, asOfOrig, pending, pendDate, pendDoc, dirtyCount, busy, hasObyem, withAdds, canPerf, noEdit, rows]);
+  }, [pkg, sc, nBld, asOf, asOfOrig, pending, pendDate, dirtyCount, busy, hasObyem, withAdds, canPerf, canAddRow, noEdit, rows, adds, done]);
 
   // Ctrl+S — «Гүйцэтгэл бөглөх»-тэй ижил.
   // ⚠️ Нээлттэй нүдний бичиж буй утгыг ЭХЛЭЖ commit хийнэ — эс тэгвэл хуучин
@@ -2130,7 +2201,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
        ээс 40 нүд буулгасан хүн юу ч болоогүйг хараад «хуулагдсангүй» гэж
        эргэлзэнэ. Шалтгааныг нь хэлээд буулгалтыг зогсооно. */
     if (locked || noEdit || !canPerf) {
-      warn(noEdit && !locked ? RO.docLocked : RO.noPerf);
+      warn(locked ? RO.viewOnly : RO.noPerf);
       return true;
     }
     const grid = parseGrid(text);
@@ -2391,19 +2462,23 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       </div>
 
       {/*
-        * ТҮГЖЭЭГ ЯАГААД ГЭДГИЙГ ХЭЛНЭ. Зүгээр л дарагдахгүй болговол
-        * хэрэглэгч эвдэрсэн гэж бодож, дахин дахин оролдоно.
+        * ⚠️ ХОЁР МЭДЭГДЭЛ, ХОЁР ӨӨР ЭХ СУРВАЛЖ (2026-09-03):
+        *   · унасан илгээлт → ЗӨВХӨН энэ сешний нийтлэлээс (`submitFailed`);
+        *   · «хяналтад байна» → хяналтын БҮРТГЭЛЭЭС (`submittedToday`).
+        * Хуучин архивын агшин аль алинд нь нөлөөлөхгүй — цэвэрлэгдсэн
+        * бүртгэлтэй үед худал анхааруулга гарахаа болив.
         */}
-      {!locked && sentToday && !returned && (
+      {!locked && submitFailed && (
         <p className={st.lockNote}>
-          {orphan
-            ? tr('Өнөөдрийн гүйцэтгэл нийтлэгдсэн ч хяналтад ИЛГЭЭГДЭЭГҮЙ байна — хянагч үүнийг харахгүй.')
-            : tr('Өнөөдрийн гүйцэтгэл илгээгдсэн — хяналтад байна. Буцаалт ирвэл энэ хуудас өөрөө нээгдэнэ.')}
-          {orphan && (
-            <button type="button" className={st.resend} onClick={resend} disabled={resending}>
-              {resending ? tr('Илгээж байна…') : tr('Хяналтад илгээх')}
-            </button>
-          )}
+          {tr('Гүйцэтгэл нийтлэгдсэн ч хяналтад ИЛГЭЭГДСЭНГҮЙ — хянагч үүнийг харахгүй.')}
+          <button type="button" className={st.resend} onClick={resend} disabled={resending}>
+            {resending ? tr('Илгээж байна…') : tr('Хяналтад илгээх')}
+          </button>
+        </p>
+      )}
+      {!locked && !submitFailed && submittedToday && !returned && (
+        <p className={st.lockNote}>
+          {tr('Энэ өдрийн гүйцэтгэл хяналтад илгээгдсэн. Засвар оруулаад дахин нийтэлж болно.')}
         </p>
       )}
       {!locked && returned && (
@@ -2476,8 +2551,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                 <th colSpan={nBld} className={cls("band")}>{tr('Төлөвлөгөөт гүйцэтгэл ({0} барилга)', nBld)}</th>
                 <th colSpan={nBld * 2} className={cls("band")}>{tr('Төлөвлөгөөт хуваарь ({0} барилга)', nBld)}</th>
                 <th rowSpan={4} className={cls("c-date")}>{tr('Шинэчлэгдсэн огноо')}<i {...grip("date")} /></th>
-                {/* ── БАРИМТ БИЧИГ — excel-ийн эх загвараар 3 давхар толгой ── */}
-                <th colSpan={DOC_COLS.length} className={cls("band")}>{DOC_BAND}</th>
+                {/* ⚠️ Inspection Test Plan-ийн 9 багана ЭНД БАЙХГҮЙ
+                    (2026-09-03) — «Чанар (QAQC)» тусдаа харагдацад. */}
               </tr>
               {/* 2-р мөр — барилгын төрөл (блокийн цуваагаар) */}
               <tr>
@@ -2490,10 +2565,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                 {bands.map((g, gi) => (
                   <th key={`bd${gi}`} colSpan={g.count * 2} className={cls("band2")}>{g.label}</th>
                 ))}
-                {/* Баримтын бүлгүүд — М-акт · FIC · MA · MIR */}
-                {DOC_GROUPS.map((g) => (
-                  <th key={g.label} colSpan={g.count} className={cls("band2")}>{g.label}</th>
-                ))}
+
               </tr>
               {/* 3-р мөр — блокийн код */}
               <tr>
@@ -2506,12 +2578,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                 {sc.bld.map((b) => (
                   <th key={`d${b}`} colSpan={2} className={cls("c-date2")}>{b} {tr('барилга')}</th>
                 ))}
-                {/* Баримтын багана бүрийн нэр — 4-р мөр рүү үргэлжилнэ */}
-                {DOC_COLS.map((dc) => (
-                  <th key={dc.name} rowSpan={2} className={cls("c-doc")} title={tr(dc.label)}>
-                    {tr(dc.short)}<i {...grip("doc")} />
-                  </th>
-                ))}
+
               </tr>
               {/* 4-р мөр — хуваарийн Эхлэх/Дуусах */}
               <tr>
@@ -2527,7 +2594,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                   уншигдаж, хэрэглэгч товчийг унтраахаа мэдэхгүй. */}
               {vis.length === 0 && byPlan && (
                 <tr>
-                  <td colSpan={13 + nBld * 4 + DOC_COLS.length} className={st.hint} style={{ padding: "14px 10px" }}>
+                  <td colSpan={13 + nBld * 4} className={st.hint} style={{ padding: "14px 10px" }}>
                     {tr("Өнөөдөр ({0}) хуваарьтай ажил алга. Бүх ажлыг харах бол «Хуваарийн дагуу»-г унтраа.", today)}
                   </td>
                 </tr>
@@ -2535,7 +2602,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
               {/* Дээд ЧИГЖЭЭС — зурагдаагүй мөрүүдийн өндрийг орлоно. */}
               {winFrom > 0 && (
                 <tr aria-hidden="true" style={{ height: winFrom * rowHRef.current }}>
-                  <td colSpan={13 + nBld * 4 + DOC_COLS.length} style={{ padding: 0, border: 0 }} />
+                  <td colSpan={13 + nBld * 4} style={{ padding: 0, border: 0 }} />
                 </tr>
               )}
               {vis.slice(winFrom, winTo).map((i) => {
@@ -2877,73 +2944,11 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                         {i === 0 ? dt(asOf) : ""}
                       </td>
                     }
-                    {/* ── БАРИМТ БИЧИГ — дарж текст бичнэ ──
-                        ⚠️ Бүлгийн мөрд ч засагдана: М-акт, FIC зэрэг нь ажлын
-                        БҮЛЭГТ олгогдож болох тул хориглосонгүй. */}
-                    {DOC_COLS.map((dc, di) => {
-                      const fld = sc.docs[di];
-                      const key = `${r.oid}:${di}`;
-                      const ekey = `${i}:${di}`;
-                      const editing = editDoc === ekey;
-                      const val = key in pendDoc ? pendDoc[key] : (r.docs[di] ?? "");
-                      /* ⚠️ QAQC эрхгүй бол ЗӨВХӨН ХАРНА — чанарын баримтыг
-                         эрх олгогдсон ажилтан л хөтөлнө. */
-                      const editable = !noEdit && !!fld && canQaqc;
-                      return (
-                        <td
-                          key={dc.name}
-                          className={cls(
-                            "c-doc docCell" +
-                              (editable ? " cursor-cell" : "") +
-                              (key in pendDoc ? " dirty" : ""),
-                          )}
-                          title={
-                            editable
-                              ? tr('{0} — дарж бичнэ', tr(dc.label))
-                              : !fld
-                                ? RO.noDocField
-                                : !canQaqc
-                                  ? RO.noQaqc
-                                  : RO.docLocked
-                          }
-                          onClick={() => {
-                            if (!editable) {
-                              return say(!fld ? RO.noDocField : !canQaqc ? RO.noQaqc : RO.docLocked);
-                            }
-                            setEditDoc(ekey);
-                          }}
-                        >
-                          {editing ? (
-                            <input
-                              autoFocus
-                              type="text"
-                              maxLength={4000}
-                              className={st.cellInputLine}
-                              defaultValue={val}
-                              onBlur={(e) => {
-                                commitDoc(r.oid, di, e.target.value);
-                                setEditDoc(null);
-                              }}
-                              onKeyDown={(e) => {
-                                if (e.key === "Escape") return setEditDoc(null);
-                                if (e.key === "Enter" || e.key === "Tab") {
-                                  e.preventDefault();
-                                  commitDoc(r.oid, di, e.currentTarget.value);
-                                  setEditDoc(null);
-                                }
-                              }}
-                            />
-                          ) : (
-                            <span className={st.docText}>{val}</span>
-                          )}
-                        </td>
-                      );
-                    })}
                   </tr>
                   {/* ── МӨР НЭМЭХ МАЯГТ — зөвхөн сонгосон бүлгийн доор ── */}
                   {addFor === r.oid && (
                     <tr className={st.addRow}>
-                      <td colSpan={13 + nBld * 4 + DOC_COLS.length}>
+                      <td colSpan={13 + nBld * 4}>
                         <div className={st.addForm}>
                           <span className={st.addTitle}>{tr('«{0}» дотор шинэ ажил', r.work)}</span>
                           <input
@@ -3000,7 +3005,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                   aria-hidden="true"
                   style={{ height: (vis.length - winTo) * rowHRef.current }}
                 >
-                  <td colSpan={13 + nBld * 4 + DOC_COLS.length} style={{ padding: 0, border: 0 }} />
+                  <td colSpan={13 + nBld * 4} style={{ padding: 0, border: 0 }} />
                 </tr>
               )}
             </tbody>

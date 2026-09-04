@@ -22,6 +22,7 @@ import {
   type FinData, type MonthPt,
 } from '@/modules/Finance';
 import { useAsync, type Async } from '@/lib/useAsync';
+import { loadPlanCurve, type PlanPoint } from '@/lib/planProgress';
 import {
   BUILDING, CASHFLOW2, PROGRESS_LEVELS, LAYER_BY_ID, pkgKeyOf,
   PKG_FAMILY_BY_BAGTS, zoneWhere, cfMonthAxis } from '@/lib/services';
@@ -300,6 +301,49 @@ export function PkgProg({ dim, setDim }: {
   }, [finQ]);
 
   /**
+   * ХУВААРИЙН ТӨЛӨВЛӨГӨӨ — «Гүйцэтгэл бөглөх» хуудсуудын эхлэх/дуусах
+   * огноонд суурилсан сар тутмын өссөн хувь (`loadPlanCurve`).
+   *
+   * ⚠️ Урьд нь `cashflow_0813`-аас гардаг байсан (`aggregateMonths().cumPct`)
+   *    бөгөөд хуваагч нь 12 САРЫН ЦОНХНЫ нийлбэр байсан тул муруй нь цонхны
+   *    төгсгөлд ҮРГЭЛЖ 100% болж, дэлгэцэд «2026-09-д төсөл дуусна» гэж
+   *    ГАРЧ БАЙВ. Төсөл бодитоор 2027-12 хүртэл үргэлжилдэг.
+   */
+  const planQ = useAsync(loadPlanCurve, []);
+
+  /**
+   * Графикийн мөрүүд: тэнхлэг ба ТӨЛӨВЛӨГӨӨ нь ХУВААРИАС, БОДИТ гүйцэтгэл нь
+   * хуучин санхүүгийн цэгүүдээс (`phys`) шошгоор тааруулж холбогдоно.
+   *
+   * ⚠️ Хуваарь олдоогүй үед (дэд бүтцийн багц — бөглөх хуудасгүй) ХУУЧИН
+   *    зан төлөв хэвээр: тэнд хуваарийн эх сурвалж огт байхгүй.
+   */
+  const progMonths = useMemo<MonthPt[] | null>(() => {
+    const base = active
+      ? (finMap?.get(active.key) ?? null)
+      : (finQ.state === 'ready' ? aggregateMonths(finQ.data) : null);
+    const pc = planQ.state === 'ready' ? planQ.data : null;
+    if (!pc || !pc.months.length) return base;
+    /* Багц сонгосон бол тэр багцын муруй; сонгоогүй бол ТӨСЛИЙН нийт */
+    const series = active && active.key !== '__all'
+      ? pc.byBagts.get(active.key)
+      : pc.months;
+    if (!series?.length) return base;
+    const phys = new Map((base ?? []).map((m) => [m.label, m.phys]));
+    return series.map((p) => ({
+      label: p.label,
+      /* ⚠️ Мөнгөн талбарууд ЭНД утгагүй — график нь зөвхөн хувь харуулна */
+      amount: 0,
+      amountCum: 0,
+      cumPct: p.pct,
+      given: 0,
+      /* ⚠️ Хэмжилтгүй сар `null` хэвээр — 0 гэж дүүргэвэл худал шугам гарна */
+      phys: phys.get(p.label) ?? null,
+    }));
+  }, [active, finMap, finQ, planQ]);
+
+
+  /**
    * ALERT-тэй (төлөвлөгөөнөөс хоцорсон) багцууд — ТУСДАА бүлэг болж жагсаалтын
    * ХАМГИЙН ДЭЭР гарна. Гүйцэтгэл хэвийн болмогц lag арилж, багц өөрийн
    * бүлэгтээ аяндаа буцна (тусгай төлөв хадгалахгүй).
@@ -542,7 +586,11 @@ export function PkgProg({ dim, setDim }: {
              гүйцэтгэл/блок/айл огт харагдахгүй. */
           <PackKpi active={active} packs={packs} />
         ) : (
-          <TsKpi packs={packs} fin={finQ.state === 'ready' ? finQ.data : null} />
+          <TsKpi
+            packs={packs}
+            fin={finQ.state === 'ready' ? finQ.data : null}
+            plan={planQ.state === 'ready' ? planQ.data.months : null}
+          />
         )}
       </div>
 
@@ -753,11 +801,7 @@ export function PkgProg({ dim, setDim }: {
       {/* ── ГҮЙЦЭТГЭЛИЙН МУРУЙ — төлөвлөсөн vs бодит, хоорондын ЗӨРҮҮ ── */}
       <div className={ts.prog}>
         <ProgChart
-          months={
-            active
-              ? (finMap?.get(active.key) ?? null)
-              : (finQ.state === 'ready' ? aggregateMonths(finQ.data) : null)
-          }
+          months={progMonths}
           title={active ? tr('{0} — гүйцэтгэлийн явц', tr(active.name)) : tr('Төсөл нийт — гүйцэтгэлийн явц')}
         />
       </div>
@@ -775,10 +819,18 @@ export function PkgProg({ dim, setDim }: {
  */
 /**
  * ДЭЭД ИНДИКАТОРУУД (2026-08-21, хэрэглэгчийн жагсаалтаар) — багц сонгоогүй
- * үеийн төслийн нэгдсэн 6 үзүүлэлт. Хувиуд нь доод графиктай ИЖИЛ аргачлал
- * (`aggregateMonths`) тул хоёр газрын тоо зөрөхгүй.
+ * үеийн төслийн нэгдсэн 6 үзүүлэлт.
+ *
+ * ⚠️ ТӨЛӨВЛӨСӨН хувь нь доод графиктай ИЖИЛ эх сурвалжаас — «Гүйцэтгэл
+ *    бөглөх»-ийн ХУВААРЬ (`loadPlanCurve`), 2026-09-04-нөөс. Урьдын
+ *    `aggregateMonths().cumPct` нь cashflow-ийн 12 сарын ЦОНХОНД
+ *    нормчлогддог тул «2026-09-д 100%» гэсэн худал тоо өгдөг байв.
+ * ⚠️ БОДИТ хувь нь хэвээр `aggregateMonths().phys` — блок-жигнэсэн биет %.
  */
-function TsKpi({ packs, fin }: { packs: Pack[]; fin: FinData | null }) {
+function TsKpi(
+  { packs, fin, plan }:
+  { packs: Pack[]; fin: FinData | null; plan: PlanPoint[] | null },
+) {
   const t = useMemo(() => {
     if (!fin) return null;
     const months = aggregateMonths(fin);
@@ -787,9 +839,14 @@ function TsKpi({ packs, fin }: { packs: Pack[]; fin: FinData | null }) {
     let actual: number | null = null;
     for (const m of months) {
       if (m.label > nowYm) continue;
-      if (m.cumPct > 0) planned = m.cumPct;
       if (m.phys != null) actual = m.phys;
     }
+    /*
+     * ТӨЛӨВЛӨГӨӨ — ХУВААРИАС, доорх графиктай ЯГ НЭГ эх сурвалж.
+     * ⚠️ `aggregateMonths().cumPct` (cashflow) ХЭРЭГЛЭХГҮЙ: түүний хуваагч
+     *    нь 12 сарын цонхны нийлбэр тул цонх дуусахад үргэлж 100% болдог.
+     */
+    for (const p of plan ?? []) if (p.label <= nowYm) planned = p.pct;
     const gap = planned != null && actual != null ? planned - actual : null;
     const C = CASHFLOW2.fields;
     /* ⚠️ «Өмнө шилжүүлсэн» нь ГЭРЭЭ тутмын багана БАЙХАА БОЛЬСОН
@@ -809,7 +866,7 @@ function TsKpi({ packs, fin }: { packs: Pack[]; fin: FinData | null }) {
       /** Төлөвлөгөөт нийтээс олгогдоогүй үлдэгдэл ₮ */
       remain: Math.max(0, planTotal - given),
     };
-  }, [fin]);
+  }, [fin, plan]);
   /**
    * ⚠️ Индикаторууд ГОРИМООР ялгана. «Нийт төслийн тоо» ХОЁУЛАНД байна — тэр нь
    * контекст (хэдэн багцын тухай ярьж байна) бөгөөд аль ч асуултад хэрэгтэй.
@@ -1141,6 +1198,11 @@ export function aggregateMonths(d: FinData) {
  *
  * ⚠️ ЯЛГАА нь ХЭМЖИГДЭХҮҮНД: тэнд ₮ (хуримтлагдах мөнгө), энд % (биет явц).
  *    Мөнгө ЭНД ОГТ ГАРАХГҮЙ.
+ *
+ * ⚠️ ТЭНХЛЭГ ба ТӨЛӨВЛӨГӨӨ нь 2026-09-04-нөөс ХУВААРИАС ирнэ (`progMonths`):
+ *    төслийн эхлэхээс дуусах хүртэл (2025-08 … 2027-12), 29 сар. Урьд нь
+ *    cashflow-ийн 12 сарын цонх байсан тул муруй нь тэр цонхны төгсгөлд
+ *    үргэлж 100% болж, «2026-09-д төсөл дуусна» гэж ХУДАЛ харуулж байв.
  */
 function ProgChart({ months, title }: { months: MonthPt[] | null; title: string }) {
   const [hi, setHi] = useState<number | null>(null);

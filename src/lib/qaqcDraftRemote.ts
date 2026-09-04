@@ -1,34 +1,44 @@
 'use client';
 
 /**
- * «ГҮЙЦЭТГЭЛ БӨГЛӨХ»-ИЙН НООРОГ — ArcGIS ДЭЭРХ ХУВААЛЦСАН ХАДГАЛАЛТ.
+ * «ЧАНАР (QAQC)»-ИЙН НООРОГ — ArcGIS ДЭЭРХ ХУВААЛЦСАН ХАДГАЛАЛТ.
  *
- * ⚠️ ЯАГААД (2026-09-03, хэрэглэгч: «өөр browser, өөр газраас орход ч draft
- * хадгалагдаж байх ёстой»): ноорог нь зөвхөн `localStorage`-д байсан тул
- * оффисын компьютер дээр бөглөсөн ажил гэрийн компьютерт ОГТ харагдахгүй,
- * хөтчийн өгөгдөл цэвэрлэхэд бүрмөсөн алга болдог байв.
+ * ⚠️ ЯАГААД ТУСДАА ФАЙЛ, ТУСДАА ХҮСНЭГТ (2026-09-03, хэрэглэгчийн шийдвэр:
+ * «чанарын ноорогт тусдаа draft файл үүсгэ»): урьд нь QAQC хуудас
+ * `draftRemote.ts`-ийн `Selbe_Guitsetgel_Draft` хүснэгтийг ХУВААЛЦАЖ, зөвхөн
+ * түлхүүрийн `qaqc:` угтвараар ялгагдаж байв. Тэр нь гурван бэрхшээлтэй:
+ *   · НЭГ хүснэгтийн мөрийн тоо ба эргэлт ХОЁР ХУУДАСНААС хамаарна —
+ *     аль нэгнийх нь ачаалал нөгөөгийнхөө уншилтыг удаашруулна;
+ *   · түлхүүрийн угтварыг мартвал (эсвэл нэг үсгээр зөрвөл) хоёр хуудас бие
+ *     биеийнхээ ноорогийг ЧИМЭЭГҮЙ дарж эхэлнэ;
+ *   · «Гүйцэтгэлийн ноорог» гэсэн хүснэгтэд чанарын өгөгдөл суух нь
+ *     админд нүдээр шалгахад төөрөгдүүлнэ.
  *
- * ⚠️ ЗӨВХӨН ГҮЙЦЭТГЭЛД. Хэрэглэгчийн шийдвэрээр тусдаа хадгалалт: эрхийн
- * `Selbe_Permissions` хүснэгтэд оруулаагүй. Ноорог нь 10–15 секунд тутам
- * дахин бичигддэг ӨНДӨР ЭРГЭЛТТЭЙ өгөгдөл, харин эрхийн хүснэгт нэвтрэлт
- * бүрд уншигддаг — хоёрыг нэг хүснэгтэд хийвэл нэг нь нөгөөгөө удаашруулна.
+ * ⚠️ ЯАГААД ХУУЛБАР, нэгдсэн параметртэй модуль БИШ: `draftRemote.ts` нь
+ * ХҮСНЭГТИЙН URL-ыг модулийн түвшний хувьсагчид кэшилдэг (`tableUrlCache`,
+ * `ownerMismatch`). Хоёр хүснэгтийг нэг модулиар үйлчлүүлэх бол тэр кэшийг
+ * түлхүүрээр салгах хэрэгтэй бөгөөд тэр өөрчлөлт нь АМЬД ажиллаж буй
+ * гүйцэтгэлийн ноорогийн замыг хөнддөг. Тусдаа файл нь хоёр замыг бүрэн
+ * тусгаарлана — энэ файлын алдаа гүйцэтгэлийн бөглөлтөд хүрэхгүй.
  *
  * ⚠️ `localStorage` нь ҮНДСЭН зам ХЭВЭЭР. Энэ модуль зөвхөн ХУУЛБАР хийнэ:
  * сүлжээ унасан, эрх дутсан, хүснэгт үүсээгүй — аль ч тохиолдолд бөглөлт
  * тасрахгүй, ажил алдагдахгүй. Алсын хуулбар нь «өөр төхөөрөмж рүү шилжих»
- * гэсэн ГАНЦ асуудлыг шийднэ.
+ * гэсэн ГАНЦ асуудлыг шийднэ. Тиймээс энэ файлын функцууд алдаа ХЭЗЭЭ Ч
+ * шидэхгүй — `null`/`false` буцаана.
  *
- * ⚠️ ХАРАГДАХ БАЙДЛЫН ХЯЗГААР (баримтжуулсан, `permsRemote`-тэй ижил): хүснэгт
+ * ⚠️ ХАРАГДАХ БАЙДЛЫН ХЯЗГААР (`draftRemote`, `permsRemote`-тэй ижил): хүснэгт
  * нь байгууллагад хуваалцагдсан тул REST-ээр хандах эрхтэй хэн боловч бусдын
- * ноорогийг уншиж чадна. Ноорог нь нийтлэгдээгүй ажлын тоо — нууц агуулга
- * биш; хатуу тусгаарлалт нь мөрийн эзэмшлийн хяналт (ownership-based access)
- * шаардах бөгөөд тэр нь админуудын засварлах чадварыг таслана.
+ * ноорогийг уншиж чадна. Ноорог нь хадгалагдаагүй актын дугаар — нууц агуулга
+ * биш; хатуу тусгаарлалт нь мөрийн эзэмшлийн хяналт шаардах бөгөөд тэр нь
+ * админуудын засварлах чадварыг таслана.
  */
 
 import { AUTH, ROLE_BY_USER } from './services';
 import { t as tr } from '@/lib/i18nCore';
 
-const TITLE = 'Selbe_Guitsetgel_Draft';
+/** ⚠️ `Selbe_Guitsetgel_Draft`-ААС ӨӨР item — хоёр хуудас огтлолцохгүй. */
+const TITLE = 'Selbe_QAQC_Draft';
 const TABLE_NAME = 'drafts';
 
 /**
@@ -40,14 +50,14 @@ const TABLE_NAME = 'drafts';
  * хамгийн муу зан: хэрэглэгч «хадгалагдсан» гэж бодоод өөр машин дээр
  * хагас ноорог хүлээж авна.
  */
-export const REMOTE_MAX = 80_000;
+export const QAQC_REMOTE_MAX = 80_000;
 
 let tableUrlCache: string | undefined;
 /** Ижил нэртэй боловч танигдахгүй эзэнтэй хүснэгт — шинээр үүсгэхийг хориглоно */
 let ownerMismatch = false;
 
 /** IdentityManager-аас идэвхтэй token + нэвтэрсэн хэрэглэгч */
-export async function getAuth(): Promise<{ token: string; user: string } | null> {
+async function getAuth(): Promise<{ token: string; user: string } | null> {
   try {
     const { default: esriId } = await import('@arcgis/core/identity/IdentityManager');
     const cred = esriId.findCredential(`${AUTH.portalUrl.replace(/\/+$/, '')}/sharing`);
@@ -109,7 +119,7 @@ async function findTableUrl(token: string): Promise<string | null> {
 async function createTable(token: string, user: string): Promise<string | null> {
   const createParameters = {
     name: TITLE,
-    serviceDescription: tr('«Гүйцэтгэл бөглөх»-ийн нийтлэгдээгүй ноорог'),
+    serviceDescription: tr('«Чанар (QAQC)»-ийн хадгалагдаагүй ноорог'),
     hasStaticData: false,
     maxRecordCount: 2000,
     capabilities: 'Query,Editing,Create,Update,Delete',
@@ -161,7 +171,7 @@ async function createTable(token: string, user: string): Promise<string | null> 
  * ⚠️ Зөвхөн ОЛДСОН URL кэшлэгдэнэ: `null`-ыг кэшлэвэл порталын хайлтын түр
  *    саат сешн даяар тогтмолжиж, ноорог хэзээ ч алсад очихгүй болно.
  */
-export async function tableUrl(canCreate: boolean): Promise<string | null> {
+async function tableUrl(canCreate: boolean): Promise<string | null> {
   if (tableUrlCache) return tableUrlCache;
   const auth = await getAuth();
   if (!auth) return null;
@@ -175,22 +185,28 @@ export async function tableUrl(canCreate: boolean): Promise<string | null> {
 
 type FeatureLayerMod = typeof import('@arcgis/core/layers/FeatureLayer').default;
 type FeatureLayerInst = InstanceType<FeatureLayerMod>;
-export async function layer(url: string): Promise<FeatureLayerInst> {
+async function layer(url: string): Promise<FeatureLayerInst> {
   const { default: FeatureLayer } = (await import('@arcgis/core/layers/FeatureLayer')) as { default: FeatureLayerMod };
   return new FeatureLayer({ url });
 }
 
-/** «хэрэглэгч|багц» — жижиг үсгээр, SQL-д аюулгүй байхаар хашилт нь давхарлагдана */
+/**
+ * «хэрэглэгч|багц» — жижиг үсгээр, SQL-д аюулгүй байхаар хашилт нь давхарлагдана.
+ *
+ * ⚠️ УГТВАРГҮЙ. Хүснэгт нь өөрөө тусдаа тул `qaqc:` угтвар шаардлагагүй болов;
+ *    нэмбэл хуучин угтвартай мөрүүдтэй давхардаж, «хадгалсан ноорог эргэж
+ *    ирэхгүй» гэсэн чимээгүй алдаа гарна.
+ */
 const keyOf = (user: string, pkgKey: string) => `${user.toLowerCase()}|${pkgKey}`;
-export const sqlStr = (s: string) => `'${s.replace(/'/g, "''")}'`;
+const sqlStr = (s: string) => `'${s.replace(/'/g, "''")}'`;
 
-export type RemoteDraft = { at: number; payload: string };
+export type QaqcRemoteDraft = { at: number; payload: string };
 
 /**
  * АЛСЫН НООРОГ — байхгүй/алдаа бол `null`.
  * ⚠️ Алдаа ХЭЗЭЭ Ч шидэхгүй: энэ нь нэмэлт тав тух, бөглөлтийн зам биш.
  */
-export async function loadRemoteDraft(pkgKey: string): Promise<RemoteDraft | null> {
+export async function loadQaqcDraft(pkgKey: string): Promise<QaqcRemoteDraft | null> {
   try {
     const auth = await getAuth();
     if (!auth) return null;
@@ -218,12 +234,12 @@ export async function loadRemoteDraft(pkgKey: string): Promise<RemoteDraft | nul
  * ⚠️ Давхардсан мөрийг ЦЭВЭРЛЭНЭ — эс бөгөөс уншилт хуучин мөрийг сонгож
  *    «хадгалсан ч эргэж ирэхгүй» гэсэн чимээгүй алдаа үүсгэнэ.
  */
-export async function saveRemoteDraft(
+export async function saveQaqcDraft(
   pkgKey: string,
   at: number,
   payload: string,
 ): Promise<boolean> {
-  if (payload.length > REMOTE_MAX) return false;
+  if (payload.length > QAQC_REMOTE_MAX) return false;
   try {
     const auth = await getAuth();
     if (!auth) return false;
@@ -258,11 +274,11 @@ export async function saveRemoteDraft(
 }
 
 /**
- * АЛСЫН НООРОГИЙГ УСТГАНА — нийтэлсэн, эсвэл хэрэглэгч «Устгах» дарсан үед.
+ * АЛСЫН НООРОГИЙГ УСТГАНА — хадгалсан, эсвэл хэрэглэгч «Устгах» дарсан үед.
  * ⚠️ Түлхүүрт таарах БҮХ мөрийг устгана (давхардлыг ч) — үлдсэн мөр дараагийн
- *    ачаалалтад «нийтлэгдээгүй ажил байна» гэж ХУДЛАА сануулна.
+ *    ачаалалтад «хадгалаагүй ажил байна» гэж ХУДЛАА сануулна.
  */
-export async function clearRemoteDraft(pkgKey: string): Promise<boolean> {
+export async function clearQaqcDraft(pkgKey: string): Promise<boolean> {
   try {
     const auth = await getAuth();
     if (!auth) return false;

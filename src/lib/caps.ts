@@ -43,12 +43,16 @@ export type CapKey =
 export const CAPS: { key: CapKey; icon: string }[] = [
   { key: 'addRow', icon: 'plus' },
   /**
-   * QAQC — «Гүйцэтгэл бөглөх» хуудасны Inspection Test Plan хэсэг (М-акт,
-   * FIC, MA, MIR баримтын 9 багана) бөглөх эрх.
+   * QAQC — Inspection Test Plan (М-акт · FIC · MA · MIR баримтын 9 багана)
+   * бөглөх эрх.
    *
    * ⚠️ Гүйцэтгэлийн хувь бөглөхөөс ТУСДАА: чанарын баримт бичгийг барилгын
    * гүйцэтгэгч биш, чанарын хяналтын ажилтан хөтөлдөг. Нэг эрхэнд нийлүүлбэл
    * обьём бөглөх бүрд баримтын багана нээгдэж, хэн юуг баталсан нь замхарна.
+   *
+   * ⚠️ 2026-09-04: өгөгдөл нь «Гүйцэтгэл бөглөх»-өөс гарч «Чанар (QAQC)»
+   *    тусдаа харагдацад (`src/modules/Qaqc.tsx`, `src/lib/qaqc.ts`) шилжсэн.
+   *    Эрх нь тэр харагдацыг автоматаар нээнэ (`CAP_HOST_VIEW`).
    */
   { key: 'qaqc', icon: 'shield' },
   /**
@@ -121,7 +125,10 @@ export const CAPS: { key: CapKey; icon: string }[] = [
  */
 export const CAP_HOST_VIEW: Record<CapKey, ViewKey> = {
   addRow: 'guitsetgel',
-  qaqc: 'guitsetgel',
+  /* ⚠️ 2026-09-03: «Гүйцэтгэл»-ээс ӨӨРИЙН харагдац руу шилжив. Эрх нь энэ
+     харагдацыг автоматаар нээнэ — эс бөгөөс QAQC эрх олгосон инженер
+     чанарын хуудас руу орох замгүй үлдэнэ. */
+  qaqc: 'qaqc',
   zovshoorol: 'zovshoorol',
   finEdit: 'finance',
   finRow: 'finance',
