@@ -16,12 +16,16 @@
  *   дүүргэлт, 3D/BIM-д өргөгдсөн эзэлхүүн (ус · утааны давхарга) болно.
  */
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import GraphicsLayer from '@arcgis/core/layers/GraphicsLayer';
 import MediaLayer from '@arcgis/core/layers/MediaLayer';
 import ImageElement from '@arcgis/core/layers/support/ImageElement';
 import ExtentAndRotationGeoreference from '@arcgis/core/layers/support/ExtentAndRotationGeoreference';
+import { buildFlow, clampBox, type Flow, type MercBox } from '@/lib/salhiUrsgal';
+import * as reactiveUtils from '@arcgis/core/core/reactiveUtils';
+import type { WindField } from '@/lib/salhiTor';
 import Extent from '@arcgis/core/geometry/Extent';
+import * as geometryEngine from '@arcgis/core/geometry/geometryEngine';
 import Graphic from '@arcgis/core/Graphic';
 import Point from '@arcgis/core/geometry/Point';
 import { IMAGERY_ID, useMap, type Dim } from '@/components/MapCanvas';
@@ -32,6 +36,19 @@ import type { FloodData } from '@/lib/uyr';
 
 /** Давхаргын id-ууд — каталогт ОРОХГҮЙ (`listMode: 'hide'`) */
 const FLOOD_ID = 'ersdel:flood';
+/**
+ * Салхины урсгалын растер — каталогт ОРОХГҮЙ (үр дүн, давхарга биш).
+ *
+ * ⚠️ УГТВАР НЬ `ersdel:` БАЙХ ЁСТОЙ (2026-09-03 засвар). `MapCanvas`-ийн
+ * давхаргын харагдалтын шүүлт (`MapCanvas.tsx` §`startsWith('ersdel:')`) нь
+ * ЗӨВХӨН энэ угтвартай id-г «өөрөө удирддаг» гэж үзэж алгасдаг. Урьд нь
+ * зураас (`ersdel-flow`) байсан тул шүүлтэд орж, `on.has(l.id)` нь каталогт
+ * байхгүй id дээр үргэлж `false` буцааж давхаргыг НУУДАГ байв:
+ * урсгал эхлээд гарч ирээд, «Шинжилгээ» дарах эсвэл каталогийн давхарга
+ * асаах/2D↔3D солих бүрд ЧИМЭЭГҮЙ алга болдог — товч нь «Урсгал асаалттай»
+ * гэж хэвээр бичигдэнэ.
+ */
+const FLOW_ID = 'ersdel:flow';
 /** Нэг зүсмэлийг хэдэн секундэд туулах вэ — 12 алхам ≈ 14 сек */
 const STEP_S = 1.2;
 /**
@@ -68,9 +85,16 @@ type Sym = Graphic['symbol'];
 const bandFill2d = (hue: string, alpha: number, onWater: boolean) => ({
   type: 'simple-fill',
   color: [...rgb(hue), alpha],
-  /* Усны дээр — тод, зузаан хүрээ: шинжилгээний ХИЛ уншигдах ёстой */
+  /**
+   * ⚠️ Усны дээр — ЗУЗААН хүрээ: шинжилгээний ХИЛ уншигдах ёстой.
+   *
+   * ⚠️ 2026-09-03: ЦАГААН байсныг МУЖИЙН ӨӨРИЙН ӨНГӨ болгов (хэрэглэгчийн
+   * хүсэлт). Цагаан хүрээ нь мужийн улаан дүүргэлт, өртсөн объектын улаан
+   * хоёроос ГУРАВ ДАХЬ өнгө болж, нэг ойлголт гурван өөр зүйл мэт
+   * уншигдаж байв.
+   */
   outline: onWater
-    ? { color: [255, 255, 255, 0.85], width: 1.6 }
+    ? { color: [...rgb(hue), 0.95], width: 1.6 }
     : { color: [...rgb(hue), 0.9], width: 0.8 },
 });
 
@@ -94,15 +118,40 @@ const bandFill3d = (hue: string, alpha: number, height: number, edges: boolean) 
   }],
 });
 
-/** Өртсөн объект — 2D */
+/**
+ * Өртсөн объект — 2D. БҮХ геометр НЭГ ӨНГӨ, НЭГ ХАНАЛТ.
+ *
+ * ⚠️ 2026-09-03 (хэрэглэгчийн хүсэлт: «өртөх талбай нэг өнгөөр»). Өнгө нь
+ * урьд нь ч `DAMAGE` ганцаараа байсан ч ХАРАГДАЦ нь гурав өөр байв:
+ *   · талбай — 0.55 ханалттай (ортофото дээр бор-улаан болж уншигдана)
+ *   · шугам  — 1.0 (цэвэр улаан)
+ *   · цэг    — 1.0 дээр нь ЦАГААН цагираг
+ * Үр дүнд нэг үзэгдлийн гурван өөр өнгө мэт харагдаж байлаа. Одоо ханалт
+ * нэг (`A`), цагаан цагираг ХАСАГДСАН.
+ *
+ * ⚠️ Ханалтыг 1.0 БОЛГООГҮЙ: талбайн дүүргэлт бүрэн дүүрэн бол доорх барилга,
+ * зам огт харагдахаа болино — «юу өртсөн» нь мэдэгдэх ч «юун дээр» нь
+ * алдагдана.
+ */
+const DMG_A = 0.72;
+
 const dmg2d = (geom: 'area' | 'line' | 'point') =>
   geom === 'area'
-    ? { type: 'simple-fill', color: [...rgb(DAMAGE), 0.55], outline: { color: [...rgb(DAMAGE), 1], width: 1.2 } }
+    ? {
+      type: 'simple-fill',
+      color: [...rgb(DAMAGE), DMG_A],
+      outline: { color: [...rgb(DAMAGE), DMG_A], width: 1.2 },
+    }
     : geom === 'line'
-      ? { type: 'simple-line', color: [...rgb(DAMAGE), 1], width: 3 }
+      ? { type: 'simple-line', color: [...rgb(DAMAGE), DMG_A], width: 3 }
       : {
-        type: 'simple-marker', style: 'circle', size: 9,
-        color: [...rgb(DAMAGE), 1], outline: { color: [255, 255, 255, 0.95], width: 1.2 },
+        type: 'simple-marker',
+        style: 'circle',
+        size: 9,
+        color: [...rgb(DAMAGE), DMG_A],
+        /* ⚠️ Цагаан цагираг ХАСАГДСАН — тэр нь цэгийг талбай/шугамаас
+           ӨӨР өнгөт зүйл мэт харуулдаг байв. Мөн өнгөөр хүрээлнэ. */
+        outline: { color: [...rgb(DAMAGE), DMG_A], width: 0.8 },
       };
 
 /**
@@ -129,7 +178,9 @@ const dmg3d = (geom: 'area' | 'line' | 'point') =>
         symbolLayers: [{
           type: 'icon', resource: { primitive: 'circle' }, size: 11,
           material: { color: [...rgb(DAMAGE), 1] },
-          outline: { color: [255, 255, 255, 1], size: 1.4 },
+          /* ⚠️ 2D-тэй ижил: цагаан цагираг ХАСАГДСАН (дээрх `dmg2d`-ийн
+             тайлбарыг үз) — өртсөн бүх объект НЭГ өнгөөр уншигдана. */
+          outline: { color: [...rgb(DAMAGE), 1], size: 1 },
         }],
       };
 
@@ -189,6 +240,9 @@ export function Overlay({
   floodSlice = 0,
   playing = false,
   onSlice,
+  windField = null,
+  windFlow = false,
+  windHour = 0,
 }: {
   dim: Dim;
   /** Аюулын мужууд — хоосон бол зөвхөн харуул зурагдана */
@@ -217,6 +271,16 @@ export function Overlay({
   playing?: boolean;
   /** Анимаци шинэ зүсмэл рүү орлоо — эцэг нь заагчаа дагуулна */
   onSlice?: (s: number) => void;
+  /**
+   * САЛХИНЫ ТАЛБАР. Байвал (ба `windFlow` асаалттай бол) тоосонцрын урсгал
+   * зурагдана. `null` бол давхарга ОГТ үүсэхгүй — хоосон canvas ч GPU-д
+   * текстур эзэлнэ.
+   */
+  windField?: WindField | null;
+  /** Урсгалын анимац асаалттай эсэх */
+  windFlow?: boolean;
+  /** Аль цагийн салхиар урсгах вэ (`windField.times`-ын индекс) */
+  windHour?: number;
 }) {
   const { view } = useMap();
 
@@ -383,12 +447,165 @@ export function Overlay({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flood, playing, drawFrame]);
 
+  const flowLayerRef = useRef<MediaLayer | null>(null);
+  const flowRef = useRef<Flow | null>(null);
+  const flowGeoRef = useRef<ExtentAndRotationGeoreference | null>(null);
+
+  /**
+   * ЗУРАХ ХҮРЭЭ — газрын зургийн ХАРАГДАЦЫГ дагана.
+   *
+   * ⚠️ Зогссоны ДАРАА л шинэчилнэ (`view.stationary`). Гүйлгэх/зумлах явцад
+   * фрейм тутам растер дахин байгуулбал тоосонцор бүрд дахин төрж, анимац
+   * бүхэлдээ анивчина.
+   *
+   * ⚠️ Хүрээг БӨӨРӨНХИЙЛНӨ (1 км): жижиг хөдөлгөөн бүрд шинэ хайрцаг гарвал
+   * растер байнга дахин байгуулагдаж, сүүл нь тасралтгүй тэглэгдэнэ.
+   */
+  const [box, setBox] = useState<MercBox | null>(null);
+  useEffect(() => {
+    if (!view || view.destroyed || !windFlow) return;
+    const KM = 1000;
+    const snap = (v: number) => Math.round(v / KM) * KM;
+    const apply = () => {
+      const e = view.extent;
+      if (!e) return;
+      const next = clampBox({
+        xmin: snap(e.xmin), ymin: snap(e.ymin), xmax: snap(e.xmax), ymax: snap(e.ymax),
+      });
+      if (!(next.xmax > next.xmin && next.ymax > next.ymin)) return;
+      setBox((cur) => (cur
+        && cur.xmin === next.xmin && cur.ymin === next.ymin
+        && cur.xmax === next.xmax && cur.ymax === next.ymax
+        ? cur : next));
+    };
+    apply();
+    const h = reactiveUtils.watch(
+      () => view.stationary && view.extent,
+      (v) => { if (v) apply(); },
+    );
+    return () => h.remove();
+  }, [view, windFlow]);
+
+  /* ── САЛХИНЫ УРСГАЛ (MediaLayer) ──
+   *
+   * ⚠️ ҮЕРИЙН растертай ИЖИЛ хэв загвар (дээрх тайлбарыг үз): canvas →
+   *    `ImageElement` → `MediaLayer`. Ялгаа нь ЗӨВХӨН эх сурвалжид —
+   *    үер нь бэлэн зүсмэл, салхи нь фрейм тутамд шинээр бодогдох тоосонцор.
+   *
+   * ⚠️ ХАРАГДАЦ солигдоход ДАХИН БАЙГУУЛНА (`box` хамаарал): ингэж байж зум
+   *    ойртох тусам ижил 896 px нь бага талбайд ногдож, зураас олон бөгөөд
+   *    тод болно.
+   */
+  useEffect(() => {
+    if (!view || view.destroyed || !view.map || !windField || !box) return;
+    const geo = new ExtentAndRotationGeoreference({
+      extent: new Extent({
+        xmin: box.xmin, ymin: box.ymin, xmax: box.xmax, ymax: box.ymax,
+        spatialReference: { wkid: 102100 },
+      }),
+    });
+    const flow = buildFlow(windField, box);
+    const layer = new MediaLayer({
+      id: FLOW_ID,
+      listMode: 'hide',
+      /* ⚠️ 0.95 — ХЭРЭГЛЭГЧИЙН СОНГОСОН утга (2026-09-03). 1.0 руу
+         өсгөж үзсэн ч буцав: доорх зураг бага зэрэг мэдрэгдэж байж салхи
+         «зурган ДЭЭР» гэж уншигдана, тусдаа хөшиг мэт биш. */
+      opacity: 0.95,
+      source: [new ImageElement({ image: flow.step(windHour), georeference: geo })],
+    });
+    flowLayerRef.current = layer;
+    flowRef.current = flow;
+    flowGeoRef.current = geo;
+    /* Ортофотогийн дээр, вектор давхаргуудын доор — үерийнхтэй ижил байр */
+    const ortho = view.map.findLayerById(IMAGERY_ID);
+    const at = ortho ? view.map.layers.indexOf(ortho) + 1 : 0;
+    view.map.add(layer, at);
+    return () => {
+      if (view.map) view.map.remove(layer);
+      layer.destroy();
+      flowLayerRef.current = null;
+      flowRef.current = null;
+      flowGeoRef.current = null;
+    };
+  }, [view, windField, box, windHour]);
+
+  /**
+   * АНИМАЦИЙН ГОГЦОО — ~20 фрейм/сек.
+   *
+   * ⚠️ Фреймийг ХЯЗГААРЛАНА (`FRAME_MS`): фрейм тутамд шинэ `ImageElement`
+   * үүсч RGBA текстур GPU руу ачаалагдана. 60/сек бол илүүдэл ачаалал —
+   * тоосонцор 20/сек-д ч гөлгөр урсана (үерийнхтэй ижил шалтгаан).
+   *
+   * ⚠️ React төлөв фрейм тутамд ШИНЭЧЛЭХГҮЙ — зөвхөн `source.elements`-ийг
+   * байранд нь солино.
+   */
+  useEffect(() => {
+    if (!windField || !windFlow || !box) return;
+    let raf = 0;
+    let last = 0;
+    const tick = (now: number) => {
+      raf = requestAnimationFrame(tick);
+      if (now - last < FRAME_MS) return;
+      last = now;
+      const layer = flowLayerRef.current;
+      const geo = flowGeoRef.current;
+      const flow = flowRef.current;
+      if (!layer || !geo || !flow) return;
+      const el = new ImageElement({ image: flow.step(windHour), georeference: geo });
+      const src = layer.source as unknown as {
+        elements: { removeAll(): void; add(x: unknown): void };
+      };
+      src.elements.removeAll();
+      src.elements.add(el);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [windField, windFlow, windHour, box]);
+
   /* ── Аюулын муж ── */
   useEffect(() => {
     const gl = view?.map?.findLayerById(BAND_ID) as GraphicsLayer | undefined;
     if (!gl) return;
     const d3 = is3D(dim);
     gl.removeAll();
+
+    /**
+     * ⚠️ 2D-д НЭГ ПОЛИГОН (2026-09-03, хэрэглэгчийн хүсэлт).
+     *
+     * Аюулын муж нь ГУРВАН УГСРАА цагирагаас тогтдог (гүн · дунд · зах).
+     * Дүүргэлтийн өнгө нь 2026-08-29-нөөс аль хэдийн НЭГ (`ersdelGeom`
+     * §floodBands) боловч цагираг БҮР өөрийн ХҮРЭЭТЭЙ зурагддаг тул зурган
+     * дээр 3 давхар цагаан зураас гарч, нэг муж нь ГУРВАН тусдаа бүс мэт
+     * уншигдсаар байв.
+     *
+     * Одоо 2D-д тэдгээрийг НЭГТГЭЖ (`union`) ганц график болгоно: нэг
+     * дүүргэлт, нэг гадна хүрээ.
+     *
+     * ⚠️ 3D-д НЭГТГЭХГҮЙ: тэнд цагираг бүр өөрийн ГҮНЭЭР өргөгддөг
+     * (`b.height`) бөгөөд нэгтгэвэл гүний ялгаа бүрмөсөн алдагдана.
+     *
+     * ⚠️ Өнгө нь ЗӨРВӨЛ нэгтгэхгүй — агаарын сэвсгэр нь агууламжаар гурван
+     * ӨӨР өнгөтэй (`#7f1d1d`/`#b45309`/`#ca8a04`) тул нэг дүүргэлтэд
+     * шахвал концентрацийн шатлал алга болно.
+     */
+    const oneHue = bands.length > 1 && bands.every((b) => b.hue === bands[0].hue);
+    if (!d3 && oneHue) {
+      const merged = geometryEngine.union(bands.map((b) => b.geometry)) as unknown as
+        __esri.Polygon | null;
+      if (merged) {
+        const b0 = bands[0];
+        const alpha = bandOnFlood ? 0.14 : 0.34;
+        const g = new Graphic({
+          geometry: merged,
+          attributes: { band: b0.key, label: b0.label },
+        });
+        g.symbol = bandFill2d(b0.hue, alpha, bandOnFlood) as unknown as Sym;
+        gl.add(g);
+        return;
+      }
+    }
+
     for (const b of bands) {
       // ⚠️ 3D-д тунгалаг ИХ байх ёстой: 300 м өндөр цул блок нь доорх хот,
       //    барилгыг бүрэн нуудаг. 2D-д эсрэгээрээ — хэт тунгалаг бол ортофото

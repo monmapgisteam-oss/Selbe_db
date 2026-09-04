@@ -57,6 +57,7 @@ import {
   depthRisk, flowDeg, flowDir, loadFloodData, type FloodData,
 } from '@/lib/uyr';
 import { dirName, dispersionOf, loadWind, nowHour } from '@/lib/salhi';
+import { loadWindField, nowIndex, ymd } from '@/lib/salhiTor';
 import { Overlay, type Pick } from './ersdel/Overlay';
 import o from './gazarOv.module.css';
 import e from './ersdel.module.css';
@@ -384,6 +385,27 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
    * ⚠️ deps нь МӨР (`hubKey`), объект БИШ: `useMemo` буцаасан объект нь
    * `stations` солигдох бүрд шинэ лавлагаатай болно.
    */
+  /**
+   * ХАРУУЛ ТУС БҮРИЙН PM2.5 — сэвсгэрийн уртыг масштаблахад.
+   *
+   * ⚠️ ЭХ СУРВАЛЖ нь `live` (тухайн харуулын цуваа), нэгдсэн дундаж БИШ:
+   * зорилго нь «аль харуул илүү бохир вэ» гэдгийг ЗУРГАН ДЭЭР харуулах.
+   * Дундажаар бодвол бүх сэвсгэр ижил урттай болж, тэр асуулт хариултгүй
+   * үлдэнэ.
+   *
+   * ⚠️ Заалт нь ЖИШЭЭ ӨГӨГДӨЛ (тэр давхаргад утгын талбар байхгүй) — гэхдээ
+   * ДЕТЕРМИНИСТ тул харуул бүр өөрийн тогтвортой утгатай.
+   */
+  const pm25ByOid = useMemo(() => {
+    const out: Record<number, number> = {};
+    for (const st of live) {
+      if (st.kind !== 'air') continue;
+      const m = st.metrics.find((x) => x.key === 'pm25');
+      if (m) out[st.oid] = m.latest;
+    }
+    return out;
+  }, [live]);
+
   const airHub = useMemo(() => {
     const pts = stations.filter((s) => s.kind === 'air');
     if (!pts.length) return null;
@@ -402,6 +424,101 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
   );
   const wind = windQ.state === 'ready' ? windQ.data : null;
   const windNow = wind ? nowHour(wind) : null;
+
+  /* ══════════════ САЛХИНЫ УРСГАЛ (WIND-MODULE.md §6, §9) ══════════════ */
+
+  /**
+   * Урсгалын анимац асаалттай эсэх.
+   *
+   * ⚠️ АГААРЫН БОХИРДОЛ сонгоход ӨӨРӨӨ АСНА (2026-09-03, хэрэглэгчийн хүсэлт) —
+   * доорх эффект. Салхи нь тэр аюулын ШАЛТГААНЫ хэсэг (бохирдол хаашаа явахыг
+   * тодорхойлно) тул нэмэлт товч дарах шаардлагагүй.
+   *
+   * ⚠️ Анхны утга нь `'flood'`-той тохирч УНТРААЛТТАЙ: үерийн горимд салхи
+   * хамааралгүй бөгөөд Open-Meteo руу дэмий хүсэлт явж, ~20 фрейм/сек-ийн
+   * GPU ачаалал үүснэ.
+   */
+  const [windFlow, setWindFlow] = useState(false);
+
+  /**
+   * ⚠️ ЗӨВХӨН АЮУЛЫН ТӨРӨЛ СОЛИГДОХОД ажиллана. `windFlow`-г хамааралд
+   * оруулбал хэрэглэгч гараар унтраамагц эффект дахин асааж, товч нь ажиллахаа
+   * болино — агаарын горимд байхад унтраах боломжгүй болно.
+   */
+  useEffect(() => {
+    setWindFlow(hazard === 'air');
+  }, [hazard]);
+
+  /**
+   * ⚠️ ХУГАЦААНЫ ШУГАМ ХАСАГДСАН (2026-09-03, хэрэглэгчийн хүсэлт). Эх модульд
+   * (`WIND-MODULE.md` §6) −90…+15 хоногийн гүйлгэгч, 700 мс тоглуулалт байсан.
+   * Энэ самбарын асуулт нь «ОДОО бохирдол хаашаа явж байна» — өнгөрсөн/ирээдүйн
+   * салхи нь тусдаа судалгааны хэрэгсэл бөгөөд аюулын мужийн шинжилгээтэй
+   * зэрэгцэн байвал «аль цагийн зураг вэ» гэдэг эргэлзээ төрүүлнэ.
+   *
+   * ⚠️ Тиймээс ҮРГЭЛЖ ӨНӨӨДРИЙН огноо, ОДООГИЙН цаг.
+   */
+  const windDate = useMemo(() => ymd(new Date()), []);
+
+  /**
+   * ⚠️ Талбарыг ЗӨВХӨН урсгал асаалттай үед татна. `enabled`-гүй бол хуудас
+   * нээх бүрд 152 цэгийн хүсэлт явж, өдрийн квотыг дэмий иднэ.
+   */
+  const fieldQ = useAsync(
+    () => (windFlow ? loadWindField(windDate) : Promise.resolve(null)),
+    [windFlow, windDate],
+  );
+  const windField = fieldQ.state === 'ready' ? fieldQ.data : null;
+
+  /** Идэвхтэй цагийн индекс — ҮРГЭЛЖ одоогийн цаг */
+  const [windH, setWindH] = useState(0);
+  useEffect(() => {
+    if (!windField) return;
+    setWindH(nowIndex(windField));
+    /**
+     * ⚠️ ЦАГ БҮР ШИНЭЧЛЭНЭ. Хуудсыг нээлттэй орхивол (хяналтын дэлгэц дээр
+     * ердийн зүйл) индекс хөлдөж, шөнө дунд өдрийн салхи урсаж байх болно.
+     * Минут тутам шалгах нь хямд — цаг солигдоход л төлөв өөрчлөгдөнө.
+     */
+    const id = window.setInterval(() => setWindH(nowIndex(windField)), 60_000);
+    return () => window.clearInterval(id);
+  }, [windField]);
+
+  /* ══════════════ ӨРТӨӨГҮЙГ БҮДЭГРҮҮЛЭХ ══════════════ */
+
+  /**
+   * Шинжилгээний дараа өртөөгүй давхаргыг бүдгэрүүлэх үү.
+   *
+   * ⚠️ 2026-09-03 (хэрэглэгчийн хүсэлт). Үр дүн гарсны дараа зурагт хэдэн
+   * зуун барилга, зам, шугам ижил тодоор зогсож, улаанаар тэмдэглэгдсэн
+   * ӨРТСӨН зүйлс тэдний дунд алга болдог байв. Бүдгэрүүлснээр анхаарал
+   * шууд өртсөн зүйлс дээр очно.
+   *
+   * ⚠️ Хэрэглэгч унтрааж чадна: контекст (юуны дунд байгаа нь) заримдаа
+   * өртсөн жагсаалтаас илүү чухал асуулт болдог.
+   */
+  const [dimRest, setDimRest] = useState(true);
+
+  /** Бүдгэрүүлэх түвшин — 0 бол бүрэн алга болж, «юу ч байхгүй» гэж уншигдана */
+  const DIM = 0.22;
+
+  /**
+   * ЗУРАГТ ӨГӨХ ТУНГАЛАГ — хэрэглэгчийн гулсуур дээр бүдэгрүүлэлт нэмнэ.
+   *
+   * ⚠️ ӨРТСӨН объектууд `Overlay`-гийн ТУСДАА график давхаргад (`DMG_ID`)
+   * улаанаар зурагддаг тул энд бүдгэрүүлсэн ч тэд БҮРЭН тодоор үлдэнэ —
+   * яг тэр ялгаа нь харагдацын гол утга.
+   *
+   * ⚠️ Хэрэглэгчийн гараар тохируулсан утгыг ҮРЖҮҮЛНЭ, дарж бичихгүй:
+   * «Тунгалаг» хавтангаас 50% болгосон давхарга бүдэгрүүлэлттэй үед 11%
+   * болох ёстой, гэнэт 22% болж ТОДРОХ ёсгүй.
+   */
+  const mapOpacity = useMemo(() => {
+    if (!dimRest || !result) return opacity;
+    const out: Record<string, number> = {};
+    for (const id of visible) out[id] = (opacity[id] ?? 1) * DIM;
+    return out;
+  }, [dimRest, result, opacity, visible]);
 
   /** Сонгосон харуул — сонгоогүй бол горимд тохирох эхнийх */
   const current: StationLive | null =
@@ -441,8 +558,21 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
     setBusy(true);
     setRunErr(null);
     try {
-      const bands = hazard === 'flood' ? await floodBands(level) : airBands(stations, level);
-      const extent = hazard === 'flood' ? await floodExtent(level) : airExtent(stations, level);
+      /**
+       * ⚠️ АГААРЫН СЭВСГЭР нь БОДИТ САЛХИАР чиглэнэ (2026-09-03, хүсэлт).
+       * `windNow` нь Open-Meteo-гийн одоогийн цагийн заалт; татагдаагүй бол
+       * `null` очиж, хувилбарын тогтмол (`AIR_LEVELS[level].windDir`) руу
+       * ухарна — шинжилгээ САЛХИГҮЙ ч ажиллах ёстой.
+       *
+       * ⚠️ `bands` ба `extent` ХОЁУЛАА ижил салхи авна: зөрвөл зурагдсан
+       * бүс ба хохирол тоолсон муж хоёр өөр чиглэлд харна.
+       */
+      const bands = hazard === 'flood'
+        ? await floodBands(level)
+        : airBands(stations, level, windNow, pm25ByOid);
+      const extent = hazard === 'flood'
+        ? await floodExtent(level)
+        : airExtent(stations, level, windNow, pm25ByOid);
       if (!extent) throw new Error(tr('Аюулын мужийг байгуулж чадсангүй'));
       const { ids, fallback } = activeIds();
       /* ⚠️ `failed` — татагдаагүй давхарга. «Эрсдэлгүй» ба «мэдээлэлгүй»
@@ -486,7 +616,9 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
     } finally {
       setBusy(false);
     }
-  }, [view, hazard, level, stations, activeIds, setVisible]);
+    /* ⚠️ `windNow` нь deps-д — дараагийн ажиллуулалт ЗААВАЛ шинэ салхийг
+       авах ёстой. Автоматаар дахин ажиллуулахгүй (хэрэглэгч «Шинжилгээ» дарна). */
+  }, [view, hazard, level, stations, windNow, pm25ByOid, activeIds, setVisible]);
 
   /* ══════════ Зурган дээрх мэдээлэл — «дарж юу вэ гэдгийг мэдэх» ══════════
    *
@@ -962,14 +1094,105 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                     <Stat value={num(FLOOD_LEVELS[level].lead)} unit={tr('цаг')} label={tr('Сэрэмжлүүлэх')} />
                   </Stats>
                 ) : (
-                  <Stats cols={3}>
-                    <Stat value={num(AIR_LEVELS[level].pm25)} unit="µg/м³" label="PM2.5" />
-                    <Stat value={num(AIR_LEVELS[level].aqi)} unit="" label={tr('АЧИ')} />
-                    <Stat value={num(AIR_LEVELS[level].inversion)} unit={tr('м')} label={tr('Инверси')} />
-                    <Stat value={num(AIR_LEVELS[level].wind, 1)} unit={tr('м/с')} label={tr('Салхи')} />
-                    <Stat value={num(AIR_LEVELS[level].plume)} unit={tr('м')} label={tr('Сэвсгэрийн урт')} />
-                    <Stat value={num(AIR_LEVELS[level].hours)} unit={tr('цаг')} label={tr('Үргэлжлэх')} />
-                  </Stats>
+                  <>
+                    <Stats cols={3}>
+                      <Stat value={num(AIR_LEVELS[level].pm25)} unit="µg/м³" label="PM2.5" />
+                      <Stat value={num(AIR_LEVELS[level].aqi)} unit="" label={tr('АЧИ')} />
+                      <Stat value={num(AIR_LEVELS[level].inversion)} unit={tr('м')} label={tr('Инверси')} />
+                      <Stat value={num(AIR_LEVELS[level].wind, 1)} unit={tr('м/с')} label={tr('Хувилбарын салхи')} />
+                      <Stat value={num(AIR_LEVELS[level].plume)} unit={tr('м')} label={tr('Сэвсгэрийн суурь урт')} />
+                      <Stat value={num(AIR_LEVELS[level].hours)} unit={tr('цаг')} label={tr('Үргэлжлэх')} />
+                    </Stats>
+                    {/**
+                      * БОДИТ САЛХИ — зурган дээрх сэвсгэрийг ЭНЭ чиглүүлнэ.
+                      *
+                      * ⚠️ Дээрх хувилбарын тоонууд нь ЗАГВАРЫН таамаг (PM2.5,
+                      * инверси, суурь урт) бөгөөд ХЭВЭЭР үлдэнэ. Салхи нь
+                      * ганцаараа ЖИНХЭНЭ хэмжилт тул тусад нь, эх сурвалжтай
+                      * нь хамт бичнэ — эс бөгөөс хэрэглэгч бүх зургаан тоог
+                      * жинхэнэ (эсвэл бүгдийг таамаг) гэж уншина.
+                      */}
+                    <div className={e.wind}>
+                      <div className={e.windHd}>
+                        <Icon name="radio" size={13} />
+                        <b>{tr('Бодит салхи')}</b>
+                        <span className={e.windSrc}>{tr('Open-Meteo · жинхэнэ заалт')}</span>
+                      </div>
+                      {windQ.state === 'loading' ? (
+                        <Loading label={tr('Салхи татаж байна…')} />
+                      ) : !windNow ? (
+                        <Note>
+                          {tr('Салхи татагдсангүй — сэвсгэр хувилбарын {0}° чиглэлээр зурагдана.', num(AIR_LEVELS[level].windDir))}
+                        </Note>
+                      ) : (
+                        <>
+                          <div className={e.windNow}>
+                            {/* Сум нь салхи ХААШАА үлээхийг заана — сэвсгэр ч
+                                мөн тийш сунана. */}
+                            <span
+                              className={e.windArrow}
+                              style={{ transform: `rotate(${windNow.dirDeg + 180}deg)` }}
+                              aria-hidden
+                            >
+                              ↑
+                            </span>
+                            <span className={`${e.windVal} num`}>
+                              {num(windNow.speed, 1)}<i>{tr('м/с')}</i>
+                            </span>
+                            <span className={e.windDir}>
+                              {tr('{0}-аас', dirName(windNow.dirDeg))}
+                            </span>
+                          </div>
+                          <p className={e.windNote} style={{ color: dispersionOf(windNow.speed).tone }}>
+                            {dispersionOf(windNow.speed).label}
+                          </p>
+                          <Note>
+                            {tr('Бохирдол {0} зүг рүү сунана. Хувилбарын {1} м/с-тэй харьцуулахад сэвсгэрийн урт {2} дахин.',
+                              dirName((windNow.dirDeg + 180) % 360),
+                              num(AIR_LEVELS[level].wind, 1),
+                              num(Math.max(0.4, Math.min(2.5, windNow.speed / AIR_LEVELS[level].wind)), 1))}
+                          </Note>
+                        </>
+                      )}
+                      {/**
+                        * УРСГАЛЫН УДИРДЛАГА — ГАНЦ товч.
+                        *
+                        * ⚠️ Хугацааны шугам ХАСАГДСАН (дээрх `windDate`-ийн
+                        * тайлбарыг үз): энэ самбар нь ОДООГИЙН байдлыг л
+                        * хариулна. Зум ойртуулах тусам растер нь харагдаж буй
+                        * мужид ногдож, зураас олон бөгөөд тод болно.
+                        */}
+                      <div className={e.flowBar}>
+                        <button
+                          type="button"
+                          className={`${e.flowBtn} ${windFlow ? e.flowOn : ''}`}
+                          aria-pressed={windFlow}
+                          onClick={() => setWindFlow((v) => !v)}
+                          title={tr('Одоогийн салхины урсгалыг зураг дээр харуулна. Зум ойртуулахад нарийсна.')}
+                        >
+                          {windFlow ? tr('Урсгал асаалттай') : tr('Урсгал харуулах')}
+                        </button>
+                        {windFlow && windField?.times[windH] != null && (
+                          <span className={`${e.flowHour} num`}>
+                            {tr('{0} цагийн заалт', `${String(new Date(windField.times[windH]).getHours()).padStart(2, '0')}:00`)}
+                          </span>
+                        )}
+                      </div>
+                      {windFlow && fieldQ.state === 'loading' && (
+                        <Loading label={tr('Салхины тор татаж байна…')} />
+                      )}
+                      {windFlow && fieldQ.state === 'error' && (
+                        <Note>
+                          <span style={{ color: 'var(--bad-ink)' }}>
+                            {tr('Салхины тор татагдсангүй.')}
+                          </span>
+                        </Note>
+                      )}
+                      {windFlow && windField?.cached && (
+                        <p className={e.windSrc}>{tr('Кэшнээс — сүлжээ татагдсангүй')}</p>
+                      )}
+                    </div>
+                  </>
                 )}
               </div>
             </section>
@@ -1073,7 +1296,7 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
         <MapCanvas
           dim={dim}
           visible={visible}
-          opacity={opacity}
+          opacity={mapOpacity}
           zone={zone}
           uniform
           /* ⚠️ ХООСОН эхлэл — суурь 14 давхарга автоматаар асахгүй (§INITIAL_IDS) */
@@ -1094,6 +1317,11 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
           floodSlice={slice}
           playing={playing}
           onSlice={setSlice}
+          /* Урсгал УНТРААЛТТАЙ үед `null` — давхарга огт үүсэхгүй,
+             GPU-д текстур эзлэхгүй. */
+          windField={windFlow ? windField : null}
+          windFlow={windFlow}
+          windHour={windH}
         />
 
         <MapTools
@@ -1349,18 +1577,56 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                     </span>
                   </header>
                   <div className={e.panelBody}>
-                    <Stats cols={2}>
-                      <Stat value={num(sum.n)} unit={tr('ш')} label={tr('Өртсөн объект')} accent />
-                      <Stat value={ha(sum.area, 2)} unit={tr('га')} label={tr('Өртсөн талбай')} />
+                    {/**
+                      * ГОЛ ТОО — картын хамгийн дээр, ТОМООР.
+                      *
+                      * ⚠️ Урьд нь дөрвөн үзүүлэлт ИЖИЛ хэмжээтэй `Stats`-д
+                      * зэрэгцэж, «хэдэн объект өртөв» гэсэн ГОЛ хариулт нь
+                      * «хэдэн давхарга шинжлэв» гэсэн техникийн тоотой нэг
+                      * жинтэй харагддаг байв. Одоо шатлал ил: нийт тоо
+                      * дээр, хэмжээ дунд, техникийн тоо доор.
+                      */}
+                    <div className={e.hero}>
+                      <span className={e.heroNum}>{num(sum.n)}</span>
+                      <span className={e.heroUnit}>{tr('объект өртөнө')}</span>
+                    </div>
+
+                    <div className={e.heroRow}>
+                      <div className={e.heroCell}>
+                        <span className={`${e.heroVal} num`}>{ha(sum.area, 2)}</span>
+                        <span className={e.heroLbl}>{tr('га талбай')}</span>
+                      </div>
                       {sum.length > 0 && (
-                        <Stat value={num(sum.length / 1000, 2)} unit={tr('км')} label={tr('Өртсөн шугам')} />
+                        <div className={e.heroCell}>
+                          <span className={`${e.heroVal} num`}>{num(sum.length / 1000, 2)}</span>
+                          <span className={e.heroLbl}>{tr('км шугам')}</span>
+                        </div>
                       )}
-                      {result.hazard === 'air' ? (
-                        <Stat value={num(sum.people, 0)} unit={tr('хүн')} label={tr('Өртөх оршин суугч')} />
-                      ) : (
-                        <Stat value={num(result.layers)} unit={tr('давхарга')} label={tr('Шинжилсэн')} />
-                      )}
-                    </Stats>
+                      <div className={e.heroCell}>
+                        <span className={`${e.heroVal} num`}>
+                          {result.hazard === 'air' ? num(sum.people, 0) : num(result.layers)}
+                        </span>
+                        <span className={e.heroLbl}>
+                          {result.hazard === 'air' ? tr('өртөх оршин суугч') : tr('давхарга шинжлэв')}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/**
+                      * ⚠️ БҮДЭГРҮҮЛЭХ ЧАГТ нь ЭНД — үр дүнгийн картын дотор.
+                      * Зургийн хэрэгслийн зурваст тавибал «энэ юуг бүдгэрүүлэх
+                      * вэ» гэдэг нь тодорхойгүй: бүдэгрүүлэлт нь ЗӨВХӨН
+                      * шинжилгээний үр дүн байгаа үед утгатай.
+                      */}
+                    <label className={e.dimRow}>
+                      <input
+                        type="checkbox"
+                        checked={dimRest}
+                        onChange={(ev) => setDimRest(ev.target.checked)}
+                      />
+                      <span>{tr('Өртөөгүй давхаргыг бүдгэрүүлэх')}</span>
+                    </label>
+
                     {/**
                       * ⚠️ 2026-08-29: ҮЕРИЙН «Сэргээн засварлалтын таамаг»
                       * ХАСАГДСАН (хүсэлт). Агаарын хувилбарын «Эрүүл мэндийн

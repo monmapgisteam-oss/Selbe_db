@@ -850,12 +850,18 @@ const sourceLabels = () =>
   ] as unknown as __esri.LabelClassProperties[];
 
 /**
- * Анхдагч суурь зураг — ТОПОГРАФИ (хэрэглэгчийн хүсэлт). Ортофото нь тусдаа
- * `imagery` давхарга бөгөөд эхэндээ УНТРААЛТТАЙ; хэрэглэгч «Суурь зураг» товчны
- * «Ортофото» чагтаар асаана. Суурь зургийн галерейгаас топо/хиймэл дагуул/гудамж
- * зэрэг сонгож болно.
+ * Анхдагч суурь зураг — ХИЙМЭЛ ДАГУУЛ (2026-09-03, хэрэглэгчийн хүсэлт).
+ *
+ * ⚠️ Урьд нь `topo-vector` байв. Ортофото нь ЗӨВХӨН төслийн талбайг
+ * хамардаг тул топо суурь дээр асаахад тэр талбай тод, гаднах нь зурсан
+ * газрын зураг болж, хоёр өөр ертөнц залгаастай харагддаг байлаа. Хиймэл
+ * дагуулын суурь дээр ортофото нь ИЖИЛ төрлийн зургийн НАРИЙВЧЛАЛТАЙ
+ * хэсэг болж, зааг нь бараг мэдэгдэхгүй.
+ *
+ * ⚠️ Хэрэглэгч «Суурь зураг» товчны галерейгаас топо/гудамж руу буцаж
+ * сонгож болно — энэ нь зөвхөн АНХДАГЧ.
  */
-const baseMap = () => Basemap.fromId('topo-vector');
+const baseMap = () => Basemap.fromId('satellite');
 
 /* ─────────────────── Давхарга үүсгэх ─────────────────── */
 
@@ -913,9 +919,11 @@ const mapFields = (d: LayerDef): string[] => {
 function buildLayers(uniform = false): Layer[] {
   const L: Layer[] = [];
 
-  /* Ортофото — вектор давхаргын доор. ⚠️ Эхэндээ УНТРААЛТТАЙ (хэрэглэгчийн
-     хүсэлт): анхдагч суурь зураг нь топографи, ортофотог «Суурь зураг» товчны
-     чагтаар асаана. `orthoRef` энэ төлвийг удирдана. */
+  /* Ортофото — вектор давхаргын доор, ХИЙМЭЛ ДАГУУЛЫН суурь зургийн ДЭЭР.
+     ⚠️ `visible: false` нь зөвхөн БАЙГУУЛАХ агшны утга: бодит харагдалтыг
+     `ortho` төлөв удирддаг (доорх давхаргын эффект), тэр нь 2026-09-03-наас
+     АСААЛТТАЙ эхэлнэ. Энд `true` бичвэл «Суурь зураг» товчны чагтаас өмнө
+     эффект ажиллах агшинд анивчилт үүснэ. */
   L.push(new GroupLayer({
     id: IMAGERY_ID,
     title: IMAGERY.title,
@@ -1124,9 +1132,13 @@ export function MapProvider({ children }: { children: ReactNode }) {
 
   /**
    * Ортофото ил эсэх — каталогийн дээд мөр ба «Суурь зураг» товч ХОЁУЛАА үүнийг
-   * уншиж бичнэ. Анхдагч: унтраалттай (суурь зураг топографи).
+   * уншиж бичнэ.
+   *
+   * ⚠️ Анхдагч: АСААЛТТАЙ (2026-09-03, хэрэглэгчийн хүсэлт) — суурь нь хиймэл
+   * дагуул, түүн ДЭЭР төслийн ортофото. Хоёулаа зургийн давхарга тул зааг нь
+   * мэдэгдэхгүй, харин төслийн талбай нарийвчлалаараа ялгарна.
    */
-  const [ortho, setOrtho] = useState(false);
+  const [ortho, setOrtho] = useState(true);
 
   /** Бүсийн орон зайн маск — noZone давхаргуудын 2D бүдгэрүүлэлтэд (доорх эффект) */
   const [zoneMask, setZoneMask] = useState<unknown>(null);
@@ -1317,6 +1329,11 @@ export const MapCanvas = memo(function MapCanvas({
   sketch = false,
   onSketch,
   drawToken = 0,
+  drawKind = 'polygon',
+  reshapeGeometry,
+  reshapeToken = 0,
+  onReshape,
+  sketchUndoToken = 0,
   clearToken = 0,
   scene,
   children,
@@ -1351,7 +1368,26 @@ export const MapCanvas = memo(function MapCanvas({
    *    «Газар чөлөөлөлт» харагдац руу орход тэнд төлөвөөр будсан загвар нь
    *    алга болж, бүх нэгж талбар нэг өнгөөр харагдана.
    */
-  layerStyle?: Record<string, { hue: string; fill?: number; width?: number }>;
+  /**
+   * ХАРАГДАЦЫН ХЭВ МАЯГИЙН ДАРЛАГА — тухайн давхаргыг ЗӨВХӨН энэ харагдацад
+   * өөр өнгө/зузаан/хэмжээгээр зурна.
+   *
+   * ⚠️ 2026-09-02: урьд нь дарлага нь ГЕОМЕТРЭЭС ҮЛ ХАМААРАН `fill` (талбайн)
+   * симбол үүсгэдэг байв. Гурван дуудагч (Bagts · Gazar · PkgProg) бүгд
+   * ПОЛИГОН давхаргад (`land:left`) хэрэглэдэг тул илэрдэггүй байсан ч,
+   * шугам/цэгэн давхаргад өгмөгц симбол нь бүрмөсөн буруу төрөл болно. Одоо
+   * `LayerDef.geom`-оор салгана.
+   *
+   * ⚠️ `hue` нь СОНГОЛТТОЙ болов — зөвхөн ХЭМЖЭЭ өөрчлөхөд давхаргын
+   * өөрийн өнгө хэвээр үлдэнэ (`size` дангаараа өгөх боломж).
+   */
+  layerStyle?: Record<string, {
+    hue?: string;
+    fill?: number;
+    width?: number;
+    /** Цэгэн давхаргын диаметр (px) — `DOT_SCALE` ХЭРЭГЛЭГДЭХГҮЙ, шууд утга */
+    size?: number;
+  }>;
   /**
    * ПУЛЬСЛЭХ (анивчих) ДАВХАРГУУД — анхаарал татах ёстой цөөн объектод.
    *
@@ -1387,6 +1423,49 @@ export const MapCanvas = memo(function MapCanvas({
   onSketch?: (geometry: __esri.Geometry | null) => void;
   /** Утга нэмэгдэхэд полигон зурж эхэлнэ (гадны «Полигон зурах» товч) */
   drawToken?: number;
+  /**
+   * ЯМАР ГЕОМЕТР зурах — `drawToken` өсөх агшинд уншигдана.
+   *
+   * ⚠️ Анхдагч нь `'polygon'`: «Газар чөлөөлөлт», «Багц», «Гүйцэтгэл» гурав
+   * зөвхөн шүүлтийн полигон зурдаг бөгөөд энэ пропыг өгдөггүй — тэдний зан
+   * төлөв ӨӨРЧЛӨГДӨХГҮЙ байх ёстой.
+   *
+   * ⚠️ Утгыг ref-ээр уншина: `drawToken`-ы эффект нь `drawKind`-ыг deps-даа
+   * авбал төрөл солих бүрд ХҮСЭЭГҮЙ зураалт эхэлнэ.
+   */
+  drawKind?: 'point' | 'polyline' | 'polygon';
+  /**
+   * БАЙГАА ОБЪЕКТЫН ГЕОМЕТРИЙГ VERTEX-ЭЭР ЗАСАХ — `reshapeToken` өсөх агшинд
+   * энэ геометрийг зурах давхаргад буулгаж, `SketchViewModel.update()`-ыг
+   * асаана (Esri-ийн «reshape» бариулууд гарч ирнэ).
+   *
+   * ⚠️ Геометр нь `toJSON()` хэлбэрийн ЭНГИЙН объект бөгөөд
+   * `spatialReference`-ээ АГУУЛСАН байх ЁСТОЙ — эс бөгөөс SDK нь зургийн
+   * проекц гэж таамаглаж, өөр газар буулгана.
+   */
+  reshapeGeometry?: unknown;
+  reshapeToken?: number;
+  /**
+   * Vertex засварын үр дүн — чирэх бүрд дуудагдана.
+   *
+   * ⚠️ `onSketch`-ЭЭС ТУСДАА байх нь ЧУХАЛ: тэр нь ШИНЭ дүрс зурж дуусахад
+   * дуудагддаг бөгөөд дуудагч талууд түүгээр «шинэ объект нэмэх» маягт
+   * нээдэг. Хоёуланг нэг callback-т нийлүүлбэл байгаа объектын vertex
+   * хөдөлгөх бүрд шинэ объектын маягт нээгдэнэ.
+   *
+   * ⚠️ Өгөөгүй бол `update` үйл явдал `onSketch` руу очно — «Газар
+   * чөлөөлөлт», «Багц», «Гүйцэтгэл» гурав полигоноо чирж өөрчлөхөд шүүлт
+   * дагаж шинэчлэгддэг зан төлөв нь ХЭВЭЭР үлдэнэ.
+   */
+  onReshape?: (geometry: __esri.Geometry | null) => void;
+  /**
+   * ЗУРААЛТЫН НЭГ АЛХАМ БУЦААХ — өсөх бүрд `SketchViewModel.undo()`.
+   *
+   * ⚠️ Энэ нь ЗӨВХӨН хадгалаагүй зураалтад үйлчилнэ (нэмсэн vertex, чирсэн
+   * цэг). Үйлчилгээнд аль хэдийн бичигдсэн засварыг буцаахгүй — түүнийг
+   * дуудагч тал өөрөө хийнэ (`butetsEdit.applyAttrs`/`saveGeometry`).
+   */
+  sketchUndoToken?: number;
   /** Утга нэмэгдэхэд зурсан полигоныг арилгана (гадны «Цэвэрлэх» товч) */
   clearToken?: number;
   /**
@@ -1411,10 +1490,17 @@ export const MapCanvas = memo(function MapCanvas({
    */
   const bimExpandRef = useRef<Expand | null>(null);
   const sketchVMRef = useRef<SketchViewModel | null>(null);
+  /* ⚠️ Зурах төрлийг REF-ээр — deps-д оруулбал төрөл солих бүрд зураалт эхэлнэ */
+  const drawKindRef = useRef(drawKind);
+  drawKindRef.current = drawKind;
   const pickRef = useRef(onPick);
   pickRef.current = onPick;
   const onSketchRef = useRef(onSketch);
   onSketchRef.current = onSketch;
+  const onReshapeRef = useRef(onReshape);
+  onReshapeRef.current = onReshape;
+  const reshapeGeomRef = useRef(reshapeGeometry);
+  reshapeGeomRef.current = reshapeGeometry;
   /** Давхарга бүрийн БҮТЭЭГДЭХ (build-time) тунгалаг — override арилахад буцаана */
   const defaultOpacityRef = useRef<Record<string, number>>({});
   /** Сүүлд ил байсан давхаргын id-ууд — шинээр ил болсныг илрүүлэхэд */
@@ -1441,7 +1527,9 @@ export const MapCanvas = memo(function MapCanvas({
   /** `pulseLayer` нь useCallback тул props-ыг ref-ээр уншина (лавлагаа тогтвортой). */
   const pulseIdsRef = useRef<string[]>([]);
   /** Хэв маягийн дарлага — пульсийн хуулбар ч ижил өнгөтэй байх ёстой. */
-  const layerStyleRef = useRef<Record<string, { hue: string; fill?: number; width?: number }>>({});
+  const layerStyleRef = useRef<Record<string, {
+    hue?: string; fill?: number; width?: number; size?: number;
+  }>>({});
   /** Давхарга бүрийн СҮҮЛД пульсэлсэн шүүлт — солигдвол дахин эхлүүлнэ. */
   const pulsedWhere = useRef<Record<string, string | null>>({});
 
@@ -2700,6 +2788,24 @@ export const MapCanvas = memo(function MapCanvas({
         color: [245, 158, 11, 0.08],
         outline: { color: [217, 119, 6, 1], width: 2, style: 'dash' },
       } as unknown as __esri.SimpleFillSymbol,
+      /**
+       * ⚠️ ШУГАМ ба ЦЭГИЙН симбол нь полигонтой ИЖИЛ улбар шар гэр бүлээс —
+       * «энэ бол миний зурж буй зүйл, давхаргын өгөгдөл БИШ» гэдэг нь өнгөөр
+       * шууд уншигдана. Дэд бүтцийн шугамууд улаан/цэнхэр/ягаан тул мөргөлдөхгүй.
+       */
+      polylineSymbol: {
+        type: 'simple-line',
+        color: [217, 119, 6, 1],
+        width: 2.5,
+        style: 'dash',
+      } as unknown as __esri.SimpleLineSymbol,
+      pointSymbol: {
+        type: 'simple-marker',
+        style: 'circle',
+        size: 9,
+        color: [245, 158, 11, 0.9],
+        outline: { color: [217, 119, 6, 1], width: 1.6 },
+      } as unknown as __esri.SimpleMarkerSymbol,
     });
     sketchVMRef.current = svm;
     if (typeof window !== 'undefined') {
@@ -2718,7 +2824,31 @@ export const MapCanvas = memo(function MapCanvas({
     });
     const updated = svm.on('update', (e) => {
       const g = e.graphics?.[0]?.geometry ?? null;
-      if (g) emit(g);
+      if (!g) return;
+      /**
+       * ⚠️ `state === 'start'` БА цуцлагдсаныг АЛГАСНА (2026-09-03 засвар).
+       *
+       * `SketchViewModel` нь `update` үйл явдлыг ГУРВАН төлөвт гаргадаг:
+       * `start` (засвар эхлэв) · `active` (чирж байна) · `complete`
+       * (дуусав, цуцлагдсан бол `aborted: true`). Урьд нь гурвуулангийн
+       * геометрийг ялгалгүй дамжуулдаг байсан тул:
+       *
+       *   · `start` — объект дарангуут ХӨДӨЛГӨӨГҮЙ геометр «засвар» болж
+       *     бүртгэгдэж, «Хэлбэр хадгалах» товч чирэхээс ӨМНӨ идэвхжинэ.
+       *     Дарвал ижил геометр буцаж бичигдэж `editDate` хуурамчаар
+       *     шинэчлэгдэнэ (`DedButets` §commitReshape-ийн хориглосон бичилт).
+       *   · `aborted` — «Болих» дарахад `svm.cancel()` нь `complete`+
+       *     `aborted` гаргадаг тул ЦУЦАЛСАН засвар дахин бүртгэгдэж,
+       *     «Хадгалаагүй өөрчлөлт байна» гэж ХУДАЛ асуудаг байв.
+       *
+       * ⚠️ `emit` (полигон зурах хуучин зам) мөн адил шүүгдэнэ — «Газар
+       * чөлөөлөлт» нь AOI-гаа чирж дуусахад л шинэчлэх ёстой.
+       */
+      const st = (e as unknown as { state?: string; aborted?: boolean });
+      if (st.state === 'start' || st.aborted) return;
+      /* ⚠️ `onReshape` өгөгдсөн бол ЗӨВХӨН тийш — дээрх пропын тайлбарыг үз */
+      if (onReshapeRef.current) onReshapeRef.current(g);
+      else emit(g);
     });
     const deleted = svm.on('delete', () => {
       layer.removeAll();
@@ -2741,8 +2871,53 @@ export const MapCanvas = memo(function MapCanvas({
     const svm = sketchVMRef.current;
     if (!svm) return;
     try { svm.cancel(); } catch { /* идэвхтэй зураалт байхгүй */ }
-    svm.create('polygon');
+    svm.create(drawKindRef.current);
   }, [drawToken]);
+
+  /**
+   * БАЙГАА ОБЪЕКТЫГ VERTEX-ЭЭР ЗАСАХ — `reshapeToken` өсөхөд эхэлнэ.
+   *
+   * ⚠️ Геометрийг `Graphic`-т буулгахдаа СИМБОЛ өгөх ЁСТОЙ: симболгүй график
+   * нь `GraphicsLayer`-т үл үзэгдэх бөгөөд `update()` нь бариулуудыг гаргах ч
+   * хэрэглэгч юуг чирч байгаагаа ХАРАХГҮЙ.
+   *
+   * ⚠️ `svm.update`-ыг `tool: 'reshape'` -ГҮЙ дуудна: анхдагч («transform»)
+   * горим нь БҮХ vertex-ийг бариултай харуулж, дан хөдөлгөх, шинээр нэмэх
+   * хоёуланг нь зөвшөөрдөг. `reshape` нь цэгэн геометрт огт ажиллахгүй.
+   */
+  useEffect(() => {
+    if (!reshapeToken) return;
+    const svm = sketchVMRef.current;
+    const map = mapRef.current;
+    const g = reshapeGeomRef.current as { [k: string]: unknown } | undefined;
+    if (!svm || !map || !g) return;
+    const gl = map.findLayerById('sketch') as GraphicsLayer | null;
+    if (!gl) return;
+    try { svm.cancel(); } catch { /* идэвхтэй зураалт байхгүй */ }
+    gl.removeAll();
+    /* Геометрийн төрлийг талбараас нь таана — `toJSON()` нь `type` бичдэггүй */
+    const kind = 'paths' in g ? 'polyline' : 'rings' in g ? 'polygon' : 'point';
+    const graphic = new Graphic({
+      geometry: { ...g, type: kind } as unknown as __esri.Geometry,
+      /* ⚠️ `as never` — `Graphic`-ийн конструктор нь симбол ПРОПЕРТИЙН нэгдэл
+         хүлээдэг ба SketchViewModel-ийн буцаадаг бэлэн `Symbol` инстанс тэр
+         нэгдэлд орохгүй. Ажиллагаанд зөв (SDK инстансыг шууд авдаг). */
+      symbol: (kind === 'polyline'
+        ? svm.polylineSymbol
+        : kind === 'polygon'
+          ? svm.polygonSymbol
+          : svm.pointSymbol) as never,
+    });
+    gl.add(graphic);
+    try { svm.update([graphic]); } catch { /* геометр танигдсангүй */ }
+  }, [reshapeToken]);
+
+  /** Гадны «Алхам буцаах» товч — зураалтын сүүлийн үйлдлийг цуцална */
+  useEffect(() => {
+    if (!sketchUndoToken) return;
+    /* ⚠️ `svm.canUndo` нь идэвхтэй үйлдэл байхгүй үед `undo()`-г шидүүлдэг */
+    try { sketchVMRef.current?.undo(); } catch { /* буцаах алхам алга */ }
+  }, [sketchUndoToken]);
 
   /** Гадны «Цэвэрлэх» товч — зурсан полигоныг арилгаж, шүүлтийг цуцлана */
   useEffect(() => {
@@ -2847,8 +3022,10 @@ export const MapCanvas = memo(function MapCanvas({
                өгсөн өнгөтэй зөрнө. */
             const ov = layerStyleRef.current[id];
             const hue = ov?.hue ?? ((pfield && pvals[String(ft.attributes?.[pfield])]) || d.hue);
+            /* ⚠️ Энэ зам нь ПОЛИГОНЫХ (`poly.rings` уншсан) тул `fill` зөв —
+               дарлагад `hue` байхгүй бол дээр бодогдсон өнгийг хэрэглэнэ. */
             return { rings: poly.rings, cx: c.x, cy: c.y, sr: poly.spatialReference,
-              symbol: ov ? fill(ov.hue, ov.fill ?? 0.25, ov.width ?? 3) : symbolOf(d, hue) };
+              symbol: ov ? fill(hue, ov.fill ?? 0.25, ov.width ?? 3) : symbolOf(d, hue) };
           })
           .filter(Boolean) as Array<{ rings: number[][][]; cx: number; cy: number;
             sr: __esri.SpatialReference; symbol: unknown }>;
@@ -3041,8 +3218,16 @@ export const MapCanvas = memo(function MapCanvas({
         if (ov) {
           if (!(l.id in styleBackup.current))
             styleBackup.current[l.id] = fl.renderer as unknown;
+          /* ⚠️ ГЕОМЕТРЭЭР салгана — дээрх `layerStyle`-ийн тэмдэглэлийг үзнэ.
+             Давхаргын бүртгэл олдохгүй бол (webmap-аас ирсэн давхарга) хуучин
+             зан төлөв буюу талбайн симбол хэвээр. */
+          const hue = ov.hue ?? d?.hue ?? '#0891b2';
           fl.renderer = simple(
-            fill(ov.hue, ov.fill ?? 0.25, ov.width ?? 3),
+            d?.geom === 'point'
+              ? dot(hue, ov.size ?? (d.size ?? 9) * DOT_SCALE, d.marker ?? 'circle')
+              : d?.geom === 'line'
+                ? line(hue, ov.width ?? d.width ?? LINE_PX, d.dash ?? 'solid')
+                : fill(hue, ov.fill ?? 0.25, ov.width ?? 3),
           ) as unknown as FeatureLayer['renderer'];
         } else if (l.id in styleBackup.current) {
           fl.renderer = styleBackup.current[l.id] as FeatureLayer['renderer'];

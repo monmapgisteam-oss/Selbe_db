@@ -1,0 +1,502 @@
+/**
+ * «Дэд бүтэц» — ОДООГИЙН СҮЛЖЭЭ · ЗУРАГ · ТӨЛӨВЛӨСӨН БАГЦ гурван багана,
+ * зургийн дээр толгойн 4 үзүүлэлт.
+ *
+ * ⚠️ Энд ЗӨВХӨН сүлжээ ба энэ цонхны жижиг зүйлс. Картын дүрслэл нь
+ * `dedButetsOv.module.css`-д.
+ */
+
+.frame {
+  /* Баруун баганын өргөн — хэрэглэгч заагийг чирж тохируулна
+     (`components/SplitGrip`). Хатуу утга байвал чирэлт огт харагдахгүй.
+     ⚠️ `--side-l` БАЙХГҮЙ: «Одоогийн сүлжээ» багана 2026-09-02-нд
+     хэрэглэгчийн хүсэлтээр хасагдсан. */
+  --side-r: 360px;
+  display: grid;
+  grid-template-areas: "map right";
+  grid-template-columns: minmax(0, 1fr) var(--side-r);
+  grid-template-rows: minmax(0, 1fr);
+  gap: 10px;
+  height: 100%;
+  min-height: 0;
+  padding: 12px;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+/**
+ * ТӨВ БАГАНА — үзүүлэлтийн зурвас + газрын зураг ХОЁР ТУСДАА элемент.
+ * Хүрээ/overflow нь ЗӨВХӨН зурагт (`.mapBox`) — эс бөгөөс картууд зурагтай
+ * нэг хүрээнд багтаж «наалдсан» харагдана.
+ */
+.mapCol {
+  grid-area: map;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Толгойн 4 үзүүлэлт — `flex: none`, эс бөгөөс агуулгаараа хумигдана */
+.kpi {
+  flex: none;
+  min-width: 0;
+}
+
+/**
+ * ЗУРГИЙН ХҮРЭЭ — үзүүлэлтийн доорх үлдсэн бүх зай.
+ *
+ * ⚠️ `position: relative` нь ЧУХАЛ: toolbar, каталог, тайлбар гурав нь
+ * `position: absolute` бөгөөд хамгийн ойрын `relative` эцгээсээ хэмжигддэг.
+ * ⚠️ `display: flex` — `MapCanvas`-ийн `.wrap` нь `flex: 1` тул эцэг flex байна.
+ */
+.mapBox {
+  position: relative;
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+
+/* Баруун багана — доторх хэсгүүд босоо өрөгдөж, шаардвал гүйнэ */
+.right {
+  grid-area: right;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+}
+
+/* Гүйдэг flex баганад карт агуулгаараа хумигдахгүй */
+.card { flex: none; }
+
+/**
+ * СИСТЕМИЙН ГАРЧИГ = ТОВЧ. Дарахад тухайн бүлгийн БҮХ давхарга зураг дээр
+ * асна/унтарна.
+ *
+ * ⚠️ Товч нь картын толгойн бүтэн өргөнийг эзэлнэ (`flex: 1`, `min-width: 0`)
+ * — эс бөгөөс зөвхөн текстийн уртад дарагдаж, хажуугийн хоосон зай нь
+ * «дарагдахгүй» болж хэрэглэгч гарчиг товч гэдгийг олохгүй.
+ */
+.sysBtn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  padding: 2px 0;
+  background: none;
+  border: 0;
+  color: var(--ink-3);
+  cursor: pointer;
+  text-align: left;
+  transition: color 0.12s;
+}
+.sysBtn:hover { color: var(--ink-2); }
+
+/* Асаалттай — гарчиг бүтэн контрастад, өнгөт цэг нь дүүрэн */
+.sysOn { color: var(--ink); }
+
+/**
+ * Өнгөт цэг — зурган дээрх симболын өнгө. УНТРААЛТТАЙ үед хүрээ л үлдэнэ
+ * (дүүргэлт нь `opacity`-гээр бүдгэрнэ) — «энэ өнгө зурагт БАЙХГҮЙ» гэдэг
+ * нь нэг харцад уншигдана.
+ */
+.sysBtn i {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  border-radius: 2px;
+  opacity: 0.3;
+  transition: opacity 0.12s;
+}
+.sysOn i { opacity: 1; }
+
+/* Каталогийн хавтан — доторх жагсаалт босоо (бүрхүүлийн `.catPanel` нь
+   хэвтээ flex) */
+.catPanel { flex-direction: column; }
+
+/* ── Responsive ── */
+@media (max-width: 1100px) {
+  /* Зураг ДЭЭШЭЭ, багцын жагсаалт доор нь. Талын багана байхгүй болсон тул
+     чирэх бариул мөн нуугдана. */
+  .frame > :global(button[class*='splitGrip_grip']) { display: none; }
+  .frame {
+    grid-template-areas:
+      "map"
+      "right";
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    height: auto;
+    min-height: 100%;
+    overflow-y: auto;
+  }
+  .right { overflow-y: visible; }
+  /* ⚠️ Мөрийн өндөр `auto` болсон тул зурагт доод хязгаар ЗААВАЛ — эс бөгөөс
+     `MapCanvas`-ийн `flex:1` нь 0 өндөрт хумигдаж зураг алга болно. */
+  .mapCol { min-height: max(260px, 62vh); }
+}
+
+
+/* ══════════════════════════════════════════════════════════════════
+   ЗАСВАРЫН ГОРИМ ба АТРИБУТЫН МАЯГТ
+
+   ⚠️ Загварын хэл нь «Газар чөлөөлөлт»-ийн маягттай (`gazar.module.css`)
+   ЯГ ИЖИЛ — хэрэглэгчийн хүсэлт: «газар чөлөөлөлтийн хэсэгтэй ерөнхийдөө
+   адилхан загвартай байх». Хуулбар БИШ, тусдаа файлд амьдарна: 2026-08-25-ны
+   шийдвэрээр харагдацууд стайл хуваалцахгүй тул энд өөрчлөхөд газрын
+   маягтад огт нөлөөлөхгүй.
+   ══════════════════════════════════════════════════════════════════ */
+
+/**
+ * ЗАСВАРЫН ГОРИМД — ЗӨВХӨН ГАЗРЫН ЗУРАГ. Хажуугийн хоёр багана ба толгойн
+ * үзүүлэлт unmount болно.
+ *
+ * ⚠️ ЯАГААД БҮРЭН ДЭЛГЭЦ ВЭ: инженерийн шугам нарийн (2px) объект тул нарийн
+ * зурган дээр оносон товшилт хийхэд хэцүү. Мөн «энэ бол тусдаа горим» гэдгийг
+ * зохиомж өөрөө хэлнэ.
+ */
+.frameEdit {
+  /**
+   * ЗАСВАРЫН ГОРИМ = БҮТЭН ДЭЛГЭЦ (хэрэглэгчийн хүсэлт, 2026-09-02:
+   * «map n tomorood busad n haragdahgui bolgo»).
+   *
+   * ⚠️ `position: fixed` нь порталын БҮРХҮҮЛЭЭС (толгойн зурвас, зүүн
+   * навигаци) ГАДУУР гарах ЦОРЫН ГАНЦ зам. Модулийг зөвхөн өөрийн хүрээнд
+   * тэлэх нь хангалтгүй байв: зураг сүлжээгээ дүүргэдэг ч зүүн талын
+   * харагдацын багана, дээд толгой хэвээр үлдэж, засварын талбай нь цонхны
+   * ~75% л байсан.
+   *
+   * ⚠️ `z-index` нь бүрхүүлийн хамгийн өндөр давхаргаас (толгой = 20,
+   * навигаци = 15 — `app/shell.module.css`) ДЭЭР байх ЁСТОЙ.
+   *
+   * ⚠️ Эцгүүдэд `transform`/`filter` БАЙХГҮЙ эсэхээс хамаарна — тэдгээр нь
+   * `fixed`-ийн эх хүрээг өөрчилдөг. `shell.module.css`-ийн transform-ууд нь
+   * зөвхөн чимэглэлийн элементүүд дээр (2026-09-02-нд шалгасан).
+   */
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  grid-template-areas: "map";
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  /**
+   * ⚠️ ХҮРЭЭНИЙ ЗАЙГ ХАСНА — зураг цонхны ирмэг хүртэл сунана. Хажуугийн
+   * багана, үзүүлэлтийн зурвас аль хэдийн unmount болсон тул 12px зай нь
+   * зөвхөн үлдэгдэл; хассанаар засварын талбай мэдэгдэхүйц томорно
+   * («Газар чөлөөлөлт»-ийн засварын горимтой ижил мэдрэмж).
+   */
+  padding: 0;
+  /**
+   * ⚠️ 1100px-ийн media query нь `.frame`-д `height: auto` ба
+   * `overflow-y: auto` тавьдаг. `.frameEdit` тэднийг СЭРГЭЭХГҮЙ бол нарийн
+   * дэлгэцэд засварын зураг агуулгаараа хумигдаж, vertex чирэх талбай
+   * алга болно.
+   */
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Бүтэн талбайд сунасан зурагт булан, хүрээ илүүц */
+.frameEdit .mapBox {
+  border: 0;
+  border-radius: 0;
+}
+.frameEdit > :global(button[class*='splitGrip_grip']) { display: none; }
+
+/* ⚠️ 2D/3D сегмент нь зургийн дээд ТӨВД (`mapTools.module.css` → `.dimsBar`,
+   top: 16px) — засварын зурвасын доор түлхэнэ, эс бөгөөс хоёулаа давхцана.
+   Зүүн талын хэрэгслийн багана (top: 96px) зурвасаас доогуур тул хөндөхгүй. */
+.frameEdit :global(div[class*='mapTools_dimsBar']) { top: 52px; }
+
+/* ── Засварын ажлын зурвас — «энэ бол тусдаа цонх» гэдгийг хэлнэ ── */
+.editBar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 9;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  border-bottom: 1px solid var(--line);
+  backdrop-filter: blur(3px);
+}
+.editTitle { font-size: 12.5px; font-weight: 600; color: var(--ink); }
+/* ⚠️ `min-width: 0` — эс бөгөөс урт зөвлөмж нь flex нүдийг агшихыг зогсоож,
+   сонголт ба товчнуудыг зурвасаас гаргана. */
+.editHint {
+  flex: 1;
+  min-width: 0;
+  font-size: 11.5px;
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.editClose {
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 12px;
+  color: var(--ink-2);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.editClose:hover { color: var(--ink); border-color: var(--line-strong); }
+
+/**
+ * Аль давхаргад нэмэхийг сонгох — зурвас доторх нарийн жагсаалт.
+ *
+ * ⚠️ `max-width` ЗААВАЛ: давхаргын нэр 40 тэмдэгт хүрдэг («Багц 8.2 ·
+ * Цахилгаан дамжуулах агаарын шугам 110кв») тул хязгааргүй бол сонголт
+ * зурвасыг бүхэлд нь эзэлж, «Хаах» товч дэлгэцээс гарна.
+ */
+.editSel {
+  font: inherit;
+  font-size: 11.5px;
+  max-width: 240px;
+  padding: 5px 8px;
+  color: var(--ink);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+
+/* «Зурж нэмэх» — зурвасын ЦОРЫН ГАНЦ дүүргэлттэй товч (гол үйлдэл) */
+.editAdd {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 12px;
+  color: #06202a;
+  background: var(--hue);
+  border: 1px solid var(--hue);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.editAdd:hover { filter: brightness(1.08); }
+.editAdd:disabled { opacity: 0.45; cursor: default; filter: none; }
+.editClose:disabled { opacity: 0.45; cursor: default; }
+
+/* Дэд горимын солигч — «Атрибут» / «Хэлбэр» хоёр сегмент, нэг хүрээнд */
+.editTabs {
+  display: flex;
+  flex: none;
+  padding: 2px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+
+.editTab {
+  font: inherit;
+  font-size: 11.5px;
+  padding: 3px 10px;
+  color: var(--ink-3);
+  background: none;
+  border: 0;
+  border-radius: calc(var(--r-sm) - 1px);
+  cursor: pointer;
+  transition: color 0.12s, background 0.12s;
+}
+.editTab:hover { color: var(--ink-2); }
+
+/* ⚠️ Идэвхтэй сегментийг ДЭВСГЭРЭЭР ялгана, өнгөөр БИШ: зурвас нь тунгалаг
+   тул зөвхөн үсгийн өнгө солиход аль нь идэвхтэй нь мэдэгдэхгүй. */
+.editTabOn {
+  color: var(--ink);
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 25%);
+}
+
+/**
+ * «Үйлдэл буцаах» — сэрэмжийн өнгө (`--warn`), дүүргэлтгүй.
+ *
+ * ⚠️ `--bad` (улаан) БИШ: буцаах нь алдаа биш, залруулга. Улаан бол
+ * хэрэглэгч «энэ юмыг дарвал ямар нэг муу зүйл болно» гэж уншина.
+ * ⚠️ `.editAdd` шиг дүүргэлттэй ч БИШ: зурвас дээр гол үйлдэл нэгээс
+ * олон байвал аль нь ердийн зам болох нь мэдэгдэхгүй.
+ */
+.editUndo {
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 12px;
+  color: var(--warn-ink, var(--ink));
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn) 55%, var(--line));
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.editUndo:hover { background: color-mix(in srgb, var(--warn) 22%, transparent); }
+.editUndo:disabled { opacity: 0.45; cursor: default; }
+
+/* Хадгалсны мэдэгдэл — зургийн зүүн доод буланд, 4 секунд */
+.saved {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  z-index: 8;
+  padding: 6px 12px;
+  font-size: 11.5px;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--good) 16%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--good) 45%, var(--line));
+  border-radius: var(--r-sm);
+}
+
+/* ── Маягтын цонх ── */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: color-mix(in srgb, #000 55%, transparent);
+}
+
+.modal {
+  width: min(560px, 100%);
+  max-height: 84vh;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: 0 18px 48px rgb(0 0 0 / 45%);
+}
+
+.modalHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.modalTitle { flex: 1; font-size: 13px; font-weight: 700; color: var(--ink); }
+
+.modalNo {
+  font-size: 11.5px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.close {
+  font: inherit;
+  padding: 2px 8px;
+  color: var(--ink-3);
+  background: none;
+  border: none;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.close:hover { color: var(--ink); background: var(--surface-2); }
+
+.modalMsg { padding: 28px 16px; text-align: center; font-size: 12px; color: var(--ink-3); }
+
+.form {
+  padding: 14px 16px;
+  display: grid;
+  gap: 12px;
+  overflow-y: auto;
+}
+
+/* Зөвхөн харуулах тодорхойлолт — таних тэмдэг, геометрээс гарах хэмжээ */
+.ro {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  margin: 0;
+  padding: 8px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  font-size: 11.5px;
+}
+.ro dt { color: var(--ink-3); }
+.ro dd { margin: 0; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+
+.f { display: grid; gap: 4px; }
+.fLabel { font-size: 11.5px; color: var(--ink-2); }
+.fHint { font-size: 11px; color: var(--ink-3); }
+.fErr { font-size: 11px; color: var(--bad-ink); }
+
+.input {
+  width: 100%;
+  padding: 7px 10px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--ink);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+.input:focus { outline: 2px solid var(--hue); outline-offset: -1px; }
+.input:disabled { opacity: 0.55; cursor: default; }
+
+.formErr {
+  padding: 8px 10px;
+  font-size: 11.5px;
+  color: var(--bad-ink);
+  background: color-mix(in srgb, var(--bad) 14%, transparent);
+  border-radius: var(--r-sm);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--line);
+}
+.spacer { flex: 1; }
+
+.btn, .primary {
+  font: inherit;
+  font-size: 12px;
+  padding: 7px 14px;
+  color: var(--ink-2);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.primary {
+  color: #06202a;
+  background: var(--hue);
+  border-color: var(--hue);
+  font-weight: 600;
+}
+.btn:disabled, .primary:disabled { opacity: 0.5; cursor: default; }
+
+/* ══ SplitGrip-ийг сүлжээний НҮДЭНД — завсрын ГОЛД (Irged-тэй ижил шийдэл):
+   absolute давхарга байхад бариул баганын ДОТОР тооцогдож картуудын ирмэг
+   дээр давхардана. Одоо grid-ийн 10px завсарт төвлөнө. ══ */
+.frame > :global(button[class*='splitGrip_grip']) {
+  position: relative;
+  grid-row: 1 / -1;
+  top: auto;
+  bottom: auto;
+  z-index: 6;
+}
+/* ⚠️ Багана хоёрхон болсон тул баруун бариул нь 2-р БАГАНАД (өмнө нь 3-т) */
+.frame > :global(button[class*='splitGrip_right']) {
+  grid-column: 2 / 3;
+  justify-self: start;
+  right: auto;
+  margin-left: -10.5px;
+}
+@media (max-width: 1100px) {
+  .frame > :global(button[class*='splitGrip_grip']) { display: none; }
+}

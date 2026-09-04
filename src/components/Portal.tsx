@@ -39,6 +39,11 @@ const Habea = dynamic(() => import('@/modules/Habea').then((m) => m.Habea), { ss
 const Irged = dynamic(() => import('@/modules/Irged').then((m) => m.Irged), { ssr: false });
 const Iot = dynamic(() => import('@/modules/Iot').then((m) => m.Iot), { ssr: false });
 const Ersdel = dynamic(() => import('@/modules/Ersdel').then((m) => m.Ersdel), { ssr: false });
+/* ⚠️ «Дэд бүтэц» нь бусад газрын зурагтай харагдацтай ИЖИЛ dynamic: модуль
+   нь DedButetsEdit ба butetsEdit.ts-ийг дагуулдаг (~92 KB эх код) бөгөөд
+   `MapCanvas`-ыг тэдэнтэй ХУВААЛЦДАГ тул ArcGIS давхардахгүй. Статик
+   импорт бол `?v=huvaari` гэж орсон хүнд ч татагдана. */
+const DedButets = dynamic(() => import('@/modules/DedButets').then((m) => m.DedButets), { ssr: false });
 const Suitability = dynamic(() => import('@/modules/analysis/Suitability').then((m) => m.Suitability), { ssr: false });
 const Finance = dynamic(() => import('@/modules/Finance').then((m) => m.Finance), { ssr: false });
 const Guitsetgel = dynamic(() => import('@/modules/Guitsetgel').then((m) => m.Guitsetgel), { ssr: false });
@@ -514,6 +519,7 @@ function PortalContent(
   const isHabea = view === 'habea';
   const isIot = view === 'iot';
   const isErsdel = view === 'ersdel';
+  const isDedButets = view === 'dedButets';
   const isGuitsetgel = view === 'guitsetgel';
   const isZovshoorol = view === 'zovshoorol';
   const isSchem = view === 'schem';
@@ -683,6 +689,8 @@ function PortalContent(
                                 ? <Iot dim={dim} setDim={setDim} />
                                 : isErsdel
                                 ? <Ersdel dim={dim} setDim={setDim} />
+                                : isDedButets
+                                ? <DedButets dim={dim} setDim={setDim} />
                                 : isZovshoorol
                                   ? <Zovshoorol />
                                 : isGuitsetgel

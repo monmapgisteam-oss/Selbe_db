@@ -11,6 +11,7 @@ import { queryStats, count, sum } from './query';
 import { t as tr } from '@/lib/i18nCore';
 import { layerUrl, OID, CATALOG_LAYER_IDS, LAYER_BY_ID, zoneWhere, type LayerDef } from './services';
 import { num, ha, km } from './format';
+import { useSyncExternalStore } from 'react';
 import { useAsync, type Async } from './useAsync';
 
 export type Totals = { n: number; q: number };
@@ -81,6 +82,37 @@ export const geomText = (d: LayerDef): string =>
  */
 const totalsCache = new Map<string, Map<string, Totals>>();
 
+/**
+ * КЭШИЙГ ХҮЧИНГҮЙ БОЛГОХ ЗАМ — атрибут засварын дараа.
+ *
+ * ⚠️ ЯАГААД `dataBus.invalidate`-ЭЭР БОЛОХГҮЙ ВЭ: дээрх кэш нь `cached()`
+ * слот БИШ, энэ модулийн өөрийн `Map` бөгөөд `useAsync` нь `key` мөрөөр
+ * л дахин татдаг. Кэшийг цэвэрлэхэд `key` өөрчлөгддөггүй тул хуучин утга
+ * ХЭВЭЭР харагдана — тиймээс эрин (`epoch`) тоолуурыг key-д оруулж,
+ * захиалагчдыг сэрээнэ.
+ *
+ * ⚠️ Засвар ҮЙЛЧИЛГЭЭНД амжилттай бичигдсэний ДАРАА л дуудна: амжилтгүй
+ * бичилтийн дараа хаявал сайн өгөгдлийг дэмий 119 хүсэлтээр дахин татна.
+ */
+let totalsEpochN = 0;
+const totalsSubs = new Set<() => void>();
+
+export function dropTotalsCache(): void {
+  totalsCache.clear();
+  totalsEpochN += 1;
+  for (const fn of totalsSubs) fn();
+}
+
+/** `useSyncExternalStore`-д — ЗААВАЛ модулийн түвшний тогтмол лавлагаа байна */
+export function subscribeTotals(fn: () => void): () => void {
+  totalsSubs.add(fn);
+  return () => { totalsSubs.delete(fn); };
+}
+
+export function totalsEpoch(): number {
+  return totalsEpochN;
+}
+
 export function usePlanTotals(
   zone: string | null,
   enabled = true,
@@ -91,7 +123,10 @@ export function usePlanTotals(
    */
   ids: string[] = CATALOG_LAYER_IDS,
 ): Async<Map<string, Totals>> {
-  const key = `${enabled ? 'on' : 'off'}|${zone ?? ''}|${ids.join(',')}`;
+  /* ⚠️ `epoch` нь key-д ОРНО — засварын дараа `dropTotalsCache()` дуудахад
+     энэ утга өсөж, `useAsync` дүнг шинээр татна (дээрх тайлбарыг үзнэ үү). */
+  const epoch = useSyncExternalStore(subscribeTotals, totalsEpoch, totalsEpoch);
+  const key = `${enabled ? 'on' : 'off'}|${zone ?? ''}|${epoch}|${ids.join(',')}`;
   return useAsync(async () => {
     if (!enabled) return new Map<string, Totals>();
     const hit = totalsCache.get(key);
