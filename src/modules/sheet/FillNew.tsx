@@ -163,6 +163,23 @@ type Draft = {
  */
 let tmpOid = -1;
 
+/**
+ * Түр ObjectID-ийн тоолуурыг сэргээсэн мөрүүдээс ЦААШ түлхэнэ.
+ *
+ * ⚠️ ЯАГААД ФУНКЦ (2026-09-06): `tmpOid` нь модулийн түвшний бөгөөд
+ * `react-hooks/globals` дүрэм компонент/hook ДОТРООС түүнийг дахин
+ * оноохыг ХОРИГЛОДОГ (CI-д алдаа). Оноолтыг модулийн хамрах хүрээнд
+ * үлдээж, дуудагч нь зөвхөн функц дуудна.
+ *
+ * ⚠️ ЯАГААД ХЭРЭГТЭЙ: `tmpOid` нь хуудас ачаалагдах бүрд −1-ээс эхэлдэг.
+ * Ноорог сэргээхэд тоолуурыг түлхэхгүй бол дараа нэмсэн мөр сэргээсэн
+ * мөртэй ИЖИЛ дугаар авч: нэгэнд нь бичсэн обьём нөгөөд нь ч харагдаж,
+ * устгахад хоёулаа устдаг байв.
+ */
+function pushTmpOid(adds: readonly NewRow[]): void {
+  for (const a of adds) if (a.oid <= tmpOid) tmpOid = a.oid - 1;
+}
+
 
 const DRAFT_PREFIX = "selbe-fillnew-draft:";
 /**
@@ -1844,7 +1861,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
      * хэрэглэгч юу сэргэснийг ХАРНА, цонхны задаргаа хэрэггүй болов. Хэрэв
      * хэрэггүй бол «Ноорог устгах» товчоор нэг товшилтоор хаяна.
      */
-    for (const a of restoredAdds) if (a.oid <= tmpOid) tmpOid = a.oid - 1;
+    pushTmpOid(restoredAdds);
     if (restoredAdds.length) setAdds(restoredAdds);
     if (nCells) setPending(next);
     if (nDates) setPendDate(nextDates);
