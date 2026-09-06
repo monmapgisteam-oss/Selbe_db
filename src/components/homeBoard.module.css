@@ -1,0 +1,442 @@
+/* ═══════════════════════════════════════════════════════════
+   НҮҮРИЙН УДИРДЛАГЫН САМБАР — схем нь өөрөө дашбоард.
+   Зангилаа бүр амьд тоо + гэрлэн дохиотой (`--h`).
+   ═══════════════════════════════════════════════════════════ */
+
+.board { width: 100%; min-width: 0; }
+
+/* ══ Толгой ══ */
+
+.head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: 0.01em;
+}
+.sub { font-size: 0.78rem; color: var(--ink-3); margin: 0; }
+
+/* ══ Хамрах хүрээ — контекстийн зурвас ══ */
+
+/*
+ * ⚠️ ГЭРЛЭН ДОХИОГҮЙ. Эдгээр нь төслийн ХЭМЖЭЭ — «сайн/муу» гэж дүгнэх утгагүй.
+ * Тиймээс хүрээ нь нэг л саарал, зөвхөн тоо нь тодорно.
+ */
+.scope {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1px;
+  margin-bottom: 18px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.scopeTile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 11px 13px;
+  text-align: left;
+  font: inherit;
+  background: var(--surface);
+  border: 0;
+  cursor: pointer;
+  transition: background 120ms;
+}
+.scopeTile:hover { background: var(--surface-2, var(--surface)); }
+.scopeTile:focus-visible { outline: 2px solid var(--data); outline-offset: -2px; }
+.scopeVal {
+  font-size: 1.02rem;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1.15;
+  /* ⚠️ ТООГ БОГИНОСГОХГҮЙ (`format.ts`-ийн дүрэм) — багтаахыг фонт шийднэ */
+  white-space: nowrap;
+}
+.scopeLbl { font-size: 0.7rem; color: var(--ink-3); }
+
+/* ══ Урсгал ══ */
+
+.flow {
+  display: flex;
+  align-items: stretch;
+  list-style: none;
+  margin: 0;
+  padding: 0 0 8px;
+  /* ⚠️ Хэвтээ гүйлт нь ЗӨВХӨН энд — хуудас өөрөө хэвтээ гүйхгүй */
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.step { display: flex; align-items: center; gap: 8px; flex: none; }
+/* Нэг баганад олон зангилаа = ЗЭРЭГЦЭЭ урсгал → босоо овоолно */
+.stack { display: flex; flex-direction: column; gap: 8px; justify-content: center; }
+
+/* ══ Зангилаа ══ */
+
+/*
+ * ⚠️ ЗҮҮН ИРМЭГИЙН ЗУРВАС нь гэрлэн дохио (`--h`). Бүтэн хүрээг будвал 10 карт
+ * зэрэг өнгөлж, дэлгэц бүхэлдээ өнгөт болж дохионы утга алдагдана — зөвхөн
+ * ирмэг нь өнгөтэй байхад л улаан зангилаа нүдэнд ТУСНА.
+ */
+.node {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  /* ⚠️ 238px нь ТААРУУЛСАН тоо: 6 багана × 238 + 5 сум + хуудасны хажуугийн
+     зай ≈ 1630px тул 1700px дэлгэцэд БҮТНЭЭР багтана. 252px байхад сүүлийн
+     зангилаа («Тайлан») ирмэгээс хальж, хэвтээ гүйлт заавал шаардагдаж байв. */
+  width: 238px;
+  padding: 10px 12px 11px;
+  text-align: left;
+  font: inherit;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--h);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: border-color 120ms, background 120ms, transform 120ms;
+}
+.node:hover {
+  background: var(--surface-2, var(--surface));
+  transform: translateY(-1px);
+}
+.node:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; }
+.nodeOn {
+  border-color: color-mix(in srgb, var(--data) 60%, var(--line));
+  border-left-color: var(--h);
+  background: var(--surface-2, var(--surface));
+}
+
+.nodeHead { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.nodeIcon {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  border-radius: 7px;
+  color: var(--h);
+  background: color-mix(in srgb, var(--h) 14%, transparent);
+}
+.nodeTitle {
+  font-size: 0.79rem;
+  font-weight: 650;
+  line-height: 1.2;
+  color: var(--ink);
+  /* ⚠️ Нэг мөрөөр — хоёр мөр болвол зангилаанууд өөр өндөртэй болж эгнэхгүй */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nodeTag {
+  margin-left: auto;
+  flex: none;
+  padding: 1px 6px;
+  font-size: 0.62rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  color: var(--h);
+  background: color-mix(in srgb, var(--h) 14%, transparent);
+  border-radius: 999px;
+}
+
+/* ══ Зангилааны тоонууд ══ */
+
+.nodeStats { display: flex; flex-direction: column; gap: 4px; }
+.stat {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+.statVal {
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--ink);
+  white-space: nowrap;
+  flex: none;
+  /* ⚠️ Тоо нь ЗҮҮН талд — багана эгнэж, нүд дээрээс доош гүйхэд харьцуулагдана */
+  order: -1;
+}
+/* Хэмжигдээгүй утга — тоотой ижил жинтэй байвал «мэдээлэл» мэт уншигдана */
+.statNone { color: var(--ink-3); font-weight: 500; }
+.statLbl {
+  font-size: 0.68rem;
+  font-style: normal;
+  color: var(--ink-3);
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * АРАГ ЯС — ачаалж байх үеийн мөр.
+ * ⚠️ Мөрийн ТООГ хэвээр барина (2 мөр): дата ирэхэд зангилаа өндөрсөж
+ *    зохиомж бүхэлдээ үсэрдэггүй.
+ */
+.statSkel {
+  display: inline-block;
+  width: 62px;
+  height: 0.72em;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--ink) 10%, transparent);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+@keyframes pulse { 0%, 100% { opacity: 0.5; } 50% { opacity: 0.85; } }
+/* ⚠️ Хөдөлгөөн багасгах тохиргоотой хэрэглэгчид анивчихгүй (WCAG 2.3.3) */
+@media (prefers-reduced-motion: reduce) { .statSkel { animation: none; } }
+
+/* ══ Сум ══ */
+
+.arrow {
+  flex: none;
+  padding: 0 3px;
+  font-size: 0.95rem;
+  color: var(--ink-4, var(--ink-3));
+  user-select: none;
+}
+
+/* ══ Дэлгэрэнгүй самбар ══ */
+
+.detail {
+  margin-top: 6px;
+  padding: 13px 15px 15px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--h);
+  border-radius: 11px;
+}
+.dHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.dText { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.dTitle { font-size: 0.88rem; font-weight: 700; color: var(--ink); }
+.dDesc { font-size: 0.72rem; color: var(--ink-3); }
+.dGo {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  font: inherit;
+  font-size: 0.75rem;
+  color: var(--ink-2);
+  background: var(--surface-2, var(--surface));
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  cursor: pointer;
+}
+.dGo:hover { color: var(--ink); border-color: var(--ink-3); }
+.dGo:focus-visible, .dClose:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; }
+.dClose {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  font: inherit;
+  font-size: 0.8rem;
+  color: var(--ink-3);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  cursor: pointer;
+}
+.dClose:hover { color: var(--ink); border-color: var(--ink-3); }
+
+/* ⚠️ Үзүүлэлтийн жагсаалтаас ТУСГААРЛАНА: эдгээр нь дүгнэлтгүй нэмэлт тоо,
+   дээрх жагсаалттай нийлбэл ижил жинтэй мэт уншигдана. */
+.dGrid {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
+  gap: 10px 18px;
+}
+.dStat { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.dVal { font-size: 1rem; font-weight: 700; color: var(--ink); white-space: nowrap; }
+.dLbl { font-size: 0.7rem; font-style: normal; color: var(--ink-3); }
+/* «Яагаад хоосон вэ» — чимээгүй алга болгохгүй */
+.dWhy { font-size: 0.66rem; font-style: normal; color: var(--ink-3); opacity: 0.85; }
+
+.dNote {
+  margin: 10px 0 0;
+  font-size: 0.72rem;
+  color: var(--ink-3);
+}
+
+/* ══ Нарийн дэлгэц ══ */
+
+/*
+ * ⚠️ 760px-ээс доош БОСОО. Хэвтээ гүйлт нь мобайл дээр ажилладаг ч 6 удаа
+ * гүйлгэж байж бүтнийг харах нь урсгалыг ойлгуулах зорилгоо алдана.
+ */
+@media (max-width: 760px) {
+  .flow { flex-direction: column; align-items: stretch; overflow-x: visible; }
+  .step { flex-direction: column; align-items: stretch; }
+  .node { width: auto; }
+  .arrow { align-self: center; transform: rotate(90deg); padding: 2px 0; }
+}
+
+/* ══ Дэлгэрэнгүйн НЭМЭЛТ ДОХИО ══ */
+
+/*
+ * ⚠️ `buildSchem`-д БАЙХГҮЙ үзүүлэлтүүд (обьёмын зөрүү, давхцал, санхүү↔
+ * гүйцэтгэлийн зөрүү…). Дээрх `.dGrid` нь зөвхөн ТОО харуулдаг бол энд
+ * ТАЙЛБАР ч бий — эдгээр нь дүгнэлт шаарддаг тул «яагаад» гэдэг заавал дагана.
+ */
+.dList {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  overflow: hidden;
+}
+.dRow {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 9px 12px 10px 10px;
+  background: var(--surface);
+  border-left: 3px solid var(--h);
+}
+/* Гол мөр — шошго · утга · дүгнэлт */
+.dRowMain {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.dRowLbl { font-size: 0.78rem; font-weight: 650; color: var(--ink); }
+.dRowVal { font-size: 0.86rem; font-weight: 700; color: var(--ink); white-space: nowrap; }
+/*
+ * ⚠️ Дүгнэлтийн ҮГ нь ЗААВАЛ: өнгө ганцаараа утга дамжуулж болохгүй
+ * (WCAG 1.4.1). Мөрийн БАРУУН зах — нүдээр доош гүйлгэхэд багана эгнэнэ.
+ */
+.dRowLvl {
+  margin-left: auto;
+  font-size: 0.66rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  color: var(--h);
+}
+/* Задаргаа — «яагаад ийм тоо гарав» */
+.dRowNote { font-size: 0.71rem; color: var(--ink-2); }
+
+
+/* ══ Дохионы тоолуур ══ */
+
+/*
+ * ⚠️ Шар тоо нь улаанаас ТУСДАА өнгөтэй — «!3 ▲1» гэсэн хосыг нэг өнгөөр
+ * бичвэл дөрвөн асуудал мэт уншигдана.
+ */
+.tagWarn { font-style: normal; color: var(--warn); margin-left: 5px; }
+
+/* Зөвхөн дэлгэц уншигчид — өнгө/тэмдгийн үгэн хувилбар (WCAG 1.4.1) */
+.sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ══ Асуудлын жагсаалт ══ */
+
+/*
+ * ⚠️ ТООНООС ӨМНӨ. «Зөвшөөрөөгүй 1» гэсэн тоо нь асуудал БАЙГААГ хэлдэг ч
+ * АЛЬ НЬ болохыг хэлдэггүй — эдгээр мөр нь тэр нэрийг заана.
+ */
+.dIssues {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.dIssue {
+  padding: 6px 10px;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--ink-2);
+  background: color-mix(in srgb, var(--h) 8%, transparent);
+  border-left: 3px solid var(--h);
+  border-radius: 0 7px 7px 0;
+}
+
+/* ══ Задаргааны хүснэгт ══ */
+
+.tBox { margin-top: 14px; }
+.tTitle {
+  font-size: 0.73rem;
+  font-weight: 650;
+  color: var(--ink-2);
+  margin-bottom: 6px;
+}
+/* ⚠️ Хэвтээ гүйлт нь ХҮСНЭГТ ДОТРОО — хуудас өөрөө хэвтээ гүйхгүй */
+.tWrap {
+  overflow-x: auto;
+  scrollbar-width: thin;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+.tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.73rem;
+}
+.tbl th {
+  position: sticky;
+  top: 0;
+  text-align: left;
+  font-weight: 650;
+  color: var(--ink-3);
+  background: var(--surface-2, var(--surface));
+  padding: 7px 10px;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--line);
+}
+.tbl td {
+  padding: 6px 10px;
+  color: var(--ink-2);
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
+  white-space: nowrap;
+}
+.tbl tbody tr:last-child td { border-bottom: 0; }
+/* ⚠️ Тоо БАРУУН зэрэгцэнэ — багана дээрээс доош харьцуулагдана */
+.tNum { text-align: right; color: var(--ink); font-weight: 600; }
+
+/* ══ Эх сурвалж ══ */
+
+/*
+ * ⚠️ «—» гэсэн нүд нь ҮЙЛЧИЛГЭЭ УНАСНААС уу, эсвэл үнэхээр өгөгдөл
+ * байхгүйгээс үү гэдгийг хэрэглэгч ТААХ ёсгүй.
+ */
+.dSrc {
+  margin: 12px 0 0;
+  font-size: 0.68rem;
+  color: var(--ink-3);
+}
+.dSrcBad { color: var(--bad); }
