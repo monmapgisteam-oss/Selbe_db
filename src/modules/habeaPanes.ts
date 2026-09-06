@@ -33,8 +33,10 @@ const PANE = {
   fin1: { css: '--fin-1', axis: 'x', track: 0, min: 150, max: 900, sign: 1 },
   fin2: { css: '--fin-2', axis: 'x', track: 1, min: 150, max: 900, sign: 1 },
   fin3: { css: '--fin-3', axis: 'x', track: 2, min: 200, max: 1100, sign: 1 },
-  // `.rPair` — хоёр донатын хоорондох зааг
-  rp1: { css: '--rp-1', axis: 'x', track: 0, min: 110, max: 420, sign: 1 },
+  /* ⚠️ `rp1` (донатын хосын зааг) ХАСАГДЛАА 2026-09-06-нд: «Монгол,
+     гадаад» донат зургийн зүүн талд гарч, `.rPair` хос задарсан.
+     Хэрэглэгчийн хадгалсан хуучин утга үлдсэн ч ямар ч элементэд
+     хамаарахгүй тул хор хөнөөлгүй. */
 } as const;
 export type PaneKey = keyof typeof PANE;
 

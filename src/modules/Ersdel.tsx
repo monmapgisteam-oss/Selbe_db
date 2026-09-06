@@ -58,6 +58,7 @@ import {
 } from '@/lib/uyr';
 import { dirName, dispersionOf, loadWind, nowHour } from '@/lib/salhi';
 import { loadWindField, nowIndex, ymd } from '@/lib/salhiTor';
+import { MAX_V, rampCss } from '@/lib/salhiUrsgal';
 import { Overlay, type Pick } from './ersdel/Overlay';
 import o from './gazarOv.module.css';
 import e from './ersdel.module.css';
@@ -1368,8 +1369,20 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
         )}
 
         {/* ── Тайлбар (легенд) — муж бүрийн өнгө ба ЮУГ хэлж буй ── */}
-        {(bands.length > 0 || mode === 'now') && (
+        {(bands.length > 0 || mode === 'now' || windFlow) && (
           <div className={e.legend}>
+            {/* ── САЛХИНЫ ХУРДНЫ ХУВААРЬ ──
+                ⚠️ Урсгал АСААЛТТАЙ үед л гарна: унтраалттай байхад тууз нь
+                зурган дээр байхгүй өнгийг тайлбарлана. Хуваарь нь
+                `salhiUrsgal`-аас ирнэ — гараар давтвал тохируулга
+                өөрчлөгдөхөд чимээгүй зөрнө. ── */}
+            {windFlow && (
+              <span className={e.legItem}>
+                <i className={e.windRamp} style={{ background: rampCss() }} aria-hidden />
+                {tr('Салхины хурд')}
+                <b className="num">{tr('0 … {0}+ м/с', num(MAX_V, 0))}</b>
+              </span>
+            )}
             {/* ⚠️ ҮЕРТ бүс тус бүрийн хайрцаг БИШ, тасралтгүй ШАТЛАЛ: растер нь
                 гүнийг тасралтгүй өнгөөр зурдаг тул дөрвөн хайрцаг нь худал
                 зэрэглэл харуулна. */}
