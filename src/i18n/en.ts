@@ -3417,9 +3417,6 @@ const en: Record<string, string> = {
   "Хяналтад илгээв ({0}) · {1} нүд": "Submitted for review ({0}) · {1} cells",
   "Илгээлт хадгалагдлаа ({0} нүд) · ⚠️ хяналтад бүртгэгдсэнгүй: {1}": "The submission was saved ({0} cells) · ⚠️ but was not registered for review: {1}",
   "Илгээлтийг завсрын хадгалалтад хадгалж хяналтад оруулна — үндсэн өгөгдөлд ерөнхий менежер баталсны дараа л орно (Ctrl+S)": "Saves the submission to staging and sends it for review — it enters the main data only after the general manager approves it (Ctrl+S)",
-  "Илгээлт нь ЭНЭ архивын жааз дээрх зөрүү хэлбэрээр хадгалагдана. Энэ жааз өнөөдөр үүссэн.": "The submission is stored as a diff against THIS archive snapshot. This snapshot was created today.",
-  "Илгээлт нь ЭНЭ архивын жааз дээрх зөрүү хэлбэрээр хадгалагдана.": "The submission is stored as a diff against THIS archive snapshot.",
-  "суурь жааз: {0}": "base snapshot: {0}",
   "Илгээлт хадгалагдсан ч хяналтын бүртгэл ҮҮССЭНГҮЙ — хянагч үүнийг харахгүй.": "The submission was saved but NO review record was created — reviewers will not see it.",
   "Илгээлт хяналтад байна — {0}. Засвар ноорогт хадгалагдана; хянагч шийдвэрлэсний дараа дахин илгээж болно.": "The submission is under review — {0}. Your edits are saved to the draft; you can submit again once the reviewer has decided.",
   "Илгээгээгүй шинэ мөрийг хасах": "Remove a new row that has not been submitted",
@@ -3503,6 +3500,9 @@ const en: Record<string, string> = {
   "ArcGIS {0}": "ArcGIS {0}",
   "Энэ агшны байдлаар ArcGIS-д хуулагдсан — өөр компьютероос нэвтэрч үргэлжлүүлж болно.": "Copied to ArcGIS as of this moment — you can sign in from another computer and continue.",
   "Батлагдаж архивт бичигдлээ, гэхдээ нэгтгэлийн хүснэгтэд бүртгэгдсэнгүй ({0}). Дашбоардын багцын муруйд энэ өдөр харагдахгүй — админд мэдэгдэнэ үү.": "Approved and written to the archive, but not registered in the roll-up table ({0}). This day will not appear on the package curve — please notify an admin.",
+  "өгөгдөл: {0}-ны байдлаар": "data as of {0}",
+  "Хүснэгтэд харагдаж буй тоо нь ЭНЭ өдрийн батлагдсан бүртгэлийнх. Таны засвар түүн дээр нэмэгдэж илгээгдэнэ.": "The figures shown are from the approved record of THIS day. Your edits are layered on top of it and submitted.",
+  "Хүснэгтэд харагдаж буй тоо нь ЭНЭ өдрийн батлагдсан бүртгэлийнх. Таны засвар түүн дээр нэмэгдэж илгээгдэнэ. Энэ бүртгэл өнөөдөр үүссэн.": "The figures shown are from the approved record of THIS day. Your edits are layered on top of it and submitted. This record was created today."
 };
 
 export default en;
