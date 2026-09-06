@@ -2933,7 +2933,7 @@ const en: Record<string, string> = {
   "Гүйлгээ 2 дүн": "Transaction 2 amount",
   "Гүйлгээ 3 огноо": "Transaction 3 date",
   "Гүйлгээ 3 дүн": "Transaction 3 amount",
-  "cashflow_0813 · ipc_0813 · Гүйцэтгэл бөглөх": "cashflow_0813 · ipc_0813 · progress entry",
+  "Cashflow_0904 · ipc_0813 · Гүйцэтгэл бөглөх": "Cashflow_0904 · ipc_0813 · progress entry",
   "≤ {0} – {1}{2} (бүсийн төрлөөр)": "≤ {0} – {1}{2} (by zone type)",
   "«{0}» — огноо ЖЖЖЖ-СС-ӨӨ хэлбэрээр байх ёстой: {1}": "“{0}” — date must be YYYY-MM-DD: {1}",
   "нэргүй": "unnamed",
@@ -3256,7 +3256,6 @@ const en: Record<string, string> = {
   "Гүйцэтгэлийн обьём ба огноог зөвхөн энэ багцад томилогдсон гүйцэтгэгч бөглөнө — та зөвхөн мөр нэмэх эрхийнхээ хүрээнд засна.": "Only the contractor assigned to this package can fill in progress volumes and dates — you may only edit within your add-row permission.",
   "Илгээлтийн багц олдсонгүй: {0}": "Submission package not found: {0}",
   "Илгээлт «{0}» багцынх — хяналтын бүртгэл «{1}»": "The submission belongs to package \"{0}\" — the review record is \"{1}\"",
-  "«Шинэчлэгдсэн огноо» алга тул гүйцэтгэлийг бодох боломжгүй": "\"Updated date\" is missing, so the progress cannot be computed",
   "{0} нүдийг шинэ мөрүүдэд тулгаж чадсангүй — архивт бичсэнгүй. Гүйцэтгэгчээр дахин илгээүүлнэ үү. Тулгагдаагүй: {1}": "{0} cells could not be matched to the new rows — nothing was written to the archive. Ask the contractor to submit again. Not matched: {1}",
   "Багцын түлхүүр зөрсөн: {0} ≠ {1}": "Package key mismatch: {0} ≠ {1}",
   "Илгээлт хэт том ({0} тэмдэгт, дээд {1}). Хэсэгчлэн илгээх нь ТУСЛАХГҮЙ — дараагийн илгээлт өмнөхтэйгээ нэгтгэгддэг тул хэмжээ буурахгүй. Одоо илгээсэн хэсгээ хянагчаар батлуулсны дараа шинэ илгээлт цэвэр эхэлнэ.": "The submission is too large ({0} characters, max {1}). Splitting it into parts will NOT help — every submission is merged with the previous one, so the size does not shrink. Once the reviewer approves what you have already sent, the next submission starts clean.",
@@ -3473,6 +3472,7 @@ const en: Record<string, string> = {
   "!{0}": "!{0}",
   "▲{0}": "▲{0}",
   "Шийдэгдээгүй зөвшөөрөл": "Unresolved permits",
+  "Илгээлтийн агуулга татагдаагүй тул батлах боломжгүй": "Submission content could not be loaded — approval is not possible",
 };
 
 export default en;

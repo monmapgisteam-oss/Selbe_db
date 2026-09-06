@@ -714,13 +714,21 @@ export function decreeSeries(
  * шалтгаан энэ зураглалд олдохгүй бөгөөд давхцал ҮРГЭЛЖ хоосон гарна.
  * `cleanReason` нь `land.ts`-д хувийн тул дүрмийг энд ХУУЛСАН — өөрчлөгдвөл
  * ХОЁУЛАНГ нь хамт өөрчил.
+ *
+ * ⚠️ 2026-09-06 (merge tailan × bagtsiin-medeelel): `PARCEL_LEFT` нь
+ *    `Selbe_parcel_20260906` болсон — «Үлдсэн нэгж талбар» гэсэн ангилал
+ *    ОГТ БАЙХГҮЙ (төлөв ба шалтгаан НЭГ талбар `явцы_1`), OID нь `FID`
+ *    (`OBJECTID` нь энгийн Integer, 1,802 мөрд 0). Хуучин where/`OBJECTID`-аар
+ *    асуувал 0 мөр буцаж, «давхцаж буй» ҮРГЭЛЖ хоосон гардаг байв. Тиймээс
+ *    `parcelLeftWhere()` ба `PARCEL_LEFT.oid` — `parcelOverlap`-ын
+ *    `returnIdsOnly`-той ИЖИЛ талбар байх ёстой (огтлолцол OID-аар).
  */
 export const loadReasonOids = cached<Map<string, Set<number>>>(async () => {
-  const { PARCEL_LEFT } = await import('@/lib/services');
+  const { PARCEL_LEFT, parcelLeftWhere } = await import('@/lib/services');
   const F = PARCEL_LEFT.fields;
   const rows = await queryFeatures(PARCEL_LEFT.url, {
-    where: `${F.status}='Үлдсэн нэгж талбар'`,
-    outFields: ['OBJECTID', F.progress],
+    where: parcelLeftWhere(),
+    outFields: [PARCEL_LEFT.oid, F.status],
     limit: 4000,
   });
 
@@ -731,8 +739,8 @@ export const loadReasonOids = cached<Map<string, Set<number>>>(async () => {
 
   const m = new Map<string, Set<number>>();
   for (const r of rows) {
-    const k = clean(r[F.progress]);
-    const oid = nOf(r.OBJECTID);
+    const k = clean(r[F.status]);
+    const oid = nOf(r[PARCEL_LEFT.oid]);
     if (!oid) continue;
     const set = m.get(k) ?? new Set<number>();
     set.add(oid);

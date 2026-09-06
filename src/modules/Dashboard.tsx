@@ -1692,7 +1692,7 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
 
   return (
     <>
-      <Panel title={tr('Хэрэгжилтийн ерөнхий график')} note={tr('cashflow_0813 · ipc_0813 · Гүйцэтгэл бөглөх')}>
+      <Panel title={tr('Хэрэгжилтийн ерөнхий график')} note={tr('Cashflow_0904 · ipc_0813 · Гүйцэтгэл бөглөх')}>
         <Stats cols={2}>
           <Stat accent color={HUE[0]} value={actual == null ? '…' : num(actual, 2)} unit="%" label={tr('Биет гүйцэтгэл')} />
           <Stat accent color={HUE[1]} value={planned == null ? '…' : num(planned, 1)} unit="%" label={tr('Төлөвлөсөн гүйцэтгэл')} />

@@ -39,7 +39,7 @@ import { queryFeatures } from '@/lib/query';
 import { cached, loadClearance } from '@/lib/live';
 import { layerTotals } from '@/lib/totals';
 import {
-  BUILDING, CASHFLOW_NEW, HABEA, IPC_LOG, LAYER_GROUPS, GROUP_LAYERS, LAYER_BY_ID, PARCEL_CLEARED,
+  BUILDING, CASHFLOW_NEW, HABEA, IPC_LOG, LAYER_GROUPS, GROUP_LAYERS, LAYER_BY_ID, PARCEL_CLEARED, PARCEL_LEFT,
   bagtsKey, pkgKeyOf, laborCompanyFields, ipcNet,
 } from '@/lib/services';
 
@@ -350,11 +350,16 @@ async function loadLandRaw(): Promise<ReportExtra['land']> {
   // ⚠️ `url` нь заавал биш (BuildingSceneLayer г.м. давхаргад байхгүй) — шалгана
   const d = LAYER_BY_ID['land:left'];
   if (!d?.url) return { parcels: 0, areaM2: 0, pct: null, byStatus: [], byReason: [] };
-  /* Зөвхөн тоолдог 3 талбар (2026-08-21 гүйцэтгэлийн аудит): «*» нь 2,119
+  /* Зөвхөн тоолдог 2 талбар (2026-08-21 гүйцэтгэлийн аудит): «*» нь 2,119
      парселийн БҮХ баганыг (эзний нэр, хаяг зэрэг хувийн мэдээллийг оролцуулаад)
-     ~2-4МБ-аар татдаг байв — тайланд огт хэрэггүй. */
+     ~2-4МБ-аар татдаг байв — тайланд огт хэрэггүй.
+     ⚠️ 2026-09-06: талбарын нэрийг `PARCEL_LEFT.fields`-ээс авна. Шинэ эх
+     (`Selbe_parcel_20260906`) `Tuluv`/`явцын_мэдээ` талбаргүй — хатуу нэрээр
+     асуувал ArcGIS 400 («'outFields' parameter is invalid») буцааж, тайлан
+     БҮХЭЛДЭЭ («Тайлангийн 1 эх сурвалж татагдсангүй: газар») унадаг байв. */
+  const F = PARCEL_LEFT.fields;
   const rows = await queryFeatures(d.url, {
-    outFields: ['Tuluv', 'явцын_мэдээ', d.qty?.field ?? 'area_m2'],
+    outFields: [F.status, d.qty?.field ?? F.area],
   });
 
   const tally = (field: string, skipEmpty: boolean) => {
@@ -367,7 +372,7 @@ async function loadLandRaw(): Promise<ReportExtra['land']> {
     return [...m.entries()].map(([label, n]) => ({ label, n })).sort((a, b) => b.n - a.n);
   };
 
-  const byStatus = tally('Tuluv', false);
+  const byStatus = tally(F.status, false);
   /*
    * ⚠️ ХУВЬ нь ДАШБОАРДТАЙ НЭГ ЭХ СУРВАЛЖААС (2026-08-29). Урьд нь энд
    * «нийт − үлдсэн» гэж боддог байсан бол дашбоард/«Газар чөлөөлөлт» нь
@@ -379,11 +384,12 @@ async function loadLandRaw(): Promise<ReportExtra['land']> {
 
   return {
     parcels: rows.length,
-    areaM2: rows.reduce((a, r) => a + nn(r[d.qty?.field ?? 'area_m2']), 0),
+    areaM2: rows.reduce((a, r) => a + nn(r[d.qty?.field ?? F.area]), 0),
     pct: clearance.pct,
     byStatus,
-    // «явцын_мэдээ» нь ЗӨВХӨН шийдэгдээгүй нэгж талбарт бөглөгддөг — хоосныг хасна
-    byReason: tally('явцын_мэдээ', true),
+    /* ⚠️ 2026-09-06: шинэ эхэд ТӨЛӨВ ба ШАЛТГААН нэг талбар — «Бүрэн чөлөөлсөн»-өөс
+       бусад утга бүр нь чөлөөлөгдөөгүй талбарын шалтгаан (`land.ts`-тэй ижил дүрэм). */
+    byReason: byStatus.filter((s) => isLeftParcel(s.label)),
   };
 }
 
