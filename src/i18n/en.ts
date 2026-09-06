@@ -3251,7 +3251,6 @@ const en: Record<string, string> = {
   "{0} нүд бичигдлээ · {1} алгасав": "{0} cells written · {1} skipped",
   "{0} нүд бичигдлээ": "{0} cells written",
   "Мөрийн Обьём {0} · бөглөсөн {1} = {2}\nExcel-ээс олон нүдийг хуулж Ctrl+V дарж болно.": "Row volume {0} · entered {1} = {2}\nYou can copy a block from Excel and press Ctrl+V.",
-  "Нийтлэгдээгүй засвар байна": "You have unpublished changes",
   "Дараа шийднэ": "Decide later",
   "«Гүйцэтгэл бөглөх»-ийн нийтлэгдээгүй ноорог": "Unpublished drafts for “Fill in progress”",
   "Ноорог энэ хөтөчид, мөн ArcGIS-д хадгалагдана — өөр компьютероос нэвтэрсэн ч сэргээх боломжтой. Хянагчид хүргэхийн тулд «Илгээх» дарна.": "The draft is saved in this browser and in ArcGIS — you can restore it after signing in from another computer. Press “Submit” to send it to reviewers.",
@@ -3260,7 +3259,6 @@ const en: Record<string, string> = {
   "энэ компьютер": "this computer",
   "Шинэ мөр нэмэх эрх алга — «Хэрэглэгчдийн эрх удирдах» хэсгээс «Мөр нэмэх» эрхийг олгоно.": "You do not have the “Add row” right — grant it under “Manage user rights”.",
   "{0} · {1}: обьём сөрөг байж болохгүй — нийт хуримтлагдсан хэмжээг бичнэ үү.": "{0} · {1}: volume cannot be negative — enter the total accumulated amount.",
-  "Хуудас хооронд нь шинэчлэгдсэн тул ноорогийн {0} нүд шинэ мөрүүдэд тохирсонгүй — сэргээх зүйл үлдсэнгүй.": "The sheet was updated in the meantime, so {0} draft cells could not be matched to the new rows — nothing is left to restore.",
   "Одоогийн барилга (гэр хороолол)": "Existing structures (ger district)",
   "Одоогийн барилга": "Existing structures",
   "гэр хороолол": "ger district",
@@ -3505,6 +3503,14 @@ const en: Record<string, string> = {
   "Хүснэгтэд харагдаж буй тоо нь ЭНЭ өдрийн батлагдсан бүртгэлийнх. Таны засвар түүн дээр нэмэгдэж илгээгдэнэ. Энэ бүртгэл өнөөдөр үүссэн.": "The figures shown are from the approved record of THIS day. Your edits are layered on top of it and submitted. This record was created today.",
   "ногоон: илгээгээгүй ({0})": "green: not submitted ({0})",
   "Ногоон хүрээтэй нүд — та зассан, хараахан ИЛГЭЭГЭЭГҮЙ. «Илгээх» дарж хянагчид хүргэнэ. Тэмдэггүй нүд нь илгээгдсэн тоо.": "Green-outlined cells — your edits, NOT yet submitted. Press “Submit” to send them to reviewers. Unmarked cells are already submitted.",
+  "ноорог устгах": "discard draft",
+  "Илгээгээгүй бүх засварыг хаяна — локал ба ArcGIS хоёуланд. Буцаах зам байхгүй.": "Discards every unsubmitted edit — both locally and in ArcGIS. This cannot be undone.",
+  "Ноорог устгагдлаа — илгээгээгүй засварууд арилав.": "Draft discarded — unsubmitted edits removed.",
+  "Ноорогийн {0} нүд хуучирсан тул сэргээгдсэнгүй (агшин солигдсон).": "{0} draft cells were stale and could not be restored (the snapshot changed).",
+  "Ноорог сэргээв ({0}): {1}. Ногоон нүд = илгээгээгүй.": "Draft restored ({0}): {1}. Green cells = not submitted.",
+  "Ноорог сэргээв ({0}): {1}. {2} нүд хуучирсан тул орхигдов.": "Draft restored ({0}): {1}. {2} stale cells were skipped.",
+  "өөр төхөөрөмжөөс": "from another device",
+  "энэ компьютерээс": "from this computer"
 };
 
 export default en;

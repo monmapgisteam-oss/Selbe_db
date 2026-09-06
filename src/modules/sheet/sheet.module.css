@@ -1357,3 +1357,20 @@ tr:hover > td > .addBtn { opacity: 1; }
    ⚠️ Өнгө ГАНЦААРАА мэдээлэл дамжуулахгүй: бичвэр нь өөрөө «илгээгээгүй» /
    «хянагдаж байна» гэж хэлнэ, өнгө нь зөвхөн нүдтэй холбох дохио. */
 .legDirty { color: var(--good); font-weight: 600; }
+
+/* Тайлбарын мөрөнд байрлах ХОЛБООС МАЯГИЙН товч («ноорог устгах»).
+   ⚠️ Жинхэнэ `<button>` — гар хандалт ба screen reader-т товч гэж уншигдана
+   (өмнөх аудитын дүрэм: дарагддаг зүйл бүр button байх ёстой). */
+.linkBtn {
+  font: inherit;
+  font-size: 0.72rem;
+  color: var(--bad-ink);
+  background: none;
+  border: none;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.linkBtn:hover { color: var(--bad); }
+.linkBtn:focus-visible { outline: 2px solid var(--hue); outline-offset: 2px; }

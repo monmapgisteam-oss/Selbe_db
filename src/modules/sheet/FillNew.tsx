@@ -57,7 +57,6 @@ import { seriesBands } from "./bagts.bands";
 import { sheetDates } from "./sheetRows";
 import { useColWidths } from "./colWidths";
 import { parseGrid, planPaste } from "./paste";
-import { useFocusTrap } from "@/lib/useFocusTrap";
 import {
   clearRemoteDraft, loadRemoteDraft, saveRemoteDraft, REMOTE_MAX,
 } from "@/lib/draftRemote";
@@ -164,31 +163,6 @@ type Draft = {
  */
 let tmpOid = -1;
 
-/**
- * СЭРГЭЭХ ЦОНХНЫ агуулга — шүүгдсэн ноорог ба түүний хүний уншихуйц задаргаа.
- *
- * ⚠️ Ноорогийг цонх нээхээс ӨМНӨ шүүж, шалгаж дуусгасан байна: цонх нь зөвхөн
- *    «тавих уу, үгүй юу» гэдгийг асууна. Ингэснээр хэрэглэгчийн харсан тоо ба
- *    бодитоор буух өгөгдөл ХОЁР ӨӨР зам явахгүй.
- */
-type RestorePlan = {
-  /** Ноорог хадгалагдсан хугацаа (хүнд уншигдах) */
-  when: string;
-  /** «9 гүйцэтгэлийн нүд» гэх мэт зүйлчилсэн задаргаа */
-  parts: string[];
-  /** Хуучирсан тул хаягдах нүдний тоо */
-  dropped: number;
-  /**
-   * Аль хадгалалтаас ирсэн — `local` (энэ хөтөч) эсвэл `remote` (ArcGIS).
-   * ⚠️ Хэрэглэгчид ИЛ хэлнэ: «өөр төхөөрөмж дээр үлдээсэн ажил» гэдгийг
-   *    мэдэхгүй бол сэргээх нь эргэлзээтэй санагдана.
-   */
-  source: 'local' | 'remote';
-  cells: Record<string, string>;
-  dates: Record<string, string>;
-  adds: NewRow[];
-  asOf: number | null;
-};
 
 const DRAFT_PREFIX = "selbe-fillnew-draft:";
 /**
@@ -1683,7 +1657,6 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   // ── Нооргийн сэргээлт — багц ачаалагдмагц НЭГ удаа санал болгоно ──
   const promptedPkgRef = useRef("");
   /** Сэргээх цонхонд харуулах ба хүлээгдэж буй ноорог (`null` = цонх хаалттай) */
-  const [restore, setRestore] = useState<RestorePlan | null>(null);
   useEffect(() => {
     if (busy || !rows.length || !sc) return;
     // ⚠️ Мөр нь өөр багцынх байх агшин бий — `loadedPkgRef`-ийн тайлбар.
@@ -1843,14 +1816,11 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         void clearRemoteDraft(pkg.key);
         return;
       }
-      setRestore({
-        when: new Date(d.t).toLocaleString('mn-MN'),
-        parts: [], dropped, source,
-        cells: {}, dates: {}, adds: [], asOf: null,
-      });
+      /* ⚠️ Сэргээх зүйл алга АТЛАА хуучирсан нүд байна — ЧИМЭЭГҮЙ өнгөрөхгүй,
+         харин цонх нээхгүй (2026-09-06): зөвхөн мэдэгдэнэ. */
+      say(tr('Ноорогийн {0} нүд хуучирсан тул сэргээгдсэнгүй (агшин солигдсон).', dropped));
       return;
     }
-    const when = new Date(d.t).toLocaleString("mn-MN");
     /* ⚠️ Юу сэргээхийг ЗҮЙЛЧЛЭН хэлнэ — «12 засвар» гэдэг юу байсныг
        хэлдэггүй тул хэрэглэгч шийдэж чадахгүй. */
     const parts = [
@@ -1859,61 +1829,62 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       nAdds ? tr('{0} шинэ мөр', nAdds) : '',
       draftAsOf != null ? tr('шинэчлэгдсэн огноо') : '',
     ].filter(Boolean);
-    /* ⚠️ ХӨТЧИЙН `confirm` ХАСАГДСАН (2026-09-03, хэрэглэгч: «сэргээх цонхыг
-       дэлгэцийн голд байрлуулаад дизайныг сайжруул»). Тэр нь (1) дэлгэцийн
-       ДЭЭД ирмэгт наалддаг, (2) зөвхөн нэг эгнээ бичвэр — «9 гүйцэтгэлийн нүд»
-       гэсэн задаргаа нүдэнд ялгарахгүй, (3) Escape нь ЧИМЭЭГҮЙ «Цуцлах» болж
-       ажлыг устгадаг байв. Одоо апп доторх төвлөрсөн цонх: задаргаа нь
-       жагсаалт, сонголт нь гурав — сэргээх · дараа шийдэх · устгах. */
-    setRestore({
-      when, parts, dropped, source,
-      cells: next, dates: nextDates,
-      adds: restoredAdds, asOf: draftAsOf,
-    });
+    /*
+     * ⚠️ АСУУХГҮЙ, ШУУД БУУЛГАНА (2026-09-06, хэрэглэгчийн заавар: «ноорогийг
+     * сэргээхийг асуухгүй шууд ноорог гарч ирдэг байя, тэгээд өнгөөр ялгаж
+     * хараад засна»).
+     *
+     * ТҮҮХ: хөтчийн `confirm` → апп доторх төвлөрсөн цонх (2026-09-03) →
+     * ОДОО цонхгүй. Цонх нь ажлаа алдахаас хамгаалах зорилготой байсан ч
+     * бөглөгч өдөрт хэд хэдэн удаа багц сольдог бөгөөд ТЭР БҮРД нэг ижил
+     * асуултад «Сэргээх» дарах нь дэмий алхам болж байв.
+     *
+     * ⚠️ АЮУЛГҮЙ БОЛГОСОН ЗҮЙЛ: сэргээсэн нүд бүр НОГООН хүрээтэй (`dirty`)
+     * гарах ба хэрэгслийн мөрөнд «ногоон: илгээгээгүй (N)» гэж тоологдоно —
+     * хэрэглэгч юу сэргэснийг ХАРНА, цонхны задаргаа хэрэггүй болов. Хэрэв
+     * хэрэггүй бол «Ноорог устгах» товчоор нэг товшилтоор хаяна.
+     */
+    for (const a of restoredAdds) if (a.oid <= tmpOid) tmpOid = a.oid - 1;
+    if (restoredAdds.length) setAdds(restoredAdds);
+    if (nCells) setPending(next);
+    if (nDates) setPendDate(nextDates);
+    if (draftAsOf != null) setAsOf(draftAsOf);
+    /* Сэргээгдсэн тул хамгаалалт хэрэггүй — цаашид ердийн дүрмээр хадгалагдана */
+    keepDraft.current = false;
+    /* ⚠️ ЮУ СЭРГЭСНИЙГ ил хэлнэ: чимээгүй буувал хэрэглэгч «би энэ тоог
+       бөглөсөн үү, эсвэл өмнөх хүн үү» гэж эргэлзэнэ. Хуучирсан нүд байвал
+       тэр ч мөн адил — тоогоор нь хэлнэ. */
+    const from = source === 'remote' ? tr('өөр төхөөрөмжөөс') : tr('энэ компьютерээс');
+    say(dropped
+      ? tr('Ноорог сэргээв ({0}): {1}. {2} нүд хуучирсан тул орхигдов.', from, parts.join(' · '), dropped)
+      : tr('Ноорог сэргээв ({0}): {1}. Ногоон нүд = илгээгээгүй.', from, parts.join(' · ')));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows, sc, nBld, pkg.key, asOfOrig, canPerf, canAddRow]);
 
   /** «Сэргээх» — ноорогийг төлөв рүү буулгана */
-  const applyRestore = useCallback(() => {
-    const r = restore;
-    if (!r) return;
-    if (r.adds.length) {
-      /* ⚠️ ТҮР ObjectID-ийн ТООЛУУРЫГ сэргээсэн мөрүүдээс ЦААШ түлхэнэ:
-         `tmpOid` нь модулийн түвшний бөгөөд хуудас дахин ачаалагдах бүрд
-         −1-ээс эхэлдэг. Урьд нь сэргээлт түүнийг хөдөлгөдөггүй байсан тул
-         дараа нэмсэн мөр сэргээсэн мөртэй ИЖИЛ дугаар авч: нэгэнд нь бичсэн
-         обьём нөгөөд нь ч харагдаж, устгахад хоёулаа устдаг байв. */
-      for (const a of r.adds) if (a.oid <= tmpOid) tmpOid = a.oid - 1;
-      setAdds(r.adds);
-    }
-    if (Object.keys(r.cells).length) setPending(r.cells);
-    if (Object.keys(r.dates).length) setPendDate(r.dates);
-    if (r.asOf != null) setAsOf(r.asOf);
-    /* Сэргээгдсэн тул хамгаалалт хэрэггүй — цаашид ердийн дүрмээр хадгалагдана */
-    keepDraft.current = false;
-    setRestore(null);
-  }, [restore]);
-
-  /** «Устгах» — ноорогийг бүрмөсөн хаяна (буцаах зам байхгүй) */
-  const dropRestore = useCallback(() => {
+  /**
+   * «НООРОГ УСТГАХ» — сэргээгдсэн ноорогийг бүрмөсөн хаяна.
+   *
+   * ⚠️ 2026-09-06: сэргээх ЦОНХ хасагдсан (ноорог шууд буудаг болсон) тул
+   * «болих» цорын ганц зам ЭНЭ товч болов. Урьд нь цонхны «Устгах» гарц
+   * байсан; түүнгүйгээр хэрэглэгч 40 нүдийг ГАРААР цэвэрлэх шаардлагатай
+   * болно.
+   *
+   * ⚠️ Локал БА алсын хуулбар ХОЁУЛАА устана — эс бөгөөс дараагийн
+   * ачаалалтад «устгасан ажил» буцаж ирнэ.
+   */
+  const dropDraft = useCallback(() => {
+    setPending({});
+    setPendDate({});
+    setAdds([]);
+    setAddFor(null);
+    setAsOf(asOfOrig);
     clearDraftLS(pkg.key);
-    /* ⚠️ АЛСЫН хуулбарыг ч устгана — эс бөгөөс дараагийн ачаалалтад тэр нь
-       буцаж ирж, хэрэглэгч «устгасан ажил» дахин санал болгогдоно. */
     void clearRemoteDraft(pkg.key);
     keepDraft.current = false;
-    setRestore(null);
-  }, [pkg.key]);
-
-  /**
-   * «Дараа шийднэ» — цонхыг хаана, ноорог ХЭВЭЭР үлдэнэ.
-   * ⚠️ Хадгалалтын эффект нь дөрвүүлэн төлөв хоосон үед ноорогийг УСТГАДАГ тул
-   *    (тэр нь «нийтэлсэн/болиулсан» гэсэн утгатай) энд туг тавьж хамгаална —
-   *    эс бөгөөс цонхыг хаамагц ажил чимээгүй алга болно.
-   */
-  const laterRestore = useCallback(() => {
-    keepDraft.current = true;
-    setRestore(null);
-  }, []);
+    say(tr('Ноорог устгагдлаа — илгээгээгүй засварууд арилав.'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pkg.key, asOfOrig]);
 
   // Ноорог хадгалах — pending өөрчлөгдөх бүрд. Хоосон болоход (нийтэлсэн /
   // болиулсан) устгана, гэхдээ зөвхөн сэргээх шат ӨНГӨРСӨН багцынхыг: багц
@@ -2712,6 +2683,18 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
             <span className={st.legDirty} title={tr('Ногоон хүрээтэй нүд — та зассан, хараахан ИЛГЭЭГЭЭГҮЙ. «Илгээх» дарж хянагчид хүргэнэ. Тэмдэггүй нүд нь илгээгдсэн тоо.')}>
               {tr('ногоон: илгээгээгүй ({0})', dirtyCount)}
             </span>
+            {/* ⚠️ «БОЛИХ» ЦОРЫН ГАНЦ ЗАМ (2026-09-06). Сэргээх цонх хасагдаж
+                ноорог ШУУД буудаг болсон тул түүний «Устгах» гарц ч алга
+                болов. Энэ товчгүй бол хэрэглэгч 40 нүдийг ГАРААР цэвэрлэнэ. */}
+            {!noPerf && (
+              <>
+                {' · '}
+                <button type="button" className={st.linkBtn} onClick={dropDraft}
+                  title={tr('Илгээгээгүй бүх засварыг хаяна — локал ба ArcGIS хоёуланд. Буцаах зам байхгүй.')}>
+                  {tr('ноорог устгах')}
+                </button>
+              </>
+            )}
           </span>
         )}
         {/* ⚠️ АВТОМАТ ХАДГАЛАЛТЫН БАТАЛГАА. Ноорог нь зөвхөн ЭНЭ хөтөч дээр
@@ -3380,124 +3363,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         </div>
       )}
 
-      {restore && (
-        <RestoreModal
-          plan={restore}
-          onRestore={applyRestore}
-          onLater={laterRestore}
-          onDrop={dropRestore}
-        />
-      )}
     </div>
   );
 }
 
-/* ══════════════════ СЭРГЭЭХ ЦОНХ ══════════════════ */
-
-/**
- * НООРОГ СЭРГЭЭХ ЦОНХ — дэлгэцийн ГОЛД (2026-09-03, хэрэглэгчийн заавар).
- *
- * ⚠️ Хөтчийн `confirm`-ыг ОРЛОВ. Тэр нь дэлгэцийн дээд ирмэгт наалдаж,
- * агуулгыг нэг эгнээ бичвэрээр өгдөг тул «юу сэргэх вэ» гэдэг нүдэнд
- * ялгардаггүй байв. Мөн Escape нь чимээгүй «Цуцлах» болж ноорогийг УСТГАДАГ
- * байсан — эргэж нөхөгдөшгүй алдагдал.
- *
- * ⚠️ ГУРВАН сонголт, гурвуулаа ИЛ: сэргээх · дараа шийдэх (ноорог үлдэнэ) ·
- * устгах. Escape ба гадуур товшилт нь «дараа шийдэх» — хамгийн аюулгүй нь
- * анхдагч байх ёстой, учир нь санамсаргүй товшилт хэдэн цагийн ажлыг
- * устгаж болно.
- */
-function RestoreModal({
-  plan, onRestore, onLater, onDrop,
-}: {
-  plan: RestorePlan;
-  onRestore: () => void;
-  onLater: () => void;
-  onDrop: () => void;
-}) {
-  const box = useRef<HTMLDivElement>(null);
-  useFocusTrap(box);
-  useEffect(() => {
-    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') onLater(); };
-    window.addEventListener('keydown', esc);
-    return () => window.removeEventListener('keydown', esc);
-  }, [onLater]);
-
-  return (
-    <div className={st.overlay} role="presentation" onClick={onLater}>
-      <div
-        ref={box}
-        className={st.rsBox}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="rs-title"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className={st.rsHead}>
-          <span className={st.rsIcon} aria-hidden>↺</span>
-          <div>
-            <h3 className={st.rsTitle} id="rs-title">{tr('Нийтлэгдээгүй засвар байна')}</h3>
-            {/* ⚠️ Хугацаа нь ГОЛ шийдвэрлэх мэдээлэл: хэрэглэгч «энэ миний
-                өчигдрийн ажил мөн үү» гэдгийг үүгээр таньдаг.
-                ⚠️ ЭХ СУРВАЛЖ нь мөн адил чухал: «өөр төхөөрөмж дээр үлдээсэн»
-                гэдгийг мэдэхгүй бол хэрэглэгч энэ ажлыг танихгүй. */}
-            <p className={st.rsWhen}>
-              {plan.when}
-              <span className={st.rsFrom}>
-                {plan.source === 'remote' ? tr('өөр төхөөрөмж') : tr('энэ компьютер')}
-              </span>
-            </p>
-          </div>
-        </div>
-
-        {/* ⚠️ ЗАДАРГАА нь ЖАГСААЛТ — нэг эгнээ бичвэрт «9 гүйцэтгэлийн нүд,
-            2 огноо» гэж нийлүүлбэл юу нь хэд болох нь уншигдахгүй. */}
-        {/* ⚠️ ЗАДАРГАА нь ЖАГСААЛТ — нэг эгнээ бичвэрт «9 гүйцэтгэлийн нүд,
-            2 огноо» гэж нийлүүлбэл юу нь хэд болох нь уншигдахгүй. */}
-        {plan.parts.length > 0 && (
-          <ul className={st.rsList}>
-            {plan.parts.map((p) => (
-              <li key={p} className={st.rsItem}>
-                <span className={st.rsDot} aria-hidden />
-                {p}
-              </li>
-            ))}
-          </ul>
-        )}
-
-        {plan.dropped > 0 && (
-          <p className={st.rsWarn}>
-            {/* ⚠️ Юу ч сэргээгдэхгүй тохиолдлыг ТУСДАА хэлнэ: «орхигдоно»
-                гэдэг нь хэсэг нь сэргэнэ гэсэн утга өгөх тул төөрөгдүүлнэ. */}
-            {plan.parts.length === 0
-              ? tr('Хуудас хооронд нь шинэчлэгдсэн тул ноорогийн {0} нүд шинэ мөрүүдэд тохирсонгүй — сэргээх зүйл үлдсэнгүй.', plan.dropped)
-              : tr('{0} нүд хуучирсан тул орхигдоно.', plan.dropped)}
-          </p>
-        )}
-
-        <p className={st.rsNote}>
-          {tr('Ноорог энэ хөтөчид, мөн ArcGIS-д хадгалагдана — өөр компьютероос нэвтэрсэн ч сэргээх боломжтой. Хянагчид хүргэхийн тулд «Илгээх» дарна.')}
-        </p>
-
-        <div className={st.rsFoot}>
-          {/* ⚠️ УСТГАХ нь зүүн, ирмэгт — гол урсгалаас ТУСДАА. Буцаах зам
-              байхгүй үйлдэл нь «Сэргээх»-ийн хажууд зэрэгцэж болохгүй. */}
-          <button type="button" className={st.rsDrop} onClick={onDrop}>
-            {tr('Устгах')}
-          </button>
-          <span className={st.rsGap} />
-          <button type="button" className={st.rsLater} onClick={onLater}>
-            {tr('Дараа шийднэ')}
-          </button>
-          {/* ⚠️ Сэргээх зүйл үлдээгүй бол товч ГАРАХГҮЙ — дарахад юу ч
-              болохгүй товч нь «эвдэрсэн» гэж уншигдана. */}
-          {plan.parts.length > 0 && (
-            <button type="button" className={st.rsGo} onClick={onRestore} autoFocus>
-              {tr('Сэргээх')}
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
