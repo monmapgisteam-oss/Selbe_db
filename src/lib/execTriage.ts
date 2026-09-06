@@ -29,6 +29,13 @@ import { loadRows } from '@/modules/sheet/bagtsSheet';
 export type VarianceWork = {
   /** «Багц 1 · 9 давхар» */
   pkg: string;
+  /**
+   * Мөрийн дугаар (хуудасны «№» багана) — ажлын нэр ХАНГАЛТГҮЙ түлхүүр.
+   * ⚠️ 2026-09-06: нэг хуудсанд ижил нэртэй ажил өөр бүлэгт давтагддаг
+   *    («Бетон цутгалт» Б1-д ч, Б3-д ч). Нэрээр л жагсаавал CEO аль мөр
+   *    болохыг олохгүй.
+   */
+  no: string;
   work: string;
   /** Төлөвлөгдсөн Обьём (эх хүснэгт) */
   vol: number;
@@ -47,6 +54,13 @@ export type Variance = {
   totalMnt: number;
   /** Хамгийн том зөрүүтэй ажлууд — буурах эрэмбээр, дээд 8 */
   top: VarianceWork[];
+  /**
+   * БҮХ зөрүүтэй ажил — буурах эрэмбээр.
+   * ⚠️ 2026-09-06 (CEO самбар): «зөвхөн 8» нь хэрэглэгчийн шаардлагыг
+   *    хангахгүй — «асуудалтай бүх зүйлээ энэ цонхноос харж чаддаг байх
+   *    ёстой». `top` нь хуучин дуудагчдад хэвээр.
+   */
+  all: VarianceWork[];
   /** Уншиж чадаагүй багцын тоо (үйлчилгээ унасан г.м.) */
   failedPkgs: number;
 };
@@ -77,7 +91,7 @@ export function loadVariance(): Promise<Variance> {
         const sum = r.obyem.reduce<number>((a, v) => a + (v ?? 0), 0);
         if (sum <= r.vol) continue;
         out.push({
-          pkg: pkg.label, work: r.work, vol: r.vol, sum,
+          pkg: pkg.label, no: String(r.no ?? ''), work: r.work, vol: r.vol, sum,
           unit: r.unit, mnt: (sum - r.vol) * r.unit,
         });
       }
@@ -89,6 +103,7 @@ export function loadVariance(): Promise<Variance> {
       works: all.length,
       totalMnt: all.reduce((s, w) => s + w.mnt, 0),
       top: all.slice(0, 8),
+      all,
       failedPkgs: results.length - ok.length,
     };
   })().catch((e) => { varCache = null; throw e; });

@@ -1,0 +1,543 @@
+/* ═══════════════════════════════════════════════════════════
+   CEO-ГИЙН САМБАР — үйл ажиллагааны схем нь өөрөө дашбоард.
+   24 зангилаа (`schemFine.ts`), 13 үзүүлэлт зангилаан дээрээ.
+   Гэрлэн дохио нь `--h` (kpiLevels LEVEL_TONE).
+   ═══════════════════════════════════════════════════════════ */
+
+.board { width: 100%; min-width: 0; }
+
+/* ══ Толгой ══ */
+
+.head {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: 0.01em;
+}
+.counts { display: flex; gap: 12px; flex-wrap: wrap; font-size: 0.74rem; }
+.counts b { font-weight: 650; white-space: nowrap; }
+.cntBad { color: var(--bad-ink, var(--bad)); }
+.cntWarn { color: var(--warn-ink, var(--warn)); }
+.cntGood { color: var(--good-ink, var(--good)); }
+.cntNone { color: var(--ink-3); font-weight: 500 !important; }
+
+/*
+ * ⚠️ ТООЛУУР нь ТОВЧ (2026-09-06): «! 8 яаралтай» гэдэг тоо байсан ч аль 8
+ * болохыг харахын тулд 24 зангилааг нүдээр эргэх шаардлагатай байв.
+ */
+.cntBtn {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 3px 9px;
+  font: inherit;
+  font-size: inherit;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.cntBtn:hover { border-color: var(--ink-3); background: var(--surface-2, var(--surface)); }
+.cntBtn:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; }
+.cntCaret { color: var(--ink-3); font-size: 0.7rem; }
+
+/* ══ Багцын сонгогч ══ */
+
+.pkgPick { margin-left: auto; display: inline-flex; align-items: center; }
+/*
+ * ⚠️ Уугуул `<select>` — гар утасны сонгогч, гарын навигаци, дэлгэц уншигч
+ * бүгд үнэгүй ирнэ. Багцын тоо олон (дэд бүтэц оруулаад 40+) тул хайх
+ * боломжтой уугуул жагсаалт нь өөрийн бичсэн цэснээс дээр.
+ */
+.pkgSel {
+  font: inherit;
+  font-size: 0.75rem;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 4px 8px;
+  cursor: pointer;
+  max-width: 220px;
+}
+.pkgSel:hover { border-color: var(--ink-3); }
+.pkgSel:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; }
+
+/* ══ Яаралтай үзүүлэлтийн жагсаалт ══ */
+
+.alerts {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 5px;
+}
+.alertRow {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 6px 10px;
+  text-align: left;
+  font: inherit;
+  color: var(--ink-2);
+  background: color-mix(in srgb, var(--h) 8%, transparent);
+  border: 0;
+  border-left: 3px solid var(--h);
+  border-radius: 0 7px 7px 0;
+  cursor: pointer;
+}
+.alertRow:hover { background: color-mix(in srgb, var(--h) 15%, transparent); }
+.alertRow:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; }
+.alertMark { flex: none; font-weight: 800; color: var(--h); }
+.alertTitle { font-size: 0.75rem; font-weight: 650; color: var(--ink); white-space: nowrap; }
+/* ⚠️ Тоо нь БАРУУН тийш түлхэгдэнэ — багана эгнэж, дээрээс доош харьцуулагдана */
+.alertVal { margin-left: auto; font-size: 0.75rem; font-weight: 700; color: var(--ink); white-space: nowrap; }
+.alertUnit { font-size: 0.65rem; font-style: normal; color: var(--ink-3); white-space: nowrap; }
+/* Схемийн аль зангилаанд байгаа нь */
+.alertAt {
+  flex: none;
+  font-size: 0.62rem;
+  color: var(--ink-3);
+  padding: 1px 6px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+/* ══ Схемийн зурагт ══ */
+
+/*
+ * ⚠️ Хэвтээ гүйлт нь ЗӨВХӨН ЭНД — хуудас өөрөө хэвтээ гүйвэл зүүн талын
+ * навигаци алга болно. Схем нь 9 багана өргөн тул нарийн дэлгэцэд заавал гүйнэ.
+ */
+.canvasWrap {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  padding-bottom: 6px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+/* ⚠️ Өргөн/өндөр нь JS-ээс (`layoutOf`) — доторх карт үнэмлэхүй байрлалтай
+   тул эцэг нь хэмжээгээ өөрөө мэдэхгүй. */
+.canvas { position: relative; }
+
+.edges { position: absolute; inset: 0; pointer-events: none; }
+.edgeMain {
+  fill: none;
+  stroke: var(--line-strong);
+  stroke-width: 1.4;
+}
+/* ⚠️ ТЭЖЭЭХ холбоо нь ДАРААЛАЛ БИШ — тасархай зураасаар ялгана */
+.edgeFeed {
+  fill: none;
+  stroke: var(--line-strong);
+  stroke-width: 1.1;
+  stroke-dasharray: 4 4;
+  opacity: 0.75;
+}
+/* ⚠️ ЖИНХЭНЭ буцаалт — зөвхөн хяналтын шатанд, улаанаар */
+.edgeBack {
+  fill: none;
+  stroke: var(--bad);
+  stroke-width: 1.2;
+  stroke-dasharray: 3 3;
+  opacity: 0.8;
+}
+
+/* ══ Зангилаа ══ */
+
+/*
+ * ⚠️ ЗҮҮН ИРМЭГИЙН ЗУРВАС нь дохио (`--h`). Бүтэн хүрээг будвал 24 карт зэрэг
+ * өнгөлж дохионы утга алдагдана — ирмэг л өнгөтэй байхад улаан нүдэнд ТУСНА.
+ * ⚠️ `min-height` (`height` БИШ): үзүүлэлттэй карт агуулгаараа тэлнэ, торны
+ *    утга нь зөвхөн ДООД хязгаар (`CeoBoard.tsx`-ийн `GEO_HOME.h`).
+ */
+.node {
+  position: absolute;
+  /* ⚠️ `.nVal`-ийн `cqw` нэгж ЭНЭ зарлалаас хэмжээгээ авна */
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 9px 9px;
+  text-align: left;
+  font: inherit;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--h);
+  border-radius: 9px;
+  cursor: pointer;
+  transition: border-color 120ms, background 120ms, box-shadow 120ms;
+}
+.node:hover { background: var(--surface-2, var(--surface)); box-shadow: var(--shadow-sm); }
+.node:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; z-index: 3; }
+/* Үзүүлэлттэй зангилаа — бага зэрэг тод дэвсгэр, схемээс ялгарна */
+.nodeKpi { background: color-mix(in srgb, var(--h) 5%, var(--surface)); }
+.nodeOn {
+  border-color: color-mix(in srgb, var(--data) 60%, var(--line));
+  border-left-color: var(--h);
+  background: var(--surface-2, var(--surface));
+  box-shadow: var(--shadow-sm);
+  z-index: 2;
+}
+
+.nHead { display: flex; align-items: center; gap: 5px; min-width: 0; }
+.nIcon {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  flex: none;
+  border-radius: 5px;
+  color: var(--h);
+  background: color-mix(in srgb, var(--h) 14%, transparent);
+}
+.nTitle {
+  font-size: 0.67rem;
+  font-weight: 650;
+  line-height: 1.2;
+  color: var(--ink);
+  /* ⚠️ Хоёр мөр хүртэл — зангилааны нэр богиносгож болохгүй, харин тор нь
+     тогтмол тул гурав дахь мөрийг таслана. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.nMark {
+  margin-left: auto;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 17px;
+  height: 17px;
+  font-size: 0.62rem;
+  font-weight: 800;
+  color: var(--h);
+  background: color-mix(in srgb, var(--h) 16%, transparent);
+  border-radius: 999px;
+}
+.nMark b { font-style: normal; }
+
+/* Үзүүлэлтгүй зангилааны тодорхойлолт */
+.nDesc {
+  font-size: 0.6rem;
+  line-height: 1.28;
+  color: var(--ink-3);
+  display: -webkit-box;
+  /* ⚠️ ГУРВАН мөр: нүүрийн тор нам (88px) тул дөрөв нь хайрцгаас халина */
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Үзүүлэлтийн мөр — гол тоо + нэгж */
+.nLines { display: flex; flex-direction: column; gap: 4px; }
+/*
+ * ⚠️ ТОО ба НЭГЖ нь ХООРОНДОО БИШ, ДЭЭР ДООР. Хажуугаа байрлуулахад «56.8
+ * тэрбум ₮» гэсэн 15 тэмдэгтийн тоо 166px картад нэгжтэйгээ багтахгүй тасарч
+ * «56,833,096,5…» гэж уншигдаж байв — тоо таслах нь мөнгөн дүнг ХУДАЛ болгоно
+ * (`format.ts`: «багтахгүй бол фонт/баганы өргөнөөр шийднэ, ТООГ богиносгохгүй»).
+ */
+.nLine {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  padding: 3px 6px 4px;
+  background: var(--surface);
+  border: 1px solid color-mix(in srgb, var(--h) 30%, var(--line));
+  border-radius: 6px;
+}
+/*
+ * ⚠️ `clamp` нь ТОО БАГТААХЫН тулд: урт мөнгөн дүн (14 тэмдэгт) 0.72rem-д
+ * 166px картад бүтнээрээ орно, богино тоо («7», «143») нь 0.82rem-ээр том,
+ * уншигдахуйц хэвээр. Хэмжээ нь картын өргөнөөс (`cqw`) хамаарна.
+ */
+.nVal {
+  font-size: clamp(0.66rem, 4.4cqw, 0.82rem);
+  font-weight: 750;
+  line-height: 1.15;
+  color: var(--ink);
+  /* ⚠️ ТООГ ТАСЛАХГҮЙ — багтаах ажлыг `clamp` хийнэ, `ellipsis` БИШ */
+  white-space: nowrap;
+  min-height: 1em;
+}
+.nUnit {
+  font-size: 0.57rem;
+  font-style: normal;
+  line-height: 1.2;
+  color: var(--ink-3);
+  /* Нэгж нь хоёр мөр хүртэл — «төлөгдөөгүй үлдэгдэл» мэт урт нэгж бүтэн гарна */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/*
+ * АРАГ ЯС — ачаалж байх үеийн байрлал хадгалагч.
+ * ⚠️ Өндрийг хэвээр барина: дата ирэхэд зангилаа өндөрсөж зураг үсэрдэггүй.
+ */
+.skel {
+  display: inline-block;
+  width: 64px;
+  height: 0.8em;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--ink) 10%, transparent);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+@keyframes pulse { 0%, 100% { opacity: 0.5; } 50% { opacity: 0.85; } }
+/* ⚠️ Хөдөлгөөн багасгах тохиргоотой хэрэглэгчид анивчихгүй (WCAG 2.3.3) */
+@media (prefers-reduced-motion: reduce) { .skel { animation: none; } }
+
+/* ══ Дэлгэрэнгүй самбар ══ */
+
+.detail {
+  margin-top: 10px;
+  padding: 13px 15px 15px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+}
+.dHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.dText { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.dTitle { font-size: 0.88rem; font-weight: 700; color: var(--ink); }
+.dDesc { font-size: 0.71rem; color: var(--ink-3); }
+.dClose {
+  margin-left: auto;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  font: inherit;
+  font-size: 0.8rem;
+  color: var(--ink-3);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  cursor: pointer;
+}
+.dClose:hover { color: var(--ink); border-color: var(--ink-3); }
+.dClose:focus-visible, .kGo:focus-visible, .dRetry:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; }
+
+/* ── Нэг үзүүлэлтийн блок ── */
+
+/*
+ * ⚠️ Нэг зангилаанд ХЭД ХЭДЭН үзүүлэлт байж болно («Гэрээний дүн» дээр гэрээ↔
+ * төсвийн зөрүү ба гэрээгүй ажил хоёулаа) — тиймээс блок бүр өөрийн хүрээтэй,
+ * эс бөгөөс хоёр үзүүлэлтийн хүснэгтүүд нийлж уншигдахаа болино.
+ */
+.kpi {
+  padding: 11px 13px 13px;
+  background: var(--surface-2, var(--sunken));
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--h);
+  border-radius: 10px;
+}
+.kpi + .kpi { margin-top: 10px; }
+.kHead {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+  margin-bottom: 9px;
+}
+.kTitle { font-size: 0.84rem; font-weight: 700; color: var(--ink); }
+.kTag {
+  padding: 1px 7px;
+  font-size: 0.63rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  color: var(--h);
+  background: color-mix(in srgb, var(--h) 14%, transparent);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.kValue { display: flex; align-items: baseline; gap: 6px; }
+.kValue b { font-size: 0.98rem; font-weight: 750; color: var(--ink); white-space: nowrap; }
+.kValue i { font-size: 0.7rem; font-style: normal; color: var(--ink-3); }
+.kGo {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  font: inherit;
+  font-size: 0.74rem;
+  color: var(--ink-2);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  cursor: pointer;
+}
+.kGo:hover { color: var(--ink); border-color: var(--ink-3); }
+
+.dNote { margin: 8px 0 0; font-size: 0.74rem; color: var(--ink-3); }
+
+/*
+ * ⚠️ БАГЦ СОНГОСОН ҮЕИЙН ХАМРАХ ХҮРЭЭ. Гол тоо нь ТӨСЛИЙН дүн хэвээр
+ * (`ceo/filter.ts`) тул үүнийг ил хэлэхгүй бол «56.8 тэрбум нь энэ багцынх»
+ * гэж ХУДАЛ уншигдана.
+ */
+.dScope {
+  margin: 0 0 9px;
+  padding: 4px 9px;
+  font-size: 0.7rem;
+  color: var(--ink-2);
+  background: var(--surface);
+  border: 1px dashed var(--line-strong);
+  border-radius: 7px;
+  display: inline-block;
+}
+.dRetry {
+  font: inherit;
+  font-size: 0.72rem;
+  color: var(--data);
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.dErr { color: var(--ink-3); font-size: 0.68rem; }
+
+/* Хоёрдугаар мөрийн тоо — чип */
+.dFacts {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.dFacts li {
+  padding: 4px 9px;
+  font-size: 0.73rem;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+/* ══ Асуудлын жагсаалт ══ */
+
+/*
+ * ⚠️ ТООНООС ӨМНӨ. Тоо нь асуудал БАЙГААГ хэлдэг ч АЛЬ НЬ болохыг хэлдэггүй —
+ * эдгээр мөр нь тэр нэрийг заана.
+ */
+.dIssues {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 5px;
+}
+.dIssue {
+  padding: 6px 10px;
+  font-size: 0.73rem;
+  line-height: 1.35;
+  color: var(--ink-2);
+  background: color-mix(in srgb, var(--h) 9%, transparent);
+  border-left: 3px solid var(--h);
+  border-radius: 0 7px 7px 0;
+}
+
+/* ══ Задаргааны хүснэгт ══ */
+
+.tBox { margin-top: 11px; }
+.tTitle {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 0.72rem;
+  font-weight: 650;
+  color: var(--ink-2);
+  margin-bottom: 6px;
+}
+.tCount { font-size: 0.65rem; font-weight: 600; color: var(--ink-3); }
+/* ⚠️ Хэвтээ ба босоо гүйлт нь ХҮСНЭГТ ДОТРОО — толгой наалддаг */
+.tWrap {
+  overflow: auto;
+  max-height: 460px;
+  scrollbar-width: thin;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+}
+.tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.72rem;
+}
+.tbl th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  text-align: left;
+  font-weight: 650;
+  color: var(--ink-3);
+  background: var(--surface-2, var(--surface));
+  padding: 7px 10px;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--line);
+}
+.tbl td {
+  padding: 6px 10px;
+  color: var(--ink-2);
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
+  white-space: nowrap;
+  max-width: 420px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tbl tbody tr:last-child td { border-bottom: 0; }
+/* ⚠️ Тоо БАРУУН зэрэгцэнэ — багана дээрээс доош харьцуулагдана */
+.tNum { text-align: right; color: var(--ink); font-weight: 600; }
+
+/* ══ Эх сурвалж ══ */
+
+.dSrc { margin: 11px 0 0; font-size: 0.67rem; color: var(--ink-3); }
+.dSrcBad { color: var(--bad); }
+
+/* Зөвхөн дэлгэц уншигчид — өнгө/тэмдгийн үгэн хувилбар (WCAG 1.4.1) */
+.sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ══ Нарийн дэлгэц ══ */
+
+@media (max-width: 560px) {
+  .dIssues { grid-template-columns: 1fr; }
+  .tbl td { max-width: 240px; }
+}
