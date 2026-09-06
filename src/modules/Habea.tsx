@@ -26,7 +26,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { useAsync } from '@/lib/useAsync';
-import { queryFeatures, sqlStr, type Row } from '@/lib/query';
+import { queryFeatures, type Row } from '@/lib/query';
 import {
   HABEA, HABEA_LAYER_IDS, LAYER_BY_ID, CATALOG_LAYER_IDS,
   bagtsKey, laborCompanyFields,
@@ -215,11 +215,14 @@ const CRANE_HUE: Record<string, string> = {
 };
 
 type Crane = {
+  /** Цэг [50]-ийн OBJECTID — зураг · бүс · чартын ГАНЦ түлхүүр (`HABEA.crane.fields.oid`) */
+  oid: number;
   dugaar: string; blok: string; bagtsRaw: string; bagtsK: string;
   undur: number; sunUrt: number; tuluv: string;
 };
 
 const normCrane = (r: Row): Crane => ({
+  oid: nn(r[C.oid]),
   dugaar: text(r[C.dugaar], '—'),
   blok: text(r[C.blok], '—'),
   bagtsRaw: text(r[C.bagts], '—'),
@@ -1001,17 +1004,24 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    * дүрслэлийг шүүнэ: осол дарвал ослын чартууд, кран дарвал краны чартууд.
    * Ажилтны самбар нь зурагт давхаргагүй тул хэзээ ч хөндөгдөхгүй.
    *
-   * ⚠️ Кранг `Краны_дугаар`-аар танина, OBJECTID-аар БИШ: цэг [8] ба бүс [7]
-   * нь ТУСДАА давхарга тул OBJECTID нь таарахгүй, харин краны дугаар нь
-   * хоёуланд нь байна — ингэснээр кран дарахад аюулгүйн бүс нь ЯГ дагана.
+   * ⚠️ Кранг цэг [50]-ийн OBJECTID-аар танина (2026-09-06). Урьд нь
+   * `Краны_дугаар`-аар холбодог байсан нь ХОЁР талаараа эвдэрдэг байв:
+   *   · 50 краны 21-д дугаар NULL → «—» болж `IN ('—', …)`-д орж, Double
+   *     талбарт ArcGIS 400 → шүүлт асаамагц кран + бүс давхарга зурагнаас
+   *     бүхэлдээ алга болдог;
+   *   · 1–7 дугаар гурван багцад давтагддаг → «Багц 2» шүүхэд зураг дээр
+   *     3.2 ба 3.3-ын кран ч үлдэж, KPI-тай зөрдөг; нэг кран дарахад 3 кран
+   *     сонгогддог.
+   * Бүс [51] нь `ORIG_FID` = цэгийн OBJECTID (амьдаар 50/50 таарсан) тул бүс
+   * дарахад ч цэгийн түлхүүрт хөрвүүлнэ — аюулгүйн бүс кранаа ЯГ дагана.
    */
   const pickOsol = picked?.id === 'habea:osol' ? nn(picked.attrs['objectid']) : 0;
-  const pickCrane = picked && picked.id !== 'habea:osol'
-    ? text(picked.attrs[C.dugaar], '')
-    : '';
+  const pickCraneOid = picked && picked.id !== 'habea:osol'
+    ? nn(picked.id === 'habea:buffer' ? picked.attrs[C.bufferLink] : picked.attrs[C.oid])
+    : 0;
 
   const incOn = Boolean(pkg || sel.incType || sel.cause || sel.incCompany || pickOsol);
-  const craneOn = Boolean(pkg || sel.craneState || pickCrane);
+  const craneOn = Boolean(pkg || sel.craneState || pickCraneOid);
 
   /* Шүүгдсэн олонлогууд — БҮХ дүрслэл эдгээрээс тоологдоно.
      ⚠️ `useMemo` нь дүрслэлийн хурдны төлөө БИШ, ЛАВЛАГААНЫ ТОГТВОРТОЙ БАЙДЛЫН
@@ -1028,8 +1038,8 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const fCrane = useMemo(() => cranes.filter((x) =>
     (!pkg || x.bagtsK === pkg)
     && (!sel.craneState || x.tuluv === sel.craneState)
-    && (!pickCrane || x.dugaar === pickCrane)),
-  [cranes, pkg, sel.craneState, pickCrane]);
+    && (!pickCraneOid || x.oid === pickCraneOid)),
+  [cranes, pkg, sel.craneState, pickCraneOid]);
 
   /**
    * ЧАРТ → ЗУРАГ. Давхарга бүрт ӨӨРИЙН WHERE: график дээр тоологдсон ЯГ ТЭР
@@ -1042,11 +1052,16 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     //    БҮТНЭЭР нь харуулах биш, ХООСЛОНО.
     const ids = fInc.map((x) => x.oid);
     const osol = incOn ? (ids.length ? `objectid IN (${ids.join(',')})` : '1=0') : null;
-    const nums = [...new Set(fCrane.map((x) => x.dugaar))];
+    /* ⚠️ Тоон OBJECTID — `sqlStr`-ээр хашилтлахгүй (Double/OID талбарт
+       мөрөн утга 400 өгдөг). `oid === 0` (талбар алга) мөрийг хасна. */
+    const oids = fCrane.map((x) => x.oid).filter((o) => o > 0);
     const kran = craneOn
-      ? (nums.length ? `${C.dugaar} IN (${nums.map(sqlStr).join(',')})` : '1=0')
+      ? (oids.length ? `${C.oid} IN (${oids.join(',')})` : '1=0')
       : null;
-    return { 'habea:osol': osol, 'habea:crane': kran, 'habea:buffer': kran };
+    const buff = craneOn
+      ? (oids.length ? `${C.bufferLink} IN (${oids.join(',')})` : '1=0')
+      : null;
+    return { 'habea:osol': osol, 'habea:crane': kran, 'habea:buffer': buff };
   }, [incOn, craneOn, fInc, fCrane]);
 
   /**
@@ -1138,8 +1153,11 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    * ⚠️ «Одоо байгаа»-г ЯГ тулгахгүй, «Буусан»-ыг ХАСНА: эх үйлчилгээнд
    * «Шинээр нэмэгдсэн» гэсэн гурав дахь утга ч гарч болзошгүй
    * (`CRANE_HUE`-д бүртгэлтэй) бөгөөд тэр нь ажиллаж байгаа кран.
+   * ⚠️ ТӨЛӨВГҮЙ («—», `Tuluv` NULL) кранг ИДЭВХТЭЙД ТООЛОХГҮЙ (`null ≠ 0`):
+   *    мэдээлэлгүйг «ажиллаж байгаа» гэж бичвэл харьцаа худал өснө. Тэр нь
+   *    бөгжинд «—» зүсмэгээр тусдаа харагдана. Өнөөдөр 0 ийм кран.
    */
-  const craneUp = fCrane.filter((x) => x.tuluv !== 'Буусан').length;
+  const craneUp = fCrane.filter((x) => x.tuluv !== 'Буусан' && x.tuluv !== '—').length;
   const craneByPkg = byPkg(cranes, () => 1);
   /* ⚠️ `avgUndur` / `avgSum` (дундаж өндөр ба сумны урт) ХАСАГДАВ
      (2026-09-06, хэрэглэгчийн хүсэлт): краны төлөвийн доор гарч байсан
@@ -1297,7 +1315,8 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       label: picked.id === 'habea:osol' ? tr('Сонгосон осол') : tr('Сонгосон кран'),
       value: picked.id === 'habea:osol'
         ? text(picked.attrs[I.turul], `#${pickOsol}`)
-        : text(picked.attrs[C.dugaar], '—'),
+        /* ⚠️ Дугааргүй кран (21/50) — «—» биш `#OBJECTID` гэж нэрлэнэ */
+        : text(picked.attrs[C.dugaar], '') || `#${pickCraneOid}`,
       clear: () => setPicked(null),
     });
   }
@@ -1781,7 +1800,8 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           тал хоосон үлдэнэ. Горим бүрд:
             осол   → 2 (зураг · компаниар)
             хүн хүч → 2 (ажилтан · техник)
-            үзлэг  → 3 (гүйцэтгэгч · талбай · сараар) */}
+            үзлэг  → 1 (сараар, бүтэн өргөн; гүйцэтгэгч · талбай нь
+                        баруун баганад — `UzlegRight`) */}
       <div className={h.fin} data-cols={uzlegKind ? '1' : '2'}
         style={panes.styleFor('fin1', 'fin2')}>
         {incOpen && (<>

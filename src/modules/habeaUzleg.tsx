@@ -3,8 +3,10 @@
 /**
  * АЖЛЫН БАЙРНЫ ҮЗЛЭГ — ХАБЭА хуудасны шүүлтүүрээр нээгддэг хоёр самбар.
  *
- * `HABEA.uzleg`-ийн ХОЁР Survey123 маягт (V11 · Гүйцэтгэгчийн) бүтцээрээ ЯГ
- * ИЖИЛ тул нэг л дүрслэл хоёуланд үйлчилнэ — зөвхөн URL нь ялгаатай.
+ * `HABEA.uzleg`-ийн ХОЁР Survey123 маягт (V11 · Гүйцэтгэгчийн) бүтцээрээ
+ * БАРАГ ижил тул нэг л дүрслэл хоёуланд үйлчилнэ — URL нь ялгаатай, мөн
+ * `guitsetgegch`-д `site_block`/`company_other` байхгүй (`services.ts`-ийн
+ * `HABEA.uzleg`-ийн ⚠️). `block` нь одоогоор чартад ордоггүй.
  *
  * ⚠️ ЯАГААД ТУСДАА ФАЙЛ ВЭ: `Habea.tsx` аль хэдийн 1,500 мөр. Үзлэгийн
  * ачаалалт, хэвийн болголт, дөрвөн чарт нь тэр файлын хөндлөн шүүлтийн логиктой
@@ -30,6 +32,46 @@ import { num, date, text } from '@/lib/format';
 export type UzlegKind = 'v11' | 'guitsetgegch';
 
 const U = HABEA.uzleg.fields;
+
+/* ═════════════════ Домэйн (код → нэр) ═════════════════ */
+
+/** Талбар → (код → нэр) */
+type Domains = Record<string, Map<string, string>>;
+const domainCache = new Map<string, Promise<Domains>>();
+
+/**
+ * ДОМЭЙНЫ КОД → НЭР. Survey123 нь `site` · `company` · `shift` · `week`-ийг
+ * codedValue домэйнтой хадгалдаг тул атрибутад «b1», «mcc2», «day» гэсэн КОД
+ * ирнэ (2026-09-06-нд амьд метадатаар батлагдсан: site 13 · company 10–11 ·
+ * shift 2 · week 11 утга). Хөрвүүлэлтгүй бол чарт кодоор шошгологдоно —
+ * хоёр үйлчилгээ одоо хоосон тул анхны мөр ирэхэд л илрэх байсан.
+ *
+ * ⚠️ Унавал ХООСОН толь буцаана — код хэвээр харагдана, самбар унахгүй.
+ * ⚠️ Метадата нь ӨГӨГДӨЛ биш тул автобусын тагт хамаарахгүй; url бүрд нэг
+ *    л удаа татна (`domainCache`).
+ */
+function loadDomains(url: string): Promise<Domains> {
+  let p = domainCache.get(url);
+  if (!p) {
+    type Meta = {
+      fields?: { name?: string; domain?: { type?: string; codedValues?: { code?: unknown; name?: string }[] } | null }[];
+    };
+    p = fetch(`${url}?f=json`)
+      .then((r) => r.json() as Promise<Meta>)
+      .then((j) => {
+        const out: Domains = {};
+        for (const f of j.fields ?? []) {
+          const cv = f.domain?.type === 'codedValue' ? f.domain.codedValues : null;
+          if (!f.name || !cv?.length) continue;
+          out[f.name] = new Map(cv.map((c) => [String(c.code), String(c.name ?? c.code)]));
+        }
+        return out;
+      })
+      .catch(() => ({} as Domains));
+    domainCache.set(url, p);
+  }
+  return p;
+}
 
 export type UzlegRow = {
   oid: number;
@@ -60,20 +102,31 @@ const nn = (v: unknown): number => {
  */
 const clean = (v: unknown): string => text(v, '—').replace(/["']/g, '').trim() || '—';
 
-const norm = (r: Row): UzlegRow => ({
-  oid: nn(r.objectid ?? r.OBJECTID),
-  /* «Бусад» сонгосон үед жинхэнэ нэр нь `*_other` талбарт бичигдэнэ */
-  site: clean(r[U.site] === 'other' ? r[U.siteOther] : r[U.site]),
-  company: clean(r[U.company] === 'other' ? r[U.companyOther] : r[U.company]),
-  block: clean(r[U.block]),
-  shift: clean(r[U.shift]),
-  d: nn(r[U.ognoo]),
-  major: nn(r[U.major]),
-  minor: nn(r[U.minor]),
-  obs: nn(r[U.obs]),
-  conf: nn(r[U.conf]),
-  na: nn(r[U.na]),
-});
+const norm = (r: Row, dom: Domains): UzlegRow => {
+  /**
+   * Домэйны код → нэр; «Бусад» (`other`) сонгосон үед жинхэнэ нэр нь
+   * `*_other` талбарт бичигдэнэ. Толинд байхгүй код нь өөрөө үлдэнэ.
+   */
+  const named = (field: string, other?: string): string => {
+    const code = r[field];
+    if (other && code === 'other') return clean(r[other]);
+    const s = code == null ? '' : String(code);
+    return clean(dom[field]?.get(s) ?? s);
+  };
+  return {
+    oid: nn(r.objectid ?? r.OBJECTID),
+    site: named(U.site, U.siteOther),
+    company: named(U.company, U.companyOther),
+    block: clean(r[U.block]),
+    shift: named(U.shift),
+    d: nn(r[U.ognoo]),
+    major: nn(r[U.major]),
+    minor: nn(r[U.minor]),
+    obs: nn(r[U.obs]),
+    conf: nn(r[U.conf]),
+    na: nn(r[U.na]),
+  };
+};
 
 /* ═════════════════ Ачаалалт ═════════════════ */
 
@@ -130,8 +183,8 @@ export function useUzleg(kind: UzlegKind | null): State {
     if (!kind) { setSt({ state: 'idle' }); return undefined; }
     let alive = true;
     setSt({ state: 'loading' });
-    loaders[kind]()
-      .then((rows) => { if (alive) setSt({ state: 'ready', rows: rows.map(norm) }); })
+    Promise.all([loaders[kind](), loadDomains(HABEA.uzleg[kind].url)])
+      .then(([rows, dom]) => { if (alive) setSt({ state: 'ready', rows: rows.map((r) => norm(r, dom)) }); })
       .catch((e: unknown) => {
         if (alive) setSt({ state: 'error', message: e instanceof Error ? e.message : String(e) });
       });
@@ -184,12 +237,16 @@ function severity(rows: UzlegRow[]) {
  *
  * ⚠️ Огноогүй мөрийг ХАСНА (`d > 0`): 1970-01 гэсэн хиймэл багана гарахаас
  * сэргийлнэ. Шошгод ОН заавал — төсөл олон жил үргэлжилнэ.
+ * ⚠️ САРЫГ ЛОКАЛ ЦАГААР авна (`toISOString` = UTC БИШ): Улаанбаатар UTC+8
+ *    тул сарын 1-ний 00:00–08:00-ийн үзлэг UTC-ээр ӨМНӨХ сард орж, «сүүлийнх»
+ *    гэж `date()`-аар (локал) харуулсан огноотой зөрдөг байв.
  */
 function byMonth(rows: UzlegRow[]) {
   const m = new Map<string, number>();
   for (const r of rows) {
     if (r.d <= 0) continue;
-    const ym = new Date(r.d).toISOString().slice(0, 7);
+    const dt = new Date(r.d);
+    const ym = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
     m.set(ym, (m.get(ym) ?? 0) + 1);
   }
   return [...m.entries()]
