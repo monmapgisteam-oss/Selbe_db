@@ -3502,7 +3502,13 @@ const en: Record<string, string> = {
   "Батлагдаж архивт бичигдлээ, гэхдээ нэгтгэлийн хүснэгтэд бүртгэгдсэнгүй ({0}). Дашбоардын багцын муруйд энэ өдөр харагдахгүй — админд мэдэгдэнэ үү.": "Approved and written to the archive, but not registered in the roll-up table ({0}). This day will not appear on the package curve — please notify an admin.",
   "өгөгдөл: {0}-ны байдлаар": "data as of {0}",
   "Хүснэгтэд харагдаж буй тоо нь ЭНЭ өдрийн батлагдсан бүртгэлийнх. Таны засвар түүн дээр нэмэгдэж илгээгдэнэ.": "The figures shown are from the approved record of THIS day. Your edits are layered on top of it and submitted.",
-  "Хүснэгтэд харагдаж буй тоо нь ЭНЭ өдрийн батлагдсан бүртгэлийнх. Таны засвар түүн дээр нэмэгдэж илгээгдэнэ. Энэ бүртгэл өнөөдөр үүссэн.": "The figures shown are from the approved record of THIS day. Your edits are layered on top of it and submitted. This record was created today."
+  "Хүснэгтэд харагдаж буй тоо нь ЭНЭ өдрийн батлагдсан бүртгэлийнх. Таны засвар түүн дээр нэмэгдэж илгээгдэнэ. Энэ бүртгэл өнөөдөр үүссэн.": "The figures shown are from the approved record of THIS day. Your edits are layered on top of it and submitted. This record was created today.",
+  "ногоон: илгээгээгүй ({0})": "green: not submitted ({0})",
+  "шар: хянагдаж байна ({0})": "amber: under review ({0})",
+  "тэмдэггүй: батлагдсан": "unmarked: approved",
+  "Ногоон хүрээтэй нүд — та зассан, хараахан ИЛГЭЭГЭЭГҮЙ. «Илгээх» дарж хянагчид хүргэнэ.": "Green-outlined cells — your edits, NOT yet submitted. Press “Submit” to send them to reviewers.",
+  "Шар зураастай нүд — илгээгдсэн, хянагчийн шийдвэр хүлээж байна. Батлагдсаны дараа тэмдэг арилна.": "Amber-barred cells — submitted, awaiting the reviewer’s decision. The mark clears once approved.",
+  "Тэмдэггүй нүд — батлагдаж үндсэн бүртгэлд орсон тоо.": "Unmarked cells — approved figures already in the main record.",
 };
 
 export default en;
