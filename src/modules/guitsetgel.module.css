@@ -470,6 +470,25 @@
 .okAll { color: var(--good); font-weight: 650; }
 .okSome { color: var(--warn); font-weight: 650; }
 
+/* «Бүгдийг ногоон болгох» — ЗӨВХӨН системийн админд харагдана.
+   ⚠️ Шийдвэрийн товчнуудаас (`.btn`) ЯЛГАРАХ ёстой: энэ нь ЗӨВХӨН тэмдэглэгээ
+   тавьдаг бөгөөд аль ч шатны шийдвэр ГАРГАХГҮЙ. Тиймээс жижиг, зураастай,
+   тоолуурын хажууд — дүүргэлттэй том товч болговол «батлах» мэт уншигдана. */
+.okAllBtn {
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 650;
+  color: var(--good);
+  background: color-mix(in srgb, var(--good) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--good) 40%, transparent);
+  border-radius: var(--r-sm);
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.okAllBtn:hover { background: color-mix(in srgb, var(--good) 22%, transparent); }
+.okAllBtn:focus-visible { outline: 2px solid var(--hue); outline-offset: 2px; }
+
 
 /* ══════════ 4 ТҮВШНИЙ ЗУРВАС ══════════
    Ажлын толгойд суух жижиг зураглал: хэд өнгөрсөн, хаана зогсож байгаа. */

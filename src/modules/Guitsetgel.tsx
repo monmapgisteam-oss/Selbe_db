@@ -306,6 +306,7 @@ function Submitted({
   ok,
   onCell,
   onChanges,
+  onOkAll,
 }: {
   bagts: string;
   sheetOid: number;
@@ -315,6 +316,17 @@ function Submitted({
   onCell?: (row: number, block: string) => void;
   /** Өөрчлөлтийн жагсаалтыг эцэгт мэдэгдэнэ — «бүгд зөвшөөрөгдсөн үү» гэж бодоход. */
   onChanges?: (c: Change[]) => void;
+  /**
+   * «БҮГДИЙГ ЗӨВШӨӨРӨХ» — ЗӨВХӨН системийн админд. Эцэг (`Item`) шийднэ;
+   * өгөгдөөгүй бол товч ОГТ зурагдахгүй.
+   *
+   * ⚠️ Товчийг ЭНД — өөрчлөгдсөн нүдний тоолуурын хажууд — байрлуулав,
+   * шийдвэрийн товчнуудаас ТУСДАА (2026-09-06, хэрэглэгчийн заавар: «тусдаа
+   * button байх ёстой»). Тэдэнтэй нэг эгнээнд байхад «Зөвшөөрч илгээх»-тэй
+   * нэг төрлийн үйлдэл мэт уншигдаж, аль нь ЖИНХЭНЭ шийдвэр болохыг ялгахад
+   * төвөгтэй байв. Энэ товч нь ЗӨВХӨН тэмдэглэгээ тавина.
+   */
+  onOkAll?: () => void;
 }) {
   const [data, setData] = useState<Submission | null>(null);
   const [err, setErr] = useState('');
@@ -397,6 +409,22 @@ function Submitted({
                 <span className={okCount === data.changes.length ? s.okAll : s.okSome}>
                   {tr('зөвшөөрсөн {0}/{1}', String(okCount), String(data.changes.length))}
                 </span>
+              </>
+            )}
+            {/* ⚠️ ТУСДАА ТОВЧ (2026-09-06) — өөрчлөгдсөн нүдний тоолуурын
+                ХАЖУУД, шийдвэрийн товчнуудаас ТУСГААРЛАСАН. Зөвхөн
+                тэмдэглэгээ тавина: аль ч шатны шийдвэрийг ГАРГАХГҮЙ. */}
+            {onOkAll && okCount < data.changes.length && (
+              <>
+                {' · '}
+                <button
+                  type="button"
+                  className={s.okAllBtn}
+                  onClick={onOkAll}
+                  title={tr('Зөвхөн системийн админд. Өөрчлөгдсөн {0} нүдийг бүгдийг нь ногоон болгож тэмдэглэнэ — шийдвэрийг доод талын товч гаргана.', String(data.changes.length - okCount))}
+                >
+                  {tr('✓ бүгдийг ногоон болгох ({0})', String(data.changes.length - okCount))}
+                </button>
               </>
             )}
             {data.compared && (
@@ -556,8 +584,17 @@ function Track({ status, stage }: { status: Status; stage: Stage }) {
 
 /* ══════════ Нэг ажил ══════════ */
 
-function Item({ work, stage, who, onFix, readOnly }: {
+function Item({ work, stage, who, onFix, readOnly, isSuper }: {
   work: Work; stage: Stage; who: string; onFix: () => void;
+  /**
+   * Системийн админ уу (`resolveFlowStage().canPick`).
+   *
+   * ⚠️ ЗӨВХӨН «Бүгдийг зөвшөөрөх» товчийг нээхэд хэрэглэнэ. Жинхэнэ хянагчид
+   * нүд бүрийг ГАРААР зөвшөөрсөн хэвээр байх ЁСТОЙ (2026-08-27-ны шийдвэр:
+   * «нэг товчоор бүгдийг батлах зам байвал хяналт нь ёсорхуу дарах үйлдэл
+   * болно»). Super нь системийн тохируулагч тул тэр дүрмээс чөлөөлөгдөнө.
+   */
+  isSuper?: boolean;
   /**
    * ⚠️ ЗӨВХӨН ХАРАХ. Урсгалын шатанд томилогдоогүй үүрэг (жиш. `beginner`)
    * энэ хуудсыг үзэж чадах ч зөвшөөрөх/буцаах ЁСГҮЙ — эс бөгөөс шат сонгох
@@ -658,12 +695,19 @@ function Item({ work, stage, who, onFix, readOnly }: {
   };
   const mine = !readOnly && work.owner === stage && st !== STATUS.transferred;
 
-  const run = async (fn: () => Promise<{ ok: boolean; error?: string }>) => {
+  /*
+   * ⚠️ ХАГАС АМЖИЛТЫГ ч ХАРУУЛНА (2026-09-06). Батлалт бүтсэн атлаа
+   * нэгтгэлд бүртгэгдээгүй тохиолдол урьд нь ЗӨВХӨН `console.warn` байсан
+   * тул батлагдсан гүйцэтгэл дашбоардад хэзээ ч гарахгүйг менежер ч, админ
+   * ч мэддэггүй байв. `ok: true` тул шийдвэрийг буцаахгүй — гагцхүү
+   * анхааруулгыг ил гаргана.
+   */
+  const run = async (fn: () => Promise<{ ok: boolean; error?: string; warn?: string }>) => {
     if (busy) return;
     setBusy(true);
     const r = await fn();
     setBusy(false);
-    setErr(r.ok ? '' : (r.error ?? tr('Алдаа гарлаа')));
+    setErr(r.ok ? (r.warn ?? '') : (r.error ?? tr('Алдаа гарлаа')));
     if (r.ok) setReason('');
   };
 
@@ -840,6 +884,11 @@ function Item({ work, stage, who, onFix, readOnly }: {
             ok={reviewing ? okKeys : undefined}
             onCell={reviewing ? toggleOk : undefined}
             onChanges={setChanges}
+            /* ⚠️ ЗӨВХӨН super БА зөвшөөрөх шатанд — эс бөгөөс жинхэнэ хянагч
+               нэг товчоор бүгдийг батлах зам нээгдэнэ (2026-08-27-ны дүрэм). */
+            onOkAll={isSuper && reviewing
+              ? () => setOkKeys(new Set(changes.map((c) => `${c.row}:${c.block}`)))
+              : undefined}
           />
           <History cycles={work.cycles} stage={stage} />
         </div>
@@ -1176,7 +1225,7 @@ export function Guitsetgel() {
                       : tr('Хүлээгдэж буй ажил алга.')}
                 </div>
               ) : (
-                mine.map((w) => <Item key={w.key} work={w} stage={stage} who={who} onFix={goFix} readOnly={!canReview} />)
+                mine.map((w) => <Item key={w.key} work={w} stage={stage} who={who} onFix={goFix} readOnly={!canReview} isSuper={flow.canPick} />)
               )}
             </div>
 
@@ -1190,7 +1239,7 @@ export function Guitsetgel() {
                       <span className={s.groupCount}>{inReview.length}</span>
                     </div>
                     {inReview.map((w) => (
-                      <Item key={w.key} work={w} stage={stage} who={who} onFix={goFix} readOnly={!canReview} />
+                      <Item key={w.key} work={w} stage={stage} who={who} onFix={goFix} readOnly={!canReview} isSuper={flow.canPick} />
                     ))}
                   </div>
                 )}
@@ -1201,7 +1250,7 @@ export function Guitsetgel() {
                       <span className={s.groupCount}>{done.length}</span>
                     </div>
                     {done.map((w) => (
-                      <Item key={w.key} work={w} stage={stage} who={who} onFix={goFix} readOnly={!canReview} />
+                      <Item key={w.key} work={w} stage={stage} who={who} onFix={goFix} readOnly={!canReview} isSuper={flow.canPick} />
                     ))}
                   </div>
                 )}
@@ -1213,7 +1262,7 @@ export function Guitsetgel() {
                     <span>{tr('Бусад ажил')}</span>
                     <span className={s.groupCount}>{others.length}</span>
                   </div>
-                  {others.map((w) => <Item key={w.key} work={w} stage={stage} who={who} onFix={goFix} readOnly={!canReview} />)}
+                  {others.map((w) => <Item key={w.key} work={w} stage={stage} who={who} onFix={goFix} readOnly={!canReview} isSuper={flow.canPick} />)}
                 </div>
               )
             )}

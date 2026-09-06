@@ -51,32 +51,42 @@ for (const st of ['pending', 'pendDate', 'adds', 'asOfChanged']) {
 }
 console.log('✅ хоосон шалгалт — бүх төлөвөөр');
 
-/* ── 4. СЭРГЭЭХ талд бүх төрөл буцаж тавигдана ──
-   ⚠️ 2026-09-03: хөтчийн `confirm` нь апп доторх төвлөрсөн цонх болов
-   (`RestoreModal`) тул шүүлт ба буулгалт ХОЁР блок болж салсан: эффект нь
-   ноорогийг шүүж `setRestore(...)`-д хийнэ, `applyRestore` нь төлөв рүү
-   буулгана. Шалгуур нь хоёуланг тусад нь барина. */
-const restore = between('const pickDraft = useCallback', 'setRestore({');
-const apply = between('const applyRestore = useCallback', 'setRestore(null);');
-for (const setter of ['setPending(r.cells)', 'setPendDate(r.dates)', 'setAsOf(r.asOf)', 'setAdds(']) {
-  assert.ok(apply.includes(setter), `сэргээлтэд «${setter}» алга`);
+/* ── 4. НООРОГ ШУУД БУУНА — цонх асуухгүй ──
+   ⚠️ ТҮҮХ: хөтчийн `confirm` (–2026-09-03) → апп доторх цонх `RestoreModal`
+   (2026-09-03) → ЦОНХГҮЙ, шууд буулгана (2026-09-06, хэрэглэгчийн заавар:
+   «ноорогийг сэргээхийг асуухгүй шууд гарч ирдэг байя, өнгөөр ялгаж хараад
+   засна»). Цонх нь ажил алдахаас хамгаалах зорилготой байсан ч бөглөгч өдөрт
+   олон удаа багц сольдог бөгөөд тэр бүрд ижил асуултад «Сэргээх» дарах нь
+   дэмий алхам болж байв.
+   ⚠️ АЮУЛГҮЙ БОЛГОСОН нь: сэргээсэн нүд бүр НОГООН (`dirty`) гарах ба
+   хэрэгслийн мөрөнд тоологдоно; хэрэггүй бол «ноорог устгах» товч. */
+const restore = between('const pickDraft = useCallback', 'const from = source ===');
+for (const setter of ['setPending(next)', 'setPendDate(nextDates)', 'setAsOf(draftAsOf)', 'setAdds(restoredAdds)']) {
+  assert.ok(restore.includes(setter), `шууд буулгалтад «${setter}» алга`);
 }
-console.log('✅ сэргээлт — бүх төлөв буцаж тавигдана');
+/* Юу сэргэснийг ИЛ хэлнэ — чимээгүй бууж болохгүй */
+assert.ok(restore.includes('say('), 'ноорог сэргэснийг хэрэглэгчид хэлэхгүй байна');
+/* Цонхны үлдэгдэл БАЙХГҮЙ байх ёстой */
+for (const gone of ['RestoreModal', 'setRestore', 'applyRestore', 'laterRestore', 'dropRestore']) {
+  assert.ok(!SRC.includes(gone), `сэргээх цонхны үлдэгдэл «${gone}» хэвээр байна`);
+}
+console.log('✅ ноорог шууд буудаг — цонх асуухгүй, юу сэргэснийг хэлнэ');
 
-/* ── 4b. ЦОНХНЫ ГУРВАН ГАРЦ — тус бүр өөр үр дагавартай ──
-   ⚠️ Хамгийн аюултай нь «дараа шийднэ»: цонх хаагдахад төлөв хоосон хэвээр
-   үлддэг тул хадгалалтын эффект ноорогийг УСТГАХ гээд байдаг. `keepDraft`
-   туг түүнийг барих ёстой — эс бөгөөс цонхыг хаамагц ажил алга болно. */
-const dropFn = between('const dropRestore = useCallback', '}, [pkg.key]);');
-assert.ok(dropFn.includes('clearDraftLS(pkg.key)'), '«Устгах» ноорогийг цэвэрлэхгүй байна');
-const laterFn = between('const laterRestore = useCallback', '}, []);');
-assert.ok(laterFn.includes('keepDraft.current = true'), '«Дараа шийднэ» ноорогийг хамгаалахгүй байна');
-assert.ok(!laterFn.includes('clearDraftLS'), '«Дараа шийднэ» ноорогийг устгаж байна');
+/* ── 4b. «НООРОГ УСТГАХ» — болих ЦОРЫН ГАНЦ зам ──
+   ⚠️ Цонх хасагдсанаар түүний «Устгах» гарц ч алга болсон. Энэ товчгүй бол
+   хэрэглэгч 40 нүдийг ГАРААР цэвэрлэх шаардлагатай болно. Локал БА алсын
+   хуулбар ХОЁУЛАА устах ёстой — эс бөгөөс дараагийн ачаалалтад буцаж ирнэ. */
+const dropFn = between('const dropDraft = useCallback', '}, [pkg.key, asOfOrig]);');
+assert.ok(dropFn.includes('clearDraftLS(pkg.key)'), 'ноорог устгахад локал хуулбар үлдэж байна');
+assert.ok(dropFn.includes('clearRemoteDraft(pkg.key)'), 'ноорог устгахад АЛСЫН хуулбар үлдэж байна');
+for (const st of ['setPending({})', 'setPendDate({})', 'setAdds([])']) {
+  assert.ok(dropFn.includes(st), `ноорог устгахад «${st}» алга`);
+}
 assert.ok(
   SRC.includes('promptedPkgRef.current === pkg.key && !keepDraft.current'),
   'автомат цэвэрлэлт `keepDraft`-ыг үл тоож байна',
 );
-console.log('✅ цонхны гурван гарц — сэргээх · дараа шийдэх · устгах');
+console.log('✅ «ноорог устгах» — локал ба алсын хуулбар хоёулаа цэвэрлэгдэнэ');
 
 /* ── 5. ЭРХИЙН ХААЛТ сэргээлтэд ХЭВЭЭР ──
    Эрх хооронд нь хасагдсан бол ноорог дахь өгөгдөл дэлгэцэд гарах ёсгүй. */
@@ -138,9 +148,32 @@ assert.ok(
   SRC.includes('if (d.t < DRAFT_FRESH_START) return null;'),
   'шинэ эхлэлээс өмнөх ноорог бүхэлдээ хүчингүй болох ёстой',
 );
-/* (4) Хэт том ноорог алсад ЯВАХГҮЙ, тэгснээ ИЛ хэлнэ */
+/* (4) Алсын хуулбарын БАЙДАЛ ил байх — хэт том, унасан, амжилттай гурвуулаа.
+   ⚠️ 2026-09-06: `remoteBig` (boolean) нь ЗӨВХӨН хэмжээг хэлдэг байсныг
+   `remoteState` болгов. Сүлжээ/токен/хүснэгтийн уналт үед дэлгэц «ноорог
+   хадгалагдав» гэж ХЭВЭЭР баталдаг тул бөглөгч алсад хуулагдсан гэж итгээд
+   өөр компьютер дээр хоосон хуудас олдог байв. */
 assert.ok(SRC.includes('REMOTE_MAX'), 'алсын хэмжээний хамгаалалт алга');
-assert.ok(SRC.includes('setRemoteBig(true)'), 'хэт том ноорог чимээгүй алгасагдаж байна');
+assert.ok(SRC.includes("setRemoteState({ kind: 'big' })"), 'хэт том ноорог чимээгүй алгасагдаж байна');
+assert.ok(SRC.includes("{ kind: 'fail' }"), 'алсын хуулбар унасныг ил хэлэхгүй байна');
+assert.ok(SRC.includes("kind: 'ok'"), 'алсын хуулбар амжилттай болсныг харуулахгүй байна');
+/* ⚠️ Үр дүнг ХАЯХГҮЙ: `void saveRemoteDraft(` нь амжилтгүйг чимээгүй залгина */
+assert.ok(
+  !/void saveRemoteDraft\([^)]*\);/.test(SRC),
+  'saveRemoteDraft-ийн үр дүн хаягдаж байна — уналт ил гарахгүй',
+);
+
+/* (4b) ДЭЭД ХҮЛЭЭЛТ — 12 сек нь зөвхөн debounce байсан тул тасралтгүй
+   бөглөж байхад алсын хуулбар ХЭЗЭЭ Ч бичигддэггүй байв (2026-09-06). */
+assert.ok(SRC.includes('60_000'), 'алсын бичилтэд дээд хүлээлт алга');
+assert.ok(SRC.includes("'pagehide'"), 'pagehide дээр илгээхгүй байна');
+
+/* (4c) НООРОГИЙН ХУГАЦАА — ажлын долоо хоногт таарах ёстой.
+   ⚠️ 3 хоног байхад баасны ноорог мягмарт хоёр талдаа чимээгүй устдаг байв. */
+assert.ok(
+  /DRAFT_TTL_MS = 14 \* 24 \* 3600 \* 1000/.test(SRC),
+  'ноорогийн хугацаа 14 хоног байх ёстой (баасан→мягмар алдагдахгүй)',
+);
 console.log('✅ алсын хуулбар — агшны сонголт · завсарлага · цэвэрлэгээ · хэмжээ');
 
 /* ── 6c. АГШИН СОЛИГДОХОД НООРОГ АМЬД ҮЛДЭНЭ ──
