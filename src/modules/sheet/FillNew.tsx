@@ -191,7 +191,21 @@ type RestorePlan = {
 };
 
 const DRAFT_PREFIX = "selbe-fillnew-draft:";
-const DRAFT_TTL_MS = 3 * 24 * 3600 * 1000;
+/**
+ * НООРОГИЙН АМЬДРАХ ХУГАЦАА.
+ *
+ * ⚠️ 3 → 14 ХОНОГ (2026-09-06). 3 хоног нь ажлын долоо хоногийн хэмнэлд
+ * ТААРАХГҮЙ байв: баасан 17:00-д хадгалсан ноорог даваа 17:00-д хугацаа
+ * дуусч, мягмар өглөө нээхэд ЛОКАЛ ба АЛСЫН хуулбар ХОЁУЛАА чимээгүй
+ * устдаг (`readDraft` → `localStorage.removeItem`; сэргээх эффект →
+ * `clearRemoteDraft`). Гурван өдрийн амралт, өвчтэй, томилолт бүрд ижил.
+ * Хэрэглэгчид ямар ч мэдэгдэл очдоггүй — зүгээр л «ноорог алга».
+ *
+ * ⚠️ Сунгах нь эрсдэлгүй: ноорог нь ЗӨВХӨН нийтлээгүй засвар бөгөөд сэргээх
+ * цонх нь хадгалагдсан агшин ба нүдний тоог ил харуулдаг тул хуучирсныг
+ * хэрэглэгч өөрөө таньж «Устгах» дарж чадна.
+ */
+const DRAFT_TTL_MS = 14 * 24 * 3600 * 1000;
 /**
  * ⚠️ ШИНЭ ЭХЛЭЛ — ЭНЭ АГШНААС ӨМНӨХ НООРОГ ТУРШИЛТЫНХ (2026-09-03 17:10, +08).
  *
@@ -944,7 +958,22 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   const remoteQueue = useRef<{ pkg: string; draft: Draft } | null>(null);
   /** Алсын илгээлтийн цохилт ба «хэт том» тэмдэг — дээрх эффектүүд ашиглана */
   const [remoteTick, setRemoteTick] = useState(0);
-  const [remoteBig, setRemoteBig] = useState(false);
+  /**
+   * АЛСЫН ХУУЛБАРЫН БАЙДАЛ (2026-09-06).
+   *
+   * ⚠️ Урьд нь `remoteBig` гэсэн ганц boolean байсан бөгөөд ЗӨВХӨН «хэт том»
+   * тохиолдлыг хэлдэг байв. Сүлжээ тасарсан, токен дууссан, хүснэгт олдоогүй
+   * — эдгээрт дэлгэц «ноорог хадгалагдав» гэж ХЭВЭЭР баталдаг тул бөглөгч
+   * алсад хуулагдсан гэж итгээд өөр компьютер дээр хоосон хуудас олдог байв.
+   *
+   * ⚠️ `null` = хараахан илгээгээгүй (эхний 12 секунд) — тэр үед юу ч
+   *    хэлэхгүй, эс бөгөөс бичиж эхэлмэгц худал анхааруулга гарна.
+   */
+  const [remoteState, setRemoteState] = useState<
+    null | { kind: 'ok'; at: number } | { kind: 'big' } | { kind: 'fail' }
+  >(null);
+  /** Сүүлийн алсын илгээлтийн агшин — дээд хүлээлтийн (60 сек) лавлах цэг */
+  const lastRemoteRef = useRef(0);
 
   // Багц солигдох бүрд бүдүүвч + мөрүүдийг шинээр татна. Хуучин багцын
   // хариу хожуу ирээд шинийг дарж бичихээс `alive` хамгаална.
@@ -1094,12 +1123,25 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     setStagedFillMs(staged.payload.fillMs);
   }, [staged, hyRows, hyLoading, hyErr, view]);
 
-  // Үйлчилгээнд огноо огт бичигдээгүй бол `<select>` эхний мөрөө харуулах ч
-  // төлөв нь `null` хэвээр үлдэж хүснэгт бүхэлдээ хоосон харагдана. Тиймээс
-  // хамгийн сүүлийн тайлангийн огноогоор нөхнө (нийтлэхэд л хадгалагдана).
-  useEffect(() => {
-    if (asOf == null && dates.length) setAsOf(inputToMs(dates[dates.length - 1]));
-  }, [asOf, dates]);
+  /*
+   * ⚠️ ӨӨР БАГЦЫН ОГНООГООР НӨХӨХГҮЙ (2026-09-06, хэрэглэгчийн шууд заавар:
+   * «өөр багцын огноо авч огт болохгүй — огноо тохируулаагүй бол хоосон
+   * өгөгдлөөсөө ажиллах ёстой»).
+   *
+   * Урьд нь энд `if (asOf == null && dates.length) setAsOf(сүүлийн огноо)`
+   * гэсэн нөхөлт байв. `sheetDates()` нь БҮХ багцын `buglusun_ognoo`-г
+   * нийлүүлдэг тул хэзээ ч нийтлэгдээгүй хуудас (Багц 1·12F, Багц 4-2·12F)
+   * огт хамаагүй багцын хуанлиар төлөвлөгөөт хувиа бодуулж, дэлгэц дээр
+   * үндэсгүй ч итгэл төрүүлэхүйц тоо гаргадаг байлаа. Мөн тэр утга нь
+   * `asOfOrig`-оос ЗӨРдөг тул `dirtyCount` 1 болж, хэрэглэгч юу ч хийгээгүй
+   * атлаа «Нийтлэх» идэвхжиж, харь огноо архивт бичигдэх зам нээгддэг байв.
+   *
+   * Одоо `asOf` нь `null` хэвээр үлдэнэ: `computeAll` төлөвлөгөөт хувийг
+   * `null` («мэдээлэлгүй») болгоно, харин обьём, бодит гүйцэтгэл, жин,
+   * мөнгөн дүн нь огнооноос хамаардаггүй тул ХЭВИЙН бодогдоно — хуудас
+   * хоосорохгүй. Огноог хэрэглэгч дээд талын «Огноо»-гоор эсвэл «Хуваарь»
+   * харагдацаар өөрөө тавина.
+   */
 
   const nBld = sc?.bld.length ?? 0;
 
@@ -1200,11 +1242,16 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   const rowsAll = useMemo(() => withAdds(rows), [rows, withAdds]);
 
 
+  /*
+   * ⚠️ `asOf` нь `null` БАЙЖ БОЛНО — тэр үед ч хүснэгт бодогдоно (2026-09-06).
+   * Урьд нь `asOf == null` бол `[]` буцаадаг байсан тул огноогүй хуудас
+   * БҮХЭЛДЭЭ хоосон харагдаж, тэр нь дээрх «өөр багцын огноогоор нөхөх»
+   * буруу шийдлийг шаарддаг байв. Одоо `computeAll` огноогүйг зөвшөөрч,
+   * зөвхөн ТӨЛӨВЛӨГӨӨТ хувийг `null` болгоно — обьём, бодит гүйцэтгэл, жин,
+   * мөнгөн дүн бүгд хэвийн гарна.
+   */
   const calc = useMemo(
-    () =>
-      asOf == null || !nBld
-        ? []
-        : computeAll(rowsAll, nBld, asOf, pending, pendDate, hasObyem),
+    () => (!nBld ? [] : computeAll(rowsAll, nBld, asOf, pending, pendDate, hasObyem)),
     [rowsAll, nBld, asOf, pending, pendDate, hasObyem],
   );
 
@@ -1969,16 +2016,37 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       if (q.pkg !== pkg.key) { remoteQueue.current = null; return; }
       remoteQueue.current = null;
       const body = JSON.stringify(q.draft);
-      if (body.length > REMOTE_MAX) { setRemoteBig(true); return; }
-      setRemoteBig(false);
-      /* ⚠️ Үр дүнг ХҮЛЭЭХГҮЙ, алдаанд ЧИМЭЭГҮЙ: локал ноорог бүрэн бүтэн тул
-         бөглөгчийг сүлжээний алдаагаар зовоох шаардлагагүй. */
-      void saveRemoteDraft(q.pkg, q.draft.t, body);
+      if (body.length > REMOTE_MAX) { setRemoteState({ kind: 'big' }); return; }
+      /* ⚠️ АМЖИЛТГҮЙГ ИЛ ХЭЛНЭ (2026-09-06). Урьд нь `void saveRemoteDraft(...)`
+         гэж үр дүнг ХАЯДАГ байсан тул сүлжээгүй, токен дууссан, хүснэгт
+         олдоогүй — аль ч тохиолдолд дэлгэц дээр «ноорог хадгалагдав» гэж
+         ХЭВЭЭР гарч, бөглөгч алсад хуулагдсан гэж итгээд өөр компьютер дээр
+         хоосон хуудас хүлээж авдаг байв. Локал ноорог бүрэн бүтэн тул
+         бөглөлтийг ЗОГСООХГҮЙ — зөвхөн байдлыг үнэн харуулна. */
+      lastRemoteRef.current = Date.now();
+      void saveRemoteDraft(q.pkg, q.draft.t, body).then((ok) => {
+        /* Багц солигдсон бол хуучин хариугаар шинэ багцын төлөвийг бичихгүй */
+        if (loadedPkgRef.current !== q.pkg) return;
+        setRemoteState(ok ? { kind: 'ok', at: Date.now() } : { kind: 'fail' });
+      });
     };
     const t = setTimeout(flush, 12_000);
+    /* ⚠️ ДЭЭД ХҮЛЭЭЛТ (2026-09-06). 12 секунд нь ЗӨВХӨН debounce байсан тул
+       тоолуур засвар бүрд дахин эхэлдэг: 12 секундэд нэг нүд оруулж 40 минут
+       ажилласан хүний ажил алсад ХЭЗЭЭ Ч хуулагдахгүй. Одоо сүүлийн
+       илгээлтээс 60 секунд өнгөрсөн бол завсарлагыг үл харгалзан илгээнэ. */
+    const since = Date.now() - lastRemoteRef.current;
+    const cap = since >= 60_000 ? setTimeout(flush, 0) : setTimeout(flush, Math.max(0, 60_000 - since));
     const onHide = () => { if (document.visibilityState === 'hidden') flush(); };
     document.addEventListener('visibilitychange', onHide);
-    return () => { clearTimeout(t); document.removeEventListener('visibilitychange', onHide); };
+    /* ⚠️ `pagehide` нь iOS Safari ба bfcache-д `visibilitychange`-ээс ИЛҮҮ
+       найдвартай — таб хаагдах цорын ганц дохио байх тохиолдол бий. */
+    window.addEventListener('pagehide', flush);
+    return () => {
+      clearTimeout(t); clearTimeout(cap);
+      document.removeEventListener('visibilitychange', onHide);
+      window.removeEventListener('pagehide', flush);
+    };
   }, [remoteTick, pkg.key]);
 
   // Таб хаах/refresh — нийтлээгүй засвартай үед хөтөч анхааруулна.
@@ -2030,7 +2098,12 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    */
   const publish = useCallback(async () => {
     // ⚠️ busy — Ctrl+S auto-repeat үед олон зэрэгцээ бичилт явахаас сэргийлнэ.
-    if (busy || asOf == null || dirtyCount === 0 || !sc) return;
+    /* ⚠️ `asOf == null` нь ЗОГСООХ шалтгаан БИШ (2026-09-06): хэзээ ч
+       нийтлэгдээгүй хуудсанд огноо байхгүй бөгөөд бөглөгч түүнийг «Хуваарь»
+       харагдацаар дараа тавина. Урьд нь энэ шалгуур тийм хуудсаас илгээхийг
+       ЧИМЭЭГҮЙ зогсоодог байв — товч дарагдаад юу ч болохгүй. Огноогүй үед
+       төлөвлөгөөт хувь `null` (мэдээлэлгүй) хэвээр илгээгдэнэ. */
+    if (busy || dirtyCount === 0 || !sc) return;
     /*
      * ⚠️ ТҮГЖЭЭГ ЭНД ШАЛГАНА — товчны `disabled`-д найдаж БОЛОХГҮЙ. Ctrl+S нь
      *    `publish`-ыг ШУУД дууддаг тул саарал «Нийтлэх» товчийг тойрч гарна.
@@ -2507,13 +2580,24 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
             value={dt(asOf)}
             disabled={busy || noPerf}
             onChange={(e) => {
-              // ⚠️ Хоосон утга → null болговол calc=[] болж бүх мөр чимээгүй
-              // алга болно — тиймээс задлагдахгүй бол хуучнаа хэвээр үлдээнэ.
+              /* ⚠️ Хоосон утга нь «тохируулаагүй» хэсгийг сонгосон гэсэн үг —
+                 огноог БУЦААЖ null болгохгүй (санамсаргүй товшилтоор бүх
+                 төлөвлөгөөт хувь алга болохоос сэргийлнэ). Огноог арилгах
+                 шаардлагатай бол «Хуваарь» харагдацаас хийнэ. */
               const ms = inputToMs(e.target.value);
               if (ms != null) setAsOf(ms);
             }}
             title={tr('Төлөвлөгөөт хувь бүхэлдээ энэ огноогоор бодогдоно (excel-ийн «Шинэчлэгдсэн огноо»)')}
           >
+            {/*
+              * ⚠️ ОГНОО ТОХИРУУЛААГҮЙГ ИЛ ХЭЛНЭ (2026-09-06). `value` нь
+              * жагсаалтад байхгүй үед хөтөч ЭХНИЙ мөрийг харуулдаг тул урьд
+              * нь огноогүй хуудас өөр өдрийг «тохируулсан» мэт үзүүлдэг байв.
+              * Энэ мөр нь `value=""`-тэй тул тэр үед ЯГ өөрөө сонгогдоно.
+              */}
+            {asOf == null && (
+              <option value="">{tr('— тохируулаагүй —')}</option>
+            )}
             {dateOpts.map((d) => (
               <option key={d} value={d}>{d}</option>
             ))}
@@ -2626,9 +2710,25 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         )}
         {/* ⚠️ ХЭТ ТОМ ноорог алсад ЯВААГҮЙГ ил хэлнэ — «хадгалагдсан» гэж
             бодоод өөр машин дээр хоосон хуудас хүлээж авах нь хамгийн муу. */}
-        {remoteBig && (
+        {remoteState?.kind === 'big' && (
           <span className={st.autosaveWarn} role="status">
             {tr('Ноорог хэт том тул зөвхөн энэ компьютерт хадгалагдлаа.')}
+          </span>
+        )}
+        {/* ⚠️ АЛСЫН ХУУЛБАР УНАСАН (2026-09-06) — сүлжээ, токен, эрх, хүснэгт
+            аль нь ч болсон үр дүн НЭГ: ноорог ЗӨВХӨН энэ компьютерт байна.
+            Бөглөлт зогсохгүй тул алдаа биш, харин БАЙДЛЫН мэдээлэл. */}
+        {remoteState?.kind === 'fail' && (
+          <span className={st.autosaveWarn} role="status" title={tr('Дахин оролдлого автоматаар үргэлжилнэ. Өөр компьютероос үргэлжлүүлэх бол сүлжээ сэргэсний дараа хуудсыг нээлттэй үлдээнэ үү.')}>
+            {tr('⚠ ArcGIS-д хуулагдсангүй — ноорог зөвхөн энэ компьютерт байна.')}
+          </span>
+        )}
+        {/* ⚠️ АМЖИЛТТАЙГ ч ил хэлнэ: «хадгалагдав» гэдэг нь локалыг хэлдэг тул
+            алсын хуулбар ХЭЗЭЭ хуулагдсаныг тусад нь харуулж байж л бөглөгч
+            «өөр компьютероос үргэлжлүүлж болно» гэдэгт итгэнэ. */}
+        {remoteState?.kind === 'ok' && !locked && dirtyCount > 0 && (
+          <span className={st.autosave} title={tr('Энэ агшны байдлаар ArcGIS-д хуулагдсан — өөр компьютероос нэвтэрч үргэлжлүүлж болно.')}>
+            {tr('ArcGIS {0}', new Date(remoteState.at).toLocaleTimeString('mn-MN', { hour: '2-digit', minute: '2-digit' }))}
           </span>
         )}
       </div>

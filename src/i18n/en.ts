@@ -3395,7 +3395,6 @@ const en: Record<string, string> = {
   "Илгээлт «{0}» багцынх — хяналтын бүртгэл «{1}»": "The submission belongs to package \"{0}\" — the review record is \"{1}\"",
   "«Шинэчлэгдсэн огноо» алга тул гүйцэтгэлийг бодох боломжгүй": "\"Updated date\" is missing, so the progress cannot be computed",
   "{0} нүдийг шинэ мөрүүдэд тулгаж чадсангүй — архивт бичсэнгүй. Гүйцэтгэгчээр дахин илгээүүлнэ үү. Тулгагдаагүй: {1}": "{0} cells could not be matched to the new rows — nothing was written to the archive. Ask the contractor to submit again. Not matched: {1}",
-  "«Шинэчлэгдсэн огноо» алга тул архивт бичих боломжгүй": "\"Updated date\" is missing, so nothing can be written to the archive",
   "Багцын түлхүүр зөрсөн: {0} ≠ {1}": "Package key mismatch: {0} ≠ {1}",
   "Илгээлт хэт том ({0} тэмдэгт, дээд {1}). Хэсэгчлэн илгээх нь ТУСЛАХГҮЙ — дараагийн илгээлт өмнөхтэйгээ нэгтгэгддэг тул хэмжээ буурахгүй. Одоо илгээсэн хэсгээ хянагчаар батлуулсны дараа шинэ илгээлт цэвэр эхэлнэ.": "The submission is too large ({0} characters, max {1}). Splitting it into parts will NOT help — every submission is merged with the previous one, so the size does not shrink. Once the reviewer approves what you have already sent, the next submission starts clean.",
   "Нэвтрээгүй тул илгээлт хадгалагдсангүй": "Not signed in, so the submission was not saved",
@@ -3453,8 +3452,6 @@ const en: Record<string, string> = {
   "Дэд бүтэц ба нийгмийн үйлчилгээний давхаргууд мөн зэрэг татагдаж байгаа ч явцыг нь тусад нь хэмждэггүй.": "The infrastructure and social-service layers are loading at the same time, but their progress is not measured separately.",
   "хараахан ирээгүй": "not yet arrived",
   "100%-иас их — нэгтгэлд 100% гэж тооцов. Мөрийн Обьём эсвэл хуримтлалыг шалгана уу.": "Over 100% — counted as 100% in the roll-up. Check the row Volume or the accumulated amount.",
-
-  /* Ерөнхий дашбоард (2026-09-04) */
   "НЗД нөөц хөрөнгө": "Mayor's reserve fund",
   "Үнэт цаасны хөрөнгө": "Securities proceeds",
   "Тайлбаргүй": "No description",
@@ -3499,7 +3496,13 @@ const en: Record<string, string> = {
   "Техник хэрэгсэл": "Equipment",
   "Сүүлд бөглөсөн: {0}": "Last reported: {0}",
   "Сүүлд зассан: {0} · {1}": "Last edited: {0} · {1}",
-  "тодорхойгүй": "unknown"
+  "тодорхойгүй": "unknown",
+  "— тохируулаагүй —": "— not set —",
+  "⚠ ArcGIS-д хуулагдсангүй — ноорог зөвхөн энэ компьютерт байна.": "⚠ Not copied to ArcGIS — the draft exists only on this computer.",
+  "Дахин оролдлого автоматаар үргэлжилнэ. Өөр компьютероос үргэлжлүүлэх бол сүлжээ сэргэсний дараа хуудсыг нээлттэй үлдээнэ үү.": "Retries continue automatically. To continue from another computer, leave the page open until the network recovers.",
+  "ArcGIS {0}": "ArcGIS {0}",
+  "Энэ агшны байдлаар ArcGIS-д хуулагдсан — өөр компьютероос нэвтэрч үргэлжлүүлж болно.": "Copied to ArcGIS as of this moment — you can sign in from another computer and continue.",
+  "Батлагдаж архивт бичигдлээ, гэхдээ нэгтгэлийн хүснэгтэд бүртгэгдсэнгүй ({0}). Дашбоардын багцын муруйд энэ өдөр харагдахгүй — админд мэдэгдэнэ үү.": "Approved and written to the archive, but not registered in the roll-up table ({0}). This day will not appear on the package curve — please notify an admin.",
 };
 
 export default en;

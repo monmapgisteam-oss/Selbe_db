@@ -658,12 +658,19 @@ function Item({ work, stage, who, onFix, readOnly }: {
   };
   const mine = !readOnly && work.owner === stage && st !== STATUS.transferred;
 
-  const run = async (fn: () => Promise<{ ok: boolean; error?: string }>) => {
+  /*
+   * ⚠️ ХАГАС АМЖИЛТЫГ ч ХАРУУЛНА (2026-09-06). Батлалт бүтсэн атлаа
+   * нэгтгэлд бүртгэгдээгүй тохиолдол урьд нь ЗӨВХӨН `console.warn` байсан
+   * тул батлагдсан гүйцэтгэл дашбоардад хэзээ ч гарахгүйг менежер ч, админ
+   * ч мэддэггүй байв. `ok: true` тул шийдвэрийг буцаахгүй — гагцхүү
+   * анхааруулгыг ил гаргана.
+   */
+  const run = async (fn: () => Promise<{ ok: boolean; error?: string; warn?: string }>) => {
     if (busy) return;
     setBusy(true);
     const r = await fn();
     setBusy(false);
-    setErr(r.ok ? '' : (r.error ?? tr('Алдаа гарлаа')));
+    setErr(r.ok ? (r.warn ?? '') : (r.error ?? tr('Алдаа гарлаа')));
     if (r.ok) setReason('');
   };
 
