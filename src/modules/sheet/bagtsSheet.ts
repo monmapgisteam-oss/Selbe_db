@@ -222,6 +222,35 @@ function loadBaseKeys(pkg: Pkg, sc: Schema): Promise<string[]> {
      * суурь жаазны бодит уртад тэнцэнэ — хоосныг энд шүүхгүй. Шүүлт нь
      * `alignInsertions` дотор, `isBlankKey`-ээр хийгдэнэ.
      */
+    /**
+     * ⚠️ СУУРЬ ЖААЗ УСТСАН ТОХИОЛДОЛ (2026-09-06).
+     *
+     * Лавлахыг `buglusun_ognoo IS NULL` гэж хайдаг — өөрөөр хэлбэл АНХНЫ,
+     * хэзээ ч нийтлэгдээгүй хуулбар. Хуучин агшнуудыг цэвэрлэхэд тэр
+     * хуулбар устаж, энэ асуулга ХООСОН буцаах болов: «Багц 3.1» дээр
+     * лавлах 0 мөр гарч, зэрэгцүүлэлт бүтэлгүйтэн багц бүхэлдээ нээгдэхээ
+     * больсон.
+     *
+     * Огноогүй хуулбар байхгүй бол лавлахыг БҮХ мөрөөс гаргана — `lastFrame`
+     * нь ижил дүрмээр хамгийн сүүлийн БҮТЭН жаазыг таслах тул үр дүн нь
+     * өмнөхтэй ижил утгатай.
+     */
+    if (out.length === 0 && fld) {
+      for (let offset = 0; ; ) {
+        const j = await agsFetch(`${pkg.url}/query`, {
+          where: "1=1",
+          outFields: [sc.f.oid, sc.f.no, sc.f.work].join(","),
+          returnGeometry: "false",
+          orderByFields: `${sc.f.oid} ASC`,
+          resultRecordCount: "2000",
+          resultOffset: String(offset),
+        });
+        const fs = (j.features || []) as Feature[];
+        out.push(...fs);
+        if (!j.exceededTransferLimit || fs.length === 0) break;
+        offset += fs.length;
+      }
+    }
     return lastFrame(out, sc.f.no, TREES[pkg.key]?.length ?? 0).map((f) => rowKey(f, sc));
   })();
   baseKeyCache.set(pkg.key, p);
@@ -274,7 +303,7 @@ export function alignInsertions(cur: string[], ref: string[]): number[] | null {
   return j === ref.length ? map : null;
 }
 
-async function latestWhere(pkg: Pkg, sc: Schema): Promise<string> {
+async function latestWhere(pkg: Pkg, sc: Schema, expect = 0): Promise<string> {
   const fld = sc.f.fillDate;
   if (!fld) return "1=1"; // талбар үүсээгүй үйлчилгээ — хуучин зан төлөв
   const j = await agsFetch(`${pkg.url}/query`, {
@@ -286,7 +315,43 @@ async function latestWhere(pkg: Pkg, sc: Schema): Promise<string> {
   });
   const mx = j.features?.[0]?.attributes?.mx as number | null | undefined;
   if (mx == null) return `${fld} IS NULL`;
-  return dayFilter(fld, msToDay(mx));
+  const day = dayFilter(fld, msToDay(mx));
+
+  /**
+   * ⚠️ ОГНООГҮЙ МӨРИЙГ ЖААЗАНД НЬ НЭГТГЭХ (2026-09-06).
+   *
+   * Нийтлэл нь мөрүүдээ бичээд ДАРАА нь огноог нь тамгалдаг. Тэр хоёр дахь
+   * шат тасарвал жаазын нэг хэсэг нь огноогүй үлдэнэ — «Багц 3.3»-д яг тийм
+   * болсон: 1,238 мөрд огноо бичигдсэн, 221-д үгүй, гэвч OID-ууд нь хоорондоо
+   * СҮЛЖИЛДСЭН (6960…7180 нь 6914…8372-ын дунд) бөгөөд `Des_dugaar` нь
+   * 1…1,459 ТАСАЛДАЛГҮЙ — өөрөөр хэлбэл НЭГ жааз.
+   *
+   * Өдрөөр л шүүвэл тэр 221 мөр унаж, хуудас «1,238 мөр ирлээ, 1,459 байх
+   * ёстой» гэж хаагдана.
+   *
+   * ⚠️ ӨӨРӨӨ ШАЛГАДАГ НӨХЦӨЛ. Огноогүй мөрийг ДУРААР нэмэхгүй: өдрийн шүүлт
+   * зураглалаас ДУТУУ гарсан БА огноогүйг нэмэхэд ЯГ таарсан үед л нэгтгэнэ.
+   * Зөрвөл хуучин зан төлөв (зөвхөн өдөр) хэвээр — эс бөгөөс хэзээ ч
+   * нийтлэгдээгүй ШИНЭ суурь жааз байгаа үед хоёр өөр жааз нийлж, мөрүүд
+   * давхардана.
+   *
+   * ⚠️ Огноог ЭНД Ч, өөр хаана ч БИЧИХГҮЙ — зөвхөн уншилтын шүүлт. Огноо нь
+   * «Хуваарь»-аас оноогдоно.
+   */
+  if (expect > 0) {
+    const cnt = async (where: string): Promise<number> => {
+      const r = await agsFetch(`${pkg.url}/query`, {
+        where, returnCountOnly: "true", returnGeometry: "false",
+      });
+      return Number(r.count ?? 0);
+    };
+    const nDay = await cnt(day);
+    if (nDay > 0 && nDay < expect) {
+      const nNull = await cnt(`${fld} IS NULL`);
+      if (nDay + nNull === expect) return `((${day}) OR ${fld} IS NULL)`;
+    }
+  }
+  return day;
 }
 
 /** Багцын бүх мөрийг татна — maxRecordCount 2000 тул хуудаслая. */
@@ -334,7 +399,11 @@ export async function loadRows(
 }> {
   const tree = TREES[pkg.key] ?? "";
   const where =
-    atDay && sc.f.fillDate ? dayFilter(sc.f.fillDate, atDay) : await latestWhere(pkg, sc);
+    atDay && sc.f.fillDate
+      ? dayFilter(sc.f.fillDate, atDay)
+      /* ⚠️ `tree.length` дамжуулна — `latestWhere` огноогүй мөрийг жаазанд нь
+         нэгтгэх эсэхийг ЗӨВХӨН тэр уртаар шалгаж шийднэ. */
+      : await latestWhere(pkg, sc, tree.length);
   const feats: Feature[] = [];
   for (let offset = 0; ; ) {
     const j = await agsFetch(`${pkg.url}/query`, {
@@ -431,8 +500,39 @@ export async function loadRows(
     }
   } else if (expect > 0 && feats2.length !== expect) {
     const ref = await loadBaseKeys(pkg, sc);
-    const map =
+    let map =
       ref.length === expect ? alignInsertions(feats2.map((f) => rowKey(f, sc)), ref) : null;
+
+    /**
+     * ⚠️ ЗӨВХӨН НЭГ АГШИН ҮЛДСЭН ҮЕИЙН НӨХӨЛТ (2026-09-06).
+     *
+     * ЯАГААД: `alignInsertions` нь зураглалын ХООСОН мөрүүдийг алгасдаг ч
+     * тэдгээрийг ТАНИХЫН тулд СУУРЬ жаазны түлхүүр хэрэгтэй. «Багц 3.1»-д
+     * зураглал 1,471 (сүүлийн мөр нь хоосон) атлаа нийтлэгдсэн жааз 1,470 —
+     * хоосон мөр хэзээ ч архивт бичигддэггүй. Урьд нь тэр багцад ХУУЧИН
+     * суурь жааз (1,471 мөр, хоосон мөртэйгээ) байсан тул зэрэгцүүлэлт
+     * бүтдэг байв. Хуучин агшнуудыг цэвэрлэхэд тэр лавлах алга болж, багц
+     * бүхэлдээ нээгдэхээ болив.
+     *
+     * НӨХӨЛТ: суурь жааз нь ОДООГИЙН жааз ӨӨРӨӨ бол (`ref.length ===
+     * feats2.length`) зэрэгцүүлэх зүйл алга — мөр бүр байрандаа. Зураглал
+     * УРТ байгаа нь зөвхөн нийтлэгддэггүй хоосон мөрүүдээс.
+     *
+     * ⚠️ ГЭХДЭЭ БАЙРЛАЛААР ШУУД АВАХГҮЙ: хэрэв илүү мөр нь ДУНД байвал
+     * байрлал шилжиж, гүйцэтгэл ӨӨР мөрөнд наалдана. Тиймээс гарсан модыг
+     * ЗААВАЛ ШАЛГАНА — гүн 0-оос эхэлж, нэг алхамд 1-ээс их үсрэхгүй байх
+     * ёстой. Шалгалт унавал хуучин ХАТУУ алдаа руу унана: чимээгүй буруу
+     * шатлалаас алдаа шидэх нь хавьгүй дээр.
+     */
+    if (!map && ref.length === feats2.length && expect > feats2.length) {
+      const seq = feats2.map((_, i) => treeDepth(i));
+      const okTree =
+        seq.length > 0
+        && seq[0] === 0
+        && seq.every((d, i) => Number.isFinite(d) && (i === 0 || d <= seq[i - 1] + 1));
+      if (okTree) map = feats2.map((_, i) => i);
+    }
+
     if (!map)
       throw new Error(
         tr(
@@ -570,6 +670,53 @@ export const msToDay = (ms: number | null): string =>
  *    Обьём бол ХЭМЖИЛТ — таамаглаж болохгүй, зөвхөн гараар бичигдэнэ.
  *    Хоосон байхад гүйцэтгэлийн хувь нь хуучнаараа хэвээр үлдэнэ.
  */
+/**
+ * НҮДНИЙ ЗАСВАРЫН УТГЫН ДҮРЭМ (2026-09-06).
+ *
+ * `pending`/`Draft.cells`/`SubmissionPayload.cells` бүгд `Record<string,string>`
+ * тул утгын ДҮРМИЙГ өргөтгөвөл доод давхаргын сувгууд (ноорог хадгалах,
+ * илгээлт, overlay, буулгалт) огт хөндөгдөхгүй — тэд зүгээр л мөр зөөнө:
+ *
+ *   `"12.5"`   → ОБЬЁМ (хуучин дүрэм, өөрчлөгдөөгүй)
+ *   `"%50"`    → ХУВЬ (50%). Мөрийн `Обьём` байвал обьём нь `0.5 × Обьём`
+ *                гэж бодогдоно; байхгүй бол обьём НЬ ХЭВЭЭР үлдэж зөвхөн
+ *                хувь бичигдэнэ.
+ *
+ * ⚠️ ЯАГААД ХОЁР ЧИГЛЭЛ ХЭРЭГТЭЙ ВЭ: 550 навч мөрд (нийтийн 4.4%, Багц 3.1-д
+ * 362 буюу 26.3%) мөрийн `Обьём` ОГТ БАЙХГҮЙ. Тэдгээрт обьём бичсэн ч хувь
+ * бодогдохгүй, хувь бичих зам байхгүй байсан тул бөглөх БОЛОМЖГҮЙ байв.
+ *
+ * ⚠️ ГАНЦ ЭХ СУРВАЛЖ ХЭВЭЭР: нүд бүр АЛЬ НЭГ хэлбэрээр л хадгалагдана
+ * (хоёуланг зэрэг биш). Тиймээс «гараар бичсэн хувь ↔ обьёмоос бодогдсон хувь»
+ * гэсэн хоёрдмол утга үүсэхгүй.
+ */
+const PCT = "%";
+
+/** Засварын мөр ХУВЬ мөн үү (`%50`) */
+export const isPctEdit = (v: string | undefined): boolean =>
+  typeof v === "string" && v.trim().startsWith(PCT);
+
+/** Хувийн засварын утга 0–1 бутархайгаар; засвар нь хувь БИШ бол `null` */
+export const editPct = (v: string | undefined): number | null => {
+  if (!isPctEdit(v)) return null;
+  const t = v!.trim().slice(PCT.length).trim();
+  if (t === "") return null;
+  const n = Number(t);
+  // ⚠️ 100-аас ИХ хувийг хаахгүй — эх өгөгдөлд бодитоор бий (309.9%-ийн жишээ).
+  //    Сөрөг нь утгагүй тул 0-оор хаана.
+  return Number.isFinite(n) ? Math.max(0, n) / 100 : null;
+};
+
+/**
+ * Нүдний ХУВЬ — ЗӨВХӨН гараар бичсэн нь. Обьёмоос бодогдох замыг энд
+ * оруулахгүй (тэр нь `computeAll`-д, мөрийн `Обьём`-той хамт).
+ */
+export const cellPct = (
+  r: SheetRow,
+  b: number,
+  edits: Record<string, string> = {},
+): number | null => editPct(edits[`${r.oid}:${b}`]);
+
 export const cellObyem = (
   r: SheetRow,
   b: number,
@@ -579,6 +726,13 @@ export const cellObyem = (
   if (e === undefined) return r.obyem[b];
   const t = e.trim();
   if (t === "") return null;
+  /* ⚠️ ХУВИАР бичсэн бол обьёмыг мөрийн `Обьём`-оос БОДНО. `Обьём` байхгүй
+     мөрд обьёмыг ТААМАГЛАХГҮЙ — хадгалагдсаныг нь хэвээр буцаана (хувь нь
+     `computeAll`-д тусад нь суух тул мэдээлэл алдагдахгүй). */
+  const pct = editPct(t);
+  if (pct != null) {
+    return r.vol != null && r.vol > 0 ? pct * r.vol : r.obyem[b];
+  }
   // Сөрөг обьём утгагүй — бичсэн ч 0-оор хаана.
   return Number.isFinite(Number(t)) ? Math.max(0, Number(t)) : r.obyem[b];
 };
@@ -1049,10 +1203,20 @@ export function computeAll(
         const cum = hasField ? cellObyem(r, b, edits) : null;
         obyem[b] = cum;
 
-        // 2) ХУВЬ — ЗӨВХӨН обьёмоос бодогдоно. Гараар бичих зам БАЙХГҮЙ.
-        //    Хуваарь (мөрийн Обьём) хараахан алга бол хадгалагдсан хувь нь
-        //    хэвээр үлдэнэ — Обьёмыг нь оруулмагц өөрөө бодогдож эхэлнэ.
-        act[b] = cum != null && rVol != null && rVol > 0 ? cum / rVol : r.act[b];
+        /* 2) ХУВЬ — ГУРВАН эх сурвалж, ЭНЭ дарааллаар:
+         *    a) ГАРААР бичсэн хувь (`%50`) — 2026-09-06-нд нэмэгдсэн зам.
+         *       Хэрэглэгч нүдээ хувиар бөглөсөн бол тэр нь давамгайлна.
+         *    b) Обьёмоос бодогдсон — `хуримтлал ÷ мөрийн Обьём` (хуучин зам).
+         *    c) Хадгалагдсан хувь — хоёул боломжгүй үед хэвээр үлдэнэ.
+         *
+         * ⚠️ ХОЁРДМОЛ УТГА ҮҮСЭХГҮЙ: нүд бүр `pending`-д АЛЬ НЭГ хэлбэрээр л
+         *    хадгалагдана (`"12.5"` эсвэл `"%50"`), хоёулаа зэрэг биш.
+         *    Хувиар бичсэн үед обьём нь мөн тэр хувиас бодогдоно
+         *    (`cellObyem`), тиймээс хоёр багана хоорондоо ҮРГЭЛЖ нийцнэ. */
+        const pctEdit = cellPct(r, b, edits);
+        act[b] = pctEdit != null
+          ? pctEdit
+          : cum != null && rVol != null && rVol > 0 ? cum / rVol : r.act[b];
 
         /* ⚠️ 100%-ИАС ИХ ГҮЙЦЭТГЭЛ (2026-09-04) — НУУХГҮЙ, харин ТАРААХГҮЙ.
          *    Амьд жишээ: Багц 1·9F oid 31534 блок «5/3» → 443 ÷ 142.96 =
