@@ -1,0 +1,14 @@
+﻿husnegt,code,talbar,mongol_ner,esri_torol,tailbar
+huvaari_obyem,HO01,dkey,Түлхүүр,String(96),bagts|turul|des_dugaar|blok|sar_txt — ДАВТАГДАШГҮЙ. Unique индекс тавина: зэрэгцээ бичилтийн давхардлыг сангийн түвшинд таслана
+huvaari_obyem,HO02,turul,Төрөл,String(16),tolovlolt = төлөвлөсөн обьём. guitsetgel = хожим бодит гүйцэтгэл нэмэхэд. Одоо зөвхөн tolovlolt
+huvaari_obyem,HO03,bagts,Багц,String(16),Багцын түлхүүр: b1_9f b1_12f b2_9f b2_12f b31_9f b32_9f b33_9f b41_9f b42_9f b42_12f
+huvaari_obyem,HO04,bagts_ner,Багцын нэр,String(64),Хүн уншихад — «Багц 1 · 9 давхар». Аппгүйгээр ойлгогдохын тулд давхардуулж хадгална
+huvaari_obyem,HO05,des_dugaar,Ажлын код,Integer,"ГОЛ ХОЛБООС — Bagts_* хуудасны Des_dugaar. Нийтлэл бүрд ТОГТВОРТОЙ (10/10 багц, 8000 мөр дээр хэмжсэн); шинэ мөрд max+1 олгогддог, дахин дугаарлагддаггүй"
+huvaari_obyem,HO06,ajil_no,№,String(64),Хүн уншихад — «3.1». ДАН ГАНЦААРАА түлхүүр БИШ: (№ + ажлын нэр) ердөө 35-40% давтагдашгүй
+huvaari_obyem,HO07,ajil_ner,Ажлын нэр,String(255),Хүн уншихад. Холбоос эвдэрвэл нэрээр нь буцааж тааруулах нөөц зам
+huvaari_obyem,HO08,blok,Блок,String(32),"Барилга/блокийн шошго — «5/1», «29/3». Багц бүрд 4-22 блок"
+huvaari_obyem,HO09,sar,Сар,Date,"Тухайн сарын 1-ний өдөр, UTC 00:00. ArcGIS-ийн цаг хугацааны график, Dashboard-д зориулав"
+huvaari_obyem,HO10,sar_txt,Сар (текст),String(7),"YYYY-MM. Цагийн бүсийн эргэлзээгүй уншилт — апп ЭНЭ талбараар шүүнэ, Date-ээр БИШ"
+huvaari_obyem,HO11,obyem,Обьём,Double,Тухайн блокийн тухайн сард ТӨЛӨВЛӨСӨН тоо хэмжээ. Блокийн бүх сарын нийлбэр = niit_obyem
+huvaari_obyem,HO12,negj,Нэгж,String(16),м³ · м² · м · тн … Тоо өөрөө утгатай байхын тулд мөр бүрд бичнэ
+huvaari_obyem,HO13,niit_obyem,Нийт обьём,Double,Тухайн ажлын мөрийн Обьём. Нийлбэр таарсныг аппгүйгээр шалгах боломж олгоно

@@ -2,6 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { submitForReview } from '@/lib/hyanaltSubmit';
+import { loadPkgPlan, planPctFromMonths, type PkgPlan } from '@/lib/huvaariObyem';
 import {
   computeAll,
   loadRows,
@@ -1233,6 +1234,33 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   const rowsAll = useMemo(() => withAdds(rows), [rows, withAdds]);
 
 
+  /* ── ХУВААРИЙН САРЫН ЗАДАРГАА (`huvaari_obyem`) ──────────────────────
+   * ⚠️ Задаргаатай ажлын ТӨЛӨВЛӨГӨӨТ хувь нь сарын обьёмоос (S-муруй)
+   *    бодогдоно; задаргаагүйд огноогоор шугаман интерполяци ХЭВЭЭР.
+   * ⚠️ Уншилт УНАВАЛ чимээгүй: задаргаа бол нэмэлт нарийвчлал, хуудас
+   *    түүнгүйгээр бүрэн ажиллах ёстой.
+   */
+  const [obPlan, setObPlan] = useState<PkgPlan>(new Map());
+  useEffect(() => {
+    let alive = true;
+    setObPlan(new Map());
+    loadPkgPlan(pkg.key)
+      .then((r) => { if (alive) setObPlan(r.plan); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [pkg.key]);
+
+  /** `computeAll`-д өгөх задаргааны хувь — ажлын код + блокийн шошгоор */
+  const planPct = useCallback(
+    (row: SheetRow, b: number): number | null => {
+      if (row.des == null || !sc || asOf == null || !obPlan.size) return null;
+      const blok = sc.bld[b];
+      const m = blok ? obPlan.get(row.des)?.get(blok) : undefined;
+      return m ? planPctFromMonths(m, asOf) : null;
+    },
+    [obPlan, sc, asOf],
+  );
+
   /*
    * ⚠️ `asOf` нь `null` БАЙЖ БОЛНО — тэр үед ч хүснэгт бодогдоно (2026-09-06).
    * Урьд нь `asOf == null` бол `[]` буцаадаг байсан тул огноогүй хуудас
@@ -1240,10 +1268,13 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    * буруу шийдлийг шаарддаг байв. Одоо `computeAll` огноогүйг зөвшөөрч,
    * зөвхөн ТӨЛӨВЛӨГӨӨТ хувийг `null` болгоно — обьём, бодит гүйцэтгэл, жин,
    * мөнгөн дүн бүгд хэвийн гарна.
+   * ⚠️ Merge 2026-09-06 (tezu-bonu): задаргааны `planPct` нь `asOf == null`
+   *    үед өөрөө `null` буцаадаг тул огноогүй хуудсанд S-муруй ч мөн
+   *    төлөвлөгөөгүй — хоёр дүрэм зөрчилдөхгүй.
    */
   const calc = useMemo(
-    () => (!nBld ? [] : computeAll(rowsAll, nBld, asOf, pending, pendDate, hasObyem)),
-    [rowsAll, nBld, asOf, pending, pendDate, hasObyem],
+    () => (!nBld ? [] : computeAll(rowsAll, nBld, asOf, pending, pendDate, hasObyem, planPct)),
+    [rowsAll, nBld, asOf, pending, pendDate, hasObyem, planPct],
   );
 
   /**

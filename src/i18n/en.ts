@@ -3171,8 +3171,8 @@ const en: Record<string, string> = {
   "Дуусах нь эхлэхээс өмнө": "End is before start",
   "Тавих": "Apply",
   "Бүлгийн муж": "Group span",
-  "Бүлгийн мужаас хальсан — хадгалахад мужид нь багтаана.": "Outside the group span — it will be clamped into it on save.",
   "мужаар нь авах": "use the group span",
+  "Бүлгийн хугацаа нь доторх ажлуудынхаа хамгийн эрт эхлэх — хамгийн сүүл дуусахаар ӨӨРӨӨ бодогдоно. Гараар засахгүй: ажлуудаа зөөвөл бүлэг дагана.": "A group's span is computed from its own tasks — earliest start to latest finish. It cannot be edited by hand: move the tasks and the group follows.",
   "Бүлэг: бүгд": "Group: all",
   "Хуваарийн дагуу": "By schedule",
   "Өнөөдөр ({0}) хуваарь нь явж байгаа ажлуудыг л харуулна. Хуваарьгүй ажил нуугдана. Дээрх «Огноо» нь ТАЙЛАНГИЙН огноо — үүнд нөлөөлөхгүй.": "Shows only the tasks whose planned window covers today ({0}). Unscheduled tasks are hidden. The «Огноо» box above is the REPORT date — it does not affect this.",
@@ -3535,6 +3535,16 @@ const en: Record<string, string> = {
   "Нэгж талбарын зориулалт": "Parcel land use",
   "зориулалт бүртгэгдсэн талбар": "parcels with land use recorded",
   "бүрэн чөлөөлсөн": "fully acquired",
+  "{0} ажлын хуваарь · {1} сарын обьём хадгалагдлаа": "{0} work schedule(s) · {1} monthly volume(s) saved",
+  "Сарын обьём": "Monthly volume",
+  "Огноо оруулмагц сарууд өөрөө гарч ирнэ.": "The months appear as soon as dates are entered.",
+  "{0}-ны обьём": "Volume for {0}",
+  "«Обьём» хоосон тул сарын задаргаа хийгдэхгүй.": "No «volume» on this row, so it cannot be broken down by month.",
+  "Нийлбэр": "Total",
+  "нийт обьёмтой тэнцэв": "matches the planned volume",
+  "{0}-аар илүү": "{0} over",
+  "{0} дутуу": "{0} short",
+  "Сарын обьёмын нийлбэр нийт обьёмтой тэнцээгүй": "The monthly volumes do not add up to the planned volume",
 };
 
 export default en;

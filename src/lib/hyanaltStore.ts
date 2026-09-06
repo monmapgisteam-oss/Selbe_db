@@ -346,7 +346,26 @@ async function archiveSubmission(cur: Row): Promise<Archived> {
   if (lastDay && lastDay >= msToDay(fillMs))
     fillMs = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
 
-  const frame = buildFrame(ov.rows, sc, nBld, asOf, hasObyem, fillMs);
+  /* ── САРЫН ЗАДАРГАА — дэлгэцтэй ИЖИЛ томъёо ────────────────────────
+   * ⚠️ `FillNew` төлөвлөгөөт хувийг задаргаанаас (S-муруй) харуулдаг тул
+   *    архивт мөн түүгээр бичнэ; эс бөгөөс батлагдсаны дараа тоо гулсана.
+   * ⚠️ Уншилт УНАВАЛ чимээгүй — задаргаагүйгээр хуучин (шугаман) зам.
+   */
+  const { loadPkgPlan, planPctFromMonths } = await import('@/lib/huvaariObyem');
+  let obPlan: Awaited<ReturnType<typeof loadPkgPlan>>['plan'] | null = null;
+  try {
+    obPlan = (await loadPkgPlan(pkg.key)).plan;
+  } catch {
+    obPlan = null;
+  }
+  const frame = buildFrame(ov.rows, sc, nBld, asOf, hasObyem, fillMs, {}, {},
+    (row, b) => {
+      // ⚠️ main (2026-09-06): `asOf` null байж болно — тэр үед задаргааны хувь ч null
+      if (!obPlan || row.des == null || asOf == null) return null;
+      const blok = sc.bld[b];
+      const m = blok ? obPlan.get(row.des)?.get(blok) : undefined;
+      return m ? planPctFromMonths(m, asOf) : null;
+    });
   /*
    * ⚠️ ЖААЗНЫ УРТЫГ БИЧИХИЙН ӨМНӨ ТУЛГАНА (2026-09-04-ний аудитын CRITICAL
    *    олдвор — Багц 3.1 · 9 давхар). `loadRows` нь № ба Ажил хоёул хоосон
