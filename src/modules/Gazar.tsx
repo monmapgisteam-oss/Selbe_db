@@ -15,7 +15,7 @@ import {
   queryStats, queryGroup, groups, count, sum, avg, type Aoi, type Row,
 } from '@/lib/query';
 import {
-  GAZAR_BUILDING, GAZAR_PARCEL, PARCEL_LEFT, PARCEL_CLEARED, parcelLeftWhere,
+  GAZAR_BUILDING, GAZAR_PARCEL, PARCEL_LEFT, PARCEL_CLEARED, parcelLeftWhere, parcelOidsWhere,
   BUILDING, LAYER_BY_ID, PKG_BY_BAGTS, bagtsKey,
 } from '@/lib/services';
 import { overlapLeftParcels } from '@/lib/parcelOverlap';
@@ -192,7 +192,13 @@ function OverlapBars({
       </Section>
     );
   }
-  const total = rows.reduce((a, r) => a + r.oids.length, 0);
+  /* ⚠️ ЯЛГААТАЙ талбар — зурвасуудын НИЙЛБЭР БИШ. Нэг үлдсэн нэгж талбар
+     хэд хэдэн багцын шугам/блоктой зэрэг огтлолцож болно (2026-09-06 амьдаар:
+     105 талбарын 73 нь 2–7 багцад тоологдож, нийлбэр 244 болдог). Нийлбэрийг
+     «талбар» гэж бичихэд зүүн баганын «Үлдсэн 143»-аас ИХ гарч зөрж байв.
+     Зурвас бүрийн тоо нь тэр багцын БОДИТ саад тул хэвээр (нийлбэр нь
+     утгагүй тоо болох тул толгойд огт харуулахгүй). */
+  const total = new Set(rows.flatMap((r) => r.oids)).size;
   return (
     <Section
       title={tr('Саад — багцаар')}
@@ -401,7 +407,7 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     const w: Record<string, string | null> = {};
     for (const id of ovPick.layerIds) w[id] = ovPick.where;
     /* Газар чөлөөлөлтийн давхаргаас ЗӨВХӨН саад болж буй талбарууд */
-    w[PARCEL_LAYER_ID] = `OBJECTID IN (${ovPick.oids.join(',')})`;
+    w[PARCEL_LAYER_ID] = parcelOidsWhere(ovPick.oids);
     return w;
   }, [ovPick]);
 
@@ -430,7 +436,7 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     setOvPick(r);
     /* ⚠️ Анимацигүй — багц дараалан товшиход гөлгөр нислэг нь
        хойшлол мэт мэдрэгддэг (2026-08-28, хэрэглэгчийн заавар). */
-    if (r) zoomToWhere(PARCEL_LAYER_ID, `OBJECTID IN (${r.oids.join(',')})`, { animate: false });
+    if (r) zoomToWhere(PARCEL_LAYER_ID, parcelOidsWhere(r.oids), { animate: false });
   }, [zoomToWhere]);
   const [opacity, setOpacity] = useState<Record<string, number>>({});
   const [layerSel, setLayerSel] = useState<string | null>(null);

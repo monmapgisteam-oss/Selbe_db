@@ -14,6 +14,7 @@ import { useAsync, type Async } from '@/lib/useAsync';
 import { layerTotals, qtyText, usePlanTotals } from '@/lib/totals';
 import {
   BUILDING, PROGRESS_LEVELS, LAYER_BY_ID, PKG_BY_BAGTS, bagtsKey, zoneWhere,
+  parcelOidsWhere,
 } from '@/lib/services';
 import { mnt, num, pct, shade, tint, NO_DATA } from '@/lib/format';
 import { readParam, writeParams } from '@/lib/urlState';
@@ -287,9 +288,7 @@ export function Bagts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       w[BLOCK_LAYER] = active?.where ?? null;
       // ⚠️ Давхаргад 2,119 талбар бий — ЗӨВХӨН давхцсаныг үлдээнэ, эс бөгөөс
       //    бүх хот дүүрэн парсел зурагдаж блокууд дарагдана.
-      w[PARCEL_LAYER] = ovOk?.oids.length
-        ? `OBJECTID IN (${ovOk.oids.join(',')})`
-        : null;
+      w[PARCEL_LAYER] = ovOk?.oids.length ? parcelOidsWhere(ovOk.oids) : null;
       return w;
     },
     [active, ovOk, zone, mapVisible],
@@ -742,7 +741,7 @@ export function BlocksCard({
       setSelOid(OV_KEY);
       onOverlapPick?.(overlapOids);
       /* ⚠️ Анимацигүй — [[Gazar]]-тай ижил шалтгаанаар */
-      zoomToWhere(PARCEL_LAYER, `OBJECTID IN (${overlapOids.join(',')})`, { animate: false });
+      zoomToWhere(PARCEL_LAYER, parcelOidsWhere(overlapOids), { animate: false });
     }
     : null;
   /**
