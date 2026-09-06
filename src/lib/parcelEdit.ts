@@ -35,11 +35,14 @@ import { cached } from '@/lib/live';
 const F = PARCEL_LEFT.fields;
 
 /**
- * ⚠️ `PARCEL_LEFT`-д `oid` тодорхойлолт БАЙХГҮЙ (`GAZAR_PARCEL`, `BUILDING`-аас
- * ялгаатай). Давхаргын бүртгэл (`land:left`) ба энэ үйлчилгээ рүү ханддаг бүх
- * код `'OBJECTID'`-г шууд бичдэг тул энд нэг газар нэрлэв.
+ * ⚠️ 2026-09-06: `'OBJECTID'` → `PARCEL_LEFT.oid` (`'FID'`).
+ *
+ * Шинэ үйлчилгээнд `OBJECTID` нэртэй талбар МӨН БАЙГАА боловч тэр нь ЭНГИЙН
+ * Integer багана — жинхэнэ OID нь `FID`. Хуучнаар үлдээвэл `applyEdits` буруу
+ * мөр рүү бичих (эсвэл огт олохгүй) эрсдэлтэй. Одоо `services.ts`-ийн
+ * заалтаас гарна — хоёр газар бичихгүй.
  */
-export const PARCEL_OID = 'OBJECTID';
+export const PARCEL_OID = PARCEL_LEFT.oid;
 
 /**
  * ЗАСАГДАХ ТӨЛӨВҮҮД — `PARCEL_STATUS_HUES`-ийн түлхүүрээс.

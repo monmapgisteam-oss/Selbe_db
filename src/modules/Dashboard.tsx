@@ -21,7 +21,7 @@ import { usePlanTotals, type Totals } from '@/lib/totals';
 import { queryFeatures, type Row } from '@/lib/query';
 import {
   ZONE_LAYER, ZONE_FIELD, ZONE_NONE, BUILT_LAYER, BUILDING,
-  LAYER_BY_ID, PARCEL_LEFT, PARCEL_STATUS_HUES, SOURCE_FS, TASK_SHEET,
+  LAYER_BY_ID, PARCEL_CLEARED, PARCEL_LEFT, PARCEL_STATUS_HUES, SOURCE_FS, TASK_SHEET,
   PLAN_LAYER_IDS, MONITOR_LAYER_IDS, INITIAL_MAP_LAYERS,
   PKG_BY_FAMILY, PKG_BY_BAGTS, LAYERS, PROGRESS_LEVELS, bagtsKey, type PkgFamily,
 } from '@/lib/services';
@@ -149,7 +149,8 @@ const CATALOG_IDS = [...MONITOR_LAYER_IDS, ...PLAN_LAYER_IDS];
 
 /* ══════════════════ Хэмжээ сунгах бариул ══════════════════ */
 
-const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+/* ⚠️ `clamp` 2026-09-06-нд ХАСАГДАВ — цорын ганц уншигч нь `HeadKpi`-ийн
+   гүйцэтгэлийн зурвас (`tileBar`) байсан бөгөөд тэр зурвас устсан. */
 
 /* ⚠️ 2026-08-17: `useStoredWidth` ба `Grip` ХАСАГДСАН — дашбоардад өргөн чирэх
    бариул үлдсэнгүй: хэсгүүдийн жагсаалт нь дээд ХЭВТЭЭ мөр болсон, чартууд нь
@@ -1257,7 +1258,8 @@ function EnvRight({ d }: { d: DashData }) {
  */
 export function HeadKpi({ bagts }: { bagts: Async<BagtsRow[]> }) {
   const b = bagts.state === 'ready' ? bagts.data : null;
-  const blocks = b ? b.reduce((a, x) => a + x.blocks, 0) : null;
+  /* ⚠️ `blocks` (блокийн тоо) 2026-09-06-нд хасагдав — зөвхөн доод дэд мөрөнд
+     («113 блок») хэрэглэгддэг байсан бөгөөд тэр мөр бүхэлдээ устсан. */
   const ail = b ? b.reduce((a, x) => a + x.ail, 0) : null;
   // ⚠️ Толгой/явцыг ЭНД амьдаар ачаална (prop-оор БИШ) — «Иргэдэд хүрэх үр өгөөж»
   //    (Irged.tsx) энэ мөрийг зөвхөн `bagts`-аар дахин ашиглана. loadHeadline/
@@ -1276,26 +1278,29 @@ export function HeadKpi({ bagts }: { bagts: Async<BagtsRow[]> }) {
    * БҮГД амьд боллоо: хил [97] · барилгын Population нийлбэр · Төсөл_Гүйцэтгэл
    * жигнэсэн дундаж · INVEST нийлбэр.
    */
-  const tiles: { v: string; unit?: string; label: string; sub?: string; lead?: true; bar?: number }[] = [
+  /**
+   * ⚠️ 2026-09-06: ДЭД МӨР (`sub`) БҮРМӨСӨН ХАСАГДАВ (хэрэглэгчийн шийдвэр).
+   * «113 блок» · «7 багц тайлагнасан» · «гэрээ байгуулсан 2,073,074,430,035 ₮»
+   * гэсэн гурван мөр нь таван нүдний ГУРАВД Л байсан тул нүднүүд өөр өндөртэй
+   * болж, зурвасын доод ирмэг тасархай харагддаг байв. Мөн тэдгээр нь өөрсдөө
+   * KPI биш ТАЙЛБАР — нүдний гол тоог сулруулж байлаа.
+   */
+  const tiles: { v: string; unit?: string; label: string; lead?: true }[] = [
     { v: h == null ? '…' : num(h.areaHa, 1), unit: tr('га'), label: tr('Төслийн талбай') },
-    {
-      v: ail == null ? '…' : num(ail), unit: tr('өрх'),
-      label: tr('Өрхийн орон сууц'),
-      sub: blocks == null ? undefined : tr('{0} блок', num(blocks)),
-    },
+    { v: ail == null ? '…' : num(ail), unit: tr('өрх'), label: tr('Өрхийн орон сууц') },
     { v: h == null ? '…' : num(h.population), unit: tr('хүн'), label: tr('Хамрагдах хүн ам') },
+    /* ⚠️ 2026-09-06: `bar` (гүйцэтгэлийн зурвас) ХАСАГДАВ. Гүйцэтгэл 4.18%
+       үед дүүргэлт нь 2px өндөр замын 4% буюу үл үзэгдэх богино байсан тул
+       нүдэн дээр «санамсаргүй зураас» мэт харагдаж, бусад ДӨРВӨН нүдэнд
+       байхгүй ГАНЦ элемент болж зурвасын тэгш байдлыг эвдэж байв. Хувийг тоо
+       нь өөрөө хэлнэ. `lead` (дээд ирмэгийн акцент) хэвээр — тэр нь гол
+       үзүүлэлтийг заана. */
     {
       v: p.actual == null ? '…' : num(p.actual, 2), unit: '%',
       label: tr('Төслийн нийт гүйцэтгэл'),
-      sub: p.packs ? tr('{0} багц тайлагнасан', num(p.packs)) : undefined,
       lead: true,
-      bar: p.actual ?? undefined,
     },
-    {
-      v: h == null ? '…' : num(h.investTotal), unit: tr('₮'),
-      label: tr('Төслийн нийт төсөв'),
-      sub: h == null ? undefined : tr('гэрээ байгуулсан {0}', mnt(h.investConfirmed)),
-    },
+    { v: h == null ? '…' : num(h.investTotal), unit: tr('₮'), label: tr('Төслийн нийт төсөв') },
   ];
 
   return (
@@ -1303,15 +1308,18 @@ export function HeadKpi({ bagts }: { bagts: Async<BagtsRow[]> }) {
       {tiles.map((t) => (
         <div key={t.label} className={`${o.tile} ${t.lead ? o.tileLead : ''}`}>
           <span className={o.tileVal}>
-            <b className="num">{t.v}</b>
+            {/**
+              * ⚠️ 2026-09-06: ФОНТЫГ ЗӨВХӨН УРТ УТГАД багасгана. Урьд нь
+              * `.tileVal b` бүхэлдээ 13px байсан — «2,660,000,000,000» багтаах
+              * гэж 2026-09-01-нд багасгасан нь ТАВУУЛАА нүдэнд хамаарч,
+              * «159.6», «4.18» зэрэг богино тоо шошгоосоо арай том хэмжээтэй
+              * үлдэж, KPI зурвас бүхэлдээ уншигдахаа больсон байв. `Stat`-ийн
+              * `statValueLong`-той ЯГ ижил зарчим: хэмжээг УТГЫН УРТААР шийднэ.
+              */}
+            <b className={`${String(t.v).length >= 10 ? o.tileValLong : ''} num`}>{t.v}</b>
             {t.unit && <i>{tr(t.unit)}</i>}
           </span>
           <span className={o.tileLabel}>{t.label}</span>
-          {/* Гол үзүүлэлтэд зурвас — тоо уншихаас өмнө хэмжээг нүдээр ойлгуулна */}
-          {t.bar != null && (
-            <span className={o.tileBar}><i className={o.active} style={{ width: `${clamp(t.bar, 0, 100)}%` }} /></span>
-          )}
-          {t.sub && <span className={o.tileSub}>{t.sub}</span>}
         </div>
       ))}
     </div>
@@ -2558,20 +2566,16 @@ function LandDetail({ parcels, land, flt, onFlt }: {
         <Data q={land} loading={tr('Татаж байна…')}>
           {(ls) => (
             <>
-                <Stats cols={2}>
+                {/* ⚠️ 2026-09-06: ТАВААС ГУРАВ болов. Шинэ эх
+                    (`Selbe_parcel_20260906`) нь «Цэвэрлэсэн нэгж талбар» ба
+                    «Гэрээлсэн» гэсэн ТӨЛӨВГҮЙ болсон — тэдгээр нүд ҮРГЭЛЖ 0
+                    харуулах байсан. Одоо ангилал хоёр л тул нийлбэр нь
+                    «Нийт»-тэй ЯМАГТ тэнцэнэ (урьд нь тэнцдэггүй тул тусгай
+                    «Гэрээлсэн» нүд нэмэх шаардлагатай байв). */}
+                <Stats cols={3}>
                   <Stat accent color={HUE[0]} value={num(ls.total)} unit={tr('талбар')} label={tr('Нийт нэгж талбар')} />
-                  <Stat accent color={PARCEL_STATUS_HUES['Бүрэн чөлөөлсөн']} value={num(ls.cleared)} unit={tr('талбар')} label={tr('Бүрэн чөлөөлсөн')} />
-                  <Stat accent color={PARCEL_STATUS_HUES['Цэвэрлэсэн нэгж талбар']} value={num(ls.cleaned)} unit={tr('талбар')} label={tr('Цэвэрлэсэн')} />
-                  {/* ⚠️ ШИНЭ нүд — эс бөгөөс дөрвөн тоо нийлбэртээ ТААРАХГҮЙ
-                      (2,117 ≠ 1,703 + 202 + 176; «Гэрээлсэн» 36 нь алга байв). */}
-                  <Stat
-                    accent
-                    color={PARCEL_STATUS_HUES['Гэрээлсэн']}
-                    value={num(ls.byStatus.find((x) => x.label === 'Гэрээлсэн')?.n ?? 0)}
-                    unit={tr('талбар')}
-                    label={tr('Гэрээлсэн')}
-                  />
-                  <Stat accent color={PARCEL_STATUS_HUES['Үлдсэн нэгж талбар']} value={num(ls.remaining)} unit={tr('талбар')} label={tr('Үлдсэн')} />
+                  <Stat accent color={PARCEL_STATUS_HUES[PARCEL_CLEARED]} value={num(ls.cleared)} unit={tr('талбар')} label={tr('Бүрэн чөлөөлсөн')} />
+                  <Stat accent color="var(--bad)" value={num(ls.remaining)} unit={tr('талбар')} label={tr('Чөлөөлөгдөөгүй')} />
                 </Stats>
             </>
           )}
@@ -2659,15 +2663,17 @@ function LandDetail({ parcels, land, flt, onFlt }: {
             ) : (
               <>
                 <p className={o.note}>
-                  {tr('Зөвхөн')} <b>{tr('«Үлдсэн нэгж талбар»')}</b> ({num(ls.remaining)} {tr('талбар)-ын явцын мэдээ. Ангилал дарж газрын зурагт шүүнэ.')}
+                  {tr('Чөлөөлөгдөөгүй')} {num(ls.remaining)} {tr('талбарын шалтгаан. Ангилал дарж газрын зурагт шүүнэ.')}
                 </p>
                 <Bars
                   inline
                   selected={sel}
                   onSelect={(label) => {
-                    // ⚠️ `land.ts` шошгыг ЦЭВЭРЛЭДЭГ (арын зай, төгсгөлийн «.») тул
-                    //    `=` биш `LIKE 'нэр%'`. Мөн ЗААВАЛ `Tuluv` шүүлттэй — эс
-                    //    бөгөөс зурагт чөлөөлсөн талбарууд ч хамт тодорно.
+                    /* ⚠️ `land.ts` шошгыг ЦЭВЭРЛЭДЭГ (арын зай, төгсгөлийн «.»)
+                       тул `=` биш `LIKE 'нэр%'`.
+                       ⚠️ 2026-09-06: төлөвийн НЭМЭЛТ шүүлт ХЭРЭГГҮЙ болов —
+                       шинэ эхэд `status` ба `progress` нэг талбар тул шалтгааны
+                       утга нь өөрөө «чөлөөлөгдөөгүй»-г заана. */
                     const eq =
                       label === 'Тодорхойгүй'
                         ? `(${PL.progress} IS NULL OR ${PL.progress} = '')`
@@ -2677,7 +2683,7 @@ function LandDetail({ parcels, land, flt, onFlt }: {
                       key: label,
                       /* ⚠️ Утгыг ч tr()-ээр — EN-д хольмог хэл гарахгүй (where түүхий) */
                       label: tr('Шалтгаан: {0}', tr(label)),
-                      where: `${PL.status} = 'Үлдсэн нэгж талбар' AND ${eq}`,
+                      where: eq,
                       only: ['land:left'],
                     });
                   }}
@@ -2782,7 +2788,9 @@ function LandDetail({ parcels, land, flt, onFlt }: {
             /* ⚠️ `text`/`nn` нь энэ модульд импортлогдоогүй — `String`/`Number`
                шууд. Талбай нь `area` эсвэл (бөглөгдөөгүй бол) `areaAlt`-аас. */
             const parcelArea = (r: Row) => Number(r[PL.area]) || Number(r[PL.areaAlt]) || 0;
-            const left = rows.filter((r) => String(r[PL.status] ?? '').trim() === 'Үлдсэн нэгж талбар');
+            /* ⚠️ 2026-09-06: «Үлдсэн нэгж талбар» ангилал алга — «Бүрэн
+               чөлөөлсөн»-өөс БУСАД БҮГД нь чөлөөлөгдөөгүй. */
+            const left = rows.filter((r) => String(r[PL.status] ?? '').trim() !== PARCEL_CLEARED);
             const counts = BUCKETS.map((b) => ({
               ...b,
               n: left.filter((r) => {
@@ -2823,7 +2831,7 @@ function LandDetail({ parcels, land, flt, onFlt }: {
               { key: 'f5', label: tr('1,000 м²-ээс дээш'), min: 1000, max: Infinity },
             ];
             const parcelArea = (r: Row) => Number(r[PL.area]) || Number(r[PL.areaAlt]) || 0;
-            const done = rows.filter((r) => String(r[PL.status] ?? '').trim() === 'Бүрэн чөлөөлсөн');
+            const done = rows.filter((r) => String(r[PL.status] ?? '').trim() === PARCEL_CLEARED);
             const counts = BUCKETS.map((b) => ({
               ...b,
               n: done.filter((r) => {
@@ -2884,15 +2892,17 @@ function LandDetail({ parcels, land, flt, onFlt }: {
       </Panel>
 
       {/* ЦЭВЭРЛЭСЭН ТАЛБАРЫН ТӨРӨЛ — `Төрөл` багана нь бүх талбарын шинж БИШ:
-          187 бөглөгдсөнөөс 183 нь ЯГ «Цэвэрлэсэн нэгж талбар». Өөрөөр хэлбэл
-          энэ бол цэвэрлэгдсэн талбарыг ангилсан бүртгэл — тиймээс картын нэр,
-          шүүлт хоёр тэр хүрээнд л ярина. Хоёрхон ангилал тул донат (≤3 дүрэм). */}
-      <Panel title={tr('Цэвэрлэсэн талбарын төрөл')} note={tr('төрөл бүртгэгдсэн талбар')}>
+          187 бөглөгдсөнөөс 183 нь ЯГ «Цэвэрлэсэн нэгж талбар» байв.
+          ⚠️ 2026-09-06: тэр ангилал шинэ эхэд БАЙХГҮЙ болсон тул шүүлт нь
+          хэзээ ч таарахгүй, карт ҮРГЭЛЖ хоосон гарах байлаа. Мөн зориулалтын
+          талбар `Төрөл` → `Zoriulalt` болж, 582 мөрд (зөвхөн цэвэрлэсэнд БИШ)
+          бөглөгдсөн. Тиймээс шүүлтийг ХАСАВ — карт нь одоо БҮХ нэгж талбарын
+          бүртгэгдсэн зориулалтыг харуулна; нэрийг нь мөн тааруулав. */}
+      <Panel title={tr('Нэгж талбарын зориулалт')} note={tr('зориулалт бүртгэгдсэн талбар')}>
         <Data q={parcels} loading={tr('Татаж байна…')}>
           {(rows) => {
             const m = new Map<string, number>();
             rows
-              .filter((r) => String(r[PL.status] ?? '').trim() === 'Цэвэрлэсэн нэгж талбар')
               .forEach((r) => {
                 const v = String(r[PL.landuse] ?? '').trim();
                 if (!v) return;

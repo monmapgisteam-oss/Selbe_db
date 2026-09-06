@@ -40,7 +40,7 @@ import { queryFeatures } from '@/lib/query';
 import { cached, loadClearance } from '@/lib/live';
 import { layerTotals } from '@/lib/totals';
 import {
-  BUILDING, CASHFLOW2, HABEA, IPC_LOG, LAYER_GROUPS, GROUP_LAYERS, LAYER_BY_ID,
+  BUILDING, CASHFLOW2, HABEA, IPC_LOG, LAYER_GROUPS, GROUP_LAYERS, LAYER_BY_ID, PARCEL_CLEARED,
   bagtsKey, pkgKeyOf, laborCompanyFields, cfMonthAxis, cfMonthKey, ipcNet,
 } from '@/lib/services';
 
@@ -331,10 +331,18 @@ async function loadOverallRaw(): Promise<ReportExtra['overall']> {
 
 /* ═══════════════ Газар чөлөөлөлт ═══════════════ */
 
-/** «Үлдсэн нэгж талбар» — шийдвэрлэгдээгүйг таних ЦОРЫН ГАНЦ дүрэм */
-/* ⚠️ ЗӨВХӨН тайлбар бичвэрийн «үлдсэн талбарын ТОО»-нд (2026-08-29). Чөлөөлөлтийн
-   ХУВЬ үүгээр бодогдохоо больсон — тэр нь дашбоардтай нэг эх `loadClearance`. */
-const isLeftParcel = (label: string) => /Үлдсэн/i.test(label);
+/**
+ * ШИЙДВЭРЛЭГДЭЭГҮЙГ таних ЦОРЫН ГАНЦ дүрэм.
+ *
+ * ⚠️ 2026-09-06: урьд нь `/Үлдсэн/i` гэсэн НЭРЭЭР таньдаг байв. Шинэ эх
+ * (`Selbe_parcel_20260906`) нь «Үлдсэн нэгж талбар» гэсэн ангилалгүй болсон
+ * тул тэр загвар хэзээ ч таарахгүй, тайланд «үлдсэн 0 талбар» гэж ХУДАЛ
+ * бичигдэнэ. Одоо ЭСРЭГЭЭР: «Бүрэн чөлөөлсөн»-өөс БУСАД БҮГД шийдвэрлэгдээгүй.
+ *
+ * ⚠️ ЗӨВХӨН тайлбар бичвэрийн «үлдсэн талбарын ТОО»-нд (2026-08-29). Чөлөөлөлтийн
+ * ХУВЬ үүгээр бодогдохоо больсон — тэр нь дашбоардтай нэг эх `loadClearance`.
+ */
+const isLeftParcel = (label: string) => label.trim() !== PARCEL_CLEARED;
 
 /**
  * ГАЗАР ЧӨЛӨӨЛӨЛТ.

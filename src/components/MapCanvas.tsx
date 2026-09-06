@@ -867,7 +867,7 @@ const baseMap = () => Basemap.fromId('satellite');
 
 export const IMAGERY_ID = 'imagery';
 
-/** Дарж сонгогдохгүй, шүүлтэд оролцохгүй давхаргууд */
+/** Дарж сонгогдохгүй давхаргууд (popup, hit-test, тайлбарт орохгүй) */
 const PASSIVE = new Set<string>([
   'sketch',
   IMAGERY_ID,
@@ -882,6 +882,33 @@ const PASSIVE = new Set<string>([
   ...IRGED_SCENE.layers.map((l) => `scene:${l.key}`),
   ...BIM.layers.map((l) => l.key),
   // Лавлагааны хилүүд — дарж сонгогдохгүй, доорх объектыг халхлахгүй.
+  ...REFERENCE_IDS,
+]);
+
+/**
+ * ТОДРУУЛГАД (`featureEffect`) ОРОЛЦОХГҮЙ давхаргууд — `PASSIVE`-ЭЭС ТУСДАА.
+ *
+ * ⚠️ 2026-09-06: урьд нь тодруулгын гогцоо `PASSIVE`-ыг шалгадаг байсан тул
+ * НЭГ жагсаалт ХОЁР өөр зүйлийг зохицуулж байв:
+ *   · «дарахад атрибут гарахгүй» — нүхэн жорлон, гэр хорооллын барилгын
+ *     САНААТАЙ шийдвэр (хувийн хашаанд холбогдох мэдээлэл ил гаргахгүй);
+ *   · «шүүлтэд огт хариулахгүй» — эдгээрийн хувьд шаардлагагүй хязгаарлалт.
+ * Улмаар «Иргэдэд хүрэх үр өгөөж»-ийн чартаас шүүхэд ЗУРАГ ХӨДӨЛДӨГГҮЙ байлаа.
+ * Одоо тодруулга нь ЗӨВХӨН энэ жагсаалтыг мөрдөнө; дарж сонгох хориг
+ * (`pickHit`, тайлбарын жагсаалт) `PASSIVE`-д ХЭВЭЭР үлдэнэ.
+ *
+ * ⚠️ Энд үлдсэн нь бүгд `featureEffect`-гүй ТӨРӨЛ (растр, вектор тайл, scene,
+ * BIM) эсвэл лавлагааны хил — гогцооны `'featureEffect' in l` шалгалт тэднийг
+ * ямар ч байсан алгасах ч, санаа зорилгыг ил үлдээв.
+ */
+const NO_HIGHLIGHT = new Set<string>([
+  'sketch',
+  IMAGERY_ID,
+  IRGED_ORTHO.id,
+  IRGED_ROAD.id,
+  ...SCENE.layers.map((l) => `scene:${l.key}`),
+  ...IRGED_SCENE.layers.map((l) => `scene:${l.key}`),
+  ...BIM.layers.map((l) => l.key),
   ...REFERENCE_IDS,
 ]);
 
@@ -1157,22 +1184,43 @@ export function MapProvider({ children }: { children: ReactNode }) {
     const is3d = view.type === '3d';
     const onlyList = hl.only == null ? null : Array.isArray(hl.only) ? hl.only : [hl.only];
     view.map.layers.forEach((l) => {
-      if (PASSIVE.has(l.id) || !('featureEffect' in l)) return;
+      if (NO_HIGHLIGHT.has(l.id) || !('featureEffect' in l)) return;
       const fl = l as FeatureLayer;
       // ⚠️ `visible` шалгахгүй: нуугдсан давхаргын эффектийг цэвэрлэх боломжтой
       //    байх ёстой, эс бөгөөс дахин асаахад хуучин шүүлт үлдэнэ.
-      // `only` заасан бол ЗӨВХӨН тэр давхаргууд — бусдынхыг цэвэрлэнэ.
+      // ⚠️ `only` нь тухайн SQL-ийг АЛЬ давхаргад тавихыг заана; бусад нь
+      //    эффектгүй үлдэхгүй — доорх `dimOther`-оор бүхэлдээ бүдгэрнэ.
       // ⚠️ `where` эсвэл орон зайн `geometry`-ийн аль нэг байхад л хэрэглэнэ.
       //    Хоёулаа зэрэг байвал featureEffect-ийн filter тэдгээрийг AND-оор
       //    хослуулна (эх дотор нь SQL + орон зайн шүүлт).
-      const apply = !is3d && (hl.where || hl.geometry) && (!onlyList || onlyList.includes(l.id));
+      const live = !is3d && !!(hl.where || hl.geometry);
+      const target = !onlyList || onlyList.includes(l.id);
+      const apply = live && target;
+      /**
+       * ⚠️ ШҮҮЛТЭД ОРООГҮЙ ДАВХАРГЫГ МӨН БҮДГЭРҮҮЛНЭ (2026-09-06).
+       *
+       * Урьд нь `only`-д ороогүй давхарга ЯМАР Ч эффектгүй үлддэг байсан тул
+       * шүүлт тавихад зурган дээр сонгосон объект бүдгэрсэн хөршүүдийнхээ
+       * дунд ялгарах ёстой атлаа, ӨӨР давхаргууд (нүхэн жорлонгийн 1,675 цэг,
+       * нийгмийн барилгууд) БҮРЭН ТОД хэвээр үлдэж зургийг дүүргэдэг байв —
+       * «Гэр» шүүхэд гэрээс бусад бүх зүйл хэвээр харагдана.
+       *
+       * ⚠️ `where: '1=0'` — НЭГ Ч объект таарахгүй тул давхаргын БҮХ объект
+       * `excludedEffect`-д орно, өөрөөр хэлбэл давхарга бүхэлдээ бүдгэрнэ.
+       * Ингэснээр `only`-ийн үндсэн зорилго (шүүлтийн талбаргүй давхаргад SQL
+       * тавьж унагаахгүй) хэвээр хадгалагдана — эдгээрт SQL ОГТ явахгүй.
+       *
+       * ⚠️ Суурь/лавлагааны давхаргууд (ортофото, зам, хил, scene, BIM) нь
+       * `NO_HIGHLIGHT`-д тул энэ гогцоонд огт ордоггүй — тэдгээр бүдгэрэхгүй.
+       */
+      const dimOther = live && !target;
       /**
        * БҮСИЙН МАСК — тодруулгагүй үед `ZONE_ID`-гүй (noZone) давхаргыг сонгосон
        * бүсийн полигоноор орон зайгаар бүдгэрүүлнэ. Атрибутын шүүлт боломгүй
        * (CAD-гаралтай суурь давхаргууд) тул зөвхөн ингэж «шүүгдэнэ». Тодруулга
        * идэвхэвбэл тэр нь давамгайлна (нэг давхаргад нэг л featureEffect).
        */
-      const maskApply = !apply && !is3d && zoneMask != null && LAYER_BY_ID[l.id]?.noZone;
+      const maskApply = !live && !is3d && zoneMask != null && LAYER_BY_ID[l.id]?.noZone;
       fl.featureEffect = apply
         ? ({
             filter: {
@@ -1181,6 +1229,11 @@ export function MapProvider({ children }: { children: ReactNode }) {
                 ? { geometry: hl.geometry, spatialRelationship: 'intersects' }
                 : {}),
             },
+            excludedEffect: 'opacity(15%) grayscale(80%)',
+          } as unknown as __esri.FeatureEffect)
+        : dimOther
+        ? ({
+            filter: { where: '1=0' },
             excludedEffect: 'opacity(15%) grayscale(80%)',
           } as unknown as __esri.FeatureEffect)
         : maskApply
@@ -2299,6 +2352,20 @@ export const MapCanvas = memo(function MapCanvas({
    * үлдэж болзошгүй.
    */
   const toiletOn = visibleKey.split(',').includes(IRGED_TOILET.id);
+  /**
+   * ⚠️ 2026-09-06: ШҮҮЛТ ИДЭВХТЭЙ ҮЕД КЛАСТЕР УНТАРНА. Кластер нь цэгүүдийг
+   * СЕРВЕРТ БИШ, харагдацад нэгтгэдэг бөгөөд нэгтгэлийн тоо `featureEffect`-ийн
+   * шүүлтийг тооцдоггүй: «Бохирдол: Маш их» гэж шүүхэд бүлгийн бөмбөлөг дээр
+   * 1,675-ын тоо хэвээр үлдэж, бүдгэрсэн эсэх нь ялгагдахгүй байв. Кластергүй
+   * үед цэг бүр өөрөө бүдгэрэх тул шүүлт үнэн харагдана.
+   *
+   * ⚠️ ЯМАР Ч шүүлт идэвхтэй бол унтраана — жорлон нь шүүлтийн ЗОРИЛТ мөн
+   * эсэхийг ялгахгүй. Учир нь өөр давхарга шүүсэн ч (жиш. «Гэр») жорлонгийн
+   * давхарга `dimOther`-оор бүдгэрэх ёстой бөгөөд кластерын бөмбөлөг тэр
+   * бүдгэрэлтийг мөн адил үл тоомсорлодог — 1,675 улбар шар бөмбөлөг бүрэн тод
+   * үлдэж, «шүүсэн давхарга л харагдах» гэсэн хүлээлтийг эвддэг байв.
+   */
+  const toiletFiltered = !!(hl.where || hl.geometry);
   useEffect(() => {
     const view = viewRef.current;
     const map = mapRef.current;
@@ -2306,9 +2373,9 @@ export const MapCanvas = memo(function MapCanvas({
     const layer = map.findLayerById(IRGED_TOILET.id) as FeatureLayer | null;
     if (!layer) return;
 
-    layer.featureReduction = toiletCluster(IRGED_TOILET.hue);
+    layer.featureReduction = toiletFiltered ? null : toiletCluster(IRGED_TOILET.hue);
     return () => { layer.featureReduction = null; };
-  }, [dim, ready, toiletOn]);
+  }, [dim, ready, toiletOn, toiletFiltered]);
 
   /**
    * BuildingExplorer виджет — ЗӨВХӨН BIM горимд.

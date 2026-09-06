@@ -1,20 +1,25 @@
 'use client';
 
 /**
- * ГАЗАР ЧӨЛӨӨЛӨЛТИЙН НЭГДСЭН АМЬД ТООЦОО — `PARCEL_LEFT` (test_data [94]).
+ * ГАЗАР ЧӨЛӨӨЛӨЛТИЙН НЭГДСЭН АМЬД ТООЦОО — `PARCEL_LEFT`.
  *
  * ⚠️ Урьд нь «Газар чөлөөлөлт» харагдац АМЬД (90%), харин Ерөнхий дашбоард/
  * Тайлан нь илтгэлээс бэхлэгдсэн ӨӨР тоо (95.5% · LAND ◆) харуулж хоёр газар
  * ЗӨРДӨГ байв. Одоо бүх дашбоард ЭНЭ ганц тооцооноос уншина (хэрэглэгчийн
  * шийдвэр, 2026-08-13: хатуу тоо байхгүй, бүгд үйлчилгээнээс).
  *
- * Томьёо нь Gazar.tsx-тэй ЯГ ИЖИЛ: чөлөөлсөн = «Бүрэн чөлөөлсөн» + «Цэвэрлэсэн
- * нэгж талбар»; хувь = чөлөөлсөн ÷ нийт (бүх төлөв, null орно).
+ * ⚠️ 2026-09-06: ХОЁР АНГИЛАЛ болов. Шинэ эх (`Selbe_parcel_20260906`) нь
+ * төлөв ба шалтгааныг НЭГ талбарт нийлүүлсэн тул:
+ *     чөлөөлсөн = «Бүрэн чөлөөлсөн»
+ *     үлдсэн    = БУСАД БҮГД (утга нь өөрөө шалтгаан)
+ * Хуучин «Цэвэрлэсэн нэгж талбар» ангилал эх өгөгдөлд байхгүй болсон тул
+ * `cleaned` нь ҮРГЭЛЖ 0 — талбарыг хассангүй, дуудагчид (`Gazar`,
+ * `schemDetail`) эвдрэхгүйн тулд. Хувь = чөлөөлсөн ÷ нийт.
  */
 
 import { queryGroup, count, sum } from '@/lib/query';
 import { t as tr } from '@/lib/i18nCore';
-import { PARCEL_LEFT } from '@/lib/services';
+import { PARCEL_CLEARED, PARCEL_LEFT } from '@/lib/services';
 import { text } from '@/lib/format';
 import { register } from '@/lib/dataBus';
 
@@ -26,13 +31,22 @@ export type LandStatus = {
   cleared: number;
   cleaned: number;
   remaining: number;
-  /** Бүрэн чөлөөлсөн + цэвэрлэсэн */
+  /**
+   * Шийдвэрлэгдсэн — одоо `cleared`-тай ИЖИЛ (`cleaned` нь үргэлж 0).
+   * ⚠️ Талбарыг үлдээсэн нь дуудагчийг эвдэхгүйн тулд; шинэ код `cleared`-ыг
+   *    хэрэглэ.
+   */
   resolved: number;
   /** resolved ÷ total × 100 (0 хуваарьт null) */
   pct: number | null;
   /** Төлөв бүрийн тоо — жагсаалтад байгаа дарааллаар нь */
   byStatus: { label: string; n: number; areaM2: number }[];
-  /** ҮЛДСЭН талбарын шалтгаан (`явцын_мэдээ`) — тоогоор буурах эрэмбээр */
+  /**
+   * ҮЛДСЭН талбарын шалтгаан — тоогоор буурах эрэмбээр.
+   * ⚠️ Шинэ эхэд шалтгаан нь ТӨЛӨВИЙН талбартай НЭГ тул энэ жагсаалт нь
+   *    `byStatus`-аас «Бүрэн чөлөөлсөн»-ийг хассантай ТЭНЦҮҮ — нэмэлт асуулга
+   *    ЯВУУЛАХГҮЙ (урьд нь гурав дахь `queryGroup` явдаг байв).
+   */
   reasons: { label: string; n: number }[];
 };
 
@@ -61,7 +75,7 @@ export function loadLandStatus(): Promise<LandStatus> {
       queryGroup(
         L.url,
         L.fields.status,
-        [count('OBJECTID', 'n'), sum(L.fields.area, 'a')],
+        [count(L.oid, 'n'), sum(L.fields.area, 'a')],
       ),
       /**
        * ⚠️ `areaAlt` НӨХӨЛТ: `area_m2` (кадастр) хоосон ч гараар бичсэн `Талбай`
@@ -76,13 +90,7 @@ export function loadLandStatus(): Promise<LandStatus> {
         [sum(L.fields.areaAlt, 'a')],
         `${L.fields.area} IS NULL AND ${L.fields.areaAlt} IS NOT NULL`,
       ),
-      queryGroup(
-        L.url,
-        L.fields.progress,
-        [count('OBJECTID', 'n')],
-        `${L.fields.status}='Үлдсэн нэгж талбар'`,
-      ),
-    ]).then(([statusRows, altRows, reasonRows]) => {
+    ]).then(([statusRows, altRows]) => {
       const byStatus = statusRows.map((r) => ({
         /**
          * ⚠️ `text(v, '')` — анхдагч «—» БОЛОХГҮЙ. `text()`-ийн анхдагч нь «—»
@@ -111,15 +119,22 @@ export function loadLandStatus(): Promise<LandStatus> {
        * түлхүүр («Fully acquired» г.м.) хэзээ ч таарахгүй, чөлөөлөлт 0%
        * гардаг байв. `tr()` зөвхөн ДЭЛГЭЦИЙН текстэд (loadClearance-ийн загвар).
        */
-      const cleared = of('Бүрэн чөлөөлсөн');
-      const cleaned = of('Цэвэрлэсэн нэгж талбар');
-      const remaining = of('Үлдсэн нэгж талбар');
-      const resolved = cleared + cleaned;
+      const cleared = of(PARCEL_CLEARED);
+      /* ⚠️ «Цэвэрлэсэн нэгж талбар» ангилал шинэ эхэд БАЙХГҮЙ — 0 хэвээр. */
+      const cleaned = 0;
+      /* ⚠️ ҮЛДСЭН нь НИЙТЭЭС ХАСАЖ гарна, нэрлэсэн төлөвөөр БИШ: шинэ эхэд
+         шалтгаан бүр өөрөө нэг «төлөв» тул тэдгээрийг гараар жагсаавал шинэ
+         шалтгаан нэмэгдэхэд чимээгүй тоологдохгүй үлдэнэ. */
+      const remaining = total - cleared;
+      const resolved = cleared;
 
+      /* ⚠️ Шалтгаан = `byStatus` хасах «Бүрэн чөлөөлсөн». Нэмэлт асуулга
+         шаардахгүй болов (хүсэлт 3 → 2). */
       const rmap = new Map<string, number>();
-      for (const r of reasonRows) {
-        const k = cleanReason(r[L.fields.progress]);
-        rmap.set(k, (rmap.get(k) ?? 0) + Number(r.n ?? 0));
+      for (const r of byStatus) {
+        if (r.label === PARCEL_CLEARED) continue;
+        const k = cleanReason(r.label);
+        rmap.set(k, (rmap.get(k) ?? 0) + r.n);
       }
       const reasons = [...rmap.entries()]
         .map(([label, n]) => ({ label, n }))
