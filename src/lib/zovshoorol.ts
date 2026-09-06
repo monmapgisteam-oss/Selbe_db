@@ -31,7 +31,25 @@ export const F = {
   baiguullaga: 'shiidverleh_baiguullaga',
   hariutsagch: 'shiidverleh_hariutsagch',
   tailbar: 'tailbar',
-  oid: 'ObjectID',
+  /**
+   * ⚠️ 2026-09-04: Энэ нь `'ObjectID'` гэж бичигдсэн байсан ч амьд хүснэгтийн
+   * талбар нь `OBJECTID` (БҮГД ТОМ үсгээр) — `a['ObjectID']` нь `undefined`
+   * буцааж, 5/5 мөр `oid = 0` болж ачаалагдаж байв. Үүнээс гарсан 3 БОДИТ
+   * алдаа:
+   *   · `saveZov` (доор) — `if (d.oid)` худал тул ЗАСВАР БҮР `adds` болж
+   *     ШИНЭ мөр нэмнэ: жагсаалт давхардаж, хуучин мөр хэвээр үлдэнэ;
+   *   · `ZovshoorolEdit.tsx` — `if (!d.oid) return;` тул «Устгах» товч
+   *     ЧИМЭЭГҮЙ юу ч хийхгүй (алдаа ч гарахгүй);
+   *   · `validateZov` ба маягтын `nextShat` — `r.oid !== d.oid` нь `0 !== 0`
+   *     = `false` тул давхардлын сануулга ОГТ гарахгүй.
+   *
+   * ⚠️ Энэ нь ЗӨВХӨН нөөц утга. Ажиллах үед `oidField()` нь үйлчилгээний
+   * метадатагийн `objectIdField`-ыг уншиж, уншилтад `oidKey()` нь мөрийн
+   * түлхүүрээс `/^objectid$/i`-ээр олно (`bagts.pkg.ts:299` яг ийм аргаар
+   * энэ ангиллын алдаанаас сэргийлдэг). Хатуу мөр үлдээвэл дараагийн
+   * үйлчилгээ өөр үсгийн бичлэгтэй байхад дахин давтагдана.
+   */
+  oid: 'OBJECTID',
 } as const;
 
 /**
@@ -83,6 +101,50 @@ const dateMs = (v: unknown): number | null => {
 const isTolov = (v: string): v is Exclude<Tolov, 'unknown'> =>
   (Object.values(TOLOV) as string[]).includes(v);
 
+/* ═══════════════ OBJECTID-ын НЭРИЙГ АЖИЛЛАХ ҮЕД ОЛОХ ═══════════════ */
+
+/**
+ * Мөрийн түлхүүрүүдээс OBJECTID-ыг ҮСГИЙН МЭДРЭМЖГҮЙ олно.
+ *
+ * ⚠️ 2026-09-04: ArcGIS үйлчилгээ бүр өөр бичлэг ашиглана — `OBJECTID`,
+ * `ObjectID`, `objectid`, `FID`, `OBJECTID_1`. Хатуу бичсэн нэр нь тухайн
+ * үйлчилгээнд таарахгүй бол алдаа ШИДДЭГГҮЙ, зүгээр `undefined` буцаана.
+ * Тиймээс уншилтын зам нь ямар ч сүлжээний нэмэлт дуудлагагүйгээр мөрөөс
+ * шууд олох ёстой.
+ */
+export const oidKey = (a: Record<string, unknown>): string | null =>
+  Object.keys(a).find((k) => /^objectid$/i.test(k)) ?? null;
+
+/**
+ * Үйлчилгээний метадатагаас `objectIdField`-ыг унших (нэг удаа кэшлэнэ).
+ * БИЧИХ зам (`applyEdits` → `updates`) энэ нэрийг хэрэглэнэ.
+ *
+ * ⚠️ Алдаа гарвал кэшийг цэвэрлэж, нөөц `F.oid`-оор үргэлжилнэ — метадата
+ * татагдаагүйн улмаас засвар бүхэлдээ унах ёсгүй. Дараагийн дуудлага дахин
+ * оролдоно.
+ */
+let oidFieldP: Promise<string> | null = null;
+export function oidField(): Promise<string> {
+  if (!oidFieldP) {
+    oidFieldP = agsFetch(URL, {})
+      .then((j) => {
+        const meta = typeof j.objectIdField === 'string' ? j.objectIdField.trim() : '';
+        if (meta) return meta;
+        /* ⚠️ Зарим үйлчилгээ `objectIdField`-ыг буцаадаггүй — тухайн үед
+           талбарын ТӨРӨЛ (`esriFieldTypeOID`) нь нэрнээс найдвартай. */
+        const fields = (j.fields ?? []) as { name?: string; type?: string }[];
+        const byType = fields.find((f) => f.type === 'esriFieldTypeOID')?.name;
+        const byName = fields.find((f) => /^objectid$/i.test(String(f.name ?? '')))?.name;
+        return byType || byName || F.oid;
+      })
+      .catch(() => {
+        oidFieldP = null;
+        return F.oid as string;
+      });
+  }
+  return oidFieldP;
+}
+
 /**
  * Бүх зөвшөөрлийг татна. Үйлчилгээ холбогдоогүй эсвэл унасан бол `null` —
  * ХООСОН МАССИВ БИШ. Хоосон массив нь «зөвшөөрөл байхгүй» гэсэн ХАРИУЛТ
@@ -105,8 +167,25 @@ export async function loadZov(): Promise<Zov[] | null> {
       for (const f of fs) {
         const a = f.attributes;
         const t = str(a[F.tolov]);
+        /**
+         * ⚠️ 2026-09-04: `a[F.oid]` гэж ХАТУУ түлхүүрээр уншиж байгаад
+         * `'ObjectID'` ≠ `OBJECTID` тул 5/5 мөр `oid = 0` болсон. Одоо
+         * мөрийн өөрийнх нь түлхүүрээс үсгийн мэдрэмжгүй олно.
+         *
+         * ⚠️ `oid` олдоогүй бол ЧИМЭЭГҮЙ 0 болгохгүй — консолд ил гаргана.
+         * `oid = 0` нь «шинэ мөр» гэсэн утгатай тул засвар нь давхардал
+         * үүсгэдэг: энэ бол өгөгдлийн алдаа, нуух ёсгүй.
+         */
+        const k = oidKey(a);
+        const oidRaw = k ? Number(a[k]) : NaN;
+        if (!Number.isFinite(oidRaw) || oidRaw <= 0) {
+          console.warn(
+            `[zovshoorol] OBJECTID уншигдсангүй (түлхүүрүүд: ${Object.keys(a).join(',')}) — ` +
+              'энэ мөрийг засвал ШИНЭ мөр нэмэгдэж, устгах ажиллахгүй.',
+          );
+        }
         out.push({
-          oid: Number(a[F.oid]) || 0,
+          oid: Number.isFinite(oidRaw) && oidRaw > 0 ? oidRaw : 0,
           bagts: str(a[F.bagts]),
           shat: Number(a[F.shat]) || 0,
           ner: str(a[F.ner]),
@@ -181,8 +260,10 @@ export type ZovDraft = Omit<Zov, 'oid' | 'tolov'> & {
  * ⚠️ Амжилтгүй бол ЗААВАЛ шалтгаантай `Error` шиднэ — `false` буцаавал
  * дуудагч тал «болсон» гэж үзэж, хэрэглэгч засвараа алдсанаа мэдэхгүй.
  *
- * ⚠️ Серверийн талбаруудыг (`ObjectID`, `GlobalID`) илгээхгүй — засварын
- * үед зөвхөн `OBJECTID` таних зорилгоор явна.
+ * ⚠️ Серверийн талбаруудыг (`OBJECTID`, `GlobalID`) илгээхгүй — засварын
+ * үед зөвхөн OBJECTID таних зорилгоор явна.
+ * (2026-09-04: тайлбарт `ObjectID` гэж бичигдсэн байсныг амьд хүснэгтийн
+ *  жинхэнэ бичлэг `OBJECTID` болгож залруулав.)
  */
 export async function saveZov(d: ZovDraft): Promise<number> {
   if (!URL) throw new Error(tr('Зөвшөөрлийн үйлчилгээ холбогдоогүй байна.'));
@@ -199,8 +280,15 @@ export async function saveZov(d: ZovDraft): Promise<number> {
     [F.tailbar]: d.tailbar || null,
   };
   const edit: Record<string, string> = { rollbackOnFailure: 'true' };
-  if (d.oid) edit.updates = JSON.stringify([{ attributes: { [F.oid]: d.oid, ...attributes } }]);
-  else edit.adds = JSON.stringify([{ attributes }]);
+  if (d.oid) {
+    /* ⚠️ 2026-09-04: OBJECTID-ын нэрийг метадатагаас авна. Хатуу `'ObjectID'`
+       байхад ArcGIS нь танихгүй талбарыг ЧИМЭЭГҮЙ хаяж, «аль мөрийг засах»
+       нь тодорхойгүй болно. Кэштэй тул сүлжээний дуудлага нэг л удаа. */
+    const oidName = await oidField();
+    edit.updates = JSON.stringify([{ attributes: { [oidName]: d.oid, ...attributes } }]);
+  } else {
+    edit.adds = JSON.stringify([{ attributes }]);
+  }
 
   const j = await agsFetch(`${URL}/applyEdits`, edit);
   const res = [...(j.addResults ?? []), ...(j.updateResults ?? [])] as {
@@ -225,6 +313,21 @@ export async function saveZov(d: ZovDraft): Promise<number> {
 /** Устгах. ⚠️ Буцаах боломжгүй тул дуудагч тал ЗААВАЛ баталгаажуулсан байна. */
 export async function deleteZov(oid: number): Promise<void> {
   if (!URL) throw new Error(tr('Зөвшөөрлийн үйлчилгээ холбогдоогүй байна.'));
+  /**
+   * ⚠️ 2026-09-04: `oid = 0` нь «OBJECTID уншигдаагүй» гэсэн утгатай. Урьд нь
+   * дуудагч тал (`ZovshoorolEdit.tsx`-ийн `remove`) `if (!d.oid) return;` гэж
+   * ЧИМЭЭГҮЙ буцдаг байсан тул «Устгах» товч юу ч хийхгүй, хэрэглэгч
+   * шалтгааныг мэдэхгүй үлддэг байв.
+   * ⚠️ 2026-09-04 (2 дахь засвар): энэ шалгуур ГАНЦААРАА хэрэглэгчид хүрдэггүй
+   * байсан — дуудагч нь `deleteZov` хүртэл ХЭЗЭЭ Ч ирдэггүй тул. Тиймээс
+   * `ZovshoorolEdit.remove` мөн ИЖИЛ мессежийг `setFail`-ээр гаргадаг болов.
+   * Энэ шалгуур нь одоо ХОЁРДУГААР хамгаалалт (шууд дуудагч, ирээдүйн дуудагч)
+   * — хасвал `oid = 0` нь `applyEdits`-т явж, серверийн ойлгомжгүй алдаа
+   * буцаана. Хоёр мессеж ЯГ ижил байх ёстой: i18n-д нэг л түлхүүр.
+   */
+  if (!Number.isFinite(oid) || oid <= 0) {
+    throw new Error(tr('Мөрийн OBJECTID уншигдаагүй тул устгах боломжгүй.'));
+  }
   const j = await agsFetch(`${URL}/applyEdits`, {
     deletes: JSON.stringify([oid]),
     rollbackOnFailure: 'true',

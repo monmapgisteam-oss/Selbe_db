@@ -18,7 +18,7 @@
  */
 import assert from 'node:assert/strict';
 import {
-  buildFrame, buildOidMap, insertAdds, moveKeys, overlaySubmission, rowKeyOf,
+  assertFrameLength, buildFrame, buildOidMap, insertAdds, moveKeys, overlaySubmission, rowKeyOf,
 } from './sheetFrame.ts';
 
 const nBld = 2;
@@ -259,6 +259,76 @@ const sub = (over = {}) => ({
   // pending зам (FillNew-ийн хуучин): нүдэн дээр буугаагүй засвар мөн тусна
   const fr2 = buildFrame(fresh, sc, nBld, asOf, hasObyem, fillMs, { '203:0': '20' }, {});
   assert.equal(fr2[3].o0, 20, 'pending засвар жаазанд орлоо');
+}
+
+/* ═══ 6. buildFrame — МӨНГӨН ДҮН · ХУВИЙН ЖИН D · АЖЛЫН КОД · УЯЛДАА ═══
+ *
+ * ⚠️ 2026-09-04-ний аудит: `buildFrame` нь `money`/`wD`/`des`/`ham`-ыг ОГТ
+ *    бичихгүй, зөвхөн `{...r.raw}`-аар дамжуулдаг байв. `insertAdds` нь шинэ
+ *    мөрд `raw`-д ЗӨВХӨН (№, ажил, обьём, нэгж өртөг) өгдөг тул нэмсэн ажил
+ *    архивт мөнгөн дүнгүй, жингүй, кодгүй буудаг байлаа — уялдааны код
+ *    (`Hamaaral` нь `Des_dugaar`-аар заадаг) хэзээ ч үүсэхгүй. Мөн БҮХ өвөг
+ *    бүлгийн `Мөнгөн_дүн` нь нэмэгдсэн Обьём×Нэгж өртгийг агуулахгүй
+ *    архивлагдаж, дэлгэц ба үйлчилгээ мөнхөд зөрдөг байв.
+ */
+{
+  /* des/ham/money талбартай бүдүүвч — 10/10 багцын бодит хэлбэр */
+  const sc2 = { ...sc, f: { ...sc.f, des: 'Des_dugaar', ham: 'Hamaaral' } };
+  const base = [
+    row(300, '1', 'БАРИЛГА', 0, true, { des: 1, raw: { OBJECTID: 300, Des_dugaar: 1, Hamaaral: null } }),
+    row(301, '1.1', 'Ухах', 1, true, { des: 2, raw: { OBJECTID: 301, Des_dugaar: 2, Hamaaral: null } }),
+    row(302, '1', 'Шороо', 2, false, {
+      vol: 100, unit: 10, des: 3, ham: '2FS0',
+      raw: { OBJECTID: 302, Des_dugaar: 3, Hamaaral: '2FS0' },
+    }),
+  ];
+  const s = sub({
+    adds: [{ oid: -1, parentNo: '1.1', parentWork: 'Ухах', parentIdx: 1, no: '2', work: 'Бетон', vol: 4, unit: 25 }],
+  });
+  const ov = overlaySubmission(base, s, sc2, nBld);
+  const fr = buildFrame(ov.rows, sc2, nBld, D('2026-09-02'), hasObyem, D('2026-09-04'));
+  const add = fr.find((a) => a.work === 'Бетон');
+  const root = fr[0];
+  const leaf = fr.find((a) => a.OBJECTID === 302);
+
+  assert.equal(leaf.money, 1000, 'навчийн Мөнгөн дүн = Обьём × Нэгж өртөг');
+  assert.equal(add.money, 100, 'НЭМСЭН мөрд Мөнгөн дүн бичигдэв (өмнө нь хоосон үлддэг байв)');
+  assert.equal(root.money, 1100, 'ӨВӨГ бүлгийн Мөнгөн дүн нэмсэн мөрийг АГУУЛНА');
+  assert.ok(add.wD != null && add.wD > 0, 'нэмсэн мөрд «үе шатанд эзлэх» жин бичигдэв');
+  assert.equal(add.Hamaaral, null, 'уялдааны талбар жаазанд ЗААВАЛ байна (шинэ мөрд хоосон)');
+  assert.equal(leaf.Hamaaral, '2FS0', 'байгаа уялдаа ХЭВЭЭР');
+  assert.equal(add.Des_dugaar, 4, 'шинэ мөр ХАМГИЙН ИХ + 1 код авна');
+  assert.equal(fr[0].Des_dugaar, 1, 'байгаа кодыг ДАХИН ДУГААРЛАХГҮЙ');
+  assert.equal(leaf.Des_dugaar, 3, 'байгаа код хэвээр — уялдааны заалт эвдрэхгүй');
+
+  /* ⚠️ `null ≠ 0`: бодогдох боломжгүй мөнгөн дүнг 0 болгож ДАРАХГҮЙ */
+  const noMoney = [row(400, '1', 'Ажил', 0, false, { raw: { OBJECTID: 400, money: 777 } })];
+  const fr2 = buildFrame(noMoney, sc2, nBld, D('2026-09-02'), hasObyem, D('2026-09-04'));
+  assert.equal(fr2[0].money, 777, 'бодогдохгүй үед хадгалагдсан Мөнгөн дүн ХЭВЭЭР');
+}
+
+/* ═══ 7. assertFrameLength — БОГИНО ЖААЗ АРХИВТ ХЭЗЭЭ Ч БИЧИГДЭХГҮЙ ═══
+ *
+ * ⚠️ Багц 3.1 · 9 давхарын CRITICAL эвдрэл: суурьт 1,471 мөр, `loadRows` нь
+ *    хоосон мөрийг алгасаад 1,470 буцааж, тэр богино жааз архивт бичигдээд
+ *    дараагийн ачаалалт hard throw хийж, бөглөх хуудас БА хянагчийн харагдац
+ *    хоёулаа бүрмөсөн хаагдсан. Бичихээсээ ӨМНӨ зогсох ёстой.
+ *
+ * ⚠️ ГЭХДЭЭ ЛАВЛАХ НЬ ЗУРАГЛАЛ БИШ (энэ шалгуурын эхний хувилбарын алдаа):
+ *    Багц 3.1-д ЗӨВ жааз нь 1,470 мөр — зураглалын 1,471-тэй жишвэл тэр багцын
+ *    батлалт бүрмөсөн хаагдана. Лавлах нь `loadRows(...).frameLen` +
+ *    ЭНЭ илгээлтийн нэмэлт; доорх гэрээ яг түүнийг барина.
+ */
+{
+  /* frameLen 1470 → 1,470-мөрт жааз ЗӨВ (хоосон мөр хасагдсан) */
+  assert.doesNotThrow(() => assertFrameLength(1470, 1470, 'Багц 3.1 · 9 давхар'), 'зөв урттай жааз зогсоогдов');
+  /* нэмэгдсэн мөр лавлахад ХУРИМТЛАГДАНА: 1470 ачаалагдсан + 1 шинэ */
+  assert.doesNotThrow(() => assertFrameLength(1471, 1470 + 1, 'Багц 3.1 · 9 давхар'));
+  /* зөрвөл ЗОГСОНО — хоёр талын зөрүүг барина */
+  assert.throws(() => assertFrameLength(1470, 1471, 'Багц 3.1 · 9 давхар'), /1470/, 'богино жааз зогсоогдоогүй');
+  assert.throws(() => assertFrameLength(1472, 1471, 'Багц 3.1 · 9 давхар'), /1471/, 'урт жааз ч зогсоно');
+  /* ⚠️ Зураглалгүй үйлчилгээнд шалгахгүй — байхгүй лавлахаар нийтлэл хаахгүй */
+  assert.doesNotThrow(() => assertFrameLength(1470, 0, 'зураглалгүй'));
 }
 
 console.log('sheetFrame.check: OK');

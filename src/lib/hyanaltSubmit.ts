@@ -98,24 +98,76 @@ const dayLabel = (ms: number) => {
  *                 `sub|<pkgKey>`). ⚠️ Архивын дугаар БИШ — гүйцэтгэл нь
  *                 хараахан архивт ороогүй; `hyanaltDetail`/`hyanaltStore`
  *                 үүгээр илгээлтийг олно.
+ * @param sheet    ХУУДСЫН нэр («Багц 1 · 9 давхар») — доорх ⚠️.
  * @returns бүртгэлийн дугаар, эсвэл алдааны мессеж
  */
 export async function submitForReview(
   bagts: string,
   fillMs: number,
   sheetOid: number | null,
+  sheet = '',
 ): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
   try {
     const [rows, company] = await Promise.all([queryAll(), companyOf(bagts)]);
     const id = nextId(rows);
+    /*
+     * ⚠️ АЖЛЫН НЭРЭНД ХУУДСЫГ ОРУУЛНА (2026-09-04-ний аудит). Илгээлт нь
+     *    ХУУДСААР (`sub|<pkgKey>`), харин хяналтын бүлэглэлт нь БАГЦААР
+     *    (`bagts|ajil|company`) явдаг байв. Багц 1 · Багц 2 · Багц 4-2 гурав
+     *    нь 9 ба 12 давхрын ХОЁР хуудастай тул нэг өдөр хоёуланг илгээвэл
+     *    `groupWorks` тэднийг НЭГ ажил болгож нийлүүлж, зөвхөн хамгийн их
+     *    OID-тай дээр нь шийдвэр бичдэг — нөгөө хуудасны илгээлт мөнхөд
+     *    «Инженер хянаж байна» төлөвт гацаж, архивт хэзээ ч ордоггүй байлаа.
+     *    Хуудсын нэр орсноор түлхүүр сална.
+     * ⚠️ ОГНОО ЗААВАЛ — өдөр бүрийн нийтлэл тусдаа ажил байх ёстой.
+     */
+    /*
+     * ⚠️ ШИЛЖИЛТИЙН ДҮРЭМ (2026-09-04-ний аудит): хуудсын нэр нэмэгдсэн нь
+     *    `groupWorks`-ийн түлхүүрийг (багц|ажил|компани) ӨӨРЧИЛСӨН тул ХУУЧИН
+     *    хэлбэрээр (шошгогүй) үүссэн, хараахан ДУУСААГҮЙ мөрүүд дараагийн
+     *    илгээлтээр өнчирч, хяналтын жагсаалтад МӨНХӨД нээлттэй үлдэх байлаа:
+     *    буцаалт ихтэй тул жагсаалтын эхэнд сортлогдож, инженерийн «хэдэн удаа
+     *    буцаасан» тоолуур тэглэгдэж, аудитын түүх хоёр тасархай болно.
+     *    Тиймээс тухайн (багц·өдөр·компани)-д ХУУЧИН түлхүүртэй, `Шилжүүлсэн`
+     *    болоогүй мөр байвал ТҮҮНИЙ нэрийг ӨВЛӨНӨ — түүх нэг ажил дээр
+     *    үргэлжилнэ. Хуучин мөрүүд дуусмагц шинэ (шошготой) хэлбэр өөрөө
+     *    хүчин төгөлдөр болно.
+     */
+    const legacyAjil = `Гүйцэтгэл · ${dayLabel(fillMs)}`;
+    const openLegacy = rows.some(
+      (r) =>
+        String(r[F.bagts] ?? '') === bagts &&
+        String(r[F.company] ?? '') === company &&
+        String(r[F.ajil] ?? '') === legacyAjil &&
+        String(r[F.status] ?? '') !== STATUS.transferred,
+    );
+    const ajil = !sheet || openLegacy ? legacyAjil : `${legacyAjil} · ${sheet}`;
+    /*
+     * ТОЙРГИЙН ДУГААР — тухайн (багц|ажил|компани) түлхүүрийн ХАМГИЙН ИХ + 1.
+     *
+     * ⚠️ ЯАГААД (2026-09-04-ний аудит): урьд нь ҮРГЭЛЖ `1` бичигддэг байсан
+     *    тул инженер буцаагаад компани дахин илгээх бүрд «1 дэх тойрог» гэсэн
+     *    шинэ мөр үүсч, нэг өдөрт гурван удаа буцвал ergelt=1-тэй ГУРВАН мөр
+     *    үүсдэг байв. `hyanaltGroup.groupWorks` нь `ergelt`-ээр эрэмбэлдэг тул
+     *    тэдгээр нь зөвхөн OBJECTID-аар л ялгарч, дэлгэц дээрх «тойрог»
+     *    тоолол бодит бус болно; `hyanaltStore.recheck`-ийн `twin` шалгуур ч
+     *    ижил дугаартай мөрүүд дээр буруу дүгнэлт өгөх эрсдэлтэй.
+     * ⚠️ `queryAll()` аль хэдийн татагдсан тул нэмэлт хүсэлт шаардахгүй.
+     */
+    const ergelt = rows.reduce((m, r) => {
+      if (String(r[F.bagts] ?? '') !== bagts) return m;
+      if (String(r[F.ajil] ?? '') !== ajil) return m;
+      if (String(r[F.company] ?? '') !== company) return m;
+      const n = Number(r[F.ergelt]);
+      return Number.isFinite(n) && n > m ? n : m;
+    }, 0) + 1;
 
     const attrs: Attrs = {
       [F.id]: id,
       [F.sheetOid]: sheetOid ?? 0,
-      [F.ergelt]: 1,
+      [F.ergelt]: ergelt,
       [F.bagts]: bagts,
-      // ⚠️ ОГНОО ЗААВАЛ — өдөр бүрийн нийтлэл тусдаа ажил байх ёстой
-      [F.ajil]: `Гүйцэтгэл · ${dayLabel(fillMs)}`,
+      [F.ajil]: ajil,
       [F.company]: company,
       [F.companySent]: Date.now(),
       [F.engineer]: '', [F.engineerDecision]: '', [F.engineerReason]: '',

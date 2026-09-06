@@ -17,7 +17,8 @@
  * дундажлавал жин алдагдаж, дэлгэц дээрх тоо хоорондоо зөрнө.
  */
 
-import { BAGTS_NEGTGEL, TASK_SHEET } from './services';
+import { t as tr } from './i18nCore';
+import { BAGTS_NEGTGEL, constructionWhere } from './services';
 import { invalidate } from './dataBus';
 import { PKGS, loadSchema } from '@/modules/sheet/bagts.pkg';
 
@@ -37,6 +38,23 @@ async function post(url: string, body: Record<string, string>) {
 
 const num = (v: unknown): number | null =>
   typeof v === 'number' && Number.isFinite(v) ? v : null;
+
+/**
+ * Бөглөх хуудасны 0–1 бутархайг нэгтгэлийн 0–100 хувь болгоно.
+ *
+ * ⚠️ ХЭМЖЭЭСИЙН ЗӨРҮҮ (2026-09-04-ний аудит): `Bagts_*` хуудсанд гүйцэтгэл нь
+ *    0–1 БУТАРХАЙ (амьд: Багц 2·12F-ийн «Б» мөр = 0.00039), харин
+ *    `BAGTS_NEGTGEL.progress` / `.planned` нь 0–100 ХУВЬ (амьд: Багц 1 = 78).
+ *    Урьд нь бутархайг ШУУД бичдэг байсан — «Б.» хайлт нь 0 мөр өгдөг байсан
+ *    тул далд байв; хайлтыг зассан агшинд 78% → 0.0004% болж дашбоардын
+ *    багцын муруй нурах байсан (давхардлын хамгаалалт тэр багц·огноог түгжих
+ *    тул засах зам ч байхгүй).
+ *
+ * ⚠️ `null` нь `null` хэвээр: «хэмжигдээгүй» ба «тэг гүйцэтгэл» хоёр өөр зүйл.
+ * ⚠️ `blockProgress.ts:88`-ийн (`Number(progress) * 100`) хөрвүүлэлттэй ИЖИЛ
+ *    дүрэм — хоёр газар өөр хэмжээс хэрэглэвэл график, самбар хоёр тоо заана.
+ */
+const toPct = (v: number | null): number | null => (v == null ? null : v * 100);
 
 /** Огноог ArcGIS-ийн SQL хэлбэрт — түүхий epoch тоо энэ үйлчилгээнд унадаг */
 const ts = (ms: number) =>
@@ -119,13 +137,31 @@ async function summaryOf(bagts: string, sheetOid: number) {
     /*
      * «Б.» мөр = БАРИЛГА УГСРАЛТЫН АЖИЛ — багцын нэгдсэн гүйцэтгэл. Эх excel
      * өөрөө дэд үе шатуудыг жингээр нэгтгэсэн байдаг тул ЭНЭ мөрийг шууд авна.
+     *
+     * ⚠️ ХАЙЛТ НЬ ЯГ ТЭНЦҮҮ БАЙЖ БОЛОХГҮЙ (2026-09-04-ний аудит): урьд нь
+     *    `${sc.f.no} = N'Б.'` байсан бөгөөд бодит өгөгдөлд тэр нүд 8 багцад
+     *    «Б. БАРИЛГА УГСРАЛТЫН АЖИЛ», Багц 2·12F ба Багц 3.2·9F-д «Б» (ЦЭГГҮЙ)
+     *    гэж бичигдсэн тул 10/10 багцад 0 мөр таарч байв. Үр дүнд `summaryOf`
+     *    `null` буцааж, `registerApproved` «Бөглөх хуудаснаас агшин олдсонгүй»
+     *    гэж унаад `hyanaltStore` түүнийг зөвхөн `console.warn` хийдэг — дөрвөн
+     *    шат бүрэн дамжсан гүйцэтгэл нэгтгэлд ХЭЗЭЭ Ч ордоггүй, хэрэглэгчид ч
+     *    алдаа харагддаггүй байлаа. Предикат нь одоо `services.constructionWhere`
+     *    — «Б1»…«Б5» дэд үе шатыг ОРУУЛАХГҮЙ цорын ганц дүрэм.
+     *
+     * ⚠️ ЭРЭМБЭЛЭЛТГҮЙ `resultRecordCount:'1'` мөн БОЛОХГҮЙ: нэг `fillDate`-д
+     *    олон жааз байж болно (амьд: Багц 1·9F-ийн 2026-08-29-нд ЯГ ижил ms-тэй
+     *    16 жааз) бөгөөд сервер OBJECTID ӨСӨХӨӨР эхнийхийг өгдөг тул нэгтгэлд
+     *    ХАМГИЙН ХУУЧИН жаазны тоо бичигдэнэ. `bagtsSheet.lastFrame` нь эсрэгээр
+     *    СҮҮЛИЙН жаазыг авдаг — хоёр тоо зөрөхгүйн тулд энд OBJECTID БУУРАХААР
+     *    эрэмбэлж, сүүлийн жаазны мөрийг авна.
      */
     const cols = [sc.f.no, sc.f.act, sc.f.plan, sc.f.vol, sc.f.obyemSum]
       .filter(Boolean) as string[];
     const q = (await post(`${p.url}/query`, {
-      where: `${sc.f.fillDate} = ${ts(at)} AND ${sc.f.no} = N'${TASK_SHEET.constructionNo}'`,
+      where: `${sc.f.fillDate} = ${ts(at)} AND ${constructionWhere(sc.f.no)}`,
       outFields: [...new Set(cols)].join(','),
       returnGeometry: 'false',
+      orderByFields: `${sc.f.oid} DESC`,
       resultRecordCount: '1',
     })) as { features?: { attributes: Record<string, unknown> }[] };
     const a = q.features?.[0]?.attributes;
@@ -138,8 +174,9 @@ async function summaryOf(bagts: string, sheetOid: number) {
      */
     return {
       at,
-      progress: num(a[sc.f.act]),
-      planned: num(a[sc.f.plan]),
+      /* ⚠️ 0–1 → 0–100 (`toPct`) — нэгтгэлийн багана ХУВЬ хүлээдэг */
+      progress: toPct(num(a[sc.f.act])),
+      planned: toPct(num(a[sc.f.plan])),
       volume: sc.f.obyemSum ? num(a[sc.f.obyemSum]) : null,
       volumePlan: num(a[sc.f.vol]),
     };
@@ -171,11 +208,68 @@ export async function registerApproved(
     const s = await summaryOf(bagts, sheetOid);
     if (!s) return { ok: false, error: 'Бөглөх хуудаснаас агшин олдсонгүй' };
 
-    const dup = (await post(`${BAGTS_NEGTGEL.url}/query`, {
-      where: `${F.bagts} = N'${bagts.replace(/'/g, "''")}' AND ${F.date} = ${ts(s.at)}`,
-      returnCountOnly: 'true',
-    })) as { count?: number };
-    if ((dup.count ?? 0) > 0) return { ok: true };   // аль хэдийн бүртгэгдсэн
+    const nameSql = bagts.replace(/'/g, "''");
+
+    /*
+     * ⚠️ ХЭМЖЭЭСИЙН ЭРҮҮЛ МЭНДИЙН ШАЛГАЛТ (2026-09-04-ний аудит). «Б.» мөрийн
+     *    хайлт зассанаар ЭНЭ бичилт анх удаа ЖИНХЭНЭЭР ажиллаж эхэлж байна:
+     *    урьд нь `summaryOf` үргэлж `null` буцаадаг тул нэгтгэлд юу ч ордоггүй
+     *    байв. Амьд өгөгдлөөр бөглөх хуудасны «Б.» мөрийн гүйцэтгэл нь
+     *    нэгтгэлийн цуваанаас ГУРВАН ЭРЭМБЭЭР бага (Багц 1: цуваа 78, хуудас
+     *    0.06) — тэр тоог чимээгүй бичвэл дашбоардын «төлөвлөгөө vs бодит»
+     *    муруй нэг алхмаар нурах ба давхардлын хамгаалалт тухайн багц·огноог
+     *    түгжих тул ЗАСАХ ЗАМ БАЙХГҮЙ болно.
+     * ⚠️ Тиймээс: (а) хэмжигдээгүй (`null`) утгыг бичихгүй — `null ≠ 0`, тэгээд
+     *    ч цувааг таслана; (б) цувааны сүүлийн утгаас ЭРС (20 нэгжээс их)
+     *    буурсан бол ИЛ АЛДАА буцааж хүнээр шийдүүлнэ. Гүйцэтгэл бодитоор
+     *    буурах нь (засвар, дахин хэмжилт) ховор бөгөөд тийм үед хүн өөрөө
+     *    нэгтгэлд бичих ёстой — чимээгүй нурааж БОЛОХГҮЙ.
+     */
+    const prev = (await post(`${BAGTS_NEGTGEL.url}/query`, {
+      where: `${F.bagts} = N'${nameSql}'`,
+      outFields: `${F.date},${F.progress}`,
+      returnGeometry: 'false',
+      orderByFields: `${F.date} DESC`,
+      resultRecordCount: '1',
+    })) as { features?: { attributes: Record<string, unknown> }[] };
+    const last = num(prev.features?.[0]?.attributes?.[F.progress]);
+
+    if (s.progress == null)
+      return {
+        ok: false,
+        error: tr('Бөглөх хуудасны «Б.» мөрийн гүйцэтгэл хэмжигдээгүй тул нэгтгэлд бичсэнгүй — хуудсаа шалгаад дахин баталгаажуулна уу.'),
+      };
+    if (last != null && s.progress < last - 20)
+      return {
+        ok: false,
+        error: tr('Нэгтгэлийн сүүлийн гүйцэтгэл {0}%, бөглөх хуудаснаас гарсан нь {1}% — хэт зөрүүтэй тул бичсэнгүй. Хуудасны хэмжээс (0–1 эсэх) ба «Б.» мөрийг шалгана уу.', last.toFixed(2), s.progress.toFixed(2)),
+      };
+
+    /*
+     * ⚠️ ДАВХАРДЛЫГ ЗӨВХӨН ОГНООГООР ТАНИХГҮЙ (2026-09-04-ний аудит): урьд нь
+     *    багц·огноогоор мөр байвал ЧИМЭЭГҮЙ `{ok:true}` буцдаг байсан тул
+     *    тухайн өдөрт УРЬДЧИЛАН суулгасан ТӨЛӨВЛӨГӨӨНИЙ мөр байхад батлагдсан
+     *    БОДИТ гүйцэтгэл нэгтгэлд огт орохгүй, ямар ч анхааруулга гарахгүй
+     *    өнгөрдөг байв. Одоо утгыг нь ЖИШНЭ: ижил бол үнэхээр давхардал
+     *    (менежер хоёр удаа дарсан), зөрвөл ил алдаа — хүн шийднэ.
+     */
+    const dupQ = (await post(`${BAGTS_NEGTGEL.url}/query`, {
+      where: `${F.bagts} = N'${nameSql}' AND ${F.date} = ${ts(s.at)}`,
+      outFields: F.progress,
+      returnGeometry: 'false',
+      orderByFields: `${BAGTS_NEGTGEL.oid} DESC`,
+      resultRecordCount: '1',
+    })) as { features?: { attributes: Record<string, unknown> }[] };
+    const dupRow = dupQ.features?.[0]?.attributes;
+    if (dupRow) {
+      const had = num(dupRow[F.progress]);
+      /* Ижил тоо — үнэхээр давхар дуудалт, чимээгүй өнгөрнө. */
+      if (had != null && Math.abs(had - s.progress) < 0.01) return { ok: true };
+      return {
+        ok: false,
+        error: tr('Энэ багцын {0}-ны мөр нэгтгэлд аль хэдийн байна ({1}%), батлагдсан гүйцэтгэл {2}% — давхар бичихгүй. Нэгтгэлийн мөрийг гараар шалгана уу.', new Date(s.at).toISOString().slice(0, 10), had == null ? '—' : had.toFixed(2), s.progress.toFixed(2)),
+      };
+    }
 
     const res = (await post(`${BAGTS_NEGTGEL.url}/applyEdits`, {
       adds: JSON.stringify([{

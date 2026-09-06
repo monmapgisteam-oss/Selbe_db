@@ -6,7 +6,7 @@ import { Section, Stats, Stat, Bars, Stack, Ring, Data, Empty, Col, Note, Split,
 import { useFilter } from '@/lib/filter';
 import { useAsync, type Async } from '@/lib/useAsync';
 import { queryFeatures } from '@/lib/query';
-import { BUILDING, PROGRESS_LEVELS, TASK_SHEET, LAYER_BY_ID, bagtsKey, buildingKey } from '@/lib/services';
+import { BUILDING, PROGRESS_LEVELS, TASK_SHEET, LAYER_BY_ID, bagtsKey, buildingKey, isConstructionNo } from '@/lib/services';
 import { loadBlockProgress, loadBlockHistory, progressSeries, type BlockHistory } from '@/lib/blockProgress';
 import { loadSheetRows, sheetBagtsNames, type SheetRow, type SheetRowOpts } from '@/modules/sheet/sheetRows';
 import { register } from '@/lib/dataBus';
@@ -752,7 +752,11 @@ export function useTaskPerf(b: PickedBuilding | null): Async<TaskPerfData | null
     let done = 0, inProgress = 0, notStarted = 0, noData = 0;
     for (const [k, r] of win) {
       if (r.level !== 5) continue;
-      if (phase.get(k) !== TASK_SHEET.constructionNo) continue;
+      /* ⚠️ Үе шатыг ТЭНЦҮҮГЭЭР бус нормчлолын НЭГ дүрмээр жишнэ
+       *    (`services.isConstructionNo`): Багц 2·12F ба Багц 3.2·9F-д тэр нүд
+       *    «Б» гэж ЦЭГГҮЙ бичигдсэн тул `=== 'Б.'` шалгуур нэг ч навч ажил
+       *    тоолохгүй, «ажлын төлөв» самбар тэр барилгуудад ОГТ гарахгүй байв. */
+      if (!isConstructionNo(phase.get(k))) continue;
       // ⚠️ null ≠ 0: бөглөгдөөгүй нүдийг «эхлээгүй» рүү нийлүүлэхгүй.
       const p = r.progress;
       if (p == null) noData += 1;

@@ -23,9 +23,9 @@
 
 import { PKGS, loadSchema } from '@/modules/sheet/bagts.pkg';
 import { TREES } from '@/modules/sheet/bagts.trees';
-import { computeAll, loadRows, msToDay } from '@/modules/sheet/bagtsSheet';
+import { computeAll, lastFrame, loadRows, msToDay } from '@/modules/sheet/bagtsSheet';
 import { overlaySubmission } from '@/modules/sheet/sheetFrame';
-import { loadSubmissionByOid, type SubmissionPayload } from '@/lib/submission';
+import { readSubmissionByOid, type SubmissionPayload } from '@/lib/submission';
 import { t as tr } from '@/lib/i18nCore';
 
 /** Нэг мөр — «Гүйцэтгэл бөглөх» хуудасны багануудтай ижил бүрэлдэхүүн */
@@ -77,6 +77,28 @@ export type Change = {
   to: number | null;
 };
 
+/**
+ * ХУВААРИЙН ОГНООНЫ ЗАСВАР — хянагчид ХАРАГДАХ ёстой өөрчлөлт.
+ *
+ * ⚠️ ЯАГААД ТУСДАА, `Change`-д НИЙЛҮҮЛЭЭГҮЙ (2026-09-04-ний аудит):
+ *    `changes` нь зөвшөөрлийн ГАРЦ болдог (нүд бүр дээр дарж ногоон болгох)
+ *    бөгөөд тэр дарах үйлдэл нь ЗӨВХӨН обьёмын нүдэн дээр боломжтой. Огноог
+ *    тэр жагсаалтад хийвэл хэзээ ч ногоон болохгүй нүд үүсч, багц бүхэлдээ
+ *    батлагдахаа болино. Тиймээс огноог ИЛ ХАРУУЛНА, гэхдээ түгжихгүй.
+ * ⚠️ Урьд нь `ov.dateKeys` хаана ч уншигддаггүй байсан тул огнооны засвар
+ *    хянагчид ОГТ харагдахгүй, «өөрчлөгдсөн нүд: 0» гэж бичээд батлагддаг байв.
+ */
+export type DateChange = {
+  no: string;
+  work: string;
+  block: string;
+  /** `s` = эхлэх, `e` = дуусах */
+  se: 's' | 'e';
+  /** `YYYY-MM-DD` эсвэл `null` (хоосон) */
+  from: string | null;
+  to: string | null;
+};
+
 export type Submission = {
   /** Аль үйлчилгээнээс — «Багц 1 · 9 давхар» */
   pkgLabel: string;
@@ -113,6 +135,29 @@ export type Submission = {
   filledCount: number;
   /** Өөрчлөгдсөн нүднүүд — дарж хүснэгт рүү үсрэх жагсаалт */
   changes: Change[];
+  /**
+   * ХУВААРИЙН ОГНООНЫ ЗАСВАР (дээрх `DateChange`-ийн ⚠️).
+   * ⚠️ Хуучин (архивын) зам нь зөвхөн обьёмын баганыг жишдэг тул тэнд ҮРГЭЛЖ
+   *    хоосон — «огноо өөрчлөгдөөгүй» гэсэн БАТАЛГАА БИШ.
+   */
+  dateChanges: DateChange[];
+  /**
+   * «ШИНЭЧЛЭГДСЭН ОГНОО»-г илгээлт өөрчилсөн үү.
+   * ⚠️ Энэ нь ганц нүдний засвар БИШ: `computeAll` түүгээр БҮХ мөрийн
+   *    төлөвлөгөөт хувийг дахин боддог тул батлахад хуудас бүхэлдээ өөрчлөгдөнө.
+   *    Хянагч үүнийг мэдэхгүй батлах ёсгүй.
+   */
+  asOfChanged: boolean;
+  /**
+   * Илгээлтийн СҮҮЛИЙН агшин (ms) — хяналтын мөрийн «Компани илгээсэн»
+   * огноотой жишихэд.
+   * ⚠️ Багц бүрд ГАНЦ `sub|` мөр байдаг бөгөөд дахин илгээхэд ТЭР МӨР дээр
+   *    нэгтгэгддэг (OBJECTID зориуд хэвээр). Тиймээс буцаагдсан ХУУЧИН
+   *    тойргийн хяналтын мөрийг нээхэд ШИНЭ агуулга харагдана — хянагч юуг
+   *    буцаасныг эргэж харах боломжгүй. Ядаж «үүнээс хойш шинэчлэгдсэн» гэдгийг
+   *    ил хэлнэ.
+   */
+  subAt?: number;
   /**
    * ИЛГЭЭЛТИЙН мөрийн OBJECTID — хараахан архивлагдаагүй (staged) харагдац.
    *
@@ -162,11 +207,19 @@ const num = (v: unknown): number | null =>
  */
 export async function loadSubmission(bagts: string, sheetOid: number): Promise<Submission | null> {
   /*
-   * ⚠️ Уншилтын алдааг ЗАЛГИХГҮЙ ч ЗОГСООХГҮЙ: `loadSubmissionByOid` нь
-   *    алдаа гарвал өөрөө `null` буцаадаг (илгээлтийн хүснэгт байхгүй орчинд
-   *    хуучин зам ажиллах ёстой).
+   * ⚠️ УНШИЛТЫН АЛДААГ ЗАЛГИХГҮЙ (2026-09-04-ний аудит). Урьд нь
+   *    `loadSubmissionByOid` дуудагддаг байсан бөгөөд тэр нь «мөр байхгүй» ба
+   *    «уншиж чадсангүй» хоёрыг ялгалгүй `null` буцаадаг: сүлжээ түр тасрах
+   *    агшинд хуучин (legacy) зам асаж, `Эх_мөрийн_дугаар`-ыг АРХИВЫН дугаар
+   *    гэж уншина. Тэр хоёр дугаар нь ӨӨР үйлчилгээнийх атлаа нэг талбарт
+   *    хадгалагддаг тул санамсаргүй таарч, хянагчид ОГТ ӨӨР агшныг «энэ
+   *    илгээлт» гэж бүтэн, итгэмээр байдлаар үзүүлдэг байв (амьд хоёр утга
+   *    хоёулаа бодит архивын мөр рүү таарч байгааг хэмжсэн).
+   *    Одоо «мэдэхгүй» бол ил алдаа — хянагч таамгаар батлахгүй.
    */
-  const staged = await loadSubmissionByOid(sheetOid);
+  const read = await readSubmissionByOid(sheetOid);
+  if (!read.ok) throw new Error(read.error);
+  const staged = read.sub;
   if (staged && !staged.done && staged.payload.archiveOid == null)
     return loadStaged(bagts, sheetOid, staged.payload);
   /*
@@ -233,6 +286,35 @@ async function loadStaged(
   /* Илгээлт БУУСАН нүднүүд — `${oid}:${b}` */
   const touched = new Set(ov.cellKeys);
 
+  /* ── ОГНООНЫ ЗАСВАР ба «Шинэчлэгдсэн огноо» (дээрх `DateChange`-ийн ⚠️) ── */
+  const baseDates = new Map<number, { s: (number | null)[]; e: (number | null)[] }>();
+  for (const r of loaded.rows) baseDates.set(r.oid, { s: r.start, e: r.end });
+  const rowAt = new Map<number, number>();
+  ov.rows.forEach((r, i) => rowAt.set(r.oid, i));
+  const dateChanges: DateChange[] = [];
+  for (const k of ov.dateKeys) {
+    const parts = k.split(':');
+    const oid = Number(parts[0]);
+    const b = Number(parts[1]);
+    const se = parts[2] === 'e' ? 'e' : 's';
+    const i = rowAt.get(oid);
+    if (i == null || !Number.isInteger(b) || b < 0 || b >= nBld) continue;
+    const r = ov.rows[i];
+    const to = msToDay((se === 's' ? r.start[b] : r.end[b]) ?? null);
+    const base = baseDates.get(oid);
+    /* ⚠️ Шинэ мөрд суурь БАЙХГҮЙ — `null` (хоосон огноо), 0 БИШ. */
+    const from = base ? msToDay((se === 's' ? base.s[b] : base.e[b]) ?? null) : '';
+    if (from === to) continue;
+    dateChanges.push({
+      no: r.no,
+      work: r.work || '—',
+      block: sc.bld[b] ?? String(b + 1),
+      se,
+      from: from || null,
+      to: to || null,
+    });
+  }
+
   const changes: Change[] = [];
   const filled: Filled[] = ov.rows.map((r, i) => {
     const base = baseObyem.get(r.oid);
@@ -297,7 +379,12 @@ async function loadStaged(
     filled,
     filledCount: filled.filter((f) => (f.sum ?? 0) > 0).length,
     changes,
+    dateChanges,
+    /* ⚠️ Суурьтайгаа ЖИШИНЭ: илгээлт огноог хөндөөгүй бол `null`, ижил утга
+       илгээсэн бол өөрчлөлт БИШ. */
+    asOfChanged: ov.asOf != null && ov.asOf !== loaded.asOf,
     subOid,
+    subAt: pl.at,
   };
 }
 
@@ -418,8 +505,20 @@ async function loadArchived(bagts: string, sheetOid: number): Promise<Submission
            *    `bagtsSheet.loadRows` ЯГ ижил зүйл хийдэг (`feats2`) — хоёр
            *    тал НЭГ дүрмээр таслаж байж л индекс нь тэнцэнэ.
            */
+          /*
+           * ⚠️ `feats.slice(-expect)` БОЛОХГҮЙ (2026-09-04-ний аудит). Тэр
+           *    дүрэм нь `bagtsSheet.loadRows`-оос АЛЬ ХЭДИЙН ХАЯГДСАН: жаазууд
+           *    тэгш бус урттай байвал (унасан нийтлэлийн үлдэгдэл — Bagts_2_9f
+           *    2026-08-29: [1386,1386,1386,1000]) сүүлээс тоолсон огтлол нь
+           *    жаазны заагийн аль нь ч БИШ газраас эхэлж, ХОЁР өөр агшны
+           *    мөрүүдийг нийлүүлдэг. Тэгвэл `tree[ri]`-ээр оноогддог шатлал,
+           *    «өөрчлөгдсөн нүд»-ийн улаан хүрээ, дарж үсрэх байрлал бүгд өөр
+           *    ажил руу заана — хянагч огт өөр зүйл батална.
+           *    `lastFrame` нь эхний №-ээр зааг таньж, хагас жаазыг алгасдаг
+           *    ЦОРЫН ГАНЦ эх сурвалж — бөглөх хуудас ч мөн түүгээр таслана.
+           */
           const expect = (TREES[p.key] ?? '').length;
-          const feats2 = expect > 0 && feats.length > expect ? feats.slice(-expect) : feats;
+          const feats2 = lastFrame(feats, sc.f.no, expect);
           const q = { features: feats2 };
           /*
            * ӨМНӨХ АГШНЫ ижил мөрүүд — `№`-ээр индекслэнэ.
@@ -460,12 +559,11 @@ async function loadArchived(bagts: string, sheetOid: number): Promise<Submission
               prevFailed = true;
             }
             if (!prevFailed) {
-              // ⚠️ Өмнөх агшныг ч ИЖИЛ дүрмээр таслана — эс бөгөөс жишилт нь
-              //    өөр хуулбартай харьцуулж, байхгүй өөрчлөлт «олдоно».
+              // ⚠️ Өмнөх агшныг ч ИЖИЛ дүрмээр (`lastFrame`) таслана — эс
+              //    бөгөөс жишилт нь өөр хуулбартай харьцуулж, байхгүй
+              //    өөрчлөлт «олдоно» (дээрх ⚠️).
               const pExpect = (TREES[p.key] ?? '').length;
-              const prev2 = pExpect > 0 && prevFeats.length > pExpect
-                ? prevFeats.slice(-pExpect)
-                : prevFeats;
+              const prev2 = lastFrame(prevFeats, sc.f.no, pExpect);
               prev2.forEach((x, i) => before.set(String(i), x.attributes));
             }
           }
@@ -539,6 +637,14 @@ async function loadArchived(bagts: string, sheetOid: number): Promise<Submission
         filled,
         filledCount,
         changes,
+        /*
+         * ⚠️ ХУУЧИН (архивын) ЗАМ нь зөвхөн обьёмын баганыг жишдэг тул огноо
+         *    ба «Шинэчлэгдсэн огноо»-ны өөрчлөлтийг ИЛРҮҮЛЖ ЧАДАХГҮЙ. Хоосон
+         *    жагсаалт нь «өөрчлөгдөөгүй» гэсэн БАТАЛГАА БИШ — тэр замаар
+         *    ирдэг мөрүүд нь батлагдсан/хуучин бүртгэлүүд.
+         */
+        dateChanges: [],
+        asOfChanged: false,
       };
     } catch (e) {
       /*

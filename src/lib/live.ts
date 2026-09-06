@@ -304,6 +304,34 @@ export type PkgProgressRow = {
 };
 
 /**
+ * ⚠️ 2026-09-04: ИРЭЭДҮЙН огноотой мөрийг таслах ЗААГ, epoch ms.
+ *
+ * ЮУГ: «одоо» гэсэн хатуу агшин БИШ, ӨДРИЙН ТӨГСГӨЛӨӨР таслана.
+ *
+ * ЯАГААД: ArcGIS-ийн огнооны талбар нь ихэвчлэн UTC шөнө дундаар (00:00Z)
+ * тамгалагддаг ба хөтөч нь UTC+8 бүсэд ажилладаг. Хатуу `Date.now()`-оор
+ * харьцуулбал «өнөөдөр бүртгэсэн» мөр өдрийн эхний хагаст ирээдүйд тооцогдож
+ * САНАМСАРГҮЙ хасагдана. Тиймээс ЛОКАЛ өдрийн төгсгөл ба UTC өдрийн төгсгөл
+ * хоёрын АЛЬ ХОЖУУГ нь авна — эргэлзээтэй мөрийг хасахгүй, ҮЛДЭЭНЭ
+ * (өгөгдөл нуухгүй зарчим).
+ *
+ * ⚠️ Буцаж гарах эрсдэл: `Math.max`-ыг `Math.min` болговол UTC+ бүсэд
+ * өнөөдрийн бүртгэл дэлгэцээс алга болно.
+ */
+const futureCutMs = (): number => {
+  const now = new Date();
+  const local = new Date(now);
+  local.setHours(23, 59, 59, 999);
+  const utc = Date.UTC(
+    now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 59, 59, 999,
+  );
+  return Math.max(local.getTime(), utc);
+};
+
+/** Дээрх заагийн `YYYY-MM-DD` хэлбэр — `PkgProgressRow.date`-тай харьцуулахад */
+const futureCutDay = (): string => new Date(futureCutMs()).toISOString().slice(0, 10);
+
+/**
  * БАГЦЫН ГҮЙЦЭТГЭЛИЙН НЭГТГЭЛ — багц бүрийн ХАМГИЙН СҮҮЛИЙН огноотой мөр.
  *
  * ⚠️ Хүснэгт нь append-only: багц бүрд огноо тутам нэг мөр нэмэгддэг тул
@@ -311,6 +339,16 @@ export type PkgProgressRow = {
  *
  * ⚠️ 2026-08-21-нд ХООСОН байсан; 2026-08-27-нд 7 багц бүртгэгдсэн. Дуудагч
  * тал ҮРГЭЛЖ хоосныг зөвшөөрөх ёстой — бөглөлт үе үе тасалддаг.
+ *
+ * ⚠️ 2026-09-04 (нэгтгэлийн аудит) — ЭНЭ ХҮСНЭГТИЙН ОДООГИЙН АГУУЛГА НЬ
+ *    ТУРШИЛТЫН (seed) ӨГӨГДӨЛ. `tools/negtgel-seed.mjs` нь 7 багц × 12 сар =
+ *    84 мөр үүсгэсэн бөгөөд сүүлийн агшин нь 2026-09-28 — өнөөдрөөс 24
+ *    хоногийн ИРЭЭДҮЙД. Портал түүнийг бодит гэж уншиж «Багц 1 78%» гэж 4
+ *    самбарт зурж байв (бодит бөглөх хуудасны хамралт 0.061%).
+ *    Мөрийг УСТГАХГҮЙ (тэр нь хэрэглэгчийн шийдвэр) — зөвхөн ИРЭЭДҮЙН
+ *    огноотойг УНШИХГҮЙ. БОДИТ бүртгэл нь ирээдүйд
+ *    `hyanaltStore.archiveSubmission` → `negtgelWrite.registerApproved`
+ *    замаар, баталсан илгээлт бүрд нэг мөрөөр нэмэгдэнэ.
  */
 export const loadPkgProgress = cached<PkgProgressRow[]>(async () => {
   const { BAGTS_NEGTGEL, bagtsKey } = await import('@/lib/services');
@@ -330,12 +368,20 @@ export const loadPkgProgress = cached<PkgProgressRow[]>(async () => {
      тутам нэг мөр нэмдэг тул бүтэн түүх нь ЦУВАА зурах цорын ганц эх. Зөвхөн
      одоогийн байдал хэрэгтэй дуудагч `latestPkgProgress()`-ыг ашиглана —
      ингэснээр хоёр төрлийн хэрэглэгч НЭГ HTTP хүсэлт хуваалцана. */
+  /* ⚠️ 2026-09-04: ИРЭЭДҮЙН огноотой мөрийг ЭНД хасна (дэлгэц дээр биш) —
+     `loadPkgProgress` нь энэ хүснэгтийн ЦОРЫН ГАНЦ уншигч тул нэг газарт
+     шүүвэл 4 самбар бүгд зэрэг цэвэрлэгдэнэ. Огноогүй (`null`) мөрийг
+     ХАЯХГҮЙ: тэр нь ирээдүйн биш, зүгээр л бүртгэлгүй — `date: ''` хэвээр
+     үлдэж, дуудагчид өөрсдөө шийднэ (null ≠ 0 зарчим). */
+  const cut = futureCutMs();
+  let dropped = 0;
   const out: PkgProgressRow[] = [];
   for (const r of rows) {
     const raw2 = String(r[F.bagts] ?? '').trim();
     const key = bagtsKey(raw2);
     if (!key) continue;
     const ts = r[F.date];
+    if (ts != null && Number(ts) > cut) { dropped += 1; continue; }
     const date = ts == null ? '' : new Date(Number(ts)).toISOString().slice(0, 10);
     out.push({
       key,
@@ -347,6 +393,16 @@ export const loadPkgProgress = cached<PkgProgressRow[]>(async () => {
       volumePlan: nOrNull(r[F.volumePlan]),
     });
   }
+  /* ⚠️ Өгөгдлийн согогийг НУУХГҮЙ — хасагдсан мөрийн тоог консолд ил гаргана.
+     Чимээгүй шүүвэл дараагийн хүн «нэгтгэл хоосон юм байна» гэж эндүүрнэ. */
+  if (dropped) {
+    console.warn(
+      `[selbe] нэгтгэлээс ИРЭЭДҮЙН огноотой ${dropped} мөр хасагдав `
+      + `(${rows.length} → ${out.length}); эх нь tools/negtgel-seed.mjs-ийн туршилтын өгөгдөл`,
+    );
+  }
+  /* ⚠️ Шүүсний дараа мөр үлдэхгүй бол ХООСОН массив — «0%» БИШ, «мэдээлэлгүй».
+     Дуудагч самбарууд бүгд `list.length === 0`-д `<Empty …>` зурдаг. */
   return out.sort((a, b) => a.date.localeCompare(b.date) || a.key.localeCompare(b.key, 'mn', { numeric: true }));
 }, undefined, ['BAGTS_NEGTGEL']);
 
@@ -355,10 +411,21 @@ export const loadPkgProgress = cached<PkgProgressRow[]>(async () => {
  *
  * ⚠️ Огноо ижил байвал СҮҮЛД ирсэн мөрийг авна: `loadPkgProgress` нь огноогоор
  * эрэмбэлж буцаадаг тул энэ нь хүснэгтэд сүүлд нэмэгдсэнтэй тохирно.
+ *
+ * ⚠️ 2026-09-04: ИРЭЭДҮЙН огноотой мөрийг ЭНД ДАХИН шүүнэ. `loadPkgProgress`
+ * аль хэдийн хассан тул энэ нь давхардсан мэт харагдана — гэвч энэ функц нь
+ * export хийгдсэн ЦЭВЭР функц бөгөөд ямар ч мөрийн массивыг хүлээж авдаг
+ * (тест, ирээдүйн өөр эх сурвалж). «Сүүлийнх»-ийг сонгодог функц ирээдүйн
+ * агшин авбал БҮХ самбарыг нэг дор худал болгодог тул хамгаалалт нь энд ч
+ * хэрэгтэй. Огноогүй (`''`) мөр нь `<= зааг` тул үлдэнэ.
+ *
+ * ⚠️ Хоосон буцаах нь ХҮЧИНТЭЙ хариу — «мэдээлэлгүй», 0% БИШ.
  */
 export const latestPkgProgress = (rows: PkgProgressRow[]): PkgProgressRow[] => {
+  const cutDay = futureCutDay();
   const last = new Map<string, PkgProgressRow>();
   for (const r of rows) {
+    if (r.date && r.date > cutDay) continue;
     const cur = last.get(r.key);
     if (cur && cur.date > r.date) continue;
     last.set(r.key, r);

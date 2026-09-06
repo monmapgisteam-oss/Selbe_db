@@ -19,7 +19,7 @@
  *      payload ижил хүснэгтэд байдаг — `v !== 1` бол илгээлт БИШ.
  */
 import assert from 'node:assert/strict';
-import { parseSubmission, mergeSubmission, SUBMISSION_MAX } from './submission.ts';
+import { parseSubmission, mergeSubmission, saveSubmission, SUBMISSION_MAX } from './submission.ts';
 
 const FILL = Date.UTC(2026, 8, 4);
 const add = (oid, extra = {}) => ({
@@ -290,6 +290,33 @@ const nextOf = (over = {}) => {
   const back = parseSubmission(JSON.stringify(m));
   assert.deepEqual(back, m, 'нэгтгэсэн payload задлахад өөрчлөгдөв');
   assert.ok(JSON.stringify(m).length < SUBMISSION_MAX);
+}
+
+/* ── 18. ХЭТ ТОМ ИЛГЭЭЛТИЙН ЗААВАР ҮНЭН БАЙХ ──
+ *
+ * ⚠️ `saveSubmission` нь хэмжээ ба багцын түлхүүрийг СҮЛЖЭЭНЭЭС ӨМНӨ шалгаж
+ *    буцдаг тул эдгээр хоёр зам нь цэвэр функцтэй ижил (ArcGIS руу хандахгүй).
+ * ⚠️ 2026-09-04-ний аудит: «хэсэгчлэн илгээнэ үү» гэсэн заавар ХУДАЛ байв —
+ *    `mergeSubmission` дараагийн илгээлтийг өмнөхтэй нь ХУРИМТЛУУЛДАГ тул
+ *    хагаслах нь хэмжээг огт бууруулахгүй, хэрэглэгч гарцгүй давталтад ордог.
+ */
+{
+  const big = { ...valid(), cells: [] };
+  for (let i = 0; i < 6000; i += 1) big.cells.push([`${1000 + i}:0`, '1234.5678']);
+  const raw = JSON.stringify(big);
+  assert.ok(raw.length > SUBMISSION_MAX, 'туршилтын payload хязгаараас давсангүй');
+  const r = await saveSubmission('b1_9f', big);
+  assert.equal(r.ok, false, 'хэт том илгээлт ЯВАХ ЁСГҮЙ');
+  assert.ok(!/хэсэгчлэн илгээнэ үү/.test(r.error), 'ХУДАЛ заавар («хэсэгчлэн илгээнэ үү») буцаж ирэв');
+  assert.ok(/ТУСЛАХГҮЙ/.test(r.error), 'хэсэгчлэх нь тусахгүйг ил хэлээгүй');
+  assert.ok(/батлуул/.test(r.error), 'жинхэнэ гарц (батлуулах) заагаагүй');
+}
+
+/* ── 19. Багцын түлхүүр зөрвөл БИЧИХГҮЙ (сүлжээнээс өмнөх зам) ── */
+{
+  const r = await saveSubmission('b2_9f', parseSubmission(JSON.stringify(valid())));
+  assert.equal(r.ok, false, 'өөр багцын diff энэ түлхүүрт бичигдэх гэж байв');
+  assert.ok(/b1_9f/.test(r.error) && /b2_9f/.test(r.error));
 }
 
 console.log('submission.check ✓');

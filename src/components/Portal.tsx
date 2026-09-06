@@ -32,6 +32,10 @@ import { Dashboard } from '@/modules/Dashboard';
    татагддаг байв. Тэдгээр нь `MapCanvas`-ыг ХУВААЛЦДАГ (Dashboard-той нэг
    chunk) тул динамик болгоход ArcGIS давхардахгүй — зөвхөн өөрсдийнх нь код
    хойшилно. */
+/* ⚠️ Шинэ «Ерөнхий дашбоард» нь `Dashboard`-аас ЯЛГААТАЙ dynamic: тэр нь
+   `DEFAULT_VIEW` тул статик хэвээр (эхний ачаалалтад заавал хэрэгтэй), энэ нь
+   нээх үедээ л татагдана. */
+const GeneralDash = dynamic(() => import('@/modules/GeneralDash').then((m) => m.GeneralDash), { ssr: false });
 const PkgFin = dynamic(() => import('@/modules/PkgFin').then((m) => m.PkgFin), { ssr: false });
 const PkgProg = dynamic(() => import('@/modules/PkgProg').then((m) => m.PkgProg), { ssr: false });
 const Gazar = dynamic(() => import('@/modules/Gazar').then((m) => m.Gazar), { ssr: false });
@@ -505,7 +509,7 @@ function PortalContent(
    */
   const { setOrtho } = useMap();
   useEffect(() => {
-    setOrtho(view !== 'dashboard' && view !== 'plan');
+    setOrtho(view !== 'gdash' && view !== 'dashboard' && view !== 'plan');
   }, [view, setOrtho]);
 
   /* ── Багануудын өргөн ── */
@@ -527,6 +531,7 @@ function PortalContent(
    *   · analysis  — Suitability Modeler (өөрийн 3 багана, харанхуй палитр)
    *   · dashboard — газрын зургийг тойрсон үзүүлэлтийн самбар
    */
+  const isGdash = view === 'gdash';
   const isDash = view === 'dashboard';
   const isHuvaari = view === 'huvaari';
   const isTailan = view === 'tailan';
@@ -684,7 +689,9 @@ function PortalContent(
                 каталог, ХАДГАЛААГҮЙ НООРОГ бүгд алга болно. `key={view}` нь
                 харагдац солиход хашлагыг remount хийж, хуучин алдааг арилгана. */}
             <ErrorBoundary scope="view" key={view} label={tr('«{0}» нээгдсэнгүй', VIEW_BY_KEY[view].title)}>
-            {isDash
+            {isGdash
+              ? <GeneralDash dim={dim} setDim={setDim} zone={zone} setZone={setZone} />
+              : isDash
               ? <Dashboard dim={dim} setDim={setDim} zone={zone} setZone={setZone} />
               : isPkgFin
               ? <PkgFin dim={dim} setDim={setDim} />

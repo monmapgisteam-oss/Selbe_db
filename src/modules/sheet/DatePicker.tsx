@@ -94,6 +94,24 @@ export default function DatePicker({ value, anchor, onPick, onClose }: PickerPro
       return { y: d.getUTCFullYear(), m: d.getUTCMonth() };
     });
 
+  /**
+   * ОНЫ ЖАГСААЛТ — сонгогдож буй он ЗААВАЛ багтана.
+   *
+   * ⚠️ Хатуу мужаар (жиш. 2024–2032) бичвэл хэдэн жилийн дараа хуучирч,
+   * хуваарийн огноо жагсаалтад ОРОХГҮЙ болно — тэр үед `select` нь утгаа
+   * олохгүй, эхний мөрөө харуулж, хэрэглэгч мэдэлгүй он СОЛИНО. Тиймээс
+   * муж нь ӨНӨӨДРӨӨС бодогдоно, дээр нь одоогийн харагдац ба сонгосон
+   * огнооны оныг албаар нэмнэ.
+   */
+  const years = (() => {
+    const nowY = new Date(todayMs()).getUTCFullYear();
+    const set = new Set<number>();
+    for (let y = nowY - 3; y <= nowY + 8; y += 1) set.add(y);
+    set.add(view.y);
+    if (cur != null) set.add(new Date(cur).getUTCFullYear());
+    return [...set].sort((a, b) => a - b);
+  })();
+
   return (
     <div
       ref={box}
@@ -103,7 +121,35 @@ export default function DatePicker({ value, anchor, onPick, onClose }: PickerPro
       <div className={st.calHead}>
         <button className={st.calNav} onClick={() => step(-12)} title={tr('Өмнөх жил')}>«</button>
         <button className={st.calNav} onClick={() => step(-1)} title={tr('Өмнөх сар')}>‹</button>
-        <span className={st.calTitle}>{tr('{0} оны {1}-р сар', view.y, view.m + 1)}</span>
+        {/*
+          * ⚠️ ОН/САРЫГ ШУУД СОНГОНО (2026-09-04, хэрэглэгч: «эндээс он сар
+          * өөрчлөгдөхгүй»). Сумнууд ажилладаг ч 22px, бүдэг өнгөтэй бөгөөд
+          * төслийн хуваарь 2025→2027 үргэлжилдэг тул нэг сараар алхаж хүрэхэд
+          * хорь гаруй товшилт болдог байв. Сум нь ХЭВЭЭР (хажуугийн сар руу
+          * хурдан алхах), дээр нь шууд сонголт нэмэгдэв.
+          */}
+        <span className={st.calTitle}>
+          <select
+            className={st.calPick}
+            value={view.m}
+            title={tr('Сар сонгох')}
+            onChange={(e) => setView((v) => ({ ...v, m: Number(e.target.value) }))}
+          >
+            {Array.from({ length: 12 }, (_, i) => (
+              <option key={i} value={i}>{tr('{0}-р сар', i + 1)}</option>
+            ))}
+          </select>
+          <select
+            className={st.calPick}
+            value={view.y}
+            title={tr('Он сонгох')}
+            onChange={(e) => setView((v) => ({ ...v, y: Number(e.target.value) }))}
+          >
+            {years.map((y) => (
+              <option key={y} value={y}>{y}</option>
+            ))}
+          </select>
+        </span>
         <button className={st.calNav} onClick={() => step(1)} title={tr('Дараа сар')}>›</button>
         <button className={st.calNav} onClick={() => step(12)} title={tr('Дараа жил')}>»</button>
       </div>

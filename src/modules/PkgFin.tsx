@@ -92,8 +92,166 @@ const prevTotal = (d: FinData): number => {
   );
 };
 
+/* ══════════════ НЭГ БАГЦ ↔ ОЛОН ГЭРЭЭ (2026-09-04) ══════════════ */
+
 /**
- * ⚠️ ЭНЭ МОДУЛЬ ЗӨВХӨН «БАГЦЫН САНХҮҮ»-Д. 
+ * Гэрээний мөрөөс БАГЦ-хэмжээст Map-ийн (given · givenTotal · phys) ЭХ ТҮЛХҮҮР.
+ *
+ * ⚠️ `contractMonths`-ийн уналттай ЯГ ИЖИЛ байх ЁСТОЙ:
+ *    `map.get(pkgKeyOf(pkg2)) ?? map.get(pkgKeyOf(pkg))`. Энд `has`-аар
+ *    давтаж бичсэн шалтгаан нь ХОЁР ГЭРЭЭ НЭГ Л эх түлхүүрт унасныг таних —
+ *    тэр тохиолдолд цувааг ХОЁР УДАА нийлбэрлэж болохгүй (доорх ⚠️).
+ */
+const pkgSrcKey = (
+  r: FinData['contracts'][number],
+  map: Map<string, unknown>,
+): string | null => {
+  const C = CASHFLOW2.fields;
+  const k2 = pkgKeyOf(r[C.pkg2]);
+  const k3 = pkgKeyOf(r[C.pkg]);
+  return map.has(k2) ? k2 : map.has(k3) ? k3 : null;
+};
+
+/**
+ * НЭГ БАГЦЫН БҮХ ГЭРЭЭГ нэг сарын цуваа болгон НЭГТГЭНЭ.
+ *
+ * ⚠️ 2026-09-04 (аудит, HIGH): урьд нь багц бүрээс ЭХНИЙ таарсан гэрээг л
+ *    авдаг байв (`d.contracts.find(...)`, `finMap`-д `!m.has(k)`). Амьд
+ *    өгөгдөл (cashflow_0813/173, 2026-09-04): «БАГЦ-7»-д ХОЁР мастер гэрээ —
+ *      · G04 «Хөрсний ус зайлуулах … зураг төсөл» — САРЫН МӨР ОГТ БАЙХГҮЙ (0 ₮)
+ *      · G29 «Хөрсний ус зайлуулах … ажил»        — 20,162,536,361 ₮ (3 сар)
+ *    OBJECTID-ийн эрэмбээр G04 түрүүлдэг тул Багц 7-гийн санхүүжилтийн
+ *    төлөвлөгөө 0 ₮ болж, «Нийт төсөв» тэмдэглэл алга болж, олгосон хувь
+ *    (`givenShare`) «—» гэж харагддаг байв — 20 тэрбум ₮-ийн хуваарь
+ *    ЧИМЭЭГҮЙ алга болно. Түүнчлэн БАГЦ-3/4/5/6/8/16, «БҮХ БАГЦ» зэрэг
+ *    ҮНДСЭН түлхүүрүүд мөн 2–9 гэрээтэй (одоогийн багцын жагсаалтад
+ *    зөвхөн дэд түлхүүр орсон тул дэлгэцэд хараахан хохирдоггүй).
+ *
+ * ⚠️ САРААР түлхүүрлэж нэгтгэнэ, ИНДЕКСЭЭР БИШ. `contractMonths` одоогоор
+ *    бүх гэрээнд `cfMonthAxis()`-ийн НЭГ тэнхлэг буцаадаг ч гэрээ бүрд өөр
+ *    тэнхлэг үүсэх хувилбарт (жишээ нь гэрээний хугацаагаар тайрах) индексээр
+ *    нийлбэрлэвэл ӨӨР сарын дүнгүүд хооронд нь нэмэгдэнэ.
+ *
+ * ⚠️ ОЛГОЛТ (`given`) БА БИЕТ (`phys`) нь ГЭРЭЭНИЙХ БИШ, БАГЦЫНХ.
+ *    `contractMonths` тэдгээрийг багцын түлхүүрээр татдаг тул БАГЦ-7-гийн
+ *    хоёр гэрээ ИЖИЛ цуваа буцаана — шууд нийлбэрлэвэл олгосон санхүүжилт
+ *    ХОЁР ДАХИН хөөрөгдөнө. Тиймээс эх түлхүүрээр нь давхардлыг ХАСНА
+ *    (`pkgSrcKey`). БАГЦ-3 мэт үндсэн түлхүүрт дэд багцууд нь ӨӨР ӨӨР
+ *    түлхүүртэй тул тэдгээр нь зөв нийлбэрлэгдэнэ.
+ *
+ * ⚠️ `null ≠ 0`: хуваарьгүй гэрээ (G04) «0 ₮ төлөвлөгөөтэй» гэж тоологдохгүй —
+ *    түүнд сарын мөр ОГТ байхгүй тул нийлбэрт огт нөлөөлөхгүй. `phys` нь
+ *    бүх эх сурвалжид хэмжилтгүй сард `null` ХЭВЭЭР үлдэнэ (0 гэж зурахгүй).
+ *
+ * ⚠️ Олон эх сурвалжийн `phys`-ийг ЭНГИЙН дунджаар авна (блокоор ЖИГНЭХГҮЙ).
+ *    Одоогийн өгөгдөлд олон гэрээт багц бүр НЭГ л phys эх сурвалжтай тул
+ *    дундаж хэрэгждэггүй; үндсэн түлхүүр (БАГЦ-3 г.м.) багцын жагсаалтад
+ *    орох хувилбарт `aggregateMonths`-ийн адил `physCnt`-ээр жигнэх хэрэгтэй.
+ */
+function mergePkgMonths(
+  rows: FinData['contracts'],
+  d: FinData,
+): ReturnType<typeof contractMonths> | null {
+  if (!rows.length) return null;
+  if (rows.length === 1) return contractMonths(rows[0], d);
+  const C = CASHFLOW2.fields;
+  const amount = new Map<string, number>();   // сар → төлөвлөгөөт ₮
+  const given = new Map<string, number>();    // сар → олгосон ₮
+  const physSum = new Map<string, number>();  // сар → phys-ийн нийлбэр
+  const physN = new Map<string, number>();    // сар → phys эх сурвалжийн тоо
+  const seenGeree = new Set<string>();
+  const seenGiven = new Set<string>();
+  const seenPhys = new Set<string>();
+  rows.forEach((r, i) => {
+    const ms = contractMonths(r, d);
+    /* Гэрээний код давхардвал (буруу бичилт) хуваарь давхар тоологдохгүй.
+       Код хоосон бол мөрийн индексээр ялгана — өөр гэрээ гэж үзнэ. */
+    const gk = String(r[C.geree] ?? '') || `#${i}`;
+    const planNew = !seenGeree.has(gk);
+    if (planNew) seenGeree.add(gk);
+    const givenK = pkgSrcKey(r, d.given);
+    const givenNew = givenK != null && !seenGiven.has(givenK);
+    if (givenNew) seenGiven.add(givenK);
+    const physK = pkgSrcKey(r, d.phys);
+    const physNew = physK != null && !seenPhys.has(physK);
+    if (physNew) seenPhys.add(physK);
+    for (const m of ms) {
+      if (!amount.has(m.label)) amount.set(m.label, 0);
+      if (planNew) amount.set(m.label, (amount.get(m.label) ?? 0) + m.amount);
+      if (givenNew) given.set(m.label, (given.get(m.label) ?? 0) + m.given);
+      if (physNew && m.phys != null) {
+        physSum.set(m.label, (physSum.get(m.label) ?? 0) + m.phys);
+        physN.set(m.label, (physN.get(m.label) ?? 0) + 1);
+      }
+    }
+  });
+  /*
+   * ⚠️ 2026-09-04 (аудит): `MonthPt.pkg`-ийг НЭГТГЭСЭН цуваанд ЗААВАЛ
+   *    дамжуулна. Тэр талбар нь `lagOf`-д хуваарийн муруйг сонгодог ЦОРЫН
+   *    ГАНЦ түлхүүр: `Finance.lagOf` нь `months.find((m) => m.pkg)?.pkg`
+   *    -аар багцаа таньж `PlanCurve.byBagts`-аас ТУХАЙН багцын муруйг авдаг,
+   *    түлхүүр байхгүй бол ТӨСЛИЙН нэгдсэн муруй руу (`pc.months`) унана.
+   *    Урьд нь энэ буцаах объектод `pkg` ОГТ байхгүй байсан (`pkg` нь
+   *    optional тул `tsc` барихгүй) — өнөөдөр далд, учир нь `byBagts`-ийн
+   *    7 барилгын багц тус бүр ЯГ НЭГ мастер гэрээтэй тул дээрх
+   *    `rows.length === 1` салаагаар `contractMonths` (pkg-тэй) буцдаг.
+   *    Гэвч Багц 7-той ИЖИЛ загвараар (зураг төсөл + ажил гэсэн 2 гэрээ)
+   *    аль нэг барилгын багцад хоёр дахь гэрээ бүртгэгдмэгц тэр багцын биет
+   *    хоцрогдол ТӨСЛИЙН дундаж хуваариар бодогдож, badge-ийн өнгө ба
+   *    «төл. − бодит» тоо хоёулаа чимээгүй буруу болно.
+   * ⚠️ `phys` ОЛОН эх сурвалжийн ДУНДАЖ болсон бол `pkg`-ийг `undefined`
+   *    үлдээнэ — `lagOf` тэгвэл `null` буцаана (хоцрогдол «—» гэж гарна).
+   *    Дундаж муруйд НЭГ багцын хуваарь тохирохгүй тул «буруу муруйгаар
+   *    тоо гаргахаас хоосон нүд ДЭЭР». `contractMonths`-ийн дүрэмтэй нэг:
+   *    `phys` хаанаас гарсан, хуваарь нь ЯГ ТЭР багцынх.
+   */
+  const physKey = seenPhys.size === 1 ? [...seenPhys][0] : undefined;
+
+  /* «YYYY-MM» тул үсгэн эрэмбэ = цаг хугацааны эрэмбэ */
+  const labels = [...amount.keys()].sort();
+  const total = labels.reduce((a, l) => a + (amount.get(l) ?? 0), 0);
+  let cum = 0;
+  return labels.map((label) => {
+    cum += amount.get(label) ?? 0;
+    const n = physN.get(label) ?? 0;
+    return {
+      label,
+      amount: amount.get(label) ?? 0,
+      /* ⚠️ Өссөн дүн/хувийг НЭГТГЭСЭН цувааны дараа ДАХИН бодно — гэрээ
+         тус бүрийн `amountCum`/`cumPct`-ийг нийлбэрлэвэл хувь нь 100-аас
+         давна (`contractMonths`-ийн ⚠️-тэй ижил дүрэм). */
+      amountCum: cum,
+      cumPct: total > 0 ? (cum / total) * 100 : 0,
+      given: given.get(label) ?? 0,
+      phys: n > 0 ? (physSum.get(label) ?? 0) / n : null,
+      // ⚠️ Дээрх ⚠️-г үзнэ үү — энэ талбарыг ХЭЗЭЭ Ч бүү хас.
+      pkg: physKey,
+    };
+  });
+}
+
+/**
+ * Багцын ОЛГОСОН НИЙТ дүн (₮) — гэрээ БҮРЭЭР, эх түлхүүрийн давхардлыг хасаж.
+ *
+ * ⚠️ Сарын цувааны нийлбэр БИШ (`d.givenTotal`): 59 актын 29-д огноо алга тул
+ *    тэдгээр цуваанд ордоггүй — FinCard-ийн хуучин ⚠️-г үзнэ үү.
+ * ⚠️ БАГЦ-7-гийн хоёр гэрээ НЭГ л «БАГЦ7» түлхүүрт унадаг тул давхардлыг
+ *    хасахгүй бол олгосон дүн хоёр дахин харагдана.
+ */
+function pkgGivenTotal(rows: FinData['contracts'], d: FinData): number {
+  const seen = new Set<string>();
+  let s = 0;
+  for (const r of rows) {
+    const k = pkgSrcKey(r, d.givenTotal);
+    if (k == null || seen.has(k)) continue;
+    seen.add(k);
+    s += d.givenTotal.get(k) ?? 0;
+  }
+  return s;
+}
+
+/**
+ * ⚠️ ЭНЭ МОДУЛЬ ЗӨВХӨН «БАГЦЫН САНХҮҮ»-Д.
  *
  * ⚠️ 2026-08-21 (хэрэглэгчийн хүсэлт): урьд нь ГАНЦ «Багцын хяналт» цонх гэрээ,
  * санхүүжилт, биет явц, барилгын хяналтыг БҮГДИЙГ багтааж, баруун багана 6-7
@@ -210,7 +368,12 @@ export function PkgFin({ dim, setDim }: {
   const finMap = useMemo(() => {
     if (finQ.state !== 'ready') return null;
     const C = CASHFLOW2.fields;
-    const m = new Map<string, ReturnType<typeof contractMonths>>();
+    /* ⚠️ 2026-09-04: урьд нь `!m.has(k)`-ээр багц бүрд ЭХНИЙ гэрээг л
+       үлдээдэг байв. Багц 7-д G04 (хуваарьгүй зураг төсөл) түрүүлж ордог тул
+       20,162,536,361 ₮-ийн хуваарьтай G29 хаягдаж, багц «0 ₮ төлөвлөгөөтэй»
+       харагддаг байлаа. Одоо түлхүүр бүрд БҮХ гэрээг цуглуулж `mergePkgMonths`
+       сараар нэгтгэнэ (дэлгэрэнгүйг тэр функцийн ⚠️-үүдээс). */
+    const rowsByKey = new Map<string, FinData['contracts']>();
     finQ.data.contracts.forEach((r) => {
       // ⚠️ `pkgKeyOf` — «БАГЦ 1-4» мэт ОЛОН багц хамарсан мөр нь bagtsKey-ээр
       //    «БАГЦ14» болж, бодит «Багц 14 · Дулаан хангамжийн нэвтрэх суваг»-т
@@ -218,9 +381,19 @@ export function PkgFin({ dim, setDim }: {
       //    бүртгэлгүй» гэхийн оронд ХУДАЛ гүйцэтгэл харуулдаг байв.
       const k2 = pkgKeyOf(r[C.pkg2]);
       const k3 = pkgKeyOf(r[C.pkg]);
-      [k2, k3].forEach((k) => {
-        if (k && k !== '0' && !m.has(k)) m.set(k, contractMonths(r, finQ.data));
+      /* Дэд ба үндсэн түлхүүр ИЖИЛ байвал (БАГЦ-7: pkg = pkg2) нэг гэрээ
+         жагсаалтад ХОЁР УДАА орж, хуваарь давхар тоологдоно — `Set` хаана. */
+      [...new Set([k2, k3])].forEach((k) => {
+        if (!k || k === '0') return;
+        const arr = rowsByKey.get(k) ?? [];
+        arr.push(r);
+        rowsByKey.set(k, arr);
       });
+    });
+    const m = new Map<string, ReturnType<typeof contractMonths>>();
+    rowsByKey.forEach((rows, k) => {
+      const ms = mergePkgMonths(rows, finQ.data);
+      if (ms) m.set(k, ms);
     });
     return m;
   }, [finQ]);
@@ -232,6 +405,12 @@ export function PkgFin({ dim, setDim }: {
    *    огноо, эх үүсвэр, төсөвт өртөг зэрэг бүх лавлах талбар алдагддаг.
    *    Санхүүгийн дэлгэрэнгүйд тэдгээр нь ЯГ хэрэгтэй — «энэ мөнгө ямар
    *    гэрээгээр, ямар эх үүсвэрээс гарч байна вэ».
+   *
+   * ⚠️ 2026-09-04: энэ карт ОДООГООР эхний гэрээг л харуулна. Санхүүжилтийн
+   *    ДҮНГ нэгтгэх алдаа (`mergePkgMonths`) зассан ч ЛАВЛАХ талбарууд нь
+   *    гэрээ бүрд өөр тул нэгтгэх боломжгүй — «БАГЦ-7»-д G04 (зураг төсөл) ба
+   *    G29 (ажил) хоёрын эхнийх нь харагдана. Дэлгэцэд олон гэрээг ЖАГСААХ нь
+   *    тусдаа UI ажил; хийхээсээ өмнө хэрэглэгчээс асууна.
    */
   const finRow = useMemo(() => {
     if (finQ.state !== 'ready') return null;
@@ -1029,10 +1208,14 @@ function PkgActs({ p, finQ }: { p: Pack; finQ: Async<FinData> }) {
   if (finQ.state === 'loading') return <Section title={tr('Гүйцэтгэлийн акт')}><Empty label={tr('Ачаалж байна…')} /></Section>;
   if (!acts || !acts.length) return <Section title={tr('Гүйцэтгэлийн акт')}><Empty label={tr('Акт бүртгэгдээгүй')} /></Section>;
 
-  const netTotal = acts.reduce((a, x) => a + x.net, 0);
+  /* ⚠️ 2026-09-04: `ipcNet`/`ipcDue` одоо `number | null` буцаана (services.ts) —
+     «дүн бүртгэгдээгүй» акт нь 0 БИШ, ХЭМЖИГДЭЭГҮЙ. Нийлбэрт тэдгээрийг
+     ОРУУЛАХГҮЙ (0 гэж нэмбэл нийлбэр өөрчлөгдөхгүй ч «дүнтэй акт»-ын тоо
+     худал өснө), харин актын мөрөнд «дүнгүй» гэж ИЛ гарна. */
+  const netTotal = acts.reduce((a, x) => a + (x.net ?? 0), 0);
   const retTotal = acts.reduce((a, x) => a + x.ret, 0);
-  const outTotal = acts.reduce((a, x) => a + x.out, 0);
-  const withAmt = acts.filter((x) => x.net > 0).length;
+  const outTotal = acts.reduce((a, x) => a + (x.out ?? 0), 0);
+  const withAmt = acts.filter((x) => x.net != null && x.net > 0).length;
 
   return (
     <>
@@ -1046,7 +1229,7 @@ function PkgActs({ p, finQ }: { p: Pack; finQ: Async<FinData> }) {
             key: x.no,
             value: (
               <span className="num">
-                {x.net > 0 ? mnt(x.net) : tr('дүнгүй')}
+                {x.net != null && x.net > 0 ? mnt(x.net) : tr('дүнгүй')}
                 {x.from && x.to ? (
                   <small className={ts.actPeriod}>{date(x.from)} – {date(x.to)}</small>
                 ) : null}
@@ -1289,21 +1472,27 @@ function FinCard({
   let givenTotal = 0;
   if (d) {
     if (p) {
-      const row =
-        d.contracts.find((r) => pkgKeyOf(r[C.pkg2]) === p.key) ??
-        d.contracts.find((r) => pkgKeyOf(r[C.pkg]) === p.key) ??
-        null;
-      if (!row) noRow = true;
+      /* ⚠️ 2026-09-04 (аудит, HIGH): `find` → `filter`. Хуучин код нь багцын
+         ЭХНИЙ таарсан гэрээг л авдаг байв. Амьд өгөгдөл: «БАГЦ-7»-д ХОЁР
+         мастер гэрээ — G04 (зураг төсөл, сарын хуваарь ОГТ БАЙХГҮЙ) ба G29
+         (ажил, 20,162,536,361 ₮). G04 эрэмбээр түрүүлдэг тул `total` = 0 ₮,
+         «Нийт төсөв» тэмдэглэл алга, `givenShare` «—» болж, 20 тэрбумын
+         хуваарь дэлгэцэд ОГТ гарахгүй байлаа. Одоо БҮХ гэрээг сараар нэгтгэнэ;
+         олголт/биет цуваа нь БАГЦЫН хэмжээст тул `mergePkgMonths` доторх
+         давхардал хасах дүрэм ЗААВАЛ хэрэгтэй (тэндхийн ⚠️-г үзнэ үү). */
+      const rows = d.contracts.filter(
+        (r) => pkgKeyOf(r[C.pkg2]) === p.key || pkgKeyOf(r[C.pkg]) === p.key,
+      );
+      if (!rows.length) noRow = true;
       else {
-        months = contractMonths(row, d);
+        months = mergePkgMonths(rows, d);
         /* ⚠️ Гэрээний «өмнө шилжүүлсэн» дүн шинэ схемд БАЙХГҮЙ (зөвхөн
            төслийн нийт) тул багцын нийт төсөв нь сарын төлөвлөгөөний
            нийлбэр. */
-        total = months.reduce((a, m) => a + m.amount, 0);
-        /* Түлхүүрийн уналт нь `contractMonths`-ийн `given.get(...)`-тэй ЯГ ижил */
-        givenTotal = d.givenTotal.get(pkgKeyOf(row[C.pkg2]))
-          ?? d.givenTotal.get(pkgKeyOf(row[C.pkg]))
-          ?? 0;
+        total = months ? months.reduce((a, m) => a + m.amount, 0) : 0;
+        /* Түлхүүрийн уналт нь `contractMonths`-ийн `given.get(...)`-тэй ЯГ ижил;
+           хоёр гэрээ нэг түлхүүрт унавал НЭГ УДАА л тоологдоно. */
+        givenTotal = pkgGivenTotal(rows, d);
       }
     } else {
       months = aggregateMonths(d);

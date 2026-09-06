@@ -1,0 +1,254 @@
+/**
+ * ЕРӨНХИЙ ДАШБОАРД — байрлал.
+ *
+ * ⚠️ ГУРВАН БАГАНА, дундах нь УЯН. Хажуугийн багана ТОГТМОЛ өргөнтэй: чарт нь
+ * шошготой мөрүүд тул нарийсахад нэр нь тасарч уншигдахаа больдог. Дундах
+ * (газрын зураг) нь үлдсэн зайг бүхэлд нь авна.
+ *
+ * ⚠️ Хуудас БҮХЭЛДЭЭ гүйхгүй — багана тус бүр дотроо гүйнэ. Эс бөгөөс газрын
+ * зураг дэлгэцээс гараад, хэрэглэгч чарт үзэхийн тулд зургаа алддаг.
+ */
+.shell {
+  display: grid;
+  grid-template-columns: var(--gd-side) minmax(0, 1fr) var(--gd-side);
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-areas:
+    'filters filters filters'
+    'left    center  right';
+  gap: 10px;
+  height: 100%;
+  min-height: 0;
+  padding: 10px;
+  --gd-side: 340px;
+}
+
+@media (max-width: 1500px) { .shell { --gd-side: 300px; } }
+
+/* Нарийн дэлгэц — багана дараалан босоо болно (зураг дундаа хэвээр) */
+@media (max-width: 1180px) {
+  .shell {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'filters' 'center' 'left' 'right';
+    grid-template-rows: auto auto auto auto;
+    overflow: auto;
+  }
+  .left, .right, .center { overflow: visible; }
+  .hero { min-height: 420px; }
+}
+
+.left { grid-area: left; }
+.right { grid-area: right; }
+.center { grid-area: center; }
+
+.left, .right {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  overflow: auto;
+  /* Гүйлгэх зурвас баганын агуулгыг нарийсгахгүй байх */
+  scrollbar-gutter: stable;
+}
+
+.center {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  overflow: auto;
+}
+
+/* ── Газрын зураг ── */
+.hero {
+  position: relative;
+  flex: 1 1 auto;
+  /* ⚠️ Доод S-муруй ба дээд индикаторт зай үлдээж, зураг нь ХАМГИЙН БАГА
+     энэ өндөртэй байна — эс бөгөөс өндөр дэлгэцэд зураг хэт нимгэн зурвас
+     болж, 3D горим утгагүй болно. */
+  min-height: 380px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--bg-2);
+}
+
+.catPanel {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: min(360px, 80%);
+  z-index: 6;
+  overflow: auto;
+  background: var(--bg-1);
+  box-shadow: 2px 0 12px rgb(0 0 0 / 22%);
+}
+
+/* ── Хугацааны шүүлт ── */
+.filters {
+  grid-area: filters;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg-1);
+}
+
+.fLabel {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.fGroup { display: flex; flex-wrap: wrap; gap: 4px; }
+
+.chip {
+  padding: 3px 9px;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-2);
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.chip:hover { color: var(--ink); border-color: var(--data); }
+.chipOn {
+  color: var(--bg-1);
+  background: var(--data);
+  border-color: var(--data);
+}
+
+.clear {
+  margin-left: auto;
+  padding: 3px 10px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--ink-2);
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.clear:hover { color: var(--ink); border-color: var(--ink-3); }
+
+/* ── Зургийн дээрх индикатор ── */
+.kpis {
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg-1);
+}
+
+/* ── Дэд цуваатай багана ── */
+.bars { display: flex; flex-direction: column; gap: 5px; }
+
+.barRow {
+  display: grid;
+  /* нэр · зурвас · утга — зурвас нь үлдсэн зайг авна */
+  grid-template-columns: minmax(0, 96px) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.barName {
+  overflow: hidden;
+  font-size: 11.5px;
+  color: var(--ink-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.barTrack {
+  position: relative;
+  height: 15px;
+  border-radius: 3px;
+  background: color-mix(in oklab, var(--ink) 7%, transparent);
+}
+
+.barFill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 3px;
+}
+
+/**
+ * ⚠️ Дэд зурвас нь гол зурвасны ДЭЭР давхарлана — хажууд нь тавьбал хоёр
+ * тусдаа хэмжигдэхүүн мэт уншигдана. Дүүргэлт биш ЗУРААС хэлбэртэй: гол
+ * баганын өнгө ангилал бүрд өөр тул дэд хэсэгт бас өнгө өгвөл хосууд
+ * хоорондоо мөргөлдөнө. Хар/цагаан торон дүүргэлт нь аль ч өнгөн дээр
+ * уншигдана.
+ */
+.barSub {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 3px;
+  background: repeating-linear-gradient(
+    -45deg,
+    rgb(0 0 0 / 42%) 0 3px,
+    rgb(255 255 255 / 34%) 3px 6px
+  );
+}
+
+.barVal {
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.barLegend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0 0;
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.swatchSub {
+  width: 18px;
+  height: 9px;
+  border-radius: 2px;
+  background: repeating-linear-gradient(
+    -45deg,
+    rgb(0 0 0 / 42%) 0 3px,
+    rgb(255 255 255 / 34%) 3px 6px
+  );
+  outline: 1px solid var(--line-strong);
+}
+
+/* ── Картын дэд гарчиг ба энгийн жагсаалт ── */
+.sub {
+  margin: 12px 0 5px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.plain { margin: 8px 0 0; padding: 0; list-style: none; }
+.plain li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 0;
+  font-size: 12px;
+  border-top: 1px solid var(--line);
+}
+.plain li:first-child { border-top: none; }
+.plain span { color: var(--ink-2); }
+.plain b { font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.wait { margin: 4px 0; font-size: 12px; color: var(--ink-3); }
+
+.stamp {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: var(--ink-3);
+}

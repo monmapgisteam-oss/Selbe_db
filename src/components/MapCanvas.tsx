@@ -1618,8 +1618,22 @@ export const MapCanvas = memo(function MapCanvas({
    *    (`Selbe_guitsetgel_consolidated`, `Selbe_ET_20260721` хаалттай).
    */
   const [layerFail, setLayerFail] = useState<string[]>([]);
-  /** `view.when` унасан — «ачаалж байна…»-гийн оронд алдаа + «Дахин оролдох» */
-  const [initError, setInitError] = useState(false);
+  /**
+   * `view.when` унасан — «ачаалж байна…»-гийн оронд алдаа + «Дахин оролдох».
+   *
+   * ⚠️ 2026-09-04: ЭНЭ УРЬД `boolean` БАЙВ — барьсан алдааг зөвхөн
+   *    `console.error`-т бичээд ХАЯДАГ тул БҮХ уналтыг «Сүлжээ эсвэл газрын
+   *    зургийн үйлчилгээний алдаа» гэж БУРУУ оношилдог байлаа. Хэмжсэн: Chrome-ыг
+   *    `--disable-gpu`-тай ажиллуулахад барьсан алдаа
+   *    `name = 'webgl:major-performance-caveat-detected'` («Your WebGL
+   *    implementation (ANGLE …) … GPU is in a blocklist») — тэр ажиллуулалтад
+   *    сүлжээний уналт 0 байсан. Хуучин драйвертай албаны компьютер дээр байнга
+   *    тохиолддог ба хэрэглэгч, IT нь сүлжээ/VPN/ArcGIS шалгаж цаг алддаг,
+   *    «Дахин оролдох» товч ХЭЗЭЭ Ч тусалдаггүй.
+   *    Тиймээс алдааны `name`/`message`-ийг ХАДГАЛЖ, зурагдалтад салаалуулна.
+   *    `null` = уналт байхгүй — `if (initError)` шалгалт хэвээр ажиллана.
+   */
+  const [initError, setInitError] = useState<{ name?: string; message?: string } | null>(null);
   /** «Дахин оролдох» — утга нэмэгдэхэд view-г бүхэлд нь дахин үүсгэнэ */
   const [initToken, setInitToken] = useState(0);
   /** Хулганы доорх объектын товч мэдээлэл */
@@ -1714,7 +1728,7 @@ export const MapCanvas = memo(function MapCanvas({
     const map = mapRef.current;
     if (typeof window !== 'undefined') (window as unknown as { __dbgmap: Map }).__dbgmap = map;
     setReady(false);
-    setInitError(false);
+    setInitError(null);
 
     const view: AnyView =
       is3D(dim)
@@ -1881,7 +1895,19 @@ export const MapCanvas = memo(function MapCanvas({
       // ⚠️ Харагдац солиход cleanup нь view-г устгахад `when()` reject хийж болно —
       //    тэр нь жинхэнэ алдаа биш тул зөвхөн АМЬД view-ийн уналтыг тэмдэглэнэ.
       //    Эс бөгөөс «ачаалж байна…» давхарга мэдээлэлгүй ҮҮРД дүүжигнэдэг байв.
-      if (!view.destroyed) setInitError(true);
+      // ⚠️ 2026-09-04: `true`-гийн оронд алдааны ӨӨРИЙГ нь хадгална — ArcGIS-ийн
+      //    `name` («webgl:major-performance-caveat-detected» гэх мэт) бол уналтын
+      //    ЦОРЫН ГАНЦ ялгах шинж. Үүнийг хаявал WebGL-ийн уналт сүлжээний уналт
+      //    мэт харагдана. `e` нь Error биш ч байж болох тул name/message-ийг
+      //    хамгаалалттай гаргаж авна (ямар ч тохиолдолд объект хадгална —
+      //    объект нь `if (initError)`-т үргэлж үнэн).
+      if (!view.destroyed) {
+        const er = e as { name?: unknown; message?: unknown } | null;
+        setInitError({
+          name: typeof er?.name === 'string' ? er.name : undefined,
+          message: typeof er?.message === 'string' ? er.message : undefined,
+        });
+      }
     });
 
     /**
@@ -3398,6 +3424,16 @@ export const MapCanvas = memo(function MapCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dim, ready, sceneKey]);
 
+  /**
+   * ⚠️ 2026-09-04: Уналтын ЖИНХЭНЭ шалтгааныг ялгана. ArcGIS нь WebGL-ийн
+   *    уналтыг `name = 'webgl:…'` угтвартай буцаадаг (хэмжсэн:
+   *    `webgl:major-performance-caveat-detected`, Chrome `--disable-gpu`).
+   *    Энэ тохиолдолд асуудал нь СҮЛЖЭЭ БИШ — драйвер/тоног төхөөрөмжийн
+   *    хурдасгуур, тиймээс «Дахин оролдох» товч хэзээ ч тусалдаггүй.
+   *    Угтварыг өөрчилбөл (ArcGIS-ийн шинэ хувилбар) буруу онош эргэж гарна.
+   */
+  const initWebgl = initError?.name?.startsWith('webgl:') === true;
+
   return (
     <div className={`${s.wrap} ${fs ? s.fs : ''}`}>
       <div ref={el} className={s.view} />
@@ -3409,19 +3445,33 @@ export const MapCanvas = memo(function MapCanvas({
         <div className={s.loading} role="alert">
           <div className={`${s.float} ${s.warn}`} style={{ position: 'static' }}>
             <b className={s.warnTitle}>{tr('Газрын зураг үүсгэж чадсангүй')}</b>
-            <span>{tr('Сүлжээ эсвэл газрын зургийн үйлчилгээний алдаа гарлаа.')}</span>
-            <button
-              type="button"
-              onClick={() => setInitToken((t) => t + 1)}
-              style={{
-                alignSelf: 'flex-start', padding: '5px 12px', cursor: 'pointer',
-                font: 'inherit', fontWeight: 600, color: 'var(--ink)',
-                background: 'var(--surface)', border: '1px solid var(--line)',
-                borderRadius: 6,
-              }}
-            >
-              {tr('Дахин оролдох')}
-            </button>
+            <span>
+              {initWebgl
+                ? tr('Хөтчийн график (WebGL) идэвхгүй байна — тоног төхөөрөмжийн хурдасгуурыг асаах эсвэл өөр хөтөч ашиглана уу.')
+                : tr('Сүлжээ эсвэл газрын зургийн үйлчилгээний алдаа гарлаа.')}
+            </span>
+            {/* ⚠️ 2026-09-04: Алдааны техник нэрийг ИЛ үзүүлнэ — IT-д дамжуулах
+                цорын ганц баримт нь энэ. Өмнө нь зөвхөн console-д үлддэг тул
+                хэрэглэгчийн ирүүлсэн зурган дээр ямар ч шалтгаан харагддаггүй байв. */}
+            {initError?.name && <code style={{ opacity: 0.75, fontSize: 11 }}>{initError.name}</code>}
+            {/* ⚠️ 2026-09-04: WebGL-ийн уналтад «Дахин оролдох» товчийг НУУНА —
+                драйвер/блоклист өөрчлөгдөөгүй тул дахин үүсгэх нь ЯГ адилхан
+                уналт өгнө. Товч харуулах нь хэрэглэгчийг дэмий давтуулж,
+                жинхэнэ шалтгаанаас (тоног төхөөрөмжийн хурдасгуур) холдуулна. */}
+            {!initWebgl && (
+              <button
+                type="button"
+                onClick={() => setInitToken((t) => t + 1)}
+                style={{
+                  alignSelf: 'flex-start', padding: '5px 12px', cursor: 'pointer',
+                  font: 'inherit', fontWeight: 600, color: 'var(--ink)',
+                  background: 'var(--surface)', border: '1px solid var(--line)',
+                  borderRadius: 6,
+                }}
+              >
+                {tr('Дахин оролдох')}
+              </button>
+            )}
           </div>
         </div>
       )}
