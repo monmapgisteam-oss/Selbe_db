@@ -15,7 +15,7 @@ import {
   queryStats, queryGroup, groups, count, sum, avg, type Aoi, type Row,
 } from '@/lib/query';
 import {
-  GAZAR_BUILDING, GAZAR_PARCEL, PARCEL_LEFT,
+  GAZAR_BUILDING, GAZAR_PARCEL, PARCEL_LEFT, PARCEL_CLEARED, parcelLeftWhere,
   BUILDING, LAYER_BY_ID, PKG_BY_BAGTS, bagtsKey,
 } from '@/lib/services';
 import { overlapLeftParcels } from '@/lib/parcelOverlap';
@@ -225,18 +225,22 @@ const VISIBLE_IDS = ['gazar:parcel', 'gazar:building', 'land:left'];
 /** Полигоноор ШҮҮГДЭХ давхаргууд — featureEffect (бүдгэрүүлэлт) зөвхөн эдгээрт */
 const FILTER_IDS = ['land:left', 'gazar:building', 'gazar:parcel'];
 
-/** `Tuluv` төлөв → өнгө ба нэр (нэгтгэсэн үйлчилгээний гол ангилал).
- *  ⚠️ envhub: ӨНГӨ = УТГА. «Бүрэн чөлөөлсөн» нь жинхэнэ САЙН төлөв тул
- *  var(--good), «Үлдсэн» нь барилгад саад буй муу төлөв тул var(--bad),
- *  завсрын «Цэвэрлэсэн» нь төвийг сахисан өгөгдлийн өнгө var(--data).
- *  Урьдын чимэглэлийн hex (#22c55e/#0ea5e9/#e11d48) хасагдсан. */
+/**
+ * Төлөв → өнгө ба нэр.
+ *
+ * ⚠️ 2026-09-06: ГУРВААС НЭГ болов. Шинэ эх (`Selbe_parcel_20260906`) нь
+ * «Цэвэрлэсэн нэгж талбар» ба «Үлдсэн нэгж талбар» ангиллыг АГУУЛАХГҮЙ —
+ * тэдгээр түлхүүрийг үлдээвэл `smap`-д хэзээ ч таарахгүй, харин жинхэнэ 8
+ * шалтгаан нэргүй/өнгөгүй үлдэнэ. Одоо ЗӨВХӨН «Бүрэн чөлөөлсөн» нь нэрлэгдсэн
+ * САЙН төлөв; бусад БҮГД нь барилга эхлүүлэхэд саад тул доорх fallback-аар
+ * var(--bad) болно.
+ *
+ * ⚠️ value = өгөгдлийн ТҮҮХИЙ утга — tr()-ээр ОРЧУУЛАХГҮЙ: `smap`-ийн түлхүүр
+ * түүхий тул EN горимд tr() утгаар хайвал таарахгүй, чөлөөлөлт 0% болдог байв.
+ * Зөвхөн шошго (label) орчуулагдана.
+ */
 const STATUS_META = [
-  /* ⚠️ value = өгөгдлийн ТҮҮХИЙ утга (Tuluv) — tr()-ээр ОРЧУУЛАХГҮЙ: smap-ийн
-     түлхүүр түүхий тул EN горимд tr() утгаар хайвал таарахгүй, чөлөөлөлт 0%
-     болдог байв. Зөвхөн шошго (label) орчуулагдана. */
-  { value: 'Бүрэн чөлөөлсөн', label: tr('Бүрэн чөлөөлсөн'), color: 'var(--good)' },
-  { value: 'Цэвэрлэсэн нэгж талбар', label: tr('Цэвэрлэсэн'), color: 'var(--data)' },
-  { value: 'Үлдсэн нэгж талбар', label: tr('Үлдсэн'), color: 'var(--bad)' },
+  { value: PARCEL_CLEARED, label: tr('Бүрэн чөлөөлсөн'), color: 'var(--good)' },
 ] as const;
 
 /**
@@ -555,13 +559,16 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     const B = GAZAR_BUILDING;
     const P = GAZAR_PARCEL;
     const [lStat, lStatus, lReason, bStat, bType, bMat, pStat, pRight, pUse] = await Promise.all([
-      queryStats(L.url, [count('OBJECTID', 'n'), sum(L.fields.area, 'area')], '1=1', area),
+      queryStats(L.url, [count(L.oid, 'n'), sum(L.fields.area, 'area')], '1=1', area),
       // ТӨЛӨВ (Tuluv) бүрд ТОО ба ТАЛБАЙ — нэгтгэсэн үйлчилгээний гол ангилал
-      queryGroup(L.url, L.fields.status, [count('OBJECTID', 'n'), sum(L.fields.area, 'a')], '1=1', area),
-      // ҮЛДСЭН талбарын ШАЛТГААН — зөвхөн `Tuluv='Үлдсэн'`-т `явцын_мэдээ` бүрд тоо+талбай
+      queryGroup(L.url, L.fields.status, [count(L.oid, 'n'), sum(L.fields.area, 'a')], '1=1', area),
+      /* ҮЛДСЭН талбарын ШАЛТГААН.
+         ⚠️ 2026-09-06: шинэ эхэд `status` ба `progress` нь НЭГ талбар тул энэ
+         асуулга нь «Бүрэн чөлөөлсөн»-өөс бусад мөрүүдийг өөрсдийнх нь утгаар
+         бүлэглэнэ — өөрөөр хэлбэл шалтгаан нь төлөв нь өөрөө. */
       queryGroup(
-        L.url, L.fields.progress, [count('OBJECTID', 'n'), sum(L.fields.area, 'a')],
-        `${L.fields.status}='Үлдсэн нэгж талбар'`, area,
+        L.url, L.fields.progress, [count(L.oid, 'n'), sum(L.fields.area, 'a')],
+        parcelLeftWhere(), area,
       ),
       // ⚠️ area_m2 талбар test_data [96]-д устсан тул талбайн нийлбэр асуухгүй
       queryStats(B.url, [
@@ -588,9 +595,17 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       smap.set(k, cur);
     }
     const st = (value: string) => smap.get(value) ?? { n: 0, a: 0, raws: new Set<string>() };
-    const cleared = st('Бүрэн чөлөөлсөн');
-    const cleaned = st('Цэвэрлэсэн нэгж талбар');
-    const remaining = st('Үлдсэн нэгж талбар');
+    const cleared = st(PARCEL_CLEARED);
+    /* ⚠️ «Цэвэрлэсэн нэгж талбар» ангилал шинэ эхэд БАЙХГҮЙ — 0 хэвээр
+       (`land.ts`-тэй ижил шийдэл; талбарыг хасаагүй нь дуудагчийг эвдэхгүйн тулд). */
+    const cleaned = { n: 0, a: 0, raws: new Set<string>() };
+    /* ⚠️ ҮЛДСЭН нь НИЙТЭЭС ХАСАЖ гарна, нэрлэсэн төлөвөөр БИШ: шалтгаан бүр
+       өөрөө нэг «төлөв» тул гараар жагсаавал шинэ шалтгаан нэмэгдэхэд
+       чимээгүй тоологдохгүй үлдэнэ. */
+    const remaining = [...smap.entries()].reduce(
+      (acc, [k, v]) => (k === PARCEL_CLEARED ? acc : { n: acc.n + v.n, a: acc.a + v.a }),
+      { n: 0, a: 0 },
+    );
     // Мэдэгдэж буй 3 төлөв ЭХЭНД (тогтмол өнгө/дараалал), бусад нь тоогоор нь араас.
     const statusAreaBy: StatusBars = [...smap.entries()]
       .sort((x, y) => {
@@ -615,8 +630,10 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           label: STATUS_LABEL[value] ?? tr(value),
           value: ha2,
           display: tr('{0} талбар · {1} га', num(s.n), num(ha2, 2)),
-          // Гэнэтийн шинэ төлөв — утга нь үл мэдэгдэх тул төвийг сахисан өгөгдлийн өнгө
-          color: STATUS_COLOR[value] ?? (value === 'Тодорхойгүй' ? NO_DATA : 'var(--data)'),
+          /* ⚠️ Нэрлэгдээгүй БҮХ төлөв = ЧӨЛӨӨЛӨГДӨӨГҮЙ (зөвшилцөх · татгалзсан ·
+             маргаантай …) тул var(--bad). Урьд нь var(--data) байсан нь гурван
+             төлөвт схемийн үлдэгдэл — одоо тэдгээр нь «саад» гэсэн утгатай. */
+          color: STATUS_COLOR[value] ?? (value === 'Тодорхойгүй' ? NO_DATA : 'var(--bad)'),
           where,
         };
       });
@@ -650,8 +667,9 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           //    утга заахгүй тул ганц өгөгдлийн өнгө; «Тодорхойгүй» нь саарал бэх.
           //    (Урьдын PARCEL_PROGRESS_HUES солонго нь чимэглэл болж байсан.)
           color: label === 'Тодорхойгүй' ? NO_DATA : 'var(--data)',
-          // Шалтгаан нь зөвхөн ҮЛДСЭН талбарт хамаатай тул төлөвөөр хамт хязгаарлана
-          where: `${L.fields.status}='Үлдсэн нэгж талбар' AND (${eq.join(' OR ')})`,
+          /* ⚠️ Төлөвийн нэмэлт нөхцөл ХЭРЭГГҮЙ: `status` ба `progress` нэг
+             талбар тул шалтгааны утга нь өөрөө «чөлөөлөгдөөгүй»-г заана. */
+          where: `(${eq.join(' OR ')})`,
         };
       });
     return {
@@ -734,7 +752,7 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                   <p className={g.ringNote}>
                     <b className="num">{d ? num(d.left.resolved) : ''}</b> /{' '}
                     <span className="num">{d ? num(d.left.n) : ''}</span> {tr('талбар')}
-                    <span className={g.ringSub}>{tr('бүрэн чөлөөлсөн + цэвэрлэсэн')}</span>
+                    <span className={g.ringSub}>{tr('бүрэн чөлөөлсөн')}</span>
                   </p>
                 </div>
                 <p className={g.subHead}>{tr('Талбай (га) төлөвөөр')}</p>

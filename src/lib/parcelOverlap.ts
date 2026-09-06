@@ -18,12 +18,18 @@
  *    чимээгүй ХООСОН гарч, «саадгүй» гэсэн ХУДАЛ дүгнэлт өгнө.
  */
 
-import { PARCEL_LEFT, LAYER_BY_ID } from './services';
+import { PARCEL_LEFT, LAYER_BY_ID, parcelLeftWhere } from './services';
 import { withSlot } from './query';
 import { register } from './dataBus';
 
-/** Барилга эхлүүлэхэд саад болж буй төлөв — газар чөлөөлөлтийн давхаргын утга. */
-export const LEFT_STATUS = 'Үлдсэн нэгж талбар';
+/**
+ * Барилга эхлүүлэхэд саад болж буй нэгж талбарын SQL нөхцөл.
+ *
+ * ⚠️ 2026-09-06: урьд нь `LEFT_STATUS = 'Үлдсэн нэгж талбар'` гэсэн ГАНЦ утга
+ * байв. Шинэ эхэд тэр ангилал БАЙХГҮЙ — «Бүрэн чөлөөлсөн»-өөс бусад БҮХ утга
+ * (зөвшилцөх · татгалзсан · маргаантай …) нь шийдвэрлэгдээгүй гэсэн үг тул
+ * нөхцөл нь ТЭНЦҮҮ БИШ болов (`parcelLeftWhere`).
+ */
 
 /** Огтлолцуулах эх сурвалж — давхарга + (сонголтоор) түүний шүүлт. */
 export type Src = { layerId: string; where?: string | null };
@@ -194,7 +200,7 @@ async function overlapUncached(sources: Src[]): Promise<Overlap> {
 
   // ⚠️ `N'…'` угтвар — талбар нь Unicode (nvarchar); зарим үйлчилгээнд
   //    угтваргүй кирилл харьцуулалт ХООСОН буцаадаг.
-  const leftWhere = `${PARCEL_LEFT.fields.status}=N'${LEFT_STATUS}'`;
+  const leftWhere = parcelLeftWhere();
   const res = await Promise.all(shapes.map(([t, geom]) => ask(t, geom, leftWhere)));
 
   const left = new Set<number>();

@@ -239,7 +239,10 @@ function gazarPart(src: SchemSources): Part {
     { label: tr('Чөлөөлсөн'), value: clr, kind: 'pct' },
     { label: tr('Нийт нэгж талбар'), value: fin(c?.total), kind: 'count' },
     { label: tr('Чөлөөлсөн нэгж талбар'), value: fin(c?.cleared), kind: 'count' },
-    { label: tr('Үлдсэн нэгж талбар'), value: fin(c?.remaining), kind: 'count' },
+    /* ⚠️ 2026-09-06: шинэ эхэд «Үлдсэн нэгж талбар» гэсэн АНГИЛАЛ байхгүй —
+       `c.remaining` нь одоо «Бүрэн чөлөөлсөн»-өөс бусад БҮГД. Шошгыг
+       ерөнхийлөв, тоо нь `loadClearance`-ээс хэвээр. */
+    { label: tr('Чөлөөлөгдөөгүй талбар'), value: fin(c?.remaining), kind: 'count' },
     { label: tr('Үлдсэн талбай'), value: fin(c?.remainingHa), kind: 'ha' },
   );
   if (c == null) {

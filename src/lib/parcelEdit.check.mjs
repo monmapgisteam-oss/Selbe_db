@@ -23,7 +23,7 @@ import {
   STATUS_LIST, PARCEL_OID, rowToParcel, diffParcel, validateParcel,
   parcelWhere, parcelNoWhere,
 } from './parcelEdit.ts';
-import { PARCEL_LEFT, PARCEL_STATUS_HUES } from './services.ts';
+import { PARCEL_CLEARED, PARCEL_LEFT, PARCEL_STATUS_HUES } from './services.ts';
 
 const F = PARCEL_LEFT.fields;
 
@@ -33,9 +33,18 @@ assert.deepEqual(
   STATUS_LIST, Object.keys(PARCEL_STATUS_HUES),
   'маягтын төлөв нь газрын зургийн будалттай ЯГ таарах ёстой',
 );
-assert.equal(STATUS_LIST.length, 4, 'дөрвөн төлөв — шинэ нэмэгдвэл зураг шалга');
-for (const s of ['Бүрэн чөлөөлсөн', 'Цэвэрлэсэн нэгж талбар', 'Гэрээлсэн', 'Үлдсэн нэгж талбар']) {
-  assert.ok(STATUS_LIST.includes(s), `төлөв алга: ${s}`);
+/* ⚠️ 2026-09-06: ДӨРӨВ → ЕС. `Selbe_parcel_20260906` нь төлөв ба шалтгааныг
+   НЭГ талбарт (`явцы_1`) нийлүүлсэн тул «Бүрэн чөлөөлсөн» + 8 шалтгаан болов;
+   «Цэвэрлэсэн нэгж талбар», «Үлдсэн нэгж талбар», «Гэрээлсэн» ангилал АЛГА. */
+assert.equal(STATUS_LIST.length, 9, 'есөн төлөв — шинэ нэмэгдвэл зураг шалга');
+assert.ok(STATUS_LIST.includes(PARCEL_CLEARED), `төлөв алга: ${PARCEL_CLEARED}`);
+for (const s of ['зөвшилцөх', 'гэрээлсэн', 'татгалзсан', 'үлдэх саналтай',
+  'үнийн дүн зөвшөөрөөгүй', 'маргаантай', 'дүйцүүлсэн', 'АТД']) {
+  assert.ok(STATUS_LIST.includes(s), `шалтгаан алга: ${s}`);
+}
+/* ⚠️ Хуучин ангилал БУЦАЖ ОРВОЛ барина — эх өгөгдөл эргэж хуучирсан гэсэн үг */
+for (const s of ['Цэвэрлэсэн нэгж талбар', 'Үлдсэн нэгж талбар']) {
+  assert.ok(!STATUS_LIST.includes(s), `хуучин ангилал буцаж ирэв: ${s}`);
 }
 
 /* ══════════════ 2. Мөр → Parcel ══════════════ */
@@ -137,8 +146,10 @@ assert.deepEqual(validateParcel(patchOf({ owner: '', note: '', address: '' })), 
 
 /* ══════════════ 7. SQL ══════════════ */
 
-assert.equal(parcelWhere(4), 'OBJECTID = 4');
-assert.equal(parcelWhere(4.9), 'OBJECTID = 4', 'бутархай OID таслагдана');
+/* ⚠️ OID нэрийг ХАТУУ бичихгүй — `PARCEL_OID` нь `services.ts`-ээс гарна
+   (2026-09-06-нд `OBJECTID` → `FID` болов). */
+assert.equal(parcelWhere(4), `${PARCEL_OID} = 4`);
+assert.equal(parcelWhere(4.9), `${PARCEL_OID} = 4`, 'бутархай OID таслагдана');
 /* ⚠️ Кадастрын дугаар нь ТЕКСТ талбар — хашилтад орох ёстой */
 assert.equal(parcelNoWhere('1461802715'), `${F.parcelNo} = '1461802715'`);
 assert.equal(

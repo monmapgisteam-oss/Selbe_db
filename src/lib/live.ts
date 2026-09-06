@@ -22,7 +22,7 @@ import { queryFeatures, queryStats, queryGroup, count, sum, sqlStr, type Row } f
 import { t as tr } from '@/lib/i18nCore';
 import {
   BOUNDARY, BUILT_LAYER, BUILT_FIELDS, BUILT_STATUS, CASHFLOW2,
-  LAYER_BY_ID, PARCEL_LEFT, layerUrl, oidOf, cfMonthAxis, cfMonthKey,
+  LAYER_BY_ID, PARCEL_CLEARED, PARCEL_LEFT, layerUrl, oidOf, cfMonthAxis, cfMonthKey,
 } from '@/lib/services';
 import { sumBy, tally } from '@/lib/agg';
 import { register, type DataKey } from '@/lib/dataBus';
@@ -514,9 +514,9 @@ export const loadSocial = cached<SocialLive>(async () => {
 /* ══════════════════ Газар чөлөөлөлт — нүүрийн KPI ══════════════════ */
 
 export type Clearance = {
-  /** Чөлөөлсөн = «Бүрэн чөлөөлсөн» + «Цэвэрлэсэн нэгж талбар» */
+  /** Чөлөөлсөн = «Бүрэн чөлөөлсөн» */
   cleared: number;
-  /** Чөлөөлөөгүй = «Үлдсэн нэгж талбар» (барилга эхлүүлэхэд саад) */
+  /** Чөлөөлөөгүй = БУСАД БҮГД (шалтгаан нь төлөвийн утга нь өөрөө) */
   remaining: number;
   /** Чөлөөлөөгүй талбайн нийлбэр (га) */
   remainingHa: number;
@@ -526,24 +526,27 @@ export type Clearance = {
 };
 
 /**
- * Газар чөлөөлөлтийн нэгтгэл — `selbe_parcel` [94]-ийн `Tuluv` төлөвөөр.
- * «Газар чөлөөлөлт» харагдацын тооцоотой ИЖИЛ ангилал (`Gazar.tsx`):
- * чөлөөлсөн = бүрэн + цэвэрлэсэн; бусад бүх төлөв «чөлөөлөөгүй»-д ОРОХГҮЙ,
- * зөвхөн «Үлдсэн нэгж талбар» нь саадтай тул тэр нь ЧӨЛӨӨЛӨӨГҮЙ тоо.
+ * Газар чөлөөлөлтийн нэгтгэл — `PARCEL_LEFT`-ийн төлөвөөр.
+ *
+ * ⚠️ 2026-09-06: ХОЁР АНГИЛАЛ. Шинэ эх нь төлөв ба шалтгааныг нэг талбарт
+ * нийлүүлсэн тул «Бүрэн чөлөөлсөн» = чөлөөлсөн, БУСАД БҮГД = чөлөөлөөгүй.
+ * Урьд нь «Гэрээлсэн» гэсэн төлөв хоёр ангиллын АЛЬ НЬ Ч БИШ байсан тул
+ * cleared + remaining ≠ total байв; одоо тэнцэнэ.
+ * `land.ts`-ийн `loadLandStatus`-тай ЯГ ижил дүрэм.
  */
 export const loadClearance = cached<Clearance>(async () => {
   const F = PARCEL_LEFT.fields;
   const rows = await queryGroup(
     PARCEL_LEFT.url, F.status,
-    [count('OBJECTID', 'n'), sum(F.area, 'a')],
+    [count(PARCEL_LEFT.oid, 'n'), sum(F.area, 'a')],
   );
   let cleared = 0, remaining = 0, remainingM2 = 0, total = 0;
   for (const r of rows) {
     const k = String(r[F.status] ?? '').trim();
     const n = Number(r.n ?? 0);
     total += n;
-    if (k === 'Бүрэн чөлөөлсөн' || k === 'Цэвэрлэсэн нэгж талбар') cleared += n;
-    else if (k === 'Үлдсэн нэгж талбар') { remaining += n; remainingM2 += Number(r.a ?? 0); }
+    if (k === PARCEL_CLEARED) cleared += n;
+    else { remaining += n; remainingM2 += Number(r.a ?? 0); }
   }
   return {
     cleared,
