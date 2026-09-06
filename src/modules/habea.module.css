@@ -25,12 +25,17 @@
     minmax(0, 1fr)         /* төв: зураг */
     var(--col-r, 344px);   /* баруун: кран · хүн хүч */
   grid-template-rows: auto auto minmax(0, 1fr) var(--row-fin, auto);
-  /* KPI зурвас ба гүйцэтгэгчийн шүүлтүүр ЗУРГИЙН ӨРГӨНТЭЙ тэнцүү — зүүн/баруун
+  /* ⚠️ ШҮҮЛТҮҮР нь KPI-аас ДЭЭР (2026-09-06, хэрэглэгчийн хүсэлт): доорх
+     тоонууд шүүлтээс ХАМААРЧ өөрчлөгддөг тул шалтгаан нь үр дүнгээсээ
+     дээр байх ёстой. Урьд нь эсрэгээр байсан тул хэрэглэгч тоог хараад
+     дараа нь доор нь тэдгээрийг өөрчилдөг удирдлагыг олдог байв.
+
+     KPI зурвас ба шүүлтүүр ЗУРГИЙН ӨРГӨНТЭЙ тэнцүү — зүүн/баруун
      багана ДЭЭД талдаа тулна. ⚠️ grid-ийн area нь ТЭГШ ӨНЦӨГТ байх ёстой тул
      шүүлтийн мөрийг бүтэн өргөнд тавьж болохгүй — тэгвэл `list`/`r` тасална. */
   grid-template-areas:
-    'list kpi r'
     'list flt r'
+    'list kpi r'
     'list map r'
     'fin  fin fin';
   background: var(--bg);
@@ -38,6 +43,73 @@
   min-height: 0;
   overflow: hidden;
 }
+
+/* ══ ТОРНЫ ДӨРВӨН ХОСЛОЛ — зүүн ба баруун багана тус тусдаа алга болно ══
+
+   `data-list` = зүүн багана агуулгатай эсэх (ослын эсвэл үзлэгийн чарт),
+   `data-r`    = баруун (краны) багана харагдах эсэх — ЗӨВХӨН анхны
+                 харагдацад, учир нь шүүлтүүр сонгоход «зөвхөн тухайн
+                 мэдээлэл» үлдэх ёстой (2026-09-06, хэрэглэгчийн хүсэлт).
+
+   ⚠️ Хослол бүрд `grid-template-areas` нь ЗААВАЛ бүрэн бичигдэнэ. Зөвхөн
+   баганын тоог соливол нэр нь торд үлдэж, browser нь ДЭД мөр үүсгэдэг —
+   зураг нь хагас өндөртэй болж, доор нь хоосон зурвас гарна.
+
+   ⚠️ Доод зурвас (`fin`) нь БҮХ хослолд бүтэн өргөн; түүний доторх
+   баганын тоог `.fin[data-cols]` тусад нь удирдана. */
+
+/* Зүүн ХООСОН · баруун БАЙНА — анхны харагдац */
+.shell[data-list='0'][data-r='1'] {
+  grid-template-columns:
+    minmax(0, 1fr)
+    var(--col-r, 344px);
+  grid-template-areas:
+    'flt r'
+    'kpi r'
+    'map r'
+    'fin fin';
+}
+
+/* Зүүн БАЙНА · баруун ХООСОН — осол эсвэл үзлэгийн фокус */
+.shell[data-list='1'][data-r='0'] {
+  grid-template-columns:
+    var(--col-l, 316px)
+    minmax(0, 1fr);
+  grid-template-areas:
+    'list flt'
+    'list kpi'
+    'list map'
+    'fin  fin';
+}
+
+/* ХОЁУЛАА ХООСОН — «Техник болон хүн цаг» фокус: зөвхөн зураг */
+.shell[data-list='0'][data-r='0'] {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    'flt'
+    'kpi'
+    'map'
+    'fin';
+}
+
+/* ⚠️ Хоосон баганыг ЗААВАЛ нуух: торд нэр нь байхгүй болсон тул
+   `grid-area: list` / `r` нь ДЭД тор үүсгэж, шинэ мөр нэмэгддэг. */
+.shell[data-list='0'] .list { display: none; }
+.shell[data-r='0'] .r { display: none; }
+
+
+/* ══ ЗҮҮН БАГАНА — БАРУУНТАЙ ИЖИЛ ЗАН ТӨЛӨВ ══
+
+   ⚠️ 2026-09-06: карт бүрийг тусад нь гүйлгэдэг байсныг ХАСАВ. `.list`
+   нь анхдагчаараа бүхэлдээ гүйдэг (`overflow-y: auto`) бөгөөд одоо тэр нь
+   ХЭВЭЭР үлдэнэ — «Компаниар — монгол, гадаад» мөн 11 мөртэй тул баруун
+   талынхтай ЯГ ижил асуудалтай байв.
+
+   ⚠️ ХОЁР БАГАНА ИЖИЛ байх нь чухал: нэг нь картаараа, нөгөө нь баганаараа
+   гүйдэг бол хэрэглэгч аль хэсэгт хулганаа байрлуулснаас хамаарч өөр зан
+   төлөв авч, юу ч хөдлөхгүй мэт санагдана. */
+/* ⚠️ Картын `flex: none` нь доорх нэгдсэн дүрэмд бий:
+   `.list > section, .r > section, .fin > section` — энд давхардуулахгүй. */
 
 /* ── Панелийн хэмжээ чирэх БАРИУЛ ──
    Grid-ийн нүдэнд байрлаж (`style={{ gridArea }}`), тэр нүдний ирмэг рүү
@@ -151,6 +223,267 @@
   overflow-x: auto;
   scrollbar-width: thin;
 }
+/* ══ КОМПАНИ БҮРИЙН МОНГОЛ/ГАДААД задаргаа ══
+   Мөр бүр: нэр · 100% зурвас · гадаадын хувь. Зурвасууд НЭГ баганад
+   эгнэдэг тул компаниудыг нүдээр шууд харьцуулна (`Bars` нь хоёр
+   утгыг нэг мөрөнд зурж чаддаггүй тул энд түүнийг хэрэглээгүй). */
+.mixList {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+}
+.mixRow {
+  display: grid;
+  /* ⚠️ Нэр нь `minmax(0, …)` — урт компанийн нэр баганыг ТҮЛХЭХГҮЙ,
+     оронд нь өөрөө таслагдана (доорх `text-overflow`). */
+  grid-template-columns: minmax(0, 1fr) minmax(56px, 1.1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.mixName {
+  min-width: 0;
+  font-size: 11px;
+  color: var(--ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mixBar { min-width: 0; }
+.mixPct {
+  font-size: 11.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--c2);
+  white-space: nowrap;
+}
+
+
+/* ══ ЦУВААНЫ АЛХМЫН ШИЛЖҮҮЛЭГЧ — картын гарчгийн мөрөнд ══
+   `Section`-ийн `note` слотод суудаг тул НАМХАН байх ёстой:
+   толгойн өндөр нь гарчгийн мөрөөр тогтдог бөгөөд түүнээс өндөр
+   удирдлага орвол бүх карт нэг зэрэг өснө. */
+.stepWrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+/* Тайлбар бичиг — `ui.module.css .sectionNote`-ийн өнгийг өвлөнө */
+.stepNote { white-space: nowrap; }
+
+/* Сегментчилсэн товч — хоёр сонголт НЭГ хүрээнд */
+.seg {
+  display: inline-flex;
+  flex: none;
+  padding: 1px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+.segBtn {
+  padding: 2px 9px;
+  border: none;
+  background: none;
+  border-radius: 999px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--ink-3);
+  white-space: nowrap;
+  transition: background 0.12s, color 0.12s;
+}
+.segBtn:hover { color: var(--accent); }
+.segBtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* ⚠️ Идэвхтэй нь ДҮҮРГЭГДЭНЭ: хоёр товч ижил харагдвал аль нь одоо
+   үйлчилж байгаа нь уншигдахгүй — гарчгийн тоо нь өдөр/сар аль нь болох
+   ганц дохио болж үлдэнэ. */
+.segOn,
+.segOn:hover {
+  background: var(--accent);
+  color: var(--surface);
+}
+
+
+/* ══ ОСЛЫН ЧАРТЫН ШҮҮЛТҮҮР — КАПСУЛ ЧИП ══
+   ⚠️ «Төслийн дэлгэрэнгүй мэдээлэл»-ийн товчны зурвасаас (`dashboardOv`
+   `.railItem`) загвараа АВСАН — хэрэглэгч хоёр хуудсанд ижил дүрсийг
+   ижил үйлдэл гэж уншина. Тэндхийн шийдвэрүүд ЭНД ч хүчинтэй: капсул
+   хэлбэр нь «дарагдана» гэдгийг хамгийн хүчтэй хэлдэг; зүүн талын бөгж
+   төлөвийг үүрнэ; идэвхтэй үед ДҮҮРЭН будагдана. */
+.incChip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 12px 5px 10px;
+  background: var(--surface-2);
+  border: 1.5px solid color-mix(in oklab, var(--ink) 22%, transparent);
+  border-radius: 999px;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: var(--ink);
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+/* Төлөвийн бөгж — идэвхгүй үед хоосон */
+.incChip::before {
+  content: '';
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in oklab, var(--ink) 32%, transparent);
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.incChip:hover {
+  background: var(--surface);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.incChip:hover::before { border-color: var(--accent); }
+.incChip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ── ИДЭВХТЭЙ — дүүрэн ── */
+.incChipOn,
+.incChipOn:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.incChipOn::before,
+.incChipOn:hover::before {
+  background: var(--surface);
+  border-color: var(--surface);
+}
+
+.incChipLabel {
+  min-width: 0;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.15;
+  white-space: nowrap;
+  color: var(--ink-2);
+}
+.incChip:hover .incChipLabel { color: var(--accent); }
+.incChipOn .incChipLabel,
+.incChipOn:hover .incChipLabel { color: var(--surface); }
+
+/* Бүртгэлийн тоо — хаалттай үед ч ХЭД байгааг мэдэгдэнэ */
+.incChipVal {
+  flex: none;
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--ink);
+}
+.incChip:hover .incChipVal { color: var(--accent); }
+.incChipOn .incChipVal,
+.incChipOn:hover .incChipVal { color: var(--surface); }
+
+/* ══ УНЖИХ ШҮҮЛТҮҮР — КАПСУЛ ТАЛБАР ══
+   Ослын чиптэй (`.incChip`) НЭГ гэр бүл: ижил өндөр, ижил радиус,
+   ижил хүрээ. Ялгаа нь ЗӨВХӨН доторх удирдлага — чип нь асаах/унтраах,
+   энэ нь олон утгаас сонгох.
+
+   ⚠️ Дотор нь `ui.module.css .select` суудаг. Тэр нь ӨӨРИЙН хүрээ,
+   дэвсгэр, радиустай тул капсул дотор ХОЁР хүрээ давхарлаж «хайрцаг доторх
+   хайрцаг» болно. Тиймээс доорх дүрмээр түүнийг ХАВТГАЙ болгоно — CSS
+   модулийн хэшийг гаднаас нэрлэж чадахгүй тул ТАГААР нь сонгож байна. */
+.pill {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 3px 5px 3px 11px;
+  background: var(--surface-2);
+  border: 1.5px solid color-mix(in oklab, var(--ink) 22%, transparent);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+}
+.pill:hover { background: var(--surface); border-color: var(--accent); }
+/* Дотоод select фокуслахад капсул бүхэлдээ хүрээгээ өгнө */
+.pill:focus-within { border-color: var(--accent); }
+
+/* ── СОНГОГДСОН — ослын чипний идэвхтэй байдалтай ижил дохио, гэхдээ
+   ДҮҮРГЭХГҮЙ: доторх унжих жагсаалтын текст уншигдахаа болино. Оронд нь
+   хүрээ ба шошго нь өнгө авна. ── */
+.pillOn {
+  border-color: var(--accent);
+  background: color-mix(in oklab, var(--accent) 12%, var(--surface-2));
+}
+
+.pillLabel {
+  flex: none;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.11em;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+.pillOn .pillLabel { color: var(--accent); }
+
+/* Доторх унжих жагсаалт — ХАВТГАЙ: капсул нь хүрээг үүрнэ */
+.pill select {
+  border: none;
+  /**
+   * ⚠️ `background: none` БАЙЖ БОЛОХГҮЙ (2026-09-06 засвар).
+   *
+   * Тунгалаг дэвсгэртэй select-ийн НАТИВ унжих цонхыг Chromium нь өөрийн
+   * ЦАЙВАР өнгөөр зурдаг ч мөрийн текстэд `color`-ыг (харанхуй загварт
+   * `--ink` = бараг цагаан) хэрэглэдэг — үр дүнд цайван дээр цайвар,
+   * зөвхөн КУРСОРЫН доорх мөр л (системийн хөх тодруулга) уншигдана.
+   * Хэрэглэгчийн 2026-09-06-ны скриншот яг үүнийг харуулсан.
+   *
+   * Тиймээс дэвсгэрийг ИЛ зарлана; капсулын өнгө нь `.pill`-ээс доогуур
+   * харагдахгүй ч сонголтын жагсаалт БҮРЭН уншигдана.
+   */
+  background-color: transparent;
+  border-radius: 999px;
+  padding: 3px 4px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink);
+  max-width: 210px;
+}
+.pill select:hover { border-color: transparent; }
+/* Тойм нь капсул дээр гарна — дотор нь давхар тойм хэрэггүй */
+.pill select:focus-visible { outline: none; }
+
+/**
+ * УНЖИХ ЖАГСААЛТЫН МӨР — дэвсгэр ба өнгийг ИЛ зарлана.
+ *
+ * ⚠️ Эдгээргүй бол мөрүүд нь курсор ОЧИХООР л тодордог, бусад үедээ
+ * уншигдахгүй байдаг (дээрх `.pill select`-ийн тайлбарыг үз). Натив
+ * `option`-д зөвхөн `background-color`, `color`, `font-*` үйлчилнэ —
+ * padding, radius зэрэг нь Chromium дээр үл хэрэгсэгдэнэ.
+ */
+.pill select option {
+  background-color: var(--surface);
+  color: var(--ink);
+  font-weight: 500;
+}
+
+/* Сонгогдсон мөр — жагсаалт нээхэд аль нь идэвхтэйг шууд заана */
+.pill select option:checked {
+  background-color: color-mix(in oklab, var(--accent) 24%, var(--surface));
+  color: var(--ink);
+  font-weight: 700;
+}
+
+/* ⚠️ `.filtersLabel` нь ХЭРЭГЛЭГДЭХЭЭ БОЛИВ (2026-09-06): нэр нь одоо
+   капсулын дотор (`.pillLabel`). Загварыг үлдээв — зурвасын бусад
+   гарчигт дахин хэрэг болж магадгүй. */
 .filtersLabel {
   flex: none;
   font-size: 10.5px;
@@ -176,38 +509,42 @@
   flex-direction: column;
   gap: 8px;
 }
-/* БАРУУН багана — ГҮЙЛГЭЛТГҮЙ. Дээр нь хоёр донат зэрэгцээ, доор нь «Кран —
-   багцаар» үлдсэн өндрийг эзэлнэ.
-   ⚠️ `overflow: hidden` тул агуулга нь баганадаа ЗААВАЛ багтах ёстой: донатыг
-   110px-ээс 92px болгож, доод хэсэгт `min-height: 0` өгсөн нь үүний тулд. */
+/* ── БАРУУН багана — ГҮЙЛГЭЛТГҮЙ, картууд өндрөө ТЭНЦҮҮ хуваана ──
+
+   ⚠️ Урьд нь `grid-template-rows: auto minmax(0, 1fr)` байсан бөгөөд
+   тэр нь ЯГ ХОЁР хүүхэд хүлээдэг байв: донатын хос (`.rPair`) ба
+   «Кран — багцаар». 2026-09-06-нд «Монгол, гадаад» донат зургийн ЗҮҮН
+   талд гарч, хос задарсан тул хүүхдийн тоо горим бүрд ӨӨР болов
+   (кран 2 · осол 1 · үзлэг 2). Тогтмол тортой үлдээвэл ганц карттай үед
+   доор нь бүтэн хоосон мөр гарна.
+
+   ⚠️ `overflow: hidden` — багана нь БҮХЭЛДЭЭ гүйлгэгдэхгүй; карт бүр
+   ӨӨРӨӨ гүйнэ. Эс бөгөөс ослын урт жагсаалт баганыг сунгаж, «нэг дэлгэц»
+   гэсэн шаардлага эвдэрнэ. */
 .r {
   grid-area: r;
   min-width: 0;
   min-height: 0;
-  overflow: hidden;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  /**
+   * ⚠️ БАГАНА нь БҮХЭЛДЭЭ гүйнэ (2026-09-06, хэрэглэгчийн хүсэлт).
+   *
+   * Урьд нь `overflow: hidden` + карт бүр `flex: 1 1 0` байв: хоёр
+   * карт өндрөө ТЭНЦҮҮ хувааж, тус тусдаа гүйдэг байлаа. Гэвч «Компаниар —
+   * хүн-өдөр» нь 11 мөртэй бөгөөд түүнийг хагас баганад шахахад нэг зэрэг
+   * 4-5 мөр л харагдаж, доод карт руу очихын тулд ДОТООД гүйлгэгчийг
+   * олох шаардлагатай болж байв — хоёр гүйлгэх талбар давхарласан.
+   *
+   * Одоо картууд БАЙГАЛИЙН өндөртэй, багана нь ганц гүйлгэгчтэй.
+   */
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  display: flex;
+  flex-direction: column;
   gap: 8px;
 }
-/* Хосын хоёр карт 20px ӨНДӨР — доод талдаа нэмэлт зайтай.
-   ⚠️ `ui.module.css`-ийн `.section` нь 12px padding-тай тул 32px гэж бичив:
-   `padding-bottom` нь НЭМЭГДДЭГГҮЙ, дардаг. Доод мөр (`Кран — багцаар`) нь
-   `1fr` тул яг тэр 20px-ээр богиносоно — гүйлгэлт үүсэхгүй. */
-.rPair > section { padding-bottom: 32px; }
-
-/* Хоёр донатын зэрэгцээ хос — тэнцүү өргөн */
-.rPair {
-  position: relative;
-  display: grid;
-  grid-template-columns: var(--rp-1, minmax(0, 1fr)) minmax(0, 1fr);
-  gap: 8px;
-  min-width: 0;
-}
-/* Доод карт нь үлдсэн өндрийг эзлээд дотроо хумина (баганыг цухуйлгахгүй) */
-.r > section {
-  min-height: 0;
-  overflow: hidden;
-}
+/* ⚠️ Картууд `flex: none` — доорх нэгдсэн дүрэмд заасан. Эс бөгөөс агуулга
+   ихтэй карт багана дотор ШАХАГДАЖ, өөрөө гүйлгэгчтэй болно (давхар гүйлгэлт). */
 
 /* Хэсэг (Section) БҮР ТУСДАА КАРТ. Картын гадаргууг ui.module.css-ийн `.section`
    өгнө (envhub Box: var(--surface) + 1px hairline + var(--r-sm), СҮҮДЭРГҮЙ) —
@@ -244,12 +581,19 @@
   display: grid;
   /* Эхний ГУРВАН багана хувьсагчаар — чирэхэд px болно; сүүлийнх нь үлдсэнийг
      эзэлнэ. Хувьсагч тавиагүй бол `fr`-ийн анхны харьцаа хэвээр. */
+  /* ⚠️ Анхдагч нь ХОЁР багана. Доод зурваст горимоос хамаарч 2 эсвэл 3
+     карт л ордог тул тогтмол 4 багана үлдээвэл баруун тал хоосон үлдэнэ. */
   grid-template-columns:
     var(--fin-1, minmax(0, 1fr))
-    var(--fin-2, minmax(0, 1fr))
-    var(--fin-3, minmax(0, 1.5fr))
-    minmax(0, 1.5fr);
+    minmax(0, 1fr);
   gap: 8px;
+}
+
+/* Үзлэгийн горим — сарын ГАНЦ цуваа, бүтэн өргөнөөр.
+   ⚠️ Гүйцэтгэгч ба талбайн задаргаа нь БАРУУН баганад зөөгдсөн (2026-09-06):
+   гурвуулаа доор байвал зурвас өндөрсөж, зураг дэлгэцээс гарч байв. */
+.fin[data-cols='1'] {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 /* «Бүгдийг арилгах» — зурган дээрх шүүлтийн чипүүдийн хажууд, хоёроос дээш
@@ -517,7 +861,7 @@
        (2026-08-21 аудит). Зургийн мөрөнд 240px доод шал — намхан дэлгэцэд
        52vh хэт жижигрэхээс хамгаална. */
     grid-template-rows: auto auto auto max(240px, 52vh) auto auto;
-    grid-template-areas: 'kpi' 'flt' 'list' 'map' 'r' 'fin';
+    grid-template-areas: 'flt' 'kpi' 'list' 'map' 'r' 'fin';
     height: auto;
     overflow: visible;
   }
