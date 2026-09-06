@@ -35,23 +35,27 @@ const cellText = (v, t) => {
   return String(v).trim();
 };
 
+/*
+ * ⚠️ 2026-09-06: хуучин `cashflow_0813` (CF001…CF036) хаягдаж, `Cashflow_0904`
+ * (утгатай латин галиг талбарууд) орлосон. Нүүрнүүд нь: багц (`Bagts`),
+ * төрөл (`Turul`), захирамжийн он (`Zahiramj_ognoo`-оос).
+ */
 const CF_COLS = [
-  { name: 'CF002', alias: 'CF002', type: 'esriFieldTypeString' },
-  { name: 'CF003', alias: 'CF003', type: 'esriFieldTypeInteger' },
-  { name: 'CF006', alias: 'CF006', type: 'esriFieldTypeString' },
-  { name: 'CF008', alias: 'CF008', type: 'esriFieldTypeString' },
-  { name: 'CF009', alias: 'CF009', type: 'esriFieldTypeDouble' },
-  { name: 'CF020', alias: 'CF020', type: 'esriFieldTypeDateOnly' },
+  { name: 'Turul', alias: 'Төрөл', type: 'esriFieldTypeString' },
+  { name: 'Bagts', alias: 'Багц', type: 'esriFieldTypeString' },
+  { name: 'Guitsetgegch_baig', alias: 'Гүйцэтгэгч', type: 'esriFieldTypeString' },
+  { name: 'Urdch_tusuwt_urtug', alias: 'Төсөвт өртөг', type: 'esriFieldTypeDouble' },
+  { name: 'Zahiramj_ognoo', alias: 'Захирамжийн огноо', type: 'esriFieldTypeDateOnly' },
 ];
-const CF = FIN_FACETS.CASHFLOW2;
+const CF = FIN_FACETS.CASHFLOW_NEW;
 const f = (over = {}) => ({ ...EMPTY_FILTER, ...over, facet: { ...EMPTY_FILTER.facet, ...(over.facet ?? {}) }, col: { ...(over.col ?? {}) } });
 const match = (r, flt) => rowMatches(r, CF_COLS, flt, CF, cellText, isNumeric);
 
 const rows = [
-  { OBJECTID: 1, CF002: 'ГЭРЭЭ', CF003: 2026, CF006: 'Багц 4.1', CF008: 'МКС', CF009: 4058800000, CF020: '2026-03-14' },
-  { OBJECTID: 2, CF002: 'ГЭРЭЭ', CF003: 2026, CF006: 'Багц 4.1 ', CF008: 'МКС', CF009: 76000, CF020: '2026-04-01' },
-  { OBJECTID: 3, CF002: 'ЗАХИРАМЖ', CF003: 2025, CF006: 'Багц 4.2', CF008: 'АНУ', CF009: null, CF020: null },
-  { OBJECTID: 4, CF002: 'ГЭРЭЭ', CF003: 2025, CF006: '', CF008: '', CF009: 0, CF020: '' },
+  { OBJECTID: 1, Turul: 'ГЭРЭЭ', Bagts: 'Багц 4.1', Guitsetgegch_baig: 'МКС', Urdch_tusuwt_urtug: 4058800000, Zahiramj_ognoo: '2026-03-14' },
+  { OBJECTID: 2, Turul: 'ГЭРЭЭ', Bagts: 'Багц 4.1 ', Guitsetgegch_baig: 'МКС', Urdch_tusuwt_urtug: 76000, Zahiramj_ognoo: '2026-04-01' },
+  { OBJECTID: 3, Turul: 'ЗАХИРАМЖ', Bagts: 'Багц 4.2', Guitsetgegch_baig: 'АНУ', Urdch_tusuwt_urtug: null, Zahiramj_ognoo: '2025-08-02' },
+  { OBJECTID: 4, Turul: 'ГЭРЭЭ', Bagts: '', Guitsetgegch_baig: '', Urdch_tusuwt_urtug: 0, Zahiramj_ognoo: '' },
 ];
 
 /* ── 1. numTest ── */
@@ -77,7 +81,8 @@ assert.deepEqual(
   ['Багц 4.1', 'Багц 4.2', ''],
   'арын зайтай хувилбар нэгдэж, хоосон нь ТӨГСГӨЛД',
 );
-assert.deepEqual(facetValues(rows, CF[1]), ['2025', '2026'].sort((a, b) => a.localeCompare(b, 'mn')));
+assert.deepEqual(facetValues(rows, CF[1]), ['ГЭРЭЭ', 'ЗАХИРАМЖ'], 'нүүр 2 нь ТӨРӨЛ');
+assert.deepEqual(facetValues(rows, CF[2]), ['2025', '2026', ''], 'нүүр 3 нь захирамжийн ОН');
 assert.equal(match(rows[1], f({ facet: { pkg: 'Багц 4.1' } })), true, "'Багц 4.1 ' нь 'Багц 4.1'-д багтана");
 assert.equal(match(rows[2], f({ facet: { pkg: 'Багц 4.1' } })), false);
 assert.equal(match(rows[3], f({ facet: { pkg: '' } })), true, "'' = бүгд, шүүхгүй");
@@ -94,16 +99,16 @@ assert.equal(match(rows[2], f({ q: 'null' })), false, "String(null) нь хай�
 assert.equal(match(rows[3], f({ q: 'null' })), false);
 
 /* ── 5. `null` ≠ `0` ── */
-assert.equal(match(rows[2], f({ col: { CF009: '0' } })), false, 'null нь 0 гэж шүүгдэхгүй');
-assert.equal(match(rows[3], f({ col: { CF009: '=0' } })), true, 'бодит 0 нь шүүгдэнэ');
-assert.equal(match(rows[0], f({ col: { CF009: '>1e9' } })), true);
-assert.equal(match(rows[1], f({ col: { CF009: '>1e9' } })), false);
+assert.equal(match(rows[2], f({ col: { Urdch_tusuwt_urtug: '0' } })), false, 'null нь 0 гэж шүүгдэхгүй');
+assert.equal(match(rows[3], f({ col: { Urdch_tusuwt_urtug: '=0' } })), true, 'бодит 0 нь шүүгдэнэ');
+assert.equal(match(rows[0], f({ col: { Urdch_tusuwt_urtug: '>1e9' } })), true);
+assert.equal(match(rows[1], f({ col: { Urdch_tusuwt_urtug: '>1e9' } })), false);
 
 /* ── 6. Багана бүрийн шүүлт нь ХОСЛОНО (БА) ── */
-assert.equal(match(rows[0], f({ col: { CF002: 'ГЭРЭЭ', CF008: 'МКС' } })), true);
-assert.equal(match(rows[0], f({ col: { CF002: 'ГЭРЭЭ', CF008: 'АНУ' } })), false);
+assert.equal(match(rows[0], f({ col: { Turul: 'ГЭРЭЭ', Guitsetgegch_baig: 'МКС' } })), true);
+assert.equal(match(rows[0], f({ col: { Turul: 'ГЭРЭЭ', Guitsetgegch_baig: 'АНУ' } })), false);
 assert.equal(
-  match(rows[0], f({ facet: { type: 'ГЭРЭЭ' }, q: 'МКС', col: { CF009: '>1e9' } })),
+  match(rows[0], f({ facet: { type: 'ГЭРЭЭ' }, q: 'МКС', col: { Urdch_tusuwt_urtug: '>1e9' } })),
   true,
   'нүүр + чөлөөт хайлт + баганын шүүлт гурвуулаа',
 );
@@ -113,7 +118,7 @@ assert.equal(isDirty(EMPTY_FILTER), false);
 assert.equal(isDirty(f({ q: '  ' })), false, 'зөвхөн зай нь шүүлт биш');
 assert.equal(isDirty(f({ q: 'а' })), true);
 assert.equal(isDirty(f({ facet: { year: '2026' } })), true);
-assert.equal(isDirty(f({ col: { CF009: '>1' } })), true);
+assert.equal(isDirty(f({ col: { Urdch_tusuwt_urtug: '>1' } })), true);
 
 /* ── 9. IPC-ийн он нь IPC09-өөс ── */
 const IPC = FIN_FACETS.IPC_LOG;

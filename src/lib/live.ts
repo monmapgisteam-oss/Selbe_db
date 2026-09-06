@@ -18,11 +18,11 @@
  *   · ногоон      — test_data [35] Shape__Area
  */
 
-import { queryFeatures, queryStats, queryGroup, count, sum, sqlStr, type Row } from '@/lib/query';
+import { queryFeatures, queryStats, queryGroup, count, sum, type Row } from '@/lib/query';
 import { t as tr } from '@/lib/i18nCore';
 import {
-  BOUNDARY, BUILT_LAYER, BUILT_FIELDS, BUILT_STATUS, CASHFLOW2,
-  LAYER_BY_ID, PARCEL_LEFT, layerUrl, oidOf, cfMonthAxis, cfMonthKey,
+  BOUNDARY, BUILT_LAYER, BUILT_FIELDS, BUILT_STATUS, CASHFLOW_NEW,
+  LAYER_BY_ID, PARCEL_LEFT, layerUrl, oidOf,
 } from '@/lib/services';
 import { sumBy, tally } from '@/lib/agg';
 import { register, type DataKey } from '@/lib/dataBus';
@@ -67,100 +67,72 @@ export function cached<T>(
   };
 }
 
-/* ══════════════ Төсөв — CASHFLOW2 (cashflow_0813 /173) ══════════════ */
+/* ══════════════ Төсөв — CASHFLOW_NEW (Cashflow_0904 /0) ══════════════ */
 
 export type Budget = {
-  /** Урьдчилсан төсөвт өртөг (CF018) — ₮ */
+  /** Урьдчилсан төсөвт өртөг — ₮ */
   total: number;
-  /** Захирамжийн нийт дүн (CF024) — ₮ */
+  /** Захирамжийн нийт дүн — ₮ */
   orderTotal: number;
-  /** Гэрээ байгуулах эрх олгосон дүн (CF033) — ₮ */
+  /** Гэрээ байгуулах эрх олгосон дүн — ₮ */
   contract: number;
-  /**
-   * Өмнө шилжүүлсэн мөнгөн дүн, ₮.
-   *
-   * ⚠️ 2026-08-31: ГЭРЭЭ ТУС БҮРИЙН «өмнө шилжүүлсэн» багана ХАСАГДСАН.
-   *    Одоо энэ нь `CF002 = 'ӨМНӨХ ШИЛЖҮҮЛСЭН'` гэсэн ХОЁР мөрийн `CF009`
-   *    нийлбэр (4,058,800,000 ₮) — гэрээгээр задрах боломж БАЙХГҮЙ.
-   */
-  transferred: number;
   /** Санхүүжилтийн эх үүсвэр — задраагүй үлдэгдэлтэй */
   sources: { key: string; label: string; value: number }[];
-  /** ⚠️ ажлын ТӨРӨЛ (CF005)-өөр төсөвт өртөг */
+  /** ⚠️ ажлын ТӨРӨЛ (`Turul`)-өөр төсөвт өртөг */
   byType: { key: string; label: string; value: number; n: number }[];
-  /** ⚠️ ДЭД багц (CF007)-оор. `key` нь `bagtsKey()`, `label` нь түүхий нэр. */
+  /** ⚠️ ДЭД багц (`Ded_bagts`)-аар. `key` нь `bagtsKey()`, `label` нь түүхий нэр. */
   byPkg: { key: string; label: string; value: number; n: number }[];
-  /**
-   * ⚠️ Сарын санхүүжилтийн ТӨЛӨВЛӨГӨӨ, ₮ — `cfMonthAxis()`-ийн ТАСРАЛТГҮЙ
-   *    тэнхлэгээр. Хэмжилтгүй сар (2026-01) `0` болж БАГТАНА, алгасагдахгүй.
-   */
-  months: { label: string; amount: number }[];
 };
 
 /**
- * ТӨСЛИЙН ТӨСВИЙН ЭХ = `cashflow_0813 /173` (CASHFLOW2). «Хөрөнгө оруулалт
+ * ТӨСЛИЙН ТӨСВИЙН ЭХ = `Cashflow_0904/0` (CASHFLOW_NEW). «Хөрөнгө оруулалт
  * өртөг» (/249)-ЭЭС ЯЛГААТАЙ: тэр нь олон нийтийн бүсийн хувийн таамаг оруулж
  * 4.16 их наяд хөөргөдөг; энэ нь захирамж/гэрээгээр баталгаажсан ТӨСЛИЙН төсөв.
+ *
+ * ⚠️ 2026-09-06: `months` (сарын санхүүжилтийн төлөвлөгөө) ба `transferred`
+ * («өмнө шилжүүлсэн») ХАСАГДСАН — тэдгээр нь хуучин `cashflow_0813`-ийн САР ба
+ * ӨМНӨХ ШИЛЖҮҮЛСЭН мөрүүдээс гардаг байсан бөгөөд шинэ үйлчилгээнд тийм мөр
+ * ОГТ БАЙХГҮЙ. Мөрийн төрлийн шүүлт (`where.master`) ч хэрэггүй болсон: одоо
+ * хүснэгт бүхэлдээ 76 гэрээ, мөр бүр НЭГ гэрээ.
  */
 /**
- * Бүлгийн шошго. ⚠️ Бөглөөгүй нүд ГУРВАН хэлбэртэй: шинэ схемд `null`, хуучин
- * импортын үлдэгдэлд `'0'` эсвэл хоосон мөр. `tally` нь `''`/`'0'` хоёрыг
- * «тодорхойгүй» болгодог тул энд `null`-ыг `''` болгож ижил замд оруулна —
- * эс бөгөөс CF005-гүй 4 гэрээ (63 тэрбум ₮) чимээгүй алдагдана.
+ * Бүлгийн шошго. ⚠️ Бөглөөгүй нүд ГУРВАН хэлбэртэй: `null`, `'0'`, эсвэл
+ * хоосон мөр. `tally` нь `''`/`'0'` хоёрыг «тодорхойгүй» болгодог тул энд
+ * `null`-ыг `''` болгож ижил замд оруулна — эс бөгөөс төрөлгүй гэрээнүүд
+ * (63 тэрбум ₮) чимээгүй алдагдана.
  */
 const cfLabel = (v: unknown) => String(v ?? '').replace(/\s+/g, ' ').trim();
 
 export const loadBudget = cached<Budget>(async () => {
-  const CF = CASHFLOW2.fields;
-  /* ⚠️ Асуулга БҮРД мөрийн төрлийн шүүлт ЗААВАЛ: үйлчилгээ 209 мөртэй бөгөөд
-     үүний 76 нь л ГЭРЭЭ. Шүүлтгүй бол мөнгөн НИЙЛБЭР зөв гарна (мастер багана
-     үеийн мөрөнд NULL) ч ТООЛОЛТ (`n`) 2.7 дахин үрждэг — алдаа нь дүнд
-     харагдахгүй, зөвхөн «дундаж/тоо»-д гарна. */
-  const [r, prev, mg, g] = await Promise.all([
-    queryStats(CASHFLOW2.url, [
+  const CF = CASHFLOW_NEW.fields;
+  const [r, g] = await Promise.all([
+    queryStats(CASHFLOW_NEW.url, [
       sum(CF.budget, 'b'), sum(CF.orderTotal, 'o'), sum(CF.contractAmount, 'c'),
-      // ⚠️ `s.total` — ГЭРЭЭ мөрийн эх үүсвэрийн нийт дүн. `s.period` (CF010…)
-      //    нь ҮЕИЙН задаргаа тул мастер мөрөнд хоосон.
-      ...CASHFLOW2.sources.map((s, i) => sum(s.total, `s${i}`)),
-    ], CASHFLOW2.where.master),
-    queryStats(CASHFLOW2.url, [sum(CF.amount, 'p')],
-      `${CF.rowType} = ${sqlStr(CASHFLOW2.rows.prev)}`),
-    // ⚠️ Сар нь БАГАНА байхаа больсон — жил/сарын УТГААР бүлэглэнэ.
-    queryGroup(CASHFLOW2.url, `${CF.year},${CF.monthNo}`,
-      [sum(CF.amount, 'a')], CASHFLOW2.where.month),
-    // ⚠️ Хоёр задаргааг НЭГ groupBy-д (63 бүлэг) — тусад нь асуувал хүсэлт илүү
-    //    явна. Огтлолцсон бүлгүүдийг `tally` талбар тус бүрээр нэгтгэнэ.
-    queryGroup(CASHFLOW2.url, `${CF.type},${CF.pkg2}`, [
-      sum(CF.budget, 'b'), count(CASHFLOW2.oid, 'n'),
-    ], CASHFLOW2.where.master),
+      ...CASHFLOW_NEW.sources.map((s, i) => sum(s.field, `s${i}`)),
+    ]),
+    // ⚠️ Хоёр задаргааг НЭГ groupBy-д — тусад нь асуувал хүсэлт илүү явна.
+    //    Огтлолцсон бүлгүүдийг `tally` талбар тус бүрээр нэгтгэнэ.
+    queryGroup(CASHFLOW_NEW.url, `${CF.type},${CF.pkg2}`, [
+      sum(CF.budget, 'b'), count(CASHFLOW_NEW.oid, 'n'),
+    ]),
   ]);
 
   const total = Number(r.b ?? 0);
   const orderTotal = Number(r.o ?? 0);
-  const named: { key: string; label: string; value: number }[] = CASHFLOW2.sources
-    .map((s, i) => ({ key: s.total as string, label: s.label as string, value: Number(r[`s${i}`] ?? 0) }))
+  const named: { key: string; label: string; value: number }[] = CASHFLOW_NEW.sources
+    .map((s, i) => ({ key: s.field as string, label: s.label as string, value: Number(r[`s${i}`] ?? 0) }))
     .filter((x) => x.value > 0)
     .sort((a, b) => b.value - a.value);
   // Захирамжийн дүнгээс эх үүсвэр задраагүй үлдэгдэл (зөрүү нуухгүй)
   const rest = orderTotal - sumBy(named, (x) => x.value);
   if (rest > 0) named.push({ key: 'rest', label: tr('Эх үүсвэр задраагүй'), value: rest });
 
-  /* ⚠️ Сарын цуваа: тэнхлэгийг ӨГӨГДЛӨӨС угсрахгүй. 2026-01-д ямар ч мөр алга
-     тул `mg`-ийн 11 бүлгийг шууд эрэмбэлбэл 01-ээс ХОЙШХИ сар бүр нэг нүдээр
-     ГУЛСАНА. `cfMonthAxis()` нь тасралтгүй хуанли өгдөг — байхгүйг 0-ээр нөхнө. */
-  const byMonth = new Map<string, number>();
-  for (const row of mg) {
-    const k = cfMonthKey(row);
-    if (k) byMonth.set(k, (byMonth.get(k) ?? 0) + Number(row.a ?? 0));
-  }
-
   return {
     total,
     orderTotal,
     contract: Number(r.c ?? 0),
-    transferred: Number(prev.p ?? 0),
     sources: named,
-    // ⚠️ `n` = ГЭРЭЭНИЙ тоо (мастер мөр), ажлын мөр БИШ — нийт 76.
+    // ⚠️ `n` = ГЭРЭЭНИЙ тоо — мөр бүр нэг гэрээ тул нийт 76.
     byType: tally(
       g,
       (row) => ({ key: cfLabel(row[CF.type]), value: Number(row.b ?? 0), n: Number(row.n ?? 0) }),
@@ -171,10 +143,9 @@ export const loadBudget = cached<Budget>(async () => {
       (row) => ({ key: cfLabel(row[CF.pkg2]), value: Number(row.b ?? 0), n: Number(row.n ?? 0) }),
       tr('Багц тодорхойлоогүй'),
     ).filter((t) => t.value > 0),
-    months: cfMonthAxis().map((m) => ({ label: m.label, amount: byMonth.get(m.label) ?? 0 })),
   };
-  // ⚠️ Хяналт: Σ byType.value === total (2,659,666,902,535 ₮) байх ёстой.
-}, undefined, ['CASHFLOW2']);
+  // ⚠️ Хяналт: Σ byType.value === total байх ёстой.
+}, undefined, ['CASHFLOW_NEW']);
 
 export type Headline = {
   /**
@@ -188,9 +159,9 @@ export type Headline = {
   areaHa: number;
   /** Оршин суух хүн ам — барилгуудын `Population` нийлбэр */
   population: number;
-  /** ТӨСЛИЙН нийт төсөвт өртөг, ₮ — cashflow_0813 /173 (CF018, ГЭРЭЭ мөр) */
+  /** ТӨСЛИЙН нийт төсөвт өртөг, ₮ — Cashflow_0904 (`Urdch_tusuwt_urtug`) */
   investTotal: number;
-  /** Гэрээгээр баталгаажсан дүн, ₮ — cashflow_0813 /173 (CF033, ГЭРЭЭ мөр) */
+  /** Гэрээгээр баталгаажсан дүн, ₮ — Cashflow_0904 (`Geree_erh_dun`) */
   investConfirmed: number;
   /** Ногоон байгууламжийн талбай, га — test_data [35] */
   greenHa: number | null;
@@ -212,7 +183,7 @@ export const loadHeadline = cached<Headline>(async () => {
   const green = LAYER_BY_ID.nogoon;
   /*
    * ⚠️ 2026-08 аудит (олдвор #22): `Promise.all` → `allSettled`. Гурван ӨӨР
-   * үйлчилгээг нэгтгэдэг тул урьд нь cashflow_0813 /173 унахад огт хамааралгүй
+   * үйлчилгээг нэгтгэдэг тул урьд нь cashflow унахад огт хамааралгүй
    * «га талбай», «хүн ам» ч хамт унаж, бараг бүх харагдацын SummaryBar
    * «Үзүүлэлт татагдсангүй» болдог байв. Одоо унасан хэсгийн талбарууд NaN
    * (дэлгэцэд «—») болж бусад нь хэвийн гарна; БҮГД унавал л throw —
@@ -274,7 +245,7 @@ export const loadHeadline = cached<Headline>(async () => {
      бол түр доголдлын үлдэц хэзээ ч засрахгүй байв. */
   /* ⚠️ `reads` (2026-08-29): `loadBudget`-ыг нэгтгэдэг тул төсөв өөрчлөгдөхөд
      энэ ч хуучирна — эс бөгөөс толгойн тоо 5 минут хоцорно. */
-}, 5 * 60_000, ['CASHFLOW2']);
+}, 5 * 60_000, ['CASHFLOW_NEW']);
 
 /* ══════════════ Төслийн жигнэсэн явц ══════════════ */
 

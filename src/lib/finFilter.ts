@@ -1,14 +1,14 @@
 /**
  * САНХҮҮЖИЛТИЙН БҮРТГЭЛИЙН ШҮҮЛТ — цэвэр логик, React-гүй.
  *
- * «Санхүүжилт» харагдацын хоёр бүртгэл (`cashflow_0813` 36 багана ·
+ * «Санхүүжилт» харагдацын хоёр бүртгэл (`Cashflow_0904` 33 багана ·
  * `ipc_0813` 33 багана) нь урьд нь шүүлтгүй байв. Хэрэглэгчийн хүсэлт
  * (2026-09-01): багц · он · төрлөөр, мөн БАГАНА БҮРЭЭР шүүх, багцаар бүлэглэн
  * харах.
  *
  * ⚠️ Бүх мөр аль хэдийн санах ойд байдаг (209 ба 59 мөр — `loadFinRegister`)
  * тул шүүлт нь КЛИЕНТ дээр. Серверийн `where` руу шилжүүлбэл кэш
- * (`cached(…, ['CASHFLOW2'])`) шүүлт бүрд хүчингүй болж, сүлжээ дэмий эзэлнэ.
+ * (`cached(…, ['CASHFLOW_NEW'])`) шүүлт бүрд хүчингүй болж, сүлжээ дэмий эзэлнэ.
  *
  * ⚠️ React импортлохгүй — `finFilter.check.mjs` шууд Node дээр ачаална.
  */
@@ -60,7 +60,7 @@ const yearOf = (v: unknown): string => {
  *    гаргана — шошгыг «Он (хамрах хугацаа)» гэж ТОДОРХОЙ бичнэ, эс бөгөөс
  *    хэрэглэгч аль огнооны жил болохыг мэдэхгүй.
  */
-export const FIN_FACETS: Record<'CASHFLOW2' | 'CASHFLOW_NEW' | 'IPC_LOG', Facet[]> = {
+export const FIN_FACETS: Record<'CASHFLOW_NEW' | 'IPC_LOG', Facet[]> = {
   /*
    * ⚠️ Шинэ хүснэгтэд `CF0xx` код БАЙХГҮЙ — талбарын нэр нь утгатай латин
    * галиг. Мөн САР гэсэн мөрийн төрөл байхгүй тул «Үеийн төрөл» шүүлтийн
@@ -77,11 +77,6 @@ export const FIN_FACETS: Record<'CASHFLOW2' | 'CASHFLOW_NEW' | 'IPC_LOG', Facet[
       allLabel: tr('Бүх он'),
       valueOf: (r) => yearOf(r.Zahiramj_ognoo),
     },
-  ],
-  CASHFLOW2: [
-    { key: 'pkg', label: tr('Багц'), allLabel: tr('Бүх багц'), valueOf: (r) => clean(r.CF006) },
-    { key: 'year', label: tr('Он'), allLabel: tr('Бүх он'), valueOf: (r) => clean(r.CF003) },
-    { key: 'type', label: tr('Үеийн төрөл'), allLabel: tr('Бүх төрөл'), valueOf: (r) => clean(r.CF002) },
   ],
   IPC_LOG: [
     { key: 'pkg', label: tr('Багц'), allLabel: tr('Бүх багц'), valueOf: (r) => clean(r.IPC03) },

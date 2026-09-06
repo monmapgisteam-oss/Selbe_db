@@ -5,27 +5,26 @@
  * хэрэглэнэ. Хоёр газар тус тусад нь тооцвол PDF нь дэлгэцээс зөрч, аль нь зөв
  * болох нь мэдэгдэхгүй болно — тиймээс тооцоолол энд ГАНЦ УДАА хийгдэнэ.
  *
- * ⚠️ САНХҮҮ: `CASHFLOW` (BUS_cashflow) хүснэгтийн мөнгөн БҮХ багана өнөөдөр
- * ХООСОН (7 мөр, дүн бүр 0). Тиймээс санхүүг `CASHFLOW2`
- * (`cashflow_0813/FeatureServer/173`, 209 мөр)-оос авна — «Цогцолбор»
- * дашбоардын толгойн тоо ч мөн эндээс гардаг.
+ * ⚠️ САНХҮҮ: `CASHFLOW_NEW` (`Cashflow_0904/FeatureServer/0`, 76 мөр) —
+ * «Цогцолбор» дашбоардын толгойн тоо ч мөн эндээс гардаг. Мөр БҮР нэг гэрээ.
  *
- * ⚠️ 2026-08-31: CASHFLOW2 нь «нэг гэрээ = нэг мөр» БАЙХАА БОЛИВ — 209 мөрийн
- * 76 нь ГЭРЭЭ (мастер), 131 нь САР, 2 нь ӨМНӨХ ШИЛЖҮҮЛСЭН. Тиймээс энэ файлын
- * гэрээний ТООЛОЛТ, багц/төрлийн бүлэглэлт БҮГД `where.master`-аар шүүгдэнэ.
- * Мөнгөн НИЙЛБЭР шүүлтгүй ч зөв гарна (мастер багана үеийн мөрөнд NULL) тул
- * алдаа нь зөвхөн ТООНД харагдана — хамгийн чимээгүй төрлийн эвдрэл.
+ * ⚠️ 2026-09-06: `cashflow_0813` (209 мөр — гэрээ + сар + өмнөх шилжүүлсэн)
+ * БҮРМӨСӨН хаягдаж `Cashflow_0904` (76 мөр) орлосон. Мөрийн ТӨРЛИЙН шүүлт
+ * (`where.master`) хэрэггүй болов; хариуд нь САНХҮҮЖИЛТИЙН САРЫН ХУВААРЬ
+ * (тайлангийн 7.2 хэсэг) бүхэлдээ ХАСАГДСАН.
  *
- * ⚠️ CASHFLOW2 нь гэрээ бүрийн САНХҮҮЖИЛТИЙН ХУВААРЬ буюу ТӨЛӨВЛӨГӨӨ —
- * «бодитоор олгосон» дүнг эндээс ХЭЗЭЭ Ч гаргаж болохгүй (ирээдүйн сарууд ч
- * орсон байдаг). Бодит олголт нь IPC актын лог (`IPC_LOG` — `ipc_0813/172`,
- * 59 мөр)-оос гарна — Finance/ExecKpi/Tsogts бүгд тэндээс уншдаг, тайлан ч
- * мөн адил.
+ * ⚠️ ЭНЭ ХҮСНЭГТЭД «бодитоор олгосон» дүн БАЙХГҮЙ — тэр нь IPC актын лог
+ * (`IPC_LOG` — `ipc_0813/172`, 59 мөр). Finance/ExecKpi/PkgFin бүгд тэндээс
+ * уншдаг, тайлан ч мөн адил.
  *
- * ⚠️ ХӨРӨНГӨ ОРУУЛАЛТЫН ГУРВАН ӨӨР ТОО байдгийг бүү хольж уншаарай:
- *     · 2,333.9 тэрбум — илтгэлийн «гэрээ, захирамжид тусгагдсан» дүн (`brief`)
- *     · 2,541.5 тэрбум — `CASHFLOW2`-ийн ЗАХИРАМЖИЙН дүн (амьд)
- *     · 2,073.1 тэрбум — `CASHFLOW2`-ийн ГЭРЭЭНИЙ дүн (амьд)
+ * ⚠️ ХӨРӨНГӨ ОРУУЛАЛТЫН ГУРВАН ӨӨР ТОО байдгийг бүү хольж уншаарай
+ *   (амьд хэмжилт, 2026-09-06):
+ *     · 2,512.6 тэрбум — УРЬДЧИЛСАН ТӨСӨВТ ӨРТӨГ (`Urdch_tusuwt_urtug`)
+ *     · 2,476.5 тэрбум — ЗАХИРАМЖИЙН дүн (`Zahiramj_niit_dun`)
+ *     · 2,073.1 тэрбум — ГЭРЭЭНИЙ дүн (`Geree_erh_dun`)
+ *   ⚠️ Эхний хоёр нь хуучин хүснэгтээс 147.1 ба 65.1 тэрбумаар ЖИЖИГ — шинэ
+ *   хүснэгтэд хоёр гэрээний дүн засагдсан («Гадна дулааны эх үүсвэр»,
+ *   «Сэлбэ голын усан сан»). Гэрээний дүн ӨӨРЧЛӨГДӨӨГҮЙ.
  *   Тайланд аль нь болохыг гарчигт нь ЗААВАЛ бичнэ.
  *
  * ⚠️ ХАБЭА-гийн хүн хүчний маягт нь өдөр тутмын цуваа БИШ: нийт 1 бүртгэлтэй
@@ -40,8 +39,8 @@ import { queryFeatures } from '@/lib/query';
 import { cached, loadClearance } from '@/lib/live';
 import { layerTotals } from '@/lib/totals';
 import {
-  BUILDING, CASHFLOW2, HABEA, IPC_LOG, LAYER_GROUPS, GROUP_LAYERS, LAYER_BY_ID,
-  bagtsKey, pkgKeyOf, laborCompanyFields, cfMonthAxis, cfMonthKey, ipcNet,
+  BUILDING, CASHFLOW_NEW, HABEA, IPC_LOG, LAYER_GROUPS, GROUP_LAYERS, LAYER_BY_ID,
+  bagtsKey, pkgKeyOf, laborCompanyFields, ipcNet,
 } from '@/lib/services';
 
 /* ═══════════════ Төрөл ═══════════════ */
@@ -123,11 +122,6 @@ export type ReportExtra = {
     contractAmount: number;
     sources: { label: string; value: number }[];
     /**
-     * Сар бүрийн САНХҮҮЖИЛТИЙН ХУВААРЬ (төлөвлөгөө) — CASHFLOW2.
-     * ⚠️ Олголт БИШ: ирээдүйн сарууд ч орсон тул «олгосон» гэж шошгохгүй.
-     */
-    months: { label: string; amount: number; cum: number }[];
-    /**
      * Бодитоор олгосон санхүүжилт — IPC актын НИЙЛБЭР, ₮.
      * ⚠️ Хадгалсан багана байхгүй болсон тул `ipcNet()`-ээр БОДОГДОНО
      *    (гүйцэтгэлийн дүн − 4 суутгал).
@@ -165,7 +159,7 @@ const nn = (v: unknown): number => {
 };
 
 /**
- * ⚠️ Мөрийн ТАСРАЛТ хүртэл цэвэрлэнэ: `CASHFLOW2`-ийн зарим ангилал
+ * ⚠️ Мөрийн ТАСРАЛТ хүртэл цэвэрлэнэ: cashflow-ийн зарим ангилал
  * («ГАДНА ТОХИЖИЛТ,\nӨНДӨРЖИЛТ») дотроо `\n` агуулдаг — цэвэрлэхгүй бол
  * хүснэгтийн нүд хоёр мөр болж эвдэрнэ.
  */
@@ -249,21 +243,18 @@ const loadPkgLabels = cached(async (): Promise<Map<string, string>> => {
  * ⚠️ Тусдаа кэш нь ДАВХАРДАЛ ҮҮСГЭХГҮЙ: `loadReportExtraRaw` нь эдгээр
  *    ороомгуудыг дуудна тул «Тайлан» ба «Схем» хоёр НЭГ хүсэлт хуваалцана.
  */
-export const loadOverall = cached(loadOverallRaw, 5 * 60_000, ['BAGTS_SHEET', 'CASHFLOW2']);
+export const loadOverall = cached(loadOverallRaw, 5 * 60_000, ['BAGTS_SHEET', 'CASHFLOW_NEW']);
 
 async function loadOverallRaw(): Promise<ReportExtra['overall']> {
-  const F = CASHFLOW2.fields;
+  const F = CASHFLOW_NEW.fields;
   const { loadBlockProgress } = await import('@/lib/blockProgress');
   const [cells, labels, cf] = await Promise.all([
     loadBlockProgress(),
     loadPkgLabels(),
     /* Зөвхөн 3 талбар — `loadFinance` нь «*»-оор бүтнээр татдаг ч энэ нь
        тусдаа кэштэй дуудалт тул хөнгөн байлгав.
-       ⚠️ `where.master` ЗААВАЛ: төсөв нь ЗӨВХӨН ГЭРЭЭ мөрөнд бичигдсэн бөгөөд
-       үеийн 133 мөр нь багцаа давтдаг тул шүүлтгүй бол нэг гэрээ олон удаа
-       ирж, жин нь худал өснө. */
-    queryFeatures(CASHFLOW2.url, {
-      where: CASHFLOW2.where.master,
+       ⚠️ 2026-09-06: мөрийн ТӨРЛИЙН шүүлт хэрэггүй болов — мөр БҮР нэг гэрээ. */
+    queryFeatures(CASHFLOW_NEW.url, {
       outFields: [F.pkg2, F.pkg, F.budget],
     }),
   ]);
@@ -493,51 +484,28 @@ async function loadProgressRaw(): Promise<ReportExtra['progress']> {
  * `ipcCode()` угсардаг) тул тэр шүүлт БҮХ мөрийг хаяж, олгосон дүн 0 болно.
  */
 
-export const loadFinance = cached(loadFinanceRaw, 5 * 60_000, ['CASHFLOW2', 'IPC_LOG']);
+export const loadFinance = cached(loadFinanceRaw, 5 * 60_000, ['CASHFLOW_NEW', 'IPC_LOG']);
 
 async function loadFinanceRaw(): Promise<ReportExtra['finance']> {
-  const F = CASHFLOW2.fields;
+  const F = CASHFLOW_NEW.fields;
   const I = IPC_LOG.fields;
   const [rows, ipc] = await Promise.all([
-    /* ⚠️ Мөрийн ГУРВАН төрөл нэг хүснэгтэд (ГЭРЭЭ · САР · ӨМНӨХ ШИЛЖҮҮЛСЭН)
-       тул нэг удаа татаад ЭНД задална — гэрээний тоо/бүлэглэлт мастер мөрөөс,
-       сарын урсгал үеийн мөрөөс. */
-    queryFeatures(CASHFLOW2.url, { outFields: ['*'] }),
+    /* ⚠️ 2026-09-06: мөр БҮР НЭГ ГЭРЭЭ — мөрийн төрлөөр задлах шаардлагагүй
+       болов (хуучин `cashflow_0813` нь ГЭРЭЭ · САР · ӨМНӨХ ШИЛЖҮҮЛСЭН гэсэн
+       гурван грейнтэй байсан). */
+    queryFeatures(CASHFLOW_NEW.url, { outFields: ['*'] }),
     /* ⚠️ Олгох дүн одоо БОДОГДОНО (`ipcNet`) тул суутгалын 4 багана хэрэгтэй —
        хадгалсан `net` багана байхгүй болсон. */
     queryFeatures(IPC_LOG.url, { outFields: [I.gross, ...IPC_LOG.deductions] }),
   ]);
 
-  /** Гэрээний МАСТЕР мөр (76) — гэрээний бүх шинж зөвхөн энд */
-  const master = rows.filter((r) => str(r[F.rowType]) === CASHFLOW2.rows.master);
-  /** Хэмжилттэй мөрүүд (САР + ӨМНӨХ ШИЛЖҮҮЛСЭН, 133) */
-  const periods = rows.filter((r) => str(r[F.rowType]) !== CASHFLOW2.rows.master);
+  /** Гэрээний мөрүүд (76) — шүүлт хэрэггүй, мөр бүр нэг гэрээ */
+  const master = rows;
   const sum = (f: string) => master.reduce((a, r) => a + nn(r[f]), 0);
 
-  /*
-   * САРЫН ХУВААРЬ — үеийн мөрүүдийг `CF003`/`CF004`-ээр бүлэглэнэ.
-   *
-   * ⚠️ Тэнхлэгийг өгөгдөлд БАЙГАА саруудаас угсарч БОЛОХГҮЙ: 2026-01-д ямар ч
-   *    хэмжилт алга тул график нэг сар алгасаж, түүнээс хойшхи бүх багана нэг
-   *    нүд зүүн тийш шилжинэ. `cfMonthAxis()` нь ТАСРАЛТГҮЙ хуанли өгдөг —
-   *    мөргүй сар 0-ээр нөхөгдөнө.
-   * ⚠️ Өссөн дүн (`cum`) МӨН БОДОГДОНО — хуучин «өссөн» багана хасагдсан.
-   * ⚠️ «ӨМНӨХ ШИЛЖҮҮЛСЭН» мөрд сар байхгүй (`cfMonthKey` → null) тул энэ
-   *    цуваанд ОРОХГҮЙ: тэр нь өмнөх оных бөгөөс аль ч сард ногдуулбал
-   *    хуурамч оргил үүснэ.
-   */
-  const byMonth = new Map<string, number>();
-  periods.forEach((r) => {
-    const k = cfMonthKey(r);
-    if (!k) return;
-    byMonth.set(k, (byMonth.get(k) ?? 0) + nn(r[F.amount]));
-  });
-  let cum = 0;
-  const months = cfMonthAxis().map((m) => {
-    const amount = byMonth.get(m.label) ?? 0;
-    cum += amount;
-    return { label: m.label, amount, cum };
-  });
+  /* ⚠️ 2026-09-06: САРЫН ХУВААРЬ ХАСАГДСАН — хуучин `cashflow_0813`-ийн
+     «САР» мөрүүдээс гардаг байсан бөгөөд шинэ `Cashflow_0904`-т он/сарын
+     багана ОГТ БАЙХГҮЙ. Тайлан ба PDF-ийн харгалзах хэсэг мөн хасагдсан. */
 
   /*
    * «Бодитоор олгосон» — IPC актын логийн олгох дүнгийн нийлбэр.
@@ -633,10 +601,7 @@ async function loadFinanceRaw(): Promise<ReportExtra['finance']> {
     budget: sum(F.budget),
     orderTotal: sum(F.orderTotal),
     contractAmount: sum(F.contractAmount),
-    // ⚠️ `s.total` — эх үүсвэрийн ГЭРЭЭНИЙ нийт дүн. `s.period` нь тухайн
-    //    үеийн задаргаа тул мастер мөрөнд хоосон.
-    sources: CASHFLOW2.sources.map((s) => ({ label: s.label, value: sum(s.total) })),
-    months,
+    sources: CASHFLOW_NEW.sources.map((s) => ({ label: s.label, value: sum(s.field) })),
     paid,
     byType: [...typeMap.entries()]
       .map(([type, v]) => ({ type, ...v }))
@@ -760,7 +725,7 @@ async function loadHabeaSummaryRaw(): Promise<ReportExtra['habea']> {
  * атлаа Тайлан (+PDF) 5 минут хуучин тоогоо барьж, хоёр дэлгэц зөрдөг байв.
  */
 export const loadReportExtra = cached(loadReportExtraRaw, 5 * 60_000,
-  ['BAGTS_SHEET', 'CASHFLOW2', 'IPC_LOG', 'PARCEL_LEFT', 'HABEA', 'BAGTS_NEGTGEL']);
+  ['BAGTS_SHEET', 'CASHFLOW_NEW', 'IPC_LOG', 'PARCEL_LEFT', 'HABEA', 'BAGTS_NEGTGEL']);
 
 async function loadReportExtraRaw(): Promise<ReportExtra> {
   /*
@@ -890,15 +855,11 @@ export function buildFindings(x: ReportExtra): Findings {
   const paidRate = x.finance.contractAmount
     ? (x.finance.paid / x.finance.contractAmount) * 100 : null;
 
-  // ⚠️ `months` нь санхүүжилтийн ХУВААРЬ (төлөвлөгөө) — ирээдүйн сарууд ч бий.
-  //    Тиймээс эдгээрээс гарах дүгнэлтийг «олгосон» гэж бичихийг ХОРИГЛОНО.
-  const months = x.finance.months;
-  const peakMonth = months.length
-    ? months.reduce((a, m) => (m.amount > a.amount ? m : a))
-    : null;
-  // Хуваарийн сүүлийн улирлыг өмнөхтэй нь жишиж төлөвлөлтийн эрчмийг хэмжинэ
-  const last3 = months.slice(-3).reduce((a, m) => a + m.amount, 0);
-  const prev3 = months.slice(-6, -3).reduce((a, m) => a + m.amount, 0);
+  /* ⚠️ 2026-09-06: САНХҮҮЖИЛТИЙН САРЫН ХУВААРЬ дээр тогтсон гурван дүгнэлт
+     (оргил сар, сүүлийн гурван сарын эрчим) ХАСАГДСАН — хуучин
+     `cashflow_0813`-ийн «САР» мөрүүд байхгүй болсон. `peakMonth` нь
+     `Findings`-д `null` болж үлдэнэ (хэрэглэгч талд «—»). */
+  const peakMonth = null;
 
   const mongolShare = x.habea.workers ? (x.habea.mongol / x.habea.workers) * 100 : null;
 
@@ -947,11 +908,6 @@ export function buildFindings(x: ReportExtra): Findings {
 
   if (contractRate != null && paidRate != null) {
     f.push(tr('Захирамжаар батлагдсан дүнгийн {0} нь гэрээгээр баталгаажсан бөгөөд гэрээний дүнгийн {1} нь бодитоор олгогдсон байна. Олгогдоогүй үлдэгдэл {2} ₮ байна.', pct(contractRate, 1), pct(paidRate, 1), num(x.finance.contractAmount - x.finance.paid)));
-  }
-
-  if (prev3 > 0 && last3 > 0) {
-    const k = last3 / prev3;
-    f.push(tr('Хуваарийн сүүлийн гурван сард {0} ₮ олгохоор төлөвлөгдсөн нь өмнөх гурван сарын {1} ₮-өөс {2} дахин {3} буюу төлөвлөгөөт санхүүжилтийн эрчим {4} байна.', num(last3), num(prev3), num(k, 1), k >= 1 ? tr('их') : tr('бага'), k >= 1 ? tr('нэмэгдсэн') : tr('буурсан')));
   }
 
   if (x.habea.incidents > 0) {

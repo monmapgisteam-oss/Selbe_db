@@ -19,7 +19,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 /* ⚠️ OID-ийн бичиглэлийг ХАТУУ БИЧИХГҮЙ — шинэ үйлчилгээ «OBJECTID», хуучин нь
    «ObjectID» байсан. Агентын хэрэгсэл талбарын нэрийг амьд схемтэй тулгадаг тул
    зөрвөл «Ийм талбар алга» гэж унана. */
-import { CASHFLOW2 } from '@/lib/services.ts';
+import { CASHFLOW_NEW } from '@/lib/services.ts';
 
 /**
  * ⚠️ ПОРТЫГ ХАТУУ БИЧИХГҮЙ. Урьд нь 8799/8788 гэж тогтоосон байсан бөгөөд
@@ -199,7 +199,7 @@ async function main() {
   // ⚠️ Санхүү нээгдсэн ч ЭРХЭЭР хамгаалагдсан хэвээр — энэ бол гол шалгуур
   check(
     'санхүү `finance` эрхтэй хүнд НЭЭЛТТЭЙ',
-    !(await runTool('query_feature', { id: 'ds:cashflow2', stats: [{ op: 'count', field: CASHFLOW2.oid, as: 'n' }] }, 'all')).isError,
+    !(await runTool('query_feature', { id: 'ds:cashflow2', stats: [{ op: 'count', field: CASHFLOW_NEW.oid, as: 'n' }] }, 'all')).isError,
   );
   check(
     'санхүү `finance` эрхгүй хүнд ХААЛТТАЙ',

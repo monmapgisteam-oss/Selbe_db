@@ -18,13 +18,23 @@ import {
   pickedBuilding, type PickedBuilding,
 } from '@/modules/BuildingPanel';
 import {
-  loadFinData, contractMonths, lagOf, lagLevel,
-  type FinData, type MonthPt,
+  loadFinData, contractMonths, lagOf, lagLevel, type FinData,
 } from '@/modules/Finance';
 import { useAsync, type Async } from '@/lib/useAsync';
 import { loadPlanCurve, type PlanPoint } from '@/lib/planProgress';
+
+/**
+ * «Гүйцэтгэлийн явц» графикийн нэг цэг — ТӨЛӨВЛӨГӨӨ (хуваариас) ба БОДИТ
+ * (биет гүйцэтгэл), хоёулаа ХУВЬ.
+ *
+ * ⚠️ 2026-09-06: урьд нь `MonthPt` (санхүүгийн цэг)-ийг дамжуулж, төлөвлөгөөг
+ *    түүний `cumPct` талбараас уншдаг байв — тэр нь МӨНГӨний өссөн хувь
+ *    бөгөөд биет %-тай харьцуулагдаж болохгүй. Одоо графикт зөвхөн өөрийнх
+ *    нь хэрэгтэй хоёр тоо орно, мөнгөн талбар огт байхгүй.
+ */
+type ProgPt = { label: string; plan: number; act: number | null };
 import {
-  BUILDING, CASHFLOW2, PROGRESS_LEVELS, LAYER_BY_ID, pkgKeyOf,
+  BUILDING, CASHFLOW_NEW, PROGRESS_LEVELS, LAYER_BY_ID, pkgKeyOf,
   PKG_FAMILY_BY_BAGTS, zoneWhere, cfMonthAxis } from '@/lib/services';
 import { cat, shade, num, pct } from '@/lib/format';
 import { fitLabels, textW, useChartWidth } from '@/lib/chartFit';
@@ -75,12 +85,6 @@ const PACK_CATS: { key: PackCat; name: () => string }[] = [
 ];
 /** Газар чөлөөлөлтийн нэгж талбарын давхарга — давхцсан талбарыг зурахад. */
 const PARCEL_LAYER = 'land:left';
-
-/** Утгыг тоо руу — ArcGIS Double эсвэл "0" мэт мөр ирдэг */
-const nn = (v: unknown): number => {
-  const x = Number(v);
-  return Number.isFinite(x) ? x : 0;
-};
 
 /** Дундаж — бөглөгдөөгүй блокийг оруулахгүй (Bagts-ийн meanOf-той ижил дүрэм) */
 const meanOf = (vals: (number | null)[]) => {
@@ -276,13 +280,13 @@ export function PkgProg({ dim, setDim }: {
    * тул чирэлтийн re-render хямд).
    */
   /**
-   * Багц бүрийн САНХҮҮГИЙН сарын цэгүүд — CASHFLOW2-ийн мөрийг bagtsKey-ээр
+   * Багц бүрийн САНХҮҮГИЙН сарын цэгүүд — гэрээний мөрийг bagtsKey-ээр
    * тааруулж НЭГ УДАА бэлдэнэ. Жагсаалтын гүйцэтгэлийн хувь ба хоцрогдлын
    * alert үүнээс тооцогдоно.
    */
   const finMap = useMemo(() => {
     if (finQ.state !== 'ready') return null;
-    const C = CASHFLOW2.fields;
+    const C = CASHFLOW_NEW.fields;
     const m = new Map<string, ReturnType<typeof contractMonths>>();
     finQ.data.contracts.forEach((r) => {
       // ⚠️ `pkgKeyOf` — «БАГЦ 1-4» мэт ОЛОН багц хамарсан мөр нь bagtsKey-ээр
@@ -292,7 +296,7 @@ export function PkgProg({ dim, setDim }: {
       const k2 = pkgKeyOf(r[C.pkg2]);
       const k3 = pkgKeyOf(r[C.pkg]);
       // ⚠️ Хуучин `k !== '0'` шүүлт ХАСАГДАВ — «0» sentinel нь ХУУЧИН бүдүүвчийн
-      //    үлдэгдэл. Шинэ CF006/CF007-д бөглөөгүй багц нь NULL (pkgKeyOf → '').
+      //    үлдэгдэл. Бөглөөгүй багц нь NULL (pkgKeyOf → '').
       [k2, k3].forEach((k) => {
         if (k && !m.has(k)) m.set(k, contractMonths(r, finQ.data));
       });
@@ -318,27 +322,26 @@ export function PkgProg({ dim, setDim }: {
    * ⚠️ Хуваарь олдоогүй үед (дэд бүтцийн багц — бөглөх хуудасгүй) ХУУЧИН
    *    зан төлөв хэвээр: тэнд хуваарийн эх сурвалж огт байхгүй.
    */
-  const progMonths = useMemo<MonthPt[] | null>(() => {
+  const progMonths = useMemo<ProgPt[] | null>(() => {
     const base = active
       ? (finMap?.get(active.key) ?? null)
       : (finQ.state === 'ready' ? aggregateMonths(finQ.data) : null);
     const pc = planQ.state === 'ready' ? planQ.data : null;
-    if (!pc || !pc.months.length) return base;
+    /* ⚠️ Хуваарь ирээгүй бол ГРАФИК ЗУРАХГҮЙ — cashflow руу буцаж унах зам
+       2026-09-06-нд хаагдсан (тэр үйлчилгээ байхгүй). Хоосон график нь
+       буруу муруйгаас ДЭЭР. */
+    if (!pc || !pc.months.length) return null;
     /* Багц сонгосон бол тэр багцын муруй; сонгоогүй бол ТӨСЛИЙН нийт */
     const series = active && active.key !== '__all'
       ? pc.byBagts.get(active.key)
       : pc.months;
-    if (!series?.length) return base;
+    if (!series?.length) return null;
     const phys = new Map((base ?? []).map((m) => [m.label, m.phys]));
     return series.map((p) => ({
       label: p.label,
-      /* ⚠️ Мөнгөн талбарууд ЭНД утгагүй — график нь зөвхөн хувь харуулна */
-      amount: 0,
-      amountCum: 0,
-      cumPct: p.pct,
-      given: 0,
+      plan: p.pct,
       /* ⚠️ Хэмжилтгүй сар `null` хэвээр — 0 гэж дүүргэвэл худал шугам гарна */
-      phys: phys.get(p.label) ?? null,
+      act: phys.get(p.label) ?? null,
     }));
   }, [active, finMap, finQ, planQ]);
 
@@ -814,7 +817,7 @@ export function PkgProg({ dim, setDim }: {
  * БАГЦЫН ЖАГСААЛТ (Tsogts хувилбар) — МӨНГӨН ДҮН БИШ, ГҮЙЦЭТГЭЛИЙН ХУВИЙГ
  * харуулж, төлөвлөгөөнөөс хоцорсон багцад ALERT (улаан/шар) өгнө:
  *   · build багц — биет гүйцэтгэлийн % (блокийн дундаж)
- *   · infra багц — санхүүгийн гүйцэтгэл % (олгосон/төлөвлөгөө, CASHFLOW2+IPC)
+ *   · infra багц — санхүүгийн гүйцэтгэл % (олгосон/гэрээний дүн, CASHFLOW_NEW+IPC)
  * Хоцрогдол = Finance-ийн lagOf дүрэм (CF өссөн төлөвлөгөө vs биет %).
  */
 /**
@@ -848,16 +851,12 @@ function TsKpi(
      */
     for (const p of plan ?? []) if (p.label <= nowYm) planned = p.pct;
     const gap = planned != null && actual != null ? planned - actual : null;
-    const C = CASHFLOW2.fields;
-    /* ⚠️ «Өмнө шилжүүлсэн» нь ГЭРЭЭ тутмын багана БАЙХАА БОЛЬСОН
-       (2026-08-31): шинэ бүдүүвчид зөвхөн `CF002 = 'ӨМНӨХ ШИЛЖҮҮЛСЭН'`
-       гэсэн 2 мөр бий, дүн нь `CF009`-д. Хуучин `prevAmount` (CF028) код
-       одоо санхүүжилтийн ЭХ ҮҮСВЭРИЙН багана — уншвал чимээгүй буруу тоо. */
-    const prevGiven = fin.periods.reduce(
-      (a, r) => a + (r[C.rowType] === CASHFLOW2.rows.prev ? nn(r[C.amount]) : 0),
-      0,
-    );
-    const planTotal = prevGiven + months.reduce((a, m) => a + m.amount, 0);
+    /* ⚠️ 2026-09-06: НИЙТ ТӨЛӨВЛӨГӨӨ = ГЭРЭЭНИЙ дүнгүүдийн нийлбэр
+       (`FinData.planTotal`). Урьд нь «өмнөх онд шилжүүлсэн + 12 сарын
+       цонхны хуваарь» байсан — «ӨМНӨХ ШИЛЖҮҮЛСЭН» мөрийн төрөл ба сарын
+       хуваарь хоёул `cashflow_0813`-тайгаа хамт хаягдсан. */
+    let planTotal = 0;
+    fin.planTotal.forEach((v) => { planTotal += v; });
     let given = 0;
     fin.given.forEach((byMon) => byMon.forEach((v) => { given += v; }));
     return {
@@ -1012,7 +1011,7 @@ function TsPackList({
 /**
  * ТӨСЛИЙН НЭГДСЭН карт — багц сонгоогүй үеийн баруун карт.
  * (BUS_cashflow-ийн төсөв/захирамж/гэрээний мөрүүд 2026-08-13-нд хасагдсан.)
- * «Олгосон санхүүжилт» нь БОДИТ IPC актын нийлбэр (CASHFLOW2+IPC — Finance-тэй
+ * «Олгосон санхүүжилт» нь БОДИТ IPC актын нийлбэр (CASHFLOW_NEW+IPC — Finance-тэй
  * нэг эх сурвалж). Дэд бүтцийн ХО (INVEST /249) 2026-08-14-нд түр хасагдсан.
  */
 /**
@@ -1129,7 +1128,7 @@ function LevelsCard({
 /**
  * САНХҮҮГИЙН ГРАФИК — Finance-ийн ComboChart-ыг сонгосон багцад; багц
  * СОНГООГҮЙ бол ТӨСЛИЙН НЭГДСЭН (бүх гэрээний сарын нийлбэр, олгосон бүгд,
- * биет нь багцуудын дундаж). CASHFLOW2-ийн мөрийг `bagtsKey`-ээр тааруулна
+ * биет нь багцуудын дундаж). Гэрээний мөрийг `bagtsKey`-ээр тааруулна
  * («БАГЦ-4.1» = «Багц 4-1»); хоцрогдлын badge мөн Finance-ийн дүрмээр.
  */
 /** Санхүүгийн графикийн өндрийн хязгаарууд (px) — чирэх бариул */
@@ -1139,46 +1138,33 @@ function LevelsCard({
  * олгосон = бүх багцын IPC нийлбэр, өссөн хувь = нийлбэрийн харьцаа,
  * биет = биет дататай багцуудын дундаж.
  */
-export function aggregateMonths(d: FinData) {
-  /* ⚠️ Сунгасан тэнхлэг — хуваарийн сүүлийн сараас хойшхи бодит утгууд
-     царцахгүй. Сунгасан сард төлөвлөгөө байхгүй тул 0.
-
-     ⚠️ Сарын төлөвлөгөө одоо БАГАНА БИШ (2026-08-31): `cashflow_0813` нь
-     «гэрээ × үе» тутам НЭГ мөртэй тул дүнг `d.plan` (гэрээ → «2026-08» → ₮)
-     газрын зургаас нийлбэрлэж БОДНО.
-
-     ⚠️ Тэнхлэгийг өгөгдөлд БАЙГАА саруудаас угсрахгүй — хэмжилтгүй сар
-     (2026-01) мөр ҮҮСГЭДЭГГҮЙ тул график нэг нүд шилжинэ. `cfMonthAxis()`-ийн
-     тасралтгүй мужийг авч, мөргүй сарыг 0-оор нөхнө. */
+export /**
+ * ТӨСЛИЙН НЭГДСЭН сарын цэгүүд.
+ *
+ * ⚠️ 2026-09-06: САРЫН ТӨЛӨВЛӨГӨӨ ХАСАГДСАН — `cashflow_0813`-ийн «САР»
+ *    мөрүүд байхгүй болсон. Үлдсэн хоёр цуваа хоёулаа БОДИТ хэмжилт.
+ */
+function aggregateMonths(d: FinData) {
+  /* ⚠️ Тэнхлэгийг өгөгдөлд БАЙГАА саруудаас угсрахгүй — хэмжилтгүй сар
+     (2026-01) мөр ҮҮСГЭДЭГГҮЙ тул график нэг нүд шилжинэ. */
   const labels = cfMonthAxis();
-  const planM = labels.map((m) => {
-    let s = 0;
-    d.plan.forEach((byMon) => { s += byMon.get(m.label) ?? 0; });
-    return s;
-  });
-  const planTotal = planM.reduce((a, b) => a + b, 0);
-  let cum = 0;
-  return labels.map((m, i) => {
-    cum += planM[i];
+  return labels.map((label) => {
     let given = 0;
-    d.given.forEach((byMon) => { given += byMon.get(m.label) ?? 0; });
+    d.given.forEach((byMon) => { given += byMon.get(label) ?? 0; });
     // ⚠️ Төслийн сарын биет гүйцэтгэл — багцуудын дунджийн ДУНДАЖ БИШ. Давхар
     //    дундаж нь блок цөөтэй багцыг том багцтай ижил жинтэй болгож гажуудуулж,
     //    мөн дэлгэц дээрх PackKpi-ийн блок-жигнэсэн дүнтэй зөрдөг. Багц бүрийг
     //    блокийнх нь тоогоор жигнэнэ: Σ(pct_p · blocks_p) / Σ blocks_p.
     let physW = 0, physN = 0;
     d.phys.forEach((byMon, k) => {
-      const v = byMon.get(m.label);
+      const v = byMon.get(label);
       if (v == null) return;
-      const w = d.physCnt.get(k)?.get(m.label) ?? 1;
+      const w = d.physCnt.get(k)?.get(label) ?? 1;
       physW += v * w;
       physN += w;
     });
     return {
-      label: m.label,
-      amount: planM[i],
-      amountCum: cum,
-      cumPct: planTotal > 0 ? (cum / planTotal) * 100 : 0,
+      label,
       given,
       // ⚠️ Хэмжилт огт байхгүй сар — `null`. 0 гэж буцаавал график дээр
       //    «биет гүйцэтгэл тэг» гэсэн худал шугам зурагдана.
@@ -1204,7 +1190,7 @@ export function aggregateMonths(d: FinData) {
  *    cashflow-ийн 12 сарын цонх байсан тул муруй нь тэр цонхны төгсгөлд
  *    үргэлж 100% болж, «2026-09-д төсөл дуусна» гэж ХУДАЛ харуулж байв.
  */
-function ProgChart({ months, title }: { months: MonthPt[] | null; title: string }) {
+function ProgChart({ months, title }: { months: ProgPt[] | null; title: string }) {
   const [hi, setHi] = useState<number | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   /**
@@ -1221,7 +1207,7 @@ function ProgChart({ months, title }: { months: MonthPt[] | null; title: string 
     return <Section title={title}><Empty label={tr('Гүйцэтгэлийн дата алга.')} /></Section>;
   }
 
-  const rows = months.map((m) => ({ label: m.label, plan: m.cumPct, act: m.phys }));
+  const rows = months;
   /*
    * ⚠️ ХЭМЖИГДСЭН сарууд — `act != null`. Урьд нь `act > 0` байсан тул:
    *   · жинхэнэ 0% (ажил эхлээгүй) нь ХЭМЖИЛТ атлаа муруйнаас таслагдаж,
