@@ -556,8 +556,17 @@ function Track({ status, stage }: { status: Status; stage: Stage }) {
 
 /* ══════════ Нэг ажил ══════════ */
 
-function Item({ work, stage, who, onFix, readOnly }: {
+function Item({ work, stage, who, onFix, readOnly, isSuper }: {
   work: Work; stage: Stage; who: string; onFix: () => void;
+  /**
+   * Системийн админ уу (`resolveFlowStage().canPick`).
+   *
+   * ⚠️ ЗӨВХӨН «Бүгдийг зөвшөөрөх» товчийг нээхэд хэрэглэнэ. Жинхэнэ хянагчид
+   * нүд бүрийг ГАРААР зөвшөөрсөн хэвээр байх ЁСТОЙ (2026-08-27-ны шийдвэр:
+   * «нэг товчоор бүгдийг батлах зам байвал хяналт нь ёсорхуу дарах үйлдэл
+   * болно»). Super нь системийн тохируулагч тул тэр дүрмээс чөлөөлөгдөнө.
+   */
+  isSuper?: boolean;
   /**
    * ⚠️ ЗӨВХӨН ХАРАХ. Урсгалын шатанд томилогдоогүй үүрэг (жиш. `beginner`)
    * энэ хуудсыг үзэж чадах ч зөвшөөрөх/буцаах ЁСГҮЙ — эс бөгөөс шат сонгох
@@ -739,6 +748,34 @@ function Item({ work, stage, who, onFix, readOnly }: {
                           {tr('Дахин шалгах')}
                         </button>
                       </div>
+                    )}
+                    {/*
+                      * «БҮГДИЙГ ЗӨВШӨӨРӨХ» — ЗӨВХӨН SUPER ЭРХТЭЙД (2026-09-06,
+                      * хэрэглэгчийн заавар: «super admin дээр л ажилладаг бүх
+                      * нүдийг ногоон болгож зөвшөөрөх button нэмж өгөөч»).
+                      *
+                      * ⚠️ ЯАГААД ХЯЗГААРЛАСАН: нүд бүрийг гараар зөвшөөрөх
+                      * дүрэм нь САНААТАЙ — «нэг товчоор бүгдийг батлах зам
+                      * байвал хяналт нь ёсорхуу дарах үйлдэл болно» (2026-08-27
+                      * шийдвэр). Тэр дүрэм ЖИНХЭНЭ хянагчдад ХЭВЭЭР үйлчилнэ;
+                      * super нь системийн тохируулагч бөгөөд 40–100 нүдтэй
+                      * илгээлтийг гараар дарах нь түүний ажлыг зогсоодог.
+                      *
+                      * ⚠️ `flow.canPick` = super (эсвэл дев дэх нэвтрэлт
+                      * унтраалттай) — `resolveFlowStage`-ийн ГАНЦ эх сурвалж.
+                      * Энэ товч БАТАЛГААЖУУЛАХГҮЙ: зөвхөн тэмдэглэгээг тавина,
+                      * шийдвэрийг дараагийн товч л хийнэ.
+                      */}
+                    {isSuper && changes.length > 0 && !allOk && (
+                      <button
+                        type="button"
+                        className={s.btn}
+                        disabled={busy}
+                        title={tr('Зөвхөн системийн админд. Өөрчлөгдсөн {0} нүдийг бүгдийг нь зөвшөөрсөн гэж тэмдэглэнэ — шийдвэрийг доорх товч гаргана.', String(bad.length))}
+                        onClick={() => setOkKeys(new Set(changes.map((c) => `${c.row}:${c.block}`)))}
+                      >
+                        {tr('Бүгдийг зөвшөөрөх ({0})', String(bad.length))}
+                      </button>
                     )}
                     {/* ⚠️ Бүх өөрчлөлт ногоон болтол ШИЛЖҮҮЛЭХ БОЛОМЖГҮЙ. */}
                     <button
@@ -1183,7 +1220,7 @@ export function Guitsetgel() {
                       : tr('Хүлээгдэж буй ажил алга.')}
                 </div>
               ) : (
-                mine.map((w) => <Item key={w.key} work={w} stage={stage} who={who} onFix={goFix} readOnly={!canReview} />)
+                mine.map((w) => <Item key={w.key} work={w} stage={stage} who={who} onFix={goFix} readOnly={!canReview} isSuper={flow.canPick} />)
               )}
             </div>
 
@@ -1197,7 +1234,7 @@ export function Guitsetgel() {
                       <span className={s.groupCount}>{inReview.length}</span>
                     </div>
                     {inReview.map((w) => (
-                      <Item key={w.key} work={w} stage={stage} who={who} onFix={goFix} readOnly={!canReview} />
+                      <Item key={w.key} work={w} stage={stage} who={who} onFix={goFix} readOnly={!canReview} isSuper={flow.canPick} />
                     ))}
                   </div>
                 )}
@@ -1208,7 +1245,7 @@ export function Guitsetgel() {
                       <span className={s.groupCount}>{done.length}</span>
                     </div>
                     {done.map((w) => (
-                      <Item key={w.key} work={w} stage={stage} who={who} onFix={goFix} readOnly={!canReview} />
+                      <Item key={w.key} work={w} stage={stage} who={who} onFix={goFix} readOnly={!canReview} isSuper={flow.canPick} />
                     ))}
                   </div>
                 )}
@@ -1220,7 +1257,7 @@ export function Guitsetgel() {
                     <span>{tr('Бусад ажил')}</span>
                     <span className={s.groupCount}>{others.length}</span>
                   </div>
-                  {others.map((w) => <Item key={w.key} work={w} stage={stage} who={who} onFix={goFix} readOnly={!canReview} />)}
+                  {others.map((w) => <Item key={w.key} work={w} stage={stage} who={who} onFix={goFix} readOnly={!canReview} isSuper={flow.canPick} />)}
                 </div>
               )
             )}
