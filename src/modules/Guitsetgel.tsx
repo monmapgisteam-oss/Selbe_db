@@ -306,6 +306,7 @@ function Submitted({
   ok,
   onCell,
   onChanges,
+  onOkAll,
 }: {
   bagts: string;
   sheetOid: number;
@@ -315,6 +316,17 @@ function Submitted({
   onCell?: (row: number, block: string) => void;
   /** Өөрчлөлтийн жагсаалтыг эцэгт мэдэгдэнэ — «бүгд зөвшөөрөгдсөн үү» гэж бодоход. */
   onChanges?: (c: Change[]) => void;
+  /**
+   * «БҮГДИЙГ ЗӨВШӨӨРӨХ» — ЗӨВХӨН системийн админд. Эцэг (`Item`) шийднэ;
+   * өгөгдөөгүй бол товч ОГТ зурагдахгүй.
+   *
+   * ⚠️ Товчийг ЭНД — өөрчлөгдсөн нүдний тоолуурын хажууд — байрлуулав,
+   * шийдвэрийн товчнуудаас ТУСДАА (2026-09-06, хэрэглэгчийн заавар: «тусдаа
+   * button байх ёстой»). Тэдэнтэй нэг эгнээнд байхад «Зөвшөөрч илгээх»-тэй
+   * нэг төрлийн үйлдэл мэт уншигдаж, аль нь ЖИНХЭНЭ шийдвэр болохыг ялгахад
+   * төвөгтэй байв. Энэ товч нь ЗӨВХӨН тэмдэглэгээ тавина.
+   */
+  onOkAll?: () => void;
 }) {
   const [data, setData] = useState<Submission | null>(null);
   const [err, setErr] = useState('');
@@ -397,6 +409,22 @@ function Submitted({
                 <span className={okCount === data.changes.length ? s.okAll : s.okSome}>
                   {tr('зөвшөөрсөн {0}/{1}', String(okCount), String(data.changes.length))}
                 </span>
+              </>
+            )}
+            {/* ⚠️ ТУСДАА ТОВЧ (2026-09-06) — өөрчлөгдсөн нүдний тоолуурын
+                ХАЖУУД, шийдвэрийн товчнуудаас ТУСГААРЛАСАН. Зөвхөн
+                тэмдэглэгээ тавина: аль ч шатны шийдвэрийг ГАРГАХГҮЙ. */}
+            {onOkAll && okCount < data.changes.length && (
+              <>
+                {' · '}
+                <button
+                  type="button"
+                  className={s.okAllBtn}
+                  onClick={onOkAll}
+                  title={tr('Зөвхөн системийн админд. Өөрчлөгдсөн {0} нүдийг бүгдийг нь ногоон болгож тэмдэглэнэ — шийдвэрийг доод талын товч гаргана.', String(data.changes.length - okCount))}
+                >
+                  {tr('✓ бүгдийг ногоон болгох ({0})', String(data.changes.length - okCount))}
+                </button>
               </>
             )}
             {data.compared && (
@@ -749,34 +777,6 @@ function Item({ work, stage, who, onFix, readOnly, isSuper }: {
                         </button>
                       </div>
                     )}
-                    {/*
-                      * «БҮГДИЙГ ЗӨВШӨӨРӨХ» — ЗӨВХӨН SUPER ЭРХТЭЙД (2026-09-06,
-                      * хэрэглэгчийн заавар: «super admin дээр л ажилладаг бүх
-                      * нүдийг ногоон болгож зөвшөөрөх button нэмж өгөөч»).
-                      *
-                      * ⚠️ ЯАГААД ХЯЗГААРЛАСАН: нүд бүрийг гараар зөвшөөрөх
-                      * дүрэм нь САНААТАЙ — «нэг товчоор бүгдийг батлах зам
-                      * байвал хяналт нь ёсорхуу дарах үйлдэл болно» (2026-08-27
-                      * шийдвэр). Тэр дүрэм ЖИНХЭНЭ хянагчдад ХЭВЭЭР үйлчилнэ;
-                      * super нь системийн тохируулагч бөгөөд 40–100 нүдтэй
-                      * илгээлтийг гараар дарах нь түүний ажлыг зогсоодог.
-                      *
-                      * ⚠️ `flow.canPick` = super (эсвэл дев дэх нэвтрэлт
-                      * унтраалттай) — `resolveFlowStage`-ийн ГАНЦ эх сурвалж.
-                      * Энэ товч БАТАЛГААЖУУЛАХГҮЙ: зөвхөн тэмдэглэгээг тавина,
-                      * шийдвэрийг дараагийн товч л хийнэ.
-                      */}
-                    {isSuper && changes.length > 0 && !allOk && (
-                      <button
-                        type="button"
-                        className={s.btn}
-                        disabled={busy}
-                        title={tr('Зөвхөн системийн админд. Өөрчлөгдсөн {0} нүдийг бүгдийг нь зөвшөөрсөн гэж тэмдэглэнэ — шийдвэрийг доорх товч гаргана.', String(bad.length))}
-                        onClick={() => setOkKeys(new Set(changes.map((c) => `${c.row}:${c.block}`)))}
-                      >
-                        {tr('Бүгдийг зөвшөөрөх ({0})', String(bad.length))}
-                      </button>
-                    )}
                     {/* ⚠️ Бүх өөрчлөлт ногоон болтол ШИЛЖҮҮЛЭХ БОЛОМЖГҮЙ. */}
                     <button
                       className={`${s.btn} ${s.ok}`}
@@ -884,6 +884,11 @@ function Item({ work, stage, who, onFix, readOnly, isSuper }: {
             ok={reviewing ? okKeys : undefined}
             onCell={reviewing ? toggleOk : undefined}
             onChanges={setChanges}
+            /* ⚠️ ЗӨВХӨН super БА зөвшөөрөх шатанд — эс бөгөөс жинхэнэ хянагч
+               нэг товчоор бүгдийг батлах зам нээгдэнэ (2026-08-27-ны дүрэм). */
+            onOkAll={isSuper && reviewing
+              ? () => setOkKeys(new Set(changes.map((c) => `${c.row}:${c.block}`)))
+              : undefined}
           />
           <History cycles={work.cycles} stage={stage} />
         </div>

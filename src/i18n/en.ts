@@ -3511,8 +3511,8 @@ const en: Record<string, string> = {
   "Ноорог сэргээв ({0}): {1}. {2} нүд хуучирсан тул орхигдов.": "Draft restored ({0}): {1}. {2} stale cells were skipped.",
   "өөр төхөөрөмжөөс": "from another device",
   "энэ компьютерээс": "from this computer",
-  "Бүгдийг зөвшөөрөх ({0})": "Approve all ({0})",
-  "Зөвхөн системийн админд. Өөрчлөгдсөн {0} нүдийг бүгдийг нь зөвшөөрсөн гэж тэмдэглэнэ — шийдвэрийг доорх товч гаргана.": "Admins only. Marks all {0} changed cells as approved — the decision itself is still made by the button below.",
+  "✓ бүгдийг ногоон болгох ({0})": "✓ mark all approved ({0})",
+  "Зөвхөн системийн админд. Өөрчлөгдсөн {0} нүдийг бүгдийг нь ногоон болгож тэмдэглэнэ — шийдвэрийг доод талын товч гаргана.": "Admins only. Marks all {0} changed cells green — the decision itself is made by the buttons below."
 };
 
 export default en;
