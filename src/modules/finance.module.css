@@ -270,13 +270,21 @@
   font: inherit;
   font-size: 11.5px;
   font-weight: 600;
-  color: var(--ink);
-  background: var(--surface-2);
+  color: var(--ink-2);
+  /* ⚠️ ТУНГАЛАГ (2026-09-04): урьд нь дүүргэсэн `--surface-2` байсан бөгөөд
+     hover/идэвхтэй үед БҮТЭН цэнхэр болдог тул хажуудах «+ Мөр нэмэх»-тэй
+     (тунгалаг) хоёр өөр хэлээр ярьж байв. Одоо гурвуулаа — Засах, Нийтлэх,
+     Мөр нэмэх — нэг зарчим: тунгалаг дэвсгэр, өнгө нь зөвхөн утгыг заана. */
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
   border: 1px solid color-mix(in oklab, var(--ink) 22%, transparent);
   border-radius: 999px;
   cursor: pointer;
 }
-.editBtn:hover:not(:disabled) { background: var(--data); border-color: var(--data); color: #fff; }
+.editBtn:hover:not(:disabled) {
+  color: var(--data);
+  background: color-mix(in srgb, var(--data) 16%, transparent);
+  border-color: color-mix(in srgb, var(--data) 55%, transparent);
+}
 /* ⚠️ Идэвхгүй товчийг БҮДГЭРҮҮЛНЭ, нуухгүй: «Нийтлэх (0)» гэж харагдах нь
    «засвар алга» гэдгийг хэлж байгаа хэрэг. */
 .editBtn:disabled { opacity: 0.45; cursor: default; }
@@ -348,7 +356,14 @@
 
 /* Хадгалагдаагүй засвартай үед «Нийтлэх» ИДЭВХТЭЙ өнгөтэй — 257 баганат
    хүснэгтэд гүйж яваад товчоо олохгүй байх нь бодит эрсдэл. */
-.editBtnOn { color: #fff; background: var(--data); border-color: var(--data); }
+/* Идэвхтэй «Засах» — дүүргэлт БИШ, өтгөн тунгалаг + бүтэн хүрээ.
+   ⚠️ Ялгарал нь ХАНГАЛТТАЙ байх ёстой: энэ бол «одоо засаж байна» гэсэн
+   цорын ганц дохио (2026-09-04-нд «Болих» товч хасагдсан). */
+.editBtnOn {
+  color: var(--data);
+  background: color-mix(in srgb, var(--data) 28%, transparent);
+  border-color: var(--data);
+}
 .editBtnOn:hover:not(:disabled) { filter: brightness(1.08); }
 
 /* ══════════ ХҮСНЭГТ СОЛИХ ТАБ (Cashflow ↔ IPC) ══════════
@@ -872,7 +887,7 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
   box-shadow: inset -1px 0 0 var(--line-strong);
   font-variant-numeric: tabular-nums;
 }
-.xlTbl th.xlNo { z-index: 9; }
+.xlTbl th.xlNo { z-index: 29; }
 
 /*
  * ЗАССАН НҮД — нийтлэхээс өмнөх өөрчлөлт.
@@ -917,10 +932,10 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
   text-overflow: ellipsis;
 }
 /* Толгойн царцсан нүд нь мөрийн царцсан нүд БОЛОН энгийн толгойгоос ДЭЭР */
-.xlTbl thead .xlF1 { z-index: 8; background: var(--surface-2); }
-.xlTbl thead .xlF2 { z-index: 7; background: var(--surface-2); }
-.xlTbl thead .xlF3 { z-index: 6; background: var(--surface-2); }
-.xlTbl thead .xlF4 { z-index: 5; background: var(--surface-2); }
+.xlTbl thead .xlF1 { z-index: 28; background: var(--surface-2); }
+.xlTbl thead .xlF2 { z-index: 27; background: var(--surface-2); }
+.xlTbl thead .xlF3 { z-index: 26; background: var(--surface-2); }
+.xlTbl thead .xlF4 { z-index: 25; background: var(--surface-2); }
 .xlF1 { left: var(--fz0); width: var(--fz1); min-width: var(--fz1); max-width: var(--fz1); z-index: 4; }
 .xlF2 { left: calc(var(--fz0) + var(--fz1)); width: var(--fz2); min-width: var(--fz2); max-width: var(--fz2); z-index: 3; }
 .xlF3 { left: calc(var(--fz0) + var(--fz1) + var(--fz2)); width: var(--fz3); min-width: var(--fz3); max-width: var(--fz3); z-index: 2; }
@@ -1117,3 +1132,208 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
   box-shadow: inset 3px 0 0 var(--good);
   cursor: help;
 }
+
+/*
+ * НООРОГ МӨР — Excel-ийн «шинэ мөрийн» зурвас.
+ *
+ * ⚠️ Товч БИШ, МӨР. Урьд нь `.xlAddRow`/`.xlAddBtn` гэсэн `colSpan`-тай
+ * товчны зурвас байсныг ХАСАВ: тэр нь дарж байж мөр үүсгэдэг тул Excel-ийн
+ * зантай зөрж, дээр нь байнгын хоосон мөртэй зэрэг байвал хоёр өөр «шинэ
+ * мөр» ойлголт зэрэг харагдана.
+ *
+ * ⚠️ Бүдэг, тасархай ДЭЭД ирмэг — «энэ хараахан мөр биш» гэдгийг хэлнэ.
+ * Бичиж эхэлмэгц `.rowNew` болж бүрэн тод болно.
+ */
+/*
+ * ⚠️ НООРОГ МӨР НЬ ДООД ИРМЭГТ НААЛДАНА (2026-09-04, хэрэглэгчийн хүсэлт:
+ * «74 75 76 row мэдээллийг би харж байгаад бичнэ»).
+ *
+ * Шинэ мөрийг бөглөхөд өмнөх мөрүүдийн утгыг ХАРЖ БАЙЖ хуулах нь бодит
+ * ажлын урсгал. Мөр жагсаалтын ард энгийнээр байвал өмнөх мөрийг харахын
+ * тулд дээш гүйлгэхэд бөглөж буй мөр дэлгэцээс гарна. Наалдсанаар хүснэгт
+ * доогуур нь гүйж, ноорог мөр байрандаа үлдэнэ.
+ *
+ * ⚠️ Дэвсгэр нь ТУНГАЛАГ БУС байх ЁСТОЙ — эс бөгөөс доогуур гүйж буй мөрүүд
+ * нэвт харагдаж, хоёр мөр давхарласан мэт болно.
+ *
+ * ⚠️ Толгойн давхаргууд 25–29 болж ӨРГӨГДСӨН (§ЦАРЦСАН БАГАНА) — ноорог мөр
+ * богино хүснэгтэд толгойтой мөргөлдвөл толгой нь дээр байх ёстой.
+ */
+.xlTbl tbody tr.rowDraft td {
+  position: sticky;
+  bottom: 0;
+  z-index: 6;
+  background: color-mix(in srgb, var(--data) 7%, var(--surface));
+  box-shadow: inset 0 1px 0 var(--line-strong);
+}
+/* Царцсан багана — ХЭВТЭЭ ба БОСОО хоёулаа наалдана (`left` нь .xlF*-ээс) */
+.xlTbl tbody tr.rowDraft .xlF1 { z-index: 10; }
+.xlTbl tbody tr.rowDraft .xlF2 { z-index: 9; }
+.xlTbl tbody tr.rowDraft .xlF3 { z-index: 8; }
+.xlTbl tbody tr.rowDraft .xlF4 { z-index: 7; }
+.xlTbl tbody tr.rowDraft .xlNo { z-index: 11; }
+.rowDraft td:first-child { color: var(--data); font-weight: 700; text-align: center; }
+.rowDraft .cellInput::placeholder { color: var(--ink-3); font-style: italic; }
+.xlTbl tbody tr.rowDraft:focus-within td {
+  background: color-mix(in srgb, var(--data) 14%, var(--surface));
+}
+
+/*
+ * «+ Мөр нэмэх» — ӨГӨГДӨЛ ҮҮСГЭДЭГ товч (шүүлтийн зурвасны баруун захад).
+ *
+ * ⚠️ `.finTgl`-ЭЭС САНААТАЙ ӨӨР: хажуудах товчнууд нь харагдац сэлгэдэг
+ * саарал унтраалга, энэ нь мөр нэмдэг үйлдэл. Дүүргэсэн, бөөрөнхий, тод —
+ * ижил төрхтэй байвал хүн санамсаргүй дарж хоосон мөр үүсгэнэ.
+ */
+.finAdd {
+  padding: 5px 12px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  /* ⚠️ ТУНГАЛАГ дүүргэлт: бүтэн `var(--data)` нь зурвасны цорын ганц бүрэн
+     дүүргэсэн элемент болж, хажуудах шүүлтүүдээс хэт хашгирч байв. Одоо
+     дэвсгэр нь нэвт харагдаж, өнгө нь зөвхөн «энэ бол үйлдэл» гэдгийг заана. */
+  color: var(--data);
+  background: color-mix(in srgb, var(--data) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--data) 45%, transparent);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.finAdd:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--data) 26%, transparent);
+  border-color: var(--data);
+}
+.finAdd:disabled { opacity: 0.45; cursor: default; }
+
+/* ═══════════ ТОЛГОЙН ШҮҮЛТИЙН ЦЭС (ArcGIS маяг) ═══════════ */
+
+.thMenuBtn {
+  margin-left: 4px;
+  padding: 0 3px;
+  font: inherit;
+  font-size: 10px;
+  line-height: 1;
+  color: var(--ink-3);
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.thMenuBtn:hover { color: var(--data); background: color-mix(in srgb, var(--data) 16%, transparent); }
+/* Шүүлт ТАВИГДСАН багана — толгойгоос шууд уншигдана */
+.thMenuOn { color: var(--data); background: color-mix(in srgb, var(--data) 22%, transparent); }
+
+/*
+ * ⚠️ Цэс нь `position: fixed` — байрлалыг JS-ээс өгнө. `th` дотор `absolute`
+ * болговол царцсан баганын `overflow: hidden` түүнийг тасалж, хөрш баганын
+ * `z-index` дардаг (§ЦАРЦСАН БАГАНА-ийн тайлбарыг үз).
+ */
+.thMenuVeil { position: fixed; inset: 0; z-index: 40; }
+.thMenu {
+  position: fixed;
+  z-index: 41;
+  width: 264px;
+  max-height: 340px;
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+  font-weight: 400;
+  text-align: left;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 28%);
+}
+.thMenuHead {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--ink-2);
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--line);
+}
+.thMenuNum {
+  margin-top: 6px;
+  padding: 4px 7px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+}
+.thMenuActs { display: flex; gap: 8px; padding: 6px 0; }
+.thMenuActs button {
+  font: inherit;
+  font-size: 11.5px;
+  color: var(--data);
+  background: transparent;
+  border: none;
+  padding: 2px 0;
+  cursor: pointer;
+}
+.thMenuActs button:hover { text-decoration: underline; }
+.thMenuList {
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+  border-top: 1px solid var(--line);
+}
+.thMenuList label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 2px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.thMenuList label:hover { background: color-mix(in srgb, var(--data) 10%, transparent); }
+/* Урт утга цэсийг өргөсгөхгүй — тасалж, бүтнийг hover-оос үзнэ */
+.thMenuList span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+
+/*
+ * ОГНООНЫ НҮД — бичих талбар + календарын товч.
+ *
+ * ⚠️ Товч нь нүдний ДОТОР, оролтын баруун захад: тусдаа багана болговол
+ * 27 баганат хүснэгт улам өргөсөх бөгөөд огноо нь ердөө хоёрхон талбар.
+ */
+.dateCell { display: flex; align-items: center; gap: 2px; width: 100%; }
+.dateCell .cellInput { flex: 1 1 auto; min-width: 0; }
+.calBtn {
+  flex: none;
+  padding: 0 3px;
+  font-size: 12px;
+  line-height: 1;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  opacity: 0.65;
+}
+.calBtn:hover { opacity: 1; background: color-mix(in srgb, var(--data) 16%, transparent); }
+
+/*
+ * НООРОГ МӨРИЙН «+» — Excel-ийн «insert row».
+ *
+ * ⚠️ № нүдийг БҮТНЭЭР эзэлнэ: 46px нарийн багананд жижиг товч байвал онох
+ * талбай хэтэрхий бага. Мөр дээр очиход л тодорно.
+ */
+.rowIns {
+  display: block;
+  width: 100%;
+  padding: 2px 0;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--data);
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.rowIns:hover { background: color-mix(in srgb, var(--data) 20%, transparent); }

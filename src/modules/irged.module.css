@@ -98,53 +98,37 @@
  */
 .card { flex: none; }
 
-/* Хавтангийн доорх тайлбар мөр — жижиг, ink-3 (утга биш, контекст) */
-.note {
-  margin: 0;
-  font-size: 11.5px;
-  line-height: 1.5;
-  color: var(--ink-3);
-}
-
-/* Давхаргын чагтууд — «Давхарга» товчны панел дотор */
 /**
- * ⚠️ 2026-08-20: Хавтан дотор ХОЁР блок болов — дээр нь энэ цонхны өөрийн хоёр
- * чагт, доор нь порталын БҮХ давхаргын каталог. `overview.module.css`-ийн
- * `.catPanel` нь `display: flex` (хэвтээ) тул баганын чиглэлийг энд дарна.
+ * ГАНЦ ҮЗҮҮЛЭЛТТЭЙ КАРТ — `Stat`-ын дотоод хайрцгийг тайлна.
+ *
+ * ⚠️ 2026-09-06: «1 карт = 1 зүйл» дүрмээр Stats сүлжээ задарч, зарим картад
+ * ГАНЦ `Stat` үлдсэн. `Stat` нь өөрийн хүрээ, дэвсгэр, дотоод зайтай тул
+ * картын хүрээн дотор ДАХИН хайрцаг зурагдаж, ганц тооны төлөө хоёр давхар
+ * хүрээ гарч байв. Энд түүнийг тайлж, тоог нь томсгоно — картын хүрээ өөрөө
+ * хангалттай.
+ *
+ * ⚠️ `:global(.statCard)` — `ui.tsx` нь эдгээр нэрийг ЗОРИУД глобалаар
+ * үлдээсэн («Дуудагч модуль тухайн харагдацын дизайнд тааруулж дарж бичихэд
+ * хэрэгтэй», `ui.tsx:364`). CSS-модулийн хэшлэгдсэн нэрээр бичвэл таарахгүй.
  */
+.solo :global(.statCard) {
+  border: none;
+  background: none;
+  padding: 0;
+}
+/* Ганц тоо тул томруулна — олон нүд зэрэгцэхгүй, зай хангалттай */
+.solo :global(.statNum) { font-size: 22px; }
+/* Хоёр мөрийн нөөц (26px) хэрэггүй — доор өөр нүд зэрэгцэхгүй */
+.solo :global(.statTag) { min-height: 0; }
+
+/* ⚠️ `.note` 2026-09-06-нд ХАСАГДАВ — тайлбарын карт устсан. */
+
+/* ⚠️ 2026-08-23-нд каталогт нэгтгэсэн ХОЁР чагтын `.toggles`/`.toggle`
+   классууд 2026-09-06-нд ХАСАГДАВ — тэдгээрийг ямар ч компонент уншихаа
+   больсон (git түүхэнд үлдсэн). `.catPanel` нь хэвээр хэрэгтэй.
+   ⚠️ `overview.module.css`-ийн `.catPanel` нь `display: flex` (хэвтээ) тул
+   баганын чиглэлийг энд дарна. */
 .catPanel { flex-direction: column; }
-
-.toggles {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 4px 2px;
-  /* Каталог доороо гүйлттэй тул чагтууд агшихгүй, тогтмол өндөртэй */
-  flex: none;
-  border-bottom: 1px solid var(--line);
-}
-
-.toggle {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 3px 2px;
-  font-size: 0.74rem;
-  font-weight: 600;
-  color: var(--ink-2);
-  cursor: pointer;
-  border-radius: var(--r-sm);
-  transition: color 0.12s;
-}
-.toggle:hover { color: var(--ink); }
-.toggle input {
-  width: 13px;
-  height: 13px;
-  flex: none;
-  /* envhub: сонголт = өгөгдлийн ганц өнгө */
-  accent-color: var(--data);
-  cursor: pointer;
-}
 
 /* ── Responsive ── */
 @media (max-width: 1320px) {

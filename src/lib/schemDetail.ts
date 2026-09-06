@@ -186,22 +186,39 @@ function zovPart(src: SchemSources, pkg: string | null): Part {
       ]),
   });
 
-  /* Мөр тус бүр — ЗӨВХӨН багц сонгосон үед (эс тэгвээс хэдэн зуун мөр) */
-  if (pkg) {
-    const { shown, hidden } = capped(mine.slice().sort((a, b) => a.shat - b.shat));
+  /*
+   * МӨР ТУС БҮР.
+   *
+   * ⚠️ 2026-09-06, хэрэглэгч: «ямар бичиг баримт асуудалтай байгаа нь
+   * харагдахгүй, зөвхөн 2 гэж байгаа нь утгагүй». Урьд нь энэ хүснэгт
+   * `if (pkg)` -ээр хаалттай байсан тул НҮҮРЭНД (багц сонгодоггүй) хэзээ ч
+   * гардаггүй, зөвхөн тоолуур харагддаг байв.
+   *
+   * ⚠️ БАГЦГҮЙ үед ШИЙДЭГДЭЭГҮЙГ НЬ Л гаргана (`ok` биш бүгд). Ингэснээр
+   * анхны «хэдэн зуун мөр» гэсэн болгоомжлол хэвээр биелнэ — жагсаалтын урт
+   * нь НИЙТ тоогоор биш АСУУДЛЫН тоогоор хязгаарлагдана. Багц сонгосон үед
+   * зөвшөөрсөн мөрүүд ч хэрэгтэй (тухайн багцын бүтэн зураг).
+   */
+  const rows = pkg ? mine : mine.filter((z) => z.tolov !== TOLOV.ok);
+  if (rows.length) {
+    const { shown, hidden } = capped(rows.slice().sort((a, b) => (
+      a.bagts.localeCompare(b.bagts, 'mn') || a.shat - b.shat
+    )));
     p.tables.push({
-      title: tr('Зөвшөөрөл тус бүрээр'),
-      cols: [tr('Шат'), tr('Нэр'), tr('Төлөв'), tr('Огноо'), tr('Байгууллага')],
+      title: pkg ? tr('Зөвшөөрөл тус бүрээр') : tr('Шийдэгдээгүй зөвшөөрөл'),
+      cols: [tr('Багц'), tr('Шат'), tr('Нэр'), tr('Төлөв'), tr('Огноо'), tr('Байгууллага')],
       rows: [
         ...shown.map((z) => [
+          cell(z.bagts || '—'),
           cell(z.shat, 'count'),
           cell(z.ner || noName()),
           cell(z.tolov === 'unknown' ? tr('танигдаагүй') : z.tolov),
           cell(dayText(z.ognoo)),
           cell(z.baiguullaga || '—'),
         ]),
+        /* ⚠️ Таслагдсан мөрийг ЧИМЭЭГҮЙ хаяхгүй — хэдийг нь харуулаагүйгээ хэлнэ */
         ...(hidden > 0
-          ? [[cell(tr('… бас {0} мөр', hidden)), cell(''), cell(''), cell(''), cell('')]]
+          ? [[cell(tr('… бас {0} мөр', hidden)), cell(''), cell(''), cell(''), cell(''), cell('')]]
           : []),
       ],
     });
@@ -239,7 +256,10 @@ function gazarPart(src: SchemSources): Part {
     { label: tr('Чөлөөлсөн'), value: clr, kind: 'pct' },
     { label: tr('Нийт нэгж талбар'), value: fin(c?.total), kind: 'count' },
     { label: tr('Чөлөөлсөн нэгж талбар'), value: fin(c?.cleared), kind: 'count' },
-    { label: tr('Үлдсэн нэгж талбар'), value: fin(c?.remaining), kind: 'count' },
+    /* ⚠️ 2026-09-06: шинэ эхэд «Үлдсэн нэгж талбар» гэсэн АНГИЛАЛ байхгүй —
+       `c.remaining` нь одоо «Бүрэн чөлөөлсөн»-өөс бусад БҮГД. Шошгыг
+       ерөнхийлөв, тоо нь `loadClearance`-ээс хэвээр. */
+    { label: tr('Чөлөөлөгдөөгүй талбар'), value: fin(c?.remaining), kind: 'count' },
     { label: tr('Үлдсэн талбай'), value: fin(c?.remainingHa), kind: 'ha' },
   );
   if (c == null) {

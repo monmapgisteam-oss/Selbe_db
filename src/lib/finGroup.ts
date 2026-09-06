@@ -15,12 +15,12 @@
  *
  * ⚠️ React импортлохгүй — `finGroup.check.mjs` шууд Node дээр ачаална.
  */
-import { CASHFLOW2, CASHFLOW_NEW, IPC_LOG, bagtsKey, isPkgRange } from '@/lib/services';
+import { CASHFLOW_NEW, IPC_LOG, bagtsKey, isPkgRange } from '@/lib/services';
 import { t as tr } from '@/lib/i18nCore';
 
 export type Row = Record<string, unknown>;
 
-const CF = CASHFLOW2.fields;
+const CF = CASHFLOW_NEW.fields;
 const IP = IPC_LOG.fields;
 
 const s = (v: unknown): string => (v == null ? '' : String(v).trim());
@@ -37,7 +37,11 @@ export type PkgBlock = { key: string; pkg: string; rows: GroupRow[]; count: numb
  * код БИШ, мөн ГЭРЭЭ/САР гэсэн мөрийн төрөл байхгүй тул паспорт+хуваарь болгож
  * хуваахгүй, ердийн хавтгай хүснэгтээр зурна.
  */
-export type FinKind = 'cf' | 'ipc' | 'flat';
+/**
+ * ⚠️ 2026-09-06: 'cf' (хуучин `cashflow_0813` — паспорт+сарын хуваарь)
+ * ХАСАГДСАН. Гэрээний шинэ бүртгэл нь 'flat', актын лог нь 'ipc'.
+ */
+export type FinKind = 'ipc' | 'flat';
 
 /**
  * Мөрийн багц — дэд багц (навч) эхэлж.
@@ -76,11 +80,9 @@ const oidOf = (r: Row, field: string): number | null => {
  */
 export function buildGroups(rows: Row[], kind: FinKind): PkgBlock[] {
   const oidField = kind === 'ipc' ? IPC_LOG.oid
-    : kind === 'flat' ? CASHFLOW_NEW.oid : CASHFLOW2.oid;
-  const f2 = kind === 'ipc' ? IP.pkg2
-    : kind === 'flat' ? CASHFLOW_NEW.fields.pkg2 : CF.pkg2;
-  const f1 = kind === 'ipc' ? IP.pkg
-    : kind === 'flat' ? CASHFLOW_NEW.fields.pkg : CF.pkg;
+    : CASHFLOW_NEW.oid;
+  const f2 = kind === 'ipc' ? IP.pkg2 : CF.pkg2;
+  const f1 = kind === 'ipc' ? IP.pkg : CF.pkg;
 
   const byPkg = new Map<string, { label: string; rows: GroupRow[] }>();
   for (const r of rows) {

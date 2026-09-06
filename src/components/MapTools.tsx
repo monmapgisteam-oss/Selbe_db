@@ -92,12 +92,16 @@ export function MapTools({
 
   return (
     <>
-    <div className={s.tools}>
+    {/* ⚠️ `mapTools*` — ГЛОБАЛ нэрс (`statCard`, `secTitle`-тэй ижил зарчим).
+        Дуудагч харагдац товчны хэмжээг өөрийн нягтралд тааруулж дарж бичихэд
+        хэрэгтэй: жижиг зурагтай дашбоардад 176px өргөн багана нь зургийн
+        талыг эзэлдэг. Энд ЗӨВХӨН нэр — хэмжээ нь энэ файлын анхдагч хэвээр. */}
+    <div className={`${s.tools} mapToolsBar`}>
       {onLayers && (
         <button
           type="button"
           aria-pressed={layersOpen}
-          className={`${s.btn} ${layersOpen ? s.btnOn : ''}`}
+          className={`${s.btn} mapToolsBtn ${layersOpen ? s.btnOn : ''}`}
           onClick={onLayers}
           title={tr('Давхаргын жагсаалт')}
         >
@@ -110,7 +114,7 @@ export function MapTools({
         <button
           type="button"
           aria-pressed={opacityOpen}
-          className={`${s.btn} ${opacityOpen ? s.btnOn : ''}`}
+          className={`${s.btn} mapToolsBtn ${opacityOpen ? s.btnOn : ''}`}
           onClick={onOpacity}
           title={tr('Давхаргын тунгалаг')}
         >
@@ -124,7 +128,7 @@ export function MapTools({
         <button
           type="button"
           aria-pressed={zoneShown}
-          className={`${s.btn} ${zoneShown ? s.btnOn : ''}`}
+          className={`${s.btn} mapToolsBtn ${zoneShown ? s.btnOn : ''}`}
           onClick={() => setZoneOpen((v) => !v)}
           title={tr('Бүсээр шүүх')}
         >
@@ -141,13 +145,13 @@ export function MapTools({
       * Хэмжээст горим нь «юуг харуулах» биш «ЯАЖ харуулах» сонголт тул панель
       * нээгчидтэй нэг баганад байхаас илүү тусдаа, өмнөх байрлалдаа тохирно.
       */}
-    <div className={s.dimsBar} role="group" aria-label={tr('Газрын зургийн харагдац')}>
+    <div className={`${s.dimsBar} mapDims`} role="group" aria-label={tr('Газрын зургийн харагдац')}>
       {dims.map((d) => (
         <button
           key={d}
           type="button"
           aria-pressed={dim === d}
-          className={`${s.dimBtn} ${dim === d ? s.dimOn : ''}`}
+          className={`${s.dimBtn} mapDimBtn ${dim === d ? s.dimOn : ''}`}
           onClick={() => setDim(d)}
         >
           {d.toUpperCase()}
@@ -201,7 +205,7 @@ export function MapToolBtn({
       aria-pressed={on}
       disabled={disabled}
       title={title}
-      className={`${s.btn} ${on ? s.btnOn : ''}`}
+      className={`${s.btn} mapToolsBtn ${on ? s.btnOn : ''}`}
       onClick={onClick}
     >
       {icon && <Icon name={icon} size={15} />}

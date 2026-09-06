@@ -506,14 +506,27 @@
    100% ижил — ГОЛЛУУЛСАН том тоо дээр, ЖИЖИГ uppercase шошго доор. */
 /* ⚠️ 2026-08-17: envhub-ийн KPI нүд — ЗҮҮН зэрэгцүүлсэн, eyebrow шошго ДЭЭР
    (`order: -1` нь DOM хөндөхгүйгээр дээш гаргана), 17px/500 тоо доор. */
+/**
+ * ⚠️ 2026-09-06: `justify-content: space-between` → `flex-start`.
+ *
+ * Нүд бүр ӨӨР ТООНЫ мөртэй (шошго · утга · [зурвас] · [дэд мөр]) тул
+ * `space-between` нь чөлөөт зайг мөрүүдийн ХООРОНД тарааж, ТОО нүд болгонд
+ * өөр өндөрт хөвдөг байв: «159.6 га» доод ирмэгт, «8,575 өрх» дунд, «4.18 %»
+ * дээд хэсэгт. Таван тоог хооронд нь харьцуулах ёстой зурваст энэ нь хамгийн
+ * муу — нүд нэг шугам дагаж уншиж чадахгүй. Одоо шошго+утга ДЭЭД талд наалдаж,
+ * үлдсэнийг нь `.tileVal { margin-bottom: auto }` доод ирмэг рүү түлхэнэ.
+ */
 .tile {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 5px;
-  text-align: left;
-  padding: 8px 12px;
+  /* ⚠️ 2026-09-06: ЗҮҮН зэрэгцүүлэлт → ГОЛЛУУЛСАН (хэрэглэгчийн заасан
+     лавлагаа: `[data-sec='bagts'] .zTop` зурвас, доор 1362-р мөр). Ижил
+     үүрэгтэй хоёр зурвас порталд хоёр өөр хэлбэртэй байх шалтгаангүй. */
+  align-items: center;
+  justify-content: flex-start;
+  gap: 7px;
+  text-align: center;
+  padding: 11px 12px;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--r);
@@ -530,33 +543,55 @@
 .tileVal {
   display: flex;
   align-items: baseline;
+  justify-content: center;
   flex-wrap: wrap;
   gap: 0 4px;
   min-width: 0;
+  /* ⚠️ Зурвас/дэд мөрийг НҮДНИЙ ДООД ирмэг рүү түлхэнэ — утга нь бүх нүдэнд
+     шошгынхоо ЯГ доор, нэг суурьт үлдэнэ (дээрх `.tile`-ийн тайлбарыг үз). */
+  margin-bottom: auto;
 }
 
-/* ⚠️ 2026-09-01: 17px → 13px. Мөнгөн дүн бүтнээр («2,660,000,000,000») бичигдэх
-   болсон тул хавтангийн өргөнд багтаахын тулд фонтыг багасгав — тоог
-   богиносгохгүй, тайрахгүй. */
+/**
+ * ⚠️ 2026-09-01-нд 17px → 13px болгосныг 2026-09-06-нд БУЦААВ (19px).
+ * Тэр багасгалт нь «2,660,000,000,000» багтаах гэсэн зорилготой байсан ч
+ * ТАВУУЛАА нүдэнд хамаарсан тул богино тоонууд («159.6», «4.18») шошгоныхоо
+ * хэмжээнд ойртож, KPI зурвас уншигдахаа больсон байв. Одоо урт утгыг
+ * `.tileValLong` дангаар нь багасгана (`Dashboard.tsx`-ийн `HeadKpi` нь
+ * утгын уртаар шийднэ) — `Stat`/`statValueLong`-той ЯГ ижил зарчим.
+ */
 .tileVal b {
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 1;
-  letter-spacing: -0.01em;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
 }
 
-.tileVal i { font-style: normal; font-size: 11px; font-weight: 400; color: var(--ink-3); white-space: nowrap; }
+/* ⚠️ ≥10 тэмдэгт (мөнгөн дүн) — ЗӨВХӨН тэр нүдэнд багасна */
+.tileValLong { font-size: 15px; letter-spacing: -0.02em; }
+
+.tileVal i { font-style: normal; font-size: 12px; font-weight: 400; color: var(--ink-3); white-space: nowrap; }
 
 /* envhub eyebrow — `order:-1`-ээр нүдний дээд мөр болно */
-.tileLabel { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.12em; line-height: 1.25; color: var(--ink-3); }
+/* ⚠️ 10.5px/ink-3 → 11px/ink-2: шошго нь зурвасын ЦОРЫН ГАНЦ тайлбар тул
+   уншигдахаас нааш өнгө/хэмжээгээр «дэвсгэр» болгож болохгүй. */
+.tileLabel {
+  width: 100%;
+  text-align: center;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  line-height: 1.25;
+  color: var(--ink-3);
+}
 
-.tileSub { font-size: 10.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+/* ⚠️ `.tileSub` 2026-09-06-нд ХАСАГДАВ — `HeadKpi` дэд мөр зурахаа болив. */
 
-.tileBar { display: block; width: 100%; height: 2px; margin-top: 3px; border-radius: 1px; background: var(--chart-track); overflow: hidden; }
-
-.tileBar i { display: block; height: 100%; border-radius: 1px; background: var(--accent); }
+/* ⚠️ `.tileBar` / `.tileBar i` 2026-09-06-нд ХАСАГДАВ — `HeadKpi` зурвас
+   зурахаа болив (`Dashboard.tsx`-ийн `tiles` дээрх тайлбарыг үз). */
 
 .hero {
   position: relative;

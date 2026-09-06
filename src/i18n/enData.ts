@@ -87,7 +87,24 @@ const enData: Record<string, string> = {
   "өмчлөх": "ownership",
   "Үйлдвэр": "Industry",
   "Үлдэх саналтай": "Requests to remain",
-  "Үнийн дүн зөвшөөрөөгүй": "Price not agreed"
+  "Үнийн дүн зөвшөөрөөгүй": "Price not agreed",
+  /* «Иргэдэд хүрэх үр өгөөж» — гэр хорооллын `Type` ба нийгмийн барилгын
+     `zoriulalt` талбарын утгууд (2026-09-06, динамик tr()). */
+  "Байшин": "House",
+  "Гэр": "Ger",
+  "Сургуулийн барилга": "School building",
+  "Цэцэрлэгийн барилга": "Kindergarten building",
+  /* Нэгж талбарын төлөв — `Selbe_parcel_20260906`-ийн `явцы_1` талбарын
+     утгууд (2026-09-06). Төлөв ба шалтгаан НЭГ талбарт нийлсэн тул эдгээр
+     нь газрын зургийн будалт, чарт, маягтын сонголт гурвуулаанд гарна. */
+  "Бүрэн чөлөөлсөн": "Fully acquired",
+  "зөвшилцөх": "under negotiation",
+  "гэрээлсэн": "contracted",
+  "татгалзсан": "declined",
+  "үлдэх саналтай": "requests to remain",
+  "үнийн дүн зөвшөөрөөгүй": "price not agreed",
+  "маргаантай": "disputed",
+  "дүйцүүлсэн": "compensated in kind",
 };
 
 export default enData;

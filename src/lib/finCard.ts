@@ -1,72 +1,22 @@
 /**
- * САНХҮҮЖИЛТИЙН КАРТЫН ӨГӨГДӨЛ — цэвэр логик, React-гүй.
+ * АКТЫН КАРТЫН ӨГӨГДӨЛ — цэвэр логик, React-гүй.
  *
- * ⚠️ 2026-09-02, хэрэглэгчийн сонгосон «А» загвар: багц бүрийн дотор ГЭРЭЭ
- * мөрийг «паспорт» болгож дэлгэж, САР мөрүүдийг доор нь цэвэр хуваарийн
- * хүснэгт болгоно. Учир нь `cashflow_0813` нэг хүснэгтэд ХОЁР төрлийн мөр
- * агуулдаг — паспорт мөрөнд он·сар·дүн хоосон, сарын мөрөнд нэр·төсөв·огноо
- * хоосон тул аль ч нэг хүснэгтэд хагас нүд нь үргэлж хоосон харагддаг байв.
+ * ⚠️ 2026-09-06: CASHFLOW-ийн хэсэг (паспорт + сарын хуваарийн «А» загвар)
+ * БҮРМӨСӨН ХАСАГДСАН. Тэр нь `cashflow_0813` нэг хүснэгтэд ГЭРЭЭ ба САР гэсэн
+ * хоёр төрлийн мөр агуулдгаас үүдсэн байв — шинэ `Cashflow_0904`-т мөр БҮР
+ * нэг гэрээ тул салгах юм байхгүй, хүснэгт нь ердийн хавтгай хүснэгт.
+ * Хасагдсан: `CF_PERIOD_FIELDS` · `Contract` · `splitContracts` · `YearGroup` ·
+ * `groupPeriodsByYear` · `usedFields` · `CF_KPI_FIELDS` · `CF_PASS_GROUPS`.
  *
- * ⚠️ Энэ модуль мөр НЭГТГЭДЭГГҮЙ, талбар ХАСДАГГҮЙ — зөвхөн ангилж
- * бүлэглэнэ. Мөр бүр эх мөртэйгээ 1:1 тул засвар (`oid:талбар`) хэвээр.
+ * ⚠️ Энэ модуль мөр НЭГТГЭДЭГГҮЙ, талбар ХАСДАГГҮЙ — зөвхөн тоо бодно.
+ * Мөр бүр эх мөртэйгээ 1:1 тул засвар (`oid:талбар`) хэвээр.
  *
  * ⚠️ React импортлохгүй — `finCard.check.mjs` шууд Node дээр ачаална.
  */
-import { CASHFLOW2, IPC_LOG } from '@/lib/services';
-import { t as tr } from '@/lib/i18nCore';
-import type { GroupRow, Row } from '@/lib/finGroup';
+import { IPC_LOG } from '@/lib/services';
+import type { Row } from '@/lib/finGroup';
 
-const CF = CASHFLOW2.fields;
 const IP = IPC_LOG.fields;
-
-/* ─────────────────────────── CASHFLOW ─────────────────────────── */
-
-/**
- * ХУВААРИЙН (үеийн мөрийн) талбарууд — хуваарийн хүснэгтийн баганууд, энэ
- * дарааллаар. Үлдсэн бүх талбар паспортод очно.
- *
- * ⚠️ Эх үүсвэрийн задаргааг `CASHFLOW2.sources`-оос ГАРГАНА — кодоор давтаж
- *    бичвэл үйлчилгээ өөрчлөгдөхөд хоёр газар зөрнө.
- */
-export const CF_PERIOD_FIELDS: string[] = [
-  CF.year, CF.monthNo, CF.amount,
-  ...CASHFLOW2.sources.map((s) => s.period),
-  CF.advance, CF.advanceRepay, CF.opened,
-];
-
-export type Contract = {
-  /** Гэрээний код — ДЭЛГЭЦЭД ГАРАХГҮЙ (хэрэглэгчийн «огт хэрэггүй»), зөвхөн холбоос */
-  geree: string;
-  master: GroupRow | null;
-  periods: GroupRow[];
-};
-
-const s = (v: unknown): string => (v == null ? '' : String(v).trim());
-
-/**
- * Багцын мөрүүдийг ГЭРЭЭ болгоноор нь салгана: мастер (паспорт) + үеийн мөрүүд.
- *
- * ⚠️ Гэрээний эх ДАРААЛАЛ хадгалагдана (анх таарсан дарааллаар).
- * ⚠️ Мастергүй үеийн мөр АЛДАГДАХГҮЙ — `master: null` гэрээнд очно.
- * ⚠️ Нэг гэрээнд ХОЁР мастер мөр (дата бохир) таарвал хоёр дахийг нь үеийн
- *    мөрд тооцно — сонголтгүйгээр хаявал мөр чимээгүй алга болно.
- */
-export function splitContracts(rows: GroupRow[]): Contract[] {
-  const order: string[] = [];
-  const map = new Map<string, Contract>();
-  for (const g of rows) {
-    const k = s(g.row[CF.geree]);
-    let c = map.get(k);
-    if (!c) {
-      c = { geree: k, master: null, periods: [] };
-      map.set(k, c);
-      order.push(k);
-    }
-    if (g.row[CF.rowType] === CASHFLOW2.rows.master && c.master == null) c.master = g;
-    else c.periods.push(g);
-  }
-  return order.map((k) => map.get(k) as Contract);
-}
 
 /* ─────────────────────────── НИЙЛБЭР ─────────────────────────── */
 
@@ -121,11 +71,11 @@ export const paidOrNull = (r: Row): number | null => rowSumOrNull(r, IPC_LOG.pay
  *
  * ⚠️ 2026-09-04: урьд нь энд «`services.ipcNet` нь null-ыг 0 болгодог тул
  *    “дүнгүй акт” 0 гэж худал гардаг» гэж бичсэн байв — тэр нь ОДОО ХУДАЛ:
- *    `ipcNet` өөрөө `number | null` буцаадаг болов (services.ts:707). Хоёулаа
- *    нэг дүрэмтэй боллоо; энэ функц тусдаа хэвээр байгаа шалтгаан нь зөвхөн
- *    давхарга тусгаарлалт (`finCard` нь React-гүй, `finCard.check.mjs` шууд
- *    Node дээр ачаалдаг) ба суутгалыг `dedOrNull`-аар (null-мэдрэмжтэй) авдаг
- *    нь — тоон үр дүн `ipcNet`-тэй ижил.
+ *    `ipcNet` өөрөө `number | null` буцаадаг болов. Хоёулаа нэг дүрэмтэй
+ *    боллоо; энэ функц тусдаа хэвээр байгаа шалтгаан нь зөвхөн давхарга
+ *    тусгаарлалт (`finCard` нь React-гүй, `finCard.check.mjs` шууд Node дээр
+ *    ачаалдаг) ба суутгалыг `dedOrNull`-аар (null-мэдрэмжтэй) авдаг нь —
+ *    тоон үр дүн `ipcNet`-тэй ижил.
  */
 export function netOrNull(r: Row): number | null {
   const v = r[IP.gross];
@@ -145,80 +95,3 @@ export function netTotalOrNull(rows: Row[]): number | null {
   }
   return acc;
 }
-
-/* ─────────────────── ОН ДОТРОО САР САРААР ─────────────────── */
-
-export type YearGroup = { year: string; rows: GroupRow[] };
-
-const numOf = (v: unknown): number | null => {
-  const t = s(v);
-  if (t === '') return null;
-  const x = Number(t);
-  return Number.isFinite(x) ? x : null;
-};
-
-/**
- * Хуваарийн мөрүүдийг ОН ДОТРОО САР САРААР эрэмбэлж, оноор нь бүлэглэнэ
- * (2026-09-02, хэрэглэгчийн заавар: «хөрөнгө оруулалт он дотроо сар сараар
- * мөнгөн дүнгүүд байх ёстой»). Он нь merge (`rowSpan`) нүд болж зурагдана.
- *
- * ⚠️ ЭНД эрэмбэлдэг нь санаатай: эх дараалал нь оруулсан дарааллаас хамаарч
- *    он·сар холилдсон байж болно — «он дотроо» бүлэглэхэд эрэмбэ ЗААВАЛ.
- * ⚠️ Онгүй мөр ТӨГСГӨЛД, өөрийн «—» бүлэгт — алдагдахгүй, дундуур ч орохгүй.
- * ⚠️ Мөр НЭГТГЭГДЭХГҮЙ — тоо нь оролттой ЯГ тэнцүү.
- */
-export function groupPeriodsByYear(periods: GroupRow[]): YearGroup[] {
-  const idx = periods.map((g, i) => ({ g, i }));
-  idx.sort((a, b) => {
-    const ya = numOf(a.g.row[CF.year]);
-    const yb = numOf(b.g.row[CF.year]);
-    if (ya == null && yb == null) return a.i - b.i;
-    if (ya == null) return 1;
-    if (yb == null) return -1;
-    if (ya !== yb) return ya - yb;
-    const ma = numOf(a.g.row[CF.monthNo]) ?? 99;
-    const mb = numOf(b.g.row[CF.monthNo]) ?? 99;
-    if (ma !== mb) return ma - mb;
-    return a.i - b.i;
-  });
-  const out: YearGroup[] = [];
-  for (const { g } of idx) {
-    const y = numOf(g.row[CF.year]);
-    const label = y == null ? '' : String(y);
-    const last = out[out.length - 1];
-    if (last && last.year === label) last.rows.push(g);
-    else out.push({ year: label, rows: [g] });
-  }
-  return out;
-}
-
-/* ─────────────── УНШИХ КАРТЫН БҮТЭЦ (2026-09-02, дахин загвар) ─────────────── */
-
-/** Утгатай талбаруудыг л үлдээнэ — хоосон «—» багана/мөр нь мэдээлэл биш чимээ */
-export function usedFields(rows: Row[], fields: readonly string[]): string[] {
-  return fields.filter((f) => rows.some((r) => {
-    const v = r[f];
-    return !(v == null || v === '');
-  }));
-}
-
-/** Мөнгөний ГОЛ дүнгүүд — картын дээд зурвасын KPI (мөнгөний зам дарааллаар) */
-export const CF_KPI_FIELDS: string[] = [CF.budget, CF.orderTotal, CF.contractAmount];
-
-export type PassGroup = { label: string; fields: string[] };
-
-/**
- * Дэлгэрэнгүйн БҮЛГҮҮД — паспортын үлдсэн талбаруудыг утгаар нь бүлэглэнэ.
- *
- * ⚠️ Талбар бүр ЯГ НЭГ газар: нэр нь толгойд, гол дүн нь KPI-д, үлдсэн нь
- *    энд. `finCard.check` нь нийлбэр нь БҮРЭН гэдгийг шалгадаг — бүлэглэлд
- *    орхигдсон талбар «бүх мэдээлэл» амлалтыг чимээгүй эвдэнэ.
- */
-export const CF_PASS_GROUPS: PassGroup[] = [
-  { label: tr('Үндсэн'), fields: [CF.type, CF.contractor, CF.client, CF.pkg, CF.pkg2] },
-  { label: tr('Захирамж'), fields: [CF.orderNo, CF.orderDate] },
-  { label: tr('Гэрээ'), fields: [CF.contractNo, CF.contractDate, CF.startDate, CF.endDate] },
-  { label: tr('Эх үүсвэрийн нийт'), fields: CASHFLOW2.sources.map((x) => x.total) },
-  { label: tr('Урьдчилгаа'), fields: [CF.advanceGuarantee, CF.advanceDeduct] },
-  { label: tr('Бусад'), fields: [CF.extraAmount, CF.amountNote, CF.contractNote] },
-];

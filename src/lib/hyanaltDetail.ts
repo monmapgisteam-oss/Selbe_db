@@ -266,11 +266,33 @@ async function loadStaged(
   const ov = overlaySubmission(loaded.rows, pl, sc, nBld);
   const asOf = ov.asOf ?? loaded.asOf;
   /*
-   * ⚠️ `asOf` байхгүй бол төлөвлөгөөт хувь бүхэлдээ утгагүй — 0 гэж
-   *    таамаглахгүй (`null ≠ 0`), ил алдаа болгоно.
+   * ⚠️ `asOf` нь `null` БАЙЖ БОЛНО (2026-09-06). Бөглөх (`FillNew`) ба архивлах
+   *    (`hyanaltStore`) хоёулаа огноогүй хуудсыг зөвшөөрдөг болсон тул хянагч
+   *    ч мөн ЯГ тэр тоог харах ёстой; `computeAll` нь тэр үед төлөвлөгөөт
+   *    хувийг `null` (0 биш) болгоно. Урьд нь энд алдаа шиддэг байсан тул
+   *    огноогүй илгээлтэд хянагчийн харагдац унаж, «Гүйцэтгэлийн хяналт»-ын
+   *    батлах товч ӨӨРЧЛӨЛТГҮЙ мэт ИДЭВХТЭЙ үлддэг байв — агуулгыг харалгүй
+   *    батлах зам (одоо `Guitsetgel` тэр үед товчийг хаана).
    */
-  if (asOf == null) throw new Error(tr('«Шинэчлэгдсэн огноо» алга тул гүйцэтгэлийг бодох боломжгүй'));
-  const c = computeAll(ov.rows, nBld, asOf, {}, {}, hasObyem);
+  /* ── САРЫН ЗАДАРГАА — бөглөх/архивлахтай ИЖИЛ томъёо ────────────────
+   * ⚠️ `FillNew` ба `hyanaltStore` төлөвлөгөөт хувийг хуваарийн сарын
+   *    задаргаанаас (S-муруй) боддог тул хянагч мөн түүгээр харна; эс бөгөөс
+   *    бөглөгч, хянагч, архив гурав өөр тоо харна. Уншилт унавал чимээгүй —
+   *    задаргаагүй (шугаман) зам, `hyanaltStore`-той ижил.
+   */
+  const { loadPkgPlan, planPctFromMonths } = await import('@/lib/huvaariObyem');
+  let obPlan: Awaited<ReturnType<typeof loadPkgPlan>>['plan'] | null = null;
+  try {
+    obPlan = (await loadPkgPlan(pkg.key)).plan;
+  } catch {
+    obPlan = null;
+  }
+  const c = computeAll(ov.rows, nBld, asOf, {}, {}, hasObyem, (row, b) => {
+    if (!obPlan || row.des == null || asOf == null) return null;
+    const blok = sc.bld[b];
+    const m = blok ? obPlan.get(row.des)?.get(blok) : undefined;
+    return m ? planPctFromMonths(m, asOf) : null;
+  });
 
   /* Обьёмтой блокуудын дараалал — `blocks`/`cells`/`acts` бүгд ҮҮГЭЭР индекслэгдэнэ. */
   const blocks = sc.bld.filter((_, i) => sc.obyem[i]);

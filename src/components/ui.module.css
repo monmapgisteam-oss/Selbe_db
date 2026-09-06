@@ -11,8 +11,10 @@
   pointer-events: none;
   display: flex;
   flex-direction: column;
-  min-width: 124px;
-  max-width: 260px;
+  /* ⚠️ 260 → 320: задаргаа нь одоо ОЛОН цэгтэй мөр (мөнгөн дүн, эзлэх хувь,
+     дэд цуваа) тул нарийн цонхонд мөр бүр хоёр болж эвхэрдэг байв. */
+  min-width: 150px;
+  max-width: 320px;
   overflow: hidden;
   background: color-mix(in srgb, var(--surface) 95%, transparent);
   backdrop-filter: blur(12px);
@@ -24,16 +26,54 @@
 .tipHd {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   min-width: 0;
-  padding: 4px 8px;
+  padding: 5px 11px;
   border-bottom: 1px solid var(--line);
 }
 .tipDot { width: 6px; height: 6px; flex: none; border-radius: 99px; }
-.tipName { font-size: 11.5px; font-weight: 500; color: var(--ink); overflow-wrap: anywhere; }
-.tipBody { display: flex; flex-direction: column; gap: 3px; padding: 6px 8px; }
-.tipVal { font-size: 17px; line-height: 1; font-weight: 500; }
-.tipHint { font-size: 10.5px; color: var(--ink-3); }
+/*
+ * ⚠️ ХЭМЖЭЭ БАГАСГАВ (2026-09-04, хэрэглэгчийн хүсэлт). Утга нь 17px байсан
+ * бөгөөд мөнгөн дүн бүтнээрээ бичигддэг (`1,920,638,907,986 ₮`) тул хөвөгч
+ * цонх 260px өргөнөө дүүргэж, ард нь байгаа чартыг халхалдаг байв. 13.5px
+ * дээр тэр дүн НЭГ мөрөнд багтана.
+ *
+ * ⚠️ ШАТЛАЛ ТОДОРХОЙ: нэр нь ЖИЖИГ, БҮДЭГ (юуны тухай), утга нь ТОМ, ӨНГӨТ
+ * (хариулт). Урьд нь нэр нь `--ink` бүтэн өнгөтэй байсан тул хоёул адил
+ * жинтэй уншигдаж, нүд аль нь гол болохыг ялгахгүй байв.
+ */
+/* ⚠️ Хэмжээг БУЦААЖ ӨСГӨВ (2026-09-04): 10/13.5/9.5px нь хэт жижиг байв —
+   hover нь тухайн мөрийг СУДЛАХ агшин тул тэнд текст уншигдахуйц байх ёстой
+   (жагсаалтын мөр нь эсрэгээрээ богино, нягт). */
+.tipName {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+/*
+ * ⚠️ ХОЁР МӨР, ЦЭГТЭЙ (2026-09-04, хэрэглэгчийн хүсэлт). Эхний мөр нь ЮУ
+ * (мөнгөн дүн), хоёр дахь нь ХЭР ХЭМЖЭЭНИЙ (нийтэд эзлэх хувь). Урьд нь
+ * хоёулаа нэг мөрөнд «·»-ээр залгагдаж, аль нь дүн, аль нь харьцаа болох
+ * нь ялгагдахгүй байв.
+ */
+.tipBody { display: flex; flex-direction: column; gap: 5px; padding: 8px 11px; }
+.tipVal, .tipHint { display: flex; align-items: baseline; gap: 6px; }
+.tipVal::before, .tipHint::before {
+  content: '';
+  flex: none;
+  width: 4px;
+  height: 4px;
+  border-radius: 99px;
+  background: currentColor;
+  opacity: 0.55;
+}
+/* ⚠️ 16 → 13.5: мөнгөн дүн бүтнээрээ бичигддэг («29,031,821,175 ₮») тул
+   том үсгээр цонхны өргөнийг дүүргэж, доорх тайлбар мөрөөс хэт давамгайлж
+   байв. Тайлбар (12px)-тай ойролцоо байвал хоёулаа уншигдана. */
+.tipVal { font-size: 13.5px; line-height: 1.2; font-weight: 600; }
+.tipHint { font-size: 12px; line-height: 1.35; color: var(--ink-2); }
 
 /* ── Дашбоардын хэсэг ──
    ⚠️ 2026-08-17: envhub-ийн Card/Head хэл — хэсэг бүр нь НЭГ хавтангийн заагтай
@@ -200,6 +240,8 @@
   overflow: hidden;
 }
 .stats > * { border: none; border-radius: 0; }
+/* Ганц үзүүлэлт — БҮТЭН өргөн (хагас хоосон нүд үлдэхгүй) */
+.stats1 { grid-template-columns: minmax(0, 1fr); }
 .stats3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .stats4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 @media (max-width: 720px) { .stats4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
@@ -920,3 +962,13 @@
   color: var(--ink-3);
   text-align: center;
 }
+
+/* Үзүүлэлтийн дүрс — тооны өмнө, түүнтэй нэг мөрөнд */
+.statIcon {
+  display: inline-flex;
+  flex: none;
+  margin-right: 6px;
+  color: var(--tone, var(--data));
+  opacity: 0.85;
+}
+.statIcon svg { width: 15px; height: 15px; }

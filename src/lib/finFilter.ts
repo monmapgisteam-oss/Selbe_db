@@ -1,14 +1,14 @@
 /**
  * САНХҮҮЖИЛТИЙН БҮРТГЭЛИЙН ШҮҮЛТ — цэвэр логик, React-гүй.
  *
- * «Санхүүжилт» харагдацын хоёр бүртгэл (`cashflow_0813` 36 багана ·
+ * «Санхүүжилт» харагдацын хоёр бүртгэл (`Cashflow_0904` 33 багана ·
  * `ipc_0813` 33 багана) нь урьд нь шүүлтгүй байв. Хэрэглэгчийн хүсэлт
  * (2026-09-01): багц · он · төрлөөр, мөн БАГАНА БҮРЭЭР шүүх, багцаар бүлэглэн
  * харах.
  *
  * ⚠️ Бүх мөр аль хэдийн санах ойд байдаг (209 ба 59 мөр — `loadFinRegister`)
  * тул шүүлт нь КЛИЕНТ дээр. Серверийн `where` руу шилжүүлбэл кэш
- * (`cached(…, ['CASHFLOW2'])`) шүүлт бүрд хүчингүй болж, сүлжээ дэмий эзэлнэ.
+ * (`cached(…, ['CASHFLOW_NEW'])`) шүүлт бүрд хүчингүй болж, сүлжээ дэмий эзэлнэ.
  *
  * ⚠️ React импортлохгүй — `finFilter.check.mjs` шууд Node дээр ачаална.
  */
@@ -60,7 +60,7 @@ const yearOf = (v: unknown): string => {
  *    гаргана — шошгыг «Он (хамрах хугацаа)» гэж ТОДОРХОЙ бичнэ, эс бөгөөс
  *    хэрэглэгч аль огнооны жил болохыг мэдэхгүй.
  */
-export const FIN_FACETS: Record<'CASHFLOW2' | 'CASHFLOW_NEW' | 'IPC_LOG', Facet[]> = {
+export const FIN_FACETS: Record<'CASHFLOW_NEW' | 'IPC_LOG', Facet[]> = {
   /*
    * ⚠️ Шинэ хүснэгтэд `CF0xx` код БАЙХГҮЙ — талбарын нэр нь утгатай латин
    * галиг. Мөн САР гэсэн мөрийн төрөл байхгүй тул «Үеийн төрөл» шүүлтийн
@@ -77,11 +77,6 @@ export const FIN_FACETS: Record<'CASHFLOW2' | 'CASHFLOW_NEW' | 'IPC_LOG', Facet[
       allLabel: tr('Бүх он'),
       valueOf: (r) => yearOf(r.Zahiramj_ognoo),
     },
-  ],
-  CASHFLOW2: [
-    { key: 'pkg', label: tr('Багц'), allLabel: tr('Бүх багц'), valueOf: (r) => clean(r.CF006) },
-    { key: 'year', label: tr('Он'), allLabel: tr('Бүх он'), valueOf: (r) => clean(r.CF003) },
-    { key: 'type', label: tr('Үеийн төрөл'), allLabel: tr('Бүх төрөл'), valueOf: (r) => clean(r.CF002) },
   ],
   IPC_LOG: [
     { key: 'pkg', label: tr('Багц'), allLabel: tr('Бүх багц'), valueOf: (r) => clean(r.IPC03) },
@@ -106,14 +101,33 @@ export type FinFilter = {
   /** Нүүр бүрийн сонгосон утга; `''` = бүгд */
   facet: Record<FacetKey, string>;
   col: ColFilter;
+  /**
+   * БАГАНЫ ТОЛГОЙН СОНГОЛТ — ArcGIS-ийн атрибут хүснэгтийн маягаар.
+   *
+   * Утга нь `cellText`-ийн гаралт, өөрөөр хэлбэл хэрэглэгчийн ХАРЖ БУЙ мөр
+   * (түүхий утга биш) — жагсаалтад дарсан зүйл нь хүснэгтэд харагдсантайгаа
+   * заавал таарна.
+   *
+   * ⚠️ `col`-ЫГ ОРЛОХГҮЙ, хажууд нь ажиллана: `col` нь БИЧСЭН нөхцөл
+   * (`>1e9`, `100..200`, чөлөөт текст), `pick` нь СОНГОСОН утгуудын
+   * олонлог. Хоёулаа тавигдвал ХОЁУЛАА хангагдана (AND).
+   *
+   * ⚠️ Хоосон массив = шүүлтгүй (бүгд). Тиймээс «юу ч сонгоогүй» ба «бүгдийг
+   * сонгосон» хоёр ИЖИЛ утгатай — UI нь сүүлийн чагтыг тайлахад талбарыг
+   * бүрмөсөн устгана, эс бөгөөс хүснэгт хоосорч хэрэглэгч гацна.
+   */
+  pick?: Record<string, string[]>;
 };
 
-export const EMPTY_FILTER: FinFilter = { q: '', facet: { pkg: '', year: '', type: '' }, col: {} };
+export const EMPTY_FILTER: FinFilter = {
+  q: '', facet: { pkg: '', year: '', type: '' }, col: {}, pick: {},
+};
 
 export const isDirty = (f: FinFilter): boolean =>
   f.q.trim() !== ''
   || (['pkg', 'year', 'type'] as FacetKey[]).some((k) => f.facet[k] !== '')
-  || Object.values(f.col).some((v) => v.trim() !== '');
+  || Object.values(f.col).some((v) => v.trim() !== '')
+  || Object.values(f.pick ?? {}).some((v) => v.length > 0);
 
 /* ──────────────────────── ЯЛГААТАЙ УТГУУД ──────────────────────────── */
 
@@ -229,6 +243,16 @@ export function rowMatches(
     const needle = f.col[c.name];
     if (!needle || needle.trim() === '') continue;
     if (!cellMatches(r[c.name], cellText(r[c.name], c.type), needle, isNumeric(c.type))) return false;
+  }
+
+  /* ── Толгойн сонголт — сонгосон утгуудын АЛЬ НЭГТЭЙ яг тэнцүү ── */
+  const picks = f.pick;
+  if (picks) {
+    for (const c of cols) {
+      const want = picks[c.name];
+      if (!want || want.length === 0) continue;
+      if (!want.includes(cellText(r[c.name], c.type))) return false;
+    }
   }
 
   /* ── Чөлөөт хайлт — багана БҮРИЙН аль нэгэнд таарвал болно ── */

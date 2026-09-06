@@ -315,7 +315,7 @@ function Submitted({
   ok?: Set<string>;
   onCell?: (row: number, block: string) => void;
   /** Өөрчлөлтийн жагсаалтыг эцэгт мэдэгдэнэ — «бүгд зөвшөөрөгдсөн үү» гэж бодоход. */
-  onChanges?: (c: Change[]) => void;
+  onChanges?: (c: Change[] | null) => void;
   /**
    * «БҮГДИЙГ ЗӨВШӨӨРӨХ» — ЗӨВХӨН системийн админд. Эцэг (`Item`) шийднэ;
    * өгөгдөөгүй бол товч ОГТ зурагдахгүй.
@@ -349,9 +349,14 @@ function Submitted({
     let alive = true;
     setBusy(true);
     setErr('');
+    /* ⚠️ Уншилт дуустал ба УНАСАН үед `null` (2026-09-06): урьд нь унахад
+       `changes` `[]` хэвээр үлдэж, дээд талын батлах товч «өөрчлөлтгүй» мэт
+       ИДЭВХТЭЙ байв — хянагч агуулгыг харалгүй батлах зам. `lack`-ийн гурван
+       төлөвтэй ижил дүрэм. */
+    onChanges?.(null);
     loadSubmission(bagts, sheetOid)
       .then((d) => { if (alive) { setData(d); onChanges?.(d?.changes ?? []); } })
-      .catch((e) => { if (alive) setErr(String((e as Error)?.message ?? e)); })
+      .catch((e) => { if (alive) { setErr(String((e as Error)?.message ?? e)); onChanges?.(null); } })
       .finally(() => { if (alive) setBusy(false); });
     // ⚠️ Задлах бүрд БИШ, нэг л удаа — хамаарал нь зөвхөн бүртгэлийн түлхүүр
     return () => { alive = false; };
@@ -619,7 +624,9 @@ function Item({ work, stage, who, onFix, readOnly, isSuper }: {
    *    АСУУДАЛТАЙ гэсэн үг — тэдгээр нь улаанаараа үлдэж, буцаах шалтгаанд
    *    өөрсдөө жагсаагдана.
    */
-  const [changes, setChanges] = useState<Change[]>([]);
+  /* ⚠️ `null` = илгээлтийн агуулга хараахан татагдаагүй/унасан → батлах ХААЛТТАЙ
+     (`lack`-тэй ижил гурван төлөв, 2026-09-06). */
+  const [changes, setChanges] = useState<Change[] | null>(null);
   /**
    * Үйлчилгээнд 4-р шатны талбар байгаа эсэх.
    * ⚠️ Байхгүй үед «Батлах» дарвал ArcGIS алдаа буцааж, менежер баталсан
@@ -675,8 +682,8 @@ function Item({ work, stage, who, onFix, readOnly, isSuper }: {
     });
   }, []);
   /** Хараахан зөвшөөрөөгүй = асуудалтай гэж үзэх өөрчлөлтүүд */
-  const bad = changes.filter((c) => !okKeys.has(`${c.row}:${c.block}`));
-  const allOk = changes.length > 0 && bad.length === 0;
+  const bad = (changes ?? []).filter((c) => !okKeys.has(`${c.row}:${c.block}`));
+  const allOk = changes != null && changes.length > 0 && bad.length === 0;
 
   /**
    * Буцаах шалтгаанд асуудалтай нүднүүд ӨӨРСДӨӨ орно.
@@ -780,9 +787,11 @@ function Item({ work, stage, who, onFix, readOnly, isSuper }: {
                     {/* ⚠️ Бүх өөрчлөлт ногоон болтол ШИЛЖҮҮЛЭХ БОЛОМЖГҮЙ. */}
                     <button
                       className={`${s.btn} ${s.ok}`}
-                      disabled={busy || lackBlocks || (changes.length > 0 && !allOk)}
+                      disabled={busy || lackBlocks || changes == null || (changes.length > 0 && !allOk)}
                       title={
-                        changes.length > 0 && !allOk
+                        changes == null
+                          ? tr('Илгээлтийн агуулга татагдаагүй тул батлах боломжгүй')
+                          : changes.length > 0 && !allOk
                           ? tr('Эхлээд өөрчлөгдсөн нүд бүр дээр дарж зөвшөөрнө үү — үлдсэн {0}', String(bad.length))
                           /*
                            * ⚠️ ЕРӨНХИЙ МЕНЕЖЕРИЙН товч нь одоо ЖИНХЭНЭ бичилт
@@ -800,13 +809,13 @@ function Item({ work, stage, who, onFix, readOnly, isSuper }: {
                         : stage === 'manager'
                           ? tr('Зөвшөөрч ерөнхий менежерт илгээх')
                           : tr('Баталж архивт бүртгэх')}
-                      {changes.length > 0 && !allOk && ` (${bad.length})`}
+                      {changes != null && changes.length > 0 && !allOk && ` (${bad.length})`}
                     </button>
                     <button className={`${s.btn} ${s.bad}`} disabled={busy}
                       title={bad.length ? tr('Зөвшөөрөгдөөгүй нүднүүд шалтгаанд өөрсдөө жагсаана') : undefined}
                       onClick={() => review(DECISION.return)}>
                       {tr('Буцаах')}
-                      {bad.length > 0 && changes.length > 0 && ` (${bad.length})`}
+                      {bad.length > 0 && ` (${bad.length})`}
                     </button>
                   </div>
                 </>
@@ -887,7 +896,7 @@ function Item({ work, stage, who, onFix, readOnly, isSuper }: {
             /* ⚠️ ЗӨВХӨН super БА зөвшөөрөх шатанд — эс бөгөөс жинхэнэ хянагч
                нэг товчоор бүгдийг батлах зам нээгдэнэ (2026-08-27-ны дүрэм). */
             onOkAll={isSuper && reviewing
-              ? () => setOkKeys(new Set(changes.map((c) => `${c.row}:${c.block}`)))
+              ? () => setOkKeys(new Set((changes ?? []).map((c) => `${c.row}:${c.block}`)))
               : undefined}
           />
           <History cycles={work.cycles} stage={stage} />

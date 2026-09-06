@@ -80,8 +80,13 @@ export function codeIndex(rows: PlanRow[]): Map<number, number> {
   return m;
 }
 
-/** `gi` бүлгийн доорх бүх НАВЧ мөрийн индексүүд (дам хүүхдүүдийг оруулаад). */
-export function leafChildren(rows: PlanRow[], gi: number): number[] {
+/**
+ * `gi` бүлгийн доорх бүх НАВЧ мөрийн индексүүд (дам хүүхдүүдийг оруулаад).
+ * ⚠️ ЭКСПОРТЛОГДОХГҮЙ (2026-09-06): зөвхөн `effSpan` дуудна. Гаднаас
+ *    ашиглагдахгүй нэрийг экспортлох нь «хаа нэгтээ хэрэглэгддэг» гэсэн
+ *    худал дохио өгч, устгах эсэхийг шийдэхэд саад болно.
+ */
+function leafChildren(rows: PlanRow[], gi: number): number[] {
   const out: number[] = [];
   const d0 = rows[gi].depth;
   for (let i = gi + 1; i < rows.length && rows[i].depth > d0; i++) {
@@ -91,9 +96,16 @@ export function leafChildren(rows: PlanRow[], gi: number): number[] {
 }
 
 /**
- * Блок `b` дэх ҮР ДҮНТЭЙ муж. Навч мөрд — өөрийнх нь. Бүлэгт — өөрийн муж
- * (`own` нь `agg`-аас давамгайлдаг `computeAll`-ийн дүрэмтэй ижил), байхгүй
- * бол навч хүүхдүүдийн MIN эхлэх / MAX дуусах.
+ * Блок `b` дэх ҮР ДҮНТЭЙ муж. Навч мөрд — өөрийнх нь.
+ *
+ * ⚠️ БҮЛЭГТ — ХҮҮХДҮҮДИЙН MIN эхлэх / MAX дуусах нь ӨӨРИЙНХӨӨС ДАВАМГАЙЛНА
+ *    (2026-09-06-нд ЭРГҮҮЛСЭН; урьд нь `own` давамгайлдаг байв). Хэрэглэгч:
+ *    «бүлгийн range ажлын range-ээс хамаарч автоматаар хийгддэг байдалтай
+ *    болго». Хадгалагдсан хуучин бүлгийн огноо нь хүүхдүүдтэйгээ зөрж
+ *    байсан ч дэлгэц дээр ЗӨВ (бодогдсон) мужийг харуулах ёстой.
+ * ⚠️ Хүүхдүүд нь БҮГД хуваарьгүй үед л `own` руу буцна: тэнд бодох зүйл
+ *    байхгүй бөгөөд гараар оруулсан огноог чимээгүй алга болгох нь
+ *    мэдээлэл устгах явдал болно.
  */
 export function effSpan(
   rows: PlanRow[],
@@ -102,7 +114,7 @@ export function effSpan(
   spansOf: (i: number) => (Span | null)[] = (k) => rows[k].spans,
 ): Span | null {
   const own = spansOf(i)[b] ?? null;
-  if (own || !rows[i].group) return own;
+  if (!rows[i].group) return own;
   let a: number | null = null;
   let z: number | null = null;
   for (const c of leafChildren(rows, i)) {
@@ -111,7 +123,70 @@ export function effSpan(
     if (a == null || s.start < a) a = s.start;
     if (z == null || s.end > z) z = s.end;
   }
-  return a == null || z == null ? null : { start: a, end: z };
+  return a == null || z == null ? own : { start: a, end: z };
+}
+
+/**
+ * БҮЛГИЙН МУЖИЙГ ХҮҮХДҮҮДЭЭС НЬ ДЭЭШ НЭГТГЭНЭ.
+ *
+ * ⚠️ ЧИГЛЭЛ (2026-09-06, хэрэглэгч: «бүлгийн range ажлын range-ээс
+ *    хамаардаг болго, одоо байгаа үйлдэл яг эсрэгээрээ»): УРЬД нь бүлгийн
+ *    муж нь хүүхдийн хуваарийг ХАВЧДАГ хатуу хязгаар байв. Одоо эсрэгээр:
+ *    ажлын муж эрх чөлөөтэй, бүлэг нь тэдний MIN эхлэх / MAX дуусахаар
+ *    ӨӨРӨӨ бодогдоно.
+ * ⚠️ ЗӨВХӨН ХӨНДӨГДСӨН мөрийн ӨВГҮҮДИЙГ бодно — бүх бүлгийг дахин бодвол
+ *    хэрэглэгчийн гараар тавьсан, хүүхэдгүй бүлгийн огноо чимээгүй
+ *    устана.
+ * ⚠️ Хүүхдүүд нь БҮГД хуваарьгүй бол бүлгийн огноог ХЭВЭЭР үлдээнэ —
+ *    бодох зүйл байхгүй үед гараар оруулсан утгыг устгах нь мэдээлэл
+ *    алдагдуулна (`effSpan` ч мөн адил тэр үед `own` руу буцдаг).
+ *
+ * @returns `ch`-ийн ХУУЛБАР дээр бүлгийн мөрүүдийг нэмсэн шинэ Map.
+ */
+export function rollUpGroups(
+  rows: PlanRow[],
+  n: number,
+  ch: Map<number, (Span | null)[]>,
+): Map<number, (Span | null)[]> {
+  if (!ch.size) return ch;
+  const out = new Map(ch);
+  const spansOf = (i: number) => out.get(i) ?? rows[i].spans;
+  /* Хөндөгдсөн мөр бүрийн БҮХ өвөг бүлэг (гүн буурах дарааллаар дээшилнэ) */
+  const groups = new Set<number>();
+  for (const i of ch.keys()) {
+    let d = rows[i].depth;
+    for (let k = i - 1; k >= 0 && d > 0; k--) {
+      if (rows[k].depth < d && rows[k].group) { groups.add(k); d = rows[k].depth; }
+    }
+  }
+  /* ⚠️ Гүн бүлгээс гүехэн рүү: гадна бүлэг нь дотоод бүлгийн ШИНЭ утгыг
+     ашиглах ёстой. `leafChildren` нь дам хүүхдийг бүгдийг авдаг тул
+     үр дүн нь дарааллаас хамаарахгүй ч, дараалал нь тодорхой байх нь
+     дараа алдаа хайхад хялбар. */
+  for (const gi of [...groups].sort((a, b) => b - a)) {
+    const leaves = leafChildren(rows, gi);
+    const cur = spansOf(gi);
+    const next = cur.slice();
+    let moved = false;
+    for (let b = 0; b < n; b++) {
+      let a: number | null = null;
+      let z: number | null = null;
+      for (const c of leaves) {
+        const s = spansOf(c)[b];
+        if (!s) continue;
+        if (a == null || s.start < a) a = s.start;
+        if (z == null || s.end > z) z = s.end;
+      }
+      if (a == null || z == null) continue;
+      const nv: Span = { start: a, end: z };
+      const ov = cur[b] ?? null;
+      const same = (!nv && !ov)
+        || (!!nv && !!ov && nv.start === ov.start && nv.end === ov.end);
+      if (!same) { next[b] = nv; moved = true; }
+    }
+    if (moved) out.set(gi, next);
+  }
+  return out;
 }
 
 /**

@@ -12,7 +12,7 @@
 import assert from 'node:assert/strict';
 import {
   parseDeps, formatDeps, codeIndex, effSpan, requiredStart,
-  reaches, downstreamCodes, hierRelated, propagate, residualDeps,
+  reaches, downstreamCodes, hierRelated, propagate, residualDeps, rollUpGroups,
 } from '@/lib/deps.ts';
 import { DAY, spanDays } from '@/lib/plan.ts';
 
@@ -220,5 +220,45 @@ assert.deepEqual(residualDeps('5FF2,7FS,junk'), ['5FF2', 'junk']);
 assert.deepEqual(residualDeps('7FS'), []);
 assert.deepEqual(residualDeps(null), []);
 console.log('✅ танигдаагүй токен хадгалалтад алдагдахгүй (residualDeps)');
+
+/* ── БҮЛЭГ НЬ АЖЛААСАА ХАМААРНА (2026-09-06-ны эргүүлэлт) ──
+   ⚠️ Урьд нь бүлгийн муж нь хүүхдийг ХАВЧДАГ хязгаар байв. Одоо эсрэгээр:
+   ажил хөдлөхөд бүлэг нь MIN/MAX-аараа дагана. Энэ тест нь ЧИГЛЭЛИЙГ
+   тогтоож барина — буцаавал шууд унана. ── */
+{
+  const rows = [
+    row(0, 1, [], [sp(10, 20)], { group: true, depth: 0 }),
+    row(1, 2, [], [sp(10, 20)], { group: true, depth: 1 }),
+    row(2, 3, [], [sp(10, 15)], { depth: 2 }),
+    row(3, 4, [], [sp(16, 20)], { depth: 2 }),
+  ];
+  /* ⚠️ БҮЛГИЙН ЗУРАГДАХ МУЖ нь ӨӨРИЙНХӨӨС биш ХҮҮХДҮҮДЭЭСЭЭ (2026-09-06).
+     Бүлэг 0-ийн `own` нь (10,20) ч хүүхдүүд нь (10,15)+(16,20) тул ижил;
+     хүүхдийг зөөвөл `effSpan` тэр даруй дагана — хадгалагдсан `own` БИШ. */
+  const moved = [
+    rows[0], rows[1],
+    { ...rows[2], spans: [sp(1, 5)] },
+    rows[3],
+  ];
+  assert.deepEqual(effSpan(moved, 0, 0), sp(1, 20), 'бүлэг хүүхдүүдээрээ бодогдоно');
+  assert.deepEqual(effSpan(moved, 1, 0), sp(1, 20));
+  /* Хүүхэд бүгд хуваарьгүй бол ӨӨРИЙНХӨӨ утга руу буцна */
+  const none = [rows[0], rows[1], { ...rows[2], spans: [null] }, { ...rows[3], spans: [null] }];
+  assert.deepEqual(effSpan(none, 1, 0), sp(10, 20), 'бодох зүйлгүй бол own');
+
+  const out = rollUpGroups(rows, 1, new Map([[2, [sp(1, 5)]]]));
+  assert.deepEqual(out.get(2)[0], sp(1, 5), 'ажлын муж хэвээр — хавчигдсангүй');
+  assert.deepEqual(out.get(1)[0], sp(1, 20), 'дэд бүлэг хүүхдүүдээрээ сунав');
+  assert.deepEqual(out.get(0)[0], sp(1, 20), 'гадаад бүлэг ч дагав');
+
+  /* ⚠️ Хүүхэд бүгд хуваарьгүй болбол бүлгийн огноог ХЭВЭЭР үлдээнэ —
+     бодох зүйл байхгүй үед гараар оруулсныг устгах нь мэдээлэл алдагдуулна. */
+  const wipe = rollUpGroups(rows, 1, new Map([[2, [null]], [3, [null]]]));
+  assert.equal(wipe.has(1), false, 'бодох зүйлгүй бол бүлэг хөндөгдөхгүй');
+  assert.equal(wipe.has(0), false);
+
+  assert.equal(rollUpGroups(rows, 1, new Map()).size, 0, 'өөрчлөлтгүй бол юу ч бодохгүй');
+  console.log('✅ бүлгийн муж ажлаасаа дагана (rollUpGroups)');
+}
 
 console.log('\ndeps.check: ok');

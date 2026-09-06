@@ -21,7 +21,7 @@ import { usePlanTotals, type Totals } from '@/lib/totals';
 import { queryFeatures, type Row } from '@/lib/query';
 import {
   ZONE_LAYER, ZONE_FIELD, ZONE_NONE, BUILT_LAYER, BUILDING,
-  LAYER_BY_ID, PARCEL_LEFT, PARCEL_STATUS_HUES, SOURCE_FS, TASK_SHEET,
+  LAYER_BY_ID, PARCEL_CLEARED, PARCEL_LEFT, PARCEL_STATUS_HUES, SOURCE_FS, TASK_SHEET,
   PLAN_LAYER_IDS, MONITOR_LAYER_IDS, INITIAL_MAP_LAYERS,
   PKG_BY_FAMILY, PKG_BY_BAGTS, LAYERS, PROGRESS_LEVELS, bagtsKey, type PkgFamily,
 } from '@/lib/services';
@@ -30,7 +30,7 @@ import {
 /* ⚠️ Модулиас модуль руу импорт: `loadFinData` нь Finance-д, `aggregateMonths`
    нь Tsogts-д. Хоёулаа `cached` тул давхар хүсэлт үүсэхгүй — «Багцын санхүү»
    харагдацын аль хэдийн уншсан үр дүнг хуваалцана. */
-import { loadFinData, type FinData } from '@/modules/Finance';
+import { loadFinData, lagOf, type FinData } from '@/modules/Finance';
 import { aggregateMonths } from '@/modules/PkgProg';
 import {
   loadBlockProgress, loadBlockHistory, progressSeries,
@@ -149,7 +149,8 @@ const CATALOG_IDS = [...MONITOR_LAYER_IDS, ...PLAN_LAYER_IDS];
 
 /* ══════════════════ Хэмжээ сунгах бариул ══════════════════ */
 
-const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+/* ⚠️ `clamp` 2026-09-06-нд ХАСАГДАВ — цорын ганц уншигч нь `HeadKpi`-ийн
+   гүйцэтгэлийн зурвас (`tileBar`) байсан бөгөөд тэр зурвас устсан. */
 
 /* ⚠️ 2026-08-17: `useStoredWidth` ба `Grip` ХАСАГДСАН — дашбоардад өргөн чирэх
    бариул үлдсэнгүй: хэсгүүдийн жагсаалт нь дээд ХЭВТЭЭ мөр болсон, чартууд нь
@@ -249,7 +250,7 @@ function useSources(): Async<Row[]> {
 type DashData = {
   bagts: Async<BagtsRow[]>;
   /**
-   * САНХҮҮ + БИЕТ ГҮЙЦЭТГЭЛ — `CASHFLOW2` (гэрээ) · `IPC_LOG` (олгосон) ·
+   * САНХҮҮ + БИЕТ ГҮЙЦЭТГЭЛ — `CASHFLOW_NEW` (гэрээ) · `IPC_LOG` (олгосон) ·
    * `TASK_SHEET` («Гүйцэтгэл бөглөх»-ийн нэгтгэл).
    *
    * ⚠️ 2026-08-21: `Төсөл_Гүйцэтгэл_` ХАСАГДСАН — Excel-ээс гараар импортлогддог
@@ -1150,7 +1151,9 @@ function EnvRight({ d }: { d: DashData }) {
               { key: 'total', label: tr('Урьдчилсан төсөв'), value: bg.total },
               { key: 'order', label: tr('Захирамжаар'), value: bg.orderTotal },
               { key: 'contract', label: tr('Гэрээ байгуулах эрх'), value: bg.contract },
-              { key: 'given', label: tr('Шилжүүлсэн'), value: bg.transferred },
+              /* ⚠️ 2026-09-06: «Шилжүүлсэн» ХАСАГДСАН — «ӨМНӨХ ШИЛЖҮҮЛСЭН»
+                 мөрийн төрөл нь `cashflow_0813`-т байсан бөгөөд тэр
+                 үйлчилгээ бүрмөсөн хаягдсан. */
             ].filter((x) => x.value > 0);
             return rows.length ? (
               <Bars
@@ -1257,7 +1260,8 @@ function EnvRight({ d }: { d: DashData }) {
  */
 export function HeadKpi({ bagts }: { bagts: Async<BagtsRow[]> }) {
   const b = bagts.state === 'ready' ? bagts.data : null;
-  const blocks = b ? b.reduce((a, x) => a + x.blocks, 0) : null;
+  /* ⚠️ `blocks` (блокийн тоо) 2026-09-06-нд хасагдав — зөвхөн доод дэд мөрөнд
+     («113 блок») хэрэглэгддэг байсан бөгөөд тэр мөр бүхэлдээ устсан. */
   const ail = b ? b.reduce((a, x) => a + x.ail, 0) : null;
   // ⚠️ Толгой/явцыг ЭНД амьдаар ачаална (prop-оор БИШ) — «Иргэдэд хүрэх үр өгөөж»
   //    (Irged.tsx) энэ мөрийг зөвхөн `bagts`-аар дахин ашиглана. loadHeadline/
@@ -1276,26 +1280,29 @@ export function HeadKpi({ bagts }: { bagts: Async<BagtsRow[]> }) {
    * БҮГД амьд боллоо: хил [97] · барилгын Population нийлбэр · Төсөл_Гүйцэтгэл
    * жигнэсэн дундаж · INVEST нийлбэр.
    */
-  const tiles: { v: string; unit?: string; label: string; sub?: string; lead?: true; bar?: number }[] = [
+  /**
+   * ⚠️ 2026-09-06: ДЭД МӨР (`sub`) БҮРМӨСӨН ХАСАГДАВ (хэрэглэгчийн шийдвэр).
+   * «113 блок» · «7 багц тайлагнасан» · «гэрээ байгуулсан 2,073,074,430,035 ₮»
+   * гэсэн гурван мөр нь таван нүдний ГУРАВД Л байсан тул нүднүүд өөр өндөртэй
+   * болж, зурвасын доод ирмэг тасархай харагддаг байв. Мөн тэдгээр нь өөрсдөө
+   * KPI биш ТАЙЛБАР — нүдний гол тоог сулруулж байлаа.
+   */
+  const tiles: { v: string; unit?: string; label: string; lead?: true }[] = [
     { v: h == null ? '…' : num(h.areaHa, 1), unit: tr('га'), label: tr('Төслийн талбай') },
-    {
-      v: ail == null ? '…' : num(ail), unit: tr('өрх'),
-      label: tr('Өрхийн орон сууц'),
-      sub: blocks == null ? undefined : tr('{0} блок', num(blocks)),
-    },
+    { v: ail == null ? '…' : num(ail), unit: tr('өрх'), label: tr('Өрхийн орон сууц') },
     { v: h == null ? '…' : num(h.population), unit: tr('хүн'), label: tr('Хамрагдах хүн ам') },
+    /* ⚠️ 2026-09-06: `bar` (гүйцэтгэлийн зурвас) ХАСАГДАВ. Гүйцэтгэл 4.18%
+       үед дүүргэлт нь 2px өндөр замын 4% буюу үл үзэгдэх богино байсан тул
+       нүдэн дээр «санамсаргүй зураас» мэт харагдаж, бусад ДӨРВӨН нүдэнд
+       байхгүй ГАНЦ элемент болж зурвасын тэгш байдлыг эвдэж байв. Хувийг тоо
+       нь өөрөө хэлнэ. `lead` (дээд ирмэгийн акцент) хэвээр — тэр нь гол
+       үзүүлэлтийг заана. */
     {
       v: p.actual == null ? '…' : num(p.actual, 2), unit: '%',
       label: tr('Төслийн нийт гүйцэтгэл'),
-      sub: p.packs ? tr('{0} багц тайлагнасан', num(p.packs)) : undefined,
       lead: true,
-      bar: p.actual ?? undefined,
     },
-    {
-      v: h == null ? '…' : num(h.investTotal), unit: tr('₮'),
-      label: tr('Төслийн нийт төсөв'),
-      sub: h == null ? undefined : tr('гэрээ байгуулсан {0}', mnt(h.investConfirmed)),
-    },
+    { v: h == null ? '…' : num(h.investTotal), unit: tr('₮'), label: tr('Төслийн нийт төсөв') },
   ];
 
   return (
@@ -1303,15 +1310,18 @@ export function HeadKpi({ bagts }: { bagts: Async<BagtsRow[]> }) {
       {tiles.map((t) => (
         <div key={t.label} className={`${o.tile} ${t.lead ? o.tileLead : ''}`}>
           <span className={o.tileVal}>
-            <b className="num">{t.v}</b>
+            {/**
+              * ⚠️ 2026-09-06: ФОНТЫГ ЗӨВХӨН УРТ УТГАД багасгана. Урьд нь
+              * `.tileVal b` бүхэлдээ 13px байсан — «2,660,000,000,000» багтаах
+              * гэж 2026-09-01-нд багасгасан нь ТАВУУЛАА нүдэнд хамаарч,
+              * «159.6», «4.18» зэрэг богино тоо шошгоосоо арай том хэмжээтэй
+              * үлдэж, KPI зурвас бүхэлдээ уншигдахаа больсон байв. `Stat`-ийн
+              * `statValueLong`-той ЯГ ижил зарчим: хэмжээг УТГЫН УРТААР шийднэ.
+              */}
+            <b className={`${String(t.v).length >= 10 ? o.tileValLong : ''} num`}>{t.v}</b>
             {t.unit && <i>{tr(t.unit)}</i>}
           </span>
           <span className={o.tileLabel}>{t.label}</span>
-          {/* Гол үзүүлэлтэд зурвас — тоо уншихаас өмнө хэмжээг нүдээр ойлгуулна */}
-          {t.bar != null && (
-            <span className={o.tileBar}><i className={o.active} style={{ width: `${clamp(t.bar, 0, 100)}%` }} /></span>
-          )}
-          {t.sub && <span className={o.tileSub}>{t.sub}</span>}
         </div>
       ))}
     </div>
@@ -1640,7 +1650,7 @@ const srcNote = (note: string, src: () => string) => `${note} · ${src()}`;
  * ⚠️ 2026-08-21: `Төсөл_Гүйцэтгэл_` (162 мөрийн Excel хуваарь) ХАСАГДСАН —
  * тэр нь порталаас шинэчлэгддэггүй тест өгөгдөл байв. Одоо бүх дүн ХОЁР
  * АМЬД эхээс:
- *   · `fin`  — CASHFLOW2 (`cashflow_0813 /173`, төлөвлөгөө) · IPC_LOG
+ *   · `fin`  — CASHFLOW_NEW (`Cashflow_0904 /0`, гэрээ) · IPC_LOG
  *              (`ipc_0813 /172`, олгосон) · TASK_SHEET (биет)
  *   · `prog` — блок бүрийн гүйцэтгэл, мөн TASK_SHEET-ээс
  *
@@ -1661,14 +1671,20 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
   const f = fin.state === 'ready' ? fin.data : null;
   const months = f ? aggregateMonths(f) : null;
 
-  /** «Одоо» хүртэлх сүүлийн бөглөгдсөн сарын төлөвлөгөө/биет */
+  /**
+   * «Одоо» хүртэлх сүүлийн бөглөгдсөн сарын төлөвлөгөө/биет.
+   *
+   * ⚠️ 2026-09-06: ТӨЛӨВЛӨГӨӨТ хувь нь `cumPct` (cashflow-ийн өссөн МӨНГӨН
+   *    хувь) байхаа больж ХУВААРИАС (`lagOf`) гарна. Хуучин тоо нь МӨНГӨний
+   *    хувь байсныг БИЕТ %-тай хасдаг байсан — нэгж нь зөрсөн харьцуулалт.
+   */
   const nowYm = new Date().toISOString().slice(0, 7);
-  let planned: number | null = null;
+  const lag = months ? lagOf(months) : null;
+  const planned: number | null = lag ? lag.planned : null;
   let actual: number | null = null;
   if (months) {
     for (const m of months) {
       if (m.label > nowYm) continue;
-      if (m.cumPct > 0) planned = m.cumPct;
       if (m.phys != null) actual = m.phys;
     }
   }
@@ -1676,7 +1692,7 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
 
   return (
     <>
-      <Panel title={tr('Хэрэгжилтийн ерөнхий график')} note={tr('cashflow_0813 · ipc_0813 · Гүйцэтгэл бөглөх')}>
+      <Panel title={tr('Хэрэгжилтийн ерөнхий график')} note={tr('Cashflow_0904 · ipc_0813 · Гүйцэтгэл бөглөх')}>
         <Stats cols={2}>
           <Stat accent color={HUE[0]} value={actual == null ? '…' : num(actual, 2)} unit="%" label={tr('Биет гүйцэтгэл')} />
           <Stat accent color={HUE[1]} value={planned == null ? '…' : num(planned, 1)} unit="%" label={tr('Төлөвлөсөн гүйцэтгэл')} />
@@ -1988,20 +2004,17 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
           гадна цувааны хоёр дахь тоо (`m.cumPct` = төлөвлөгөөт биелэлт, мөн
           `planTotal`-аар нормчилогдсон) ӨӨР ХУВААГЧТАЙ болж, нэг тултип дотор
           хоорондоо харьцуулагдахгүй хоёр хувь гарна.
-          CF033-той харьцуулах «гэрээний дүнгийн хэдэн хувь олгогдов»
-          үзүүлэлт нь `reportData.paidRate` (`paid / contractAmount`)-д ТУСДАА
-          байдаг — тэр НЭР нь өөр («гэрээгээр баталгаажсан дүнгийн …»).
-          Хэрэв ирээдүйд энэ картыг гэрээний дүнд шилжүүлэх бол `m.cumPct`-ийг
-          ч мөн CF033-аар дахин нормчилж, Finance/PkgFin-ийг ХАМТ өөрчилнө. */}
-      <Panel title={tr('Санхүүжилтийн хуримтлал — сараар')} note={tr('олгосон / төлөвлөгөөт нийт дүн')}>
+
+          ⚠️ 2026-09-06: ХУВААГЧ нь сарын ТӨЛӨВЛӨГӨӨНИЙ нийлбэр байхаа больж
+          ГЭРЭЭНИЙ ДҮН (`FinData.planTotal`) болов — сарын хуваарь
+          `cashflow_0813`-тайгаа хамт хаягдсан. Энэ нь `reportData.paidRate`
+          (`paid / contractAmount`)-тай НЭГ хуваагчтай боллоо. */}
+      <Panel title={tr('Санхүүжилтийн хуримтлал — сараар')} note={tr('олгосон / гэрээний нийт дүн')}>
         <Data q={fin} loading={tr('Татаж байна…')}>
           {() => {
             const ms = (months ?? []).filter((m) => m.label <= nowYm);
-            const total = ms.length ? ms[ms.length - 1].amountCum : 0;
-            /* ⚠️ ХУВААГЧ = сарын ТӨЛӨВЛӨГӨӨНИЙ (CF009) нийт нийлбэр — гэрээний
-               эрхийн дүн (CF033) БИШ. Дээрх ⚠️-г уншина уу: нэрийг нь солих
-               нь тоог нь солихоос АЮУЛГҮЙ байсан. */
-            const planTotal = (months ?? []).reduce((a, m) => a + m.amount, 0);
+            let planTotal = 0;
+            f?.planTotal.forEach((v) => { planTotal += v; });
             if (!planTotal || ms.length < 2) return <Empty label={tr('Олголтын бүртгэл алга')} />;
             let cum = 0;
             const pts = ms.map((m) => {
@@ -2010,10 +2023,9 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
                 key: m.label,
                 label: m.label.slice(2),
                 value: (cum / planTotal) * 100,
-                display: tr('{0} · төл. {1}', pct((cum / planTotal) * 100, 1), pct(m.cumPct, 1)),
+                display: pct((cum / planTotal) * 100, 1),
               };
             });
-            void total;
             return <Series items={pts} height={120} unit="%" line />;
           }}
         </Data>
@@ -2558,20 +2570,16 @@ function LandDetail({ parcels, land, flt, onFlt }: {
         <Data q={land} loading={tr('Татаж байна…')}>
           {(ls) => (
             <>
-                <Stats cols={2}>
+                {/* ⚠️ 2026-09-06: ТАВААС ГУРАВ болов. Шинэ эх
+                    (`Selbe_parcel_20260906`) нь «Цэвэрлэсэн нэгж талбар» ба
+                    «Гэрээлсэн» гэсэн ТӨЛӨВГҮЙ болсон — тэдгээр нүд ҮРГЭЛЖ 0
+                    харуулах байсан. Одоо ангилал хоёр л тул нийлбэр нь
+                    «Нийт»-тэй ЯМАГТ тэнцэнэ (урьд нь тэнцдэггүй тул тусгай
+                    «Гэрээлсэн» нүд нэмэх шаардлагатай байв). */}
+                <Stats cols={3}>
                   <Stat accent color={HUE[0]} value={num(ls.total)} unit={tr('талбар')} label={tr('Нийт нэгж талбар')} />
-                  <Stat accent color={PARCEL_STATUS_HUES['Бүрэн чөлөөлсөн']} value={num(ls.cleared)} unit={tr('талбар')} label={tr('Бүрэн чөлөөлсөн')} />
-                  <Stat accent color={PARCEL_STATUS_HUES['Цэвэрлэсэн нэгж талбар']} value={num(ls.cleaned)} unit={tr('талбар')} label={tr('Цэвэрлэсэн')} />
-                  {/* ⚠️ ШИНЭ нүд — эс бөгөөс дөрвөн тоо нийлбэртээ ТААРАХГҮЙ
-                      (2,117 ≠ 1,703 + 202 + 176; «Гэрээлсэн» 36 нь алга байв). */}
-                  <Stat
-                    accent
-                    color={PARCEL_STATUS_HUES['Гэрээлсэн']}
-                    value={num(ls.byStatus.find((x) => x.label === 'Гэрээлсэн')?.n ?? 0)}
-                    unit={tr('талбар')}
-                    label={tr('Гэрээлсэн')}
-                  />
-                  <Stat accent color={PARCEL_STATUS_HUES['Үлдсэн нэгж талбар']} value={num(ls.remaining)} unit={tr('талбар')} label={tr('Үлдсэн')} />
+                  <Stat accent color={PARCEL_STATUS_HUES[PARCEL_CLEARED]} value={num(ls.cleared)} unit={tr('талбар')} label={tr('Бүрэн чөлөөлсөн')} />
+                  <Stat accent color="var(--bad)" value={num(ls.remaining)} unit={tr('талбар')} label={tr('Чөлөөлөгдөөгүй')} />
                 </Stats>
             </>
           )}
@@ -2659,15 +2667,17 @@ function LandDetail({ parcels, land, flt, onFlt }: {
             ) : (
               <>
                 <p className={o.note}>
-                  {tr('Зөвхөн')} <b>{tr('«Үлдсэн нэгж талбар»')}</b> ({num(ls.remaining)} {tr('талбар)-ын явцын мэдээ. Ангилал дарж газрын зурагт шүүнэ.')}
+                  {tr('Чөлөөлөгдөөгүй')} {num(ls.remaining)} {tr('талбарын шалтгаан. Ангилал дарж газрын зурагт шүүнэ.')}
                 </p>
                 <Bars
                   inline
                   selected={sel}
                   onSelect={(label) => {
-                    // ⚠️ `land.ts` шошгыг ЦЭВЭРЛЭДЭГ (арын зай, төгсгөлийн «.») тул
-                    //    `=` биш `LIKE 'нэр%'`. Мөн ЗААВАЛ `Tuluv` шүүлттэй — эс
-                    //    бөгөөс зурагт чөлөөлсөн талбарууд ч хамт тодорно.
+                    /* ⚠️ `land.ts` шошгыг ЦЭВЭРЛЭДЭГ (арын зай, төгсгөлийн «.»)
+                       тул `=` биш `LIKE 'нэр%'`.
+                       ⚠️ 2026-09-06: төлөвийн НЭМЭЛТ шүүлт ХЭРЭГГҮЙ болов —
+                       шинэ эхэд `status` ба `progress` нэг талбар тул шалтгааны
+                       утга нь өөрөө «чөлөөлөгдөөгүй»-г заана. */
                     const eq =
                       label === 'Тодорхойгүй'
                         ? `(${PL.progress} IS NULL OR ${PL.progress} = '')`
@@ -2677,7 +2687,7 @@ function LandDetail({ parcels, land, flt, onFlt }: {
                       key: label,
                       /* ⚠️ Утгыг ч tr()-ээр — EN-д хольмог хэл гарахгүй (where түүхий) */
                       label: tr('Шалтгаан: {0}', tr(label)),
-                      where: `${PL.status} = 'Үлдсэн нэгж талбар' AND ${eq}`,
+                      where: eq,
                       only: ['land:left'],
                     });
                   }}
@@ -2782,7 +2792,9 @@ function LandDetail({ parcels, land, flt, onFlt }: {
             /* ⚠️ `text`/`nn` нь энэ модульд импортлогдоогүй — `String`/`Number`
                шууд. Талбай нь `area` эсвэл (бөглөгдөөгүй бол) `areaAlt`-аас. */
             const parcelArea = (r: Row) => Number(r[PL.area]) || Number(r[PL.areaAlt]) || 0;
-            const left = rows.filter((r) => String(r[PL.status] ?? '').trim() === 'Үлдсэн нэгж талбар');
+            /* ⚠️ 2026-09-06: «Үлдсэн нэгж талбар» ангилал алга — «Бүрэн
+               чөлөөлсөн»-өөс БУСАД БҮГД нь чөлөөлөгдөөгүй. */
+            const left = rows.filter((r) => String(r[PL.status] ?? '').trim() !== PARCEL_CLEARED);
             const counts = BUCKETS.map((b) => ({
               ...b,
               n: left.filter((r) => {
@@ -2823,7 +2835,7 @@ function LandDetail({ parcels, land, flt, onFlt }: {
               { key: 'f5', label: tr('1,000 м²-ээс дээш'), min: 1000, max: Infinity },
             ];
             const parcelArea = (r: Row) => Number(r[PL.area]) || Number(r[PL.areaAlt]) || 0;
-            const done = rows.filter((r) => String(r[PL.status] ?? '').trim() === 'Бүрэн чөлөөлсөн');
+            const done = rows.filter((r) => String(r[PL.status] ?? '').trim() === PARCEL_CLEARED);
             const counts = BUCKETS.map((b) => ({
               ...b,
               n: done.filter((r) => {
@@ -2884,15 +2896,17 @@ function LandDetail({ parcels, land, flt, onFlt }: {
       </Panel>
 
       {/* ЦЭВЭРЛЭСЭН ТАЛБАРЫН ТӨРӨЛ — `Төрөл` багана нь бүх талбарын шинж БИШ:
-          187 бөглөгдсөнөөс 183 нь ЯГ «Цэвэрлэсэн нэгж талбар». Өөрөөр хэлбэл
-          энэ бол цэвэрлэгдсэн талбарыг ангилсан бүртгэл — тиймээс картын нэр,
-          шүүлт хоёр тэр хүрээнд л ярина. Хоёрхон ангилал тул донат (≤3 дүрэм). */}
-      <Panel title={tr('Цэвэрлэсэн талбарын төрөл')} note={tr('төрөл бүртгэгдсэн талбар')}>
+          187 бөглөгдсөнөөс 183 нь ЯГ «Цэвэрлэсэн нэгж талбар» байв.
+          ⚠️ 2026-09-06: тэр ангилал шинэ эхэд БАЙХГҮЙ болсон тул шүүлт нь
+          хэзээ ч таарахгүй, карт ҮРГЭЛЖ хоосон гарах байлаа. Мөн зориулалтын
+          талбар `Төрөл` → `Zoriulalt` болж, 582 мөрд (зөвхөн цэвэрлэсэнд БИШ)
+          бөглөгдсөн. Тиймээс шүүлтийг ХАСАВ — карт нь одоо БҮХ нэгж талбарын
+          бүртгэгдсэн зориулалтыг харуулна; нэрийг нь мөн тааруулав. */}
+      <Panel title={tr('Нэгж талбарын зориулалт')} note={tr('зориулалт бүртгэгдсэн талбар')}>
         <Data q={parcels} loading={tr('Татаж байна…')}>
           {(rows) => {
             const m = new Map<string, number>();
             rows
-              .filter((r) => String(r[PL.status] ?? '').trim() === 'Цэвэрлэсэн нэгж талбар')
               .forEach((r) => {
                 const v = String(r[PL.landuse] ?? '').trim();
                 if (!v) return;
@@ -4270,15 +4284,15 @@ function SourceDetail({ sources, d, flt, onFlt }: { sources: Async<Row[]>; d: Da
 /* ══════════════════ 08 · Санхүүжилт, бонд ══════════════════ */
 
 /**
- * ТӨСВИЙН ЭХ = cashflow_0813 /173 (CASHFLOW2) — захирамж/гэрээгээр баталгаажсан
- * ТӨСЛИЙН төсөв (2026-08-14, хэрэглэгчийн шийдвэр). Санхүүгийн ганц зөв эх нь
- * cashflow. «Хөрөнгө оруулалт өртөг» /249 бүхэлдээ түр хасагдсан.
+ * ТӨСВИЙН ЭХ = `Cashflow_0904 /0` (CASHFLOW_NEW) — захирамж/гэрээгээр
+ * баталгаажсан ТӨСЛИЙН төсөв (2026-08-14, хэрэглэгчийн шийдвэр). Санхүүгийн
+ * ганц зөв эх нь cashflow. «Хөрөнгө оруулалт өртөг» /249 бүхэлдээ түр хасагдсан.
  *
- * ⚠️ 2026-08-31: `Cashflow /106` (76 мөр, 12 сар нь БАГАНА) → `cashflow_0813
- * /173` (209 мөр, «гэрээ × үе» тутам НЭГ мөр). Энэ картуудын БҮХ дүн ЗӨВХӨН
- * мастер мөрөөс (`CASHFLOW2.where.master`, CF002 = 'ГЭРЭЭ') ирэх ёстой —
- * төрлөөр шүүхгүй бол 76 гэрээ 209 удаа тоологдоно (мөнгөн НИЙЛБЭР санамсаргүй
- * зөв гарч, зөвхөн ТООЛОЛ ба дундаж худал болно — нүдээр илрэхгүй алдаа).
+ * ⚠️ 2026-09-06: `cashflow_0813 /173` (209 мөр, «гэрээ × үе» тутам НЭГ мөр)
+ * БҮРМӨСӨН хаягдаж, 76 мөртэй энэ хүснэгт орлосон. Мөр БҮР НЭГ ГЭРЭЭ тул
+ * мөрийн төрлийн шүүлт (`where.master`) ХЭРЭГГҮЙ болов. Хариуд нь САРЫН
+ * ХУВААРЬ дээр тогтдог хоёр карт («Санхүүжилтийн хуваарь · өссөн дүн»,
+ * «Сар тутмын санхүүжилтийн хуваарь») ХАСАГДСАН.
  */
 /**
  * ₮ — портал даяарх ГАНЦ дүрэм (`format.mnt`): бүтэн, мянгатын таслалтай.
@@ -4307,14 +4321,9 @@ function FinanceDetail({ budget, flt, onFlt }: { budget: Async<Budget> } & FltPr
           <Stat accent color={HUE[0]} value={num(bg.total)} unit={tr('₮')} label={tr('Төслийн нийт төсөвт өртөг')} />
           <Stat accent color={HUE[1]} value={num(bg.orderTotal)} unit={tr('₮')} label={tr('Захирамжийн нийт дүн')} />
           <Stat accent color={HUE[2]} value={num(bg.contract)} unit={tr('₮')} label={tr('Гэрээ байгуулсан дүн')} />
-          {/* ⚠️ 2026-08-31: «Өмнө шилжүүлсэн» нь ГЭРЭЭ ТУТМЫН багана БАЙХАА
-              БОЛЬСОН. Одоо зөвхөн `CF002 = 'ӨМНӨХ ШИЛЖҮҮЛСЭН'` гэсэн 2 мөр
-              бий, дүн нь `CF009`-д (нийт 4,058,800,000 ₮).
-              ⚠️ CF027/CF028 гэсэн КОД одоо ӨӨР баганыг заана — тэдгээр нь
-              санхүүжилтийн ЭХ ҮҮСВЭРИЙН («Нийслэлийн төсөв», «НЗД нөөц»)
-              гэрээний нийт дүн. Хуучин тайлбарыг дагаж тэднийг «өмнө
-              шилжүүлсэн» гэж уншвал алдаа шидэхгүй, зүгээр л худал тоо гарна. */}
-          <Stat accent color={HUE[3]} value={num(bg.transferred)} unit={tr('₮')} label={tr('Өмнө шилжүүлсэн')} />
+          {/* ⚠️ 2026-09-06: «Өмнө шилжүүлсэн» KPI ХАСАГДСАН — тэр дүн нь
+              хуучин `cashflow_0813`-ийн «ӨМНӨХ ШИЛЖҮҮЛСЭН» 2 мөрөөс гардаг
+              байсан бөгөөд шинэ `Cashflow_0904`-т ийм талбар ОГТ БАЙХГҮЙ. */}
           {/* Энэ хувь нь урьд нь ЗӨВХӨН зүүн жагсаалтын мөрөнд байсан —
               хэсгээ нээхэд алга болдог байв. */}
           <Stat accent color={HUE[4]}
@@ -4331,7 +4340,6 @@ function FinanceDetail({ budget, flt, onFlt }: { budget: Async<Budget> } & FltPr
             { key: 'total', label: tr('Төсөвт өртөг'), value: bg.total },
             { key: 'order', label: tr('Захирамжаар'), value: bg.orderTotal },
             { key: 'contract', label: tr('Гэрээгээр'), value: bg.contract },
-            { key: 'paid', label: tr('Шилжүүлсэн'), value: bg.transferred },
           ].map((x, i, a) => ({
             ...x,
             display: `${tug(x.value)} · ${bg.total ? pct((x.value / bg.total) * 100, 1) : '—'}`,
@@ -4339,7 +4347,7 @@ function FinanceDetail({ budget, flt, onFlt }: { budget: Async<Budget> } & FltPr
           }))}
         />
         <p className={o.note}>
-          {tr('Захирамжгүй')} <b>{tug(Math.max(0, bg.total - bg.orderTotal))}</b> {tr('· гэрээгүй')} <b>{tug(Math.max(0, bg.orderTotal - bg.contract))}</b> {tr('· шилжүүлээгүй')} <b>{tug(Math.max(0, bg.contract - bg.transferred))}</b>.
+          {tr('Захирамжгүй')} <b>{tug(Math.max(0, bg.total - bg.orderTotal))}</b> {tr('· гэрээгүй')} <b>{tug(Math.max(0, bg.orderTotal - bg.contract))}</b>.
         </p>
       </Panel>
   
@@ -4386,89 +4394,15 @@ function FinanceDetail({ budget, flt, onFlt }: { budget: Async<Budget> } & FltPr
         )}
       </Panel>
   
-      {/* ⚠️ Гарчгийн сарын завсрыг БЭХЛЭХГҮЙ (2026-08-31). Урьд нь «2025-10 →
-          2026-09» гэж кодод бичигдсэн байсан ч хуваарь одоо БАГАНА БИШ, МӨР
-          тул шинэ сар нэмэгдэхэд гарчиг чимээгүй хуучирна. Тэнхлэгийн эхний
-          ба сүүлийн шошгоос уншина. */}
-      <Panel title={
-        bg.months.length
-          ? tr('Санхүүжилтийн хуваарь · өссөн дүн ({0} → {1})',
-              bg.months[0].label, bg.months[bg.months.length - 1].label)
-          : tr('Санхүүжилтийн хуваарь · өссөн дүн')
-      }>
-        <Trend
-          color={ACCENT}
-          unit={tr(' ₮')}
-          fmt={num}
-          // ⚠️ `note`-ыг ХООСОН үлдээнэ: `axisTicks` нь `note ?? label`-ыг
-          //    хэвлэж, зөвхөн /^\d{4}-/ хэлбэрийг тайрдаг тул огноо биш note
-          //    нь тэнхлэгийн шошго болж эвдэрнэ.
-          points={bg.months.reduce<{ label: string; value: number }[]>((acc, m) => {
-            const prev = acc.length ? acc[acc.length - 1].value : 0;
-            acc.push({ label: m.label, value: prev + m.amount });
-            return acc;
-          }, [])}
-        />
-        <p className={o.note}>
-          {/* ⚠️ Хуучин тайлбар «сервис CF255-д тасардаг» гэдэг байв — тэр
-              хязгаарлалт УСТСАН: шинэ бүдүүвчид сар нь багана биш МӨР тул
-              шинэ сар нэмэхэд схем өөрчлөгдөхгүй. Муруй тэгш болох цорын ганц
-              шалтгаан нь одоо ХУВААРЬ өөрөө тэр сар хүртэл л бөглөгдсөн явдал. */}
-          {tr('Муруй сүүлийн сарын дараа тэгш болно — хуваарь тэндээс цааш хараахан бөглөгдөөгүй. Шинэ сар нэмэгдмэгц энэ график өөрөө уртсана.')}
-        </p>
-      </Panel>
-  
-      {/* НЭГ АЖИЛД НОГДОХ ДУНДАЖ ТӨСӨВ — дээрх «Ажлын төрлөөр» карт нь НИЙЛБЭР
-          өгнө: «Инженерийн дэд бүтэц 324,300,000,000 ₮ · 22 ажил». Нийлбэр нь
-          ажлын ТООНООС хамаардаг тул төрлүүдийн ЦАР ХҮРЭЭГ жишихэд тохирдоггүй
-          — 22 жижиг ажил 7 том ажлаас их гарч болно. Дундаж нь ажил тус бүрийн
-          хэмжээг харуулна. */}
-      <Panel title={tr('Нэг ажилд ногдох дундаж төсөв')} note={tr('ажлын төрлөөр')}>
-        {bg.byType.length === 0 ? <Empty label={tr('Ажлын төрөл бүртгэгдээгүй.')} /> : (
-          <Bars
-            items={heatBars(
-              bg.byType.filter((x) => x.n > 0).map((x) => ({ ...x, avg: x.value / x.n }))
-                .sort((a2, b2) => b2.avg - a2.avg),
-              (x) => ({
-                key: x.key,
-                label: x.label,
-                value: x.avg,
-                display: tr('{0} · {1} ажил', tug(x.avg), num(x.n)),
-              }),
-            )}
-          />
-        )}
-      </Panel>
+      {/* ⚠️ 2026-09-06: «Санхүүжилтийн хуваарь · өссөн дүн» карт ХАСАГДСАН —
+          сарын хуваарь нь хуучин `cashflow_0813`-ийнх байсан бөгөөд тэр
+          үйлчилгээ бүрмөсөн хаягдсан. */}
 
       {/* ══ ХӨРӨНГӨ ОРУУЛАЛТЫН ГУРВАН НЭМЭЛТ ЗҮСЭЛТ ══
           Бүгд аль хэдийн татсан `budget`-ээс — шинэ хүсэлтгүй. */}
 
-      {/* САР ТУТМЫН ХУВААРЬ — дээрх муруй нь ӨССӨН дүн: тэр нь «хаана хүрэх вэ»
-          гэдгийг сайн харуулдаг ч «аль сард хэдэн төгрөг хэрэгтэй вэ» гэсэн
-          мөнгөн урсгалын асуултыг НУУНА. Өссөн муруй дээр эгц өгсөх хэсэг нь
-          энд өндөр багана болж, төлөвлөлтийн оргил шууд харагдана. */}
-      <Panel title={tr('Сар тутмын санхүүжилтийн хуваарь')} note={tr('₮')}>
-        {bg.months.length < 2 ? <Empty label={tr('Хуваарь бүртгэгдээгүй.')} /> : (
-          <>
-            <Series
-              items={bg.months.map((m) => ({
-                key: m.label,
-                label: m.label.slice(2),
-                value: m.amount,
-                display: tug(m.amount),
-              }))}
-              height={120}
-              unit={tr(' ₮')}
-            />
-            <p className={o.note}>
-              {tr('Оргил сар')} <b>{
-                bg.months.reduce((a2, m) => (m.amount > a2.amount ? m : a2), bg.months[0]).label
-              }</b>{' · '}
-              {tug(Math.max(...bg.months.map((m) => m.amount)))}
-            </p>
-          </>
-        )}
-      </Panel>
+      {/* ⚠️ 2026-09-06: «Сар тутмын санхүүжилтийн хуваарь» карт ХАСАГДСАН —
+          мөн адил `cashflow_0813`-ийн сарын мөрүүд дээр тогтдог байв. */}
 
       <Panel title={tr('Багцаар — төсөвт өртөг')}>
         {bg.byPkg.length === 0 ? <Empty label={tr('Багцын задаргаа бүртгэгдээгүй.')} /> : (
