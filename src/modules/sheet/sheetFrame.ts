@@ -414,12 +414,20 @@ export function buildFrame(
   fillMs: number,
   pending: Record<string, string> = {},
   pendDate: Record<string, string> = {},
+  /**
+   * Хуваарийн САРЫН задаргаанаас гарах төлөвлөгөөт хувь — `computeAll`-д
+   * шууд дамжина.
+   * ⚠️ Дэлгэц дээрх тоо ба архивт бичигдэх тоо ЗААВАЛ ижил эх сурвалжтай
+   *    байх ёстой: `FillNew` задаргаагаар зурчихаад архивт шугаман утга
+   *    бичвэл батлагдсан хуудас нээхэд тоо чимээгүй өөрчлөгдөнө.
+   */
+  planPct?: (row: SheetRow, b: number) => number | null | undefined,
 ): Record<string, unknown>[] {
   if (!sc.f.fillDate)
     throw new Error(
       tr('«buglusun_ognoo» багана энэ үйлчилгээнд алга — архив үүсгэх боломжгүй тул нийтлэлийг зогсоов (AGOL дээр багана нэмнэ үү).'),
     );
-  const c = computeAll(rows, nBld, asOf, pending, pendDate, hasObyem);
+  const c = computeAll(rows, nBld, asOf, pending, pendDate, hasObyem, planPct);
 
   /*
    * АЖЛЫН КОД (`Des_dugaar`) — ЗӨВХӨН ДУТУУ мөрд олгоно.

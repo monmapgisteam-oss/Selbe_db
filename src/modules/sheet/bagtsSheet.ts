@@ -830,7 +830,22 @@ export function computeAll(
    * үлдэж, бүлгийн дундажид оролцсоор байна.
    */
   hasObyem: readonly boolean[] = [],
+  /**
+   * САРЫН ЗАДАРГААНААС гарах төлөвлөгөөт хувь (0–1) — байвал `planAt`-ыг
+   * ОРЛОНО (2026-09-06-ны шаардлага).
+   *
+   * ⚠️ ФУНКЦЭЭР дамжуулсан шалтгаан: задаргаа нь ТУСДАА үйлчилгээнд
+   *    (`huvaari_obyem`) байх бөгөөд `bagtsSheet` нь сүлжээ мэддэггүй цэвэр
+   *    тооцооны давхарга хэвээр үлдэх ёстой. Дуудагч нь `des` ба блокийн
+   *    шошгоор хайж, бэлэн хувийг өгнө.
+   * ⚠️ `null` буцаавал ХУУЧИН зам (шугаман интерполяци) хэвээр —
+   *    «задаргаагүй» ажлыг 0 гэж уншвал бүхэл багц худал хоцорсон харагдана.
+   */
+  planPct?: (row: SheetRow, b: number) => number | null | undefined,
 ): Calc[] {
+  /** Задаргаа байвал түүгээр, эс бөгөөс огноогоор шугаман интерполяци */
+  const planOf = (i: number, b: number, s: number | null, e: number | null) =>
+    planPct?.(rows[i], b) ?? planAt(asOf, s, e);
   const kids = childIndexes(rows);
   const par = parentIndexes(rows);
   const n = nBld;
@@ -975,13 +990,14 @@ export function computeAll(
           start[b] != null &&
           end[b] != null
         )
-          plan[b] = planAt(asOf, start[b], end[b]);
+          plan[b] = planOf(i, b, start[b], end[b]);
       }
     } else {
       for (let b = 0; b < n; b++) {
         // Excel `9F`-ийн T багана:
         //   `IF($R$5<=AF,0,IF($R$5>=AG,1,($R$5-AF)/(AG-AF)))`
-        plan[b] = planAt(asOf, start[b], end[b]);
+        // ⚠️ Сарын задаргаатай бол S-муруй давамгайлна (`planOf`).
+        plan[b] = planOf(i, b, start[b], end[b]);
 
         /* ── ГҮЙЦЭТГЭЛ ОБЬЁМООР (2026-08-20) ──────────────────────────────
          * Нүд бүр ХОЁР тусдаа тоог агуулна:
