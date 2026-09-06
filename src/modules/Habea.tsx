@@ -600,8 +600,10 @@ function pickRows(id: string, a: Record<string, unknown>): [string, string][] {
     [tr('Блок'), text(a[C.blok], '—')],
     [tr('Төлөв'), text(a[C.tuluv], '—')],
     [tr('Өндөр'), tr('{0} м', num(nn(a[C.undur])))],
-    // ⚠️ test_data: цэг [8] «сумны», бүс [7] хуучин «суны» нэртэй — хоёуланг унших
-    [tr('Сумны урт'), tr('{0} м', num(nn(a[C.sunUrt] ?? a[C.sunUrtBuf])))],
+    /* ⚠️ Хоёр бичиглэл уншдаг байсан зам ХАСАГДЛАА (2026-09-04): эх
+       үйлчилгээнд цэг [50] ба бүс [51] ХОЁУЛАА «суны» гэж бичдэг. Хоёр нэр нь
+       зөвхөн test_data-гийн хуулбарын үлдэгдэл байв. */
+    [tr('Сумны урт'), tr('{0} м', num(nn(a[C.sunUrt])))],
   ];
   if (id === 'habea:buffer') rows.push([tr('Аюулгүйн радиус'), tr('{0} м', num(nn(a['BUFF_DIST'])))]);
   return rows;
@@ -862,6 +864,14 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   /* Кран */
   const craneByStatus = countBy(fCrane, (x) => x.tuluv)
     .map((x) => ({ ...x, color: CRANE_HUE[x.label] ?? 'var(--ink-3)' }));
+  /**
+   * ИДЭВХТЭЙ кран — `Tuluv` нь «Буусан» БИШ бүх кран.
+   *
+   * ⚠️ «Одоо байгаа»-г ЯГ тулгахгүй, «Буусан»-ыг ХАСНА: эх үйлчилгээнд
+   * «Шинээр нэмэгдсэн» гэсэн гурав дахь утга ч гарч болзошгүй
+   * (`CRANE_HUE`-д бүртгэлтэй) бөгөөд тэр нь ажиллаж байгаа кран.
+   */
+  const craneUp = fCrane.filter((x) => x.tuluv !== 'Буусан').length;
   const craneByPkg = byPkg(cranes, () => 1);
   const avgUndur = fCrane.length ? fCrane.reduce((s, x) => s + x.undur, 0) / fCrane.length : 0;
   const avgSum = fCrane.length ? fCrane.reduce((s, x) => s + x.sunUrt, 0) / fCrane.length : 0;
@@ -964,10 +974,21 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         {kpiTile(pkg || co ? '—' : num(labor.cum.ajiltan), tr('Нийт ажилтан'))}
         {kpiTile(pkg || co ? '—' : num(labor.cum.hunTsag), tr('Хүн цаг'))}
         {kpiTile(pkg || co ? '—' : num(labor.cum.tehnik), tr('Нийт ажилласан техник'))}
-        {/* ⚠️ «Идэвхтэй кран N/N» байсныг ГАНЦ тоо болгов: `Tuluv`-д бүх кран
-            «Одоо байгаа» тул идэвхтэй/нийт харьцаа үргэлж 50/50 гарч утгагүй
-            байв. Одоо зүгээр л шүүлтэд тохирсон краны тоо. */}
-        {kpiTile(num(fCrane.length), tr('Кран'))}
+        {/**
+          * ⚠️ «ИДЭВХТЭЙ/НИЙТ» СЭРГЭВ (2026-09-04). Урьд нь ганц тоо болгож
+          * хураасан шалтгаан нь ЭХ СУРВАЛЖИД байсан: test_data-гийн хуулбар
+          * `Tuluv`-д бүх 50 кранг «Одоо байгаа» гэж бичсэн тул харьцаа
+          * үргэлж 50/50 гарч утгагүй байв. Эх үйлчилгээ рүү шилжсэнээр
+          * «Буусан» кран ялгарах болсон тул харьцаа дахин утгатай.
+          *
+          * ⚠️ ЯЛГАА БАЙХГҮЙ бол ГАНЦ тоо хэвээр: ирээдүйд эх сурвалж дахин
+          * жигд болвол «50/50» гэсэн утгагүй заалт өөрөө арилна.
+          */}
+        {kpiTile(
+          craneUp === fCrane.length ? num(fCrane.length) : `${num(craneUp)}/${num(fCrane.length)}`,
+          tr('Кран'),
+          craneUp === fCrane.length ? undefined : tr('идэвхтэй'),
+        )}
         {kpiTile(num(fInc.length), tr('Осол, зөрчил'))}
         {kpiTile(daysSince == null ? '—' : num(daysSince), tr('Сүүлийн ослоос хойш'), daysSince == null ? undefined : tr('хоног'))}
       </div>

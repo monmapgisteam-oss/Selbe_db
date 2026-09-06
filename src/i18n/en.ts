@@ -3375,7 +3375,8 @@ const en: Record<string, string> = {
   "Гүйцэтгэл нийтлэгдсэн ч хяналтад ИЛГЭЭГДСЭНГҮЙ — хянагч үүнийг харахгүй.": "The progress was published but NOT submitted for review — reviewers cannot see it.",
   "Энэ өдрийн гүйцэтгэл хяналтад илгээгдсэн. Засвар оруулаад дахин нийтэлж болно.": "This day’s progress has been submitted for review. You can edit and publish again.",
   "Энэ хуудас зөвхөн ХАРАХ горимд нээгдсэн (хяналтын харагдац) — эндээс засвар хийгдэхгүй.": "This page is open in VIEW-ONLY mode (review view) — no edits can be made here.",
-  "Гүйцэтгэлийн обьём ба огноог зөвхөн энэ багцад томилогдсон гүйцэтгэгч бөглөнө — та зөвхөн мөр нэмэх эрхийнхээ хүрээнд засна.": "Only the contractor assigned to this package can fill in progress volumes and dates — you may only edit within your add-row permission."
+  "Гүйцэтгэлийн обьём ба огноог зөвхөн энэ багцад томилогдсон гүйцэтгэгч бөглөнө — та зөвхөн мөр нэмэх эрхийнхээ хүрээнд засна.": "Only the contractor assigned to this package can fill in progress volumes and dates — you may only edit within your add-row permission.",
+  "идэвхтэй": "active",
 };
 
 export default en;
