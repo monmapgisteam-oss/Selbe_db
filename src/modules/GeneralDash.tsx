@@ -6,24 +6,25 @@ import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
 import { MapTools } from '@/components/MapTools';
 import { LayerCatalog } from '@/components/LayerCatalog';
 import { OpacityPanel } from '@/components/OpacityPanel';
-import { Section, Stats, Stat, Data, Empty, Bars, monotonePath } from '@/components/ui';
+import { Section, Stats, Stat, Data, Empty, Bars, monotonePath, TIP_RULE } from '@/components/ui';
 import { useLayerPicks } from '@/lib/useLayerPicks';
 import { useAsync } from '@/lib/useAsync';
 import { usePlanTotals, qtyText } from '@/lib/totals';
 import { loadLandStatus } from '@/lib/land';
 import { overlapLeftParcels } from '@/lib/parcelOverlap';
+import { loadPkgOverlaps } from '@/lib/pkgSaad';
 import {
   /* ⚠️ `PKG_BY_FAMILY` нь ЗӨВХӨН «Ерөнхий төлөвлөгөө» картын шугам
      сүлжээний нийлбэр уртад хэрэглэгдэнэ — газар чөлөөлөлтийн давхцал нь
      2026-09-04-нд гэр бүлээс ДЭД БАГЦ руу шилжсэн. */
-  PKG_BY_FAMILY, BUILDING, LAYER_BY_ID, ZONE_FIELD, ZONE_NONE, type PkgFamily,
+  PKG_BY_FAMILY, BUILDING, LAYER_BY_ID, PARCEL_LEFT, ZONE_FIELD, ZONE_NONE, type PkgFamily,
 } from '@/lib/services';
 import { queryStats, count } from '@/lib/query';
 import { cat, mnt, num, pct } from '@/lib/format';
 import {
   loadGdashCf, loadContractSum, loadHseNow, loadReasonOids, loadSubPkgLayers,
-  chartTypeCost, chartTypeCount, chartSourceCount, chartSourceAmount, chartNoteAmount,
-  timeline, grainOf, kpisOf, inPeriod, yearsOf, periodActive,
+  chartTypeCost, chartTypeCount, chartSourceMerged, chartNoteAmount,
+  timeline, grainOf, kpisOf, inPeriod, yearsOf, periodActive, activeSubPkgTypes,
   type Grain,
   NO_PERIOD,
   type CfRow, type Period, type SubBar, type SubPkg,
@@ -37,9 +38,9 @@ import g from './generalDash.module.css';
  *   ┌──────────────────────────────────────────────────────────┐
  *   │ Жил · Улирал · Сар — БҮХ картад нэгэн зэрэг үйлчилнэ     │
  *   ├────────────┬──────────────────────────┬──────────────────┤
- *   │ САНХҮҮ     │ индикаторын зурвас       │ ГАЗАР ЧӨЛӨӨЛӨЛТ  │
- *   │ 4 чарт     │ ГАЗРЫН ЗУРАГ (2D/3D/BIM) │ ЕРӨНХИЙ ТӨЛӨВЛ.  │
- *   │            │ S-МУРУЙ                  │ ХАБ              │
+ *   │ САНХҮҮ     │ индикаторын зурвас       │ ХАБ              │
+ *   │ 4 чарт     │ ГАЗРЫН ЗУРАГ (2D/3D/BIM) │ ГАЗАР ЧӨЛӨӨЛӨЛТ  │
+ *   │            │ S-МУРУЙ                  │ ЕРӨНХИЙ ТӨЛӨВЛ.  │
  *   └────────────┴──────────────────────────┴──────────────────┘
  *
  * ⚠️ ЭНЭ НЬ «Төслийн дэлгэрэнгүй мэдээлэл» (`Dashboard.tsx`)-ЫГ ОРЛОХГҮЙ.
@@ -48,7 +49,7 @@ import g from './generalDash.module.css';
  * хуваалцана.
  *
  * ⚠️ ХУГАЦААНЫ ШҮҮЛТ нь ЗӨВХӨН cashflow-д тулгуурласан картуудад (зүүн 4 чарт,
- * S-муруй, индикатор) үйлчилнэ. Газар чөлөөлөлт, ерөнхий төлөвлөгөө, ХАБ нь
+ * S-муруй, индикатор) үйлчилнэ. ХАБ, газар чөлөөлөлт, ерөнхий төлөвлөгөө нь
  * ажлын төлөвлөгөөт хугацааны талбаргүй тул тэднийг хуурамчаар шүүхгүй —
  * картын толгойд «Бүх хугацаа» гэж ИЛ бичнэ.
  */
@@ -83,6 +84,15 @@ export function GeneralDash({
   const [toolsOn, setToolsOn] = useState(false);
   const [dimsOn, setDimsOn] = useState(false);
   const [opacity, setOpacity] = useState<Record<string, number>>({});
+  /**
+   * ГАЗАР ЧӨЛӨӨЛӨЛТИЙН ШҮҮЛТ — сонгосон шалтгааны нэгж талбарууд.
+   *
+   * ⚠️ ЗУМ ХАНГАЛТГҮЙ: «дүйцүүлсэн» дээр дарахад 3 талбар руу ойртдог ч бусад
+   * 2,085 талбар нь дэлгэц дүүрэн хэвээр үлдэж, аль гурав нь болох нь
+   * ялгагдахгүй байв (хэрэглэгчийн шүүмж, 2026-09-06). Тиймээс
+   * `definitionExpression`-ээр бусдыг нь БҮРМӨСӨН хасна.
+   */
+  const [parcelWhere, setParcelWhere] = useState<string | null>(null);
 
   /**
    * ХАЖУУГИЙН ХОЁР БАГАНЫГ ЧИРЖ ӨРГӨСГӨНӨ — «Төслийн дэлгэрэнгүй мэдээлэл»,
@@ -92,6 +102,7 @@ export function GeneralDash({
    * (дэлгэцийн хэмжээнээс хамаарсан) утгад буцна.
    */
   const side = useSideResize('gdash');
+
   /* Газрын зургийн API — дэд багц дарахад тэр давхарга руу ойртуулна */
   const map = useMap();
 
@@ -102,6 +113,31 @@ export function GeneralDash({
 
   const totals = usePlanTotals(zone, true);
   const cf = useAsync(loadGdashCf, []);
+
+  /**
+   * ШҮҮЛТЭД БАГТСАН дэд багц → ажлын төрлүүд.
+   *
+   * ⚠️ Баруун баганын хоёр карт (`LandCard`-ын «Ажлын төрлөөр давхцаж буй»,
+   * `SaadCard`) нь cashflow дээр тулгуурладаг тул хугацааны шүүлтийг ДАГАХ
+   * ёстой. Урьд нь тэдгээр нь өөрсдийн кэшлэгдсэн бүтэн жагсаалтаас уншдаг
+   * байсан тул шүүлт тавихад ч БҮГД харагдсаар байв (хэрэглэгчийн шүүмж,
+   * 2026-09-06).
+   *
+   * ⚠️ Шүүлт идэвхгүй үед энэ нь БҮХ мөрөөс угсрагдана — өөрөөр хэлбэл
+   * жагсаалт бүрэн хэвээр. Тусдаа «шүүлттэй юу» салаа хэрэггүй.
+   */
+  const active = useMemo(
+    () => (cf.state === 'ready'
+      ? activeSubPkgTypes(cf.data.filter((r) => inPeriod(r, period)))
+      : null),
+    [cf, period],
+  );
+  /* ⚠️ Шүүлт ИДЭВХГҮЙ бол `null` — `SaadCard`-ийн `keys` тайлбарыг үз */
+  const activeKeys = useMemo(
+    () => (periodActive(period) && active ? new Set(active.keys()) : null),
+    [period, active],
+  );
+
   const contracts = useAsync(loadContractSum, []);
   /* ⚠️ Багцын нэгтгэлээс гүйцэтгэл татахаа БОЛИВ (2026-09-04): `Cashflow_0904`
      дээр `Guitsetgel_huwi` бүрэн бөглөгдсөн тул мөр бүр өөрийн хувьтай.
@@ -165,7 +201,15 @@ export function GeneralDash({
             тусад нь салгах боломжгүй. Глобал нэрсээр (§ЗУРГИЙН ДЭЭРХ
             ТОВЧНУУД) энэ харагдацад л нуугдана. */}
         <div className={g.hero} data-tools={toolsOn ? '1' : '0'} data-dims={dimsOn ? '1' : '0'}>
-          <MapCanvas dim={dim} visible={visible} opacity={opacity} zone={zone} uniform onPick={pick} />
+          <MapCanvas
+            dim={dim}
+            visible={visible}
+            opacity={opacity}
+            zone={zone}
+            layerWhere={{ [PARCEL_LAYER]: parcelWhere }}
+            uniform
+            onPick={pick}
+          />
 
           {/* Дээш хураах — 2D/3D/BIM зурвас (зургийн дээд төвд) */}
           <button
@@ -227,11 +271,28 @@ export function GeneralDash({
         </div>
 
         <div className={g.curve}>
-        <Section title={tr('Нийт төслийн S-муруй ба олгосон дүн')}>
+        {/* ⚠️ Домог нь `note` пропоор ТОЛГОЙД — `Section` түүнийг гарчгийн
+            баруун захад тавьдаг. Чартын дор байхад нүд «муруй юу вэ» гэж
+            асуухдаа доош гүйж, буцаж ирэх шаардлагатай болдог. */}
+        <Section
+          title={tr('Хөрөнгө оруулалтын гүйцэтгэл')}
+          note={<TimelineKey />}
+        >
           <Data q={cf} minH={190}>
             {(rows) => (
               <Timeline
-                rows={rows.filter((r) => inPeriod(r, period))}
+                /*
+                 * ⚠️ МӨРҮҮДИЙГ УРЬДЧИЛАН ШҮҮХГҮЙ — `timeline()` ӨӨРӨӨ
+                 * тасалдаг бөгөөд ХУРИМТЛАЛЫГ таслахаас ӨМНӨ бодох ёстой.
+                 * Урьд нь энд `inPeriod`-оор шүүж өгдөг байсан тул тухайн
+                 * үеэс ӨМНӨ дууссан ажлууд хуримтлалд ОРОЛЦОХГҮЙ, муруй
+                 * доогуур эхэлдэг байв: 2027-г сонгоход 96.0% байх ёстой
+                 * цэг 81.6% гэж гарч байлаа (2026-09-06-ны аудит).
+                 *
+                 * ⚠️ Багананы дүнд энэ нөлөөлөхгүй: сонгосон үеэс гадуурх
+                 * ажлын мөнгө тэр үеийн саруудад ямар ч байсан ногдохгүй.
+                 */
+                rows={rows}
                 period={period}
                 /* ⚠️ Нарийвчлал нь СОНГОСОН ШҮҮЛТИЙН ТҮВШИНТЭЙ таарна: жил →
                    жилээр, улирал → улиралаар, сар → сараар. */
@@ -248,14 +309,33 @@ export function GeneralDash({
             карт нь түүнд шууд хүрэхгүй. Зурагт гаргаад л орхихгүй, түүн рүү
             ОЙРТУУЛНА — 42 давхаргын аль нэг нь дэлгэцийн гадна байвал
             «юу ч болсонгүй» гэж уншигдана. */}
+        <HseCard />
         <LandCard
+          active={active}
+          onShowLayers={(ids) => {
+            setVisible((v) => [...new Set([...v, ...ids])]);
+            if (ids[0]) map.zoomToLayer(ids[0]);
+          }}
+          /* ⚠️ Шалтгаан сонгоход зураг ТЭР талбарууд руу ойртоно: жагсаалт
+             дээрх «63» гэдэг тоо ХААНА байгаа нь эс бөгөөс уншигдахгүй.
+             Давхаргыг ЗААВАЛ асаана — унтарсан давхарга руу зум хийвэл
+             «юу ч болсонгүй» гэж уншигдана. */
+          onZoomParcels={(oids) => {
+            if (!oids || oids.length === 0) { setParcelWhere(null); return; }
+            const where = `${PARCEL_LEFT.oid} IN (${oids.join(',')})`;
+            setParcelWhere(where);
+            setVisible((v) => [...new Set([...v, PARCEL_LAYER])]);
+            map.zoomToWhere(PARCEL_LAYER, where);
+          }}
+        />
+        <SaadCard
+          keys={activeKeys}
           onShowLayers={(ids) => {
             setVisible((v) => [...new Set([...v, ...ids])]);
             if (ids[0]) map.zoomToLayer(ids[0]);
           }}
         />
         <PlanCard totals={totals} />
-        <HseCard />
       </aside>
       </div>
     </div>
@@ -473,7 +553,14 @@ function KpiStrip({
             хэрэгтэй бол дараалал нь өөрөө хангалттай: нийт төсөв эхэнд. */}
         <Stat icon="calc" value={mntShort(k.budget)} label={tr('Нийт төсөв')} />
         <Stat icon="file" value={contracts ? mntShort(k.contract) : '…'} label={tr('Нийт гэрээний дүн')} />
-        <Stat icon="chart" value={k.progress == null ? '—' : pct(k.progress)} label={tr('Гүйцэтгэлийн хувь')} />
+        {/* ⚠️ ХУВЬ + МӨНГӨ хамт: «19.1%» гэдэг нь ямар хэмжээний ажил болохыг
+            дангаараа хэлдэггүй. Мөнгө нь `Σ өртөг × хувь` — захирамжаар
+            олгосон дүн БИШ (`Kpi.progressAmount`-ийн тайлбарыг үз). */}
+        <Stat
+          icon="chart"
+          value={k.progress == null ? '—' : `${pct(k.progress)} · ${mntShort(k.progressAmount)}`}
+          label={tr('Гүйцэтгэлийн хувь')}
+        />
         <Stat icon="layers" value={num(k.packages)} label={tr('Багц ажлын тоо')} />
         <Stat icon="grid" value={num(k.types)} label={tr('Нийт төрлийн тоо')} />
         <Stat icon="polygon" value={landPct == null ? '…' : pct(landPct)} label={tr('Газар чөлөөлөлт')} />
@@ -580,7 +667,23 @@ const mntShort = (v: number): string => {
 };
 
 /** МӨНГӨН чарт — мөрөнд «хувь · тоймлосон дүн», hover-т бүтэн задаргаа */
-const moneyBars = (items: SubBar[], subLabel?: { has: string; none: string }) => {
+const moneyBars = (
+  items: SubBar[],
+  subLabel?: { has: string; none: string },
+  /**
+   * ЭЗЛЭХ ХУВИЙН СУУРИЙН НЭР.
+   *
+   * ⚠️ Анхдагч нь «Нийт төсөв» — учир нь чартын мөрүүдийн нийлбэр нь яг
+   * `Урьдчилсан төсөвт өртөг`-ийн нийлбэртэй тэнцдэг (төрөл, тайлбараар
+   * бүлэглэсэн чартууд).
+   *
+   * ⚠️ ЭХ ҮҮСВЭРИЙН чартад ЭНЭ ҮНЭН БИШ: захирамжийн эх үүсвэрүүдийн нийлбэр
+   * 2.46 их наяд бөгөөд нийт төсвөөс 55.4 тэрбумаар БАГА (захирамж бүх ажилд
+   * бүрэн бүртгэгдээгүй). Тэнд «Нийт төсвийн 60.5%» гэж бичих нь худал —
+   * жинхэнэ суурь нь эх үүсвэрүүдийн нийлбэр (2026-09-06-ны аудит).
+   */
+  base: string = tr('Нийт төсвийн'),
+) => {
   /*
    * ⚠️ ДҮНГҮЙ АНГИЛАЛ МӨНГӨН ЧАРТАД ГАРАХГҮЙ (2026-09-04, хэрэглэгчийн
    * шийдвэр). «Урьдчилсан төсөвт өртөг» нь хоосон мөрүүд «0.0% · —» гэсэн
@@ -599,9 +702,9 @@ const moneyBars = (items: SubBar[], subLabel?: { has: string; none: string }) =>
   return byBar(shown.map((i) => {
     const share = total > 0 ? pct((i.value / total) * 100, 1) : null;
     /* ⚠️ БҮТЭН ӨГҮҮЛБЭР: «Нийт дүнгийн 1.2%» гэсэн тасархай хэллэг нь юуны
-       1.2% болохыг хэлдэггүй. Суурь нь ҮРГЭЛЖ нийт төсөв (индикаторын
-       «Нийт төсөв»-тэй ижил тоо) тул түүнийг нэрлэнэ. */
-    const hint = [tr('Нийт төсвийн {0}-ийг эзэлж байна', share ?? '—')];
+       1.2% болохыг хэлдэггүй. Суурийг ЗААВАЛ нэрлэнэ — `base`-ийн тайлбарыг
+       үз (чарт бүрийн суурь ижил БИШ). */
+    const hint = [tr('{0} {1}-ийг эзэлж байна', base, share ?? '—')];
     /*
      * ⚠️ ТЭГ ДЭД УТГЫГ Ч ХАРУУЛНА (`> 0` БИШ). 2026-09-04-нд «Гадна тохижилт
      * 14 / 0 гэрээтэй» мөр нь дэд утгагүй гэж тооцогдож БҮТЭН өтгөн будагдаж,
@@ -621,6 +724,38 @@ const moneyBars = (items: SubBar[], subLabel?: { has: string; none: string }) =>
       hint.push(i.sub > 0
         ? `${subLabel.has}: ${mntShort(i.sub)} (${i.value > 0 ? pct((i.sub / i.value) * 100, 0) : '—'})`
         : subLabel.none);
+    }
+    /*
+     * ОЛГОСОН ДҮН — захирамжаар (2026-09-06, хэрэглэгчийн хүсэлт).
+     *
+     * ⚠️ Хувийн СУУРЬ нь ЭНЭ МӨРИЙН төсөв, нийт төсөв БИШ: «87 тэрбумаас
+     * хэдийг олгосон» гэсэн асуулт нь мөрийн дотоод харьцаа. Дээрх мөр
+     * («Нийт төсвийн …») нь гадаад харьцааг аль хэдийн хэлсэн — хоёуланг нь
+     * нэг суурьтай бичвэл нэг нь илүүц болно.
+     */
+    /*
+     * АЖЛЫН ТОО — нэгтгэсэн чартын хоёр дахь хэмжигдэхүүн (2026-09-06).
+     *
+     * ⚠️ Багана нь МӨНГӨӨР хэмжигдсэн хэвээр: эдгээр мөр нь тоог зөвхөн
+     * ХЭЛНЭ, зурвасын уртад ОГТ нөлөөлөхгүй.
+     */
+    if (i.count != null) {
+      hint.push(tr('{0} ажил', num(i.count)));
+      if (i.countSub != null) {
+        hint.push(i.countSub > 0
+          ? `${tr('Гэрээ хийсэн')}: ${num(i.countSub)} (${i.count > 0 ? pct((i.countSub / i.count) * 100, 0) : '—'})`
+          : tr('Нэг ч гэрээ хийгдээгүй'));
+      }
+    }
+    if (i.alloc != null) {
+      /* ⚠️ ОЛГОЛТ нь дээрх мөрүүдээс ӨӨР ЭХ СУРВАЛЖТАЙ (захирамж, гүйцэтгэл
+         биш) тул зураасаар тусгаарлана — эс бөгөөс нэг бүлэг мэт уншигдана. */
+      hint.push(TIP_RULE);
+      hint.push(i.alloc > 0
+        ? tr('Олгосон: {0} ({1})',
+            mntShort(i.alloc),
+            i.value > 0 ? pct((i.alloc / i.value) * 100, 1) : '—')
+        : tr('Захирамжаар олголт бүртгэгдээгүй'));
     }
     return {
       key: i.key,
@@ -708,8 +843,7 @@ function FinCharts({
 
   const c1 = useMemo(() => chartTypeCost(sel), [sel]);
   const c2 = useMemo(() => chartTypeCount(sel), [sel]);
-  const c3 = useMemo(() => chartSourceCount(sel), [sel]);
-  const c3m = useMemo(() => chartSourceAmount(sel), [sel]);
+  const c3 = useMemo(() => chartSourceMerged(sel), [sel]);
   const c4 = useMemo(() => chartNoteAmount(sel), [sel]);
 
   return (
@@ -734,19 +868,16 @@ function FinCharts({
         />
       </Section>
 
-      {/* ⚠️ ХОЁР ЧАРТ: «хэдэн ажил» ба «хэдэн төгрөг» нь эрс өөр хариу өгдөг —
-          Нийслэлийн төсөв 2 ажилтай ч 4.3 тэрбум, Үнэт цаас 51 ажилтай бөгөөд
-          1,488 тэрбум. Аль нэгийг нь л үзүүлбэл нөгөө талын дүр зураг алга. */}
-      <Section title={tr('Захирамжийн эх үүсвэр — мөнгөн дүн')}>
-        <Bars color={BAR_HUE} items={moneyBars(c3m)} limit={8} />
-      </Section>
-
-      <Section title={tr('Захирамжийн эх үүсвэр — төслийн тоо')}>
+      {/* ⚠️ НЭГ ЧАРТ (2026-09-06, хэрэглэгчийн хүсэлт): багана нь МӨНГӨ,
+          ажлын тоо нь hover-т. Хоёр чартын МЭДЭЭЛЭЛ БҮРЭН нийлсэн — юу ч
+          хасагдаагүй. Урьд нь дараалал нь зөрдөг тул (мөнгөөр Үнэт цаас
+          тэргүүлж, тоогоор Нийслэлийн төсөв) нэг ангилал хоёр өөр байрлалд
+          харагддаг байв. */}
+      <Section title={tr('Захирамжийн эх үүсвэр')}>
+        {/* ⚠️ СУУРЬ нь «нийт төсөв» БИШ — `moneyBars`-ийн `base`-ийн тайлбарыг үз */}
         <Bars
           color={BAR_HUE}
-          max={100}
-          items={countBars(c3, { one: tr('ажил'), many: tr('ажлын') },
-            { has: tr('Гэрээ хийсэн'), none: tr('Нэг ч гэрээ хийгдээгүй') })}
+          items={moneyBars(c3, undefined, tr('Захирамжийн нийт дүнгийн'))}
           limit={8}
         />
       </Section>
@@ -778,10 +909,40 @@ function FinCharts({
  */
 function Timeline({ rows, grain, period }: { rows: CfRow[]; grain: Grain; period: Period }) {
   const pts = useMemo(() => timeline(rows, grain, period), [rows, grain, period]);
+  /**
+   * ЗААСАН үе — hover, эсвэл заагаагүй үед СҮҮЛИЙНХ.
+   *
+   * ⚠️ ШОШГЫГ ХАДГАЛНА, гэхдээ ХОЁР ТУСДАА ДАВХАРТ ба ШИГШСЭН байдлаар:
+   *   · хувь → цэгийн ДЭЭР (муруйн давхар),
+   *   · мөнгөн дүн → тэнхлэгийн шошгын ДООР (мөнгөний давхар).
+   * Урьд нь хоёулаа зурвасын дотор нэг өндөрт өрсөлдөж, 2024–2025-ын
+   * шошгууд давхарлаж, чарт уншигдахгүй болсон байв. Уншилтын мөр нь
+   * ШИГШИГДЭЖ гараагүй үеийн тоог hover-оор гүйцээнэ.
+   */
+  const [hov, setHov] = useState<number | null>(null);
   if (!pts.length) return <Empty label={tr('Төлөвлөгөөт хугацаатай ажил олдсонгүй')} />;
 
   const maxAmt = Math.max(1, ...pts.map((p) => p.amount));
   const n = pts.length;
+  const at = hov != null && hov < n ? hov : n - 1;
+  const cur = pts[at];
+  /* ⚠️ ШОШГЫГ ШИГШИНЭ: 36 сар бүгдийг бичвэл давхарлана. Эхний, сүүлийн
+     ба заасан үе ҮРГЭЛЖ гарна — тэднийг алдвал муруйн эхлэл/төгсгөл
+     уншигдахгүй. */
+  const step = Math.max(1, Math.ceil(n / 9));
+  const shown = (i: number) => i === at || i === 0 || i === n - 1 || i % step === 0;
+  /**
+   * НАЛУУ ТЭНХЛЭГ — 12-оос олон үе сонгогдоход.
+   *
+   * ⚠️ Хэвтээ шошго нь баганын өргөнөөс («2026-06» ≈ 44px) урт болмогц
+   * хөршүүдтэйгээ ХОЛИЛДДОГ. Налуулбал шошго бүр өөрийн диагональ зурваст
+   * суух тул БҮГДИЙГ нь бичиж болно — шигшилт хэрэггүй.
+   *
+   * ⚠️ Налуу үед мөнгөн дүнг тэнхлэгээс ХАСНА: хоёр налуу мөр бие биенийхээ
+   * дундуур гарна. Тэр тоо уншилтын мөрөнд hover-оор гарсаар байна.
+   */
+  const tilt = n > 12;
+
   /* ⚠️ Цэгийн х-байрлал нь баганын ТӨВД — эс бөгөөс муруй баганаас хазайна */
   const path = monotonePath(pts.map((p, i) => ({
     x: ((i + 0.5) / n) * 100,
@@ -790,11 +951,24 @@ function Timeline({ rows, grain, period }: { rows: CfRow[]; grain: Grain; period
 
   return (
     <div className={g.tl}>
+      {/* Уншилтын мөр — заасан (эсвэл сүүлийн) үеийн хоёр тоо НЭГ газар */}
+      <div className={g.tlHead}>
+        <span className={g.tlHeadLbl}>{cur.label}</span>
+        <b className={g.tlHeadPct}>{pct(cur.pct)}</b>
+        <span className={g.tlHeadAmt}>
+          {cur.amount > 0 ? mntShort(cur.amount) : tr('олголтгүй')}
+        </span>
+      </div>
+
       <div className={g.tlPlot}>
         <div className={g.tlBars}>
-          {pts.map((p) => (
-            <div key={p.key} className={g.tlCol} title={`${p.label} · ${mntShort(p.amount)}`}>
-              <span className={g.tlVal}>{p.amount > 0 ? mntShort(p.amount) : ''}</span>
+          {pts.map((p, i) => (
+            <div
+              key={p.key}
+              className={`${g.tlCol} ${i === at ? g.tlColOn : ''}`}
+              onMouseEnter={() => setHov(i)}
+              onMouseLeave={() => setHov((v) => (v === i ? null : v))}
+            >
               <i className={g.tlBar} style={{ height: `${(p.amount / maxAmt) * 100}%` }} />
             </div>
           ))}
@@ -804,31 +978,67 @@ function Timeline({ rows, grain, period }: { rows: CfRow[]; grain: Grain; period
           <path className={g.tlLine} d={path} fill="none" vectorEffect="non-scaling-stroke" />
         </svg>
 
+{/*
+          * Цэг — шигшигдсэн үед хувийн шошготой. Заасан цэг томорно.
+          *
+          * ⚠️ ТУСДАА БҮРХҮҮЛД: `bottom: %` нь ХАМГИЙН ОЙРЫН байрлуулсан
+          * өвгөөс тоологддог. Урьд нь тэр нь `.tlPlot` байсан бөгөөд түүний
+          * өндөрт 20px padding НЭМЭГДДЭГ тул цэг бүр муруйнаасаа яг тэр
+          * 20px-ээр ДЭЭГҮҮР зурагдаж, шошго нь бүр 29px тасардаг байв
+          * (хэрэглэгчийн шүүмж, 2026-09-06). Энэ бүрхүүл нь SVG-тэй ЯГ ижил
+          * `inset`-тэй — хоёр давхар нэг хуваарьтай болов.
+          */}
+        <div className={g.tlDots}>
+          {pts.map((p, i) => (
+            <span
+              key={p.key}
+              className={`${g.tlDot} ${i === at ? g.tlDotOn : ''}`}
+              style={{
+                left: `${((i + 0.5) / n) * 100}%`,
+                bottom: `${Math.max(0, Math.min(100, p.pct))}%`,
+              }}
+            >
+              {shown(i) && <b>{pct(p.pct)}</b>}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* ⚠️ Мөнгөн дүн ЗУРВАС ДОТОР биш ЭНД — муруйн хувийн шошготой нэг
+          өндөрт таарч давхарлахаас сэргийлнэ. */}
+      <div className={`${g.tlAxis} ${tilt ? g.tlAxisTilt : ''}`}>
         {pts.map((p, i) => (
-          <span
-            key={p.key}
-            className={g.tlDot}
-            style={{
-              left: `${((i + 0.5) / n) * 100}%`,
-              bottom: `${Math.max(0, Math.min(100, p.pct))}%`,
-            }}
-          >
-            <b>{pct(p.pct)}</b>
+          <span key={p.key} className={i === at ? g.tlAxisOn : undefined}>
+            <b>{tilt || shown(i) ? p.label : ''}</b>
+            {!tilt && <i>{shown(i) && p.amount > 0 ? mntShort(p.amount) : ''}</i>}
           </span>
         ))}
       </div>
 
-      <div className={g.tlAxis}>
-        {pts.map((p) => <span key={p.key}>{p.label}</span>)}
-      </div>
-
-      {/* ⚠️ Домог ЗААВАЛ: нэг зурган дээр хоёр хэмжигдэхүүн байгааг хэлэхгүй
-          бол багананы өндөр ба муруйн өндрийг НЭГ хуваарь гэж уншина. */}
-      <p className={g.tlLegend}>
-        <i className={g.tlKeyBar} aria-hidden /> {tr('Олгосон дүн')}
-        <i className={g.tlKeyLine} aria-hidden /> {tr('Хуримтлагдсан хувь')}
-      </p>
     </div>
+  );
+}
+
+/**
+ * ДОМОГ — картын ТОЛГОЙД.
+ *
+ * ⚠️ ШОШГО нь талбарын НЭРЭЭР (2026-09-06, хэрэглэгчийн заавар):
+ * «Захирамжийн дүн хөрөнгө оруулалтын эх үүсвэр нийт хөрөнгөд эзлэх» —
+ * товчилбол «Нийт хөрөнгөд эзлэх хувь». Муруй нь ГҮЙЦЭТГЭЛ БИШ — тэр нь
+ * `Zah_eh_unet_tsaas_huwi` (ажил бүрийн нийт төсөвт эзлэх хувь)-ийг ажлын
+ * саруудад тарааж хуримтлуулсан ТӨЛӨВЛӨГӨӨ. Бодит гүйцэтгэл
+ * (`Guitsetgel_huwi`) энэ чартад ОРООГҮЙ. Хуучин «Хуримтлагдсан хувь»
+ * гэсэн шошго нь юуны хуримтлал болохыг хэлдэггүй байв.
+ *
+ * ⚠️ ЗААВАЛ БАЙНА: нэг зурган дээр хоёр хэмжигдэхүүн байгааг хэлэхгүй бол
+ * багананы өндөр ба муруйн өндрийг НЭГ хуваарь гэж уншина.
+ */
+function TimelineKey() {
+  return (
+    <span className={g.tlLegend}>
+      <i className={g.tlKeyBar} aria-hidden /> {tr('Олгосон дүн')}
+      <i className={g.tlKeyLine} aria-hidden /> {tr('Нийт хөрөнгөд эзлэх хувь')}
+    </span>
   );
 }
 
@@ -873,7 +1083,19 @@ function useOverlapBySubPkg(enabled: boolean) {
   return { subs, out };
 }
 
-function LandCard({ onShowLayers }: { onShowLayers: (ids: string[]) => void }) {
+/** Газар чөлөөлөлтийн нэгж талбарын давхарга — шалтгааны зум үүн дээр */
+const PARCEL_LAYER = 'land:left';
+
+function LandCard({
+  onShowLayers,
+  onZoomParcels,
+  active,
+}: {
+  onShowLayers: (ids: string[]) => void;
+  onZoomParcels: (oids: number[] | null) => void;
+  /** Шүүлтэд багтсан дэд багц → ажлын төрлүүд; `null` = өгөгдөл хараахан алга */
+  active: Map<string, string[]> | null;
+}) {
   const land = useAsync(loadLandStatus, []);
   const byReason = useAsync(loadReasonOids, []);
 
@@ -887,32 +1109,68 @@ function LandCard({ onShowLayers }: { onShowLayers: (ids: string[]) => void }) {
   const { subs, out: ov } = useOverlapBySubPkg(reason != null);
 
   /**
-   * Дэд багц бүрд ТУХАЙН ШАЛТГААНТАЙ давхцсан талбарын тоо.
+   * АЖЛЫН ТӨРӨЛ бүрд ТУХАЙН ШАЛТГААНТАЙ давхцсан талбарын тоо.
    *
    * ⚠️ Хоёр олонлогийн ОГТЛОЛЦОЛ: `ov` нь ОРОН ЗАЙН давхцал (аль талбар аль
    * дэд багцын давхаргатай), `byReason` нь АТРИБУТ (аль талбар яагаад
    * үлдсэн). Аль нэгийг дангаар нь ашиглавал асуултын хагаст л хариулна.
+   *
+   * ⚠️ ДАВХАРДЛЫГ ОЛОНЛОГООР АРИЛГАНА: нэг төрөлд олон дэд багц харьяалагдах
+   * бөгөөд нэг нэгж талбар тэдгээрийн ХЭД ХЭДТЭЙ давхцаж болно. Тоог нь дүнгээр
+   * нэмбэл нэг талбар олон удаа тоологдож, шалтгааны нийт тооноос ДАВНА.
+   *
+   * ⚠️ Огтлолцол нь ДЭД БАГЦЫН түвшинд тооцогдсон хэвээр (`ov`) — зөвхөн
+   * ҮР ДҮНГ нь төрлөөр дахин хувааж байна. Тиймээс нэмэлт сүлжээний хүсэлт
+   * ҮҮСЭХГҮЙ бөгөөд мөр дарахад асаах давхаргууд нь тэр төрлийн БҮХ дэд багцын
+   * давхарга болно.
    */
   const rows = useMemo(() => {
     if (reason == null || ov == null || ov === 'error' || subs.state !== 'ready') return [];
     const want = byReason.state === 'ready' ? byReason.data.get(reason) : null;
     if (!want) return [];
-    return subs.data
-      .map((sp) => ({
-        key: sp.key,
-        label: sp.label,
-        value: (ov.get(sp.key) ?? []).filter((o) => want.has(o)).length,
+    const acc = new Map<string, { oids: Set<number>; layers: Set<string> }>();
+    for (const sp of subs.data) {
+      /* ⚠️ ХУГАЦААНЫ ШҮҮЛТ: тухайн үед ажилгүй дэд багц ЖАГСААЛТААС ГАРНА */
+      const types = active?.get(sp.key);
+      if (!types || types.length === 0) continue;
+      const hit = (ov.get(sp.key) ?? []).filter((o) => want.has(o));
+      if (hit.length === 0) continue;
+      for (const ty of types) {
+        let a = acc.get(ty);
+        if (!a) { a = { oids: new Set(), layers: new Set() }; acc.set(ty, a); }
+        for (const o of hit) a.oids.add(o);
+        for (const id of sp.layerIds) a.layers.add(id);
+      }
+    }
+    return [...acc]
+      .map(([ty, a]) => ({
+        key: ty,
+        label: nice(ty),
+        layerIds: [...a.layers],
+        value: a.oids.size,
         sub: 0,
       }))
-      .filter((x) => x.value > 0)
       .sort((x, y) => y.value - x.value);
-  }, [reason, ov, subs, byReason]);
+  }, [reason, ov, subs, byReason, active]);
 
-  /** Мөр дарахад тухайн дэд багцын давхаргыг зурагт асааж, түүн рүү ойртоно */
+  /**
+   * Шалтгаан сонгох — төлөв тавиад ГАЗРЫН ЗУРГИЙГ тэр талбарууд руу аваачна.
+   *
+   * ⚠️ OID-оор (`FID IN (…)`) зумна, шалтгааны ТЕКСТЭЭР биш: жагсаалтын шошго
+   * нь `cleanReason`-оор цэвэрлэгдсэн (арын зай, төгсгөлийн «.» хасагдсан) тул
+   * түүхий утгатай үргэлж таарахгүй — SQL нь чимээгүй 0 мөр буцаана.
+   */
+  const pickReason = (k: string) => {
+    const next = k === reason ? null : k;
+    setReason(next);
+    const oids = next != null && byReason.state === 'ready' ? byReason.data.get(next) : null;
+    onZoomParcels(oids ? [...oids] : null);
+  };
+
+/** Мөр дарахад тухайн төрлийн БҮХ давхаргыг зурагт асааж, эхнийх рүү ойртоно */
   const show = (key: string) => {
-    if (subs.state !== 'ready') return;
-    const sp = subs.data.find((x) => x.key === key);
-    if (sp) onShowLayers(sp.layerIds);
+    const r = rows.find((x) => x.key === key);
+    if (r) onShowLayers(r.layerIds);
   };
 
   return (
@@ -934,7 +1192,7 @@ function LandCard({ onShowLayers }: { onShowLayers: (ids: string[]) => void }) {
                   color={BAR_HUE}
                   selected={reason}
                   /* Дахин дарвал сонголт тайлагдана — цуцлах тусдаа товчгүй */
-                  onSelect={(k) => setReason((v) => (v === k ? null : k))}
+                  onSelect={pickReason}
                   items={countBars(
                     d.reasons.map((r) => ({ key: r.label, label: r.label, value: r.n, sub: 0 })),
                     { one: tr('нэгж талбар'), many: tr('чөлөөгдөөгүй талбарын') },
@@ -942,12 +1200,12 @@ function LandCard({ onShowLayers }: { onShowLayers: (ids: string[]) => void }) {
                 />
               )}
 
-            <h4 className={g.sub}>{tr('Дэд багцаар давхцаж буй')}</h4>
-            {reason == null ? (
-              /* ⚠️ Заавар нь ХООСОН ЗУРВАСЫГ орлоно: юу ч харагдахгүй байвал
-                 «ачаалж чадаагүй» гэж эндүүрнэ. */
-              <p className={g.wait}>{tr('Дээрээс шалтгаан сонгоно уу')}</p>
-            ) : ov == null || byReason.state === 'loading' ? (
+            <h4 className={g.sub}>{tr('Ажлын төрлөөр давхцаж буй')}</h4>
+            {/* ⚠️ Шалтгаан сонгоогүй үед ЮУ Ч БИЧИХГҮЙ — «Дээрээс шалтгаан
+                сонгоно уу» гэсэн заавар хэрэглэгчийн шийдвэрээр хасагдав
+                (2026-09-06). */}
+            {reason == null ? null
+              : ov == null || byReason.state === 'loading' ? (
               <p className={g.wait}>{tr('Давхцлыг тооцож байна…')}</p>
             ) : ov === 'error' || byReason.state === 'error' ? (
               <Empty label={tr('Давхцал тооцогдсонгүй')} />
@@ -963,6 +1221,78 @@ function LandCard({ onShowLayers }: { onShowLayers: (ids: string[]) => void }) {
             )}
           </>
         )}
+      </Data>
+    </Section>
+  );
+}
+
+/* ══════════════════════ БАРУУН — СААД, БАГЦААР ══════════════════════ */
+
+/**
+ * БАГЦ БҮР ДЭЭР ДАВХЦАЖ БУЙ ҮЛДСЭН НЭГЖ ТАЛБАР.
+ *
+ * ⚠️ Ачаалагч нь «Газар чөлөөлөлт» харагдацтай ХУВААЛЦСАН (`@/lib/pkgSaad`) —
+ * тэнд кэшлэгдсэн тул хоёр дахь харагдац НЭМЭЛТ хүсэлт үүсгэхгүй. Тусдаа
+ * хуулбар бичвэл 55 багцын огтлолцол хоёр дахин явна.
+ *
+ * ⚠️ ХУГАЦААНЫ ШҮҮЛТЭД ОРОХГҮЙ: нэгж талбарт төлөвлөгөөт хугацааны талбар
+ * байхгүй тул жил/улирлаар шүүвэл хуурамч тэг гарна ([[LandCard]]-тай нэг зарчим).
+ *
+ * ⚠️ ЗӨВХӨН СААДТАЙ багц — `loadPkgOverlaps` нь тэгүүдийг аль хэдийн шүүсэн.
+ */
+function SaadCard({
+  onShowLayers,
+  keys,
+}: {
+  onShowLayers: (ids: string[]) => void;
+  /**
+   * ХУГАЦААНЫ ШҮҮЛТЭД багтсан багцын түлхүүрүүд. `null` = шүүлтгүй (бүгд).
+   *
+   * ⚠️ Шүүлт ИДЭВХГҮЙ үед `null` дамжина, БҮХ ТҮЛХҮҮРИЙН олонлог БИШ:
+   * cashflow-д огт байхгүй багц (барилгын блокоос гарсан нэрс) байдаг тул
+   * бүтэн олонлогоор шүүвэл тэдгээр нь шүүлтгүй үед ч чимээгүй алга болно.
+   */
+  keys: Set<string> | null;
+}) {
+  const q = useAsync(loadPkgOverlaps, []);
+  const rows = useMemo(
+    () => (q.state !== 'ready' ? [] : keys ? q.data.filter((r) => keys.has(r.key)) : q.data),
+    [q, keys],
+  );
+  return (
+    <Section
+      title={tr('Саад — багцаар')}
+      /* ⚠️ ЯЛГААТАЙ талбар — зурвасуудын НИЙЛБЭР БИШ. Нэг үлдсэн нэгж
+         талбар хэд хэдэн багцын шугам/блоктой зэрэг огтлолцоно (амьдаар: 105
+         талбарын 73 нь 2–7 багцад тоологдож, нийлбэр 244 болдог). `Gazar`
+         харагдацад 2026-09-06-нд яг үүнийг зассан — энэ бол тэр кодын
+         хуулбар тул ижил дүрэм үйлчилнэ. */
+      note={rows.length > 0
+        ? tr('{0} багц · {1} талбар',
+            num(rows.length),
+            num(new Set(rows.flatMap((r) => r.oids)).size))
+        : undefined}
+    >
+      <Data q={q} minH={160}>
+        {() => (rows.length === 0
+          ? <Empty label={tr('Аль ч багц дээр давхцсан үлдсэн нэгж талбар алга.')} />
+          : (
+            <Bars
+              color="var(--bad)"
+              /* ⚠️ Эхний 8 — баруун багана нарийн; үлдсэнийг «дэлгэх» товчоор */
+              limit={8}
+              onSelect={(k) => {
+                const r = rows.find((x) => x.key === k);
+                if (r) onShowLayers(r.layerIds);
+              }}
+              items={rows.map((r) => ({
+                key: r.key,
+                label: nice(tr(r.name)),
+                value: r.oids.length,
+                display: tr('{0} талбар', num(r.oids.length)),
+              }))}
+            />
+          ))}
       </Data>
     </Section>
   );
@@ -1065,20 +1395,22 @@ function PlanCard({ totals }: { totals: ReturnType<typeof usePlanTotals> }) {
 
 function HseCard() {
   const hse = useAsync(loadHseNow, []);
+  /**
+   * ⚠️ Огноог ЗААВАЛ үзүүлнэ — маягт өдөр бүр бөглөгддөггүй тул «өнөөдрийн
+   * байдлаар» гэдэг нь сүүлийн бүртгэлийн өдөр. Гэвч тайлбар бичихгүй, зөвхөн
+   * ОГНОО — гарчгийн баруун талд (`note`) сууна: тоонуудын доор бүтэн
+   * өгүүлбэр байснаа хэрэглэгч хассан (2026-09-06).
+   */
+  const stamp = hse.state === 'ready' ? hse.data?.date : null;
   return (
-    <Section title={tr('ХАБ')}>
+    <Section title={tr('ХАБ')} note={stamp || undefined}>
       <Data q={hse} minH={130}>
         {(d) => (d == null ? <Empty label={tr('Бүртгэл алга')} /> : (
-          <>
-            <Stats cols={3}>
-              <Stat value={num(d.workers)} label={tr('Ажиллаж буй хүн')} accent />
-              <Stat value={num(d.equipment)} label={tr('Техник хэрэгсэл')} />
-              <Stat value={num(d.manHours)} label={tr('Хүн цаг')} />
-            </Stats>
-            {/* ⚠️ Огноог ЗААВАЛ үзүүлнэ — маягт өдөр бүр бөглөгддөггүй тул
-                «өнөөдрийн байдлаар» гэдэг нь сүүлийн бүртгэлийн өдөр. */}
-            <p className={g.stamp}>{tr('Сүүлд бөглөсөн: {0}', d.date || '—')}</p>
-          </>
+          <Stats cols={3}>
+            <Stat value={num(d.workers)} label={tr('Ажиллаж буй хүн')} accent />
+            <Stat value={num(d.equipment)} label={tr('Техник хэрэгсэл')} />
+            <Stat value={num(d.manHours)} label={tr('Хүн цаг')} />
+          </Stats>
         ))}
       </Data>
     </Section>

@@ -9,6 +9,18 @@
  * зураг дэлгэцээс гараад, хэрэглэгч чарт үзэхийн тулд зургаа алддаг.
  */
 .shell {
+  /*
+   * S-МУРУЙН ӨНГӨ — ЭНД зарлагдана, `.tl`-д БИШ.
+   *
+   * ⚠️ Домог (`TimelineKey`) нь картын ТОЛГОЙД (`Section note`) сууна — тэр
+   * нь `.tl`-ийн ГАДНА тул тэнд зарласан токен ХҮРЭХГҮЙ, домгийн зураас
+   * өнгөгүй үлддэг байв (2026-09-06). Бүрхүүлд зарласнаар зурвас ба домог
+   * ХОЁУЛАА нэг эх сурвалжаас уншина.
+   *
+   * ⚠️ Палитраас гадуурх hex нь САНААТАЙ — хэрэглэгчийн шууд заавар
+   * (#0000FF → #CCCCFF → #CAF0F8 → #1E91D6).
+   */
+  --tl-curve: #1e91d6;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -290,12 +302,6 @@
 
 .wait { margin: 4px 0; font-size: 12px; color: var(--ink-3); }
 
-.stamp {
-  margin: 8px 0 0;
-  font-size: 11px;
-  color: var(--ink-3);
-}
-
 /*
  * ШҮҮЛТИЙГ ХУРААХ/ДЭЛГЭХ товч.
  *
@@ -544,7 +550,7 @@
  * урт бүдэг зурвас нь богино цулаас «илүү» мэт уншигдана.
  */
 .shell :global(.chartTrack) {
-  height: 11px;
+  height: 8px;
   border-radius: 3px;
   background: var(--chart-track);
 }
@@ -569,14 +575,23 @@
 
 /* ═══════════ S-МУРУЙ + ОЛГОСОН ДҮН — НЭГ ЗУРАГ ═══════════ */
 
+/*
+ * S-МУРУЙН ӨНГӨ — ЦЭВЭР ЦЭНХЭР.
+ *
+ * ⚠️ ПАЛИТРААС ГАДУУРХ hex нь САНААТАЙ, хэрэглэгчийн ШУУД заавар
+ * (2026-09-06: #0000FF → #CCCCFF → #CAF0F8 → #1E91D6). Урьд нь `--c3`
+ * (индиго) байсан. Сэдэв солиход дагахгүй тул энд НЭГ токен болгож тавив —
+ * дараагийн өөрчлөлт нэг мөрөөр хийгдэнэ.
+ */
 .tl { display: flex; flex-direction: column; gap: 4px; }
 
 /* ⚠️ `relative` — муруй ба цэгүүд энэ талбайд `absolute`-аар суурьшина */
 .tlPlot {
   position: relative;
   height: 132px;
-  /* Дээд талд хувийн шошго гарах зай (цэг 100%-д хүрэхэд таслагдахгүй) */
-  padding-top: 14px;
+  /* ⚠️ 100%-ийн цэгийн шошго ЗУРВАСААС ГАРЧ картын ГАРЧИГ дээр буудаг тул
+     дээр зай үлдээнэ. Шошго нь цэгээс 9px дээр сууна (`.tlDot b`). */
+  padding-top: 20px;
 }
 
 .tlBars { display: flex; align-items: flex-end; gap: 4px; height: 100%; }
@@ -591,21 +606,20 @@
   height: 100%;
 }
 /* Багананы утга — түүний ДЭЭД талд, багана намхан үед ч уншигдана */
-.tlVal {
-  font-size: 9.5px;
-  color: var(--ink-3);
-  white-space: nowrap;
-  margin-bottom: 2px;
-}
+/* ⚠️ Багана НАРИЙХАН — нүдний зай нь өөрөө үеүүдийг тусгаарлана. Бүтэн
+   өргөнтэй үед зурвасууд наалдаж нэг тасралтгүй туузан мэт харагдана. */
 .tlBar {
+  position: relative;
   display: block;
-  width: 100%;
+  width: 44%;
   min-height: 1px;
   border-radius: 3px 3px 0 0;
-  /* Дүүргэлт зураастай — чартын бусад баганатай нэг хэл */
+  /* ⚠️ Дүүргэлт зураастай — чартын бусад баганатай нэг хэл.
+     ⚠️ 55% → 35% (2026-09-06, хэрэглэгчийн хүсэлт): багана нь S-муруйн
+     ЦААД дэвсгэр учир тод байх тусам муруйг халхалдаг. */
   background:
-    repeating-linear-gradient(-45deg, rgb(255 255 255 / 22%) 0 3px, transparent 3px 6px),
-    color-mix(in srgb, var(--data) 55%, transparent);
+    repeating-linear-gradient(-45deg, rgb(255 255 255 / 18%) 0 3px, transparent 3px 6px),
+    color-mix(in srgb, var(--data) 35%, transparent);
 }
 
 /*
@@ -615,18 +629,57 @@
  */
 .tlSvg {
   position: absolute;
-  inset: 14px 0 0;
+  inset: 20px 0 0;
   width: 100%;
-  height: calc(100% - 14px);
+  height: calc(100% - 20px);
   overflow: visible;
   pointer-events: none;
 }
-.tlLine { stroke: var(--good); stroke-width: 2; stroke-linecap: round; }
+/* ⚠️ Муруй нь `--c3` (индиго — «тэнгэр»). Ногоон байсныг хэрэглэгч солив;
+   палитраас гадуур hex бичихгүй — сэдэв солиход дагаж тохирно. */
+.tlLine { stroke: var(--tl-curve); stroke-width: 2; stroke-linecap: round; }
+
+/* ⚠️ SVG-ТЭЙ ЯГ ИЖИЛ `inset` — цэг ба муруй нэг хуваарьт байх цорын ганц арга */
+.tlDots {
+  position: absolute;
+  inset: 20px 0 0;
+  pointer-events: none;
+}
 
 .tlDot {
   position: absolute;
   transform: translate(-50%, 50%);
   pointer-events: none;
+}
+/* Цэгийн хувь — муруйн ӨНГӨӨР, багананы дүнтэй андуурагдахгүй */
+.tlDot b {
+  position: absolute;
+  bottom: 9px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 9.5px;
+  font-weight: 700;
+  /* ⚠️ ЦАГААН — муруйн өнгөөр биш (хэрэглэгчийн заавар, 2026-09-06) */
+  color: #fff;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  /*
+   * ГАЛО — шошго нь баганы дүүргэлт, муруй, тор гурвын аль нэгний дээр
+   * тохиолдож болно. Дэвсгэрийн өнгөөр 8 зүг рүү шахаж уншигдац баталгаажна.
+   *
+   * ⚠️ `-webkit-text-stroke` ХЭРЭГЛЭХГҮЙ: тэр нь үсгийн ДОТОГШ иддэг тул
+   * 9.5px хэмжээнд тоо нимгэрч уншигдахаа больдог.
+   */
+  /*
+   * ⚠️ ГАЛО нь ДЭВСГЭРИЙН өнгөөр — бичвэр ЦАГААН болсон тул цагаан гало нь
+   * түүнийг үл үзэгдэх болгоно. Гало нь одоо шошгыг багана/муруйнаас
+   * тусгаарлах үүрэгтэй.
+   */
+  text-shadow:
+    1px 1px 0 var(--surface), -1px 1px 0 var(--surface),
+    1px -1px 0 var(--surface), -1px -1px 0 var(--surface),
+    1px 0 0 var(--surface), -1px 0 0 var(--surface),
+    0 1px 0 var(--surface), 0 -1px 0 var(--surface);
 }
 .tlDot::before {
   content: '';
@@ -635,31 +688,112 @@
   height: 6px;
   margin: 0 auto;
   border-radius: 99px;
-  background: var(--good);
+  background: var(--tl-curve);
   box-shadow: 0 0 0 2px var(--surface);
 }
-.tlDot b {
-  position: absolute;
-  bottom: 9px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 9.5px;
-  font-weight: 700;
-  color: var(--good);
-  white-space: nowrap;
-}
-
 .tlAxis { display: flex; gap: 4px; }
 .tlAxis span {
+  display: flex;
   flex: 1 1 0;
   min-width: 0;
+  flex-direction: column;
+  align-items: center;
   font-size: 10px;
   color: var(--ink-3);
   text-align: center;
-  overflow: hidden;
-  text-overflow: ellipsis;
+}
+/* Хоосон шошго ч ӨРГӨНӨӨ эзэлнэ — багана бүр тэнхлэгийн нүдтэй нэг эгнээнд.
+   `overflow: visible` — 1 нүдийн өргөнөөс урт «29.0 тэрбум ₮» хайчлагдахгүй. */
+.tlAxis b,
+.tlAxis i {
+  max-width: 100%;
+  overflow: visible;
   white-space: nowrap;
 }
+.tlAxis b { font-weight: 500; }
+.tlAxis i {
+  font-size: 9.5px;
+  font-style: normal;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+.tlAxisOn i { color: var(--ink); }
+
+/*
+ * НАЛУУ ТЭНХЛЭГ — 45°.
+ *
+ * ⚠️ Тулгуур цэг нь бичвэрийн БАРУУН ДЭЭД булан (`transform-origin: 100% 0`)
+ * бөгөөд тэр нь баганын ТӨВД (`right: 50%`) суудаг: ингэж байж шошго нь
+ * өөрийн баганаас зүүн доош бус, яг доороос нь эхэлж нална.
+ *
+ * ⚠️ `overflow: visible` ЗААВАЛ — эс бөгөөс налсан бичвэр нүдэндээ хайчлагдана.
+ */
+.tlAxisTilt {
+  height: 38px;
+  align-items: flex-start;
+  overflow: visible;
+}
+.tlAxisTilt span {
+  position: relative;
+  height: 100%;
+  overflow: visible;
+}
+.tlAxisTilt b {
+  position: absolute;
+  top: 2px;
+  right: 50%;
+  transform: rotate(-45deg);
+  transform-origin: 100% 0;
+  white-space: nowrap;
+}
+
+/*
+ * УНШИЛТЫН МӨР — заасан үеийн хоёр тоо.
+ *
+ * ⚠️ Тоонууд зурган ДЭЭР биш ЭНД гарна. Зурган дээр 132px өндөрт багана
+ * бүрийн дүн, цэг бүрийн хувь, тэнхлэг гурав зэрэг өрсөлдөж, чарт бүхэлдээ
+ * уншигдахгүй болсон (хэрэглэгчийн шүүмж, 2026-09-06).
+ */
+.tlHead {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-height: 18px;
+}
+.tlHeadLbl {
+  font-size: 10px;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+.tlHeadPct {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+  /* ⚠️ ЦАГААН — цэгийн шошготой ижил (хэрэглэгчийн заавар, 2026-09-06).
+     Муруйн өнгө нь зурган дээрх ЗУРААС ба ЦЭГТ л үлдэнэ. */
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+.tlHeadAmt {
+  font-size: 10.5px;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+/*
+ * ⚠️ ЗААСАН БАГАНЫГ БУДАХГҮЙ (2026-09-06). Урьд нь саарал хөшиг ба тод
+ * дүүргэлт тавьдаг байсныг хассан: заалт нь анхдагчаар СҮҮЛИЙН баганад
+ * сууна (`at = n - 1`) тул хэрэглэгч юу ч хийгээгүй байхад тэр багана
+ * «сонгогдсон» мэт харагддаг байв. Заалт нь одоо ЦЭГ ба ТЭНХЛЭГИЙН ШОШГООР
+ * л илэрнэ — тэдгээр нь анхдагч төлөвт ч төөрөгдөл үүсгэхгүй.
+ */
+/* Заасан цэг — том, тод */
+.tlDotOn::before {
+  width: 9px;
+  height: 9px;
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 3px color-mix(in srgb, var(--tl-curve) 45%, transparent);
+}
+.tlAxisOn { color: var(--ink); font-weight: 600; }
 
 .tlLegend {
   display: flex;
@@ -675,4 +809,5 @@
   border-radius: 2px;
   background: color-mix(in srgb, var(--data) 55%, transparent);
 }
-.tlKeyLine { width: 14px; height: 2px; border-radius: 2px; background: var(--good); margin-left: 8px; }
+.tlKeyLine { width: 14px; height: 2px; border-radius: 2px; background: var(--tl-curve); margin-left: 8px; }
+
