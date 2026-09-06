@@ -106,14 +106,33 @@ export type FinFilter = {
   /** Нүүр бүрийн сонгосон утга; `''` = бүгд */
   facet: Record<FacetKey, string>;
   col: ColFilter;
+  /**
+   * БАГАНЫ ТОЛГОЙН СОНГОЛТ — ArcGIS-ийн атрибут хүснэгтийн маягаар.
+   *
+   * Утга нь `cellText`-ийн гаралт, өөрөөр хэлбэл хэрэглэгчийн ХАРЖ БУЙ мөр
+   * (түүхий утга биш) — жагсаалтад дарсан зүйл нь хүснэгтэд харагдсантайгаа
+   * заавал таарна.
+   *
+   * ⚠️ `col`-ЫГ ОРЛОХГҮЙ, хажууд нь ажиллана: `col` нь БИЧСЭН нөхцөл
+   * (`>1e9`, `100..200`, чөлөөт текст), `pick` нь СОНГОСОН утгуудын
+   * олонлог. Хоёулаа тавигдвал ХОЁУЛАА хангагдана (AND).
+   *
+   * ⚠️ Хоосон массив = шүүлтгүй (бүгд). Тиймээс «юу ч сонгоогүй» ба «бүгдийг
+   * сонгосон» хоёр ИЖИЛ утгатай — UI нь сүүлийн чагтыг тайлахад талбарыг
+   * бүрмөсөн устгана, эс бөгөөс хүснэгт хоосорч хэрэглэгч гацна.
+   */
+  pick?: Record<string, string[]>;
 };
 
-export const EMPTY_FILTER: FinFilter = { q: '', facet: { pkg: '', year: '', type: '' }, col: {} };
+export const EMPTY_FILTER: FinFilter = {
+  q: '', facet: { pkg: '', year: '', type: '' }, col: {}, pick: {},
+};
 
 export const isDirty = (f: FinFilter): boolean =>
   f.q.trim() !== ''
   || (['pkg', 'year', 'type'] as FacetKey[]).some((k) => f.facet[k] !== '')
-  || Object.values(f.col).some((v) => v.trim() !== '');
+  || Object.values(f.col).some((v) => v.trim() !== '')
+  || Object.values(f.pick ?? {}).some((v) => v.length > 0);
 
 /* ──────────────────────── ЯЛГААТАЙ УТГУУД ──────────────────────────── */
 
@@ -229,6 +248,16 @@ export function rowMatches(
     const needle = f.col[c.name];
     if (!needle || needle.trim() === '') continue;
     if (!cellMatches(r[c.name], cellText(r[c.name], c.type), needle, isNumeric(c.type))) return false;
+  }
+
+  /* ── Толгойн сонголт — сонгосон утгуудын АЛЬ НЭГТЭЙ яг тэнцүү ── */
+  const picks = f.pick;
+  if (picks) {
+    for (const c of cols) {
+      const want = picks[c.name];
+      if (!want || want.length === 0) continue;
+      if (!want.includes(cellText(r[c.name], c.type))) return false;
+    }
   }
 
   /* ── Чөлөөт хайлт — багана БҮРИЙН аль нэгэнд таарвал болно ── */

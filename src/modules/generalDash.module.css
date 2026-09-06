@@ -9,29 +9,48 @@
  * зураг дэлгэцээс гараад, хэрэглэгч чарт үзэхийн тулд зургаа алддаг.
  */
 .shell {
-  display: grid;
-  grid-template-columns: var(--gd-side) minmax(0, 1fr) var(--gd-side);
-  grid-template-rows: auto minmax(0, 1fr);
-  grid-template-areas:
-    'filters filters filters'
-    'left    center  right';
+  display: flex;
+  flex-direction: column;
   gap: 10px;
   height: 100%;
   min-height: 0;
   padding: 10px;
-  --gd-side: 340px;
 }
 
-@media (max-width: 1500px) { .shell { --gd-side: 300px; } }
+/*
+ * ГУРВАН БАГАНЫН ТОР — чирэх бариулын ЭЦЭГ.
+ *
+ * ⚠️ Өргөнийг `--side-l` / `--side-r`-ЭЭР өгнө: `SplitGrip` чирэхдээ ЯГ
+ * эдгээр хувьсагчийг л өөрчилдөг (порталын бусад хоёр харагдацтай нэг
+ * механизм). Хатуу px бичвэл чирэлт ажиллах ч харагдацад нөлөөлөхгүй.
+ *
+ * ⚠️ Шүүлтийн зурвас ЭНД ОРОХГҮЙ — бариул эцгийгээ бүтнээр дамнадаг тул
+ * зурвас дотор байвал түүний товчнуудыг халхална.
+ */
+.body {
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: var(--side-l) minmax(0, 1fr) var(--side-r);
+  grid-template-areas: 'left center right';
+  gap: 10px;
+  min-height: 0;
+  --side-l: clamp(280px, 17vw, 560px);
+  --side-r: clamp(280px, 17vw, 560px);
+}
+
+@media (max-width: 1500px) { .body { --side-l: 300px; --side-r: 300px; } }
 
 /* Нарийн дэлгэц — багана дараалан босоо болно (зураг дундаа хэвээр) */
+/* ⚠️ Нарийн дэлгэцэд чирэлт УТГАГҮЙ — багана дээр дээрээсээ доош өрөгдөнө.
+   `SplitGrip` өөрөө нуугдана (түүний module.css), тэнд `--side-*` уншигдахгүй. */
 @media (max-width: 1180px) {
-  .shell {
+  .body {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: 'filters' 'center' 'left' 'right';
-    grid-template-rows: auto auto auto auto;
-    overflow: auto;
+    /* Зураг ЭХЭНД — нарийн дэлгэцэд гол агуулга дээрээ байх ёстой */
+    grid-template-areas: 'center' 'left' 'right';
+    grid-auto-rows: auto;
   }
+  .shell { overflow: auto; }
   .left, .right, .center { overflow: visible; }
   .hero { min-height: 420px; }
 }
@@ -50,25 +69,47 @@
   scrollbar-gutter: stable;
 }
 
+/*
+ * ТӨВ БАГАНА — ГҮЙЛГЭХГҮЙ (2026-09-04, хэрэглэгчийн хүсэлт).
+ *
+ * ⚠️ `overflow: auto` байсан тул зураг (380px) + индикатор + S-муруй нийлээд
+ * баганаас өндөр болж, БҮХ ТӨВ ХЭСЭГ гүйдэг байв — газрын зураг дээшээ
+ * гулсаж, хэрэглэгч муруй үзэхийн тулд зургаа алддаг. Одоо гурвуулаа
+ * багтана: индикатор ба муруй нь ТОГТМОЛ өндөртэй, зураг нь ҮЛДСЭН зайг
+ * авна (`flex: 1`).
+ */
 .center {
   display: flex;
   flex-direction: column;
   gap: 10px;
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
 }
+.kpis, .curve { flex: none; }
 
 /* ── Газрын зураг ── */
 .hero {
   position: relative;
+  /*
+   * ⚠️ `display: flex` ЗААВАЛ. `MapCanvas`-ийн үндсэн элемент нь
+   * `flex: 1; min-height: 0` (map.module.css §.wrap) бөгөөд дотоод давхарга нь
+   * `position: absolute` тул урсгалд ӨНДӨРГҮЙ. Эцэг нь flex сав БИШ бол тэр
+   * `flex: 1` үл тоомсорлогдож, зураг 0px өндөртэй болж ОГТ ХАРАГДАХГҮЙ
+   * (2026-09-04-нд яг ийм шалтгаанаар харагдаагүй). «Төслийн дэлгэрэнгүй
+   * мэдээлэл»-ийн `.hero` мөн ижил шалтгаанаар flex.
+   */
+  display: flex;
   flex: 1 1 auto;
   /* ⚠️ Доод S-муруй ба дээд индикаторт зай үлдээж, зураг нь ХАМГИЙН БАГА
      энэ өндөртэй байна — эс бөгөөс өндөр дэлгэцэд зураг хэт нимгэн зурвас
      болж, 3D горим утгагүй болно. */
-  min-height: 380px;
+  /* ⚠️ 380 → 200: төв багана гүйхээ больсон тул зураг нь ҮЛДСЭН зайд
+     багтах ёстой. Өндөр хязгаар нь namхан дэлгэц дээр муруйг шахахгүй байх
+     доод хамгаалалт төдий. */
+  min-height: 200px;
   border-radius: 10px;
   overflow: hidden;
-  background: var(--bg-2);
+  background: var(--sunken, var(--surface-2));
 }
 
 .catPanel {
@@ -77,149 +118,151 @@
   width: min(360px, 80%);
   z-index: 6;
   overflow: auto;
-  background: var(--bg-1);
+  background: var(--surface);
   box-shadow: 2px 0 12px rgb(0 0 0 / 22%);
 }
 
 /* ── Хугацааны шүүлт ── */
+/* ⚠️ `grid-area` ХАСАГДСАН — бүрхүүл нь одоо flex багана (§.body-г үз) */
 .filters {
-  grid-area: filters;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  /* ⚠️ БАРУУН ТИЙШ ЖИГДЭРНЭ (2026-09-04, хэрэглэгчийн хүсэлт). Зүүн талд
+     үлдээвэл доорх зүүн баганын чартуудтай нэг босоо шугамд орж, «энэ шүүлт
+     зөвхөн зүүн талд үйлчилнэ» гэсэн худал уншилт төрүүлдэг — үнэндээ бүх
+     картад нэгэн зэрэг үйлчилнэ. */
+  justify-content: flex-end;
   gap: 6px 10px;
   padding: 8px 10px;
   border: 1px solid var(--line);
   border-radius: 10px;
-  background: var(--bg-1);
+  background: var(--surface);
 }
 
-.fLabel {
-  font-size: 11px;
+/*
+ * ХУГАЦААНЫ ШҮҮЛТ — НЭГ СЕГМЕНТЧИЛСЭН УДИРДЛАГА.
+ *
+ * ⚠️ Гурван шүүлт НЭГ хүрээнд, дундуур нь үсэн зураас. Жил · Улирал · Сар нь
+ * бие даасан гурван зүйл БИШ, нэг хугацааг гурван нарийвчлалаар заадаг —
+ * салангид товчнууд байхад тэр холбоо нүдэнд харагдахгүй байв.
+ *
+ * ⚠️ Шошго нь утгын ДЭЭР (eyebrow), доор нь утга. Хажуу хажуугаа тавибал
+ * «ЖИЛ 2026» гэсэн нэг урт мөр болж, аль нь нэр, аль нь утга болох нь
+ * бүдгэрнэ.
+ */
+.fBar {
+  display: inline-flex;
+  align-items: stretch;
+  /* ⚠️ «ШҮҮХ» товчтой ИЖИЛ өндөр — хоёулаа `26px`. Сегментийн агуулга нь
+     утга сонгосон эсэхээс шалтгаалж 11–15px хооронд хэлбэлздэг тул доод
+     хязгааргүй бол шүүлт тавимагц зурвас нь товчноосоо өндөр болно. */
+  min-height: 26px;
+  box-sizing: border-box;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+}
+/*
+ * ⚠️ НЭГ МӨР (2026-09-04). Урьд нь нэр дээр, утга доор гэсэн ХОЁР мөр байсан
+ * бөгөөд «Бүгд» ба сум хасагдсаны дараа утгын мөр ихэвчлэн ХООСОН үлдэж,
+ * зурвас ердөө хоёр нэрийн төлөө ~35px эзэлдэг болов. Нэр ба утга нэг мөрөнд
+ * зэрэгцвэл ~24px болж, уншилт нь ч байгалийн: «ЖИЛ 2026».
+ */
+.fDrop {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  padding: 5px 11px;
+  font: inherit;
+  color: var(--ink-2);
+  background: transparent;
+  border: none;
+  /* Сегмент хоорондын үсэн зураас — гаднах хүрээтэй давхардахгүй */
+  border-left: 1px solid var(--line);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.fBar > .fDrop:first-child { border-left: none; }
+.fDrop:hover { background: color-mix(in srgb, var(--data) 10%, transparent); }
+/* Шүүлт ТАВИГДСАН сегмент — доод ирмэгээр нь тэмдэглэнэ, дүүргэлтгүй */
+.fDropOn {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--data) 12%, transparent);
+  box-shadow: inset 0 -2px 0 var(--data);
+}
+.fDropLbl {
+  font-size: 9.5px;
+  line-height: 1.2;
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--ink-3);
 }
+.fDropOn .fDropLbl { color: var(--data); }
+/* ⚠️ Хоосон үед ЗАЙ ЭЗЛЭХГҮЙ: нэг мөр болсон тул өндрийг нэр өөрөө барина,
+   `min-height` шаардлагагүй (тавибал хоосон сегмент өргөсөнө). */
+.fDropVal { font-size: 12px; font-weight: 600; color: var(--ink); }
+.fDropVal:empty { display: none; }
 
-.fGroup { display: flex; flex-wrap: wrap; gap: 4px; }
-
-.chip {
-  padding: 3px 9px;
+/* ⚠️ `fixed` — зурвас нь `overflow`-той эцгийн дотор тул `absolute` цэс тасарна */
+.fVeil { position: fixed; inset: 0; z-index: 40; }
+/*
+ * ⚠️ ДЭВСГЭР НЬ ТУНГАЛАГ БУС БАЙХ ЁСТОЙ. Урьд нь `var(--bg-1)` гэж бичсэн
+ * байсан бөгөөд тэр токен `globals.css`-д ОГТ ТОДОРХОЙЛОГДООГҮЙ (зөвхөн
+ * `--bg`, `--surface`, `--surface-2` бий) — хөтөч хүчингүй зарлалыг хаяж,
+ * цэс нь ард талын хүснэгтийг нэвт харуулж байв.
+ */
+.fMenu {
+  position: fixed;
+  z-index: 41;
+  min-width: 160px;
+  max-height: 320px;
+  margin: 4px 0 0;
+  padding: 4px;
+  overflow: auto;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 28%);
+}
+/* ⚠️ Чагтны багана ТОГТМОЛ өргөнтэй — эс бөгөөс сонгосон мөрийн текст
+   баруун тийш үсэрч, жагсаалт «чичирнэ». */
+.fOpt {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 5px 9px;
   font: inherit;
   font-size: 12px;
-  line-height: 1.6;
+  text-align: left;
   color: var(--ink-2);
   background: transparent;
-  border: 1px solid var(--line-strong);
-  border-radius: 999px;
+  border: none;
+  border-radius: 4px;
   cursor: pointer;
 }
-.chip:hover { color: var(--ink); border-color: var(--data); }
-.chipOn {
-  color: var(--bg-1);
-  background: var(--data);
-  border-color: var(--data);
-}
-
-.clear {
-  margin-left: auto;
-  padding: 3px 10px;
-  font: inherit;
-  font-size: 12px;
-  color: var(--ink-2);
-  background: transparent;
-  border: 1px solid var(--line-strong);
-  border-radius: 6px;
-  cursor: pointer;
-}
-.clear:hover { color: var(--ink); border-color: var(--ink-3); }
+.fOpt:hover { background: color-mix(in srgb, var(--data) 14%, transparent); color: var(--ink); }
+.fTick { width: 11px; flex: none; font-size: 10px; font-style: normal; color: var(--data); }
+.fOptOn { color: var(--data); font-weight: 700; background: color-mix(in srgb, var(--data) 12%, transparent); }
 
 /* ── Зургийн дээрх индикатор ── */
 .kpis {
   padding: 8px 10px;
   border: 1px solid var(--line);
   border-radius: 10px;
-  background: var(--bg-1);
+  background: var(--surface);
 }
 
-/* ── Дэд цуваатай багана ── */
-.bars { display: flex; flex-direction: column; gap: 5px; }
-
-.barRow {
-  display: grid;
-  /* нэр · зурвас · утга — зурвас нь үлдсэн зайг авна */
-  grid-template-columns: minmax(0, 96px) minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 8px;
-}
-
-.barName {
-  overflow: hidden;
-  font-size: 11.5px;
-  color: var(--ink-2);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.barTrack {
-  position: relative;
-  height: 15px;
-  border-radius: 3px;
-  background: color-mix(in oklab, var(--ink) 7%, transparent);
-}
-
-.barFill {
-  position: absolute;
-  inset: 0 auto 0 0;
-  border-radius: 3px;
-}
-
-/**
- * ⚠️ Дэд зурвас нь гол зурвасны ДЭЭР давхарлана — хажууд нь тавьбал хоёр
- * тусдаа хэмжигдэхүүн мэт уншигдана. Дүүргэлт биш ЗУРААС хэлбэртэй: гол
- * баганын өнгө ангилал бүрд өөр тул дэд хэсэгт бас өнгө өгвөл хосууд
- * хоорондоо мөргөлдөнө. Хар/цагаан торон дүүргэлт нь аль ч өнгөн дээр
- * уншигдана.
- */
-.barSub {
-  position: absolute;
-  inset: 0 auto 0 0;
-  border-radius: 3px;
-  background: repeating-linear-gradient(
-    -45deg,
-    rgb(0 0 0 / 42%) 0 3px,
-    rgb(255 255 255 / 34%) 3px 6px
-  );
-}
-
-.barVal {
-  font-size: 11.5px;
-  font-variant-numeric: tabular-nums;
-  color: var(--ink);
-  white-space: nowrap;
-}
-
-.barLegend {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 2px 0 0;
-  font-size: 11px;
-  color: var(--ink-3);
-}
-
-.swatchSub {
-  width: 18px;
-  height: 9px;
-  border-radius: 2px;
-  background: repeating-linear-gradient(
-    -45deg,
-    rgb(0 0 0 / 42%) 0 3px,
-    rgb(255 255 255 / 34%) 3px 6px
-  );
-  outline: 1px solid var(--line-strong);
-}
+/* ⚠️ ЭНД ӨӨРИЙН БАГАНЫН ЗАГВАР БАЙХГҮЙ (2026-09-04). Урьд нь `.bars`,
+   `.barRow`, `.barSub` … гэсэн бүтэн багц байсныг ХАСАВ: чартууд одоо
+   `ui.tsx`-ийн `Bars`-ыг хэрэглэдэг тул порталын бусад 18 харагдацтай
+   ижил өндөр, фонт, hover-той. Энэ дэлгэцэд зориулж багана дахин
+   зурвал тэр нэгдмэл байдал ДАХИН эвдэрнэ. */
 
 /* ── Картын дэд гарчиг ба энгийн жагсаалт ── */
 .sub {
@@ -252,3 +295,384 @@
   font-size: 11px;
   color: var(--ink-3);
 }
+
+/*
+ * ШҮҮЛТИЙГ ХУРААХ/ДЭЛГЭХ товч.
+ *
+ * ⚠️ Хураасан үед ИДЭВХТЭЙ шүүлт байвал товч нь өнгө аваад сонгосон утгыг
+ * өөрөө бичнэ — «шүүлт байгаа эсэх» мэдээлэл зурвастай хамт алга болох
+ * ёсгүй.
+ */
+/*
+ * ⚠️ ХЭМЖЭЭ НЬ СЕГМЕНТҮҮДТЭЙ ЯГ ИЖИЛ (2026-09-04, хэрэглэгчийн хүсэлт: «жил
+ * сартай адилхан хэмжээтэй болно шүүх button»). Зай, үсгийн хэмжээ, хүрээ,
+ * булангийн радиус, доод өндөр дөрвүүлээ `.fBar` / `.fDrop`-ынхтой нэг —
+ * зөрвөл зэрэгцэн зогсох хоёр удирдлага өөр гэр бүлийнх мэт харагдана.
+ */
+.fToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  box-sizing: border-box;
+  padding: 5px 11px;
+  font: inherit;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.fToggle:hover { color: var(--ink); border-color: var(--data); }
+.fToggleOn {
+  color: var(--data);
+  text-transform: none;
+  letter-spacing: 0;
+  background: color-mix(in srgb, var(--data) 14%, transparent);
+  border-color: color-mix(in srgb, var(--data) 55%, transparent);
+}
+
+/*
+ * ХУРААСАН ЗУРВАС — зөвхөн сум.
+ *
+ * ⚠️ `padding`, `border`, `background` гурвуулаа алга болно. Хураах гэдгийн
+ * бүх утга нь доорх картуудад зай өгөх явдал — хүрээтэй хоосон зурвас
+ * үлдээвэл ердөө 22px л хожно.
+ */
+.fThin {
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+}
+.fToggleThin {
+  /* Хураасан үед зэрэгцэх зүйл байхгүй тул өндрийн тэгшитгэл ч хэрэггүй */
+  min-height: 0;
+  padding: 0 4px;
+  gap: 4px;
+  line-height: 1.1;
+  border-color: transparent;
+  background: transparent;
+}
+/* «Шүүх» — сумны урд, ЖИЖИГ. Хураасан зурвасны өндрийг нэмэхгүй хэмжээ. */
+/* Товчны үсгийн хэмжээг товч өөрөө тогтооно — давхар зарлахгүй */
+.fToggleLbl { font-size: inherit; }
+.fToggleThin:hover { border-color: transparent; color: var(--data); }
+/* Идэвхтэй шүүлттэй үед сум нь өнгө авна — утга нь `title`-д */
+.fThin .fToggleOn { color: var(--data); background: transparent; border-color: transparent; }
+
+/*
+ * ИНДИКАТОРЫН ЗУРВАС — НАМХАН, өргөн нь хэвээр.
+ *
+ * ⚠️ ӨРГӨНИЙГ БАГАСГАХГҮЙ (2026-09-04, хэрэглэгчийн залруулга: «indicator
+ * өргөн биш өндрийг багасгах нь зөв»). Богино хугацаанд 6 багана болгож
+ * турсан нь буруу байв: мөнгөн дүн (2.5 их наяд ₮) нарийн нүдэнд мөрөө
+ * таслана. Баганын тоо `Stats cols` дээрээ (3) хэвээр.
+ *
+ * ⚠️ ӨНДРИЙГ гурван замаар авна: босоо зай, тоо/шошгын хоорондох зай,
+ * үсгийн хэмжээ. Эдгээр нь `ui.tsx`-ийн глобал нэрсээр (`statCard`,
+ * `statNum`, `statTag`) л хүрдэг — тэдгээр нь яг ийм байрлалын залруулгад
+ * зориулагдсан.
+ */
+.kpis { padding: 6px 8px; }
+
+/*
+ * ⚠️ НАМХАН ХЭМЖЭЭ НЬ БҮХ ҮЗҮҮЛЭЛТЭД (2026-09-04, хэрэглэгчийн хүсэлт:
+ * «map-ийн дээр байгаа indicator өндрийн хэмжээ яг болж байна, бусад
+ * indicator-ийг янзал»). Тиймээс сонгогч нь `.kpis` БИШ `.shell` —
+ * зургийн дээрх зурвас, газар чөлөөлөлт, ерөнхий төлөвлөгөө, ХАБ дөрвүүлээ
+ * нэг өндөртэй. Хоёр өөр хэмжээ зэрэгцвэл нэг дэлгэц хоёр хэлээр ярина.
+ */
+.shell :global(.statsGrid) { gap: 1px; }
+.shell :global(.statCard) { padding: 4px 10px; gap: 2px; }
+.shell :global(.statNum) { font-size: 15px; }
+/*
+ * ⚠️ ШОШГЫГ ТОМСГОХДОО ӨНДРИЙГ БАРИНА (2026-09-04, хэрэглэгчийн хүсэлт:
+ * «title size жаахан томруул гэхдээ indicator өндөрт нөлөөлөхгүй»).
+ *
+ * Мөрийн эзлэх өндөр = үсгийн хэмжээ × `line-height`. 9.5 × 1.25 = 11.9px
+ * байсныг 10.8 × 1.1 = 11.9px болгов — үсэг том, өндөр ЯГ ТЭР ХЭВЭЭР.
+ * `line-height`-ыг хамт буулгахгүй бол зурвас 6 × ~1.6px өндөрсөнө.
+ */
+.shell :global(.statTag) { font-size: 10.8px; letter-spacing: 0.02em; line-height: 1.1; }
+
+/*
+ * ЗУРГИЙН УДИРДЛАГЫН ХУРААХ ТАБ — хоёр чиглэл.
+ *
+ * ⚠️ Товч нь ХУРААСАН ч БАЙРАНДАА үлдэнэ, зөвхөн сум нь эргэнэ. Нуувал
+ * хэрэглэгч зурагт ямар ч удирдлагагүй үлдэнэ (навигацийн ««» товчтой ижил
+ * зарчим).
+ *
+ * ⚠️ ArcGIS-ийн өөрийн товчнуудаас ЗАЙТАЙ: `esri-ui-top-left` (томруулах) нь
+ * 15px завсартай, 15–79px өндөрт; `esri-ui-top-right` нь баруунаас 15–47px.
+ */
+.mapTab {
+  position: absolute;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--ink-2);
+  background: color-mix(in srgb, var(--surface) 86%, transparent);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(4px);
+  cursor: pointer;
+}
+.mapTab:hover { color: var(--data); border-color: var(--data); }
+
+/* ── 2D/3D/BIM — ДЭЭШ хураана. Зурвас нь дээд ТӨВД тул таб нь түүний дор. ── */
+.dimsTab {
+  top: 15px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 34px;
+  height: 20px;
+}
+/* Дэлгэсэн үед зурвасны ДООР бууна — түүнийг халхлахгүй */
+.dimsTabOpen { top: 46px; }
+
+/* ── Давхарга · тунгалаг · бүс — ЗҮҮН тийш хугална ── */
+.toolsTab {
+  top: 88px;
+  left: 15px;
+  width: 20px;
+  height: 34px;
+}
+/* Дэлгэсэн үед баганын БАРУУН ирмэг дээр (15 + 132 + 4) */
+.toolsTabOpen { left: 151px; }
+
+/* Хураасан хэсгүүд — глобал нэрсээр (§ЗУРГИЙН ДЭЭРХ ТОВЧНУУД) */
+.hero[data-tools='0'] :global(.mapToolsBar) { display: none; }
+.hero[data-dims='0'] :global(.mapDims) { display: none; }
+
+/*
+ * КАРТЫН ГАРЧИГ — ЖИЖИГ (2026-09-04, хэрэглэгчийн хүсэлт).
+ *
+ * ⚠️ Энэ дэлгэцэд 8 карт зэрэг байдаг тул анхдагч 13.5px гарчиг + 8px зай нь
+ * карт бүрээс ~10px идэж, чартын талбайг хумина. Бусад харагдац (карт цөөн)
+ * анхдагчаараа хэвээр — сонгогч нь `.shell` дотор л үйлчилнэ.
+ */
+/*
+ * КАРТЫН ТОЛГОЙ — `accent` ҮЗҮҮЛЭЛТИЙН ХӨЗӨРТЭЙ ИЖИЛ ТӨРХ (2026-09-04,
+ * хэрэглэгчийн хүсэлт).
+ *
+ * ⚠️ Жор нь `ui.module.css`-ийн `.statAccent`-ЫНХ ЯГ ТЭР: буланд төвлөрсөн
+ * радиал гэрэл + өнгөний нимгэн давхарга, хүрээ нь өнгөтэй холилдоно.
+ * Шинээр зохиовол нэг дэлгэц дээр хоёр өөр «онцолсон» хэл үүснэ — тэдгээр
+ * нь зэрэгцэн харагддаг тул ялгаа нь шууд анзаарагдана.
+ *
+ * ⚠️ `--tone` ЭНД ТОДОРХОЙЛОГДООГҮЙ (`Stat` нь өөрөө inline тавьдаг) тул
+ * `--data`-г ШУУД бичнэ; `var(--tone, …)` гэвэл эцгээсээ санамсаргүй өнгө
+ * өвлөж, карт бүр өөр өнгөтэй болох эрсдэлтэй.
+ */
+.shell :global(.secHead) {
+  margin: -12px -12px 8px;
+  padding: 6px 10px;
+  border-bottom-color: color-mix(in srgb, var(--data) 32%, var(--line));
+  background:
+    radial-gradient(130% 140% at 0% 0%, color-mix(in srgb, var(--data) 12%, transparent), transparent 55%),
+    color-mix(in srgb, var(--data) 5%, var(--surface));
+}
+.shell :global(.secTitle) {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  /* ⚠️ Гарчиг нь ЦЭНХЭР БИШ, үндсэн бичгийн өнгөтэй: дэвсгэр нь аль хэдийн
+     онцолсон тул текстийг ч өнгөтэй болговол хоёр дохио давхардаж, гарчиг
+     нь холбоос эсвэл идэвхтэй сонголт мэт уншигдана. */
+  color: var(--ink);
+}
+
+/* Картын дотоод дэд гарчиг мөн адил */
+.sub { font-size: 10px; margin: 10px 0 4px; }
+
+/*
+ * ЗУРГИЙН ДЭЭРХ ТОВЧНУУД — ЖИЖИГ (2026-09-04, хэрэглэгчийн хүсэлт).
+ *
+ * ⚠️ Энэ дашбоардын зураг нь бусад харагдацынхаас БАГА (гурван баганын
+ * дундах, доор нь S-муруй) тул анхдагч 176px өргөн товчны багана зургийн
+ * гуравны нэгийг эзэлж байв. Сонгогч нь `.shell` дотор — бусад найман
+ * харагдацын зураг анхдагч хэмжээтэй хэвээр.
+ */
+.shell :global(.mapToolsBar) { width: 132px; gap: 2px; top: 88px; }
+.shell :global(.mapToolsBtn) { padding: 4px 8px; font-size: 11px; gap: 6px; }
+.shell :global(.mapToolsBtn) svg { width: 13px; height: 13px; }
+.shell :global(.mapDims) { padding: 2px; gap: 1px; }
+.shell :global(.mapDimBtn) { padding: 3px 9px; font-size: 11px; }
+
+/*
+ * ЦУЦЛАХ — шүүлтийн зурвасын СҮҮЛИЙН сегмент (хайлтын талбарын ✕-тэй ижил).
+ *
+ * ⚠️ Гадна нь тусад нь зогсоход «Шүүх» товчны хэсэг мэт уншигдаж, юуг
+ * цуцлах нь тодорхойгүй байв. Одоо цэвэрлэх үйлдэл нь цэвэрлэх зүйлтэйгээ
+ * нэг хүрээнд.
+ *
+ * ⚠️ УЛААН БОЛГОХГҮЙ: устгал биш, буцааж болох үйлдэл — улаан нь эргэлт
+ * буцалтгүй үйлдлийн хэл (порталын `.editErr`-тэй андуурагдана).
+ */
+.fClear {
+  display: flex;
+  align-items: center;
+  padding: 5px 10px;
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.2;
+  color: var(--ink-3);
+  background: transparent;
+  border: none;
+  border-left: 1px solid var(--line);
+  cursor: pointer;
+}
+.fClear:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 8%, transparent); }
+
+/*
+ * ЧАРТЫН ЗУРВАС — БҮДҮҮН, ЗУРААСТАЙ ДЭВСГЭРТЭЙ (2026-09-04, хэрэглэгчийн
+ * хүсэлт).
+ *
+ * ⚠️ `ui.tsx`-ийн анхдагч нь 2px hairline — тэр нь чарт олонтой, нягт
+ * харагдацад (нүүр, багцын самбар) зөв сонголт. Энэ дашбоардад мөр цөөн
+ * бөгөөд багана нь гол мэдээлэл тул зузаан байх нь уншихад амар.
+ *
+ * ⚠️ ДЭВСГЭР НЬ ЗУРААСТАЙ, дүүргэлт нь ЦУЛ: хоёрын хил нүдэнд шууд
+ * тодорхой болно. Нэг өнгийн хоёр сүүдрээр ялгавал (2026-09-04-нд туршсан)
+ * урт бүдэг зурвас нь богино цулаас «илүү» мэт уншигдана.
+ */
+.shell :global(.chartTrack) {
+  height: 11px;
+  border-radius: 3px;
+  background: var(--chart-track);
+}
+/*
+ * ⚠️ ЗУРААС НЬ ДҮҮРГЭЛТ ДЭЭР, дэвсгэр дээр БИШ (2026-09-04-ны залруулга).
+ * Дэвсгэрийг зураасалбал хоосон хэсэг нь анхаарал татаж, нүд «энд юм байна»
+ * гэж уншина — хээ нь утга агуулсан хэсэгт байх ёстой.
+ *
+ * ⚠️ Хээг ӨНГӨН ДЭЭР давхарлана (цулыг орлохгүй): цэвэр зураас нь нимгэн
+ * баганад тасархай мэт харагдаж, урт нь бүрхэг болно.
+ */
+.shell :global(.chartFill) {
+  border-radius: 3px;
+  background:
+    repeating-linear-gradient(
+      -45deg,
+      rgb(255 255 255 / 26%) 0 3px,
+      transparent 3px 6px
+    ),
+    var(--tone, var(--data));
+}
+
+/* ═══════════ S-МУРУЙ + ОЛГОСОН ДҮН — НЭГ ЗУРАГ ═══════════ */
+
+.tl { display: flex; flex-direction: column; gap: 4px; }
+
+/* ⚠️ `relative` — муруй ба цэгүүд энэ талбайд `absolute`-аар суурьшина */
+.tlPlot {
+  position: relative;
+  height: 132px;
+  /* Дээд талд хувийн шошго гарах зай (цэг 100%-д хүрэхэд таслагдахгүй) */
+  padding-top: 14px;
+}
+
+.tlBars { display: flex; align-items: flex-end; gap: 4px; height: 100%; }
+.tlCol {
+  position: relative;
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  height: 100%;
+}
+/* Багананы утга — түүний ДЭЭД талд, багана намхан үед ч уншигдана */
+.tlVal {
+  font-size: 9.5px;
+  color: var(--ink-3);
+  white-space: nowrap;
+  margin-bottom: 2px;
+}
+.tlBar {
+  display: block;
+  width: 100%;
+  min-height: 1px;
+  border-radius: 3px 3px 0 0;
+  /* Дүүргэлт зураастай — чартын бусад баганатай нэг хэл */
+  background:
+    repeating-linear-gradient(-45deg, rgb(255 255 255 / 22%) 0 3px, transparent 3px 6px),
+    color-mix(in srgb, var(--data) 55%, transparent);
+}
+
+/*
+ * ⚠️ Муруй нь `preserveAspectRatio="none"`-оор СУНАНА — зузаан нь гажихаас
+ * `vector-effect: non-scaling-stroke` хамгаална (JSX-д зарлагдсан).
+ * `pointer-events: none` — доорх багануудын hover-ыг хаахгүй.
+ */
+.tlSvg {
+  position: absolute;
+  inset: 14px 0 0;
+  width: 100%;
+  height: calc(100% - 14px);
+  overflow: visible;
+  pointer-events: none;
+}
+.tlLine { stroke: var(--good); stroke-width: 2; stroke-linecap: round; }
+
+.tlDot {
+  position: absolute;
+  transform: translate(-50%, 50%);
+  pointer-events: none;
+}
+.tlDot::before {
+  content: '';
+  display: block;
+  width: 6px;
+  height: 6px;
+  margin: 0 auto;
+  border-radius: 99px;
+  background: var(--good);
+  box-shadow: 0 0 0 2px var(--surface);
+}
+.tlDot b {
+  position: absolute;
+  bottom: 9px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 9.5px;
+  font-weight: 700;
+  color: var(--good);
+  white-space: nowrap;
+}
+
+.tlAxis { display: flex; gap: 4px; }
+.tlAxis span {
+  flex: 1 1 0;
+  min-width: 0;
+  font-size: 10px;
+  color: var(--ink-3);
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tlLegend {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 2px 0 0;
+  font-size: 10px;
+  color: var(--ink-3);
+}
+.tlKeyBar {
+  width: 12px;
+  height: 8px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--data) 55%, transparent);
+}
+.tlKeyLine { width: 14px; height: 2px; border-radius: 2px; background: var(--good); margin-left: 8px; }

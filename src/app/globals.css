@@ -336,6 +336,35 @@ ul, ol { list-style: none; }
   border: none !important;
 }
 .esri-zoom .esri-widget--button { border-radius: var(--r-sm) !important; }
+
+/**
+ * СУУРЬ ЗУРАГ СОНГОХ товч — ЦАГААН дэвсгэртэй байсныг зассан (2026-09-04).
+ *
+ * ⚠️ Дээрх `.esri-widget--button` дүрэм ЭНД ХҮРЭХГҮЙ. Тэр товч нь
+ * `calcite-action` бөгөөд бодит `<button>` нь SHADOW DOM дотор өөрийн
+ * дэвсгэрийг (`--calcite-color-foreground-1`, цайвар горимд цагаан) буддаг —
+ * гаднаас өгсөн `background` нь host дээр сууж, дотоод товчинд дарагдана.
+ *
+ * ⚠️ Calcite-ийн CSS ХУВЬСАГЧ нь shadow хилийг НЭВТЭЛДЭГ (BuildingExplorer-ийн
+ * тайлбартай ижил шалтгаан) — тиймээс өнгийг хувьсагчаар өгнө.
+ *
+ * ⚠️ Попоover-ыг ч хамт: товч нь бараан, дотор нь нээгддэг «Суурь зураг»
+ * жагсаалт цагаан байвал зөрүү нь илүү тод харагдана.
+ */
+.esri-ui calcite-action,
+.esri-ui calcite-button,
+.esri-ui calcite-popover {
+  --calcite-color-foreground-1: var(--surface);
+  --calcite-color-foreground-2: var(--surface-2);
+  --calcite-color-foreground-3: var(--surface-2);
+  --calcite-color-background: var(--surface);
+  --calcite-color-text-1: var(--ink);
+  --calcite-color-text-2: var(--ink-2);
+  --calcite-color-text-3: var(--ink-3);
+  --calcite-color-border-1: var(--line);
+  --calcite-color-border-2: var(--line);
+  --calcite-color-border-3: var(--line);
+}
 .esri-sketch__panel { background: var(--surface) !important; }
 
 /**

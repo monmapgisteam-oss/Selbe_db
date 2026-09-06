@@ -66,12 +66,28 @@ const BANNED = [
  *   `i18n/en.ts`      — толь; `i18n-extract` өөрөө цэвэрлэдэг
  *   `agent.check.mjs` — ангилагчийн сорил (ХУУЧИН хэлбэрийг ч таних ёстой)
  *   `format.check.mjs`— энэ файл (BANNED жагсаалт өөрөө)
+ *
+ * ⚠️ 2026-09-04 — `modules/GeneralDash.tsx` НЭМЭГДЭВ (хэрэглэгчийн хүсэлт:
+ *    «29.031.821.175 гэхгүй тоймлоод 29 тэрбум гээд товчил»). Тэр файлын
+ *    `mntShort()` нь ЗӨВХӨН «Ерөнхий дашбоард»-ын чартын мөр ба индикаторт
+ *    үйлчилнэ: 15 оронтой тоо нарийн нүдэнд ангиллын нэрийг шахаж хоёр мөр
+ *    болгодог.
+ *
+ *    ⚠️ ЭНЭ НЬ ХУУЧИН ШИЙДВЭРИЙГ БУЦААГААГҮЙ. `format.mnt` нь БҮТЭН хэвээр
+ *    бөгөөд портал даяарх бусад 7 дуудагч, тэр дундаа энэ дашбоардын hover
+ *    цонх өөрөө бүтэн дүн харуулна. Товчлол зөвхөн НЭГ файлын НЭГ функцэд.
+ *    Өөр файлд гарвал энэ шалгуур дахин барина — SKIP-д БҮҮ нэм, эхлээд
+ *    хэрэглэгчээс асуу.
  */
 /** Тайлбар хасах — мөрийн ба блокийн тайлбарыг хоосон болгоно (CSS-ийнх ч мөн) */
 const noComments = (src) => src
   .replace(new RegExp("/\\*[^]*?\\*/", "g"), " ")
   .replace(new RegExp("(^|[^:])//[^\\n]*", "g"), "$1");
-const SKIP = ['lib/agent/format.ts', 'lib/datasets.ts', 'i18n/en.ts', 'lib/agent/agent.check.mjs', 'lib/format.check.mjs'];
+const SKIP = [
+  'lib/agent/format.ts', 'lib/datasets.ts', 'i18n/en.ts',
+  'lib/agent/agent.check.mjs', 'lib/format.check.mjs',
+  'modules/GeneralDash.tsx',
+];
 const hits = [];
 (function walk(dir) {
   for (const name of readdirSync(dir)) {

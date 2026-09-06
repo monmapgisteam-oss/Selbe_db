@@ -73,7 +73,11 @@ function useWidth<T extends HTMLElement>(): [React.RefObject<T | null>, number] 
    ⚠️ `createPortal` ХЭРЭГГҮЙ (төсөлд хаана ч ашиглагдаагүй, ssr:false-тэй
    харилцан үйлчлэл нэмэхээс зайлсхийв). */
 
-type TipData = { x: number; y: number; label: string; value: string; color?: string; hint?: string };
+/** ⚠️ `hint` нь ОЛОН МӨР байж болно — задаргааг чартын мөрөөс энэ рүү зөөв */
+type TipData = {
+  x: number; y: number; label: string; value: string;
+  color?: string; hint?: string | string[];
+};
 
 const TIP_DELAY = 60; // мс — `title`-ийн ~1000-ын оронд
 const TIP_OFF = 14; // заагуураас хол зай
@@ -155,7 +159,12 @@ function Tip({ x, y, label, value, color, hint }: TipData) {
       </span>
       <span className={s.tipBody}>
         <b className={`${s.tipVal} num`} style={{ color: c }}>{value}</b>
-        {hint && <span className={s.tipHint}>{hint}</span>}
+        {/* ⚠️ ОЛОН МӨР — задаргаа нь чартын мөрөнд БИШ энд байх ёстой
+            (2026-09-04, хэрэглэгчийн шийдвэр: «чарт өөрөө энгийн, hover
+            панел дээр дэлгэрэнгүй задаргаа»). Мөр бүр өөрийн цэгтэй. */}
+        {(Array.isArray(hint) ? hint : hint ? [hint] : []).map((h) => (
+          <span key={h} className={s.tipHint}>{h}</span>
+        ))}
       </span>
     </div>
   );
@@ -210,18 +219,22 @@ export function Section({
     <section
       className={`${s.section} ${tone === 'primary' ? s.sectionPrimary : ''} ${fill ? s.sectionFill : ''} ${collapsible && closed ? s.sectionClosed : ''}`}
     >
+      {/* ⚠️ `secHead` / `secTitle` — ГЛОБАЛ нэрс (`statCard`, `statsGrid`-тэй
+          ижил зарчим). Дуудагч модуль тухайн харагдацын нягтралд тааруулж
+          хэмжээг дарж бичихэд хэрэгтэй: нэг дэлгэцэд 8 карт байхад 13.5px
+          гарчиг нь агуулгаас илүү зай эзэлнэ. */}
       {title && (
-        <header className={s.sectionHead}>
+        <header className={`${s.sectionHead} secHead`}>
           {collapsible ? (
             /* Гарчиг бүхэлдээ товч — жижиг сум онилохоос хялбар */
-            <h3 className={s.sectionTitle}>
+            <h3 className={`${s.sectionTitle} secTitle`}>
               <button type="button" className={s.secToggle} aria-expanded={!closed} onClick={toggle}>
                 <span className={`${s.secCaret} ${closed ? s.secCaretOff : ''}`} aria-hidden>▾</span>
                 {title}
               </button>
             </h3>
           ) : (
-            <h3 className={s.sectionTitle}>{title}</h3>
+            <h3 className={`${s.sectionTitle} secTitle`}>{title}</h3>
           )}
           {note && <span className={s.sectionNote}>{note}</span>}
         </header>
@@ -346,7 +359,7 @@ export function Tabs({
 
 /* ── Үзүүлэлт ── */
 
-export function Stats({ cols = 2, children }: { cols?: 2 | 3 | 4; children: ReactNode }) {
+export function Stats({ cols = 2, children }: { cols?: 1 | 2 | 3 | 4; children: ReactNode }) {
   /**
    * ⚠️ `statsGrid` — ГЛОБАЛ нэр (CSS модулиар хэшлэгддэггүй). Дуудагч модуль
    * тухайн БАЙРЛАЛД нь тааруулж баганын тоог дарж бичихэд хэрэгтэй: дашбоардын
@@ -355,7 +368,14 @@ export function Stats({ cols = 2, children }: { cols?: 2 | 3 | 4; children: Reac
    * шахагдана. Эх сурвалж нь `cols` хэвээр — энэ нь зөвхөн байрлалын залруулга.
    */
   return (
-    <div className={`${s.stats} statsGrid ${cols === 3 ? s.stats3 : ''} ${cols === 4 ? s.stats4 : ''}`}>
+    <div
+      className={[
+        s.stats, 'statsGrid',
+        /* ⚠️ `cols === 1` нэмэгдэв (2026-09-04): нэг үзүүлэлттэй картад
+           2 багана нь хагас хоосон нүд үлдээж, карт «дутуу» мэт харагдана. */
+        cols === 1 ? s.stats1 : '', cols === 3 ? s.stats3 : '', cols === 4 ? s.stats4 : '',
+      ].filter(Boolean).join(' ')}
+    >
       {children}
     </div>
   );
@@ -367,12 +387,21 @@ export function Stat({
   label,
   color,
   accent,
+  icon,
 }: {
   value: ReactNode;
   unit?: string;
   label: string;
   color?: string;
   accent?: boolean;
+  /**
+   * Тооны ӨМНӨ гарах дүрс (`Icon.tsx`-ийн нэр).
+   *
+   * ⚠️ Optional бөгөөд анхдагчаар БАЙХГҮЙ: 56 дуудагчийн аль нь ч
+   * өөрчлөгдөхгүй. Дүрсийг зөвхөн ЦӨӨН үзүүлэлттэй зурваст (KPI мөр) тавина —
+   * жагсаалт маягийн олон мөрөнд дүрс нь давтагдаж чимээ болдог.
+   */
+  icon?: string;
 }) {
   /**
    * ⚠️ `statCard` / `statNum` / `statTag` — ГЛОБАЛ нэрс (`statsGrid`-тэй ижил
@@ -393,6 +422,9 @@ export function Stat({
   return (
     <div className={`${s.stat} statCard ${accent ? s.statAccent : ''}`} style={tone(color)}>
       <div className={`${s.statValue} ${long ? s.statValueLong : ''} statNum num`}>
+        {/* ⚠️ Дүрс нь ТООНЫ ӨМНӨ, нэг мөрөнд. Шошгын дэргэд тавьбал шошго нь
+            eyebrow (жижиг, том үсэг) тул дүрс түүнээс өндөр болж эгнээ мурийна. */}
+        {icon && <span className={s.statIcon} aria-hidden><Icon name={icon} /></span>}
         {value}
         {unit && <span className={s.statUnit}>{unit}</span>}
       </div>
@@ -403,7 +435,38 @@ export function Stat({
 
 /* ── Баганан жагсаалт ── */
 
-type Bar = { key: string; label: string; value: number; display?: string; color?: string };
+type Bar = {
+  key: string;
+  label: string;
+  value: number;
+  display?: string;
+  color?: string;
+  /*
+   * ⚠️ ДЭД УТГА (`sub`) ЭНД БАЙХГҮЙ, БАЙХ Ч ЁСГҮЙ. 2026-09-04-нд багана
+   * дотор «биелсэн» хэсгийг өөр өнгөөр будаж туршсан боловч хэрэглэгч
+   * хассан: нэг зурвас дээр гурван сүүдэр (өнгөт · саарал · зам) нь
+   * жагсаалтыг уншихад тус болохоос илүү саад болсон. Дэд задаргаа нь
+   * hover цонхонд БҮТЭН ӨГҮҮЛБЭРЭЭР байдаг (`hint`) — тэр газраа хангалттай.
+   */
+  /**
+   * Hover цонхны ЭХНИЙ мөр — мөрөн дээрхээс ӨӨР байж болно.
+   *
+   * ⚠️ Мөрөн дээр богино («1.2% · 29 тэрбум ₮»), hover-т дэлгэрэнгүй байх
+   * шаардлага бий: жагсаалт гүйлгэн уншихад харьцаа хэрэгтэй, нэг мөрийг
+   * судлахад бүтэн дүн хэрэгтэй. Заагаагүй бол `display` хэрэглэгдэнэ.
+   */
+  tipValue?: string;
+  /**
+   * Hover цонхны ХОЁР ДАХЬ мөр — утгын ТАЙЛБАР.
+   *
+   * ⚠️ Жагсаалтын мөрөнд БИШ, зөвхөн hover-т гарна: мөр нь нэр + утга
+   * хоёроор аль хэдийн дүүрэн бөгөөд гурав дахь текст нэмбэл нэр нь
+   * шахагдаж хоёр мөр болно (`.barName` нь 2 мөрөөр таслагддаг).
+   *
+   * ⚠️ ОЛОН мөр өгч болно — тус бүр цэгтэй мөр болно.
+   */
+  hint?: string | string[];
+};
 
 export function Bars({
   items,
@@ -460,8 +523,15 @@ export function Bars({
               <span className={`${s.barName} ${on ? s.barNameOn : ''}`} title={tr(it.label)}>{tr(it.label)}</span>
               <span className={`${s.barVal} ${on ? s.barValOn : ''} num`}>{it.display ?? it.value}</span>
             </span>
-            <span className={s.barTrack}>
-              <i className={s.barFill} style={{ width: `${w}%`, opacity: dim ? 0.3 : 1 }} />
+            {/* ⚠️ `chartTrack` / `chartFill` — ГЛОБАЛ нэрс (`statCard`,
+                `secTitle`-тэй ижил зарчим). Дуудагч харагдац зурвасны зузаан,
+                бүтцийг өөрийн нягтралд тааруулж дарж бичихэд хэрэгтэй; энэ
+                файлын анхдагч 2px hairline хэвээр. */}
+            <span className={`${s.barTrack} chartTrack`}>
+              <i
+                className={`${s.barFill} chartFill`}
+                style={{ width: `${w}%`, opacity: dim ? 0.3 : 1 }}
+              />
             </span>
           </>
         );
@@ -470,9 +540,11 @@ export function Bars({
         /** Бүх дашбоардад ИЖИЛ hover popup — нэр: утга (+шүүх заавар) */
         const tipData = {
           label: it.label,
-          value: String(it.display ?? it.value),
+          value: String(it.tipValue ?? it.display ?? it.value),
           color: it.color ?? color,
-          hint: onSelect ? tr('Дарж газрын зурагт шүүнэ') : undefined,
+          /* ⚠️ Мөрийн ӨӨРИЙН тайлбар давамгайлна — «Дарж шүүнэ» нь зөвхөн
+             тайлбаргүй мөрд гарах ерөнхий заавар. */
+          hint: it.hint ?? (onSelect ? tr('Дарж газрын зурагт шүүнэ') : undefined),
         };
         return onSelect ? (
           <button
@@ -1361,6 +1433,52 @@ function axisTicks(points: TrendPoint[], width: number): string[] {
   return out;
 }
 
+/**
+ * ЗӨӨЛӨН МУРУЙН ЗАМ — МОНОТОН кубик (Fritsch–Carlson).
+ *
+ * ⚠️ Энгийн Catmull-Rom АШИГЛАХГҮЙ. Тэр нь цэг хооронд ХЭТРЭХ (overshoot)
+ * шинжтэй: хуримтлагдсан S-муруй 96% → 98.8% гэж өгсөхөд муруй нь 100%-ийг
+ * давж гараад буцдаг — «төлөвлөгөө 101% биелсэн» гэсэн ХУДАЛ уншилт төрүүлнэ.
+ * Монотон арга нь өгсөх цуваанд хэзээ ч буухгүй, буух цуваанд өгсөхгүй.
+ *
+ * ⚠️ Координат нь `viewBox="0 0 100 100"`-ийн орон зайд — `preserveAspectRatio
+ * ="none"` тул хэвтээ сунгалт нь хяналтын цэгүүдийг ч дагаж сунгана (шугам
+ * зөөлөн хэвээр).
+ */
+export function monotonePath(pts: { x: number; y: number }[]): string {
+  const n = pts.length;
+  if (n === 0) return '';
+  if (n === 1) return `M${pts[0].x},${pts[0].y}`;
+
+  const dx: number[] = [];
+  const m: number[] = [];
+  for (let i = 0; i < n - 1; i += 1) {
+    dx[i] = pts[i + 1].x - pts[i].x;
+    m[i] = dx[i] === 0 ? 0 : (pts[i + 1].y - pts[i].y) / dx[i];
+  }
+
+  /* Цэг бүрийн налуу — хөршийн налуу ТЭМДЭГ солиход 0 (эргэлтийн цэг) */
+  const t: number[] = new Array(n);
+  t[0] = m[0];
+  t[n - 1] = m[n - 2];
+  for (let i = 1; i < n - 1; i += 1) {
+    if (m[i - 1] * m[i] <= 0) { t[i] = 0; continue; }
+    const w1 = 2 * dx[i] + dx[i - 1];
+    const w2 = dx[i] + 2 * dx[i - 1];
+    t[i] = (w1 + w2) / (w1 / m[i - 1] + w2 / m[i]);
+  }
+
+  const r = (v: number) => Math.round(v * 100) / 100;
+  let d = `M${r(pts[0].x)},${r(pts[0].y)}`;
+  for (let i = 0; i < n - 1; i += 1) {
+    const h = dx[i] / 3;
+    d += ` C${r(pts[i].x + h)},${r(pts[i].y + t[i] * h)}`
+      + ` ${r(pts[i + 1].x - h)},${r(pts[i + 1].y - t[i + 1] * h)}`
+      + ` ${r(pts[i + 1].x)},${r(pts[i + 1].y)}`;
+  }
+  return d;
+}
+
 export function Trend({
   points,
   color,
@@ -1370,6 +1488,7 @@ export function Trend({
   visible,
   showValues = false,
   alert,
+  smooth = false,
 }: {
   points: TrendPoint[];
   color?: string;
@@ -1395,6 +1514,15 @@ export function Trend({
    * онцолно. Чиглэл нь үргэлж «дээш» (дуудагч тал утгаа тэр дагуу сонгоно).
    */
   alert?: { value: number; note?: string };
+  /**
+   * Хугарсан шугамын оронд ЗӨӨЛӨН муруй.
+   *
+   * ⚠️ Анхдагчаар УНТРААЛТТАЙ: хэмжилтийн цуваанд (өдөр тутмын ажилтан, IoT
+   * унших) зөөлрүүлэлт нь ХЭМЖЭЭГҮЙ утгыг цэг хооронд «зурж» өгдөг тул
+   * байхгүй өгөгдлийг байгаа мэт харуулна. Тасралтгүй, хуримтлагдах
+   * хэмжигдэхүүнд (S-муруй) л асаана.
+   */
+  smooth?: boolean;
 }) {
   const [hov, setHov] = useState<number | null>(null);
   // Тэнхлэгийн БОДИТ өргөн — хэдэн шошго давхцалгүй багтахыг үүгээр шийднэ.
@@ -1443,6 +1571,10 @@ export function Trend({
   const y = (v: number) => 100 - (fin(v) / axisTop) * 100;
 
   const path = points.map((p, i) => `${x(i)},${y(p.value)}`).join(' ');
+  /* Зөөлөн горимд `polyline`/`polygon`-ы оронд нэг `path` */
+  const dLine = smooth
+    ? monotonePath(points.map((p, i) => ({ x: x(i), y: y(p.value) })))
+    : '';
 
   /** Цэг нь босгоос ДЭЭШ гарсан уу */
   const over = (v: number) => alert != null && fin(v) > alert.value;
@@ -1540,8 +1672,19 @@ export function Trend({
                   <stop offset="100%" stopColor="var(--tone, var(--data))" stopOpacity="0.02" />
                 </linearGradient>
               </defs>
-              <polygon points={`0,100 ${path} 100,100`} style={{ fill: `url(#${gradId})` }} />
-              <polyline className={s.trendLine} points={path} />
+              {smooth ? (
+                <>
+                  {/* ⚠️ Талбай нь ШУГАМЫН ЗАМЫГ дагана — тусад нь байгуулбал
+                      хоёр муруй бага зэрэг зөрж, ирмэг дээр цагаан зурвас гарна. */}
+                  <path d={`${dLine} L100,100 L0,100 Z`} style={{ fill: `url(#${gradId})` }} />
+                  <path className={s.trendLine} d={dLine} fill="none" />
+                </>
+              ) : (
+                <>
+                  <polygon points={`0,100 ${path} 100,100`} style={{ fill: `url(#${gradId})` }} />
+                  <polyline className={s.trendLine} points={path} />
+                </>
+              )}
               {/* Босгын шугам — муруйн ДЭЭГҮҮР зурагдана (эс бөгөөс градиент дарна) */}
               {alert ? (
                 <line

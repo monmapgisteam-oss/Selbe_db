@@ -1,7 +1,23 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef, Fragment, type MouseEvent, type CSSProperties } from 'react';
+import dynamic from 'next/dynamic';
 import { t as tr } from '@/lib/i18nCore';
+
+/**
+ * ОГНООНЫ КАЛЕНДАР — «Гүйцэтгэл бөглөх» хуудсынхтай ЯГ ИЖИЛ бүрэлдэхүүн.
+ *
+ * ⚠️ `<input type="date">` БИШ: түүний календарыг ХӨТӨЧ зурдаг тул нэр
+ * («Clear»/«Today»), хэл, өнгө нь системийн тохиргооноос хамаарч, хуудаснаас
+ * өөрчлөгддөггүй (`DatePicker.tsx`-ийн толгойн тайлбарыг үз).
+ *
+ * ⚠️ `dynamic` — тэр модуль `sheet.module.css`-ийг дагуулдаг тул огноо
+ * засахгүй хэрэглэгчид татагдахгүй.
+ */
+const DatePicker = dynamic(() => import('@/modules/sheet/DatePicker'), { ssr: false });
+
+/** Огнооны талбар мөн үү — календар зөвхөн эдгээрт нээгдэнэ */
+const DATE_TYPES = new Set(['esriFieldTypeDate', 'esriFieldTypeDateOnly']);
 import { Data, Empty } from '@/components/ui';
 import { useAsync } from '@/lib/useAsync';
 import { queryFeatures } from '@/lib/query';
@@ -1205,9 +1221,21 @@ const PLAIN_INT = new Set<string>([
  * ⚠️ Модулийн хамрах хүрээнд: бүрэлдэхүүн дотор тодорхойлбол render бүрд
  *    шинэ функц болж, `cols`-ийн `useMemo` кэш утгагүй болно.
  */
+/**
+ * ⚠️ EDITOR TRACKING-ийн 4 багана (`CreationDate`, `Creator`, `EditDate`,
+ * `Editor`) ХҮСНЭГТЭД ГАРАХГҮЙ. 2026-09-04-нд үйлчилгээн дээр асаагдмагц
+ * тэдгээр нь метадатагаас автоматаар багана болж, аль хэдийн 33 баганатай
+ * хүснэгтийг дөрвөөр өргөсгөж, бүх мөрөнд ижил утга давтагдаж байв.
+ *
+ * ⚠️ ӨГӨГДӨЛ НЬ АЛДАГДААГҮЙ: мөрүүд `outFields:'*'`-аар татагддаг тул
+ * `EditDate`/`Editor` нь мөр бүрд ХЭВЭЭР ирнэ — «Сүүлд зассан» тамга (№
+ * баганын ногоон зураас, `editStamp`) тэднийг уншсаар байна. Энд зөвхөн
+ * ХАРАГДАЦААС хасаж байна.
+ */
 const isSkip = (name: string, type: string, oidField: string): boolean =>
   type === 'esriFieldTypeGlobalID'
   || /globalid/i.test(name)
+  || /^(creationdate|creator|editdate|editor)$/i.test(name)
   || name === oidField
   || name === CASHFLOW2.fields.geree
   || name === IPC_LOG.fields.geree;
@@ -1381,6 +1409,24 @@ function FullTable({
   const [flt, setFlt] = useState<FinFilter>(EMPTY_FILTER);
   /** Багана бүрийн шүүлтийн мөр нээлттэй эсэх — анхдагчаар ХААЛТТАЙ */
   const [colOpen, setColOpen] = useState(false);
+  /**
+   * ТОЛГОЙН ШҮҮЛТИЙН ЦЭС — ArcGIS-ийн атрибут хүснэгтийн маяг.
+   * Нээлттэй баганын нэр ба дэлгэц дээрх байрлал (товчны доор).
+   *
+   * ⚠️ Байрлалыг `position: fixed`-ээр ЭНД хадгална, `th` дотор `absolute`
+   * БИШ: царцсан багануудад `overflow: hidden` бий тул дотор нь зурсан цонх
+   * тасарна, мөн `z-index`-ийн шатлал нь хөрш баганад дарагдана.
+   */
+  const [hMenu, setHMenu] = useState<{ name: string; x: number; y: number } | null>(null);
+  /**
+   * НЭЭЛТТЭЙ КАЛЕНДАР — аль нүднийх, хаана, юу бичих вэ.
+   *
+   * ⚠️ `set` нь ФУНКЦ тул `useState`-д ШУУД дамжуулж болохгүй байсан —
+   * объект дотор боож хадгална (React функцийг «шинэчлэгч» гэж ойлгодог).
+   */
+  const [cal, setCal] = useState<
+    { value: string; anchor: DOMRect; set: (v: string) => void } | null
+  >(null);
   /**
    * БАГЦААР БҮТЭЦЛЭХ — анхдагчаар АСААЛТТАЙ.
    *
@@ -1810,6 +1856,35 @@ function FullTable({
     return st;
   };
 
+  /**
+   * ОГНООНЫ НҮДНИЙ ЗАСВАРЛАГЧ — бичих ба календараас сонгох ХОЁУЛАА.
+   *
+   * ⚠️ Гараар бичих замыг ХААХГҮЙ: 76 мөрийн огноо оруулахад календар нээж
+   * дарах нь товшилт олон дахин нэмнэ. Хэлбэр нь `YYYY-MM-DD` — `parseCell`
+   * яг үүнийг хүлээж авдаг бөгөөд «27.05.2026» гэх мэт бичиглэлийг ЧИМЭЭГҮЙ
+   * зөвшөөрөхгүй (`Error` шиднэ).
+   */
+  const dateEdit = (cur: string, onEdit: (v: string) => void) => (
+    <span className={f.dateCell}>
+      <input
+        className={f.cellInput}
+        value={cur}
+        placeholder="YYYY-MM-DD"
+        onChange={(ev) => onEdit(ev.target.value)}
+      />
+      <button
+        type="button"
+        className={f.calBtn}
+        title={tr('Календараас сонгох')}
+        aria-label={tr('Календараас сонгох')}
+        onClick={(ev) => {
+          const host = (ev.currentTarget.parentElement ?? ev.currentTarget) as HTMLElement;
+          setCal({ value: cur, anchor: host.getBoundingClientRect(), set: onEdit });
+        }}
+      >📅</button>
+    </span>
+  );
+
   const xCell = (
     r: Row, oid: number | null, dropped: boolean, c: FieldDef,
     extra = '', sty?: CSSProperties,
@@ -1892,11 +1967,13 @@ function FullTable({
 
       return (
         <td key={key} style={sty} className={`${f.cellEdit} ${mark} ${extra}`}>
-          <input
-            className={`${f.cellInput} ${NUMERIC_TYPES.has(c.type) ? 'num' : ''}`}
-            value={cur}
-            onChange={(ev) => onEdit(ev.target.value)}
-          />
+          {DATE_TYPES.has(c.type) ? dateEdit(cur, onEdit) : (
+            <input
+              className={`${f.cellInput} ${NUMERIC_TYPES.has(c.type) ? 'num' : ''}`}
+              value={cur}
+              onChange={(ev) => onEdit(ev.target.value)}
+            />
+          )}
         </td>
       );
     }
@@ -1953,19 +2030,18 @@ function FullTable({
     const key = `${oid}:${c.name}`;
     if (edit && oid != null && !dropped && !SERVER_RO.test(c.name)) {
       const cur = key in pend ? pend[key] : editText(r[c.name], c.type);
+      const put = (v: string) => setPend((p) => {
+        const nx = { ...p };
+        if (v === editText(r[c.name], c.type)) delete nx[key];
+        else nx[key] = v;
+        return nx;
+      });
+      if (DATE_TYPES.has(c.type)) return dateEdit(cur, put);
       return (
         <input
           className={`${f.cellInput} ${NUMERIC_TYPES.has(c.type) ? 'num' : ''}`}
           value={cur}
-          onChange={(ev) => {
-            const v = ev.target.value;
-            setPend((p) => {
-              const nx = { ...p };
-              if (v === editText(r[c.name], c.type)) delete nx[key];
-              else nx[key] = v;
-              return nx;
-            });
-          }}
+          onChange={(ev) => put(ev.target.value)}
         />
       );
     }
@@ -2290,10 +2366,100 @@ function FullTable({
       || ((x.oid ?? 0) - (y.oid ?? 0)));
   };
 
+  /**
+   * ТОЛГОЙН ШҮҮЛТИЙН ЦЭС — ArcGIS-ийн атрибут хүснэгттэй ижил зан.
+   *
+   * Багана бүрийн ЯЛГААТАЙ утгууд чагттай жагсаалтаар гарна; сонгосон нь
+   * `flt.pick[багана]`-д хадгалагдаж, `rowMatches` тэдгээрийн аль нэгтэй ЯГ
+   * тэнцүү мөрийг үлдээнэ.
+   *
+   * ⚠️ ЭРЭМБЭ ЭНД БАЙХГҮЙ. ArcGIS-ийн цэсэнд «A→Z» байдаг ч энэ хүснэгтийн
+   * эрэмбийг 2026-09-04-нд хэрэглэгч ТОГТМОЛ болгохоор шийдсэн («иим sort
+   * дээр чи хадгалаад болсон, өөр хүн sort хийхгүй») — цэсэнд эрэмбэ
+   * нэмбэл тэр шийдвэр чимээгүй буцна.
+   *
+   * ⚠️ Утга нь ХАРАГДАЖ БУЙ текст (`fmtCell`-ийн гаралт) — эс бөгөөс
+   * жагсаалтад «1787270400000», хүснэгтэд «2026-09-04» гэж хоёр өөр зүйл
+   * харагдана.
+   *
+   * ⚠️ Жагсаалтыг ШҮҮГДЭЭГҮЙ бүх мөрөөс (`rows`) гаргана: өөр багана
+   * шүүгдсэн байхад энэ баганын сонголт хумигдвал хэрэглэгч буцаж
+   * өргөсгөх боломжгүй мухарт ордог.
+   */
+  const headMenu = () => {
+    if (!hMenu) return null;
+    const c = cols.find((x) => x.name === hMenu.name);
+    if (!c) return null;
+    const sel = flt.pick?.[c.name] ?? [];
+    const vals = distinct(rows, (r) => cellStr(r[c.name], c.type, c.name));
+    const numeric = isNumericType(c.type);
+
+    const setPick = (next: string[]) => setFlt((st) => {
+      const pick = { ...(st.pick ?? {}) };
+      /* ⚠️ Хоосон бол ТАЛБАРЫГ УСТГАНА — `[]` үлдээвэл `isDirty` худал үнэн
+         болж «Цэвэрлэх» товч мөнхөд гацна. */
+      if (next.length) pick[c.name] = next; else delete pick[c.name];
+      return { ...st, pick };
+    });
+
+    return (
+      <>
+        {/* Гадна дарахад хаана — цэс нээлттэй үлдэж хүснэгтийг халхлахаас сэргийлнэ */}
+        <div className={f.thMenuVeil} onClick={() => setHMenu(null)} />
+        <div
+          className={f.thMenu}
+          style={{ left: Math.min(hMenu.x, Math.max(8, window.innerWidth - 280)), top: hMenu.y }}
+        >
+          <div className={f.thMenuHead}>
+            {finFieldLabel(c.name) === c.name ? c.alias : finFieldLabel(c.name)}
+          </div>
+
+          {numeric && (
+            /* ⚠️ Тоон багананд чагтын жагсаалт утгагүй (утга бүр цор ганц) —
+               ArcGIS ч тэнд нөхцөл бичүүлдэг. */
+            <input
+              className={f.thMenuNum}
+              value={flt.col[c.name] ?? ''}
+              placeholder={tr('>1000 · <=5e6 · 100..200')}
+              onChange={(ev) => setCol(c.name, ev.target.value)}
+            />
+          )}
+
+          <div className={f.thMenuActs}>
+            <button type="button" onClick={() => setPick(vals)}>{tr('Бүгд')}</button>
+            <button
+              type="button"
+              onClick={() => { setPick([]); setCol(c.name, ''); }}
+            >{tr('Цэвэрлэх')}</button>
+          </div>
+
+          <ul className={f.thMenuList}>
+            {vals.map((v) => {
+              const on = sel.includes(v);
+              return (
+                <li key={v || '—'}>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={on}
+                      onChange={() => setPick(on ? sel.filter((x) => x !== v) : [...sel, v])}
+                    />
+                    <span>{v === '' ? tr('(хоосон)') : v}</span>
+                  </label>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      </>
+    );
+  };
+
   const flatTable = (raw: GroupRow[]) => {
     const list = sortRows(raw);
     return (
     <div className={f.xlWrap}>
+      {headMenu()}
       <table className={f.xlTbl}>
         <thead>
           <tr>
@@ -2312,6 +2478,18 @@ function FullTable({
                   * монголоор харагдана.
                   */}
                 {finFieldLabel(c.name) === c.name ? c.alias : finFieldLabel(c.name)}
+                {/* ArcGIS маягийн шүүлт — толгой бүрд унждаг цэс */}
+                <button
+                  type="button"
+                  className={`${f.thMenuBtn} ${(flt.pick?.[c.name]?.length || flt.col[c.name]?.trim()) ? f.thMenuOn : ''}`}
+                  aria-label={tr('Шүүлт')}
+                  title={tr('Шүүлт')}
+                  onClick={(ev) => {
+                    ev.stopPropagation();
+                    const r = (ev.currentTarget as HTMLElement).getBoundingClientRect();
+                    setHMenu((m) => (m?.name === c.name ? null : { name: c.name, x: r.left, y: r.bottom }));
+                  }}
+                >▾</button>
                 {/* Чирэх бариул — давхар товшвол анхны өргөнд буцна */}
                 <i {...grip(c.name)} />
               </th>
@@ -2357,6 +2535,108 @@ function FullTable({
                     )}
                   </td>
                 )}
+              </tr>
+            );
+          })}
+
+          {/*
+            * ШИНЭ МӨР — ХҮСНЭГТИЙН ЁСТОЙ ДООД ТАЛД (2026-09-04, хэрэглэгчийн
+            * хүсэлт: «засах гэж дархаар доошоо мөр нэмж болдог болго»).
+            *
+            * ⚠️ Товчийг ТОЛГОЙД биш ДООР тавьсан шалтгаан: Excel-д шинэ мөр
+            * үргэлж доороос ургадаг бөгөөд хүн 76 мөрийг гүйлгээд ирсэн
+            * газраасаа шууд нэмнэ. Толгойд байвал нэмсэн мөрөө хайж дахин
+            * доош гүйх болно.
+            *
+            * ⚠️ Эдгээр мөр ШҮҮЛТЭД ОРОХГҮЙ, дугаарлалт нь жагсаалтын ард
+            * үргэлжилнэ — OID байхгүй тул засвар нь `pend` биш `adds[ai]`-д
+            * бичигдэнэ (`publish` тэднийг `adds` болгон илгээнэ).
+            */}
+          {/*
+            * ШИНЭ МӨР — EXCEL-ИЙН ЗАН (2026-09-04, хэрэглэгчийн хүсэлт:
+            * «шууд доошоо Excel шиг row нэмдэг болго»).
+            *
+            * Жагсаалтын ард `adds.length + 1` мөр зурна: сүүлийнх нь ҮРГЭЛЖ
+            * ХООСОН «ноорог» мөр. Тэнд бичмэгц тэр мөр жинхэнэ болж, доор нь
+            * шинэ хоосон мөр аяндаа гарна — товч дарах шаардлагагүй.
+            *
+            * ⚠️ ТҮЛХҮҮР НЬ ИНДЕКСЭЭР байх ЁСТОЙ. Ноорог мөр `new-${adds.length}`
+            * түлхүүртэй; бичихэд `adds` уртсаад ТЭР МӨР ижил түлхүүрээ
+            * хадгална. Тогтвортой түлхүүргүй бол React нүдийг remount хийж,
+            * эхний үсэг бичсний дараа ФОКУС АЛДАГДАНА — Excel шиг үргэлжлүүлэн
+            * бичих боломжгүй болно.
+            *
+            * ⚠️ Эдгээр мөр ШҮҮЛТЭД ОРОХГҮЙ: OID байхгүй тул засвар нь `pend`
+            * биш `adds[ai]`-д бичигдэж, `publish` тэднийг `adds` болгон
+            * илгээнэ. Хоосон ноорог мөр `dirty`-д ТООЛОГДОХГҮЙ (жинхэнэ
+            * болтлоо `adds`-д ороогүй) тул «Нийтлэх (0)» худал өсөхгүй.
+            */}
+          {edit && canRow && Array.from({ length: adds.length + 1 }, (_, ai) => {
+            const a = adds[ai] ?? {};
+            const draft = ai === adds.length;
+            /** Ноорог бол ШИНЭ мөр үүсгэнэ, эс бөгөөс байгааг нь засна */
+            const put = (name: string, v: string) => setAdds((st) => (
+              ai >= st.length ? [...st, { [name]: v }] : st.map((x, k) => (k === ai ? { ...x, [name]: v } : x))
+            ));
+            return (
+              <tr key={`new-${ai}`} className={draft ? f.rowDraft : f.rowNew}>
+                {/*
+                  * ⚠️ `+` НЬ ТОВЧ — дарахад Excel-ийн «insert row» шиг ЭНЭ
+                  * дэлгэц дээрээ шинэ мөр үүснэ. Урьд нь зөвхөн тэмдэг байсан
+                  * тул хэрэглэгч дарж үзээд юу ч болохгүйд эргэлзэж байв.
+                  * Ноорог мөрд бичих зам ч ХЭВЭЭР — хоёулаа ижил үр дүнд хүрнэ.
+                  */}
+                <td className={f.xlNo} style={{ width: FZ_DEF[0], minWidth: FZ_DEF[0] }}>
+                  {draft ? (
+                    <button
+                      type="button"
+                      className={f.rowIns}
+                      title={tr('Шинэ мөр нэмэх')}
+                      aria-label={tr('Шинэ мөр нэмэх')}
+                      onClick={() => setAdds((st) => [...st, {}])}
+                    >+</button>
+                  ) : list.length + ai + 1}
+                </td>
+                {cols.map((c, ci) => (
+                  <td
+                    key={c.name}
+                    className={`${f.cellEdit} ${frz(ci)}`}
+                    style={colSty(c, ci)}
+                  >
+                    {SERVER_RO.test(c.name) ? null : c.choices?.length ? (
+                      <select
+                        className={f.cellPick}
+                        value={a[c.name] ?? ''}
+                        onChange={(ev) => put(c.name, ev.target.value)}
+                      >
+                        <option value="">—</option>
+                        {c.choices.map((o) => <option key={o} value={o}>{o}</option>)}
+                      </select>
+                    ) : DATE_TYPES.has(c.type) ? (
+                      /* Огноо — календар + `YYYY-MM-DD`; чөлөөт текст оруулах
+                         зам нээлттэй үлдвэл нийтлэл `parseCell` дээр унана */
+                      dateEdit(a[c.name] ?? '', (v) => put(c.name, v))
+                    ) : (
+                      <input
+                        className={`${f.cellInput} ${NUMERIC_TYPES.has(c.type) ? 'num' : ''}`}
+                        value={a[c.name] ?? ''}
+                        placeholder={draft && ci === 0 ? tr('Энд бичихэд шинэ мөр үүснэ') : undefined}
+                        onChange={(ev) => put(c.name, ev.target.value)}
+                      />
+                    )}
+                  </td>
+                ))}
+                <td className={f.rowBtnCell}>
+                  {/* Ноорог мөрд устгах товч утгагүй — хараахан мөр биш */}
+                  {!draft && (
+                    <button
+                      type="button"
+                      className={f.rowBtn}
+                      title={tr('Мөр хасах')}
+                      onClick={() => setAdds((st) => st.filter((_, k) => k !== ai))}
+                    >×</button>
+                  )}
+                </td>
               </tr>
             );
           })}
@@ -2541,16 +2821,36 @@ function FullTable({
             <th scope="row" title={c.name} className={f.xField}>{finFieldLabel(c.name)}</th>
             {adds.map((a, ai) => (
               <td key={`n-${ai}-${c.name}`} className={f.cellEdit}>
-                {SERVER_RO.test(c.name) ? null : (
-                  <input
-                    className={`${f.cellInput} ${NUMERIC_TYPES.has(c.type) ? 'num' : ''}`}
-                    value={a[c.name] ?? ''}
-                    onChange={(ev) => {
-                      const v = ev.target.value;
-                      setAdds((s) => s.map((x, k) => (k === ai ? { ...x, [c.name]: v } : x)));
-                    }}
-                  />
-                )}
+                {(() => {
+                  if (SERVER_RO.test(c.name)) return null;
+                  const cur = a[c.name] ?? '';
+                  const put = (v: string) =>
+                    setAdds((st) => st.map((x, k) => (k === ai ? { ...x, [c.name]: v } : x)));
+                  /*
+                   * ⚠️ ЗАСВАРЛАГЧ НЬ ХҮСНЭГТИЙНХТЭЙ ИЖИЛ БАЙХ ЁСТОЙ. 2026-09-04:
+                   * энд зөвхөн энгийн `input` байсан тул шинэ мөрийн ОГНООГ
+                   * хүн чөлөөт текстээр бичиж «202159655665» гэх мэт утга
+                   * үүсдэг байв — `parseCell` түүнийг татгалзаж, нийтлэл
+                   * бүхэлдээ унана. Одоо огноонд календар + `YYYY-MM-DD`
+                   * хэлбэр, domain талбарт сонголтын жагсаалт.
+                   */
+                  if (DATE_TYPES.has(c.type)) return dateEdit(cur, put);
+                  if (c.choices?.length) {
+                    return (
+                      <select className={f.cellPick} value={cur} onChange={(ev) => put(ev.target.value)}>
+                        <option value="">—</option>
+                        {c.choices.map((o) => <option key={o} value={o}>{o}</option>)}
+                      </select>
+                    );
+                  }
+                  return (
+                    <input
+                      className={`${f.cellInput} ${NUMERIC_TYPES.has(c.type) ? 'num' : ''}`}
+                      value={cur}
+                      onChange={(ev) => put(ev.target.value)}
+                    />
+                  );
+                })()}
               </td>
             ))}
           </tr>
@@ -2690,8 +2990,9 @@ function FullTable({
                     бүтэн дэлгэцийн горимд хөвөгч товчнуудтай (хэрэглэгчийн
                     зураг, «AI туслах») давхцаж, хагас халхлагдаж байв. Бүх
                     үйлдэл НЭГ мөрөнд байх нь олоход ч хялбар. */}
-                {/* ⚠️ Гэрээний бүртгэлд «+ Мөр нэмэх» БАЙХГҮЙ — мөр нь эх
-                    үйлчилгээнд ArcGIS-аас нэмэгддэг, энэ хуудаснаас биш. */}
+                {/* ⚠️ Гэрээний бүртгэлд энэ товч ТОЛГОЙД гарахгүй — тэнд шинэ
+                    мөр ХҮСНЭГТИЙН ДООД ТАЛД нэмэгддэг (`flatTable`-ийн
+                    §ШИНЭ МӨР). Excel-ийн зан: мөр доороос ургана. */}
                 {canRow && !isFlat && (
                   <button
                     type="button"
@@ -2728,6 +3029,17 @@ function FullTable({
           </div>
         )}
       </header>
+      {/* ⚠️ Календарыг ХАМГИЙН ГАДНА зурна: `position: fixed`-ээр байрладаг
+          тул хүснэгтийн `overflow: auto` дотор байвал тасарч, царцсан
+          баганын `z-index`-д дарагдана. */}
+      {cal && (
+        <DatePicker
+          value={cal.value}
+          anchor={cal.anchor}
+          onPick={(v) => { cal.set(v); setCal(null); }}
+          onClose={() => setCal(null)}
+        />
+      )}
       {err && <p className={f.editErr} role="alert">{err}</p>}
       {msg && !err && <p className={f.editOk} role="status" aria-live="polite">{msg}</p>}
 
@@ -2787,11 +3099,48 @@ function FullTable({
             {tr('Багана бүрийн шүүлт')}
           </button>
           )}
+          {/*
+            * «+ Мөр нэмэх» — МӨРИЙН ТООНЫ УРД (2026-09-04, хэрэглэгчийн хүсэлт).
+            *
+            * ⚠️ Хүснэгтийн ДООД зурвастай ДАВХАРДДАГГҮЙ, хоёулаа хэрэгтэй:
+            * доод нь шинэ мөр ГАРЧ ИРЭХ газартаа байдаг, энэ нь 76 мөрийг
+            * гүйлгэлгүйгээр дээрээс шууд нэмэх зам. Хоёулаа ижил `adds`-д
+            * бичих тул төлөв салахгүй.
+            *
+            * ⚠️ Зөвхөн ЗАСАХ горимд: горимоос гадуур нэмсэн мөр хаана ч
+            * харагдахгүй байж «Нийтлэх (1)» гэсэн тоо л өснө.
+            */}
           <span className={`${f.finCount} num`}>
             {active
               ? tr('{0} → {1} мөр', num(rows.length), num(shown.length))
               : tr('{0} мөр', num(rows.length))}
           </span>
+          {/*
+            * «+ Мөр нэмэх» — МӨРИЙН ТООНЫ БАРУУН ТАЛД (2026-09-04).
+            *
+            * ⚠️ `.finCount`-д `margin-left:auto` бий тул түүний ДАРАА тавьсан
+            * элемент зурвасны баруун захад наалдана — байрлалыг гараар
+            * тооцох шаардлагагүй.
+            *
+            * ⚠️ `.finTgl` (саарал toggle) БИШ `.finAdd`: хажуудах «Багана
+            * бүрийн шүүлт» зэрэг нь ХАРАГДАЦ сэлгэдэг унтраалга, энэ нь
+            * ӨГӨГДӨЛ үүсгэдэг үйлдэл. Ижил төрхтэй байвал хүн санамсаргүй
+            * дарж хоосон мөр үүсгэнэ.
+            *
+            * ⚠️ Зөвхөн ЗАСАХ горимд: горимоос гадуур нэмсэн мөр хаана ч
+            * харагдахгүй байж «Нийтлэх (1)» гэсэн тоо л өснө.
+            */}
+          {isFlat && canRow && edit && (
+            <button
+              type="button"
+              className={f.finAdd}
+              disabled={busy}
+              title={tr('Хүснэгтийн доод талд шинэ мөр нэмнэ')}
+              onClick={() => setAdds((st) => [...st, {}])}
+            >
+              {tr('+ Мөр нэмэх')}
+            </button>
+          )}
           {active && (
             <button
               type="button"
