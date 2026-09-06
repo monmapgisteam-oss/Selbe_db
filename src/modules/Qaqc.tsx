@@ -11,7 +11,7 @@
  *        болго» — тиймээс ЯГ ижил хүснэгтийн загвар (`.xl.b32`), ижил
  *        багц/хувилбар/бүлэг сонгогч, ижил шатлал ба эвхэлт, ижил баганын
  *        өргөн чирэлт, ижил crosshair, ижил хөвөгч мэдэгдэл, ижил
- *        виртуалчлал, ижил ноорог (localStorage + ArcGIS) ба сэргээх цонх.
+ *        виртуалчлал, ижил ноорог (localStorage + ArcGIS).
  *
  * ⚠️ ЯГ НЭГ ЗӨРӨӨ — БИЧИЛТИЙН ЗАМ. Бөглөх хуудас «Нийтлэх» дарахад хуудсыг
  *    БҮХЭЛДЭЭ хуулбарлаж архивт шинэ агшин үүсгэдэг; энд «Хадгалах» нь
@@ -28,6 +28,7 @@ import { roleForUser } from '@/lib/services';
 import { PKG_GROUPS, PKGS, pkgFloors, loadSchema, type Pkg } from '@/modules/sheet/bagts.pkg';
 import { loadRows } from '@/modules/sheet/bagtsSheet';
 import { useColWidths } from '@/modules/sheet/colWidths';
+import { parseGrid } from '@/modules/sheet/paste';
 import {
   attachTree,
   filledCount,
@@ -35,6 +36,7 @@ import {
   QAQC_BAND,
   QAQC_COLS,
   QAQC_GROUPS,
+  planQaqcPaste,
   qaqcTableOf,
   qaqcUpdates,
   saveQaqc,
@@ -111,98 +113,6 @@ const clearDraftLS = (pkgKey: string) => {
     /* уншихаас ч бичихээс ч хориглогдсон — тоох зүйл алга */
   }
 };
-
-/** Сэргээх цонхонд харуулах задаргаа */
-type RestorePlan = {
-  when: string;
-  source: 'local' | 'remote';
-  count: number;
-  dropped: number;
-  cells: Record<string, string>;
-};
-
-/**
- * СЭРГЭЭХ ЦОНХ — бөглөх хуудасны `RestoreModal`-тай ИЖИЛ хэв (`st.rs*`).
- *
- * ⚠️ Хөтчийн `confirm` ХЭРЭГЛЭХГҮЙ: дэлгэцийн дээд ирмэгт наалддаг, задаргаа
- *    харуулах боломжгүй бөгөөд Escape нь ЧИМЭЭГҮЙ «Цуцлах» болж ажлыг устгадаг.
- */
-function RestoreModal({
-  plan, onRestore, onLater, onDrop,
-}: {
-  plan: RestorePlan;
-  onRestore: () => void;
-  onLater: () => void;
-  onDrop: () => void;
-}) {
-  const box = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const esc = (e: KeyboardEvent) => {
-      /* ⚠️ Escape нь «Дараа шийднэ» — ноорог ҮЛДЭНЭ. Устгах биш. */
-      if (e.key === 'Escape') onLater();
-    };
-    window.addEventListener('keydown', esc);
-    return () => window.removeEventListener('keydown', esc);
-  }, [onLater]);
-
-  return (
-    <div className={st.overlay} role="presentation" onClick={onLater}>
-      <div
-        ref={box}
-        className={st.rsBox}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="qaqc-rs-title"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className={st.rsHead}>
-          <span className={st.rsIcon} aria-hidden>↺</span>
-          <div>
-            <h3 className={st.rsTitle} id="qaqc-rs-title">{tr('Хадгалаагүй засвар байна')}</h3>
-            <p className={st.rsWhen}>
-              {plan.when}
-              <span className={st.rsFrom}>
-                {plan.source === 'remote' ? tr('өөр төхөөрөмж') : tr('энэ компьютер')}
-              </span>
-            </p>
-          </div>
-        </div>
-
-        {plan.count > 0 && (
-          <ul className={st.rsList}>
-            <li className={st.rsItem}>
-              <span className={st.rsDot} aria-hidden />
-              {tr('{0} баримтын нүд', plan.count)}
-            </li>
-          </ul>
-        )}
-
-        {plan.dropped > 0 && (
-          <p className={st.rsWarn}>
-            {plan.count === 0
-              ? tr('QAQC хүснэгт хооронд нь дахин үүсгэгдсэн тул ноорогийн {0} нүд одоогийн мөрүүдэд тохирсонгүй — сэргээх зүйл үлдсэнгүй.', plan.dropped)
-              : tr('{0} нүд хуучирсан тул орхигдоно.', plan.dropped)}
-          </p>
-        )}
-
-        <p className={st.rsNote}>
-          {tr('Ноорог энэ хөтөчид, мөн ArcGIS-д хадгалагдана — өөр компьютероос нэвтэрсэн ч сэргээх боломжтой. Үйлчилгээнд бичихийн тулд «Хадгалах» дарна.')}
-        </p>
-
-        <div className={st.rsFoot}>
-          <button type="button" className={st.rsDrop} onClick={onDrop}>{tr('Устгах')}</button>
-          <span className={st.rsGap} />
-          <button type="button" className={st.rsLater} onClick={onLater}>{tr('Дараа шийднэ')}</button>
-          {plan.count > 0 && (
-            <button type="button" className={st.rsGo} onClick={onRestore} autoFocus>
-              {tr('Сэргээх')}
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 /* ══════════════════════════ ХАРАГДАЦ ══════════════════════════ */
 
@@ -305,7 +215,6 @@ export function Qaqc() {
   /* ══════════════ АЧААЛАЛТ ══════════════ */
   const loadedPkgRef = useRef('');
   const promptedPkgRef = useRef('');
-  const keepDraft = useRef(false);
 
   const load = useCallback(async (key: string) => {
     setBusy(true);
@@ -352,7 +261,6 @@ export function Qaqc() {
     setCollapsed(new Set());
     setGrpA(0);
     setGrpB(0);
-    keepDraft.current = false;
     remoteQueue.current = null;
     void load(pkg.key);
   }, [pkg.key, load]);
@@ -537,7 +445,10 @@ export function Qaqc() {
        эхний render дээр `pkg.key` ШИНЭ, харин `pend` ХУУЧИН багцынх. */
     if (loadedPkgRef.current !== pkg.key) return;
     if (!Object.keys(pend).length) {
-      if (promptedPkgRef.current === pkg.key && !keepDraft.current) {
+      /* ⚠️ Ноорог нь ачаалахдаа ШУУД буудаг тул «дараа шийднэ» гэсэн төлөв
+         БАЙХГҮЙ: төлөв хоосон болсон нь «хэрэглэгч бүгдийг арилгасан»
+         гэсэн үг — тэр үед ноорог ч устана (2026-09-06). */
+      if (promptedPkgRef.current === pkg.key) {
         clearDraftLS(pkg.key);
         void clearQaqcDraft(pkg.key);
       }
@@ -594,7 +505,7 @@ export function Qaqc() {
   }, [remoteTick]);
 
   /* ══════════════ НООРОГ — СЭРГЭЭХ ══════════════ */
-  const [restore, setRestore] = useState<RestorePlan | null>(null);
+
 
   useEffect(() => {
     if (loadedPkgRef.current !== pkg.key || !rows.length) return;
@@ -648,36 +559,98 @@ export function Qaqc() {
         void clearQaqcDraft(pkg.key);
         return;
       }
-      setRestore({
-        when: new Date(pick.d.t).toLocaleString('mn-MN'),
-        source: pick.source,
-        count,
-        dropped,
-        cells,
-      });
+      /**
+       * ⚠️ АСУУХГҮЙ, ШУУД БУУЛГАНА (2026-09-06, хэрэглэгчийн заавар:
+       *    «ноорог асуухгүй шууд орж ирнэ»). Урьд нь «Хадгалаагүй засвар
+       *    байна» цонх гарч, «Сэргээх» дарж байж ажил эргэж ирдэг байв —
+       *    ноорог нь ХЭРЭГЛЭГЧИЙН ӨӨРИЙНХ нь бичсэн зүйл тул зөвшөөрөл
+       *    асуух нь нэмэлт алхам болохоос хамгаалалт биш.
+       * ⚠️ Үйлчилгээнд БИЧИГДЭХГҮЙ хэвээр: «Хадгалах» дарж байж бичигдэнэ.
+       *    Тиймээс автоматаар буулгах нь өгөгдөлд эрсдэлгүй.
+       */
+      if (count) setPend(cells);
+      /* ⚠️ Тохирохгүй нүд гарвал ЧИМЭЭГҮЙ орхихгүй — хэдэн нүд
+         яагаад алга болсныг хэлнэ. */
+      if (dropped) {
+        show('warn', count
+          ? tr('Ноорог сэргээв: {0} нүд. {1} нүд хуучирсан тул орхигдов.', count, dropped)
+          : tr('QAQC хүснэгт дахин үүсгэгдсэн тул ноорогийн {0} нүд одоогийн мөрүүдэд тохирсонгүй.', dropped));
+      } else if (count) {
+        show('ok', tr('Хадгалаагүй {0} нүдийг ноорогоос сэргээв. «Хадгалах» дарж үйлчилгээнд бичнэ.', count));
+      }
     })();
 
     return () => { alive = false; };
-  }, [rows, pkg.key, canEdit]);
+  }, [rows, pkg.key, canEdit, show]);
 
-  const applyRestore = useCallback(() => {
-    if (!restore) return;
-    setPend(restore.cells);
-    keepDraft.current = false;
-    setRestore(null);
-  }, [restore]);
-  const dropRestore = useCallback(() => {
+  /**
+   * ОЛОН НҮДЭНД БУУЛГАХ — Excel-ээс хуулсан блокийг нэг дор бичнэ.
+   *
+   * ⚠️ Бөглөх хуудасны `pasteBlock`-той ижил зарчим (2026-09-06): байрлал нь
+   *    ХАРАГДАЖ БУЙ мөрүүдээр (`vis`) явна; хальсан ба хоосон нүд байрлалаа
+   *    ЭЗЭЛНЭ — эс бөгөөс доорх утга гулсаж, акт өөр ажилд бичигдэнэ.
+   * ⚠️ Ганц нүдний буулгалтыг хөтөчид нь үлдээнэ: нүд нээлттэй үеийн ердийн
+   *    зан үйл илүү таатай.
+   * ⚠️ ЭРХГҮЙ үед ЧИМЭЭГҮЙ бүтэлгүйтэхгүй — шалтгааныг хэлнэ.
+   */
+  const pasteBlock = (vi: number, di: number, text: string): boolean => {
+    const grid = parseGrid(text);
+    if (!grid.length) return false;
+    if (grid.length === 1 && grid[0].length === 1) return false;
+    if (!canEdit) { say(RO_CAP); return true; }
+    const { hits, skipped } = planQaqcPaste(rows, vis, vi, di, grid);
+    if (!hits.length) {
+      show('warn', tr('Буулгасан {0} нүдийн аль нь ч хүснэгтэд тохирсонгүй.', skipped));
+      return true;
+    }
+    setPend((p) => {
+      const n = { ...p };
+      for (const hit of hits) {
+        const key = `${hit.oid}:${hit.di}`;
+        const cur = rows.find((r) => r.oid === hit.oid)?.docs[hit.di] ?? '';
+        /* ⚠️ Хадгалагдсантай ИЖИЛ утга ноорогт орохгүй — `commit`-ийн ижил дүрэм */
+        if (hit.v === cur) delete n[key];
+        else n[key] = hit.v;
+      }
+      return n;
+    });
+    setEditCell(null);
+    show('ok', skipped
+      ? tr('{0} нүд буулгав. {1} нүд хүснэгтэд багтсангүй.', hits.length, skipped)
+      : tr('{0} нүд буулгав.', hits.length));
+    return true;
+  };
+
+  /**
+   * ENTER/TAB — БАГАНАДАА дараагийн мөр рүү (бөглөх хуудасны зан үйл).
+   * ⚠️ Хулгана шаардахгүйгээр олон мөрийг дараалан бөглөх цорын ганц зам.
+   * ⚠️ Shift дарвал ДЭЭШЭЭ; жагсаалтын зах дээр нүд хаагдана.
+   */
+  const stepCell = (vi: number, di: number, dir: 1 | -1) => {
+    const nv = vi + dir;
+    if (nv < 0 || nv >= vis.length) return setEditCell(null);
+    setEditCell(`${vis[nv]}:${di}`);
+  };
+
+  /**
+   * НООРОГ УСТГАХ — энэ хөтөч ба ArcGIS дээрх хуулбар хоёулаа.
+   * ⚠️ Баталгаа асууна: ноорог бол хэрэглэгчийн БИЧСЭН ажил бөгөөд буцаах
+   *    зам байхгүй (түүх хадгалагддаггүй).
+   * ⚠️ Үйлчилгээнд бичигдсэн утга ХӨНДӨГДӨХГҮЙ — зөвхөн хадгалаагүй засвар.
+   */
+  const dropDraft = useCallback(() => {
+    if (!dirtyCount) return;
+    const q = tr(
+      '{0} нүдийн хадгалаагүй засвар УСТАНА. Үйлчилгээнд бичигдсэн утга хөндөгдөхгүй. Үргэлжлүүлэх үү?',
+      dirtyCount,
+    );
+    if (!window.confirm(q)) return;
+    setPend({});
+    setEditCell(null);
     clearDraftLS(pkg.key);
     void clearQaqcDraft(pkg.key);
-    keepDraft.current = false;
-    setRestore(null);
-  }, [pkg.key]);
-  const laterRestore = useCallback(() => {
-    /* ⚠️ Хадгалалтын эффект нь төлөв хоосон үед ноорогийг УСТГАДАГ тул туг
-       тавьж хамгаална — эс бөгөөс цонхыг хаамагц ажил чимээгүй алга болно. */
-    keepDraft.current = true;
-    setRestore(null);
-  }, []);
+    show('ok', tr('Ноорог устгав.'));
+  }, [dirtyCount, pkg.key, show]);
 
   /* ══════════════ ХАДГАЛАХ ══════════════ */
   const save = useCallback(async () => {
@@ -872,6 +845,18 @@ export function Qaqc() {
           {tr('Хадгалах')}{dirtyCount ? ` (${dirtyCount})` : ''}
         </button>
 
+        {dirtyCount > 0 && canEdit && (
+          <button
+            type="button"
+            className={st.linkBtn}
+            onClick={dropDraft}
+            disabled={busy}
+            title={tr('Хадгалаагүй засварыг бүрэн хаяна — энэ хөтөч ба ArcGIS дээрх ноорог хоёулаа устана')}
+          >
+            {tr('ноорог устгах')}
+          </button>
+        )}
+
         {busy && <span className={st.muted}>{tr('ажиллаж байна…')}</span>}
 
         {savedAt != null && dirtyCount > 0 && (
@@ -978,8 +963,11 @@ export function Qaqc() {
                     <td colSpan={2 + QAQC_COLS.length} style={{ padding: 0, border: 0 }} />
                   </tr>
                 )}
-                {vis.slice(winFrom, winTo).map((i) => {
+                {vis.slice(winFrom, winTo).map((i, k) => {
                   const r = rows[i];
+                  /* ⚠️ `vis` доторх БАЙРЛАЛ — наалт ба Enter-ийн шилжилт
+                     ХАРАГДАХ дараалалаар явдаг тул мөрийн индекс хангалтгүй. */
+                  const vi = winFrom + k;
                   return (
                     <Fragment key={r.oid}>
                       <tr data-r={i} className={r.group ? st.cat : undefined}>
@@ -1024,6 +1012,13 @@ export function Qaqc() {
                                 + (key in pend ? ' dirty' : ''),
                               )}
                               title={canEdit ? tr('{0} — дарж бичнэ', tr(dc.label)) : RO_CAP}
+                              /* ⚠️ Нүдийг НЭЭЛГҮЙГЭЭР буулгаж болно — Excel-ийн
+                                 зуршил: нүд сонгоод шууд Ctrl+V. */
+                              onPaste={(e) => {
+                                if (pasteBlock(vi, di, e.clipboardData.getData('text/plain'))) {
+                                  e.preventDefault();
+                                }
+                              }}
                               onClick={() => {
                                 if (!canEdit) return say(RO_CAP);
                                 setEditCell(ekey);
@@ -1040,12 +1035,20 @@ export function Qaqc() {
                                     commit(r.oid, di, e.target.value);
                                     setEditCell(null);
                                   }}
+                                  /* ⚠️ Нүд НЭЭЛТТЭЙ байхад буулгасан блок — оролт
+                                     нь нэг мөр текст л авдаг тул таслан авна. */
+                                  onPaste={(e) => {
+                                    if (pasteBlock(vi, di, e.clipboardData.getData('text/plain'))) {
+                                      e.preventDefault();
+                                    }
+                                  }}
                                   onKeyDown={(e) => {
                                     if (e.key === 'Escape') return setEditCell(null);
                                     if (e.key === 'Enter' || e.key === 'Tab') {
                                       e.preventDefault();
                                       commit(r.oid, di, e.currentTarget.value);
-                                      setEditCell(null);
+                                      /* Баганадаа дараагийн мөр рүү; Shift бол дээшээ */
+                                      stepCell(vi, di, e.shiftKey ? -1 : 1);
                                     }
                                   }}
                                 />
@@ -1085,14 +1088,6 @@ export function Qaqc() {
         </div>
       )}
 
-      {restore && (
-        <RestoreModal
-          plan={restore}
-          onRestore={applyRestore}
-          onLater={laterRestore}
-          onDrop={dropRestore}
-        />
-      )}
     </div>
   );
 }

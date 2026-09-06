@@ -264,6 +264,76 @@ export function toRows(feats: readonly Feat[]): QaqcRow[] {
 export const filledCount = (rows: readonly QaqcRow[]): number =>
   rows.reduce((n, r) => n + r.docs.filter((d) => d != null).length, 0);
 
+/* ══════════════════ EXCEL-ЭЭС НААХ ══════════════════ */
+
+/** Нэг нүдний зорилт: аль мөрийн ObjectID, аль баганын индекс, ямар текст */
+export type QaqcHit = { oid: number; di: number; v: string };
+
+export type QaqcPastePlan = {
+  hits: QaqcHit[];
+  /** Байрлалаа эзэлсэн ч бичигдээгүй нүд (хоосон, хүснэгтээс хальсан, хязгаараас давсан) */
+  skipped: number;
+};
+
+/**
+ * Санамсаргүй асар том буулгалтаас хамгаална (бүтэн хуудас хуулах).
+ * ⚠️ Хязгаараас хэтэрсэн хэсэг нь `skipped` болж ТООЛОГДОНО — чимээгүй
+ *    алга болохгүй, хэрэглэгчид тоогоор нь мэдэгдэнэ.
+ */
+export const QAQC_PASTE_MAX = 5000;
+
+/**
+ * EXCEL-ЭЭС ХУУЛСАН БЛОКИЙГ БАРИМТЫН НҮДНҮҮДЭД БАЙРЛУУЛНА.
+ *
+ * ⚠️ ЯАГААД (2026-09-06, хэрэглэгчийн хүсэлт «гүйцэтгэл бөглөхөөс авах чадварууд»):
+ *    М-актын дугаарууд excel дээр аль хэдийн бэлэн байдаг; 1,370 мөрийг
+ *    нэг нэгээр нь бичих нь тэвчихийн аргагүй. Бөглөх хуудасны `planPaste`-ийн
+ *    ЯГ ижил зарчим, гэхдээ утга нь ТООН биш ТЕКСТ.
+ *
+ * ⚠️ БАЙРЛАЛААР нь буулгана: буулгасан мөр бүр ДЭЛГЭЦЭД ХАРАГДАХ дараагийн
+ *    мөрд тохирно (`vis`), багана нь эхэлсэн баганаас баруун тийш. Хальсан
+ *    нүд байрлалаа ЭЗЭЛНЭ — алгасвал доорх бүх утга нэг мөр дээшилж,
+ *    чимээгүй БУРУУ мөрд бичигдэнэ.
+ *
+ * ⚠️ ХООСОН нүд нь «устга» ГЭСЭН УТГАГҮЙ — алгасна. Excel-ийн блокт хоосон
+ *    нүд элбэг тохиолддог тул устгал гэж үзвэл бөглөсөн баримт бөөнөөрөө
+ *    арилна.
+ *
+ * ⚠️ Бүлгийн мөрд Ч бичигдэнэ: М-акт, FIC нь ажлын БҮЛЭГТ олгогдож болно
+ *    (нүдээр гараар бичихийг ч хориглодоггүй).
+ *
+ * @param rows   Хуудсанд ачаалагдсан БҮХ мөр
+ * @param vis    Харагдаж буй мөрүүдийн индекс (`rows`-ийн дугаараар)
+ * @param startVi Эхлэх нүдний байрлал `vis` доторх индексээр
+ * @param startDi Эхлэх баримтын баганын индекс
+ */
+export function planQaqcPaste(
+  rows: readonly QaqcRow[],
+  vis: readonly number[],
+  startVi: number,
+  startDi: number,
+  grid: readonly (readonly string[])[],
+): QaqcPastePlan {
+  const hits: QaqcHit[] = [];
+  let skipped = 0;
+  let seen = 0;
+  for (let gr = 0; gr < grid.length; gr += 1) {
+    const vi = startVi + gr;
+    for (let gc = 0; gc < grid[gr].length; gc += 1) {
+      seen += 1;
+      if (seen > QAQC_PASTE_MAX) { skipped += 1; continue; }
+      const di = startDi + gc;
+      if (vi < 0 || vi >= vis.length || di >= QAQC_COLS.length) { skipped += 1; continue; }
+      const r = rows[vis[vi]];
+      if (!r) { skipped += 1; continue; }
+      const v = String(grid[gr][gc] ?? '').trim();
+      if (!v) { skipped += 1; continue; }
+      hits.push({ oid: r.oid, di, v: v.slice(0, 4000) });
+    }
+  }
+  return { hits, skipped };
+}
+
 /**
  * Засварыг ХҮСНЭГТИЙН МӨРӨӨР бүлэглэнэ.
  *
