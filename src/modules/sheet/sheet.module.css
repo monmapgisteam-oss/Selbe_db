@@ -75,6 +75,35 @@
 .publishBtn:hover:not(:disabled) { filter: brightness(1.06); }
 .publishBtn:disabled { opacity: 0.4; cursor: default; }
 
+/**
+ * БӨГЛӨХ ГОРИМ — ОБЬЁМ ↔ ХУВЬ (2026-09-06).
+ *
+ * ⚠️ Хоёр шошго ҮРГЭЛЖ ХАРАГДАНА, идэвхтэй нь л тодорно. Ганц шошготой
+ * (одоогийн горимыг л бичдэг) товч нь «энэ товч юу хийх вэ» гэдгийг
+ * хэлдэггүй — хэрэглэгч дарж үзэж байж мэднэ.
+ */
+.modeBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--ink-2);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 5px 10px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.modeBtn:hover:not(:disabled) { border-color: var(--line-strong); }
+.modeBtn:disabled { opacity: 0.4; cursor: default; }
+
+/* Идэвхтэй тал — өгөгдлийн ганц өнгө; идэвхгүй нь бүдэг бэх */
+.modeOn { color: var(--data); }
+.modeOff { color: var(--ink-3); }
+.modeSep { color: var(--ink-3); font-weight: 400; }
+
 .layerBtns { display: inline-flex; gap: 3px; }
 .layerBtn {
   font: inherit;

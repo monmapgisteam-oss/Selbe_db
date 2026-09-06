@@ -3511,6 +3511,11 @@ const en: Record<string, string> = {
   "Компаниар — техник": "By company — equipment",
   "нэгж-өдөр · дарж шүүнэ": "unit-days · click to filter",
   "0 … {0}+ м/с": "0 … {0}+ m/s",
+  "Энэ блокт обьёмын багана байхгүй тул зөвхөн ХУВИАР бөглөнө — обьём хадгалагдахгүй.": "This block has no volume column, so it can only be filled by PERCENT — the volume will not be stored.",
+  "{0} · {1}: хувь сөрөг байж болохгүй.": "{0} · {1}: the percentage cannot be negative.",
+  "{0} нүдэнд 100%-иас ХЭТЭРНЭ": "{0} cells will EXCEED 100%",
+  "Одоо ОБЬЁМоор бөглөж байна — дарж ХУВИАР бөглөх горимд шилжинэ.": "Currently filling by VOLUME — click to switch to filling by PERCENT.",
+  "Одоо ХУВИАР бөглөж байна — дарж ОБЬЁМоор бөглөх горимд шилжинэ.": "Currently filling by PERCENT — click to switch to filling by VOLUME.",
 };
 
 export default en;
