@@ -44,13 +44,14 @@ import { loadBlockHistory } from '@/lib/blockProgress';
  *    цонх нь 2025-10…2026-09 (12 сар) бөгөөд cashflow-ийн 133 үеийн 131 нь
  *    түүн дотор багтдаг тул `cumPct` нь 2026-09-д ЯГ 100.0% болно. Амьд
  *    хэмжилт (2026-09-04): хэмжигдсэн 9 багц ТУС БҮР `planned = 100.0`,
- *    `gap ≈ 100` → 9/9 нь УЛААН. Мөнгөний хоцрогдлыг `finLagOf` ТУСАД нь
- *    хэмждэг тул энэ нь давхардал биш, зүгээр л буруу хэмжигдэхүүн байв.
+ *    `gap ≈ 100` → 9/9 нь УЛААН. Одоо энэ нь ГАНЦ хоцрогдол: мөнгөний
+ *    хоцрогдол (`finLagOf`) нь 2026-09-06-нд сарын төлөвлөгөөтэйгөө хамт
+ *    хасагдсан — шинэ cashflow-д сарын хуваарь БАЙХГҮЙ.
  *    Импортын мөчлөг үүсэхгүй: `planProgress` нь `Finance`-ээс юу ч авдаггүй.
  */
 import { loadPlanCurve, type PlanCurve } from '@/lib/planProgress';
 import {
-  CASHFLOW2, CASHFLOW_NEW, IPC_LOG, TASK_SHEET, bagtsKey, blockKey, pkgKeyOf, cfMonthAxis, cfMonthKey, ipcNet,
+  CASHFLOW_NEW, IPC_LOG, TASK_SHEET, bagtsKey, blockKey, pkgKeyOf, cfMonthAxis, ipcNet,
 } from '@/lib/services';
 import { finFieldLabel } from '@/lib/financeFieldLabels';
 import { useColWidths } from '@/modules/sheet/colWidths';
@@ -63,9 +64,7 @@ import {
   buildGroups, type FinKind, type GroupRow,
 } from '@/lib/finGroup';
 import {
-  CF_PERIOD_FIELDS, IPC_MAIN_FIELDS, splitContracts, sumOrNull, groupPeriodsByYear,
-  usedFields, CF_KPI_FIELDS, CF_PASS_GROUPS,
-  dedOrNull, paidOrNull, netOrNull, netTotalOrNull,
+  IPC_MAIN_FIELDS, sumOrNull, dedOrNull, paidOrNull, netOrNull, netTotalOrNull,
 } from '@/lib/finCard';
 import { mnt, num, text, cat, date } from '@/lib/format';
 import { fitLabels, textW, useChartWidth } from '@/lib/chartFit';
@@ -151,18 +150,25 @@ function ym(v: unknown): string | null {
  * файлын SVG будаг бүхэн `style={{ fill/stroke }}` руу шилжсэн (presentation
  * ШИНЖ дотор `var()` задардаггүй).
  */
-const PLAN = cat(2); // төлөвлөгөөт өссөн % — индиго (суурь лавлагаа)
-const ACT = cat(0); // олгосон санхүүжилтийн өссөн % — усан цэнхэр (аппын акцент)
+/* ⚠️ 2026-09-06: `PLAN` (индиго — төлөвлөгөөт муруй) ХАСАГДСАН, тэр цуваа
+   өөрөө байхгүй болсон тул. Слот 1/2 нь CVD-ийн шалгуурт хамгийн сайн
+   салгагдсан хос хэвээр. */
+const ACT = cat(0); // олгосон санхүүжилтийн өссөн ₮ — усан цэнхэр (аппын акцент)
 const PHYS = cat(1); // биет гүйцэтгэлийн % — улбар шар (муруй, хоёуланаас тодрох)
 
 type Row = Record<string, unknown>;
 
-/** Нэг сарын цэг: төлөвлөгөө + олгосон + биет гүйцэтгэл */
+/**
+ * Нэг сарын цэг: олгосон ₮ + биет гүйцэтгэл %.
+ *
+ * ⚠️ 2026-09-06: `amount` / `amountCum` / `cumPct` (сарын санхүүжилтийн
+ *    ТӨЛӨВЛӨГӨӨ) ХАСАГДСАН. Тэдгээр нь `cashflow_0813`-ийн «САР» мөрүүдээс
+ *    гардаг байсан бөгөөд тэр үйлчилгээ бүрмөсөн хаягдсан; шинэ
+ *    `Cashflow_0904`-т он/сарын багана ОГТ БАЙХГҮЙ. Үлдсэн хоёр цуваа нь
+ *    хоёулаа БОДИТ ХЭМЖИЛТ — төлөвлөгөө нь биет талд (`planProgress`).
+ */
 export type MonthPt = {
   label: string; // «2025-10»
-  amount: number; // тухайн сард авах санхүүжилт ₮ (төлөвлөгөө)
-  amountCum: number; // өссөн төлөвлөгөө ₮
-  cumPct: number; // өссөн гүйцэтгэлийн хувь (0–100)
   given: number; // тухайн сард IPC-ээр олгосон ₮ (net)
   /**
    * Сарын эцсийн байдлаарх БИЕТ гүйцэтгэл, % («Гүйцэтгэл бөглөх»).
@@ -204,24 +210,28 @@ export type PhysMap = Map<string, Map<string, number>>;
  * зайлсхийхэд) ашиглана — `phys`-ийн утгыг ХӨНДӨХГҮЙ, зэрэгцээ мэдээлэл.
  */
 export type FinData = {
-  /**
-   * ГЭРЭЭНИЙ мастер мөрүүд (76) — `CF002='ГЭРЭЭ'`.
+/**
+   * ГЭРЭЭНИЙ мөрүүд (76) — `Cashflow_0904`.
    *
-   * ⚠️ 2026-08-31: `cashflow_0813` нь 209 мөртэй бөгөөд гэрээ бүр 1 мастер +
-   *    үеийн мөрүүдтэй. Энэ талбар нь ЗӨВХӨН мастер мөрүүдийг агуулна —
-   *    гэрээний тоо/төсвийг шүүлтгүй нийлбэрлэвэл 209 мөр тоологдоно.
+   * ⚠️ 2026-09-06: мөрийн ТӨРЛИЙН шүүлт хэрэггүй болов. Хуучин
+   *    `cashflow_0813` нэг хүснэгтэд гэрээ + сар + өмнөх шилжүүлсэн гэсэн
+   *    гурван грейн агуулдаг байсан тул `where.master` заавал байх ёстой
+   *    байв; шинэ хүснэгтийн мөр БҮР нэг гэрээ.
    */
   contracts: Row[];
-  /** Хэмжилттэй үеийн мөрүүд (133) — САР + ӨМНӨХ ШИЛЖҮҮЛСЭН */
-  periods: Row[];
   /**
-   * Гэрээний код (CF001) → «2026-08» → тухайн сарын ТӨЛӨВЛӨГӨӨТ дүн (CF009).
+   * Багц → ГЭРЭЭНИЙ НИЙТ ДҮН, ₮ (`Geree_erh_dun`; хоосон бол
+   * `Urdch_tusuwt_urtug`).
    *
-   * ⚠️ Хуваарь нь одоо багана биш МӨР тул гэрээний сарын дүнг энэ индексээс
-   *    авна. Хэмжилтгүй сард мөр БАЙХГҮЙ (2026-01 бүхэлдээ алга) — тэнхлэгийг
-   *    `cfMonthAxis()`-ээс аваад дутуу сарыг 0-ээр нөхнө.
+   * ⚠️ 2026-09-06: сарын ТӨЛӨВЛӨГӨӨНИЙ (`plan`) ОРЛУУЛАГЧ. Урьд нь
+   *    «төлөвлөгөөт дүн» гэдэг нь `cfMonthAxis()`-ийн 12 сарын ЦОНХОНД
+   *    багтсан сарын мөрүүдийн нийлбэр байв — өөрөөр хэлбэл цонхны гадна
+   *    үлдсэн үе НЬ ОГТ ТООЛОГДОХГҮЙ. Гэрээний дүн нь бүтэн, тогтвортой,
+   *    бөгөөд хэрэглэгчийн ойлголттой шууд нийцнэ.
+   * ⚠️ Түлхүүр нь `givenTotal`-тай ИЖИЛ (`pkgKeyOf(pkg2) || pkgKeyOf(pkg)`)
+   *    тул хоёрыг шууд хувааж «олгосон / гэрээ» гаргаж болно.
    */
-  plan: Map<string, Map<string, number>>;
+  planTotal: Map<string, number>;
   given: GivenMap;
   /**
    * Багц → нийт олгосон (цэвэр) дүн — ОГНООГҮЙ актыг ч ОРУУЛНА.
@@ -268,8 +278,11 @@ export function ComboChart({
    * БИЕТ гүйцэтгэлийн цуваа, шошго, тултипын мөрийг НУУНА.
    *
    * ⚠️ 2026-08-21: «Багцын санхүү» харагдац нь ЗӨВХӨН мөнгөний асуултад
-   * хариулна — биет явц нь «Багцын гүйцэтгэл» талд. Цувааг нууснаар график
-   * төлөвлөгөө/олголтын хоёр шугам болж, уншихад ойлгомжтой болно.
+   * хариулна — биет явц нь «Багцын гүйцэтгэл» талд.
+   *
+   * ⚠️ 2026-09-06: нуувал график НЭГ цуваатай болно (өссөн олголт) — урьд нь
+   * төлөвлөгөө/олголтын хоёр шугам үлддэг байсан. Сарын ТӨЛӨВЛӨГӨӨ нь
+   * `cashflow_0813`-тайгаа хамт хасагдсан.
    */
   hidePhys?: boolean;
 }) {
@@ -277,25 +290,27 @@ export function ComboChart({
   const wrapRef = useRef<HTMLDivElement>(null);
   const N = items.length;
 
-  // ── Өссөн S-муруйн өгөгдөл — ₮ ТЭНХЛЭГ (нэг тэнхлэг): төлөвлөгөө · санхүүжилт · биет.
-  //    Мөнгө нь ₮-ээр (хуучинтай адил утга); биет нь ₮ өндөртэй ч %-аар шошголно. ──
-  const totalPlan = Math.max(1, ...items.map((i) => i.amountCum));
-  const yMax = totalPlan;
+  /*
+   * ── Өссөн S-муруйн өгөгдөл — ₮ ТЭНХЛЭГ: олгосон санхүүжилт · биет гүйцэтгэл.
+   *
+   * ⚠️ 2026-09-06: ТӨЛӨВЛӨГӨӨНИЙ цуваа ХАСАГДСАН. Тэр нь `cashflow_0813`-ийн
+   *    «САР» мөрөөс гардаг байсан бөгөөд шинэ `Cashflow_0904`-т он/сарын
+   *    багана ОГТ БАЙХГҮЙ. Тиймээс тэнхлэгийн дээд хязгаар нь одоо
+   *    ТӨЛӨВЛӨГӨӨ биш, өссөн ОЛГОЛТ. Хоёулаа хоосон бол `1` — 0-д хуваахаас.
+   */
   let gsum = 0;
-  const rows = items.map((it) => {
-    gsum += it.given;
-    return {
-      label: it.label,
-      planned: it.amountCum, // өссөн төлөвлөгөө ₮
-      financing: gsum, // өссөн олгосон санхүүжилт ₮
-      // ⚠️ Дата алга (null) бол 0 өндөртэй цэг зурвал «биет гүйцэтгэл тэг»
-      //    гэсэн ХУДАЛ уншилт өгнө — доорх `lastPhys` нь ийм саруудыг алгасна.
-      physical: ((it.phys ?? 0) / 100) * totalPlan, // биет гүйцэтгэлийн үнэ цэнэ ₮
-      physPct: it.phys, // шошго/тултипт харуулах биет % (null = хэмжигдээгүй)
-      givenCum: gsum,
-      it,
-    };
-  });
+  const cums = items.map((it) => { gsum += it.given; return gsum; });
+  const yMax = Math.max(1, ...cums);
+  const rows = items.map((it, i) => ({
+    label: it.label,
+    financing: cums[i], // өссөн олгосон санхүүжилт ₮
+    // ⚠️ Дата алга (null) бол 0 өндөртэй цэг зурвал «биет гүйцэтгэл тэг»
+    //    гэсэн ХУДАЛ уншилт өгнө — доорх `lastPhys` нь ийм саруудыг алгасна.
+    physical: ((it.phys ?? 0) / 100) * yMax, // биет гүйцэтгэлийн үнэ цэнэ ₮
+    physPct: it.phys, // шошго/тултипт харуулах биет % (null = хэмжигдээгүй)
+    givenCum: cums[i],
+    it,
+  }));
   // Бодит муруйнууд (санхүүжилт, биет) зөвхөн ОДОО хүртэл; төлөвлөгөө л дуустал хүрнэ
   let lastPhys = -1;
   // ⚠️ `> 0` БИШ `!= null`: жинхэнэ 0% (ажил эхлээгүй) нь ХЭМЖИЛТ мөн тул
@@ -344,26 +359,14 @@ export function ComboChart({
   const yFor = (v: number) => padT + (1 - Math.max(0, Math.min(yMax, v)) / yMax) * plotH;
 
   /* Сүүлийн УТГАТАЙ цэгүүд — тэдгээр дээр л шошго, том цэг үлдэнэ */
-  const lastPlan = rows.reduce((a, r, i) => (r.planned > 0 ? i : a), -1);
   const lastGiven = rows.reduce((a, r, i) => (r.givenCum > 0 ? i : a), -1);
 
-  /* Цэгүүдийг нэг л удаа бодно — зам, талбай, шошго бүгд эндээс */
-  const planPts = rows.slice(0, lastPlan + 1).map((r, i) => ({ x: xFor(i), y: yFor(r.planned) }));
+  /* Цэгүүдийг нэг л удаа бодно — зам, шошго бүгд эндээс */
   const givenPts = rows.slice(0, lastGiven + 1).map((r, i) => ({ x: xFor(i), y: yFor(r.givenCum) }));
   const physPts = rows.slice(0, lastPhys + 1).map((r, i) => ({ x: xFor(i), y: yFor(r.physical) }));
 
-  /*
-   * ── ЗӨРҮҮГИЙН ТАЛБАЙ ──────────────────────────────────────────────────
-   * ⚠️ Энэ графикийн ГОЛ өгүүлэмж нь «төлөвлөгөө ба бодит олголтын хооронд
-   *    хэдий хэмжээний зай байна вэ» — хоёр шугам ойрхон явахад тэр зай нүдэнд
-   *    ОГТ баригддаггүй байв. Хооронд нь будсанаар зөрүү нь ХЭМЖЭЭ болж
-   *    харагдана: талбай өргөсөх тусам хоцрогдол их.
-   */
-  const gapArea = givenPts.length > 1
-    ? smoothPath(planPts.slice(0, givenPts.length))
-      + ' L ' + [...givenPts].reverse().map((q) => q.x.toFixed(1) + ' ' + q.y.toFixed(1)).join(' L ')
-      + ' Z'
-    : '';
+  /* ⚠️ ЗӨРҮҮГИЙН ТАЛБАЙ (төлөвлөгөө ↔ олголт) 2026-09-06-нд ХАСАГДСАН —
+     төлөвлөгөөний муруй байхгүй болсон тул будах зай ч байхгүй. */
 
   /* ⚠️ ЗУРАГЛАЛ нь ГРАФИКИЙН ТАЛБАЙГААР, бүрхүүлийн бүтэн өргөнөөр БИШ:
      зүүн талд Y тэнхлэгийн ~120px багана, баруунд 30px зай бий. Бүтэн
@@ -386,7 +389,7 @@ export function ComboChart({
    *    эзэлдэг атлаа цэг хоорондын зай ердөө ~104px тул хоёр тоо дээр
    *    дээрээсээ давхарлан бичигддэг байлаа. Одоо ЖИНХЭНЭ өргөнөөр нь хэмжиж,
    *    багтахыг нь л үлдээнэ (`fitLabels`) — эхэн ба төгсгөл хэвээр.
-   * ⚠️ Цуваа бүр ТУСДАА: төлөвлөгөө муруйнхаа дээр, олголт доор бичигддэг тул
+   * ⚠️ Цуваа бүр ТУСДАА: олголт муруйнхаа дээр, биет доор бичигддэг тул
    *    хоорондоо мөргөлдөхгүй; нэг цувааны дотор л зай шалгах ёстой.
    */
   const fitFor = (last: number, valOf: (r: typeof rows[number]) => string) => new Set(
@@ -397,7 +400,6 @@ export function ComboChart({
       anchor: anchorFor(i),
     }))),
   );
-  const planLbl = fitFor(lastPlan, (r) => num(r.planned));
   const givenLbl = fitFor(lastGiven, (r) => num(r.givenCum));
   const physLbl = fitFor(lastPhys, (r) => `${r.physPct?.toFixed(0) ?? ''}%`);
   /* X тэнхлэгийн он·сар — «2026-09» тогтмол 7 тэмдэгт */
@@ -414,7 +416,7 @@ export function ComboChart({
         /* ⚠️ `preserveAspectRatio="none"` ХАСАГДСАН: `viewBox` нь одоо бодит
            пикселтэй тэнцүү тул сунгах шаардлагагүй — үсэг гажихаа болив. */
         role="img"
-        aria-label={tr('Санхүүжилтийн явц: төлөвлөсөн, олгосон, биет гүйцэтгэл')}
+        aria-label={tr('Санхүүжилтийн явц: олгосон санхүүжилт, биет гүйцэтгэл')}
       >
         {/* ── ТОР ба Y тэнхлэг ──
             ⚠️ 2026-09-01: шошго нь урьд торны ДЭЭР, зүүн ирмэгт наалддаг байсан
@@ -433,9 +435,6 @@ export function ComboChart({
             </g>
           );
         })}
-
-        {/* ЗӨРҮҮГИЙН ТАЛБАЙ — төлөвлөгөө ба олголтын хоорондох зай */}
-        {gapArea && <path d={gapArea} className={f.gapArea} style={{ fill: PLAN }} />}
 
         {/* ХОЦРОГДСОН САР — тасархай босоо шугам + лугшдаг цэг */}
         {lagMonth != null && lagLvl != null && (() => {
@@ -460,13 +459,7 @@ export function ComboChart({
           );
         })()}
 
-        {/* ── МУРУЙНУУД ──
-            Төлөвлөгөө нь ЛАВЛАГАА тул нимгэн, тасархай; бодит олголт нь ГОЛ
-            хариулт тул зузаан, бүтэн. Урьд нь хоёулаа ижил зузаантай байсан
-            тул аль нь баримт, аль нь зорилт болох нь ялгардаггүй байв. */}
-        {planPts.length > 1 && (
-          <path d={smoothPath(planPts)} className={f.planLine} style={{ stroke: PLAN }} vectorEffect="non-scaling-stroke" />
-        )}
+        {/* ── МУРУЙНУУД — олгосон санхүүжилт (зузаан, бүтэн) ба биет гүйцэтгэл ── */}
         {givenPts.length > 1 && (
           <path d={smoothPath(givenPts)} className={f.actLine} style={{ stroke: ACT }} vectorEffect="non-scaling-stroke" />
         )}
@@ -478,24 +471,8 @@ export function ComboChart({
             ⚠️ Зөвхөн эцсийн утга үзүүлэх нь БУРУУ байв: 12 сарын урт графикийг
                гаргаад ганц тоо уншуулах юм бол график хэрэггүй. Сар бүрийн
                утга нүдэнд харагдах ёстой.
-            ⚠️ Мөргөлдөхөөс сэргийлэх дүрэм: төлөвлөгөө нь муруйнхаа ДЭЭР,
-               олголт нь ДООР бичигдэнэ — хоёр цуваа ойртсон ч давхцахгүй.
-               Биет нь олголттой ойрхон явдаг тул мөн доор, илүү зайтай. */}
-        {rows.map((r, i) => {
-          if (i > lastPlan || r.planned <= 0 || !planLbl.has(i)) return null;
-          const x = xFor(i);
-          const y = yFor(r.planned);
-          return (
-            <g key={`pl-${i}`}>
-              <circle cx={x} cy={y} r={3} className={f.sDot} style={{ fill: PLAN }} vectorEffect="non-scaling-stroke" />
-              {/* ⚠️ y-г 12-оос дээш барина: дээд ирмэгт хүрсэн цэгийн шошго
-                  SVG-ийн гаднаас тасарч, тоо хагас харагддаг байв. */}
-              <text x={x} y={Math.max(12, y - 9)} className={f.ptVal} style={{ fill: PLAN }} textAnchor={anchorFor(i)}>
-                {num(r.planned)}
-              </text>
-            </g>
-          );
-        })}
+            ⚠️ Мөргөлдөхөөс сэргийлэх дүрэм: олголт нь муруйнхаа ДООР, биет нь
+               түүнээс илүү доор бичигдэнэ — хоёр цуваа ойртсон ч давхцахгүй. */}
         {rows.map((r, i) => {
           if (i > lastGiven || r.givenCum <= 0 || !givenLbl.has(i)) return null;
           const x = xFor(i);
@@ -528,9 +505,6 @@ export function ComboChart({
         {hi != null && (
           <g>
             <line x1={xFor(hi)} x2={xFor(hi)} y1={padT} y2={padT + plotH} className={f.curveCursor} />
-            {rows[hi].planned > 0 && hi <= lastPlan && (
-              <circle cx={xFor(hi)} cy={yFor(rows[hi].planned)} r={4} className={f.sDot} style={{ fill: PLAN }} vectorEffect="non-scaling-stroke" />
-            )}
             {hi <= lastGiven && (
               <circle cx={xFor(hi)} cy={yFor(rows[hi].givenCum)} r={4} className={f.sDot} style={{ fill: ACT }} vectorEffect="non-scaling-stroke" />
             )}
@@ -557,23 +531,9 @@ export function ComboChart({
           style={{ left: `${(hi! / Math.max(1, N - 1)) * 100}%`, transform: `translateX(${hi! < N / 2 ? '10px' : 'calc(-100% - 10px)'})` }}
         >
           <p className={`num ${f.tipHd}`}>{pt.label}</p>
-          <p className={f.tipRow}><i style={{ background: PLAN }} />{tr('Төлөвлөсөн санхүүжилт')}<b className="num">{pt.planned > 0 ? mnt(pt.planned) : '—'}</b></p>
           <p className={f.tipRow}><i style={{ background: ACT }} />{tr('Олгосон санхүүжилт')}<b className="num">{pt.givenCum > 0 ? mnt(pt.givenCum) : '—'}</b></p>
           {!hidePhys && <p className={f.tipRow}><i style={{ background: PHYS }} />{/* «—» = ХЭМЖИГДЭЭГҮЙ; жинхэнэ 0% нь «0.0%» гэж гарна */}
             {tr('Биет гүйцэтгэл')}<b className="num">{pt.physPct == null ? '—' : `${pt.physPct.toFixed(1)}%`}</b></p>}
-          <p className={`${f.tipRow} ${f.tipGap}`}>
-            {tr('Төлөвлөгөөний биелэлт')}
-            <b className="num">{pt.it.cumPct > 0 ? `${pt.it.cumPct.toFixed(1)}%` : '—'}</b>
-          </p>
-          <p className={f.tipRow}>
-            {tr('Олгосон хувь')}
-            <b className="num">{pt.planned > 0 ? `${((pt.givenCum / pt.planned) * 100).toFixed(0)}%` : '—'}</b>
-          </p>
-          {/* ЗӨРҮҮ — графикийн будсан талбайн тоон илэрхийлэл */}
-          <p className={f.tipRow}>
-            {tr('Олгогдоогүй үлдэгдэл')}
-            <b className="num">{pt.planned > pt.givenCum ? mnt(pt.planned - pt.givenCum) : '—'}</b>
-          </p>
         </div>
       )}
     </div>
@@ -604,32 +564,27 @@ function smoothPath(pts: { x: number; y: number }[]): string {
 // ═══════════════════════════════════════════════════════════
 
 /**
- * Санхүүжилтийн бүх дата — CASHFLOW2 (төлөвлөгөө) + IPC (олгосон, цэвэрлэсэн) +
+ * Санхүүжилтийн бүх дата — CASHFLOW_NEW (гэрээ) + IPC (олгосон, цэвэрлэсэн) +
  * TASK_SHEET (биет гүйцэтгэл, сарын эцсийн байдлаар).
  * ⚠️ export — «Барилгын цогц хяналт» (Tsogts) мөн энэ ГАНЦ ачаалагчийг ашиглана.
  * ⚠️ 5 мин кэш (2026-08-21 гүйцэтгэлийн аудит): Нүүр (супер) · Tsogts · Санхүү
  *   гурвуулаа дууддаг тул харагдац сэлгэх бүрд 3 query + O(багц×сар×блок)
  *   тооцоо ДАХИН хийгддэг байв.
  */
-export const loadFinData = cached(loadFinDataRaw, LIVE_TTL, ['IPC_LOG', 'CASHFLOW2', 'BAGTS_SHEET']);
+export const loadFinData = cached(loadFinDataRaw, LIVE_TTL, ['IPC_LOG', 'CASHFLOW_NEW', 'BAGTS_SHEET']);
 
 /**
- * CASHFLOW2/IPC_LOG-ийн түүхий мөрүүд — НЭГ кэштэй эх (2026-08-24 аудит):
- * урьд нь `loadFinDataRaw` ба `loadFinRegister` ижил хоёр хүснэгтийг тус
- * тусдаа '*'-аар татдаг тул Нүүр (ExecKpi) · Tsogts · Санхүү гурвыг дараалан
- * нээхэд CASHFLOW2/IPC_LOG давхар татагдаж, 6 слотын хязгаарлагчийг дэмий
- * эзэлдэг байв. ⚠️ `outFields: '*'` ХЭВЭЭР — Санхүүгийн бүртгэл (FullTable)
- * үйлчилгээний талбар БҮРИЙГ баганаар харуулдаг тул нарийсгаж болохгүй.
- */
-const loadCashflowRows = cached(
-  () => queryFeatures(CASHFLOW2.url, { outFields: ['*'], orderBy: `${CASHFLOW2.oid} ASC` }),
-  LIVE_TTL,
-  ['CASHFLOW2'],
-);
-/**
- * ГЭРЭЭНИЙ ШИНЭ БҮРТГЭЛ — «Санхүүжилт» табын хүснэгт үүнээс уншина.
- * ⚠️ `loadCashflowRows`-ыг СОЛИХГҮЙ: тэр нь муруй, KPI, тайлангийн тооцоонд
- * хэрэглэгддэг САРЫН мөрүүдийг өгдөг бөгөөд шинэ хүснэгтэд тэдгээр байхгүй.
+ * ГЭРЭЭНИЙ БҮРТГЭЛ — НЭГ кэштэй эх (2026-08-24 аудит): урьд нь
+ * `loadFinDataRaw` ба `loadFinRegister` ижил хүснэгтийг тус тусдаа
+ * '*'-аар татдаг тул Нүүр (ExecKpi) · Багцын санхүү · Санхүүжилт гурвыг
+ * дараалан нээхэд давхар татагдаж, 6 слотын хязгаарлагчийг дэмий эзэлдэг
+ * байв.
+ *
+ * ⚠️ `outFields: '*'` ХЭВЭЭР — Санхүүгийн бүртгэл (FullTable) үйлчилгээний
+ * талбар БҮРИЙГ баганаар харуулдаг тул нарийсгаж болохгүй.
+ *
+ * ⚠️ 2026-09-06: хуучин `cashflow_0813`-ийн ачаалагч (`loadCashflowRows`)
+ * ХАСАГДСАН — хоёр хүснэгт зэрэг татдаг байсан нь одоо нэг болов.
  */
 const loadCashflowNewRows = cached(
   () => queryFeatures(CASHFLOW_NEW.url, { outFields: ['*'], orderBy: `${CASHFLOW_NEW.oid} ASC` }),
@@ -660,8 +615,8 @@ let planCurveCache: PlanCurve | null = null;
 
 async function loadFinDataRaw(): Promise<FinData> {
   const S = TASK_SHEET.fields;
-    const [cashflow, ipc, hist] = await Promise.all([
-      loadCashflowRows(),
+    const [contracts, ipc, hist] = await Promise.all([
+      loadCashflowNewRows(),
       loadIpcRows(),
       /*
        * БИЕТ ГҮЙЦЭТГЭЛ — блок бүрийн «Б.» мөрийн бүх агшин.
@@ -689,26 +644,6 @@ async function loadFinDataRaw(): Promise<FinData> {
     ]);
 
     /*
-     * ГЭРЭЭ vs ҮЕ — `cashflow_0813` нэг хүснэгтэд хоёр грейн агуулна тул
-     * ЭНД САЛГАНА. Дуудагч тал бүрд шүүлт давтуулбал нэг нь мартагдаж
-     * гэрээ 209 удаа тоологдоно.
-     */
-    const CFF = CASHFLOW2.fields;
-    const contracts = cashflow.filter((r) => r[CFF.rowType] === CASHFLOW2.rows.master);
-    const periods = cashflow.filter((r) => r[CFF.rowType] !== CASHFLOW2.rows.master);
-
-    /* Гэрээ → сар → төлөвлөгөөт дүн */
-    const plan = new Map<string, Map<string, number>>();
-    periods.forEach((r) => {
-      const mon = cfMonthKey(r);
-      if (!mon) return; // ӨМНӨХ ШИЛЖҮҮЛСЭН — сарын тэнхлэгт байрлахгүй
-      const g = String(r[CFF.geree] ?? '');
-      const byMon = plan.get(g) ?? new Map<string, number>();
-      byMon.set(mon, (byMon.get(mon) ?? 0) + n(r[CFF.amount]));
-      plan.set(g, byMon);
-    });
-
-    /*
      * IPC → багц бүрд: сар → олгосон цэвэр дүн.
      *
      * ⚠️ Цэвэр дүн одоо БОДОГДОНО (`ipcNet` = гүйцэтгэлийн дүн − 4 суутгал) —
@@ -717,14 +652,32 @@ async function loadFinDataRaw(): Promise<FinData> {
      *    сүүлийн сар руу шахдаг байсан — 29 актын мөнгө нэг сарын нүдэнд
      *    овоорч хуурамч оргил үүсгэнэ. Нийт дүн `givenTotal`-д бүрэн үлдэнэ.
      */
+    /*
+     * БАГЦ → ГЭРЭЭНИЙ ДҮН. Нэг багцад олон гэрээ байж болно (жиш. зураг
+     * төсөл + ажил) тул НИЙЛБЭР.
+     * ⚠️ `pkgKeyOf` (bagtsKey БИШ): «БАГЦ 1-4» мэт диапазон мөр хоосон
+     *    түлхүүртэй болж, аль нэг багцад буруу наалдахгүй.
+     * ⚠️ Гэрээний эрхийн дүн хоосон бол урьдчилсан төсөвт өртгөөр — эс
+     *    тэгвээс гэрээ хараахан байгуулагдаагүй багц «төлөвлөгөөгүй» болж,
+     *    гүйцэтгэлийн хувь нь тодорхойгүй болно.
+     */
+    const CFN = CASHFLOW_NEW.fields;
+    const planTotal = new Map<string, number>();
+    contracts.forEach((r) => {
+      const k = pkgKeyOf(r[CFN.pkg2]) || pkgKeyOf(r[CFN.pkg]);
+      if (!k || k === '0') return;
+      const v = n(r[CFN.contractAmount]) || n(r[CFN.budget]);
+      if (!v) return;
+      planTotal.set(k, (planTotal.get(k) ?? 0) + v);
+    });
+
     const F = IPC_LOG.fields;
     /* ⚠️ СУНГАСАН тэнхлэг (cfMonthAxis) — хуваарь 2026-09-өөр төгсдөг тул
        түүнээс хойшхи акт, хэмжилт нүхгүй үлдэж, сүүлийн сард овоорч эсвэл
        царцдаг байв. Сунгалт нь өнөөдрийг хүртэл. */
     const axis = cfMonthAxis();
-    const labels = axis.map((m) => m.label);
-    const first = labels[0];
-    const last = labels[labels.length - 1];
+    const first = axis[0];
+    const last = axis[axis.length - 1];
     const given: GivenMap = new Map();
     const givenTotal = new Map<string, number>();
     ipc.forEach((r) => {
@@ -790,15 +743,15 @@ async function loadFinDataRaw(): Promise<FinData> {
       byPkg.forEach((blocks, k) => {
         const byMon = new Map<string, number>();
         const cntMon = new Map<string, number>();
-        axis.forEach((m) => {
-          if (m.label > nowYm) return; // ирээдүйн сард биет дата байхгүй
+        axis.forEach((label) => {
+          if (label > nowYm) return; // ирээдүйн сард биет дата байхгүй
           let sum = 0;
           let cnt = 0;
           blocks.forEach((arr) => {
             // тухайн сарын эцсээс өмнөх сүүлийн бичилт
             let best: { d: string; g: number | null } | null = null;
             arr.forEach((e) => {
-              if (e.d.slice(0, 7) <= m.label && (!best || e.d > best.d)) best = e;
+              if (e.d.slice(0, 7) <= label && (!best || e.d > best.d)) best = e;
             });
             // Сүүлийн бичилт нь null бол блок «мэдээлэлгүй» — дунджид ОРУУЛАХГҮЙ
             // (blockProgress.compute-ийн дүрэмтэй ижил: 0% гэж будвал худал мэдээлэл)
@@ -808,13 +761,13 @@ async function loadFinDataRaw(): Promise<FinData> {
               cnt++;
             }
           });
-          if (cnt > 0) { byMon.set(m.label, (sum / cnt) * 100); cntMon.set(m.label, cnt); }
+          if (cnt > 0) { byMon.set(label, (sum / cnt) * 100); cntMon.set(label, cnt); }
         });
         phys.set(k, byMon);
         physCnt.set(k, cntMon);
       });
     }
-    return { contracts, periods, plan, given, givenTotal, phys, physCnt, acts: ipc };
+    return { contracts, planTotal, given, givenTotal, phys, physCnt, acts: ipc };
 }
 
 /**
@@ -903,9 +856,20 @@ export function Finance() {
 //  ХАРАГДАЦ — мөр (гэрээ/багц) бүрд ТУСДАА график
 // ═══════════════════════════════════════════════════════════
 
-/** Гэрээний мөрөөс сарын цэгүүд — ЯГ датаных нь дагуу + IPC олгосон + биет гүйцэтгэл */
+/**
+ * Гэрээний мөрөөс сарын цэгүүд — IPC олголт + биет гүйцэтгэл.
+ *
+ * ⚠️ 2026-09-06: САНХҮҮЖИЛТИЙН ТӨЛӨВЛӨГӨӨ (сарын `amount`, өссөн дүн, өссөн
+ *    хувь) ХАСАГДСАН. Тэр нь `cashflow_0813`-ийн «САР» мөрүүдээс гардаг
+ *    байсан бөгөөд шинэ `Cashflow_0904`-т он/сарын багана ОГТ БАЙХГҮЙ.
+ *    Үлдсэн хоёр цуваа хоёулаа БОДИТ ХЭМЖИЛТ.
+ *
+ * ⚠️ Гэрээний мөр өөрөө сарын утга ОГТ АГУУЛАХГҮЙ болсон ч параметр нь
+ *    ХЭВЭЭР: багцын түлхүүр (`pkg2` → `pkg`) түүнээс гарч, тэрхүү түлхүүр нь
+ *    `given`/`phys`-ийг сонгоно.
+ */
 export function contractMonths(r: Row, fin: FinData): MonthPt[] {
-  const C = CASHFLOW2.fields;
+  const C = CASHFLOW_NEW.fields;
   const { given, phys } = fin;
   // ⚠️ `pkgKeyOf` (bagtsKey БИШ): «БАГЦ 1-4» мэт диапазон мөр нь bagtsKey-ээр
   //    «БАГЦ14» болж, бодит «Багц 14»-ийн олголт/биет гүйцэтгэлийг өөрийн болгон
@@ -919,56 +883,18 @@ export function contractMonths(r: Row, fin: FinData): MonthPt[] {
    *    багцаас гарсан, ЯГ ТЭР багцынх. `lagOf` нь `planned − actual` бодох
    *    бөгөөд `actual` нь `phys`-ээс гардаг тул хоёул НЭГ багцынх байх ёстой;
    *    эс тэгвээс нэг багцын хуваарийг нөгөө багцын гүйцэтгэлээс хасна.
-   *    Дээрх `??` гинжтэй ЯГ ижил дараалал (`k2` тэргүүлнэ, дараа нь `k3`) —
-   *    амьд өгөгдөлд «Багц 3» гэрээ нь `pkg2 = БАГЦ31` тул хуваарь нь
-   *    `byBagts.get('БАГЦ31')` болно (2026-09-04-нд шалгасан).
+   *    Дээрх `??` гинжтэй ЯГ ижил дараалал (`k2` тэргүүлнэ, дараа нь `k3`).
    */
   const pkg = (phys.has(k2) ? k2 : phys.has(k3) ? k3 : (k2 || k3)) || undefined;
 
-  /*
-   * ⚠️ ХАДГАЛАГДСАН `pctCum` (CF-ийн «өссөн хувь») БАГАНЫГ ХЭРЭГЛЭХГҮЙ —
-   *    тэр нь ЖИЛ БҮР ТЭГЛЭГДДЭГ. Амьд өгөгдөл (2026-08-27, Багц 2):
-   *
-   *      2025-10..12  19.3%   → 2026-01..06  0.0%   → 2026-09  39.8%
-   *
-   *    Өссөн дүн ДУНДАА 0 болж унана гэдэг боломжгүй — график дээр
-   *    төлөвлөгөөний муруй зургаан сар шалан дээр хэвтээд, эцсийн цэг нь
-   *    100%-ийн оронд 39.8% дээр зогсдог байв. `services.ts` нь `amountCum`-ийн
-   *    хувьд яг энэ занг («ЖИЛ БҮР ТЭГЛЭГДДЭГ») аль хэдийн тэмдэглэсэн
-   *    бөгөөд `loadBudget` түүнийг хэрэглэхээс зайлсхийдэг.
-   *
-   *    Тиймээс өссөн хувийг гэрээний ӨӨРИЙНХ нь сарын дүнгээс бодно —
-   *    үргэлж өсөх ба төгсгөлдөө 100% болно. Төслийн нэгтгэсэн график
-   *    (`aggregateMonths`) аль хэдийн ЯГ ЭНЭ дүрмээр боддог тул хоёр
-   *    график нэг хэлээр ярина.
-   */
-  /* ⚠️ Хуваарь одоо БАГАНА биш МӨР — гэрээний сарын дүнг `fin.plan`-аас авна.
-     Хэмжилтгүй сард мөр огт байхгүй (2026-01 бүхэлдээ алга) тул тэнхлэгийг
-     `cfMonthAxis()`-ээс авч, дутуу сарыг 0-ээр нөхнө; эс тэгвээс график нэг
-     сар алгасаад цаашдын бүх цэг зүүн тийш шилжинэ. */
-  const byPlan = fin.plan.get(String(r[C.geree] ?? ''));
-  const axis = cfMonthAxis();
-  const amounts = axis.map((m) => byPlan?.get(m.label) ?? 0);
-  const total = amounts.reduce((a, b) => a + b, 0);
-  let cum = 0;
-
-  return axis.map((m, i) => {
-    cum += amounts[i];
-    return {
-      label: m.label,
-      amount: amounts[i],
-      /* ⚠️ Өссөн дүн, өссөн хувь ХОЁУЛАА ЭНД бодогдоно. Хадгалагдсан
-         багануудыг (`amountCum`, `pctCum`) шинэ үйлчилгээнээс ХАСАВ — тэдгээр
-         нь ЖИЛ БҮР ТЭГЛЭГДДЭГ байсан тул төлөвлөгөөний муруй дунд нь 0 руу
-         унаж, эцсийн цэг 100%-ийн оронд 39.8% дээр зогсдог байв (Багц 2,
-         2026-08-27). Өөрийн сарын дүнгээс бодоход үргэлж өсөх ба 100%-д хүрнэ. */
-      amountCum: cum,
-      cumPct: total > 0 ? (cum / total) * 100 : 0,
-      given: byMon?.get(m.label) ?? 0,
-      phys: ph?.get(m.label) ?? null,
-      pkg,
-    };
-  });
+  /* ⚠️ Тэнхлэгийг ӨГӨГДЛӨӨС угсрахгүй — хэмжилтгүй сар (2026-01, 2026-03) мөр
+     үүсгэдэггүй тул алгасвал түүнээс хойшхи бүх цэг зүүн тийш шилжинэ. */
+  return cfMonthAxis().map((label) => ({
+    label,
+    given: byMon?.get(label) ?? 0,
+    phys: ph?.get(label) ?? null,
+    pkg,
+  }));
 }
 
 /**
@@ -989,8 +915,9 @@ export function contractMonths(r: Row, fin: FinData): MonthPt[] {
  *    тул улаан ХЭВЭЭР ч тоо нь ҮНЭН болов — «100% хоцорсон» гэсэн худал
  *    ХЭМЖЭЭ арилав.
  *
- * ⚠️ Мөнгөний хоцрогдол (төлөвлөсөн ₮ vs олгосон ₮) нь `finLagOf` — ТУСДАА
- *    асуулт, тусдаа badge. Энэ хоёрыг дахин холихгүй.
+ * ⚠️ 2026-09-06: мөнгөний хоцрогдол (`finLagOf`) ХАСАГДСАН — төлөвлөсөн ₮
+ *    сар бүрээр гэдэг өгөгдөл шинэ cashflow-д огт байхгүй. Тиймээс энэ нь
+ *    порталын ГАНЦ хоцрогдлын хэмжүүр болов.
  *
  * ⚠️ ГАРЫН ҮСЭГ ХЭВЭЭР (`lagOf(months)`) — ExecKpi · PkgProg · PkgFin гурав
  *    үүнийг дууддаг. Багцын түлхүүр нь `MonthPt.pkg`-ээр цэг дотроо явна.
@@ -1033,93 +960,6 @@ export function lagOf(months: MonthPt[]): { month: string; planned: number; actu
 /** Хоцрогдлын зэрэглэл: ≥10% улаан, 5–10% шар, бусад нь alert биш */
 export const lagLevel = (gap: number): 'red' | 'yellow' | null =>
   gap >= 10 ? 'red' : gap >= 5 ? 'yellow' : null;
-
-/**
- * САНХҮҮЖИЛТИЙН ХОЦРОГДОЛ — ТӨЛӨВЛӨГӨӨТ ХУВААРЬ vs БОДИТ ОЛГОЛТ.
- *
- * ⚠️ `lagOf` нь БИЕТ гүйцэтгэлийн хоцрогдлыг хэмждэг — өөр асуулт.
- *    Энэ нь: «төлөвлөгөөгөөр авах ёстой байсан хугацаа өнгөрсөн атлаа
- *    аваагүй» тохиолдлыг барина. Гүйцэтгэгч ажлаа хийсэн ч мөнгө нь
- *    хугацаандаа гараагүй бол энэ нь САНХҮҮГИЙН асуудал бөгөөд биет
- *    явцын хоцрогдлоос ТУСДАА мөрдөгдөх ёстой.
- *
- * ⚠️ ЗӨВХӨН ӨНГӨРСӨН сарууд. Ирээдүйн төлөвлөгөө «аваагүй» гэж
- *    тооцогдвол бүх багц улаан болно — хугацаа нь болоогүй мөнгө
- *    хоцрогдол БИШ.
- */
-export function finLagOf(months: MonthPt[]): {
-  /** Хугацаа нь өнгөрсөн сүүлийн төлөвлөгөөт сар */
-  month: string;
-  /** Тэр хүртэл авах ЁСТОЙ байсан өссөн дүн ₮ */
-  planned: number;
-  /** Бодитоор олгогдсон өссөн дүн ₮ */
-  given: number;
-  /** Дутуу олгогдсон ₮ (planned − given) */
-  gap: number;
-  /** Дутуугийн ХУВЬ — зэрэглэл үүгээр тогтоно */
-  pct: number;
-  /** Хугацаа нь өнгөрсөн ч дүн нь бүрэн ороогүй сарын тоо */
-  lateMonths: number;
-  /**
-   * ОЛГОЛТЫН БҮРТГЭЛ ОГТ АЛГА (IPC акт нэг ч байхгүй).
-   *
-   * ⚠️ 2026-08-25-нд амьд өгөгдлөөр шалгахад: 65 багцын 41 нь «хоцорсон»
-   *    гэж тэмдэглэгдэж байсны 34 нь ЭНЭ ангилалд байв — 84 актын 63 нь
-   *    дүнгүй. Ийм мөрийг улаанаар тэмдэглэвэл «мөнгө хоцорсон» гэсэн ХУДАЛ
-   *    дүгнэлт гарна: бид «төлөгдөөгүй» ба «бүртгэгдээгүй» хоёрыг ялгаж
-   *    чадахгүй. Тиймээс тусад нь, ӨӨР хэлээр хэлнэ.
-   */
-  noRecord: boolean;
-} | null {
-  const nowYm = new Date().toISOString().slice(0, 7);
-  let planned = 0;
-  let given = 0;
-  let month = "";
-  let lateMonths = 0;
-  let runPlan = 0;
-  let runGiven = 0;
-  for (const m of months) {
-    if (m.label > nowYm) break;      // ирээдүй — хугацаа нь болоогүй
-    runPlan += m.amount;
-    runGiven += m.given;
-    if (m.amount > 0) {
-      month = m.label;
-      planned = runPlan;
-      given = runGiven;
-      // Тэр сар хүртэлх ХУРИМТЛАЛААР дутуу байвал «хоцорсон сар»
-      if (runGiven + 1 < runPlan) lateMonths += 1;
-    }
-  }
-  if (planned <= 0) return null;
-  const gap = planned - given;
-  if (gap <= 0) return null;         // хугацаандаа, эсвэл илүү олгогдсон
-  const noRecord = months.every((m) => m.given === 0);
-  return { month, planned, given, gap, pct: (gap / planned) * 100, lateMonths, noRecord };
-}
-
-/**
- * Санхүүжилтийн хоцрогдлын зэрэглэл.
- *
- * ⚠️ ЗӨВХӨН хувиар БИШ, ДҮНГЭЭР ч шалгана: 500 сая төлөвлөснөөс 100 сая
- *    дутуу (20%) нь 200 тэрбумаас 20 тэрбум дутуутай (10%) ижил зэрэг
- *    БИШ. Аль нэг нь босго давбал улаан.
- */
-export const finLagLevel = (
-  pct: number,
-  gap: number,
-  noRecord = false,
-): 'red' | 'yellow' | null => {
-  /*
-   * ⚠️ БҮРТГЭЛГҮЙ багц ХЭЗЭЭ Ч улаан болохгүй. «Олгоогүй» ба «бүртгээгүй»
-   *    хоёрын аль нь болохыг өгөгдлөөс мэдэх БОЛОМЖГҮЙ тул хамгийн хүнд
-   *    дүгнэлтийг сонгож болохгүй — тэр нь гүйцэтгэгчийг үндэслэлгүйгээр
-   *    буруутгана. Дэлгэц дээр тэдгээр нь «бүртгэл алга» гэж тусдаа гарна.
-   */
-  if (noRecord) return null;
-  if (pct >= 30 || gap >= 10_000_000_000) return 'red';
-  if (pct >= 10 || gap >= 1_000_000_000) return 'yellow';
-  return null;
-};
 
 /* ═══════════════════════════════════════════════════════════
    САНХҮҮЖИЛТ — ХОЁР БҮРЭН ХҮСНЭГТ (Cashflow · IPC), ГРАФИКГҮЙ
@@ -1204,7 +1044,6 @@ const dateOnlyText = (v: unknown): string => {
  *    ХЭМЖИГДЭХҮҮН биш ТАНИГЧ — мянгатаар тусгаарлавал утга нь гажина.
  */
 const PLAIN_INT = new Set<string>([
-  CASHFLOW2.fields.year, CASHFLOW2.fields.monthNo,   // Жил · Сар
   IPC_LOG.fields.no,                                 // Актын дугаар
 ]);
 
@@ -1212,7 +1051,7 @@ const PLAIN_INT = new Set<string>([
  * ДЭЛГЭЦЭД ГАРГАХГҮЙ талбарууд.
  *
  * ⚠️ GlobalID — утгагүй UUID (хэрэглэгчийн хүсэлт).
- * ⚠️ 2026-09-01: OBJECTID ба «Гэрээний код» (CF001 · IPC02) мөн ХАСАГДАВ
+ * ⚠️ 2026-09-01: OBJECTID ба «Гэрээний код» (IPC02) мөн ХАСАГДАВ
  *    («object id, гэрээний код огт хэрэггүй»). Хоёулаа ДОТООД ТАНИГЧ — хүнд
  *    юу ч хэлдэггүй атлаа 38 баганат хүснэгтийн эхний хоёр байрыг эзэлдэг.
  * ⚠️ OBJECTID нь ХАРАГДАХГҮЙ болохоос АЛГА болохгүй: засварын түлхүүр
@@ -1237,7 +1076,6 @@ const isSkip = (name: string, type: string, oidField: string): boolean =>
   || /globalid/i.test(name)
   || /^(creationdate|creator|editdate|editor)$/i.test(name)
   || name === oidField
-  || name === CASHFLOW2.fields.geree
   || name === IPC_LOG.fields.geree;
 
 function fmtCell(v: unknown, type: string, name = ''): { text: string; num: boolean } {
@@ -1699,8 +1537,10 @@ function FullTable({
    * `cf` горимд зурвал `splitContracts` мастер мөр олохгүй тул хүснэгт ХООСОН
    * гарна. Тиймээс хавтгай горим.
    */
-  const kind: FinKind = dataKey === 'IPC_LOG' ? 'ipc'
-    : dataKey === 'CASHFLOW_NEW' ? 'flat' : 'cf';
+  /* ⚠️ 2026-09-06: «cf» горим (хуучин `cashflow_0813`-ийн паспорт+хуваарь
+     карт) БҮРМӨСӨН хасагдсан — тэр үйлчилгээ байхгүй болсон. Үлдсэн хоёр
+     хүснэгт: гэрээний бүртгэл (нэг бүтэн хүснэгт) ба актын урсгал. */
+  const kind: FinKind = dataKey === 'IPC_LOG' ? 'ipc' : 'flat';
   const packs = useMemo(
     () => (grouped ? buildGroups(shown, kind) : null),
     [grouped, shown, kind],
@@ -2053,17 +1893,6 @@ function FullTable({
 
   /* Багануудын хуваарилалт — хуваарийнх нь `finCard.CF_PERIOD_FIELDS`,
      үлдсэн нь паспорт. IPC: үндсэн баганууд + дэлгэрэнгүй. */
-  const schedCols = useMemo(
-    () => CF_PERIOD_FIELDS
-      .map((n) => cols.find((c) => c.name === n))
-      .filter((c): c is FieldDef => c != null),
-    [cols],
-  );
-  const passCols = useMemo(
-    () => cols.filter((c) => !CF_PERIOD_FIELDS.includes(c.name)
-      && c.name !== CASHFLOW2.fields.rowType),
-    [cols],
-  );
   const ipcMainCols = useMemo(
     () => IPC_MAIN_FIELDS
       .map((n) => cols.find((c) => c.name === n))
@@ -2074,10 +1903,6 @@ function FullTable({
     () => cols.filter((c) => !IPC_MAIN_FIELDS.includes(c.name)),
     [cols],
   );
-
-  /** Хуваарийн толгойд «Үүнээс: » угтварыг хасна — багана бүрт давтагдаад нэмэргүй */
-  const shortLabel = (name: string) => finFieldLabel(name).replace(/^Үүнээс:\s*/, '');
-
   /** Толгой баруун зэрэгцэх үү — мөнгөн багана тийм, он·сар·дугаар үгүй */
   const thRight = (c: FieldDef) => NUMERIC_TYPES.has(c.type) && !PLAIN_INT.has(c.name);
 
@@ -2115,228 +1940,6 @@ function FullTable({
     </div>
   ));
 
-  /** Тоон утга авах — хоосон/танигдахгүй бол null */
-  const numOrNull = (v: unknown): number | null => {
-    if (v == null || v === '') return null;
-    const x = Number(v);
-    return Number.isFinite(x) ? x : null;
-  };
-
-  const cfCards = (list: GroupRow[]) => splitContracts(list).map((ct, ci) => {
-    const m = ct.master;
-    const mo = m?.oid ?? null;
-    const mDrop = mo != null && del.has(mo);
-    const prows = ct.periods.map((p) => p.row);
-    const planned = sumOrNull(prows, CASHFLOW2.fields.amount);
-    const title = m
-      ? text(m.row[CASHFLOW2.fields.name], tr('Нэргүй гэрээ'))
-      : tr('Гэрээний паспорт бүртгэлгүй');
-    const sub = m
-      ? [text(m.row[CASHFLOW2.fields.contractor], ''), text(m.row[CASHFLOW2.fields.type], '')]
-        .filter(Boolean).join(' · ')
-      : '';
-
-    /* ══ ЗАСВАРЫН ГОРИМ — бүх талбар дэлгэгдэнэ, хоосон нь ч бөглөгдөнө ══ */
-    if (edit) {
-      return (
-        <div key={ct.geree || `c-${ci}`} className={f.cCard}>
-          <div className={f.cHead}>
-            <span className={`${f.cTitle} ${mDrop ? f.xDel : ''}`}>{title}</span>
-            {edit && canRow && mo != null && (
-              <button
-                type="button"
-                className={f.rowBtn}
-                title={mDrop ? tr('Устгахаа болих') : tr('Паспорт мөрийг устгах')}
-                onClick={() => toggleDel(mo)}
-              >
-                {mDrop ? '↩' : '×'}
-              </button>
-            )}
-          </div>
-          {m && (
-            <dl className={f.pass}>
-              {passCols.map((c) => (
-                <div key={c.name} className={f.pf}>
-                  <dt title={c.name}>{finFieldLabel(c.name)}</dt>
-                  <dd>{passVal(m.row, mo, mDrop, c)}</dd>
-                </div>
-              ))}
-            </dl>
-          )}
-          {ct.periods.length > 0 && (
-            <div className={f.tscroll}>
-              <table className={`${f.tbl} ${f.sTbl}`}>
-                <thead>
-                  <tr>
-                    {schedCols.map((c) => (
-                      <th key={c.name} title={c.name} className={thRight(c) ? f.thR : undefined}>
-                        {shortLabel(c.name)}
-                      </th>
-                    ))}
-                    {canRow && <th className={f.rowBtnCell} aria-label={tr('Мөр')} />}
-                  </tr>
-                </thead>
-                <tbody>
-                  {ct.periods.map((p, i) => {
-                    const dropped = p.oid != null && del.has(p.oid);
-                    return (
-                      <tr key={p.oid ?? `p-${i}`} className={`${f.dRow} ${dropped ? f.rowDel : ''}`}>
-                        {schedCols.map((c) => xCell(p.row, p.oid, dropped, c))}
-                        {canRow && (
-                          <td className={f.rowBtnCell}>
-                            {p.oid != null && (
-                              <button
-                                type="button"
-                                className={f.rowBtn}
-                                title={dropped ? tr('Устгахаа болих') : tr('Мөр устгах')}
-                                onClick={() => toggleDel(p.oid as number)}
-                              >
-                                {dropped ? '↩' : '×'}
-                              </button>
-                            )}
-                          </td>
-                        )}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      );
-    }
-
-    /* ══ УНШЛАГЫН КАРТ ══ */
-    const kpis = [
-      ...CF_KPI_FIELDS.map((n) => kpiTile(finFieldLabel(n), m ? numOrNull(m.row[n]) : null)),
-      kpiTile(tr('Төлөвлөсөн'), planned),
-    ].filter(Boolean);
-
-    /* Хуваарийн баганууд — Сарын дүн ҮРГЭЛЖ, бусад нь утгатай бол л */
-    const schedUse = schedCols.filter((c) => c.name !== CASHFLOW2.fields.year
-      && c.name !== CASHFLOW2.fields.monthNo
-      && (c.name === CASHFLOW2.fields.amount
-        || usedFields(prows, [c.name]).length > 0));
-
-    const detail = m
-      ? CF_PASS_GROUPS
-        .map((gp) => ({
-          label: gp.label,
-          fields: gp.fields
-            .map((n) => cols.find((c) => c.name === n))
-            .filter((c): c is FieldDef => c != null)
-            .filter((c) => {
-              const v = m.row[c.name];
-              return !(v == null || v === '');
-            }),
-        }))
-        .filter((gp) => gp.fields.length > 0)
-      : [];
-
-    return (
-      <div key={ct.geree || `c-${ci}`} className={f.cCard}>
-        <div className={f.cHead2}>
-          <div className={f.cName}>{title}</div>
-          {sub && <div className={f.cSub}>{sub}</div>}
-        </div>
-
-        {kpis.length > 0 && <div className={f.kpiRow}>{kpis}</div>}
-
-        {ct.periods.length > 0 && (
-          <div className={f.secBox}>
-            <div className={f.secLbl}>{tr('Хөрөнгө оруулалтын хуваарь')}</div>
-            <div className={f.tscroll}>
-              <table className={`${f.tbl} ${f.sTbl}`}>
-                <thead>
-                  <tr>
-                    <th>{tr('Сар')}</th>
-                    {schedUse.map((c) => (
-                      <th key={c.name} title={c.name} className={thRight(c) ? f.thR : undefined}>
-                        {shortLabel(c.name)}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                {groupPeriodsByYear(ct.periods).map((yg) => {
-                  const ySum = sumOrNull(yg.rows.map((r2) => r2.row), CASHFLOW2.fields.amount);
-                  return (
-                    <tbody key={yg.year || '—'}>
-                      {/* ОН — секцийн толгой, оны дэд нийлбэртэй */}
-                      <tr className={f.yRow}>
-                        <td colSpan={1 + schedUse.length}>
-                          <b className="num">{yg.year || '—'}</b>
-                          {ySum != null && (
-                            <span className={`${f.ySub} num`}>{tr('дэд нийлбэр {0}', num(ySum))}</span>
-                          )}
-                        </td>
-                      </tr>
-                      {yg.rows.map((p, ri) => (
-                        <tr key={p.oid ?? `p-${yg.year}-${ri}`} className={f.dRow}>
-                          {p.row[CASHFLOW2.fields.rowType] !== CASHFLOW2.rows.month ? (
-                            <td className={f.rowKind}>
-                              {text(p.row[CASHFLOW2.fields.rowType], '—')}
-                            </td>
-                          ) : (
-                            <td className="num">
-                              {tr('{0}-р сар', String(p.row[CASHFLOW2.fields.monthNo] ?? '—'))}
-                            </td>
-                          )}
-                          {schedUse.map((c) => xCell(p.row, p.oid, false, c))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  );
-                })}
-                <tbody>
-                  {/* ⚠️ НИЙТ — бүх мөр хоосон багана «—», 0 БИШ (утгын занга) */}
-                  <tr className={f.sTotal}>
-                    <td>{tr('НИЙТ')}</td>
-                    {schedUse.map((c) => {
-                      const t2 = sumOrNull(prows, c.name);
-                      return (
-                        <td key={c.name} className={`num ${f.cellNum}`}>
-                          {t2 == null ? '—' : num(t2)}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {detail.length > 0 && (
-          <div className={f.detWrap}>
-            {detail.map((gp) => (
-              <div key={gp.label} className={f.dGrp}>
-                <span className={f.dLbl}>{gp.label}</span>
-                <div className={f.dItems}>
-                  {gp.fields.map((c) => {
-                    const cell = fmtCell((m as GroupRow).row[c.name], c.type, c.name);
-                    return (
-                      <span key={c.name} className={f.dItem} title={c.name}>
-                        <i>{finFieldLabel(c.name)}</i>
-                        <b className={cell.num ? 'num' : undefined}>{cell.text || '—'}</b>
-                      </span>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  });
-
-  /** IPC — актын урсгал: дүн → суутгал → цэвэр → шилжүүлсэн; дэлгэхэд бүх талбар */
-  /**
-   * ХАВТГАЙ ХҮСНЭГТ — гэрээний шинэ бүртгэлд (`Cashflow_0904`).
-   * ⚠️ Багана нь метадатагаас (`cols`) ирнэ, гараар жагсаахгүй: үйлчилгээнд
-   * талбар нэмэгдэхэд өөрөө гарч ирнэ.
-   */
   /**
    * Хоёр утгыг харьцуулна.
    * ⚠️ Тоог мөр болгож харьцуулж БОЛОХГҮЙ — «10» нь «9»-ээс өмнө орно.
@@ -2455,6 +2058,11 @@ function FullTable({
     );
   };
 
+  /**
+   * ХАВТГАЙ ХҮСНЭГТ — гэрээний бүртгэлд (`Cashflow_0904`).
+   * ⚠️ Багана нь метадатагаас (`cols`) ирнэ, гараар жагсаахгүй: үйлчилгээнд
+   * талбар нэмэгдэхэд өөрөө гарч ирнэ.
+   */
   const flatTable = (raw: GroupRow[]) => {
     const list = sortRows(raw);
     return (
@@ -3174,9 +2782,7 @@ function FullTable({
               : packs.map((p) => {
               const off = shut.has(p.key);
               /* Багцын нийлбэр — бүгд хоосон бол ОГТ бичихгүй (0 худал) */
-              const hdSum = kind === 'cf'
-                ? sumOrNull(p.rows.map((g) => g.row), CASHFLOW2.fields.amount)
-                : netTotalOrNull(p.rows.map((g) => g.row));
+              const hdSum = netTotalOrNull(p.rows.map((g) => g.row));
               return (
               <section key={p.key} className={f.bBox}>
                 {/* ⚠️ Багцын нэр нь ХҮСНЭГТЭЭС ГАДУУР: доторх хүснэгт нь хэвтээ
@@ -3197,13 +2803,12 @@ function FullTable({
                   <span className={`${f.grpCnt} num`}>{tr('{0} мөр', num(p.count))}</span>
                   {hdSum != null && (
                     <span className={`${f.bSum} num`}>
-                      {kind === 'cf' ? tr('Төлөвлөсөн {0}', mnt(hdSum)) : tr('Цэвэр олгосон {0}', mnt(hdSum))}
+                      {tr('Цэвэр олгосон {0}', mnt(hdSum))}
                     </span>
                   )}
                 </button>
-                {/* «А» загвар: Cashflow → гэрээ бүрд паспорт + хуваарь;
-                    IPC → актын урсгал. Хэвтээ гүйлт нь хүснэгт ДОТРОО (`.tscroll`). */}
-                {!off && (kind === 'cf' ? cfCards(p.rows) : ipcTable(p.rows))}
+                {/* IPC → актын урсгал. Хэвтээ гүйлт нь хүснэгт ДОТРОО (`.tscroll`). */}
+                {!off && ipcTable(p.rows)}
               </section>
               );
             })}

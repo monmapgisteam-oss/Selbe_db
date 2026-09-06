@@ -25,17 +25,19 @@
 .bg {
   position: absolute;
   inset: 0;
+  /*
+   * ⚠️ 2026-09-06: агаарын зураг (`/home-bg.webp`) ХАСАГДАВ — нүүр самбартай
+   * ижил шалтгаан (`home.module.css`-ийн ⚠️-г үз). Нээлтийн хуудас нь
+   * порталтай НЭГ гадаргуутай болсноор нэвтрэх → портал шилжилт үсрэхээ болино.
+   */
   background:
-    /* Зүүн талыг илүү бараан — бичвэр тэнд суух тул тодрол хэрэгтэй */
-    linear-gradient(100deg,
-      color-mix(in srgb, var(--bg) 58%, transparent) 0%,
-      color-mix(in srgb, var(--bg) 30%, transparent) 46%,
-      color-mix(in srgb, var(--bg) 12%, transparent) 100%),
-    linear-gradient(180deg,
-      color-mix(in srgb, var(--bg) 26%, transparent) 0%,
-      transparent 32%,
-      color-mix(in srgb, var(--bg) 34%, transparent) 100%),
-    url('/home-bg.webp') center center / cover no-repeat;
+    radial-gradient(1200px 700px at 18% -10%,
+      color-mix(in srgb, var(--accent, var(--data)) 14%, transparent) 0%,
+      transparent 60%),
+    radial-gradient(900px 640px at 92% 104%,
+      color-mix(in srgb, var(--ink) 7%, transparent) 0%,
+      transparent 58%),
+    var(--bg);
   /*
    * ⚠️ БҮДГЭРҮҮЛЭЛТГҮЙ. Нээлтийн хуудсанд бичвэр цөөн бөгөөд том тул зургийг
    * бүтнээр нь тод үзүүлж болно. (Самбарын дэвсгэр нь өөр: тэнд нягт бичвэр,

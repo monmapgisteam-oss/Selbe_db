@@ -15,12 +15,11 @@ import {
 } from '@/modules/Bagts';
 import { useBuildings, pickedBuilding } from '@/modules/BuildingPanel';
 import {
-  loadFinData, contractMonths, ComboChart, lagOf, lagLevel,
-  finLagOf, finLagLevel, type FinData,
+  loadFinData, contractMonths, ComboChart, lagOf, lagLevel, type FinData,
 } from '@/modules/Finance';
 import { useAsync, type Async } from '@/lib/useAsync';
 import {
-  BUILDING, CASHFLOW2, IPC_LOG, LAYER_BY_ID, pkgKeyOf, bagtsKey,
+  BUILDING, CASHFLOW_NEW, IPC_LOG, LAYER_BY_ID, pkgKeyOf, bagtsKey,
   PKG_FAMILY_BY_BAGTS, zoneWhere, cfMonthAxis,
   ipcCode, ipcNet, ipcDue } from '@/lib/services';
 import { cat, shade, date, mnt, num, pct } from '@/lib/format';
@@ -69,12 +68,6 @@ const PACK_CATS: { key: PackCat; name: () => string }[] = [
   { key: 'soc', name: () => tr('Нийгмийн барилга') },
   { key: 'site', name: () => tr('Өндөржилт') },
 ];
-/** Утгыг тоо руу — ArcGIS Double эсвэл "0" мэт мөр ирдэг */
-const nn = (v: unknown): number => {
-  const x = Number(v);
-  return Number.isFinite(x) ? x : 0;
-};
-
 /**
  * ӨМНӨХ ОНД ШИЛЖҮҮЛСЭН нийт ₮ — ЗӨВХӨН ТӨСЛИЙН нэгдсэн дүн.
  *
@@ -84,13 +77,9 @@ const nn = (v: unknown): number => {
  *    ноогдуулах боломжгүй — багцын картуудад огт харагдахгүй, зөвхөн
  *    төслийн нийт төсөвт нэмэгдэнэ. Хадгалагдсан утга биш, ЭНД БОДОГДОНО.
  */
-const prevTotal = (d: FinData): number => {
-  const C = CASHFLOW2.fields;
-  return d.periods.reduce(
-    (a, r) => a + (r[C.rowType] === CASHFLOW2.rows.prev ? nn(r[C.amount]) : 0),
-    0,
-  );
-};
+/* ⚠️ 2026-09-06: `prevTotal` ХАСАГДСАН — «ӨМНӨХ ШИЛЖҮҮЛСЭН» гэсэн мөрийн
+   төрөл нь хуучин `cashflow_0813`-т байсан бөгөөд тэр үйлчилгээ хаягдсан.
+   Шинэ `Cashflow_0904`-т өмнөх шилжүүлгийн ямар ч талбар БАЙХГҮЙ. */
 
 /* ══════════════ НЭГ БАГЦ ↔ ОЛОН ГЭРЭЭ (2026-09-04) ══════════════ */
 
@@ -106,7 +95,7 @@ const pkgSrcKey = (
   r: FinData['contracts'][number],
   map: Map<string, unknown>,
 ): string | null => {
-  const C = CASHFLOW2.fields;
+  const C = CASHFLOW_NEW.fields;
   const k2 = pkgKeyOf(r[C.pkg2]);
   const k3 = pkgKeyOf(r[C.pkg]);
   return map.has(k2) ? k2 : map.has(k3) ? k3 : null;
@@ -154,21 +143,13 @@ function mergePkgMonths(
 ): ReturnType<typeof contractMonths> | null {
   if (!rows.length) return null;
   if (rows.length === 1) return contractMonths(rows[0], d);
-  const C = CASHFLOW2.fields;
-  const amount = new Map<string, number>();   // сар → төлөвлөгөөт ₮
   const given = new Map<string, number>();    // сар → олгосон ₮
   const physSum = new Map<string, number>();  // сар → phys-ийн нийлбэр
   const physN = new Map<string, number>();    // сар → phys эх сурвалжийн тоо
-  const seenGeree = new Set<string>();
   const seenGiven = new Set<string>();
   const seenPhys = new Set<string>();
-  rows.forEach((r, i) => {
+  rows.forEach((r) => {
     const ms = contractMonths(r, d);
-    /* Гэрээний код давхардвал (буруу бичилт) хуваарь давхар тоологдохгүй.
-       Код хоосон бол мөрийн индексээр ялгана — өөр гэрээ гэж үзнэ. */
-    const gk = String(r[C.geree] ?? '') || `#${i}`;
-    const planNew = !seenGeree.has(gk);
-    if (planNew) seenGeree.add(gk);
     const givenK = pkgSrcKey(r, d.given);
     const givenNew = givenK != null && !seenGiven.has(givenK);
     if (givenNew) seenGiven.add(givenK);
@@ -176,8 +157,7 @@ function mergePkgMonths(
     const physNew = physK != null && !seenPhys.has(physK);
     if (physNew) seenPhys.add(physK);
     for (const m of ms) {
-      if (!amount.has(m.label)) amount.set(m.label, 0);
-      if (planNew) amount.set(m.label, (amount.get(m.label) ?? 0) + m.amount);
+      if (!given.has(m.label)) given.set(m.label, 0);
       if (givenNew) given.set(m.label, (given.get(m.label) ?? 0) + m.given);
       if (physNew && m.phys != null) {
         physSum.set(m.label, (physSum.get(m.label) ?? 0) + m.phys);
@@ -208,20 +188,11 @@ function mergePkgMonths(
   const physKey = seenPhys.size === 1 ? [...seenPhys][0] : undefined;
 
   /* «YYYY-MM» тул үсгэн эрэмбэ = цаг хугацааны эрэмбэ */
-  const labels = [...amount.keys()].sort();
-  const total = labels.reduce((a, l) => a + (amount.get(l) ?? 0), 0);
-  let cum = 0;
+  const labels = [...given.keys()].sort();
   return labels.map((label) => {
-    cum += amount.get(label) ?? 0;
     const n = physN.get(label) ?? 0;
     return {
       label,
-      amount: amount.get(label) ?? 0,
-      /* ⚠️ Өссөн дүн/хувийг НЭГТГЭСЭН цувааны дараа ДАХИН бодно — гэрээ
-         тус бүрийн `amountCum`/`cumPct`-ийг нийлбэрлэвэл хувь нь 100-аас
-         давна (`contractMonths`-ийн ⚠️-тэй ижил дүрэм). */
-      amountCum: cum,
-      cumPct: total > 0 ? (cum / total) * 100 : 0,
       given: given.get(label) ?? 0,
       phys: n > 0 ? (physSum.get(label) ?? 0) / n : null,
       // ⚠️ Дээрх ⚠️-г үзнэ үү — энэ талбарыг ХЭЗЭЭ Ч бүү хас.
@@ -361,13 +332,13 @@ export function PkgFin({ dim, setDim }: {
   };
 
   /**
-   * Багц бүрийн САНХҮҮГИЙН сарын цэгүүд — CASHFLOW2-ийн мөрийг bagtsKey-ээр
+   * Багц бүрийн САНХҮҮГИЙН сарын цэгүүд — гэрээний мөрийг bagtsKey-ээр
    * тааруулж НЭГ УДАА бэлдэнэ. Жагсаалтын гүйцэтгэлийн хувь ба хоцрогдлын
    * alert үүнээс тооцогдоно.
    */
   const finMap = useMemo(() => {
     if (finQ.state !== 'ready') return null;
-    const C = CASHFLOW2.fields;
+    const C = CASHFLOW_NEW.fields;
     /* ⚠️ 2026-09-04: урьд нь `!m.has(k)`-ээр багц бүрд ЭХНИЙ гэрээг л
        үлдээдэг байв. Багц 7-д G04 (хуваарьгүй зураг төсөл) түрүүлж ордог тул
        20,162,536,361 ₮-ийн хуваарьтай G29 хаягдаж, багц «0 ₮ төлөвлөгөөтэй»
@@ -399,7 +370,7 @@ export function PkgFin({ dim, setDim }: {
   }, [finQ]);
 
   /**
-   * Багц → ГЭРЭЭНИЙ ТҮҮХИЙ МӨР (CASHFLOW2).
+   * Багц → ГЭРЭЭНИЙ ТҮҮХИЙ МӨР (CASHFLOW_NEW).
    *
    * ⚠️ `finMap` нь зөвхөн САРЫН цэгүүдийг хадгалдаг тул гэрээний дугаар,
    *    огноо, эх үүсвэр, төсөвт өртөг зэрэг бүх лавлах талбар алдагддаг.
@@ -414,7 +385,7 @@ export function PkgFin({ dim, setDim }: {
    */
   const finRow = useMemo(() => {
     if (finQ.state !== 'ready') return null;
-    const C = CASHFLOW2.fields;
+    const C = CASHFLOW_NEW.fields;
     const m = new Map<string, (typeof finQ.data.contracts)[number]>();
     finQ.data.contracts.forEach((r) => {
       [pkgKeyOf(r[C.pkg2]), pkgKeyOf(r[C.pkg])].forEach((k) => {
@@ -433,46 +404,52 @@ export function PkgFin({ dim, setDim }: {
    *
    * `null` = ачаалж байна · дүн 0 = гэрээ бүртгэгдээгүй.
    */
+  /*
+   * ⚠️ 2026-09-06: `plan` нь САРЫН хуваарийн нийлбэр биш, ГЭРЭЭНИЙ ДҮН
+   *    (`FinData.planTotal`). Хуучин тоо нь `cfMonthAxis()`-ийн 12 сарын
+   *    цонхонд багтсан үеүүдийн нийлбэр байсан тул цонхны гадна үлдсэн
+   *    санхүүжилтийг ОГТ тоолдоггүй байв.
+   */
   const activeFin = useMemo(() => {
-    if (!finMap) return null;
-    const months = active ? finMap.get(active.key) : null;
-    if (months) {
+    if (!finMap || finQ.state !== 'ready') return null;
+    const d = finQ.data;
+    if (active) {
+      const months = finMap.get(active.key);
       return {
-        plan: months.reduce((a, m) => a + m.amount, 0),
-        given: months.reduce((a, m) => a + m.given, 0),
+        plan: d.planTotal.get(active.key) ?? 0,
+        given: months ? months.reduce((a, m) => a + m.given, 0) : 0,
       };
     }
-    // Багц сонгосон ч гэрээгүй → тэг; сонгоогүй бол БҮХ багцын нийлбэр
-    if (active) return { plan: 0, given: 0 };
     let plan = 0;
     let given = 0;
-    finMap.forEach((ms) => ms.forEach((m) => { plan += m.amount; given += m.given; }));
+    d.planTotal.forEach((v) => { plan += v; });
+    finMap.forEach((ms) => ms.forEach((m) => { given += m.given; }));
     return { plan, given };
-  }, [finMap, active]);
+  }, [finMap, active, finQ]);
 
   /**
    * ALERT-тэй (төлөвлөгөөнөөс хоцорсон) багцууд — ТУСДАА бүлэг болж жагсаалтын
    * ХАМГИЙН ДЭЭР гарна. Гүйцэтгэл хэвийн болмогц lag арилж, багц өөрийн
    * бүлэгтээ аяндаа буцна (тусгай төлөв хадгалахгүй).
    */
-  const alertKeys = useMemo(() => {
-    const s = new Set<string>();
-    if (!finMap) return s;
-    /*
-     * ⚠️ ЭНД ЗӨВХӨН САНХҮҮГИЙН ХОЦРОГДОЛ: авах ХУГАЦАА нь өнгөрсөн атлаа
-     *    мөнгө нь ороогүй. Биет явцын хоцрогдол нь «Багцын гүйцэтгэл»
-     *    модулийнх — хоёрыг нэг дүрмээр шийдвэл нэг цонхны alert
-     *    нөгөөгийнхөө асуултад хариулж, «яагаад улаан байна вэ» гэдэг нь
-     *    ойлгогдохгүй болно.
-     */
-    packs.forEach((p) => {
-      const months = finMap.get(p.key);
-      if (!months) return;
-      const fl = finLagOf(months);
-      if (fl && finLagLevel(fl.pct, fl.gap, fl.noRecord)) s.add(p.key);
-    });
-    return s;
-  }, [packs, finMap]);
+  /*
+   * ⚠️ 2026-09-06: САНХҮҮГИЙН ХОЦРОГДЛЫН alert ХАСАГДСАН. Тэр нь «авах
+   *    ХУГАЦАА нь өнгөрсөн атлаа мөнгө ороогүй» гэдгийг хэмждэг байсан
+   *    бөгөөд ГАНЦ эх сурвалж нь `cashflow_0813`-ийн сарын хуваарь байв —
+   *    шинэ `Cashflow_0904`-т сарын багана ОГТ БАЙХГҮЙ.
+   *
+   * ⚠️ Биет явцын хоцрогдлыг (`lagOf`) ЭНД ОРЛУУЛЖ ТАВИХГҮЙ: тэр нь
+   *    «Багцын гүйцэтгэл» модулийн асуулт бөгөөд өөр НЭГЖТЭЙ (% vs ₮).
+   *    Санхүүгийн цонхонд биет хоцрогдол улаан асаавал хэрэглэгч «ямар
+   *    мөнгө хоцорсон бэ» гэж хайж, юу ч олохгүй.
+   */
+  const alertKeys = useMemo(() => new Set<string>(), []);
+
+  /** Багц → гэрээний нийт дүн, ₮ — жагсаалт ба картуудын «төлөвлөгөө» багана */
+  const planMap = useMemo(
+    () => (finQ.state === 'ready' ? finQ.data.planTotal : null),
+    [finQ],
+  );
   const alerted = useMemo(() => packs.filter((p) => alertKeys.has(p.key)), [packs, alertKeys]);
 
 
@@ -639,28 +616,17 @@ export function PkgFin({ dim, setDim }: {
           <Section title={tr('Багцууд')}><Empty label={tr('Ачаалж байна…')} /></Section>
         ) : (
           <>
-            {/* ⚠ ХОЦРОГДОЛТОЙ багцууд — тусдаа бүлэг, ХАМГИЙН ДЭЭР, карт бүхэлдээ анивчина.
-                ⚠️ 2026-08-21: ЗӨВХӨН гүйцэтгэлийн харагдацад — хоцрогдол нь биет
-                явц vs төлөвлөгөөний зөрүү тул санхүүгийн асуултын хэсэг БИШ. */}
-            {alerted.length > 0 && (
-              <div className={ts.alertCard}>
-                <TsPackList
-                  title={tr('⚠ Санхүүжилт хоцорсон багц')}
-                  note={tr('хугацаа өнгөрсөн ч аваагүй')}
-                  packs={alerted}
-                  sel={sel}
-                  onSel={pick}
-                  finMap={finMap}
-                />
-              </div>
-            )}
+            {/* ⚠️ 2026-09-06: «Санхүүжилт хоцорсон багц» тусдаа бүлэг
+                ХАСАГДСАН — сарын хуваарь байхгүй болсон тул «хугацаа
+                өнгөрсөн ч аваагүй» гэдгийг тодорхойлох арга байхгүй. */}
             {/* ДӨРВӨН АНГИЛЛААР (2026-08-21) — барилга угсралт · дэд бүтэц ·
                 нийгмийн барилга · өндөржилт; alert-тэй нь дээрх бүлэгт */}
             {PACK_CATS.map((c) => (
               <TsPackList
                 key={c.key}
                 title={c.name()}
-                note={tr('олгосон / төлөвлөгөө')}
+                note={tr('олгосон / гэрээ')}
+                planMap={planMap}
                 /* ⚠️ Alert-тай багц нь ДЭЭД бүлэгт гарсан тул эндээс хасагдана —
                    эс бөгөөс нэг багц хоёр газар давхардаж жагсана. */
                 packs={packs.filter((p) => catOf(p) === c.key && !alertKeys.has(p.key))}
@@ -755,8 +721,8 @@ export function PkgFin({ dim, setDim }: {
         ) : !active ? (
           /* Багц сонгоогүй — ТӨСЛИЙН НЭГДСЭН: гэрээ/төсөв · эх үүсвэр · төлөв · блок гүйцэтгэл */
           <>
-            <CatChart packs={packs} finMap={finMap} finOnly />
-            <PkgFinList packs={packs} finMap={finMap} />
+            <CatChart packs={packs} finMap={finMap} planMap={planMap} finOnly />
+            <PkgFinList packs={packs} finMap={finMap} planMap={planMap} />
           </>
         ) : active.kind === 'build' ? (
           /* ⚠️ Гэрээ нь САНХҮҮГИЙН баримт (дүн, хугацаа, гүйцэтгэгч), блокийн
@@ -805,7 +771,7 @@ export function PkgFin({ dim, setDim }: {
  * БАГЦЫН ЖАГСААЛТ (Tsogts хувилбар) — МӨНГӨН ДҮН БИШ, ГҮЙЦЭТГЭЛИЙН ХУВИЙГ
  * харуулж, төлөвлөгөөнөөс хоцорсон багцад ALERT (улаан/шар) өгнө:
  *   · build багц — биет гүйцэтгэлийн % (блокийн дундаж)
- *   · infra багц — санхүүгийн гүйцэтгэл % (олгосон/төлөвлөгөө, CASHFLOW2+IPC)
+ *   · infra багц — санхүүгийн гүйцэтгэл % (олгосон/гэрээний дүн, CASHFLOW_NEW+IPC)
  * Хоцрогдол = Finance-ийн lagOf дүрэм (CF өссөн төлөвлөгөө vs биет %).
  */
 /**
@@ -818,17 +784,23 @@ function TsKpi({ packs, fin }: { packs: Pack[]; fin: FinData | null }) {
     if (!fin) return null;
     const months = aggregateMonths(fin);
     const nowYm = new Date().toISOString().slice(0, 7);
-    let planned: number | null = null;
+    /* ⚠️ 2026-09-06: ТӨЛӨВЛӨГӨӨТ хувь нь `cumPct` (cashflow-ийн өссөн
+       МӨНГӨН хувь) байхаа больж ХУВААРИАС (`lagOf`) гарна — доорх графикийн
+       badge-тэй НЭГ тоо. Урьд нь хоёр өөр нэгж харьцуулагдаж байв. */
+    const lag = lagOf(months);
+    const planned: number | null = lag ? lag.planned : null;
     let actual: number | null = null;
     for (const m of months) {
       if (m.label > nowYm) continue;
-      if (m.cumPct > 0) planned = m.cumPct;
       if (m.phys != null) actual = m.phys;
     }
     const gap = planned != null && actual != null ? planned - actual : null;
-    /* ⚠️ Нийт төсөв = өмнөх онд шилжүүлсэн (мөрийн төрлөөс БОДОГДОНО) +
-       тэнхлэгийн бүх сарын төлөвлөгөө. */
-    const planTotal = prevTotal(fin) + months.reduce((a, m) => a + m.amount, 0);
+    /* ⚠️ 2026-09-06: Нийт төсөв = ГЭРЭЭНИЙ дүнгүүдийн нийлбэр
+       (`FinData.planTotal`). Урьд нь «өмнөх онд шилжүүлсэн + 12 сарын
+       цонхны төлөвлөгөө» байсан — цонхны гадна үлдсэн үе тоологдохгүй,
+       мөн «өмнөх шилжүүлсэн» мөр шинэ үйлчилгээнд огт байхгүй. */
+    let planTotal = 0;
+    fin.planTotal.forEach((v) => { planTotal += v; });
     /* ⚠️ `givenTotal` — `given`-ийн сар бүрийн нийлбэр БИШ: огноогүй актууд
        (тэдгээрийн нэг нь 9.4 тэрбум ₮) сарын цуваанд ОРДОГГҮЙ (null ≠ 0,
        сүүлийн сар руу шахвал хуурамч оргил гарна) ч БАГЦЫН/KPI-ийн нийт
@@ -870,7 +842,7 @@ function TsKpi({ packs, fin }: { packs: Pack[]; fin: FinData | null }) {
 }
 
 function TsPackList({
-  title, note, packs, sel, onSel, finMap,
+  title, note, packs, sel, onSel, finMap, planMap,
 }: {
   title: string;
   note: string;
@@ -878,26 +850,20 @@ function TsPackList({
   sel: string | null;
   onSel: (k: string | null) => void;
   finMap: Map<string, ReturnType<typeof contractMonths>> | null;
+  /** Багц → гэрээний нийт дүн, ₮ (`FinData.planTotal`) */
+  planMap: Map<string, number> | null;
 }) {
   if (!packs.length) return null;
-  /**
-   * ALERT-тэй багц БҮЛГИЙНХЭЭ ХАМГИЙН ДЭЭР: улаан → шар → хэвийн гэсэн
-   * зэрэглэлээр, alert доторх нь хоцрогдлын хэмжээгээр (их нь эхэнд).
-   * Дата шинэчлэгдэж гүйцэтгэл хэвийн болмогц lag арилдаг тул багц ААНДАА
-   * хэвийн дарааллынхаа байранд буцна — тусгай төлөв хадгалахгүй.
+  /*
+   * ⚠️ 2026-09-06: ХОЦРОГДЛЫН ЗЭРЭГЛЭЛЭЭР ЭРЭМБЭЛЭХ нь ХАСАГДСАН. Тэр нь
+   *    санхүүгийн хоцрогдол (`finLagOf`) дээр тогтдог байсан бөгөөд түүний
+   *    ганц эх сурвалж — `cashflow_0813`-ийн сарын хуваарь — байхгүй болсон.
+   *    Одоо ОЛГОСОН ДҮНГЭЭР буурахаар: хамгийн их мөнгө хөдөлсөн багц эхэнд.
    */
   const rows = packs
     .map((p) => {
       const months = finMap?.get(p.key) ?? null;
-      /*
-       * ⚠️ ХОЦРОГДОЛ нь горимоороо ӨӨР утгатай:
-       *   · гүйцэтгэл — БИЕТ явц төлөвлөгөөнөөс хэдэн ХУВЬ хоцорсон
-       *   · санхүү    — авах хугацаа өнгөрсөн ч хэдэн ТӨГРӨГ ороогүй
-       * Тиймээс тэмдэг нь ч өөр нэгжээр (% vs ₮) ярина.
-       */
-      const fl = months ? finLagOf(months) : null;
-      const lvl = fl ? finLagLevel(fl.pct, fl.gap, fl.noRecord) : null;
-      const plan = months ? months.reduce((a, m) => a + m.amount, 0) : 0;
+      const plan = planMap?.get(p.key) ?? 0;
       const given = months ? months.reduce((a, m) => a + m.given, 0) : 0;
       // Багцын төрлөөс үл хамааран ОЛГОСОН / ТӨЛӨВЛӨГӨӨ
       const execPct = plan > 0 ? (given / plan) * 100 : null;
@@ -909,14 +875,9 @@ function TsPackList({
        *    зогсох тул харьцуулж болохгүй хоёр хэмжигдэхүүн холилдож байв.
        *    Одоо «мэдээлэлгүй» гэж ил хэлнэ.
        */
-      return { p, fl, lvl, execPct, plan, given };
+      return { p, execPct, plan, given };
     })
-    .sort((a, b) => {
-      const rank = (l: 'red' | 'yellow' | null) => (l === 'red' ? 0 : l === 'yellow' ? 1 : 2);
-      /* Ижил зэрэглэлд ДУТУУ ДҮНГЭЭР — их нь эхэнд */
-      const w = (x: typeof a) => x.fl?.gap ?? 0;
-      return rank(a.lvl) - rank(b.lvl) || w(b) - w(a);
-    });
+    .sort((a, b) => b.given - a.given || b.plan - a.plan);
   return (
     /*
      * ⚠️ БҮХ БҮЛЭГ НЭЭЛТТЭЙ ЭХЭЛНЭ (хэрэглэгчийн шийдвэр, 2026-08-25). Хураах
@@ -930,7 +891,7 @@ function TsPackList({
       collapsible
     >
       <List>
-        {rows.map(({ p, fl, lvl, execPct, plan, given }) => {
+        {rows.map(({ p, execPct, plan, given }) => {
           /* Сонгогдсон эсэх — мөрийг тодруулахад. Сонголтын үр дүн нь доод
              бүтэн график ба баруун картуудад гарна. */
           const open = p.key === sel;
@@ -949,37 +910,14 @@ function TsPackList({
                   flexWrap: 'wrap', justifyContent: 'flex-end',
                 }}>
                   {execPct == null ? '—' : pct(execPct, 0)}
-                  {/**
-                    * ⚠️ 2026-08-18: анхааруулга нь ЗӨВХӨН «⚠» тэмдэг байсныг
-                    * ЗӨРҮҮ + ТӨЛӨВЛӨСӨН/БОДИТ гурвалаар ил гаргав. Урьд нь тоо
-                    * нь зөвхөн hover-ийн `title`-д байсан тул жагсаалтыг нүдээр
-                    * гүйлгэхэд аль багц хэр хоцорсныг ХАРАХ арга байхгүй байлаа.
-                    */}
-                  {/* САНХҮҮГИЙН хоцрогдол — дутуу ₮ ба хэдэн сар */}
-                  {lvl && fl && (
-                    <b
-                      className={`${ts.gapBadge} ${lvl === 'red' ? ts.gapRed : ts.gapYellow}`}
-                      title={tr('{0} хүртэл авах ёстой {1}, олгогдсон {2}', fl.month, mnt(fl.planned), mnt(fl.given))}
-                    >
-                      <span className={lvl === 'red' ? ts.alertBlink : undefined}>⚠</span>
-                      <span className="num">−{mnt(fl.gap)}</span>
-                      <small className="num">{tr('{0} сар', String(fl.lateMonths))}</small>
-                    </b>
-                  )}
-                  {/* ⚠️ БҮРТГЭЛ АЛГА — улаан БИШ, саарал. Төлөвлөгөө нь
-                      өнгөрсөн атлаа олголтын акт нэг ч ороогүй: асуудал нь
-                      мөнгөнд биш, БҮРТГЭЛД байж болно. */}
-                  {fl?.noRecord && (
-                    <b
-                      className={ts.noRecBadge}
-                      title={tr('{0} хүртэл {1} авах төлөвлөгөөтэй ч олголтын акт бүртгэгдээгүй', fl.month, mnt(fl.planned))}
-                    >
-                      {tr('бүртгэл алга')}
-                    </b>
-                  )}
+                  {/* ⚠️ 2026-09-06: хоцрогдлын ба «бүртгэл алга» тэмдгүүд
+                      ХАСАГДСАН — хоёулаа сарын төлөвлөгөө дээр тогтдог
+                      байсан бөгөөд тэр өгөгдөл шинэ cashflow-д байхгүй.
+                      Гэрээгүй багц нь `sub`-даа «санхүү бүртгэлгүй» гэж
+                      аль хэдийн хэлдэг. */}
                 </span>
               }
-              color={lvl === 'red' ? 'var(--bad)' : lvl === 'yellow' ? 'var(--warn)' : cat(0)}
+              color={cat(0)}
               active={open}
               onClick={() => onSel(open ? null : p.key)}
             />
@@ -1002,7 +940,7 @@ function TsPackList({
 /**
  * ТӨСЛИЙН НЭГДСЭН карт — багц сонгоогүй үеийн баруун карт.
  * (BUS_cashflow-ийн төсөв/захирамж/гэрээний мөрүүд 2026-08-13-нд хасагдсан.)
- * «Олгосон санхүүжилт» нь БОДИТ IPC актын нийлбэр (CASHFLOW2+IPC — Finance-тэй
+ * «Олгосон санхүүжилт» нь БОДИТ IPC актын нийлбэр (CASHFLOW_NEW+IPC — Finance-тэй
  * нэг эх сурвалж). Дэд бүтцийн ХО (INVEST /249) 2026-08-14-нд түр хасагдсан.
  */
 /**
@@ -1072,7 +1010,7 @@ function PkgFinCard({ p, fin }: { p: Pack; fin: { plan: number; given: number } 
  *    нь мэдээлэл биш чимэг болно.
  */
 function PkgFinDetail({ row, loading }: { row: Record<string, unknown> | null; loading: boolean }) {
-  const C = CASHFLOW2.fields;
+  const C = CASHFLOW_NEW.fields;
   const txt = (v: unknown) => String(v ?? '').trim();
   const nn2 = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
 
@@ -1086,7 +1024,9 @@ function PkgFinDetail({ row, loading }: { row: Record<string, unknown> | null; l
   const push = (k: string, v: React.ReactNode, ok: boolean) => { if (ok) items.push({ key: k, value: v }); };
   const money = (v: unknown) => <span className="num">{mnt(nn2(v))}</span>;
 
-  push(tr('Ажлын нэр'), long(txt(row[C.name])), !!txt(row[C.name]));
+  /* ⚠️ Хуучин `CF017` (ажлын нэр) → шинэ схемд `Nariiwchilsan_turul`
+     (бүтэн нэр). `Tusul` нь богино ангилал тул нэрийн оронд тохирохгүй. */
+  push(tr('Ажлын нэр'), long(txt(row[C.detail])), !!txt(row[C.detail]));
   push(tr('Төрөл'), long(txt(row[C.type])), !!txt(row[C.type]));
   push(tr('Гэрээний дугаар'), txt(row[C.contractNo]), !!txt(row[C.contractNo]));
   push(tr('Гэрээ байгуулсан'), date(row[C.contractDate] as number), !!row[C.contractDate]);
@@ -1102,11 +1042,11 @@ function PkgFinDetail({ row, loading }: { row: Record<string, unknown> | null; l
      уншсаар байвал ЧИМЭЭГҮЙ өөр багана уншина. */
 
   /* ЭХ ҮҮСВЭР — дүнтэй нь л. Өнгө нь services.ts-д тодорхойлогдсон. */
-  const src = CASHFLOW2.sources
-    /* ⚠️ `.field` → `.total`: эх үүсвэр бүр одоо ХОЁР баганатай — ГЭРЭЭ
-       мөрийн нийт (`total`) ба үеийн мөрийн задаргаа (`period`). Энд
-       гэрээний мөр тул `total`. */
-    .map((x) => ({ ...x, v: nn2(row[x.total]) }))
+  /* ⚠️ 2026-09-06: эх үүсвэр бүр НЭГ баганатай (`field`). Хуучин схемд
+     ГЭРЭЭ мөрийн нийт (`total`) ба үеийн задаргаа (`period`) гэсэн хос
+     байсныг үеийн мөртэй нь хамт хассан. */
+  const src = CASHFLOW_NEW.sources
+    .map((x) => ({ ...x, v: nn2(row[x.field]) }))
     .filter((x) => x.v > 0);
   const srcTotal = src.reduce((a, x) => a + x.v, 0);
 
@@ -1131,7 +1071,7 @@ function PkgFinDetail({ row, loading }: { row: Record<string, unknown> | null; l
               `stack` — нарийн баганад тайлбар нь доогуураа бүтэн өргөнөөр. */}
           <Donut
             items={src.map((x) => ({
-              key: x.total,
+              key: x.field,
               label: x.label,
               value: x.v,
               color: x.color,
@@ -1279,26 +1219,23 @@ function PkgMonths({
   finMap: Map<string, ReturnType<typeof contractMonths>> | null;
 }) {
   const months = finMap?.get(p.key) ?? null;
-  const rows = (months ?? []).filter((m) => m.amount > 0 || m.given > 0);
+  /* ⚠️ 2026-09-06: САРЫН ТӨЛӨВЛӨГӨӨ хасагдсан тул зөвхөн БОДИТ олголт
+     үлдэнэ. Олголтгүй сар мөр үүсгэхгүй — «0 ₮ олгосон» гэсэн худал мөр
+     жагсаалтыг дүүргэнэ. */
+  const rows = (months ?? []).filter((m) => m.given > 0);
 
   if (!finMap) return <Section title={tr('Сар бүрийн санхүүжилт')}><Empty label={tr('Ачаалж байна…')} /></Section>;
-  if (!rows.length) return <Section title={tr('Сар бүрийн санхүүжилт')}><Empty label={tr('Гэрээ бүртгэгдээгүй')} /></Section>;
+  if (!rows.length) return <Section title={tr('Сар бүрийн санхүүжилт')}><Empty label={tr('Олголт бүртгэгдээгүй')} /></Section>;
 
   return (
     <Section
       title={tr('Сар бүрийн санхүүжилт')}
-      note={tr('{0} сар · олгосон / төлөвлөгөө', num(rows.length))}
+      note={tr('{0} сар · олгосон', num(rows.length))}
     >
       <Rows
         items={rows.map((m) => ({
           key: m.label,
-          value: (
-            <span className="num">
-              {m.given > 0 ? mnt(m.given) : '—'}
-              {' / '}
-              {m.amount > 0 ? mnt(m.amount) : '—'}
-            </span>
-          ),
+          value: <span className="num">{mnt(m.given)}</span>,
         }))}
       />
     </Section>
@@ -1306,10 +1243,12 @@ function PkgMonths({
 }
 
 function PkgFinList({
-  packs, finMap,
+  packs, finMap, planMap,
 }: {
   packs: Pack[];
   finMap: Map<string, ReturnType<typeof contractMonths>> | null;
+  /** Багц → гэрээний нийт дүн, ₮ */
+  planMap: Map<string, number> | null;
 }) {
   const rows = useMemo(() => {
     if (!finMap) return null;
@@ -1317,14 +1256,16 @@ function PkgFinList({
       .map((p) => {
         const months = finMap.get(p.key);
         if (!months) return null;
-        const plan = months.reduce((a, m) => a + m.amount, 0);
+        /* ⚠️ 2026-09-06: «төлөвлөгөө» нь ГЭРЭЭНИЙ дүн — сарын хуваарь
+           байхгүй болсон (`FinData.planTotal`-ийн ⚠️-г үз). */
+        const plan = planMap?.get(p.key) ?? 0;
         const given = months.reduce((a, m) => a + m.given, 0);
         if (plan <= 0 && given <= 0) return null;
         return { key: p.key, label: tr(p.name), plan, given, pct: plan > 0 ? (given / plan) * 100 : null };
       })
       .filter((x): x is NonNullable<typeof x> => x != null)
       .sort((a, b) => b.given - a.given);
-  }, [packs, finMap]);
+  }, [packs, finMap, planMap]);
 
   if (!rows) return <Section title={tr('Багц бүрийн санхүүжилт')}><Empty label={tr('Ачаалж байна…')} /></Section>;
   if (!rows.length) return <Section title={tr('Багц бүрийн санхүүжилт')}><Empty label={tr('Гэрээ бүртгэгдээгүй')} /></Section>;
@@ -1355,10 +1296,13 @@ function PkgFinList({
 function CatChart({
   packs,
   finMap,
+  planMap,
   finOnly = false,
 }: {
   packs: Pack[];
   finMap: Map<string, ReturnType<typeof contractMonths>> | null;
+  /** Багц → гэрээний нийт дүн, ₮ */
+  planMap: Map<string, number> | null;
   /**
    * САНХҮҮГИЙН хэл: багана бүр ОЛГОСОН / ТӨЛӨВЛӨГӨӨ хувь.
    *
@@ -1384,7 +1328,8 @@ function CatChart({
       }
       const months = finMap?.get(p.key);
       if (!months) continue;
-      const plan = months.reduce((a, m) => a + m.amount, 0);
+      /* ⚠️ 2026-09-06: «төлөвлөгөө» = ГЭРЭЭНИЙ дүн (сарын хуваарь алга) */
+      const plan = planMap?.get(p.key) ?? 0;
       const given = months.reduce((a, m) => a + m.given, 0);
       if (plan > 0) pcts.push((given / plan) * 100);
     }
@@ -1415,7 +1360,7 @@ function CatChart({
 /**
  * САНХҮҮГИЙН ГРАФИК — Finance-ийн ComboChart-ыг сонгосон багцад; багц
  * СОНГООГҮЙ бол ТӨСЛИЙН НЭГДСЭН (бүх гэрээний сарын нийлбэр, олгосон бүгд,
- * биет нь багцуудын дундаж). CASHFLOW2-ийн мөрийг `bagtsKey`-ээр тааруулна
+ * биет нь багцуудын дундаж). Гэрээний мөрийг `bagtsKey`-ээр тааруулна
  * («БАГЦ-4.1» = «Багц 4-1»); хоцрогдлын badge мөн Finance-ийн дүрмээр.
  */
 /** Санхүүгийн графикийн өндрийн хязгаарууд (px) — чирэх бариул */
@@ -1451,7 +1396,7 @@ function FinCard({
    */
   const [kpiOpen, setKpiOpen] = useState(true);
   const d = finQ.state === 'ready' ? finQ.data : null;
-  const C = CASHFLOW2.fields;
+  const C = CASHFLOW_NEW.fields;
 
   // Дата бэлэн бол сарын цэг, нийт дүн, хоцрогдлыг урьдчилан бодно — badge-ийг
   // гарчигт (нэрний хажууд) ба note-д (баруун талд) тавихад хэрэгтэй.
@@ -1486,42 +1431,39 @@ function FinCard({
       if (!rows.length) noRow = true;
       else {
         months = mergePkgMonths(rows, d);
-        /* ⚠️ Гэрээний «өмнө шилжүүлсэн» дүн шинэ схемд БАЙХГҮЙ (зөвхөн
-           төслийн нийт) тул багцын нийт төсөв нь сарын төлөвлөгөөний
-           нийлбэр. */
-        total = months ? months.reduce((a, m) => a + m.amount, 0) : 0;
+        /* ⚠️ 2026-09-06: багцын нийт төсөв нь ГЭРЭЭНИЙ дүнгүүдийн нийлбэр
+           (`FinData.planTotal`). Урьд нь `cfMonthAxis()`-ийн 12 сарын
+           цонхонд багтсан сарын мөрүүдийн нийлбэр байв. */
+        total = pkgSrcKey(rows[0], d.planTotal) != null
+          ? [...new Set(rows.map((r) => pkgSrcKey(r, d.planTotal)))]
+            .reduce<number>((a, k) => a + (k ? (d.planTotal.get(k) ?? 0) : 0), 0)
+          : 0;
         /* Түлхүүрийн уналт нь `contractMonths`-ийн `given.get(...)`-тэй ЯГ ижил;
            хоёр гэрээ нэг түлхүүрт унавал НЭГ УДАА л тоологдоно. */
         givenTotal = pkgGivenTotal(rows, d);
       }
     } else {
       months = aggregateMonths(d);
-      total = prevTotal(d) + months.reduce((a, m) => a + m.amount, 0);
+      d.planTotal.forEach((v) => { total += v; });
       d.givenTotal.forEach((v) => { givenTotal += v; });
     }
   }
   const lag = months ? lagOf(months) : null;
   const lvl = lag ? lagLevel(lag.gap) : null;
-  /* САНХҮҮЖИЛТИЙН хоцрогдол — хугацаа өнгөрсөн ч ороогүй мөнгө */
-  const fl = months ? finLagOf(months) : null;
-  const flLvl = fl ? finLagLevel(fl.pct, fl.gap, fl.noRecord) : null;
 
   /**
-   * KPI — Cashflow (төлөвлөсөн санхүүжилт) ба IPC (олгосон акт)-ын ₮ дүн, тэдгээрийн
-   * ЗӨРҮҮ; мөн ГҮЙЦЭТГЭЛИЙН ХУВЬ хоёр (төлөвлөгөөт = Cashflow-ийн өссөн %, бодит =
-   * биет гүйцэтгэл %) ба тэдгээрийн ЗӨРҮҮ. Хоёр хувийг «одоо» хүртэлх сүүлийн
-   * бөглөгдсөн сараар авна — `lagOf`-той ижил дүрэм тул хоцрогдлын badge-тэй таарна.
+   * KPI — ГЭРЭЭНИЙ дүн ба IPC-ийн олгосон акт (₮), тэдгээрийн ЗӨРҮҮ; мөн
+   * ГҮЙЦЭТГЭЛИЙН ХУВЬ хоёр (төлөвлөгөөт = ХУВААРИАС, бодит = биет
+   * гүйцэтгэл %) ба тэдгээрийн ЗӨРҮҮ.
+   *
+   * ⚠️ 2026-09-06: `plannedPct` нь `cumPct` (cashflow-ийн өссөн МӨНГӨН хувь)
+   *    байхаа больж `lagOf`-ийн ХУВААРИЙН хувь болов — badge ба KPI хоёр НЭГ
+   *    тоог хэлнэ. Урьд нь хоёр өөр эх сурвалж, өөр НЭГЖТЭЙ байв.
+   * ⚠️ САНХҮҮЖИЛТИЙН хоцрогдол (`finLagOf`) ХАСАГДСАН — сарын хуваарьгүйгээр
+   *    «хугацаа өнгөрсөн ч ороогүй» гэдгийг тодорхойлох боломжгүй.
    */
-  const nowYm = new Date().toISOString().slice(0, 7);
-  let plannedPct: number | null = null;
-  let actualPct: number | null = null;
-  if (months) {
-    for (const m of months) {
-      if (m.label > nowYm) continue;
-      if (m.cumPct > 0) plannedPct = m.cumPct;
-      if (m.phys != null) actualPct = m.phys;
-    }
-  }
+  const plannedPct: number | null = lag ? lag.planned : null;
+  const actualPct: number | null = lag ? lag.actual : null;
   // Санхүүжилтийн зөрүү — төлөвлөсөн − олгосон (₮). Эерэг = олгоогүй үлдэгдэл.
   const finGap = total - givenTotal;
   // IPC-ийн санхүүжилтийн гүйцэтгэл — олгосон ÷ төлөвлөсөн (%)
@@ -1543,16 +1485,9 @@ function FinCard({
           {lvl === 'red' ? tr('Хоцрогдол') : tr('Анхаарах')} −{lag.gap.toFixed(1)}%
         </span>
       )}
-      {/* ⚠️ САНХҮҮЖИЛТИЙН ХОЦРОГДОЛ — хугацаа нь өнгөрсөн атлаа аваагүй мөнгө.
-          Биет хоцрогдлоос ТУСДАА тэмдэг: нэг нь ажил, нөгөө нь мөнгө. */}
-      {fl && flLvl && (
-        <span
-          className={`${f.lagBadge} ${flLvl === 'red' ? f.lagRed : f.lagYellow}`}
-          title={tr('{0} хүртэл авах ёстой {1} · олгогдсон {2} · {3} сар хоцорсон', fl.month, mnt(fl.planned), mnt(fl.given), String(fl.lateMonths))}
-        >
-          {tr('Санхүүжилт хоцорсон')} −{mnt(fl.gap)}
-        </span>
-      )}
+      {/* ⚠️ 2026-09-06: САНХҮҮЖИЛТИЙН ХОЦРОГДЛЫН тэмдэг ХАСАГДСАН — «хугацаа
+          нь өнгөрсөн атлаа аваагүй» гэдгийг сарын хуваарьгүйгээр
+          тодорхойлох боломжгүй (`cashflow_0813` хаягдсан). */}
     </span>
   );
   // NOTE — гарчгийн БАРУУН талд «олгогдох нийт санхүүжилт» (график дээр биш)
@@ -1592,7 +1527,9 @@ function FinCard({
           {kpiOpen && (
           <div className={ts.finKpi}>
             {[
-              { v: mnt(total), l: tr('Төлөвлөсөн санхүүжилт'), c: 'var(--ink)' },
+              /* ⚠️ 2026-09-06: «төлөвлөсөн» нь одоо ГЭРЭЭНИЙ дүн (сарын
+                 хуваарийн нийлбэр БИШ) тул шошгыг нь ч тохируулав. */
+              { v: mnt(total), l: tr('Гэрээний нийт дүн'), c: 'var(--ink)' },
               {
                 v: (
                   <>
@@ -1636,9 +1573,11 @@ function FinCard({
           </div>
           )}
           <div className={ts.finLegend}>
-            {/* Тасархай зураас = ЛАВЛАГАА (төлөвлөгөө), бүтэн = БОДИТ.
-                Графикийн шугамын хэлбэртэй ЯГ таарна. */}
-            <span><i className={ts.legDash} style={{ borderTopColor: cat(2) }} />{tr('Төлөвлөсөн санхүүжилт')}</span>
+            {/* ⚠️ 2026-09-06: «Төлөвлөсөн санхүүжилт» гэсэн ТАСАРХАЙ шугамын
+                домог ХАСАГДСАН — тэр цуваа өөрөө байхгүй болсон (сарын
+                хуваарь `cashflow_0813`-тайгаа хамт хаягдсан). ЗУРАГДААГҮЙ
+                ЦУВААГ домогт жагсаах нь хэрэглэгчид «дутуу зурагдсан юм
+                биш үү» гэсэн эргэлзээ төрүүлнэ. */}
             <span><i className={ts.legSolid} style={{ background: cat(0) }} />{tr('Олгосон санхүүжилт')}</span>
             {!finOnly && <span><i style={{ background: cat(1) }} />{tr('Биет гүйцэтгэл')}</span>}
           </div>
@@ -1660,42 +1599,34 @@ function FinCard({
  * олгосон = бүх багцын IPC нийлбэр, өссөн хувь = нийлбэрийн харьцаа,
  * биет = биет дататай багцуудын дундаж.
  */
+/**
+ * ТӨСЛИЙН НЭГДСЭН сарын цэгүүд.
+ *
+ * ⚠️ 2026-09-06: САРЫН ТӨЛӨВЛӨГӨӨ (`amount`/`amountCum`/`cumPct`)
+ *    ХАСАГДСАН — `cashflow_0813`-ийн «САР» мөрүүд байхгүй болсон. Үлдсэн
+ *    хоёр цуваа хоёулаа БОДИТ хэмжилт: IPC олголт ба биет гүйцэтгэл.
+ */
 function aggregateMonths(d: FinData) {
-  /* ⚠️ Сунгасан тэнхлэг — CF-ийн 12 сараас хойшхи бодит утгууд царцахгүй.
-     Сунгасан сард төлөвлөгөөт багана алга (null) тул төлөвлөгөө 0. */
+  /* ⚠️ Тэнхлэгийг өгөгдлөөс угсрахгүй: хэмжилтгүй сарыг алгасвал түүнээс
+     хойшхи бүх цэг нэг слот шилжинэ. */
   const labels = cfMonthAxis();
-  /* ⚠️ 2026-08-31: сар нь БАГАНЫН КОД байхаа больж, `fin.plan` (гэрээ → сар
-     → ₮) болсон. Тэнхлэгийн сар бүрийг 0-ээр нөхнө: 2026-01-д хэмжилтийн
-     мөр ОГТ БАЙХГҮЙ тул тэнхлэгийг өгөгдлөөс угсарвал түүнээс хойшхи бүх
-     цэг нэг слот шилжинэ. */
-  const planM = labels.map((m) => {
-    let s = 0;
-    d.plan.forEach((byMon) => { s += byMon.get(m.label) ?? 0; });
-    return s;
-  });
-  const planTotal = planM.reduce((a, b) => a + b, 0);
-  let cum = 0;
-  return labels.map((m, i) => {
-    cum += planM[i];
+  return labels.map((label) => {
     let given = 0;
-    d.given.forEach((byMon) => { given += byMon.get(m.label) ?? 0; });
+    d.given.forEach((byMon) => { given += byMon.get(label) ?? 0; });
     // ⚠️ Төслийн сарын биет гүйцэтгэл — багцуудын дунджийн ДУНДАЖ БИШ. Давхар
     //    дундаж нь блок цөөтэй багцыг том багцтай ижил жинтэй болгож гажуудуулж,
     //    мөн дэлгэц дээрх PackKpi-ийн блок-жигнэсэн дүнтэй зөрдөг. Багц бүрийг
     //    блокийнх нь тоогоор жигнэнэ: Σ(pct_p · blocks_p) / Σ blocks_p.
     let physW = 0, physN = 0;
     d.phys.forEach((byMon, k) => {
-      const v = byMon.get(m.label);
+      const v = byMon.get(label);
       if (v == null) return;
-      const w = d.physCnt.get(k)?.get(m.label) ?? 1;
+      const w = d.physCnt.get(k)?.get(label) ?? 1;
       physW += v * w;
       physN += w;
     });
     return {
-      label: m.label,
-      amount: planM[i],
-      amountCum: cum,
-      cumPct: planTotal > 0 ? (cum / planTotal) * 100 : 0,
+      label,
       given,
       // ⚠️ Хэмжилт огт байхгүй сар — `null`. 0 гэж буцаавал график дээр
       //    «биет гүйцэтгэл тэг» гэсэн худал шугам зурагдана.

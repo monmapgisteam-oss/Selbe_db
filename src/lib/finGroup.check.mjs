@@ -17,13 +17,14 @@
  */
 import assert from 'node:assert/strict';
 import { buildGroups, NO_PKG } from './finGroup.ts';
-import { CASHFLOW2, IPC_LOG } from './services.ts';
+import { CASHFLOW_NEW, IPC_LOG } from './services.ts';
 
-const CF = CASHFLOW2.fields;
+/* ⚠️ 2026-09-06: 'cf' горим ХАСАГДСАН — гэрээний шинэ бүртгэл нь 'flat'. */
+const CF = CASHFLOW_NEW.fields;
 const IP = IPC_LOG.fields;
 
 const cf = (oid, pkg, pkg2, year, o = {}) => ({
-  OBJECTID: oid, [CF.pkg]: pkg, [CF.pkg2]: pkg2, [CF.year]: year, ...o,
+  OBJECTID: oid, [CF.pkg]: pkg, [CF.pkg2]: pkg2, [CF.orderDate]: year, ...o,
 });
 const ipc = (oid, pkg, pkg2, o = {}) => ({
   OBJECTID: oid, [IP.pkg]: pkg, [IP.pkg2]: pkg2, ...o,
@@ -38,7 +39,7 @@ const total = (out) => out.reduce((a, p) => a + p.count, 0);
     cf(3, 'БАГЦ-4', 'БАГЦ-4.1', 2025),
     cf(4, 'БАГЦ-4', 'БАГЦ-4.2', 2025),
   ];
-  const out = buildGroups(rows, 'cf');
+  const out = buildGroups(rows, 'flat');
   assert.equal(total(out), rows.length, 'мөр АЛДАГДААГҮЙ');
   assert.deepEqual(out.map((p) => p.pkg), ['БАГЦ-4.1', 'БАГЦ-4.2'], 'дэд багц салангид');
   assert.deepEqual(out[0].rows.map((r) => r.oid), [1, 2, 3],
@@ -52,7 +53,7 @@ const total = (out) => out.reduce((a, p) => a + p.count, 0);
     cf(1, 'БАГЦ-5', '', 2026),
     cf(2, 'БАГЦ-5', '', null),
     cf(3, 'БАГЦ-5', '', 2025),
-  ], 'cf');
+  ], 'flat');
   assert.equal(out.length, 1);
   assert.ok(!('years' in out[0]), 'оны дэд бүлэг ҮҮСЭЭГҮЙ');
   assert.deepEqual(out[0].rows.map((r) => r.oid), [1, 2, 3], 'онгүй мөр ч дараалалдаа');
@@ -64,7 +65,7 @@ const total = (out) => out.reduce((a, p) => a + p.count, 0);
   const out = buildGroups([
     cf(1, 'БАГЦ 1-4', '', 2026),
     cf(2, 'БАГЦ-14', '', 2026),
-  ], 'cf');
+  ], 'flat');
   const real = out.find((p) => p.pkg === 'БАГЦ-14');
   assert.equal(real.count, 1, 'диапазоны мөр Багц 14-т НААЛДААГҮЙ');
   assert.equal(real.rows[0].oid, 2);
@@ -73,7 +74,7 @@ const total = (out) => out.reduce((a, p) => a + p.count, 0);
 
 /* ── 4. «Багц 4-1» ба «Багц 4.1» НЭГ багц; нэр нь ЭХНИЙ бичиглэл ── */
 {
-  const out = buildGroups([cf(1, '', 'Багц 4.1', 2026), cf(2, '', 'Багц 4-1', 2026)], 'cf');
+  const out = buildGroups([cf(1, '', 'Багц 4.1', 2026), cf(2, '', 'Багц 4-1', 2026)], 'flat');
   assert.equal(out.length, 1);
   assert.equal(out[0].pkg, 'Багц 4.1');
   assert.equal(out[0].count, 2);
@@ -98,12 +99,12 @@ const total = (out) => out.reduce((a, p) => a + p.count, 0);
 
 /* ── 6. OID-гүй мөр (нийтлээгүй) ── */
 {
-  const out = buildGroups([{ [CF.pkg]: 'БАГЦ-7', [CF.year]: 2026 }], 'cf');
+  const out = buildGroups([{ [CF.pkg]: 'БАГЦ-7', [CF.year]: 2026 }], 'flat');
   assert.equal(out[0].rows[0].oid, null, 'OID байхгүй бол null — 0 БИШ');
 }
 
 /* ── 7. Хоосон оролт ── */
-assert.deepEqual(buildGroups([], 'cf'), []);
+assert.deepEqual(buildGroups([], 'flat'), []);
 assert.deepEqual(buildGroups([], 'ipc'), []);
 
 console.log('finGroup.check.mjs — БҮГД ТЭНЦЛЭЭ');

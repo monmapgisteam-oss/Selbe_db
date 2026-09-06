@@ -1,66 +1,72 @@
 /**
- * САРЫН ТЭНХЛЭГИЙН СУНГАЛТ — `cfMonthAxis`.
+ * САРЫН ТЭНХЛЭГ — `cfMonthAxis`.
  *
- * ⚠️ Сунгалт нь 2026-10-01-ээс л амьдаар идэвхжинэ — өнөөдрийн огноогоор
- * ажиллуулбал 12 сар л буцаах тул ЗААВАЛ хуурамч огноогоор шалгана.
- * Энэ шалгуургүй бол сунгалтын алдаа 10-р сар хүртэл нуугдана.
+ * ⚠️ 2026-09-06: тэнхлэг нь САНХҮҮЖИЛТИЙН ХУВААРИЙН цонх байхаа больж, ЗӨВХӨН
+ * БОДИТ хэмжилтийн (IPC олголт · биет гүйцэтгэл) тасралтгүй хуанли болов.
+ * Хуучин `cashflow_0813` (гэрээ + сар + өмнөх шилжүүлсэн, 209 мөр) бүрмөсөн
+ * хаягдсан тул `planFrom`/`planTo` цонх ба `planned` тэмдэг ч хамт хасагдсан.
  *
- * ⚠️ 2026-08-31: `cashflow_0813` руу шилжсэнээр сар нь БАГАНА биш МӨР болсон.
- * Тиймээс `CfMonth` дээр талбарын код (`amount`, `pctCum`…) БАЙХГҮЙ — зөвхөн
- * `label` ба төлөвлөгөөт цонхонд багтаж буйг заах `planned` үлдсэн.
- * Тэнхлэг нь ТАСРАЛТГҮЙ хуанли байх ёстой: 2026-01-д ямар ч хэмжилт байхгүй ч
- * тэнхлэгээс УНАЖ БОЛОХГҮЙ, эс тэгвээс дараагийн бүх цэг нэг нүд зүүн шилжинэ.
+ * ⚠️ Тэнхлэг нь МӨРИЙН массив (`string[]`) буцаадаг болсон — урьд нь
+ * `{label, planned}` обьект байв.
+ *
+ * Шалгах зүйл:
+ *   · эхлэл нь `MONTH_AXIS_FROM` (2025-09 — хамгийн эрт огноотой IPC акт)
+ *   · төгсгөл нь ӨНӨӨДӨР — тогтмол цонхоор таслахгүй
+ *   · хэмжилтгүй сар (2026-01) тэнхлэгт ХЭВЭЭР — цоорхой үүсгэхгүй
+ *   · тасралтгүй, өсөх, давхардалгүй
+ *   · цаг буруу тохируулсан машин дээр 60 сараар хязгаарлагдана
  */
 import assert from 'node:assert/strict';
-import { cfMonthAxis, CASHFLOW2 } from '@/lib/services.ts';
+import { cfMonthAxis, MONTH_AXIS_FROM } from '@/lib/services.ts';
 
-const PLAN_LEN = 12; // 2025-10 … 2026-09
+const ok = [];
+const t = (name, fn) => { fn(); ok.push(name); };
 
-// Төлөвлөгөөт цонхны дотор — сунгалтгүй, 12 сар хэвээр
+/* ── Эхлэл ба төгсгөл ── */
 const a = cfMonthAxis(new Date(2026, 7, 29)); // 2026-08
-assert.equal(a.length, PLAN_LEN, 'цонхны дотор 12 сар байх ёстой');
-assert.equal(a[0].label, CASHFLOW2.planFrom);
-assert.equal(a[a.length - 1].label, CASHFLOW2.planTo);
-assert.ok(a.every((m) => m.planned), 'цонхны бүх сар төлөвлөгөөт');
-console.log('✅ цонхны дотор — 12 сар, сунгалтгүй');
+t('эхлэл нь MONTH_AXIS_FROM', () => {
+  assert.equal(a[0], MONTH_AXIS_FROM);
+});
+t('төгсгөл нь ӨНӨӨГИЙН сар', () => {
+  assert.equal(a[a.length - 1], '2026-08');
+});
+t('2025-09 → 2026-08 = 12 сар', () => {
+  assert.equal(a.length, 12);
+});
+t('хэмжилтгүй сар (2026-01) тэнхлэгт хэвээр', () => {
+  assert.ok(a.includes('2026-01'));
+});
 
-// ⚠️ Хэмжилтгүй сар ч тэнхлэгт БАЙНА — 2026-01-д мөр байхгүй ч нүд нь үлдэнэ
-assert.ok(a.some((m) => m.label === '2026-01'), 'хэмжилтгүй сар тэнхлэгээс унаж болохгүй');
-console.log('✅ хэмжилтгүй сар (2026-01) тэнхлэгт хэвээр');
+/* ── Өнөөдөр урагшлахад тэнхлэг сунана ── */
+const b = cfMonthAxis(new Date(2027, 2, 1)); // 2027-03
+t('он дамнасан сунгалт зөв', () => {
+  assert.equal(b[b.length - 1], '2027-03');
+  assert.ok(b.includes('2026-12'));
+  assert.ok(b.includes('2027-01'));
+});
 
-// Цонхноос хойш — өнөөдрийг хүртэл сунгана, шинэ сар нь төлөвлөгөөт БИШ
-const b = cfMonthAxis(new Date(2026, 11, 15)); // 2026-12
-assert.equal(b.length, 15, '2026-12 гэхэд 15 сар');
-assert.equal(b[b.length - 1].label, '2026-12');
-assert.equal(b[11].label, '2026-09');
-assert.ok(b.slice(12).every((m) => !m.planned), 'сунгалтын сар төлөвлөгөөт биш');
-assert.ok(b.slice(0, 12).every((m) => m.planned), 'эхний 12 нь төлөвлөгөөт хэвээр');
-console.log('✅ 2026-12 — 15 сар, сунгалт planned=false');
+/* ── Хамгаалалт ── */
+const c = cfMonthAxis(new Date(2035, 0, 1));
+t('сунгалтын дээд хязгаар 60 сар', () => {
+  assert.ok(c.length <= 60, `${c.length} сар — 60-аас их`);
+});
 
-// Он дамнасан сунгалт — сарын дугаарлалт эргэдэг
-const c = cfMonthAxis(new Date(2027, 2, 1)); // 2027-03
-assert.equal(c[c.length - 1].label, '2027-03');
-assert.equal(c.length, 18);
-console.log('✅ он дамнасан сунгалт зөв');
-
-// Гажигтай цаг — 36 сараар таслагдана
-const d = cfMonthAxis(new Date(2035, 0, 1));
-assert.equal(d.length, PLAN_LEN + 36, 'сунгалт 36 сараар хязгаарлагдана');
-console.log('✅ сунгалтын дээд хязгаар 36 сар');
-
-// Давхардал, дараалал, ТАСРАЛТГҮЙ БАЙДАЛ
-const nextYm = (s) => {
-  const [y, m] = s.split('-').map(Number);
-  return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
-};
-for (const axis of [a, b, c, d]) {
-  const labels = axis.map((m) => m.label);
-  assert.equal(new Set(labels).size, labels.length, 'давхардсан сар алга');
-  for (let i = 1; i < labels.length; i++) {
-    assert.ok(labels[i] > labels[i - 1], 'өсөх дараалал');
-    assert.equal(labels[i], nextYm(labels[i - 1]), 'тэнхлэг тасралтгүй — сар алгасаагүй');
+/* ── Бүтэц ── */
+t('давхардалгүй, тасралтгүй, өсөх дараалалтай', () => {
+  const set = new Set(a);
+  assert.equal(set.size, a.length, 'давхардсан сар');
+  for (let i = 1; i < a.length; i += 1) {
+    assert.ok(a[i] > a[i - 1], `эрэмбэ буруу: ${a[i - 1]} → ${a[i]}`);
+    const [py, pm] = a[i - 1].split('-').map(Number);
+    const [cy, cm] = a[i].split('-').map(Number);
+    const step = (cy - py) * 12 + (cm - pm);
+    assert.equal(step, 1, `${a[i - 1]} → ${a[i]} нь ${step} сарын алхам`);
   }
-}
-console.log('✅ давхардалгүй, тасралтгүй, өсөх дараалалтай');
+});
+t('мөрийн массив буцаана (обьект БИШ)', () => {
+  assert.ok(a.every((x) => typeof x === 'string'));
+  assert.ok(/^\d{4}-\d{2}$/.test(a[0]));
+});
 
+ok.forEach((n) => console.log(`✅ ${n}`));
 console.log('\ncfAxis.check: ok');

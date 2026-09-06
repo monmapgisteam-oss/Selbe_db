@@ -25,7 +25,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
-import { Fig, KpiRow, RankBars, TrendArea } from '@/modules/tailanChart';
+import { Fig, KpiRow, RankBars } from '@/modules/tailanChart';
 import { Data } from '@/components/ui';
 import { Icon } from '@/components/Icon';
 import { num, pct } from '@/lib/format';
@@ -804,38 +804,11 @@ export function Tailan() {
                         </tbody>
                       </ResizableTable>
 
-                      {/* ⚠️ CASHFLOW2-ийн сарын цуваа нь санхүүжилтийн ХУВААРЬ
-                          (төлөвлөгөө) — «олгосон» гэж шошговол бодит олголтоос
-                          олон дахин их худал тоо хэвлэгдэнэ (reportData.ts). */}
-                      {/* ⚠️ НЭГ цуваа тул домог хэрэггүй — талбай нь өөрөө цувааг заана.
-                          Хэмжилтгүй сарыг 0 гэж ЗУРАХГҮЙ: `TrendArea` цоорхойг таслана. */}
-                      <Fig no="7.2">{tr('Сар бүрийн санхүүжилтийн хуваарь (төлөвлөгөө)')}</Fig>
-                      <TrendArea
-                        title={tr('Сар бүрийн санхүүжилтийн хуваарь')}
-                        fmt={(v) => `${bn(v)} ₮`}
-                        points={x.finance.months.map((m) => ({ label: m.label, value: m.amount || null }))}
-                      />
-                      <Cap no="7.2">
-                        {tr('Сар бүрийн санхүүжилтийн хуваарь (төлөвлөгөө) ба хуримтлагдсан дүн')}
-                        {d.peakMonth && tr(' — хамгийн их төлөвлөгөө {0} сард', tr(d.peakMonth.label))}
-                      </Cap>
-                      <ResizableTable storeKey="tailan.saraar" className={r.table}>
-                        <thead><tr><th>{tr('Сар')}</th><th className={r.num}>{tr('Төлөвлөгөө (₮)')}</th><th className={r.num}>{tr('Хуримтлагдсан')}</th></tr></thead>
-                        <tbody>
-                          {x.finance.months.map((m) => (
-                            <tr key={m.label}>
-                              <td>{tr(m.label)}</td>
-                              <td className={r.num}>{m.amount > 0 ? bn(m.amount) : '—'}</td>
-                              <td className={r.num}>{bn(m.cum)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </ResizableTable>
-                      <p className={r.note}>
-                        {tr('Хүснэгт нь гэрээ бүрийн санхүүжилтийн хуваарь буюу төлөвлөгөө; бодитоор олгосон санхүүжилтийг IPC актын дүнгээр 1-р хүснэгтэд харуулав.')}
-                      </p>
-
-                      <Cap no="7.3">{tr('Ажлын төрлөөр — төсөв ба гэрээний дүн')}</Cap>
+                      {/* ⚠️ 2026-09-06: «Сар бүрийн санхүүжилтийн хуваарь»
+                          (7.2 график ба хүснэгт) ХАСАГДСАН — сарын төлөвлөгөө
+                          нь хуучин `cashflow_0813`-ийнх байсан бөгөөд тэр
+                          үйлчилгээ бүрмөсөн хаягдсан. PDF-д мөн адил. */}
+                      <Cap no="7.2">{tr('Ажлын төрлөөр — төсөв ба гэрээний дүн')}</Cap>
                       <ResizableTable storeKey="tailan.torol" className={r.table}>
                         <thead><tr><th>{tr('Төрөл')}</th><th className={r.num}>{tr('Ажил')}</th><th className={r.num}>{tr('Төсөв')}</th><th className={r.num}>{tr('Гэрээ')}</th></tr></thead>
                         <tbody>

@@ -54,8 +54,8 @@ const check = (label, cond) => {
 console.log('\n1. Тагтай кэш — зөв хүснэгтэд хариулна');
 let nFin = 0;
 let nBud = 0;
-const loadFin = cached(async () => ++nFin, undefined, ['IPC_LOG', 'CASHFLOW2']);
-const loadBud = cached(async () => ++nBud, undefined, ['CASHFLOW2']);
+const loadFin = cached(async () => ++nFin, undefined, ['IPC_LOG', 'CASHFLOW_NEW']);
+const loadBud = cached(async () => ++nBud, undefined, ['CASHFLOW_NEW']);
 
 await loadFin(); await loadBud();
 check('эхний таталт', nFin === 1 && nBud === 1);
@@ -66,9 +66,9 @@ invalidate('IPC_LOG');
 await loadFin(); await loadBud();
 check('IPC_LOG хаяхад ЗӨВХӨН fin дахин татав', nFin === 2 && nBud === 1);
 
-invalidate('CASHFLOW2');
+invalidate('CASHFLOW_NEW');
 await loadFin(); await loadBud();
-check('CASHFLOW2 хаяхад ХОЁУЛАА дахин татав', nFin === 3 && nBud === 2);
+check('CASHFLOW_NEW хаяхад ХОЁУЛАА дахин татав', nFin === 3 && nBud === 2);
 
 console.log('\n2. Хамааралгүй хүснэгт — хөндөхгүй');
 const v0 = dataVersion();
@@ -81,7 +81,7 @@ console.log('\n3. Тагггүй кэш — автобусаас хамаара�
 let nPlain = 0;
 const loadPlain = cached(async () => ++nPlain);
 await loadPlain();
-invalidate('IPC_LOG', 'CASHFLOW2', 'HABEA');
+invalidate('IPC_LOG', 'CASHFLOW_NEW', 'HABEA');
 await loadPlain();
 check('тагггүй кэш хэвээр (хуучин зан эвдрээгүй)', nPlain === 1);
 
