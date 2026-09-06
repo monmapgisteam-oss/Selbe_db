@@ -74,6 +74,13 @@
    байв. Тайлбар (12px)-тай ойролцоо байвал хоёулаа уншигдана. */
 .tipVal { font-size: 13.5px; line-height: 1.2; font-weight: 600; }
 .tipHint { font-size: 12px; line-height: 1.35; color: var(--ink-2); }
+/* Бүлгийн ЗААГ — `TIP_RULE` тусгай утгаар оруулна */
+.tipRule {
+  display: block;
+  height: 1px;
+  margin: 5px 0 1px;
+  background: var(--line);
+}
 
 /* ── Дашбоардын хэсэг ──
    ⚠️ 2026-08-17: envhub-ийн Card/Head хэл — хэсэг бүр нь НЭГ хавтангийн заагтай

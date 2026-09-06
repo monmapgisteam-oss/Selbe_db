@@ -16,7 +16,7 @@
 import { queryFeatures, type Row } from '@/lib/query';
 import { cached } from '@/lib/live';
 import { t as tr } from '@/lib/i18nCore';
-import { CASHFLOW_NEW, HABEA, bagtsKey } from '@/lib/services';
+import { CASHFLOW_NEW, HABEA, bagtsKey, isPkgRange } from '@/lib/services';
 
 /* ══════════════════════ CASHFLOW — талбарууд ══════════════════════ */
 
@@ -31,6 +31,7 @@ export const CF = {
   type: 'Turul',
   project: 'Tusul',
   pkg: 'Bagts',
+  pkg2: 'Ded_bagts',
   /** Урьдчилсан төсөвт өртөг — БҮХ мөнгөн тооцооны эх */
   cost: 'Urdch_tusuwt_urtug',
   /** Хөрөнгө оруулалтын дүнгийн тайлбар — «Гэрээлсэн дүн» г.м. */
@@ -61,6 +62,8 @@ export type CfRow = {
   type: string;
   project: string;
   pkg: string;
+  /** Дэд багц (`Ded_bagts`) — газрын зургийн давхаргатай холбогдох ТҮЛХҮҮР */
+  pkg2: string;
   cost: number;
   note: string;
   start: number | null;
@@ -102,7 +105,7 @@ export const loadGdashCf = cached<CfRow[]>(async () => {
   const rows = await queryFeatures(CF.url, {
     outFields: [
       'OBJECTID', CF.type, CF.project, CF.pkg, CF.cost, CF.note,
-      CF.start, CF.end, CF.share, CF.contract, CF.decree, CF.progress,
+      CF.start, CF.end, CF.share, CF.contract, CF.decree, CF.progress, CF.pkg2,
       ...CF_SOURCES.map((s) => s.field),
     ],
     limit: 4000,
@@ -112,6 +115,7 @@ export const loadGdashCf = cached<CfRow[]>(async () => {
     type: sOf(r[CF.type]) || tr('Тодорхойгүй'),
     project: sOf(r[CF.project]),
     pkg: sOf(r[CF.pkg]),
+    pkg2: sOf(r[CF.pkg2]),
     cost: nOf(r[CF.cost]),
     note: sOf(r[CF.note]),
     start: dOf(r[CF.start]),
@@ -213,6 +217,23 @@ export type SubBar = {
   /** Дэлгэцэд бичих текст (мөнгө/тоо форматлагдсан) */
   display?: string;
   subDisplay?: string;
+  /**
+   * ОЛГОСОН дүн — «Захирамжийн дүн нийт дүн» (`CF.decree`).
+   *
+   * ⚠️ Заавал БИШ: зөвхөн мөнгөн чартууд бөглөнө. `sub`-аас ТУСДАА талбар —
+   * `sub` нь баганын ДҮҮРГЭЛТИЙГ (гүйцэтгэл) удирддаг тул тэнд олголтыг
+   * хийвэл хоёр өөр хэмжигдэхүүн нэг зурвасыг булаацалдана.
+   */
+  alloc?: number;
+  /**
+   * АЖЛЫН ТОО ба тэднээс ГЭРЭЭЛСЭН нь — мөнгөн чартын хажуугийн хэмжигдэхүүн.
+   *
+   * ⚠️ Заавал БИШ. `value`/`sub` нь МӨНГӨ хэвээр: багана нь дүнгээр
+   * хэмжигдэнэ, тоо нь зөвхөн hover-т гарна. Хоёуланг нь нэг зурваст
+   * оруулах гэвэл аль хэмжээсээр уншихаа нүд мэдэхгүй болно.
+   */
+  count?: number;
+  countSub?: number;
 };
 
 const groupSum = (
@@ -248,12 +269,25 @@ const groupSum = (
  * «хийгдээгүй» гэсэн худал мэдэгдэл болно.
  */
 export function chartTypeCost(rows: CfRow[]): SubBar[] {
-  return groupSum(
+  const bars = groupSum(
     rows,
     (r) => r.type,
     (r) => r.cost,
     (r) => (r.progress == null ? 0 : (r.cost * r.progress) / 100),
   );
+  /*
+   * ОЛГОСОН дүнг төрөл тус бүрд нэмнэ (2026-09-06, хэрэглэгчийн хүсэлт).
+   *
+   * ⚠️ Суурь нь `Zahiramj_niit_dun` — «эх үүсвэрүүдийн нийлбэр» БИШ. Хоёр нь
+   * зөрдөг (`chartSourceAmount`-ийн тайлбарыг үз: 2,457 vs 2,513 тэрбум) тул
+   * аль нэгийг нөгөөгөөр орлуулбал хувь чимээгүй буруу гарна.
+   */
+  const alloc = new Map<string, number>();
+  for (const r of rows) {
+    if (!r.type) continue;
+    alloc.set(r.type, (alloc.get(r.type) ?? 0) + r.decree);
+  }
+  return bars.map((b) => ({ ...b, alloc: alloc.get(b.key) ?? 0 }));
 }
 
 /** 2-р чарт — ТӨРӨЛ × төслийн ТОО, дотор нь ГЭРЭЭЛСЭН ажлын тоо */
@@ -304,6 +338,31 @@ export function chartSourceAmount(rows: CfRow[]): SubBar[] {
     }
     return { key: s.field, label: s.label, value, sub };
   }).filter((x) => x.value > 0).sort((a, b) => b.value - a.value);
+}
+
+/**
+ * 3в-р чарт — ЭХ ҮҮСВЭР: МӨНГӨ ба ТОО НЭГ чартад (2026-09-06).
+ *
+ * ⚠️ ХОЁР ЧАРТЫГ ОРЛОНО (`chartSourceAmount` + `chartSourceCount`). Тэдгээр
+ * нь мөр мөрөөрөө ЯГ ижил ангилалтай атлаа дараалал нь өөр (мөнгөөр Үнэт цаас
+ * тэргүүлдэг, тоогоор Нийслэлийн төсөв) тул хоёр зурвасыг нүдээр
+ * зэрэгцүүлэхэд «нэг ангилал хоёр өөр байрлалд» гэсэн төөрөгдөл үүсдэг байв.
+ *
+ * ⚠️ МЭДЭЭЛЭЛ ХАСАГДААГҮЙ: мөнгө, түүний хувь, ажлын тоо, ажлын хувь,
+ * гэрээлсэн тоо — БҮГД hover-т үлдэнэ. Багана нь МӨНГӨӨР хэмжигдэнэ, учир нь
+ * «хэдэн төгрөг» нь шийдвэрийн хэмжээ; тоо нь түүний задаргаа (Нийслэлийн
+ * төсөв 2 ажилтай ч 4.3 тэрбум, Үнэт цаас 51 ажилтай бөгөөд 1.49 их наяд).
+ *
+ * ⚠️ Хуучин хоёр функц ХЭВЭЭР үлдэнэ: тестүүд тэднийг шалгадаг бөгөөд өөр
+ * харагдац тэднийг дуудаж болно.
+ */
+export function chartSourceMerged(rows: CfRow[]): SubBar[] {
+  const cnt = chartSourceCount(rows);
+  const byKey = new Map(cnt.map((c) => [c.key, c]));
+  return chartSourceAmount(rows).map((a) => {
+    const c = byKey.get(a.key);
+    return { ...a, count: c?.value ?? 0, countSub: c?.sub ?? 0 };
+  });
 }
 
 /** 4-р чарт — ХӨРӨНГӨ ОРУУЛАЛТЫН ДҮНГИЙН ТАЙЛБАР × мөнгөн дүн */
@@ -448,6 +507,15 @@ export type Kpi = {
    * хамралтыг нуувал «56%» гэсэн тоо БҮХ төслийн явц мэт уншигдана.
    */
   progressCovered: number;
+  /**
+   * ГҮЙЦЭТГЭСЭН ДҮН — тэр хувийн МӨНГӨН эквивалент (`Σ өртөг × хувь`).
+   *
+   * ⚠️ ОЛГОСОН (захирамжийн) дүн БИШ. Хоёр нь эрс зөрдөг: 2026-09-06-ны амьд
+   * хэмжилтээр гүйцэтгэсэн нь 480.1 тэрбум (19.1%) атал захирамжаар олгосон
+   * нь 2.48 их наяд (98.6%) — эрх олголт нь гүйцэтгэхээс ӨМНӨ бүтнээр нь
+   * явдаг. Индикаторын хувьтай ТААРАХ цорын ганц тоо нь энэ.
+   */
+  progressAmount: number;
   /** Багц ажлын тоо — ялгаатай багцын тоо */
   packages: number;
   /** Нийт төрлийн тоо */
@@ -469,7 +537,10 @@ export function kpisOf(rows: CfRow[], contractSum: number): Kpi {
 
   for (const r of rows) {
     budget += r.cost;
-    if (r.pkg) pkgs.add(bagtsKey(r.pkg));
+    /* ⚠️ `Bagts` БИШ `Ded_bagts` (2026-09-06, хэрэглэгчийн заавар): эцэг
+       түвшин («БАГЦ-3») нь гурван бодит ажлыг («БАГЦ-3.1/3.2/3.3») нэг гэж
+       тоолж, «Багц ажлын тоо» бодит ажлын тооноос бага гардаг байв. */
+    if (r.pkg2) pkgs.add(bagtsKey(r.pkg2));
     if (r.type) types.add(r.type);
     /* ⚠️ Хэмжигдээгүй ажил хуваарьт ч, хүртвэрт ч ОРОХГҮЙ */
     if (r.progress != null && r.cost > 0) {
@@ -482,6 +553,7 @@ export function kpisOf(rows: CfRow[], contractSum: number): Kpi {
     budget,
     contract: contractSum,
     progress: wSum > 0 ? (wTop / wSum) * 100 : null,
+    progressAmount: wTop,
     progressCovered: budget > 0 ? (wSum / budget) * 100 : 0,
     packages: pkgs.size,
     types: types.size,
@@ -749,9 +821,50 @@ export const loadReasonOids = cached<Map<string, Set<number>>>(async () => {
   return m;
 }, undefined, ['PARCEL_LEFT']);
 
+/**
+ * ШҮҮГДСЭН мөрүүдэд БОДИТООР байгаа дэд багц → ажлын төрлүүд.
+ *
+ * ⚠️ ЯАГААД ХЭРЭГТЭЙ: `loadSubPkgLayers` нь БҮХ cashflow-гоос угсардаг тул
+ * хугацааны шүүлтийг мэдэхгүй. Баруун баганын «Ажлын төрлөөр давхцаж буй» ба
+ * «Саад — багцаар» хоёр түүн дээр тулгуурладаг тул шүүлт тавихад ч бүрэн
+ * жагсаалт харуулсаар байв (хэрэглэгчийн шүүмж, 2026-09-06).
+ *
+ * ⚠️ `loadSubPkgLayers`-ТЭЙ ИЖИЛ ДҮРЭМ: `isPkgRange` нүдийг хасна («БАГЦ 1- 4»
+ * нь `bagtsKey`-ээр БОДИТ «Багц 14» болж мөргөлддөг). Дүрэм зөрвөл шүүлттэй ба
+ * шүүлтгүй жагсаалт хоорондоо тохирохгүй болно.
+ *
+ * ⚠️ ГАЗРЫН ЗУРГИЙН давхарга байгаа эсэхийг ШАЛГАХГҮЙ — тэр шүүлтийг дуудагч
+ * тал (`loadSubPkgLayers`-ийн үр дүнтэй огтлолцуулж) хийнэ.
+ */
+export function activeSubPkgTypes(rows: CfRow[]): Map<string, string[]> {
+  const m = new Map<string, Set<string>>();
+  for (const r of rows) {
+    const raw = r.pkg2;
+    if (!raw || isPkgRange(raw)) continue;
+    const k = bagtsKey(raw);
+    if (!k) continue;
+    const set = m.get(k) ?? new Set<string>();
+    if (r.type) set.add(r.type);
+    m.set(k, set);
+  }
+  return new Map([...m].map(([k, v]) => [k, [...v]]));
+}
+
 /* ══════════════ ДЭД БАГЦ → ГАЗРЫН ЗУРГИЙН ДАВХАРГА ══════════════ */
 
-export type SubPkg = { key: string; label: string; layerIds: string[] };
+export type SubPkg = {
+  key: string;
+  label: string;
+  layerIds: string[];
+  /**
+   * Тухайн дэд багцад бүртгэгдсэн АЖЛЫН ТӨРЛҮҮД (`Turul`).
+   *
+   * ⚠️ ОЛОН БАЙНА: нэг дэд багцад ТЭЗҮ, зураг төсөл, барилга угсралт зэрэг
+   * хэд хэдэн ажил бүртгэгддэг тул НЭГ утга биш ОЛОНЛОГ. Эхнийхийг нь авбал
+   * тухайн багцын бусад ажил чимээгүй алга болно.
+   */
+  types: string[];
+};
 
 /**
  * Cashflow-гийн «Дэд багц» → газрын зургийн `pkg:*` давхаргууд.
@@ -771,17 +884,31 @@ export type SubPkg = { key: string; label: string; layerIds: string[] };
  */
 export const loadSubPkgLayers = cached<SubPkg[]>(async () => {
   const { PKG_BY_BAGTS, bagtsKey, isPkgRange } = await import('@/lib/services');
-  const rows = await queryFeatures(CF.url, { outFields: ['Ded_bagts'], limit: 4000 });
+  const rows = await queryFeatures(CF.url, {
+    outFields: ['Ded_bagts', CF.type],
+    limit: 4000,
+  });
 
   const seen = new Map<string, string>();
+  const types = new Map<string, Set<string>>();
   for (const r of rows) {
     const raw = sOf(r.Ded_bagts);
     if (!raw || isPkgRange(raw)) continue;
     const k = bagtsKey(raw);
     if (!k || !PKG_BY_BAGTS[k]?.length) continue;
     if (!seen.has(k)) seen.set(k, raw);
+    const ty = sOf(r[CF.type]);
+    if (ty) {
+      const set = types.get(k);
+      if (set) set.add(ty); else types.set(k, new Set([ty]));
+    }
   }
   return [...seen]
-    .map(([key, label]) => ({ key, label, layerIds: PKG_BY_BAGTS[key] }))
+    .map(([key, label]) => ({
+      key,
+      label,
+      layerIds: PKG_BY_BAGTS[key],
+      types: [...(types.get(key) ?? [])],
+    }))
     .sort((a, b) => a.label.localeCompare(b.label, 'mn'));
 }, undefined, ['CASHFLOW_NEW']);
