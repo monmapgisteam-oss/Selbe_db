@@ -21,7 +21,7 @@ import { CAPS, capsOf, capViewsOf, setCaps, subscribeCaps, toggleCap, type CapKe
 import { GuitsetgelAcl } from '@/modules/GuitsetgelAcl';
 import { QaqcAcl } from '@/modules/QaqcAcl';
 import {
-  ALL_BAGTS as QAQC_ALL_BAGTS, purgeQaqcAssign, removeQaqcAssign, setQaqcAssign,
+  ALL_BAGTS as QAQC_ALL_BAGTS, listQaqcAssigns, purgeQaqcAssign, removeQaqcAssign, setQaqcAssign,
   subscribeQaqcAcl,
 } from '@/lib/qaqcAcl';
 import { STAGE_LABEL } from '@/lib/hyanaltGroup';
@@ -393,13 +393,57 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
      *    Тодорхой багц сонгох нь «Чанарын (QAQC) эрх» хуудсанд.
      */
     if (c === 'qaqc') {
+      /*
+       * ⚠️ SUPER-Т ХУВААРИЛАЛТ ҮЙЛЧЛЭХГҮЙ (2026-09-07-ны merge аудит).
+       *    `setQaqcAssign`/`removeQaqcAssign` нь super-д `{ok:false}` буцаадаг
+       *    (`qaqcAcl.ts` — тэдэнд `qaqcScope` угаас `null` = бүх багц). Тэр
+       *    салааг барихгүй бол `r.sync` нь `undefined` тул унтраалга ХЭЗЭЭ Ч
+       *    асахгүй, оронд нь «ArcGIS-т бичигдсэнгүй» гэсэн ХУДАЛ алдаа гарч,
+       *    7 super админ «Чанар (QAQC)» хуудсыг зөвхөн уншдаг болж байв.
+       *    Тэдэнд эрхийг ХУУЧИН замаар (`toggleCap`) шууд олгоно.
+       */
+      if (roleForUser(u.username) === 'super') {
+        void toggleCap(u.username, 'qaqc', !on).then((r) => {
+          setCapErr((prev) => {
+            const m = new Map(prev);
+            if (r) m.delete(u.username.toLowerCase());
+            else m.set(u.username.toLowerCase(), true);
+            return m;
+          });
+        });
+        return;
+      }
+      /*
+       * ⚠️ АСААХАД ХҮРЭЭГ ТЭЛЭХГҮЙ (2026-09-07-ны merge аудит). Урьд нь
+       *    болзолгүй `[QAQC_ALL_BAGTS]` бичдэг байсан тул «Багц 2» гэж
+       *    хуваарилагдсан хүний унтраалгыг унтрааж-асаахад хүрээ нь
+       *    ЧИМЭЭГҮЙ бүх багц болж тэлдэг байв — хязгаарлах зорилготой
+       *    товч эрхийг өргөжүүлэх нь `qaqcAcl`-ийн fail-closed зарчигтай
+       *    зөрчилдөнө (`QaqcAcl.tsx` панел яг үүнийг хориглодог). Хуваарилалт
+       *    аль хэдийн байвал түүнийг ХЭВЭЭР үлдээж зөвхөн эрхийг сэргээнэ.
+       */
+      const cur = listQaqcAssigns().find((a) => a.user === u.username.trim().toLowerCase());
       const r = on
         ? removeQaqcAssign(u.username)
-        : setQaqcAssign(u.username, [QAQC_ALL_BAGTS]);
-      void (r.sync ?? Promise.resolve(false)).then((ok) => {
+        : setQaqcAssign(u.username, cur?.bagts.length ? cur.bagts : [QAQC_ALL_BAGTS]);
+      if (!r.ok) {
+        /* ⚠️ Няцаалтын ШАЛТГААНЫГ сүлжээний алдаатай хольж болохгүй */
+        setCapErr((prev) => new Map(prev).set(u.username.toLowerCase(), true));
+        return;
+      }
+      /*
+       * ⚠️ `sync` (хуваарилалтын мөр) ба `granted` (`__cap__:` эрхийн мөр)
+       *    ХОЁУЛАНГ нь хүлээнэ. Урьд нь зөвхөн `sync`-ийг хардаг байсан тул
+       *    эрхийн бичилт унасан ч унтраалга «асаалттай» харагдаж, дараагийн
+       *    `initRemote` дээр чимээгүй унтардаг байв.
+       */
+      void Promise.all([
+        r.sync ?? Promise.resolve(false),
+        r.granted ?? Promise.resolve(true),
+      ]).then(([a, b]) => {
         setCapErr((prev) => {
           const m = new Map(prev);
-          if (ok) m.delete(u.username.toLowerCase());
+          if (a && b) m.delete(u.username.toLowerCase());
           else m.set(u.username.toLowerCase(), true);
           return m;
         });

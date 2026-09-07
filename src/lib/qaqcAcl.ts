@@ -198,21 +198,32 @@ export function setQaqcAssign(
  */
 export function removeQaqcAssign(
   user: string, revoke = true,
-): { ok: boolean; sync: Promise<boolean> } {
+): { ok: boolean; sync: Promise<boolean>; granted?: Promise<boolean> } {
   const u = user.trim().toLowerCase();
   save(load().filter((a) => a.user !== u));
   const run = enqueue(u, async () => {
     const ok = await pushQaqc(u);
+    /*
+     * ⚠️ ЭРХ БУЦААЛТЫН ҮР ДҮНГ ЗАЛГИХГҮЙ (2026-09-07-ны merge аудит).
+     *    Урьд нь `catch` нь хоосон байсан тул `__cap__:` мөр ArcGIS дээр
+     *    ҮЛДСЭН ч `sync` нь `true` гарч, админд «амжилттай» гэж ХУДАЛ
+     *    мэдээлдэг байв. Дараагийн `initRemote` тэр мөрийг эргүүлж татаж
+     *    `qaqc` эрхийг СЭРГЭЭДЭГ тул хэрэглэгч багцгүй атлаа эрхтэй
+     *    үлдэж, хоосон хуудсыг мөнхөд нээдэг байлаа. Тайлбарт бичсэн
+     *    «дараагийн initRemote-оор remote ялна» нь эсрэгээрээ ажиллана.
+     */
+    let g = true;
     if (revoke) {
       try {
         const c = await import('./caps');
-        await c.toggleCap(u, 'qaqc', false);
-      } catch { /* эрх буцаалт унасан — дараагийн initRemote-оор remote ялна */ }
+        g = await c.toggleCap(u, 'qaqc', false);
+      } catch { g = false; }
     }
-    return ok;
+    return { ok, g };
   });
-  const sync = run.then((ok) => { markResult(u, ok); return ok; });
-  return { ok: true, sync };
+  const sync = run.then((r) => { markResult(u, r.ok && r.g); return r.ok && r.g; });
+  const granted = run.then((r) => r.g);
+  return { ok: true, sync, granted };
 }
 
 /**

@@ -152,4 +152,41 @@ assert.equal(
 assert.equal(setQaqcAssign('swap', []).ok, false, 'хоосон багц хадгалагдахгүй');
 console.log('✅ нэг хэрэглэгч нэг мөр');
 
+/* ── 9. ХАСАЛТ дээр ЭРХ БУЦААЛТЫН үр дүн ЗАЛГИГДАХГҮЙ (2026-09-07-ны merge аудит) ──
+   Урьд нь `removeQaqcAssign`-ийн `catch` хоосон байсан тул `__cap__:` мөр
+   ArcGIS дээр үлдсэн ч `sync` нь `true` гарч, админд «амжилттай» гэж ХУДАЛ
+   мэдээлдэг байв. Дараагийн `initRemote` тэр мөрийг эргүүлж татаж эрхийг
+   СЭРГЭЭДЭГ тул хэрэглэгч багцгүй атлаа эрхтэй үлдэж, хоосон хуудсыг
+   мөнхөд нээдэг байлаа. Одоо `granted` талбар нь үр дүнг ил гаргана. */
+_syncRemoteQaqc([{ user: 'rv_a', bagts: ['Багц 2'] }]);
+const rv = removeQaqcAssign('rv_a', false);
+assert.equal(typeof rv.granted, 'object', 'хасалт `granted` амлалт буцаана');
+assert.equal(await rv.granted, true, 'эрх буцаахгүй (revoke=false) үед `granted` үнэн');
+/* ⚠️ `sync` нь ArcGIS-ийн бичилтээс хамаарна — offline орчинд худал. Энд
+   шалгах зүйл нь `granted` ИЛ ГАРЧ БАЙГАА эсэх (урьд нь огт байхгүй байв). */
+assert.equal(typeof (await rv.sync), 'boolean', '`sync` boolean буцаана');
+console.log('✅ хасалтын эрх буцаалт ил гарна');
+
+/* ── 10. SUPER-Т ХУВААРИЛАЛТ ҮЙЛЧЛЭХГҮЙ — ХОЁР ЗАМД ЧЬ ──
+   `UserAdmin.flipCap` нь энэ няцаалтыг барьж, super-т эрхийг ХУУЧИН замаар
+   (`toggleCap`) олгодог болов. Хэрэв хэн нэгэн `setQaqcAssign`-ийн super
+   хамгаалалтыг авбал тэр салаа утгагүй болно — тиймээс энд бэхэлнэ. */
+const sSet = setQaqcAssign(superName, ['Багц 1']);
+assert.equal(sSet.ok, false, 'super-т хуваарилалт бичигдэхгүй');
+assert.equal(sSet.sync, undefined, '`sync` БАЙХГҮЙ — дуудагч `r.ok`-г ЗААВАЛ шалгана');
+assert.equal(qaqcScope(superName), null, 'super-т хүрээ хязгааргүй хэвээр');
+console.log('✅ super — хуваарилалтаас үл хамаарна');
+
+/* ── 11. БАЙГАА ХУВААРИЛАЛТЫГ ХАДГАЛАХ (UserAdmin-ы унтраалгын гэрээ) ──
+   `UserAdmin.flipCap` нь унтраалга асаахад `listQaqcAssigns()`-ээс одоогийн
+   багцыг уншиж ХЭВЭЭР үлдээдэг. Тэр уншилтын эх сурвалж ажиллаж байгааг
+   баталгаажуулна — эс бөгөөс хүрээ чимээгүй `[*]` болж ТЭЛНЭ. */
+_syncRemoteQaqc([]);
+setQaqcAssign('keep_x', ['Багц 2'], false);
+const cur = listQaqcAssigns().find((a) => a.user === 'keep_x');
+assert.deepEqual(cur.bagts, ['Багц 2'], 'одоогийн багц уншигдана');
+setQaqcAssign('keep_x', cur.bagts, false);
+assert.deepEqual(qaqcScope('keep_x'), ['Багц 2'], 'дахин бичихэд хүрээ ТЭЛЭХГҮЙ');
+assert.notDeepEqual(qaqcScope('keep_x'), null, 'бүх багц болж ҮСЭРЧ БОЛОХГҮЙ');
+console.log('✅ унтраалга хүрээг тэлэхгүй');
 console.log('\nqaqcAcl: ok — fail-closed · super · remote=үнэн · УРСГАЛААС ТУСДАА · устгалт');
