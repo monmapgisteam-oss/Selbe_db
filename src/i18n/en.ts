@@ -3560,7 +3560,7 @@ const en: Record<string, string> = {
   "Хагас бүрдсэн ажлууд": "Partially documented works",
   "Дутуу баримт": "Missing documents",
   "{0} — QAQC хүснэгт уншигдсангүй": "{0} — QAQC table failed to load",
-  "{0} — мод холбогдсонгүй, бүлгийн мөр тоологдов": "{0} — tree not linked, group rows counted",
+  "{0} — QAQC хүснэгтийн мөр бөглөх хуудастай таарахгүй тул шатлал холбогдсонгүй. Бүлгийн мөрийг ажлаас ялгах боломжгүй тул энэ багц НИЙТ үзүүлэлтэд ОРООГҮЙ. QAQC хүснэгтийг эх хүснэгтийн шинэ хувилбараар дахин үүсгэх шаардлагатай.": "{0} — the QAQC table's rows do not match the data-entry sheet, so the hierarchy could not be linked. Group rows cannot be told apart from work, so this package is EXCLUDED from the overall figure. The QAQC table needs to be rebuilt from the current version of the source sheet.",
   "ажил баримтгүй": "works without documents",
   "QAQC хүснэгт нэг ч уншигдсангүй ({0} багц)": "No QAQC table could be loaded ({0} packages)",
   "IPC — гүйцэтгэлийн акт": "IPC — payment certificates",
