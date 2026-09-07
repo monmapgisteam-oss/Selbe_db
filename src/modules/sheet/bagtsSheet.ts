@@ -167,6 +167,51 @@ export function lastFrame(all: Feature[], noField: string, expect = 0): Feature[
   return all.slice(starts[k], k + 1 < starts.length ? starts[k + 1] : undefined);
 }
 
+/**
+ * ХУУЛБАРЫН ХАМГИЙН АНХНЫ БҮТЭН ЖААЗ — ЗӨВХӨН лавлахад (2026-09-07).
+ *
+ * ⚠️ ЯАГААД `lastFrame`-ийн ЭСРЭГ ХЭРЭГТЭЙ ВЭ: суурь агшин (огноогүй мөр)
+ * устсан багцад `loadBaseKeys` нь БҮХ мөрөөс лавлах гаргадаг. Тэнд
+ * `lastFrame` хэрэглэвэл лавлах нь ОДООГИЙН жааз өөрөө болно — мөр
+ * нэмэгдмэгц лавлах ч хамт уртсаж, `ref.length === expect` шалгуур унаж
+ * багц бүхэлдээ хаагдана (2026-09-07-ны аудитын CRITICAL олдвор; амьдаар
+ * 10 багцын 7 нь энэ замд байсан).
+ *
+ * ⚠️ Мөр зөвхөн НЭМЭГДДЭГ, устдаггүй (`lastFrame`-ийн ⚠️ ДҮРЭМ) тул хамгийн
+ * анхны жааз нь устсан суурьтай ТЭНЦҮҮ — тэр нь зураглалын лавлах болох
+ * ёстой цорын ганц дараалал.
+ *
+ * ⚠️ ХАГАС БИЧИГДСЭН эхний жаазыг алгасна: `applyAdds` тасалдвал дутуу жааз
+ * үлддэг (`lastFrame`-ийн баримтжуулсан тохиолдол). Тиймээс урагшаа явж
+ * ЭХНИЙ БҮТЭН жаазыг олно.
+ */
+export function firstFrame(all: Feature[], noField: string, expect = 0): Feature[] {
+  if (all.length < 2) return all;
+  const first = String(all[0].attributes[noField] ?? "").trim();
+  if (!first) return all;
+
+  const starts: number[] = [0];
+  for (let i = 1; i < all.length; i += 1) {
+    if (String(all[i].attributes[noField] ?? "").trim() === first) starts.push(i);
+  }
+  if (starts.length === 1) return all;
+
+  const endOf = (k: number) => (k + 1 < starts.length ? starts[k + 1] : all.length);
+  const lenOf = (k: number) => endOf(k) - starts[k];
+
+  /* Эхнээс урагшаа — ЭХНИЙ бүтэн (зураглалын урттай) жааз */
+  let k = 0;
+  while (k < starts.length - 1) {
+    if (expect <= 0 || lenOf(k) >= expect) break;
+    console.warn(
+      `[selbe] лавлах: хагас эхний жаазыг алгаслаа: ${lenOf(k)} мөр `
+      + `(хүлээгдэх ${expect}) — унасан нийтлэлийн үлдэгдэл`,
+    );
+    k += 1;
+  }
+  return all.slice(starts[k], endOf(k));
+}
+
 /** Мөрийн ТАНИХ ТҮЛХҮҮР — № ба Ажлын нэрийн хос. */
 function rowKey(f: Feature, sc: Schema): string {
   const no = String(f.attributes[sc.f.no] ?? "").trim();
@@ -235,7 +280,30 @@ function loadBaseKeys(pkg: Pkg, sc: Schema): Promise<string[]> {
      * нь ижил дүрмээр хамгийн сүүлийн БҮТЭН жаазыг таслах тул үр дүн нь
      * өмнөхтэй ижил утгатай.
      */
+    /**
+     * ⚠️ НӨӨЦ ЗАМЫН ЛАВЛАХ нь ЭХНИЙ ЖААЗ (2026-09-07-ны гүн аудит, CRITICAL).
+     *
+     * Урьд нь энд ч `lastFrame` дуудагдаж СҮҮЛИЙН жаазыг лавлах болгодог
+     * байв. Тэр нь суурь жааз БАЙХАД зөв — гэвч суурь устсан үед лавлах нь
+     * ӨӨРӨӨ одоогийн жааз болно. Ерөнхий менежер бүлэг дотор ажил НЭМЭХЭД
+     * (`addRow`) шинэ жааз 1 мөр урт бичигдэх бөгөөд дараагийн ачаалалтад:
+     *   ref.length (1371) !== expect (1370)  → `alignInsertions` дуудагдахгүй
+     *   нөхөлт нь `expect > feats2.length` шаарддаг тул мөн ажиллахгүй
+     *   → `throw` → тэр багцын Гүйцэтгэл бөглөх, Хуваарь, хянагчийн
+     *     харагдац, CEO/QAQC мод БҮГД хаагдана. Алдааны бичвэр нь
+     *     «зураглалыг дахин гаргах» гэсэн БУРУУ шалтгаан заана.
+     *
+     * Амьдаар (2026-09-07): 10 багцын 7-д `buglusun_ognoo IS NULL` = 0 тул
+     * бүгд энэ замд байсан — өөрөөр хэлбэл «мөр нэмэх» функц ямар ч багцад
+     * аюулгүй ажиллахгүй байв.
+     *
+     * ЗАСВАР: мөр зөвхөн НЭМЭГДДЭГ (архивын жааз дараалан урт болно) тул
+     * ХАМГИЙН АНХНЫ жааз нь устсан суурьтай тэнцүү. Тиймээс нөөц замд
+     * `lastFrame` БИШ `firstFrame` хэрэглэнэ.
+     */
+    let usedFallback = false;
     if (out.length === 0 && fld) {
+      usedFallback = true;
       for (let offset = 0; ; ) {
         const j = await agsFetch(`${pkg.url}/query`, {
           where: "1=1",
@@ -251,7 +319,12 @@ function loadBaseKeys(pkg: Pkg, sc: Schema): Promise<string[]> {
         offset += fs.length;
       }
     }
-    return lastFrame(out, sc.f.no, TREES[pkg.key]?.length ?? 0).map((f) => rowKey(f, sc));
+    const want = TREES[pkg.key]?.length ?? 0;
+    /* ⚠️ Нөөц замд ЭХНИЙ жааз — дээрх ⚠️. Суурь байвал урьдын адил сүүлийнх. */
+    const ref = usedFallback
+      ? firstFrame(out, sc.f.no, want)
+      : lastFrame(out, sc.f.no, want);
+    return ref.map((f) => rowKey(f, sc));
   })();
   baseKeyCache.set(pkg.key, p);
   return p;

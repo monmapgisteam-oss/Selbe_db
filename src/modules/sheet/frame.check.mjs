@@ -14,7 +14,8 @@
  *   больж, алдааны бичвэр нь «шатлалын зураглал» гэж БУРУУ шалтгаан заадаг байв.
  */
 import assert from 'node:assert/strict';
-import { alignInsertions, lastFrame, numLoose } from './bagtsSheet.ts';
+import { readFileSync } from 'node:fs';
+import { alignInsertions, firstFrame, lastFrame, numLoose } from './bagtsSheet.ts';
 
 const NO = 'dugaar';
 
@@ -100,6 +101,46 @@ const nosOf = (fs) => fs.map((f) => f.attributes[NO]);
   assert.equal(lastFrame(feats(['', 'x']), NO, 3).length, 2, 'эхний № хоосон бол бүгдийг');
 }
 
+
+/* ── firstFrame — НӨӨЦ ЗАМЫН ЛАВЛАХ (2026-09-07-ны гүн аудит, CRITICAL) ──
+
+   Суурь агшин (огноогүй мөр) устсан багцад `loadBaseKeys` нь БҮХ мөрөөс
+   лавлах гаргадаг. Тэнд `lastFrame` хэрэглэвэл лавлах нь ОДООГИЙН жааз
+   ӨӨРӨӨ болно — ерөнхий менежер мөр НЭММЭГЦ лавлах ч хамт уртсаж,
+   `ref.length === expect` унаж багц бүхэлдээ хаагдана.
+
+   Амьдаар (2026-09-07): 10 багцын 7-д `buglusun_ognoo IS NULL` = 0 байсан
+   тул «мөр нэмэх» функц ямар ч багцад аюулгүй ажиллахгүй байв.
+
+   ДҮРЭМ: мөр зөвхөн НЭМЭГДДЭГ тул ХАМГИЙН АНХНЫ жааз нь устсан суурьтай
+   тэнцүү — тэр нь зураглалын цорын ганц зөв лавлах. */
+
+/* Хоёр жааз: анхных 5 мөр (суурьтай тэнцүү), сүүлийнх 6 (мөр нэмэгдсэн) */
+const grown = feats([...frame(5, 'a'), ...frame(6, 'b')]);
+assert.equal(lastFrame(grown, NO, 5).length, 6, 'lastFrame нь СҮҮЛИЙН (ургасан) жаазыг өгнө');
+assert.equal(
+  firstFrame(grown, NO, 5).length, 5,
+  'firstFrame нь АНХНЫ жаазыг өгөх ёстой — эс бөгөөс мөр нэмэхэд лавлах ургаж багц хаагдана',
+);
+
+/* Хагас бичигдсэн ЭХНИЙ жааз (унасан нийтлэл) — алгасаж бүтнийг олно */
+const halfFirst = feats([...frame(3, 'x'), ...frame(5, 'a'), ...frame(6, 'b')]);
+assert.equal(
+  firstFrame(halfFirst, NO, 5).length, 5,
+  'хагас эхний жаазыг алгасаж БҮТЭН лавлахыг олох ёстой',
+);
+
+/* Ганц жааз — бүтнээрээ (нөөц зам ажиллаагүй энгийн тохиолдол) */
+assert.equal(firstFrame(feats(frame(5, 'a')), NO, 5).length, 5, 'ганц жааз бүтнээрээ');
+
+/* ⚠️ `loadBaseKeys` нь нөөц замд ЗААВАЛ `firstFrame` дуудна — эс бөгөөс
+   дээрх CRITICAL эргэж ирнэ. Эх кодоор бэхэлнэ. */
+const SRC = readFileSync('src/modules/sheet/bagtsSheet.ts', 'utf8');
+assert.ok(
+  /usedFallback[\s\S]{0,200}firstFrame\(/.test(SRC),
+  'loadBaseKeys-ийн нөөц зам firstFrame хэрэглэхгүй байна',
+);
+console.log('✅ firstFrame — нөөц замын лавлах ургахгүй');
 console.log('frame.check: ok — ганц ✓ хоёр бүтэн ✓ тасарсан ✓ давхар тасалдал ✓ '
   + 'мөр нэмэгдсэн ✓ нэмэгдээд тасарсан ✓ expect хамгаалалт ✓ суурь ✓ хязгаар ✓');
 
