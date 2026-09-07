@@ -2109,7 +2109,7 @@ function FullTable({
           {list.map((p, i) => {
             const dropped = p.oid != null && del.has(p.oid);
             return (
-              <tr key={p.oid ?? `r${i}`} className={dropped ? f.rowDrop : undefined}>
+              <tr key={p.oid ?? `r${i}`} className={dropped ? f.rowDel : undefined}>
                 {(() => {
                   /* ⚠️ Тамгыг № БАГАНАД тавина, тусдаа багана НЭМЭХГҮЙ: хүснэгт
                      аль хэдийн 33 баганатай бөгөөд хоёр багана нэмбэл гол
