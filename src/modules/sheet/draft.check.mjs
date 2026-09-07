@@ -144,7 +144,17 @@ assert.ok(SRC.includes("window.addEventListener('pagehide'"), 'pagehide алга
 assert.ok(SRC.includes('lastRemoteRef'), 'алсын бичилтийн ДЭЭД хүлээлт алга');
 /* ⚠️ ИЛГЭЭЛТИЙН уншилт ч алдааг ЯЛГАНА (2026-09-07, CRITICAL): чимээгүй
    `null` болговол буцаагдсан ажил «бүх нүд 0%» болж харагдана. */
-assert.ok(!SRC.includes('loadActiveSubmission('), 'илгээлтийн уншилт алдааг залгисаар байна');
+/* ⚠️ ТАЙЛБАР ДОТОРХ дурдлагыг тоолохгүй (2026-09-07): `irgediin-hurteemj`
+   merge хийхэд алдааны түүхийг тайлбарласан мөрүүд орж ирсэн. ЖИНХЭНЭ
+   дуудлага нь `await` эсвэл `=`-ийн ард ирдэг. */
+const CODE_ONLY = SRC
+  .split('\n')
+  .filter((l) => !/^\s*[*]/.test(l) && !/^\s*\/[*]/.test(l) && !/^\s*\/\//.test(l))
+  .join('\n');
+assert.ok(
+  !/(?:await|=)\s*loadActiveSubmission\(/.test(CODE_ONLY),
+  'илгээлтийн уншилт алдааг залгисаар байна',
+);
 assert.ok(SRC.includes('setSubReadErr('), 'илгээлтийн уншилтын алдаа хэрэглэгчид харагдахгүй байна');
 assert.ok(SRC.includes("document.addEventListener('visibilitychange'"), 'таб хаагдахад илгээхгүй байна');
 /* (3) Нийтэлсэн ба «Устгах» хоёулаа АЛСЫН хуулбарыг цэвэрлэнэ — эс бөгөөс

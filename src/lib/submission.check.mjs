@@ -19,7 +19,7 @@
  *      payload ижил хүснэгтэд байдаг — `v !== 1` бол илгээлт БИШ.
  */
 import assert from 'node:assert/strict';
-import { parseSubmission, mergeSubmission, saveSubmission, SUBMISSION_MAX } from './submission.ts';
+import { parseSubmission, mergeSubmission, saveSubmission, subKey, SUBMISSION_MAX } from './submission.ts';
 
 const FILL = Date.UTC(2026, 8, 4);
 const add = (oid, extra = {}) => ({
@@ -317,6 +317,107 @@ const nextOf = (over = {}) => {
   const r = await saveSubmission('b2_9f', parseSubmission(JSON.stringify(valid())));
   assert.equal(r.ok, false, 'өөр багцын diff энэ түлхүүрт бичигдэх гэж байв');
   assert.ok(/b1_9f/.test(r.error) && /b2_9f/.test(r.error));
+}
+
+
+/* ── 20. ӨДӨР БҮР ТУСДАА ТҮЛХҮҮР (2026-09-07) ──
+ *
+ * ⚠️ ХАМГААЛЖ БУЙ АЛДАА: өдөр бүр тусдаа илгээлт болгохын өмнө багцад ЦОРЫН
+ *    ГАНЦ `sub|<pkg>` мөр байсан тул `saveSubmission` нь тэр түлхүүрт
+ *    таарсан БУСАД мөрийг «давхардал» гэж үзээд `deleteFeatures`-ээр УСТГАДАГ
+ *    (submission.ts). Хэрэв түлхүүрт өдөр орохгүй бол өдөр бүрийн илгээлтүүд
+ *    нэг түлхүүрт цугларч, өчигдрийн ХЯНАГДАЖ БУЙ илгээлт устаж, хяналтын
+ *    мөрийн `Эх_мөрийн_дугаар` өнчирнө. Тиймээс түлхүүр өдрөөр САЛАХ ёстой.
+ */
+{
+  const d1 = Date.UTC(2026, 8, 6);
+  const d2 = Date.UTC(2026, 8, 7);
+  assert.notEqual(subKey('b1_9f', d1), subKey('b1_9f', d2), 'хоёр өдөр НЭГ түлхүүр өгөв');
+  assert.equal(subKey('b1_9f', d1), `sub|b1_9f|${d1}`);
+  /* ⚠️ Багц ч мөн салгана — `b1_9f` ба `b1_12f` нэг өдөрт зэрэг илгээгддэг. */
+  assert.notEqual(subKey('b1_9f', d1), subKey('b1_12f', d1));
+}
+
+/* ── 21. ХУУЧИН (дагаваргүй) ТҮЛХҮҮР ХЭВЭЭР ҮҮСНЭ ──
+ *
+ * ⚠️ Үйлдвэрлэлд `sub|<pkg>` хэлбэрийн мөрүүд амьд байгаа тул тэднийг УНШИХ
+ *    зам ЗААВАЛ нээлттэй үлдэнэ (`readActiveSubmission` legacy fallback,
+ *    `readSubmissionByOid` нь OBJECTID-аар). `fillMs` өгөхгүй дуудвал ЯГ
+ *    хуучин хэлбэрийг өгөх ёстой — эс бөгөөс fallback-ийн `where` таарахгүй.
+ */
+{
+  assert.equal(subKey('b1_9f'), 'sub|b1_9f');
+  assert.equal(subKey('b1_9f', null), 'sub|b1_9f');
+  assert.equal(subKey('b1_9f', undefined), 'sub|b1_9f');
+}
+
+/* ── 22. `isSubmissionKey` — ГУРВАН ХЭЛБЭР ЗЭРЭГ ──
+ *
+ * ⚠️ `readRow` нь ЭНЭ шалгуураар «илгээлтийн мөр мөн үү» гэж шийддэг: буруу
+ *    хариулбал (а) шинэ өдөртэй мөрийг ноорог гэж үзээд ЧИМЭЭГҮЙ `null`
+ *    буцааж хянагч илгээлтээ олохгүй, эсвэл (б) ноорогийн `<user>|<pkg>`
+ *    мөрийг илгээлт гэж уншаад өөр хүний ноорог хянагчид харагдана.
+ * ⚠️ Функц нь модулиас ГАДАГШ гардаггүй тул `dkey`-ийн ёсыг ЭНД хэлбэрээр
+ *    дахин тодорхойлж, хоёулаа `startsWith` угтварт тулгуурладгийг батална.
+ */
+{
+  const isSub = (k) => k.startsWith('sub|') || k.startsWith('done|');
+  assert.ok(isSub(subKey('b1_9f')), 'ХУУЧИН хэлбэр танигдсангүй');
+  assert.ok(isSub(subKey('b1_9f', FILL)), 'ШИНЭ (өдөртэй) хэлбэр танигдсангүй');
+  assert.ok(isSub(`done|b1_9f|${123}`), '`done|` танигдсангүй');
+  /* Ноорогийн мөр илгээлт БИШ */
+  assert.ok(!isSub('comp_a|b1_9f'), 'ноорогийн мөр илгээлт гэж танигдав');
+}
+
+/* ── 23. ӨДӨР ХООРОНД АГУУЛГА ХОЛИХГҮЙ ──
+ *
+ * ⚠️ ХАМГААЛЖ БУЙ АЛДАА (2026-09-07): `FillNew.publish` нь өнөөдрийн
+ *    payload-ыг `mergeSubmission(mergeBase, …)`-аар нэгтгэдэг. Хэрэв
+ *    `mergeBase` нь ӨӨР ӨДРИЙН илгээлт байвал өчигдрийн нүднүүд өнөөдрийн
+ *    payload руу хуулагдаж, ХОЁУЛАА батлагдахад архивт ХОЁР УДАА тоологдоно.
+ *    Тиймээс `publish` нь `staged.payload.fillMs === fillMs` үед Л нэгтгэнэ.
+ *    Энэ тест нь тэр дүрмийг ЗАГВАРААР (нэгтгэсэн ба нэгтгээгүй хоёр зам)
+ *    батална: нэгтгэхгүй бол өчигдрийн нүд ОГТ орохгүй.
+ */
+{
+  const y = { ...valid(), fillMs: Date.UTC(2026, 8, 6), cells: [['12:0', 'ӨЧИГДӨР']], dates: [], adds: [], rowKeys: [] };
+  const t = { ...valid(), fillMs: Date.UTC(2026, 8, 7), cells: [['13:0', 'ӨНӨӨДӨР']], dates: [], adds: [], rowKeys: [] };
+  const yesterday = parseSubmission(JSON.stringify(y));
+  assert.ok(yesterday, 'өчигдрийн payload задарсангүй');
+
+  /* ЗӨВ зам — өдөр зөрсөн тул mergeBase = null */
+  const sep = mergeSubmission(null, t);
+  const sepCells = new Map(sep.cells);
+  assert.equal(sepCells.get('13:0'), 'ӨНӨӨДӨР');
+  assert.ok(!sepCells.has('12:0'), 'ӨӨР ӨДРИЙН нүд өнөөдрийн илгээлтэд орж ирэв');
+  assert.equal(sep.fillMs, t.fillMs, 'нэгтгэсэн payload-ийн өдөр шинэ нь байх ёстой');
+
+  /* ⚠️ БУРУУ зам — өдөр зөрсөн байхад нэгтгэвэл ЯГ ЮУ БОЛОХЫГ баримтжуулна:
+     өчигдрийн нүд наалдана. Энэ нь `publish`-ийн `fillMs` тулгалт ЯАГААД
+     заавал хэрэгтэйг харуулна (регресс болвол дээрх шалгуур ганцаараа
+     барихгүй тул энэ мөр нь баримт болж үлдэнэ). */
+  const mixed = mergeSubmission(yesterday, t);
+  assert.equal(new Map(mixed.cells).get('12:0'), 'ӨЧИГДӨР');
+  assert.equal(mixed.fillMs, t.fillMs, 'нэгтгэлд өдөр нь ШИНЭ payload-аас авагдах ёстой');
+}
+
+/* ── 24. НЭГ ӨДРИЙН ДОТОРХ ДАХИН ИЛГЭЭЛТ — ХУРИМТЛАЛ ХЭВЭЭР ──
+ *
+ * ⚠️ Хэрэглэгчийн шийдвэр 2 (2026-09-07): «төдий өдрийн илгээлтийг дахин
+ *    илгээвэл ТЭР өдрийн илгээлт update хийгдэнэ — шинэ тойрог үүсгэхгүй».
+ *    Өдөр нэмэгдсэн нь ЭНЭ хуучин зөв зан төлөвийг ЭВДЭЭГҮЙ байх ёстой:
+ *    ижил өдөрт хуучин нүд НЭГТГЭГДЭЖ үлдэнэ, дарагдахгүй.
+ */
+{
+  const day = Date.UTC(2026, 8, 7);
+  const first = parseSubmission(JSON.stringify({ ...valid(), fillMs: day, cells: [['12:0', '5']], dates: [], adds: [], rowKeys: [] }));
+  const second = { ...valid(), fillMs: day, at: 2000, cells: [['13:0', '7']], dates: [], adds: [], rowKeys: [] };
+  const m = mergeSubmission(first, second);
+  const c = new Map(m.cells);
+  assert.equal(c.get('12:0'), '5', 'нэг өдрийн эхний илгээлтийн нүд алга болов');
+  assert.equal(c.get('13:0'), '7');
+  assert.equal(m.fillMs, day);
+  assert.equal(m.at, 2000, '`at` нь СҮҮЛИЙН илгээлтийнх байх ёстой (expect тулгалт үүгээр явдаг)');
 }
 
 console.log('submission.check ✓');

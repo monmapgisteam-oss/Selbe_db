@@ -3241,13 +3241,11 @@ const en: Record<string, string> = {
   "илгээлт · {0} мөр": "submission · {0} rows",
   "Баталсны дараа гүйцэтгэл архивт бичигдэж, нэгтгэлд бүртгэгдэнэ — үүнээс өмнө үндсэн өгөгдөлд ОРООГҮЙ": "Once approved, the progress is written to the archive and registered in the consolidation — until then it is NOT part of the main data",
   "Баталж архивт бүртгэх": "Approve and record in the archive",
-  "Илгээлт хяналтад байна ({0}). Хянагч шийдвэрлэсний дараа дахин илгээнэ үү — ноорог хадгалагдсан.": "The submission is under review ({0}). Submit again once the reviewer has decided — your draft has been saved.",
   "Энэ багцад өөр хэрэглэгч илгээлт хийсэн байна — хуудсыг дахин ачаалж, ноорогоо сэргээгээд үргэлжлүүлнэ үү.": "Another user has already made a submission for this package — reload the page, restore your draft and continue.",
   "Хяналтад илгээв ({0}) · {1} нүд": "Submitted for review ({0}) · {1} cells",
   "Илгээлт хадгалагдлаа ({0} нүд) · ⚠️ хяналтад бүртгэгдсэнгүй: {1}": "The submission was saved ({0} cells) · ⚠️ but was not registered for review: {1}",
   "Илгээлтийг завсрын хадгалалтад хадгалж хяналтад оруулна — үндсэн өгөгдөлд ерөнхий менежер баталсны дараа л орно (Ctrl+S)": "Saves the submission to staging and sends it for review — it enters the main data only after the general manager approves it (Ctrl+S)",
   "Илгээлт хадгалагдсан ч хяналтын бүртгэл ҮҮССЭНГҮЙ — хянагч үүнийг харахгүй.": "The submission was saved but NO review record was created — reviewers will not see it.",
-  "Илгээлт хяналтад байна — {0}. Засвар ноорогт хадгалагдана; хянагч шийдвэрлэсний дараа дахин илгээж болно.": "The submission is under review — {0}. Your edits are saved to the draft; you can submit again once the reviewer has decided.",
   "Илгээгээгүй шинэ мөрийг хасах": "Remove a new row that has not been submitted",
   "Илгээлт «{0}» багцынх — хяналтын бүртгэл «{1}». Архивт юу ч бичсэнгүй.": "The submission belongs to package \"{0}\" but the review record says \"{1}\". Nothing was written to the archive.",
   "эхлэх": "start",
@@ -3659,6 +3657,9 @@ const en: Record<string, string> = {
   "Ноорог ЭНЭ хөтөчид хадгалагдлаа. ArcGIS-д хуулагдсан эсэхийг хажуугийн заалт харуулна. Үйлчилгээнд бичихийн тулд «Хадгалах» дарна.": "Draft saved in THIS browser. The adjacent label shows whether it reached ArcGIS. Press «Save» to write it to the service.",
   "Алсын ноорогийг уншиж чадсангүй ({0}). Энэ компьютерийн ноорог хэвээр — өөр газраас бөглөсөн ажил байвал сүлжээ сэргэсний дараа хуудсыг дахин ачаална уу.": "Could not read the remote draft ({0}). This computer's draft is intact — if you filled work elsewhere, reload the page once the network recovers.",
   "Илгээсэн ажлыг татаж чадсангүй ({0}) — доорх тоо ДУТУУ байж болзошгүй. Хуудсыг дахин ачаална уу; ажил алдагдаагүй, зөвхөн харагдаагүй байна.": "Could not load the submitted work ({0}) — the figures below may be INCOMPLETE. Reload the page; nothing is lost, it is only not shown.",
+  "Энэ өдрийн илгээлт ШИНЭЧЛЭГДЛЭЭ ({0}) · {1} нүд — хянагч ({2}) шинэ агуулгыг харна.": "This day's submission was UPDATED ({0}) · {1} cells — the reviewer ({2}) will see the new content.",
+  "Энэ өдрийн илгээлт хяналтад байна — {0}. Дахин илгээвэл ШИНЭ тойрог үүсэхгүй, тэр илгээлт шинэчлэгдэнэ (хянагчийн харж буй агуулга солигдоно).": "This day's submission is under review — {0}. Re-submitting does not start a NEW cycle; it updates that submission (the reviewer's content changes).",
+  "Өмнөх өдрийн илгээлт хяналтад байна ({0}) — өнөөдрийн илгээлтэд саад болохгүй, тус тусдаа хянагдана.": "A previous day's submission is under review ({0}) — it does not block today's submission; each is reviewed separately."
 };
 
 export default en;
