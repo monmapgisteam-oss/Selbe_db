@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
 import { MapTools } from '@/components/MapTools';
@@ -23,7 +23,8 @@ import { queryStats, count } from '@/lib/query';
 import { cat, mnt, num, pct } from '@/lib/format';
 import {
   loadGdashCf, loadContractSum, loadHseNow, loadReasonOids, loadSubPkgLayers,
-  chartTypeCost, chartTypeCount, chartSourceMerged, chartNoteAmount,
+  chartTypeCost, chartTypeCount, chartSourceMerged, chartNoteAmount, xMatch,
+  type XDim,
   timeline, grainOf, kpisOf, inPeriod, yearsOf, periodActive, activeSubPkgTypes,
   type Grain,
   NO_PERIOD,
@@ -81,6 +82,14 @@ export function GeneralDash({
      хийсэн, нээгээд харна, бусад үед hide»). Энэ дашбоардын зураг нь гурван
      баганын дунд, доор нь S-муруйтай тул талбай нь хомс — удирдлага нь
      хэрэгтэй агшинд нь л гарч ирнэ. */
+  /**
+   * S-МУРУЙН ХАРАГДАЦ — чарт эсвэл хүснэгт (2026-09-07, хэрэглэгчийн хүсэлт).
+   *
+   * ⚠️ ДОМГИЙГ ОРЛОВ: домог нь зөвхөн «энэ өнгө юуг заана» гэж хэлдэг байсан
+   * бөгөөд шошго бүр чарт дээр гарах болсноор хэрэггүй болсон. Түүний оронд
+   * ижил байрлалд сэлгүүр — чартын ард байгаа ТООГ бүтнээр нь харах зам.
+   */
+  const [tlMode, setTlMode] = useState<'chart' | 'table'>('chart');
   const [toolsOn, setToolsOn] = useState(false);
   const [dimsOn, setDimsOn] = useState(false);
   const [opacity, setOpacity] = useState<Record<string, number>>({});
@@ -132,6 +141,82 @@ export function GeneralDash({
       : null),
     [cf, period],
   );
+  /**
+   * СОНГОСОН ШАЛТГААН — БҮРХҮҮЛД (2026-09-07).
+   *
+   * ⚠️ Урьд нь `LandCard` дотор байсан тул «Саад — багцаар» карт түүнийг
+   * ХАРАХГҮЙ байв. Хэрэглэгчийн шаардлага: «зөвшилцүх» дарахад ГУРВУУЛАА
+   * дагана — газрын зураг тэр нэгж талбаруудаар шүүгдэнэ, саадын жагсаалт
+   * зөвхөн ТЭР талбаруудтай огтлолцсон багцыг үзүүлнэ. Гурван байрлалд
+   * тархсан төлөв нь нэг эх сурвалжтай байх ёстой.
+   */
+  const [reason, setReason] = useState<string | null>(null);
+  const byReason = useAsync(loadReasonOids, []);
+  /** Сонгосон шалтгаанд ногдох нэгж талбарын OID-ууд; `null` = сонгоогүй */
+  const reasonOids = useMemo(
+    () => (reason != null && byReason.state === 'ready'
+      ? byReason.data.get(reason) ?? null
+      : null),
+    [reason, byReason],
+  );
+
+  /**
+   * Шалтгаан сонгох — төлөв, газрын зураг, саадын жагсаалт ГУРВУУЛАА дагана.
+   *
+   * ⚠️ OID-оор (`FID IN (…)`) шүүнэ, шалтгааны ТЕКСТЭЭР биш: жагсаалтын шошго
+   * нь `cleanReason`-оор цэвэрлэгдсэн (арын зай, төгсгөлийн «.» хасагдсан) тул
+   * түүхий утгатай үргэлж таарахгүй — SQL нь чимээгүй 0 мөр буцаана.
+   */
+  /**
+   * Шалтгааны өмнөх давхаргын сонголт — цуцлахад БУЦААНА.
+   *
+   * ⚠️ `useRef`: сэргээх утга нь рендерт нөлөөлөхгүй, зөвхөн дараагийн
+   * үйлдэлд хэрэгтэй. Төлөв болговол давхаргын жагсаалт солигдох бүрд дэмий
+   * дахин зурагдана.
+   */
+  const beforeReason = useRef<string[] | null>(null);
+  /** «Тулгамдаж буй асуудал»-аас багц асаахын ӨМНӨХ давхаргын сонголт */
+  const beforePkg = useRef<string[] | null>(null);
+
+  const pickReason = useCallback((k: string) => {
+    const next = k === reason ? null : k;
+    setReason(next);
+
+    /* ЦУЦЛАХ — шүүлт ба давхаргын сонголт хоёуланг нь буцаана */
+    if (next == null) {
+      setParcelWhere(null);
+      if (beforeReason.current) {
+        setVisible(beforeReason.current);
+        beforeReason.current = null;
+      }
+      return;
+    }
+
+    const oids = byReason.state === 'ready' ? byReason.data.get(next) : null;
+    if (!oids || oids.size === 0) { setParcelWhere(null); return; }
+
+    /*
+     * ⚠️ ХОЛБООГҮЙ ДАВХАРГЫГ НУУНА (2026-09-07, хэрэглэгчийн шаардлага).
+     * Урьд нь нэгж талбар шүүгдэх боловч бүс, ерөнхий төлөвлөгөө, өмнө нь
+     * асаасан багцын давхаргууд бүгд ил үлдэж, шүүгдсэн 3 талбар тэдний
+     * дунд алга болдог байв. Одоо ЗӨВХӨН нэгж талбар үлдэж, хэрэглэгч
+     * жагсаалтаас багц дарвал тэр давхарга НЭМЭГДЭНЭ.
+     *
+     * ⚠️ Өмнөх сонголтыг НЭГ Л УДАА тогтоож авна: шалтгаанаас шалтгаан руу
+     * шилжихэд дахин бичвэл «зөвхөн нэгж талбар» гэсэн завсрын төлөв
+     * сэргээх цэг болж хоцорно.
+     */
+    if (beforeReason.current == null) beforeReason.current = visible;
+    /* ⚠️ Багцын сэргээх цэгийг ХҮЧИНГҮЙ болгоно: шалтгаан солигдоход тэр нь
+       өөр шалтгааны давхаргын жагсаалт руу заасан хуучин утга болно. */
+    beforePkg.current = null;
+    setVisible([PARCEL_LAYER]);
+
+    const where = `${PARCEL_LEFT.oid} IN (${[...oids].join(',')})`;
+    setParcelWhere(where);
+    map.zoomToWhere(PARCEL_LAYER, where);
+  }, [byReason, map, reason, setVisible, visible]);
+
   /* ⚠️ Шүүлт ИДЭВХГҮЙ бол `null` — `SaadCard`-ийн `keys` тайлбарыг үз */
   const activeKeys = useMemo(
     () => (periodActive(period) && active ? new Set(active.keys()) : null),
@@ -142,7 +227,6 @@ export function GeneralDash({
   /* ⚠️ Багцын нэгтгэлээс гүйцэтгэл татахаа БОЛИВ (2026-09-04): `Cashflow_0904`
      дээр `Guitsetgel_huwi` бүрэн бөглөгдсөн тул мөр бүр өөрийн хувьтай.
      Нэгтгэлээр холбоход 26 багцаас 2 нь л таардаг байв. */
-
 
   /**
    * Зураг дээр бүс дарахад ТУХАЙН бүс рүү шүүнэ — дэлгэрэнгүй дашбоардтай
@@ -158,12 +242,6 @@ export function GeneralDash({
 
   return (
     <div className={g.shell}>
-      <PeriodBar
-        period={period}
-        setPeriod={setPeriod}
-        years={cf.state === 'ready' ? yearsOf(cf.data) : []}
-      />
-
       {/*
         * ⚠️ ЧИРЭХ БАРИУЛ НЬ ЭНЭ ДОТОР, `shell`-д БИШ. `SplitGrip` нь
         * `top: 0; bottom: 0`-оор эцгийгээ БҮТНЭЭР дамнадаг тул бүрхүүлд
@@ -210,6 +288,24 @@ export function GeneralDash({
             uniform
             onPick={pick}
           />
+
+          {/*
+            * ХУГАЦААНЫ ШҮҮЛТ — ЗУРГИЙН ДЭЭР (2026-09-07, хэрэглэгчийн заавар).
+            *
+            * ⚠️ Урьд нь дашбоардын ДЭЭД мөрөнд бүтэн өргөнөөр сууж, гурван
+            * товчны төлөө бүхэл зурвас (~44px) иддэг байв. Зураг нь энэ
+            * харагдацын хамгийн уян хэсэг тул тэр зайг эргүүлэн авав.
+            *
+            * ⚠️ Зургийн бусад удирдлагатай НЭГ ГЭР БҮЛ: дээд зүүн буланд,
+            * давхарга/тунгалагийн товчнуудтай нэг өндөрт.
+            */}
+          <div className={g.mapFilter}>
+            <PeriodBar
+              period={period}
+              setPeriod={setPeriod}
+              years={cf.state === 'ready' ? yearsOf(cf.data) : []}
+            />
+          </div>
 
           {/* Дээш хураах — 2D/3D/BIM зурвас (зургийн дээд төвд) */}
           <button
@@ -271,12 +367,31 @@ export function GeneralDash({
         </div>
 
         <div className={g.curve}>
-        {/* ⚠️ Домог нь `note` пропоор ТОЛГОЙД — `Section` түүнийг гарчгийн
-            баруун захад тавьдаг. Чартын дор байхад нүд «муруй юу вэ» гэж
-            асуухдаа доош гүйж, буцаж ирэх шаардлагатай болдог. */}
+        {/* ⚠️ Сэлгүүр нь `note` пропоор ТОЛГОЙД — `Section` түүнийг гарчгийн
+            баруун захад тавьдаг. Доор байвал чартын өндөр хэлбэлзэж, зэргэлдээх
+            газрын зураг сэлгэх бүрд үсэрнэ. */}
         <Section
           title={tr('Хөрөнгө оруулалтын гүйцэтгэл')}
-          note={<TimelineKey />}
+          note={(
+            <span className={g.tlTabs}>
+              <button
+                type="button"
+                aria-pressed={tlMode === 'chart'}
+                className={`${g.tlTab} ${tlMode === 'chart' ? g.tlTabOn : ''}`}
+                onClick={() => setTlMode('chart')}
+              >
+                {tr('Чарт')}
+              </button>
+              <button
+                type="button"
+                aria-pressed={tlMode === 'table'}
+                className={`${g.tlTab} ${tlMode === 'table' ? g.tlTabOn : ''}`}
+                onClick={() => setTlMode('table')}
+              >
+                {tr('Хүснэгт')}
+              </button>
+            </span>
+          )}
         >
           <Data q={cf} minH={190}>
             {(rows) => (
@@ -297,6 +412,7 @@ export function GeneralDash({
                 /* ⚠️ Нарийвчлал нь СОНГОСОН ШҮҮЛТИЙН ТҮВШИНТЭЙ таарна: жил →
                    жилээр, улирал → улиралаар, сар → сараар. */
                 grain={grainOf(period)}
+                mode={tlMode}
               />
             )}
           </Data>
@@ -312,25 +428,26 @@ export function GeneralDash({
         <HseCard />
         <LandCard
           active={active}
+          reason={reason}
+          byReason={byReason}
+          onPickReason={pickReason}
           onShowLayers={(ids) => {
             setVisible((v) => [...new Set([...v, ...ids])]);
             if (ids[0]) map.zoomToLayer(ids[0]);
           }}
-          /* ⚠️ Шалтгаан сонгоход зураг ТЭР талбарууд руу ойртоно: жагсаалт
-             дээрх «63» гэдэг тоо ХААНА байгаа нь эс бөгөөс уншигдахгүй.
-             Давхаргыг ЗААВАЛ асаана — унтарсан давхарга руу зум хийвэл
-             «юу ч болсонгүй» гэж уншигдана. */
-          onZoomParcels={(oids) => {
-            if (!oids || oids.length === 0) { setParcelWhere(null); return; }
-            const where = `${PARCEL_LEFT.oid} IN (${oids.join(',')})`;
-            setParcelWhere(where);
-            setVisible((v) => [...new Set([...v, PARCEL_LAYER])]);
-            map.zoomToWhere(PARCEL_LAYER, where);
-          }}
         />
         <SaadCard
           keys={activeKeys}
+          /* ⚠️ Шалтгаан сонгогдмогц энэ карт ТҮҮГЭЭР нарийсна */
+          oids={reasonOids}
+          /* ⚠️ `null` = мөрийг дахин дарж ТАЙЛСАН — асаасан давхаргаа буцаана */
           onShowLayers={(ids) => {
+            if (!ids) {
+              if (beforePkg.current) setVisible(beforePkg.current);
+              beforePkg.current = null;
+              return;
+            }
+            if (beforePkg.current == null) beforePkg.current = visible;
             setVisible((v) => [...new Set([...v, ...ids])]);
             if (ids[0]) map.zoomToLayer(ids[0]);
           }}
@@ -370,7 +487,6 @@ function PeriodBar({
   years: number[];
 }) {
   const [open, setOpen] = useState<{ k: Dim3; x: number; y: number } | null>(null);
-  const [shown, setShown] = useState(true);
 
   /**
    * ⚠️ ОЛОН СОНГОЛТ (2026-09-04, хэрэглэгчийн хүсэлт). Хэмжээс тус бүр нь
@@ -428,6 +544,9 @@ function PeriodBar({
     if (!open) return null;
     const c = CFG[open.k];
     const sel = period[open.k];
+    /* ⚠️ ХООСОН нь ч «бүгд»: шүүлтгүй төлөв нь бүх утгыг хамардаг тул хоёулаа
+       ижил байдлаар тэмдэглэгдэнэ. */
+    const allOn = sel.length === 0 || sel.length === c.opts.length;
     return (
       <>
         <div className={g.fVeil} onClick={() => setOpen(null)} />
@@ -437,14 +556,29 @@ function PeriodBar({
           aria-multiselectable
           style={{ left: Math.min(open.x, Math.max(8, window.innerWidth - 200)), top: open.y }}
         >
-          {/* ⚠️ «Бүгд» нь ЦЭВЭРЛЭХ үйлдэл: тухайн хэмжээсийн олонлогийг
-              хоослоно. Чагт БИШ тул дугуй тэмдэггүй. */}
+          {/*
+            * «БҮГД» — БҮХ сонголтыг ЧАГТАЛНА (2026-09-07, хэрэглэгчийн заавар).
+            *
+            * ⚠️ Урьд нь энэ нь ЦЭВЭРЛЭХ үйлдэл байсан (олонлогийг хоослох).
+            * Үр дүн нь ижил (хоосон = бүгд) ч дэлгэц дээр НЭГ Ч чагт асдаггүй
+            * тул «дарсан ч юу ч болсонгүй» гэж уншигддаг байв.
+            *
+            * ⚠️ Бүгд аль хэдийн чагттай үед дарвал ТАЙЛНА — эс бөгөөс энэ мөр
+            * нэг чиглэлт болж, буцаах ганц зам нь чагтуудыг нэг нэгээр
+            * тайлах болно.
+            */}
           <li>
             <button
               type="button"
-              className={`${g.fOpt} ${sel.length === 0 ? g.fOptOn : ''}`}
-              onClick={() => setPeriod({ ...period, [open.k]: [] })}
+              role="option"
+              aria-selected={allOn}
+              className={`${g.fOpt} ${allOn ? g.fOptOn : ''}`}
+              onClick={() => setPeriod({
+                ...period,
+                [open.k]: allOn ? [] : [...c.opts],
+              })}
             >
+              <i className={g.fTick} aria-hidden>{allOn ? '✓' : ''}</i>
               {tr('Бүгд')}
             </button>
           </li>
@@ -468,53 +602,37 @@ function PeriodBar({
     );
   };
 
-  /** Хураасан үеийн товч дээрх утга */
-  const summary = (['years', 'quarters', 'months'] as Dim3[])
-    .map((k) => valueOf(k))
-    .filter(Boolean)
-    .join(' · ');
-
   return (
-    <div className={`${g.filters} ${shown ? '' : g.fThin}`}>
-      {shown && menu()}
-      {shown && (
-        <div className={g.fBar}>
-          {drop('years')}
-          {drop('quarters')}
-          {drop('months')}
-          {/*
-            * ⚠️ ЦУЦЛАХ нь ЗУРВАСЫН ДОТОР, сүүлийн сегмент — хайлтын талбарын
-            * ✕-тэй ижил зарчим: цэвэрлэх үйлдэл цэвэрлэх зүйлтэйгээ нэг
-            * хүрээнд. Гадна нь тусад нь зогсоход «Шүүх» товчны хэсэг мэт
-            * уншигдаж байв.
-            */}
-          {periodActive(period) && (
-            <button
-              type="button"
-              className={g.fClear}
-              title={tr('Шүүлт цуцлах')}
-              aria-label={tr('Шүүлт цуцлах')}
-              onClick={() => setPeriod(NO_PERIOD)}
-            >
-              ✕
-            </button>
-          )}
-        </div>
-      )}
-      <button
-        type="button"
-        aria-expanded={shown}
-        aria-label={shown ? tr('Шүүлт хураах') : tr('Шүүлт дэлгэх')}
-        className={`${g.fToggle} ${shown ? '' : g.fToggleThin} ${!shown && periodActive(period) ? g.fToggleOn : ''}`}
-        /* ⚠️ Хураасан үед идэвхтэй шүүлт `title`-д үлдэнэ — «яагаад тоо бага
-           байна вэ» гэсэн асуултад хариулах зам хаагдах ёсгүй. */
-        title={shown ? tr('Шүүлт хураах')
-          : summary ? tr('Шүүлт: {0}', summary) : tr('Шүүлт дэлгэх')}
-        onClick={() => setShown((v) => !v)}
-      >
-        <span className={g.fToggleLbl}>{tr('Шүүх')}</span>
-        <span aria-hidden>{shown ? '▴' : '▾'}</span>
-      </button>
+    /*
+     * ⚠️ ХУРААХ ТОВЧ БАЙХГҮЙ (2026-09-07, хэрэглэгчийн шийдвэр). Урьд нь
+     * «ШҮҮХ ▾» товчоор нээж хаадаг байсныг хассан: гурван сегмент нь өөрсдөө
+     * нэг мөрд багтдаг бөгөөд шүүлт нь БҮХ картад үйлчилдэг тул түүнийг нуух
+     * нь «энэ дэлгэц юугаар шүүгдсэн бэ» гэдгийг далдалдаг байв. Нээх алхам
+     * нь өөрөө шүүлт хэрэглэхийг саатуулж байлаа.
+     */
+    <div className={g.filters}>
+      {menu()}
+      <div className={g.fBar}>
+        {drop('years')}
+        {drop('quarters')}
+        {drop('months')}
+        {/*
+          * ⚠️ ЦУЦЛАХ нь ЗУРВАСЫН ДОТОР, сүүлийн сегмент — хайлтын талбарын
+          * ✕-тэй ижил зарчим: цэвэрлэх үйлдэл цэвэрлэх зүйлтэйгээ нэг
+          * хүрээнд байна.
+          */}
+        {periodActive(period) && (
+          <button
+            type="button"
+            className={g.fClear}
+            title={tr('Шүүлт цуцлах')}
+            aria-label={tr('Шүүлт цуцлах')}
+            onClick={() => setPeriod(NO_PERIOD)}
+          >
+            ✕
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -683,6 +801,15 @@ const moneyBars = (
    * жинхэнэ суурь нь эх үүсвэрүүдийн нийлбэр (2026-09-06-ны аудит).
    */
   base: string = tr('Нийт төсвийн'),
+  /**
+   * АЖЛЫН НИЙТ ТООГ hover-т бичих эсэх.
+   *
+   * ⚠️ «Захирамжийн эх үүсвэр» чартад ЗААВАЛ (тэр нь мөнгө ба тоо хоёр чартыг
+   * нэгтгэсэн). «Төсөв, гэрээлсэн дүн»-д ХЭРЭГГҮЙ: тэнд нийт тоо нь дээрх
+   * мөнгөн мөрүүдэд юу ч нэмэхгүй бөгөөд «Гэрээ хийсэн: 7 (88%)» өөрөө
+   * суурийг нь агуулж байдаг (2026-09-07, хэрэглэгчийн заавар).
+   */
+  showCount = true,
 ) => {
   /*
    * ⚠️ ДҮНГҮЙ АНГИЛАЛ МӨНГӨН ЧАРТАД ГАРАХГҮЙ (2026-09-04, хэрэглэгчийн
@@ -740,22 +867,25 @@ const moneyBars = (
      * ХЭЛНЭ, зурвасын уртад ОГТ нөлөөлөхгүй.
      */
     if (i.count != null) {
-      hint.push(tr('{0} ажил', num(i.count)));
+      const lines: string[] = [];
+      if (showCount) lines.push(tr('{0} ажил', num(i.count)));
       if (i.countSub != null) {
-        hint.push(i.countSub > 0
-          ? `${tr('Гэрээ хийсэн')}: ${num(i.countSub)} (${i.count > 0 ? pct((i.countSub / i.count) * 100, 0) : '—'})`
-          : tr('Нэг ч гэрээ хийгдээгүй'));
+        /*
+         * ⚠️ ТЭГ ҮЕД ДАВХАРДДАГ БАЙВ (2026-09-07): мөнгөн дэд цуваа нь аль
+         * хэдийн «Нэг ч гэрээ хийгдээгүй» гэж бичсэн байхад энэ блок тэрхүү
+         * ЯГ ижил өгүүлбэрийг дахин нэмж, панелд хоёр удаа гардаг байлаа.
+         * Гэрээтэй үед л ТООН утга гарна; тэг мэдэгдлийг зөвхөн мөнгөн дэд
+         * цуваагүй чарт (жиш. «Захирамжийн эх үүсвэр») өөрөө хэлнэ.
+         */
+        if (i.countSub > 0) {
+          lines.push(`${tr('Гэрээ хийсэн')}: ${num(i.countSub)} (${i.count > 0 ? pct((i.countSub / i.count) * 100, 0) : '—'})`);
+        } else if (!subLabel) {
+          lines.push(tr('Нэг ч гэрээ хийгдээгүй'));
+        }
       }
-    }
-    if (i.alloc != null) {
-      /* ⚠️ ОЛГОЛТ нь дээрх мөрүүдээс ӨӨР ЭХ СУРВАЛЖТАЙ (захирамж, гүйцэтгэл
-         биш) тул зураасаар тусгаарлана — эс бөгөөс нэг бүлэг мэт уншигдана. */
-      hint.push(TIP_RULE);
-      hint.push(i.alloc > 0
-        ? tr('Олгосон: {0} ({1})',
-            mntShort(i.alloc),
-            i.value > 0 ? pct((i.alloc / i.value) * 100, 1) : '—')
-        : tr('Захирамжаар олголт бүртгэгдээгүй'));
+      /* ⚠️ ЗУРААСЫГ ЗӨВХӨН агуулга байвал: хоосон заагаар панел дуусах нь
+         «үргэлжлэл тасарсан» мэт уншигдана. */
+      if (lines.length > 0) hint.push(TIP_RULE, ...lines);
     }
     return {
       key: i.key,
@@ -768,7 +898,11 @@ const moneyBars = (
        *
        * ⚠️ Дэд цуваагүй чартад урт нь УТГЫН ХЭМЖЭЭ хэвээр.
        */
-      value: subLabel ? (i.value > 0 ? (i.sub / i.value) * 100 : 0) : i.value,
+      /* ⚠️ 100%-Д ХЯЗГААРЛАНА — дэд дүн эх дүнгээсээ давсан өгөгдөл ирвэл
+         зурвас мөрөөсөө халин гарахаас сэргийлнэ. */
+      value: subLabel
+        ? (i.value > 0 ? Math.min(100, (i.sub / i.value) * 100) : 0)
+        : i.value,
       /* Мөр: хувь эхэнд (харьцаа), тоймлосон дүн ард */
       display: share ? `${share} · ${mntShort(i.value)}` : mntShort(i.value),
       /* Hover: БҮТЭН төгрөг — `format.mnt` нь портал даяар бүтэн бичдэг */
@@ -804,6 +938,21 @@ const countBars = (
       hint.push(i.sub > 0
         ? `${subLabel.has}: ${num(i.sub)} (${i.value > 0 ? pct((i.sub / i.value) * 100, 0) : '—'})`
         : subLabel.none);
+    }
+    /*
+     * БОДИТ ГҮЙЦЭТГЭЛ — cashflow-гийн `Guitsetgel_huwi`, өртгөөр жигнэсэн.
+     *
+     * ⚠️ ГЭРЭЭНЭЭС ТУСДАА бүлэгт (зураасны дараа): гэрээ бол ЭРХ, гүйцэтгэл бол
+     * БИЕТ ажил. Нэг бүлэгт нийлбэл «17 гэрээнээс 19% нь хийгдсэн» мэт
+     * буруу холбоо уншигдана.
+     *
+     * ⚠️ `null` бол «хэмжигдээгүй» — 0% гэж бичихгүй.
+     */
+    if (i.perf !== undefined) {
+      hint.push(TIP_RULE);
+      hint.push(i.perf == null
+        ? tr('Гүйцэтгэл хэмжигдээгүй')
+        : `${tr('Бодит гүйцэтгэл')}: ${pct(i.perf, 1)}`);
     }
     return {
       key: i.key,
@@ -841,30 +990,66 @@ function FinCharts({
 }) {
   const sel = useMemo(() => rows.filter((r) => inPeriod(r, period)), [rows, period]);
 
-  const c1 = useMemo(() => chartTypeCost(sel), [sel]);
-  const c2 = useMemo(() => chartTypeCount(sel), [sel]);
-  const c3 = useMemo(() => chartSourceMerged(sel), [sel]);
-  const c4 = useMemo(() => chartNoteAmount(sel), [sel]);
+  /**
+   * ХӨНДЛӨН ШҮҮЛТ — нэг чартын багана дарахад БУСАД чарт нарийсна.
+   *
+   * ⚠️ ӨӨРИЙГӨӨ ШҮҮХГҮЙ: сонгосон чарт нь бүх ангиллаа хадгалж, зөвхөн сонгосон
+   * мөр нь ТОДОРНО. Эс бөгөөс тэр чарт нэг мөр болж хумигдаж, хажуугийн
+   * ангиллуудтай харьцуулах боломж алга болно — сонголтоо тайлах ч бэрх.
+   *
+   * ⚠️ «Төрөл»-ийн ХОЁР чарт (мөнгө ба тоо) нэг хэмжээстэй тул хоёулаа
+   * шүүгдэхгүй, хоёулаа тодорно.
+   */
+  const [xs, setXs] = useState<{ dim: XDim; key: string } | null>(null);
+  const narrow = useMemo(
+    () => (xs ? sel.filter((r) => xMatch(r, xs.dim, xs.key)) : sel),
+    [sel, xs],
+  );
+  /* ⚠️ Хэмжээс бүрд УРЬДЧИЛАН тооцно, функцээр биш: рендер бүрт шинэ функц
+     үүсэх нь `useMemo`-гийн хамаарлыг тогтворгүй болгодог. */
+  const rType = xs && xs.dim !== 'type' ? narrow : sel;
+  const rSrc = xs && xs.dim !== 'source' ? narrow : sel;
+  const rNote = xs && xs.dim !== 'note' ? narrow : sel;
+  /** Мөр дарах — дахин дарвал тайлагдана */
+  const pickX = (dim: XDim) => (k: string) => setXs(
+    (v) => (v && v.dim === dim && v.key === k ? null : { dim, key: k }),
+  );
+  const onX = (dim: XDim) => (xs && xs.dim === dim ? xs.key : null);
+
+  const c1 = useMemo(() => chartTypeCost(rType), [rType]);
+  const c2 = useMemo(() => chartTypeCount(rType), [rType]);
+  const c3 = useMemo(() => chartSourceMerged(rSrc), [rSrc]);
+  const c4 = useMemo(() => chartNoteAmount(rNote), [rNote]);
 
   return (
     <>
-      <Section title={tr('Урьдчилсан төсөвт өртөг')}>
+      <Section title={tr('Төсөв, гэрээлсэн дүн')}>
         {/* ⚠️ `max={100}` — дэд цуваатай тул тэнхлэг нь 0–100% (§БАГАНЫН УРТ) */}
         <Bars
           color={BAR_HUE}
           max={100}
-          items={moneyBars(c1, { has: tr('Гүйцэтгэсэн дүн'), none: tr('Гүйцэтгэл огт бүртгэгдээгүй') })}
+          /* ⚠️ Дүүргэлт нь ГЭРЭЭЛСЭН хувиар — `chartTypeCost`-ийн тайлбарыг үз */
+          items={moneyBars(
+            c1,
+            { has: tr('Гэрээлсэн дүн'), none: tr('Нэг ч гэрээ хийгдээгүй') },
+            undefined,
+            false,
+          )}
           limit={8}
+          selected={onX('type')}
+          onSelect={pickX('type')}
         />
       </Section>
 
-      <Section title={tr('Төрөл')}>
+      <Section title={tr('Гэрээлсэн байдал, бодит гүйцэтгэл')}>
         <Bars
           color={BAR_HUE}
           max={100}
           items={countBars(c2, { one: tr('ажил'), many: tr('ажлын') },
             { has: tr('Гэрээ хийсэн'), none: tr('Нэг ч гэрээ хийгдээгүй') })}
           limit={8}
+          selected={onX('type')}
+          onSelect={pickX('type')}
         />
       </Section>
 
@@ -879,11 +1064,19 @@ function FinCharts({
           color={BAR_HUE}
           items={moneyBars(c3, undefined, tr('Захирамжийн нийт дүнгийн'))}
           limit={8}
+          selected={onX('source')}
+          onSelect={pickX('source')}
         />
       </Section>
 
       <Section title={tr('Хөрөнгө оруулалтын төрөл')}>
-        <Bars color={BAR_HUE} items={moneyBars(c4)} limit={8} />
+        <Bars
+          color={BAR_HUE}
+          items={moneyBars(c4)}
+          limit={8}
+          selected={onX('note')}
+          onSelect={pickX('note')}
+        />
       </Section>
     </>
   );
@@ -907,47 +1100,250 @@ function FinCharts({
  * 0…100%. Нэг хуваарьт оруулбал 2.5 их наяд ба 100 хоёрын харьцаанаас болж
  * муруй ёроолд наалдана.
  */
-function Timeline({ rows, grain, period }: { rows: CfRow[]; grain: Grain; period: Period }) {
-  const pts = useMemo(() => timeline(rows, grain, period), [rows, grain, period]);
+function Timeline({
+  rows, grain, period, mode,
+}: {
+  rows: CfRow[];
+  grain: Grain;
+  period: Period;
+  /** `table` бол ижил өгөгдлийг ХҮСНЭГТЭЭР — чартын ард байгаа тоо */
+  mode: 'chart' | 'table';
+}) {
+  const all = useMemo(() => timeline(rows, grain, period), [rows, grain, period]);
   /**
    * ЗААСАН үе — hover, эсвэл заагаагүй үед СҮҮЛИЙНХ.
    *
-   * ⚠️ ШОШГЫГ ХАДГАЛНА, гэхдээ ХОЁР ТУСДАА ДАВХАРТ ба ШИГШСЭН байдлаар:
+   * ⚠️ ШОШГЫГ ХОЁР ТУСДАА ДАВХАРТ байрлуулна:
    *   · хувь → цэгийн ДЭЭР (муруйн давхар),
    *   · мөнгөн дүн → тэнхлэгийн шошгын ДООР (мөнгөний давхар).
-   * Урьд нь хоёулаа зурвасын дотор нэг өндөрт өрсөлдөж, 2024–2025-ын
-   * шошгууд давхарлаж, чарт уншигдахгүй болсон байв. Уншилтын мөр нь
-   * ШИГШИГДЭЖ гараагүй үеийн тоог hover-оор гүйцээнэ.
+   * Хоёулаа зурвасын дотор нэг өндөрт байвал давхарлаж уншигдахаа болино.
    */
   const [hov, setHov] = useState<number | null>(null);
-  if (!pts.length) return <Empty label={tr('Төлөвлөгөөт хугацаатай ажил олдсонгүй')} />;
+  /**
+   * ЗУМЫН ЦОНХ — [эхлэл, төгсгөл] индекс, эсвэл `null` = бүтэн.
+   *
+   * ⚠️ ARCGIS ДАШБОАРДЫН ЗАН (2026-09-07, хэрэглэгчийн хүсэлт): 66 сарыг нэг
+   * зурвасд шахахад цэг тус бүрийн хувь уншигдахгүй. Зумын зурваснаас
+   * хэсгийг сонгоод томруулна — шошго бүр өөрийн зайтай болно.
+   */
+  const [zoom, setZoom] = useState<[number, number] | null>(null);
+  /**
+   * ХҮСНЭГТИЙН ЭРЭМБЭ — ArcGIS-ийн атрибут хүснэгттэй ижил зан.
+   *
+   * ⚠️ Анхдагч нь ҮЕ ӨСӨХ дараалал: атрибут хүснэгт нь эх дарааллаа хадгалдаг
+   * бөгөөд хугацааны цуваанд тэр нь цаг хугацааны дараалал. Толгой дарж
+   * баганаар эрэмбэлнэ, дахин дарвал эсрэгээр.
+   */
+  const [sort, setSort] = useState<{ c: 'label' | 'sub' | 'amount' | 'pct'; d: 1 | -1 }>(
+    { c: 'label', d: 1 },
+  );
+  const barRef = useRef<HTMLDivElement | null>(null);
+
+  const N = all.length;
+  const lo = zoom ? Math.max(0, Math.min(zoom[0], N - 1)) : 0;
+  const hi = zoom ? Math.max(lo, Math.min(zoom[1], N - 1)) : N - 1;
+  const pts = zoom ? all.slice(lo, hi + 1) : all;
+
+  /**
+   * Чирэлт — «шинээр сонгох», «зөөх», «ирмэгээс сунгах» гурвыг НЭГ логикоор.
+   *
+   * ⚠️ `setPointerCapture` ЗААВАЛ: заагуур зурваснаас гарахад чирэлт
+   * тасрахгүй байх цорын ганц арга (хулгана хурдан хөдлөхөд байнга гардаг).
+   *
+   * ⚠️ `barRef`-ийг ЭВЕНТИЙН ДОТОР л уншина, гадна нь тусад нь функц
+   * гаргахгүй: `react-hooks/refs` дүрэм нь ref уншдаг функцийг рендерийн
+   * үед дуудагдаж мэдэх гэж үзээд сэрэмжлүүлдэг. Энд уншилт нь заавал
+   * заагуурын үйлдлийн дараа тул аюулгүй бөгөөд дүрэм ч чимээгүй.
+   */
+  const drag = (mode: 'new' | 'move' | 'lo' | 'hi') => (e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const el = e.currentTarget as HTMLElement;
+    el.setPointerCapture(e.pointerId);
+    const track = barRef.current;
+    /** Заагуурын x → цэгийн индекс */
+    const idxAt = (clientX: number): number => {
+      if (!track || N < 2) return 0;
+      const r = track.getBoundingClientRect();
+      const t = (clientX - r.left) / Math.max(1, r.width);
+      return Math.max(0, Math.min(N - 1, Math.round(t * (N - 1))));
+    };
+    const start = idxAt(e.clientX);
+    const a0 = lo;
+    const b0 = hi;
+
+    const move = (ev: PointerEvent) => {
+      const i = idxAt(ev.clientX);
+      if (mode === 'new') setZoom([Math.min(start, i), Math.max(start, i)]);
+      else if (mode === 'lo') setZoom([Math.min(i, b0), b0]);
+      else if (mode === 'hi') setZoom([a0, Math.max(i, a0)]);
+      else {
+        /* Зөөх — өргөнөө ХАДГАЛНА, хоёр ирмэгт хүрч зогсоно */
+        const w = b0 - a0;
+        const d = i - start;
+        const s = Math.max(0, Math.min(N - 1 - w, a0 + d));
+        setZoom([s, s + w]);
+      }
+    };
+    const up = () => {
+      el.releasePointerCapture(e.pointerId);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
+  if (!all.length) return <Empty label={tr('Төлөвлөгөөт хугацаатай ажил олдсонгүй')} />;
+
+  /*
+   * ХҮСНЭГТ — ЧАРТЫН ЯГ ТЭР ӨГӨГДӨЛ.
+   *
+   * ⚠️ ЗУМЫГ ҮЛ ТООМСОРЛОНО (`all`, `pts` БИШ): зум нь зурган дээр шошго
+   * багтаах арга, өгөгдлийн шүүлт БИШ. Хүснэгтэд мөр нуух шалтгаангүй —
+   * гүйлгэх нь чартаас хамаагүй хямд.
+   *
+   * ⚠️ Мөнгө нь ЭНД БҮТЭН (`mnt`), товчлолгүй: хүснэгт нь яг тоо харах газар.
+   */
+  if (mode === 'table') {
+    /* ⚠️ ХУУЛБАР дээр эрэмбэлнэ — `all` нь `useMemo`-гийн үр дүн тул
+       байрандаа эрэмбэлбэл дараагийн рендерийн муруй эвдэрнэ. */
+    /**
+     * ОН ба ДЭД ҮЕ — ТУСДАА БАГАНА (2026-09-07, хэрэглэгчийн хүсэлт).
+     *
+     * ⚠️ Дэд багана нь НАРИЙВЧЛАЛААС хамаарна: жилээр шүүхэд он өөрөө бүтэн
+     * үе тул нэмэлт багана УТГАГҮЙ (бүх нүд хоосон байх болно). Улирал/сараар
+     * шүүхэд л гарна.
+     */
+    const subCol = grain === 'month' ? tr('Сар') : grain === 'quarter' ? tr('Улирал') : null;
+    const subOf = (p: { key: string; label: string }) => (
+      grain === 'month' ? p.key.slice(5)
+        : grain === 'quarter' ? (p.label.split(' ')[1] ?? '')
+          : ''
+    );
+    /* ⚠️ `sub` нь ОНГҮЙ эрэмбэлнэ — «бүх жилийн 6-р сарыг зэрэгцүүлэх» гэсэн
+       асуултад хариулна. Он-оор эрэмбэлэх нь `label` баганад бий. */
+    const sorted = [...all].sort((a, b) => (
+      sort.c === 'label' ? a.key.localeCompare(b.key) * sort.d
+        : sort.c === 'sub' ? subOf(a).localeCompare(subOf(b)) * sort.d
+          : sort.c === 'amount' ? (a.amount - b.amount) * sort.d
+            : (a.pct - b.pct) * sort.d
+    ));
+    const head = (c: 'label' | 'sub' | 'amount' | 'pct', label: string, right = false) => (
+      <th className={right ? g.tlThNum : undefined} aria-sort={
+        sort.c !== c ? 'none' : sort.d === 1 ? 'ascending' : 'descending'
+      }>
+        <button
+          type="button"
+          className={g.tlSort}
+          onClick={() => setSort((v) => (v.c === c ? { c, d: v.d === 1 ? -1 : 1 } : { c, d: 1 }))}
+        >
+          {label}
+          <i aria-hidden>{sort.c !== c ? '' : sort.d === 1 ? '▲' : '▼'}</i>
+        </button>
+      </th>
+    );
+    return (
+      <div className={g.tlTblWrap}>
+        <table className={g.tlTbl}>
+          <thead>
+            <tr>
+              {/* ⚠️ Мөрийн дугаар — ArcGIS-ийн атрибут хүснэгтийн эхний багана.
+                  Эрэмбэ солигдоход ч 1-ээс эхэлнэ: энэ нь ХАРАГДАЦЫН дугаар,
+                  бичлэгийн ID БИШ. */}
+              <th className={g.tlThIdx}>№</th>
+              {head('label', tr('Он'))}
+              {subCol && head('sub', subCol)}
+              {head('amount', tr('Олгосон дүн'), true)}
+              {head('pct', tr('Нийт хөрөнгөд эзлэх хувь'), true)}
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((p, i) => (
+              <tr key={p.key}>
+                <td className={g.tlThIdx}>{i + 1}</td>
+                <td>{p.key.slice(0, 4)}</td>
+                {subCol && <td>{subOf(p)}</td>}
+                <td className={g.tlNum}>{p.amount > 0 ? mnt(p.amount) : ''}</td>
+                <td className={g.tlNum}>{pct(p.pct)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
 
   const maxAmt = Math.max(1, ...pts.map((p) => p.amount));
   const n = pts.length;
   const at = hov != null && hov < n ? hov : n - 1;
   const cur = pts[at];
-  /* ⚠️ ШОШГЫГ ШИГШИНЭ: 36 сар бүгдийг бичвэл давхарлана. Эхний, сүүлийн
-     ба заасан үе ҮРГЭЛЖ гарна — тэднийг алдвал муруйн эхлэл/төгсгөл
-     уншигдахгүй. */
-  const step = Math.max(1, Math.ceil(n / 9));
-  const shown = (i: number) => i === at || i === 0 || i === n - 1 || i % step === 0;
   /**
-   * НАЛУУ ТЭНХЛЭГ — 12-оос олон үе сонгогдоход.
+   * НАЛУУ ТЭНХЛЭГ — 12-оос олон үе харагдаж байвал.
    *
    * ⚠️ Хэвтээ шошго нь баганын өргөнөөс («2026-06» ≈ 44px) урт болмогц
    * хөршүүдтэйгээ ХОЛИЛДДОГ. Налуулбал шошго бүр өөрийн диагональ зурваст
-   * суух тул БҮГДИЙГ нь бичиж болно — шигшилт хэрэггүй.
+   * суух тул БҮГДИЙГ нь бичиж болно.
    *
    * ⚠️ Налуу үед мөнгөн дүнг тэнхлэгээс ХАСНА: хоёр налуу мөр бие биенийхээ
    * дундуур гарна. Тэр тоо уншилтын мөрөнд hover-оор гарсаар байна.
    */
-  const tilt = n > 12;
+  const tilt = n > 24;
+  /**
+   * ТЭНХЛЭГИЙН ШОШГО — ЗӨВХӨН ДОТООД хэсэг («06», «II»), он нь ДООРХ зурваст.
+   *
+   * ⚠️ «2026-06» гэж бүтнээр бичихэд нүд бүрд он ДАВТАГДАЖ, 66 нүдэнд 66
+   * удаа «2026» бичигдэнэ — уншигдацад юу ч нэмэхгүй атлаа шошгыг нэг нүдэнд
+   * багтахааргүй урт болгож, налуулахаас өөр арга үлдэхгүй болдог байв
+   * (2026-09-07, хэрэглэгчийн заавар). Он нь тасархай заагийн ХООРОНД нэг л
+   * удаа гарна.
+   */
+  const shortLbl = (p: { key: string; label: string }): string => (
+    grain === 'year' ? p.label
+      : grain === 'quarter' ? (p.label.split(' ')[1] ?? p.label)
+        : p.key.slice(5)
+  );
+  /**
+   * ОНЫ БҮЛГҮҮД — зэргэлдээ нүднүүдийг он тус бүрээр нэгтгэнэ.
+   *
+   * ⚠️ Өргөнийг НҮДНИЙ ТООГООР өгнө (`flex` биш): тасархай зааг нь
+   * `(i+1)/n` хувиар байрладаг тул оны зурвасын ирмэг ЯГ тэр хувь дээр
+   * тулах ёстой — эс бөгөөс он ба зааг хоёр зөрж, аль он аль хэсэгт
+   * хамаарах нь бүдгэрнэ.
+   */
+  const yrs: { y: string; c: number }[] = [];
+  for (const p of pts) {
+    const y = p.key.slice(0, 4);
+    const last = yrs[yrs.length - 1];
+    if (last && last.y === y) last.c += 1;
+    else yrs.push({ y, c: 1 });
+  }
+  /**
+   * ХУВИЙН ШОШГО — ЦЭГ БҮРД (2026-09-07, хэрэглэгчийн хүсэлт «бүх шошгыг
+   * харуул»).
+   *
+   * ⚠️ ДАВХАР ЭГНЭЭ: 10-аас олон цэг байвал сондгой индексийн шошго нь дээш
+   * шилжинэ. Нэг эгнээнд бүгдийг бичвэл хөрш шошгууд шууд давхарлана —
+   * зумаар нарийсгах хүртэл ч уншигдахгүй. Хоёр эгнээ нь боломжит зайг
+   * хоёр дахин нэмнэ.
+   */
+  const twoRow = n > 10;
 
   /* ⚠️ Цэгийн х-байрлал нь баганын ТӨВД — эс бөгөөс муруй баганаас хазайна */
+  const xOf = (i: number) => ((i + 0.5) / n) * 100;
   const path = monotonePath(pts.map((p, i) => ({
-    x: ((i + 0.5) / n) * 100,
+    x: xOf(i),
     y: 100 - Math.max(0, Math.min(100, p.pct)),
   })));
+  /**
+   * ⚠️ ОЛГОСОН ДҮН нь БОСОО БАГАНА (2026-09-07, хэрэглэгчийн шийдвэр). Богино
+   * хугацаанд талбайн (area) хэлбэрээр туршигдаад буцав: талбай нь зэргэлдээ
+   * үеүүдийг ХОЛБОЖ, тасралтгүй урсгал мэт уншуулдаг. Гэтэл олголт нь тасалгаат
+   * үйл явдал — тухайн үед олгосон эсвэл огт олгоогүй. Багана тэр тасалгааг
+   * шууд харуулна.
+   *
+   * ⚠️ ХУВААРЬ НЬ МУРУЙНААС ТУСДАА: багана нь 0…max(мөнгө), муруй нь 0…100%.
+   */
 
   return (
     <div className={g.tl}>
@@ -958,7 +1354,50 @@ function Timeline({ rows, grain, period }: { rows: CfRow[]; grain: Grain; period
         <span className={g.tlHeadAmt}>
           {cur.amount > 0 ? mntShort(cur.amount) : tr('олголтгүй')}
         </span>
+        {zoom && (
+          <button type="button" className={g.tlReset} onClick={() => setZoom(null)}>
+            {tr('Бүтэн харах')}
+          </button>
+        )}
       </div>
+
+      {/*
+        * ⚠️ ЗУРВАС · ТЭНХЛЭГ · ОНЫ МӨР ГУРВЫГ НЭГ БҮРХҮҮЛД (2026-09-07).
+        * Заагийн тасархай зураас гурвуулангийн дундуур ТАСРАЛТГҮЙ явах ёстой.
+        * Урьд нь зураас нь зурвасын дотор, оны мөрөнд нь тусдаа `border-left`
+        * байсан тул дунд нь тэнхлэгийн мөр зүсэгдэж, зураас тасалддаг байв.
+        */}
+      <div className={g.tlMain}>
+        {/*
+          * ЖИЛИЙН ЗААГ — тасархай босоо зураас.
+          *
+          * ⚠️ ХАМГИЙН ЭХНИЙ хүүхэд: DOM дараалал нь давхаргын дараалал тул
+          * багана, муруй, цэг гурвын БҮГДИЙН ард үлдэнэ. Заагийг дээр нь
+          * тавибал 1px зураас нь цэгийг тасалж, чарт бүр бужигнана.
+          *
+          * ⚠️ Зөвхөн ЖИЛ солигдох заагт — улирал/сарын нарийвчлалд бүх нүдийг
+          * зураасаар хуваавал тор болж, хэлбэр нь уншигдахаа болино.
+          */}
+        <div className={g.tlGrid} aria-hidden>
+          {pts.map((p, i) => (
+            i < n - 1 && p.key.slice(0, 4) !== pts[i + 1].key.slice(0, 4)
+              ? <i key={p.key} className={g.tlYr} style={{ left: `${((i + 1) / n) * 100}%` }} />
+              : null
+          ))}
+          {/*
+            * ЗААГУУРЫН ЗУРААС — hover хийсэн ҮЕД гарна.
+            *
+            * ⚠️ ЖИЛИЙН ЗААГААС ӨӨР ӨНГӨӨР (муруйн өнгөөр): хоёулаа саарал
+            * тасархай байвал «энэ бол оны зааг уу, миний зааж буй үе үү» гэдэг нь
+            * ялгагдахгүй. Он хоорондын зураас хэвээрээ үлдэнэ.
+            *
+            * ⚠️ `hov` шалгана, `at` БИШ: `at` нь заагаагүй үед СҮҮЛИЙНХ рүү
+            * унадаг тул зураас хулгана хүрээгүй байхад ч байнга гарна.
+            */}
+          {hov != null && hov < n && (
+            <i className={g.tlCursor} style={{ left: `${xOf(hov)}%` }} />
+          )}
+        </div>
 
       <div className={g.tlPlot}>
         <div className={g.tlBars}>
@@ -969,7 +1408,15 @@ function Timeline({ rows, grain, period }: { rows: CfRow[]; grain: Grain; period
               onMouseEnter={() => setHov(i)}
               onMouseLeave={() => setHov((v) => (v === i ? null : v))}
             >
-              <i className={g.tlBar} style={{ height: `${(p.amount / maxAmt) * 100}%` }} />
+              <i className={g.tlBar} style={{ height: `${(p.amount / maxAmt) * 100}%` }}>
+                {/* ⚠️ Дүн нь БАГАНЫ ДЭЭР (2026-09-07, хэрэглэгчийн заавар).
+                    Тэнхлэгийн доор байхад аль дүн аль баганынх болох нь
+                    нүдээр мөрдөх зайтай болж, оны шошготой ч хольцолдож
+                    байв. Багана дээрээ бол холбоос нь шууд. */}
+                {!tilt && p.amount > 0 && (
+                  <b className={g.tlBarVal}>{mntShort(p.amount)}</b>
+                )}
+              </i>
             </div>
           ))}
         </div>
@@ -978,15 +1425,14 @@ function Timeline({ rows, grain, period }: { rows: CfRow[]; grain: Grain; period
           <path className={g.tlLine} d={path} fill="none" vectorEffect="non-scaling-stroke" />
         </svg>
 
-{/*
-          * Цэг — шигшигдсэн үед хувийн шошготой. Заасан цэг томорно.
+        {/*
+          * Цэг — БҮГД хувийн шошготой. Заасан цэг томорно.
           *
           * ⚠️ ТУСДАА БҮРХҮҮЛД: `bottom: %` нь ХАМГИЙН ОЙРЫН байрлуулсан
           * өвгөөс тоологддог. Урьд нь тэр нь `.tlPlot` байсан бөгөөд түүний
           * өндөрт 20px padding НЭМЭГДДЭГ тул цэг бүр муруйнаасаа яг тэр
           * 20px-ээр ДЭЭГҮҮР зурагдаж, шошго нь бүр 29px тасардаг байв
-          * (хэрэглэгчийн шүүмж, 2026-09-06). Энэ бүрхүүл нь SVG-тэй ЯГ ижил
-          * `inset`-тэй — хоёр давхар нэг хуваарьтай болов.
+          * (2026-09-06). Энэ бүрхүүл нь SVG-тэй ЯГ ижил `inset`-тэй.
           */}
         <div className={g.tlDots}>
           {pts.map((p, i) => (
@@ -998,7 +1444,7 @@ function Timeline({ rows, grain, period }: { rows: CfRow[]; grain: Grain; period
                 bottom: `${Math.max(0, Math.min(100, p.pct))}%`,
               }}
             >
-              {shown(i) && <b>{pct(p.pct)}</b>}
+              <b className={twoRow && i % 2 === 1 ? g.tlDotUp : undefined}>{pct(p.pct)}</b>
             </span>
           ))}
         </div>
@@ -1009,36 +1455,47 @@ function Timeline({ rows, grain, period }: { rows: CfRow[]; grain: Grain; period
       <div className={`${g.tlAxis} ${tilt ? g.tlAxisTilt : ''}`}>
         {pts.map((p, i) => (
           <span key={p.key} className={i === at ? g.tlAxisOn : undefined}>
-            <b>{tilt || shown(i) ? p.label : ''}</b>
-            {!tilt && <i>{shown(i) && p.amount > 0 ? mntShort(p.amount) : ''}</i>}
+            <b>{shortLbl(p)}</b>
           </span>
         ))}
       </div>
 
-    </div>
-  );
-}
+      {/* ОНЫ ЗУРВАС — тасархай заагийн хооронд нэг удаа */}
+      {grain !== 'year' && (
+        <div className={g.tlYrRow} aria-hidden>
+          {yrs.map((v, i) => (
+            <span key={`${v.y}-${i}`} style={{ width: `${(v.c / n) * 100}%` }}>{v.y}</span>
+          ))}
+        </div>
+      )}
+      </div>
 
-/**
- * ДОМОГ — картын ТОЛГОЙД.
- *
- * ⚠️ ШОШГО нь талбарын НЭРЭЭР (2026-09-06, хэрэглэгчийн заавар):
- * «Захирамжийн дүн хөрөнгө оруулалтын эх үүсвэр нийт хөрөнгөд эзлэх» —
- * товчилбол «Нийт хөрөнгөд эзлэх хувь». Муруй нь ГҮЙЦЭТГЭЛ БИШ — тэр нь
- * `Zah_eh_unet_tsaas_huwi` (ажил бүрийн нийт төсөвт эзлэх хувь)-ийг ажлын
- * саруудад тарааж хуримтлуулсан ТӨЛӨВЛӨГӨӨ. Бодит гүйцэтгэл
- * (`Guitsetgel_huwi`) энэ чартад ОРООГҮЙ. Хуучин «Хуримтлагдсан хувь»
- * гэсэн шошго нь юуны хуримтлал болохыг хэлдэггүй байв.
- *
- * ⚠️ ЗААВАЛ БАЙНА: нэг зурган дээр хоёр хэмжигдэхүүн байгааг хэлэхгүй бол
- * багананы өндөр ба муруйн өндрийг НЭГ хуваарь гэж уншина.
- */
-function TimelineKey() {
-  return (
-    <span className={g.tlLegend}>
-      <i className={g.tlKeyBar} aria-hidden /> {tr('Олгосон дүн')}
-      <i className={g.tlKeyLine} aria-hidden /> {tr('Нийт хөрөнгөд эзлэх хувь')}
-    </span>
+      {/*
+        * ЗУМЫН ЗУРВАС — ArcGIS дашбоардын хугацааны гулсуурын зан.
+        *
+        * ⚠️ ЗӨВХӨН 12-оос олон үед: цөөн үед зум нь ашиггүй бөгөөд зурвас нь
+        * зөвхөн зай иддэг.
+        *
+        * ⚠️ Хоосон зайд чирэх = ШИНЭЭР сонгох; цонхон дотор чирэх = ЗӨӨХ;
+        * ирмэг дээр чирэх = СУНГАХ. Гурвуулаа нэг `drag()` дотор — тусдаа
+        * бичвэл ирмэгүүд хоорондоо солигдох (`lo > hi`) тохиолдол гарна.
+        */}
+      {N > 12 && (
+        <div className={g.tlZoom} ref={barRef} onPointerDown={drag('new')}>
+          <div
+            className={g.tlZoomWin}
+            style={{
+              left: `${(lo / (N - 1)) * 100}%`,
+              right: `${100 - (hi / (N - 1)) * 100}%`,
+            }}
+            onPointerDown={drag('move')}
+          >
+            <i className={g.tlZoomGrip} onPointerDown={drag('lo')} />
+            <i className={`${g.tlZoomGrip} ${g.tlZoomGripR}`} onPointerDown={drag('hi')} />
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1088,24 +1545,25 @@ const PARCEL_LAYER = 'land:left';
 
 function LandCard({
   onShowLayers,
-  onZoomParcels,
   active,
+  reason,
+  byReason,
+  onPickReason,
 }: {
   onShowLayers: (ids: string[]) => void;
-  onZoomParcels: (oids: number[] | null) => void;
   /** Шүүлтэд багтсан дэд багц → ажлын төрлүүд; `null` = өгөгдөл хараахан алга */
   active: Map<string, string[]> | null;
+  /**
+   * СОНГОСОН ШАЛТГААН — БҮРХҮҮЛИЙН төлөв (2026-09-07).
+   *
+   * ⚠️ Энэ карт ӨӨРӨӨ БАРИХГҮЙ: сонголт нь газрын зураг ба «Саад — багцаар»
+   * картад ч үйлчилдэг тул нэг эх сурвалж дээрээс тархах ёстой.
+   */
+  reason: string | null;
+  byReason: ReturnType<typeof useAsync<Map<string, Set<number>>>>;
+  onPickReason: (k: string) => void;
 }) {
   const land = useAsync(loadLandStatus, []);
-  const byReason = useAsync(loadReasonOids, []);
-
-  /**
-   * СОНГОСОН ШАЛТГААН. `null` = сонгоогүй — тэр үед доорх «Багцын төрлөөр
-   * давхцаж буй» УТГА ХАРУУЛАХГҮЙ: бүх шалтгааны давхцлыг нийлүүлж үзүүлбэл
-   * дээрх жагсаалттай холбоогүй тусдаа тоо болж, хоёр хэсэг нэг картад
-   * зэрэгцээд бие биенээ тайлбарлахгүй байв.
-   */
-  const [reason, setReason] = useState<string | null>(null);
   const { subs, out: ov } = useOverlapBySubPkg(reason != null);
 
   /**
@@ -1153,20 +1611,6 @@ function LandCard({
       .sort((x, y) => y.value - x.value);
   }, [reason, ov, subs, byReason, active]);
 
-  /**
-   * Шалтгаан сонгох — төлөв тавиад ГАЗРЫН ЗУРГИЙГ тэр талбарууд руу аваачна.
-   *
-   * ⚠️ OID-оор (`FID IN (…)`) зумна, шалтгааны ТЕКСТЭЭР биш: жагсаалтын шошго
-   * нь `cleanReason`-оор цэвэрлэгдсэн (арын зай, төгсгөлийн «.» хасагдсан) тул
-   * түүхий утгатай үргэлж таарахгүй — SQL нь чимээгүй 0 мөр буцаана.
-   */
-  const pickReason = (k: string) => {
-    const next = k === reason ? null : k;
-    setReason(next);
-    const oids = next != null && byReason.state === 'ready' ? byReason.data.get(next) : null;
-    onZoomParcels(oids ? [...oids] : null);
-  };
-
 /** Мөр дарахад тухайн төрлийн БҮХ давхаргыг зурагт асааж, эхнийх рүү ойртоно */
   const show = (key: string) => {
     const r = rows.find((x) => x.key === key);
@@ -1192,7 +1636,7 @@ function LandCard({
                   color={BAR_HUE}
                   selected={reason}
                   /* Дахин дарвал сонголт тайлагдана — цуцлах тусдаа товчгүй */
-                  onSelect={pickReason}
+                  onSelect={onPickReason}
                   items={countBars(
                     d.reasons.map((r) => ({ key: r.label, label: r.label, value: r.n, sub: 0 })),
                     { one: tr('нэгж талбар'), many: tr('чөлөөгдөөгүй талбарын') },
@@ -1243,8 +1687,10 @@ function LandCard({
 function SaadCard({
   onShowLayers,
   keys,
+  oids,
 }: {
-  onShowLayers: (ids: string[]) => void;
+  /** `null` = сонголт ТАЙЛАГДЛАА, давхаргыг өмнөх төлөвт нь буцаа */
+  onShowLayers: (ids: string[] | null) => void;
   /**
    * ХУГАЦААНЫ ШҮҮЛТЭД багтсан багцын түлхүүрүүд. `null` = шүүлтгүй (бүгд).
    *
@@ -1253,15 +1699,45 @@ function SaadCard({
    * бүтэн олонлогоор шүүвэл тэдгээр нь шүүлтгүй үед ч чимээгүй алга болно.
    */
   keys: Set<string> | null;
+  /**
+   * СОНГОСОН ШАЛТГААНЫ нэгж талбарууд. `null` = шалтгаан сонгоогүй (бүгд).
+   *
+   * ⚠️ Сонгогдвол багц бүрийн давхцлыг ЭНЭ ОЛОНЛОГТОЙ ОГТЛОЛЦУУЛНА: «зөвшилцүх»
+   * дарахад «зөвшилцүх шалтгаантай талбар аль багцад саад болж байна» гэсэн
+   * асуултын хариу гарна. Огтлолцолгүй багц жагсаалтаас бүрмөсөн гарна —
+   * тэр багцад энэ шалтгаанаар саад БАЙХГҮЙ гэсэн үг.
+   */
+  oids: Set<number> | null;
 }) {
   const q = useAsync(loadPkgOverlaps, []);
-  const rows = useMemo(
-    () => (q.state !== 'ready' ? [] : keys ? q.data.filter((r) => keys.has(r.key)) : q.data),
-    [q, keys],
-  );
+  /**
+   * СОНГОСОН БАГЦ — дахин дарвал ТАЙЛАГДАНА (2026-09-07, хэрэглэгчийн хүсэлт).
+   *
+   * ⚠️ Цуцлах ТУСДАА товч байхгүй: жагсаалтын мөр өөрөө сэлгүүр. «Чөлөөгдөөгүй
+   * шалтгаанаар» картын зантай ижил — нэг картын дотор хоёр өөр цуцлах арга
+   * байвал хэрэглэгч аль нь юуг цуцлахыг таамаглах хэрэгтэй болно.
+   */
+  const [sel, setSel] = useState<string | null>(null);
+  const rows = useMemo(() => {
+    if (q.state !== 'ready') return [];
+    const byKey = keys ? q.data.filter((r) => keys.has(r.key)) : q.data;
+    if (!oids) return byKey.map((r) => ({ ...r, hit: r.oids }));
+    return byKey
+      .map((r) => ({ ...r, hit: r.oids.filter((o) => oids.has(o)) }))
+      .filter((r) => r.hit.length > 0)
+      .sort((a, b) => b.hit.length - a.hit.length);
+  }, [q, keys, oids]);
+  /**
+   * ХҮЧИНТЭЙ сонголт — жагсаалтад БАЙГАА эсэхээр шалгагдана.
+   *
+   * ⚠️ `useEffect`-ээр тэглэхгүй (react-hooks/set-state-in-effect): шалтгаан
+   * эсвэл хугацаа солигдоход сонгосон багц шинэ жагсаалтад байхгүй байж болох
+   * бөгөөд түүнийг ТООЦОЖ ГАРГАХ нь нэмэлт рендергүй, найдвартай.
+   */
+  const cur = sel != null && rows.some((r) => r.key === sel) ? sel : null;
   return (
     <Section
-      title={tr('Саад — багцаар')}
+      title={tr('Тулгамдаж буй асуудал')}
       /* ⚠️ ЯЛГААТАЙ талбар — зурвасуудын НИЙЛБЭР БИШ. Нэг үлдсэн нэгж
          талбар хэд хэдэн багцын шугам/блоктой зэрэг огтлолцоно (амьдаар: 105
          талбарын 73 нь 2–7 багцад тоологдож, нийлбэр 244 болдог). `Gazar`
@@ -1270,7 +1746,7 @@ function SaadCard({
       note={rows.length > 0
         ? tr('{0} багц · {1} талбар',
             num(rows.length),
-            num(new Set(rows.flatMap((r) => r.oids)).size))
+            num(new Set(rows.flatMap((r) => r.hit)).size))
         : undefined}
     >
       <Data q={q} minH={160}>
@@ -1281,15 +1757,18 @@ function SaadCard({
               color="var(--bad)"
               /* ⚠️ Эхний 8 — баруун багана нарийн; үлдсэнийг «дэлгэх» товчоор */
               limit={8}
+              selected={cur}
               onSelect={(k) => {
-                const r = rows.find((x) => x.key === k);
-                if (r) onShowLayers(r.layerIds);
+                const next = k === cur ? null : k;
+                setSel(next);
+                const r = next != null ? rows.find((x) => x.key === next) : null;
+                onShowLayers(r ? r.layerIds : null);
               }}
               items={rows.map((r) => ({
                 key: r.key,
                 label: nice(tr(r.name)),
-                value: r.oids.length,
-                display: tr('{0} талбар', num(r.oids.length)),
+                value: r.hit.length,
+                display: tr('{0} талбар', num(r.hit.length)),
               }))}
             />
           ))}
