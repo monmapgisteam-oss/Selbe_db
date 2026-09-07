@@ -210,12 +210,20 @@ assert.deepEqual(sCurve([row({ share: 0 })]), []);
     row({ oid: 3, type: 'БАРИЛГА', cost: 600, note: CONTRACTED, progress: null }),
   ];
 
-  /* Төрөл × өртөг — БУУРАХ эрэмбэ, дэд нь гүйцэтгэлийн дүн */
+  /*
+   * Төрөл × өртөг — БУУРАХ эрэмбэ, дэд нь ГЭРЭЭЛСЭН дүн.
+   *
+   * ⚠️ 2026-09-07: дэд цуваа нь ГҮЙЦЭТГЭЛ байснаа ГЭРЭЭЛСЭН болов
+   * (`chartTypeCost`-ийн тайлбарыг үз). Гүйцэтгэлийн хувь нь индикатор ба
+   * `kpisOf`-д хэвээр шалгагдана.
+   */
   const c1 = chartTypeCost(rows);
   assert.deepEqual(c1.map((x) => x.key), ['БАРИЛГА', 'ИНЖЕНЕР']);
   assert.equal(c1[1].value, 400);
-  assert.equal(c1[1].sub, 200);      // 300×50% + 100×50%
-  assert.equal(c1[0].sub, 0);        // ХЭМЖИГДЭЭГҮЙ (progress: null)
+  assert.equal(c1[1].sub, 300);      // зөвхөн CONTRACTED мөрийн өртөг
+  assert.equal(c1[0].sub, 600);      // БАРИЛГА нь бүхэлдээ гэрээлсэн
+  assert.equal(c1[1].count, 2);      // ажлын тоо
+  assert.equal(c1[1].countSub, 1);   // тэдгээрээс гэрээтэй нь
 
   /* Төрөл × тоо — дэд нь гэрээлсэн тоо */
   const c2 = chartTypeCount(rows);
