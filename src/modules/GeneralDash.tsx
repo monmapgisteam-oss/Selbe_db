@@ -264,6 +264,17 @@ export function GeneralDash({
       </aside>
 
       <main className={g.center}>
+        {/*
+          * ⚠️ ШҮҮЛТ нь ИНДИКАТОРЫН ДЭЭР (2026-09-07, хэрэглэгчийн заавар).
+          * Богино хугацаанд зургийн дээр байрлуулж үзээд буцав: тэнд гурван
+          * бүлгийн бүх утга (6 жил + 4 улирал + 12 сар) багтахгүй, зургийн
+          * өөрийн удирдлагатай ч давхцаж байлаа.
+          */}
+        <PeriodBar
+          period={period}
+          setPeriod={setPeriod}
+          years={cf.state === 'ready' ? yearsOf(cf.data) : []}
+        />
         <Data q={cf} minH={72}>
           {(rows) => (
             <KpiStrip
@@ -288,24 +299,6 @@ export function GeneralDash({
             uniform
             onPick={pick}
           />
-
-          {/*
-            * ХУГАЦААНЫ ШҮҮЛТ — ЗУРГИЙН ДЭЭР (2026-09-07, хэрэглэгчийн заавар).
-            *
-            * ⚠️ Урьд нь дашбоардын ДЭЭД мөрөнд бүтэн өргөнөөр сууж, гурван
-            * товчны төлөө бүхэл зурвас (~44px) иддэг байв. Зураг нь энэ
-            * харагдацын хамгийн уян хэсэг тул тэр зайг эргүүлэн авав.
-            *
-            * ⚠️ Зургийн бусад удирдлагатай НЭГ ГЭР БҮЛ: дээд зүүн буланд,
-            * давхарга/тунгалагийн товчнуудтай нэг өндөрт.
-            */}
-          <div className={g.mapFilter}>
-            <PeriodBar
-              period={period}
-              setPeriod={setPeriod}
-              years={cf.state === 'ready' ? yearsOf(cf.data) : []}
-            />
-          </div>
 
           {/* Дээш хураах — 2D/3D/BIM зурвас (зургийн дээд төвд) */}
           <button
@@ -380,7 +373,7 @@ export function GeneralDash({
                 className={`${g.tlTab} ${tlMode === 'chart' ? g.tlTabOn : ''}`}
                 onClick={() => setTlMode('chart')}
               >
-                {tr('Чарт')}
+                {tr('График')}
               </button>
               <button
                 type="button"
@@ -486,8 +479,6 @@ function PeriodBar({
   setPeriod: (p: Period) => void;
   years: number[];
 }) {
-  const [open, setOpen] = useState<{ k: Dim3; x: number; y: number } | null>(null);
-
   /**
    * ⚠️ ОЛОН СОНГОЛТ (2026-09-04, хэрэглэгчийн хүсэлт). Хэмжээс тус бүр нь
    * ОЛОНЛОГ; хоосон = бүгд. Гурав нь хоорондоо БАЙ (AND) — «2026 · 1,2-р
@@ -506,133 +497,98 @@ function PeriodBar({
     });
   };
 
-  const CFG: Record<Dim3, { label: string; opts: number[]; text: (v: number) => string }> = {
-    years: { label: tr('Жил'), opts: years, text: (v) => String(v) },
-    quarters: { label: tr('Улирал'), opts: QUARTERS, text: (v) => tr('{0}-р улирал', String(v)) },
-    months: { label: tr('Сар'), opts: MONTHS, text: (v) => tr('{0}-р сар', String(v)) },
+  /**
+   * ⚠️ ШОШГО НЬ ЗӨВХӨН ТОО («6», БИШ «6-р сар»): нүд бүр нь бүлгийн нэрийн
+   * («САР») дор зогсох тул нэгжийг давтах нь зурвасыг гурав дахин уртасгаад
+   * мэдээлэл нэмэхгүй. Дэлгэрэнгүй нэр нь `title`-д үлдэнэ.
+   */
+  const CFG: Record<Dim3, { label: string; opts: number[]; text: (v: number) => string; full: (v: number) => string }> = {
+    years: {
+      label: tr('Жил'), opts: years, text: (v) => String(v), full: (v) => String(v),
+    },
+    quarters: {
+      label: tr('Улирал'),
+      opts: QUARTERS,
+      text: (v) => String(v),
+      full: (v) => tr('{0}-р улирал', String(v)),
+    },
+    months: {
+      label: tr('Сар'),
+      opts: MONTHS,
+      text: (v) => String(v),
+      full: (v) => tr('{0}-р сар', String(v)),
+    },
   };
 
-  /** Сегмент дээрх утга — олон сонгосон бол «2024 +2» гэж хураана */
-  const valueOf = (k: Dim3) => {
+  /**
+   * БҮЛЭГ — нэр, «Бүгд», дараа нь утга бүр өөрийн ШАХМАЛААР.
+   *
+   * ⚠️ ЦЭС БАЙХГҮЙ (2026-09-07, хэрэглэгчийн шийдвэр). Урьд нь гурван унждаг
+   * цэс байсан: сонголт хийхийн тулд нээх → сонгох → хаах гэсэн гурван алхам
+   * шаардагддаг бөгөөд ЯМАР утгууд байгааг нээхээс өмнө мэдэх аргагүй байв.
+   * Бүх утга ил байвал сонголт НЭГ товшилт болно.
+   *
+   * ⚠️ «Бүгд» нь ЧАГТ шиг ажиллана: дарвал бүх утга сонгогдоно, дахин дарвал
+   * тайлагдана (хоосон = бүгд гэсэн утга ижил).
+   */
+  const grp = (k: Dim3) => {
+    const c = CFG[k];
     const sel = period[k];
-    if (sel.length === 0) return '';
-    if (sel.length === 1) return CFG[k].text(sel[0]);
-    return tr('{0} +{1}', CFG[k].text(sel[0]), String(sel.length - 1));
-  };
-
-  const drop = (k: Dim3) => {
-    const on = period[k].length > 0;
+    /*
+     * ⚠️ ХОЁР ӨӨР ОЙЛГОЛТ (2026-09-07-ны алдааны засвар):
+     *   · `allPicked` — БҮГД ил чагттай. Дарвал ТАЙЛНА.
+     *   · `allOn`     — тэмдэглэгээ. Хоосон нь ч «бүгд»-ийг хамардаг тул тод.
+     * Урьд нь хоёуланг `allOn`-оор шийддэг байсан тул ЭХНИЙ (хоосон) төлөвт
+     * «Бүгд» дарахад цэвэрлэх салаа руу орж, нэг ч утга сонгогддоггүй байв.
+     */
+    const allPicked = c.opts.length > 0 && sel.length === c.opts.length;
+    const allOn = sel.length === 0 || allPicked;
     return (
-      <button
-        key={k}
-        type="button"
-        aria-haspopup="listbox"
-        aria-expanded={open?.k === k}
-        className={`${g.fDrop} ${on ? g.fDropOn : ''}`}
-        onClick={(ev) => {
-          const r = (ev.currentTarget as HTMLElement).getBoundingClientRect();
-          setOpen((o) => (o?.k === k ? null : { k, x: r.left, y: r.bottom }));
-        }}
-      >
-        <span className={g.fDropLbl}>{CFG[k].label}</span>
-        <span className={g.fDropVal}>{valueOf(k)}</span>
-      </button>
-    );
-  };
-
-  const menu = () => {
-    if (!open) return null;
-    const c = CFG[open.k];
-    const sel = period[open.k];
-    /* ⚠️ ХООСОН нь ч «бүгд»: шүүлтгүй төлөв нь бүх утгыг хамардаг тул хоёулаа
-       ижил байдлаар тэмдэглэгдэнэ. */
-    const allOn = sel.length === 0 || sel.length === c.opts.length;
-    return (
-      <>
-        <div className={g.fVeil} onClick={() => setOpen(null)} />
-        <ul
-          className={g.fMenu}
-          role="listbox"
-          aria-multiselectable
-          style={{ left: Math.min(open.x, Math.max(8, window.innerWidth - 200)), top: open.y }}
+      <span key={k} className={g.fGrp}>
+        <span className={g.fGrpLbl}>{c.label}</span>
+        <button
+          type="button"
+          aria-pressed={allOn}
+          className={`${g.fPill} ${allOn ? g.fPillOn : ''}`}
+          onClick={() => setPeriod({ ...period, [k]: allPicked ? [] : [...c.opts] })}
         >
-          {/*
-            * «БҮГД» — БҮХ сонголтыг ЧАГТАЛНА (2026-09-07, хэрэглэгчийн заавар).
-            *
-            * ⚠️ Урьд нь энэ нь ЦЭВЭРЛЭХ үйлдэл байсан (олонлогийг хоослох).
-            * Үр дүн нь ижил (хоосон = бүгд) ч дэлгэц дээр НЭГ Ч чагт асдаггүй
-            * тул «дарсан ч юу ч болсонгүй» гэж уншигддаг байв.
-            *
-            * ⚠️ Бүгд аль хэдийн чагттай үед дарвал ТАЙЛНА — эс бөгөөс энэ мөр
-            * нэг чиглэлт болж, буцаах ганц зам нь чагтуудыг нэг нэгээр
-            * тайлах болно.
-            */}
-          <li>
-            <button
-              type="button"
-              role="option"
-              aria-selected={allOn}
-              className={`${g.fOpt} ${allOn ? g.fOptOn : ''}`}
-              onClick={() => setPeriod({
-                ...period,
-                [open.k]: allOn ? [] : [...c.opts],
-              })}
-            >
-              <i className={g.fTick} aria-hidden>{allOn ? '✓' : ''}</i>
-              {tr('Бүгд')}
-            </button>
-          </li>
-          {c.opts.map((v) => (
-            <li key={v}>
-              {/* ⚠️ Цэс сонголт бүрд ХААГДАХГҮЙ — олон зүйл сонгох гол зорилго */}
-              <button
-                type="button"
-                role="option"
-                aria-selected={sel.includes(v)}
-                className={`${g.fOpt} ${sel.includes(v) ? g.fOptOn : ''}`}
-                onClick={() => toggle(open.k, v)}
-              >
-                <i className={g.fTick} aria-hidden>{sel.includes(v) ? '✓' : ''}</i>
-                {c.text(v)}
-              </button>
-            </li>
-          ))}
-        </ul>
-      </>
+          {tr('Бүгд')}
+        </button>
+        {c.opts.map((v) => (
+          <button
+            key={v}
+            type="button"
+            aria-pressed={sel.includes(v)}
+            title={c.full(v)}
+            className={`${g.fPill} ${sel.includes(v) ? g.fPillOn : ''}`}
+            onClick={() => toggle(k, v)}
+          >
+            {c.text(v)}
+          </button>
+        ))}
+      </span>
     );
   };
 
   return (
-    /*
-     * ⚠️ ХУРААХ ТОВЧ БАЙХГҮЙ (2026-09-07, хэрэглэгчийн шийдвэр). Урьд нь
-     * «ШҮҮХ ▾» товчоор нээж хаадаг байсныг хассан: гурван сегмент нь өөрсдөө
-     * нэг мөрд багтдаг бөгөөд шүүлт нь БҮХ картад үйлчилдэг тул түүнийг нуух
-     * нь «энэ дэлгэц юугаар шүүгдсэн бэ» гэдгийг далдалдаг байв. Нээх алхам
-     * нь өөрөө шүүлт хэрэглэхийг саатуулж байлаа.
-     */
     <div className={g.filters}>
-      {menu()}
-      <div className={g.fBar}>
-        {drop('years')}
-        {drop('quarters')}
-        {drop('months')}
-        {/*
-          * ⚠️ ЦУЦЛАХ нь ЗУРВАСЫН ДОТОР, сүүлийн сегмент — хайлтын талбарын
-          * ✕-тэй ижил зарчим: цэвэрлэх үйлдэл цэвэрлэх зүйлтэйгээ нэг
-          * хүрээнд байна.
-          */}
-        {periodActive(period) && (
-          <button
-            type="button"
-            className={g.fClear}
-            title={tr('Шүүлт цуцлах')}
-            aria-label={tr('Шүүлт цуцлах')}
-            onClick={() => setPeriod(NO_PERIOD)}
-          >
-            ✕
-          </button>
-        )}
-      </div>
+      {grp('years')}
+      {grp('quarters')}
+      {grp('months')}
+      {/* ⚠️ ЦУЦЛАХ нь зурвасын ТӨГСГӨЛД, зөвхөн шүүлттэй үед — цэвэрлэх зүйлгүй
+          үед байнга зогсох товч нь зай эзэлж, «юу цуцлах вэ» гэсэн асуулт
+          төрүүлнэ. */}
+      {periodActive(period) && (
+        <button
+          type="button"
+          className={g.fClear}
+          title={tr('Шүүлт цуцлах')}
+          aria-label={tr('Шүүлт цуцлах')}
+          onClick={() => setPeriod(NO_PERIOD)}
+        >
+          ✕
+        </button>
+      )}
     </div>
   );
 }
