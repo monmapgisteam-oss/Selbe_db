@@ -389,6 +389,34 @@ const ORDER = fineOrder();
  * бүгд 17+18+4+82 = 121 < 132. Агуулга нэмэх бол ЭНЭ тооцоог шинэчил — эс
  * бөгөөс доод мөрийн зангилаатай ЧИМЭЭГҮЙ ДАВХЦАНА (`GEO_FINE`-ийн ижил занга).
  */
+/**
+ * ЗҮҮН ТАЛЫН ЖАГСААЛТЫН ДАРААЛАЛ — ЧУХЛЫН ЭРЭМБЭ (2026-09-07, хэрэглэгч:
+ * «нэмэлтээр зүүн талд KPI-уудын лист харуулъя — 1. газар чөлөөлөлт
+ * 2. багцын гүйцэтгэл 3. багцын санхүү, цаашаа rank хамаагүй»).
+ *
+ * ⚠️ `CEO_KPIS`-ийн дарааллыг ХӨНДӨХГҮЙ: тэр нь ТӨСЛИЙН МӨЧЛӨГӨӨР
+ *    (төлөвлөлт → нөхцөл → гүйцэтгэл → хяналт → санхүү) эрэмбэлэгдсэн
+ *    бөгөөд схемийн урсгалтай уялддаг. Энэ жагсаалт нь ӨӨР зорилготой:
+ *    «юуг эхэлж харах вэ». Хоёрыг нэгтгэвэл аль нэг нь гажина.
+ *
+ * ⚠️ ТҮВШНЭЭР ЭРЭМБЭЛЭХГҮЙ (улаан нь дээшээ гэх мэт): тэгвэл үзүүлэлт
+ *    өдөр бүр өөр байрлалд суух бөгөөд «дээрээс 3 дахь мөр» гэсэн
+ *    булчингийн санах ой ажиллахаа болино. Дохиог ӨНГӨ, тэмдэг өгнө.
+ *
+ * ⚠️ Энд БАЙХГҮЙ түлхүүр жагсаалтын ТӨГСГӨЛД бүртгэлийн дарааллаар
+ *    нэмэгдэнэ — шинэ үзүүлэлт нэмэхэд ЧИМЭЭГҮЙ алга болохгүй.
+ */
+const LIST_ORDER: string[] = [
+  /* 1 · Газар чөлөөлөлт — барилга эхлэх урьдчилсан нөхцөл */
+  'land',
+  /* 2 · Багцын гүйцэтгэл — хуваарь, обьём, хяналт, чанар */
+  'schedule', 'variance', 'review', 'qaqc',
+  /* 3 · Багцын санхүү — акт, гэрээ, төсөв */
+  'ipc', 'contractGap', 'uncontracted',
+  /* Цаашид: нөхцөл ба аюулгүй байдал */
+  'permits', 'suitability', 'safety', 'workforce', 'iot',
+];
+
 const GEO_HOME = { w: 158, h: 102, gapX: 20, gapY: 30, pad: 16 };
 const L = layoutOf<FineId>(FINE_NODES, GEO_HOME);
 
@@ -508,6 +536,36 @@ export function CeoBoard({ onView }: { onView: (key: ViewKey) => void }) {
       .sort((a, b) => rank[a.level] - rank[b.level]);
   }, [slots]);
 
+  /**
+   * ЗҮҮН ТАЛЫН ЖАГСААЛТ — БҮХ үзүүлэлт (зөвхөн дохиотой нь БИШ).
+   * ⚠️ Толгойн «яаралтай» жагсаалтаас ЯЛГААТАЙ: тэр нь асуудлыг шүүдэг,
+   *    энэ нь БҮРЭН зураглал — «хэвийн» үзүүлэлт ч ил байх ёстой, эс
+   *    бөгөөс «энэ тоог хаанаас харах вэ» гэсэн асуулт үлдэнэ.
+   */
+  const listRows = useMemo(() => {
+    const rank = new Map(LIST_ORDER.map((k, i) => [k, i]));
+    return CEO_KPIS
+      .map((def) => {
+        const slot = slots[def.key];
+        const d = slot?.state === 'ready' ? slot.data : null;
+        const node = fineOf(def.key);
+        return {
+          key: def.key,
+          title: def.title,
+          icon: def.icon,
+          level: levelOf(slot),
+          /* ⚠️ Ачаалж байхад «—» гэж бичихгүй: «—» нь ХЭМЖИГДЭЭГҮЙ гэсэн
+             утгатай тул хүлээлтийг мэдээлэлгүйтэй андуурна. */
+          value: slot?.state === 'error' ? '—' : d ? d.value : '…',
+          unit: d ? d.unit : '',
+          node: node ?? null,
+        };
+      })
+      /* ⚠️ Тогтвортой эрэмбэ: жагсаалтад байхгүй түлхүүр төгсгөлд, өөр
+         хоорондоо бүртгэлийн дарааллаар үлдэнэ. */
+      .sort((a, b) => (rank.get(a.key) ?? 99) - (rank.get(b.key) ?? 99));
+  }, [slots]);
+
   const toggle = (id: FineId) => {
     setTouched(true);
     setOpenId(shownId === id ? null : id);
@@ -596,6 +654,45 @@ export function CeoBoard({ onView }: { onView: (key: ViewKey) => void }) {
         * ⚠️ `min-width` нь зурагтайгаа тэнцүү: доторх карт үнэмлэхүй байрлалтай
         *    тул эцэг нь өргөнөө өөрөө мэдэхгүй, зарлаагүй бол зураг тасарна.
         */}
+      <div className={s.stage}>
+        {/*
+          * ЗҮҮН ТАЛЫН ЖАГСААЛТ — 13 үзүүлэлт нэг баганад.
+          * ⚠️ Мөр дарахад тухайн үзүүлэлтийн ЗАНГИЛАА нээгдэж, схем дээр
+          *    тодорно — жагсаалт ба зураг НЭГ төлөв хуваалцана.
+          * ⚠️ Зангилаагүй үзүүлэлт (`node === null`) дарагдахгүй: очих
+          *    газаргүй товч нь эвдэрсэн мэт мэдрэгдэнэ.
+          */}
+        <aside className={s.side} aria-label={tr('Үзүүлэлтүүд')}>
+          <h3 className={s.sideHead}>{tr('Үзүүлэлтүүд')}</h3>
+          <ul className={s.sideList}>
+            {listRows.map((r) => (
+              <li key={r.key}>
+                <button
+                  type="button"
+                  className={`${s.sideRow} ${r.node && shownId === r.node ? s.sideOn : ''}`}
+                  style={{ ['--h']: LEVEL_TONE[r.level] } as CSSProperties}
+                  disabled={!r.node}
+                  aria-current={r.node && shownId === r.node ? 'true' : undefined}
+                  title={`${r.title}${r.unit ? ` — ${r.value} ${r.unit}` : ''}`}
+                  onClick={() => { if (r.node) { setTouched(true); setOpenId(r.node); } }}
+                >
+                  <span className={s.sideIcon} aria-hidden><Icon name={r.icon} size={13} /></span>
+                  {/* ⚠️ ХОЁР МӨР: нэр дээр, тоо доор. Нэг мөрөнд багтаах гэвэл
+                      «164,466,838,321 ₮» мэт бүтэн мөнгөн дүн 260px-д
+                      таслагдана — товчлол нь ХОРИОТОЙ (`format.ts`). */}
+                  <span className={s.sideBody}>
+                    <b className={s.sideTitle}>{r.title}</b>
+                    <span className={s.sideNums}>
+                      <span className={`${s.sideVal} num`}>{r.value}</span>
+                      {r.unit && <i className={s.sideUnit}>{r.unit}</i>}
+                    </span>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </aside>
+
       <div className={s.canvasWrap}>
         <div className={s.canvas} style={{ width: L.w, height: L.h }}>
           <svg className={s.edges} width={L.w} height={L.h} aria-hidden focusable="false">
@@ -632,6 +729,7 @@ export function CeoBoard({ onView }: { onView: (key: ViewKey) => void }) {
             />
           ))}
         </div>
+      </div>
       </div>
 
       {/*
