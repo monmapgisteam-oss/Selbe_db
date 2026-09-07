@@ -73,6 +73,16 @@ function useWidth<T extends HTMLElement>(): [React.RefObject<T | null>, number] 
    ⚠️ `createPortal` ХЭРЭГГҮЙ (төсөлд хаана ч ашиглагдаагүй, ssr:false-тэй
    харилцан үйлчлэл нэмэхээс зайлсхийв). */
 
+/**
+ * ЗААГ ЗУРААС — `hint` массивт энэ утгыг тавибал тэр байрлалд зураас гарна.
+ *
+ * ⚠️ ТУСГАЙ УТГА, ердийн текст БИШ. Задаргааны мөрүүд урт болоход аль нь аль
+ * бүлэгт хамаарах нь ялгагдахаа больдог (жиш. «Урьдчилсан төсөвт өртөг»-ийн
+ * панелд ГҮЙЦЭТГЭЛ ба ОЛГОЛТ хоёр өөр эх сурвалж). Дуудагч тал бүлэг бүрийн
+ * ХООРОНД үүнийг оруулна.
+ */
+export const TIP_RULE = '—hr—';
+
 /** ⚠️ `hint` нь ОЛОН МӨР байж болно — задаргааг чартын мөрөөс энэ рүү зөөв */
 type TipData = {
   x: number; y: number; label: string; value: string;
@@ -162,8 +172,14 @@ function Tip({ x, y, label, value, color, hint }: TipData) {
         {/* ⚠️ ОЛОН МӨР — задаргаа нь чартын мөрөнд БИШ энд байх ёстой
             (2026-09-04, хэрэглэгчийн шийдвэр: «чарт өөрөө энгийн, hover
             панел дээр дэлгэрэнгүй задаргаа»). Мөр бүр өөрийн цэгтэй. */}
-        {(Array.isArray(hint) ? hint : hint ? [hint] : []).map((h) => (
-          <span key={h} className={s.tipHint}>{h}</span>
+        {(Array.isArray(hint) ? hint : hint ? [hint] : []).map((h, i) => (
+          h === TIP_RULE
+            /* ⚠️ Түлхүүр нь ИНДЕКСЭЭР: зураас олон удаа давтагдаж болох тул
+               утгыг нь түлхүүр болговол React давхардсан түлхүүр гэж
+               гомдоллоно. Жагсаалт нь дахин эрэмбэлэгддэггүй тул аюулгүй. */
+            // eslint-disable-next-line react/no-array-index-key
+            ? <i key={`hr${i}`} className={s.tipRule} aria-hidden />
+            : <span key={h} className={s.tipHint}>{h}</span>
         ))}
       </span>
     </div>

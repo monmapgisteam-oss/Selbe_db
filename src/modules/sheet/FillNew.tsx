@@ -5,6 +5,8 @@ import { submitForReview } from '@/lib/hyanaltSubmit';
 import { loadPkgPlan, planPctFromMonths, type PkgPlan } from '@/lib/huvaariObyem';
 import {
   computeAll,
+  editPct,
+  isPctEdit,
   loadRows,
   msToDay,
   parentIndexes,
@@ -36,10 +38,9 @@ import {
   rowKeyOf,
 } from "./sheetFrame";
 import {
-  loadActiveSubmission,
-  loadSubmissionByOid,
-  mergeSubmission,
   readActiveSubmission,
+  readSubmissionByOid,
+  mergeSubmission,
   saveSubmission,
   type NewRow,
   type StagedSubmission,
@@ -59,7 +60,7 @@ import { sheetDates } from "./sheetRows";
 import { useColWidths } from "./colWidths";
 import { parseGrid, planPaste } from "./paste";
 import {
-  clearRemoteDraft, loadRemoteDraft, saveRemoteDraft, REMOTE_MAX,
+  clearRemoteDraft, readRemoteDraft, saveRemoteDraft, REMOTE_MAX,
 } from "@/lib/draftRemote";
 import { t as tr } from "@/lib/i18nCore";
 import st from "./sheet.module.css";
@@ -371,6 +372,8 @@ const RO = {
   noObyemField: tr('Энэ блокт обьёмын багана үйлчилгээнд үүсээгүй тул хадгалах газаргүй (AGOL дээр нэмэх шаардлагатай).'),
   pctFromVol: tr('Хувь нь «бөглөсөн обьём ÷ мөрийн Обьём»-оор бодогдоно — гараар засагдахгүй.'),
   noRowVol: tr('Энэ мөрд «Обьём» бөглөгдөөгүй тул хувь бодогдохгүй. Обьёмын баганад мөрийн нийт тоо хэмжээг оруулмагц хувь нь өөрөө гарч эхэлнэ.'),
+  /* ⚠️ 2026-09-06: обьёмын багана дутуу блокт ХУВЬ горим ажиллана. */
+  pctOnlyHint: tr('Энэ блокт обьёмын багана байхгүй тул зөвхөн ХУВИАР бөглөнө — обьём хадгалагдахгүй.'),
   blockPlan: tr('Барилга-төлөвлөгөөт нь эхлэх/дуусах огноо ба шинэчлэгдсэн огноогоор бодогдоно — огноог нь засаарай.'),
   groupDate: tr('Энэ огноо нь доод ажлуудынхаа хамгийн эрт эхлэх / хамгийн сүүл дуусахаар бодогдож байна — доод ажлынхаа огноог засаарай.'),
   noDateField: tr('Энэ блокт огнооны багана үйлчилгээнд байхгүй тул хадгалах газаргүй.'),
@@ -779,6 +782,39 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   const [addForm, setAddForm] = useState({ no: "", work: "", vol: "", unit: "" });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  /** Обьёмын баганагүй блокийн тайлбарыг НЭГ Л УДАА хэлнэ (чимээ болгохгүй) */
+  const pctHintRef = useRef(false);
+
+  /**
+   * БӨГЛӨХ ГОРИМ — ОБЬЁМ эсвэл ХУВЬ (2026-09-06, хэрэглэгчийн хүсэлт).
+   *
+   * ⚠️ Нүд тус бүрд БИШ, ХУУДАС даяар: нэг мөрөнд зарим нүдийг обьёмоор,
+   * заримыг хувиар бөглөвөл багана хооронд нүдээр харьцуулах боломжгүй болно.
+   * Товч дарахад БҮХ БАГАНА нэг дор солигдоно.
+   *
+   * ⚠️ ХАДГАЛАГДСАН УТГА СОЛИГДОХГҮЙ — зөвхөн ХАРАГДАЦ ба ОРОЛТ. Аль ч
+   * горимд нүдэнд обьём ба хувь ХОЁУЛАА харагдана; горим нь зөвхөн аль нь
+   * ТОМООР гарах ба бичихэд аль нь ойлгогдохыг шийднэ.
+   *
+   * ⚠️ Хөтөчид сонголтыг санана — өдөр бүр нэг горимоор ажилладаг хүн товчийг
+   * дахин дахин дарахгүй.
+   */
+  const [fillMode, setFillMode] = useState<"obyem" | "pct">(() => {
+    try {
+      return localStorage.getItem("selbe-fill-mode") === "pct" ? "pct" : "obyem";
+    } catch { return "obyem"; }
+  });
+  const toggleFill = useCallback(() => {
+    setFillMode((m) => {
+      const n = m === "obyem" ? "pct" : "obyem";
+      try { localStorage.setItem("selbe-fill-mode", n); } catch { /* хаалттай орчин */ }
+      return n;
+    });
+    /* ⚠️ Нээлттэй нүдийг ХААНА: оролтын `defaultValue` нь горимын дагуу
+       бэлдэгддэг тул нээлттэй хэвээр үлдвэл өмнөх горимын тоо харагдсаар
+       байгаад буруу нэгжээр бичигдэнэ. */
+    setEdit(null);
+  }, []);
   // Нийтлээгүй засварууд, `${oid}:${barilgaIndex}` түлхүүрээр. Утга нь хувь
   // ("" = хоосон болгох). Зөвхөн «Нийтлэх» дархад үйлчилгээнд бичигдэнэ.
   const [pending, setPending] = useState<Record<string, string>>({});
@@ -964,6 +1000,12 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   const [remoteState, setRemoteState] = useState<
     null | { kind: 'ok'; at: number } | { kind: 'big' } | { kind: 'fail' }
   >(null);
+  /**
+   * ИЛГЭЭЛТИЙН УНШИЛТ УНАСАН (2026-09-07). `null` = асуудалгүй.
+   * ⚠️ Энэ нь «илгээлт байхгүй» гэсэн үг БИШ — уншиж чадаагүй гэсэн үг.
+   *    Хоёрыг ялгаж байж л хэрэглэгч 0%-ийг үнэн гэж эндүүрэхгүй.
+   */
+  const [subReadErr, setSubReadErr] = useState<string | null>(null);
   /** Сүүлийн алсын илгээлтийн агшин — дээд хүлээлтийн (60 сек) лавлах цэг */
   const lastRemoteRef = useRef(0);
 
@@ -980,6 +1022,12 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
          санал болгогдоно. */
     remoteQueue.current = null;
     keepDraft.current = false;
+    /* ⚠️ АЛСЫН БАЙДАЛ ч БАГЦАД ХАРЬЯАЛАГДАНА (2026-09-07). Үлдээвэл
+       Багц 1-ийн «ArcGIS 14:20» ногоон заалт (эсвэл «хуулагдсангүй» шар
+       анхааруулга) Багц 2 дээр наалдаж, шинэ багцын ажил алсад ороогүй
+       байхад ХУДАЛ баталгаа болно. Шинэ багц заалтгүй эхэлж, зөвхөн
+       бодит илгээлтийн дараа гарна. */
+    setRemoteState(null);
     /* ⚠️ Илгээлт унасны туг нь НЭГ багцынх — үлдээвэл шинэ багцад худал
        анхааруулга үүснэ. */
     setSubmitFailed(false);
@@ -1027,15 +1075,38 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
          *    тохиолдолд харагдах ёстой; илгээлтгүй хуудас нь хоосон хуудсаас
          *    хамаагүй дээр.
          */
+        /*
+         * ⚠️ УНШИЛТЫН АЛДААГ ЯЛГАНА (2026-09-07-ны аудит, CRITICAL).
+         *
+         * Урьд нь `loadActiveSubmission`/`loadSubmissionByOid` (алдааг
+         * ЗАЛГИДАГ хос) дуудагдаж, гадуур нь `catch { sub = null }` байв —
+         * тэр хоёр нь «илгээлт БАЙХГҮЙ» ба «уншиж ЧАДСАНГҮЙ» хоёрыг ижил
+         * `null` болгодог. Сүлжээ түр тасрах, токен дуусах, `tableUrl`
+         * `null` буцаах агшинд overlay ХИЙГДЭХГҮЙ, хэрэглэгч архивын суурь
+         * жаазыг (бүх нүд 0%) хараад «илгээсэн ажил минь алга болжээ» гэж
+         * дүгнэнэ — ЯМАР Ч алдаа харагдахгүй. 2026-09-06-нд «Багц 3.1,
+         * Хяналтаас БУЦААСАН, бүх нүд 0%» гэсэн бодит гомдол ирсэн.
+         *
+         * ⚠️ ЯГ ЭНЭ алдааг `hyanaltStore.ts` (архивын зам) ба
+         * `hyanaltDetail.ts` (хянагчийн зам) дээр 2026-09-04-нд CRITICAL гэж
+         * тэмдэглэн `read*` хос руу шилжүүлсэн — бөглөх хуудасны АЧААЛАХ
+         * зам ганцаараа хоцорсон байв.
+         *
+         * ⚠️ Уншилт унавал СУУРЬ ЖААЗ ХЭВЭЭР зурагдана (хуудас хоосрохгүй),
+         * гэхдээ дээр нь ИЛ анхааруулга гарч «тоо дутуу байж болзошгүй» гэдгийг
+         * хэлнэ — эс бөгөөс хэрэглэгч 0%-ийг үнэн гэж үзээд дахин бөглөнө.
+         */
         let sub: StagedSubmission | null = null;
-        try {
-          sub = view?.subOid
-            ? await loadSubmissionByOid(view.subOid)
-            : await loadActiveSubmission(pkg.key);
-        } catch {
-          sub = null;
+        let subErr: string | null = null;
+        {
+          const sr = view?.subOid
+            ? await readSubmissionByOid(view.subOid)
+            : await readActiveSubmission(pkg.key);
+          if (sr.ok) sub = sr.sub;
+          else subErr = sr.error;
         }
         if (!alive) return;
+        setSubReadErr(subErr);
         /* ⚠️ `Шилжүүлсэн` (батлагдсан) урсгалын дор давхарлахгүй: тэр мөчлөг
            дууссан бөгөөд агуулга нь архивт орсон. Хянагчийн харагдац
            (`view.subOid`) нь ТУХАЙН илгээлтийг заасан тул урсгалаас
@@ -1554,7 +1625,44 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    */
   /* ⚠️ Оролт нь `{ group }`-тай ямар ч мөр: нооргийн сэргээлт серверийн мөр ба
      хараахан нийтлэгдээгүй НЭМСЭН мөр хоёуланг нь нэг индексээр шалгадаг. */
-  const volMode = (r: { group: boolean }, b: number) => !r.group && !!sc?.obyem[b];
+  const volMode = (r: { group: boolean }, b: number) =>
+    !r.group && (fillMode === "pct" || !!sc?.obyem[b]);
+
+  /**
+   * ХУВЬ ГОРИМД БИЧИХ БОЛОМЖТОЙ ЮУ.
+   *
+   * ⚠️ Обьёмын багана (`sc.obyem[b]`) ШААРДАХГҮЙ: хувь нь `sc.act[b]`-д
+   * хадгалагдана, тэр багана 107/107 блокт бүрэн бий. Тиймээс хувь горим нь
+   * обьёмын багана дутуу блокуудыг ч нээнэ.
+   */
+  const pctOnly = (r: { group: boolean }, b: number) =>
+    fillMode === "pct" && !r.group && !sc?.obyem[b];
+
+  /**
+   * НҮД НЭЭХЭД ОРОЛТОД ТАВИХ ТОО — ОДООГИЙН горимын нэгжээр.
+   *
+   * ⚠️ `pending[key]`-ийг ШУУД тавьж БОЛОХГҮЙ: тэр нь өөр горимоор бичигдсэн
+   * байж болно (`"%50"`). Хөрвүүлэлгүй тавибал «50» гэсэн тоо обьём горимд
+   * 50 м³ гэж уншигдана.
+   */
+  const cellSeed = (r: SheetRow, b: number): string => {
+    const raw = pending[cellKey(r.oid, b)];
+    const pct = editPct(raw);
+    if (fillMode === "pct") {
+      if (pct != null) return String(Math.round(pct * 1e6) / 1e4);
+      /* Обьёмоор бичсэн эсвэл хадгалагдсан — хувь руу хөрвүүлнэ */
+      const ob = raw != null && !isPctEdit(raw)
+        ? (raw.trim() === "" ? null : Number(raw))
+        : r.obyem[b];
+      const p2 = ob != null && r.vol != null && r.vol > 0 ? ob / r.vol : r.act[b];
+      return p2 == null ? "" : String(Math.round(p2 * 1e6) / 1e4);
+    }
+    if (pct != null) {
+      /* Хувиар бичсэнийг обьём руу — мөрийн Обьёмгүй бол хоосон (бодох аргагүй) */
+      return r.vol != null && r.vol > 0 ? qtyRaw(pct * r.vol) : "";
+    }
+    return raw ?? qtyRaw(r.obyem[b]);
+  };
 
 
 
@@ -1643,6 +1751,38 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       return;
     }
 
+    /* ══ ХУВИАР БӨГЛӨХ ГОРИМ (2026-09-06) ══════════════════════════════
+     * Утга нь `pending`-д `"%50"` гэж хадгалагдана — `bagtsSheet.cellObyem`
+     * ба `cellPct` хоёулаа энэ угтварыг таьна. Ингэснээр ноорог, илгээлт,
+     * overlay гэсэн доод сувгууд огт хөндөгдөхгүй (бүгд мөр зөөдөг).
+     *
+     * ⚠️ Обьёмын шалгалтууд (буурсан уу · мөрийн Обьёмоос хэтэрсэн үү) энд
+     * ХАМААРАХГҮЙ: хувь нь өөрөө 100-аас давж болно (эх өгөгдөлд бий) бөгөөд
+     * буурах нь засвар байж болно. Оронд нь ганц зүйлийг л барина — сөрөг. */
+    if (fillMode === "pct") {
+      if (t !== "" && Number(t) < 0) {
+        setErr(tr('{0} · {1}: хувь сөрөг байж болохгүй.', sc?.bld[b] ?? "", r.work));
+        return;
+      }
+      const storedPct = r.vol != null && r.vol > 0 && r.obyem[b] != null
+        ? r.obyem[b]! / r.vol
+        : r.act[b];
+      const nv = t === "" ? "" : `%${Number(t)}`;
+      setErr("");
+      setPending((pv) => {
+        const n = { ...pv };
+        /* Хадгалагдсантайгаа ТЭНЦҮҮ бол «нийтлээгүй» тэмдэглэгээг арилгана.
+           ⚠️ Хөвөгч цэгийн 1e-9 хүлцэл: 0.5 ↔ 0.4999999999 нь ижил утга. */
+        const same = t === ""
+          ? storedPct == null
+          : storedPct != null && Math.abs(Number(t) / 100 - storedPct) < 1e-9;
+        if (same) delete n[key];
+        else n[key] = nv;
+        return n;
+      });
+      return;
+    }
+
 
     /* ── ОБЬЁМ — гараар бичсэн ШУУД утга ────────────────────────────────
      * ⚠️ Хэрэглэгч нүдэнд «одоо болтол хийсэн НИЙТ хэмжээ»-гээ бичнэ.
@@ -1728,8 +1868,31 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     const local = readDraft(pkg.key);
     let alive = true;
     void (async () => {
-      const rem = await loadRemoteDraft(pkg.key);
+      /*
+       * ⚠️ УНШИЛТЫН АЛДААГ ЯЛГАНА (2026-09-07).
+       *
+       * Урьд нь `loadRemoteDraft` нь «ноорог БАЙХГҮЙ» ба «уншиж ЧАДСАНГҮЙ»
+       * хоёрыг ижил `null`-аар буцаадаг байв. Сүлжээ түр тасрах, токен
+       * шинэчлэгдэх агшинд гэрийн компьютер дээр бөглөсөн ноорог ОГТ
+       * сэргэхгүй, дэлгэцэд ямар ч алдаа гарахгүй — бөглөгч хоосон хуудас
+       * хараад ажлаа алдсан гэж дүгнэнэ. Дээрээс нь `promptedPkgRef` аль
+       * хэдийн тавигдсан тул тэр сешнд ДАХИН оролдохгүй: зөвхөн хуудсыг
+       * бүтнээр дахин ачаалж (F5) байж сэргэдэг байлаа.
+       *
+       * ⚠️ Одоо: уншилт унавал (а) ИЛ мэдэгдэнэ, (б) `promptedPkgRef`-ийг
+       * БУЦААЖ хоослох тул дараагийн ачаалалт (багц солиод буцах, эсвэл
+       * мөр дахин татагдах) сэргээх шатыг ДАХИН нээнэ.
+       */
+      const rr = await readRemoteDraft(pkg.key);
       if (!alive) return;
+      if (!rr.ok) {
+        promptedPkgRef.current = '';
+        show('warn', tr(
+          'Алсын ноорогийг уншиж чадсангүй ({0}). Энэ компьютерийн ноорог хэвээр — өөр газраас бөглөсөн ажил байвал сүлжээ сэргэсний дараа хуудсыг дахин ачаална уу.',
+          rr.error,
+        ));
+      }
+      const rem = rr.ok ? rr.draft : null;
       const remote = rem ? parseDraft(rem.payload) : null;
       /* ⚠️ АЛСЫН ЗОМБИ — хүчингүй болсон хуулбарыг ArcGIS-ээс ч устгана.
          Локал талыг `readDraft` цэвэрлэдэг; энэ мөргүй бол шинэ эхлэлээс
@@ -2340,7 +2503,13 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
          тул суурь жаазыг дахин татаад ДЭЭР нь илгээлтээ давхарлана. Эс
          бөгөөс гүйцэтгэгч ажлаа алдсан гэж бодож дахин бөглөнө. */
       const next = await loadRows(pkg, sc);
-      const act2 = await loadActiveSubmission(pkg.key);
+      /* ⚠️ Энд ч алдааг ЯЛГАНА (2026-09-07): илгээсний дараа уншилт унавал
+         overlay хийгдэхгүй, дэлгэц 0% болж «дөнгөж илгээсэн ажил алга» гэсэн
+         хамгийн айдас төрүүлэм дүр зураг гарна. Уншилт унасныг ил хэлж,
+         суурь жаазыг хэвээр үлдээнэ. */
+      const act2r = await readActiveSubmission(pkg.key);
+      const act2 = act2r.ok ? act2r.sub : null;
+      setSubReadErr(act2r.ok ? null : act2r.error);
       const use2 = !!act2 && !act2.done;
       const ov2 = use2 && act2 ? overlaySubmission(next.rows, act2.payload, sc, nBld) : null;
       /* ⚠️ Илгээсний ДАРАА ч шалгана: тулгагдаагүй нүд үлдвэл батлах шатанд
@@ -2478,13 +2647,27 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       grid, vis, sc.bld.length, from, startB,
       (row, b) => volMode(rowsAll[row], b),
     );
-    const hits = raw.map((x) => ({
-      key: cellKey(rowsAll[x.row].oid, x.b),
-      v: x.v,
-      r: rowsAll[x.row],
-      b: x.b,
-      stored: rowsAll[x.row].obyem[x.b],
-    }));
+    /* ⚠️ ГОРИМООР БУУЛГАНА (2026-09-06). Excel-ээс хуулсан багана нь
+       обьём ч, хувь ч байж болно — аль болохыг ХУУДАСНЫ горим шийднэ,
+       тоог нь таамаглахгүй. Хувь горимд утга бүрд `%` угтвар тавина
+       (`bagtsSheet`-ийн дүрэм); харьцуулах «хадгалагдсан» нь мөн хувь. */
+    const isPct = fillMode === "pct";
+    const hits = raw.map((x) => {
+      const r = rowsAll[x.row];
+      const storedPct = r.vol != null && r.vol > 0 && r.obyem[x.b] != null
+        ? r.obyem[x.b]! / r.vol
+        : r.act[x.b];
+      return {
+        key: cellKey(r.oid, x.b),
+        /** `pending`-д бичигдэх ТҮҮХИЙ мөр (горимын дүрмээр) */
+        v: isPct ? `%${Number(x.v)}` : x.v,
+        /** Шалгалт/харьцуулалтад хэрэглэх ТОО (горимын нэгжээр) */
+        n: isPct ? Number(x.v) / 100 : Number(x.v),
+        r,
+        b: x.b,
+        stored: isPct ? storedPct : r.obyem[x.b],
+      };
+    });
 
     if (!hits.length) {
       warn(bad
@@ -2494,12 +2677,19 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     }
 
     /* ── НЭГ УДААГИЙН БАТАЛГААЖУУЛАЛТ ── */
-    const down = hits.filter((x) => x.stored != null && Number(x.v) < (x.stored as number));
-    const over = hits.filter((x) => x.r.vol != null && (x.r.vol as number) > 0 && Number(x.v) > (x.r.vol as number));
+    const down = hits.filter((x) => x.stored != null && x.n < (x.stored as number));
+    /* ⚠️ Хувь горимд «мөрийн Обьёмоос хэтэрсэн» гэдэг нь «100%-иас их» гэсэн үг */
+    const over = isPct
+      ? hits.filter((x) => x.n > 1)
+      : hits.filter((x) => x.r.vol != null && (x.r.vol as number) > 0 && x.n > (x.r.vol as number));
     if (down.length || over.length) {
       const parts: string[] = [];
       if (down.length) parts.push(tr("{0} нүдэнд утга БУУРНА", String(down.length)));
-      if (over.length) parts.push(tr("{0} нүдэнд мөрийн Обьёмоос ХЭТЭРНЭ", String(over.length)));
+      if (over.length) {
+        parts.push(isPct
+          ? tr("{0} нүдэнд 100%-иас ХЭТЭРНЭ", String(over.length))
+          : tr("{0} нүдэнд мөрийн Обьёмоос ХЭТЭРНЭ", String(over.length)));
+      }
       if (!window.confirm(tr("{0} нүд бичих гэж байна.\n{1}.\nҮргэлжлүүлэх үү?", String(hits.length), parts.join("; ")))) return true;
     }
 
@@ -2507,8 +2697,11 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     setPending((pv) => {
       const n = { ...pv };
       for (const x of hits) {
-        // Хадгалагдсантайгаа тэнцүү бол «нийтлээгүй» тэмдэглэгээг арилгана.
-        if (x.stored != null && Number(x.v) === x.stored) delete n[x.key];
+        /* Хадгалагдсантайгаа тэнцүү бол «нийтлээгүй» тэмдэглэгээг арилгана.
+           ⚠️ Хувь горимд хөвөгч цэгийн хүлцэлтэй (0.5 ↔ 0.4999999999). */
+        const same = x.stored != null
+          && (isPct ? Math.abs(x.n - (x.stored as number)) < 1e-9 : x.n === x.stored);
+        if (same) delete n[x.key];
         else n[x.key] = x.v;
       }
       return n;
@@ -2554,6 +2747,22 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
             баталж буй зүйлээсээ зөрнө. Шүүлтүүр (Бүлэг/Дэд бүлэг) хэвээр —
             тэдгээр нь өгөгдлийг биш, харагдацыг л хумина. */}
         {!locked && (<>
+        {/* ⚠️ ГОРИМ СОЛИХ — обьём ↔ хувь. Хяналтын горимд (`locked`) харагдахгүй:
+            тэнд юу ч бичигдэхгүй тул сонголт утгагүй. */}
+        <button
+          type="button"
+          className={st.modeBtn}
+          onClick={toggleFill}
+          disabled={busy || noPerf}
+          aria-pressed={fillMode === "pct"}
+          title={fillMode === "obyem"
+            ? tr('Одоо ОБЬЁМоор бөглөж байна — дарж ХУВИАР бөглөх горимд шилжинэ.')
+            : tr('Одоо ХУВИАР бөглөж байна — дарж ОБЬЁМоор бөглөх горимд шилжинэ.')}
+        >
+          <span className={fillMode === "obyem" ? st.modeOn : st.modeOff}>{tr('Обьём')}</span>
+          <span className={st.modeSep}>↔</span>
+          <span className={fillMode === "pct" ? st.modeOn : st.modeOff}>{tr('Хувь')}</span>
+        </button>
         <label className={st.field}>
           {tr('Багц')}{" "}
           <select
@@ -2805,6 +3014,20 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       {unmovedWarn.length > 0 && (
         <p className={st.lockNote} role="alert">
           {tr('Илгээсэн зарим нүд шинэ мөрүүдэд тулгагдсангүй — эдгээрийг ДАХИН бөглөж илгээнэ үү, эс бөгөөс ерөнхий менежер батлах үед багц бүхэлдээ гацна: {0}', unmovedWarn.join('; '))}
+        </p>
+      )}
+      {/*
+        * ⚠️ ИЛГЭЭЛТ УНШИГДААГҮЙ (2026-09-07-ны аудит, CRITICAL).
+        *
+        * Уншилт унавал overlay хийгдэхгүй тул дэлгэц дээр архивын суурь жааз
+        * (голдуу БҮХ НҮД 0%) харагдана. Урьд нь энэ нь ЧИМЭЭГҮЙ болдог тул
+        * гүйцэтгэгч «илгээсэн ажил минь алга болжээ» гэж дүгнэн дахин
+        * бөглөдөг байв. Одоо 0% нь ҮНЭН үү, эсвэл зүгээр л УНШИГДААГҮЙ юу
+        * гэдгийг хэрэглэгч ялгаж чадна.
+        */}
+      {subReadErr && (
+        <p className={st.lockNote} role="alert">
+          {tr('Илгээсэн ажлыг татаж чадсангүй ({0}) — доорх тоо ДУТУУ байж болзошгүй. Хуудсыг дахин ачаална уу; ажил алдагдаагүй, зөвхөн харагдаагүй байна.', subReadErr)}
         </p>
       )}
       {!locked && !submitFailed && inReview && (
@@ -3063,11 +3286,28 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                         if (locked) return changed && view?.onCell?.(i, b);
                         if (noEdit)
                           return say(
-                            tr('Энэ багцын өнөөдрийн гүйцэтгэл аль хэдийн илгээгдсэн — хяналтаас буцаалт ирэх хүртэл засах боломжгүй.'),
+                            /* ⚠️ 2026-09-07: «өнөөдрийн гүйцэтгэл аль хэдийн
+                               илгээгдсэн» гэсэн ХУУЧИН текст солигдов — өдөрт
+                               нэг удаа гэсэн хязгаар байхгүй болсон. `noEdit`
+                               нь одоо ЗӨВХӨН `locked` (хяналтын харагдац). */
+                            tr('Хяналтын харагдацад гүйцэтгэл засах боломжгүй — бөглөх горимоор нээнэ үү.'),
                           );
                         if (!canPerf) return say(RO.noPerf);
                         if (!canVol) return say(r.group ? RO.groupAct : RO.noObyemField);
-                        setVal(pending[key] ?? qtyRaw(r.obyem[bi]));
+                        /* ⚠️ Обьёмын багана дутуу блокт ХУВЬ горим нээгдэнэ —
+                           хувь нь `sc.act[b]`-д хадгалагдана (107/107 блокт
+                           бий). Хэрэглэгчид яагаад зөвхөн хувиар болохыг
+                           нэг удаа хэлнэ; дараа нь дуугүй ажиллана. */
+                        if (pctOnly(r, bi) && !pctHintRef.current) {
+                          pctHintRef.current = true;
+                          say(RO.pctOnlyHint);
+                        }
+                        /* ⚠️ Горимын дагуу: хувь горимд ХУВИЙГ, эс бөгөөс
+                           обьёмыг урьдчилан тавина. `pending`-д хадгалагдсан
+                           нь ӨӨР горимынх байж болно (жиш. хувиар бичсэн нүдийг
+                           обьём горимд нээх) — тэр үед хадгалагдсан мөрийг
+                           шууд тавихгүй, ОДООГИЙН горимын тоо руу хөрвүүлнэ. */
+                        setVal(cellSeed(r, bi));
                         setEdit({ i, b: bi, col: "obyem" });
                       };
                       return (
@@ -3151,9 +3391,11 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                                  * дэлгэцээс гүйлгэгдэн алга болж, ганц зам нь
                                  * `title`-ийг хулганаар хүлээх байв.
                                  */
-                                placeholder: r.vol != null && r.vol > 0
-                                  ? tr('{0}-аас', qty(r.vol))
-                                  : tr('обьём'),
+                                placeholder: fillMode === "pct"
+                                  ? tr('хувь')
+                                  : r.vol != null && r.vol > 0
+                                    ? tr('{0}-аас', qty(r.vol))
+                                    : tr('обьём'),
                                 // Удирдлагагүй: бичихэд re-render гарахгүй.
                                 defaultValue: val,
                                 onBlur: (e: React.FocusEvent<HTMLInputElement>) =>
@@ -3172,10 +3414,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                                     const t = nextEditable(i, bi, e.shiftKey ? -1 : 1, "obyem");
                                     if (t) {
                                       const nr = rowsAll[t.i];
-                                      setVal(
-                                        pending[cellKey(nr.oid, bi)] ??
-                                          qtyRaw(nr.obyem[bi]),
-                                      );
+                                      setVal(cellSeed(nr, bi));
                                       setEdit(t);
                                     }
                                   }
@@ -3184,13 +3423,18 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                             />
                           ) : (
                             <span className={st.cellVol}>
-                              {/* Хоосон бол ХООСОН — хайрцгийн хүрээ нь
+                              {/* ⚠️ 2026-09-06: ГОРИМООР солигдоно. Обьём
+                                  горимд ТОМООР обьём (хуучин зан төлөв), хувь
+                                  горимд ТОМООР хувь гарна — доорх жижиг мөр нь
+                                  эсрэгээрээ. Хоёулаа ҮРГЭЛЖ харагдана: горим нь
+                                  зөвхөн ДАРААЛЛЫГ солино, мэдээллийг нуухгүй.
+                                  Хоосон бол ХООСОН — хайрцгийн хүрээ нь
                                   «энд бичнэ» гэдгийг хэлчихнэ. */}
-                              {qty(c.obyem[bi])}
+                              {fillMode === "pct" ? pc(c.act[bi], 1) : qty(c.obyem[bi])}
                               {/* ⚠️ Нэгж нь ЗӨВХӨН утга байгаа үед. Хоосон
                                   нүдэнд ганцаар «м³» гарвал «бөглөсөн» мэт
                                   харагдаж, бөглөх ёстой нүд нүднээс мултарна. */}
-                              {c.obyem[bi] != null && negjOf(r.work) && (
+                              {fillMode === "obyem" && c.obyem[bi] != null && negjOf(r.work) && (
                                 <span className={st.negj}>{negjOf(r.work)}</span>
                               )}
                             </span>
@@ -3214,7 +3458,12 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                               ? tr('100%-иас их — нэгтгэлд 100% гэж тооцов. Мөрийн Обьём эсвэл хуримтлалыг шалгана уу.')
                               : undefined}
                           >
-                            {pc(c.act[bi], 1)}
+                            {fillMode === "pct"
+                              /* ⚠️ Хувь горимд доор ОБЬЁМ. Мөрийн Обьёмгүй үед
+                                 обьём бодогдохгүй тул «—» гарна — тэр нь
+                                 «мэдээлэлгүй», 0 БИШ. */
+                              ? qty(c.obyem[bi])
+                              : pc(c.act[bi], 1)}
                           </span>
                         </td>
                       );

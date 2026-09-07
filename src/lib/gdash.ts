@@ -16,7 +16,7 @@
 import { queryFeatures, type Row } from '@/lib/query';
 import { cached } from '@/lib/live';
 import { t as tr } from '@/lib/i18nCore';
-import { CASHFLOW_NEW, HABEA, bagtsKey } from '@/lib/services';
+import { CASHFLOW_NEW, HABEA, bagtsKey, isPkgRange } from '@/lib/services';
 
 /* ══════════════════════ CASHFLOW — талбарууд ══════════════════════ */
 
@@ -31,6 +31,7 @@ export const CF = {
   type: 'Turul',
   project: 'Tusul',
   pkg: 'Bagts',
+  pkg2: 'Ded_bagts',
   /** Урьдчилсан төсөвт өртөг — БҮХ мөнгөн тооцооны эх */
   cost: 'Urdch_tusuwt_urtug',
   /** Хөрөнгө оруулалтын дүнгийн тайлбар — «Гэрээлсэн дүн» г.м. */
@@ -53,6 +54,31 @@ export const CF_SOURCES = [
   { field: 'Zah_eh_tusliin_orlogo', label: tr('Төслийн орлого') },
 ] as const;
 
+/**
+ * ХӨНДЛӨН ШҮҮЛТИЙН ХЭМЖЭЭС — чартын мөр дарахад бусад чартыг нарийсгана.
+ *
+ * ⚠️ `type` нь ХОЁР чартад (мөнгө ба тоо) хамаарна: тэдгээр нь нэг ангиллыг
+ * хоёр өөр нэгжээр хэмждэг тул нэгэн дээр нь сонгоход нөгөө нь ӨӨРӨӨ
+ * шүүгдэхгүй, зөвхөн ТОДОРНО.
+ */
+export type XDim = 'type' | 'source' | 'note';
+
+/**
+ * Мөр нь сонголтод НИЙЦЭХ эсэх.
+ *
+ * ⚠️ `note`-ийн хоосон утга нь `chartNoteAmount`-тай ЯГ ижил дүрмээр
+ * («Тайлбаргүй») нөхөгдөнө — эс бөгөөс тэр баганыг дарахад 0 мөр таарна.
+ *
+ * ⚠️ `source` нь ДҮНГЭЭР шүүнэ (`> 0`), тэнцүүгээр биш: нэг ажил хэд хэдэн
+ * эх үүсвэрээс санхүүжиж болно.
+ */
+export function xMatch(r: CfRow, dim: XDim, key: string): boolean {
+  if (dim === 'type') return r.type === key;
+  if (dim === 'note') return (r.note || tr('Тайлбаргүй')) === key;
+  const i = CF_SOURCES.findIndex((s) => s.field === key);
+  return i >= 0 && r.src[i] > 0;
+}
+
 /** «Гэрээ хийсэн» гэдгийг тодорхойлох утга — 2, 3-р чартын дэд цуваа */
 export const CONTRACTED = 'Гэрээлсэн дүн';
 
@@ -61,6 +87,8 @@ export type CfRow = {
   type: string;
   project: string;
   pkg: string;
+  /** Дэд багц (`Ded_bagts`) — газрын зургийн давхаргатай холбогдох ТҮЛХҮҮР */
+  pkg2: string;
   cost: number;
   note: string;
   start: number | null;
@@ -102,7 +130,7 @@ export const loadGdashCf = cached<CfRow[]>(async () => {
   const rows = await queryFeatures(CF.url, {
     outFields: [
       'OBJECTID', CF.type, CF.project, CF.pkg, CF.cost, CF.note,
-      CF.start, CF.end, CF.share, CF.contract, CF.decree, CF.progress,
+      CF.start, CF.end, CF.share, CF.contract, CF.decree, CF.progress, CF.pkg2,
       ...CF_SOURCES.map((s) => s.field),
     ],
     limit: 4000,
@@ -112,6 +140,7 @@ export const loadGdashCf = cached<CfRow[]>(async () => {
     type: sOf(r[CF.type]) || tr('Тодорхойгүй'),
     project: sOf(r[CF.project]),
     pkg: sOf(r[CF.pkg]),
+    pkg2: sOf(r[CF.pkg2]),
     cost: nOf(r[CF.cost]),
     note: sOf(r[CF.note]),
     start: dOf(r[CF.start]),
@@ -213,6 +242,25 @@ export type SubBar = {
   /** Дэлгэцэд бичих текст (мөнгө/тоо форматлагдсан) */
   display?: string;
   subDisplay?: string;
+  /**
+   * АЖЛЫН ТОО ба тэднээс ГЭРЭЭЛСЭН нь — мөнгөн чартын хажуугийн хэмжигдэхүүн.
+   *
+   * ⚠️ Заавал БИШ. `value`/`sub` нь МӨНГӨ хэвээр: багана нь дүнгээр
+   * хэмжигдэнэ, тоо нь зөвхөн hover-т гарна. Хоёуланг нь нэг зурваст
+   * оруулах гэвэл аль хэмжээсээр уншихаа нүд мэдэхгүй болно.
+   */
+  count?: number;
+  countSub?: number;
+  /**
+   * БОДИТ ГҮЙЦЭТГЭЛ — өртгөөр ЖИГНЭСЭН хувь (0–100), эсвэл `null`.
+   *
+   * ⚠️ `null` ≠ 0: «хэмжигдээгүй» ба «огт эхлээгүй» хоёр өөр мэдэгдэл.
+   * Хэмжигдээгүйг 0 гэж бичвэл «хийгдээгүй» гэсэн ХУДАЛ баталгаа болно.
+   *
+   * ⚠️ ЭНГИЙН ДУНДАЖ БИШ: 1.5 тэрбумын ажлын 100% ба 448 тэрбумын ажлын 27%
+   * тэнцүү жинтэй байж болохгүй (индикаторын тооцоотой нэг зарчим).
+   */
+  perf?: number | null;
 };
 
 const groupSum = (
@@ -236,29 +284,67 @@ const groupSum = (
 };
 
 /**
- * 1-р чарт — ТӨРӨЛ × Урьдчилсан төсөвт өртөг, дотор нь ГҮЙЦЭТГЭЛ.
+ * 1-р чарт — ТӨРӨЛ × Урьдчилсан төсөвт өртөг, дотор нь ГЭРЭЭЛСЭН хэсэг.
  *
- * ⚠️ ГҮЙЦЭТГЭЛИЙГ `Guitsetgel_huwi`-ЭЭС ШУУД авна (2026-09-04). Урьд нь тэр
- * багана хоосон байсан тул багцын нэгтгэлээс (`BAGTS_NEGTGEL`) багцын нэрээр
- * холбодог байв — гэвч cashflow-гийн 26 багцаас ердөө 2 нь тэнд хэмжигддэг
- * тул чартын 6 мөрийн 4 нь ХООСОН гардаг байлаа. Одоо мөр бүр өөрийн
- * хувьтай.
+ * ⚠️ ДЭД ЦУВАА нь ГҮЙЦЭТГЭЛ БИШ, ГЭРЭЭЛСЭН ДҮН (2026-09-07, хэрэглэгчийн
+ * шийдвэр). «Хөрөнгө оруулалтын дүнгийн тайлбар» (`HO_dungiin_tailbar`)-ын
+ * «Гэрээлсэн дүн» утгаар шүүнэ — өөрөөр хэлбэл «төсвийн хэдэн хувь нь гэрээ
+ * болсон бэ». Гүйцэтгэлийн хувь нь тусдаа индикатор ба «Гэрээлсэн байдал,
+ * бодит гүйцэтгэл» чартад үлдэнэ.
  *
- * ⚠️ ХЭМЖИГДЭЭГҮЙ мөр (`progress == null`) дэд дүнд ОРОХГҮЙ — 0 гэж бодвол
- * «хийгдээгүй» гэсэн худал мэдэгдэл болно.
+ * ⚠️ ОЛГОЛТ (`Zahiramj_niit_dun`) ЭНЭ ЧАРТААС ХАСАГДСАН: захирамжийн дүн нь
+ * төсвөөс давж болдог тул (амьдаар 103.5%, 107.4%) нэг зурвасын дотор
+ * «хэдэн хувь» гэж уншигдахад төөрөгдөл төрүүлдэг байв.
+ *
+ * ⚠️ АЖЛЫН ТОО ч хамт: «хэдэн төгрөг» ба «хэдэн ажил» хоёр өөр хариу өгдөг
+ * тул hover-т хоёуланг нь харуулна.
  */
 export function chartTypeCost(rows: CfRow[]): SubBar[] {
-  return groupSum(
+  const bars = groupSum(
     rows,
     (r) => r.type,
     (r) => r.cost,
-    (r) => (r.progress == null ? 0 : (r.cost * r.progress) / 100),
+    (r) => (r.note === CONTRACTED ? r.cost : 0),
   );
+  const cnt = new Map<string, { n: number; c: number }>();
+  for (const r of rows) {
+    if (!r.type) continue;
+    const a = cnt.get(r.type) ?? { n: 0, c: 0 };
+    a.n += 1;
+    if (r.note === CONTRACTED) a.c += 1;
+    cnt.set(r.type, a);
+  }
+  return bars.map((b) => ({
+    ...b,
+    count: cnt.get(b.key)?.n ?? 0,
+    countSub: cnt.get(b.key)?.c ?? 0,
+  }));
 }
 
-/** 2-р чарт — ТӨРӨЛ × төслийн ТОО, дотор нь ГЭРЭЭЛСЭН ажлын тоо */
+/**
+ * 2-р чарт — ТӨРӨЛ × төслийн ТОО, дотор нь ГЭРЭЭЛСЭН ажлын тоо.
+ *
+ * ⚠️ БОДИТ ГҮЙЦЭТГЭЛ ч хамт (2026-09-07, хэрэглэгчийн хүсэлт): чартын нэр
+ * «Гэрээлсэн байдал, бодит гүйцэтгэл» гэж хоёуланг амласан атлаа зөвхөн
+ * гэрээ харагддаг байв. Зурвасын урт нь ГЭРЭЭНИЙ хувь хэвээр — гүйцэтгэл нь
+ * hover-т гарна: хоёр өөр хэмжигдэхүүн нэг зурвасыг булаацалдах ёсгүй.
+ */
 export function chartTypeCount(rows: CfRow[]): SubBar[] {
-  return groupSum(rows, (r) => r.type, () => 1, (r) => (r.note === CONTRACTED ? 1 : 0));
+  const bars = groupSum(rows, (r) => r.type, () => 1, (r) => (r.note === CONTRACTED ? 1 : 0));
+  /* ⚠️ Хэмжигдээгүй мөр (`progress == null`) хуваарь, хүртвэр ХОЁУЛАНД ч
+     орохгүй — эс бөгөөс дундаж чимээгүй доошилно. */
+  const w = new Map<string, { top: number; base: number }>();
+  for (const r of rows) {
+    if (!r.type || r.progress == null || r.cost <= 0) continue;
+    const a = w.get(r.type) ?? { top: 0, base: 0 };
+    a.top += (r.cost * r.progress) / 100;
+    a.base += r.cost;
+    w.set(r.type, a);
+  }
+  return bars.map((b) => {
+    const a = w.get(b.key);
+    return { ...b, perf: a && a.base > 0 ? (a.top / a.base) * 100 : null };
+  });
 }
 
 /**
@@ -304,6 +390,31 @@ export function chartSourceAmount(rows: CfRow[]): SubBar[] {
     }
     return { key: s.field, label: s.label, value, sub };
   }).filter((x) => x.value > 0).sort((a, b) => b.value - a.value);
+}
+
+/**
+ * 3в-р чарт — ЭХ ҮҮСВЭР: МӨНГӨ ба ТОО НЭГ чартад (2026-09-06).
+ *
+ * ⚠️ ХОЁР ЧАРТЫГ ОРЛОНО (`chartSourceAmount` + `chartSourceCount`). Тэдгээр
+ * нь мөр мөрөөрөө ЯГ ижил ангилалтай атлаа дараалал нь өөр (мөнгөөр Үнэт цаас
+ * тэргүүлдэг, тоогоор Нийслэлийн төсөв) тул хоёр зурвасыг нүдээр
+ * зэрэгцүүлэхэд «нэг ангилал хоёр өөр байрлалд» гэсэн төөрөгдөл үүсдэг байв.
+ *
+ * ⚠️ МЭДЭЭЛЭЛ ХАСАГДААГҮЙ: мөнгө, түүний хувь, ажлын тоо, ажлын хувь,
+ * гэрээлсэн тоо — БҮГД hover-т үлдэнэ. Багана нь МӨНГӨӨР хэмжигдэнэ, учир нь
+ * «хэдэн төгрөг» нь шийдвэрийн хэмжээ; тоо нь түүний задаргаа (Нийслэлийн
+ * төсөв 2 ажилтай ч 4.3 тэрбум, Үнэт цаас 51 ажилтай бөгөөд 1.49 их наяд).
+ *
+ * ⚠️ Хуучин хоёр функц ХЭВЭЭР үлдэнэ: тестүүд тэднийг шалгадаг бөгөөд өөр
+ * харагдац тэднийг дуудаж болно.
+ */
+export function chartSourceMerged(rows: CfRow[]): SubBar[] {
+  const cnt = chartSourceCount(rows);
+  const byKey = new Map(cnt.map((c) => [c.key, c]));
+  return chartSourceAmount(rows).map((a) => {
+    const c = byKey.get(a.key);
+    return { ...a, count: c?.value ?? 0, countSub: c?.sub ?? 0 };
+  });
 }
 
 /** 4-р чарт — ХӨРӨНГӨ ОРУУЛАЛТЫН ДҮНГИЙН ТАЙЛБАР × мөнгөн дүн */
@@ -448,6 +559,15 @@ export type Kpi = {
    * хамралтыг нуувал «56%» гэсэн тоо БҮХ төслийн явц мэт уншигдана.
    */
   progressCovered: number;
+  /**
+   * ГҮЙЦЭТГЭСЭН ДҮН — тэр хувийн МӨНГӨН эквивалент (`Σ өртөг × хувь`).
+   *
+   * ⚠️ ОЛГОСОН (захирамжийн) дүн БИШ. Хоёр нь эрс зөрдөг: 2026-09-06-ны амьд
+   * хэмжилтээр гүйцэтгэсэн нь 480.1 тэрбум (19.1%) атал захирамжаар олгосон
+   * нь 2.48 их наяд (98.6%) — эрх олголт нь гүйцэтгэхээс ӨМНӨ бүтнээр нь
+   * явдаг. Индикаторын хувьтай ТААРАХ цорын ганц тоо нь энэ.
+   */
+  progressAmount: number;
   /** Багц ажлын тоо — ялгаатай багцын тоо */
   packages: number;
   /** Нийт төрлийн тоо */
@@ -469,7 +589,10 @@ export function kpisOf(rows: CfRow[], contractSum: number): Kpi {
 
   for (const r of rows) {
     budget += r.cost;
-    if (r.pkg) pkgs.add(bagtsKey(r.pkg));
+    /* ⚠️ `Bagts` БИШ `Ded_bagts` (2026-09-06, хэрэглэгчийн заавар): эцэг
+       түвшин («БАГЦ-3») нь гурван бодит ажлыг («БАГЦ-3.1/3.2/3.3») нэг гэж
+       тоолж, «Багц ажлын тоо» бодит ажлын тооноос бага гардаг байв. */
+    if (r.pkg2) pkgs.add(bagtsKey(r.pkg2));
     if (r.type) types.add(r.type);
     /* ⚠️ Хэмжигдээгүй ажил хуваарьт ч, хүртвэрт ч ОРОХГҮЙ */
     if (r.progress != null && r.cost > 0) {
@@ -482,6 +605,7 @@ export function kpisOf(rows: CfRow[], contractSum: number): Kpi {
     budget,
     contract: contractSum,
     progress: wSum > 0 ? (wTop / wSum) * 100 : null,
+    progressAmount: wTop,
     progressCovered: budget > 0 ? (wSum / budget) * 100 : 0,
     packages: pkgs.size,
     types: types.size,
@@ -749,9 +873,50 @@ export const loadReasonOids = cached<Map<string, Set<number>>>(async () => {
   return m;
 }, undefined, ['PARCEL_LEFT']);
 
+/**
+ * ШҮҮГДСЭН мөрүүдэд БОДИТООР байгаа дэд багц → ажлын төрлүүд.
+ *
+ * ⚠️ ЯАГААД ХЭРЭГТЭЙ: `loadSubPkgLayers` нь БҮХ cashflow-гоос угсардаг тул
+ * хугацааны шүүлтийг мэдэхгүй. Баруун баганын «Ажлын төрлөөр давхцаж буй» ба
+ * «Саад — багцаар» хоёр түүн дээр тулгуурладаг тул шүүлт тавихад ч бүрэн
+ * жагсаалт харуулсаар байв (хэрэглэгчийн шүүмж, 2026-09-06).
+ *
+ * ⚠️ `loadSubPkgLayers`-ТЭЙ ИЖИЛ ДҮРЭМ: `isPkgRange` нүдийг хасна («БАГЦ 1- 4»
+ * нь `bagtsKey`-ээр БОДИТ «Багц 14» болж мөргөлддөг). Дүрэм зөрвөл шүүлттэй ба
+ * шүүлтгүй жагсаалт хоорондоо тохирохгүй болно.
+ *
+ * ⚠️ ГАЗРЫН ЗУРГИЙН давхарга байгаа эсэхийг ШАЛГАХГҮЙ — тэр шүүлтийг дуудагч
+ * тал (`loadSubPkgLayers`-ийн үр дүнтэй огтлолцуулж) хийнэ.
+ */
+export function activeSubPkgTypes(rows: CfRow[]): Map<string, string[]> {
+  const m = new Map<string, Set<string>>();
+  for (const r of rows) {
+    const raw = r.pkg2;
+    if (!raw || isPkgRange(raw)) continue;
+    const k = bagtsKey(raw);
+    if (!k) continue;
+    const set = m.get(k) ?? new Set<string>();
+    if (r.type) set.add(r.type);
+    m.set(k, set);
+  }
+  return new Map([...m].map(([k, v]) => [k, [...v]]));
+}
+
 /* ══════════════ ДЭД БАГЦ → ГАЗРЫН ЗУРГИЙН ДАВХАРГА ══════════════ */
 
-export type SubPkg = { key: string; label: string; layerIds: string[] };
+export type SubPkg = {
+  key: string;
+  label: string;
+  layerIds: string[];
+  /**
+   * Тухайн дэд багцад бүртгэгдсэн АЖЛЫН ТӨРЛҮҮД (`Turul`).
+   *
+   * ⚠️ ОЛОН БАЙНА: нэг дэд багцад ТЭЗҮ, зураг төсөл, барилга угсралт зэрэг
+   * хэд хэдэн ажил бүртгэгддэг тул НЭГ утга биш ОЛОНЛОГ. Эхнийхийг нь авбал
+   * тухайн багцын бусад ажил чимээгүй алга болно.
+   */
+  types: string[];
+};
 
 /**
  * Cashflow-гийн «Дэд багц» → газрын зургийн `pkg:*` давхаргууд.
@@ -771,17 +936,31 @@ export type SubPkg = { key: string; label: string; layerIds: string[] };
  */
 export const loadSubPkgLayers = cached<SubPkg[]>(async () => {
   const { PKG_BY_BAGTS, bagtsKey, isPkgRange } = await import('@/lib/services');
-  const rows = await queryFeatures(CF.url, { outFields: ['Ded_bagts'], limit: 4000 });
+  const rows = await queryFeatures(CF.url, {
+    outFields: ['Ded_bagts', CF.type],
+    limit: 4000,
+  });
 
   const seen = new Map<string, string>();
+  const types = new Map<string, Set<string>>();
   for (const r of rows) {
     const raw = sOf(r.Ded_bagts);
     if (!raw || isPkgRange(raw)) continue;
     const k = bagtsKey(raw);
     if (!k || !PKG_BY_BAGTS[k]?.length) continue;
     if (!seen.has(k)) seen.set(k, raw);
+    const ty = sOf(r[CF.type]);
+    if (ty) {
+      const set = types.get(k);
+      if (set) set.add(ty); else types.set(k, new Set([ty]));
+    }
   }
   return [...seen]
-    .map(([key, label]) => ({ key, label, layerIds: PKG_BY_BAGTS[key] }))
+    .map(([key, label]) => ({
+      key,
+      label,
+      layerIds: PKG_BY_BAGTS[key],
+      types: [...(types.get(key) ?? [])],
+    }))
     .sort((a, b) => a.label.localeCompare(b.label, 'mn'));
 }, undefined, ['CASHFLOW_NEW']);

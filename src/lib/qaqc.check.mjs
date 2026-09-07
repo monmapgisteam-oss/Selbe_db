@@ -24,10 +24,13 @@
  *      Мөр зөрсөн үед `attachTree` нь `null` буцаах ЁСТОЙ — хагас таарсан
  *      модыг зурвал «энэ М-акт аль ажилд харьяалагдана» гэдэг ЧИМЭЭГҮЙ
  *      хуурамч болно.
+ *   9. EXCEL-ЭЭС НААХАД ЭГНЭЭ ГУЛСАХ. Хальсан эсвэл хоосон нүд
+ *      БАЙРЛАЛАА ЭЗЛЭХГҮЙ бол доорх бүх утга нэг мөр дээшилж, акт огт
+ *      өөр ажилд бичигдэнэ — нүдээр илрэхгүй, тайлан чимээгүй худал болно.
  */
 import assert from 'node:assert/strict';
 import {
-  QAQC_TABLE, QAQC_SERVICES, QAQC_COLS, QAQC_GROUPS,
+  QAQC_TABLE, QAQC_SERVICES, QAQC_COLS, QAQC_GROUPS, planQaqcPaste, QAQC_PASTE_MAX,
   qaqcTableOf, qaqcUrl, isDataRow, toRows, filledCount, qaqcUpdates, attachTree, qaqcPayload,
 } from './qaqc.ts';
 import { PKGS } from '@/modules/sheet/bagts.pkg';
@@ -95,6 +98,31 @@ assert.equal(
   ]),
   null, 'дараалал зөрсөн ч мод холбогдов',
 );
+/* (в2) АЖИЛ зөрвөл — № таарсан ч холбогдохгүй.
+   ⚠️ Ажлын нэр нь одоо ЦОРЫН ГАНЦ баталгаа (2026-09-07) тул түүний хатуу
+      чанарыг тусад нь бэхэлнэ. */
+assert.equal(
+  attachTree(three, [
+    sr('A.', 'Бэлтгэл ажил', 0, true), sr('1', 'ӨӨР АЖИЛ', 1, false), sr('2', 'Гэрэлтүүлэг', 1, false),
+  ]),
+  null, 'ажил зөрсөн ч мод холбогдов',
+);
+
+/* (в3) № зөрсөн ч АЖИЛ таарвал ХОЛБОГДОНО — эх өгөгдлийн алдааг тойрно.
+   ⚠️ QAQC хүснэгтийн `F_` нь найдваргүй: excel «3.10»-г «3.1» болгосон, мөн
+      зарим бүлгийн дугаар хоёр хүснэгтэд жинхэнээсээ зөрдөг («ГДДС» 7 ↔ 4).
+      Урьд нь № -г тулгадаг байсан тул шатлал 10/10 багцад ХЭЗЭЭ Ч
+      холбогдож чадаагүй. 2026-09-07-нд 9 багцын 13,032 мөрд ажлын нэр
+      100.00% таарсныг хэмжсэн — мөр зөв эгнэдэг нь батлагдсан. */
+const noDiff = attachTree(three, [
+  sr('A.', 'Бэлтгэл ажил', 0, true),
+  sr('3.10', 'Хашаа', 1, false),        // QAQC-д «3.1» гэж хадгалагдсан хэлбэр
+  sr('7', 'Гэрэлтүүлэг', 1, false),     // бүлгийн дугаар жинхэнээсээ зөрсөн
+]);
+assert.ok(noDiff, '№ зөрсөн ч ажил таарвал холбогдох ёстой');
+assert.deepEqual(noDiff.map((r) => r.depth), [0, 1, 1]);
+assert.deepEqual(noDiff.map((r) => r.no), ['A.', '1', '2'], 'QAQC-ийн ӨӨРИЙН № хэвээр үлдэнэ');
+
 /* (г) ХООСОН оролт — мод байхгүй */
 assert.equal(attachTree([], []), null);
 /* (д) Зайг тайрсан хуудасны утга ТААРНА — эх excel-д мөрийн сүүл зайтай */
@@ -176,4 +204,37 @@ for (const f of wire) {
 assert.equal(wire[0].attributes.Makt_dugaar, 'M-77');
 assert.equal(qaqcPayload([]), '[]');
 
-console.log('qaqc.check ✓');
+
+/* ── 9. EXCEL-ЭЭС НААХ — БАЙРЛАЛ ГУЛСАХГҮЙ ── */
+{
+  const row = (oid) => ({ oid, no: String(oid), work: `Ажил ${oid}`, des: '', depth: 1, group: false, docs: Array(9).fill(null) });
+  const rows = [row(10), row(11), row(12), row(13)];
+  const vis = [0, 1, 2, 3];
+
+  /* 2×2 блок — хоёр мөр, хоёр багана */
+  const p = planQaqcPaste(rows, vis, 1, 0, [['M-1', 'Суурь'], ['M-2', 'Багана']]);
+  assert.deepEqual(p.hits, [
+    { oid: 11, di: 0, v: 'M-1' }, { oid: 11, di: 1, v: 'Суурь' },
+    { oid: 12, di: 0, v: 'M-2' }, { oid: 12, di: 1, v: 'Багана' },
+  ], 'блок эхэлсэн нүднээсээ баруун-доош байрлана');
+  assert.equal(p.skipped, 0);
+
+  /* ХООСОН нүд — устгал БИШ, зөвхөн байрлалаа эзэлнэ */
+  const e = planQaqcPaste(rows, vis, 0, 0, [['A', ''], ['', 'B']]);
+  assert.deepEqual(e.hits, [{ oid: 10, di: 0, v: 'A' }, { oid: 11, di: 1, v: 'B' }],
+    'хоосон нүд алгасагдаж, доорх утга ГУЛСААГҮЙ');
+  assert.equal(e.skipped, 2);
+
+  /* Хүснэгтийн ирмэгээс хальсан — тоологдоно, бичигдэхгүй */
+  const o = planQaqcPaste(rows, vis, 3, 8, [['X', 'Y'], ['Z', 'W']]);
+  assert.deepEqual(o.hits, [{ oid: 13, di: 8, v: 'X' }], 'зөвхөн эхний нүд багтана');
+  assert.equal(o.skipped, 3, 'баруун ба доод хальсан нүд тоологдоно');
+
+  /* Хэт том буулгалт — хязгаараас цааш ЧИМЭЭГҮЙ алга болохгүй */
+  const big = Array.from({ length: 4 }, () => Array.from({ length: 9 }, (_, k) => `v${k}`));
+  const b = planQaqcPaste(rows, vis, 0, 0, big);
+  assert.equal(b.hits.length + b.skipped, 36, 'нүд бүр тоологдоно');
+  assert.ok(QAQC_PASTE_MAX >= 5000);
+}
+
+console.log('qaqc.check ✓ (наалт ✓)');

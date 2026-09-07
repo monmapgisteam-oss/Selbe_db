@@ -35,7 +35,7 @@ import { loadPlanCurve, type PlanPoint } from '@/lib/planProgress';
 type ProgPt = { label: string; plan: number; act: number | null };
 import {
   BUILDING, CASHFLOW_NEW, PROGRESS_LEVELS, LAYER_BY_ID, pkgKeyOf,
-  PKG_FAMILY_BY_BAGTS, zoneWhere, cfMonthAxis } from '@/lib/services';
+  PKG_FAMILY_BY_BAGTS, zoneWhere, cfMonthAxis, parcelOidsWhere } from '@/lib/services';
 import { cat, shade, num, pct } from '@/lib/format';
 import { fitLabels, textW, useChartWidth } from '@/lib/chartFit';
 import { readParam, writeParams } from '@/lib/urlState';
@@ -493,9 +493,7 @@ export function PkgProg({ dim, setDim }: {
       // ⚠️ Давхаргад 2,119 талбар бий — ЗӨВХӨН давхцсаныг үлдээнэ, эс бөгөөс
       //    бүх хот дүүрэн парсел зурагдаж блокууд дарагдана.
       /* ⚠️ Картаас нэг багц сонгосон бол ТҮҮНИЙ талбарууд; эс бөгөөс бүгд. */
-      w[PARCEL_LAYER] = ovShown.length
-        ? `OBJECTID IN (${ovShown.join(',')})`
-        : null;
+      w[PARCEL_LAYER] = ovShown.length ? parcelOidsWhere(ovShown) : null;
       return w;
     },
     [active, alertedWhere, ovPack, ovShown, zone, mapVisible],

@@ -9,6 +9,35 @@
  * зураг дэлгэцээс гараад, хэрэглэгч чарт үзэхийн тулд зургаа алддаг.
  */
 .shell {
+  /*
+   * S-МУРУЙН ӨНГӨ — ЭНД зарлагдана, `.tl`-д БИШ.
+   *
+   * ⚠️ Домог (`TimelineKey`) нь картын ТОЛГОЙД (`Section note`) сууна — тэр
+   * нь `.tl`-ийн ГАДНА тул тэнд зарласан токен ХҮРЭХГҮЙ, домгийн зураас
+   * өнгөгүй үлддэг байв (2026-09-06). Бүрхүүлд зарласнаар зурвас ба домог
+   * ХОЁУЛАА нэг эх сурвалжаас уншина.
+   *
+   * ⚠️ Палитраас гадуурх hex нь САНААТАЙ — хэрэглэгчийн шууд заавар
+   * (#0000FF → #CCCCFF → #CAF0F8 → #1E91D6).
+   */
+  --tl-curve: #1e91d6;
+  /*
+   * Цэгийн шошгын өнгө.
+   *
+   * ⚠️ ЦАЙВАР нь АНХДАГЧ: globals.css-д `:root` ба `[data-theme=light]` нэг
+   * блок тул атрибут огт байхгүй үед хуудас ЦАЙВАР байдаг. Тиймээс энд
+   * бараан бэхийг үндсэн утга болгож, цагааныг зөвхөн хар сэдэвт олгоно —
+   * эсрэгээр бичвэл сэдэв заагаагүй хэрэглэгчид шошго үл үзэгдэнэ.
+   */
+  --tl-lbl: var(--ink);
+  /*
+   * ОЛГОСОН ДҮНГИЙН ТАЛБАЙН ӨНГӨ — муруйнаас ЯЛГААТАЙ (2026-09-07).
+   *
+   * ⚠️ Муруйтай нэг өнгийн бүлэгт байвал «нэг хэмжигдэхүүний хоёр хэлбэр» гэж
+   * уншигдана — үнэндээ хоёр ӨӨР хэмжигдэхүүн (төгрөг ба хувь). Тиймээс
+   * цэнхэр муруйн эсрэг ДУЛААН өнгө.
+   */
+  --tl-area: #e0913c;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -112,6 +141,26 @@
   background: var(--sunken, var(--surface-2));
 }
 
+/*
+ * ЗУРГИЙН ДЭЭРХ ХУГАЦААНЫ ШҮҮЛТ.
+ *
+ * ⚠️ Зөвхөн БАЙРЛУУЛНА — сегментийн хэлбэр нь `.fBar`-т хэвээр. Хоёр газарт
+ * загвар давхарлавал нэгийг нь засахад нөгөө нь чимээгүй хоцорно.
+ */
+.mapFilter {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 5;
+}
+/* ⚠️ Зурган дээрх тул дэвсгэр нь БҮТЭН — тунгалаг байвал доорх зураг
+   сегментийн бичвэрийг уншигдахгүй болгоно. */
+.mapFilter .filters {
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
 .catPanel {
   position: absolute;
   inset: 0 auto 0 0;
@@ -207,6 +256,12 @@
 .fDropVal { font-size: 12px; font-weight: 600; color: var(--ink); }
 .fDropVal:empty { display: none; }
 
+/*
+ * ХУРААСАН ҮЕИЙН ТОВЧООН — «2026 · II улирал» гэх мэт.
+ *
+ * ⚠️ Сегментчилсэн зурвастай ИЖИЛ хүрээтэй: хураах нь өөр УДИРДЛАГА руу
+ * шилжсэн гэсэн үг биш, зөвхөн НАРИЙССАН хэлбэр гэдэг нь хэлбэрээс уншигдана.
+ */
 /* ⚠️ `fixed` — зурвас нь `overflow`-той эцгийн дотор тул `absolute` цэс тасарна */
 .fVeil { position: fixed; inset: 0; z-index: 40; }
 /*
@@ -290,12 +345,6 @@
 
 .wait { margin: 4px 0; font-size: 12px; color: var(--ink-3); }
 
-.stamp {
-  margin: 8px 0 0;
-  font-size: 11px;
-  color: var(--ink-3);
-}
-
 /*
  * ШҮҮЛТИЙГ ХУРААХ/ДЭЛГЭХ товч.
  *
@@ -309,34 +358,6 @@
  * булангийн радиус, доод өндөр дөрвүүлээ `.fBar` / `.fDrop`-ынхтой нэг —
  * зөрвөл зэрэгцэн зогсох хоёр удирдлага өөр гэр бүлийнх мэт харагдана.
  */
-.fToggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 26px;
-  box-sizing: border-box;
-  padding: 5px 11px;
-  font: inherit;
-  font-size: 9.5px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  line-height: 1.2;
-  text-transform: uppercase;
-  color: var(--ink-3);
-  background: var(--surface);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-sm);
-  cursor: pointer;
-}
-.fToggle:hover { color: var(--ink); border-color: var(--data); }
-.fToggleOn {
-  color: var(--data);
-  text-transform: none;
-  letter-spacing: 0;
-  background: color-mix(in srgb, var(--data) 14%, transparent);
-  border-color: color-mix(in srgb, var(--data) 55%, transparent);
-}
-
 /*
  * ХУРААСАН ЗУРВАС — зөвхөн сум.
  *
@@ -344,27 +365,9 @@
  * бүх утга нь доорх картуудад зай өгөх явдал — хүрээтэй хоосон зурвас
  * үлдээвэл ердөө 22px л хожно.
  */
-.fThin {
-  padding: 0;
-  border-color: transparent;
-  background: transparent;
-}
-.fToggleThin {
-  /* Хураасан үед зэрэгцэх зүйл байхгүй тул өндрийн тэгшитгэл ч хэрэггүй */
-  min-height: 0;
-  padding: 0 4px;
-  gap: 4px;
-  line-height: 1.1;
-  border-color: transparent;
-  background: transparent;
-}
 /* «Шүүх» — сумны урд, ЖИЖИГ. Хураасан зурвасны өндрийг нэмэхгүй хэмжээ. */
 /* Товчны үсгийн хэмжээг товч өөрөө тогтооно — давхар зарлахгүй */
-.fToggleLbl { font-size: inherit; }
-.fToggleThin:hover { border-color: transparent; color: var(--data); }
 /* Идэвхтэй шүүлттэй үед сум нь өнгө авна — утга нь `title`-д */
-.fThin .fToggleOn { color: var(--data); background: transparent; border-color: transparent; }
-
 /*
  * ИНДИКАТОРЫН ЗУРВАС — НАМХАН, өргөн нь хэвээр.
  *
@@ -544,7 +547,7 @@
  * урт бүдэг зурвас нь богино цулаас «илүү» мэт уншигдана.
  */
 .shell :global(.chartTrack) {
-  height: 11px;
+  height: 8px;
   border-radius: 3px;
   background: var(--chart-track);
 }
@@ -569,14 +572,23 @@
 
 /* ═══════════ S-МУРУЙ + ОЛГОСОН ДҮН — НЭГ ЗУРАГ ═══════════ */
 
+/*
+ * S-МУРУЙН ӨНГӨ — ЦЭВЭР ЦЭНХЭР.
+ *
+ * ⚠️ ПАЛИТРААС ГАДУУРХ hex нь САНААТАЙ, хэрэглэгчийн ШУУД заавар
+ * (2026-09-06: #0000FF → #CCCCFF → #CAF0F8 → #1E91D6). Урьд нь `--c3`
+ * (индиго) байсан. Сэдэв солиход дагахгүй тул энд НЭГ токен болгож тавив —
+ * дараагийн өөрчлөлт нэг мөрөөр хийгдэнэ.
+ */
 .tl { display: flex; flex-direction: column; gap: 4px; }
 
 /* ⚠️ `relative` — муруй ба цэгүүд энэ талбайд `absolute`-аар суурьшина */
 .tlPlot {
   position: relative;
   height: 132px;
-  /* Дээд талд хувийн шошго гарах зай (цэг 100%-д хүрэхэд таслагдахгүй) */
-  padding-top: 14px;
+  /* ⚠️ 100%-ийн цэгийн шошго ЗУРВАСААС ГАРЧ картын ГАРЧИГ дээр буудаг тул
+     дээр зай үлдээнэ. Шошго нь цэгээс 9px дээр сууна (`.tlDot b`). */
+  padding-top: 20px;
 }
 
 .tlBars { display: flex; align-items: flex-end; gap: 4px; height: 100%; }
@@ -591,21 +603,54 @@
   height: 100%;
 }
 /* Багананы утга — түүний ДЭЭД талд, багана намхан үед ч уншигдана */
-.tlVal {
-  font-size: 9.5px;
-  color: var(--ink-3);
-  white-space: nowrap;
-  margin-bottom: 2px;
-}
+/*
+ * ОЛГОСОН ДҮНГИЙН БАГАНА.
+ *
+ * ⚠️ ТАЛБАЙН (area) хэлбэрийг БУЦААВ (2026-09-07, хэрэглэгчийн шийдвэр):
+ * талбай нь зэргэлдээ үеүүдийг ХОЛБОЖ, тасралтгүй урсгал мэт уншуулдаг. Гэтэл
+ * олголт нь тасалгаат үйл явдал — тухайн үед олгосон эсвэл огт олгоогүй.
+ *
+ * ⚠️ Багана НАРИЙХАН (18%) — нүдний зай нь өөрөө үеүүдийг тусгаарлана. Цөөн
+ * үе (6 жил) байхад 44% нь бүдүүн тэгш өнцөгт болж, S-муруйг халхалдаг байв.
+ *
+ * ⚠️ Дүүргэлт ТУНГАЛАГ: багана нь S-муруйн ЦААД дэвсгэр тул тод байвал муруй
+ * ба цэгийн шошгууд дээр нь уншигдахаа болино. Ирмэг нь бүтэн өнгөөрөө үлдэж,
+ * баганы өндөр хаана дуусахыг тодхон заана.
+ */
 .tlBar {
+  /* ⚠️ `relative` — дүнгийн шошго үүнээс дээш байрлана */
+  position: relative;
   display: block;
-  width: 100%;
+  width: 18%;
+  /* ⚠️ Хэт нарийн болж алга болохгүй байх доод хамгаалалт */
+  min-width: 4px;
+  max-width: 22px;
   min-height: 1px;
-  border-radius: 3px 3px 0 0;
-  /* Дүүргэлт зураастай — чартын бусад баганатай нэг хэл */
-  background:
-    repeating-linear-gradient(-45deg, rgb(255 255 255 / 22%) 0 3px, transparent 3px 6px),
-    color-mix(in srgb, var(--data) 55%, transparent);
+  border-radius: 2px 2px 0 0;
+  background: color-mix(in srgb, var(--tl-area) 18%, transparent);
+  box-shadow: inset 0 0 0 0.6px var(--tl-area);
+}
+/*
+ * БАГАНЫ ДЭЭРХ ДҮН.
+ *
+ * ⚠️ `bottom: 100%` — баганы ЯГ дээд ирмэгээс дээш. Урсгалд тавибал (баганын
+ * өмнө хүүхэд болгож) баганы боломжит өндөр шошгын өндрөөр багасаж, 100%-ийн
+ * багана ч тэнхлэгт хүрэхгүй болно.
+ *
+ * ⚠️ Багана 18% өргөнтэй тул шошго түүнээс ХАМААГҮЙ ӨРГӨН — төвөөс нь хоёр
+ * тийш халина. Энэ нь санаатай: тоог таслах нь уншигдацгүй болгоно.
+ */
+.tlBarVal {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-bottom: 3px;
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--tl-area);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 /*
@@ -615,18 +660,96 @@
  */
 .tlSvg {
   position: absolute;
-  inset: 14px 0 0;
+  inset: 20px 0 0;
   width: 100%;
-  height: calc(100% - 14px);
+  height: calc(100% - 20px);
   overflow: visible;
   pointer-events: none;
 }
-.tlLine { stroke: var(--good); stroke-width: 2; stroke-linecap: round; }
+/* ⚠️ Муруй нь `--c3` (индиго — «тэнгэр»). Ногоон байсныг хэрэглэгч солив;
+   палитраас гадуур hex бичихгүй — сэдэв солиход дагаж тохирно. */
+.tlLine { stroke: var(--tl-curve); stroke-width: 2; stroke-linecap: round; }
+
+/* Зурвас · тэнхлэг · оны мөр — заагийн зураасны НИЙТЛЭГ эцэг */
+.tlMain { position: relative; }
+
+/*
+ * ЖИЛИЙН ЗААГИЙН ДАВХАРГА.
+ *
+ * ⚠️ `inset: 0` — цэг/муруйнхаас (`20px`) ЯЛГААТАЙ нь санаатай: зааг нь
+ * хэмжигдэхүүн биш ХУВААРЬ тул зурвасыг БҮТНЭЭР, шошгын зайг ч оролцуулан
+ * огтолж байж «энэ хэсэг тэр жилийнх» гэдэг нь уншигдана.
+ */
+.tlGrid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.tlYr {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 1px dashed var(--line-strong);
+}
+
+/* Заагуурын зураас — hover хийсэн үе. Жилийн заагаас ӨНГӨӨРӨӨ ялгарна. */
+.tlCursor {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 1px dashed var(--tl-curve);
+}
+
+/* ⚠️ SVG-ТЭЙ ЯГ ИЖИЛ `inset` — цэг ба муруй нэг хуваарьт байх цорын ганц арга */
+.tlDots {
+  position: absolute;
+  inset: 20px 0 0;
+  pointer-events: none;
+}
 
 .tlDot {
   position: absolute;
   transform: translate(-50%, 50%);
   pointer-events: none;
+}
+/* Цэгийн хувь — муруйн ӨНГӨӨР, багананы дүнтэй андуурагдахгүй */
+:global([data-theme='dark']) .shell { --tl-lbl: #fff; }
+
+.tlDot b {
+  position: absolute;
+  bottom: 9px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 9.5px;
+  font-weight: 700;
+  /*
+   * ⚠️ СЭДВЭЭС ХАМААРНА, хатуу #fff БИШ (2026-09-07). Хар сэдэвт цагаан
+   * (хэрэглэгчийн 2026-09-06-ны заавар) хэвээр, гэвч ЦАЙВАР сэдэвт цагаан
+   * бичвэр цагаан дэвсгэр дээр бүрмөсөн үл үзэгдэх болж байв. `--tl-lbl`-ийг
+   * бүрхүүл (`.shell`) сэдэв бүрд тодорхойлно.
+   */
+  color: var(--tl-lbl, #fff);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  /*
+   * ГАЛО — шошго нь баганы дүүргэлт, муруй, тор гурвын аль нэгний дээр
+   * тохиолдож болно. Дэвсгэрийн өнгөөр 8 зүг рүү шахаж уншигдац баталгаажна.
+   *
+   * ⚠️ `-webkit-text-stroke` ХЭРЭГЛЭХГҮЙ: тэр нь үсгийн ДОТОГШ иддэг тул
+   * 9.5px хэмжээнд тоо нимгэрч уншигдахаа больдог.
+   */
+  /*
+   * ⚠️ ГАЛО нь ДЭВСГЭРИЙН өнгөөр — бичвэр ЦАГААН болсон тул цагаан гало нь
+   * түүнийг үл үзэгдэх болгоно. Гало нь одоо шошгыг багана/муруйнаас
+   * тусгаарлах үүрэгтэй.
+   */
+  text-shadow:
+    1px 1px 0 var(--surface), -1px 1px 0 var(--surface),
+    1px -1px 0 var(--surface), -1px -1px 0 var(--surface),
+    1px 0 0 var(--surface), -1px 0 0 var(--surface),
+    0 1px 0 var(--surface), 0 -1px 0 var(--surface);
 }
 .tlDot::before {
   content: '';
@@ -635,44 +758,311 @@
   height: 6px;
   margin: 0 auto;
   border-radius: 99px;
-  background: var(--good);
+  background: var(--tl-curve);
   box-shadow: 0 0 0 2px var(--surface);
 }
-.tlDot b {
-  position: absolute;
-  bottom: 9px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 9.5px;
-  font-weight: 700;
-  color: var(--good);
-  white-space: nowrap;
-}
-
 .tlAxis { display: flex; gap: 4px; }
 .tlAxis span {
+  display: flex;
   flex: 1 1 0;
   min-width: 0;
+  flex-direction: column;
+  align-items: center;
   font-size: 10px;
   color: var(--ink-3);
   text-align: center;
-  overflow: hidden;
-  text-overflow: ellipsis;
+}
+/* Хоосон шошго ч ӨРГӨНӨӨ эзэлнэ — багана бүр тэнхлэгийн нүдтэй нэг эгнээнд.
+   `overflow: visible` — 1 нүдийн өргөнөөс урт «29.0 тэрбум ₮» хайчлагдахгүй. */
+.tlAxis b,
+.tlAxis i {
+  max-width: 100%;
+  overflow: visible;
+  white-space: nowrap;
+}
+.tlAxis b { font-weight: 500; }
+.tlAxis i {
+  font-size: 9.5px;
+  font-style: normal;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+.tlAxisOn i { color: var(--ink); }
+
+/*
+ * ЦЭГИЙН ШОШГЫН ДЭЭД ЭГНЭЭ.
+ *
+ * ⚠️ Шошго бүр гарах болсон тул (2026-09-07) хөршүүд нэг эгнээнд шууд
+ * давхарлана. Сондгой индексийг 11px дээш өргөснөөр боломжит зай хоёр дахин
+ * нэмэгдэнэ — зум нэмэхээс ӨМНӨ ч уншигдана.
+ */
+.tlDotUp { bottom: 20px !important; }
+
+/*
+ * НАЛУУ ТЭНХЛЭГ — 45°.
+ *
+ * ⚠️ Тулгуур цэг нь бичвэрийн БАРУУН ДЭЭД булан (`transform-origin: 100% 0`)
+ * бөгөөд тэр нь баганын ТӨВД (`right: 50%`) суудаг: ингэж байж шошго нь
+ * өөрийн баганаас зүүн доош бус, яг доороос нь эхэлж нална.
+ *
+ * ⚠️ `overflow: visible` ЗААВАЛ — эс бөгөөс налсан бичвэр нүдэндээ хайчлагдана.
+ */
+.tlAxisTilt {
+  /* ⚠️ 52 → 22px (2026-09-07): шошго нь «2026-05»-аас «05» болж БОГИНОСССОН
+     (он нь доорх зурваст) тул 45°-т ердөө ~16px эзэлнэ. 52px үлдээвэл сар ба
+     оны хооронд хоосон зурвас бий болно. */
+  height: 22px;
+  align-items: flex-start;
+  overflow: visible;
+}
+.tlAxisTilt span {
+  position: relative;
+  height: 100%;
+  overflow: visible;
+}
+/*
+ * ⚠️ ДООШ НАЛНА (2026-09-07). Урьд нь `rotate(-45deg)` + баруун дээд тулгуур
+ * байсан тул бичвэр нь тулгуураас ДЭЭШ, ЗҮҮН тийш сунаж, хэвтээ тэнхлэгээс
+ * ДЭЭГҮҮР — зурвасын дотор буудаг байв. Одоо зүүн дээд тулгуураас баруун
+ * ДООШ явна: бүх бичвэр тэнхлэгийн ДООР үлдэнэ.
+ */
+.tlAxisTilt b {
+  position: absolute;
+  top: 2px;
+  left: 50%;
+  transform: rotate(45deg);
+  transform-origin: 0 0;
+  white-space: nowrap;
+  /* ⚠️ ХЭМЖЭЭГ ИЛ ЗАРЛАНА: эцгийн `font-size`-ыг өвлөвөл нүд нарийсахад
+     хамт агшдаггүй ч, тодорхой утга байхгүй үед хөтчүүд өөр өөрөөр тооцдог
+     байв (шошго тэгш бус хэмжээтэй харагдана). */
+  font-size: 10px;
+  line-height: 1.1;
+}
+
+/*
+ * УНШИЛТЫН МӨР — заасан үеийн хоёр тоо.
+ *
+ * ⚠️ Тоонууд зурган ДЭЭР биш ЭНД гарна. Зурган дээр 132px өндөрт багана
+ * бүрийн дүн, цэг бүрийн хувь, тэнхлэг гурав зэрэг өрсөлдөж, чарт бүхэлдээ
+ * уншигдахгүй болсон (хэрэглэгчийн шүүмж, 2026-09-06).
+ */
+.tlHead {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-height: 18px;
+}
+.tlHeadLbl {
+  font-size: 10px;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+.tlHeadPct {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+  /* ⚠️ Цэгийн шошготой ИЖИЛ токен (`--tl-lbl`): хатуу `#fff` байсан тул
+     ЦАЙВАР сэдэвт цагаан дэвсгэр дээр үл үзэгдэх болж байв (2026-09-07).
+     Муруйн өнгө нь зурган дээрх ЗУРААС ба ЦЭГТ л үлдэнэ. */
+  color: var(--tl-lbl);
+  font-variant-numeric: tabular-nums;
+}
+.tlHeadAmt {
+  font-size: 10.5px;
+  color: var(--ink-2);
   white-space: nowrap;
 }
 
-.tlLegend {
+/*
+ * ⚠️ ЗААСАН БАГАНЫГ БУДАХГҮЙ (2026-09-06). Урьд нь саарал хөшиг ба тод
+ * дүүргэлт тавьдаг байсныг хассан: заалт нь анхдагчаар СҮҮЛИЙН баганад
+ * сууна (`at = n - 1`) тул хэрэглэгч юу ч хийгээгүй байхад тэр багана
+ * «сонгогдсон» мэт харагддаг байв. Заалт нь одоо ЦЭГ ба ТЭНХЛЭГИЙН ШОШГООР
+ * л илэрнэ — тэдгээр нь анхдагч төлөвт ч төөрөгдөл үүсгэхгүй.
+ */
+/* Заасан цэг — том, тод */
+.tlDotOn::before {
+  width: 9px;
+  height: 9px;
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 3px color-mix(in srgb, var(--tl-curve) 45%, transparent);
+}
+.tlAxisOn { color: var(--ink); font-weight: 600; }
+
+/*
+ * ЗУМЫН ЗУРВАС — ArcGIS дашбоардын хугацааны гулсуур.
+ *
+ * ⚠️ `touch-action: none` ЗААВАЛ: эс бөгөөс хүрэлтээр чирэхэд хөтөч нь
+ * хуудсаа гүйлгэж, зумын цонх огт хөдөлдөггүй.
+ */
+/*
+ * ⚠️ ХАМГИЙН ДООР, НАРИЙХАН (2026-09-07, хэрэглэгчийн заавар): 15px нь чартаас
+ * өндөр хулгайлдаг байв. 8px нь чирэхэд хангалттай бөгөөд бариулууд нь
+ * зурваснаас өргөн (9px) тул хулганаар барихад хялбар хэвээр.
+ */
+.tlZoom {
+  position: relative;
+  height: 8px;
+  margin-top: 2px;
+  border-radius: 8px;
+  background: var(--chart-track, var(--surface-2));
+  cursor: crosshair;
+  touch-action: none;
+  overflow: hidden;
+}
+.tlZoomWin {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--tl-curve) 34%, transparent);
+  box-shadow: inset 0 0 0 1px var(--tl-curve);
+  cursor: grab;
+  touch-action: none;
+}
+.tlZoomWin:active { cursor: grabbing; }
+/* Ирмэгийн бариул — цонх нарийсахад ч барьж болохуйц өргөн */
+.tlZoomGrip {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -3px;
+  width: 9px;
+  border-radius: 8px;
+  background: var(--tl-curve);
+  cursor: ew-resize;
+  touch-action: none;
+}
+.tlZoomGripR { left: auto; right: -3px; }
+
+/* «Бүтэн харах» — зөвхөн зумтай үед гарна */
+.tlReset {
+  margin-left: auto;
+  padding: 1px 8px;
+  font: inherit;
+  font-size: 10px;
+  color: var(--ink-2);
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  border-radius: 99px;
+  cursor: pointer;
+}
+.tlReset:hover { color: var(--ink); border-color: var(--tl-curve); }
+
+/*
+ * ОНЫ ЗУРВАС — тасархай заагийн хооронд нэг удаа.
+ *
+ * ⚠️ Нүд бүр нь ӨӨРИЙН оны нүднүүдийн эзлэх хувиар өргөнтэй (`width` нь JSX-д
+ * тооцогдоно) тул зааг ба он яг таарна.
+ */
+.tlYrRow {
+  display: flex;
+  margin-top: 2px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.tlYrRow span {
+  min-width: 0;
+  overflow: hidden;
+  text-align: center;
+  white-space: nowrap;
+  /* ⚠️ ӨӨРИЙН `border-left` БАЙХГҮЙ: зураасыг `.tlGrid` нэг доор дамнан
+     зурна. Хоёуланг нь тавибал оны мөрөнд зураас ХОЁР давхар болж, өнгө нь
+     бусад хэсгээсээ тод гардаг байв. */
+}
+
+/* ── ЧАРТ / ХҮСНЭГТ СЭЛГҮҮР ── */
+.tlTabs {
+  display: inline-flex;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+}
+.tlTab {
+  padding: 2px 10px;
+  font: inherit;
+  font-size: 10.5px;
+  color: var(--ink-2);
+  background: transparent;
+  border: none;
+  border-left: 1px solid var(--line);
+  cursor: pointer;
+}
+.tlTabs > .tlTab:first-child { border-left: none; }
+.tlTab:hover { background: color-mix(in srgb, var(--data) 10%, transparent); }
+.tlTabOn {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--data) 14%, transparent);
+  box-shadow: inset 0 -2px 0 var(--data);
+}
+
+/*
+ * ХҮСНЭГТИЙН ХАРАГДАЦ.
+ *
+ * ⚠️ Өндөр нь чартынхтай ойролцоо (`max-height`) — сэлгэхэд карт нь өсөж
+ * агшихгүй, зэргэлдээх газрын зураг үсрэхгүй.
+ */
+.tlTblWrap {
+  max-height: 190px;
+  overflow: auto;
+}
+/*
+ * ⚠️ ARCGIS-ИЙН АТРИБУТ ХҮСНЭГТИЙН БҮТЭЦ (2026-09-07, хэрэглэгчийн заавар):
+ * бүрэн тор, нягт мөр, № багана, эрэмбэлэгддэг наалдамхай толгой, ээлжилсэн
+ * дэвсгэр. Энгийн жагсаалт биш ӨГӨГДЛИЙН хүснэгт гэдэг нь хэлбэрээсээ
+ * уншигдана.
+ */
+.tlTbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11.5px;
+}
+.tlTbl th,
+.tlTbl td {
+  padding: 2px 8px;
+  text-align: left;
+  white-space: nowrap;
+  /* Бүрэн тор — атрибут хүснэгтийн гол шинж */
+  border: 1px solid var(--line);
+}
+.tlTbl th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 0;
+  font-weight: 600;
+  background: var(--surface-2, var(--surface));
+}
+/* Толгойн товч — бүтэн нүдийг эзэлнэ, дарахад эрэмбэлнэ */
+.tlSort {
   display: flex;
   align-items: center;
-  gap: 5px;
-  margin: 2px 0 0;
+  gap: 4px;
+  width: 100%;
+  padding: 3px 8px;
+  font: inherit;
   font-size: 10px;
+  font-weight: 600;
   color: var(--ink-3);
+  background: transparent;
+  border: none;
+  cursor: pointer;
 }
-.tlKeyBar {
-  width: 12px;
-  height: 8px;
-  border-radius: 2px;
-  background: color-mix(in srgb, var(--data) 55%, transparent);
+.tlSort:hover { color: var(--ink); background: color-mix(in srgb, var(--data) 10%, transparent); }
+.tlSort i { font-size: 8px; font-style: normal; color: var(--data); }
+/* ⚠️ ТОЛГОЙ нь БҮГД ЗҮҮН ТИЙШ (2026-09-07, хэрэглэгчийн заавар): нүдний утга
+   баруун тийш жигдэрсэн ч гарчиг нь тэгвэл багана бүрийн нэр өөр өөр
+   байрлалаас эхэлж, нүд гүйлгэн уншихад бартаа болно. */
+/* № багана — нарийн, бүдэг */
+.tlThIdx {
+  width: 1%;
+  color: var(--ink-3);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
-.tlKeyLine { width: 14px; height: 2px; border-radius: 2px; background: var(--good); margin-left: 8px; }
+.tlNum { text-align: right; font-variant-numeric: tabular-nums; }
+/* Ээлжилсэн дэвсгэр — урт мөрийг нүд алдахгүй дагана */
+.tlTbl tbody tr:nth-child(even) { background: color-mix(in srgb, var(--ink) 3%, transparent); }
+.tlTbl tbody tr:hover { background: color-mix(in srgb, var(--data) 12%, transparent); }
+

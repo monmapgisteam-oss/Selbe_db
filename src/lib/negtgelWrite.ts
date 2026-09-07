@@ -255,7 +255,7 @@ export async function registerApproved(
      */
     const dupQ = (await post(`${BAGTS_NEGTGEL.url}/query`, {
       where: `${F.bagts} = N'${nameSql}' AND ${F.date} = ${ts(s.at)}`,
-      outFields: F.progress,
+      outFields: `${BAGTS_NEGTGEL.oid},${F.progress}`,
       returnGeometry: 'false',
       orderByFields: `${BAGTS_NEGTGEL.oid} DESC`,
       resultRecordCount: '1',
@@ -265,10 +265,46 @@ export async function registerApproved(
       const had = num(dupRow[F.progress]);
       /* Ижил тоо — үнэхээр давхар дуудалт, чимээгүй өнгөрнө. */
       if (had != null && Math.abs(had - s.progress) < 0.01) return { ok: true };
-      return {
-        ok: false,
-        error: tr('Энэ багцын {0}-ны мөр нэгтгэлд аль хэдийн байна ({1}%), батлагдсан гүйцэтгэл {2}% — давхар бичихгүй. Нэгтгэлийн мөрийг гараар шалгана уу.', new Date(s.at).toISOString().slice(0, 10), had == null ? '—' : had.toFixed(2), s.progress.toFixed(2)),
-      };
+      /*
+       * ⚠️ 2026-09-07: «ӨДӨРТ НЭГ УДАА» гэсэн хязгаар ХАСАГДАВ (хэрэглэгчийн
+       * хүсэлт). Урьд нь тухайн өдрийн мөр байгаад утга нь ЗӨРВӨЛ ил алдаа
+       * буцааж бичихээс ТАТГАЛЗДАГ байв. Үр дүнд нь өглөө батлуулсан багцыг
+       * үдээс хойш засаад дахин батлуулахад дөрвүүлээ шат амжилттай өнгөрч,
+       * архивт шинэ жааз ч үүсээд, ЗӨВХӨН нэгтгэлийн бүртгэл унадаг байлаа —
+       * дашбоард өглөөний тоон дээрээ хөлддөг.
+       *
+       * ⚠️ ШИНЭ МӨР БИШ, ШИНЭЧЛЭЛ. Нэг өдөрт олон мөр нэмбэл «хамгийн сүүлийн»
+       * нь тодорхойгүй болно: `loadPkgProgress` огноог ӨДРИЙН нарийвчлалаар
+       * (`YYYY-MM-DD`) хадгалдаг тул `latestPkgProgress`-ийн жиших түлхүүр
+       * ижил гарч, аль мөр давамгайлах нь ArcGIS-ийн буцаах дарааллаас
+       * хамаарна. Тиймээс тухайн ӨДРИЙН мөрийг хамгийн сүүлийн батлагдсан
+       * утгаар дарж бичнэ — цуваа өдөрт нэг цэгтэй, дүн нь үргэлж хамгийн
+       * сүүлийн баталгаа.
+       *
+       * ⚠️ ТҮҮХ АЛДАГДАХГҮЙ: баталгаа бүр `Bagts_*` архивт бүтэн жааз, мөн
+       * `guitsetgel_bugluh_hyanalt`-д тусдаа бүртгэл үлдээдэг. Нэгтгэл нь
+       * түүх биш, ӨДРИЙН нэгдсэн дүнгийн цуваа.
+       */
+      const oid = num(dupRow[BAGTS_NEGTGEL.oid]);
+      if (oid == null)
+        return { ok: false, error: tr('Нэгтгэлийн мөрийн дугаар уншигдсангүй — дахин оролдоно уу.') };
+      const upd = (await post(`${BAGTS_NEGTGEL.url}/applyEdits`, {
+        updates: JSON.stringify([{
+          attributes: {
+            [BAGTS_NEGTGEL.oid]: oid,
+            [F.progress]: s.progress,
+            [F.planned]: s.planned,
+            [F.volume]: s.volume,
+            [F.volumePlan]: s.volumePlan,
+          },
+        }]),
+        rollbackOnFailure: 'true',
+      })) as { updateResults?: { success?: boolean; error?: { description?: string } }[] };
+      const ur = upd.updateResults?.[0];
+      if (!ur || ur.success !== true)
+        throw new Error(ur?.error?.description ?? 'Нэгтгэлийн мөр шинэчлэгдсэнгүй');
+      invalidate('BAGTS_NEGTGEL');
+      return { ok: true };
     }
 
     const res = (await post(`${BAGTS_NEGTGEL.url}/applyEdits`, {

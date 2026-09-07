@@ -273,6 +273,13 @@ export async function initRemote(canCreate: boolean, trusted: boolean = canCreat
     caps._syncRemoteCaps(remote.caps);
   } catch { /* модуль ачаалагдаагүй орчин — алгасна */ }
 
+  // 5) Чанарын (QAQC) багцын хуваарилалт (`__qaqc__:`) → qaqcAcl.ts
+  //    ⚠️ Урсгалынхаас ТУСДАА — чанарын хяналт нь дөрвөн шатны аль нь ч биш.
+  try {
+    const q = await import('./qaqcAcl');
+    q._syncRemoteQaqc(remote.qaqc);
+  } catch { /* модуль ачаалагдаагүй орчин — алгасна */ }
+
   notify();
   return true;
 }

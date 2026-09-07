@@ -19,6 +19,11 @@ import { useAuth } from './AuthGate';
 import { Icon } from './Icon';
 import { CAPS, capsOf, capViewsOf, setCaps, subscribeCaps, toggleCap, type CapKey } from '@/lib/caps';
 import { GuitsetgelAcl } from '@/modules/GuitsetgelAcl';
+import { QaqcAcl } from '@/modules/QaqcAcl';
+import {
+  ALL_BAGTS as QAQC_ALL_BAGTS, listQaqcAssigns, purgeQaqcAssign, removeQaqcAssign, setQaqcAssign,
+  subscribeQaqcAcl,
+} from '@/lib/qaqcAcl';
 import { STAGE_LABEL } from '@/lib/hyanaltGroup';
 import {
   purgeAssign, regrantFlowAccess, stageOfUser, subscribeAcl,
@@ -62,7 +67,7 @@ const capHint = (k: CapKey): string => {
     return tr('«Гүйцэтгэл бөглөх» хуудсанд бүлэг дотор шинэ ажлын мөр нэмэх. Хуудасны бүтэц өөрчлөгдөж, жин ба мөнгөн дүн бүхэлдээ дахин бодогдоно.');
   }
   if (k === 'qaqc') {
-    return tr('«Чанар (QAQC)» харагдац дээр Inspection Test Plan-ийг (М-акт, FIC, MA, MIR) бөглөх. Гүйцэтгэлийн хувь бөглөх эрхээс тусдаа — чанарын баримтыг гүйцэтгэгч биш, чанарын хяналтын ажилтан хөтөлнө.');
+    return tr('«Чанар (QAQC)» харагдац дээр Inspection Test Plan-ийг (М-акт, FIC, MA, MIR) бөглөх. Энд асаахад БҮХ багц хуваарилагдана — тодорхой багц зааж өгөх бол «Чанарын (QAQC) эрх» хуудсыг ашиглана уу. Гүйцэтгэлийн урсгалаас тусдаа: гүйцэтгэл зөвшөөрөх эрх дагалдахгүй.');
   }
   if (k === 'zovshoorol') {
     return tr('«Зөвшөөрөл» хуудсанд зөвшөөрөл нэмэх, засах, устгах. Эрхгүй хүн зөвхөн харна.');
@@ -143,7 +148,10 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
    *    «аль багцыг бөглөх/хянах вэ». Нэг жагсаалтад хольбол нэгийг засахад
    *    нөгөө нь өөрчлөгдсөн мэт төөрөгдөл үүснэ.
    */
-  const [pane, setPane] = useState<'users' | 'guits'>('users');
+  /* ⚠️ «Чанарын эрх» нь урсгалынхаас ТУСДАА хуудас (2026-09-07) — багцын хүрээ
+     нь өөр эх сурвалжаас гардаг тул нэг дэлгэцэнд хольвол админ хоёрын аль нь
+     үйлчилж байгааг ялгаж чадахгүй болно (`qaqcAcl.ts`-ийн толгойг үз). */
+  const [pane, setPane] = useState<'users' | 'guits' | 'qaqc'>('users');
   const [name, setName] = useState('');
   const [addErr, setAddErr] = useState('');
   /** Хайлт — олон аккаунттай үед шаардлагатай (нэрээр шүүнэ) */
@@ -250,6 +258,9 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
    */
   const [, setAclN] = useState(0);
   useEffect(() => subscribeAcl(() => setAclN((n) => n + 1)), []);
+  /* ⚠️ Чанарын хуваарилалт ч бас ӨӨР хадгалалттай — QAQC унтраалга нь түүнийг
+     дагуулдаг тул захиалахгүй бол дарсан унтраалга буцаж унтарсан харагдана. */
+  useEffect(() => subscribeQaqcAcl(() => setAclN((n) => n + 1)), []);
 
   /** Устгагдсан аккаунтууд — рендер бүрд ДАХИН биш, нэг л удаа */
   const removed = useMemo(() => (open ? listRemoved() : []), [open, users]);
@@ -374,6 +385,71 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     //    өнчин `__cap__:` мөр үлдэж, тэр нэрийг дараа нэмэхэд эрх нь өөрөө асна.
     if (draftOf(u).isNew) return;
     const on = capsOf(u.username).includes(c);
+    /*
+     * ⚠️ QAQC нь БАГЦГҮЙГЭЭР утгагүй (2026-09-07): эрх нь харагдацыг нээдэг ч
+     *    багцын хүрээ нь `qaqcAcl`-аас гардаг тул зөвхөн энэ унтраалгыг асаавал
+     *    хуудас нээгдээд «нэг ч багц хуваарилагдаагүй» гэж хоосон үлдэнэ. Тиймээс
+     *    унтраалга нь хуваарилалтыг ДАГУУЛНА: асаахад бүх багц, унтраахад хасалт.
+     *    Тодорхой багц сонгох нь «Чанарын (QAQC) эрх» хуудсанд.
+     */
+    if (c === 'qaqc') {
+      /*
+       * ⚠️ SUPER-Т ХУВААРИЛАЛТ ҮЙЛЧЛЭХГҮЙ (2026-09-07-ны merge аудит).
+       *    `setQaqcAssign`/`removeQaqcAssign` нь super-д `{ok:false}` буцаадаг
+       *    (`qaqcAcl.ts` — тэдэнд `qaqcScope` угаас `null` = бүх багц). Тэр
+       *    салааг барихгүй бол `r.sync` нь `undefined` тул унтраалга ХЭЗЭЭ Ч
+       *    асахгүй, оронд нь «ArcGIS-т бичигдсэнгүй» гэсэн ХУДАЛ алдаа гарч,
+       *    7 super админ «Чанар (QAQC)» хуудсыг зөвхөн уншдаг болж байв.
+       *    Тэдэнд эрхийг ХУУЧИН замаар (`toggleCap`) шууд олгоно.
+       */
+      if (roleForUser(u.username) === 'super') {
+        void toggleCap(u.username, 'qaqc', !on).then((r) => {
+          setCapErr((prev) => {
+            const m = new Map(prev);
+            if (r) m.delete(u.username.toLowerCase());
+            else m.set(u.username.toLowerCase(), true);
+            return m;
+          });
+        });
+        return;
+      }
+      /*
+       * ⚠️ АСААХАД ХҮРЭЭГ ТЭЛЭХГҮЙ (2026-09-07-ны merge аудит). Урьд нь
+       *    болзолгүй `[QAQC_ALL_BAGTS]` бичдэг байсан тул «Багц 2» гэж
+       *    хуваарилагдсан хүний унтраалгыг унтрааж-асаахад хүрээ нь
+       *    ЧИМЭЭГҮЙ бүх багц болж тэлдэг байв — хязгаарлах зорилготой
+       *    товч эрхийг өргөжүүлэх нь `qaqcAcl`-ийн fail-closed зарчигтай
+       *    зөрчилдөнө (`QaqcAcl.tsx` панел яг үүнийг хориглодог). Хуваарилалт
+       *    аль хэдийн байвал түүнийг ХЭВЭЭР үлдээж зөвхөн эрхийг сэргээнэ.
+       */
+      const cur = listQaqcAssigns().find((a) => a.user === u.username.trim().toLowerCase());
+      const r = on
+        ? removeQaqcAssign(u.username)
+        : setQaqcAssign(u.username, cur?.bagts.length ? cur.bagts : [QAQC_ALL_BAGTS]);
+      if (!r.ok) {
+        /* ⚠️ Няцаалтын ШАЛТГААНЫГ сүлжээний алдаатай хольж болохгүй */
+        setCapErr((prev) => new Map(prev).set(u.username.toLowerCase(), true));
+        return;
+      }
+      /*
+       * ⚠️ `sync` (хуваарилалтын мөр) ба `granted` (`__cap__:` эрхийн мөр)
+       *    ХОЁУЛАНГ нь хүлээнэ. Урьд нь зөвхөн `sync`-ийг хардаг байсан тул
+       *    эрхийн бичилт унасан ч унтраалга «асаалттай» харагдаж, дараагийн
+       *    `initRemote` дээр чимээгүй унтардаг байв.
+       */
+      void Promise.all([
+        r.sync ?? Promise.resolve(false),
+        r.granted ?? Promise.resolve(true),
+      ]).then(([a, b]) => {
+        setCapErr((prev) => {
+          const m = new Map(prev);
+          if (a && b) m.delete(u.username.toLowerCase());
+          else m.set(u.username.toLowerCase(), true);
+          return m;
+        });
+      });
+      return;
+    }
     void toggleCap(u.username, c, !on).then((r) => {
       setCapErr((prev) => {
         const m = new Map(prev);
@@ -458,9 +534,12 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
            * хуучин шат, багц, эрхтэйгээ шууд эргэж ирдэг байв.
            */
           const flowOk = await purgeAssign(uname);
+          /* ⚠️ Чанарын хуваарилалт нь ӨӨР мөр (`__qaqc__:`) — тусад нь арилгана,
+             эс бөгөөс тэр нэрийг дахин нэмэхэд чанарын багц өөрөө эргэж ирнэ. */
+          const qaqcOk = await purgeQaqcAssign(uname);
           const capOk = await setCaps(uname, []);
           const r = await removeUser(uname);
-          if (r && flowOk && capOk) ok += 1; else { fail += 1; failed.push(uname); }
+          if (r && flowOk && qaqcOk && capOk) ok += 1; else { fail += 1; failed.push(uname); }
           continue;
         }
         if (d.clear) {
@@ -468,6 +547,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
           if (!roleForUser(uname)) {
             // Суурьгүй (панелаас нэмсэн) аккаунт: сэргээх = устгах → бүгдийг цэвэрлэнэ
             if (!(await purgeAssign(uname))) bad = true;
+            if (!(await purgeQaqcAssign(uname))) bad = true;
             if (!(await setCaps(uname, []))) bad = true;
           }
           const r = await clearOverride(uname);
@@ -613,10 +693,32 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
           <Icon name="pen" size={14} />
           {tr('Гүйцэтгэлийн урсгалын эрх')}
         </button>
+        {/* ⚠️ ЧАНАР нь урсгалын ШАТГҮЙ асуулт тул тусдаа бүлэг — урсгалын
+            багананд байрлуулбал чанарын ажилтанд гүйцэтгэл зөвшөөрөх эрх
+            дагалдана (`qaqcAcl.ts`). */}
+        <button
+          type="button"
+          className={`${s.sideItem} ${pane === 'qaqc' ? s.sideItemOn : ''}`}
+          aria-current={pane === 'qaqc'}
+          onClick={() => setPane('qaqc')}
+        >
+          <Icon name="shield" size={14} />
+          {tr('Чанарын (QAQC) эрх')}
+        </button>
       </aside>
 
       <div className={s.main}>
-        {pane === 'guits' ? (
+        {pane === 'qaqc' ? (
+          <>
+            <header className={s.head}>
+              <h2 className={s.title}>{tr('Чанарын (QAQC) эрх')}</h2>
+              <p className={s.subtitle}>
+                {tr('Чанарын баримт (М-акт · FIC · MA · MIR) хөтлөх аккаунтад багц хуваарилна. Гүйцэтгэлийн урсгалаас тусдаа.')}
+              </p>
+            </header>
+            <QaqcAcl />
+          </>
+        ) : pane === 'guits' ? (
           <>
             <header className={s.head}>
               <h2 className={s.title}>{tr('Гүйцэтгэлийн урсгалын эрх')}</h2>
