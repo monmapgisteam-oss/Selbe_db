@@ -2227,7 +2227,6 @@ const en: Record<string, string> = {
   "Эхлэх": "Start",
   "Дуусах": "Finish",
   "Шинэчлэгдсэн огноо": "As-of date",
-  "Энэ багцын өнөөдрийн гүйцэтгэл аль хэдийн илгээгдсэн — хяналтаас буцаалт ирэх хүртэл засах боломжгүй.": "Today's progress for this package has already been submitted — editing is locked until it is returned from review.",
   "ЗӨВШӨӨРСӨН — дахин дарвал буцаана": "APPROVED — click again to undo",
   "Өмнөх агшнаас ӨӨРЧЛӨГДСӨН — дарж зөвшөөрнө үү": "CHANGED from the previous snapshot — click to approve",
   "обьём": "volume",
@@ -3188,7 +3187,6 @@ const en: Record<string, string> = {
   "«{0}»: угсарсан жааз {1} мөр — ачаалсан {2} мөрөөс БОГИНО. Архивт ЮУ Ч бичсэнгүй.": "\"{0}\": the assembled snapshot has {1} rows — SHORTER than the {2} rows that were loaded. NOTHING was written to the archive.",
   "Бөглөх хуудасны «Б.» мөрийн гүйцэтгэл хэмжигдээгүй тул нэгтгэлд бичсэнгүй — хуудсаа шалгаад дахин баталгаажуулна уу.": "The «Б.» row of the fill sheet has no measured progress, so nothing was written to the summary — check the sheet and approve again.",
   "Нэгтгэлийн сүүлийн гүйцэтгэл {0}%, бөглөх хуудаснаас гарсан нь {1}% — хэт зөрүүтэй тул бичсэнгүй. Хуудасны хэмжээс (0–1 эсэх) ба «Б.» мөрийг шалгана уу.": "The latest progress in the summary is {0}%, but the fill sheet yields {1}% — too large a gap, so nothing was written. Check the sheet’s scale (0–1?) and its «Б.» row.",
-  "Энэ багцын {0}-ны мөр нэгтгэлд аль хэдийн байна ({1}%), батлагдсан гүйцэтгэл {2}% — давхар бичихгүй. Нэгтгэлийн мөрийг гараар шалгана уу.": "A row for this package dated {0} already exists in the summary ({1}%), while the approved progress is {2}% — no duplicate was written. Please check that summary row by hand.",
   "Дахин шалгах": "Check again",
   "Энэ илгээлт хяналтад аль хэдийн бүртгэгдсэн байна": "This submission is already registered for review",
   "Хөтчийн график (WebGL) идэвхгүй байна — тоног төхөөрөмжийн хурдасгуурыг асаах эсвэл өөр хөтөч ашиглана уу.": "Browser graphics (WebGL) are disabled — turn on hardware acceleration or use a different browser.",
@@ -3582,6 +3580,8 @@ const en: Record<string, string> = {
   "{0} — сүүлийн тайланд орсонгүй": "{0} — missing from latest report",
   "Жагсаалт: {0} · дээрх тоо нь төслийн нийт": "List: {0} · the figure above is the project total",
   "{0}-д энэ үзүүлэлтээр асуудалтай мөр алга.": "No problem rows for this metric in {0}.",
+  "Хяналтын харагдацад гүйцэтгэл засах боломжгүй — бөглөх горимоор нээнэ үү.": "Performance cannot be edited in the review view — open it in fill mode.",
+  "Нэгтгэлийн мөрийн дугаар уншигдсангүй — дахин оролдоно уу.": "Could not read the consolidated row id — please try again.",
 };
 
 export default en;

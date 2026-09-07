@@ -3209,7 +3209,11 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                         if (locked) return changed && view?.onCell?.(i, b);
                         if (noEdit)
                           return say(
-                            tr('Энэ багцын өнөөдрийн гүйцэтгэл аль хэдийн илгээгдсэн — хяналтаас буцаалт ирэх хүртэл засах боломжгүй.'),
+                            /* ⚠️ 2026-09-07: «өнөөдрийн гүйцэтгэл аль хэдийн
+                               илгээгдсэн» гэсэн ХУУЧИН текст солигдов — өдөрт
+                               нэг удаа гэсэн хязгаар байхгүй болсон. `noEdit`
+                               нь одоо ЗӨВХӨН `locked` (хяналтын харагдац). */
+                            tr('Хяналтын харагдацад гүйцэтгэл засах боломжгүй — бөглөх горимоор нээнэ үү.'),
                           );
                         if (!canPerf) return say(RO.noPerf);
                         if (!canVol) return say(r.group ? RO.groupAct : RO.noObyemField);
