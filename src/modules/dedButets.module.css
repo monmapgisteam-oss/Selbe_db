@@ -122,7 +122,7 @@
 .catPanel { flex-direction: column; }
 
 /* ── Responsive ── */
-@media (max-width: 1100px) {
+@media (max-width: 1180px) {
   /* Зураг ДЭЭШЭЭ, багцын жагсаалт доор нь. Талын багана байхгүй болсон тул
      чирэх бариул мөн нуугдана. */
   .frame > :global(button[class*='splitGrip_grip']) { display: none; }
@@ -193,7 +193,7 @@
    */
   padding: 0;
   /**
-   * ⚠️ 1100px-ийн media query нь `.frame`-д `height: auto` ба
+   * ⚠️ 1180px-ийн media query нь `.frame`-д `height: auto` ба
    * `overflow-y: auto` тавьдаг. `.frameEdit` тэднийг СЭРГЭЭХГҮЙ бол нарийн
    * дэлгэцэд засварын зураг агуулгаараа хумигдаж, vertex чирэх талбай
    * алга болно.
@@ -497,6 +497,6 @@
   right: auto;
   margin-left: -10.5px;
 }
-@media (max-width: 1100px) {
+@media (max-width: 1180px) {
   .frame > :global(button[class*='splitGrip_grip']) { display: none; }
 }
