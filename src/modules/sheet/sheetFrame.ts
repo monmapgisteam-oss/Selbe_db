@@ -140,6 +140,9 @@ export function insertAdds(
       wC: null,
       wD: null,
       vol: a.vol,
+      /* ⚠️ Инженерийн төлөвлөсөн обьём нь БАТЛАГДАЖ орох тул шинэ мөрд
+         үргэлж `null` — «хараахан төлөвлөөгүй», 0 БИШ. */
+      plannedVol: null,
       unit: a.unit,
       money: null,
       act: new Array(nBld).fill(null),

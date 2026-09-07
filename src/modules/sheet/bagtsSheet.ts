@@ -38,6 +38,16 @@ export type SheetRow = {
   // ⚠ `Хувийн жин- Одоо байгаа` (excel E) энд БАЙХГҮЙ: тэр нь C×J-ээс бүрэн
   // бодогддог тул уншаад ч ашиглахгүй. Нийтлэхэд `f.wE`-рүү буцааж бичнэ.
   vol: number | null;
+  /**
+   * ИНЖЕНЕРИЙН ТӨЛӨВЛӨСӨН ОБЬЁМ — хяналтын инженерийн зорилт.
+   *
+   * ⚠️ Гэрээний `vol`-ООС ТУСДАА бөгөөд ЯМАР Ч ТООЦООНД ОРОХГҮЙ (2026-09-07).
+   *    Гүйцэтгэлийн хувь нь `vol`-оос хэвээр бодогдоно — энэ талбарыг
+   *    тооцоонд оруулах эсэх нь ТУСДАА шийдвэр (хоёр дахь үе шат).
+   *
+   * ⚠️ Талбар байхгүй үйлчилгээнд `null`.
+   */
+  plannedVol: number | null;
   /** «Объём_шинэ2» — зөвхөн ХАРУУЛНА, ямар ч томъёонд ОРОХГҮЙ. */
   unit: number | null;
   money: number | null;
@@ -670,6 +680,8 @@ export async function loadRows(
       wC: num(a[sc.f.wC]),
       wD: num(a[sc.f.wD]),
       vol: num(a[sc.f.vol]),
+      /* ⚠️ Талбар байхгүй үйлчилгээнд `null` — 0 БИШ (бөглөөгүй ≠ тэг) */
+      plannedVol: sc.f.plannedVol ? num(a[sc.f.plannedVol]) : null,
       unit: num(a[sc.f.unit]),
       money: num(a[sc.f.money]),
       act: sc.act.map((k) => num(a[k])),

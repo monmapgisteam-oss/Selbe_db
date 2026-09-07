@@ -306,6 +306,13 @@ export async function initRemote(canCreate: boolean, trusted: boolean = canCreat
     hv._syncRemoteHuvaari(remote.huvaari);
   } catch { /* модуль ачаалагдаагүй орчин — алгасна */ }
 
+  // 7) Инженерийн төлөвлөсөн обьёмын хуваарилалт (`__obyem__:`) → obyemAcl.ts
+  //    ⚠️ Хуваарийнхаас ТУСДАА — тэр нь огноо, энэ нь обьём төлөвлөнө.
+  try {
+    const ob = await import('./obyemAcl');
+    ob._syncRemoteObyem(remote.obyem);
+  } catch { /* модуль ачаалагдаагүй орчин — алгасна */ }
+
   notify();
   return true;
 }
