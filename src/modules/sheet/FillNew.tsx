@@ -38,6 +38,12 @@ import {
   rowKeyOf,
 } from "./sheetFrame";
 import {
+  /* ⚠️ `listActiveSubmissions` ЭНД ХЭРЭГЛЭГДЭХГҮЙ (2026-09-07): «өөр өдрийн
+     илгээлт хянагдаж байна уу» гэдгийг ХЯНАЛТЫН МӨРӨӨС (`otherDaysInReview`)
+     уншина — тэр нь урсгалын ЖИНХЭНЭ эх сурвалж (аль шатанд, хэний гар дээр
+     байгааг мэднэ), харин `sub|` мөр нь зөвхөн агуулга. Хоёуланг нь уншвал
+     нэмэлт хүсэлт зарцуулаад ижил хариу авна. Функц нь `submission.ts`-д
+     хянагчийн/тайлангийн зам болон тестэд үлдэнэ. */
   loadActiveSubmission,
   loadSubmissionByOid,
   mergeSubmission,
@@ -527,6 +533,36 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   }, [groupOpts]);
 
   const { rows: hyRows, loading: hyLoading, error: hyErr, reload: reloadHy } = useHyanaltRows();
+  /**
+   * ӨНӨӨДРИЙН БӨГЛӨХ ӨДӨР (`Date.UTC(y,m,d)`) — ИЛГЭЭЛТИЙН ТҮЛХҮҮРИЙН ӨДӨР.
+   *
+   * ⚠️ НЭГ Л УДАА (2026-09-07): `publish` доторх `fillMs` тооцоо ба хуудас
+   *    ачаалах эффектийн `fillMs` ХОЁУЛАА ЭНДЭЭС уншина. Хоёр газар тус
+   *    тусад нь `Date.UTC(...)` бодвол шөнө дунд өнгөрөхөд хуудас нэг өдрийн
+   *    илгээлтийг давхарлаж, `publish` өөр өдрийн түлхүүрт бичиж, `staged`
+   *    (нэгтгэх суурь) чимээгүй тасарна.
+   * ⚠️ `today` (`msToDay`) нь ХАРАГДАЦЫН мөр — энэ нь ТҮЛХҮҮРИЙН тоо. Хоёрыг
+   *    андуурч болохгүй.
+   */
+  const [todayFillMs] = useState(() => {
+    const n = new Date();
+    return Date.UTC(n.getFullYear(), n.getMonth(), n.getDate());
+  });
+  /**
+   * ЭНЭ ӨДРИЙН хяналтын мөрийг ЯЛГАХ шошго — `hyanaltSubmit.dayLabel`-тэй
+   * ИЖИЛ хэлбэр (`YYYY.MM.DD`).
+   *
+   * ⚠️ ЛОКАЛЬ цагаар задална — `hyanaltSubmit.dayLabel` ч мөн адил
+   *    (`new Date(ms).getFullYear/...`). `todayFillMs` нь `Date.UTC`-ээр
+   *    бүтсэн тул UTC+8-д тэр хоёр НЭГ өдөр өгнө. Хэрэв энэ хоёрын аль нэгийг
+   *    өөрчлөх бол НӨГӨӨГ НЬ ЗААВАЛ хамт өөрчил — эс бөгөөс өнөөдрийн
+   *    хяналтын мөрийг «өөр өдрийнх» гэж уншиж, хориг ажиллахаа болино.
+   */
+  const todayAjilTag = useMemo(() => {
+    const d = new Date(todayFillMs);
+    const p = (n: number) => String(n).padStart(2, '0');
+    return `Гүйцэтгэл · ${d.getFullYear()}.${p(d.getMonth() + 1)}.${p(d.getDate())}`;
+  }, [todayFillMs]);
   const flow = useMemo(() => {
     /*
      * ⚠️ ХУУДСЫГ ЯЛГАНА (2026-09-04-ний аудит). Хяналтын мөр нь БАГЦААР
@@ -546,28 +582,74 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       return !others.some((p) => ajil.includes(p.label));
     });
     if (!mine.length) return null;
+    /*
+     * ⚠️ ӨНӨӨДРИЙН МӨРИЙГ ЭРХЭМЛЭНЭ (2026-09-07). Урьд нь энд шууд «OBJECTID
+     *    хамгийн их» гэж авдаг байсан нь өдөр бүр тусдаа илгээлт болсноор
+     *    БУРУУ болов: өчигдрийн ажил инженерийн гар дээр байхад өнөөдөр
+     *    илгээвэл хамгийн их OBJECTID нь ӨНӨӨДРИЙНХ болох ч, өнөөдөр хараахан
+     *    илгээгээгүй бол ӨЧИГДРИЙНХ гарч ирж, түүгээр `inReview` тооцвол
+     *    өнөөдрийн илгээлт хаагдана — яг тэр зам нь хэрэглэгчийн 2026-09-07-ны
+     *    гомдол («хянагдаж байсан ч дараа өдрийнхийг илгээх боломжтой байх
+     *    ёстой»). Тиймээс ЭНЭ ӨДРИЙН (Ажлын_нэр-д огноо нь орсон) мөрийг
+     *    тусад нь сонгоно; байхгүй бол `null` — өнөөдөр урсгал эхлээгүй.
+     */
+    const mineToday = mine.filter((r) => String(r[HF.ajil] ?? '').startsWith(todayAjilTag));
+    if (!mineToday.length) return null;
     // Хамгийн сүүлийн тойрог — OBJECTID хамгийн их нь
-    return mine.reduce((a, b) => (b.__oid > a.__oid ? b : a));
-  }, [hyRows, pkg.group, pkg.key, pkg.label]);
+    return mineToday.reduce((a, b) => (b.__oid > a.__oid ? b : a));
+  }, [hyRows, pkg.group, pkg.key, pkg.label, todayAjilTag]);
+  /**
+   * ӨӨР ӨДРИЙН хянагдаж буй урсгалууд — ЗӨВХӨН МЭДЭЭЛЭЛ, ХОРИГ БИШ.
+   *
+   * ⚠️ 2026-09-07: эдгээр нь одоо «Илгээх»-ийг ХААХГҮЙ. Өдөр бүр өөрийн
+   *    `sub|<pkg>|<fillMs>` мөртэй тул өнөөдрийн илгээлт өчигдрийн хянагдаж
+   *    буй агуулгыг ОГТ хөндөхгүй (`saveSubmission` өдрийн түлхүүрээр
+   *    ажилладаг). Гэхдээ гүйцэтгэгч «өмнөх өдрүүд хаана явж байна» гэдгээ
+   *    харах ёстой — эс бөгөөс хариу ирээгүй өдрөө мартаж, тэр өдрийн
+   *    буцаалт хариугүй үлдэнэ.
+   */
+  const otherDaysInReview = useMemo(() => {
+    const others = PKGS.filter((p) => p.group === pkg.group && p.key !== pkg.key);
+    const days = new Set<string>();
+    for (const r of hyRows) {
+      if (r[HF.bagts] !== pkg.group) continue;
+      const ajil = String(r[HF.ajil] ?? '');
+      if (!ajil.includes(pkg.label) && others.some((p) => ajil.includes(p.label))) continue;
+      if (ajil.startsWith(todayAjilTag)) continue;
+      if (r[HF.status] === STATUS.transferred) continue;
+      /* Гүйцэтгэгчийн гар дээр буцаж ирсэн нь «хянагдаж байгаа» БИШ.
+         ⚠️ `OWNER` нь `Record<Status, Stage>` тул түүхий `string`-ээр
+         индекслэхгүй — мөрийн талбарыг ШУУД дамжуулна (`flow`-ийн
+         `OWNER[flow[HF.status]]`-тэй ижил хэв маяг). */
+      if (OWNER[r[HF.status]] === 'company') continue;
+      const m = /(\d{4}\.\d{2}\.\d{2})/.exec(ajil);
+      if (m) days.add(m[1]);
+    }
+    return [...days].sort();
+  }, [hyRows, pkg.group, pkg.key, pkg.label, todayAjilTag]);
   const returned = flow ? OWNER[flow[HF.status]] === "company" : false;
   /** Урсгал ОДОО хэний гар дээр байна вэ (`null` = бүртгэлгүй) */
   const reviewStage = flow ? OWNER[flow[HF.status]] : null;
   /**
-   * ИЛГЭЭЛТ ХЯНАЛТАД БАЙНА УУ — ИЛГЭЭХ ХОРИГИЙН цорын ганц шалгуур
-   * (2026-09-04).
+   * ЭНЭ ӨДРИЙН илгээлт хянагчийн гар дээр байна уу.
    *
-   * ⚠️ ЯАГААД: илгээлт нь багц бүрд ХАМГИЙН ИХДЭЭ НЭГ идэвхтэй мөр
-   *    (`sub|<pkgKey>`) бөгөөд дахин илгээхэд тэр мөр дээр НЭГТГЭГДЭНЭ. Хэрэв
-   *    инженер/менежер/ерөнхий менежерийн гар дээр байх үед дахин илгээх юм
-   *    бол хянагчийн ЯГ ОДОО харж буй агуулга доор нь чимээгүй солигдоно —
-   *    тэр нэгийг харж байгаад өөр нэгийг батална.
+   * ⚠️ 2026-09-07-НООС ЭНЭ НЬ ХОРИГ БИШ, ЗӨВХӨН САНУУЛГА (хэрэглэгчийн шууд
+   *    шаардлага: «Times-ийн хязгаарлалт болиод хэдэн ч удаа илгээх боломжтой
+   *    болго»). Урьд нь энэ туг «Илгээх» товчийг БҮРМӨСӨН хаадаг байсан тул
+   *    инженер хариу өгөх хүртэл гүйцэтгэгч ямар ч засвар илгээж чадахгүй,
+   *    дараа өдрийнхөө гүйцэтгэлийг ч оруулж чаддаггүй байв.
    *
-   * ⚠️ `Шилжүүлсэн` (батлагдсан) нь хориг БИШ: тэр нь мөчлөг ДУУССАН гэсэн
-   *    үг, дараагийн илгээлт ШИНЭ `sub|` мөр үүсгэнэ.
-   * ⚠️ Буцаалт (`OWNER === 'company'`) ч хориг БИШ — засах ЁСТОЙ.
+   * ⚠️ ҮЛДЭЖ БУЙ ЭРСДЭЛ, САНААТАЙ ХҮЛЭЭН ЗӨВШӨӨРСӨН: ЯГ ЭНЭ ӨДРИЙН илгээлтийг
+   *    дахин илгээвэл `saveSubmission` тэр мөрийг update хийнэ (хэрэглэгчийн
+   *    шийдвэр 2: «шинэ тойрог үүсгэхгүй, тэр өдрийн илгээлт шинэчлэгдэнэ»)
+   *    — хянагчийн ЯГ ОДОО харж буй агуулга доор нь солигдож болно. Тиймээс
+   *    ХААХГҮЙ ч ИЛ САНУУЛНА (доорх мэдэгдлийн хэсэг ба `publish`-ийн
+   *    `done(...)` мессеж).
+   * ⚠️ ӨӨР ӨДРИЙН илгээлтэд энэ эрсдэл ОГТ БАЙХГҮЙ: түлхүүр нь өөр
+   *    (`sub|<pkg>|<fillMs>`) тул тэр мөр хөндөгдөхгүй.
    *
-   * ⚠️ Ноорог нь хориотой үед ч ХЭВЭЭР хадгалагдана: хэрэглэгч хүлээж
-   *    байхдаа ажлаа үргэлжлүүлж болно, зөвхөн ИЛГЭЭХ нь хаагдана.
+   * ⚠️ `Шилжүүлсэн` (батлагдсан) нь энэ тугт ОРОХГҮЙ: мөчлөг дууссан.
+   * ⚠️ Буцаалт (`OWNER === 'company'`) ч ОРОХГҮЙ — засах ЁСТОЙ.
    */
   const inReview = !!flow
     && flow[HF.status] !== STATUS.transferred
@@ -1066,9 +1148,17 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
          */
         let sub: StagedSubmission | null = null;
         try {
+          /* ⚠️ ӨНӨӨДРИЙН ИЛГЭЭЛТ Л ДАВХАРЛАГДАНА (2026-09-07): өдөр бүр
+             тусдаа `sub|` мөртэй болсон тул нэг багцад олон идэвхтэй илгээлт
+             зэрэг оршино. Бүгдийг давхарлавал өчигдрийн нүд өнөөдрийн
+             хуудсанд суух ба `publish`-ийн `mergeBase`-аар payload-д ДАХИН
+             орж, батлагдахад архивт ХОЁР УДАА тоологдоно. Өчигдрийн
+             батлагдаагүй илгээлт нь ӨӨРИЙН хяналтын мөрөөрөө явж, өөрөө
+             архивт орно — гүйцэтгэгч түүнийг «өөр өдрийн илгээлт хянагдаж
+             байна» мэдэгдлээс хардаг. */
           sub = view?.subOid
             ? await loadSubmissionByOid(view.subOid)
-            : await loadActiveSubmission(pkg.key);
+            : await loadActiveSubmission(pkg.key, todayFillMs);
         } catch {
           sub = null;
         }
@@ -1123,7 +1213,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     return () => {
       alive = false;
     };
-  }, [pkg, view?.day, view?.subOid]);
+  }, [pkg, view?.day, view?.subOid, todayFillMs]);
 
   /**
    * ӨНЧИН ИЛГЭЭЛТ — хадгалагдсан атлаа хяналтын бүртгэлгүй.
@@ -2257,18 +2347,23 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       return;
     }
     /*
-     * ⚠️ ХЯНАГЧИЙН ГАР ДЭЭР БАЙХАД ИЛГЭЭХГҮЙ (2026-09-04, дизайны дүрэм 2).
-     *    Илгээлт нь багц бүрд НЭГ мөр бөгөөд дахин илгээхэд НЭГТГЭГДДЭГ тул
-     *    хянагчийн ЯГ ОДОО харж буй агуулга доор нь солигдоно — тэр нэгийг
-     *    харж байгаад өөр нэгийг батална. Ноорог нь ХЭВЭЭР хадгалагдана.
+     * ⚠️ ХЯНАЛТЫН ХОРИГ ХАСАГДСАН (2026-09-07, хэрэглэгчийн шууд заавар:
+     *    «Times-ийн хязгаарлалт болиод хэдэн ч удаа илгээх боломжтой болго»).
+     *
+     *    Урьд нь энд `if (inReview) return` байсан бөгөөд `inReview` нь
+     *    БАГЦЫН сүүлийн урсгалын мөрөөс тооцогддог байв — өчигдрийн илгээлт
+     *    инженерийн гар дээр байхад ӨНӨӨДРИЙН гүйцэтгэлийг илгээх зам ОГТ
+     *    байхгүй болж, гүйцэтгэгч хариу хүлээж сууж байлаа.
+     *
+     *    Одоо аюулгүй байдал нь ХОРИГООР биш, ТҮЛХҮҮРЭЭР хангагдана: илгээлт
+     *    нь `sub|<pkg>|<fillMs>` тул өдөр бүр ТУСДАА мөр, тусдаа хяналтын
+     *    мөр, тусдаа 4 шат. Өөр өдрийн хянагдаж буй агуулгыг энэ илгээлт
+     *    ХӨНДӨХ БОЛОМЖГҮЙ.
+     *
+     *    ⚠️ ЯГ ЭНЭ ӨДРИЙН илгээлт хянагдаж байхад дахин илгээх нь ТЭР мөрийг
+     *    update хийнэ (хэрэглэгчийн шийдвэр: шинэ тойрог үүсгэхгүй) — тэр
+     *    эрсдэлийг ХААХГҮЙ, харин доорх `done(...)` мессежээр ИЛ хэлнэ.
      */
-    if (inReview) {
-      setErr(tr(
-        'Илгээлт хяналтад байна ({0}). Хянагч шийдвэрлэсний дараа дахин илгээнэ үү — ноорог хадгалагдсан.',
-        reviewStage ? STAGE_LABEL[reviewStage] : '',
-      ));
-      return;
-    }
     setBusy(true);
     setErr("");
     try {
@@ -2302,7 +2397,17 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
        *    `sub|` мөрийг бүтнээр нь дарж бичих эрсдэлтэй байв (upsert нь мөрийг
        *    dkey-гээр олдог тул тэр мөр рүү л бичнэ). Одоо мэдэхгүй бол ЗОГСОНО.
        */
-      const actR = await readActiveSubmission(pkg.key);
+      /* Бөглөсөн огноо — өдрийн эхэнд (UTC). Батлагдахад архивын жаазны
+         `buglusun_ognoo` болно.
+         ⚠️ ЭНД, УНШИЛТААС ӨМНӨ бодогдоно (2026-09-07): илгээлтийн түлхүүр нь
+         одоо `sub|<pkg>|<fillMs>` тул «идэвхтэй илгээлт байна уу» шалгуур ЯГ
+         ЭНЭ өдрөөр хийгдэх ёстой. Урьд нь `fillMs` нь уншилтаас ДООР
+         бодогддог байсныг ДЭЭШ зөөв.
+         ⚠️ `todayFillMs`-ээс уншина — хуудас нээх эффект ч түүгээр давхарладаг
+         тул хоёулаа НЭГ өдөр дээр ажиллана (өөр өөрөөр бодвол `staged` ба
+         бичих түлхүүр зөрж, ХУРИМТЛАЛ тасарна). */
+      const fillMs = todayFillMs;
+      const actR = await readActiveSubmission(pkg.key, fillMs);
       if (!actR.ok) throw new Error(actR.error);
       const act = actR.sub;
       if (act && (!staged || act.at > staged.at))
@@ -2351,11 +2456,6 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         };
       };
 
-      // Бөглөсөн огноо — өдрийн эхэнд (UTC). Батлагдахад архивын жаазны
-      // `buglusun_ognoo` болно.
-      const now = new Date();
-      const fillMs = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
-
       /**
        * МӨРИЙН ТАНИГЧ — ЗӨВХӨН энэ илгээлтэд ашиглагдсан ЭЕРЭГ oid-үүдийнх.
        *
@@ -2382,7 +2482,16 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
          батлагдсан нүднүүд хуучин (устсан) ObjectID-тайгаа дараагийн
          илгээлтэд наалдаж, батлах шатанд «тулгагдсангүй» гэж бүхэл илгээлтийг
          зогсооно. */
-      const mergeBase = staged && (!flow || flow[HF.status] !== STATUS.transferred)
+      /* ⚠️ ЗӨВХӨН ТУХАЙН ӨДРИЙН ИЛГЭЭЛТ ДЭЭР НЭГТГЭНЭ (2026-09-07). `staged`
+         нь одоо `loadActiveSubmission(pkg.key, todayFillMs)`-аас ирдэг тул
+         аль хэдийн өнөөдрийнх, гэхдээ ЭНД ДАХИН тулгана: шөнө дунд өнгөрөх,
+         хуучин (дагаваргүй) мөр өөр өдрөөр орж ирэх, эсвэл ирээдүйд өөр зам
+         `staged`-ыг тавих зэрэг тохиолдолд ӨӨР ӨДРИЙН нүднүүд өнөөдрийн
+         payload-д хуулагдаж, батлагдахад архивт ХОЁР УДАА тоологдоно. Өдөр
+         зөрвөл нэгтгэхгүй — тэр илгээлт ӨӨРИЙН мөрөөрөө үлдэнэ. */
+      const mergeBase = staged
+        && staged.payload.fillMs === fillMs
+        && (!flow || flow[HF.status] !== STATUS.transferred)
         ? movePayload(staged.payload)
         : null;
       const payload = mergeSubmission(mergeBase, {
@@ -2414,7 +2523,12 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
        *    ҮХМЭЛ КОД байсныг ЭНД холбов: суурийг БИЧИХ АГШИНД нь дахин тулгана.
        *    (`null` = «мөр байхгүй байх ёстой».)
        */
-      const sv = await saveSubmission(pkg.key, payload, staged ? { at: staged.at } : null);
+      /* ⚠️ `expect` нь ТЭР ӨДРИЙН мөрийн `at` — `mergeBase`-тэй ИЖИЛ нөхцөл.
+         Өдөр зөрсөн `staged`-ыг expect болгон явуулбал `saveSubmission` тэр
+         өдрийн мөр (эсвэл түүний байхгүйг) шалгаж чадахгүй, «өөр хэрэглэгч
+         илгээсэн» гэсэн ХУДАЛ алдаа гарч гүйцэтгэгч гацна. */
+      const expectAt = staged && staged.payload.fillMs === fillMs ? { at: staged.at } : null;
+      const sv = await saveSubmission(pkg.key, payload, expectAt);
       if (!sv.ok) throw new Error(sv.error);
 
       /*
@@ -2446,7 +2560,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
          тул суурь жаазыг дахин татаад ДЭЭР нь илгээлтээ давхарлана. Эс
          бөгөөс гүйцэтгэгч ажлаа алдсан гэж бодож дахин бөглөнө. */
       const next = await loadRows(pkg, sc);
-      const act2 = await loadActiveSubmission(pkg.key);
+      /* ⚠️ ӨНӨӨДРИЙН түлхүүрээр — дээрх ачаалах эффекттэй ижил үндэслэл. */
+      const act2 = await loadActiveSubmission(pkg.key, fillMs);
       const use2 = !!act2 && !act2.done;
       const ov2 = use2 && act2 ? overlaySubmission(next.rows, act2.payload, sc, nBld) : null;
       /* ⚠️ Илгээсний ДАРАА ч шалгана: тулгагдаагүй нүд үлдвэл батлах шатанд
@@ -2472,15 +2587,24 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
          тэднийг аль хэдийн мөр болгож харуулна). */
       setAdds([]);
       setAddFor(null);
-      done(rv.ok
-        ? tr('Хяналтад илгээв ({0}) · {1} нүд', rv.id, nCells)
-        : tr('Илгээлт хадгалагдлаа ({0} нүд) · ⚠️ хяналтад бүртгэгдсэнгүй: {1}', nCells, rv.error));
+      /* ⚠️ ЭНЭ ӨДРИЙН илгээлт хянагчийн гар дээр байхад дахин илгээсэн бол
+         ИЛ ХЭЛНЭ (2026-09-07): хориг хасагдсан тул хэрэглэгч мэдэлгүй
+         хянагчийн харж буй агуулгыг сольж болно. Шинэ ТОЙРОГ үүсээгүй —
+         `submitForReview` тэр өдрийн нээлттэй бүртгэлийг л буцаана. */
+      done(!rv.ok
+        ? tr('Илгээлт хадгалагдлаа ({0} нүд) · ⚠️ хяналтад бүртгэгдсэнгүй: {1}', nCells, rv.error)
+        : rv.reused
+          /* ⚠️ `rv.reused` — ХЯНАЛТЫН ХАРИУНААС, publish-ээс өмнөх `inReview`
+             тугаас БИШ (2026-09-07-ны шалгалт): тэр туг нь хуучирсан төлөвөөс
+             тооцогддог тул «шинэ тойрог үүсэв» гэж ХУДАЛ мэдэгдэж болзошгүй. */
+          ? tr('Энэ өдрийн илгээлт ШИНЭЧЛЭГДЛЭЭ ({0}) · {1} нүд — хянагч ({2}) шинэ агуулгыг харна.', rv.id, nCells, reviewStage ? STAGE_LABEL[reviewStage] : '')
+          : tr('Хяналтад илгээв ({0}) · {1} нүд', rv.id, nCells));
     } catch (e) {
       setErr(String((e as Error).message || e));
     } finally {
       setBusy(false);
     }
-  }, [pkg, sc, nBld, asOf, asOfOrig, pending, pendDate, dirtyCount, busy, canPerf, canAddRow, noEdit, rows, adds, done, inReview, reviewStage, staged, snapMs, user, reloadHy, flow]);
+  }, [pkg, sc, nBld, asOf, asOfOrig, pending, pendDate, dirtyCount, busy, canPerf, canAddRow, noEdit, rows, adds, done, inReview, reviewStage, staged, snapMs, user, reloadHy, flow, todayFillMs]);
 
   // Ctrl+S — «Гүйцэтгэл бөглөх»-тэй ижил.
   // ⚠️ Нээлттэй нүдний бичиж буй утгыг ЭХЛЭЖ commit хийнэ — эс тэгвэл хуучин
@@ -2837,9 +2961,13 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         <button
           className={st.publishBtn}
           onClick={publish}
-          /* ⚠️ `inReview` нь МӨН `publish` дотор шалгагдана — Ctrl+S нь энэ
-             товчийг тойрч гардаг. */
-          disabled={busy || noEdit || inReview || dirtyCount === 0}
+          /* ⚠️ `inReview` НЬ ЭНД БАЙХАА БОЛИВ (2026-09-07, хэрэглэгч: «хэдэн ч
+             удаа илгээх боломжтой болго»). Хянагдаж байгаа нь товчийг
+             ХААХГҮЙ; өдөр бүр тусдаа `sub|<pkg>|<fillMs>` мөртэй тул өөр
+             өдрийн агуулга хөндөгдөх боломжгүй, ЯГ энэ өдрийнхийг дахин
+             илгээх нь харин САНААТАЙ зөвшөөрөгдсөн (тэр мөр update хийгдэнэ).
+             Мэдэгдэл нь доорх `lockNote`-оор гарна. */
+          disabled={busy || noEdit || dirtyCount === 0}
           title={tr('Илгээлтийг завсрын хадгалалтад хадгалж хяналтад оруулна — үндсэн өгөгдөлд ерөнхий менежер баталсны дараа л орно (Ctrl+S)')}
         >
           {/* ⚠️ «Нийтлэх» → «Илгээх» (2026-09-06, хэрэглэгчийн заавар).
@@ -2953,9 +3081,22 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
           {tr('Илгээсэн зарим нүд шинэ мөрүүдэд тулгагдсангүй — эдгээрийг ДАХИН бөглөж илгээнэ үү, эс бөгөөс ерөнхий менежер батлах үед багц бүхэлдээ гацна: {0}', unmovedWarn.join('; '))}
         </p>
       )}
+      {/* ⚠️ ХОЁР ӨӨР МЭДЭГДЭЛ (2026-09-07) — ХОЁУЛАА САНУУЛГА, ХОРИГ БИШ:
+          · ЭНЭ ӨДРИЙН илгээлт хянагдаж байна → дахин илгээвэл ТЭР мөр
+            ШИНЭЧЛЭГДЭНЭ (шинэ тойрог үүсэхгүй), хянагч доор нь солигдсоныг
+            мэдэхгүй байж болзошгүй — тиймээс гүйцэтгэгчид ил хэлнэ;
+          · ӨӨР ӨДРИЙН илгээлт хянагдаж байна → өнөөдрийнхөд ОГТ саадгүй,
+            зөвхөн «хариу хүлээж буй өдрүүд» гэдгийг санууллаа.
+          Хуучин «хянагч шийдвэрлэсний дараа дахин илгээж болно» гэсэн текст
+          ХАСАГДСАН — тэр нь одоо ХУДАЛ (хүлээх шаардлагагүй). */}
       {!locked && !submitFailed && inReview && (
         <p className={st.lockNote}>
-          {tr('Илгээлт хяналтад байна — {0}. Засвар ноорогт хадгалагдана; хянагч шийдвэрлэсний дараа дахин илгээж болно.', reviewStage ? STAGE_LABEL[reviewStage] : '')}
+          {tr('Энэ өдрийн илгээлт хяналтад байна — {0}. Дахин илгээвэл ШИНЭ тойрог үүсэхгүй, тэр илгээлт шинэчлэгдэнэ (хянагчийн харж буй агуулга солигдоно).', reviewStage ? STAGE_LABEL[reviewStage] : '')}
+        </p>
+      )}
+      {!locked && otherDaysInReview.length > 0 && (
+        <p className={st.lockNote}>
+          {tr('Өмнөх өдрийн илгээлт хяналтад байна ({0}) — өнөөдрийн илгээлтэд саад болохгүй, тус тусдаа хянагдана.', otherDaysInReview.join(', '))}
         </p>
       )}
       {!locked && returned && (
