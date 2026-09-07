@@ -43,7 +43,27 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * татгалздаг. Зэрэг явах хүсэлтийг хязгаарлавал сервер даахаас гадна үлдсэн нь
  * дараалалд хүлээж, шатлан ордог — бүх карт ба давхарга ачаалагдана.
  */
-const MAX_CONCURRENT = 6;
+/**
+ * ⚠️ 2026-09-07: ТОГТМОЛ 6 → ДАСАН ЗОХИЦОХ 12↘6.
+ *
+ * Хэмжилт (60 хүсэлтийн ижил ачаалал, амьд үйлчилгээ): 6 слот 4,184 мс ·
+ * 10 слот 2,578 мс · 14 слот 1,671 мс — «Too many requests» хариу ГУРВУУЛАНД
+ * НЬ 0. Өөрөөр хэлбэл 6 нь хэтэрхий болгоомжтой байсан; «Саад — багцаар»-ийн
+ * 139 хүсэлт зөвхөн дарааллын улмаас 11 секунд болдог байв.
+ *
+ * ⚠️ ГЭХДЭЭ 6-ийн шалтгаан ХҮЧИНТЭЙ ХЭВЭЭР: 2026-08-21-нд нүүр хуудасны
+ * геометрийн ачаалалтай хольцоор ArcGIS үнэхээр татгалзаж байсан. Тиймээс
+ * ХАТУУ өсгөхгүй — сервер НЭГ Л УДАА хурдны хязгаар мэдэгдмэгц энэ сешн
+ * бүхэлдээ баталгаажсан 6 руу БУЦАЖ, тэндээ үлдэнэ («throttleDown»).
+ * Татгалзсан хүсэлт нь урьдын адил exponential backoff-оор дахин явна тул
+ * хэрэглэгч ялгааг мэдрэхгүй.
+ */
+const CONCURRENT_FLOOR = 6;
+let limit = 12;
+/** Хурдны хязгаар илэрмэгц баталгаажсан түвшинд БУЦНА — эргэж өсөхгүй */
+function throttleDown() {
+  if (limit > CONCURRENT_FLOOR) limit = CONCURRENT_FLOOR;
+}
 let active = 0;
 const waiters: (() => void)[] = [];
 /** Хязгаарлагчийг ГАДНЫ fetch-үүдэд ч ашиглуулна (parcelOverlap г.м.) —
@@ -53,7 +73,7 @@ export async function withSlot<T>(fn: () => Promise<T>): Promise<T> {
   try { return await fn(); } finally { release(); }
 }
 async function acquire() {
-  if (active >= MAX_CONCURRENT) {
+  if (active >= limit) {
     // ⚠️ Сэрэхдээ active-ийг ДАХИН нэмэхгүй — release() слотоо шууд гардуулсан
     //    (active хэвээр). Эс бөгөөс буулгах↔нэмэх хоёрын завсарт өөр acquire
     //    шургалж MAX_CONCURRENT түр хэтэрч, «Too many requests» эргэн ирнэ.
@@ -63,6 +83,11 @@ async function acquire() {
   active++;
 }
 function release() {
+  /* ⚠️ Хязгаар БУУРСАН бол слотыг гардуулахгүй, БУЦААЖ авна — эс бөгөөс
+     `throttleDown` дуудагдсан ч идэвхтэй тоо хуучин түвшиндээ түгжигдэнэ.
+     Дараагийн release (active === limit болсон үед) хүлээгчийг сэрээнэ тул
+     дараалал хэзээ ч гацахгүй. */
+  if (active > limit) { active--; return; }
   // Хүлээгч байвал слотыг ШУУД гардуулна — active тоо өөрчлөгдөхгүй
   const w = waiters.shift();
   if (w) w();
@@ -116,6 +141,7 @@ async function attemptRequest(url: string, params: Record<string, string>, attem
     throw e;
   }
   if (!res.ok) {
+    if (res.status === 429 || res.status === 503) throttleDown();
     if ((res.status === 429 || res.status === 503) && attempt < RETRIES) {
       await sleep(400 * 2 ** attempt + Math.random() * 200);
       return attemptRequest(url, params, attempt + 1, netRetried);
@@ -125,6 +151,7 @@ async function attemptRequest(url: string, params: Record<string, string>, attem
   const body: Body = await res.json();
   // ArcGIS алдааг HTTP 200-тай буцаадаг — заавал шалгана
   if (body.error) {
+    if (isRateLimit(body.error.message ?? '')) throttleDown();
     if (isRateLimit(body.error.message ?? '') && attempt < RETRIES) {
       await sleep(400 * 2 ** attempt + Math.random() * 200);
       return attemptRequest(url, params, attempt + 1, netRetried);
@@ -134,12 +161,54 @@ async function attemptRequest(url: string, params: Record<string, string>, attem
   return body;
 }
 
+/**
+ * ЯВАГДАЖ БУЙ ИЖИЛ ХҮСЭЛТИЙН НЭГТГЭЛ (2026-09-07-ны гүйцэтгэлийн аудит).
+ *
+ * Хэмжсэн: 41 ачаалагчийг нэг удаа ажиллуулахад 436 хүсэлтийн 44 нь ЯГ ИЖИЛ
+ * URL + параметртэй байв (жишээ: `loadInfra`-ийн давхаргууд хоёр id-гаар нэг
+ * үйлчилгээ рүү, `loadClearance` ба `loadLandStatus` парселийн ижил
+ * groupBy). Ачаалагч бүр өөрийн кэштэй ч тэдгээр кэш нь ХҮСЭЛТИЙН түвшинд
+ * биш ҮР ДҮНГИЙН түвшинд байдаг тул нэг мөчид зэрэг явсан ижил асуулга
+ * тусдаа сүлжээний аялал болдог — 6 слотын дараалалд шууд зай эзэлнэ.
+ *
+ * ⚠️ ЗӨВХӨН ЗЭРЭГ явж буй хүсэлтийг нэгтгэнэ. Хариу ирмэгц түлхүүр
+ *    жагсаалтаас ГАРНА — өөрөөр хэлбэл энэ нь КЭШ БИШ, тиймээс хуучирсан
+ *    өгөгдөл хэзээ ч буцаахгүй бөгөөд `invalidate()`-ийн логикт огт
+ *    хамаарахгүй (дуудагчийн кэшүүд урьдын адил ажиллана).
+ *
+ * ⚠️ ЭХНИЙ дуудагч биетээ ЯГ өмнөх шигээ авна; хоёр дахь ба цаашхи хүлээгчид
+ *    ГҮН ХУУЛБАР авна. Нэг объектыг хуваалцвал нэг дуудагчийн засвар нөгөөд
+ *    нь чимээгүй нэвтэрч болно — сүлжээний аялалаас хамаагүй хямд хуулбар
+ *    нь тэр эрсдэлийг бүрэн хаана.
+ *
+ * ⚠️ Алдаа мөн хуваалцагдана: гарсан алдаа бүх хүлээгчид очих ба түлхүүр
+ *    устдаг тул дараагийн оролдлого шинэ хүсэлт явуулна.
+ */
+const inflight = new Map<string, Promise<Body>>();
+
+/** Тогтвортой түлхүүр — параметрийн ДАРААЛАЛ ялгаатай ч агуулга ижил бол нэг */
+const reqKey = (url: string, params: Record<string, string>): string =>
+  url + '|' + Object.keys(params).sort().map((k) => k + '=' + params[k]).join('&');
+
 async function request(url: string, params: Record<string, string>): Promise<Body> {
-  await acquire();
+  const key = reqKey(url, params);
+  const running = inflight.get(key);
+  /* Хоёр дахь ба цаашхи хүлээгч — сүлжээ огт хөндөхгүй, гүн хуулбар авна */
+  if (running) return structuredClone(await running);
+
+  const run = (async () => {
+    await acquire();
+    try {
+      return await attemptRequest(url, params, 0);
+    } finally {
+      release();
+    }
+  })();
+  inflight.set(key, run);
   try {
-    return await attemptRequest(url, params, 0);
+    return await run;
   } finally {
-    release();
+    inflight.delete(key);
   }
 }
 
