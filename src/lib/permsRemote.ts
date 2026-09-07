@@ -58,12 +58,23 @@ export type FlowRow = { user: string; stage: string; bagts: string[] };
  */
 export type CapRow = { user: string; caps: string[] };
 
+/**
+ * ЧАНАРЫН (QAQC) багцын хуваарилалтын нэг мөр — `__qaqc__:` угтвартай.
+ *
+ * ⚠️ Урсгалын `FlowRow`-оос ТУСДАА: тэнд `stage` байдаг, энд БАЙХГҮЙ. Чанарын
+ * хяналт нь дөрвөн шатны аль нь ч биш тул шат зүүвэл тэр хүн гүйцэтгэлийг
+ * зөвшөөрөх эрхтэй болно (`qaqcAcl.ts`-ийн толгойн тайлбарыг үз).
+ */
+export type QaqcRow = { user: string; bagts: string[] };
+
 const TITLE = 'Selbe_Permissions';
 const TABLE_NAME = 'permissions';
 /** Урсгалын томилгооны мөрийн `username` угтвар — эрхийн мөрөөс ялгана */
 const FLOW_PREFIX = '__flow__:';
 /** Нэмэлт эрхийн мөрийн `username` угтвар — эрх ба урсгалын мөрөөс ялгана */
 const CAP_PREFIX = '__cap__:';
+/** Чанарын (QAQC) багцын хуваарилалтын мөрийн угтвар — урсгалынхаас ялгана */
+const QAQC_PREFIX = '__qaqc__:';
 
 let tableUrlCache: string | undefined; // ⚠️ зөвхөн ОЛДСОН URL — null/олдоогүйг кэшлэхгүй (tableUrl-ыг үз)
 
@@ -237,7 +248,9 @@ async function queryAllRows(fl: FeatureLayerInst, where: string): Promise<RawAtt
  */
 export async function fetchAll(
   canCreate = false,
-): Promise<{ perms: Record<string, RemoteRow>; flow: FlowRow[]; caps: CapRow[] } | null> {
+): Promise<{
+  perms: Record<string, RemoteRow>; flow: FlowRow[]; caps: CapRow[]; qaqc: QaqcRow[];
+} | null> {
   try {
     const url = await tableUrl(canCreate);
     if (!url) return null;
@@ -253,8 +266,22 @@ export async function fetchAll(
      */
     const flowBy = new Map<string, FlowRow>();
     const caps: CapRow[] = [];
+    /* ⚠️ QAQC мөр ч мөн НЭГ ХЭРЭГЛЭГЧ = НЭГ МӨР — flow-той ижил дүрэм */
+    const qaqcBy = new Map<string, QaqcRow>();
     for (const a of rows) {
       if (!a.username) continue;
+
+      /* ── Чанарын (QAQC) багцын хуваарилалтын мөр ── */
+      if (a.username.startsWith(QAQC_PREFIX)) {
+        const user = a.username.slice(QAQC_PREFIX.length).toLowerCase();
+        try {
+          const d = JSON.parse(a.views || '{}') as { bagts?: string[] };
+          if (user) {
+            qaqcBy.set(user, { user, bagts: Array.isArray(d.bagts) ? d.bagts : [] });
+          }
+        } catch { /* эвдэрсэн мөр — алгасна (хуваарилалтгүйтэй ижил, fail-closed) */ }
+        continue;
+      }
 
       /* ── Нэмэлт эрхийн мөр ── */
       if (a.username.startsWith(CAP_PREFIX)) {
@@ -299,7 +326,7 @@ export async function fetchAll(
         ...(removed ? { removed: true } : {}),
       };
     }
-    return { perms, flow: [...flowBy.values()], caps };
+    return { perms, flow: [...flowBy.values()], caps, qaqc: [...qaqcBy.values()] };
   } catch {
     return null;
   }
@@ -409,4 +436,26 @@ export function capRemove(user: string): Promise<boolean> {
 /** Урсгалын томилгоог арилгах */
 export function flowRemove(user: string): Promise<boolean> {
   return removeByKey(FLOW_PREFIX + user.toLowerCase());
+}
+
+/**
+ * Чанарын (QAQC) багцын хуваарилалтыг бичих — нэг хэрэглэгч нэг мөр.
+ *
+ * ⚠️ `{ bagts }` объектоор бичнэ, массиваар БИШ: `__cap__:` мөр нь массив
+ * хадгалдаг тул хэлбэрээр нь ялгаж болохгүй, гэхдээ ирээдүйд талбар нэмэхэд
+ * (жишээ нь тайлбар) хэлбэр өөрчлөгдөхгүй байх нь чухал. `__flow__:`-тэй ижил.
+ */
+export function qaqcUpsert(user: string, bagts: string[]): Promise<boolean> {
+  const key = QAQC_PREFIX + user.toLowerCase();
+  return upsertByKey(key, {
+    username: key,
+    role: null,
+    views: JSON.stringify({ bagts }),
+    docs: 0,
+  });
+}
+
+/** Чанарын багцын хуваарилалтыг арилгах */
+export function qaqcRemove(user: string): Promise<boolean> {
+  return removeByKey(QAQC_PREFIX + user.toLowerCase());
 }

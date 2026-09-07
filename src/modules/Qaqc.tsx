@@ -23,7 +23,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { t as tr } from '@/lib/i18nCore';
 import { useAuth } from '@/components/AuthGate';
 import { hasCap, subscribeCaps } from '@/lib/caps';
-import { bagtsScope, subscribeAcl } from '@/lib/guitsetgelAcl';
+import { qaqcScope, subscribeQaqcAcl } from '@/lib/qaqcAcl';
 import { roleForUser } from '@/lib/services';
 import { PKG_GROUPS, PKGS, pkgFloors, loadSchema, type Pkg } from '@/modules/sheet/bagts.pkg';
 import { loadRows } from '@/modules/sheet/bagtsSheet';
@@ -121,17 +121,21 @@ export function Qaqc() {
   const [capN, setCapN] = useState(0);
   useEffect(() => subscribeCaps(() => setCapN((n) => n + 1)), []);
   const [aclN, setAclN] = useState(0);
-  useEffect(() => subscribeAcl(() => setAclN((n) => n + 1)), []);
+  useEffect(() => subscribeQaqcAcl(() => setAclN((n) => n + 1)), []);
 
   /**
-   * ⚠️ ХЯЗГААРГҮЙ = кодын хатуу `super` эсвэл нэвтрэлт унтраалттай дев —
-   *    `FillNew`-тэй ЯГ ижил дүрэм. Хоёр хуудас багцын хүрээг өөр өөрөөр
-   *    тайлбарлавал хэрэглэгч «яагаад тэнд харагдаад энд харагдахгүй байна»
-   *    гэж эргэлзэнэ.
+   * ⚠️ ХЯЗГААРГҮЙ = кодын хатуу `super` эсвэл нэвтрэлт унтраалттай дев.
+   *
+   * ⚠️ БАГЦЫН ХҮРЭЭ нь `qaqcAcl`-ААС гарна — «Гүйцэтгэл бөглөх»-ийн
+   *    `bagtsScope`-оос БИШ (2026-09-07). Чанарын хяналтын ажилтан нь
+   *    гүйцэтгэлийн урсгалын дөрвөн шатны аль нь ч биш тул урсгалын
+   *    томилгоогоор хуваарилвал түүнд гүйцэтгэл ЗӨВШӨӨРӨХ эрх дагалдаж,
+   *    мөн «нэг аккаунт нэг шатанд» дүрмээр өмнөх томилгоо нь чимээгүй
+   *    хасагдана. Дэлгэрэнгүйг `qaqcAcl.ts`-ийн толгойгоос үз.
    */
   const unrestricted = authStatus === 'off' || roleForUser(user?.username) === 'super';
   const myBagts = useMemo(
-    () => (unrestricted ? null : bagtsScope(user?.username)),
+    () => (unrestricted ? null : qaqcScope(user?.username)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [user, unrestricted, aclN],
   );
@@ -186,7 +190,7 @@ export function Qaqc() {
 
   /** Засагдахгүй нүдний тайлбар — товшихад гарна */
   const RO_NO = tr('№ ба Ажлын нэр нь excel-ийн бүтэц — энэ хуудаснаас засагдахгүй.');
-  const RO_CAP = tr('Чанарын баримт бөглөхөд «QAQC» эрх шаардлагатай — «Хэрэглэгчдийн эрх удирдах» хэсгээс олгоно.');
+  const RO_CAP = tr('Чанарын баримт бөглөхөд «QAQC» эрх шаардлагатай — «Хэрэглэгчдийн эрх удирдах → Чанарын (QAQC) эрх» хэсгээс олгоно.');
   const ro = (msg: string) => ({ title: msg, onClick: () => say(msg) });
 
   /* ── Баганын crosshair — React state БИШ, O(1) overlay (FillNew-тэй ижил) ── */
@@ -720,14 +724,19 @@ export function Qaqc() {
   /* ══════════════ ЗУРАГДАЛТ ══════════════ */
 
   /*
-   * ⚠️ Томилгоогүй хэрэглэгчид ХООСОН хуудас БИШ, шалтгааныг ил хэлнэ —
+   * ⚠️ Хуваарилагдаагүй хэрэглэгчид ХООСОН хуудас БИШ, шалтгааныг ил хэлнэ —
    *    `FillNew`-тэй ижил (тайлбаргүй хоосон сонгогч «эвдэрсэн» гэж уншигдана).
+   *
+   * ⚠️ Заавар нь «Чанарын эрх» бүлгийг заана — «Гүйцэтгэлийн урсгал»-ыг БИШ
+   *    (2026-09-07). Урьд нь урсгалыг заадаг байсан тул админ тэнд шат
+   *    томилохоос өөр зам олдохгүй, тэр нь харин чанарын ажилтанд гүйцэтгэл
+   *    зөвшөөрөх эрх дагуулдаг байв.
    */
   if (groupOpts.length === 0) {
     return (
       <div className={st.wrap}>
         <div className={st.error} role="status">
-          {tr('Танд нэг ч багц хуваарилагдаагүй байна. «Хэрэглэгчдийн эрх удирдах → Гүйцэтгэлийн урсгал» хэсэгт админ таныг шатанд томилж, багц зааж өгсний дараа энэ хуудас нээгдэнэ.')}
+          {tr('Танд нэг ч багц хуваарилагдаагүй байна. «Хэрэглэгчдийн эрх удирдах → Чанарын (QAQC) эрх» хэсэгт админ багц зааж өгсний дараа энэ хуудас нээгдэнэ.')}
         </div>
       </div>
     );
