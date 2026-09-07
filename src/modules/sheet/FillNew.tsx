@@ -38,10 +38,9 @@ import {
   rowKeyOf,
 } from "./sheetFrame";
 import {
-  loadActiveSubmission,
-  loadSubmissionByOid,
-  mergeSubmission,
   readActiveSubmission,
+  readSubmissionByOid,
+  mergeSubmission,
   saveSubmission,
   type NewRow,
   type StagedSubmission,
@@ -61,7 +60,7 @@ import { sheetDates } from "./sheetRows";
 import { useColWidths } from "./colWidths";
 import { parseGrid, planPaste } from "./paste";
 import {
-  clearRemoteDraft, loadRemoteDraft, saveRemoteDraft, REMOTE_MAX,
+  clearRemoteDraft, readRemoteDraft, saveRemoteDraft, REMOTE_MAX,
 } from "@/lib/draftRemote";
 import { t as tr } from "@/lib/i18nCore";
 import st from "./sheet.module.css";
@@ -1001,6 +1000,12 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   const [remoteState, setRemoteState] = useState<
     null | { kind: 'ok'; at: number } | { kind: 'big' } | { kind: 'fail' }
   >(null);
+  /**
+   * ИЛГЭЭЛТИЙН УНШИЛТ УНАСАН (2026-09-07). `null` = асуудалгүй.
+   * ⚠️ Энэ нь «илгээлт байхгүй» гэсэн үг БИШ — уншиж чадаагүй гэсэн үг.
+   *    Хоёрыг ялгаж байж л хэрэглэгч 0%-ийг үнэн гэж эндүүрэхгүй.
+   */
+  const [subReadErr, setSubReadErr] = useState<string | null>(null);
   /** Сүүлийн алсын илгээлтийн агшин — дээд хүлээлтийн (60 сек) лавлах цэг */
   const lastRemoteRef = useRef(0);
 
@@ -1017,6 +1022,12 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
          санал болгогдоно. */
     remoteQueue.current = null;
     keepDraft.current = false;
+    /* ⚠️ АЛСЫН БАЙДАЛ ч БАГЦАД ХАРЬЯАЛАГДАНА (2026-09-07). Үлдээвэл
+       Багц 1-ийн «ArcGIS 14:20» ногоон заалт (эсвэл «хуулагдсангүй» шар
+       анхааруулга) Багц 2 дээр наалдаж, шинэ багцын ажил алсад ороогүй
+       байхад ХУДАЛ баталгаа болно. Шинэ багц заалтгүй эхэлж, зөвхөн
+       бодит илгээлтийн дараа гарна. */
+    setRemoteState(null);
     /* ⚠️ Илгээлт унасны туг нь НЭГ багцынх — үлдээвэл шинэ багцад худал
        анхааруулга үүснэ. */
     setSubmitFailed(false);
@@ -1064,15 +1075,38 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
          *    тохиолдолд харагдах ёстой; илгээлтгүй хуудас нь хоосон хуудсаас
          *    хамаагүй дээр.
          */
+        /*
+         * ⚠️ УНШИЛТЫН АЛДААГ ЯЛГАНА (2026-09-07-ны аудит, CRITICAL).
+         *
+         * Урьд нь `loadActiveSubmission`/`loadSubmissionByOid` (алдааг
+         * ЗАЛГИДАГ хос) дуудагдаж, гадуур нь `catch { sub = null }` байв —
+         * тэр хоёр нь «илгээлт БАЙХГҮЙ» ба «уншиж ЧАДСАНГҮЙ» хоёрыг ижил
+         * `null` болгодог. Сүлжээ түр тасрах, токен дуусах, `tableUrl`
+         * `null` буцаах агшинд overlay ХИЙГДЭХГҮЙ, хэрэглэгч архивын суурь
+         * жаазыг (бүх нүд 0%) хараад «илгээсэн ажил минь алга болжээ» гэж
+         * дүгнэнэ — ЯМАР Ч алдаа харагдахгүй. 2026-09-06-нд «Багц 3.1,
+         * Хяналтаас БУЦААСАН, бүх нүд 0%» гэсэн бодит гомдол ирсэн.
+         *
+         * ⚠️ ЯГ ЭНЭ алдааг `hyanaltStore.ts` (архивын зам) ба
+         * `hyanaltDetail.ts` (хянагчийн зам) дээр 2026-09-04-нд CRITICAL гэж
+         * тэмдэглэн `read*` хос руу шилжүүлсэн — бөглөх хуудасны АЧААЛАХ
+         * зам ганцаараа хоцорсон байв.
+         *
+         * ⚠️ Уншилт унавал СУУРЬ ЖААЗ ХЭВЭЭР зурагдана (хуудас хоосрохгүй),
+         * гэхдээ дээр нь ИЛ анхааруулга гарч «тоо дутуу байж болзошгүй» гэдгийг
+         * хэлнэ — эс бөгөөс хэрэглэгч 0%-ийг үнэн гэж үзээд дахин бөглөнө.
+         */
         let sub: StagedSubmission | null = null;
-        try {
-          sub = view?.subOid
-            ? await loadSubmissionByOid(view.subOid)
-            : await loadActiveSubmission(pkg.key);
-        } catch {
-          sub = null;
+        let subErr: string | null = null;
+        {
+          const sr = view?.subOid
+            ? await readSubmissionByOid(view.subOid)
+            : await readActiveSubmission(pkg.key);
+          if (sr.ok) sub = sr.sub;
+          else subErr = sr.error;
         }
         if (!alive) return;
+        setSubReadErr(subErr);
         /* ⚠️ `Шилжүүлсэн` (батлагдсан) урсгалын дор давхарлахгүй: тэр мөчлөг
            дууссан бөгөөд агуулга нь архивт орсон. Хянагчийн харагдац
            (`view.subOid`) нь ТУХАЙН илгээлтийг заасан тул урсгалаас
@@ -1834,8 +1868,31 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     const local = readDraft(pkg.key);
     let alive = true;
     void (async () => {
-      const rem = await loadRemoteDraft(pkg.key);
+      /*
+       * ⚠️ УНШИЛТЫН АЛДААГ ЯЛГАНА (2026-09-07).
+       *
+       * Урьд нь `loadRemoteDraft` нь «ноорог БАЙХГҮЙ» ба «уншиж ЧАДСАНГҮЙ»
+       * хоёрыг ижил `null`-аар буцаадаг байв. Сүлжээ түр тасрах, токен
+       * шинэчлэгдэх агшинд гэрийн компьютер дээр бөглөсөн ноорог ОГТ
+       * сэргэхгүй, дэлгэцэд ямар ч алдаа гарахгүй — бөглөгч хоосон хуудас
+       * хараад ажлаа алдсан гэж дүгнэнэ. Дээрээс нь `promptedPkgRef` аль
+       * хэдийн тавигдсан тул тэр сешнд ДАХИН оролдохгүй: зөвхөн хуудсыг
+       * бүтнээр дахин ачаалж (F5) байж сэргэдэг байлаа.
+       *
+       * ⚠️ Одоо: уншилт унавал (а) ИЛ мэдэгдэнэ, (б) `promptedPkgRef`-ийг
+       * БУЦААЖ хоослох тул дараагийн ачаалалт (багц солиод буцах, эсвэл
+       * мөр дахин татагдах) сэргээх шатыг ДАХИН нээнэ.
+       */
+      const rr = await readRemoteDraft(pkg.key);
       if (!alive) return;
+      if (!rr.ok) {
+        promptedPkgRef.current = '';
+        show('warn', tr(
+          'Алсын ноорогийг уншиж чадсангүй ({0}). Энэ компьютерийн ноорог хэвээр — өөр газраас бөглөсөн ажил байвал сүлжээ сэргэсний дараа хуудсыг дахин ачаална уу.',
+          rr.error,
+        ));
+      }
+      const rem = rr.ok ? rr.draft : null;
       const remote = rem ? parseDraft(rem.payload) : null;
       /* ⚠️ АЛСЫН ЗОМБИ — хүчингүй болсон хуулбарыг ArcGIS-ээс ч устгана.
          Локал талыг `readDraft` цэвэрлэдэг; энэ мөргүй бол шинэ эхлэлээс
@@ -2446,7 +2503,13 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
          тул суурь жаазыг дахин татаад ДЭЭР нь илгээлтээ давхарлана. Эс
          бөгөөс гүйцэтгэгч ажлаа алдсан гэж бодож дахин бөглөнө. */
       const next = await loadRows(pkg, sc);
-      const act2 = await loadActiveSubmission(pkg.key);
+      /* ⚠️ Энд ч алдааг ЯЛГАНА (2026-09-07): илгээсний дараа уншилт унавал
+         overlay хийгдэхгүй, дэлгэц 0% болж «дөнгөж илгээсэн ажил алга» гэсэн
+         хамгийн айдас төрүүлэм дүр зураг гарна. Уншилт унасныг ил хэлж,
+         суурь жаазыг хэвээр үлдээнэ. */
+      const act2r = await readActiveSubmission(pkg.key);
+      const act2 = act2r.ok ? act2r.sub : null;
+      setSubReadErr(act2r.ok ? null : act2r.error);
       const use2 = !!act2 && !act2.done;
       const ov2 = use2 && act2 ? overlaySubmission(next.rows, act2.payload, sc, nBld) : null;
       /* ⚠️ Илгээсний ДАРАА ч шалгана: тулгагдаагүй нүд үлдвэл батлах шатанд
@@ -2951,6 +3014,20 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       {unmovedWarn.length > 0 && (
         <p className={st.lockNote} role="alert">
           {tr('Илгээсэн зарим нүд шинэ мөрүүдэд тулгагдсангүй — эдгээрийг ДАХИН бөглөж илгээнэ үү, эс бөгөөс ерөнхий менежер батлах үед багц бүхэлдээ гацна: {0}', unmovedWarn.join('; '))}
+        </p>
+      )}
+      {/*
+        * ⚠️ ИЛГЭЭЛТ УНШИГДААГҮЙ (2026-09-07-ны аудит, CRITICAL).
+        *
+        * Уншилт унавал overlay хийгдэхгүй тул дэлгэц дээр архивын суурь жааз
+        * (голдуу БҮХ НҮД 0%) харагдана. Урьд нь энэ нь ЧИМЭЭГҮЙ болдог тул
+        * гүйцэтгэгч «илгээсэн ажил минь алга болжээ» гэж дүгнэн дахин
+        * бөглөдөг байв. Одоо 0% нь ҮНЭН үү, эсвэл зүгээр л УНШИГДААГҮЙ юу
+        * гэдгийг хэрэглэгч ялгаж чадна.
+        */}
+      {subReadErr && (
+        <p className={st.lockNote} role="alert">
+          {tr('Илгээсэн ажлыг татаж чадсангүй ({0}) — доорх тоо ДУТУУ байж болзошгүй. Хуудсыг дахин ачаална уу; ажил алдагдаагүй, зөвхөн харагдаагүй байна.', subReadErr)}
         </p>
       )}
       {!locked && !submitFailed && inReview && (

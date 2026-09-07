@@ -186,11 +186,8 @@ export const sqlStr = (s: string) => `'${s.replace(/'/g, "''")}'`;
 
 export type RemoteDraft = { at: number; payload: string };
 
-/**
- * АЛСЫН НООРОГ — байхгүй/алдаа бол `null`.
- * ⚠️ Алдаа ХЭЗЭЭ Ч шидэхгүй: энэ нь нэмэлт тав тух, бөглөлтийн зам биш.
- */
-export async function loadRemoteDraft(pkgKey: string): Promise<RemoteDraft | null> {
+/** ⚠️ Дотоод — алдааг ШИДНЭ. Гадна талын хос нь доор. */
+async function readRemoteDraftRaw(pkgKey: string): Promise<RemoteDraft | null> {
   try {
     const auth = await getAuth();
     if (!auth) return null;
@@ -208,9 +205,49 @@ export async function loadRemoteDraft(pkgKey: string): Promise<RemoteDraft | nul
       { at?: number; payload?: string } | undefined;
     if (!last?.payload || !Number.isFinite(last.at)) return null;
     return { at: Number(last.at), payload: String(last.payload) };
-  } catch {
-    return null;
+  } catch (e) {
+    /* ⚠️ ШИДНЭ — дээрх `readRemoteDraft` барьж, дуудагчид ЯЛГАЖ хэлнэ */
+    throw e;
   }
+}
+
+/**
+ * АЛСЫН НООРОГИЙН УНШИЛТ — АЛДААГ ЯЛГАДАГ хувилбар (2026-09-07).
+ *
+ * ⚠️ ЯАГААД ХЭРЭГТЭЙ ВЭ: «ноорог БАЙХГҮЙ» ба «уншиж ЧАДСАНГҮЙ» хоёрыг
+ * ялгалгүй `null` буцаадаг байв. Сүлжээ түр тасрах, токен шинэчлэгдэх,
+ * хүснэгтийн URL олдохгүй байх агшинд дуудагч «ноорог алга» гэж дүгнэж,
+ * бөглөгч ХООСОН хуудас хараад ажлаа алдсан гэж боддог — ямар ч алдаа
+ * гарахгүй. Тэр ноорог ArcGIS дээр БАЙСААР байна.
+ *
+ * ⚠️ ЯГ ЭНЭ АНГИЛЛЫН алдааг `submission.ts` (`readActiveSubmission`),
+ * `hyanaltStore.ts` ба `hyanaltDetail.ts` дээр 2026-09-04-нд CRITICAL гэж
+ * тэмдэглэн зассан — ноорогийн зам ганцаараа хоцорсон байв.
+ *
+ * ⚠️ Нэвтрээгүй ба хүснэгт үүсээгүй нь АЛДАА БИШ: ноорог зөвхөн локалд
+ * байна гэсэн үг тул `{ ok: true, draft: null }`.
+ */
+export type RemoteDraftRead =
+  | { ok: true; draft: RemoteDraft | null }
+  | { ok: false; error: string };
+
+export async function readRemoteDraft(pkgKey: string): Promise<RemoteDraftRead> {
+  try {
+    const d = await readRemoteDraftRaw(pkgKey);
+    return { ok: true, draft: d };
+  } catch (e) {
+    return { ok: false, error: String((e as Error)?.message ?? e) };
+  }
+}
+
+/**
+ * АЛСЫН НООРОГ — байхгүй/алдаа бол `null`.
+ * ⚠️ Алдаа ХЭЗЭЭ Ч шидэхгүй: энэ нь нэмэлт тав тух, бөглөлтийн зам биш.
+ * ⚠️ Уншилт УНАСНЫГ ялгах шаардлагатай бол `readRemoteDraft`-ийг хэрэглэ.
+ */
+export async function loadRemoteDraft(pkgKey: string): Promise<RemoteDraft | null> {
+  const r = await readRemoteDraft(pkgKey);
+  return r.ok ? r.draft : null;
 }
 
 /**

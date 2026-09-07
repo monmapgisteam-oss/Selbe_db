@@ -3072,7 +3072,6 @@ const en: Record<string, string> = {
   "Зөвхөн бөглөөгүй": "Only unfilled",
   "Зөвхөн харах горим — чанарын баримт бөглөхөд «QAQC» эрх шаардлагатай.": "Read-only — filling in quality documents requires the “QAQC” permission.",
   "Энэ багцын QAQC хүснэгт тодорхойлогдоогүй байна.": "No QAQC table is defined for this package.",
-  "Ноорог энэ хөтөчид, мөн ArcGIS-д хадгалагдана — өөр компьютероос нэвтэрсэн ч сэргээх боломжтой. Үйлчилгээнд бичихийн тулд «Хадгалах» дарна.": "The draft is kept in this browser and in ArcGIS, so it can be restored from another computer. Press “Save” to write it to the service.",
   "{0} нүд хадгалагдаагүй байна. Ноорог үлдэх ч багц солиход дэлгэцээс арилна. Үргэлжлүүлэх үү?": "{0} cell(s) are unsaved. The draft is kept, but switching packages clears them from the screen. Continue?",
   "Нэг ч баримт бөглөгдөөгүй ажлын мөрүүдийг л харуулна. Бүлгийн мөр хэвээр үлдэнэ — эс бөгөөс шатлал тасарна.": "Shows only work rows with no document filled in. Group rows stay visible — otherwise the hierarchy breaks.",
   "Өөрчилсөн нүдийг QAQC үйлчилгээнд бичнэ (Ctrl+S)": "Writes the changed cells to the QAQC service (Ctrl+S)",
@@ -3595,6 +3594,9 @@ const en: Record<string, string> = {
   "{0}-д энэ үзүүлэлтээр асуудалтай мөр алга.": "No problem rows for this metric in {0}.",
   "Хяналтын харагдацад гүйцэтгэл засах боломжгүй — бөглөх горимоор нээнэ үү.": "Performance cannot be edited in the review view — open it in fill mode.",
   "Нэгтгэлийн мөрийн дугаар уншигдсангүй — дахин оролдоно уу.": "Could not read the consolidated row id — please try again.",
+  "Ноорог ЭНЭ хөтөчид хадгалагдлаа. ArcGIS-д хуулагдсан эсэхийг хажуугийн заалт харуулна. Үйлчилгээнд бичихийн тулд «Хадгалах» дарна.": "Draft saved in THIS browser. The adjacent label shows whether it reached ArcGIS. Press «Save» to write it to the service.",
+  "Алсын ноорогийг уншиж чадсангүй ({0}). Энэ компьютерийн ноорог хэвээр — өөр газраас бөглөсөн ажил байвал сүлжээ сэргэсний дараа хуудсыг дахин ачаална уу.": "Could not read the remote draft ({0}). This computer's draft is intact — if you filled work elsewhere, reload the page once the network recovers.",
+  "Илгээсэн ажлыг татаж чадсангүй ({0}) — доорх тоо ДУТУУ байж болзошгүй. Хуудсыг дахин ачаална уу; ажил алдагдаагүй, зөвхөн харагдаагүй байна.": "Could not load the submitted work ({0}) — the figures below may be INCOMPLETE. Reload the page; nothing is lost, it is only not shown.",
 };
 
 export default en;
