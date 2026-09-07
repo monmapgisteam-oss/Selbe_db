@@ -6,6 +6,27 @@
 
 .board { width: 100%; min-width: 0; }
 
+/*
+ * ⚠️ ӨРГӨН ДЭЛГЭЦЭД САМБАР ХУУДСЫН ХҮРЭЭНЭЭС ГАРНА (2026-09-07).
+ *
+ * Нүүр хуудасны хүрээ нь `max-width: 1680px` (`home.module.css`) бөгөөд
+ * схемийн зураг ЯГ тэр өргөнд (1,614px) багтахаар зохиогдсон. Зүүн талд
+ * жагсаалт нэмэхэд схем 246px-ээр шахагдаж, ХЭВТЭЭ ГҮЙЛТ гарч, баруун
+ * талын зангилаанууд далдлагдсан — хэрэглэгч үүнийг шууд няцаав.
+ *
+ * Шийдэл: самбар нь цонхны БҮТЭН өргөнийг эзэлнэ. Ингэснээр жагсаалт нь
+ * зүүн талдаа тусдаа багана болж, схем нь өмнөх өргөнөө ХЭВЭЭР хадгална.
+ * ⚠️ Зөвхөн 1500px-ээс өргөн дэлгэцэд: түүнээс нарийн үед хүрээнээс гарах
+ *    нь зөвхөн хажуугийн зайг иддэг бөгөөд жагсаалт аль хэдийн дээшээ
+ *    буусан байна (доорх `@media`).
+ */
+@media (min-width: 1500px) {
+  .board {
+    width: calc(100vw - 32px);
+    margin-inline: calc(50% - 50vw + 16px);
+  }
+}
+
 /* ══ Толгой ══ */
 
 .head {
@@ -114,6 +135,111 @@
   border: 1px solid var(--line);
   border-radius: 999px;
   white-space: nowrap;
+}
+
+/* ══ ЗҮҮН ТАЛЫН ЖАГСААЛТ ══
+ * ⚠️ 2026-09-07: схемийн хажууд БҮХ үзүүлэлтийг нэг баганаар. Схем нь
+ *    «юу юунаас хамаардаг» гэдгийг хэлдэг ч 24 картаас нүдээр хайх нь
+ *    удаан — жагсаалт нь тогтмол эрэмбээр шууд заана.
+ * ⚠️ Нарийн дэлгэц дээр ДЭЭШЭЭ буун бүтэн өргөнөө авна: 260px багана нь
+ *    схемийн хэвтээ гүйлтийг хэт нарийсгаж, зураг уншигдахаа болино.
+ */
+.stage {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.side {
+  flex: none;
+  /* ⚠️ 238 + 8 зай: 1900px дэлгэцэд схем (1,614px) ЯГ багтана — өргөсгөвөл
+     хэвтээ гүйлт эргэж ирнэ. */
+  width: 238px;
+  /* ⚠️ ДОТРОО ГҮЙХГҮЙ (2026-09-07-ны засвар): урьд нь `max-height: 620px`
+     байсан тул доод хоёр үзүүлэлт таслагдаж, тусдаа гүйлтийн зурвас
+     үүсгэдэг байв — жагсаалт бүтнээрээ доош үргэлжлэх ёстой. Өндөр нь
+     агуулгаараа тогтоно; хуудас өөрөө гүйнэ. */
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.sideHead {
+  margin: 2px 4px 8px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.sideList { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.sideRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  width: 100%;
+  min-width: 0;
+  padding: 6px 8px;
+  text-align: left;
+  font: inherit;
+  color: var(--ink-2);
+  background: color-mix(in srgb, var(--h) 7%, transparent);
+  border: 0;
+  border-left: 3px solid var(--h);
+  border-radius: 0 7px 7px 0;
+  cursor: pointer;
+}
+.sideRow:hover { background: color-mix(in srgb, var(--h) 15%, transparent); }
+.sideRow:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; }
+/* ⚠️ Зангилаагүй үзүүлэлт — дарагдахгүй нь ИЛ харагдана */
+.sideRow:disabled { cursor: default; opacity: 0.75; }
+/* Нээлттэй зангилаатай мөр — схем дээрх сонголттой НЭГ төлөв */
+.sideOn {
+  background: color-mix(in srgb, var(--h) 22%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--h) 45%, transparent);
+}
+.sideIcon {
+  flex: none;
+  display: flex;
+  width: 13px;
+  margin-top: 2px;
+  color: var(--h);
+}
+.sideBody { flex: 1; min-width: 0; display: grid; gap: 1px; }
+/* ⚠️ Нэр нь АГШИНА (ellipsis) — тоо нь доор бүтнээрээ үлдэнэ */
+.sideTitle {
+  font-size: 0.72rem;
+  font-weight: 620;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* ⚠️ Тоо ба нэгж НЭГ мөрөнд; багтахгүй бол нэгж нь ДООШ буух
+   (`flex-wrap`) — таслагдахгүй. */
+.sideNums {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+.sideVal {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+.sideUnit {
+  font-size: 0.6rem;
+  font-style: normal;
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 1180px) {
+  .stage { flex-direction: column; }
+  .side { width: 100%; max-height: none; }
+  .sideList { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
 }
 
 /* ══ Схемийн зурагт ══ */
