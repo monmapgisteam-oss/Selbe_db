@@ -690,3 +690,17 @@
    бутархайтай тоо (138.94) 58px-д багтахгүй, «138.9…» гэж таслагдаж
    байв (2026-09-06-ны скриншот). */
 .mdMonthIn { flex: 1; min-width: 0; width: auto; }
+
+/* ⚠️ Батлах урсгалын цонхны текст талбар (`FlowBox`) — тайлбар ба буцаах
+   шалтгаан. `PlanModal`-ийн бусад ангийг дахин ашигладаг тул зөвхөн энэ нэг
+   шинэ дүрэм хэрэгтэй. */
+.flowText {
+  width: 100%;
+  resize: vertical;
+  font: inherit;
+  color: var(--ink);
+  background: var(--surface-2, var(--surface));
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 8px;
+}

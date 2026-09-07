@@ -29,6 +29,7 @@ export type CapKey =
   | 'finEdit'
   | 'finRow'
   | 'plan'
+  | 'planApprove'
   | 'gazar'
   | 'butets';
 
@@ -91,6 +92,19 @@ export const CAPS: { key: CapKey; icon: string }[] = [
    */
   { key: 'plan', icon: 'calendar' },
   /**
+   * ХУВААРЬ БАТЛАХ — гүйцэтгэгчийн илгээсэн хуваарийг батлах / буцаах.
+   *
+   * ⚠️ `plan`-ААС ТУСДАА бөгөөд түүнтэй ХОСЛУУЛЖ БОЛОХГҮЙ (2026-09-07):
+   *    зохиогч нь өөрийнхөө хуваарийг батлах зам нээгдвэл хоёр шатат
+   *    хяналт бүхэлдээ утгагүй болно. `huvaariBatlah.decidePlan` нь
+   *    зохиогч = батлагч тохиолдлыг ТАТГАЛЗАНА.
+   *
+   * ⚠️ Гүйцэтгэлийн урсгалын 4 шатнаас (`hyanalt.ts`) мөн ТУСДАА: тэр нь
+   *    БОДИТ гүйцэтгэлийг, энэ нь ТӨЛӨВЛӨГӨӨГ батална. Нэг хүнд хоёуланг
+   *    нь өгч болно, гэхдээ энэ нь тусдаа шийдвэр байх ёстой.
+   */
+  { key: 'planApprove', icon: 'shield' },
+  /**
    * ГАЗРЫН ТӨЛӨВ ЗАСАХ — «Газар чөлөөлөлт» дээр нэгж талбарын `Tuluv`,
    * `явцын_мэдээ`, эзэмшигч, тайлбарыг засах.
    *
@@ -133,6 +147,7 @@ export const CAP_HOST_VIEW: Record<CapKey, ViewKey> = {
   finEdit: 'finance',
   finRow: 'finance',
   plan: 'huvaari',
+  planApprove: 'huvaari',
   gazar: 'gazar',
   butets: 'dedButets',
 };
