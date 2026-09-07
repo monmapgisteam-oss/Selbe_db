@@ -69,7 +69,22 @@ function notify(): void {
 
 function save(list: QaqcAssign[]): void {
   cache = list;
-  if (typeof window !== 'undefined') localStorage.setItem(KEY, JSON.stringify(list));
+  /*
+   * ⚠️ `localStorage` БҮТЭЛГҮЙТЭЖ БОЛНО (2026-09-07-ны 100% аудит):
+   * хувийн горим, квот дүүрэх, сайтын өгөгдөл хаасан тохиргоо — гурвуулаа
+   * ШИДДЭГ. Хамгаалалтгүй бол `save` шидэж, дуудагч (`setAssign` г.м.)
+   * унаж, админы панел эвдэрнэ; бүр муу нь `notify()` хүрэхгүй тул
+   * захиалагчид ХУУЧИН эрхээ хараад үлдэнэ.
+   * ⚠️ Санах ойн `cache` нь дээр аль хэдийн шинэчлэгдсэн бөгөөд алсын
+   * бичилт тусдаа явдаг тул локал хадгалалт унасан ч ажиллагаа
+   * ҮРГЭЛЖИЛНЭ — зөвхөн хуудас дахин ачаалахад кэш хоосон эхэлнэ.
+   * `caps.ts`-ийн `save`-ийн ижил загвар.
+   */
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem(KEY, JSON.stringify(list));
+    } catch { /* хувийн горим / квот дүүрсэн — санах ойд хэвээр ажиллана */ }
+  }
   notify();
 }
 

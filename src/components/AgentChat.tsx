@@ -59,7 +59,11 @@ export function AgentChat({
    */
   const [wide, setWide] = useState(false);
   useEffect(() => {
-    setWide(localStorage.getItem(WIDE_KEY) === '1');
+    /* ⚠️ try/catch (2026-09-07): хувийн горимд `getItem` ШИДДЭГ бөгөөд
+       эффект дотор шидсэн алдаа чатыг бүхэлд нь унагана. */
+    try {
+      setWide(localStorage.getItem(WIDE_KEY) === '1');
+    } catch { /* хувийн горим — нарийн харагдац хэвээр */ }
   }, []);
   const toggleWide = () => {
     setWide((v) => {
