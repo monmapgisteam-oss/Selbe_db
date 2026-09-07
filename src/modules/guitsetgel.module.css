@@ -538,6 +538,10 @@
   border-radius: 10px;
   background: var(--surface);
 }
+/* ⚠️ Чанарын (QAQC) панел нь ГАНЦ баганатай (шатгүй) тул `auto-fit` түүнийг
+   дэлгэц дүүрэн сунгана — уншихад хэцүү, урсгалын 4 баганатай ч зөрнө.
+   Тиймээс өргөнийг нь баганын хэмжээнд барина. */
+.aclOne { max-width: 420px; }
 .aclHead {
   display: flex;
   align-items: center;
