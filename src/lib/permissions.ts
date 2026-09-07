@@ -280,6 +280,13 @@ export async function initRemote(canCreate: boolean, trusted: boolean = canCreat
     q._syncRemoteQaqc(remote.qaqc);
   } catch { /* модуль ачаалагдаагүй орчин — алгасна */ }
 
+  // 6) Хуваарийн хуваарилалт (`__huvaari__:`) → huvaariAcl.ts
+  //    ⚠️ Урсгалынхаас ТУСДАА — хуваарь нь төлөвлөгөө, гүйцэтгэл биш.
+  try {
+    const hv = await import('./huvaariAcl');
+    hv._syncRemoteHuvaari(remote.huvaari);
+  } catch { /* модуль ачаалагдаагүй орчин — алгасна */ }
+
   notify();
   return true;
 }
