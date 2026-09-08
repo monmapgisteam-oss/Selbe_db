@@ -123,7 +123,8 @@
 
 }
 
-@media (max-width: 1440px) {
+/* Ширээний шатлал `--bp-desk` — хажуугийн багана нарийсна (2026-09-07) */
+@media (max-width: 1400px) {
   .shell { --side-l: 232px; --side-r: 244px; }
 
 }
@@ -454,9 +455,15 @@
 
 /* ⚠️ ХООСОН тал 0 өргөнтэй — энэ нь СТИЛЬ бус ЗАН ҮЙЛ (карт байхгүй бол
    багана огт зурагдахгүй) тул 9 хэсэгт хамаатай, салгаагүй. */
-.shell[data-detail='1'][data-zl='0'] { --side-l: 0px; }
+/* ⚠️ 2026-09-08 — селекторт [data-sec] НЭМСЭН (жин 0,3,0 → 0,4,0). Доорх 9
+   хэсгийн .shell[data-detail='1'][data-sec='…'] блокууд бас --side-l/--side-r
+   зарладаг бөгөөд жин нь ЯГ адил (0,3,0) байсан тул файлд ХОЙНО бичигдсэн
+   тэдгээр нь ҮРГЭЛЖ ялж, хоосон багана 0px болохын оронд 252–620px хоосон
+   зогсож зургийг дэмий шахдаг байв. Одоо энэ хос дүрэм ЖИНГЭЭРЭЭ ялах тул
+   файлын байрлалаас хамаарахгүй (блокуудыг нүүлгэх шаардлагагүй). */
+.shell[data-detail='1'][data-sec][data-zl='0'] { --side-l: 0px; }
 
-.shell[data-detail='1'][data-zr='0'] { --side-r: 0px; }
+.shell[data-detail='1'][data-sec][data-zr='0'] { --side-r: 0px; }
 
 
 /**
@@ -820,10 +827,10 @@
 }
 
 /* Нарийн дэлгэц — гурван багана БОСОО өрөлт болно */
-@media (max-width: 1100px) {
+@media (max-width: 1180px) {
   /* ⚠️ Нарийн дэлгэцэд «тойрсон» бүтэц ажиллахгүй — БҮГД нэг баганад өрөгдөнө:
      хэсгүүдийн жагсаалт → гарчиг → зураг → чартын картууд.
-     Босго 1100 — бүх дашбоардын НЭГДСЭН босго (analysis-тай ижил). */
+     Босго 1180 = `--bp-split` (globals.css) — `shell.module.css` нь ЯГ тэр цэгт бүх аппыг нэг багана болгодог тул модуль ч тэндээ нурна. Өмнө нь 1100 байсан: 1101–1180-д бүрхүүл нарийсчихсан атал модуль ХОЁР баганаа барьж, самбарууд шахагдаж байв (2026-09-07 медиа аудит). */
   .shell,
     .shell[data-detail='1'] {
       grid-template-columns: minmax(0, 1fr);
@@ -931,7 +938,7 @@
 .ind {
   flex: none;
   display: grid;
-  /* 2026-08-21 аудит: тогтмол repeat(5,1fr) нь 1100–1250px-д нүдийг ~150px-ээс
+  /* 2026-08-21 аудит: тогтмол repeat(5,1fr) нь 1180–1250px-д нүдийг ~150px-ээс
      доош шахаж утгыг («158.0 га» → «158…») таслаж байв. auto-fit нь зай хүрэхгүй
      үед нүдийг дараагийн мөрөнд буулгаж утгыг БҮТЭН үлдээнэ. */
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -957,8 +964,8 @@
 .srcLine { flex: none; padding: 0 2px; font-size: 10.5px; line-height: 1.4; color: var(--ink-3); }
 
 /* Нарийн дэлгэц — багана доошоо эвхэгдэнэ, хуудас босоогоор гүйнэ.
-   Босго 1100 — бүх дашбоардын НЭГДСЭН босго. */
-@media (max-width: 1100px) {
+   Босго 1180 = `--bp-split` (globals.css) — `shell.module.css` нь ЯГ тэр цэгт бүх аппыг нэг багана болгодог тул модуль ч тэндээ нурна. Өмнө нь 1100 байсан: 1101–1180-д бүрхүүл нарийсчихсан атал модуль ХОЁР баганаа барьж, самбарууд шахагдаж байв (2026-09-07 медиа аудит). */
+@media (max-width: 1180px) {
   .shell[data-detail='0'] {
       grid-template-columns: 1fr;
       grid-template-rows: auto auto auto auto;
@@ -1009,7 +1016,7 @@
 }
 
 /* Нэг баганат (нарийн) горимд зааг байхгүй тул бариул ч байхгүй */
-@media (max-width: 1100px) {
+@media (max-width: 1180px) {
   .shell > :global(button[class*='splitGrip_grip']) { display: none; }
 
 }
@@ -1131,7 +1138,7 @@
   grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
   column-gap: 22px;
 }
-.shell[data-detail='1'][data-sec='scope'] .zTop :global(.seriesChart) { max-width: 1100px; }
+.shell[data-detail='1'][data-sec='scope'] .zTop :global(.seriesChart) { max-width: 1180px; }
 
 /* ─── 02 ХЭРЭГЖИЛТИЙН ГРАФИК ───
    цуваа өргөн шаардана — багана өргөн, зурвас намхан */
@@ -1222,7 +1229,7 @@
   grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
   column-gap: 22px;
 }
-.shell[data-detail='1'][data-sec='schedule'] .zTop :global(.seriesChart) { max-width: 1100px; }
+.shell[data-detail='1'][data-sec='schedule'] .zTop :global(.seriesChart) { max-width: 1180px; }
 
 /* ─── 03 ГАЗАР ЧӨЛӨӨЛӨЛТ ───
    шалтгаан/төлөвийн жагсаалт урт — зүүн багана өргөн */
@@ -1313,7 +1320,7 @@
   grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
   column-gap: 22px;
 }
-.shell[data-detail='1'][data-sec='land'] .zTop :global(.seriesChart) { max-width: 1100px; }
+.shell[data-detail='1'][data-sec='land'] .zTop :global(.seriesChart) { max-width: 1180px; }
 
 /* ─── 04 ОРОН СУУЦНЫ БҮС ───
    9 карт — хамгийн олон; хоёр багана хоёулаа өргөн */
@@ -1403,7 +1410,7 @@
   grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
   column-gap: 22px;
 }
-.shell[data-detail='1'][data-sec='bagts'] .zTop :global(.seriesChart) { max-width: 1100px; }
+.shell[data-detail='1'][data-sec='bagts'] .zTop :global(.seriesChart) { max-width: 1180px; }
 
 /* ─── 05 ШУГАМ СҮЛЖЭЭ ───
    6 чарт — хамгийн олон; зурвас намхан, чартад зай */
@@ -1501,7 +1508,7 @@
   grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
   column-gap: 22px;
 }
-.shell[data-detail='1'][data-sec='network'] .zTop :global(.seriesChart) { max-width: 1100px; }
+.shell[data-detail='1'][data-sec='network'] .zTop :global(.seriesChart) { max-width: 1180px; }
 
 /* ─── 06 ЦАХИЛГААН ───
    4 чарт · 6 KPI — тэнцвэртэй */
@@ -1601,7 +1608,7 @@
   grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
   column-gap: 22px;
 }
-.shell[data-detail='1'][data-sec='power'] .zTop :global(.seriesChart) { max-width: 1100px; }
+.shell[data-detail='1'][data-sec='power'] .zTop :global(.seriesChart) { max-width: 1180px; }
 
 /* ─── 07 ЭХ ҮҮСВЭР ───
    ХАМГИЙН ЦӨӨН (2 чарт · 1 KPI) — багана нарийн, карт СУНАХГҮЙ */
@@ -1699,7 +1706,7 @@
   grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
   column-gap: 22px;
 }
-.shell[data-detail='1'][data-sec='source'] .zTop :global(.seriesChart) { max-width: 1100px; }
+.shell[data-detail='1'][data-sec='source'] .zTop :global(.seriesChart) { max-width: 1180px; }
 
 /* ─── 08 ХӨРӨНГӨ ОРУУЛАЛТ, БОНД ───
    мөнгөн дүн урт (₮) — багана өргөн, KPI нүд өргөн */
@@ -1799,7 +1806,7 @@
   grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
   column-gap: 22px;
 }
-.shell[data-detail='1'][data-sec='finance'] .zTop :global(.seriesChart) { max-width: 1100px; }
+.shell[data-detail='1'][data-sec='finance'] .zTop :global(.seriesChart) { max-width: 1180px; }
 
 /* ─── 09 НИЙГМИЙН ДЭД БҮТЭЦ ───
    8 KPI — зурвас өндөр */
@@ -1899,7 +1906,7 @@
   grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
   column-gap: 22px;
 }
-.shell[data-detail='1'][data-sec='benefit'] .zTop :global(.seriesChart) { max-width: 1100px; }
+.shell[data-detail='1'][data-sec='benefit'] .zTop :global(.seriesChart) { max-width: 1180px; }
 
 /* ⚠️ ГАР УТАС (2026-08-29): KPI зурвас нарийн дэлгэцэнд нэрсээ «Хэ… е…» болтол
    тайрдаг байв. Зурвасыг ХЭВТЭЭ ГҮЙЛГЭДЭГ болгож, товч бүр бүтэн нэртэйгээ
@@ -1914,7 +1921,7 @@
    ГАР УТАС — ХЭСЭГ НЭЭСЭН ҮЕИЙН НЭГ БАГАНАТ ӨРӨЛТ (2026-09-01 ЗАСВАР)
 
    ⚠️ ЯАГААД ЭНД, ФАЙЛЫН ТӨГСГӨЛД БАЙНА ВЭ.
-   785-р мөрийн `@media (max-width: 1100px)` доторх
+   785-р мөрийн `@media (max-width: 1180px)` доторх
    `.zTop, .zLeft, .zRight { grid-column: 1 }` нь ЭНГИЙН класс сонголт
    (тодорхойлолтын жин 0,1,0). Харин 974–1868 мөрүүд дэх есөн хэсгийн дүрэм
    `.shell[data-detail='1'][data-sec='scope'] .zTop { grid-column: 2 }` нь
@@ -1928,7 +1935,7 @@
    Ижил (0,4,0) жинтэй боловч эх кодод ХОЖУУ байрлах тул энэ блок ялна.
    `[data-sec]` нь утга заалгүй БАЙГААГ шалгана — есөн хэсэг бүгдэд нэг дор.
    ══════════════════════════════════════════════════════════════════════ */
-@media (max-width: 1100px) {
+@media (max-width: 1180px) {
   .shell[data-detail='1'][data-sec] .center,
   .shell[data-detail='1'][data-sec] .zTop,
   .shell[data-detail='1'][data-sec] .zLeft,

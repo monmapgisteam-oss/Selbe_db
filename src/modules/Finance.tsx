@@ -18,7 +18,7 @@ const DatePicker = dynamic(() => import('@/modules/sheet/DatePicker'), { ssr: fa
 
 /** Огнооны талбар мөн үү — календар зөвхөн эдгээрт нээгдэнэ */
 const DATE_TYPES = new Set(['esriFieldTypeDate', 'esriFieldTypeDateOnly']);
-import { Data, Empty } from '@/components/ui';
+import { Data, Empty, Note } from '@/components/ui';
 import { useAsync } from '@/lib/useAsync';
 import { queryFeatures } from '@/lib/query';
 import { cached } from '@/lib/live';
@@ -1157,8 +1157,25 @@ function parseCell(s: string, type: string, label: string): unknown {
       throw new Error(tr('«{0}» — огноо ЖЖЖЖ-СС-ӨӨ хэлбэрээр байх ёстой: {1}', label, v));
     return v;
   }
+  /* ⚠️ 2026-09-08 (аудит): `esriFieldTypeDate`-д ЭРГЭЛТИЙН шалгалт НЭМЭВ.
+     `new Date('2026-02-30T00:00:00Z')` нь NaN БИШ — 2026-03-02 болж ГҮЙНЭ
+     (`2026-06-31` → 2026-07-01). Хуучин код тэр гүйлтийг чимээгүй хүлээж,
+     «N мөр хадгалагдав» гэж ногоон мэдэгдэл гаргадаг байсан тул хэрэглэгч
+     бичсэн огноогоо хадгалсан гэж итгэх атал үйлчилгээнд ӨӨР огноо суудаг байв.
+     Дээрх мөр 1023-ын «esriFieldTypeDate талбар НЭГ Ч БАЙХГҮЙ» гэсэн таамаг нь
+     хуучин `cashflow_0813`-ынх — шинэ `Cashflow_0904`-т Ehleh_ognoo ·
+     Duusah_ognoo · Zahiramj_ognoo ГУРВУУЛАА `esriFieldTypeDate` тул энэ салаа
+     одоо АМЬД. Хажуугийн `DateOnly` салаатай ЯГ НЭГ дүрэм.
+     ⚠️ Цаг-минуттай БҮТЭН огноо (ISO datetime) хэвээр зөвшөөрөгдөнө — тэр
+     хэлбэрийг `YYYY-MM-DD` эргэлтээр шалгах боломжгүй. */
   if (type === 'esriFieldTypeDate') {
-    const d = new Date(v.length === 10 ? v + 'T00:00:00Z' : v);
+    if (v.length === 10) {
+      const d = new Date(`${v}T00:00:00Z`);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(v) || Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== v)
+        throw new Error(tr('«{0}» — огноо ЖЖЖЖ-СС-ӨӨ хэлбэрээр байх ёстой: {1}', label, v));
+      return d.getTime();
+    }
+    const d = new Date(v);
     if (Number.isNaN(d.getTime())) throw new Error(tr('«{0}» — огноо буруу: {1}', label, v));
     return d.getTime();
   }
@@ -2109,7 +2126,7 @@ function FullTable({
           {list.map((p, i) => {
             const dropped = p.oid != null && del.has(p.oid);
             return (
-              <tr key={p.oid ?? `r${i}`} className={dropped ? f.rowDrop : undefined}>
+              <tr key={p.oid ?? `r${i}`} className={dropped ? f.rowDel : undefined}>
                 {(() => {
                   /* ⚠️ Тамгыг № БАГАНАД тавина, тусдаа багана НЭМЭХГҮЙ: хүснэгт
                      аль хэдийн 33 баганатай бөгөөд хоёр багана нэмбэл гол
@@ -2257,16 +2274,31 @@ function FullTable({
   const ipcTable = (list: GroupRow[]) => {
     const IPS = IPC_LOG.fields;
     const rowsOnly = list.map((p) => p.row);
-    const grossTot = sumOrNull(rowsOnly, IPS.gross);
+    /*
+     * ⚠️ 2026-09-08 (аудит, HIGH): ГУРВАН НИЙЛБЭР НЭГ Л ОЛОНЛОГООС.
+     *    `netTotalOrNull` нь `gross` хэмжигдээгүй мөрийг БҮРЭН алгасдаг
+     *    (`netOrNull` → null) атал хуучин `dedTot` тэр мөрийн суутгалыг
+     *    НЭМДЭГ байв. Амьд өгөгдөл (ipc_0813/172): акт I30 — IPC18 хоосон,
+     *    IPC20 = 2,072,616,655.12 ₮. Үр дүнд Багц 4.1-ийн НИЙТ мөрөнд
+     *    77,110,395,701 − 8,988,728,255 = 68,121,667,446 ≠ 70,194,284,101 —
+     *    хэрэглэгч гурван тоог нүдээр хасаад таарахгүй байхыг харна.
+     *    Одоо `solid` (= `netOrNull(r) != null`) дээр гурвуулаа бодогдох тул
+     *    grossTot − dedTot === netTot тождество ҮРГЭЛЖ биелнэ.
+     * ⚠️ Хасагдсан мөрүүд ХАЯГДААГҮЙ — хүснэгтэд мөр бүр хэвээр гарна,
+     *    зөвхөн НИЙЛБЭРТ ордоггүй. Тоо нь доорх `skipped` тэмдэглэлд ил.
+     */
+    const solid = rowsOnly.filter((r) => netOrNull(r) != null);
+    const skipped = rowsOnly.length - solid.length;
+    const grossTot = sumOrNull(solid, IPS.gross);
     let dedTot: number | null = null;
     let paidTot: number | null = null;
-    for (const r of rowsOnly) {
+    for (const r of solid) {
       const d2 = dedOrNull(r);
       if (d2 != null) dedTot = (dedTot ?? 0) + d2;
       const p2 = paidOrNull(r);
       if (p2 != null) paidTot = (paidTot ?? 0) + p2;
     }
-    const netTot = netTotalOrNull(rowsOnly);
+    const netTot = netTotalOrNull(solid);
     const nCols = 1 + ipcMainCols.length + 3 + (edit && canRow ? 1 : 0);
     return (
       <div>
@@ -2277,6 +2309,13 @@ function FullTable({
           {kpiTile(tr('Цэвэр дүн'), netTot)}
           {kpiTile(tr('Шилжүүлсэн'), paidTot)}
         </div>
+        {/* ⚠️ Нийлбэрээс хасагдсан актыг НУУХГҮЙ — «дүнгүй акт байна» гэдэг нь
+            өөрөө хяналтын мэдээлэл (дээрх ⚠️-г үз). */}
+        {skipped > 0 && (
+          <Note>
+            {tr('Гүйцэтгэлийн дүн бүртгэгдээгүй {0} акт нийлбэрт ороогүй.', num(skipped))}
+          </Note>
+        )}
       <div className={f.tscroll}>
         <table className={`${f.tbl} ${f.sTbl}`}>
           <thead>

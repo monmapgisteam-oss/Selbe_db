@@ -523,11 +523,12 @@
 /* ArcGIS widget tweak */
 .app :global(.esri-ui) :global(.esri-widget) { --calcite-ui-foreground-1: var(--surface) }
 
-@media (max-width: 1450px) {
+/* Ширээний шатлал `--bp-desk` — хажуугийн багана нарийсна (2026-09-07) */
+@media (max-width: 1400px) {
   .shell { --left-w: 295px; --right-w: 300px }
   .brand p { display: none }
 }
-@media (max-width: 1100px) {
+@media (max-width: 1180px) {
   /* ⚠️ Багана давхарлагдахад мөрийг ТОГТМОЛ px-ээр барьж болохгүй: .app нь
      `overflow:hidden` тул нийлбэр өндөр дэлгэцээс их бол баруун баганын
      (жин, зогсоол, ногоон, байршил) карт таслагдаж, хүрэх арга үлдэхгүй.

@@ -224,11 +224,19 @@ export function computeIot(sensors: readonly SensorLive[], now: number): IotSumm
       states.push({ sensor: sn.label, state: 'down', lastAt: sn.lastAt, error: sn.error });
       // Унасан мэдрэгчийн хэмжигдэхүүнүүд «Бүх хэмжигдэхүүн»-д null-аар үлдэнэ —
       // жагсаалтаас алга болбол CEO тэр мэдрэгч огт байхгүй гэж бодно.
+      /* ⚠️ 2026-09-08: `dailyDiff`-ийн ЦУВАА Ч ОРНО. Эрүүл салбар нь `sn.series`
+         давтдаг бөгөөд `loadOne` нь `dailyDiff`-тэй хэмжигдэхүүн бүрд НЭМЭЛТ
+         цуваа үүсгэдэг (`series.length > metrics.length`). Энд зөвхөн
+         `sn.metrics` давтагдаж байсан тул мэдрэгч унамагц «Усны хоногийн
+         хэрэглээ» мөр хүснэгтээс БҮРМӨСӨН алга болж, яг дээрх тайлбарын
+         сэргийлэхийг зорьсон үр дагавар үүсдэг байв. */
       for (const m of sn.metrics) {
-        metrics.push({
-          sensor: sn.label, metric: m.label, latest: null, unit: m.unit, dp: m.dp,
-          threshold: m.alert?.value ?? null, ageHours: null, rank: RANK.down,
-        });
+        for (const d of [m, ...(m.dailyDiff ? [m.dailyDiff] : [])]) {
+          metrics.push({
+            sensor: sn.label, metric: d.label, latest: null, unit: d.unit, dp: d.dp,
+            threshold: d.alert?.value ?? null, ageHours: null, rank: RANK.down,
+          });
+        }
       }
       continue;
     }

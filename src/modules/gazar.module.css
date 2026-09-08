@@ -249,8 +249,8 @@
 .scopeHint { font-size: 10.5px; color: var(--ink-3); }
 
 /* ── Responsive — нарийн дэлгэцэд frame нурж БОСОО өрөгдөж, гүйнэ ── */
-/* Босго 1100 — бүх дашбоардын НЭГДСЭН босго (2026-08-21); бариул мөн нуугдана */
-@media (max-width: 1100px) {
+/* Босго 1180 = `--bp-split` (globals.css) — `shell.module.css` нь ЯГ тэр цэгт бүх аппыг нэг багана болгодог тул модуль ч тэндээ нурна. Өмнө нь 1100 байсан: 1101–1180-д бүрхүүл нарийсчихсан атал модуль ХОЁР баганаа барьж, самбарууд шахагдаж байв (2026-09-07 медиа аудит). Бариул мөн нуугдана. */
+@media (max-width: 1180px) {
   .frame > :global(button[class*='splitGrip_grip']) { display: none; }
   .frame {
     grid-template-areas:
@@ -294,7 +294,7 @@
   right: auto;
   margin-left: -10.5px;
 }
-@media (max-width: 1100px) {
+@media (max-width: 1180px) {
   .frame > :global(button[class*='splitGrip_grip']) { display: none; }
 }
 
@@ -446,7 +446,12 @@
   cursor: pointer;
 }
 .primary {
-  color: #06202a;
+  /* ⚠️ 2026-09-08 — #06202a → var(--hue-ink). Цайвар горимд --hue = #2e7f8b
+     тул хатуу #06202a бэх 3.63:1 болж WCAG AA (4.5:1) давахгүй байв;
+     --hue-ink (цайвар #fff) нь 4.64:1 болж давна, харанхуйд ч 9.95 → 10.67:1.
+     globals.css:33-37 нь энэ токеныг ЯГ энэ зорилгоор («--hue дэвсгэр дээрх
+     БҮХ текст #fff-ийн оронд ЭНИЙГ») үүсгэсэн. */
+  color: var(--hue-ink);
   background: var(--hue);
   border-color: var(--hue);
   font-weight: 600;

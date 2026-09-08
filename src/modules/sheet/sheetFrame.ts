@@ -14,7 +14,7 @@
  * ⚠️ Хуулж авсан бүх `⚠️` тайлбар нь эх кодтойгоо ХАМТ явна — тэдгээр нь
  *    буцаагдаж болохгүй шийдвэрүүд (гүн, огноо, жин, `null ≠ 0`).
  */
-import { cellObyem, computeAll, dayToMs, type SheetRow } from "./bagtsSheet";
+import { cellObyem, cellPct, computeAll, dayToMs, type SheetRow } from "./bagtsSheet";
 import type { Schema } from "./bagts.pkg";
 import type { NewRow, SubmissionPayload } from "@/lib/submission";
 import { t as tr } from "@/lib/i18nCore";
@@ -140,6 +140,9 @@ export function insertAdds(
       wC: null,
       wD: null,
       vol: a.vol,
+      /* ⚠️ Инженерийн төлөвлөсөн обьём нь БАТЛАГДАЖ орох тул шинэ мөрд
+         үргэлж `null` — «хараахан төлөвлөөгүй», 0 БИШ. */
+      plannedVol: null,
       unit: a.unit,
       money: null,
       act: new Array(nBld).fill(null),
@@ -178,7 +181,26 @@ export const rowKeyOf = (r: Pick<SheetRow, "no" | "work">): string => `${r.no} �
  *    алга болно. (`Huvaari.tsx:322` ижил аюулыг аль хэдийн таньсан.)
  *
  * Тиймээс түлхүүрүүдийг (№ + Ажлын нэр)-ээр шинэ мөрөнд ЗӨӨНӨ; хос нь
- * давхардвал `rowKeys` дахь (хуучин) байрлалд хамгийн ойрхныг сонгоно.
+ * давхардвал ДАРААЛЛААР нь хуваарилна (нэг нэрийдэл нэг л удаа).
+ *
+ * ⚠️ БАЙРЛАЛААР ОЙРТУУЛАХ АРГЫГ ХАСАВ (2026-09-08-ны аудитын CRITICAL
+ *    олдвор). Урьд нь `Math.abs(j - i)`-ээр хамгийн ойрхон нэрийдлийг
+ *    сонгодог байв. Гэвч `i` нь `rowKeys`-ийн индекс, харин `j` нь
+ *    `freshRows`-ийн индекс — ХОЁР ӨӨР координат. `rowKeys` нь ЗӨВХӨН
+ *    засварласан мөрүүдийг агуулдаг СИЙРЭГ жагсаалт (`FillNew`-ийн
+ *    `usedOids` шүүлт) тул 1,370 мөрийн жаазанд 69 түлхүүр байвал `i`
+ *    0…68, `j` 0…1369 болно. Bagts_1_9f-ийн жаазны 60.5% нь давхардсан
+ *    «№ ¦ Ажил» түлхүүртэй бөгөөд симуляцад засварласан мөрийн 54% нь
+ *    ӨӨР БЛОКИЙН мөрөнд буув — буруу мөр ч ОЛДДОГ тул `unmoved` = 0 болж,
+ *    `hyanaltStore`-ийн хамгаалалт өнгөрч, буруу тоо архивт БИЧИГДЭНЭ.
+ *
+ * ⚠️ ЗАСВАР: `rowKeys` нь ҮРГЭЛЖ хуудасны дарааллаар баригддаг
+ *    (`for (const r of rows) if (usedOids.has(r.oid))`) ба `freshRows` ч
+ *    мөн хуудасны дараалалтай тул ижил түлхүүрийн k дахь тохиолдол нь шинэ
+ *    жаазны k дахь тохиолдолд харгалзана. Тиймээс нэрийдлийг `shift()`-ээр
+ *    дараалан хуваарилна — ноорог сэргээх зам (`FillNew`-ийн `oidFix`)
+ *    аль хэдийн ЯГ ЭНЭ дүрмээр ажилладаг; хоёр зам НЭГ дүрэмтэй байх ёстой
+ *    гэсэн `parentOf`-ийн ⚠️ шаардлагыг энэ хангана.
  *
  * ⚠️ Зөөлт ШААРДЛАГАТАЙ эсэхийг ЭНЭ функц шийдэхгүй — дуудагч шийднэ
  *    (`publish`: `freshRows[0].oid !== rows[0].oid`; `overlaySubmission`:
@@ -191,20 +213,22 @@ export function buildOidMap(
 ): Map<number, number> {
   const map = new Map<number, number>();
   if (!rowKeys.length || !freshRows.length) return map;
-  const byKey = new Map<string, number[]>();
-  freshRows.forEach((r, i) => {
+  /* Нэрийдлүүд — хуудасны дарааллаар (`freshRows` өөрөө тэр дараалалтай). */
+  const free = new Map<string, number[]>();
+  freshRows.forEach((r) => {
     const k = rowKeyOf(r);
-    const l = byKey.get(k);
-    if (l) l.push(i);
-    else byKey.set(k, [i]);
+    const l = free.get(k);
+    if (l) l.push(r.oid);
+    else free.set(k, [r.oid]);
   });
-  rowKeys.forEach(([oid, key], i) => {
-    const cand = byKey.get(key);
-    if (!cand?.length) return;
-    let best = cand[0];
-    for (const j of cand) if (Math.abs(j - i) < Math.abs(best - i)) best = j;
-    map.set(oid, freshRows[best].oid);
-  });
+  /* ⚠️ `rowKeys` нь хуудасны дарааллаар ирнэ гэдэгт ТУЛГУУРЛАНА (дээрх ⚠️).
+     Ижил түлхүүрийн эхнийхийг эхний нэрийдэлд, дараагийнхыг дараагийнхад —
+     нэг мөр хоёр удаа эзлэгдэхгүй тул давхардал ЧИМЭЭГҮЙ холилдохгүй. */
+  for (const [oid, key] of rowKeys) {
+    const cand = free.get(key);
+    if (!cand?.length) continue;      // олдохгүй → `moveKeys` `unmoved`-д тоолно
+    map.set(oid, cand.shift() as number);
+  }
   return map;
 }
 
@@ -334,6 +358,9 @@ export function overlaySubmission(
   const out: SheetRow[] = withAdds.map((r) => ({
     ...r,
     obyem: r.obyem.slice(),
+    /* ⚠️ `act` ч ХУУЛБАРЛАГДАНА (2026-09-08): цэвэрлэсэн нүдийг доор
+       `null` болгож бичдэг тул эх мөрийг өөрчилж болохгүй. */
+    act: r.act.slice(),
     start: r.start.slice(),
     end: r.end.slice(),
   }));
@@ -362,6 +389,20 @@ export function overlaySubmission(
     const key = withOid(k, at, r.oid);
     // `cellObyem`-ийн ДҮРЭМ ЯГ өөрөө — нэг мөрийн засвар мэт дамжуулна.
     r.obyem[b] = cellObyem(r, b, { [key]: v });
+    /* ⚠️ ХУВЬ БАГАНАД ч БУУЛГАНА (2026-09-08). Урьд нь энд ЗӨВХӨН `obyem`
+       бичигддэг байсан тул:
+         · ЦЭВЭРЛЭСЭН нүд (`""`) — обьём null болох ч ХУУЧИН хувь хэвээр
+           үлдэж, архивт хоёр багана үл нийцэн батлагдана;
+         · мөрийн `Обьём`гүй ажилд ХУВИАР (`%50`) бичсэн нүд — `cellObyem`
+           тэнд обьёмыг ТААМАГЛАДАГГҮЙ тул хувь нь хаа ч буудаггүй байв.
+       `computeAll`-ийн дүрэмтэй ЯГ ижил: цэвэрлэсэн = `null` («мэдээлэлгүй»,
+       0 БИШ), хувиар бичсэн = тэр хувь. Обьёмоор бичсэн үед `act` нь
+       `computeAll`-д обьёмоос дахин бодогдох тул энд ХӨНДӨХГҮЙ. */
+    if (v.trim() === "") r.act[b] = null;
+    else {
+      const p = cellPct(r, b, { [key]: v });
+      if (p != null) r.act[b] = p;
+    }
     cellKeys.push(key);
   }
 

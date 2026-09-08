@@ -67,6 +67,22 @@ export type CapRow = { user: string; caps: string[] };
  */
 export type QaqcRow = { user: string; bagts: string[] };
 
+/**
+ * ХУВААРИЙН хуваарилалтын нэг мөр — `__huvaari__:` угтвартай.
+ *
+ * ⚠️ `QaqcRow`-оос ЯЛГААТАЙ нь `roles` талбартай: хуваарь нь ХОЁР үүрэгтэй
+ * (зохиогч · батлагч) тул нэг мөрөнд аль нь болохыг хадгална.
+ */
+export type HuvaariRow = { user: string; roles: string[]; bagts: string[] };
+
+/**
+ * ИНЖЕНЕРИЙН ТӨЛӨВЛӨСӨН ОБЬЁМЫН хуваарилалтын нэг мөр — `__obyem__:` угтвартай.
+ *
+ * ⚠️ `HuvaariRow`-той ижил бүтэц, ӨӨР асуулт: тэр нь ОГНОО төлөвлөх эрх,
+ * энэ нь ОБЬЁМ. Хоёр үүрэг: `editor` (засварлагч) · `approver` (батлагч).
+ */
+export type ObyemRow = { user: string; roles: string[]; bagts: string[] };
+
 const TITLE = 'Selbe_Permissions';
 const TABLE_NAME = 'permissions';
 /** Урсгалын томилгооны мөрийн `username` угтвар — эрхийн мөрөөс ялгана */
@@ -75,6 +91,10 @@ const FLOW_PREFIX = '__flow__:';
 const CAP_PREFIX = '__cap__:';
 /** Чанарын (QAQC) багцын хуваарилалтын мөрийн угтвар — урсгалынхаас ялгана */
 const QAQC_PREFIX = '__qaqc__:';
+/** Хуваарийн хуваарилалтын мөрийн угтвар — чанарынхаас ялгана */
+const HUVAARI_PREFIX = '__huvaari__:';
+/** Инженерийн төлөвлөсөн обьёмын хуваарилалтын угтвар — хуваариныхаас ялгана */
+const OBYEM_PREFIX = '__obyem__:';
 
 let tableUrlCache: string | undefined; // ⚠️ зөвхөн ОЛДСОН URL — null/олдоогүйг кэшлэхгүй (tableUrl-ыг үз)
 
@@ -250,6 +270,7 @@ export async function fetchAll(
   canCreate = false,
 ): Promise<{
   perms: Record<string, RemoteRow>; flow: FlowRow[]; caps: CapRow[]; qaqc: QaqcRow[];
+  huvaari: HuvaariRow[]; obyem: ObyemRow[];
 } | null> {
   try {
     const url = await tableUrl(canCreate);
@@ -268,8 +289,43 @@ export async function fetchAll(
     const caps: CapRow[] = [];
     /* ⚠️ QAQC мөр ч мөн НЭГ ХЭРЭГЛЭГЧ = НЭГ МӨР — flow-той ижил дүрэм */
     const qaqcBy = new Map<string, QaqcRow>();
+    /* ⚠️ Хуваарийн мөр ч мөн НЭГ ХЭРЭГЛЭГЧ = НЭГ МӨР */
+    const huvaariBy = new Map<string, HuvaariRow>();
+    const obyemBy = new Map<string, ObyemRow>();
     for (const a of rows) {
       if (!a.username) continue;
+
+      /* ── Инженерийн төлөвлөсөн обьёмын хуваарилалтын мөр ── */
+      if (a.username.startsWith(OBYEM_PREFIX)) {
+        const user = a.username.slice(OBYEM_PREFIX.length).toLowerCase();
+        try {
+          const d = JSON.parse(a.views || '{}') as { roles?: string[]; bagts?: string[] };
+          if (user) {
+            obyemBy.set(user, {
+              user,
+              roles: Array.isArray(d.roles) ? d.roles : [],
+              bagts: Array.isArray(d.bagts) ? d.bagts : [],
+            });
+          }
+        } catch { /* эвдэрсэн мөр — алгасна (хуваарилалтгүйтэй ижил, fail-closed) */ }
+        continue;
+      }
+
+      /* ── Хуваарийн хуваарилалтын мөр ── */
+      if (a.username.startsWith(HUVAARI_PREFIX)) {
+        const user = a.username.slice(HUVAARI_PREFIX.length).toLowerCase();
+        try {
+          const d = JSON.parse(a.views || '{}') as { roles?: string[]; bagts?: string[] };
+          if (user) {
+            huvaariBy.set(user, {
+              user,
+              roles: Array.isArray(d.roles) ? d.roles : [],
+              bagts: Array.isArray(d.bagts) ? d.bagts : [],
+            });
+          }
+        } catch { /* эвдэрсэн мөр — алгасна (хуваарилалтгүйтэй ижил, fail-closed) */ }
+        continue;
+      }
 
       /* ── Чанарын (QAQC) багцын хуваарилалтын мөр ── */
       if (a.username.startsWith(QAQC_PREFIX)) {
@@ -326,7 +382,14 @@ export async function fetchAll(
         ...(removed ? { removed: true } : {}),
       };
     }
-    return { perms, flow: [...flowBy.values()], caps, qaqc: [...qaqcBy.values()] };
+    return {
+      perms,
+      flow: [...flowBy.values()],
+      caps,
+      qaqc: [...qaqcBy.values()],
+      huvaari: [...huvaariBy.values()],
+      obyem: [...obyemBy.values()],
+    };
   } catch {
     return null;
   }
@@ -458,4 +521,48 @@ export function qaqcUpsert(user: string, bagts: string[]): Promise<boolean> {
 /** Чанарын багцын хуваарилалтыг арилгах */
 export function qaqcRemove(user: string): Promise<boolean> {
   return removeByKey(QAQC_PREFIX + user.toLowerCase());
+}
+
+/**
+ * Хуваарийн хуваарилалтыг бичих — нэг хэрэглэгч нэг мөр.
+ * ⚠️ `roles` нь ЧӨЛӨӨТ мөрийн массив: энэ модуль утгыг нь ШАЛГАХГҮЙ, зөвхөн
+ *    тээвэрлэнэ (`huvaariAcl` танигдахгүйг нь хаяна) — `caps`-тай ижил зарчим.
+ */
+export function huvaariUpsert(
+  user: string, roles: string[], bagts: string[],
+): Promise<boolean> {
+  const key = HUVAARI_PREFIX + user.toLowerCase();
+  return upsertByKey(key, {
+    username: key,
+    role: null,
+    views: JSON.stringify({ roles, bagts }),
+    docs: 0,
+  });
+}
+
+/**
+ * Инженерийн төлөвлөсөн обьёмын хуваарилалтыг бичих — нэг хэрэглэгч нэг мөр.
+ * ⚠️ `roles` нь ЧӨЛӨӨТ мөрийн массив: энэ модуль утгыг нь ШАЛГАХГҮЙ, зөвхөн
+ *    тээвэрлэнэ (`obyemAcl` танигдахгүйг нь хаяна).
+ */
+export function obyemUpsert(
+  user: string, roles: string[], bagts: string[],
+): Promise<boolean> {
+  const key = OBYEM_PREFIX + user.toLowerCase();
+  return upsertByKey(key, {
+    username: key,
+    role: null,
+    views: JSON.stringify({ roles, bagts }),
+    docs: 0,
+  });
+}
+
+/** Инженерийн төлөвлөсөн обьёмын хуваарилалтыг арилгах */
+export function obyemRemove(user: string): Promise<boolean> {
+  return removeByKey(OBYEM_PREFIX + user.toLowerCase());
+}
+
+/** Хуваарийн хуваарилалтыг арилгах */
+export function huvaariRemove(user: string): Promise<boolean> {
+  return removeByKey(HUVAARI_PREFIX + user.toLowerCase());
 }

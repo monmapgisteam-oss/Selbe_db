@@ -18,7 +18,7 @@
 import assert from 'node:assert/strict';
 import {
   monthKey, monthStart, monthsOf, keepMonths, sumMonths, balanced,
-  planPctFromMonths, dkeyOf, toPkgPlan, TURUL_PLAN, buildEdits,
+  planPctFromMonths, dkeyOf, toPkgPlan, TURUL_PLAN, buildEdits, indexOids,
 } from './huvaariObyem.ts';
 
 const d = (iso) => Date.parse(`${iso}T00:00:00Z`);
@@ -151,3 +151,33 @@ console.log('huvaariObyem.check: ok — сар ✓ хоосон бүрдэл ✓
 }
 
 console.log('huvaariObyem.check: ok — бичилтийн багц ✓');
+
+/* ── 8. ДАВХАРДСАН `dkey` — сангийн unique индекс БАЙХГҮЙ (2026-09-08) ──
+   Зэрэг хадгалалт ижил түлхүүртэй хоёр мөр үүсгэж чадна. Апп дотор нь
+   сүүлийнх нь дардаг тул НҮДЭЭР ИЛРЭХГҮЙ, гэтэл Excel/ArcGIS Pro-д обьём
+   давхар тоологдоно. Илүүдлийг барьж, дараагийн бичилтэд устгуулна. */
+{
+  const k1 = dkeyOf('b1_9f', 412, '5/1', '2025-10');
+  const k2 = dkeyOf('b1_9f', 412, '5/1', '2025-11');
+  const feats = [
+    { attributes: { OBJECTID: 11, dkey: k1, des_dugaar: 412, blok: '5/1', sar_txt: '2025-10', obyem: 100 } },
+    { attributes: { OBJECTID: 12, dkey: k2, des_dugaar: 412, blok: '5/1', sar_txt: '2025-11', obyem: 200 } },
+    /* давхардсан — ХОЁР ДАХЬ бичилтээс үүссэн */
+    { attributes: { OBJECTID: 13, dkey: k1, des_dugaar: 412, blok: '5/1', sar_txt: '2025-10', obyem: 150 } },
+  ];
+  const { oids, dups } = indexOids(feats);
+  assert.equal(oids.size, 2, 'ижил dkey нэг л оролт эзэлнэ');
+  assert.equal(oids.get(k1), 13, 'СҮҮЛИЙН мөр үлдэнэ');
+  assert.deepEqual(dups, [11], 'өмнөх мөр илүүдэлд ялгарна');
+
+  /* ⚠️ Үлдсэн OID нь `toPkgPlan`-ий ХАРУУЛАХ утгатай НЭГ мөрийг заах ёстой —
+     эс бөгөөс хэрэглэгч 150 гэж хараад 100-гийн мөр засагдана. */
+  const plan = toPkgPlan(feats);
+  assert.equal(plan.get(412).get('5/1').get('2025-10'), 150,
+    'харагдах утга ба шинэчлэгдэх OID нэг мөрийнх');
+
+  /* Давхардалгүй бол илүүдэл ГАРАХГҮЙ */
+  assert.deepEqual(indexOids(feats.slice(0, 2)).dups, []);
+}
+
+console.log('huvaariObyem.check: ok — давхардсан dkey ✓');

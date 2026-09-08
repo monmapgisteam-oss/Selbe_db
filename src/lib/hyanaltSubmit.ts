@@ -25,7 +25,7 @@
  */
 
 import { BUILDING } from './services';
-import { addRows, queryAll, F, STATUS, type Attrs } from './hyanalt';
+import { addRows, queryAll, F, OWNER, STATUS, type Attrs, type Status } from './hyanalt';
 
 /* ── Багц → гүйцэтгэгч компани ── */
 
@@ -89,6 +89,86 @@ const dayLabel = (ms: number) => {
 };
 
 /**
+ * ЭНЭ ӨДРИЙН ИЛГЭЭЛТЭД АЛЬ ХЭДИЙН НЭЭЛТТЭЙ ХЯНАЛТЫН БҮРТГЭЛ БАЙНА УУ?
+ *
+ * Байвал ШИНЭ мөр үүсгэхгүй — тэр бүртгэлээр нь үргэлжилнэ (`saveSubmission`
+ * илгээлтийн мөрийг update хийсэн тул хянагч шинэ агуулгыг тэндээс харна).
+ *
+ * ⚠️ ЦЭВЭР ФУНКЦ, сүлжээгүй — `hyanaltSubmit.check.mjs` шууд шалгана.
+ *    Дүрэм гурван нөхцөлтэй, гурвуулаа бодит согогоос ургасан:
+ *
+ *    1. `Эх_мөрийн_дугаар === sheetOid` — илгээлтийн мөрийн OBJECTID нь
+ *       хянагчийн агуулга олох ганц зам.
+ *    2. `Шилжүүлсэн` БИШ — мөчлөг дууссан бол шинэ бүртгэл үүсэх нь зөв.
+ *    3. ⚠️⚠️ ХЯНАГЧИЙН ГАР ДЭЭР байх (`OWNER[төлөв] !== 'company'`).
+ *       2026-09-07-ны шалгалтын CRITICAL олдвор: буцаагдсан гурван төлөв
+ *       (`Инженер буцаасан` · `Менежер буцаасан` · `Ерөнхий менежер буцаасан`)
+ *       ч `Шилжүүлсэн` биш тул гүйцэтгэгч засвараа илгээхэд ШИНЭ тойрог
+ *       ҮҮСЭХГҮЙ, ажил МӨНХӨД гацах байлаа.
+ *    4. ⚠️ `Ажлын_нэр` нь ӨДРӨӨР эхлэх — `closeSubmission` хоёр удаа унасан
+ *       ховор тохиолдолд өчигдрийн `sub|` мөр хөлдөөгүй үлдэж, маргааш нь
+ *       ЯГ ТЭР OBJECTID дахин ашиглагдвал өчигдрийн хянагдаж буй мөр
+ *       өнөөдрийн ажлыг «бүртгэгдсэн» гэж дарах байлаа.
+ */
+export function openReviewRow(
+  rows: readonly Attrs[],
+  sheetOid: number | null,
+  dayTag: string,
+): Attrs | null {
+  if (sheetOid == null || sheetOid <= 0) return null;
+  return rows.find((r) => {
+    if (Number(r[F.sheetOid]) !== sheetOid) return false;
+    const st = String(r[F.status] ?? '') as Status;
+    if (st === STATUS.transferred) return false;
+    /* Гүйцэтгэгчийн гар дээр (буцаагдсан) бол ЖИНХЭНЭ дахин илгээлт — шинэ тойрог */
+    if (OWNER[st] === 'company') return false;
+    return String(r[F.ajil] ?? '').startsWith(dayTag);
+  }) ?? null;
+}
+
+/** Өдрийн шошго — `Ажлын_нэр`-ийн угтвар («Гүйцэтгэл · 2026.09.07») */
+export const dayTagOf = (fillMs: number) => `Гүйцэтгэл · ${dayLabel(fillMs)}`;
+
+/**
+ * ХУУЧИН (хуудасны шошгогүй) НЭРИЙГ ӨВЛӨХ ЁСТОЙ ЮУ?
+ *
+ * ⚠️ ЦЭВЭР ФУНКЦ, сүлжээгүй — `hyanaltSubmit.check.mjs` шууд шалгана.
+ *
+ * ⚠️ `sheetOid` ЗААВАЛ ТААРНА (2026-09-08-ны аудитын CRITICAL олдвор).
+ *    Урьд нь зөвхөн (багц·өдөр·компани)-гаар шалгадаг байв. Тэр үед НЭГ
+ *    нээлттэй хуучин мөр байхад тэр өдрийн БҮХ шинэ илгээлт (өөр хуудас,
+ *    өөр `sheetOid` ч гэсэн) шошгоо ХАЯДАГ байлаа — үүсгэсэн шинэ мөр өөрөө
+ *    нээлттэй тул дараагийнх нь бас шошгогүй болж, өөрийгөө тэжээх гогцоо
+ *    үүсдэг. Улмаар `groupWorks` (`bagts|ajil|company`) тэдгээрийг НЭГ Work
+ *    болгож нийлүүлж, зөвхөн хамгийн сүүлийн тойрог `current` болдог тул
+ *    өмнөх илгээлтүүд хянагчийн хуудсанд ОГТ гарахгүй, «Инженер хянаж байна»
+ *    төлөвт МӨНХӨД гацаж, архивт хэзээ ч ордоггүй байв (амьд баталгаа:
+ *    `guitsetgel_bugluh_hyanalt` OID 61·62·63·64·70 бүгд нэг нэртэй).
+ *
+ *    Тиймээс хуучин нэрийг ЗӨВХӨН ЯГ ЭНЭ илгээлтийн (`Эх_мөрийн_дугаар ===
+ *    sheetOid`) нээлттэй мөрөөс өвлөнө — өөр илгээлтийн нээлттэй мөр байгаа
+ *    нь энэ илгээлтээс шошго хасах шалтгаан БИШ. Ингэснээр тухайн илгээлтийн
+ *    ӨӨРИЙНХ нь түүх (ergelt тоолуур, буцаалтын түүх) тасрахгүй хэвээр үлдэнэ.
+ */
+export function hasOpenLegacy(
+  rows: readonly Attrs[],
+  bagts: string,
+  company: string,
+  legacyAjil: string,
+  sheetOid: number | null,
+): boolean {
+  if (sheetOid == null || sheetOid <= 0) return false;
+  return rows.some(
+    (r) =>
+      Number(r[F.sheetOid]) === sheetOid &&
+      String(r[F.bagts] ?? '') === bagts &&
+      String(r[F.company] ?? '') === company &&
+      String(r[F.ajil] ?? '') === legacyAjil &&
+      String(r[F.status] ?? '') !== STATUS.transferred,
+  );
+}
+
+/**
  * Нийтэлсэн гүйцэтгэлийг хяналтад бүртгэнэ.
  *
  * @param bagts    багцын нэр — «Багц 4-2» маягаар
@@ -106,7 +186,7 @@ export async function submitForReview(
   fillMs: number,
   sheetOid: number | null,
   sheet = '',
-): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+): Promise<{ ok: true; id: string; reused?: true } | { ok: false; error: string }> {
   try {
     const [rows, company] = await Promise.all([queryAll(), companyOf(bagts)]);
     const id = nextId(rows);
@@ -134,13 +214,7 @@ export async function submitForReview(
      *    хүчин төгөлдөр болно.
      */
     const legacyAjil = `Гүйцэтгэл · ${dayLabel(fillMs)}`;
-    const openLegacy = rows.some(
-      (r) =>
-        String(r[F.bagts] ?? '') === bagts &&
-        String(r[F.company] ?? '') === company &&
-        String(r[F.ajil] ?? '') === legacyAjil &&
-        String(r[F.status] ?? '') !== STATUS.transferred,
-    );
+    const openLegacy = hasOpenLegacy(rows, bagts, company, legacyAjil, sheetOid);
     const ajil = !sheet || openLegacy ? legacyAjil : `${legacyAjil} · ${sheet}`;
     /*
      * ТОЙРГИЙН ДУГААР — тухайн (багц|ажил|компани) түлхүүрийн ХАМГИЙН ИХ + 1.
@@ -161,6 +235,44 @@ export async function submitForReview(
       const n = Number(r[F.ergelt]);
       return Number.isFinite(n) && n > m ? n : m;
     }, 0) + 1;
+
+    /*
+     * ⚠️ ТЭР ӨДРИЙН ИЛГЭЭЛТЭД ХОЁР ДАХЬ ХЯНАЛТЫН МӨР ҮҮСГЭХГҮЙ (2026-09-07).
+     *
+     *    ЯАГААД: 2026-09-07-оос «хянагдаж байхад дахин илгээх» хориг
+     *    (`FillNew.inReview`) ХАСАГДСАН — хэрэглэгч «хэдэн ч удаа илгээх
+     *    боломжтой байх ёстой» гэж шаардсан. Тэр хориг нь энэ функцийн ЦОРЫН
+     *    ГАНЦ idempotency хамгаалалт байсан тул хасагдмагц нэг өдөрт «Илгээх»
+     *    дарах бүрд ergelt+1-тэй ШИНЭ мөр үүсч, нэг илгээлт олон тойрог мэт
+     *    харагдаж, инженерийн дараалал давхардсан мөрөөр дүүрэх байлаа.
+     *
+     *    Хэрэглэгчийн шийдвэр (2026-09-07): «төдий өдрийн илгээлтийг дахин
+     *    илгээвэл ТЭР өдрийн илгээлт update хийгдэнэ — шинэ тойрог үүсгэхгүй».
+     *    Тиймээс тэр илгээлтийн мөрийг (`Эх_мөрийн_дугаар === sheetOid`)
+     *    заасан, ХААГДААГҮЙ (`Шилжүүлсэн` биш) бүртгэл байвал БАЙГААГ нь
+     *    буцаана — `saveSubmission` тэр өдрийн `sub|` мөрийг update хийсэн
+     *    тул хянагч ШИНЭ агуулгыг тэр мөрөөрөө харна.
+     *
+     *    ⚠️ `sheetOid`-ЭЭР тулгана, (багц|ажил|компани)-гаар БИШ: илгээлтийн
+     *    мөрийн OBJECTID нь өдөр × хуудсаар давтагдашгүй бөгөөд хянагч яг
+     *    түүгээр агуулгыг олдог. `resend` (FillNew) ч ИЖИЛ шалгуур ашигладаг.
+     *
+     *    ⚠️⚠️ ЗӨВХӨН ХЯНАГЧИЙН ГАР ДЭЭРХ мөрд үйлчилнэ (`OWNER[төлөв] !== 'company'`).
+     *    2026-09-07-ны шалгалтын CRITICAL олдвор: эхний хувилбар нь «`Шилжүүлсэн`
+     *    БИШ бүх мөр» гэж шалгадаг байв. Гэтэл БУЦААГДСАН гурван төлөв
+     *    (`Инженер буцаасан` · `Менежер буцаасан` · `Ерөнхий менежер буцаасан`)
+     *    ч мөн `Шилжүүлсэн` биш тул гүйцэтгэгч засвараа илгээхэд ШИНЭ тойрог
+     *    ҮҮСЭХГҮЙ, буцаагдсан мөр `Инженер хянаж байна` руу ЭРГЭЖ ОРОХГҮЙ —
+     *    ажил МӨНХӨД гацах байлаа. `OWNER` (`hyanalt.ts`) нь буцаалтыг
+     *    `company` руу заадаг тул тэр гурав энэ шалгуураас ГАРНА.
+     *
+     *    ⚠️ Ижил шалтгаанаар `Шилжүүлсэн` ч гарна (`OWNER` = `director` ч
+     *    гэсэн мөчлөг дууссан) — доорх `transferred` шалгуур хэвээр.
+     */
+    const open = openReviewRow(rows, sheetOid, legacyAjil);
+    /* ⚠️ `reused` — дуудагч «ШИНЭ тойрог үүсэв» ба «байгаа илгээлт
+       шинэчлэгдэв» хоёрыг ЯЛГАЖ мэдэгдэнэ (2026-09-07-ны шалгалт). */
+    if (open) return { ok: true, id: String(open[F.id] ?? ''), reused: true };
 
     const attrs: Attrs = {
       [F.id]: id,

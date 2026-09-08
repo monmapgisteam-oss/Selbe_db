@@ -345,8 +345,21 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
   /* ⚠️ 2026-08-24: `basePrice` (барилгын давамгайлах нэгж үнэ) УСТГАВ —
      эдийн засгийн гулсуур ба зохиомол `negj_une` загвартай хамт хасагдсан. */
 
+  /**
+   * СИМУЛЯЦЫН ОЛОНЛОГ — ангиллын шүүлтээр (`catOff`).
+   *
+   * ⚠️ 2026-09-08: НОРМЧИЛОЛ ба ДУНДАЖ ЗААВАЛ ЭНЭ олонлогоор бодогдоно.
+   * Урьд нь шүүгдээгүй `rows` дамжуулагддаг байсан тул: газрын зураг нь
+   * нуугдсан бүсүүдийн min/max-аар будагдаж, харин баруун самбар нь ШҮҮГДСЭН
+   * `rows`-оор (мөр 771-ийн `rows.filter(!catOff)`) өөрийн `simRange`-ээ
+   * бодож легенд зурдаг байв — легендийн «хамгийн их» өнгө зурагт ХЭЗЭЭ Ч
+   * гарахгүй, hover-ийн «дунджаас +N%» нь харагдахгүй бүсүүдээр бодогдоно.
+   * Зураг · легенд · hover гурав НЭГ эх сурвалжтай байх ёстой.
+   */
+  const simRows = useMemo(() => rows.filter((r) => !catOff.has(r.type)), [rows, catOff]);
+
   /** Симуляцын хэмжүүрийн хязгаар — нормчилол ба легендэд (харагдах бүсээр). */
-  const simRng = useMemo(() => simRange(rows, simKind, popBasis), [rows, simKind, popBasis]);
+  const simRng = useMemo(() => simRange(simRows, simKind, popBasis), [simRows, simKind, popBasis]);
 
   /**
    * Бүсийн симуляцын хэмжүүрийн ДУНДАЖ — hover панелийн «дунджаас» мөрд.
@@ -354,11 +367,11 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
    */
   const simAvg = useMemo(() => {
     if (mode !== 'simulation') return 0;
-    const vals = rows
+    const vals = simRows
       .map((r) => simMetric(r, simKind, popBasis).value)
       .filter((v): v is number => v != null && v > 0);
     return vals.length ? vals.reduce((a, v) => a + v, 0) / vals.length : 0;
-  }, [rows, simKind, popBasis, mode]);
+  }, [simRows, simKind, popBasis, mode]);
 
   /* ── Замын ачаалал: сүлжээг ХЭРЭГТЭЙ болоход нь ачаална ── */
   const roadMode = mode === 'simulation' && !tActive && simKind === 'road';
@@ -768,7 +781,9 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
     },
     // ⚠️ `selected`/`onSelect` ХАСАГДСАН: эрэмбийн жагсаалт байхгүй болсон тул
     //    самбар нь бүс сонгодоггүй — сонголт зөвхөн газрын зураг дээр дарж хийгдэнэ.
-    rows: rows.filter((r) => !catOff.has(r.type)),
+    /* ⚠️ 2026-09-08: `simRows` — газрын зургийн нормчилолтой ЯГ ИЖИЛ олонлог
+       (эс бөгөөс самбарын легенд ба зургийн өнгө зөрнө). */
+    rows: simRows,
   };
 
   return (

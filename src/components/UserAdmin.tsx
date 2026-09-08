@@ -20,6 +20,16 @@ import { Icon } from './Icon';
 import { CAPS, capsOf, capViewsOf, setCaps, subscribeCaps, toggleCap, type CapKey } from '@/lib/caps';
 import { GuitsetgelAcl } from '@/modules/GuitsetgelAcl';
 import { QaqcAcl } from '@/modules/QaqcAcl';
+import { HuvaariAcl } from '@/modules/HuvaariAcl';
+import { ObyemAcl } from '@/modules/ObyemAcl';
+import {
+  ALL_BAGTS as HUVAARI_ALL_BAGTS, listHuvaariAssigns, purgeHuvaariAssign, removeHuvaariAssign,
+  setHuvaariAssign, subscribeHuvaariAcl, type PlanRole,
+} from '@/lib/huvaariAcl';
+import {
+  ALL_BAGTS as OBYEM_ALL_BAGTS, listObyemAssigns, purgeObyemAssign, removeObyemAssign,
+  setObyemAssign, subscribeObyemAcl, type ObyemRole,
+} from '@/lib/obyemAcl';
 import {
   ALL_BAGTS as QAQC_ALL_BAGTS, listQaqcAssigns, purgeQaqcAssign, removeQaqcAssign, setQaqcAssign,
   subscribeQaqcAcl,
@@ -58,6 +68,9 @@ const capLabel = (k: CapKey): string => {
   if (k === 'finEdit') return tr('Санхүүгийн бүртгэл — утга засах');
   if (k === 'finRow') return tr('Санхүүгийн бүртгэл — мөр нэмэх, устгах');
   if (k === 'plan') return tr('Хуваарь төлөвлөх');
+  if (k === 'planApprove') return tr('Хуваарь батлах');
+  if (k === 'obyemEdit') return tr('Инженерийн обьём засах');
+  if (k === 'obyemApprove') return tr('Инженерийн обьём батлах');
   if (k === 'gazar') return tr('Газрын төлөв засах');
   if (k === 'butets') return tr('Дэд бүтцийн атрибут засах');
   return k;
@@ -85,7 +98,16 @@ const capHint = (k: CapKey): string => {
     return tr('Тэр хоёр хүснэгтэд шинэ мөр нэмэх, байгаа мөрийг устгах. ⚠️ Устгасан мөрийг порталаас буцаах арга БАЙХГҮЙ.');
   }
   if (k === 'plan') {
-    return tr('«Хуваарь» харагдацад ажлын эхлэх/дуусах огноог засах. Нэг огноо солиход төлөвлөгөөт хувь, тайлан, хоцрогдлын дохио бүгд дахин бодогдоно — тиймээс бөглөх эрхээс тусдаа.');
+    return tr('«Хуваарь» харагдацад ажлын эхлэх/дуусах огноог ЗОХИОХ. Хадгалахад шууд бичигдэхээ болиод батлагчид илгээгдэнэ — батлагдтал эх хуваарь хөдлөхгүй. Энд асаахад БҮХ багц хуваарилагдана; тодорхой багц зааж өгөх бол «Хуваарийн эрх» хуудсыг ашиглана уу.');
+  }
+  if (k === 'planApprove') {
+    return tr('Гүйцэтгэгчийн илгээсэн хуваарийг БАТЛАХ эсвэл буцаах. Батлагдсан үед л огноо эх хуудсанд бичигдэж, тайлан ба хоцрогдлын тооцоонд орно. Энд асаахад БҮХ багц хуваарилагдана; тодорхой багц зааж өгөх бол «Хуваарийн эрх» хуудсыг ашиглана уу. ⚠️ Өөрийн илгээсэн хуваарийг өөрөө батлах боломжгүй — хоёр эрхийг нэг хүнд олгосон ч.');
+  }
+  if (k === 'obyemEdit') {
+    return tr('«Гүйцэтгэл бөглөх» хуудасны «Инженерийн төлөвлөсөн обьём» баганын нүднүүдийг ЗАСАХ. Засвар нь шууд бичигдэхгүй — батлагчид илгээгдэж, батлагдтал үндсэн өгөгдөл хөдлөхгүй. Энд асаахад БҮХ багц хуваарилагдана; тодорхой багц зааж өгөх бол «Инженерийн обьёмын эрх» хуудсыг ашиглана уу.');
+  }
+  if (k === 'obyemApprove') {
+    return tr('Инженерийн илгээсэн төлөвлөсөн обьёмыг БАТЛАХ эсвэл буцаах. Батлагдсан үед л утга үндсэн өгөгдөлд бичигдэнэ. Энд асаахад БҮХ багц хуваарилагдана; тодорхой багц зааж өгөх бол «Инженерийн обьёмын эрх» хуудсыг ашиглана уу. ⚠️ Өөрийн илгээсэн засварыг өөрөө батлах боломжгүй — хоёр эрхийг нэг хүнд олгосон ч.');
   }
   return '';
 };
@@ -151,7 +173,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
   /* ⚠️ «Чанарын эрх» нь урсгалынхаас ТУСДАА хуудас (2026-09-07) — багцын хүрээ
      нь өөр эх сурвалжаас гардаг тул нэг дэлгэцэнд хольвол админ хоёрын аль нь
      үйлчилж байгааг ялгаж чадахгүй болно (`qaqcAcl.ts`-ийн толгойг үз). */
-  const [pane, setPane] = useState<'users' | 'guits' | 'qaqc'>('users');
+  const [pane, setPane] = useState<'users' | 'guits' | 'qaqc' | 'huvaari' | 'obyem'>('users');
   const [name, setName] = useState('');
   const [addErr, setAddErr] = useState('');
   /** Хайлт — олон аккаунттай үед шаардлагатай (нэрээр шүүнэ) */
@@ -261,6 +283,8 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
   /* ⚠️ Чанарын хуваарилалт ч бас ӨӨР хадгалалттай — QAQC унтраалга нь түүнийг
      дагуулдаг тул захиалахгүй бол дарсан унтраалга буцаж унтарсан харагдана. */
   useEffect(() => subscribeQaqcAcl(() => setAclN((n) => n + 1)), []);
+  useEffect(() => subscribeHuvaariAcl(() => setAclN((n) => n + 1)), []);
+  useEffect(() => subscribeObyemAcl(() => setAclN((n) => n + 1)), []);
 
   /** Устгагдсан аккаунтууд — рендер бүрд ДАХИН биш, нэг л удаа */
   const removed = useMemo(() => (open ? listRemoved() : []), [open, users]);
@@ -392,6 +416,63 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
      *    унтраалга нь хуваарилалтыг ДАГУУЛНА: асаахад бүх багц, унтраахад хасалт.
      *    Тодорхой багц сонгох нь «Чанарын (QAQC) эрх» хуудсанд.
      */
+    /*
+     * ⚠️ ХУВААРИЙН хоёр эрх ч мөн БАГЦГҮЙГЭЭР утгагүй (2026-09-07) — QAQC-тай
+     *    ижил шалтгаан. Унтраалга нь хуваарилалтыг ДАГУУЛНА: асаахад тухайн
+     *    үүрэг + бүх багц, унтраахад тэр үүрэг хасагдана (сүүлийнх нь бол мөр
+     *    бүхэлдээ). Тодорхой багц сонгох нь «Хуваарийн эрх» хуудсанд.
+     */
+    if (c === 'plan' || c === 'planApprove') {
+      const role: PlanRole = c === 'plan' ? 'author' : 'approver';
+      const cur = listHuvaariAssigns().find((a) => a.user === u.username.toLowerCase());
+      const roles = cur?.roles ?? [];
+      const next = on ? roles.filter((x) => x !== role) : [...new Set([...roles, role])];
+      const r = next.length
+        ? setHuvaariAssign(u.username, next, cur?.bagts ?? [HUVAARI_ALL_BAGTS])
+        : removeHuvaariAssign(u.username);
+      void (r.sync ?? Promise.resolve(false)).then((ok) => {
+        setCapErr((prev) => {
+          const m = new Map(prev);
+          if (ok) m.delete(u.username.toLowerCase());
+          else m.set(u.username.toLowerCase(), true);
+          return m;
+        });
+      });
+      return;
+    }
+    /*
+     * ⚠️ ИНЖЕНЕРИЙН ОБЬЁМЫН хоёр эрх ч мөн БАГЦГҮЙГЭЭР утгагүй (2026-09-08) —
+     *    хуваарийнхтай ЯГ ижил шалтгаан. Унтраалга нь хуваарилалтыг ДАГУУЛНА:
+     *    асаахад тухайн үүрэг + бүх багц, унтраахад тэр үүрэг хасагдана
+     *    (сүүлийнх нь бол мөр бүхэлдээ). Тодорхой багц сонгох нь
+     *    «Инженерийн обьёмын эрх» хуудсанд.
+     * ⚠️ SUPER-Т ХУВААРИЛАЛТ ҮЙЛЧЛЭХГҮЙ: `setObyemAssign` нь super-д
+     *    `{ok:false}` буцаадаг тул `r.sync` нь `undefined`. Тэр салааг
+     *    барихгүй бол унтраалга хэзээ ч асахгүй, оронд нь ХУДАЛ алдаа гарна
+     *    (QAQC дээр 2026-09-07-нд яг тэр эвдрэл гарсан).
+     */
+    if (c === 'obyemEdit' || c === 'obyemApprove') {
+      if (roleForUser(u.username) === 'super') {
+        void toggleCap(u.username, c, !on);
+        return;
+      }
+      const role: ObyemRole = c === 'obyemEdit' ? 'editor' : 'approver';
+      const cur = listObyemAssigns().find((a) => a.user === u.username.toLowerCase());
+      const roles = cur?.roles ?? [];
+      const next = on ? roles.filter((x) => x !== role) : [...new Set([...roles, role])];
+      const r = next.length
+        ? setObyemAssign(u.username, next, cur?.bagts ?? [OBYEM_ALL_BAGTS])
+        : removeObyemAssign(u.username);
+      void (r.sync ?? Promise.resolve(false)).then((ok) => {
+        setCapErr((prev) => {
+          const m = new Map(prev);
+          if (ok) m.delete(u.username.toLowerCase());
+          else m.set(u.username.toLowerCase(), true);
+          return m;
+        });
+      });
+      return;
+    }
     if (c === 'qaqc') {
       /*
        * ⚠️ SUPER-Т ХУВААРИЛАЛТ ҮЙЛЧЛЭХГҮЙ (2026-09-07-ны merge аудит).
@@ -537,9 +618,12 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
           /* ⚠️ Чанарын хуваарилалт нь ӨӨР мөр (`__qaqc__:`) — тусад нь арилгана,
              эс бөгөөс тэр нэрийг дахин нэмэхэд чанарын багц өөрөө эргэж ирнэ. */
           const qaqcOk = await purgeQaqcAssign(uname);
+          const hvOk = await purgeHuvaariAssign(uname);
+          /* ⚠️ Обьёмын хуваарилалт нь ӨӨР мөр (`__obyem__:`) — тусад нь арилгана */
+          const obOk = await purgeObyemAssign(uname);
           const capOk = await setCaps(uname, []);
           const r = await removeUser(uname);
-          if (r && flowOk && qaqcOk && capOk) ok += 1; else { fail += 1; failed.push(uname); }
+          if (r && flowOk && qaqcOk && hvOk && obOk && capOk) ok += 1; else { fail += 1; failed.push(uname); }
           continue;
         }
         if (d.clear) {
@@ -548,6 +632,8 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
             // Суурьгүй (панелаас нэмсэн) аккаунт: сэргээх = устгах → бүгдийг цэвэрлэнэ
             if (!(await purgeAssign(uname))) bad = true;
             if (!(await purgeQaqcAssign(uname))) bad = true;
+            if (!(await purgeHuvaariAssign(uname))) bad = true;
+            if (!(await purgeObyemAssign(uname))) bad = true;
             if (!(await setCaps(uname, []))) bad = true;
           }
           const r = await clearOverride(uname);
@@ -705,10 +791,50 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
           <Icon name="shield" size={14} />
           {tr('Чанарын (QAQC) эрх')}
         </button>
+        {/* ⚠️ ХУВААРЬ нь ТӨЛӨВЛӨГӨӨНИЙ асуулт (зохиогч · батлагч) — гүйцэтгэлийн
+            урсгал ба чанарын аль алинаас нь тусдаа (`huvaariAcl.ts`). */}
+        <button
+          type="button"
+          className={`${s.sideItem} ${pane === 'huvaari' ? s.sideItemOn : ''}`}
+          aria-current={pane === 'huvaari'}
+          onClick={() => setPane('huvaari')}
+        >
+          <Icon name="calendar" size={14} />
+          {tr('Хуваарийн эрх')}
+        </button>
+        <button
+          type="button"
+          className={`${s.sideItem} ${pane === 'obyem' ? s.sideItemOn : ''}`}
+          aria-current={pane === 'obyem'}
+          onClick={() => setPane('obyem')}
+        >
+          <Icon name="frame" size={14} />
+          {tr('Инженерийн обьёмын эрх')}
+        </button>
       </aside>
 
       <div className={s.main}>
-        {pane === 'qaqc' ? (
+        {pane === 'obyem' ? (
+          <>
+            <header className={s.head}>
+              <h2 className={s.title}>{tr('Инженерийн обьёмын эрх')}</h2>
+              <p className={s.subtitle}>
+                {tr('Инженерийн төлөвлөсөн обьёмыг засах ба батлах аккаунтад үүрэг, багц хуваарилна. Гүйцэтгэлийн урсгал ба хуваарийн эрхээс тусдаа.')}
+              </p>
+            </header>
+            <ObyemAcl />
+          </>
+        ) : pane === 'huvaari' ? (
+          <>
+            <header className={s.head}>
+              <h2 className={s.title}>{tr('Хуваарийн эрх')}</h2>
+              <p className={s.subtitle}>
+                {tr('Хуваарь зохиох ба батлах аккаунтад үүрэг, багц хуваарилна. Гүйцэтгэлийн урсгалаас тусдаа.')}
+              </p>
+            </header>
+            <HuvaariAcl />
+          </>
+        ) : pane === 'qaqc' ? (
           <>
             <header className={s.head}>
               <h2 className={s.title}>{tr('Чанарын (QAQC) эрх')}</h2>

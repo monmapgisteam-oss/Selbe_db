@@ -484,6 +484,30 @@ export function Qaqc() {
   const remoteQueue = useRef<{ pkg: string; draft: Draft } | null>(null);
   const [remoteTick, setRemoteTick] = useState(0);
 
+  /**
+   * АЛСЫН ЭЭЛЖИЙГ ЗЭВСЭГГҮЙ БОЛГОНО — ноорог БАЙХГҮЙ болсны дараа дуудна.
+   *
+   * ⚠️ ЗОМБИ НООРОГ (2026-09-08): `save()` ба `dropDraft()` нь локал/алсын
+   *    ноорогийг устгадаг ч `remoteQueue`-г цэвэрлэдэггүй, `remoteTick`-ийг ч
+   *    хөндөггүй байсан тул доорх flush эффект ХУУЧИН тоолуураараа (12с/60с)
+   *    армлагдсан хэвээр үлдэж, `q.pkg === pkg.key` шалгуурыг давж, устгасан
+   *    ноорогийг 12 секундын дараа ArcGIS руу ДАХИН бичдэг байв. Дараагийн
+   *    ачаалалтад тэр ноорог сэргээгдэж, хэрэглэгч хадгалсан ажлаа
+   *    «хадгалагдаагүй» гэж дахин харах эсвэл санаатай хаясан засвараа
+   *    устгаж чадахгүй болдог.
+   * ⚠️ `setRemoteTick(0)` нь эффектийн cleanup-ыг ажиллуулж тоолуурыг
+   *    салгана; `remoteTick === 0` үед эффект шинэ тоолуур ҮҮСГЭХГҮЙ.
+   * ⚠️ `setRemoteState(null)` — ноорог байхгүй болсон тул НООРОГИЙН байдлын
+   *    заалт (шар «ArcGIS-д хуулагдсангүй», «хэт том») харагдах ёсгүй. Тэр
+   *    хоёр заалт `dirtyCount`-оор хаагддаггүй тул амжилттай хадгалсны дараа
+   *    хоосон хуудсан дээр мөнхөд үлдэж, бичилтийг ХУДАЛ буруутгадаг байв.
+   */
+  const clearRemoteQueue = useCallback(() => {
+    remoteQueue.current = null;
+    setRemoteTick(0);
+    setRemoteState(null);
+  }, []);
+
   useEffect(() => {
     /* ⚠️ ХУУЧИН БАГЦЫН ТӨЛӨВӨӨР ШИНЭ СЛОТ РУУ БИЧИХГҮЙ — багц солигдсон
        эхний render дээр `pkg.key` ШИНЭ, харин `pend` ХУУЧИН багцынх. */
@@ -735,8 +759,9 @@ export function Qaqc() {
     setEditCell(null);
     clearDraftLS(pkg.key);
     void clearQaqcDraft(pkg.key);
+    clearRemoteQueue();
     show('ok', tr('Ноорог устгав.'));
-  }, [dirtyCount, pkg.key, show]);
+  }, [dirtyCount, pkg.key, show, clearRemoteQueue]);
 
   /* ══════════════ ХАДГАЛАХ ══════════════ */
   const save = useCallback(async () => {
@@ -762,6 +787,7 @@ export function Qaqc() {
       setEditCell(null);
       clearDraftLS(pkg.key);
       void clearQaqcDraft(pkg.key);
+      clearRemoteQueue();
       /* ⚠️ Хадгалсны дараа ЗААВАЛ дахин татна: хооронд нь өөр хүн бөглөсөн
          байж болно. Дэлгэц ба өгөгдөл зөрвөл дараагийн засвар хуучин суурин
          дээр явна. */
@@ -774,7 +800,7 @@ export function Qaqc() {
     } finally {
       setBusy(false);
     }
-  }, [busy, dirtyCount, canEdit, rows, pend, pkg.key, load, done, RO_CAP]);
+  }, [busy, dirtyCount, canEdit, rows, pend, pkg.key, load, done, RO_CAP, clearRemoteQueue]);
 
   /* Ctrl+S — бөглөх хуудастай ижил */
   useEffect(() => {

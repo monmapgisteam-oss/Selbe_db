@@ -21,7 +21,7 @@ import {
   loadFinData, contractMonths, lagOf, lagLevel, type FinData,
 } from '@/modules/Finance';
 import { useAsync, type Async } from '@/lib/useAsync';
-import { loadPlanCurve, type PlanPoint } from '@/lib/planProgress';
+import { loadPlanCurve, type PlanPoint, type PlanCurve } from '@/lib/planProgress';
 
 /**
  * «Гүйцэтгэлийн явц» графикийн нэг цэг — ТӨЛӨВЛӨГӨӨ (хуваариас) ба БОДИТ
@@ -587,11 +587,7 @@ export function PkgProg({ dim, setDim }: {
              гүйцэтгэл/блок/айл огт харагдахгүй. */
           <PackKpi active={active} packs={packs} />
         ) : (
-          <TsKpi
-            packs={packs}
-            fin={finQ.state === 'ready' ? finQ.data : null}
-            plan={planQ.state === 'ready' ? planQ.data.months : null}
-          />
+          <TsKpi packs={packs} finQ={finQ} planQ={planQ} />
         )}
       </div>
 
@@ -618,6 +614,16 @@ export function PkgProg({ dim, setDim }: {
                   finMap={finMap}
                 />
               </div>
+            )}
+            {/* ⚠️ 2026-09-08 (аудит, HIGH): `finMap` нь `finQ`-ээс гардаг тул
+                `loadFinData` унавал `alertKeys` ХООСОРЧ «⚠ Хоцрогдолтой багц»
+                бүлэг бүхэлдээ алга болно — тэр нь «хоцорсон багц алга» гэсэн
+                ХУДАЛ сайн мэдээ. Хоосон нь «мэдээлэлгүй» гэдгийг ил хэлнэ. */}
+            {finQ.state === 'error' && (
+              <Section title={tr('⚠ Хоцрогдолтой багц')}>
+                <Note>{tr('Санхүүгийн өгөгдөл татагдсангүй — хоцрогдол тооцоологдоогүй.')}</Note>
+                <Data q={finQ}>{() => null}</Data>
+              </Section>
             )}
             {/* ДӨРВӨН АНГИЛЛААР (2026-08-21) — барилга угсралт · дэд бүтэц ·
                 нийгмийн барилга · өндөржилт; alert-тэй нь дээрх бүлэгт */}
@@ -828,10 +834,23 @@ export function PkgProg({ dim, setDim }: {
  *    нормчлогддог тул «2026-09-д 100%» гэсэн худал тоо өгдөг байв.
  * ⚠️ БОДИТ хувь нь хэвээр `aggregateMonths().phys` — блок-жигнэсэн биет %.
  */
+/*
+ * ⚠️ 2026-09-08 (аудит, HIGH): `fin`/`plan`-ийг задалсан утгаар БИШ, бүтэн
+ *    `Async`-аар авна. Урьд нь дуудагч тал `finQ.state === 'ready' ? … : null`
+ *    гэж шахдаг байсан тул АЧААЛЖ БАЙГАА ба АЛДАА ГАРСАН хоёр ялгагдахгүй
+ *    болж, `loadFinData`/`loadPlanCurve` унамагц гурван хавтан «…» гэж
+ *    МӨНХӨД хөлдөж, алдааны мессеж ч, «Дахин оролдох» товч ч хаана ч
+ *    гардаггүй байв — тэр нь `Bagts.tsx:531`-д нэг удаа зассан алдаатай ЯГ
+ *    ижил. Одоо: ачаалж байна = «…», алдаа = «—» (+ доор нэрлэсэн алдаа).
+ */
 function TsKpi(
-  { packs, fin, plan }:
-  { packs: Pack[]; fin: FinData | null; plan: PlanPoint[] | null },
+  { packs, finQ, planQ }:
+  { packs: Pack[]; finQ: Async<FinData>; planQ: Async<PlanCurve> },
 ) {
+  const fin = finQ.state === 'ready' ? finQ.data : null;
+  const plan: PlanPoint[] | null = planQ.state === 'ready' ? planQ.data.months : null;
+  /** Хэмжилт БОЛОМЖГҮЙ (алдаа) — «…» биш «—». */
+  const failed = finQ.state === 'error' || planQ.state === 'error';
   const t = useMemo(() => {
     if (!fin) return null;
     const months = aggregateMonths(fin);
@@ -870,15 +889,21 @@ function TsKpi(
    * Гүйцэтгэлийн зөрүү нь БИЕТ vs ТӨЛӨВЛӨГӨӨ тул гүйцэтгэлийн талд; олгосон
    * санхүүжилт ба түүний хувь нь санхүүгийн талд.
    */
+  /** Хэмжигдээгүй утгын дэлгэц: алдаа = «—», эс бөгөөс ачаалж байна = «…» */
+  const none = failed ? '—' : '…';
   const items = [
       { v: num(packs.length), l: tr('нийт төслийн тоо') },
-      { v: t?.actual == null ? '…' : pct(t.actual, 1), l: tr('бодит гүйцэтгэлийн хувь') },
-      { v: t?.planned == null ? '…' : pct(t.planned, 1), l: tr('төлөвлөсөн гүйцэтгэлийн хувь') },
+      { v: t?.actual == null ? none : pct(t.actual, 1), l: tr('бодит гүйцэтгэлийн хувь') },
+      { v: t?.planned == null ? none : pct(t.planned, 1), l: tr('төлөвлөсөн гүйцэтгэлийн хувь') },
       {
-        v: t?.gap == null ? '…' : `${t.gap >= 0 ? '−' : '+'}${Math.abs(t.gap).toFixed(1)}%`,
+        v: t?.gap == null ? none : `${t.gap >= 0 ? '−' : '+'}${Math.abs(t.gap).toFixed(1)}%`,
         l: tr('гүйцэтгэлийн зөрүүгийн хувь'),
     },
   ];
+  /* ⚠️ Алдааг НУУХГҮЙ — нэрлэсэн шалтгаан ба «Дахин оролдох» товч `Data`-аас
+     гарна. Хоёулаа унасан үед НЭГ мессеж хангалттай (эхнийх нь). */
+  const errQ: Async<unknown> | null =
+    finQ.state === 'error' ? finQ : planQ.state === 'error' ? planQ : null;
   return (
     <>
       {items.map((i) => (
@@ -888,6 +913,11 @@ function TsKpi(
           <span className={o.tileLabel}>{i.l}</span>
         </div>
       ))}
+      {errQ && (
+        <div className={o.tile} style={{ '--tone': 'var(--bad)' } as CSSProperties}>
+          <Data q={errQ}>{() => null}</Data>
+        </div>
+      )}
     </>
   );
 }

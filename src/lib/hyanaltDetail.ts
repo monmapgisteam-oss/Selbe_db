@@ -443,8 +443,44 @@ async function loadArchived(bagts: string, sheetOid: number): Promise<Submission
       const at = head.features?.[0]?.attributes?.[fill];
       if (typeof at !== 'number') continue;         // энэ үйлчилгээнд тэр мөр алга
 
-      const where = `${fill} = ${ts(at)}`;
-      const cnt = (await post(p.url, { where, returnCountOnly: 'true' })) as { count?: number };
+      /*
+       * ⚠️ ОГНООГҮЙ МӨРИЙГ ЖААЗАНД НЬ НЭГТГЭНЭ (2026-09-08-ны аудит).
+       *
+       *    Нийтлэл нь мөрүүдээ бичээд ДАРАА нь огноог тамгалдаг. Тэр хоёр дахь
+       *    шат тасарвал жаазын нэг хэсэг огноогүй үлдэнэ — «Багц 3.3»-д яг тийм:
+       *    1,459 мөрийн 1,238-д огноо бичигдсэн, 221-д (жаазын ДУНД, OID
+       *    6960…7180) үгүй. `bagtsSheet.latestWhere` тэднийг `((өдөр) OR
+       *    fill IS NULL)` гэж жаазанд нь буцааж нэгтгэдэг атал энэ зам зөвхөн
+       *    ТЭНЦҮҮГЭЭР шүүдэг байв.
+       *
+       *    Үр дагавар нь чимээгүй: `feats2` 1,238 мөр болж, `TREES[p.key]`
+       *    1,459 тэмдэгттэй тул `tree[ri]` нь 46-р байрлалаас эхлэн 221-ээр
+       *    ГУЛСАЖ, ажлын мөр бүлэг мэт, бүлэг ажил мэт тэмдэглэгдэнэ —
+       *    хянагчийн хүснэгтийн шатлал бүхэлдээ холилдож, «Гүйцэтгэл бөглөх»
+       *    хуудсынхтай танигдахаа болино. Мөн `rows` нь 1,238 гэсэн ХУДАЛ тоо
+       *    үзүүлнэ.
+       *
+       * ⚠️ ӨӨРӨӨ ШАЛГАДАГ НӨХЦӨЛ — `latestWhere`-ийнхтэй ЯГ ИЖИЛ дүрэм.
+       *    Огноогүй мөрийг ДУРААР нэмэхгүй: агшны шүүлт зураглалаас ДУТУУ
+       *    гарсан БА огноогүйг нэмэхэд ЯГ таарсан үед л нэгтгэнэ. Зөрвөл
+       *    хуучин зан төлөв хэвээр — эс бөгөөс хэзээ ч нийтлэгдээгүй ШИНЭ
+       *    суурь жааз байгаа үед хоёр өөр жааз нийлж, мөрүүд давхардана.
+       */
+      const exact = `${fill} = ${ts(at)}`;
+      const nExpect = (TREES[p.key] ?? '').length;
+      const cntOf = async (w: string): Promise<number> => {
+        const r = (await post(p.url, { where: w, returnCountOnly: 'true' })) as { count?: number };
+        return Number(r.count ?? 0);
+      };
+      let nRows = await cntOf(exact);
+      let where = exact;
+      if (nExpect > 0 && nRows > 0 && nRows < nExpect) {
+        const nNull = await cntOf(`${fill} IS NULL`);
+        if (nRows + nNull === nExpect) {
+          where = `((${exact}) OR ${fill} IS NULL)`;
+          nRows = nExpect;
+        }
+      }
 
       /*
        * ӨМНӨХ АГШНЫГ олно — өөрчлөлтийг зөвхөн түүнтэй жишиж мэдэж болно.
@@ -539,7 +575,7 @@ async function loadArchived(bagts: string, sheetOid: number): Promise<Submission
            *    `lastFrame` нь эхний №-ээр зааг таньж, хагас жаазыг алгасдаг
            *    ЦОРЫН ГАНЦ эх сурвалж — бөглөх хуудас ч мөн түүгээр таслана.
            */
-          const expect = (TREES[p.key] ?? '').length;
+          const expect = nExpect;
           const feats2 = lastFrame(feats, sc.f.no, expect);
           const q = { features: feats2 };
           /*
@@ -655,7 +691,7 @@ async function loadArchived(bagts: string, sheetOid: number): Promise<Submission
         //    UI «улаан хүрээ — өөрчлөгдсөн» гэсэн худал тайлбар үзүүлнэ.
         compared: prevAt != null && !prevFailed,
         prevError: prevFailed,
-        rows: cnt.count ?? 0,
+        rows: nRows,
         filled,
         filledCount,
         changes,

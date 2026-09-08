@@ -133,7 +133,19 @@ function loadLocal(): Store {
 }
 
 function saveLocal(s: Store): void {
-  if (typeof window !== 'undefined') localStorage.setItem(KEY, JSON.stringify(s));
+  /*
+   * ⚠️ ХАМГААЛАЛТГҮЙ БАЙВ (2026-09-07-ны 100% аудит). `localStorage` нь
+   * хувийн горим, квот дүүрэх, сайтын өгөгдөл хаасан тохиргоонд ШИДДЭГ.
+   * `saveLocal` нь `initRemote`-ийн дотор дуудагддаг тул шидсэн алдаа нь
+   * ДӨРВӨН ACL-ийн (`caps` · `flow` · `qaqc` · `huvaari`) синхрончлолыг
+   * бүхэлд нь таслаж, нэвтрэлтийн урсгал унана — хэрэглэгч эрхгүй хоцорно.
+   * Локал кэш нь ердөө хурдасгуур: алсын эх сурвалж (`Selbe_Permissions`)
+   * үргэлж дахин уншигдана.
+   */
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(KEY, JSON.stringify(s));
+  } catch { /* хувийн горим / квот дүүрсэн — алсын эх сурвалж хэвээр */ }
 }
 
 function loadDirty(): DirtyMap {
@@ -147,7 +159,14 @@ function loadDirty(): DirtyMap {
 }
 
 function saveDirty(d: DirtyMap): void {
-  if (typeof window !== 'undefined') localStorage.setItem(DIRTY_KEY, JSON.stringify(d));
+  /* ⚠️ try/catch (2026-09-07): `saveLocal`-тай ижил шалтгаан — шидвэл
+     эрхийн бичилтийн үр дүн тэмдэглэгдэхгүй, дуудагч урсгал унана.
+     Dirty-set нь дахин оролдлогын ТЭМДЭГЛЭЛ; алдагдвал дараагийн
+     `initRemote` алсаас бүгдийг дахин уншина. */
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(DIRTY_KEY, JSON.stringify(d));
+  } catch { /* хувийн горим / квот дүүрсэн */ }
 }
 
 /** Бичилтийн үр дүнг dirty-set-д тусгана (ok → цэвэрлэ, унав → тэмдэглэ) */
@@ -278,6 +297,20 @@ export async function initRemote(canCreate: boolean, trusted: boolean = canCreat
   try {
     const q = await import('./qaqcAcl');
     q._syncRemoteQaqc(remote.qaqc);
+  } catch { /* модуль ачаалагдаагүй орчин — алгасна */ }
+
+  // 6) Хуваарийн хуваарилалт (`__huvaari__:`) → huvaariAcl.ts
+  //    ⚠️ Урсгалынхаас ТУСДАА — хуваарь нь төлөвлөгөө, гүйцэтгэл биш.
+  try {
+    const hv = await import('./huvaariAcl');
+    hv._syncRemoteHuvaari(remote.huvaari);
+  } catch { /* модуль ачаалагдаагүй орчин — алгасна */ }
+
+  // 7) Инженерийн төлөвлөсөн обьёмын хуваарилалт (`__obyem__:`) → obyemAcl.ts
+  //    ⚠️ Хуваарийнхаас ТУСДАА — тэр нь огноо, энэ нь обьём төлөвлөнө.
+  try {
+    const ob = await import('./obyemAcl');
+    ob._syncRemoteObyem(remote.obyem);
   } catch { /* модуль ачаалагдаагүй орчин — алгасна */ }
 
   notify();

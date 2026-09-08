@@ -93,6 +93,18 @@ const rowKeys = old.map((r) => [r.oid, rowKeyOf(r)]);
   assert.equal(buildOidMap([], fresh).size, 0, 'хоосон rowKeys → хоосон map');
   assert.equal(buildOidMap(rowKeys, []).size, 0, 'хоосон жааз → хоосон map');
   assert.equal(buildOidMap([[1, 'x ¦ y']], fresh).size, 0, 'олдохгүй түлхүүр map-д ОРОХГҮЙ');
+
+  /* ⚠️ СИЙРЭГ rowKeys (2026-09-08-ны CRITICAL олдвор). `rowKeys` нь ЗӨВХӨН
+     засварласан мөрүүдийг агуулна — 7 мөрийн жаазанд 2 түлхүүр. Урьд нь
+     байрлалаар ойртуулдаг байсан тул сийрэг индекс (0,1) нь жаазны индекс
+     (3,6)-тай харьцуулагдаж, «1 ¦ Шороо»-ийн ХОЁУЛАНГ 203 руу татдаг байв —
+     хоёр өөр блокийн ажил нэг мөрөнд буун, `unmoved` = 0 тул хамгаалалт ч
+     өнгөрдөг. Одоо дараалан хуваарилна: 103→203, 106→206. */
+  const sparse = [[103, '1 ¦ Шороо'], [106, '1 ¦ Шороо']];
+  const ms = buildOidMap(sparse, fresh);
+  assert.equal(ms.get(103), 203, 'сийрэг rowKeys — эхний нэрийдэл');
+  assert.equal(ms.get(106), 206, 'сийрэг rowKeys — ХОЁР ДАХЬ нэрийдэл (давхар буугаагүй)');
+  assert.equal(new Set(ms.values()).size, 2, 'хоёр түлхүүр НЭГ мөрөнд буув');
 }
 
 /* ═══ 2. moveKeys ═══ */

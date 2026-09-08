@@ -23,7 +23,7 @@ import {
   ZONE_LAYER, ZONE_FIELD, ZONE_NONE, BUILT_LAYER, BUILDING,
   LAYER_BY_ID, PARCEL_CLEARED, PARCEL_LEFT, PARCEL_STATUS_HUES, SOURCE_FS, TASK_SHEET,
   PLAN_LAYER_IDS, MONITOR_LAYER_IDS, INITIAL_MAP_LAYERS,
-  PKG_BY_FAMILY, PKG_BY_BAGTS, LAYERS, PROGRESS_LEVELS, bagtsKey, type PkgFamily,
+  PKG_BY_FAMILY, PKG_BY_BAGTS, PROGRESS_LEVELS, bagtsKey, type PkgFamily,
 } from '@/lib/services';
 /* (2026-08-21) analysis/config·data·costs·score импортууд `@/lib/execData` руу
    нүүсэн — үлдсэн дуудагч нь тэнд байгаа useSuitability байсан. */
@@ -216,8 +216,10 @@ const loadLeftParcels = cached<Row[]>(
      төрөл» карт үүгээр ангилна. Бөглөлт нь 187/2,117 боловч тэдгээрийн 183 нь
      ЯГ «Цэвэрлэсэн нэгж талбар» — өөрөөр хэлбэл энэ багана нь бүх талбарын
      шинж БИШ, цэвэрлэгдсэн талбарын ангилал. */
+  /* ⚠️ 2026-09-08: `note` (`Тайл_1`) НЭМЭГДЭВ — «Тэмдэглэлгүй талбар — төлөвөөр»
+     карт үүгээр цоорхойг хэмждэг. Ижил query-д багана л нэмэгдэнэ. */
   () => queryFeatures(PARCEL_LEFT.url, {
-    outFields: [PL.progress, PL.block, PL.status, PL.area, PL.areaAlt, PL.landuse],
+    outFields: [PL.progress, PL.block, PL.status, PL.area, PL.areaAlt, PL.landuse, PL.note],
   }),
   undefined,
   /* ⚠️ `loadClearance` (live.ts) МӨН ЭНЭ хүснэгтээс уншдаг — хоёулаа ижил
@@ -340,10 +342,6 @@ export type MapFilter = {
 
 /** SQL string literal — дан хашилтыг давхарлана (нэрэнд ' орсон ч эвдрэхгүй) */
 const sq = (v: string) => v.replace(/'/g, "''");
-
-/** Нэр нь дэд текст агуулсан давхаргуудын id — Шугам сүлжээ/Нийгэмд ашиглана */
-const layersByTitle = (subs: string[]): string[] =>
-  LAYERS.filter((l) => subs.some((s) => l.title.toLowerCase().includes(s))).map((l) => l.id);
 
 /* ══════════════════ Үндсэн компонент ══════════════════ */
 
@@ -2752,7 +2750,10 @@ function LandDetail({ parcels, land, flt, onFlt }: {
 
       {/* ЯВЦЫН МЭДЭЭ — БҮХ ТАЛБАР. `progress` нь зөвхөн «Үлдсэн» 171 талбарт
           задарч байсан тул чөлөөлөгдсөн 1,703-ын явц хаана ч харагдахгүй байв. */}
-      <Panel title={tr('Явцын мэдээ — бүх талбар')} note={tr('{0} талбараас', num(2117))}>
+      {/* ⚠️ 2026-09-08: толгойн тоог БЭХЛЭХГҮЙ. Урьд нь 2,117 гэж хатуу бичсэн
+          байсан бөгөөд 2026-09-06-ны эх солигдоход амьд тоо 2,088 болсон тул
+          доорх чартын нийлбэртэй 29 талбараар зөрж байв. Одоо `rows.length`. */}
+      <Panel title={tr('Явцын мэдээ — бүх талбар')}>
         <Data q={parcels} loading={tr('Татаж байна…')}>
           {(rows) => {
             const m = new Map<string, number>();
@@ -2763,15 +2764,18 @@ function LandDetail({ parcels, land, flt, onFlt }: {
             });
             const list = [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 9);
             return list.length ? (
-              <Bars
-                inline
-                items={heatBars(list, ([label, n]) => ({
-                  key: label,
-                  label,
-                  value: n,
-                  display: tr('{0} талбар', num(n)),
-                }))}
-              />
+              <>
+                <Bars
+                  inline
+                  items={heatBars(list, ([label, n]) => ({
+                    key: label,
+                    label,
+                    value: n,
+                    display: tr('{0} талбар', num(n)),
+                  }))}
+                />
+                <p className={o.note}>{tr('{0} талбараас', num(rows.length))}</p>
+              </>
             ) : <Empty label={tr('Явцын мэдээ бүртгэгдээгүй')} />;
           }}
         </Data>
@@ -2945,19 +2949,25 @@ function LandDetail({ parcels, land, flt, onFlt }: {
         </Data>
       </Panel>
 
-      {/* ЯВЦЫН МЭДЭЭГҮЙ ТАЛБАР — ТӨЛӨВӨӨР. Дээрх «Явцын мэдээ — бүх талбар»
-          нь 1,935 талбарт мэдээ ОРУУЛААГҮЙ гэдгийг НЭГ тоогоор хэлнэ. Тэр
-          цоорхой ХААНА байгаа нь илүү чухал: бүрэн чөлөөлсөн талбарт мэдээ
-          дутуу байх нь хэвийн (ажил дууссан), харин ҮЛДСЭН талбарт дутуу байх
-          нь хяналтын цоорхой. */}
-      <Panel title={tr('Явцын мэдээгүй талбар — төлөвөөр')} note={tr('мэдээ оруулаагүй')}>
+      {/* ТЭМДЭГЛЭЛГҮЙ ТАЛБАР — ТӨЛӨВӨӨР. Цоорхой ХААНА байгаа нь чухал: бүрэн
+          чөлөөлсөн талбарт тэмдэглэл дутуу байх нь хэвийн (ажил дууссан), харин
+          ҮЛДСЭН талбарт дутуу байх нь хяналтын цоорхой.
+
+          ⚠️ 2026-09-08: Урьд нь `progress`-ыг `status`-тай харьцуулдаг байсан ч
+          2026-09-06-ны эх солигдоход тэр ХОЁР нэр НЭГ талбар (`явцы_1`) болсон
+          (services.ts-ийн санаатай зураглал). Тиймээс `!v` хэзээ ч биелэхгүй,
+          карт ҮРГЭЛЖ «Бүх талбарт мэдээ бүртгэгдсэн» гэсэн ХУДАЛ ногоон дүгнэлт
+          өгч, дээрх картын задаргааг давхардуулж байв. Одоо ЖИНХЭНЭ тусдаа
+          талбар — чөлөөлөлтийн тэмдэглэл (`note` = `Тайл_1`, 143/2,088) дээр
+          хэмжинэ. */}
+      <Panel title={tr('Тэмдэглэлгүй талбар — төлөвөөр')} note={tr('тэмдэглэл бичээгүй')}>
         <Data q={parcels} loading={tr('Татаж байна…')}>
           {(rows) => {
             const m = new Map<string, { no: number; all: number }>();
             rows.forEach((r) => {
               const s2 = String(r[PL.status] ?? '').trim();
               if (!s2) return;
-              const v = String(r[PL.progress] ?? '').trim();
+              const v = String(r[PL.note] ?? '').trim();
               const cur = m.get(s2) ?? { no: 0, all: 0 };
               cur.all += 1;
               if (!v || v === '—') cur.no += 1;
@@ -2978,7 +2988,7 @@ function LandDetail({ parcels, land, flt, onFlt }: {
                   display: tr('{0} · {1} / {2} талбар', pct(x.pct, 0), num(x.no), num(x.all)),
                 }))}
               />
-            ) : <Empty label={tr('Бүх талбарт мэдээ бүртгэгдсэн')} />;
+            ) : <Empty label={tr('Бүх талбарт тэмдэглэл бичигдсэн')} />;
           }}
         </Data>
       </Panel>
@@ -2996,13 +3006,22 @@ function LandDetail({ parcels, land, flt, onFlt }: {
  * татуурга (Багц 1)») — гараар зохиосон таамаг БИШ, `services.ts`-ийн нэрнээс
  * уншсан бодит хамаарал.
  * ⚠️ Шинэ Багц 5.5 нэмэгдвэл ЭНЭ хүснэгтэд гараар нэмнэ.
+ *
+ * ⚠️ 2026-09-08: `bagts` нь ДЭЛГЭЦИЙН ТЕКСТ БИШ — `BagtsRow.key`-тэй тулгах
+ * ТҮЛХҮҮР (`bagtsKey()`-ээс гарсан түүхий «БАГЦ1»). Урьд нь `tr()`-ээр
+ * ороосон байсан тул EN горимд «PKG1» болж, `ks.includes(r.key)` хэзээ ч
+ * таарахгүй — «Холбогдох өрх» 0 болж, шугам сүлжээний 3 карт хоосорч байв.
+ * `label` нь эсрэгээрээ дэлгэцэд гардаг тул `tr()` хэвээр ЗӨВ.
+ *
+ * ⚠️ Төрөл нь ил бичигдсэн (`as const` БИШ): `bagts` нь `BagtsRow.key: string`-тэй
+ * `includes()`-ээр жишигддэг тул литерал нарийсалт нь дуудагчийг эвдэнэ.
  */
-const NET_SERVES = [
-  { key: 'БАГЦ51', label: tr('Багц 5.1 · Багц 1'), bagts: [tr('БАГЦ1')] },
-  { key: 'БАГЦ52', label: tr('Багц 5.2 · Багц 2'), bagts: [tr('БАГЦ2')] },
-  { key: 'БАГЦ53', label: tr('Багц 5.3 · Багц 3'), bagts: [tr('БАГЦ31'), tr('БАГЦ32'), tr('БАГЦ33')] },
-  { key: 'БАГЦ54', label: tr('Багц 5.4 · Багц 4'), bagts: [tr('БАГЦ41'), tr('БАГЦ42')] },
-] as const;
+const NET_SERVES: readonly { key: string; label: string; bagts: readonly string[] }[] = [
+  { key: 'БАГЦ51', label: tr('Багц 5.1 · Багц 1'), bagts: ['БАГЦ1'] },
+  { key: 'БАГЦ52', label: tr('Багц 5.2 · Багц 2'), bagts: ['БАГЦ2'] },
+  { key: 'БАГЦ53', label: tr('Багц 5.3 · Багц 3'), bagts: ['БАГЦ31', 'БАГЦ32', 'БАГЦ33'] },
+  { key: 'БАГЦ54', label: tr('Багц 5.4 · Багц 4'), bagts: ['БАГЦ41', 'БАГЦ42'] },
+];
 
 /**
  * Гадна дулаан/ус/татуургын багцууд (Багц 5.x, 7, 10–15) — ХЭМЖЭЭ, хангах өрх,
@@ -3088,7 +3107,10 @@ function NetworkDetail({ bagts, sources, netTotals, flt, onFlt }: {
               const rows = sources.state === 'ready' ? sources.data : null;
               if (!rows) return '…';
               const F = SOURCE_FS.fields;
-              return num(sumBy(rows.filter((r) => srcStr(r[F.type]).startsWith(tr('Дулаан'))), (r) => srcNum(r[F.total])), 1);
+              /* ⚠️ 2026-09-08: ТҮҮХИЙ угтвараар жишнэ. `torol` нь ArcGIS-ийн монгол
+                 утга («Дулааны эх үүсвэр»); `tr('Дулаан')` нь EN-д «Heating» болж
+                 хэзээ ч таарахгүй тул чадал 91.8 МВт → 0.0 гэж ХУДЛАА гарч байв. */
+              return num(sumBy(rows.filter((r) => srcStr(r[F.type]).startsWith('Дулаан')), (r) => srcNum(r[F.total])), 1);
             })()}
             unit={tr('МВт')}
             label={tr('Дулааны чадал')}
@@ -3100,7 +3122,7 @@ function NetworkDetail({ bagts, sources, netTotals, flt, onFlt }: {
               const rows = sources.state === 'ready' ? sources.data : null;
               if (!rows) return '…';
               const F = SOURCE_FS.fields;
-              return num(sumBy(rows.filter((r) => srcStr(r[F.type]).startsWith(tr('Ус'))), (r) => srcNum(r[F.total])));
+              return num(sumBy(rows.filter((r) => srcStr(r[F.type]).startsWith('Ус')), (r) => srcNum(r[F.total])));
             })()}
             unit={tr('м³/хон')}
             label={tr('Ус хангамжийн чадал')}
@@ -3248,7 +3270,7 @@ function NetworkDetail({ bagts, sources, netTotals, flt, onFlt }: {
         <Data q={sources} loading={tr('Эх үүсвэрийг татаж байна…')} minH={220}>
           {(rows) => {
             const F = SOURCE_FS.fields;
-            const heatRows = rows.filter((r) => srcStr(r[F.type]).startsWith(tr('Дулаан')));
+            const heatRows = rows.filter((r) => srcStr(r[F.type]).startsWith('Дулаан'));
             if (!heatRows.length) return <Empty label={tr('Эх үүсвэрийн бүртгэл хоосон.')} />;
             return (
               /* ≤3 бол донат, эс бөгөөс хэвтээ бар (4+ дүрэм) */
@@ -3289,7 +3311,7 @@ function NetworkDetail({ bagts, sources, netTotals, flt, onFlt }: {
         <Data q={sources} loading={tr('Эх үүсвэрийг татаж байна…')} minH={220}>
           {(rows) => {
             const F = SOURCE_FS.fields;
-            const waterRows = rows.filter((r) => srcStr(r[F.type]).startsWith(tr('Ус')));
+            const waterRows = rows.filter((r) => srcStr(r[F.type]).startsWith('Ус'));
             if (!waterRows.length) return <Empty label={tr('Эх үүсвэрийн бүртгэл хоосон.')} />;
             return (
               waterRows.length <= 3 ? (
@@ -3627,7 +3649,11 @@ function PowerDetail({ sources, prog, powTotals, flt, onFlt }: {
             // ⚠️ Талбарын нэрийг ГАРААР бичихгүй: Багц 3.2-ын талбар нь дан `МВт_`.
             //    ҮРГЭЛЖ `SOURCE_FS.consumers`-аар давтна.
             const raw = SOURCE_FS.consumers
-              .filter((c) => /^Багц/.test(c.label))     // odoo / olonN / surTsets ХАСНА
+              /* ⚠️ 2026-09-08: `c.label` нь tr()-ээр орчуулагддаг (EN-д «Package 1») тул
+                 `/^Багц/` regex EN горимд БҮХ мөрд false болж, карт хоосорч байв.
+                 `c.key` нь тогтмол (b1,b2,b31…) — багцын түлхүүр л `b`+цифрээр эхлэнэ,
+                 odoo / olonN / surTsets хэвээр хасагдана. */
+              .filter((c) => /^b\d/.test(c.key))
               .map((c) => {
                 const per = pw
                   .map((r) => ({ src: shortSrc(srcStr(r[F.name])), mw: srcNum(r[c.field]) }))
@@ -3831,16 +3857,20 @@ function PowerDetail({ sources, prog, powTotals, flt, onFlt }: {
             const pw = rows.filter((r) => srcStr(r[F.type]).startsWith('Цахилгаан'));
             if (!pw.length) return <Empty label={tr('Бүртгэл алга.')} />;
             /** Хэрэглэгчийн БҮЛЭГ бүрийн нийлбэр — `SOURCE_FS.consumers`-аар */
-            const group = (pred: (label: string) => boolean) =>
+            /* ⚠️ 2026-09-08: ТҮЛХҮҮРЭЭР бүлэглэнэ, шошгоор БИШ. `c.label` нь tr()-ээр
+               орчуулагддаг тул EN горимд `/^Багц/` бүх мөрд false болж «Орон сууцны багц»
+               (14.19 МВт — хамгийн том хэрэглэгч) мөр бүрмөсөн унаж, `tot` хуваагчаас ч
+               хасагдан үлдсэн гурвын эзлэх хувь хиймлээр өсч байв. */
+            const group = (pred: (key: string) => boolean) =>
               sumBy(
-                SOURCE_FS.consumers.filter((c) => pred(c.label)),
+                SOURCE_FS.consumers.filter((c) => pred(c.key)),
                 (c) => sumBy(pw, (r) => srcNum(r[c.field])),
               );
             const list = [
-              { key: 'pack', label: tr('Орон сууцны багц'), mw: group((l) => /^Багц/.test(l)) },
-              { key: 'olon', label: tr('Олон нийтийн бүс'), mw: group((l) => l === tr('Олон нийт')) },
-              { key: 'odoo', label: tr('Одоо байгаа хэрэглэгч'), mw: group((l) => l === tr('Одоо байгаа')) },
-              { key: 'sur', label: tr('Сургууль, цэцэрлэг'), mw: group((l) => l === tr('Сургууль, цэцэрлэг')) },
+              { key: 'pack', label: tr('Орон сууцны багц'), mw: group((k) => /^b\d/.test(k)) },
+              { key: 'olon', label: tr('Олон нийтийн бүс'), mw: group((k) => k === 'olon') },
+              { key: 'odoo', label: tr('Одоо байгаа хэрэглэгч'), mw: group((k) => k === 'odoo') },
+              { key: 'sur', label: tr('Сургууль, цэцэрлэг'), mw: group((k) => k === 'sur') },
             ].filter((x) => x.mw > 0).sort((a2, b2) => b2.mw - a2.mw);
             if (!list.length) return <Empty label={tr('Хуваарилсан чадлын өгөгдөл алга.')} />;
             const tot = sumBy(list, (x) => x.mw);
@@ -3942,7 +3972,7 @@ function SourceDetail({ sources, d, flt, onFlt }: { sources: Async<Row[]>; d: Da
    * мөрийн эрэмбээс хамаарах тул картууд зүүн/баруун баганын хооронд
    * санамсаргүй үсэрч байв (`nth-child` слот).
    */
-  const TYPE_ORDER = [tr('Дулаан'), tr('Цахилгаан'), tr('Ус')];
+  const TYPE_ORDER = ['Дулаан', 'Цахилгаан', 'Ус'];
   const rank = (t: string) => {
     const i = TYPE_ORDER.findIndex((x) => t.startsWith(x));
     return i < 0 ? 99 : i;
@@ -4096,7 +4126,9 @@ function SourceDetail({ sources, d, flt, onFlt }: { sources: Async<Row[]>; d: Da
       <Panel title={tr('Чадлын бэлэн байдал — төрлөөр')} note={tr('ашиглалтад байгаа хувь')}>
         {(() => {
           const list = types
-            .filter((ty) => !ty.includes(tr('Ус')))
+            // ⚠️ 2026-09-08: ТҮҮХИЙ 'Ус' — `tr('Ус')`='Water' нь EN-д таарахгүй тул усан
+            //    сан МВт нэгжээр «0%» гэж ХУДЛАА зурагдаж, доорх тайлбар худал болж байв.
+            .filter((ty) => !ty.includes('Ус'))
             .map((ty) => {
               const facs = rows.filter((r) => srcStr(r[F.type]) === ty);
               const cap = sumBy(facs, (r) => srcNum(r[F.total]));
@@ -4145,11 +4177,12 @@ function SourceDetail({ sources, d, flt, onFlt }: { sources: Async<Row[]>; d: Da
           {(bag) => {
             /** Багцын шошго → `bagtsKey` (`SOURCE_FS.consumers`-ийн «Багц 3.1») */
             const heatOf = (field: string) =>
-              sumBy(rows.filter((r) => srcStr(r[F.type]).startsWith(tr('Дулаан'))), (r) => srcNum(r[field]));
+              sumBy(rows.filter((r) => srcStr(r[F.type]).startsWith('Дулаан')), (r) => srcNum(r[field]));
             const powOf = (field: string) =>
-              sumBy(rows.filter((r) => srcStr(r[F.type]).startsWith(tr('Цахилгаан'))), (r) => srcNum(r[field]));
+              sumBy(rows.filter((r) => srcStr(r[F.type]).startsWith('Цахилгаан')), (r) => srcNum(r[field]));
             const list = SOURCE_FS.consumers
-              .filter((c) => /^Багц/.test(c.label))
+              // ⚠️ 2026-09-08: түлхүүрээр шүүнэ — `label` нь EN-д орчуулагдана (дээрх тайлбарыг үз)
+              .filter((c) => /^b\d/.test(c.key))
               .map((c) => {
                 const key = bagtsKey(c.label);
                 const ail = sumBy(bag.filter((x) => x.key === key), (x) => x.ail);
@@ -4196,13 +4229,14 @@ function SourceDetail({ sources, d, flt, onFlt }: { sources: Async<Row[]>; d: Da
             return tot > 0 ? (mine / tot) * 100 : 0;
           };
           const list = SOURCE_FS.consumers
-            .filter((c) => /^Багц/.test(c.label))
+            // ⚠️ 2026-09-08: түлхүүрээр шүүнэ — `label` нь EN-д орчуулагдана
+            .filter((c) => /^b\d/.test(c.key))
             .map((c) => ({
               key: bagtsKey(c.label),
               label: c.label,
-              heat: shareOf(tr('Дулаан'), c.field),
-              pow: shareOf(tr('Цахилгаан'), c.field),
-              wat: shareOf(tr('Ус'), c.field),
+              heat: shareOf('Дулаан', c.field),
+              pow: shareOf('Цахилгаан', c.field),
+              wat: shareOf('Ус', c.field),
             }))
             .filter((x) => x.heat > 0 || x.pow > 0 || x.wat > 0)
             .sort((a2, b2) => b2.heat - a2.heat);
@@ -4231,9 +4265,9 @@ function SourceDetail({ sources, d, flt, onFlt }: { sources: Async<Row[]>; d: Da
             rows.filter((r) => srcStr(r[F.type]).startsWith(pre)),
             (r) => sumBy(SOURCE_FS.consumers, (c) => srcNum(r[c.field])),
           );
-          const heatMw = capOf(tr('Дулаан'));
-          const elMw = capOf(tr('Цахилгаан'));
-          const waterM3 = capOf(tr('Ус'));
+          const heatMw = capOf('Дулаан');
+          const elMw = capOf('Цахилгаан');
+          const waterM3 = capOf('Ус');
           const share = (a: number, b: number) => (b ? pct((a / b) * 100, 1) : '—');
           return (
             <>
@@ -4245,9 +4279,9 @@ function SourceDetail({ sources, d, flt, onFlt }: { sources: Async<Row[]>; d: Da
                     value: ail ? tr('{0} кВт', num((elMw * 1000) / ail, 2)) : '…' },
                   { key: tr('1 хүнд ногдох ус'),
                     value: h?.population ? tr('{0} л/хоног', num((waterM3 * 1000) / h.population, 0)) : '…' },
-                  { key: tr('Дулаан — хуваарилсан ÷ чадал'), value: share(consOf(tr('Дулаан')), heatMw) },
-                  { key: tr('Цахилгаан — хуваарилсан ÷ чадал'), value: share(consOf(tr('Цахилгаан')), elMw) },
-                  { key: tr('Ус — хуваарилсан ÷ чадал'), value: share(consOf(tr('Ус')), waterM3) },
+                  { key: tr('Дулаан — хуваарилсан ÷ чадал'), value: share(consOf('Дулаан'), heatMw) },
+                  { key: tr('Цахилгаан — хуваарилсан ÷ чадал'), value: share(consOf('Цахилгаан'), elMw) },
+                  { key: tr('Ус — хуваарилсан ÷ чадал'), value: share(consOf('Ус'), waterM3) },
                 ]}
               />
               <p className={o.note}>
@@ -4484,13 +4518,12 @@ function FinanceDetail({ budget, flt, onFlt }: { budget: Async<Budget> } & FltPr
 
 /* ══════════════════ 07 · Үр өгөөж ══════════════════ */
 
-/** Нийгмийн ангилал → давхаргын нэрийн дэд текст (амьд loadSocial-ийн нэршлээр) */
-const SOC_MATCH: Record<string, string[]> = {
-  'Сургууль': [tr('сургууль')],
-  'Цэцэрлэг': [tr('цэцэрлэг')],
-  'Хүүхдийн урлан бүтээх төв': [tr('урлан')],
-  'Төрийн үйлчилгээ': [tr('төрийн үйлчилгээ')],
-};
+/* ⚠️ 2026-09-08: `SOC_MATCH` (ангилал → давхаргын гарчгийн дэд текст) ХАСАГДСАН.
+   Хоёр талаасаа эвдэрсэн байв: (1) түлхүүр нь ТҮҮХИЙ 'Сургууль' атал `pick()`-т
+   ирдэг утга нь `SocialRow.label` = `tr('Сургууль')` тул EN-д 'School' болж
+   хайлт үргэлж undefined; (2) `layersByTitle` нь давхаргын ГАРЧГААР хайдаг ч
+   гарчиг мөн орчуулагддаг. Оронд нь `SocialRow.per[].id` — `loadSocial` уг
+   давхаргуудын id-г аль хэдийн авчирдаг тул текст хайлт ОГТ хэрэггүй. */
 
 /**
  * БҮХ ТОО АМЬД. Илтгэлийн BENEFITS/PUBLIC_ZONE/SOCIAL хатуу мөрүүд хасагдаж,
@@ -4522,11 +4555,16 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
   }).filter((x) => x.n > 0);
   const socM2 = socPacks.reduce((a2, x) => a2 + x.m2, 0);
 
-  /** Ангилал дарахад — зурагт тэр төрлийн барилгын давхаргууд л үлдэнэ */
+  /**
+   * Ангилал дарахад — зурагт тэр төрлийн барилгын давхаргууд л үлдэнэ.
+   * ⚠️ `key` нь `SocialRow.key` (тогтмол 'school'/'kinder'/'art'/'gov'), шошго БИШ:
+   *    гурван чарт бүгд `r.key` дамжуулна. Давхаргын id-г мөрийн өөрийн `per`-ээс
+   *    авна — гарчгийн текстээр хайх нь EN горимд хэзээ ч таарахгүй байв.
+   */
   const pick = (key: string) => {
-    const subs = SOC_MATCH[key];
-    const ids = subs ? layersByTitle(subs).filter((id) => id.startsWith('pkg:')) : [];
-    if (ids.length) onFlt({ sec: 'benefit', key, label: tr('Нийгэм: {0}', key), layers: ids });
+    const row = soc?.rows.find((r) => r.key === key);
+    const ids = (row?.per ?? []).map((x) => x.id).filter((id) => id.startsWith('pkg:'));
+    if (row && ids.length) onFlt({ sec: 'benefit', key, label: tr('Нийгэм: {0}', row.label), layers: ids });
   };
 
   return (
@@ -4590,7 +4628,7 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
             selected={sel}
             onSelect={pick}
             items={soc.rows.map((r, i) => ({
-              key: r.label,
+              key: r.key,                          // ⚠️ `pick` нь SocialRow.key-ээр жишдэг
               label: r.label,
               value: r.n,
               display: r.capacity != null
@@ -4613,9 +4651,9 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
               <Bars
                 inline
                 selected={sel}
-                onSelect={pick}                        // ⚠️ 3-р картын `pick`-тэй ИЖИЛ (SOC_MATCH)
+                onSelect={pick}                        // ⚠️ 3-р картын `pick`-тэй ИЖИЛ
                 items={heatBars(withCap, (r) => ({
-                  key: r.label,                        // ⚠️ `r.label` — `pick` нь SOC_MATCH-аар жишдэг
+                  key: r.key,                          // ⚠️ `pick` нь SocialRow.key-ээр жишдэг
                   label: r.label,
                   value: r.capacity as number,
                   display: tr('{0} · {1} барилга', num(r.capacity as number), num(r.n)),

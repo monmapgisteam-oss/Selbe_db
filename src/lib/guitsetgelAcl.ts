@@ -85,7 +85,22 @@ function notify(): void {
 
 function save(list: Assign[]): void {
   cache = list;
-  if (typeof window !== 'undefined') localStorage.setItem(KEY, JSON.stringify(list));
+  /*
+   * ⚠️ `localStorage` БҮТЭЛГҮЙТЭЖ БОЛНО (2026-09-07-ны 100% аудит):
+   * хувийн горим, квот дүүрэх, сайтын өгөгдөл хаасан тохиргоо — гурвуулаа
+   * ШИДДЭГ. Хамгаалалтгүй бол `save` шидэж, дуудагч (`setAssign` г.м.)
+   * унаж, админы панел эвдэрнэ; бүр муу нь `notify()` хүрэхгүй тул
+   * захиалагчид ХУУЧИН эрхээ хараад үлдэнэ.
+   * ⚠️ Санах ойн `cache` нь дээр аль хэдийн шинэчлэгдсэн бөгөөд алсын
+   * бичилт тусдаа явдаг тул локал хадгалалт унасан ч ажиллагаа
+   * ҮРГЭЛЖИЛНЭ — зөвхөн хуудас дахин ачаалахад кэш хоосон эхэлнэ.
+   * `caps.ts`-ийн `save`-ийн ижил загвар.
+   */
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem(KEY, JSON.stringify(list));
+    } catch { /* хувийн горим / квот дүүрсэн — санах ойд хэвээр ажиллана */ }
+  }
   notify();
 }
 
@@ -243,7 +258,25 @@ export function removeAssign(user: string, stage: Stage, revoke = true): { sync:
   const sync = enqueue(u, async () => {
     // Жагсаалтад байхгүй → flowRemove; хооронд нь дахин нэмэгдсэн бол upsert
     const ok = await pushFlow(u);
-    if (revoke) await revokeFlowAccess(u, stage).catch(() => {});
+    /*
+     * ⚠️ ДАРААЛАЛД ХҮЛЭЭХ ХООРОНД ДАХИН ТОМИЛОГДСОН БОЛ ЭРХИЙГ БУЦААХГҮЙ
+     *    (2026-09-08-ны аудит).
+     *
+     *    `enqueue` нь ЗӨВХӨН энэ хөтчийн дуудлагуудыг цувуулдаг. Гэтэл шатын
+     *    өөрчлөлт АЛСААС ч ирдэг: өөр админ, эсвэл `permissions.initRemote`
+     *    → `_syncRemoteAssigns` (нэвтрэх үед + 5 мин тутам + visibilitychange).
+     *    Тэр үед `stage` нь ЗАХИАЛСАН агшных хэвээр хөлдсөн байх тул шинэ
+     *    томилгоотой болсон хүний `role`-ыг `null` болгож, `guitsetgel`
+     *    харагдацыг хасдаг байв — хүн `manager` шатанд ЖИНХЭНЭ томилогдсон
+     *    (`resolveFlowStage.canReview = true`) атлаа хуудсаа огт нээж чаддаггүй,
+     *    панел дээр «томилогдсон» гэж харагдсаар байдаг тул админ шалтгааныг
+     *    олохгүй.
+     *
+     *    Шийдэл: `pushFlow`-тэй ИЖИЛ дүрэм — гүйцэтгэх агшиндаа жагсаалтыг
+     *    ДАХИН уншина. Хэрэглэгч ямар нэг шатанд байвал (өөр шат ч бай)
+     *    түүний эрхийг нь тэр томилгоо хариуцна, энд буцааж авахгүй.
+     */
+    if (revoke && !stageOfUser(u)) await revokeFlowAccess(u, stage).catch(() => {});
     markResult(u, ok);
     return ok;
   });

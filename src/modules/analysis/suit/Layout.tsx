@@ -127,8 +127,12 @@ export function Card({
   // ⚠️ Зөвхөн эффект дотор: localStorage нь статик экспортын үед байхгүй.
   //    Хадгалсан жагсаалт байхгүй бол `startOff` хэвээр үлдэнэ.
   useEffect(() => {
-    if (localStorage.getItem(COLLAPSE_KEY) === null) return;
-    setOff(readSet().has(key));
+    /* ⚠️ try/catch (2026-09-07): хувийн горимд `getItem` ШИДДЭГ бөгөөд
+       эффект дотор шидсэн алдаа энэ харагдацыг унагана. */
+    try {
+      if (localStorage.getItem(COLLAPSE_KEY) === null) return;
+      setOff(readSet().has(key));
+    } catch { /* хувийн горим — анхдагч эвхэлт хэвээр */ }
   }, [key]);
 
   const toggle = () => {

@@ -956,7 +956,7 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
   background: color-mix(in srgb, var(--data) 6%, var(--surface));
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 1180px) {
   /* ⚠️ Нарийн дэлгэцэд ~730px царцаавал гүйх зай үлдэхгүй — царцаалтыг хаана */
   .xlF1, .xlF2, .xlF3, .xlF4 {
     position: static;

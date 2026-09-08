@@ -260,8 +260,17 @@ type Result = {
    * аюулгүй байдлын шийдвэрт ордог тул дутууг ИЛ хэлнэ.
    */
   failed: string[];
-  /** Идэвхтэй давхарга байгаагүй тул ҮНДСЭН БАГЦААР тооцов уу */
-  fallback: boolean;
+  /**
+   * ЯМАР олонлогоор тоолсон бэ — үр дүнгийн самбарт ИЛ бичигдэнэ.
+   * ⚠️ 2026-09-08: урьд нь `fallback: boolean` байсан тул каталогоос сонгосон
+   * давхаргаар тооцсон тохиолдол ч `true` болж, самбарт «ҮНДСЭН БАГЦААР
+   * тооцов» гэсэн ХУДАЛ тайлбар гардаг байв. Гурван зам ГУРВАН өөр утгатай
+   * тул boolean хангахгүй.
+   *   · `map`     — зурагт идэвхтэй, объект асуух боломжтой давхаргууд
+   *   · `catalog` — зурагт идэвхтэй нь олдоогүй, каталогийн чагтаар
+   *   · `base`    — аль нь ч байхгүй, үнэлгээний ҮНДСЭН БАГЦААР
+   */
+  src: 'map' | 'catalog' | 'base';
 };
 
 /**
@@ -534,7 +543,7 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
    * тэдгээр нь ч «идэвхтэй». Хэрэглэгч «миний идэвхтэй давхаргууд» гэж хэлэхэд
    * зөвхөн чагт тавьсныг нь ойлгодоггүй.
    */
-  const activeIds = useCallback((): { ids: string[]; fallback: boolean } => {
+  const activeIds = useCallback((): { ids: string[]; src: Result['src'] } => {
     const map = view?.map;
     const out: string[] = [];
     map?.layers.forEach((l) => {
@@ -543,13 +552,19 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
       if (typeof (l as { queryFeatures?: unknown }).queryFeatures !== 'function') return;
       out.push(l.id);
     });
-    if (out.length) return { ids: out, fallback: false };
+    if (out.length) return { ids: out, src: 'map' };
     /**
      * ⚠️ Нэг ч давхарга асаагүй (энэ харагдацын АНХДАГЧ төлөв) — үнэлгээний
      * үндсэн багцаар тооцно. Давхарга нь зурагт НУУГДМАЛ ч `map`-д баригдсан
      * байдаг тул `queryFeatures` хэвийн ажиллана.
+     *
+     * ⚠️ 2026-09-08: каталогийн чагт (`visible`) ба үндсэн багц (`ASSESS_IDS`)
+     * хоёрыг НЭГ «fallback» гэж нийлүүлж болохгүй — тэдгээр нь өөр өөр
+     * олонлог тул самбарт өөр өөр өгүүлбэр бичигдэнэ.
      */
-    return { ids: visible.length ? visible : ASSESS_IDS, fallback: true };
+    return visible.length
+      ? { ids: visible, src: 'catalog' }
+      : { ids: ASSESS_IDS, src: 'base' };
   }, [view, visible]);
 
   /* ── Шинжилгээ ── */
@@ -575,7 +590,7 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
         ? await floodExtent(level)
         : airExtent(stations, level, windNow, pm25ByOid);
       if (!extent) throw new Error(tr('Аюулын мужийг байгуулж чадсангүй'));
-      const { ids, fallback } = activeIds();
+      const { ids, src } = activeIds();
       /* ⚠️ `failed` — татагдаагүй давхарга. «Эрсдэлгүй» ба «мэдээлэлгүй»
          хоёрыг ялгах ёстой тул шинжилсэн давхаргын тоог УНАСНААР нь
          хасаж, дутууг хэрэглэгчид ил хэлнэ (2026-09-03-ны аудит). */
@@ -584,7 +599,7 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
         hazard, level, bands, rows,
         layers: ids.length - failed.length,
         failed,
-        fallback,
+        src,
       });
       /**
        * ⚠️ ӨРТСӨН ДАВХАРГЫГ ЗУРАГТ АСААНА (2026-08-29, хүсэлт).
@@ -1663,7 +1678,16 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                           num(FLOOD_LEVELS[result.level].reach))}
                       </Note>
                     )}
-                    {result.fallback && (
+                    {/* ⚠️ 2026-09-08: эх сурвалж тус бүрд ӨӨР өгүүлбэр. Урьд нь
+                        каталогоор тооцсон ч «ҮНДСЭН БАГЦААР тооцов» гэж ХУДАЛ
+                        нэрлэдэг байв — энэ файлын өөрийн шаардлага
+                        («аль замаар тооцсоныг ИЛ бичнэ») зөрчигдөж байсан. */}
+                    {result.src === 'catalog' && (
+                      <Note>
+                        {tr('Зурагт объектын давхарга идэвхтэй байгаагүй тул каталогоос сонгосон {0} давхаргаар тооцов.', num(result.layers + result.failed.length))}
+                      </Note>
+                    )}
+                    {result.src === 'base' && (
                       <Note>
                         {tr('Зурагт давхарга асаагаагүй тул үнэлгээний ҮНДСЭН БАГЦААР (барилга, зам, явган зам, дугуйн зам, гүүр, ногоон, мод, тоглоом) тооцов. Каталогоос давхарга асаавал ЗӨВХӨН тэдгээрээр тооцно.')}
                       </Note>
