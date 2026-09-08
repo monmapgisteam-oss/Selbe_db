@@ -30,6 +30,17 @@ type Saved = {
   frozen?: number;
   /** МӨР ТАСЛАХ (wrap) горимтой баганы нэрс */
   wrap?: string[];
+  /**
+   * АНХДАГЧ НУУЛТЫН ХУВИЛБАР — сүүлд ХЭРЭГЛЭГЧ нуулт өөрчилсөн үеийн
+   * `defHidden`-ий агуулга.
+   *
+   * ⚠️ Энэ түлхүүргүйгээр анхдагч нуулт нь ХУУЧИН хэрэглэгчид ХЭЗЭЭ Ч
+   * хүрэхгүй: тэдний хадгалалтад `hidden` аль хэдийн (ихэвчлэн `[]`) байдаг
+   * тул `st.hidden ?? defHidden` нь үргэлж хадгалалтыг сонгоно. Хувилбар
+   * зөрөх үед анхдагчийг НЭГ УДАА нэмж, хэрэглэгч нуултаа өөрчилмөгц
+   * хувилбарыг тэмдэглэн цаашид хөндөхгүй.
+   */
+  hideV?: string;
 };
 
 const KEY = (k: string) => `selbe.cols.${k}`;
@@ -77,8 +88,14 @@ export type SheetCols = {
  * @param key      хадгалалтын түлхүүр (үзүүлэлт бүрд өөр)
  * @param all      ОДООГИЙН бүх баганы нэр — эх дараалалаараа
  * @param defWrap  анхдагчаар мөр таслах багана (хэрэглэгч дараа нь өөрчилнө)
+ * @param defHidden анхдагчаар НУУГДСАН багана (хэрэглэгч дараа нь дэлгэнэ)
  */
-export function useSheetCols(key: string, all: string[], defWrap: string[] = []): SheetCols {
+export function useSheetCols(
+  key: string,
+  all: string[],
+  defWrap: string[] = [],
+  defHidden: string[] = [],
+): SheetCols {
   /* ⚠️ `localStorage` нь ЗӨВХӨН хөтөч дээр: SSR/статик экспортын үед
      `localStorage is not defined` гэж унана (энэ төсөл `output: 'export'`).
      Тиймээс залхуу эхлүүлэгч дотор орчиноо шалгана. */
@@ -100,6 +117,27 @@ export function useSheetCols(key: string, all: string[], defWrap: string[] = [])
   }
 
   /**
+   * АНХДАГЧ НУУЛТЫН ХУВИЛБАР — жагсаалтын АГУУЛГААР. Жагсаалт өөрчлөгдвөл
+   * хувилбар өөрчлөгдөж, шинэ анхдагч дахин нэг удаа хэрэглэгдэнэ.
+   */
+  const hideV = useMemo(() => defHidden.join('|'), [defHidden]);
+
+  /**
+   * ҮР ДҮНТЭЙ НУУЛТ.
+   *
+   * ⚠️ Хэрэглэгч нуултаа НЭГ Ч УДАА хөндөөгүй (эсвэл өөр хувилбар дээр
+   * хөндсөн) бол анхдагчийг хадгалалтын дээр НЭМНЭ. Ингэснээр хуучин
+   * тохиргоотой хэрэглэгч ч шинэ анхдагчийг авна — гэхдээ ЗӨВХӨН нэг удаа:
+   * «Нуусан баганыг харуулах» дармагц `hideV` бичигдэж, цаашид хөндөхгүй.
+   * ⚠️ Хэрэглэгчийн ӨӨРИЙН нуултыг ХЭЗЭЭ Ч алдагдуулахгүй — зөвхөн нэмнэ.
+   */
+  const effHidden = useMemo(() => {
+    const out = new Set(st.hidden ?? []);
+    if (st.hideV !== hideV) for (const nm of defHidden) out.add(nm);
+    return out;
+  }, [st.hidden, st.hideV, defHidden, hideV]);
+
+  /**
    * ХАРАГДАХ ДАРААЛАЛ.
    *
    * ⚠️ Хадгалсан дараалал нь ШҮҮЛТ БИШ: түүнд байхгүй багана АЛДАГДАХГҮЙ,
@@ -114,11 +152,11 @@ export function useSheetCols(key: string, all: string[], defWrap: string[] = [])
       if (has.has(n) && !seen.has(n)) { out.push(n); seen.add(n); }
     }
     for (const n of all) if (!seen.has(n)) out.push(n);
-    const hid = new Set(st.hidden ?? []);
+    const hid = effHidden;
     return out.filter((n) => !hid.has(n));
-  }, [all, st.order, st.hidden]);
+  }, [all, st.order, effHidden]);
 
-  const hidden = useMemo(() => new Set(st.hidden ?? []), [st.hidden]);
+  const hidden = effHidden;
 
   /* ⚠️ Анхдагч нь ЗӨВХӨН хадгалалт огт байхгүй үед: хэрэглэгч «Нарийвчилсан
      төрөл»-ийн тасралтыг унтраасан бол дараагийн ачаалалт түүнийг эргүүлж
@@ -131,22 +169,27 @@ export function useSheetCols(key: string, all: string[], defWrap: string[] = [])
      хүснэгт бүхэлдээ наалдмал болох эрсдэлтэй. */
   const frozen = Math.max(0, Math.min(st.frozen ?? 4, view.length));
 
+  /* ⚠️ Суурь нь ҮР ДҮНТЭЙ нуулт: хадгалалт хоосон байхад нэг багана нуувал
+     АНХДАГЧААР нуугдсан зургаа гэнэт дэлгэгдэх байсан.
+     ⚠️ `hideV` тэмдэглэгдэнэ — эндээс хойш анхдагч дахин нэмэгдэхгүй. */
   const hide = useCallback((name: string) => {
     setSt((v) => {
-      const next = { ...v, hidden: [...new Set([...(v.hidden ?? []), name])] };
+      const cur = v.hideV === hideV ? (v.hidden ?? []) : [...(v.hidden ?? []), ...defHidden];
+      const next = { ...v, hideV, hidden: [...new Set([...cur, name])] };
       write(key, next);
       return next;
     });
-  }, [key]);
+  }, [key, defHidden, hideV]);
 
   const hideMany = useCallback((names: string[]) => {
     if (names.length === 0) return;
     setSt((v) => {
-      const next = { ...v, hidden: [...new Set([...(v.hidden ?? []), ...names])] };
+      const cur = v.hideV === hideV ? (v.hidden ?? []) : [...(v.hidden ?? []), ...defHidden];
+      const next = { ...v, hideV, hidden: [...new Set([...cur, ...names])] };
       write(key, next);
       return next;
     });
-  }, [key]);
+  }, [key, defHidden, hideV]);
 
   /* ⚠️ Сөрөг утга ба хэт их утгыг ЭНД хааж өгнө — дуудагч бүрд давтахгүй */
   const setFrozen = useCallback((n: number) => {
@@ -157,13 +200,15 @@ export function useSheetCols(key: string, all: string[], defWrap: string[] = [])
     });
   }, [key]);
 
+  /* ⚠️ `hideV` ЭНД ЗААВАЛ бичигдэнэ: «бүгдийг харуул» гэсэн ил хүсэлтийг
+     дараагийн ачаалалт дээр анхдагч дарж болохгүй. */
   const showAll = useCallback(() => {
     setSt((v) => {
-      const next = { ...v, hidden: [] };
+      const next = { ...v, hideV, hidden: [] };
       write(key, next);
       return next;
     });
-  }, [key]);
+  }, [key, hideV]);
 
   const toggleWrap = useCallback((name: string) => {
     setSt((v) => {
