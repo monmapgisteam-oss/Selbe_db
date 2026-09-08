@@ -278,7 +278,12 @@
   font-size: 12px;
   font-weight: 600;
   padding: 5px 12px;
-  color: #06202a;
+  /* ⚠️ 2026-09-08 — #06202a → var(--hue-ink). Цайвар горимд --hue = #2e7f8b
+     тул хатуу #06202a бэх 3.63:1 болж WCAG AA (4.5:1) давахгүй байв;
+     --hue-ink (цайвар #fff) нь 4.64:1 болж давна, харанхуйд ч 9.95 → 10.67:1.
+     globals.css:33-37 нь энэ токеныг ЯГ энэ зорилгоор («--hue дэвсгэр дээрх
+     БҮХ текст #fff-ийн оронд ЭНИЙГ») үүсгэсэн. */
+  color: var(--hue-ink);
   background: var(--hue);
   border: 1px solid var(--hue);
   border-radius: var(--r-sm);
@@ -473,7 +478,12 @@
   cursor: pointer;
 }
 .primary {
-  color: #06202a;
+  /* ⚠️ 2026-09-08 — #06202a → var(--hue-ink). Цайвар горимд --hue = #2e7f8b
+     тул хатуу #06202a бэх 3.63:1 болж WCAG AA (4.5:1) давахгүй байв;
+     --hue-ink (цайвар #fff) нь 4.64:1 болж давна, харанхуйд ч 9.95 → 10.67:1.
+     globals.css:33-37 нь энэ токеныг ЯГ энэ зорилгоор («--hue дэвсгэр дээрх
+     БҮХ текст #fff-ийн оронд ЭНИЙГ») үүсгэсэн. */
+  color: var(--hue-ink);
   background: var(--hue);
   border-color: var(--hue);
   font-weight: 600;

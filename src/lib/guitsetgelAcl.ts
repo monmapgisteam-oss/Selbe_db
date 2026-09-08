@@ -258,7 +258,25 @@ export function removeAssign(user: string, stage: Stage, revoke = true): { sync:
   const sync = enqueue(u, async () => {
     // Жагсаалтад байхгүй → flowRemove; хооронд нь дахин нэмэгдсэн бол upsert
     const ok = await pushFlow(u);
-    if (revoke) await revokeFlowAccess(u, stage).catch(() => {});
+    /*
+     * ⚠️ ДАРААЛАЛД ХҮЛЭЭХ ХООРОНД ДАХИН ТОМИЛОГДСОН БОЛ ЭРХИЙГ БУЦААХГҮЙ
+     *    (2026-09-08-ны аудит).
+     *
+     *    `enqueue` нь ЗӨВХӨН энэ хөтчийн дуудлагуудыг цувуулдаг. Гэтэл шатын
+     *    өөрчлөлт АЛСААС ч ирдэг: өөр админ, эсвэл `permissions.initRemote`
+     *    → `_syncRemoteAssigns` (нэвтрэх үед + 5 мин тутам + visibilitychange).
+     *    Тэр үед `stage` нь ЗАХИАЛСАН агшных хэвээр хөлдсөн байх тул шинэ
+     *    томилгоотой болсон хүний `role`-ыг `null` болгож, `guitsetgel`
+     *    харагдацыг хасдаг байв — хүн `manager` шатанд ЖИНХЭНЭ томилогдсон
+     *    (`resolveFlowStage.canReview = true`) атлаа хуудсаа огт нээж чаддаггүй,
+     *    панел дээр «томилогдсон» гэж харагдсаар байдаг тул админ шалтгааныг
+     *    олохгүй.
+     *
+     *    Шийдэл: `pushFlow`-тэй ИЖИЛ дүрэм — гүйцэтгэх агшиндаа жагсаалтыг
+     *    ДАХИН уншина. Хэрэглэгч ямар нэг шатанд байвал (өөр шат ч бай)
+     *    түүний эрхийг нь тэр томилгоо хариуцна, энд буцааж авахгүй.
+     */
+    if (revoke && !stageOfUser(u)) await revokeFlowAccess(u, stage).catch(() => {});
     markResult(u, ok);
     return ok;
   });

@@ -76,6 +76,23 @@ export function filterTable(t: DetailTable, pkg: string): DetailTable | null {
 }
 
 /**
+ * Анхааруулгын текстийг ХЭСГҮҮД болгож задлана — багцын нэр НЭГ ХЭСЭГ болно.
+ *
+ * ⚠️ 2026-09-08: SUBSTRING МӨРГӨЛДӨӨНИЙГ ЗАСАВ. Урьд нь `bagtsKey(i.text)`
+ * гэж БҮТЭН өгүүлбэрийг нэг мөр болгоод `.includes(key)` гэж шалгадаг байв:
+ * `bagtsKey('БАГЦ-10 · Дулаан шугам — 45 хоног хэтэрсэн')` = «БАГЦ10ДУЛААН…»
+ * бөгөөд «БАГЦ1»-ийг АГУУЛНА. Тиймээс «Багц 1» сонгоход Багц 10…19, 16.7-ийн
+ * анхааруулга үлдэж, доорх хүснэгт (ЯГ ТЭНЦҮҮГЭЭР шүүгддэг) -тэй зөрдөг байв.
+ *
+ * ⚠️ Анхааруулгын бүх үүсгэгч багцаа ТУСДАА хэсэг болгож бичдэг:
+ *   ipc «{акт} · {багц} — …» · uncontracted «{ажил} · {багц} — …» ·
+ *   review «{ажил} · {багц} — …» · schedule/qaqc «{багц} — …» ·
+ *   safety «{огноо} · {багц} · {төрөл} — {компани}».
+ * Тиймээс «·», «—», мөр таслалтаар хувааж, хэсэг бүрийг ЯГ ТЭНЦҮҮГЭЭР жишнэ.
+ */
+const issueSegments = (text: string): string[] => text.split(/[·—\n]/);
+
+/**
  * `KpiResult`-ийг багцаар шүүсэн ХУВИЛБАР.
  *
  * ⚠️ `value`/`facts`/`level` нь ХӨНДӨГДӨХГҮЙ — тэдгээр нь төслийн дүн.
@@ -93,7 +110,7 @@ export function filterResult(r: KpiResult, pkg: string): KpiResult {
   const key = bagtsKey(pkg);
   const issues = r.issues.filter((i) => {
     const mentions = /Багц/i.test(i.text);
-    return !mentions || bagtsKey(i.text).includes(key);
+    return !mentions || issueSegments(i.text).some((s) => bagtsKey(s) === key);
   });
   return { ...r, tables, issues };
 }

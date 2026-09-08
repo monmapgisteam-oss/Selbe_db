@@ -225,16 +225,25 @@ export function setObyemAssign(
  */
 export function removeObyemAssign(
   user: string, revoke = true,
-): { ok: boolean; sync: Promise<boolean> } {
+): { ok: boolean; sync: Promise<boolean>; granted?: Promise<boolean> } {
   const u = user.trim().toLowerCase();
   save(load().filter((a) => a.user !== u));
   const run = enqueue(u, async () => {
     const ok = await pushObyem(u);
-    if (revoke) await syncCaps(u, []);
-    return ok;
+    /*
+     * ⚠️ ЭРХ БУЦААЛТЫН ҮР ДҮНГ ЗАЛГИХГҮЙ (2026-09-08) — `qaqcAcl` /
+     *    `huvaariAcl`-ийн ижил засвар. Урьд нь `syncCaps`-ийн үр дүнг хаядаг
+     *    тул `__cap__:` мөр ArcGIS дээр ҮЛДСЭН ч `sync` нь `true` гарч,
+     *    админд «амжилттай» гэж ХУДАЛ мэдээлдэг байв. Дараагийн `initRemote`
+     *    тэр мөрийг эргүүлж татаж `obyemEdit`/`obyemApprove` эрхийг
+     *    СЭРГЭЭДЭГ тул хасагдсан хүн эрхээ хадгалж үлддэг.
+     */
+    const g = revoke ? await syncCaps(u, []) : true;
+    return { ok, g };
   });
-  const sync = run.then((ok) => { markResult(u, ok); return ok; });
-  return { ok: true, sync };
+  const sync = run.then((r) => { markResult(u, r.ok && r.g); return r.ok && r.g; });
+  const granted = run.then((r) => r.g);
+  return { ok: true, sync, granted };
 }
 
 /**

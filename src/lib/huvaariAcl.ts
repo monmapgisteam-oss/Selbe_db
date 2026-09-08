@@ -218,16 +218,26 @@ export function setHuvaariAssign(
  */
 export function removeHuvaariAssign(
   user: string, revoke = true,
-): { ok: boolean; sync: Promise<boolean> } {
+): { ok: boolean; sync: Promise<boolean>; granted?: Promise<boolean> } {
   const u = user.trim().toLowerCase();
   save(load().filter((a) => a.user !== u));
   const run = enqueue(u, async () => {
     const ok = await pushHuvaari(u);
-    if (revoke) await syncCaps(u, []);
-    return ok;
+    /*
+     * ⚠️ ЭРХ БУЦААЛТЫН ҮР ДҮНГ ЗАЛГИХГҮЙ (2026-09-08). Урьд нь `syncCaps`-ийн
+     *    үр дүнг хаяж зөвхөн мөрийн бичилтийг буцаадаг байв: `__cap__:` мөр
+     *    ArcGIS дээр ҮЛДСЭН ч `sync` нь `true` гарч, админд «амжилттай» гэж
+     *    ХУДАЛ мэдээлдэг. Дараагийн `initRemote` тэр мөрийг эргүүлж татаж
+     *    `plan`/`planApprove` эрхийг СЭРГЭЭДЭГ тул хуваарилалтаас хасагдсан
+     *    хүн «Хуваарь» харагдацтайгаа үлддэг байлаа.
+     *    `qaqcAcl.removeQaqcAssign`-ийн ижил загвар.
+     */
+    const g = revoke ? await syncCaps(u, []) : true;
+    return { ok, g };
   });
-  const sync = run.then((ok) => { markResult(u, ok); return ok; });
-  return { ok: true, sync };
+  const sync = run.then((r) => { markResult(u, r.ok && r.g); return r.ok && r.g; });
+  const granted = run.then((r) => r.g);
+  return { ok: true, sync, granted };
 }
 
 /**

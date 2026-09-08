@@ -379,6 +379,12 @@ const RO = {
   plannedVolNoField: tr('Энэ багцын үйлчилгээнд «Инженерийн төлөвлөсөн обьём» багана үүсээгүй тул засагдахгүй.'),
   plannedVolLocked: tr('Батлагдаагүй илгээлт хүлээгдэж байна — шийдвэрлэгдтэл энэ багана түгжээтэй.'),
   plannedVolGroup: tr('Бүлгийн мөрд төлөвлөсөн обьём бичихгүй — зөвхөн ажлын мөрд.'),
+  /* ⚠️ 2026-09-08: шинээр нэмсэн мөрийн oid нь ТҮР (сөрөг) бөгөөд серверт
+     утгагүй. `submitObyem`-ийн payload нь мөрийг ЗӨВХӨН `oid`-оор заадаг тул
+     тэр нүд илгээлтэд орох аргагүй. Урьд нь бичих боломжтой байсан ч
+     `pvCells` түүнийг чимээгүй хаядаг, «Обьём батлуулах» товч ч гарахгүй тул
+     хэрэглэгч ногоон нүдээ хараад товчоо олохгүй эргэлздэг байв. */
+  plannedVolNewRow: tr('Шинээр нэмсэн мөр батлагдаж үндсэн өгөгдөлд орсны ДАРАА нь төлөвлөсөн обьёмыг бичнэ — одоогоор түр дугаартай тул илгээлтэд орохгүй.'),
   unit: tr('Нэгж өртөг нь үйлчилгээнд хадгалагдсан — энэ хуудаснаас засагдахгүй.'),
   money: tr('Мөнгөн дүн: Обьём × Нэгж өртөг; бүлгийн мөрд дэд мөрүүдийнхээ нийлбэр.'),
   I: tr('Төлөвлөгөөт гүйцэтгэл нь блокуудын төлөвлөгөөт хувийн дундаж. Огноог засвал өөрчлөгдөнө.'),
@@ -1287,6 +1293,14 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
            мөрийг ХЭЗЭЭ Ч танихгүй болж, хэрэглэгч мөнхөд «өөр хэрэглэгч
            илгээсэн байна» гэсэн алдаанд гацна. Давхарлах эсэх нь ТУСДАА
            шийдвэр (`useSub`). */
+        /* ⚠️ ИДЭВХТЭЙ ИЛГЭЭЛТИЙН НЭМСЭН МӨРӨӨС ч тоолуурыг ТҮЛХНЭ (2026-09-08).
+           `tmpOid` нь хуудас ачаалагдах бүрд −1-ээс эхэлдэг тул зөвхөн
+           ноорогоос түлхэх нь ХАНГАЛТГҮЙ байв: өдөр 1-д мөр нэмж ИЛГЭЭЭД
+           (ноорог цэвэрлэгдэнэ) хуудсаа дахин нээж дахин мөр нэмэхэд шинэ
+           мөр ДАХИН −1 авдаг; `mergeSubmission`-ий `adds` нь `Map<oid>` тул
+           өмнөх илгээлтийн мөр (нэр, обьём, эцэг) БҮТНЭЭР дарагдаж, түүний
+           `${oid}:${b}` нүднүүд ч шинэ мөрийн утгаар солигддог байв. */
+        if (sub?.payload.adds?.length) pushTmpOid(sub.payload.adds);
         setStaged(sub && !sub.done && sub.payload.pkgKey === pkg.key ? sub : null);
         setRows(ov ? ov.rows : r.rows);
         /* ⚠️ `null ≠ 0`: илгээлт «Шинэчлэгдсэн огноо»-г хөндөөгүй бол
@@ -1769,6 +1783,25 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     (asOf !== asOfOrig ? 1 : 0);
 
   /**
+   * ИНЖЕНЕРИЙН ОБЬЁМЫН ноорог (`pvPend`) — ХАМГААЛАЛТАД тоологдоно.
+   *
+   * ⚠️ ЯАГААД `dirtyCount`-д НИЙЛҮҮЛЭХГҮЙ (2026-09-08): `dirtyCount` нь
+   *    ГҮЙЦЭТГЭЛИЙН илгээлтийн тоолуур — «Илгээх» товч, Ctrl+S (`publish`),
+   *    «ногоон: илгээгээгүй (N)» гурвуулаа түүнээс уншдаг. Обьёмын ноорог
+   *    тэнд орвол гүйцэтгэлийн ХООСОН илгээлт үүсгэх зам нээгдэнэ (обьём нь
+   *    ТУСДАА 2 шатат урсгалтай).
+   *
+   * ⚠️ ГЭХДЭЭ АЛДАГДАХААС ХАМГААЛНА: `pvPend` нь ноорогт (localStorage/
+   *    ArcGIS) ОГТ хадгалагддаггүй бөгөөд багц солиход `setPvPend({})`-ээр
+   *    устдаг. Урьд нь `dirtyCount === 0` тул таб хаахад хөтөч юу ч асуухгүй,
+   *    багц солиход ч асуухгүй — инженерийн хагас цагийн ажил нэг товшилтоор,
+   *    ямар ч мэдэгдэлгүй алга болдог байв. Тиймээс `beforeunload` ба
+   *    `confirmSwitch` ХОЁУЛАА энэ нийлбэрээр хамгаална.
+   */
+  const pvDirty = Object.keys(pvPend).length;
+  const unsavedCount = dirtyCount + pvDirty;
+
+  /**
    * ОБЬЁМЫН нүд бичигдэх үү — талбар нь байгаа БҮХ ажлын мөрд ТИЙМ.
    * Хуудсан дээрх ЦОРЫН ГАНЦ бөглөх цэг (мөрийн Обьёмоос гадна).
    *
@@ -1800,6 +1833,10 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    */
   const cellSeed = (r: SheetRow, b: number): string => {
     const raw = pending[cellKey(r.oid, b)];
+    /* ⚠️ ЦЭВЭРЛЭСЭН нүдийг ХООСОН нээнэ (2026-09-08): доорх хөрвүүлэлт нь
+       `""`-ийг хадгалагдсан утга руу унагаадаг тул хэрэглэгч цэвэрлээд
+       дахин нээхэд хуучин тоо буцаж ирж, «цэвэрлэгдээгүй» мэт харагдана. */
+    if (raw != null && raw.trim() === "") return "";
     const pct = editPct(raw);
     if (fillMode === "pct") {
       if (pct != null) return String(Math.round(pct * 1e6) / 1e4);
@@ -2124,14 +2161,28 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       // Мөр алга болсон, бүлгийн мөр, блок хасагдсан, эсвэл аль хэдийн ижил
       // утгатай (хооронд нь нийтлэгдсэн) бол — хаяна.
       // ⚠️ Бичигдэхгүй болсон нүдний ноорог утгагүй — хаяна.
+      /* ⚠️ ХУВИЙН БИЧЛЭГИЙГ (`%50`) ХУУЧИРСАН гэж ҮЗЭХГҮЙ (2026-09-08).
+         Урьд нь `Number.isFinite(Number(v))` гэж ТҮҮХИЙГЭЭР шалгадаг байсан
+         тул `Number("%50") = NaN` болж, ХУВИАР бөглөсөн БҮХ нүд сэргэлгүй
+         хаягддаг байв — хэрэглэгчид «агшин солигдсон» гэсэн ХУДАЛ шалтгаан
+         харагдана. Хувь горим нь мөрийн `Обьём`гүй ажлуудыг (Багц 3.1·9F-д
+         29.5%) бөглөх ЦОРЫН ГАНЦ зам тул тэр ажил бүхэлдээ алдагддаг.
+         Шалгуур нь `bagtsSheet`-ийн ЖИНХЭНЭ дүрэмтэй нэг байх ёстой. */
+      const okVal = isPctEdit(v)
+        ? editPct(v) != null
+        : v.trim() === "" || Number.isFinite(Number(v));
+      /* ⚠️ ГОРИМООР ШҮҮХГҮЙ хувийн бичлэгийг: `volMode` нь ОДООГИЙН `fillMode`-
+         оос хамаардаг тул хувиар бөглөсөн ноорогийг обьём горимд нээхэд дахин
+         хаяна. Хувийн бичлэг нь `sc.act[b]`-д (107/107 блокт бий) суудаг тул
+         обьёмын багана шаардахгүй — зөвхөн бүлэг биш байхыг шалгана. */
       const stale =
         !r ||
         !Number.isInteger(b) ||
         b < 0 ||
         b >= nBld ||
         r.group ||
-        !Number.isFinite(Number(v)) ||
-        !volMode(r, b);
+        !okVal ||
+        (!isPctEdit(v) && !volMode(r, b));
       if (stale) {
         dropped++;
         continue;
@@ -2386,7 +2437,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
 
   // Таб хаах/refresh — нийтлээгүй засвартай үед хөтөч анхааруулна.
   useEffect(() => {
-    if (!dirtyCount) return;
+    // ⚠️ Обьёмын ноорог ч энд тоологдоно (`unsavedCount`-ийн ⚠️).
+    if (!unsavedCount) return;
     const h = (e: BeforeUnloadEvent) => {
       e.preventDefault();
       // Chrome legacy — returnValue заавал онооно
@@ -2394,14 +2446,19 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     };
     window.addEventListener("beforeunload", h);
     return () => window.removeEventListener("beforeunload", h);
-  }, [dirtyCount]);
+  }, [unsavedCount]);
 
   /** Багц/хувилбар солихын өмнө нийтлээгүй засварыг баталгаажуулна. */
   const confirmSwitch = () =>
-    dirtyCount === 0 ||
+    unsavedCount === 0 ||
     window.confirm(
-      tr('Нийтлэгдээгүй {0} өөрчлөлт бий. Багц солих уу?', dirtyCount) + "\n" +
-        tr('(Нүдний засварууд ноорог болон хадгалагдаж, буцаж ирэхэд сэргээхийг санал болгоно.)'),
+      tr('Нийтлэгдээгүй {0} өөрчлөлт бий. Багц солих уу?', unsavedCount) + "\n" +
+        tr('(Нүдний засварууд ноорог болон хадгалагдаж, буцаж ирэхэд сэргээхийг санал болгоно.)') +
+        /* ⚠️ ОБЬЁМЫН ноорог нь ноорогт ХАДГАЛАГДДАГГҮЙ — «сэргээнэ» гэсэн
+           дээрх мөр түүнд ХАМААРАХГҮЙ тул үнэнийг тусад нь хэлнэ. */
+        (pvDirty
+          ? "\n" + tr('⚠ Инженерийн төлөвлөсөн обьёмын {0} нүд нь ноорогт хадгалагддаггүй — багц солиход БҮРМӨСӨН устана. Эхлээд «Обьём батлуулах» дарна уу.', pvDirty)
+          : ""),
     );
   /** Огнооны нүдний ХАДГАЛАГДСАН утга «YYYY-MM-DD» хэлбэрээр. */
   const origDay = (r: SheetRow, b: number, k: "s" | "e") =>
@@ -2813,6 +2870,9 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       setUnmovedWarn(ov2 && ov2.unmoved > 0 && act2
         ? describeUnmoved(ov2.unmovedKeys, act2.payload.rowKeys, sc.bld)
         : []);
+      /* ⚠️ Илгээсний ДАРАА ч тоолуурыг түлхнэ (дээрх ⚠️): энэ сешнд дахин мөр
+         нэмбэл дөнгөж илгээсэн мөртэй ижил түр oid авахгүй. */
+      if (act2?.payload.adds?.length) pushTmpOid(act2.payload.adds);
       setStaged(use2 ? act2 : null);
       setRows(ov2 ? ov2.rows : next.rows);
       /* ⚠️ `null ≠ 0` — илгээлт «Шинэчлэгдсэн огноо»-г хөндөөгүй бол архивынх. */
@@ -3636,7 +3696,9 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                         `pending`-ээс ТУСДАА `pvPend`-д хадгалагдана. */}
                     <PvCell
                       r={r}
-                      canEdit={canObyemEdit && !pvSub && !!sc?.f.plannedVol && !r.group}
+                      /* ⚠️ `r.oid >= 0` — түр (сөрөг) дугаартай НЭМСЭН мөрд
+                         засахыг ХААНА (`RO.plannedVolNewRow`-ийн ⚠️). */
+                      canEdit={canObyemEdit && !pvSub && !!sc?.f.plannedVol && !r.group && r.oid >= 0}
                       draft={pvPend[r.oid]}
                       preview={pvPreview?.get(r.oid)}
                       hasField={!!sc?.f.plannedVol}
@@ -4135,9 +4197,11 @@ function PvCell({
     ? RO.plannedVolGroup
     : !hasField
       ? RO.plannedVolNoField
-      : locked
-        ? RO.plannedVolLocked
-        : RO.plannedVol;
+      : r.oid < 0
+        ? RO.plannedVolNewRow
+        : locked
+          ? RO.plannedVolLocked
+          : RO.plannedVol;
 
   return (
     <td

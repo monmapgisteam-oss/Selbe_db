@@ -130,6 +130,21 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
   };
 
   const submit = async () => {
+    /*
+     * ⚠️ 2026-09-08: ЗАСВАРЫН зам нь `remove`-тэй ИЖИЛ хамгаалалттай болов.
+     *    `loadZov` OBJECTID уншиж чадаагүй үед `oid = 0` болдог ч
+     *    `editing = init.oid != null` тул маягт «Засах» горимд нээгддэг.
+     *    Тэр үед «Хадгалах» дарвал `saveZov`-ийн `if (d.oid)` нь `0` дээр
+     *    ХУДАЛ болж `updates` биш `adds` явуулж, хуучин мөр хэвээр үлдэн
+     *    ДАВХАРДСАН ШИНЭ зөвшөөрөл үүсдэг байв — алдаа ч гарахгүй, «хадгаллаа»
+     *    гэж хаагдана (`zovshoorol.ts:36-44`-т яг энэ ангиллын алдаа
+     *    2026-09-04-нд амьдаар тохиолдсоныг баримтжуулсан).
+     *    Устгах нь хамгаалагдсан атлаа хадгалах нь хамгаалалтгүй үлдсэн байв.
+     */
+    if (editing && !d.oid) {
+      setFail(tr('Мөрийн OBJECTID уншигдаагүй тул засах боломжгүй.'));
+      return;
+    }
     const e = validateZov(d, all);
     setErr(e);
     if (Object.values(e).some(Boolean)) return;

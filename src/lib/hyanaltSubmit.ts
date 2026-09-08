@@ -130,6 +130,45 @@ export function openReviewRow(
 export const dayTagOf = (fillMs: number) => `Гүйцэтгэл · ${dayLabel(fillMs)}`;
 
 /**
+ * ХУУЧИН (хуудасны шошгогүй) НЭРИЙГ ӨВЛӨХ ЁСТОЙ ЮУ?
+ *
+ * ⚠️ ЦЭВЭР ФУНКЦ, сүлжээгүй — `hyanaltSubmit.check.mjs` шууд шалгана.
+ *
+ * ⚠️ `sheetOid` ЗААВАЛ ТААРНА (2026-09-08-ны аудитын CRITICAL олдвор).
+ *    Урьд нь зөвхөн (багц·өдөр·компани)-гаар шалгадаг байв. Тэр үед НЭГ
+ *    нээлттэй хуучин мөр байхад тэр өдрийн БҮХ шинэ илгээлт (өөр хуудас,
+ *    өөр `sheetOid` ч гэсэн) шошгоо ХАЯДАГ байлаа — үүсгэсэн шинэ мөр өөрөө
+ *    нээлттэй тул дараагийнх нь бас шошгогүй болж, өөрийгөө тэжээх гогцоо
+ *    үүсдэг. Улмаар `groupWorks` (`bagts|ajil|company`) тэдгээрийг НЭГ Work
+ *    болгож нийлүүлж, зөвхөн хамгийн сүүлийн тойрог `current` болдог тул
+ *    өмнөх илгээлтүүд хянагчийн хуудсанд ОГТ гарахгүй, «Инженер хянаж байна»
+ *    төлөвт МӨНХӨД гацаж, архивт хэзээ ч ордоггүй байв (амьд баталгаа:
+ *    `guitsetgel_bugluh_hyanalt` OID 61·62·63·64·70 бүгд нэг нэртэй).
+ *
+ *    Тиймээс хуучин нэрийг ЗӨВХӨН ЯГ ЭНЭ илгээлтийн (`Эх_мөрийн_дугаар ===
+ *    sheetOid`) нээлттэй мөрөөс өвлөнө — өөр илгээлтийн нээлттэй мөр байгаа
+ *    нь энэ илгээлтээс шошго хасах шалтгаан БИШ. Ингэснээр тухайн илгээлтийн
+ *    ӨӨРИЙНХ нь түүх (ergelt тоолуур, буцаалтын түүх) тасрахгүй хэвээр үлдэнэ.
+ */
+export function hasOpenLegacy(
+  rows: readonly Attrs[],
+  bagts: string,
+  company: string,
+  legacyAjil: string,
+  sheetOid: number | null,
+): boolean {
+  if (sheetOid == null || sheetOid <= 0) return false;
+  return rows.some(
+    (r) =>
+      Number(r[F.sheetOid]) === sheetOid &&
+      String(r[F.bagts] ?? '') === bagts &&
+      String(r[F.company] ?? '') === company &&
+      String(r[F.ajil] ?? '') === legacyAjil &&
+      String(r[F.status] ?? '') !== STATUS.transferred,
+  );
+}
+
+/**
  * Нийтэлсэн гүйцэтгэлийг хяналтад бүртгэнэ.
  *
  * @param bagts    багцын нэр — «Багц 4-2» маягаар
@@ -175,13 +214,7 @@ export async function submitForReview(
      *    хүчин төгөлдөр болно.
      */
     const legacyAjil = `Гүйцэтгэл · ${dayLabel(fillMs)}`;
-    const openLegacy = rows.some(
-      (r) =>
-        String(r[F.bagts] ?? '') === bagts &&
-        String(r[F.company] ?? '') === company &&
-        String(r[F.ajil] ?? '') === legacyAjil &&
-        String(r[F.status] ?? '') !== STATUS.transferred,
-    );
+    const openLegacy = hasOpenLegacy(rows, bagts, company, legacyAjil, sheetOid);
     const ajil = !sheet || openLegacy ? legacyAjil : `${legacyAjil} · ${sheet}`;
     /*
      * ТОЙРГИЙН ДУГААР — тухайн (багц|ажил|компани) түлхүүрийн ХАМГИЙН ИХ + 1.

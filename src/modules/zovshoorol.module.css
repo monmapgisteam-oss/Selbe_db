@@ -11,10 +11,16 @@
 .h1 { margin: 0; font-size: 1.15rem; font-weight: 700; color: var(--ink); }
 .sub { margin: 4px 0 0; font-size: 0.82rem; color: var(--ink-3); }
 
+/* ⚠️ 2026-09-08 — .notice / .pack / .modal-ийн радиус var(--r-md) → var(--r-lg).
+   --r-md нь globals.css-д ОГТ зарлагдаагүй (тэнд --r-sm 2px · --r 3px ·
+   --r-lg 4px гурав л бий) бөгөөд энд fallback ч бичээгүй тул тэр гурван
+   border-radius зарлал БҮХЭЛДЭЭ хүчингүй болж, сав бүр 0 радиустай
+   дөрвөлжин зурагдаж порталын бусад картаас ялгарч байв. --r-lg нь энэ
+   түвшний жишиг: gazar / auth / docviewer-ийн .modal бүгд түүнийг авдаг. */
 .notice {
   padding: 16px 18px;
   border: 1px solid var(--line);
-  border-radius: var(--r-md);
+  border-radius: var(--r-lg);
   background: var(--surface);
   color: var(--ink-2);
   font-size: 0.88rem;
@@ -28,7 +34,7 @@
   margin-bottom: 14px;
   padding: 14px 16px;
   border: 1px solid var(--line);
-  border-radius: var(--r-md);
+  border-radius: var(--r-lg);
   background: var(--surface);
 }
 /* ⚠️ Зөвшөөрөөгүй зөвшөөрөлтэй багц нь БҮХЭЛДЭЭ ялгарна — гинж урт байвал
@@ -114,7 +120,7 @@
   max-height: 80vh;
   overflow-y: auto;
   border: 1px solid var(--line);
-  border-radius: var(--r-md);
+  border-radius: var(--r-lg);
   background: var(--surface);
   box-shadow: 0 18px 48px rgb(0 0 0 / 45%);
 }
@@ -220,7 +226,10 @@
   cursor: pointer;
 }
 .btn { color: var(--ink-2); background: var(--surface-2); }
-.primary { border-color: var(--hue); color: #06202a; background: var(--hue); font-weight: 600; }
+/* ⚠️ 2026-09-08 — #06202a → var(--hue-ink): цайвар горимд --hue (#2e7f8b)
+   дээрх #06202a нь 3.63:1 болж WCAG AA (4.5:1) давахгүй байв. --hue-ink нь
+   яг энэ («--hue дэвсгэр дээрх текст») зорилгоор globals.css-д тодорхойлогдсон. */
+.primary { border-color: var(--hue); color: var(--hue-ink); background: var(--hue); font-weight: 600; }
 .danger { border-color: color-mix(in srgb, var(--bad) 55%, var(--line)); color: var(--bad); background: transparent; }
 .danger:hover { background: color-mix(in srgb, var(--bad) 14%, transparent); }
 .btn:disabled, .primary:disabled, .danger:disabled { opacity: 0.5; cursor: default; }

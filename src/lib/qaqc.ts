@@ -448,10 +448,23 @@ export async function saveQaqc(
       success?: boolean;
       error?: { description?: string };
     }[];
-    const bad = res.find((r) => r.success === false);
+    /* ⚠️ `success !== true` (2026-09-08): урьд нь ЗӨВХӨН `=== false`-ыг
+       шалгадаг байсан тул `success` талбар БАЙХГҮЙ хариу чимээгүй давдаг. */
+    const bad = res.find((r) => r.success !== true);
     if (bad) {
       throw new Error(
         `${bad.error?.description || 'QAQC хадгалалт амжилтгүй'} (${done} мөр хадгалагдсан)`,
+      );
+    }
+    /* ⚠️ ХООСОН/ДУТУУ `updateResults` нь АЛДАА (2026-09-08): ArcGIS алдаагаа
+       HTTP 200-аар буцаадаг тул бичилт хэрэгжээгүй үед `updateResults` огт
+       ирэхгүй байж болно. Урьд нь `res = []` бол `find` нь `undefined` буцааж,
+       `done += 0` хийгээд «0 мөр хадгалагдлаа» гэсэн НОГООН амжилт харуулж,
+       дуудагч нь локал БА алсын ноорогийг устгаснаар бөглөсөн ажил бүрмөсөн
+       алга болдог байв. */
+    if (res.length !== chunk.length) {
+      throw new Error(
+        `QAQC хадгалалт баталгаажсангүй: ${chunk.length} мөр илгээснээс ${res.length} мөрийн хариу ирлээ (${done} мөр хадгалагдсан). Хуудсыг дахин ачаална уу — засвар хадгалагдаагүй байж магадгүй.`,
       );
     }
     done += res.length;
