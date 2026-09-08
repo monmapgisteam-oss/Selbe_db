@@ -2054,13 +2054,31 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    *    хамаагүй хортой: хүн ажлаа илгээж чадахгүй бол хуудас нь утгагүй.
    */
   const meKey = user?.username?.trim().toLowerCase() ?? '';
-  /** Ноорог хөндсөн БҮХ хүн — өөрийгөө оруулаад */
+  /**
+   * Ноорог хөндсөн БҮХ хүн — өөрийгөө оруулаад.
+   *
+   * ⚠️ `byMap` нь ЗӨВХӨН `pickDraft`-аас (сэргээлт ба нийлүүлэлт) тавигддаг тул
+   * ЭНЭ СЕШНД гараас бөглөсөн нүд түүнд ОРООГҮЙ байна — тэр нь `mineRef`-д л
+   * бий. Тиймээс `mineRef`-ийг ч тооцох ёстой (2026-09-08-ны эвдрэл: хоёулаа
+   * «Илгээх» идэвхтэй харагдаж байв). Дараалал нь:
+   *   А бөглөнө → `mineRef` дүүрнэ, `byMap` ХООСОН хэвээр
+   *   → `participants` = {} → `waitingOn` = [] → түгжээ ХЭЗЭЭ Ч асахгүй.
+   * Одоо А өөрөө оролцогч болж, Б-гийн нийлүүлэлт ирмэгц Б ч нэмэгдэнэ.
+   */
   const participants = useMemo(() => {
     const s = new Set<string>();
     for (const u of byMap.values()) if (u) s.add(u);
     for (const [u] of doneBy) if (u) s.add(u);
+    /* ⚠️ Өөрийн ГАРААС бичсэн нүд байвал би ч оролцогч. `pending` шалгалтгүй:
+       `mineRef` нь багц солиход цэвэрлэгддэг тул тэндэх түлхүүр нь энэ багцынх. */
+    if (meKey && mineRef.current.size) s.add(meKey);
     return s;
-  }, [byMap, doneBy]);
+    /* ⚠️ `pending`/`pendDate` нь ХАМААРАЛД: `mineRef` бол ref тул өөрөө дахин
+       бодолт өдөөдөггүй. Нүд бөглөх бүрд `pending` солигддог учир энэ хоёр нь
+       «эзэмшил өөрчлөгдсөн» гэсэн цорын ганц найдвартай дохио.
+       eslint-disable — `mineRef` нь ref, хамааралд орох ёсгүй. */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [byMap, doneBy, meKey, pending, pendDate]);
   /**
    * ХҮЛЭЭГДЭЖ БУЙ ОРОЛЦОГЧИД — «Илгээх»-ийг түгжиж буй хүмүүс.
    *

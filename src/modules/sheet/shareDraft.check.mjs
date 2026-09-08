@@ -309,3 +309,34 @@ console.log('\nshareDraft.check: ok');
     'багц солиход lastBodyRef тэглэгдэхгүй — шинэ багцын бичилт санамсаргүй алгасагдана');
 }
 console.log('✅ гүйцэтгэл — хямд at шалгалт · давхаргын кэш · дэмий бичилт таслах');
+
+/* ══════════ 10. ОРОЛЦОГЧИЙН ЭХ СУРВАЛЖ — 2 ЗАМ ══════════ */
+/**
+ * ⚠️ 2026-09-08-нд МЭДЭЭЛЭГДСЭН ЭВДРЭЛ (хоёр дахь удаа): хоёр цонхонд
+ * «Илгээх» ХОЁУЛАА идэвхтэй харагдаж байв.
+ *
+ * ШАЛТГААН: `participants` нь ЗӨВХӨН `byMap`-аас гардаг байсан ч `byMap` нь
+ * ЗӨВХӨН `pickDraft`-аас (сэргээлт · нийлүүлэлт) тавигддаг. Хэрэглэгч гараас
+ * бөглөж байхад эзэмшил нь `mineRef`-д л бичигддэг тул:
+ *   А бөглөнө → `mineRef` дүүрнэ, `byMap` ХООСОН → `participants` = {}
+ *   → `waitingOn` = [] → түгжээ ХЭЗЭЭ Ч асахгүй.
+ * Эзэмшлийн ХОЁР эх сурвалж (нийлүүлэгдсэн `byMap` + энэ сешний `mineRef`)
+ * ХОЁУЛАА тооцогдох ёстой.
+ */
+{
+  const FN = fs.readFileSync('src/modules/sheet/FillNew.tsx', 'utf8');
+  const pi = FN.indexOf('const participants = useMemo');
+  assert.ok(pi > 0, 'FillNew: participants олдсонгүй');
+  const pb = FN.slice(pi, FN.indexOf('const waitingOn', pi));
+  assert.ok(pb.includes('byMap.values()'),
+    'participants: нийлүүлэгдсэн эзэмшил (byMap) тооцогдохгүй байна');
+  assert.ok(pb.includes('mineRef.current.size'),
+    'participants: ЭНЭ СЕШНИЙ эзэмшил (mineRef) тооцогдохгүй — гараас бөглөсөн хүн оролцогч болохгүй, түгжээ хэзээ ч асахгүй');
+  assert.ok(pb.includes('doneBy'),
+    'participants: «дуусгасан» тэмдэглэгээтэй хүн тооцогдохгүй байна');
+  /* Нүд бөглөх бүрд дахин бодогдох ёстой (mineRef нь ref тул өөрөө өдөөхгүй) */
+  const deps = FN.slice(FN.indexOf('return s;', pi), FN.indexOf('const waitingOn', pi));
+  assert.ok(/\}, \[byMap, doneBy, meKey, pending, pendDate\]\)/.test(deps),
+    'participants: `pending`/`pendDate` хамааралд алга — mineRef өөрчлөгдөхөд дахин бодогдохгүй');
+}
+console.log('✅ оролцогч — byMap (нийлүүлсэн) БА mineRef (энэ сешн) хоёулаа');
