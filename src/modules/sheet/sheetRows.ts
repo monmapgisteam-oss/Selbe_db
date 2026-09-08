@@ -298,6 +298,14 @@ export async function loadSheetRows(opts: SheetRowOpts = {}): Promise<SheetRow[]
         const fld = sc.act[i];
         if (!fld) continue;                  // тэр блокт багана үүсээгүй
         out.push({
+          /* ⚠️ ЗААВАЛ `pkg.group` («Багц 2»), `pkg.label` («Багц 2 · 9 давхар»)
+             БИШ (2026-09-08). `blockProgress`-ийн түлхүүр `buildingKey(bagts,
+             block)` нь `bagtsKey()`-ээр нормчилдог бөгөөд тэр нь зай/тэмдэгт
+             хасдаг тул label орвол «БАГЦ29ДАВХАР|5/1» гэж тусдаа түлхүүр
+             үүсэж, 9F/12F хоёр хуудасны нэг блок PkgProg-д ХОЁР удаа гарна.
+             Одоо 9F=5/x, 12F=29/x гэж блокийн код ялгаатай тул нийлэхгүй —
+             гэвч тэр нь ЭХ ӨГӨГДЛИЙН санамсаргүй тохироо, гэрээ биш.
+             `sheetRows.check.mjs` энэ мөрийг барина. */
           bagts: pkg.group,
           block: sc.bld[i],
           date,

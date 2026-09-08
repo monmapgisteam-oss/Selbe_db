@@ -132,6 +132,27 @@ console.log('✅ ноорог алдагдах 3 зам хаагдсан — у�
 }
 console.log('✅ таб хаах/refresh — хадгалагдаж амжаагүй үед л зогсооно, өмнө нь илгээнэ');
 
+/* ── 4e. БУЦААГДСАН ИЛГЭЭЛТ ӨДӨР СОЛИГДСОН Ч СЭРГЭЭГДЭНЭ (2026-09-08, аудит
+   CRITICAL #3). Урьд нь ачаалах зам ЗӨВХӨН өнөөдрийн `sub|pkg|today`-г уншдаг
+   тул 09-04-нд буцаагдсан илгээлт 09-05-нд 0% харагдаж, гүйцэтгэгч юуг
+   засахаа мэдэхгүй байв (амьд: oid 59·60). Хоёр гэрээ: */
+{
+  /* (а) ачаалахад буцаагдсан илгээлтийг Эх_мөрийн_дугаараар уншиж давхарлана */
+  const load = between('const sr = view?.subOid', 'setSubReadErr(subErr);');
+  assert.ok(/OWNER\[f0\[HF\.status\]\] === 'company'/.test(load), 'буцаагдсан (company) төлөвийг ачаалах зам танихгүй');
+  assert.ok(load.includes('readSubmissionByOid(soid)'), 'буцаагдсан илгээлтийг Эх_мөрийн_дугаараар уншихгүй');
+  assert.ok(load.includes('rr.sub.payload.pkgKey === pkg.key'), 'өөр багцын илгээлт давхарлагдах эрсдэл — pkgKey тулгалт алга');
+  assert.ok(load.includes('!rr.sub.done'), 'батлагдсан (done) илгээлт давхарлагдах эрсдэл');
+  /* (б) publish нь буцаагдсан илгээлтийг ӨӨРИЙНХ НЬ өдрөөр update хийнэ —
+     өнөөдрийн шинэ мөр үүсгэвэл буцаагдсан мөр мөнхөд нээлттэй үлдэнэ */
+  const pub = between("const fillMs = staged && !staged.done && flow", 'const actR = await readActiveSubmission(pkg.key, fillMs);');
+  assert.ok(pub.includes("OWNER[flow[HF.status]] === 'company'"), 'publish буцаагдсан төлөвийг ялгахгүй');
+  assert.ok(pub.includes('staged.payload.fillMs'), 'publish буцаагдсан илгээлтийг өөрийнх нь өдрөөр бичихгүй');
+  assert.ok(pub.includes(': todayFillMs'), 'ердийн зам todayFillMs хэвээр байх ёстой');
+  assert.ok(!SRC.includes('const fillMs = todayFillMs;'), 'хуучин «үргэлж өнөөдөр» зам буцаж орсон');
+}
+console.log('✅ буцаагдсан илгээлт — өдөр солигдсон ч сэргээгдэж, өөрийнх нь өдрөөр дахин илгээгдэнэ');
+
 /* ── 4d. mergeDrafts — нэгж шалгуур (кодыг тусгаарлан ажиллуулна) ── */
 {
   const src = between('const mergeDrafts = (a: Draft | null, b: Draft | null): Draft | null => {', '\n};');

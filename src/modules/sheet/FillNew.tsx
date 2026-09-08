@@ -1346,6 +1346,37 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
             : await readActiveSubmission(pkg.key, todayFillMs);
           if (sr.ok) sub = sr.sub;
           else subErr = sr.error;
+          /*
+           * ⚠️ БУЦААГДСАН ИЛГЭЭЛТ — ӨДӨР СОЛИГДСОН Ч СЭРГЭЭНЭ (2026-09-08,
+           * 100% аудитын CRITICAL #3 «Буцаагдсан илгээлт МАРГААШ засагдахгүй»).
+           *
+           * Өнөөдрийн түлхүүрээр илгээлт олдоогүй (`sub == null`) БӨГӨӨД энэ
+           * хуудсын хяналтын мөр гүйцэтгэгчийн гар дээр (`OWNER === 'company'`
+           * — инженер буцаасан) байвал тэр илгээлтийг `Эх_мөрийн_дугаар`-аар
+           * уншиж давхарлана. Урьд нь `readActiveSubmission(todayFillMs)` нь
+           * ЗӨВХӨН өнөөдрийн мөрийг хайдаг тул 09-04-нд буцаагдсан илгээлтийг
+           * 09-05-нд нээхэд гүйцэтгэгч БҮХ нүдийг 0% хараад «юуг засах вэ» гэж
+           * мэдэхгүй, дахин бөглөдөг байв (амьд: oid 59·60 яг энэ төлөвт).
+           *
+           * ⚠️ ДАВХАР ТООЛОГДОХГҮЙ: буцаагдсан илгээлт архивт ОРООГҮЙ (архивт
+           *    зөвхөн `Шилжүүлсэн` ордог) тул давхарлах нь давхардал биш.
+           *    `publish` нь энэ илгээлтийн ӨӨРИЙН өдрийн түлхүүрээр (`staged.
+           *    payload.fillMs`) UPDATE хийнэ — шинэ өдрийн мөр үүсгэхгүй.
+           *
+           * ⚠️ `flowRef` нь `hyRows` ачаалагдсаны дараа л дүүрдэг — мөр
+           *    ачаалагдах агшинд хоосон байж болно; тэр үед `otherDaysInReview`
+           *    мэдэгдэл хэвээр, дараагийн ачаалалтад (багц солиод буцах) сэргэнэ.
+           *    Хянагчийн харагдацад (`view`) хамаарахгүй.
+           */
+          if (!sub && !view) {
+            const f0 = flowRef.current;
+            const soid = f0 ? Number(f0[HF.sheetOid]) : NaN;
+            if (f0 && OWNER[f0[HF.status]] === 'company' && Number.isInteger(soid) && soid > 0) {
+              const rr = await readSubmissionByOid(soid);
+              if (rr.ok && rr.sub && !rr.sub.done && rr.sub.payload.pkgKey === pkg.key) sub = rr.sub;
+              else if (!rr.ok) subErr = rr.error;
+            }
+          }
         }
         if (!alive) return;
         setSubReadErr(subErr);
@@ -2888,7 +2919,22 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
          ⚠️ `todayFillMs`-ээс уншина — хуудас нээх эффект ч түүгээр давхарладаг
          тул хоёулаа НЭГ өдөр дээр ажиллана (өөр өөрөөр бодвол `staged` ба
          бичих түлхүүр зөрж, ХУРИМТЛАЛ тасарна). */
-      const fillMs = todayFillMs;
+      /*
+       * ⚠️ БУЦААГДСАН ИЛГЭЭЛТИЙГ ӨӨРИЙНХ НЬ ӨДРӨӨР (2026-09-08). Ачаалах зам
+       *    инженер буцаасан илгээлтийг өдөр солигдсон ч давхарладаг болов
+       *    (дээрх ⚠️). Тэр илгээлтийг засаад дахин илгээхэд ӨНӨӨДРИЙН
+       *    түлхүүрээр ШИНЭ мөр үүсгэвэл: (а) буцаагдсан мөр мөнхөд нээлттэй
+       *    үлдэж `pendingAging`-д хуучирсаар; (б) `mergeBase` өдөр зөрсөн тул
+       *    нэгтгэхгүй — засвар нь буцаагдсан нүднүүдийг АГУУЛАХГҮЙ хагас
+       *    payload болно. Тиймээс `staged` буцаагдсан илгээлт бол ТҮҮНИЙ
+       *    өдрөөр — тэр мөрийг update хийж, `submitForReview` нь `OWNER ===
+       *    'company'` мөрийг «жинхэнэ дахин илгээлт» гэж таньж ergelt+1 шинэ
+       *    тойрог нээнэ (`openReviewRow`-ийн дүрэм). Өнөөдрийн шинэ ажил бол
+       *    урьдын адил `todayFillMs`.
+       */
+      const fillMs = staged && !staged.done && flow && OWNER[flow[HF.status]] === 'company'
+        ? staged.payload.fillMs
+        : todayFillMs;
       const actR = await readActiveSubmission(pkg.key, fillMs);
       if (!actR.ok) throw new Error(actR.error);
       const act = actR.sub;
