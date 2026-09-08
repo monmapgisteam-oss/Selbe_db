@@ -22,6 +22,7 @@ import s from './auth.module.css';
  */
 
 type User = { username: string; fullName: string; thumbnail: string | null; orgId: string | null };
+/** Эрхийн хүснэгт уншигдсан эсэх — татгалзлын ЖИНХЭНЭ шалтгааныг ялгана */
 export type AuthStatus = 'checking' | 'signed-in' | 'signed-out' | 'denied' | 'off';
 
 type AuthCtx = {
@@ -32,6 +33,8 @@ type AuthCtx = {
   /** Нэвтэрсэн хэрэглэгчийн үүрэг — эрхийн хүрээг үүгээр тогтооно */
   role: Role | null;
   error: string | null;
+  /** Эрхийн хүснэгт уншигдсан уу — `false` бол татгалзал нь СҮЛЖЭЭНИЙХ, эрхийнх БИШ */
+  permsRead: boolean;
   signIn: () => Promise<void>;
   signOut: () => Promise<void>;
   /** Алдааны мэдэгдлийг хаах — signed-out+error дэлгэцээс гарах гарц */
@@ -44,6 +47,7 @@ const Ctx = createContext<AuthCtx>({
   user: null,
   role: null,
   error: null,
+  permsRead: true,
   signIn: async () => {},
   signOut: async () => {},
   clearError: () => {},
@@ -74,6 +78,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [role, setRole] = useState<Role | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * ⚠️ Эрхийн ХУВААЛЦСАН хүснэгт уншигдсан эсэх (2026-09-08). `hasAccess` нь
+   * панелаас нэмсэн хэрэглэгчийг ЗӨВХӨН уншилт амжилттай үед нэвтрүүлдэг
+   * (fail-closed). Уншилт унасныг ЯЛГАЖ хэлэхгүй бол «эрх олгогдоогүй» гэсэн
+   * ХУДАЛ шалтгаан гарч, админ эрхийг нь дахин дахин шалгаж цаг алдана.
+   */
+  const [permsRead, setPermsRead] = useState(true);
   // ⚠️ registerOAuthInfos дууссаныг илтгэх promise — бүртгэл дуусаагүй үед getCredential
   //    PKCE redirect хийдэггүй тул эрт дарсан «Нэвтрэх» race-д унахаас сэргийлж
   //    signIn эхэндээ үүнийг хүлээнэ.
@@ -124,7 +135,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // ⚠️ Эрхийн ХУВААЛЦСАН хүснэгтийг ЭХЭЛЖ татна (super бол байхгүй үед үүсгэнэ)
         //    — панелаас нэмсэн хэрэглэгчийг таних тул нэвтрүүлэхээс ӨМНӨ ачаална.
         //    Хүснэгт үүсгэх эрхийг ЗӨВХӨН хатуу тохиргооны super-ээр тогтооно.
-        await initRemote(hard === 'super');
+        /*
+         * ⚠️ ҮР ДҮНГ ЗААВАЛ БАРИНА (2026-09-08, хэрэглэгч: «бүртгэсэн хэрнээ
+         * нэвтэрч болохгүй байна»). Урьд нь `await initRemote(...)` гэж утгыг
+         * нь ХАЯДАГ байв — гэтэл `hasAccess` нь панелаас нэмсэн хэрэглэгчийг
+         * ЗӨВХӨН `remoteLoaded === true` үед л нэвтрүүлдэг (fail-closed,
+         * localStorage-оо гараар засаад өөрийгөө нэмэхээс хамгаалдаг). Тиймээс
+         * хүснэгтийн уншилт унавал (сүлжээ, токен, түр саат) шинээр бүртгэсэн
+         * хүн «эрх олгогдоогүй» гэсэн дэлгэц хараад ҮЛДДЭГ байлаа — шалтгаан нь
+         * хаана ч гарахгүй, админ эрхийг нь дахин дахин шалгаж цаг алддаг.
+         *
+         * ⚠️ Хатуу жагсаалтын хүн (`roleForUser`) нөлөөлөхгүй — тэд remote-гүй
+         * нэвтэрнэ. Асуудал нь ЗӨВХӨН панелаас нэмсэн аккаунтуудад хамаарна.
+         */
+        const remoteOk = await initRemote(hard === 'super');
         /*
          * ⚠️ ХУВААРИЙН БАТЛАХ ХҮСНЭГТИЙГ ч мөн super нэвтрэхэд үүсгэнэ
          *    (2026-09-07-ны аудит). Урьд нь тэр нь ЗӨВХӨН super «Хуваарь»
@@ -166,6 +190,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const r = roleOf(info.username);
         // Нэвтрэх эрх: хатуу жагсаалт ЭСВЭЛ панелаас нэмсэн (store) хэрэглэгч.
         const admitted = orgOk && hasAccess(info.username);
+        /* ⚠️ ЗӨВХӨН панелаас нэмсэн (хатуу жагсаалтад БАЙХГҮЙ) хүнд утгатай:
+           хатуу үүрэгтэй хүн remote-гүй ч нэвтэрдэг тул тэдэнд худал
+           анхааруулга гаргах ёсгүй. */
+        setPermsRead(remoteOk || !!hard);
         console.info('[selbe] нэвтэрсэн:', info.username, '· orgId:', info.orgId, '· үүрэг:', r ?? '—', '· admitted:', admitted);
 
         if (!alive) return;
@@ -217,8 +245,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (document.visibilityState === 'hidden') return;
       try {
         // ⚠️ canCreate=false (poll-д хүснэгт үүсгэхгүй), trusted=хатуу super
-        await initRemote(false, roleForUser(user.username) === 'super');
+        const rok = await initRemote(false, roleForUser(user.username) === 'super');
         if (!alive) return;
+        /* ⚠️ Уншилтын байдлыг ч шинэчилнэ — татгалзлын дэлгэц ЖИНХЭНЭ шалтгааныг
+           харуулна (2026-09-08). Хатуу үүрэгтэй хүнд remote хамаагүй. */
+        setPermsRead(rok || !!roleForUser(user.username));
         const ok = hasAccess(user.username);
         // Эрх ХАСАГДВАЛ шууд хаана; БУЦААЖ СЭРГЭЭГДВЭЛ F5 шаардалгүй нээнэ
         setStatus((prev) => {
@@ -231,7 +262,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setRole(roleOf(user.username));
       } catch { /* сүлжээний тасалдал — эрхийг хэвээр үлдээнэ */ }
     };
-    const iv = setInterval(() => { void check(); }, 5 * 60_000);
+    /*
+     * ⚠️ ТАТГАЛЗСАН үед ХУРДАН дахин оролдоно (2026-09-08). Эрхийн хүснэгтийн
+     * уншилт унавал панелаас нэмсэн хэрэглэгч «эрх олгогдоогүй» дэлгэцэнд
+     * гацна — 5 минут хүлээх нь хэтэрхий урт, хэрэглэгч хуудсаа хааж админ
+     * руу залгана. Сүлжээ сэргэмэгц 15 секундэд өөрөө нээгдэнэ. Нэвтэрсэн
+     * (`signed-in`) үед хуучин 5 минут хэвээр — тэнд яарах шалтгаангүй.
+     */
+    const period = status === 'denied' ? 15_000 : 5 * 60_000;
+    const iv = setInterval(() => { void check(); }, period);
     const onVis = () => { if (document.visibilityState === 'visible') void check(); };
     document.addEventListener('visibilitychange', onVis);
     return () => {
@@ -287,7 +326,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const authorized = status === 'signed-in' || status === 'off';
 
   return (
-    <Ctx.Provider value={{ status, authorized, user, role, error, signIn, signOut, clearError: () => setError(null) }}>
+    <Ctx.Provider value={{ status, authorized, user, role, error, permsRead, signIn, signOut, clearError: () => setError(null) }}>
       {children}
     </Ctx.Provider>
   );
@@ -298,7 +337,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
  * үед л хөвөгч цонхоор гарна. Бусад үед `null` — нүүр хуудас чөлөөтэй харагдана.
  */
 export function AuthNotice() {
-  const { status, user, role, error, signIn, signOut, clearError } = useAuth();
+  const { status, user, role, error, permsRead, signIn, signOut, clearError } = useAuth();
   if (status !== 'denied' && !(status === 'signed-out' && error)) return null;
   // Татгалзсан шалтгаан: (a) үүрэггүй бүртгэл, эсвэл (b) буруу байгууллага
   const orgMismatch = !!user && !!AUTH.allowedOrgId && user.orgId !== AUTH.allowedOrgId;
@@ -327,10 +366,29 @@ export function AuthNotice() {
             )}
             {noRole ? (
               <>
-                <p className={s.sub}>
-                  {tr('Энэ бүртгэлд порталд хандах эрх олгогдоогүй байна. Эрх нээлгэхийг хүсвэл дараах хэрэглэгчийн нэрийг админд илгээнэ үү.')}
-                </p>
-                <p className={s.error}>{tr('Хэрэглэгч:')} {user?.username || '—'}</p>
+                {/*
+                  * ⚠️ ХОЁР ӨӨР ШАЛТГААНЫГ ЯЛГАНА (2026-09-08). `hasAccess` нь
+                  * панелаас нэмсэн хэрэглэгчийг ЗӨВХӨН эрхийн хүснэгт амжилттай
+                  * уншигдсан үед нэвтрүүлдэг. Уншилт унавал (сүлжээ, токен, түр
+                  * саат) «эрх олгогдоогүй» гэсэн ХУДАЛ шалтгаан гарч, шинээр
+                  * бүртгүүлсэн хүн админ руу дэмий хандаж, админ эрхийг нь
+                  * дахин дахин шалгаж цаг алддаг байв.
+                  */}
+                {permsRead ? (
+                  <>
+                    <p className={s.sub}>
+                      {tr('Энэ бүртгэлд порталд хандах эрх олгогдоогүй байна. Эрх нээлгэхийг хүсвэл дараах хэрэглэгчийн нэрийг админд илгээнэ үү.')}
+                    </p>
+                    <p className={s.error}>{tr('Хэрэглэгч:')} {user?.username || '—'}</p>
+                  </>
+                ) : (
+                  <>
+                    <p className={s.sub}>
+                      {tr('Эрхийн жагсаалтыг уншиж чадсангүй — таны эрх ХАСАГДААГҮЙ байж магадгүй. Холболтоо шалгаад хуудсыг дахин ачаална уу. Давтагдвал админд хандана уу.')}
+                    </p>
+                    <p className={s.error}>{tr('Хэрэглэгч:')} {user?.username || '—'}</p>
+                  </>
+                )}
               </>
             ) : (
               <>

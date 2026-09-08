@@ -1196,6 +1196,7 @@ const en: Record<string, string> = {
   "🔴 Эрхийн хүснэгт (Selbe_Permissions) НИЙТЭД нээлттэй байна — нэвтрээгүй хэн ч эрх засаж чадна. AGOL дээр item-ийн Share-ийг «Organization» болгоно уу.": "🔴 The permissions table (Selbe_Permissions) is PUBLIC — anyone, even unauthenticated, can edit permissions. Set the item’s Share to “Organization” in AGOL.",
   "алсын ноорогийг шалгаж чадсангүй": "could not check the remote draft",
   "«{0}» нэрээр хуучин нэмэлт эрх ({1}) үлдсэн байна — тэр аккаунтыг эхлээд «Буцаах»-аар сэргээж эрхийг нь арилгаад дахин нэмнэ үү.": "Leftover extra permissions ({1}) remain under the name “{0}” — restore that account with “Restore” first, clear its permissions, then add it again.",
+  "Эрхийн жагсаалтыг уншиж чадсангүй — таны эрх ХАСАГДААГҮЙ байж магадгүй. Холболтоо шалгаад хуудсыг дахин ачаална уу. Давтагдвал админд хандана уу.": "Could not read the permissions list — your access may NOT have been removed. Check your connection and reload the page. If this keeps happening, contact an admin.",
   "Илгээх": "Send",
   "илүүдэл": "surplus",
   "Илүүдэл": "Surplus",
