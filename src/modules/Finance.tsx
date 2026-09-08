@@ -1530,6 +1530,19 @@ function FullTable({
    */
   const WIDE: Record<string, number> = { Nariiwchilsan_turul: 360 };
 
+  /**
+   * ЕРДИЙН БАГАНЫ АНХНЫ ӨРГӨН — `FZ_DEF`-д ч, `WIDE`-д ч байхгүй үед.
+   *
+   * ⚠️ ЦАРЦСАН багананд ЗААВАЛ хэрэгтэй: түүний `left` нь өмнөх багануудын
+   * өргөний НИЙЛБЭР тул өргөн нь «агуулгаараа» гэж үлдвэл нийлбэр тооцогдохгүй.
+   */
+  const DEF_COL = 150;
+
+  /** Царцаалтад хэрэглэх БАТАЛГААТАЙ өргөн — хэзээ ч `undefined` буцаахгүй */
+  const wOf = (name: string, i: number): number => (
+    colW(name, i < 4 ? FZ_DEF[i + 1] : (WIDE[name] ?? DEF_COL)) ?? DEF_COL
+  );
+
   /** Тухайн баганын одоогийн өргөн (чирсэн бол түүнийг, эс бөгөөс анхныхыг) */
   const colW = (name: string, dflt?: number): number | undefined => {
     const v = (colStyle as Record<string, string>)[`--w-${name}`];
@@ -1546,9 +1559,7 @@ function FullTable({
    */
   const frzLeft = useMemo(() => {
     const out = [FZ_DEF[0]];
-    for (let i = 0; i < sc.frozen; i += 1) {
-      out.push(out[i] + (colW(cols[i]?.name ?? '', FZ_DEF[i + 1]) ?? FZ_DEF[i + 1]));
-    }
+    for (let i = 0; i < sc.frozen; i += 1) out.push(out[i] + wOf(cols[i]?.name ?? '', i));
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [colStyle, cols, sc.frozen]);
@@ -1773,7 +1784,8 @@ function FullTable({
   /** Нүдний өргөн ба (царцсан бол) зүүн шилжилт */
   const colSty = (c: FieldDef, i: number, head = false): CSSProperties => {
     const on = i < sc.frozen;
-    const w = colW(c.name, on ? FZ_DEF[i + 1] : WIDE[c.name]);
+    /* ⚠️ Царцсан бол өргөн нь ЗААВАЛ тодорхой (§`wOf`); эс бөгөөс агуулгаараа */
+    const w = on ? wOf(c.name, i) : colW(c.name, WIDE[c.name]);
     const st: CSSProperties = w != null ? { width: w, minWidth: w, maxWidth: w } : {};
     if (on) {
       st.left = frzLeft[i];
