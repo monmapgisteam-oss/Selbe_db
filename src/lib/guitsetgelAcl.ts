@@ -238,7 +238,16 @@ export function setAssign(
     const g = grant ? await grantFlowAccess(u, stage) : true;
     return { ok, g };
   });
-  const sync = run.then((r) => { markResult(u, r.ok); return r.ok; });
+  /*
+   * ⚠️ ЭРХ ОЛГОЛТЫН ҮР ДҮНГ ЗАЛГИХГҮЙ (2026-09-08). Бусад гурван ACL модульд
+   *    (`qaqc` · `huvaari` · `obyem`) энэ засвар орсон ч ЭНЭ модульд орхигдсон
+   *    байв — гэтэл урсгал нь хамгийн чухал нь. Урьд нь `markResult(u, r.ok)`
+   *    байсан тул: томилгооны мөр бичигдээд `grantFlowAccess` (харагдац олгох)
+   *    УНАВАЛ админд «амжилттай» гэж ХУДАЛ харагдана. Хэрэглэгч томилогдсон ч
+   *    «Гүйцэтгэл» харагдацгүй тул шатандаа ОГТ орж чадахгүй, панел дээр ямар ч
+   *    дохио байхгүй.
+   */
+  const sync = run.then((r) => { markResult(u, r.ok && r.g); return r.ok && r.g; });
   const granted = run.then((r) => r.g);
   return { ok: true, sync, granted };
 }
@@ -279,9 +288,17 @@ export function removeAssign(user: string, stage: Stage, revoke = true): { sync:
      *    ДАХИН уншина. Хэрэглэгч ямар нэг шатанд байвал (өөр шат ч бай)
      *    түүний эрхийг нь тэр томилгоо хариуцна, энд буцааж авахгүй.
      */
-    if (revoke && !stageOfUser(u)) await revokeFlowAccess(u, stage).catch(() => {});
-    markResult(u, ok);
-    return ok;
+    /*
+     * ⚠️ ЭРХ БУЦААЛТЫН ҮР ДҮНГ ЗАЛГИХГҮЙ (2026-09-08-ны хоёр дахь шалгалт).
+     *    Урьд нь `.catch(() => {})` гэж алдааг чимээгүй иддэг байв: `__flow__:`
+     *    мөр устсан ч харагдацын буцаалт (`revokeFlowAccess` → `setUser`)
+     *    ArcGIS-д унавал админд «амжилттай» гэж ХУДАЛ харагдана. Тэр хүн
+     *    томилгоогүй атлаа «Гүйцэтгэл» харагдацаа хадгалж үлдэнэ — `qaqc`,
+     *    `huvaari`, `obyem` гуравт 2026-09-08-нд зассан ЯГ ИЖИЛ алдаа.
+     */
+    const g = revoke && !stageOfUser(u) ? await revokeFlowAccess(u, stage).catch(() => false) : true;
+    markResult(u, ok && g);
+    return ok && g;
   });
   return { sync };
 }
@@ -356,7 +373,15 @@ async function grantFlowAccess(user: string, stage: Stage): Promise<boolean> {
  * · Панелаас нэмсэн, зөвхөн урсгалын хүн → `guitsetgel` харагдацыг хасна
  *   (үлдсэн харагдац нь хэвээр — админ хүсвэл панелаас бүрмөсөн устгана).
  */
-async function revokeFlowAccess(user: string, stage: Stage): Promise<void> {
+/**
+ * ⚠️ ҮР ДҮНГЭЭ БУЦААНА (2026-09-08-ны хоёр дахь шалгалт). Урьд нь
+ * `Promise<void>` байсан тул бүх салаа `setUser`/`clearOverride`-ийн
+ * амжилтыг ХАЯДАГ байв — дуудагч тал (`removeAssign`) «эрх буцаагдсан»
+ * гэж үзэж админд амжилттай гэж мэдээлнэ, гэтэл ArcGIS дээр харагдац нь
+ * ҮЛДСЭН байж болно. `qaqc`/`huvaari`/`obyem`-ийн `syncCaps` нь үр дүнгээ
+ * буцаадаг — энэ модуль тэдэнтэй тэнцэв.
+ */
+async function revokeFlowAccess(user: string, stage: Stage): Promise<boolean> {
   const { resolveBaseAccess, roleOf, setUser, clearOverride } = await import('./permissions');
   const cur = resolveBaseAccess(user);
   /*
@@ -364,11 +389,10 @@ async function revokeFlowAccess(user: string, stage: Stage): Promise<void> {
    * Урьд нь хатуу тохиргооны устгагдсан хүний хуучирсан томилгоог ✕-ээр хасахад
    * `clearOverride` tombstone-ыг нь арчиж, тэр хүн дахин нэвтэрдэг байв.
    */
-  if (!cur) return;
+  if (!cur) return true;
   const base = roleForUser(user);
   if (base && FLOW_ROLES.has(base)) {
-    await clearOverride(user);
-    return;
+    return await clearOverride(user);
   }
   const curRole = roleOf(user);
   const baseViews = base ? ROLE_ACCESS[base].views : null;
@@ -378,11 +402,10 @@ async function revokeFlowAccess(user: string, stage: Stage): Promise<void> {
   if (base) {
     const b = ROLE_ACCESS[base];
     if (role === base && cur.docs === b.docs && viewsEqual(views, b.views)) {
-      await clearOverride(user);
-      return;
+      return await clearOverride(user);
     }
   }
-  await setUser(user, { views, docs: cur.docs }, role);
+  return await setUser(user, { views, docs: cur.docs }, role);
 }
 
 /**

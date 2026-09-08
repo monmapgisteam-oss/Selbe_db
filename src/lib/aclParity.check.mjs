@@ -280,3 +280,62 @@ console.log('✅ HuvaariAcl · ObyemAcl — ALL_BAGTS хамгаалалтад �
 console.log('✅ GuitsetgelAcl — orphanFail эцэг бүрэлдэхүүнд, нэг удаа');
 
 console.log('\naclParity.check: ok');
+
+/* ══════════ 10. 2026-09-08-ны ХОЁР ДАХЬ ШАЛГАЛТЫН ГЭРЭЭ ══════════ */
+/**
+ * ⚠️ Эхний шалгалт 15 алдаа зассан ч дараах ЦООРХОЙнууд үлдсэн байв —
+ * бүгд «ижил кодын нэгд нь л засвар хүрсэн» ижил хэв шинжтэй.
+ */
+{
+  /* (а) `guitsetgelAcl.setAssign` — 3 модульд зассан `r.ok && r.g` энд орхигдсон */
+  const ga = readCode('src/lib/guitsetgelAcl.ts');
+  assert.equal((ga.match(/markResult\(u,\s*r\.ok\)/g) ?? []).length, 0,
+    'guitsetgelAcl: markResult(u, r.ok) үлдсэн — эрх олголтын уналт админд ХУДАЛ «амжилттай» гэж харагдана');
+  /* ⚠️ `removeAssign` нь бусад модулиас ӨӨР бүтэцтэй (`{sync}` л буцаана,
+     `r.g` талбаргүй) тул тэнд `markResult(u, ok && g)` хэлбэртэй. Чухал нь
+     ХОЁУЛАА эрхийн үр дүнг барих явдал, хэлбэр нь биш. */
+  assert.ok(ga.includes('markResult(u, r.ok && r.g)'),
+    'guitsetgelAcl.setAssign: эрх ОЛГОЛТЫН үр дүн (`r.g`) шалгагдахгүй байна');
+  assert.ok(ga.includes('markResult(u, ok && g)'),
+    'guitsetgelAcl.removeAssign: эрх БУЦААЛТЫН үр дүн шалгагдахгүй байна');
+  /* `revokeFlowAccess` нь үр дүнгээ буцаана — `void` бол дуудагч мэдэхгүй */
+  assert.ok(ga.includes('async function revokeFlowAccess(user: string, stage: Stage): Promise<boolean>'),
+    'guitsetgelAcl: revokeFlowAccess нь Promise<boolean> байх ёстой (үр дүнгээ хаяхгүй)');
+
+  /* (б) `syncCaps` нь ГАРААР олгосон эрхийг устгах ёсгүй */
+  for (const f of ['src/lib/huvaariAcl.ts', 'src/lib/obyemAcl.ts']) {
+    const s = readCode(f);
+    const i = s.indexOf('async function syncCaps');
+    assert.ok(i > 0, `${f}: syncCaps олдсонгүй`);
+    const b = s.slice(i, i + 1600);
+    assert.ok(b.includes('c.capsOf(user)'),
+      `${f}: syncCaps нь одоогийн эрхийг УНШИХГҮЙ байна — гараар олгосон эрхийг чимээгүй устгана`);
+    assert.ok(!/toggleCap\(user,\s*'\w+',\s*roles\.includes/.test(b),
+      `${f}: syncCaps нь болзолгүй toggleCap хэрэглэсээр байна`);
+    assert.ok(b.includes('const none = !wantA && !wantB;'),
+      `${f}: syncCaps нь «хуваарилалт бүхэлдээ арилах» тохиолдлыг ялгах ёстой`);
+  }
+
+  /* (в) UserAdmin — `plan`/`obyem` салаанд `r.ok` шалгалт */
+  const ua = readCode('src/components/UserAdmin.tsx');
+  assert.equal((ua.match(/if \(!r\.ok\) \{/g) ?? []).length, 3,
+    'UserAdmin.flipCap: `r.ok` шалгалт ЯГ 3 салаанд (qaqc·plan·obyem) байх ёстой — эс бөгөөс ТӨӨРӨГДҮҮЛСЭН алдаа гарна');
+  /* Хоосон багц нь ALL руу унана (`??` нь `[]`-г NULL гэж үзэхгүй) */
+  assert.ok(!/cur\?\.bagts \?\? \[(HUVAARI|OBYEM)_ALL_BAGTS\]/.test(ua),
+    'UserAdmin: `cur?.bagts ?? [ALL]` нь хоосон массивыг дамжуулж `{ok:false}` үүсгэнэ — `?.length ?` шалгах ёстой');
+  /* `add()` нь нэмэлт эрхийн өнчин мөрийг ч шалгана */
+  const ai = ua.indexOf('const add = () =>');
+  assert.ok(ua.slice(ai, ai + 3600).includes('capsOf(key)'),
+    'UserAdmin.add(): өнчин `__cap__:` мөр шалгагдахгүй — buцаах аргагүй эрх (finRow) чимээгүй наалдана');
+  /* Унасан мөрийн ноорог үлдэнэ */
+  assert.ok(ua.includes('!failedKeys.has(k)'),
+    'UserAdmin: унасан мөрийн ноорог арчигдаж байна — админд дахин оролдох зам үлдэхгүй');
+  /* Панел хаагдахад салангид төлөв цэвэрлэгдэнэ */
+  const ri = ua.indexOf('const requestClose = () =>');
+  const rb = ua.slice(ri, ri + 1400);
+  for (const st of ['setSel(new Set())', 'setCapErr(new Map())']) {
+    assert.ok(rb.includes(st),
+      `UserAdmin.requestClose: ${st} алга — панел дахин нээхэд хуучин сонголт/алдаа үлдэнэ`);
+  }
+}
+console.log('✅ хоёр дахь шалгалт — guitsetgel r.g · syncCaps · r.ok×3 · cap orphan · ноорог үлдэх');

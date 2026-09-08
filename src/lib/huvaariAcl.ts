@@ -171,9 +171,30 @@ async function pushHuvaari(user: string): Promise<boolean> {
 async function syncCaps(user: string, roles: PlanRole[]): Promise<boolean> {
   try {
     const c = await import('./caps');
-    const a = await c.toggleCap(user, 'plan', roles.includes('author'));
-    const b = await c.toggleCap(user, 'planApprove', roles.includes('approver'));
-    return a && b;
+    /*
+     * ⚠️ ЗӨВХӨН ХЭРЭГТЭЙГ НЬ ХӨНДӨНӨ (2026-09-08). Урьд нь үүрэг байхгүй
+     * бол `toggleCap(u, cap, false)` гэж БОЛЗОЛГҮЙ унтраадаг байв — тэр нь
+     * тухайн эрхийг ЯМАР ЧЯМАР ЗАМААР олгосныг үл ялгана. Админ гараар
+     * («Нэмэлт эрх» унтраалгаар) олгосон эрхийг энэ хуваарилалт чимээгүй
+     * УСТГАДАГ байлаа: жиш. `plan` эрхийг гараар авсан хүнд энэ хуудсаас
+     * ЗӨВХӨН `approver` үүрэг олгоход `plan` нь хасагдана.
+     *
+     * ДҮРЭМ: үүрэг БАЙВАЛ эрхийг олгоно (дутуу бол нөхнө). Үүрэг БАЙХГҮЙ
+     * бол — тухайн эрхийг зөвхөн НӨГӨӨ үүрэг ч байхгүй үед л хасна. Өөрөөр
+     * хэлбэл хуваарилалт бүхэлдээ арилах үед (`removeAssign` → `roles=[]`)
+     * хоёр эрхийг ХОЁУЛАНГ нь буцаана — тэр нь хуучин зан хэвээр.
+     */
+    const cur = c.capsOf(user);
+    const wantA = roles.includes('author');
+    const wantB = roles.includes('approver');
+    /* Хуваарилалт бүхэлдээ хасагдаж байна уу (үүрэг огт үлдээгүй) */
+    const none = !wantA && !wantB;
+    const next = new Set(cur);
+    if (wantA) next.add('plan'); else if (none) next.delete('plan');
+    if (wantB) next.add('planApprove'); else if (none) next.delete('planApprove');
+    /* Өөрчлөлтгүй бол ArcGIS руу дэмий бичихгүй */
+    if (next.size === cur.length && cur.every((x) => next.has(x))) return true;
+    return await c.setCaps(user, [...next]);
   } catch {
     return false;
   }

@@ -178,9 +178,22 @@ async function pushObyem(user: string): Promise<boolean> {
 async function syncCaps(user: string, roles: ObyemRole[]): Promise<boolean> {
   try {
     const c = await import('./caps');
-    const a = await c.toggleCap(user, 'obyemEdit', roles.includes('editor'));
-    const b = await c.toggleCap(user, 'obyemApprove', roles.includes('approver'));
-    return a && b;
+    /*
+     * ⚠️ ЗӨВХӨН ХЭРЭГТЭЙГ НЬ ХӨНДӨНӨ (2026-09-08) — `huvaariAcl.syncCaps`-ийн
+     * ижил үндэслэл. Урьд нь үүрэг байхгүй бол эрхийг БОЛЗОЛГҮЙ унтраадаг тул
+     * админ гараар («Нэмэлт эрх» унтраалгаар) олгосон эрх чимээгүй УСТДАГ байв.
+     * ДҮРЭМ: үүрэг байвал олгоно; үүрэг байхгүй бол зөвхөн хуваарилалт
+     * БҮХЭЛДЭЭ арилах үед (`roles=[]`) хасна.
+     */
+    const cur = c.capsOf(user);
+    const wantA = roles.includes('editor');
+    const wantB = roles.includes('approver');
+    const none = !wantA && !wantB;
+    const next = new Set(cur);
+    if (wantA) next.add('obyemEdit'); else if (none) next.delete('obyemEdit');
+    if (wantB) next.add('obyemApprove'); else if (none) next.delete('obyemApprove');
+    if (next.size === cur.length && cur.every((x) => next.has(x))) return true;
+    return await c.setCaps(user, [...next]);
   } catch {
     return false;
   }

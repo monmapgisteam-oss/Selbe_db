@@ -230,6 +230,21 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     if (draftsRef.current.size > 0
       && !window.confirm(tr('Хадгалаагүй өөрчлөлт байна. Хадгалалгүй гарах уу?'))) return;
     setDrafts(new Map());
+    /*
+     * ⚠️ САЛАНГИД ТӨЛӨВҮҮДИЙГ ч ЦЭВЭРЛЭНЭ (2026-09-08). Панел нь `open=false`
+     * үед `return null` хийдэг ч UNMOUNT БОЛОХГҮЙ (эцэг нь prop-оор удирдана)
+     * тул эдгээр нь дараагийн нээлт хүртэл үлддэг байв:
+     *   · `capErr` — аль хэдийн засагдсан алдааны улаан тэмдэг дахин гарна;
+     *   · `sel` — сонголт үлдэж, нээмэгц «N сонгосон» бөөнөөр устгах зурвас
+     *     санамсаргүй идэвхтэй харагдана (АЮУЛТАЙ);
+     *   · `saved`/`addErr`/`q` — хуучин мэдэгдэл, хайлт төөрөгдүүлнэ.
+     * Ноорог нь дээр цэвэрлэгдсэн тул эрхийн алдагдал үүсэхгүй.
+     */
+    setSel(new Set());
+    setCapErr(new Map());
+    setSaved(null);
+    setAddErr('');
+    setQ('');
     onClose();
   };
 
@@ -455,8 +470,21 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
       const roles = cur?.roles ?? [];
       const next = on ? roles.filter((x) => x !== role) : [...new Set([...roles, role])];
       const r = next.length
-        ? setHuvaariAssign(u.username, next, cur?.bagts ?? [HUVAARI_ALL_BAGTS])
+        ? setHuvaariAssign(u.username, next, cur?.bagts?.length ? cur.bagts : [HUVAARI_ALL_BAGTS])
         : removeHuvaariAssign(u.username);
+      /*
+       * ⚠️ `r.ok`-ЫГ ЗААВАЛ ШАЛГАНА (2026-09-08). QAQC салаанд байгаа энэ
+       *    хамгаалалт энд ХУУЛАГДААГҮЙ байв. `set*Assign` нь дөрвөн нөхцөлд
+       *    `{ok:false}` буцаадаг (хоосон нэр · super · үүрэггүй · багцгүй) ба
+       *    тэр үед ЛОКАЛД Ч БИЧИГДЭХГҮЙ, `sync`/`granted` нь `undefined`.
+       *    Шалгахгүй бол `Promise.all` нь `false` өгч «ArcGIS-т бичигдсэнгүй»
+       *    гэсэн ТӨӨРӨГДҮҮЛСЭН алдаа гарна: админ «дахин синк» дарна, гэтэл
+       *    dirty-set хоосон тул юу ч болохгүй — эрх ХЭЗЭЭ Ч олгогдохгүй.
+       */
+      if (!r.ok) {
+        setCapErr((prev) => new Map(prev).set(u.username.toLowerCase(), true));
+        return;
+      }
       /*
        * ⚠️ `sync` ба `granted` ХОЁУЛАНГ нь хүлээнэ (2026-09-08) — QAQC салааны
        *    ижил загвар. Урьд нь зөвхөн `sync`-ийг хардаг байсан тул эрхийн
@@ -506,8 +534,21 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
       const roles = cur?.roles ?? [];
       const next = on ? roles.filter((x) => x !== role) : [...new Set([...roles, role])];
       const r = next.length
-        ? setObyemAssign(u.username, next, cur?.bagts ?? [OBYEM_ALL_BAGTS])
+        ? setObyemAssign(u.username, next, cur?.bagts?.length ? cur.bagts : [OBYEM_ALL_BAGTS])
         : removeObyemAssign(u.username);
+      /*
+       * ⚠️ `r.ok`-ЫГ ЗААВАЛ ШАЛГАНА (2026-09-08). QAQC салаанд байгаа энэ
+       *    хамгаалалт энд ХУУЛАГДААГҮЙ байв. `set*Assign` нь дөрвөн нөхцөлд
+       *    `{ok:false}` буцаадаг (хоосон нэр · super · үүрэггүй · багцгүй) ба
+       *    тэр үед ЛОКАЛД Ч БИЧИГДЭХГҮЙ, `sync`/`granted` нь `undefined`.
+       *    Шалгахгүй бол `Promise.all` нь `false` өгч «ArcGIS-т бичигдсэнгүй»
+       *    гэсэн ТӨӨРӨГДҮҮЛСЭН алдаа гарна: админ «дахин синк» дарна, гэтэл
+       *    dirty-set хоосон тул юу ч болохгүй — эрх ХЭЗЭЭ Ч олгогдохгүй.
+       */
+      if (!r.ok) {
+        setCapErr((prev) => new Map(prev).set(u.username.toLowerCase(), true));
+        return;
+      }
       /*
        * ⚠️ `sync` ба `granted` ХОЁУЛАНГ нь хүлээнэ (2026-09-08) — QAQC салааны
        *    ижил загвар. Урьд нь зөвхөн `sync`-ийг хардаг байсан тул эрхийн
@@ -736,9 +777,19 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
      * хэвээр үлдэнэ. Урьд нь `new Map()` бүгдийг болзолгүй арчиж, дундуур
      * хийсэн засвар анхааруулгагүй алга болдог байв.
      */
+    /*
+     * ⚠️ УНАСАН МӨРИЙН НООРОГ ҮЛДЭНЭ (2026-09-08-ны хоёр дахь шалгалт). Урьд нь
+     * `snapshot`-ийн БҮХ бичлэг болзолгүй арчигддаг байв — амжилттай, амжилтгүй
+     * ялгаагүй. Үр дүнд нь ArcGIS бичилт унасан мөрийн засвар ноорогоос ч
+     * арилж, админд ДАХИН ОРОЛДОХ зам үлддэггүй: «N амжилтгүй» гэсэн тоо
+     * харагдана атал юуг нь дахин хадгалахаа мэдэхгүй, ноорог нь алга.
+     * Одоо унасан түлхүүр ноорогтоо үлдэж, «Хадгалах» товч идэвхтэй хэвээр —
+     * сүлжээ сэргэмэгц нэг товшилтоор дахин илгээгдэнэ.
+     */
+    const failedKeys = new Set(failed.map((x) => x.toLowerCase()));
     setDrafts((prev) => {
       const m = new Map(prev);
-      for (const [k, d] of snapshot) if (m.get(k) === d) m.delete(k);
+      for (const [k, d] of snapshot) if (m.get(k) === d && !failedKeys.has(k)) m.delete(k);
       return m;
     });
     setSaving(false);
@@ -791,6 +842,20 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
       [listHuvaariAssigns().some((a) => a.user === key), tr('Хуваарийн эрх')],
       [listObyemAssigns().some((a) => a.user === key), tr('Инженерийн обьёмын эрх')],
     ];
+    /*
+     * ⚠️ НЭМЭЛТ ЭРХ (`__cap__:`) ч мөн ӨНЧИН ҮЛДЭНЭ (2026-09-08-ны хоёр дахь
+     *    шалгалт). Дээрх дөрөв нь ЗӨВХӨН багцын хуваарилалтыг барьдаг ч эрх нь
+     *    ТУСДАА мөрөнд байдаг: аккаунт устгахад `setCaps(u, [])` унавал тэр мөр
+     *    ArcGIS дээр үлдэж, ижил нэрээр дахин нэмэхэд `finRow` (санхүүгийн мөр
+     *    УСТГАХ — буцаах арга БАЙХГҮЙ), `zovshoorol`, `butets` зэрэг эрх
+     *    чимээгүй наалддаг байв. Энэ нь бусад дөрвөөс ЭРСДЭЛТЭЙ: тэдгээр нь
+     *    багцаар хязгаарлагддаг, энэ нь хязгааргүй.
+     */
+    const orphanCaps = capsOf(key);
+    if (orphanCaps.length) {
+      setAddErr(tr('«{0}» нэрээр хуучин нэмэлт эрх ({1}) үлдсэн байна — тэр аккаунтыг эхлээд «Буцаах»-аар сэргээж эрхийг нь арилгаад дахин нэмнэ үү.', n, String(orphanCaps.length)));
+      return;
+    }
     const stuck = orphan.find(([hit]) => hit);
     if (stuck) {
       setAddErr(tr('«{0}» нэрээр хуучин хуваарилалт үлдсэн байна — «{1}» хуудсанд ✕ дарж арилгаад дахин нэмнэ үү.', n, stuck[1]));
