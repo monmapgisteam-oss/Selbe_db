@@ -255,17 +255,39 @@ export async function loadRemoteDraft(pkgKey: string): Promise<RemoteDraft | nul
  * ⚠️ Давхардсан мөрийг ЦЭВЭРЛЭНЭ — эс бөгөөс уншилт хуучин мөрийг сонгож
  *    «хадгалсан ч эргэж ирэхгүй» гэсэн чимээгүй алдаа үүсгэнэ.
  */
+/**
+ * ⚠️ 2026-09-08: `boolean`-аас `{ok, error}` болов. Урьд нь ДОЛООН өөр
+ * шалтгаан (хэт том · нэвтрээгүй · хүснэгт олдсонгүй · эзэн танигдсангүй ·
+ * уншилт унасан · бичилт татгалзсан · сүлжээ) ганц `false` болж дэлгэцэд
+ * «ArcGIS-д хуулагдсангүй» гэж л гардаг байв — хэрэглэгч ч, засварлагч ч
+ * ЯГ ЮУ болсныг мэдэх аргагүй. Одоо шалтгаан нь дэлгэц ба консолд гарна.
+ *
+ * ⚠️ `tableUrl(true)` — super нэвтэрсэн бол хүснэгт байхгүй үед ҮҮСГЭНЭ.
+ *    Бусад хэрэглэгчид хүснэгт үүсэх хүртэл «олдсонгүй» гэж харна — тэр нь
+ *    зөв: тэдэнд үүсгэх эрх байхгүй, super нэг удаа нэвтэрмэгц шийдэгдэнэ.
+ */
+export type RemoteSave = { ok: true } | { ok: false; error: string };
+
 export async function saveRemoteDraft(
   pkgKey: string,
   at: number,
   payload: string,
-): Promise<boolean> {
-  if (payload.length > REMOTE_MAX) return false;
+): Promise<RemoteSave> {
+  if (payload.length > REMOTE_MAX) {
+    return { ok: false, error: tr('ноорог хэт том ({0} тэмдэгт, дээд {1})', String(payload.length), String(REMOTE_MAX)) };
+  }
   try {
     const auth = await getAuth();
-    if (!auth) return false;
+    if (!auth) return { ok: false, error: tr('нэвтрээгүй эсвэл токен дууссан') };
     const url = await tableUrl(true);
-    if (!url) return false;
+    if (!url) {
+      return {
+        ok: false,
+        error: ownerMismatch
+          ? tr('«{0}» хүснэгтийн эзэн танигдсангүй — super-т reassign хийнэ үү', TITLE)
+          : tr('«{0}» хүснэгт олдсонгүй — super админ нэг удаа нэвтэрч үүсгэнэ', TITLE),
+      };
+    }
     const fl = await layer(url);
     const dkey = keyOf(auth.user, pkgKey);
     const found = await fl.queryFeatures({
@@ -287,10 +309,20 @@ export async function saveRemoteDraft(
       ...(dupes.length ? { deleteFeatures: dupes.map((objectId) => ({ objectId })) } : {}),
     };
     const r = await fl.applyEdits(edit as Parameters<typeof fl.applyEdits>[0]);
-    const ok = [...(r.addFeatureResults ?? []), ...(r.updateFeatureResults ?? [])];
-    return ok.length > 0 && ok.every((x) => x.error == null);
-  } catch {
-    return false;
+    const res = [...(r.addFeatureResults ?? []), ...(r.updateFeatureResults ?? [])];
+    if (!res.length) return { ok: false, error: tr('ArcGIS бичилтийн үр дүн хоосон буцаав') };
+    /* ⚠️ ArcGIS мөр бүрийн алдааг `error` талбарт буцаадаг — HTTP 200-тай.
+       Эрхгүй (`Editing` capability, эсвэл org гишүүн биш) бол энд илэрнэ. */
+    const bad = res.find((x) => x.error != null);
+    if (bad) {
+      const e = bad.error as { message?: string; description?: string } | undefined;
+      return { ok: false, error: tr('ArcGIS татгалзав: {0}', e?.message ?? e?.description ?? String(bad.error)) };
+    }
+    return { ok: true };
+  } catch (e) {
+    /* ⚠️ Консолд ч бичнэ — дэлгэцийн богино мессежээс бүтэн шалтгаан харагдана */
+    console.error('[selbe] ноорог алсад хадгалагдсангүй:', e);
+    return { ok: false, error: String((e as Error)?.message ?? e) };
   }
 }
 
