@@ -362,6 +362,14 @@ export function Huvaari() {
   const [blk, setBlk] = useState(0);
   const [takt, setTakt] = useState(7);
   const [drag, setDrag] = useState<Drag | null>(null);
+  /**
+   * ЧИРЭЛТИЙГ БУЦААХ мэдээлэл — popup-ыг ЦУЦЛАХАД сэргээнэ.
+   *
+   * ⚠️ `null` = цуцлахад буцаах зүйлгүй (мөрөөс товшиж нээсэн цонх). Чирэлтээр
+   *    нээгдсэн үед л дүүрнэ; «Тавих», «Арилгах» хоёулаа үүнийг цэвэрлэнэ —
+   *    тэдгээр нь ЗӨВШӨӨРӨГДСӨН өөрчлөлт тул буцаах ёсгүй.
+   */
+  const undoRef = useRef<{ oid: number; blk: number; span: Span | null } | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const jumped = useRef(false);
@@ -855,7 +863,24 @@ export function Huvaari() {
      */
     if (drag && (moved.current || blank)) {
       const r = plan.find((x) => x.oid === drag.oid);
-      if (r) setModal(r.i);
+      if (r) {
+        setModal(r.i);
+        /*
+         * ⚠️ ЧИРЭЛТЭЭС ӨМНӨХ БАЙДЛЫГ ХАДГАЛНА — цонхыг ЦУЦЛАХАД буцаана
+         * (2026-09-08, хэрэглэгчийн мэдээлсэн алдаа: «X дарж цуцлахад
+         * хуваарь устахгүй байна»).
+         *
+         * Чирэлт нь `commit`-оор хуваарийг НООРОГТ АЛЬ ХЭДИЙН бичсэн байдаг
+         * бөгөөд цонх нь түүний ДАРАА нээгддэг. Гэтэл цонх нь «Тавих /
+         * Хаах» гэсэн баталгааны хэлбэртэй тул хэрэглэгч «Хаах» дарахад
+         * чирэлт нь ч цуцлагдана гэж ойлгоно. Одоо яг тэгнэ.
+         *
+         * ⚠️ Зөвхөн ЭНЭ чирэлтийн блокийг буцаана — цонх нээлттэй байхад
+         *    хэрэглэгч блок сольж болох тул бүх мужийг сэргээвэл өөр блокт
+         *    хийсэн ажил алга болно.
+         */
+        undoRef.current = { oid: drag.oid, blk, span: drag.orig };
+      }
     }
     setDrag(null);
     moved.current = false;
@@ -1325,7 +1350,34 @@ export function Huvaari() {
   useEffect(() => {
     if (approving == null || busy) return;
     if (!savedRef.current) {
-      if (!dirtyN) { setApproving(null); return; }
+      /*
+       * ⚠️ БИЧИХ ЗҮЙЛГҮЙ ИЛГЭЭЛТ — БАТЛАГДСАН гэж хаана (2026-09-08-ны аудит).
+       *
+       * Урьд нь энд ЗҮГЭЭР Л ГАРДАГ байсан: `save` дуудагдахгүй, `decidePlan`
+       * ч дуудагдахгүй, ямар ч мессеж гарахгүй — батлагч товч дарсан атлаа
+       * ЮУ Ч болоогүй мэт харагдаж, илгээлт МӨНХӨД «хүлээгдэж буй» хэвээр
+       * үлдэнэ. Тэр багцын хуваарь бүхэлдээ түгжигдэнэ (`locked`).
+       *
+       * Ноорог хоосон байх нь ХҮЧИНТЭЙ тохиолдол: илгээснээс хойш эх хуваарь
+       * өөр замаар (өөр батлагдсан илгээлт) ижил утгад хүрсэн бол ялгаа
+       * үлдэхгүй. Бичих зүйл байхгүй ч ШИЙДВЭР нь бүртгэгдэх ёстой.
+       */
+      if (!dirtyN) {
+        setApproving(null);
+        setPreviewing(false);
+        void (async () => {
+          const r = await decidePlan({
+            oid: approving, approve: true,
+            approver: user?.username ?? '', author: pending?.author ?? '',
+          });
+          setNote(r.ok
+            ? tr('Хуваарь батлагдлаа — эх хуудас аль хэдийн ижил байсан тул өөрчлөлт бичигдсэнгүй.')
+            : '');
+          if (!r.ok) setErr(r.error ?? tr('Шийдвэр хадгалагдсангүй.'));
+          await refreshFlow();
+        })();
+        return;
+      }
       savedRef.current = true;
       void save();
       return;
@@ -1940,8 +1992,34 @@ export function Huvaari() {
           cands={depCands}
           hasHam={!!sc.f.ham}
           months={obOf(modalRow.des, sc.bld[blk] ?? "")}
-          onClose={() => setModal(null)}
-          onApply={(spans, deps, months) => applyModal(modalRow.oid, spans, deps, months)}
+          /*
+           * ⚠️ ЦУЦЛАХАД ЧИРЭЛТ БУЦНА (2026-09-08). Цонх нь чирэлтийн ДАРАА
+           *    нээгддэг тул хуваарь аль хэдийн ноорогт бичигдсэн байдаг;
+           *    «Хаах»/X/Esc/дэвсгэр дарахад түүнийг сэргээнэ. Эс бөгөөс
+           *    хэрэглэгч цуцалсан гэж бодоод хуваарь нь үлдэнэ.
+           */
+          onClose={() => {
+            const u = undoRef.current;
+            undoRef.current = null;
+            setModal(null);
+            if (u) {
+              const row = plan.find((x) => x.oid === u.oid);
+              if (row) {
+                const next = row.spans.slice();
+                next[u.blk] = u.span;
+                /* ⚠️ Сарын задаргааг ч буцаана — чирэлт нь түүнийг дагуулж
+                   тарааасан (`applyChanges`) тул үлдээвэл хуваарьгүй ажилд
+                   төлөвлөсөн обьём үлдэж, нийлбэрийн шалгуур зөрчилтэй болно. */
+                applyModal(u.oid, next, null, new Map());
+              }
+            }
+          }}
+          onApply={(spans, deps, months) => {
+            /* ⚠️ ЗӨВШӨӨРӨГДСӨН өөрчлөлт — буцаах мэдээллийг цэвэрлэнэ,
+               эс бөгөөс дараагийн `onClose` түүнийг эргүүлж хаяна. */
+            undoRef.current = null;
+            applyModal(modalRow.oid, spans, deps, months);
+          }}
         />
       )}
 
