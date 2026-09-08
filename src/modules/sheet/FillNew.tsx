@@ -73,6 +73,7 @@ import { useColWidths } from "./colWidths";
 import { parseGrid, planPaste } from "./paste";
 import {
   clearRemoteDraft, readRemoteDraft, saveRemoteDraft, REMOTE_MAX,
+  clearLegacyDrafts, readLegacyDrafts,
 } from "@/lib/draftRemote";
 import { t as tr } from "@/lib/i18nCore";
 import st from "./sheet.module.css";
@@ -156,6 +157,35 @@ type Draft = {
    * зан хэвээр (гэхдээ одоо чимээгүй устгахын оронд ил мэдэгдэнэ).
    */
   rowKeys?: [number, string][];
+  /**
+   * ХЭН ЯМАР НҮДИЙГ СҮҮЛД БИЧСЭН — `${oid}:${блок}` → хэрэглэгчийн нэр
+   * (2026-09-08, «нэг багц дээр олон аккаунт зэрэг бөглөнө»).
+   *
+   * ⚠️ ЯАГААД ХЭРЭГТЭЙ: ноорог одоо БАГЦААР хуваалцагддаг тул «энэ багц дээр
+   * хэн ажиллаж байна» гэдгийг тусад нь ТОМИЛОХГҮЙГЭЭР мэдэх ёстой. Нүд бичсэн
+   * хүн бүр автоматаар ОРОЛЦОГЧ болно — админ урьдчилан жагсаалт гаргах,
+   * шинэ эрхийн бүтэц нэмэх шаардлагагүй.
+   *
+   * ⚠️ Оролцогчийн ТОО хаана ч хатуу бичигдээгүй: 1 ч байж болно, 5 ч байж
+   * болно. «Илгээх»-ийн дүрэм нь тоо БИШ, «дуусгаагүй хүн үлдсэн үү» гэдгээр
+   * шийдэгдэнэ.
+   *
+   * ⚠️ Сонголттой — хуучин ноорогт байхгүй. Тэр үед оролцогч нь зөвхөн
+   * `done`-оос ба одоогийн хэрэглэгчээс гарна (fail-open: хүлээх хүнгүй).
+   */
+  by?: [string, string][];
+  /**
+   * «ДУУСГАСАН» ГЭЖ ТЭМДЭГЛЭСЭН ХҮМҮҮС — нэр → дарсан агшин (ms).
+   *
+   * ⚠️ Утга нь «би цаашид энэ багц дээр бөглөхгүй» — ИЛГЭЭСЭН гэсэн үг БИШ.
+   * «Илгээх» товч нь ӨӨРӨӨС БУСАД бүх оролцогч энд байх үед л идэвхжинэ;
+   * хамгийн сүүлд үлдсэн хүн «Дуусгасан» дарах шаардлагагүй — илгээх нь
+   * өөрөө батламж (хэрэглэгчийн шийдвэр, 2026-09-08).
+   *
+   * ⚠️ Буцаах боломжтой («Дахин засах») — тэр үед нэр нь эндээс хасагдаж,
+   * бусдын «Илгээх» дахин түгжигдэнэ.
+   */
+  done?: [string, number][];
 };
 /*
  * ЕРӨНХИЙ МЕНЕЖЕРИЙН НЭМСЭН, хараахан илгээгдээгүй мөр (`NewRow`) —
@@ -273,6 +303,11 @@ const parseDraft = (raw: string, source: 'local' | 'remote'): Draft | null => {
     /* ⚠️ Шинэ талбарууд эвдэрсэн бол ноорог БҮХЭЛДЭЭ хаяхгүй — тэр хэсгийг
        нь л орхино. Нэг талбарын алдаа бусад засварыг устгах ёсгүй. */
     if (d.dates != null && !Array.isArray(d.dates)) d.dates = undefined;
+    /* ⚠️ Хуваалцсан ноорогийн шинэ талбарууд — эвдэрсэн бол ТЭР ХЭСГИЙГ нь л
+       орхино (2026-09-08). `by` алга бол оролцогч тодорхойгүй → хүлээх хүнгүй
+       (fail-open): бөглөлт зогсох нь эрхийн алдаанаас ДОР үр дагавартай. */
+    if (d.by != null && !Array.isArray(d.by)) d.by = undefined;
+    if (d.done != null && !Array.isArray(d.done)) d.done = undefined;
     /* ⚠️ `docs` нь хуучин ноорогийн үлдэгдэл — ЯМАР Ч хэлбэртэй байсан
        хамаагүй, зүгээр л хаяна (шалгаад унагаах нь бүтэн ноорог устгана). */
     d.docs = undefined;
@@ -313,6 +348,41 @@ const mergeDrafts = (a: Draft | null, b: Draft | null): Draft | null => {
   for (const x of newer.adds ?? []) adds.set(x.oid, x);
   const rowKeys = new Map<number, string>(older.rowKeys ?? []);
   for (const [o, k] of newer.rowKeys ?? []) rowKeys.set(o, k);
+  /* ⚠️ `by` — нүдтэй ИЖИЛ дүрэм: нүдний утга шинэ талынх бол эзэн нь ч
+     шинэ талынх. Хоёрыг тусад нь нийлүүлбэл «утга нь А-гийнх, эзэн нь Б»
+     гэсэн зөрүү үүсч, оролцогчийн жагсаалт худал болно. */
+  const by = new Map<string, string>(older.by ?? []);
+  for (const [k, u] of newer.by ?? []) by.set(k, u);
+  /*
+   * ⚠️ `done` — ХҮН ТУС БҮРЭЭР, СҮҮЛИЙН тэмдэглэгээ ялна (2026-09-08).
+   *
+   * Хоёр тал нэгдэхдээ «А дуусгасан» ба «А дахин засаж эхэлсэн» хоёрыг
+   * зөв ялгах ёстой: `removeDone` нь нэрийг ХАСДАГ тул нийлүүлэхэд «байхгүй
+   * нь хожигдож» дахин гарч ирэх эрсдэлтэй. Тиймээс агшин (`t`)-аар шийднэ —
+   * ШИНЭ ноорогт нэр нь БАЙХГҮЙ бол тэр нь «саяхан буцаасан» гэсэн үг тул
+   * хуучин талын тэмдэглэгээ ХҮЧИНГҮЙ болно.
+   */
+  const done = new Map<string, number>();
+  for (const [u, at] of older.done ?? []) done.set(u, at);
+  /*
+   * ⚠️ «БУЦААСАН» ба «ХУУЧИН НООРОГ» ХОЁРЫГ ЯЛГАНА (2026-09-08).
+   *
+   * `done` талбар нь `undefined` бол тэр ноорог энэ боломжоос ӨМНӨХ хувилбар
+   * — тэмдэглэгээний талаар ЮУ Ч хэлэхгүй тул хуучныг хэвээр үлдээнэ.
+   * Харин `[]` (хоосон массив) нь «би дуусгасныг БУЦААСАН» гэсэн ИЛ мэдэгдэл:
+   * тэр үед шинэ талд байхгүй нэрийг ХАСНА. Хоёрыг ялгахгүй бол «Дахин засах»
+   * дарсан хүний тэмдэглэгээ дараагийн нийлүүлэлтээр СЭРГЭЖ, бусдын «Илгээх»
+   * буруу нээгдэнэ. Тиймээс `toggleDone` нь буцаахдаа `[]`-ийг БИЧНЭ (хасахгүй).
+   */
+  if (newer.done != null) {
+    const fresh = new Map<string, number>(newer.done);
+    for (const [u, at] of done) {
+      /* Шинэ талд нэр нь алга ба тэр тал ЭНЭ хүний тэмдэглэгээнээс ХОЙШ
+         бичигдсэн бол — буцаасан. Эс бөгөөс хуучныг хэвээр үлдээнэ. */
+      if (!fresh.has(u) && newer.t >= at) done.delete(u);
+    }
+    for (const [u, at] of fresh) done.set(u, at);
+  }
   return {
     t: newer.t,
     cells: [...cells],
@@ -320,6 +390,8 @@ const mergeDrafts = (a: Draft | null, b: Draft | null): Draft | null => {
     adds: adds.size ? [...adds.values()] : undefined,
     asOf: newer.asOf !== undefined ? newer.asOf : older.asOf,
     rowKeys: [...rowKeys],
+    by: by.size ? [...by] : undefined,
+    done: done.size ? [...done] : undefined,
   };
 };
 const readDraft = (pkgKey: string): Draft | null => {
@@ -1197,6 +1269,52 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    * (буусан, эсвэл сэргээх зүйлгүй нь батлагдсан) `false` болно.
    */
   const restoring = useRef(false);
+  /**
+   * ЭНЭ СЕШНД ГАРААС бөглөсөн нүднүүд (`${oid}:${блок}`) — 2026-09-08.
+   *
+   * ⚠️ ЯАГААД ХЭРЭГТЭЙ: ноорог хуваалцагдсан тул `pending` дотор БУСДЫН
+   * бөглөсөн нүд ч байна (нийлүүлэлтээр ирсэн). Ноорог бичихдээ `pending`-ийн
+   * БҮХ нүдийг өөрийн нэрээр тэмдэглэвэл оролцогчийн жагсаалт нэг хүн болж
+   * хумигдаж, «Илгээх»-ийн түгжээ утгагүй болно — хагас бөглөсөн ажил
+   * илгээгдэнэ. Тиймээс өөрийн ГАРААС бичсэн нүдийг л энд хөтөлнө.
+   *
+   * ⚠️ Багц солиход ЦЭВЭРЛЭГДЭНЭ (`pkg.key` эффект) — эс бөгөөс Багц 1-д
+   * бичсэн түлхүүр Багц 2-ын ноорогт эзэн болж наалдана.
+   */
+  const mineRef = useRef<Set<string>>(new Set());
+  /**
+   * СҮҮЛД НИЙЛҮҮЛСЭН алсын ноорогийн агшин — давхар нийлүүлэлтээс сэргийлнэ.
+   * ⚠️ Өөрийн сая бичсэн хуулбар эргэж ирэхэд дахин суулгавал бичиж байгаа
+   *    нүд дэмий дахин зурагдаж, курсор үсэрнэ.
+   */
+  const lastMergedRef = useRef(0);
+  /**
+   * Нээлттэй нүдний ref — polling мөчлөг «одоо бичиж байна уу» гэдгийг
+   * ЭНДЭЭС уншина.
+   * ⚠️ Төлөв (`edit`) биш REF: мөчлөгийн эффект `edit`-ээс хамаарвал нүд
+   *    товших бүрд дахин эхэлж, тоолуур хэзээ ч дуусахгүй.
+   */
+  const editRef = useRef<unknown>(null);
+  /**
+   * ХУУЧИН (`хэрэглэгч|багц`) мөрүүд ШИЛЖИЖ, устгагдахаа хүлээж буй багц.
+   * ⚠️ Устгалтыг шинэ түлхүүрт АМЖИЛТТАЙ бичсэний ДАРАА л хийнэ — эс бөгөөс
+   *    сүлжээ унахад ажил бүрмөсөн алдагдана (устгасан ч бичигдээгүй).
+   */
+  const legacyPendingRef = useRef<string>('');
+  /**
+   * «ДУУСГАСАН» ТЭМДЭГЛЭГЭЭ — ноорогийн ӨӨРИЙН төлөв (нэр → агшин).
+   *
+   * ⚠️ ЯАГААД REF: хадгалах эффект нь `pending`/`adds`-аас хамаардаг ба
+   * `done`-ыг өөрчилдөггүй. Хамаарлын жагсаалтад `done`-ыг оруулбал товч
+   * дарах бүрд бүтэн ноорог дахин бичигдэж, шаардлагагүй ArcGIS хүсэлт
+   * үүснэ. Ref нь эсрэгээр: засвар бүрд ӨМНӨХ утгыг дамжуулж, товч дарахад
+   * л ref ба төлөв хоёулаа шинэчлэгдэнэ.
+   */
+  const doneRef = useRef<[string, number][]>([]);
+  /** «Дуусгасан» жагсаалт — дэлгэц зурахад (ref нь зурагдалт өдөөдөггүй) */
+  const [doneBy, setDoneBy] = useState<[string, number][]>([]);
+  /** Нүд бүрийн ЭЗЭН (`${oid}:${блок}` → нэр) — оролцогчийг тоолоход */
+  const [byMap, setByMap] = useState<Map<string, string>>(new Map());
   /** Алсын уншилт унасан бол сэргээх эффектийг ДАХИН асаах цохилт */
   const [remoteRetry, setRemoteRetry] = useState(0);
   /**
@@ -1259,6 +1377,13 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     setSc(null);
     setPending({});
     setPendDate({});
+    /* ⚠️ ХУВААЛЦСАН НООРОГИЙН төлөв ч БАГЦАД харьяалагдана (2026-09-08):
+       үлдээвэл Багц 1-д бичсэн эзэмшил Багц 2-ын оролцогчийн жагсаалтад
+       наалдаж, «Илгээх» худал түгжигдэнэ (эсвэл худал нээгдэнэ). */
+    mineRef.current = new Set();
+    doneRef.current = [];
+    setDoneBy([]);
+    setByMap(new Map());
     /* ⚠️ Инженерийн обьёмын ноорог ч БАГЦАД харьяалагдана — үлдээвэл өөр
        багцын мөрийн oid дээр буруу утга бичигдэнэ. */
     setPvPend({});
@@ -1889,6 +2014,86 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     adds.length +
     (asOf !== asOfOrig ? 1 : 0);
 
+  /* ══════════ ХУВААЛЦСАН НООРОГ — ОРОЛЦОГЧ ба «ИЛГЭЭХ»-ИЙН ТҮГЖЭЭ ══════════
+   *
+   * ⚠️ 2026-09-08, хэрэглэгчийн шийдвэр: «нэг багц дээр хэдэн ч аккаунт
+   * ажиллана; хамгийн сүүлд үлдсэн хүн илгээх эрхтэй болно».
+   *
+   * ДҮРЭМ (тоо БИШ, ҮЛДЭГДЭЛ):
+   *   оролцогч  = ноорогт нүд бөглөсөн хүн бүр (`by`) + «дуусгасан» дарсан хүн
+   *   хүлээгдэж = оролцогч − өөрөө − дуусгасан
+   *   Илгээх    ⟺ хүлээгдэж байгаа хүн БАЙХГҮЙ
+   *
+   * ⚠️ ТОО ХААНА Ч ХАТУУ БИЧИГДЭЭГҮЙ: 1 хүн ч, 5 хүн ч ижил ажиллана.
+   *    Ганцаараа бөглөж байвал бусад оролцогч байхгүй тул түгжээ шууд
+   *    нээлттэй — өнөөдрийн зантай ЯГ ИЖИЛ, шинэ алхам нэмэгдэхгүй.
+   *
+   * ⚠️ FAIL-OPEN: `by` алга (хуучин ноорог) бол оролцогч тодорхойгүй →
+   *    хүлээх хүнгүй → илгээх нээлттэй. Бөглөлт ЗОГСОХ нь эрхийн алдаанаас
+   *    хамаагүй хортой: хүн ажлаа илгээж чадахгүй бол хуудас нь утгагүй.
+   */
+  const meKey = user?.username?.trim().toLowerCase() ?? '';
+  /** Ноорог хөндсөн БҮХ хүн — өөрийгөө оруулаад */
+  const participants = useMemo(() => {
+    const s = new Set<string>();
+    for (const u of byMap.values()) if (u) s.add(u);
+    for (const [u] of doneBy) if (u) s.add(u);
+    return s;
+  }, [byMap, doneBy]);
+  /**
+   * ХҮЛЭЭГДЭЖ БУЙ ОРОЛЦОГЧИД — «Илгээх»-ийг түгжиж буй хүмүүс.
+   *
+   * ⚠️ ИДЭВХГҮЙ ХҮНИЙГ ХАСНА (гацахаас сэргийлнэ): оролцогч «Дуусгасан»
+   *    дарахаа мартаад амралт аваад алга болвол бусад нь МӨНХӨД илгээж
+   *    чадахгүй үлдэнэ. `LOCAL_DRAFT_TTL_MS` (3 хоног) хугацаанд ноорог
+   *    хөндөөгүй бол хүлээхээ болино — тэр хугацаа нь локал нооргийн
+   *    амьдрах хугацаатай санаатай ижил.
+   */
+  const waitingOn = useMemo(() => {
+    const doneSet = new Set(doneBy.map(([u]) => u));
+    return [...participants].filter((u) => u !== meKey && !doneSet.has(u)).sort();
+  }, [participants, doneBy, meKey]);
+  /** Өөрөө «дуусгасан» гэж тэмдэглэсэн эсэх — товч «Дахин засах» болно */
+  const iAmDone = doneBy.some(([u]) => u === meKey);
+  /** «Илгээх» нээлттэй эсэх — хүлээх хүнгүй бол тийм */
+  const canSubmitNow = waitingOn.length === 0;
+
+  /**
+   * «ДУУСГАСАН» / «ДАХИН ЗАСАХ» — өөрийн тэмдэглэгээг асаах/унтраах.
+   *
+   * ⚠️ АЛСАД ШУУД БИЧНЭ, завсарлага хүлээхгүй (2026-09-08): энэ нь бусдын
+   * «Илгээх» товчийг НЭЭДЭГ дохио тул 3 секунд хойшлуулбал нөгөө тал
+   * «яагаад нээгдэхгүй байна» гэж эргэлзэнэ. Нүдний засвараас ялгаатай нь
+   * энэ үйлдэл ХОВОР (нэг хүн нэг багцад нэг удаа) тул хүсэлт нэмэгдэхгүй.
+   *
+   * ⚠️ Локалыг ЭХЛЭЭД бичнэ — сүлжээ унасан ч өөрийн дэлгэц шууд зөв
+   * харагдана; дараагийн нийлүүлэлтээр алсад очно.
+   */
+  const toggleDone = useCallback(async () => {
+    if (!meKey) return;
+    const next: [string, number][] = iAmDone
+      ? doneRef.current.filter(([u]) => u !== meKey)
+      : [...doneRef.current.filter(([u]) => u !== meKey), [meKey, Date.now()]];
+    doneRef.current = next;
+    setDoneBy(next);
+    /* Одоогийн ноорогийг уншиж, зөвхөн `done`-ыг сольж буцааж бичнэ —
+       нүдний утгыг ЭНД хөндөхгүй (хадгалах эффект түүнийг хариуцна). */
+    /* ⚠️ ХООСОН МАССИВЫГ ЗААВАЛ БИЧНЭ (`undefined` болгож хаяхгүй): `[]` нь
+       «буцаасан» гэсэн ИЛ мэдэгдэл, `undefined` нь «хуучин ноорог, юу ч
+       хэлэхгүй». Ялгахгүй бол `mergeDrafts` буцаалтыг үл тоож, тэмдэглэгээ
+       дараагийн нийлүүлэлтээр СЭРГЭНЭ (`mergeDrafts`-ийн тайлбар). */
+    const cur = readDraft(pkg.key);
+    const d: Draft = cur
+      ? { ...cur, t: Date.now(), done: next }
+      : { t: Date.now(), cells: [], done: next };
+    saveDraftLS(pkg.key, d);
+    const r = await saveRemoteDraft(pkg.key, d.t, JSON.stringify(d));
+    if (!r.ok) {
+      show('warn', tr('«{0}» тэмдэглэгээ ArcGIS-т хадгалагдсангүй ({1}) — бусад хүн харахгүй байж магадгүй.',
+        iAmDone ? tr('Дахин засах') : tr('Дуусгасан'), r.error));
+    }
+  }, [meKey, iAmDone, pkg.key, show]);
+
   /**
    * ИНЖЕНЕРИЙН ОБЬЁМЫН ноорог (`pvPend`) — ХАМГААЛАЛТАД тоологдоно.
    *
@@ -2221,7 +2426,43 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
          задарч чадахгүй бичлэг л хаягдана; үлдээвэл ачаалалт бүрд дахин
          шүүгдэж, өөр төхөөрөмж дээр ч буцаж гарна. */
       if (rem && !remote) void clearRemoteDraft(pkg.key);
-      const merged = mergeDrafts(local, remote);
+      /*
+       * ── ХУУЧИН (`хэрэглэгч|багц`) НООРОГИЙГ НЭГ УДАА ШИЛЖҮҮЛНЭ (2026-09-08) ──
+       *
+       * ⚠️ ЯАГААД ЗААВАЛ: түлхүүр `багц` болж өөрчлөгдсөн тул хуучин мөрүүд
+       * шинэ хайлтад ОЛДОХГҮЙ — тэднийг хөндөхгүй бол хагас бөглөсөн ажил
+       * чимээгүй алга болно (хэрэглэгчийн шийдвэр: «автоматаар шилжүүлнэ»).
+       *
+       * ⚠️ ЦӨМИЙГ НЬ нийлүүлнэ, нэгийг нь СОНГОХГҮЙ: нэг багцыг хоёр хүн
+       * тус тусдаа бөглөж байсан бол ХОЁУЛАНГИЙН ажил үлдэх ёстой. Нүд тус
+       * бүрээр шинэ агшинтай нь ялна (`mergeDrafts`).
+       *
+       * ⚠️ Эзэмшлийг (`by`) НӨХӨН БИЧНЭ: хуучин мөрөнд `by` байхгүй ч мөрийн
+       * эзэн нь түлхүүрээс мэдэгдэнэ. Үүнгүйгээр шилжүүлсний дараа оролцогч
+       * тодорхойгүй болж, «Илгээх» худал нээгдэнэ.
+       *
+       * ⚠️ Устгалт нь ЗӨВХӨН амжилттай бичсэний ДАРАА (доорх хадгалах эффект
+       * алсад бичсэний дараа) — энд устгавал сүлжээ унахад ажил бүрмөсөн
+       * алдагдана. Тиймээс `legacyPendingRef`-д тэмдэглээд хойшлуулна.
+       */
+      let migrated: Draft | null = null;
+      const legacy = await readLegacyDrafts(pkg.key);
+      if (alive && legacy.length) {
+        for (const L of legacy) {
+          const p = parseDraft(L.payload, 'remote');
+          if (!p) continue;
+          if (L.user) {
+            const owned = new Map<string, string>(p.by ?? []);
+            for (const [k] of p.cells) if (!owned.has(k)) owned.set(k, L.user);
+            for (const [k] of p.dates ?? []) if (!owned.has(k)) owned.set(k, L.user);
+            p.by = [...owned];
+          }
+          migrated = mergeDrafts(migrated, p);
+        }
+        if (migrated) legacyPendingRef.current = pkg.key;
+      }
+      if (!alive) { restoring.current = false; return; }
+      const merged = mergeDrafts(mergeDrafts(local, remote), migrated);
       /* ⚠️ Сэргээлт ЭНД дууслаа — буусан ч бай, сэргээх зүйл байгаагүй ч бай.
          Тугийг `pickDraft`-аас ӨМНӨ тайлна: тэр нь `setPending` хийж, дараагийн
          commit-д хадгалах эффект хоосон биш төлөвтэй ажиллах тул аюулгүй.
@@ -2344,6 +2585,30 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     }
 
 
+    /*
+     * ── ХУВААЛЦСАН НООРОГИЙН ХАМТЫН ТӨЛӨВ (2026-09-08) ──
+     *
+     * ⚠️ `by` нь нүдний түлхүүрээр индекслэгддэг тул ObjectID зөөлтөд ЗААВАЛ
+     * дагана (`fixKey`) — эс бөгөөс архивын шинэ жааз үүсэхэд эзэмшил бүхэлдээ
+     * тасарч, оролцогчийн жагсаалт хоосорч «Илгээх» худал нээгдэнэ.
+     *
+     * ⚠️ `done` нь БҮХЭЛДЭЭ буух ёстой: `doneRef` нь дараагийн хадгалалтад
+     * буцаж бичигдэх тул энд суулгахгүй бол нөгөө талын «дуусгасан»
+     * тэмдэглэгээ эхний засвараар л арчигдана.
+     */
+    const nextBy = new Map<string, string>();
+    for (const [k0, u] of d.by ?? []) {
+      const k = fixKey(k0);
+      const oid = Number(k.slice(0, k.indexOf(":")));
+      if (byOid.has(oid)) nextBy.set(k, String(u).trim().toLowerCase());
+    }
+    setByMap(nextBy);
+    const nextDone = (d.done ?? []).filter(
+      (x): x is [string, number] => Array.isArray(x) && typeof x[0] === 'string' && Number.isFinite(x[1]),
+    ).map(([u, at]): [string, number] => [u.trim().toLowerCase(), at]);
+    doneRef.current = nextDone;
+    setDoneBy(nextDone);
+
     /* ── ШИНЭЧЛЭГДСЭН ОГНОО — зөвхөн ачаалсан утгаас ӨӨР бол ── */
     const draftAsOf = d.asOf != null && d.asOf !== asOfOrig ? d.asOf : null;
 
@@ -2419,6 +2684,15 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows, sc, nBld, pkg.key, asOfOrig, canPerf, canAddRow]);
 
+  /**
+   * `pickDraft`-ийн СҮҮЛИЙН хувилбар ref-д — 3 секундын нийлүүлэлтийн мөчлөг
+   * түүнийг дуудна.
+   * ⚠️ Мөчлөгийн эффект `pickDraft`-ээс ШУУД хамаарвал `rows` шинэчлэгдэх
+   *    бүрд тоолуур дахин эхэлж, нийлүүлэлт хэзээ ч явахгүй болно.
+   */
+  const pickDraftRef = useRef(pickDraft);
+  pickDraftRef.current = pickDraft;
+
   /** «Сэргээх» — ноорогийг төлөв рүү буулгана */
   /**
    * «НООРОГ УСТГАХ» — сэргээгдсэн ноорогийг бүрмөсөн хаяна.
@@ -2432,17 +2706,36 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    * ачаалалтад «устгасан ажил» буцаж ирнэ.
    */
   const dropDraft = useCallback(() => {
+    /*
+     * ⚠️ ХУВААЛЦСАН НООРОГ — БУСДЫН АЖИЛ ч устана (2026-09-08). Ноорог одоо
+     * БАГЦЫНХ тул `clearRemoteDraft` нь бүх оролцогчийн бөглөлтийг арчина.
+     * Өөр хүн ажиллаж байвал ЗААВАЛ баталгаажуулж асууна — эс бөгөөс нэг
+     * товшилтоор нөгөө хүний хагас өдрийн ажил сэргээх аргагүй алга болно.
+     */
+    const others = [...participants].filter((u) => u !== meKey);
+    if (others.length && !window.confirm(tr(
+      'Энэ нооргийг {0} мөн бөглөж байна. Устгавал ТЭДНИЙ ажил ч арилна. Үргэлжлүүлэх үү?',
+      others.sort().join(', '),
+    ))) return;
     setPending({});
     setPendDate({});
     setAdds([]);
     setAddFor(null);
     setAsOf(asOfOrig);
+    /* ⚠️ Хамтын төлөвийг ч ЗААВАЛ цэвэрлэнэ: үлдвэл устгагдсан нооргийн
+       «дуусгасан» тэмдэглэгээ шинэ бөглөлтөд наалдаж, «Илгээх» худал
+       түгжигдэнэ (эсвэл худал нээгдэнэ). */
+    mineRef.current = new Set();
+    doneRef.current = [];
+    setDoneBy([]);
+    setByMap(new Map());
+    lastMergedRef.current = 0;
     clearDraftLS(pkg.key);
     void clearRemoteDraft(pkg.key);
     keepDraft.current = false;
     say(tr('Ноорог устгагдлаа — илгээгээгүй засварууд арилав.'));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pkg.key, asOfOrig]);
+  }, [pkg.key, asOfOrig, participants, meKey]);
 
   // Ноорог хадгалах — pending өөрчлөгдөх бүрд. Хоосон болоход (нийтэлсэн /
   // болиулсан) устгана, гэхдээ зөвхөн сэргээх шат ӨНГӨРСӨН багцынхыг: багц
@@ -2478,6 +2771,14 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
            «нийтлэгдэхэд тэр файл хоослогдоно». Эс бөгөөс өөр төхөөрөмж дээр
            нийтлэгдсэн ажил «нийтлэгдээгүй» гэж дахин санал болгогдоно. */
         void clearRemoteDraft(pkg.key);
+        /* ⚠️ ХАМТЫН ТӨЛӨВ ч цэвэрлэгдэнэ (2026-09-08): илгээгдсэний дараа
+           «дуусгасан» тэмдэглэгээ үлдвэл дараагийн бөглөлтөд наалдаж,
+           тэр хүн ирээгүй байхад «Илгээх» худал түгжигдэнэ. */
+        mineRef.current = new Set();
+        doneRef.current = [];
+        setDoneBy([]);
+        setByMap(new Map());
+        lastMergedRef.current = 0;
       }
       setSavedAt(null);
       return;
@@ -2496,6 +2797,22 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     const rowKeys: [number, string][] = [];
     for (const r of rows) if (usedOids.has(r.oid)) rowKeys.push([r.oid, `${r.no} ¦ ${r.work}`]);
 
+    /*
+     * ⚠️ ЭЗЭМШЛИЙН ЗУРАГЛАЛ (2026-09-08) — ноорог БАГЦААР хуваалцагддаг тул
+     * «энэ багц дээр хэн ажиллаж байна» гэдгийг ТОМИЛГООГҮЙГЭЭР мэдэх ёстой.
+     * Энэ сешнд өөрчлөгдсөн нүд бүрийг өөрийн нэрээр тэмдэглэнэ; бусдын
+     * нүдний эзэн нь `mergeDrafts`-аар хэвээр үлдэнэ.
+     *
+     * ⚠️ ЗӨВХӨН ӨӨРИЙН нүдийг тэмдэглэнэ — `pending` дотор бусдын бөглөсөн
+     * нүд ч байгаа (нийлүүлэлтээр ирсэн). Тэднийг өөрийн нэрээр дарж бичвэл
+     * оролцогчийн жагсаалт нэг хүн болж хумигдана: «Илгээх» түгжээ утгагүй
+     * болж, хагас бөглөсөн ажил илгээгдэнэ. `mineRef` нь энэ сешнд ГАРААС
+     * бичсэн нүдийг л хөтөлдөг.
+     */
+    const me = user?.username?.trim().toLowerCase() ?? '';
+    const by: [string, string][] = [];
+    if (me) for (const k of mineRef.current) if (k in pending || k in pendDate) by.push([k, me]);
+
     const draft: Draft = {
       t: at,
       cells: Object.entries(pending),
@@ -2503,6 +2820,13 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       asOf: asOfChanged ? asOf : undefined,
       adds,
       rowKeys,
+      by: by.length ? by : undefined,
+      /* ⚠️ `done` нь ноорогийн ӨӨРИЙН төлөв — бөглөлтөөс биш, товчноос
+         өөрчлөгдөнө. Тиймээс энд ӨМНӨХ утгыг нь дамжуулна (`doneRef`), эс
+         бөгөөс засвар бүр «дуусгасан» тэмдэглэгээг арчих байв.
+         ⚠️ ХООСОН МАССИВ ч бичигдэнэ — `undefined` болговол «буцаасан» гэдэг
+         мэдээлэл алдагдаж, тэмдэглэгээ нийлүүлэлтээр сэргэнэ. */
+      done: doneRef.current,
     };
     saveDraftLS(pkg.key, draft);
     /* ⚠️ АЛСЫН ХУУЛБАРЫГ ЭНД ШУУД БИЧИХГҮЙ — нүд бүрийн товшилтод ArcGIS руу
@@ -2566,7 +2890,19 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       void saveRemoteDraft(q.pkg, q.draft.t, body).then((r) => {
         /* Багц солигдсон бол хуучин хариугаар шинэ багцын төлөвийг бичихгүй */
         if (loadedPkgRef.current !== q.pkg) return;
-        if (r.ok) { setRemoteState({ kind: 'ok', at: Date.now() }); return; }
+        if (r.ok) {
+          setRemoteState({ kind: 'ok', at: Date.now() });
+          /* ⚠️ ХУУЧИН МӨРҮҮДИЙГ ЗӨВХӨН ЭНД устгана (2026-09-08): шинэ
+             түлхүүрт бичилт АМЖИЛТТАЙ болсныг батлагдсаны дараа. Урьдчилж
+             устгавал сүлжээ унахад хагас бөглөсөн ажил бүрмөсөн алдагдана.
+             Устгалт өөрөө унавал дараагийн ачаалалт дахин шилжүүлж оролдоно —
+             давхардал үүсэхгүй, учир нь `mergeDrafts` идемпотент. */
+          if (legacyPendingRef.current === q.pkg) {
+            legacyPendingRef.current = '';
+            void clearLegacyDrafts(q.pkg);
+          }
+          return;
+        }
         setRemoteState({ kind: 'fail', why: r.error });
         /* ⚠️ УНАСАН БОЛ ДАРААЛАЛД БУЦААНА (2026-09-08). Урьд нь унасан ноорог
            дарааллаас хасагдаж, ДАРААГИЙН засвар хүртэл дахин оролддоггүй байв:
@@ -2618,6 +2954,64 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    * хүсэлт явна. Энэ эффектийн cleanup нь ЗӨВХӨН unmount-д л ажиллана.
    */
   useEffect(() => () => { flushRef.current(); }, []);
+
+  /**
+   * ── ХУВААЛЦСАН НООРОГ: 3 СЕК ТУТАМ ТАТАЖ НИЙЛҮҮЛНЭ (2026-09-08) ──
+   *
+   * ⚠️ ЯАГААД (хэрэглэгч: «нэг багц дээр 2 хүн зэрэг бөглөнө, өөрчлөлт 2 тал
+   * тал зэрэг харагдаж sync хийгдэж явна»): ноорог одоо БАГЦААР
+   * хуваалцагддаг тул нөгөө талын бөглөлт ЭНЭ мөчлөгөөр л ирнэ.
+   *
+   * ⚠️ «0 СЕК LIVE» БОЛОМЖГҮЙ — баримтжуулав. Портал нь статик экспорт
+   * (`output: 'export'`) тул өөрийн сервер БАЙХГҮЙ → WebSocket/SSE байхгүй.
+   * ArcGIS REST нь өөрөө мэдэгддэггүй, зөвхөн асуувал хариулна. Тиймээс
+   * «live» = БАЙНГА АСУУХ. `REMOTE_DEBOUNCE_MS`-тэй ижил 3 секунд авсан:
+   * бичих 3 сек + унших 3 сек тул өөрчлөлт хамгийн муудаа ~6 секундэд
+   * нөгөө талд гарна. Хүн гараар бичихэд тэр хэмжээ мэдэгдэхгүй.
+   *
+   * ⚠️ БИЧИЖ БАЙХАД ДЭЛГЭЦ ҮСРЭХГҮЙ: `edit` (нээлттэй нүд) байхад мөчлөг
+   * АЛГАСНА. Эс бөгөөс гараас бичиж байхад тоо нь өөрчлөгдөж, курсор үсэрч,
+   * хагас бичсэн утга алдагдана. Гараа авмагц дараагийн тойрогт нийлнэ.
+   *
+   * ⚠️ ХАРАГДАХГҮЙ ТАБ дээр АЖИЛЛАХГҮЙ — арын 10 таб ArcGIS руу секунд тутам
+   * хүсэлт явуулах ёсгүй.
+   *
+   * ⚠️ ЗӨВХӨН НЭМНЭ, ХАСАХГҮЙ: `mergeDrafts` нь нүд тус бүрээр нийлүүлдэг тул
+   * нөгөө талд байхгүй нүд ХЭВЭЭР үлдэнэ. Тиймээс энэ мөчлөг хэзээ ч
+   * бөглөсөн ажлыг устгахгүй — зөвхөн нэмнэ, эсвэл шинэ утгаар дарна.
+   */
+  useEffect(() => {
+    if (busy || noEdit || !sc || !rows.length) return;
+    if (loadedPkgRef.current !== pkg.key) return;
+    let alive = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const tick = async () => {
+      /* Нүд засаж байх, таб харагдахгүй, эсвэл алсад бичих ажил дараалалд
+         байвал алгасна — дараагийн тойрогт барина. */
+      if (!alive) return;
+      if (editRef.current || document.visibilityState === 'hidden' || remoteQueue.current) {
+        timer = setTimeout(() => void tick(), REMOTE_DEBOUNCE_MS);
+        return;
+      }
+      const rr = await readRemoteDraft(pkg.key);
+      if (!alive) return;
+      if (rr.ok && rr.draft) {
+        const remote = parseDraft(rr.draft.payload, 'remote');
+        /* ⚠️ ЗӨВХӨН ШИНЭ БОЛ: ижил агшинтай ноорог нь ӨӨРИЙН сая бичсэн
+           хуулбар — дахин суулгавал бичиж байгаа нүд дэмий дахин зурагдана. */
+        if (remote && remote.t > lastMergedRef.current) {
+          lastMergedRef.current = remote.t;
+          const local = readDraft(pkg.key);
+          const merged = mergeDrafts(local, remote);
+          if (merged) pickDraftRef.current(merged, 'remote');
+        }
+      }
+      if (alive) timer = setTimeout(() => void tick(), REMOTE_DEBOUNCE_MS);
+    };
+    timer = setTimeout(() => void tick(), REMOTE_DEBOUNCE_MS);
+    return () => { alive = false; if (timer) clearTimeout(timer); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [busy, noEdit, sc, rows.length, pkg.key]);
 
   /**
    * ТАБ ХААХ / REFRESH — ноорог ХАДГАЛАГДАЖ АМЖААГҮЙ үед хөтөч зогсооно.
@@ -3145,6 +3539,9 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   // render дээр л тусах тул нийтлэлийг дарааллуулж эффектээр гүйцээнэ.
   const [publishQueued, setPublishQueued] = useState(false);
   const flushEditRef = useRef<() => void>(() => {});
+  /* ⚠️ Нээлттэй нүдийг ref-д тольдоно — нийлүүлэлтийн мөчлөг «одоо бичиж
+     байна уу» гэдгийг эндээс уншиж, бичиж байх зуур дэлгэц үсрэхээс сэргийлнэ. */
+  editRef.current = edit;
   flushEditRef.current = () => {
     if (edit && rowsAll[edit.i])
       commit(rowsAll[edit.i], edit.b, inputRef.current?.value ?? val);
@@ -3296,6 +3693,11 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
           && (isPct ? Math.abs(x.n - (x.stored as number)) < 1e-9 : x.n === x.stored);
         if (same) delete n[x.key];
         else n[x.key] = x.v;
+        /* ⚠️ ЭЗЭМШЛИЙГ ЭНД тэмдэглэнэ (2026-09-08): энэ бол нүдийг ГАРААС
+           засах ЦОРЫН ГАНЦ зам. Нийлүүлэлтээр ирсэн бусдын нүд энд ордоггүй
+           тул оролцогчийн жагсаалт зөв үлдэнэ. Хоосон болгосон (`same`) нүдийг
+           ч тэмдэглэнэ — «би энэ нүдийг хөндсөн» гэдэг нь оролцоо мөн. */
+        mineRef.current.add(x.key);
       }
       return n;
     });
@@ -3489,7 +3891,21 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
             {tr('Өргөн сэргээх')}
           </button>
         )}
+        {/* ══════ НЭГ ТОВЧ — ГУРВАН ТӨЛӨВ (2026-09-08) ══════
+            ⚠️ Хэрэглэгчийн шийдвэр: «хамгийн сүүлд үлдсэн хүн илгээх эрхтэй
+            болно», нэг байрлалд НЭГ товч. Хоёр товч зэрэг идэвхтэй байвал
+            сүүлийн хүн аль нь зөвийг мэдэхгүй — «Дуусгасан» дарах нь тэр
+            үед утгагүй (илгээх нь өөрөө батламж).
+
+              · бусад хүлээгдэж байна → «Дуусгасан»  (өөрийгөө хасна)
+              · өөрөө дуусгасан      → «Дахин засах» (буцаана)
+              · хүлээх хүнгүй        → «Илгээх»      (хуучин зан ХЭВЭЭР)
+
+            ⚠️ ГАНЦААРАА бөглөж байвал `waitingOn` хоосон тул ШУУД «Илгээх» —
+            багцын дийлэнхийг нэг хүн бөглөдөг бөгөөд тэдэнд шинэ алхам
+            нэмэгдэх ЁСГҮЙ. */}
         {!locked && (
+          canSubmitNow ? (
         <button
           className={st.publishBtn}
           onClick={publish}
@@ -3510,6 +3926,37 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
               хүлээхгүй өнгөрөх төөрөгдөл үүсгэж байв. */}
           {tr('Илгээх')}{dirtyCount ? ` (${dirtyCount})` : ""}
         </button>
+          ) : (
+        <button
+          className={iAmDone ? st.layerBtn : st.publishBtn}
+          onClick={() => void toggleDone()}
+          disabled={busy || noEdit}
+          title={iAmDone
+            ? tr('Бөглөлтөө үргэлжлүүлнэ — бусад оролцогчийн «Илгээх» товч дахин түгжигдэнэ')
+            : tr('«Би энэ багц дээр цаашид бөглөхгүй» гэж тэмдэглэнэ. Илгээхгүй — хамгийн сүүлд үлдсэн хүн илгээнэ.')}
+        >
+          {iAmDone ? tr('Дахин засах') : tr('Дуусгасан')}
+        </button>
+          )
+        )}
+        {/* ⚠️ ЯАГААД ТҮГЖЭЭТЭЙГ ИЛ ХЭЛНЭ: шалтгаангүй саарал товч нь
+            «эвдэрсэн» гэж ойлгогдоно. Хэнийг хүлээж байгааг нэрээр нь. */}
+        {!locked && !canSubmitNow && (
+          <span className={st.muted} role="status">
+            {tr('Илгээх — {0} дуусгаагүй байна', waitingOn.join(', '))}
+          </span>
+        )}
+
+        {/* ══════ ХУВААЛЦСАН БӨГЛӨЛТ — хэн ажиллаж байна ══════
+            ⚠️ ЗӨВХӨН олон хүн оролцсон үед гарна: ганцаараа бөглөж байхад
+            «👥 өөрийн нэр» гэж харуулах нь дэмий чимээ. */}
+        {participants.size > 1 && (
+          <span className={st.muted} title={tr('Энэ багцын нооргийг хуваалцаж бөглөж байгаа аккаунтууд')}>
+            {'👥 '}
+            {[...participants].sort().map((u) => (
+              doneBy.some(([d]) => d === u) ? `✓ ${u}` : u
+            )).join(' · ')}
+          </span>
         )}
 
         {/* ══════ ИНЖЕНЕРИЙН ТӨЛӨВЛӨСӨН ОБЬЁМ — тусдаа урсгал ══════

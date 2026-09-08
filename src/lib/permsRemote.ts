@@ -142,6 +142,18 @@ const FORMER_TABLE_OWNERS: string[] = [];
 const TABLE_OWNERS = new Set([...SUPER_OWNERS, ...FORMER_TABLE_OWNERS.map((u) => u.toLowerCase())]);
 /** Ижил нэртэй боловч танигдахгүй эзэнтэй хүснэгт олдсон — шинээр үүсгэхийг хориглоно */
 let ownerMismatch = false;
+/**
+ * ⚠️ ЭРХИЙН ХҮСНЭГТ НИЙТЭД (`access: public`) НЭЭЛТТЭЙ БАЙНА УУ (2026-09-08-ны
+ * амьд шалгалт). `createTable` нь ЗӨВХӨН байгууллагад (`org:'true',
+ * everyone:'false'`) хуваалцдаг боловч AGOL дээр гараар нийтийн болгосон байв.
+ * Тэр үед НЭВТРЭЭГҮЙ хэн ч (`applyEdits` нь токенгүй амжилттай) БҮХ таван
+ * ACL-ийн мөрийг нэмж, засаж, устгаж чадна — үүрэг, эрх, урсгал, чанар,
+ * хуваарь, обьём бүгд энэ нэг хүснэгтэд. Кодоор засах боломжгүй (серверийн
+ * тохиргоо) тул ИЛРҮҮЛЖ, админ панелд улаанаар мэдэгдэнэ.
+ */
+let tablePublic = false;
+/** Эрхийн хүснэгт нийтэд нээлттэй эсэх — UserAdmin-ы анхааруулга */
+export const permsTablePublic = (): boolean => tablePublic;
 
 /**
  * Хүснэгтийн URL олох — байгаа item-ээс.
@@ -164,9 +176,18 @@ async function findTableUrl(token: string): Promise<string | null> {
      */
     num: '100',
   });
-  const results = (search.results as Array<{ url?: string; title?: string; owner?: string }>) ?? [];
+  const results = (search.results as Array<{ url?: string; title?: string; owner?: string; access?: string }>) ?? [];
   const same = results.filter((x) => x.title === TITLE && x.url);
   const hit = same.find((x) => TABLE_OWNERS.has(String(x.owner ?? '').toLowerCase()));
+  /* ⚠️ Нийтэд нээлттэй эсэхийг ЭНД барина — item-ийн `access` талбар хайлтын
+     хариунд хамт ирдэг, нэмэлт хүсэлт хэрэггүй (`tablePublic`-ийн тайлбар). */
+  tablePublic = String(hit?.access ?? '') === 'public';
+  if (tablePublic) {
+    console.error(
+      `[selbe] ${TITLE} хүснэгт НИЙТЭД (public) нээлттэй — нэвтрээгүй хэн ч эрхийн мөр засаж чадна.`,
+      'AGOL дээр item-ийн Share-ийг «Organization» болгоно уу.',
+    );
+  }
   // ⚠️ Ижил нэртэй хүснэгт байгаа ч эзэн нь танигдахгүй → ШИНЭЭР ҮҮСГЭХГҮЙ
   //    (нэр давхцаж унана, эсвэл салаа хүснэгт үүсэж өгөгдөл хуваагдана).
   //    Админ item-ыг reassign хийх хүртэл remote унтраалттай — шалтгааныг ил хэлнэ.

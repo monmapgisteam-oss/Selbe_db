@@ -15,9 +15,10 @@ import {
   initRemote,
   type UserPerm,
 } from '@/lib/permissions';
+import { permsTablePublic } from '@/lib/permsRemote';
 import { useAuth } from './AuthGate';
 import { Icon } from './Icon';
-import { CAPS, capsOf, capViewsOf, setCaps, subscribeCaps, toggleCap, type CapKey } from '@/lib/caps';
+import { CAPS, capsOf, capViewsOf, dirtyCapKeys, retryCapsDirty, setCaps, subscribeCaps, toggleCap, type CapKey } from '@/lib/caps';
 import { GuitsetgelAcl } from '@/modules/GuitsetgelAcl';
 import { QaqcAcl } from '@/modules/QaqcAcl';
 import { HuvaariAcl } from '@/modules/HuvaariAcl';
@@ -311,12 +312,18 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
    * refresh давна). Урьд нь энд тусдаа Set хөтөлдөг байсан нь (а) панел дахин
    * нээхэд мартагддаг, (б) амжилттай retry-г мэддэггүй ХУДАЛ тэмдэг байв.
    */
-  const dirtyRemote = new Set(dirtyKeys());
+  /* ⚠️ ХОЁР dirty-set-ийг нэгтгэнэ (2026-09-08): эрхийн (`caps`) бичилт унасныг
+     урьд нь энд ХАРУУЛДАГГҮЙ байв — `capErr` нь зөвхөн тэр сешнд, refresh-ээр
+     арилна, харин dirty-set localStorage-д үлдэж retry хийгддэг. Тэмдэг нь
+     retry-тэй ИЖИЛ эх сурвалжаас гарах ёстой, эс бөгөөс худал «амжилттай». */
+  const dirtyRemote = new Set([...dirtyKeys(), ...dirtyCapKeys()]);
   const retrySync = async () => {
     if (syncing) return;
     setSyncing(true);
     try {
-      const left = await retryDirty();
+      /* Эрхийн (caps) dirty-г ч хамт дахин илгээнэ — нэг товч, хоёр dirty-set */
+      const [leftPerms, leftCaps] = await Promise.all([retryDirty(), retryCapsDirty()]);
+      const left = leftPerms + leftCaps;
       setUsers(listUsers());
       setSaved(left === 0 ? null : saved);
     } finally {
@@ -928,6 +935,14 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
           {!remoteOk && (
             <div className={s.addErr} role="alert">
               {tr('⚠️ ArcGIS хүснэгтээс уншиж чадсангүй — доорх жагсаалт энэ browser-ийн cache. Өөрчлөлт түр локалдоо хадгалагдаж, холболт сэргэхэд автоматаар илгээгдэнэ.')}
+            </div>
+          )}
+          {/* ⚠️ 2026-09-08-ны амьд шалгалт: хүснэгт AGOL дээр гараар «Everyone»
+              болгогдсон байв — нэвтрээгүй хэн ч бүх эрхийг засаж чадна. Кодоор
+              засах боломжгүй тул админд ИЛ, УЛААНААР хэлнэ (`permsTablePublic`). */}
+          {permsTablePublic() && (
+            <div className={s.addErr} role="alert">
+              {tr('🔴 Эрхийн хүснэгт (Selbe_Permissions) НИЙТЭД нээлттэй байна — нэвтрээгүй хэн ч эрх засаж чадна. AGOL дээр item-ийн Share-ийг «Organization» болгоно уу.')}
             </div>
           )}
         </header>

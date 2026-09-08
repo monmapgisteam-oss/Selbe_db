@@ -91,7 +91,22 @@ const VALID_VIEWS = new Set<string>(VIEWS.map((v) => v.key));
  * байхгүй тул чимээгүй хасагдаж, тэр хүн гүйцэтгэлийн хуудсаа бүрмөсөн
  * алдана — эрх ЧИМЭЭГҮЙ хумигдах нь хамгийн муу төрлийн алдаа.
  */
-const LEGACY_VIEW: Record<string, ViewKey> = { sheet: 'guitsetgel' };
+const LEGACY_VIEW: Record<string, ViewKey> = {
+  sheet: 'guitsetgel',
+  /*
+   * ⚠️ `tsogts` («Багцын хяналт») нь 2026-08-21-нд `pkgProg` (биет явц) ба
+   *    `pkgFin` (санхүү) ХОЁР болж салсан (23a326b) — гэвч зураглал энд
+   *    нэмэгдээгүй тул тэр түлхүүртэй override мөр (амьд хүснэгтэд
+   *    `selbe_redesign`, 2026-09-08-ны шалгалт) чимээгүй хасагдаж, хэрэглэгч
+   *    «Багцын хяналт»-аа бүрмөсөн алдсан байв.
+   *
+   * ⚠️ ЗӨВХӨН `pkgProg` руу — `pkgFin` БИШ (санаатай): тэр өдрийн шийдвэрээр
+   *    санхүүгийн тал нь хязгаарлагдмал (`ROLE_ACCESS.beginner`-ийн тайлбар).
+   *    Хуучин нэг түлхүүрээс санхүүгийн хуудас автоматаар нээгдэх ёсгүй;
+   *    хэрэгтэй бол админ `pkgFin`-ийг тусад нь олгоно.
+   */
+  tsogts: 'pkgProg',
+};
 
 const sanitizeViews = (v: ViewKey[] | 'all'): ViewKey[] | 'all' => {
   if (v === 'all') return 'all';

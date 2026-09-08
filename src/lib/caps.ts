@@ -367,6 +367,16 @@ export function subscribeCaps(fn: () => void): () => void {
 }
 
 /**
+ * Гараар «дахин синк» — UserAdmin-ы товчноос (`permissions.retryDirty`-ийн хос).
+ * Үлдсэн dirty тоог буцаана.
+ */
+export async function retryCapsDirty(): Promise<number> {
+  const left = await retryDirtyCaps();
+  notify();
+  return Object.keys(left).length;
+}
+
+/**
  * ArcGIS-аас ирсэн мөрүүдийг локал кэш болгоно (`initRemote` дуудна).
  *
  * ⚠️ Алсын хуулбар нь ЭЦСИЙН ҮНЭН: энд байхгүй хэрэглэгчийн эрх ХАСАГДСАН

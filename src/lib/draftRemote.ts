@@ -134,8 +134,12 @@ async function createTable(token: string, user: string): Promise<string | null> 
       objectIdField: 'OBJECTID',
       fields: [
         { name: 'OBJECTID', type: 'esriFieldTypeOID', nullable: false, editable: false },
-        /* Мөрийн ганц түлхүүр — «хэрэглэгч|багц». Хоёр хүн нэг багц бөглөж
-           байвал ноороги нь ТУСДАА байх ёстой тул нэр нь түлхүүрт орно. */
+        /* Мөрийн ганц түлхүүр — БАГЦЫН түлхүүр (2026-09-08).
+           ⚠️ Урьд нь «хэрэглэгч|багц» байсан: хүн бүр өөрийн мөртэй тул нэг
+              багцыг хэд хэдэн ажилтан бөглөхөд бие биенийхээ ажлыг ОГТ
+              хардаггүй байв. Одоо НЭГ БАГЦ = НЭГ МӨР — оролцогчид (хэд ч
+              байж болно) нэг нооргийг хуваалцаж, нүд тус бүрээр нийлүүлнэ.
+              Хуучин мөрүүд `readLegacyDrafts`-аар олдож, нэг удаа шилжинэ. */
         { name: 'dkey', type: 'esriFieldTypeString', length: 512, nullable: false, editable: true },
         /* Задалсан хэсгүүд — зөвхөн админ хүснэгтийг нүдээр шалгахад */
         { name: 'usr', type: 'esriFieldTypeString', length: 256, nullable: true, editable: true },
@@ -180,11 +184,93 @@ export async function layer(url: string): Promise<FeatureLayerInst> {
   return new FeatureLayer({ url });
 }
 
-/** «хэрэглэгч|багц» — жижиг үсгээр, SQL-д аюулгүй байхаар хашилт нь давхарлагдана */
-const keyOf = (user: string, pkgKey: string) => `${user.toLowerCase()}|${pkgKey}`;
+/**
+ * МӨРИЙН ТҮЛХҮҮР — ЗӨВХӨН БАГЦ (2026-09-08, хэрэглэгчийн шийдвэр).
+ *
+ * ⚠️ УРЬД НЬ `хэрэглэгч|багц` БАЙВ. Хүн бүр өөрийн мөртэй байсан тул нэг
+ * багцыг хэд хэдэн ажилтан бөглөхөд бие биенийхээ ажлыг ОГТ ХАРДАГГҮЙ,
+ * тус тусдаа илгээлт үүсгэдэг байв. Одоо НЭГ БАГЦ = НЭГ МӨР: оролцогчид
+ * (хэд ч байж болно) яг тэр мөрийг уншиж, `mergeDrafts`-аар нүд тус бүрээр
+ * нийлүүлж, буцааж бичнэ.
+ *
+ * ⚠️ Хүснэгтийн БҮТЭЦ хөндөгдөөгүй — шинэ талбар нэмэх нь admin токен
+ * шаардана. `usr` талбар нь одоо «хамгийн СҮҮЛД бичсэн хүн» гэсэн утгатай
+ * (урьд нь «эзэн»); хэн ямар нүд бөглөсний нарийн бүртгэл нь ноорогийн
+ * `payload` дотор (`by` зураглал, `FillNew`) явна.
+ */
+const keyOf = (pkgKey: string) => pkgKey;
+/**
+ * ХУУЧИН түлхүүрийн загвар (`хэрэглэгч|багц`) — ЗӨВХӨН шилжүүлэлтэд.
+ * ⚠️ Багцын түлхүүрт `|` ОРДОГГҮЙ (`bagts.pkg.ts`-ийн `key` нь `b32`,
+ *    `b33_9f` маягийн латин таних тэмдэг) тул `LIKE '%|<багц>'` нь зөвхөн
+ *    хуучин мөрийг олно — шинэ (`dkey = <багц>`) мөр үүнд таарахгүй.
+ */
+const legacyLike = (pkgKey: string) => `%|${pkgKey}`;
 export const sqlStr = (s: string) => `'${s.replace(/'/g, "''")}'`;
 
 export type RemoteDraft = { at: number; payload: string };
+
+/**
+ * ХУУЧИН МӨРҮҮД (`хэрэглэгч|багц`) — нэг удаагийн шилжүүлэлтэд.
+ *
+ * ⚠️ ЯАГААД ХЭРЭГТЭЙ (2026-09-08): түлхүүр өөрчлөгдөхөд ArcGIS дээр байгаа
+ * хуучин ноорогууд шинэ хайлтад ОЛДОХГҮЙ болно — хагас бөглөсөн ажил
+ * чимээгүй алга болно. Тиймээс дуудагч тал (`FillNew`) эдгээрийг ЦӨМИЙГ НЬ
+ * шинэ нооргтой нийлүүлээд шинэ түлхүүрт бичнэ; АМЖИЛТТАЙ бичсэний дараа л
+ * `clearLegacyDrafts`-аар устгана. Тиймээс зам нэг л удаа явна.
+ */
+export type LegacyDraft = { at: number; payload: string; user: string };
+
+export async function readLegacyDrafts(pkgKey: string): Promise<LegacyDraft[]> {
+  try {
+    const url = await tableUrl(false);
+    if (!url) return [];
+    const fl = await layer(url);
+    const res = await fl.queryFeatures({
+      where: `dkey LIKE ${sqlStr(legacyLike(pkgKey))}`,
+      outFields: ['OBJECTID', 'at', 'payload', 'dkey', 'usr'],
+      returnGeometry: false,
+      orderByFields: ['OBJECTID ASC'],
+    });
+    const out: LegacyDraft[] = [];
+    for (const f of res.features) {
+      const a = f.attributes as { at?: number; payload?: string; dkey?: string; usr?: string } | undefined;
+      if (!a?.payload || !Number.isFinite(a.at)) continue;
+      /* Нэр нь `usr` талбараас, эс бөгөөс түлхүүрийн эхний хэсгээс */
+      const user = String(a.usr ?? String(a.dkey ?? '').split('|')[0] ?? '').toLowerCase();
+      out.push({ at: Number(a.at), payload: String(a.payload), user });
+    }
+    return out;
+  } catch {
+    /* ⚠️ ШИДЭХГҮЙ: шилжүүлэлт нь НЭМЭЛТ зам. Унасан ч шинэ түлхүүрийн уншилт
+       хэвийн явах ёстой — эс бөгөөс хуучин мөргүй хүн ч ноороггүй үлдэнэ.
+       Дараагийн ачаалалт дахин оролдоно. */
+    return [];
+  }
+}
+
+/** ХУУЧИН мөрүүдийг устгана — шинэ түлхүүрт АМЖИЛТТАЙ бичсэний ДАРАА л дуудна. */
+export async function clearLegacyDrafts(pkgKey: string): Promise<boolean> {
+  try {
+    const url = await tableUrl(false);
+    if (!url) return false;
+    const fl = await layer(url);
+    const res = await fl.queryFeatures({
+      where: `dkey LIKE ${sqlStr(legacyLike(pkgKey))}`,
+      outFields: ['OBJECTID'], returnGeometry: false, orderByFields: ['OBJECTID ASC'],
+    });
+    const oids = res.features
+      .map((f) => f.attributes?.OBJECTID as number)
+      .filter((x) => typeof x === 'number');
+    if (!oids.length) return true;
+    const r = await fl.applyEdits(
+      { deleteFeatures: oids.map((objectId) => ({ objectId })) } as Parameters<typeof fl.applyEdits>[0],
+    );
+    return (r.deleteFeatureResults ?? []).every((x) => x.error == null);
+  } catch {
+    return false;
+  }
+}
 
 /** ⚠️ Дотоод — алдааг ШИДНЭ. Гадна талын хос нь доор. */
 async function readRemoteDraftRaw(pkgKey: string): Promise<RemoteDraft | null> {
@@ -195,7 +281,7 @@ async function readRemoteDraftRaw(pkgKey: string): Promise<RemoteDraft | null> {
     if (!url) return null;
     const fl = await layer(url);
     const res = await fl.queryFeatures({
-      where: `dkey = ${sqlStr(keyOf(auth.user, pkgKey))}`,
+      where: `dkey = ${sqlStr(keyOf(pkgKey))}`,
       outFields: ['OBJECTID', 'at', 'payload'],
       returnGeometry: false,
       /* Давхардсан мөр (зэрэгцээ бичилтийн race) — СҮҮЛИЙНХ нь ялна */
@@ -289,7 +375,7 @@ export async function saveRemoteDraft(
       };
     }
     const fl = await layer(url);
-    const dkey = keyOf(auth.user, pkgKey);
+    const dkey = keyOf(pkgKey);
     const found = await fl.queryFeatures({
       where: `dkey = ${sqlStr(dkey)}`,
       outFields: ['OBJECTID'],
@@ -330,6 +416,11 @@ export async function saveRemoteDraft(
  * АЛСЫН НООРОГИЙГ УСТГАНА — нийтэлсэн, эсвэл хэрэглэгч «Устгах» дарсан үед.
  * ⚠️ Түлхүүрт таарах БҮХ мөрийг устгана (давхардлыг ч) — үлдсэн мөр дараагийн
  *    ачаалалтад «нийтлэгдээгүй ажил байна» гэж ХУДЛАА сануулна.
+ *
+ * ⚠️ ХУВААЛЦСАН (2026-09-08): ноорог нь одоо БАГЦЫНХ тул энэ нь БҮХ
+ *    оролцогчийн ажлыг устгана — өөрийн хувийг биш. «Илгээх» дарахад тэр нь
+ *    ЗӨВ (бүгдийн ажил хяналт руу орсон); «Ноорог устгах» товч нь бусдын
+ *    ажлыг ч арчих тул дуудагч тал баталгаажуулж асуух ёстой.
  */
 export async function clearRemoteDraft(pkgKey: string): Promise<boolean> {
   try {
@@ -339,7 +430,7 @@ export async function clearRemoteDraft(pkgKey: string): Promise<boolean> {
     if (!url) return false;
     const fl = await layer(url);
     const found = await fl.queryFeatures({
-      where: `dkey = ${sqlStr(keyOf(auth.user, pkgKey))}`,
+      where: `dkey = ${sqlStr(keyOf(pkgKey))}`,
       outFields: ['OBJECTID'],
       returnGeometry: false,
     });

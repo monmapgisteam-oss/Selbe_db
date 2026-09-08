@@ -76,7 +76,10 @@ console.log('✅ ноорог шууд буудаг — цонх асуухгү�
    ⚠️ Цонх хасагдсанаар түүний «Устгах» гарц ч алга болсон. Энэ товчгүй бол
    хэрэглэгч 40 нүдийг ГАРААР цэвэрлэх шаардлагатай болно. Локал БА алсын
    хуулбар ХОЁУЛАА устах ёстой — эс бөгөөс дараагийн ачаалалтад буцаж ирнэ. */
-const dropFn = between('const dropDraft = useCallback', '}, [pkg.key, asOfOrig]);');
+/* ⚠️ Хамаарлын жагсаалт нь өөрчлөгддөг (2026-09-08-нд `participants`,
+   `meKey` нэмэгдсэн) тул түүнийг anchor болгож БОЛОХГҮЙ — функцийн ТӨГСГӨЛ
+   нь `say(...)` мөр, тэр нь утгын хувьд тогтвортой. */
+const dropFn = between('const dropDraft = useCallback', 'Ноорог устгагдлаа');
 assert.ok(dropFn.includes('clearDraftLS(pkg.key)'), 'ноорог устгахад локал хуулбар үлдэж байна');
 assert.ok(dropFn.includes('clearRemoteDraft(pkg.key)'), 'ноорог устгахад АЛСЫН хуулбар үлдэж байна');
 for (const st of ['setPending({})', 'setPendDate({})', 'setAdds([])']) {

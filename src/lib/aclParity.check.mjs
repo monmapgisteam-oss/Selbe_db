@@ -125,6 +125,29 @@ console.log('✅ _syncRemote* (5 модуль) — username бүгд trim().toLo
 }
 console.log('✅ caps.ts — dirty-set · trackWrite · trusted overlay');
 
+/* ══════════ 3б. Dirty-set нь UI-д ХОЛБОГДСОН (2026-09-08-ны амьд шалгалт) ══════════ */
+/**
+ * ⚠️ caps.ts-д dirty-set нэмсэн ч UserAdmin зөвхөн permissions-ийн dirtyKeys()-ийг
+ * уншиж байсан — эрхийн бичилт унасан тэмдэг refresh-ээр арилж, retry товч ч
+ * түүнийг дахин илгээдэггүй байв. Тэмдэг ба retry нэг эх сурвалжаас гарна.
+ */
+{
+  const ua = readCode('src/components/UserAdmin.tsx');
+  /* ⚠️ regex БИШ, includes(): энэ блок анх `node -e` + bash quoting-оор
+     бичигдэхэд бүх `\` идэгдэж, regex-үүд утгагүй болж санамсаргүй тэнцэж
+     байв (CLAUDE.md-ийн `node -e` занга). Энгийн мөр тулгалт аюулгүй. */
+  assert.ok(ua.includes('new Set([...dirtyKeys(), ...dirtyCapKeys()])'),
+    'UserAdmin: dirtyRemote нь dirtyKeys() ба dirtyCapKeys() ХОЁУЛАНГ нэгтгэх ёстой');
+  assert.ok(ua.includes('Promise.all([retryDirty(), retryCapsDirty()])'),
+    'UserAdmin: retrySync нь caps dirty-г ч дахин илгээх ёстой');
+  assert.ok(ua.includes('permsTablePublic() && ('),
+    'UserAdmin: хүснэгт нийтэд нээлттэй үеийн анхааруулга алга');
+  const pm = readCode('src/lib/permissions.ts');
+  assert.ok(pm.includes("tsogts: 'pkgProg'"),
+    'permissions: LEGACY_VIEW-д tsogts→pkgProg зураглал алга — «Багцын хяналт» чимээгүй хасагдана');
+}
+console.log('✅ UserAdmin — caps dirty тэмдэг+retry · public баннер · LEGACY tsogts');
+
 /* ══════════ 4. permissions.initRemote — ЧИМЭЭГҮЙ catch байхгүй ══════════ */
 {
   const src = readCode('src/lib/permissions.ts');
