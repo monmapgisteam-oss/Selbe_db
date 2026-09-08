@@ -250,7 +250,16 @@ const nextMonth = (m: string) => {
 function memo<T>(fn: () => Promise<T>, reads: readonly DataKey[] = []): () => Promise<T> {
   let p: Promise<T> | null = null;
   if (reads.length) register(() => { p = null; }, reads);
-  return () => (p ??= fn().catch((e) => { p = null; throw e; }));
+  /* ⚠️ 2026-09-08: уналтын хаалт нь ӨӨРИЙН амлалт кэшэд ХЭВЭЭР байгаа эсэхийг
+     шалгана — `invalidate()` (dataBus) кэшийг хаяж, шинэ хүсэлт амжилттай
+     кэшлэгдсэний дараа хоцорсон хуучин уналт тэр ШИНЭ кэшийг устгадаг байв
+     (`live.ts`-ийн `cached`-тай ижил алдаа). */
+  return () => {
+    if (p) return p;
+    const mine = fn().catch((e) => { if (p === mine) p = null; throw e; });
+    p = mine;
+    return mine;
+  };
 }
 
 /* ── localStorage кэш (stale-while-revalidate) ── */

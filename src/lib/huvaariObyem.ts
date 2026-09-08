@@ -192,7 +192,20 @@ export type ObyemRow = {
   niit: number | null;
 };
 
-/** `dkey` — ДАВТАГДАШГҮЙ түлхүүр. Unique индекс нь давхардлыг сангийн түвшинд таслана. */
+/**
+ * `dkey` — мөрийг ДАВТАГДАШГҮЙ болгох зорилготой түлхүүр.
+ *
+ * ⚠️ САНГИЙН ТҮВШНИЙ ХАМГААЛАЛТ БАЙХГҮЙ (2026-09-08-нд амьд үйлчилгээ рүү
+ *    шалгав: FeatureServer/193-ийн unique индекс нь ЗӨВХӨН OBJECTID ба
+ *    GlobalID дээр — `dkey` дээр индекс АЛГА). Урьд нь энэ тайлбар «unique
+ *    индекс давхардлыг таслана» гэж БАТАЛДАГ байсан нь ХУДАЛ: хоёр хэрэглэгч
+ *    (эсвэл нэг хүн хоёр таб) зэрэг хадгалахад хоёулаа `oids`-д мөр олохгүй
+ *    тул хоёр `add` явж, ижил `dkey`-тэй ХОЁР мөр үүснэ.
+ * ⚠️ Тиймээс давхардлыг КОД талд арилгана: `loadPkgPlan` нь илүүдэл мөрийн
+ *    OID-уудыг `dups`-аар буцааж, дуудагч нь дараагийн бичилтэд устгуулна.
+ *    Жинхэнэ шийдэл нь ArcGIS дээр `dkey`-д unique индекс нэмэх (админы
+ *    `addToDefinition`) — тэр хийгдтэл энэ нь цорын ганц хаалт.
+ */
 export const dkeyOf = (bagts: string, des: number, blok: string, sar: string): string =>
   `${bagts}|${TURUL_PLAN}|${des}|${blok}|${sar}`;
 
@@ -235,6 +248,39 @@ export function toPkgPlan(
     byMonth.set(sar, v);
   }
   return out;
+}
+
+/**
+ * `dkey → ObjectID` индекс, ДАВХАРДЛЫГ ялган.
+ *
+ * ⚠️ ДАВХАРДСАН `dkey` (2026-09-08). Сангийн түвшинд unique индекс БАЙХГҮЙ
+ *    (`dkeyOf`-ийн тайлбар) тул зэрэг хадгалалт ижил түлхүүртэй хоёр мөр
+ *    үүсгэж чадна. Апп дотор нь сүүлийнх нь өмнөхийг дардаг тул ХАРАГДАХГҮЙ,
+ *    гэтэл ArcGIS Pro / Excel-ээр уншихад обьём ХОЁР ДАХИН тоологдоно — энэ
+ *    хүснэгтийн үндсэн зорилго («мөр бүр өөрөө уншигдана») задарна.
+ *
+ * ⚠️ СҮҮЛИЙН мөр үлдэнэ, өмнөхүүд нь `dups` руу — `toPkgPlan` нь
+ *    `byMonth.set(sar, v)` гэж СҮҮЛИЙНХЭЭР дардаг тул харагдаж буй утга ба
+ *    шинэчлэгдэх OID НЭГ мөрийг заана. Эсрэгээр (эхнийхийг үлдээвэл)
+ *    хэрэглэгч нэг тоо хараад ӨӨР мөр засагдана.
+ *
+ * ⚠️ Дуудагч нь `dups`-ыг дараагийн бичилтэд `deletes`-т нийлүүлж арилгана.
+ *    Энд устгахгүй: унших зам бичих ЁСГҮЙ.
+ */
+export function indexOids(
+  feats: readonly { attributes: Record<string, unknown> }[],
+): { oids: Map<string, number>; dups: number[] } {
+  const oids = new Map<string, number>();
+  const dups: number[] = [];
+  for (const f of feats) {
+    const k = String(f.attributes.dkey ?? '');
+    const o = f.attributes.OBJECTID;
+    if (!k || o == null) continue;
+    const was = oids.get(k);
+    if (was != null) dups.push(was);
+    oids.set(k, Number(o));
+  }
+  return { oids, dups };
 }
 
 /* ══════════════════ Бичилтийн багц ══════════════════ */
@@ -314,7 +360,7 @@ const FIELDS = [
  */
 export async function loadPkgPlan(
   bagts: string,
-): Promise<{ plan: PkgPlan; oids: Map<string, number> }> {
+): Promise<{ plan: PkgPlan; oids: Map<string, number>; dups: number[] }> {
   const feats: { attributes: Record<string, unknown> }[] = [];
   for (let off = 0; ; off += 2000) {
     const j = await agsFetch(`${HUVAARI_OBYEM}/query`, {
@@ -329,13 +375,8 @@ export async function loadPkgPlan(
     feats.push(...f);
     if (f.length < 2000) break;
   }
-  const oids = new Map<string, number>();
-  for (const f of feats) {
-    const k = String(f.attributes.dkey ?? '');
-    const o = f.attributes.OBJECTID;
-    if (k && o != null) oids.set(k, Number(o));
-  }
-  return { plan: toPkgPlan(feats), oids };
+  const { oids, dups } = indexOids(feats);
+  return { plan: toPkgPlan(feats), oids, dups };
 }
 
 /**

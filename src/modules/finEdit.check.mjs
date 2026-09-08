@@ -28,8 +28,16 @@ function editText(v, type) {
 function parseCell(s, type, label) {
   const v = s.trim();
   if (v === '') return null;
+  /* ⚠️ 2026-09-08: ЭРГЭЛТИЙН шалгалт — `Finance.parseCell`-ийн хуулбар.
+     `new Date('2026-02-30T00:00:00Z')` нь NaN БИШ, 2026-03-02 болж ГҮЙНЭ. */
   if (type === 'esriFieldTypeDate') {
-    const d = new Date(v.length === 10 ? v + 'T00:00:00Z' : v);
+    if (v.length === 10) {
+      const d = new Date(`${v}T00:00:00Z`);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(v) || Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== v)
+        throw new Error(`«${label}» — огноо ЖЖЖЖ-СС-ӨӨ хэлбэрээр байх ёстой: ${v}`);
+      return d.getTime();
+    }
+    const d = new Date(v);
     if (Number.isNaN(d.getTime())) throw new Error(`«${label}» — огноо буруу: ${v}`);
     return d.getTime();
   }
@@ -69,8 +77,17 @@ check('сөрөг', parseCell('-15.25', D, 'x') === -15.25);
 console.log('\n3. БУРУУ утга — ЧИМЭЭГҮЙ 0 болгохгүй, алдаа шиднэ');
 assert.throws(() => parseCell('гурав', D, 'Төсөв'), /тоо буруу/);
 check('үсэг оруулбал алдаа', true);
-assert.throws(() => parseCell('2026-13-45', T, 'Огноо'), /огноо буруу/);
+assert.throws(() => parseCell('2026-13-45', T, 'Огноо'), /огноо/);
 check('буруу огноонд алдаа', true);
+/* ⚠️ 2026-09-08 (аудит): ХУАНЛИД БАЙХГҮЙ огноо. Эдгээр нь `new Date`-д NaN
+   БИШ — чимээгүй дараагийн сар руу ГҮЙДЭГ тул зөвхөн NaN шалгадаг хуучин
+   код барьдаггүй байв (2026-02-30 → 2026-03-02, 2026-06-31 → 2026-07-01). */
+assert.throws(() => parseCell('2026-02-30', T, 'Огноо'), /огноо/);
+check('2026-02-30 (хуанлид байхгүй) → алдаа', true);
+assert.throws(() => parseCell('2026-06-31', T, 'Огноо'), /огноо/);
+check('2026-06-31 (30 хоногтой сар) → алдаа', true);
+assert.throws(() => parseCell('27.05.2026', T, 'Огноо'), /огноо/);
+check('«27.05.2026» (цэгтэй бичиглэл) → алдаа', true);
 
 console.log('\n4. ОГНОО — хоёр тал тэгш эргэнэ');
 const ms = Date.UTC(2026, 4, 27);

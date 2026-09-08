@@ -102,10 +102,29 @@ function OverlapBars({
      Зурвас бүрийн тоо нь тэр багцын БОДИТ саад тул хэвээр (нийлбэр нь
      утгагүй тоо болох тул толгойд огт харуулахгүй). */
   const total = new Set(rows.flatMap((r) => r.oids)).size;
+  /* ⚠️ 2026-09-08: ТАТАГДААГҮЙ БАГЦЫГ ИЛ ХЭЛНЭ. `pkgSaad.ts`-ийн `failed` туг
+     нь «огтлолцол уншигдсангүй» гэсэн утгатай ба тэр багцын `oids` нь ХООСОН
+     байдаг — «0 талбар» гэж зурвал жинхэнэ саадгүй багцаас ЯЛГАГДАХГҮЙ болж,
+     сүлжээний уналт «энэ багц дээр газар чөлөөлөлт дууссан» гэсэн ХУДАЛ
+     баталгаа болно. `Ersdel.tsx`-ийн «⚠ {0} давхарга татагдсангүй» чиптэй нэг
+     зарчим: мэдээлэлгүй ба саадгүй хоёр ХЭЗЭЭ Ч ижил утгатай биш.
+     Мөн `total`/`rows.length` нь татагдсан багцуудынх л тул тусад нь тоолно. */
+  const failed = rows.filter((r) => r.failed).length;
+  const okRows = rows.length - failed;
   return (
     <Section
       title={tr('Саад — багцаар')}
-      note={<span style={{ color: 'var(--bad-ink)' }}>{tr('{0} багц · {1} талбар', num(rows.length), num(total))}</span>}
+      note={(
+        <span style={{ color: 'var(--bad-ink)' }}>
+          {tr('{0} багц · {1} талбар', num(okRows), num(total))}
+          {failed > 0 && (
+            <span style={{ color: 'var(--warn-ink)' }}>
+              {' · '}
+              {tr('⚠ {0} багц татагдсангүй', num(failed))}
+            </span>
+          )}
+        </span>
+      )}
     >
       <Bars
         color="var(--bad)"
@@ -121,7 +140,9 @@ function OverlapBars({
           key: r.key,
           label: tr(r.name),
           value: r.oids.length,
-          display: tr('{0} талбар', num(r.oids.length)),
+          /* ⚠️ Татагдаагүй багц «0 талбар» гэж БИЧИГДЭХГҮЙ (дээрх тайлбарыг үз) */
+          display: r.failed ? tr('татагдсангүй') : tr('{0} талбар', num(r.oids.length)),
+          ...(r.failed ? { color: 'var(--warn)' } : {}),
         }))}
       />
     </Section>
@@ -309,8 +330,15 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     if (!ovPick) return undefined;
     const w: Record<string, string | null> = {};
     for (const id of ovPick.layerIds) w[id] = ovPick.where;
-    /* Газар чөлөөлөлтийн давхаргаас ЗӨВХӨН саад болж буй талбарууд */
-    w[PARCEL_LAYER_ID] = parcelOidsWhere(ovPick.oids);
+    /* Газар чөлөөлөлтийн давхаргаас ЗӨВХӨН саад болж буй талбарууд.
+       ⚠️ 2026-09-08: ХООСОН OID-Д `1=0`. `parcelOidsWhere([])` нь `FID IN ()`
+       гэсэн БУРУУ SQL үүсгэдэг бөгөөд ArcGIS түүнд HTTP 200 + `{error}`
+       («'where' parameter is invalid») буцаана — тэр үед давхаргын
+       `definitionExpression` эвдэрч, нэгж талбарын давхарга ЧИМЭЭГҮЙ бүрмөсөн
+       зурагдахаа болино («зураг эвдэрлээ» гэж уншигдана). Татагдаагүй
+       (`failed`) багцын `oids` нь хоосон тул энэ зам БОДИТООР тохиолддог.
+       `1=0` нь давхаргыг ЗОРИУДААР хоослоно — буруу SQL биш. */
+    w[PARCEL_LAYER_ID] = ovPick.oids.length ? parcelOidsWhere(ovPick.oids) : '1=0';
     return w;
   }, [ovPick]);
 
@@ -339,7 +367,9 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     setOvPick(r);
     /* ⚠️ Анимацигүй — багц дараалан товшиход гөлгөр нислэг нь
        хойшлол мэт мэдрэгддэг (2026-08-28, хэрэглэгчийн заавар). */
-    if (r) zoomToWhere(PARCEL_LAYER_ID, parcelOidsWhere(r.oids), { animate: false });
+    /* ⚠️ 2026-09-08: ХООСОН OID-Д НИСЭХГҮЙ — `FID IN ()` нь буруу SQL тул
+       `extentOf` алдаа буцааж, зураг хөдөлгөөнгүй үлддэг (татагдаагүй багц). */
+    if (r?.oids.length) zoomToWhere(PARCEL_LAYER_ID, parcelOidsWhere(r.oids), { animate: false });
   }, [zoomToWhere]);
   const [opacity, setOpacity] = useState<Record<string, number>>({});
   const [layerSel, setLayerSel] = useState<string | null>(null);

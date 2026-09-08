@@ -11,9 +11,13 @@
  *      дахин ашиглагдвал өнөөдрийн ажил хяналтад ОГТ ОРОХГҮЙ.
  *   3. ⚠️ НЭГ ӨДӨРТ ОЛОН ТОЙРОГ. «Хянагдаж байхад дахин илгээх» хориг
  *      2026-09-07-нд хасагдсан тул энэ функц л давхардлыг барина.
+ *   4. ⚠️ ХУУДАСНЫ ШОШГЫГ МӨНХӨД ХАЯХ (2026-09-08). `hasOpenLegacy` нь
+ *      `sheetOid`-ыг шалгадаггүй байсан тул нэг нээлттэй хуучин мөр тэр
+ *      өдрийн БҮХ илгээлтээс шошгыг хаяж, `groupWorks` тэднийг нэг Work
+ *      болгож нийлүүлэн, өмнөх илгээлтүүд хянагчид ОГТ харагдахгүй болно.
  */
 import assert from 'node:assert/strict';
-import { dayTagOf, openReviewRow } from './hyanaltSubmit.ts';
+import { dayTagOf, hasOpenLegacy, openReviewRow } from './hyanaltSubmit.ts';
 import { F, STATUS } from './hyanalt.ts';
 
 const DAY = Date.UTC(2026, 8, 7);      /* 2026-09-07 */
@@ -96,5 +100,59 @@ assert.equal(openReviewRow([row(500, STATUS.engineerReview)], 0, TAG), null);
 
 /* ── 9. Хоосон жагсаалт ── */
 assert.equal(openReviewRow([], 500, TAG), null);
+
+/* ── 10. ⚠️ ХУУЧИН НЭРИЙН ӨВЛӨЛТ ЗӨВХӨН ӨӨРИЙН МӨРӨӨС (2026-09-08) ──
+ *
+ * Урьд нь (багц·өдөр·компани)-гаар л шалгадаг байсан тул НЭГ нээлттэй
+ * хуучин мөр тэр өдрийн БҮХ шинэ илгээлтээс хуудасны шошгыг хаядаг байв —
+ * үүссэн шинэ мөр өөрөө нээлттэй тул гогцоо болж, `groupWorks` тэднийг НЭГ
+ * Work болгож нийлүүлж, өмнөх илгээлтүүд мөнхөд гацдаг байлаа
+ * (амьд: OID 61·62·63·64·70 бүгд нэг нэртэй).
+ */
+{
+  const BAGTS = 'Багц 2';
+  const COMP = 'Хятадын барилгын 6-р инженерийн товчоо';
+  /** Хуучин (шошгогүй) нэртэй мөр */
+  const legacy = (oid, status) => ({
+    [F.sheetOid]: oid,
+    [F.status]: status,
+    [F.bagts]: BAGTS,
+    [F.company]: COMP,
+    [F.ajil]: TAG,
+  });
+
+  /* ӨӨРИЙН нээлттэй хуучин мөр → өвлөнө (түүх тасрахгүй) */
+  assert.equal(
+    hasOpenLegacy([legacy(500, STATUS.engineerReview)], BAGTS, COMP, TAG, 500), true,
+    'өөрийн нээлттэй хуучин мөрөөс нэрээ өвлөнө',
+  );
+
+  /* ӨӨР илгээлтийн нээлттэй хуучин мөр → ӨВЛӨХГҮЙ (гол засвар) */
+  assert.equal(
+    hasOpenLegacy([legacy(6545, STATUS.engineerReview)], BAGTS, COMP, TAG, 53), false,
+    'өөр илгээлтийн нээлттэй мөр нь шошго хасах шалтгаан БИШ',
+  );
+
+  /* ӨӨРИЙН мөр ШИЛЖҮҮЛСЭН → өвлөхгүй (мөчлөг дууссан) */
+  assert.equal(
+    hasOpenLegacy([legacy(500, STATUS.transferred)], BAGTS, COMP, TAG, 500), false,
+    'шилжүүлсэн мөрөөс өвлөхгүй',
+  );
+
+  /* Өөр багц / өөр компани / өөр өдөр → өвлөхгүй */
+  assert.equal(hasOpenLegacy([legacy(500, STATUS.engineerReview)], 'Багц 1', COMP, TAG, 500), false);
+  assert.equal(hasOpenLegacy([legacy(500, STATUS.engineerReview)], BAGTS, 'Өөр ХХК', TAG, 500), false);
+  assert.equal(hasOpenLegacy([legacy(500, STATUS.engineerReview)], BAGTS, COMP, PREV_TAG, 500), false);
+
+  /* Шошготой мөр нь хуучин нэр БИШ → өвлөхгүй */
+  assert.equal(
+    hasOpenLegacy([row(500, STATUS.engineerReview)], BAGTS, COMP, TAG, 500), false,
+    'шошготой нэр нь хуучин хэлбэр биш',
+  );
+
+  /* sheetOid байхгүй / 0 — хамгаалалт */
+  assert.equal(hasOpenLegacy([legacy(500, STATUS.engineerReview)], BAGTS, COMP, TAG, null), false);
+  assert.equal(hasOpenLegacy([legacy(500, STATUS.engineerReview)], BAGTS, COMP, TAG, 0), false);
+}
 
 console.log('hyanaltSubmit.check.mjs — БҮГД ТЭНЦЛЭЭ');

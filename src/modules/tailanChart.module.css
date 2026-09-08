@@ -169,4 +169,18 @@
 @media print {
   .kpi { background: none; }
   .barTrack, .meterTrack { background: #e5e7eb; }
+  /* ⚠️ 2026-09-08 — БЭХИЙГ ч хатуу нөхнө. Өмнө нь зөвхөн дэвсгэр сэргээгддэг
+     байсан тул ХАРАНХУЙ горимд хэвлэхэд --ink (#f1f5f9) / --ink-2 / --ink-3
+     нь бараг цагаан хэвээр үлдэж, хөтөч дэвсгэрийг хэвлэдэггүй ЦАГААН цаасан
+     дээр тоо, нэр, тэнхлэг, тайлбар БҮГД үл үзэгдэх болдог байв. Хажуугийн
+     report.module.css яг үүнийг өөрийн элементүүддээ аль хэдийн хийсэн. */
+  .barVal, .meterVal, .kpiVal, .note b, .axHot { color: #000; }
+  .barName, .cap { color: #222; }
+  .axis, .note, .na, .kpiSub, .kpiLabel, .cap span { color: #555; }
+  /* Зурвас/шугам — өнгө хэвлэгдэхгүй тул саарал бэхээр (эмфазис нь тодоор) */
+  .bar { background: #767676; }
+  .barHot, .meterFill { background: #333; box-shadow: none; }
+  .meterPlan { background: #000; }
+  .line { stroke: #333; }
+  .area { fill: #d9d9d9; }
 }

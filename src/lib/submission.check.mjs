@@ -219,20 +219,58 @@ const nextOf = (over = {}) => {
   assert.equal(prev.cells[1][1], '7');
 }
 
-/* ── 11. adds: oid-оор нэгтгэнэ — шинэ нь дарна (хуучин байрлалд), шинэ oid нэмэгдэнэ ── */
+/* ── 11. adds: oid-оор нэгтгэнэ — ИЖИЛ мөрийг шинэ нь дарна (хуучин байрлалд),
+       шинэ oid нэмэгдэнэ ──
+   ⚠️ «Ижил мөр» = № · Ажлын нэр · эцэг таарсан (2026-09-08). Зөвхөн тоо
+      (обьём/нэгж) зөрвөл ЯГ ТЭР мөрийн шинэчлэл гэж үзэж дарна. */
 {
   const prev = parseSubmission(JSON.stringify({
     ...valid(),
     adds: [add(-1, { work: 'Хуучин 1' }), add(-2, { work: 'Хуучин 2' })],
   }));
-  const next = nextOf({ adds: [add(-3, { work: 'Шинэ 3' }), add(-1, { work: 'Шинэ 1', vol: 99 })] });
+  const next = nextOf({ adds: [add(-3, { work: 'Шинэ 3' }), add(-1, { work: 'Хуучин 1', vol: 99 })] });
   const m = mergeSubmission(prev, next);
   assert.deepEqual(m.adds.map((a) => a.oid), [-1, -2, -3], 'дараалал: хуучин байрлал хэвээр, шинэ нь ард');
-  assert.equal(m.adds[0].work, 'Шинэ 1', 'ижил oid-д шинэ нь ялах ёстой');
+  assert.equal(m.adds[0].work, 'Хуучин 1', 'ижил мөрийг шинэ нь шинэчлэх ёстой');
   assert.equal(m.adds[0].vol, 99);
   assert.equal(m.adds[1].work, 'Хуучин 2', 'хуучин мөр алга болов');
   assert.equal(m.adds[2].work, 'Шинэ 3');
-  assert.equal(prev.adds[0].work, 'Хуучин 1', 'prev хувирав');
+  assert.equal(prev.adds[0].vol, 10, 'prev хувирав');
+}
+
+/* ── 11b. ТҮР OID МӨРГӨЛДӨХ — ХОЁУЛАА үлдэнэ, нүд нь дагаж зөөгдөнө ──
+ *
+ * ⚠️ 2026-09-08-ны аудитын CRITICAL олдвор: `tmpOid` нь хуудас ачаалагдах
+ *    бүрд −1-ээс эхэлдэг тул өдөр 1-д мөр нэмж ИЛГЭЭЭД хуудсаа дахин нээж
+ *    дахин мөр нэмэхэд шинэ мөр ДАХИН −1 авна. Урьд нь `adds.set` дардаг
+ *    байсан тул өмнөх мөр (нэр, обьём, эцэг) БҮТНЭЭР алга болж, түүний
+ *    `${oid}:${b}` нүднүүд ч шинэ мөрийн утгаар солигддог байв.
+ */
+{
+  const prev = parseSubmission(JSON.stringify({
+    ...valid(),
+    adds: [add(-1, { no: '1.1', work: 'Хучилт А', vol: 100 })],
+    cells: [['-1:0', '100']],
+    rowKeys: [[-1, 'k1']],
+  }));
+  const next = nextOf({
+    adds: [add(-1, { no: '1.2', work: 'Хучилт Б', vol: 999 })],
+    cells: [['-1:0', '999']],
+    rowKeys: [[-1, 'k2']],
+  });
+  const m = mergeSubmission(prev, next);
+  assert.equal(m.adds.length, 2, 'мөргөлдсөн мөр дарагдав — өмнөх илгээлтийн ажил алга болно');
+  assert.equal(m.adds[0].oid, -1);
+  assert.equal(m.adds[0].work, 'Хучилт А', 'хуучин мөр хэвээр байх ёстой');
+  const moved = m.adds[1];
+  assert.equal(moved.work, 'Хучилт Б');
+  assert.ok(moved.oid < 0 && moved.oid !== -1, 'шинэ мөр САЛАНГИД сөрөг oid авах ёстой');
+  const cells = new Map(m.cells);
+  assert.equal(cells.get('-1:0'), '100', 'хуучин мөрийн нүд солигдов');
+  assert.equal(cells.get(`${moved.oid}:0`), '999', 'шинэ мөрийн нүд дагаж зөөгдсөнгүй');
+  const rk = new Map(m.rowKeys);
+  assert.equal(rk.get(-1), 'k1');
+  assert.equal(rk.get(moved.oid), 'k2', 'rowKeys дагаж зөөгдсөнгүй');
 }
 
 /* ── 12. rowKeys: oid-оор нэгтгэнэ ── */

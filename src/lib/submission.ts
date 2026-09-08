@@ -278,7 +278,8 @@ export function parseSubmission(raw: string): SubmissionPayload | null {
  * «40 нүд алга болов» гэж харна, батлахад ч архивт ордоггүй.
  *
  * Дүрэм: cells/dates — түлхүүрээр, шинэ нь дарна; adds — oid-оор, шинэ нь
- * дарна (хуучин байрлал хэвээр — эцэг/дүү дараалал хадгалагдана); rowKeys —
+ * дарна (хуучин байрлал хэвээр — эцэг/дүү дараалал хадгалагдана), ГЭХДЭЭ ижил
+ * oid дээр ӨӨР мөр ирвэл дарахгүй, шинэ сул oid авна (доорх ⚠️); rowKeys —
  * oid-оор нэгтгэнэ; asOf — шинэ ?? хуучин ?? null; base — мөн адил (мэдээлэл);
  * pkgKey/user/at/fillMs — шинэ. `archiveOid`/`approvedAt` ОРОХГҮЙ: нэгтгэсэн
  * илгээлт нь идэвхтэй (батлагдаагүй) — хаах үед `closeSubmission` нэмнэ.
@@ -289,15 +290,62 @@ export function mergeSubmission(
   prev: SubmissionPayload | null,
   next: Omit<SubmissionPayload, 'v'>,
 ): SubmissionPayload {
-  const cells = new Map<string, string>(prev?.cells ?? []);
-  for (const [k, v] of next.cells) cells.set(k, v);
-  const dates = new Map<string, string>(prev?.dates ?? []);
-  for (const [k, v] of next.dates) dates.set(k, v);
   const adds = new Map<number, NewRow>();
   for (const a of prev?.adds ?? []) adds.set(a.oid, a);
-  for (const a of next.adds) adds.set(a.oid, a);
+
+  /*
+   * ⚠️ ТҮР OID-ИЙН МӨРГӨЛДӨӨН (2026-09-08-ны аудитын CRITICAL олдвор).
+   *
+   * Нэмсэн мөрийн түр `oid` нь дуудагчийн модуль дахь тоолуураас гардаг
+   * бөгөөд ТЭР ТООЛУУР ХУУДАС АЧААЛАГДАХ БҮРД −1-ЭЭС ЭХЭЛНЭ. Тиймээс
+   * өдөр 1-д мөр нэмж илгээгээд хуудсаа дахин нээж дахин мөр нэмэхэд шинэ
+   * мөр өмнөх илгээлтийн мөртэй ИЖИЛ (−1) дугаар авч болно. Урьд нь энд
+   * `adds.set(a.oid, a)` гэж ДАРДАГ байсан тул өмнөх өдрийн нэмсэн мөр
+   * (нэр, обьём, эцэг) илгээлтээс чимээгүй АЛГА болж, түүний `oid:b`
+   * нүднүүд ч шинэ мөрийн утгаар солигддог байв — хэрэглэгчид ямар ч
+   * анхааруулга гардаггүй (`unmoved` нь зөвхөн эерэг oid-ийг барьдаг).
+   *
+   * Дуудагч талд тоолуурыг илгээлтээс нь түлхэх засвар хийгдсэн боловч энэ
+   * давхарга ӨӨРӨӨ бас хамгаалагдсан байх ёстой: ижил oid дээр АГУУЛГА нь
+   * зөрсөн (өөр № / өөр ажил / өөр эцэг) мөр ирвэл ДАРАХГҮЙ, харин `next`-
+   * ийн мөрд шинэ, сул сөрөг oid оноож, түүний нүд/огнооны түлхүүрийг ХАМТ
+   * зөөнө. Ингэснээр хоёр мөр хоёулаа хадгалагдана.
+   */
+  let freeOid = -1;
+  for (const o of adds.keys()) if (o <= freeOid) freeOid = o - 1;
+  for (const [o] of next.rowKeys) if (o <= freeOid) freeOid = o - 1;
+  /** Мөргөлдсөн түр oid → шинээр олгосон сул oid */
+  const remap = new Map<number, number>();
+  /** Хоёр нэмсэн мөр НЭГ мөр мөн үү (нэр · № · эцэг таарвал ижил) */
+  const sameRow = (a: NewRow, b: NewRow) =>
+    a.no === b.no && a.work === b.work && a.parentNo === b.parentNo && a.parentWork === b.parentWork;
+  for (const a of next.adds) {
+    const old = adds.get(a.oid);
+    if (old && !sameRow(old, a)) {
+      const fresh = freeOid;
+      freeOid -= 1;
+      remap.set(a.oid, fresh);
+      adds.set(fresh, { ...a, oid: fresh });
+      continue;
+    }
+    adds.set(a.oid, a);
+  }
+
+  /** `${oid}:…` түлхүүрийн oid-г зөөнө (зөөх шаардлагагүй бол хэвээр) */
+  const fixKey = (k: string): string => {
+    if (!remap.size) return k;
+    const at = k.indexOf(':');
+    if (at < 0) return k;
+    const to = remap.get(Number(k.slice(0, at)));
+    return to == null ? k : `${to}${k.slice(at)}`;
+  };
+
+  const cells = new Map<string, string>(prev?.cells ?? []);
+  for (const [k, v] of next.cells) cells.set(fixKey(k), v);
+  const dates = new Map<string, string>(prev?.dates ?? []);
+  for (const [k, v] of next.dates) dates.set(fixKey(k), v);
   const rowKeys = new Map<number, string>(prev?.rowKeys ?? []);
-  for (const [o, k] of next.rowKeys) rowKeys.set(o, k);
+  for (const [o, k] of next.rowKeys) rowKeys.set(remap.get(o) ?? o, k);
   return {
     v: 1,
     pkgKey: next.pkgKey,

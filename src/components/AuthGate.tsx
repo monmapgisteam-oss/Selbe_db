@@ -141,6 +141,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             const { planTableReady } = await import('@/lib/huvaariBatlah');
             await planTableReady(true);
           } catch { /* хүснэгт үүсээгүй — «Хуваарь» хуудас шалтгааныг хэлнэ */ }
+          /*
+           * ⚠️ ИНЖЕНЕРИЙН ОБЬЁМЫН БАТЛАХ ХҮСНЭГТ — ЯГ ИЖИЛ ШАЛТГААН
+           * (2026-09-08-ны 100% аудитаар илэрсэн). Модуль нь `canCreate`
+           * параметртэй `obyemTableReady`-г экспортлодог ч түүнийг ХААНААС Ч
+           * дуудахгүй байсан тул бүх зам `tableUrl(false)`-ээр явж, хүснэгт
+           * ХЭЗЭЭ Ч үүсэхгүй байв: инженер «Обьём батлуулах» дарахад
+           * «Батлах хүснэгт олдсонгүй — админд хандана уу» гэж мөнхөд
+           * няцаагдана. Хуваарийн хүснэгтийн 2026-09-07-ны сургамжийг
+           * давтсан алдаа.
+           */
+          try {
+            const { obyemTableReady } = await import('@/lib/obyemBatlah');
+            await obyemTableReady(true);
+          } catch { /* хүснэгт үүсээгүй — хуудас шалтгааныг хэлнэ */ }
         }
         /*
          * ҮҮРЭГ — override-ыг тооцсон ГАНЦ эх сурвалж (`roleOf`).

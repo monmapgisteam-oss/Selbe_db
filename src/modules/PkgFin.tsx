@@ -21,7 +21,8 @@ import { useAsync, type Async } from '@/lib/useAsync';
 import {
   BUILDING, CASHFLOW_NEW, IPC_LOG, LAYER_BY_ID, pkgKeyOf, bagtsKey,
   PKG_FAMILY_BY_BAGTS, zoneWhere, cfMonthAxis,
-  ipcCode, ipcNet, ipcDue } from '@/lib/services';
+  ipcCode, ipcNet, ipcDue, ipcPaid } from '@/lib/services';
+import { dedOrNull } from '@/lib/finCard';
 import { cat, shade, date, mnt, num, pct } from '@/lib/format';
 import { readParam, writeParams } from '@/lib/urlState';
 import o from './pkgFinOv.module.css';
@@ -332,11 +333,14 @@ export function PkgFin({ dim, setDim }: {
   };
 
   /**
-   * Багц бүрийн САНХҮҮГИЙН сарын цэгүүд — гэрээний мөрийг bagtsKey-ээр
-   * тааруулж НЭГ УДАА бэлдэнэ. Жагсаалтын гүйцэтгэлийн хувь ба хоцрогдлын
-   * alert үүнээс тооцогдоно.
+   * Багц → тухайн багцад ХАМААРАХ БҮХ гэрээний мөр.
+   *
+   * ⚠️ 2026-09-08: урьд нь энэ бүлэглэлт `finMap`-ийн дотор нуугдаж байсан тул
+   *    ЗӨВХӨН сарын цуваа гарч, «олгосон НИЙТ дүн» олгогддоггүй байв. Одоо
+   *    тусдаа memo — `finMap` (сарын цуваа) ба `givenMap` (олгосон нийт ₮)
+   *    ХОЁУЛАА ЭНЭ НЭГ бүлэглэлтээс гарна.
    */
-  const finMap = useMemo(() => {
+  const rowsByKey = useMemo(() => {
     if (finQ.state !== 'ready') return null;
     const C = CASHFLOW_NEW.fields;
     /* ⚠️ 2026-09-04: урьд нь `!m.has(k)`-ээр багц бүрд ЭХНИЙ гэрээг л
@@ -361,13 +365,47 @@ export function PkgFin({ dim, setDim }: {
         rowsByKey.set(k, arr);
       });
     });
+    return rowsByKey;
+  }, [finQ]);
+
+  /**
+   * Багц бүрийн САНХҮҮГИЙН сарын цэгүүд. Жагсаалтын ГРАФИК болон хоцрогдлын
+   * alert үүнээс тооцогдоно.
+   *
+   * ⚠️ Сарын цуваа нь ОГНООТОЙ актуудыг л агуулна — «олгосон НИЙТ дүн»-д
+   *    БҮҮ хэрэглэ (`givenMap`-ийг үз).
+   */
+  const finMap = useMemo(() => {
+    if (!rowsByKey || finQ.state !== 'ready') return null;
     const m = new Map<string, ReturnType<typeof contractMonths>>();
     rowsByKey.forEach((rows, k) => {
       const ms = mergePkgMonths(rows, finQ.data);
       if (ms) m.set(k, ms);
     });
     return m;
-  }, [finQ]);
+  }, [rowsByKey, finQ]);
+
+  /**
+   * Багц → ОЛГОСОН НИЙТ дүн (₮).
+   *
+   * ⚠️ 2026-09-08 (аудит, CRITICAL): дэлгэц дээрх «олгосон санхүүжилт» БҮГД
+   *    ЭНЭ Map-аас гарна. Урьд нь `activeFin`, `PkgFinList`, `CatChart` гурав
+   *    сарын цувааны нийлбэрийг (`m.given`) авдаг байсан бол `FinCard` нь
+   *    `pkgGivenTotal`-ыг авдаг байв. 59 актын 29-д ямар ч огноо алга (нэг нь
+   *    9,408,637,053 ₮, БАГЦ42) тул тэдгээр сарын цуваанд ОРДОГГҮЙ — үр дүнд
+   *    Багц 4.2 сонгоход НЭГ дэлгэц дээр «49.58 тэрбум» ба «58.99 тэрбум»
+   *    гэсэн ХОЁР өөр «олгосон санхүүжилт» зэрэг харагдаж, «олгогдоогүй
+   *    үлдэгдэл» 9.4 тэрбумаар хөөрөгддөг байлаа.
+   * ⚠️ Сарын ГРАФИК нь `m.given` ХЭВЭЭР — огноогүй актыг сүүлийн сар руу
+   *    шахвал хуурамч оргил үүснэ.
+   */
+  const givenMap = useMemo(() => {
+    if (!rowsByKey || finQ.state !== 'ready') return null;
+    const d = finQ.data;
+    const m = new Map<string, number>();
+    rowsByKey.forEach((rows, k) => { m.set(k, pkgGivenTotal(rows, d)); });
+    return m;
+  }, [rowsByKey, finQ]);
 
   /**
    * Багц → ГЭРЭЭНИЙ ТҮҮХИЙ МӨР (CASHFLOW_NEW).
@@ -410,22 +448,30 @@ export function PkgFin({ dim, setDim }: {
    *    цонхонд багтсан үеүүдийн нийлбэр байсан тул цонхны гадна үлдсэн
    *    санхүүжилтийг ОГТ тоолдоггүй байв.
    */
+  /*
+   * ⚠️ 2026-09-08 (аудит, CRITICAL): `given` нь САРЫН цувааны нийлбэр БИШ,
+   *    `givenMap` (= `pkgGivenTotal`). Огноогүй акт сарын цуваанд ордоггүй тул
+   *    хуучин код нь энэ индикатор ба доорх `FinCard`-ийн KPI мөр хоёрт ХОЁР
+   *    өөр «олгосон санхүүжилт» гаргадаг байв — `givenMap`-ийн ⚠️-г үзнэ үү.
+   */
   const activeFin = useMemo(() => {
-    if (!finMap || finQ.state !== 'ready') return null;
+    if (!givenMap || finQ.state !== 'ready') return null;
     const d = finQ.data;
     if (active) {
-      const months = finMap.get(active.key);
       return {
         plan: d.planTotal.get(active.key) ?? 0,
-        given: months ? months.reduce((a, m) => a + m.given, 0) : 0,
+        given: givenMap.get(active.key) ?? 0,
       };
     }
     let plan = 0;
     let given = 0;
     d.planTotal.forEach((v) => { plan += v; });
-    finMap.forEach((ms) => ms.forEach((m) => { given += m.given; }));
+    /* ⚠️ ТӨСЛИЙН нийт нь `d.givenTotal`-ийн ШУУД нийлбэр — `givenMap`-ийг
+       нийлбэрлэвэл нэг гэрээ хэд хэдэн түлхүүрт (дэд + үндсэн) орсон тохиолдолд
+       давхардана. `FinCard`-ийн сонголтгүй салаатай ЯГ ижил зам. */
+    d.givenTotal.forEach((v) => { given += v; });
     return { plan, given };
-  }, [finMap, active, finQ]);
+  }, [givenMap, active, finQ]);
 
   /**
    * ALERT-тэй (төлөвлөгөөнөөс хоцорсон) багцууд — ТУСДАА бүлэг болж жагсаалтын
@@ -721,8 +767,8 @@ export function PkgFin({ dim, setDim }: {
         ) : !active ? (
           /* Багц сонгоогүй — ТӨСЛИЙН НЭГДСЭН: гэрээ/төсөв · эх үүсвэр · төлөв · блок гүйцэтгэл */
           <>
-            <CatChart packs={packs} finMap={finMap} planMap={planMap} finOnly />
-            <PkgFinList packs={packs} finMap={finMap} planMap={planMap} />
+            <CatChart packs={packs} givenMap={givenMap} planMap={planMap} finOnly />
+            <PkgFinList packs={packs} givenMap={givenMap} planMap={planMap} />
           </>
         ) : active.kind === 'build' ? (
           /* ⚠️ Гэрээ нь САНХҮҮГИЙН баримт (дүн, хугацаа, гүйцэтгэгч), блокийн
@@ -1134,8 +1180,12 @@ function PkgActs({ p, finQ }: { p: Pack; finQ: Async<FinData> }) {
            (epoch БИШ); `date()` мөрийг ч уншина. */
         from: r[F.periodFrom] as string | null,
         to: r[F.periodTo] as string | null,
-        gross: nn2(r[F.gross]),
+        /* ⚠️ 2026-09-08: цагирагийн САЛАНГИД задаргаанд `gross` (суурь),
+           `paid` (шилжүүлсэн), `ded` (4 суутгалын нийлбэр) хэрэгтэй. */
+        gross: ipcNet(r) == null ? null : nn2(r[F.gross]),
         ret: nn2(r[F.retention]),
+        ded: nn2(dedOrNull(r)),
+        paid: ipcPaid(r),
         /* ⚠️ Хадгалагдсан net/үлдэгдэл багана ХАСАГДСАН — БОДОГДОНО:
            net = gross − 4 суутгал, үлдэгдэл = net − 3 гүйлгээ. */
         net: ipcNet(r),
@@ -1153,9 +1203,41 @@ function PkgActs({ p, finQ }: { p: Pack; finQ: Async<FinData> }) {
      ОРУУЛАХГҮЙ (0 гэж нэмбэл нийлбэр өөрчлөгдөхгүй ч «дүнтэй акт»-ын тоо
      худал өснө), харин актын мөрөнд «дүнгүй» гэж ИЛ гарна. */
   const netTotal = acts.reduce((a, x) => a + (x.net ?? 0), 0);
-  const retTotal = acts.reduce((a, x) => a + x.ret, 0);
-  const outTotal = acts.reduce((a, x) => a + (x.out ?? 0), 0);
   const withAmt = acts.filter((x) => x.net != null && x.net > 0).length;
+
+  /*
+   * ⚠️ 2026-09-08 (аудит, HIGH): ЦАГИРАГИЙН ЗҮСМЭГҮҮД САЛАНГИД (disjoint)
+   *    байх ЁСТОЙ. Хуучин код нь [цэвэр дүн] + [барьцаа] + [төлөгдөөгүй
+   *    үлдэгдэл] гурвыг зэрэгцүүлдэг байв — гэтэл `ipcDue = ipcNet − ipcPaid`
+   *    нь цэвэр дүнгийн ДЭД ХЭСЭГ, барьцаа нь 4 суутгалын нэг. Үр дүнд Багц
+   *    4.2-ийн «нийт» 113,474,033,793 ₮ гэж бичигдэж байсан атал тэр багцын
+   *    бүх актын гүйцэтгэлийн дүн ердөө 60,648,293,159 ₮ — бараг ХОЁР ДАХИН.
+   *    Одоо суурь нь `gross` бөгөөд ялгаагүй 4 хэсэгт бүрэн задарна:
+   *      gross = шилжүүлсэн (paid) + төлөгдөөгүй үлдэгдэл (due)
+   *              + барьцаа (ret) + бусад суутгал (ded − ret)
+   * ⚠️ ХЭМЖИГДЭЭГҮЙ актыг (`net == null`) БҮХ гишүүнээс ХАСНА — тэгэхгүй бол
+   *    зөвхөн суутгалтай, дүнгүй акт (I30) тэнцлийг эвдэнэ.
+   * ⚠️ Сөрөг зүсмэг (paid > net — Багц 1, 2-т амьдаар байна) нь ӨГӨГДЛИЙН
+   *    ЗӨРЧИЛ. Урьд нь `.filter(x => x.value > 0)` түүнийг чимээгүй ХАЯГААД
+   *    `note`-д хэвээр тоолж, тэмдэглэл нь зурагдсан дүрснээсээ БАГА гардаг
+   *    байв. Одоо зүсмэг ба `note` ЯГ НЭГ олонлогоос бодогдоно; зөрчлийг
+   *    тусад нь ил бичнэ.
+   */
+  const solid = acts.filter((x) => x.net != null && x.gross != null);
+  const paidTotal = solid.reduce((a, x) => a + x.paid, 0);
+  const dueTotal = solid.reduce((a, x) => a + (x.out ?? 0), 0);
+  const retTotal = solid.reduce((a, x) => a + x.ret, 0);
+  const otherDed = solid.reduce((a, x) => a + (x.ded - x.ret), 0);
+  const parts = [
+    { key: 'paid', label: tr('Шилжүүлсэн'), value: paidTotal, color: cat(0) },
+    { key: 'due', label: tr('Төлөгдөөгүй үлдэгдэл'), value: dueTotal, color: cat(1) },
+    { key: 'ret', label: tr('Барьцаанд суутгасан'), value: retTotal, color: cat(2) },
+    { key: 'ded', label: tr('Бусад суутгал'), value: otherDed, color: cat(3) },
+  ];
+  /* Сөрөг зүсмэгийг цагирагт зурах боломжгүй — ил тэмдэглэж хасна */
+  const bad = parts.filter((x) => x.value < 0);
+  const shown = parts.filter((x) => x.value > 0);
+  const shownTotal = shown.reduce((a, x) => a + x.value, 0);
 
   return (
     <>
@@ -1181,20 +1263,27 @@ function PkgActs({ p, finQ }: { p: Pack; finQ: Async<FinData> }) {
 
       {/* АКТЫН БҮТЭЦ — олгосон / барьцаа / үлдэгдэл. Барьцаа нь ХОЙШЛУУЛСАН
           мөнгө болохоос алдагдал биш; үлдэгдэл нь төлөгдөөгүй үлдсэн. */}
-      {(netTotal > 0 || retTotal > 0 || outTotal > 0) && (
-        <Section title={tr('Актын дүнгийн бүтэц')} note={tr('нийт {0}', mnt(netTotal + retTotal + outTotal))}>
+      {shown.length > 0 && (
+        <Section
+          title={tr('Актын дүнгийн бүтэц')}
+          /* ⚠️ `note` нь ЗУРАГДСАН зүсмэгүүдээс бодогдоно — эс бөгөөс
+             тэмдэглэл ба дүрс хоёр зөрнө (дээрх ⚠️). */
+          note={tr('нийт {0}', mnt(shownTotal))}
+        >
           <Donut
-            items={[
-              { key: 'net', label: tr('Олгосон'), value: netTotal, color: cat(0), display: mnt(netTotal) },
-              { key: 'ret', label: tr('Барьцаанд суутгасан'), value: retTotal, color: cat(2), display: mnt(retTotal) },
-              { key: 'out', label: tr('Төлөгдөөгүй үлдэгдэл'), value: outTotal, color: cat(1), display: mnt(outTotal) },
-            ].filter((x) => x.value > 0)}
+            items={shown.map((x) => ({ ...x, display: mnt(x.value) }))}
             size={140}
             width={22}
             stack
             center={mnt(netTotal)}
             centerLabel={tr('олгосон')}
           />
+          {bad.length > 0 && (
+            <Note>
+              {tr('Өгөгдлийн зөрчил: {0} — сөрөг дүн тул цагирагт орсонгүй.',
+                bad.map((x) => `${x.label} ${mnt(x.value)}`).join(' · '))}
+            </Note>
+          )}
         </Section>
       )}
     </>
@@ -1243,29 +1332,32 @@ function PkgMonths({
 }
 
 function PkgFinList({
-  packs, finMap, planMap,
+  packs, givenMap, planMap,
 }: {
   packs: Pack[];
-  finMap: Map<string, ReturnType<typeof contractMonths>> | null;
+  /** Багц → олгосон нийт дүн, ₮ (`givenMap`) */
+  givenMap: Map<string, number> | null;
   /** Багц → гэрээний нийт дүн, ₮ */
   planMap: Map<string, number> | null;
 }) {
   const rows = useMemo(() => {
-    if (!finMap) return null;
+    if (!givenMap) return null;
     return packs
       .map((p) => {
-        const months = finMap.get(p.key);
-        if (!months) return null;
+        if (!givenMap.has(p.key)) return null;
         /* ⚠️ 2026-09-06: «төлөвлөгөө» нь ГЭРЭЭНИЙ дүн — сарын хуваарь
            байхгүй болсон (`FinData.planTotal`-ийн ⚠️-г үз). */
         const plan = planMap?.get(p.key) ?? 0;
-        const given = months.reduce((a, m) => a + m.given, 0);
+        /* ⚠️ 2026-09-08 (аудит, CRITICAL): сарын цувааны нийлбэр (`m.given`)
+           БИШ, `givenMap`. Огноогүй акт (9.4 тэрбум ₮) цуваанд ордоггүй тул
+           энэ жагсаалт дээд `TsKpi` хавтантайгаа зөрдөг байв. */
+        const given = givenMap.get(p.key) ?? 0;
         if (plan <= 0 && given <= 0) return null;
         return { key: p.key, label: tr(p.name), plan, given, pct: plan > 0 ? (given / plan) * 100 : null };
       })
       .filter((x): x is NonNullable<typeof x> => x != null)
       .sort((a, b) => b.given - a.given);
-  }, [packs, finMap, planMap]);
+  }, [packs, givenMap, planMap]);
 
   if (!rows) return <Section title={tr('Багц бүрийн санхүүжилт')}><Empty label={tr('Ачаалж байна…')} /></Section>;
   if (!rows.length) return <Section title={tr('Багц бүрийн санхүүжилт')}><Empty label={tr('Гэрээ бүртгэгдээгүй')} /></Section>;
@@ -1295,12 +1387,13 @@ function PkgFinList({
 
 function CatChart({
   packs,
-  finMap,
+  givenMap,
   planMap,
   finOnly = false,
 }: {
   packs: Pack[];
-  finMap: Map<string, ReturnType<typeof contractMonths>> | null;
+  /** Багц → олгосон нийт дүн, ₮ (`givenMap`) */
+  givenMap: Map<string, number> | null;
   /** Багц → гэрээний нийт дүн, ₮ */
   planMap: Map<string, number> | null;
   /**
@@ -1326,11 +1419,12 @@ function CatChart({
         if (p.kind === 'build' && p.progress != null) pcts.push(p.progress);
         continue;
       }
-      const months = finMap?.get(p.key);
-      if (!months) continue;
+      if (!givenMap?.has(p.key)) continue;
       /* ⚠️ 2026-09-06: «төлөвлөгөө» = ГЭРЭЭНИЙ дүн (сарын хуваарь алга) */
       const plan = planMap?.get(p.key) ?? 0;
-      const given = months.reduce((a, m) => a + m.given, 0);
+      /* ⚠️ 2026-09-08 (аудит, CRITICAL): сарын цувааны нийлбэр БИШ, `givenMap` —
+         огноогүй акт цуваанд ордоггүй (`givenMap`-ийн ⚠️-г үз). */
+      const given = givenMap.get(p.key) ?? 0;
       if (plan > 0) pcts.push((given / plan) * 100);
     }
     const mean = pcts.length ? pcts.reduce((a, b) => a + b, 0) / pcts.length : null;
