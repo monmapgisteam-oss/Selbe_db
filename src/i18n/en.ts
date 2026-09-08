@@ -2690,6 +2690,7 @@ const en: Record<string, string> = {
   "Хуваарь эх хуудсанд бичигдсэнгүй — илгээлт хүлээгдэж буй хэвээр.": "The schedule was not written to the source sheet — the submission is still pending.",
   "Хуваарь бичигдсэн ч төлөв шинэчлэгдсэнгүй — дахин оролдоно уу.": "The schedule was written but its status was not updated — please try again.",
   "Хуваарь батлагдаж эх хуудсанд бичигдлээ.": "The schedule was approved and written to the source sheet.",
+  "Хуваарь батлагдлаа — эх хуудас аль хэдийн ижил байсан тул өөрчлөлт бичигдсэнгүй.": "The schedule was approved — the source sheet already matched, so no changes were written.",
   "Батлах хүснэгт бэлэн болоогүй — админ нэг удаа нэвтэрч үүсгэнэ.": "The approval table is not ready — an administrator creates it by signing in once.",
   "Өөрчлөлтийг батлуулахаар илгээнэ — батлагдтал эх хуваарь хөдлөхгүй": "Submit the changes for approval — the live schedule stays put until they are approved",
   "Батлуулах": "Submit for approval",
