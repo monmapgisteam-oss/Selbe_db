@@ -67,7 +67,8 @@
   --side-r: clamp(280px, 17vw, 560px);
 }
 
-@media (max-width: 1500px) { .body { --side-l: 300px; --side-r: 300px; } }
+/* Ширээний шатлал `--bp-desk` — хажуугийн багана нарийсна (2026-09-07) */
+@media (max-width: 1400px) { .body { --side-l: 300px; --side-r: 300px; } }
 
 /* Нарийн дэлгэц — багана дараалан босоо болно (зураг дундаа хэвээр) */
 /* ⚠️ Нарийн дэлгэцэд чирэлт УТГАГҮЙ — багана дээр дээрээсээ доош өрөгдөнө.
@@ -531,6 +532,10 @@
   align-items: center;
   height: 100%;
 }
+/* ⚠️ СОНГОСОН ҮЕ. `g.tlColOn` нь CSS-д БАЙХГҮЙ байсныг 2026-09-07-ны
+   аудит илрүүлэв: хулганаар заасан үе огт тодордоггүй, зөвхөн шошго нь
+   солигддог тул «аль баганы тоо вэ» гэдэг тодорхойгүй байлаа. */
+.tlColOn { background: color-mix(in srgb, var(--data) 12%, transparent); }
 /* Багананы утга — түүний ДЭЭД талд, багана намхан үед ч уншигдана */
 /*
  * ОЛГОСОН ДҮНГИЙН БАГАНА.
@@ -991,6 +996,11 @@
   font-variant-numeric: tabular-nums;
 }
 .tlNum { text-align: right; font-variant-numeric: tabular-nums; }
+/* ⚠️ ТООН БАГАНЫН ТОЛГОЙ. 2026-09-07-ны аудитаар `g.tlThNum` нь CSS-д
+   БАЙХГҮЙ болохыг илрүүлэв — `undefined` болж, тоон баганын гарчиг
+   зүүн тийш үлдэж, доорх утгууд нь баруун тийш жигдэрсэн байв.
+   TypeScript үүнийг барьдаггүй (`.module.css` нь Record<string,string>). */
+.tlThNum { text-align: right; }
 /* Ээлжилсэн дэвсгэр — урт мөрийг нүд алдахгүй дагана */
 .tlTbl tbody tr:nth-child(even) { background: color-mix(in srgb, var(--ink) 3%, transparent); }
 .tlTbl tbody tr:hover { background: color-mix(in srgb, var(--data) 12%, transparent); }

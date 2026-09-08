@@ -120,13 +120,42 @@ assert.ok(
 /* (1) Ачаалахад локал БА алсын хоёрыг АГШНААР харьцуулж шинийг нь сонгоно —
        хуучныг нь тавибал өөр машин дээрх шинэ ажил чимээгүй дарагдана. */
 const pickBlock = between('const local = readDraft(pkg.key);', 'pickDraft(d,');
-assert.ok(pickBlock.includes('loadRemoteDraft(pkg.key)'), 'алсын ноорог уншигдахгүй байна');
+/* ⚠️ 2026-09-07: `loadRemoteDraft` → `readRemoteDraft`. Хуучин хос нь «ноорог
+   БАЙХГҮЙ» ба «уншиж ЧАДСАНГҮЙ» хоёрыг ижил `null` болгодог тул сүлжээний түр
+   саат нь бөглөсөн ажлыг АЛГА БОЛСОН мэт харуулдаг байв. */
+assert.ok(pickBlock.includes('readRemoteDraft(pkg.key)'), 'алсын ноорог уншигдахгүй байна');
 assert.ok(pickBlock.includes('remote.t > local.t'), 'локал/алсын агшны харьцуулалт алга');
+/* ⚠️ УНШИЛТ УНАСНЫГ ЯЛГАНА: чимээгүй `null` болговол хэрэглэгч хоосон хуудас
+   хараад ажлаа алдсан гэж дүгнэнэ. Мөн `promptedPkgRef`-ийг БУЦААЖ хоослох
+   ёстой — эс бөгөөс тэр сешнд ДАХИН оролдох зам хаагдаж, зөвхөн F5 аврана. */
+assert.ok(pickBlock.includes('!rr.ok'), 'алсын уншилтын алдаа ялгагдахгүй байна');
+assert.ok(
+  pickBlock.includes("promptedPkgRef.current = ''"),
+  'уншилт унахад дахин оролдох зам нээгдэхгүй байна',
+);
 /* (2) Бичилт нь ЗАВСАРЛАГАТАЙ — нүд бүрийн товшилтод ArcGIS руу хүсэлт явбал
        бөглөлт удааширна. Хадгалалтын эффект зөвхөн дараалалд тавина. */
 const persist = between('const at = Date.now();', 'remoteQueue.current = { pkg: pkg.key, draft };');
 assert.ok(!persist.includes('saveRemoteDraft'), 'алсын бичилт завсарлагагүй хийгдэж байна');
 assert.ok(SRC.includes('setTimeout(flush, 12_000)'), 'алсын бичилтийн завсарлага алга');
+assert.ok(SRC.includes("window.addEventListener('pagehide'"), 'pagehide алга — iOS/bfcache-д сүүлийн ажил алдагдана');
+/* ⚠️ ДЭЭД ХҮЛЭЭЛТ: 12 сек нь ЗӨВХӨН debounce тул тасралтгүй бөглөж байгаа
+   хүний ажил алсад ХЭЗЭЭ Ч хуулагдахгүй байв. 60 сек тутам заавал илгээнэ. */
+assert.ok(SRC.includes('lastRemoteRef'), 'алсын бичилтийн ДЭЭД хүлээлт алга');
+/* ⚠️ ИЛГЭЭЛТИЙН уншилт ч алдааг ЯЛГАНА (2026-09-07, CRITICAL): чимээгүй
+   `null` болговол буцаагдсан ажил «бүх нүд 0%» болж харагдана. */
+/* ⚠️ ТАЙЛБАР ДОТОРХ дурдлагыг тоолохгүй (2026-09-07): `irgediin-hurteemj`
+   merge хийхэд алдааны түүхийг тайлбарласан мөрүүд орж ирсэн. ЖИНХЭНЭ
+   дуудлага нь `await` эсвэл `=`-ийн ард ирдэг. */
+const CODE_ONLY = SRC
+  .split('\n')
+  .filter((l) => !/^\s*[*]/.test(l) && !/^\s*\/[*]/.test(l) && !/^\s*\/\//.test(l))
+  .join('\n');
+assert.ok(
+  !/(?:await|=)\s*loadActiveSubmission\(/.test(CODE_ONLY),
+  'илгээлтийн уншилт алдааг залгисаар байна',
+);
+assert.ok(SRC.includes('setSubReadErr('), 'илгээлтийн уншилтын алдаа хэрэглэгчид харагдахгүй байна');
 assert.ok(SRC.includes("document.addEventListener('visibilitychange'"), 'таб хаагдахад илгээхгүй байна');
 /* (3) Нийтэлсэн ба «Устгах» хоёулаа АЛСЫН хуулбарыг цэвэрлэнэ — эс бөгөөс
        нийтлэгдсэн ажил өөр төхөөрөмж дээр «нийтлэгдээгүй» гэж эргэж ирнэ. */

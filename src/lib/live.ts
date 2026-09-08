@@ -22,7 +22,7 @@ import { queryFeatures, queryStats, queryGroup, count, sum, type Row } from '@/l
 import { t as tr } from '@/lib/i18nCore';
 import {
   BOUNDARY, BUILT_LAYER, BUILT_FIELDS, BUILT_STATUS, CASHFLOW_NEW,
-  LAYER_BY_ID, PARCEL_CLEARED, PARCEL_LEFT, layerUrl, oidOf,
+  LAYER_BY_ID, PARCEL_CLEARED, layerUrl, oidOf,
 } from '@/lib/services';
 import { sumBy, tally } from '@/lib/agg';
 import { register, type DataKey } from '@/lib/dataBus';
@@ -505,25 +505,30 @@ export type Clearance = {
  * cleared + remaining ≠ total байв; одоо тэнцэнэ.
  * `land.ts`-ийн `loadLandStatus`-тай ЯГ ижил дүрэм.
  */
+/**
+ * ⚠️ 2026-09-07-ны гүйцэтгэлийн аудит: энэ ачаалагч урьд нь ӨӨРИЙН
+ * `queryGroup`-ыг `PARCEL_LEFT` рүү явуулдаг байсан нь `land.ts`-ийн
+ * `loadLandStatus`-ийн ЯГ ижил асуулга байв (хоёул төлөвөөр бүлэглэж тоо ба
+ * талбай авдаг). Хоёр тусдаа кэштэй тул нэг хуудсанд ХОЁР ижил хүсэлт явж,
+ * 6 слотын дараалалд дэмий зай эзэлдэг байлаа. Одоо ГАНЦ эх сурвалжаас
+ * гаргана — хүсэлт нэгээр цөөрч, хоёр тоо хэзээ ч зөрөхгүй болов.
+ *
+ * ⚠️ ТООНУУД ӨӨРЧЛӨГДӨӨГҮЙ: `loadLandStatus` нь `areaAlt` (гараар бичсэн
+ *    талбай) нөхөлт нэмдэг ч шинэ үйлчилгээнд `area_m2 IS NULL AND Талб_1
+ *    IS NOT NULL` мөр ЯГ 0 (амьдаар шалгасан) тул үлдсэн талбай 7.6544 га
+ *    хэвээр. Хожим тийм мөр гарвал энэ зам нь илүү ЗӨВ дүн өгнө.
+ */
 export const loadClearance = cached<Clearance>(async () => {
-  const F = PARCEL_LEFT.fields;
-  const rows = await queryGroup(
-    PARCEL_LEFT.url, F.status,
-    [count(PARCEL_LEFT.oid, 'n'), sum(F.area, 'a')],
-  );
-  let cleared = 0, remaining = 0, remainingM2 = 0, total = 0;
-  for (const r of rows) {
-    const k = String(r[F.status] ?? '').trim();
-    const n = Number(r.n ?? 0);
-    total += n;
-    if (k === PARCEL_CLEARED) cleared += n;
-    else { remaining += n; remainingM2 += Number(r.a ?? 0); }
-  }
+  const { loadLandStatus } = await import('@/lib/land');
+  const L = await loadLandStatus();
+  const remainingM2 = L.byStatus
+    .filter((r) => r.label !== PARCEL_CLEARED)
+    .reduce((a, r) => a + r.areaM2, 0);
   return {
-    cleared,
-    remaining,
+    cleared: L.cleared,
+    remaining: L.remaining,
     remainingHa: remainingM2 / 10_000,
-    total,
-    pct: total > 0 ? (cleared / total) * 100 : null,
+    total: L.total,
+    pct: L.pct,
   };
 }, undefined, ['PARCEL_LEFT']);

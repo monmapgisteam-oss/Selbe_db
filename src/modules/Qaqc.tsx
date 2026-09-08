@@ -23,7 +23,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { t as tr } from '@/lib/i18nCore';
 import { useAuth } from '@/components/AuthGate';
 import { hasCap, subscribeCaps } from '@/lib/caps';
-import { bagtsScope, subscribeAcl } from '@/lib/guitsetgelAcl';
+import { qaqcScope, subscribeQaqcAcl } from '@/lib/qaqcAcl';
 import { roleForUser } from '@/lib/services';
 import { PKG_GROUPS, PKGS, pkgFloors, loadSchema, type Pkg } from '@/modules/sheet/bagts.pkg';
 import { loadRows } from '@/modules/sheet/bagtsSheet';
@@ -44,7 +44,7 @@ import {
 } from '@/lib/qaqc';
 import {
   clearQaqcDraft,
-  loadQaqcDraft,
+  readQaqcDraft,
   QAQC_REMOTE_MAX,
   saveQaqcDraft,
 } from '@/lib/qaqcDraftRemote';
@@ -79,7 +79,20 @@ type Draft = {
 };
 
 const DRAFT_PREFIX = 'selbe-qaqc-draft:';
-const DRAFT_TTL_MS = 3 * 24 * 3600 * 1000;
+/**
+ * НООРОГИЙН АМЬДРАХ ХУГАЦАА.
+ *
+ * ⚠️ 3 → 14 ХОНОГ (2026-09-07). 3 хоног нь ажлын долоо хоногийн хэмнэлд
+ * ТААРАХГҮЙ байв: баасан 17:00-д хадгалсан ноорог даваа 17:00-д хугацаа
+ * дуусч, мягмар өглөө нээхэд ЛОКАЛ ба АЛСЫН хуулбар ХОЁУЛАА чимээгүй
+ * устдаг — `parseDraft` нь хоёуланд нь хэрэглэгддэг тул ArcGIS дээр БАЙГАА
+ * ноорогийг ч хаяна. Гурван өдрийн амралт, өвчтэй, томилолт бүрд ижил;
+ * хэрэглэгчид ямар ч мэдэгдэл очдоггүй.
+ *
+ * ⚠️ `FillNew.tsx`-д 2026-09-06-нд яг энэ шалтгаанаар 14 болгосон —
+ * чанарын хуудас тэр засварыг аваагүй хоцорсон байв.
+ */
+const DRAFT_TTL_MS = 14 * 24 * 3600 * 1000;
 
 const parseDraft = (raw: string): Draft | null => {
   try {
@@ -121,17 +134,21 @@ export function Qaqc() {
   const [capN, setCapN] = useState(0);
   useEffect(() => subscribeCaps(() => setCapN((n) => n + 1)), []);
   const [aclN, setAclN] = useState(0);
-  useEffect(() => subscribeAcl(() => setAclN((n) => n + 1)), []);
+  useEffect(() => subscribeQaqcAcl(() => setAclN((n) => n + 1)), []);
 
   /**
-   * ⚠️ ХЯЗГААРГҮЙ = кодын хатуу `super` эсвэл нэвтрэлт унтраалттай дев —
-   *    `FillNew`-тэй ЯГ ижил дүрэм. Хоёр хуудас багцын хүрээг өөр өөрөөр
-   *    тайлбарлавал хэрэглэгч «яагаад тэнд харагдаад энд харагдахгүй байна»
-   *    гэж эргэлзэнэ.
+   * ⚠️ ХЯЗГААРГҮЙ = кодын хатуу `super` эсвэл нэвтрэлт унтраалттай дев.
+   *
+   * ⚠️ БАГЦЫН ХҮРЭЭ нь `qaqcAcl`-ААС гарна — «Гүйцэтгэл бөглөх»-ийн
+   *    `bagtsScope`-оос БИШ (2026-09-07). Чанарын хяналтын ажилтан нь
+   *    гүйцэтгэлийн урсгалын дөрвөн шатны аль нь ч биш тул урсгалын
+   *    томилгоогоор хуваарилвал түүнд гүйцэтгэл ЗӨВШӨӨРӨХ эрх дагалдаж,
+   *    мөн «нэг аккаунт нэг шатанд» дүрмээр өмнөх томилгоо нь чимээгүй
+   *    хасагдана. Дэлгэрэнгүйг `qaqcAcl.ts`-ийн толгойгоос үз.
    */
   const unrestricted = authStatus === 'off' || roleForUser(user?.username) === 'super';
   const myBagts = useMemo(
-    () => (unrestricted ? null : bagtsScope(user?.username)),
+    () => (unrestricted ? null : qaqcScope(user?.username)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [user, unrestricted, aclN],
   );
@@ -186,7 +203,7 @@ export function Qaqc() {
 
   /** Засагдахгүй нүдний тайлбар — товшихад гарна */
   const RO_NO = tr('№ ба Ажлын нэр нь excel-ийн бүтэц — энэ хуудаснаас засагдахгүй.');
-  const RO_CAP = tr('Чанарын баримт бөглөхөд «QAQC» эрх шаардлагатай — «Хэрэглэгчдийн эрх удирдах» хэсгээс олгоно.');
+  const RO_CAP = tr('Чанарын баримт бөглөхөд «QAQC» эрх шаардлагатай — «Хэрэглэгчдийн эрх удирдах → Чанарын (QAQC) эрх» хэсгээс олгоно.');
   const ro = (msg: string) => ({ title: msg, onClick: () => say(msg) });
 
   /* ── Баганын crosshair — React state БИШ, O(1) overlay (FillNew-тэй ижил) ── */
@@ -262,6 +279,17 @@ export function Qaqc() {
     setGrpA(0);
     setGrpB(0);
     remoteQueue.current = null;
+    /* ⚠️ АЛСЫН БАЙДАЛ БАГЦАД ХАРЬЯАЛАГДАНА (2026-09-07): үлдээвэл өмнөх
+       багцын «ArcGIS 14:20» ногоон заалт эсвэл шар анхааруулга ШИНЭ багц
+       дээр наалдаж, хэрэглэгч буруу багцын байдлыг хардаг. */
+    setRemoteState(null);
+    /* ⚠️ СЭРГЭЭХ ШАТЫГ ДАХИН НЭЭНЭ (2026-09-07). `promptedPkgRef` нь
+       сешн дуустал тэгэлддэггүй байсан тул багц A→B→A буцахад: (1) сэргээх
+       эффект ДАХИН ажиллахгүй, (2) хадгалах эффектийн `pend` хоосон салаа
+       нь `promptedPkgRef.current === pkg.key` шалгуурыг давж A-гийн ноорогийг
+       ЛОКАЛ ба АЛСАД ХОЁУЛАНГ нь УСТГАДАГ байв. Багц солих цонх нь эсрэгээр
+       «Ноорог үлдэх» гэж амладаг тул тэр заалт ХУДАЛ байлаа. */
+    promptedPkgRef.current = '';
     void load(pkg.key);
   }, [pkg.key, load]);
 
@@ -436,7 +464,23 @@ export function Qaqc() {
 
   /* ══════════════ НООРОГ — ХАДГАЛАХ ══════════════ */
   const [savedAt, setSavedAt] = useState<number | null>(null);
-  const [remoteBig, setRemoteBig] = useState(false);
+  /**
+   * АЛСЫН ХУУЛБАРЫН БАЙДАЛ (2026-09-07, `FillNew`-ийн загвар).
+   *
+   * ⚠️ Урьд нь `saveQaqcDraft(...)`-ийн үр дүнг `void`-оор ХАЯДАГ байсан тул
+   * сүлжээгүй, токен дууссан, хүснэгт олдоогүй — аль ч тохиолдолд дэлгэц
+   * дээр «ноорог хадгалагдав» гэж ХЭВЭЭР гарч, бөглөгч алсад хуулагдсан гэж
+   * итгээд өөр компьютер дээр хоосон хуудас хүлээж авдаг байв. Локал ноорог
+   * бүрэн бүтэн тул бөглөлтийг ЗОГСООХГҮЙ — зөвхөн байдлыг ҮНЭН харуулна.
+   *
+   * ⚠️ `null` = хараахан илгээгээгүй — тэр үед юу ч хэлэхгүй, эс бөгөөс
+   *    бичиж эхэлмэгц худал анхааруулга гарна.
+   */
+  const [remoteState, setRemoteState] = useState<
+    null | { kind: 'ok'; at: number } | { kind: 'big' } | { kind: 'fail' }
+  >(null);
+  /** Сүүлийн алсын илгээлтийн агшин — дээд хүлээлтийн (60 сек) лавлах цэг */
+  const lastRemoteRef = useRef(0);
   const remoteQueue = useRef<{ pkg: string; draft: Draft } | null>(null);
   const [remoteTick, setRemoteTick] = useState(0);
 
@@ -472,37 +516,54 @@ export function Qaqc() {
     setRemoteTick((n) => n + 1);
   }, [pend, pkg.key, rows]);
 
-  /* ── АЛСЫН ХУУЛБАР — 12 секундын завсарлагатай (FillNew-тэй ижил) ── */
+  /*
+   * ── АЛСЫН ХУУЛБАР (2026-09-07-нд `FillNew`-тэй ТЭНЦҮҮЛЭВ) ──
+   *
+   * ⚠️ ЗАВСАРЛАГАА: бичихээ зогсоод 12 секунд өнгөрөхөд НЭГ удаа илгээнэ.
+   *
+   * ⚠️ ДЭЭД ХҮЛЭЭЛТ. 12 секунд нь ЗӨВХӨН debounce байсан тул тоолуур засвар
+   * бүрд дахин эхэлдэг: 12 секундэд нэг нүд бөглөж 40 минут ажилласан хүний
+   * ажил алсад ХЭЗЭЭ Ч хуулагдахгүй байв. Одоо сүүлийн илгээлтээс 60 секунд
+   * өнгөрсөн бол завсарлагыг үл харгалзан илгээнэ.
+   *
+   * ⚠️ `pagehide` — iOS Safari ба bfcache-д `visibilitychange`-ээс ИЛҮҮ
+   * найдвартай; таб хаагдах цорын ганц дохио байх тохиолдол бий.
+   */
   useEffect(() => {
-    if (!remoteTick) return;
-    const t = setTimeout(() => {
+    if (!remoteTick) return undefined;
+    const flush = () => {
       const q = remoteQueue.current;
       if (!q) return;
+      /* ⚠️ ӨӨР БАГЦЫН ноорог бол ХАЯНА, бичихгүй: дараалалд үлдсэн хуучин
+         багцын ноорогийг одоогийн багцын слотод бичих нь өгөгдөл СОЛИХ
+         алдаа. Локалд аль хэдийн бүрэн хадгалагдсан тул алдагдал үүсэхгүй. */
+      if (q.pkg !== pkg.key) { remoteQueue.current = null; return; }
+      /* ⚠️ Дараалал ЦЭВЭРЛЭГДЭНЭ — эс бөгөөс нэг ноорог дахин дахин
+         илгээгдэж, устгасны дараа ч ArcGIS-д буцаж амилна (зомби). */
+      remoteQueue.current = null;
       const payload = JSON.stringify(q.draft);
-      if (payload.length > QAQC_REMOTE_MAX) {
-        setRemoteBig(true);
-        return;
-      }
-      setRemoteBig(false);
-      void saveQaqcDraft(q.pkg, q.draft.t, payload);
-    }, 12_000);
-    /* ⚠️ Таб хаагдах/нуугдахад ЯГ ОДОО илгээнэ — 12 секунд хүлээвэл
-       компьютер унтрахад тэр хугацааны ажил алсад хүрэхгүй. */
-    const onHide = () => {
-      if (document.visibilityState !== 'hidden') return;
-      const q = remoteQueue.current;
-      if (!q) return;
-      const payload = JSON.stringify(q.draft);
-      if (payload.length <= QAQC_REMOTE_MAX) {
-        void saveQaqcDraft(q.pkg, q.draft.t, payload);
-      }
+      if (payload.length > QAQC_REMOTE_MAX) { setRemoteState({ kind: 'big' }); return; }
+      lastRemoteRef.current = Date.now();
+      void saveQaqcDraft(q.pkg, q.draft.t, payload).then((ok) => {
+        /* Багц солигдсон бол хуучин хариугаар шинэ багцын төлөвийг бичихгүй */
+        if (loadedPkgRef.current !== q.pkg) return;
+        setRemoteState(ok ? { kind: 'ok', at: Date.now() } : { kind: 'fail' });
+      });
     };
+    const t = setTimeout(flush, 12_000);
+    const since = Date.now() - lastRemoteRef.current;
+    const cap = since >= 60_000
+      ? setTimeout(flush, 0)
+      : setTimeout(flush, Math.max(0, 60_000 - since));
+    const onHide = () => { if (document.visibilityState === 'hidden') flush(); };
     document.addEventListener('visibilitychange', onHide);
+    window.addEventListener('pagehide', flush);
     return () => {
-      clearTimeout(t);
+      clearTimeout(t); clearTimeout(cap);
       document.removeEventListener('visibilitychange', onHide);
+      window.removeEventListener('pagehide', flush);
     };
-  }, [remoteTick]);
+  }, [remoteTick, pkg.key]);
 
   /* ══════════════ НООРОГ — СЭРГЭЭХ ══════════════ */
 
@@ -517,8 +578,23 @@ export function Qaqc() {
       const local = readDraft(pkg.key);
       /* ⚠️ ЛОКАЛ ба АЛСЫН хоёрыг АГШНААР харьцуулж ШИНИЙГ нь сонгоно —
          хуучныг тавибал өөр машин дээрх шинэ ажил чимээгүй дарагдана. */
-      const rem = await loadQaqcDraft(pkg.key);
+      /*
+       * ⚠️ УНШИЛТЫН АЛДААГ ЯЛГАНА (2026-09-07, `FillNew`-тэй ижил засвар).
+       * «Ноорог БАЙХГҮЙ» ба «уншиж ЧАДСАНГҮЙ» хоёрыг `null`-аар нэгтгэвэл
+       * сүлжээний түр саат нь бөглөсөн ажлыг АЛГА БОЛСОН мэт харуулна.
+       * Унавал ИЛ хэлж, `promptedPkgRef`-ийг хоослон дахин оролдох замыг
+       * нээнэ.
+       */
+      const rr = await readQaqcDraft(pkg.key);
       if (!alive) return;
+      if (!rr.ok) {
+        promptedPkgRef.current = '';
+        show('warn', tr(
+          'Алсын ноорогийг уншиж чадсангүй ({0}). Энэ компьютерийн ноорог хэвээр — өөр газраас бөглөсөн ажил байвал сүлжээ сэргэсний дараа хуудсыг дахин ачаална уу.',
+          rr.error,
+        ));
+      }
+      const rem = rr.ok ? rr.draft : null;
       const remD = rem ? parseDraft(rem.payload) : null;
       const pick: { d: Draft; source: 'local' | 'remote' } | null =
         local && remD
@@ -554,6 +630,16 @@ export function Qaqc() {
         cells[k] = v;
       }
       const count = Object.keys(cells).length;
+      /*
+       * ⚠️ ЭРХГҮЙ ҮЕД НООРОГ УСТГАХГҮЙ (2026-09-07).
+       *
+       * Дээрх давталт `canEdit ? pick.d.cells : []` гэж явдаг тул эрх түр
+       * алдагдсан (эсвэл `caps`/`acl` хараахан ачаалагдаагүй) агшинд `cells`
+       * ХООСОН, `dropped` ч 0 болж, энэ салаа ноорогийг ЛОКАЛ ба АЛСАД
+       * ХОЁУЛАНГ нь бүрмөсөн устгадаг байв — сүлжээний саат ч хангалттай.
+       * Ноорог нь нийтлээгүй ажил тул эрх сэргэхэд эргэж ирэх ЁСТОЙ.
+       */
+      if (!canEdit) return;
       if (!count && !dropped) {
         clearDraftLS(pkg.key);
         void clearQaqcDraft(pkg.key);
@@ -720,14 +806,19 @@ export function Qaqc() {
   /* ══════════════ ЗУРАГДАЛТ ══════════════ */
 
   /*
-   * ⚠️ Томилгоогүй хэрэглэгчид ХООСОН хуудас БИШ, шалтгааныг ил хэлнэ —
+   * ⚠️ Хуваарилагдаагүй хэрэглэгчид ХООСОН хуудас БИШ, шалтгааныг ил хэлнэ —
    *    `FillNew`-тэй ижил (тайлбаргүй хоосон сонгогч «эвдэрсэн» гэж уншигдана).
+   *
+   * ⚠️ Заавар нь «Чанарын эрх» бүлгийг заана — «Гүйцэтгэлийн урсгал»-ыг БИШ
+   *    (2026-09-07). Урьд нь урсгалыг заадаг байсан тул админ тэнд шат
+   *    томилохоос өөр зам олдохгүй, тэр нь харин чанарын ажилтанд гүйцэтгэл
+   *    зөвшөөрөх эрх дагуулдаг байв.
    */
   if (groupOpts.length === 0) {
     return (
       <div className={st.wrap}>
         <div className={st.error} role="status">
-          {tr('Танд нэг ч багц хуваарилагдаагүй байна. «Хэрэглэгчдийн эрх удирдах → Гүйцэтгэлийн урсгал» хэсэгт админ таныг шатанд томилж, багц зааж өгсний дараа энэ хуудас нээгдэнэ.')}
+          {tr('Танд нэг ч багц хуваарилагдаагүй байна. «Хэрэглэгчдийн эрх удирдах → Чанарын (QAQC) эрх» хэсэгт админ багц зааж өгсний дараа энэ хуудас нээгдэнэ.')}
         </div>
       </div>
     );
@@ -859,17 +950,39 @@ export function Qaqc() {
 
         {busy && <span className={st.muted}>{tr('ажиллаж байна…')}</span>}
 
+        {/* ⚠️ ЭНЭ ЗААЛТ нь ЛОКАЛ хадгалалтыг л хэлнэ (2026-09-07-нд tooltip
+            засагдав): урьд нь «мөн ArcGIS-д хадгалагдана» гэж БАТАЛГАА өгдөг
+            байсан ч алсын бичилтийн үр дүн огт уншигддаггүй байв. Алсын
+            байдал одоо ДООР тусдаа заалтаар гарна. */}
         {savedAt != null && dirtyCount > 0 && (
           <span
             className={st.autosave}
-            title={tr('Ноорог энэ хөтөчид, мөн ArcGIS-д хадгалагдана — өөр компьютероос нэвтэрсэн ч сэргээх боломжтой. Үйлчилгээнд бичихийн тулд «Хадгалах» дарна.')}
+            title={tr('Ноорог ЭНЭ хөтөчид хадгалагдлаа. ArcGIS-д хуулагдсан эсэхийг хажуугийн заалт харуулна. Үйлчилгээнд бичихийн тулд «Хадгалах» дарна.')}
           >
             {tr('ноорог хадгалагдав {0}', new Date(savedAt).toLocaleTimeString('mn-MN', { hour: '2-digit', minute: '2-digit' }))}
           </span>
         )}
-        {remoteBig && (
+        {/* ⚠️ ХЭТ ТОМ ноорог алсад ЯВААГҮЙГ ил хэлнэ — «хадгалагдсан» гэж
+            бодоод өөр машин дээр хоосон хуудас хүлээж авах нь хамгийн муу. */}
+        {remoteState?.kind === 'big' && (
           <span className={st.autosaveWarn} role="status">
             {tr('Ноорог хэт том тул зөвхөн энэ компьютерт хадгалагдлаа.')}
+          </span>
+        )}
+        {/* ⚠️ АЛСЫН ХУУЛБАР УНАСАН — сүлжээ, токен, эрх, хүснэгт аль нь ч
+            болсон үр дүн НЭГ: ноорог ЗӨВХӨН энэ компьютерт байна. Бөглөлт
+            зогсохгүй тул алдаа биш, харин БАЙДЛЫН мэдээлэл. */}
+        {remoteState?.kind === 'fail' && (
+          <span className={st.autosaveWarn} role="status" title={tr('Дахин оролдлого автоматаар үргэлжилнэ. Өөр компьютероос үргэлжлүүлэх бол сүлжээ сэргэсний дараа хуудсыг нээлттэй үлдээнэ үү.')}>
+            {tr('⚠ ArcGIS-д хуулагдсангүй — ноорог зөвхөн энэ компьютерт байна.')}
+          </span>
+        )}
+        {/* ⚠️ АМЖИЛТТАЙГ ч ил хэлнэ: «хадгалагдав» гэдэг нь локалыг хэлдэг тул
+            алсын хуулбар ХЭЗЭЭ хуулагдсаныг тусад нь харуулж байж л бөглөгч
+            «өөр компьютероос үргэлжлүүлж болно» гэдэгт итгэнэ. */}
+        {remoteState?.kind === 'ok' && dirtyCount > 0 && (
+          <span className={st.autosave} title={tr('Энэ агшны байдлаар ArcGIS-д хуулагдсан — өөр компьютероос нэвтэрч үргэлжлүүлж болно.')}>
+            {tr('ArcGIS {0}', new Date(remoteState.at).toLocaleTimeString('mn-MN', { hour: '2-digit', minute: '2-digit' }))}
           </span>
         )}
         {rows.length > 0 && (

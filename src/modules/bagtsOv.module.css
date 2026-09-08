@@ -186,7 +186,7 @@
 }
 
 /* Нарийн дэлгэц — гурван багана БОСОО өрөлт болно */
-@media (max-width: 1100px) {
+@media (max-width: 1180px) {
   .pack {
       grid-template-columns: 1fr;
       grid-template-rows: auto auto max(260px, 58vh) auto;

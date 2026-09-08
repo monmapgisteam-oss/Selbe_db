@@ -14,14 +14,33 @@
  * (`hyanaltStore.apply`) архивт жааз үүснэ.
  *
  * ⚠️ `dkey`-ИЙН ЗАЙ — нэг хүснэгт, гурван төрлийн мөр:
- *   · `<user>|<pkg>`      — ноорог (`draftRemote`, хэвээр; хэрэглэгч бүрд тусдаа)
- *   · `sub|<pkg>`         — ИДЭВХТЭЙ илгээлт; багц бүрд ХАМГИЙН ИХДЭЭ НЭГ мөр
- *   · `done|<pkg>|<oid>`  — батлагдсан илгээлт (хөлдсөн); payload-д
- *                           `archiveOid`, `approvedAt` нэмэгдэнэ
- *   Нэг багцад нэг идэвхтэй илгээлт: дахин илгээхэд ШИНЭ мөр биш, БАЙГАА мөр
- *   update хийгдэнэ (`mergeSubmission`-оор нэгтгэсэн payload-той).
- *   Батлагдсаны дараа `sub|` мөр `done|` болж хөлдөх тул дараагийн илгээлт
- *   шинэ `sub|` мөр үүсгэнэ.
+ *   · `<user>|<pkg>`         — ноорог (`draftRemote`, хэвээр; хэрэглэгч бүрд тусдаа)
+ *   · `sub|<pkg>|<fillMs>`   — ИДЭВХТЭЙ илгээлт; багц × ӨДӨР бүрд НЭГ мөр
+ *   · `sub|<pkg>`            — ХУУЧИН (2026-09-07-оос ӨМНӨХ) идэвхтэй илгээлт,
+ *                              өдрийн дагаваргүй; уншилт нь ҮРГЭЛЖ дэмжинэ
+ *   · `done|<pkg>|<oid>`     — батлагдсан илгээлт (хөлдсөн); payload-д
+ *                              `archiveOid`, `approvedAt` нэмэгдэнэ
+ *   Нэг багц × нэг ӨДӨРТ нэг идэвхтэй илгээлт: ТЭР ӨДРИЙН илгээлтийг дахин
+ *   илгээхэд ШИНЭ мөр биш, БАЙГАА мөр update хийгдэнэ (`mergeSubmission`-оор
+ *   нэгтгэсэн payload-той). Батлагдсаны дараа `sub|` мөр `done|` болж хөлдөнө.
+ *
+ * ⚠️ ЯАГААД ӨДӨР ОРСОН (2026-09-07, хэрэглэгчийн шууд шаардлага: «хянагдаж
+ *    байсан ч дараа өдрийнхийг илгээх боломжтой байх ёстой… дарж бичихгүй,
+ *    тусдаа хянагдаад 4 хяналтын зарчмаар явна»):
+ *    урьд нь багцад ЦОРЫН ГАНЦ `sub|<pkg>` мөр байсан тул өчигдрийн илгээлт
+ *    инженерийн гар дээр байхад өнөөдрийнхийг илгээх зам ОГТ БАЙХГҮЙ байв —
+ *    `inReview` бүрмөсөн хаадаг, хаалтыг арилгавал `saveSubmission` тэр НЭГ
+ *    мөрийг дарж бичиж, хянагчийн харж буй агуулга доор нь солигдоно.
+ *    Одоо өдөр бүр ӨӨРИЙН `sub|` мөртэй, ӨӨРИЙН хяналтын мөртэй
+ *    (`hyanaltSubmit`-ийн `Ажлын_нэр`-д огноо ордог тул `groupWorks` тэднийг
+ *    аль хэдийн ТУСДАА ажил болгодог) — 4 шат нь өдөр тус бүрд зэрэгцэн явна.
+ *
+ * ⚠️ ХУУЧИН МӨРҮҮД ҮЙЛДВЭРЛЭЛД БАЙГАА: дагаваргүй `sub|<pkg>` мөрүүд
+ *    хянагдсаар байгаа тул тэдгээрийн УНШИХ · БАТЛАХ · ХААХ зам ЗААВАЛ
+ *    нээлттэй үлдэнэ. `readSubmissionByOid`/`closeSubmission` нь OBJECTID-аар
+ *    ажилладаг тул тэдэнд өөрчлөлт хэрэггүй; `readActiveSubmission` нь
+ *    (гүйцэтгэгчийн хуудасны зам) ХОЁУЛАНГ нь хайж, тэр ӨДРИЙНХИЙГ буцаана
+ *    (доорх `readActiveSubmission`-ийн ⚠️).
  *
  * ⚠️ OBJECTID ХЭВЭЭР ҮЛДЭХ ЁСТОЙ: хяналтын бүртгэлийн (`guitsetgel_bugluh_hyanalt`)
  * `Эх_мөрийн_дугаар` нь илгээлтийн мөрийн ЭНЭ OBJECTID руу заадаг. Update-ийн
@@ -121,8 +140,32 @@ const DONE_PREFIX = 'done|';
  *    ArcGIS хэрэглэгч байвал давхцана. Одоогийн байгууллагад тийм нэр байхгүй;
  *    гарвал угтварыг өөрчлөх биш (хуучин мөр алдагдана), тэр нэрийг хориглоно.
  */
-const subKey = (pkgKey: string) => `${SUB_PREFIX}${pkgKey}`;
+/**
+ * ИДЭВХТЭЙ ИЛГЭЭЛТИЙН ТҮЛХҮҮР.
+ *
+ * ⚠️ `fillMs` өгвөл `sub|<pkg>|<fillMs>` — ӨДӨР БҮР ТУСДАА мөр (2026-09-07,
+ *    толгойн ⚠️). Өгөхгүй бол ХУУЧИН `sub|<pkg>` — зөвхөн УНШИХ (legacy
+ *    fallback) болон тестэд; ШИНЭ мөр энэ хэлбэрээр ХЭЗЭЭ Ч үүсэхгүй.
+ * ⚠️ `fillMs` нь `Date.UTC(y,m,d)` буюу өдрийн эхэн — `FillNew.publish`-ийн
+ *    ЦОРЫН ГАНЦ эх сурвалж. Секундын нарийвчлалтай агшин (`at`) оруулбал
+ *    илгээлт бүр шинэ мөр үүсгэж, «нэг өдөрт нэгтгэх» дүрэм эвдэрнэ.
+ */
+export const subKey = (pkgKey: string, fillMs?: number | null) =>
+  fillMs == null ? `${SUB_PREFIX}${pkgKey}` : `${SUB_PREFIX}${pkgKey}|${fillMs}`;
+/**
+ * ⚠️ `doneKey` нь ӨДРИЙГ АВАХГҮЙ — санаатай. Түлхүүрт `oid` (OBJECTID) орсон
+ *    бөгөөд тэр нь хүснэгтэд давтагдашгүй тул өдөр бүрийн хаагдсан илгээлт
+ *    аль хэдийн ӨӨР `done|` түлхүүртэй байна. Өдөр нэмбэл түлхүүр уртсахаас
+ *    өөр юу ч өгөхгүй, харин ХУУЧИН `done|` мөрүүдтэй хэлбэр зөрнө.
+ * ⚠️ `pkgKey` нь `payload.pkgKey`-ээс ирэх ЁСТОЙ (dkey-ээс таслаж авбал шинэ
+ *    хэлбэрт `<pkg>|<fillMs>` болно) — `closeSubmission`-ийн ⚠️-г үз.
+ */
 const doneKey = (pkgKey: string, oid: number) => `${DONE_PREFIX}${pkgKey}|${oid}`;
+/**
+ * ⚠️ ЗӨВХӨН УГТВАРААР — тиймээс `sub|<pkg>`, `sub|<pkg>|<fillMs>`,
+ *    `done|<pkg>|<oid>` ГУРВУУЛАА дамжина. Өдөр нэмэгдсэн нь энэ шалгуурыг
+ *    эвдээгүй (`submission.check.mjs` тусгайлан батална).
+ */
 const isSubmissionKey = (dkey: string) => dkey.startsWith(SUB_PREFIX) || dkey.startsWith(DONE_PREFIX);
 
 const isStr = (x: unknown): x is string => typeof x === 'string';
@@ -349,14 +392,17 @@ async function readUrl(): Promise<{ ok: true; url: string | null } | { ok: false
 }
 
 /**
- * Багцын ИДЭВХТЭЙ илгээлт (`sub|<pkgKey>`) — байхгүй/алдаа бол `null`.
+ * Багц × ӨДРИЙН ИДЭВХТЭЙ илгээлт — байхгүй/алдаа бол `null`.
  * ⚠️ Давхардвал (зэрэгцээ бичилтийн race) OBJECTID хамгийн ИХ нь ялна —
  *    `saveSubmission` мөн их OBJECTID-д бичиж бусдыг устгадаг тул нийцнэ.
  * ⚠️ Унших зам чимээгүй: алдаа → `null` (илгээлтгүйтэй ижил) — компанийн
  *    хуудас overlay-гүй ч ачаалагдана.
  */
-export async function loadActiveSubmission(pkgKey: string): Promise<StagedSubmission | null> {
-  const r = await readActiveSubmission(pkgKey);
+export async function loadActiveSubmission(
+  pkgKey: string,
+  fillMs?: number | null,
+): Promise<StagedSubmission | null> {
+  const r = await readActiveSubmission(pkgKey, fillMs);
   return r.ok ? r.sub : null;
 }
 
@@ -368,21 +414,97 @@ export async function loadActiveSubmission(pkgKey: string): Promise<StagedSubmis
  *    хэрэглэгчийн ЯГ ОДОО хянагдаж буй `sub|` мөрийг бүтнээр нь дарж бичдэг
  *    байв (upsert нь мөрийг dkey-гээр олдог тул тэр мөр рүү л бичнэ).
  */
-export async function readActiveSubmission(pkgKey: string): Promise<SubRead> {
+export async function readActiveSubmission(pkgKey: string, fillMs?: number | null): Promise<SubRead> {
   try {
     const u = await readUrl();
     if (!u.ok) return u;
     if (!u.url) return { ok: true, sub: null };
     const fl = await layer(u.url);
+    /*
+     * ⚠️ ХОЁР ТҮЛХҮҮРИЙГ НЭГ ХҮСЭЛТЭЭР (2026-09-07): шинэ
+     * `sub|<pkg>|<fillMs>` ба ХУУЧИН дагаваргүй `sub|<pkg>`. Хуучин мөрүүд
+     * үйлдвэрлэлд амьд байгаа тул тэднийг олохгүй бол гүйцэтгэгчийн
+     * хуудсанд илгээсэн тоо нь ХАРАГДАХАА БОЛЬЖ («миний илгээсэн ажил алга
+     * болжээ») дахин бөглөгдөнө, мөн `publish`-ийн `staged` хоосон болж
+     * ХУРИМТЛАЛ тасарна. Хоёр удаа хүсэлт явуулбал хоёр дахин удаан тул
+     * `IN (…)`-ээр нэг удаа уншаад доор нь ялгана.
+     */
+    const dayK = subKey(pkgKey, fillMs);
+    const legacyK = subKey(pkgKey);
+    const keys = dayK === legacyK ? [legacyK] : [dayK, legacyK];
     const res = await fl.queryFeatures({
-      where: `dkey = ${sqlStr(subKey(pkgKey))}`,
+      where: `dkey IN (${keys.map(sqlStr).join(', ')})`,
       outFields: OUT_FIELDS,
       returnGeometry: false,
       orderByFields: ['OBJECTID DESC'],
     });
-    return readRow(res.features[0]?.attributes as RowAttrs | undefined);
+    const feats = res.features.map((f) => f.attributes as RowAttrs | undefined);
+    /* Тэр ӨДРИЙН мөр байвал ТЭР нь ялна — хуучин мөр байсан ч. */
+    const day = feats.find((a) => String(a?.dkey ?? '') === dayK);
+    if (day) return readRow(day);
+    /*
+     * ⚠️ ХУУЧИН МӨРИЙГ ЗӨВХӨН ӨДӨР НЬ ТААРВАЛ АВНА (fillMs өгөгдсөн үед):
+     *    дагаваргүй мөр нь ЯМАР Ч өдрийнх байж болно. Өчигдрийн (хянагдаж
+     *    буй) хуучин мөрийг өнөөдрийн суурь болгон буцаавал —
+     *      · `mergeBase` нь өчигдрийн нүднүүдийг өнөөдрийн payload-д хуулж,
+     *        батлагдахад архивт ХОЁР УДАА тоологдоно;
+     *      · `saveSubmission` тэр мөрийг update хийж, хянагчийн ЯГ ОДОО харж
+     *        буй агуулгыг доор нь сольж, өдөр салгасны ач холбогдол алга болно.
+     *    Тиймээс `payload.fillMs` тулгана: тэр өдрийнх бол «энэ өдрийн
+     *    илгээлт» мөн (шинэ хэлбэрт шилжээгүй хуучин мөр) — үргэлжлүүлж
+     *    нэгтгэнэ; өөр өдрийнх бол ХАРААХГҮЙ (`sub:null`) — өнөөдөр ШИНЭ мөр
+     *    үүснэ, хуучин мөр өөрийн хяналтаараа хэвийн батлагдана.
+     */
+    const legacy = feats.find((a) => String(a?.dkey ?? '') === legacyK);
+    if (!legacy) return { ok: true, sub: null };
+    const r = readRow(legacy);
+    if (!r.ok || !r.sub) return r;
+    if (fillMs != null && r.sub.payload.fillMs !== fillMs) return { ok: true, sub: null };
+    return r;
   } catch (e) {
     return { ok: false, error: tr('Илгээлтийн төлөвийг шалгаж чадсангүй: {0}', errMsg(e)) };
+  }
+}
+
+/**
+ * БАГЦЫН БҮХ ИДЭВХТЭЙ (батлагдаагүй) илгээлт — өдөр бүрд нэг.
+ *
+ * ⚠️ ЯАГААД ХЭРЭГТЭЙ (2026-09-07): өдөр бүр тусдаа `sub|` мөртэй болсноор
+ *    нэг багцад ОЛОН идэвхтэй илгээлт зэрэг оршино (өчигдрийнх хянагдаж
+ *    байна + өнөөдрийнх дөнгөж илгээгдлээ). `FillNew` нь «ӨӨР өдрийн
+ *    илгээлт хянагдаж байна уу» гэдгийг мэдэж, товчийг хаах эсэхээ шийдэх
+ *    ёстой; мөн бөглөх хуудсанд ЗӨВХӨН өнөөдрийн зөрүү давхарлагдана
+ *    (бусдыг давхарлавал давхар тоологдоно).
+ * ⚠️ `done|` мөрүүд ОРОХГҮЙ — тэдгээрийн агуулга архивт аль хэдийн бий.
+ * ⚠️ Чимээгүй: алдаа → хоосон массив (харагдацыг унагаахгүй).
+ */
+export async function listActiveSubmissions(pkgKey: string): Promise<StagedSubmission[]> {
+  try {
+    const u = await readUrl();
+    if (!u.ok || !u.url) return [];
+    const fl = await layer(u.url);
+    /* ⚠️ `pkg` талбараар шүүнэ — түүнд ЗӨВХӨН `pkgKey` бичигддэг (өдөр
+       ОРООГҮЙ) тул `dkey LIKE` хэрэггүй; `dkey`-ээр угтварыг дахин тулгаж
+       ноорогийн (`<user>|<pkg>`) мөрүүдийг хасна. */
+    const res = await fl.queryFeatures({
+      where: `pkg = ${sqlStr(pkgKey)}`,
+      outFields: OUT_FIELDS,
+      returnGeometry: false,
+      orderByFields: ['OBJECTID DESC'],
+    });
+    const out: StagedSubmission[] = [];
+    for (const f of res.features) {
+      const a = f.attributes as RowAttrs | undefined;
+      if (!String(a?.dkey ?? '').startsWith(SUB_PREFIX)) continue;
+      const r = readRow(a);
+      /* ⚠️ Задраагүй мөрийг ЧИМЭЭГҮЙ алгасна — энэ функц зөвхөн ХАРАГДАЦ ба
+         анхааруулгад хэрэглэгддэг, бичих шийдвэрт БИШ (`readActiveSubmission`
+         тэр үүргийг гүйцэтгэнэ, алдаагаа ил гаргадаг). */
+      if (r.ok && r.sub && !r.sub.done && r.sub.payload.pkgKey === pkgKey) out.push(r.sub);
+    }
+    return out;
+  } catch {
+    return [];
   }
 }
 
@@ -428,7 +550,22 @@ export async function readSubmissionByOid(oid: number): Promise<SubRead> {
 }
 
 /**
- * ИЛГЭЭЛТИЙГ ХАДГАЛНА (upsert `sub|<pkgKey>`).
+ * ИЛГЭЭЛТИЙГ ХАДГАЛНА (upsert `sub|<pkgKey>|<payload.fillMs>`).
+ *
+ * ⚠️ ТҮЛХҮҮРИЙН ӨДӨР НЬ `payload.fillMs` (2026-09-07) — дуудагчаас ТУСДАА
+ *    аргумент авахгүй. ЯАГААД: өдөр хоёр эх сурвалжтай болвол (аргумент ба
+ *    payload) зөрөх боломж нээгдэж, `sub|<pkg>|<A>` түлхүүрт `fillMs = B`
+ *    гэсэн агуулга суух эрсдэлтэй — батлагдахад архивын жааз БУРУУ өдөрт
+ *    орно. `parseSubmission`/`isFillMs` нь `fillMs`-ийг аль хэдийн бодит
+ *    мужид тулгадаг тул нэг эх сурвалж хангалттай. (Нэмэлт ашиг: дуудлагын
+ *    гарын үсэг `(pkgKey, payload, expect)` ХЭВЭЭР үлдэж, дуудагч бүрийг
+ *    засах шаардлагагүй.)
+ *
+ * ⚠️ ХУУЧИН МӨРИЙГ ӨВЛӨНӨ: тухайн багцад дагаваргүй `sub|<pkg>` мөр байж,
+ *    түүний `payload.fillMs` нь ЭНЭ өдрийнх бол ШИНЭ мөр үүсгэхгүй, ТЭР
+ *    мөрийг update хийнэ (dkey-г нь ч шинэ хэлбэрт шилжүүлнэ). Эс бөгөөс нэг
+ *    өдрийн нэг илгээлт ХОЁР мөр болж, хяналтын мөрийн `Эх_мөрийн_дугаар` нь
+ *    хуучин мөрийг заасаар үлдэж, хэрэглэгчийн шинэ засвар хянагчид ХҮРЭХГҮЙ.
  *
  * ⚠️ Байгаа мөрийг update — OBJECTID ХЭВЭЭР (толгойн тайлбар: хяналтын
  *    бүртгэл энэ дугаараар холбогдоно). Давхардлыг устгана (их OBJECTID
@@ -483,14 +620,31 @@ export async function saveSubmission(
     const url = await tableUrl(true);
     if (!url) return { ok: false, error: tr('Илгээлтийн хүснэгт олдсонгүй') };
     const fl = await layer(url);
-    const dkey = subKey(pkgKey);
+    const dkey = subKey(pkgKey, payload.fillMs);
+    const legacyK = subKey(pkgKey);
+    /*
+     * ⚠️ ХОЁР ТҮЛХҮҮР — шинэ (өдөртэй) ба хуучин (дагаваргүй). Хуучин мөрийг
+     *    ЗӨВХӨН тэр өдрийнх бол өвлөнө (толгойн ⚠️) тул `payload`-ыг нь
+     *    уншиж шалгана; өөр өдрийнх бол ОГТ ХӨНДӨХГҮЙ — тэр нь өөрийн
+     *    хяналтаараа явж байгаа тусдаа илгээлт.
+     * ⚠️ `payload` талбарыг НЭМЖ уншина (урьд нь зөвхөн OBJECTID/at байсан) —
+     *    зөвхөн энэ багцын 1–2 мөр тул хэмжээ асуудал биш.
+     */
     const found = await fl.queryFeatures({
-      where: `dkey = ${sqlStr(dkey)}`,
-      outFields: ['OBJECTID', 'at'],
+      where: `dkey IN (${[dkey, legacyK].map(sqlStr).join(', ')})`,
+      outFields: ['OBJECTID', 'dkey', 'at', 'payload'],
       returnGeometry: false,
       orderByFields: ['OBJECTID ASC'],
     });
-    const feats = found.features.filter((f) => typeof f.attributes?.OBJECTID === 'number');
+    const all = found.features.filter((f) => typeof f.attributes?.OBJECTID === 'number');
+    const feats = all.filter((f) => {
+      const k = String(f.attributes.dkey ?? '');
+      if (k === dkey) return true;
+      if (k !== legacyK) return false;
+      /* Хуучин мөр — ЗӨВХӨН ижил өдрийнх бол энэ илгээлтийн мөр гэж үзнэ. */
+      const p = parseSubmission(String(f.attributes.payload ?? ''));
+      return !!p && p.fillMs === payload.fillMs;
+    });
     const oids = feats.map((f) => f.attributes.OBJECTID as number);
     const target = oids.length ? oids[oids.length - 1] : null;
     const dupes = oids.slice(0, -1);
@@ -563,7 +717,16 @@ export async function closeSubmission(
     if (!dkey.startsWith(SUB_PREFIX)) return { ok: false, error: tr('Мөр №{0} нь илгээлт биш ({1})', oid, dkey) };
     const payload = parseSubmission(String(a.payload ?? ''));
     if (!payload) return { ok: false, error: tr('Илгээлт №{0}-ийн агуулга задарсангүй', oid) };
-    const pkgKey = payload.pkgKey || dkey.slice(SUB_PREFIX.length);
+    /*
+     * ⚠️ dkey-ЭЭС ТАСЛАХДАА ӨДРИЙГ ХАЯНА (2026-09-07): шинэ хэлбэр нь
+     *    `sub|<pkg>|<fillMs>` тул зүгээр таславал `pkgKey` нь
+     *    `b1_9f|1757203200000` болж, `done|` түлхүүр бохирдоно (уншилт нь
+     *    угтвараар ажилладаг тул эвдрэхгүй ч, `pkg`-ээр хайх · тайланд
+     *    задлах бүх зам худал болно). Энэ нь ЗӨВХӨН нөхөх зам —
+     *    `parseSubmission` хоосон `pkgKey`-г хүлээж авдаггүй тул амьд
+     *    өгөгдөлд бараг хүрэхгүй, гэхдээ хэлбэр зөв байх ёстой.
+     */
+    const pkgKey = payload.pkgKey || dkey.slice(SUB_PREFIX.length).split('|')[0];
     const next: SubmissionPayload = { ...payload, archiveOid, approvedAt };
     const edit = {
       updateFeatures: [{

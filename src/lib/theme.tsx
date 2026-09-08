@@ -29,7 +29,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   // Эхлэхдээ: хадгалсан сонголт → байхгүй бол системийн тохиргоо
   useEffect(() => {
-    const saved = localStorage.getItem(THEME_KEY) as Theme | null;
+    /* ⚠️ try/catch (2026-09-07): хувийн горимд `getItem` ШИДДЭГ бөгөөд
+       эффект дотор шидсэн алдаа БҮХ аппыг унагана — өнгөний сонголт
+       санагдахгүй нь ердөө тав тухын асуудал. */
+    let saved: Theme | null = null;
+    try {
+      saved = localStorage.getItem(THEME_KEY) as Theme | null;
+    } catch { /* хувийн горим — системийн тохиргоог дагана */ }
     setTheme(saved ?? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
   }, []);
 
@@ -37,7 +43,12 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!theme) return;
     document.documentElement.dataset.theme = theme;
-    localStorage.setItem(THEME_KEY, theme);
+    /* ⚠️ try/catch (2026-09-07): бичилт шидвэл эффект унаж БҮХ апп
+       эвдэрнэ. Сэдэв нь DOM дээр аль хэдийн тавигдсан тул хадгалалт
+       унасан ч ЭНЭ сешнд зөв харагдана. */
+    try {
+      localStorage.setItem(THEME_KEY, theme);
+    } catch { /* хувийн горим — сонголт санагдахгүй */ }
   }, [theme]);
 
   return (

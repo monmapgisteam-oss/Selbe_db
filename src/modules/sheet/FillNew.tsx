@@ -4,6 +4,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { submitForReview } from '@/lib/hyanaltSubmit';
 import { loadPkgPlan, planPctFromMonths, type PkgPlan } from '@/lib/huvaariObyem';
 import {
+  applyUpdates,
   computeAll,
   editPct,
   isPctEdit,
@@ -38,10 +39,15 @@ import {
   rowKeyOf,
 } from "./sheetFrame";
 import {
-  loadActiveSubmission,
-  loadSubmissionByOid,
+  /* ⚠️ `listActiveSubmissions` ЭНД ХЭРЭГЛЭГДЭХГҮЙ (2026-09-07): «өөр өдрийн
+     илгээлт хянагдаж байна уу» гэдгийг ХЯНАЛТЫН МӨРӨӨС (`otherDaysInReview`)
+     уншина — тэр нь урсгалын ЖИНХЭНЭ эх сурвалж (аль шатанд, хэний гар дээр
+     байгааг мэднэ), харин `sub|` мөр нь зөвхөн агуулга. Хоёуланг нь уншвал
+     нэмэлт хүсэлт зарцуулаад ижил хариу авна. Функц нь `submission.ts`-д
+     хянагчийн/тайлангийн зам болон тестэд үлдэнэ. */
   mergeSubmission,
   readActiveSubmission,
+  readSubmissionByOid,
   saveSubmission,
   type NewRow,
   type StagedSubmission,
@@ -53,6 +59,11 @@ import { useHyanaltRows } from "@/lib/hyanaltStore";
 import { bagtsFor, bagtsScope, subscribeAcl } from "@/lib/guitsetgelAcl";
 import { roleForUser } from "@/lib/services";
 import { hasCap, subscribeCaps } from "@/lib/caps";
+import { obyemScope, subscribeObyemAcl } from '@/lib/obyemAcl';
+import {
+  decideObyem, loadPending as loadObyemPending, loadPayload as loadObyemPayload,
+  submitObyem, type ObyemSubmission,
+} from '@/lib/obyemBatlah';
 import { negjOf } from "./negj";
 import { useAuth } from "@/components/AuthGate";
 import DatePicker from "./DatePicker";
@@ -61,7 +72,7 @@ import { sheetDates } from "./sheetRows";
 import { useColWidths } from "./colWidths";
 import { parseGrid, planPaste } from "./paste";
 import {
-  clearRemoteDraft, loadRemoteDraft, saveRemoteDraft, REMOTE_MAX,
+  clearRemoteDraft, readRemoteDraft, saveRemoteDraft, REMOTE_MAX,
 } from "@/lib/draftRemote";
 import { t as tr } from "@/lib/i18nCore";
 import st from "./sheet.module.css";
@@ -364,6 +375,10 @@ const RO = {
   wE: tr('Одоо байгаа: Хувийн жин × Бодит гүйцэтгэл. Гүйцэтгэл бөглөхөд өөрөө хөдөлнө.'),
   vol: tr('Обьём нь ЭХ ӨГӨГДЛИЙН тоо хэмжээ — эх хүснэгтэд оруулагдана, энэ хуудаснаас засагдахгүй (жин, мөнгөн дүн бүхэлдээ түүнээс бодогддог).'),
   obyemSum: tr('Обьёмын нийлбэр: тухайн мөрийн БҮХ блокийн бөглөсөн обьёмын нийлбэр. Илгээлт батлагдах бүрд өөрөө бодогдож `obyem_sum` талбарт бичигдэнэ.'),
+  plannedVol: tr('Инженерийн төлөвлөсөн обьём: хяналтын инженерийн зорилт. Засах эрхтэй хүн энэ баганыг засаад «Обьём батлуулах» дарна; батлагдсаны дараа л үндсэн өгөгдөлд бичигдэнэ.'),
+  plannedVolNoField: tr('Энэ багцын үйлчилгээнд «Инженерийн төлөвлөсөн обьём» багана үүсээгүй тул засагдахгүй.'),
+  plannedVolLocked: tr('Батлагдаагүй илгээлт хүлээгдэж байна — шийдвэрлэгдтэл энэ багана түгжээтэй.'),
+  plannedVolGroup: tr('Бүлгийн мөрд төлөвлөсөн обьём бичихгүй — зөвхөн ажлын мөрд.'),
   unit: tr('Нэгж өртөг нь үйлчилгээнд хадгалагдсан — энэ хуудаснаас засагдахгүй.'),
   money: tr('Мөнгөн дүн: Обьём × Нэгж өртөг; бүлгийн мөрд дэд мөрүүдийнхээ нийлбэр.'),
   I: tr('Төлөвлөгөөт гүйцэтгэл нь блокуудын төлөвлөгөөт хувийн дундаж. Огноог засвал өөрчлөгдөнө.'),
@@ -484,6 +499,9 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   /* Нэмэлт эрх ArcGIS-аас шинэчлэгдэхэд «+» товч шууд гарч/алга болно */
   const [capN, setCapN] = useState(0);
   useEffect(() => subscribeCaps(() => setCapN((n) => n + 1)), []);
+  /* Инженерийн обьёмын хуваарилалт ӨӨР хадгалалттай — тусад нь захиална */
+  const [obN, setObN] = useState(0);
+  useEffect(() => subscribeObyemAcl(() => setObN((n) => n + 1)), []);
   /**
    * БӨГЛӨХ БОЛОМЖТОЙ БАГЦУУД.
    *
@@ -527,6 +545,36 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   }, [groupOpts]);
 
   const { rows: hyRows, loading: hyLoading, error: hyErr, reload: reloadHy } = useHyanaltRows();
+  /**
+   * ӨНӨӨДРИЙН БӨГЛӨХ ӨДӨР (`Date.UTC(y,m,d)`) — ИЛГЭЭЛТИЙН ТҮЛХҮҮРИЙН ӨДӨР.
+   *
+   * ⚠️ НЭГ Л УДАА (2026-09-07): `publish` доторх `fillMs` тооцоо ба хуудас
+   *    ачаалах эффектийн `fillMs` ХОЁУЛАА ЭНДЭЭС уншина. Хоёр газар тус
+   *    тусад нь `Date.UTC(...)` бодвол шөнө дунд өнгөрөхөд хуудас нэг өдрийн
+   *    илгээлтийг давхарлаж, `publish` өөр өдрийн түлхүүрт бичиж, `staged`
+   *    (нэгтгэх суурь) чимээгүй тасарна.
+   * ⚠️ `today` (`msToDay`) нь ХАРАГДАЦЫН мөр — энэ нь ТҮЛХҮҮРИЙН тоо. Хоёрыг
+   *    андуурч болохгүй.
+   */
+  const [todayFillMs] = useState(() => {
+    const n = new Date();
+    return Date.UTC(n.getFullYear(), n.getMonth(), n.getDate());
+  });
+  /**
+   * ЭНЭ ӨДРИЙН хяналтын мөрийг ЯЛГАХ шошго — `hyanaltSubmit.dayLabel`-тэй
+   * ИЖИЛ хэлбэр (`YYYY.MM.DD`).
+   *
+   * ⚠️ ЛОКАЛЬ цагаар задална — `hyanaltSubmit.dayLabel` ч мөн адил
+   *    (`new Date(ms).getFullYear/...`). `todayFillMs` нь `Date.UTC`-ээр
+   *    бүтсэн тул UTC+8-д тэр хоёр НЭГ өдөр өгнө. Хэрэв энэ хоёрын аль нэгийг
+   *    өөрчлөх бол НӨГӨӨГ НЬ ЗААВАЛ хамт өөрчил — эс бөгөөс өнөөдрийн
+   *    хяналтын мөрийг «өөр өдрийнх» гэж уншиж, хориг ажиллахаа болино.
+   */
+  const todayAjilTag = useMemo(() => {
+    const d = new Date(todayFillMs);
+    const p = (n: number) => String(n).padStart(2, '0');
+    return `Гүйцэтгэл · ${d.getFullYear()}.${p(d.getMonth() + 1)}.${p(d.getDate())}`;
+  }, [todayFillMs]);
   const flow = useMemo(() => {
     /*
      * ⚠️ ХУУДСЫГ ЯЛГАНА (2026-09-04-ний аудит). Хяналтын мөр нь БАГЦААР
@@ -546,28 +594,74 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       return !others.some((p) => ajil.includes(p.label));
     });
     if (!mine.length) return null;
+    /*
+     * ⚠️ ӨНӨӨДРИЙН МӨРИЙГ ЭРХЭМЛЭНЭ (2026-09-07). Урьд нь энд шууд «OBJECTID
+     *    хамгийн их» гэж авдаг байсан нь өдөр бүр тусдаа илгээлт болсноор
+     *    БУРУУ болов: өчигдрийн ажил инженерийн гар дээр байхад өнөөдөр
+     *    илгээвэл хамгийн их OBJECTID нь ӨНӨӨДРИЙНХ болох ч, өнөөдөр хараахан
+     *    илгээгээгүй бол ӨЧИГДРИЙНХ гарч ирж, түүгээр `inReview` тооцвол
+     *    өнөөдрийн илгээлт хаагдана — яг тэр зам нь хэрэглэгчийн 2026-09-07-ны
+     *    гомдол («хянагдаж байсан ч дараа өдрийнхийг илгээх боломжтой байх
+     *    ёстой»). Тиймээс ЭНЭ ӨДРИЙН (Ажлын_нэр-д огноо нь орсон) мөрийг
+     *    тусад нь сонгоно; байхгүй бол `null` — өнөөдөр урсгал эхлээгүй.
+     */
+    const mineToday = mine.filter((r) => String(r[HF.ajil] ?? '').startsWith(todayAjilTag));
+    if (!mineToday.length) return null;
     // Хамгийн сүүлийн тойрог — OBJECTID хамгийн их нь
-    return mine.reduce((a, b) => (b.__oid > a.__oid ? b : a));
-  }, [hyRows, pkg.group, pkg.key, pkg.label]);
+    return mineToday.reduce((a, b) => (b.__oid > a.__oid ? b : a));
+  }, [hyRows, pkg.group, pkg.key, pkg.label, todayAjilTag]);
+  /**
+   * ӨӨР ӨДРИЙН хянагдаж буй урсгалууд — ЗӨВХӨН МЭДЭЭЛЭЛ, ХОРИГ БИШ.
+   *
+   * ⚠️ 2026-09-07: эдгээр нь одоо «Илгээх»-ийг ХААХГҮЙ. Өдөр бүр өөрийн
+   *    `sub|<pkg>|<fillMs>` мөртэй тул өнөөдрийн илгээлт өчигдрийн хянагдаж
+   *    буй агуулгыг ОГТ хөндөхгүй (`saveSubmission` өдрийн түлхүүрээр
+   *    ажилладаг). Гэхдээ гүйцэтгэгч «өмнөх өдрүүд хаана явж байна» гэдгээ
+   *    харах ёстой — эс бөгөөс хариу ирээгүй өдрөө мартаж, тэр өдрийн
+   *    буцаалт хариугүй үлдэнэ.
+   */
+  const otherDaysInReview = useMemo(() => {
+    const others = PKGS.filter((p) => p.group === pkg.group && p.key !== pkg.key);
+    const days = new Set<string>();
+    for (const r of hyRows) {
+      if (r[HF.bagts] !== pkg.group) continue;
+      const ajil = String(r[HF.ajil] ?? '');
+      if (!ajil.includes(pkg.label) && others.some((p) => ajil.includes(p.label))) continue;
+      if (ajil.startsWith(todayAjilTag)) continue;
+      if (r[HF.status] === STATUS.transferred) continue;
+      /* Гүйцэтгэгчийн гар дээр буцаж ирсэн нь «хянагдаж байгаа» БИШ.
+         ⚠️ `OWNER` нь `Record<Status, Stage>` тул түүхий `string`-ээр
+         индекслэхгүй — мөрийн талбарыг ШУУД дамжуулна (`flow`-ийн
+         `OWNER[flow[HF.status]]`-тэй ижил хэв маяг). */
+      if (OWNER[r[HF.status]] === 'company') continue;
+      const m = /(\d{4}\.\d{2}\.\d{2})/.exec(ajil);
+      if (m) days.add(m[1]);
+    }
+    return [...days].sort();
+  }, [hyRows, pkg.group, pkg.key, pkg.label, todayAjilTag]);
   const returned = flow ? OWNER[flow[HF.status]] === "company" : false;
   /** Урсгал ОДОО хэний гар дээр байна вэ (`null` = бүртгэлгүй) */
   const reviewStage = flow ? OWNER[flow[HF.status]] : null;
   /**
-   * ИЛГЭЭЛТ ХЯНАЛТАД БАЙНА УУ — ИЛГЭЭХ ХОРИГИЙН цорын ганц шалгуур
-   * (2026-09-04).
+   * ЭНЭ ӨДРИЙН илгээлт хянагчийн гар дээр байна уу.
    *
-   * ⚠️ ЯАГААД: илгээлт нь багц бүрд ХАМГИЙН ИХДЭЭ НЭГ идэвхтэй мөр
-   *    (`sub|<pkgKey>`) бөгөөд дахин илгээхэд тэр мөр дээр НЭГТГЭГДЭНЭ. Хэрэв
-   *    инженер/менежер/ерөнхий менежерийн гар дээр байх үед дахин илгээх юм
-   *    бол хянагчийн ЯГ ОДОО харж буй агуулга доор нь чимээгүй солигдоно —
-   *    тэр нэгийг харж байгаад өөр нэгийг батална.
+   * ⚠️ 2026-09-07-НООС ЭНЭ НЬ ХОРИГ БИШ, ЗӨВХӨН САНУУЛГА (хэрэглэгчийн шууд
+   *    шаардлага: «Times-ийн хязгаарлалт болиод хэдэн ч удаа илгээх боломжтой
+   *    болго»). Урьд нь энэ туг «Илгээх» товчийг БҮРМӨСӨН хаадаг байсан тул
+   *    инженер хариу өгөх хүртэл гүйцэтгэгч ямар ч засвар илгээж чадахгүй,
+   *    дараа өдрийнхөө гүйцэтгэлийг ч оруулж чаддаггүй байв.
    *
-   * ⚠️ `Шилжүүлсэн` (батлагдсан) нь хориг БИШ: тэр нь мөчлөг ДУУССАН гэсэн
-   *    үг, дараагийн илгээлт ШИНЭ `sub|` мөр үүсгэнэ.
-   * ⚠️ Буцаалт (`OWNER === 'company'`) ч хориг БИШ — засах ЁСТОЙ.
+   * ⚠️ ҮЛДЭЖ БУЙ ЭРСДЭЛ, САНААТАЙ ХҮЛЭЭН ЗӨВШӨӨРСӨН: ЯГ ЭНЭ ӨДРИЙН илгээлтийг
+   *    дахин илгээвэл `saveSubmission` тэр мөрийг update хийнэ (хэрэглэгчийн
+   *    шийдвэр 2: «шинэ тойрог үүсгэхгүй, тэр өдрийн илгээлт шинэчлэгдэнэ»)
+   *    — хянагчийн ЯГ ОДОО харж буй агуулга доор нь солигдож болно. Тиймээс
+   *    ХААХГҮЙ ч ИЛ САНУУЛНА (доорх мэдэгдлийн хэсэг ба `publish`-ийн
+   *    `done(...)` мессеж).
+   * ⚠️ ӨӨР ӨДРИЙН илгээлтэд энэ эрсдэл ОГТ БАЙХГҮЙ: түлхүүр нь өөр
+   *    (`sub|<pkg>|<fillMs>`) тул тэр мөр хөндөгдөхгүй.
    *
-   * ⚠️ Ноорог нь хориотой үед ч ХЭВЭЭР хадгалагдана: хэрэглэгч хүлээж
-   *    байхдаа ажлаа үргэлжлүүлж болно, зөвхөн ИЛГЭЭХ нь хаагдана.
+   * ⚠️ `Шилжүүлсэн` (батлагдсан) нь энэ тугт ОРОХГҮЙ: мөчлөг дууссан.
+   * ⚠️ Буцаалт (`OWNER === 'company'`) ч ОРОХГҮЙ — засах ЁСТОЙ.
    */
   const inReview = !!flow
     && flow[HF.status] !== STATUS.transferred
@@ -635,6 +729,42 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   }, [user, unrestricted, aclN, pkg.group]);
   /** Гүйцэтгэлийн нүд засагдахгүй: хуудас түгжээтэй ЭСВЭЛ гүйцэтгэгч биш */
   const noPerf = noEdit || !canPerf;
+
+  /* ══════════ ИНЖЕНЕРИЙН ТӨЛӨВЛӨСӨН ОБЬЁМ (2026-09-08) ══════════
+   * ⚠️ ГҮЙЦЭТГЭЛЭЭС БҮРЭН ТУСДАА зам: өөрийн эрх (`obyemEdit`/`obyemApprove`),
+   *    өөрийн ноорог (`pvPend`), өөрийн батлах хүснэгт (`obyemBatlah`).
+   *    `pending` (гүйцэтгэлийн ноорог) руу ОГТ ХОЛИХГҮЙ — `publish` нь
+   *    түүнийг хардаггүй тул 4 шатат хяналтад бүртгэгдэхгүй.
+   */
+  const canObyemEdit = useMemo(() => {
+    if (unrestricted) return true;
+    if (!hasCap(user?.username, 'obyemEdit')) return false;
+    const sc0 = obyemScope(user?.username, 'editor');
+    return sc0 === null || sc0.includes(pkg.group);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, unrestricted, obN, capN, pkg.group]);
+
+  const canObyemApprove = useMemo(() => {
+    if (unrestricted) return true;
+    if (!hasCap(user?.username, 'obyemApprove')) return false;
+    const sc0 = obyemScope(user?.username, 'approver');
+    return sc0 === null || sc0.includes(pkg.group);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, unrestricted, obN, capN, pkg.group]);
+
+  /**
+   * Инженерийн обьёмын НООРОГ — `oid` → бичсэн текст ("" = цэвэрлэх).
+   * ⚠️ Түлхүүр нь `oid` ДАНГААРАА: талбар нь мөрд ганц скаляр тул
+   *    гүйцэтгэлийн `${oid}:${b}` хэлбэр энд хэрэггүй.
+   */
+  const [pvPend, setPvPend] = useState<Record<number, string>>({});
+  /** Хүлээгдэж буй илгээлт — байвал багана ТҮГЖИГДЭНЭ */
+  const [pvSub, setPvSub] = useState<ObyemSubmission | null>(null);
+  /** Батлагчийн урьдчилан харах агуулга (`oid` → утга) */
+  const [pvPreview, setPvPreview] = useState<Map<number, number | null> | null>(null);
+  const [pvBusy, setPvBusy] = useState(false);
+  const [pvErr, setPvErr] = useState("");
+  const [pvNote, setPvNote] = useState("");
 
   /*
    * ⚠️ `submittedToday` УСТСАН (2026-09-04). Тэр нь «өнөөдөр архивт агшин
@@ -1001,6 +1131,12 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   const [remoteState, setRemoteState] = useState<
     null | { kind: 'ok'; at: number } | { kind: 'big' } | { kind: 'fail' }
   >(null);
+  /**
+   * ИЛГЭЭЛТИЙН УНШИЛТ УНАСАН (2026-09-07). `null` = асуудалгүй.
+   * ⚠️ Энэ нь «илгээлт байхгүй» гэсэн үг БИШ — уншиж чадаагүй гэсэн үг.
+   *    Хоёрыг ялгаж байж л хэрэглэгч 0%-ийг үнэн гэж эндүүрэхгүй.
+   */
+  const [subReadErr, setSubReadErr] = useState<string | null>(null);
   /** Сүүлийн алсын илгээлтийн агшин — дээд хүлээлтийн (60 сек) лавлах цэг */
   const lastRemoteRef = useRef(0);
 
@@ -1017,6 +1153,12 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
          санал болгогдоно. */
     remoteQueue.current = null;
     keepDraft.current = false;
+    /* ⚠️ АЛСЫН БАЙДАЛ ч БАГЦАД ХАРЬЯАЛАГДАНА (2026-09-07). Үлдээвэл
+       Багц 1-ийн «ArcGIS 14:20» ногоон заалт (эсвэл «хуулагдсангүй» шар
+       анхааруулга) Багц 2 дээр наалдаж, шинэ багцын ажил алсад ороогүй
+       байхад ХУДАЛ баталгаа болно. Шинэ багц заалтгүй эхэлж, зөвхөн
+       бодит илгээлтийн дараа гарна. */
+    setRemoteState(null);
     /* ⚠️ Илгээлт унасны туг нь НЭГ багцынх — үлдээвэл шинэ багцад худал
        анхааруулга үүснэ. */
     setSubmitFailed(false);
@@ -1035,6 +1177,13 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     setSc(null);
     setPending({});
     setPendDate({});
+    /* ⚠️ Инженерийн обьёмын ноорог ч БАГЦАД харьяалагдана — үлдээвэл өөр
+       багцын мөрийн oid дээр буруу утга бичигдэнэ. */
+    setPvPend({});
+    setPvSub(null);
+    setPvPreview(null);
+    setPvErr("");
+    setPvNote("");
     // ⚠️ Нэмэлт мөр нь БАГЦАД харьяалагдана — багц солиход заавал цэвэрлэнэ,
     //    эс бөгөөс өөр багцын бүлэгт наалдаж, буруу хуудсанд бичигдэнэ.
     setAdds([]);
@@ -1064,15 +1213,53 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
          *    тохиолдолд харагдах ёстой; илгээлтгүй хуудас нь хоосон хуудсаас
          *    хамаагүй дээр.
          */
+        /*
+         * ⚠️ УНШИЛТЫН АЛДААГ ЯЛГАНА (2026-09-07-ны аудит, CRITICAL).
+         *
+         * Урьд нь `loadActiveSubmission`/`loadSubmissionByOid` (алдааг
+         * ЗАЛГИДАГ хос) дуудагдаж, гадуур нь `catch { sub = null }` байв —
+         * тэр хоёр нь «илгээлт БАЙХГҮЙ» ба «уншиж ЧАДСАНГҮЙ» хоёрыг ижил
+         * `null` болгодог. Сүлжээ түр тасрах, токен дуусах, `tableUrl`
+         * `null` буцаах агшинд overlay ХИЙГДЭХГҮЙ, хэрэглэгч архивын суурь
+         * жаазыг (бүх нүд 0%) хараад «илгээсэн ажил минь алга болжээ» гэж
+         * дүгнэнэ — ЯМАР Ч алдаа харагдахгүй. 2026-09-06-нд «Багц 3.1,
+         * Хяналтаас БУЦААСАН, бүх нүд 0%» гэсэн бодит гомдол ирсэн.
+         *
+         * ⚠️ ЯГ ЭНЭ алдааг `hyanaltStore.ts` (архивын зам) ба
+         * `hyanaltDetail.ts` (хянагчийн зам) дээр 2026-09-04-нд CRITICAL гэж
+         * тэмдэглэн `read*` хос руу шилжүүлсэн — бөглөх хуудасны АЧААЛАХ
+         * зам ганцаараа хоцорсон байв.
+         *
+         * ⚠️ Уншилт унавал СУУРЬ ЖААЗ ХЭВЭЭР зурагдана (хуудас хоосрохгүй),
+         * гэхдээ дээр нь ИЛ анхааруулга гарч «тоо дутуу байж болзошгүй» гэдгийг
+         * хэлнэ — эс бөгөөс хэрэглэгч 0%-ийг үнэн гэж үзээд дахин бөглөнө.
+         */
         let sub: StagedSubmission | null = null;
-        try {
-          sub = view?.subOid
-            ? await loadSubmissionByOid(view.subOid)
-            : await loadActiveSubmission(pkg.key);
-        } catch {
-          sub = null;
+        let subErr: string | null = null;
+        {
+          /* ⚠️ ӨНӨӨДРИЙН ИЛГЭЭЛТ Л ДАВХАРЛАГДАНА (2026-09-07): өдөр бүр
+             тусдаа `sub|` мөртэй болсон тул нэг багцад олон идэвхтэй илгээлт
+             зэрэг оршино. Бүгдийг давхарлавал өчигдрийн нүд өнөөдрийн
+             хуудсанд суух ба `publish`-ийн `mergeBase`-аар payload-д ДАХИН
+             орж, батлагдахад архивт ХОЁР УДАА тоологдоно. Өчигдрийн
+             батлагдаагүй илгээлт нь ӨӨРИЙН хяналтын мөрөөрөө явж, өөрөө
+             архивт орно — гүйцэтгэгч түүнийг «өөр өдрийн илгээлт хянагдаж
+             байна» мэдэгдлээс хардаг.
+
+             ⚠️ АЛДААГ ЯЛГАДАГ хос (2026-09-07-ны гүн аудит, CRITICAL):
+             чимээгүй `null` болговол сүлжээ түр тасрах, токен дуусах агшинд
+             илгээсэн ажил дэлгэцээс алга болж, хэрэглэгч «ажлаа алдсан» гэж
+             дүгнэн дахин бөглөнө. `hyanaltStore` ба `hyanaltDetail` нь
+             2026-09-04-нд ижил шалтгаанаар `read*` руу шилжсэн — бөглөх
+             хуудасны ачаалах зам ганцаараа хоцорч байсныг зассан. */
+          const sr = view?.subOid
+            ? await readSubmissionByOid(view.subOid)
+            : await readActiveSubmission(pkg.key, todayFillMs);
+          if (sr.ok) sub = sr.sub;
+          else subErr = sr.error;
         }
         if (!alive) return;
+        setSubReadErr(subErr);
         /* ⚠️ `Шилжүүлсэн` (батлагдсан) урсгалын дор давхарлахгүй: тэр мөчлөг
            дууссан бөгөөд агуулга нь архивт орсон. Хянагчийн харагдац
            (`view.subOid`) нь ТУХАЙН илгээлтийг заасан тул урсгалаас
@@ -1123,7 +1310,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     return () => {
       alive = false;
     };
-  }, [pkg, view?.day, view?.subOid]);
+  }, [pkg, view?.day, view?.subOid, todayFillMs]);
 
   /**
    * ӨНЧИН ИЛГЭЭЛТ — хадгалагдсан атлаа хяналтын бүртгэлгүй.
@@ -1834,8 +2021,31 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     const local = readDraft(pkg.key);
     let alive = true;
     void (async () => {
-      const rem = await loadRemoteDraft(pkg.key);
+      /*
+       * ⚠️ УНШИЛТЫН АЛДААГ ЯЛГАНА (2026-09-07).
+       *
+       * Урьд нь `loadRemoteDraft` нь «ноорог БАЙХГҮЙ» ба «уншиж ЧАДСАНГҮЙ»
+       * хоёрыг ижил `null`-аар буцаадаг байв. Сүлжээ түр тасрах, токен
+       * шинэчлэгдэх агшинд гэрийн компьютер дээр бөглөсөн ноорог ОГТ
+       * сэргэхгүй, дэлгэцэд ямар ч алдаа гарахгүй — бөглөгч хоосон хуудас
+       * хараад ажлаа алдсан гэж дүгнэнэ. Дээрээс нь `promptedPkgRef` аль
+       * хэдийн тавигдсан тул тэр сешнд ДАХИН оролдохгүй: зөвхөн хуудсыг
+       * бүтнээр дахин ачаалж (F5) байж сэргэдэг байлаа.
+       *
+       * ⚠️ Одоо: уншилт унавал (а) ИЛ мэдэгдэнэ, (б) `promptedPkgRef`-ийг
+       * БУЦААЖ хоослох тул дараагийн ачаалалт (багц солиод буцах, эсвэл
+       * мөр дахин татагдах) сэргээх шатыг ДАХИН нээнэ.
+       */
+      const rr = await readRemoteDraft(pkg.key);
       if (!alive) return;
+      if (!rr.ok) {
+        promptedPkgRef.current = '';
+        show('warn', tr(
+          'Алсын ноорогийг уншиж чадсангүй ({0}). Энэ компьютерийн ноорог хэвээр — өөр газраас бөглөсөн ажил байвал сүлжээ сэргэсний дараа хуудсыг дахин ачаална уу.',
+          rr.error,
+        ));
+      }
+      const rem = rr.ok ? rr.draft : null;
       const remote = rem ? parseDraft(rem.payload) : null;
       /* ⚠️ АЛСЫН ЗОМБИ — хүчингүй болсон хуулбарыг ArcGIS-ээс ч устгана.
          Локал талыг `readDraft` цэвэрлэдэг; энэ мөргүй бол шинэ эхлэлээс
@@ -2221,6 +2431,124 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    *    хяналтын бүртгэл үүснэ. Архивт бичих цорын ганц зам —
    *    `hyanaltStore.apply` (ерөнхий менежерийн батламж).
    */
+  /* ══════════ ИНЖЕНЕРИЙН ОБЬЁМЫН УРСГАЛ ══════════ */
+
+  /** Хүлээгдэж буй илгээлтийг татах — багц солигдох ба шийдвэрийн дараа */
+  const refreshObyem = useCallback(async () => {
+    try {
+      const sub = await loadObyemPending(pkg.key);
+      setPvSub(sub);
+      /* Батлагч бол агуулгыг нь урьдчилан харуулна */
+      if (sub) {
+        const pl = await loadObyemPayload(sub.oid);
+        setPvPreview(pl ? new Map(pl.cells) : null);
+      } else {
+        setPvPreview(null);
+      }
+    } catch {
+      /* ⚠️ Уншиж чадсангүй ≠ илгээлт алга. Хуучин төлөвийг ХЭВЭЭР үлдээнэ —
+         эс бөгөөс сүлжээ тасрахад багана нээгдэж, батлагдаагүй утга дээр
+         дахин засвар эхэлнэ. */
+    }
+  }, [pkg.key]);
+
+  useEffect(() => { void refreshObyem(); }, [refreshObyem]);
+
+  /** Ноорогт өөрчлөгдсөн нүд — тоо ба payload-ын эх */
+  const pvCells = useMemo(() => {
+    const out: [number, number | null][] = [];
+    const byOid = new Map(rows.map((r) => [r.oid, r]));
+    for (const [k, raw] of Object.entries(pvPend)) {
+      const oid = Number(k);
+      const r = byOid.get(oid);
+      if (!r) continue;
+      const t = raw.trim();
+      const v = t === "" ? null : Number(t);
+      if (v !== null && !Number.isFinite(v)) continue;
+      /* Хадгалагдсантайгаа ижил бол өөрчлөлт БИШ */
+      if ((r.plannedVol ?? null) === v) continue;
+      out.push([oid, v]);
+    }
+    return out;
+  }, [pvPend, rows]);
+
+  /** «Обьём батлуулах» — үндсэн өгөгдөлд ЮУ Ч бичихгүй */
+  const sendObyem = useCallback(async () => {
+    if (!pvCells.length || pvBusy) return;
+    setPvBusy(true); setPvErr(""); setPvNote("");
+    try {
+      const r = await submitObyem({
+        pkgKey: pkg.key,
+        pkgGroup: pkg.group,
+        author: user?.username ?? '',
+        payload: { v: 1, pkgKey: pkg.key, cells: pvCells },
+      });
+      if (!r.ok) { setPvErr(r.error ?? tr('Илгээгдсэнгүй.')); return; }
+      /* ⚠️ Ноорогийг ЦЭВЭРЛЭНЭ: агуулга нь одоо серверт хадгалагдсан тул
+         локалд үлдээвэл дахин илгээх эсвэл батлагдсаны дараа хуучин
+         ноорог дахин бичигдэх эрсдэлтэй. */
+      setPvPend({});
+      setPvNote(tr('Инженерийн обьём батлуулахаар илгээгдлээ — батлагч шийдвэрлэнэ.'));
+      await refreshObyem();
+    } catch (e) {
+      setPvErr(String((e as Error).message || e));
+    } finally {
+      setPvBusy(false);
+    }
+  }, [pvCells, pvBusy, pkg.key, pkg.group, user, refreshObyem]);
+
+  /**
+   * ШИЙДВЭР — батлах эсвэл буцаах.
+   *
+   * ⚠️ ДАРААЛАЛ: батлахад ЭХЛЭЭД үндсэн өгөгдөлд бичиж, ЗӨВХӨН амжилттай
+   *    болсны дараа `decideObyem`-ээр `approved` болгоно. Эсрэгээр хийвэл
+   *    бичилт унасан үед «батлагдсан» гэж харагдах атлаа обьём хуучин
+   *    хэвээр үлдэнэ (`huvaariBatlah`-ийн ижил дүрэм).
+   */
+  const decideObyemHere = useCallback(async (approve: boolean, reason?: string) => {
+    if (!pvSub || pvBusy || !sc) return;
+    setPvBusy(true); setPvErr(""); setPvNote("");
+    try {
+      if (approve) {
+        const fld = sc.f.plannedVol;
+        if (!fld) {
+          setPvErr(tr('Энэ багцын үйлчилгээнд талбар байхгүй тул батлах боломжгүй.'));
+          return;
+        }
+        const pl = await loadObyemPayload(pvSub.oid);
+        if (!pl) { setPvErr(tr('Илгээлтийн агуулга уншигдсангүй.')); return; }
+        /* ⚠️ ЗӨВХӨН БАЙГАА мөрөнд бичнэ: илгээснээс хойш агшин солигдож
+           oid шилжсэн бол тэр мөрийг АЛГАСНА — буруу мөрөнд бичихээс
+           бүрэн алгасах нь дээр. */
+        const live = new Set(rows.map((r) => r.oid));
+        const upd = pl.cells
+          .filter(([oid]) => live.has(oid))
+          .map(([oid, v]) => ({ [sc.f.oid]: oid, [fld]: v }));
+        if (!upd.length) {
+          setPvErr(tr('Илгээлтийн мөрүүд одоогийн хуудсанд олдсонгүй — хуудсаа шинэчилнэ үү.'));
+          return;
+        }
+        await applyUpdates(pkg, upd);
+      }
+      const r = await decideObyem({
+        oid: pvSub.oid,
+        approve,
+        approver: user?.username ?? '',
+        author: pvSub.author,
+        reason,
+      });
+      if (!r.ok) { setPvErr(r.error ?? tr('Шийдвэр хадгалагдсангүй.')); return; }
+      setPvNote(approve
+        ? tr('Инженерийн обьём батлагдаж, үндсэн өгөгдөлд бичигдлээ.')
+        : tr('Буцаагдлаа — инженер засаад дахин илгээнэ.'));
+      await refreshObyem();
+    } catch (e) {
+      setPvErr(String((e as Error).message || e));
+    } finally {
+      setPvBusy(false);
+    }
+  }, [pvSub, pvBusy, sc, rows, pkg, user, refreshObyem]);
+
   const publish = useCallback(async () => {
     // ⚠️ busy — Ctrl+S auto-repeat үед олон зэрэгцээ бичилт явахаас сэргийлнэ.
     /* ⚠️ `asOf == null` нь ЗОГСООХ шалтгаан БИШ (2026-09-06): хэзээ ч
@@ -2257,18 +2585,23 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       return;
     }
     /*
-     * ⚠️ ХЯНАГЧИЙН ГАР ДЭЭР БАЙХАД ИЛГЭЭХГҮЙ (2026-09-04, дизайны дүрэм 2).
-     *    Илгээлт нь багц бүрд НЭГ мөр бөгөөд дахин илгээхэд НЭГТГЭГДДЭГ тул
-     *    хянагчийн ЯГ ОДОО харж буй агуулга доор нь солигдоно — тэр нэгийг
-     *    харж байгаад өөр нэгийг батална. Ноорог нь ХЭВЭЭР хадгалагдана.
+     * ⚠️ ХЯНАЛТЫН ХОРИГ ХАСАГДСАН (2026-09-07, хэрэглэгчийн шууд заавар:
+     *    «Times-ийн хязгаарлалт болиод хэдэн ч удаа илгээх боломжтой болго»).
+     *
+     *    Урьд нь энд `if (inReview) return` байсан бөгөөд `inReview` нь
+     *    БАГЦЫН сүүлийн урсгалын мөрөөс тооцогддог байв — өчигдрийн илгээлт
+     *    инженерийн гар дээр байхад ӨНӨӨДРИЙН гүйцэтгэлийг илгээх зам ОГТ
+     *    байхгүй болж, гүйцэтгэгч хариу хүлээж сууж байлаа.
+     *
+     *    Одоо аюулгүй байдал нь ХОРИГООР биш, ТҮЛХҮҮРЭЭР хангагдана: илгээлт
+     *    нь `sub|<pkg>|<fillMs>` тул өдөр бүр ТУСДАА мөр, тусдаа хяналтын
+     *    мөр, тусдаа 4 шат. Өөр өдрийн хянагдаж буй агуулгыг энэ илгээлт
+     *    ХӨНДӨХ БОЛОМЖГҮЙ.
+     *
+     *    ⚠️ ЯГ ЭНЭ ӨДРИЙН илгээлт хянагдаж байхад дахин илгээх нь ТЭР мөрийг
+     *    update хийнэ (хэрэглэгчийн шийдвэр: шинэ тойрог үүсгэхгүй) — тэр
+     *    эрсдэлийг ХААХГҮЙ, харин доорх `done(...)` мессежээр ИЛ хэлнэ.
      */
-    if (inReview) {
-      setErr(tr(
-        'Илгээлт хяналтад байна ({0}). Хянагч шийдвэрлэсний дараа дахин илгээнэ үү — ноорог хадгалагдсан.',
-        reviewStage ? STAGE_LABEL[reviewStage] : '',
-      ));
-      return;
-    }
     setBusy(true);
     setErr("");
     try {
@@ -2302,7 +2635,17 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
        *    `sub|` мөрийг бүтнээр нь дарж бичих эрсдэлтэй байв (upsert нь мөрийг
        *    dkey-гээр олдог тул тэр мөр рүү л бичнэ). Одоо мэдэхгүй бол ЗОГСОНО.
        */
-      const actR = await readActiveSubmission(pkg.key);
+      /* Бөглөсөн огноо — өдрийн эхэнд (UTC). Батлагдахад архивын жаазны
+         `buglusun_ognoo` болно.
+         ⚠️ ЭНД, УНШИЛТААС ӨМНӨ бодогдоно (2026-09-07): илгээлтийн түлхүүр нь
+         одоо `sub|<pkg>|<fillMs>` тул «идэвхтэй илгээлт байна уу» шалгуур ЯГ
+         ЭНЭ өдрөөр хийгдэх ёстой. Урьд нь `fillMs` нь уншилтаас ДООР
+         бодогддог байсныг ДЭЭШ зөөв.
+         ⚠️ `todayFillMs`-ээс уншина — хуудас нээх эффект ч түүгээр давхарладаг
+         тул хоёулаа НЭГ өдөр дээр ажиллана (өөр өөрөөр бодвол `staged` ба
+         бичих түлхүүр зөрж, ХУРИМТЛАЛ тасарна). */
+      const fillMs = todayFillMs;
+      const actR = await readActiveSubmission(pkg.key, fillMs);
       if (!actR.ok) throw new Error(actR.error);
       const act = actR.sub;
       if (act && (!staged || act.at > staged.at))
@@ -2351,11 +2694,6 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         };
       };
 
-      // Бөглөсөн огноо — өдрийн эхэнд (UTC). Батлагдахад архивын жаазны
-      // `buglusun_ognoo` болно.
-      const now = new Date();
-      const fillMs = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
-
       /**
        * МӨРИЙН ТАНИГЧ — ЗӨВХӨН энэ илгээлтэд ашиглагдсан ЭЕРЭГ oid-үүдийнх.
        *
@@ -2382,7 +2720,16 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
          батлагдсан нүднүүд хуучин (устсан) ObjectID-тайгаа дараагийн
          илгээлтэд наалдаж, батлах шатанд «тулгагдсангүй» гэж бүхэл илгээлтийг
          зогсооно. */
-      const mergeBase = staged && (!flow || flow[HF.status] !== STATUS.transferred)
+      /* ⚠️ ЗӨВХӨН ТУХАЙН ӨДРИЙН ИЛГЭЭЛТ ДЭЭР НЭГТГЭНЭ (2026-09-07). `staged`
+         нь одоо `loadActiveSubmission(pkg.key, todayFillMs)`-аас ирдэг тул
+         аль хэдийн өнөөдрийнх, гэхдээ ЭНД ДАХИН тулгана: шөнө дунд өнгөрөх,
+         хуучин (дагаваргүй) мөр өөр өдрөөр орж ирэх, эсвэл ирээдүйд өөр зам
+         `staged`-ыг тавих зэрэг тохиолдолд ӨӨР ӨДРИЙН нүднүүд өнөөдрийн
+         payload-д хуулагдаж, батлагдахад архивт ХОЁР УДАА тоологдоно. Өдөр
+         зөрвөл нэгтгэхгүй — тэр илгээлт ӨӨРИЙН мөрөөрөө үлдэнэ. */
+      const mergeBase = staged
+        && staged.payload.fillMs === fillMs
+        && (!flow || flow[HF.status] !== STATUS.transferred)
         ? movePayload(staged.payload)
         : null;
       const payload = mergeSubmission(mergeBase, {
@@ -2414,7 +2761,12 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
        *    ҮХМЭЛ КОД байсныг ЭНД холбов: суурийг БИЧИХ АГШИНД нь дахин тулгана.
        *    (`null` = «мөр байхгүй байх ёстой».)
        */
-      const sv = await saveSubmission(pkg.key, payload, staged ? { at: staged.at } : null);
+      /* ⚠️ `expect` нь ТЭР ӨДРИЙН мөрийн `at` — `mergeBase`-тэй ИЖИЛ нөхцөл.
+         Өдөр зөрсөн `staged`-ыг expect болгон явуулбал `saveSubmission` тэр
+         өдрийн мөр (эсвэл түүний байхгүйг) шалгаж чадахгүй, «өөр хэрэглэгч
+         илгээсэн» гэсэн ХУДАЛ алдаа гарч гүйцэтгэгч гацна. */
+      const expectAt = staged && staged.payload.fillMs === fillMs ? { at: staged.at } : null;
+      const sv = await saveSubmission(pkg.key, payload, expectAt);
       if (!sv.ok) throw new Error(sv.error);
 
       /*
@@ -2446,7 +2798,14 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
          тул суурь жаазыг дахин татаад ДЭЭР нь илгээлтээ давхарлана. Эс
          бөгөөс гүйцэтгэгч ажлаа алдсан гэж бодож дахин бөглөнө. */
       const next = await loadRows(pkg, sc);
-      const act2 = await loadActiveSubmission(pkg.key);
+      /* ⚠️ ӨНӨӨДРИЙН түлхүүрээр — дээрх ачаалах эффекттэй ижил үндэслэл.
+         ⚠️ Алдааг мөн ЯЛГАНА: илгээсний дараа уншилт унавал overlay
+         хийгдэхгүй, дэлгэц 0% болж «дөнгөж илгээсэн ажил алга» гэсэн хамгийн
+         айдас төрүүлэм дүр зураг гарна. Уншилт унасныг ил хэлж, суурь
+         жаазыг хэвээр үлдээнэ. */
+      const act2r = await readActiveSubmission(pkg.key, fillMs);
+      const act2 = act2r.ok ? act2r.sub : null;
+      setSubReadErr(act2r.ok ? null : act2r.error);
       const use2 = !!act2 && !act2.done;
       const ov2 = use2 && act2 ? overlaySubmission(next.rows, act2.payload, sc, nBld) : null;
       /* ⚠️ Илгээсний ДАРАА ч шалгана: тулгагдаагүй нүд үлдвэл батлах шатанд
@@ -2472,15 +2831,24 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
          тэднийг аль хэдийн мөр болгож харуулна). */
       setAdds([]);
       setAddFor(null);
-      done(rv.ok
-        ? tr('Хяналтад илгээв ({0}) · {1} нүд', rv.id, nCells)
-        : tr('Илгээлт хадгалагдлаа ({0} нүд) · ⚠️ хяналтад бүртгэгдсэнгүй: {1}', nCells, rv.error));
+      /* ⚠️ ЭНЭ ӨДРИЙН илгээлт хянагчийн гар дээр байхад дахин илгээсэн бол
+         ИЛ ХЭЛНЭ (2026-09-07): хориг хасагдсан тул хэрэглэгч мэдэлгүй
+         хянагчийн харж буй агуулгыг сольж болно. Шинэ ТОЙРОГ үүсээгүй —
+         `submitForReview` тэр өдрийн нээлттэй бүртгэлийг л буцаана. */
+      done(!rv.ok
+        ? tr('Илгээлт хадгалагдлаа ({0} нүд) · ⚠️ хяналтад бүртгэгдсэнгүй: {1}', nCells, rv.error)
+        : rv.reused
+          /* ⚠️ `rv.reused` — ХЯНАЛТЫН ХАРИУНААС, publish-ээс өмнөх `inReview`
+             тугаас БИШ (2026-09-07-ны шалгалт): тэр туг нь хуучирсан төлөвөөс
+             тооцогддог тул «шинэ тойрог үүсэв» гэж ХУДАЛ мэдэгдэж болзошгүй. */
+          ? tr('Энэ өдрийн илгээлт ШИНЭЧЛЭГДЛЭЭ ({0}) · {1} нүд — хянагч ({2}) шинэ агуулгыг харна.', rv.id, nCells, reviewStage ? STAGE_LABEL[reviewStage] : '')
+          : tr('Хяналтад илгээв ({0}) · {1} нүд', rv.id, nCells));
     } catch (e) {
       setErr(String((e as Error).message || e));
     } finally {
       setBusy(false);
     }
-  }, [pkg, sc, nBld, asOf, asOfOrig, pending, pendDate, dirtyCount, busy, canPerf, canAddRow, noEdit, rows, adds, done, inReview, reviewStage, staged, snapMs, user, reloadHy, flow]);
+  }, [pkg, sc, nBld, asOf, asOfOrig, pending, pendDate, dirtyCount, busy, canPerf, canAddRow, noEdit, rows, adds, done, inReview, reviewStage, staged, snapMs, user, reloadHy, flow, todayFillMs]);
 
   // Ctrl+S — «Гүйцэтгэл бөглөх»-тэй ижил.
   // ⚠️ Нээлттэй нүдний бичиж буй утгыг ЭХЛЭЖ commit хийнэ — эс тэгвэл хуучин
@@ -2837,9 +3205,13 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         <button
           className={st.publishBtn}
           onClick={publish}
-          /* ⚠️ `inReview` нь МӨН `publish` дотор шалгагдана — Ctrl+S нь энэ
-             товчийг тойрч гардаг. */
-          disabled={busy || noEdit || inReview || dirtyCount === 0}
+          /* ⚠️ `inReview` НЬ ЭНД БАЙХАА БОЛИВ (2026-09-07, хэрэглэгч: «хэдэн ч
+             удаа илгээх боломжтой болго»). Хянагдаж байгаа нь товчийг
+             ХААХГҮЙ; өдөр бүр тусдаа `sub|<pkg>|<fillMs>` мөртэй тул өөр
+             өдрийн агуулга хөндөгдөх боломжгүй, ЯГ энэ өдрийнхийг дахин
+             илгээх нь харин САНААТАЙ зөвшөөрөгдсөн (тэр мөр update хийгдэнэ).
+             Мэдэгдэл нь доорх `lockNote`-оор гарна. */
+          disabled={busy || noEdit || dirtyCount === 0}
           title={tr('Илгээлтийг завсрын хадгалалтад хадгалж хяналтад оруулна — үндсэн өгөгдөлд ерөнхий менежер баталсны дараа л орно (Ctrl+S)')}
         >
           {/* ⚠️ «Нийтлэх» → «Илгээх» (2026-09-06, хэрэглэгчийн заавар).
@@ -2851,6 +3223,58 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
           {tr('Илгээх')}{dirtyCount ? ` (${dirtyCount})` : ""}
         </button>
         )}
+
+        {/* ══════ ИНЖЕНЕРИЙН ТӨЛӨВЛӨСӨН ОБЬЁМ — тусдаа урсгал ══════
+            ⚠️ «Илгээх»-ЭЭС ТУСДАА товч: тэр нь ГҮЙЦЭТГЭЛИЙГ 4 шатат
+            хяналтад оруулдаг, энэ нь ТӨЛӨВЛӨСӨН ОБЬЁМЫГ 2 шатат батлах
+            урсгалд. Нэг товчинд нийлүүлбэл хоёр өөр шийдвэр нэг
+            батламжид уягдана. */}
+        {canObyemEdit && !pvSub && pvCells.length > 0 && (
+          <button
+            className={st.publishBtn}
+            onClick={() => void sendObyem()}
+            disabled={pvBusy}
+            title={tr('Инженерийн төлөвлөсөн обьёмын засварыг батлуулахаар илгээнэ — батлагдтал үндсэн өгөгдөлд бичигдэхгүй')}
+          >
+            {tr('Обьём батлуулах')} ({pvCells.length})
+          </button>
+        )}
+
+        {/* Хүлээгдэж буй илгээлт — БҮХ хүнд харагдана (ил тод байдал) */}
+        {pvSub && (
+          <span className={st.muted}>
+            {tr('Обьём батлуулахаар илгээгдсэн: {0} нүд · {1}', String(pvSub.cellCount), pvSub.author)}
+          </span>
+        )}
+
+        {/* Батлагчийн шийдвэр — зөвхөн эрхтэй хүнд */}
+        {pvSub && canObyemApprove && (
+          <>
+            <button
+              className={st.publishBtn}
+              onClick={() => void decideObyemHere(true)}
+              disabled={pvBusy}
+              title={tr('Батлаад үндсэн өгөгдөлд бичнэ')}
+            >
+              {tr('Обьём батлах')}
+            </button>
+            <button
+              className={st.layerBtn}
+              onClick={() => {
+                /* ⚠️ Шалтгаан ЗААВАЛ — `decideObyem` ч мөн шалгана */
+                const why = window.prompt(tr('Буцаах шалтгаанаа бичнэ үү:')) ?? '';
+                if (!why.trim()) return;
+                void decideObyemHere(false, why);
+              }}
+              disabled={pvBusy}
+            >
+              {tr('Обьём буцаах')}
+            </button>
+          </>
+        )}
+        {pvErr && <span className={st.err}>{pvErr}</span>}
+        {pvNote && <span className={st.muted}>{pvNote}</span>}
+
         {busy && <span className={st.muted}>{tr('ажиллаж байна…')}</span>}
         {/* ⚠️ ХЭЗЭЭНИЙ ӨГӨГДӨЛ ХАРАГДАЖ БАЙГААГ хэлнэ — зөвхөн МЭДЭЭЛЭЛ.
             ⚠️ «суурь жааз» гэж бичдэг байсныг болив (2026-09-06, хэрэглэгч:
@@ -2953,9 +3377,36 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
           {tr('Илгээсэн зарим нүд шинэ мөрүүдэд тулгагдсангүй — эдгээрийг ДАХИН бөглөж илгээнэ үү, эс бөгөөс ерөнхий менежер батлах үед багц бүхэлдээ гацна: {0}', unmovedWarn.join('; '))}
         </p>
       )}
+      {/*
+        * ⚠️ ИЛГЭЭЛТ УНШИГДААГҮЙ (2026-09-07-ны аудит, CRITICAL).
+        *
+        * Уншилт унавал overlay хийгдэхгүй тул дэлгэц дээр архивын суурь жааз
+        * (голдуу БҮХ НҮД 0%) харагдана. Урьд нь энэ нь ЧИМЭЭГҮЙ болдог тул
+        * гүйцэтгэгч «илгээсэн ажил минь алга болжээ» гэж дүгнэн дахин
+        * бөглөдөг байв. Одоо 0% нь ҮНЭН үү, эсвэл зүгээр л УНШИГДААГҮЙ юу
+        * гэдгийг хэрэглэгч ялгаж чадна.
+        */}
+      {subReadErr && (
+        <p className={st.lockNote} role="alert">
+          {tr('Илгээсэн ажлыг татаж чадсангүй ({0}) — доорх тоо ДУТУУ байж болзошгүй. Хуудсыг дахин ачаална уу; ажил алдагдаагүй, зөвхөн харагдаагүй байна.', subReadErr)}
+        </p>
+      )}
+      {/* ⚠️ ХОЁР ӨӨР МЭДЭГДЭЛ (2026-09-07) — ХОЁУЛАА САНУУЛГА, ХОРИГ БИШ:
+          · ЭНЭ ӨДРИЙН илгээлт хянагдаж байна → дахин илгээвэл ТЭР мөр
+            ШИНЭЧЛЭГДЭНЭ (шинэ тойрог үүсэхгүй), хянагч доор нь солигдсоныг
+            мэдэхгүй байж болзошгүй — тиймээс гүйцэтгэгчид ил хэлнэ;
+          · ӨӨР ӨДРИЙН илгээлт хянагдаж байна → өнөөдрийнхөд ОГТ саадгүй,
+            зөвхөн «хариу хүлээж буй өдрүүд» гэдгийг санууллаа.
+          Хуучин «хянагч шийдвэрлэсний дараа дахин илгээж болно» гэсэн текст
+          ХАСАГДСАН — тэр нь одоо ХУДАЛ (хүлээх шаардлагагүй). */}
       {!locked && !submitFailed && inReview && (
         <p className={st.lockNote}>
-          {tr('Илгээлт хяналтад байна — {0}. Засвар ноорогт хадгалагдана; хянагч шийдвэрлэсний дараа дахин илгээж болно.', reviewStage ? STAGE_LABEL[reviewStage] : '')}
+          {tr('Энэ өдрийн илгээлт хяналтад байна — {0}. Дахин илгээвэл ШИНЭ тойрог үүсэхгүй, тэр илгээлт шинэчлэгдэнэ (хянагчийн харж буй агуулга солигдоно).', reviewStage ? STAGE_LABEL[reviewStage] : '')}
+        </p>
+      )}
+      {!locked && otherDaysInReview.length > 0 && (
+        <p className={st.lockNote}>
+          {tr('Өмнөх өдрийн илгээлт хяналтад байна ({0}) — өнөөдрийн илгээлтэд саад болохгүй, тус тусдаа хянагдана.', otherDaysInReview.join(', '))}
         </p>
       )}
       {!locked && returned && (
@@ -3011,6 +3462,11 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                 <th rowSpan={4} colSpan={2} className={cls("c-wspan")}>{tr('Хувийн жин')}<i {...grip("w")} /></th>
                 <th rowSpan={4} className={cls("c-now")}>{tr('Одоо байгаа хувийн жин')}<i {...grip("now")} /></th>
                 <th rowSpan={4} className={cls("c-vol")}>{tr('Обьём')}<i {...grip("vol")} /></th>
+                {/* ⚠️ ИНЖЕНЕРИЙН ТӨЛӨВЛӨСӨН ОБЬЁМ — гэрээний «Обьём»-ын ХАЖУУД
+                    зориуд байрлуулав: хоёрын ЗӨРҮҮ нь өөрөө мэдээлэл
+                    (төсөв ба талбайн бодит тооцоо). Засвар нь батлагдаж
+                    байж бичигдэнэ (`obyemBatlah`). */}
+                <th rowSpan={4} className={cls("c-vol")}>{tr('Инж. төлөвлөсөн обьём')}<i {...grip("vol")} /></th>
                 {/* ⚠️ «Нэгж өртөг» ба «Мөнгөн дүн» нь ӨГӨГДӨЛД БАЙСАН ч
                     хүснэгтэд огт зурагддаггүй байв. Хувийн жин бүхэлдээ
                     Мөнгөн дүнгээс бодогддог тул түүнийг харуулахгүй бол
@@ -3071,7 +3527,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                   уншигдаж, хэрэглэгч товчийг унтраахаа мэдэхгүй. */}
               {vis.length === 0 && byPlan && (
                 <tr>
-                  <td colSpan={13 + nBld * 4} className={st.hint} style={{ padding: "14px 10px" }}>
+                  <td colSpan={14 + nBld * 4} className={st.hint} style={{ padding: "14px 10px" }}>
                     {tr("Өнөөдөр ({0}) хуваарьтай ажил алга. Бүх ажлыг харах бол «Хуваарийн дагуу»-г унтраа.", today)}
                   </td>
                 </tr>
@@ -3079,7 +3535,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
               {/* Дээд ЧИГЖЭЭС — зурагдаагүй мөрүүдийн өндрийг орлоно. */}
               {winFrom > 0 && (
                 <tr aria-hidden="true" style={{ height: winFrom * rowHRef.current }}>
-                  <td colSpan={13 + nBld * 4} style={{ padding: 0, border: 0 }} />
+                  <td colSpan={14 + nBld * 4} style={{ padding: 0, border: 0 }} />
                 </tr>
               )}
               {vis.slice(winFrom, winTo).map((i) => {
@@ -3175,6 +3631,25 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                         <span className={st.negj}>{negjOf(r.work)}</span>
                       )}
                     </td>
+                    {/* ИНЖЕНЕРИЙН ТӨЛӨВЛӨСӨН ОБЬЁМ — засагдах цорын ганц
+                        нүд (гүйцэтгэлийн блокоос гадна). ⚠️ Гүйцэтгэлийн
+                        `pending`-ээс ТУСДАА `pvPend`-д хадгалагдана. */}
+                    <PvCell
+                      r={r}
+                      canEdit={canObyemEdit && !pvSub && !!sc?.f.plannedVol && !r.group}
+                      draft={pvPend[r.oid]}
+                      preview={pvPreview?.get(r.oid)}
+                      hasField={!!sc?.f.plannedVol}
+                      locked={!!pvSub}
+                      onSet={(v) => setPvPend((m) => {
+                        const nx = { ...m };
+                        if (v == null) delete nx[r.oid]; else nx[r.oid] = v;
+                        return nx;
+                      })}
+                      cls={cls}
+                      ro={ro}
+                      negj={negjOf(r.work)}
+                    />
                     {/* ОБЬЁМЫН НИЙЛБЭР — блокуудын нийлбэр тул мөрийн Обьёмтой
                         ИЖИЛ нэгжтэй. */}
                     <td className={cls("right c-vol calc")} {...ro(RO.obyemSum)}>
@@ -3209,7 +3684,11 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                         if (locked) return changed && view?.onCell?.(i, b);
                         if (noEdit)
                           return say(
-                            tr('Энэ багцын өнөөдрийн гүйцэтгэл аль хэдийн илгээгдсэн — хяналтаас буцаалт ирэх хүртэл засах боломжгүй.'),
+                            /* ⚠️ 2026-09-07: «өнөөдрийн гүйцэтгэл аль хэдийн
+                               илгээгдсэн» гэсэн ХУУЧИН текст солигдов — өдөрт
+                               нэг удаа гэсэн хязгаар байхгүй болсон. `noEdit`
+                               нь одоо ЗӨВХӨН `locked` (хяналтын харагдац). */
+                            tr('Хяналтын харагдацад гүйцэтгэл засах боломжгүй — бөглөх горимоор нээнэ үү.'),
                           );
                         if (!canPerf) return say(RO.noPerf);
                         if (!canVol) return say(r.group ? RO.groupAct : RO.noObyemField);
@@ -3474,7 +3953,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                   {/* ── МӨР НЭМЭХ МАЯГТ — зөвхөн сонгосон бүлгийн доор ── */}
                   {addFor === r.oid && (
                     <tr className={st.addRow}>
-                      <td colSpan={13 + nBld * 4}>
+                      <td colSpan={14 + nBld * 4}>
                         <div className={st.addForm}>
                           <span className={st.addTitle}>{tr('«{0}» дотор шинэ ажил', r.work)}</span>
                           <input
@@ -3531,7 +4010,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                   aria-hidden="true"
                   style={{ height: (vis.length - winTo) * rowHRef.current }}
                 >
-                  <td colSpan={13 + nBld * 4} style={{ padding: 0, border: 0 }} />
+                  <td colSpan={14 + nBld * 4} style={{ padding: 0, border: 0 }} />
                 </tr>
               )}
             </tbody>
@@ -3583,3 +4062,98 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   );
 }
 
+/**
+ * ИНЖЕНЕРИЙН ТӨЛӨВЛӨСӨН ОБЬЁМЫН НҮД.
+ *
+ * ⚠️ ТУСДАА КОМПОНЕНТ: гүйцэтгэлийн блокийн нүд нь `edit` төлөв, `commit`,
+ * буулгалт, огноо зэрэг олон замтай холбогдсон тул тэнд шигтгэвэл хоёр
+ * урсгал холилдоно. Энэ нүд НЭГ утга л хөтөлнө.
+ *
+ * ⚠️ Оролт нь УДИРДЛАГАГҮЙ (`defaultValue` + `key`): бичих бүрд эцэг
+ * компонент дахин зурагдвал 1,400 мөрийн хуудас гацна. Утга нь зөвхөн
+ * blur/Enter үед `onSet` рүү очно.
+ */
+function PvCell({
+  r, canEdit, draft, preview, hasField, locked, onSet, cls, ro, negj,
+}: {
+  r: SheetRow;
+  canEdit: boolean;
+  draft: string | undefined;
+  preview: number | null | undefined;
+  hasField: boolean;
+  locked: boolean;
+  onSet: (v: string | null) => void;
+  cls: (c: string) => string;
+  ro: (msg: string) => { title: string; onClick: () => void };
+  negj: string | null;
+}) {
+  const [open, setOpen] = useState(false);
+
+  /* Хадгалагдсан → ноорог → (батлагчид) илгээгдсэн утга */
+  const saved = r.plannedVol;
+  const dirty = draft !== undefined;
+  /* ⚠️ Ноорогт бичигдсэн текст ТОО БИШ байж болно (бичиж байх зуур) —
+     тэр үед хадгалагдсаныг харуулна, NaN зурахгүй. */
+  const draftNum = dirty
+    ? (draft.trim() === "" ? null : Number(draft))
+    : undefined;
+  const shown: number | null = dirty
+    ? (draftNum != null && !Number.isFinite(draftNum) ? saved : draftNum ?? null)
+    : preview !== undefined ? preview : saved;
+  /* ⚠️ Илгээгдсэн утга нь ХАДГАЛАГДСАНААС өөр бол ялгаж тэмдэглэнэ */
+  const pendingDiff = preview !== undefined && preview !== saved;
+
+  if (open && canEdit) {
+    return (
+      <td className={cls("right c-vol editable")}>
+        <input
+          autoFocus
+          type="text"
+          inputMode="decimal"
+          className={st.cellInputLine}
+          defaultValue={dirty ? draft : (saved == null ? "" : String(saved))}
+          placeholder={tr('обьём')}
+          onBlur={(e) => {
+            const t = e.target.value.trim();
+            /* Хадгалагдсантайгаа ижил бол ноорогт ҮЛДЭЭХГҮЙ */
+            const v = t === "" ? null : Number(t);
+            if (t !== "" && !Number.isFinite(v)) { setOpen(false); return; }
+            if ((saved ?? null) === v) onSet(null); else onSet(t);
+            setOpen(false);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") { setOpen(false); return; }
+            if (e.key === "Enter" || e.key === "Tab") e.currentTarget.blur();
+          }}
+        />
+      </td>
+    );
+  }
+
+  /* ЗАСАГДАХГҮЙ шалтгааныг ТОДОРХОЙ хэлнэ — чимээгүй түгжихгүй */
+  const why = r.group
+    ? RO.plannedVolGroup
+    : !hasField
+      ? RO.plannedVolNoField
+      : locked
+        ? RO.plannedVolLocked
+        : RO.plannedVol;
+
+  return (
+    <td
+      className={cls("right c-vol" + (canEdit ? " editable" : "")
+        + (dirty ? " dirty" : "") + (pendingDiff ? " chg" : ""))}
+      tabIndex={canEdit ? 0 : undefined}
+      onClick={canEdit ? () => setOpen(true) : ro(why).onClick}
+      title={canEdit ? RO.plannedVol : why}
+      onKeyDown={canEdit ? (e) => {
+        if (e.key === "Enter" || e.key === "F2") { e.preventDefault(); setOpen(true); }
+      } : undefined}
+    >
+      {qty(shown)}
+      {!r.group && shown != null && negj && (
+        <span className={st.negj}>{negj}</span>
+      )}
+    </td>
+  );
+}

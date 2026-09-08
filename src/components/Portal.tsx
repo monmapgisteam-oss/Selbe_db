@@ -130,8 +130,13 @@ function useColumnResize(
 
   // ⚠️ Зөвхөн эффект дотор: localStorage нь статик экспортын үед байхгүй
   useEffect(() => {
-    const v = Number(localStorage.getItem(storageKey));
-    if (Number.isFinite(v) && v >= min && v <= max) { widthRef.current = v; setWidth(v); }
+    /* ⚠️ try/catch (2026-09-07): хувийн горимд `getItem` ШИДДЭГ бөгөөд
+       эффект дотор шидсэн алдаа ЭНЭ БҮХЭЛ ПОРТАЛЫГ унагана — баганын
+       өргөн санагдахгүй нь ердөө тав тухын асуудал. */
+    try {
+      const v = Number(localStorage.getItem(storageKey));
+      if (Number.isFinite(v) && v >= min && v <= max) { widthRef.current = v; setWidth(v); }
+    } catch { /* хувийн горим — анхдагч өргөн хэвээр */ }
   }, [storageKey, min, max]);
 
   // ⚠️ Чирэлтийн ДУНДУУР компонент unmount болбол `up()` хэзээ ч ажиллахгүй,

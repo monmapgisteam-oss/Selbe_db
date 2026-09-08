@@ -538,6 +538,10 @@
   border-radius: 10px;
   background: var(--surface);
 }
+/* ⚠️ Чанарын (QAQC) панел нь ГАНЦ баганатай (шатгүй) тул `auto-fit` түүнийг
+   дэлгэц дүүрэн сунгана — уншихад хэцүү, урсгалын 4 баганатай ч зөрнө.
+   Тиймээс өргөнийг нь баганын хэмжээнд барина. */
+.aclOne { max-width: 420px; }
 .aclHead {
   display: flex;
   align-items: center;
@@ -612,4 +616,21 @@
 @media (max-width: 720px) {
   .flow { flex-wrap: wrap; row-gap: 6px; }
   .flowStep { padding: 5px 9px; }
+}
+
+/* ⚠️ ХУВААРИЙН панел — багц бүрийн хөзөр дотор ҮҮРГИЙН блок (Зохиогч ·
+   Батлагч). Урсгалын баганад нэг л жагсаалт байдаг тул тэнд хэрэггүй байв. */
+.aclRole {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 0 2px;
+  border-top: 1px solid var(--line);
+}
+.aclRoleHead {
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--ink-3);
+  text-transform: uppercase;
 }
