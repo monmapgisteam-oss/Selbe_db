@@ -181,6 +181,14 @@ console.log('✅ «Дахин засах» — буцаалт сэргэхгүй
       `draftRemote: ${fn} алга — хуучин ноорог чимээгүй алга болно`);
   }
 
+
+  /*
+   * ⚠️ READ-MERGE-WRITE — 2026-09-08-нд МЭДЭЭЛЭГДСЭН БОДИТ ЭВДРЭЛ.
+   * Татах мөчлөг нь зөвхөн УНШИХ талыг нийлүүлдэг байв; бичих тал нь
+   * локал ноорогийг алсад ШУУД бичдэг байсан тул А 342 нүд бөглөөд
+   * Б 1 нүд бөглөхөд Б-гийнх алсыг бүхэлд нь дарж А-гийн 341 нүд УСТСАН.
+   * Бичихээсээ өмнө уншиж нийлүүлэх нь энэ боломжийн БҮХ утга учир.
+   */
   const FN = fs.readFileSync('src/modules/sheet/FillNew.tsx', 'utf8');
   /* Draft төрөлд хамтын төлөв */
   assert.ok(/by\?: \[string, string\]\[\];/.test(FN), 'Draft-д `by` (эзэмшил) алга');
@@ -196,10 +204,108 @@ console.log('✅ «Дахин засах» — буцаалт сэргэхгүй
     'FillNew: нүд засаж байхад нийлүүлэлт алгасах хамгаалалт алга — курсор үсэрнэ');
   assert.ok(/lastMergedRef/.test(FN), 'FillNew: давхар нийлүүлэлтийн хамгаалалт алга');
   /* Хуучин мөрийг ЗӨВХӨН амжилттай бичсэний дараа устгана */
-  const okBlock = FN.slice(FN.indexOf('if (r.ok) {'), FN.indexOf('if (r.ok) {') + 800);
+  /* ⚠️ Блокийн ТӨГСГӨЛӨӨР хайчилна, тэмдэгтийн тоогоор БИШ: гүйцэтгэлийн
+     оновчлол нэмэгдэхэд тогтмол урт (800) хүрэлцэхгүй болж, шалгуур ХУДЛАА
+     унасан (2026-09-08). Дараагийн салаа (`setRemoteState({ kind: 'fail'`)
+     хүртэлх хэсэг нь яг тэр `r.ok` блок. */
+  const okStart = FN.indexOf('if (r.ok) {');
+  const okBlock = FN.slice(okStart, FN.indexOf("setRemoteState({ kind: 'fail', why: r.error })", okStart));
   assert.ok(/clearLegacyDrafts/.test(okBlock),
     'FillNew: хуучин мөрийн устгалт `r.ok` салаанд байх ёстой (бичилт баталгаажсаны дараа)');
 }
 console.log('✅ эх кодын гэрээ — түлхүүр · шилжүүлэлт · түгжээ · мөчлөг');
 
+/* ══════════ 7. БИЧИХ ЗАМ НЬ НИЙЛҮҮЛДЭГ ЭСЭХ ══════════ */
+{
+  const FN = fs.readFileSync('src/modules/sheet/FillNew.tsx', 'utf8');
+  /* `flush` (3 сек тутмын алсын бичилт) — бичихээсээ ӨМНӨ уншина.
+     ⚠️ Блокийн ХИЛИЙГ дараагийн тэмдэглэгээгээр олно, тэмдэгтийн тоогоор БИШ:
+     гүйцэтгэлийн оновчлол нэмэгдэхэд тогтмол цонх хүрэлцэхгүй болж шалгуур
+     ХУДЛАА уналаа (2026-09-08). */
+  const fi = FN.indexOf('const flush = () => {');
+  assert.ok(fi > 0, 'FillNew: flush олдсонгүй');
+  const fb = FN.slice(fi, FN.indexOf('flushRef.current = flush;', fi));
+  assert.ok(fb.includes('await readRemoteDraft(q.pkg)'),
+    'flush: бичихээсээ өмнө алсаас УНШИХГҮЙ байна — нөгөө оролцогчийн ажил дарагдана');
+  assert.ok(fb.includes('mergeDrafts(remote, q.draft)'),
+    'flush: уншсаныг НИЙЛҮҮЛЭХГҮЙ байна');
+  const wi = fb.indexOf('await saveRemoteDraft');
+  const ri = fb.indexOf('readRemoteDraftAt(q.pkg)');
+  assert.ok(ri > 0 && wi > 0 && ri < wi,
+    'flush: уншилт (хямд шалгалт) нь бичилтээс ӨМНӨ байх ёстой');
+  /* `toggleDone` — мөн адил */
+  const ti = FN.indexOf('const toggleDone = useCallback');
+  assert.ok(ti > 0, 'FillNew: toggleDone олдсонгүй');
+  const tb = FN.slice(ti, ti + 3200);
+  assert.ok(tb.includes('readRemoteDraft(pkg.key)'),
+    'toggleDone: бичихээсээ өмнө уншихгүй — «Дуусгасан» дархад бусдын нүд устана');
+  /* Багц солиход нийлүүлэлтийн агшин тэглэгдэнэ */
+  const ri2 = FN.indexOf('setPvPend({});');
+  assert.ok(FN.slice(Math.max(0, ri2 - 900), ri2).includes('lastMergedRef.current = 0'),
+    'багц солиход lastMergedRef тэглэгдэхгүй — шинэ багцын алсын ноорог «хуучин» гэж алгасагдана');
+}
+console.log('✅ бичих зам НИЙЛҮҮЛНЭ — flush ба toggleDone read-merge-write');
+
+/* ══════════ 8. ЭЗЭМШИЛ БҮРТГЭГДЭХ ЗАМУУД ══════════ */
+/**
+ * ⚠️ 2026-09-08-нд МЭДЭЭЛЭГДСЭН ЭВДРЭЛ: `mineRef` нь ЗӨВХӨН олон нүдний
+ * (paste) зам дээр бичигддэг байсан тул нүдийг ГАРААС нэг нэгээр бөглөсөн
+ * хүн `by`-д ОРОХГҮЙ. Улмаар `participants` хоосон → `waitingOn` хоосон →
+ * «Илгээх» түгжээ ХЭЗЭЭ Ч ажиллахгүй, хоёулаа зэрэг илгээж чаддаг байв.
+ * Түгжээ нь эзэмшлийн бүртгэлээс ХАМААРНА — хоёр зам ХОЁУЛАА бичих ёстой.
+ */
+{
+  const FN = fs.readFileSync('src/modules/sheet/FillNew.tsx', 'utf8');
+  const adds = FN.split('mineRef.current.add(').length - 1;
+  assert.ok(adds >= 2,
+    `FillNew: mineRef.current.add() ЯГ ${adds} газар — нэг нүдний (commit) ба олон нүдний (paste) ЗАМ ХОЁУЛАА тэмдэглэх ёстой`);
+  /* Ноорог бичихдээ бусдын эзэмшлийг ч хадгална */
+  assert.ok(FN.includes('byMapRef.current'),
+    'FillNew: ноорог бичихэд бусдын эзэмшил (byMap) хадгалагдахгүй — оролцогч хумигдаж түгжээ нээгдэнэ');
+}
+console.log('✅ эзэмшил — commit ба paste хоёулаа бүртгэнэ, бусдынх хадгалагдана');
+
 console.log('\nshareDraft.check: ok');
+
+/* ══════════ 9. ГҮЙЦЭТГЭЛ — ХЯМД ШАЛГАЛТ ба ДЭМИЙ АЖИЛ ТАСЛАХ ══════════ */
+/**
+ * ⚠️ 2026-09-08 (хэрэглэгч: «шилжүүлэлт удаан байна, перформансыг мэргэжлийн
+ * түвшинд сайжруул»). Хуваалцсан ноорог нь 3 секунд тутам уншиж, бичихийн
+ * өмнө дахин уншдаг тул гурван зардал үүссэн байв:
+ *   1. `payload` (80KB хүртэл) БҮТНЭЭР татагдана — ихэнх тойрогт юу ч
+ *      өөрчлөгдөөгүй байхад ч. → `readRemoteDraftAt` нь зөвхөн `at` татна.
+ *   2. `new FeatureLayer()` бүр удаа давхаргын тодорхойлолтыг дахин татна.
+ *      → URL тутамд НЭГ instance кэшлэгдэнэ.
+ *   3. Агуулга ижил байхад ч дахин бичигдэж, нөгөө талын хямд шалгалтыг
+ *      «өөрчлөгдсөн» болгож дэмий татуулна. → биетээр тулгаж таслана.
+ * Эдгээр нь бүгд ЗАН ТӨЛӨВИЙГ хөндөхгүй — зөвхөн дэмий ажлыг арилгана.
+ */
+{
+  const DR = fs.readFileSync('src/lib/draftRemote.ts', 'utf8');
+  assert.ok(DR.includes('export async function readRemoteDraftAt'),
+    'draftRemote: хямд `at` шалгалт алга — мөчлөг бүрд 80KB татна');
+  const ai = DR.indexOf('export async function readRemoteDraftAt');
+  const ab = DR.slice(ai, ai + 1200);
+  assert.ok(ab.includes("outFields: ['OBJECTID', 'at']"),
+    'readRemoteDraftAt: `payload` татаж байна — хямд байхаа больсон');
+  assert.ok(!ab.includes("'payload'"), 'readRemoteDraftAt: payload огт татагдах ёсгүй');
+  assert.ok(DR.includes('const layerCache = new Map'),
+    'draftRemote: давхаргын кэш алга — дуудлага бүрд шинэ FeatureLayer үүснэ');
+
+  const FN = fs.readFileSync('src/modules/sheet/FillNew.tsx', 'utf8');
+  /* Татах мөчлөг ба бичих зам ХОЁУЛАА хямд шалгалтаар эхэлнэ */
+  const uses = FN.split('readRemoteDraftAt(').length - 1;
+  assert.ok(uses >= 3,
+    `FillNew: readRemoteDraftAt ${uses} газар — татах мөчлөг · flush · toggleDone ГУРВУУЛАА хэрэглэх ёстой`);
+  /* Дэмий бичилт таслагдана, зөвхөн амжилттай бичилтэд тэмдэглэгдэнэ */
+  assert.ok(FN.includes('if (body === lastBodyRef.current)'),
+    'FillNew: агуулга ижил байхад бичилт таслагдахгүй — нөгөө талд дэмий татах гинжин урвал');
+  const okIdx = FN.indexOf('lastBodyRef.current = body;');
+  assert.ok(okIdx > 0 && FN.slice(okIdx - 400, okIdx).includes('if (r.ok) {'),
+    'FillNew: lastBodyRef нь ЗӨВХӨН амжилттай бичилтийн дараа тэмдэглэгдэх ёстой');
+  /* Багц солиход таслуур тэглэгдэнэ */
+  const rst = FN.indexOf('setPvPend({});');
+  assert.ok(FN.slice(Math.max(0, rst - 1200), rst).includes("lastBodyRef.current = ''"),
+    'багц солиход lastBodyRef тэглэгдэхгүй — шинэ багцын бичилт санамсаргүй алгасагдана');
+}
+console.log('✅ гүйцэтгэл — хямд at шалгалт · давхаргын кэш · дэмий бичилт таслах');

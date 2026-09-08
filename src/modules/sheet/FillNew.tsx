@@ -72,8 +72,8 @@ import { sheetDates } from "./sheetRows";
 import { useColWidths } from "./colWidths";
 import { parseGrid, planPaste } from "./paste";
 import {
-  clearRemoteDraft, readRemoteDraft, saveRemoteDraft, REMOTE_MAX,
-  clearLegacyDrafts, readLegacyDrafts,
+  clearRemoteDraft, readRemoteDraft, readRemoteDraftAt, saveRemoteDraft, REMOTE_MAX,
+  clearLegacyDrafts, readLegacyDrafts, type RemoteDraftRead,
 } from "@/lib/draftRemote";
 import { t as tr } from "@/lib/i18nCore";
 import st from "./sheet.module.css";
@@ -1315,6 +1315,19 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   const [doneBy, setDoneBy] = useState<[string, number][]>([]);
   /** Нүд бүрийн ЭЗЭН (`${oid}:${блок}` → нэр) — оролцогчийг тоолоход */
   const [byMap, setByMap] = useState<Map<string, string>>(new Map());
+  /**
+   * `byMap`-ийн ref толь — ноорог ХАДГАЛАХ эффект түүнийг эндээс уншина.
+   * ⚠️ Төлөвийг шууд хамаарлын жагсаалтад нэмбэл нийлүүлэлт бүр (3 сек тутам)
+   *    ноорогийг дахин бичүүлж, бичилт↔татах давталт үүснэ.
+   */
+  const byMapRef = useRef<Map<string, string>>(new Map());
+  byMapRef.current = byMap;
+  /**
+   * СҮҮЛД АЛСАД БИЧСЭН ноорогийн бүтэн текст — дэмий бичилтийг таслахад.
+   * ⚠️ Багц солиход ЗААВАЛ тэглэгдэнэ, эс бөгөөс Багц 2-ын анхны бичилт
+   *    Багц 1-ийн биетэй санамсаргүй тэнцвэл (хоосон ноорог) алгасагдана.
+   */
+  const lastBodyRef = useRef<string>('');
   /** Алсын уншилт унасан бол сэргээх эффектийг ДАХИН асаах цохилт */
   const [remoteRetry, setRemoteRetry] = useState(0);
   /**
@@ -1384,6 +1397,14 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     doneRef.current = [];
     setDoneBy([]);
     setByMap(new Map());
+    /* ⚠️ Нийлүүлэлтийн агшны тэмдэглэгээ ч БАГЦАД харьяалагдана (2026-09-08):
+       Багц 1-ийн `t` нь Багц 2-ынхаас ИХ байвал шинэ багцын алсын ноорог
+       «хуучин» гэж тооцогдож, татах мөчлөг түүнийг ХЭЗЭЭ Ч буулгахгүй —
+       нөгөө оролцогчийн ажил тэр сешнд харагдахгүй үлдэнэ. */
+    lastMergedRef.current = 0;
+    /* ⚠️ Дэмий бичилтийн таслуур ч БАГЦАД харьяалагдана — үлдээвэл шинэ багцын
+       анхны бичилт хуучин багцын биетэй тэнцэж санамсаргүй алгасагдана. */
+    lastBodyRef.current = '';
     /* ⚠️ Инженерийн обьёмын ноорог ч БАГЦАД харьяалагдана — үлдээвэл өөр
        багцын мөрийн oid дээр буруу утга бичигдэнэ. */
     setPvPend({});
@@ -2087,7 +2108,25 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       ? { ...cur, t: Date.now(), done: next }
       : { t: Date.now(), cells: [], done: next };
     saveDraftLS(pkg.key, d);
-    const r = await saveRemoteDraft(pkg.key, d.t, JSON.stringify(d));
+    /* ⚠️ READ-MERGE-WRITE (2026-09-08) — `flush`-тэй ИЖИЛ шалтгаан: ноорог
+       хуваалцагдсан тул шууд бичвэл нөгөө оролцогчийн нүднүүдийг УСТГАНА.
+       Уншилт унавал алсад бичихгүй (локал хэвээр) — бусдын ажлыг устгахаас
+       «миний тэмдэглэгээ хойшлох» нь хамаагүй хямд.
+       ⚠️ Хямд `at` шалгалтаар бүтэн уншилтыг алгасна (гүйцэтгэл) — алс
+       өөрчлөгдөөгүй бол нийлүүлэх зүйл байхгүй. */
+    const at0 = await readRemoteDraftAt(pkg.key);
+    const rr: RemoteDraftRead = at0 === undefined
+      ? { ok: false, error: tr('алсын ноорогийг шалгаж чадсангүй') }
+      : at0 !== null && at0 > lastMergedRef.current
+        ? await readRemoteDraft(pkg.key)
+        : { ok: true, draft: null };
+    const merged = rr.ok
+      ? (mergeDrafts(rr.draft ? parseDraft(rr.draft.payload, 'remote') : null, d) ?? d)
+      : null;
+    if (merged) { saveDraftLS(pkg.key, merged); doneRef.current = merged.done ?? []; setDoneBy(merged.done ?? []); }
+    const r = merged
+      ? await saveRemoteDraft(pkg.key, merged.t, JSON.stringify(merged))
+      : { ok: false as const, error: rr.ok ? '' : rr.error };
     if (!r.ok) {
       show('warn', tr('«{0}» тэмдэглэгээ ArcGIS-т хадгалагдсангүй ({1}) — бусад хүн харахгүй байж магадгүй.',
         iAmDone ? tr('Дахин засах') : tr('Дуусгасан'), r.error));
@@ -2344,6 +2383,12 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       else n[key] = v;
       return n;
     });
+    /* ⚠️ ЭЗЭМШЛИЙГ ЭНД ЧУХАМ ТЭМДЭГЛЭНЭ (2026-09-08). Энэ бол нүдийг ГАРААС
+       нэг нэгээр засах ГОЛ зам; урьд нь зөвхөн олон нүдний (paste) зам дээр
+       тэмдэглэгддэг байсан тул ганц нүд бөглөсөн хүн `by`-д ОГТ ОРОХГҮЙ,
+       улмаар `participants` хоосон болж «Илгээх» түгжээ ХЭЗЭЭ Ч ажиллахгүй —
+       хоёулаа зэрэг илгээж чаддаг байв (хэрэглэгчийн мэдээлсэн эвдрэл). */
+    mineRef.current.add(key);
   };
 
   // ── Нооргийн сэргээлт — багц ачаалагдмагц НЭГ удаа санал болгоно ──
@@ -2730,6 +2775,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     setDoneBy([]);
     setByMap(new Map());
     lastMergedRef.current = 0;
+    lastBodyRef.current = '';
     clearDraftLS(pkg.key);
     void clearRemoteDraft(pkg.key);
     keepDraft.current = false;
@@ -2779,6 +2825,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         setDoneBy([]);
         setByMap(new Map());
         lastMergedRef.current = 0;
+        lastBodyRef.current = '';
       }
       setSavedAt(null);
       return;
@@ -2810,8 +2857,16 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
      * бичсэн нүдийг л хөтөлдөг.
      */
     const me = user?.username?.trim().toLowerCase() ?? '';
-    const by: [string, string][] = [];
-    if (me) for (const k of mineRef.current) if (k in pending || k in pendDate) by.push([k, me]);
+    /* ⚠️ БУСДЫН ЭЗЭМШЛИЙГ ЭХЛЭЭД (2026-09-08): `byMap` нь нийлүүлэлтээр ирсэн
+       бусад оролцогчийн нүднүүд. Зөвхөн `mineRef`-ийг бичвэл энэ хөтчийн
+       ноорог тэднийг АГУУЛАХГҮЙ гарч, `flush`-ийн нийлүүлэлт хүртэлх зайд
+       (эсвэл локалаас сэргээхэд) оролцогчийн жагсаалт хумигдаж «Илгээх»
+       түгжээ санамсаргүй нээгдэнэ. Өөрийн нүд нь доор ДАРЖ бичигдэнэ —
+       тухайн нүдийг сүүлд хөндсөн хүн эзэн. */
+    const byM = new Map<string, string>();
+    for (const [k, u] of byMapRef.current) if (k in pending || k in pendDate) byM.set(k, u);
+    if (me) for (const k of mineRef.current) if (k in pending || k in pendDate) byM.set(k, me);
+    const by: [string, string][] = [...byM];
 
     const draft: Draft = {
       t: at,
@@ -2878,8 +2933,6 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
          алдаа. Локалд аль хэдийн бүрэн хадгалагдсан тул алдагдал үүсэхгүй. */
       if (q.pkg !== pkg.key) { remoteQueue.current = null; return; }
       remoteQueue.current = null;
-      const body = JSON.stringify(q.draft);
-      if (body.length > REMOTE_MAX) { setRemoteState({ kind: 'big' }); return; }
       /* ⚠️ АМЖИЛТГҮЙГ ИЛ ХЭЛНЭ (2026-09-06). Урьд нь `void saveRemoteDraft(...)`
          гэж үр дүнг ХАЯДАГ байсан тул сүлжээгүй, токен дууссан, хүснэгт
          олдоогүй — аль ч тохиолдолд дэлгэц дээр «ноорог хадгалагдав» гэж
@@ -2887,10 +2940,90 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
          хоосон хуудас хүлээж авдаг байв. Локал ноорог бүрэн бүтэн тул
          бөглөлтийг ЗОГСООХГҮЙ — зөвхөн байдлыг үнэн харуулна. */
       lastRemoteRef.current = Date.now();
-      void saveRemoteDraft(q.pkg, q.draft.t, body).then((r) => {
+      /*
+       * ⚠️ БИЧИХЭЭСЭЭ ӨМНӨ АЛСААС УНШИЖ НИЙЛҮҮЛНЭ — READ-MERGE-WRITE
+       * (2026-09-08, хэрэглэгч: «ноорог хуваалцахгүй байна»).
+       *
+       * ⚠️ ЯАГААД ЗААВАЛ: ноорог одоо БАГЦААР хуваалцагддаг тул энэ слотод
+       * нөгөө оролцогчийн ажил байж болно. Урьд нь `q.draft` (ЗӨВХӨН энэ
+       * хөтчийн локал төлөв) шууд бичигддэг байсан тул:
+       *   · А 342 нүд бөглөж алсад бичив
+       *   · Б 1 нүд бөглөхөд Б-гийн ноорог алсыг БҮХЭЛД НЬ дарж, А-гийн
+       *     341 нүд УСТДАГ байв — яг тэр эвдрэл мэдээлэгдсэн.
+       * Татах мөчлөг (3 сек) нь зөвхөн УНШИХ талыг нийлүүлдэг; бичих тал
+       * нийлүүлэхгүй бол хоёр талын уралдаанд сүүлд бичсэн нь бүгдийг дарна.
+       *
+       * ⚠️ Уншилт УНАВАЛ бичихгүй, дараалалд буцаана: тэр үед алсын агуулга
+       * үл мэдэгдэх тул бичих нь бусдын ажлыг устгах эрсдэлтэй. Локал ноорог
+       * бүрэн бүтэн тул алдагдал үүсэхгүй — дараагийн тойрогт дахин оролдоно.
+       *
+       * ⚠️ Энэ нь МӨРГӨЛДӨӨНИЙГ бүрэн шийдэхгүй (уншилт ба бичилтийн хооронд
+       * хэдэн зуун мс байна) — ArcGIS-д нөхцөлт бичилт байхгүй. Гэвч цонх нь
+       * 3 секундээс хэдэн зуун мс болж багасна; үлдсэн уралдаанд ч зөвхөн
+       * ТЭР агшинд бичигдсэн нүд л хожигдоно, бүтэн ноорог биш.
+       */
+      void (async () => {
+        /*
+         * ⚠️ ХЯМД ШАЛГАЛТААР УНШИЛТЫГ АЛГАСНА (2026-09-08, гүйцэтгэл).
+         * Алсын `at` нь сүүлд нийлүүлсэн агшнаас ИХГҮЙ бол нөгөө тал энэ
+         * хооронд юу ч бичээгүй — нийлүүлэх зүйл байхгүй тул 80KB-ийн
+         * `payload` татах нь цэвэр дэмий. Ганц хүн бөглөж байхад (багцын
+         * дийлэнх тохиолдол) уншилт БҮРМӨСӨН арилж, бичилт нь өмнөх
+         * хувилбарын хурдтай ЯГ ТЭНЦҮҮ болно.
+         */
+        const at = await readRemoteDraftAt(q.pkg);
+        if (loadedPkgRef.current !== q.pkg) return;
+        if (at === undefined) {
+          /* Уншиж чадсангүй — бичихгүй: алсын агуулга үл мэдэгдэх тул бичих нь
+             бусдын ажлыг устгах эрсдэлтэй. Локал бүрэн бүтэн. */
+          setRemoteState({ kind: 'fail', why: tr('алсын ноорогийг шалгаж чадсангүй') });
+          if (!remoteQueue.current) remoteQueue.current = q;
+          setTimeout(() => setRemoteTick((n) => n + 1), REMOTE_RETRY_MS);
+          return;
+        }
+        let remote: Draft | null = null;
+        if (at !== null && at > lastMergedRef.current) {
+          const rr = await readRemoteDraft(q.pkg);
+          if (loadedPkgRef.current !== q.pkg) return;
+          if (!rr.ok) {
+            setRemoteState({ kind: 'fail', why: rr.error });
+            if (!remoteQueue.current) remoteQueue.current = q;
+            setTimeout(() => setRemoteTick((n) => n + 1), REMOTE_RETRY_MS);
+            return;
+          }
+          remote = rr.draft ? parseDraft(rr.draft.payload, 'remote') : null;
+        }
+        /* Алсынхыг ХУУЧИН, өөрийнхийг ШИНЭ тал болгож нийлүүлнэ — нүд тус
+           бүрээр шинэ агшинтай нь ялна (`mergeDrafts`). */
+        const outDraft = mergeDrafts(remote, q.draft) ?? q.draft;
+        const body = JSON.stringify(outDraft);
+        if (body.length > REMOTE_MAX) { setRemoteState({ kind: 'big' }); return; }
+        /*
+         * ⚠️ ӨӨРЧЛӨГДӨӨГҮЙ БОЛ ОГТ БИЧИХГҮЙ (2026-09-08, гүйцэтгэл).
+         * Хадгалах эффект нь `pending` ижил байхад ч дахин ажиллаж болно
+         * (жиш. `rows` шинэчлэгдэх, нүд рүү орж гарах). Тэр үед агуулга нь
+         * үсэг үсгээрээ ижил ноорог ArcGIS руу дахин бичигдэж, мөрийн `at`
+         * шинэчлэгдэнэ — улмаар НӨГӨӨ ТАЛЫН хямд шалгалт «өөрчлөгдсөн» гэж
+         * үзэж 80KB-ийг дэмий татна. Хоёр хүн ажиллаж байхад энэ нь хоорондоо
+         * дэмий татах гинжин урвал үүсгэдэг. Агуулгаар нь тулгаж таслана.
+         */
+        if (body === lastBodyRef.current) {
+          setRemoteState({ kind: 'ok', at: Date.now() });
+          return;
+        }
+        /* ⚠️ Нийлсэн үр дүнг ЛОКАЛД ч буулгана — эс бөгөөс дараагийн бичилт
+           дахин зөвхөн өөрийн хэсгээ агуулж, нөгөө талын ажил локалд
+           хэзээ ч харагдахгүй. Дэлгэц нь татах мөчлөгөөр шинэчлэгдэнэ. */
+        saveDraftLS(q.pkg, outDraft);
+        if (outDraft.t > lastMergedRef.current) lastMergedRef.current = outDraft.t;
+        await saveRemoteDraft(q.pkg, outDraft.t, body).then((r) => {
         /* Багц солигдсон бол хуучин хариугаар шинэ багцын төлөвийг бичихгүй */
         if (loadedPkgRef.current !== q.pkg) return;
         if (r.ok) {
+          /* ⚠️ ЗӨВХӨН АМЖИЛТТАЙ бичилтийн дараа — унасан бичилтийг «бичигдсэн»
+             гэж тэмдэглэвэл дараагийн оролдлого таслагдаж, ажил алсад
+             ХЭЗЭЭ Ч очихгүй болно. */
+          lastBodyRef.current = body;
           setRemoteState({ kind: 'ok', at: Date.now() });
           /* ⚠️ ХУУЧИН МӨРҮҮДИЙГ ЗӨВХӨН ЭНД устгана (2026-09-08): шинэ
              түлхүүрт бичилт АМЖИЛТТАЙ болсныг батлагдсаны дараа. Урьдчилж
@@ -2913,7 +3046,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
            өөрөө хаяна. */
         if (!remoteQueue.current) remoteQueue.current = q;
         setTimeout(() => setRemoteTick((n) => n + 1), REMOTE_RETRY_MS);
-      });
+        });
+      })();
     };
     flushRef.current = flush;
     const t = setTimeout(flush, REMOTE_DEBOUNCE_MS);
@@ -2993,17 +3127,30 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         timer = setTimeout(() => void tick(), REMOTE_DEBOUNCE_MS);
         return;
       }
-      const rr = await readRemoteDraft(pkg.key);
+      /*
+       * ⚠️ ХЯМД ШАЛГАЛТ ЭХЛЭЭД (2026-09-08, гүйцэтгэл): зөвхөн `at` (~200 байт)
+       * татаж, өөрчлөгдөөгүй бол ЭНДЭЭ ЗОГСОНО. Ихэнх тойрогт нөгөө тал юу ч
+       * бичээгүй байдаг тул урьд нь 80KB-ийн `payload` дэмий татагдаж, задарч,
+       * нийлүүлэгдэж байв. Одоо бүтэн ачаа зөвхөн БОДИТ өөрчлөлтөд татагдана —
+       * сүлжээний ачаалал ~400 дахин, задлалт ~100% буурна.
+       */
+      const at = await readRemoteDraftAt(pkg.key);
       if (!alive) return;
-      if (rr.ok && rr.draft) {
-        const remote = parseDraft(rr.draft.payload, 'remote');
-        /* ⚠️ ЗӨВХӨН ШИНЭ БОЛ: ижил агшинтай ноорог нь ӨӨРИЙН сая бичсэн
-           хуулбар — дахин суулгавал бичиж байгаа нүд дэмий дахин зурагдана. */
-        if (remote && remote.t > lastMergedRef.current) {
-          lastMergedRef.current = remote.t;
-          const local = readDraft(pkg.key);
-          const merged = mergeDrafts(local, remote);
-          if (merged) pickDraftRef.current(merged, 'remote');
+      /* `undefined` = уншиж чадсангүй · `null` = мөр алга · тоо = агшин.
+         Хоёуланд нь татах зүйлгүй; дараагийн тойрогт дахин үзнэ. */
+      if (typeof at === 'number' && at > lastMergedRef.current) {
+        const rr = await readRemoteDraft(pkg.key);
+        if (!alive) return;
+        if (rr.ok && rr.draft) {
+          const remote = parseDraft(rr.draft.payload, 'remote');
+          /* ⚠️ ЗӨВХӨН ШИНЭ БОЛ: ижил агшинтай ноорог нь ӨӨРИЙН сая бичсэн
+             хуулбар — дахин суулгавал бичиж байгаа нүд дэмий дахин зурагдана. */
+          if (remote && remote.t > lastMergedRef.current) {
+            lastMergedRef.current = remote.t;
+            const local = readDraft(pkg.key);
+            const merged = mergeDrafts(local, remote);
+            if (merged) pickDraftRef.current(merged, 'remote');
+          }
         }
       }
       if (alive) timer = setTimeout(() => void tick(), REMOTE_DEBOUNCE_MS);

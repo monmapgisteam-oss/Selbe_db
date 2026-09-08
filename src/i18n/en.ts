@@ -1194,6 +1194,7 @@ const en: Record<string, string> = {
   "Энэ багцын нооргийг хуваалцаж бөглөж байгаа аккаунтууд": "Accounts sharing and filling this package’s draft",
   "Энэ нооргийг {0} мөн бөглөж байна. Устгавал ТЭДНИЙ ажил ч арилна. Үргэлжлүүлэх үү?": "{0} is also filling in this draft. Deleting it will also erase THEIR work. Continue?",
   "🔴 Эрхийн хүснэгт (Selbe_Permissions) НИЙТЭД нээлттэй байна — нэвтрээгүй хэн ч эрх засаж чадна. AGOL дээр item-ийн Share-ийг «Organization» болгоно уу.": "🔴 The permissions table (Selbe_Permissions) is PUBLIC — anyone, even unauthenticated, can edit permissions. Set the item’s Share to “Organization” in AGOL.",
+  "алсын ноорогийг шалгаж чадсангүй": "could not check the remote draft",
   "Илгээх": "Send",
   "илүүдэл": "surplus",
   "Илүүдэл": "Surplus",

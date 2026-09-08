@@ -179,9 +179,35 @@ export async function tableUrl(canCreate: boolean): Promise<string | null> {
 
 type FeatureLayerMod = typeof import('@arcgis/core/layers/FeatureLayer').default;
 type FeatureLayerInst = InstanceType<FeatureLayerMod>;
+/**
+ * ДАВХАРГЫН КЭШ — URL тутамд НЭГ `FeatureLayer` (2026-09-08, гүйцэтгэл).
+ *
+ * ⚠️ ЯАГААД: `new FeatureLayer({url})` бүр удаа давхаргын тодорхойлолтыг
+ * (`?f=json` — талбарууд, capabilities, extent) СЕРВЕРЭЭС дахин татдаг.
+ * Ноорогийн мөчлөг 3 секунд тутам уншиж, бичихийн өмнө дахин уншдаг тул
+ * минутанд ~40 давхарга үүсч, тус бүр нэмэлт дугуй аялал хийж байв —
+ * жинхэнэ query-гээс ӨМНӨ. Нэг instance-ийг дахин ашиглавал тэр бүгд
+ * арилна (ArcGIS JS API нь `load()`-ийн үр дүнг instance дотроо кэшилдэг).
+ *
+ * ⚠️ Аюулгүй: `FeatureLayer` нь төлөвгүй асуулга хийдэг (`queryFeatures`,
+ * `applyEdits` — бүгд цэвэр функц шиг), тул нэг instance-ийг зэрэгцээ
+ * дуудахад мөргөлдөхгүй. Токен нь `IdentityManager`-аас дуудлага бүрд
+ * шинээр авагддаг тул хуучирсан токен кэшлэгдэхгүй.
+ */
+const layerCache = new Map<string, Promise<FeatureLayerInst>>();
 export async function layer(url: string): Promise<FeatureLayerInst> {
-  const { default: FeatureLayer } = (await import('@arcgis/core/layers/FeatureLayer')) as { default: FeatureLayerMod };
-  return new FeatureLayer({ url });
+  const hit = layerCache.get(url);
+  if (hit) return hit;
+  const p = (async () => {
+    const { default: FeatureLayer } = (await import('@arcgis/core/layers/FeatureLayer')) as { default: FeatureLayerMod };
+    return new FeatureLayer({ url });
+  })();
+  /* ⚠️ PROMISE-ыг кэшилнэ (утгыг биш): зэрэг ирсэн хоёр дуудлага НЭГ
+     instance хүлээнэ — эс бөгөөс хоёулаа өөрийгөө үүсгэж давхардана. */
+  layerCache.set(url, p);
+  /* Унавал кэшээс хасна — дараагийн дуудлага дахин оролдоно */
+  p.catch(() => layerCache.delete(url));
+  return p;
 }
 
 /**
@@ -209,6 +235,44 @@ const legacyLike = (pkgKey: string) => `%|${pkgKey}`;
 export const sqlStr = (s: string) => `'${s.replace(/'/g, "''")}'`;
 
 export type RemoteDraft = { at: number; payload: string };
+
+/**
+ * АЛСЫН НООРОГИЙН АГШИН — `payload`-ГҮЙ, ХЯМД шалгалт (2026-09-08, гүйцэтгэл).
+ *
+ * ⚠️ ЯАГААД: хуваалцсан ноорогийн мөчлөг 3 секунд тутам уншдаг ба `payload`
+ * нь 80,000 тэмдэгт хүртэл байна. Хоёр хүн ажиллаж байхад ихэнх тойрогт
+ * ЮУ Ч ӨӨРЧЛӨГДӨӨГҮЙ байдаг — гэтэл бүтэн ачааг татаж, задалж, нийлүүлж
+ * байв. Зөвхөн `at` (Double) татвал хариу ~200 байт болно: 400 дахин бага.
+ *
+ * ⚠️ Мөн БИЧИХИЙН ӨМНӨХ уншилтад хэрэглэнэ: алсын `at` нь өөрийн сүүлд
+ * нийлүүлсэн агшинтай ижил бол нөгөө тал юу ч бичээгүй — нийлүүлэх зүйлгүй
+ * тул бүтэн уншилтыг АЛГАСААД шууд бичиж болно.
+ *
+ * Буцаана: `at` (мс) · `null` = мөр байхгүй · `undefined` = уншиж чадсангүй
+ * (сүлжээ/эрх). Гуравыг ЯЛГАХ нь чухал — «байхгүй» гэж андуурвал дуудагч
+ * бусдын ажлыг дарж бичнэ.
+ */
+export async function readRemoteDraftAt(pkgKey: string): Promise<number | null | undefined> {
+  try {
+    const auth = await getAuth();
+    if (!auth) return undefined;
+    const url = await tableUrl(false);
+    if (!url) return undefined;
+    const fl = await layer(url);
+    const res = await fl.queryFeatures({
+      where: `dkey = ${sqlStr(keyOf(pkgKey))}`,
+      /* ⚠️ ЗӨВХӨН `at` — `payload` НЭМЭХГҮЙ, тэр нь энэ функцийн бүх утга учир */
+      outFields: ['OBJECTID', 'at'],
+      returnGeometry: false,
+      orderByFields: ['OBJECTID ASC'],
+    });
+    const last = res.features[res.features.length - 1]?.attributes as { at?: number } | undefined;
+    if (!last || !Number.isFinite(last.at)) return null;
+    return Number(last.at);
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * ХУУЧИН МӨРҮҮД (`хэрэглэгч|багц`) — нэг удаагийн шилжүүлэлтэд.
