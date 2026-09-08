@@ -155,7 +155,14 @@ async function findTableUrl(token: string): Promise<string | null> {
   const search = await req(`${restBase()}/search`, {
     q: `title:"${TITLE}" type:"Feature Service"`,
     token,
-    num: '10',
+    /*
+     * ⚠️ 100 (2026-09-08): урьд нь '10' байв. Хайлт нь org доторх ХЭНИЙ Ч ижил
+     * нэртэй item-ыг буцаадаг тул хэн нэгэн 10+ хуурамч `Selbe_Permissions`
+     * үүсгэвэл ЖИНХЭНЭ хүснэгт эхний 10-т багтахаа больж, `ownerMismatch`
+     * асаад бүх клиентийн remote эрх УНТАРНА (үйлчилгээ таслах халдлага).
+     * Эзний шүүлтүүр нь хэвээр — энэ нь зөвхөн хайлтын цонхыг өргөсгөнө.
+     */
+    num: '100',
   });
   const results = (search.results as Array<{ url?: string; title?: string; owner?: string }>) ?? [];
   const same = results.filter((x) => x.title === TITLE && x.url);
@@ -286,7 +293,16 @@ export async function fetchAll(
      * мөртэй ижил дүрэм (`upsertByKey`).
      */
     const flowBy = new Map<string, FlowRow>();
-    const caps: CapRow[] = [];
+    /*
+     * ⚠️ НЭГ ХЭРЭГЛЭГЧ = НЭГ МӨР (2026-09-08). Урьд нь массив байсан тул
+     * зэрэгцээ бичилтийн race-аас үүссэн давхар `__cap__:` мөр ХОЁУЛАА
+     * жагсаалтад ордог байв. `_syncRemoteCaps` нь эхнээс нь давтдаг учир
+     * СҮҮЛИЙНХ нь ялах ёстой атлаа `upsertByKey` их OID-д бичдэг тул хассан
+     * эрх (хуучин, бага OID мөрд үлдсэн) дараалал зөрөхөд СЭРГЭДЭГ байлаа.
+     * Map нь flow/qaqc/huvaari/obyem-тэй ижил дүрмийг барина: их OID ялна
+     * (мөрүүд OBJECTID ASC ирдэг).
+     */
+    const capsBy = new Map<string, CapRow>();
     /* ⚠️ QAQC мөр ч мөн НЭГ ХЭРЭГЛЭГЧ = НЭГ МӨР — flow-той ижил дүрэм */
     const qaqcBy = new Map<string, QaqcRow>();
     /* ⚠️ Хуваарийн мөр ч мөн НЭГ ХЭРЭГЛЭГЧ = НЭГ МӨР */
@@ -344,7 +360,7 @@ export async function fetchAll(
         const user = a.username.slice(CAP_PREFIX.length).toLowerCase();
         try {
           const d = JSON.parse(a.views || '[]') as unknown;
-          if (user && Array.isArray(d)) caps.push({ user, caps: d as string[] });
+          if (user && Array.isArray(d)) capsBy.set(user, { user, caps: d as string[] });
         } catch { /* эвдэрсэн мөр — алгасна (эрхгүйтэй ижил, fail-closed) */ }
         continue;
       }
@@ -385,7 +401,7 @@ export async function fetchAll(
     return {
       perms,
       flow: [...flowBy.values()],
-      caps,
+      caps: [...capsBy.values()],
       qaqc: [...qaqcBy.values()],
       huvaari: [...huvaariBy.values()],
       obyem: [...obyemBy.values()],
@@ -402,13 +418,28 @@ export async function fetchAll(
  * устгана — эс бөгөөс «хадгалсан ч үйлчлэхгүй» чимээгүй алдаа гардаг байв.
  */
 async function findOids(fl: FeatureLayerInst, username: string): Promise<number[]> {
-  const found = await fl.queryFeatures({
-    where: `LOWER(username) = '${username.toLowerCase().replace(/'/g, "''")}'`,
-    outFields: ['OBJECTID'], returnGeometry: false, orderByFields: ['OBJECTID ASC'],
-  });
-  return found.features
-    .map((f) => f.attributes?.OBJECTID as number)
-    .filter((x) => typeof x === 'number');
+  /*
+   * ⚠️ ХУУДАСЛАЛТ (2026-09-08): урьд нь ганц дуудлага байсан тул үйлчилгээний
+   * `maxRecordCount` (ихэвчлэн 1000, зарим дээр 2000)-аас дээш давхар мөр
+   * үүссэн тохиолдолд илүүдэл нь ОГТ буцаагддаггүй байв. Тэр нь `upsertByKey`-д
+   * «цэвэрлэх давхардал алга» гэж харагдаж, цэвэрлэгдээгүй хуучин мөр дараагийн
+   * уншилтад эргэн гарч ирнэ. `orderByFields`-гүй offset нь мөр алгасдаг тул
+   * эрэмбийг ЗААВАЛ хадгална (CLAUDE.md-ийн ArcGIS занга).
+   */
+  const where = `LOWER(username) = '${username.toLowerCase().replace(/'/g, "''")}'`;
+  const out: number[] = [];
+  for (let offset = 0; ; ) {
+    const found = await fl.queryFeatures({
+      where, outFields: ['OBJECTID'], returnGeometry: false,
+      orderByFields: ['OBJECTID ASC'], start: offset, num: 2000,
+    });
+    out.push(...found.features
+      .map((x) => x.attributes?.OBJECTID as number)
+      .filter((x) => typeof x === 'number'));
+    if (!found.exceededTransferLimit || found.features.length === 0) break;
+    offset += found.features.length;
+  }
+  return out;
 }
 
 const editOk = (r: { error?: unknown }[] | undefined): boolean =>

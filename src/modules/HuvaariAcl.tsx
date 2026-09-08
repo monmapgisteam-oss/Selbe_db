@@ -106,11 +106,25 @@ export function HuvaariAcl() {
     } else {
       bagts = [...new Set([...cur.bagts, group])];
     }
-    if (cur && (roles.length > cur.roles.length) && bagts.length > 1) {
+    /*
+     * ⚠️ `ALL_BAGTS` НЬ УРТ 1 (2026-09-08). Хамгаалалт нь `bagts.length > 1`
+     *    гэж тоолдог байсан тул `['*']` («бүх багц») хүрээтэй хүнийг ШҮҮДЭГГҮЙ
+     *    байв — яг тэр нь ХАМГИЙН ӨРГӨН хүрээ. Үр дүнд нь UserAdmin-ы унтраалгаар
+     *    `[ALL_BAGTS]`-тай болсон хүнд энд шинэ үүрэг нэмэхэд шалгалт чимээгүй
+     *    өнгөрч, тэр үүрэг нь БҮХ 7 багцад тарж, зохиогч=батлагч давхцал үүсгэн
+     *    багцуудыг гацаадаг байлаа. «Өргөн хүрээ» = ALL_BAGTS ЭСВЭЛ 1-ээс олон багц.
+     */
+    const wide = cur ? (cur.bagts.includes(ALL_BAGTS) || bagts.includes(ALL_BAGTS) || bagts.length > 1) : false;
+    if (cur && (roles.length > cur.roles.length) && wide) {
       setErr(tr('«{0}» нь {1} багцад аль хэдийн хуваарилагдсан тул шинэ үүрэг нэмбэл ТЭР багцуудад ч үйлчилнэ. Эхлээд түүнийг хуваарилалтаас хасаад дараа нь дахин томилно уу.', user, cur.bagts.join(', ')));
       return;
     }
-    if (cur && (bagts.length > cur.bagts.length) && roles.length > 1) {
+    /* ⚠️ Нөгөө чиглэлд ч ижил: `ALL_BAGTS` нэмэх нь урт нэмэгдэхгүй ч хүрээг
+       хамгийн өргөн болгоно. `bagts.length > cur.bagts.length` нь `['Багц 1']`-ээс
+       `['*']` руу шилжихийг ОГТ барихгүй тул тусад нь шалгана. */
+    const widening = !!cur && (bagts.length > cur.bagts.length
+      || (bagts.includes(ALL_BAGTS) && !cur.bagts.includes(ALL_BAGTS)));
+    if (cur && widening && roles.length > 1) {
       setErr(tr('«{0}» нь {1} үүрэгтэй тул шинэ багц нэмбэл ТЭР үүргүүд нь ч шинэ багцад үйлчилнэ. Эхлээд түүнийг хуваарилалтаас хасаад дараа нь дахин томилно уу.', user, cur.roles.map(roleLabel).join(', ')));
       return;
     }
@@ -132,8 +146,20 @@ export function HuvaariAcl() {
   const removeFrom = (group: string, role: PlanRole, user: string) => {
     const cur = rows.find((a) => a.user === user);
     if (!cur) return;
+    /*
+     * ⚠️ «БҮХ БАГЦ»-ТАЙ ХҮНИЙГ ЭНДЭЭС ХАСНА (2026-09-08). Урьд нь «доорх мөрөөс
+     *    нь бүхэлд нь хасна уу» гэж заадаг байсан ч ТИЙМ МӨР UI-д ОГТ БАЙХГҮЙ:
+     *    `removeHuvaariAssign` нь зөвхөн доорх `otherPkgs === 0 && otherRoles === 0`
+     *    салаанаас дуудагддаг бөгөөд `ALL_BAGTS`-тай хүн тэнд хэзээ ч хүрэхгүй.
+     *    Үр дүнд нь санамсаргүй «бүх багц» болгосон хуваарилалтыг ХАСАХ ЗАМГҮЙ
+     *    үлдэж, тэр хүн 7 багц дээр зохиогч ба батлагч хоёул болж бүх багц гацдаг
+     *    байв. Хүрээ нь багцаар салгагддаггүй тул хасалт нь БҮТЭН мөрөөр явна —
+     *    үүнийг баталгаажуулж асууна.
+     */
     if (cur.bagts.includes(ALL_BAGTS)) {
-      setErr(tr('«{0}» нь БҮХ багцад хуваарилагдсан тул нэг багцаас нь салгаж хасахгүй — доорх мөрөөс нь бүхэлд нь хасна уу.', user));
+      if (!window.confirm(tr('«{0}» нь БҮХ багцад хуваарилагдсан тул нэг багцаас нь салгаж хасах боломжгүй. Хуваарилалтыг нь БҮХЭЛД НЬ хасах уу? «Хуваарь төлөвлөх» ба «Хуваарь батлах» эрх нь мөн буцаагдана.', user))) return;
+      setErr('');
+      void removeHuvaariAssign(user).sync;
       return;
     }
     setErr('');

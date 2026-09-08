@@ -186,9 +186,24 @@ export function capViewsOf(username?: string | null): ViewKey[] {
 
 const VALID = new Set<string>(CAPS.map((c) => c.key));
 const KEY = 'selbe-caps-v1';
+const DIRTY_KEY = 'selbe-caps-dirty-v1';
 const EVENT = 'selbe-caps-change';
 
 type Store = Record<string, CapKey[]>;
+
+/**
+ * ArcGIS-д хүрч ЧАДААГҮЙ локал өөрчлөлтүүд: түлхүүр → зорьсон эрхийн жагсаалт
+ * (`[]` = мөрийг устгах гэсэн).
+ *
+ * ⚠️ 2026-09-08: энэ dirty-set урьд нь БАЙХГҮЙ байв. `permissions.ts`-д 2026-08-27-нд
+ * нэмэгдсэн хамгаалалт энд хуулагдаагүй тул: админ эрх олгоод ArcGIS бичилт нь
+ * унавал `setCaps` `false` буцаадаг ч хаана ч тэмдэглэгддэггүй, дараагийн
+ * `initRemote` (5 мин тутам) `_syncRemoteCaps`-аар кэшийг БҮХЭЛД нь дарж бичдэг
+ * тул засвар нь ЧИМЭЭГҮЙ буцдаг байв. Одоо `permissions.ts`-ийн ЯГ ижил
+ * загвараар: dirty тэмдэглэнэ → `initRemote` бүрд retry → унасныг snapshot дээр
+ * давхарлана.
+ */
+type DirtyCaps = Record<string, CapKey[]>;
 
 /** Танигдахгүй түлхүүрийг хаяна — хуучин/эвдэрсэн мөр эрх нээхгүй. */
 const sane = (v: unknown): CapKey[] =>
@@ -219,6 +234,73 @@ function save(s: Store) {
 function notify() {
   if (typeof window === 'undefined') return;
   window.dispatchEvent(new Event(EVENT));
+}
+
+function loadDirty(): DirtyCaps {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = JSON.parse(window.localStorage.getItem(DIRTY_KEY) || '{}') as Record<string, unknown>;
+    if (!raw || typeof raw !== 'object') return {};
+    const out: DirtyCaps = {};
+    for (const [k, v] of Object.entries(raw)) out[k.toLowerCase()] = sane(v);
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+function saveDirty(d: DirtyCaps): void {
+  /* ⚠️ `permissions.saveDirty`-тай ижил шалтгаан: хувийн горим/квотод шиддэг тул
+     заавал try/catch. Алдагдвал дараагийн `initRemote` алсаас бүгдийг дахин уншина. */
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(DIRTY_KEY, JSON.stringify(d));
+  } catch { /* хувийн горим / квот дүүрсэн */ }
+}
+
+/** Бичилтийн үр дүнг dirty-set-д тусгана (ok → цэвэрлэ, унав → тэмдэглэ) */
+function trackWrite(key: string, intended: CapKey[], ok: boolean): void {
+  const d = loadDirty();
+  if (ok) {
+    if (!(key in d)) return;
+    delete d[key];
+  } else {
+    d[key] = intended;
+  }
+  saveDirty(d);
+  notify();
+}
+
+/** ArcGIS-т хүрээгүй эрхийн өөрчлөлттэй түлхүүрүүд — UserAdmin-ы тэмдэгт */
+export function dirtyCapKeys(): string[] {
+  return Object.keys(loadDirty());
+}
+
+/**
+ * DIRTY эрхүүдийг remote руу ДАХИН бичиж үзнэ (`_syncRemoteCaps` дуудна).
+ * Буцаана: амжилтгүй ҮЛДСЭН dirty map — snapshot дээр давхарлахад.
+ */
+async function retryDirtyCaps(): Promise<DirtyCaps> {
+  const d = loadDirty();
+  const keys = Object.keys(d);
+  if (!keys.length) return {};
+  const left: DirtyCaps = {};
+  try {
+    const m = await import('./permsRemote');
+    for (const key of keys) {
+      const intended = d[key];
+      try {
+        const ok = intended.length ? await m.capUpsert(key, intended) : await m.capRemove(key);
+        if (!ok) left[key] = intended;
+      } catch {
+        left[key] = intended;
+      }
+    }
+  } catch {
+    return d; // модуль ачаалагдсангүй — бүгд dirty хэвээр
+  }
+  saveDirty(left);
+  return left;
 }
 
 /** Нэг хэрэглэгчийн олгогдсон эрхүүд. */
@@ -259,12 +341,17 @@ export async function setCaps(username: string, caps: CapKey[]): Promise<boolean
   if (next.length === 0) delete cache[u];
   save(cache);
   notify();
+  let ok = false;
   try {
     const r = await import('./permsRemote');
-    return next.length ? await r.capUpsert(u, next) : await r.capRemove(u);
+    ok = next.length ? await r.capUpsert(u, next) : await r.capRemove(u);
   } catch {
-    return false;
+    ok = false;
   }
+  /* ⚠️ Үр дүнг ЗААВАЛ тэмдэглэнэ — эс бөгөөс унасан бичилт дараагийн
+     `_syncRemoteCaps`-д чимээгүй буцна (2026-09-08). */
+  trackWrite(u, next, ok);
+  return ok;
 }
 
 /** Нэг эрхийг асаах/унтраах товчлол. */
@@ -286,13 +373,47 @@ export function subscribeCaps(fn: () => void): () => void {
  * гэсэн үг. Локалыг нэгтгэвэл өөр админы хассан эрх энэ browser дээр мөнхөд
  * үлдэнэ — эрх ЧИМЭЭГҮЙ өргөжих нь хамгийн муу төрлийн алдаа.
  */
-export function _syncRemoteCaps(rows: CapRow[]): void {
+/**
+ * @param trusted dirty-set-ийг дахин илгээж, унасныг snapshot дээр давхарлах эрх
+ *   (`permissions.initRemote`-ийн хатуу super сешн). ⚠️ Итгэмжлэгдээгүй сешнд
+ *   давхарлахгүй: dirty-set нь localStorage-д байдаг тул ЯМАР Ч аккаунт өөртөө
+ *   `zovshoorol`/`finRow` зэрэг эрх тарьж, remote бичилт нь (эрхгүй тул) унамагц
+ *   тэр нь snapshot дээр мөнхөд давхарлагдана — өөрөө өөртөө эрх олгох зам.
+ *   `permissions.initRemote(trusted)`-ийн ЯГ ижил үндэслэл.
+ */
+export function _syncRemoteCaps(rows: CapRow[], trusted = false): void {
   const s: Store = {};
   for (const r of rows) {
-    const c = sane(r.caps);
-    if (r.user && c.length) s[r.user.toLowerCase()] = c;
+    if (!r.user) continue;
+    /* ⚠️ ХООСОН ЖАГСААЛТЫГ ч БИЧНЭ (2026-09-08): урьд нь `c.length` шалгадаг
+       байсан тул remote дээрх `[]` мөр кэшид ОГТ тусдаггүй байв. Тэр нь
+       өөрөө хор хөнөөлгүй мэт ч `retryDirtyCaps`-ийн «хасалт амжилттай»
+       гэсэн тэмдэглэлтэй уралдана. Түлхүүрийг мөн `trim()`-дэнэ — remote
+       мөрөнд санамсаргүй зай орвол `capsOf` хэзээ ч таарахгүй. */
+    s[r.user.trim().toLowerCase()] = sane(r.caps);
   }
   cache = s;
   save(s);
   notify();
+
+  /*
+   * ⚠️ RETRY-THEN-OVERLAY (2026-09-08): remote snapshot нь ЭЦСИЙН ҮНЭН боловч
+   * ArcGIS-д хүрч чадаагүй локал засварыг дарж бичих ёсгүй — тэр нь админы
+   * дөнгөж сая хийсэн өөрчлөлт. Эхлээд дахин илгээж үзнэ; бүтвэл цэвэрлэгдэнэ,
+   * унавал зорьсон утгыг snapshot дээр давхарлана. `permissions.initRemote`-ийн
+   * алхам 1–2-ын ижил загвар. Async тул notify() дахин дуудагдана.
+   */
+  if (!trusted) return;
+  void retryDirtyCaps().then((left) => {
+    const keys = Object.keys(left);
+    if (!keys.length) return;
+    const merged: Store = { ...cache };
+    for (const k of keys) {
+      if (left[k].length) merged[k] = left[k];
+      else delete merged[k];
+    }
+    cache = merged;
+    save(merged);
+    notify();
+  });
 }

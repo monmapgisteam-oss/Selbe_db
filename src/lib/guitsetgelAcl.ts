@@ -123,7 +123,10 @@ export function _syncRemoteAssigns(rows: { user: string; stage: string; bagts: s
   const byUser = new Map<string, Assign>();
   for (const r of rows) {
     if (!r.user || !STAGES.has(r.stage)) continue;
-    const user = r.user.toLowerCase();
+    /* ⚠️ trim() (2026-09-08): remote мөрийн username-д санамсаргүй хоосон зай
+       орвол түлхүүр нь бичилтийн талын (set*Assign нь trim().toLowerCase()
+       хийдэг) түлхүүртэй ТААРАХГҮЙ болж, хуваарилалт «алга болдог» байв. */
+    const user = r.user.trim().toLowerCase();
     byUser.set(user, {
       user,
       stage: r.stage as Stage,

@@ -423,6 +423,26 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
      *    бүхэлдээ). Тодорхой багц сонгох нь «Хуваарийн эрх» хуудсанд.
      */
     if (c === 'plan' || c === 'planApprove') {
+      /*
+       * ⚠️ SUPER-Т ХУВААРИЛАЛТ ҮЙЛЧЛЭХГҮЙ (2026-09-08). QAQC дээр 2026-09-07-нд,
+       *    обьём дээр 2026-09-08-нд зассан ЯГ ижил алдаа энэ салаанд үлдсэн байв:
+       *    `setHuvaariAssign` нь super-д `{ok:false}` буцаадаг (тэдэнд `huvaariScope`
+       *    угаас `null` = бүх багц) тул `r.sync` нь `undefined`. Түүнийг барихгүй бол
+       *    `Promise.resolve(false)` руу унаж, унтраалга ХЭЗЭЭ Ч асахгүй атлаа
+       *    «ArcGIS-т бичигдсэнгүй» гэсэн ХУДАЛ алдаа гарч, 7 super админ «Хуваарь»
+       *    хуудсыг зөвхөн уншдаг болж байлаа. Тэдэнд эрхийг ХУУЧИН замаар шууд олгоно.
+       */
+      if (roleForUser(u.username) === 'super') {
+        void toggleCap(u.username, c, !on).then((r) => {
+          setCapErr((prev) => {
+            const m = new Map(prev);
+            if (r) m.delete(u.username.toLowerCase());
+            else m.set(u.username.toLowerCase(), true);
+            return m;
+          });
+        });
+        return;
+      }
       const role: PlanRole = c === 'plan' ? 'author' : 'approver';
       const cur = listHuvaariAssigns().find((a) => a.user === u.username.toLowerCase());
       const roles = cur?.roles ?? [];
@@ -430,10 +450,19 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
       const r = next.length
         ? setHuvaariAssign(u.username, next, cur?.bagts ?? [HUVAARI_ALL_BAGTS])
         : removeHuvaariAssign(u.username);
-      void (r.sync ?? Promise.resolve(false)).then((ok) => {
+      /*
+       * ⚠️ `sync` ба `granted` ХОЁУЛАНГ нь хүлээнэ (2026-09-08) — QAQC салааны
+       *    ижил загвар. Урьд нь зөвхөн `sync`-ийг хардаг байсан тул эрхийн
+       *    (`__cap__:`) бичилт унасан ч унтраалга «асаалттай» харагдаж, дараагийн
+       *    `initRemote` дээр чимээгүй унтардаг байв.
+       */
+      void Promise.all([
+        r.sync ?? Promise.resolve(false),
+        r.granted ?? Promise.resolve(true),
+      ]).then(([a, b]) => {
         setCapErr((prev) => {
           const m = new Map(prev);
-          if (ok) m.delete(u.username.toLowerCase());
+          if (a && b) m.delete(u.username.toLowerCase());
           else m.set(u.username.toLowerCase(), true);
           return m;
         });
@@ -453,7 +482,16 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
      */
     if (c === 'obyemEdit' || c === 'obyemApprove') {
       if (roleForUser(u.username) === 'super') {
-        void toggleCap(u.username, c, !on);
+        /* ⚠️ .then ЗААВАЛ (2026-09-08): үр дүнг нь барихгүй бол ArcGIS бичилт
+           унасныг админ ОГТ мэдэхгүй, мөн өмнөх алдааны тэмдэг арилахгүй хоцорно. */
+        void toggleCap(u.username, c, !on).then((r) => {
+          setCapErr((prev) => {
+            const m = new Map(prev);
+            if (r) m.delete(u.username.toLowerCase());
+            else m.set(u.username.toLowerCase(), true);
+            return m;
+          });
+        });
         return;
       }
       const role: ObyemRole = c === 'obyemEdit' ? 'editor' : 'approver';
@@ -463,10 +501,19 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
       const r = next.length
         ? setObyemAssign(u.username, next, cur?.bagts ?? [OBYEM_ALL_BAGTS])
         : removeObyemAssign(u.username);
-      void (r.sync ?? Promise.resolve(false)).then((ok) => {
+      /*
+       * ⚠️ `sync` ба `granted` ХОЁУЛАНГ нь хүлээнэ (2026-09-08) — QAQC салааны
+       *    ижил загвар. Урьд нь зөвхөн `sync`-ийг хардаг байсан тул эрхийн
+       *    (`__cap__:`) бичилт унасан ч унтраалга «асаалттай» харагдаж, дараагийн
+       *    `initRemote` дээр чимээгүй унтардаг байв.
+       */
+      void Promise.all([
+        r.sync ?? Promise.resolve(false),
+        r.granted ?? Promise.resolve(true),
+      ]).then(([a, b]) => {
         setCapErr((prev) => {
           const m = new Map(prev);
-          if (ok) m.delete(u.username.toLowerCase());
+          if (a && b) m.delete(u.username.toLowerCase());
           else m.set(u.username.toLowerCase(), true);
           return m;
         });
@@ -723,6 +770,23 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
       // ⚠️ Устгагдсан аккаунтын өнчин томилгоо remote дээр үлдсэн — шинэ аккаунт
       //    үүсмэгц хуучин шат, багц нь автоматаар наалдана. Эхлээд цэвэрлүүлнэ.
       setAddErr(tr('«{0}» нэрээр хуучин урсгалын томилгоо үлдсэн байна — «Гүйцэтгэлийн урсгалын эрх» хуудсанд ✕ дарж арилгаад дахин нэмнэ үү.', n));
+      return;
+    }
+    /*
+     * ⚠️ ҮЛДСЭН ГУРВАН ACL-Д ч ижил шалгалт (2026-09-08). Урьд нь зөвхөн
+     *    урсгалын (`stageOfUser`) өнчин мөрийг шалгадаг байсан тул QAQC,
+     *    хуваарь, обьёмын хуваарилалт үлдсэн нэрийг дахин нэмэхэд тэр гурвын
+     *    эрх, багцын хүрээ нь ЧИМЭЭГҮЙ наалддаг байв — яг тэр аюулаас
+     *    сэргийлэхээр урсгалын шалгалт нэмэгдсэн атал гурав нь орхигдсон.
+     */
+    const orphan: [boolean, string][] = [
+      [listQaqcAssigns().some((a) => a.user === key), tr('Чанарын (QAQC) эрх')],
+      [listHuvaariAssigns().some((a) => a.user === key), tr('Хуваарийн эрх')],
+      [listObyemAssigns().some((a) => a.user === key), tr('Инженерийн обьёмын эрх')],
+    ];
+    const stuck = orphan.find(([hit]) => hit);
+    if (stuck) {
+      setAddErr(tr('«{0}» нэрээр хуучин хуваарилалт үлдсэн байна — «{1}» хуудсанд ✕ дарж арилгаад дахин нэмнэ үү.', n, stuck[1]));
       return;
     }
     const a = ROLE_ACCESS.tolovlolt;

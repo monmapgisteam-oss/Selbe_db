@@ -104,7 +104,10 @@ export function _syncRemoteQaqc(rows: { user: string; bagts: string[] }[]): void
   const byUser = new Map<string, QaqcAssign>();
   for (const r of rows) {
     if (!r.user) continue;
-    const user = r.user.toLowerCase();
+    /* ⚠️ trim() (2026-09-08): remote мөрийн username-д санамсаргүй хоосон зай
+       орвол түлхүүр нь бичилтийн талын (set*Assign нь trim().toLowerCase()
+       хийдэг) түлхүүртэй ТААРАХГҮЙ болж, хуваарилалт «алга болдог» байв. */
+    const user = r.user.trim().toLowerCase();
     byUser.set(user, {
       user,
       bagts: (Array.isArray(r.bagts) ? r.bagts : []).filter((b) => typeof b === 'string'),
@@ -199,7 +202,15 @@ export function setQaqcAssign(
     }
     return { ok, g };
   });
-  const sync = run.then((r) => { markResult(u, r.ok); return r.ok; });
+  /*
+   * ⚠️ ЭРХ ОЛГОЛТЫН ҮР ДҮНГ ЗАЛГИХГҮЙ (2026-09-08). remove*Assign дээр энэ
+   *    алдааг зассан ч ХАСАЛТ талдаа л зассан байв. Урьд нь markResult(u, r.ok)
+   *    байсан тул: хуваарилалтын мөр бичигдээд syncCaps (эрх олгох) УНАВАЛ
+   *    админд «амжилттай» гэж ХУДАЛ харагдана. Хэрэглэгч нь хуваарилагдсан ч
+   *    эрхгүй тул хуудсаа ОГТ нээж чадахгүй, шалтгаан нь хаана ч бичигдэхгүй.
+   *    Хасалт ба нэмэлт хоёр ижил хатуу шалгуур байх ёстой.
+   */
+  const sync = run.then((r) => { markResult(u, r.ok && r.g); return r.ok && r.g; });
   const granted = run.then((r) => r.g);
   return { ok: true, sync, granted };
 }
