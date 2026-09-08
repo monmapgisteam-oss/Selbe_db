@@ -1212,6 +1212,7 @@ function Timeline({
               {subCol && head('sub', subCol)}
               {head('amount', tr('Олгосон дүн'), true)}
               {head('pct', tr('Нийт хөрөнгөд эзлэх хувь'), true)}
+              <th className={g.tlThNum}>{tr('Хуримтлагдсан дүн')}</th>
             </tr>
           </thead>
           <tbody>
@@ -1222,6 +1223,7 @@ function Timeline({
                 {subCol && <td>{subOf(p)}</td>}
                 <td className={g.tlNum}>{p.amount > 0 ? mnt(p.amount) : ''}</td>
                 <td className={g.tlNum}>{pct(p.pct)}</td>
+                <td className={g.tlNum}>{mnt(cumOf(p.pct))}</td>
               </tr>
             ))}
           </tbody>
@@ -1231,6 +1233,17 @@ function Timeline({
   }
 
   const maxAmt = Math.max(1, ...pts.map((p) => p.amount));
+  /**
+   * ХУРИМТЛАГДСАН ХУВИЙН МӨНГӨН ЭКВИВАЛЕНТ (2026-09-08, хэрэглэгчийн хүсэлт:
+   * «64.3% хүрэхэд хэдэн төгрөг зарцуулсан бэ»).
+   *
+   * ⚠️ Суурь нь БҮХ мөрийн `Урьдчилсан төсөвт өртөг` — хугацааны шүүлтээс
+   * ҮЛ ХАМААРНА. Муруй нь өөрөө нийт төсөвт эзлэх хувь тул түүнийг шүүгдсэн
+   * дэд дүнгээр үржүүлбэл 100%-д хүрсэн ч нийт төсвөөс бага тоо гарч,
+   * хоёр тоо хоорондоо зөрчилдөнө.
+   */
+  const budget = rows.reduce((a, r) => a + r.cost, 0);
+  const cumOf = (p: number) => (budget * Math.max(0, Math.min(100, p))) / 100;
   const n = pts.length;
   const at = hov != null && hov < n ? hov : n - 1;
   const cur = pts[at];
@@ -1292,6 +1305,12 @@ function Timeline({
     y: 100 - Math.max(0, Math.min(100, p.pct)),
   })));
   /**
+   * ⚠️ ХҮЛЭЭГДЭЖ БУЙ ӨӨРЧЛӨЛТ (2026-09-08, хэрэглэгчийн заавар): багана нь
+   * ЗАХИРАМЖИЙН дүн БИШ, ГҮЙЦЭТГЭЛИЙН ТӨЛБӨРИЙН АКТ (IPC) байх ёстой —
+   * «хэдийг батлав» БИШ «хэдийг бодитоор олгов». IPC-ийн өгөгдөл хараахан
+   * бэлэн БИШ тул одоохондоо `Zahiramj_niit_dun` хэвээр; бэлэн болмогц
+   * `timeline()`-ийн `money` эх сурвалжийг л сольно (`gdash.ts`).
+   *
    * ⚠️ ОЛГОСОН ДҮН нь БОСОО БАГАНА (2026-09-07, хэрэглэгчийн шийдвэр). Богино
    * хугацаанд талбайн (area) хэлбэрээр туршигдаад буцав: талбай нь зэргэлдээ
    * үеүүдийг ХОЛБОЖ, тасралтгүй урсгал мэт уншуулдаг. Гэтэл олголт нь тасалгаат
@@ -1307,8 +1326,12 @@ function Timeline({
       <div className={g.tlHead}>
         <span className={g.tlHeadLbl}>{cur.label}</span>
         <b className={g.tlHeadPct}>{pct(cur.pct)}</b>
-        <span className={g.tlHeadAmt}>
-          {cur.amount > 0 ? mntShort(cur.amount) : tr('олголтгүй')}
+        {/* ⚠️ ХУРИМТЛАЛЫН мөнгө — тухайн үеийн олголт БИШ. «64.3%» гэдэг нь
+            ямар хэмжээний хөрөнгө болохыг дангаараа хэлдэггүй. */}
+        <span className={g.tlHeadAmt}>{mntShort(cumOf(cur.pct))}</span>
+        {/* Тухайн үеийн олголт — хуримтлалаас ЗУРААСААР тусгаарлана */}
+        <span className={g.tlHeadSub}>
+          {cur.amount > 0 ? tr('үүнээс {0}', mntShort(cur.amount)) : tr('олголтгүй')}
         </span>
         {zoom && (
           <button type="button" className={g.tlReset} onClick={() => setZoom(null)}>

@@ -3421,6 +3421,8 @@ const en: Record<string, string> = {
   "Шийдэгдээгүй зөвшөөрөл": "Unresolved permits",
   "Илгээлтийн агуулга татагдаагүй тул батлах боломжгүй": "Submission content could not be loaded — approval is not possible",
   "олголтгүй": "not allocated",
+  "Хуримтлагдсан дүн": "Cumulative amount",
+  "үүнээс {0}": "of which {0}",
   "График": "Graphic",
   "Гүйцэтгэл хэмжигдээгүй": "Performance not measured",
   "Гэрээлсэн дүн": "Contracted amount",
