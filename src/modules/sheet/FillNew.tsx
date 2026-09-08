@@ -2665,6 +2665,28 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       const oid = Number(k.slice(0, k.indexOf(":")));
       if (byOid.has(oid)) nextBy.set(k, String(u).trim().toLowerCase());
     }
+    /*
+     * ⚠️ ӨӨРИЙН ЭЗЭМШЛИЙГ ХАДГАЛНА (2026-09-08). `pickDraft` нь `byMap`-ыг
+     * БҮХЭЛД НЬ орлуулдаг тул энэ сешнд гараас бөглөсөн нүд — хэрэв алсад
+     * хараахан хүрээгүй бол (бичилт 3 секунд хойшилдог, эсвэл сүлжээ саатсан) —
+     * нийлүүлэлт ирэх бүрд АЛГА БОЛНО. Улмаар `participants`-аас өөрөө хасагдаж,
+     * нөгөө талд «энэ хүн оролцоогүй» гэж харагдана: хоёулаа «Илгээх» идэвхтэй
+     * болно (хэрэглэгчийн хоёр удаа мэдээлсэн эвдрэл).
+     * `mineRef` нь ЭНЭ БАГЦЫН, ЭНЭ СЕШНИЙ бодит үнэн тул алсынхаас ДЭЭГҮҮР.
+     */
+    const meNow = user?.username?.trim().toLowerCase() ?? '';
+    if (meNow) {
+      /* ⚠️ `mineRef`-ийн түлхүүрүүд ч ObjectID зөөлтөд ДАГАНА (`fixKey`) —
+         архивын шинэ жааз үүсэхэд хуучин oid-тай үлдвэл `byOid`-д таарахгүй
+         болж эзэмшил тасарна. Зөөсөн хувилбарыг `mineRef`-д БУЦААЖ бичнэ. */
+      const moved = new Set<string>();
+      for (const k0 of mineRef.current) {
+        const k = fixKey(k0);
+        const oid = Number(k.slice(0, k.indexOf(":")));
+        if (byOid.has(oid)) { nextBy.set(k, meNow); moved.add(k); }
+      }
+      mineRef.current = moved;
+    }
     setByMap(nextBy);
     const nextDone = (d.done ?? []).filter(
       (x): x is [string, number] => Array.isArray(x) && typeof x[0] === 'string' && Number.isFinite(x[1]),
@@ -3141,7 +3163,26 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       /* Нүд засаж байх, таб харагдахгүй, эсвэл алсад бичих ажил дараалалд
          байвал алгасна — дараагийн тойрогт барина. */
       if (!alive) return;
-      if (editRef.current || document.visibilityState === 'hidden' || remoteQueue.current) {
+      /*
+       * ⚠️ АЛГАСАХ НӨХЦӨЛ ХЭТЭРХИЙ ӨРГӨН БАЙВ (2026-09-08, хэрэглэгч: «2 талд
+       * 2 өөр нүд бөглөсөн ч хоёулаа илгээх»).
+       *
+       * `editRef.current` нь нүд НЭЭЛТТЭЙ байхад үнэн. Бөглөгч нүд рүү орсон
+       * чигээрээ (курсор дотор) бодож суувал татах мөчлөг МӨНХӨД алгасаж,
+       * нөгөө талын ажил ХЭЗЭЭ Ч ирэхгүй — улмаар `byMap` хоосон хэвээр
+       * үлдэж, «Илгээх» түгжээ хоёуланд нь нээлттэй байна. Бөглөгч нүд рүү
+       * ороод удаан суух нь ЭНГИЙН зан төлөв тул энэ нь ховор биш.
+       *
+       * ШИЙДЭЛ: нүд нээлттэй байхад ч ТАТНА (уншилт нь хэнд ч саад болохгүй),
+       * зөвхөн ДЭЛГЭЦЭД БУУЛГАХАА хойшлуулна — тэр нь доор `editRef`-ээр
+       * шалгагдана. Ингэснээр эзэмшил ба «дуусгасан» төлөв цаг тухайд нь
+       * ирж, курсор нь ч үсрэхгүй.
+       *
+       * ⚠️ `remoteQueue.current` (бичих ажил дараалалд) ба нуугдсан таб нь
+       * хэвээр алгасна — эхнийх нь өөрийн бичилттэй уралдахаас, хоёр дахь нь
+       * арын табуудын дэмий ачаалалаас хамгаална.
+       */
+      if (document.visibilityState === 'hidden' || remoteQueue.current) {
         timer = setTimeout(() => void tick(), REMOTE_DEBOUNCE_MS);
         return;
       }
@@ -3164,6 +3205,18 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
           /* ⚠️ ЗӨВХӨН ШИНЭ БОЛ: ижил агшинтай ноорог нь ӨӨРИЙН сая бичсэн
              хуулбар — дахин суулгавал бичиж байгаа нүд дэмий дахин зурагдана. */
           if (remote && remote.t > lastMergedRef.current) {
+            /*
+             * ⚠️ НҮД НЭЭЛТТЭЙ БАЙХАД ДЭЛГЭЦЭД БУУЛГАХГҮЙ (2026-09-08).
+             * `pickDraft` нь `setPending`-ийг БҮХЭЛД НЬ орлуулдаг тул бичиж
+             * байгаа нүдний утга дэмий дахин зурагдаж, курсор үсэрнэ. Уншилт
+             * нь аль хэдийн ХИЙГДСЭН (тэр нь хямд) — зөвхөн буулгалтыг
+             * хойшлуулна. `lastMergedRef`-ийг ч ХӨДӨЛГӨХГҮЙ: дараагийн
+             * тойрогт (гараа авмагц) ЯГ энэ агшин дахин таарч буух ёстой.
+             */
+            if (editRef.current) {
+              timer = setTimeout(() => void tick(), REMOTE_DEBOUNCE_MS);
+              return;
+            }
             lastMergedRef.current = remote.t;
             const local = readDraft(pkg.key);
             const merged = mergeDrafts(local, remote);
