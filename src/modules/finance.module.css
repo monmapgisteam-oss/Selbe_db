@@ -1334,3 +1334,273 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
   cursor: pointer;
 }
 .rowIns:hover { background: color-mix(in srgb, var(--data) 20%, transparent); }
+
+/* ═══════════ EXCEL-ИЙН ХАРАГДАЦ — БҮЛЭГЛЭСЭН ТОЛГОЙ ═══════════
+ *
+ * ⚠️ Эх нь «Сэлбэ дэд төв_ХО төлөвлөгөө_arcgis.xlsx» (2026-09-08,
+ * хэрэглэгчийн заавар: «харагдацыг тэр Excel-ийг дуурайлга»). Тэнд толгой нь
+ * ГУРВАН мөр бөгөөд хоёр өнгөтэй:
+ *   · #203864 — Excel-ийн «Blue, Accent 1, Darker 50%»: ердийн багана
+ *   · #2E75B6 — «Blue, Accent 5, Darker 25%»: «Захирамжийн дүн» блок бүхэлдээ
+ * Тэр хоёр өнгө нь мөнгөний эх үүсвэрийн блокийг нэг харцаар тусгаарладаг.
+ *
+ * ⚠️ ӨНГӨ НЬ ТОГТМОЛ, токен БИШ: сэдвийн (light/dark) токеноор солибол Excel
+ * -тэй адилтгах гол шинж нь алга болно. Бичвэр нь цагаан тул хоёулаа хангалттай
+ * тодрол өгнө.
+ */
+.xlTbl thead th.xlHdr1,
+.xlTbl thead th.xlHdr2 {
+  color: #fff;
+  /* ⚠️ Excel-д толгой нь ТОМООР бичигдээгүй — CSS-ийн `uppercase`-ийг энд
+     хаана, эс бөгөөс «Дугаар» ба «ДУГААР» хоёр ялгагдахгүй болно. */
+  text-transform: none;
+  border-right-color: rgba(255, 255, 255, 0.22);
+  border-bottom-color: rgba(255, 255, 255, 0.22);
+}
+.xlTbl thead th.xlHdr1 { background: #203864; }
+.xlTbl thead th.xlHdr2 { background: #2e75b6; }
+
+/*
+ * БҮЛГИЙН ЗУРВАС — «Захирамжийн дүн», «Хөрөнгө оруулалтын эх үүсвэр» г.м.
+ *
+ * ⚠️ ӨНДӨР НЬ ТОГТМОЛ (`FIN_XL_BAND_H`-тэй ИЖИЛ байх ёстой): доод мөрүүдийн
+ * наалдмал `top` нь эндээс тооцогдоно. Хоёр тоо зөрвөл гүйлгэх үед толгойн
+ * мөрүүд бие бие рүүгээ шургана.
+ * ⚠️ Мурийхыг ХОРИГЛОНО: урт нэр хоёр мөр болбол зурвас өндөрсөж, дээрх
+ * тооцоо алдагдана.
+ */
+.xlBand {
+  height: 26px;
+  padding: 3px 8px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+/* ⚠️ `.xlFz`-ийн `max-width: 0` нь зурвасыг бүрэн хумина — colSpan-тай нүдэнд
+   тэр хязгаар утгагүй тул суллана. */
+.xlTbl thead th.xlBand.xlFz { max-width: none; background: #203864; }
+.xlTbl thead th.xlBand.xlFz.xlHdr2 { background: #2e75b6; }
+
+/*
+ * БОСОО НЭГТГЭСЭН НҮД — Excel-ийн `B6:B12` merge.
+ * ⚠️ Голлуулна: нэгтгэсэн нүд 20 мөр өндөр болж болох тул дээд ирмэгтээ
+ * наалдвал ямар мөрүүдийг хамарч байгаа нь уншигдахаа болино.
+ */
+.xlMerged {
+  vertical-align: middle;
+  white-space: normal;
+  font-weight: 600;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--data) 4%, transparent);
+}
+
+/* ═══════════ EXCEL-ИЙН МӨРИЙН БҮТЭЦ ═══════════
+ *
+ * ⚠️ Excel-ийн 87 мөрийн 76 нь өгөгдөл; үлдсэн нь ХАРАГДАЦЫН мөр. Тэдгээрийг
+ * үйлчилгээнээс биш, бүтцээс тооцож үүсгэдэг (`Finance.tsx` → `mark`).
+ */
+
+/*
+ * ХЭСГИЙН ЗУРВАС — «ТЭЗҮ ЗУРАГ ТӨСӨЛ» · «БАРИЛГА УГСРАЛТ» · «БУСАД …».
+ * ⚠️ Excel-ийн «Blue, Accent 1, Darker 25%». Толгойноос (#203864) ЦАЙВАР —
+ * шатлал нь өнгөний гүнээр уншигдана: толгой хамгийн бараан, зурвас дунд,
+ * төрлийн мөр цайвар.
+ */
+.xlSec td {
+  background: #2f5597 !important;
+  color: #fff;
+  font-weight: 750;
+  font-size: 0.74rem;
+  letter-spacing: 0.04em;
+  height: 26px;
+  padding: 4px 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-right-color: rgba(255, 255, 255, 0.2);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+}
+/* ⚠️ Зурвас нь мөрийн өнгө солигдоход ч тогтвортой — hover-ыг хаана */
+.xlTbl tr.xlSec:hover td { background: #2f5597 !important; }
+
+/*
+ * ТӨРЛИЙН НИЙЛБЭР МӨР — «ОРОН СУУЦНЫ ХОРООЛЛЫН БАРИЛГАЖИЛТ — НИЙТ».
+ * ⚠️ Дэвсгэрийг JSX инлайнаар (бүлэг бүр өөр өнгөтэй) — энд зөвхөн бичвэр.
+ */
+.xlGrpCell {
+  color: #1a1a1a !important;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.25);
+}
+.xlTbl tr.xlGrp:hover td { filter: brightness(0.97); }
+
+/*
+ * ТӨРЛИЙН НҮД — Excel-ийн B багана: БОСОО бичиглэл, бүлгээ бүхэлд нь нэгтгэсэн.
+ *
+ * ⚠️ `writing-mode: vertical-rl` + `rotate(180deg)` = ДООРООС ДЭЭШ бичиглэл,
+ * Excel-ийн `textRotation="90"`-тэй яг ижил. Зүгээр `vertical-rl` бол дээрээс
+ * доош болж, толгой нь доод талд ирнэ.
+ * ⚠️ Багана НАРИЙН байх ёстой (өргөн нь `FIN_XL_WIDTH.Turul`): босоо бичвэрт
+ * өргөн нь мөрийн ӨНДӨР биш ЗУЗААН болно — өргөсгөвөл зөвхөн хоосон зай нэмнэ.
+ */
+.xlTurul {
+  padding: 6px 2px;
+  text-align: center;
+  vertical-align: middle;
+  color: #1a1a1a !important;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+}
+.xlTurul span {
+  display: inline-block;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  font-weight: 750;
+  font-size: 0.7rem;
+  letter-spacing: 0.03em;
+  line-height: 1.1;
+  /* ⚠️ Урт нэр («ОРОН СУУЦНЫ ХОРООЛЛЫН БАРИЛГАЖИЛТ») богино бүлэгт багтахгүй
+     байж болно — тасалж үзүүлнэ, бүтнийг нь `title`-ээс. */
+  max-height: 100%;
+  overflow: hidden;
+}
+/* ⚠️ Босоо нүд өөрийн бүлгийн өнгөтэй тул мөрийн hover түүнийг дарах ёсгүй */
+.xlTbl tbody tr:hover td.xlTurul { filter: brightness(0.97); }
+
+@media (max-width: 1180px) {
+  /* Царцаалт хаагдсан үед зурвасын наалдмал нүд ч энгийн болно */
+  .xlSec td { position: static; }
+}
+
+/*
+ * ГОЛЛУУЛСАН НҮД — «Багц» багана (Excel-ийн C).
+ *
+ * ⚠️ Хүснэгтийн БУСАД нүд ЗҮҮН талдаа (2026-09-04-ний шийдвэр). Энэ нь
+ * ганцхан баганад үйлчлэх ЗОРИУДЫН үл нийцэл: багцын код нь богино тэмдэглэгээ
+ * бөгөөд хоёр багана эзэлсэн нэгтгэсэн нүдэнд зүүн ирмэгтээ наалдвал хоосон
+ * зай нь баруун талд бөөгнөрч, дэд багцтай мөрүүдтэйгээ эгнэхээ болино.
+ * ⚠️ `.xlTbl td.xlCtr` — `.xlTbl td { text-align: left }`-ийг дарах ёстой тул
+ * тодруулга нь түүнээс ӨНДӨР байна.
+ */
+.xlTbl td.xlCtr { text-align: center; }
+
+/*
+ * ЭВХЭХ ТОВЧ — Excel-ийн мөрийн бүлэглэлтийн «+» · «−».
+ *
+ * ⚠️ Excel-д эдгээр нь хүснэгтийн ЗҮҮН ГАДНА тусдаа зурвасанд байдаг. Порталд
+ * тусдаа зурвас нэмбэл царцсан баганы `left` тооцоо бүхэлдээ шилжих тул № нүдэн
+ * дотор суулгав — тэр нүд ямар ч тохиолдолд царцсан бөгөөд мөрийн эхэнд байна.
+ * ⚠️ Дөрвөлжин, 1px хүрээтэй — Excel-ийн outline товч яг ийм харагддаг.
+ */
+.xlFold {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  background: transparent;
+  color: inherit;
+  font-size: 11px;
+  line-height: 1;
+  font-weight: 700;
+  cursor: pointer;
+  opacity: 0.85;
+}
+.xlFold:hover { opacity: 1; background: color-mix(in srgb, currentColor 18%, transparent); }
+
+/* Зурвасын дотор — цагаан бичвэртэй тул товч ч цагаан */
+.xlSec td .xlFold { color: #fff; }
+/* Нийлбэр мөрд — бүлгийн цайвар дэвсгэр дээр бараан */
+.xlGrp .xlNo .xlFold { color: #1a1a1a; }
+
+/* ═══════════ EXCEL-ИЙН OUTLINE ЗУРВАС ═══════════
+ *
+ * ⚠️ Excel-д энэ нь хүснэгтийн ЗҮҮН ГАДНА тусдаа зурвас. Порталд тусдаа багана
+ * болговол царцсан багануудын `left` гинж бүхэлдээ шилжих тул № нүдийг
+ * өргөсгөж (`OUT_W`), зурвасыг түүний дотор ҮНЭМЛЭХҮЙ байрлуулав.
+ * ⚠️ `.xlNo` нь `position: sticky` — үнэмлэхүй хүүхдэд агуулагч болно.
+ */
+.xlOut {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+/* Товч нь дарагдах ёстой — зурвас өөрөө товшилт нэвтрүүлдэггүй */
+.xlOut .xlFold { pointer-events: auto; }
+/* Хоёрдугаар шат — Excel шиг нэг алхам доогуур */
+.xlOut2 { justify-content: flex-start; padding-left: 8px; }
+
+/*
+ * ХААЛТ — бүлгийн мөрүүдийг холбосон босоо шугам.
+ * ⚠️ Сүүлийн мөрд доод сэрвээ гарна (`.xlOutEnd`): Excel-д хаалт хаана
+ * дуусахыг тэр сэрвээ л заадаг.
+ */
+.xlOutBar::before {
+  content: '';
+  position: absolute;
+  left: 12px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--line-strong);
+}
+.xlOutEnd::after {
+  content: '';
+  position: absolute;
+  left: 12px;
+  bottom: 6px;
+  width: 7px;
+  height: 1px;
+  background: var(--line-strong);
+}
+
+/*
+ * № нүдний тоо зурвастай давхцахгүй.
+ * ⚠️ ЗӨВХӨН outline-тай хүснэгтэд (`xlNoOut`): IPC-д зурвас байхгүй тул
+ * тэнд захын зай нь тоог шахах байсан.
+ */
+.xlTbl tbody td.xlNoOut { padding-left: 30px; }
+
+/*
+ * ТҮВШНИЙ ТОВЧ — Excel-ийн зүүн дээд булангийн «1 2 3».
+ * ⚠️ Толгойн нүд гурван мөрийг дамждаг тул босоо зай хангалттай: товчнууд
+ * дээр, № шошго доор.
+ */
+.xlLevels {
+  display: flex;
+  gap: 2px;
+  justify-content: center;
+  margin-bottom: 3px;
+}
+.xlLevels button {
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  background: transparent;
+  color: inherit;
+  font-size: 9px;
+  line-height: 1;
+  font-weight: 700;
+  cursor: pointer;
+  opacity: 0.75;
+}
+.xlLevels button:hover { opacity: 1; background: color-mix(in srgb, currentColor 18%, transparent); }
+.xlNoHead { display: block; text-align: center; }

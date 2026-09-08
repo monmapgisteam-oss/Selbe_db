@@ -50,7 +50,7 @@ export const FIN_FIELD_LABELS: Record<string, string> = {
   Urdchilgaa_batalgaa_dun: tr('Урьдчилгаа төлбөрийн баталгааны дүн'),
   Urdchilgaa_huwi: tr('Урьдчилгаа төлбөрийн хувь'),
   Urdchilgaa_ZH_zardal: tr('Урьдчилгаа төлбөрөөс суутгасан захиалагчийн хяналтын зардал'),
-  Guitsetgel_huwi: tr('Гүйцэтгэлийн хувь'),
+  Guitsetgel_huwi: tr('Санхүүжсэн гүйцэтгэлийн хувь'),
 
   /* ⚠️ 2026-09-06: хуучин `cashflow_0813` (CF001…CF036)-ийн 36 бичлэг
      УСТГАВ — тэр үйлчилгээ бүрмөсөн хаягдаж, `Cashflow_0904` орлосон.
