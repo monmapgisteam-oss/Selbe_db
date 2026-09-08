@@ -830,6 +830,10 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
   z-index: 2;
   padding: 7px 10px;
   text-align: left;
+  /* ⚠️ ХӨНДЛӨН ТЭНХЛЭГТ ДУНДАА (2026-09-08): толгойн нэрс 1–3 мөр байдаг
+     (`Нарийвчилсан төрөл` хоёр мөр) тул доод ирмэгээр жигдэрвэл богино нэрс
+     дээшээ бүлэгнэж, эгнээ шүд шиг харагдана. */
+  vertical-align: middle;
   /*
    * ⚠️ Толгойг НЭГ МӨРӨНД БАРИХГҮЙ. «Захирамжийн дүн хөрөнгө оруулалтын эх
    * үүсвэр үнэт цаасны хөрөнгө» мэт урт нэр нэг мөрөнд багтахаар багана
@@ -906,11 +910,10 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
    `calc()`-аар шатлан байрлуулна. Өргөн өөрчлөгдвөл зөвхөн эдгээр хувьсагчийг
    засна — TSX хөндөгдөхгүй. */
 .xlTbl {
+  /* ⚠️ ЗӨВХӨН № баганынх үлдэв: царцсан багануудын өргөн ба `left` нь одоо
+     JSX-д тооцогдоно (`FZ_DEF`, `frzLeft`) — хэрэглэгч тоог нь өөрчилдөг
+     болсон тул CSS-д урьдчилан бичих боломжгүй. */
   --fz0: 46px;   /* № */
-  --fz1: 230px;  /* Төрөл */
-  --fz2: 210px;  /* Төсөл */
-  --fz3: 120px;  /* Багц */
-  --fz4: 120px;  /* Дэд багц */
 }
 /*
  * ⚠️ БОСОО ЗУРААСЫГ `border` БИШ `box-shadow: inset`-ЭЭР татна. Царцсан
@@ -922,7 +925,15 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
  * ⚠️ z-index нь ЗҮҮНЭЭС БАРУУН ТИЙШ БУУРНА. Давхацсан тохиолдолд зүүн талын
  * багана дээр үлдэж, зураас нь хадгалагдана.
  */
-.xlF1, .xlF2, .xlF3, .xlF4 {
+/*
+ * ЦАРЦСАН БАГАНА — НЭГ КЛАСС (2026-09-08).
+ *
+ * ⚠️ Урьд нь `.xlF1…4` гэсэн дөрвөн класс байсан тул царцаалтын ТОО CSS-д
+ * хатуу шингэсэн байв. Хэрэглэгч өөрөө тоог сонгодог болсон (толгойн цэс →
+ * «Энд хүртэл царцаах») тул `left` ба `z-index` хоёрыг JSX инлайнаар өгнө:
+ * тэдгээр нь өмнөх багануудын ӨРГӨНӨӨС хамаардаг бөгөөд өргөн нь чирэгддэг.
+ */
+.xlFz {
   position: sticky;
   background: var(--surface);
   box-shadow: inset -1px 0 0 var(--line-strong);
@@ -931,34 +942,41 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* Толгойн царцсан нүд нь мөрийн царцсан нүд БОЛОН энгийн толгойгоос ДЭЭР */
-.xlTbl thead .xlF1 { z-index: 28; background: var(--surface-2); }
-.xlTbl thead .xlF2 { z-index: 27; background: var(--surface-2); }
-.xlTbl thead .xlF3 { z-index: 26; background: var(--surface-2); }
-.xlTbl thead .xlF4 { z-index: 25; background: var(--surface-2); }
-.xlF1 { left: var(--fz0); width: var(--fz1); min-width: var(--fz1); max-width: var(--fz1); z-index: 4; }
-.xlF2 { left: calc(var(--fz0) + var(--fz1)); width: var(--fz2); min-width: var(--fz2); max-width: var(--fz2); z-index: 3; }
-.xlF3 { left: calc(var(--fz0) + var(--fz1) + var(--fz2)); width: var(--fz3); min-width: var(--fz3); max-width: var(--fz3); z-index: 2; }
-.xlF4 {
-  left: calc(var(--fz0) + var(--fz1) + var(--fz2) + var(--fz3));
-  width: var(--fz4);
-  min-width: var(--fz4);
-  max-width: var(--fz4);
-  z-index: 1;
-  /* Царцсан хэсгийн ХИЛ — гүйж буй багануудаас ялгарна (2px) */
-  box-shadow: inset -2px 0 0 var(--line-strong);
+/* ⚠️ Толгойн царцсан нүд нь мөрийн царцсан нүд БОЛОН энгийн толгойгоос ДЭЭР.
+   Инлайн `z-index` нь мөрийн нүдэнд үйлчилнэ; толгойд энэ дүрэм давамгайлна. */
+.xlTbl thead .xlFz { z-index: 25; background: var(--surface-2); }
+/*
+ * СҮҮЛИЙН ЦАРЦСАН БАГАНЫ ХИЛ — «эндээс цааш гүйнэ» гэдгийг заана.
+ *
+ * ⚠️ ТОЛГОЙ ба МӨР БҮРД: хүснэгт бүхэлдээ доош үргэлжлэх нэг тасралтгүй
+ * зураас болно. Зөвхөн толгойд байхад доош гүйхэд хил алга болдог байв.
+ *
+ * ⚠️ `!important` — `.xlFz` өөрөө `box-shadow`-оор саарал зураас татдаг тул
+ * дараалал ялгаагүй түүнийг дарах ёстой.
+ */
+.xlFzEdge { box-shadow: inset -2px 0 0 var(--data) !important; }
+/* Чирэгдэж буй толгой */
+.thDrag { opacity: 0.5; }
+/*
+ * СОНГОГДСОН ТОЛГОЙ — Excel-ийн баганы сонголт.
+ *
+ * ⚠️ `box-shadow: inset` ашиглана, `background` БИШ: царцсан толгой нь өөрийн
+ * дэвсгэртэй бөгөөд түүнийг дарвал наалдмал байдал нь алдагдаж, доорх мөрүүд
+ * шууд харагдана.
+ */
+.thPick {
+  box-shadow: inset 0 -3px 0 var(--data), inset -1px 0 0 var(--line-strong);
+  color: var(--ink);
 }
+
 /* Мөр дээгүүр хулгана — царцсан нүд ч дагана (дэвсгэр нь тунгалаг биш) */
-.xlTbl tbody tr:hover .xlF1,
-.xlTbl tbody tr:hover .xlF2,
-.xlTbl tbody tr:hover .xlF3,
-.xlTbl tbody tr:hover .xlF4 {
+.xlTbl tbody tr:hover .xlFz {
   background: color-mix(in srgb, var(--data) 6%, var(--surface));
 }
 
 @media (max-width: 1180px) {
   /* ⚠️ Нарийн дэлгэцэд ~730px царцаавал гүйх зай үлдэхгүй — царцаалтыг хаана */
-  .xlF1, .xlF2, .xlF3, .xlF4 {
+  .xlFz {
     position: static;
     max-width: none;
     width: auto;
@@ -1059,10 +1077,10 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
 /* ═══════════ ЗАССАН НҮД — ЭЦСИЙН ДАВАМГАЙ (2026-09-04) ═══════════
  *
  * ⚠️ ЭНЭ БЛОК ФАЙЛЫН ТӨГСГӨЛД БАЙХ ЁСТОЙ. Дээрх `.cellDirty` (§ЗАССАН НҮД)
- * нь `.xlF1–4` (§ЦАРЦСАН БАГАНА), `.cellPick`, `.cellInput:focus` гурваас
+ * нь `.xlFz` (§ЦАРЦСАН БАГАНА), `.cellPick`, `.cellInput:focus` гурваас
  * ӨМНӨ зарлагдсан тул тэдгээр нь адил жинтэй атлаа СҮҮЛД бичигдсэний хүчээр
  * ногоон тэмдэглэгээг дардаг байв:
- *   · `.xlF1–4` нь `box-shadow`-оор ногоон ХҮРЭЭГ бүрэн арчина — гэтэл яг
+ *   · `.xlFz` нь `box-shadow`-оор ногоон ХҮРЭЭГ бүрэн арчина — гэтэл яг
  *     тэр дөрөв бол Төрөл · Төсөл · Багц · Дэд багц, өөрөөр хэлбэл хүн
  *     хамгийн түрүүнд бөглөдөг багана. Тиймээс «заасан ч ногоон болохгүй»
  *     гэж харагдана.
@@ -1105,7 +1123,7 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
  * хэрэглэгч юугаа нийтлээгүйгээ мэдэхгүй болно. Дэвсгэр нь бага зэрэг
  * цайвар — анхаарал татахаас илүү «тэмдэглэсэн» гэсэн уншилт.
  *
- * ⚠️ Блок нь `.xlF1–4`-ийн ДАРАА байх ёстой (`.cellDirty`-ийн тайлбарыг үз) —
+ * ⚠️ Блок нь `.xlFz`-ийн ДАРАА байх ёстой (`.cellDirty`-ийн тайлбарыг үз) —
  * эс бөгөөс царцсан 4 багананд дэвсгэр нь дарагдана.
  */
 .xlTbl td.cellSaved {
@@ -1166,11 +1184,14 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
   background: color-mix(in srgb, var(--data) 7%, var(--surface));
   box-shadow: inset 0 1px 0 var(--line-strong);
 }
-/* Царцсан багана — ХЭВТЭЭ ба БОСОО хоёулаа наалдана (`left` нь .xlF*-ээс) */
-.xlTbl tbody tr.rowDraft .xlF1 { z-index: 10; }
-.xlTbl tbody tr.rowDraft .xlF2 { z-index: 9; }
-.xlTbl tbody tr.rowDraft .xlF3 { z-index: 8; }
-.xlTbl tbody tr.rowDraft .xlF4 { z-index: 7; }
+/*
+ * Царцсан багана — ХЭВТЭЭ ба БОСОО хоёулаа наалдана (`left` нь JSX-ээс).
+ *
+ * ⚠️ `!important` — ноорог мөрийн царцсан нүд нь БУСАД мөрийнхөөс ДЭЭР байх
+ * ёстой (тэр нь доод ирмэгт наалддаг). JSX нь инлайн `z-index` өгдөг тул
+ * зөвхөн `!important` л түүнийг дарна.
+ */
+.xlTbl tbody tr.rowDraft .xlFz { z-index: 10 !important; }
 .xlTbl tbody tr.rowDraft .xlNo { z-index: 11; }
 .rowDraft td:first-child { color: var(--data); font-weight: 700; text-align: center; }
 .rowDraft .cellInput::placeholder { color: var(--ink-3); font-style: italic; }
@@ -1206,24 +1227,8 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
 }
 .finAdd:disabled { opacity: 0.45; cursor: default; }
 
-/* ═══════════ ТОЛГОЙН ШҮҮЛТИЙН ЦЭС (ArcGIS маяг) ═══════════ */
-
-.thMenuBtn {
-  margin-left: 4px;
-  padding: 0 3px;
-  font: inherit;
-  font-size: 10px;
-  line-height: 1;
-  color: var(--ink-3);
-  background: transparent;
-  border: none;
-  border-radius: 3px;
-  cursor: pointer;
-}
-.thMenuBtn:hover { color: var(--data); background: color-mix(in srgb, var(--data) 16%, transparent); }
+/* ═══════════ ТОЛГОЙН ЦЭС — БАРУУН ТОВШИЛТООР ═══════════ */
 /* Шүүлт ТАВИГДСАН багана — толгойгоос шууд уншигдана */
-.thMenuOn { color: var(--data); background: color-mix(in srgb, var(--data) 22%, transparent); }
-
 /*
  * ⚠️ Цэс нь `position: fixed` — байрлалыг JS-ээс өгнө. `th` дотор `absolute`
  * болговол царцсан баганын `overflow: hidden` түүнийг тасалж, хөрш баганын
@@ -1254,45 +1259,37 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
   padding-bottom: 6px;
   border-bottom: 1px solid var(--line);
 }
-.thMenuNum {
-  margin-top: 6px;
-  padding: 4px 7px;
-  font: inherit;
-  font-size: 12px;
-  color: var(--ink);
-  background: var(--bg);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-sm);
-}
-.thMenuActs { display: flex; gap: 8px; padding: 6px 0; }
-.thMenuActs button {
-  font: inherit;
-  font-size: 11.5px;
-  color: var(--data);
-  background: transparent;
-  border: none;
-  padding: 2px 0;
-  cursor: pointer;
-}
-.thMenuActs button:hover { text-decoration: underline; }
-.thMenuList {
-  margin: 0;
-  padding: 0;
-  overflow: auto;
-  list-style: none;
+/* Урт утга цэсийг өргөсгөхгүй — тасалж, бүтнийг hover-оос үзнэ */
+/*
+ * БАГАНЫН ҮЙЛДЛҮҮД — цэсний ХАМГИЙН ДООД бүлэг.
+ *
+ * ⚠️ Дээд талын зураас нь ХИЛ: түүнээс дээш нь ӨГӨГДӨЛД (шүүлт), доош нь
+ * ХАРАГДАЦАД (нуух, царцаах, таслах) үйлчилнэ. Хилгүй бол «нуух» нь мөр
+ * шүүдэг мэт уншигдана.
+ */
+.thMenuCols {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 6px 2px;
+  margin-top: 4px;
   border-top: 1px solid var(--line);
 }
-.thMenuList label {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 4px 2px;
-  font-size: 12px;
+.thMenuCols button {
+  padding: 4px 8px;
+  font: inherit;
+  font-size: 11.5px;
+  text-align: left;
+  color: var(--ink-2);
+  background: transparent;
+  border: none;
+  border-radius: var(--r-sm);
   cursor: pointer;
 }
-.thMenuList label:hover { background: color-mix(in srgb, var(--data) 10%, transparent); }
-/* Урт утга цэсийг өргөсгөхгүй — тасалж, бүтнийг hover-оос үзнэ */
-.thMenuList span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.thMenuCols button:hover {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--data) 14%, transparent);
+}
 
 
 /*

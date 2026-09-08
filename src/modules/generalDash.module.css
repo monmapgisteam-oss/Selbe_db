@@ -142,26 +142,6 @@
   background: var(--sunken, var(--surface-2));
 }
 
-/*
- * ЗУРГИЙН ДЭЭРХ ХУГАЦААНЫ ШҮҮЛТ.
- *
- * ⚠️ Зөвхөн БАЙРЛУУЛНА — сегментийн хэлбэр нь `.fBar`-т хэвээр. Хоёр газарт
- * загвар давхарлавал нэгийг нь засахад нөгөө нь чимээгүй хоцорно.
- */
-.mapFilter {
-  position: absolute;
-  top: 8px;
-  left: 8px;
-  z-index: 5;
-}
-/* ⚠️ Зурган дээрх тул дэвсгэр нь БҮТЭН — тунгалаг байвал доорх зураг
-   сегментийн бичвэрийг уншигдахгүй болгоно. */
-.mapFilter .filters {
-  padding: 0;
-  border: none;
-  background: transparent;
-}
-
 .catPanel {
   position: absolute;
   inset: 0 auto 0 0;
@@ -173,140 +153,112 @@
 }
 
 /* ── Хугацааны шүүлт ── */
-/* ⚠️ `grid-area` ХАСАГДСАН — бүрхүүл нь одоо flex багана (§.body-г үз) */
+/*
+ * ШАХМАЛ (pill) ЭГНЭЭ — бүх утга ИЛ.
+ *
+ * ⚠️ УНЖДАГ ЦЭСИЙГ ОРЛОВ (2026-09-07). Цэстэй үед сонголт нь нээх → сонгох →
+ * хаах гэсэн гурван алхам бөгөөд ямар утга байгааг нээхээс нь өмнө мэдэхгүй
+ * байв. Ил шахмал нь нэг товшилт болгож, боломжит хугацааны хүрээг ч зэрэг
+ * харуулна.
+ *
+ * ⚠️ БҮХ ӨРГӨНӨӨ эзлэхгүй: индикаторын зурвасын дээр сууна.
+ */
 .filters {
   display: flex;
-  flex-wrap: wrap;
+  /* ⚠️ НЭГ МӨРӨНД (2026-09-07, хэрэглэгчийн шаардлага): 25 шахмал хоёр мөр
+     болоход индикаторын зурвасыг доош түлхэж, зургийн өндрөөс хулгайлдаг.
+     Нарийн дэлгэцэд хэвтээ гүйлт нь мөр нэмэхээс дээр. */
+  flex-wrap: nowrap;
+  overflow-x: auto;
   align-items: center;
-  /* ⚠️ БАРУУН ТИЙШ ЖИГДЭРНЭ (2026-09-04, хэрэглэгчийн хүсэлт). Зүүн талд
-     үлдээвэл доорх зүүн баганын чартуудтай нэг босоо шугамд орж, «энэ шүүлт
-     зөвхөн зүүн талд үйлчилнэ» гэсэн худал уншилт төрүүлдэг — үнэндээ бүх
-     картад нэгэн зэрэг үйлчилнэ. */
-  justify-content: flex-end;
-  gap: 6px 10px;
-  padding: 8px 10px;
+  /*
+   * ⚠️ ҮЛДСЭН ЗАЙГ БҮЛЭГ ХООРОНД ХУВААНА (2026-09-07, хэрэглэгчийн заавар).
+   * Урьд нь бүх шахмал зүүн зах руу нааж, баруун тал нь хоосон үлддэг байв.
+   * `space-between` нь тэр зайг «2029 ↔ УЛИРАЛ» ба «4 ↔ САР» гэсэн ЯГ
+   * ХЭРЭГТЭЙ хоёр заагт өгнө — бүлгүүд нүдээр тусгаарлагдана.
+   *
+   * ⚠️ `gap` нь ДООД хязгаар: зурвас нарийсаад зай дуусахад бүлгүүд
+   * наалдахаас сэргийлнэ.
+   */
+  justify-content: space-between;
+  gap: 0 18px;
+  padding: 4px 10px;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--surface);
 }
 
-/*
- * ХУГАЦААНЫ ШҮҮЛТ — НЭГ СЕГМЕНТЧИЛСЭН УДИРДЛАГА.
- *
- * ⚠️ Гурван шүүлт НЭГ хүрээнд, дундуур нь үсэн зураас. Жил · Улирал · Сар нь
- * бие даасан гурван зүйл БИШ, нэг хугацааг гурван нарийвчлалаар заадаг —
- * салангид товчнууд байхад тэр холбоо нүдэнд харагдахгүй байв.
- *
- * ⚠️ Шошго нь утгын ДЭЭР (eyebrow), доор нь утга. Хажуу хажуугаа тавибал
- * «ЖИЛ 2026» гэсэн нэг урт мөр болж, аль нь нэр, аль нь утга болох нь
- * бүдгэрнэ.
- */
-.fBar {
+/* Нэг хэмжээсийн бүлэг — нэр + шахмалууд */
+.fGrp {
   display: inline-flex;
-  align-items: stretch;
-  /* ⚠️ «ШҮҮХ» товчтой ИЖИЛ өндөр — хоёулаа `26px`. Сегментийн агуулга нь
-     утга сонгосон эсэхээс шалтгаалж 11–15px хооронд хэлбэлздэг тул доод
-     хязгааргүй бол шүүлт тавимагц зурвас нь товчноосоо өндөр болно. */
-  min-height: 26px;
-  box-sizing: border-box;
-  overflow: hidden;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-sm);
-  background: var(--surface);
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 2px;
 }
-/*
- * ⚠️ НЭГ МӨР (2026-09-04). Урьд нь нэр дээр, утга доор гэсэн ХОЁР мөр байсан
- * бөгөөд «Бүгд» ба сум хасагдсаны дараа утгын мөр ихэвчлэн ХООСОН үлдэж,
- * зурвас ердөө хоёр нэрийн төлөө ~35px эзэлдэг болов. Нэр ба утга нэг мөрөнд
- * зэрэгцвэл ~24px болж, уншилт нь ч байгалийн: «ЖИЛ 2026».
- */
-.fDrop {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  min-width: 0;
-  padding: 5px 11px;
-  font: inherit;
-  color: var(--ink-2);
-  background: transparent;
-  border: none;
-  /* Сегмент хоорондын үсэн зураас — гаднах хүрээтэй давхардахгүй */
-  border-left: 1px solid var(--line);
-  cursor: pointer;
-  transition: background 0.12s;
-}
-.fBar > .fDrop:first-child { border-left: none; }
-.fDrop:hover { background: color-mix(in srgb, var(--data) 10%, transparent); }
-/* Шүүлт ТАВИГДСАН сегмент — доод ирмэгээр нь тэмдэглэнэ, дүүргэлтгүй */
-.fDropOn {
-  color: var(--ink);
-  background: color-mix(in srgb, var(--data) 12%, transparent);
-  box-shadow: inset 0 -2px 0 var(--data);
-}
-.fDropLbl {
-  font-size: 9.5px;
-  line-height: 1.2;
+.fGrpLbl {
+  margin-right: 2px;
+  font-size: 9px;
+  white-space: nowrap;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--ink-3);
 }
-.fDropOn .fDropLbl { color: var(--data); }
-/* ⚠️ Хоосон үед ЗАЙ ЭЗЛЭХГҮЙ: нэг мөр болсон тул өндрийг нэр өөрөө барина,
-   `min-height` шаардлагагүй (тавибал хоосон сегмент өргөсөнө). */
-.fDropVal { font-size: 12px; font-weight: 600; color: var(--ink); }
-.fDropVal:empty { display: none; }
 
 /*
- * ХУРААСАН ҮЕИЙН ТОВЧООН — «2026 · II улирал» гэх мэт.
+ * ШАХМАЛ.
  *
- * ⚠️ Сегментчилсэн зурвастай ИЖИЛ хүрээтэй: хураах нь өөр УДИРДЛАГА руу
- * шилжсэн гэсэн үг биш, зөвхөн НАРИЙССАН хэлбэр гэдэг нь хэлбэрээс уншигдана.
+ * ⚠️ ТОГТМОЛ доод өргөнтэй (`min-width`): «1» ба «12» өөр өргөнтэй байвал
+ * эгнээ тэгш бус шүд мэт харагдана.
  */
-/* ⚠️ `fixed` — зурвас нь `overflow`-той эцгийн дотор тул `absolute` цэс тасарна */
-.fVeil { position: fixed; inset: 0; z-index: 40; }
-/*
- * ⚠️ ДЭВСГЭР НЬ ТУНГАЛАГ БУС БАЙХ ЁСТОЙ. Урьд нь `var(--bg-1)` гэж бичсэн
- * байсан бөгөөд тэр токен `globals.css`-д ОГТ ТОДОРХОЙЛОГДООГҮЙ (зөвхөн
- * `--bg`, `--surface`, `--surface-2` бий) — хөтөч хүчингүй зарлалыг хаяж,
- * цэс нь ард талын хүснэгтийг нэвт харуулж байв.
- */
-.fMenu {
-  position: fixed;
-  z-index: 41;
-  min-width: 160px;
-  max-height: 320px;
-  margin: 4px 0 0;
-  padding: 4px;
-  overflow: auto;
-  list-style: none;
-  background: var(--surface);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-sm);
-  box-shadow: 0 8px 24px rgb(0 0 0 / 28%);
-}
-/* ⚠️ Чагтны багана ТОГТМОЛ өргөнтэй — эс бөгөөс сонгосон мөрийн текст
-   баруун тийш үсэрч, жагсаалт «чичирнэ». */
-.fOpt {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  width: 100%;
-  padding: 5px 9px;
+.fPill {
+  min-width: 20px;
+  padding: 1px 6px;
   font: inherit;
-  font-size: 12px;
-  text-align: left;
+  font-size: 10px;
+  line-height: 1.5;
+  white-space: nowrap;
   color: var(--ink-2);
+  background: var(--surface-2, transparent);
+  border: 1px solid var(--line-strong);
+  border-radius: 99px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.fPill:hover { color: var(--ink); border-color: var(--data); }
+/* ⚠️ СОНГОГДСОН нь ДҮҮРГЭЛТТЭЙ — зөвхөн ирмэгээр тэмдэглэвэл 12 шахмалын
+   дунд аль нь идэвхтэй болох нь харагдахгүй. */
+.fPillOn {
+  color: var(--on-data, #04121e);
+  background: var(--data);
+  border-color: var(--data);
+  font-weight: 600;
+}
+
+/* Цуцлах — эгнээний төгсгөлд */
+.fClear {
+  flex: none;
+  padding: 1px 7px;
+  font: inherit;
+  font-size: 10px;
+  color: var(--ink-3);
   background: transparent;
-  border: none;
-  border-radius: 4px;
+  border: 1px solid var(--line-strong);
+  border-radius: 99px;
   cursor: pointer;
 }
-.fOpt:hover { background: color-mix(in srgb, var(--data) 14%, transparent); color: var(--ink); }
-.fTick { width: 11px; flex: none; font-size: 10px; font-style: normal; color: var(--data); }
-.fOptOn { color: var(--data); font-weight: 700; background: color-mix(in srgb, var(--data) 12%, transparent); }
+.fClear:hover { color: var(--bad-ink, var(--ink)); border-color: var(--bad); }
 
-/* ── Зургийн дээрх индикатор ── */
+.catPanel {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: min(360px, 80%);
+  z-index: 6;
+  overflow: auto;
+  background: var(--surface);
+  box-shadow: 2px 0 12px rgb(0 0 0 / 22%);
+}
+
 .kpis {
   padding: 8px 10px;
   border: 1px solid var(--line);
@@ -346,29 +298,6 @@
 
 .wait { margin: 4px 0; font-size: 12px; color: var(--ink-3); }
 
-/*
- * ШҮҮЛТИЙГ ХУРААХ/ДЭЛГЭХ товч.
- *
- * ⚠️ Хураасан үед ИДЭВХТЭЙ шүүлт байвал товч нь өнгө аваад сонгосон утгыг
- * өөрөө бичнэ — «шүүлт байгаа эсэх» мэдээлэл зурвастай хамт алга болох
- * ёсгүй.
- */
-/*
- * ⚠️ ХЭМЖЭЭ НЬ СЕГМЕНТҮҮДТЭЙ ЯГ ИЖИЛ (2026-09-04, хэрэглэгчийн хүсэлт: «жил
- * сартай адилхан хэмжээтэй болно шүүх button»). Зай, үсгийн хэмжээ, хүрээ,
- * булангийн радиус, доод өндөр дөрвүүлээ `.fBar` / `.fDrop`-ынхтой нэг —
- * зөрвөл зэрэгцэн зогсох хоёр удирдлага өөр гэр бүлийнх мэт харагдана.
- */
-/*
- * ХУРААСАН ЗУРВАС — зөвхөн сум.
- *
- * ⚠️ `padding`, `border`, `background` гурвуулаа алга болно. Хураах гэдгийн
- * бүх утга нь доорх картуудад зай өгөх явдал — хүрээтэй хоосон зурвас
- * үлдээвэл ердөө 22px л хожно.
- */
-/* «Шүүх» — сумны урд, ЖИЖИГ. Хураасан зурвасны өндрийг нэмэхгүй хэмжээ. */
-/* Товчны үсгийн хэмжээг товч өөрөө тогтооно — давхар зарлахгүй */
-/* Идэвхтэй шүүлттэй үед сум нь өнгө авна — утга нь `title`-д */
 /*
  * ИНДИКАТОРЫН ЗУРВАС — НАМХАН, өргөн нь хэвээр.
  *
