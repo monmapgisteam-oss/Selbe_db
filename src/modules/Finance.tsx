@@ -55,6 +55,7 @@ import {
 } from '@/lib/services';
 import { finFieldLabel } from '@/lib/financeFieldLabels';
 import { useColWidths } from '@/modules/sheet/colWidths';
+import { useSheetCols } from '@/modules/sheet/sheetCols';
 import {
   FIN_FACETS, EMPTY_FILTER, isDirty as filterDirty,
   facetValues, distinct, rowMatches,
@@ -1238,7 +1239,6 @@ function FullTable({
   const [saved, setSaved] = useState<Set<string>>(new Set());
   /** Нийтлээгүй ШИНЭ мөрүүд — сөрөг түр дугаартай */
   const [adds, setAdds] = useState<Record<string, string>[]>([]);
-  const [del, setDel] = useState<Set<number>>(new Set());
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -1256,6 +1256,26 @@ function FullTable({
    * тасарна, мөн `z-index`-ийн шатлал нь хөрш баганад дарагдана.
    */
   const [hMenu, setHMenu] = useState<{ name: string; x: number; y: number } | null>(null);
+  /**
+   * ЧИРЭГДЭЖ БУЙ БАГАНА — толгойгоос толгой руу зөөнө.
+   *
+   * ⚠️ HTML5 drag-and-drop-ыг `th`-д ШУУД тавина: тусдаа «бариул» гаргавал
+   * толгойд аль хэдийн хоёр удирдлага (шүүлтийн ▾, өргөний чирэх зураас)
+   * байгаа тул гурав дахь нь нүдийг дүүргэнэ.
+   */
+  const [drag, setDrag] = useState<string | null>(null);
+  /**
+   * СОНГОГДСОН БАГАНУУД — Excel-ийн зан (2026-09-08, хэрэглэгчийн хүсэлт).
+   *
+   * ⚠️ ТОО НЬ ДУРЫН: хэрэглэгч 1 ч, 8 ч багана сонгож болно. Excel-д баганы
+   * толгойг товшиж сонгоод «Freeze Panes» дардагтай ижил.
+   *
+   * ⚠️ ЗӨВХӨН ХАРАГДАЦ, өгөгдөл БИШ: сонголт нь мөр шүүхгүй, зөвхөн дараагийн
+   * үйлдэл (царцаах, нуух) хэнд хамаарахыг заана.
+   */
+  const [pick, setPick] = useState<string[]>([]);
+  /** Мужаар сонгоход (Shift) суурь болох сүүлийн товшилт */
+  const lastPick = useRef<string | null>(null);
   /**
    * НЭЭЛТТЭЙ КАЛЕНДАР — аль нүднийх, хаана, юу бичих вэ.
    *
@@ -1313,7 +1333,6 @@ function FullTable({
    * ⚠️ Бүх баганад асаавал богино утгатай нүд дарахад ч мөр «үсэрч», хүснэгт
    * тайван байдлаа алддаг. Зөвхөн УРТ бичвэртэй багана хэрэгтэй.
    */
-  const EXPANDABLE = ['Nariiwchilsan_turul'];
 
 
   /*
@@ -1327,7 +1346,7 @@ function FullTable({
   /** IPC-ийн ДЭЛГЭСЭН актууд — дэлгэрэнгүй талбарууд нь мөрийн доор гарна */
   const [xp, setXp] = useState<Set<number | string>>(new Set());
 
-  const dirty = Object.keys(pend).length + adds.length + del.size;
+  const dirty = Object.keys(pend).length + adds.length;
 
   /* ⚠️ Нийтлээгүй засвартай байхад таб хаахад хөтөч анхааруулна — «Гүйцэтгэл
      бөглөх»-тэй ижил зан. Гараар хийсэн 200 нүдний ажил алдагдах нь эргэж
@@ -1341,23 +1360,20 @@ function FullTable({
 
   /* ⚠️ `saved`-ыг ЦЭВЭРЛЭХГҮЙ: энэ нь «болих» үйлдэл бөгөөд аль хэдийн
      нийтлэгдсэн засварыг үгүй хийхгүй — тэмдэглэгээ нь мөн үлдэх ёстой. */
-  const reset = () => { setPend({}); setAdds([]); setDel(new Set()); setErr(null); };
+  const reset = () => { setPend({}); setAdds([]); setErr(null); };
 
   const publish = async () => {
     if (busy || !dirty) return;
     /*
-     * ⚠️ УСТГАЛ БУЦААГДАХГҮЙ. Эдгээр үйлчилгээнд хувилбарын түүх асаагүй тул
-     * устгасан мөр бүрмөсөн алга болно — «Нийтлэх (3)» гэсэн тоо нь тэдгээрийн
-     * нэг нь БУЦААГДАШГҮЙ устгал гэдгийг хэлдэггүй. `UserAdmin`, `FillNew`
-     * зэрэгт эргэлт буцалтгүй үйлдлийн өмнө баталгаажуулалт асуудаг дүрэмтэй
-     * ижил.
+     * ⚠️ ЭНЭ ХҮСНЭГТ ЭХ МӨРИЙГ УСТГАХГҮЙ (2026-09-08, хэрэглэгчийн заавар).
+     * Урьд нь мөр устгах товч байсан бөгөөд нийтлэхийн өмнө баталгаа асуудаг
+     * байв. Гэвч эдгээр үйлчилгээнд хувилбарын түүх асаагүй тул устгасан мөр
+     * БҮРМӨСӨН алга болдог — баталгааны цонх нь хангалттай хамгаалалт биш.
+     * Устгал шаардлагатай бол ArcGIS-ийн өөрийн хэрэгслээр, ухамсартайгаар.
      *
-     * ⚠️ Зөвхөн УСТГАЛД асууна: утга засах, мөр нэмэхэд асуувал өдөр тутмын
-     * ажил бүрд шаардлагагүй цонх гарч, хүн уншихаа болино — тэр үед жинхэнэ
-     * анхааруулга ч мөн адил дарагдана.
+     * ⚠️ Иймд нийтлэх нь ЗАСВАР ба НЭМЭЛТ хоёрыг л илгээнэ — баталгаа
+     * асуухгүй: өдөр тутмын ажил бүрд цонх гарвал хүн уншихаа болино.
      */
-    if (del.size > 0
-      && !window.confirm(tr('{0} мөр БУЦААГДАШГҮЙ устгагдана. Үргэлжлүүлэх үү?', del.size))) return;
     setBusy(true);
     setErr(null);
     setMsg(null);
@@ -1372,7 +1388,6 @@ function FullTable({
         const cut = k.indexOf(':');
         const oid = Number(k.slice(0, cut));
         const fld = k.slice(cut + 1);
-        if (del.has(oid)) continue;                 // устгах мөрийн засвар утгагүй
         const a = upd.get(oid) ?? { [oidField]: oid };
         a[fld] = parseCell(v, typeOf(fld), labelOf(fld));
         upd.set(oid, a);
@@ -1390,10 +1405,15 @@ function FullTable({
 
       /* ⚠️ ГУРВЫГ НЭГ ХҮСЭЛТЭЭР — атомаар. Салгаж явуулбал нэмэлт амжилттай
          болоод устгал уначихад хэрэглэгч дахин дарж, нэмсэн мөр ДАВХАРДАНА. */
+      /*
+       * ⚠️ `deletes` ЭНД ХЭЗЭЭ Ч ИРЭХГҮЙ (2026-09-08, хэрэглэгчийн заавар):
+       * энэ хүснэгт нь эх үйлчилгээний мөрийг УСТГАХГҮЙ. Засах ба нэмэх л
+       * зөвшөөрөгдөнө. Устгал хэрэгтэй бол ArcGIS-ийн өөрийн хэрэгслээр,
+       * ухамсартайгаар хийгдэх ёстой.
+       */
       const { n } = await applyAll(url, oidField, {
         updates: [...upd.values()],
         adds: newRows,
-        deletes: [...del],
       });
 
       /* ⚠️ Кэшийг зөвхөн АМЖИЛТТАЙ бичилтийн дараа хаяна */
@@ -1402,10 +1422,7 @@ function FullTable({
          мөрийн нүд тэмдэглэгдэхгүй: тэр мөр өөрөө алга болсон. */
       setSaved((prev) => {
         const nx = new Set(prev);
-        for (const k of Object.keys(pend)) {
-          const oid = Number(k.slice(0, k.indexOf(':')));
-          if (!del.has(oid)) nx.add(k);
-        }
+        for (const k of Object.keys(pend)) nx.add(k);
         return nx;
       });
       reset();
@@ -1429,7 +1446,8 @@ function FullTable({
     'Turul', 'Tusul', 'Bagts', 'Ded_bagts', 'Bagts_74', 'Guitsetgel_huwi',
   ];
 
-  const cols: FieldDef[] = useMemo(() => {
+  /** БҮХ багана — нуулт/дараалал хэрэглэхээс ӨМНӨХ жагсаалт */
+  const allCols: FieldDef[] = useMemo(() => {
     const base = (
       fields.length
         ? fields
@@ -1462,8 +1480,55 @@ function FullTable({
    */
   const { style: colStyle, grip, resetAll, resized } = useColWidths(`fin-${dataKey}`);
 
-  /** Анхны өргөн — эхний 5 багана (№ + царцсан 4) */
+  /**
+   * БАГАНЫ БҮТЭЦ — нуух · царцаах · зөөх · мөр таслах (2026-09-08).
+   *
+   * ⚠️ 33 багана нь бүгд нэг зэрэг хэрэгтэй БАЙДАГГҮЙ: хэрэглэгч ажлынхаа
+   * төрлөөс шалтгаалж 5–10-ыг нь л хардаг. Excel-ийн энгийн үйлдлүүдийг
+   * (нуух, царцаах, зөөх) өгснөөр 33 баганыг хэрэглэгч өөрөө өөрийн
+   * хүснэгт болгоно.
+   *
+   * ⚠️ Анхдагчаар «Нарийвчилсан төрөл» МӨР ТАСАРСАН: тэр нь ажлын бүтэн нэр
+   * агуулдаг цорын ганц урт талбар бөгөөд урьд нь нүд бүр дээр дарж дэлгэх
+   * шаардлагатай байв (хэрэглэгчийн шүүмж).
+   */
+  const DEF_WRAP = useMemo(() => ['Nariiwchilsan_turul'], []);
+  const colNames = useMemo(() => allCols.map((c) => c.name), [allCols]);
+  const sc = useSheetCols(`fin-${dataKey}`, colNames, DEF_WRAP);
+
+  /**
+   * ХАРАГДАХ багана — хэрэглэгчийн дараалал ба нуултыг хэрэглэсэн.
+   *
+   * ⚠️ `allCols` нь эх сурвалж хэвээр: цэс, «бүгдийг харуулах» хоёр түүнээс
+   * уншина — нуугдсан баганыг буцаах зам хаагдах ёсгүй.
+   */
+  /**
+   * ⚠️ МӨР ТАСАЛСАН багана нь ДЭЛГЭХ шаардлагагүй: бичвэр аль хэдийн бүтнээрээ
+   * харагдаж байгаа тул нүд дарахад «мурийж дэлгэгдэх» нь ердөө байрлал л
+   * зөрүүлнэ (2026-09-08). Тасралтгүй багананд л дэлгэлт утгатай.
+   */
+  const EXPANDABLE = useMemo(
+    () => ['Nariiwchilsan_turul'].filter((n) => !sc.wrap.has(n)),
+    [sc.wrap],
+  );
+
+  const cols: FieldDef[] = useMemo(() => {
+    const by = new Map(allCols.map((c) => [c.name, c]));
+    return sc.view.map((n) => by.get(n)).filter((c): c is FieldDef => c != null);
+  }, [allCols, sc.view]);
+
+  /** Анхны өргөн — эхний 5 багана (№ + царцсан баганууд) */
   const FZ_DEF = [46, 230, 210, 120, 120];
+
+  /**
+   * ТУСГАЙ АНХНЫ ӨРГӨН — урт бичвэртэй багана.
+   *
+   * ⚠️ Зөвхөн «Нарийвчилсан төрөл»: тэр нь ажлын БҮТЭН нэр агуулдаг цорын ганц
+   * талбар бөгөөд анхдагч өргөнд хоёр үг л багтдаг байв. Мөр таслалттай тул
+   * өндөр нь өснө — өргөн нь тэр өсөлтийг хязгаарлана (нарийн багана нь
+   * найман мөр болж, хүснэгт бүхэлдээ сунана).
+   */
+  const WIDE: Record<string, number> = { Nariiwchilsan_turul: 360 };
 
   /** Тухайн баганын одоогийн өргөн (чирсэн бол түүнийг, эс бөгөөс анхныхыг) */
   const colW = (name: string, dflt?: number): number | undefined => {
@@ -1472,15 +1537,21 @@ function FullTable({
     return dflt;
   };
 
-  /** Царцсан 4 баганын зүүн шилжилт — өргөний нийлбэрээр */
+  /**
+   * ЦАРЦСАН БАГАНУУДЫН ЗҮҮН ШИЛЖИЛТ — өргөний хуримтлагдсан нийлбэрээр.
+   *
+   * ⚠️ ТООГ ХЭРЭГЛЭГЧ ТОГТООНО (`sc.frozen`), 4 гэж хатуу бичихээ БОЛИВ
+   * (2026-09-08). Хүн бүрийн ажил өөр: зарим нь зөвхөн «Төрөл»-ийг барих
+   * хэрэгтэй, зарим нь зургаан баганыг.
+   */
   const frzLeft = useMemo(() => {
     const out = [FZ_DEF[0]];
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < sc.frozen; i += 1) {
       out.push(out[i] + (colW(cols[i]?.name ?? '', FZ_DEF[i + 1]) ?? FZ_DEF[i + 1]));
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [colStyle, cols]);
+  }, [colStyle, cols, sc.frozen]);
 
   /* ══════════ ШҮҮЛТ ══════════ */
 
@@ -1492,13 +1563,13 @@ function FullTable({
    *    болно.
    */
   const keepOids = useMemo(() => {
-    const s = new Set<number>(del);
+    const s = new Set<number>();
     for (const k of Object.keys(pend)) {
       const oid = Number(k.slice(0, k.indexOf(':')));
       if (Number.isFinite(oid)) s.add(oid);
     }
     return s;
-  }, [pend, del]);
+  }, [pend]);
 
   const active = filterDirty(flt);
 
@@ -1681,18 +1752,61 @@ function FullTable({
    *    шууд харагдана.
    */
   /**
-   * ЦАРЦСАН БАГАНА — эхний дөрөв нь хэвтээ гүйлгэхэд байрандаа үлдэнэ.
+   * ЦАРЦСАН БАГАНА — хэвтээ гүйлгэхэд байрандаа үлдэнэ.
    * ⚠️ Зөвхөн `position: sticky` хангалтгүй: багана бүрийн `left` нь өмнөхүүдийн
-   * ӨРГӨНИЙ НИЙЛБЭР байх ёстой тул өргөнийг CSS-д ТОГТМОЛ зааж, тэндээ
-   * `calc()`-аар байрлуулна (`.xlF1…4`).
+   * ӨРГӨНИЙ НИЙЛБЭР байх ёстой (`frzLeft`).
    */
-  const frz = (i: number): string => (i < 4 ? (f[`xlF${i + 1}`] ?? '') : '');
+  /**
+   * ⚠️ НЭГ КЛАСС, инлайн `left`/`z-index` (2026-09-08). Урьд нь `.xlF1…4`
+   * гэсэн ДӨРВӨН класс байсан тул царцаалтын тоо CSS-д хатуу шингэсэн байв.
+   * Хэрэглэгч 6 багана царцаахыг хүсвэл CSS засах шаардлагатай болно.
+   */
+  /**
+   * ⚠️ ХИЛИЙН ЗУРААС нь ТОЛГОЙД ба МӨР БҮРД (2026-09-08, хэрэглэгчийн заавар).
+   * Урьд нь зөвхөн `th`-д тавигддаг байсан тул царцсан хэсэг хаана дуусахыг
+   * зөвхөн дээд ирмэгээс уншиж, доош гүйхэд хил нь алга болдог байв.
+   */
+  const frz = (i: number): string => (i < sc.frozen
+    ? [f.xlFz, i === sc.frozen - 1 ? f.xlFzEdge : ''].filter(Boolean).join(' ')
+    : '');
 
   /** Нүдний өргөн ба (царцсан бол) зүүн шилжилт */
-  const colSty = (c: FieldDef, i: number): CSSProperties => {
-    const w = colW(c.name, i < 4 ? FZ_DEF[i + 1] : undefined);
+  const colSty = (c: FieldDef, i: number, head = false): CSSProperties => {
+    const on = i < sc.frozen;
+    const w = colW(c.name, on ? FZ_DEF[i + 1] : WIDE[c.name]);
     const st: CSSProperties = w != null ? { width: w, minWidth: w, maxWidth: w } : {};
-    if (i < 4) st.left = frzLeft[i];
+    if (on) {
+      st.left = frzLeft[i];
+      /*
+       * ⚠️ Зүүн тийш ӨСӨХ z-index: баруун талын царцсан багана нь зүүнийхийнхээ
+       * ДООГУУР гүйх ёстой, эс бөгөөс гүйлгэхэд хоёр нь давхарлаж хоёулаа
+       * уншигдахгүй болно.
+       *
+       * ⚠️ ТОЛГОЙД 25-аас ЭХЛЭНЭ (2026-09-08-ны засвар): толгойн нүд нь мөрийн
+       * нүднээс ч, энгийн (царцаагүй) толгойноос ч ДЭЭР байх ёстой. Инлайн
+       * z-index нь `.xlTbl thead .xlFz`-ийн дүрмийг ДАРДАГ тул царцсан толгой
+       * 4·3·2·1 болж, энгийн толгойн (2) дор орж, гүйлгэхэд «толгой гүйж»
+       * байв.
+       */
+      st.zIndex = (head ? 25 : 0) + (sc.frozen - i);
+    }
+    /* ⚠️ МӨР ТАСЛАХ — өргөнийг ХЭВЭЭР үлдээж зөвхөн бичвэрийг мурийлгана:
+       `width: auto` тавибал урт утга багануудыг түлхэж хүснэгт сунана. */
+    if (sc.wrap.has(c.name)) {
+      st.whiteSpace = 'normal';
+      st.overflow = 'visible';
+      st.wordBreak = 'break-word';
+      /*
+       * ⚠️ ХОЁР ТАЛААР ЖИГДЭЛНЭ (`justify`) — ЗӨВХӨН тасарсан баганы ӨГӨГДЛИЙН
+       * нүдэнд. Тасралтгүй нүдэнд утгагүй (нэг мөр нь жигдрэх зүйлгүй), харин
+       * олон мөртэй нүдний баруун ирмэг сэмрэх нь багана хоорондын хилийг
+       * бүдгэрүүлдэг.
+       *
+       * ⚠️ ТОЛГОЙД ХЭРЭГЛЭХГҮЙ (2026-09-08): «Нарийвчилсан төрөл» гэсэн хоёр
+       * үг `justify`-д хоёр ирмэг рүү тарж, дунд нь том цоорхой үлддэг байв.
+       */
+      if (!head) st.textAlign = 'justify';
+    }
     return st;
   };
 
@@ -1906,12 +2020,6 @@ function FullTable({
   /** Толгой баруун зэрэгцэх үү — мөнгөн багана тийм, он·сар·дугаар үгүй */
   const thRight = (c: FieldDef) => NUMERIC_TYPES.has(c.type) && !PLAIN_INT.has(c.name);
 
-  const toggleDel = (oid: number) => setDel((sd) => {
-    const nx = new Set(sd);
-    if (nx.has(oid)) nx.delete(oid); else nx.add(oid);
-    return nx;
-  });
-
   /**
    * ═══ БАГЦЫН КАРТ — 2026-09-02-нд БҮРЭН ДАХИН загварчилсан ═══
    *
@@ -1993,18 +2101,6 @@ function FullTable({
     if (!hMenu) return null;
     const c = cols.find((x) => x.name === hMenu.name);
     if (!c) return null;
-    const sel = flt.pick?.[c.name] ?? [];
-    const vals = distinct(rows, (r) => cellStr(r[c.name], c.type, c.name));
-    const numeric = isNumericType(c.type);
-
-    const setPick = (next: string[]) => setFlt((st) => {
-      const pick = { ...(st.pick ?? {}) };
-      /* ⚠️ Хоосон бол ТАЛБАРЫГ УСТГАНА — `[]` үлдээвэл `isDirty` худал үнэн
-         болж «Цэвэрлэх» товч мөнхөд гацна. */
-      if (next.length) pick[c.name] = next; else delete pick[c.name];
-      return { ...st, pick };
-    });
-
     return (
       <>
         {/* Гадна дарахад хаана — цэс нээлттэй үлдэж хүснэгтийг халхлахаас сэргийлнэ */}
@@ -2012,47 +2108,78 @@ function FullTable({
         <div
           className={f.thMenu}
           style={{ left: Math.min(hMenu.x, Math.max(8, window.innerWidth - 280)), top: hMenu.y }}
+          /* ⚠️ Цэс дэх товшилт нь ХҮСНЭГТИЙН цэвэрлэгч рүү хүрэх ёсгүй — эс
+             бөгөөс «Сонгосон 4 баганыг царцаах» дарахад сонголт нь тэр товшилтоор
+             аль хэдийн тайлагдчихсан байна. */
+          onClick={(ev) => ev.stopPropagation()}
         >
           <div className={f.thMenuHead}>
             {finFieldLabel(c.name) === c.name ? c.alias : finFieldLabel(c.name)}
           </div>
 
-          {numeric && (
-            /* ⚠️ Тоон багананд чагтын жагсаалт утгагүй (утга бүр цор ганц) —
-               ArcGIS ч тэнд нөхцөл бичүүлдэг. */
-            <input
-              className={f.thMenuNum}
-              value={flt.col[c.name] ?? ''}
-              placeholder={tr('>1000 · <=5e6 · 100..200')}
-              onChange={(ev) => setCol(c.name, ev.target.value)}
-            />
-          )}
-
-          <div className={f.thMenuActs}>
-            <button type="button" onClick={() => setPick(vals)}>{tr('Бүгд')}</button>
+          {/*
+            * БАГАНЫН ҮЙЛДЛҮҮД — Excel-ийн энгийн багц (2026-09-08).
+            *
+            * ⚠️ ШҮҮЛТЭЭС ЗУРААСААР тусгаарлав: шүүлт нь ӨГӨГДӨЛД, эдгээр нь
+            * ХАРАГДАЦАД үйлчилнэ. Нэг бүлэгт нийлүүлбэл «нуух» нь мөр
+            * шүүдэг мэт уншигдана.
+            */}
+          {/* ⚠️ ЭДГЭЭР ШОШГО АНГЛИАР — хэрэглэгчийн шууд заавар (2026-09-08).
+              Excel/ArcGIS-ийн ижил үйлдлүүд англиараа танигддаг тул орчуулга нь
+              эсрэгээрээ таних хугацааг уртасгана. Тиймээс `tr()`-гүй. */}
+          <div className={f.thMenuCols}>
+            {/*
+              * ⚠️ СОНГОЛТ БАЙВАЛ ТҮҮГЭЭР, эс бөгөөс ЭНЭ баганаар. Excel-д ч
+              * ялгаагүй: сонголтгүй үед цэс нээсэн багана өөрөө сонголт болно.
+              *
+              * ⚠️ Царцаалт нь ҮРГЭЛЖ ЗҮҮНЭЭС эхэлдэг ТАСРАЛТГҮЙ блок тул
+              * сонголтын ХАМГИЙН БАРУУН баганаар хэмжинэ — дунд нь алгассан
+              * багана байсан ч тэр нь царцаалтад орно. Эс бөгөөс «энэ хоёрыг
+              * царцаа» гэсэн боломжгүй хүсэлт үүснэ.
+              */}
             <button
               type="button"
-              onClick={() => { setPick([]); setCol(c.name, ''); }}
-            >{tr('Цэвэрлэх')}</button>
+              onClick={() => {
+                if (pick.length > 0) sc.hideMany(pick); else sc.hide(c.name);
+                setPick([]);
+                setHMenu(null);
+              }}
+            >
+              {pick.length > 1 ? `Hide ${num(pick.length)} columns` : 'Hide column'}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (pick.length > 0) {
+                  const last = Math.max(...pick.map((n) => cols.findIndex((x) => x.name === n)));
+                  sc.setFrozen(sc.frozen === last + 1 ? 0 : last + 1);
+                } else {
+                  sc.freezeTo(c.name);
+                }
+                setHMenu(null);
+              }}
+            >
+              {pick.length > 1
+                ? `Freeze ${num(pick.length)} columns`
+                : cols.findIndex((x) => x.name === c.name) === sc.frozen - 1
+                  ? 'Unfreeze'
+                  : 'Freeze up to here'}
+            </button>
+            <button type="button" onClick={() => sc.toggleWrap(c.name)}>
+              {sc.wrap.has(c.name) ? 'No wrap' : 'Wrap text'}
+            </button>
+            {pick.length > 0 && (
+              <button type="button" onClick={() => { setPick([]); setHMenu(null); }}>
+                Clear selection
+              </button>
+            )}
+            {sc.hidden.size > 0 && (
+              <button type="button" onClick={() => { sc.showAll(); setHMenu(null); }}>
+                {`Show ${num(sc.hidden.size)} hidden columns`}
+              </button>
+            )}
           </div>
 
-          <ul className={f.thMenuList}>
-            {vals.map((v) => {
-              const on = sel.includes(v);
-              return (
-                <li key={v || '—'}>
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={on}
-                      onChange={() => setPick(on ? sel.filter((x) => x !== v) : [...sel, v])}
-                    />
-                    <span>{v === '' ? tr('(хоосон)') : v}</span>
-                  </label>
-                </li>
-              );
-            })}
-          </ul>
         </div>
       </>
     );
@@ -2066,7 +2193,21 @@ function FullTable({
   const flatTable = (raw: GroupRow[]) => {
     const list = sortRows(raw);
     return (
-    <div className={f.xlWrap}>
+    /*
+     * ⚠️ ГАДНА ТОВШВОЛ СОНГОЛТ ТАЙЛАГДАНА (2026-09-08, хэрэглэгчийн заавар).
+     * Урьд нь сонголтоо цуцлахын тулд ЯГ ТЭР толгойг дахин дарах шаардлагатай
+     * байсан нь Excel-ийн зантай зөрчилддөг: тэнд нүд дарамагц баганы сонголт
+     * алга болдог.
+     *
+     * ⚠️ Толгой дээрх товшилтыг ОРХИНО (`closest('th')`) — эс бөгөөс сонголт
+     * хийсэн тэр товшилт өөрөө шууд тайлагдана.
+     */
+    <div
+      className={f.xlWrap}
+      onClick={(ev) => {
+        if (!(ev.target as HTMLElement).closest('th')) setPick([]);
+      }}
+    >
       {headMenu()}
       <table className={f.xlTbl}>
         <thead>
@@ -2076,8 +2217,75 @@ function FullTable({
               <th
                 key={c.name}
                 title={c.name}
-                style={colSty(c, ci)}
-                className={[frz(ci), thRight(c) ? f.thR : ''].filter(Boolean).join(' ')}
+                style={colSty(c, ci, true)}
+                className={[
+                  frz(ci),
+                  thRight(c) ? f.thR : '',
+                  drag === c.name ? f.thDrag : '',
+                  pick.includes(c.name) ? f.thPick : '',
+                ].filter(Boolean).join(' ')}
+                /*
+                 * ⚠️ БАГАНА ЗӨӨХ — Excel-ийн зан. `draggable` нь `th` дээр
+                 * шууд: толгойд аль хэдийн шүүлтийн товч ба өргөний бариул
+                 * хоёр байгаа тул гурав дахь удирдлага нүдийг дүүргэнэ.
+                 *
+                 * ⚠️ Өргөний бариул (`grip`) нь өөрийн `pointerdown`-оор
+                 * чирэлтийг зогсоодог тул хоёр үйлдэл зөрчилдөхгүй.
+                 */
+                draggable
+                onDragStart={(ev) => {
+                  setDrag(c.name);
+                  ev.dataTransfer.effectAllowed = 'move';
+                  /* Firefox чирэлт эхлүүлэхийн тулд өгөгдөл ШААРДДАГ */
+                  ev.dataTransfer.setData('text/plain', c.name);
+                }}
+                onDragOver={(ev) => { if (drag && drag !== c.name) ev.preventDefault(); }}
+                onDrop={(ev) => {
+                  ev.preventDefault();
+                  if (drag) sc.move(drag, c.name);
+                  setDrag(null);
+                }}
+                onDragEnd={() => setDrag(null)}
+                /*
+                 * ⚠️ БАРУУН ТОВШИЛТ нь ижил цэсийг нээнэ (2026-09-08,
+                 * хэрэглэгчийн хүсэлт): Excel-д баганы үйлдлүүд яг тэндээс
+                 * гардаг. ▾ товч нь ХЭВЭЭР — баруун товшилт нь мэддэг хүнд
+                 * богино зам, товч нь мэдэхгүй хүнд ил зам.
+                 */
+                /*
+                 * ⚠️ ТОВШИЛТЫН ГУРВАН ХЭЛБЭР — Excel-тэй ижил:
+                 *   · энгийн  → ЗӨВХӨН энэ багана
+                 *   · Ctrl/⌘  → нэмж/хасаж сонгоно
+                 *   · Shift   → сүүлийн товшилтоос ЭНЭ хүртэлх МУЖ
+                 *
+                 * ⚠️ Шүүлтийн ▾ товч ба өргөний бариул нь `stopPropagation`
+                 * хийдэг тул тэднийг дарахад сонголт өөрчлөгдөхгүй.
+                 */
+                onClick={(ev) => {
+                  const names = cols.map((x) => x.name);
+                  if (ev.shiftKey && lastPick.current) {
+                    const a = names.indexOf(lastPick.current);
+                    const b = names.indexOf(c.name);
+                    if (a >= 0 && b >= 0) {
+                      setPick(names.slice(Math.min(a, b), Math.max(a, b) + 1));
+                      return;
+                    }
+                  }
+                  lastPick.current = c.name;
+                  if (ev.ctrlKey || ev.metaKey) {
+                    setPick((v) => (v.includes(c.name)
+                      ? v.filter((x) => x !== c.name)
+                      : [...v, c.name]));
+                    return;
+                  }
+                  setPick((v) => (v.length === 1 && v[0] === c.name ? [] : [c.name]));
+                }}
+                onContextMenu={(ev) => {
+                  ev.preventDefault();
+                  setHMenu((m) => (m?.name === c.name
+                    ? null
+                    : { name: c.name, x: ev.clientX, y: ev.clientY }));
+                }}
               >
                 {/*
                   * ⚠️ Толинд байхгүй талбар нь ТҮҮХИЙ НЭРЭЭРЭЭ (`Bagts_74`)
@@ -2086,28 +2294,22 @@ function FullTable({
                   * монголоор харагдана.
                   */}
                 {finFieldLabel(c.name) === c.name ? c.alias : finFieldLabel(c.name)}
-                {/* ArcGIS маягийн шүүлт — толгой бүрд унждаг цэс */}
-                <button
-                  type="button"
-                  className={`${f.thMenuBtn} ${(flt.pick?.[c.name]?.length || flt.col[c.name]?.trim()) ? f.thMenuOn : ''}`}
-                  aria-label={tr('Шүүлт')}
-                  title={tr('Шүүлт')}
-                  onClick={(ev) => {
-                    ev.stopPropagation();
-                    const r = (ev.currentTarget as HTMLElement).getBoundingClientRect();
-                    setHMenu((m) => (m?.name === c.name ? null : { name: c.name, x: r.left, y: r.bottom }));
-                  }}
-                >▾</button>
+                {/*
+                  * ⚠️ ЦЭСНИЙ ТОВЧ (▾) ХАСАГДСАН (2026-09-08, хэрэглэгчийн заавар):
+                  * цэс нь БАРУУН ТОВШИЛТООР нээгддэг болсон тул товч нь толгой
+                  * бүрд зай эзлээд юу ч нэмэхгүй байв. Урьд нь ШҮҮЛТ тэндээс
+                  * гардаг байсан бөгөөд тэр нь дээд зурвас руу шилжсэн.
+                  */}
                 {/* Чирэх бариул — давхар товшвол анхны өргөнд буцна */}
                 <i {...grip(c.name)} />
               </th>
             ))}
-            {edit && canRow && <th aria-label={tr('Мөр устгах')} />}
+            {edit && canRow && <th aria-label={tr('Мөр')} />}
           </tr>
         </thead>
         <tbody>
           {list.map((p, i) => {
-            const dropped = p.oid != null && del.has(p.oid);
+            const dropped = false;
             return (
               <tr key={p.oid ?? `r${i}`} className={dropped ? f.rowDel : undefined}>
                 {(() => {
@@ -2129,20 +2331,9 @@ function FullTable({
                   );
                 })()}
                 {cols.map((c, ci) => xCell(p.row, p.oid, dropped, c, frz(ci), colSty(c, ci)))}
-                {edit && canRow && (
-                  <td className={f.rowBtnCell}>
-                    {p.oid != null && (
-                      <button
-                        type="button"
-                        className={f.rowBtn}
-                        title={dropped ? tr('Устгахаа болих') : tr('Мөр устгах')}
-                        onClick={() => toggleDel(p.oid as number)}
-                      >
-                        {dropped ? '↺' : '×'}
-                      </button>
-                    )}
-                  </td>
-                )}
+                {/* ⚠️ Устгах товч ХАСАГДСАН — нүд нь ноорог мөрийн «×»-тэй нэг
+                    баганад байх ёстой тул хоосон үлдэнэ. */}
+                {edit && canRow && <td className={f.rowBtnCell} />}
               </tr>
             );
           })}
@@ -2296,7 +2487,7 @@ function FullTable({
           </thead>
           <tbody>
             {list.map((p, i) => {
-              const dropped = p.oid != null && del.has(p.oid);
+              const dropped = false;
               const k = p.oid ?? `i-${i}`;
               const isOpen = xp.has(k);
               const ded = dedOrNull(p.row);
@@ -2343,20 +2534,8 @@ function FullTable({
                     <td className={`num ${f.cellNum}`}>{ded == null ? '—' : `−${num(ded)}`}</td>
                     <td className={`num ${f.cellNum} ${f.cellStrong}`}>{net == null ? '—' : num(net)}</td>
                     <td className={`num ${f.cellNum}`}>{paid == null ? '—' : num(paid)}</td>
-                    {edit && canRow && (
-                      <td className={f.rowBtnCell}>
-                        {p.oid != null && (
-                          <button
-                            type="button"
-                            className={f.rowBtn}
-                            title={dropped ? tr('Устгахаа болих') : tr('Мөр устгах')}
-                            onClick={() => toggleDel(p.oid as number)}
-                          >
-                            {dropped ? '↩' : '×'}
-                          </button>
-                        )}
-                      </td>
-                    )}
+                    {/* ⚠️ Устгах товч ХАСАГДСАН — эх мөрийг устгахгүй */}
+                    {edit && canRow && <td className={f.rowBtnCell} />}
                   </tr>
                   {isOpen && (
                     <tr className={f.xpRow}>
@@ -2470,30 +2649,13 @@ function FullTable({
   /* ══════════ Мөрийн зурагдалт — бүлэглэсэн ба энгийн горимд ХУВААЛЦАНА ══════════ */
   const renderRow = (r: Row, i: number) => {
     const oid = typeof r[oidField] === 'number' ? (r[oidField] as number) : null;
-    const dropped = oid != null && del.has(oid);
+    const dropped = false;
     return (
       <tr key={oid ?? `i-${i}`} className={`${f.dRow} ${dropped ? f.rowDel : ''}`}>
         {/* ⚠️ Устгах баганыг ЗАСВАРЫН горимд л гаргана — уншиж буй
             хэрэглэгчийн хүснэгтийн өргөнийг дэмий иддэггүй. */}
-        {edit && canRow && (
-          <td className={f.rowBtnCell}>
-            <button
-              type="button"
-              className={f.rowBtn}
-              title={dropped ? tr('Устгахаа болих') : tr('Мөр устгах')}
-              onClick={() => {
-                if (oid == null) return;
-                setDel((s) => {
-                  const nx = new Set(s);
-                  if (nx.has(oid)) nx.delete(oid); else nx.add(oid);
-                  return nx;
-                });
-              }}
-            >
-              {dropped ? '↩' : '×'}
-            </button>
-          </td>
-        )}
+        {/* ⚠️ Устгах товч ХАСАГДСАН — эх мөрийг устгахгүй */}
+        {edit && canRow && <td className={f.rowBtnCell} />}
         {cols.map((c) => {
           const key = `${oid}:${c.name}`;
           const editable = edit && oid != null && !dropped && !SERVER_RO.test(c.name);
