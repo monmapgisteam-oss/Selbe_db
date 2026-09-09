@@ -3,7 +3,8 @@ import { dirname } from 'node:path';
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // GitHub Pages (selbe.monmap.mn) — бүрэн статик экспорт, сервер шаардлагагүй
+  // GitHub Pages (smart.selbecity.mn, 2026-09-09-өөс; өмнө selbe.monmap.mn) —
+  // бүрэн статик экспорт, сервер шаардлагагүй. Домэйн нь `public/CNAME`-ээс.
   output: 'export',
   distDir: process.env.NEXT_DIST_DIR || '.next',
   trailingSlash: true,

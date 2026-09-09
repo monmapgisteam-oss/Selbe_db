@@ -73,7 +73,11 @@ export const metadata: Metadata = {
   title: 'Сэлбэ — Орон зайн мэдээллийн портал',
   description:
     'Сэлбэ дэд төвийн орон зайн мэдээллийн портал. Багцын хил, бүсчлэл, барилгын явц, газар чөлөөлөлт, инженерийн шугам сүлжээ, талбайн хяналтын үзүүлэлт — ArcGIS үйлчилгээнээс шууд.',
-  metadataBase: new URL('https://selbe.monmap.mn'),
+  /* ⚠️ 2026-09-09: selbe.monmap.mn → smart.selbecity.mn (домэйн солигдов).
+     `CNAME` (үндэс + public/) ба энэ хоёр мөр ЗААВАЛ ХАМТ солигдоно — эс бөгөөс
+     deploy бүр GitHub Pages-ийн custom domain тохиргоог хуучин домэйноор дарж
+     бичиж, шинэ хаяг 404 болдог (яг тэр эвдрэл 2026-09-09-нд гарсан). */
+  metadataBase: new URL('https://smart.selbecity.mn'),
   // favicon.ico байхгүйгээс 404 гарч байсан — SVG лого нь бүх орчин үеийн browser-т favicon болно
   icons: { icon: '/logo.svg' },
   manifest: '/manifest.json',
@@ -81,7 +85,7 @@ export const metadata: Metadata = {
     type: 'website',
     title: 'Сэлбэ — Орон зайн мэдээллийн портал',
     description: 'Давхарга идэвхжүүлэхэд тухайн давхаргын дашбоард нээгдэнэ.',
-    url: 'https://selbe.monmap.mn',
+    url: 'https://smart.selbecity.mn',
     images: ['/logo.svg'],
   },
 };
