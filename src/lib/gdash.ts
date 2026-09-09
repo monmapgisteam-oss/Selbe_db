@@ -747,27 +747,150 @@ export function sCurve(rows: CfRow[], grain: Grain = 'year', period: Period = NO
  * бөгөөс сонгосон үеийн эхний цэг 0%-ээс эхэлж, «шинээр эхэлж байна» гэсэн
  * худал уншилт гарна.
  */
+/**
+ * ОРОН СУУЦНЫ БАРИЛГАЖИЛТЫН БАГЦУУД — ТӨСЛИЙН ЖИНГЭЭР (2026-09-10).
+ *
+ * ⚠️ `Bagts.tsx`-ийн `Pack.progress` (блокуудын ЭНГИЙН дундаж) НЬ БИШ:
+ * дашбоардын түвшинд багцууд ХЭМЖЭЭГЭЭРЭЭ эрс ялгаатай (Багц 2 — 453.5
+ * тэрбум ₮, Багц 3.2 — 197.8). Энгийн дундаж нь жижиг багцыг томтой ижил
+ * жинтэй болгоно. Тиймээс ХО дүнгээр жигнэнэ — `weighted()`-ийн ижил дүрэм.
+ *
+ * ⚠️ ХЭМЖИГДЭЭГҮЙ багц жинд ОРОХГҮЙ (`null ≠ 0`): тухайн сард хэмжилтгүй
+ * багцыг 0% гэж тооцвол төслийн явц зохиомлоор буурна.
+ */
+export const HOUSING_PKGS: readonly string[] = [
+  'БАГЦ1', 'БАГЦ2', 'БАГЦ31', 'БАГЦ32', 'БАГЦ33', 'БАГЦ41', 'БАГЦ42',
+];
+
+/**
+ * Орон сууцны багцуудын биет гүйцэтгэлийг МӨНГӨН ДҮНГЭЭР сараар нэгтгэнэ —
+ * Σ(ХО дүн × гүйцэтгэл%) (2026-09-10, хэрэглэгчийн заавар: «ягаанаар харагдаж
+ * буй хэсэг хэрэггүй, төлөвлөсөн гүйцэтгэл дээр оруулаадах»).
+ *
+ * ⚠️ ХУВЬ БИШ, МӨНГӨ: энэ нь Cashflow төлөвлөгөөний сарын мөнгөтэй НЭГ
+ *    нэгжтэй байж түүн дээр НЭМЭГДЭНЭ (`cashflowCurve`). Ингэснээр цэнхэр
+ *    муруй = (бусад ажлын cashflow + орон сууцны биет явц) ÷ төслийн нийт.
+ *    Үлдсэн ажлуудын cashflow бөглөгдмөгц тэр нь ЭНЭ нийлбэрт өөрөө орно.
+ *
+ * @param phys    багц → (сар → %), `FinData.phys` (аль хэдийн хуримтлагдсан)
+ * @param weight  багц → ХО дүн (₮). Байхгүй/тэг бол тооцоонд орохгүй.
+ * @param labels  сарын тэнхлэг
+ * @param only    хамрах багцууд (анхдагч: орон сууцны 7)
+ * @returns сар → ₮; тэр сард НЭГ Ч багц хэмжигдээгүй бол бичлэг ҮГҮЙ
+ *          (`null ≠ 0` — дуудагч сүүлийн хэмжилтийг урагш авч явна)
+ */
+export function housingMoney(
+  phys: Map<string, Map<string, number>>,
+  weight: Map<string, number>,
+  labels: string[],
+  only: readonly string[] = HOUSING_PKGS,
+): Map<string, number> {
+  const keep = new Set(only);
+  const out = new Map<string, number>();
+  for (const label of labels) {
+    let sum = 0;
+    let any = false;
+    for (const [key, byMon] of phys) {
+      if (!keep.has(key)) continue;
+      const v = byMon.get(label);
+      if (v == null) continue;              // хэмжигдээгүй — оруулахгүй
+      const w = weight.get(key) ?? 0;
+      if (w <= 0) continue;
+      sum += (w * v) / 100;
+      any = true;
+    }
+    if (any) out.set(label, sum);
+  }
+  return out;
+}
+
 export function cashflowCurve(
   plan: CfPlanRow[],
   total: number,
   grain: Grain = 'month',
   period: Period = NO_PERIOD,
+  /**
+   * ОЛГОСОН IPC сараар (`'YYYY-MM'` → ₮), 2026-09-10.
+   *
+   * ⚠️ ХУРИМТЛАЛЫГ ЭНД бодно, дуудагч талд БИШ: `pct`-тэй ЯГ ИЖИЛ дүрмээр
+   *    (таслахаас ӨМНӨ хуримтлуулж, дараа нь `period`-ээр шүүх) явбал хоёр
+   *    муруй нэг цэг дээр зэрэгцэн уншигдана. Дуудагч талд бодвол сонгосон
+   *    үеийн эхний цэг 0%-ээс эхэлж «шинээр эхэлж байна» гэсэн худал
+   *    уншилт гарна (`pct`-ийн ижил тайлбарыг үз).
+   * ⚠️ ХООСОН Map = «IPC хараахан ачаалагдаагүй» → бүх цэгт `ipcPct: null`,
+   *    муруй ОГТ зурагдахгүй. Чарт үүнээс болж унах ЁСГҮЙ.
+   */
+  ipcByMonth: Map<string, number> = new Map(),
+  /**
+   * ОРОН СУУЦНЫ БИЕТ ЯВЦ МӨНГӨН ДҮНГЭЭР — сар → ₮ (`housingMoney()`).
+   * Цэнхэр төлөвлөсөн муруйн хуримтлалд НЭМЭГДЭНЭ (2026-09-10).
+   * ⚠️ Хуримтлагдсан түвшин тул хэмжилтгүй сард СҮҮЛИЙН утгыг урагш авна —
+   *    эс бөгөөс сүүлийн хэмжилтийн дараа муруй доош УНАНА.
+   */
+  housingMoneyByMonth: Map<string, number> = new Map(),
+  /**
+   * ОРОН СУУЦНЫ АЖЛУУДЫН `Cashflow_ID` — тэдний сарын мөнгийг `per`-ээс
+   * ХАСНА, эс бөгөөс биет явц ба cashflow хоёулаа тоологдож ДАВХАРДАНА.
+   */
+  skipIds: Set<number> = new Set(),
 ): TimePoint[] {
   const per = new Map<string, number>();
   for (const p of plan) {
     if (p.amount == null || p.start == null) continue;
+    if (skipIds.has(p.id)) continue;      // орон сууц — биет явцаар тоологдоно
     const d = new Date(p.start);
     const k = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
     per.set(k, (per.get(k) ?? 0) + p.amount);
   }
-  if (per.size === 0 || total <= 0) return [];
-
-  const months = [...per.keys()].sort();
+  if (total <= 0) return [];
+  /*
+   * ⚠️ ТЭНХЛЭГ НЬ ГУРВАН ЭХ СУРВАЛЖИЙН НЭГДЭЛ (2026-09-10).
+   *
+   * Урьд нь зөвхөн `per` (Cashflow төлөвлөгөө)-ийн саруудаас угсардаг байв.
+   * Гэтэл амьдаар тэдгээр нь 2024-04…2025-05 (681 мөрийн 667 нь ХООСОН,
+   * бөглөгдсөн 14 нь ч 0 ₮), харин IPC олголт 2025-09…2026-08 — хоёр
+   * цуваа ОГТ ОГТЛОЛЦОХГҮЙ тул IPC-ийн муруй бүх цэгт 0% дээр хэвтэж,
+   * үзэгдэхгүй байлаа. Одоо аль ч эх сурвалжид өгөгдөл байвал тэр сар
+   * тэнхлэгт гарна — нөгөө цуваа тэнд `null` (тасалдана), 0 БИШ.
+   *
+   * ⚠️ `per.size === 0` шалгуур ХАСАГДСАН: төлөвлөгөө огт бөглөгдөөгүй ч
+   * IPC эсвэл барилгажилтын муруй ганцаараа зурагдах ЁСТОЙ.
+   */
+  const months = [...new Set([
+    ...per.keys(), ...ipcByMonth.keys(), ...housingMoneyByMonth.keys(),
+  ])].sort();
+  if (months.length === 0) return [];
   let acc = 0;
+  let house = 0;                         // сүүлийн хэмжигдсэн биет явц (₮)
   const cum = new Map<string, number>();
   for (const k of months) {
     acc += per.get(k) ?? 0;
-    cum.set(k, Math.round((acc / total) * 100 * 100) / 100);
+    house = housingMoneyByMonth.get(k) ?? house;
+    cum.set(k, Math.round(((acc + house) / total) * 100 * 100) / 100);
+  }
+  /*
+   * ОЛГОСОН IPC-ийн ХУРИМТЛАЛ — төлөвлөгөөнийхтэй ЯГ ИЖИЛ дүрмээр.
+   *
+   * ⚠️ IPC-ийн ӨӨРИЙН саруудаар хуримтлуулна, `months`-оор БИШ: олголт нь
+   *    төлөвлөгөө байхгүй сард ч хийгдсэн байж болно (жиш. урьдчилгаа).
+   *    Тэр мөнгө хуримтлалд ЗААВАЛ орох ёстой — эс бөгөөс муруй нийт
+   *    олголтоос бага дээр төгсөнө.
+   * ⚠️ ХАМГИЙН СҮҮЛИЙН IPC САРААС ХОЙШ муруй ТАСАРНА (`null`) — тэнд
+   *    хуримтлалыг хэвтээгээр сунгавал «олголт зогссон» гэж уншигдана,
+   *    гэтэл үнэн нь «хараахан бүртгэгдээгүй». `null ≠ 0` зарчим.
+   */
+  const ipcMonths = [...ipcByMonth.keys()].sort();
+  const ipcLast = ipcMonths[ipcMonths.length - 1];
+  const ipcFirst = ipcMonths[0];
+  const ipcCum = new Map<string, number>();
+  if (ipcMonths.length) {
+    let a2 = 0;
+    for (const k of months) {
+      if (k < ipcFirst) continue;         // эхний олголтоос ӨМНӨ муруй эхлэхгүй
+      a2 += ipcByMonth.get(k) ?? 0;
+      if (k > ipcLast) break;             // сүүлийн олголтоос цааш сунгахгүй
+      ipcCum.set(k, Math.round((a2 / total) * 100 * 100) / 100);
+    }
   }
 
   const keep = months.filter((k) => {
@@ -780,7 +903,14 @@ export function cashflowCurve(
   if (keep.length === 0) return [];
 
   if (grain === 'month') {
-    return keep.map((k) => ({ key: k, label: k, pct: cum.get(k) ?? 0, amount: per.get(k) ?? 0 }));
+    return keep.map((k) => ({
+      key: k,
+      label: k,
+      pct: cum.get(k) ?? 0,
+      amount: per.get(k) ?? 0,
+      /* ⚠️ `?? null` — Map-д байхгүй сар нь «хэмжигдээгүй», 0 БИШ */
+      ipcPct: ipcCum.get(k) ?? null,
+    }));
   }
   const out = new Map<string, TimePoint>();
   for (const k of keep) {
@@ -797,6 +927,10 @@ export function cashflowCurve(
       pct: cum.get(k) ?? 0,
       /* Мөнгө — бүлгийн НИЙЛБЭР (хуримтлал биш тул нэмнэ) */
       amount: (prev?.amount ?? 0) + (per.get(k) ?? 0),
+      /* ⚠️ IPC ч мөн ХУРИМТЛАЛ тул бүлгийн СҮҮЛИЙНХ. Тухайн бүлгийн
+         сүүлийн сард хэмжилт байхгүй бол өмнөхийг нь хадгална — эс
+         бөгөөс улирлын сүүлийн сар хоосон байхад бүтэн улирал алга болно. */
+      ipcPct: ipcCum.get(k) ?? prev?.ipcPct ?? null,
     });
   }
   return [...out.values()];
@@ -962,6 +1096,18 @@ export type TimePoint = {
   pct: number;
   /** Тухайн үед ногдох захирамжийн олгосон дүн (хуримтлалгүй) */
   amount: number;
+  /**
+   * ОЛГОСОН IPC — хуримтлагдсан эзлэх хувь (хоёр дахь S-муруй, 2026-09-10).
+   *
+   * ⚠️ `pct`-тэй ИЖИЛ ХУВААРЬТАЙ (`cfTotal`) — эс бөгөөс хоёр муруй нэг
+   *    тэнхлэгт зэрэгцэн зурагдахад «төлөвлөгөө ↔ бодит олголт» гэсэн
+   *    харьцуулалт утгагүй болно.
+   * ⚠️ `null` = ХЭМЖИГДЭЭГҮЙ (0 БИШ): IPC-ийн сарын тэнхлэг
+   *    (`cfMonthAxis`) нь Cashflow төлөвлөгөөний саруудаас БОГИНО тул
+   *    түүний гадна үлдсэн сард 0 зурвал «тэр саруудад олголт огт байгаагүй»
+   *    гэсэн ХУДАЛ мэдээлэл өгнө. Муруй тэнд ТАСАРНА.
+   */
+  ipcPct: number | null;
 };
 
 

@@ -417,6 +417,110 @@ export const latestPkgProgress = (rows: PkgProgressRow[]): PkgProgressRow[] => {
   return [...last.values()].sort((a, b) => a.key.localeCompare(b.key, 'mn', { numeric: true }));
 };
 
+/**
+ * БӨГЛӨХ ХУУДСААР ХЭМЖСЭН БАГЦЫН ГҮЙЦЭТГЭЛ — `bagtsKey` → % (0–100).
+ *
+ * ⚠️ ЭНЭ НЬ `loadPkgProgress`-ЭЭС ӨӨР ЭХ СУРВАЛЖ (2026-09-10, хэрэглэгчийн
+ * заавар: «05.багцын гүйцэтгэл page дээр бөглөгдсөн гүйцэтгэлийн хувиар»).
+ *   · `loadPkgProgress` → `BAGTS_NEGTGEL` хүснэгт = БАТЛАГДСАН илгээлтийн
+ *     архив. Хяналтын 4 шат дамжсаны дараа л шинэчлэгддэг тул хоцордог.
+ *   · ЭНЭ функц → «Гүйцэтгэл бөглөх» хуудсуудын АМЬД бөглөлт. «05. Багцын
+ *     гүйцэтгэл» хуудас яг үүнийг харуулдаг.
+ * Амьдаар хэмжихэд хоёр эх зөрдөг (2026-09-10): Багц 1 — 26.92 ↔ 26.14,
+ * Багц 2 — 21.35 ↔ 27.60. Тиймээс аль эхийг сонгох нь ЧУХАЛ шийдвэр.
+ *
+ * ⚠️ `PkgProg`-ийн `Pack.progress`-ТАЙ ЯГ ИЖИЛ ТОМЬЁО байх ЁСТОЙ: блокуудын
+ * ЭНГИЙН дундаж (`Bagts.tsx:128` `meanOf`), айлын тоо ч, обьём ч жин болохгүй.
+ * Хэрэв тэнд өөрчлөгдвөл энд ч өөрчлөгдөх ёстой — эс бөгөөс нэг үзүүлэлт
+ * хоёр самбарт хоёр өөр тоо харуулна (`gdash.chartTypeCost`-ийн ⚠️).
+ *
+ * ⚠️ ХЭМЖИГДЭЭГҮЙ блокийг ДУНДАЖИД ОРУУЛАХГҮЙ (`null ≠ 0`): «Б.» мөр нь
+ * бөглөгдөөгүй блок `BlockProgressMap`-д ОГТ ОРДОГГҮЙ (`blockProgress.ts:100`).
+ * Нэг ч блок хэмжигдээгүй багц Map-д ОРОХГҮЙ — «0%» БИШ, «мэдээлэлгүй».
+ *
+ * ⚠️ БАГЦ 3.1 ЭНД аль хэдийн Cashflow-гийн утгатай (16.4) ирнэ —
+ *    `loadBlockProgress` эх сурвалжийн түвшинд солидог (`cashflowOverride`).
+ *    Энд дахин солих ХЭРЭГГҮЙ.
+ */
+export const loadFillPkgProgress = cached<Map<string, number>>(async () => {
+  const [{ loadBlockProgress }, { BUILDING, bagtsKey, buildingKey }] = await Promise.all([
+    import('@/lib/blockProgress'),
+    import('@/lib/services'),
+  ]);
+  const [prog, bld] = await Promise.all([
+    loadBlockProgress(),
+    queryFeatures(BUILDING.url, {
+      outFields: [BUILDING.fields.bagts, BUILDING.fields.block],
+      limit: 500,
+    }),
+  ]);
+  const F = BUILDING.fields;
+  /** багц → хэмжигдсэн блокуудын хувь */
+  const acc = new Map<string, number[]>();
+  for (const b of bld) {
+    const bagts = String(b[F.bagts] ?? '').trim();
+    const block = String(b[F.block] ?? '').trim();
+    if (!bagts) continue;
+    const cell = prog.get(buildingKey(bagts, block));
+    if (!cell) continue;                       // хэмжигдээгүй блок — алгасана
+    const key = bagtsKey(bagts);
+    if (!key) continue;
+    (acc.get(key) ?? acc.set(key, []).get(key) as number[]).push(cell.overall);
+  }
+  const out = new Map<string, number>();
+  for (const [k, v] of acc) if (v.length) out.set(k, v.reduce((a, x) => a + x, 0) / v.length);
+  return out;
+}, undefined, ['BAGTS_SHEET', 'BUILDING']);
+
+/**
+ * БАГЦ 3.1-ИЙН ГҮЙЦЭТГЭЛ — САНХҮҮЖИЛТИЙН БҮРТГЭЛЭЭС (2026-09-10,
+ * хэрэглэгчийн заавар: «Багц 3.1-ийн эх сурвалжийг 11.Санхүүжилт cashflow
+ * хэсгийн багц 3.1 гүйцэтгэлийн хувиар оруул»).
+ *
+ * ⚠️ ЯАГААД ЗӨВХӨН 3.1: тэр багцын бөглөх хуудас бараг хоосон (амьдаар
+ * 0.05% — 11 блок хэмжигдсэн ч утга нь тэг орчим), гэтэл гэрээний бүртгэлд
+ * 16.4% гэж бүртгэгдсэн. Бусад 6 багцад бөглөлт бодитой явж байгаа тул
+ * тэдгээрийг ХӨНДӨХГҮЙ — эс бөгөөс амьд хэмжилтийг гэрээний тоогоор дарна.
+ *
+ * ⚠️ ЭНЭ БОЛ ТҮР ЗУУРЫН НӨХӨӨС. Багц 3.1-ийн бөглөлт бодитоор явж эхэлмэгц
+ * энэ функцийг ХАСАХ ёстой — эс бөгөөс амьд хэмжилт гэрээний тооны ард
+ * нуугдана. Тиймээс багцын түлхүүр нь ЭНД ил бичигдсэн, тохиргоо БИШ:
+ * хасахад нэг л газар өөрчлөгдөнө.
+ *
+ * ⚠️ `guitsetgel_huvi` нь 0–100 (Double). `null` бол Map ХООСОН — «мэдээлэлгүй».
+ */
+export const FILL_FROM_CASHFLOW = 'БАГЦ31';
+
+export const loadCashflowPkgPct = cached<Map<string, number>>(async () => {
+  const { CASHFLOW_NEW, CF_WORK_WHERE, bagtsKey } = await import('@/lib/services');
+  const F = CASHFLOW_NEW.fields;
+  const rows = await queryFeatures(CASHFLOW_NEW.url, {
+    /* ⚠️ `CF_WORK_WHERE` ЗААВАЛ — сарын задаргааны 681 мөр нь ижил хүснэгтэд
+       доош нэмэгдсэн тул шүүлтгүй бол нэг багц олон удаа тоологдоно. */
+    where: CF_WORK_WHERE,
+    outFields: [F.pkg2, F.pkg, CASHFLOW_NEW.stages.build],
+    limit: 2000,
+  });
+  /* Багц бүрд гэрээ олон байж болно — жин нь энэ функцэд ХЭРЭГГҮЙ (3.1 нь
+     ганц гэрээтэй), гэвч ирээдүйд олон болвол дундаж нь эвдрэхгүй байхаар
+     хуримтлуулна. */
+  const acc = new Map<string, number[]>();
+  for (const r of rows) {
+    const raw = String(r[F.pkg2] ?? r[F.pkg] ?? '').trim();
+    if (!raw) continue;
+    const key = bagtsKey(raw);
+    if (!key) continue;
+    const v = r[CASHFLOW_NEW.stages.build];
+    if (v == null || v === '') continue;
+    const n = Number(v);
+    if (!Number.isFinite(n)) continue;
+    (acc.get(key) ?? acc.set(key, []).get(key) as number[]).push(n);
+  }
+  const out = new Map<string, number>();
+  for (const [k, v] of acc) if (v.length) out.set(k, v.reduce((a, x) => a + x, 0) / v.length);
+  return out;
+}, undefined, ['CASHFLOW_NEW']);
+
 /* ══════════════ Өрх · блок (building_GOL) ══════════════ */
 
 export type HousingTotals = { blocks: number; ail: number };
