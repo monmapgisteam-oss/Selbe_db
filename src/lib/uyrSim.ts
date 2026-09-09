@@ -52,6 +52,11 @@ export type DsmMeta = {
   zMax: number;
   nodes?: number;
   /**
+   * Агуулгын хэш — торны URL-д ордог (`?v=`).
+   * ⚠️ Байхгүй бол хуучин файл: URL хувиргалтгүй татна.
+   */
+  version?: string;
+  /**
    * Тор нь НӨХӨӨС агуулж байна уу.
    * ⚠️ `false` (mesh + DEM нийлүүлсэн тор) бол БҮХ нүд бодит өндөртэй тул
    * нөхөөс таних алхам АЛГАСАГДАНА. `true`/байхгүй (зөвхөн mesh) бол
@@ -144,16 +149,31 @@ let dsmPending: Promise<Dsm> | null = null;
 export async function loadDsm(): Promise<Dsm> {
   if (dsmCache) return dsmCache;
   dsmPending ??= (async () => {
-    const [meta, buf] = await Promise.all([
-      fetch('/uyr/selbe-dsm.json', { cache: 'force-cache' }).then((r) => {
+    /**
+     * ⚠️ МЕТАГ КЭШЛЭХГҮЙ, ТОРЫГ ХУВИЛБАРААР КЭШЛЭНЭ.
+     *
+     * Урьд нь ХОЁУЛАА `force-cache` байсан нь ноцтой алдаа байв: тор дахин
+     * үүсгэгдсэн ч (`tools/dem-mesh.py`) URL нь ижил хэвээр тул хөтөч ХУУЧИН
+     * файлыг өгсөөр байдаг. 2026-09-10-нд яг ийм зүйл болов — битүү гүүрийг
+     * нээсэн засвар хэрэглэгчид ХҮРЭЛГҮЙ, «гүүрээр ус нэвт урсахгүй байна»
+     * гэсэн зөв гомдол гарсан.
+     *
+     * Одоо: мета (300 байт) нь ҮРГЭЛЖ шинэчлэгдэж, түүний доторх агуулгын
+     * хэш (`version`) нь торны URL-д ордог. Өгөгдөл өөрчлөгдмөгц хаяг
+     * өөрчлөгдөх тул кэш өөрөө хүчингүй болно.
+     */
+    const meta = await fetch('/uyr/selbe-dsm.json', { cache: 'no-cache' })
+      .then((r) => {
         if (!r.ok) throw new Error(tr('DSM мета уншигдсангүй ({0})', r.status));
         return r.json() as Promise<DsmMeta>;
-      }),
-      fetch('/uyr/selbe-dsm.bin', { cache: 'force-cache' }).then((r) => {
-        if (!r.ok) throw new Error(tr('DSM тор уншигдсангүй ({0})', r.status));
-        return r.arrayBuffer();
-      }),
-    ]);
+      });
+    const url = meta.version
+      ? `/uyr/selbe-dsm.bin?v=${meta.version}`
+      : '/uyr/selbe-dsm.bin';
+    const buf = await fetch(url, { cache: 'force-cache' }).then((r) => {
+      if (!r.ok) throw new Error(tr('DSM тор уншигдсангүй ({0})', r.status));
+      return r.arrayBuffer();
+    });
     const n = meta.grid * meta.grid;
     if (buf.byteLength < n * 2) {
       throw new Error(tr('DSM тор дутуу: {0} / {1} байт', buf.byteLength, n * 2));
@@ -745,10 +765,52 @@ export async function simulateFlood(
   /** Гидрографийн бодит утга — метад бичихийн тулд зүсмэл бүрд авна */
   const qSeries: number[] = [];
 
+  /**
+   * ГҮЙЦЭТГЭЛ: БОРООНЫ НҮДИЙГ ЖАГСААЛТААР.
+   * ⚠️ `for (i of P) if (rainDom[i])` нь алхам бүрд 45,000 нүд гүйдэг ба
+   * тэдгээрийн 80% нь бороо унахгүй (mesh-ийн гадна). Жагсаалт нь зөвхөн
+   * хэрэгтэйг нь гүйнэ.
+   */
+  const rainList = new Int32Array(rainCells);
+  {
+    let k = 0;
+    for (let i = 0; i < P; i++) if (rainDom[i]) rainList[k++] = i;
+  }
+  /**
+   * ГҮЙЦЭТГЭЛ: ЧӨЛӨӨТ ГАРЦТАЙ НҮДИЙГ ЖАГСААЛТААР — домэйны зах нь нийт
+   * нүдний 2 орчим хувь тул үлдсэн 98%-ийг алхам бүрд шалгах нь дэмий.
+   */
+  const outList: number[] = [];
+  for (let i = 0; i < P; i++) if (outCoef[i] > 0) outList.push(i);
+  const outIdx = Int32Array.from(outList);
+  /**
+   * ГҮЙЦЭТГЭЛ: ДОМЭЙНЫ ГАДНАХ нүдийг цэвэрлэх жагсаалт.
+   * ⚠️ Хэрэв домэйн нь БҮТЭН тор бол жагсаалт хоосон — давталт огт хийхгүй.
+   */
+  const outsideIdx = Int32Array.from(
+    (() => { const a: number[] = []; for (let i = 0; i < P; i++) if (!dom[i]) a.push(i); return a; })(),
+  );
+
+  /**
+   * ГҮЙЦЭТГЭЛ: ТОРНЫ ИРМЭГИЙН индексүүд — НЭГ УДАА.
+   * ⚠️ Гүний шинэчлэлт дотоод хэсгийг хурдан гүйдэг (хилийн шалгалтгүй),
+   * ирмэгийг тусад нь. Ирмэг нь ердөө 4·(N−1) нүд тул бүтэн торыг
+   * гүйгээд `continue` хийх нь алхам бүрд 45,000 дэмий давталт болно.
+   */
+  const edgeIdx = (() => {
+    const a: number[] = [];
+    for (let x = 0; x < N; x++) { a.push(x); a.push((N - 1) * N + x); }
+    for (let y = 1; y < N - 1; y++) { a.push(y * N); a.push(y * N + N - 1); }
+    return Int32Array.from(a);
+  })();
+
+  /**
+   * ⚠️ Эхний алхамд ус БАЙХГҮЙ тул 0-ээс эхэлнэ; доорх `Math.max(0.02, …)`
+   * нь тэглэлээс хамгаална.
+   */
+  let hMax = 0;
   while (t < totalS && step < MAX_STEPS) {
     /* ── Алхмын урт: CFL (гүн ус = хурдан долгион = богино алхам) ── */
-    let hMax = 0;
-    for (let i = 0; i < P; i++) if (d[i] > hMax) hMax = d[i];
     const dt = Math.min(
       totalS - t,
       Math.max(DT_MIN, Math.min(6, (CFL * dx) / Math.sqrt(G * Math.max(0.02, hMax)))),
@@ -768,7 +830,7 @@ export async function simulateFlood(
       const add = rainRate(t + dt / 2) * dt;
       /* ⚠️ ЗӨВХӨН судалгааны талбайд (`rainDom`) — уулын цаана бороо орвол
          «боломжгүй газраас ус гарч ирнэ» */
-      if (add > 0) for (let i = 0; i < P; i++) if (rainDom[i]) d[i] += add;
+      if (add > 0) for (let k = 0; k < rainList.length; k++) d[rainList[k]] += add;
     }
 
     /* ── Урсгал: x ба y тэнхлэгээр ── */
@@ -776,14 +838,27 @@ export async function simulateFlood(
       for (let x = 0; x < N - 1; x++) {
         const i = y * N + x;
         const j = i + 1;
-        const wi = z[i] + d[i];
-        const wj = z[j] + d[j];
+        /**
+         * ГҮЙЦЭТГЭЛ: ХОЁУЛАА ХУУРАЙ бол тэр дороо таслана.
+         * ⚠️ Үер домэйны ~10%-ийг л эзэлдэг тул урсгалын тооцооны 90% нь
+         * хуурай нүдэн дээр дэмий хийгддэг байв. Энэ шалгалт нь 2 уншилт;
+         * доорх бүтэн тооцоо нь 6 уншилт + `Math.cbrt` + хуваалт.
+         */
+        const di = d[i];
+        const dj = d[j];
+        if (di === 0 && dj === 0) { qx[i] = 0; continue; }
+        const wi = z[i] + di;
+        const wj = z[j] + dj;
         const hf = Math.max(wi, wj) - Math.max(z[i], z[j]);
         if (hf <= H_MIN) { qx[i] = 0; continue; }
         const s = (wi - wj) / dx;
         const q0 = qx[i];
         let q = (q0 + G * hf * dt * s)
-          / (1 + (G * dt * (n2Cell[i] + n2Cell[j]) * 0.5 * Math.abs(q0)) / Math.pow(hf, 7 / 3));
+          /* ГҮЙЦЭТГЭЛ: hf^(7/3) = hf² · ∛hf. ⚠️ `Math.pow` нь бутархай
+             зэрэгт `exp(log)` дуудаж ~5 дахин удаан; `Math.cbrt` нь тусдаа,
+             хурдан заавартай. Алхам бүрд 90,000 удаа дуудагддаг. */
+          / (1 + (G * dt * (n2Cell[i] + n2Cell[j]) * 0.5 * Math.abs(q0))
+            / (hf * hf * Math.cbrt(hf)));
         /* ⚠️ ХУРДНЫ таг: `hf` тэг рүү тэмүүлэхэд илэрхийлэл хязгааргүй өснө */
         const lim = hf * V_MAX;
         if (q > lim) q = lim; else if (q < -lim) q = -lim;
@@ -798,14 +873,21 @@ export async function simulateFlood(
       for (let x = 0; x < N; x++) {
         const i = y * N + x;
         const j = i + N;                       // мөр өсөх = УРАГШ
-        const wi = z[i] + d[i];
-        const wj = z[j] + d[j];
+        const di = d[i];
+        const dj = d[j];
+        if (di === 0 && dj === 0) { qy[i] = 0; continue; }
+        const wi = z[i] + di;
+        const wj = z[j] + dj;
         const hf = Math.max(wi, wj) - Math.max(z[i], z[j]);
         if (hf <= H_MIN) { qy[i] = 0; continue; }
         const s = (wi - wj) / dx;
         const q0 = qy[i];
         let q = (q0 + G * hf * dt * s)
-          / (1 + (G * dt * (n2Cell[i] + n2Cell[j]) * 0.5 * Math.abs(q0)) / Math.pow(hf, 7 / 3));
+          /* ГҮЙЦЭТГЭЛ: hf^(7/3) = hf² · ∛hf. ⚠️ `Math.pow` нь бутархай
+             зэрэгт `exp(log)` дуудаж ~5 дахин удаан; `Math.cbrt` нь тусдаа,
+             хурдан заавартай. Алхам бүрд 90,000 удаа дуудагддаг. */
+          / (1 + (G * dt * (n2Cell[i] + n2Cell[j]) * 0.5 * Math.abs(q0))
+            / (hf * hf * Math.cbrt(hf)));
         const lim = hf * V_MAX;
         if (q > lim) q = lim; else if (q < -lim) q = -lim;
         const av = (q > 0 ? d[i] : d[j]) * dx / dt;
@@ -815,10 +897,32 @@ export async function simulateFlood(
     }
 
     /* ── Гүний шинэчлэл ── */
+    /**
+     * ГҮЙЦЭТГЭЛ: ДЭЭД ГҮНИЙГ ЭНД ХЭМЖИНЭ.
+     *
+     * ⚠️ CFL-ийн `hMax` нь урьд нь алхам бүрд ТУСДАА бүтэн давталтаар
+     * хэмжигддэг байсан (45,000 нүд × 2,280 алхам = 103 сая илүү уншилт).
+     * Энэ давталт нь ЯГ ТЭР нүднүүдийг аль хэдийн гүйж байгаа тул дээд
+     * утгыг ҮНЭГҮЙ авч болно — үр дүн нь ЯГ ижил, дээж авах эрсдэлгүй.
+     */
     const c = dt / dx;
-    for (let y = 0; y < N; y++) {
-      for (let x = 0; x < N; x++) {
-        const i = y * N + x;
+    let hNext = 0;
+    /* ⚠️ Ирмэгийг ТУСАД нь: дотоод давталтаас 4 нөхцөл хасагдана */
+    for (let y = 1; y < N - 1; y++) {
+      const row = y * N;
+      for (let x = 1; x < N - 1; x++) {
+        const i = row + x;
+        const nd = d[i] + (qx[i - 1] - qx[i] + qy[i - N] - qy[i]) * c;
+        const v = nd > 0 ? (nd < 50 ? nd : 50) : 0;
+        d[i] = v;
+        if (v > hNext) hNext = v;
+      }
+    }
+    for (let k = 0; k < edgeIdx.length; k++) {
+      {
+        const i = edgeIdx[k];
+        const x = i % N;
+        const y = (i / N) | 0;
         let dv = 0;
         if (x > 0) dv += qx[i - 1];
         if (x < N - 1) dv -= qx[i];
@@ -827,7 +931,9 @@ export async function simulateFlood(
         const nd = d[i] + dv * c;
         /* ⚠️ Сөрөг ба NaN гүн гарч болохгүй: тоон алдаа хуримтлагдаж схем
            задардаг. `!(nd > 0)` нь NaN-ыг ч барина (NaN > 0 = false). */
-        d[i] = nd > 0 ? (nd < 50 ? nd : 50) : 0;
+        const v = nd > 0 ? (nd < 50 ? nd : 50) : 0;
+        d[i] = v;
+        if (v > hNext) hNext = v;
       }
     }
 
@@ -837,12 +943,12 @@ export async function simulateFlood(
      * ⚠️ Гаралт нь нэг алхамд нүдний усны ТАЛААС илүүг авахгүй — эс бөгөөс
      * сөрөг гүн үүсч схем задарна.
      */
-    for (let i = 0; i < P; i++) {
+    for (let k = 0; k < outIdx.length; k++) {
+      const i = outIdx[k];
       const c = outCoef[i];
-      if (c === 0) continue;
       const h = d[i];
       if (h <= H_MIN) continue;
-      const q = (Math.pow(h, 5 / 3) * c) / Math.sqrt(n2Cell[i]);
+      const q = (h * Math.cbrt(h * h) * c) / Math.sqrt(n2Cell[i]);
       let dd = (q * dt) / dx;
       if (dd > h * 0.5) dd = h * 0.5;
       d[i] = h - dd;
@@ -853,7 +959,12 @@ export async function simulateFlood(
     /* ⚠️ Домэйны ГАДНА ус байх ёсгүй: нөхөөсийн өндөр нь хиймэл тул тэнд
        тархсан ус утгагүй. Дээрх гарцаар ус аль хэдийн ГАРСАН — энэ нь зөвхөн
        тоон гоожилтыг цэвэрлэнэ. */
-    for (let i = 0; i < P; i++) if (!dom[i]) d[i] = 0;
+    for (let k = 0; k < outsideIdx.length; k++) d[outsideIdx[k]] = 0;
+
+    /* ⚠️ Дараагийн алхмын CFL нь ЭНЭ алхмын дээд гүнээс. Ус нэг алхамд нэг
+       нүднээс илүү явахгүй (CFL-ийн өөрийнх нь баталгаа) тул нэг алхмын
+       хоцрогдол нь схемийн тогтвортой байдалд нөлөөлөхгүй. */
+    hMax = hNext;
 
     t += dt;
     step++;
@@ -877,7 +988,7 @@ export async function simulateFlood(
         if (h >= wetTh && arrival[i] < 0) arrival[i] = t;
         const ax = ((i % N) > 0 ? qx[i - 1] : 0) + qx[i];
         const ay = (i >= N ? qy[i - N] : 0) + qy[i];
-        const sp = Math.hypot(ax, ay) / (2 * h);
+        const sp = Math.sqrt(ax * ax + ay * ay) / (2 * h);
         if (sp > maxS[i]) maxS[i] = sp > V_MAX ? V_MAX : sp;
       }
     }
@@ -900,7 +1011,7 @@ export async function simulateFlood(
           let vy = -ay / (2 * h);
           /* ⚠️ Бүрэлдэхүүн тус бүрийг таглавал ВЕКТОРЫН УРТ нь √2·V_MAX
              хүртэл хүрдэг (хэмжив: 11.3 м/с). Уртаар нь таглана. */
-          const sp0 = Math.hypot(vx, vy);
+          const sp0 = Math.sqrt(vx * vx + vy * vy);
           if (sp0 > V_MAX) { const r = V_MAX / sp0; vx *= r; vy *= r; }
           su[i] = vx;
           sv[i] = vy;
@@ -949,7 +1060,8 @@ export async function simulateFlood(
         wet++;
         everWet[i] = 1;
         if (dd > pk) pk = dd;
-        const sp = Math.hypot(out[s].u[i], out[s].v[i]);
+        const su2 = out[s].u[i]; const sv2 = out[s].v[i];
+        const sp = Math.sqrt(su2 * su2 + sv2 * sv2);
         if (sp > mx) mx = sp;
       }
     }

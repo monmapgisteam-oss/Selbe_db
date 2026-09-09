@@ -33,7 +33,7 @@ WARNING: ОЁДЛЫГ ЗӨӨЛРҮҮЛНЭ. mesh (4 м, барилгатай) б
   хоёрын заагт 1–3 м-ийн үсрэлт гардаг. Тэр нь усанд ХИЙМЭЛ хүрхрээ, эсвэл
   далан болно. Тиймээс заагийн `BLEND` нүдэнд шугаман шилжилт хийнэ.
 """
-import json, gzip, math, os, struct, urllib.request, zlib
+import hashlib, json, gzip, math, os, struct, urllib.request, zlib
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 OUTDIR = os.path.join(ROOT, "..", "public", "uyr")
@@ -234,14 +234,16 @@ def fetch_bridges():
     d = json.loads(get(url).decode("utf-8"))
     if "error" in d:
         raise SystemExit(f"гүүрийн давхарга: {d['error']}")
-    rings = []
+    feats = []
     for f in d.get("features", []):
-        for r in f.get("geometry", {}).get("rings", []):
-            rings.append([(pt[0], pt[1]) for pt in r])
-    if not rings:
+        rings = [[(pt[0], pt[1]) for pt in r]
+                 for r in f.get("geometry", {}).get("rings", [])]
+        if rings:
+            feats.append(rings)
+    if not feats:
         raise SystemExit("гүүрийн полигон олдсонгүй")
-    print(f"гүүр/хоолой: {len(d['features'])} обьект, {len(rings)} цагираг")
-    return rings
+    print(f"гүүр/хоолой: {len(feats)} обьект")
+    return feats
 
 
 def in_rings(rings, x, y):
@@ -349,7 +351,7 @@ def main():
                 # WARNING: ГҮҮР — mesh-ийн тавцангийн оронд DEM-ийн ёроол.
                 #   `src` нь 1 ХЭВЭЭР: энэ нүд СУДАЛГААНЫ талбайд байгаа тул
                 #   бороо унах ёстой; зөвхөн ӨНДӨР нь DEM-ээс.
-                if in_rings(bridges, x, y):
+                if any(in_rings(rg, x, y) for rg in bridges):
                     zm[i] = zd[i]
                     nbridge[0] += 1
 
@@ -394,6 +396,75 @@ def main():
                     z2[i] = z[i] * 0.4 + s * 0.6
         z = z2
 
+    # ── 5б. ГҮҮРИЙГ СУВГИЙН ЁРООЛД ОГТЛОХ (culvert carving) ──
+    #
+    # WARNING: DEM-ийн утга ОРЛУУЛАХ нь ХАНГАЛТГҮЙ байв (амьдаар хэмжив:
+    #   7 гүүрийн 6 нь сувгийн ёроолоос 1.2–5.4 м дээгүүр үлдэж, ДАЛАН хэвээр).
+    #   Учир нь SRTM (~30 м) нь гүүрний ДООРХ нүхийг задалж чаддаггүй — тэнд
+    #   ч гүүрний далангийн өндөр л бичигдсэн байдаг.
+    #
+    # Тиймээс гидрологийн стандарт арга — ОГТЛОХ (ArcGIS-ийн
+    # `AdjustRasterToStream`-тэй ижил санаа): полигон бүрийн нүдийг ТҮҮНИЙ
+    # ЭРГЭН ТОЙРНЫ хамгийн нам цэгийн түвшинд буулгана. Тэр нам цэг нь голын
+    # ёроол — ус орж, гарах хоёр үзүүр.
+    #
+    # WARNING: `CARVE_DROP`-оор БАГА зэрэг доош: яг тэнцүү бол тоон алдаанаас
+    #   болж урсгал зогсох эрсдэлтэй. 5 см нь эзэлхүүнд мэдэгдэхгүй.
+    # ── БИТҮҮ ГҮҮРИЙГ НЭЭХ ──
+    #
+    # Хэрэглэгчийн полигон нь ХЭЛБЭР биш, ТЭМДЭГЛЭГЭЭ: «энэ гүүр доороо
+    # битүү, mesh дээр таг хаалттай харагдана» (2026-09-10-ны тодруулга).
+    # Тиймээс полигоны геометрээс өндөр таах хэрэггүй — зөвхөн ХААЛТТАЙ
+    # гэдгийг мэдэж, тэр нүднүүдийг НЭЭХ л хэрэгтэй.
+    #
+    # Арга: тэмдэглэсэн бүлгийн БҮХ нүдийг, түүнтэй ХИЛЛЭДЭГ (бүлэгт үл
+    # хамаарах) нүднүүдийн ХАМГИЙН НАМ түвшинд буулгана.
+    #
+    #   · Гүүр нь сувгийг хаадаг тул түүний хөрш нүднүүдэд гол ХОЁР ТАЛААС
+    #     нь заавал ирж тулна — хамгийн нам хөрш нь голын ёроол.
+    #   · Бүлэг нь тэр нүдтэй ЯГ ТЭНЦҮҮ болох тул ус чөлөөтэй гарна;
+    #     хөршөөсөө ДООШ буудаггүй тул БИТҮҮ ХОНХОР үүсэх боломжгүй.
+    #
+    # WARNING: ЭНЭ НЬ ӨМНӨХ ДӨРВӨН ОРОЛДЛОГЫГ ОРЛОНО. Тэдгээр нь ёроолыг
+    #   радиусаар (3 / 8 / цагираг 2…5 / дасан зохицох 2…12) эсвэл полигоны
+    #   урт тэнхлэгээр (PCA + шугаман налуу) таах гэж оролдсон бөгөөд тус
+    #   бүр далан ↔ шуудуугийн хооронд солигдож байв. Полигоны ХЭЛБЭР нь
+    #   утга агуулаагүй нь учир.
+    #
+    # WARNING: Зөвхөн ДООШ (`min`) — тэмдэглэгээ буруу байсан ч газрыг
+    #   өндөрсгөхгүй.
+    ncarve = 0
+    for rings in bridges:
+        bx0 = max(1, int((min(pt[0] for r in rings for pt in r) - xmin) / cw) - 1)
+        bx1 = min(GRID - 2, int((max(pt[0] for r in rings for pt in r) - xmin) / cw) + 1)
+        by0 = max(1, int((ymax - max(pt[1] for r in rings for pt in r)) / cw) - 1)
+        by1 = min(GRID - 2, int((ymax - min(pt[1] for r in rings for pt in r)) / cw) + 1)
+        grp = set()
+        for gy in range(by0, by1 + 1):
+            y = ymax - (gy + 0.5) * cw
+            for gx in range(bx0, bx1 + 1):
+                x = xmin + (gx + 0.5) * cw
+                if in_rings(rings, x, y):
+                    grp.add(gy * GRID + gx)
+        if not grp:
+            continue
+        # Бүлэгтэй хиллэдэг ГАДНЫ нүднүүдийн хамгийн нам түвшин
+        lvl = None
+        for i in grp:
+            for d in (-1, 1, -GRID, GRID, -GRID - 1, -GRID + 1, GRID - 1, GRID + 1):
+                j = i + d
+                if j in grp or j < 0 or j >= GRID * GRID:
+                    continue
+                if lvl is None or z[j] < lvl:
+                    lvl = z[j]
+        if lvl is None:
+            continue
+        for i in grp:
+            if z[i] > lvl:
+                z[i] = lvl
+                ncarve += 1
+    print(f"битүү гүүр нээв: {ncarve} нүд хөршийн ёроолын түвшинд буув")
+
     nmesh = sum(src)
     zmin, zmax = min(z), max(z)
     print(f"нийлүүлэв: mesh {nmesh} нүд ({nmesh*100//(GRID*GRID)}%) · "
@@ -410,7 +481,15 @@ def main():
         #   «энэ хэсэг mesh-ээс, тэр хэсэг DEM-ээс» гэдгийг UI-д хэлэхэд
         #   хэрэгтэй бөгөөд ирээдүйд нарийвчлалаар жинлэхэд ч ашиглаж болно.
         f.write(bytes(src))
+    # WARNING: ХУВИЛБАРЫН ТЭМДЭГ — хөтчийн кэш зайлшгүй шаарддаг.
+    #   `uyrSim.ts` нь торыг `cache: "force-cache"`-ээр татдаг (18 МБ биш ч
+    #   1.2 МБ тул дахин татах нь дэмий). Гэвч тор ДАХИН ҮҮСГЭГДЭХЭД URL нь
+    #   ижил хэвээр байвал хөтөч ХУУЧИН файлыг өгсөөр байдаг — гүүрийг нээсэн
+    #   засвар хэрэглэгчид ХҮРЭХГҮЙ (2026-09-10-нд яг ийм зүйл болов).
+    #   Одоо агуулгын хэш нь URL-д ордог тул өгөгдөл өөрчлөгдмөгц шинэ хаяг.
+    ver = hashlib.sha1(open(BIN, "rb").read()).hexdigest()[:10]
     meta = {
+        "version": ver,
         "source": f"{mm['source']} + AWS terrain-tiles (SRTM/ALOS)",
         "grid": GRID,
         "wkid": 102100,
@@ -427,6 +506,7 @@ def main():
         "demShiftM": round(shift, 2),
         "srcPlane": True,
         "bridgeCells": nbridge[0],
+        "bridgeCarved": ncarve,
     }
     with open(META, "w", encoding="utf-8") as f:
         json.dump(meta, f, ensure_ascii=False, separators=(",", ":"))

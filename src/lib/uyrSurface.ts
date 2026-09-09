@@ -124,7 +124,15 @@ function chaikin(r: number[][]): number[][] {
  *
  * @returns торны ОРОЙН координатаар (vx, vy) илэрхийлсэн цагирагууд
  */
-function traceRings(mask: Uint8Array, W: number, H: number): number[][][] {
+function traceRings(
+  mask: Uint8Array, W: number, H: number,
+  /**
+   * ГҮЙЦЭТГЭЛ: зөвхөн ЭНЭ хайрцгийг гүйнэ.
+   * ⚠️ Зурвас бүр дунджаар торны 1–3%-ийг эзэлдэг тул бүтэн торыг гүйх нь
+   * 24 зурваст 1.1 сая дэмий уншилт болно. Хайрцаг өгөөгүй бол бүтэн тор.
+   */
+  bx0 = 0, by0 = 0, bx1 = W - 1, by1 = H - 1,
+): number[][][] {
   /** эхлэх орой → [төгсгөх орой, ...] */
   const next = new Map<number, number[]>();
   const key = (vx: number, vy: number) => vy * (W + 1) + vx;
@@ -134,8 +142,8 @@ function traceRings(mask: Uint8Array, W: number, H: number): number[][][] {
     if (arr) arr.push(key(bx, by));
     else next.set(k, [key(bx, by)]);
   };
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
+  for (let y = by0; y <= by1; y++) {
+    for (let x = bx0; x <= bx1; x++) {
       if (!mask[y * W + x]) continue;
       /* ⚠️ Чиглэл нь ДОТОР ТАЛ ЗҮҮН гар талд байхаар сонгогдсон — эс бөгөөс
          цагирагууд холбогдохгүй, эсвэл нүх нь гадна талтайгаа андуурагдана. */
@@ -227,28 +235,77 @@ export function waterSurfaceAt(fd: FloodData, pos: number, minDepth = 0.08): Wat
   const cw = (e.xmax - e.xmin) / W;
   const ch = (e.ymax - e.ymin) / H;
 
+  /**
+   * ГҮЙЦЭТГЭЛ: ЗУРВАСЫН ИНДЕКСИЙГ НЭГ ДАМЖИЛТААР.
+   *
+   * ⚠️ Урьд нь зурвас БҮРД бүтэн торыг гүйдэг байсан (24 × 45,000 = 1.1 сая
+   * уншилт) ба `mask.fill(0)` нь дээр нь 24 × 45,000 бичилт нэмдэг байв.
+   * Одоо нэг дамжилтаар нүд бүрийн зурвасын дугаарыг бодож, нийлбэрийг тэр
+   * дор нь хуримтлуулна — 45,000 уншилт. Дүрслэл секундэд 8 удаа дуудагддаг
+   * тул энэ нь шууд мэдрэгддэг.
+   */
+  const bandOf = new Int16Array(P).fill(-1);
+  const cnt = new Int32Array(nb);
+  const zs = new Float64Array(nb);
+  const ds = new Float64Array(nb);
+  const us = new Float64Array(nb);
+  const vs = new Float64Array(nb);
+  const inv = 1 / step;
+  for (let i = 0; i < P; i++) {
+    if (!wet[i]) continue;
+    let b = ((wse[i] - lo) * inv) | 0;
+    if (b < 0) b = 0;
+    else if (b >= nb) b = nb - 1;
+    bandOf[i] = b;
+    cnt[b]++;
+    zs[b] += wse[i];
+    ds[b] += dep[i];
+    us[b] += uu[i];
+    vs[b] += vv[i];
+  }
+
+  /**
+   * ГҮЙЦЭТГЭЛ: ЗУРВАС ТУС БҮРИЙН НҮДИЙГ ангилж хадгална (counting sort).
+   * ⚠️ Ингэснээр зурвасын маскийг тавих/цэвэрлэх нь O(зурвасын нүд) болно —
+   * урьд нь `mask.fill(0)` + бүтэн торын хайлт нь зурвас бүрд 90,000 үйлдэл
+   * шаарддаг байв.
+   */
+  const off = new Int32Array(nb + 1);
+  for (let b = 0; b < nb; b++) off[b + 1] = off[b] + cnt[b];
+  const order = new Int32Array(off[nb]);
+  {
+    const cur = Int32Array.from(off.subarray(0, nb));
+    for (let i = 0; i < P; i++) {
+      const b = bandOf[i];
+      if (b >= 0) order[cur[b]++] = i;
+    }
+  }
+
   const out: WaterBand[] = [];
   const mask = new Uint8Array(P);
   for (let b = 0; b < nb; b++) {
-    const z0 = lo + b * step;
-    const z1 = b === nb - 1 ? hi + 1e-6 : z0 + step;
-    mask.fill(0);
-    let n = 0;
-    let zsum = 0;
-    let dsum = 0;
-    let usum = 0;
-    let vsum = 0;
-    for (let i = 0; i < P; i++) {
-      if (!wet[i] || wse[i] < z0 || wse[i] >= z1) continue;
-      mask[i] = 1;
-      n++;
-      zsum += wse[i];
-      dsum += dep[i];
-      usum += uu[i];
-      vsum += vv[i];
-    }
+    const n = cnt[b];
     if (n < MIN_CELLS) continue;
-    const rings = traceRings(mask, W, H)
+    const zsum = zs[b];
+    const dsum = ds[b];
+    const usum = us[b];
+    const vsum = vs[b];
+    /* Маск + ХАЙРЦАГ — зөвхөн энэ зурвасын нүдээр */
+    let bx0 = W - 1;
+    let by0 = H - 1;
+    let bx1 = 0;
+    let by1 = 0;
+    for (let k = off[b]; k < off[b + 1]; k++) {
+      const i = order[k];
+      mask[i] = 1;
+      const gx = i % W;
+      const gy = (i / W) | 0;
+      if (gx < bx0) bx0 = gx;
+      if (gx > bx1) bx1 = gx;
+      if (gy < by0) by0 = gy;
+      if (gy > by1) by1 = gy;
+    }
+    const rings = traceRings(mask, W, H, bx0, by0, bx1, by1)
       .filter((r) => ringCells(r) >= MIN_RING_CELLS)
       .map((r) => {
         let pts = dedupeCollinear(r);
@@ -264,6 +321,8 @@ export function waterSurfaceAt(fd: FloodData, pos: number, minDepth = 0.08): Wat
         return m;
       })
       .filter((r) => r.length >= 4);
+    /* ⚠️ Маскийг ЭНЭ зурвасын нүдээр цэвэрлэнэ — `fill(0)` нь бүтэн тор */
+    for (let k = off[b]; k < off[b + 1]; k++) mask[order[k]] = 0;
     if (!rings.length) continue;
     /* ⚠️ ВЕКТОРЫН нийлбэрээс өнцөг — өнцгүүдийн ДУНДЖИЙГ авбал 350° ба
        10° хоёрын дундаж 180° (эсрэг тал) болно. */
