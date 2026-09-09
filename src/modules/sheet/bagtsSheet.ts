@@ -1039,6 +1039,29 @@ export function planCurve(
   rows: SheetRow[],
   nBld: number,
   asOfs: readonly number[],
+  /**
+   * САРЫН ЗАДАРГААНААС гарах төлөвлөгөөт хувь — `computeAll`-ийн ижил
+   * нэртэй параметртэй ЯГ ИЖИЛ үүрэгтэй.
+   * ⚠️ Хоёр функцийн дүрэм зөрвөл график ба хуудасны тоо чимээгүй зөрнө
+   *    (файлын толгойн ⚠️). Тиймээс энд ч дамжина.
+   */
+  planPct?: (row: SheetRow, b: number, asOf: number) => number | null | undefined,
+  /**
+   * ЖИНГИЙН ЭХ СУРВАЛЖ — `money` (анхдагч) эсвэл `obyem`.
+   *
+   * ⚠️ `obyem` (2026-09-09, хэрэглэгч: «хувийг гүйцэтгэл бөглөлтийн
+   * ТӨЛӨВЛӨСӨН ОБЬЁМООС авах ёстой»): ажил бүрийн жин нь ТОО ХЭМЖЭЭ-гээр
+   * тогтоно — эхлээд `Инженерийн_төлөвлөсөн_обьём`, тэр хоосон бол
+   * гэрээний `Обьём`.
+   *
+   * ⚠️ Мөнгөн жин (`vol × unit`) нь бүлгийн ДОТОР зөв ажилладаг ч бүлэг
+   * хооронд нэгж өртөг зөрдөг тул «м³ ба ш» хоёрыг мөнгөөр жиших нь
+   * төлөвлөгөөг үнэ өндөртэй ажил руу хазайлгадаг.
+   *
+   * ⚠️ `computeAll` (бөглөх хуудас, архив) нь МӨНГӨН жингээ ХЭВЭЭР барина —
+   * тэр нь excel-ийн эталонтой тулгагдсан. Зөвхөн ЭНЭ муруй сонголттой.
+   */
+  weigh: 'money' | 'obyem' = 'money',
 ): (number | null)[][] {
   const kids = childIndexes(rows);
   const par = parentIndexes(rows);
@@ -1054,7 +1077,15 @@ export function planCurve(
       H[i] = any ? s : rows[i].money;
     } else {
       const r = rows[i];
-      H[i] = r.vol != null && r.unit != null ? r.vol * r.unit : r.money;
+      if (weigh === 'obyem') {
+        /* ⚠️ Төлөвлөсөн обьём ЭХЛЭЭД, дараа нь гэрээнийх. Хоёулаа хоосон
+           бол `null` — мөнгө рүү УНАХГҮЙ: нэг мөрийг тоо хэмжээгээр,
+           нөгөөг мөнгөөр жигнэвэл харьцаа утгагүй болно. */
+        H[i] = r.plannedVol != null && r.plannedVol > 0 ? r.plannedVol
+          : r.vol != null && r.vol > 0 ? r.vol : null;
+      } else {
+        H[i] = r.vol != null && r.unit != null ? r.vol * r.unit : r.money;
+      }
     }
   }
   const D: (number | null)[] = new Array(N).fill(null);
@@ -1115,11 +1146,13 @@ export function planCurve(
           /* ⚠️ Бүлэгт ӨӨРИЙНХ нь огноо бичигдсэн бол дундаж БИШ, огноогоор
              интерполяци — `computeAll`-ийн ижил онцгой тохиолдол. */
           if (own[i][b] && St[i][b] != null && En[i][b] != null) {
-            p[b] = planAt(asOf, St[i][b], En[i][b]);
+            p[b] = planPct?.(rows[i], b, asOf) ?? planAt(asOf, St[i][b], En[i][b]);
           }
         }
       } else {
-        for (let b = 0; b < n; b++) p[b] = planAt(asOf, St[i][b], En[i][b]);
+        for (let b = 0; b < n; b++) {
+          p[b] = planPct?.(rows[i], b, asOf) ?? planAt(asOf, St[i][b], En[i][b]);
+        }
       }
       plan[i] = p;
       /* `AVERAGE(IF(range="",0,range))` — хоосныг 0 гэж үзэн блокийн тоонд хуваана */

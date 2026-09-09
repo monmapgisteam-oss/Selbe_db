@@ -24,7 +24,9 @@ import {
 import { CASHFLOW_NEW } from '../services.ts';
 
 const lagLevel = (gap) => (gap >= 10 ? 'red' : gap >= 5 ? 'yellow' : null);
-const pt = (label, pct) => ({ label, pct });
+/* ⚠️ `vol` — 2026-09-09-нд `PlanPoint`-д нэмэгдсэн (тухайн сард төлөвлөсөн
+   обьём). KPI нь зөвхөн ХУВИЙГ уншдаг тул энд үргэлж `null`. */
+const pt = (label, pct) => ({ label, pct, vol: null });
 const NOW_YM = '2026-09';
 
 /* `Finance.lagOf`-ийн ХУУЛБАР — кэш (муруй) байгаа/байхгүй хоёр горим */
