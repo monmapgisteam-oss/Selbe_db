@@ -894,3 +894,35 @@
   accent-color: var(--data);
   cursor: pointer;
 }
+
+/**
+ * ХУРД ба АЮУЛЫН шатлал (легенд).
+ *
+ * ⚠️ `uyr.ts`-ийн SPEED_STOPS / HAZARD_STOPS-той ЯГ ижил өнгө — зөрвөл
+ * тайлбар нь зурагтай зөрчилдөж, легенд ХУДАЛ болно.
+ */
+.rampSpeed {
+  background: linear-gradient(90deg,
+    rgb(12,60,140) 0%, rgb(20,130,210) 33%, rgb(110,200,240) 67%, rgb(240,250,255) 100%);
+}
+.rampHazard {
+  background: linear-gradient(90deg,
+    rgb(22,163,74) 0%, rgb(250,204,21) 33%, rgb(249,115,22) 67%, rgb(153,27,27) 100%);
+}
+
+/**
+ * «ЯАГААД ЭНД ҮЕРЛЭВ» — шалтгааны хайрцаг (мэдээллийн картад).
+ *
+ * ⚠️ Мөр болгож жагсаавал бусад хэмжигдэхүүнтэй адил жинтэй болно. Энэ нь
+ * хэрэглэгчийн ГОЛ асуултын хариу тул ялгарсан суурьтай, зүүн ирмэгтэй.
+ */
+.whyBox {
+  margin: 0 0 8px;
+  padding: 7px 9px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--data) 10%, transparent);
+  border-left: 2px solid var(--data);
+  border-radius: 3px;
+}

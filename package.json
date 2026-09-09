@@ -17,7 +17,7 @@
     "bot": "node --env-file-if-exists=.env.local --experimental-transform-types --import ./tools/ts-alias.mjs tools/telegram-bot.mjs",
     "test:tg": "node tools/telegram-format.check.mjs",
     "test:chart": "node --experimental-transform-types --import ./tools/ts-alias.mjs src/components/chart.check.mjs",
-    "test:ersdel": "node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/ersdel.check.mjs",
+    "test:ersdel": "node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/ersdel.check.mjs && node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/uyrSurface.check.mjs && node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/uyrTailbar.check.mjs && node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/uyrHydro.check.mjs",
     "i18n:check": "node tools/i18n-extract.mjs",
     "i18n:prune": "node tools/i18n-extract.mjs --prune",
     "iot:watch": "node --env-file-if-exists=.env.local --experimental-transform-types --import ./tools/ts-alias.mjs tools/iot-watch.mjs",
