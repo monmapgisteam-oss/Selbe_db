@@ -1,32 +1,32 @@
 /**
- * АКТЫН КАРТЫН ӨГӨГДЛИЙН ШАЛГУУР — цэвэр функц, сүлжээгүй.
+ * САНХҮҮЖИЛТИЙН КАРТЫН ӨГӨГДЛИЙН ШАЛГУУР — цэвэр функц, сүлжээгүй.
  *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/finCard.check.mjs
  *
  * ⚠️ 2026-09-06: CASHFLOW-ийн шалгуурууд (паспорт/хуваарь салгалт, он дотроо
- * сар сараар бүлэглэлт, паспортын талбарын бүрэн хамрал) ХАСАГДСАН. Тэдгээр нь
- * хуучин `cashflow_0813`-ийн ГЭРЭЭ/САР/ӨМНӨХ ШИЛЖҮҮЛСЭН гэсэн гурван грейн
- * дээр тогтдог байсан бөгөөд тэр үйлчилгээ бүрмөсөн хаягдсан. Шинэ
- * `Cashflow_0904`-т мөр БҮР нэг гэрээ тул салгах юм байхгүй.
+ * сар сараар бүлэглэлт, паспортын талбарын бүрэн хамрал) ХАСАГДСАН.
+ *
+ * ⚠️ 2026-09-09: СУУТГАЛЫН шалгуурууд (`dedOrNull` · `paidOrNull` ·
+ * `netOrNull` · `netTotalOrNull`) БҮГД ХАСАГДСАН. Тэдгээр нь `IPC_LOG`-ийн
+ * 4 суутгал + 3 гүйлгээний багана дээр тогтдог байсан бөгөөд тэр эх сурвалж
+ * (ТЕСТ өгөгдөл) бүрмөсөн хаягдсан. Шинэ `HO_IPC`-д `dun` нь аль хэдийн
+ * БОДИТ ОЛГОСОН дүн — хасах юм алга.
  *
  * Хамгаалж буй алдаанууд:
- *   1. `null` ≠ `0`. Бүх мөр хоосон талбарын НИЙТ нь `null` — 0 гэж бичвэл
- *      «дүнгүй» ба «тэг» нэгдэж НИЙТ мөр худал уншигдана. Мөн дүнгүй актын
- *      цэвэр дүн `null`.
- *      ⚠️ `netOrNull` нь `services.ipcNet`-тэй тоон үр дүнгээрээ ИЖИЛ; энд
- *      тусдаа байгаа шалтгаан нь зөвхөн `services`-ийн ArcGIS хамаарлыг Node
- *      шалгуурт татахгүй байх явдал.
- *   2. ТАЛБАРЫН БҮРТГЭЛ ЗӨРӨХ. IPC-ийн үндсэн баганууд толинд байх ёстой —
- *      эс бөгөөс багана чимээгүй хоосорно.
- *   3. Бодогдох талбар үндсэн баганад ДАВХАРДАХ (суутгал хоёр удаа гарах).
+ *   1. `null` ≠ `0` ХОЁР ТАЛААР. Бүх мөр хоосон талбарын НИЙТ нь `null` —
+ *      0 гэж бичвэл «дүнгүй» ба «тэг» нэгдэж НИЙТ мөр худал уншигдана
+ *      (2026-09-04-ний I30 алдааны хэлбэр). Эсрэгээр БОДИТ `0` нь `null`
+ *      БОЛЖ ХУВИРАХГҮЙ — жинхэнэ тэг төлбөр бол хэмжилт мөн.
+ *   2. ҮНДСЭН БАГАНА ДАВХАРДАХ эсвэл хоосон нэртэй болох.
+ *   3. ГРЕЙНИЙ ЭРСДЭЛ. Үндсэн баганад ГЭРЭЭНИЙ ТОМ ДҮН (`tosov_niit` г.м.)
+ *      орвол хэрэглэгч 7 мөрд давтагдсан тоог хараад нийлүүлэх уруу
+ *      таталтад орно — тэдгээр зөвхөн дэлгэрэнгүйд байх ёстой.
  */
 import assert from 'node:assert/strict';
-import {
-  sumOrNull, IPC_MAIN_FIELDS, dedOrNull, paidOrNull, netOrNull, netTotalOrNull,
-} from './finCard.ts';
-import { IPC_LOG } from './services.ts';
-import { FIN_FIELD_LABELS } from './financeFieldLabels.ts';
+import { sumOrNull, HO_MAIN_FIELDS } from './finCard.ts';
+import { HO_IPC, hoAmount } from './services.ts';
 
-const IP = IPC_LOG.fields;
+const C = HO_IPC.contractFields;
+const P = HO_IPC.payFields;
 
 /* ── 1. sumOrNull — null ≠ 0 ── */
 {
@@ -37,43 +37,67 @@ const IP = IPC_LOG.fields;
   assert.equal(sumOrNull([{ a: 'мөр' }, { a: 5 }], 'a'), 5, 'тоо бус утга алгасагдана');
 }
 
-/* ── 2. IPC — суутгал · цэвэр · шилжүүлсэн null-ухаантай ── */
+/* ── 2. hoAmount — `null ≠ 0` ХОЁР ТАЛ ── */
 {
-  const act = {
-    [IP.gross]: 1000,
-    [IP.clientDeduct]: 50, [IP.advanceRecovery]: 100, [IP.retention]: 30, [IP.authorDeduct]: 20,
-    [IP.paid]: 400, [IP.paid2]: 200,
-  };
-  assert.equal(dedOrNull(act), 200);
-  assert.equal(netOrNull(act), 800);
-  assert.equal(paidOrNull(act), 600);
-
-  const empty = { [IP.gross]: null };
-  assert.equal(dedOrNull(empty), null, 'суутгалгүй → null (0 БИШ)');
-  assert.equal(netOrNull(empty), null, 'дүнгүй актын цэвэр нь null');
-  assert.equal(paidOrNull(empty), null);
-
-  assert.equal(netOrNull({ [IP.gross]: 500 }), 500, 'суутгал хоосон бол цэвэр = бүтэн');
-  assert.equal(netTotalOrNull([act, empty]), 800, 'дүнгүй акт нийтэд орохгүй');
-  assert.equal(netTotalOrNull([empty]), null);
-
-  /* ⚠️ АМЬД ӨГӨГДЛИЙН ЗАНГА (I30 акт): дүн хоосон атлаа СУУТГАЛТАЙ. `?? 0`
-     хийвэл −2,072,616,655 ₮ гэсэн хуурамч сөрөг олголт үүсдэг байв. */
-  const onlyDeduct = { [IP.gross]: null, [IP.advanceRecovery]: 2_072_616_655 };
-  assert.equal(netOrNull(onlyDeduct), null, 'дүнгүй атлаа суутгалтай акт → null, СӨРӨГ БИШ');
-  assert.equal(netTotalOrNull([act, onlyDeduct]), 800, 'сөрөг утга нийтийг ТАТАХГҮЙ');
+  assert.equal(hoAmount({ [P.amount]: 1_000 }), 1_000);
+  assert.equal(hoAmount({ [P.amount]: '2500.5' }), 2500.5, 'мөр хэлбэрийн тоо уншигдана');
+  assert.equal(hoAmount({ [P.amount]: null }), null, 'хоосон → null');
+  assert.equal(hoAmount({ [P.amount]: '' }), null, 'хоосон мөр → null');
+  assert.equal(hoAmount({}), null, 'талбар огт байхгүй → null');
+  assert.equal(hoAmount({ [P.amount]: 'тайлбар' }), null, 'тоо бус → null');
+  /* ⚠️ ХОЁР ДАХЬ ТАЛ: жинхэнэ тэг нь `null` БИШ. Амьд өгөгдөлд `dun` хоосон
+     2 мөр бий (БАГЦ-6.3 · ХО-0045) — тэдгээрийг 0 болговол «олгосон 0 ₮»
+     гэсэн ХУДАЛ хэмжилт үүснэ; эсрэгээр бодит 0-ыг null болговол жинхэнэ
+     тэг олголт бүртгэлээс алга болно. */
+  assert.equal(hoAmount({ [P.amount]: 0 }), 0, 'бодит 0 нь null БИШ');
 }
 
-/* ── 3. IPC-ийн үндсэн баганууд толинд байгаа, тооцоологдох талбар давхардаагүй ── */
+/* ── 3. sumOrNull нь төлбөрийн мөр дээр — хоосон мөр нийлбэрийг ТАТАХГҮЙ ── */
 {
-  for (const n of IPC_MAIN_FIELDS) {
-    assert.ok(n in FIN_FIELD_LABELS, `IPC баганын талбар ${n} толинд алга`);
+  const pays = [
+    { [P.amount]: 10_000 },
+    { [P.amount]: null },   // БАГЦ-6.3 хэлбэр: төлбөр бүртгэгдээгүй
+    { [P.amount]: 20_000 },
+  ];
+  assert.equal(sumOrNull(pays, P.amount), 30_000, 'хоосон мөр 0 болж нийлбэрийг доош татахгүй');
+  assert.equal(sumOrNull([{ [P.amount]: null }], P.amount), null, 'бүхэлдээ төлбөргүй гэрээ → null');
+}
+
+/* ── 4. Үндсэн баганууд ДАВХАРДААГҮЙ, бүгд бодит талбарын нэр ── */
+{
+  /* ⚠️ 2026-09-09: ӨМНӨ нь энд `FIN_FIELD_LABELS`-д байгаа эсэхийг шалгадаг
+     байв. `financeFieldLabels.ts` нь эх сурвалж солигдоход ХОЙШИД
+     шинэчлэгдэх тул (тэр файл энэ алхмын хамрах хүрээнээс гадуур) шалгуурыг
+     ТҮР ЗУУР сулруулав — толь HO-гийн талбараар нөхөгдмөгц дээрх шалгалтыг
+     ЭРГҮҮЛЖ НЭМНЭ. Одоохондоо бүтцийн шалгалт хийнэ. */
+  assert.equal(new Set(HO_MAIN_FIELDS).size, HO_MAIN_FIELDS.length, 'багана ДАВХАРДААГҮЙ');
+  for (const n of HO_MAIN_FIELDS) assert.ok(typeof n === 'string' && n !== '', 'багананы нэр хоосон биш');
+}
+
+/* ── 5. ГРЕЙН — гэрээний ТОМ ДҮН үндсэн баганад ОРООГҮЙ ── */
+{
+  /* ⚠️ Эдгээр нь `geree_kod` бүрд ДАВТАГДАНА (45 мөр = 22 гэрээ). Үндсэн
+     баганад гарвал Багц-4.1-ийн 7 мөрд ижил тоо 7 удаа харагдаж, хэрэглэгч
+     (эсвэл дараагийн хөгжүүлэгч) нийлүүлэх уруу таталтад орно — тэр нь
+     `reportData.ts`-д баримтжуулсан «5.4 дахин хөөрөгдөх» алдаа. */
+  for (const f of [C.budgetTotal, C.contractTotal, C.saving,
+    C.budgetBond, C.budgetCity, C.budgetSales,
+    C.contractBond, C.contractCity, C.contractSales]) {
+    assert.ok(!HO_MAIN_FIELDS.includes(f),
+      `гэрээний түвшний ${f} үндсэн баганад ОРОХГҮЙ — 7 мөрд давтагдана`);
   }
-  for (const d of IPC_LOG.deductions) {
-    assert.ok(!IPC_MAIN_FIELDS.includes(d), 'суутгалын талбар үндсэн баганад давхардахгүй — бодогдсон нийлбэр нь тэнд');
-  }
-  for (const p of IPC_LOG.payments) {
-    assert.ok(!IPC_MAIN_FIELDS.includes(p), 'гүйлгээний талбар үндсэн баганад давхардахгүй');
+  /* Төлбөрийн түвшний талбарууд харин ЗААВАЛ байна — мөнгөний зам */
+  assert.ok(HO_MAIN_FIELDS.includes(P.amount), 'олгосон дүн үндсэн баганад байна');
+  assert.ok(HO_MAIN_FIELDS.includes(P.kind), 'төлбөрийн төрөл үндсэн баганад байна');
+  /* Гэрээний КОД нь ганцаарчилсан үл хамаарах зүйл: тоо БИШ, ТАНИГЧ —
+     хэрэглэгч аль гэрээний төлбөр болохыг харах ёстой. */
+  assert.ok(HO_MAIN_FIELDS.includes(C.code), 'гэрээний код үндсэн баганад байна');
+}
+
+/* ── 6. МЭДЭЭЛЭЛГҮЙ талбарууд үндсэн баганад ОРООГҮЙ ── */
+{
+  for (const f of HO_IPC.emptyFields) {
+    assert.ok(!HO_MAIN_FIELDS.includes(f), `${f} нь 45/45 мэдээлэлгүй — багана болгохгүй`);
   }
 }
 

@@ -31,7 +31,10 @@
  * төрлийн алдаа — дэлгэц дээр юу ч анзаарагдахгүй.
  */
 export type DataKey =
-  | 'IPC_LOG'
+  /* ⚠️ 2026-09-09: 'IPC_LOG' (ipc_0813/172) ХАСАГДАВ — хэрэглэгч тэр
+     үйлчилгээг ТЕСТ ӨГӨГДӨЛ гэж тогтоов. Орлуулагч нь 'HO_IPC'
+     (HO_guitsetgel_arcgis_csv/196) — services.ts-ийн экспортын нэртэй ИЖИЛ. */
+  | 'HO_IPC'
   | 'CASHFLOW_NEW'
   | 'BAGTS_SHEET'
   | 'BAGTS_NEGTGEL'

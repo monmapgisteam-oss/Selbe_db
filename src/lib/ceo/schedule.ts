@@ -460,4 +460,4 @@ export const loadScheduleKpi = cached(async (): Promise<KpiResult> => {
   const pkgs = collectPkgLags(fin.contracts, (r) => F.contractMonths(r, fin), F.lagOf);
   const curves = collectCurves(pkgs, F.lagOf, nowYm);
   return computeSchedule(pkgs, curves, F.lagLevel, now, failed, finCurveMissing);
-}, 60_000, ['BAGTS_SHEET', 'CASHFLOW_NEW', 'IPC_LOG']);
+}, 60_000, ['BAGTS_SHEET', 'CASHFLOW_NEW', 'HO_IPC']);

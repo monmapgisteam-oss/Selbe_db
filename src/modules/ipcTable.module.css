@@ -1,0 +1,238 @@
+/*
+ * IPC — гэрээгээр бүлэглэсэн, ТӨЛБӨР БҮР КАРТ.
+ *
+ * ⚠️ Өнгө бүгд `var(--…)` токеноор — порталын гэрлийн/харанхуйн загвар
+ * автоматаар дагана. Хатуу hex бичвэл харанхуй горимд уншигдахгүй болно.
+ *
+ * ⚠️ ХҮСНЭГТ БИШ (2026-09-09, хэрэглэгчийн шийдвэр: «нэг ipc нэг нүдэн бүх
+ * мэдээлэл агуулна»). Урьд нь `<table>` байсан бөгөөд 11 багана нь толгойгоо
+ * алдмагц уншигдахаа больдог байв.
+ */
+
+.wrap { display: flex; flex-direction: column; gap: 10px; }
+
+/* ── Толгой ── */
+.hd {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap;
+}
+.hdL { min-width: 0; }
+.title { margin: 0; font-size: 14px; font-weight: 650; color: var(--ink); }
+.sub {
+  margin-top: 3px; font-size: 11.5px; color: var(--ink-3); line-height: 1.45;
+}
+.hdR { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.sortLbl { font-size: 11.5px; color: var(--ink-3); }
+
+.sel, .btn {
+  font: inherit; font-size: 12px; color: var(--ink);
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: 6px; padding: 4px 8px; cursor: pointer;
+}
+.sel:hover, .btn:hover { background: var(--surface-2); }
+
+/* ── Гэрээнүүдийн жагсаалт ── */
+.list {
+  display: flex; flex-direction: column;
+  border: 1px solid var(--line); border-radius: 8px;
+  background: var(--surface); overflow: hidden;
+}
+.blk { border-top: 1px solid var(--line); }
+.blk:first-child { border-top: 0; }
+
+/* ── Гэрээний толгой (дэлгэх товч) ── */
+.gBtn {
+  /* ⚠️ Бүтэн өргөнд дарагдах ёстой — товч нь мөр шиг ажиллана */
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 9px 12px; font: inherit; text-align: left;
+  background: color-mix(in srgb, var(--ink) 3.5%, transparent);
+  border: 0; cursor: pointer; color: var(--ink);
+}
+.gBtn:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+
+.caret { font-size: 10px; color: var(--ink-3); width: 10px; flex-shrink: 0; }
+.gTitle { font-weight: 650; white-space: nowrap; }
+.gMeta {
+  color: var(--ink-3); font-size: 11.5px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  max-width: 260px;
+}
+.gCount {
+  font-size: 10.5px; color: var(--ink-3);
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: 999px; padding: 1px 7px; white-space: nowrap;
+}
+.gSpacer { flex: 1 1 auto; }
+
+.gSum {
+  display: inline-flex; align-items: baseline; gap: 5px;
+  font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.gSumLbl { font-size: 10.5px; color: var(--ink-3); }
+
+/* Хувийн тууз */
+.gPct { display: inline-flex; align-items: center; gap: 7px; width: 118px; flex-shrink: 0; }
+.bar {
+  flex: 1 1 auto; height: 6px; border-radius: 3px;
+  background: color-mix(in srgb, var(--ink) 12%, transparent);
+  overflow: hidden;
+}
+.barIn { display: block; height: 100%; background: var(--data); border-radius: 3px; }
+.gPctNum {
+  font-size: 11.5px; font-variant-numeric: tabular-nums;
+  width: 42px; text-align: right; flex-shrink: 0;
+}
+/* ⚠️ Хэмжигдээгүй — тууз ОГТ зурагдахгүй, зөвхөн зураас */
+.gPctNone { width: 100%; text-align: right; color: var(--ink-3); }
+
+/* ── Гэрээний дэлгэрэнгүй ── */
+.dCell {
+  padding: 12px 14px 14px 34px;
+  background: color-mix(in srgb, var(--ink) 1.5%, transparent);
+  border-top: 1px solid var(--line);
+}
+
+/*
+ * ⚠️ `columns` (grid БИШ): бүлгүүд өөр өөр өндөртэй (ЭРХ ЗҮЙ нь урт
+ * хуулийн үндэслэлтэй, ОЛГОЛТ нь ердөө 2 мөр). Grid-д богино бүлэг
+ * дангаараа шинэ ЭГНЭЭ эзэлж, хажуудаа том ХООСОН зай үлдээдэг.
+ * `columns` нь тэднийг дараалуулан УРСГАЖ эгнээг дүүргэнэ.
+ *
+ * ⚠️ Хэрэглэгчийн шийдвэр (2026-09-09): 6 баганат нэг сүлжээ «ойлгомжгүй»
+ * байв. Нарийн дэлгэцэд өөрөө 2, дараа нь 1 багана болж буурна.
+ */
+.dCols { columns: 3 340px; column-gap: 28px; }
+/* ⚠️ Бүлэг багана дундуур ТАСРАХГҮЙ — гарчиг нэг баганад, утга нөгөөд
+   гарвал уншигдахаа болино. */
+.dGrp { break-inside: avoid; page-break-inside: avoid; margin-bottom: 14px; }
+
+.dGrpTitle {
+  margin: 0 0 5px; padding-bottom: 3px;
+  font-size: 10px; font-weight: 700; letter-spacing: .06em;
+  color: var(--ink-3); text-transform: uppercase;
+  border-bottom: 1px solid var(--line);
+}
+
+/* ⚠️ Бүлэг дотор нэг багана — талбарууд ДЭЭРЭЭС ДООШ уншигдана */
+.dl { margin: 0; display: flex; flex-direction: column; gap: 4px; }
+.dItem { display: flex; gap: 8px; align-items: start; min-width: 0; }
+.dt {
+  /* ⚠️ ТОГТМОЛ өргөн — утгууд нэг босоо шугамаас эхэлж, нүд доош
+     гүйлгэхэд мөр бүрд шинэ байрлал хайхгүй. */
+  flex: 0 0 128px; width: 128px;
+  font-size: 10.5px; color: var(--ink-3); line-height: 1.45;
+}
+/*
+ * ⚠️ ТАСЛАХГҮЙ (хэрэглэгчийн шийдвэр 2026-09-09: «бүтнээр нь харуулна»).
+ * `huuliin_undeslel` нь 300+ тэмдэгттэй ч ТУСДАА бүлэгт, өөрийн баганад
+ * байгаа тул хажуугийнхаа талбаруудыг сунгахгүй.
+ */
+.dd {
+  margin: 0; flex: 1 1 auto; min-width: 0;
+  font-size: 11.5px; color: var(--ink); line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.ddNum { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ⚠️ Эх сурвалж эвдэрсний дохио — нүдэнд ил байх ёстой */
+.warn {
+  margin: 8px 0 0; padding: 6px 9px; border-radius: 6px;
+  font-size: 11px; line-height: 1.45;
+  color: var(--bad, #c0392b);
+  background: color-mix(in srgb, var(--bad, #c0392b) 10%, transparent);
+}
+
+/* ═══════════════ ТӨЛБӨРИЙН КАРТУУД ═══════════════ */
+
+/*
+ * ⚠️ Карт бүр ӨӨРӨӨ БҮРЭН — «нэг ipc нэг нүдэн бүх мэдээлэл». Өргөн нь
+ * агуулгаас хамаарч 1–4 багана болно; жижиг дэлгэцэд өөрөө нэг багана.
+ */
+.cards {
+  display: grid; gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  padding: 12px 14px 14px;
+}
+
+.card {
+  display: flex; flex-direction: column;
+  border: 1px solid var(--line); border-radius: 8px;
+  background: var(--surface); overflow: hidden;
+}
+/* ⚠️ Урьдчилгаа нь гүйцэтгэлийн төлбөр БИШ — картаар нь ялгарна */
+.cardAdv { background: color-mix(in srgb, var(--ink) 2.5%, var(--surface)); }
+
+.cardHd {
+  display: flex; align-items: center; gap: 7px;
+  padding: 7px 10px; border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--ink) 3%, transparent);
+}
+.cardSpacer { flex: 1 1 auto; }
+.cardDate {
+  font-size: 11px; color: var(--ink-2, var(--ink-3));
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.cardMeta {
+  font-size: 10px; color: var(--ink-3); white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.cardBody { padding: 8px 10px; display: flex; flex-direction: column; gap: 3px; }
+
+/* ⚠️ ОЛГОСОН нь картын ГОЛ тоо — бусдаас ТОМООР. Хүн эхлээд «хэдэн
+   төгрөг олгосон» гэдгийг хардаг. */
+.big { display: flex; flex-direction: column; gap: 1px; margin-bottom: 2px; }
+.bigLbl { font-size: 10px; color: var(--ink-3); }
+.bigNum {
+  font-size: 14px; font-weight: 650; color: var(--ink);
+  font-variant-numeric: tabular-nums; overflow-wrap: anywhere;
+}
+
+/* ⚠️ Хэсэг тусгаарлагч — баримт / гүйцэтгэл / олголт гурвыг нүдээр
+   зааглана. Зураас нь картыг ХЭСЭГТЭЙ болгож, 8 мөр нэг овоо болохоос
+   сэргийлнэ. */
+.sep { height: 1px; background: var(--line); margin: 5px 0 4px; }
+
+.kv { display: flex; align-items: baseline; gap: 8px; }
+.k { flex: 0 0 auto; font-size: 10.5px; color: var(--ink-3); }
+.v {
+  flex: 1 1 auto; text-align: right;
+  font-size: 11.5px; color: var(--ink);
+  font-variant-numeric: tabular-nums; overflow-wrap: anywhere;
+}
+/* Хуримтлал нь туслах тоо — үндсэн дүнгээс сулхан */
+.cCum { color: var(--ink-3); }
+
+.cardFt {
+  padding: 5px 10px; border-top: 1px solid var(--line);
+  font-size: 10px; color: var(--ink-3);
+  background: color-mix(in srgb, var(--ink) 2%, transparent);
+}
+
+/* Төлбөрийн төрлийн шошго */
+.tagIpc, .tagAdv {
+  display: inline-block; font-size: 10.5px; font-weight: 600;
+  border-radius: 4px; padding: 1px 6px; white-space: nowrap;
+}
+.tagIpc {
+  color: var(--data);
+  background: color-mix(in srgb, var(--data) 12%, transparent);
+}
+.tagAdv {
+  color: var(--ink-3);
+  background: color-mix(in srgb, var(--ink) 9%, transparent);
+}
+
+/* Зөрүүний өнгө — илүү олгосон нь анхаарал татна */
+.over { color: var(--bad, #c0392b); font-weight: 600; }
+.under { color: var(--ok, #1e8e5a); }
+
+.note {
+  margin: 0; font-size: 11.5px; color: var(--ink-3); line-height: 1.5;
+}
+
+/* ⚠️ Картын доторх хэсгийн гарчиг — «Бодит гүйцэтгэл» г.м. */
+.sect {
+  margin: 0 0 1px; font-size: 9.5px; font-weight: 700;
+  letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3);
+}

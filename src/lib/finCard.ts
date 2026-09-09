@@ -1,5 +1,5 @@
 /**
- * АКТЫН КАРТЫН ӨГӨГДӨЛ — цэвэр логик, React-гүй.
+ * САНХҮҮЖИЛТИЙН КАРТЫН ӨГӨГДӨЛ — цэвэр логик, React-гүй.
  *
  * ⚠️ 2026-09-06: CASHFLOW-ийн хэсэг (паспорт + сарын хуваарийн «А» загвар)
  * БҮРМӨСӨН ХАСАГДСАН. Тэр нь `cashflow_0813` нэг хүснэгтэд ГЭРЭЭ ба САР гэсэн
@@ -8,21 +8,38 @@
  * Хасагдсан: `CF_PERIOD_FIELDS` · `Contract` · `splitContracts` · `YearGroup` ·
  * `groupPeriodsByYear` · `usedFields` · `CF_KPI_FIELDS` · `CF_PASS_GROUPS`.
  *
+ * ⚠️ 2026-09-09: `IPC_LOG` (`ipc_0813/172`) нь ТЕСТ өгөгдөл байсан тул
+ * бүрмөсөн хаягдаж, `HO_IPC` (`HO_guitsetgel_arcgis_csv/196`) орлов. Шинэ эх
+ * сурвалжид СУУТГАЛ (захиалагчийн хяналт · урьдчилгааны эргэн төлөлт ·
+ * барьцаа · зохиогчийн хяналт) ба ГУРВАН ГҮЙЛГЭЭНИЙ багана ОГТ БАЙХГҮЙ —
+ * `dun` нь аль хэдийн БОДИТ ОЛГОСОН дүн. Тиймээс `dedOrNull` · `paidOrNull` ·
+ * `netOrNull` · `netTotalOrNull` · `rowSumOrNull` дөрөв+нэг нь УТГАГҮЙ болж
+ * ХАСАГДСАН. Мөрийн төлбөрийн дүнг `services.hoAmount`, нийлбэрийг
+ * `ipc.ts`-ийн `sumPaid` авна (хоёулаа `null`-мэдрэмжтэй).
+ *
  * ⚠️ Энэ модуль мөр НЭГТГЭДЭГГҮЙ, талбар ХАСДАГГҮЙ — зөвхөн тоо бодно.
  * Мөр бүр эх мөртэйгээ 1:1 тул засвар (`oid:талбар`) хэвээр.
  *
  * ⚠️ React импортлохгүй — `finCard.check.mjs` шууд Node дээр ачаална.
  */
-import { IPC_LOG } from '@/lib/services';
+import { HO_IPC } from '@/lib/services';
 import type { Row } from '@/lib/finGroup';
 
-const IP = IPC_LOG.fields;
+const C = HO_IPC.contractFields;
+const P = HO_IPC.payFields;
 
 /* ─────────────────────────── НИЙЛБЭР ─────────────────────────── */
 
 /**
  * Талбарын нийлбэр — БҮХ мөр хоосон бол `null`.
  * ⚠️ 0 гэж буцаавал «дүнгүй» ба «тэг» хоёр нэгдэж НИЙТ мөр худал уншигдана.
+ * HO-д энэ нь бодит эрсдэл: `dun` 45-ийн 2 мөрд хоосон (БАГЦ-6.3 гэрээ
+ * бүхэлдээ төлбөргүй, ХО-0045 кодгүй гэрээ).
+ *
+ * ⚠️ ГЭРЭЭНИЙ түвшний талбарт (`tosov_niit`, `gereet_tosov_niit` …) ЭНИЙГ
+ * ШУУД БҮҮ хэрэглэ — тэдгээр нь `geree_kod` бүрд ДАВТАГДАНА, мөрөөр
+ * нийлүүлбэл Багц-4.1 (7 мөр) -ийн төсөв 7 ДАХИН давхардана. Гэрээний
+ * нийлбэрийг `ipc.ts`-ийн `hoTotals()` (dedup хийсэн) -ээс ав.
  */
 export function sumOrNull(rows: Row[], field: string): number | null {
   let acc: number | null = null;
@@ -36,62 +53,21 @@ export function sumOrNull(rows: Row[], field: string): number | null {
   return acc;
 }
 
-/* ─────────────────────────── IPC ─────────────────────────── */
+/* ─────────────────────────── ТӨЛБӨР ─────────────────────────── */
 
 /**
- * Актын хүснэгтийн ҮНДСЭН баганууд — мөнгөний зам: дугаар · төрөл · төлөв ·
- * хамрах хугацаа · гүйцэтгэлийн дүн. Суутгал/цэвэр/шилжүүлсэн нь БОДОГДОНО.
- * Үлдсэн бүх талбар мөрийг дэлгэхэд дэлгэрэнгүйд гарна — мэдээлэл ХАСАГДАХГҮЙ.
- */
-export const IPC_MAIN_FIELDS: string[] = [
-  IP.no, IP.kind, IP.status, IP.periodFrom, IP.periodTo, IP.gross,
-];
-
-/** Мөрийн хэд хэдэн талбарын нийлбэр — бүгд хоосон бол `null` */
-function rowSumOrNull(r: Row, fields: readonly string[]): number | null {
-  let acc: number | null = null;
-  for (const f of fields) {
-    const v = r[f];
-    if (v == null || v === '') continue;
-    const x = Number(v);
-    if (!Number.isFinite(x)) continue;
-    acc = (acc ?? 0) + x;
-  }
-  return acc;
-}
-
-/** 4 суутгалын нийлбэр — бүгд хоосон бол `null` (0 БИШ) */
-export const dedOrNull = (r: Row): number | null => rowSumOrNull(r, IPC_LOG.deductions);
-
-/** 3 гүйлгээний нийлбэр — бүгд хоосон бол `null` */
-export const paidOrNull = (r: Row): number | null => rowSumOrNull(r, IPC_LOG.payments);
-
-/**
- * Цэвэр дүн = гүйцэтгэлийн дүн − суутгал. Гүйцэтгэлийн дүн ХООСОН бол `null`.
+ * Төлбөрийн хүснэгтийн ҮНДСЭН баганууд — гэрээ · багц · гүйцэтгэгч ·
+ * төлбөрийн төрөл · IPC дугаар · олгосон дүн · гүйлгээний огноо.
  *
- * ⚠️ 2026-09-04: урьд нь энд «`services.ipcNet` нь null-ыг 0 болгодог тул
- *    “дүнгүй акт” 0 гэж худал гардаг» гэж бичсэн байв — тэр нь ОДОО ХУДАЛ:
- *    `ipcNet` өөрөө `number | null` буцаадаг болов. Хоёулаа нэг дүрэмтэй
- *    боллоо; энэ функц тусдаа хэвээр байгаа шалтгаан нь зөвхөн давхарга
- *    тусгаарлалт (`finCard` нь React-гүй, `finCard.check.mjs` шууд Node дээр
- *    ачаалдаг) ба суутгалыг `dedOrNull`-аар (null-мэдрэмжтэй) авдаг нь —
- *    тоон үр дүн `ipcNet`-тэй ижил.
+ * ⚠️ ГРЕЙНИЙГ ТУСГАСАН СОНГОЛТ: `geree_kod`/`bagts`/`guitsetgegch` нь
+ * ГЭРЭЭНИЙ түвшний (мөрд давтагдана), үлдсэн нь ТӨЛБӨРИЙН — хэрэглэгч аль
+ * гэрээний төлбөр болохыг харах ёстой тул хоёулаа үндсэн баганад орно.
+ *
+ * ⚠️ Гэрээний ТОМ ДҮНГҮҮД (`tosov_niit`, `gereet_tosov_niit`, `hemnelt_hetrelt`)
+ * ЭНД ОРОХГҮЙ — 7 мөрд ижлээрээ давтагдаж нүд гутааж, «нийлүүлье» гэсэн
+ * буруу уруу таталт үүсгэнэ. Тэдгээр мөрийг дэлгэхэд дэлгэрэнгүйд гарна —
+ * мэдээлэл ХАСАГДАХГҮЙ.
  */
-export function netOrNull(r: Row): number | null {
-  const v = r[IP.gross];
-  if (v == null || v === '') return null;
-  const x = Number(v);
-  if (!Number.isFinite(x)) return null;
-  return x - (dedOrNull(r) ?? 0);
-}
-
-/** Багцын цэвэр олгосон нийт — бүх акт дүнгүй бол `null` */
-export function netTotalOrNull(rows: Row[]): number | null {
-  let acc: number | null = null;
-  for (const r of rows) {
-    const n = netOrNull(r);
-    if (n == null) continue;
-    acc = (acc ?? 0) + n;
-  }
-  return acc;
-}
+export const HO_MAIN_FIELDS: string[] = [
+  C.code, C.pkg, C.contractor, P.kind, P.ipcNo, P.amount, P.payDate,
+];

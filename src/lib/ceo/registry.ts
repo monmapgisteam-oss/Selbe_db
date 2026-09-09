@@ -83,5 +83,8 @@ export const CEO_KPIS: CeoKpiDef[] = [
   { key: 'review', title: tr('Хяналтын хоцролт'), icon: 'reset', view: 'guitsetgel', load: loadReviewKpi },
   { key: 'contractGap', title: tr('Гэрээ ба төсвийн зөрүү'), icon: 'calc', view: 'finance', load: loadContractGapKpi },
   { key: 'uncontracted', title: tr('Гэрээгүй ажил'), icon: 'pen', view: 'finance', load: loadUncontractedKpi },
-  { key: 'ipc', title: tr('IPC — гүйцэтгэлийн акт'), icon: 'file', view: 'finance', load: loadIpcKpi },
+  /* ⚠️ 2026-09-09: «акт» БИШ «олгосон санхүүжилт». Шинэ эх (HO_guitsetgel)
+     нь бүртгэгдсэн ТӨЛБӨР — актын төлөв, хамрах хугацаа, суутгал байхгүй
+     тул «акт» гэдэг нэр агуулгатайгаа зөрнө. */
+  { key: 'ipc', title: tr('IPC — олгосон санхүүжилт'), icon: 'file', view: 'finance', load: loadIpcKpi },
 ];
