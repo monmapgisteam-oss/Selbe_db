@@ -28,7 +28,8 @@ globalThis.dispatchEvent = () => true;
 
 const {
   ALL_BAGTS, huvaariScope, hasPlanRole, _syncRemoteHuvaari, setHuvaariAssign,
-  removeHuvaariAssign, purgeHuvaariAssign, listHuvaariAssigns,
+  removeHuvaariAssign, purgeHuvaariAssign, listHuvaariAssigns, setHuvaariGrants,
+  huvaariGrantsOf,
 } = await import('@/lib/huvaariAcl.ts');
 const ACL = await import('@/lib/guitsetgelAcl.ts');
 const { ROLE_BY_USER } = await import('@/lib/services.ts');
@@ -151,4 +152,70 @@ assert.equal(setHuvaariAssign('sw', ['author'], []).ok, false, 'багцгүй �
 assert.deepEqual(huvaariScope('sw', 'author'), ['Багц 1'], 'татгалзсан оролдлого утга өөрчлөв');
 console.log('✅ хасалт · үүрэг солих');
 
-console.log('\nhuvaariAcl: ok — fail-closed · үүрэг↔хүрээ · super · УРСГАЛААС ТУСДАА · хасалт');
+/* ══════════════════════════════════════════════════════════════
+ * 8. ҮҮРЭГ БҮРД ӨӨР БАГЦ — 2026-09-09-ны схемийн ГОЛ ЗОРИЛГО
+ * ══════════════════════════════════════════════════════════════ */
+/**
+ * ⚠️ Хуучин `{roles:['author','approver'], bagts:['Багц 1','Багц 5']}` нь
+ *    ДӨРВӨН хослол үүсгэдэг байсан: тэр хүн Багц 1-д ч БАТЛАГЧ болно.
+ *    `decidePlan` зохиогч=батлагчийг татгалздаг тул Багц 1 ГАЦНА. Одоо
+ *    grant тус бүр өөрийн багцтай тул хүрээ нь ЯГ таарна.
+ */
+_syncRemoteHuvaari([]);
+{
+  const r = setHuvaariGrants('holimog', [
+    { role: 'author', bagts: ['Багц 1'] },
+    { role: 'approver', bagts: ['Багц 5'] },
+  ], false);
+  assert.equal(r.ok, true, 'үүрэг бүрд өөр багц олгож чадсангүй');
+
+  assert.deepEqual(huvaariScope('holimog', 'author'), ['Багц 1'],
+    'зохиогчийн хүрээ');
+  assert.deepEqual(huvaariScope('holimog', 'approver'), ['Багц 5'],
+    'батлагчийн хүрээ');
+
+  /* ⚠️ ГОЛ ЦЭГ: Багц 1-д БАТЛАГЧ БИШ, Багц 5-д ЗОХИОГЧ БИШ */
+  assert.equal(huvaariScope('holimog', 'approver').includes('Багц 1'), false,
+    'ҮРЖВЭР эргэж ирэв — Багц 1-д батлагч болжээ (тэр багц ГАЦНА)');
+  assert.equal(huvaariScope('holimog', 'author').includes('Багц 5'), false,
+    'ҮРЖВЭР эргэж ирэв — Багц 5-д зохиогч болжээ');
+
+  /* Хоёулаа үүрэг нь БАЙГАА — зөвхөн хүрээ нь ялгаатай */
+  assert.equal(hasPlanRole('holimog', 'author'), true);
+  assert.equal(hasPlanRole('holimog', 'approver'), true);
+
+  /* Үүрэг заагаагүй `scope` нь БҮХ үүргийн НЭГДЭЛ */
+  assert.deepEqual(huvaariScope('holimog').sort(), ['Багц 1', 'Багц 5'],
+    'үүрэг заагаагүй хүрээ нь нэгдэл байх ёстой');
+}
+
+/* ⚠️ ХУУЧИН ХЭЛБЭР УНШИГДСААР БАЙНА — ArcGIS дээр хуучин мөр үлдсэн байж
+   болно. Хөрвүүлэлт нь эрхийг НЭМЭХГҮЙ, ХАСАХГҮЙ: хуучин утга нь «хоёулаа
+   хоёр багцад» гэсэн санаатай байсан тул ЯГ ТЭР УТГААР нь үлдэнэ. */
+_syncRemoteHuvaari([{ user: 'huuchin', roles: ['author', 'approver'], bagts: ['Багц 2'] }]);
+assert.deepEqual(huvaariScope('huuchin', 'author'), ['Багц 2'], 'хуучин мөр — зохиогч');
+assert.deepEqual(huvaariScope('huuchin', 'approver'), ['Багц 2'], 'хуучин мөр — батлагч');
+
+/* ШИНЭ хэлбэр ч уншигдана */
+_syncRemoteHuvaari([{
+  user: 'shine',
+  grants: [{ role: 'author', bagts: ['Багц 3'] }, { role: 'approver', bagts: ['Багц 4'] }],
+}]);
+assert.deepEqual(huvaariScope('shine', 'author'), ['Багц 3'], 'шинэ мөр — зохиогч');
+assert.deepEqual(huvaariScope('shine', 'approver'), ['Багц 4'], 'шинэ мөр — батлагч');
+assert.equal(huvaariScope('shine', 'author').includes('Багц 4'), false,
+  'шинэ мөрөөс үржвэр гарав');
+
+/* `grantsOf` нь хуваарилалтыг ЯГ ХЭВЭЭР буцаана — панел үүнийг заснаа */
+assert.deepEqual(
+  huvaariGrantsOf('shine'),
+  [{ role: 'author', bagts: ['Багц 3'] }, { role: 'approver', bagts: ['Багц 4'] }],
+);
+assert.equal(huvaariGrantsOf('baihgui'), null, 'байхгүй хүн null байх ёстой');
+
+/* Багцгүй grant нь ХАЯГДАНА — «хуваарилагдсан ч багцгүй» төлөв үүсэхгүй */
+assert.equal(setHuvaariGrants('hooson', [{ role: 'author', bagts: [] }], false).ok, false,
+  'багцгүй grant хүлээн авагдав');
+console.log('✅ үүрэг бүрд ӨӨР багц — үржвэр арилсан, хоёр хэлбэр уншигдана');
+
+console.log('\nhuvaariAcl: ok — fail-closed · үүрэг↔хүрээ · super · УРСГАЛААС ТУСДАА · хасалт · grants');

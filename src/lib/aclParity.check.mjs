@@ -45,29 +45,51 @@ const readCode = (p) => strip(read(p));
  * `__cap__:` мөр (`r.g`) унавал тэр хүн хуваарилагдсан ч хуудсаа нээж
  * ЧАДАХГҮЙ — тиймээс хоёулаа шалгагдана.
  */
+/**
+ * ⚠️ 2026-09-09: ГУРВАН МОДУЛЬ НЭГ ЦӨМ БОЛСОН (`scopedAcl.ts`). Урьд нь энэ
+ * шалгуур гурван файлыг ТУС ТУСАД нь тулгадаг байв — учир нь тэдгээр нь
+ * нэрээс бусад бүрэн ижил ~250 мөрийн ХУУЛБАР байсан. Одоо логик нэг газарт
+ * тул шалгуур ч тийш чиглэнэ.
+ *
+ * Гурван бүрхүүл (`qaqcAcl` · `huvaariAcl` · `obyemAcl`) нь `makeAcl`-ийг
+ * дуудахаас өөр логикгүй байх ЁСТОЙ — тэдгээрт `markResult` дахин гарч ирвэл
+ * давхардал буцаж ирсэн гэсэн үг (доорх 1b шалгуур барина).
+ */
+{
+  const core = readCode('src/lib/scopedAcl.ts');
+  const weak = core.match(/markResult\(u,\s*r\.ok\)(?!\s*&&)/g) ?? [];
+  assert.equal(weak.length, 0,
+    'scopedAcl: markResult(u, r.ok) үлдсэн — эрх олголтын үр дүнг залгиж байна. '
+    + '`r.ok && r.g` байх ёстой (set ба remove ХОЁУЛАА).');
+
+  const strong = core.match(/markResult\(u,\s*r\.ok\s*&&\s*r\.g\)/g) ?? [];
+  assert.equal(strong.length, 2,
+    `scopedAcl: markResult(u, r.ok && r.g) нь ЯГ 2 удаа (set + remove) байх ёстой, олдсон: ${strong.length}`);
+
+  /* `sync` буцаах утга нь мөн адил хоёуланг барина */
+  const ret = core.match(/return r\.ok\s*&&\s*r\.g;/g) ?? [];
+  assert.equal(ret.length, 2,
+    `scopedAcl: sync нь 'r.ok && r.g' буцаах ёстой (2 газар), олдсон: ${ret.length}`);
+}
+console.log('✅ scopedAcl — set ба remove ижил хатуу шалгуур (r.ok && r.g)');
+
+/* ══════════ 1b. Гурван бүрхүүл НИМГЭН хэвээр — давхардал буцаж ирээгүй ══════════ */
 const ACL_FILES = [
   ['src/lib/huvaariAcl.ts', 'huvaari'],
   ['src/lib/obyemAcl.ts', 'obyem'],
   ['src/lib/qaqcAcl.ts', 'qaqc'],
 ];
-
 for (const [f, name] of ACL_FILES) {
   const src = readCode(f);
-  const weak = src.match(/markResult\(u,\s*r\.ok\)/g) ?? [];
-  assert.equal(weak.length, 0,
-    `${name}: markResult(u, r.ok) үлдсэн (${weak.length}) — эрх олголтын үр дүнг залгиж байна. `
-    + '`r.ok && r.g` байх ёстой (set ба remove ХОЁУЛАА).');
-
-  const strong = src.match(/markResult\(u,\s*r\.ok\s*&&\s*r\.g\)/g) ?? [];
-  assert.equal(strong.length, 2,
-    `${name}: markResult(u, r.ok && r.g) нь ЯГ 2 удаа (set + remove) байх ёстой, олдсон: ${strong.length}`);
-
-  /* `sync` буцаах утга нь мөн адил хоёуланг барина */
-  const ret = src.match(/return r\.ok\s*&&\s*r\.g;/g) ?? [];
-  assert.equal(ret.length, 2,
-    `${name}: sync нь 'r.ok && r.g' буцаах ёстой (2 газар), олдсон: ${ret.length}`);
+  assert.match(src, /makeAcl</,
+    `${name}: `);
+  for (const dup of ['markResult', 'function enqueue', 'function save(', 'localStorage']) {
+    assert.doesNotMatch(src, new RegExp(dup.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+      `${name}: «${dup}» бүрхүүлд эргэж ирэв — логик нь \`scopedAcl.ts\`-д байх ёстой. `
+      + 'Давхардал буцаж ирвэл «нэгд нь зассан, бусдад хуулаагүй» алдаа дахин эхэлнэ.');
+  }
 }
-console.log('✅ set*Assign ба remove*Assign — 3 модульд ижил хатуу шалгуур (r.ok && r.g)');
+console.log('✅ гурван бүрхүүл нимгэн — логик цөмд хэвээр');
 
 /* ══════════ 2. _syncRemote* нь username-ыг trim() хийнэ ══════════ */
 /**
@@ -75,24 +97,27 @@ console.log('✅ set*Assign ба remove*Assign — 3 модульд ижил х�
  * `trim()` хийхгүй бол remote мөрөнд санамсаргүй зай орсон үед түлхүүр нь
  * ХЭЗЭЭ Ч таарахгүй — хуваарилалт «алга болсон» мэт харагдана.
  */
+/*
+ * ⚠️ 2026-09-09: Чанар · Хуваарь · Обьём гурвын `_syncRemote*` нь одоо
+ *    `scopedAcl.syncRemote`-д НЭГ удаа бичигдсэн (бүрхүүл нь зөвхөн
+ *    дамжуулна). Тиймээс цөмийг НЭГ удаа, үлдсэн хоёр модулийг тус тусад нь.
+ */
 const SYNC_FILES = [
-  ['src/lib/guitsetgelAcl.ts', '_syncRemoteAssigns'],
-  ['src/lib/qaqcAcl.ts', '_syncRemoteQaqc'],
-  ['src/lib/huvaariAcl.ts', '_syncRemoteHuvaari'],
-  ['src/lib/obyemAcl.ts', '_syncRemoteObyem'],
-  ['src/lib/caps.ts', '_syncRemoteCaps'],
+  ['src/lib/scopedAcl.ts', 'const syncRemote'],
+  ['src/lib/guitsetgelAcl.ts', 'export function _syncRemoteAssigns'],
+  ['src/lib/caps.ts', 'export function _syncRemoteCaps'],
 ];
-for (const [f, fn] of SYNC_FILES) {
+for (const [f, decl] of SYNC_FILES) {
   const src = readCode(f);
-  const i = src.indexOf(`export function ${fn}`);
-  assert.ok(i > 0, `${f}: ${fn} олдсонгүй`);
+  const i = src.indexOf(decl);
+  assert.ok(i > 0, `${f}: «${decl}» олдсонгүй`);
   const body = src.slice(i, i + 1400);
   assert.ok(/\.trim\(\)\.toLowerCase\(\)/.test(body),
-    `${f}: ${fn} нь username-ыг trim().toLowerCase() хийх ёстой — бичих талтай таарахгүй болно`);
+    `${f}: ${decl} нь username-ыг trim().toLowerCase() хийх ёстой — бичих талтай таарахгүй болно`);
   assert.ok(!/r\.user\.toLowerCase\(\)/.test(body),
-    `${f}: ${fn}-д trim()-гүй r.user.toLowerCase() үлдсэн`);
+    `${f}: ${decl}-д trim()-гүй r.user.toLowerCase() үлдсэн`);
 }
-console.log('✅ _syncRemote* (5 модуль) — username бүгд trim().toLowerCase()');
+console.log('✅ _syncRemote* (цөм + 2 модуль) — username бүгд trim().toLowerCase()');
 
 /* ══════════ 3. caps.ts — dirty-set БАЙХ ёстой ══════════ */
 /**
@@ -195,34 +220,69 @@ console.log('✅ permissions.initRemote — 5 синк бүр console.error, cap
 }
 console.log('✅ permsRemote — 5 угтвар бүр Map · findOids хуудаслалттай · хайлт 100');
 
-/* ══════════ 6. UserAdmin — гурван салаа ИЖИЛ бүтэцтэй ══════════ */
+/* ══════════ 6. UserAdmin.flipScoped — ГУРВАН ДЭД СИСТЕМД НЭГ ЗАМ ══════════ */
 /**
- * ⚠️ `qaqc` · `plan` · `obyem` гурав нь ижил хэлбэрийн салаанууд. Аль нэгэнд
- * нь хийсэн засвар бусдад хүрээгүйгээс ХОЁР ноцтой алдаа гарсан.
+ * ⚠️ 2026-09-09: `qaqc` · `plan` · `obyem` гурван БАРАГ ИЖИЛ салааг
+ * `flipScoped` болгож нэгтгэв. Урьд нь тэдгээрийн ялгаанаас ГУРВАН удаа
+ * дараалан алдаа гарсан: super-ийн шалгалт (09-07), `r.ok` (09-08),
+ * `.trim()` (09-09). Одоо шалгуур нь тэр НЭГ замыг барина.
  */
 {
   const src = readCode('src/components/UserAdmin.tsx');
-  const i = src.indexOf('const flipCap =');
-  const body = src.slice(i, src.indexOf('const add =') > i ? src.indexOf('const add =') : i + 9000);
+  const i = src.indexOf('const flipScoped =');
+  assert.ok(i > 0, 'UserAdmin: `flipScoped` олдсонгүй — гурван салаа буцаж салсан уу?');
+  const body = src.slice(i, src.indexOf('const flipRemove =') > i
+    ? src.indexOf('const flipRemove =') : i + 9000);
 
-  /* (а) Гурван салаа бүр super-ийн шалгалттай */
+  /* (а) super-ийн шалгалт НЭГ удаа — гурван салаад давхардахгүй */
   const supers = body.match(/roleForUser\(u\.username\) === 'super'/g) ?? [];
-  assert.equal(supers.length, 3,
-    `flipCap: super шалгалт ЯГ 3 салаанд (qaqc·plan·obyem) байх ёстой, олдсон: ${supers.length}`);
+  assert.equal(supers.length, 1,
+    `flipScoped: super шалгалт ЯГ 1 удаа байх ёстой (нэгтгэсэн зам), олдсон: ${supers.length}`);
 
-  /* (б) super салаа бүр toggleCap-ийн үр дүнг барина — .then алга байвал алдаа нуугдана */
-  const bare = body.match(/void toggleCap\(u\.username,\s*c?,?[^)]*\);\s*$/gm) ?? [];
+  /* (б) super салаа `toggleCap`-ийн үр дүнг барина — .then алга бол алдаа нуугдана */
+  const bare = body.match(/void toggleCap\([^)]*\);\s*$/gm) ?? [];
   assert.equal(bare.length, 0,
-    `flipCap: .then-гүй toggleCap ${bare.length} үлдсэн — бичилтийн уналт нуугдана`);
+    `flipScoped: .then-гүй toggleCap ${bare.length} үлдсэн — бичилтийн уналт нуугдана`);
 
-  /* (в) Гурван салаа бүр sync БА granted хоёуланг хүлээнэ */
+  /* (в) sync БА granted хоёуланг хүлээнэ */
   const both = body.match(/Promise\.all\(\[\s*[\s\S]{0,80}?r\.sync[\s\S]{0,120}?r\.granted/g) ?? [];
-  assert.equal(both.length, 3,
-    `flipCap: sync+granted-ийг ЯГ 3 салаанд хүлээх ёстой, олдсон: ${both.length}`);
-  assert.ok(!/void \(r\.sync \?\? Promise\.resolve\(false\)\)\.then/.test(body),
-    'flipCap: зөвхөн sync-ийг хардаг салаа үлдсэн — granted-ыг ч шалгах ёстой');
+  assert.equal(both.length, 1,
+    `flipScoped: sync+granted-ийг ЯГ 1 удаа хүлээх ёстой, олдсон: ${both.length}`);
+
+  /* (г) ⚠️ `.trim()` — 2026-09-09-нд илэрсэн алдаа. Гурван салааны ЗӨВХӨН
+     нэгэнд байсан тул нэрэнд зай орсон хэрэглэгчийн хүрээ бүх багц руу
+     чимээгүй тэлдэг байв. Нэгтгэсний дараа НЭГ газар. */
+  assert.match(body, /const key = u\.username\.trim\(\)\.toLowerCase\(\);/,
+    'flipScoped: хуваарилалтыг `.trim().toLowerCase()`-ээр хайх ёстой — '
+    + 'бичих тал тэгдэг тул таарахгүй бол хүрээ чимээгүй тэлнэ');
+  assert.doesNotMatch(body, /\.find\(\(a\) => a\.user === u\.username\.toLowerCase\(\)\)/,
+    'flipScoped: trim()-гүй хайлт эргэж ирэв');
+
+  /* (д) ⚠️ ХӨНДЛӨН ҮРЖВЭР БҮТЦЭЭР ШИЙДЭГДСЭН — 2026-09-09.
+     Урьд нь хадгалалт `{roles[], bagts[]}` буюу үүрэг × багцын ҮРЖВЭР байсан
+     тул тодорхой багцтай хүнд ХОЁР ДАХЬ үүрэг нэмбэл тэр нь БҮХ багцад нь
+     тарж, зохиогч=батлагч давхцал үүсгэн багцыг ГАЦААДАГ байв. Түүнээс
+     сэргийлэх хамгаалалт панел бүрд бичигдсэн байсан бөгөөд тэдгээр нь бүгд
+     «болохгүй» гэж хэлдэг — админ хүссэн томилгоогоо хийж чаддаггүй байлаа.
+     Одоо `grants[]`: үүрэг бүр ӨӨРИЙН багцтай тул тарах ЗАМ БАЙХГҮЙ.
+     Тиймээс энэ шалгуур нь хамгаалалт биш, БҮТЦИЙГ барина. */
+  assert.doesNotMatch(body, /\broles\.includes\(role\)/,
+    'flipScoped: хуучин roles[] үржвэрийн логик эргэж ирэв — grants ашиглах ёстой');
+  assert.match(body, /\.grants\b/,
+    'flipScoped: хуваарилалтыг grants-аар уншиж байх ёстой');
+
+  /* (е) ⚠️ АСААХАД ХҮРЭЭГ ТЭЛЭХГҮЙ. Шинэ үүрэг нэмэхэд болзолгүй
+     `[ALL_BAGTS]` бичвэл тодорхой багцтай хүний хүрээ ЧИМЭЭГҮЙ бүх багц
+     болно — fail-closed зарчигтай зөрчилдөнө. Одоо байгаа багцаас өвлүүлнэ. */
+  assert.match(body, /inherit\.length \? inherit : \[ALL\]/,
+    'flipScoped: шинэ үүргийн хүрээг одоо байгаа багцаас өвлүүлэх ёстой — '
+    + 'болзолгүй ALL_BAGTS нь хүрээг чимээгүй тэлнэ');
+
+  /* (ё) ⚠️ УНТРААХАД ЗӨВХӨН ТЭР ҮҮРГИЙГ хасна — бусад grant хэвээр үлдэнэ */
+  assert.match(body, /grants\.filter\(\(g\) => g\.role !== role\)/,
+    'flipScoped: унтраахад зөвхөн тэр үүргийн grant хасагдах ёстой');
 }
-console.log('✅ UserAdmin.flipCap — 3 салаа бүр super шалгалт · .then · sync+granted');
+console.log('✅ UserAdmin.flipScoped — нэг зам · trim · grants (үржвэр бүтцээр хаагдсан)');
 
 /* ══════════ 7. add() — ДӨРВҮҮЛЭН ACL-ийн өнчин мөрийг шалгана ══════════ */
 {
@@ -238,33 +298,76 @@ console.log('✅ UserAdmin.flipCap — 3 салаа бүр super шалгалт 
 }
 console.log('✅ UserAdmin.add() — 4 ACL-ийн өнчин мөр бүгд шалгагдана');
 
-/* ══════════ 8. ALL_BAGTS нь хамгаалалтыг ТОЙРОХГҮЙ ══════════ */
+/* ══════════ 8. ScopedAclPanel — GRANT ТУС БҮРИЙГ хөнддөг ══════════ */
 /**
- * ⚠️ `ALL_BAGTS` (`'*'`) нь урт 1 тул `bagts.length > 1` шалгуурт БАРИГДАХГҮЙ
- * байв — гэтэл тэр нь хамгийн ӨРГӨН хүрээ. Үүнээс болж нэг багцад нэмсэн
- * үүрэг 7 багцад тарж, зохиогч=батлагч давхцал үүсгэн багц ГАЦДАГ байлаа.
+ * ⚠️ 2026-09-09-нд ХАДГАЛАЛТ СОЛИГДСОН: `{roles[], bagts[]}` (үүрэг × багцын
+ * үржвэр) → `grants[]` (үүрэг бүр ӨӨРИЙН багцтай). Урьд нь панелд `wide` /
+ * `widening` нэртэй хамгаалалтууд байсан нь үржвэрийн сул талыг нөхөх
+ * зорилготой байв: нэг багцад нэмсэн үүрэг БУСАД багцад тарж, зохиогч=батлагч
+ * давхцал үүсгэн багц ГАЦДАГ байлаа. Тэр хамгаалалтууд бүгд «болохгүй» гэж
+ * хэлдэг тул админ «Багц 1-д зохиогч, Багц 5-д батлагч» гэсэн ЭНГИЙН
+ * томилгоог хийж чаддаггүй байсан. Одоо тарах ЗАМ БАЙХГҮЙ тул хамгаалалт
+ * хэрэггүй — шалгуур нь БҮТЦИЙГ барина.
+ *
+ * ⚠️ 2026-09-10: `HuvaariAcl` ба `ObyemAcl` хоёрын ЛОГИК нь
+ * `ScopedAclPanel.tsx`-д нэгдсэн. Тиймээс шалгуур нь тэр НЭГ файлыг тулгана;
+ * хоёр бүрхүүл нь НИМГЭН (зөвхөн тохиргоо) хэвээр эсэхийг тусад нь барина.
  */
-for (const f of ['src/modules/HuvaariAcl.tsx', 'src/modules/ObyemAcl.tsx']) {
+{
+  const f = 'src/modules/ScopedAclPanel.tsx';
   const src = readCode(f);
   const i = src.indexOf('const addTo =');
   assert.ok(i > 0, `${f}: addTo олдсонгүй`);
   const body = src.slice(i, src.indexOf('const removeFrom ='));
-  assert.ok(/const wide = /.test(body) && /includes\(ALL_BAGTS\)/.test(body),
-    `${f}: addTo-гийн хамгаалалт ALL_BAGTS-ыг тооцох ёстой ('wide')`);
-  assert.ok(!/&& bagts\.length > 1\) \{/.test(body),
-    `${f}: 'bagts.length > 1' хэвээр — ALL_BAGTS тойрч гарна`);
-  assert.ok(/widening/.test(body),
-    `${f}: багц өргөсгөх чиглэлд ALL_BAGTS шалгагдахгүй байна ('widening')`);
 
-  /* removeFrom нь ALL_BAGTS-тай хүнийг ХАСАЖ чадна — эс бөгөөс гацна */
-  const rm = src.slice(src.indexOf('const removeFrom ='), src.indexOf('return ('));
-  const j = rm.indexOf('cur.bagts.includes(ALL_BAGTS)');
-  assert.ok(j > 0, `${f}: removeFrom-д ALL_BAGTS салаа алга`);
-  const branch = rm.slice(j, j + 800);
-  assert.ok(/window\.confirm/.test(branch) && /remove(Huvaari|Obyem)Assign/.test(branch),
-    `${f}: ALL_BAGTS-тай хүнийг хасах ЗАМ алга — санамсаргүй бүх багц болгосныг буцаах боломжгүй`);
+  /* (а) Хуучин үржвэрийн логик буцаж ирээгүй */
+  assert.doesNotMatch(body, /cur\?\.roles|cur\.roles/,
+    `${f}: addTo нь хуучин \`roles[]\` уншиж байна — grants ашиглах ёстой`);
+  assert.match(body, /\.grants\b/,
+    `${f}: addTo нь grants-аар ажиллах ёстой`);
+
+  /* (б) ЗӨВХӨН тухайн үүргийн grant хөндөгдөнө — бусад нь хэвээр */
+  assert.match(body, /grants\.find\(\(g\) => g\.role === role\)/,
+    `${f}: addTo нь ТУХАЙН үүргийн grant-ыг олж хөндөх ёстой`);
+
+  /* (в) ⚠️ ХҮРЭЭ ТЭЛЭХГҮЙ: ALL_BAGTS-тай grant-д багц нэмбэл хүрээ нь
+     бүх багцаас ганц багц руу ХУМИГДАНА — тиймээс шалгаж алгасана. */
+  assert.match(body, /!mine\.bagts\.includes\(ALL_BAGTS\)/,
+    `${f}: ALL_BAGTS-тай grant-д багц нэмбэл хүрээ хумигдана — шалгах ёстой`);
+
+  /* (г) removeFrom нь ALL_BAGTS-тай хүнийг ХАСАЖ чадна — эс бөгөөс гацна */
+  const rm = src.slice(src.indexOf('const removeFrom ='), src.indexOf('const [note1'));
+  assert.match(rm, /mine\.bagts\.includes\(ALL_BAGTS\)/,
+    `${f}: removeFrom-д ALL_BAGTS салаа алга`);
+  assert.match(rm, /window\.confirm/,
+    `${f}: ALL_BAGTS-тай грантыг бүхэлд нь хасахыг баталгаажуулах ёстой`);
+  assert.match(rm, /spec\.remove\(user\)/,
+    `${f}: сүүлчийн grant хасагдахад мөрийг бүхэлд нь хасах зам алга`);
+
+  /* (д) ⚠️ БАГЦГҮЙ ҮЛДСЭН GRANT ӨӨРӨӨ УНАНА — хоосон \`bagts\` бүхий grant
+     хадгалагдвал тэр хүн «хуваарилагдсан ч нэг ч багцгүй» гэсэн утгагүй
+     төлөвт орно (цөм нь түүнийг хаядаг ч панел бичих ёсгүй). */
+  assert.match(rm, /filter\(\(g\) => g\.bagts\.length > 0\)/,
+    `${f}: багцгүй үлдсэн grant хасагдах ёстой`);
 }
-console.log('✅ HuvaariAcl · ObyemAcl — ALL_BAGTS хамгаалалтад баригдаж, хасагдана');
+
+/* ⚠️ ХОЁР БҮРХҮҮЛ НИМГЭН ХЭВЭЭР — логик буцаж хуулагдвал давхардал сэргэнэ */
+for (const f of ['src/modules/HuvaariAcl.tsx', 'src/modules/ObyemAcl.tsx']) {
+  const src = readCode(f);
+  assert.match(src, /ScopedAclPanel/,
+    `${f}: нэгдсэн панелийг ашиглахаа больжээ — давхардал сэргэв`);
+  for (const banned of ['const addTo =', 'const removeFrom =', 'function PkgCol', 'function RoleBlock']) {
+    assert.ok(!src.includes(banned),
+      `${f}: «${banned}» буцаж ирэв — логик нь ScopedAclPanel.tsx-д байх ёстой`);
+  }
+  /* Тохиргоо нь БҮРЭН байх ёстой — дутуу талбар нь ажиллах үед л илэрнэ */
+  for (const key of ['roles:', 'roleLabel:', 'emptyLabel:', 'list:', 'failedUsers:',
+    'subscribe:', 'setGrants:', 'remove:', 'notes:', 'confirmRemoveAll:',
+    'stuckMsg:', 'noApproverMsg:']) {
+    assert.ok(src.includes(key), `${f}: тохиргооны «${key}» талбар дутуу`);
+  }
+}
+console.log('✅ ScopedAclPanel — grant тус бүр тусад нь · хоёр бүрхүүл нимгэн');
 
 /* ══════════ 9. GuitsetgelAcl — orphanFail НЭГ УДАА ══════════ */
 {
@@ -302,24 +405,31 @@ console.log('\naclParity.check: ok');
   assert.ok(ga.includes('async function revokeFlowAccess(user: string, stage: Stage): Promise<boolean>'),
     'guitsetgelAcl: revokeFlowAccess нь Promise<boolean> байх ёстой (үр дүнгээ хаяхгүй)');
 
-  /* (б) `syncCaps` нь ГАРААР олгосон эрхийг устгах ёсгүй */
-  for (const f of ['src/lib/huvaariAcl.ts', 'src/lib/obyemAcl.ts']) {
-    const s = readCode(f);
+  /* (б) `syncCaps` нь ГАРААР олгосон эрхийг устгах ёсгүй.
+     ⚠️ 2026-09-09: гурван модулийн `syncCaps` нь `scopedAcl`-д НЭГ болов. */
+  {
+    const s = readCode('src/lib/scopedAcl.ts');
     const i = s.indexOf('async function syncCaps');
-    assert.ok(i > 0, `${f}: syncCaps олдсонгүй`);
+    assert.ok(i > 0, 'scopedAcl: syncCaps олдсонгүй');
     const b = s.slice(i, i + 1600);
     assert.ok(b.includes('c.capsOf(user)'),
-      `${f}: syncCaps нь одоогийн эрхийг УНШИХГҮЙ байна — гараар олгосон эрхийг чимээгүй устгана`);
+      'scopedAcl: syncCaps нь одоогийн эрхийг УНШИХГҮЙ байна — гараар олгосон эрхийг чимээгүй устгана');
     assert.ok(!/toggleCap\(user,\s*'\w+',\s*roles\.includes/.test(b),
-      `${f}: syncCaps нь болзолгүй toggleCap хэрэглэсээр байна`);
-    assert.ok(b.includes('const none = !wantA && !wantB;'),
-      `${f}: syncCaps нь «хуваарилалт бүхэлдээ арилах» тохиолдлыг ялгах ёстой`);
+      'scopedAcl: syncCaps нь болзолгүй toggleCap хэрэглэсээр байна');
+    /* «Хуваарилалт бүхэлдээ арилах» тохиолдлыг ялгана — эс бөгөөс нэг үүрэг
+       хасахад НӨГӨӨГИЙН эрх ч хасагдана (эсвэл эсрэгээр, хэзээ ч хасагдахгүй). */
+    assert.ok(/const none = roles\.length === 0;/.test(b),
+      'scopedAcl: syncCaps нь «хуваарилалт бүхэлдээ арилах» тохиолдлыг ялгах ёстой');
+    assert.ok(/else if \(none\) next\.delete\(cap\);/.test(b),
+      'scopedAcl: syncCaps нь эрхийг ЗӨВХӨН бүх үүрэг арилах үед хасах ёстой');
   }
 
-  /* (в) UserAdmin — `plan`/`obyem` салаанд `r.ok` шалгалт */
+  /* (в) UserAdmin — `r.ok` шалгалт.
+     ⚠️ 2026-09-09: гурван салаа `flipScoped` болж нэгдсэн тул НЭГ удаа. */
   const ua = readCode('src/components/UserAdmin.tsx');
-  assert.equal((ua.match(/if \(!r\.ok\) \{/g) ?? []).length, 3,
-    'UserAdmin.flipCap: `r.ok` шалгалт ЯГ 3 салаанд (qaqc·plan·obyem) байх ёстой — эс бөгөөс ТӨӨРӨГДҮҮЛСЭН алдаа гарна');
+  assert.equal((ua.match(/if \(!r\.ok\) \{ mark\(false\); return; \}/g) ?? []).length, 1,
+    'UserAdmin.flipScoped: `r.ok` шалгалт байх ёстой — эс бөгөөс `{ok:false}` үед '
+    + '`Promise.all` нь false өгч ТӨӨРӨГДҮҮЛСЭН «ArcGIS-т бичигдсэнгүй» алдаа гарна');
   /* Хоосон багц нь ALL руу унана (`??` нь `[]`-г NULL гэж үзэхгүй) */
   assert.ok(!/cur\?\.bagts \?\? \[(HUVAARI|OBYEM)_ALL_BAGTS\]/.test(ua),
     'UserAdmin: `cur?.bagts ?? [ALL]` нь хоосон массивыг дамжуулж `{ok:false}` үүсгэнэ — `?.length ?` шалгах ёстой');
