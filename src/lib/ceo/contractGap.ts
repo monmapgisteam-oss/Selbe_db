@@ -1,7 +1,7 @@
 /**
  * CEO KPI — ГЭРЭЭЛСЭН ба УРЬДЧИЛСАН ТӨСӨВТ ӨРТГИЙН ЗӨРҮҮ, гэрээ бүрээр.
  *
- * Эх сурвалж: `Cashflow_0904` (`CASHFLOW_NEW`) — мөр бүр НЭГ гэрээ (76).
+ * Эх сурвалж: `Cashflow_0909` (`CASHFLOW_NEW`) — мөр бүр НЭГ гэрээ (76).
  * `loadFinData().contracts`-аас уншина: санхүүгийн бусад карт (IPC, олголт)
  * ижил татаалтыг хуваалцдаг тул энд шинэ ArcGIS хүсэлт ҮҮСЭХГҮЙ.
  *
@@ -32,7 +32,7 @@
 import { t as tr } from '@/lib/i18nCore';
 import { cached } from '@/lib/live';
 import { mnt } from '@/lib/format';
-import { CASHFLOW_NEW } from '@/lib/services';
+import { CASHFLOW_NEW, CF_WORK_WHERE } from '@/lib/services';
 import { cell, table, type KpiIssue, type KpiResult, type Level } from './kpi';
 
 /**
@@ -251,6 +251,7 @@ export const loadContractGapKpi = cached<KpiResult>(async () => {
     const { queryFeatures } = await import('@/lib/query');
     const F = CASHFLOW_NEW.fields;
     rows = await queryFeatures(CASHFLOW_NEW.url, {
+      where: CF_WORK_WHERE,
       outFields: [
         F.detail, F.project, F.pkg, F.pkg2, F.budget, F.contractAmount,
         F.contractor, F.contractNo, F.contractDate, F.amountNote,

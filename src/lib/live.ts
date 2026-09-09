@@ -23,7 +23,9 @@ import { t as tr } from '@/lib/i18nCore';
 import {
   BOUNDARY, BUILT_LAYER, BUILT_FIELDS, BUILT_STATUS, CASHFLOW_NEW,
   LAYER_BY_ID, PARCEL_CLEARED, layerUrl, oidOf,
+  CF_WORK_WHERE,
 } from '@/lib/services';
+import { FIN_XL_CHART_FIELDS, finXlChartCat } from '@/lib/finExcelLayout';
 import { sumBy, tally } from '@/lib/agg';
 import { register, type DataKey } from '@/lib/dataBus';
 
@@ -73,7 +75,7 @@ export function cached<T>(
   };
 }
 
-/* ══════════════ Төсөв — CASHFLOW_NEW (Cashflow_0904 /0) ══════════════ */
+/* ══════════════ Төсөв — CASHFLOW_NEW (Cashflow_0909 /0) ══════════════ */
 
 export type Budget = {
   /** Урьдчилсан төсөвт өртөг — ₮ */
@@ -91,7 +93,7 @@ export type Budget = {
 };
 
 /**
- * ТӨСЛИЙН ТӨСВИЙН ЭХ = `Cashflow_0904/0` (CASHFLOW_NEW). «Хөрөнгө оруулалт
+ * ТӨСЛИЙН ТӨСВИЙН ЭХ = `Cashflow_0909/0` (CASHFLOW_NEW). «Хөрөнгө оруулалт
  * өртөг» (/249)-ЭЭС ЯЛГААТАЙ: тэр нь олон нийтийн бүсийн хувийн таамаг оруулж
  * 4.16 их наяд хөөргөдөг; энэ нь захирамж/гэрээгээр баталгаажсан ТӨСЛИЙН төсөв.
  *
@@ -107,6 +109,8 @@ export type Budget = {
  * `null`-ыг `''` болгож ижил замд оруулна — эс бөгөөс төрөлгүй гэрээнүүд
  * (63 тэрбум ₮) чимээгүй алдагдана.
  */
+
+
 const cfLabel = (v: unknown) => String(v ?? '').replace(/\s+/g, ' ').trim();
 
 export const loadBudget = cached<Budget>(async () => {
@@ -115,12 +119,15 @@ export const loadBudget = cached<Budget>(async () => {
     queryStats(CASHFLOW_NEW.url, [
       sum(CF.budget, 'b'), sum(CF.orderTotal, 'o'), sum(CF.contractAmount, 'c'),
       ...CASHFLOW_NEW.sources.map((s, i) => sum(s.field, `s${i}`)),
-    ]),
+    ], CF_WORK_WHERE),
     // ⚠️ Хоёр задаргааг НЭГ groupBy-д — тусад нь асуувал хүсэлт илүү явна.
     //    Огтлолцсон бүлгүүдийг `tally` талбар тус бүрээр нэгтгэнэ.
-    queryGroup(CASHFLOW_NEW.url, `${CF.type},${CF.pkg2}`, [
+    /* ⚠️ ХОЁР ТҮВШНИЙ дөрвөн талбараар бүлэглэнэ: чартын ангилал нь ганц
+       талбар БИШ, `finXlChartCat`-аар хоёроос бодогддог. Дашбоардтай ИЖИЛ
+       ангилал гарах ёстой — эс бөгөөс хоёр карт өөр бүлэг харуулна. */
+    queryGroup(CASHFLOW_NEW.url, `${FIN_XL_CHART_FIELDS.join(',')},${CF.pkg2}`, [
       sum(CF.budget, 'b'), count(CASHFLOW_NEW.oid, 'n'),
-    ]),
+    ], CF_WORK_WHERE),
   ]);
 
   const total = Number(r.b ?? 0);
@@ -141,7 +148,7 @@ export const loadBudget = cached<Budget>(async () => {
     // ⚠️ `n` = ГЭРЭЭНИЙ тоо — мөр бүр нэг гэрээ тул нийт 76.
     byType: tally(
       g,
-      (row) => ({ key: cfLabel(row[CF.type]), value: Number(row.b ?? 0), n: Number(row.n ?? 0) }),
+      (row) => ({ key: finXlChartCat(row), value: Number(row.b ?? 0), n: Number(row.n ?? 0) }),
       tr('Төрөл тодорхойлоогүй'),
     ).filter((t) => t.value > 0),
     byPkg: tally(
@@ -165,9 +172,9 @@ export type Headline = {
   areaHa: number;
   /** Оршин суух хүн ам — барилгуудын `Population` нийлбэр */
   population: number;
-  /** ТӨСЛИЙН нийт төсөвт өртөг, ₮ — Cashflow_0904 (`Urdch_tusuwt_urtug`) */
+  /** ТӨСЛИЙН нийт төсөвт өртөг, ₮ — Cashflow_0909 (`Urdch_tusuwt_urtug`) */
   investTotal: number;
-  /** Гэрээгээр баталгаажсан дүн, ₮ — Cashflow_0904 (`Geree_erh_dun`) */
+  /** Гэрээгээр баталгаажсан дүн, ₮ — Cashflow_0909 (`Geree_erh_dun`) */
   investConfirmed: number;
   /** Ногоон байгууламжийн талбай, га — test_data [35] */
   greenHa: number | null;

@@ -23,8 +23,14 @@ import { CASHFLOW_NEW, IPC_LOG } from './services.ts';
 const CF = CASHFLOW_NEW.fields;
 const IP = IPC_LOG.fields;
 
+/*
+ * ⚠️ 2026-09-09: Cashflow_0909-д багцын багана НЭГ л ширхэг (`bagts`) — хуучин
+ * `Bagts` (эцэг) ба `Ded_bagts` (навч) хоёр нэгдсэн. Тиймээс `CF.pkg` ба
+ * `CF.pkg2` нь ИЖИЛ талбарыг заана: хоёуланг нь бичвэл сүүлийнх нь эхнийхийг
+ * дарж, бүх багц хоосон болно. Навчны утгыг (дэд байвал түүнийг) НЭГ УДАА бичнэ.
+ */
 const cf = (oid, pkg, pkg2, year, o = {}) => ({
-  OBJECTID: oid, [CF.pkg]: pkg, [CF.pkg2]: pkg2, [CF.orderDate]: year, ...o,
+  OBJECTID: oid, [CF.pkg2]: pkg2 || pkg, [CF.orderDate]: year, ...o,
 });
 const ipc = (oid, pkg, pkg2, o = {}) => ({
   OBJECTID: oid, [IP.pkg]: pkg, [IP.pkg2]: pkg2, ...o,

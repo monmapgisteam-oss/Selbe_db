@@ -41,6 +41,19 @@ type Saved = {
    * хувилбарыг тэмдэглэн цаашид хөндөхгүй.
    */
   hideV?: string;
+  /**
+   * АНХДАГЧ ДАРААЛЛЫН ХУВИЛБАР — сүүлд хадгалагдсан `order` аль зохиомжийнх вэ.
+   *
+   * ⚠️ 2026-09-09-ны сургамж: `Cashflow_0904` → `0909` шилжүүлэгт талбарын нэр
+   * БҮГД өөрчлөгдсөн ч ГАНЦ нэр (`ajliin_zurag_tusul`) хэвээр үлдсэн. Хадгалсан
+   * дараалалд зөвхөн тэр нэг нэр таарсан тул тэр багана хүснэгтийн ХАМГИЙН
+   * ЭХЭНД үсэрч, Excel-ийн «БАГЦ · № · Ажил, үйлчилгээ» эхлэл эвдэрсэн
+   * (хэрэглэгчийн шүүмж: «яг Excel шиг эхлүүлье»).
+   * ⚠️ Хувилбар зөрөх үед хадгалсан дарааллыг НЭГ УДАА хаяж, шинэ анхдагчид
+   * буцна. Хэрэглэгч багана зөөмөгц шинэ хувилбар тэмдэглэгдэж, цаашид
+   * хөндөгдөхгүй.
+   */
+  orderV?: string;
 };
 
 const KEY = (k: string) => `selbe.cols.${k}`;
@@ -76,6 +89,12 @@ export type SheetCols = {
   /** Царцаалтыг ТООГООР шууд тавих (Excel-ийн «Freeze Panes») */
   setFrozen: (n: number) => void;
   showAll: () => void;
+  /**
+   * АНХДАГЧ НУУЛТЫГ БУЦААХ — «бүгдийг харуул»-ын ЭСРЭГ үйлдэл.
+   * ⚠️ Зөвхөн НУУЛТЫГ хөндөнө: дараалал · царцаалт · өргөн · мөр таслалт
+   * бүгд ХЭВЭЭР. `reset()` нь тэдгээрийг ч устгадаг тул тэр биш.
+   */
+  hideDefaults: () => void;
   toggleWrap: (name: string) => void;
   /** Тухайн багана хүртэл (ба түүнийг оруулан) царцаана; дахин дуудвал тайлна */
   freezeTo: (name: string) => void;
@@ -89,12 +108,15 @@ export type SheetCols = {
  * @param all      ОДООГИЙН бүх баганы нэр — эх дараалалаараа
  * @param defWrap  анхдагчаар мөр таслах багана (хэрэглэгч дараа нь өөрчилнө)
  * @param defHidden анхдагчаар НУУГДСАН багана (хэрэглэгч дараа нь дэлгэнэ)
+ * @param ordV      анхдагч ДАРААЛЛЫН хувилбар — зохиомж өөрчлөгдөхөд солино;
+ *                  хадгалсан дараалал нэг удаа хаягдаж, шинэ анхдагч хэрэгжинэ
  */
 export function useSheetCols(
   key: string,
   all: string[],
   defWrap: string[] = [],
   defHidden: string[] = [],
+  ordV = '',
 ): SheetCols {
   /* ⚠️ `localStorage` нь ЗӨВХӨН хөтөч дээр: SSR/статик экспортын үед
      `localStorage is not defined` гэж унана (энэ төсөл `output: 'export'`).
@@ -144,17 +166,27 @@ export function useSheetCols(
    * эх дарааллаараа хойно нь орно. Эс бөгөөс үйлчилгээнд шинэ талбар нэмэхэд
    * хэрэглэгч түүнийг хэзээ ч харахгүй.
    */
+  /**
+   * ҮР ДҮНТЭЙ ДАРААЛАЛ — хувилбар зөрвөл хадгалалтыг ҮЛ ТООМСОРЛОНО.
+   * ⚠️ `Saved.orderV`-ийн тайлбарыг үз: хуучирсан дараалал нэг л таарсан нэрээ
+   * хүснэгтийн эхэнд үсрүүлж, зохиомжийг эвдэж болно.
+   */
+  const effOrder = useMemo(
+    () => (st.orderV === ordV ? (st.order ?? []) : []),
+    [st.order, st.orderV, ordV],
+  );
+
   const view = useMemo(() => {
     const has = new Set(all);
     const seen = new Set<string>();
     const out: string[] = [];
-    for (const n of st.order ?? []) {
+    for (const n of effOrder) {
       if (has.has(n) && !seen.has(n)) { out.push(n); seen.add(n); }
     }
     for (const n of all) if (!seen.has(n)) out.push(n);
     const hid = effHidden;
     return out.filter((n) => !hid.has(n));
-  }, [all, st.order, effHidden]);
+  }, [all, effOrder, effHidden]);
 
   const hidden = effHidden;
 
@@ -210,6 +242,23 @@ export function useSheetCols(
     });
   }, [key, hideV]);
 
+  /**
+   * АНХДАГЧ НУУЛТ РУУ БУЦАХ.
+   *
+   * ⚠️ ЯАГААД ХЭРЭГТЭЙ: `showAll` нь `hideV`-г бичдэг тул анхдагч нуулт
+   * дахин хэзээ ч сэргэдэггүй. Хэрэглэгч «нуусныг харуулах»-аар нэг харснаа
+   * буцаахын тулд 19 баганыг ГАРААР нэг нэгээр нь нуух шаардлагатай болно.
+   * ⚠️ Хэрэглэгчийн ӨӨРИЙН нэмж нуусан баганыг ХАДГАЛНА — анхдагчийг ЗӨВХӨН
+   * НЭМНЭ, юуг ч дэлгэхгүй.
+   */
+  const hideDefaults = useCallback(() => {
+    setSt((v) => {
+      const next = { ...v, hideV, hidden: [...new Set([...(v.hidden ?? []), ...defHidden])] };
+      write(key, next);
+      return next;
+    });
+  }, [key, hideV, defHidden]);
+
   const toggleWrap = useCallback((name: string) => {
     setSt((v) => {
       const cur = new Set(v.wrap ?? defWrap);
@@ -242,7 +291,10 @@ export function useSheetCols(
         const has = new Set(all);
         const seen = new Set<string>();
         const out: string[] = [];
-        for (const n of v.order ?? []) if (has.has(n) && !seen.has(n)) { out.push(n); seen.add(n); }
+        /* ⚠️ Хувилбар зөрсөн хадгалалтыг ЭНД Ч ҮЛ ТООМСОРЛОНО — эс бөгөөс
+           хэрэглэгч нэг багана зөөхөд хуучирсан дараалал бүхэлдээ сэргэнэ. */
+        const prev = v.orderV === ordV ? (v.order ?? []) : [];
+        for (const n of prev) if (has.has(n) && !seen.has(n)) { out.push(n); seen.add(n); }
         for (const n of all) if (!seen.has(n)) out.push(n);
         return out;
       })();
@@ -251,11 +303,13 @@ export function useSheetCols(
       if (a < 0 || b < 0) return v;
       base.splice(a, 1);
       base.splice(b, 0, from);
-      const next = { ...v, order: base };
+      /* ⚠️ `orderV` ЗААВАЛ бичигдэнэ — эндээс хойш анхдагч дараалал энэ
+         хэрэглэгчийн зөөлтийг дарахгүй. */
+      const next = { ...v, orderV: ordV, order: base };
       write(key, next);
       return next;
     });
-  }, [key, all]);
+  }, [key, all, ordV]);
 
   const reset = useCallback(() => {
     setSt({});
@@ -264,6 +318,7 @@ export function useSheetCols(
 
   return {
     view, hidden, wrap, frozen,
-    hide, hideMany, setFrozen, showAll, toggleWrap, freezeTo, move, reset,
+    hide, hideMany, setFrozen, showAll,
+    hideDefaults, toggleWrap, freezeTo, move, reset,
   };
 }

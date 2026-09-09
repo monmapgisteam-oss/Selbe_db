@@ -1,7 +1,7 @@
 /**
  * САНХҮҮЖИЛТИЙН БҮРТГЭЛИЙН ШҮҮЛТ — цэвэр логик, React-гүй.
  *
- * «Санхүүжилт» харагдацын хоёр бүртгэл (`Cashflow_0904` 33 багана ·
+ * «Санхүүжилт» харагдацын хоёр бүртгэл (`Cashflow_0909` 33 багана ·
  * `ipc_0813` 33 багана) нь урьд нь шүүлтгүй байв. Хэрэглэгчийн хүсэлт
  * (2026-09-01): багц · он · төрлөөр, мөн БАГАНА БҮРЭЭР шүүх, багцаар бүлэглэн
  * харах.
@@ -67,15 +67,15 @@ export const FIN_FACETS: Record<'CASHFLOW_NEW' | 'IPC_LOG', Facet[]> = {
    * оронд төслийн ангилал (`Turul`) орно.
    */
   CASHFLOW_NEW: [
-    { key: 'pkg', label: tr('Багц'), allLabel: tr('Бүх багц'), valueOf: (r) => clean(r.Bagts) },
-    { key: 'type', label: tr('Төрөл'), allLabel: tr('Бүх төрөл'), valueOf: (r) => clean(r.Turul) },
+    { key: 'pkg', label: tr('Багц'), allLabel: tr('Бүх багц'), valueOf: (r) => clean(r.bagts) },
+    { key: 'type', label: tr('Төрөл'), allLabel: tr('Бүх төрөл'), valueOf: (r) => clean(r.ajil_tuvshin2) },
     {
       // ⚠️ `FacetKey` нь `pkg|year|type` гурвыг л зөвшөөрнө. Шинэ хүснэгтэд
       //    он гэсэн тусдаа талбар байхгүй тул захирамжийн огноогоор гаргана.
       key: 'year',
       label: tr('Захирамжийн он'),
       allLabel: tr('Бүх он'),
-      valueOf: (r) => yearOf(r.Zahiramj_ognoo),
+      valueOf: (r) => yearOf(r.zahiramj_ognoo),
     },
   ],
   IPC_LOG: [

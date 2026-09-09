@@ -745,62 +745,77 @@ export const ipcDue = (r: Row): number | null => {
 };
 
 /**
- * CASHFLOW — ГЭРЭЭНИЙ БҮРТГЭЛ (`Cashflow_0904/0`, 76 мөр).
+ * ГЭРЭЭ ба ХӨРӨНГӨ ОРУУЛАЛТЫН БҮРТГЭЛ — `Cashflow_0909/0` (`Cashflow_final`, 78 мөр).
  *
- * ⚠️ 2026-09-06-нд `cashflow_0813/173` (CASHFLOW2, 209 мөр) БҮРМӨСӨН
- * ХАСАГДСАН (хэрэглэгчийн шийдвэр: «сүүлд ашиглаж буй service-ийг ашиглана,
- * хуучныг бүрэн хаяна»). Хоёр хүснэгт нь ЯГ ИЖИЛ 76 гэрээг агуулж байсныг
- * тулгаж баталсан: OBJECTID `i` ↔ хуучин `G{i}`, гэрээний эрхийн дүн ба
- * төсөвт өртөг 76/76 мөрд ЯГ таарсан (зөрөө нь зөвхөн гүйцэтгэгчийн нэрэн
- * дэх хашилт).
+ * ⚠️ 2026-09-09: `Cashflow_0904`-ийг БҮРМӨСӨН орлов (тэр үйлчилгээ устгагдана).
+ * Схем нь ердийн шинэчлэл БИШ — талбарын нэр БҮГД өөрчлөгдсөн бөгөөд бүтэц нь
+ * ажлын задаргааны ГУРВАН ТҮВШИН болов:
  *
- * ⚠️ ЮУ АЛДАГДСАН БЭ: хуучин хүснэгтэд гэрээ бүрийн САРЫН хуваарь (131
- * «САР» мөр) ба «ӨМНӨХ ШИЛЖҮҮЛСЭН» (2 мөр) байсан. Шинэ хүснэгтэд он/сарын
- * багана ОГТ БАЙХГҮЙ тул санхүүжилтийн сарын ТӨЛӨВЛӨГӨӨ (муруй, мөнгөний
- * хоцрогдол, «өмнө шилжүүлсэн») кодоос ХАСАГДСАН. Сарын тэнхлэг нь одоо
- * ЗӨВХӨН БОДИТ хэмжилтийг (IPC олголт ба биет гүйцэтгэл) тээнэ.
+ *   bagts_tuvshin1 / ajil_tuvshin1  →  «1 · ТЭЗҮ, ЗУРАГ ТӨСӨЛ»
+ *   bagts_tuvshin2 / ajil_tuvshin2  →  «1.2 · Инженерийн дэд бүтэц - ТЭЗҮ…»
+ *   bagts_tuvshin3 / ajil_tuvshin3  →  «4.1 · Гадна цахилгаан холбоо…»
+ *   bagts          / ajil_uilchilgee →  навч: «БАГЦ-5.1 · Ус хангамж…»
  *
- * ⚠️ ГЭРЭЭНИЙ КОД (`G01…G76`) ч ХАСАГДСАН — тэр нь зөвхөн сарын мөрийг
- * гэрээндээ холбоход хэрэгтэй байв. IPC акт нь гэрээгээр БИШ, БАГЦААР
- * нэгтгэгддэг (`ipcNet` → `bagtsKey(pkg2) || bagtsKey(pkg)`) тул холбоос
- * эвдрээгүй.
+ * Хуучин `Tusul`/`Turul` хос нь эдгээрийн эхний хоёр түвшин, `Ded_bagts` нь
+ * `bagts` болов (50/53 түлхүүр давхцаж, газрын зургийн холбоос хэвээр).
  *
- * ⚠️ Талбарын нэр нь `CF0xx` код БИШ, утгатай латин галиг (`Bagts`, `Turul`,
- * `Geree_dugaar`…). Үйлчилгээний alias нь монголоор тул хүснэгтийн толгой
- * шууд уншигдана.
+ * ⚠️ 78 мөр — 0904-ийн 76-аас 12 нь ШИНЭ (газар чөлөөлөлт 478 тэрбум, бондын
+ * хүү 383 тэрбум, авто зам, спорт цогцолбор…) тул НИЙТ ТӨСӨВ 2,512.6 → 3,485.9
+ * тэрбум болж өссөн. Энэ нь алдаа БИШ, хамрах хүрээ өргөссөн.
  *
- * ⚠️ Огноо нь `esriFieldTypeDate` (epoch ms) — хуучин хүснэгтийн
- * `DateOnly` (мөр) БИШ. `Geree_ognoo` ганцаараа String хэвээр.
+ * ⚠️ ХУГАЦАА ба ГҮЙЦЭТГЭЛИЙН талбарууд (`ehleh_ognoo`…`songon_shalgaruulalt`)
+ * нь эх файлд БАЙГААГҮЙ — 2026-09-09-нд 0904-өөс 71 мөрөөр зөөж бөглөв. Шинэ 8
+ * мөрд эх сурвалж байхгүй тул ХООСОН (0 БИШ).
  */
 export const CASHFLOW_NEW = {
-  url: `${HJ}/Cashflow_0904/FeatureServer/0`,
+  url: `${HJ}/Cashflow_0909/FeatureServer/0`,
   oid: "OBJECTID",
   fields: {
-    type: "Turul",                    // Төрөл — ТЭЗҮ, инженерийн дэд бүтэц…
-    project: "Tusul",                 // Төсөл (ажлын нэр)
-    pkg: "Bagts",                     // Багц
-    pkg2: "Ded_bagts",                // Дэд багц; дэдгүй бол хоосон
-    pkg74: "Bagts_74",                // «Багц 74» — тусдаа бүлэглэлт
-    detail: "Nariiwchilsan_turul",    // Нарийвчилсан төрөл (ажлын бүтэн нэр)
-    /** Урьдчилсан төсөвт өртөг — БҮХ мөнгөн тооцооны эх */
-    budget: "Urdch_tusuwt_urtug",
-    amountNote: "HO_dungiin_tailbar", // «Гэрээлсэн дүн» г.м.
-    startDate: "Ehleh_ognoo",         // Төлөвлөгөөт хугацаа эхлэх
-    endDate: "Duusah_ognoo",          // Төлөвлөгөөт хугацаа дуусах
-    orderDate: "Zahiramj_ognoo",      // Захирамжийн огноо
-    orderNo: "Zahiramj_dugaar",       // Захирамжийн дугаар
-    orderTotal: "Zahiramj_niit_dun",  // Захирамжийн нийт дүн
-    /** Нийт хөрөнгө оруулалтад эзлэх хувь (0–1 бутархай) */
-    share: "Zah_eh_unet_tsaas_huwi",
-    client: "Zahialagch_hyanalt_baig",   // Захиалагчийн хяналтын байгууллага
-    contractor: "Guitsetgegch_baig",     // Гүйцэтгэгч байгууллага
-    contractDate: "Geree_ognoo",         // Гэрээ байгуулсан огноо (String!)
-    contractNo: "Geree_dugaar",          // Гэрээний дугаар
-    contractAmount: "Geree_erh_dun",     // Гэрээ байгуулах эрх олгосон дүн
-    advanceGuarantee: "Urdchilgaa_batalgaa_dun", // Урьдчилгааны баталгааны дүн
-    advancePct: "Urdchilgaa_huwi",       // Урьдчилгаа төлбөрийн хувь
-    advanceDeduct: "Urdchilgaa_ZH_zardal", // ⚠️ String — суутгалын ТАЙЛБАР
-    progressPct: "Guitsetgel_huwi",      // ⚠️ String — гэрээний гүйцэтгэлийн %
+    /**
+     * ТӨРӨЛ — задаргааны 2-р түвшин («ОРОН СУУЦНЫ ХОРООЛОЛ - Барилга угсралт»).
+     * ⚠️ Хуучин `Turul`-ын оронд: утга нь бага зэрэг дэлгэрэнгүй боловч
+     * ангилал нь ИЖИЛ (орон сууц · инженер · гадна тохижилт · нийгмийн).
+     */
+    type: "ajil_tuvshin2",
+    /** ХЭСЭГ — задаргааны 1-р түвшин («ТЭЗҮ, ЗУРАГ ТӨСӨЛ» · «БАРИЛГА УГСРАЛТ») */
+    project: "ajil_tuvshin1",
+    /**
+     * БАГЦ — навчны багц («БАГЦ-5.1»).
+     * ⚠️ 0909-д багцын ХОЁР түвшин БАЙХГҮЙ: хуучин `Bagts` (эцэг) ба
+     * `Ded_bagts` (навч) хоёулаа энэ НЭГ баганад нийлсэн. Тиймээс `pkg` ба
+     * `pkg2` хоёр ижил талбарыг заана — дуудагч код хөндөгдөхгүй.
+     */
+    pkg: "bagts",
+    pkg2: "bagts",
+    /** ⚠️ «Багц 74» 0909-д БАЙХГҮЙ — хоосон талбар (0904-д ч 76 мөр бүгд хоосон) */
+    pkg74: "bagts_74",
+    detail: "ajil_uilchilgee",       // Ажил, үйлчилгээ (ажлын бүтэн нэр)
+    /**
+     * ХӨРӨНГӨ ОРУУЛАЛТЫН ДҮН (гэрээ болон урьдчилсан тооцоолол) — БҮХ мөнгөн
+     * тооцооны эх. Хуучин `Urdch_tusuwt_urtug`-ийн залгамжлагч.
+     */
+    budget: "ho_dun_geree",
+    /** ХО дүн (ЗАХИРАМЖ болон урьдчилсан тооцоолол) — 0909-д ШИНЭ */
+    budgetOrder: "ho_dun_zahiramj",
+    amountNote: "ho_dungiin_tailbar", // «Гэрээлсэн дүн» г.м.
+    startDate: "ehleh_ognoo",         // Төлөвлөгөөт хугацаа эхлэх
+    endDate: "duusah_ognoo",          // Төлөвлөгөөт хугацаа дуусах
+    orderDate: "zahiramj_ognoo",      // Захирамжийн огноо
+    orderNo: "zahiramj_dugaar",       // Захирамжийн дугаар
+    orderTotal: "zahiramj_niit_dun",  // Захирамжийн нийт дүн
+    /** Үнэт цаасны эх үүсвэрийн эзлэх хувь (0–1 бутархай) */
+    share: "zahiramj_unet_tsaas_huvi",
+    client: "zahialagch_hynalt_baig",    // Захиалагчийн хяналтын байгууллага
+    contractor: "guitsetgegch",          // Гүйцэтгэгч байгууллага
+    /** ⚠️ 0909-д ЖИНХЭНЭ Date (epoch ms) — 0904-д текст байсан */
+    contractDate: "geree_ognoo",
+    contractNo: "geree_dugaar",          // Гэрээний дугаар
+    contractAmount: "geree_dun",         // Гэрээний дүн
+    advanceGuarantee: "urdchilgaa_batalgaa_dun",
+    advancePct: "urdchilgaa_huvi",
+    advanceDeduct: "urdchilgaa_zh_zardal", // ⚠️ String — суутгалын ТАЙЛБАР
+    /** ⚠️ 0909-д Double (0904-д String байсан) */
+    progressPct: "guitsetgel_huvi",
   },
   /**
    * ШАТНЫ ГҮЙЦЭТГЭЛ — гэрээ бүрийн бэлтгэл ажлын явц (0–100).
@@ -810,28 +825,64 @@ export const CASHFLOW_NEW = {
    * шалгаруулалт · (Барилга угсралт = `progressPct`). Нэгтгэл гүйцэтгэлийн
    * хүснэгт үүнээс бодогдоно (`negtgel.ts`).
    *
-   * ⚠️ Бүрэн бөглөгдөөгүй (28–73/76) — `null` нь «хэмжилтгүй», 0 БИШ.
+   * ⚠️ Бүрэн бөглөгдөөгүй (26–70/78) — `null` нь «хэмжилтгүй», 0 БИШ.
    */
   stages: {
-    tezu: "Tezu",
+    tezu: "tezu",
     design: "ajliin_zurag_tusul",
-    land: "Gazar_chuluulult",
-    permit: "Zuwshuurul",
-    tender: "Songon_shalgaruulalt",
-    build: "Guitsetgel_huwi",
+    land: "gazar_chuluulult",
+    permit: "zuwshuurul",
+    tender: "songon_shalgaruulalt",
+    build: "guitsetgel_huvi",
   },
   /**
    * Санхүүжилтийн эх үүсвэр — захирамжийн дүнгийн задаргаа.
    *
-   * ⚠️ Хуучин `CASHFLOW2.sources`-ийн `total`/`period` хос БАЙХГҮЙ: үеийн
-   * задаргаа нь сарын мөртэй хамт хасагдсан. Үлдсэн нь ганц дүн.
+   * ⚠️ Борлуулалтын орлого нь 0909-д ТЕКСТ талбар («201,768,500,000») тул
+   * тоон хуулбар `zahiramj_borluulalt_dun`-ыг хэрэглэнэ (2026-09-09-нд
+   * задалж бөглөв). Текст талбарыг шууд уншвал чарт хоосорно.
    */
   sources: [
-    { field: "Zah_eh_unet_tsaas", label: tr('Үнэт цаас'), color: "#3387b8" },
-    { field: "Zah_eh_tusliin_orlogo", label: tr('Төслийн орлого'), color: "#22c55e" },
-    { field: "Zah_eh_niislel_tusuw", label: tr('Нийслэлийн төсөв'), color: "#f59e0b" },
-    { field: "Zah_eh_NZD_nuuts", label: tr('НЗД нөөц'), color: "#a855f7" },
+    { field: "zahiramj_unet_tsaas", label: tr('Үнэт цаас'), color: "#3387b8" },
+    { field: "zahiramj_borluulalt_dun", label: tr('Төслийн орлого'), color: "#22c55e" },
+    { field: "zahiramj_niislel_tusuv", label: tr('Нийслэлийн төсөв'), color: "#f59e0b" },
+    { field: "zahiramj_nzd_nuuts", label: tr('НЗД нөөц'), color: "#a855f7" },
   ],
+} as const;
+
+/**
+ * АЖЛЫН МӨР Л — сарын cashflow мөрүүдийг ХАСНА.
+ *
+ * ⚠️ 2026-09-09: S-Curve-ийн сар тутмын задаргаа НЭГ Л хүснэгтэд
+ * (`Cashflow_final`) доош нь нэмэгдэнэ — тусдаа үйлчилгээ БИШ (хэрэглэгчийн
+ * шийдвэр). Нэг ажил × нэг сар = нэг мөр тул 78 мөр 2,000+ болно.
+ *
+ * ⚠️ ЯЛГАХ ТЭМДЭГ нь `Cashflow_start`: ажлын мөрд тэр талбар ХЭЗЭЭ Ч
+ * бөглөгдөхгүй, сарын мөрд ҮРГЭЛЖ бөглөгдөнө. `Cashflow_ID`-ээр ялгаж
+ * БОЛОХГҮЙ — ажлын мөр өөрөө ч дугаартай (сарын мөр түүгээр холбогдоно).
+ *
+ * ⚠️ CASHFLOW_NEW-г УНШИХ БҮХ ГАЗАРТ ЗААВАЛ тавина. Мартвал нийт төсөв,
+ * багцын тоо, шатлалын зурвас, чарт БҮГД чимээгүйхэн эвдэрнэ.
+ */
+export const CF_WORK_WHERE = 'Cashflow_start IS NULL';
+
+/**
+ * САРЫН МӨР Л — S-Curve-ийн задаргаа.
+ * ⚠️ `CF_WORK_WHERE`-ийн ЯГ эсрэг тал: хоёулаа нийлээд хүснэгтийг бүрэн
+ * хуваана, огтлолцохгүй.
+ */
+export const CF_MONTH_WHERE = 'Cashflow_start IS NOT NULL';
+
+/** Сарын задаргааны талбарууд — `Cashflow_final` дотор */
+export const CF_MONTH = {
+  /** Эцэг ажлын дугаар — ажлын мөрийн `Cashflow_ID`-тэй тэнцүү */
+  id: "Cashflow_ID",
+  start: "Cashflow_start",
+  end: "Cashflow_end",
+  /** Тухайн сард төлөвлөсөн гүйцэтгэлийн хувь — ажил тус бүрд нийлбэр 100 */
+  pct: "Cashflow_huwi",
+  /** `pct` × ажлын `ho_dun_geree` / 100 */
+  amount: "Cashflow_dun",
 } as const;
 
 /**

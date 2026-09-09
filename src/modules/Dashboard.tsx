@@ -1648,7 +1648,7 @@ const srcNote = (note: string, src: () => string) => `${note} · ${src()}`;
  * ⚠️ 2026-08-21: `Төсөл_Гүйцэтгэл_` (162 мөрийн Excel хуваарь) ХАСАГДСАН —
  * тэр нь порталаас шинэчлэгддэггүй тест өгөгдөл байв. Одоо бүх дүн ХОЁР
  * АМЬД эхээс:
- *   · `fin`  — CASHFLOW_NEW (`Cashflow_0904 /0`, гэрээ) · IPC_LOG
+ *   · `fin`  — CASHFLOW_NEW (`Cashflow_0909 /0`, гэрээ) · IPC_LOG
  *              (`ipc_0813 /172`, олгосон) · TASK_SHEET (биет)
  *   · `prog` — блок бүрийн гүйцэтгэл, мөн TASK_SHEET-ээс
  *
@@ -1690,7 +1690,7 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
 
   return (
     <>
-      <Panel title={tr('Хэрэгжилтийн ерөнхий график')} note={tr('Cashflow_0904 · ipc_0813 · Гүйцэтгэл бөглөх')}>
+      <Panel title={tr('Хэрэгжилтийн ерөнхий график')} note={tr('Cashflow_0909 · ipc_0813 · Гүйцэтгэл бөглөх')}>
         <Stats cols={2}>
           <Stat accent color={HUE[0]} value={actual == null ? '…' : num(actual, 2)} unit="%" label={tr('Биет гүйцэтгэл')} />
           <Stat accent color={HUE[1]} value={planned == null ? '…' : num(planned, 1)} unit="%" label={tr('Төлөвлөсөн гүйцэтгэл')} />
@@ -4318,7 +4318,7 @@ function SourceDetail({ sources, d, flt, onFlt }: { sources: Async<Row[]>; d: Da
 /* ══════════════════ 08 · Санхүүжилт, бонд ══════════════════ */
 
 /**
- * ТӨСВИЙН ЭХ = `Cashflow_0904 /0` (CASHFLOW_NEW) — захирамж/гэрээгээр
+ * ТӨСВИЙН ЭХ = `Cashflow_0909 /0` (CASHFLOW_NEW) — захирамж/гэрээгээр
  * баталгаажсан ТӨСЛИЙН төсөв (2026-08-14, хэрэглэгчийн шийдвэр). Санхүүгийн
  * ганц зөв эх нь cashflow. «Хөрөнгө оруулалт өртөг» /249 бүхэлдээ түр хасагдсан.
  *
@@ -4357,7 +4357,7 @@ function FinanceDetail({ budget, flt, onFlt }: { budget: Async<Budget> } & FltPr
           <Stat accent color={HUE[2]} value={num(bg.contract)} unit={tr('₮')} label={tr('Гэрээ байгуулсан дүн')} />
           {/* ⚠️ 2026-09-06: «Өмнө шилжүүлсэн» KPI ХАСАГДСАН — тэр дүн нь
               хуучин `cashflow_0813`-ийн «ӨМНӨХ ШИЛЖҮҮЛСЭН» 2 мөрөөс гардаг
-              байсан бөгөөд шинэ `Cashflow_0904`-т ийм талбар ОГТ БАЙХГҮЙ. */}
+              байсан бөгөөд шинэ `Cashflow_0909`-т ийм талбар ОГТ БАЙХГҮЙ. */}
           {/* Энэ хувь нь урьд нь ЗӨВХӨН зүүн жагсаалтын мөрөнд байсан —
               хэсгээ нээхэд алга болдог байв. */}
           <Stat accent color={HUE[4]}

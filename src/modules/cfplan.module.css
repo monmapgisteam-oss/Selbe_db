@@ -1,0 +1,230 @@
+/*
+ * CASHFLOW ХУВИАРЛАХ — хоёр талт зохиомж: зүүн талд ажлын жагсаалт,
+ * баруун талд сонгосон ажлын сарууд.
+ *
+ * ⚠️ ХОЁР ТАЛТ байх шалтгаан: сонголт ба оролт нэг дэлгэцэнд ЗЭРЭГ харагдах
+ * ёстой. Модаль цонх болговол хүн ажил бүрийн дараа хааж, дахин хайх болно —
+ * 78 ажилд 78 удаа.
+ */
+.wrap {
+  display: grid;
+  grid-template-columns: minmax(280px, 30%) 1fr;
+  gap: 12px;
+  height: calc(100vh - 190px);
+  min-height: 420px;
+}
+
+/* ───────── Зүүн: ажлын жагсаалт ───────── */
+.side {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.sideHd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  border-bottom: 1px solid var(--line);
+}
+.legend {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.legend .dot { margin-left: 6px; }
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
+}
+/* Шатлалын зурвас — гэрээний бүртгэлтэй ижил бараан цэнхэр */
+.band {
+  background: #2f5597;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 5px 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.work {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-2);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.work:hover { background: var(--surface-2); }
+.workOn {
+  background: var(--surface-2);
+  box-shadow: inset 3px 0 0 var(--data);
+  color: var(--ink-1);
+}
+.pkg {
+  flex: 0 0 auto;
+  min-width: 72px;
+  font-weight: 600;
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.nm {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/*
+ * БӨГЛӨЛТИЙН ЦЭГ.
+ * ⚠️ ГУРВАН өнгө: ногоон = ЯГ 100%, шар = дутуу/илүү, улаан = хоосон.
+ * Хоёр өнгө байсан бол 30% бөглөсөн ажил «дууссан» мэт ногоон харагдана.
+ * ⚠️ Өнгө нь ГАНЦ дохио БИШ — `title`-д хувь нь бичигдэнэ (өнгө ялгахгүй
+ * хүнд ч уншигдана).
+ */
+.dot {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.none { background: var(--bad); }
+.part { background: var(--warn); }
+.done { background: var(--good); }
+
+/* ───────── Баруун: сарын оролт ───────── */
+.main {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  overflow: auto;
+}
+.hd h3 { margin: 0; font-size: 14px; color: var(--ink-1); }
+.sub { margin: 4px 0 12px; font-size: 11px; color: var(--ink-3); }
+.hint { margin: 0; padding: 24px 4px; font-size: 12px; color: var(--ink-3); }
+
+.tbl { border-collapse: collapse; width: 100%; max-width: 520px; }
+.tbl th {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+}
+.tbl td {
+  padding: 3px 8px;
+  font-size: 12px;
+  color: var(--ink-2);
+  border-bottom: 1px solid var(--line);
+}
+.r { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ⚠️ Мөрийн зүүн ирмэг нь бөглөлтийг хэлнэ — цэгтэй ижил утга, ижил өнгө */
+.rowNone td:first-child { box-shadow: inset 3px 0 0 var(--bad); }
+.rowDone td:first-child { box-shadow: inset 3px 0 0 var(--good); }
+
+.inp {
+  width: 88px;
+  padding: 3px 6px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--ink-1);
+  font-size: 12px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.inp:focus { outline: 2px solid var(--data); outline-offset: -1px; }
+
+.tbl tfoot td {
+  font-weight: 700;
+  color: var(--ink-1);
+  border-top: 2px solid var(--line-strong);
+  border-bottom: none;
+}
+/* Нийлбэрийн мөр — төлөвөө өнгөөр хэлнэ */
+.tbl tfoot tr.done td { color: var(--good); }
+.tbl tfoot tr.part td { color: var(--warn); }
+.tbl tfoot tr.none td { color: var(--ink-3); }
+
+.warn { margin: 8px 0 0; font-size: 11px; color: var(--warn); max-width: 520px; }
+
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: auto;
+  padding-top: 12px;
+}
+.err { font-size: 11px; color: var(--bad); }
+.ok { font-size: 11px; color: var(--good); }
+.save {
+  padding: 6px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--data);
+  background: var(--data);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.save:disabled { opacity: 0.45; cursor: default; }
+
+@media (max-width: 900px) {
+  /* ⚠️ Нарийн дэлгэцэнд ХООРОНДОО — хоёр багана 280px-ээс доош шахагдвал
+     ажлын нэр бүрэн таслагдана. */
+  .wrap { grid-template-columns: 1fr; height: auto; }
+  .list { max-height: 40vh; }
+}
+
+/*
+ * ЦЭВЭРЛЭХ — сонгосон ажлын бүх сарын хувийг хоослох.
+ * ⚠️ ХОЁРДОГЧ загвар (хүрээтэй, дүүргэлтгүй): устгах шинжтэй үйлдэл нь
+ * хадгалахтай ижил жинтэй харагдвал санамсаргүй дарагдана.
+ */
+.clear {
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--line-strong);
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 12px;
+  cursor: pointer;
+}
+.clear:hover:not(:disabled) { border-color: var(--bad); color: var(--bad); }
+.clear:disabled { opacity: 0.4; cursor: default; }
