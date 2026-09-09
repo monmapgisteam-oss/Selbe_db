@@ -31,55 +31,55 @@ const NOW = Date.UTC(2026, 8, 6);
 /** CASHFLOW_NEW-ийн түүхий мөр — талбарын нэрс `services.ts`-тэй ижил */
 const row = (o = {}) => ({
   OBJECTID: 1,
-  Turul: 'БАРИЛГА УГСРАЛТ',
-  Tusul: 'Төсөл',
-  Bagts: 'БАГЦ-16',
-  Ded_bagts: null,
-  Nariiwchilsan_turul: 'Ажил',
-  Urdch_tusuwt_urtug: null,
-  HO_dungiin_tailbar: null,
-  Ehleh_ognoo: null,
-  Duusah_ognoo: null,
-  Guitsetgegch_baig: null,
-  Geree_dugaar: null,
-  Geree_erh_dun: null,
+  ajil_tuvshin2: 'БАРИЛГА УГСРАЛТ',
+  ajil_tuvshin1: 'Төсөл',
+  /* ⚠️ Cashflow_0909-д багцын багана НЭГ — хуучин Bagts/Ded_bagts нэгдсэн */
+  bagts: 'БАГЦ-16',
+  ajil_uilchilgee: 'Ажил',
+  ho_dun_geree: null,
+  ho_dungiin_tailbar: null,
+  ehleh_ognoo: null,
+  duusah_ognoo: null,
+  guitsetgegch: null,
+  geree_dugaar: null,
+  geree_dun: null,
   ...o,
 });
 
 /* ── 1. isUncontracted / isInconsistent ── */
 {
   for (const amt of [null, '', 0, '0', -5]) {
-    assert.equal(isUncontracted(row({ Geree_erh_dun: amt })), true, `дүн=${JSON.stringify(amt)}`);
-    assert.equal(isUncontracted(row({ Geree_erh_dun: amt, Guitsetgegch_baig: '  ' })), true, 'зайтай гүйцэтгэгч = хоосон');
-    assert.equal(isInconsistent(row({ Geree_erh_dun: amt })), false);
+    assert.equal(isUncontracted(row({ geree_dun: amt })), true, `дүн=${JSON.stringify(amt)}`);
+    assert.equal(isUncontracted(row({ geree_dun: amt, guitsetgegch: '  ' })), true, 'зайтай гүйцэтгэгч = хоосон');
+    assert.equal(isInconsistent(row({ geree_dun: amt })), false);
   }
-  assert.equal(isUncontracted(row({ Geree_erh_dun: 100 })), false);
-  assert.equal(isInconsistent(row({ Geree_erh_dun: 100 })), true, 'дүн бий, гүйцэтгэгч алга');
-  assert.equal(isUncontracted(row({ Guitsetgegch_baig: 'ББСМО ХХК' })), false);
-  assert.equal(isInconsistent(row({ Guitsetgegch_baig: 'ББСМО ХХК' })), true, 'гүйцэтгэгч бий, дүн алга');
-  assert.equal(isInconsistent(row({ Geree_erh_dun: 100, Guitsetgegch_baig: 'ББСМО ХХК' })), false);
-  assert.equal(isUncontracted(row({ Geree_erh_dun: 100, Guitsetgegch_baig: 'ББСМО ХХК' })), false);
+  assert.equal(isUncontracted(row({ geree_dun: 100 })), false);
+  assert.equal(isInconsistent(row({ geree_dun: 100 })), true, 'дүн бий, гүйцэтгэгч алга');
+  assert.equal(isUncontracted(row({ guitsetgegch: 'ББСМО ХХК' })), false);
+  assert.equal(isInconsistent(row({ guitsetgegch: 'ББСМО ХХК' })), true, 'гүйцэтгэгч бий, дүн алга');
+  assert.equal(isInconsistent(row({ geree_dun: 100, guitsetgegch: 'ББСМО ХХК' })), false);
+  assert.equal(isUncontracted(row({ geree_dun: 100, guitsetgegch: 'ББСМО ХХК' })), false);
 }
 
 /* ── 1б. contractOf — дэд багц давамгайлна, нэр хоосон бол төсөл ── */
 {
-  const c = contractOf(row({ Ded_bagts: 'БАГЦ-16.1', Nariiwchilsan_turul: '', Urdch_tusuwt_urtug: '500' }));
+  const c = contractOf(row({ bagts: 'БАГЦ-16.1', ajil_uilchilgee: '', ho_dun_geree: '500' }));
   assert.equal(c.pkg, 'БАГЦ-16.1');
   assert.equal(c.work, 'Төсөл');
   assert.equal(c.budget, 500);
-  assert.equal(contractOf(row({ Bagts: null })).pkg, '');
+  assert.equal(contractOf(row({ bagts: null })).pkg, '');
   assert.equal(contractOf(row()).budget, null, 'төсөвгүй → null, 0 биш');
 }
 
 /* ── 2. Бүтэн тооцоо — холимог мөрүүд ── */
-const A = row({ OBJECTID: 1, Nariiwchilsan_turul: 'A ажил', Urdch_tusuwt_urtug: 100, Ehleh_ognoo: NOW - 10 * DAY });
-const B = row({ OBJECTID: 2, Nariiwchilsan_turul: 'B ажил', Urdch_tusuwt_urtug: 500, Ehleh_ognoo: NOW + 30 * DAY });
-const C = row({ OBJECTID: 3, Nariiwchilsan_turul: 'C ажил', Urdch_tusuwt_urtug: null });
-const D = row({ OBJECTID: 4, Nariiwchilsan_turul: 'D гэрээтэй', Geree_erh_dun: 900, Guitsetgegch_baig: 'ББСМО ХХК', HO_dungiin_tailbar: 'Гэрээлсэн дүн' });
-const E = row({ OBJECTID: 5, Nariiwchilsan_turul: 'E дүнтэй', Geree_erh_dun: 50, Urdch_tusuwt_urtug: 60 });
-const G = row({ OBJECTID: 6, Nariiwchilsan_turul: 'G гүйцэтгэгчтэй', Guitsetgegch_baig: 'Х ХХК', Geree_dugaar: 'ХМХ-25/1', Urdch_tusuwt_urtug: 70 });
-const H = row({ OBJECTID: 7, Nariiwchilsan_turul: 'H ажил', Ded_bagts: 'БАГЦ-16.2', Urdch_tusuwt_urtug: 20, Ehleh_ognoo: NOW - 40 * DAY, Duusah_ognoo: NOW + 100 * DAY });
-const I = row({ OBJECTID: 8, Nariiwchilsan_turul: 'I өнөөдөр', Urdch_tusuwt_urtug: 1, Ehleh_ognoo: NOW });
+const A = row({ OBJECTID: 1, ajil_uilchilgee: 'A ажил', ho_dun_geree: 100, ehleh_ognoo: NOW - 10 * DAY });
+const B = row({ OBJECTID: 2, ajil_uilchilgee: 'B ажил', ho_dun_geree: 500, ehleh_ognoo: NOW + 30 * DAY });
+const C = row({ OBJECTID: 3, ajil_uilchilgee: 'C ажил', ho_dun_geree: null });
+const D = row({ OBJECTID: 4, ajil_uilchilgee: 'D гэрээтэй', geree_dun: 900, guitsetgegch: 'ББСМО ХХК', ho_dungiin_tailbar: 'Гэрээлсэн дүн' });
+const E = row({ OBJECTID: 5, ajil_uilchilgee: 'E дүнтэй', geree_dun: 50, ho_dun_geree: 60 });
+const G = row({ OBJECTID: 6, ajil_uilchilgee: 'G гүйцэтгэгчтэй', guitsetgegch: 'Х ХХК', geree_dugaar: 'ХМХ-25/1', ho_dun_geree: 70 });
+const H = row({ OBJECTID: 7, ajil_uilchilgee: 'H ажил', bagts: 'БАГЦ-16.2', ho_dun_geree: 20, ehleh_ognoo: NOW - 40 * DAY, duusah_ognoo: NOW + 100 * DAY });
+const I = row({ OBJECTID: 8, ajil_uilchilgee: 'I өнөөдөр', ho_dun_geree: 1, ehleh_ognoo: NOW });
 {
   const k = computeUncontracted([A, B, C, D, E, G, H, I], NOW);
   assert.equal(k.value, '5', 'гэрээгүй тоо (A B C H I)');
@@ -119,15 +119,15 @@ const I = row({ OBJECTID: 8, Nariiwchilsan_turul: 'I өнөөдөр', Urdch_tusu
 const NOTE_76 = 'Төслийн хөрөнгө оруулалт руу оруулахгүйгээр хасуулах';
 {
   assert.equal(isCancelled(row()), false, 'тайлбаргүй');
-  assert.equal(isCancelled(row({ HO_dungiin_tailbar: 'Гэрээлсэн дүн' })), false);
-  assert.equal(isCancelled(row({ HO_dungiin_tailbar: 'Магадлагдсан дүн' })), false);
-  assert.equal(isCancelled(row({ HO_dungiin_tailbar: 'Төслийн хөрөнгө оруулалтаас хасах. Хийгдэхгүй болсон ажил' })), true, 'OID 7');
-  assert.equal(isCancelled(row({ HO_dungiin_tailbar: NOTE_76 })), true, 'OID 76');
-  assert.equal(isCancelled(row({ HO_dungiin_tailbar: 'ХИЙГДЭХГҮЙ' })), true, 'том үсэг');
-  assert.equal(isCancelled(row({ HO_dungiin_tailbar: '  хөрөнгө   оруулалт  руу\tоруулахгүй ' })), true, 'олон зай нэг болно');
+  assert.equal(isCancelled(row({ ho_dungiin_tailbar: 'Гэрээлсэн дүн' })), false);
+  assert.equal(isCancelled(row({ ho_dungiin_tailbar: 'Магадлагдсан дүн' })), false);
+  assert.equal(isCancelled(row({ ho_dungiin_tailbar: 'Төслийн хөрөнгө оруулалтаас хасах. Хийгдэхгүй болсон ажил' })), true, 'OID 7');
+  assert.equal(isCancelled(row({ ho_dungiin_tailbar: NOTE_76 })), true, 'OID 76');
+  assert.equal(isCancelled(row({ ho_dungiin_tailbar: 'ХИЙГДЭХГҮЙ' })), true, 'том үсэг');
+  assert.equal(isCancelled(row({ ho_dungiin_tailbar: '  хөрөнгө   оруулалт  руу\tоруулахгүй ' })), true, 'олон зай нэг болно');
   /* Ганц үйл үг ХАНГАЛТГҮЙ — ердийн дүнгийн тайлбар хасагдсан болохгүй */
   for (const s of ['хасах', 'Дүнг хасуулах', 'НӨАТ хасах дүн', 'урьдчилгаа хасуулах', 'Хөрөнгө оруулалт']) {
-    assert.equal(isCancelled(row({ HO_dungiin_tailbar: s })), false, `«${s}» хасагдсан биш`);
+    assert.equal(isCancelled(row({ ho_dungiin_tailbar: s })), false, `«${s}» хасагдсан биш`);
   }
 }
 
@@ -135,13 +135,13 @@ const NOTE_76 = 'Төслийн хөрөнгө оруулалт руу оруу�
 {
   const NOTE = 'Төслийн хөрөнгө оруулалтаас хасах. Хийгдэхгүй болсон ажил';
   /* гэрээгүй + эхлэх хугацаа өнгөрсөн + том төсөв — хасагдсан тул bad болох ёсгүй */
-  const X = row({ OBJECTID: 10, Nariiwchilsan_turul: 'X хасагдсан', Urdch_tusuwt_urtug: 20000, Ehleh_ognoo: NOW - 5 * DAY, HO_dungiin_tailbar: NOTE });
+  const X = row({ OBJECTID: 10, ajil_uilchilgee: 'X хасагдсан', ho_dun_geree: 20000, ehleh_ognoo: NOW - 5 * DAY, ho_dungiin_tailbar: NOTE });
   /* гүйцэтгэгчтэй ч дүнгүй (дутуу) + хасуулах — 2-р хүснэгтэд орох ёсгүй */
-  const Y = row({ OBJECTID: 11, Nariiwchilsan_turul: 'Y хасуулах', Urdch_tusuwt_urtug: 30, Guitsetgegch_baig: 'Ү ХХК', HO_dungiin_tailbar: NOTE_76 });
+  const Y = row({ OBJECTID: 11, ajil_uilchilgee: 'Y хасуулах', ho_dun_geree: 30, guitsetgegch: 'Ү ХХК', ho_dungiin_tailbar: NOTE_76 });
   /* гэрээ бүрэн + «хийгдэхгүй» — энэ картын хамрах хүрээнд огт биш */
-  const Z = row({ OBJECTID: 12, Nariiwchilsan_turul: 'Z гэрээтэй', Geree_erh_dun: 900, Guitsetgegch_baig: 'З ХХК', HO_dungiin_tailbar: 'хийгдэхгүй' });
+  const Z = row({ OBJECTID: 12, ajil_uilchilgee: 'Z гэрээтэй', geree_dun: 900, guitsetgegch: 'З ХХК', ho_dungiin_tailbar: 'хийгдэхгүй' });
   /* гэрээгүй + эхэлсэн + ганц «хасах» үгтэй тайлбар — ХАСАГДСАН БИШ, ердийн гэрээгүй хэвээр (bad) */
-  const W = row({ OBJECTID: 13, Nariiwchilsan_turul: 'W НӨАТ', Urdch_tusuwt_urtug: 7, Ehleh_ognoo: NOW - 3 * DAY, HO_dungiin_tailbar: 'НӨАТ хасах дүн' });
+  const W = row({ OBJECTID: 13, ajil_uilchilgee: 'W НӨАТ', ho_dun_geree: 7, ehleh_ognoo: NOW - 3 * DAY, ho_dungiin_tailbar: 'НӨАТ хасах дүн' });
 
   const k = computeUncontracted([B, E, X, Y, Z], NOW);
   assert.equal(k.value, '1', 'зөвхөн B гэрээгүй');
@@ -202,7 +202,7 @@ const NOTE_76 = 'Төслийн хөрөнгө оруулалт руу оруу�
 
 /* ── 5. Хязгаар — тасалсан тоо ИЛ ── */
 {
-  const many = Array.from({ length: ROW_CAP + 25 }, (_, i) => row({ OBJECTID: i + 1, Nariiwchilsan_turul: `Ажил ${i}`, Urdch_tusuwt_urtug: i }));
+  const many = Array.from({ length: ROW_CAP + 25 }, (_, i) => row({ OBJECTID: i + 1, ajil_uilchilgee: `Ажил ${i}`, ho_dun_geree: i }));
   const k = computeUncontracted(many, NOW);
   assert.equal(k.value, String(ROW_CAP + 25));
   const t1 = k.tables[0];

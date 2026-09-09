@@ -136,28 +136,7 @@
  * ⚠️ Үйлчилгээнд БИЧИГДЭЭГҮЙ тоо — хадгалагдсанаас ялгаатай харагдах ЁСТОЙ.
  */
 .auto { background: color-mix(in srgb, var(--good) 12%, transparent); }
-.autoTag {
-  display: inline-block;
-  margin-left: 6px;
-  padding: 0 4px;
-  border-radius: var(--r-sm);
-  background: color-mix(in srgb, var(--good) 28%, transparent);
-  color: var(--good-ink, var(--ink));
-  font-size: 0.62rem;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  vertical-align: middle;
-}
 
-/* Эх сурвалжийн багана — «яаж бодогдов» */
-.thSrc { width: 220px; text-align: left !important; }
-.src {
-  color: var(--ink-3);
-  font-size: 0.72rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 
 /*
  * ТАЙЛБАРЫН МӨР — тоо хаанаас гарсныг ил хэлнэ.

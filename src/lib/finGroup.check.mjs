@@ -30,8 +30,14 @@ const CF = CASHFLOW_NEW.fields;
 const C = HO_IPC.contractFields;
 const P = HO_IPC.payFields;
 
+/*
+ * ⚠️ 2026-09-09: Cashflow_0909-д багцын багана НЭГ л ширхэг (`bagts`) — хуучин
+ * `Bagts` (эцэг) ба `Ded_bagts` (навч) хоёр нэгдсэн. Тиймээс `CF.pkg` ба
+ * `CF.pkg2` нь ИЖИЛ талбарыг заана: хоёуланг нь бичвэл сүүлийнх нь эхнийхийг
+ * дарж, бүх багц хоосон болно. Навчны утгыг (дэд байвал түүнийг) НЭГ УДАА бичнэ.
+ */
 const cf = (oid, pkg, pkg2, year, o = {}) => ({
-  OBJECTID: oid, [CF.pkg]: pkg, [CF.pkg2]: pkg2, [CF.orderDate]: year, ...o,
+  OBJECTID: oid, [CF.pkg2]: pkg2 || pkg, [CF.orderDate]: year, ...o,
 });
 /* ⚠️ HO-д ДЭД БАГЦЫН тусдаа талбар БАЙХГҮЙ — `bagts` ГАНЦААРАА («Багц-3.1»
    гэсэн дэд түвшнийг өөрөө агуулна). Тиймээс хуурамч мөр ч ганц талбартай. */
@@ -99,8 +105,12 @@ const total = (out) => out.reduce((a, p) => a + p.count, 0);
   assert.deepEqual(out.map((p) => p.pkg), ['Багц-4.1', 'Багц-9']);
   assert.deepEqual(out[0].rows.map((r) => r.oid), [1, 2]);
   /* ⚠️ HO нь Cashflow-ийн талбарыг УНШИХГҮЙ — код давхцдаггүй ч ирээдүйд
-     талбар нэмэгдвэл санамсаргүй холилдохоос сэргийлнэ. */
-  const wrong = buildGroups([{ OBJECTID: 9, [CF.pkg]: 'БАГЦ-4' }], 'ho');
+     талбар нэмэгдвэл санамсаргүй холилдохоос сэргийлнэ.
+     ⚠️ 2026-09-10 (tailan merge): `CF.pkg` нь `Cashflow_0909`-д `bagts` болсон нь
+     `HO_IPC.contractFields.pkg` (`bagts`)-тай НЭР ДАВХЦСАН тул тэр талбараар
+     шалгах нь утгагүй болов — HO-гийн ЖИНХЭНЭ багц гэж уншигдана. Cashflow-д Л
+     байдаг `pkg74` (`bagts_74`) талбараар санааг хэвээр барина. */
+  const wrong = buildGroups([{ OBJECTID: 9, [CF.pkg74]: 'БАГЦ-4' }], 'ho');
   assert.equal(wrong[0].key, NO_PKG);
 }
 

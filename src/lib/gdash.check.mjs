@@ -18,9 +18,13 @@
  */
 import assert from 'node:assert/strict';
 import {
-  inPeriod, yearsOf, sCurve, kpisOf, chartTypeCost, chartTypeCount,
+  inPeriod, yearsOf, sCurve, kpisOf, chartTypeCost,
   chartSourceCount, chartNoteAmount, grainOf, CONTRACTED, CF_SOURCES,
 } from './gdash.ts';
+import { CASHFLOW_NEW } from './services.ts';
+
+/** Гэрээний ШАТНЫ талбарууд — индикаторын шинэ эх сурвалж */
+const ST = CASHFLOW_NEW.stages;
 
 const D = (y, m, d = 1) => Date.UTC(y, m - 1, d);
 
@@ -29,8 +33,15 @@ const row = (o = {}) => ({
   oid: 1, type: 'A', project: '', pkg: 'Багц -1',
   cost: 100, note: '', start: null, end: null, share: 0, decree: 0, progress: null,
   src: CF_SOURCES.map(() => 0),
+  /* ⚠️ Индикаторын «Гүйцэтгэлийн хувь» ЭНДЭЭС бодогдоно (`progress`-оос БИШ) */
+  stage: {},
+  /* ⚠️ Анхдагчаар НИЙТ дүнд ОРНО — Excel-ийн 1 ба 2-р хэсгийн мөр */
+  inTotal: true,
   ...o,
 });
+
+/** ЗӨВХӨН барилга угсралтын шаттай мөр — бусад шат хэмжигдээгүй */
+const buildRow = (o = {}) => row({ ...o, stage: { [ST.build]: o.progress ?? null } });
 
 /** Хугацааны шүүлт — хоосон массив = «бүгд» */
 const P = (o = {}) => ({ years: [], quarters: [], months: [], ...o });
@@ -96,30 +107,57 @@ const P = (o = {}) => ({ years: [], quarters: [], months: [], ...o });
   assert.deepEqual(ys, [2024, 2025, 2026, 2027]);
 }
 
-/* ── 4. Гүйцэтгэлийн хувь — ӨРТГӨӨР ЖИГНЭНЭ, хэмжигдээгүй нь орохгүй ──
-   ⚠️ 2026-09-04: гүйцэтгэлийг багцын нэгтгэлээс БИШ, мөрийн ӨӨРИЙН
-   `Guitsetgel_huwi`-ээс авдаг болов (тэр багана бүрэн бөглөгдсөн). */
+/* ── 4. Гүйцэтгэлийн хувь — ЗУРГААН ШАТНЫ ЖИГНЭСЭН НИЙЛБЭР ──
+   ⚠️ 2026-09-08: индикатор нь ЗӨВХӨН `Guitsetgel_huwi` (барилга угсралт)
+   байхаа больж, «Нэгтгэл гүйцэтгэл»-ийн төслийн НИЙТ мөртэй ижил болов:
+   зургаан шат тус бүрийн төсвөөр жигнэсэн дундажийг ТОГТООСОН жингээр
+   (5·10·3·1·1·79 + улсын комисс 1) нийлүүлнэ.
+   ⚠️ Хэмжилтгүй шатны ЖИН хуваарьт ҮЛДЭНЭ — эс бөгөөс тэр хувь нь бусад шат
+   руу тарж, гүйцэтгэл хиймлээр өснө. */
 {
   const rows = [
-    row({ oid: 1, cost: 900, progress: 10 }),
-    row({ oid: 2, cost: 100, progress: 100 }),
-    row({ oid: 3, cost: 1000, progress: null }), // ХЭМЖИГДЭЭГҮЙ
+    buildRow({ oid: 1, cost: 900, progress: 10 }),
+    buildRow({ oid: 2, cost: 100, progress: 100 }),
+    buildRow({ oid: 3, cost: 1000, progress: null }), // ХЭМЖИГДЭЭГҮЙ
   ];
   const k = kpisOf(rows, 0);
 
-  /* (900×10 + 100×100) / 1000 = 19%. Энгийн дундаж бол 55% байх байсан. */
-  assert.equal(Math.round(k.progress * 100) / 100, 19);
-  /* Хэмжигдээгүй 1000 нь хуваарьт ч, хүртвэрт ч ОРООГҮЙ */
+  /* Барилга угсралт: (900×10 + 100×100) / 1000 = 19%; жин нь 79% →
+     төслийн гүйцэтгэл = 19 × 0.79 = 15.01%. Бусад шат хэмжигдээгүй. */
+  assert.equal(Math.round(k.progress * 100) / 100, 15.01);
+  assert.notEqual(Math.round(k.progress), 19, 'бүтэн 19% гэж хэлэхгүй — жин 79%');
+
+  /* Хэмжигдээгүй 1000 нь шатны хуваарьт ч, хүртвэрт ч ОРООГҮЙ */
   assert.equal(k.budget, 2000);
   assert.equal(Math.round(k.progressCovered), 50, 'хамралт = 1000/2000');
 
+  /* ⚠️ МӨНГӨ нь ХУВЬТАЙГАА таарна: 2000 × 15.01% = 300.2 */
+  assert.ok(Math.abs(k.progressAmount - (2000 * k.progress) / 100) < 1e-9);
+
   /* ⚠️ `0` ба `null` ХОЁР ӨӨР: тэг гүйцэтгэл нь ХЭМЖИГДСЭН тул хуваарьт орно */
-  const z = kpisOf([row({ cost: 100, progress: 0 }), row({ cost: 100, progress: 100 })], 0);
-  assert.equal(z.progress, 50);
-  assert.equal(z.progressCovered, 100);
+  const z = kpisOf([buildRow({ cost: 100, progress: 0 }), buildRow({ cost: 100, progress: 100 })], 0);
+  assert.equal(Math.round(z.progress * 100) / 100, 39.5, '50% × 79 жин');
+
+  /* ГАЗАР ЧӨЛӨӨЛӨЛТ нь тусдаа эхээс — 3% жинтэй нэмэгдэнэ */
+  const g = kpisOf(rows, 0, 100);
+  assert.ok(Math.abs(g.progress - (15.01 + 3)) < 1e-9, 'газрын 3% жин нэмэгдэнэ');
 }
 
-/* ── 4б. Хэмжигдсэн ажил огт байхгүй бол хувь нь `null` (0 БИШ) ── */
+/* ── 4а. НИЙТ ТӨСӨВ — Excel-ийн хамрах хүрээ (`=+I8+I21`) ──
+   ⚠️ Нийгмийн дэд бүтэц · газар чөлөөлөлт · бондын хүү нь эх файлын НИЙТ
+   дүнд ОРДОГГҮЙ. Тэдгээр мөр «Багц ажлын тоо»-нд ХЭВЭЭР тоологдоно — хоёр
+   индикатор өөр хамрах хүрээтэй байх нь ЗОРИУДЫН шийдвэр. */
+{
+  const k = kpisOf([
+    buildRow({ oid: 1, cost: 1000, progress: 50 }),
+    buildRow({ oid: 2, cost: 400, progress: 50, inTotal: false }), // БОНДЫН ХҮҮ мэт
+  ], 0);
+  assert.equal(k.budget, 1000, 'нийлбэрт ороогүй мөр төсөвт нэмэгдэхгүй');
+  assert.equal(k.packages, 2, 'мөрийн тоо нь БҮГД — хамрах хүрээ хамаарахгүй');
+  assert.equal(Math.round(k.progressCovered), 100, 'хамралтын хуваарь ч тэр хүрээнд');
+}
+
+/* ── 4б. Нэг ч шат хэмжигдээгүй бол хувь нь `null` (0 БИШ) ── */
 {
   const k = kpisOf([row({ cost: 500 })], 0);
   assert.equal(k.progress, null);
@@ -225,11 +263,26 @@ assert.deepEqual(sCurve([row({ share: 0 })]), []);
   assert.equal(c1[1].count, 2);      // ажлын тоо
   assert.equal(c1[1].countSub, 1);   // тэдгээрээс гэрээтэй нь
 
-  /* Төрөл × тоо — дэд нь гэрээлсэн тоо */
-  const c2 = chartTypeCount(rows);
-  const eng = c2.find((x) => x.key === 'ИНЖЕНЕР');
-  assert.equal(eng.value, 2);
-  assert.equal(eng.sub, 1);
+  /* ⚠️ ГҮЙЦЭТГЭЛИЙН ХОЁР ХЭМЖҮҮР нь 2026-09-10-нд ЭНЭ чарт руу нэгдсэн
+     (`chartTypeCount` хасагдав). `perf` нь объёмын эх сурвалж руу шилждэг,
+     `fin` нь ҮРГЭЛЖ санхүүжсэн талбараас — хоёулаа өртгөөр жигнэгдэнэ. */
+  const eng = c1.find((x) => x.key === 'ИНЖЕНЕР');
+  assert.equal(eng.count, 2);
+  assert.equal(eng.countSub, 1);
+  /* Хэмжигдээгүй мөр (`progress == null`) хуваарь, хүртвэрт ч ОРОХГҮЙ */
+  const perfRows = [
+    buildRow({ oid: 1, type: 'A', cost: 900, progress: 10, note: CONTRACTED }),
+    buildRow({ oid: 2, type: 'A', cost: 100, progress: 100, note: CONTRACTED }),
+    buildRow({ oid: 3, type: 'A', cost: 1000, progress: null, note: CONTRACTED }),
+  ];
+  const cp = chartTypeCost(perfRows);
+  assert.equal(Math.round(cp[0].fin * 100) / 100, 19, '(900×10+100×100)/1000');
+  assert.equal(cp[0].perf, cp[0].fin, 'объёмын эх сурвалжгүй бол хоёулаа тэнцүү');
+  /* Объёмын эх сурвалж БАЙВАЛ `perf` түүн рүү шилжинэ, `fin` ХЭВЭЭР */
+  const volRows = [buildRow({ oid: 1, type: 'A', cost: 100, progress: 10, pkg2: 'Багц -1' })];
+  const cv = chartTypeCost(volRows, new Map([['БАГЦ1', 80]]));
+  assert.equal(cv[0].perf, 80, 'объёмын хувь давамгайлна');
+  assert.equal(cv[0].fin, 10, 'санхүүжсэн нь хэвээр');
 
   /* Эх үүсвэр — 0 дүнтэй талбар ТООЛОГДОХГҮЙ */
   const withSrc = [

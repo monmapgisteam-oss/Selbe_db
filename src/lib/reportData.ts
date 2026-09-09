@@ -5,11 +5,11 @@
  * хэрэглэнэ. Хоёр газар тус тусад нь тооцвол PDF нь дэлгэцээс зөрч, аль нь зөв
  * болох нь мэдэгдэхгүй болно — тиймээс тооцоолол энд ГАНЦ УДАА хийгдэнэ.
  *
- * ⚠️ САНХҮҮ: `CASHFLOW_NEW` (`Cashflow_0904/FeatureServer/0`, 76 мөр) —
+ * ⚠️ САНХҮҮ: `CASHFLOW_NEW` (`Cashflow_0909/FeatureServer/0`, 76 мөр) —
  * «Цогцолбор» дашбоардын толгойн тоо ч мөн эндээс гардаг. Мөр БҮР нэг гэрээ.
  *
  * ⚠️ 2026-09-06: `cashflow_0813` (209 мөр — гэрээ + сар + өмнөх шилжүүлсэн)
- * БҮРМӨСӨН хаягдаж `Cashflow_0904` (76 мөр) орлосон. Мөрийн ТӨРЛИЙН шүүлт
+ * БҮРМӨСӨН хаягдаж `Cashflow_0909` (76 мөр) орлосон. Мөрийн ТӨРЛИЙН шүүлт
  * (`where.master`) хэрэггүй болов; хариуд нь САНХҮҮЖИЛТИЙН САРЫН ХУВААРЬ
  * (тайлангийн 7.2 хэсэг) бүхэлдээ ХАСАГДСАН.
  *
@@ -64,7 +64,7 @@ import { cached, loadClearance } from '@/lib/live';
 import { layerTotals } from '@/lib/totals';
 import {
   BUILDING, CASHFLOW_NEW, HABEA, HO_IPC, LAYER_GROUPS, GROUP_LAYERS, LAYER_BY_ID, PARCEL_CLEARED, PARCEL_LEFT,
-  bagtsKey, pkgKeyOf, laborCompanyFields, hoAmount,
+  bagtsKey, pkgKeyOf, laborCompanyFields, hoAmount, CF_WORK_WHERE,
 } from '@/lib/services';
 
 /* ═══════════════ Төрөл ═══════════════ */
@@ -287,6 +287,7 @@ async function loadOverallRaw(): Promise<ReportExtra['overall']> {
        тусдаа кэштэй дуудалт тул хөнгөн байлгав.
        ⚠️ 2026-09-06: мөрийн ТӨРЛИЙН шүүлт хэрэггүй болов — мөр БҮР нэг гэрээ. */
     queryFeatures(CASHFLOW_NEW.url, {
+      where: CF_WORK_WHERE,
       outFields: [F.pkg2, F.pkg, F.budget],
     }),
   ]);
@@ -538,7 +539,10 @@ async function loadFinanceRaw(): Promise<ReportExtra['finance']> {
     /* ⚠️ 2026-09-06: мөр БҮР НЭГ ГЭРЭЭ — мөрийн төрлөөр задлах шаардлагагүй
        болов (хуучин `cashflow_0813` нь ГЭРЭЭ · САР · ӨМНӨХ ШИЛЖҮҮЛСЭН гэсэн
        гурван грейнтэй байсан). */
-    queryFeatures(CASHFLOW_NEW.url, { outFields: ['*'] }),
+    /* ⚠️ 2026-09-10 (tailan merge): `Cashflow_0909`-т сарын задаргааны 681 мөр
+       ДООШ нэмэгдсэн тул `CF_WORK_WHERE` ЗААВАЛ — эс бөгөөс 78 гэрээ 759 болж
+       нийт төсөв, багцын тоо бүгд эвдэрнэ. */
+    queryFeatures(CASHFLOW_NEW.url, { where: CF_WORK_WHERE, outFields: ['*'] }),
     /* ⚠️ ГАНЦ талбар хангалттай: шинэ эхэд СУУТГАЛ БАЙХГҮЙ тул `dun` нь
        аль хэдийн бодит олгосон дүн. Хуучин 5 багана (gross + 4 суутгал)
        татдаг байсан нь хэрэггүй болов.
@@ -553,7 +557,7 @@ async function loadFinanceRaw(): Promise<ReportExtra['finance']> {
   const sum = (f: string) => master.reduce((a, r) => a + nn(r[f]), 0);
 
   /* ⚠️ 2026-09-06: САРЫН ХУВААРЬ ХАСАГДСАН — хуучин `cashflow_0813`-ийн
-     «САР» мөрүүдээс гардаг байсан бөгөөд шинэ `Cashflow_0904`-т он/сарын
+     «САР» мөрүүдээс гардаг байсан бөгөөд шинэ `Cashflow_0909`-т он/сарын
      багана ОГТ БАЙХГҮЙ. Тайлан ба PDF-ийн харгалзах хэсэг мөн хасагдсан. */
 
   /*

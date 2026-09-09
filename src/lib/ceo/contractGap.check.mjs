@@ -28,7 +28,9 @@ import { CASHFLOW_NEW } from '../services.ts';
 const F = CASHFLOW_NEW.fields;
 const row = (o) => ({
   [F.detail]: o.work ?? null, [F.project]: o.project ?? null,
-  [F.pkg]: o.pkg ?? null, [F.pkg2]: o.pkg2 ?? null,
+  /* ⚠️ Cashflow_0909-д багцын багана НЭГ (`bagts`) — `pkg` ба `pkg2` ижил
+     талбарыг заана. Хоёуланг нь бичвэл сүүлийнх нь эхнийхийг ДАРНА. */
+  [F.pkg2]: o.pkg2 ?? o.pkg ?? null,
   [F.budget]: o.b ?? null, [F.contractAmount]: o.c ?? null,
   [F.contractor]: o.co ?? null, [F.contractNo]: o.no ?? null, [F.contractDate]: o.dt ?? null,
 });

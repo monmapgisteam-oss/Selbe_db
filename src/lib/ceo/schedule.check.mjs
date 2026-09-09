@@ -232,14 +232,19 @@ assert.equal(r6.tables[0].rows[1][5].v, 0);
 /* ── collectPkgLags: дедуп, диапазон алгасах, нэр pkg2 || pkg ── */
 const C = CASHFLOW_NEW.fields;
 const rows = [
-  { [C.pkg2]: 'Багц 4-1', [C.pkg]: 'Багц 4' },
-  { [C.pkg2]: null, [C.pkg]: 'Багц 4' },
-  { [C.pkg2]: 'Багц 4-1', [C.pkg]: 'Багц 4' },
-  { [C.pkg2]: null, [C.pkg]: 'БАГЦ 1-4' },
-  { [C.pkg2]: null, [C.pkg]: null },
+  /* ⚠️ Cashflow_0909-д багцын багана НЭГ (`bagts`) — `pkg` ба `pkg2` ижил
+     талбарыг заана. Хоёуланг нь бичвэл сүүлийнх нь эхнийхийг ДАРНА, дедуп
+     шалгагдахгүй өнгөрнө. Навчны утгыг НЭГ УДАА бичнэ. */
+  { [C.pkg2]: 'Багц 4-1' },
+  { [C.pkg2]: 'Багц 4' },
+  { [C.pkg2]: 'Багц 4-1' },
+  { [C.pkg2]: 'БАГЦ 1-4' },
+  { [C.pkg2]: null },
 ];
 const months = (r0) => [
-  { label: '2026-01', given: 0, phys: r0[C.pkg2] ? 5 : null, pkg: 'БАГЦ4' },
+  /* ⚠️ Биет хэмжилтийг БАГЦААР ялгана: нэг багана болсон тул «дэд байна уу»
+     гэдгээр ялгах боломжгүй. «4-1»-д хэмжилт бий, «Багц 4»-д алга. */
+  { label: '2026-01', given: 0, phys: String(r0[C.pkg2] ?? '').includes('4-1') ? 5 : null, pkg: 'БАГЦ4' },
 ];
 const got = collectPkgLags(rows, months, (ms) => (ms[0].phys == null ? null : { month: '2026-01', planned: 6, actual: 5, gap: 1 }));
 assert.deepEqual(got.map((p) => p.key), ['БАГЦ41', 'БАГЦ4']);
