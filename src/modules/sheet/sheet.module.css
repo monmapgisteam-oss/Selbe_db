@@ -82,6 +82,119 @@
  * (одоогийн горимыг л бичдэг) товч нь «энэ товч юу хийх вэ» гэдгийг
  * хэлдэггүй — хэрэглэгч дарж үзэж байж мэднэ.
  */
+/*
+ * БҮТЭН ДЭЛГЭЦИЙН ГОРИМ (2026-09-09, хэрэглэгчийн хүсэлт).
+ *
+ * ⚠️ Хөтчийн `requestFullscreen` БИШ, `position: fixed` давхарга.
+ *    Шалтгаан: хөтчийн горим нь ЗӨВХӨН нэг элементийг өргөдөг тул
+ *    порталын дотоод цонхнууд (ноорог сэргээх, огнооны сонгогч,
+ *    баталгаа) элементийн ГАДНА үлдэж, дарагдан харагдахгүй болно.
+ * ⚠️ `z-index: 50` — порталын толгой (10) ба хажуугийн самбараас (20)
+ *    дээгүүр, гэхдээ `sheet`-ийн ӨӨРИЙН цонхнуудаас (60+) доогуур.
+ */
+.wrapFull {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  height: 100vh;
+  max-height: 100vh;
+  margin: 0;
+  padding: 10px 12px 12px;
+  background: var(--bg);
+}
+
+/* «Бөглөх» / «Гарах» товч — `modeBtn`-ийн хэлбэртэй, гэхдээ ТОДРУУЛСАН:
+   энэ бол хуудсыг нээхэд эхэлж дарах товч. */
+.fullBtn,
+.fullBtnOn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 700;
+  padding: 5px 12px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.fullBtn {
+  color: var(--data);
+  background: color-mix(in srgb, var(--data) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--data) 45%, transparent);
+}
+.fullBtn:hover { background: color-mix(in srgb, var(--data) 22%, transparent); }
+/* Горимд байхад — «гарах» гэдгийг өнгөөр нь ялгана */
+.fullBtnOn {
+  color: var(--ink);
+  background: var(--surface-2);
+  border: 1px solid var(--line-strong);
+}
+.fullBtnOn:hover { border-color: var(--data); }
+
+/* ЗАСВАР НЭЭХ товч — «Бүтэн дэлгэц»-ээс ӨӨР өнгө: нэг нь ХАРАГДАЦ,
+   нөгөө нь ӨГӨГДӨЛ хөнддөг тул нүдээр ялгагдах ёстой. */
+.editBtn,
+.editBtnOn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 700;
+  padding: 5px 12px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.editBtn {
+  color: var(--ink-2);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+}
+.editBtn:hover { color: var(--good-ink, var(--good)); border-color: var(--good); }
+/* Засвар НЭЭЛТТЭЙ — ногоон: «одоо бичиж болно» */
+.editBtnOn {
+  color: var(--good-ink, var(--good));
+  background: color-mix(in srgb, var(--good) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--good) 55%, transparent);
+}
+
+/*
+ * БАГЦЫН БОДИТ ГҮЙЦЭТГЭЛ — хэрэгслийн мөрөнд, ХОЁР тоо.
+ * ⚠️ Батлагдсан нь ТОД, батлагдаагүй нь НОГООН — ноорогийн нүдний
+ *    ногоон хүрээтэй ижил өнгө: «энэ бол миний илгээгээгүй ажил» гэдэг
+ *    хоёр газарт НЭГ өнгөөр уншигдана.
+ */
+.pkgPct {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 0.76rem;
+  font-variant-numeric: tabular-nums;
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+}
+.pkgPctLab { color: var(--ink-3); font-size: 0.7rem; }
+.pkgPctNow { color: var(--ink); font-weight: 700; }
+.pkgPctNew {
+  color: var(--good-ink, var(--good));
+  font-weight: 700;
+  font-size: 0.72rem;
+}
+.pkgPctGap { font-style: normal; opacity: 0.75; font-size: 0.68rem; }
+
+/* НӨГӨӨ хувилбарын гүйцэтгэл — БҮДЭГ, лавлах зорилготой */
+.pkgPctOther {
+  color: var(--ink-3);
+  font-size: 0.7rem;
+  padding-left: 6px;
+  border-left: 1px solid var(--line);
+}
+.pkgPctOther b { color: var(--ink-2); font-weight: 700; }
+
 .modeBtn {
   display: inline-flex;
   align-items: center;
@@ -647,6 +760,17 @@
 }
 
 .xl .cursor-cell { cursor: cell; }
+
+/* ӨӨР ХҮНИЙ бөглөсөн, хараахан илгээгээгүй нүд (2026-09-10).
+   ⚠️ ЯАГААД: ноорог нь БАГЦААР хуваалцагддаг тул нэг хүснэгт дээр хоёр
+   бөглөгчийн ажил зэрэг харагдана. Ялгаагүй бол «би энэ нүдийг бөглөсөн
+   үү?» гэдэг мэдэгдэхгүй, улмаар нөгөөгийнх дээр давхар бичих нь элбэг.
+   Ногоон (`dirty`) хэвээр — илгээгээгүй гэдэг нь адилхан; зөвхөн хүрээ нь
+   ЭРЧИМТЭЙ өнгөөр солигдоно. Эзний нэр нь `title`-д бий. */
+.xl td.dirty.byOther,
+.xl tbody tr:hover td.dirty.byOther {
+  box-shadow: inset 0 0 0 2px var(--warn);
+}
 
 /* Гүйцэтгэлийн нүд ХОЁР утга агуулна: бөглөсөн ОБЬЁМ (дээд, гараар бичигдэнэ)
    ба гүйцэтгэлийн ХУВЬ (доод, ихэвчлэн бодогдоно). Тус тусдаа багана болгосныг

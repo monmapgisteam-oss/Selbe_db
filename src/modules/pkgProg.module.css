@@ -410,6 +410,15 @@
   stroke-linejoin: round;
 }
 
+/*
+ * ТӨЛӨВЛӨСӨН ОБЬЁМ — хувийн ХАЖУУД, БҮДЭГ (2026-09-09).
+ * ⚠️ Хувь нь ГОЛ тоо: обьёмыг ижил тод бичвэл хоёр тоо өрсөлдөж, муруй
+ *    уншигдахаа болино. Тиймээс жижиг, сулхан өнгөтэй.
+ * ⚠️ Өнгийг `fill`-ээр биш `opacity`-оор бууруулна: эцэг `text` нь багцын
+ *    өнгийг (`cat(2)`) inline style-аар авдаг тул дарж бичихгүй.
+ */
+.progVol { font-size: 9px; font-weight: 500; opacity: 0.62; }
+
 /* Гарчгийн баруун талын одоогийн зөрүү */
 .progBad { color: var(--bad-ink, var(--bad)); font-weight: 700; font-variant-numeric: tabular-nums; }
 .progGood { color: var(--good-ink, var(--good)); font-weight: 700; font-variant-numeric: tabular-nums; }

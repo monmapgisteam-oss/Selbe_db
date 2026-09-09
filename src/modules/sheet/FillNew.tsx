@@ -54,6 +54,10 @@ import {
   type SubmissionPayload,
 } from "@/lib/submission";
 import { OWNER, STATUS, F as HF, queryAll } from "@/lib/hyanalt";
+import { bagtsKey, isConstructionNo } from "@/lib/services";
+import { num, pct } from "@/lib/format";
+import { loadBlockProgress } from "@/lib/blockProgress";
+import { useAsync } from "@/lib/useAsync";
 import { STAGE_LABEL } from "@/lib/hyanaltGroup";
 import { useHyanaltRows } from "@/lib/hyanaltStore";
 import { bagtsFor, bagtsScope, subscribeAcl } from "@/lib/guitsetgelAcl";
@@ -529,6 +533,8 @@ const RO = {
   viewOnly: tr('Энэ хуудас зөвхөн ХАРАХ горимд нээгдсэн (хяналтын харагдац) — эндээс засвар хийгдэхгүй.'),
   noAddRow: tr('Шинэ мөр нэмэх эрх алга — «Хэрэглэгчдийн эрх удирдах» хэсгээс «Мөр нэмэх» эрхийг олгоно.'),
   noPerf: tr('Гүйцэтгэлийн обьём ба огноог зөвхөн энэ багцад томилогдсон гүйцэтгэгч бөглөнө — та зөвхөн мөр нэмэх эрхийнхээ хүрээнд засна.'),
+  /* ⚠️ Засвар ХААЛТТАЙ үед: эрхийн бус, САНААТАЙ үйлдлийн хаалт. */
+  notEditing: tr('Засвар хаалттай — дээрх «Бөглөх» товчийг дарж нээнэ үү.'),
 } as const;
 
 /*
@@ -589,6 +595,60 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   const locked = !!view;
 
   const wrapRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * БӨГЛӨХ ГОРИМ — хүснэгт БҮТЭН ДЭЛГЭЦ (2026-09-09, хэрэглэгчийн хүсэлт).
+   *
+   * ⚠️ ЯАГААД: бөглөх хуудас 60 багана × 1,400 мөр бөгөөд порталын толгой,
+   *    зүүн талын жагсаалт, табууд нийлээд дэлгэцийн ~40%-ийг иддэг.
+   *    Бөглөгч нэг ажлыг 22 блокт бичихдээ хэвтээ ба босоо хоёр тийш
+   *    гүйлгэсээр байдаг.
+   *
+   * ⚠️ ХӨТЧИЙН `requestFullscreen` ХЭРЭГЛЭХГҮЙ: тэр нь порталын дотоод
+   *    цонх (огнооны сонгогч, баталгааны асуулт) -ыг элемент ГАДНА үлдээж,
+   *    дарагдсан харагдана. Оронд нь `position: fixed` давхарга — бүх
+   *    дотоод цонх хэвээр ажиллана.
+   *
+   * ⚠️ Хуудас солиход АВТОМАТААР гарахгүй: багц солих нь бөглөлтийн ердийн
+   *    алхам тул горимоо хадгална.
+   */
+  const [wide, setWide] = useState(false);
+
+  /**
+   * ЗАСВАРЫН ГОРИМ — «Бөглөх» дартал нүд ЗАСАГДАХГҮЙ (2026-09-09,
+   * хэрэглэгчийн заавар: «бөглөх дарах хүртэл editлэгдэхгүй»).
+   *
+   * ⚠️ ЯАГААД: хуудас нээгдмэгц 60 багана × 1,400 мөр засварлагдах
+   *    байдалтай байсан тул зөвхөн УНШИХААР нээсэн хүн (менежер,
+   *    хянагч, гүйцэтгэгч өөрөө) хулганы санамсаргүй товшилтоор тоо
+   *    өөрчилж, ноорогт бичигдэн, улмаар илгээгдэх эрсдэлтэй байв.
+   *
+   * ⚠️ БҮТЭН ДЭЛГЭЦЭЭС ТУСДАА (хэрэглэгчийн заавар: «full screen болон
+   *    бөглөх 2-ыг салгая · бөглөхгүйгээр full screen ашиглах
+   *    боломжтой»). Хянагч бүтэн дэлгэцээр УНШИХ боломжтой байх ёстой.
+   *
+   * ⚠️ Энэ нь ЭРХИЙН хаалт БИШ: эрхгүй хүн товч дарсан ч `canPerf`
+   *    түүнийг зогсоосон хэвээр.
+   */
+  const [editing, setEditing] = useState(false);
+  useEffect(() => {
+    if (!wide) return undefined;
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setWide(false); };
+    /* ⚠️ `capture` — нүд засаж байхад Escape нь ЭХЛЭЭД оролтыг хаах ёстой
+       тул энд БАРИХГҮЙ: оролт дотор дарагдсан Escape нь `stopPropagation`
+       хийдэггүй ч эхлээд нүдний хандлагч ажиллана (bubble). */
+    window.addEventListener("keydown", esc);
+    return () => window.removeEventListener("keydown", esc);
+  }, [wide]);
+
+  /* ⚠️ Горимд ороход хуудасны ард гүйлт үлдэхгүй — доорх давхарга дээр
+     гүйлгэхэд хуудас ч хамт хөдөлж «хоёр давхар гүйлт» мэдрэгддэг. */
+  useEffect(() => {
+    if (!wide) return undefined;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, [wide]);
   /** Энэ таб яг одоо нуугдсан уу (`display: none` → `offsetParent` нь null). */
   const hiddenNow = () => !wrapRef.current?.offsetParent;
   const [pkg, setPkg] = useState<Pkg>(
@@ -859,8 +919,12 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     return cb === null || cb.includes(pkg.group);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, unrestricted, aclN, pkg.group]);
-  /** Гүйцэтгэлийн нүд засагдахгүй: хуудас түгжээтэй ЭСВЭЛ гүйцэтгэгч биш */
-  const noPerf = noEdit || !canPerf;
+  /**
+   * Гүйцэтгэлийн нүд засагдахгүй: хуудас түгжээтэй, гүйцэтгэгч биш, ЭСВЭЛ
+   * ЗАСВАРЫН горим нээгдээгүй.
+   * ⚠️ `editing`-ийн тайлбарыг түүний зарлалаас үз.
+   */
+  const noPerf = noEdit || !canPerf || !editing;
 
   /* ══════════ ИНЖЕНЕРИЙН ТӨЛӨВЛӨСӨН ОБЬЁМ (2026-09-08) ══════════
    * ⚠️ ГҮЙЦЭТГЭЛЭЭС БҮРЭН ТУСДАА зам: өөрийн эрх (`obyemEdit`/`obyemApprove`),
@@ -1768,6 +1832,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     [rowsAll, nBld, asOf, pending, pendDate, hasObyem, planPct],
   );
 
+
+
   /**
    * ӨНӨӨДӨР (UTC шөнө дунд) — хуваарийн шүүлтийн лавлах цэг.
    *
@@ -2035,6 +2101,92 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     adds.length +
     (asOf !== asOfOrig ? 1 : 0);
 
+  /**
+   * БАГЦЫН БОДИТ ГҮЙЦЭТГЭЛ — ХОЁР тоо (2026-09-09, хэрэглэгчийн хүсэлт).
+   *
+   *   `saved`   — БАТЛАГДСАН: одоо үндсэн өгөгдөлд байгаа хувь.
+   *   `draft`   — ноорог/илгээлтээ НЭМСЭН үеийн хувь.
+   *
+   * ⚠️ ЯАГААД ХОЁУЛАА: бөглөгч «би өнөөдөр хэдэн хувь нэмэв» гэдгээ
+   *    мэдэх ёстой. Ганц тоо харуулбал (ямар нь ч бай) нөгөө нь алга
+   *    болж, «миний бичсэн зүйл тоологдсон уу» гэсэн эргэлзээ үлдэнэ.
+   *
+   * ⚠️ `saved` нь ноорог, огнооны засвар ХОЁУЛАНГ хассан цэвэр тооцоо
+   *    (`computeAll`-д хоосон засвар өгнө) — хадгалагдсан баганыг шууд
+   *    уншвал бүлгийн нүд нь excel-ийн `#REF!`-ээс болж эвдэрсэн байдаг
+   *    (файлын толгойн ⚠️).
+   *
+   * ⚠️ БЛОКУУДЫН ДУНДАЖ — «Багцын гүйцэтгэл» дэлгэцийн дүрэмтэй ИЖИЛ
+   *    (`blockProgress`), тиймээс хоёр дэлгэц нэг тоо харуулна.
+   * ⚠️ Хэмжигдээгүй блок (`null`) тоологдохгүй — 0 гэж авбал бөглөж
+   *    эхлээгүй блокууд багцын хувийг зохиомлоор доошлуулна.
+   */
+  /**
+   * НӨГӨӨ ХУВИЛБАРЫН (9F ↔ 12F) БАТЛАГДСАН ГҮЙЦЭТГЭЛ.
+   *
+   * ⚠️ ЯАГААД (2026-09-09, хэрэглэгч: «9F 12F гүйцэтгэлийн бодит хувь
+   *    тусад нь харагдахгүй юм уу»): багц бүр 9 ба 12 давхрын ТУСДАА
+   *    хуудастай (Багц 1: 9F=12 блок, 12F=8 блок). Нээлттэй хуудасны тоо
+   *    ганцаараа харагдвал «Багцын гүйцэтгэл» дэлгэцийн багцын тоотой
+   *    (бүх блокийн дундаж) зөрж, шалтгаан нь ойлгогдохгүй.
+   *
+   * ⚠️ НӨГӨӨ ХУУДСЫГ ДАХИН ТАТАХГҮЙ: `blockProgress` нь БҮХ багцын бүх
+   *    блокийг аль хэдийн уншсан (газрын зураг, дашбоард түүнийг
+   *    хуваалцдаг) тул тэндээс блокийн нэрээр нь шүүнэ. Бүтэн хуудас
+   *    (13MB) татах шаардлагагүй.
+   *
+   * ⚠️ Зөвхөн БАТЛАГДСАН тоо: нөгөө хуудасны ноорог энэ хуудсанд
+   *    байхгүй тул «батлагдаагүй» гэж харуулах зүйл ч байхгүй.
+   */
+  /* ⚠️ Кэшлэгдсэн: газрын зураг, дашбоард ижил дуудлагыг хуваалцана. */
+  const bpQ = useAsync(loadBlockProgress, []);
+  const bp = bpQ.state === 'ready' ? bpQ.data : null;
+
+  const otherPct = useMemo(() => {
+    const others = pkgFloors(pkg.group).filter((x) => x.key !== pkg.key);
+    if (!others.length || !bp) return null;
+    const g = bagtsKey(pkg.group);
+    /* ЭНЭ хуудасны блокууд — нөгөөгийнхийг ялгахад хэрэгтэй */
+    const mine = new Set((sc?.bld ?? []).map((x) => String(x).trim()));
+    let sum = 0;
+    let n = 0;
+    for (const [key, cell] of bp) {
+      if (!key.startsWith(`${g}|`)) continue;
+      const blok = key.slice(g.length + 1);
+      if (mine.has(blok)) continue;
+      sum += cell.overall; n += 1;
+    }
+    if (!n) return null;
+    return { pct: sum / n, blocks: n, label: `${others[0].floors}F` };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bp, pkg.group, pkg.key, sc]);
+
+  const pkgPct = useMemo(() => {
+    if (!nBld || !rowsAll.length) return null;
+    const bi = rowsAll.findIndex((r) => isConstructionNo(r.no));
+    if (bi < 0) return null;
+    const avg = (c: ReturnType<typeof computeAll>) => {
+      let s = 0;
+      let n = 0;
+      for (let b = 0; b < nBld; b += 1) {
+        const v = c[bi]?.act[b];
+        if (v == null) continue;
+        s += v; n += 1;
+      }
+      return n ? (s / n) * 100 : null;
+    };
+    /** Хэмжигдсэн блокийн тоо — шошгонд «12 блок» гэж бичнэ */
+    let blocks = 0;
+    for (let b = 0; b < nBld; b += 1) if (calc[bi]?.act[b] != null) blocks += 1;
+    const draft = avg(calc);
+    /* ⚠️ Ноороггүй тооцоо — ЗӨВХӨН ноорог байгаа үед бодно (хүнд). */
+    const saved = dirtyCount > 0
+      ? avg(computeAll(rowsAll, nBld, asOf, {}, {}, hasObyem, planPct))
+      : draft;
+    return { saved, draft, blocks };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [calc, rowsAll, nBld, asOf, hasObyem, planPct, dirtyCount]);
+
   /* ══════════ ХУВААЛЦСАН НООРОГ — ОРОЛЦОГЧ ба «ИЛГЭЭХ»-ИЙН ТҮГЖЭЭ ══════════
    *
    * ⚠️ 2026-09-08, хэрэглэгчийн шийдвэр: «нэг багц дээр хэдэн ч аккаунт
@@ -2092,6 +2244,29 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     const doneSet = new Set(doneBy.map(([u]) => u));
     return [...participants].filter((u) => u !== meKey && !doneSet.has(u)).sort();
   }, [participants, doneBy, meKey]);
+  /**
+   * ХҮН ТУС БҮРИЙН ИЛГЭЭГЭЭГҮЙ НҮДНИЙ ТОО (2026-09-10).
+   *
+   * ⚠️ ЯАГААД: оролцогчийн зурвас нь ХЭН гэдгийг хэлдэг ч ХИЧНЭЭН
+   *    гэдгийг хэлдэггүй байв. «Б энд байна» ба «Б 340 нүд бөглөчихсөн»
+   *    хоёр нь илгээхийн өмнөх шийдвэрт огт өөр жинтэй.
+   *
+   * ⚠️ Зөвхөн `pending` (илгээгээгүй) нүдээр — илгээгдсэн тоо нь хэний ч
+   *    биш. Өөрийн нүд `byMap`-д ОРООГҮЙ байж болно (алсад хараахан
+   *    хүрээгүй) тул `mineRef`-ээс нэмнэ.
+   */
+  const byCount = useMemo(() => {
+    const m = new Map<string, number>();
+    const bump = (u: string) => m.set(u, (m.get(u) ?? 0) + 1);
+    for (const k of Object.keys(pending)) {
+      const u = byMap.get(k);
+      if (u && u !== meKey) bump(u);
+      else if (meKey && mineRef.current.has(k)) bump(meKey);
+    }
+    return m;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pending, byMap, meKey]);
+
   /** Өөрөө «дуусгасан» гэж тэмдэглэсэн эсэх — товч «Дахин засах» болно */
   const iAmDone = doneBy.some(([u]) => u === meKey);
   /** «Илгээх» нээлттэй эсэх — хүлээх хүнгүй бол тийм */
@@ -3953,8 +4128,46 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   }
 
   return (
-    <div className={st.wrap} ref={wrapRef}>
+    <div className={`${st.wrap} ${wide ? st.wrapFull : ""}`} ref={wrapRef}>
       <div className={st.toolbar}>
+        {/*
+          * БӨГЛӨХ ГОРИМ — хүснэгтийг бүтэн дэлгэц болгоно.
+          * ⚠️ Хэрэгслийн мөрийн ЭХЭНД: бөглөгч хуудсаа нээмэгц эхлээд
+          *    дардаг товч тул хайх шаардлагагүй байрлалд.
+          * ⚠️ Хяналтын горимд (`locked`) ч ГАРНА: хянагч ч мөн 60 багана
+          *    × 1,400 мөрийг үзэх шаардлагатай.
+          */}
+        <button
+          type="button"
+          className={wide ? st.fullBtnOn : st.fullBtn}
+          onClick={() => setWide((v) => !v)}
+          aria-pressed={wide}
+          title={wide
+            ? tr('Бүтэн дэлгэцээс гарах (Esc)')
+            : tr('Хүснэгтийг бүтэн дэлгэцээр харна — засвар нээгдэхгүй')}
+        >
+          <span aria-hidden>{wide ? '✕' : '⛶'}</span>
+          {wide ? tr('Багасгах') : tr('Бүтэн дэлгэц')}
+        </button>
+        {/*
+          * ⚠️ ЗАСВАР НЭЭХ товч — бүтэн дэлгэцээс ТУСДАА. Хяналтын
+          *    горимд (`locked`) ба эрхгүй үед (`!canPerf`) огт гарахгүй:
+          *    дарж болдоггүй товч нь эвдэрсэн мэт мэдрэгдэнэ.
+          */}
+        {!locked && canPerf && (
+          <button
+            type="button"
+            className={editing ? st.editBtnOn : st.editBtn}
+            onClick={() => setEditing((v) => !v)}
+            aria-pressed={editing}
+            title={editing
+              ? tr('Засварыг хаана — нүд дахин түгжигдэнэ')
+              : tr('Нүд засах горимыг нээнэ. Хаалттай үед санамсаргүй товшилтоор тоо өөрчлөгдөхгүй.')}
+          >
+            <span aria-hidden>{editing ? '🔓' : '✎'}</span>
+            {editing ? tr('Засаж байна') : tr('Бөглөх')}
+          </button>
+        )}
         {/* ⚠️ Багц, хувилбар, огноо нь ХЯНАЛТАД тогтмол: илгээсэн агшныг
             хардаг тул сонгуулбал өөр өгөгдөл гарч, хянаж буй зүйл нь
             баталж буй зүйлээсээ зөрнө. Шүүлтүүр (Бүлэг/Дэд бүлэг) хэвээр —
@@ -4171,9 +4384,13 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         {participants.size > 1 && (
           <span className={st.muted} title={tr('Энэ багцын нооргийг хуваалцаж бөглөж байгаа аккаунтууд')}>
             {'👥 '}
-            {[...participants].sort().map((u) => (
-              doneBy.some(([d]) => d === u) ? `✓ ${u}` : u
-            )).join(' · ')}
+            {/* ⚠️ Нүдний тоог хажууд нь — өнгөт нүдтэй уялдана. 0 бол
+                бичихгүй: тэр хүн энэ тойрогт юу ч бөглөөгүй гэсэн үг. */}
+            {[...participants].sort().map((u) => {
+              const n = byCount.get(u) ?? 0;
+              const mark = doneBy.some(([d]) => d === u) ? `✓ ${u}` : u;
+              return n ? `${mark} (${num(n)})` : mark;
+            }).join(' · ')}
           </span>
         )}
 
@@ -4244,6 +4461,57 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
               : tr('Хүснэгтэд харагдаж буй тоо нь ЭНЭ өдрийн батлагдсан бүртгэлийнх. Таны засвар түүн дээр нэмэгдэж илгээгдэнэ.')}
           >
             {tr('өгөгдөл: {0}-ны байдлаар', snapDay)}
+          </span>
+        )}
+        {/*
+          * БАГЦЫН БОДИТ ГҮЙЦЭТГЭЛ — багц бүрд, хэрэгслийн мөрөнд.
+          * ⚠️ Хоёр дахь тоо (батлагдаагүй) нь ЗӨВХӨН ноорогтой үед гарна:
+          *    ноороггүй бол хоёр тоо ижил байх тул давхардал болно.
+          */}
+        {pkgPct?.saved != null && (
+          <span className={st.pkgPct}>
+            {/*
+              * ⚠️ ХУВИЛБАРЫГ ИЛ БИЧНЭ (2026-09-09, хэрэглэгч: «9F 12F
+              *    гүйцэтгэл бөглөлтөд тусад нь гүйцэтгэлийг харуул»).
+              *
+              *    Багц 1 нь ХОЁР хуудастай: 9F (12 блок) ба 12F (8 блок).
+              *    Энэ тоо нь ЗӨВХӨН нээлттэй хуудсынх — «Багцын гүйцэтгэл»
+              *    дэлгэц харин БҮХ 20 блокийн дунджийг (26.9%) харуулдаг
+              *    тул хоёр тоо ЗӨРНӨ. Блок бүрийн утга нь яг таарч байгаа
+              *    (5/1=29.8 …) — ялгаа нь зөвхөн ХАМРАХ ХҮРЭЭ. Шошгонд
+              *    хувилбар ба блокийн тоог бичсэнээр тэр зөрүү
+              *    тайлбартай болно.
+              */}
+            <span className={st.pkgPctLab}>
+              {tr('Бодит гүйцэтгэл · {0} · {1} блок', `${pkg.floors}F`, num(pkgPct.blocks))}
+            </span>
+            <b className={st.pkgPctNow} title={tr('Энэ ХУУДСЫН ({0}) батлагдсан гүйцэтгэл — блокуудынх нь дундаж. «Багцын гүйцэтгэл» дэлгэц дээрх багцын тоо нь бүх хувилбарын блокуудыг нийлүүлдэг тул арай өөр байж болно.', pkg.label)}>
+              {pct(pkgPct.saved, 2)}
+            </b>
+            {dirtyCount > 0 && pkgPct.draft != null && (
+              <b
+                className={st.pkgPctNew}
+                title={tr('Таны бөглөсөн, хараахан БАТЛАГДААГҮЙ гүйцэтгэл. «Илгээх» дараад 4 шатны хяналт дамжсаны дараа энэ тоо батлагдсан болно.')}
+              >
+                {tr('батлагдаагүй')} {pct(pkgPct.draft, 2)}
+                <i className={st.pkgPctGap}>
+                  {` (${pkgPct.draft - pkgPct.saved >= 0 ? '+' : '−'}${pct(Math.abs(pkgPct.draft - pkgPct.saved), 2)})`}
+                </i>
+              </b>
+            )}
+            {/*
+              * НӨГӨӨ ХУВИЛБАР — хуудас солихгүйгээр хоёулаа харагдана.
+              * ⚠️ Бүдэг: нээлттэй хуудасны тоо нь ГОЛ, энэ нь лавлах.
+              */}
+            {otherPct && (
+              <span
+                className={st.pkgPctOther}
+                title={tr('Энэ багцын НӨГӨӨ хувилбарын ({0}) батлагдсан гүйцэтгэл. Хувилбар сонгогчоор шилжиж бөглөнө.', otherPct.label)}
+              >
+                {tr('{0} · {1} блок', otherPct.label, num(otherPct.blocks))}{' '}
+                <b>{pct(otherPct.pct, 2)}</b>
+              </span>
+            )}
           </span>
         )}
         {/* ⚠️ ТАЙЛБАР — ХОЁР төлөвийн ялгааг ҮГЭЭР хэлнэ (2026-09-06).
@@ -4531,7 +4799,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                       )}
                       {r.work}
                       {/* ── БҮЛЭГТ АЖИЛ НЭМЭХ — зөвхөн Ерөнхий менежер ── */}
-                      {r.group && canAddRow && !noEdit && (
+                      {r.group && canAddRow && !noEdit && editing && (
                         <button
                           type="button"
                           className={st.addBtn}
@@ -4595,7 +4863,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                       r={r}
                       /* ⚠️ `r.oid >= 0` — түр (сөрөг) дугаартай НЭМСЭН мөрд
                          засахыг ХААНА (`RO.plannedVolNewRow`-ийн ⚠️). */
-                      canEdit={canObyemEdit && !pvSub && !!sc?.f.plannedVol && !r.group && r.oid >= 0}
+                      canEdit={editing && canObyemEdit && !pvSub && !!sc?.f.plannedVol && !r.group && r.oid >= 0}
                       draft={pvPend[r.oid]}
                       preview={pvPreview?.get(r.oid)}
                       hasField={!!sc?.f.plannedVol}
@@ -4633,8 +4901,30 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                     {sc.bld.map((b, bi) => {
                       const key = cellKey(r.oid, bi);
                       const dirty = key in pending;
+                      /*
+                       * ӨӨР ХҮНИЙ бөглөсөн нүд үү (2026-09-10, хэрэглэгч:
+                       * «2 акаунт нэг ноорог хуваалцдаг нь санаа зовоож бн»).
+                       *
+                       * ⚠️ ЯАГААД: `byMap` нь нүд бүрийн эзнийг аль хэдийн
+                       *    хадгалдаг байсан ч ЗӨВХӨН оролцогчийн жагсаалт ба
+                       *    «Илгээх» түгжээнд ашиглагдаж, хүснэгт дээр огт
+                       *    харагддаггүй байв. Тиймээс бөглөгч нөгөөгийнхөө
+                       *    ажлыг өөрийнх гэж андуурч давхар бичих эрсдэлтэй.
+                       *
+                       * ⚠️ Зөвхөн ИЛГЭЭГЭЭГҮЙ (`dirty`) нүдэнд утгатай:
+                       *    илгээгдсэн тоо нь хэний ч биш, багцынх.
+                       *
+                       * ⚠️ `meKey` хоосон (нэвтрэлт унтраалттай) үед бүх нүд
+                       *    «бусдынх» болж шарлахаас сэргийлж түүнийг шаардана.
+                       */
+                      const cellBy = dirty ? byMap.get(key) : undefined;
+                      const byOther = !!cellBy && !!meKey && cellBy !== meKey;
                       const canVol = volMode(r, bi);
-                      const editing =
+                      /* ⚠️ ЭНЭ нүд НЭЭЛТТЭЙ эсэх. Урьд нь `editing` гэж
+                         нэрлэгдсэн байсан нь ГАДААД `editing` (бөглөх
+                         горим) -ыг СҮҮДЭРЛЭЖ, «Бөглөх» дараагүй байхад ч
+                         нүд нээгддэг байсан шалтгаан. */
+                      const cellOpen =
                         edit && edit.i === i && edit.b === bi && edit.col === "obyem";
                       const changed = !!view?.changed?.has(`${i}:${b}`);
                       const okd = !!view?.ok?.has(`${i}:${b}`);
@@ -4650,6 +4940,10 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                             tr('Хяналтын харагдацад гүйцэтгэл засах боломжгүй — бөглөх горимоор нээнэ үү.'),
                           );
                         if (!canPerf) return say(RO.noPerf);
+                        /* ⚠️ «БӨГЛӨХ» ДАРААГҮЙ бол нүд НЭЭГДЭХГҮЙ
+                           (2026-09-09). Дээрх `canPerf` нь ЭРХ, энэ нь
+                           САНААТАЙ үйлдлийн хаалт — хоёр өөр зүйл. */
+                        if (!editing) return say(RO.notEditing);
                         if (!canVol) return say(r.group ? RO.groupAct : RO.noObyemField);
                         /* ⚠️ Обьёмын багана дутуу блокт ХУВЬ горим нээгдэнэ —
                            хувь нь `sc.act[b]`-д хадгалагдана (107/107 блокт
@@ -4688,6 +4982,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                             "num bld" +
                               (canVol ? (noPerf ? " view" : " editable") : " calc") +
                               (dirty ? " dirty" : "") +
+                              (byOther ? " byOther" : "") +
                               (changed ? (okd ? " chgOk" : " chg") : "") +
                               (hitKey === `${i}:${b}` ? " chgHit" : ""),
                           )}
@@ -4711,13 +5006,16 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                               }
                               return;
                             }
-                            if (!editing && (e.key === "Enter" || e.key === "F2")) {
+                            if (!cellOpen && (e.key === "Enter" || e.key === "F2")) {
                               e.preventDefault();
                               open();
                             }
                           }}
                           title={
-                            changed
+                            /* ⚠️ Эзний нэрийг ЭХЭНД — өнгө нь «өөр хүн»
+                               гэдгийг л хэлнэ, ХЭН гэдгийг энэ мөр хэлнэ. */
+                            (byOther ? tr('{0} бөглөсөн — хараахан илгээгээгүй.', cellBy ?? '') + '\n' : '') +
+                            (changed
                               ? okd
                                 ? tr('ЗӨВШӨӨРСӨН — дахин дарвал буцаана')
                                 : tr('Өмнөх агшнаас ӨӨРЧЛӨГДСӨН — дарж зөвшөөрнө үү')
@@ -4729,10 +5027,10 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                                   /* ⚠️ Блок буулгах боломжийг ЭНД сануулна —
                                      эс тэгвээс хэн ч мэдэхгүй далд шинж болно. */
                                   ? tr('Мөрийн Обьём {0} · бөглөсөн {1} = {2}\nExcel-ээс олон нүдийг хуулж Ctrl+V дарж болно.', qty(r.vol), qty(c.obyem[bi]), pc(c.act[bi], 2))
-                                  : RO.noRowVol
+                                  : RO.noRowVol)
                           }
                         >
-                          {editing ? (
+                          {cellOpen ? (
                             <input
                               {...{
                                 autoFocus: true,

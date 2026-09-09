@@ -247,7 +247,8 @@ export function curveViaLag(
   for (let i = 0; i < cap && label != null; i += 1) {
     const r = lagOfFn(lagPoint(label, curveKey));
     if (!r) break;
-    pts.unshift({ label, pct: r.planned });
+    /* ⚠️ `vol` нь ЭНД хамаарахгүй — KPI зөвхөн хувийг хардаг */
+    pts.unshift({ label, pct: r.planned, vol: null });
     label = prevYm(label);
   }
   return pts.length ? pts : undefined;

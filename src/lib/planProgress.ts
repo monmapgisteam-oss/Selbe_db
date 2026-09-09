@@ -11,28 +11,60 @@
  * 100% болно. Дэлгэц дээр «2026-09-д төсөл 100% дуусна» гэж гарч байсан нь
  * ЯГ ЭНЭ: төсөл бодитоор 2027-12 хүртэл үргэлжилдэг.
  *
- * ⚠️ Мөн НЭГЖ нь зөрдөг: тэр муруй нь МӨНГӨний хуваарь, доорх «Бодит
- * гүйцэтгэл» нь БИЕТ ажлын хувь. Хоёрын зөрүүг «хоцрогдол» гэж харуулах нь
- * утгагүй байсан.
+ * ⚠️ ХУУДАСТАЙ ЯГ ТААРНА (2026-09-09-ний хэрэглэгчийн шаардлага: «хуваарь
+ * хэсэгтэй яг таарч байх ёстой, хуваарь өөрчлөгдөх үед хамт өөрчлөгдөнө»).
+ * Тиймээс энд ТУСДАА томъёо БИЧИХГҮЙ: хуудасны мөрүүдийг `loadRows`-оор
+ * уншаад `bagtsSheet.planCurve`-ээр бодно. Тэр функц нь `computeAll`-тай ЯГ
+ * ИЖИЛ дүрэмтэй (жин `D`, огнооны өв `own`/`agg`, бүлгийн онцгой тохиолдол,
+ * сарын задаргаа) бөгөөд `planCurve.check`-ээр хоёулаа тулгагддаг.
  *
- * Одоо хоёулаа НЭГ эх сурвалж, НЭГ нэгжтэй:
- *     төлөвлөгөө = хуваарийн огноогоор шугаман интерполяци (`planAt`)
- *     бодит      = бөглөсөн обьём/хувь (`blockProgress`)
+ * ⚠️ БҮЛГИЙН ӨӨРИЙН ОГНОО ХҮЧИНГҮЙ БОЛГОГДОНО (2026-09-09, хэрэглэгч:
+ * «хуваарь хэсэгтэй ямар ч зөрөөгүй таарах ёстой»). `computeAll` нь бүлэгт
+ * ӨӨРИЙН огноог дэд ажлуудаас нь ДАВАМГАЙЛУУЛДАГ (`own` > `agg`) — тэр нь
+ * excel-ийн `9F` эталонтой тааруулах шийдвэр. Гэтэл «Хуваарь» харагдац
+ * 2026-09-06-нд ЭСРЭГ дүрэмтэй болсон: бүлгийн зурвас нь ДЭД АЖЛУУДЫНХАА
+ * MIN/MAX-аар бодогдоно (`deps.effSpan`, хэрэглэгчийн шууд заавар).
  *
- * ⚠️ ХӨНГӨН ЗАМ. Бүтэн хуудсуудыг татвал 13MB (хэмжсэн) — дашбоардад
- * боломжгүй. Барилга угсралтын мод нь ЗӨВХӨН 6 мөр («Б.» ба Б1…Б5) тул
- * тэдгээрийг л татна.
+ * Улмаас Багц 1-ийн «Б.» мөрийн өөрийн огноо 2027-04-20-нд дуусдаг ч дэд
+ * ажлууд нь 2028-01-01 хүртэл үргэлжилдэг байв: муруй 2027-08-д 100%
+ * хүрч, «Хуваарь» дээр ажил үргэлжилсээр байхад «төлөвлөгөө дууссан» гэж
+ * ХУДАЛ хэлж байлаа.
  *
- * ⚠️ `loadSheetRows`-ыг ЭНД ХЭРЭГЛЭХГҮЙ. Тэр нь `buglusun_ognoo` архивын
- * багана байхыг ШААРДДАГ (`if (!sc?.f.fillDate) return`) тул архивгүй 4
- * хуудас (b1_12f · b2_12f · b31_9f · b42_12f) чимээгүй унаж, муруй нь
- * төслийн 40%-ийг алгасаж байв. Хуваарь бол ХЭМЖИЛТ БИШ ТӨЛӨВЛӨГӨӨ —
- * архивын түүх огт хэрэггүй, одоогийн утга нь зөв.
+ * Тиймээс `planCurve`-д өгөхөөс ӨМНӨ бүлгийн мөрүүдийн огноог цэвэрлэнэ —
+ * тэгснээр тооцоолол нь `agg` (хүүхдийн MIN/MAX) руу унаж, «Хуваарь»-тай
+ * ЯГ ижил болно. ⚠️ Бөглөх хуудасны (`computeAll`) дүрэм ХӨНДӨГДӨХГҮЙ:
+ * зөвхөн ЭНЭ муруйд зориулж хуулбар мөр үүсгэнэ.
+ *
+ * ⚠️ ХУВААРЬГҮЙ САРД ЦЭГ ГАРАХГҮЙ (2026-09-09, хэрэглэгч: «хуваарьгүй бол
+ * харагдах ёсгүй»). Хуудас бүрийн муруй нь ӨӨРИЙН хуваарийн мужаар л
+ * тасарна: Багц 2 · 12F-ийн ажил 2027-05-16-нд дуусдаг атлаа муруй нь
+ * 2027-12 хүртэл 100% гэсэн ХАВТГАЙ сүүл татаж, «энэ саруудад ямар нэг
+ * төлөвлөгөө бий» мэт уншигдаж байв. Мужаас ГАДУУРХ сар нь төлөвлөгөөгүй
+ * — тэнд 100% ч, 0% ч БИШ, ЮУ Ч БАЙХГҮЙ.
+ *
+ * ⚠️ БАГЦ/ТӨСЛИЙН нэгтгэлд ч мөн адил: тухайн сард хуваарьтай хуудас
+ * байхгүй бол цэг гарахгүй. Харин хуудас аль хэдийн ДУУССАН (муж нь
+ * өнгөрсөн) бол түүний 100% нь нэгтгэлд ҮРГЭЛЖ тоологдоно — эс бөгөөс
+ * багц дуусах бүрд нийт муруй ДООШ унаж, хуурамч ухралт харагдана.
+ *
+ * ⚠️ ЯАГААД ХӨНГӨН ЗАМ БАЙЖ БОЛОХГҮЙ ВЭ. Урьд нь энэ файл зөвхөн 6 нэгтгэсэн
+ * мөрийг («Б.» ба Б1…Б5) татаж, өөрийн гэсэн жигнэлт хийдэг байв. Тэр нь
+ * хоёр согогтой:
+ *   1. Блок бүрд ГАНЦ урт муж тул муруй бараг ШУЛУУН ШУГАМ болж, «Хуваарь»
+ *      дээр зурсан 1,400 ажлын дараалал огт тусахгүй.
+ *   2. Ажлын мөрүүдийг оруулах гэж оролдоход бүлгийн мөр (жин нь гүн 0-д = 1)
+ *      навчаас (0.0005–0.02) хэдэн зуу дахин хүнд болж дунджийг эзэлдэг.
+ * Хуудасны тооцоолол эдгээрийг аль хэдийн зөв шийдсэн — давхардуулах
+ * шаардлагагүй.
+ *
+ * ⚠️ ҮНЭ: хуудас бүрийг бүтнээр нь уншина (10 хуудас, зэрэг). Муруй нь
+ * `Finance`-ийн модуль-түвшний кэшэд (`planCurveCache`) нэг удаа хадгалагдаж,
+ * дашбоард, KPI, хоцрогдол бүгд түүнээс уншина.
  */
 import { PKGS, loadSchema } from '@/modules/sheet/bagts.pkg';
-import { queryFeatures } from './query';
-import { bagtsKey } from './services';
-import { planAt } from '@/modules/sheet/bagtsSheet';
+import { loadRows, planCurve } from '@/modules/sheet/bagtsSheet';
+import { bagtsKey, isConstructionNo } from './services';
+import { loadPkgPlan, planPctFromMonths } from './huvaariObyem';
 
 /** Нэг сарын цэг */
 export type PlanPoint = {
@@ -40,6 +72,16 @@ export type PlanPoint = {
   label: string;
   /** Төлөвлөгөөт хувь 0–100 */
   pct: number;
+  /**
+   * ТУХАЙН САРД төлөвлөсөн обьём (хуваарийн сарын задаргаанаас).
+   *
+   * ⚠️ `null` = задаргаа ОРООГҮЙ — 0 БИШ. `huvaari_obyem` хүснэгт
+   *    бөглөгдтөл бүх сар `null` байна; дэлгэц дээр зүгээр л гарахгүй.
+   * ⚠️ НЭГЖ ХОЛИЛДОНО (м³ · м² · м · ш): багц доторх ажлууд өөр өөр
+   *    нэгжтэй тул энэ нийлбэрийг ХАРУУЛАХ л боломжтой, тооцоонд
+   *    ХЭРЭГЛЭХГҮЙ. Жин нь `Хувийн_жин` хэвээр.
+   */
+  vol: number | null;
 };
 
 export type PlanCurve = {
@@ -67,108 +109,113 @@ const sane = (ms: unknown): ms is number => typeof ms === 'number'
 const monthEnd = (y: number, m: number) => Date.UTC(y, m + 1, 0);
 const ym = (y: number, m: number) => `${y}-${String(m + 1).padStart(2, '0')}`;
 
-/** Нэг зангилааны хуваарь */
-type Node = { s: number; e: number; w: number };
-/** Нэг блокийн хуваарь: өөрийн огноо, эс бөгөөс дэд үе шатууд жинтэйгээр */
-type Blk = { own: Node | null; subs: Node[] };
-
-/** Блокийн төлөвлөгөө 0–1, огноогүй бол `null` */
-function blockPlan(blk: Blk, asOf: number): number | null {
-  /* ⚠️ ӨӨРИЙН огноо нь дэд үе шатуудаас ДАВАМГАЙЛНА — `computeAll`-ийн
-     дүрэмтэй ижил (`own` > `agg`). Эс тэгвээс гараар засварласан нийт
-     хугацаа үл тоомсорлогдоно. */
-  if (blk.own) return planAt(asOf, blk.own.s, blk.own.e);
-  if (!blk.subs.length) return null;
-  let num = 0;
-  let den = 0;
-  for (const n of blk.subs) {
-    num += n.w * (planAt(asOf, n.s, n.e) ?? 0);
-    den += n.w;
-  }
-  return den > 0 ? num / den : null;
-}
+/** Нэг хуудасны бэлтгэсэн төлөв */
+type Sheet = {
+  key: string;
+  group: string;
+  rows: Awaited<ReturnType<typeof loadRows>>['rows'];
+  nBld: number;
+  /** «Б. БАРИЛГА УГСРАЛТЫН АЖИЛ» мөрийн индекс; олдоогүй бол `-1` */
+  bi: number;
+  /** Сарын задаргааны хувь бодогч (задаргаагүй бол `undefined`) */
+  planPct?: (row: { des: number | null }, b: number, asOf: number) => number | null;
+  /** Сар → тухайн сард төлөвлөсөн обьёмын нийлбэр */
+  volByMonth: Map<string, number>;
+  from: number;
+  to: number;
+};
 
 /**
  * Хуваариас төлөвлөгөөт муруйг бодно.
  *
- * ⚠️ ЗӨВХӨН барилга угсралт («Б») — суурь мод нь энэ. Дэд үе шат (Б1…Б5) нь
- * зөвхөн «Б.» мөр огноогүй үед л хэрэглэгдэнэ, давхар тоолохгүй.
+ * ⚠️ ЗӨВХӨН барилга угсралт («Б.») — бэлтгэл ажил ОРОХГҮЙ. Тэр мөрийн
+ * төлөвлөгөө нь доод бүх ажлаа жингээрээ агуулна (`computeAll`-ийн дүрэм).
  *
  * ⚠️ Багц хоорондын жин нь БЛОКИЙН ТОО — `PkgProg`-ийн биет гүйцэтгэлийн
  * дүрэмтэй ИЖИЛ. Багцуудын дундаж авбал 4 блоктой багц 22 блоктойтой ижил
  * жинтэй болж гажуудна.
  */
 export async function loadPlanCurve(): Promise<PlanCurve> {
-  /** хуудас → блокийн нэр → хуваарь */
-  const sched = new Map<string, Map<string, Blk>>();
+  const sheets: Sheet[] = [];
 
   await Promise.all(PKGS.map(async (pkg) => {
     const sc = await loadSchema(pkg).catch(() => null);
     if (!sc) return;
+    const r = await loadRows(pkg, sc).catch(() => null);
+    if (!r || !r.rows.length) return;
 
-    const dateCols = [...sc.start, ...sc.end].filter((x): x is string => !!x);
-    if (!dateCols.length) return;
+    /*
+     * ⚠️ БҮЛГИЙН ОГНОО ЦЭВЭРЛЭГДЭНЭ — толгойн ⚠️-г үз. Хуулбар мөр:
+     *    эх өгөгдөл, бөглөх хуудас хөндөгдөхгүй.
+     */
+    const rows = r.rows.map((row) => (
+      row.group ? { ...row, start: row.start.map(() => null), end: row.end.map(() => null) } : row
+    ));
 
-    /* ⚠️ `Б%` нь «Б.», «Б1»…«Б5»-ыг ХАМРАНА. Багц 3.2-т «Б.» нийт мөр ОГТ
-       БАЙХГҮЙ (зөвхөн Б1…Б5) тул зөвхөн «Б.»-ээр шүүвэл тэр багц бүхэлдээ
-       муруйнаас унана. */
-    const rows = await queryFeatures(pkg.url, {
-      where: `${sc.f.no} LIKE N'Б%'`,
-      outFields: [sc.f.no, sc.f.wC, sc.f.oid, ...dateCols],
-      orderBy: `${sc.f.oid} ASC`,
-    }).catch(() => [] as Record<string, string | number | null>[]);
-    if (!rows.length) return;
-
-    /* ⚠️ Архивтай хуудсанд нэг № олон агшинд давтагдана. `oid ASC` тул
-       СҮҮЛИЙНХ нь хамгийн шинэ — Map-д дарж бичихэд шинэ нь үлдэнэ. */
-    const latest = new Map<string, Record<string, string | number | null>>();
-    for (const a of rows) latest.set(String(a[sc.f.no] ?? '').trim(), a);
-
-    const byBlock = new Map<string, Blk>();
-    for (const [rawNo, a] of latest) {
-      /*
-       * «Б. БАРИЛГА УГСРАЛТЫН АЖИЛ» = нийт; «Б1»…«Б5» = дэд үе шат.
-       * ⚠️ Нийт мөрийн № нь хуудсаар ЯЛГААТАЙ: заримд «Б.» (бүтэн шошготой),
-       *    заримд ЦЭВЭР «Б» (b2_12f). Зөвхөн «Б.»-ээр барьвал тэр хуудсанд
-       *    нийт мөр олдохгүй бөгөөд дэд үе шат руу чимээгүй унана.
-       */
-      const isTotal = rawNo === 'Б' || rawNo.startsWith('Б.');
-      const isSub = /^Б\d+$/.test(rawNo);
-      if (!isTotal && !isSub) continue;
-      const w = Number(a[sc.f.wC]);
-      const weight = Number.isFinite(w) && w > 0 ? w : 1;
-
-      for (let b = 0; b < sc.bld.length; b++) {
-        const sf = sc.start[b];
-        const ef = sc.end[b];
-        if (!sf || !ef) continue;
-        const s = a[sf];
-        const e = a[ef];
+    /* Хуваарийн муж — АЖЛЫН мөрүүдийн огноогоор */
+    let from: number | null = null;
+    let to: number | null = null;
+    for (const row of rows) {
+      for (let b = 0; b < sc.bld.length; b += 1) {
+        const s = row.start[b];
+        const e = row.end[b];
         if (!sane(s) || !sane(e) || e < s) continue;
-        const cur = byBlock.get(sc.bld[b]) ?? { own: null, subs: [] };
-        if (isTotal) cur.own = { s, e, w: weight };
-        else cur.subs.push({ s, e, w: weight });
-        byBlock.set(sc.bld[b], cur);
+        if (from == null || s < from) from = s;
+        if (to == null || e > to) to = e;
       }
     }
-    if (byBlock.size) sched.set(pkg.key, byBlock);
+    if (from == null || to == null) return;
+
+    /*
+     * САРЫН ОБЬЁМЫН ЗАДАРГАА — байвал төлөвлөгөөт хувь ТҮҮГЭЭР (S-муруй).
+     * ⚠️ Уншилт УНАВАЛ ЧИМЭЭГҮЙ: задаргаа бол нэмэлт нарийвчлал, түүнгүйгээр
+     *    муруй огнооны шугаман замаараа зурагдана.
+     */
+    const obPlan = await loadPkgPlan(pkg.key).then((x) => x.plan).catch(() => null);
+    const planPct = obPlan && obPlan.size
+      ? (row: { des: number | null }, b: number, asOf: number): number | null => {
+        if (row.des == null) return null;
+        const blok = sc.bld[b];
+        const m = blok ? obPlan.get(row.des)?.get(blok) : undefined;
+        return m ? planPctFromMonths(m, asOf) : null;
+      }
+      : undefined;
+
+    /*
+     * САРЫН ОБЬЁМЫН НИЙЛБЭР — зөвхөн ХАРУУЛАХ зорилгоор.
+     * ⚠️ Задаргаа нь ажил × блок × сар тул нэг сард ногдох нийлбэрийг
+     *    урьдчилан бэлдэнэ (график дуудалт бүрд дахин тоолохгүй).
+     */
+    const volByMonth = new Map<string, number>();
+    if (obPlan) {
+      for (const byBlok of obPlan.values()) {
+        for (const m of byBlok.values()) {
+          for (const [sar, v] of m) {
+            if (v != null && Number.isFinite(v)) volByMonth.set(sar, (volByMonth.get(sar) ?? 0) + v);
+          }
+        }
+      }
+    }
+
+    sheets.push({
+      key: pkg.key,
+      volByMonth,
+      group: bagtsKey(pkg.group),
+      rows,
+      nBld: sc.bld.length,
+      bi: rows.findIndex((x) => isConstructionNo(x.no)),
+      planPct,
+      from,
+      to,
+    });
   }));
 
-  let from: number | null = null;
-  let to: number | null = null;
-  for (const byBlock of sched.values()) {
-    for (const blk of byBlock.values()) {
-      for (const n of blk.own ? [blk.own] : blk.subs) {
-        if (from == null || n.s < from) from = n.s;
-        if (to == null || n.e > to) to = n.e;
-      }
-    }
+  if (!sheets.length) {
+    return { months: [], bySheet: new Map(), byBagts: new Map(), from: null, to: null };
   }
-  if (from == null || to == null) {
-    return {
-      months: [], bySheet: new Map(), byBagts: new Map(), from: null, to: null,
-    };
-  }
+
+  const from = Math.min(...sheets.map((x) => x.from));
+  const to = Math.max(...sheets.map((x) => x.to));
 
   /* Сарын тэнхлэг — хуваарийн ЭХНЭЭС ТӨГСГӨЛ хүртэл */
   const d0 = new Date(from);
@@ -181,43 +228,118 @@ export async function loadPlanCurve(): Promise<PlanCurve> {
     /* Гажигтай өгөгдлөөс сэргийлэх дээд хязгаар */
     if (axis.length > 120) break;
   }
+  const asOfs = axis.map((a) => a.asOf);
 
   const bySheet = new Map<string, PlanPoint[]>();
-  const byBagts = new Map<string, PlanPoint[]>();
-  const groupOf = new Map<string, string>(PKGS.map((p) => [p.key, bagtsKey(p.group)]));
+  /** багц → сар бүрийн (нийлбэр, блокийн тоо) */
+  const gAcc = new Map<string, { s: number; n: number }[]>();
+  const tAcc: { s: number; n: number }[] = axis.map(() => ({ s: 0, n: 0 }));
 
-  const months: PlanPoint[] = axis.map(({ label, asOf }) => {
-    let wSum = 0;
-    let wCnt = 0;
-    /** багц → блокийн тоогоор жигнэсэн хуримтлал */
-    const gAcc = new Map<string, { s: number; n: number }>();
-
-    for (const [key, byBlock] of sched) {
-      let s = 0;
-      let n = 0;
-      for (const blk of byBlock.values()) {
-        const v = blockPlan(blk, asOf);
-        /* ⚠️ Хуваарьгүй блок нь 0 БИШ — тоологдохгүй. `null`-ыг 0 гэж авбал
-           хуваарь дутуу багц зохиомлоор хоцорсон харагдана. */
-        if (v == null) continue;
-        s += v; n += 1;
+  for (const sh of sheets) {
+    if (sh.bi < 0) continue;
+    /*
+     * ⚠️ ХУУДАСТАЙ ЯГ ИЖИЛ ТООЦОО. `planCurve` нь `computeAll`-ийн дүрмийг
+     *    давтдаг (`planCurve.check` тулгана) тул график ба бөглөх хуудас нэг
+     *    тоо харуулна. Энд өөрийн жигнэлт бичвэл хоёр нь чимээгүй зөрнө.
+     */
+    const curves = planCurve(sh.rows, sh.nBld, asOfs, sh.planPct);
+    const pts: PlanPoint[] = [];
+    const gArr = gAcc.get(sh.group) ?? axis.map(() => ({ s: 0, n: 0 }));
+    /* Хуваарь ЭХЛЭХЭЭС ӨМНӨХ сарууд — тухайн хуудсанд төлөвлөгөө байхгүй */
+    const startYm = ym(new Date(sh.from).getUTCFullYear(), new Date(sh.from).getUTCMonth());
+    /* Хуваарь ДУУСАХ сар — түүнээс хойш цэг ГАРАХГҮЙ */
+    const endYm = ym(new Date(sh.to).getUTCFullYear(), new Date(sh.to).getUTCMonth());
+    axis.forEach((a, i) => {
+      const plan = curves[i]?.[sh.bi];
+      /*
+       * ⚠️ `planCurve` нь МӨРИЙН блокуудын ДУНДЖИЙГ буцаадаггүй — мөр бүрийн
+       *    блокийн массивыг өгдөг. Гэвч `avgOut` (дундаж) буцаадаг хувилбар
+       *    тул энд утга нь аль хэдийн 0–1 дундаж.
+       */
+      if (plan == null || !Number.isFinite(plan)) return;
+      /*
+       * ⚠️ ХУВААРИЙН МУЖААС ГАДУУР ЦЭГ ГАРГАХГҮЙ. Эхлэхээс өмнө — огт
+       *    төлөвлөгөөгүй; дууссаны дараа — хавтгай 100% сүүл нь «энд ч
+       *    төлөвлөгөө бий» гэж худал уншигдана.
+       */
+      if (a.label < startYm || a.label > endYm) {
+        /*
+         * ⚠️ НЭГТГЭЛД харин ҮЛДЭНЭ: дууссан хуудсыг хасвал багц дуусах
+         *    бүрд нийт муруй ДООШ унаж, хуурамч ухралт үүснэ. Эхлээгүй
+         *    хуудас нь 0%-иар (`plan` нь аль хэдийн 0) тоологдоно.
+         */
+        gArr[i].s += plan * sh.nBld;
+        gArr[i].n += sh.nBld;
+        tAcc[i].s += plan * sh.nBld;
+        tAcc[i].n += sh.nBld;
+        return;
       }
-      if (!n) continue;
-      const v = (s / n) * 100;
-      bySheet.set(key, [...(bySheet.get(key) ?? []), { label, pct: v }]);
-      const g = groupOf.get(key) ?? key;
-      const acc = gAcc.get(g) ?? { s: 0, n: 0 };
-      acc.s += s; acc.n += n;
-      gAcc.set(g, acc);
-      wSum += s; wCnt += n;
+      pts.push({ label: a.label, pct: plan * 100, vol: sh.volByMonth.get(a.label) ?? null });
+      /* Багц/төслийн нэгтгэлд БЛОКИЙН ТООГООР жигнэнэ */
+      gArr[i].s += plan * sh.nBld;
+      gArr[i].n += sh.nBld;
+      tAcc[i].s += plan * sh.nBld;
+      tAcc[i].n += sh.nBld;
+    });
+    if (pts.length) bySheet.set(sh.key, pts);
+    gAcc.set(sh.group, gArr);
+  }
+
+  /**
+   * Багц бүрийн ХУВААРИЙН МУЖ — доторх хуудсуудынхаа нэгдэл.
+   * ⚠️ Багцын муруй ч мужаасаа гадуур цэг гаргахгүй (хуудасны дүрэмтэй ижил).
+   */
+  /** багц → сар → обьёмын нийлбэр */
+  const gVol = new Map<string, Map<string, number>>();
+  /** төсөл → сар → обьёмын нийлбэр */
+  const tVol = new Map<string, number>();
+  for (const sh of sheets) {
+    const g = gVol.get(sh.group) ?? new Map<string, number>();
+    for (const [sar, v] of sh.volByMonth) {
+      g.set(sar, (g.get(sar) ?? 0) + v);
+      tVol.set(sar, (tVol.get(sar) ?? 0) + v);
     }
-    for (const [g, acc] of gAcc) {
-      byBagts.set(g, [...(byBagts.get(g) ?? []), { label, pct: (acc.s / acc.n) * 100 }]);
+    gVol.set(sh.group, g);
+  }
+
+  const gRange = new Map<string, { a: string; z: string }>();
+  for (const sh of sheets) {
+    const a = ym(new Date(sh.from).getUTCFullYear(), new Date(sh.from).getUTCMonth());
+    const z = ym(new Date(sh.to).getUTCFullYear(), new Date(sh.to).getUTCMonth());
+    const cur = gRange.get(sh.group);
+    gRange.set(sh.group, {
+      a: cur && cur.a < a ? cur.a : a,
+      z: cur && cur.z > z ? cur.z : z,
+    });
+  }
+
+  const byBagts = new Map<string, PlanPoint[]>();
+  for (const [g, arr] of gAcc) {
+    const rg = gRange.get(g);
+    const pts: PlanPoint[] = [];
+    axis.forEach((a, i) => {
+      if (rg && (a.label < rg.a || a.label > rg.z)) return;
+      if (arr[i].n > 0) {
+        pts.push({
+          label: a.label,
+          pct: (arr[i].s / arr[i].n) * 100,
+          vol: gVol.get(g)?.get(a.label) ?? null,
+        });
+      }
+    });
+    if (pts.length) byBagts.set(g, pts);
+  }
+
+  const months: PlanPoint[] = [];
+  axis.forEach((a, i) => {
+    if (tAcc[i].n > 0) {
+      months.push({
+        label: a.label,
+        pct: (tAcc[i].s / tAcc[i].n) * 100,
+        vol: tVol.get(a.label) ?? null,
+      });
     }
-    return { label, pct: wCnt ? (wSum / wCnt) * 100 : 0 };
   });
 
-  return {
-    months, bySheet, byBagts, from, to,
-  };
+  return { months, bySheet, byBagts, from, to };
 }

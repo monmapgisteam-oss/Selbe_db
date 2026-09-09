@@ -32,7 +32,12 @@ import { loadPlanCurve, type PlanPoint, type PlanCurve } from '@/lib/planProgres
  *    бөгөөд биет %-тай харьцуулагдаж болохгүй. Одоо графикт зөвхөн өөрийнх
  *    нь хэрэгтэй хоёр тоо орно, мөнгөн талбар огт байхгүй.
  */
-type ProgPt = { label: string; plan: number; act: number | null };
+/**
+ * ⚠️ `vol` — тухайн сард ТӨЛӨВЛӨСӨН обьём (хуваарийн сарын задаргаанаас).
+ *    `null` = задаргаа ороогүй; 0 БИШ. Нэгж холилдсон нийлбэр тул зөвхөн
+ *    ХАРУУЛНА, тооцоонд ОРОХГҮЙ (`planProgress.PlanPoint.vol`-ийн ⚠️).
+ */
+type ProgPt = { label: string; plan: number; act: number | null; vol: number | null };
 import {
   BUILDING, CASHFLOW_NEW, PROGRESS_LEVELS, LAYER_BY_ID, pkgKeyOf,
   PKG_FAMILY_BY_BAGTS, zoneWhere, cfMonthAxis, parcelOidsWhere } from '@/lib/services';
@@ -340,6 +345,7 @@ export function PkgProg({ dim, setDim }: {
     return series.map((p) => ({
       label: p.label,
       plan: p.pct,
+      vol: p.vol,
       /* ⚠️ Хэмжилтгүй сар `null` хэвээр — 0 гэж дүүргэвэл худал шугам гарна */
       act: phys.get(p.label) ?? null,
     }));
@@ -984,7 +990,7 @@ function TsPackList({
             <ListItem
               title={tr(p.name)}
               sub={p.kind === 'build'
-                  ? tr('{0} блок · {1} айл{2}', num(p.blocks.length), num(p.households), lag && lvl ? tr(' · төл. {0}% / бодит {1}%', lag.planned.toFixed(0), lag.actual.toFixed(0)) : '')
+                  ? tr('{0} блок · {1} айл{2}', num(p.blocks.length), num(p.households), lag && lvl ? tr(' · төл. {0}% / бодит {1}%', lag.planned.toFixed(1), lag.actual.toFixed(1)) : '')
                   /* Дэд бүтэц: гүйцэтгэлийн харагдацад мөнгө дурдахгүй —
                      зөвхөн зурагт хэдэн давхаргатай нь. */
                   : (p.layerIds.length ? tr('{0} давхарга', num(p.layerIds.length)) : tr('зураггүй'))}
@@ -995,7 +1001,7 @@ function TsPackList({
                   display: 'inline-flex', alignItems: 'center', gap: 6,
                   flexWrap: 'wrap', justifyContent: 'flex-end',
                 }}>
-                  {execPct == null ? '—' : pct(execPct, 0)}
+                  {execPct == null ? '—' : pct(execPct, 1)}
                   {/**
                     * ⚠️ 2026-08-18: анхааруулга нь ЗӨВХӨН «⚠» тэмдэг байсныг
                     * ЗӨРҮҮ + ТӨЛӨВЛӨСӨН/БОДИТ гурвалаар ил гаргав. Урьд нь тоо
@@ -1010,7 +1016,7 @@ function TsPackList({
                       <span className={lvl === 'red' ? ts.alertBlink : undefined}>⚠</span>
                       <span className="num">−{lag.gap.toFixed(1)}%</span>
                       <small className="num">
-                        {lag.planned.toFixed(0)}/{lag.actual.toFixed(0)}
+                        {lag.planned.toFixed(1)}/{lag.actual.toFixed(1)}
                       </small>
                     </b>
                   )}
@@ -1218,6 +1224,15 @@ function aggregateMonths(d: FinData) {
  *    cashflow-ийн 12 сарын цонх байсан тул муруй нь тэр цонхны төгсгөлд
  *    үргэлж 100% болж, «2026-09-д төсөл дуусна» гэж ХУДАЛ харуулж байв.
  */
+/**
+ * ⚠️ ХУВЬ БҮХ ГАЗАРТ АРАВТЫН НЭГ ОРОНТОЙ (2026-09-09, хэрэглэгчийн заавар:
+ * «бутархайгаараа бүх цаг үед харагдана, бүхэлчилж болохгүй»).
+ *
+ * Бүхэлчлэл нь ЖИЖИГ ХӨДӨЛГӨӨНИЙГ НУУНА: 26.14% → 27% гэж бөөрөнхийлөхөд
+ * тухайн өдөр 0.4 нэгжээр ахисан гүйцэтгэл дэлгэц дээр ОГТ өөрчлөгдөөгүй
+ * мэт харагдана. Мөн «0%» нь «эхлээгүй» ба «0.4% хийгдсэн» хоёрыг
+ * ялгахгүй болгоно.
+ */
 function ProgChart({ months, title }: { months: ProgPt[] | null; title: string }) {
   const [hi, setHi] = useState<number | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -1307,13 +1322,13 @@ function ProgChart({ months, title }: { months: ProgPt[] | null; title: string }
   );
   const planLbl = fitPct(
     rows.map((_, i) => i).filter((i) => i !== N - 1),
-    (i) => `${rows[i].plan.toFixed(0)}%`,
+    (i) => `${rows[i].plan.toFixed(1)}%`,
   );
   /* ⚠️ `i !== lastAct`: сүүлийн хэмжилт дээр доорх ТОМ шошго аль хэдийн
      бичигдэнэ — хоёуланг нь зурвал нэг цэг дээр хоёр тоо давхарлана. */
   const actLbl = fitPct(
     measured.filter((i) => i !== N - 1 && i !== lastAct),
-    (i) => `${(rows[i].act as number).toFixed(0)}%`,
+    (i) => `${(rows[i].act as number).toFixed(1)}%`,
   );
   /* X тэнхлэгийн он·сар — «2026-09» */
   const axisLbl = new Set(fitLabels(
@@ -1397,6 +1412,10 @@ function ProgChart({ months, title }: { months: ProgPt[] | null; title: string }
               <circle cx={xFor(i)} cy={yFor(r.plan)} r={2.5} className={ts.progDot} style={{ fill: cat(2) }} />
               {/* ⚠️ y-г 12-оос дээш барина: дээд ирмэгт хүрсэн цэгийн шошго
                   SVG-ийн гаднаас тасарч, тоо хагас харагддаг. */}
+              {/* ⚠️ ОБЬЁМ нь хувийн ХАЖУУД (2026-09-09, хэрэглэгчийн
+                  хүсэлт «обьём давхар харагдмаар бн»). Задаргаа ороогүй
+                  сард ЗӨВХӨН хувь — «0» гэж бичвэл «тэр сард ажил
+                  төлөвлөөгүй» гэж ХУДАЛ уншигдана (`null ≠ 0`). */}
               <text
                 x={xFor(i)}
                 y={Math.max(12, yFor(r.plan) - 9)}
@@ -1404,7 +1423,10 @@ function ProgChart({ months, title }: { months: ProgPt[] | null; title: string }
                 style={{ fill: cat(2) }}
                 textAnchor={anchor(i)}
               >
-                {r.plan.toFixed(0)}%
+                {r.plan.toFixed(1)}%
+                {r.vol != null && (
+                  <tspan className={ts.progVol}>{` · ${num(r.vol, 0)}`}</tspan>
+                )}
               </text>
             </g>
           ) : null))}
@@ -1423,7 +1445,7 @@ function ProgChart({ months, title }: { months: ProgPt[] | null; title: string }
                 style={{ fill: cat(1) }}
                 textAnchor={anchor(i)}
               >
-                {r.act.toFixed(0)}%
+                {r.act.toFixed(1)}%
               </text>
             </g>
           ) : null))}
@@ -1432,14 +1454,14 @@ function ProgChart({ months, title }: { months: ProgPt[] | null; title: string }
           <g>
             <circle cx={xFor(N - 1)} cy={yFor(rows[N - 1].plan)} r={4} className={ts.progDot} style={{ fill: cat(2) }} />
             <text x={xFor(N - 1) + 9} y={yFor(rows[N - 1].plan) + 4} className={ts.progEnd} style={{ fill: cat(2) }}>
-              {rows[N - 1].plan.toFixed(0)}%
+              {rows[N - 1].plan.toFixed(1)}%
             </text>
           </g>
           {curAct != null && (
             <g>
               <circle cx={xFor(lastAct)} cy={yFor(curAct)} r={4} className={ts.progDot} style={{ fill: cat(1) }} />
               <text x={xFor(lastAct) + 9} y={yFor(curAct) + 4} className={ts.progEnd} style={{ fill: cat(1) }}>
-                {curAct.toFixed(0)}%
+                {curAct.toFixed(1)}%
               </text>
             </g>
           )}

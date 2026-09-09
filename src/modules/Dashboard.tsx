@@ -1235,7 +1235,7 @@ function EnvRight({ d }: { d: DashData }) {
                   label: r.label,
                   value: r.progress ?? 0,
                   color: 'var(--data)',
-                  display: r.progress == null ? '—' : pct(r.progress, 0),
+                  display: r.progress == null ? '—' : pct(r.progress, 1),
                 }))}
             />
           )}
