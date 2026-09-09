@@ -29,6 +29,7 @@
 
 import { AUTH, ROLE_BY_USER, type Role, type ViewKey } from './services';
 import { t as tr } from '@/lib/i18nCore';
+import type { Grant } from './scopedAcl';
 
 export type RemoteRow = {
   username: string;
@@ -47,7 +48,11 @@ export type RemoteRow = {
  * Урсгалын нэг томилгоо — permsRemote нь `Stage` төрлөөс санаатай ХАРААТ БУС
  * (энд зөвхөн тээвэрлэнэ, утгыг нь `guitsetgelAcl` шалгана).
  */
-export type FlowRow = { user: string; stage: string; bagts: string[] };
+export type FlowRow = {
+  user: string; stage: string; bagts: string[];
+  /** ХАРНА, ШИЙДВЭРЛЭХГҮЙ — хуучин мөрд `undefined` = жирийн томилгоо */
+  viewOnly?: boolean;
+};
 
 /**
  * НЭМЭЛТ ЭРХИЙН нэг мөр — `__cap__:` угтвартай.
@@ -390,9 +395,17 @@ export async function fetchAll(
       if (a.username.startsWith(FLOW_PREFIX)) {
         const user = a.username.slice(FLOW_PREFIX.length).toLowerCase();
         try {
-          const d = JSON.parse(a.views || '{}') as { stage?: string; bagts?: string[] };
+          const d = JSON.parse(a.views || '{}') as {
+            stage?: string; bagts?: string[]; viewOnly?: boolean;
+          };
           if (user && d.stage) {
-            flowBy.set(user, { user, stage: d.stage, bagts: Array.isArray(d.bagts) ? d.bagts : [] });
+            flowBy.set(user, {
+              user,
+              stage: d.stage,
+              bagts: Array.isArray(d.bagts) ? d.bagts : [],
+              /* ⚠️ ЗӨВХӨН ЯГ `true` — эргэлзээтэй утга эрх ХАСАХГҮЙ (2026-09-09) */
+              ...(d.viewOnly === true ? { viewOnly: true as const } : {}),
+            });
           }
         } catch { /* эвдэрсэн мөр — алгасна (томилгоо байхгүйтэй ижил, fail-closed) */ }
         continue;
@@ -521,13 +534,21 @@ export function remove(username: string): Promise<boolean> {
   return removeByKey(username);
 }
 
-/** Урсгалын томилгоог бичих — нэг хэрэглэгч нэг мөр (`__flow__:` угтвартай) */
-export function flowUpsert(user: string, stage: string, bagts: string[]): Promise<boolean> {
+/**
+ * Урсгалын томилгоог бичих — нэг хэрэглэгч нэг мөр (`__flow__:` угтвартай).
+ *
+ * ⚠️ `viewOnly` нь ЗӨВХӨН `true` үед бичигдэнэ (2026-09-09). Хуучин мөр
+ *    талбаргүй хэвээр үлдэж, задлахад `undefined` = ЖИРИЙН томилгоо болно —
+ *    тэр туг эрхийг ХАСДАГ болохоос НЭМДЭГГҮЙ тул анхдагч нь аюулгүй.
+ */
+export function flowUpsert(
+  user: string, stage: string, bagts: string[], viewOnly = false,
+): Promise<boolean> {
   const key = FLOW_PREFIX + user.toLowerCase();
   return upsertByKey(key, {
     username: key,
     role: null,
-    views: JSON.stringify({ stage, bagts }),
+    views: JSON.stringify(viewOnly ? { stage, bagts, viewOnly: true } : { stage, bagts }),
     docs: 0,
   });
 }
@@ -581,13 +602,21 @@ export function qaqcRemove(user: string): Promise<boolean> {
  *    тээвэрлэнэ (`huvaariAcl` танигдахгүйг нь хаяна) — `caps`-тай ижил зарчим.
  */
 export function huvaariUpsert(
-  user: string, roles: string[], bagts: string[],
+  user: string, roles: string[], bagts: string[], grants?: Grant[],
 ): Promise<boolean> {
   const key = HUVAARI_PREFIX + user.toLowerCase();
   return upsertByKey(key, {
     username: key,
     role: null,
-    views: JSON.stringify({ roles, bagts }),
+    /*
+     * ⚠️ ХОЁР ХЭЛБЭРИЙГ ЗЭРЭГ БИЧНЭ (2026-09-09). `grants` нь ҮНЭН эх сурвалж;
+     *    `roles`/`bagts` нь ХУУЧИН клиент build уншиж чадах нөөц (нэгдэл).
+     *    Ингэсэн тул шинэ клиент бичсэн мөрийг хуучин клиент нээхэд эрх
+     *    ЧИМЭЭГҮЙ алга болохгүй. Хуучин нь үржвэр болж УЯН болох тул
+     *    (жишээ нь Багц 1-д батлагч ч болох) — энэ нь fail-closed биш ч
+     *    зөвхөн ШИЛЖИЛТИЙН хугацаанд, зөвхөн хуучин build дээр үйлчилнэ.
+     */
+    views: JSON.stringify(grants ? { roles, bagts, grants } : { roles, bagts }),
     docs: 0,
   });
 }
@@ -598,13 +627,21 @@ export function huvaariUpsert(
  *    тээвэрлэнэ (`obyemAcl` танигдахгүйг нь хаяна).
  */
 export function obyemUpsert(
-  user: string, roles: string[], bagts: string[],
+  user: string, roles: string[], bagts: string[], grants?: Grant[],
 ): Promise<boolean> {
   const key = OBYEM_PREFIX + user.toLowerCase();
   return upsertByKey(key, {
     username: key,
     role: null,
-    views: JSON.stringify({ roles, bagts }),
+    /*
+     * ⚠️ ХОЁР ХЭЛБЭРИЙГ ЗЭРЭГ БИЧНЭ (2026-09-09). `grants` нь ҮНЭН эх сурвалж;
+     *    `roles`/`bagts` нь ХУУЧИН клиент build уншиж чадах нөөц (нэгдэл).
+     *    Ингэсэн тул шинэ клиент бичсэн мөрийг хуучин клиент нээхэд эрх
+     *    ЧИМЭЭГҮЙ алга болохгүй. Хуучин нь үржвэр болж УЯН болох тул
+     *    (жишээ нь Багц 1-д батлагч ч болох) — энэ нь fail-closed биш ч
+     *    зөвхөн ШИЛЖИЛТИЙН хугацаанд, зөвхөн хуучин build дээр үйлчилнэ.
+     */
+    views: JSON.stringify(grants ? { roles, bagts, grants } : { roles, bagts }),
     docs: 0,
   });
 }
