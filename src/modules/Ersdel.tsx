@@ -54,11 +54,18 @@ import {
   type Band, type DamageRow,
 } from '@/lib/ersdelGeom';
 import {
-  depthRisk, flowDeg, flowDir, loadFloodData, type FloodData,
+  depthRisk, flowDeg, flowDir, HAZARD_CLASS, SATURATE_HAZ, SATURATE_MS,
+  type FloodData, type FloodMode,
 } from '@/lib/uyr';
 import { dirName, dispersionOf, loadWind, nowHour } from '@/lib/salhi';
 import { loadWindField, nowIndex, ymd } from '@/lib/salhiTor';
 import { MAX_V, rampCss } from '@/lib/salhiUrsgal';
+import { simulateFlood, type SimArea } from '@/lib/uyrSim';
+import { flowPath, whyFlood } from '@/lib/uyrTailbar';
+import GraphicsLayer from '@arcgis/core/layers/GraphicsLayer';
+import SketchViewModel from '@arcgis/core/widgets/Sketch/SketchViewModel';
+import { floodFootprint } from '@/lib/uyrSurface';
+import Polygon from '@arcgis/core/geometry/Polygon';
 import { Overlay, type Pick } from './ersdel/Overlay';
 import o from './gazarOv.module.css';
 import e from './ersdel.module.css';
@@ -140,6 +147,12 @@ type Info = {
   spark?: { depth: number[]; speed: number[] };
   /** Тэмдэглэгдэх алхам */
   sparkAt?: number;
+  /**
+   * ШАЛТГААНЫ мөр — «яагаад яг энд вэ».
+   * ⚠️ Тоонуудын ДООР, ялгарсан хайрцагт. Мөр болгож жагсаавал бусад
+   * хэмжигдэхүүнтэй адил жинтэй болж, гол хариулт алдагдана.
+   */
+  note?: string;
 };
 
 /**
@@ -271,6 +284,12 @@ type Result = {
    *   · `base`    — аль нь ч байхгүй, үнэлгээний ҮНДСЭН БАГЦААР
    */
   src: 'map' | 'catalog' | 'base';
+  /**
+   * Хохирол ЗАГВАРЧЛАЛЫН бодит үерийн мөрөөр бодогдов уу.
+   * ⚠️ `false` бол буфер зурвасаар ухарсан (загварчлал бэлэн биш байсан) —
+   * үүнийг хэрэглэгчид ИЛ хэлнэ, эс бөгөөс хоёр өөр арга нэг нэрээр явна.
+   */
+  simFootprint?: boolean;
 };
 
 /**
@@ -333,22 +352,156 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
    *    нээгдэхэд БИШ. Нэг удаа татаад `uyr.ts` дотор кэшлэгдэнэ.
    */
   const [flood, setFlood] = useState<FloodData | null>(null);
+  /** Явж буй загварчлалын промис — шинжилгээ түүнийг хүлээнэ */
+  const simPromise = useRef<Promise<FloodData> | null>(null);
+  /**
+   * ЗАГВАРЧЛАХ ТАЛБАЙ — хэрэглэгчийн зурсан полигон (WM цагирагууд).
+   * ⚠️ `null` бол өндрийн торны БҮХ талбай (3.6 × 3.6 км).
+   */
+  const [area, setArea] = useState<SimArea | null>(null);
+  const [drawing, setDrawing] = useState(false);
+  /**
+   * УСНЫ ЗАМ — сонгосон нүднээс дээш/доош мөрдсөн шугам (WM цэгүүд).
+   * ⚠️ Зөвхөн ХАРАГДАЦ: тооцоонд огт нөлөөлөхгүй.
+   */
+  const [path, setPath] = useState<{ up: number[][]; down: number[][] } | null>(null);
+  /**
+   * Зурсан талбайн хэмжээ (га).
+   * ⚠️ Web Mercator-ын талбай нь ӨРГӨРГӨӨР сунадаг тул `cos²φ`-ээр
+   * залруулна — эс бөгөөс 48°N-д талбай 2.2 дахин хэтэрнэ.
+   */
+  const areaHa = useMemo(() => {
+    if (!area) return null;
+    const k = Math.cos((47.9674 * Math.PI) / 180) ** 2;
+    let a = 0;
+    for (const r of area) {
+      for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+        a += r[j][0] * r[i][1] - r[i][0] * r[j][1];
+      }
+    }
+    return (Math.abs(a) / 2) * k / 10000;
+  }, [area]);
   const [floodErr, setFloodErr] = useState<string | null>(null);
+  /** Загварчлалын явц (0..1) — хөтөч дээр бодогддог тул хүлээлт мэдэгдэнэ */
+  const [simPct, setSimPct] = useState(0);
   const [slice, setSlice] = useState(0);
   const [playing, setPlaying] = useState(false);
+  /** Растерыг юугаар будах вэ — гүн · хурд · аюул */
+  const [fmode, setFmode] = useState<FloodMode>('depth');
   const wantFlood = mode === 'model' && hazard === 'flood';
 
+  /**
+   * ҮЕРИЙГ ХӨТӨЧ ДЭЭР БОДНО — төслийн 3D mesh-ээс гаргасан DSM дээр.
+   *
+   * ⚠️ Урьд нь ArcGIS-ийн бэлэн CRF гаралтыг (18.9 МБ) татдаг байсныг ХАСАВ:
+   * тэр нь муу DEM дээр тооцогдсон (хэрэглэгчийн шийдвэр, 2026-09-07). Одоо
+   * өндөр нь `/uyr/selbe-dsm.bin` (0.5 МБ) — mesh-ийн ЁРООЛООС гаргасан.
+   *
+   * ⚠️ ТҮВШИН СОЛИГДОХОД ДАХИН бодно: хур тунадас, үргэлжлэх хугацаа хоёр
+   * түвшнээс хамаардаг тул нэг удаа бодоод кэшилбэл 1-р түвшний ус 3-р
+   * түвшний нэрээр харагдана.
+   */
   useEffect(() => {
-    if (!wantFlood || flood) return;
+    if (!wantFlood) return;
     let alive = true;
     setFloodErr(null);
-    loadFloodData()
-      .then((d) => { if (alive) setFlood(d); })
+    setSimPct(0);
+    setFlood(null);
+    setSlice(0);
+    /* ⚠️ Промисыг ref-д ХАДГАЛНА: «Шинжилгээ хийх» товч загварчлал дуусахаас
+       ӨМНӨ дарагдвал хохирлыг буфер зурвасаар биш, БОДИТ үерээр бодохын тулд
+       үүнийг хүлээнэ. */
+    const pr0 = simulateFlood(level, (pr) => {
+      if (alive) setSimPct(Math.min(0.99, pr.step / pr.total));
+    }, area);
+    simPromise.current = pr0;
+    pr0
+      .then((d) => { if (alive) { setFlood(d); setSimPct(1); } })
       .catch((err: unknown) => {
         if (alive) setFloodErr(err instanceof Error ? err.message : String(err));
       });
     return () => { alive = false; };
-  }, [wantFlood, flood]);
+  }, [wantFlood, level, area]);
+
+  /* ══════════════════ ЗАГВАРЧЛАХ ТАЛБАЙ ЗУРАХ ══════════════════
+   *
+   * ⚠️ Яагаад `SketchViewModel` (виджет БИШ) вэ: бэлэн `Sketch` виджет нь
+   * өөрийн хэрэгслийн самбартай ирдэг ба тэр нь порталын зүүн баганын
+   * зохиомжтой зөрчилдөнө. ViewModel нь зөвхөн ЗУРАХ ЛОГИКийг өгөх бөгөөд
+   * товчийг бид өөрсдөө байрлуулна.
+   *
+   * ⚠️ MapView ба SceneView ХОЁУЛАНД ажиллана — 3D-д ч талбай зурж болно.
+   */
+  const areaLayerRef = useRef<GraphicsLayer | null>(null);
+  const svmRef = useRef<SketchViewModel | null>(null);
+  useEffect(() => {
+    if (!view || view.destroyed || !view.map) return;
+    /* ⚠️ Угтвар `ersdel:` — `MapCanvas`-ийн харагдалтын шүүлт зөвхөн үүнийг
+       алгасдаг; эс бөгөөс давхарга солих бүрд зурсан талбай алга болно. */
+    const gl = new GraphicsLayer({
+      id: 'ersdel:area',
+      listMode: 'hide',
+      elevationInfo: { mode: 'on-the-ground' },
+    });
+    view.map.add(gl);
+    const svm = new SketchViewModel({
+      view,
+      layer: gl,
+      /* ⚠️ ДҮҮРГЭЛТГҮЙ: зурсан талбайн ДОТОР ус урсах тул дүүргэвэл
+         загварчлалын үр дүнг өөрөө дардаг. */
+      polygonSymbol: {
+        type: 'simple-fill',
+        color: [255, 255, 255, 0.04],
+        outline: { color: [250, 204, 21, 0.95], width: 2 },
+      } as unknown as SketchViewModel['polygonSymbol'],
+      defaultCreateOptions: { hasZ: false },
+    });
+    svm.on('create', (ev) => {
+      if (ev.state !== 'complete') return;
+      setDrawing(false);
+      const g = ev.graphic?.geometry as __esri.Polygon | undefined;
+      if (!g?.rings?.length) return;
+      /* ⚠️ ЗӨВХӨН x, y — `hasZ` асаалттай бол гурав дахь утга орж ирэх ба
+         цэгэн доторх шалгалт (`inRings`) хоёр хэмжээст ажилладаг. */
+      setArea(g.rings.map((r) => r.map((p) => [p[0], p[1]])));
+      /* ⚠️ Зурсан талбай руу ойртоно — загварчлал зөвхөн тэнд ажиллах тул
+         хэрэглэгч бусад газрыг хайж «ус алга» гэж эргэлзэх ёсгүй. */
+      if (!view.destroyed && g.extent) {
+        view.goTo(g.extent.clone().expand(1.2), { animate: true, duration: 700 })
+          .catch(() => {});
+      }
+    });
+    svm.on('update', (ev) => {
+      /* Зурсны дараа чирж засварлавал домэйныг дагуулна */
+      if (ev.state !== 'complete') return;
+      const g = ev.graphics[0]?.geometry as __esri.Polygon | undefined;
+      if (g?.rings?.length) setArea(g.rings.map((r) => r.map((p) => [p[0], p[1]])));
+    });
+    areaLayerRef.current = gl;
+    svmRef.current = svm;
+    return () => {
+      svm.destroy();
+      if (view.map) view.map.remove(gl);
+      gl.destroy();
+      areaLayerRef.current = null;
+      svmRef.current = null;
+    };
+  }, [view]);
+
+  const drawArea = useCallback(() => {
+    const svm = svmRef.current;
+    if (!svm) return;
+    areaLayerRef.current?.removeAll();
+    setDrawing(true);
+    svm.create('polygon');
+  }, []);
+
+  const clearArea = useCallback(() => {
+    svmRef.current?.cancel();
+    areaLayerRef.current?.removeAll();
+    setDrawing(false);
+    setArea(null);
+  }, []);
 
   /**
    * ⚠️ ТОГЛУУЛАЛТЫГ ЭНД удирдахГҮЙ. Урьд нь `setInterval`-ээр 900 мс тутам
@@ -573,6 +726,8 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
     if (!view) return;
     setBusy(true);
     setRunErr(null);
+    /** Хохирол загварчлалын мөрөөр бодогдов уу (эсвэл буферээр ухарсан уу) */
+    let simFootprint = false;
     try {
       /**
        * ⚠️ АГААРЫН СЭВСГЭР нь БОДИТ САЛХИАР чиглэнэ (2026-09-03, хүсэлт).
@@ -583,20 +738,69 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
        * ⚠️ `bands` ба `extent` ХОЁУЛАА ижил салхи авна: зөрвөл зурагдсан
        * бүс ба хохирол тоолсон муж хоёр өөр чиглэлд харна.
        */
-      const bands = hazard === 'flood'
-        ? await floodBands(level)
-        : airBands(stations, level, windNow, pm25ByOid);
-      const extent = hazard === 'flood'
-        ? await floodExtent(level)
-        : airExtent(stations, level, windNow, pm25ByOid);
+      /**
+       * ⚠️ АЮУЛЫН МУЖ = ЗАГВАРЧЛАЛЫН МӨР (2026-09-09).
+       *
+       * Урьд нь голын ирмэгээс татсан БУФЕР зурвасыг зурдаг байсан нь одоо
+       * зөрчил үүсгэнэ: хохирол нь загварчлалын мөрөөр бодогддог, харин
+       * зурган дээрх шар зурвас нь голын дагуу л сунадаг. Хэрэглэгч «яагаад
+       * зурвасын гадна барилга улаан болов» гэж уншина. Одоо ГАНЦ хил:
+       * загварчлалын усанд автсан талбай.
+       *
+       * ⚠️ Буфер нь загварчлал БЭЛЭН БИШ үед л ухарч ажиллана.
+       */
+      let bands: Band[] = [];
+      /**
+       * ⚠️ ХОХИРЛЫН МУЖ = ЗАГВАРЧЛАЛЫН БОДИТ ҮЕРИЙН МӨР (2026-09-09).
+       *
+       * Урьд нь голын ирмэгээс татсан БУФЕР зурвасаар бодогддог байсан тул
+       * зурган дээр урсаж буй ус ба улаанаар тэмдэглэсэн хохирол хоёр ЗӨРДӨГ
+       * байв — хэрэглэгч «яагаад ус тэнд байхад барилга өртөөгүй бэ» гэж
+       * асуухаас өөр аргагүй. Одоо хоёулаа НЭГ эх сурвалжтай.
+       *
+       * ⚠️ БҮХ ХУГАЦААНЫ дээд гүнээр: үер 12-р минутад нэг гудамжийг, 40-р
+       * минутад нөгөөг авч болно — хохирол хоёуланг нь тоолох ёстой.
+       *
+       * ⚠️ Загварчлал дуусаагүй бол ХҮЛЭЭНЭ. Хүлээхгүй бол эхний товшилт
+       * буфер, хоёр дахь нь загварчлалаар бодогдож, ижил оролтод ӨӨР хариу
+       * гарна.
+       */
+      let extent: Polygon | null = null;
+      if (hazard === 'flood') {
+        const fd = flood ?? (await simPromise.current?.catch(() => null)) ?? null;
+        const rings = fd ? floodFootprint(fd) : [];
+        if (rings.length) {
+          extent = new Polygon({ rings, spatialReference: { wkid: fd!.meta.wkid } });
+          simFootprint = true;
+        } else {
+          extent = await floodExtent(level);
+        }
+      } else {
+        extent = airExtent(stations, level, windNow, pm25ByOid);
+      }
       if (!extent) throw new Error(tr('Аюулын мужийг байгуулж чадсангүй'));
+      if (hazard !== 'flood') {
+        bands = airBands(stations, level, windNow, pm25ByOid);
+      } else if (simFootprint) {
+        const lv = LEVELS.find((l2) => l2.key === level);
+        bands = [{
+          key: `flood-${level}`,
+          label: tr('Загварчлалын үерийн мөр'),
+          value: flood?.meta.peakDepthM ?? FLOOD_LEVELS[level].depth,
+          height: FLOOD_LEVELS[level].depth,
+          hue: lv?.color ?? '#0284c7',
+          geometry: extent,
+        }];
+      } else {
+        bands = await floodBands(level);
+      }
       const { ids, src } = activeIds();
       /* ⚠️ `failed` — татагдаагүй давхарга. «Эрсдэлгүй» ба «мэдээлэлгүй»
          хоёрыг ялгах ёстой тул шинжилсэн давхаргын тоог УНАСНААР нь
          хасаж, дутууг хэрэглэгчид ил хэлнэ (2026-09-03-ны аудит). */
       const { rows, failed } = await damageOf(view, ids, extent, level, hazard);
       setResult({
-        hazard, level, bands, rows,
+        hazard, level, bands, rows, simFootprint,
         layers: ids.length - failed.length,
         failed,
         src,
@@ -731,6 +935,11 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
         return;
       }
       const risk = depthRisk(d);
+      const why = whyFlood(fd, s, p.idx);
+      /* ⚠️ УСНЫ ЗАМ — дээш (хаанаас ирсэн) ба доош (хаашаа явна).
+         Зурган дээр зурагдана: «энэ гудамжаар уулаас ирсэн ус» гэдэг нь
+         нэг харахад ойлгогдоно. */
+      setPath({ up: flowPath(fd, s, p.idx, true), down: flowPath(fd, s, p.idx, false) });
       setHazInfo({
         title: tr('Үерийн нүд'),
         sub: tr('{0}-р минут · {1} × {1} м', num(fd.minuteAt(s), 1), num(fd.meta.cellM, 1)),
@@ -740,7 +949,44 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
           { k: tr('Эрсдэл'), v: risk.label, tone: risk.color },
           { k: tr('Урсгалын хурд'), v: tr('{0} м/с', num(sp, 2)) },
           { k: tr('Урсгалын чиглэл'), v: `${flowDir(uu, vv)} · ${num(flowDeg(uu, vv), 0)}°` },
+          /**
+           * ⚠️ АЮУЛЫН ЗЭРЭГЛЭЛ = гүн × хурд. Гүн ганцаараа хангалтгүй:
+           * 0.4 м гүн, 2 м/с урсгал (=0.8) нь хүнийг унагадаг ч «гүн бага»
+           * гэж уншигдана. DEFRA/ArcGIS-ийн ангилалтай ижил.
+           */
+          {
+            k: tr('Аюулын зэрэглэл'),
+            v: `${HAZARD_CLASS(d * sp).label} · ${num(d * sp, 2)} м²/с`,
+            tone: HAZARD_CLASS(d * sp).color,
+          },
+          /* ⚠️ Хуримтлагдсан утгууд — ЗҮСМЭЛЭЭС хамаарахгүй, БҮХ хугацаанаас */
+          ...(fd.maxDepth ? [{
+            k: tr('Дээд гүн (бүх хугацаа)'), v: tr('{0} м', num(fd.maxDepth(p.idx), 2)),
+          }] : []),
+          ...(fd.maxSpeed ? [{
+            k: tr('Дээд хурд (бүх хугацаа)'), v: tr('{0} м/с', num(fd.maxSpeed(p.idx), 2)),
+          }] : []),
+          ...(fd.arrivalMin && fd.arrivalMin(p.idx) != null ? [{
+            k: tr('Ус ирэх хугацаа'), v: tr('{0} мин', num(fd.arrivalMin(p.idx)!, 1)),
+          }] : []),
+          /**
+           * ⚠️ ШАЛТГААН — хамгийн доор, гэхдээ хамгийн чухал мөр.
+           * «Энд 1.4 м ус байна» гэдэг нь хариулт БИШ; «яагаад яг энд вэ»
+           * гэдэгт рельеф, налуу хоёр хариулна (`uyrTailbar.ts`).
+           */
+          ...(why ? [
+            { k: tr('Рельеф'), v: why.channel
+              ? tr('голын суваг')
+              : why.reliefM > 0
+                ? tr('орчноосоо {0} м нам', num(why.reliefM, 1))
+                : tr('орчноосоо {0} м өндөр', num(-why.reliefM, 1)) },
+            { k: tr('Налуу'), v: tr('{0}%', num(why.slopePct, 1)) },
+            ...(why.accHa != null && why.accHa >= 0.5
+              ? [{ k: tr('Хураах талбай'), v: tr('{0} га', num(why.accHa, why.accHa >= 10 ? 0 : 1)) }]
+              : []),
+          ] : []),
         ],
+        note: why?.reason,
         /* Тухайн нүдний 12 алхмын түүх — бяцхан график */
         spark: fd.series(p.idx),
         sparkAt: s,
@@ -1093,6 +1339,36 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                   ))}
                 </div>
 
+                {/* ── ЗАГВАРЧЛАХ ТАЛБАЙ (зөвхөн үерт) ──
+                    ⚠️ Түвшний ДООР байрлав: хэрэглэгч эхлээд «хэр хүчтэй»,
+                    дараа нь «хаана» гэдгийг шийднэ. Дээр нь тавибал зурах нь
+                    заавал хийх алхам мэт уншигдана — үнэндээ СОНГОЛТ. */}
+                {hazard === 'flood' && (
+                  <div className={e.flowBar}>
+                    <button
+                      type="button"
+                      className={`${e.flowBtn} ${drawing ? e.flowOn : ''}`}
+                      aria-pressed={drawing}
+                      onClick={drawArea}
+                      title={tr('Газрын зураг дээр талбай зурна. Загварчлал зөвхөн тэр талбайд бодогдоно.')}
+                    >
+                      {drawing ? tr('Зурж байна… (давхар товшиж дуусгана)') : tr('Талбай зурах')}
+                    </button>
+                    {area && (
+                      <button type="button" className={e.flowBtn} onClick={clearArea}>
+                        {tr('Талбайг арилгах')}
+                      </button>
+                    )}
+                    <span className={e.flowHour}>
+                      {area
+                        ? tr('Зурсан талбай — {0} га', num(areaHa ?? 0, 0))
+                        : flood?.meta.domainHa
+                          ? tr('Бүх талбай — {0} га', num(flood.meta.rainHa ?? flood.meta.domainHa, 0))
+                          : tr('Бүх талбай')}
+                    </span>
+                  </div>
+                )}
+
                 {/* Сонгосон хувилбарын БОДИТ параметр — таамгийг ил гаргана */}
                 <p className={e.scenario}>{scenarioNote(hazard, level)}</p>
                 {hazard === 'flood' ? (
@@ -1222,15 +1498,22 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                   <h3 className={e.panelTitle}>
                     <Icon name="waves" size={14} /> {tr('Усны тархалт')}
                   </h3>
+                  {/* ⚠️ ШИНЖИЛГЭЭНИЙ ТАЛБАЙ нь 3D mesh-ийн БОДИТ хүрээ — торны
+                      квадрат БИШ. Хэрэглэгч «хаана хүртэл бодогдов» гэдгийг
+                      мэдэхгүй бол үр дүнг хэт өргөнөөр ойлгоно. */}
                   <span className={e.panelNote}>
-                    {flood ? tr('{0} алхам', num(flood.meta.slices)) : '…'}
+                    {flood
+                      ? flood.meta.domainHa
+                        ? tr('{0} алхам · {1} га', num(flood.meta.slices), num(flood.meta.rainHa ?? flood.meta.domainHa, 0))
+                        : tr('{0} алхам', num(flood.meta.slices))
+                      : '…'}
                   </span>
                 </header>
                 <div className={e.panelBody}>
                   {floodErr ? (
                     <Note><span style={{ color: 'var(--bad-ink)' }}>{floodErr}</span></Note>
                   ) : !flood ? (
-                    <Loading label={tr('Загварчлал уншиж байна… (19 МБ)')} />
+                    <Loading label={tr('Үерийг бодож байна… {0}%', num(simPct * 100, 0))} />
                   ) : (
                     <>
                       <div className={e.timeRow}>
@@ -1266,9 +1549,57 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                         <Stat value={num(flood.meta.stats[slice].maxSpeed, 1)} unit={tr('м/с')}
                           label={tr('Дээд хурд')} />
                       </Stats>
+
+                      {/* ── ЗУРГИЙГ ЮУГААР БУДАХ ВЭ ──
+                          ⚠️ Гурван ӨӨР асуулт: «хэр гүн» · «хэр хүчтэй» ·
+                          «хүнд аюултай юу». 2 м гүн ЗОГСОНГИ ус ба 0.4 м гүн
+                          ХУРДАН урсгал хоёр өөр аюул тул нэг зураг хангахгүй. */}
+                      <div className={e.flowBar}>
+                        {([
+                          ['depth', tr('Гүн')],
+                          ['speed', tr('Хурд')],
+                          ['hazard', tr('Аюул')],
+                        ] as [FloodMode, string][]).map(([k, lb]) => (
+                          <button
+                            key={k}
+                            type="button"
+                            className={`${e.flowBtn} ${fmode === k ? e.flowOn : ''}`}
+                            aria-pressed={fmode === k}
+                            onClick={() => setFmode(k)}
+                          >
+                            {lb}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* ── ГИДРОГРАФ — загварын ОРОЛТ ──
+                          ⚠️ Үр дүн БИШ, оролт. «Яагаад 18-р минутад ус хамгийн
+                          их байв» гэдгийг зөвхөн энэ муруй тайлбарлана. */}
+                      {flood.meta.hydroQ && flood.meta.hydroQ.length === flood.meta.slices && (
+                        <div className={e.sparkBox}>
+                          <div className={e.sparkHd}>
+                            <span>{tr('Оролтын урсац (гидрограф)')}</span>
+                            <span className="num">
+                              {tr('{0} м³/с', num(flood.meta.hydroQ[slice], 1))}
+                            </span>
+                          </div>
+                          <Spark vals={flood.meta.hydroQ} at={slice}
+                            color="var(--data)" unit="м³/с" />
+                        </div>
+                      )}
+
                       <p className={e.hint}>
-                        {tr('Зурган дээр дарж тухайн нүдний гүн, урсгалын хурд, чиглэл, 12 алхмын түүхийг үзнэ.')}
+                        {tr('Зурган дээр дарж тухайн нүдний гүн, урсгалын хурд, чиглэл, {0} алхмын түүхийг үзнэ.',
+                          num(flood.meta.slices))}
                       </p>
+                      {/* ⚠️ ХОЁР ЭХ СУРВАЛЖ — нарийвчлал эрс өөр тул ил хэлнэ */}
+                      {flood.meta.meshPct != null && (
+                        <Note>
+                          {tr('Хур тунадас нь 3D mesh-ийн талбайд ({0} га) ордог; ус тэндээс өндрийн дагуу урсаж, домэйны ({1} га) захаар гарна. Өндөр: mesh байгаа газар mesh ({2} м нүд, барилга ус хаана), байхгүй газар SRTM DEM (~30 м).',
+                            num(flood.meta.rainHa ?? 0, 0), num(flood.meta.domainHa ?? 0, 0),
+                            num(flood.meta.srcCellM, 1))}
+                        </Note>
+                      )}
                     </>
                   )}
                 </div>
@@ -1330,9 +1661,12 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
           selected={current?.oid ?? null}
           onPick={onMapPick}
           flood={wantFlood ? flood : null}
+          floodMode={fmode}
+          path={path}
           floodSlice={slice}
           playing={playing}
           onSlice={setSlice}
+          onEnd={() => setPlaying(false)}
           /* Урсгал УНТРААЛТТАЙ үед `null` — давхарга огт үүсэхгүй,
              GPU-д текстур эзлэхгүй. */
           windField={windFlow ? windField : null}
@@ -1401,18 +1735,47 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
             {/* ⚠️ ҮЕРТ бүс тус бүрийн хайрцаг БИШ, тасралтгүй ШАТЛАЛ: растер нь
                 гүнийг тасралтгүй өнгөөр зурдаг тул дөрвөн хайрцаг нь худал
                 зэрэглэл харуулна. */}
+            {/* ⚠️ УРСГАЛЫН СҮЛЖЭЭ — байнгын доод давхарга, устай холилдох ёсгүй
+                тул тусдаа тайлбартай. Зөвхөн гүний горимд зурагдана. */}
+            {result?.hazard === 'flood' && flood && fmode === 'depth' && (
+              <span
+                className={e.legItem}
+                title={tr('Ус ХААШАА урсахыг харуулах байнгын шугам (хураах талбай ≥ 0.5 га). Ус нимгэн (2–4 см) үед ч уулаас хот руу чиглэх зам харагдана.')}
+              >
+                <i
+                  className={e.legSwatch}
+                  style={{ background: 'rgba(96,148,184,0.55)' }}
+                  aria-hidden
+                />
+                {tr('Урсгалын сүлжээ')}
+              </span>
+            )}
+
+            {/* ⚠️ Легенд нь ГОРИМЫГ дагана: растер хурдаар будагдаж байхад
+                гүний шатлал харуулбал тайлбар шууд ХУДАЛ болно. */}
             {result?.hazard === 'flood' && flood && (
               <span className={`${e.legItem} ${e.ramp}`}>
-                <i className={e.rampBar} aria-hidden />
-                {tr('Усны гүн')}
-                {/* ⚠️ Градиентийн зах нь ӨНГӨ ХАНАХ гүн (`RAMP_MAX_M`), загварын
-                    дээд гүн БИШ — тайлбарыг `RAMP_MAX_M`-д бичив. */}
+                <i
+                  className={`${e.rampBar} ${fmode === 'speed' ? e.rampSpeed
+                    : fmode === 'hazard' ? e.rampHazard : ''}`}
+                  aria-hidden
+                />
+                {fmode === 'speed' ? tr('Урсгалын хурд')
+                  : fmode === 'hazard' ? tr('Аюулын зэрэглэл') : tr('Усны гүн')}
+                {/* ⚠️ Градиентийн зах нь ӨНГӨ ХАНАХ утга, загварын дээд утга БИШ */}
                 <b
                   className="num"
-                  title={tr('Өнгө {0} м-д ханана — түүнээс гүн ус ижил өнгөтэй. Загварын дээд гүн {1} м.',
-                    num(RAMP_MAX_M, 1), num(flood.meta.peakDepthM, 1))}
+                  title={fmode === 'depth'
+                    ? tr('Өнгө {0} м-д ханана — түүнээс гүн ус ижил өнгөтэй. Загварын дээд гүн {1} м. Зурагт {2} см-ээс нимгэн ус ч (энгэрийн урсгал) бүдэг харагдана, харин «усанд автсан» талбайд {3} см-ээс тооцно.',
+                      num(flood.meta.rampMaxM ?? RAMP_MAX_M, 1), num(flood.meta.peakDepthM, 1),
+                      num((flood.meta.drawM ?? 0.05) * 100, 0), num(flood.meta.wetM * 100, 0))
+                    : fmode === 'speed'
+                      ? tr('Өнгө {0} м/с-д ханана.', num(SATURATE_MS, 1))
+                      : tr('Гүн × хурд. {0} м²/с-ээс дээш нь онц аюултай.', num(SATURATE_HAZ, 1))}
                 >
-                  {tr('0 … {0}+ м', num(RAMP_MAX_M, 1))}
+                  {fmode === 'speed' ? tr('0 … {0}+ м/с', num(SATURATE_MS, 1))
+                    : fmode === 'hazard' ? tr('0 … {0}+ м²/с', num(SATURATE_HAZ, 1))
+                      : tr('0 … {0}+ м', num(flood.meta.rampMaxM ?? RAMP_MAX_M, 1))}
                 </b>
               </span>
             )}
@@ -1488,7 +1851,7 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
               <button
                 type="button"
                 className={e.infoClose}
-                onClick={() => { setHazInfo(null); setFeatInfo(null); }}
+                onClick={() => { setHazInfo(null); setFeatInfo(null); setPath(null); }}
                 aria-label={tr('Хаах')}
               >
                 ×
@@ -1509,6 +1872,8 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                 <Spark vals={info.spark.speed} at={info.sparkAt} color="var(--warn-ink)" unit={tr('м/с')} />
               </div>
             )}
+            {/* ⚠️ ШАЛТГААН — тоонуудын ДЭЭР, ялгарсан хайрцагт */}
+            {info.note && <p className={e.whyBox}>{info.note}</p>}
             {info.rows.length === 0 ? (
               <p className={e.infoSub}>{tr('Нэмэлт мэдээлэл алга')}</p>
             ) : (
@@ -1668,14 +2033,15 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                       </div>
                     )}
                     {result.hazard === 'flood' && (
-                      /* ⚠️ ХОЁР ӨӨР зүйл нэг зурган дээр байгааг ил хэлнэ:
-                         хохирол нь СОНГОСОН ТҮВШНИЙ зурвасаар бодогдоно, харин
-                         доор урсаж буй ус нь ОБЕГ-ын загварчлалын бодит үр дүн.
-                         Хэлэхгүй бол «яагаад ус зурвасаас гарч байна вэ?» гэсэн
-                         зөрчил гарна. */
+                      /* ⚠️ Хохирлын муж ба зурган дээрх ус НЭГ эх сурвалжтай
+                         болсон (2026-09-09). Аль аргаар бодогдсоныг ИЛ хэлнэ:
+                         загварчлал бэлэн биш байсан бол буферээр ухардаг. */
                       <Note>
-                        {tr('Хохирол нь сонгосон түвшний үерийн зурвасаар (голын ирмэгээс {0} м) бодогдов. Доор урсаж буй ус нь ОБЕГ-ын загварчлалын тусдаа үр дүн — хоёулаа нэг зурган дээр харагдана.',
-                          num(FLOOD_LEVELS[result.level].reach))}
+                        {result.simFootprint
+                          ? tr('Хохирол нь ЗАГВАРЧЛАЛЫН бодит үерийн мөрөөр бодогдов — бүх {0} минутын дээд гүн {1} м-ээс дээш газар. Зурган дээр урсаж буй ус ба улаанаар тэмдэглэсэн хохирол НЭГ эх сурвалжтай.',
+                            num(flood?.meta.simMin ?? 60), num(0.15, 2))
+                          : tr('Загварчлал бэлэн биш байсан тул хохирлыг үерийн ЗУРВАСААР (голын ирмэгээс {0} м) тооцов. Загварчлал дуусмагц дахин ажиллуулбал бодит мөрөөр бодогдоно.',
+                            num(FLOOD_LEVELS[result.level].reach))}
                       </Note>
                     )}
                     {/* ⚠️ 2026-09-08: эх сурвалж тус бүрд ӨӨР өгүүлбэр. Урьд нь
