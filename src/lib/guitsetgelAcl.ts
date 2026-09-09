@@ -60,6 +60,29 @@ export type Assign = {
   stage: Stage;
   /** Багцын нэрс (`PKG_GROUPS`). `[ALL_BAGTS]` = бүх багц. */
   bagts: string[];
+  /**
+   * ХӨНДЛӨНГИЙН ХЯНАЛТ — ХАРНА, ШИЙДВЭРЛЭХГҮЙ (2026-09-09).
+   *
+   * ⚠️ ЯАГААД ХЭРЭГТЭЙ ВЭ: аудитор, захиалагчийн төлөөлөгч, зөвлөх инженер
+   *    зэрэг хүн гүйцэтгэлийн явцыг ХАРАХ ёстой ч батлах/буцаах эрхгүй.
+   *    Урьд нь хоёрхон сонголт байсан бөгөөд хоёулаа буруу:
+   *      · томилвол   → шийдвэрлэх эрхтэй болно
+   *      · томилохгүй → `bagtsFor` нь `[]` өгч жагсаалт ХООСОН болно
+   *    Дундах зам байгаагүй.
+   *
+   * ⚠️ ЯАГААД ЭНД, «Хэрэглэгчдийн эрх удирдах»-д БИШ: тэнд БАГЦ гэсэн
+   *    ойлголт ОГТ байхгүй (зөвхөн харагдац + 11 эрх). Тэнд хийвэл багцын
+   *    хүрээг ХОЁР ДАХЬ удаа зохиох шаардлагатай болж, яг тэр давхардлаас
+   *    2026-09-08 · 09-нд 9 алдаа гарсан хэв шинж давтагдана.
+   *
+   * ⚠️ ШИНЭ ШАТ БИШ: шат нь ЯМАР нүдээр харахыг (миний ажил ↔ бусад)
+   *    тодорхойлдог тул харагч ч мөн шаттай байх ёстой. Зөвхөн ШИЙДВЭР
+   *    хаагдана (`resolveFlowStage` → `canReview: false`).
+   *
+   * ⚠️ FAIL-CLOSED: `undefined` = хуучин мөр = ЖИРИЙН томилгоо (шийдвэрлэнэ).
+   *    Энэ туг нь эрхийг ХАСДАГ болохоос НЭМДЭГГҮЙ тул хуучин мөр аюулгүй.
+   */
+  viewOnly?: boolean;
 };
 
 const KEY = 'selbe-guitsetgel-acl-v1';
@@ -119,7 +142,9 @@ const STAGES = new Set<string>(STAGE_ORDER);
  * `permsRemote.upsertByKey`-ийн бичилтийн дүрэмтэй ижил (урьд нь эхнийх нь
  * уншигдаж, бичилттэй зөрдөг байв).
  */
-export function _syncRemoteAssigns(rows: { user: string; stage: string; bagts: string[] }[]): void {
+export function _syncRemoteAssigns(
+  rows: { user: string; stage: string; bagts: string[]; viewOnly?: boolean }[],
+): void {
   const byUser = new Map<string, Assign>();
   for (const r of rows) {
     if (!r.user || !STAGES.has(r.stage)) continue;
@@ -131,6 +156,9 @@ export function _syncRemoteAssigns(rows: { user: string; stage: string; bagts: s
       user,
       stage: r.stage as Stage,
       bagts: (Array.isArray(r.bagts) ? r.bagts : []).filter((b) => typeof b === 'string'),
+      /* ⚠️ ЗӨВХӨН ЯГ `true` — «1», «yes» гэх мэт утга эрх ХАСАХГҮЙ. Тугийн
+         утга нь эргэлзээтэй бол ЖИРИЙН томилгоо гэж үзнэ (хуучин мөр). */
+      ...(r.viewOnly === true ? { viewOnly: true as const } : {}),
     });
   }
   save([...byUser.values()]);
@@ -184,7 +212,7 @@ async function pushFlow(user: string): Promise<boolean> {
   try {
     const m = await import('./permsRemote');
     const a = load().find((x) => x.user === user);
-    return a ? m.flowUpsert(a.user, a.stage, a.bagts) : m.flowRemove(user);
+    return a ? m.flowUpsert(a.user, a.stage, a.bagts, a.viewOnly === true) : m.flowRemove(user);
   } catch {
     return false;
   }
@@ -320,6 +348,39 @@ export function purgeAssign(user: string): Promise<boolean> {
   });
 }
 
+/**
+ * ХӨНДЛӨНГИЙН ХЯНАЛТЫН тугийг асаах / унтраах (2026-09-09).
+ *
+ * ⚠️ ЗӨВХӨН ТОМИЛОГДСОН хүнд утгатай: тэр нь ШИЙДВЭРЛЭХ эрхийг хасдаг
+ *    болохоос багц ЭСВЭЛ шатыг өгдөггүй. Томилгоогүй хүнд дуудвал
+ *    `{ ok: false }` — эс бөгөөс «харагч» гэж тэмдэглэсэн атлаа жагсаалт нь
+ *    хоосон хэвээр байх утгагүй төлөв үүснэ.
+ *
+ * ⚠️ ЭРХ ХӨНДӨХГҮЙ: `guitsetgel` харагдац нь томилгооноос аль хэдийн
+ *    олгогдсон (`grantFlowAccess`) бөгөөд харагч ч мөн ХАРАХ ёстой тул
+ *    түүнийг хасах шаардлагагүй.
+ */
+export function setViewOnly(
+  user: string, viewOnly: boolean,
+): { ok: boolean; error?: string; sync?: Promise<boolean> } {
+  const u = user.trim().toLowerCase();
+  if (!u) return { ok: false, error: 'Аккаунтын нэрээ бичнэ үү' };
+  const list = load();
+  const cur = list.find((a) => a.user === u);
+  if (!cur) {
+    return { ok: false, error: 'Эхлээд шатанд томилно уу — хөндлөнгийн хяналт нь томилгоон дээр тавигдана' };
+  }
+  save(list.map((a) => (a.user === u
+    ? (viewOnly ? { ...a, viewOnly: true } : { user: a.user, stage: a.stage, bagts: a.bagts })
+    : a)));
+  const sync = enqueue(u, async () => {
+    const ok = await pushFlow(u);
+    markResult(u, ok);
+    return ok;
+  });
+  return { ok: true, sync };
+}
+
 const viewsEqual = (a: ViewKey[] | 'all', b: ViewKey[] | 'all'): boolean =>
   a === 'all' || b === 'all' ? a === b : a.length === b.length && a.every((v) => b.includes(v));
 
@@ -422,8 +483,21 @@ export function regrantFlowAccess(user: string): Promise<boolean> {
 /** Аккаунт аль шатанд томилогдсон бэ (томилогдоогүй бол `null`) */
 export function stageOfUser(user?: string | null): Stage | null {
   if (!user) return null;
-  const a = load().find((x) => x.user === user.toLowerCase());
+  const a = load().find((x) => x.user === user.trim().toLowerCase());
   return a?.stage ?? null;
+}
+
+/**
+ * ХӨНДЛӨНГИЙН ХЯНАЛТ уу — ХАРНА, ШИЙДВЭРЛЭХГҮЙ (2026-09-09).
+ *
+ * ⚠️ FAIL-CLOSED БИШ, FAIL-SAFE: `undefined` (хуучин мөр) нь `false` буюу
+ *    ЖИРИЙН томилгоо. Энэ туг нь эрхийг ХАСДАГ болохоос НЭМДЭГГҮЙ тул
+ *    анхдагчаар унтраалттай байх нь эрх чөлөөлөхгүй — томилогдсон хүн
+ *    урьдын адил шийдвэрлэсээр байна.
+ */
+export function isViewOnly(user?: string | null): boolean {
+  if (!user) return false;
+  return load().find((x) => x.user === user.trim().toLowerCase())?.viewOnly === true;
 }
 
 /**
@@ -514,7 +588,22 @@ export function resolveFlowStage(
     return { stage: picked ?? 'engineer', canReview: true, canPick: true, scope: null };
   }
   const st = stageOfUser(user);
-  if (st) return { stage: st, canReview: true, canPick: false, scope: bagtsFor(user, st) };
+  if (st) {
+    /*
+     * ⚠️ ХӨНДЛӨНГИЙН ХЯНАЛТ (2026-09-09): томилогдсон ч `viewOnly` тугтай бол
+     *    ХАРНА, ШИЙДВЭРЛЭХГҮЙ. Багцын хүрээ нь ХЭВЭЭР үйлчилнэ — «Багц 1, 2-ыг
+     *    хянана» гэсэн аудитор яг тэр хоёрыг л харна.
+     * ⚠️ Шат нь ХЭВЭЭР: тэр нь ЯМАР нүдээр харахыг (миний ажил ↔ бусад)
+     *    тодорхойлдог тул харагчид ч хэрэгтэй. Зөвхөн `canReview` хаагдана.
+     */
+    const viewOnly = isViewOnly(user);
+    return {
+      stage: st,
+      canReview: !viewOnly,
+      canPick: false,
+      scope: bagtsFor(user, st),
+    };
+  }
   const byRole = role ? ROLE_STAGE[role] ?? null : null;
   return { stage: byRole, canReview: false, canPick: false, scope: [] };
 }

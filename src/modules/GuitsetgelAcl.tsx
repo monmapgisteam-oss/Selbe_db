@@ -21,7 +21,8 @@ import { t as tr } from '@/lib/i18nCore';
 import { STAGE_ORDER, type Stage } from '@/lib/hyanalt';
 import { STAGE_LABEL } from '@/lib/hyanaltGroup';
 import {
-  ALL_BAGTS, assignsOf, flowFailedUsers, listAssigns, removeAssign, setAssign, subscribeAcl,
+  ALL_BAGTS, assignsOf, flowFailedUsers, listAssigns, removeAssign, setAssign, setViewOnly,
+  subscribeAcl,
 } from '@/lib/guitsetgelAcl';
 import { PKG_GROUPS } from '@/modules/sheet/bagts.pkg';
 import { dirtyKeys, listUsers, subscribe } from '@/lib/permissions';
@@ -177,7 +178,30 @@ function Column({
             ) : isAdmin ? (
               <div className={s.aclEmpty}>{tr('админ — багцын хязгаар үйлчлэхгүй')}</div>
             ) : (
-              /* БАГЦУУД — олон сонголт. «Бүх багц» нь бусдыг хүчингүй болгоно. */
+              <>
+              {/*
+                * ⚠️ ХӨНДЛӨНГИЙН ХЯНАЛТ (2026-09-09) — ХАРНА, ШИЙДВЭРЛЭХГҮЙ.
+                *    Аудитор, захиалагчийн төлөөлөгч, зөвлөх инженер зэрэг хүн
+                *    гүйцэтгэлийг ХАРАХ ёстой ч батлах/буцаах эрхгүй. Урьд нь
+                *    хоёрхон зам байсан бөгөөд хоёулаа буруу: томиловол
+                *    шийдвэрлэнэ, томилохгүй бол жагсаалт ХООСОН.
+                * ⚠️ Багцын хүрээ нь ХЭВЭЭР үйлчилнэ — «Багц 1, 2-ыг хянана»
+                *    гэсэн хүн яг тэр хоёрыг л харна.
+                */}
+              <button
+                type="button"
+                className={`${s.aclPkg} ${r.viewOnly ? s.aclPkgOn : ''}`}
+                title={tr('Асаавал энэ хүн гүйцэтгэлийг ХАРНА, гэхдээ батлах/буцаах товч идэвхгүй байна.')}
+                onClick={() => {
+                  setErr('');
+                  const res = setViewOnly(r.user, !r.viewOnly);
+                  if (!res.ok) { setErr(res.error ?? ''); return; }
+                  void res.sync;
+                }}
+              >
+                {r.viewOnly ? tr('◉ Зөвхөн харна') : tr('○ Зөвхөн харна')}
+              </button>
+              {/* БАГЦУУД — олон сонголт. «Бүх багц» нь бусдыг хүчингүй болгоно. */}
               <div className={s.aclPkgs}>
                 <button
                   type="button"
@@ -216,6 +240,7 @@ function Column({
                   );
                 })}
               </div>
+              </>
             )}
           </div>
         );

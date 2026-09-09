@@ -27,7 +27,7 @@ globalThis.dispatchEvent = () => true;
 
 const {
   ALL_BAGTS, bagtsFor, bagtsScope, _syncRemoteAssigns, resolveFlowStage,
-  setAssign, removeAssign, stageOfUser, listAssigns,
+  setAssign, removeAssign, stageOfUser, listAssigns, isViewOnly, setViewOnly,
 } = await import('@/lib/guitsetgelAcl.ts');
 const P = await import('@/lib/permissions.ts');
 const { ROLE_BY_USER } = await import('@/lib/services.ts');
@@ -171,4 +171,62 @@ assert.equal(P.roleOf('comp_a'), 'menejer', 'хойшилсон revoke шинэ 
 assert.deepEqual(P.resolveBaseAccess('comp_a').views, ['guitsetgel']);
 console.log('✅ хас→нэм дараалал');
 
-console.log('\nacl: ok — fail-closed · шат=томилгоо · нэг аккаунт нэг шат · tombstone · дараалал');
+/* ══════════════════════════════════════════════════════════════════════
+ * 14. ХӨНДЛӨНГИЙН ХЯНАЛТ — ХАРНА, ШИЙДВЭРЛЭХГҮЙ (2026-09-09)
+ * ══════════════════════════════════════════════════════════════════════
+ * ⚠️ Урьд нь хоёрхон зам байсан бөгөөд хоёулаа буруу: томиловол ШИЙДВЭРЛЭХ
+ *    эрхтэй болно, томилохгүй бол `bagtsFor` нь `[]` өгч жагсаалт ХООСОН.
+ *    Аудитор, захиалагчийн төлөөлөгч зэрэг хүнд дундах зам байгаагүй.
+ */
+_syncRemoteAssigns([{ user: 'audit', stage: 'engineer', bagts: ['Багц 1'], viewOnly: true }]);
+{
+  const f = resolveFlowStage('audit', null);
+  assert.equal(f.stage, 'engineer', 'харагчийн ШАТ алдагдав — нүдээ сонгож чадахгүй болно');
+  assert.equal(f.canReview, false, 'ХАРАГЧ шийдвэрлэх эрхтэй үлдэв');
+  assert.deepEqual(f.scope, ['Багц 1'], 'харагчийн БАГЦЫН хүрээ алдагдав — жагсаалт хоосон болно');
+  assert.equal(isViewOnly('audit'), true);
+  assert.equal(isViewOnly('  AUDIT  '), true, 'үсгийн хэлбэр/зайд тэсвэргүй');
+}
+
+/* Жирийн томилгоо (туггүй) нь ХЭВЭЭР шийдвэрлэнэ — fail-safe анхдагч */
+_syncRemoteAssigns([{ user: 'inj', stage: 'engineer', bagts: ['Багц 1'] }]);
+assert.equal(resolveFlowStage('inj', null).canReview, true, 'туггүй томилгоо шийдвэрлэх эрхээ алдав');
+assert.equal(isViewOnly('inj'), false);
+
+/* ⚠️ ЗӨВХӨН ЯГ `true` — эргэлзээтэй утга эрх ХАСАХГҮЙ */
+_syncRemoteAssigns([{ user: 'muu', stage: 'engineer', bagts: ['Багц 1'], viewOnly: 'yes' }]);
+assert.equal(isViewOnly('muu'), false, '«yes» гэсэн утга тугийг асаав');
+assert.equal(resolveFlowStage('muu', null).canReview, true);
+
+/* Тугийг асаах / унтраах — багц ба шат ХЭВЭЭР */
+_syncRemoteAssigns([{ user: 'sw', stage: 'manager', bagts: ['Багц 2'] }]);
+{
+  const on = setViewOnly('sw', true);
+  assert.equal(on.ok, true);
+  await on.sync;
+  assert.equal(isViewOnly('sw'), true);
+  assert.equal(stageOfUser('sw'), 'manager', 'туг асаахад ШАТ алдагдав');
+  assert.deepEqual(bagtsFor('sw', 'manager'), ['Багц 2'], 'туг асаахад БАГЦ алдагдав');
+
+  const off = setViewOnly('sw', false);
+  await off.sync;
+  assert.equal(isViewOnly('sw'), false);
+  assert.equal(resolveFlowStage('sw', null).canReview, true, 'туг унтраахад эрх сэргэсэнгүй');
+}
+
+/* ⚠️ ТОМИЛГООГҮЙ хүнд туг тавихгүй — «харагч» гэж тэмдэглэсэн атлаа
+   жагсаалт нь хоосон хэвээр байх утгагүй төлөв үүснэ. */
+_syncRemoteAssigns([]);
+assert.equal(setViewOnly('hen_ch', true).ok, false, 'томилгоогүй хүнд туг тавигдав');
+
+/* Багц СОЛИХОД туг ҮЛДЭНЭ — админ багц нэмэхэд эрх чимээгүй сэргэх ёсгүй */
+_syncRemoteAssigns([{ user: 'keep', stage: 'engineer', bagts: ['Багц 1'], viewOnly: true }]);
+{
+  const w2 = setAssign('keep', 'engineer', ['Багц 1', 'Багц 2'], false);
+  await w2.sync;
+  assert.equal(isViewOnly('keep'), true, 'багц солиход ХӨНДЛӨНГИЙН ХЯНАЛТ чимээгүй арилав');
+  assert.equal(resolveFlowStage('keep', null).canReview, false);
+}
+console.log('✅ ХӨНДЛӨНГИЙН ХЯНАЛТ — харна, шийдвэрлэхгүй; багц·шат хэвээр');
+
+console.log('\nacl: ok — fail-closed · шат=томилгоо · нэг аккаунт нэг шат · tombstone · дараалал · харагч');
