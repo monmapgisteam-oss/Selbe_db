@@ -51,8 +51,13 @@ import { loadBlockHistory } from '@/lib/blockProgress';
  */
 import { loadPlanCurve, type PlanCurve } from '@/lib/planProgress';
 import {
-  CASHFLOW_NEW, IPC_LOG, TASK_SHEET, bagtsKey, blockKey, pkgKeyOf, cfMonthAxis, ipcNet,
+  CASHFLOW_NEW, HO_IPC, TASK_SHEET, bagtsKey, blockKey, pkgKeyOf, cfMonthAxis, hoAmount,
 } from '@/lib/services';
+/* ⚠️ 2026-09-09: IPC-ийн ГЭРЭЭ ба ТӨЛБӨР гэсэн ХОЁР ТҮВШИН — `@/lib/ipc`-ээс.
+   Мөр = НЭГ ГҮЙЛГЭЭ; гэрээний талбар `geree_kod` бүрд ДАВТАГДАНА тул
+   гэрээний дүнг мөрөөр SUM хийвэл Багц-4.1 (7 мөр) -ийн төсөв 7 дахин
+   хөөрөгдөнө. Гэрээний тоог ЗӨВХӨН `groupHo`/`hoTotals`-оос ав. */
+import { loadHoRows, groupHo, type HoContract } from '@/lib/ipc';
 import { finFieldLabel } from '@/lib/financeFieldLabels';
 import {
   FIN_XL_ORDER, FIN_XL_LEAF, FIN_XL_WIDTH, FIN_XL_MERGE, FIN_XL_BAND_H, finXlGroup,
@@ -68,9 +73,7 @@ import {
 import {
   buildGroups, type FinKind, type GroupRow,
 } from '@/lib/finGroup';
-import {
-  IPC_MAIN_FIELDS, sumOrNull, dedOrNull, paidOrNull, netOrNull, netTotalOrNull,
-} from '@/lib/finCard';
+import { HO_MAIN_FIELDS, sumOrNull } from '@/lib/finCard';
 import { mnt, num, text, cat, date } from '@/lib/format';
 import { fitLabels, textW, useChartWidth } from '@/lib/chartFit';
 import { ResizableTable } from '@/components/ResizableTable';
@@ -78,6 +81,7 @@ import { applyAll } from '@/lib/tableWrite';
 import { invalidate, type DataKey } from '@/lib/dataBus';
 import { hasCap, subscribeCaps } from '@/lib/caps';
 import { useAuth } from '@/components/AuthGate';
+import { IpcTable } from '@/modules/IpcTable';
 import f from './finance.module.css';
 
 /* ═══════════════════════════════════════════════════════════
@@ -241,7 +245,7 @@ export type FinData = {
   /**
    * Багц → нийт олгосон (цэвэр) дүн — ОГНООГҮЙ актыг ч ОРУУЛНА.
    *
-   * ⚠️ 59 актын 29-д ямар ч огноо алга (нэг нь 9.4 тэрбумтай). Тэдгээрийг
+   * ⚠️ 45 төлбөрийн 5-д гүйлгээний огноо алга. Тэдгээрийг
    *    `given`-ий сарын цуваанд оруулбал сүүлийн сар дээр хуурамч оргил
    *    үүснэ (null ≠ 0), огт хаявал нийт дүн дутна — тиймээс цуваанаас
    *    хасаж, НИЙЛБЭРТ энд үлдээв.
@@ -250,14 +254,28 @@ export type FinData = {
   phys: PhysMap;
   physCnt: PhysMap;
   /**
-   * ГҮЙЦЭТГЭЛИЙН АКТУУД (IPC) — түүхий мөрүүд.
+   * ТӨЛБӨРИЙН МӨРҮҮД (45) — `HO_IPC` түүхий мөр, OID дарааллаар.
    *
-   * ⚠️ `given` нь актуудыг сар бүрийн НИЙЛБЭР болгож хураадаг тул
-   *    акт бүрийн дугаар, хамрах хугацаа, барьцаа, үлдэгдэл алдагддаг.
-   *    Санхүүгийн дэлгэрэнгүйд «энэ мөнгө ЯМАР актаар олгогдсон бэ»
-   *    гэдэг нь гол мөрдөх мөр тул түүхий мөрийг ХАДГАЛНА.
+   * ⚠️ `given` нь тэдгээрийг сар бүрийн НИЙЛБЭР болгож хураадаг тул төлбөр
+   *    бүрийн дугаар, төрөл (урьдчилгаа/гүйцэтгэл), гүйлгээний огноо
+   *    алдагддаг. «Энэ мөнгө ЯМАР төлбөрөөр олгогдсон бэ» гэдэг нь гол
+   *    мөрдөх мөр тул түүхий мөрийг ХАДГАЛНА.
+   * ⚠️ 2026-09-09: нэр нь `acts` → `pays`. Шинэ эх нь АКТ БИШ ТӨЛБӨР —
+   *    урьдчилгааны гүйлгээ ч энд орно (хэрэглэгчийн шийдвэр: «олгосон» =
+   *    урьдчилгаа + гүйцэтгэл).
    */
-  acts: Row[];
+  pays: Row[];
+  /**
+   * ГЭРЭЭНИЙ ТҮВШИН (22) — `groupHo`-оор dedup хийсэн.
+   *
+   * ⚠️ Гэрээний ДҮНГ (төсөв, гэрээт төсөв, хэмнэлт) ЗӨВХӨН эндээс ав, `pays`
+   *    мөрөөр БИШ: тэдгээр талбар гэрээний мөр бүрд ДАВТАГДАНА тул мөрөөр
+   *    нийлүүлбэл 7 дахин давхардана.
+   * ⚠️ CASHFLOW_NEW-ийн 76 гэрээг ОРЛОХГҮЙ — HO нь зөвхөн 22 гэрээ хамарна.
+   *    `planTotal` ХЭВЭЭР CASHFLOW_NEW-ээс, эс тэгвээс 54 багцад «гэрээний
+   *    дүн» алга болж гүйцэтгэлийн хувь бодогдохгүй.
+   */
+  contractsHo: HoContract[];
 };
 
 // ═══════════════════════════════════════════════════════════
@@ -576,7 +594,7 @@ function smoothPath(pts: { x: number; y: number }[]): string {
  *   гурвуулаа дууддаг тул харагдац сэлгэх бүрд 3 query + O(багц×сар×блок)
  *   тооцоо ДАХИН хийгддэг байв.
  */
-export const loadFinData = cached(loadFinDataRaw, LIVE_TTL, ['IPC_LOG', 'CASHFLOW_NEW', 'BAGTS_SHEET']);
+export const loadFinData = cached(loadFinDataRaw, LIVE_TTL, ['HO_IPC', 'CASHFLOW_NEW', 'BAGTS_SHEET']);
 
 /**
  * ГЭРЭЭНИЙ БҮРТГЭЛ — НЭГ кэштэй эх (2026-08-24 аудит): урьд нь
@@ -596,11 +614,11 @@ const loadCashflowNewRows = cached(
   LIVE_TTL,
   ['CASHFLOW_NEW'],
 );
-const loadIpcRows = cached(
-  () => queryFeatures(IPC_LOG.url, { outFields: ['*'] }),
-  LIVE_TTL,
-  ['IPC_LOG'],
-);
+/* ⚠️ Төлбөрийн мөрийн ачаалагч нь `@/lib/ipc`-ийн `loadHoRows` — энд ДАВХАР
+   тодорхойлохгүй (хоёр кэш үүсвэл ижил хүснэгт хоёр удаа татагдана). Тэнд
+   `orderBy: OBJECTID ASC` заавал байдаг: ArcGIS эрэмбэгүй хариуны дарааллыг
+   баталгаажуулдаггүй бөгөөд `groupHo`-ийн «эхний мөрөөр dedup» нь тогтвортой
+   дараалал шаардана. */
 
 /**
  * ХУВААРИЙН МУРУЙН МОДУЛ-ТҮВШНИЙ КЭШ — `lagOf` СИНХРОН тул үүнээс уншина.
@@ -622,7 +640,7 @@ async function loadFinDataRaw(): Promise<FinData> {
   const S = TASK_SHEET.fields;
     const [contracts, ipc, hist] = await Promise.all([
       loadCashflowNewRows(),
-      loadIpcRows(),
+      loadHoRows(),
       /*
        * БИЕТ ГҮЙЦЭТГЭЛ — блок бүрийн «Б.» мөрийн бүх агшин.
        *
@@ -649,12 +667,20 @@ async function loadFinDataRaw(): Promise<FinData> {
     ]);
 
     /*
-     * IPC → багц бүрд: сар → олгосон цэвэр дүн.
+     * HO төлбөр → багц бүрд: сар → олгосон дүн.
      *
-     * ⚠️ Цэвэр дүн одоо БОДОГДОНО (`ipcNet` = гүйцэтгэлийн дүн − 4 суутгал) —
-     *    хуучин хадгалагдсан багана нь засвар бүрд хуучирдаг байсан тул хасав.
-     * ⚠️ Огноогүй актыг сарын цуваанд ОРУУЛАХГҮЙ. Хуучин код нь `?? last`-аар
-     *    сүүлийн сар руу шахдаг байсан — 29 актын мөнгө нэг сарын нүдэнд
+     * ⚠️ 2026-09-09: СУУТГАЛ ГЭСЭН ОЙЛГОЛТ ХАСАГДСАН. Шинэ эх сурвалжид
+     *    барьцаа, урьдчилгааны эргэн төлөлт, зохиогчийн хяналт гэсэн багана
+     *    ОГТ БАЙХГҮЙ; `dun` нь аль хэдийн БОДИТ ОЛГОСОН дүн. Тиймээс хуучин
+     *    `ipcNet` (gross − 4 суутгал) -ийн оронд шууд `hoAmount`.
+     * ⚠️ УТГЫН ӨӨРЧЛӨЛТ: «олгосон» одоо УРЬДЧИЛГАА төлбөрийг ч агуулна
+     *    (хэрэглэгчийн шийдвэр: гүйцэтгэгч компанид өгсөн БҮХ санхүүжилт).
+     *    Тиймээс дүн нь хуучин «цэвэр олголт»-оос ~1.67 дахин ӨНДӨР (318.42 →
+     *    530.87 тэрбум ₮). Энэ нь АЛДАА БИШ, СЕМАНТИКИЙН өөрчлөлт — өмнөх
+     *    дэлгэцийн тоог санаж буй хүн «хоёр дахин өслөө» гэж түгших
+     *    магадлалтай тул энд ил тэмдэглэв.
+     * ⚠️ Огноогүй төлбөрийг сарын цуваанд ОРУУЛАХГҮЙ (45-ийн 5). Хуучин код
+     *    `?? last`-аар сүүлийн сар руу шахдаг байв — мөнгө нэг сарын нүдэнд
      *    овоорч хуурамч оргил үүсгэнэ. Нийт дүн `givenTotal`-д бүрэн үлдэнэ.
      */
     /*
@@ -676,7 +702,8 @@ async function loadFinDataRaw(): Promise<FinData> {
       planTotal.set(k, (planTotal.get(k) ?? 0) + v);
     });
 
-    const F = IPC_LOG.fields;
+    const HC = HO_IPC.contractFields;
+    const HP = HO_IPC.payFields;
     /* ⚠️ СУНГАСАН тэнхлэг (cfMonthAxis) — хуваарь 2026-09-өөр төгсдөг тул
        түүнээс хойшхи акт, хэмжилт нүхгүй үлдэж, сүүлийн сард овоорч эсвэл
        царцдаг байв. Сунгалт нь өнөөдрийг хүртэл. */
@@ -686,22 +713,32 @@ async function loadFinDataRaw(): Promise<FinData> {
     const given: GivenMap = new Map();
     const givenTotal = new Map<string, number>();
     ipc.forEach((r) => {
-      const net = ipcNet(r);
-      /* ⚠️ 2026-09-04: `ipcNet` нь `number | null` болов (services.ts) — `null`
-         нь «актын ДҮН ОГТ БӨГЛӨГДӨӨГҮЙ» гэсэн үг, 0₮ олголт БИШ. Хоёуланг
-         нь адилхан алгасна (цувааны гадна), гэхдээ шалтгааныг ялган бичив:
-         `null`-ыг 0 болгож нийлбэрт нэмбэл «олгосон 0₮» гэсэн худал хэмжилт
-         үүснэ. */
-      if (net == null || net === 0) return;
-      /* Багц: дэд багц (навч) → үндсэн багц. Аль нь ч байхгүй бол гэрээгүй акт. */
-      const k = bagtsKey(r[F.pkg2]) || bagtsKey(r[F.pkg]);
+      const amt = hoAmount(r);
+      /* ⚠️ `null` нь «ТӨЛБӨРИЙН ДҮН ОГТ БӨГЛӨГДӨӨГҮЙ» гэсэн үг (45-ийн 2),
+         0₮ олголт БИШ. Хоёуланг нь адилхан алгасна (цувааны гадна), гэхдээ
+         шалтгааныг ялган бичив: `null`-ыг 0 болгож нийлбэрт нэмбэл «олгосон
+         0₮» гэсэн ХУДАЛ хэмжилт үүснэ (2026-09-04-ний I30 алдааны хэлбэр). */
+      if (amt == null || amt === 0) return;
+      /* ⚠️ `pkgKeyOf` — `bagtsKey` БИШ. HO-д «Багц-1-4» ба «БАГЦ-10,  БАГЦ-11,
+         БАГЦ-13, БАГЦ-15» гэсэн ХОЁР ДИАПАЗОН мөр бий (нийт 5.97 тэрбум ₮);
+         `bagtsKey('Багц-1-4')` = `БАГЦ14` бөгөөд энэ нь БОДИТ Багц 14-ийн ЯГ
+         түлхүүр тул тэр дүн буруу багцад наалдана. Хуучин `ipc_0813`-д
+         диапазон мөр БАЙГААГҮЙ тул `bagtsKey` аюулгүй байв — ОДОО БИШ.
+         `pkgKeyOf` тэднийг `''` болгож хамгаална: дүн нь `hoTotals().paid`-д
+         үлдэж, зүгээр л буруу эзэнд очихгүй.
+         ⚠️ ДЭД БАГЦЫН fallback ХАСАГДСАН — HO-д `pkg2` талбар БАЙХГҮЙ,
+         `bagts` өөрөө «Багц-3.1» гэсэн дэд түвшнийг агуулна. */
+      const k = pkgKeyOf(r[HC.pkg]);
       if (!k || k === '0') return;
-      givenTotal.set(k, (givenTotal.get(k) ?? 0) + net);
-      const raw = ym(r[F.submitDate]) ?? ym(r[F.periodTo]) ?? ym(r[F.approvedDate]) ?? ym(r[F.payDate]);
+      givenTotal.set(k, (givenTotal.get(k) ?? 0) + amt);
+      /* ⚠️ ГАНЦ огноо. Хуучин 4 талбарын fallback гинж (submitDate → periodTo
+         → approvedDate → payDate) хасагдав — шинэ эхэд `guilgee_ognoo`
+         ганцаараа бөгөөд 40/45 бөглөгдсөн тул цуваа САЙЖИРНА (хуучин 30/59). */
+      const raw = ym(r[HP.payDate]);
       if (!raw) return; // огноогүй — цувааны гадна (дээрх ⚠️)
       const mon = raw < first ? first : raw > last ? last : raw;
       const byMon = given.get(k) ?? new Map<string, number>();
-      byMon.set(mon, (byMon.get(mon) ?? 0) + net);
+      byMon.set(mon, (byMon.get(mon) ?? 0) + amt);
       given.set(k, byMon);
     });
 
@@ -772,7 +809,13 @@ async function loadFinDataRaw(): Promise<FinData> {
         physCnt.set(k, cntMon);
       });
     }
-    return { contracts, planTotal, given, givenTotal, phys, physCnt, acts: ipc };
+    return {
+      contracts, planTotal, given, givenTotal, phys, physCnt,
+      pays: ipc,
+      /* ⚠️ ГЭРЭЭНИЙ ТҮВШИН — энд НЭГ УДАА хурааж бүх дуудагчид өгнө.
+         Дуудагч тал өөрөө мөрөөр нийлүүлбэл давхардана. */
+      contractsHo: groupHo(ipc),
+    };
 }
 
 /**
@@ -827,14 +870,14 @@ async function loadFields(url: string): Promise<FieldDef[]> {
  * 4 хүсэлт (метадата ×2 + бүтэн хүснэгт ×2) кэшгүй дахин явдаг байв; мөрүүд нь
  * одоо `loadCashflowRows`/`loadIpcRows`-оор `loadFinData`-тай хуваалцагдана.
  */
-const loadFinRegister = cached(loadFinRegisterRaw, LIVE_TTL, ['IPC_LOG', 'CASHFLOW_NEW']);
+const loadFinRegister = cached(loadFinRegisterRaw, LIVE_TTL, ['HO_IPC', 'CASHFLOW_NEW']);
 
 async function loadFinRegisterRaw(): Promise<FinTables> {
   const [cfFields, ipcFields, cashflow, ipc] = await Promise.all([
     loadFields(CASHFLOW_NEW.url),
-    loadFields(IPC_LOG.url),
+    loadFields(HO_IPC.url),
     loadCashflowNewRows(),
-    loadIpcRows(),
+    loadHoRows(),
   ]);
   return { cashflow, ipc, cfFields, ipcFields };
 }
@@ -1049,7 +1092,10 @@ const dateOnlyText = (v: unknown): string => {
  *    ХЭМЖИГДЭХҮҮН биш ТАНИГЧ — мянгатаар тусгаарлавал утга нь гажина.
  */
 const PLAIN_INT = new Set<string>([
-  IPC_LOG.fields.no,                                 // Актын дугаар
+  HO_IPC.payFields.ipcNo,          // IPC дугаар
+  /* ⚠️ `on_` нь Integer тул ерөнхий тоон дүрэмд орж «2,025» гэж гарна. */
+  HO_IPC.payFields.year,           // Он
+  HO_IPC.contractFields.no,        // № (гэрээний дугаарлалт)
 ]);
 
 /**
@@ -1080,8 +1126,11 @@ const isSkip = (name: string, type: string, oidField: string): boolean =>
   type === 'esriFieldTypeGlobalID'
   || /globalid/i.test(name)
   || /^(creationdate|creator|editdate|editor)$/i.test(name)
-  || name === oidField
-  || name === IPC_LOG.fields.geree;
+  || name === oidField;
+/* ⚠️ 2026-09-09: «Гэрээний код» баганыг НУУХАА БОЛИВ. Хуучин `IPC02` нь
+   G01…G76 гэсэн ДОТООД танигч байсан тул нуугддаг байв; шинэ `geree_kod` нь
+   «Багц-1» — ХҮНД УТГАТАЙ бөгөөд 45 мөрийг 22 гэрээнд хуваадаг ГОЛ түлхүүр.
+   Нуувал хэрэглэгч аль төлбөр аль гэрээнийх болохыг ялгаж чадахгүй. */
 
 function fmtCell(v: unknown, type: string, name = ''): { text: string; num: boolean } {
   if (v == null || v === '') return { text: '', num: false };
@@ -1693,7 +1742,7 @@ function FullTable({
   /* ⚠️ 2026-09-06: «cf» горим (хуучин `cashflow_0813`-ийн паспорт+хуваарь
      карт) БҮРМӨСӨН хасагдсан — тэр үйлчилгээ байхгүй болсон. Үлдсэн хоёр
      хүснэгт: гэрээний бүртгэл (нэг бүтэн хүснэгт) ба актын урсгал. */
-  const kind: FinKind = dataKey === 'IPC_LOG' ? 'ipc' : 'flat';
+  const kind: FinKind = dataKey === 'HO_IPC' ? 'ho' : 'flat';
   const packs = useMemo(
     () => (grouped ? buildGroups(shown, kind) : null),
     [grouped, shown, kind],
@@ -2221,15 +2270,17 @@ function FullTable({
   };
 
   /* Багануудын хуваарилалт — хуваарийнх нь `finCard.CF_PERIOD_FIELDS`,
-     үлдсэн нь паспорт. IPC: үндсэн баганууд + дэлгэрэнгүй. */
+     үлдсэн нь паспорт. HO: үндсэн баганууд + дэлгэрэнгүй.
+     ⚠️ `HO_MAIN_FIELDS`-д гэрээний ТОМ ДҮН (`tosov_niit` г.м.) ОРООГҮЙ —
+     тэдгээр нь гэрээний 7 мөрд ДАВТАГДАЖ нүд гутаана. Дэлгэрэнгүйд үлдэнэ. */
   const ipcMainCols = useMemo(
-    () => IPC_MAIN_FIELDS
+    () => HO_MAIN_FIELDS
       .map((n) => cols.find((c) => c.name === n))
       .filter((c): c is FieldDef => c != null),
     [cols],
   );
   const ipcDetailCols = useMemo(
-    () => cols.filter((c) => !IPC_MAIN_FIELDS.includes(c.name)),
+    () => cols.filter((c) => !HO_MAIN_FIELDS.includes(c.name)),
     [cols],
   );
   /** Толгой баруун зэрэгцэх үү — мөнгөн багана тийм, он·сар·дугаар үгүй */
@@ -3067,48 +3118,52 @@ function FullTable({
   };
 
   const ipcTable = (list: GroupRow[]) => {
-    const IPS = IPC_LOG.fields;
+    const HP = HO_IPC.payFields;
     const rowsOnly = list.map((p) => p.row);
     /*
-     * ⚠️ 2026-09-08 (аудит, HIGH): ГУРВАН НИЙЛБЭР НЭГ Л ОЛОНЛОГООС.
-     *    `netTotalOrNull` нь `gross` хэмжигдээгүй мөрийг БҮРЭН алгасдаг
-     *    (`netOrNull` → null) атал хуучин `dedTot` тэр мөрийн суутгалыг
-     *    НЭМДЭГ байв. Амьд өгөгдөл (ipc_0813/172): акт I30 — IPC18 хоосон,
-     *    IPC20 = 2,072,616,655.12 ₮. Үр дүнд Багц 4.1-ийн НИЙТ мөрөнд
-     *    77,110,395,701 − 8,988,728,255 = 68,121,667,446 ≠ 70,194,284,101 —
-     *    хэрэглэгч гурван тоог нүдээр хасаад таарахгүй байхыг харна.
-     *    Одоо `solid` (= `netOrNull(r) != null`) дээр гурвуулаа бодогдох тул
-     *    grossTot − dedTot === netTot тождество ҮРГЭЛЖ биелнэ.
-     * ⚠️ Хасагдсан мөрүүд ХАЯГДААГҮЙ — хүснэгтэд мөр бүр хэвээр гарна,
-     *    зөвхөн НИЙЛБЭРТ ордоггүй. Тоо нь доорх `skipped` тэмдэглэлд ил.
+     * ⚠️ 2026-09-09: ХУУЧИН 4 KPI (гүйцэтгэлийн дүн · суутгал · цэвэр дүн ·
+     *    шилжүүлсэн) -ийн ГУРАВ нь УТГАГҮЙ болов — шинэ эх сурвалжид суутгал
+     *    ОГТ БАЙХГҮЙ тул `gross` ≡ `net` ≡ «шилжүүлсэн» бүгд НЭГ тоо (`dun`).
+     *    Мөн 2026-09-08-ны «grossTot − dedTot === netTot тождество» асуудал ба
+     *    «дүнгүй акт нийлбэрт ороогүй» Note хоёул СУУТГАЛ ба дүнгүй актын
+     *    ХОСЛОЛООС үүсдэг байсан тул хоёулаа хамаарлаа алдав.
+     *
+     * ⚠️ ОРОНД НЬ гурван ТӨЛБӨРИЙН хэмжилт: нийт олгосон ба төрлөөр задаргаа.
+     *    ГЭРЭЭНИЙ дүн (төсөв, гэрээт төсөв, хэмнэлт) ЭНД ГАРАХГҮЙ — `list` нь
+     *    ТӨЛБӨРИЙН мөрүүд бөгөөд гэрээний талбар мөрд ДАВТАГДДАГ тул
+     *    нийлүүлбэл Багц-4.1 (7 мөр) -ийнх 7 ДАХИН хөөрөгдөнө. Гэрээний
+     *    түвшний тоог ЗӨВХӨН `hoTotals()`/`groupHo()`-оос авна.
+     *
+     * ⚠️ `sumOrNull` — БҮХ мөр хоосон бол `null`, 0 БИШ. 45-ийн 2 мөрд `dun`
+     *    хоосон (БАГЦ-6.3 гэрээ бүхэлдээ төлбөргүй, ХО-0045 кодгүй гэрээ);
+     *    тэднийг 0 гэж унших нь «олгосон 0₮» гэсэн ХУДАЛ хэмжилт үүсгэнэ.
      */
-    const solid = rowsOnly.filter((r) => netOrNull(r) != null);
-    const skipped = rowsOnly.length - solid.length;
-    const grossTot = sumOrNull(solid, IPS.gross);
-    let dedTot: number | null = null;
-    let paidTot: number | null = null;
-    for (const r of solid) {
-      const d2 = dedOrNull(r);
-      if (d2 != null) dedTot = (dedTot ?? 0) + d2;
-      const p2 = paidOrNull(r);
-      if (p2 != null) paidTot = (paidTot ?? 0) + p2;
-    }
-    const netTot = netTotalOrNull(solid);
-    const nCols = 1 + ipcMainCols.length + 3 + (edit && canRow ? 1 : 0);
+    const advRows = rowsOnly.filter((r) => r[HP.kind] === HO_IPC.kinds.advance);
+    const workRows = rowsOnly.filter((r) => r[HP.kind] === HO_IPC.kinds.work);
+    const paidTot = sumOrNull(rowsOnly, HP.amount);
+    const advTot = sumOrNull(advRows, HP.amount);
+    const workTot = sumOrNull(workRows, HP.amount);
+    /* ⚠️ Ангилагдаагүй мөр (`tulult_turul` хоосон, амьдаар 2) — ЧИМЭЭГҮЙ
+       ХАЯХГҮЙ. Урьдчилгаа + гүйцэтгэл ≠ нийт болохыг хэрэглэгч нүдээр хасаад
+       олох тул шалтгааныг ИЛ бичнэ. */
+    const noKind = rowsOnly.length - advRows.length - workRows.length;
+    /* ⚠️ БОДОГДСОН БАГАНА АЛГА (хуучин 3) — доорх толгойн ⚠️-г үз. */
+    const nCols = 1 + ipcMainCols.length + (edit && canRow ? 1 : 0);
+    /* Нийлбэрийг `dun` баганын ЯГ доор тавихын тулд түүний байрлалыг олно.
+       ⚠️ Байрлалыг ТООГООР бүү бич — `HO_MAIN_FIELDS` өөрчлөгдвөл нийлбэр
+       буруу багана дор гулсана. */
+    const amtIx = ipcMainCols.findIndex((c) => c.name === HP.amount);
     return (
       <div>
-        {/* Мөнгөний зам — багцын нийлбэрээр: гүйцэтгэл → суутгал → цэвэр → шилжүүлсэн */}
+        {/* Мөнгөний зам — багцын нийлбэрээр: нийт олгосон = урьдчилгаа + гүйцэтгэл */}
         <div className={f.kpiRow}>
-          {kpiTile(finFieldLabel(IPS.gross), grossTot)}
-          {kpiTile(tr('Суутгал'), dedTot)}
-          {kpiTile(tr('Цэвэр дүн'), netTot)}
-          {kpiTile(tr('Шилжүүлсэн'), paidTot)}
+          {kpiTile(tr('Олгосон нийт'), paidTot)}
+          {kpiTile(tr('Урьдчилгаа төлбөр'), advTot)}
+          {kpiTile(tr('Гүйцэтгэлийн төлбөр'), workTot)}
         </div>
-        {/* ⚠️ Нийлбэрээс хасагдсан актыг НУУХГҮЙ — «дүнгүй акт байна» гэдэг нь
-            өөрөө хяналтын мэдээлэл (дээрх ⚠️-г үз). */}
-        {skipped > 0 && (
+        {noKind > 0 && (
           <Note>
-            {tr('Гүйцэтгэлийн дүн бүртгэгдээгүй {0} акт нийлбэрт ороогүй.', num(skipped))}
+            {tr('Төлбөрийн төрөл бүртгэгдээгүй {0} мөр — задаргаанд ороогүй.', num(noKind))}
           </Note>
         )}
       <div className={f.tscroll}>
@@ -3121,10 +3176,10 @@ function FullTable({
                   {finFieldLabel(c.name)}
                 </th>
               ))}
-              {/* Бодогдсон баганууд — хадгалагддаг талбар БИШ тул засагдахгүй */}
-              <th className={f.thR}>{tr('Суутгал')}</th>
-              <th className={f.thR}>{tr('Цэвэр дүн')}</th>
-              <th className={f.thR}>{tr('Шилжүүлсэн')}</th>
+              {/* ⚠️ 2026-09-09: «Суутгал» · «Цэвэр дүн» · «Шилжүүлсэн» ГУРВАН
+                  БОДОГДСОН БАГАНА ХАСАГДСАН. Суутгал байхгүй тул гурвуулаа
+                  `dun` баганатай ЯГ ижил тоог давтаж, гурван утгагүй багана
+                  үлдэх байв. Олгосон дүн нь `dun` (үндсэн багана) дээр ил. */}
               {edit && canRow && <th className={f.rowBtnCell} aria-label={tr('Мөр')} />}
             </tr>
           </thead>
@@ -3133,10 +3188,7 @@ function FullTable({
               const dropped = false;
               const k = p.oid ?? `i-${i}`;
               const isOpen = xp.has(k);
-              const ded = dedOrNull(p.row);
-              const net = netOrNull(p.row);
-              const paid = paidOrNull(p.row);
-              const stv = text(p.row[IPS.status], '');
+
               /* ⚠️ Уншлагад УТГАТАЙ талбар л дэлгэгдэнэ — хорин «—» нь чимээ.
                  Засварт БҮГД гарна, эс бөгөөс хоосон талбар бөглөгдөхгүй. */
               const dCols = edit ? ipcDetailCols : ipcDetailCols.filter((c2) => {
@@ -3161,22 +3213,11 @@ function FullTable({
                         {isOpen ? '▾' : '▸'}
                       </button>
                     </td>
-                    {ipcMainCols.map((c) => {
-                      /* Төлөв нь ЧИП — өнгө = утга (батлагдсан/хянагдаж буй) */
-                      if (c.name === IPS.status && !edit) {
-                        const cls = stv === IPC_LOG.statuses.approved ? f.chipOk
-                          : stv === IPC_LOG.statuses.review ? f.chipWarn : '';
-                        return (
-                          <td key={c.name}>
-                            {stv ? <span className={`${f.chip} ${cls}`}>{stv}</span> : '—'}
-                          </td>
-                        );
-                      }
-                      return xCell(p.row, p.oid, dropped, c);
-                    })}
-                    <td className={`num ${f.cellNum}`}>{ded == null ? '—' : `−${num(ded)}`}</td>
-                    <td className={`num ${f.cellNum} ${f.cellStrong}`}>{net == null ? '—' : num(net)}</td>
-                    <td className={`num ${f.cellNum}`}>{paid == null ? '—' : num(paid)}</td>
+                    {/* ⚠️ ТӨЛВИЙН ЧИП (батлагдсан / хянагдаж байна) ХАСАГДСАН —
+                        `IPC08` төлөв шинэ эхэд ОГТ БАЙХГҮЙ. Мөр бүр нь АЛЬ
+                        ХЭДИЙН хийгдсэн гүйлгээ тул «хянагдаж байна» гэсэн шат
+                        бүртгэгддэггүй; чип үлдээвэл ҮРГЭЛЖ хоосон байх байв. */}
+                    {ipcMainCols.map((c) => xCell(p.row, p.oid, dropped, c))}
                     {/* ⚠️ Устгах товч ХАСАГДСАН — эх мөрийг устгахгүй */}
                     {edit && canRow && <td className={f.rowBtnCell} />}
                   </tr>
@@ -3203,12 +3244,16 @@ function FullTable({
                 </Fragment>
               );
             })}
+            {/* ⚠️ НИЙТ нь ЗӨВХӨН `dun` баганын ДООР. Гэрээний талбарын
+                (төсөв, гэрээт төсөв) баганад нийлбэр тавьбал мөрд давтагдсан
+                тоо нийлж 7 дахин хөөрөгдөнө — тиймээс тэдгээр багана НИЙТ
+                мөрөнд ХООСОН үлдэнэ. `sumOrNull` тул бүх мөр хоосон бол «—». */}
             <tr className={f.sTotal}>
-              <td colSpan={1 + Math.max(0, ipcMainCols.length - 1)}>{tr('НИЙТ')}</td>
-              <td className={`num ${f.cellNum}`}>{grossTot == null ? '—' : num(grossTot)}</td>
-              <td className={`num ${f.cellNum}`}>{dedTot == null ? '—' : `−${num(dedTot)}`}</td>
-              <td className={`num ${f.cellNum}`}>{netTot == null ? '—' : num(netTot)}</td>
-              <td className={`num ${f.cellNum}`}>{paidTot == null ? '—' : num(paidTot)}</td>
+              <td colSpan={1 + Math.max(0, amtIx)}>{tr('НИЙТ ОЛГОСОН')}</td>
+              <td className={`num ${f.cellNum} ${f.cellStrong}`}>
+                {paidTot == null ? '—' : num(paidTot)}
+              </td>
+              {ipcMainCols.slice(amtIx + 1).map((c) => <td key={c.name} />)}
               {edit && canRow && <td className={f.rowBtnCell} />}
             </tr>
           </tbody>
@@ -3586,8 +3631,11 @@ function FullTable({
               ? flatTable(packs.flatMap((p) => p.rows))
               : packs.map((p) => {
               const off = shut.has(p.key);
-              /* Багцын нийлбэр — бүгд хоосон бол ОГТ бичихгүй (0 худал) */
-              const hdSum = netTotalOrNull(p.rows.map((g) => g.row));
+              /* Багцын нийлбэр — бүгд хоосон бол ОГТ бичихгүй (0 худал).
+                 ⚠️ 2026-09-09: `netTotalOrNull` (цэвэр = gross − суутгал)
+                 → `sumOrNull(dun)`. Суутгал байхгүй тул «цэвэр» гэсэн ойлголт
+                 үхэж, `dun` нь өөрөө бодит олгосон дүн болов. */
+              const hdSum = sumOrNull(p.rows.map((g) => g.row), HO_IPC.payFields.amount);
               return (
               <section key={p.key} className={f.bBox}>
                 {/* ⚠️ Багцын нэр нь ХҮСНЭГТЭЭС ГАДУУР: доторх хүснэгт нь хэвтээ
@@ -3608,11 +3656,11 @@ function FullTable({
                   <span className={`${f.grpCnt} num`}>{tr('{0} мөр', num(p.count))}</span>
                   {hdSum != null && (
                     <span className={`${f.bSum} num`}>
-                      {tr('Цэвэр олгосон {0}', mnt(hdSum))}
+                      {tr('Олгосон {0}', mnt(hdSum))}
                     </span>
                   )}
                 </button>
-                {/* IPC → актын урсгал. Хэвтээ гүйлт нь хүснэгт ДОТРОО (`.tscroll`). */}
+                {/* HO → төлбөрийн урсгал. Хэвтээ гүйлт нь хүснэгт ДОТРОО (`.tscroll`). */}
                 {!off && ipcTable(p.rows)}
               </section>
               );
@@ -3728,6 +3776,18 @@ function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
    * болгох ажил нь ЭНЭ ХОЁР ХҮСНЭГТ ДЭЭРЭЭ хийгдэнэ — шүүлт, багцаар
    * бүлэглэлт, наалдсан толгой/багана.
    */
+  /**
+   * ⚠️ 2026-09-09: IPC-ийн ТҮҮХИЙ хүснэгт навигациас ХАСАГДСАН.
+   * Хэрэглэгчийн шийдвэр: «IPC service дээрх бүх мэдээллийг харах ёстой
+   * НЭГ page байх ёстой». Хоёр таб (бүлэглэсэн + түүхий) нь тэр
+   * шаардлагыг хангахгүй байв — хүн хоёр газар харах шаардлагатай болно.
+   *
+   * ⚠️ Одоо БҮХ талбар `IpcTable`-д: төлбөрийн талбарууд мөрөнд,
+   * гэрээний талбарууд дэлгэрэнгүйд. Мэдээлэл АЛДАГДААГҮЙ.
+   *
+   * ⚠️ ГЭВЧ IPC-ийн ЗАСВАР ОДООГООР АЛГА — засвар нь `FullTable`-д
+   * амьдардаг (доорх `IpcRawTableUnused`). Cashflow-ийнх хэвээр.
+   */
   const [tab, setTab] = useState<'cf' | 'ipc'>('cf');
 
   return (
@@ -3781,21 +3841,46 @@ function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
         onSaved={onSaved}
       />
       ) : (
+      /* ⚠️ `groupHo` нь 45 мөрийг 22 гэрээ болгож ДЕДУП хийнэ — энд
+         мөрөөр нийлүүлбэл гэрээний төсөв 7 дахин давхардана. */
+      <IpcTable contracts={groupHo(d.ipc)} />
+      )}
+    </>
+  );
+}
+
+/* ⚠️ ХУУЧИН ТҮҮХИЙ IPC ХҮСНЭГТ — 2026-09-09-нд НАВИГАЦИАС ХАСАГДСАН.
+   Хэрэглэгчийн шийдвэр: «IPC service дээрх бүх мэдээллийг харах ёстой НЭГ
+   page байх ёстой». Одоо бүх талбар `IpcTable`-ийн дэлгэрэнгүйд гарна.
+
+   ⚠️ ГЭВЧ ЭНЭ ЗАМААР ЗАСВАР ХИЙГДДЭГ БАЙСАН: талбар засах, мөр нэмэх,
+   баганаар шүүх БҮГД `FullTable`-д амьдардаг бөгөөд `IpcTable` нь ЗӨВХӨН
+   УНШИНА. Тиймээс IPC-ийн засварын боломж ОДООГООР АЛГА. Cashflow-ийнх
+   хэвээр (тэр таб хөндөгдөөгүй).
+
+   Кодыг УСТГААГҮЙ — засвар дахин хэрэгтэй болбол `FinTablesView`-д
+   `tab === 'ipcRaw'` салаа болгож буцаан залгана. */
+export function IpcRawTableUnused({
+  d, canEdit, canRow, onSaved,
+}: {
+  d: FinTables; canEdit: boolean; canRow: boolean; onSaved: () => void;
+}) {
+  return (
       <FullTable
         key="ipc"
-        title={tr('IPC — олгосон акт (/172)')}
+        /* ⚠️ 2026-09-09: гарчгаас «акт» гэдэг үг ХАСАГДСАН — шинэ эх нь акт БИШ,
+           гүйцэтгэгч компанид өгсөн ТӨЛБӨРИЙН гүйлгээ (урьдчилгаа ч орно). */
+        title={tr('Хөрөнгө оруулалтын гүйцэтгэл — олгосон санхүүжилт (/196)')}
         subtitle={tr('{0} мөр · {1} багана', num(d.ipc.length), d.ipcFields.length)}
         rows={d.ipc}
         fields={d.ipcFields}
-        url={IPC_LOG.url}
-        oidField={IPC_LOG.oid}
-        dataKey="IPC_LOG"
-        facets={FIN_FACETS.IPC_LOG}
+        url={HO_IPC.url}
+        oidField={HO_IPC.oid}
+        dataKey="HO_IPC"
+        facets={FIN_FACETS.HO_IPC}
         canEdit={canEdit}
         canRow={canRow}
         onSaved={onSaved}
       />
-      )}
-    </>
   );
 }

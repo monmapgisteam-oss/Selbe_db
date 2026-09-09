@@ -171,7 +171,16 @@ export type Result = {
 const fail = (e: unknown): Result => ({ ok: false, error: String((e as Error)?.message ?? e) });
 
 /** Архивлалтын үр дүн — амжилттай бол нэгтгэлд бүртгэх АРХИВЫН OBJECTID. */
-type Archived = { ok: true; archiveOid: number } | { ok: false; error: string };
+/**
+ * ⚠️ `day` нь АРХИВТ БИЧИГДСЭН агшны огноо (`YYYY-MM-DD`) — гүйцэтгэлээс
+ * IPC мөр үүсгэхэд ЯГ ЭНЭ огноо хэрэгтэй. `archiveSubmission` нь `fillMs`-ийг
+ * өөрөө залруулдаг (сүүлийн агшинтай мөргөлдвөл ӨНӨӨДӨР болгоно) тул гаднаас
+ * таамаглавал IPC өөр сард бичигдэж болзошгүй. Аль хэдийн архивлагдсан
+ * (idempotent) замд `undefined` — тэнд дахин бичих зүйлгүй.
+ */
+type Archived =
+  | { ok: true; archiveOid: number; day?: string }
+  | { ok: false; error: string };
 
 /**
  * ЭНЭ СЕШНД АРХИВЛАГДСАН ИЛГЭЭЛТ — `илгээлтийн oid → архивын oid`.
@@ -462,7 +471,7 @@ async function archiveSubmission(cur: Row): Promise<Archived> {
   if (!cl.ok) cl = await closeSubmission(staged.oid, firstOid ?? 0, Date.now());
   if (!cl.ok) console.warn('[selbe] илгээлтийг хааж чадсангүй:', cl.error);
 
-  return { ok: true, archiveOid: firstOid ?? 0 };
+  return { ok: true, archiveOid: firstOid ?? 0, day: msToDay(fillMs) };
 }
 
 /**
@@ -548,10 +557,13 @@ export async function apply(a: {
      *    дататай хэзээ ч уулзахгүй, хаана ч алдаа үлдэхгүй.
      */
     let archiveOid = cur[F.sheetOid];
+    /** ⚠️ Архивласан агшны огноо — IPC мөр үүсгэхэд (доор) */
+    let archivedDay: string | undefined;
     if (registerNow) {
       const ar = await archiveSubmission(cur);
       if (!ar.ok) return { ok: false, error: ar.error };
       archiveOid = ar.archiveOid;
+      archivedDay = ar.day;
     }
 
     await updateRows([attrs]);
@@ -584,6 +596,33 @@ export async function apply(a: {
           ok: true,
           warn: tr('Батлагдаж архивт бичигдлээ, гэхдээ нэгтгэлийн хүснэгтэд бүртгэгдсэнгүй ({0}). Дашбоардын багцын муруйд энэ өдөр харагдахгүй — админд мэдэгдэнэ үү.', r.error ?? ''),
         };
+      }
+
+      /*
+       * ── ГҮЙЦЭТГЭЛЭЭС IPC МӨР ──────────────────────────────────────────
+       * ⚠️ Хэрэглэгчийн шийдвэр (2026-09-09): «ho гүйцэтгэлийн дата
+       * гүйцэтгэл бөглөгдөхөд нэмэгдэх ёстой». ЗӨВХӨН энд — 4 шатын
+       * хяналт дуусаж архивт бичигдсэний ДАРАА. Батлагдаагүй бөглөлтөөс
+       * IPC үүсгэвэл хянагч буцаахад ХУДАЛ IPC үлдэнэ.
+       *
+       * ⚠️ НЭГ БАГЦ · НЭГ САР = НЭГ МӨР. Сард дахин батлагдвал тэр мөр
+       * ШИНЭЧЛЭГДЭНЭ (`ipcAuto.planAuto`), шинэ мөр үүсэхгүй.
+       *
+       * ⚠️ АЛДАА ГАРВАЛ БАТАЛГААГ УНАГААХГҮЙ — `registerApproved`-ийн ЯГ
+       * ижил шалтгаан: шийдвэр аль хэдийн хадгалагдсан байхад «болсонгүй»
+       * гэвэл менежер дахин дарж давхардал үүсгэнэ. Зөвхөн бүртгэнэ.
+       *
+       * ⚠️ `archivedDay` нь `archiveSubmission`-аас — тэр нь `fillMs`-ийг
+       * өөрөө залруулдаг тул гаднаас таамаглавал IPC өөр сард бичигдэнэ.
+       */
+      if (archivedDay) {
+        try {
+          const { syncIpcFromFill } = await import('./ipcAutoWrite');
+          const ipc = await syncIpcFromFill(cur[F.bagts], archivedDay);
+          if (!ipc.ok) console.warn('[selbe] IPC мөр үүсгэж чадсангүй:', ipc.error);
+        } catch (e) {
+          console.warn('[selbe] IPC мөр үүсгэх алдаа:', e);
+        }
       }
     }
     await refresh();

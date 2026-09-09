@@ -54,7 +54,7 @@ const check = (label, cond) => {
 console.log('\n1. Тагтай кэш — зөв хүснэгтэд хариулна');
 let nFin = 0;
 let nBud = 0;
-const loadFin = cached(async () => ++nFin, undefined, ['IPC_LOG', 'CASHFLOW_NEW']);
+const loadFin = cached(async () => ++nFin, undefined, ['HO_IPC', 'CASHFLOW_NEW']);
 const loadBud = cached(async () => ++nBud, undefined, ['CASHFLOW_NEW']);
 
 await loadFin(); await loadBud();
@@ -62,9 +62,9 @@ check('эхний таталт', nFin === 1 && nBud === 1);
 await loadFin(); await loadBud();
 check('кэшнээс — дахин татахгүй', nFin === 1 && nBud === 1);
 
-invalidate('IPC_LOG');
+invalidate('HO_IPC');
 await loadFin(); await loadBud();
-check('IPC_LOG хаяхад ЗӨВХӨН fin дахин татав', nFin === 2 && nBud === 1);
+check('HO_IPC хаяхад ЗӨВХӨН fin дахин татав', nFin === 2 && nBud === 1);
 
 invalidate('CASHFLOW_NEW');
 await loadFin(); await loadBud();
@@ -81,17 +81,17 @@ console.log('\n3. Тагггүй кэш — автобусаас хамаара�
 let nPlain = 0;
 const loadPlain = cached(async () => ++nPlain);
 await loadPlain();
-invalidate('IPC_LOG', 'CASHFLOW_NEW', 'HABEA');
+invalidate('HO_IPC', 'CASHFLOW_NEW', 'HABEA');
 await loadPlain();
 check('тагггүй кэш хэвээр (хуучин зан эвдрээгүй)', nPlain === 1);
 
 console.log('\n4. Захиалга (subscribe) — UI дахин зурна');
 let fired = 0;
 const off = subscribeData(() => { fired += 1; });
-invalidate('IPC_LOG');
+invalidate('HO_IPC');
 check('захиалагч дуудагдав', fired === 1);
 off();
-invalidate('IPC_LOG');
+invalidate('HO_IPC');
 check('тайлсны дараа дуудагдахгүй', fired === 1);
 
 console.log('\n5. Алдаатай татах — кэшлэгдэхгүй');
