@@ -955,7 +955,7 @@ function TsPackList({
                   display: 'inline-flex', alignItems: 'center', gap: 6,
                   flexWrap: 'wrap', justifyContent: 'flex-end',
                 }}>
-                  {execPct == null ? '—' : pct(execPct, 0)}
+                  {execPct == null ? '—' : pct(execPct, 1)}
                   {/* ⚠️ 2026-09-06: хоцрогдлын ба «бүртгэл алга» тэмдгүүд
                       ХАСАГДСАН — хоёулаа сарын төлөвлөгөө дээр тогтдог
                       байсан бөгөөд тэр өгөгдөл шинэ cashflow-д байхгүй.
