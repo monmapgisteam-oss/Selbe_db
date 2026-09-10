@@ -863,6 +863,17 @@ export function cashflowCurve(
    *    хэвтээ сунгавал «явц зогссон» гэсэн худал уншилт төрнө.
    */
   housingMoneyByMonth: Map<string, number> = new Map(),
+  /**
+   * ОГНООГҮЙ ОЛГОЛТ (урьдчилгаа г.м.) — ₮ (2026-09-10, хэрэглэгчийн заавар:
+   * «ногоон шугамын үзүүрт нийт олгосон мөнгө 530,872,795,391 ₮ гарах»).
+   *
+   * ⚠️ `ipcByMonth` нь зөвхөн ГҮЙЛГЭЭНИЙ ОГНООТОЙ актыг агуулдаг
+   *    (`Finance.loadFinData` — огноогүйг сарын цуваанаас хасдаг). Тэдгээр
+   *    нь урьдчилгаа тул ажлын ӨМНӨ олгогдсон — ЭХНИЙ IPC сараас эхлэн
+   *    хуримтлалд орно; сүүлийн сард нэмбэл хуурамч оргил үүснэ (null ≠ 0).
+   *    Ингэснээр муруйн төгсгөл = `givenTotal`-ийн нийлбэр.
+   */
+  ipcBase = 0,
 ): TimePoint[] {
   const per = new Map<string, number>();
   for (const p of plan) {
@@ -929,13 +940,17 @@ export function cashflowCurve(
   const ipcLast = ipcMonths[ipcMonths.length - 1];
   const ipcFirst = ipcMonths[0];
   const ipcCum = new Map<string, number>();
+  /* ⚠️ ЯГ ₮ — хувиас буцааж үржүүлбэл 2 орны бүхэлчлэл 100 сая ₮-ийн
+     алдаа өгнө (0.005% × 3 их наяд). Дэлгэцэнд ЭНИЙГ харуулна. */
+  const ipcMoney = new Map<string, number>();
   if (ipcMonths.length) {
-    let a2 = 0;
+    let a2 = ipcBase;                     // огноогүй урьдчилгаа — эхнээс
     for (const k of months) {
       if (k < ipcFirst) continue;         // эхний олголтоос ӨМНӨ муруй эхлэхгүй
       a2 += ipcByMonth.get(k) ?? 0;
       if (k > ipcLast) break;             // сүүлийн олголтоос цааш сунгахгүй
       ipcCum.set(k, Math.round((a2 / total) * 100 * 100) / 100);
+      ipcMoney.set(k, a2);
     }
   }
 
@@ -956,6 +971,7 @@ export function cashflowCurve(
       amount: per.get(k) ?? 0,
       /* ⚠️ `?? null` — Map-д байхгүй сар нь «хэмжигдээгүй», 0 БИШ */
       ipcPct: ipcCum.get(k) ?? null,
+      ipcMoney: ipcMoney.get(k) ?? null,
       physPct: physCum.get(k) ?? null,
     }));
   }
@@ -978,6 +994,7 @@ export function cashflowCurve(
          сүүлийн сард хэмжилт байхгүй бол өмнөхийг нь хадгална — эс
          бөгөөс улирлын сүүлийн сар хоосон байхад бүтэн улирал алга болно. */
       ipcPct: ipcCum.get(k) ?? prev?.ipcPct ?? null,
+      ipcMoney: ipcMoney.get(k) ?? prev?.ipcMoney ?? null,
       /* ⚠️ Биет явц ч ХУРИМТЛАЛ — бүлгийн СҮҮЛИЙНХ (нийлбэр БИШ) */
       physPct: physCum.get(k) ?? prev?.physPct ?? null,
     });
@@ -1158,6 +1175,12 @@ export type TimePoint = {
    *    гэсэн ХУДАЛ мэдээлэл өгнө. Муруй тэнд ТАСАРНА.
    */
   ipcPct: number | null;
+  /**
+   * ОЛГОСОН IPC — ХУРИМТЛАГДСАН ЯГ ₮ (`ipcPct`-ийн мөнгөн эх, бүхэлчлэлгүй).
+   * ⚠️ Огноогүй урьдчилгаа (`ipcBase`) ОРСОН тул төгсгөл нь HO-ийн нийт
+   *    олгосон дүнтэй ТЭНЦҮҮ. `null` = тэр сард муруй байхгүй.
+   */
+  ipcMoney: number | null;
   /**
    * ОРОН СУУЦНЫ БАРИЛГАЖИЛТЫН БИЕТ ЯВЦ — мөнгөн эквивалентаар, нийт
    * төсөвт эзлэх хуримтлагдсан хувь (гурав дахь S-муруй, 2026-09-10).

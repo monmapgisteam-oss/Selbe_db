@@ -344,6 +344,17 @@ assert.deepEqual(sCurve([row({ share: 0 })]), []);
   assert.equal(c[2].ipcPct, null,
     'хэмжигдээгүй сард IPC муруй ТАСРАХ ёстой (null ≠ 0, хэвтээ сунгахгүй)');
 
+  /*
+   * ОГНООГҮЙ УРЬДЧИЛГАА (`ipcBase`, 2026-09-10) — ЭХНИЙ IPC сараас хуримтлалд
+   * орно, сүүлийн сард БИШ (тэнд хуурамч оргил үүснэ). `ipcMoney` нь ЯГ ₮:
+   *   01: 20+50 = 70 → 7%   02: 70+30 = 100 → 10%   03: null (муруй тасарна)
+   */
+  const cb = cashflowCurve(plan, 1000, 'month', undefined, ipc, new Map(), 20);
+  assert.deepEqual(cb.map((p) => p.ipcPct), [7, 10, null], 'ipcBase эхний сараас орсонгүй');
+  assert.deepEqual(cb.map((p) => p.ipcMoney), [70, 100, null], 'ipcMoney яг ₮ биш');
+  /* `ipcBase`-гүй бол мөнгө = сарын нийлбэр */
+  assert.deepEqual(c.map((p) => p.ipcMoney), [50, 80, null]);
+
   /* IPC-гүй дуудлага — хуучин зан хэвээр, бүх цэг `null` */
   const c0 = cashflowCurve(plan, 1000, 'month');
   assert.deepEqual(c0.map((p) => p.ipcPct), [null, null, null],

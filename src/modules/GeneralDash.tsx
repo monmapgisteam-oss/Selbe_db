@@ -20,6 +20,8 @@ import { loadNegtgelFull } from '@/lib/negtgel';
 /* ⚠️ Модулиас модуль руу импорт: «Багцын гүйцэтгэл» хуудасны ЯГ ТЭР
    тооцоог давтахгүй, ТҮҮНИЙГ дуудна (`Dashboard.tsx` ч ижлээр). */
 import { loadFinData } from '@/modules/Finance';
+/* ⚠️ 2026-09-10: IPC муруйн эх — HO хүснэгтийн БҮХ мөр (`ipcByMonth`-ийн тайлбарыг үз) */
+import { loadHoRows } from '@/lib/ipc';
 import { aggregateMonths } from '@/modules/PkgProg';
 import { overlapLeftParcels } from '@/lib/parcelOverlap';
 import { loadPkgOverlaps } from '@/lib/pkgSaad';
@@ -28,6 +30,7 @@ import {
      сүлжээний нийлбэр уртад хэрэглэгдэнэ — газар чөлөөлөлтийн давхцал нь
      2026-09-04-нд гэр бүлээс ДЭД БАГЦ руу шилжсэн. */
   PKG_BY_FAMILY, BUILDING, LAYER_BY_ID, PARCEL_LEFT, ZONE_FIELD, ZONE_NONE, type PkgFamily,
+  HO_IPC, hoAmount,
   /* ⚠️ 2026-09-10: орон сууцны биет явцын жин ба сарын тэнхлэг — `housingMoneyByMonth` */
   bagtsKey, cfMonthAxis,
 } from '@/lib/services';
@@ -204,23 +207,36 @@ export function GeneralDash({
    * ОЛГОСОН IPC САРААР — `'YYYY-MM'` → ₮ (2026-09-10, хэрэглэгчийн заавар:
    * «IPC олгосон мэдээллүүдийг графикт нэмж өөр өнгөөр харуулах»).
    *
-   * ⚠️ `aggregateMonths` нь БҮХ багцын олголтыг нэгтгэдэг (`FinData.given`)
-   *    бөгөөд `catPct`-д аль хэдийн ачаалагдсан `finD`-ээс гардаг тул
-   *    НЭМЭЛТ сүлжээний зардал БАЙХГҮЙ.
-   * ⚠️ `given === 0` бол Map-д ОРУУЛАХГҮЙ: `aggregateMonths` нь тэнхлэгийн
-   *    бүх сарыг буцаадаг ба олголтгүй сард 0 өгдөг. Тэр 0-г хуримтлалд
-   *    оруулах нь зөв (хуримтлал өөрчлөгдөхгүй), гэвч Map-д байлгавал
-   *    `ipcLast` нь ХАМГИЙН СҮҮЛИЙН тэнхлэгийн сар болж, муруй бодит
-   *    олголтын дараа хэвтээгээр сунах байв — «олголт зогссон» гэсэн
-   *    худал уншилт.
+   * ⚠️ ЭХ НЬ HO ХҮСНЭГТИЙН БҮХ МӨР (2026-09-10-ны хоёр дахь засвар).
+   *    Урьд нь `FinData.given` (`aggregateMonths`) байв — тэр нь БАГЦААР
+   *    түлхүүрлэгддэг тул диапазон багцын мөрүүд («Багц-1-4»,
+   *    «БАГЦ-10, 11, 13, 15» — `pkgKeyOf` → `''`) ОРДОГГҮЙ, үзүүр нь
+   *    524.9 тэрбум гарч байв. Хэрэглэгчийн заасан «нийт олгосон
+   *    530,872,795,391 ₮» нь `sumPaid(бүх мөр)` тул энд ч ижил хүрээ:
+   *    мөр бүр, багц үл харгалзан. Ингэж л хоёр тоо ТААРНА.
+   * ⚠️ `hoAmount` null (дүнгүй мөр — AUTO, кодгүй) → алгасна, 0 БИШ.
+   * ⚠️ `guilgee_ognoo` нь DateOnly МӨР («2026-03-05»); Cashflow-гийн
+   *    epoch Date-тай холихгүй — энд зөвхөн HO.
+   * ⚠️ Огноогүй мөр (урьдчилгаа) → `undated` → `cashflowCurve`-ийн
+   *    `ipcBase`: ЭХНИЙ IPC сараас хуримтлалд орно (сүүлийн сард нэмбэл
+   *    хуурамч оргил, null ≠ 0).
    * ⚠️ Ачаалагдаж дуустал ХООСОН → муруй ОГТ зурагдахгүй, чарт хэвийн.
    */
-  const ipcByMonth = useMemo(() => {
-    const m = new Map<string, number>();
-    if (finD.state !== 'ready') return m;
-    for (const mo of aggregateMonths(finD.data)) if (mo.given > 0) m.set(mo.label, mo.given);
-    return m;
-  }, [finD]);
+  const hoQ = useAsync(loadHoRows, []);
+  const { ipcByMonth, ipcUndated } = useMemo(() => {
+    const byMonth = new Map<string, number>();
+    let undated = 0;
+    if (hoQ.state !== 'ready') return { ipcByMonth: byMonth, ipcUndated: 0 };
+    const P = HO_IPC.payFields;
+    for (const r of hoQ.data) {
+      const amt = hoAmount(r);
+      if (amt == null) continue;
+      const k = ymOf(r[P.payDate]);
+      if (k) byMonth.set(k, (byMonth.get(k) ?? 0) + amt);
+      else undated += amt;
+    }
+    return { ipcByMonth: byMonth, ipcUndated: undated };
+  }, [hoQ]);
   /**
    * ОРОН СУУЦНЫ БИЕТ ЯВЦ МӨНГӨН ДҮНГЭЭР — ГУРАВ ДАХЬ ТУСДАА МУРУЙ
    * (2026-09-10-ны ХОЁР ДАХЬ засвар, хэрэглэгчийн сонголт «A»).
@@ -283,9 +299,9 @@ export function GeneralDash({
   const cfCurve = useMemo(
     () => cashflowCurve(
       cfPlan.data ?? [], cfTotal, grainOf(period), period, ipcByMonth,
-      housingMoneyByMonth,
+      housingMoneyByMonth, ipcUndated,
     ),
-    [cfPlan.data, cfTotal, period, ipcByMonth, housingMoneyByMonth],
+    [cfPlan.data, cfTotal, period, ipcByMonth, housingMoneyByMonth, ipcUndated],
   );
   /* ⚠️ ТУСДАА сэлгүүр: хоёр чарт өөр өөр асуултад хариулдаг тул нэгийг
      хүснэгтээр харах нь нөгөөг ч сэлгэх ёсгүй. */
@@ -585,7 +601,7 @@ export function GeneralDash({
           note={(
             <span className={g.tlTabs}>
               {/*
-                * ДОМОГ — ГУРВАН МУРУЙ (2026-09-10). Өнгө нь тайлбаргүй бол
+                * ДОМОГ — ХОЁР МУРУЙ (2026-09-10). Өнгө нь тайлбаргүй бол
                 * «аль нь юу вэ» гэдгийг таах аргагүй; хүснэгтийн горимд
                 * хэрэггүй тул зөвхөн график дээр гарна.
                 */}
@@ -593,7 +609,10 @@ export function GeneralDash({
                 <span className={g.tlKey}>
                   <b style={{ background: 'var(--tl-curve)' }} />{tr('Төлөвлөсөн')}
                   <b style={{ background: 'var(--tl-ipc)' }} />{tr('Олгосон')}
-                  <b style={{ background: 'var(--tl-phys)' }} />{tr('Орон сууц, биет')}
+                  {/* ⚠️ «Орон сууц, биет» (ягаан) НУУГДСАН — 2026-09-10,
+                      хэрэглэгчийн заавар. Өгөгдөл (`physPct`) хэвээр
+                      бодогдоно; буцаахад энд, толгойн таг ба SVG замд
+                      нэг нэг мөр л нэмнэ. */}
                 </span>
               )}
               <button
@@ -1493,6 +1512,25 @@ function FinCharts({
  * ЯГ ИЖИЛ зан үйлтэй (зум · hover · чарт/хүснэгт сэлгүүр · тэнхлэг) байх
  * ёстой. Хуулбарлавал нэгийг нь засахад нөгөө нь хоцорно.
  */
+/**
+ * HO-гийн огноо → 'YYYY-MM'. `guilgee_ognoo` нь DateOnly МӨР («2026-03-05»),
+ * гэвч epoch тоо ирвэл ч барина (`Finance.ym`-ийн хураангуй хуулбар —
+ * тэр нь экспортлогдоогүй, энд зөвхөн IPC-ийн сарын түлхүүрт хэрэгтэй).
+ * ⚠️ Хоосон/танигдахгүй → `null` = ОГНООГҮЙ (урьдчилгаа), 0 БИШ.
+ */
+function ymOf(v: unknown): string | null {
+  if (v == null || v === '' || v === 0) return null;
+  if (typeof v === 'number' && v > 1e12) {
+    const d = new Date(v);
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+  }
+  const m = String(v).trim().match(/^(\d{4})-(\d{1,2})(?:\D|$)/);
+  if (!m) return null;
+  const y = Number(m[1]);
+  if (y < 2000 || y > 2100) return null;
+  return `${m[1]}-${m[2].padStart(2, '0')}`;
+}
+
 function Timeline({
   points, grain, total, mode,
 }: {
@@ -1534,7 +1572,7 @@ function Timeline({
    * баганаар эрэмбэлнэ, дахин дарвал эсрэгээр.
    */
   const [sort, setSort] = useState<{
-    c: 'label' | 'sub' | 'amount' | 'pct' | 'ipc' | 'phys'; d: 1 | -1;
+    c: 'label' | 'sub' | 'pct' | 'ipc'; d: 1 | -1;
   }>({ c: 'label', d: 1 });
   const barRef = useRef<HTMLDivElement | null>(null);
 
@@ -1542,6 +1580,27 @@ function Timeline({
   const lo = zoom ? Math.max(0, Math.min(zoom[0], N - 1)) : 0;
   const hi = zoom ? Math.max(lo, Math.min(zoom[1], N - 1)) : N - 1;
   const pts = zoom ? all.slice(lo, hi + 1) : all;
+  /**
+   * ХУРИМТЛАГДСАН ХУВИЙН МӨНГӨН ЭКВИВАЛЕНТ (2026-09-08, хэрэглэгчийн хүсэлт:
+   * «64.3% хүрэхэд хэдэн төгрөг зарцуулсан бэ»).
+   *
+   * ⚠️ Суурь нь хугацааны шүүлтээс ҮЛ ХАМААРНА. Муруй нь өөрөө нийт төсөвт
+   * эзлэх хувь тул түүнийг шүүгдсэн дэд дүнгээр үржүүлбэл 100%-д хүрсэн ч
+   * нийт төсвөөс бага тоо гарч, хоёр тоо хоорондоо зөрчилдөнө.
+   * ⚠️ Хамрах хүрээ нь «Нийт төсөв» индикатортой ЯГ ИЖИЛ (`inTotal`, Excel-ийн
+   * `=+I8+I21`) — нэг дэлгэц дээр хоёр өөр «нийт» байвал аль нь ч итгэл
+   * төрүүлэхгүй. Хасагдсан мөрүүдийн хувь бүгд 0 тул муруйн ХЭЛБЭР
+   * өөрчлөгдөхгүй, зөвхөн мөнгөн шошго нь эх файлтай таарна.
+   *
+   * ⚠️ ЭНД зарлагдана, доор БИШ (2026-09-10, хэрэглэгч: «Хүснэгт товч
+   *    ажиллахгүй»): `mode === 'table'` салаа нь `sorted.map`-ийн дотор
+   *    `cumOf`-ыг ШУУД дуудаад `return` хийдэг тул зарлалт тэр салаанаас
+   *    ДООР байхад `ReferenceError: Cannot access 'cumOf' before
+   *    initialization` шидэж, товч дармагц бүх дашбоард ErrorBoundary-д
+   *    унадаг байв. tsc үүнийг барьдаггүй.
+   */
+  const budget = total;
+  const cumOf = (p: number) => (budget * Math.max(0, Math.min(100, p))) / 100;
 
   /**
    * Чирэлт — «шинээр сонгох», «зөөх», «ирмэгээс сунгах» гурвыг НЭГ логикоор.
@@ -1627,13 +1686,11 @@ function Timeline({
     const sorted = [...all].sort((a, b) => (
       sort.c === 'label' ? a.key.localeCompare(b.key) * sort.d
         : sort.c === 'sub' ? subOf(a).localeCompare(subOf(b)) * sort.d
-          : sort.c === 'amount' ? (a.amount - b.amount) * sort.d
-            : sort.c === 'ipc' ? ((a.ipcPct ?? -1) - (b.ipcPct ?? -1)) * sort.d
-              : sort.c === 'phys' ? ((a.physPct ?? -1) - (b.physPct ?? -1)) * sort.d
-                : (a.pct - b.pct) * sort.d
+          : sort.c === 'ipc' ? ((a.ipcPct ?? -1) - (b.ipcPct ?? -1)) * sort.d
+              : (a.pct - b.pct) * sort.d
     ));
     const head = (
-      c: 'label' | 'sub' | 'amount' | 'pct' | 'ipc' | 'phys',
+      c: 'label' | 'sub' | 'pct' | 'ipc',
       label: string,
       right = false,
     ) => (
@@ -1655,34 +1712,29 @@ function Timeline({
         <table className={g.tlTbl}>
           <thead>
             <tr>
-              {/* ⚠️ Мөрийн дугаар — ArcGIS-ийн атрибут хүснэгтийн эхний багана.
-                  Эрэмбэ солигдоход ч 1-ээс эхэлнэ: энэ нь ХАРАГДАЦЫН дугаар,
-                  бичлэгийн ID БИШ. */}
-              <th className={g.tlThIdx}>№</th>
+              {/* ⚠️ БАГАНЫН БҮРЭЛДЭХҮҮН (2026-09-10, хэрэглэгчийн заавар): Он ·
+                  Нийт хөрөнгөд эзлэх хувь · Олгосон IPC % · Олгосон IPC ₮ —
+                  ЗӨВХӨН эдгээр. «№», «Олгосон дүн» (сарын төлөвлөгөө),
+                  «Хуримтлагдсан дүн» ХАСАГДСАН. Сар/улирлын дэд багана нь
+                  тэр нарийвчлалд л гарна — эс бөгөөс мөрүүд ялгагдахгүй. */}
               {head('label', tr('Он'))}
               {subCol && head('sub', subCol)}
-              {head('amount', tr('Олгосон дүн'), true)}
               {head('pct', tr('Нийт хөрөнгөд эзлэх хувь'), true)}
-              <th className={g.tlThNum}>{tr('Хуримтлагдсан дүн')}</th>
               {/* ⚠️ IPC муруйн тоон утга (2026-09-10) — графикт хараад
                   таамаглахын оронд ЯГ утгыг нь эндээс уншина. */}
               {head('ipc', tr('Олгосон IPC, %'), true)}
-              {/* ⚠️ Гурав дахь муруйн тоон утга (2026-09-10) */}
-              {head('phys', tr('Орон сууц, биет %'), true)}
+              <th className={g.tlThNum}>{tr('Олгосон IPC, ₮')}</th>
             </tr>
           </thead>
           <tbody>
-            {sorted.map((p, i) => (
+            {sorted.map((p) => (
               <tr key={p.key}>
-                <td className={g.tlThIdx}>{i + 1}</td>
                 <td>{p.key.slice(0, 4)}</td>
                 {subCol && <td>{subOf(p)}</td>}
-                <td className={g.tlNum}>{p.amount > 0 ? mnt(p.amount) : ''}</td>
                 <td className={g.tlNum}>{pct(p.pct)}</td>
-                <td className={g.tlNum}>{mnt(cumOf(p.pct))}</td>
                 {/* ⚠️ `null` → ХООСОН нүд, «0%» БИШ (хэмжигдээгүй ≠ тэг) */}
                 <td className={g.tlNum}>{p.ipcPct == null ? '' : pct(p.ipcPct)}</td>
-                <td className={g.tlNum}>{p.physPct == null ? '' : pct(p.physPct)}</td>
+                <td className={g.tlNum}>{p.ipcMoney == null ? '' : mnt(p.ipcMoney)}</td>
               </tr>
             ))}
           </tbody>
@@ -1691,21 +1743,7 @@ function Timeline({
     );
   }
 
-  const maxAmt = Math.max(1, ...pts.map((p) => p.amount));
-  /**
-   * ХУРИМТЛАГДСАН ХУВИЙН МӨНГӨН ЭКВИВАЛЕНТ (2026-09-08, хэрэглэгчийн хүсэлт:
-   * «64.3% хүрэхэд хэдэн төгрөг зарцуулсан бэ»).
-   *
-   * ⚠️ Суурь нь хугацааны шүүлтээс ҮЛ ХАМААРНА. Муруй нь өөрөө нийт төсөвт
-   * эзлэх хувь тул түүнийг шүүгдсэн дэд дүнгээр үржүүлбэл 100%-д хүрсэн ч
-   * нийт төсвөөс бага тоо гарч, хоёр тоо хоорондоо зөрчилдөнө.
-   * ⚠️ Хамрах хүрээ нь «Нийт төсөв» индикатортой ЯГ ИЖИЛ (`inTotal`, Excel-ийн
-   * `=+I8+I21`) — нэг дэлгэц дээр хоёр өөр «нийт» байвал аль нь ч итгэл
-   * төрүүлэхгүй. Хасагдсан мөрүүдийн хувь бүгд 0 тул муруйн ХЭЛБЭР
-   * өөрчлөгдөхгүй, зөвхөн мөнгөн шошго нь эх файлтай таарна.
-   */
-  const budget = total;
-  const cumOf = (p: number) => (budget * Math.max(0, Math.min(100, p))) / 100;
+
   const n = pts.length;
   const at = hov != null && hov < n ? hov : n - 1;
   const cur = pts[at];
@@ -1784,8 +1822,6 @@ function Timeline({
       : '';
   };
   const ipcPath = curveOf((p) => p.ipcPct);
-  /* ⚠️ Орон сууцны биет явц — ижил smooth, гэхдээ ӨӨР өнгө (домог үз) */
-  const physPath = curveOf((p) => p.physPct);
   /**
    * ⚠️ ХҮЛЭЭГДЭЖ БУЙ ӨӨРЧЛӨЛТ (2026-09-08, хэрэглэгчийн заавар): багана нь
    * ЗАХИРАМЖИЙН дүн БИШ, ГҮЙЦЭТГЭЛИЙН ТӨЛБӨРИЙН АКТ (IPC) байх ёстой —
@@ -1811,10 +1847,9 @@ function Timeline({
         {/* ⚠️ ХУРИМТЛАЛЫН мөнгө — тухайн үеийн олголт БИШ. «64.3%» гэдэг нь
             ямар хэмжээний хөрөнгө болохыг дангаараа хэлдэггүй. */}
         <span className={g.tlHeadAmt}>{mntShort(cumOf(cur.pct))}</span>
-        {/* Тухайн үеийн олголт — хуримтлалаас ЗУРААСААР тусгаарлана */}
-        <span className={g.tlHeadSub}>
-          {cur.amount > 0 ? tr('үүнээс {0}', mntShort(cur.amount)) : tr('олголтгүй')}
-        </span>
+        {/* ⚠️ «үүнээс {сарын дүн}» ХАСАГДСАН (2026-09-10): улбар шар багана
+            нуугдсан тул сарын төлөвлөгөөт дүн дэлгэцэнд байхгүй болсон —
+            байхгүй зүйлийн тайлбар нь төөрөгдүүлнэ. */}
         {/*
           * ГУРВАН МУРУЙН УТГА (2026-09-10, хэрэглэгч: «жижиг олгосон хувийн
           * мэдээллийг гаргамаар байна»). Өнгөт цэг нь домогтой таарна.
@@ -1823,16 +1858,17 @@ function Timeline({
           *    олголт байгаагүй» гэсэн ХУДАЛ уншилт төрнө; үнэн нь
           *    «хараахан бүртгэгдээгүй».
           */}
+        {/*
+          * ⚠️ IPC-ийн МӨНГӨ нь `ipcMoney` (яг ₮), `ipcPct × total` БИШ —
+          *    хувь 2 орноор бүхэлчлэгдсэн тул буцааж үржүүлбэл ~100 сая ₮
+          *    зөрнө. Сүүлийн цэг дээр HO-ийн нийт олгосон дүнтэй ТЭНЦҮҮ
+          *    (2026-09-10, хэрэглэгч: «олгосон 530,872,795,391 ₮ гарах»).
+          */}
         {cur.ipcPct != null && (
           <span className={g.tlHeadTag} title={tr('Олгосон IPC — хуримтлагдсан')}>
             <i style={{ background: 'var(--tl-ipc)' }} />
             {pct(cur.ipcPct)}
-          </span>
-        )}
-        {cur.physPct != null && (
-          <span className={g.tlHeadTag} title={tr('Орон сууцны биет явц — нийт төсөвт эзлэх хувь')}>
-            <i style={{ background: 'var(--tl-phys)' }} />
-            {pct(cur.physPct)}
+            {cur.ipcMoney != null && <> · {tr('олгосон {0}', mnt(cur.ipcMoney))}</>}
           </span>
         )}
         {zoom && (
@@ -1889,15 +1925,9 @@ function Timeline({
               onMouseEnter={() => setHov(i)}
               onMouseLeave={() => setHov((v) => (v === i ? null : v))}
             >
-              <i className={g.tlBar} style={{ height: `${(p.amount / maxAmt) * 100}%` }}>
-                {/* ⚠️ Дүн нь БАГАНЫ ДЭЭР (2026-09-07, хэрэглэгчийн заавар).
-                    Тэнхлэгийн доор байхад аль дүн аль баганынх болох нь
-                    нүдээр мөрдөх зайтай болж, оны шошготой ч хольцолдож
-                    байв. Багана дээрээ бол холбоос нь шууд. */}
-                {!tilt && p.amount > 0 && (
-                  <b className={g.tlBarVal}>{mntShort(p.amount)}</b>
-                )}
-              </i>
+              {/* ⚠️ УЛБАР ШАР БАГАНА (сарын төлөвлөгөөт ₮) НУУГДСАН — 2026-09-10,
+                  хэрэглэгчийн заавар. `.tlCol` нь hover-ын хит-талбар тул
+                  ҮЛДЭНЭ; `p.amount` хүснэгтэд («Олгосон дүн» багана) хэвээр. */}
             </div>
           ))}
         </div>
@@ -1910,11 +1940,8 @@ function Timeline({
           {ipcPath && (
             <path className={g.tlLineIpc} d={ipcPath} fill="none" vectorEffect="non-scaling-stroke" />
           )}
-          {/* ⚠️ ХАМГИЙН ДЭЭР: биет явц нь хамгийн бага утгатай тул доод
-              талд явах ба нөгөө хоёрыг халхлахгүй. */}
-          {physPath && (
-            <path className={g.tlLinePhys} d={physPath} fill="none" vectorEffect="non-scaling-stroke" />
-          )}
+          {/* ⚠️ Ягаан «Орон сууц, биет» зам НУУГДСАН (2026-09-10) — домгийн
+              тайлбарыг үз. Буцаахад: `curveOf((p) => p.physPct)` + `.tlLinePhys`. */}
         </svg>
 
         {/*
