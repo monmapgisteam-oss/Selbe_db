@@ -64,7 +64,8 @@ import { finFieldLabel } from '@/lib/financeFieldLabels';
 import {
   FIN_XL_ORDER, FIN_XL_LEAF, FIN_XL_WIDTH, FIN_XL_MERGE, FIN_XL_BAND_H, finXlGroup,
   FIN_XL_SECTION, FIN_XL_GROUP_FIELD, FIN_XL_GROUP3_FIELD, FIN_XL_CODE,
-  FIN_XL_HIDE, FIN_XL_TOTAL_LABEL, finXlInTotal,
+  FIN_XL_HIDE, FIN_XL_TOTAL_LABEL, finXlInTotal, finXlRowHidden,
+  FIN_XL_LVL_KEEP, finXlBandLabel,
   FIN_XL_PCT, FIN_XL_PCT_WEIGHT, FIN_XL_ORDER_V,
 } from '@/lib/finExcelLayout';
 import { useColWidths } from '@/modules/sheet/colWidths';
@@ -909,7 +910,21 @@ async function loadFinRegisterRaw(): Promise<FinTables> {
        буцна. Тэр өгөгдөл байхгүй бол 5-р түвшин хоосон, бусад нь бүтэн. */
     loadCfMonthRows().catch(() => [] as Row[]),
   ]);
-  return { cashflow, ipc, cfFields, ipcFields, cfMonths };
+  /*
+   * ⚠️ «БОНДЫН ХҮҮ» мөр ЭНД шүүгдэнэ (2026-09-10) — хүснэгт ба «Cashflow
+   * хувиарлах» хоёуланд нь нэг дор үйлчилнэ. Дэлгэрэнгүйг
+   * `finXlRowHidden`-ийн тайлбараас үз.
+   * ⚠️ Дашбоардын тоонуудад НӨЛӨӨЛӨХГҮЙ: тэдгээр нь `loadGdashCf`-ээр
+   * тусдаа уншигддаг бөгөөд Excel-ийн НИЙТ томьёо тэр мөрийг аль хэдийн
+   * хасдаг (`FIN_XL_TOTAL_SKIP`).
+   */
+  return {
+    cashflow: cashflow.filter((r) => !finXlRowHidden(r)),
+    ipc,
+    cfFields,
+    ipcFields,
+    cfMonths,
+  };
 }
 
 export function Finance() {
@@ -1461,8 +1476,23 @@ function FullTable({
   /**
    * ТҮВШНЭЭР ДЭЛГЭХ — Excel-ийн outline «1 2 3 4».
    *
-   *   1 → НИЙТ + хэсгийн зурвас · 2 → + төрлийн нийлбэр ·
-   *   3 → + дэд төрлийн нийлбэр · 4 → бүх мөр
+   *   1 → НИЙТ + нэг оронтой КОДТОЙ бүх зурвас (1 · 2 · 3 · 3 · 4 · 5 · 6) ·
+   *   2 → + хоёр оронтой код (1.1 · 1.2 · 4.1…) · 3 → бүх зурвас ·
+   *   4 → бүх мөр · 5 → + сарын задаргаа
+   *
+   * ⚠️ ТҮВШИН нь МОДНЫ ГҮН БИШ, КОДЫН ГҮН (2026-09-10, хэрэглэгчийн заавар:
+   * «1-р түвшин дээр 3 ОРОН СУУЦНЫ ХОРООЛОЛ ба 4 ИНЖЕНЕРИЙН ДЭД БҮТЭЦ
+   * харагдахгүй, 1·2·5·6 гээд буруу харагдаад байна»).
+   *
+   * Учир нь Excel-ийн E баганын код нь ХАВТГАЙ дугаарлалт: ОРОН СУУЦНЫ
+   * ХОРООЛОЛ (3) ба ИНЖЕНЕРИЙН ДЭД БҮТЭЦ (4) нь 1 · 2 · 5 · 6-тай НЭГ
+   * эгнээний хэсгүүд боловч НИЙЛБЭРИЙН модонд «2 БАРИЛГА УГСРАЛТ»-ын
+   * хүүхдүүд (Excel-ийн мөр 21: `=+J22+J31+J47`).
+   *
+   * ⚠️ МОДЫГ ӨӨРЧИЛСӨНГҮЙ САНААТАЙ: 3 ба 4-ийг эцгээс нь салгавал
+   * «2 БАРИЛГА УГСРАЛТ» зурвасын нийлбэр 2,482.4 → 97.0 тэрбум болж эх
+   * файлаас зөрнө. Зөвхөн ТҮВШНИЙ ТОВЧНЫ утга өөрчлөгдөв — зурвасууд
+   * хэвээрээ, нийлбэрүүд хэвээрээ.
    *
    * ⚠️ ТҮЛХҮҮР нь УТГААР бүтдэг тул ШҮҮГДЭЭГҮЙ `rows`-оос угсарч болно:
    * шүүлт нь зөвхөн харагдах мөрийг цөөрүүлдэг ба илүү түлхүүр хор хүргэхгүй.
@@ -1484,7 +1514,23 @@ function FullTable({
     const nx = new Set<string>();
     for (const r of rows) {
       const ks = xlKeys(r);
-      nx.add(ks[Math.min(n - 1, ks.length - 1)]);
+      /*
+       * ⚠️ КОДЫН ЦЭГИЙН ТОО = түвшин («4.1» → 2). Код нь хоосон бол
+       * (жиш. «Газар чөлөөлөлт» дэд хэсэг) модны гүнээр буцаж унана.
+       * ⚠️ `FIN_XL_LVL_KEEP`-д байгаа хэсэг (гадна тохижилт, өндөржилт)
+       *    кодоороо нэг оронтой ч ЭЦГЭЭ ОРХИХГҮЙ — тэнд ч модны гүн.
+       */
+      const NAMES = [FIN_XL_SECTION, FIN_XL_GROUP_FIELD, FIN_XL_GROUP3_FIELD];
+      let i = 0;
+      for (let d = 0; d < ks.length; d += 1) {
+        const code = String(r[FIN_XL_CODE[d]] ?? '').trim();
+        const nameD = String(r[NAMES[d]] ?? '').trim();
+        const deep = code === '' || FIN_XL_LVL_KEEP.includes(nameD)
+          ? d + 1
+          : code.split('.').length;
+        if (deep <= n) i = d;
+      }
+      nx.add(ks[i]);
     }
     setFold(nx);
   };
@@ -2940,12 +2986,21 @@ const DEF_WRAP = useMemo(() => ['ajil_uilchilgee'], []);
      * зурвас ҮҮСЭХГҮЙ.
      */
     const NAME_F = [FIN_XL_SECTION, FIN_XL_GROUP_FIELD, FIN_XL_GROUP3_FIELD];
-    const chainOf = (p: GroupRow): { name: string; code: string }[] => {
-      const out: { name: string; code: string }[] = [];
+    /*
+     * ⚠️ `name` нь ЖИНХЭНЭ утга (эвхэлтийн түлхүүр, бүлэглэлт түүгээр),
+     * `label` нь ХАРАГДАХ нэр — эцгийнхээ давталтыг хассан
+     * (`finXlBandLabel`-ийн тайлбарыг үз).
+     */
+    const chainOf = (p: GroupRow): { name: string; code: string; label: string }[] => {
+      const out: { name: string; code: string; label: string }[] = [];
       for (let d = 0; d < NAME_F.length; d += 1) {
         const name = String(p.row[NAME_F[d]] ?? '').trim();
         if (d > 0 && name === '') break;
-        out.push({ name, code: String(p.row[FIN_XL_CODE[d]] ?? '').trim() });
+        out.push({
+          name,
+          code: String(p.row[FIN_XL_CODE[d]] ?? '').trim(),
+          label: finXlBandLabel(name, out[0]?.name ?? ''),
+        });
       }
       return out;
     };
@@ -2988,7 +3043,7 @@ const DEF_WRAP = useMemo(() => ['ajil_uilchilgee'], []);
           let j = i;
           while (j < list.length && mark[j].keys[d] === key) j += 1;
           mark[i].bands.push({
-            depth: d, code: ch[d].code, label: ch[d].name, key, rows: list.slice(i, j),
+            depth: d, code: ch[d].code, label: ch[d].label, key, rows: list.slice(i, j),
           });
         }
       }
@@ -3121,12 +3176,16 @@ const DEF_WRAP = useMemo(() => ['ajil_uilchilgee'], []);
           /* ⚠️ `frz(ci)` ЗААВАЛ: царцсан бүсэд орсон багана ч наалдмал байх
              ёстой, эс бөгөөс гүйлгэхэд зурвасын нүд хөршүүдээсээ сална. */
           className={[frz(ci), numeric ? `num ${f.cellNum}` : ''].filter(Boolean).join(' ')}
-          /* ⚠️ Гүн нь ЗҮҮН ЗАЙГААР уншигдана (Excel-ийн outline шат) — өнгө нь
-             гүнийг аль хэдийн хэлдэг ч зайгүй бол 1.1 ба 4.1 нэг шатанд
-             харагдана. */
-          style={c.name === 'bagts' && b.depth
-            ? { ...colSty(c, ci), paddingLeft: 10 + b.depth * 9 }
-            : colSty(c, ci)}
+          /*
+           * ⚠️ ШАТЛАСАН ДОГОЛ ХАСАГДСАН (2026-09-10, хэрэглэгчийн заавар:
+           * «cashflow тоог нэг түвшингээс эхэлж байрлуул, муруй ингэж сонин
+           * байрлуулахгүй шүү»). Урьд нь гүн бүрд `paddingLeft` 9px нэмэгддэг
+           * байсан бөгөөд нүд нь ГОЛЛУУЛСАН тул код бүр өөр өөр байрлалд
+           * бууж, багана шаталсан муруй мэт харагддаг байв.
+           * ⚠️ Гүн нь КОДООРОО уншигдана: «1» · «1.1» · «4.1» — цэгийн тоо
+           * нь шатыг өөрөө хэлнэ, дээр нь зурвасын дэвсгэр өнгө бий.
+           */
+          style={colSty(c, ci)}
           title={!numeric && text ? text : undefined}
         >{text}</td>
       );

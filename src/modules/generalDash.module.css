@@ -50,8 +50,17 @@
    *    хоёр муруйн аль нь ч давамгайлж, харьцуулалт гажина.
    */
   --tl-ipc: #2e9e6b;
-  /* ⚠️ Ягаан «барилгажилт» муруй ХАСАГДСАН (2026-09-10, хэрэглэгчийн
-     заавар) — орон сууцны биет явц одоо ЦЭНХЭР төлөвлөсөн муруйд орсон. */
+  /*
+   * ОРОН СУУЦНЫ БИЕТ ЯВЦЫН МУРУЙ (2026-09-10-ны ХОЁР ДАХЬ засвар).
+   *
+   * ⚠️ Богино хугацаанд цэнхэр төлөвлөсөн муруйд НЭГТГЭГДЭЖ байгаад буцав:
+   *    орон сууц төслийн 58.6%-ийг эзэлдэг тул түүний ӨНӨӨДРИЙН түвшинг
+   *    ИРЭЭДҮЙН төлөвлөгөөтэй нэг муруйд нийлүүлэхэд муруй ирээдүй рүү
+   *    өсөхөө больдог байв (`cashflowCurve`-ийн тайлбарыг үз).
+   * ⚠️ Ягаан нь цэнхэр (төлөвлөгөө) ба ногоон (олголт) хоёроос өнгөний
+   *    хүрдэнд ХОЛ — гурвуулаа ялгарна.
+   */
+  --tl-phys: #b3559b;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -73,8 +82,15 @@
 .body {
   flex: 1 1 auto;
   display: grid;
-  grid-template-columns: var(--side-l) minmax(0, 1fr) var(--side-r);
-  grid-template-areas: 'left center right';
+  /*
+   * ⚠️ ХОЁР БАГАНА (2026-09-10): «зүүн+төв+муруй» НЭГ багана (`.main`),
+   * баруун нь тусдаа. Урьд нь гурван багана байсан ба муруйг доод мөрөнд
+   * зүүн+төвийг дамнуулж тавьсан боловч тэгэхэд ЗҮҮН ЧИРЭХ БАРИУЛ
+   * (`SplitGrip`, `top: 0; bottom: 0`) муруйн дундуур үргэлжилж, байхгүй
+   * заагийг зурдаг байв. Одоо бариул нь `.top`-ын дотор сууна.
+   */
+  grid-template-columns: minmax(0, 1fr) var(--side-r);
+  grid-template-areas: 'main right';
   gap: 10px;
   min-height: 0;
   --side-l: clamp(280px, 17vw, 560px);
@@ -90,18 +106,49 @@
 @media (max-width: 1180px) {
   .body {
     grid-template-columns: minmax(0, 1fr);
-    /* Зураг ЭХЭНД — нарийн дэлгэцэд гол агуулга дээрээ байх ёстой */
-    grid-template-areas: 'center' 'left' 'right';
+    grid-template-areas: 'main' 'right';
+    grid-template-rows: auto;
     grid-auto-rows: auto;
   }
+  /* Зураг ЭХЭНД — нарийн дэлгэцэд гол агуулга дээрээ байх ёстой */
+  .top {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'center' 'left';
+  }
   .shell { overflow: auto; }
-  .left, .right, .center { overflow: visible; }
+  .left, .right, .center, .curve, .main, .top { overflow: visible; }
   .hero { min-height: 420px; }
 }
 
+/*
+ * ЗҮҮН + ТӨВ + МУРУЙ — НЭГ БАГАНА (2026-09-10).
+ * ⚠️ `.top` нь ЗҮҮН ЧИРЭХ БАРИУЛЫН ЭЦЭГ: бариул нь эцгийгээ бүтнээр
+ *    дамнадаг тул түүнийг зөвхөн энэ эгнээгээр хязгаарлана. Муруй нь
+ *    `.top`-оос ГАДНА тул бариулын зурвас түүн рүү үргэлжлэхгүй.
+ */
+.main {
+  grid-area: main;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+}
+.top {
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--side-l) minmax(0, 1fr);
+  grid-template-areas: 'left center';
+  gap: 10px;
+  flex: 1 1 auto;
+  min-height: 0;
+}
 .left { grid-area: left; }
 .right { grid-area: right; }
 .center { grid-area: center; }
+/* ⚠️ Муруй нь `<main>`-ын ГАДНА, `.main`-ы хоёр дахь мөр — зүүн ба төв
+   баганыг бүтнээр дамнана (JSX-ийн тайлбарыг үз). */
+.curve { flex: none; min-width: 0; }
 
 .left, .right {
   display: flex;
@@ -129,7 +176,7 @@
   min-height: 0;
   overflow: hidden;
 }
-.kpis, .curve { flex: none; }
+.kpis { flex: none; }
 
 /* ── Газрын зураг ── */
 .hero {
@@ -620,6 +667,8 @@
 /* ⚠️ IPC-ийн муруй — төлөвлөгөөнийхтэй ИЖИЛ зузаан, ӨӨР өнгө. Тасархай
    болговол «таамаг» гэж уншигдана, гэтэл энэ нь хамгийн БОДИТ хэмжилт. */
 .tlLineIpc { stroke: var(--tl-ipc); stroke-width: 2; stroke-linecap: round; }
+/* ⚠️ Биет явц — ИЖИЛ зузаан: энэ нь ч таамаг биш БОДИТ хэмжилт */
+.tlLinePhys { stroke: var(--tl-phys); stroke-width: 2; stroke-linecap: round; }
 
 /*
  * МУРУЙН ДОМОГ — картын толгойд (2026-09-10).

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
-import { DOCS, docUrl } from '@/lib/docs';
+import { DOCS, docUrl, isExternalDoc } from '@/lib/docs';
 import { Icon } from './Icon';
 import s from './docviewer.module.css';
 
@@ -85,12 +85,34 @@ export function DocViewer({ open, onClose }: { open: boolean; onClose: () => voi
           {/* Баруун — сонгосон PDF (уугуул харагч). `key` нь баримт солиход
               iframe-ыг бүрэн шинэчилж, зарим браузерын кэш асуудлаас сэргийлнэ. */}
           <div className={s.viewer}>
-            <iframe
-              key={doc.key}
-              className={s.frame}
-              src={docUrl(doc)}
-              title={doc.title}
-            />
+            {/*
+              * ⚠️ ГАДААД баримтыг `<iframe>`-д ТАВИХГҮЙ (2026-09-10):
+              * SharePoint/OneDrive нь `X-Frame-Options`-оор дотоод хүрээг
+              * хаадаг тул хоосон цагаан талбай л гарна. Оронд нь шинэ таб-д
+              * нээх ТОВЧ — юу болсныг ил хэлж, нэг товшилтоор нээгдэнэ.
+              */}
+            {isExternalDoc(doc) ? (
+              <div className={s.ext}>
+                {/* ⚠️ Тайлбар мөр ХАСАГДСАН (2026-09-10, хэрэглэгчийн заавар):
+                    товч өөрөө юу болохыг хэлж байгаа тул дээрх өгүүлбэр нь
+                    зөвхөн техникийн шалтгаан тоочсон давхардал байв. */}
+                <a
+                  className={s.extBtn}
+                  href={docUrl(doc)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {doc.cta ?? tr('{0} — шинэ таб-д нээх ↗', doc.title)}
+                </a>
+              </div>
+            ) : (
+              <iframe
+                key={doc.key}
+                className={s.frame}
+                src={docUrl(doc)}
+                title={doc.title}
+              />
+            )}
           </div>
         </div>
       </div>

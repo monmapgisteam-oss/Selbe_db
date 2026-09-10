@@ -1388,12 +1388,21 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
  * ⚠️ Голлуулна: нэгтгэсэн нүд 20 мөр өндөр болж болох тул дээд ирмэгтээ
  * наалдвал ямар мөрүүдийг хамарч байгаа нь уншигдахаа болино.
  */
+/*
+ * БОСООГООР НЭГТГЭСЭН НҮД (`rowSpan`) — жишээ нь давтагдсан багц.
+ *
+ * ⚠️ ДЭВСГЭР ЗААВАЛ БҮРЭН БҮГЛЭЭ. Урьд нь `transparent` руу холисон тул
+ * 96% нэвт харагддаг байсан бөгөөд ЦАРЦСАН (`position: sticky`) үед доогуур
+ * нь гүйж буй баганууд шагайж, нүд хоёр давхар бичвэртэй мэт харагддаг байв
+ * (2026-09-10-ны шүүмж). `--surface` руу холивол өнгө нь ЯГ ТЭР, гэхдээ
+ * бүрэн бүглээ.
+ */
 .xlMerged {
   vertical-align: middle;
   white-space: normal;
   font-weight: 600;
   color: var(--ink);
-  background: color-mix(in srgb, var(--data) 4%, transparent);
+  background: color-mix(in srgb, var(--data) 4%, var(--surface));
 }
 
 /* ═══════════ EXCEL-ИЙН МӨРИЙН БҮТЭЦ ═══════════

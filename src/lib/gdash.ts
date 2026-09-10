@@ -22,6 +22,7 @@ import {
 import { stageProjectPct } from '@/lib/negtgel';
 import {
   FIN_XL_TOTAL_CODE_FIELD, FIN_XL_TOTAL_SKIP, FIN_XL_CHART_FIELDS, finXlChartCat,
+  FIN_XL_WORK_SKIP,
 } from '@/lib/finExcelLayout';
 
 /* ══════════════════════ CASHFLOW — талбарууд ══════════════════════ */
@@ -183,6 +184,25 @@ export type CfRow = {
    * «Төслийн гүйцэтгэл» чартын нэг мөр үүнээс бодогддог тул хэрэгтэй.
    */
   lvl3: string;
+  /**
+   * ЖИНХЭНЭ АЖИЛ МӨН ҮҮ — «Багц ажлын тоо» индикаторын хамрах хүрээ
+   * (2026-09-10, хэрэглэгчийн засвар: «78 биш 74»).
+   *
+   * ⚠️ Үйлчилгээний 78 мөрөөс «6 ГАЗАР ЧӨЛӨӨЛӨЛТ, БУУЛГАЛТ ЦЭВЭРЛЭГЭЭ»
+   * хэсгийн ДӨРӨВ хасагдаж 74 үлдэнэ (2026-09-10, хэрэглэгчийн заавар).
+   * Тэдгээр нь газар эзэмшигчтэй хийх НӨХӨН ОЛГОВОР/цэвэрлэгээ бөгөөд
+   * гүйцэтгэгчтэй байгуулах ажлын багц БИШ.
+   *
+   * ⚠️ Урьд нь «хасах/хасуулах» гэсэн тайлбартай хоёр мөр ба «БОНДЫН ХҮҮ»
+   * гурвыг хасаж 75 гаргаж байв — хэрэглэгч 2026-09-10-нд «буруу 3 мөрийг
+   * хассан байна» гэж залруулав.
+   *
+   * ⚠️ ЗӨВХӨН ТООЛОЛТОД. Мөнгөн нийлбэр (`inTotal`), чарт, шүүлт,
+   *    газрын зураг БҮГД тэдгээр мөрийг ХЭВЭЭР авна — хасагдах шийдвэр
+   *    нь тайлбарын талбарт бичигдсэн бөгөөд эх Excel-д мөр нь байсаар
+   *    байна (`мөр устгахгүй` дүрэм).
+   */
+  isWork: boolean;
 };
 
 const nOf = (v: unknown): number => {
@@ -241,6 +261,8 @@ export const loadGdashCf = cached<CfRow[]>(async () => {
     inTotal: !FIN_XL_TOTAL_SKIP.includes(sOf(r[CF.code1])),
     cfId: dOf(r[CF.cfId]),
     lvl3: sOf(r.ajil_tuvshin3),
+    /* ⚠️ КОДООР шүүнэ, нэрээр БИШ — нэр засагдаж болно (`finXlInTotal`) */
+    isWork: !FIN_XL_WORK_SKIP.includes(sOf(r[CF.code1])),
   }));
 }, undefined, ['CASHFLOW_NEW']);
 
@@ -823,21 +845,28 @@ export function cashflowCurve(
   ipcByMonth: Map<string, number> = new Map(),
   /**
    * ОРОН СУУЦНЫ БИЕТ ЯВЦ МӨНГӨН ДҮНГЭЭР — сар → ₮ (`housingMoney()`).
-   * Цэнхэр төлөвлөсөн муруйн хуримтлалд НЭМЭГДЭНЭ (2026-09-10).
-   * ⚠️ Хуримтлагдсан түвшин тул хэмжилтгүй сард СҮҮЛИЙН утгыг урагш авна —
-   *    эс бөгөөс сүүлийн хэмжилтийн дараа муруй доош УНАНА.
+   *
+   * ⚠️ ГУРАВ ДАХЬ ТУСДАА МУРУЙ (`physPct`), төлөвлөгөөнд НЭМЭГДДЭГГҮЙ
+   *    (2026-09-10-ны ХОЁР ДАХЬ засвар, хэрэглэгчийн сонголт «A»).
+   *
+   *    Урьд нь орон сууцны 7 ажлын САРЫН ТӨЛӨВЛӨГӨӨГ бүхэлд нь хаяж
+   *    (`skipIds`), оронд нь тэдний ӨНӨӨДРИЙН биет явцыг цэнхэр муруйд
+   *    нэмдэг байв. Гэтэл орон сууц нь төслийн 58.6%, бөглөгдсөн
+   *    төлөвлөгөөний 53.1% — тиймээс цэнхэр муруй нь «ирээдүйн
+   *    төлөвлөгөө + өнөөдрийн түвшин» гэсэн ХОЛИМОГ болж, ирээдүй рүү
+   *    ӨСӨХӨӨ БОЛЬДОГ байлаа: 2027 он бүтнээр бөглөгдсөн атал муруй
+   *    34.8%-аас (өнөөдрийн 32.4%-тай бараг тэнцүү) дээш гардаггүй байв.
+   *
+   * ⚠️ Хуримтлагдсан ТҮВШИН тул хэмжилтгүй сард СҮҮЛИЙН утгыг урагш авна —
+   *    эс бөгөөс сүүлийн хэмжилтийн дараа муруй доош УНАНА. Харин ЭХНИЙ
+   *    хэмжилтээс ӨМНӨ ба СҮҮЛИЙНХЭЭС ХОЙШ `null` (IPC-тэй ижил дүрэм):
+   *    хэвтээ сунгавал «явц зогссон» гэсэн худал уншилт төрнө.
    */
   housingMoneyByMonth: Map<string, number> = new Map(),
-  /**
-   * ОРОН СУУЦНЫ АЖЛУУДЫН `Cashflow_ID` — тэдний сарын мөнгийг `per`-ээс
-   * ХАСНА, эс бөгөөс биет явц ба cashflow хоёулаа тоологдож ДАВХАРДАНА.
-   */
-  skipIds: Set<number> = new Set(),
 ): TimePoint[] {
   const per = new Map<string, number>();
   for (const p of plan) {
     if (p.amount == null || p.start == null) continue;
-    if (skipIds.has(p.id)) continue;      // орон сууц — биет явцаар тоологдоно
     const d = new Date(p.start);
     const k = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
     per.set(k, (per.get(k) ?? 0) + p.amount);
@@ -861,12 +890,29 @@ export function cashflowCurve(
   ])].sort();
   if (months.length === 0) return [];
   let acc = 0;
-  let house = 0;                         // сүүлийн хэмжигдсэн биет явц (₮)
   const cum = new Map<string, number>();
   for (const k of months) {
     acc += per.get(k) ?? 0;
-    house = housingMoneyByMonth.get(k) ?? house;
-    cum.set(k, Math.round(((acc + house) / total) * 100 * 100) / 100);
+    /* ⚠️ ЦЭВЭР ТӨЛӨВЛӨГӨӨ — биет явц ЭНД ОРОХГҮЙ (дээрх тайлбарыг үз) */
+    cum.set(k, Math.round((acc / total) * 100 * 100) / 100);
+  }
+  /*
+   * ОРОН СУУЦНЫ БИЕТ ЯВЦЫН МУРУЙ — IPC-ийнхтэй ЯГ ИЖИЛ дүрмээр.
+   * ⚠️ Хэмжилтийн ХООРОНД сүүлийн утгыг урагш авна (хуримтлагдсан түвшин),
+   *    харин ГАДНА нь `null` — тэнд муруй ТАСАРНА.
+   */
+  const physMonths = [...housingMoneyByMonth.keys()].sort();
+  const physLast = physMonths[physMonths.length - 1];
+  const physCum = new Map<string, number>();
+  if (physMonths.length) {
+    let house = 0;
+    let seen = false;
+    for (const k of months) {
+      const v = housingMoneyByMonth.get(k);
+      if (v != null) { house = v; seen = true; }
+      if (!seen || k > physLast) continue;
+      physCum.set(k, Math.round((house / total) * 100 * 100) / 100);
+    }
   }
   /*
    * ОЛГОСОН IPC-ийн ХУРИМТЛАЛ — төлөвлөгөөнийхтэй ЯГ ИЖИЛ дүрмээр.
@@ -910,6 +956,7 @@ export function cashflowCurve(
       amount: per.get(k) ?? 0,
       /* ⚠️ `?? null` — Map-д байхгүй сар нь «хэмжигдээгүй», 0 БИШ */
       ipcPct: ipcCum.get(k) ?? null,
+      physPct: physCum.get(k) ?? null,
     }));
   }
   const out = new Map<string, TimePoint>();
@@ -931,6 +978,8 @@ export function cashflowCurve(
          сүүлийн сард хэмжилт байхгүй бол өмнөхийг нь хадгална — эс
          бөгөөс улирлын сүүлийн сар хоосон байхад бүтэн улирал алга болно. */
       ipcPct: ipcCum.get(k) ?? prev?.ipcPct ?? null,
+      /* ⚠️ Биет явц ч ХУРИМТЛАЛ — бүлгийн СҮҮЛИЙНХ (нийлбэр БИШ) */
+      physPct: physCum.get(k) ?? prev?.physPct ?? null,
     });
   }
   return [...out.values()];
@@ -1039,8 +1088,9 @@ export function kpisOf(rows: CfRow[], contractSum: number, landPct: number | nul
        нь «хэр бодитой хэмжигдсэн» гэдгийг хэлсэн хэвээр. */
     progressCovered: budget > 0 ? (wSum / budget) * 100 : 0,
     /* ⚠️ МӨРИЙН тоо — мөр бүр нэг ажил. Ялгаатай багцаар тоолбол дэд багцгүй
-       ажил алдагдаж, нэг багцын хоёр ажил нэг болж нийлдэг. */
-    packages: rows.length,
+       ажил алдагдаж, нэг багцын хоёр ажил нэг болж нийлдэг.
+       ⚠️ Ажлын БУС мөр (хасагдсан · бондын хүү) тоологдохгүй — `isWork`. */
+    packages: rows.filter((r) => r.isWork).length,
     types: types.size,
   };
 }
@@ -1108,6 +1158,16 @@ export type TimePoint = {
    *    гэсэн ХУДАЛ мэдээлэл өгнө. Муруй тэнд ТАСАРНА.
    */
   ipcPct: number | null;
+  /**
+   * ОРОН СУУЦНЫ БАРИЛГАЖИЛТЫН БИЕТ ЯВЦ — мөнгөн эквивалентаар, нийт
+   * төсөвт эзлэх хуримтлагдсан хувь (гурав дахь S-муруй, 2026-09-10).
+   *
+   * ⚠️ `pct`-тэй ИЖИЛ ХУВААРЬТАЙ (`cfTotal`) — гурван муруй нэг тэнхлэгт.
+   *    Утга нь БАГА байх нь зүйн хэрэг: орон сууц төслийн 58.6%-ийг эзэлдэг
+   *    тул бүрэн дуусахад ч ~58.6% дээр л тогтоно.
+   * ⚠️ `null` = ХЭМЖИГДЭЭГҮЙ (0 БИШ).
+   */
+  physPct: number | null;
 };
 
 
