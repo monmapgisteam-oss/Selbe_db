@@ -29,7 +29,16 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-const read = (p) => fs.readFileSync(`E:/Selbe_bagtsiin-medeelel/${p}`, 'utf8');
+/*
+ * ⚠️ РЕПО-ХАМААРАЛТ ЗАМ. Урьд нь `E:/Selbe_bagtsiin-medeelel/${p}` гэж БИЧСЭН
+ * байсан — тэр нь энэ гэрээг бичсэн worktree-гийн зам бөгөөд өөр clone,
+ * өөр машин дээр `ENOENT` өгч БҮХ `npm test` унадаг байв (2026-09-10-нд
+ * `tailan` руу нийлүүлэхэд илэрсэн). Нэг репог хэд хэдэн worktree-ээр
+ * ашигладаг тул үнэмлэхүй зам ХЭЗЭЭ Ч бичигдэх ёсгүй.
+ * ⚠️ `aclParity.check.mjs`-тэй ИЖИЛ дүрэм: тестүүд репогийн үндэснээс
+ * ажилладаг тул харьцангуй зам хангалттай.
+ */
+const read = (p) => fs.readFileSync(p, 'utf8');
 
 /* Тайлбарыг арилгана — `dataBus.invariant`-ийн сургамж: `⚠️` тайлбарт
    бичигдсэн код хэлбэрийн текст ХУДАЛ таарц өгдөг. */

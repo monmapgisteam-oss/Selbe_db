@@ -35,8 +35,8 @@ import { queryStats, count } from '@/lib/query';
 import { cat, mnt, num, pct } from '@/lib/format';
 import {
   loadGdashCf, loadContractSum, loadHseNow, loadReasonOids, loadSubPkgLayers,
-  loadCfPlan, cashflowCurve, housingMoney, HOUSING_PKGS,
-  chartTypeCost, chartSourceMerged, chartNoteAmount, xMatch,
+  loadCfPlan, cashflowCurve, housingMoney,
+  chartTypeCost, chartSourceMerged, xMatch,
   type XDim,
   grainOf, kpisOf, inPeriod, yearsOf, periodActive, activeSubPkgTypes,
   type Grain,
@@ -222,16 +222,20 @@ export function GeneralDash({
     return m;
   }, [finD]);
   /**
-   * ОРОН СУУЦНЫ БИЕТ ЯВЦ МӨНГӨН ДҮНГЭЭР — цэнхэр төлөвлөсөн муруйд НЭМЭГДЭНЭ
-   * (2026-09-10, хэрэглэгчийн заавар: «ягаанаар харагдаж буй хэсэг хэрэггүй,
-   * төлөвлөсөн гүйцэтгэл дээр оруулаадах; үлдсэн хэсгийг дараа нь бөглөхөд
-   * хамт нэгтгэгдээд орно»).
+   * ОРОН СУУЦНЫ БИЕТ ЯВЦ МӨНГӨН ДҮНГЭЭР — ГУРАВ ДАХЬ ТУСДАА МУРУЙ
+   * (2026-09-10-ны ХОЁР ДАХЬ засвар, хэрэглэгчийн сонголт «A»).
    *
-   * ⚠️ Орон сууцны 7 багцын Cashflow сарын мөр БҮГД хоосон (2026-09-10:
-   *    681 мөрөөс 667 `null`, 14 тэг) тул тэдний явцыг «05. Багцын
-   *    гүйцэтгэл»-ийн биет хэмжилтээс мөнгө болгон (ХО дүн × %) авна.
-   *    `housingIds` нь тэр ажлуудын `Cashflow_ID` — `cashflowCurve` тэдний
-   *    сарын мөрийг ХАСНА, эс бөгөөс бөглөгдмөгц ДАВХАР тоологдоно.
+   * ⚠️ ТӨЛӨВЛӨСӨН МУРУЙД НЭМЭГДЭХЭЭ БОЛИВ. Өмнөх хувилбар нь орон сууцны
+   *    7 ажлын сарын төлөвлөгөөг хаяж (`skipIds`), оронд нь өнөөдрийн биет
+   *    явцыг цэнхэр муруйд нэмдэг байсан. Орон сууц нь төслийн 58.6%,
+   *    бөглөгдсөн төлөвлөгөөний 53.1% тул цэнхэр муруй ирээдүй рүү өсөхөө
+   *    больж, 2027 он бүтнээр бөглөгдсөн атал 34.8% дээр тогтдог байв.
+   *    Дэлгэрэнгүйг `cashflowCurve`-ийн тайлбараас үз.
+   *
+   * ⚠️ Орон сууцны 7 багцын явцыг «05. Багцын гүйцэтгэл»-ийн биет
+   *    хэмжилтээс мөнгө болгон (ХО дүн × %) авна — тэдний Cashflow сарын
+   *    мөр бөглөгдсөн ч энэ муруй нь ӨӨР асуултад хариулна: «төлөвлөсөн»
+   *    биш «бодитоор баригдсан».
    * ⚠️ Багц 3.1 ЭНД онцгой БИШ — `FinData.phys` аль хэдийн Cashflow-гийн
    *    утгаар ирдэг (`blockProgress.cashflowOverride`).
    */
@@ -246,15 +250,6 @@ export function GeneralDash({
     }
     return housingMoney(finD.data.phys, w, cfMonthAxis());
   }, [finD, cf]);
-  const housingIds = useMemo(() => {
-    const s = new Set<number>();
-    if (cf.state !== 'ready') return s;
-    for (const r of cf.data) {
-      const k = r.pkg2 ? bagtsKey(r.pkg2) : '';
-      if (k && HOUSING_PKGS.includes(k) && r.cfId != null) s.add(r.cfId);
-    }
-    return s;
-  }, [cf]);
   /**
    * ОРОН СУУЦНЫ БАРИЛГАЖИЛТЫН ОДООГИЙН ХУВЬ — «05. Багцын гүйцэтгэл»
    * хуудасны «бодит гүйцэтгэлийн хувь» индикатортой ЯГ НЭГ тоо (2026-09-10,
@@ -288,9 +283,9 @@ export function GeneralDash({
   const cfCurve = useMemo(
     () => cashflowCurve(
       cfPlan.data ?? [], cfTotal, grainOf(period), period, ipcByMonth,
-      housingMoneyByMonth, housingIds,
+      housingMoneyByMonth,
     ),
-    [cfPlan.data, cfTotal, period, ipcByMonth, housingMoneyByMonth, housingIds],
+    [cfPlan.data, cfTotal, period, ipcByMonth, housingMoneyByMonth],
   );
   /* ⚠️ ТУСДАА сэлгүүр: хоёр чарт өөр өөр асуултад хариулдаг тул нэгийг
      хүснэгтээр харах нь нөгөөг ч сэлгэх ёсгүй. */
@@ -442,8 +437,24 @@ export function GeneralDash({
         className={`${g.body} ${side.hostClass}`}
         style={side.style}
       >
-        <SplitGrip {...side.left} />
+        {/*
+          * ⚠️ БАРУУН бариул нь `.body`-д — баруун багана ХОЁР эгнээг
+          * бүтнээр эзэлдэг тул зааг нь ч бүтэн өндөртэй байх ЁСТОЙ.
+          * ЗҮҮН бариул нь `.top` дотор (доорх тайлбарыг үз).
+          */}
         <SplitGrip {...side.right} />
+
+      {/*
+        * ⚠️ ЗҮҮН+ТӨВ-ийг НЭГ баганад боов (2026-09-10). `SplitGrip` нь
+        * `top: 0; bottom: 0`-оор ЭЦГИЙГЭЭ бүтнээр дамнадаг тул зүүн
+        * бариулыг `.body`-д үлдээвэл түүний зурвас доорх «Төсөл нийт —
+        * гүйцэтгэлийн явц» муруйн ДУНДУУР үргэлжилдэг байв — тэнд ямар ч
+        * зааг байхгүй (муруй нь зүүн ба төв хоёуланг дамнана).
+        * Одоо бариул нь `.top`-ын өндрөөр л хязгаарлагдана.
+        */}
+      <div className={g.main}>
+      <div className={g.top}>
+        <SplitGrip {...side.left} />
 
       <aside className={g.left}>
         <Data q={cf} minH={520}>
@@ -549,7 +560,16 @@ export function GeneralDash({
           )}
         </div>
 
-        <div className={g.curve}>
+      </main>
+      </div>
+
+      {/*
+        * ⚠️ МУРУЙ нь `<main>`-ЫН ГАДНА, `.main` баганын ХОЁР ДАХЬ мөр
+        * (2026-09-10). Ингэснээр зүүн ба төв баганыг дамнаж, «Хөрөнгө
+        * оруулалтын төрөл» чартын сул гаргасан өргөнийг бүтнээр авна.
+        * `<main>` дотор байвал төв баганын өргөнөөр хязгаарлагдана.
+        */}
+      <div className={g.curve}>
         {/*
           * CASHFLOW — САРЫН S-МУРУЙ.
           *
@@ -565,7 +585,7 @@ export function GeneralDash({
           note={(
             <span className={g.tlTabs}>
               {/*
-                * ДОМОГ — ХОЁР МУРУЙ (2026-09-10). Өнгө нь тайлбаргүй бол
+                * ДОМОГ — ГУРВАН МУРУЙ (2026-09-10). Өнгө нь тайлбаргүй бол
                 * «аль нь юу вэ» гэдгийг таах аргагүй; хүснэгтийн горимд
                 * хэрэггүй тул зөвхөн график дээр гарна.
                 */}
@@ -573,6 +593,7 @@ export function GeneralDash({
                 <span className={g.tlKey}>
                   <b style={{ background: 'var(--tl-curve)' }} />{tr('Төлөвлөсөн')}
                   <b style={{ background: 'var(--tl-ipc)' }} />{tr('Олгосон')}
+                  <b style={{ background: 'var(--tl-phys)' }} />{tr('Орон сууц, биет')}
                 </span>
               )}
               <button
@@ -609,8 +630,8 @@ export function GeneralDash({
             ))}
           </Data>
         </Section>
-        </div>
-      </main>
+      </div>
+      </div>
 
       <aside className={g.right}>
         {/* ⚠️ Давхаргыг ЭНД асаана: `visible` нь бүрхүүлийн төлөв бөгөөд
@@ -1294,7 +1315,6 @@ function FinCharts({
      үүсэх нь `useMemo`-гийн хамаарлыг тогтворгүй болгодог. */
   const rType = xs && xs.dim !== 'type' ? narrow : sel;
   const rSrc = xs && xs.dim !== 'source' ? narrow : sel;
-  const rNote = xs && xs.dim !== 'note' ? narrow : sel;
   /** Мөр дарах — дахин дарвал тайлагдана */
   const pickX = (dim: XDim) => (k: string) => setXs(
     (v) => (v && v.dim === dim && v.key === k ? null : { dim, key: k }),
@@ -1384,7 +1404,6 @@ function FinCharts({
 
   const c1 = useMemo(() => chartTypeCost(rType, pkgPct, catPct), [rType, pkgPct, catPct]);
   const c3 = useMemo(() => chartSourceMerged(rSrc), [rSrc]);
-  const c4 = useMemo(() => chartNoteAmount(rNote), [rNote]);
 
   return (
     <>
@@ -1438,15 +1457,12 @@ function FinCharts({
         />
       </Section>
 
-      <Section title={tr('Хөрөнгө оруулалтын төрөл')}>
-        <Bars
-          color={BAR_HUE}
-          items={moneyBars(c4)}
-          limit={8}
-          selected={onX('note')}
-          onSelect={pickX('note')}
-        />
-      </Section>
+      {/* ⚠️ «Хөрөнгө оруулалтын төрөл» чарт ЭНДЭЭС ХАСАГДСАН (2026-09-10,
+          хэрэглэгчийн заавар). Түүний эзэлж байсан зайг «Төсөл нийт —
+          гүйцэтгэлийн явц» муруй авав: муруй нь зүүн ба төв баганыг
+          дамнан сунана (`generalDash.module.css` → grid-template-areas).
+          ⚠️ `note` хэмжээсийн ХӨНДЛӨН ШҮҮЛТ хэвээр: `Төсөв, гэрээлсэн
+          дүн»-ий hover-т «Гэрээлсэн дүн» задаргаа тэр талбараас гардаг. */}
     </>
   );
 }
@@ -1518,7 +1534,7 @@ function Timeline({
    * баганаар эрэмбэлнэ, дахин дарвал эсрэгээр.
    */
   const [sort, setSort] = useState<{
-    c: 'label' | 'sub' | 'amount' | 'pct' | 'ipc'; d: 1 | -1;
+    c: 'label' | 'sub' | 'amount' | 'pct' | 'ipc' | 'phys'; d: 1 | -1;
   }>({ c: 'label', d: 1 });
   const barRef = useRef<HTMLDivElement | null>(null);
 
@@ -1613,10 +1629,11 @@ function Timeline({
         : sort.c === 'sub' ? subOf(a).localeCompare(subOf(b)) * sort.d
           : sort.c === 'amount' ? (a.amount - b.amount) * sort.d
             : sort.c === 'ipc' ? ((a.ipcPct ?? -1) - (b.ipcPct ?? -1)) * sort.d
-              : (a.pct - b.pct) * sort.d
+              : sort.c === 'phys' ? ((a.physPct ?? -1) - (b.physPct ?? -1)) * sort.d
+                : (a.pct - b.pct) * sort.d
     ));
     const head = (
-      c: 'label' | 'sub' | 'amount' | 'pct' | 'ipc',
+      c: 'label' | 'sub' | 'amount' | 'pct' | 'ipc' | 'phys',
       label: string,
       right = false,
     ) => (
@@ -1650,6 +1667,8 @@ function Timeline({
               {/* ⚠️ IPC муруйн тоон утга (2026-09-10) — графикт хараад
                   таамаглахын оронд ЯГ утгыг нь эндээс уншина. */}
               {head('ipc', tr('Олгосон IPC, %'), true)}
+              {/* ⚠️ Гурав дахь муруйн тоон утга (2026-09-10) */}
+              {head('phys', tr('Орон сууц, биет %'), true)}
             </tr>
           </thead>
           <tbody>
@@ -1663,6 +1682,7 @@ function Timeline({
                 <td className={g.tlNum}>{mnt(cumOf(p.pct))}</td>
                 {/* ⚠️ `null` → ХООСОН нүд, «0%» БИШ (хэмжигдээгүй ≠ тэг) */}
                 <td className={g.tlNum}>{p.ipcPct == null ? '' : pct(p.ipcPct)}</td>
+                <td className={g.tlNum}>{p.physPct == null ? '' : pct(p.physPct)}</td>
               </tr>
             ))}
           </tbody>
@@ -1764,6 +1784,8 @@ function Timeline({
       : '';
   };
   const ipcPath = curveOf((p) => p.ipcPct);
+  /* ⚠️ Орон сууцны биет явц — ижил smooth, гэхдээ ӨӨР өнгө (домог үз) */
+  const physPath = curveOf((p) => p.physPct);
   /**
    * ⚠️ ХҮЛЭЭГДЭЖ БУЙ ӨӨРЧЛӨЛТ (2026-09-08, хэрэглэгчийн заавар): багана нь
    * ЗАХИРАМЖИЙН дүн БИШ, ГҮЙЦЭТГЭЛИЙН ТӨЛБӨРИЙН АКТ (IPC) байх ёстой —
@@ -1805,6 +1827,12 @@ function Timeline({
           <span className={g.tlHeadTag} title={tr('Олгосон IPC — хуримтлагдсан')}>
             <i style={{ background: 'var(--tl-ipc)' }} />
             {pct(cur.ipcPct)}
+          </span>
+        )}
+        {cur.physPct != null && (
+          <span className={g.tlHeadTag} title={tr('Орон сууцны биет явц — нийт төсөвт эзлэх хувь')}>
+            <i style={{ background: 'var(--tl-phys)' }} />
+            {pct(cur.physPct)}
           </span>
         )}
         {zoom && (
@@ -1881,6 +1909,11 @@ function Timeline({
               гэдэг нь нэг харцаар уншигдана. */}
           {ipcPath && (
             <path className={g.tlLineIpc} d={ipcPath} fill="none" vectorEffect="non-scaling-stroke" />
+          )}
+          {/* ⚠️ ХАМГИЙН ДЭЭР: биет явц нь хамгийн бага утгатай тул доод
+              талд явах ба нөгөө хоёрыг халхлахгүй. */}
+          {physPath && (
+            <path className={g.tlLinePhys} d={physPath} fill="none" vectorEffect="non-scaling-stroke" />
           )}
         </svg>
 
