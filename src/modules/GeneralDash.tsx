@@ -197,12 +197,35 @@ export function GeneralDash({
    */
   /**
    * CASHFLOW-ИЙН S-МУРУЙ — багана нь сарын мөнгө, муруй нь хуримтлагдсан хувь.
-   * ⚠️ Хуваарь нь БҮХ ажлын ХО дүн (`cashflowCurve`-ийн тайлбарыг үз).
+   *
+   * ⚠️ ХУВААРЬ нь «НИЙТ ТӨСӨВ» ИНДИКАТОРТОЙ ЯГ ИЖИЛ (2026-09-11, хэрэглэгчийн
+   *    заавар: «3,167,606,958,415 ₮ ашиглахгүй — өөр санхүүжилт байгаа тул
+   *    яг төсөв нь 2,493,041,880,532, эндээс бодно»). Тэр тоо нь Excel-ийн
+   *    НИЙТ томьёоны хүрээ (`inTotal`: 1 ба 2-р хэсэг) дэх `ho_dun_geree`-
+   *    ийн нийлбэр — `kpisOf().budget`-тэй мөр мөрөөрөө ижил. Нийгмийн дэд
+   *    бүтэц · газар чөлөөлөлт · бондын хүү (674.6 тэрбум) ӨӨР эх үүсвэрээс
+   *    санхүүжих тул энэ муруйн хуваарьт ОРОХГҮЙ.
+   * ⚠️ Урьд нь бүх 78 мөрийн нийлбэр (3,167.6 тэрбум) байсан тул муруй
+   *    2027-12-д 73.1% дээр «дутуу» төгсдөг байв; одоо ижил өгөгдлөөр 92.8%.
+   * ⚠️ ТООЛУУР ч ИЖИЛ ХҮРЭЭНД (`cfPlanInScope`): хуваарийг нарийсгаад
+   *    тоолуурт 5·6·7-р хэсгийн сарын мөр үлдээвэл муруй 100%-ийг давна.
    */
   const cfTotal = useMemo(
-    () => (cf.state === 'ready' ? cf.data.reduce((a, r) => a + r.cost, 0) : 0),
+    () => (cf.state === 'ready' ? cf.data.reduce((a, r) => (r.inTotal ? a + r.cost : a), 0) : 0),
     [cf],
   );
+  /**
+   * НИЙТ ТӨСӨВТ ОРДОГ ажлуудын сарын мөр л — `cfTotal`-тай НЭГ хүрээ.
+   * ⚠️ Ажлын жагсаалт хараахан ирээгүй бол ШҮҮХГҮЙ (бүгдийг өгнө): хоосон
+   *    олонлогоор шүүвэл муруй ачаалалтын үед бүхэлдээ алга болно.
+   */
+  const cfPlanInScope = useMemo(() => {
+    const plan = cfPlan.data ?? [];
+    if (cf.state !== 'ready') return plan;
+    const ids = new Set<number>();
+    for (const r of cf.data) if (r.inTotal && r.cfId != null) ids.add(r.cfId);
+    return plan.filter((p) => ids.has(p.id));
+  }, [cfPlan.data, cf]);
   /**
    * ОЛГОСОН IPC САРААР — `'YYYY-MM'` → ₮ (2026-09-10, хэрэглэгчийн заавар:
    * «IPC олгосон мэдээллүүдийг графикт нэмж өөр өнгөөр харуулах»).
@@ -298,10 +321,10 @@ export function GeneralDash({
   }, [housingNow]);
   const cfCurve = useMemo(
     () => cashflowCurve(
-      cfPlan.data ?? [], cfTotal, grainOf(period), period, ipcByMonth,
+      cfPlanInScope, cfTotal, grainOf(period), period, ipcByMonth,
       housingMoneyByMonth, ipcUndated,
     ),
-    [cfPlan.data, cfTotal, period, ipcByMonth, housingMoneyByMonth, ipcUndated],
+    [cfPlanInScope, cfTotal, period, ipcByMonth, housingMoneyByMonth, ipcUndated],
   );
   /* ⚠️ ТУСДАА сэлгүүр: хоёр чарт өөр өөр асуултад хариулдаг тул нэгийг
      хүснэгтээр харах нь нөгөөг ч сэлгэх ёсгүй. */
