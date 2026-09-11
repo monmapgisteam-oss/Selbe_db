@@ -21,7 +21,11 @@ import Anthropic from "@anthropic-ai/sdk";
 const PORT = Number(process.env.PORT || 8787);
 
 /**
- * ⚠️ CORS — портал өөр эх (`localhost:8123`, `selbe.monmap.mn`)-ээс дуудна.
+ * ⚠️ CORS — портал өөр эх (`localhost:8123`, `smart.selbecity.mn`)-ээс дуудна.
+ *    ⚠️ 2026-09-09: порталын домэйн `selbe.monmap.mn` → `smart.selbecity.mn`
+ *    болов. Жагсаалт нь РЕПОД БИШ, байршуулсан релейн `ALLOW_ORIGIN` орчны
+ *    хувьсагчид байдаг тул домэйн солиход ТЭНД шинэ хаягийг нэмэх ёстой —
+ *    эс бөгөөс шинэ домэйн дээр AI туслах чимээгүй хаагдана (403).
  * `ALLOW_ORIGIN`-д таслалаар тусгаарлан жагсаана. Анхдагч нь зөвхөн локал dev.
  */
 const ALLOWED = (

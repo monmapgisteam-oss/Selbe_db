@@ -13,7 +13,12 @@ compatibility_date = "2026-08-01"
 
 [vars]
 # ⚠️ Порталын БОДИТ хаягууд. Энд байхгүй эхээс ирсэн хүсэлтийг реле татгалзана.
-ALLOW_ORIGIN = "https://selbe.monmap.mn,https://monmapgisteam-oss.github.io,http://localhost:8123"
+# ⚠️ 2026-09-09: порталын домэйн `selbe.monmap.mn` → `smart.selbecity.mn` болов.
+#    ШИНЭ хаягийг эхэнд нь нэмэв; хуучныг шилжилтийн үед үлдээв (хор хөнөөлгүй —
+#    зөвхөн жагсаалтад байгаа эхээс ирсэн хүсэлт л нэвтэрнэ). Энэ өөрчлөлт
+#    ЗӨВХӨН `npm run deploy` (wrangler) хийсний ДАРАА байршуулсан Worker-т хүрнэ —
+#    файл засаад орхивол шинэ домэйн дээр AI туслах 403-оор хаагдсаар байна.
+ALLOW_ORIGIN = "https://smart.selbecity.mn,https://selbe.monmap.mn,https://monmapgisteam-oss.github.io,http://localhost:8123"
 
 # ⚠️ Энэ хувьсагчийг тохируулснаар ArcGIS нэвтрэлт ШААРДАГДАНА: зөвхөн энэ
 #    байгууллагад нэвтэрсэн хэрэглэгч AI-г ашиглана. Хоосон болговол реле
@@ -37,10 +42,11 @@ AGENT_MODEL = "claude-opus-5"
 AGENT_EFFORT = "low"
 
 # ── Өөрийн домэйн (заавал биш) ───────────────────────────────────────────
-# Cloudflare дээр `monmap.mn` бүсийг нэмсэн бол доорхийг идэвхжүүлээд
-# `NEXT_PUBLIC_AGENT_API`-г https://api.selbe.monmap.mn болгоно.
+# Cloudflare дээр `selbecity.mn` бүсийг нэмсэн бол доорхийг идэвхжүүлээд
+# `NEXT_PUBLIC_AGENT_API`-г https://api.smart.selbecity.mn болгоно.
 # Идэвхжүүлэхгүй бол ажлын хаяг нь https://selbe-agent.<нэр>.workers.dev болно.
+# (2026-09-09-өөс өмнө `monmap.mn` бүс / `api.selbe.monmap.mn` байв.)
 #
 # [[routes]]
-# pattern = "api.selbe.monmap.mn/*"
-# zone_name = "monmap.mn"
+# pattern = "api.smart.selbecity.mn/*"
+# zone_name = "selbecity.mn"

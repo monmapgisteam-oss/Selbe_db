@@ -11,6 +11,18 @@ import { useLayerPicks } from '@/lib/useLayerPicks';
 import { useAsync } from '@/lib/useAsync';
 import { usePlanTotals, qtyText } from '@/lib/totals';
 import { loadLandStatus } from '@/lib/land';
+/* ⚠️ 2026-09-10: багцын гүйцэтгэлийн эх сурвалж `BAGTS_NEGTGEL` (батлагдсан
+   архив) → бөглөх хуудасны АМЬД бөглөлт болов — `pkgPct`-ийн тайлбарыг үз.
+   `loadPkgProgress`/`latestPkgProgress` энэ модулиас ХАСАГДСАН; тэдгээр нь
+   бусад самбарт (газрын зураг, PkgProg) хэвээр хэрэглэгдэнэ. */
+import { loadFillPkgProgress } from '@/lib/live';
+import { loadNegtgelFull } from '@/lib/negtgel';
+/* ⚠️ Модулиас модуль руу импорт: «Багцын гүйцэтгэл» хуудасны ЯГ ТЭР
+   тооцоог давтахгүй, ТҮҮНИЙГ дуудна (`Dashboard.tsx` ч ижлээр). */
+import { loadFinData } from '@/modules/Finance';
+/* ⚠️ 2026-09-10: IPC муруйн эх — HO хүснэгтийн БҮХ мөр (`ipcByMonth`-ийн тайлбарыг үз) */
+import { loadHoRows } from '@/lib/ipc';
+import { aggregateMonths } from '@/modules/PkgProg';
 import { overlapLeftParcels } from '@/lib/parcelOverlap';
 import { loadPkgOverlaps } from '@/lib/pkgSaad';
 import {
@@ -18,17 +30,21 @@ import {
      сүлжээний нийлбэр уртад хэрэглэгдэнэ — газар чөлөөлөлтийн давхцал нь
      2026-09-04-нд гэр бүлээс ДЭД БАГЦ руу шилжсэн. */
   PKG_BY_FAMILY, BUILDING, LAYER_BY_ID, PARCEL_LEFT, ZONE_FIELD, ZONE_NONE, type PkgFamily,
+  HO_IPC, hoAmount,
+  /* ⚠️ 2026-09-10: орон сууцны биет явцын жин ба сарын тэнхлэг — `housingMoneyByMonth` */
+  bagtsKey, cfMonthAxis,
 } from '@/lib/services';
 import { queryStats, count } from '@/lib/query';
 import { cat, mnt, num, pct } from '@/lib/format';
 import {
   loadGdashCf, loadContractSum, loadHseNow, loadReasonOids, loadSubPkgLayers,
-  chartTypeCost, chartTypeCount, chartSourceMerged, chartNoteAmount, xMatch,
+  loadCfPlan, cashflowCurve, housingMoney,
+  chartTypeCost, chartSourceMerged, xMatch,
   type XDim,
-  timeline, grainOf, kpisOf, inPeriod, yearsOf, periodActive, activeSubPkgTypes,
+  grainOf, kpisOf, inPeriod, yearsOf, periodActive, activeSubPkgTypes,
   type Grain,
-  NO_PERIOD,
-  type CfRow, type Period, type SubBar, type SubPkg,
+  NO_PERIOD, CONTRACTED,
+  type CfRow, type Period, type SubBar, type SubPkg, type TimePoint,
 } from '@/lib/gdash';
 import { SplitGrip, useSideResize } from '@/components/SplitGrip';
 import g from './generalDash.module.css';
@@ -82,14 +98,6 @@ export function GeneralDash({
      хийсэн, нээгээд харна, бусад үед hide»). Энэ дашбоардын зураг нь гурван
      баганын дунд, доор нь S-муруйтай тул талбай нь хомс — удирдлага нь
      хэрэгтэй агшинд нь л гарч ирнэ. */
-  /**
-   * S-МУРУЙН ХАРАГДАЦ — чарт эсвэл хүснэгт (2026-09-07, хэрэглэгчийн хүсэлт).
-   *
-   * ⚠️ ДОМГИЙГ ОРЛОВ: домог нь зөвхөн «энэ өнгө юуг заана» гэж хэлдэг байсан
-   * бөгөөд шошго бүр чарт дээр гарах болсноор хэрэггүй болсон. Түүний оронд
-   * ижил байрлалд сэлгүүр — чартын ард байгаа ТООГ бүтнээр нь харах зам.
-   */
-  const [tlMode, setTlMode] = useState<'chart' | 'table'>('chart');
   const [toolsOn, setToolsOn] = useState(false);
   const [dimsOn, setDimsOn] = useState(false);
   const [opacity, setOpacity] = useState<Record<string, number>>({});
@@ -122,6 +130,182 @@ export function GeneralDash({
 
   const totals = usePlanTotals(zone, true);
   const cf = useAsync(loadGdashCf, []);
+  /**
+   * САРЫН ТӨЛӨВЛӨГӨӨ — S-муруйн нарийвчлал.
+   *
+   * ⚠️ ХООСОН байж БОЛНО (хүн хараахан бөглөөгүй) — тэр үед муруй хуучин
+   * ЖИГД ТАРААХ аргаараа зурагдана. Тиймээс энэ ачаалалт унасан ч дашбоард
+   * бүтэн ажиллах ёстой: алдааг ЗУРАХГҮЙ, зүгээр л хоосон жагсаалт болно.
+   */
+  /**
+   * ЧАРТЫН ХӨНДЛӨН ШҮҮЛТ — БҮРХҮҮЛИЙН төлөв.
+   *
+   * ⚠️ ЭНД байх ёстой, `FinCharts` дотор БИШ: сонголт нь чартуудад ч,
+   * ДЭЭД ТАЛЫН ИНДИКАТОРУУДАД ч үйлчилнэ. Урьд нь чартын дотор байсан тул
+   * «Барилга угсралт»-ыг дарахад чартууд нарийсаж, атлаа «Нийт төсөв»
+   * хэвээр үлдэж, хоёр зүйл зөрчилдөж харагддаг байв.
+   */
+  const [xs, setXs] = useState<{ dim: XDim; key: string } | null>(null);
+  /**
+   * БАРИЛГА УГСРАЛТЫН ОБЪЁМООР бодогдсон гүйцэтгэл — багц → % (0–100).
+   *
+   * ⚠️ «Гүйцэтгэл бөглөх» хэсгийн эх сурвалж. Барилга угсралтын ажилд
+   * санхүүжсэн хувийг БИШ ҮҮНИЙГ авна (`chartTypeCount`-ийн тайлбарыг үз).
+   * ⚠️ Ачаалагдаж дуустал ХООСОН — тэр үед чарт хуучин эх сурвалжаараа
+   * зурагдана, алдаа заахгүй.
+   */
+  /*
+   * ⚠️ ЭХ СУРВАЛЖ СОЛИГДОВ (2026-09-10, хэрэглэгчийн заавар: «05.багцын
+   *    гүйцэтгэл page дээр бөглөгдсөн гүйцэтгэлийн хувиар оруулах»).
+   *
+   *    ӨМНӨ: `loadPkgProgress` → `BAGTS_NEGTGEL` = БАТЛАГДСАН илгээлтийн
+   *    архив. Хяналтын 4 шат дамжсаны дараа шинэчлэгддэг тул амьд
+   *    бөглөлтөөс ХОЦОРДОГ (амьдаар: Багц 2 — архив 27.60, бөглөлт 28.20).
+   *
+   *    ОДОО: `loadFillPkgProgress` → «Гүйцэтгэл бөглөх» хуудсуудын АМЬД
+   *    бөглөлт, «05. Багцын гүйцэтгэл» хуудасны `Pack.progress`-ТАЙ ЯГ
+   *    ИЖИЛ томьёогоор (блокуудын энгийн дундаж).
+   *
+   * ⚠️ БАГЦ 3.1 нь Cashflow-гоос (16.40%) — гэвч ЭНД солигдохгүй:
+   *    солилт нь `blockProgress.ts`-ийн ЭХ СУРВАЛЖИЙН түвшинд хийгддэг тул
+   *    энэ Map, «05. Багцын гүйцэтгэл», `FinData.phys` бүгд аль хэдийн
+   *    ижил тоотой ирнэ (`cashflowOverride`-ийн тайлбарыг үз).
+   */
+  const fillProg = useAsync(loadFillPkgProgress, []);
+  const pkgPct = useMemo(() => {
+    const m = new Map<string, number>();
+    if (fillProg.state === 'ready') for (const [k, v] of fillProg.data) m.set(k, v);
+    return m;
+  }, [fillProg]);
+  /**
+   * ОРОН СУУЦНЫ ХОРООЛЛЫН БИЕТ ГҮЙЦЭТГЭЛ — «Багцын гүйцэтгэл» хуудасны
+   * «бодит гүйцэтгэлийн хувь» ЯГ ТЭР тоо (2026-09-10, хэрэглэгчийн заавар).
+   *
+   * ⚠️ Багц бүрийг БЛОКИЙНХ НЬ ТООГООР жигнэсэн биет хувь; одоогийн сар
+   * хүртэлх СҮҮЛИЙН хэмжилт. Ирээдүйн сарыг алгасана — хэмжигдээгүй сар
+   * `null` буцаадаг тул тэдгээр нь дунджийг татахгүй.
+   * ⚠️ Уначихвал бүхэл чарт унах ёсгүй: `null` үед мөр тус бүрийн
+   * тооцоо (объём/санхүүжсэн) хэвээр ажиллана.
+   */
+  const finD = useAsync(loadFinData, []);
+
+  const cfPlan = useAsync(loadCfPlan, []);
+  /**
+   * САРЫН МӨНГӨН ХУВААРИЛАЛТ — `Cashflow_dun`-ийн нийлбэр сараар.
+   * ⚠️ Хугацааны шүүлт ба нарийвчлал нь бусад чарттай ИЖИЛ эхээс
+   * (`period`, `grainOf`) — тусад нь тохируулбал хоёр зураг зөрнө.
+   */
+  /**
+   * CASHFLOW-ИЙН S-МУРУЙ — багана нь сарын мөнгө, муруй нь хуримтлагдсан хувь.
+   * ⚠️ Хуваарь нь БҮХ ажлын ХО дүн (`cashflowCurve`-ийн тайлбарыг үз).
+   */
+  const cfTotal = useMemo(
+    () => (cf.state === 'ready' ? cf.data.reduce((a, r) => a + r.cost, 0) : 0),
+    [cf],
+  );
+  /**
+   * ОЛГОСОН IPC САРААР — `'YYYY-MM'` → ₮ (2026-09-10, хэрэглэгчийн заавар:
+   * «IPC олгосон мэдээллүүдийг графикт нэмж өөр өнгөөр харуулах»).
+   *
+   * ⚠️ ЭХ НЬ HO ХҮСНЭГТИЙН БҮХ МӨР (2026-09-10-ны хоёр дахь засвар).
+   *    Урьд нь `FinData.given` (`aggregateMonths`) байв — тэр нь БАГЦААР
+   *    түлхүүрлэгддэг тул диапазон багцын мөрүүд («Багц-1-4»,
+   *    «БАГЦ-10, 11, 13, 15» — `pkgKeyOf` → `''`) ОРДОГГҮЙ, үзүүр нь
+   *    524.9 тэрбум гарч байв. Хэрэглэгчийн заасан «нийт олгосон
+   *    530,872,795,391 ₮» нь `sumPaid(бүх мөр)` тул энд ч ижил хүрээ:
+   *    мөр бүр, багц үл харгалзан. Ингэж л хоёр тоо ТААРНА.
+   * ⚠️ `hoAmount` null (дүнгүй мөр — AUTO, кодгүй) → алгасна, 0 БИШ.
+   * ⚠️ `guilgee_ognoo` нь DateOnly МӨР («2026-03-05»); Cashflow-гийн
+   *    epoch Date-тай холихгүй — энд зөвхөн HO.
+   * ⚠️ Огноогүй мөр (урьдчилгаа) → `undated` → `cashflowCurve`-ийн
+   *    `ipcBase`: ЭХНИЙ IPC сараас хуримтлалд орно (сүүлийн сард нэмбэл
+   *    хуурамч оргил, null ≠ 0).
+   * ⚠️ Ачаалагдаж дуустал ХООСОН → муруй ОГТ зурагдахгүй, чарт хэвийн.
+   */
+  const hoQ = useAsync(loadHoRows, []);
+  const { ipcByMonth, ipcUndated } = useMemo(() => {
+    const byMonth = new Map<string, number>();
+    let undated = 0;
+    if (hoQ.state !== 'ready') return { ipcByMonth: byMonth, ipcUndated: 0 };
+    const P = HO_IPC.payFields;
+    for (const r of hoQ.data) {
+      const amt = hoAmount(r);
+      if (amt == null) continue;
+      const k = ymOf(r[P.payDate]);
+      if (k) byMonth.set(k, (byMonth.get(k) ?? 0) + amt);
+      else undated += amt;
+    }
+    return { ipcByMonth: byMonth, ipcUndated: undated };
+  }, [hoQ]);
+  /**
+   * ОРОН СУУЦНЫ БИЕТ ЯВЦ МӨНГӨН ДҮНГЭЭР — ГУРАВ ДАХЬ ТУСДАА МУРУЙ
+   * (2026-09-10-ны ХОЁР ДАХЬ засвар, хэрэглэгчийн сонголт «A»).
+   *
+   * ⚠️ ТӨЛӨВЛӨСӨН МУРУЙД НЭМЭГДЭХЭЭ БОЛИВ. Өмнөх хувилбар нь орон сууцны
+   *    7 ажлын сарын төлөвлөгөөг хаяж (`skipIds`), оронд нь өнөөдрийн биет
+   *    явцыг цэнхэр муруйд нэмдэг байсан. Орон сууц нь төслийн 58.6%,
+   *    бөглөгдсөн төлөвлөгөөний 53.1% тул цэнхэр муруй ирээдүй рүү өсөхөө
+   *    больж, 2027 он бүтнээр бөглөгдсөн атал 34.8% дээр тогтдог байв.
+   *    Дэлгэрэнгүйг `cashflowCurve`-ийн тайлбараас үз.
+   *
+   * ⚠️ Орон сууцны 7 багцын явцыг «05. Багцын гүйцэтгэл»-ийн биет
+   *    хэмжилтээс мөнгө болгон (ХО дүн × %) авна — тэдний Cashflow сарын
+   *    мөр бөглөгдсөн ч энэ муруй нь ӨӨР асуултад хариулна: «төлөвлөсөн»
+   *    биш «бодитоор баригдсан».
+   * ⚠️ Багц 3.1 ЭНД онцгой БИШ — `FinData.phys` аль хэдийн Cashflow-гийн
+   *    утгаар ирдэг (`blockProgress.cashflowOverride`).
+   */
+  const housingMoneyByMonth = useMemo(() => {
+    if (finD.state !== 'ready' || cf.state !== 'ready') return new Map<string, number>();
+    /* Багц → ХО дүн (жин). Нэг багцад олон гэрээ байвал НИЙЛБЭР. */
+    const w = new Map<string, number>();
+    for (const r of cf.data) {
+      const k = r.pkg2 ? bagtsKey(r.pkg2) : '';
+      if (!k || r.cost <= 0) continue;
+      w.set(k, (w.get(k) ?? 0) + r.cost);
+    }
+    return housingMoney(finD.data.phys, w, cfMonthAxis());
+  }, [finD, cf]);
+  /**
+   * ОРОН СУУЦНЫ БАРИЛГАЖИЛТЫН ОДООГИЙН ХУВЬ — «05. Багцын гүйцэтгэл»
+   * хуудасны «бодит гүйцэтгэлийн хувь» индикатортой ЯГ НЭГ тоо (2026-09-10,
+   * хэрэглэгчийн заавар: «энэ 2 нэг мэдээлэл тул source-г 05-ын бодит
+   * гүйцэтгэлийн хувиас авахаар холбо»).
+   *
+   * ⚠️ ИЖИЛ ТОМЬЁО: `aggregateMonths().phys` (блок-жигнэсэн), одоогийн сар
+   *    хүртэлх СҮҮЛИЙН хэмжилт — `PkgProg.TsKpi`-тай мөр мөрөөрөө ижил.
+   *    Төслийн мөнгөн жингээр дахин бодохгүй: тэгвэл хоёр самбар зөрнө
+   *    (2026-09-10-нд 23.44 ↔ 23.84 зөрж байв).
+   * ⚠️ Хэмжилтгүй бол `null` — чартын мөр ОГТ гарахгүй (0% зурвас нь
+   *    «эхэлсэн ч юу ч хийгээгүй» гэсэн худал мэдэгдэл болно).
+   */
+  const housingNow = useMemo(() => {
+    if (finD.state !== 'ready') return null;
+    const now = new Date().toISOString().slice(0, 7);
+    let last: number | null = null;
+    for (const m of aggregateMonths(finD.data)) {
+      if (m.label > now) continue;
+      if (m.phys != null) last = m.phys;
+    }
+    return last;
+  }, [finD]);
+  const catPct = useMemo(() => {
+    const m = new Map<string, number>();
+    /* ⚠️ «Төсөв, гэрээлсэн дүн»-гийн орон сууцны хороолол ба «Төслийн
+       гүйцэтгэл»-ийн орон сууцны барилга угсралт — НЭГ тоо (`housingNow`). */
+    if (housingNow != null) m.set('ОРОН СУУЦНЫ ХОРООЛОЛ', housingNow);
+    return m;
+  }, [housingNow]);
+  const cfCurve = useMemo(
+    () => cashflowCurve(
+      cfPlan.data ?? [], cfTotal, grainOf(period), period, ipcByMonth,
+      housingMoneyByMonth, ipcUndated,
+    ),
+    [cfPlan.data, cfTotal, period, ipcByMonth, housingMoneyByMonth, ipcUndated],
+  );
+  /* ⚠️ ТУСДАА сэлгүүр: хоёр чарт өөр өөр асуултад хариулдаг тул нэгийг
+     хүснэгтээр харах нь нөгөөг ч сэлгэх ёсгүй. */
+  const [cfMode, setCfMode] = useState<'chart' | 'table'>('chart');
 
   /**
    * ШҮҮЛТЭД БАГТСАН дэд багц → ажлын төрлүүд.
@@ -177,10 +361,25 @@ export function GeneralDash({
   const beforeReason = useRef<string[] | null>(null);
   /** «Тулгамдаж буй асуудал»-аас багц асаахын ӨМНӨХ давхаргын сонголт */
   const beforePkg = useRef<string[] | null>(null);
+  /**
+   * «Ажлын төрлөөр давхцаж буй»-г дарахаас ӨМНӨХ давхаргын төлөв.
+   * ⚠️ Тайлахад ЯГ ТҮҮНИЙГ сэргээнэ — зөвхөн нэмсэн давхаргаа хасвал
+   * хэрэглэгчийн өөрийн асаасан давхарга ч хамт унтарч болно.
+   */
+  const beforeType = useRef<string[] | null>(null);
 
   const pickReason = useCallback((k: string) => {
     const next = k === reason ? null : k;
     setReason(next);
+
+    /* ⚠️ «Ажлын төрлөөр давхцаж буй»-гийн сонголт шалтгаанаас ХАМААРНА:
+       шалтгаан солигдоход түүний мөрүүд өөр болох тул асаасан давхаргыг
+       буцаана. Эс бөгөөс хуучин төрлийн давхарга шинэ шалтгааны дор
+       хамааралгүй үлдэнэ. */
+    if (beforeType.current) {
+      setVisible(beforeType.current);
+      beforeType.current = null;
+    }
 
     /* ЦУЦЛАХ — шүүлт ба давхаргын сонголт хоёуланг нь буцаана */
     if (next == null) {
@@ -254,21 +453,50 @@ export function GeneralDash({
         className={`${g.body} ${side.hostClass}`}
         style={side.style}
       >
-        <SplitGrip {...side.left} />
+        {/*
+          * ⚠️ БАРУУН бариул нь `.body`-д — баруун багана ХОЁР эгнээг
+          * бүтнээр эзэлдэг тул зааг нь ч бүтэн өндөртэй байх ЁСТОЙ.
+          * ЗҮҮН бариул нь `.top` дотор (доорх тайлбарыг үз).
+          */}
         <SplitGrip {...side.right} />
+
+      {/*
+        * ⚠️ ЗҮҮН+ТӨВ-ийг НЭГ баганад боов (2026-09-10). `SplitGrip` нь
+        * `top: 0; bottom: 0`-оор ЭЦГИЙГЭЭ бүтнээр дамнадаг тул зүүн
+        * бариулыг `.body`-д үлдээвэл түүний зурвас доорх «Төсөл нийт —
+        * гүйцэтгэлийн явц» муруйн ДУНДУУР үргэлжилдэг байв — тэнд ямар ч
+        * зааг байхгүй (муруй нь зүүн ба төв хоёуланг дамнана).
+        * Одоо бариул нь `.top`-ын өндрөөр л хязгаарлагдана.
+        */}
+      <div className={g.main}>
+      <div className={g.top}>
+        <SplitGrip {...side.left} />
 
       <aside className={g.left}>
         <Data q={cf} minH={520}>
-          {(rows) => <FinCharts rows={rows} period={period} />}
+          {(rows) => <FinCharts rows={rows} period={period} xs={xs} setXs={setXs} pkgPct={pkgPct} catPct={catPct} housingNow={housingNow} />}
         </Data>
       </aside>
 
       <main className={g.center}>
+        {/*
+          * ⚠️ ШҮҮЛТ нь ИНДИКАТОРЫН ДЭЭР (2026-09-07, хэрэглэгчийн заавар).
+          * Богино хугацаанд зургийн дээр байрлуулж үзээд буцав: тэнд гурван
+          * бүлгийн бүх утга (6 жил + 4 улирал + 12 сар) багтахгүй, зургийн
+          * өөрийн удирдлагатай ч давхцаж байлаа.
+          */}
+        <PeriodBar
+          period={period}
+          setPeriod={setPeriod}
+          years={cf.state === 'ready' ? yearsOf(cf.data) : []}
+        />
         <Data q={cf} minH={72}>
           {(rows) => (
             <KpiStrip
               rows={rows}
               period={period}
+              /* ⚠️ Чартын сонголт — индикатор ч ТҮҮГЭЭР нарийсна */
+              xs={xs}
               contracts={contracts.state === 'ready' ? contracts.data : null}
             />
           )}
@@ -288,24 +516,6 @@ export function GeneralDash({
             uniform
             onPick={pick}
           />
-
-          {/*
-            * ХУГАЦААНЫ ШҮҮЛТ — ЗУРГИЙН ДЭЭР (2026-09-07, хэрэглэгчийн заавар).
-            *
-            * ⚠️ Урьд нь дашбоардын ДЭЭД мөрөнд бүтэн өргөнөөр сууж, гурван
-            * товчны төлөө бүхэл зурвас (~44px) иддэг байв. Зураг нь энэ
-            * харагдацын хамгийн уян хэсэг тул тэр зайг эргүүлэн авав.
-            *
-            * ⚠️ Зургийн бусад удирдлагатай НЭГ ГЭР БҮЛ: дээд зүүн буланд,
-            * давхарга/тунгалагийн товчнуудтай нэг өндөрт.
-            */}
-          <div className={g.mapFilter}>
-            <PeriodBar
-              period={period}
-              setPeriod={setPeriod}
-              years={cf.state === 'ready' ? yearsOf(cf.data) : []}
-            />
-          </div>
 
           {/* Дээш хураах — 2D/3D/BIM зурвас (зургийн дээд төвд) */}
           <button
@@ -366,59 +576,81 @@ export function GeneralDash({
           )}
         </div>
 
-        <div className={g.curve}>
-        {/* ⚠️ Сэлгүүр нь `note` пропоор ТОЛГОЙД — `Section` түүнийг гарчгийн
-            баруун захад тавьдаг. Доор байвал чартын өндөр хэлбэлзэж, зэргэлдээх
-            газрын зураг сэлгэх бүрд үсэрнэ. */}
+      </main>
+      </div>
+
+      {/*
+        * ⚠️ МУРУЙ нь `<main>`-ЫН ГАДНА, `.main` баганын ХОЁР ДАХЬ мөр
+        * (2026-09-10). Ингэснээр зүүн ба төв баганыг дамнаж, «Хөрөнгө
+        * оруулалтын төрөл» чартын сул гаргасан өргөнийг бүтнээр авна.
+        * `<main>` дотор байвал төв баганын өргөнөөр хязгаарлагдана.
+        */}
+      <div className={g.curve}>
+        {/*
+          * CASHFLOW — САРЫН S-МУРУЙ.
+          *
+          * ⚠️ ХУУЧИН «Хөрөнгө оруулалтын гүйцэтгэл» муруй ЭНДЭЭС ХАСАГДСАН
+          * (2026-09-10, хэрэглэгчийн заавар: «хуучин s curve delete, шинэ
+          * s curve Cashflow шүү»). Тэр нь ажлын хугацааг сараар ЖИГД
+          * тараадаг ТААМАГ байсан бол энэ нь хүний бөглөсөн БОДИТ
+          * төлөвлөгөө — нэг дэлгэц дээр хоёр S-муруй байвал аль нь ч
+          * итгэл төрүүлэхгүй.
+          */}
         <Section
-          title={tr('Хөрөнгө оруулалтын гүйцэтгэл')}
+          title={tr('Төсөл нийт — гүйцэтгэлийн явц')}
           note={(
             <span className={g.tlTabs}>
+              {/*
+                * ДОМОГ — ХОЁР МУРУЙ (2026-09-10). Өнгө нь тайлбаргүй бол
+                * «аль нь юу вэ» гэдгийг таах аргагүй; хүснэгтийн горимд
+                * хэрэггүй тул зөвхөн график дээр гарна.
+                */}
+              {cfMode === 'chart' && (
+                <span className={g.tlKey}>
+                  <b style={{ background: 'var(--tl-curve)' }} />{tr('Төлөвлөсөн')}
+                  <b style={{ background: 'var(--tl-ipc)' }} />{tr('Олгосон')}
+                  {/* ⚠️ «Орон сууц, биет» (ягаан) НУУГДСАН — 2026-09-10,
+                      хэрэглэгчийн заавар. Өгөгдөл (`physPct`) хэвээр
+                      бодогдоно; буцаахад энд, толгойн таг ба SVG замд
+                      нэг нэг мөр л нэмнэ. */}
+                </span>
+              )}
               <button
                 type="button"
-                aria-pressed={tlMode === 'chart'}
-                className={`${g.tlTab} ${tlMode === 'chart' ? g.tlTabOn : ''}`}
-                onClick={() => setTlMode('chart')}
+                aria-pressed={cfMode === 'chart'}
+                className={`${g.tlTab} ${cfMode === 'chart' ? g.tlTabOn : ''}`}
+                onClick={() => setCfMode('chart')}
               >
-                {tr('Чарт')}
+                {tr('График')}
               </button>
               <button
                 type="button"
-                aria-pressed={tlMode === 'table'}
-                className={`${g.tlTab} ${tlMode === 'table' ? g.tlTabOn : ''}`}
-                onClick={() => setTlMode('table')}
+                aria-pressed={cfMode === 'table'}
+                className={`${g.tlTab} ${cfMode === 'table' ? g.tlTabOn : ''}`}
+                onClick={() => setCfMode('table')}
               >
                 {tr('Хүснэгт')}
               </button>
             </span>
           )}
         >
-          <Data q={cf} minH={190}>
-            {(rows) => (
-              <Timeline
-                /*
-                 * ⚠️ МӨРҮҮДИЙГ УРЬДЧИЛАН ШҮҮХГҮЙ — `timeline()` ӨӨРӨӨ
-                 * тасалдаг бөгөөд ХУРИМТЛАЛЫГ таслахаас ӨМНӨ бодох ёстой.
-                 * Урьд нь энд `inPeriod`-оор шүүж өгдөг байсан тул тухайн
-                 * үеэс ӨМНӨ дууссан ажлууд хуримтлалд ОРОЛЦОХГҮЙ, муруй
-                 * доогуур эхэлдэг байв: 2027-г сонгоход 96.0% байх ёстой
-                 * цэг 81.6% гэж гарч байлаа (2026-09-06-ны аудит).
-                 *
-                 * ⚠️ Багананы дүнд энэ нөлөөлөхгүй: сонгосон үеэс гадуурх
-                 * ажлын мөнгө тэр үеийн саруудад ямар ч байсан ногдохгүй.
-                 */
-                rows={rows}
-                period={period}
-                /* ⚠️ Нарийвчлал нь СОНГОСОН ШҮҮЛТИЙН ТҮВШИНТЭЙ таарна: жил →
-                   жилээр, улирал → улиралаар, сар → сараар. */
-                grain={grainOf(period)}
-                mode={tlMode}
+          <Data q={cfPlan} minH={190}>
+            {() => (cfCurve.length === 0 ? (
+              /* ⚠️ ТЭГ БАГАНА ЗУРАХГҮЙ — «мөнгө гарахгүй» гэсэн ХУДАЛ уншилт
+                 болно. Хоосон бол шалтгаан ба зам нь хэлэгдэнэ. */
+              <Empty
+                label={tr('Сарын хуваарилалт бөглөгдөөгүй')}
+                hint={tr('«Санхүүжилт → Cashflow хувиарлах» хэсгээс ажил бүрийн сарын хувийг оруулна уу.')}
               />
-            )}
+            ) : (
+              /* ⚠️ «Хөрөнгө оруулалтын гүйцэтгэл»-ТЭЙ НЭГ бүрэлдэхүүн: зум,
+                 hover, чарт/хүснэгт сэлгүүр бүхэлдээ ижил ажиллана. */
+              <Timeline points={cfCurve} grain={grainOf(period)} total={cfTotal} mode={cfMode} />
+            ))}
           </Data>
         </Section>
-        </div>
-      </main>
+      </div>
+      </div>
 
       <aside className={g.right}>
         {/* ⚠️ Давхаргыг ЭНД асаана: `visible` нь бүрхүүлийн төлөв бөгөөд
@@ -431,7 +663,15 @@ export function GeneralDash({
           reason={reason}
           byReason={byReason}
           onPickReason={pickReason}
+          /* ⚠️ `null` = мөрийг дахин дарж ТАЙЛСАН — асаасан давхаргаа
+             буцаана («Саад — багцаар»-тай ИЖИЛ зан). */
           onShowLayers={(ids) => {
+            if (!ids) {
+              if (beforeType.current) setVisible(beforeType.current);
+              beforeType.current = null;
+              return;
+            }
+            if (beforeType.current == null) beforeType.current = visible;
             setVisible((v) => [...new Set([...v, ...ids])]);
             if (ids[0]) map.zoomToLayer(ids[0]);
           }}
@@ -486,8 +726,6 @@ function PeriodBar({
   setPeriod: (p: Period) => void;
   years: number[];
 }) {
-  const [open, setOpen] = useState<{ k: Dim3; x: number; y: number } | null>(null);
-
   /**
    * ⚠️ ОЛОН СОНГОЛТ (2026-09-04, хэрэглэгчийн хүсэлт). Хэмжээс тус бүр нь
    * ОЛОНЛОГ; хоосон = бүгд. Гурав нь хоорондоо БАЙ (AND) — «2026 · 1,2-р
@@ -506,133 +744,98 @@ function PeriodBar({
     });
   };
 
-  const CFG: Record<Dim3, { label: string; opts: number[]; text: (v: number) => string }> = {
-    years: { label: tr('Жил'), opts: years, text: (v) => String(v) },
-    quarters: { label: tr('Улирал'), opts: QUARTERS, text: (v) => tr('{0}-р улирал', String(v)) },
-    months: { label: tr('Сар'), opts: MONTHS, text: (v) => tr('{0}-р сар', String(v)) },
+  /**
+   * ⚠️ ШОШГО НЬ ЗӨВХӨН ТОО («6», БИШ «6-р сар»): нүд бүр нь бүлгийн нэрийн
+   * («САР») дор зогсох тул нэгжийг давтах нь зурвасыг гурав дахин уртасгаад
+   * мэдээлэл нэмэхгүй. Дэлгэрэнгүй нэр нь `title`-д үлдэнэ.
+   */
+  const CFG: Record<Dim3, { label: string; opts: number[]; text: (v: number) => string; full: (v: number) => string }> = {
+    years: {
+      label: tr('Жил'), opts: years, text: (v) => String(v), full: (v) => String(v),
+    },
+    quarters: {
+      label: tr('Улирал'),
+      opts: QUARTERS,
+      text: (v) => String(v),
+      full: (v) => tr('{0}-р улирал', String(v)),
+    },
+    months: {
+      label: tr('Сар'),
+      opts: MONTHS,
+      text: (v) => String(v),
+      full: (v) => tr('{0}-р сар', String(v)),
+    },
   };
 
-  /** Сегмент дээрх утга — олон сонгосон бол «2024 +2» гэж хураана */
-  const valueOf = (k: Dim3) => {
+  /**
+   * БҮЛЭГ — нэр, «Бүгд», дараа нь утга бүр өөрийн ШАХМАЛААР.
+   *
+   * ⚠️ ЦЭС БАЙХГҮЙ (2026-09-07, хэрэглэгчийн шийдвэр). Урьд нь гурван унждаг
+   * цэс байсан: сонголт хийхийн тулд нээх → сонгох → хаах гэсэн гурван алхам
+   * шаардагддаг бөгөөд ЯМАР утгууд байгааг нээхээс өмнө мэдэх аргагүй байв.
+   * Бүх утга ил байвал сонголт НЭГ товшилт болно.
+   *
+   * ⚠️ «Бүгд» нь ЧАГТ шиг ажиллана: дарвал бүх утга сонгогдоно, дахин дарвал
+   * тайлагдана (хоосон = бүгд гэсэн утга ижил).
+   */
+  const grp = (k: Dim3) => {
+    const c = CFG[k];
     const sel = period[k];
-    if (sel.length === 0) return '';
-    if (sel.length === 1) return CFG[k].text(sel[0]);
-    return tr('{0} +{1}', CFG[k].text(sel[0]), String(sel.length - 1));
-  };
-
-  const drop = (k: Dim3) => {
-    const on = period[k].length > 0;
+    /*
+     * ⚠️ ХОЁР ӨӨР ОЙЛГОЛТ (2026-09-07-ны алдааны засвар):
+     *   · `allPicked` — БҮГД ил чагттай. Дарвал ТАЙЛНА.
+     *   · `allOn`     — тэмдэглэгээ. Хоосон нь ч «бүгд»-ийг хамардаг тул тод.
+     * Урьд нь хоёуланг `allOn`-оор шийддэг байсан тул ЭХНИЙ (хоосон) төлөвт
+     * «Бүгд» дарахад цэвэрлэх салаа руу орж, нэг ч утга сонгогддоггүй байв.
+     */
+    const allPicked = c.opts.length > 0 && sel.length === c.opts.length;
+    const allOn = sel.length === 0 || allPicked;
     return (
-      <button
-        key={k}
-        type="button"
-        aria-haspopup="listbox"
-        aria-expanded={open?.k === k}
-        className={`${g.fDrop} ${on ? g.fDropOn : ''}`}
-        onClick={(ev) => {
-          const r = (ev.currentTarget as HTMLElement).getBoundingClientRect();
-          setOpen((o) => (o?.k === k ? null : { k, x: r.left, y: r.bottom }));
-        }}
-      >
-        <span className={g.fDropLbl}>{CFG[k].label}</span>
-        <span className={g.fDropVal}>{valueOf(k)}</span>
-      </button>
-    );
-  };
-
-  const menu = () => {
-    if (!open) return null;
-    const c = CFG[open.k];
-    const sel = period[open.k];
-    /* ⚠️ ХООСОН нь ч «бүгд»: шүүлтгүй төлөв нь бүх утгыг хамардаг тул хоёулаа
-       ижил байдлаар тэмдэглэгдэнэ. */
-    const allOn = sel.length === 0 || sel.length === c.opts.length;
-    return (
-      <>
-        <div className={g.fVeil} onClick={() => setOpen(null)} />
-        <ul
-          className={g.fMenu}
-          role="listbox"
-          aria-multiselectable
-          style={{ left: Math.min(open.x, Math.max(8, window.innerWidth - 200)), top: open.y }}
+      <span key={k} className={g.fGrp}>
+        <span className={g.fGrpLbl}>{c.label}</span>
+        <button
+          type="button"
+          aria-pressed={allOn}
+          className={`${g.fPill} ${allOn ? g.fPillOn : ''}`}
+          onClick={() => setPeriod({ ...period, [k]: allPicked ? [] : [...c.opts] })}
         >
-          {/*
-            * «БҮГД» — БҮХ сонголтыг ЧАГТАЛНА (2026-09-07, хэрэглэгчийн заавар).
-            *
-            * ⚠️ Урьд нь энэ нь ЦЭВЭРЛЭХ үйлдэл байсан (олонлогийг хоослох).
-            * Үр дүн нь ижил (хоосон = бүгд) ч дэлгэц дээр НЭГ Ч чагт асдаггүй
-            * тул «дарсан ч юу ч болсонгүй» гэж уншигддаг байв.
-            *
-            * ⚠️ Бүгд аль хэдийн чагттай үед дарвал ТАЙЛНА — эс бөгөөс энэ мөр
-            * нэг чиглэлт болж, буцаах ганц зам нь чагтуудыг нэг нэгээр
-            * тайлах болно.
-            */}
-          <li>
-            <button
-              type="button"
-              role="option"
-              aria-selected={allOn}
-              className={`${g.fOpt} ${allOn ? g.fOptOn : ''}`}
-              onClick={() => setPeriod({
-                ...period,
-                [open.k]: allOn ? [] : [...c.opts],
-              })}
-            >
-              <i className={g.fTick} aria-hidden>{allOn ? '✓' : ''}</i>
-              {tr('Бүгд')}
-            </button>
-          </li>
-          {c.opts.map((v) => (
-            <li key={v}>
-              {/* ⚠️ Цэс сонголт бүрд ХААГДАХГҮЙ — олон зүйл сонгох гол зорилго */}
-              <button
-                type="button"
-                role="option"
-                aria-selected={sel.includes(v)}
-                className={`${g.fOpt} ${sel.includes(v) ? g.fOptOn : ''}`}
-                onClick={() => toggle(open.k, v)}
-              >
-                <i className={g.fTick} aria-hidden>{sel.includes(v) ? '✓' : ''}</i>
-                {c.text(v)}
-              </button>
-            </li>
-          ))}
-        </ul>
-      </>
+          {tr('Бүгд')}
+        </button>
+        {c.opts.map((v) => (
+          <button
+            key={v}
+            type="button"
+            aria-pressed={sel.includes(v)}
+            title={c.full(v)}
+            className={`${g.fPill} ${sel.includes(v) ? g.fPillOn : ''}`}
+            onClick={() => toggle(k, v)}
+          >
+            {c.text(v)}
+          </button>
+        ))}
+      </span>
     );
   };
 
   return (
-    /*
-     * ⚠️ ХУРААХ ТОВЧ БАЙХГҮЙ (2026-09-07, хэрэглэгчийн шийдвэр). Урьд нь
-     * «ШҮҮХ ▾» товчоор нээж хаадаг байсныг хассан: гурван сегмент нь өөрсдөө
-     * нэг мөрд багтдаг бөгөөд шүүлт нь БҮХ картад үйлчилдэг тул түүнийг нуух
-     * нь «энэ дэлгэц юугаар шүүгдсэн бэ» гэдгийг далдалдаг байв. Нээх алхам
-     * нь өөрөө шүүлт хэрэглэхийг саатуулж байлаа.
-     */
     <div className={g.filters}>
-      {menu()}
-      <div className={g.fBar}>
-        {drop('years')}
-        {drop('quarters')}
-        {drop('months')}
-        {/*
-          * ⚠️ ЦУЦЛАХ нь ЗУРВАСЫН ДОТОР, сүүлийн сегмент — хайлтын талбарын
-          * ✕-тэй ижил зарчим: цэвэрлэх үйлдэл цэвэрлэх зүйлтэйгээ нэг
-          * хүрээнд байна.
-          */}
-        {periodActive(period) && (
-          <button
-            type="button"
-            className={g.fClear}
-            title={tr('Шүүлт цуцлах')}
-            aria-label={tr('Шүүлт цуцлах')}
-            onClick={() => setPeriod(NO_PERIOD)}
-          >
-            ✕
-          </button>
-        )}
-      </div>
+      {grp('years')}
+      {grp('quarters')}
+      {grp('months')}
+      {/* ⚠️ ЦУЦЛАХ нь зурвасын ТӨГСГӨЛД, зөвхөн шүүлттэй үед — цэвэрлэх зүйлгүй
+          үед байнга зогсох товч нь зай эзэлж, «юу цуцлах вэ» гэсэн асуулт
+          төрүүлнэ. */}
+      {periodActive(period) && (
+        <button
+          type="button"
+          className={g.fClear}
+          title={tr('Шүүлт цуцлах')}
+          aria-label={tr('Шүүлт цуцлах')}
+          onClick={() => setPeriod(NO_PERIOD)}
+        >
+          ✕
+        </button>
+      )}
     </div>
   );
 }
@@ -640,21 +843,44 @@ function PeriodBar({
 /* ══════════════════════ ЗУРГИЙН ДЭЭРХ ИНДИКАТОР ══════════════════════ */
 
 function KpiStrip({
-  rows, period, contracts,
+  rows, period, contracts, xs,
 }: {
   rows: CfRow[];
   period: Period;
   contracts: Map<number, number> | null;
+  /** Чартын хөндлөн сонголт — `null` бол шүүлтгүй */
+  xs: { dim: XDim; key: string } | null;
 }) {
   const land = useAsync(loadLandStatus, []);
-
-  const k = useMemo(() => {
-    const sel = rows.filter((r) => inPeriod(r, period));
-    const csum = contracts ? sel.reduce((s, r) => s + (contracts.get(r.oid) ?? 0), 0) : 0;
-    return kpisOf(sel, csum);
-  }, [rows, period, contracts]);
-
   const landPct = land.state === 'ready' ? land.data.pct : null;
+
+  /*
+   * ⚠️ `landPct` нь ХАМААРАЛД ЗААВАЛ: «Гүйцэтгэлийн хувь» индикатор одоо
+   * зургаан шатны жигнэсэн нийлбэр бөгөөд түүний нэг гишүүн нь газар
+   * чөлөөлөлтийн явц. Хамааралд оруулаагүй бол газрын тоо ирэхэд индикатор
+   * шинэчлэгдэхгүй, гурав дахин бага утга дээр гацна.
+   */
+  const k = useMemo(() => {
+    /* ⚠️ ХУГАЦАА ба ЧАРТЫН сонголт ХОЁУЛАА — эс бөгөөс «Барилга угсралт»-ыг
+       дарахад чарт нарийсаж, индикатор бүтэн үлдэж, хоёр тоо зөрчилдөнө. */
+    const sel = rows.filter((r) => inPeriod(r, period) && (xs == null || xMatch(r, xs.dim, xs.key)));
+    /*
+     * НИЙТ ГЭРЭЭЛСЭН ДҮН — ЗӨВХӨН ГЭРЭЭЛЭГДСЭН мөрүүд (2026-09-08,
+     * хэрэглэгчийн заавар: «буруу талбараас утга авсан байна»).
+     *
+     * ⚠️ `Geree_erh_dun` нь гэрээлэгдээгүй мөрүүдэд ч бөглөгдсөн байдаг тул
+     * бүх мөрөөр нийлбэл 2,073 тэрбум гарч, бодит гэрээнээс 33 тэрбумаар
+     * их болно. Гэрээ хийгдсэн эсэхийг «Хөрөнгө оруулалтын төрөл»
+     * (`HO_dungiin_tailbar`) талбар л хэлдэг — түүний «Гэрээлсэн дүн» утга.
+     * ⚠️ Ингэснээр индикатор нь «Төсөв, гэрээлсэн дүн» чарттай ЯГ таарна
+     * (2,039.8 тэрбум) — урьд нь хоёр тоо зөрж, аль нь үнэн болох нь
+     * ойлгомжгүй байв.
+     */
+    const csum = contracts
+      ? sel.reduce((s, r) => (r.note === CONTRACTED ? s + (contracts.get(r.oid) ?? 0) : s), 0)
+      : 0;
+    return kpisOf(sel, csum, landPct);
+  }, [rows, period, contracts, landPct, xs]);
 
   return (
     <div className={g.kpis}>
@@ -670,13 +896,23 @@ function KpiStrip({
             байв — үнэндээ энэ зурвас дарагддаггүй, сонголтгүй. Ялгаа
             хэрэгтэй бол дараалал нь өөрөө хангалттай: нийт төсөв эхэнд. */}
         <Stat icon="calc" value={mntShort(k.budget)} label={tr('Нийт төсөв')} />
-        <Stat icon="file" value={contracts ? mntShort(k.contract) : '…'} label={tr('Нийт гэрээний дүн')} />
-        {/* ⚠️ ХУВЬ + МӨНГӨ хамт: «19.1%» гэдэг нь ямар хэмжээний ажил болохыг
-            дангаараа хэлдэггүй. Мөнгө нь `Σ өртөг × хувь` — захирамжаар
-            олгосон дүн БИШ (`Kpi.progressAmount`-ийн тайлбарыг үз). */}
+        <Stat icon="file" value={contracts ? mntShort(k.contract) : '…'} label={tr('Нийт гэрээлсэн дүн')} />
+        {/*
+          * ⚠️ МӨНГӨН ДҮН ТҮР ХАСАГДСАН (2026-09-08, хэрэглэгчийн заавар:
+          * «851.0 тэрбум ₮ — үүнийг IPC-ээс авна, одоохондоо hide хий»).
+          *
+          * Тэр тоо нь `төсөв × гүйцэтгэлийн хувь` гэсэн ДЕРИВАТИВ байсан —
+          * бодитоор олгосон мөнгө БИШ. Гүйцэтгэлийн ТӨЛБӨРИЙН АКТ (IPC) нь
+          * жинхэнэ олголтыг мэддэг бөгөөд бэлэн болмогц ЭНД холбогдоно;
+          * `Kpi.progressAmount` тооцоо нь кодод ХЭВЭЭР (`gdash.ts`).
+          *
+          * ⚠️ Худал тоо харуулснаас ОГТ ХАРУУЛАХГҮЙ нь дээр: индикаторын
+          * мөнгө нь захирамжийн олголттой (2.48 их наяд) эрс зөрдөг тул хүн
+          * хоёрыг харьцуулаад аль нь ч үнэн биш гэж эргэлзэнэ.
+          */}
         <Stat
           icon="chart"
-          value={k.progress == null ? '—' : `${pct(k.progress)} · ${mntShort(k.progressAmount)}`}
+          value={k.progress == null ? '—' : pct(k.progress)}
           label={tr('Гүйцэтгэлийн хувь')}
         />
         <Stat icon="layers" value={num(k.packages)} label={tr('Багц ажлын тоо')} />
@@ -887,6 +1123,26 @@ const moneyBars = (
          «үргэлжлэл тасарсан» мэт уншигдана. */
       if (lines.length > 0) hint.push(TIP_RULE, ...lines);
     }
+    /*
+     * ГҮЙЦЭТГЭЛИЙН ХОЁР ХЭМЖҮҮР — «Гэрээлсэн байдал, бодит гүйцэтгэл»
+     * чартаас НЭГТГЭГДСЭН (2026-09-10, хэрэглэгчийн заавар).
+     *
+     * ⚠️ ГЭРЭЭНЭЭС ТУСДАА бүлэгт (зураасны дараа): гэрээ бол ЭРХ,
+     * гүйцэтгэл бол БИЕТ ажил. Нэг бүлэгт нийлбэл «17 гэрээнээс 19% нь
+     * хийгдсэн» мэт буруу холбоо уншигдана.
+     * ⚠️ `null` бол «хэмжигдээгүй» — 0% гэж бичихгүй.
+     */
+    if (i.perf !== undefined) {
+      hint.push(TIP_RULE);
+      hint.push(i.perf == null
+        ? tr('Гүйцэтгэл хэмжигдээгүй')
+        : `${tr('Бодит гүйцэтгэл')}: ${pct(i.perf, 1)}`);
+      /* ⚠️ ИЖИЛ бол давхардуулж бичихгүй — нэг тоог хоёр нэрээр харуулбал
+         хоёр өөр хэмжүүр мэт уншигдана. */
+      if (i.fin != null && (i.perf == null || Math.abs(i.fin - i.perf) > 0.05)) {
+        hint.push(`${tr('Санхүүжсэн гүйцэтгэл')}: ${pct(i.fin, 1)}`);
+      }
+    }
     return {
       key: i.key,
       label: nice(i.label),
@@ -903,6 +1159,11 @@ const moneyBars = (
       value: subLabel
         ? (i.value > 0 ? Math.min(100, (i.sub / i.value) * 100) : 0)
         : i.value,
+      /* ⚠️ ЗӨВХӨН дэд цуваатай чартад (тэнхлэг нь 0–100 хувь): мөнгөний
+         тэнхлэг дээр хувийн тэмдэг тавибал хоёр өөр хэмжүүр нэг зурваст
+         орж, аль нь алин болох нь мэдэгдэхгүй. */
+      mark: subLabel ? i.fin : null,
+      markColor: 'var(--warn)',
       /* Мөр: хувь эхэнд (харьцаа), тоймлосон дүн ард */
       display: share ? `${share} · ${mntShort(i.value)}` : mntShort(i.value),
       /* Hover: БҮТЭН төгрөг — `format.mnt` нь портал даяар бүтэн бичдэг */
@@ -953,6 +1214,18 @@ const countBars = (
       hint.push(i.perf == null
         ? tr('Гүйцэтгэл хэмжигдээгүй')
         : `${tr('Бодит гүйцэтгэл')}: ${pct(i.perf, 1)}`);
+      /*
+       * САНХҮҮЖСЭН ГҮЙЦЭТГЭЛ — ЗӨВХӨН `guitsetgel_huvi`-ийн жигнэсэн дундаж.
+       *
+       * ⚠️ ХОЁУЛАНГ НЬ харуулна: барилга угсралтад «бодит» нь объёмоор,
+       * «санхүүжсэн» нь талбараас бодогддог тул хоёр тоо ЗӨРНӨ — тэр зөрүү нь
+       * «мөнгө урьдчилж, ажил хоцорч байна уу» гэсэн асуултын хариу.
+       * ⚠️ ИЖИЛ бол давхардуулж бичихгүй — нэг тоог хоёр нэрээр харуулбал
+       * хоёр өөр хэмжүүр мэт уншигдана.
+       */
+      if (i.fin != null && (i.perf == null || Math.abs(i.fin - i.perf) > 0.05)) {
+        hint.push(`${tr('Санхүүжсэн гүйцэтгэл')}: ${pct(i.fin, 1)}`);
+      }
     }
     return {
       key: i.key,
@@ -966,6 +1239,11 @@ const countBars = (
        * ⚠️ Дэд цуваагүй чартад урт нь УТГЫН ХЭМЖЭЭ хэвээр.
        */
       value: subLabel ? (i.value > 0 ? (i.sub / i.value) * 100 : 0) : i.value,
+      /* ⚠️ ЗӨВХӨН дэд цуваатай чартад (тэнхлэг нь 0–100 хувь): тооны
+         тэнхлэг дээр хувийн тэмдэг тавибал хоёр өөр хэмжүүр нэг зурваст
+         орж, аль нь алин болох нь мэдэгдэхгүй. */
+      mark: subLabel ? i.fin : null,
+      markColor: 'var(--warn)',
       display: num(i.value),
       tipValue: `${num(i.value)} ${unit.one}`,
       hint,
@@ -982,11 +1260,59 @@ const countBars = (
  */
 const BAR_HUE = cat(0);
 
+/**
+ * «ТӨСЛИЙН ГҮЙЦЭТГЭЛ» ЧАРТЫН МӨРҮҮД — ЯГ ЭДГЭЭР зургаан үзүүлэлт.
+ *
+ * ⚠️ 2026-09-10-ны ЗАСВАР. Урьд нь 1.1 · 2.1 · 5.1 мэт кодуудыг авдаг байсан
+ * нь ОРОН СУУЦНЫ БЭЛТГЭЛ ажил (ТЭЗҮ · зураг төсөл · тендер) байсан тул
+ * «Орон сууцны барилга угсралт 99.5%» гэж ГАРЧ, барилга бараг дууссан мэт
+ * ХУДАЛ уншигдаж байв. Бодит барилга угсралт нь модны 6-р хэсэгт.
+ *
+ * ⚠️ ХОЁР ЭХ СУРВАЛЖТАЙ:
+ *   · `wbs`  — ажлын задаргааны (WBS) зангилааны код
+ *   · `lvl3` — гэрээний 3-р түвшний бүлэг (`ajil_tuvshin3`), өртгөөр жигнэсэн
+ *     `guitsetgel_huvi`. Гадна цахилгааны гүйцэтгэл модонд БАЙХГҮЙ тул
+ *     гэрээнээс шууд авахаас өөр зам алга.
+ *
+ * ⚠️ ГҮН НЬ ЖИГД БИШ САНААТАЙ: эхний гурав нь төслийн ШАТ, сүүлийн гурав нь
+ * барилга угсралтын АЖЛЫН ТӨРӨЛ. Модны нэг түвшнийг бүхэлд нь авбал
+ * хэрэглэгчийн хардаг зураг гарахгүй.
+ */
+/**
+ * ⚠️ `housing: true` — эх сурвалж нь «05. Багцын гүйцэтгэл» хуудасны
+ * БОДИТ ГҮЙЦЭТГЭЛИЙН ХУВЬ индикатор (2026-09-10, хэрэглэгчийн заавар). WBS
+ * мод буюу гэрээний бүртгэлээс БИШ — `housingNow`-ийн тайлбарыг үз.
+ */
+const WBS_CHART: { label: string; wbs?: string[]; lvl3?: string; housing?: true }[] = [
+  { label: tr('ТЭЗҮ, зураг төсөл'), wbs: ['2'] },
+  { label: tr('Сонгон шалгаруулалт'), wbs: ['5'] },
+  { label: tr('Газар чөлөөлөлт'), wbs: ['3'] },
+  /* ⚠️ 6.4.2 — БАРИЛГА УГСРАЛТ хэсгийн доторх гадна инженерийн шугам сүлжээ.
+     1.2/2.2 нь түүний ЗУРАГ ТӨСӨЛ (92.5%) тул огт өөр зүйл. */
+  { label: tr('Гадна инженерийн шугам сүлжээ'), wbs: ['6.4.2'] },
+  /* ⚠️ Модонд харгалзах зангилаа БАЙХГҮЙ — гэрээний 3-р түвшнээс */
+  { label: tr('Гадна цахилгаан хангамж'), lvl3: 'Гадна цахилгаан холбоо, дохиолол' },
+  /* ⚠️ WBS `6.2.1`-ЭЭС ХАСАГДСАН (2026-09-10): тэр нь гэрээний бүртгэлийн
+     тоо байсан. Одоо «05. Багцын гүйцэтгэл»-ийн бодит гүйцэтгэлийн хувь —
+     нэг үзүүлэлт хоёр самбарт хоёр өөр тоо харуулахаа болино. */
+  { label: tr('Орон сууцны барилга угсралт'), housing: true },
+];
+
 function FinCharts({
-  rows, period,
+  rows, period, xs, setXs, pkgPct, catPct, housingNow,
 }: {
   rows: CfRow[];
   period: Period;
+  /** Багц → объёмоор бодогдсон гүйцэтгэл (`chartTypeCost`-ийн тайлбар) */
+  pkgPct: Map<string, number>;
+  /** Ангилал → ил дарах гүйцэтгэл (жиш. орон сууц — «Багцын гүйцэтгэл»-ээс) */
+  catPct: Map<string, number>;
+  /** «05. Багцын гүйцэтгэл»-ийн одоогийн жигнэсэн хувь — `WBS_CHART.housing` */
+  housingNow: number | null;
+  /** ⚠️ Төлөв нь ЭЦЭГТ — индикаторт ч үйлчлэх ёстой (эцгийн тайлбарыг үз) */
+  xs: { dim: XDim; key: string } | null;
+  setXs: (v: { dim: XDim; key: string } | null
+    | ((p: { dim: XDim; key: string } | null) => { dim: XDim; key: string } | null)) => void;
 }) {
   const sel = useMemo(() => rows.filter((r) => inPeriod(r, period)), [rows, period]);
 
@@ -1000,7 +1326,6 @@ function FinCharts({
    * ⚠️ «Төрөл»-ийн ХОЁР чарт (мөнгө ба тоо) нэг хэмжээстэй тул хоёулаа
    * шүүгдэхгүй, хоёулаа тодорно.
    */
-  const [xs, setXs] = useState<{ dim: XDim; key: string } | null>(null);
   const narrow = useMemo(
     () => (xs ? sel.filter((r) => xMatch(r, xs.dim, xs.key)) : sel),
     [sel, xs],
@@ -1009,17 +1334,95 @@ function FinCharts({
      үүсэх нь `useMemo`-гийн хамаарлыг тогтворгүй болгодог. */
   const rType = xs && xs.dim !== 'type' ? narrow : sel;
   const rSrc = xs && xs.dim !== 'source' ? narrow : sel;
-  const rNote = xs && xs.dim !== 'note' ? narrow : sel;
   /** Мөр дарах — дахин дарвал тайлагдана */
   const pickX = (dim: XDim) => (k: string) => setXs(
     (v) => (v && v.dim === dim && v.key === k ? null : { dim, key: k }),
   );
   const onX = (dim: XDim) => (xs && xs.dim === dim ? xs.key : null);
 
-  const c1 = useMemo(() => chartTypeCost(rType), [rType]);
-  const c2 = useMemo(() => chartTypeCount(rType), [rType]);
+  /* ⚠️ НЭГ ЧАРТ (2026-09-10): багана нь МӨНГӨ, ажлын тоо ба гүйцэтгэлийн
+     хоёр хэмжүүр нь hover-т. Урьд нь хоёр тусдаа чарт нэг ангиллыг хоёр
+     өөр нэгжээр хэмжиж, нүд хооронд нь гүйдэг байв. */
+  /**
+   * ТӨСЛИЙН ГҮЙЦЭТГЭЛ — «Нэгтгэл гүйцэтгэл» табтай НЭГ эх сурвалж.
+   *
+   * ⚠️ Cashflow-гийн чартуудаас ТУСДАА хэмжүүр: тэдгээр нь МӨНГӨӨР
+   * (гэрээ, захирамж) хэмждэг бол энэ нь ажлын задаргааны (WBS) ШАТУУДЫГ
+   * тогтоосон жингээр (ТЭЗҮ 5 · зураг төсөл 10 · газар 3 · зөвшөөрөл 1 ·
+   * сонгон шалгаруулалт 1 · барилга угсралт 79 · улсын комисс 1) хэмжинэ.
+   * ⚠️ Хугацааны ба чартын шүүлтэд ОРОХГҮЙ: WBS нь гэрээний мөрөөс биш
+   * ТӨСЛИЙН бүтцээс гардаг тул хэсэгчилж шүүх нь утгагүй.
+   */
+
+  const wbs = useAsync(loadNegtgelFull, []);
+  const wbsBars = useMemo(() => {
+    if (wbs.state !== 'ready') return [];
+    const byCode = new Map(wbs.data.rows.map((r) => [r.code.trim(), r]));
+    /** Гэрээний 3-р түвшний бүлгийн өртгөөр жигнэсэн гүйцэтгэл */
+    const lvl3Pct = (name: string): number | null => {
+      let base = 0;
+      let top = 0;
+      for (const r of rows) {
+        if (r.lvl3 !== name || r.cost <= 0 || r.progress == null) continue;
+        base += r.cost;
+        top += (r.cost * r.progress) / 100;
+      }
+      /* ⚠️ ×100 — `top` нь ХУВИЙГ 100-д хуваасан жигнэлт тул харьцаа нь
+         0–1 гарна. WBS салаа нь хувиар буцаадаг тул хоёр эх сурвалж НЭГ
+         хэмжээст байх ёстой (2026-09-10-нд энэ үржүүлэгч дутсанаас цахилгаан
+         5.4% байхын оронд 0.1% гэж гарч байв). */
+      return base > 0 ? (top / base) * 100 : null;
+    };
+    return WBS_CHART
+      .map((spec) => {
+        /* ⚠️ «05. Багцын гүйцэтгэл»-ийн бодит гүйцэтгэлийн хувь — `housingNow`.
+           Хэмжигдээгүй бол `null` тул доорх шүүлт мөрийг чартаас хасна. */
+        if (spec.housing) {
+          return { spec, base: null as number | null, pctVal: housingNow };
+        }
+        if (spec.lvl3) {
+          return { spec, base: null as number | null, pctVal: lvl3Pct(spec.lvl3) };
+        }
+        /*
+         * ⚠️ ОЛОН КОДЫГ ТӨСӨЛД ЭЗЛЭХ ХУВИАР ЖИГНЭНЭ, энгийн дундаж БИШ.
+         * ⚠️ Хэмжигдээгүй (`actPct == null`) зангилаа хуваарь, хүртвэр
+         * ХОЁУЛАНД ч орохгүй — `null` ≠ 0.
+         */
+        let base = 0;
+        let top = 0;
+        for (const c2 of spec.wbs ?? []) {
+          const r = byCode.get(c2);
+          const k = r ? wbs.data.calc.get(r.oid) : null;
+          if (!k || k.actPct == null || k.inProject == null) continue;
+          base += k.inProject;
+          top += k.inProject * k.actPct;
+        }
+        return { spec, base, pctVal: base > 0 ? top / base : null };
+      })
+      /* ⚠️ Хэмжигдээгүй мөр ЧАРТАД ГАРАХГҮЙ: 0%-ийн зурвас нь «эхэлсэн ч юу
+         ч хийгээгүй» гэсэн ХУДАЛ мэдэгдэл болно. */
+      .filter((x) => x.pctVal != null)
+      .map((x) => ({
+        key: x.spec.lvl3 ?? (x.spec.housing ? 'housing' : (x.spec.wbs ?? []).join('+')),
+        label: x.spec.label,
+        value: x.pctVal as number,
+        display: pct(x.pctVal as number, 1),
+        tipValue: pct(x.pctVal as number, 1),
+        hint: [
+          x.spec.housing
+            ? `${tr('Эх сурвалж')}: ${tr('Багцын гүйцэтгэл')} · ${tr('бодит гүйцэтгэлийн хувь')}`
+            : x.spec.lvl3
+            /* ⚠️ ЭХ СУРВАЛЖИЙГ ЗААВАЛ хэлнэ: хоёр өөр аргаар бодогдсон тоо
+               нэг чартад зэрэгцэж байгааг уншигч мэдэх ёстой. */
+            ? `${tr('Эх сурвалж')}: ${tr('гэрээний гүйцэтгэл')} · ${x.spec.lvl3}`
+            : `${tr('Задаргаа')}: ${(x.spec.wbs ?? []).join(' · ')}`,
+          ...(x.base != null ? [`${tr('Төсөлд эзлэх')}: ${pct(x.base, 2)}`] : []),
+        ],
+      }));
+  }, [wbs, rows, housingNow]);
+
+  const c1 = useMemo(() => chartTypeCost(rType, pkgPct, catPct), [rType, pkgPct, catPct]);
   const c3 = useMemo(() => chartSourceMerged(rSrc), [rSrc]);
-  const c4 = useMemo(() => chartNoteAmount(rNote), [rNote]);
 
   return (
     <>
@@ -1041,23 +1444,27 @@ function FinCharts({
         />
       </Section>
 
-      <Section title={tr('Гэрээлсэн байдал, бодит гүйцэтгэл')}>
-        <Bars
-          color={BAR_HUE}
-          max={100}
-          items={countBars(c2, { one: tr('ажил'), many: tr('ажлын') },
-            { has: tr('Гэрээ хийсэн'), none: tr('Нэг ч гэрээ хийгдээгүй') })}
-          limit={8}
-          selected={onX('type')}
-          onSelect={pickX('type')}
-        />
+      {/*
+        * ТӨСЛИЙН ГҮЙЦЭТГЭЛ — «Гэрээлсэн байдал, бодит гүйцэтгэл»-ийн ОРОНД
+        * (2026-09-10, хэрэглэгчийн заавар). Тэр чартын агуулга нь
+        * «Төсөв, гэрээлсэн дүн»-ий hover панель руу нэгдсэн.
+        */}
+      <Section title={tr('Төслийн гүйцэтгэл')}>
+        <Data q={wbs} minH={150}>
+          {() => (wbsBars.length === 0
+            ? <Empty label={tr('Гүйцэтгэл хэмжигдээгүй')} />
+            : (
+              <Bars
+                color={BAR_HUE}
+                /* ⚠️ `max={100}` — тэнхлэг нь ХУВЬ. Үгүй бол хамгийн өндөр
+                   шат 100% болж сунаж, бусад нь түүнтэй харьцуулагдана. */
+                max={100}
+                items={wbsBars}
+              />
+            ))}
+        </Data>
       </Section>
 
-      {/* ⚠️ НЭГ ЧАРТ (2026-09-06, хэрэглэгчийн хүсэлт): багана нь МӨНГӨ,
-          ажлын тоо нь hover-т. Хоёр чартын МЭДЭЭЛЭЛ БҮРЭН нийлсэн — юу ч
-          хасагдаагүй. Урьд нь дараалал нь зөрдөг тул (мөнгөөр Үнэт цаас
-          тэргүүлж, тоогоор Нийслэлийн төсөв) нэг ангилал хоёр өөр байрлалд
-          харагддаг байв. */}
       <Section title={tr('Захирамжийн эх үүсвэр')}>
         {/* ⚠️ СУУРЬ нь «нийт төсөв» БИШ — `moneyBars`-ийн `base`-ийн тайлбарыг үз */}
         <Bars
@@ -1069,15 +1476,12 @@ function FinCharts({
         />
       </Section>
 
-      <Section title={tr('Хөрөнгө оруулалтын төрөл')}>
-        <Bars
-          color={BAR_HUE}
-          items={moneyBars(c4)}
-          limit={8}
-          selected={onX('note')}
-          onSelect={pickX('note')}
-        />
-      </Section>
+      {/* ⚠️ «Хөрөнгө оруулалтын төрөл» чарт ЭНДЭЭС ХАСАГДСАН (2026-09-10,
+          хэрэглэгчийн заавар). Түүний эзэлж байсан зайг «Төсөл нийт —
+          гүйцэтгэлийн явц» муруй авав: муруй нь зүүн ба төв баганыг
+          дамнан сунана (`generalDash.module.css` → grid-template-areas).
+          ⚠️ `note` хэмжээсийн ХӨНДЛӨН ШҮҮЛТ хэвээр: `Төсөв, гэрээлсэн
+          дүн»-ий hover-т «Гэрээлсэн дүн» задаргаа тэр талбараас гардаг. */}
     </>
   );
 }
@@ -1100,16 +1504,49 @@ function FinCharts({
  * 0…100%. Нэг хуваарьт оруулбал 2.5 их наяд ба 100 хоёрын харьцаанаас болж
  * муруй ёроолд наалдана.
  */
+/**
+ * ХУГАЦААНЫ ЧАРТ — багана нь МӨНГӨ, муруй нь ХУРИМТЛАГДСАН ХУВЬ.
+ *
+ * ⚠️ ЦЭГҮҮДИЙГ ГАДНААС авна (2026-09-10). Урьд нь `timeline()`-ыг өөрөө
+ * дууддаг байсныг өөрчилсөн шалтгаан: cashflow-гийн сарын хуваарилалт мөн
+ * ЯГ ИЖИЛ зан үйлтэй (зум · hover · чарт/хүснэгт сэлгүүр · тэнхлэг) байх
+ * ёстой. Хуулбарлавал нэгийг нь засахад нөгөө нь хоцорно.
+ */
+/**
+ * HO-гийн огноо → 'YYYY-MM'. `guilgee_ognoo` нь DateOnly МӨР («2026-03-05»),
+ * гэвч epoch тоо ирвэл ч барина (`Finance.ym`-ийн хураангуй хуулбар —
+ * тэр нь экспортлогдоогүй, энд зөвхөн IPC-ийн сарын түлхүүрт хэрэгтэй).
+ * ⚠️ Хоосон/танигдахгүй → `null` = ОГНООГҮЙ (урьдчилгаа), 0 БИШ.
+ */
+function ymOf(v: unknown): string | null {
+  if (v == null || v === '' || v === 0) return null;
+  if (typeof v === 'number' && v > 1e12) {
+    const d = new Date(v);
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+  }
+  const m = String(v).trim().match(/^(\d{4})-(\d{1,2})(?:\D|$)/);
+  if (!m) return null;
+  const y = Number(m[1]);
+  if (y < 2000 || y > 2100) return null;
+  return `${m[1]}-${m[2].padStart(2, '0')}`;
+}
+
 function Timeline({
-  rows, grain, period, mode,
+  points, grain, total, mode,
 }: {
-  rows: CfRow[];
+  points: TimePoint[];
+  /** Тэнхлэгийн шошгын хэлбэрийг ЭНЭ шийднэ (жил · улирал · сар) */
   grain: Grain;
-  period: Period;
+  /**
+   * ХУВИЙН МӨНГӨН СУУРЬ — hover-т «64.3% ≈ энэ хэдэн төгрөг» гэж бичихэд.
+   * ⚠️ Цэгүүдийг бодоход хэрэглэсэн ЯГ ТЭР суурь байх ёстой, эс бөгөөс
+   * дэлгэц дээрх хувь ба мөнгө хоорондоо зөрнө.
+   */
+  total: number;
   /** `table` бол ижил өгөгдлийг ХҮСНЭГТЭЭР — чартын ард байгаа тоо */
   mode: 'chart' | 'table';
 }) {
-  const all = useMemo(() => timeline(rows, grain, period), [rows, grain, period]);
+  const all = points;
   /**
    * ЗААСАН үе — hover, эсвэл заагаагүй үед СҮҮЛИЙНХ.
    *
@@ -1134,15 +1571,36 @@ function Timeline({
    * бөгөөд хугацааны цуваанд тэр нь цаг хугацааны дараалал. Толгой дарж
    * баганаар эрэмбэлнэ, дахин дарвал эсрэгээр.
    */
-  const [sort, setSort] = useState<{ c: 'label' | 'sub' | 'amount' | 'pct'; d: 1 | -1 }>(
-    { c: 'label', d: 1 },
-  );
+  const [sort, setSort] = useState<{
+    c: 'label' | 'sub' | 'pct' | 'ipc'; d: 1 | -1;
+  }>({ c: 'label', d: 1 });
   const barRef = useRef<HTMLDivElement | null>(null);
 
   const N = all.length;
   const lo = zoom ? Math.max(0, Math.min(zoom[0], N - 1)) : 0;
   const hi = zoom ? Math.max(lo, Math.min(zoom[1], N - 1)) : N - 1;
   const pts = zoom ? all.slice(lo, hi + 1) : all;
+  /**
+   * ХУРИМТЛАГДСАН ХУВИЙН МӨНГӨН ЭКВИВАЛЕНТ (2026-09-08, хэрэглэгчийн хүсэлт:
+   * «64.3% хүрэхэд хэдэн төгрөг зарцуулсан бэ»).
+   *
+   * ⚠️ Суурь нь хугацааны шүүлтээс ҮЛ ХАМААРНА. Муруй нь өөрөө нийт төсөвт
+   * эзлэх хувь тул түүнийг шүүгдсэн дэд дүнгээр үржүүлбэл 100%-д хүрсэн ч
+   * нийт төсвөөс бага тоо гарч, хоёр тоо хоорондоо зөрчилдөнө.
+   * ⚠️ Хамрах хүрээ нь «Нийт төсөв» индикатортой ЯГ ИЖИЛ (`inTotal`, Excel-ийн
+   * `=+I8+I21`) — нэг дэлгэц дээр хоёр өөр «нийт» байвал аль нь ч итгэл
+   * төрүүлэхгүй. Хасагдсан мөрүүдийн хувь бүгд 0 тул муруйн ХЭЛБЭР
+   * өөрчлөгдөхгүй, зөвхөн мөнгөн шошго нь эх файлтай таарна.
+   *
+   * ⚠️ ЭНД зарлагдана, доор БИШ (2026-09-10, хэрэглэгч: «Хүснэгт товч
+   *    ажиллахгүй»): `mode === 'table'` салаа нь `sorted.map`-ийн дотор
+   *    `cumOf`-ыг ШУУД дуудаад `return` хийдэг тул зарлалт тэр салаанаас
+   *    ДООР байхад `ReferenceError: Cannot access 'cumOf' before
+   *    initialization` шидэж, товч дармагц бүх дашбоард ErrorBoundary-д
+   *    унадаг байв. tsc үүнийг барьдаггүй.
+   */
+  const budget = total;
+  const cumOf = (p: number) => (budget * Math.max(0, Math.min(100, p))) / 100;
 
   /**
    * Чирэлт — «шинээр сонгох», «зөөх», «ирмэгээс сунгах» гурвыг НЭГ логикоор.
@@ -1223,13 +1681,19 @@ function Timeline({
     );
     /* ⚠️ `sub` нь ОНГҮЙ эрэмбэлнэ — «бүх жилийн 6-р сарыг зэрэгцүүлэх» гэсэн
        асуултад хариулна. Он-оор эрэмбэлэх нь `label` баганад бий. */
+    /* ⚠️ `null` (хэмжигдээгүй) нь эрэмбэд ХАМГИЙН ДООР — `-1` гэж жиших нь
+       0%-иас ялгаж, «хэмжилтгүй үе» доод талд бөөгнөрнө. */
     const sorted = [...all].sort((a, b) => (
       sort.c === 'label' ? a.key.localeCompare(b.key) * sort.d
         : sort.c === 'sub' ? subOf(a).localeCompare(subOf(b)) * sort.d
-          : sort.c === 'amount' ? (a.amount - b.amount) * sort.d
-            : (a.pct - b.pct) * sort.d
+          : sort.c === 'ipc' ? ((a.ipcPct ?? -1) - (b.ipcPct ?? -1)) * sort.d
+              : (a.pct - b.pct) * sort.d
     ));
-    const head = (c: 'label' | 'sub' | 'amount' | 'pct', label: string, right = false) => (
+    const head = (
+      c: 'label' | 'sub' | 'pct' | 'ipc',
+      label: string,
+      right = false,
+    ) => (
       <th className={right ? g.tlThNum : undefined} aria-sort={
         sort.c !== c ? 'none' : sort.d === 1 ? 'ascending' : 'descending'
       }>
@@ -1248,24 +1712,29 @@ function Timeline({
         <table className={g.tlTbl}>
           <thead>
             <tr>
-              {/* ⚠️ Мөрийн дугаар — ArcGIS-ийн атрибут хүснэгтийн эхний багана.
-                  Эрэмбэ солигдоход ч 1-ээс эхэлнэ: энэ нь ХАРАГДАЦЫН дугаар,
-                  бичлэгийн ID БИШ. */}
-              <th className={g.tlThIdx}>№</th>
+              {/* ⚠️ БАГАНЫН БҮРЭЛДЭХҮҮН (2026-09-10, хэрэглэгчийн заавар): Он ·
+                  Нийт хөрөнгөд эзлэх хувь · Олгосон IPC % · Олгосон IPC ₮ —
+                  ЗӨВХӨН эдгээр. «№», «Олгосон дүн» (сарын төлөвлөгөө),
+                  «Хуримтлагдсан дүн» ХАСАГДСАН. Сар/улирлын дэд багана нь
+                  тэр нарийвчлалд л гарна — эс бөгөөс мөрүүд ялгагдахгүй. */}
               {head('label', tr('Он'))}
               {subCol && head('sub', subCol)}
-              {head('amount', tr('Олгосон дүн'), true)}
               {head('pct', tr('Нийт хөрөнгөд эзлэх хувь'), true)}
+              {/* ⚠️ IPC муруйн тоон утга (2026-09-10) — графикт хараад
+                  таамаглахын оронд ЯГ утгыг нь эндээс уншина. */}
+              {head('ipc', tr('Олгосон IPC, %'), true)}
+              <th className={g.tlThNum}>{tr('Олгосон IPC, ₮')}</th>
             </tr>
           </thead>
           <tbody>
-            {sorted.map((p, i) => (
+            {sorted.map((p) => (
               <tr key={p.key}>
-                <td className={g.tlThIdx}>{i + 1}</td>
                 <td>{p.key.slice(0, 4)}</td>
                 {subCol && <td>{subOf(p)}</td>}
-                <td className={g.tlNum}>{p.amount > 0 ? mnt(p.amount) : ''}</td>
                 <td className={g.tlNum}>{pct(p.pct)}</td>
+                {/* ⚠️ `null` → ХООСОН нүд, «0%» БИШ (хэмжигдээгүй ≠ тэг) */}
+                <td className={g.tlNum}>{p.ipcPct == null ? '' : pct(p.ipcPct)}</td>
+                <td className={g.tlNum}>{p.ipcMoney == null ? '' : mnt(p.ipcMoney)}</td>
               </tr>
             ))}
           </tbody>
@@ -1274,7 +1743,7 @@ function Timeline({
     );
   }
 
-  const maxAmt = Math.max(1, ...pts.map((p) => p.amount));
+
   const n = pts.length;
   const at = hov != null && hov < n ? hov : n - 1;
   const cur = pts[at];
@@ -1336,6 +1805,30 @@ function Timeline({
     y: 100 - Math.max(0, Math.min(100, p.pct)),
   })));
   /**
+   * ОЛГОСОН IPC-ИЙН МУРУЙ — төлөвлөгөөнийхтэй ИЖИЛ smooth (2026-09-10,
+   * хэрэглэгч: «IPC хэсэг графикт орохдоо адилхан smooth line байна»).
+   *
+   * ⚠️ ХЭМЖИГДЭЭГҮЙ цэгийг АЛГАСНА (`ipcPct == null`), 0 гэж зурахгүй —
+   *    сүүлийн олголтоос хойшхи саруудад муруй ТАСАРНА. Хэвтээ шугам
+   *    сунгавал «олголт зогссон» гэсэн худал уншилт төрнө (`null ≠ 0`).
+   * ⚠️ Хоёроос цөөн цэгтэй бол ОГТ зурахгүй: ганц цэг нь муруй биш.
+   */
+  const curveOf = (pick: (p: typeof pts[number]) => number | null): string => {
+    const q = pts
+      .map((p, i) => ({ i, v: pick(p) }))
+      .filter((x): x is { i: number; v: number } => x.v != null);
+    return q.length > 1
+      ? monotonePath(q.map((x) => ({ x: xOf(x.i), y: 100 - Math.max(0, Math.min(100, x.v)) })))
+      : '';
+  };
+  const ipcPath = curveOf((p) => p.ipcPct);
+  /**
+   * ⚠️ ХҮЛЭЭГДЭЖ БУЙ ӨӨРЧЛӨЛТ (2026-09-08, хэрэглэгчийн заавар): багана нь
+   * ЗАХИРАМЖИЙН дүн БИШ, ГҮЙЦЭТГЭЛИЙН ТӨЛБӨРИЙН АКТ (IPC) байх ёстой —
+   * «хэдийг батлав» БИШ «хэдийг бодитоор олгов». IPC-ийн өгөгдөл хараахан
+   * бэлэн БИШ тул одоохондоо `Zahiramj_niit_dun` хэвээр; бэлэн болмогц
+   * `timeline()`-ийн `money` эх сурвалжийг л сольно (`gdash.ts`).
+   *
    * ⚠️ ОЛГОСОН ДҮН нь БОСОО БАГАНА (2026-09-07, хэрэглэгчийн шийдвэр). Богино
    * хугацаанд талбайн (area) хэлбэрээр туршигдаад буцав: талбай нь зэргэлдээ
    * үеүүдийг ХОЛБОЖ, тасралтгүй урсгал мэт уншуулдаг. Гэтэл олголт нь тасалгаат
@@ -1351,9 +1844,33 @@ function Timeline({
       <div className={g.tlHead}>
         <span className={g.tlHeadLbl}>{cur.label}</span>
         <b className={g.tlHeadPct}>{pct(cur.pct)}</b>
-        <span className={g.tlHeadAmt}>
-          {cur.amount > 0 ? mntShort(cur.amount) : tr('олголтгүй')}
-        </span>
+        {/* ⚠️ ХУРИМТЛАЛЫН мөнгө — тухайн үеийн олголт БИШ. «64.3%» гэдэг нь
+            ямар хэмжээний хөрөнгө болохыг дангаараа хэлдэггүй. */}
+        <span className={g.tlHeadAmt}>{mntShort(cumOf(cur.pct))}</span>
+        {/* ⚠️ «үүнээс {сарын дүн}» ХАСАГДСАН (2026-09-10): улбар шар багана
+            нуугдсан тул сарын төлөвлөгөөт дүн дэлгэцэнд байхгүй болсон —
+            байхгүй зүйлийн тайлбар нь төөрөгдүүлнэ. */}
+        {/*
+          * ГУРВАН МУРУЙН УТГА (2026-09-10, хэрэглэгч: «жижиг олгосон хувийн
+          * мэдээллийг гаргамаар байна»). Өнгөт цэг нь домогтой таарна.
+          *
+          * ⚠️ `null` бол мөр ОГТ гарахгүй — «0%» гэж бичвэл «тэр сард
+          *    олголт байгаагүй» гэсэн ХУДАЛ уншилт төрнө; үнэн нь
+          *    «хараахан бүртгэгдээгүй».
+          */}
+        {/*
+          * ⚠️ IPC-ийн МӨНГӨ нь `ipcMoney` (яг ₮), `ipcPct × total` БИШ —
+          *    хувь 2 орноор бүхэлчлэгдсэн тул буцааж үржүүлбэл ~100 сая ₮
+          *    зөрнө. Сүүлийн цэг дээр HO-ийн нийт олгосон дүнтэй ТЭНЦҮҮ
+          *    (2026-09-10, хэрэглэгч: «олгосон 530,872,795,391 ₮ гарах»).
+          */}
+        {cur.ipcPct != null && (
+          <span className={g.tlHeadTag} title={tr('Олгосон IPC — хуримтлагдсан')}>
+            <i style={{ background: 'var(--tl-ipc)' }} />
+            {pct(cur.ipcPct)}
+            {cur.ipcMoney != null && <> · {tr('олгосон {0}', mnt(cur.ipcMoney))}</>}
+          </span>
+        )}
         {zoom && (
           <button type="button" className={g.tlReset} onClick={() => setZoom(null)}>
             {tr('Бүтэн харах')}
@@ -1408,21 +1925,23 @@ function Timeline({
               onMouseEnter={() => setHov(i)}
               onMouseLeave={() => setHov((v) => (v === i ? null : v))}
             >
-              <i className={g.tlBar} style={{ height: `${(p.amount / maxAmt) * 100}%` }}>
-                {/* ⚠️ Дүн нь БАГАНЫ ДЭЭР (2026-09-07, хэрэглэгчийн заавар).
-                    Тэнхлэгийн доор байхад аль дүн аль баганынх болох нь
-                    нүдээр мөрдөх зайтай болж, оны шошготой ч хольцолдож
-                    байв. Багана дээрээ бол холбоос нь шууд. */}
-                {!tilt && p.amount > 0 && (
-                  <b className={g.tlBarVal}>{mntShort(p.amount)}</b>
-                )}
-              </i>
+              {/* ⚠️ УЛБАР ШАР БАГАНА (сарын төлөвлөгөөт ₮) НУУГДСАН — 2026-09-10,
+                  хэрэглэгчийн заавар. `.tlCol` нь hover-ын хит-талбар тул
+                  ҮЛДЭНЭ; `p.amount` хүснэгтэд («Олгосон дүн» багана) хэвээр. */}
             </div>
           ))}
         </div>
 
         <svg className={g.tlSvg} viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
           <path className={g.tlLine} d={path} fill="none" vectorEffect="non-scaling-stroke" />
+          {/* ⚠️ IPC нь ТӨЛӨВЛӨГӨӨНИЙ ДАРАА зурагдана — давхцсан хэсэгт
+              бодит олголт дээр гарч, «төлөвлөснөөс хэр хоцорч байна»
+              гэдэг нь нэг харцаар уншигдана. */}
+          {ipcPath && (
+            <path className={g.tlLineIpc} d={ipcPath} fill="none" vectorEffect="non-scaling-stroke" />
+          )}
+          {/* ⚠️ Ягаан «Орон сууц, биет» зам НУУГДСАН (2026-09-10) — домгийн
+              тайлбарыг үз. Буцаахад: `curveOf((p) => p.physPct)` + `.tlLinePhys`. */}
         </svg>
 
         {/*
@@ -1550,7 +2069,8 @@ function LandCard({
   byReason,
   onPickReason,
 }: {
-  onShowLayers: (ids: string[]) => void;
+  /** `null` = сонголт ТАЙЛАГДСАН, өмнөх давхаргын төлөвийг сэргээ */
+  onShowLayers: (ids: string[] | null) => void;
   /** Шүүлтэд багтсан дэд багц → ажлын төрлүүд; `null` = өгөгдөл хараахан алга */
   active: Map<string, string[]> | null;
   /**
@@ -1611,10 +2131,43 @@ function LandCard({
       .sort((x, y) => y.value - x.value);
   }, [reason, ov, subs, byReason, active]);
 
-/** Мөр дарахад тухайн төрлийн БҮХ давхаргыг зурагт асааж, эхнийх рүү ойртоно */
+  /**
+   * СОНГОСОН АЖЛЫН ТӨРӨЛ — мөр тодруулах ба зургийн холбоос.
+   *
+   * ⚠️ Дахин дарвал ТАЙЛАГДАНА: давхарга унтарч, зураг өмнөх төлөв рүүгээ
+   * буцна. Урьд нь зөвхөн асаадаг байсан тул хэдэн мөр дарсны дараа зураг
+   * бүх давхаргаараа дүүрч, аль нь юу болох нь ойлгомжгүй болдог байв.
+   */
+  const [pick, setPick] = useState<string | null>(null);
+
+  /*
+   * ⚠️ Шалтгаан солигдвол төрлийн сонголт УТГАА АЛДДАГ (мөрүүд нь өөр болно).
+   * `useEffect` БИШ, РЕНДЕРИЙН ҮЕД — React-ийн «пропоос хамаарсан төлөвийг
+   * тохируулах» загвар. Эффектээр хийвэл нэг агшин хуучин сонголт тодорсон
+   * хэвээр зурагдаад дараа нь арилж, мөр анивчина.
+   * ⚠️ Зургийн давхаргыг ЭНД буцаахгүй (рендерийн үед гаж нөлөө хориотой) —
+   * түүнийг эцгийн `pickReason` хийнэ.
+   */
+  const [prevReason, setPrevReason] = useState(reason);
+  if (prevReason !== reason) {
+    setPrevReason(reason);
+    setPick(null);
+  }
+
+  /** Мөр дарах — асаах/тайлах */
   const show = (key: string) => {
+    if (pick === key) {
+      setPick(null);
+      onShowLayers(null);
+      return;
+    }
     const r = rows.find((x) => x.key === key);
-    if (r) onShowLayers(r.layerIds);
+    if (!r) return;
+    /* ⚠️ Өмнөх сонголтыг ЭХЛЭЭД буцаана — эс бөгөөс хоёр төрлийн давхарга
+       зэрэг асаж, аль нь алины давхцал болох нь мэдэгдэхгүй. */
+    if (pick != null) onShowLayers(null);
+    setPick(key);
+    onShowLayers(r.layerIds);
   };
 
   return (
@@ -1658,7 +2211,9 @@ function LandCard({
             ) : (
               <Bars
                 color={BAR_HUE}
-                /* Дарахад давхарга зурагт асаж, түүн рүү ойртоно */
+                /* Дарахад давхарга зурагт асаж, түүн рүү ойртоно; дахин
+                   дарвал тайлагдаж, зураг өмнөх төлөв рүүгээ буцна. */
+                selected={pick}
                 onSelect={show}
                 items={countBars(rows, { one: tr('нэгж талбар'), many: tr('давхцлын') })}
               />

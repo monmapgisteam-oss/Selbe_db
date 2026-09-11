@@ -91,7 +91,22 @@ const VALID_VIEWS = new Set<string>(VIEWS.map((v) => v.key));
  * байхгүй тул чимээгүй хасагдаж, тэр хүн гүйцэтгэлийн хуудсаа бүрмөсөн
  * алдана — эрх ЧИМЭЭГҮЙ хумигдах нь хамгийн муу төрлийн алдаа.
  */
-const LEGACY_VIEW: Record<string, ViewKey> = { sheet: 'guitsetgel' };
+const LEGACY_VIEW: Record<string, ViewKey> = {
+  sheet: 'guitsetgel',
+  /*
+   * ⚠️ `tsogts` («Багцын хяналт») нь 2026-08-21-нд `pkgProg` (биет явц) ба
+   *    `pkgFin` (санхүү) ХОЁР болж салсан (23a326b) — гэвч зураглал энд
+   *    нэмэгдээгүй тул тэр түлхүүртэй override мөр (амьд хүснэгтэд
+   *    `selbe_redesign`, 2026-09-08-ны шалгалт) чимээгүй хасагдаж, хэрэглэгч
+   *    «Багцын хяналт»-аа бүрмөсөн алдсан байв.
+   *
+   * ⚠️ ЗӨВХӨН `pkgProg` руу — `pkgFin` БИШ (санаатай): тэр өдрийн шийдвэрээр
+   *    санхүүгийн тал нь хязгаарлагдмал (`ROLE_ACCESS.beginner`-ийн тайлбар).
+   *    Хуучин нэг түлхүүрээс санхүүгийн хуудас автоматаар нээгдэх ёсгүй;
+   *    хэрэгтэй бол админ `pkgFin`-ийг тусад нь олгоно.
+   */
+  tsogts: 'pkgProg',
+};
 
 const sanitizeViews = (v: ViewKey[] | 'all'): ViewKey[] | 'all' => {
   if (v === 'all') return 'all';
@@ -284,34 +299,50 @@ export async function initRemote(canCreate: boolean, trusted: boolean = canCreat
   try {
     const acl = await import('./guitsetgelAcl');
     acl._syncRemoteAssigns(remote.flow);
-  } catch { /* урсгалын модуль ачаалагдаагүй орчинд (тест г.м.) — алгасна */ }
+  } catch (e) {
+    /* ⚠️ 2026-09-08: урьд нь ХООСОН catch байв. Модуль байхгүй (тест) ба
+       синк УНАСАН хоёрыг ялгадаггүй тул ACL бүхэлдээ хуучин утгаараа үлдэхэд
+       хаана ч мэдэгдэхгүй байлаа. Алгасах нь зөв (fail-closed кэш хэвээр) ч
+       ЧИМЭЭГҮЙ алгасах нь буруу. */
+    console.error('[selbe] урсгалын томилгооны синк амжилтгүй:', e);
+  }
 
   // 4) Нэмэлт эрхүүд (`__cap__:`) → caps.ts
   try {
     const caps = await import('./caps');
-    caps._syncRemoteCaps(remote.caps);
-  } catch { /* модуль ачаалагдаагүй орчин — алгасна */ }
+    /* ⚠️ `trusted` дамжуулна — эрхийн dirty-set-ийн retry/overlay нь ЗӨВХӨН
+       хатуу super сешнд (permissions.ts-ийн dirty-тэй ижил үндэслэл). */
+    caps._syncRemoteCaps(remote.caps, trusted);
+  } catch (e) {
+    console.error('[selbe] нэмэлт эрхийн (caps) синк амжилтгүй:', e);
+  }
 
   // 5) Чанарын (QAQC) багцын хуваарилалт (`__qaqc__:`) → qaqcAcl.ts
   //    ⚠️ Урсгалынхаас ТУСДАА — чанарын хяналт нь дөрвөн шатны аль нь ч биш.
   try {
     const q = await import('./qaqcAcl');
     q._syncRemoteQaqc(remote.qaqc);
-  } catch { /* модуль ачаалагдаагүй орчин — алгасна */ }
+  } catch (e) {
+    console.error('[selbe] QAQC хуваарилалтын синк амжилтгүй:', e);
+  }
 
   // 6) Хуваарийн хуваарилалт (`__huvaari__:`) → huvaariAcl.ts
   //    ⚠️ Урсгалынхаас ТУСДАА — хуваарь нь төлөвлөгөө, гүйцэтгэл биш.
   try {
     const hv = await import('./huvaariAcl');
     hv._syncRemoteHuvaari(remote.huvaari);
-  } catch { /* модуль ачаалагдаагүй орчин — алгасна */ }
+  } catch (e) {
+    console.error('[selbe] хуваарийн хуваарилалтын синк амжилтгүй:', e);
+  }
 
   // 7) Инженерийн төлөвлөсөн обьёмын хуваарилалт (`__obyem__:`) → obyemAcl.ts
   //    ⚠️ Хуваарийнхаас ТУСДАА — тэр нь огноо, энэ нь обьём төлөвлөнө.
   try {
     const ob = await import('./obyemAcl');
     ob._syncRemoteObyem(remote.obyem);
-  } catch { /* модуль ачаалагдаагүй орчин — алгасна */ }
+  } catch (e) {
+    console.error('[selbe] обьёмын хуваарилалтын синк амжилтгүй:', e);
+  }
 
   notify();
   return true;

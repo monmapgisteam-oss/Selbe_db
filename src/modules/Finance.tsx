@@ -19,6 +19,7 @@ const DatePicker = dynamic(() => import('@/modules/sheet/DatePicker'), { ssr: fa
 /** Огнооны талбар мөн үү — календар зөвхөн эдгээрт нээгдэнэ */
 const DATE_TYPES = new Set(['esriFieldTypeDate', 'esriFieldTypeDateOnly']);
 import { Data, Empty, Note } from '@/components/ui';
+import { CashflowPlan } from '@/modules/CashflowPlan';
 import { useAsync } from '@/lib/useAsync';
 import { queryFeatures } from '@/lib/query';
 import { cached } from '@/lib/live';
@@ -51,10 +52,24 @@ import { loadBlockHistory } from '@/lib/blockProgress';
  */
 import { loadPlanCurve, type PlanCurve } from '@/lib/planProgress';
 import {
-  CASHFLOW_NEW, IPC_LOG, TASK_SHEET, bagtsKey, blockKey, pkgKeyOf, cfMonthAxis, ipcNet,
+  CASHFLOW_NEW, HO_IPC, TASK_SHEET, bagtsKey, blockKey, pkgKeyOf, cfMonthAxis, hoAmount,
+  CF_WORK_WHERE, CF_MONTH_WHERE,
 } from '@/lib/services';
+/* ⚠️ 2026-09-09: IPC-ийн ГЭРЭЭ ба ТӨЛБӨР гэсэн ХОЁР ТҮВШИН — `@/lib/ipc`-ээс.
+   Мөр = НЭГ ГҮЙЛГЭЭ; гэрээний талбар `geree_kod` бүрд ДАВТАГДАНА тул
+   гэрээний дүнг мөрөөр SUM хийвэл Багц-4.1 (7 мөр) -ийн төсөв 7 дахин
+   хөөрөгдөнө. Гэрээний тоог ЗӨВХӨН `groupHo`/`hoTotals`-оос ав. */
+import { loadHoRows, groupHo, type HoContract } from '@/lib/ipc';
 import { finFieldLabel } from '@/lib/financeFieldLabels';
+import {
+  FIN_XL_ORDER, FIN_XL_LEAF, FIN_XL_WIDTH, FIN_XL_MERGE, FIN_XL_BAND_H, finXlGroup,
+  FIN_XL_SECTION, FIN_XL_GROUP_FIELD, FIN_XL_GROUP3_FIELD, FIN_XL_CODE,
+  FIN_XL_HIDE, FIN_XL_TOTAL_LABEL, finXlInTotal, finXlRowHidden,
+  FIN_XL_LVL_KEEP, finXlBandLabel,
+  FIN_XL_PCT, FIN_XL_PCT_WEIGHT, FIN_XL_ORDER_V,
+} from '@/lib/finExcelLayout';
 import { useColWidths } from '@/modules/sheet/colWidths';
+import { useSheetCols } from '@/modules/sheet/sheetCols';
 import {
   FIN_FACETS, EMPTY_FILTER, isDirty as filterDirty,
   facetValues, distinct, rowMatches,
@@ -63,9 +78,7 @@ import {
 import {
   buildGroups, type FinKind, type GroupRow,
 } from '@/lib/finGroup';
-import {
-  IPC_MAIN_FIELDS, sumOrNull, dedOrNull, paidOrNull, netOrNull, netTotalOrNull,
-} from '@/lib/finCard';
+import { HO_MAIN_FIELDS, sumOrNull } from '@/lib/finCard';
 import { mnt, num, text, cat, date } from '@/lib/format';
 import { fitLabels, textW, useChartWidth } from '@/lib/chartFit';
 import { ResizableTable } from '@/components/ResizableTable';
@@ -73,6 +86,7 @@ import { applyAll } from '@/lib/tableWrite';
 import { invalidate, type DataKey } from '@/lib/dataBus';
 import { hasCap, subscribeCaps } from '@/lib/caps';
 import { useAuth } from '@/components/AuthGate';
+import { IpcTable } from '@/modules/IpcTable';
 import f from './finance.module.css';
 
 /* ═══════════════════════════════════════════════════════════
@@ -164,7 +178,7 @@ type Row = Record<string, unknown>;
  * ⚠️ 2026-09-06: `amount` / `amountCum` / `cumPct` (сарын санхүүжилтийн
  *    ТӨЛӨВЛӨГӨӨ) ХАСАГДСАН. Тэдгээр нь `cashflow_0813`-ийн «САР» мөрүүдээс
  *    гардаг байсан бөгөөд тэр үйлчилгээ бүрмөсөн хаягдсан; шинэ
- *    `Cashflow_0904`-т он/сарын багана ОГТ БАЙХГҮЙ. Үлдсэн хоёр цуваа нь
+ *    `Cashflow_0909`-т он/сарын багана ОГТ БАЙХГҮЙ. Үлдсэн хоёр цуваа нь
  *    хоёулаа БОДИТ ХЭМЖИЛТ — төлөвлөгөө нь биет талд (`planProgress`).
  */
 export type MonthPt = {
@@ -211,7 +225,7 @@ export type PhysMap = Map<string, Map<string, number>>;
  */
 export type FinData = {
 /**
-   * ГЭРЭЭНИЙ мөрүүд (76) — `Cashflow_0904`.
+   * ГЭРЭЭНИЙ мөрүүд (76) — `Cashflow_0909`.
    *
    * ⚠️ 2026-09-06: мөрийн ТӨРЛИЙН шүүлт хэрэггүй болов. Хуучин
    *    `cashflow_0813` нэг хүснэгтэд гэрээ + сар + өмнөх шилжүүлсэн гэсэн
@@ -236,7 +250,7 @@ export type FinData = {
   /**
    * Багц → нийт олгосон (цэвэр) дүн — ОГНООГҮЙ актыг ч ОРУУЛНА.
    *
-   * ⚠️ 59 актын 29-д ямар ч огноо алга (нэг нь 9.4 тэрбумтай). Тэдгээрийг
+   * ⚠️ 45 төлбөрийн 5-д гүйлгээний огноо алга. Тэдгээрийг
    *    `given`-ий сарын цуваанд оруулбал сүүлийн сар дээр хуурамч оргил
    *    үүснэ (null ≠ 0), огт хаявал нийт дүн дутна — тиймээс цуваанаас
    *    хасаж, НИЙЛБЭРТ энд үлдээв.
@@ -245,14 +259,28 @@ export type FinData = {
   phys: PhysMap;
   physCnt: PhysMap;
   /**
-   * ГҮЙЦЭТГЭЛИЙН АКТУУД (IPC) — түүхий мөрүүд.
+   * ТӨЛБӨРИЙН МӨРҮҮД (45) — `HO_IPC` түүхий мөр, OID дарааллаар.
    *
-   * ⚠️ `given` нь актуудыг сар бүрийн НИЙЛБЭР болгож хураадаг тул
-   *    акт бүрийн дугаар, хамрах хугацаа, барьцаа, үлдэгдэл алдагддаг.
-   *    Санхүүгийн дэлгэрэнгүйд «энэ мөнгө ЯМАР актаар олгогдсон бэ»
-   *    гэдэг нь гол мөрдөх мөр тул түүхий мөрийг ХАДГАЛНА.
+   * ⚠️ `given` нь тэдгээрийг сар бүрийн НИЙЛБЭР болгож хураадаг тул төлбөр
+   *    бүрийн дугаар, төрөл (урьдчилгаа/гүйцэтгэл), гүйлгээний огноо
+   *    алдагддаг. «Энэ мөнгө ЯМАР төлбөрөөр олгогдсон бэ» гэдэг нь гол
+   *    мөрдөх мөр тул түүхий мөрийг ХАДГАЛНА.
+   * ⚠️ 2026-09-09: нэр нь `acts` → `pays`. Шинэ эх нь АКТ БИШ ТӨЛБӨР —
+   *    урьдчилгааны гүйлгээ ч энд орно (хэрэглэгчийн шийдвэр: «олгосон» =
+   *    урьдчилгаа + гүйцэтгэл).
    */
-  acts: Row[];
+  pays: Row[];
+  /**
+   * ГЭРЭЭНИЙ ТҮВШИН (22) — `groupHo`-оор dedup хийсэн.
+   *
+   * ⚠️ Гэрээний ДҮНГ (төсөв, гэрээт төсөв, хэмнэлт) ЗӨВХӨН эндээс ав, `pays`
+   *    мөрөөр БИШ: тэдгээр талбар гэрээний мөр бүрд ДАВТАГДАНА тул мөрөөр
+   *    нийлүүлбэл 7 дахин давхардана.
+   * ⚠️ CASHFLOW_NEW-ийн 76 гэрээг ОРЛОХГҮЙ — HO нь зөвхөн 22 гэрээ хамарна.
+   *    `planTotal` ХЭВЭЭР CASHFLOW_NEW-ээс, эс тэгвээс 54 багцад «гэрээний
+   *    дүн» алга болж гүйцэтгэлийн хувь бодогдохгүй.
+   */
+  contractsHo: HoContract[];
 };
 
 // ═══════════════════════════════════════════════════════════
@@ -294,7 +322,7 @@ export function ComboChart({
    * ── Өссөн S-муруйн өгөгдөл — ₮ ТЭНХЛЭГ: олгосон санхүүжилт · биет гүйцэтгэл.
    *
    * ⚠️ 2026-09-06: ТӨЛӨВЛӨГӨӨНИЙ цуваа ХАСАГДСАН. Тэр нь `cashflow_0813`-ийн
-   *    «САР» мөрөөс гардаг байсан бөгөөд шинэ `Cashflow_0904`-т он/сарын
+   *    «САР» мөрөөс гардаг байсан бөгөөд шинэ `Cashflow_0909`-т он/сарын
    *    багана ОГТ БАЙХГҮЙ. Тиймээс тэнхлэгийн дээд хязгаар нь одоо
    *    ТӨЛӨВЛӨГӨӨ биш, өссөн ОЛГОЛТ. Хоёулаа хоосон бол `1` — 0-д хуваахаас.
    */
@@ -571,7 +599,7 @@ function smoothPath(pts: { x: number; y: number }[]): string {
  *   гурвуулаа дууддаг тул харагдац сэлгэх бүрд 3 query + O(багц×сар×блок)
  *   тооцоо ДАХИН хийгддэг байв.
  */
-export const loadFinData = cached(loadFinDataRaw, LIVE_TTL, ['IPC_LOG', 'CASHFLOW_NEW', 'BAGTS_SHEET']);
+export const loadFinData = cached(loadFinDataRaw, LIVE_TTL, ['HO_IPC', 'CASHFLOW_NEW', 'BAGTS_SHEET']);
 
 /**
  * ГЭРЭЭНИЙ БҮРТГЭЛ — НЭГ кэштэй эх (2026-08-24 аудит): урьд нь
@@ -587,15 +615,33 @@ export const loadFinData = cached(loadFinDataRaw, LIVE_TTL, ['IPC_LOG', 'CASHFLO
  * ХАСАГДСАН — хоёр хүснэгт зэрэг татдаг байсан нь одоо нэг болов.
  */
 const loadCashflowNewRows = cached(
-  () => queryFeatures(CASHFLOW_NEW.url, { outFields: ['*'], orderBy: `${CASHFLOW_NEW.oid} ASC` }),
+  () => queryFeatures(CASHFLOW_NEW.url, { where: CF_WORK_WHERE, outFields: ['*'], orderBy: `${CASHFLOW_NEW.oid} ASC` }),
   LIVE_TTL,
   ['CASHFLOW_NEW'],
 );
-const loadIpcRows = cached(
-  () => queryFeatures(IPC_LOG.url, { outFields: ['*'] }),
+/**
+ * САРЫН ЗАДАРГАА — S-муруйн төлөвлөгөө (`Cashflow_final`-ийн доторх мөрүүд).
+ *
+ * ⚠️ АЖЛЫН мөрөөс ТУСДАА уншина: гол хүснэгт нь 78 ажлын мөр л байх ёстой
+ * (`CF_WORK_WHERE`), эдгээр нь 5-р түвшинд ажлынхаа доор нэмэгдэнэ.
+ * ⚠️ Хоосон буцаж БОЛНО — сарын мөр үүсээгүй эсвэл устсан үед хүснэгт
+ * хуучин байдлаараа ажиллах ёстой.
+ */
+const loadCfMonthRows = cached(
+  () => queryFeatures(CASHFLOW_NEW.url, {
+    where: CF_MONTH_WHERE,
+    outFields: ['*'],
+    orderBy: `Cashflow_ID ASC, Cashflow_start ASC`,
+    limit: 8000,
+  }),
   LIVE_TTL,
-  ['IPC_LOG'],
+  ['CASHFLOW_NEW'],
 );
+/* ⚠️ Төлбөрийн мөрийн ачаалагч нь `@/lib/ipc`-ийн `loadHoRows` — энд ДАВХАР
+   тодорхойлохгүй (хоёр кэш үүсвэл ижил хүснэгт хоёр удаа татагдана). Тэнд
+   `orderBy: OBJECTID ASC` заавал байдаг: ArcGIS эрэмбэгүй хариуны дарааллыг
+   баталгаажуулдаггүй бөгөөд `groupHo`-ийн «эхний мөрөөр dedup» нь тогтвортой
+   дараалал шаардана. */
 
 /**
  * ХУВААРИЙН МУРУЙН МОДУЛ-ТҮВШНИЙ КЭШ — `lagOf` СИНХРОН тул үүнээс уншина.
@@ -617,7 +663,7 @@ async function loadFinDataRaw(): Promise<FinData> {
   const S = TASK_SHEET.fields;
     const [contracts, ipc, hist] = await Promise.all([
       loadCashflowNewRows(),
-      loadIpcRows(),
+      loadHoRows(),
       /*
        * БИЕТ ГҮЙЦЭТГЭЛ — блок бүрийн «Б.» мөрийн бүх агшин.
        *
@@ -644,12 +690,20 @@ async function loadFinDataRaw(): Promise<FinData> {
     ]);
 
     /*
-     * IPC → багц бүрд: сар → олгосон цэвэр дүн.
+     * HO төлбөр → багц бүрд: сар → олгосон дүн.
      *
-     * ⚠️ Цэвэр дүн одоо БОДОГДОНО (`ipcNet` = гүйцэтгэлийн дүн − 4 суутгал) —
-     *    хуучин хадгалагдсан багана нь засвар бүрд хуучирдаг байсан тул хасав.
-     * ⚠️ Огноогүй актыг сарын цуваанд ОРУУЛАХГҮЙ. Хуучин код нь `?? last`-аар
-     *    сүүлийн сар руу шахдаг байсан — 29 актын мөнгө нэг сарын нүдэнд
+     * ⚠️ 2026-09-09: СУУТГАЛ ГЭСЭН ОЙЛГОЛТ ХАСАГДСАН. Шинэ эх сурвалжид
+     *    барьцаа, урьдчилгааны эргэн төлөлт, зохиогчийн хяналт гэсэн багана
+     *    ОГТ БАЙХГҮЙ; `dun` нь аль хэдийн БОДИТ ОЛГОСОН дүн. Тиймээс хуучин
+     *    `ipcNet` (gross − 4 суутгал) -ийн оронд шууд `hoAmount`.
+     * ⚠️ УТГЫН ӨӨРЧЛӨЛТ: «олгосон» одоо УРЬДЧИЛГАА төлбөрийг ч агуулна
+     *    (хэрэглэгчийн шийдвэр: гүйцэтгэгч компанид өгсөн БҮХ санхүүжилт).
+     *    Тиймээс дүн нь хуучин «цэвэр олголт»-оос ~1.67 дахин ӨНДӨР (318.42 →
+     *    530.87 тэрбум ₮). Энэ нь АЛДАА БИШ, СЕМАНТИКИЙН өөрчлөлт — өмнөх
+     *    дэлгэцийн тоог санаж буй хүн «хоёр дахин өслөө» гэж түгших
+     *    магадлалтай тул энд ил тэмдэглэв.
+     * ⚠️ Огноогүй төлбөрийг сарын цуваанд ОРУУЛАХГҮЙ (45-ийн 5). Хуучин код
+     *    `?? last`-аар сүүлийн сар руу шахдаг байв — мөнгө нэг сарын нүдэнд
      *    овоорч хуурамч оргил үүсгэнэ. Нийт дүн `givenTotal`-д бүрэн үлдэнэ.
      */
     /*
@@ -671,7 +725,8 @@ async function loadFinDataRaw(): Promise<FinData> {
       planTotal.set(k, (planTotal.get(k) ?? 0) + v);
     });
 
-    const F = IPC_LOG.fields;
+    const HC = HO_IPC.contractFields;
+    const HP = HO_IPC.payFields;
     /* ⚠️ СУНГАСАН тэнхлэг (cfMonthAxis) — хуваарь 2026-09-өөр төгсдөг тул
        түүнээс хойшхи акт, хэмжилт нүхгүй үлдэж, сүүлийн сард овоорч эсвэл
        царцдаг байв. Сунгалт нь өнөөдрийг хүртэл. */
@@ -681,22 +736,32 @@ async function loadFinDataRaw(): Promise<FinData> {
     const given: GivenMap = new Map();
     const givenTotal = new Map<string, number>();
     ipc.forEach((r) => {
-      const net = ipcNet(r);
-      /* ⚠️ 2026-09-04: `ipcNet` нь `number | null` болов (services.ts) — `null`
-         нь «актын ДҮН ОГТ БӨГЛӨГДӨӨГҮЙ» гэсэн үг, 0₮ олголт БИШ. Хоёуланг
-         нь адилхан алгасна (цувааны гадна), гэхдээ шалтгааныг ялган бичив:
-         `null`-ыг 0 болгож нийлбэрт нэмбэл «олгосон 0₮» гэсэн худал хэмжилт
-         үүснэ. */
-      if (net == null || net === 0) return;
-      /* Багц: дэд багц (навч) → үндсэн багц. Аль нь ч байхгүй бол гэрээгүй акт. */
-      const k = bagtsKey(r[F.pkg2]) || bagtsKey(r[F.pkg]);
+      const amt = hoAmount(r);
+      /* ⚠️ `null` нь «ТӨЛБӨРИЙН ДҮН ОГТ БӨГЛӨГДӨӨГҮЙ» гэсэн үг (45-ийн 2),
+         0₮ олголт БИШ. Хоёуланг нь адилхан алгасна (цувааны гадна), гэхдээ
+         шалтгааныг ялган бичив: `null`-ыг 0 болгож нийлбэрт нэмбэл «олгосон
+         0₮» гэсэн ХУДАЛ хэмжилт үүснэ (2026-09-04-ний I30 алдааны хэлбэр). */
+      if (amt == null || amt === 0) return;
+      /* ⚠️ `pkgKeyOf` — `bagtsKey` БИШ. HO-д «Багц-1-4» ба «БАГЦ-10,  БАГЦ-11,
+         БАГЦ-13, БАГЦ-15» гэсэн ХОЁР ДИАПАЗОН мөр бий (нийт 5.97 тэрбум ₮);
+         `bagtsKey('Багц-1-4')` = `БАГЦ14` бөгөөд энэ нь БОДИТ Багц 14-ийн ЯГ
+         түлхүүр тул тэр дүн буруу багцад наалдана. Хуучин `ipc_0813`-д
+         диапазон мөр БАЙГААГҮЙ тул `bagtsKey` аюулгүй байв — ОДОО БИШ.
+         `pkgKeyOf` тэднийг `''` болгож хамгаална: дүн нь `hoTotals().paid`-д
+         үлдэж, зүгээр л буруу эзэнд очихгүй.
+         ⚠️ ДЭД БАГЦЫН fallback ХАСАГДСАН — HO-д `pkg2` талбар БАЙХГҮЙ,
+         `bagts` өөрөө «Багц-3.1» гэсэн дэд түвшнийг агуулна. */
+      const k = pkgKeyOf(r[HC.pkg]);
       if (!k || k === '0') return;
-      givenTotal.set(k, (givenTotal.get(k) ?? 0) + net);
-      const raw = ym(r[F.submitDate]) ?? ym(r[F.periodTo]) ?? ym(r[F.approvedDate]) ?? ym(r[F.payDate]);
+      givenTotal.set(k, (givenTotal.get(k) ?? 0) + amt);
+      /* ⚠️ ГАНЦ огноо. Хуучин 4 талбарын fallback гинж (submitDate → periodTo
+         → approvedDate → payDate) хасагдав — шинэ эхэд `guilgee_ognoo`
+         ганцаараа бөгөөд 40/45 бөглөгдсөн тул цуваа САЙЖИРНА (хуучин 30/59). */
+      const raw = ym(r[HP.payDate]);
       if (!raw) return; // огноогүй — цувааны гадна (дээрх ⚠️)
       const mon = raw < first ? first : raw > last ? last : raw;
       const byMon = given.get(k) ?? new Map<string, number>();
-      byMon.set(mon, (byMon.get(mon) ?? 0) + net);
+      byMon.set(mon, (byMon.get(mon) ?? 0) + amt);
       given.set(k, byMon);
     });
 
@@ -767,7 +832,13 @@ async function loadFinDataRaw(): Promise<FinData> {
         physCnt.set(k, cntMon);
       });
     }
-    return { contracts, planTotal, given, givenTotal, phys, physCnt, acts: ipc };
+    return {
+      contracts, planTotal, given, givenTotal, phys, physCnt,
+      pays: ipc,
+      /* ⚠️ ГЭРЭЭНИЙ ТҮВШИН — энд НЭГ УДАА хурааж бүх дуудагчид өгнө.
+         Дуудагч тал өөрөө мөрөөр нийлүүлбэл давхардана. */
+      contractsHo: groupHo(ipc),
+    };
 }
 
 /**
@@ -792,6 +863,11 @@ type FieldDef = {
 type FinTables = {
   cashflow: Row[]; ipc: Row[];
   cfFields: FieldDef[]; ipcFields: FieldDef[];
+  /**
+   * САРЫН ЗАДАРГАА — `Cashflow_final`-ийн доторх нэмэлт мөрүүд.
+   * ⚠️ `cashflow`-д ОРОХГҮЙ: гол хүснэгт нь 78 ажлын мөр л байна.
+   */
+  cfMonths: Row[];
 };
 
 /** Давхаргын талбарын метадата (`?f=json`) — alias нь хүний уншихуйц баганын нэр */
@@ -822,16 +898,33 @@ async function loadFields(url: string): Promise<FieldDef[]> {
  * 4 хүсэлт (метадата ×2 + бүтэн хүснэгт ×2) кэшгүй дахин явдаг байв; мөрүүд нь
  * одоо `loadCashflowRows`/`loadIpcRows`-оор `loadFinData`-тай хуваалцагдана.
  */
-const loadFinRegister = cached(loadFinRegisterRaw, LIVE_TTL, ['IPC_LOG', 'CASHFLOW_NEW']);
+const loadFinRegister = cached(loadFinRegisterRaw, LIVE_TTL, ['HO_IPC', 'CASHFLOW_NEW']);
 
 async function loadFinRegisterRaw(): Promise<FinTables> {
-  const [cfFields, ipcFields, cashflow, ipc] = await Promise.all([
+  const [cfFields, ipcFields, cashflow, ipc, cfMonths] = await Promise.all([
     loadFields(CASHFLOW_NEW.url),
-    loadFields(IPC_LOG.url),
+    loadFields(HO_IPC.url),
     loadCashflowNewRows(),
-    loadIpcRows(),
+    loadHoRows(),
+    /* ⚠️ Сарын задаргаа унасан ч бүртгэл нээгдэх ёстой — хоосон жагсаалтад
+       буцна. Тэр өгөгдөл байхгүй бол 5-р түвшин хоосон, бусад нь бүтэн. */
+    loadCfMonthRows().catch(() => [] as Row[]),
   ]);
-  return { cashflow, ipc, cfFields, ipcFields };
+  /*
+   * ⚠️ «БОНДЫН ХҮҮ» мөр ЭНД шүүгдэнэ (2026-09-10) — хүснэгт ба «Cashflow
+   * хувиарлах» хоёуланд нь нэг дор үйлчилнэ. Дэлгэрэнгүйг
+   * `finXlRowHidden`-ийн тайлбараас үз.
+   * ⚠️ Дашбоардын тоонуудад НӨЛӨӨЛӨХГҮЙ: тэдгээр нь `loadGdashCf`-ээр
+   * тусдаа уншигддаг бөгөөд Excel-ийн НИЙТ томьёо тэр мөрийг аль хэдийн
+   * хасдаг (`FIN_XL_TOTAL_SKIP`).
+   */
+  return {
+    cashflow: cashflow.filter((r) => !finXlRowHidden(r)),
+    ipc,
+    cfFields,
+    ipcFields,
+    cfMonths,
+  };
 }
 
 export function Finance() {
@@ -861,7 +954,7 @@ export function Finance() {
  *
  * ⚠️ 2026-09-06: САНХҮҮЖИЛТИЙН ТӨЛӨВЛӨГӨӨ (сарын `amount`, өссөн дүн, өссөн
  *    хувь) ХАСАГДСАН. Тэр нь `cashflow_0813`-ийн «САР» мөрүүдээс гардаг
- *    байсан бөгөөд шинэ `Cashflow_0904`-т он/сарын багана ОГТ БАЙХГҮЙ.
+ *    байсан бөгөөд шинэ `Cashflow_0909`-т он/сарын багана ОГТ БАЙХГҮЙ.
  *    Үлдсэн хоёр цуваа хоёулаа БОДИТ ХЭМЖИЛТ.
  *
  * ⚠️ Гэрээний мөр өөрөө сарын утга ОГТ АГУУЛАХГҮЙ болсон ч параметр нь
@@ -985,7 +1078,7 @@ const SERVER_RO = /^(objectid|globalid|shape|shape__|creationdate|creator|editda
 /**
  * EDITOR TRACKING — «хэн, хэзээ зассан».
  *
- * ⚠️ 2026-09-04-нд `Cashflow_0904` дээр асаагдав. Сешний ногоон тэмдэглэгээ
+ * ⚠️ 2026-09-04-нд `Cashflow_0909` дээр асаагдав. Сешний ногоон тэмдэглэгээ
  * (`cellSaved`) нь хуудас сэргээхэд арилдаг тул удаан хугацааны хариулт нь
  * ЭНЭ — үйлчилгээ өөрөө мөр бүрийн сүүлийн засварыг тамгалдаг.
  *
@@ -1044,7 +1137,10 @@ const dateOnlyText = (v: unknown): string => {
  *    ХЭМЖИГДЭХҮҮН биш ТАНИГЧ — мянгатаар тусгаарлавал утга нь гажина.
  */
 const PLAIN_INT = new Set<string>([
-  IPC_LOG.fields.no,                                 // Актын дугаар
+  HO_IPC.payFields.ipcNo,          // IPC дугаар
+  /* ⚠️ `on_` нь Integer тул ерөнхий тоон дүрэмд орж «2,025» гэж гарна. */
+  HO_IPC.payFields.year,           // Он
+  HO_IPC.contractFields.no,        // № (гэрээний дугаарлалт)
 ]);
 
 /**
@@ -1075,8 +1171,11 @@ const isSkip = (name: string, type: string, oidField: string): boolean =>
   type === 'esriFieldTypeGlobalID'
   || /globalid/i.test(name)
   || /^(creationdate|creator|editdate|editor)$/i.test(name)
-  || name === oidField
-  || name === IPC_LOG.fields.geree;
+  || name === oidField;
+/* ⚠️ 2026-09-09: «Гэрээний код» баганыг НУУХАА БОЛИВ. Хуучин `IPC02` нь
+   G01…G76 гэсэн ДОТООД танигч байсан тул нуугддаг байв; шинэ `geree_kod` нь
+   «Багц-1» — ХҮНД УТГАТАЙ бөгөөд 45 мөрийг 22 гэрээнд хуваадаг ГОЛ түлхүүр.
+   Нуувал хэрэглэгч аль төлбөр аль гэрээнийх болохыг ялгаж чадахгүй. */
 
 function fmtCell(v: unknown, type: string, name = ''): { text: string; num: boolean } {
   if (v == null || v === '') return { text: '', num: false };
@@ -1163,7 +1262,7 @@ function parseCell(s: string, type: string, label: string): unknown {
      «N мөр хадгалагдав» гэж ногоон мэдэгдэл гаргадаг байсан тул хэрэглэгч
      бичсэн огноогоо хадгалсан гэж итгэх атал үйлчилгээнд ӨӨР огноо суудаг байв.
      Дээрх мөр 1023-ын «esriFieldTypeDate талбар НЭГ Ч БАЙХГҮЙ» гэсэн таамаг нь
-     хуучин `cashflow_0813`-ынх — шинэ `Cashflow_0904`-т Ehleh_ognoo ·
+     хуучин `cashflow_0813`-ынх — шинэ `Cashflow_0909`-т Ehleh_ognoo ·
      Duusah_ognoo · Zahiramj_ognoo ГУРВУУЛАА `esriFieldTypeDate` тул энэ салаа
      одоо АМЬД. Хажуугийн `DateOnly` салаатай ЯГ НЭГ дүрэм.
      ⚠️ Цаг-минуттай БҮТЭН огноо (ISO datetime) хэвээр зөвшөөрөгдөнө — тэр
@@ -1206,7 +1305,7 @@ function parseCell(s: string, type: string, label: string): unknown {
  *      дахин дарна.
  */
 function FullTable({
-  title, subtitle, rows, fields, url, oidField, dataKey, facets,
+  title, subtitle, rows, fields, url, oidField, dataKey, facets, months = [],
   canEdit, canRow, onSaved,
 }: {
   title: string;
@@ -1218,6 +1317,12 @@ function FullTable({
   oidField: string;
   /** Нийтэлсний дараа хүчингүй болгох хүснэгтийн түлхүүр */
   dataKey: DataKey;
+  /**
+   * САРЫН ЗАДАРГАА — ажлын мөрийн ДОР 5-р түвшинд гарна.
+   * ⚠️ `rows`-д НЭГТГЭХГҮЙ: шатлал, зурвасын нийлбэр, багцын нэгтгэл
+   * бүгд `rows`-ийн индексээр ажилладаг тул тэнд мөр шургуулбал гажина.
+   */
+  months?: Row[];
   /**
    * Шүүлтийн гурван нүүр (багц · он · төрөл) — талбарын код нь үйлчилгээ
    * бүрд ӨӨР тул ЭЦГЭЭС дамжина. ⚠️ `FullTable` нь дурын үйлчилгээнд
@@ -1248,14 +1353,13 @@ function FullTable({
    * Эс бөгөөс «нийтлэх шаардлагатай» ба «нийтлэгдсэн» хоёр нэг өнгө болж,
    * хүн юугаа хадгалаагүйгээ мэдэхгүй.
    *
-   * ⚠️ ЗӨВХӨН СЕШНИЙ ХУГАЦААНД. `Cashflow_0904`-д Editor Tracking асаагүй тул
+   * ⚠️ ЗӨВХӨН СЕШНИЙ ХУГАЦААНД. `Cashflow_0909`-д Editor Tracking асаагүй тул
    * серверээс «энэ нүд хэзээ өөрчлөгдсөн» гэдгийг мэдэх БОЛОМЖГҮЙ — хуудас
    * дахин ачаалахад тэмдэглэгээ арилна. Үүнийг ТҮҮХ гэж ойлгож болохгүй.
    */
   const [saved, setSaved] = useState<Set<string>>(new Set());
   /** Нийтлээгүй ШИНЭ мөрүүд — сөрөг түр дугаартай */
   const [adds, setAdds] = useState<Record<string, string>[]>([]);
-  const [del, setDel] = useState<Set<number>>(new Set());
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -1273,6 +1377,171 @@ function FullTable({
    * тасарна, мөн `z-index`-ийн шатлал нь хөрш баганад дарагдана.
    */
   const [hMenu, setHMenu] = useState<{ name: string; x: number; y: number } | null>(null);
+  /**
+   * ЧИРЭГДЭЖ БУЙ БАГАНА — толгойгоос толгой руу зөөнө.
+   *
+   * ⚠️ HTML5 drag-and-drop-ыг `th`-д ШУУД тавина: тусдаа «бариул» гаргавал
+   * толгойд аль хэдийн хоёр удирдлага (шүүлтийн ▾, өргөний чирэх зураас)
+   * байгаа тул гурав дахь нь нүдийг дүүргэнэ.
+   */
+  const [drag, setDrag] = useState<string | null>(null);
+  /**
+   * СОНГОГДСОН БАГАНУУД — Excel-ийн зан (2026-09-08, хэрэглэгчийн хүсэлт).
+   *
+   * ⚠️ ТОО НЬ ДУРЫН: хэрэглэгч 1 ч, 8 ч багана сонгож болно. Excel-д баганы
+   * толгойг товшиж сонгоод «Freeze Panes» дардагтай ижил.
+   *
+   * ⚠️ ЗӨВХӨН ХАРАГДАЦ, өгөгдөл БИШ: сонголт нь мөр шүүхгүй, зөвхөн дараагийн
+   * үйлдэл (царцаах, нуух) хэнд хамаарахыг заана.
+   */
+  const [pick, setPick] = useState<string[]>([]);
+  /** Мужаар сонгоход (Shift) суурь болох сүүлийн товшилт */
+  const lastPick = useRef<string | null>(null);
+
+  /**
+   * ЭВХЭГДСЭН БҮЛГҮҮД — Excel-ийн мөрийн бүлэглэлт (`+` · `−`).
+   *
+   * ⚠️ Эх Excel-д мөрийн 3 түвшний outline бий (`outlineLevelRow="3"`): 76 мөр
+   * нэг дэлгэцэнд багтдаггүй тул хэрэглэгч хэрэггүй хэсгээ хумьж, харьцуулах
+   * гэсэн хоёр бүлгээ зэрэгцүүлдэг. Порталд ч тэр зан ХЭРЭГТЭЙ.
+   *
+   * ⚠️ Түлхүүр нь УТГААР («s:БАРИЛГА УГСРАЛТ»), индексээр БИШ: шүүлт хийхэд
+   * мөрийн индекс шилждэг тул индексээр хадгалбал огт өөр бүлэг эвхэгдэнэ.
+   * ⚠️ ХАДГАЛАГДАХГҮЙ (сешний төлөв): эвхэлт нь тухайн агшны ажлын хэрэгсэл,
+   * дараагийн удаа нээхэд хүснэгт БҮТНЭЭР харагдах ёстой.
+   */
+  const [fold, setFold] = useState<Set<string>>(new Set());
+
+  /**
+   * ИДЭВХТЭЙ ТҮВШИН — товчийг тодруулахад л хэрэгтэй.
+   *
+   * ⚠️ 0 = «холимог»: хэрэглэгч нэг бүлгийг гараар хумисан бол аль ч түвшин
+   * бүтнээрээ биелэхээ больсон тул НЭГ Ч товч тодрох ёсгүй. Эс бөгөөс дэлгэц
+   * дээрх байдалтай зөрчилдсөн тодруулга үлдэнэ.
+   */
+  const [lvl, setLvl] = useState(4);
+
+  /**
+   * ТҮВШНИЙ ЗУРВАС харагдах уу.
+   *
+   * ⚠️ ЗАСВАРЫН горимд Ч харагдана (2026-09-09): «5» товч нь тэнд сарын
+   * задаргааг нээх ЦОРЫН ГАНЦ зам — хугацаа янзалсны дараа сарын хувийг
+   * тэндээс бөглөнө. 1–4 нь засварын горимд шатлалын зурвасгүй тул нөлөөгүй.
+   */
+  const xlLevelsOn = dataKey === 'CASHFLOW_NEW';
+
+  /**
+   * САРЫН МӨРҮҮД АЖЛААР — `Cashflow_ID` → тухайн ажлын саруудын жагсаалт.
+   * ⚠️ `OBJECTID`-аар БИШ `Cashflow_ID`-аар холбоно: OBJECTID нь мөр
+   * устгаад дахин нэмэхэд өөрчлөгддөг, Cashflow_ID нь тогтвортой дугаар.
+   */
+  const monthBy = useMemo(() => {
+    const m = new Map<number, Row[]>();
+    for (const r of months) {
+      const id = Number(r.Cashflow_ID);
+      if (!Number.isFinite(id)) continue;
+      const arr = m.get(id) ?? [];
+      arr.push(r);
+      m.set(id, arr);
+    }
+    /* ⚠️ Огноогоор эрэмбэлнэ — үйлчилгээний дараалалд найдахгүй
+       (2000 мөрийн хуудаслалт дараалал алдагдуулж болно). */
+    for (const arr of m.values()) {
+      arr.sort((a, b) => Number(a.Cashflow_start ?? 0) - Number(b.Cashflow_start ?? 0));
+    }
+    return m;
+  }, [months]);
+
+  /**
+   * МӨРИЙН ЭЦГҮҮДИЙН ЭВХЭЛТИЙН ТҮЛХҮҮР — гүехэнээс гүн рүү.
+   *
+   * ⚠️ ХООСОН түвшинг АЛГАСНА. Excel-ийн шинэ бүтэц (REV00) нь бүх салаанд
+   * гурван түвшинтэй БИШ: «НИЙГМИЙН ДЭД БҮТЭЦ» ба «БОНДЫН ХҮҮ» нь ердөө нэг
+   * түвшинтэй, 3-р түвшин зөвхөн инженерийн дэд бүтцэд бий. Хоосон түвшнийг
+   * гинжинд оруулбал утгагүй зурвас (хоосон гарчиг) үүсч, түвшний товч тэр
+   * хэсэгт огт үйлчлэхгүй болно.
+   * ⚠️ Түлхүүр нь ЭЦГИЙНХЭЭ түлхүүрийг агуулна: өөр хоёр хэсэгт ижил нэртэй
+   * төрөл гарвал нэгийг нь эвхэхэд нөгөө нь ч хумигдах байсан.
+   */
+  const xlKeys = (r: Record<string, unknown>): string[] => {
+    const a = String(r[FIN_XL_SECTION] ?? '');
+    const b = String(r[FIN_XL_GROUP_FIELD] ?? '');
+    const c = String(r[FIN_XL_GROUP3_FIELD] ?? '');
+    const ks = [`s:${a}`];
+    if (b !== '') ks.push(`g:${a}|${b}`);
+    if (b !== '' && c !== '') ks.push(`h:${a}|${b}|${c}`);
+    return ks;
+  };
+
+  /**
+   * ТҮВШНЭЭР ДЭЛГЭХ — Excel-ийн outline «1 2 3 4».
+   *
+   *   1 → НИЙТ + нэг оронтой КОДТОЙ бүх зурвас (1 · 2 · 3 · 3 · 4 · 5 · 6) ·
+   *   2 → + хоёр оронтой код (1.1 · 1.2 · 4.1…) · 3 → бүх зурвас ·
+   *   4 → бүх мөр · 5 → + сарын задаргаа
+   *
+   * ⚠️ ТҮВШИН нь МОДНЫ ГҮН БИШ, КОДЫН ГҮН (2026-09-10, хэрэглэгчийн заавар:
+   * «1-р түвшин дээр 3 ОРОН СУУЦНЫ ХОРООЛОЛ ба 4 ИНЖЕНЕРИЙН ДЭД БҮТЭЦ
+   * харагдахгүй, 1·2·5·6 гээд буруу харагдаад байна»).
+   *
+   * Учир нь Excel-ийн E баганын код нь ХАВТГАЙ дугаарлалт: ОРОН СУУЦНЫ
+   * ХОРООЛОЛ (3) ба ИНЖЕНЕРИЙН ДЭД БҮТЭЦ (4) нь 1 · 2 · 5 · 6-тай НЭГ
+   * эгнээний хэсгүүд боловч НИЙЛБЭРИЙН модонд «2 БАРИЛГА УГСРАЛТ»-ын
+   * хүүхдүүд (Excel-ийн мөр 21: `=+J22+J31+J47`).
+   *
+   * ⚠️ МОДЫГ ӨӨРЧИЛСӨНГҮЙ САНААТАЙ: 3 ба 4-ийг эцгээс нь салгавал
+   * «2 БАРИЛГА УГСРАЛТ» зурвасын нийлбэр 2,482.4 → 97.0 тэрбум болж эх
+   * файлаас зөрнө. Зөвхөн ТҮВШНИЙ ТОВЧНЫ утга өөрчлөгдөв — зурвасууд
+   * хэвээрээ, нийлбэрүүд хэвээрээ.
+   *
+   * ⚠️ ТҮЛХҮҮР нь УТГААР бүтдэг тул ШҮҮГДЭЭГҮЙ `rows`-оос угсарч болно:
+   * шүүлт нь зөвхөн харагдах мөрийг цөөрүүлдэг ба илүү түлхүүр хор хүргэхгүй.
+   * Ингэснээр товч нь хүснэгтээс ГАДНА, шүүлтийн зурвас дээр сууж чадна.
+   * ⚠️ Тухайн мөрийн гинж богино байвал ХАМГИЙН ГҮН нь эвхэгдэнэ — эс бөгөөс
+   * гурван түвшингүй хэсгүүд 2–3-р түвшинд бүтнээрээ дэлгээтэй үлдэж, товч
+   * утгаа алдана.
+   */
+  const setLevel = (n: number) => {
+    setLvl(n);
+    /* ⚠️ 4 ба 5 хоёулаа БҮХ мөрийг дэлгэнэ; ялгаа нь зөвхөн сарын задаргаа
+       (`monthOn`). Тиймээс эвхэлт хоёуланд нь хоосон. */
+    if (n >= 4) { setFold(new Set()); return; }
+    /*
+     * ⚠️ 1-р түвшинд НИЙТ мөрийг ХУМИХГҮЙ (`XL_ALL` нэмэхгүй): Excel-д мөр 7-ийн
+     * хамт хэсгийн зурвас БҮГД харагддаг. «Зөвхөн нийт дүн» гэсэн төлөв нь
+     * НИЙТ мөрийн өөрийнх нь «−» товчоор гарна.
+     */
+    const nx = new Set<string>();
+    for (const r of rows) {
+      const ks = xlKeys(r);
+      /*
+       * ⚠️ КОДЫН ЦЭГИЙН ТОО = түвшин («4.1» → 2). Код нь хоосон бол
+       * (жиш. «Газар чөлөөлөлт» дэд хэсэг) модны гүнээр буцаж унана.
+       * ⚠️ `FIN_XL_LVL_KEEP`-д байгаа хэсэг (гадна тохижилт, өндөржилт)
+       *    кодоороо нэг оронтой ч ЭЦГЭЭ ОРХИХГҮЙ — тэнд ч модны гүн.
+       */
+      const NAMES = [FIN_XL_SECTION, FIN_XL_GROUP_FIELD, FIN_XL_GROUP3_FIELD];
+      let i = 0;
+      for (let d = 0; d < ks.length; d += 1) {
+        const code = String(r[FIN_XL_CODE[d]] ?? '').trim();
+        const nameD = String(r[NAMES[d]] ?? '').trim();
+        const deep = code === '' || FIN_XL_LVL_KEEP.includes(nameD)
+          ? d + 1
+          : code.split('.').length;
+        if (deep <= n) i = d;
+      }
+      nx.add(ks[i]);
+    }
+    setFold(nx);
+  };
+  /*
+   * ⚠️ МӨР ТУС БҮРИЙН `+`/`−` ТОВЧ ХАСАГДСАН (2026-09-09, хэрэглэгчийн заавар:
+   * «түвшингээр шүүж болж байгаа учраас +/− delete»). Excel-ийн outline-ийн
+   * үүргийг хүснэгтийн дээрх «Түвшин 1 2 3 4» зурвас БҮРЭН гүйцэтгэдэг тул
+   * зурвасын мөр бүрд нэмэлт товч байх нь давхардсан удирдлага байв.
+   * ⚠️ Иймд `lvl` нь ХЭЗЭЭ Ч 0 («холимог») болохгүй: эвхэлт зөвхөн түвшний
+   * товчоор л өөрчлөгддөг.
+   */
   /**
    * НЭЭЛТТЭЙ КАЛЕНДАР — аль нүднийх, хаана, юу бичих вэ.
    *
@@ -1330,7 +1599,6 @@ function FullTable({
    * ⚠️ Бүх баганад асаавал богино утгатай нүд дарахад ч мөр «үсэрч», хүснэгт
    * тайван байдлаа алддаг. Зөвхөн УРТ бичвэртэй багана хэрэгтэй.
    */
-  const EXPANDABLE = ['Nariiwchilsan_turul'];
 
 
   /*
@@ -1344,7 +1612,7 @@ function FullTable({
   /** IPC-ийн ДЭЛГЭСЭН актууд — дэлгэрэнгүй талбарууд нь мөрийн доор гарна */
   const [xp, setXp] = useState<Set<number | string>>(new Set());
 
-  const dirty = Object.keys(pend).length + adds.length + del.size;
+  const dirty = Object.keys(pend).length + adds.length;
 
   /* ⚠️ Нийтлээгүй засвартай байхад таб хаахад хөтөч анхааруулна — «Гүйцэтгэл
      бөглөх»-тэй ижил зан. Гараар хийсэн 200 нүдний ажил алдагдах нь эргэж
@@ -1358,23 +1626,20 @@ function FullTable({
 
   /* ⚠️ `saved`-ыг ЦЭВЭРЛЭХГҮЙ: энэ нь «болих» үйлдэл бөгөөд аль хэдийн
      нийтлэгдсэн засварыг үгүй хийхгүй — тэмдэглэгээ нь мөн үлдэх ёстой. */
-  const reset = () => { setPend({}); setAdds([]); setDel(new Set()); setErr(null); };
+  const reset = () => { setPend({}); setAdds([]); setErr(null); };
 
   const publish = async () => {
     if (busy || !dirty) return;
     /*
-     * ⚠️ УСТГАЛ БУЦААГДАХГҮЙ. Эдгээр үйлчилгээнд хувилбарын түүх асаагүй тул
-     * устгасан мөр бүрмөсөн алга болно — «Нийтлэх (3)» гэсэн тоо нь тэдгээрийн
-     * нэг нь БУЦААГДАШГҮЙ устгал гэдгийг хэлдэггүй. `UserAdmin`, `FillNew`
-     * зэрэгт эргэлт буцалтгүй үйлдлийн өмнө баталгаажуулалт асуудаг дүрэмтэй
-     * ижил.
+     * ⚠️ ЭНЭ ХҮСНЭГТ ЭХ МӨРИЙГ УСТГАХГҮЙ (2026-09-08, хэрэглэгчийн заавар).
+     * Урьд нь мөр устгах товч байсан бөгөөд нийтлэхийн өмнө баталгаа асуудаг
+     * байв. Гэвч эдгээр үйлчилгээнд хувилбарын түүх асаагүй тул устгасан мөр
+     * БҮРМӨСӨН алга болдог — баталгааны цонх нь хангалттай хамгаалалт биш.
+     * Устгал шаардлагатай бол ArcGIS-ийн өөрийн хэрэгслээр, ухамсартайгаар.
      *
-     * ⚠️ Зөвхөн УСТГАЛД асууна: утга засах, мөр нэмэхэд асуувал өдөр тутмын
-     * ажил бүрд шаардлагагүй цонх гарч, хүн уншихаа болино — тэр үед жинхэнэ
-     * анхааруулга ч мөн адил дарагдана.
+     * ⚠️ Иймд нийтлэх нь ЗАСВАР ба НЭМЭЛТ хоёрыг л илгээнэ — баталгаа
+     * асуухгүй: өдөр тутмын ажил бүрд цонх гарвал хүн уншихаа болино.
      */
-    if (del.size > 0
-      && !window.confirm(tr('{0} мөр БУЦААГДАШГҮЙ устгагдана. Үргэлжлүүлэх үү?', del.size))) return;
     setBusy(true);
     setErr(null);
     setMsg(null);
@@ -1389,7 +1654,6 @@ function FullTable({
         const cut = k.indexOf(':');
         const oid = Number(k.slice(0, cut));
         const fld = k.slice(cut + 1);
-        if (del.has(oid)) continue;                 // устгах мөрийн засвар утгагүй
         const a = upd.get(oid) ?? { [oidField]: oid };
         a[fld] = parseCell(v, typeOf(fld), labelOf(fld));
         upd.set(oid, a);
@@ -1407,10 +1671,110 @@ function FullTable({
 
       /* ⚠️ ГУРВЫГ НЭГ ХҮСЭЛТЭЭР — атомаар. Салгаж явуулбал нэмэлт амжилттай
          болоод устгал уначихад хэрэглэгч дахин дарж, нэмсэн мөр ДАВХАРДАНА. */
+      /*
+       * ⚠️ `deletes` ЭНД ХЭЗЭЭ Ч ИРЭХГҮЙ (2026-09-08, хэрэглэгчийн заавар):
+       * энэ хүснэгт нь эх үйлчилгээний мөрийг УСТГАХГҮЙ. Засах ба нэмэх л
+       * зөвшөөрөгдөнө. Устгал хэрэгтэй бол ArcGIS-ийн өөрийн хэрэгслээр,
+       * ухамсартайгаар хийгдэх ёстой.
+       */
+
+      /* ══════ САРЫН ЗАДАРГААГ ХУГАЦААНД НИЙЦҮҮЛЭХ ══════
+       *
+       * ⚠️ Төлөвлөгөөт хугацаа өөрчлөгдвөл сарын мөрүүд нь ДАГАЖ өөрчлөгдөх
+       * ёстой — эс бөгөөс S-муруй хуучин хуваарийг харуулж, хугацаа заасан
+       * хүн өөрчлөлтөө огт олж харахгүй.
+       *
+       * ⚠️ БӨГЛӨГДСӨН САРЫГ ХЭЗЭЭ Ч УСТГАХГҮЙ. Мужаас гарсан ч `Cashflow_huwi`
+       * утгатай мөр ҮЛДЭНЭ, зөвхөн мэдэгдэл өгнө: тэр бол хүний оруулсан
+       * ажил бөгөөд хугацаа алдаатай засагдсан байж болно. Хоосон сарыг л
+       * цэвэрлэнэ.
+       * ⚠️ Энэ бол «эх мөрийг устгахгүй» дүрмийн ГАНЦ үл хамаарах зүйл:
+       * эдгээр мөр нь эх өгөгдөл БИШ, хугацаанаас БОДОГДСОН хуваарь.
+       */
+      const monthAdds: Record<string, unknown>[] = [];
+      const monthDels: number[] = [];
+      let keptOut = 0;
+      if (dataKey === 'CASHFLOW_NEW') {
+        const rowByOid = new Map(rows.map((r) => [Number(r[oidField]), r]));
+        /** Огнооны утга — засвартай бол ТҮҮНИЙГ, эс бөгөөс мөрийнхийг */
+        const dateOf = (a: Record<string, unknown>, r: Row | undefined, fld: string) => {
+          const v = fld in a ? a[fld] : r?.[fld];
+          const x = Number(v);
+          return Number.isFinite(x) && x > 0 ? new Date(x) : null;
+        };
+        /** «2026-03» */
+        const keyOf = (d: Date) => `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+
+        for (const [oid, a] of upd) {
+          if (!('ehleh_ognoo' in a) && !('duusah_ognoo' in a)) continue;
+          const r = rowByOid.get(oid);
+          const id = Number(r?.Cashflow_ID);
+          if (!Number.isFinite(id)) continue;
+          const st = dateOf(a, r, 'ehleh_ognoo');
+          const en = dateOf(a, r, 'duusah_ognoo');
+          /* ⚠️ Хоёр огнооны АЛЬ НЭГ нь дутуу бол сарын жагсаалт тодорхойгүй —
+             хуучин мөрүүдийг ХЭВЭЭР үлдээнэ, таамаглаж устгахгүй. */
+          if (st == null || en == null) continue;
+
+          /* Шинэ мужийн сарууд */
+          const want = new Map<string, { s: number; e: number }>();
+          let y = st.getUTCFullYear();
+          let m = st.getUTCMonth();
+          const n2 = Math.min(480, Math.max(1,
+            (en.getUTCFullYear() - y) * 12 + (en.getUTCMonth() - m) + 1));
+          for (let i = 0; i < n2; i += 1) {
+            want.set(`${y}-${String(m + 1).padStart(2, '0')}`, {
+              s: Date.UTC(y, m, 1),
+              e: Date.UTC(y, m + 1, 1) - 86400000,
+            });
+            m += 1;
+            if (m > 11) { m = 0; y += 1; }
+          }
+
+          const have = new Map<string, Row>();
+          for (const mr of monthBy.get(id) ?? []) {
+            const t = Number(mr.Cashflow_start);
+            if (Number.isFinite(t)) have.set(keyOf(new Date(t)), mr);
+          }
+
+          /* Шинээр гарсан сар — нэмнэ (хувь нь ХООСОН, хүн бөглөнө) */
+          for (const [k, v] of want) {
+            if (have.has(k)) continue;
+            monthAdds.push({ Cashflow_ID: id, Cashflow_start: v.s, Cashflow_end: v.e });
+          }
+          /* Мужаас гарсан сар — ЗӨВХӨН хоосныг устгана */
+          for (const [k, mr] of have) {
+            if (want.has(k)) continue;
+            const filled = mr.Cashflow_huwi != null && String(mr.Cashflow_huwi).trim() !== '';
+            const moid = Number(mr[oidField]);
+            if (filled) { keptOut += 1; continue; }
+            if (Number.isFinite(moid)) monthDels.push(moid);
+          }
+        }
+
+        /* ══════ САРЫН ДҮНГ ХУВИАС БОДОХ ══════
+         * ⚠️ `Cashflow_dun` нь ГАРААР бичигддэггүй: хувь × эцгийн ХО дүн.
+         * Хоёуланг нь гараар бөглөвөл хэзээ нэгэн цагт зөрөх нь тодорхой.
+         */
+        const monthByOid = new Map(months.map((r) => [Number(r[oidField]), r]));
+        for (const [oid, a] of upd) {
+          if (!('Cashflow_huwi' in a)) continue;
+          const mr = monthByOid.get(oid);
+          const parent = rows.find((r) => Number(r.Cashflow_ID) === Number(mr?.Cashflow_ID));
+          const cost = Number(parent?.ho_dun_geree);
+          const pct = Number(a.Cashflow_huwi);
+          /* ⚠️ Хувийг АРИЛГАВАЛ дүн ч арилна (`null`), 0 болохгүй */
+          a.Cashflow_dun = a.Cashflow_huwi == null || !Number.isFinite(pct) || !Number.isFinite(cost)
+            ? null
+            : (cost * pct) / 100;
+        }
+      }
       const { n } = await applyAll(url, oidField, {
         updates: [...upd.values()],
-        adds: newRows,
-        deletes: [...del],
+        adds: [...newRows, ...monthAdds],
+        /* ⚠️ ГАНЦ ЗӨВШӨӨРӨГДСӨН УСТГАЛ: хугацаанаас гарсан ХООСОН сарын мөр
+           (дээрх тайлбарыг үз). Эх өгөгдлийн мөр энд ХЭЗЭЭ Ч ирэхгүй. */
+        deletes: monthDels,
       });
 
       /* ⚠️ Кэшийг зөвхөн АМЖИЛТТАЙ бичилтийн дараа хаяна */
@@ -1419,14 +1783,18 @@ function FullTable({
          мөрийн нүд тэмдэглэгдэхгүй: тэр мөр өөрөө алга болсон. */
       setSaved((prev) => {
         const nx = new Set(prev);
-        for (const k of Object.keys(pend)) {
-          const oid = Number(k.slice(0, k.indexOf(':')));
-          if (!del.has(oid)) nx.add(k);
-        }
+        for (const k of Object.keys(pend)) nx.add(k);
         return nx;
       });
       reset();
-      setMsg(tr('{0} мөр хадгалагдав', n));
+      setMsg([
+        tr('{0} мөр хадгалагдав', n),
+        monthAdds.length ? tr('сар нэмэгдсэн: {0}', monthAdds.length) : '',
+        monthDels.length ? tr('хоосон сар хасагдсан: {0}', monthDels.length) : '',
+        /* ⚠️ Бөглөсөн сар мужаас гарсныг ЗААВАЛ хэлнэ — чимээгүй үлдээвэл
+           хүн S-муруйд яагаад илүү сар байгааг олж чадахгүй. */
+        keptOut ? tr('⚠ мужаас гарсан ч бөглөгдсөн тул үлдээсэн: {0}', keptOut) : '',
+      ].filter(Boolean).join(' · '));
       onSaved();
     } catch (e) {
       setErr(String((e as Error).message || e));
@@ -1435,18 +1803,22 @@ function FullTable({
     }
   };
   /**
-   * ГЭРЭЭНИЙ БҮРТГЭЛИЙН БАГАНЫ ДАРААЛАЛ (хэрэглэгчийн заавар 2026-09-04).
+   * ГЭРЭЭНИЙ БҮРТГЭЛИЙН БАГАНЫ ДАРААЛАЛ.
    *
    * ⚠️ Үйлчилгээний метадатагийн дараалал нь ажлын логиктой тохирдоггүй —
-   * «Багц 74» ба «Гүйцэтгэлийн хувь» хоёр хамаагүй хол унасан байдаг. Эхний
-   * зургааг ЭНД тогтооно; үлдсэн нь метадатагийн дарааллаараа хойно нь орно.
+   * «Багц 74» ба «Гүйцэтгэлийн хувь» хоёр хамаагүй хол унасан байдаг.
    * ⚠️ Жагсаалтад БАЙХГҮЙ талбар алдагдахгүй — шүүгээд биш ЭРЭМБЭЛЖ байна.
    */
-  const FLAT_LEAD = [
-    'Turul', 'Tusul', 'Bagts', 'Ded_bagts', 'Bagts_74', 'Guitsetgel_huwi',
-  ];
+  /*
+   * ⚠️ 2026-09-08: эрэмбэ нь `Сэлбэ дэд төв_ХО төлөвлөгөө_arcgis.xlsx`-ийн
+   * B…Z баганы дараалал болов (`finExcelLayout.ts`). Гүйцэтгэл бөглөдөг хүмүүс
+   * тэр Excel-ийг өдөр бүр хардаг тул порталын хүснэгт нь тэдний нүдэнд ТАНИЛ
+   * дараалалтай байх ёстой.
+   */
+  const FLAT_LEAD = FIN_XL_ORDER;
 
-  const cols: FieldDef[] = useMemo(() => {
+  /** БҮХ багана — нуулт/дараалал хэрэглэхээс ӨМНӨХ жагсаалт */
+  const allCols: FieldDef[] = useMemo(() => {
     const base = (
       fields.length
         ? fields
@@ -1456,12 +1828,24 @@ function FullTable({
     ).filter((c) => !isSkip(c.name, c.type, oidField));
 
     if (dataKey !== 'CASHFLOW_NEW') return base;
+    /*
+     * ⚠️ ЗАДАРГААНЫ ТҮВШНҮҮД БАГАНА болж ГАРАХГҮЙ: Excel-д тэдгээр нь багана
+     * биш, бүх өргөнөөр татсан ЗУРВАС мөр. Утга нь зурваснаас бүрэн уншигдана
+     * — өгөгдөл нуугдахгүй. Багана болгож үлдээвэл 78 мөрд ижил утга дахин
+     * дахин давтагдаж, зурвастай давхардана.
+     * ⚠️ КОДЫН талбарууд (`bagts_tuvshin*`) ч мөн адил — тэдгээр нь зурвасын
+     * шошгын урд («4.1 · Гадна цахилгаан холбоо») гарна.
+     */
+    const STRUCT = new Set<string>([
+      FIN_XL_SECTION, FIN_XL_GROUP_FIELD, FIN_XL_GROUP3_FIELD, ...FIN_XL_CODE,
+    ]);
+    const noSec = base.filter((c) => !STRUCT.has(c.name));
     const rank = (n: string) => {
       const i = FLAT_LEAD.indexOf(n);
       return i < 0 ? FLAT_LEAD.length : i;
     };
     // ⚠️ Тогтвортой эрэмбэ — тэнцүү зэрэгтэй багана эх дараалалдаа үлдэнэ
-    return base
+    return noSec
       .map((c, i) => ({ c, i }))
       .sort((x, y) => rank(x.c.name) - rank(y.c.name) || x.i - y.i)
       .map((x) => x.c);
@@ -1479,8 +1863,115 @@ function FullTable({
    */
   const { style: colStyle, grip, resetAll, resized } = useColWidths(`fin-${dataKey}`);
 
-  /** Анхны өргөн — эхний 5 багана (№ + царцсан 4) */
-  const FZ_DEF = [46, 230, 210, 120, 120];
+  /**
+   * БАГАНЫ БҮТЭЦ — нуух · царцаах · зөөх · мөр таслах (2026-09-08).
+   *
+   * ⚠️ 33 багана нь бүгд нэг зэрэг хэрэгтэй БАЙДАГГҮЙ: хэрэглэгч ажлынхаа
+   * төрлөөс шалтгаалж 5–10-ыг нь л хардаг. Excel-ийн энгийн үйлдлүүдийг
+   * (нуух, царцаах, зөөх) өгснөөр 33 баганыг хэрэглэгч өөрөө өөрийн
+   * хүснэгт болгоно.
+   *
+   * ⚠️ Анхдагчаар «Нарийвчилсан төрөл» МӨР ТАСАРСАН: тэр нь ажлын бүтэн нэр
+   * агуулдаг цорын ганц урт талбар бөгөөд урьд нь нүд бүр дээр дарж дэлгэх
+   * шаардлагатай байв (хэрэглэгчийн шүүмж).
+   */
+  /**
+ * ⚠️ ТОГТВОРТОЙ ХООСОН МАССИВ — `useSheetCols`-ийн `hideV` нь агуулгаараа
+ * тооцогддог ч `useMemo`-гийн хамаарал нь ИШЛЭЛЭЭР жишдэг. Рендер бүрт `[]`
+ * шинээр үүсгэвэл доторх санамжууд дэмий дахин тооцогдоно.
+ */
+const EMPTY_HIDE: string[] = [];
+
+const DEF_WRAP = useMemo(() => ['ajil_uilchilgee'], []);
+  const colNames = useMemo(() => allCols.map((c) => c.name), [allCols]);
+  /**
+   * АНХДАГЧААР НУУГДАХ багана — ЗӨВХӨН гэрээний бүртгэлд.
+   * ⚠️ IPC-д анхдагч нуулт байхгүй тул хоосон массив: `useSheetCols`-ийн
+   * `hideV` нь агуулгаараа тооцогддог учир хоосон нь «анхдагчгүй» гэсэн үг.
+   */
+  const defHidden = dataKey === 'CASHFLOW_NEW' ? FIN_XL_HIDE : EMPTY_HIDE;
+  const sc = useSheetCols(`fin-${dataKey}`, colNames, DEF_WRAP, defHidden, FIN_XL_ORDER_V);
+
+  /**
+   * ХАРАГДАХ багана — хэрэглэгчийн дараалал ба нуултыг хэрэглэсэн.
+   *
+   * ⚠️ `allCols` нь эх сурвалж хэвээр: цэс, «бүгдийг харуулах» хоёр түүнээс
+   * уншина — нуугдсан баганыг буцаах зам хаагдах ёсгүй.
+   */
+  /**
+   * ⚠️ МӨР ТАСАЛСАН багана нь ДЭЛГЭХ шаардлагагүй: бичвэр аль хэдийн бүтнээрээ
+   * харагдаж байгаа тул нүд дарахад «мурийж дэлгэгдэх» нь ердөө байрлал л
+   * зөрүүлнэ (2026-09-08). Тасралтгүй багананд л дэлгэлт утгатай.
+   */
+  const EXPANDABLE = useMemo(
+    () => ['ajil_uilchilgee'].filter((n) => !sc.wrap.has(n)),
+    [sc.wrap],
+  );
+
+  const cols: FieldDef[] = useMemo(() => {
+    const by = new Map(allCols.map((c) => [c.name, c]));
+    return sc.view.map((n) => by.get(n)).filter((c): c is FieldDef => c != null);
+  }, [allCols, sc.view]);
+
+  /**
+   * OUTLINE ЗУРВАСЫН ӨРГӨН — Excel-ийн зүүн захын бүлэглэлтийн зурвас.
+   *
+   * ⚠️ ТУСДАА БАГАНА БОЛГОСОНГҮЙ: царцсан багануудын `left` нь өргөний
+   * хуримтлалаар тооцогддог тул шинэ баганыг эхэнд оруулбал тэр гинж
+   * бүхэлдээ шилжиж, толгой ба мөр хоёр зөрөх эрсдэлтэй. Оронд нь № нүдийг
+   * өргөсгөж, зурвасыг түүний дотор ҮНЭМЛЭХҮЙ байрлуулав.
+   * ⚠️ Зөвхөн гэрээний бүртгэлд — IPC-д ийм шатлал байхгүй.
+   */
+  /**
+   * EXCEL-ИЙН ХАРАГДАЦ — зүүн гарын ГУТАЛ БАГАНА БАЙХГҮЙ.
+   *
+   * ⚠️ 2026-09-09-нд хасав (хэрэглэгчийн хүсэлт: «зүгээр hide байж болохгүй
+   * юу»). Тэр багана мөрийн дугаар агуулдаг байсан нь Excel-ийн ӨӨРИЙН «№»
+   * баганатай (`dugaar`) ДАВХАРДАЖ, нэг хүснэгтэд хоёр дугаарлалт гарч байв.
+   * ⚠️ Outline-ийн `+`/`−` товч АЛГА БОЛООГҮЙ — зурвасын мөрийн «БАГЦ» нүд рүү
+   * шилжсэн (`bandCell`). Excel-д тэр товч торны зүүн гадна суудаг ч порталд
+   * тусдаа багана болговол царцсан багануудын `left` гинж шилжинэ.
+   * ⚠️ ЗАСВАР ба IPC-д гутал ХЭВЭЭР: тэнд Excel-ийн № багана байхгүй тул
+   * мөрийн дугаар нь цорын ганц чиглүүлэгч, мөн засварын тамга тэнд гарна.
+   */
+  const xlView = dataKey === 'CASHFLOW_NEW' && !edit;
+  const OUT_W = 0;
+
+  /** Анхны өргөн — эхний 5 багана (гутал + царцсан баганууд) */
+  const FZ_DEF = [xlView ? 0 : 46, 230, 210, 120, 120];
+
+  /**
+   * ТУСГАЙ АНХНЫ ӨРГӨН — урт бичвэртэй багана.
+   *
+   * ⚠️ Зөвхөн «Нарийвчилсан төрөл»: тэр нь ажлын БҮТЭН нэр агуулдаг цорын ганц
+   * талбар бөгөөд анхдагч өргөнд хоёр үг л багтдаг байв. Мөр таслалттай тул
+   * өндөр нь өснө — өргөн нь тэр өсөлтийг хязгаарлана (нарийн багана нь
+   * найман мөр болж, хүснэгт бүхэлдээ сунана).
+   */
+  /*
+   * ⚠️ ХОЦРОГДСОН: анхны өргөн одоо `FIN_XL_WIDTH`-ээс ирнэ (Excel-ийн
+   * харьцаа). Энэ хүснэгт нь ЗӨВХӨН IPC-д (Excel-д байхгүй талбарууд) үлдэв.
+   */
+  const WIDE: Record<string, number> = {};
+
+  /**
+   * ЕРДИЙН БАГАНЫ АНХНЫ ӨРГӨН — `FZ_DEF`-д ч, `WIDE`-д ч байхгүй үед.
+   *
+   * ⚠️ ЦАРЦСАН багананд ЗААВАЛ хэрэгтэй: түүний `left` нь өмнөх багануудын
+   * өргөний НИЙЛБЭР тул өргөн нь «агуулгаараа» гэж үлдвэл нийлбэр тооцогдохгүй.
+   */
+  const DEF_COL = 150;
+
+  /**
+   * АНХДАГЧ ӨРГӨН — Excel-ийн зохиомжоос, эс бөгөөс хуучин утгууд.
+   * ⚠️ Хэрэглэгчийн чирсэн өргөн (`colW`) үүнийг ҮРГЭЛЖ дарна.
+   */
+  const defW = (name: string, i: number): number => (
+    FIN_XL_WIDTH[name] ?? (i < 4 ? FZ_DEF[i + 1] : (WIDE[name] ?? DEF_COL))
+  );
+
+  /** Царцаалтад хэрэглэх БАТАЛГААТАЙ өргөн — хэзээ ч `undefined` буцаахгүй */
+  const wOf = (name: string, i: number): number => colW(name, defW(name, i)) ?? DEF_COL;
 
   /** Тухайн баганын одоогийн өргөн (чирсэн бол түүнийг, эс бөгөөс анхныхыг) */
   const colW = (name: string, dflt?: number): number | undefined => {
@@ -1489,15 +1980,19 @@ function FullTable({
     return dflt;
   };
 
-  /** Царцсан 4 баганын зүүн шилжилт — өргөний нийлбэрээр */
+  /**
+   * ЦАРЦСАН БАГАНУУДЫН ЗҮҮН ШИЛЖИЛТ — өргөний хуримтлагдсан нийлбэрээр.
+   *
+   * ⚠️ ТООГ ХЭРЭГЛЭГЧ ТОГТООНО (`sc.frozen`), 4 гэж хатуу бичихээ БОЛИВ
+   * (2026-09-08). Хүн бүрийн ажил өөр: зарим нь зөвхөн «Төрөл»-ийг барих
+   * хэрэгтэй, зарим нь зургаан баганыг.
+   */
   const frzLeft = useMemo(() => {
     const out = [FZ_DEF[0]];
-    for (let i = 0; i < 3; i++) {
-      out.push(out[i] + (colW(cols[i]?.name ?? '', FZ_DEF[i + 1]) ?? FZ_DEF[i + 1]));
-    }
+    for (let i = 0; i < sc.frozen; i += 1) out.push(out[i] + wOf(cols[i]?.name ?? '', i));
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [colStyle, cols]);
+  }, [colStyle, cols, sc.frozen]);
 
   /* ══════════ ШҮҮЛТ ══════════ */
 
@@ -1509,13 +2004,13 @@ function FullTable({
    *    болно.
    */
   const keepOids = useMemo(() => {
-    const s = new Set<number>(del);
+    const s = new Set<number>();
     for (const k of Object.keys(pend)) {
       const oid = Number(k.slice(0, k.indexOf(':')));
       if (Number.isFinite(oid)) s.add(oid);
     }
     return s;
-  }, [pend, del]);
+  }, [pend]);
 
   const active = filterDirty(flt);
 
@@ -1550,14 +2045,14 @@ function FullTable({
    * хоорондоо зөрчилдөхгүй.
    */
   /*
-   * ⚠️ `Cashflow_0904` нь ГЭРЭЭ/САР гэсэн мөрийн төрөлгүй — гэрээ бүр НЭГ мөр.
+   * ⚠️ `Cashflow_0909` нь ГЭРЭЭ/САР гэсэн мөрийн төрөлгүй — гэрээ бүр НЭГ мөр.
    * `cf` горимд зурвал `splitContracts` мастер мөр олохгүй тул хүснэгт ХООСОН
    * гарна. Тиймээс хавтгай горим.
    */
   /* ⚠️ 2026-09-06: «cf» горим (хуучин `cashflow_0813`-ийн паспорт+хуваарь
      карт) БҮРМӨСӨН хасагдсан — тэр үйлчилгээ байхгүй болсон. Үлдсэн хоёр
      хүснэгт: гэрээний бүртгэл (нэг бүтэн хүснэгт) ба актын урсгал. */
-  const kind: FinKind = dataKey === 'IPC_LOG' ? 'ipc' : 'flat';
+  const kind: FinKind = dataKey === 'HO_IPC' ? 'ho' : 'flat';
   const packs = useMemo(
     () => (grouped ? buildGroups(shown, kind) : null),
     [grouped, shown, kind],
@@ -1698,18 +2193,174 @@ function FullTable({
    *    шууд харагдана.
    */
   /**
-   * ЦАРЦСАН БАГАНА — эхний дөрөв нь хэвтээ гүйлгэхэд байрандаа үлдэнэ.
+   * ЦАРЦСАН БАГАНА — хэвтээ гүйлгэхэд байрандаа үлдэнэ.
    * ⚠️ Зөвхөн `position: sticky` хангалтгүй: багана бүрийн `left` нь өмнөхүүдийн
-   * ӨРГӨНИЙ НИЙЛБЭР байх ёстой тул өргөнийг CSS-д ТОГТМОЛ зааж, тэндээ
-   * `calc()`-аар байрлуулна (`.xlF1…4`).
+   * ӨРГӨНИЙ НИЙЛБЭР байх ёстой (`frzLeft`).
    */
-  const frz = (i: number): string => (i < 4 ? (f[`xlF${i + 1}`] ?? '') : '');
+  /**
+   * ⚠️ НЭГ КЛАСС, инлайн `left`/`z-index` (2026-09-08). Урьд нь `.xlF1…4`
+   * гэсэн ДӨРВӨН класс байсан тул царцаалтын тоо CSS-д хатуу шингэсэн байв.
+   * Хэрэглэгч 6 багана царцаахыг хүсвэл CSS засах шаардлагатай болно.
+   */
+  /**
+   * ⚠️ ХИЛИЙН ЗУРААС нь ТОЛГОЙД ба МӨР БҮРД (2026-09-08, хэрэглэгчийн заавар).
+   * Урьд нь зөвхөн `th`-д тавигддаг байсан тул царцсан хэсэг хаана дуусахыг
+   * зөвхөн дээд ирмэгээс уншиж, доош гүйхэд хил нь алга болдог байв.
+   */
+  const frz = (i: number): string => (i < sc.frozen
+    ? [f.xlFz, i === sc.frozen - 1 ? f.xlFzEdge : ''].filter(Boolean).join(' ')
+    : '');
 
   /** Нүдний өргөн ба (царцсан бол) зүүн шилжилт */
-  const colSty = (c: FieldDef, i: number): CSSProperties => {
-    const w = colW(c.name, i < 4 ? FZ_DEF[i + 1] : undefined);
+  const colSty = (c: FieldDef, i: number, head = false): CSSProperties => {
+    const on = i < sc.frozen;
+    /* ⚠️ Царцсан бол өргөн нь ЗААВАЛ тодорхой (§`wOf`); эс бөгөөс агуулгаараа */
+    const w = on ? wOf(c.name, i) : colW(c.name, defW(c.name, i));
     const st: CSSProperties = w != null ? { width: w, minWidth: w, maxWidth: w } : {};
-    if (i < 4) st.left = frzLeft[i];
+    if (on) {
+      st.left = frzLeft[i];
+      /*
+       * ⚠️ Зүүн тийш ӨСӨХ z-index: баруун талын царцсан багана нь зүүнийхийнхээ
+       * ДООГУУР гүйх ёстой, эс бөгөөс гүйлгэхэд хоёр нь давхарлаж хоёулаа
+       * уншигдахгүй болно.
+       *
+       * ⚠️ ТОЛГОЙД 25-аас ЭХЛЭНЭ (2026-09-08-ны засвар): толгойн нүд нь мөрийн
+       * нүднээс ч, энгийн (царцаагүй) толгойноос ч ДЭЭР байх ёстой. Инлайн
+       * z-index нь `.xlTbl thead .xlFz`-ийн дүрмийг ДАРДАГ тул царцсан толгой
+       * 4·3·2·1 болж, энгийн толгойн (2) дор орж, гүйлгэхэд «толгой гүйж»
+       * байв.
+       */
+      st.zIndex = (head ? 25 : 0) + (sc.frozen - i);
+    }
+    /* ⚠️ МӨР ТАСЛАХ — өргөнийг ХЭВЭЭР үлдээж зөвхөн бичвэрийг мурийлгана:
+       `width: auto` тавибал урт утга багануудыг түлхэж хүснэгт сунана. */
+    if (sc.wrap.has(c.name)) {
+      st.whiteSpace = 'normal';
+      st.overflow = 'visible';
+      st.wordBreak = 'break-word';
+      /*
+       * ⚠️ ХОЁР ТАЛААР ЖИГДЭЛНЭ (`justify`) — ЗӨВХӨН тасарсан баганы ӨГӨГДЛИЙН
+       * нүдэнд. Тасралтгүй нүдэнд утгагүй (нэг мөр нь жигдрэх зүйлгүй), харин
+       * олон мөртэй нүдний баруун ирмэг сэмрэх нь багана хоорондын хилийг
+       * бүдгэрүүлдэг.
+       *
+       * ⚠️ ТОЛГОЙД ХЭРЭГЛЭХГҮЙ (2026-09-08): «Нарийвчилсан төрөл» гэсэн хоёр
+       * үг `justify`-д хоёр ирмэг рүү тарж, дунд нь том цоорхой үлддэг байв.
+       */
+      if (!head) st.textAlign = 'justify';
+    }
+    return st;
+  };
+
+  /* ═══════════ EXCEL-ИЙН БҮЛЭГЛЭСЭН ТОЛГОЙ (2026-09-08) ═══════════
+   *
+   * ⚠️ Эх нь «Сэлбэ дэд төв_ХО төлөвлөгөө_arcgis.xlsx»: тэнд толгой нь ГУРВАН
+   * мөр — «Захирамжийн дүн» нь J1:Q1-ийг, түүний доторх «Хөрөнгө оруулалтын эх
+   * үүсвэр» нь M2:Q2-ийг хамарна. Гүйцэтгэл бөглөдөг хүмүүс тэр бүтцээр
+   * баримжаалдаг тул порталд ч ижил байх ёстой (хэрэглэгчийн заавар).
+   *
+   * ⚠️ Зурвас нь ОДООГИЙН харагдах баганаас угсарна — хэрэглэгч багана нуух ·
+   * зөөхөд зурвас нь өөрөө богиносч, тасарч, хоёр хэсэг болно. Урьдчилан
+   * бэлдсэн тогтмол зурвас байвал зөөсний дараа буруу баганыг нэрлэнэ.
+   */
+  type Band = {
+    /** Навчны баганы индекс; зурвас бол −1 */
+    leaf: number;
+    label: string;
+    from: number;
+    span: number;
+    /** ДЭЭД шатны бүлгийн нэр — өнгөний аясыг үүгээр сонгоно */
+    top0: string;
+  };
+
+  const bandRows = useMemo<Band[][]>(() => {
+    const paths = cols.map((c) => finXlGroup(c.name));
+    const depth = paths.reduce((a, p) => Math.max(a, p.length), 0);
+    const rows: Band[][] = [];
+    for (let lv = 0; lv <= depth; lv += 1) {
+      const row: Band[] = [];
+      let i = 0;
+      while (i < cols.length) {
+        const p = paths[i];
+        /* Багана өөрийн гүнд НЭГ УДАА гарна; түүнээс доош мөрд алгасагдана */
+        if (p.length < lv) { i += 1; continue; }
+        if (p.length === lv) {
+          row.push({ leaf: i, label: '', from: i, span: 1, top0: p[0] ?? '' });
+          i += 1;
+          continue;
+        }
+        /* ⚠️ Зурвас нь ЗАМААРАА нэгдэнэ, зөвхөн нэрээрээ БИШ: өөр бүлгийн
+           доторх ижил нэртэй дэд бүлэг санамсаргүй нийлэх ёсгүй. */
+        const key = (k: number) => JSON.stringify(paths[k].slice(0, lv + 1));
+        const k0 = key(i);
+        let j = i + 1;
+        while (j < cols.length && paths[j].length > lv && key(j) === k0) j += 1;
+        row.push({ leaf: -1, label: p[lv], from: i, span: j - i, top0: p[0] });
+        i = j;
+      }
+      rows.push(row);
+    }
+    return rows;
+  }, [cols]);
+
+  /**
+   * ЗУРВАСУУДЫН ӨНДРИЙГ ХЭМЖИНЭ — наалдмал `top` нь тэднээс хамаарна.
+   *
+   * ⚠️ Тогтмол өндөр бичиж БОЛОХГҮЙ: навчны нэр 1–3 мөр болж мурийдаг ба
+   * `rowSpan`-тай нүдний илүү өндөр нь СҮҮЛИЙН мөрөнд очдог тул зурвасын
+   * бодит өндөр хөтчөөс хамаарч хэлбэлзэнэ. Зөрвөл толгойн мөрүүд гүйлгэх үед
+   * бие бие рүүгээ шургана.
+   *
+   * ⚠️ Хэмжилт нь ResizeObserver-ийн ДОТОР — эффектийн биед `setState`
+   * дуудвал `react-hooks/set-state-in-effect` дүрэм зөрчигдөнө. Ажиглагч нь
+   * `observe` хийсэн даруйдаа нэг удаа дуудагддаг тул анхны хэмжилт ч эндээс
+   * гарна.
+   */
+  const theadRef = useRef<HTMLTableSectionElement | null>(null);
+  const [hTops, setHTops] = useState<number[]>([]);
+  useEffect(() => {
+    const el = theadRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(() => {
+      let acc = 0;
+      const next = Array.from(el.children).map((r) => {
+        const top = acc;
+        acc += (r as HTMLElement).getBoundingClientRect().height;
+        return top;
+      });
+      setHTops((prev) => (prev.length === next.length
+        && prev.every((v, i) => Math.abs(v - next[i]) < 0.5) ? prev : next));
+    });
+    ro.observe(el);
+    for (const r of Array.from(el.children)) ro.observe(r);
+    return () => ro.disconnect();
+  }, [bandRows]);
+
+  /** Наалдмал шилжилт — хэмжигдээгүй байхад Excel-ийн нэрлэсэн өндрөөр */
+  const hTop = (lv: number) => hTops[lv] ?? lv * FIN_XL_BAND_H;
+
+  /**
+   * ТОЛГОЙН ӨНГӨНИЙ АЯС — Excel-ийнхтэй ижил хоёр өнгө.
+   * ⚠️ «Захирамжийн дүн» блок нь Excel-д ЦЭНХЭР (#2E75B6), бусад нь ХАР ХӨХ
+   * (#203864). Тэр ялгаа нь мөнгөний эх үүсвэрийн блокийг нэг харцаар
+   * тусгаарладаг тул хадгалагдана.
+   */
+  const xlTone = (top0: string) => (top0 === tr('Захирамжийн дүн') ? f.xlHdr2 : f.xlHdr1);
+
+  /** Зурвас БҮХЭЛДЭЭ царцсан бүсэд байна уу — тийм бол өөрөө ч наалдана */
+  const bandFz = (b: Band) => sc.frozen > 0 && b.from + b.span <= sc.frozen;
+
+  /**
+   * ⚠️ Царцсан бүсийг ДАВСАН зурвас наалддаггүй: түүний зүүн ирмэг царцсан
+   * баганы дор шургаж, баруун хэсэг нь гүйнэ. Ийм зурвасыг наалдуулбал
+   * баганаасаа тасарч, огт өөр багануудын дээр очно.
+   */
+  const bandSty = (b: Band, lv: number): CSSProperties => {
+    const st: CSSProperties = { top: hTop(lv), height: FIN_XL_BAND_H };
+    if (bandFz(b)) {
+      st.left = frzLeft[b.from];
+      st.zIndex = 25 + (sc.frozen - b.from);
+    }
     return st;
   };
 
@@ -1745,6 +2396,22 @@ function FullTable({
   const xCell = (
     r: Row, oid: number | null, dropped: boolean, c: FieldDef,
     extra = '', sty?: CSSProperties,
+    /**
+     * БОСОО НЭГТГЭЛ — хэдэн мөрийг дамжин суух.
+     *
+     * ⚠️ ЗӨВХӨН уншлагын горимд ирнэ. Засварын горимд нүд бүр ӨӨРИЙН
+     * оролттой байх ёстой: нэгтгэвэл гүйдлийн эхний мөрөөс бусад нь
+     * засагдах боломжгүй болно.
+     */
+    span?: number,
+    /**
+     * ХӨНДЛӨН НЭГТГЭЛ — хэдэн баганыг эзлэх.
+     *
+     * ⚠️ Дуудагч нь өргөнийг ЗААВАЛ өөрөө нийлүүлж `sty`-д өгнө: царцсан
+     * багануудын `left` нь өргөний хуримтлалаас тооцогддог тул нэгтгэсэн
+     * нүд нарийхан үлдвэл түүнээс хойшхи бүх багана зөрнө.
+     */
+    cSpan?: number,
   ) => {
     const key = `${oid}:${c.name}`;
     if (edit && oid != null && !dropped && !SERVER_RO.test(c.name)) {
@@ -1841,6 +2508,8 @@ function FullTable({
     return (
       <td
         key={key}
+        rowSpan={span}
+        colSpan={cSpan}
         title={cell.text || undefined}
         /*
          * ⚠️ ДЭЛГЭСЭН НҮДНИЙ ХЯЗГААРЫГ ЭНД ДАРЖ БИЧНЭ. Царцсан багануудад
@@ -1861,6 +2530,8 @@ function FullTable({
           /* ⚠️ Засах горимоос ГАРСНЫ дараа ч тэмдэглэгээ үлдэнэ — «юу
              өөрчлөгдсөн»-ийг харах гол агшин нь яг тэр үе. */
           saved.has(key) ? f.cellSaved : '',
+          /* Excel-ийн merge шиг — олон мөрийг дамжсан нүд голдоо */
+          span && span > 1 ? f.xlMerged : '',
         ].filter(Boolean).join(' ')}
       >
         {cell.text}
@@ -1909,25 +2580,21 @@ function FullTable({
   };
 
   /* Багануудын хуваарилалт — хуваарийнх нь `finCard.CF_PERIOD_FIELDS`,
-     үлдсэн нь паспорт. IPC: үндсэн баганууд + дэлгэрэнгүй. */
+     үлдсэн нь паспорт. HO: үндсэн баганууд + дэлгэрэнгүй.
+     ⚠️ `HO_MAIN_FIELDS`-д гэрээний ТОМ ДҮН (`tosov_niit` г.м.) ОРООГҮЙ —
+     тэдгээр нь гэрээний 7 мөрд ДАВТАГДАЖ нүд гутаана. Дэлгэрэнгүйд үлдэнэ. */
   const ipcMainCols = useMemo(
-    () => IPC_MAIN_FIELDS
+    () => HO_MAIN_FIELDS
       .map((n) => cols.find((c) => c.name === n))
       .filter((c): c is FieldDef => c != null),
     [cols],
   );
   const ipcDetailCols = useMemo(
-    () => cols.filter((c) => !IPC_MAIN_FIELDS.includes(c.name)),
+    () => cols.filter((c) => !HO_MAIN_FIELDS.includes(c.name)),
     [cols],
   );
   /** Толгой баруун зэрэгцэх үү — мөнгөн багана тийм, он·сар·дугаар үгүй */
   const thRight = (c: FieldDef) => NUMERIC_TYPES.has(c.type) && !PLAIN_INT.has(c.name);
-
-  const toggleDel = (oid: number) => setDel((sd) => {
-    const nx = new Set(sd);
-    if (nx.has(oid)) nx.delete(oid); else nx.add(oid);
-    return nx;
-  });
 
   /**
    * ═══ БАГЦЫН КАРТ — 2026-09-02-нд БҮРЭН ДАХИН загварчилсан ═══
@@ -1978,6 +2645,55 @@ function FullTable({
    * «хэддэх мөр» гэж ярихад ойлголцохгүй.
    */
   const sortRows = (list: GroupRow[]): GroupRow[] => {
+    /*
+     * ⚠️ ГЭРЭЭНИЙ БҮРТГЭЛ нь EXCEL-ИЙН МӨРИЙН ДАРААЛЛААР (2026-09-08).
+     * Тэр дараалал нь санамсаргүй биш: ХЭСЭГ → ТӨРӨЛ → БАГЦ гэсэн шатлалыг
+     * авч явдаг бөгөөд зурвас ба нэгтгэл ЗӨВХӨН түүн дээр зөв тогтоно.
+     * Талбараар эрэмбэлбэл нэг төрлийн мөрүүд салж, «ИНЖЕНЕРИЙН ДЭД БҮТЭЦ»
+     * гурван тусдаа бүлэг болж хуваагдана.
+     * ⚠️ OID нь Excel-ийн мөрийн дугаартай нэг зэрэгтэй (1…76) — файлыг
+     * ачаалахдаа дараалал нь хадгалагдсан.
+     */
+    if (dataKey === 'CASHFLOW_NEW') {
+      /*
+       * ⚠️ OID-ААР БИШ, ЗАДАРГААНЫ КОДООР (2026-09-09, хэрэглэгчийн шүүмж:
+       * «1-7 дараалалыг янзлаад өгөөч»).
+       *
+       * Урьд нь OID = Excel-ийн мөрийн дугаар гэж найдаж байсан. Гэвч
+       * үйлчилгээн дээр шатлалыг гараар засмагц («ОРОН СУУЦНЫ ХОРООЛОЛ» нь
+       * 1-р түвшин, код 3 болов) OID-ийн дараалал кодтойгоо зөрж, зурвас нь
+       * 1 · 3 · 2 · 4 … гэж гарч байв.
+       *
+       * ⚠️ Код нь «4.2» мэт ЦЭГТЭЙ тул хэсэг бүрийг ТООГООР жишнэ: текстээр
+       * бол «10» нь «2»-оос ӨМНӨ ирнэ.
+       * ⚠️ Тэнцүүг OID-аар тасална — нэг багц доторх ажлын дараалал Excel-ийн
+       * файлынхаараа үлдэнэ.
+       */
+      const seg = (v: unknown): number[] => String(v ?? '').trim().split('.')
+        .map((t) => {
+          const n = Number(t);
+          /* ⚠️ Кодгүй бол ХАМГИЙН СҮҮЛД (`Infinity`): «Газар чөлөөлөлт» мэт
+             кодгүй дэд бүлэг эцгийнхээ дотор эмх замбараагүй хөвөх ёсгүй. */
+          return Number.isFinite(n) && t !== '' ? n : Infinity;
+        });
+      const cmpSeg = (a: number[], b: number[]): number => {
+        for (let i = 0; i < Math.max(a.length, b.length); i += 1) {
+          const d = (a[i] ?? -1) - (b[i] ?? -1);
+          if (d !== 0) return Number.isNaN(d) ? 0 : d;
+        }
+        return 0;
+      };
+      const keyOf = (r: Row) => FIN_XL_CODE.map((f2) => seg(r[f2]));
+      return list.slice().sort((x, y) => {
+        const kx = keyOf(x.row);
+        const ky = keyOf(y.row);
+        for (let d = 0; d < kx.length; d += 1) {
+          const c = cmpSeg(kx[d], ky[d]);
+          if (c !== 0) return c;
+        }
+        return (x.oid ?? 0) - (y.oid ?? 0);
+      });
+    }
     const col = cols[0]?.name;
     if (!col) return list;
     // ⚠️ Хуулбарыг эрэмбэлнэ — эх массивыг өөрчилвөл дээд түвшний тооцоо гажна
@@ -2010,18 +2726,6 @@ function FullTable({
     if (!hMenu) return null;
     const c = cols.find((x) => x.name === hMenu.name);
     if (!c) return null;
-    const sel = flt.pick?.[c.name] ?? [];
-    const vals = distinct(rows, (r) => cellStr(r[c.name], c.type, c.name));
-    const numeric = isNumericType(c.type);
-
-    const setPick = (next: string[]) => setFlt((st) => {
-      const pick = { ...(st.pick ?? {}) };
-      /* ⚠️ Хоосон бол ТАЛБАРЫГ УСТГАНА — `[]` үлдээвэл `isDirty` худал үнэн
-         болж «Цэвэрлэх» товч мөнхөд гацна. */
-      if (next.length) pick[c.name] = next; else delete pick[c.name];
-      return { ...st, pick };
-    });
-
     return (
       <>
         {/* Гадна дарахад хаана — цэс нээлттэй үлдэж хүснэгтийг халхлахаас сэргийлнэ */}
@@ -2029,113 +2733,616 @@ function FullTable({
         <div
           className={f.thMenu}
           style={{ left: Math.min(hMenu.x, Math.max(8, window.innerWidth - 280)), top: hMenu.y }}
+          /* ⚠️ Цэс дэх товшилт нь ХҮСНЭГТИЙН цэвэрлэгч рүү хүрэх ёсгүй — эс
+             бөгөөс «Сонгосон 4 баганыг царцаах» дарахад сонголт нь тэр товшилтоор
+             аль хэдийн тайлагдчихсан байна. */
+          onClick={(ev) => ev.stopPropagation()}
         >
           <div className={f.thMenuHead}>
             {finFieldLabel(c.name) === c.name ? c.alias : finFieldLabel(c.name)}
           </div>
 
-          {numeric && (
-            /* ⚠️ Тоон багананд чагтын жагсаалт утгагүй (утга бүр цор ганц) —
-               ArcGIS ч тэнд нөхцөл бичүүлдэг. */
-            <input
-              className={f.thMenuNum}
-              value={flt.col[c.name] ?? ''}
-              placeholder={tr('>1000 · <=5e6 · 100..200')}
-              onChange={(ev) => setCol(c.name, ev.target.value)}
-            />
-          )}
-
-          <div className={f.thMenuActs}>
-            <button type="button" onClick={() => setPick(vals)}>{tr('Бүгд')}</button>
+          {/*
+            * БАГАНЫН ҮЙЛДЛҮҮД — Excel-ийн энгийн багц (2026-09-08).
+            *
+            * ⚠️ ШҮҮЛТЭЭС ЗУРААСААР тусгаарлав: шүүлт нь ӨГӨГДӨЛД, эдгээр нь
+            * ХАРАГДАЦАД үйлчилнэ. Нэг бүлэгт нийлүүлбэл «нуух» нь мөр
+            * шүүдэг мэт уншигдана.
+            */}
+          {/* ⚠️ ЭДГЭЭР ШОШГО АНГЛИАР — хэрэглэгчийн шууд заавар (2026-09-08).
+              Excel/ArcGIS-ийн ижил үйлдлүүд англиараа танигддаг тул орчуулга нь
+              эсрэгээрээ таних хугацааг уртасгана. Тиймээс `tr()`-гүй. */}
+          <div className={f.thMenuCols}>
+            {/*
+              * ⚠️ СОНГОЛТ БАЙВАЛ ТҮҮГЭЭР, эс бөгөөс ЭНЭ баганаар. Excel-д ч
+              * ялгаагүй: сонголтгүй үед цэс нээсэн багана өөрөө сонголт болно.
+              *
+              * ⚠️ Царцаалт нь ҮРГЭЛЖ ЗҮҮНЭЭС эхэлдэг ТАСРАЛТГҮЙ блок тул
+              * сонголтын ХАМГИЙН БАРУУН баганаар хэмжинэ — дунд нь алгассан
+              * багана байсан ч тэр нь царцаалтад орно. Эс бөгөөс «энэ хоёрыг
+              * царцаа» гэсэн боломжгүй хүсэлт үүснэ.
+              */}
             <button
               type="button"
-              onClick={() => { setPick([]); setCol(c.name, ''); }}
-            >{tr('Цэвэрлэх')}</button>
+              onClick={() => {
+                if (pick.length > 0) sc.hideMany(pick); else sc.hide(c.name);
+                setPick([]);
+                setHMenu(null);
+              }}
+            >
+              {pick.length > 1 ? `Hide ${num(pick.length)} columns` : 'Hide column'}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (pick.length > 0) {
+                  const last = Math.max(...pick.map((n) => cols.findIndex((x) => x.name === n)));
+                  sc.setFrozen(sc.frozen === last + 1 ? 0 : last + 1);
+                } else {
+                  sc.freezeTo(c.name);
+                }
+                setHMenu(null);
+              }}
+            >
+              {pick.length > 1
+                ? `Freeze ${num(pick.length)} columns`
+                : cols.findIndex((x) => x.name === c.name) === sc.frozen - 1
+                  ? 'Unfreeze'
+                  : 'Freeze up to here'}
+            </button>
+            <button type="button" onClick={() => sc.toggleWrap(c.name)}>
+              {sc.wrap.has(c.name) ? 'No wrap' : 'Wrap text'}
+            </button>
+            {pick.length > 0 && (
+              <button type="button" onClick={() => { setPick([]); setHMenu(null); }}>
+                Clear selection
+              </button>
+            )}
+            {sc.hidden.size > 0 && (
+              <button type="button" onClick={() => { sc.showAll(); setHMenu(null); }}>
+                {`Show ${num(sc.hidden.size)} hidden columns`}
+              </button>
+            )}
+            {/*
+              * АНХДАГЧ ХАРАГДАЦ — «бүгдийг харуул»-ын ЭСРЭГ.
+              *
+              * ⚠️ ЗААВАЛ ХЭРЭГТЭЙ: «нуусныг харуулах» нь анхдагчийг
+              * бүрмөсөн унтраадаг тул түүнгүйгээр хэрэглэгч нэг харснаа
+              * буцаахын тулд 19 баганыг гараар нуух ёстой болно
+              * (2026-09-10-ны шүүмж).
+              * ⚠️ Зөвхөн нуулт — дараалал, царцаалт, өргөн хэвээр.
+              */}
+            {defHidden.some((n: string) => !sc.hidden.has(n)) && (
+              <button type="button" onClick={() => { sc.hideDefaults(); setHMenu(null); }}>
+                {tr('Анхдагч харагдац ({0} багана нуух)', num(defHidden.filter((n: string) => !sc.hidden.has(n)).length))}
+              </button>
+            )}
           </div>
 
-          <ul className={f.thMenuList}>
-            {vals.map((v) => {
-              const on = sel.includes(v);
-              return (
-                <li key={v || '—'}>
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={on}
-                      onChange={() => setPick(on ? sel.filter((x) => x !== v) : [...sel, v])}
-                    />
-                    <span>{v === '' ? tr('(хоосон)') : v}</span>
-                  </label>
-                </li>
-              );
-            })}
-          </ul>
         </div>
       </>
     );
   };
 
   /**
-   * ХАВТГАЙ ХҮСНЭГТ — гэрээний бүртгэлд (`Cashflow_0904`).
+   * ТОЛГОЙН НАВЧНЫ НҮД — Excel-ийн 3-р мөрийн жинхэнэ баганы нэр.
+   *
+   * ⚠️ Урьд нь `<thead>`-д ШУУД бичигдсэн байв. Бүлгийн зурвас нэмэгдсэнээр
+   * (`bandRows`) нэг нүд ХЭД Ч МӨРӨӨС гарч болох болсон тул тусад нь
+   * гаргав — чирэх · сонгох · цэс нээх зан бүхэлдээ ХЭВЭЭР.
+   *
+   * @param rowSpan хэдэн толгойн мөрийг дамжин суух (бүлэггүй багана бүгдийг)
+   * @param top     наалдмал байрлалын шилжилт (дээрх зурвасуудын өндөр)
+   */
+  const leafTh = (c: FieldDef, ci: number, rowSpan: number, top: number) => (
+            <th
+              rowSpan={rowSpan > 1 ? rowSpan : undefined}
+              key={c.name}
+              title={`${finFieldLabel(c.name) === c.name ? c.alias : finFieldLabel(c.name)} · ${c.name}`}
+              style={{ ...colSty(c, ci, true), top }}
+              className={[
+                frz(ci),
+                xlTone(finXlGroup(c.name)[0] ?? ''),
+                thRight(c) ? f.thR : '',
+                drag === c.name ? f.thDrag : '',
+                pick.includes(c.name) ? f.thPick : '',
+              ].filter(Boolean).join(' ')}
+              /*
+               * ⚠️ БАГАНА ЗӨӨХ — Excel-ийн зан. `draggable` нь `th` дээр
+               * шууд: толгойд аль хэдийн шүүлтийн товч ба өргөний бариул
+               * хоёр байгаа тул гурав дахь удирдлага нүдийг дүүргэнэ.
+               *
+               * ⚠️ Өргөний бариул (`grip`) нь өөрийн `pointerdown`-оор
+               * чирэлтийг зогсоодог тул хоёр үйлдэл зөрчилдөхгүй.
+               */
+              draggable
+              onDragStart={(ev) => {
+                setDrag(c.name);
+                ev.dataTransfer.effectAllowed = 'move';
+                /* Firefox чирэлт эхлүүлэхийн тулд өгөгдөл ШААРДДАГ */
+                ev.dataTransfer.setData('text/plain', c.name);
+              }}
+              onDragOver={(ev) => { if (drag && drag !== c.name) ev.preventDefault(); }}
+              onDrop={(ev) => {
+                ev.preventDefault();
+                if (drag) sc.move(drag, c.name);
+                setDrag(null);
+              }}
+              onDragEnd={() => setDrag(null)}
+              /*
+               * ⚠️ БАРУУН ТОВШИЛТ нь ижил цэсийг нээнэ (2026-09-08,
+               * хэрэглэгчийн хүсэлт): Excel-д баганы үйлдлүүд яг тэндээс
+               * гардаг. ▾ товч нь ХЭВЭЭР — баруун товшилт нь мэддэг хүнд
+               * богино зам, товч нь мэдэхгүй хүнд ил зам.
+               */
+              /*
+               * ⚠️ ТОВШИЛТЫН ГУРВАН ХЭЛБЭР — Excel-тэй ижил:
+               *   · энгийн  → ЗӨВХӨН энэ багана
+               *   · Ctrl/⌘  → нэмж/хасаж сонгоно
+               *   · Shift   → сүүлийн товшилтоос ЭНЭ хүртэлх МУЖ
+               *
+               * ⚠️ Шүүлтийн ▾ товч ба өргөний бариул нь `stopPropagation`
+               * хийдэг тул тэднийг дарахад сонголт өөрчлөгдөхгүй.
+               */
+              onClick={(ev) => {
+                const names = cols.map((x) => x.name);
+                if (ev.shiftKey && lastPick.current) {
+                  const a = names.indexOf(lastPick.current);
+                  const b = names.indexOf(c.name);
+                  if (a >= 0 && b >= 0) {
+                    setPick(names.slice(Math.min(a, b), Math.max(a, b) + 1));
+                    return;
+                  }
+                }
+                lastPick.current = c.name;
+                if (ev.ctrlKey || ev.metaKey) {
+                  setPick((v) => (v.includes(c.name)
+                    ? v.filter((x) => x !== c.name)
+                    : [...v, c.name]));
+                  return;
+                }
+                setPick((v) => (v.length === 1 && v[0] === c.name ? [] : [c.name]));
+              }}
+              onContextMenu={(ev) => {
+                ev.preventDefault();
+                setHMenu((m) => (m?.name === c.name
+                  ? null
+                  : { name: c.name, x: ev.clientX, y: ev.clientY }));
+              }}
+            >
+              {/*
+                * ⚠️ Толинд байхгүй талбар нь ТҮҮХИЙ НЭРЭЭРЭЭ (`Bagts_74`)
+                * гарахгүй — үйлчилгээний ӨӨРИЙН alias руу уначихна.
+                * Ингэснээр шинэ багана нэмэгдэхэд код хөндөхгүйгээр
+                * монголоор харагдана.
+                */}
+              {/* ⚠️ Excel-ийн БОГИНО нэр («Дугаар», «Нийт дүн», «Эхлэх») —
+                  бүтэн утга нь дээрх зурвастай хамт уншигдана. Excel-д
+                  байхгүй талбар нь толины урт нэрээрээ, тэр ч байхгүй бол
+                  үйлчилгээний alias-аар. */}
+              {FIN_XL_LEAF[c.name]
+                ?? (finFieldLabel(c.name) === c.name ? c.alias : finFieldLabel(c.name))}
+              {/*
+                * ⚠️ ЦЭСНИЙ ТОВЧ (▾) ХАСАГДСАН (2026-09-08, хэрэглэгчийн заавар):
+                * цэс нь БАРУУН ТОВШИЛТООР нээгддэг болсон тул товч нь толгой
+                * бүрд зай эзлээд юу ч нэмэхгүй байв. Урьд нь ШҮҮЛТ тэндээс
+                * гардаг байсан бөгөөд тэр нь дээд зурвас руу шилжсэн.
+                */}
+              {/* Чирэх бариул — давхар товшвол анхны өргөнд буцна */}
+              <i {...grip(c.name)} />
+            </th>
+  );
+
+  /**
+   * ХАВТГАЙ ХҮСНЭГТ — гэрээний бүртгэлд (`Cashflow_0909`).
    * ⚠️ Багана нь метадатагаас (`cols`) ирнэ, гараар жагсаахгүй: үйлчилгээнд
    * талбар нэмэгдэхэд өөрөө гарч ирнэ.
    */
   const flatTable = (raw: GroupRow[]) => {
     const list = sortRows(raw);
+    /*
+     * БОСОО НЭГТГЭЛ — Excel-ийн `B6:B12`, `C47:C53` merge.
+     *
+     * ⚠️ Excel-д ТӨРӨЛ ба БАГЦ нь дараалсан ижил утгуудаараа НЭГ нүд болдог.
+     * Тэр нь зүгээр гоо сайхан биш: 76 мөрд «ИНЖЕНЕРИЙН ДЭД БҮТЭЦ» гэсэн үг
+     * 23 удаа давтагдахаар нүд харах утгаа алдаж, бүлгийн хил үл мэдэгдэх
+     * болно.
+     *
+     * ⚠️ ЗАСВАРЫН горимд ХИЙХГҮЙ: нэгтгэсэн нүдэнд ганцхан оролт үлдэх тул
+     * гүйдлийн 2-оос хойшхи мөрийн утгыг засах зам хаагдана.
+     * ⚠️ ХООСОН утгыг нэгтгэхгүй — «мэдээлэлгүй» мөрүүд санамсаргүй нэг
+     * бүлэг мэт харагдах ёсгүй.
+     * ⚠️ ЭРЭМБЭ/ШҮҮЛТ өөрчлөгдөх бүрд ДАХИН тооцогдоно (`list`-ээс) — эс
+     * бөгөөс эрэмбэлсний дараа зэрэгцээгүй мөрүүд нэгдэж, хүснэгт худал
+     * бүлэглэл харуулна.
+     */
+    /**
+     * EXCEL-ИЙН МӨРИЙН БҮТЭЦ асаалттай юу.
+     *
+     * ⚠️ ЗӨВХӨН гэрээний бүртгэлд, ЗӨВХӨН уншлагад. Засварын горимд бүтцийн
+     * мөр (зурвас · нийлбэр) нь нүднүүдийг гүйлгэж, засварын `oid:талбар`
+     * түлхүүрийг ойлгомжгүй болгоно; IPC-д ийм шатлал байхгүй.
+     */
+    const xlOn = dataKey === 'CASHFLOW_NEW' && !edit;
+    /**
+     * САРЫН ЗАДАРГАА ХАРАГДАХ УУ — 5-р түвшин.
+     * ⚠️ Засварын горимд ХААЛТТАЙ: тэнд мөр бүр өөрийн оролттой байх ёстой
+     * бөгөөд сарын мөр нь ажлын мөртэй ижил `oid:талбар` түлхүүр
+     * хуваалцдаггүй ч хүснэгтийн бүтцийг ойлгомжгүй болгоно.
+     */
+    /* ⚠️ `xlOn`-оос ХАМААРАХГҮЙ: засварын горимд сарын мөр ЗААВАЛ харагдах
+       ёстой — `Cashflow_huwi`-г тэндээс л бөглөнө. Сарын мөр бүр өөрийн
+       OBJECTID-тай тул засвар нь ердийн замаараа явна. */
+    const monthOn = dataKey === 'CASHFLOW_NEW' && lvl >= 5 && monthBy.size > 0;
+
+    /**
+     * МӨРИЙН ШАТЛАЛ — Excel-ийн E баганы «1 · 1.2 · 4.1» кодтой ХОС.
+     *
+     * ⚠️ Түвшин бүр ХОЁР талбартай: нэр (`ajil_tuvshin*`) ба КОД
+     * (`bagts_tuvshin*`). Хүмүүс ажлаа кодоор нь ярьдаг («дөрөв нэг дээр…»)
+     * тул зурвасын шошгонд код нь ЭХЭЛЖ гарна.
+     * ⚠️ ХООСОН түвшин гинжийг ТАСАЛНА (`xlKeys`-тэй ижил дүрэм): 3-р түвшин
+     * зөвхөн инженерийн дэд бүтцэд бөглөгдсөн тул бусад хэсэгт гурав дахь
+     * зурвас ҮҮСЭХГҮЙ.
+     */
+    const NAME_F = [FIN_XL_SECTION, FIN_XL_GROUP_FIELD, FIN_XL_GROUP3_FIELD];
+    /*
+     * ⚠️ `name` нь ЖИНХЭНЭ утга (эвхэлтийн түлхүүр, бүлэглэлт түүгээр),
+     * `label` нь ХАРАГДАХ нэр — эцгийнхээ давталтыг хассан
+     * (`finXlBandLabel`-ийн тайлбарыг үз).
+     */
+    const chainOf = (p: GroupRow): { name: string; code: string; label: string }[] => {
+      const out: { name: string; code: string; label: string }[] = [];
+      for (let d = 0; d < NAME_F.length; d += 1) {
+        const name = String(p.row[NAME_F[d]] ?? '').trim();
+        if (d > 0 && name === '') break;
+        out.push({
+          name,
+          code: String(p.row[FIN_XL_CODE[d]] ?? '').trim(),
+          label: finXlBandLabel(name, out[0]?.name ?? ''),
+        });
+      }
+      return out;
+    };
+
+    /** Нэг зурвасын мөр — Excel-ийн нийлбэр/гарчгийн мөр */
+    type XlBand = {
+      /** 0 = хэсэг · 1 = төрөл · 2 = дэд төрөл */
+      depth: number;
+      /** Excel-ийн код («4.1») — байхгүй бол хоосон */
+      code: string;
+      label: string;
+      /** Эвхэлтийн түлхүүр (`xlKeys`-тэй ЯГ ижил бүтэцтэй) */
+      key: string;
+      /** Зурвасын нийлбэрт орох БҮХ мөр */
+      rows: GroupRow[];
+    };
+    /** Мөр тус бүрийн бүтцийн тэмдэглэгээ */
+    type XlMark = {
+      /** Энэ мөрийн ӨМНӨ татах зурвасууд — гүехэнээс гүн рүү */
+      bands: XlBand[];
+      /** Эцгүүдийн эвхэлтийн түлхүүр — аль нэг нь хумигдсан бол мөр нуугдана */
+      keys: string[];
+    };
+    const mark: XlMark[] = list.map(() => ({ bands: [], keys: [] }));
+    if (xlOn) {
+      const chains = list.map(chainOf);
+      const keysOf = (ch: { name: string }[]) => ch.map((_, d) => (
+        d === 0 ? `s:${ch[0].name}` : (d === 1 ? `g:${ch[0].name}|${ch[1].name}` : `h:${ch[0].name}|${ch[1].name}|${ch[2].name}`)
+      ));
+      for (let i = 0; i < list.length; i += 1) mark[i].keys = keysOf(chains[i]);
+      for (let i = 0; i < list.length; i += 1) {
+        const ch = chains[i];
+        const prev = i > 0 ? chains[i - 1] : [];
+        /* Эцгийн гинж хаанаас салсныг олно — тэндээс доош ШИНЭ зурвас */
+        let d = 0;
+        while (d < ch.length && d < prev.length && ch[d].name === prev[d].name) d += 1;
+        for (; d < ch.length; d += 1) {
+          const key = mark[i].keys[d];
+          /* Зурвасын нийлбэрт орох мөрүүд — гинжний тэр угтвартай БҮХ дараалсан мөр */
+          let j = i;
+          while (j < list.length && mark[j].keys[d] === key) j += 1;
+          mark[i].bands.push({
+            depth: d, code: ch[d].code, label: ch[d].label, key, rows: list.slice(i, j),
+          });
+        }
+      }
+    }
+
+    /*
+     * БАГЦЫН БОСОО НЭГТГЭЛ — Excel-ийн `C17:C19`, `C47:C53` merge.
+     *
+     * ⚠️ Гүйдэл нь ТӨРЛИЙН ХИЛИЙГ ДАВЖ БОЛОХГҮЙ: хилийн дээр нийлбэр мөр
+     * ордог тул давсан `rowSpan` нь тэр мөрийг сүлбэж, хүснэгт эвдэрнэ.
+     * ⚠️ ХООСОН утгыг нэгтгэхгүй — «мэдээлэлгүй» мөрүүд санамсаргүй нэг
+     * бүлэг мэт харагдах ёсгүй.
+     */
+    /*
+     * БАГЦЫН БОСОО НЭГТГЭЛ — Excel-ийн `E` баганы merge.
+     *
+     * ⚠️ 0909-д БАГЦ нь ГАНЦ багана (хуучин «Багц»/«Дэд багц» хос нийлсэн)
+     * тул хөндлөн нэгтгэл БАЙХГҮЙ — зөвхөн дараалсан ижил утгууд босоогоор
+     * нийлнэ («БАГЦ 1-6 БАГЦ 8-17» мөр 1-2 г.м.).
+     * ⚠️ Гүйдэл нь ЗУРВАСЫГ ДАВЖ БОЛОХГҮЙ: хилийн дээр нийлбэр мөр ордог тул
+     * давсан `rowSpan` нь тэр мөрийг сүлбэж, хүснэгт эвдэрнэ.
+     * ⚠️ ХООСОН утгыг нэгтгэхгүй — «мэдээлэлгүй» мөрүүд санамсаргүй нэг
+     * бүлэг мэт харагдах ёсгүй.
+     */
+    const mgSpan = new Map<string, number[]>();
+    /*
+     * ⚠️ САРЫН ЗАДАРГАА АСААЛТТАЙ ҮЕД БОСОО НЭГТГЭЛ ХИЙХГҮЙ (2026-09-09-ны
+     * алдаа: «freeze хийлээ асар замбараагүй харагдаж байна»).
+     *
+     * `rowSpan` нь ХҮСНЭГТИЙН ДАРААХ МӨРҮҮДИЙГ дамждаг — тэр нь ажлын мөр эсэх
+     * ялгаагүй. 5-р түвшинд ажлын мөр хооронд сарын мөр шургадаг тул
+     * `rowSpan={3}` нь эцэг багцын дараагийн ХОЁР АЖЛЫГ биш, түүний ХОЁР
+     * САРЫГ дамжиж, багана бүхэлдээ зөрж эхэлнэ.
+     */
+    if (!edit && !monthOn) {
+      for (const name of FIN_XL_MERGE) {
+        if (!cols.some((c) => c.name === name)) continue;
+        const sp = new Array<number>(list.length).fill(1);
+        let i = 0;
+        while (i < list.length) {
+          const v = String(list[i].row[name] ?? '');
+          let j = i + 1;
+          if (v !== '') {
+            while (
+              j < list.length
+              && String(list[j].row[name] ?? '') === v
+              && !(xlOn && mark[j].bands.length > 0)
+            ) j += 1;
+          }
+          sp[i] = j - i;
+          for (let k = i + 1; k < j; k += 1) sp[k] = 0;
+          i = j;
+        }
+        mgSpan.set(name, sp);
+      }
+    }
+
+    /*
+     * ЗУРВАСЫН МӨРИЙН НҮД — ХОЁР ТӨРЛИЙН НЭГТГЭЛ.
+     *
+     * ⚠️ Мөнгө · тоо ширхэг → НИЙЛБЭР. ХУВЬ → ӨРТГӨӨР ЖИГНЭСЭН ДУНДАЖ
+     * (`FIN_XL_PCT`). Хувийг нэмбэл 50 ажлын 100% нь «5,000» болж, дээд
+     * хязгаар нь 100 байх ёстой багана утгаа алддаг (2026-09-09-ны
+     * хэрэглэгчийн шүүмж).
+     */
+    /** Тухайн багана зурваст ТОО гаргах уу */
+    const summable = (c: FieldDef) => (
+      NUMERIC_TYPES.has(c.type) && !PLAIN_INT.has(c.name)
+    );
+    /** Тухайн багана ХУВЬ мөн үү — нийлбэр биш, жигнэсэн дундаж */
+    const isPct = (name: string) => FIN_XL_PCT.includes(name);
+
+    /**
+     * Зурвасын нүдний ТЕКСТ — нийлбэр эсвэл жигнэсэн дундаж.
+     *
+     * ⚠️ `null` ≠ 0: хэмжилтгүй мөр дундажийн ХУВААРЬТ Ч, ХҮРТВЭРТ Ч ОРОХГҮЙ.
+     * Тэднийг 0 гэж үзвэл бөглөгдөөгүй багц бүр бүлгийн хувийг доош татна.
+     * ⚠️ Жингүй (өртөггүй) мөр ч дундажид орохгүй — эс бөгөөс 0 жинтэй мөр
+     * хуваарийг өөрчлөхгүй атлаа хүртвэрийг тэглэнэ.
+     */
+    const sumText = (c: FieldDef, rows: GroupRow[]) => {
+      const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+      if (isPct(c.name)) {
+        let w = 0;
+        let top = 0;
+        for (const p of rows) {
+          const v = num(p.row[c.name]);
+          const g = num(p.row[FIN_XL_PCT_WEIGHT]);
+          if (v == null || g == null || g <= 0) continue;
+          w += g;
+          top += g * v;
+        }
+        return w === 0 ? '' : fmtCell(top / w, c.type, c.name).text;
+      }
+      const sum = rows.reduce((a, p) => a + (num(p.row[c.name]) ?? 0), 0);
+      return sum === 0 ? '' : fmtCell(sum, c.type, c.name).text;
+    };
+
+    /*
+     * ЗУРВАС/НИЙТ МӨРИЙН НИЙЛБЭРИЙН НҮД — ЦАРЦААГҮЙ багануудад.
+     *
+     * ⚠️ Дэвсгэрийг ЭНД тавихгүй: `.xlSec td` ба `.xlTot td` дүрмүүд бүх
+     * нүдийг будна. Инлайн дэвсгэр өгвөл тэр дүрмийг дарж, зурвас тасарна.
+     */
+    /**
+     * ЗУРВАСЫН НЭГ НҮД — Excel-ийн мөр 7·8·9 … -ийн бүтэц.
+     *
+     * ⚠️ ШОШГО нь «АЖИЛ, ҮЙЛЧИЛГЭЭ» баганад, КОД нь «БАГЦ» баганад — Excel-д
+     * ЯГ ТИЙМ (`E9="1.1"`, `H9="Барилга,ГИШС - ТЭЗҮ, зураг төсөл"`). № багана
+     * хоосон.
+     * ⚠️ Урьд нь эхний хэдэн баганыг НЭГТГЭЖ, кодыг шошгын урд наадаг байсныг
+     * 2026-09-09-нд ЗАСАВ (хэрэглэгчийн шүүмж: «НИЙТ … гэдэг үг Ажил
+     * үйлчилгээ дээр байхад чинийх багц дээрээ байгаад байна»). Нэгтгэсэн нүд
+     * нь царцаалтын хилтэй ч зөрчилддөг байв — одоо багана бүр өөрийн нүдтэй
+     * тул тэр асуудал үндсээрээ алга.
+     */
+    const bandCell = (
+      c: FieldDef,
+      ci: number,
+      b: { code: string; label: string; rows: GroupRow[]; depth?: number },
+    ) => {
+      const numeric = summable(c);
+      let text = '';
+      if (numeric) text = sumText(c, b.rows);
+      else if (c.name === 'bagts') text = b.code;
+      else if (c.name === 'ajil_uilchilgee') text = b.label;
+      return (
+        <td
+          key={c.name}
+          /* ⚠️ `frz(ci)` ЗААВАЛ: царцсан бүсэд орсон багана ч наалдмал байх
+             ёстой, эс бөгөөс гүйлгэхэд зурвасын нүд хөршүүдээсээ сална. */
+          className={[frz(ci), numeric ? `num ${f.cellNum}` : ''].filter(Boolean).join(' ')}
+          /*
+           * ⚠️ ШАТЛАСАН ДОГОЛ ХАСАГДСАН (2026-09-10, хэрэглэгчийн заавар:
+           * «cashflow тоог нэг түвшингээс эхэлж байрлуул, муруй ингэж сонин
+           * байрлуулахгүй шүү»). Урьд нь гүн бүрд `paddingLeft` 9px нэмэгддэг
+           * байсан бөгөөд нүд нь ГОЛЛУУЛСАН тул код бүр өөр өөр байрлалд
+           * бууж, багана шаталсан муруй мэт харагддаг байв.
+           * ⚠️ Гүн нь КОДООРОО уншигдана: «1» · «1.1» · «4.1» — цэгийн тоо
+           * нь шатыг өөрөө хэлнэ, дээр нь зурвасын дэвсгэр өнгө бий.
+           */
+          style={colSty(c, ci)}
+          title={!numeric && text ? text : undefined}
+        >{text}</td>
+      );
+    };
+
+    /**
+     * НИЙТ МӨРИЙН ХАМРАХ ХҮРЭЭ — Excel-ийн `=+I8+I21`.
+     *
+     * ⚠️ Бүх мөр БИШ: 5-р (нийгмийн дэд бүтэц), 6-р (газар чөлөөлөлт), 7-р
+     * (бондын хүү) хэсэг эх файлын НИЙТ дүнд ОРДОГГҮЙ. Дэлгэрэнгүйг
+     * `finExcelLayout.ts` → `FIN_XL_TOTAL_CODES`-оос үз.
+     * ⚠️ Тэдгээр хэсгүүд хүснэгтээс АЛГА БОЛОХГҮЙ — өөрсдийн зурвасын
+     * нийлбэртэйгээ хэвээр гарна; зөвхөн дээд мөрийн нийлбэрт ордоггүй.
+     */
+    const totRows = list.filter((p) => finXlInTotal(p.row));
+
+    /**
+     * ЗУРВАСЫН МӨР — Excel-ийн шатлалын гарчиг БА нийлбэр нэг мөрөнд.
+     *
+     * ⚠️ Гурван түвшин НЭГ Л функцээр гарна: Excel-д ч тэдгээр мөрүүд ялгаагүй
+     * бүтэцтэй, ердөө outline-ийн гүн ба өнгө нь өөр. Түвшин бүрд тусдаа JSX
+     * бичих нь гурван газраас нийлбэрийн дүрмийг зэрэг засах шаардлага
+     * үүсгэнэ.
+     * ⚠️ КОД нь «БАГЦ», ШОШГО нь «АЖИЛ, ҮЙЛЧИЛГЭЭ» баганад — Excel-ийн E ба H
+     * баганатай ЯГ ижил. Хоёулаа царцсан бүсэд байдаг тул баруун тийш
+     * гүйлгэхэд ч «одоо аль хэсгийг харж байна» гэдэг алдагдахгүй.
+     */
+    const bandTr = (b: XlBand) => (
+        <tr
+          key={`band:${b.key}`}
+          /* ⚠️ Хоёр ангилал ЯГ ИЖИЛ өнгөтэй (2026-09-09) — ялгаа нь зөвхөн
+             үсгийн зузаан. Ангилал хэвээр үлдсэн шалтгаан: хэсэг ба дэд
+             бүлгийг ялгаж загварчлах хэрэгцээ дахин гарвал CSS-ээс шууд
+             тавина, JSX хөндөх шаардлагагүй. */
+          className={b.depth === 0 ? f.xlSec : f.xlGrp}
+        >
+          {!xlView && (
+            <td className={f.xlNo} style={{ width: FZ_DEF[0], minWidth: FZ_DEF[0] }} />
+          )}
+          {cols.map((c, ci) => bandCell(c, ci, b))}
+        </tr>
+    );
     return (
-    <div className={f.xlWrap}>
+    /*
+     * ⚠️ ГАДНА ТОВШВОЛ СОНГОЛТ ТАЙЛАГДАНА (2026-09-08, хэрэглэгчийн заавар).
+     * Урьд нь сонголтоо цуцлахын тулд ЯГ ТЭР толгойг дахин дарах шаардлагатай
+     * байсан нь Excel-ийн зантай зөрчилддөг: тэнд нүд дарамагц баганы сонголт
+     * алга болдог.
+     *
+     * ⚠️ Толгой дээрх товшилтыг ОРХИНО (`closest('th')`) — эс бөгөөс сонголт
+     * хийсэн тэр товшилт өөрөө шууд тайлагдана.
+     */
+    <div
+      className={f.xlWrap}
+      onClick={(ev) => {
+        if (!(ev.target as HTMLElement).closest('th')) setPick([]);
+      }}
+    >
       {headMenu()}
       <table className={f.xlTbl}>
-        <thead>
-          <tr>
-            <th className={f.xlNo} style={{ width: FZ_DEF[0], minWidth: FZ_DEF[0] }} aria-label="№">№</th>
-            {cols.map((c, ci) => (
-              <th
-                key={c.name}
-                title={c.name}
-                style={colSty(c, ci)}
-                className={[frz(ci), thRight(c) ? f.thR : ''].filter(Boolean).join(' ')}
-              >
-                {/*
-                  * ⚠️ Толинд байхгүй талбар нь ТҮҮХИЙ НЭРЭЭРЭЭ (`Bagts_74`)
-                  * гарахгүй — үйлчилгээний ӨӨРИЙН alias руу уначихна.
-                  * Ингэснээр шинэ багана нэмэгдэхэд код хөндөхгүйгээр
-                  * монголоор харагдана.
-                  */}
-                {finFieldLabel(c.name) === c.name ? c.alias : finFieldLabel(c.name)}
-                {/* ArcGIS маягийн шүүлт — толгой бүрд унждаг цэс */}
-                <button
-                  type="button"
-                  className={`${f.thMenuBtn} ${(flt.pick?.[c.name]?.length || flt.col[c.name]?.trim()) ? f.thMenuOn : ''}`}
-                  aria-label={tr('Шүүлт')}
-                  title={tr('Шүүлт')}
-                  onClick={(ev) => {
-                    ev.stopPropagation();
-                    const r = (ev.currentTarget as HTMLElement).getBoundingClientRect();
-                    setHMenu((m) => (m?.name === c.name ? null : { name: c.name, x: r.left, y: r.bottom }));
-                  }}
-                >▾</button>
-                {/* Чирэх бариул — давхар товшвол анхны өргөнд буцна */}
-                <i {...grip(c.name)} />
-              </th>
-            ))}
-            {edit && canRow && <th aria-label={tr('Мөр устгах')} />}
-          </tr>
+        <thead ref={theadRef}>
+          {bandRows.map((row, lv) => (
+            <tr key={`h${lv}`}>
+              {/* ⚠️ ГУТАЛ БАГАНА ЗӨВХӨН ЗАСВАР/IPC-д: Excel-ийн харагдацад тэр
+                  нь өөрийн «№» баганатай давхардаж байв (2026-09-09-ны
+                  хэрэглэгчийн хүсэлт). Outline товч «БАГЦ» нүдэнд шилжсэн. */}
+              {lv === 0 && !xlView && (
+                <th
+                  className={f.xlNo}
+                  rowSpan={bandRows.length}
+                  style={{ width: FZ_DEF[0], minWidth: FZ_DEF[0] }}
+                  aria-label="№"
+                >
+                  <span className={f.xlNoHead}>№</span>
+                </th>
+              )}
+              {row.map((it) => (it.leaf >= 0
+                ? leafTh(cols[it.leaf], it.leaf, bandRows.length - lv, hTop(lv))
+                : (
+                  <th
+                    key={`g${lv}-${it.from}`}
+                    colSpan={it.span}
+                    className={[f.xlBand, xlTone(it.top0), bandFz(it) ? f.xlFz : ""]
+                      .filter(Boolean).join(" ")}
+                    style={bandSty(it, lv)}
+                  >{it.label}</th>
+                )))}
+              {lv === 0 && edit && canRow && (
+                <th rowSpan={bandRows.length} aria-label={tr('Мөр')} />
+              )}
+            </tr>
+          ))}
         </thead>
         <tbody>
+          {/*
+            * НИЙТ ДҮНГИЙН МӨР — Excel-ийн МӨР 4.
+            *
+            * ⚠️ Энэ мөр үйлчилгээнд БАЙХГҮЙ, харагдац дээр л тооцогдоно. Excel-д
+            * тэр нь хамгийн дээд (1-р) outline түвшин: бүгдийг хумихад ердөө энэ
+            * мөр үлддэг. Түүнгүйгээр «1-р түвшин» хоосон дэлгэц болно
+            * (хэрэглэгчийн шүүмж 2026-09-08).
+            * ⚠️ Нийлбэр нь ШҮҮСЭН мөрүүдээр: дээд зурвасын шүүлт хийсний дараа
+            * нийт дүн нь харагдаж буй мөрүүдтэйгээ таарах ёстой.
+            * ⚠️ ХАМРАХ ХҮРЭЭ нь `finXlInTotal` — Excel-ийн `=+I8+I21` томьёо
+            * ЗӨВХӨН 1 ба 2-р хэсгийг нэмдэг (`finExcelLayout.ts`-ийн тайлбарыг
+            * үз). Бүх мөрийг нэмбэл эх файлд БАЙХГҮЙ тоо гарна.
+            */}
+          {xlOn && list.length > 0 && (
+            <tr className={f.xlTot}>
+              {!xlView && (
+                <td className={f.xlNo} style={{ width: FZ_DEF[0], minWidth: FZ_DEF[0] }} />
+              )}
+              {/* ⚠️ Excel-ийн мөр 7: E (БАГЦ) ХООСОН, H (АЖИЛ, ҮЙЛЧИЛГЭЭ)-д
+                  «НИЙТ (Орон сууцны хороолол+ГИШС)». Кодгүй тул `code: ''` —
+                  «БАГЦ» нүдэнд ердөө бүгдийг хумих `+`/`−` товч үлдэнэ. */}
+              {cols.map((c, ci) => bandCell(c, ci, {
+                code: '', label: FIN_XL_TOTAL_LABEL, rows: totRows,
+              }))}
+            </tr>
+          )}
           {list.map((p, i) => {
-            const dropped = p.oid != null && del.has(p.oid);
+            const dropped = false;
+            const m = mark[i];
+            /*
+             * ⚠️ ЭВХЭЛТИЙН ТҮЛХҮҮР нь УТГААР бүтдэг (`mark[i].keys`) бөгөөд
+             * ЭЦГИЙНХЭЭ түлхүүрийг агуулна: өөр хоёр хэсэгт ижил нэртэй төрөл
+             * гарвал нэгийг нь эвхэхэд нөгөө нь ч хумигдах байсан.
+             * ⚠️ АЛЬ Ч эцэг хумигдсан бол мөр нуугдана — зөвхөн шууд эцгийг
+             * шалгавал «хэсгийг хумиад дотор нь төрлийг дэлгэсэн» тохиолдолд
+             * мөрүүд зурвасгүй хөвж үлдэнэ.
+             */
+            const rowHid = xlOn && m.keys.some((k) => fold.has(k));
             return (
-              <tr key={p.oid ?? `r${i}`} className={dropped ? f.rowDel : undefined}>
+              <Fragment key={p.oid ?? `r${i}`}>
+              {/*
+                * ШАТЛАЛЫН ЗУРВАСУУД — Excel-ийн хэсэг · төрөл · дэд төрлийн мөр.
+                *
+                * ⚠️ Зурвас нь ЭЦГҮҮД нь бүгд дэлгээтэй үед л гарна: хумигдсан
+                * хэсгийн доторх төрлийн зурвас харагдвал шатлал худал болно.
+                */}
+              {m.bands.map((b) => (
+                m.keys.slice(0, b.depth).some((k) => fold.has(k)) ? null : bandTr(b)
+              ))}
+              {!rowHid && (
+              <tr className={dropped ? f.rowDel : undefined}>
                 {(() => {
                   /* ⚠️ Тамгыг № БАГАНАД тавина, тусдаа багана НЭМЭХГҮЙ: хүснэгт
                      аль хэдийн 33 баганатай бөгөөд хоёр багана нэмбэл гол
                      өгөгдөл улам баруун тийш түлхэгдэнэ. № нь ямар ч тохиолдолд
-                     царцсан тул тамга ҮРГЭЛЖ нүдний өмнө байна. */
+                     царцсан тул тамга ҮРГЭЛЖ нүдний өмнө байна.
+                     ⚠️ Excel-ийн харагдацад гутал багана байхгүй — тэнд тамга нь
+                     ЭХНИЙ нүдэнд (доорх `cols.map`) наалдана. */
+                  if (xlView) return null;
                   const st = editStamp(p.row);
                   return (
                     <td
-                      className={`${f.xlNo} ${st ? f.xlNoEdited : ''}`}
+                      className={[f.xlNo, OUT_W ? f.xlNoOut : '', st ? f.xlNoEdited : ''].filter(Boolean).join(' ')}
                       style={{ width: FZ_DEF[0], minWidth: FZ_DEF[0] }}
                       title={st
                         ? tr('Сүүлд зассан: {0} · {1}', st.who || tr('тодорхойгүй'), date(st.ms))
@@ -2145,22 +3352,58 @@ function FullTable({
                     </td>
                   );
                 })()}
-                {cols.map((c, ci) => xCell(p.row, p.oid, dropped, c, frz(ci), colSty(c, ci)))}
-                {edit && canRow && (
-                  <td className={f.rowBtnCell}>
-                    {p.oid != null && (
-                      <button
-                        type="button"
-                        className={f.rowBtn}
-                        title={dropped ? tr('Устгахаа болих') : tr('Мөр устгах')}
-                        onClick={() => toggleDel(p.oid as number)}
-                      >
-                        {dropped ? '↺' : '×'}
-                      </button>
-                    )}
-                  </td>
-                )}
+                {cols.map((c, ci) => {
+                  /* 0 = дээд мөрийн нэгтгэлд шингэсэн — нүд ОГТ гарахгүй */
+                  const sp = mgSpan.get(c.name)?.[i];
+                  if (sp === 0) return null;
+                  /* ⚠️ БАГЦ нь ГОЛДОО — Excel-ийн E багана ч тийм. Хүснэгтийн
+                     бусад нүд зүүн талдаа (2026-09-04-ний шийдвэр) тул энэ нь
+                     ганцхан баганад үйлчлэх ЗОРИУДЫН үл нийцэл. */
+                  /* ⚠️ ЗАСВАРЫН ТАМГА — гутал баганагүй үед ЭХНИЙ нүдний зүүн
+                     ирмэгт (ногоон зурвас). Тамгагүй бол ангилал ч нэмэгдэхгүй. */
+                  const stamp = xlView && ci === 0 ? editStamp(p.row) : null;
+                  return xCell(
+                    p.row, p.oid, dropped, c,
+                    [frz(ci), c.name === 'bagts' ? f.xlCtr : '', stamp ? f.xlNoEdited : '']
+                      .filter(Boolean).join(' '),
+                    colSty(c, ci),
+                    sp != null && sp > 1 ? sp : undefined,
+                  );
+                })}
+                {/* ⚠️ Устгах товч ХАСАГДСАН — нүд нь ноорог мөрийн «×»-тэй нэг
+                    баганад байх ёстой тул хоосон үлдэнэ. */}
+                {edit && canRow && <td className={f.rowBtnCell} />}
               </tr>
+              )}
+              {/*
+                * САРЫН ЗАДАРГАА — ажлын мөрийн ЯГ ДООР.
+                *
+                * ⚠️ Эдгээр нь `list`-д БАЙХГҮЙ тул зурвасын нийлбэр, багцын
+                * нэгтгэл, № дугаарлалт бүгд хөндөгдөхгүй.
+                * ⚠️ ЗӨВХӨН `Cashflow_*` баганууд утгатай, БУСАД БҮГД ХООСОН.
+                * Урьд нь «Ажил, үйлчилгээ» баганад сарыг («2026-03») бичдэг
+                * байсныг 2026-09-09-нд ХАСАВ (хэрэглэгчийн шүүмж: «ажил
+                * үйлчилгээ баганад яагаад date format явж байна»): тэр багана
+                * нь АЖЛЫН НЭР-ийнх, огноо тэнд байх нь баганы утгыг эвдэнэ.
+                * Сар нь «Сар эхлэх» баганаас уншигдана.
+                */}
+              {!rowHid && monthOn && (monthBy.get(Number(p.row.Cashflow_ID)) ?? []).map((mr) => (
+                <tr key={`m${mr[oidField]}`} className={f.xlMonth}>
+                  {!xlView && (
+                    <td className={f.xlNo} style={{ width: FZ_DEF[0], minWidth: FZ_DEF[0] }} />
+                  )}
+                  {cols.map((c, ci) => {
+                    const oid = typeof mr[oidField] === 'number' ? (mr[oidField] as number) : null;
+                    /* ⚠️ Эцгийн утгыг ДАВТАХГҮЙ — нэг мөнгө хоёр удаа уншигдана */
+                    if (!c.name.startsWith('Cashflow_')) {
+                      return <td key={c.name} className={frz(ci)} style={colSty(c, ci)} />;
+                    }
+                    return xCell(mr, oid, false, c, frz(ci), colSty(c, ci));
+                  })}
+                  {edit && canRow && <td className={f.rowBtnCell} />}
+                </tr>
+              ))}
+              </Fragment>
             );
           })}
 
@@ -2272,48 +3515,52 @@ function FullTable({
   };
 
   const ipcTable = (list: GroupRow[]) => {
-    const IPS = IPC_LOG.fields;
+    const HP = HO_IPC.payFields;
     const rowsOnly = list.map((p) => p.row);
     /*
-     * ⚠️ 2026-09-08 (аудит, HIGH): ГУРВАН НИЙЛБЭР НЭГ Л ОЛОНЛОГООС.
-     *    `netTotalOrNull` нь `gross` хэмжигдээгүй мөрийг БҮРЭН алгасдаг
-     *    (`netOrNull` → null) атал хуучин `dedTot` тэр мөрийн суутгалыг
-     *    НЭМДЭГ байв. Амьд өгөгдөл (ipc_0813/172): акт I30 — IPC18 хоосон,
-     *    IPC20 = 2,072,616,655.12 ₮. Үр дүнд Багц 4.1-ийн НИЙТ мөрөнд
-     *    77,110,395,701 − 8,988,728,255 = 68,121,667,446 ≠ 70,194,284,101 —
-     *    хэрэглэгч гурван тоог нүдээр хасаад таарахгүй байхыг харна.
-     *    Одоо `solid` (= `netOrNull(r) != null`) дээр гурвуулаа бодогдох тул
-     *    grossTot − dedTot === netTot тождество ҮРГЭЛЖ биелнэ.
-     * ⚠️ Хасагдсан мөрүүд ХАЯГДААГҮЙ — хүснэгтэд мөр бүр хэвээр гарна,
-     *    зөвхөн НИЙЛБЭРТ ордоггүй. Тоо нь доорх `skipped` тэмдэглэлд ил.
+     * ⚠️ 2026-09-09: ХУУЧИН 4 KPI (гүйцэтгэлийн дүн · суутгал · цэвэр дүн ·
+     *    шилжүүлсэн) -ийн ГУРАВ нь УТГАГҮЙ болов — шинэ эх сурвалжид суутгал
+     *    ОГТ БАЙХГҮЙ тул `gross` ≡ `net` ≡ «шилжүүлсэн» бүгд НЭГ тоо (`dun`).
+     *    Мөн 2026-09-08-ны «grossTot − dedTot === netTot тождество» асуудал ба
+     *    «дүнгүй акт нийлбэрт ороогүй» Note хоёул СУУТГАЛ ба дүнгүй актын
+     *    ХОСЛОЛООС үүсдэг байсан тул хоёулаа хамаарлаа алдав.
+     *
+     * ⚠️ ОРОНД НЬ гурван ТӨЛБӨРИЙН хэмжилт: нийт олгосон ба төрлөөр задаргаа.
+     *    ГЭРЭЭНИЙ дүн (төсөв, гэрээт төсөв, хэмнэлт) ЭНД ГАРАХГҮЙ — `list` нь
+     *    ТӨЛБӨРИЙН мөрүүд бөгөөд гэрээний талбар мөрд ДАВТАГДДАГ тул
+     *    нийлүүлбэл Багц-4.1 (7 мөр) -ийнх 7 ДАХИН хөөрөгдөнө. Гэрээний
+     *    түвшний тоог ЗӨВХӨН `hoTotals()`/`groupHo()`-оос авна.
+     *
+     * ⚠️ `sumOrNull` — БҮХ мөр хоосон бол `null`, 0 БИШ. 45-ийн 2 мөрд `dun`
+     *    хоосон (БАГЦ-6.3 гэрээ бүхэлдээ төлбөргүй, ХО-0045 кодгүй гэрээ);
+     *    тэднийг 0 гэж унших нь «олгосон 0₮» гэсэн ХУДАЛ хэмжилт үүсгэнэ.
      */
-    const solid = rowsOnly.filter((r) => netOrNull(r) != null);
-    const skipped = rowsOnly.length - solid.length;
-    const grossTot = sumOrNull(solid, IPS.gross);
-    let dedTot: number | null = null;
-    let paidTot: number | null = null;
-    for (const r of solid) {
-      const d2 = dedOrNull(r);
-      if (d2 != null) dedTot = (dedTot ?? 0) + d2;
-      const p2 = paidOrNull(r);
-      if (p2 != null) paidTot = (paidTot ?? 0) + p2;
-    }
-    const netTot = netTotalOrNull(solid);
-    const nCols = 1 + ipcMainCols.length + 3 + (edit && canRow ? 1 : 0);
+    const advRows = rowsOnly.filter((r) => r[HP.kind] === HO_IPC.kinds.advance);
+    const workRows = rowsOnly.filter((r) => r[HP.kind] === HO_IPC.kinds.work);
+    const paidTot = sumOrNull(rowsOnly, HP.amount);
+    const advTot = sumOrNull(advRows, HP.amount);
+    const workTot = sumOrNull(workRows, HP.amount);
+    /* ⚠️ Ангилагдаагүй мөр (`tulult_turul` хоосон, амьдаар 2) — ЧИМЭЭГҮЙ
+       ХАЯХГҮЙ. Урьдчилгаа + гүйцэтгэл ≠ нийт болохыг хэрэглэгч нүдээр хасаад
+       олох тул шалтгааныг ИЛ бичнэ. */
+    const noKind = rowsOnly.length - advRows.length - workRows.length;
+    /* ⚠️ БОДОГДСОН БАГАНА АЛГА (хуучин 3) — доорх толгойн ⚠️-г үз. */
+    const nCols = 1 + ipcMainCols.length + (edit && canRow ? 1 : 0);
+    /* Нийлбэрийг `dun` баганын ЯГ доор тавихын тулд түүний байрлалыг олно.
+       ⚠️ Байрлалыг ТООГООР бүү бич — `HO_MAIN_FIELDS` өөрчлөгдвөл нийлбэр
+       буруу багана дор гулсана. */
+    const amtIx = ipcMainCols.findIndex((c) => c.name === HP.amount);
     return (
       <div>
-        {/* Мөнгөний зам — багцын нийлбэрээр: гүйцэтгэл → суутгал → цэвэр → шилжүүлсэн */}
+        {/* Мөнгөний зам — багцын нийлбэрээр: нийт олгосон = урьдчилгаа + гүйцэтгэл */}
         <div className={f.kpiRow}>
-          {kpiTile(finFieldLabel(IPS.gross), grossTot)}
-          {kpiTile(tr('Суутгал'), dedTot)}
-          {kpiTile(tr('Цэвэр дүн'), netTot)}
-          {kpiTile(tr('Шилжүүлсэн'), paidTot)}
+          {kpiTile(tr('Олгосон нийт'), paidTot)}
+          {kpiTile(tr('Урьдчилгаа төлбөр'), advTot)}
+          {kpiTile(tr('Гүйцэтгэлийн төлбөр'), workTot)}
         </div>
-        {/* ⚠️ Нийлбэрээс хасагдсан актыг НУУХГҮЙ — «дүнгүй акт байна» гэдэг нь
-            өөрөө хяналтын мэдээлэл (дээрх ⚠️-г үз). */}
-        {skipped > 0 && (
+        {noKind > 0 && (
           <Note>
-            {tr('Гүйцэтгэлийн дүн бүртгэгдээгүй {0} акт нийлбэрт ороогүй.', num(skipped))}
+            {tr('Төлбөрийн төрөл бүртгэгдээгүй {0} мөр — задаргаанд ороогүй.', num(noKind))}
           </Note>
         )}
       <div className={f.tscroll}>
@@ -2326,22 +3573,19 @@ function FullTable({
                   {finFieldLabel(c.name)}
                 </th>
               ))}
-              {/* Бодогдсон баганууд — хадгалагддаг талбар БИШ тул засагдахгүй */}
-              <th className={f.thR}>{tr('Суутгал')}</th>
-              <th className={f.thR}>{tr('Цэвэр дүн')}</th>
-              <th className={f.thR}>{tr('Шилжүүлсэн')}</th>
+              {/* ⚠️ 2026-09-09: «Суутгал» · «Цэвэр дүн» · «Шилжүүлсэн» ГУРВАН
+                  БОДОГДСОН БАГАНА ХАСАГДСАН. Суутгал байхгүй тул гурвуулаа
+                  `dun` баганатай ЯГ ижил тоог давтаж, гурван утгагүй багана
+                  үлдэх байв. Олгосон дүн нь `dun` (үндсэн багана) дээр ил. */}
               {edit && canRow && <th className={f.rowBtnCell} aria-label={tr('Мөр')} />}
             </tr>
           </thead>
           <tbody>
             {list.map((p, i) => {
-              const dropped = p.oid != null && del.has(p.oid);
+              const dropped = false;
               const k = p.oid ?? `i-${i}`;
               const isOpen = xp.has(k);
-              const ded = dedOrNull(p.row);
-              const net = netOrNull(p.row);
-              const paid = paidOrNull(p.row);
-              const stv = text(p.row[IPS.status], '');
+
               /* ⚠️ Уншлагад УТГАТАЙ талбар л дэлгэгдэнэ — хорин «—» нь чимээ.
                  Засварт БҮГД гарна, эс бөгөөс хоосон талбар бөглөгдөхгүй. */
               const dCols = edit ? ipcDetailCols : ipcDetailCols.filter((c2) => {
@@ -2366,36 +3610,13 @@ function FullTable({
                         {isOpen ? '▾' : '▸'}
                       </button>
                     </td>
-                    {ipcMainCols.map((c) => {
-                      /* Төлөв нь ЧИП — өнгө = утга (батлагдсан/хянагдаж буй) */
-                      if (c.name === IPS.status && !edit) {
-                        const cls = stv === IPC_LOG.statuses.approved ? f.chipOk
-                          : stv === IPC_LOG.statuses.review ? f.chipWarn : '';
-                        return (
-                          <td key={c.name}>
-                            {stv ? <span className={`${f.chip} ${cls}`}>{stv}</span> : '—'}
-                          </td>
-                        );
-                      }
-                      return xCell(p.row, p.oid, dropped, c);
-                    })}
-                    <td className={`num ${f.cellNum}`}>{ded == null ? '—' : `−${num(ded)}`}</td>
-                    <td className={`num ${f.cellNum} ${f.cellStrong}`}>{net == null ? '—' : num(net)}</td>
-                    <td className={`num ${f.cellNum}`}>{paid == null ? '—' : num(paid)}</td>
-                    {edit && canRow && (
-                      <td className={f.rowBtnCell}>
-                        {p.oid != null && (
-                          <button
-                            type="button"
-                            className={f.rowBtn}
-                            title={dropped ? tr('Устгахаа болих') : tr('Мөр устгах')}
-                            onClick={() => toggleDel(p.oid as number)}
-                          >
-                            {dropped ? '↩' : '×'}
-                          </button>
-                        )}
-                      </td>
-                    )}
+                    {/* ⚠️ ТӨЛВИЙН ЧИП (батлагдсан / хянагдаж байна) ХАСАГДСАН —
+                        `IPC08` төлөв шинэ эхэд ОГТ БАЙХГҮЙ. Мөр бүр нь АЛЬ
+                        ХЭДИЙН хийгдсэн гүйлгээ тул «хянагдаж байна» гэсэн шат
+                        бүртгэгддэггүй; чип үлдээвэл ҮРГЭЛЖ хоосон байх байв. */}
+                    {ipcMainCols.map((c) => xCell(p.row, p.oid, dropped, c))}
+                    {/* ⚠️ Устгах товч ХАСАГДСАН — эх мөрийг устгахгүй */}
+                    {edit && canRow && <td className={f.rowBtnCell} />}
                   </tr>
                   {isOpen && (
                     <tr className={f.xpRow}>
@@ -2420,12 +3641,16 @@ function FullTable({
                 </Fragment>
               );
             })}
+            {/* ⚠️ НИЙТ нь ЗӨВХӨН `dun` баганын ДООР. Гэрээний талбарын
+                (төсөв, гэрээт төсөв) баганад нийлбэр тавьбал мөрд давтагдсан
+                тоо нийлж 7 дахин хөөрөгдөнө — тиймээс тэдгээр багана НИЙТ
+                мөрөнд ХООСОН үлдэнэ. `sumOrNull` тул бүх мөр хоосон бол «—». */}
             <tr className={f.sTotal}>
-              <td colSpan={1 + Math.max(0, ipcMainCols.length - 1)}>{tr('НИЙТ')}</td>
-              <td className={`num ${f.cellNum}`}>{grossTot == null ? '—' : num(grossTot)}</td>
-              <td className={`num ${f.cellNum}`}>{dedTot == null ? '—' : `−${num(dedTot)}`}</td>
-              <td className={`num ${f.cellNum}`}>{netTot == null ? '—' : num(netTot)}</td>
-              <td className={`num ${f.cellNum}`}>{paidTot == null ? '—' : num(paidTot)}</td>
+              <td colSpan={1 + Math.max(0, amtIx)}>{tr('НИЙТ ОЛГОСОН')}</td>
+              <td className={`num ${f.cellNum} ${f.cellStrong}`}>
+                {paidTot == null ? '—' : num(paidTot)}
+              </td>
+              {ipcMainCols.slice(amtIx + 1).map((c) => <td key={c.name} />)}
               {edit && canRow && <td className={f.rowBtnCell} />}
             </tr>
           </tbody>
@@ -2509,30 +3734,13 @@ function FullTable({
   /* ══════════ Мөрийн зурагдалт — бүлэглэсэн ба энгийн горимд ХУВААЛЦАНА ══════════ */
   const renderRow = (r: Row, i: number) => {
     const oid = typeof r[oidField] === 'number' ? (r[oidField] as number) : null;
-    const dropped = oid != null && del.has(oid);
+    const dropped = false;
     return (
       <tr key={oid ?? `i-${i}`} className={`${f.dRow} ${dropped ? f.rowDel : ''}`}>
         {/* ⚠️ Устгах баганыг ЗАСВАРЫН горимд л гаргана — уншиж буй
             хэрэглэгчийн хүснэгтийн өргөнийг дэмий иддэггүй. */}
-        {edit && canRow && (
-          <td className={f.rowBtnCell}>
-            <button
-              type="button"
-              className={f.rowBtn}
-              title={dropped ? tr('Устгахаа болих') : tr('Мөр устгах')}
-              onClick={() => {
-                if (oid == null) return;
-                setDel((s) => {
-                  const nx = new Set(s);
-                  if (nx.has(oid)) nx.delete(oid); else nx.add(oid);
-                  return nx;
-                });
-              }}
-            >
-              {dropped ? '↩' : '×'}
-            </button>
-          </td>
-        )}
+        {/* ⚠️ Устгах товч ХАСАГДСАН — эх мөрийг устгахгүй */}
+        {edit && canRow && <td className={f.rowBtnCell} />}
         {cols.map((c) => {
           const key = `${oid}:${c.name}`;
           const editable = edit && oid != null && !dropped && !SERVER_RO.test(c.name);
@@ -2696,6 +3904,37 @@ function FullTable({
           бодит эрсдэл. */}
       {cols.length > 0 && (
         <div className={f.finBar}>
+          {/*
+            * ТҮВШНИЙ ТОВЧ — Excel-ийн outline «1 2 3 4».
+            *
+            *   1 = НИЙТ + хэсгийн зурвас · 2 = + төрлийн нийлбэр ·
+            *   3 = + дэд төрлийн нийлбэр · 4 = бүх мөр
+            *
+            * ⚠️ ХАЙЛТЫН ӨМНӨ (2026-09-08, хэрэглэгчийн заавар): хүснэгтийн
+            * дээр тусдаа зурвас байхад хоёр эгнээ удирдлага үүсч, зай ч
+            * идэгдэж байв. Шүүлттэй нэг эгнээнд байх нь «юу харагдаж байна»
+            * гэдгийг нэг дор хэлнэ.
+            * ⚠️ «Нэгтгэл гүйцэтгэл» табтай ИЖИЛ хэлбэртэй — нэг порталд нэг
+            * үүрэгтэй хоёр өөр загвар байх ёсгүй.
+            */}
+          {xlLevelsOn && (
+            <span className={f.lvBar}>
+              <span className={f.lvLbl}>{tr('Түвшин')}</span>
+              {[1, 2, 3, 4, 5].map((nn) => (
+                <button
+                  key={nn}
+                  type="button"
+                  className={lvl === nn ? f.lvOn : ''}
+                  /* ⚠️ 5 нь ТҮВШИН биш ЗАДАРГАА: бүх мөр дээр нэмээд ажил
+                     тус бүрийн сарын төлөвлөгөөг нээнэ. */
+                  title={nn === 5
+                    ? tr('Бүх мөр + сарын задаргаа')
+                    : tr('{0}-р түвшин хүртэл дэлгэх', nn)}
+                  onClick={() => setLevel(nn)}
+                >{nn}</button>
+              ))}
+            </span>
+          )}
           <input
             className={f.finSearch}
             value={flt.q}
@@ -2820,8 +4059,11 @@ function FullTable({
               ? flatTable(packs.flatMap((p) => p.rows))
               : packs.map((p) => {
               const off = shut.has(p.key);
-              /* Багцын нийлбэр — бүгд хоосон бол ОГТ бичихгүй (0 худал) */
-              const hdSum = netTotalOrNull(p.rows.map((g) => g.row));
+              /* Багцын нийлбэр — бүгд хоосон бол ОГТ бичихгүй (0 худал).
+                 ⚠️ 2026-09-09: `netTotalOrNull` (цэвэр = gross − суутгал)
+                 → `sumOrNull(dun)`. Суутгал байхгүй тул «цэвэр» гэсэн ойлголт
+                 үхэж, `dun` нь өөрөө бодит олгосон дүн болов. */
+              const hdSum = sumOrNull(p.rows.map((g) => g.row), HO_IPC.payFields.amount);
               return (
               <section key={p.key} className={f.bBox}>
                 {/* ⚠️ Багцын нэр нь ХҮСНЭГТЭЭС ГАДУУР: доторх хүснэгт нь хэвтээ
@@ -2842,11 +4084,11 @@ function FullTable({
                   <span className={`${f.grpCnt} num`}>{tr('{0} мөр', num(p.count))}</span>
                   {hdSum != null && (
                     <span className={`${f.bSum} num`}>
-                      {tr('Цэвэр олгосон {0}', mnt(hdSum))}
+                      {tr('Олгосон {0}', mnt(hdSum))}
                     </span>
                   )}
                 </button>
-                {/* IPC → актын урсгал. Хэвтээ гүйлт нь хүснэгт ДОТРОО (`.tscroll`). */}
+                {/* HO → төлбөрийн урсгал. Хэвтээ гүйлт нь хүснэгт ДОТРОО (`.tscroll`). */}
                 {!off && ipcTable(p.rows)}
               </section>
               );
@@ -2962,7 +4204,24 @@ function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
    * болгох ажил нь ЭНЭ ХОЁР ХҮСНЭГТ ДЭЭРЭЭ хийгдэнэ — шүүлт, багцаар
    * бүлэглэлт, наалдсан толгой/багана.
    */
-  const [tab, setTab] = useState<'cf' | 'ipc'>('cf');
+  /**
+   * ⚠️ 2026-09-09: IPC-ийн ТҮҮХИЙ хүснэгт навигациас ХАСАГДСАН.
+   * Хэрэглэгчийн шийдвэр: «IPC service дээрх бүх мэдээллийг харах ёстой
+   * НЭГ page байх ёстой». Хоёр таб (бүлэглэсэн + түүхий) нь тэр
+   * шаардлагыг хангахгүй байв — хүн хоёр газар харах шаардлагатай болно.
+   *
+   * ⚠️ Одоо БҮХ талбар `IpcTable`-д: төлбөрийн талбарууд мөрөнд,
+   * гэрээний талбарууд дэлгэрэнгүйд. Мэдээлэл АЛДАГДААГҮЙ.
+   *
+   * ⚠️ ГЭВЧ IPC-ийн ЗАСВАР ОДООГООР АЛГА — засвар нь `FullTable`-д
+   * амьдардаг (доорх `IpcRawTableUnused`). Cashflow-ийнх хэвээр.
+   *
+   * ⚠️ ГУРАВДАХЬ ТАБ «Cashflow хувиарлах» (2026-09-09): сарын хувийг
+   * гэрээний бүртгэлийн 33 багана дундаас бөглөх нь хүнд байсан.
+   * Тэнд бөглөх зам ХЭВЭЭР (5-р түвшин) — энэ нь түүнийг орлохгүй,
+   * зэрэгцээ зам: нэг ажилдаа төвлөрсөн, өргөнөөр гүйлгэх шаардлагагүй.
+   */
+  const [tab, setTab] = useState<'cf' | 'ipc' | 'plan'>('cf');
 
   return (
     <>
@@ -2992,6 +4251,15 @@ function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
           >
             {tr('IPC')}
           </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'plan'}
+            className={`${f.tab} ${tab === 'plan' ? f.tabOn : ''}`}
+            onClick={() => setTab('plan')}
+          >
+            {tr('Cashflow хувиарлах')}
+          </button>
         </div>
       </header>
 
@@ -2999,7 +4267,16 @@ function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
           тул React instance-ыг ДАХИН АШИГЛАНА. Түлхүүргүй бол Cashflow-д
           тавьсан `CF006` шүүлт IPC-д үлдэж, тэнд тийм талбар байхгүй тул
           хүснэгт ХООСОН гарна — шалтгаан нь огт харагдахгүй. */}
-      {tab === 'cf' ? (
+      {tab === 'plan' ? (
+      /* ⚠️ `key` нь ЗААВАЛ (доорх тайлбарыг үз) — гурван салаа НЭГ
+         байрлалд сууна. */
+      <CashflowPlan
+        key="plan"
+        works={d.cashflow}
+        months={d.cfMonths}
+        onSaved={onSaved}
+      />
+      ) : tab === 'cf' ? (
       <FullTable
         key="cf"
         title={tr('Гэрээний бүртгэл — захирамж, гэрээ, санхүүжилтийн эх үүсвэр')}
@@ -3009,27 +4286,53 @@ function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
         url={CASHFLOW_NEW.url}
         oidField={CASHFLOW_NEW.oid}
         dataKey="CASHFLOW_NEW"
+        months={d.cfMonths}
         facets={FIN_FACETS.CASHFLOW_NEW}
         canEdit={canEdit}
         canRow={canRow}
         onSaved={onSaved}
       />
       ) : (
+      /* ⚠️ `groupHo` нь 45 мөрийг 22 гэрээ болгож ДЕДУП хийнэ — энд
+         мөрөөр нийлүүлбэл гэрээний төсөв 7 дахин давхардана. */
+      <IpcTable contracts={groupHo(d.ipc)} />
+      )}
+    </>
+  );
+}
+
+/* ⚠️ ХУУЧИН ТҮҮХИЙ IPC ХҮСНЭГТ — 2026-09-09-нд НАВИГАЦИАС ХАСАГДСАН.
+   Хэрэглэгчийн шийдвэр: «IPC service дээрх бүх мэдээллийг харах ёстой НЭГ
+   page байх ёстой». Одоо бүх талбар `IpcTable`-ийн дэлгэрэнгүйд гарна.
+
+   ⚠️ ГЭВЧ ЭНЭ ЗАМААР ЗАСВАР ХИЙГДДЭГ БАЙСАН: талбар засах, мөр нэмэх,
+   баганаар шүүх БҮГД `FullTable`-д амьдардаг бөгөөд `IpcTable` нь ЗӨВХӨН
+   УНШИНА. Тиймээс IPC-ийн засварын боломж ОДООГООР АЛГА. Cashflow-ийнх
+   хэвээр (тэр таб хөндөгдөөгүй).
+
+   Кодыг УСТГААГҮЙ — засвар дахин хэрэгтэй болбол `FinTablesView`-д
+   `tab === 'ipcRaw'` салаа болгож буцаан залгана. */
+export function IpcRawTableUnused({
+  d, canEdit, canRow, onSaved,
+}: {
+  d: FinTables; canEdit: boolean; canRow: boolean; onSaved: () => void;
+}) {
+  return (
       <FullTable
         key="ipc"
-        title={tr('IPC — олгосон акт (/172)')}
+        /* ⚠️ 2026-09-09: гарчгаас «акт» гэдэг үг ХАСАГДСАН — шинэ эх нь акт БИШ,
+           гүйцэтгэгч компанид өгсөн ТӨЛБӨРИЙН гүйлгээ (урьдчилгаа ч орно). */
+        title={tr('Хөрөнгө оруулалтын гүйцэтгэл — олгосон санхүүжилт (/196)')}
         subtitle={tr('{0} мөр · {1} багана', num(d.ipc.length), d.ipcFields.length)}
         rows={d.ipc}
         fields={d.ipcFields}
-        url={IPC_LOG.url}
-        oidField={IPC_LOG.oid}
-        dataKey="IPC_LOG"
-        facets={FIN_FACETS.IPC_LOG}
+        url={HO_IPC.url}
+        oidField={HO_IPC.oid}
+        dataKey="HO_IPC"
+        facets={FIN_FACETS.HO_IPC}
         canEdit={canEdit}
         canRow={canRow}
         onSaved={onSaved}
       />
-      )}
-    </>
   );
 }

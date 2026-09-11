@@ -16,7 +16,14 @@
 import { queryFeatures, type Row } from '@/lib/query';
 import { cached } from '@/lib/live';
 import { t as tr } from '@/lib/i18nCore';
-import { CASHFLOW_NEW, HABEA, bagtsKey, isPkgRange } from '@/lib/services';
+import {
+  CASHFLOW_NEW, CF_WORK_WHERE, CF_MONTH_WHERE, CF_MONTH, HABEA, bagtsKey, isPkgRange,
+} from '@/lib/services';
+import { stageProjectPct } from '@/lib/negtgel';
+import {
+  FIN_XL_TOTAL_CODE_FIELD, FIN_XL_TOTAL_SKIP, FIN_XL_CHART_FIELDS, finXlChartCat,
+  FIN_XL_WORK_SKIP,
+} from '@/lib/finExcelLayout';
 
 /* ══════════════════════ CASHFLOW — талбарууд ══════════════════════ */
 
@@ -28,30 +35,75 @@ import { CASHFLOW_NEW, HABEA, bagtsKey, isPkgRange } from '@/lib/services';
  */
 export const CF = {
   url: CASHFLOW_NEW.url,
-  type: 'Turul',
-  project: 'Tusul',
-  pkg: 'Bagts',
-  pkg2: 'Ded_bagts',
+  /**
+   * WBS-ТАЙ ТААРУУЛАХ ТАЛБАР — 2-р түвшин.
+   * ⚠️ ЗӨВХӨН `negtgel.ts`-ийн `TURUL_OF` зураглалд. Тэр нь «ОРОН СУУЦНЫ
+   * ХОРООЛОЛ - Барилга угсралт» гэсэн ЯГ ТЭР утгуудаар модтой холбогддог
+   * тул энд өөрчилбөл «Гүйцэтгэлийн хувь» индикатор чимээгүй эвдэрнэ.
+   * ⚠️ ЧАРТАД ХЭРЭГЛЭХГҮЙ — түүнд `chartType`.
+   */
+  type: 'ajil_tuvshin2',
+  /**
+   * ЧАРТЫН АНГИЛАЛ — 1-р түвшин («ТЭЗҮ, ЗУРАГ ТӨСӨЛ» · «БАРИЛГА
+   * УГСРАЛТ» · «НИЙГМИЙН ДЭД БҮТЭЦ» · «ГАЗАР ЧӨЛӨӨЛӨЛТ…» · «БОНДЫН ХҮҮ»).
+   *
+   * ⚠️ 2026-09-09-ны засвар. Урьд нь 2-р түвшнийг ангилал болгодог
+   * байсан бөгөөд тэнд «ОРОН СУУЦНЫ ХОРООЛОЛ - Барилга угсралт» гэсэн
+   * урт нэр, харин НИЙГМИЙН ДЭД БҮТЭЦ ба БОНДЫН ХҮҮ-д 2-р түвшин ХООСОН
+   * тул 1-р түвшнээр нөхөгддөг байв. Үр дүнд нь чартын багана ХОЛИМОГ
+   * нэршилтэй болж («… - Барилга угсралт» ба «БОНДЫН ХҮҮ» зэрэгцэн),
+   * хэрэглэгч «баганы нэршил сонин» гэж заасан.
+   */
+  /* ⚠️ Ганц талбар ХҮРЭЛЦЭХГҮЙ болсон — `finXlChartCat` хоёр түвшнээс
+     бодно. Энэ нь зөвхөн ХУУЧИН дуудагчдад үлдэв. */
+  chartType: 'ajil_tuvshin1',
+  project: 'ajil_tuvshin1',
+  pkg: 'bagts',
+  pkg2: 'bagts',
   /** Урьдчилсан төсөвт өртөг — БҮХ мөнгөн тооцооны эх */
-  cost: 'Urdch_tusuwt_urtug',
+  cost: 'ho_dun_geree',
+  /**
+   * ХЭСГИЙН КОД — Excel-ийн E баганы «1 · 2 · 5 · 6 · 7».
+   * ⚠️ НИЙТ ТӨСВИЙН индикаторын хамрах хүрээг ЭНЭ л шийднэ
+   * (`finExcelLayout.ts` → `FIN_XL_TOTAL_CODES`).
+   */
+  code1: FIN_XL_TOTAL_CODE_FIELD,
   /** Хөрөнгө оруулалтын дүнгийн тайлбар — «Гэрээлсэн дүн» г.м. */
-  note: 'HO_dungiin_tailbar',
-  start: 'Ehleh_ognoo',
-  end: 'Duusah_ognoo',
-  /** Нийт хөрөнгө оруулалтад эзлэх хувь (2026-09-04-нд `cost`-оос бодогдож бичигдсэн) */
-  share: 'Zah_eh_unet_tsaas_huwi',
-  contract: 'Geree_erh_dun',
-  decree: 'Zahiramj_niit_dun',
+  note: 'ho_dungiin_tailbar',
+  start: 'ehleh_ognoo',
+  end: 'duusah_ognoo',
+  /**
+   * НИЙТ ХӨРӨНГӨ ОРУУЛАЛТАД ЭЗЛЭХ ХУВЬ (0–100), 78 мөрийн нийлбэр = 100.
+   *
+   * ⚠️ 2026-09-09-нд ЗАСАВ. 0904→0909 шилжүүлэг нь талбарын нэрийг МЕХАНИКААР
+   * зурагласан тул энэ нь `zahiramj_unet_tsaas_huvi` дээр очсон байв: 0904-д
+   * тэр талбарт төслийн эзлэх хувийг (нийлбэр нь яг 100) бичсэн байсан ч
+   * 0909-д ижил нэртэй талбар нь ЖИНХЭНЭ үнэт цаасны хувь (0–1 бутархай,
+   * нийлбэр 9.13). Улмаар S-муруй 100% биш 9.13% дээр төгсдөг байв.
+   * ⚠️ ТООН ихрийг нь заана: `tusuld_ezleh_huvi` нь String(255) тул чарт
+   * түүнийг нэмж чадахгүй (`zahiramj_borluulalt`/`_dun` хостой ижил зохион
+   * байгуулалт). Хоёулаа 2026-09-09-нд `ho_dun_geree`-ээс бодогдож бичигдсэн.
+   */
+  share: 'tusuld_ezleh_huvi_dun',
+  contract: 'geree_dun',
+  decree: 'zahiramj_niit_dun',
   /** Гүйцэтгэлийн хувь — ТЕКСТ талбар («19.01») */
-  progress: 'Guitsetgel_huwi',
+  progress: 'guitsetgel_huvi',
+  /**
+   * САРЫН ТӨЛӨВЛӨГӨӨТЭЙ ХОЛБОХ ДУГААР.
+   * ⚠️ Өнөөдөр `OBJECTID`-тэй тэнцүү боловч ТҮҮГЭЭР холбож БОЛОХГҮЙ:
+   * `OBJECTID` нь мөр устгаад дахин нэмэхэд өөрчлөгддөг, `Cashflow_ID` нь
+   * хүний оноосон ТОГТВОРТОЙ дугаар («50 дугаар ажил»).
+   */
+  cfId: 'Cashflow_ID',
 } as const;
 
 /** Захирамжийн дүнгийн ЭХ ҮҮСВЭРҮҮД — 3-р чартын ангилал (Category) */
 export const CF_SOURCES = [
-  { field: 'Zah_eh_niislel_tusuw', label: tr('Нийслэлийн төсөв') },
-  { field: 'Zah_eh_NZD_nuuts', label: tr('НЗД нөөц хөрөнгө') },
-  { field: 'Zah_eh_unet_tsaas', label: tr('Үнэт цаасны хөрөнгө') },
-  { field: 'Zah_eh_tusliin_orlogo', label: tr('Төслийн орлого') },
+  { field: 'zahiramj_niislel_tusuv', label: tr('Нийслэлийн төсөв') },
+  { field: 'zahiramj_nzd_nuuts', label: tr('НЗД нөөц хөрөнгө') },
+  { field: 'zahiramj_unet_tsaas', label: tr('Үнэт цаасны хөрөнгө') },
+  { field: 'zahiramj_borluulalt_dun', label: tr('Төслийн орлого') },
 ] as const;
 
 /**
@@ -106,6 +158,51 @@ export type CfRow = {
   progress: number | null;
   /** Эх үүсвэр бүрийн дүн — `CF_SOURCES[i].field` дарааллаар */
   src: number[];
+  /**
+   * ШАТНЫ ГҮЙЦЭТГЭЛ — гэрээ бүрийн 6 шатны хувь (`CASHFLOW_NEW.stages`).
+   *
+   * ⚠️ Индикаторын «Гүйцэтгэлийн хувь» ЭНДЭЭС бодогдоно, `progress` талбараас
+   * БИШ: тэр нь зөвхөн БАРИЛГА УГСРАЛТЫН явц (19.1%) бөгөөд төслийн бэлтгэл
+   * ажлыг (ТЭЗҮ · зураг төсөл · газар · зөвшөөрөл · сонгон шалгаруулалт)
+   * огт тооцдоггүй.
+   * ⚠️ `null` ба `0` ХОЁР ӨӨР — хэмжилтгүй шат дунджид ОРОХГҮЙ.
+   */
+  stage: Record<string, number | null>;
+  /**
+   * ЕРӨНХИЙ НИЙЛБЭРТ ОРОХ УУ — Excel-ийн мөр 7-ийн `=+I8+I21` томьёо.
+   *
+   * ⚠️ Нийгмийн дэд бүтэц (5) · газар чөлөөлөлт (6) · бондын хүү (7) — гурван
+   * хэсэг, нийт 1,058 тэрбум) эх файлын НИЙТ дүнд ОРДОГГҮЙ. Мөрүүд нь
+   * чарт, хүснэгт, шүүлтэд ХЭВЭЭР — зөвхөн «Нийт төсөв» индикаторт ордоггүй.
+   */
+  inTotal: boolean;
+  /** Сарын төлөвлөгөөтэй холбогдох тогтвортой дугаар (1…78) */
+  cfId: number | null;
+  /**
+   * ЗАДАРГААНЫ 3-Р ТҮВШИН («Гадна цахилгаан холбоо, дохиолол»).
+   * ⚠️ ЗӨВХӨН инженерийн дэд бүтцэд бөглөгдсөн; бусад хэсэгт ХООСОН.
+   * «Төслийн гүйцэтгэл» чартын нэг мөр үүнээс бодогддог тул хэрэгтэй.
+   */
+  lvl3: string;
+  /**
+   * ЖИНХЭНЭ АЖИЛ МӨН ҮҮ — «Багц ажлын тоо» индикаторын хамрах хүрээ
+   * (2026-09-10, хэрэглэгчийн засвар: «78 биш 74»).
+   *
+   * ⚠️ Үйлчилгээний 78 мөрөөс «6 ГАЗАР ЧӨЛӨӨЛӨЛТ, БУУЛГАЛТ ЦЭВЭРЛЭГЭЭ»
+   * хэсгийн ДӨРӨВ хасагдаж 74 үлдэнэ (2026-09-10, хэрэглэгчийн заавар).
+   * Тэдгээр нь газар эзэмшигчтэй хийх НӨХӨН ОЛГОВОР/цэвэрлэгээ бөгөөд
+   * гүйцэтгэгчтэй байгуулах ажлын багц БИШ.
+   *
+   * ⚠️ Урьд нь «хасах/хасуулах» гэсэн тайлбартай хоёр мөр ба «БОНДЫН ХҮҮ»
+   * гурвыг хасаж 75 гаргаж байв — хэрэглэгч 2026-09-10-нд «буруу 3 мөрийг
+   * хассан байна» гэж залруулав.
+   *
+   * ⚠️ ЗӨВХӨН ТООЛОЛТОД. Мөнгөн нийлбэр (`inTotal`), чарт, шүүлт,
+   *    газрын зураг БҮГД тэдгээр мөрийг ХЭВЭЭР авна — хасагдах шийдвэр
+   *    нь тайлбарын талбарт бичигдсэн бөгөөд эх Excel-д мөр нь байсаар
+   *    байна (`мөр устгахгүй` дүрэм).
+   */
+  isWork: boolean;
 };
 
 const nOf = (v: unknown): number => {
@@ -128,16 +225,24 @@ const dOf = (v: unknown): number | null => {
 
 export const loadGdashCf = cached<CfRow[]>(async () => {
   const rows = await queryFeatures(CF.url, {
+    where: CF_WORK_WHERE,
     outFields: [
       'OBJECTID', CF.type, CF.project, CF.pkg, CF.cost, CF.note,
+      ...FIN_XL_CHART_FIELDS,
+      /* ⚠️ «Төслийн гүйцэтгэл» чартын нэг мөр 3-р түвшнээс бодогдоно */
+      'ajil_tuvshin3',
       CF.start, CF.end, CF.share, CF.contract, CF.decree, CF.progress, CF.pkg2,
+      CF.code1, CF.cfId,
       ...CF_SOURCES.map((s) => s.field),
+      ...Object.values(CASHFLOW_NEW.stages),
     ],
     limit: 4000,
   });
   return rows.map((r: Row): CfRow => ({
     oid: nOf(r.OBJECTID),
-    type: sOf(r[CF.type]) || tr('Тодорхойгүй'),
+    /* ⚠️ ЧАРТЫН ангилал — 7 бүлэг (`finXlChartCat`-ийн тайлбарыг үз).
+       Талбараас ШУУД биш, ХОЁР ТҮВШНЭЭС бодогдоно. */
+    type: finXlChartCat(r) || tr('Тодорхойгүй'),
     project: sOf(r[CF.project]),
     pkg: sOf(r[CF.pkg]),
     pkg2: sOf(r[CF.pkg2]),
@@ -149,8 +254,64 @@ export const loadGdashCf = cached<CfRow[]>(async () => {
     decree: nOf(r[CF.decree]),
     progress: pOf(r[CF.progress]),
     src: CF_SOURCES.map((s) => nOf(r[s.field])),
+    /* ⚠️ `Guitsetgel_huwi` нь ТЕКСТ, бусад нь тоо — `pOf` хоёуланг зөв уншина */
+    stage: Object.fromEntries(
+      Object.values(CASHFLOW_NEW.stages).map((f) => [f, pOf(r[f])]),
+    ),
+    inTotal: !FIN_XL_TOTAL_SKIP.includes(sOf(r[CF.code1])),
+    cfId: dOf(r[CF.cfId]),
+    lvl3: sOf(r.ajil_tuvshin3),
+    /* ⚠️ КОДООР шүүнэ, нэрээр БИШ — нэр засагдаж болно (`finXlInTotal`) */
+    isWork: !FIN_XL_WORK_SKIP.includes(sOf(r[CF.code1])),
   }));
 }, undefined, ['CASHFLOW_NEW']);
+
+/* ══════════════════════ САРЫН ТӨЛӨВЛӨГӨӨ (S-МУРУЙ) ══════════════════════ */
+
+/**
+ * НЭГ АЖЛЫН НЭГ САРЫН ТӨЛӨВЛӨГӨӨТ ГҮЙЦЭТГЭЛ.
+ *
+ * ⚠️ ЭДГЭЭР НЬ `Cashflow_final`-ИЙН ДОТОРХ НЭМЭЛТ МӨРҮҮД, тусдаа хүснэгт
+ * БИШ (2026-09-09-ны шийдвэр). Ажлын мөрөөс `Cashflow_start` бөглөгдсөнөөр
+ * ялгагдана — `CF_MONTH_WHERE` / `CF_WORK_WHERE` хос нь хүснэгтийг
+ * огтлолцолгүй хуваана.
+ */
+export type CfPlanRow = {
+  /** Эцэг ажлын `Cashflow_ID` */
+  id: number;
+  /** Тухайн сарын эхлэл (epoch мс) */
+  start: number | null;
+  /** Тэр сард төлөвлөсөн гүйцэтгэлийн хувь — ажил тус бүрд нийлбэр 100 */
+  pct: number | null;
+  /** `pct` × ажлын ХО дүн / 100 (үйлчилгээнд бодогдсон) */
+  amount: number | null;
+};
+
+/**
+ * ⚠️ ХООСОН БУЦАЖ БОЛНО — хүн хараахан бөглөөгүй бол `timeline` нь хуучин
+ * ЖИГД ТАРААХ аргаараа ажиллана. Тиймээс энэ өгөгдөл нэмэгдэх нь ямар ч
+ * харагдацыг эвдэхгүй, зөвхөн НАРИЙВЧЛАЛЫГ сайжруулна.
+ */
+export const loadCfPlan = cached<CfPlanRow[]>(async () => {
+  const rows = await queryFeatures(CF.url, {
+    where: CF_MONTH_WHERE,
+    outFields: [CF_MONTH.id, CF_MONTH.start, CF_MONTH.pct, CF_MONTH.amount],
+    limit: 8000,
+  });
+  return rows
+    .map((r: Row): CfPlanRow => ({
+      id: nOf(r[CF_MONTH.id]),
+      start: dOf(r[CF_MONTH.start]),
+      /* ⚠️ `null` ≠ 0: бөглөөгүй сар төлөвлөгөөнд ОРОХГҮЙ, 0% гэж тооцвол
+         тэр ажлын муруй хиймлээр хавтгайрна. */
+      pct: pOf(r[CF_MONTH.pct]),
+      amount: pOf(r[CF_MONTH.amount]),
+    }))
+    /* ⚠️ `pct` ЭСВЭЛ `amount`-ийн аль нэг нь байхад л хангалттай: муруйд
+       хувь, чартад мөнгө хэрэгтэй бөгөөд хоёулаа зэрэг бөглөгддөггүй. */
+    .filter((r) => r.id > 0 && r.start != null && (r.pct != null || r.amount != null));
+}, undefined, ['CASHFLOW_NEW']);
+
 
 /* ══════════════════════ ХУГАЦААНЫ ШҮҮЛТ ══════════════════════ */
 
@@ -261,6 +422,16 @@ export type SubBar = {
    * тэнцүү жинтэй байж болохгүй (индикаторын тооцоотой нэг зарчим).
    */
   perf?: number | null;
+  /**
+   * САНХҮҮЖСЭН ГҮЙЦЭТГЭЛ — ЗӨВХӨН `guitsetgel_huvi`-ийн жигнэсэн дундаж.
+   *
+   * ⚠️ `perf`-ЭЭС ЯЛГААТАЙ: тэр нь барилга угсралтад объёмын эх сурвалж
+   * руу шилждэг бол энэ нь ҮРГЭЛЖ санхүүжсэн талбараас. Хоёуланг зэрэг
+   * харуулах нь «санхүүжилт хаана явна, биет ажил хаана явна» гэсэн
+   * зөрүүг ил гаргана (2026-09-10, хэрэглэгчийн хүсэлт).
+   * ⚠️ `null` ≠ 0 — хэмжигдээгүй бол тэмдэг ОГТ зурагдахгүй.
+   */
+  fin?: number | null;
 };
 
 const groupSum = (
@@ -284,6 +455,32 @@ const groupSum = (
 };
 
 /**
+ * ӨРТГӨӨР ЖИГНЭСЭН ДУНДАЖ, ангиллаар.
+ *
+ * ⚠️ ЭНГИЙН ДУНДАЖ БИШ: 500 тэрбумын ажлын 30% ба 1 тэрбумынхны 100% тэнцүү
+ * жинтэй байж болохгүй — бодит явцыг хоёр дахин үнэлнэ.
+ * ⚠️ Хэмжигдээгүй мөр (`pick` нь `null`) хуваарь, хүртвэр ХОЁУЛАНД ч орохгүй.
+ * 0 гэж тооцвол бөглөөгүй ажил дундажийг чимээгүй доошилно.
+ */
+function weighted(
+  rows: CfRow[],
+  pick: (r: CfRow) => number | null,
+): Map<string, number> {
+  const w = new Map<string, { top: number; base: number }>();
+  for (const r of rows) {
+    if (!r.type || r.cost <= 0) continue;
+    const p = pick(r);
+    if (p == null) continue;
+    const a = w.get(r.type) ?? { top: 0, base: 0 };
+    a.top += (r.cost * p) / 100;
+    a.base += r.cost;
+    w.set(r.type, a);
+  }
+  return new Map(
+    [...w].filter(([, a]) => a.base > 0).map(([k, a]) => [k, (a.top / a.base) * 100]),
+  );
+}
+/**
  * 1-р чарт — ТӨРӨЛ × Урьдчилсан төсөвт өртөг, дотор нь ГЭРЭЭЛСЭН хэсэг.
  *
  * ⚠️ ДЭД ЦУВАА нь ГҮЙЦЭТГЭЛ БИШ, ГЭРЭЭЛСЭН ДҮН (2026-09-07, хэрэглэгчийн
@@ -299,7 +496,25 @@ const groupSum = (
  * ⚠️ АЖЛЫН ТОО ч хамт: «хэдэн төгрөг» ба «хэдэн ажил» хоёр өөр хариу өгдөг
  * тул hover-т хоёуланг нь харуулна.
  */
-export function chartTypeCost(rows: CfRow[]): SubBar[] {
+export function chartTypeCost(
+  rows: CfRow[],
+  /**
+   * БАРИЛГА УГСРАЛТЫН ОБЪЁМООР бодогдсон гүйцэтгэл — `bagtsKey` → % (0–100).
+   * ⚠️ `chartTypeCount`-тэй ИЖИЛ эх сурвалж: хоёр чарт нэгдсэн тул нэг тоо
+   * л байх ёстой (2026-09-10, хэрэглэгчийн заавар).
+   */
+  pkgPct: Map<string, number> = new Map(),
+  /**
+   * АНГИЛЛЫН ИЛ ДАРАХ ГҮЙЦЭТГЭЛ — ангиллын нэр → % (0–100).
+   *
+   * ⚠️ Зарим ангиллын бодит гүйцэтгэл нь гэрээний мөрөөс БИШ ӨӨР самбараас
+   * гардаг: «ОРОН СУУЦНЫ ХОРООЛОЛ» нь «Багцын гүйцэтгэл» хуудасны
+   * БЛОК-ЖИГНЭСЭН биет хувь (2026-09-10, хэрэглэгчийн заавар). Тэр үед мөр
+   * тус бүрийн тооцоог БҮХЭЛД НЬ дарна — эс бөгөөс нэг үзүүлэлт хоёр
+   * самбарт хоёр өөр тоо харуулна.
+   */
+  catPct: Map<string, number> = new Map(),
+): SubBar[] {
   const bars = groupSum(
     rows,
     (r) => r.type,
@@ -314,10 +529,22 @@ export function chartTypeCost(rows: CfRow[]): SubBar[] {
     if (r.note === CONTRACTED) a.c += 1;
     cnt.set(r.type, a);
   }
+  /* ⚠️ ГҮЙЦЭТГЭЛИЙН ХОЁР ХЭМЖҮҮР нь одоо ЭНЭ чартад ирнэ: «Гэрээлсэн байдал,
+     бодит гүйцэтгэл» чарттай НЭГТГЭГДСЭН (2026-09-10). Хоёр чарт нэг
+     ангиллыг хоёр өөр нэгжээр хэмждэг тул зэрэгцүүлэн уншихад нүд хоёр
+     удаа гүйх шаардлагатай байв. */
+  const w = weighted(rows, (r) => {
+    const vol = r.pkg2 ? pkgPct.get(bagtsKey(r.pkg2)) : undefined;
+    return vol ?? r.progress;
+  });
+  const wf = weighted(rows, (r) => r.progress);
   return bars.map((b) => ({
     ...b,
     count: cnt.get(b.key)?.n ?? 0,
     countSub: cnt.get(b.key)?.c ?? 0,
+    /* ⚠️ Ангиллын ил утга ДАВАМГАЙЛНА (`catPct`-ийн тайлбарыг үз) */
+    perf: catPct.get(b.key) ?? w.get(b.key) ?? null,
+    fin: wf.get(b.key) ?? null,
   }));
 }
 
@@ -329,23 +556,6 @@ export function chartTypeCost(rows: CfRow[]): SubBar[] {
  * гэрээ харагддаг байв. Зурвасын урт нь ГЭРЭЭНИЙ хувь хэвээр — гүйцэтгэл нь
  * hover-т гарна: хоёр өөр хэмжигдэхүүн нэг зурвасыг булаацалдах ёсгүй.
  */
-export function chartTypeCount(rows: CfRow[]): SubBar[] {
-  const bars = groupSum(rows, (r) => r.type, () => 1, (r) => (r.note === CONTRACTED ? 1 : 0));
-  /* ⚠️ Хэмжигдээгүй мөр (`progress == null`) хуваарь, хүртвэр ХОЁУЛАНД ч
-     орохгүй — эс бөгөөс дундаж чимээгүй доошилно. */
-  const w = new Map<string, { top: number; base: number }>();
-  for (const r of rows) {
-    if (!r.type || r.progress == null || r.cost <= 0) continue;
-    const a = w.get(r.type) ?? { top: 0, base: 0 };
-    a.top += (r.cost * r.progress) / 100;
-    a.base += r.cost;
-    w.set(r.type, a);
-  }
-  return bars.map((b) => {
-    const a = w.get(b.key);
-    return { ...b, perf: a && a.base > 0 ? (a.top / a.base) * 100 : null };
-  });
-}
 
 /**
  * 3-р чарт — ЭХ ҮҮСВЭР × төслийн тоо, дотор нь гэрээлсэн тоо.
@@ -542,12 +752,271 @@ export function sCurve(rows: CfRow[], grain: Grain = 'year', period: Period = NO
   return [...out].map(([key, v]) => ({ key, label: v.label, value: v.value }));
 }
 
+/**
+ * CASHFLOW-ИЙН S-МУРУЙ — багана нь сарын МӨНГӨ, муруй нь ХУРИМТЛАГДСАН ХУВЬ.
+ *
+ * ⚠️ ХУВЬ НЬ МӨНГӨНӨӨС бодогдоно (2026-09-10, хэрэглэгчийн заавар:
+ * «мөнгөн дүнгээс төслийн хэмжээний дундаж хувийг бодож S-Curve гаргана»):
+ *
+ *     хувь = Σ(тухайн сар хүртэлх Cashflow_dun) ÷ ТӨСЛИЙН НИЙТ ХО дүн × 100
+ *
+ * ⚠️ ХУВААРЬ нь БҮХ ажлын `ho_dun_geree` — `tusuld_ezleh_huvi`-тэй ЯГ ИЖИЛ
+ * суурь. Тиймээс ажил бүрийн сарууд 100%-д хүрэхэд муруй ч 100%-д хүрнэ.
+ * Зөвхөн төлөвлөгөөтэй ажлуудын дүнг хуваарь болговол муруй эрт дүүрч,
+ * «төлөвлөлт дууссан» гэсэн худал дохио өгнө.
+ *
+ * ⚠️ ХУРИМТЛАЛЫГ ТАСЛАХААС ӨМНӨ бодно (`timeline`-тай ижил дүрэм) — эс
+ * бөгөөс сонгосон үеийн эхний цэг 0%-ээс эхэлж, «шинээр эхэлж байна» гэсэн
+ * худал уншилт гарна.
+ */
+/**
+ * ОРОН СУУЦНЫ БАРИЛГАЖИЛТЫН БАГЦУУД — ТӨСЛИЙН ЖИНГЭЭР (2026-09-10).
+ *
+ * ⚠️ `Bagts.tsx`-ийн `Pack.progress` (блокуудын ЭНГИЙН дундаж) НЬ БИШ:
+ * дашбоардын түвшинд багцууд ХЭМЖЭЭГЭЭРЭЭ эрс ялгаатай (Багц 2 — 453.5
+ * тэрбум ₮, Багц 3.2 — 197.8). Энгийн дундаж нь жижиг багцыг томтой ижил
+ * жинтэй болгоно. Тиймээс ХО дүнгээр жигнэнэ — `weighted()`-ийн ижил дүрэм.
+ *
+ * ⚠️ ХЭМЖИГДЭЭГҮЙ багц жинд ОРОХГҮЙ (`null ≠ 0`): тухайн сард хэмжилтгүй
+ * багцыг 0% гэж тооцвол төслийн явц зохиомлоор буурна.
+ */
+export const HOUSING_PKGS: readonly string[] = [
+  'БАГЦ1', 'БАГЦ2', 'БАГЦ31', 'БАГЦ32', 'БАГЦ33', 'БАГЦ41', 'БАГЦ42',
+];
+
+/**
+ * Орон сууцны багцуудын биет гүйцэтгэлийг МӨНГӨН ДҮНГЭЭР сараар нэгтгэнэ —
+ * Σ(ХО дүн × гүйцэтгэл%) (2026-09-10, хэрэглэгчийн заавар: «ягаанаар харагдаж
+ * буй хэсэг хэрэггүй, төлөвлөсөн гүйцэтгэл дээр оруулаадах»).
+ *
+ * ⚠️ ХУВЬ БИШ, МӨНГӨ: энэ нь Cashflow төлөвлөгөөний сарын мөнгөтэй НЭГ
+ *    нэгжтэй байж түүн дээр НЭМЭГДЭНЭ (`cashflowCurve`). Ингэснээр цэнхэр
+ *    муруй = (бусад ажлын cashflow + орон сууцны биет явц) ÷ төслийн нийт.
+ *    Үлдсэн ажлуудын cashflow бөглөгдмөгц тэр нь ЭНЭ нийлбэрт өөрөө орно.
+ *
+ * @param phys    багц → (сар → %), `FinData.phys` (аль хэдийн хуримтлагдсан)
+ * @param weight  багц → ХО дүн (₮). Байхгүй/тэг бол тооцоонд орохгүй.
+ * @param labels  сарын тэнхлэг
+ * @param only    хамрах багцууд (анхдагч: орон сууцны 7)
+ * @returns сар → ₮; тэр сард НЭГ Ч багц хэмжигдээгүй бол бичлэг ҮГҮЙ
+ *          (`null ≠ 0` — дуудагч сүүлийн хэмжилтийг урагш авч явна)
+ */
+export function housingMoney(
+  phys: Map<string, Map<string, number>>,
+  weight: Map<string, number>,
+  labels: string[],
+  only: readonly string[] = HOUSING_PKGS,
+): Map<string, number> {
+  const keep = new Set(only);
+  const out = new Map<string, number>();
+  for (const label of labels) {
+    let sum = 0;
+    let any = false;
+    for (const [key, byMon] of phys) {
+      if (!keep.has(key)) continue;
+      const v = byMon.get(label);
+      if (v == null) continue;              // хэмжигдээгүй — оруулахгүй
+      const w = weight.get(key) ?? 0;
+      if (w <= 0) continue;
+      sum += (w * v) / 100;
+      any = true;
+    }
+    if (any) out.set(label, sum);
+  }
+  return out;
+}
+
+export function cashflowCurve(
+  plan: CfPlanRow[],
+  total: number,
+  grain: Grain = 'month',
+  period: Period = NO_PERIOD,
+  /**
+   * ОЛГОСОН IPC сараар (`'YYYY-MM'` → ₮), 2026-09-10.
+   *
+   * ⚠️ ХУРИМТЛАЛЫГ ЭНД бодно, дуудагч талд БИШ: `pct`-тэй ЯГ ИЖИЛ дүрмээр
+   *    (таслахаас ӨМНӨ хуримтлуулж, дараа нь `period`-ээр шүүх) явбал хоёр
+   *    муруй нэг цэг дээр зэрэгцэн уншигдана. Дуудагч талд бодвол сонгосон
+   *    үеийн эхний цэг 0%-ээс эхэлж «шинээр эхэлж байна» гэсэн худал
+   *    уншилт гарна (`pct`-ийн ижил тайлбарыг үз).
+   * ⚠️ ХООСОН Map = «IPC хараахан ачаалагдаагүй» → бүх цэгт `ipcPct: null`,
+   *    муруй ОГТ зурагдахгүй. Чарт үүнээс болж унах ЁСГҮЙ.
+   */
+  ipcByMonth: Map<string, number> = new Map(),
+  /**
+   * ОРОН СУУЦНЫ БИЕТ ЯВЦ МӨНГӨН ДҮНГЭЭР — сар → ₮ (`housingMoney()`).
+   *
+   * ⚠️ ГУРАВ ДАХЬ ТУСДАА МУРУЙ (`physPct`), төлөвлөгөөнд НЭМЭГДДЭГГҮЙ
+   *    (2026-09-10-ны ХОЁР ДАХЬ засвар, хэрэглэгчийн сонголт «A»).
+   *
+   *    Урьд нь орон сууцны 7 ажлын САРЫН ТӨЛӨВЛӨГӨӨГ бүхэлд нь хаяж
+   *    (`skipIds`), оронд нь тэдний ӨНӨӨДРИЙН биет явцыг цэнхэр муруйд
+   *    нэмдэг байв. Гэтэл орон сууц нь төслийн 58.6%, бөглөгдсөн
+   *    төлөвлөгөөний 53.1% — тиймээс цэнхэр муруй нь «ирээдүйн
+   *    төлөвлөгөө + өнөөдрийн түвшин» гэсэн ХОЛИМОГ болж, ирээдүй рүү
+   *    ӨСӨХӨӨ БОЛЬДОГ байлаа: 2027 он бүтнээр бөглөгдсөн атал муруй
+   *    34.8%-аас (өнөөдрийн 32.4%-тай бараг тэнцүү) дээш гардаггүй байв.
+   *
+   * ⚠️ Хуримтлагдсан ТҮВШИН тул хэмжилтгүй сард СҮҮЛИЙН утгыг урагш авна —
+   *    эс бөгөөс сүүлийн хэмжилтийн дараа муруй доош УНАНА. Харин ЭХНИЙ
+   *    хэмжилтээс ӨМНӨ ба СҮҮЛИЙНХЭЭС ХОЙШ `null` (IPC-тэй ижил дүрэм):
+   *    хэвтээ сунгавал «явц зогссон» гэсэн худал уншилт төрнө.
+   */
+  housingMoneyByMonth: Map<string, number> = new Map(),
+  /**
+   * ОГНООГҮЙ ОЛГОЛТ (урьдчилгаа г.м.) — ₮ (2026-09-10, хэрэглэгчийн заавар:
+   * «ногоон шугамын үзүүрт нийт олгосон мөнгө 530,872,795,391 ₮ гарах»).
+   *
+   * ⚠️ `ipcByMonth` нь зөвхөн ГҮЙЛГЭЭНИЙ ОГНООТОЙ актыг агуулдаг
+   *    (`Finance.loadFinData` — огноогүйг сарын цуваанаас хасдаг). Тэдгээр
+   *    нь урьдчилгаа тул ажлын ӨМНӨ олгогдсон — ЭХНИЙ IPC сараас эхлэн
+   *    хуримтлалд орно; сүүлийн сард нэмбэл хуурамч оргил үүснэ (null ≠ 0).
+   *    Ингэснээр муруйн төгсгөл = `givenTotal`-ийн нийлбэр.
+   */
+  ipcBase = 0,
+): TimePoint[] {
+  const per = new Map<string, number>();
+  for (const p of plan) {
+    if (p.amount == null || p.start == null) continue;
+    const d = new Date(p.start);
+    const k = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+    per.set(k, (per.get(k) ?? 0) + p.amount);
+  }
+  if (total <= 0) return [];
+  /*
+   * ⚠️ ТЭНХЛЭГ НЬ ГУРВАН ЭХ СУРВАЛЖИЙН НЭГДЭЛ (2026-09-10).
+   *
+   * Урьд нь зөвхөн `per` (Cashflow төлөвлөгөө)-ийн саруудаас угсардаг байв.
+   * Гэтэл амьдаар тэдгээр нь 2024-04…2025-05 (681 мөрийн 667 нь ХООСОН,
+   * бөглөгдсөн 14 нь ч 0 ₮), харин IPC олголт 2025-09…2026-08 — хоёр
+   * цуваа ОГТ ОГТЛОЛЦОХГҮЙ тул IPC-ийн муруй бүх цэгт 0% дээр хэвтэж,
+   * үзэгдэхгүй байлаа. Одоо аль ч эх сурвалжид өгөгдөл байвал тэр сар
+   * тэнхлэгт гарна — нөгөө цуваа тэнд `null` (тасалдана), 0 БИШ.
+   *
+   * ⚠️ `per.size === 0` шалгуур ХАСАГДСАН: төлөвлөгөө огт бөглөгдөөгүй ч
+   * IPC эсвэл барилгажилтын муруй ганцаараа зурагдах ЁСТОЙ.
+   */
+  const months = [...new Set([
+    ...per.keys(), ...ipcByMonth.keys(), ...housingMoneyByMonth.keys(),
+  ])].sort();
+  if (months.length === 0) return [];
+  let acc = 0;
+  const cum = new Map<string, number>();
+  for (const k of months) {
+    acc += per.get(k) ?? 0;
+    /* ⚠️ ЦЭВЭР ТӨЛӨВЛӨГӨӨ — биет явц ЭНД ОРОХГҮЙ (дээрх тайлбарыг үз) */
+    cum.set(k, Math.round((acc / total) * 100 * 100) / 100);
+  }
+  /*
+   * ОРОН СУУЦНЫ БИЕТ ЯВЦЫН МУРУЙ — IPC-ийнхтэй ЯГ ИЖИЛ дүрмээр.
+   * ⚠️ Хэмжилтийн ХООРОНД сүүлийн утгыг урагш авна (хуримтлагдсан түвшин),
+   *    харин ГАДНА нь `null` — тэнд муруй ТАСАРНА.
+   */
+  const physMonths = [...housingMoneyByMonth.keys()].sort();
+  const physLast = physMonths[physMonths.length - 1];
+  const physCum = new Map<string, number>();
+  if (physMonths.length) {
+    let house = 0;
+    let seen = false;
+    for (const k of months) {
+      const v = housingMoneyByMonth.get(k);
+      if (v != null) { house = v; seen = true; }
+      if (!seen || k > physLast) continue;
+      physCum.set(k, Math.round((house / total) * 100 * 100) / 100);
+    }
+  }
+  /*
+   * ОЛГОСОН IPC-ийн ХУРИМТЛАЛ — төлөвлөгөөнийхтэй ЯГ ИЖИЛ дүрмээр.
+   *
+   * ⚠️ IPC-ийн ӨӨРИЙН саруудаар хуримтлуулна, `months`-оор БИШ: олголт нь
+   *    төлөвлөгөө байхгүй сард ч хийгдсэн байж болно (жиш. урьдчилгаа).
+   *    Тэр мөнгө хуримтлалд ЗААВАЛ орох ёстой — эс бөгөөс муруй нийт
+   *    олголтоос бага дээр төгсөнө.
+   * ⚠️ ХАМГИЙН СҮҮЛИЙН IPC САРААС ХОЙШ муруй ТАСАРНА (`null`) — тэнд
+   *    хуримтлалыг хэвтээгээр сунгавал «олголт зогссон» гэж уншигдана,
+   *    гэтэл үнэн нь «хараахан бүртгэгдээгүй». `null ≠ 0` зарчим.
+   */
+  const ipcMonths = [...ipcByMonth.keys()].sort();
+  const ipcLast = ipcMonths[ipcMonths.length - 1];
+  const ipcFirst = ipcMonths[0];
+  const ipcCum = new Map<string, number>();
+  /* ⚠️ ЯГ ₮ — хувиас буцааж үржүүлбэл 2 орны бүхэлчлэл 100 сая ₮-ийн
+     алдаа өгнө (0.005% × 3 их наяд). Дэлгэцэнд ЭНИЙГ харуулна. */
+  const ipcMoney = new Map<string, number>();
+  if (ipcMonths.length) {
+    let a2 = ipcBase;                     // огноогүй урьдчилгаа — эхнээс
+    for (const k of months) {
+      if (k < ipcFirst) continue;         // эхний олголтоос ӨМНӨ муруй эхлэхгүй
+      a2 += ipcByMonth.get(k) ?? 0;
+      if (k > ipcLast) break;             // сүүлийн олголтоос цааш сунгахгүй
+      ipcCum.set(k, Math.round((a2 / total) * 100 * 100) / 100);
+      ipcMoney.set(k, a2);
+    }
+  }
+
+  const keep = months.filter((k) => {
+    if (!periodActive(period)) return true;
+    const y = Number(k.slice(0, 4));
+    const m = Number(k.slice(5, 7));
+    return hit(period.years, y) && hit(period.quarters, Math.floor((m - 1) / 3) + 1)
+      && hit(period.months, m);
+  });
+  if (keep.length === 0) return [];
+
+  if (grain === 'month') {
+    return keep.map((k) => ({
+      key: k,
+      label: k,
+      pct: cum.get(k) ?? 0,
+      amount: per.get(k) ?? 0,
+      /* ⚠️ `?? null` — Map-д байхгүй сар нь «хэмжигдээгүй», 0 БИШ */
+      ipcPct: ipcCum.get(k) ?? null,
+      ipcMoney: ipcMoney.get(k) ?? null,
+      physPct: physCum.get(k) ?? null,
+    }));
+  }
+  const out = new Map<string, TimePoint>();
+  for (const k of keep) {
+    const y = k.slice(0, 4);
+    const m = Number(k.slice(5, 7));
+    const q = Math.floor((m - 1) / 3) + 1;
+    const bk = grain === 'year' ? y : `${y}-${q}`;
+    const label = grain === 'year' ? y : `${y} ${ROMAN[q - 1]}`;
+    const prev = out.get(bk);
+    out.set(bk, {
+      key: bk,
+      label,
+      /* Хувь — бүлгийн СҮҮЛИЙНХ (хуримтлал тул нэмэхгүй) */
+      pct: cum.get(k) ?? 0,
+      /* Мөнгө — бүлгийн НИЙЛБЭР (хуримтлал биш тул нэмнэ) */
+      amount: (prev?.amount ?? 0) + (per.get(k) ?? 0),
+      /* ⚠️ IPC ч мөн ХУРИМТЛАЛ тул бүлгийн СҮҮЛИЙНХ. Тухайн бүлгийн
+         сүүлийн сард хэмжилт байхгүй бол өмнөхийг нь хадгална — эс
+         бөгөөс улирлын сүүлийн сар хоосон байхад бүтэн улирал алга болно. */
+      ipcPct: ipcCum.get(k) ?? prev?.ipcPct ?? null,
+      ipcMoney: ipcMoney.get(k) ?? prev?.ipcMoney ?? null,
+      /* ⚠️ Биет явц ч ХУРИМТЛАЛ — бүлгийн СҮҮЛИЙНХ (нийлбэр БИШ) */
+      physPct: physCum.get(k) ?? prev?.physPct ?? null,
+    });
+  }
+  return [...out.values()];
+}
 /* ══════════════════════ ЗУРГИЙН ДЭЭРХ ИНДИКАТОР ══════════════════════ */
 
 export type Kpi = {
   /** Нийт төсөв — Урьдчилсан төсөвт өртгийн нийлбэр */
   budget: number;
-  /** Нийт гэрээний дүн — гэрээ байгуулах эрх олгосон дүнгийн нийлбэр */
+  /**
+   * НИЙТ ГЭРЭЭЛСЭН ДҮН — ЗӨВХӨН гэрээлэгдсэн мөрийн `Geree_erh_dun`-ийн нийлбэр.
+   *
+   * ⚠️ Гэрээ хийгдсэн эсэхийг «Хөрөнгө оруулалтын төрөл» (`HO_dungiin_tailbar`)
+   * талбарын «Гэрээлсэн дүн» утга ХЭЛНЭ. `Geree_erh_dun` нь гэрээлэгдээгүй
+   * мөрүүдэд ч бөглөгдсөн байдаг тул шүүлтгүй нийлбэл 2,073 тэрбум гарч,
+   * бодит гэрээнээс (2,039.8) 33 тэрбумаар их болно.
+   *
+   * ⚠️ Шүүлтийг ДУУДАГЧ (`GeneralDash`) хийнэ — тэнд хугацааны шүүлт ч давхар
+   * үйлчилдэг тул энд хийвэл хоёр шүүлт хоёр газар тарах байсан.
+   */
   contract: number;
   /** Гүйцэтгэлийн хувь — өртгөөр ЖИГНЭСЭН дундаж */
   progress: number | null;
@@ -568,7 +1037,13 @@ export type Kpi = {
    * явдаг. Индикаторын хувьтай ТААРАХ цорын ганц тоо нь энэ.
    */
   progressAmount: number;
-  /** Багц ажлын тоо — ялгаатай багцын тоо */
+  /**
+   * БАГЦ АЖЛЫН ТОО — шүүлтэд багтсан МӨРИЙН тоо.
+   *
+   * ⚠️ ЯЛГААТАЙ дэд багцын тоо БИШ (2026-09-08, хэрэглэгчийн засвар: «53 биш
+   * 76»). Мөр бүр нь нэг ажил: дэд багц ХООСОН 21 мөр тоологдохгүй, нэг дэд
+   * багцад хоёр ажил байвал нэг л удаа тоологддог байв.
+   */
   packages: number;
   /** Нийт төрлийн тоо */
   types: number;
@@ -580,41 +1055,66 @@ export type Kpi = {
  * төслийн бодит явцыг хоёр дахин үнэлнэ. Хэмжигдээгүй (багц нь нэгтгэлд
  * олдоогүй) ажил хуваарьт ч, хүртвэрт ч ОРОХГҮЙ.
  */
-export function kpisOf(rows: CfRow[], contractSum: number): Kpi {
+export function kpisOf(rows: CfRow[], contractSum: number, landPct: number | null = null): Kpi {
   let budget = 0;
   let wSum = 0;
   let wTop = 0;
-  const pkgs = new Set<string>();
   const types = new Set<string>();
 
   for (const r of rows) {
-    budget += r.cost;
-    /* ⚠️ `Bagts` БИШ `Ded_bagts` (2026-09-06, хэрэглэгчийн заавар): эцэг
-       түвшин («БАГЦ-3») нь гурван бодит ажлыг («БАГЦ-3.1/3.2/3.3») нэг гэж
-       тоолж, «Багц ажлын тоо» бодит ажлын тооноос бага гардаг байв. */
-    if (r.pkg2) pkgs.add(bagtsKey(r.pkg2));
+    /*
+     * ⚠️ НИЙТ ТӨСӨВ нь Excel-ийн НИЙТ мөртэй (`=+I8+I21`) ЯГ таарна: нийгмийн
+     * дэд бүтэц · газар чөлөөлөлт · бондын хүү эх файлын нийлбэрт ОРДОГГҮЙ
+     * (2026-09-09, хэрэглэгчийн заавар: «excel deer bgaa toonuud l haragdah
+     * ystoi»). Бүх мөрийг нэмбэл 3,485.9 тэрбум гарах бөгөөд тэр тоо эх файлд
+     * ХААНА Ч БАЙХГҮЙ. Дэлгэрэнгүйг `finExcelLayout.ts`-ээс үз.
+     * ⚠️ Тэдгээр мөр чарт, шүүлт, «Багц ажлын тоо»-нд ХЭВЭЭР — зөвхөн энэ
+     * мөнгөн нийлбэрээс хасагдана.
+     */
+    if (r.inTotal) budget += r.cost;
     if (r.type) types.add(r.type);
     /* ⚠️ Хэмжигдээгүй ажил хуваарьт ч, хүртвэрт ч ОРОХГҮЙ */
-    if (r.progress != null && r.cost > 0) {
+    if (r.inTotal && r.progress != null && r.cost > 0) {
       wSum += r.cost;
       wTop += (r.cost * r.progress) / 100;
     }
   }
 
+  /*
+   * ГҮЙЦЭТГЭЛИЙН ХУВЬ — «Нэгтгэл гүйцэтгэл»-ийн ТӨСЛИЙН НИЙТ мөртэй ИЖИЛ
+   * (2026-09-08, хэрэглэгчийн заавар: «шинэ source»).
+   *
+   * ⚠️ Урьд нь ЗӨВХӨН `Guitsetgel_huwi` (барилга угсралт, 19.1%) байсан бөгөөд
+   * тэр нь төслийн бэлтгэл ажлыг — ТЭЗҮ, зураг төсөл, газар чөлөөлөлт,
+   * зөвшөөрөл, сонгон шалгаруулалт — огт тооцдоггүй байв. Одоо зургаан шат нь
+   * тогтоосон жингээрээ (5·10·3·1·1·79 + улсын комисс 1) нийлж 33.9% гарна.
+   * ⚠️ Тэр талбар нь ХЭВЭЭР хэрэгтэй: «Гэрээлсэн байдал, бодит гүйцэтгэл»
+   *    чарт ба хүснэгт түүнийг ШУУД уншдаг.
+   */
+  const stagePct = stageProjectPct(rows.map((r) => ({ budget: r.cost, pct: r.stage })), landPct);
+
   return {
     budget,
     contract: contractSum,
-    progress: wSum > 0 ? (wTop / wSum) * 100 : null,
-    progressAmount: wTop,
+    progress: stagePct,
+    /* ⚠️ Мөнгө нь ХУВЬТАЙГАА ЗААВАЛ таарна: `Σ өртөг × хувь` — эс бөгөөс
+       индикатор дээр хоёр тоо зөрчилдөнө. */
+    progressAmount: stagePct == null ? 0 : (budget * stagePct) / 100,
+    /* ⚠️ ХАМРАЛТ нь одоо БАРИЛГЫН хэмжилтийнх: хэдэн хувийн төсөв бодит
+       гүйцэтгэлийн хэмжилттэй вэ. Индикаторын хувь өөр эхээс ирдэг ч энэ
+       нь «хэр бодитой хэмжигдсэн» гэдгийг хэлсэн хэвээр. */
     progressCovered: budget > 0 ? (wSum / budget) * 100 : 0,
-    packages: pkgs.size,
+    /* ⚠️ МӨРИЙН тоо — мөр бүр нэг ажил. Ялгаатай багцаар тоолбол дэд багцгүй
+       ажил алдагдаж, нэг багцын хоёр ажил нэг болж нийлдэг.
+       ⚠️ Ажлын БУС мөр (хасагдсан · бондын хүү) тоологдохгүй — `isWork`. */
+    packages: rows.filter((r) => r.isWork).length,
     types: types.size,
   };
 }
 
 /** Гэрээний дүнгийн нийлбэр — шүүсэн мөрүүдээс (тусад нь: `CfRow`-д ороогүй) */
 export const loadContractSum = cached<Map<number, number>>(async () => {
-  const rows = await queryFeatures(CF.url, { outFields: ['OBJECTID', CF.contract], limit: 4000 });
+  const rows = await queryFeatures(CF.url, { where: CF_WORK_WHERE, outFields: ['OBJECTID', CF.contract], limit: 4000 });
   return new Map(rows.map((r) => [nOf(r.OBJECTID), nOf(r[CF.contract])]));
 }, undefined, ['CASHFLOW_NEW']);
 
@@ -663,95 +1163,36 @@ export type TimePoint = {
   pct: number;
   /** Тухайн үед ногдох захирамжийн олгосон дүн (хуримтлалгүй) */
   amount: number;
+  /**
+   * ОЛГОСОН IPC — хуримтлагдсан эзлэх хувь (хоёр дахь S-муруй, 2026-09-10).
+   *
+   * ⚠️ `pct`-тэй ИЖИЛ ХУВААРЬТАЙ (`cfTotal`) — эс бөгөөс хоёр муруй нэг
+   *    тэнхлэгт зэрэгцэн зурагдахад «төлөвлөгөө ↔ бодит олголт» гэсэн
+   *    харьцуулалт утгагүй болно.
+   * ⚠️ `null` = ХЭМЖИГДЭЭГҮЙ (0 БИШ): IPC-ийн сарын тэнхлэг
+   *    (`cfMonthAxis`) нь Cashflow төлөвлөгөөний саруудаас БОГИНО тул
+   *    түүний гадна үлдсэн сард 0 зурвал «тэр саруудад олголт огт байгаагүй»
+   *    гэсэн ХУДАЛ мэдээлэл өгнө. Муруй тэнд ТАСАРНА.
+   */
+  ipcPct: number | null;
+  /**
+   * ОЛГОСОН IPC — ХУРИМТЛАГДСАН ЯГ ₮ (`ipcPct`-ийн мөнгөн эх, бүхэлчлэлгүй).
+   * ⚠️ Огноогүй урьдчилгаа (`ipcBase`) ОРСОН тул төгсгөл нь HO-ийн нийт
+   *    олгосон дүнтэй ТЭНЦҮҮ. `null` = тэр сард муруй байхгүй.
+   */
+  ipcMoney: number | null;
+  /**
+   * ОРОН СУУЦНЫ БАРИЛГАЖИЛТЫН БИЕТ ЯВЦ — мөнгөн эквивалентаар, нийт
+   * төсөвт эзлэх хуримтлагдсан хувь (гурав дахь S-муруй, 2026-09-10).
+   *
+   * ⚠️ `pct`-тэй ИЖИЛ ХУВААРЬТАЙ (`cfTotal`) — гурван муруй нэг тэнхлэгт.
+   *    Утга нь БАГА байх нь зүйн хэрэг: орон сууц төслийн 58.6%-ийг эзэлдэг
+   *    тул бүрэн дуусахад ч ~58.6% дээр л тогтоно.
+   * ⚠️ `null` = ХЭМЖИГДЭЭГҮЙ (0 БИШ).
+   */
+  physPct: number | null;
 };
 
-/**
- * НЭГ ТЭНХЛЭГ ДЭЭР ХОЁР ХЭМЖИГДЭХҮҮН — багана нь МӨНГӨ, муруй нь ХУВЬ.
- *
- * ⚠️ ХОЁР ЧАРТЫГ НЭГТГЭСЭН (2026-09-04, хэрэглэгчийн хүсэлт). Тусад нь
- * байхад хоёр тэнхлэг өөр өөр нүдээр уншигдаж, «2026-д ачаалал оргилдоо
- * хүрч, муруй эгц өгссөн» гэсэн ХОЛБОО нүднээс далд үлддэг байв.
- *
- * ⚠️ НҮДНҮҮД НЬ ХОЁУЛАНГИЙН НЭГДЭЛ: захирамжийн дүн 2027-д дуусдаг ч
- * төлөвлөгөө 2029 хүртэл үргэлжилдэг. Аль нэгийнхээр нь тайрвал нөгөө нь
- * дундуураа тасарна. Утга байхгүй нүдэнд 0 биш — багана зурагдахгүй,
- * муруй хуримтлалаа хадгална.
- *
- * ⚠️ Хуваарилалт нь `sCurve`-ТЭЙ ИЖИЛ: эхлэх→дуусах саруудад жигд тарааж,
- * дараа нь нэгтгэнэ. Хувь нь ХУРИМТЛАЛ (таслахаас өмнө бодогдоно), мөнгө
- * нь ТУХАЙН ҮЕИЙНХ (нийлбэр).
- */
-export function timeline(
-  rows: CfRow[],
-  grain: Grain = 'year',
-  period: Period = NO_PERIOD,
-): TimePoint[] {
-  const share = new Map<string, number>();
-  const money = new Map<string, number>();
-
-  const spread = (r: CfRow, w: number, into: Map<string, number>) => {
-    if (w <= 0 || r.start == null) return;
-    const s = new Date(r.start);
-    const e = new Date(r.end ?? r.start);
-    let y = s.getUTCFullYear();
-    let m = s.getUTCMonth();
-    const n = Math.min(480, Math.max(1,
-      (e.getUTCFullYear() - y) * 12 + (e.getUTCMonth() - m) + 1));
-    const step = w / n;
-    for (let i = 0; i < n; i += 1) {
-      const k = `${y}-${String(m + 1).padStart(2, '0')}`;
-      into.set(k, (into.get(k) ?? 0) + step);
-      m += 1;
-      if (m > 11) { m = 0; y += 1; }
-    }
-  };
-
-  for (const r of rows) {
-    spread(r, r.share, share);
-    spread(r, r.decree, money);
-  }
-  const months = [...new Set([...share.keys(), ...money.keys()])].sort();
-  if (months.length === 0) return [];
-
-  /* Хувь — ХУРИМТЛАЛ, таслахаас ӨМНӨ (§sCurve-ийн тайлбар) */
-  let acc = 0;
-  const cum = new Map<string, number>();
-  for (const k of months) {
-    acc += share.get(k) ?? 0;
-    cum.set(k, Math.round(acc * 100) / 100);
-  }
-
-  const keep = months.filter((k) => {
-    if (!periodActive(period)) return true;
-    const y = Number(k.slice(0, 4));
-    const m = Number(k.slice(5, 7));
-    return hit(period.years, y) && hit(period.quarters, Math.floor((m - 1) / 3) + 1) && hit(period.months, m);
-  });
-  if (keep.length === 0) return [];
-
-  if (grain === 'month') {
-    return keep.map((k) => ({ key: k, label: k, pct: cum.get(k) ?? 0, amount: money.get(k) ?? 0 }));
-  }
-
-  const out = new Map<string, TimePoint>();
-  for (const k of keep) {
-    const y = k.slice(0, 4);
-    const m = Number(k.slice(5, 7));
-    const q = Math.floor((m - 1) / 3) + 1;
-    const bk = grain === 'year' ? y : `${y}-${q}`;
-    const label = grain === 'year' ? y : `${y} ${ROMAN[q - 1]}`;
-    const prev = out.get(bk);
-    out.set(bk, {
-      key: bk,
-      label,
-      /* Хувь — бүлгийн СҮҮЛИЙНХ (хуримтлал тул нэмэхгүй) */
-      pct: cum.get(k) ?? 0,
-      /* Мөнгө — бүлгийн НИЙЛБЭР (хуримтлал биш тул нэмнэ) */
-      amount: (prev?.amount ?? 0) + (money.get(k) ?? 0),
-    });
-  }
-  return [...out.values()];
-}
 
 /* ══════════════ ЗАХИРАМЖИЙН ДҮН — ХУГАЦААГААР ══════════════ */
 
@@ -937,19 +1378,25 @@ export type SubPkg = {
 export const loadSubPkgLayers = cached<SubPkg[]>(async () => {
   const { PKG_BY_BAGTS, bagtsKey, isPkgRange } = await import('@/lib/services');
   const rows = await queryFeatures(CF.url, {
-    outFields: ['Ded_bagts', CF.type],
+    where: CF_WORK_WHERE,
+    outFields: [CF.pkg2, ...FIN_XL_CHART_FIELDS],
     limit: 4000,
   });
 
   const seen = new Map<string, string>();
   const types = new Map<string, Set<string>>();
   for (const r of rows) {
-    const raw = sOf(r.Ded_bagts);
+    /* ⚠️ `CF.pkg2`-ООР, талбарын нэрийг ШУУД бичихгүй. 2026-09-09-нд энд
+       хуучин `r.Ded_bagts` гэж үлдсэн байсныг заслаа: 0904→0909 шилжүүлэгт
+       тэр нэр `bagts` болсон тул утга нь ҮРГЭЛЖ хоосон буцаж, жагсаалт
+       бүхэлдээ ХООСОН болсон — «Ажлын төрлөөр давхцаж буй» карт ба газрын
+       зурагтай холбогдох гүүр чимээгүй тасарсан байв. */
+    const raw = sOf(r[CF.pkg2]);
     if (!raw || isPkgRange(raw)) continue;
     const k = bagtsKey(raw);
     if (!k || !PKG_BY_BAGTS[k]?.length) continue;
     if (!seen.has(k)) seen.set(k, raw);
-    const ty = sOf(r[CF.type]);
+    const ty = finXlChartCat(r);
     if (ty) {
       const set = types.get(k);
       if (set) set.add(ty); else types.set(k, new Set([ty]));

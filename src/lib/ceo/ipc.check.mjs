@@ -3,45 +3,63 @@
  *
  *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/ceo/ipc.check.mjs
  *
+ * ⚠️ 2026-09-09: эх сурвалж `IPC_LOG` (`ipc_0813/172`, тест өгөгдөл) →
+ *    `HO_IPC` (`HO_guitsetgel_arcgis_csv/196`). СУУТГАЛ · «төлөх ёстой
+ *    огноо» · «ХЯНАГДАЖ БАЙНА» төлөв гурав шинэ эхэд ОГТ БАЙХГҮЙ тул
+ *    тэдгээрийн тест (хугацаа хэтэрсэн · хянагдаж буй акт · сөрөг олгох
+ *    дүн) БҮРЭН ХАСАГДСАН — байхгүй ойлголтыг тестлэх нь худал итгэл.
+ *
  * Ямар БОДИТ алдаанаас хамгаалж байгаа вэ:
- *  1. IPC18 хоосон акт 0 болж нийлбэрийг доош татах (2026-09-04, I30 акт
- *     −2.07 тэрбум). Дүнгүй акт нийлбэрт ОРОХГҮЙ, бүгд дүнгүй бол «—».
- *  2. Хугацаа хэтэрсэн эсэхийг ӨДРӨӨР харьцуулах — өнөөдөр төлөх акт
- *     «хэтэрсэн» биш; өчигдрийнх хэтэрсэн.
- *  3. Жагсаалт БҮРЭН, нэртэй — 300-аас дээш бол «… бас N мөр» мөр ил.
- *  4. Гүйлгээ (`paid`) нь бодит тул 0 = 0, харин олгох дүн null = null.
+ *  1. ГРЕЙН — мөр = НЭГ ГҮЙЛГЭЭ, гэрээний талбар `geree_kod` бүрд
+ *     ДАВТАГДАНА. Мөрөөр SUM хийвэл Багц-4.1 (7 мөр) -ийн төсөв 7 ДАХИН
+ *     давхардана (`reportData.ts`-ийн «5.4 дахин хөөрөгдөх» алдааны хэлбэр).
+ *     Энэ файлын №1 батламж.
+ *  2. `dun` хоосон мөр 0 болж нийлбэрийг доош татах (2026-09-04, I30 акт
+ *     −2.07 тэрбум). Дүнгүй мөр нийлбэрт ОРОХГҮЙ, бүгд дүнгүй бол «—».
+ *     Харин `dun: 0` нь ЖИНХЭНЭ тэг — `null` БИШ (дүрмийн хоёр тал).
+ *  3. Диапазон мөр («Багц-1-4») буруу багцад наалдах: `bagtsKey('Багц-1-4')`
+ *     = `БАГЦ14` = БОДИТ Багц 14. `pkgKeyOf` тэднийг `''` болгодог тул
+ *     «Багцад холбогдоогүй төлбөр» хүснэгтэд ЗААВАЛ ил гарна.
+ *  4. Урьдчилгаа мөрд `ipc_dugaar` ҮРГЭЛЖ null — `padStart` нь «IPC-00»
+ *     гэсэн худал код гаргахгүй, «Урьдчилгаа» гэж нэрлэнэ.
+ *  5. «Олгосон» = урьдчилгаа + гүйцэтгэл (хэрэглэгчийн шийдвэр) — зөвхөн
+ *     гүйцэтгэлийг тоолвол унана.
+ *  6. Кодгүй гэрээ (ХО-0045) ХАЯГДАХГҮЙ — 533 сая ₮ чимээгүй алга болохгүй.
+ *  7. Жагсаалт БҮРЭН, нэртэй — 300-аас дээш бол «… бас N мөр» мөр ил.
  */
 
 import assert from 'node:assert/strict';
 import {
-  computeIpc, toAct, summarize, ipcLevel, dayOf, todayOf, isOverdue, overdueDays,
+  computeIpc, summarize, ipcLevel, dayOf, todayOf, epochOf,
 } from './ipc.ts';
-import { IPC_LOG } from '../services.ts';
+import { HO_IPC } from '../services.ts';
 import { ROW_CAP } from './kpi.ts';
 
-const F = IPC_LOG.fields;
-const { approved, review } = IPC_LOG.statuses;
+const C = HO_IPC.contractFields;
+const P = HO_IPC.payFields;
+const { advance, work } = HO_IPC.kinds;
 
 /* ⚠️ Өдрийн ДУНД (12:00Z) — локал өдөр нь UTC−12…UTC+11 бүсэд 2026-09-06 */
 const NOW = Date.UTC(2026, 8, 6, 12, 0, 0);
 assert.equal(todayOf(NOW), '2026-09-06');
 
 let seq = 0;
-const act = (o) => ({
-  [F.id]: `I${++seq}`,
-  [F.kind]: IPC_LOG.kinds.work,
-  [F.no]: seq,
-  [F.pkg]: 'Багц 4',
-  [F.pkg2]: o.pkg2 ?? 'Багц 4-1',
-  [F.contractor]: o.contractor ?? '"ББСМО" ХХК',
-  [F.status]: o.status ?? approved,
-  [F.gross]: o.gross ?? null,
-  [F.clientDeduct]: o.deduct ?? null,
-  [F.paid]: o.paid ?? null,
-  [F.dueDate]: o.due ?? null,
-  [F.payDate]: o.payDate ?? null,
-  [F.periodFrom]: o.from ?? null,
-  [F.periodTo]: o.to ?? null,
+/** Нэг ТӨЛБӨРИЙН мөр — гэрээний талбарууд нь `o`-гоор ДАВТАГДАЖ өгөгдөнө */
+const pay = (o = {}) => ({
+  [P.id]: `ХО-${String(++seq).padStart(4, '0')}`,
+  [C.code]: 'code' in o ? o.code : 'Багц-1',
+  [C.pkg]: 'pkg' in o ? o.pkg : 'Багц-1',
+  [C.project]: o.project ?? 'Сэлбэ дэд төв',
+  [C.contractor]: o.contractor ?? 'ББСМО ХХК',
+  [C.workType]: o.workType ?? 'Барилга угсралт',
+  [C.contractNo]: o.contractNo ?? '34/2025',
+  [C.budgetTotal]: 'budget' in o ? o.budget : 100,
+  [C.contractTotal]: 'contract' in o ? o.contract : 90,
+  [P.kind]: 'kind' in o ? o.kind : work,
+  [P.ipcNo]: 'ipcNo' in o ? o.ipcNo : null,
+  [P.amount]: 'amount' in o ? o.amount : null,
+  [P.payDate]: o.payDate ?? null,
+  [P.year]: o.year ?? 2026,
 });
 
 /* ══════════════ 1. Хоосон эх ══════════════ */
@@ -63,144 +81,192 @@ assert.equal(dayOf(Date.UTC(2026, 7, 10)), '2026-08-10');
 assert.equal(dayOf(''), null);
 assert.equal(dayOf(null), null);
 assert.equal(dayOf('юу ч биш'), null);
+assert.equal(epochOf('2026-08-10'), Date.parse('2026-08-10'));
+assert.equal(epochOf(null), null);
 
-/* ══════════════ 3. Холимог багц ══════════════ */
-seq = 0;
-const rows = [
-  // A1 — хэтэрсэн: net 90, paid 50, due 40, 2026-08-01
-  act({ gross: 100, deduct: 10, paid: 50, due: '2026-08-01', payDate: '2026-08-15' }),
-  // A2 — хянагдаж буй, ирээдүйн огноо: net 200, due 200
-  act({ status: review, gross: 200, due: '2026-12-01', from: '2026-07-01', to: '2026-07-31' }),
-  // A3 — IPC18 хоосон, гэвч гүйлгээ 30 (бодит)
-  act({ gross: null, paid: 30, payDate: '2026-08-20' }),
-  // A4 — бүрэн төлөгдсөн: due 0 → хүснэгт 1-д ОРОХГҮЙ
-  act({ gross: 100, paid: 100, due: '2026-01-01' }),
-  // A5 — сөрөг олголт (өгөгдлийн алдаа): net −40
-  act({ gross: 10, deduct: 50, due: '2026-01-01' }),
-  // A6 — үлдэгдэлтэй, огноогүй → хүснэгт 1-ийн СҮҮЛД
-  act({ gross: 100, pkg2: '', contractor: 'Х ХХК' }),
-  // A7 — хянагдаж буй БӨГӨӨД дүнгүй
-  act({ status: review, gross: '' }),
-  // A8 — ӨНӨӨДӨР төлөх: хэтэрсэн БИШ
-  act({ gross: 50, due: '2026-09-06' }),
-  // A9 — ӨЧИГДӨР төлөх: хэтэрсэн, 1 хоног
-  act({ gross: 60, due: '2026-09-05' }),
-];
-const acts = rows.map(toAct);
-const today = todayOf(NOW);
-
-assert.equal(acts[0].code, 'IPC-01');
-assert.equal(acts[5].pkg, 'Багц 4', 'дэд багц хоосон бол үндсэн багц');
-assert.equal(acts[2].net, null, 'IPC18 хоосон → null, 0 БИШ');
-assert.equal(acts[2].paid, 30, 'гүйлгээ нь бодит тоо');
-assert.equal(acts[2].due, null, 'олгох дүн мэдэгдэхгүй бол үлдэгдэл ч мэдэгдэхгүй');
-assert.equal(acts[6].net, null, '"" ч мөн хоосон');
-
-assert.equal(isOverdue(acts[0], today), true);
-assert.equal(overdueDays(acts[0], today), 36);
-assert.equal(isOverdue(acts[7], today), false, 'өнөөдөр төлөх — хэтрээгүй');
-assert.equal(isOverdue(acts[8], today), true, 'өчигдөр төлөх — хэтэрсэн');
-assert.equal(overdueDays(acts[8], today), 1);
-assert.equal(isOverdue(acts[3], today), false, 'due 0 — хэтэрсэнд тооцохгүй');
-assert.equal(isOverdue(acts[4], today), false, 'сөрөг due — хэтэрсэнд тооцохгүй');
-assert.equal(isOverdue(acts[5], today), false, 'огноогүй — хэтэрсэнд тооцохгүй');
-
-const s = summarize(acts, today);
-assert.equal(s.n, 9);
-assert.equal(s.paidTotal, 180);
-assert.equal(s.netTotal, 90 + 200 + 100 - 40 + 100 + 50 + 60);
-assert.equal(s.dueTotal, 40 + 200 + 0 - 40 + 100 + 50 + 60);
-assert.deepEqual(s.reviewing, { count: 2, net: 200 });
-assert.equal(s.noAmount, 2);
-assert.deepEqual(s.overdue, { count: 2, due: 100 });
-assert.equal(s.negative, 1);
-assert.equal(ipcLevel(s), 'bad');
-
-const r = computeIpc(rows, NOW);
-assert.equal(r.value, '410 ₮');
-assert.equal(r.level, 'bad');
-assert.deepEqual(r.facts, [
-  '9 акт нийт', 'олгосон 180 ₮', 'хянагдаж буй 2 акт', 'хугацаа хэтэрсэн 2', 'дүнгүй 2 акт',
-]);
-assert.equal(r.asOf, Date.parse('2026-08-20'), 'asOf = сүүлийн гүйлгээний огноо');
-
-/* Хүснэгт 1 — эрэмбэ: огноогоор өсөх, огноогүй сүүлд */
-assert.equal(r.tables.length, 3);
-const t1 = r.tables[0];
-assert.equal(t1.cols.length, 8);
-assert.deepEqual(t1.rows.map((x) => x[0].v), [
-  'IPC-01', 'IPC-09', 'IPC-08', 'IPC-02', 'IPC-06',
-]);
-assert.deepEqual(t1.rows[0].slice(4, 7).map((c) => [c.v, c.kind]), [[90, 'mnt'], [50, 'mnt'], [40, 'mnt']]);
-assert.equal(t1.rows[4][7].v, '—', 'огноогүй акт — «—»');
-for (const row of t1.rows) assert.equal(row.length, 8);
-
-/* Хүснэгт 2 — хянагдаж буй: дүнтэй нь эхэнд, дүнгүй нь null нүдтэй.
-   Хамрах хугацаа = ХОЁР багана (эхлэх · дуусах), огноогүй бол «—». */
-const t2 = r.tables[1];
-assert.equal(t2.cols.length, 6);
-assert.deepEqual(t2.rows.map((x) => x[0].v), ['IPC-02', 'IPC-07']);
-assert.equal(t2.rows[0][5].v, 200);
-assert.equal(t2.rows[1][5].v, null, 'дүнгүй акт → null нүд, 0 БИШ');
-assert.equal(String(t2.rows[0][3].v).length > 5, true, 'хамрах хугацаа: эхлэх бичигдсэн');
-assert.equal(String(t2.rows[0][4].v).length > 5, true, 'хамрах хугацаа: дуусах бичигдсэн');
-assert.equal(t2.rows[1][3].v, '—');
-assert.equal(t2.rows[1][4].v, '—');
-for (const row of t2.rows) assert.equal(row.length, 6);
-
-/* Хүснэгт 3 — дүнгүй */
-const t3 = r.tables[2];
-assert.deepEqual(t3.rows.map((x) => x[0].v).sort(), ['IPC-03', 'IPC-07']);
-
-/* Анхааруулга — хэтэрсэн (хоног ихээр нь), дараа нь сөрөг олголт */
-assert.equal(r.issues.length, 3);
-assert.equal(r.issues[0].tone, 'bad');
-assert.match(r.issues[0].text, /^IPC-01 · Багц 4-1 — 36 хоног хэтэрсэн, 40 ₮$/);
-assert.match(r.issues[1].text, /^IPC-09 .* 1 хоног хэтэрсэн, 60 ₮$/);
-assert.equal(r.issues[2].tone, 'warn');
-assert.match(r.issues[2].text, /^IPC-05 · Багц 4-1 — олгох дүн сөрөг, -40 ₮$/);
-
-/* ══════════════ 4. Бүгд дүнгүй → «—», warn ══════════════ */
+/* ══════════════ 3. ГРЕЙН — гэрээний талбар ДАВХАРДАХГҮЙ ══════════════
+   Энэ файлын ХАМГИЙН ЧУХАЛ батламж: нэг гэрээний 3 мөрд `tosov_niit` тус
+   бүр 100 гэж бичигдсэн ч гэрээний нийт төсөв нь 100, 300 БИШ. */
 {
   seq = 0;
-  const rr = computeIpc([act({ gross: null, paid: 5 }), act({ gross: '' })], NOW);
-  assert.equal(rr.value, '—', 'бүгд дүнгүй бол үлдэгдэл «—», 0 ₮ БИШ');
-  assert.equal(rr.level, 'warn');
-  assert.equal(rr.facts[1], 'олгосон 5 ₮');
-  assert.equal(rr.tables.length, 1, 'зөвхөн «дүнгүй акт» хүснэгт');
-  assert.equal(rr.tables[0].rows.length, 2);
-  assert.equal(rr.asOf, null);
+  const rows = [
+    pay({ amount: 10, ipcNo: 1 }),
+    pay({ amount: 20, ipcNo: 2 }),
+    pay({ amount: 30, ipcNo: 3 }),
+  ];
+  const s = summarize(rows);
+  assert.equal(s.contracts, 1);
+  assert.equal(s.pays, 3);
+  assert.equal(s.budget, 100, 'төсөв ГЭРЭЭНД НЭГ УДАА — 300 БИШ');
+  assert.equal(s.contract, 90, 'гэрээт төсөв ГЭРЭЭНД НЭГ УДАА');
+  assert.equal(s.saving, 10, 'хэмнэлт = 100 − 90, БОДОГДСОН');
+  assert.equal(s.paid, 60, 'төлбөр нь мөр бүрээр НИЙЛҮҮЛНЭ');
+  assert.equal(s.paidPct, (60 / 90) * 100, 'хувь нь 0–100, pct() 100-аар үржүүлдэггүй');
+
+  const r = computeIpc(rows, NOW);
+  const t1 = r.tables[0];
+  assert.equal(t1.rows.length, 1, '3 мөр → 1 гэрээний мөр');
+  assert.equal(t1.rows[0][4].v, 100, 'хүснэгтийн төсөв ч 100');
+  assert.equal(t1.rows[0][6].v, 60);
 }
 
-/* ══════════════ 5. Бүгд хэвийн → good ══════════════ */
+/* ══════════════ 4. null ≠ 0 — ХОЁР ТАЛ ══════════════ */
 {
   seq = 0;
-  const rr = computeIpc([
-    act({ gross: 100, paid: 100, due: '2026-01-01', payDate: '2026-02-01' }),
-    act({ gross: 100, due: '2026-12-01' }),
+  /* (а) БҮГД хоосон → нийлбэр `null` → «—», 0 ₮ БИШ */
+  const r = computeIpc([pay({ amount: null }), pay({ amount: '' })], NOW);
+  assert.equal(r.value, '—', 'бүгд дүнгүй бол «—», 0 ₮ БИШ');
+  assert.equal(r.level, 'warn', 'дүнгүй мөр нь өгөгдлийн цоорхойн дохио');
+  const s = summarize([pay({ amount: null })]);
+  assert.equal(s.paid, null);
+  assert.equal(s.noAmount, 1);
+
+  /* (б) ЖИНХЭНЭ тэг төлбөр — `null` БИШ, нийлбэрт орно */
+  seq = 0;
+  const z = summarize([pay({ amount: 0 })]);
+  assert.equal(z.paid, 0, 'dun 0 нь жинхэнэ тэг олголт');
+  assert.equal(z.noAmount, 0, '0 нь «бүртгэгдээгүй» БИШ');
+  assert.equal(ipcLevel(z), 'good', 'тэг олголт нь өгөгдлийн алдаа БИШ');
+}
+
+/* ══════════════ 5. ТӨЛБӨРГҮЙ ГЭРЭЭ хүснэгт ══════════════
+   `paidTotal === null` л орно; `paidTotal === 0` ОРОХГҮЙ. */
+{
+  seq = 0;
+  const r = computeIpc([
+    pay({ code: 'Багц-1', amount: 50, ipcNo: 1 }),
+    pay({ code: 'Багц-6.3', pkg: 'Багц-6.3', amount: null }),
+    pay({ code: 'Багц-7', pkg: 'Багц-7', amount: 0 }),
   ], NOW);
-  assert.equal(rr.level, 'good');
-  assert.equal(rr.value, '100 ₮');
-  assert.equal(rr.tables.length, 1);
-  assert.equal(rr.issues.length, 0);
+  const t = r.tables.find((x) => x.rows.length && x.cols.length === 4);
+  assert.ok(t, '«Төлбөргүй гэрээ» хүснэгт бий');
+  assert.deepEqual(t.rows.map((x) => x[0].v), ['Багц-6.3'],
+    'зөвхөн ХЭМЖИГДЭЭГҮЙ гэрээ; 0 ₮ олгосон гэрээ ОРОХГҮЙ');
 }
 
-/* ══════════════ 6. Хязгаар — «… бас N мөр» ил ══════════════ */
+/* ══════════════ 6. ДИАПАЗОН мөр — багцад холбогдохгүй ══════════════
+   `bagtsKey('Багц-1-4')` = `БАГЦ14` = БОДИТ Багц 14-ийн түлхүүр. `pkgKeyOf`
+   `''` буцаадаг тул дүн буруу эзэнд наалдахгүй, гэхдээ АЛДАГДАХГҮЙ. */
 {
   seq = 0;
-  const many = Array.from({ length: ROW_CAP + 50 }, () => act({ gross: 100, due: '2026-12-01' }));
-  const rr = computeIpc(many, NOW);
-  const t = rr.tables[0];
+  const rows = [
+    pay({ code: 'Багц-1', pkg: 'Багц-1', amount: 100, ipcNo: 1 }),
+    pay({ code: 'Багц-1-4', pkg: 'Багц-1-4', amount: 876, ipcNo: 1 }),
+    pay({ code: 'БАГЦ-10,11,13,15', pkg: 'БАГЦ-10,  БАГЦ-11, БАГЦ-13, БАГЦ-15', amount: 5094, ipcNo: 1 }),
+  ];
+  const s = summarize(rows);
+  assert.equal(s.unlinked, 2, 'хоёр диапазон мөр багцад холбогдохгүй');
+  assert.equal(s.unlinkedPaid, 876 + 5094);
+  assert.equal(s.paid, 100 + 876 + 5094, 'нийтэд АЛДАГДАХГҮЙ');
+  assert.equal(ipcLevel(s), 'warn');
+
+  const r = computeIpc(rows, NOW);
+  const t = r.tables.find((x) => x.cols.length === 5);
+  assert.ok(t, '«Багцад холбогдоогүй төлбөр» хүснэгт ЗААВАЛ');
+  assert.equal(t.rows.length, 2);
+  assert.deepEqual(t.rows.map((x) => x[3].v), [876, 5094]);
+}
+
+/* ══════════════ 7. Урьдчилгаа — дугаарлахгүй, «олгосон»-д ОРНО ══════════ */
+{
+  seq = 0;
+  const rows = [
+    pay({ kind: advance, ipcNo: null, amount: 314 }),
+    pay({ kind: work, ipcNo: 1, amount: 216 }),
+  ];
+  const s = summarize(rows);
+  assert.equal(s.advance, 314);
+  assert.equal(s.work, 216);
+  assert.equal(s.paid, 530, '«олгосон» = урьдчилгаа + гүйцэтгэл');
+
+  const r = computeIpc(rows, NOW);
+  assert.equal(r.value, '530 ₮');
+  assert.equal(r.unit, 'олгосон санхүүжилт');
+  assert.deepEqual(r.facts, [
+    '1 гэрээ · 2 төлбөр', 'урьдчилгаа 314 ₮', 'гүйцэтгэл 216 ₮',
+    'гэрээнд эзлэх 588.9%', 'хэмнэлт 10 ₮',
+  ]);
+  /* Урьдчилгаа мөрд `ipc_dugaar` null — «IPC-00» гэж БУРУУ дугаарлахгүй */
+  assert.equal(r.issues.length, 0, 'бүх мөр эрүүл — анхааруулга алга');
+}
+
+/* ══════════════ 8. Кодгүй гэрээ ХАЯГДАХГҮЙ ══════════════ */
+{
+  seq = 0;
+  const rows = [
+    pay({ code: 'Багц-1', amount: 10, ipcNo: 1 }),
+    pay({ code: null, pkg: null, amount: null, budget: 533, contract: 533 }),
+  ];
+  const s = summarize(rows);
+  assert.equal(s.contracts, 2, 'кодгүй гэрээ ТУСДАА бүлэг');
+  assert.equal(s.noCode, 1);
+  assert.equal(s.budget, 100 + 533, 'кодгүй гэрээний төсөв нийтэд ҮЛДЭНЭ');
+  assert.equal(ipcLevel(s), 'warn');
+
+  const r = computeIpc(rows, NOW);
+  assert.ok(r.issues.some((i) => /гэрээний код бүртгэгдээгүй/.test(i.text)));
+  assert.ok(r.issues.every((i) => i.tone === 'warn'), 'bad дохио ЗОХИОХГҮЙ');
+}
+
+/* ══════════════ 9. IPC дугаарын ЦООРХОЙ — анхааруулга ══════════════ */
+{
+  seq = 0;
+  const ok = computeIpc([
+    pay({ ipcNo: 1, amount: 10 }), pay({ ipcNo: 2, amount: 20 }),
+  ], NOW);
+  assert.equal(ok.issues.length, 0, '1,2 — цоорхойгүй');
+
+  seq = 0;
+  const gap = computeIpc([
+    pay({ ipcNo: 1, amount: 10 }), pay({ ipcNo: 2, amount: 20 }), pay({ ipcNo: 4, amount: 40 }),
+  ], NOW);
+  assert.ok(gap.issues.some((i) => /IPC дугаарын цоорхой: 3/.test(i.text)));
+}
+
+/* ══════════════ 10. Эрэмбэ — гэрээнд эзлэх хувь БАГА нь ЭХЭНД ══════════ */
+{
+  seq = 0;
+  const r = computeIpc([
+    pay({ code: 'A', pkg: 'Багц-1', contract: 100, amount: 90, ipcNo: 1 }),
+    pay({ code: 'B', pkg: 'Багц-2', contract: 100, amount: 10, ipcNo: 1 }),
+    pay({ code: 'D', pkg: 'Багц-3', contract: 100, amount: null }),
+  ], NOW);
+  const t1 = r.tables[0];
+  assert.deepEqual(t1.rows.map((x) => x[0].v), ['B', 'A', 'D'],
+    'хувь бага нь эхэнд, хэмжигдээгүй нь СҮҮЛД');
+  assert.equal(t1.rows[2][7].v, null, 'хэмжигдээгүй хувь → «—», 0 БИШ');
+  for (const row of t1.rows) assert.equal(row.length, 8);
+}
+
+/* ══════════════ 11. asOf — сүүлийн ГҮЙЛГЭЭНИЙ огноо ══════════════ */
+{
+  seq = 0;
+  const r = computeIpc([
+    pay({ amount: 1, ipcNo: 1, payDate: '2026-08-26' }),
+    pay({ amount: 2, ipcNo: 2, payDate: '2026-07-01' }),
+    pay({ amount: 3, ipcNo: 3, payDate: null }),
+  ], NOW);
+  assert.equal(r.asOf, Date.parse('2026-08-26'));
+
+  seq = 0;
+  const e = computeIpc([pay({ amount: 1, ipcNo: 1, payDate: Date.UTC(2026, 7, 1) })], NOW);
+  assert.equal(e.asOf, Date.UTC(2026, 7, 1), 'epoch тоо ч ажиллана');
+
+  seq = 0;
+  const n = computeIpc([pay({ amount: 1, ipcNo: 1 })], NOW);
+  assert.equal(n.asOf, null, 'гүйлгээний огноо огт байхгүй → null');
+}
+
+/* ══════════════ 12. Хязгаар — «… бас N мөр» ил ══════════════ */
+{
+  seq = 0;
+  const many = Array.from({ length: ROW_CAP + 50 }, (_, i) => (
+    pay({ code: `Багц-${i + 1}`, pkg: `Багц-${i + 1}`, amount: 10, ipcNo: 1 })
+  ));
+  const t = computeIpc(many, NOW).tables[0];
   assert.equal(t.rows.length, ROW_CAP + 1);
   assert.match(String(t.rows[ROW_CAP][0].v), /50/);
   assert.equal(t.rows[ROW_CAP].length, 8, 'тасалсан мөр ч 8 нүдтэй');
-}
-
-/* ══════════════ 7. asOf epoch тоогоор ══════════════ */
-{
-  seq = 0;
-  const rr = computeIpc([act({ gross: 1, payDate: Date.UTC(2026, 7, 1) })], NOW);
-  assert.equal(rr.asOf, Date.UTC(2026, 7, 1));
 }
 
 console.log('ipc.check: OK');

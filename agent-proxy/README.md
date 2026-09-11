@@ -70,7 +70,7 @@ browser талд** (`src/lib/agent/`). Учир нь тэнд `LAYERS`, `VIEWS`,
 
 **Дүрэм:** шинэ давхарга нэмэгдэхэд энэ хавтсанд юу ч засагдах ёсгүй.
 
-## Байршуулах — `selbe.monmap.mn` дээр AI ажиллуулах
+## Байршуулах — `smart.selbecity.mn` дээр AI ажиллуулах
 
 Локал `server.mjs` нь зөвхөн таны компьютер дээр ажилладаг тул нийтэд гарсан
 сайт дээр AI дуугарахгүй. Үүний тулд **`worker.mjs`** (ижил логиктой Cloudflare
@@ -115,13 +115,19 @@ curl https://selbe-agent.<таны-нэр>.workers.dev/health
 > Түлхүүр Cloudflare дотроо үлдэнэ.
 
 Дараа нь `main` руу push хийхэд (эсвэл Actions → Run workflow) шинэ build
-энэ хаягийг агуулан гарна. Ингээд **selbe.monmap.mn дээр орвол AI шууд
+энэ хаягийг агуулан гарна. Ингээд **smart.selbecity.mn дээр орвол AI шууд
 ажиллана — хэрэглэгч юу ч буулгахгүй.**
+
+> ⚠️ **Домэйн солиход** (2026-09-09: `selbe.monmap.mn` → `smart.selbecity.mn`)
+> релейн `ALLOW_ORIGIN`-д шинэ хаягийг ЗААВАЛ нэмнэ — Cloudflare dashboard →
+> Worker → Settings → Variables, эсвэл `wrangler.toml`-ийн `[vars]`. Эс бөгөөс
+> шинэ домэйн дээр AI туслах CORS-оор чимээгүй хаагдана (403).
 
 ### 3. Өөрийн домэйн (заавал биш)
 
-Cloudflare дээр `monmap.mn` бүсийг удирддаг бол `wrangler.toml`-ийн `[[routes]]`
-хэсгийг идэвхжүүлээд `AGENT_API`-г `https://api.selbe.monmap.mn` болгоно.
+Cloudflare дээр `selbecity.mn` бүсийг удирддаг бол `wrangler.toml`-ийн `[[routes]]`
+хэсгийг идэвхжүүлээд `AGENT_API`-г `https://api.smart.selbecity.mn` (эсвэл
+өөрийн сонгосон дэд домэйн) болгоно.
 
 ## Хэн ашиглах вэ — ArcGIS нэвтрэлт
 

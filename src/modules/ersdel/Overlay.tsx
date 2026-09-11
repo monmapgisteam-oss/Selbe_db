@@ -32,7 +32,10 @@ import { IMAGERY_ID, useMap, type Dim } from '@/components/MapCanvas';
 import { t as tr } from '@/lib/i18nCore';
 import { bandAt, type Band, type DamageRow } from '@/lib/ersdelGeom';
 import type { Station } from '@/lib/ersdel';
-import type { FloodData } from '@/lib/uyr';
+import { flowDeg, type FloodData, type FloodMode } from '@/lib/uyr';
+import Polygon from '@arcgis/core/geometry/Polygon';
+import { waterSurfaceAt } from '@/lib/uyrSurface';
+import { buildWaterFlow, type WaterFlow } from '@/lib/uyrUrsgal';
 
 /** Давхаргын id-ууд — каталогт ОРОХГҮЙ (`listMode: 'hide'`) */
 const FLOOD_ID = 'ersdel:flood';
@@ -49,8 +52,19 @@ const FLOOD_ID = 'ersdel:flood';
  * гэж хэвээр бичигдэнэ.
  */
 const FLOW_ID = 'ersdel:flow';
-/** Нэг зүсмэлийг хэдэн секундэд туулах вэ — 12 алхам ≈ 14 сек */
-const STEP_S = 1.2;
+/**
+ * УСНЫ УРСГАЛЫН СУДАЛ — гүний растерын ДЭЭР, тусдаа `MediaLayer`.
+ *
+ * ⚠️ Яагаад тусдаа давхарга вэ: судал нь фрейм БҮРД (30/сек) шинэчлэгдэх
+ * ёстой ч гүний растер нь ~8/сек хангалттай. Нэг canvas дээр нийлүүлбэл
+ * гүнийг ч 30/сек дахин будах шаардлага гарна.
+ *
+ * ⚠️ Угтвар `ersdel:` — `MapCanvas`-ийн харагдалтын шүүлт зөвхөн үүнийг
+ * алгасдаг (`FLOW_ID` §тайлбар).
+ */
+const WFLOW_ID = 'ersdel:wflow';
+/** Нэг зүсмэлийг хэдэн секундэд туулах вэ — 24 алхам ≈ 22 сек */
+const STEP_S = 0.9;
 /**
  * Фреймийн доод завсар (мс) — ~30 фрейм/сек.
  * ⚠️ 20-оос 30 болгов: усны хөдөлгөөн 20-д бага зэрэг «алхамтай» харагддаг.
@@ -58,6 +72,39 @@ const STEP_S = 1.2;
  * нь орчин үеийн GPU-д асуудалгүй.
  */
 const FRAME_MS = 33;
+/**
+ * УСНЫ 3D ГАДАРГУУГ хэдэн мс тутамд дахин байгуулах вэ (~8/сек).
+ * ⚠️ Нэг байгуулалт ~5 мс (24 зурвас, ~6,000 орой). 30/сек бол CPU-гийн 15%
+ *    ба GPU руу секундэд 180,000 орой — илүүц. 8/сек нь нүдэнд тасралтгүй.
+ */
+const SURF_MS = 125;
+/**
+ * УСНЫ ГАДАРГУУ (3D) — бүс тус бүрд ТУСДАА давхарга.
+ *
+ * ⚠️ ЯАГААД ГУРВАН ДАВХАРГА ВЭ: `elevationInfo.offset` нь ДАВХАРГЫН шинж,
+ * графикийнх БИШ. Гүний бүс бүр өөр өндөрт (газраас 0.15 / 0.6 / 1.8 м) хөвөх
+ * ёстой тул нэг давхаргад хийвэл бүгд НЭГ өндөрт наалдаж, гүний ялгаа
+ * алдагдана.
+ */
+const WATER_IDS = ['ersdel:water0', 'ersdel:water1', 'ersdel:water2'];
+
+/**
+ * ЗАГВАРЧЛАЛЫН УСНЫ ГАДАРГУУ (3D · BIM) — «дижитал ихэр»-ийн харагдац.
+ *
+ * ⚠️ Дээрх `WATER_IDS` нь АЮУЛЫН МУЖИЙН (буфер) ус — «100 жилийн үерт хаана
+ * хүрэх вэ» гэсэн ТӨЛӨВЛӨЛТИЙН хариулт. Энэ давхарга нь ӨӨР зүйл: тухайн
+ * АГШИН дахь бодит тархалт, хөндийг дагаж доошоо урсах усны гадаргуу.
+ *
+ * ⚠️ `absolute-height` — геометрийн ӨӨРИЙН `z` (метр, EGM2008) ашиглагдана.
+ * `relative-to-ground` бол бүх зурвас газраас ижил зайд хөвж, налуу
+ * алдагдана; `relative-to-scene` бол мешийн ДЭЭД гадаргуу (дээвэр, мод) дагаж
+ * ус дээвэр дээр тогтоно.
+ */
+const WSURF_ID = 'ersdel:wsurf';
+
+/** Усны замын шугам — тайлбарын давхарга */
+const PATH_ID = 'ersdel:path';
+
 const BAND_ID = 'ersdel:band';
 const DMG_ID = 'ersdel:damage';
 const ST_ID = 'ersdel:station';
@@ -115,6 +162,35 @@ const bandFill3d = (hue: string, alpha: number, height: number, edges: boolean) 
     size: Math.max(0.4, height),
     material: { color: [...rgb(hue), alpha] },
     ...(edges ? { edges: { type: 'solid', color: [...rgb(hue), 0.55], size: 0.6 } } : {}),
+  }],
+});
+
+/**
+ * ЖИНХЭНЭ УС (3D) — ArcGIS-ийн `water` симбол.
+ *
+ * ⚠️ Энэ нь ХАВТГАЙ дүүргэлт БИШ: SceneView нь долгион, тэнгэрийн тусгал,
+ * гэрлийн хугарлыг бодит цагт тооцож зурдаг материал. Тиймээс `extrude`-ээр
+ * хийсэн «цэнхэр хайрцаг»-аас эрс өөр — ус шиг л харагдана.
+ *
+ * ⚠️ ЗӨВХӨН SceneView (3D · BIM). MapView-д энэ симбол ажиллахгүй тул 2D-д
+ * хуучин хавтгай дүүргэлт хэвээр.
+ *
+ * @param waveDeg — долгионы чиглэл (градус). Загварчлалын дундаж урсгалаас
+ *   авна; байхгүй бол голын ерөнхий чиглэл (хойноос урагш).
+ * @param strength — гүн ус илүү сэвсгэр: гүехэн дээр «rippled», гүнд «moderate».
+ */
+const waterSym = (waveDeg: number, strength: 'rippled' | 'slight' | 'moderate') => ({
+  type: 'polygon-3d',
+  symbolLayers: [{
+    type: 'water',
+    /* ⚠️ Өнгө нь ГҮНИЙГ заахгүй — усны ӨӨРИЙН өнгө. Гүнийг байрлал
+       (`elevationInfo.offset`) ба долгионы хүч хоёр хэлнэ. Хэт цайвар бол
+       шаварлаг үерийн ус мэт биш, усан сан мэт харагдана. */
+    color: '#1c4f7c',
+    waveDirection: waveDeg,
+    waveStrength: strength,
+    /* Сэлбэ бол ЖИЖИГ урсгал — «large» нь далайн өргөн долгион өгнө */
+    waterbodySize: 'small',
   }],
 });
 
@@ -237,9 +313,12 @@ export function Overlay({
   selected,
   onPick,
   flood = null,
+  floodMode = 'depth',
+  path = null,
   floodSlice = 0,
   playing = false,
   onSlice,
+  onEnd,
   windField = null,
   windFlow = false,
   windHour = 0,
@@ -265,12 +344,26 @@ export function Overlay({
    * тавина — 2D-д хавтгай, 3D/BIM-д газрын гадаргуу дээр наалдана.
    */
   flood?: FloodData | null;
+  /** Растерыг юугаар будах вэ — гүн · хурд · аюул */
+  floodMode?: FloodMode;
+  /**
+   * УСНЫ ЗАМ — сонгосон нүднээс ДЭЭШ (ус хаанаас ирсэн) ба ДООШ (хаашаа
+   * явна) мөрдсөн шугам, Web Mercator цэгүүд.
+   * ⚠️ Зөвхөн тайлбар: «яагаад энд үерлэв» гэдгийг нэг харахад хэлнэ.
+   */
+  path?: { up: number[][]; down: number[][] } | null;
   /** Идэвхтэй зүсмэлийн дугаар (зогссон үед) */
   floodSlice?: number;
   /** Анимаци явж байна уу */
   playing?: boolean;
   /** Анимаци шинэ зүсмэл рүү орлоо — эцэг нь заагчаа дагуулна */
   onSlice?: (s: number) => void;
+  /**
+   * Анимаци ТӨГСГӨЛД хүрлээ.
+   * ⚠️ Үер мөчлөгт үзэгдэл БИШ тул эргэж эхлэхгүй — эцэг нь `playing`-ийг
+   * унтраана. Хэрэглэгч ▶ дарж дахин тоглуулна.
+   */
+  onEnd?: () => void;
   /**
    * САЛХИНЫ ТАЛБАР. Байвал (ба `windFlow` асаалттай бол) тоосонцрын урсгал
    * зурагдана. `null` бол давхарга ОГТ үүсэхгүй — хоосон canvas ч GPU-д
@@ -283,6 +376,17 @@ export function Overlay({
   windHour?: number;
 }) {
   const { view } = useMap();
+
+  const onEndRef = useRef(onEnd);
+  onEndRef.current = onEnd;
+  /* ⚠️ Анимац эхлэхдээ ОДООГИЙН зүсмэлээс үргэлжилнэ — `floodSlice`-ыг
+     эффектийн хамаарал болговол зүсмэл солигдох бүрд дахин эхэлнэ. */
+  const floodSliceRef = useRef(floodSlice);
+  floodSliceRef.current = floodSlice;
+  /* ⚠️ `drawSurface` нь ДООР зарлагдсан тул REF-ээр дамжина (TDZ) */
+  const drawSurfaceRef = useRef<((pos: number) => void) | null>(null);
+  const drawWFlowRef = useRef<((pos: number) => void) | null>(null);
+
 
   /**
    * ⚠️ ГУРВАН тусдаа давхарга: муж (доор) → хохирол (дунд) → харуул (дээр).
@@ -299,7 +403,27 @@ export function Overlay({
         // ⚠️ Газрын гадаргуу дээр наана: 3D-д `extrude` нь эндээс дээш өргөнө
         elevationInfo: { mode: 'on-the-ground' },
       });
-    const layers = [mk(BAND_ID), mk(DMG_ID), mk(ST_ID)];
+    /**
+     * ⚠️ УСНЫ давхаргууд нь мужийн ДООР: усан дээр аюулын хүрээ, өртсөн
+     * объект, харуул гурвуулаа харагдах ёстой.
+     * ⚠️ `relative-to-ground` — газрын РЕЛЬЕФийг дагаж, дээр нь `offset`
+     * метрээр хөвнө. `on-the-ground` бол гүн 0 болж хавтгай наалдана;
+     * `relative-to-scene` бол мешийн ДЭЭД гадаргууг (барилгын дээвэр, мод)
+     * дагах тул ус дээвэр дээр тогтоно.
+     */
+    const water = WATER_IDS.map((id) => new GraphicsLayer({
+      id,
+      listMode: 'hide',
+      elevationInfo: { mode: 'relative-to-ground', offset: 0 },
+    }));
+    /* ⚠️ Загварчлалын усны гадаргуу — БҮХ зурвас НЭГ давхаргад багтана, учир
+       нь өндөр нь давхаргын `offset`-оос БИШ, геометрийн `z`-ээс уншигдана. */
+    const wsurf = new GraphicsLayer({
+      id: WSURF_ID,
+      listMode: 'hide',
+      elevationInfo: { mode: 'absolute-height', offset: 0 },
+    });
+    const layers = [...water, wsurf, mk(BAND_ID), mk(DMG_ID), mk(PATH_ID), mk(ST_ID)];
     view.map.addMany(layers);
     return () => {
       if (view.map) view.map.removeMany(layers);
@@ -335,7 +459,7 @@ export function Overlay({
     const layer = new MediaLayer({
       id: FLOOD_ID,
       listMode: 'hide',
-      source: [new ImageElement({ image: flood.frame(0, 0, 0), georeference: geo })],
+      source: [new ImageElement({ image: flood.frame(0, 0, 0, modeRef.current), georeference: geo })],
     });
     /**
      * ⚠️ `elevationInfo` ӨГӨХГҮЙ. `MediaLayer` нь SceneView-д ҮРГЭЛЖ газрын
@@ -369,6 +493,68 @@ export function Overlay({
     };
   }, [view, flood]);
 
+  /* ── УСНЫ УРСГАЛЫН СУДАЛ (MediaLayer) ──
+   *
+   * ⚠️ Гүний растерын ДЭЭР. Тоосонцор нь загварчлалын хурдны талбар дээр
+   * хөвж, бүдгэрэх судал үлдээнэ — «ус хөдөлж байна» гэдгийг цагаан СУМ
+   * (диаграм) биш, ХӨДӨЛГӨӨН өөрөө хэлнэ.
+   */
+  const wflowLayerRef = useRef<MediaLayer | null>(null);
+  const wflowRef = useRef<WaterFlow | null>(null);
+  useEffect(() => {
+    if (!view || view.destroyed || !view.map || !flood) return;
+    const e = flood.meta.extent;
+    const geo = new ExtentAndRotationGeoreference({
+      extent: new Extent({
+        xmin: e.xmin, ymin: e.ymin, xmax: e.xmax, ymax: e.ymax,
+        spatialReference: { wkid: flood.meta.wkid },
+      }),
+    });
+    const flow = buildWaterFlow(flood);
+    const layer = new MediaLayer({
+      id: WFLOW_ID,
+      listMode: 'hide',
+      source: [new ImageElement({ image: flow.step(0), georeference: geo })],
+    });
+    wflowLayerRef.current = layer;
+    wflowRef.current = flow;
+    wflowGeoRef.current = geo;
+    /* ⚠️ ҮЕРИЙН РАСТЕРЫН ЯГ ДЭЭР: судал усан дээр л утгатай. Ортофотогийн
+       доор орвол огт харагдахгүй, вектор давхаргын дээр гарвал барилгыг
+       хучна. */
+    const base = view.map.findLayerById(FLOOD_ID);
+    const ortho = view.map.findLayerById(IMAGERY_ID);
+    const at = base ? view.map.layers.indexOf(base) + 1
+      : ortho ? view.map.layers.indexOf(ortho) + 1 : 0;
+    view.map.add(layer, at);
+    return () => {
+      if (view.map) view.map.remove(layer);
+      layer.destroy();
+      wflowLayerRef.current = null;
+      wflowRef.current = null;
+      wflowGeoRef.current = null;
+    };
+  }, [view, flood]);
+
+  /**
+   * СУДЛЫГ нэг фрейм урагшлуулна.
+   * ⚠️ ЗӨВХӨН `depth` горимд: хурд/аюулын зурагт судал нь өнгөний утгыг
+   * дардаг ба тэнд чиглэлийг СУМ хэлнэ (`uyr.ts` §frame).
+   */
+  const drawWFlow = useCallback((pos: number) => {
+    const layer = wflowLayerRef.current;
+    const geo = wflowGeoRef.current;
+    const flow = wflowRef.current;
+    if (!layer || !geo || !flow) return;
+    layer.visible = modeRef.current === 'depth';
+    if (!layer.visible) return;
+    const el = new ImageElement({ image: flow.step(pos), georeference: geo });
+    const src = layer.source as unknown as { elements: { removeAll(): void; add(x: unknown): void } };
+    src.elements.removeAll();
+    src.elements.add(el);
+  }, []);
+  drawWFlowRef.current = drawWFlow;
+
   /**
    * ФРЕЙМ СОЛИХ — нэг л газраас.
    *
@@ -380,7 +566,7 @@ export function Overlay({
     const geo = geoRef.current;
     const fd = floodRef.current;
     if (!layer || !geo || !fd) return;
-    const el = new ImageElement({ image: fd.frame(sl, f, phase), georeference: geo });
+    const el = new ImageElement({ image: fd.frame(sl, f, phase, modeRef.current), georeference: geo });
     const src = layer.source as unknown as { elements: { removeAll(): void; add(x: unknown): void } };
     src.elements.removeAll();
     src.elements.add(el);
@@ -408,7 +594,10 @@ export function Overlay({
   useEffect(() => {
     if (!flood || playing) return;
     drawFrame(floodSlice, 0, 0);
-  }, [view, flood, playing, floodSlice, drawFrame]);
+    /* ⚠️ Зогссон үед ч судал нь ТУХАЙН агшны чиглэлийг харуулна — гүйгч
+       чирэхэд урсгал хаашаа байсныг уншина. */
+    drawWFlowRef.current?.(floodSlice);
+  }, [view, flood, playing, floodSlice, floodMode, drawFrame]);
 
   useEffect(() => {
     if (!flood || !playing) return;
@@ -419,24 +608,61 @@ export function Overlay({
      * ЭХНЭЭС нь эхэлж «гацсан» мэт харагдана.
      */
     let raf = 0;
-    const t0 = performance.now();
+    /**
+     * ⚠️ ЭХЛЭХ ЦЭГ нь ОДООГИЙН зүсмэл — 0 БИШ. Хэрэглэгч гүйгчийг 14-р минут
+     * дээр аваачаад ▶ дарвал 0-оос эхлэх нь «буцаж үсэрлээ» гэсэн мэдрэмж өгнө.
+     * Төгсгөлд байвал эхнээс эхэлнэ (дахин тоглуулах).
+     */
     const SL = flood.meta.slices;
+    const from = floodSliceRef.current >= SL - 1 ? 0 : floodSliceRef.current;
+    const t0 = performance.now() - from * STEP_S * 1000;
     let lastInt = -1;
     let lastDraw = 0;
+    let lastSurf = 0;
     const tick = (now: number) => {
       raf = requestAnimationFrame(tick);
       /**
-       * ⚠️ ФРЕЙМИЙГ ХЯЗГААРЛАНА (~20/сек). Зурах нь хямд (0.8 мс) ч фрейм
-       * тутамд шинэ `ImageElement` үүсэж 512×512 RGBA текстур GPU руу ачаалагдана.
-       * 60/сек бол 60 МБ/сек илүүдэл ачаалал; ус 20/сек-д ч гөлгөр урсана.
+       * ⚠️ ФРЕЙМИЙГ ХЯЗГААРЛАНА (~30/сек). Зурах нь хямд (0.9 мс) ч фрейм
+       * тутамд шинэ `ImageElement` үүсэж RGBA текстур GPU руу ачаалагдана.
        */
       if (now - lastDraw < FRAME_MS) return;
       lastDraw = now;
       const el = (now - t0) / 1000;
-      /* Нэг зүсмэл = `STEP_S` секунд; төгсгөлд эргэж эхэлнэ */
-      const pos = (el / STEP_S) % SL;
+      const pos = el / STEP_S;
+      /**
+       * ⚠️ ТӨГСГӨЛД ЗОГСОНО, эргэж эхлэхгүй (2026-09-09).
+       *
+       * Урьд нь `% SL` гэж мөчлөглөдөг байсан нь мөчлөг бүрийн ЗААГТ усыг
+       * 48 га-гаас 2 га руу НЭГ ФРЕЙМД буулгаж, «цаг алгаслаа» гэсэн хамгийн
+       * тод үсрэлтийг өөрөө үүсгэж байв. Үер нь мөчлөгт үзэгдэл БИШ — нэг
+       * удаа ирж, оргилдож, татардаг.
+       */
+      if (pos >= SL - 1) {
+        drawFrame(SL - 1, 0, el);
+        drawSurfaceRef.current?.(SL - 1);
+        drawWFlowRef.current?.(SL - 1);
+        onSliceRef.current?.(SL - 1);
+        onEndRef.current?.();
+        cancelAnimationFrame(raf);
+        return;
+      }
       const sl = Math.floor(pos);
       drawFrame(sl, pos - sl, el);
+      /* ⚠️ СУДАЛ нь ФРЕЙМ БҮРД — хөдөлгөөн нь тасралтгүй байж л ус мэт
+         уншигдана. Зардал нь ~576 богино зураас ≈ 0.3 мс. */
+      drawWFlowRef.current?.(pos);
+      /**
+       * УСНЫ ГАДАРГУУ (3D) — БУТАРХАЙ агшинд, ~8 удаа/сек.
+       *
+       * ⚠️ Зөвхөн БҮХЭЛ зүсмэл дээр шинэчилбэл гадаргуу 0.9 сек тутамд
+       * үсэрч, «цаг алгасаж байна» гэж уншигдана. Фрейм тутам (30/сек)
+       * шинэчлэх нь илүүц: полигоныг дахин байгуулах нь ~5 мс. 8/сек нь
+       * нүдэнд тасралтгүй, CPU-д 4%.
+       */
+      if (now - lastSurf >= SURF_MS) {
+        lastSurf = now;
+        drawSurfaceRef.current?.(pos);
+      }
       if (sl !== lastInt) {
         lastInt = sl;
         onSliceRef.current?.(sl);
@@ -568,12 +794,227 @@ export function Overlay({
     return () => cancelAnimationFrame(raf);
   }, [windField, windFlow, windHour, box]);
 
+  /* ── ЗАГВАРЧЛАЛЫН УСНЫ ГАДАРГУУ (3D · BIM) ──
+   *
+   * ⚠️ Растер (`MediaLayer`) нь ГАЗАРТ наалддаг тул 3D-д ус нь зураг мэт
+   * хавтгай харагддаг. Энд түүнийг ХӨНДИЙГ ДАГАСАН эзэлхүүнтэй усаар
+   * солино: зүсмэл тус бүрийн `гүн + газрын өндөр`-өөс өндрийн зурвасууд
+   * гаргаж, ArcGIS-ийн `water` материалаар зурна (долгион, тусгал, хугарал
+   * бодит цагт).
+   *
+   * ⚠️ ЗӨВХӨН вэб дээр бодогдсон загварчлалд (`flood.terrain` байгаа үед).
+   * Бэлэн файлаас уншсан датад газрын өндөр байхгүй тул хуучин зам хэвээр.
+   *
+   * ⚠️ Зүсмэл бүрийг НЭГ УДАА бодоод КЭШЛЭНЭ: 12 зүсмэлийг давтан гүйлгэхэд
+   * дахин бодох нь илүүц (нэг зүсмэл ~15 мс). Анимацийн үед фрейм тутамд
+   * БИШ, ЗҮСМЭЛ солигдоход л шинэчлэгдэнэ — усны долгион нь симболын өөрийн
+   * шейдерээр тасралтгүй хөдөлдөг тул нүдэнд үсрэлт мэдэгдэхгүй.
+   */
+  /**
+   * Зүсмэл бүрийн зурвасууд — БҮГД урьдчилж бодогдоно.
+   *
+   * ⚠️ 2026-09-09. Урьд нь зүсмэл СОЛИГДОХ АГШИНД бодогддог байсан нь
+   * анимацийг алхамтай болгож байв: 5 мс тооцоо + давхаргыг БҮХЭЛД нь дахин
+   * байгуулах (45 полигон, ~8,000 орой) нь фрейм алгасуулна. Одоо
+   * загварчлал дуусмагц бүх зүсмэл нэг удаа бодогдож (~130 мс, хэсэгчлэн
+   * тасалж), тоглуулах үед ЗӨВХӨН геометр солигдоно.
+   */
+  const poolRef = useRef<Graphic[]>([]);
+  /**
+   * ⚠️ Сан нь ТУХАЙН давхаргынх. 2D↔3D↔BIM солиход давхаргууд ДАХИН үүсдэг
+   * (эхний эффект `[view]` дээр устгаад шинээр нэмнэ) тул хуучин графикууд
+   * УСТГАГДСАН давхаргад үлдэнэ — цэвэрлэхгүй бол ус дахин гарч ирэхгүй.
+   */
+  const wsLayerRef = useRef<GraphicsLayer | null>(null);
+  /** Долгионы гурван хүч — симболыг фрейм тутам ДАХИН ҮҮСГЭХГҮЙ */
+  const symsRef = useRef<Record<string, Sym>>({});
+  const dimRef = useRef<Dim>(dim);
+  dimRef.current = dim;
+
+  /**
+   * УСНЫ ГАДАРГУУГ БУТАРХАЙ АГШИНД шинэчилнэ.
+   *
+   * ⚠️ Тогтвортой (`useCallback` хоосон хамааралтай) — анимацийн rAF нь үүнийг
+   * дуудахдаа эффектээ ДАХИН эхлүүлэх ёсгүй. Бүх хувьсагч `ref`-ээр.
+   */
+  const drawSurface = useCallback((pos: number) => {
+    const gl = view?.map?.findLayerById(WSURF_ID) as GraphicsLayer | undefined;
+    if (!gl) return;
+    if (wsLayerRef.current !== gl) { poolRef.current = []; wsLayerRef.current = gl; }
+    const pool = poolRef.current;
+    const fd = floodRef.current;
+    if (!is3D(dimRef.current) || !fd?.terrain) {
+      pool.forEach((g) => { g.visible = false; });
+      return;
+    }
+    /**
+     * СИМБОЛЫН КЭШ — «чиглэл(30°) + хүч» түлхүүрээр.
+     *
+     * ⚠️ Долгионы чиглэл нь ЗУРВАС БҮРИЙН өөрийн урсгалаас (`bd.deg`) —
+     * гол мурийхад долгион сувгаа дагана. Гэвч симболыг зурвас бүрд ДАХИН
+     * ҮҮСГЭВЭЛ SceneView материалыг дахин эмхэтгэж, 8/сек шинэчлэлт дээр
+     * тасалдана. Тиймээс 30°-ийн алхмаар дугуйрч (12 бүлэг × 3 хүч = 36
+     * симбол) кэшилнэ — нүд 30°-ийн зөрүүг ялгахгүй.
+     */
+    const symOf = (deg: number, k: 'rippled' | 'slight' | 'moderate') => {
+      const q = Math.round(deg / 30) % 12;
+      const key = `${q}:${k}`;
+      const hit = symsRef.current[key];
+      if (hit) return hit;
+      const made = waterSym(q * 30, k) as unknown as Sym;
+      symsRef.current[key] = made;
+      return made;
+    };
+    /**
+     * ⚠️ `vcsWkid: 3855` (EGM2008) — ЗААВАЛ. Өндөр нь mesh-ийн ӨӨРИЙН
+     * босоо системд гарсан (`tools/dsm-mesh.py`). Босоо системийг зарлахгүй
+     * бол SceneView түүнийг эллипсоидын өндөр гэж үзэж, ус нь газраас 20–30 м
+     * дээгүүр (эсвэл доогуур) хөвнө — Улаанбаатарт геоидын зөрүү тийм хэмжээтэй.
+     */
+    const sr = { wkid: fd.meta.wkid, vcsWkid: 3855 };
+    const bands = waterSurfaceAt(fd, pos);
+    bands.forEach((bd, i) => {
+      /* Гүн ус — илүү хүчтэй долгион; захын нимгэн ус бараг тайван */
+      const sym = symOf(bd.deg, bd.depth >= 1.2 ? 'moderate' : bd.depth >= 0.5 ? 'slight' : 'rippled');
+      /* ⚠️ Орой бүрд `z` — давхаргын горим `absolute-height` тул энэ нь усны
+         гадаргуугийн БОДИТ өндөр (м). `hasZ`-гүй бол бүгд 0 өндөрт унана. */
+      const geom = new Polygon({
+        hasZ: true,
+        rings: bd.rings.map((r) => r.map(([x, y]) => [x, y, bd.z])),
+        spatialReference: sr,
+      });
+      let g = pool[i];
+      if (!g) {
+        g = new Graphic({ geometry: geom, attributes: { z: bd.z, depth: bd.depth } });
+        g.symbol = sym;
+        pool[i] = g;
+        gl.add(g);
+      } else {
+        g.geometry = geom;
+        if (g.symbol !== sym) g.symbol = sym;
+        g.visible = true;
+      }
+    });
+    /* Илүүдэл графикийг УСТГАХГҮЙ, зөвхөн НУУНА — дараагийн агшинд хэрэгтэй */
+    for (let i = bands.length; i < pool.length; i++) pool[i].visible = false;
+  }, [view]);
+
+  drawSurfaceRef.current = drawSurface;
+
+  /* ЗОГССОН үед — сонгосон зүсмэлийн гадаргуу */
+  useEffect(() => {
+    if (playing) return;
+    drawSurface(floodSlice);
+  }, [view, dim, flood, floodSlice, playing, drawSurface]);
+
+  /* ── УСНЫ ЗАМ (тайлбар) ──
+   *
+   * ⚠️ ХОЁР ӨӨР ӨНГӨ: ус ХААНААС ирсэн (цайвар, цэгэн зураас) ба ХААШАА
+   * явах (тод, цул). Нэг өнгөөр зурвал «энэ шугам юу хэлж байна» гэдэг нь
+   * тодорхойгүй болно.
+   *
+   * ⚠️ Газрын гадаргуу дээр (`on-the-ground`) — 3D-д усан дор алга болохгүй
+   * байхын тулд өргөлт өгөхгүй; шугам нь рельефийг дагана.
+   */
+  useEffect(() => {
+    const gl = view?.map?.findLayerById(PATH_ID) as GraphicsLayer | undefined;
+    if (!gl) return;
+    gl.removeAll();
+    if (!path) return;
+    const sr = { wkid: 102100 };
+    const mk2 = (pts: number[][], up: boolean) => {
+      if (pts.length < 2) return;
+      const g = new Graphic({
+        geometry: { type: 'polyline', paths: [pts], spatialReference: sr } as unknown as Graphic['geometry'],
+        attributes: { dir: up ? 'up' : 'down' },
+      });
+      g.symbol = {
+        type: 'simple-line',
+        color: up ? [125, 211, 252, 0.95] : [250, 204, 21, 0.95],
+        width: up ? 2 : 2.6,
+        style: up ? 'short-dash' : 'solid',
+        cap: 'round',
+        join: 'round',
+      } as unknown as Sym;
+      gl.add(g);
+    };
+    mk2(path.up, true);
+    mk2(path.down, false);
+  }, [view, dim, path]);
+
   /* ── Аюулын муж ── */
   useEffect(() => {
     const gl = view?.map?.findLayerById(BAND_ID) as GraphicsLayer | undefined;
     if (!gl) return;
     const d3 = is3D(dim);
     gl.removeAll();
+
+    /**
+     * ЖИНХЭНЭ УС (3D · BIM) — үерийн бүсийг `water` симболоор.
+     *
+     * ⚠️ ЗӨВХӨН ҮЕРТ. Агаарын сэвсгэрийг усаар зурвал утгагүй; тэр нь
+     * `extrude`-ээр инверсийн өндөрт үлдэнэ.
+     *
+     * ⚠️ Бүс бүр ӨӨРИЙН давхаргад: `offset` нь давхаргын шинж тул нэг
+     * давхаргад хийвэл гурван өөр гүн НЭГ өндөрт наалдана.
+     *
+     * ⚠️ Долгионы чиглэл — загварчлалын ДУНДАЖ урсгалаас (`flowDeg`), эс
+     * бөгөөс голын ерөнхий чиглэл 180° (хойноос урагш). Долгион нь усны
+     * хөдөлгөөнийг заадаг тул санамсаргүй чиглэл өгвөл нүд шууд «худал» гэж
+     * уншина.
+     */
+    const waterLayers = WATER_IDS
+      .map((id) => view?.map?.findLayerById(id) as GraphicsLayer | undefined);
+    waterLayers.forEach((wl) => wl?.removeAll());
+
+    const isFlood = bands.length > 0 && bands.every((b) => b.hue === bands[0].hue);
+    /**
+     * ⚠️ ЗАГВАРЧЛАЛЫН УС АСААЛТТАЙ бол мужийг УСААР зурахгүй (2026-09-08).
+     *
+     * `WSURF_ID` давхарга нь тухайн агшны БОДИТ усны гадаргууг аль хэдийн
+     * зурчихсан байна. Дээр нь мужийн буфер усыг давхарлавал хоёр өөр
+     * утгатай (агшин vs давтагдах хугацаа) хоёр ус нийлж, аль нь ч
+     * уншигдахгүй болно. Тиймээс энэ тохиолдолд муж нь зөвхөн ХИЛ болж
+     * газарт хэвтэнэ — «ус хаана хүрч болох вэ» гэдэг хариулт хэвээр.
+     */
+    const simWater = d3 && isFlood && !!flood?.terrain;
+    if (simWater) {
+      const merged = geometryEngine.union(bands.map((b) => b.geometry)) as unknown as
+        __esri.Polygon | null;
+      if (merged) {
+        const g = new Graphic({
+          geometry: merged,
+          attributes: { band: bands[0].key, label: bands[0].label },
+        });
+        g.symbol = bandFill2d(bands[0].hue, 0.08, true) as unknown as Sym;
+        gl.add(g);
+      }
+      return;
+    }
+    if (d3 && isFlood) {
+      const waveDeg = waveDirRef.current;
+      bands.forEach((b, i) => {
+        const wl = waterLayers[i];
+        if (!wl) return;
+        /* Гүн ус — илүү хүчтэй долгион; захын нимгэн ус нь бараг тайван */
+        const strength = b.height >= 1.2 ? 'moderate' : b.height >= 0.5 ? 'slight' : 'rippled';
+        wl.elevationInfo = {
+          mode: 'relative-to-ground',
+          /* ⚠️ Усны ГАДАРГУУ нь ёроолоос `height` метрт — гүнийхээ хагасаар
+             биш, БҮТНЭЭР дээш. Хагасаар тавибал ус газарт хагас булагдана. */
+          offset: Math.max(0.05, b.height),
+        } as unknown as GraphicsLayer['elevationInfo'];
+        const g = new Graphic({
+          geometry: b.geometry,
+          attributes: { band: b.key, label: b.label, depth: b.height },
+        });
+        g.symbol = waterSym(waveDeg, strength) as unknown as Sym;
+        wl.add(g);
+      });
+      /* ⚠️ Ус зурсан бол `extrude`-ийн цэнхэр хайрцгийг ДАВХАРЛАХГҮЙ —
+         хоёулаа зурвал ус хайрцгийн дотор хоригдож, гялбаа нь алдагдана. */
+      return;
+    }
 
     /**
      * ⚠️ 2D-д НЭГ ПОЛИГОН (2026-09-03, хэрэглэгчийн хүсэлт).
@@ -631,7 +1072,7 @@ export function Overlay({
         : bandFill2d(b.hue, alpha, bandOnFlood)) as unknown as Sym;
       gl.add(g);
     }
-  }, [view, dim, bands, bandOnFlood]);
+  }, [view, dim, bands, bandOnFlood, flood]);
 
   /* ── Өртсөн объект (улаан) ── */
   useEffect(() => {
@@ -684,7 +1125,33 @@ export function Overlay({
   pickRef.current = onPick;
   const floodRef = useRef(flood);
   floodRef.current = flood;
+  /* ⚠️ Горим нь REF-ээр: анимацийн rAF нь эффектийг дахин эхлүүлэхгүйгээр
+     шинэ горимыг унших ёстой — эс бөгөөс горим солих бүрд ус эхнээс эхэлнэ. */
+  const modeRef = useRef<FloodMode>(floodMode);
+  modeRef.current = floodMode;
+  /**
+   * Долгионы чиглэл (градус) — загварчлалын ДУНДАЖ урсгалаас нэг удаа бодно.
+   * ⚠️ Загварчлал ачаалагдаагүй бол голын ерөнхий чиглэл: Сэлбэ хойноос
+   *    урагш урсдаг тул 180°.
+   */
+  const waveDirRef = useRef(180);
+  useEffect(() => {
+    if (!flood) { waveDirRef.current = 180; return; }
+    const m = flood.meta;
+    const s = Math.min(m.slices - 1, m.slices - 1);
+    let su = 0;
+    let sv = 0;
+    /* Бүх нүдийг гүйхгүй — 16 нүд тутам дээж (чиглэл дунджаар тогтвортой) */
+    for (let i = 0; i < m.width * m.height; i += 16) {
+      const d = flood.depth(s, i);
+      if (d < m.wetM) continue;
+      su += flood.u(s, i);
+      sv += flood.v(s, i);
+    }
+    waveDirRef.current = su === 0 && sv === 0 ? 180 : flowDeg(su, sv);
+  }, [flood]);
   const geoRef = useRef<ExtentAndRotationGeoreference | null>(null);
+  const wflowGeoRef = useRef<ExtentAndRotationGeoreference | null>(null);
   const onSliceRef = useRef(onSlice);
   onSliceRef.current = onSlice;
 

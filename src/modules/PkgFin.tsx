@@ -19,10 +19,12 @@ import {
 } from '@/modules/Finance';
 import { useAsync, type Async } from '@/lib/useAsync';
 import {
-  BUILDING, CASHFLOW_NEW, IPC_LOG, LAYER_BY_ID, pkgKeyOf, bagtsKey,
+  BUILDING, CASHFLOW_NEW, HO_IPC, LAYER_BY_ID, pkgKeyOf, bagtsKey,
   PKG_FAMILY_BY_BAGTS, zoneWhere, cfMonthAxis,
-  ipcCode, ipcNet, ipcDue, ipcPaid } from '@/lib/services';
-import { dedOrNull } from '@/lib/finCard';
+  hoAmount, hoPayCode } from '@/lib/services';
+/* ⚠️ 2026-09-09: `ipcCode`/`ipcNet`/`ipcDue`/`ipcPaid` ба `finCard.dedOrNull`
+   БҮГД УСТСАН — шинэ эх сурвалжид СУУТГАЛ ба ТӨЛӨГДӨӨГҮЙ ҮЛДЭГДЭЛ гэсэн
+   ойлголт ОГТ БАЙХГҮЙ. `dun` нь аль хэдийн бодит олгосон дүн. */
 import { cat, shade, date, mnt, num, pct } from '@/lib/format';
 import { readParam, writeParams } from '@/lib/urlState';
 import o from './pkgFinOv.module.css';
@@ -65,7 +67,9 @@ const catOf = (p: Pack): PackCat => {
 /** Дараалал нь дэлгэцийн дараалал; нэрийг render үед tr()-ээр авна */
 const PACK_CATS: { key: PackCat; name: () => string }[] = [
   { key: 'build', name: () => tr('Барилга угсралт') },
-  { key: 'infra', name: () => tr('Дэд бүтэц') },
+  /* ⚠️ «Инженерийн дэд бүтэц» (2026-09-10, хэрэглэгчийн заавар): зөвхөн
+     «Дэд бүтэц» гэвэл нийгмийн дэд бүтэцтэй андуурагдана. */
+  { key: 'infra', name: () => tr('Инженерийн дэд бүтэц') },
   { key: 'soc', name: () => tr('Нийгмийн барилга') },
   { key: 'site', name: () => tr('Өндөржилт') },
 ];
@@ -80,7 +84,7 @@ const PACK_CATS: { key: PackCat; name: () => string }[] = [
  */
 /* ⚠️ 2026-09-06: `prevTotal` ХАСАГДСАН — «ӨМНӨХ ШИЛЖҮҮЛСЭН» гэсэн мөрийн
    төрөл нь хуучин `cashflow_0813`-т байсан бөгөөд тэр үйлчилгээ хаягдсан.
-   Шинэ `Cashflow_0904`-т өмнөх шилжүүлгийн ямар ч талбар БАЙХГҮЙ. */
+   Шинэ `Cashflow_0909`-т өмнөх шилжүүлгийн ямар ч талбар БАЙХГҮЙ. */
 
 /* ══════════════ НЭГ БАГЦ ↔ ОЛОН ГЭРЭЭ (2026-09-04) ══════════════ */
 
@@ -205,8 +209,8 @@ function mergePkgMonths(
 /**
  * Багцын ОЛГОСОН НИЙТ дүн (₮) — гэрээ БҮРЭЭР, эх түлхүүрийн давхардлыг хасаж.
  *
- * ⚠️ Сарын цувааны нийлбэр БИШ (`d.givenTotal`): 59 актын 29-д огноо алга тул
- *    тэдгээр цуваанд ордоггүй — FinCard-ийн хуучин ⚠️-г үзнэ үү.
+ * ⚠️ Сарын цувааны нийлбэр БИШ (`d.givenTotal`): 45 төлбөрийн 5-д гүйлгээний
+ *    огноо алга тул тэдгээр цуваанд ордоггүй.
  * ⚠️ БАГЦ-7-гийн хоёр гэрээ НЭГ л «БАГЦ7» түлхүүрт унадаг тул давхардлыг
  *    хасахгүй бол олгосон дүн хоёр дахин харагдана.
  */
@@ -482,7 +486,7 @@ export function PkgFin({ dim, setDim }: {
    * ⚠️ 2026-09-06: САНХҮҮГИЙН ХОЦРОГДЛЫН alert ХАСАГДСАН. Тэр нь «авах
    *    ХУГАЦАА нь өнгөрсөн атлаа мөнгө ороогүй» гэдгийг хэмждэг байсан
    *    бөгөөд ГАНЦ эх сурвалж нь `cashflow_0813`-ийн сарын хуваарь байв —
-   *    шинэ `Cashflow_0904`-т сарын багана ОГТ БАЙХГҮЙ.
+   *    шинэ `Cashflow_0909`-т сарын багана ОГТ БАЙХГҮЙ.
    *
    * ⚠️ Биет явцын хоцрогдлыг (`lagOf`) ЭНД ОРЛУУЛЖ ТАВИХГҮЙ: тэр нь
    *    «Багцын гүйцэтгэл» модулийн асуулт бөгөөд өөр НЭГЖТЭЙ (% vs ₮).
@@ -780,7 +784,7 @@ export function PkgFin({ dim, setDim }: {
                 аль нь бүх төслийнх болохыг ялгаж чадахаа болино. */}
             <PkgFinCard p={active} fin={activeFin} />
             <PkgFinDetail row={finRow?.get(active.key) ?? null} loading={!finRow} />
-            <PkgActs p={active} finQ={finQ} />
+            <PkgPays p={active} finQ={finQ} />
             <PkgMonths p={active} finMap={finMap} />
           </>
         ) : (
@@ -788,7 +792,7 @@ export function PkgFin({ dim, setDim }: {
           <>
             <InvestCard p={active} />
             <PkgFinDetail row={finRow?.get(active.key) ?? null} loading={!finRow} />
-            <PkgActs p={active} finQ={finQ} />
+            <PkgPays p={active} finQ={finQ} />
             <PkgMonths p={active} finMap={finMap} />
           </>
         )}
@@ -955,7 +959,7 @@ function TsPackList({
                   display: 'inline-flex', alignItems: 'center', gap: 6,
                   flexWrap: 'wrap', justifyContent: 'flex-end',
                 }}>
-                  {execPct == null ? '—' : pct(execPct, 0)}
+                  {execPct == null ? '—' : pct(execPct, 1)}
                   {/* ⚠️ 2026-09-06: хоцрогдлын ба «бүртгэл алга» тэмдгүүд
                       ХАСАГДСАН — хоёулаа сарын төлөвлөгөө дээр тогтдог
                       байсан бөгөөд тэр өгөгдөл шинэ cashflow-д байхгүй.
@@ -1147,92 +1151,96 @@ function PkgFinDetail({ row, loading }: { row: Record<string, unknown> | null; l
 }
 
 /**
- * ГҮЙЦЭТГЭЛИЙН АКТУУД (IPC) — сонгосон багцаар.
+ * ОЛГОСОН ТӨЛБӨР (`HO_IPC`) — сонгосон багцаар.
  *
- * ⚠️ Мөнгө нь АКТААР олгогддог: «34.8 тэрбум олгосон» гэдэг нь хэдэн актын
- *    нийлбэр вэ, аль нь хэзээний хугацааг хамарсан бэ гэдгийг хэлдэггүй.
- *    Хяналтын ажилд мөрдөх нэгж нь ЯГ ЭНЭ акт тул тусад нь жагсаана.
+ * ⚠️ Мөнгө нь ТӨЛБӨРӨӨР олгогддог: «34.8 тэрбум олгосон» гэдэг нь хэдэн
+ *    гүйлгээний нийлбэр вэ, хэдийг нь урьдчилгаагаар өгсөн бэ гэдгийг
+ *    хэлдэггүй. Хяналтын ажилд мөрдөх нэгж нь ЯГ ЭНЭ гүйлгээ тул тусад нь
+ *    жагсаана.
  *
- * ⚠️ ӨГӨГДЛИЙН БАЙДАЛ (2026-08-25-нд шалгасан): 90 акт, 10 багц хамарсан.
- *    Дүнгийн талбарууд ХАГАС дүүрсэн (gross 25/90, net 25/90, барьцаа 12/90,
- *    үлдэгдэл 21/90), төлөв ба төлсөн огноо ОГТ хоосон. Тиймээс дүнгүй актыг
- *    ч ХАСАХГҮЙ — «акт байгаа ч дүн бүртгэгдээгүй» гэдэг нь өөрөө хяналтын
- *    мэдээлэл; 0-ээр дүүргэвэл «олгоогүй» гэсэн ХУДАЛ дүгнэлт төрнө.
+ * ⚠️ 2026-09-09-НД БҮРЭН ДАХИН БИЧСЭН. Хуучин `ipc_0813/172` нь ТЕСТ өгөгдөл
+ *    байсныг хэрэглэгч тогтоож, `HO_guitsetgel_arcgis_csv/196` руу шилжив.
+ *    Үүнтэй хамт ХАСАГДСАН ойлголтууд (шинэ эхэд БАЙХГҮЙ):
+ *      · СУУТГАЛ 4 төрөл (барьцаа, урьдчилгааны эргэн төлөлт, захиалагчийн
+ *        болон зохиогчийн хяналт) → «цэвэр дүн» гэсэн ойлголт үхэв
+ *      · ТӨЛӨГДӨӨГҮЙ ҮЛДЭГДЭЛ (`ipcDue` = net − paid)
+ *      · ХАМРАХ ХУГАЦАА (`IPC09/10` — эхлэх/дуусах огноо)
+ *    Оронд нь мөр бүр = НЭГ ГҮЙЛГЭЭ; `dun` нь БОДИТ ОЛГОСОН дүн.
+ *
+ * ⚠️ ӨГӨГДЛИЙН БАЙДАЛ (2026-09-09): 45 төлбөр, 22 гэрээ. `dun` 43/45
+ *    бөглөгдсөн, `guilgee_ognoo` 40/45. Дүнгүй мөрийг ХАСАХГҮЙ — «төлбөр
+ *    бүртгэгдсэн ч дүн нь ороогүй» гэдэг нь өөрөө хяналтын мэдээлэл;
+ *    0-ээр дүүргэвэл «олгоогүй» гэсэн ХУДАЛ дүгнэлт төрнө (null ≠ 0).
  */
-function PkgActs({ p, finQ }: { p: Pack; finQ: Async<FinData> }) {
-  const F = IPC_LOG.fields;
-  const nn2 = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+function PkgPays({ p, finQ }: { p: Pack; finQ: Async<FinData> }) {
+  const HC = HO_IPC.contractFields;
+  const HP = HO_IPC.payFields;
 
   const acts = useMemo(() => {
     if (finQ.state !== 'ready') return null;
-    /* ⚠️ 2026-08-31: АКТЫН ШҮҮЛТ ХАСАГДАВ. Хуучин `ipc_/107`-д 90 мөрийн
-       31 нь акт БИШ байсан тул «дугаартай эсэх» шалгуур зайлшгүй байв;
-       `ipc_0813`-ийн 59 мөр БҮГД жинхэнэ акт учир тэр шалгуур одоо зөвхөн
-       мөр хасна. Багцаа `pkgKeyOf`-оор — ДЭД багц (IPC04) түрүүлж, диапазон
-       бичиглэлийн хамгаалалт хэвээр. */
-    return finQ.data.acts
-      .filter((r) => pkgKeyOf(r[F.pkg2]) === p.key || pkgKeyOf(r[F.pkg]) === p.key)
+    /* ⚠️ ГАНЦ багцын талбар (`bagts`) — HO-д ДЭД БАГЦЫН тусдаа талбар
+       БАЙХГҮЙ, `bagts` өөрөө «Багц-3.1» гэсэн дэд түвшнийг агуулна. Тиймээс
+       хуучин `pkg2 || pkg` хос шалгуур хэрэггүй болов.
+       ⚠️ `pkgKeyOf` — `bagtsKey` БИШ: HO-д «Багц-1-4» гэсэн ДИАПАЗОН мөр
+       бий бөгөөд `bagtsKey('Багц-1-4')` = `БАГЦ14` нь БОДИТ Багц 14-ийн ЯГ
+       түлхүүр тул 876 сая ₮ буруу багцад наалдана. */
+    return finQ.data.pays
+      .filter((r) => pkgKeyOf(r[HC.pkg]) === p.key)
       .map((r) => ({
-        /* ⚠️ Дэлгэцийн код нь `ipcCode` — «IPC-03» / «APC-01» (урьдчилгаа).
-           Түүхий `IPC07` нь зөвхөн дугаар тул хоёр төрөл нэг нэрээр гарна. */
-        no: ipcCode(r),
+        /* ⚠️ Дэлгэцийн код нь `hoPayCode` — урьдчилгаа мөрд `ipc_dugaar`
+           ҮРГЭЛЖ null (амьдаар 20/20) тул тэднийг ДУГААРЛАХГҮЙ, «Урьдчилгаа»
+           гэж нэрлэнэ. Хуучин `ipcCode`-ийн «APC-01» бүтэц эвдэрсэн. */
+        code: hoPayCode(r),
+        /** `tulult_turul` — урьдчилгаа | гүйцэтгэл | хоосон(2) */
+        kind: r[HP.kind] == null ? '' : String(r[HP.kind]),
         /* ⚠️ Огноо нь `esriFieldTypeDateOnly` — «2026-08-10» гэсэн МӨР
            (epoch БИШ); `date()` мөрийг ч уншина. */
-        from: r[F.periodFrom] as string | null,
-        to: r[F.periodTo] as string | null,
-        /* ⚠️ 2026-09-08: цагирагийн САЛАНГИД задаргаанд `gross` (суурь),
-           `paid` (шилжүүлсэн), `ded` (4 суутгалын нийлбэр) хэрэгтэй. */
-        gross: ipcNet(r) == null ? null : nn2(r[F.gross]),
-        ret: nn2(r[F.retention]),
-        ded: nn2(dedOrNull(r)),
-        paid: ipcPaid(r),
-        /* ⚠️ Хадгалагдсан net/үлдэгдэл багана ХАСАГДСАН — БОДОГДОНО:
-           net = gross − 4 суутгал, үлдэгдэл = net − 3 гүйлгээ. */
-        net: ipcNet(r),
-        out: ipcDue(r),
+        payDate: r[HP.payDate] as string | null,
+        /** ⚠️ `null` = дүн БҮРТГЭГДЭЭГҮЙ, 0₮ олголт БИШ */
+        amount: hoAmount(r),
       }))
-      .sort((a, b) => a.no.localeCompare(b.no));
+      .sort((a, b) => a.code.localeCompare(b.code));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [finQ, p.key]);
 
-  if (finQ.state === 'loading') return <Section title={tr('Гүйцэтгэлийн акт')}><Empty label={tr('Ачаалж байна…')} /></Section>;
-  if (!acts || !acts.length) return <Section title={tr('Гүйцэтгэлийн акт')}><Empty label={tr('Акт бүртгэгдээгүй')} /></Section>;
+  if (finQ.state === 'loading') return <Section title={tr('Олгосон төлбөр')}><Empty label={tr('Ачаалж байна…')} /></Section>;
+  if (!acts || !acts.length) return <Section title={tr('Олгосон төлбөр')}><Empty label={tr('Төлбөр бүртгэгдээгүй')} /></Section>;
 
-  /* ⚠️ 2026-09-04: `ipcNet`/`ipcDue` одоо `number | null` буцаана (services.ts) —
-     «дүн бүртгэгдээгүй» акт нь 0 БИШ, ХЭМЖИГДЭЭГҮЙ. Нийлбэрт тэдгээрийг
-     ОРУУЛАХГҮЙ (0 гэж нэмбэл нийлбэр өөрчлөгдөхгүй ч «дүнтэй акт»-ын тоо
-     худал өснө), харин актын мөрөнд «дүнгүй» гэж ИЛ гарна. */
-  const netTotal = acts.reduce((a, x) => a + (x.net ?? 0), 0);
-  const withAmt = acts.filter((x) => x.net != null && x.net > 0).length;
+  /* ⚠️ `hoAmount` нь `number | null` — «дүн бүртгэгдээгүй» төлбөр нь 0 БИШ,
+     ХЭМЖИГДЭЭГҮЙ. Нийлбэрт тэдгээрийг ОРУУЛАХГҮЙ (0 гэж нэмбэл нийлбэр
+     өөрчлөгдөхгүй ч «дүнтэй төлбөр»-ийн тоо худал өснө), харин мөрөнд нь
+     «дүнгүй» гэж ИЛ гарна. */
+  const paidTotal = acts.reduce((a, x) => a + (x.amount ?? 0), 0);
+  /* ⚠️ `!= null` ГАНЦААР — `> 0` нэмбэл ЖИНХЭНЭ ТЭГ төлбөрийг «хэмжигдээгүй»
+     гэж үзэж, `null ≠ 0` дүрмийн ЭСРЭГ тал үүснэ (0 нь хэмжилт, түүнийг
+     «мэдээлэлгүй» гэж шошголох нь худал). Амьд өгөгдөлд 0₮ мөр одоогоор
+     байхгүй ч бүртгэгдвэл чимээгүй буруу тоо гарах байлаа. */
+  const withAmt = acts.filter((x) => x.amount != null).length;
 
   /*
-   * ⚠️ 2026-09-08 (аудит, HIGH): ЦАГИРАГИЙН ЗҮСМЭГҮҮД САЛАНГИД (disjoint)
-   *    байх ЁСТОЙ. Хуучин код нь [цэвэр дүн] + [барьцаа] + [төлөгдөөгүй
-   *    үлдэгдэл] гурвыг зэрэгцүүлдэг байв — гэтэл `ipcDue = ipcNet − ipcPaid`
-   *    нь цэвэр дүнгийн ДЭД ХЭСЭГ, барьцаа нь 4 суутгалын нэг. Үр дүнд Багц
-   *    4.2-ийн «нийт» 113,474,033,793 ₮ гэж бичигдэж байсан атал тэр багцын
-   *    бүх актын гүйцэтгэлийн дүн ердөө 60,648,293,159 ₮ — бараг ХОЁР ДАХИН.
-   *    Одоо суурь нь `gross` бөгөөд ялгаагүй 4 хэсэгт бүрэн задарна:
-   *      gross = шилжүүлсэн (paid) + төлөгдөөгүй үлдэгдэл (due)
-   *              + барьцаа (ret) + бусад суутгал (ded − ret)
-   * ⚠️ ХЭМЖИГДЭЭГҮЙ актыг (`net == null`) БҮХ гишүүнээс ХАСНА — тэгэхгүй бол
-   *    зөвхөн суутгалтай, дүнгүй акт (I30) тэнцлийг эвдэнэ.
-   * ⚠️ Сөрөг зүсмэг (paid > net — Багц 1, 2-т амьдаар байна) нь ӨГӨГДЛИЙН
-   *    ЗӨРЧИЛ. Урьд нь `.filter(x => x.value > 0)` түүнийг чимээгүй ХАЯГААД
-   *    `note`-д хэвээр тоолж, тэмдэглэл нь зурагдсан дүрснээсээ БАГА гардаг
-   *    байв. Одоо зүсмэг ба `note` ЯГ НЭГ олонлогоос бодогдоно; зөрчлийг
-   *    тусад нь ил бичнэ.
+   * ⚠️ 2026-09-09: ХУУЧИН ДӨРВӨН ЗҮСМЭГ (шилжүүлсэн · төлөгдөөгүй үлдэгдэл ·
+   *    барьцаанд суутгасан · бусад суутгал) -ийн ГУРАВ нь СУУТГАЛААС
+   *    бодогддог байсан тул ХАСАГДЛАА — шинэ эх сурвалжид суутгал ч,
+   *    төлөгдөөгүй үлдэгдэл ч ОГТ БАЙХГҮЙ.
+   *
+   * ⚠️ ОРОНД НЬ ТӨЛБӨРИЙН ТӨРӨЛ: урьдчилгаа ↔ гүйцэтгэл. 2026-09-08-ны
+   *    аудитын «зүсмэгүүд САЛАНГИД (disjoint) байх ЁСТОЙ» шаардлага
+   *    АВТОМАТААР хангагдана — нэг мөр ЯГ НЭГ төрөлд харьяалагдана, тиймээс
+   *    хуучин «`ipcDue` нь цэвэр дүнгийн ДЭД ХЭСЭГ» гэсэн давхцлын асуудал
+   *    (Багц 4.2-ийн «нийт» бараг хоёр дахин гарч байсан) БҮРМӨСӨН арилав.
+   *
+   * ⚠️ АНГИЛАГДААГҮЙ мөрийг (`tulult_turul` хоосон, амьдаар 2) ЧИМЭЭГҮЙ
+   *    ХАЯХГҮЙ — тусдаа зүсмэг болгож ил гаргана. Эс тэгвээс зүсмэгүүдийн
+   *    нийлбэр нь дээрх «олгосон» тооноос дутаж, хэрэглэгч шалтгааныг олохгүй.
+   * ⚠️ Дүн БҮРТГЭГДЭЭГҮЙ мөр (`amount == null`) зүсмэгт ОРОХГҮЙ — 0 гэж
+   *    нэмбэл «тэг төлбөр хийсэн» гэсэн худал баталгаа үүснэ.
    */
-  const solid = acts.filter((x) => x.net != null && x.gross != null);
-  const paidTotal = solid.reduce((a, x) => a + x.paid, 0);
-  const dueTotal = solid.reduce((a, x) => a + (x.out ?? 0), 0);
-  const retTotal = solid.reduce((a, x) => a + x.ret, 0);
-  const otherDed = solid.reduce((a, x) => a + (x.ded - x.ret), 0);
+  const kindSum = (test: (k: string) => boolean) =>
+    acts.reduce((a, x) => (x.amount != null && test(x.kind) ? a + x.amount : a), 0);
   const parts = [
-    { key: 'paid', label: tr('Шилжүүлсэн'), value: paidTotal, color: cat(0) },
-    { key: 'due', label: tr('Төлөгдөөгүй үлдэгдэл'), value: dueTotal, color: cat(1) },
-    { key: 'ret', label: tr('Барьцаанд суутгасан'), value: retTotal, color: cat(2) },
-    { key: 'ded', label: tr('Бусад суутгал'), value: otherDed, color: cat(3) },
+    { key: 'adv', label: tr('Урьдчилгаа төлбөр'), value: kindSum((k) => k === HO_IPC.kinds.advance), color: cat(0) },
+    { key: 'work', label: tr('Гүйцэтгэлийн төлбөр'), value: kindSum((k) => k === HO_IPC.kinds.work), color: cat(1) },
+    { key: 'na', label: tr('Ангилагдаагүй'), value: kindSum((k) => k !== HO_IPC.kinds.advance && k !== HO_IPC.kinds.work), color: cat(2) },
   ];
   /* Сөрөг зүсмэгийг цагирагт зурах боломжгүй — ил тэмдэглэж хасна */
   const bad = parts.filter((x) => x.value < 0);
@@ -1242,18 +1250,26 @@ function PkgActs({ p, finQ }: { p: Pack; finQ: Async<FinData> }) {
   return (
     <>
       <Section
-        title={tr('Гүйцэтгэлийн акт')}
-        note={tr('{0} акт · {1} дүнтэй', String(acts.length), String(withAmt))}
+        title={tr('Олгосон төлбөр')}
+        note={tr('{0} төлбөр · {1} дүнтэй', String(acts.length), String(withAmt))}
       >
-        {/* Акт бүр: № ба хамрах хугацаа — утга нь олгосон дүн */}
+        {/* Төлбөр бүр: код ба гүйлгээний огноо — утга нь олгосон дүн.
+            ⚠️ ХАМРАХ ХУГАЦАА (эхлэх – дуусах) ХАСАГДСАН: шинэ эхэд байхгүй.
+            Оронд нь ГҮЙЛГЭЭНИЙ огноо (40/45 бөглөгдсөн). */}
+        {/* ⚠️ `Rows`-ийн `key` нь ХАРАГДАХ НЭР бөгөөд React-ийн түлхүүр ч мөн —
+            давхардвал зөвхөн эхнийх нь зурагдана. Нэг багцад «Урьдчилгаа»
+            ХОЁР мөр байж БОЛНО (нэг багцад хоёр гэрээ) тул давхардсан кодод
+            дараалсан дугаар нэмж ялгана. */}
         <Rows
-          items={acts.map((x) => ({
-            key: x.no,
+          items={acts.map((x, i) => ({
+            key: acts.filter((y) => y.code === x.code).length > 1
+              ? `${x.code} ${acts.slice(0, i + 1).filter((y) => y.code === x.code).length}`
+              : x.code,
             value: (
               <span className="num">
-                {x.net != null && x.net > 0 ? mnt(x.net) : tr('дүнгүй')}
-                {x.from && x.to ? (
-                  <small className={ts.actPeriod}>{date(x.from)} – {date(x.to)}</small>
+                {x.amount == null ? tr('дүнгүй') : mnt(x.amount)}
+                {x.payDate ? (
+                  <small className={ts.actPeriod}>{date(x.payDate)}</small>
                 ) : null}
               </span>
             ),
@@ -1261,11 +1277,11 @@ function PkgActs({ p, finQ }: { p: Pack; finQ: Async<FinData> }) {
         />
       </Section>
 
-      {/* АКТЫН БҮТЭЦ — олгосон / барьцаа / үлдэгдэл. Барьцаа нь ХОЙШЛУУЛСАН
-          мөнгө болохоос алдагдал биш; үлдэгдэл нь төлөгдөөгүй үлдсэн. */}
+      {/* ТӨЛБӨРИЙН БҮТЭЦ — урьдчилгаа / гүйцэтгэл. Хоёулаа гүйцэтгэгчид
+          ОЛГОГДСОН мөнгө; ялгаа нь зөвхөн үндэслэл. */}
       {shown.length > 0 && (
         <Section
-          title={tr('Актын дүнгийн бүтэц')}
+          title={tr('Төлбөрийн бүтэц')}
           /* ⚠️ `note` нь ЗУРАГДСАН зүсмэгүүдээс бодогдоно — эс бөгөөс
              тэмдэглэл ба дүрс хоёр зөрнө (дээрх ⚠️). */
           note={tr('нийт {0}', mnt(shownTotal))}
@@ -1275,7 +1291,7 @@ function PkgActs({ p, finQ }: { p: Pack; finQ: Async<FinData> }) {
             size={140}
             width={22}
             stack
-            center={mnt(netTotal)}
+            center={mnt(paidTotal)}
             centerLabel={tr('олгосон')}
           />
           {bad.length > 0 && (

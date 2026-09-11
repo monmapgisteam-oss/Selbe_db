@@ -8,7 +8,7 @@
  *    зүйлийн тухай хоёр өөр тоо зэрэгцэн зогсоно.
  *
  * Эх сурвалж (бүгд бэлэн, багцын түвшинд) — ГАНЦ ачаалагч `loadFinData`:
- *   · гэрээний мөрүүд (Cashflow_0904) + IPC + биет гүйцэтгэл
+ *   · гэрээний мөрүүд (Cashflow_0909) + IPC + биет гүйцэтгэл
  *   · `contractMonths` / `lagOf` / `lagLevel` (`Finance.tsx`) — сар бүрийн
  *     цэг, хоцрогдол (төл. − бодит, пп), 10/5 босго
  *   · хуваарийн муруй (`planProgress.loadPlanCurve`) — `loadFinData` ДОТОР
@@ -247,7 +247,8 @@ export function curveViaLag(
   for (let i = 0; i < cap && label != null; i += 1) {
     const r = lagOfFn(lagPoint(label, curveKey));
     if (!r) break;
-    pts.unshift({ label, pct: r.planned });
+    /* ⚠️ `vol` нь ЭНД хамаарахгүй — KPI зөвхөн хувийг хардаг */
+    pts.unshift({ label, pct: r.planned, vol: null });
     label = prevYm(label);
   }
   return pts.length ? pts : undefined;
@@ -460,4 +461,4 @@ export const loadScheduleKpi = cached(async (): Promise<KpiResult> => {
   const pkgs = collectPkgLags(fin.contracts, (r) => F.contractMonths(r, fin), F.lagOf);
   const curves = collectCurves(pkgs, F.lagOf, nowYm);
   return computeSchedule(pkgs, curves, F.lagLevel, now, failed, finCurveMissing);
-}, 60_000, ['BAGTS_SHEET', 'CASHFLOW_NEW', 'IPC_LOG']);
+}, 60_000, ['BAGTS_SHEET', 'CASHFLOW_NEW', 'HO_IPC']);

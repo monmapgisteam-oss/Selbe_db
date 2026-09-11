@@ -300,14 +300,57 @@ export function cachedBlockProgress(): BlockProgressMap | null {
 /** Түүхий мөрүүд — `loadBlockProgress` ба `loadBlockHistory` ХОЁУЛАА үүнээс. */
 const loadRows = memo(fetchConstruction, ['BAGTS_SHEET']);
 
+/**
+ * БАГЦ 3.1 — ЭХ СУРВАЛЖ НЬ CASHFLOW (2026-09-10, хэрэглэгчийн заавар:
+ * «3.1 багцын гүйцэтгэлийн хувийг cashflow дээр байгаа хувиар соль»).
+ *
+ * ⚠️ ЯАГААД ЭНД, дэлгэц тус бүрд БИШ: блокийн гүйцэтгэл нь «05. Багцын
+ *    гүйцэтгэл»-ийн жагсаалт · KPI · газрын зураг · сарын цуваа
+ *    (`FinData.phys`) · ерөнхий дашбоардын бүх самбар — ЦӨМ энэ хоёр
+ *    функцээс гардаг. Дээд түвшинд солибол нэг үзүүлэлт самбар бүрд өөр
+ *    тоо харуулна (2026-09-10-нд яг тэгж 22.29 ↔ 23.84 зөрж байв).
+ *
+ * ⚠️ Багц бүхэлдээ НЭГ тоо (гэрээнд сараар задалсан бүртгэл байхгүй) тул
+ *    тэр багцын БҮХ блок, БҮХ огноонд ижил утга бичигдэнэ. Блок тус бүрийн
+ *    бодит бөглөлт (одоо 0.05%) ДАРАГДАНА — тэр нь санаатай: бөглөлт бодитоор
+ *    эхэлмэгц `live.ts`-ийн `FILL_FROM_CASHFLOW`-ийг хасахад л буцна.
+ *
+ * ⚠️ Cashflow уншигдахгүй бол (сүлжээ, эрх) солилт ХИЙГДЭХГҮЙ, бөглөлтийн
+ *    утга хэвээр — блокийн гүйцэтгэл үүнээс болж унах ЁСГҮЙ.
+ */
+async function cashflowOverride(): Promise<{ key: string; pct: number } | null> {
+  try {
+    const { loadCashflowPkgPct, FILL_FROM_CASHFLOW } = await import('./live');
+    const v = (await loadCashflowPkgPct()).get(FILL_FROM_CASHFLOW);
+    return v == null ? null : { key: FILL_FROM_CASHFLOW, pct: v };
+  } catch {
+    return null;
+  }
+}
+const ownsKey = (ov: { key: string }, k: string) => k.startsWith(ov.key + '|');
+
 /** Блок бүрийн барилга угсралтын гүйцэтгэл (0–100). */
 export const loadBlockProgress: () => Promise<BlockProgressMap> = memo(
-  () => loadRows().then(compute).then((m) => { saveCache(m); return m; }),
-  ['BAGTS_SHEET'],
+  async () => {
+    const [m, ov] = await Promise.all([loadRows().then(compute), cashflowOverride()]);
+    if (ov) for (const [k, v] of m) if (ownsKey(ov, k)) m.set(k, { ...v, overall: ov.pct });
+    saveCache(m);
+    return m;
+  },
+  ['BAGTS_SHEET', 'CASHFLOW_NEW'],
 );
 
 /** Блок бүрийн «Б.» мөрийн бүх огноо — цаг хугацааны цувааны эх. */
 export const loadBlockHistory: () => Promise<BlockHistory> = memo(
-  () => loadRows().then(history),
-  ['BAGTS_SHEET'],
+  async () => {
+    const [h, ov] = await Promise.all([loadRows().then(history), cashflowOverride()]);
+    if (ov) {
+      for (const [k, pts] of h) {
+        if (!ownsKey(ov, k)) continue;
+        h.set(k, pts.map((p) => ({ ...p, pct: ov.pct })));
+      }
+    }
+    return h;
+  },
+  ['BAGTS_SHEET', 'CASHFLOW_NEW'],
 );

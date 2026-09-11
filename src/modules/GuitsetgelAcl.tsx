@@ -21,7 +21,8 @@ import { t as tr } from '@/lib/i18nCore';
 import { STAGE_ORDER, type Stage } from '@/lib/hyanalt';
 import { STAGE_LABEL } from '@/lib/hyanaltGroup';
 import {
-  ALL_BAGTS, assignsOf, flowFailedUsers, listAssigns, removeAssign, setAssign, subscribeAcl,
+  ALL_BAGTS, assignsOf, flowFailedUsers, listAssigns, removeAssign, setAssign, setViewOnly,
+  subscribeAcl,
 } from '@/lib/guitsetgelAcl';
 import { PKG_GROUPS } from '@/modules/sheet/bagts.pkg';
 import { dirtyKeys, listUsers, subscribe } from '@/lib/permissions';
@@ -49,6 +50,8 @@ export function GuitsetgelAcl() {
   const accounts = all.filter((a) => roleForUser(a) !== 'super');
   /** Порталд БАЙГАА аккаунтууд (жижиг үсгээр) — устгагдсаны өнчин томилгоог ялгана */
   const known = new Set(all.map((a) => a.toLowerCase()));
+  /** Хасалт унасан (мөр нь аль ч баганад алга) — БҮХ баганад нэгэн адил хамаарна */
+  const orphanFail = [...flowFailedUsers()].some((u) => !listAssigns().some((a) => a.user === u));
 
   return (
     <div className={s.aclWrap}>
@@ -57,6 +60,19 @@ export function GuitsetgelAcl() {
         {' '}
         {tr('Томилгоо ArcGIS дээрх хуваалцсан хүснэгтэд хадгалагдаж, тухайн хүн өөрийн төхөөрөмжөөс нэвтрэхэд шууд үйлчилнэ. Томилохын хамт «Гүйцэтгэлийн хяналт» харагдац автоматаар нээгдэнэ (үүрэггүй аккаунтад урсгалын үүрэг олгогдоно, бусдын үндсэн үүрэг хэвээр); хасахад буцаагдана. Шат ба багц нь ЭНЭ томилгооноос гарна — үүргээс биш.')}
       </p>
+
+      {/*
+        * ⚠️ НЭГ УДАА (2026-09-08). Урьд нь `Column` дотор байсан тул ДӨРВӨН
+        *   баганад давхардаж гардаг байв — гэтэл шалгуур нь («томилгооны мөр
+        *   нь аль ч баганад алга») баганаас ХАМААРАЛГҮЙ, өөрөөр хэлбэл дөрвүүлээ
+        *   үргэлж ижил хариу өгнө. Дөрвөн ижил улаан анхааруулга нь дөрвөн
+        *   ӨӨР асуудал мэт харагдаж, админыг төөрөгдүүлдэг байлаа.
+        */}
+      {orphanFail && (
+        <div className={s.aclErr} role="alert">
+          {tr('⚠️ ArcGIS-т бичигдсэнгүй — томилгоо түр зөвхөн энэ browser-т. Холболтоо шалгаад дахин оролдоно уу.')}
+        </div>
+      )}
 
       <div className={s.aclGrid}>
         {STAGE_ORDER.map((st) => (
@@ -79,8 +95,7 @@ function Column({
    * дараагийн амжилт өмнөх мөрийн алдааг чимээгүй арчдаг байв.
    */
   const failed = new Set(flowFailedUsers());
-  /** Хасалт унасан (мөр нь аль ч баганад алга) — баганын түвшний анхааруулга */
-  const orphanFail = [...failed].some((u) => !listAssigns().some((a) => a.user === u));
+
   /** Эрхийн мөр (үүрэг/харагдац) ArcGIS-т хүрээгүй — `permissions` dirty-set */
   const dirtyPerms = new Set(dirtyKeys());
 
@@ -122,11 +137,6 @@ function Column({
         </div>
       )}
       {err && <div className={s.aclErr}>{err}</div>}
-      {orphanFail && (
-        <div className={s.aclErr} role="alert">
-          {tr('⚠️ ArcGIS-т бичигдсэнгүй — томилгоо түр зөвхөн энэ browser-т. Холболтоо шалгаад дахин оролдоно уу.')}
-        </div>
-      )}
 
       {rows.length === 0 && <div className={s.aclEmpty}>{tr('Аккаунт томилоогүй')}</div>}
 
@@ -168,7 +178,30 @@ function Column({
             ) : isAdmin ? (
               <div className={s.aclEmpty}>{tr('админ — багцын хязгаар үйлчлэхгүй')}</div>
             ) : (
-              /* БАГЦУУД — олон сонголт. «Бүх багц» нь бусдыг хүчингүй болгоно. */
+              <>
+              {/*
+                * ⚠️ ХӨНДЛӨНГИЙН ХЯНАЛТ (2026-09-09) — ХАРНА, ШИЙДВЭРЛЭХГҮЙ.
+                *    Аудитор, захиалагчийн төлөөлөгч, зөвлөх инженер зэрэг хүн
+                *    гүйцэтгэлийг ХАРАХ ёстой ч батлах/буцаах эрхгүй. Урьд нь
+                *    хоёрхон зам байсан бөгөөд хоёулаа буруу: томиловол
+                *    шийдвэрлэнэ, томилохгүй бол жагсаалт ХООСОН.
+                * ⚠️ Багцын хүрээ нь ХЭВЭЭР үйлчилнэ — «Багц 1, 2-ыг хянана»
+                *    гэсэн хүн яг тэр хоёрыг л харна.
+                */}
+              <button
+                type="button"
+                className={`${s.aclPkg} ${r.viewOnly ? s.aclPkgOn : ''}`}
+                title={tr('Асаавал энэ хүн гүйцэтгэлийг ХАРНА, гэхдээ батлах/буцаах товч идэвхгүй байна.')}
+                onClick={() => {
+                  setErr('');
+                  const res = setViewOnly(r.user, !r.viewOnly);
+                  if (!res.ok) { setErr(res.error ?? ''); return; }
+                  void res.sync;
+                }}
+              >
+                {r.viewOnly ? tr('◉ Зөвхөн харна') : tr('○ Зөвхөн харна')}
+              </button>
+              {/* БАГЦУУД — олон сонголт. «Бүх багц» нь бусдыг хүчингүй болгоно. */}
               <div className={s.aclPkgs}>
                 <button
                   type="button"
@@ -207,6 +240,7 @@ function Column({
                   );
                 })}
               </div>
+              </>
             )}
           </div>
         );

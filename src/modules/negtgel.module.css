@@ -1,0 +1,151 @@
+/*
+ * ТӨСЛИЙН НЭГТГЭЛ ГҮЙЦЭТГЭЛ — WBS модны хүснэгт.
+ *
+ * ⚠️ Санхүүжилтийн Excel харагдацтай ижил зарчим: нягт тор, наалдмал толгой,
+ * гүнээр ялгарах мөр. Тусдаа модуль болгосон нь `finance.module.css` нь
+ * аль хэдийн 1,600 мөр бөгөөд тэндэх дүрмүүд царцаалт/нэгтгэлтэй нягт
+ * холбоотой — энэ хүснэгтэд тэдгээр нь хэрэггүй.
+ */
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.search {
+  flex: 0 1 280px;
+  min-width: 160px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.82rem;
+}
+.spacer { flex: 1 1 auto; }
+.total { color: var(--ink-3); font-size: 0.78rem; font-variant-numeric: tabular-nums; }
+
+/* Гүний товч — Excel-ийн outline «1 2 3 4»-тэй ижил санаа */
+.levels { display: flex; gap: 3px; }
+.levels button {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.levels button:hover { border-color: var(--data); color: var(--ink); }
+.lvOn {
+  background: var(--data) !important;
+  border-color: var(--data) !important;
+  color: #fff !important;
+}
+
+.scroll {
+  /* ⚠️ Өндрийг ХЯЗГААРЛАНА — 198 мөр хуудсыг сунгаж, наалдмал толгой утгаа
+     алдана (санхүүжилтийн хүснэгттэй ижил шийдэл). */
+  max-height: calc(100dvh - 320px);
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+
+.tbl {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+  font-size: 0.78rem;
+}
+.tbl th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 7px 10px;
+  /* Excel-ийн «Blue, Accent 1, Darker 50%» — санхүүжилтийн толгойтой нэг өнгө */
+  background: #203864;
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.25;
+  text-align: center;
+  white-space: normal;
+  border-right: 1px solid rgba(255, 255, 255, 0.22);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.22);
+}
+.thCode { width: 84px; }
+.thName { min-width: 320px; text-align: left !important; }
+.thNum { width: 120px; }
+
+.tbl td {
+  padding: 5px 10px;
+  color: var(--ink-2);
+  border-right: 1px solid var(--line-strong);
+  border-bottom: 1px solid var(--line);
+}
+.tbl tr:hover td { background: color-mix(in srgb, var(--data) 6%, transparent); }
+
+.code {
+  width: 84px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.name {
+  /* Догол нь JSX-ээс инлайнаар (гүнээс хамаарна) — энд зөвхөн мурийлт */
+  white-space: normal;
+  word-break: break-word;
+}
+.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/*
+ * ДЭЭД ТҮВШНИЙ МӨР — «ТӨСЛИЙН НИЙТ ГҮЙЦЭТГЭЛ», «ТЭЗҮ», «Газар чөлөөлөлт» г.м.
+ * ⚠️ Мод нь дөрвөн гүнтэй тул зөвхөн доголоор ялгавал 3-4 дэх түвшин ялгагдахаа
+ * болино. Дээд хоёрыг зузаан бичиж, цайвар дэвсгэрээр тусгаарлана.
+ */
+.rowTop td {
+  background: color-mix(in srgb, var(--data) 9%, transparent);
+  color: var(--ink);
+  font-weight: 700;
+}
+
+/* Хэмжилтгүй нүд — 0 гэж БҮҮ ойлгуул */
+.empty { color: var(--ink-3); opacity: 0.6; }
+
+/*
+ * АВТОМАТААР БОДОГДСОН УТГА.
+ * ⚠️ Үйлчилгээнд БИЧИГДЭЭГҮЙ тоо — хадгалагдсанаас ялгаатай харагдах ЁСТОЙ.
+ */
+.auto { background: color-mix(in srgb, var(--good) 12%, transparent); }
+
+
+/*
+ * ТАЙЛБАРЫН МӨР — тоо хаанаас гарсныг ил хэлнэ.
+ * ⚠️ Эх хүснэгтийн нүд ХООСОН атлаа энд тоо харагдаж байгаа тул энэ мөр нь
+ * чимэг БИШ: түүнгүйгээр хэрэглэгч эдгээрийг хадгалагдсан утга гэж ойлгоно.
+ */
+.note {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: 0.74rem;
+  line-height: 1.4;
+}

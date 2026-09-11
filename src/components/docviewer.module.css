@@ -151,3 +151,29 @@
   .side { width: 168px; }
   .modal { width: 96vw; height: 94vh; }
 }
+
+/*
+ * ГАДААД БАРИМТЫН ХАВТАН (2026-09-10) — `<iframe>`-ийн ОРОНД.
+ * ⚠️ SharePoint/OneDrive нь дотоод хүрээг хаадаг тул тэнд iframe нь хоосон
+ *    цагаан талбай болно. Шалтгааныг ил бичиж, нээх товч гаргана.
+ */
+.ext {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  height: 100%;
+  padding: 24px;
+  text-align: center;
+  color: var(--ink-2);
+}
+.extBtn {
+  padding: 10px 18px;
+  border-radius: 8px;
+  background: var(--data);
+  color: #fff;
+  font-weight: 600;
+  text-decoration: none;
+}
+.extBtn:hover { filter: brightness(1.08); }

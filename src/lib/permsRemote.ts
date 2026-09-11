@@ -29,6 +29,7 @@
 
 import { AUTH, ROLE_BY_USER, type Role, type ViewKey } from './services';
 import { t as tr } from '@/lib/i18nCore';
+import type { Grant } from './scopedAcl';
 
 export type RemoteRow = {
   username: string;
@@ -47,7 +48,11 @@ export type RemoteRow = {
  * Урсгалын нэг томилгоо — permsRemote нь `Stage` төрлөөс санаатай ХАРААТ БУС
  * (энд зөвхөн тээвэрлэнэ, утгыг нь `guitsetgelAcl` шалгана).
  */
-export type FlowRow = { user: string; stage: string; bagts: string[] };
+export type FlowRow = {
+  user: string; stage: string; bagts: string[];
+  /** ХАРНА, ШИЙДВЭРЛЭХГҮЙ — хуучин мөрд `undefined` = жирийн томилгоо */
+  viewOnly?: boolean;
+};
 
 /**
  * НЭМЭЛТ ЭРХИЙН нэг мөр — `__cap__:` угтвартай.
@@ -142,6 +147,18 @@ const FORMER_TABLE_OWNERS: string[] = [];
 const TABLE_OWNERS = new Set([...SUPER_OWNERS, ...FORMER_TABLE_OWNERS.map((u) => u.toLowerCase())]);
 /** Ижил нэртэй боловч танигдахгүй эзэнтэй хүснэгт олдсон — шинээр үүсгэхийг хориглоно */
 let ownerMismatch = false;
+/**
+ * ⚠️ ЭРХИЙН ХҮСНЭГТ НИЙТЭД (`access: public`) НЭЭЛТТЭЙ БАЙНА УУ (2026-09-08-ны
+ * амьд шалгалт). `createTable` нь ЗӨВХӨН байгууллагад (`org:'true',
+ * everyone:'false'`) хуваалцдаг боловч AGOL дээр гараар нийтийн болгосон байв.
+ * Тэр үед НЭВТРЭЭГҮЙ хэн ч (`applyEdits` нь токенгүй амжилттай) БҮХ таван
+ * ACL-ийн мөрийг нэмж, засаж, устгаж чадна — үүрэг, эрх, урсгал, чанар,
+ * хуваарь, обьём бүгд энэ нэг хүснэгтэд. Кодоор засах боломжгүй (серверийн
+ * тохиргоо) тул ИЛРҮҮЛЖ, админ панелд улаанаар мэдэгдэнэ.
+ */
+let tablePublic = false;
+/** Эрхийн хүснэгт нийтэд нээлттэй эсэх — UserAdmin-ы анхааруулга */
+export const permsTablePublic = (): boolean => tablePublic;
 
 /**
  * Хүснэгтийн URL олох — байгаа item-ээс.
@@ -155,11 +172,27 @@ async function findTableUrl(token: string): Promise<string | null> {
   const search = await req(`${restBase()}/search`, {
     q: `title:"${TITLE}" type:"Feature Service"`,
     token,
-    num: '10',
+    /*
+     * ⚠️ 100 (2026-09-08): урьд нь '10' байв. Хайлт нь org доторх ХЭНИЙ Ч ижил
+     * нэртэй item-ыг буцаадаг тул хэн нэгэн 10+ хуурамч `Selbe_Permissions`
+     * үүсгэвэл ЖИНХЭНЭ хүснэгт эхний 10-т багтахаа больж, `ownerMismatch`
+     * асаад бүх клиентийн remote эрх УНТАРНА (үйлчилгээ таслах халдлага).
+     * Эзний шүүлтүүр нь хэвээр — энэ нь зөвхөн хайлтын цонхыг өргөсгөнө.
+     */
+    num: '100',
   });
-  const results = (search.results as Array<{ url?: string; title?: string; owner?: string }>) ?? [];
+  const results = (search.results as Array<{ url?: string; title?: string; owner?: string; access?: string }>) ?? [];
   const same = results.filter((x) => x.title === TITLE && x.url);
   const hit = same.find((x) => TABLE_OWNERS.has(String(x.owner ?? '').toLowerCase()));
+  /* ⚠️ Нийтэд нээлттэй эсэхийг ЭНД барина — item-ийн `access` талбар хайлтын
+     хариунд хамт ирдэг, нэмэлт хүсэлт хэрэггүй (`tablePublic`-ийн тайлбар). */
+  tablePublic = String(hit?.access ?? '') === 'public';
+  if (tablePublic) {
+    console.error(
+      `[selbe] ${TITLE} хүснэгт НИЙТЭД (public) нээлттэй — нэвтрээгүй хэн ч эрхийн мөр засаж чадна.`,
+      'AGOL дээр item-ийн Share-ийг «Organization» болгоно уу.',
+    );
+  }
   // ⚠️ Ижил нэртэй хүснэгт байгаа ч эзэн нь танигдахгүй → ШИНЭЭР ҮҮСГЭХГҮЙ
   //    (нэр давхцаж унана, эсвэл салаа хүснэгт үүсэж өгөгдөл хуваагдана).
   //    Админ item-ыг reassign хийх хүртэл remote унтраалттай — шалтгааныг ил хэлнэ.
@@ -286,7 +319,16 @@ export async function fetchAll(
      * мөртэй ижил дүрэм (`upsertByKey`).
      */
     const flowBy = new Map<string, FlowRow>();
-    const caps: CapRow[] = [];
+    /*
+     * ⚠️ НЭГ ХЭРЭГЛЭГЧ = НЭГ МӨР (2026-09-08). Урьд нь массив байсан тул
+     * зэрэгцээ бичилтийн race-аас үүссэн давхар `__cap__:` мөр ХОЁУЛАА
+     * жагсаалтад ордог байв. `_syncRemoteCaps` нь эхнээс нь давтдаг учир
+     * СҮҮЛИЙНХ нь ялах ёстой атлаа `upsertByKey` их OID-д бичдэг тул хассан
+     * эрх (хуучин, бага OID мөрд үлдсэн) дараалал зөрөхөд СЭРГЭДЭГ байлаа.
+     * Map нь flow/qaqc/huvaari/obyem-тэй ижил дүрмийг барина: их OID ялна
+     * (мөрүүд OBJECTID ASC ирдэг).
+     */
+    const capsBy = new Map<string, CapRow>();
     /* ⚠️ QAQC мөр ч мөн НЭГ ХЭРЭГЛЭГЧ = НЭГ МӨР — flow-той ижил дүрэм */
     const qaqcBy = new Map<string, QaqcRow>();
     /* ⚠️ Хуваарийн мөр ч мөн НЭГ ХЭРЭГЛЭГЧ = НЭГ МӨР */
@@ -344,7 +386,7 @@ export async function fetchAll(
         const user = a.username.slice(CAP_PREFIX.length).toLowerCase();
         try {
           const d = JSON.parse(a.views || '[]') as unknown;
-          if (user && Array.isArray(d)) caps.push({ user, caps: d as string[] });
+          if (user && Array.isArray(d)) capsBy.set(user, { user, caps: d as string[] });
         } catch { /* эвдэрсэн мөр — алгасна (эрхгүйтэй ижил, fail-closed) */ }
         continue;
       }
@@ -353,9 +395,17 @@ export async function fetchAll(
       if (a.username.startsWith(FLOW_PREFIX)) {
         const user = a.username.slice(FLOW_PREFIX.length).toLowerCase();
         try {
-          const d = JSON.parse(a.views || '{}') as { stage?: string; bagts?: string[] };
+          const d = JSON.parse(a.views || '{}') as {
+            stage?: string; bagts?: string[]; viewOnly?: boolean;
+          };
           if (user && d.stage) {
-            flowBy.set(user, { user, stage: d.stage, bagts: Array.isArray(d.bagts) ? d.bagts : [] });
+            flowBy.set(user, {
+              user,
+              stage: d.stage,
+              bagts: Array.isArray(d.bagts) ? d.bagts : [],
+              /* ⚠️ ЗӨВХӨН ЯГ `true` — эргэлзээтэй утга эрх ХАСАХГҮЙ (2026-09-09) */
+              ...(d.viewOnly === true ? { viewOnly: true as const } : {}),
+            });
           }
         } catch { /* эвдэрсэн мөр — алгасна (томилгоо байхгүйтэй ижил, fail-closed) */ }
         continue;
@@ -385,7 +435,7 @@ export async function fetchAll(
     return {
       perms,
       flow: [...flowBy.values()],
-      caps,
+      caps: [...capsBy.values()],
       qaqc: [...qaqcBy.values()],
       huvaari: [...huvaariBy.values()],
       obyem: [...obyemBy.values()],
@@ -402,13 +452,28 @@ export async function fetchAll(
  * устгана — эс бөгөөс «хадгалсан ч үйлчлэхгүй» чимээгүй алдаа гардаг байв.
  */
 async function findOids(fl: FeatureLayerInst, username: string): Promise<number[]> {
-  const found = await fl.queryFeatures({
-    where: `LOWER(username) = '${username.toLowerCase().replace(/'/g, "''")}'`,
-    outFields: ['OBJECTID'], returnGeometry: false, orderByFields: ['OBJECTID ASC'],
-  });
-  return found.features
-    .map((f) => f.attributes?.OBJECTID as number)
-    .filter((x) => typeof x === 'number');
+  /*
+   * ⚠️ ХУУДАСЛАЛТ (2026-09-08): урьд нь ганц дуудлага байсан тул үйлчилгээний
+   * `maxRecordCount` (ихэвчлэн 1000, зарим дээр 2000)-аас дээш давхар мөр
+   * үүссэн тохиолдолд илүүдэл нь ОГТ буцаагддаггүй байв. Тэр нь `upsertByKey`-д
+   * «цэвэрлэх давхардал алга» гэж харагдаж, цэвэрлэгдээгүй хуучин мөр дараагийн
+   * уншилтад эргэн гарч ирнэ. `orderByFields`-гүй offset нь мөр алгасдаг тул
+   * эрэмбийг ЗААВАЛ хадгална (CLAUDE.md-ийн ArcGIS занга).
+   */
+  const where = `LOWER(username) = '${username.toLowerCase().replace(/'/g, "''")}'`;
+  const out: number[] = [];
+  for (let offset = 0; ; ) {
+    const found = await fl.queryFeatures({
+      where, outFields: ['OBJECTID'], returnGeometry: false,
+      orderByFields: ['OBJECTID ASC'], start: offset, num: 2000,
+    });
+    out.push(...found.features
+      .map((x) => x.attributes?.OBJECTID as number)
+      .filter((x) => typeof x === 'number'));
+    if (!found.exceededTransferLimit || found.features.length === 0) break;
+    offset += found.features.length;
+  }
+  return out;
 }
 
 const editOk = (r: { error?: unknown }[] | undefined): boolean =>
@@ -469,13 +534,21 @@ export function remove(username: string): Promise<boolean> {
   return removeByKey(username);
 }
 
-/** Урсгалын томилгоог бичих — нэг хэрэглэгч нэг мөр (`__flow__:` угтвартай) */
-export function flowUpsert(user: string, stage: string, bagts: string[]): Promise<boolean> {
+/**
+ * Урсгалын томилгоог бичих — нэг хэрэглэгч нэг мөр (`__flow__:` угтвартай).
+ *
+ * ⚠️ `viewOnly` нь ЗӨВХӨН `true` үед бичигдэнэ (2026-09-09). Хуучин мөр
+ *    талбаргүй хэвээр үлдэж, задлахад `undefined` = ЖИРИЙН томилгоо болно —
+ *    тэр туг эрхийг ХАСДАГ болохоос НЭМДЭГГҮЙ тул анхдагч нь аюулгүй.
+ */
+export function flowUpsert(
+  user: string, stage: string, bagts: string[], viewOnly = false,
+): Promise<boolean> {
   const key = FLOW_PREFIX + user.toLowerCase();
   return upsertByKey(key, {
     username: key,
     role: null,
-    views: JSON.stringify({ stage, bagts }),
+    views: JSON.stringify(viewOnly ? { stage, bagts, viewOnly: true } : { stage, bagts }),
     docs: 0,
   });
 }
@@ -529,13 +602,21 @@ export function qaqcRemove(user: string): Promise<boolean> {
  *    тээвэрлэнэ (`huvaariAcl` танигдахгүйг нь хаяна) — `caps`-тай ижил зарчим.
  */
 export function huvaariUpsert(
-  user: string, roles: string[], bagts: string[],
+  user: string, roles: string[], bagts: string[], grants?: Grant[],
 ): Promise<boolean> {
   const key = HUVAARI_PREFIX + user.toLowerCase();
   return upsertByKey(key, {
     username: key,
     role: null,
-    views: JSON.stringify({ roles, bagts }),
+    /*
+     * ⚠️ ХОЁР ХЭЛБЭРИЙГ ЗЭРЭГ БИЧНЭ (2026-09-09). `grants` нь ҮНЭН эх сурвалж;
+     *    `roles`/`bagts` нь ХУУЧИН клиент build уншиж чадах нөөц (нэгдэл).
+     *    Ингэсэн тул шинэ клиент бичсэн мөрийг хуучин клиент нээхэд эрх
+     *    ЧИМЭЭГҮЙ алга болохгүй. Хуучин нь үржвэр болж УЯН болох тул
+     *    (жишээ нь Багц 1-д батлагч ч болох) — энэ нь fail-closed биш ч
+     *    зөвхөн ШИЛЖИЛТИЙН хугацаанд, зөвхөн хуучин build дээр үйлчилнэ.
+     */
+    views: JSON.stringify(grants ? { roles, bagts, grants } : { roles, bagts }),
     docs: 0,
   });
 }
@@ -546,13 +627,21 @@ export function huvaariUpsert(
  *    тээвэрлэнэ (`obyemAcl` танигдахгүйг нь хаяна).
  */
 export function obyemUpsert(
-  user: string, roles: string[], bagts: string[],
+  user: string, roles: string[], bagts: string[], grants?: Grant[],
 ): Promise<boolean> {
   const key = OBYEM_PREFIX + user.toLowerCase();
   return upsertByKey(key, {
     username: key,
     role: null,
-    views: JSON.stringify({ roles, bagts }),
+    /*
+     * ⚠️ ХОЁР ХЭЛБЭРИЙГ ЗЭРЭГ БИЧНЭ (2026-09-09). `grants` нь ҮНЭН эх сурвалж;
+     *    `roles`/`bagts` нь ХУУЧИН клиент build уншиж чадах нөөц (нэгдэл).
+     *    Ингэсэн тул шинэ клиент бичсэн мөрийг хуучин клиент нээхэд эрх
+     *    ЧИМЭЭГҮЙ алга болохгүй. Хуучин нь үржвэр болж УЯН болох тул
+     *    (жишээ нь Багц 1-д батлагч ч болох) — энэ нь fail-closed биш ч
+     *    зөвхөн ШИЛЖИЛТИЙН хугацаанд, зөвхөн хуучин build дээр үйлчилнэ.
+     */
+    views: JSON.stringify(grants ? { roles, bagts, grants } : { roles, bagts }),
     docs: 0,
   });
 }

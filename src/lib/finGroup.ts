@@ -15,13 +15,13 @@
  *
  * ⚠️ React импортлохгүй — `finGroup.check.mjs` шууд Node дээр ачаална.
  */
-import { CASHFLOW_NEW, IPC_LOG, bagtsKey, isPkgRange } from '@/lib/services';
+import { CASHFLOW_NEW, HO_IPC, bagtsKey, isPkgRange } from '@/lib/services';
 import { t as tr } from '@/lib/i18nCore';
 
 export type Row = Record<string, unknown>;
 
 const CF = CASHFLOW_NEW.fields;
-const IP = IPC_LOG.fields;
+const HO = HO_IPC.contractFields;
 
 const s = (v: unknown): string => (v == null ? '' : String(v).trim());
 
@@ -33,15 +33,23 @@ export type PkgBlock = { key: string; pkg: string; rows: GroupRow[]; count: numb
 
 /**
  * Аль үйлчилгээ вэ — багц ба оны талбар нь өөр.
- * ⚠️ `flat` нь `Cashflow_0904` (гэрээний шинэ бүртгэл): талбарын нэр `CF0xx`
+ * ⚠️ `flat` нь `Cashflow_0909` (гэрээний шинэ бүртгэл): талбарын нэр `CF0xx`
  * код БИШ, мөн ГЭРЭЭ/САР гэсэн мөрийн төрөл байхгүй тул паспорт+хуваарь болгож
  * хуваахгүй, ердийн хавтгай хүснэгтээр зурна.
  */
 /**
  * ⚠️ 2026-09-06: 'cf' (хуучин `cashflow_0813` — паспорт+сарын хуваарь)
- * ХАСАГДСАН. Гэрээний шинэ бүртгэл нь 'flat', актын лог нь 'ipc'.
+ * ХАСАГДСАН. Гэрээний шинэ бүртгэл нь 'flat'.
+ *
+ * ⚠️ 2026-09-09: 'ipc' (`ipc_0813/172` актын лог, ТЕСТ өгөгдөл) → 'ho'
+ * (`HO_guitsetgel_arcgis_csv/196` — олгосон ТӨЛБӨР). Мөр = НЭГ ГҮЙЛГЭЭ;
+ * гэрээний талбар `geree_kod` бүрд ДАВТАГДАНА (45 мөр = 22 гэрээ).
+ * ⚠️ ЭНЭ МОДУЛЬД ТЭР НЬ ХАМГИЙН ТОМ ЭРСДЭЛ: доорх «мөр нэгтгэдэггүй,
+ * НИЙЛБЭР бодохыг САНААТАЙГААР хийхгүй» дүрмийг зөрчиж хэн нэг нь «энд
+ * багц тутмын төсөв нэмье» гэвэл Багц-4.1 (7 мөр) -ийн төсөв 7 ДАХИН
+ * давхардана. Гэрээний нийлбэрийг ЗӨВХӨН `ipc.ts`-ийн `hoTotals()` бодно.
  */
-export type FinKind = 'ipc' | 'flat';
+export type FinKind = 'ho' | 'flat';
 
 /**
  * Мөрийн багц — дэд багц (навч) эхэлж.
@@ -50,6 +58,12 @@ export type FinKind = 'ipc' | 'flat';
  *    «БАГЦ14» болж, бодит «Багц 14»-т наалддаг (services.ts-ийн `isPkgRange`
  *    тайлбар). Тэдгээр нь «хуваарилагдаагүй» бүлэгт очно — алдагдахгүй, гэвч
  *    БУРУУ эзэнд ч очихгүй.
+ *
+ * ⚠️ 2026-09-09: ЭНЭ ХАМГААЛАЛТ ОДОО 'ho'-д ч ЖИНХЭНЭЭР ажиллаж байна.
+ *    Хуучин IPC_LOG-д диапазон мөр БАЙГААГҮЙ тул зөвхөн CASHFLOW-д
+ *    хэрэгтэй байв; HO-д ХОЁР бий — «Багц-1-4» (876,465,164 ₮) ба
+ *    «БАГЦ-10,  БАГЦ-11, БАГЦ-13, БАГЦ-15» (5,094,952,269 ₮), нийт 5.97
+ *    тэрбум ₮. Хамгаалалтыг хасвал эхнийх нь бодит «Багц 14»-т наалдана.
  */
 function pkgOf(r: Row, f2: string, f1: string): { key: string; label: string } {
   for (const fld of [f2, f1]) {
@@ -79,10 +93,12 @@ const oidOf = (r: Row, field: string): number | null => {
  *    дунд орвол жагсаалт санамсаргүй тасарна.
  */
 export function buildGroups(rows: Row[], kind: FinKind): PkgBlock[] {
-  const oidField = kind === 'ipc' ? IPC_LOG.oid
-    : CASHFLOW_NEW.oid;
-  const f2 = kind === 'ipc' ? IP.pkg2 : CF.pkg2;
-  const f1 = kind === 'ipc' ? IP.pkg : CF.pkg;
+  const oidField = kind === 'ho' ? HO_IPC.oid : CASHFLOW_NEW.oid;
+  /* ⚠️ HO-д ДЭД БАГЦЫН тусдаа талбар БАЙХГҮЙ — bagts өөрөө «Багц-3.1» гэсэн
+     дэд түвшнийг агуулна. Тиймээс f2 === f1: pkgOf нь нэг талбарыг хоёр удаа
+     шалгах ч үр дүн ижил, харин ДИАПАЗОН хамгаалалт хэвээр ажиллана. */
+  const f2 = kind === 'ho' ? HO.pkg : CF.pkg2;
+  const f1 = kind === 'ho' ? HO.pkg : CF.pkg;
 
   const byPkg = new Map<string, { label: string; rows: GroupRow[] }>();
   for (const r of rows) {

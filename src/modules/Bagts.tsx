@@ -465,7 +465,7 @@ export function PackList({
               ? tr('{0} блок · {1} айл', num(p.blocks.length), num(p.households))
               : subInfra(p)}
             value={p.kind === 'build'
-              ? (p.progress == null ? '—' : pct(p.progress, 0))
+              ? (p.progress == null ? '—' : pct(p.progress, 1))
               : (p.layerIds.length ? tr('{0} давхарга', num(p.layerIds.length)) : '—')}
             color={p.kind === 'build' ? levelColor(p.progress) : INFRA_HUE}
             active={p.key === sel}
@@ -817,7 +817,7 @@ export function BlocksCard({
           color: levelColor(b.progress),
           display: b.progress == null
             ? tr('мэдээлэлгүй')
-            : tr('{0}{1}', pct(b.progress, 0), b.floors ? tr(' · {0} давхар', b.floors) : ''),
+            : tr('{0}{1}', pct(b.progress, 1), b.floors ? tr(' · {0} давхар', b.floors) : ''),
         }))}
       />
     </Section>

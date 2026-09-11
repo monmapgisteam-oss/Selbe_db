@@ -32,6 +32,7 @@ import { Sheet } from '@/modules/sheet/Sheet';
 import { groupWorks, optionsOf, STAGE_LABEL, type Work } from '@/lib/hyanaltGroup';
 import { apply, recheck, useHyanaltRows } from '@/lib/hyanaltStore';
 import { loadSubmission, type Change, type Submission } from '@/lib/hyanaltDetail';
+import { TusulNegtgel } from '@/modules/TusulNegtgel';
 import s from './guitsetgel.module.css';
 
 const STAGES: Stage[] = ['company', 'engineer', 'manager', 'director'];
@@ -1053,7 +1054,7 @@ export function Guitsetgel() {
    * тэндээс сонгож ордог үйлдэл. Урьд нь шууд бөглөх хуудас нээгддэг тул
    * гүйцэтгэгч өөрийн илгээлтийн явцыг хардаггүй байв.
    */
-  const [tab, setTab] = useState<'fill' | 'sent'>('sent');
+  const [tab, setTab] = useState<'fill' | 'sent' | 'negtgel'>('sent');
   const [q, setQ] = useState('');
   const [bagts, setBagts] = useState(ALL);
   const [company, setCompany] = useState(ALL);
@@ -1182,12 +1183,29 @@ export function Guitsetgel() {
             </button>
           </>
         )}
+        {/*
+          * НЭГТГЭЛ ГҮЙЦЭТГЭЛ — төслийн ажлын задаргааны (WBS) мод.
+          *
+          * ⚠️ Бөглөх эрхээс ҮЛ ХАМААРНА: энэ нь бөглөх хуудас БИШ, төслийн
+          * нэгдсэн явцын харагдац. Гүйцэтгэгч ч, хянагч ч ижил тоог харна.
+          */}
+        <button
+          type="button"
+          className={`${s.tab} ${tab === 'negtgel' ? s.tabOn : ''}`}
+          onClick={() => setTab('negtgel')}
+        >
+          {tr('Нэгтгэл гүйцэтгэл')}
+        </button>
         {/* ⚠️ «Эрх тохируулах» ЭНДЭЭС ХАСАГДСАН — Админ портал дотор
             тусдаа бүлэг болов. Ажлын хуудсанд тохиргооны товч байвал
             хянагч санамсаргүй дараад хуваарилалт өөрчилнө. */}
       </div>
 
-      {canFill && tab === 'fill' ? (
+      {tab === 'negtgel' ? (
+        <div className={s.fill}>
+          <TusulNegtgel />
+        </div>
+      ) : canFill && tab === 'fill' ? (
         <div className={s.fill}>
           <Sheet />
         </div>

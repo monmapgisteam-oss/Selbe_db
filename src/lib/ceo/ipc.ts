@@ -1,96 +1,85 @@
 /**
- * CEO ҮЗҮҮЛЭЛТ «IPC — гүйцэтгэлийн төлбөрийн акт»: олгосон · хянагдаж буй ·
- * төлөгдөөгүй үлдэгдэл.
+ * CEO ҮЗҮҮЛЭЛТ «IPC — ГҮЙЦЭТГЭГЧ КОМПАНИД ОЛГОСОН САНХҮҮЖИЛТ».
  *
- * ЭХ СУРВАЛЖ (ганц): `loadFinData().acts` — `ipc_0813/172`-ын 59 түүхий мөр.
- * Тусдаа query ГАРГАХГҮЙ: Санхүү · Нүүр · Багцын санхүү бүгд ижил кэшийг
- * хуваалцдаг тул энэ карт нэмэлт HTTP хүсэлт үүсгэхгүй.
+ * ЭХ СУРВАЛЖ (ганц): `loadHoRows()` — `HO_guitsetgel_arcgis_csv/196`,
+ * 45 төлбөрийн мөр = 22 гэрээ.
  *
- * ⚠️ `loadFinData` нь IPC + CASHFLOW_NEW + BAGTS_SHEET гурвыг `Promise.all`-аар
- *    татдаг — аль нэг нь унавал IPC мөр бүрэн бүтэн байсан ч энэ карт унана.
- *    Энэ нь мэдэгдэж буй сул тал; шийдэл нь `Finance.tsx`-ийн ачаалагчийг
- *    хэсэгчлэн уналттай болгох (энд ТУСДАА query нэмэх БИШ).
+ * ⚠️ 2026-09-09 ЭХ СУРВАЛЖ БҮРМӨСӨН СОЛИГДСОН. Хуучин `IPC_LOG`
+ * (`ipc_0813/172`) нь ТЕСТ ӨГӨГДӨЛ байсан гэж хэрэглэгч тогтоов; хоёр эхийн
+ * тоог ХАРЬЦУУЛАХГҮЙ. Тиймээс энэ картын ГОЛ ТОО ч өөрчлөгдсөн:
+ *   хуучин «төлөгдөөгүй үлдэгдэл» (`ipcDue` = net − paid)
+ *   → шинэ «олгосон санхүүжилт» (Σ `dun`, урьдчилгаа ОРСОН).
+ * ⚠️ ЯАГААД: шинэ эхэд СУУТГАЛ (барьцаа, урьдчилгааны эргэн төлөлт,
+ *    зохиогчийн/захиалагчийн хяналт) ОГТ БАЙХГҮЙ — `dun` нь аль хэдийн
+ *    бодит олгосон дүн. Мөн «төлөх ёстой огноо» ба «ХЯНАГДАЖ БАЙНА» төлөв
+ *    ч байхгүй: мөр бүр нь АЛЬ ХЭДИЙН хийгдсэн гүйлгээ. Иймд «үлдэгдэл» ·
+ *    «хугацаа хэтэрсэн» · «хянагдаж буй» ГУРВЫГ бодох БОЛОМЖГҮЙ, зохиож
+ *    ойролцоолох нь ХУДАЛ хэмжилт болно — БҮРЭН ХАСАВ.
  *
- * ⚠️ `@/modules/Finance`-ийг ДИНАМИКААР импортолно (ачаалагчийн дотор).
- *    Тэр модуль нь React · next/dynamic · CSS module татдаг тул модулийн
- *    түвшинд импортолбол `ipc.check.mjs` Node дээр ажиллахгүй, мөн нүүрийн
- *    chunk-д Санхүүгийн харагдац бүхэлдээ орно.
+ * ⚠️ ХОЁР ТҮВШИН. Мөр = НЭГ ГҮЙЛГЭЭ; гэрээний талбар (`tosov_niit`,
+ *    `gereet_tosov_niit` …) нь `geree_kod` бүрд ДАВТАГДАНА. Гэрээний тоог
+ *    ЗӨВХӨН `groupHo()`/`hoTotals()`-оос ав — мөрөөр SUM хийвэл Багц-4.1
+ *    (7 мөр) -ийн төсөв 7 ДАХИН давхардана.
  *
- * ⚠️ `null` ≠ 0 — IPC18 (гүйцэтгэлийн дүн) 59 актын 38-д ХООСОН. `ipcNet`/
- *    `ipcDue` тэдгээрт `null` буцаана; нийлбэрт АЛГАСНА, бүгд хоосон бол
- *    нийлбэр нь `null` (→ «—»). `?? 0` гэж дарвал 2026-09-04-ний I30 алдаа
- *    (−2.07 тэрбум) буцаж гарна. Харин `ipcPaid` нь БОДИТ гүйлгээ тул 0 нь
- *    жинхэнэ «огт шилжүүлээгүй» — нийлбэрт шууд орно.
+ * ⚠️ ТУСДАА QUERY. Хуучин хувилбар `loadFinData()`-г динамикаар импортолж
+ *    актуудыг зээлдэг байв; одоо `@/lib/ipc`-ийн `loadHoRows` нь ӨӨРӨӨ
+ *    кэштэй (`'HO_IPC'` таг) тул Санхүү · Нүүр · Багцын санхүү бүгд ижил
+ *    кэшийг хуваалцсан хэвээр, харин `@/modules/Finance` (React · CSS
+ *    module) -ээс ХАМААРАХАА БОЛЬСОН: CASHFLOW_NEW эсвэл BAGTS_SHEET унавал
+ *    энэ карт ҮРГЭЛЖЛҮҮЛЭН ажиллана (хуучны мэдэгдэж байсан сул тал ЗАСАГДАВ).
  *
- * ⚠️ Огноо (IPC25 · IPC28…) нь `esriFieldTypeDateOnly` → «2026-08-10» гэсэн
- *    МӨР. Хугацаа хэтэрсэн эсэхийг ӨДРИЙН мөрөөр (`YYYY-MM-DD`) харьцуулна —
- *    epoch-оор харьцуулбал UTC+8 бүсэд өнөөдөр төлөх акт өглөө «хэтэрсэн»
- *    болно. Хэтэрсэн хоног = өнөөдрийн 00:00Z − төлөх огнооны 00:00Z, бүхэл.
+ * ⚠️ `null` ≠ 0 — `dun` 45-ийн 2 мөрд ХООСОН (БАГЦ-6.3 гэрээ бүхэлдээ
+ *    төлбөргүй, ХО-0045 кодгүй гэрээ). Нийлбэрт АЛГАСНА, бүгд хоосон бол
+ *    нийлбэр `null` (→ «—»). `?? 0` дарвал 2026-09-04-ний I30 алдаа
+ *    (нийлбэр чимээгүй доош татагдах) өөр нэрээр давтагдана.
  *
- * ⚠️ i18n (2026-09-06-ны хяналт): баганын нэрд `en.ts`-д БАЙГАА түлхүүрийг
- *    дахин ашиглана — «Актын код» · «Багц» · «Гүйцэтгэгч» · «Төлөв» ·
- *    «Шилжүүлсэн» · «Үлдэгдэл» · «Төлөх ёстой огноо» (IPC25-ын албан нэр) ·
- *    «Хамрах хугацаа: эхлэх» / «Хамрах хугацаа: дуусах» (IPC09/10-ын албан
- *    нэр — тиймээс хамрах хугацаа нь НЭГ биш ХОЁР багана) · «Дүн (₮)».
- *    Энэ файл `en.ts`-ийг ЗАСДАГГҮЙ; доорх 12 ШИНЭ түлхүүрийг нэгтгэгч
- *    `en.ts`-д ЯГ ЭНЭ МӨРӨӨР нэмнэ (эс бөгөөс `tools/i18n-extract.mjs`
- *    «дутуу» гэж унана; нэмэгдтэл en дээр монголоор харагдана, унахгүй):
- *      "Хугацаа хэтэрсэн ба төлөгдөөгүй акт": "Overdue and unpaid certificates",
- *      "Хянагдаж буй акт": "Certificates under review",
- *      "Дүнгүй акт (IPC18 хоосон)": "Certificates without amount (IPC18 empty)",
- *      "Олгох дүн": "Payable",
- *      "төлөгдөөгүй үлдэгдэл": "unpaid balance",
- *      "{0} акт нийт": "{0} certificates total",
- *      "олгосон {0}": "disbursed {0}",
- *      "хянагдаж буй {0} акт": "{0} under review",
- *      "хугацаа хэтэрсэн {0}": "{0} overdue",
- *      "дүнгүй {0} акт": "{0} without amount",
- *      "{0} · {1} — {2} хоног хэтэрсэн, {3}": "{0} · {1} — {2} days overdue, {3}",
- *      "{0} · {1} — олгох дүн сөрөг, {2}": "{0} · {1} — negative payable, {2}",
+ * ⚠️ Огноо (`guilgee_ognoo`) нь `esriFieldTypeDateOnly` → «2026-08-26»
+ *    гэсэн МӨР, epoch БИШ. `dayOf`/`epochOf` хоёуланг нь боловсруулна.
+ *
+ * ⚠️ i18n: `en.ts`-д БАЙГАА түлхүүрийг дахин ашиглана — «Гэрээний код» ·
+ *    «Багц» · «Гүйцэтгэгч» · «Ажлын төрөл» · «Төсөвт өртөг» · «Олгосон» ·
+ *    «Олгосон дүн» · «Дүн (₮)». Энэ файл `en.ts`-ийг ЗАСДАГГҮЙ; доорх ШИНЭ
+ *    түлхүүрүүдийг нэгтгэгч `en.ts`-д ЯГ ЭНЭ МӨРӨӨР нэмнэ:
+ *      "олгосон санхүүжилт": "disbursed funding",
+ *      "Гэрээний санхүүжилт": "Contract funding",
+ *      "Төлбөргүй гэрээ": "Contracts with no payment",
+ *      "Багцад холбогдоогүй төлбөр": "Payments not linked to a package",
+ *      "Гэрээт төсөв": "Contracted budget",
+ *      "Гэрээнд эзлэх": "Share of contract",
+ *      "Төлбөрийн төрөл": "Payment type",
+ *      "Гүйлгээний огноо": "Transaction date",
+ *      "{0} гэрээ · {1} төлбөр": "{0} contracts · {1} payments",
+ *      "урьдчилгаа {0}": "advance {0}",
+ *      "гүйцэтгэл {0}": "work {0}",
+ *      "гэрээнд эзлэх {0}": "{0} of contract",
+ *      "хэмнэлт {0}": "saving {0}",
+ *      "{0} · {1} — төлбөрийн дүн бүртгэгдээгүй": "{0} · {1} — payment amount not recorded",
+ *      "{0} — гэрээний код бүртгэгдээгүй, {1}": "{0} — no contract code, {1}",
+ *      "{0} — багц олдсонгүй «{1}», {2}": "{0} — package not found «{1}», {2}",
+ *      "{0} — IPC дугаарын цоорхой: {1}": "{0} — gaps in IPC numbering: {1}",
+ *      "Ангилагдаагүй": "Unclassified",
  */
 
 import { t as tr } from '@/lib/i18nCore';
 import { cached } from '@/lib/live';
-import { IPC_LOG, ipcCode, ipcNet, ipcPaid, ipcDue } from '@/lib/services';
-import { mnt, date, text } from '@/lib/format';
+import { HO_IPC, hoAmount, hoPayCode } from '@/lib/services';
+import {
+  loadHoRows, groupHo, hoTotals, unlinkedPays, ipcGaps,
+  type Row, type HoContract, type HoTotals,
+} from '@/lib/ipc';
+import { mnt, pct, date, text } from '@/lib/format';
 import type { Level } from '@/lib/kpiLevels';
-import { cell, table, daysBetween, type KpiResult, type KpiIssue, type Cell } from './kpi';
+import { cell, table, type KpiResult, type KpiIssue, type Cell } from './kpi';
+
+const C = HO_IPC.contractFields;
+const P = HO_IPC.payFields;
 
 /**
- * Түүхий мөр — `FinData.acts`-ын төрөл (`Record<string, unknown>`); `@/lib/query`-ийн
- * нарийн `Row` ч үүнд шууд багтана. Талбарын утгыг `ipcNet`/`text`/`dayOf` шалгана.
- */
-type Row = Record<string, unknown>;
-
-/**
- * Кэшийн TTL — `Finance.tsx`-ийн `LIVE_TTL`(60 с)-тэй ижил. Тэр нь export
- * биш тул энд давтав; ямар ч байсан `IPC_LOG` таг нь бичилт бүрд хүчингүй
+ * Кэшийн TTL — `@/lib/ipc`-ийн `HO_TTL`(60 с)-тэй ижил. Тэр нь export биш
+ * тул энд давтав; ямар ч байсан `HO_IPC` таг нь бичилт бүрд хүчингүй
  * болгоно, TTL нь зөвхөн гадны (ArcGIS дээрх) засварыг барина.
  */
 const IPC_TTL = 60_000;
-
-/** Нэг акт — тооцоонд хэрэгтэй хэлбэрт хураасан */
-export type IpcAct = {
-  /** «IPC-03» · «APC-01» — `ipcCode()` */
-  code: string;
-  /** Дэд багц, хоосон бол үндсэн багц */
-  pkg: string;
-  contractor: string;
-  /** IPC08 түүхий утга («БАТЛАГДСАН» · «ХЯНАГДАЖ БАЙНА» · …) */
-  status: string;
-  /** Олгох дүн (gross − суутгал); IPC18 хоосон бол null */
-  net: number | null;
-  /** Бодит шилжүүлсэн (3 гүйлгээ) — ҮРГЭЛЖ тоо */
-  paid: number;
-  /** Үлдэгдэл = net − paid; net null бол null */
-  due: number | null;
-  /** Төлөх ёстой огноо, `YYYY-MM-DD` эсвэл null */
-  dueDay: string | null;
-  periodFrom: string | null;
-  periodTo: string | null;
-  /** Гүйлгээний огноонууд, epoch ms — `asOf`-д */
-  payAt: number[];
-};
 
 /* ══════════════ Огнооны туслахууд ══════════════ */
 
@@ -121,6 +110,9 @@ export function epochOf(v: unknown): number | null {
  * «Өнөөдөр» — `now`-ийн ЛОКАЛ өдөр, `YYYY-MM-DD`.
  * ⚠️ `toISOString()` БИШ: тэр нь UTC өдөр тул UTC+8-д шөнийн 00–08 цагт
  *    өчигдрийг өгнө.
+ * ⚠️ Хугацаа хэтэрсэн тооцоо ХАСАГДСАН ч энэ туслах ҮЛДЭЭВ — огнооны
+ *    хэвийн байдлыг шалгах цорын ганц цэвэр цэг, бусад CEO картууд ижил
+ *    хэв маягийг дагадаг.
  */
 export function todayOf(now: number): string {
   const d = new Date(now);
@@ -128,193 +120,209 @@ export function todayOf(now: number): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
-/** Нийлбэр — `null`-ыг АЛГАСНА; бүгд null бол null (0 БИШ) */
-const sumOrNull = (xs: readonly (number | null)[]): number | null => {
-  let s: number | null = null;
-  for (const x of xs) if (x != null) s = (s ?? 0) + x;
-  return s;
-};
-
-/* ══════════════ Түүхий мөр → акт ══════════════ */
-
-export function toAct(r: Row): IpcAct {
-  const F = IPC_LOG.fields;
-  return {
-    code: ipcCode(r),
-    pkg: text(r[F.pkg2], '') || text(r[F.pkg], '') || '—',
-    contractor: text(r[F.contractor]),
-    status: text(r[F.status], ''),
-    net: ipcNet(r),
-    paid: ipcPaid(r),
-    due: ipcDue(r),
-    dueDay: dayOf(r[F.dueDate]),
-    periodFrom: dayOf(r[F.periodFrom]),
-    periodTo: dayOf(r[F.periodTo]),
-    payAt: [r[F.payDate], r[F.payDate2], r[F.payDate3]]
-      .map(epochOf)
-      .filter((x): x is number => x != null),
-  };
-}
-
 /* ══════════════ Цэвэр тооцоо ══════════════ */
 
-/** Нэгтгэл — тест ба картын аль алинд */
-export type IpcSummary = {
-  n: number;
-  /** Σ ipcPaid — гүйлгээ бодит тул 0 = огт шилжүүлээгүй */
-  paidTotal: number;
-  /** Σ ipcNet, null алгасна; бүгд null → null */
-  netTotal: number | null;
-  /** Σ ipcDue, null алгасна; бүгд null → null */
-  dueTotal: number | null;
-  reviewing: { count: number; net: number | null };
+/**
+ * Нэгтгэл — тест ба картын аль алинд.
+ * ⚠️ `HoTotals`-ыг ХУУЛААГҮЙ, ШУУД агуулав — гэрээний тоог хоёр газар
+ *    бодох нь тэдгээр зөрөх эрсдэл (грейний алдааны сонгодог хэлбэр).
+ */
+export type IpcSummary = HoTotals & {
+  /** `dun` хоосон төлбөрийн мөрийн тоо (амьдаар 2) */
   noAmount: number;
-  overdue: { count: number; due: number | null };
-  /** Сөрөг олгох дүнтэй (өгөгдлийн алдаа) актын тоо */
-  negative: number;
+  /** `geree_kod` хоосон гэрээний тоо (амьдаар 1 — ХО-0045) */
+  noCode: number;
+  /** Багцад холбогдоогүй (диапазон/хоосон `bagts`) төлбөрийн мөрийн тоо */
+  unlinked: number;
+  /** Багцад холбогдоогүй төлбөрийн дүн — амьдаар 5.97 тэрбум ₮ */
+  unlinkedPaid: number | null;
+  /** `tulult_turul` хоосон мөрийн тоо (амьдаар 2) */
+  noKind: number;
 };
 
-export function summarize(acts: readonly IpcAct[], today: string): IpcSummary {
-  const reviewing = acts.filter((a) => a.status === IPC_LOG.statuses.review);
-  const overdue = acts.filter((a) => isOverdue(a, today));
+export function summarize(rows: readonly Row[]): IpcSummary {
+  const cs = groupHo(rows);
+  const un = unlinkedPays(rows);
+  let unlinkedPaid: number | null = null;
+  for (const r of un) {
+    const v = hoAmount(r);
+    if (v != null) unlinkedPaid = (unlinkedPaid ?? 0) + v;
+  }
   return {
-    n: acts.length,
-    paidTotal: acts.reduce((s, a) => s + a.paid, 0),
-    netTotal: sumOrNull(acts.map((a) => a.net)),
-    dueTotal: sumOrNull(acts.map((a) => a.due)),
-    reviewing: { count: reviewing.length, net: sumOrNull(reviewing.map((a) => a.net)) },
-    noAmount: acts.filter((a) => a.net == null).length,
-    overdue: { count: overdue.length, due: sumOrNull(overdue.map((a) => a.due)) },
-    negative: acts.filter((a) => a.net != null && a.net < 0).length,
+    ...hoTotals(rows),
+    noAmount: rows.filter((r) => hoAmount(r) == null).length,
+    noCode: cs.filter((c) => !c.code).length,
+    unlinked: un.length,
+    unlinkedPaid,
+    noKind: rows.filter((r) => {
+      const k = r[P.kind];
+      return k !== HO_IPC.kinds.advance && k !== HO_IPC.kinds.work;
+    }).length,
   };
 }
-
-/** Үлдэгдэлтэй БӨГӨӨД төлөх огноо нь өнөөдрөөс ӨМНӨ */
-export const isOverdue = (a: IpcAct, today: string): boolean => (
-  a.due != null && a.due > 0 && a.dueDay != null && a.dueDay < today
-);
-
-/** Хэтэрсэн хоног — өдрийн 00:00Z хоёрын зөрүү, бүхэл */
-export const overdueDays = (a: IpcAct, today: string): number => (
-  a.dueDay == null ? 0 : daysBetween(Date.parse(a.dueDay), Date.parse(today))
-);
 
 /**
  * Түвшин. ⚠️ Босго ШИНЭЭР зохиогоогүй — тоолуур бүр өөрөө дохио:
- *   хэтэрсэн акт 1+ → bad · хянагдаж буй/дүнгүй акт 1+ → warn · бусад good.
- *   Акт огт байхгүй → unknown (тэг үзүүлэлт биш, эх сурвалж хоосон).
- * ⚠️ IPC18 нь 38 актад хоосон тул бодит өгөгдөл дээр карт ҮРГЭЛЖ warn-аас
- *    доошгүй — энэ нь өгөгдлийн асуудлыг ИЛ байлгах санаатай сонголт.
+ *   төлбөрийн мөр огт байхгүй → unknown (тэг үзүүлэлт БИШ, эх хоосон)
+ *   өгөгдлийн цоорхой (дүнгүй мөр · кодгүй гэрээ · багцад холбогдоогүй
+ *   төлбөр) 1+ → warn · бусад good.
+ * ⚠️ Хуучны «хугацаа хэтэрсэн → bad» дохио БАЙХГҮЙ БОЛСОН: шинэ эхэд төлөх
+ *    ёстой огноо байхгүй тул хэтрэлт гэсэн ойлголт үхсэн. `bad` түвшин
+ *    зохиомлоор үүсгэхээс ТАТГАЛЗАВ — худал улаан дохио нь дохио байхгүйгээс
+ *    дор.
+ * ⚠️ Амьд өгөгдөл дээр ҮРГЭЛЖ warn (дүнгүй 2 + кодгүй 1 + холбогдоогүй 2) —
+ *    хуучин картын «өгөгдлийн асуудлыг ИЛ байлгах» санааг ХАДГАЛАВ.
  */
 export function ipcLevel(s: IpcSummary): Level {
-  if (s.n === 0) return 'unknown';
-  if (s.overdue.count > 0) return 'bad';
-  if (s.reviewing.count > 0 || s.noAmount > 0) return 'warn';
+  if (s.pays === 0) return 'unknown';
+  if (s.noAmount > 0 || s.noCode > 0 || s.unlinked > 0) return 'warn';
   return 'good';
 }
 
 /**
+ * Гэрээний харагдах нэр — код → багц → төслийн нэр → «—».
+ * ⚠️ Амьдаар ХО-0045 нь код БА багц ХОЁУЛАА хоосон (зөвхөн `tosol_ner`
+ *    бий) тул төслийн нэрийг гурав дахь нөөц болгов — эс бөгөөс
+ *    анхааруулга «— — гэрээний код бүртгэгдээгүй» гэж танигдахгүй гарна.
+ */
+const nameOf = (c: HoContract): string => c.code || c.pkg || c.project || '—';
+
+/**
+ * ТӨЛБӨРИЙН мөрийн харагдах эзэн — багц → гэрээний код → мөрийн ID.
+ * ⚠️ Мөрийн ID (`murun_id` «ХО-0045») нь 45/45 давтагдашгүй тул ЭЦСИЙН
+ *    нөөц: гурвуулаа хоосон анхааруулга («— · —») нь ямар мөрийг зааж
+ *    байгаа нь мэдэгдэхгүй болно.
+ */
+const payWho = (r: Row): string => (
+  text(r[C.pkg], '') || text(r[C.code], '') || text(r[P.id], '') || '—'
+);
+
+/**
  * ЦЭВЭР тооцоо — сүлжээгүй, `Date.now()`-гүй; `now` гаднаас ирнэ.
+ * ⚠️ `now` нь одоогоор ЗӨВХӨН ирээдүйн огнооны шалгуурт нөөцлөгдсөн (хуучин
+ *    хугацаа хэтэрсэн тооцоо хасагдсан) — гарын үсгийг ХЭВЭЭР үлдээв,
+ *    учир нь `registry.ts`-ийн бусад ачаалагчид ижил хэлбэртэй бөгөөд
+ *    цаг хамаарсан дүрэм эргэж нэмэгдэх нь бүрэн боломжтой.
  */
 export function computeIpc(rows: readonly Row[], now: number): KpiResult {
-  const today = todayOf(now);
-  const acts = rows.map(toAct);
-  const s = summarize(acts, today);
+  void now;
+  const s = summarize(rows);
+  const cs = groupHo(rows);
 
-  /* ── Хүснэгт 1: үлдэгдэлтэй акт — төлөх огноогоор өсөх (хэтэрсэн нь эхэнд),
-        огноогүй нь СҮҮЛД (үлдэгдэл их нь түрүүлж) ── */
-  const dueRows = acts
-    .filter((a) => a.due != null && a.due > 0)
-    .sort((a, b) => {
-      if (a.dueDay == null && b.dueDay == null) return (b.due ?? 0) - (a.due ?? 0);
-      if (a.dueDay == null) return 1;
-      if (b.dueDay == null) return -1;
-      return a.dueDay.localeCompare(b.dueDay) || (b.due ?? 0) - (a.due ?? 0);
-    });
-  const dueTable = table(
-    tr('Хугацаа хэтэрсэн ба төлөгдөөгүй акт'),
+  /* ── Хүснэгт 1: ГЭРЭЭНИЙ САНХҮҮЖИЛТ — гэрээнд эзлэх хувь БАГА нь ЭХЭНД
+        (эрсдэлийн эрэмбэ), хувь хэмжигдээгүй нь СҮҮЛД.
+        ⚠️ Мөнгөн багана БҮГД `groupHo()`-ийн dedup хийсэн түвшнээс — мөрөөр
+        нийлүүлсэн тоо ЭНД ОРОХГҮЙ. ── */
+  const byPct = [...cs].sort((a, b) => {
+    if (a.paidPct == null && b.paidPct == null) return nameOf(a).localeCompare(nameOf(b), 'mn', { numeric: true });
+    if (a.paidPct == null) return 1;
+    if (b.paidPct == null) return -1;
+    return a.paidPct - b.paidPct;
+  });
+  const finTable = table(
+    tr('Гэрээний санхүүжилт'),
     [
-      tr('Актын код'), tr('Багц'), tr('Гүйцэтгэгч'), tr('Төлөв'),
-      tr('Олгох дүн'), tr('Шилжүүлсэн'), tr('Үлдэгдэл'), tr('Төлөх ёстой огноо'),
+      tr('Гэрээний код'), tr('Багц'), tr('Гүйцэтгэгч'), tr('Ажлын төрөл'),
+      tr('Төсөвт өртөг'), tr('Гэрээт төсөв'), tr('Олгосон'), tr('Гэрээнд эзлэх'),
     ],
-    dueRows.map((a): Cell[] => [
-      cell(a.code), cell(a.pkg), cell(a.contractor), cell(a.status || '—'),
-      cell(a.net, 'mnt'), cell(a.paid, 'mnt'), cell(a.due, 'mnt'),
-      cell(date(a.dueDay)),
+    byPct.map((c): Cell[] => [
+      cell(c.code || '—'), cell(c.pkg || '—'), cell(c.contractor || '—'),
+      cell(c.workType || '—'),
+      cell(c.budgetTotal, 'mnt'), cell(c.contractTotal, 'mnt'),
+      cell(c.paidTotal, 'mnt'), cell(c.paidPct, 'pct'),
     ]),
   );
 
-  /* ── Хүснэгт 2: хянагдаж буй — дүн их нь эхэнд, дүнгүй нь сүүлд.
-        ⚠️ Хамрах хугацаа нь ХОЁР багана — `en.ts`-д «Хамрах хугацаа: эхлэх»/
-        «: дуусах» гэсэн албан нэр (IPC09/10) аль хэдийн бий, нэг «Хамрах
-        хугацаа» түлхүүр байхгүй. `date(null)` = «—» тул хоосныг тусад нь
-        шалгахгүй. ── */
-  const reviewRows = acts
-    .filter((a) => a.status === IPC_LOG.statuses.review)
-    .sort((a, b) => (b.net ?? -Infinity) - (a.net ?? -Infinity));
-  const reviewTable = table(
-    tr('Хянагдаж буй акт'),
-    [
-      tr('Актын код'), tr('Багц'), tr('Гүйцэтгэгч'),
-      tr('Хамрах хугацаа: эхлэх'), tr('Хамрах хугацаа: дуусах'), tr('Дүн (₮)'),
-    ],
-    reviewRows.map((a): Cell[] => [
-      cell(a.code), cell(a.pkg), cell(a.contractor),
-      cell(date(a.periodFrom)), cell(date(a.periodTo)), cell(a.net, 'mnt'),
+  /* ── Хүснэгт 2: ТӨЛБӨРГҮЙ ГЭРЭЭ — `paidTotal` нь `null` (ХЭМЖИГДЭЭГҮЙ).
+        ⚠️ `paidTotal === 0` -ийг ЭНД ОРУУЛАХГҮЙ: тэр нь «жинхэнэ тэг
+        олголт» бөгөөд өгөгдлийн цоорхой БИШ. `null ≠ 0` дүрмийн хоёр тал.
+        Амьдаар 2 мөр: БАГЦ-6.3 (`dun` хоосон) · ХО-0045 (кодгүй гэрээ). ── */
+  const noPayTable = table(
+    tr('Төлбөргүй гэрээ'),
+    [tr('Гэрээний код'), tr('Багц'), tr('Гүйцэтгэгч'), tr('Гэрээт төсөв')],
+    cs.filter((c) => c.paidTotal == null).map((c): Cell[] => [
+      cell(c.code || '—'), cell(c.pkg || '—'), cell(c.contractor || '—'),
+      cell(c.contractTotal, 'mnt'),
     ]),
   );
 
-  /* ── Хүснэгт 3: IPC18 хоосон — багц · код дарааллаар ── */
-  const noAmountRows = acts
-    .filter((a) => a.net == null)
-    .sort((a, b) => a.pkg.localeCompare(b.pkg, 'mn', { numeric: true })
-      || a.code.localeCompare(b.code, 'mn', { numeric: true }));
-  const noAmountTable = table(
-    tr('Дүнгүй акт (IPC18 хоосон)'),
-    [tr('Актын код'), tr('Багц'), tr('Гүйцэтгэгч'), tr('Төлөв')],
-    noAmountRows.map((a): Cell[] => [
-      cell(a.code), cell(a.pkg), cell(a.contractor), cell(a.status || '—'),
+  /* ── Хүснэгт 3: БАГЦАД ХОЛБОГДООГҮЙ ТӨЛБӨР.
+        ⚠️ ЭНЭ ХҮСНЭГТ ЗААВАЛ. `pkgKeyOf` нь диапазон мөрийг (`Багц-1-4` ·
+        `БАГЦ-10,  БАГЦ-11, …`) `''` болгодог тул тэдгээрийн дүн багцаар
+        задалсан ямар ч Map-д ХЭЗЭЭ Ч харагдахгүй — амьдаар 5.97 тэрбум ₮.
+        Энд л ил гарна. Дүн АЛДАГДААГҮЙ: нийт `paid`-д үлдсэн. ── */
+  const unlinkedTable = table(
+    tr('Багцад холбогдоогүй төлбөр'),
+    [tr('Гэрээний код'), tr('Багц'), tr('Төлбөрийн төрөл'), tr('Олгосон дүн'), tr('Гүйлгээний огноо')],
+    unlinkedPays(rows).map((r): Cell[] => [
+      cell(text(r[C.code], '') || '—'), cell(text(r[C.pkg], '') || '—'),
+      cell(text(r[P.kind], '') || tr('Ангилагдаагүй')),
+      cell(hoAmount(r), 'mnt'), cell(date(dayOf(r[P.payDate]))),
     ]),
   );
 
-  /* ── Анхааруулга: хэтэрсэн (хоног ихээр нь эхэнд) → сөрөг олголт ── */
-  const issues: KpiIssue[] = acts
-    .filter((a) => isOverdue(a, today))
-    .map((a) => ({ a, days: overdueDays(a, today) }))
-    .sort((x, y) => y.days - x.days || (y.a.due ?? 0) - (x.a.due ?? 0))
-    .map(({ a, days }): KpiIssue => ({
-      tone: 'bad',
-      text: tr('{0} · {1} — {2} хоног хэтэрсэн, {3}', a.code, a.pkg, days, mnt(a.due)),
-    }));
-  for (const a of acts) {
-    if (a.net != null && a.net < 0) {
+  /* ── Анхааруулга: дүнгүй төлбөр → кодгүй гэрээ → багцгүй төлбөр →
+        IPC дугаарын цоорхой ── */
+  const issues: KpiIssue[] = [];
+  for (const r of rows) {
+    if (hoAmount(r) == null) {
       issues.push({
         tone: 'warn',
-        text: tr('{0} · {1} — олгох дүн сөрөг, {2}', a.code, a.pkg, mnt(a.net)),
+        text: tr('{0} · {1} — төлбөрийн дүн бүртгэгдээгүй',
+          hoPayCode(r), payWho(r)),
+      });
+    }
+  }
+  for (const c of cs) {
+    if (!c.code) {
+      issues.push({
+        tone: 'warn',
+        text: tr('{0} — гэрээний код бүртгэгдээгүй, {1}', nameOf(c), mnt(c.contractTotal)),
+      });
+    }
+  }
+  for (const r of unlinkedPays(rows)) {
+    issues.push({
+      tone: 'warn',
+      text: tr('{0} — багц олдсонгүй «{1}», {2}',
+        hoPayCode(r), text(r[C.pkg], '') || '—', mnt(hoAmount(r))),
+    });
+  }
+  /* ⚠️ IPC дугаар гэрээ бүрд 1-ээс цоорхойгүй байх ёстой (амьдаар 22/22
+     таарсан). Цоорхой = акт бүртгэгдээгүй ЭСВЭЛ татахад мөр унасан гэсэн
+     ДОХИО — чимээгүй өнгөрөөхгүй. */
+  for (const c of cs) {
+    const g = ipcGaps(c.pays);
+    if (g.length) {
+      issues.push({
+        tone: 'warn',
+        text: tr('{0} — IPC дугаарын цоорхой: {1}', nameOf(c), g.join(', ')),
       });
     }
   }
 
-  /* ⚠️ `asOf` = хамгийн сүүлийн ГҮЙЛГЭЭНИЙ огноо (IPC28/30/32). Гүйлгээгүй бол
-     null — актын бусад огноо нь «өгөгдлийн агшин» биш, төлөвлөгөө. */
-  const asOf = acts.reduce<number | null>(
-    (m, a) => a.payAt.reduce<number | null>((mm, x) => (mm == null || x > mm ? x : mm), m),
-    null,
-  );
+  /* ⚠️ `asOf` = хамгийн сүүлийн ГҮЙЛГЭЭНИЙ огноо (`guilgee_ognoo`, 40/45).
+     Захирамжийн огноо нь «өгөгдлийн агшин» БИШ, шийдвэрийн огноо тул
+     эндээс ХАСАВ. Гүйлгээний огноо огт байхгүй бол null. */
+  const asOf = rows.reduce<number | null>((m, r) => {
+    const x = epochOf(r[P.payDate]);
+    return x == null || (m != null && x <= m) ? m : x;
+  }, null);
 
   return {
-    value: mnt(s.dueTotal),
-    unit: tr('төлөгдөөгүй үлдэгдэл'),
-    facts: s.n === 0 ? [] : [
-      tr('{0} акт нийт', s.n),
-      tr('олгосон {0}', mnt(s.paidTotal)),
-      tr('хянагдаж буй {0} акт', s.reviewing.count),
-      tr('хугацаа хэтэрсэн {0}', s.overdue.count),
-      tr('дүнгүй {0} акт', s.noAmount),
+    value: mnt(s.paid),
+    unit: tr('олгосон санхүүжилт'),
+    facts: s.pays === 0 ? [] : [
+      tr('{0} гэрээ · {1} төлбөр', s.contracts, s.pays),
+      tr('урьдчилгаа {0}', mnt(s.advance)),
+      tr('гүйцэтгэл {0}', mnt(s.work)),
+      /* ⚠️ `pct()` 100-аар ҮРЖҮҮЛДЭГГҮЙ — `paidPct` нь аль хэдийн 0–100 */
+      tr('гэрээнд эзлэх {0}', pct(s.paidPct)),
+      tr('хэмнэлт {0}', mnt(s.saving)),
     ],
     level: ipcLevel(s),
     /* Хоосон хүснэгтийг ОРУУЛАХГҮЙ — тоо нь `facts`-д аль хэдийн бий */
-    tables: [dueTable, reviewTable, noAmountTable].filter((t) => t.rows.length > 0),
+    tables: [finTable, noPayTable, unlinkedTable].filter((t) => t.rows.length > 0),
     issues,
     asOf,
     failedSources: [],
@@ -324,12 +332,11 @@ export function computeIpc(rows: readonly Row[], now: number): KpiResult {
 /* ══════════════ Ачаалагч ══════════════ */
 
 /**
- * ⚠️ Ганц эх сурвалж тул хэсэгчилсэн уналт байхгүй: `loadFinData` унавал
+ * ⚠️ Ганц эх сурвалж тул хэсэгчилсэн уналт байхгүй: `loadHoRows` унавал
  *    ЮУ Ч ачаалагдаагүй → throw (`cached` алдааг кэшлэхгүй, «дахин оролдох»
  *    сэргэнэ). `failedSources` нь тиймээс үргэлж хоосон.
  */
 export const loadIpcKpi = cached<KpiResult>(async () => {
-  const { loadFinData } = await import('@/modules/Finance');
-  const fin = await loadFinData();
-  return computeIpc(fin.acts, Date.now());
-}, IPC_TTL, ['IPC_LOG']);
+  const rows = await loadHoRows();
+  return computeIpc(rows, Date.now());
+}, IPC_TTL, ['HO_IPC']);

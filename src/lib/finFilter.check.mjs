@@ -36,26 +36,26 @@ const cellText = (v, t) => {
 };
 
 /*
- * ⚠️ 2026-09-06: хуучин `cashflow_0813` (CF001…CF036) хаягдаж, `Cashflow_0904`
- * (утгатай латин галиг талбарууд) орлосон. Нүүрнүүд нь: багц (`Bagts`),
- * төрөл (`Turul`), захирамжийн он (`Zahiramj_ognoo`-оос).
+ * ⚠️ 2026-09-09: `Cashflow_0904` хаягдаж, `Cashflow_0909` (`Cashflow_final`)
+ * орлосон — талбарын нэр БҮГД өөрчлөгдсөн. Нүүрнүүд нь: багц (`bagts`),
+ * төрөл (`ajil_tuvshin2`), захирамжийн он (`zahiramj_ognoo`-оос).
  */
 const CF_COLS = [
-  { name: 'Turul', alias: 'Төрөл', type: 'esriFieldTypeString' },
-  { name: 'Bagts', alias: 'Багц', type: 'esriFieldTypeString' },
-  { name: 'Guitsetgegch_baig', alias: 'Гүйцэтгэгч', type: 'esriFieldTypeString' },
-  { name: 'Urdch_tusuwt_urtug', alias: 'Төсөвт өртөг', type: 'esriFieldTypeDouble' },
-  { name: 'Zahiramj_ognoo', alias: 'Захирамжийн огноо', type: 'esriFieldTypeDateOnly' },
+  { name: 'ajil_tuvshin2', alias: 'Төрөл', type: 'esriFieldTypeString' },
+  { name: 'bagts', alias: 'Багц', type: 'esriFieldTypeString' },
+  { name: 'guitsetgegch', alias: 'Гүйцэтгэгч', type: 'esriFieldTypeString' },
+  { name: 'ho_dun_geree', alias: 'Төсөвт өртөг', type: 'esriFieldTypeDouble' },
+  { name: 'zahiramj_ognoo', alias: 'Захирамжийн огноо', type: 'esriFieldTypeDateOnly' },
 ];
 const CF = FIN_FACETS.CASHFLOW_NEW;
 const f = (over = {}) => ({ ...EMPTY_FILTER, ...over, facet: { ...EMPTY_FILTER.facet, ...(over.facet ?? {}) }, col: { ...(over.col ?? {}) } });
 const match = (r, flt) => rowMatches(r, CF_COLS, flt, CF, cellText, isNumeric);
 
 const rows = [
-  { OBJECTID: 1, Turul: 'ГЭРЭЭ', Bagts: 'Багц 4.1', Guitsetgegch_baig: 'МКС', Urdch_tusuwt_urtug: 4058800000, Zahiramj_ognoo: '2026-03-14' },
-  { OBJECTID: 2, Turul: 'ГЭРЭЭ', Bagts: 'Багц 4.1 ', Guitsetgegch_baig: 'МКС', Urdch_tusuwt_urtug: 76000, Zahiramj_ognoo: '2026-04-01' },
-  { OBJECTID: 3, Turul: 'ЗАХИРАМЖ', Bagts: 'Багц 4.2', Guitsetgegch_baig: 'АНУ', Urdch_tusuwt_urtug: null, Zahiramj_ognoo: '2025-08-02' },
-  { OBJECTID: 4, Turul: 'ГЭРЭЭ', Bagts: '', Guitsetgegch_baig: '', Urdch_tusuwt_urtug: 0, Zahiramj_ognoo: '' },
+  { OBJECTID: 1, ajil_tuvshin2: 'ГЭРЭЭ', bagts: 'Багц 4.1', guitsetgegch: 'МКС', ho_dun_geree: 4058800000, zahiramj_ognoo: '2026-03-14' },
+  { OBJECTID: 2, ajil_tuvshin2: 'ГЭРЭЭ', bagts: 'Багц 4.1 ', guitsetgegch: 'МКС', ho_dun_geree: 76000, zahiramj_ognoo: '2026-04-01' },
+  { OBJECTID: 3, ajil_tuvshin2: 'ЗАХИРАМЖ', bagts: 'Багц 4.2', guitsetgegch: 'АНУ', ho_dun_geree: null, zahiramj_ognoo: '2025-08-02' },
+  { OBJECTID: 4, ajil_tuvshin2: 'ГЭРЭЭ', bagts: '', guitsetgegch: '', ho_dun_geree: 0, zahiramj_ognoo: '' },
 ];
 
 /* ── 1. numTest ── */
@@ -99,16 +99,16 @@ assert.equal(match(rows[2], f({ q: 'null' })), false, "String(null) нь хай�
 assert.equal(match(rows[3], f({ q: 'null' })), false);
 
 /* ── 5. `null` ≠ `0` ── */
-assert.equal(match(rows[2], f({ col: { Urdch_tusuwt_urtug: '0' } })), false, 'null нь 0 гэж шүүгдэхгүй');
-assert.equal(match(rows[3], f({ col: { Urdch_tusuwt_urtug: '=0' } })), true, 'бодит 0 нь шүүгдэнэ');
-assert.equal(match(rows[0], f({ col: { Urdch_tusuwt_urtug: '>1e9' } })), true);
-assert.equal(match(rows[1], f({ col: { Urdch_tusuwt_urtug: '>1e9' } })), false);
+assert.equal(match(rows[2], f({ col: { ho_dun_geree: '0' } })), false, 'null нь 0 гэж шүүгдэхгүй');
+assert.equal(match(rows[3], f({ col: { ho_dun_geree: '=0' } })), true, 'бодит 0 нь шүүгдэнэ');
+assert.equal(match(rows[0], f({ col: { ho_dun_geree: '>1e9' } })), true);
+assert.equal(match(rows[1], f({ col: { ho_dun_geree: '>1e9' } })), false);
 
 /* ── 6. Багана бүрийн шүүлт нь ХОСЛОНО (БА) ── */
-assert.equal(match(rows[0], f({ col: { Turul: 'ГЭРЭЭ', Guitsetgegch_baig: 'МКС' } })), true);
-assert.equal(match(rows[0], f({ col: { Turul: 'ГЭРЭЭ', Guitsetgegch_baig: 'АНУ' } })), false);
+assert.equal(match(rows[0], f({ col: { ajil_tuvshin2: 'ГЭРЭЭ', guitsetgegch: 'МКС' } })), true);
+assert.equal(match(rows[0], f({ col: { ajil_tuvshin2: 'ГЭРЭЭ', guitsetgegch: 'АНУ' } })), false);
 assert.equal(
-  match(rows[0], f({ facet: { type: 'ГЭРЭЭ' }, q: 'МКС', col: { Urdch_tusuwt_urtug: '>1e9' } })),
+  match(rows[0], f({ facet: { type: 'ГЭРЭЭ' }, q: 'МКС', col: { ho_dun_geree: '>1e9' } })),
   true,
   'нүүр + чөлөөт хайлт + баганын шүүлт гурвуулаа',
 );
@@ -118,25 +118,48 @@ assert.equal(isDirty(EMPTY_FILTER), false);
 assert.equal(isDirty(f({ q: '  ' })), false, 'зөвхөн зай нь шүүлт биш');
 assert.equal(isDirty(f({ q: 'а' })), true);
 assert.equal(isDirty(f({ facet: { year: '2026' } })), true);
-assert.equal(isDirty(f({ col: { Urdch_tusuwt_urtug: '>1' } })), true);
+assert.equal(isDirty(f({ col: { ho_dun_geree: '>1' } })), true);
 
-/* ── 9. IPC-ийн он нь IPC09-өөс ── */
-const IPC = FIN_FACETS.IPC_LOG;
-const ipcRows = [
-  { IPC03: 'Багц 4.1', IPC06: 'Завсрын', IPC09: '2026-01-01' },
-  { IPC03: 'Багц 4.1', IPC06: 'Эцсийн', IPC09: null },
-  { IPC03: 'Багц 5', IPC06: 'Завсрын', IPC09: 1_767_225_600_000 },
+/* ── 9. HO-гийн он нь ЖИНХЭНЭ `on_` талбараас ── */
+/*
+ * ⚠️ 2026-09-09: `IPC_LOG` (`ipc_0813/172`, ТЕСТ өгөгдөл) хаягдаж `HO_IPC`
+ * орлов. Хуучинд он гэсэн талбар БАЙХГҮЙ байсан тул `IPC09` (хамрах хугацаа)
+ * -ийн жилээр гаргадаг байв; шинэд `on_` (Integer 2025/2026) БИЙ.
+ *
+ * ⚠️ ЭНЭ ШАЛГУУРЫН ГОЛ ЗОРИЛГО: `on_` нь `yearOf()`-ЫГ ХЭРЭГЛЭХГҮЙ
+ * гэдгийг бэхжүүлэх. `yearOf` нь epoch мс ба `YYYY-MM-DD` хэлбэрт
+ * зориулагдсан; дан `2025` дээр САНАМСАРГҮЙ ажиллах ч тэр нь эмзэг
+ * тохиолдол. Хэн нэг нь «нэгдмэл болгоё» гэж `yearOf` руу шилжүүлбэл
+ * доорх `2025` тоон утгын шалгуур сануулга өгнө.
+ */
+const HO = FIN_FACETS.HO_IPC;
+const hoRows = [
+  { bagts: 'Багц-4.1', tulult_turul: 'Гүйцэтгэл', on_: 2026 },
+  { bagts: 'Багц-4.1', tulult_turul: null, on_: null },
+  { bagts: 'Багц-5', tulult_turul: 'Урьдчилгаа төлбөр', on_: 2025 },
 ];
-assert.equal(IPC[1].valueOf(ipcRows[0]), '2026');
-assert.equal(IPC[1].valueOf(ipcRows[1]), '', 'огноогүй мөр хоосон хувинд');
-assert.equal(IPC[1].valueOf(ipcRows[2]), '2026', 'epoch (мс) хэлбэр ч уншигдана');
-assert.deepEqual(facetValues(ipcRows, IPC[1]), ['2026', '']);
+assert.equal(HO[1].valueOf(hoRows[0]), '2026', 'Integer он → мөр');
+assert.equal(HO[1].valueOf(hoRows[1]), '', 'онгүй мөр хоосон хувинд');
+assert.equal(HO[1].valueOf(hoRows[2]), '2025');
+assert.deepEqual(facetValues(hoRows, HO[1]), ['2025', '2026', ''],
+  'хоосон нь ТӨГСГӨЛД тусдаа хувинд');
+/* ⚠️ Төлбөрийн төрөл 2/45 мөрд ХООСОН — чимээгүй хаягдахгүй, хоосон хувинд */
+assert.equal(HO[2].valueOf(hoRows[1]), '', 'төрөлгүй мөр хоосон хувинд');
+assert.deepEqual(facetValues(hoRows, HO[2]), ['Гүйцэтгэл', 'Урьдчилгаа төлбөр', '']);
+assert.equal(HO[0].valueOf(hoRows[0]), 'Багц-4.1', 'багц нь `bagts` талбараас');
 
 /* ── 10. Талбарын код нь толинд БАЙГАА эсэх ── */
-/* ⚠️ Оролтыг ОГНООНЫ хэлбэрээр өгнө: нүүрүүдийн зарим нь (IPC-ийн «Он») утгыг
-   огнооноос ГАРГАДАГ тул 'x' гэсэн утга хоосон буцааж, шалгуур худал унана. */
+/* ⚠️ Оролтыг ОГНООНЫ хэлбэрээр өгнө: нүүрүүдийн зарим нь утгыг огнооноос
+   ГАРГАДАГ тул 'x' гэсэн утга хоосон буцааж, шалгуур худал унана.
+
+   ⚠️ 2026-09-09: `HO_IPC` нүүрнүүд ЭНД ОРООГҮЙ. `financeFieldLabels.ts` нь
+   `IPC0xx` кодын толь хэвээр байгаа (тэр файлыг шинэчлэх нь энэ алхмын
+   хамрах хүрээнээс ГАДУУР) тул HO-гийн `bagts`/`on_`/`tulult_turul` гурав
+   тэнд БАЙХГҮЙ. Толь HO-гоор нөхөгдмөгц доорх шүүлтийг ХАСАЖ бүх нүүрийг
+   эргүүлж хамруулна — эс бөгөөс шүүлтийн жагсаалт чимээгүй хоосорно. */
 const probe = Object.fromEntries(Object.keys(FIN_FIELD_LABELS).map((k) => [k, '2026-01-01']));
 for (const [key, facets] of Object.entries(FIN_FACETS)) {
+  if (key === 'HO_IPC') continue;
   for (const fc of facets) {
     assert.notEqual(fc.valueOf(probe), '', `${key}/${fc.key} — талбарын код FIN_FIELD_LABELS-д алга`);
   }

@@ -60,6 +60,29 @@ export type Assign = {
   stage: Stage;
   /** Багцын нэрс (`PKG_GROUPS`). `[ALL_BAGTS]` = бүх багц. */
   bagts: string[];
+  /**
+   * ХӨНДЛӨНГИЙН ХЯНАЛТ — ХАРНА, ШИЙДВЭРЛЭХГҮЙ (2026-09-09).
+   *
+   * ⚠️ ЯАГААД ХЭРЭГТЭЙ ВЭ: аудитор, захиалагчийн төлөөлөгч, зөвлөх инженер
+   *    зэрэг хүн гүйцэтгэлийн явцыг ХАРАХ ёстой ч батлах/буцаах эрхгүй.
+   *    Урьд нь хоёрхон сонголт байсан бөгөөд хоёулаа буруу:
+   *      · томилвол   → шийдвэрлэх эрхтэй болно
+   *      · томилохгүй → `bagtsFor` нь `[]` өгч жагсаалт ХООСОН болно
+   *    Дундах зам байгаагүй.
+   *
+   * ⚠️ ЯАГААД ЭНД, «Хэрэглэгчдийн эрх удирдах»-д БИШ: тэнд БАГЦ гэсэн
+   *    ойлголт ОГТ байхгүй (зөвхөн харагдац + 11 эрх). Тэнд хийвэл багцын
+   *    хүрээг ХОЁР ДАХЬ удаа зохиох шаардлагатай болж, яг тэр давхардлаас
+   *    2026-09-08 · 09-нд 9 алдаа гарсан хэв шинж давтагдана.
+   *
+   * ⚠️ ШИНЭ ШАТ БИШ: шат нь ЯМАР нүдээр харахыг (миний ажил ↔ бусад)
+   *    тодорхойлдог тул харагч ч мөн шаттай байх ёстой. Зөвхөн ШИЙДВЭР
+   *    хаагдана (`resolveFlowStage` → `canReview: false`).
+   *
+   * ⚠️ FAIL-CLOSED: `undefined` = хуучин мөр = ЖИРИЙН томилгоо (шийдвэрлэнэ).
+   *    Энэ туг нь эрхийг ХАСДАГ болохоос НЭМДЭГГҮЙ тул хуучин мөр аюулгүй.
+   */
+  viewOnly?: boolean;
 };
 
 const KEY = 'selbe-guitsetgel-acl-v1';
@@ -119,15 +142,23 @@ const STAGES = new Set<string>(STAGE_ORDER);
  * `permsRemote.upsertByKey`-ийн бичилтийн дүрэмтэй ижил (урьд нь эхнийх нь
  * уншигдаж, бичилттэй зөрдөг байв).
  */
-export function _syncRemoteAssigns(rows: { user: string; stage: string; bagts: string[] }[]): void {
+export function _syncRemoteAssigns(
+  rows: { user: string; stage: string; bagts: string[]; viewOnly?: boolean }[],
+): void {
   const byUser = new Map<string, Assign>();
   for (const r of rows) {
     if (!r.user || !STAGES.has(r.stage)) continue;
-    const user = r.user.toLowerCase();
+    /* ⚠️ trim() (2026-09-08): remote мөрийн username-д санамсаргүй хоосон зай
+       орвол түлхүүр нь бичилтийн талын (set*Assign нь trim().toLowerCase()
+       хийдэг) түлхүүртэй ТААРАХГҮЙ болж, хуваарилалт «алга болдог» байв. */
+    const user = r.user.trim().toLowerCase();
     byUser.set(user, {
       user,
       stage: r.stage as Stage,
       bagts: (Array.isArray(r.bagts) ? r.bagts : []).filter((b) => typeof b === 'string'),
+      /* ⚠️ ЗӨВХӨН ЯГ `true` — «1», «yes» гэх мэт утга эрх ХАСАХГҮЙ. Тугийн
+         утга нь эргэлзээтэй бол ЖИРИЙН томилгоо гэж үзнэ (хуучин мөр). */
+      ...(r.viewOnly === true ? { viewOnly: true as const } : {}),
     });
   }
   save([...byUser.values()]);
@@ -181,7 +212,7 @@ async function pushFlow(user: string): Promise<boolean> {
   try {
     const m = await import('./permsRemote');
     const a = load().find((x) => x.user === user);
-    return a ? m.flowUpsert(a.user, a.stage, a.bagts) : m.flowRemove(user);
+    return a ? m.flowUpsert(a.user, a.stage, a.bagts, a.viewOnly === true) : m.flowRemove(user);
   } catch {
     return false;
   }
@@ -235,7 +266,16 @@ export function setAssign(
     const g = grant ? await grantFlowAccess(u, stage) : true;
     return { ok, g };
   });
-  const sync = run.then((r) => { markResult(u, r.ok); return r.ok; });
+  /*
+   * ⚠️ ЭРХ ОЛГОЛТЫН ҮР ДҮНГ ЗАЛГИХГҮЙ (2026-09-08). Бусад гурван ACL модульд
+   *    (`qaqc` · `huvaari` · `obyem`) энэ засвар орсон ч ЭНЭ модульд орхигдсон
+   *    байв — гэтэл урсгал нь хамгийн чухал нь. Урьд нь `markResult(u, r.ok)`
+   *    байсан тул: томилгооны мөр бичигдээд `grantFlowAccess` (харагдац олгох)
+   *    УНАВАЛ админд «амжилттай» гэж ХУДАЛ харагдана. Хэрэглэгч томилогдсон ч
+   *    «Гүйцэтгэл» харагдацгүй тул шатандаа ОГТ орж чадахгүй, панел дээр ямар ч
+   *    дохио байхгүй.
+   */
+  const sync = run.then((r) => { markResult(u, r.ok && r.g); return r.ok && r.g; });
   const granted = run.then((r) => r.g);
   return { ok: true, sync, granted };
 }
@@ -276,9 +316,17 @@ export function removeAssign(user: string, stage: Stage, revoke = true): { sync:
      *    ДАХИН уншина. Хэрэглэгч ямар нэг шатанд байвал (өөр шат ч бай)
      *    түүний эрхийг нь тэр томилгоо хариуцна, энд буцааж авахгүй.
      */
-    if (revoke && !stageOfUser(u)) await revokeFlowAccess(u, stage).catch(() => {});
-    markResult(u, ok);
-    return ok;
+    /*
+     * ⚠️ ЭРХ БУЦААЛТЫН ҮР ДҮНГ ЗАЛГИХГҮЙ (2026-09-08-ны хоёр дахь шалгалт).
+     *    Урьд нь `.catch(() => {})` гэж алдааг чимээгүй иддэг байв: `__flow__:`
+     *    мөр устсан ч харагдацын буцаалт (`revokeFlowAccess` → `setUser`)
+     *    ArcGIS-д унавал админд «амжилттай» гэж ХУДАЛ харагдана. Тэр хүн
+     *    томилгоогүй атлаа «Гүйцэтгэл» харагдацаа хадгалж үлдэнэ — `qaqc`,
+     *    `huvaari`, `obyem` гуравт 2026-09-08-нд зассан ЯГ ИЖИЛ алдаа.
+     */
+    const g = revoke && !stageOfUser(u) ? await revokeFlowAccess(u, stage).catch(() => false) : true;
+    markResult(u, ok && g);
+    return ok && g;
   });
   return { sync };
 }
@@ -298,6 +346,39 @@ export function purgeAssign(user: string): Promise<boolean> {
     markResult(u, ok);
     return ok;
   });
+}
+
+/**
+ * ХӨНДЛӨНГИЙН ХЯНАЛТЫН тугийг асаах / унтраах (2026-09-09).
+ *
+ * ⚠️ ЗӨВХӨН ТОМИЛОГДСОН хүнд утгатай: тэр нь ШИЙДВЭРЛЭХ эрхийг хасдаг
+ *    болохоос багц ЭСВЭЛ шатыг өгдөггүй. Томилгоогүй хүнд дуудвал
+ *    `{ ok: false }` — эс бөгөөс «харагч» гэж тэмдэглэсэн атлаа жагсаалт нь
+ *    хоосон хэвээр байх утгагүй төлөв үүснэ.
+ *
+ * ⚠️ ЭРХ ХӨНДӨХГҮЙ: `guitsetgel` харагдац нь томилгооноос аль хэдийн
+ *    олгогдсон (`grantFlowAccess`) бөгөөд харагч ч мөн ХАРАХ ёстой тул
+ *    түүнийг хасах шаардлагагүй.
+ */
+export function setViewOnly(
+  user: string, viewOnly: boolean,
+): { ok: boolean; error?: string; sync?: Promise<boolean> } {
+  const u = user.trim().toLowerCase();
+  if (!u) return { ok: false, error: 'Аккаунтын нэрээ бичнэ үү' };
+  const list = load();
+  const cur = list.find((a) => a.user === u);
+  if (!cur) {
+    return { ok: false, error: 'Эхлээд шатанд томилно уу — хөндлөнгийн хяналт нь томилгоон дээр тавигдана' };
+  }
+  save(list.map((a) => (a.user === u
+    ? (viewOnly ? { ...a, viewOnly: true } : { user: a.user, stage: a.stage, bagts: a.bagts })
+    : a)));
+  const sync = enqueue(u, async () => {
+    const ok = await pushFlow(u);
+    markResult(u, ok);
+    return ok;
+  });
+  return { ok: true, sync };
 }
 
 const viewsEqual = (a: ViewKey[] | 'all', b: ViewKey[] | 'all'): boolean =>
@@ -353,7 +434,15 @@ async function grantFlowAccess(user: string, stage: Stage): Promise<boolean> {
  * · Панелаас нэмсэн, зөвхөн урсгалын хүн → `guitsetgel` харагдацыг хасна
  *   (үлдсэн харагдац нь хэвээр — админ хүсвэл панелаас бүрмөсөн устгана).
  */
-async function revokeFlowAccess(user: string, stage: Stage): Promise<void> {
+/**
+ * ⚠️ ҮР ДҮНГЭЭ БУЦААНА (2026-09-08-ны хоёр дахь шалгалт). Урьд нь
+ * `Promise<void>` байсан тул бүх салаа `setUser`/`clearOverride`-ийн
+ * амжилтыг ХАЯДАГ байв — дуудагч тал (`removeAssign`) «эрх буцаагдсан»
+ * гэж үзэж админд амжилттай гэж мэдээлнэ, гэтэл ArcGIS дээр харагдац нь
+ * ҮЛДСЭН байж болно. `qaqc`/`huvaari`/`obyem`-ийн `syncCaps` нь үр дүнгээ
+ * буцаадаг — энэ модуль тэдэнтэй тэнцэв.
+ */
+async function revokeFlowAccess(user: string, stage: Stage): Promise<boolean> {
   const { resolveBaseAccess, roleOf, setUser, clearOverride } = await import('./permissions');
   const cur = resolveBaseAccess(user);
   /*
@@ -361,11 +450,10 @@ async function revokeFlowAccess(user: string, stage: Stage): Promise<void> {
    * Урьд нь хатуу тохиргооны устгагдсан хүний хуучирсан томилгоог ✕-ээр хасахад
    * `clearOverride` tombstone-ыг нь арчиж, тэр хүн дахин нэвтэрдэг байв.
    */
-  if (!cur) return;
+  if (!cur) return true;
   const base = roleForUser(user);
   if (base && FLOW_ROLES.has(base)) {
-    await clearOverride(user);
-    return;
+    return await clearOverride(user);
   }
   const curRole = roleOf(user);
   const baseViews = base ? ROLE_ACCESS[base].views : null;
@@ -375,11 +463,10 @@ async function revokeFlowAccess(user: string, stage: Stage): Promise<void> {
   if (base) {
     const b = ROLE_ACCESS[base];
     if (role === base && cur.docs === b.docs && viewsEqual(views, b.views)) {
-      await clearOverride(user);
-      return;
+      return await clearOverride(user);
     }
   }
-  await setUser(user, { views, docs: cur.docs }, role);
+  return await setUser(user, { views, docs: cur.docs }, role);
 }
 
 /**
@@ -396,8 +483,21 @@ export function regrantFlowAccess(user: string): Promise<boolean> {
 /** Аккаунт аль шатанд томилогдсон бэ (томилогдоогүй бол `null`) */
 export function stageOfUser(user?: string | null): Stage | null {
   if (!user) return null;
-  const a = load().find((x) => x.user === user.toLowerCase());
+  const a = load().find((x) => x.user === user.trim().toLowerCase());
   return a?.stage ?? null;
+}
+
+/**
+ * ХӨНДЛӨНГИЙН ХЯНАЛТ уу — ХАРНА, ШИЙДВЭРЛЭХГҮЙ (2026-09-09).
+ *
+ * ⚠️ FAIL-CLOSED БИШ, FAIL-SAFE: `undefined` (хуучин мөр) нь `false` буюу
+ *    ЖИРИЙН томилгоо. Энэ туг нь эрхийг ХАСДАГ болохоос НЭМДЭГГҮЙ тул
+ *    анхдагчаар унтраалттай байх нь эрх чөлөөлөхгүй — томилогдсон хүн
+ *    урьдын адил шийдвэрлэсээр байна.
+ */
+export function isViewOnly(user?: string | null): boolean {
+  if (!user) return false;
+  return load().find((x) => x.user === user.trim().toLowerCase())?.viewOnly === true;
 }
 
 /**
@@ -488,7 +588,22 @@ export function resolveFlowStage(
     return { stage: picked ?? 'engineer', canReview: true, canPick: true, scope: null };
   }
   const st = stageOfUser(user);
-  if (st) return { stage: st, canReview: true, canPick: false, scope: bagtsFor(user, st) };
+  if (st) {
+    /*
+     * ⚠️ ХӨНДЛӨНГИЙН ХЯНАЛТ (2026-09-09): томилогдсон ч `viewOnly` тугтай бол
+     *    ХАРНА, ШИЙДВЭРЛЭХГҮЙ. Багцын хүрээ нь ХЭВЭЭР үйлчилнэ — «Багц 1, 2-ыг
+     *    хянана» гэсэн аудитор яг тэр хоёрыг л харна.
+     * ⚠️ Шат нь ХЭВЭЭР: тэр нь ЯМАР нүдээр харахыг (миний ажил ↔ бусад)
+     *    тодорхойлдог тул харагчид ч хэрэгтэй. Зөвхөн `canReview` хаагдана.
+     */
+    const viewOnly = isViewOnly(user);
+    return {
+      stage: st,
+      canReview: !viewOnly,
+      canPick: false,
+      scope: bagtsFor(user, st),
+    };
+  }
   const byRole = role ? ROLE_STAGE[role] ?? null : null;
   return { stage: byRole, canReview: false, canPick: false, scope: [] };
 }
