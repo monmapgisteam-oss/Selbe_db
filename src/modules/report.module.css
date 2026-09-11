@@ -155,6 +155,18 @@
   color: var(--ink-3);
 }
 
+/* Тайлан үүсгэхэд гарсан алдаа — зурвасын доор, товчнуудын хажууд.
+   ⚠️ `alert()`-ийн оронд (2026-09-11). Өнгө нь `ui.module.css`-ийн `.error`-той
+   ижил `--bad-ink` — порталын алдаанууд НЭГ өнгөтэй байх ёстой.
+   ⚠️ `.toolbar` нь хэвлэхэд нуугддаг тул энэ мэдэгдэл цаасан дээр гарахгүй —
+   тайлангийн агуулгад хамаагүй, зөвхөн дэлгэцийн үйлдлийн эргэх холбоо. */
+.fail {
+  margin: 8px 0 0;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--bad-ink);
+}
+
 @media print {
   .wrap { background: #fff; padding: 0; overflow: visible; }
   .toolbar { display: none; }

@@ -209,6 +209,74 @@ const pay = (oid, code, pkg, kind, dun, extra = {}) => row(oid, {
   assert.equal(hoTotals([{ OBJECTID: 1, [C.code]: 'Г', ...r }]).saving, 84_488);
 }
 
+/* ══ 8-Б. AUTO МӨР — гэрээний талбарыг ХООСРУУЛАХГҮЙ (2026-09-11) ══
+
+   ⚠️ ЭНЭ БОЛ БОДИТ, ХЭМЖСЭН АЛДАА. `ipcAuto.autoInsert` нь гэрээний талбарыг
+   ОГТ бичдэггүй тул AUTO мөр бүр ХООСОН төсөвтэй. Амьдаар 52 мөрийн 7 нь
+   AUTO. Хуучин «эхний мөрөөр dedup» дүрмээр AUTO мөр бүлгийн эхэнд ирвэл
+   тухайн гэрээний төсөв `null` болж, нийт төсөв 2,090.2 → 166.1 тэрбум ₮
+   болж ЧИМЭЭГҮЙ уначихдаг байв. Одоо «утгатай эхний мөр»-өөс авна. */
+{
+  const AUTO = { [P.id]: 'AUTO|БАГЦ1|2026-09-09' };
+  const real = pay(1, 'Багц-1', 'Багц-1', work, 10,
+    { [C.budgetTotal]: 373_645_400_000, [C.contractTotal]: 373_298_048_361,
+      [C.contractor]: 'Гүйцэтгэгч ХХК' });
+  // ⚠️ AUTO мөр ЭХЭНД — амьд өгөгдөлд OID нь сүүлд байгаа нь САНАМСРААР
+  const autoFirst = row(46, {
+    [C.code]: 'Багц-1', [C.pkg]: 'Багц 1', [P.kind]: work, [P.amount]: 5, ...AUTO,
+  });
+
+  for (const rows of [[autoFirst, real], [real, autoFirst]]) {
+    const g = groupHo(rows);
+    assert.equal(g.length, 1, 'AUTO мөр ТУСДАА гэрээ болохгүй — кодоороо нийлнэ');
+    assert.equal(g[0].budgetTotal, 373_645_400_000,
+      '⚠️ AUTO мөр ЭХЭНД ирсэн ч төсөв `null` БОЛОХГҮЙ (дарааллаас хамаарахгүй)');
+    assert.equal(g[0].contractTotal, 373_298_048_361, '⚠️ гэрээт төсөв мөн адил');
+    assert.equal(g[0].contractor, 'Гүйцэтгэгч ХХК',
+      '⚠️ бичвэр талбар ч утгатай мөрөөс — AUTO мөрийн хоосон утга ДАРАХГҮЙ');
+    assert.equal(g[0].saving, 373_645_400_000 - 373_298_048_361,
+      '⚠️ хэмнэлт нь СОНГОСОН хоёр утгаас бодогдоно (нэг мөрөөс БИШ)');
+    assert.equal(g[0].paidTotal, 15, 'төлбөр нь ХОЁУЛАНГААС нийлнэ');
+    assert.equal(hoTotals(rows).budget, 373_645_400_000,
+      '⚠️ НИЙТ төсөв дарааллаас ҮЛ ХАМААРНА');
+  }
+}
+
+/* ══ 8-В. ХОЁР ӨӨР non-null утга — ЧИМЭЭГҮЙ сонгохгүй, АНХААРУУЛНА ══
+
+   ⚠️ Амьд өгөгдөлд мөнгөн талбарт ийм зөрчил АЛГА (2026-09-11). Гарвал энэ нь
+   эх сурвалж дээр НЭГ гэрээ хоёр өөр төсөвтэй бичигдсэн гэсэн үг — кодоор
+   шийдэх боломжгүй тул ЭХНИЙХИЙГ авч, console.warn-оор ил хэлнэ. */
+{
+  const warns = [];
+  const orig = console.warn;
+  console.warn = (m) => warns.push(String(m));
+  try {
+    const g = groupHo([
+      pay(1, 'Багц-9', 'Багц-9', work, 1, { [C.budgetTotal]: 100 }),
+      pay(2, 'Багц-9', 'Багц-9', work, 1, { [C.budgetTotal]: 999 }),
+    ]);
+    assert.equal(g[0].budgetTotal, 100, 'ЭХНИЙ non-null утгыг барина');
+    assert.equal(warns.length, 1, '⚠️ ЧИМЭЭГҮЙ өнгөрөхгүй — ЯГ нэг анхааруулга');
+    assert.ok(warns[0].includes('tosov_niit') && warns[0].includes('Багц-9'),
+      'анхааруулга нь ГЭРЭЭ ба ТАЛБАРЫГ нэрлэнэ');
+  } finally { console.warn = orig; }
+
+  // ⚠️ `bagts`-ийн бичиглэлийн зөрүү нь анхааруулга ҮҮСГЭХГҮЙ: «Багц-4.1» ба
+  //    «Багц 4-1» хоёр `bagtsKey`-ээр ИЖИЛ түлхүүрт унадаг тул холбоос эвдрэхгүй.
+  const w2 = [];
+  const o2 = console.warn;
+  console.warn = (m) => w2.push(String(m));
+  try {
+    const g = groupHo([
+      pay(1, 'Багц-4.1', 'Багц-4.1', work, 1),
+      pay(2, 'Багц-4.1', 'Багц 4-1', work, 1),
+    ]);
+    assert.equal(w2.length, 0, '⚠️ багцын бичиглэл зөрсөн нь ЗӨРЧИЛ БИШ');
+    assert.equal(g[0].key, 'БАГЦ41', 'хоёр бичиглэл НЭГ түлхүүрт');
+  } finally { console.warn = o2; }
+}
+
 /* ══ 9. ДАРААЛАЛ хадгалагдана (OID эрэмбэ) ══ */
 {
   const rows = [

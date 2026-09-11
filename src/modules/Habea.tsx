@@ -36,7 +36,7 @@ import { cached } from '@/lib/live';
 import { usePanes } from './habeaPanes';
 import { useUzleg, UzlegLeft, UzlegRight, UzlegFin, type UzlegKind } from './habeaUzleg';
 import { Section, Bars, Donut, Select, Series, Stack, Loading, Empty } from '@/components/ui';
-import { num, date, text } from '@/lib/format';
+import { num, date, text, dayKey } from '@/lib/format';
 import { MapCanvas, type Dim } from '@/components/MapCanvas';
 import { MapTools } from '@/components/MapTools';
 import { useZoomToFilter } from '@/lib/useZoomToFilter';
@@ -415,7 +415,12 @@ function byDaySeries(rows: Row[], sfx: string | null, key: 'niitAjiltan' | 'niit
      *    ижил түлхүүр давхардана. Тиймээс өдрөөр НЭГТГЭЖ нийлбэрийг авна.
      */
     .reduce<{ key: string; label: string; value: number; display: string }[]>((acc, x) => {
-      const iso = new Date(x.d).toISOString().slice(0, 10);
+      /* ⚠️ ОРОН НУТГИЙН огноогоор бүлэглэнэ (`dayKey`). Урьд нь
+         `toISOString().slice(0, 10)` байсан тул +08 бүсэд орон нутгийн
+         00:00–07:59-д илгээсэн тайлан ӨМНӨХ өдрийн баганад нийлдэг байв;
+         `byMonthSeries` нь энэ түлхүүрийн эхний 7 тэмдэгтээр сар авдаг тул
+         сарын эхний шөнийн бүртгэл бүтэн сараар ч гулсдаг байлаа. */
+      const iso = dayKey(x.d);
       const last = acc[acc.length - 1];
       /* ⚠️ Дээрх шүүлт `value != null`-ыг баталсан — энд утга ҮРГЭЛЖ тоо */
       const v = x.value as number;

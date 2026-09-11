@@ -135,6 +135,23 @@ const SUPER_OWNERS = new Set(
   Object.entries(ROLE_BY_USER).filter(([, r]) => r === 'super').map(([u]) => u.toLowerCase()),
 );
 
+/**
+ * ХУУЧИН ЭЗЭД — `ROLE_BY_USER`-ээс хасагдсан ч хүснэгтийг үүсгэсэн байж
+ * болох аккаунтууд (2026-09-11, `permsRemote.FORMER_TABLE_OWNERS`-ийн загвар).
+ *
+ * ⚠️ ЯАГААД ХЭРЭГТЭЙ: хүснэгтийг үүсгэсэн хүн дараа нь super жагсаалтаас
+ *    хасагдвал `findTableUrl` нь БАЙГАА хүснэгтээ «эзэн танигдахгүй» гэж
+ *    няцааж, шинээр үүсгэхийг ч хориглоно (`ownerMismatch`). Тэр үед
+ *    батлах урсгал бүхэлдээ зогсоно — 2026-09-11-нд яг ийм байдал үүсэв.
+ * ⚠️ Энд нэмэх нь ЗӨВХӨН УНШИХ эрхийг нээнэ: хүснэгт өөрөө AGOL дээр
+ *    хуваалцагдсан хэвээр, бичих эрх нь тэндээс хамаарна.
+ */
+const FORMER_TABLE_OWNERS: string[] = [];
+const TABLE_OWNERS = new Set([
+  ...SUPER_OWNERS,
+  ...FORMER_TABLE_OWNERS.map((u) => u.toLowerCase()),
+]);
+
 let tableUrlCache: string | undefined;
 /** Ижил нэртэй боловч танигдахгүй эзэнтэй хүснэгт — шинээр үүсгэхийг хориглоно */
 let ownerMismatch = false;
@@ -146,11 +163,27 @@ let ownerMismatch = false;
  */
 async function findTableUrl(token: string): Promise<string | null> {
   const search = await req(`${restBase()}/search`, {
-    q: `title:"${TITLE}" type:"Feature Service"`, token, num: '10',
+    q: `title:"${TITLE}" type:"Feature Service"`,
+    token,
+    /*
+     * ⚠️ 100 (2026-09-11, `permsRemote.ts:176-181`-ийн засварыг тараав):
+     * хайлт нь org доторх ХЭНИЙ Ч ижил нэртэй item-ыг буцаадаг тул хэн
+     * нэгэн 10+ хуурамч item үүсгэвэл ЖИНХЭНЭ хүснэгт эхний 10-т багтахаа
+     * больж, `ownerMismatch` асаад бүх клиентийн урсгал УНТАРНА.
+     */
+    num: '100',
   });
-  const results = (search.results as Array<{ url?: string; title?: string; owner?: string }>) ?? [];
+  const results = (search.results as Array<{ url?: string; title?: string; owner?: string; access?: string }>) ?? [];
   const same = results.filter((x) => x.title === TITLE && x.url);
-  const hit = same.find((x) => SUPER_OWNERS.has(String(x.owner ?? '').toLowerCase()));
+  const hit = same.find((x) => TABLE_OWNERS.has(String(x.owner ?? '').toLowerCase()));
+  /* ⚠️ Нийтэд нээлттэй эсэхийг ЭНД барина — `access` нь хайлтын хариунд
+     хамт ирдэг тул нэмэлт хүсэлт хэрэггүй (`permsRemote`-ийн загвар). */
+  if (String(hit?.access ?? '') === 'public') {
+    console.error(
+      `[selbe] ${TITLE} хүснэгт НИЙТЭД (public) нээлттэй — нэвтрээгүй хэн ч`,
+      'батлах мөрийг засаж чадна. AGOL дээр Share-ийг «Organization» болгоно уу.',
+    );
+  }
   ownerMismatch = !hit && same.length > 0;
   if (ownerMismatch) {
     console.error(

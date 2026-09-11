@@ -73,8 +73,29 @@ export type PlanSubmission = {
   payload: string;
 };
 
+/**
+ * ХУВААРИЙН ТӨРӨЛ — илгээлт АЛЬ огнооны багцад хамаарах вэ (2026-09-11).
+ *
+ * ⚠️ `plan`  = ТӨЛӨВЛӨСӨН (`F…_Эхлэх`/`…_Дуусах`) — ажлын явцад хөдөлдөг.
+ *    `geree` = ГЭРЭЭНИЙ (`F…_geree_ehleh`/`…_geree_duusah`) — лавлагаа.
+ * ⚠️ Энэ нь `Huvaari.tsx`-ийн `PlanKind`-ийн ХУУЛБАР БИШ, ЭХ тодорхойлолт:
+ *    модуль нь React-гүй тестлэгддэг тул төрлөө өөрөө эзэмшинэ.
+ */
+export type PlanPayloadKind = 'plan' | 'geree';
+
 /** `payload`-ийн задарсан хэлбэр — `Huvaari`-ийн гурван ноорог */
 export type PlanPayload = {
+  /**
+   * ЯМАР ОГНООНЫ багцад хамаарах (2026-09-11).
+   *
+   * ⚠️ ЗААВАЛ БИЧИГДЭНЭ. Урьд нь БАЙГААГҮЙ тул батлагч нь ӨӨРИЙН харж буй
+   *    табаар бичих талбарыг дур мэдэн шийддэг байв: «Гэрээ» таб дээр байхад
+   *    ТӨЛӨВЛӨГӨӨНИЙ санал `…_geree_*` талбарт бичигдэж, гэрээний лавлагаа
+   *    чимээгүй эвдэрдэг байсан (2026-09-11-ний аудитын S1).
+   * ⚠️ ХУУЧИН илгээлтэд энэ талбар БАЙХГҮЙ — `parsePayload` нь тэднийг
+   *    `'plan'` гэж үзнэ (тэр үед зөвхөн төлөвлөгөө байсан тул ҮНЭН).
+   */
+  kind: PlanPayloadKind;
   /** `oid` → блок бүрийн муж (`null` = тухайн блокт хуваарь байхгүй) */
   spans: Record<string, ({ start: number; end: number } | null)[]>;
   /** `oid` → уялдааны текст */
@@ -135,6 +156,23 @@ const SUPER_OWNERS = new Set(
   Object.entries(ROLE_BY_USER).filter(([, r]) => r === 'super').map(([u]) => u.toLowerCase()),
 );
 
+/**
+ * ХУУЧИН ЭЗЭД — `ROLE_BY_USER`-ээс хасагдсан ч хүснэгтийг үүсгэсэн байж
+ * болох аккаунтууд (2026-09-11, `permsRemote.FORMER_TABLE_OWNERS`-ийн загвар).
+ *
+ * ⚠️ ЯАГААД ХЭРЭГТЭЙ: хүснэгтийг үүсгэсэн хүн дараа нь super жагсаалтаас
+ *    хасагдвал `findTableUrl` нь БАЙГАА хүснэгтээ «эзэн танигдахгүй» гэж
+ *    няцааж, шинээр үүсгэхийг ч хориглоно (`ownerMismatch`). Тэр үед
+ *    батлах урсгал бүхэлдээ зогсоно — 2026-09-11-нд яг ийм байдал үүсэв.
+ * ⚠️ Энд нэмэх нь ЗӨВХӨН УНШИХ эрхийг нээнэ: хүснэгт өөрөө AGOL дээр
+ *    хуваалцагдсан хэвээр, бичих эрх нь тэндээс хамаарна.
+ */
+const FORMER_TABLE_OWNERS: string[] = [];
+const TABLE_OWNERS = new Set([
+  ...SUPER_OWNERS,
+  ...FORMER_TABLE_OWNERS.map((u) => u.toLowerCase()),
+]);
+
 let tableUrlCache: string | undefined;
 /** Ижил нэртэй боловч танигдахгүй эзэнтэй хүснэгт — шинээр үүсгэхийг хориглоно */
 let ownerMismatch = false;
@@ -146,11 +184,27 @@ let ownerMismatch = false;
  */
 async function findTableUrl(token: string): Promise<string | null> {
   const search = await req(`${restBase()}/search`, {
-    q: `title:"${TITLE}" type:"Feature Service"`, token, num: '10',
+    q: `title:"${TITLE}" type:"Feature Service"`,
+    token,
+    /*
+     * ⚠️ 100 (2026-09-11, `permsRemote.ts:176-181`-ийн засварыг тараав):
+     * хайлт нь org доторх ХЭНИЙ Ч ижил нэртэй item-ыг буцаадаг тул хэн
+     * нэгэн 10+ хуурамч item үүсгэвэл ЖИНХЭНЭ хүснэгт эхний 10-т багтахаа
+     * больж, `ownerMismatch` асаад бүх клиентийн урсгал УНТАРНА.
+     */
+    num: '100',
   });
-  const results = (search.results as Array<{ url?: string; title?: string; owner?: string }>) ?? [];
+  const results = (search.results as Array<{ url?: string; title?: string; owner?: string; access?: string }>) ?? [];
   const same = results.filter((x) => x.title === TITLE && x.url);
-  const hit = same.find((x) => SUPER_OWNERS.has(String(x.owner ?? '').toLowerCase()));
+  const hit = same.find((x) => TABLE_OWNERS.has(String(x.owner ?? '').toLowerCase()));
+  /* ⚠️ Нийтэд нээлттэй эсэхийг ЭНД барина — `access` нь хайлтын хариунд
+     хамт ирдэг тул нэмэлт хүсэлт хэрэггүй (`permsRemote`-ийн загвар). */
+  if (String(hit?.access ?? '') === 'public') {
+    console.error(
+      `[selbe] ${TITLE} хүснэгт НИЙТЭД (public) нээлттэй — нэвтрээгүй хэн ч`,
+      'батлах мөрийг засаж чадна. AGOL дээр Share-ийг «Organization» болгоно уу.',
+    );
+  }
   ownerMismatch = !hit && same.length > 0;
   if (ownerMismatch) {
     console.error(
@@ -232,13 +286,45 @@ async function tableUrl(canCreate: boolean): Promise<string | null> {
   return url;
 }
 
-/** Хүснэгт бэлэн эсэх — харагдац дээр шалтгааныг ил хэлэхэд */
-export async function planTableReady(canCreate = false): Promise<boolean> {
+/**
+ * ХҮСНЭГТ БЭЛЭН ҮҮ — ба ҮГҮЙ бол ЯАГААД (2026-09-11).
+ *
+ * ⚠️ Урьд нь зөвхөн `boolean` буцаадаг байсан тул ГУРВАН огт өөр шалтгаан
+ *    (нэвтрээгүй · эзэн танигдахгүй · порталын алдаа) нэг л «олдсонгүй»
+ *    мессеж болж нийлдэг байв. Админ юу засахаа мэдэхгүй — 2026-09-11-нд
+ *    баннер гарсан үед жинхэнэ шалтгаан нь `ownerMismatch` байсныг олоход
+ *    амьд сүлжээний шалгалт шаардлагатай болсон.
+ * ⚠️ `ok` нь хуучин `boolean`-той ИЖИЛ утгатай — дуудагч талын нөхцөл
+ *    өөрчлөгдөхгүй, зөвхөн шалтгаан НЭМЭГДЭНЭ.
+ */
+export type PlanTableState = {
+  ok: boolean;
+  /**
+   * `auth`   — ArcGIS-д нэвтрээгүй (токен алга)
+   * `owner`  — ижил нэртэй хүснэгт бий ч эзэн нь танигдахгүй
+   * `none`   — хүснэгт олдсонгүй (super нэвтрэхэд үүснэ)
+   * `error`  — порталын хайлт алдаа өгсөн (мессеж нь `detail`-д)
+   */
+  why: 'ok' | 'auth' | 'owner' | 'none' | 'error';
+  detail?: string;
+};
+
+export async function planTableState(canCreate = false): Promise<PlanTableState> {
   try {
-    return (await tableUrl(canCreate)) != null;
-  } catch {
-    return false;
+    /* ⚠️ Токеныг ТУСАД НЬ шалгана: `tableUrl` нь токенгүй үед ч зүгээр
+       `null` буцаадаг тул «нэвтрээгүй» ба «олдсонгүй» хоёр ялгагдахгүй. */
+    if (!(await getToken())) return { ok: false, why: 'auth' };
+    const url = await tableUrl(canCreate);
+    if (url) return { ok: true, why: 'ok' };
+    return { ok: false, why: ownerMismatch ? 'owner' : 'none' };
+  } catch (e) {
+    return { ok: false, why: 'error', detail: String((e as Error)?.message ?? e) };
   }
+}
+
+/** Хүснэгт бэлэн эсэх — хуучин дуудагчдад зориулсан нимгэн бүрхүүл */
+export async function planTableReady(canCreate = false): Promise<boolean> {
+  return (await planTableState(canCreate)).ok;
 }
 
 type Attrs = Record<string, unknown>;
@@ -359,7 +445,15 @@ export function parsePayload(raw: string): PlanPayload | null {
     if (!j || typeof j !== 'object') return null;
     const spans = j.spans && typeof j.spans === 'object' ? j.spans : null;
     if (!spans) return null;
+    /*
+     * ⚠️ БУЦАЖ НИЙЦТЭЙ: 2026-09-11-ээс ӨМНӨХ илгээлтэд `kind` БАЙХГҮЙ.
+     *    Тэр үед зөвхөн ТӨЛӨВЛӨСӨН огноо байсан тул `'plan'` гэж үзэх нь
+     *    ҮНЭН — таамаг биш, баримт. Танихгүй утга ирвэл мөн `'plan'`:
+     *    хуваарийг гэрээний талбарт БУРУУ бичихээс сэргийлнэ.
+     */
+    const kind: PlanPayloadKind = j.kind === 'geree' ? 'geree' : 'plan';
     return {
+      kind,
       spans: spans as PlanPayload['spans'],
       deps: (j.deps && typeof j.deps === 'object' ? j.deps : {}) as PlanPayload['deps'],
       obyem: (j.obyem && typeof j.obyem === 'object' ? j.obyem : {}) as PlanPayload['obyem'],

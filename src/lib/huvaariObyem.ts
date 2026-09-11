@@ -339,7 +339,18 @@ export function buildEdits(
   for (const sar of prev.keys()) {
     if (months.has(sar)) continue;
     const oid = oids.get(dkeyOf(meta.bagts, meta.des, blok, sar));
-    if (oid != null) out.deletes.push(oid);
+    if (oid != null) { out.deletes.push(oid); continue; }
+    /*
+     * ⚠️ OID АЛГА — устгаж ЧАДАХГҮЙ (2026-09-11-ний аудит). `prev` ба `oids`
+     *    хоёулаа `loadPkgPlan`-ы НЭГ ачаалалтаас гардаг тул хэвийн урсгалд
+     *    зөрөхгүй; зөрөх нь зөвхөн хуудаслалт хагас унасан үед. Тэр мөр
+     *    санд үлдэж нийлбэр нь нийт обьёмоос давна — чимээгүй алгасахгүй,
+     *    консолд нэрлэж хэлнэ. Дараагийн ачаалалт `indexOids`-оор засна.
+     */
+    console.warn(
+      `[selbe] сарын обьём: ${meta.des} · ${blok} · ${sar} — OID олдсонгүй, устгагдсангүй.`,
+      'Хуудсаа дахин ачаалж хадгална уу.',
+    );
   }
   return out;
 }

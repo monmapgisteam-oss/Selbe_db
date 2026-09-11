@@ -30,6 +30,10 @@ const sc = {
   obyem: ['o0', null],
   start: ['s0', 's1'],
   end: ['e0', 'e1'],
+  /* ⚠️ Гэрээний огноо (2026-09-11) — амьд схемтэй нийцүүлэв; дутуу байвал
+     тэдгээрийн aliasing/хуулбарлалтын регресс тестээр баригдахгүй. */
+  gStart: ['g0', 'g1'],
+  gEnd: ['h0', 'h1'],
   f: {
     no: 'no', work: 'work', wC: 'wC', wD: 'wD', wE: 'wE', vol: 'vol', obyemSum: 'osum',
     unit: 'unit', money: 'money', plan: 'plan', act: 'act', ratio: 'ratio', asOf: 'asof',
@@ -45,6 +49,7 @@ const row = (oid, no, work, depth, group, extra = {}) => ({
   oid, no, des: null, ham: null, work, depth, group,
   wC: null, wD: null, vol: null, unit: null, money: null,
   act: [null, null], obyem: [null, null], start: [null, null], end: [null, null],
+  gStart: [null, null], gEnd: [null, null],
   raw: { OBJECTID: oid, no, work },
   ...extra,
 });
@@ -168,6 +173,14 @@ const sub = (over = {}) => ({
   });
   const ov = overlaySubmission(fresh, s, sc, nBld);
   assert.equal(JSON.stringify(fresh), before, 'суурь мөрүүд mutate болоогүй');
+  /* ⚠️ ALIASING (2026-09-11-ний аудит): хуулбар мөрийн ЗУРГААН массив бүгд
+     эх мөрөөс ТУСДАА хаягтай байх ёстой. `gStart`/`gEnd` хоёр орхигдсон
+     байсан — JSON харьцуулалт үүнийг барьдаггүй (утга ижил тул). */
+  for (const k of ['act', 'obyem', 'start', 'end', 'gStart', 'gEnd']) {
+    const src = fresh.find((r) => r.oid === 203);
+    const cp = ov.rows.find((r) => r.oid === 203);
+    assert.notEqual(cp[k], src[k], `${k}: хуулбар нь эх мөртэйгөө хаягаа хуваалцаж байна`);
+  }
   assert.equal(ov.unmoved, 0, 'бүх түлхүүр тулгагдав');
   assert.equal(ov.rows.length, 8, 'add орлоо');
   assert.equal(ov.asOf, D('2026-09-03'), 'asOf дамжив');

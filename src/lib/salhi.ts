@@ -26,6 +26,9 @@
  */
 
 import { t as tr } from '@/lib/i18nCore';
+/* ⚠️ Цагийн бүсийн логик ГАНЦ газар (`salhiTor.ts` §TZ) — хоёр модуль нэг
+   дүрмээр цаг тайлбарлана. Давхардуулбал нэгийг нь засахад нөгөө нь хоцорно. */
+import { TZ, epochOf, ymd } from '@/lib/salhiTor';
 
 const API = 'https://api.open-meteo.com/v1/forecast';
 
@@ -57,8 +60,6 @@ export type Wind = {
 };
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const pad = (n: number) => String(n).padStart(2, '0');
-const ymd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
 /**
  * 8 зүгийн нэр. ⚠️ Монголоор «зүүн» = ДОРНО (east), «баруун» = ӨРНӨ (west) —
@@ -93,6 +94,8 @@ export const dispersionOf = (speed: number): { label: string; tone: string } =>
 
 type MeteoResponse = {
   hourly?: { time?: string[]; wind_speed_10m?: number[]; wind_direction_10m?: number[] };
+  /** ⚠️ Оффсетгүй мөрийг epoch болгоход ЗААВАЛ хэрэгтэй (`salhiTor` §TZ) */
+  utc_offset_seconds?: number;
 };
 
 type Cached = { ts: number; hours: WindHour[] };
@@ -112,7 +115,8 @@ function readCache(key: string): Cached | null {
 async function fetchHours(lat: number, lon: number, date: string): Promise<WindHour[]> {
   const url =
     `${API}?latitude=${lat}&longitude=${lon}` +
-    '&hourly=wind_speed_10m,wind_direction_10m&wind_speed_unit=ms&timezone=auto' +
+        /* ⚠️ 'auto' БИШ: UB-ын цагаар ирэх ёстой (`salhiTor` §TZ) */
+    `&hourly=wind_speed_10m,wind_direction_10m&wind_speed_unit=ms&timezone=${TZ}` +
     `&start_date=${date}&end_date=${date}`;
 
   /**
@@ -134,9 +138,11 @@ async function fetchHours(lat: number, lon: number, date: string): Promise<WindH
   const sp = j.hourly?.wind_speed_10m ?? [];
   const dr = j.hourly?.wind_direction_10m ?? [];
 
+  /* ⚠️ Хариуны оффсет — хөтчийн локал цагаар уншихаас сэргийлнэ (§TZ) */
+  const offS = j.utc_offset_seconds ?? 0;
   const out: WindHour[] = [];
   for (let i = 0; i < time.length; i++) {
-    const t = Date.parse(time[i]);
+    const t = epochOf(time[i], offS);
     // ⚠️ Дутуу цагийг ОРХИНО — 0-ээр дүүргэвэл «нам гүм» гэсэн ХУДАЛ дохио өгнө
     if (!Number.isFinite(t) || sp[i] == null || dr[i] == null) continue;
     out.push({ t, speed: Number(sp[i]), dirDeg: Number(dr[i]) });

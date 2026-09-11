@@ -809,8 +809,13 @@ function railStat(k: SecKey, d: DashData): {
     }
     case 'land': {
       // ⚠️ АМЬД — «Газар чөлөөлөлт» харагдацтай ЯГ НЭГ томьёо (loadLandStatus):
-      //    (Бүрэн чөлөөлсөн + Цэвэрлэсэн) ÷ нийт. Урьд нь Төсөл_Гүйцэтгэлийн
-      //    үе шатын % (95.5) харуулж, талбарын 90%-тай ЗӨРДӨГ байв.
+      //    ШИЙДВЭРЛЭГДСЭН ÷ нийт. Урьд нь Төсөл_Гүйцэтгэлийн үе шатын %
+      //    (95.5) харуулж, талбарын 90%-тай ЗӨРДӨГ байв.
+      // ⚠️ 2026-09-11: тайлбар дахь «(Бүрэн чөлөөлсөн + Цэвэрлэсэн)» гэсэн
+      //    ХУУЧИРСАН томьёог залруулав — шинэ эх сурвалжид «Цэвэрлэсэн нэгж
+      //    талбар» ангилал БАЙХГҮЙ бөгөөд `land.ts`-ийн `cleaned` нь ХАТУУ 0.
+      //    Одоогийн дүрэм: `resolved` = «Бүрэн чөлөөлсөн», бусад БҮГД үлдсэн
+      //    (амьдаар 1,945 ÷ 2,088 = 93.15%). `pct`-ийг ЭНД дахин БОДОХГҮЙ.
       const land = d.land.state === 'ready' ? d.land.data : null;
       return {
         value: land?.pct == null ? '…' : pct(land.pct, 1),
@@ -953,12 +958,43 @@ function IndStrip({ d }: { d: DashData }) {
   const overall = physN ? physW / physN : null;
   const l = d.land.state === 'ready' ? d.land.data : null;
   const blocks = b ? sumBy(b, (x) => x.blocks) : null;
-  const clearedPct = l && l.total > 0 ? ((l.cleared + l.cleaned) / l.total) * 100 : null;
+  /**
+   * ГАЗАР ЧӨЛӨӨЛӨЛТИЙН ХУВЬ — `LandStatus.pct`, ЭНД ДАХИН БОДОХГҮЙ.
+   *
+   * ⚠️ 2026-09-11: урьд нь энэ мөр `(l.cleared + l.cleaned) / l.total` гэж
+   * ӨӨРӨӨ боддог байв. Амьд тоо ӨНӨӨДӨР зөрөөгүй (1,945 ÷ 2,088 = 93.1513%
+   * хоёуланд нь) — учир нь `land.ts` дахь `cleaned` нь ХАТУУ 0 (шинэ эх
+   * сурвалжид «Цэвэрлэсэн нэгж талбар» ангилал БАЙХГҮЙ). Өөрөөр хэлбэл энэ
+   * нь БУРУУ тоо биш, харин ХОЁР ДАХЬ ТОДОРХОЙЛОЛТ байсан: `cleaned` дахин
+   * утга авах өдөр (эсвэл `land.ts` «шийдвэрлэгдсэн»-ийн дүрмээ өөрчлөх
+   * өдөр) дашбоард ба «Газар чөлөөлөлт» хоёр ЧИМЭЭГҮЙ салах байлаа.
+   * `loadLandStatus`/`loadClearance` нь нэгтгэсэн ГАНЦ эх сурвалж
+   * (`live.ts:638`-ийн ⚠️ ба `reportData.loadLandRaw`-ийн «нэг дүрэм»
+   * тайлбартай ижил зарчим) тул түүний `pct`-ийг ШУУД авна.
+   */
+  const clearedPct = l?.pct ?? null;
   const cells = [
     { icon: 'frame', label: tr('Төслийн нийт талбай'), v: h ? tr('{0} га', num(h.areaHa, 1)) : '…' },
     { icon: 'users', label: tr('Хамрагдах хүн ам'), v: h ? num(h.population) : '…' },
     { icon: 'building', label: tr('Барилгын блок'), v: blocks != null ? num(blocks) : '…' },
-    { icon: 'chart', label: tr('Төслийн гүйцэтгэл'), v: overall == null ? '…' : pct(overall, 1) },
+    /**
+     * ⚠️ ШОШГЫГ ЯЛГАВ (2026-09-11): «Төслийн гүйцэтгэл» → «Биет гүйцэтгэл
+     * (сарын тайлан)». Урьд нь ЭНЭ нүд ба `execData.buildProgressOf`-ийн
+     * «ТӨСЛИЙН ГҮЙЦЭТГЭЛИЙН ГАНЦ ТОДОРХОЙЛОЛТ» (2026-08-24, CEO_KPI_PROMPT
+     * §7-A) хоёр НЭГ нэр зүүж, ӨӨР ХОЁР тоо гаргадаг байв.
+     *
+     * ⚠️ ЯАГААД ЭНЭ ХОЁР ӨӨР БАЙХ ЁСТОЙ ВЭ — санамсаргүй давхардал БИШ:
+     *   · ЭНД (`f.phys`, TASK_SHEET «Гүйцэтгэл бөглөх»-ийн САРЫН цуваа):
+     *     багц бүрийн СҮҮЛИЙН тайлагнасан сарын %, хэмжигдсэн блокийн
+     *     тоогоор (`physCnt`) жигнэнэ. Тайлагнаагүй багц огт ОРОХГҮЙ.
+     *     Асуулт: «сүүлийн тайлангаар ажил хаана явна вэ».
+     *   · `buildProgressOf` (`BagtsRow.progress`, блокийн нэгтгэл):
+     *     хуваарь нь БҮХ блок, тайлан ирээгүй блок 0%. Асуулт: «төсөл
+     *     БҮХЭЛДЭЭ хэдэн хувьтай вэ» — болгоомжтой, хөөрөгдөхгүй дүн.
+     * Тиймээс ЭНД `buildProgressOf` руу ХОЛБОХГҮЙ (тэр нь өөр асуултын
+     * хариу); зөвхөн нэрийг нь ялгаж, хоёрыг ХАРЬЦУУЛАХГҮЙ болгов.
+     */
+    { icon: 'chart', label: tr('Биет гүйцэтгэл (сарын тайлан)'), v: overall == null ? '…' : pct(overall, 1) },
     { icon: 'polygon', label: tr('Газар чөлөөлөлт'), v: clearedPct != null ? pct(clearedPct, 1) : '…' },
   ];
   return (
@@ -1357,7 +1393,12 @@ function ScopeDetail({ bagts, d, flt, onFlt }: {
       <Panel title={tr('Төслийн цар хүрээ')}>
         <Stats cols={2}>
           <Stat accent color={HUE[0]} value={h == null ? '…' : num(h.areaHa, 1)} unit={tr('га')} label={tr('Төслийн талбай')} />
-          <Stat accent color={HUE[1]} value={prog == null ? '…' : num(prog.actual, 2)} unit="%" label={tr('Нийт гүйцэтгэл')} />
+          {/* ⚠️ 2026-09-11: «Нийт гүйцэтгэл» → «Биет гүйцэтгэл (сарын тайлан)».
+              Эх нь `pkgPhys` = TASK_SHEET-ийн САРЫН цуваа (`IndStrip`-ийн нүдтэй
+              ЯГ ижил тоо), `execData.buildProgressOf`-ийн албан ёсны
+              тодорхойлолт БИШ — тэр нь бүх блокоор хуваадаг ӨӨР хэмжилт.
+              Дэлгэрэнгүйг `IndStrip`-ийн ⚠️-ээс үз. */}
+          <Stat accent color={HUE[1]} value={prog == null ? '…' : num(prog.actual, 2)} unit="%" label={tr('Биет гүйцэтгэл (сарын тайлан)')} />
           <Stat accent color={HUE[2]} value={h == null ? '…' : num(h.investTotal)} unit={tr('₮')} label={tr('Нийт төсөв')} />
           <Stat accent color={HUE[3]} value={blocks == null ? '…' : num(blocks)} unit={tr('блок')} label={tr('Орон сууцны блок')} />
           <Stat accent color={HUE[4]} value={ail == null ? '…' : num(ail)} unit={tr('өрх')} label={tr('Айл өрх')} />

@@ -87,7 +87,21 @@ export const loadBagtsRows = cached<BagtsRow[]>(async () => {
     loadBlockProgress(),
   ]);
   return joinBagts(blocks, prog);
-}, 5 * 60_000, ['BAGTS_SHEET']);
+/*
+ * ⚠️ ДАМЖИН ХАМААРАХ ТҮЛХҮҮРИЙГ ЗААВАЛ ЗАРЛАНА (`CASHFLOW_NEW`).
+ *
+ * Энэ ачаалагч өөрөө зөвхөн `BUILDING`-ийн блокуудыг татдаг ч дотроо
+ * `loadBlockProgress()` дууддаг бөгөөд ТЭР нь `['BAGTS_SHEET', 'CASHFLOW_NEW']`
+ * гэж зарладаг (`blockProgress.ts:333-342`): «Багц 3.1»-ийн гүйцэтгэл нь
+ * `cashflowOverride()`-ээр Cashflow-гоос ирдэг. Тиймээс Cashflow дээр хувь
+ * засагдахад (`CashflowPlan.tsx:195` → `invalidate('CASHFLOW_NEW')`) дотоод
+ * кэш хаягдаж ШИНЭ утга бэлэн болох атал ЭНЭ нэгтгэл хуучин `progress`-оо
+ * барьж, нэг дэлгэц дээр хоёр өөр тоо гарна.
+ *
+ * ⚠️ ДҮРЭМ: дуудаж буй ачаалагчийн `reads`-ийг ӨӨРИЙНХӨӨ `reads`-д НЭГТГЭНЭ —
+ * шууд уншсан хүснэгтээ л жагсаах нь хангалтгүй.
+ */
+}, 5 * 60_000, ['BAGTS_SHEET', 'CASHFLOW_NEW']);
 
 export function useBagtsTable(): Async<BagtsRow[]> {
   return useAsync(loadBagtsRows, []);

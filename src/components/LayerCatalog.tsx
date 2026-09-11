@@ -464,7 +464,7 @@ function FacetRows({
               });
             }}
           >
-            <span className={s.facetName}>{item.label}</span>
+            <span className={s.facetName}>{tr(item.label)}</span>
             <span className={`${s.facetMeta} num`}>
               {num(item.values.n)} {tr('ш')}{qty ? ` · ${qty}` : ''}
             </span>

@@ -57,7 +57,7 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
   },
   {
     "id": "scene3d:15",
-    "title": 'Дугуйн_зам',
+    "title": tr('Дугуйн зам'),
     "group": null,
     "url": "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/selbe_3D__0804_WFL1/FeatureServer/15",
     "opacity": 1,
@@ -361,7 +361,7 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
   },
   {
     "id": "scene3d:3",
-    "title": 'Явган_зам',
+    "title": tr('Явган зам'),
     "group": null,
     "url": "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/selbe_3D__0804_WFL1/FeatureServer/3",
     "opacity": 1,
@@ -441,7 +441,7 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
   },
   {
     "id": "scene3d:1",
-    "title": 'Ногоон_байгууламж',
+    "title": tr('Ногоон байгууламж'),
     "group": null,
     "url": "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/selbe_3D__0804_WFL1/FeatureServer/1",
     "opacity": 1,

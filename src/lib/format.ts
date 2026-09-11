@@ -46,6 +46,29 @@ export function date(v: number | string | null | undefined): string {
   return dt.toLocaleDateString('mn-MN', { year: 'numeric', month: '2-digit', day: '2-digit' });
 }
 
+/**
+ * ӨДРИЙН ТҮЛХҮҮР — epoch (мс) → «YYYY-MM-DD» ОРОН НУТГИЙН огноогоор.
+ *
+ * ⚠️ `new Date(ms).toISOString().slice(0, 10)` гэж БҮҮ бич. `toISOString` нь
+ * UTC-гээр хөрвүүлдэг тул Улаанбаатар (+08) дээр орон нутгийн 00:00–07:59-д
+ * тэмдэглэгдсэн мөр ӨМНӨХ өдрийн түлхүүр авдаг. 2026-09-11-нд хэмжсэн нь:
+ * local «2026-08-20 00:30» → UTC түлхүүр «2026-08-19» (өдөр ухарна);
+ * local «2026-09-01 00:30» → «2026-08-31», өөрөөр хэлбэл `slice(0, 7)`-оор
+ * сар авдаг цуваа (`byMonthSeries`) БҮТЭН САРААР гулсана; жилийн зааг дээр
+ * «2026-01-01 00:30» → «2025-12-31» болж ЖИЛ ухардаг.
+ *
+ * ⚠️ `zovshoorol.ts`-ийн `dateMs` нь ЭСРЭГ чиглэлд ижил зангаас зайлсхийхийн
+ * тулд `Date.UTC` хэрэглэдэг: тэнд оролт нь ЦАГГҮЙ текст («2026-05-06») тул
+ * UTC-гээр тогтоовол бүсээс үл хамааран тэр өдөр хэвээр үлддэг. Энд оролт нь
+ * ЦАГТАЙ epoch тул эсрэгээр орон нутгийн талбаруудыг уншина — хоёулаа «өдөр нь
+ * хэрэглэгчийн харсан өдөр байх» гэсэн НЭГ дүрмийн хоёр тал.
+ */
+export function dayKey(ms: number): string {
+  const d = new Date(ms);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
 /** ArcGIS-ийн хоосон утга: null, "" эсвэл зөвхөн зай */
 export const blank = (v: unknown): boolean =>
   v == null || (typeof v === 'string' && v.trim() === '');

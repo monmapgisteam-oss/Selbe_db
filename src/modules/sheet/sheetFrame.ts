@@ -149,6 +149,10 @@ export function insertAdds(
       obyem: new Array(nBld).fill(null),
       start: new Array(nBld).fill(null),
       end: new Array(nBld).fill(null),
+      /* ⚠️ ГЭРЭЭНИЙ огноо — шинэ мөрд `null`. Гэрээ нь эх төсвөөс ирдэг
+         тул нийтлээгүй мөрд байх ёсгүй (2026-09-11). */
+      gStart: new Array(nBld).fill(null),
+      gEnd: new Array(nBld).fill(null),
       /* Үйлчилгээнд бичигдэх ЦОРЫН ГАНЦ талбарууд — үлдсэнийг нийтлэх
          үед `computeAll`-ийн үр дүнгээр бөглөнө. */
       raw: {
@@ -363,6 +367,13 @@ export function overlaySubmission(
     act: r.act.slice(),
     start: r.start.slice(),
     end: r.end.slice(),
+    /* ⚠️ ГЭРЭЭНИЙ огноо ч ХУУЛБАРЛАГДАНА (2026-09-11-ний аудит). Дөрвөн
+       массив хуулбарлагддаг атлаа шинэ хоёр нь орхигдсон байв — хуулбар
+       мөр нь эх мөртэйгөө хаягаа хуваалцаж, доор бичихэд `rows` мутацлагдах
+       байсан. Өнөөдөр энд гэрээний огноонд бичдэггүй ч `Huvaari` аль хэдийн
+       тэр замтай тул занга нээлттэй үлдээхгүй. */
+    gStart: r.gStart.slice(),
+    gEnd: r.gEnd.slice(),
   }));
   const idx = new Map<number, number>();
   out.forEach((r, i) => idx.set(r.oid, i));

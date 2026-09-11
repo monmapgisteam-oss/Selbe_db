@@ -18,13 +18,22 @@
  * ⚠️ ЮУ НЬ БОДИТ, ЮУ НЬ ЖИШЭЭ:
  *
  *   БОДИТ · Харуулын БАЙРШИЛ (`Example_data` FeatureServer, 12 цэг)
- *         · ҮЕРИЙН ЗАГВАРЧЛАЛ — ОБЕГ-ын (NEMA) гидравлик тооцоо
- *           (`public/selbe-uyr.json`, эх нь `Selbe_FS_WaterDepth.crf`)
+ *         · ӨНДРИЙН ӨГӨГДӨЛ — төслийн ӨӨРИЙН 3D mesh-ээс гаргасан DSM
+ *           (`/uyr/selbe-dsm.bin`), mesh байхгүй газар SRTM DEM
  *         · Өртсөн объект — идэвхтэй давхаргуудаас орон зайгаар шүүсэн
  *
  *   ЖИШЭЭ · Харуулын ЗААЛТ (усны түвшин, PM2.5 …) — тэр давхаргад утгын талбар
  *           байхгүй тул `ersdel.ts` загвараар үүсгэнэ
  *         · Агаарын бохирдлын хувилбарын параметр (инверси, салхи, сэвсгэр)
+ *
+ *   ТООЦООЛСОН · ҮЕРИЙН ТАРХАЛТ — хөтөч дотор бодогдох LISFLOOD-FP маягийн
+ *           инерцийн ойролцоолол (`uyrSim.ts`). Өндөр нь БОДИТ, харин хур
+ *           тунадас, сав газрын талбай, урсацын коэффициент нь ТААМАГЛАЛ
+ *           (`uyrSim.ts` §CATCHMENT_KM2). Хэмжсэн үер БИШ.
+ *
+ * ⚠️ ОБЕГ-ын (NEMA) CRF гаралтыг 2026-09-07-нд ХАЯСАН — муу DEM дээр
+ * тооцогдсон (хэрэглэгчийн шийдвэр). Тиймээс «ОБЕГ-ын бодит үр дүн» гэж энэ
+ * файлын хаана ч БИЧИХГҮЙ: тэр эх сурвалж одоо ОГТ хэрэглэгдэхгүй.
  *
  * Тиймээс дэлгэц дээр энэ ялгааг ҮРГЭЛЖ бичнэ — хэрэглэгч амьд хэмжилттэй
  * андуурч болохгүй.
@@ -58,7 +67,7 @@ import {
   type FloodData, type FloodMode,
 } from '@/lib/uyr';
 import { dirName, dispersionOf, loadWind, nowHour } from '@/lib/salhi';
-import { loadWindField, nowIndex, ymd } from '@/lib/salhiTor';
+import { hhmmUB, loadWindField, nowIndex, ymd } from '@/lib/salhiTor';
 import { MAX_V, rampCss } from '@/lib/salhiUrsgal';
 import { simulateFlood, type SimArea } from '@/lib/uyrSim';
 import { flowPath, whyFlood } from '@/lib/uyrTailbar';
@@ -1120,7 +1129,7 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
             {/* ⚠️ Энэ мөр НУУГДАХГҮЙ: заалт нь жишээ өгөгдөл гэдгийг хэрэглэгч
                 ямар ч горимд, ямар ч үед харна. */}
             <Note>
-              {tr('ҮЕРИЙН загварчлал нь ОБЕГ-ын гидравлик тооцооны БОДИТ үр дүн; харуулын байршил, өртсөн объект ч бодит. Харин харуулын ЗААЛТ ба АГААРЫН бохирдлын хувилбар нь жишээ өгөгдөл — амьд хэмжилт биш.')}
+              {tr('ҮЕРИЙН тархалт нь ЗАГВАРЧИЛСАН — төслийн 3D mesh-ийн бодит өндөр дээр хөтөч дотор бодогдоно; хэмжсэн үер БИШ. Харуулын байршил, өртсөн объект БОДИТ. Харуулын ЗААЛТ ба АГААРЫН бохирдлын хувилбар нь жишээ өгөгдөл — амьд хэмжилт биш.')}
             </Note>
           </div>
         </section>
@@ -1373,18 +1382,39 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                 <p className={e.scenario}>{scenarioNote(hazard, level)}</p>
                 {hazard === 'flood' ? (
                   /**
-                   * ⚠️ Эдгээр нь ХУВИЛБАРЫН лавлагаа (`FLOOD_LEVELS`), зурган
-                   * дээр урсаж буй ОБЕГ-ын CRF загварчлалын хэмжигдэхүүн БИШ.
-                   * Тэр хоёр нь ТУСДАА зүйл — доорх `Note` үүнийг ил хэлнэ.
+                   * ⚠️ Эдгээр нь ХУВИЛБАРЫН ЛАВЛАГАА (`FLOOD_LEVELS`) — зурган
+                   * дээр урсаж буй загварчлалын ОРОЛТ БИШ.
+                   *
+                   * ⚠️ `peak` (26/52/96 м³/с) нь ЯЛАНГУЯА ЭНДҮҮРМЭЭР: түүнийг
+                   * «Оргил урсац» гэж ганцаар бичихэд, доор нь 97/195/389 м³/с-
+                   * ээр бодогдсон үер урсаж байхад хэрэглэгч хоёрыг НЭГ гэж
+                   * уншина. `ersdel.ts:573` нь энэ талбарыг «`rain`-аас
+                   * БОДОГДООГҮЙ … УНШИЖ БОЛОХГҮЙ» гэж ил тэмдэглэсэн бөгөөд тэр
+                   * гурван тоо нь үнэндээ ХАРУУЛЫН сэрэмжлүүлэх босго
+                   * (`uyrSim.ts:285`). Тиймээс шошгыг «Лавлагааны урсац» болгож,
+                   * загварын ЖИНХЭНЭ оролтыг (`flood.meta.peakQ`) тусад нь
+                   * үзүүлнэ — хоёр тоог хольж болохгүй.
                    */
                   <Stats cols={3}>
                     <Stat value={num(FLOOD_LEVELS[level].rain)} unit={tr('мм/ц')} label={tr('Хур тунадас')} accent />
                     <Stat value={num(FLOOD_LEVELS[level].period)} unit={tr('жил')} label={tr('Давтагдал')} />
-                    <Stat value={num(FLOOD_LEVELS[level].peak)} unit={tr('м³/с')} label={tr('Оргил урсац')} />
+                    <Stat value={num(FLOOD_LEVELS[level].peak)} unit={tr('м³/с')} label={tr('Лавлагааны урсац')} />
                     <Stat value={num(FLOOD_LEVELS[level].depth, 1)} unit={tr('м')} label={tr('Дундаж гүн')} />
                     <Stat value={num(FLOOD_LEVELS[level].reach)} unit={tr('м')} label={tr('Үерийн зурвас')} />
                     <Stat value={num(FLOOD_LEVELS[level].lead)} unit={tr('цаг')} label={tr('Сэрэмжлүүлэх')} />
                   </Stats>
+                ) : null}
+                {hazard === 'flood' ? (
+                  /* ⚠️ ЗАГВАРЫН ЖИНХЭНЭ ОРОЛТ — дээрх лавлагаанаас ТУСДАА мөр.
+                     Загвар ажилласан үед `meta.peakQ` нь рационал аргаар
+                     бодогдсон оргил урсац (`uyrSim.peakInflow`); дээрх
+                     лавлагаанаас ~4 дахин их байдаг тул зөрүүг ИЛ бичнэ. */
+                  <Note>
+                    {flood?.meta.peakQ != null
+                      ? tr('Зураг дээрх үерийг {0} м³/с оргил урсацаар бодов ({1} мм/ц хур, рационал арга). Дээрх «лавлагааны урсац» нь харуулын сэрэмжлүүлэх босго — загварын оролт БИШ.',
+                        num(flood.meta.peakQ, 1), num(flood.meta.rainMmH ?? FLOOD_LEVELS[level].rain))
+                      : tr('Дээрх «лавлагааны урсац» нь харуулын сэрэмжлүүлэх босго — үерийн загварын оролт БИШ. Загвар нь хур тунадаснаас оргил урсацаа өөрөө бодно.')}
+                  </Note>
                 ) : (
                   <>
                     <Stats cols={3}>
@@ -1466,7 +1496,9 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                         </button>
                         {windFlow && windField?.times[windH] != null && (
                           <span className={`${e.flowHour} num`}>
-                            {tr('{0} цагийн заалт', `${String(new Date(windField.times[windH]).getHours()).padStart(2, '0')}:00`)}
+                            {/* ⚠️ `getHours()` нь ХӨТЧИЙН бүсээр хөрвүүлнэ — цуваа UB-ынх
+                                тул шошго ч UB-аар (`salhiTor` §TZ). */}
+                            {tr('{0} цагийн заалт', hhmmUB(windField.times[windH]))}
                           </span>
                         )}
                       </div>
