@@ -207,6 +207,45 @@ export async function loadZov(): Promise<Zov[] | null> {
   }
 }
 
+/**
+ * НЭГ мөрийг OBJECTID-аар нь татна — `saveZov`-ийн ялгаа гаргах СУУРЬ.
+ *
+ * ⚠️ 2026-09-11: зэрэгцээ засварыг дарахгүйн тулд ялгааг ХАМГИЙН СҮҮЛИЙН
+ * серверийн утгатай жишнэ. Маягтын ноорог нь нээгдэх үеийн хуулбар тул
+ * түүнийг өөртэй нь жишвэл өөр хүний завсарт хийсэн засвар харагдахгүй.
+ *
+ * ⚠️ Олдоогүй бол `null` — ХООСОН мөр БУЦААХГҮЙ. Дуудагч тал үүнийг алдаа
+ * гэж үзэж, бүтэн мөр дарж бичихийн оронд зогсоно.
+ */
+export async function loadOneZov(oid: number): Promise<Zov | null> {
+  if (!URL || !Number.isFinite(oid) || oid <= 0) return null;
+  const oidName = await oidField();
+  const j = await agsFetch(`${URL}/query`, {
+    where: `${oidName} = ${Math.trunc(oid)}`,
+    outFields: '*',
+    returnGeometry: 'false',
+  });
+  const fs = (j.features ?? []) as { attributes: Record<string, unknown> }[];
+  if (!fs.length) return null;
+  const a = fs[0].attributes;
+  const k = oidKey(a);
+  const oidRaw = k ? Number(a[k]) : NaN;
+  const t = str(a[F.tolov]);
+  return {
+    oid: Number.isFinite(oidRaw) && oidRaw > 0 ? oidRaw : 0,
+    bagts: str(a[F.bagts]),
+    shat: Number(a[F.shat]) || 0,
+    ner: str(a[F.ner]),
+    selbe: str(a[F.selbe]),
+    tolov: isTolov(t) ? t : 'unknown',
+    ognoo: dateMs(a[F.ognoo]),
+    dugaar: str(a[F.dugaar]),
+    baiguullaga: str(a[F.baiguullaga]),
+    hariutsagch: str(a[F.hariutsagch]),
+    tailbar: str(a[F.tailbar]),
+  };
+}
+
 /** Багцаар бүлэглэж, шатаар эрэмбэлнэ. */
 export function byBagts(rows: Zov[]): Map<string, Zov[]> {
   const m = new Map<string, Zov[]>();
@@ -255,6 +294,59 @@ export type ZovDraft = Omit<Zov, 'oid' | 'tolov'> & {
 };
 
 /**
+ * НООРОГИЙГ `applyEdits`-ийн бүтэн `attributes` болгоно (ШИНЭ мөрд).
+ *
+ * ⚠️ Хоосон мөр → `null`, `''` БИШ. ArcGIS-ийн текст талбарт хоосон мөр
+ * бичвэл «утга байхгүй» биш «хоосон утга» болж, `IS NULL` шүүлтэд орохгүй
+ * (`parcelEdit.diffParcel`-ийн ЯГ ижил дүрэм).
+ */
+const zovAttrs = (d: ZovDraft): Record<string, unknown> => ({
+  [F.bagts]: d.bagts,
+  [F.shat]: d.shat,
+  [F.ner]: d.ner,
+  [F.selbe]: d.selbe || null,
+  [F.tolov]: d.tolov,
+  [F.ognoo]: toDateOnly(d.ognoo),
+  [F.dugaar]: d.dugaar || null,
+  [F.baiguullaga]: d.baiguullaga || null,
+  [F.hariutsagch]: d.hariutsagch || null,
+  [F.tailbar]: d.tailbar || null,
+});
+
+/**
+ * ЗӨВХӨН ӨӨРЧЛӨГДСӨН ТАЛБАРЫГ ялгана (`parcelEdit.diffParcel`-ийн загвар).
+ *
+ * ⚠️ 2026-09-11: урьд нь `saveZov` нь БҮТЭН мөрийг (10 талбар) `updates`-д
+ * илгээдэг байв. ArcGIS-д мөрийн түвшний ТҮГЖЭЭ БАЙХГҮЙ тул хоёр хүн нэг
+ * зөвшөөрлийг зэрэг засахад сүүлд хадгалсан нь нөгөөгийн `tailbar`,
+ * `hariutsagch`-ийг өөрийн ХУУЧИН хуулбараар дарж бичнэ — алдаа ч гарахгүй,
+ * хэрэглэгч ч мэдэхгүй. Маягт нээгдэх үеийн агшнаас хойш өөр хүний бичсэн
+ * багана ҮЛДЭХ ёстой.
+ *
+ * ⚠️ Хоосон/`null`-ийн дүрэм `diffParcel`-тэй ИЖИЛ: харьцуулалт нь
+ * ХЭВИЙНШҮҮЛСЭН мөрөн дээр явна (`null` ба `''` нь ИЖИЛ гэж тооцогдоно, тул
+ * хоосон хэвээр байгаа талбар дэмий илгээгдэхгүй), бичих утга нь хоосон
+ * бол `null` болно. Эс бөгөөс `loadZov`-ийн `str()` нь `null`-ыг `''`
+ * болгодог учир өөрчлөгдөөгүй хоосон талбар бүр ялгаа мэт харагдана.
+ *
+ * ⚠️ Огноог ms-ээр нь жишнэ, ТЕКСТЭЭР биш — `toDateOnly` нь `null`-ыг
+ * `null` болгодог тул хоёуланг нь хөрвүүлж жиших нь адил үр дүн өгнө.
+ *
+ * @returns өөрчлөгдсөн талбарууд; ХООСОН объект = ялгаа алга
+ */
+export function diffZov(before: Zov, d: ZovDraft): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  const next = zovAttrs(d);
+  const prev = zovAttrs({ ...before, tolov: before.tolov === 'unknown' ? d.tolov : before.tolov });
+  /* ⚠️ `null` ба `''`-ийг ИЖИЛ гэж үзнэ (`diffParcel`-ийн дүрэм). */
+  const norm = (v: unknown): unknown => (v == null || v === '' ? null : v);
+  for (const k of Object.keys(next)) {
+    if (norm(prev[k]) !== norm(next[k])) out[k] = next[k];
+  }
+  return out;
+}
+
+/**
  * Нэмэх эсвэл засах.
  *
  * ⚠️ Амжилтгүй бол ЗААВАЛ шалтгаантай `Error` шиднэ — `false` буцаавал
@@ -264,28 +356,32 @@ export type ZovDraft = Omit<Zov, 'oid' | 'tolov'> & {
  * үед зөвхөн OBJECTID таних зорилгоор явна.
  * (2026-09-04: тайлбарт `ObjectID` гэж бичигдсэн байсныг амьд хүснэгтийн
  *  жинхэнэ бичлэг `OBJECTID` болгож залруулав.)
+ *
+ * ⚠️ 2026-09-11: ЗАСВАРЫН зам нь ЗӨВХӨН ӨӨРЧЛӨГДСӨН баганыг илгээнэ
+ * (`diffZov`). `before` нь маягт нээгдэх үеийн ЭХ мөр — дуудагч өгөөгүй бол
+ * `all`-аас эсвэл үйлчилгээнээс олж авна. Ялгаа огт байхгүй бол сүлжээний
+ * дуудлага ОГТ ХИЙХГҮЙ (`diffParcel`/`saveParcel`-ийн ижил гэрээ).
  */
-export async function saveZov(d: ZovDraft): Promise<number> {
+export async function saveZov(d: ZovDraft, before?: Zov | null): Promise<number> {
   if (!URL) throw new Error(tr('Зөвшөөрлийн үйлчилгээ холбогдоогүй байна.'));
-  const attributes: Record<string, unknown> = {
-    [F.bagts]: d.bagts,
-    [F.shat]: d.shat,
-    [F.ner]: d.ner,
-    [F.selbe]: d.selbe || null,
-    [F.tolov]: d.tolov,
-    [F.ognoo]: toDateOnly(d.ognoo),
-    [F.dugaar]: d.dugaar || null,
-    [F.baiguullaga]: d.baiguullaga || null,
-    [F.hariutsagch]: d.hariutsagch || null,
-    [F.tailbar]: d.tailbar || null,
-  };
+  const attributes = zovAttrs(d);
   const edit: Record<string, string> = { rollbackOnFailure: 'true' };
   if (d.oid) {
     /* ⚠️ 2026-09-04: OBJECTID-ын нэрийг метадатагаас авна. Хатуу `'ObjectID'`
        байхад ArcGIS нь танихгүй талбарыг ЧИМЭЭГҮЙ хаяж, «аль мөрийг засах»
        нь тодорхойгүй болно. Кэштэй тул сүлжээний дуудлага нэг л удаа. */
     const oidName = await oidField();
-    edit.updates = JSON.stringify([{ attributes: { [oidName]: d.oid, ...attributes } }]);
+    /* ⚠️ Эх мөрийг дуудагч өгөөгүй бол ҮЙЛЧИЛГЭЭНЭЭС дахин уншина. Энэ нь
+       зэрэгцээ засварыг дарахаас сэргийлэх ЦОРЫН ГАНЦ найдвартай суурь:
+       маягтын ноорог өөрөө хуучин хуулбар тул түүнийг өөртэй нь жишвэл
+       ялгаа гарахгүй. Уншилт бүтэлгүй бол (сүлжээ) БҮТЭН мөр бичихгүй —
+       алдаа шиднэ, эс бөгөөс чимээгүй дарж бичих эрсдэл эргэж ирнэ. */
+    const base = before ?? (await loadOneZov(d.oid));
+    if (!base) throw new Error(tr('Эх мөрийг уншиж чадсангүй — засварыг хадгалсангүй.'));
+    const delta = diffZov(base, d);
+    /* ⚠️ Өөрчлөлтгүй бол сүлжээ ОГТ хөндөхгүй — «хадгаллаа» гэж хаагдана. */
+    if (Object.keys(delta).length === 0) return d.oid;
+    edit.updates = JSON.stringify([{ attributes: { [oidName]: d.oid, ...delta } }]);
   } else {
     edit.adds = JSON.stringify([{ attributes }]);
   }

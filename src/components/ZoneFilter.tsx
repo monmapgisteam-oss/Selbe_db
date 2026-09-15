@@ -83,7 +83,7 @@ function GroupedChips({
             <div key={g.type} className={s.zoneTypeBlock} style={{ '--tone': g.hue } as CSSProperties}>
               <p className={s.zoneTypeHead}>
                 <i className={s.zoneTypeDot} aria-hidden />
-                {g.type}
+                {tr(g.type)}
                 <span className={s.zoneTypeN}>{g.zones.length}</span>
               </p>
               <div className={s.zoneGrid}>

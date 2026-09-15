@@ -21,6 +21,7 @@
  *
  * ⚠️ React импортлохгүй — `qaqc.check.mjs` шууд Node дээр ачаална.
  */
+import { t as tr } from '@/lib/i18nCore';
 import { agsFetch } from '@/modules/sheet/ags';
 
 const HJ = 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services';
@@ -87,15 +88,15 @@ export const qaqcTableOf = (pkgKey: string): QaqcRef | null => QAQC_TABLE[pkgKey
  *    нүд баганатайгаа таарахгүй болж хүснэгт бүхэлдээ гулсана (шалгуур барина).
  */
 export const QAQC_COLS: { name: string; label: string; short: string }[] = [
-  { name: 'Makt_dugaar', label: 'М-акт — М-актын №', short: 'М-актын №' },
-  { name: 'Makt_ner', label: 'М-акт — М-актын нэр', short: 'М-актын нэр' },
-  { name: 'Makt_havsralt', label: 'М-акт — Хавсралт бичиг баримт', short: 'Хавсралт бичиг баримт' },
-  { name: 'FIC_dugaar', label: 'FIC — FIC дугаар', short: 'FIC дугаар' },
-  { name: 'FIC_ner', label: 'FIC — FIC нэр', short: 'FIC нэр' },
-  { name: 'MA_dugaar', label: 'MA Material Approval — MA дугаар', short: 'MA дугаар' },
-  { name: 'MA_ner', label: 'MA Material Approval — MA нэр', short: 'MA нэр' },
-  { name: 'MIR_dugaar', label: 'MIR — MIR дугаар', short: 'MIR дугаар' },
-  { name: 'MIR_ner', label: 'MIR — MIR нэр', short: 'MIR нэр' },
+  { name: 'Makt_dugaar', label: tr('М-акт — М-актын №'), short: tr('М-актын №') },
+  { name: 'Makt_ner', label: tr('М-акт — М-актын нэр'), short: tr('М-актын нэр') },
+  { name: 'Makt_havsralt', label: tr('М-акт — Хавсралт бичиг баримт'), short: tr('Хавсралт бичиг баримт') },
+  { name: 'FIC_dugaar', label: tr('FIC — FIC дугаар'), short: tr('FIC дугаар') },
+  { name: 'FIC_ner', label: tr('FIC — FIC нэр'), short: tr('FIC нэр') },
+  { name: 'MA_dugaar', label: tr('MA Material Approval — MA дугаар'), short: tr('MA дугаар') },
+  { name: 'MA_ner', label: tr('MA Material Approval — MA нэр'), short: tr('MA нэр') },
+  { name: 'MIR_dugaar', label: tr('MIR — MIR дугаар'), short: tr('MIR дугаар') },
+  { name: 'MIR_ner', label: tr('MIR — MIR нэр'), short: tr('MIR нэр') },
 ];
 
 /**
@@ -107,7 +108,7 @@ export const QAQC_COLS: { name: string; label: string; short: string }[] = [
  */
 export const QAQC_BAND = 'Inspection Test Plan';
 export const QAQC_GROUPS: { label: string; count: number }[] = [
-  { label: 'М-акт', count: 3 },
+  { label: tr('М-акт'), count: 3 },
   { label: 'FIC', count: 2 },
   { label: 'MA Material Approval', count: 2 },
   { label: 'MIR', count: 2 },

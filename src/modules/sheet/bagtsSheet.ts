@@ -67,6 +67,16 @@ export type SheetRow = {
   raw: Record<string, unknown>;
   start: (number | null)[]; // ms epoch
   end: (number | null)[];
+  /**
+   * ГЭРЭЭНИЙ огноо — блок бүрд, ms epoch (2026-09-11).
+   * ⚠️ `start`/`end` (ТӨЛӨВЛӨСӨН)-ӨӨС ТУСДАА: гэрээ нь өөрчлөгдөшгүй
+   *    лавлагаа, төлөвлөгөө нь явцад хөдөлдөг. Хоёрын ЗӨРҮҮ нь өөрөө
+   *    мэдээлэл (хуваарь гэрээнээс хэр хазайсан).
+   * ⚠️ Бүх блокт талбар БАЙНА (242 нэмэгдсэн) ч утга нь өнөөдөр БҮГД
+   *    `null` — хүн бөглөх хүртэл.
+   */
+  gStart: (number | null)[];
+  gEnd: (number | null)[];
   /* ⚠️ БАРИМТ БИЧГИЙН (Inspection Test Plan) талбарууд ЭНД БАЙХГҮЙ
      (2026-09-03). Тэдгээр багана `Bagts_*` үйлчилгээнд ОГТ БАЙГААГҮЙ тул
      энэ жагсаалт үргэлж `null`-аар дүүрдэг байв — хоосон зардал. Чанарын
@@ -751,6 +761,8 @@ export async function loadRows(
       raw: a,
       start: sc.start.map((x) => (x ? num(a[x]) : null)),
       end: sc.end.map((x) => (x ? num(a[x]) : null)),
+      gStart: sc.gStart.map((x) => (x ? num(a[x]) : null)),
+      gEnd: sc.gEnd.map((x) => (x ? num(a[x]) : null)),
     });
   });
   return { rows, asOf, snapshot, frameLen: rows.length };

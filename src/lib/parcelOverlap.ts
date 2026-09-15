@@ -37,6 +37,21 @@ export type Src = { layerId: string; where?: string | null };
 export type Overlap = {
   /** Давхцаж буй ҮЛДСЭН нэгж талбарын ObjectID-ууд */
   oids: number[];
+  /**
+   * ТАТАГДААГҮЙ эх сурвалжуудын `layerId` — хоосон бол бүрэн тоологдсон.
+   *
+   * ⚠️ 2026-09-11: `Promise.allSettled` нь унасан давхаргыг ЧИМЭЭГҮЙ алгасдаг
+   * тул 48 давхаргын хэд нь татагдаагүй ч үлдсэнээр тооцоод үр дүн АМЖИЛТТАЙ
+   * шийдэгддэг байв. Хоосон `oids` нь «саад алга» ГЭСЭН УТГАТАЙ учир энэ нь
+   * файлын толгойд анхааруулсан «чимээгүй ХООСОН гарч "саадгүй" гэсэн ХУДАЛ
+   * дүгнэлт» — яг тэр ангиллын алдаа.
+   *
+   * ⚠️ Талбар нь СОНГОЛТОТ (`?`): `execTriage.ts`-ийн `.catch(() => ({ oids: [] }))`
+   * зэрэг байгаа объект литералуудыг эвдэхгүй. Дуудагч `failed?.length`-ээр
+   * шалгана; `pkgSaad.ts` нь өөрийн `failed: boolean` тугтай (тэр нь БҮХ
+   * багц унасныг тэмдэглэдэг) — хоёр нь ӨӨР түвшний мэдээлэл.
+   */
+  failed?: string[];
 };
 
 /* ⚠️ withSlot (2026-08-21 гүйцэтгэлийн аудит): энэ модулийн fetch нь query.ts-ийн
@@ -132,6 +147,18 @@ export async function overlapLeftParcels(sources: Src[]): Promise<Overlap> {
   if (hit) return hit;
   const run = overlapUncached(sources);
   run.catch(() => resultCache.delete(rKey));
+  /*
+   * ⚠️ 2026-09-11: ХЭСЭГЧИЛСЭН үр дүнг КЭШЛЭХГҮЙ. Урьд нь `run.catch()` нь
+   * ЗӨВХӨН reject-ийг кэшнээс хасдаг байсан тул давхарга нь унасан ч
+   * `allSettled` дээр «амжилттай» шийдэгдсэн ХАГАС үр дүн кэшэд баталгаатай
+   * хариу мэт үлдэж, сесс дуустал «саад алга» гэж харагддаг байв (дахин
+   * оролдох ч боломжгүй — кэш нь буцаагаад тэр хагасаа өгнө). Одоо
+   * `failed` тугтай хариуг кэшнээс ХАСНА: дараагийн дуудлага дахин оролдож,
+   * сүлжээ сэргэмэгц БҮРЭН тоо гарна.
+   */
+  void run.then((r) => {
+    if (r.failed?.length) resultCache.delete(rKey);
+  }).catch(() => {});
   resultCache.set(rKey, run);
   return run;
 }
@@ -153,12 +180,27 @@ async function overlapUncached(sources: Src[]): Promise<Overlap> {
 
   // ⚠️ Зэрэг татна — 57 дэд бүтцийн давхаргыг дараалуулбал секунд хүлээнэ.
   //    Нэг давхарга унасан ч бусад нь үргэлжлэх ёстой (`allSettled`).
-  await Promise.allSettled(sources.map(async (s) => {
+  const settled = await Promise.allSettled(sources.map(async (s) => {
     const lg = await layerGeoms(s, wkid);
     g.rings.push(...lg.rings);
     g.paths.push(...lg.paths);
     g.points.push(...lg.points);
   }));
+  /*
+   * ⚠️ 2026-09-11: УНАСАН ЭХ СУРВАЛЖИЙГ ТООЛНО. `allSettled` дангаараа
+   * уналтыг ЧИМЭЭГҮЙ залгидаг тул хагас татагдсан геометрээр бодсон үр дүн
+   * «бүрэн» мэт буцдаг байв — файлын толгойн анхааруулга (проекц зөрвөл
+   * «саадгүй» гэсэн ХУДАЛ дүгнэлт) яг энэ ангилалд хамаарна. Аль давхарга
+   * унасныг НЭРЭЭР нь дамжуулж, дуудагч тал ил хэлэх боломжтой болгоно.
+   */
+  const failed = settled
+    .map((r, i) => (r.status === 'rejected' ? sources[i].layerId : null))
+    .filter((x): x is string => x !== null);
+  /* ⚠️ БҮГД унасан бол энэ нь үр дүн БИШ, АЛДАА — хоосон `oids` нь «саад
+     алга» гэж уншигдах тул шидэж, дуудагчийн `catch` замд оруулна. */
+  if (failed.length === sources.length) {
+    throw new Error(`ArcGIS: ${failed.length} эх сурвалж бүгд татагдсангүй`);
+  }
 
   /**
    * ⚠️ ХЭСЭГЧИЛСЭН АСУУЛГА — гүйцэтгэлийн ГОЛ хүчин зүйл.
@@ -186,7 +228,9 @@ async function overlapUncached(sources: Src[]): Promise<Overlap> {
       (c) => ['esriGeometryMultipoint', JSON.stringify({ points: c, spatialReference: { wkid } })] as [string, string],
     ),
   ];
-  if (!shapes.length) return { oids: [] };
+  /* ⚠️ Геометр огт гараагүй ч УНАСАН давхарга байвал түүнийг дамжуулна —
+     эс бөгөөс «хэлбэр алга» нь «саад алга» гэж ХУДАЛ уншигдана. */
+  if (!shapes.length) return failed.length ? { oids: [], failed } : { oids: [] };
 
   const ask = (geometryType: string, geometry: string, where: string) =>
     post(PARCEL_LEFT.url, {
@@ -205,5 +249,8 @@ async function overlapUncached(sources: Src[]): Promise<Overlap> {
 
   const left = new Set<number>();
   for (const r of res) for (const id of (r.objectIds ?? []) as number[]) left.add(id);
-  return { oids: [...left] };
+  /* ⚠️ `failed` нь ХООСОН үед талбарыг ОГТ нэмэхгүй — бүрэн тоологдсон үр дүн
+     нь өмнөх хэлбэрээрээ үлдэж, дуудагчийн `failed?.length` шалгуур зөв
+     ажиллана (кэшлэх эсэхийг `overlapLeftParcels` мөн үүгээр шийднэ). */
+  return failed.length ? { oids: [...left], failed } : { oids: [...left] };
 }

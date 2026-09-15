@@ -125,9 +125,22 @@ let pending: Promise<void> | null = null;
 export function loadPlan2dStyle(): Promise<void> {
   if (STYLES) return Promise.resolve();
   pending ??= fetch("/plan2d-style.json")
-    .then((r) => (r.ok ? r.json() : {}))
-    .then((j) => { STYLES = j as Record<string, unknown>; })
-    .catch(() => { STYLES = {}; });
+    .then(async (r) => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      STYLES = (await r.json()) as Record<string, unknown>;
+    })
+    .catch((e) => {
+      // ⚠️ Алдаанд STYLES-ийг ХООСОН (`{}`) болгож кэшлэхгүй: `{}` нь truthy
+      //    тул дээрх `if (STYLES) return` нь дараагийн БҮХ дуудлагыг шууд
+      //    resolve болгож, сесс дуустал retry огт гардаггүй байв — апп нээх
+      //    агшны нэг глитч 14 `sb:*` давхаргыг webmap renderer-гүй, SDK-ийн
+      //    анхдагч загвараар мэдэгдэлгүй үлдээнэ. `pending = null` тавьснаар
+      //    дараагийн mount (MapCanvas) дээр дахин татна. Promise нь resolve
+      //    хэвээр тул style-ыг хүлээгч гацахгүй.
+      //    (`webmapStyle.ts`-д 2026-09-07-нд яг ижил засвар хийсэн.)
+      pending = null;
+      console.warn('[selbe] plan2d-style.json татагдсангүй — дараагийн mount дээр дахин оролдоно:', e);
+    });
   return pending;
 }
 

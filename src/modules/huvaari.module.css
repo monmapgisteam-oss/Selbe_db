@@ -347,6 +347,17 @@
   cursor: pointer;
 }
 .tlZoomOn { color: var(--surface); background: var(--ink-2); border-color: var(--ink-2); }
+
+/*
+ * ⚠️ ЗӨВХӨН ХАРАГДАЖ буй төрөл (2026-09-11) — засагдаж буйгаас (`tlZoomOn`)
+ *    ЯЛГАРНА: тодруулга бий, дүүргэлт үгүй. Хоёуланг ижил харуулбал «аль нь
+ *    засагдаж байна» гэдэг алдагдана.
+ */
+.tlZoomRef {
+  color: var(--ink-2);
+  border-color: color-mix(in srgb, var(--ink-2) 55%, transparent);
+  background: color-mix(in srgb, var(--ink-2) 10%, transparent);
+}
 .tlGrid {
   position: absolute;
   top: 0;
@@ -433,6 +444,11 @@
 /* ⚠️ Ээлжит сүүдэр — 20+ зэрэгцээ мөрөнд нүд мөрөө алдахгүй */
 .plLaneAlt { background: color-mix(in srgb, var(--ink-3) 5%, transparent); }
 .plLaneOn { background: color-mix(in srgb, var(--data) 10%, transparent); }
+/*
+ * ⚠️ ДЭЭД ХАГАС (2026-09-11): сонгосон төрлийн зурвас мөрийн дээд талд,
+ *    лавлагаа (`plRef`) доод талд — хоёулаа ЗЭРЭГ харагдана. Урьд нь
+ *    бүтэн өндөр эзэлдэг байсан тул лавлагааг ард нь нуух хэрэгтэй байв.
+ */
 .plBar {
   position: absolute;
   top: 4px;
@@ -445,6 +461,18 @@
   cursor: grab;
 }
 .plBar:active { cursor: grabbing; }
+
+/*
+ * ⚠️ ЗӨВХӨН «Зэрэг» АСААЛТТАЙ үед нарийсна (2026-09-11): лавлагааны зурвас
+ *    мөрийн доод хагаст сууж чадах зай гаргана. Унтраалттай үед зурвас нь
+ *    БҮТЭН өндөртэй — урьд нь үргэлж нарийссан тул хэрэглэгч «зураас
+ *    нарийсаж байна» гэж заасан.
+ */
+.plBarHalf {
+  bottom: auto;
+  height: 11px;
+  top: 3px;
+}
 /* БҮЛГИЙН МУЖ — ДЭД АЖЛУУДААСАА БОДОГДДОГ, ГАРААР ЗАСАГДДАГГҮЙ.
    ⚠️ 2026-09-06: өнгө нь ажлын зурваснаас ЯЛГААТАЙ (нил ягаан `--overlap`)
       бөгөөд курсор нь `default` — «энэ зурвасыг чирж болохгүй» гэдэг нь
@@ -487,6 +515,49 @@
 /* УЯЛДААНЫ ЗӨРЧИЛ — шаардлагаас ӨМНӨ эхэлсэн зурвас. Хориглодоггүй тул
    зөвхөн тод улаан хүрээ: «энэ огноо урд ажилтайгаа зөрж байна» гэсэн дохио. */
 .plBarViol { outline: 2px dashed var(--bad); outline-offset: 1px; }
+
+/*
+ * ЛАВЛАГААНЫ ЗУРВАС — нөгөө төрлийн огноо, мөрийн ДООД хагаст (2026-09-11).
+ *
+ * ⚠️ Дээд зурвастай ЗЭРЭГЦЭН харагдана (ард нь биш) — хэрэглэгчийн хүсэлт:
+ *    «дээр дооd зэрэг харагдана». Хоёр огнооны зөрүү нь хоёр зурвасын
+ *    хэвтээ шилжилтээр шууд уншигдана.
+ * ⚠️ `pointer-events: none` — чирэх, сонгох бүх үйлдэл дээд зурваст очно.
+ */
+.plRef {
+  position: absolute;
+  bottom: 3px;
+  height: 9px;
+  border-radius: 2px;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    45deg,
+    color-mix(in srgb, var(--ink-2) 42%, transparent) 0 2px,
+    transparent 2px 5px
+  );
+  border: 1px solid color-mix(in srgb, var(--ink-2) 34%, transparent);
+}
+
+/* Тайлбарын мөр — судал нь юу болохыг нэрлэнэ */
+.plRefKey {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.plRefSwatch {
+  width: 16px;
+  height: 6px;
+  border-radius: 2px;
+  background: repeating-linear-gradient(
+    45deg,
+    color-mix(in srgb, var(--ink-2) 42%, transparent) 0 2px,
+    transparent 2px 5px
+  );
+  border: 1px solid color-mix(in srgb, var(--ink-2) 34%, transparent);
+}
 
 /* ── УЯЛДААНЫ СУМУУД ── */
 .depSvg {

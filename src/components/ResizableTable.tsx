@@ -53,6 +53,37 @@ const LS = 'selbe.tblw.';
 
 type Widths = Record<number, number>;
 
+/** Багана хэт өргөсөж хүснэгт задрахаас сэргийлнэ (хадгалагдсан утгад л). */
+const MAX_W = 2000;
+
+/**
+ * localStorage-оос уншсан утгын ХЭЛБЭРИЙГ шалгана.
+ *
+ * ⚠️ 2026-09-11: урьд нь `JSON.parse(raw) as Widths` гэж ШУУД хөрвүүлдэг байв.
+ * `try/catch` нь зөвхөн ШИДЭЛТИЙГ (эвдэрсэн JSON) барьдаг — хүчинтэй JSON
+ * боловч БУРУУ хэлбэр (`"abc"`, `[1,2]`, `{"0":"x"}`) чимээгүй нэвтэрч, доор
+ * `--cw-1: ${v}px` гэж бичигдэхэд `abcpx` гэсэн хүчингүй CSS гарч хүснэгтийн
+ * баганууд задардаг байв. `SplitGrip.tsx`-ийн `parseSides`-тэй ИЖИЛ дүрэм.
+ *
+ * ⚠️ ТҮЛХҮҮРийг ч шалгана: `Number(k)` нь `__proto__` мэтийн түлхүүрт `NaN`
+ * өгдөг бөгөөд `--cw-NaNpx` болж гарах, эсвэл прототипийн талбарт хүрэх зам
+ * нээгддэг. Зөвхөн БҮХЭЛ, сөрөг бус индекс зөвшөөрнө.
+ */
+function parseWidths(v: unknown): Widths {
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) return {};
+  const out: Widths = {};
+  for (const [k, n] of Object.entries(v as Record<string, unknown>)) {
+    const i = Number(k);
+    if (!Number.isInteger(i) || i < 0) continue;
+    // ⚠️ `Number(n)` БИШ, `typeof === 'number'`: `Number(null)` нь 0 өгдөг тул
+    //    хог утга «хүчинтэй 0 өргөн» болж, багана бүрмөсөн алга болно.
+    if (typeof n === 'number' && Number.isFinite(n) && n >= MIN_W && n <= MAX_W) {
+      out[i] = Math.round(n);
+    }
+  }
+  return out;
+}
+
 type Props = {
   /** localStorage-ийн түлхүүр. Хүснэгт бүрд ӨӨР байх ёстой. */
   storeKey: string;
@@ -73,7 +104,7 @@ export function ResizableTable({ storeKey, className, children }: Props) {
   useEffect(() => {
     try {
       const raw = localStorage.getItem(LS + storeKey);
-      if (raw) setW(JSON.parse(raw) as Widths);
+      if (raw) setW(parseWidths(JSON.parse(raw)));
     } catch {
       /* хадгалалт байхгүй/эвдэрсэн — анхны өргөнөөр */
     }

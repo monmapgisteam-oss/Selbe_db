@@ -52,7 +52,8 @@ import {
   sumMonths, type PkgPlan, type PlanEdits, type WorkMeta,
 } from '@/lib/huvaariObyem';
 import {
-  decidePlan, loadHistory, loadPayload, loadPending, planTableReady, PLAN_STATUS, submitPlan,
+  decidePlan, loadHistory, loadPayload, loadPending, planTableState, PLAN_STATUS,
+  submitPlan, type PlanPayloadKind,
   type PlanPayload, type PlanSubmission,
 } from '@/lib/huvaariBatlah';
 import { useFocusTrap } from '@/lib/useFocusTrap';
@@ -69,8 +70,27 @@ const dayToMs = (s: string): number | null => {
   return m ? Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : null;
 };
 
+/**
+ * ХУВААРИЙН ТӨРӨЛ — аль огноог засаж байна вэ (2026-09-11).
+ *
+ * ⚠️ `plan` = ТӨЛӨВЛӨСӨН (`F…_Эхлэх`/`…_Дуусах`) — ажлын явцад хөдөлдөг.
+ *    `geree` = ГЭРЭЭНИЙ (`F…_geree_ehleh`/`…_geree_duusah`) — өөрчлөгдөшгүй
+ *    лавлагаа. Хоёрын ЗӨРҮҮ нь «хуваарь гэрээнээс хэр хазайсан» гэдгийг
+ *    хэмжих суурь тул НЭГ талбарт хийж болохгүй.
+ * ⚠️ Уялдаа (`deps`) ба сарын обьём нь ЗӨВХӨН төлөвлөгөөнд хамаарна —
+ *    гэрээ нь гинжээр хөдөлдөггүй, түүнээс обьём тараах ч утгагүй.
+ */
+/**
+ * ⚠️ ЭХ тодорхойлолт нь `huvaariBatlah.ts`-д (`PlanPayloadKind`) — илгээлтийн
+ *    агуулгад бичигддэг тул тэнд эзэмшигдэнэ. Энд зөвхөн ХОЧ: хоёр тусдаа
+ *    union бичвэл нэг нь өөрчлөгдөхөд нөгөө нь чимээгүй зөрнө.
+ */
+type PlanKind = PlanPayloadKind;
+
 /** `SheetRow[]` → `PlanRow[]`. `i` нь ЭХ массивын индекс. */
-function toPlanRows(rows: SheetRow[], n: number): PlanRow[] {
+function toPlanRows(rows: SheetRow[], n: number, kind: PlanKind = 'plan'): PlanRow[] {
+  const st = (r: SheetRow) => (kind === 'geree' ? r.gStart : r.start);
+  const en = (r: SheetRow) => (kind === 'geree' ? r.gEnd : r.end);
   return rows.map((r, i) => ({
     i,
     oid: r.oid,
@@ -82,8 +102,8 @@ function toPlanRows(rows: SheetRow[], n: number): PlanRow[] {
     group: r.group,
     vol: r.vol,
     spans: Array.from({ length: n }, (_, b) => (
-      r.start[b] != null && r.end[b] != null
-        ? { start: r.start[b] as number, end: r.end[b] as number }
+      st(r)[b] != null && en(r)[b] != null
+        ? { start: st(r)[b] as number, end: en(r)[b] as number }
         : null
     )),
     act: r.act,
@@ -240,6 +260,12 @@ export function Huvaari() {
   /** Батлах хүснэгт бэлэн эсэх — үгүй бол шалтгааныг ИЛ хэлнэ, чимээгүй нуухгүй */
   const [flowReady, setFlowReady] = useState<boolean | null>(null);
   /**
+   * БЭЛЭН БИШ БОЛ ЯАГААД — баннерт ЯГ энэ шалтгааныг бичнэ (2026-09-11).
+   * ⚠️ Урьд нь гурван огт өөр шалтгаан нэг мессеж болж нийлдэг байсан тул
+   *    админ юу засахаа мэдэхгүй байв.
+   */
+  const [flowWhy, setFlowWhy] = useState<string>('');
+  /**
    * СҮҮЛИЙН ШИЙДВЭР — хүлээгдэж буй илгээлт байхгүй үед харуулна.
    *
    * ⚠️ БУЦААСАН ШАЛТГААНЫГ гүйцэтгэгчид ХҮРГЭХ цорын ганц зам. Үүнгүй бол
@@ -352,6 +378,27 @@ export function Huvaari() {
      болж, нэг дэлгэцэнд ердөө 3–4 сар багтана — хүн эхлээд БҮТЭН зургийг
      хармаар байдаг. «сар» (2.6px/хоног) дээр бүхэл төсөл нэг дэлгэцэнд
      ойролцоогоор багтана; нарийвчлах бол товчоор томруулна. */
+  /**
+   * ХУВААРИЙН ТӨРӨЛ — «Төлөвлөгөө» эсвэл «Гэрээ» (2026-09-11).
+   *
+   * ⚠️ Солиход НООРОГ ЦЭВЭРЛЭГДЭНЭ (доорх эффект): ноорог нь `oid` →
+   *    блокийн муж гэсэн хэлбэртэй бөгөөд аль төрлийнх болох нь тэмдэглэгдэх
+   *    газаргүй. Цэвэрлэхгүй бол төлөвлөгөөнд зассан огноо гэрээний талбарт
+   *    бичигдэнэ — чимээгүй, эргүүлэх аргагүй.
+   */
+  const [kind, setKind] = useState<PlanKind>('plan');
+
+  /**
+   * ЛАВЛАГАА ХАРАГДАХ ЭСЭХ — нөгөө төрлийн зурвас (2026-09-11, хэрэглэгч:
+   * «дангаар нь харах бол гэрээ төлөвлөгөө дээр дарж идэвхжүүлдэг болго»).
+   *
+   * ⚠️ `kind` нь ЗАСАХ төрөл, энэ нь ХАРАХ асаалт — хоёр өөр зүйл. Засвар,
+   *    ноорог, хадгалалт, батлалт бүгд `kind`-ээс л хамаарна; энэ асаалт
+   *    юу ч бичдэггүй. Эс бөгөөс нэг ноорогт хоёр төрөл холилдоно.
+   * ⚠️ Анхдагчаар УНТРААЛТТАЙ: дангаар нь харах нь үндсэн байдал, зэрэг
+   *    харахыг «Зэрэг» товчоор ил асаана.
+   */
+  const [showRef, setShowRef] = useState(false);
   const [zoom, setZoom] = useState<Zoom>('month');
   const [blk, setBlk] = useState(0);
   const [takt, setTakt] = useState(7);
@@ -417,10 +464,58 @@ export function Huvaari() {
     return () => { alive = false; };
   }, [pkg]);
 
+  /**
+   * ТӨРӨЛ СОЛИГДОХОД НООРОГ ЦЭВЭРЛЭГДЭНЭ (2026-09-11).
+   *
+   * ⚠️ ЗААВАЛ: ноорог нь `oid → блокийн муж` хэлбэртэй бөгөөд аль төрлийнх
+   *    болохыг тэмдэглэх газаргүй. Цэвэрлэхгүй бол ТӨЛӨВЛӨГӨӨНД зассан
+   *    огноо ГЭРЭЭНИЙ талбарт бичигдэнэ — чимээгүй, эргүүлэх аргагүй.
+   * ⚠️ Уялдаа (`ham`) ба сарын обьём (`obDraft`) нь ЗӨВХӨН төлөвлөгөөнд
+   *    хамаарах тул тэднийг ч цэвэрлэнэ.
+   * ⚠️ Хадгалаагүй ажил байвал товч дарахаас ӨМНӨ асууна (`askSwitch`) —
+   *    энэ эффект нь зөвхөн БОДИТ солилтын дараах цэвэрлэгээ.
+   * ⚠️ БАТЛАХ УРСГАЛЫН төлвийг Ч цэвэрлэнэ (2026-09-11-ний аудитын S1).
+   *    Урьд нь `previewing`/`approving`/`pending`/`flowBox` үлддэг байсан тул:
+   *    батлагч урьдчилан хараад таб солиход ноорог цэвэрлэгдэн `dirtyN` 0
+   *    болж, «бичих зүйлгүй» салаа ажиллан илгээлтийг `approved` болгоно —
+   *    гүйцэтгэгчийн санал УЛ МӨРГҮЙ алга болж «батлагдлаа» гэж мэдээлнэ.
+   *    Багц солих эффект (`[pkg]`) яг ижил шалтгаанаар эдгээрийг тэглэдэг.
+   */
+  useEffect(() => {
+    setDraft(new Map()); setHam(new Map()); setObDraft(new Map());
+    setSel(null); setModal(null); setNote(''); setErr('');
+    setPreviewing(false); setApproving(null); setFlowBox(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kind]);
+
   const n = sc?.bld.length ?? 0;
 
   /** Ноорогийг эх мөрүүд дээр давхарлана — харагдац үргэлж ХАМГИЙН СҮҮЛИЙНХ */
-  const base = useMemo(() => toPlanRows(rows, n), [rows, n]);
+  const base = useMemo(() => toPlanRows(rows, n, kind), [rows, n, kind]);
+
+  /**
+   * ЛАВЛАГААНЫ хуваарь — НӨГӨӨ төрлийн огноо (2026-09-11, хэрэглэгчийн хүсэлт:
+   * «төлөвлөгөө гэрээ 2-ийг зэрэг харах»).
+   *
+   * ⚠️ Засах боломжгүй, зөвхөн ХАРУУЛНА: зурвасын ард нимгэн судлаар гарч,
+   *    «гэрээнээс хэр хазайсан» гэдгийг НЭГ дэлгэцээс уншина. Хоёр төрлийг
+   *    зэрэг ЗАСВАЛ аль нь ноорогт хамаарахыг ялгах газаргүй болно.
+   * ⚠️ НООРОГ давхарлахгүй (`rows`-оос шууд): лавлагаа нь ХАДГАЛАГДСАН
+   *    утга байх ёстой — эс бөгөөс өөрийн зассан зурвасаа өөртэйгөө жишнэ.
+   * ⚠️ Бүлгийн мөрд ХҮҮХДЭЭСЭЭ бодогдоно (`effSpan`) — зурах үед хийгдэнэ.
+   */
+  /* ⚠️ `showRef` унтраалттай бол ОГТ бодохгүй (2026-09-11-ний аудит): анхдагч
+     нь унтраалттай тул ихэнх хэрэглэгчид 1,266–1,675 мөрийг хоёр дахь удаа
+     хөрвүүлэх нь дэмий. Хоосон массив нь доорх дүрслэлд аюулгүй. */
+  const refBase = useMemo(
+    () => (showRef ? toPlanRows(rows, n, kind === 'geree' ? 'plan' : 'geree') : []),
+    [rows, n, kind, showRef],
+  );
+  const refByOid = useMemo(() => {
+    const m = new Map<number, PlanRow>();
+    for (const r of refBase) m.set(r.oid, r);
+    return m;
+  }, [refBase]);
   const plan = useMemo(() => {
     if (!draft.size && !ham.size) return base;
     return base.map((r) => {
@@ -939,7 +1034,12 @@ export function Huvaari() {
         spans.forEach((s, b) => {
           /* ⚠️ Талбар байхгүй блок бий (эх хуудасны толгой эвдэрсэн) — тэнд
              бичих газаргүй тул АЛГАСНА, унахгүй. */
-          if (!sc.start[b] && !sc.end[b]) return;
+          /* ⚠️ ТӨРӨЛ бүрд ӨӨР талбар (2026-09-11). `kind` нь хадгалах
+             агшинд уншигдана — ноорог нь солигдоход цэвэрлэгддэг тул
+             өөр төрлийн ноорог энд хүрэх боломжгүй. */
+          const fStart = kind === 'geree' ? sc.gStart[b] : sc.start[b];
+          const fEnd = kind === 'geree' ? sc.gEnd[b] : sc.end[b];
+          if (!fStart && !fEnd) return;
           const ns = s ? s.start : null;
           const ne = s ? s.end : null;
           /**
@@ -951,9 +1051,24 @@ export function Huvaari() {
            * муж болж, хадгалахад тэр огноо ЧИМЭЭГҮЙ УСТДАГ байлаа — өөр
            * блокт нэг зурвас чирсний төлөө.
            */
-          if (ns === orig.start[b] && ne === orig.end[b]) return;
-          if (sc.start[b]) a[sc.start[b]] = ns;
-          if (sc.end[b]) a[sc.end[b]] = ne;
+          const os = kind === 'geree' ? orig.gStart[b] : orig.start[b];
+          const oe = kind === 'geree' ? orig.gEnd[b] : orig.end[b];
+          if (ns === os && ne === oe) return;
+          /*
+           * ⚠️ ХАГАС БӨГЛӨСӨН БЛОКИЙГ ХӨНДӨХГҮЙ (2026-09-11-ний аудит, хэмжсэн).
+           *    Дээрх тайлбар «зөвхөн өөрчлөгдсөн блокийг» гэж бичсэн ч эх мөрд
+           *    ЗӨВХӨН эхлэх (эсвэл зөвхөн дуусах) огноотой блок нь `toPlanRows`-д
+           *    `null` муж болдог тул ноорогт `null` хэвээр орж, диффд `null ≠
+           *    огноо` гарч, тэр огноо `null` болж БИЧИГДДЭГ байв — хэрэглэгч
+           *    өөр блокт зурвас чирсний төлөө. Ноорог `null` БА эх мөр хагас
+           *    бол хэрэглэгч ЭНЭ блокийг хөндөөгүй гэсэн үг: алгасна.
+           *    Хэрэглэгч блокийг ЗОРИУД цэвэрлэвэл `commit(oid, null)` явдаг ч
+           *    тэр нь эх нь БҮТЭН (`os && oe`) байсан үед л ялгаатай — хагас
+           *    эхийг цэвэрлэх боломж алдагдана, гэхдээ огноо устахаас дээр.
+           */
+          if (s === null && (os != null) !== (oe != null)) return;
+          if (fStart) a[fStart] = ns;
+          if (fEnd) a[fEnd] = ne;
           changed += 1;
         });
         if (changed) upd.push(a);
@@ -1139,7 +1254,7 @@ export function Huvaari() {
     } finally {
       setBusy(false);
     }
-  }, [sc, draft, ham, obDraft, obPlan, obOids, obDups, base, dirtyN, busy, pkg, rows]);
+  }, [sc, draft, ham, obDraft, obPlan, obOids, obDups, base, dirtyN, busy, pkg, rows, kind]);
 
   /* ══════════════ БАТЛАХ УРСГАЛ ══════════════
    * ⚠️ Гүйцэтгэгч ЗОХИОНО → «Батлуулах» → батлагч БАТАЛНА → тэр үед л эх
@@ -1150,8 +1265,18 @@ export function Huvaari() {
   /** Хүлээгдэж буй илгээлт ба хүснэгтийн бэлэн байдлыг татна */
   const refreshFlow = useCallback(async () => {
     try {
-      const ready = await planTableReady(status === 'off' || roleForUser(user?.username) === 'super');
+      const st = await planTableState(status === 'off' || roleForUser(user?.username) === 'super');
+      const ready = st.ok;
       setFlowReady(ready);
+      setFlowWhy(ready ? '' : (
+        st.why === 'auth'
+          ? tr('ArcGIS-д нэвтрээгүй байна — гарч ороод дахин оролдоно уу.')
+          : st.why === 'owner'
+            ? tr('Батлах хүснэгт БАЙНА, гэвч түүнийг үүсгэсэн хэрэглэгч танигдахгүй байна. AGOL дээр item-ийн эзнийг super админ руу шилжүүлнэ үү.')
+            : st.why === 'error'
+              ? tr('Порталын хайлт амжилтгүй: {0}', st.detail ?? '')
+              : tr('Батлах хүснэгт олдсонгүй — админ (super) нэг удаа нэвтрэхэд автоматаар үүснэ.')
+      ));
       const p = ready ? await loadPending(pkg.key) : null;
       setPending(p);
       /* ⚠️ Хүлээгдэж буй илгээлт БАЙХГҮЙ үед л сүүлийн шийдвэрийг үзүүлнэ —
@@ -1159,6 +1284,7 @@ export function Huvaari() {
       setLastDecision(ready && !p ? ((await loadHistory(pkg.key, 1))[0] ?? null) : null);
     } catch {
       setFlowReady(false);
+      setFlowWhy(tr('Батлах урсгал уншигдсангүй — сүлжээгээ шалгана уу.'));
       setPending(null);
       setLastDecision(null);
     }
@@ -1177,8 +1303,10 @@ export function Huvaari() {
     for (const [oid, v] of ham) deps[String(oid)] = v;
     const obyem: PlanPayload['obyem'] = {};
     for (const [k, months] of obDraft) obyem[k] = Object.fromEntries(months);
-    return { spans, deps, obyem };
-  }, [draft, ham, obDraft]);
+    /* ⚠️ `kind` нь ЗААВАЛ — батлагч нь ӨӨРИЙН табаар бичих талбарыг дур
+       мэдэн шийдэхээс сэргийлнэ (2026-09-11-ний аудитын S1). */
+    return { kind, spans, deps, obyem };
+  }, [draft, ham, obDraft, kind]);
 
   /** «Батлуулах» — эх хуудсанд ЮУ Ч бичихгүй, зөвхөн хүснэгтэд хүлээнэ */
   const sendForApproval = useCallback(async (userNote: string) => {
@@ -1212,7 +1340,19 @@ export function Huvaari() {
    * ИЛГЭЭГДСЭН АГУУЛГЫГ НООРОГТ БУУЛГАХ — урьдчилан харах ба батлах ХОЁУЛАА
    * үүнийг хэрэглэнэ (нэг зам — хоёр салаа бичвэл нэг нь чимээгүй хоцорно).
    */
-  const applyPayloadToDraft = useCallback((p: PlanPayload) => {
+  /**
+   * Илгээлтийн агуулгыг ноорогт буулгана — БАТЛАХЫН ӨМНӨХ алхам.
+   *
+   * ⚠️ ТӨРӨЛ ЗӨРВӨЛ ТАТГАЛЗАНА (2026-09-11-ний аудитын S1). Илгээлт нь
+   *    `kind`-ээ өөртөө агуулдаг; батлагчийн ХАРЖ БУЙ таб түүнээс өөр бол
+   *    буулгахгүй, `false` буцаана. Эс бөгөөс `save` нь батлагчийн табаар
+   *    талбар сонгодог тул ТӨЛӨВЛӨГӨӨНИЙ санал `…_geree_*` талбарт бичигдэж,
+   *    гэрээний лавлагаа чимээгүй эвдэрнэ (эргүүлэх аргагүй).
+   * ⚠️ Автоматаар таб СОЛИХГҮЙ: батлагч юу батлахаа ӨӨРӨӨ мэдэж байх ёстой.
+   *    Дуудагч тал алдааг ил хэлж, зөв табыг нэрлэнэ.
+   */
+  const applyPayloadToDraft = useCallback((p: PlanPayload): boolean => {
+    if (p.kind !== kind) return false;
     const d: Draft = new Map();
     for (const [k, arr] of Object.entries(p.spans)) {
       d.set(Number(k), arr.map((s) => (s ? { start: s.start, end: s.end } : null)));
@@ -1222,7 +1362,8 @@ export function Huvaari() {
     const ob = new Map<string, Map<string, number>>();
     for (const [k, months] of Object.entries(p.obyem)) ob.set(k, new Map(Object.entries(months)));
     setDraft(d); setHam(hm); setObDraft(ob);
-  }, []);
+    return true;
+  }, [kind]);
 
   /** Урьдчилан харах — саналыг хуанли дээр НООРОГ болгон буулгана */
   const preview = useCallback(async () => {
@@ -1231,7 +1372,13 @@ export function Huvaari() {
     try {
       const p = await loadPayload(pending.oid);
       if (!p) { setErr(tr('Илгээлтийн агуулга уншигдсангүй.')); return; }
-      applyPayloadToDraft(p);
+      /* ⚠️ ТӨРӨЛ ЗӨРВӨЛ буулгахгүй — батлагч өөр табаар харж байна. */
+      if (!applyPayloadToDraft(p)) {
+        setErr(p.kind === 'geree'
+          ? tr('Энэ илгээлт ГЭРЭЭНИЙ огноонд хамаарна — «Гэрээ» таб руу шилжээд дахин үзнэ үү.')
+          : tr('Энэ илгээлт ТӨЛӨВЛӨГӨӨНИЙ огноонд хамаарна — «Төлөвлөгөө» таб руу шилжээд дахин үзнэ үү.'));
+        return;
+      }
       setPreviewing(true);
       setFlowBox(null);
       setNote(tr('Санал хуанли дээр урьдчилан харагдаж байна — батлах хүртэл эх хуудсанд бичигдэхгүй.'));
@@ -1300,7 +1447,15 @@ export function Huvaari() {
             setErr(tr('Илгээлтийн агуулга уншигдсангүй — батлах боломжгүй.'));
             return;
           }
-          applyPayloadToDraft(p);
+          /* ⚠️ ТӨРӨЛ ЗӨРВӨЛ ЭНД ЗОГСОНО (2026-09-11-ний аудитын S1).
+             Ноорогт буулгахгүй тул `save` нь буруу талбарт бичих зам
+             бүрмөсөн хаагдана; илгээлт `pending` хэвээр үлдэнэ. */
+          if (!applyPayloadToDraft(p)) {
+            setErr(p.kind === 'geree'
+              ? tr('Энэ илгээлт ГЭРЭЭНИЙ огноонд хамаарна — «Гэрээ» таб руу шилжээд батална уу.')
+              : tr('Энэ илгээлт ТӨЛӨВЛӨГӨӨНИЙ огноонд хамаарна — «Төлөвлөгөө» таб руу шилжээд батална уу.'));
+            return;
+          }
         }
         /* ⚠️ `save` нь ноорогийг state-ээс уншдаг тул ЭНД шууд дуудаж
            болохгүй — React төлөв энэ дуудлагын дараа шинэчлэгдэнэ. Батлах
@@ -1410,9 +1565,12 @@ export function Huvaari() {
    * ⚠️ ХАДГАЛААГҮЙ НООРОГ нь зөвхөн санах ойд байна. Таб хаах, дахин ачаалах,
    * багц солих гурвуулаа түүнийг чимээгүй устгана.
    */
-  /* ⚠️ УРЬДЧИЛАН ХАРАХ нь «хадгалаагүй ажил» БИШ: агуулга нь серверт аюулгүй
-     хадгалагдсан илгээлт бөгөөд хуанли дээр зөвхөн үзүүлж байгаа. Тиймээс
-     анхааруулга өгвөл батлагч алдагдах зүйлгүй атлаа сандарна. */
+  /* ⚠️ ТАБ ХААХАД анхааруулахгүй: урьдчилан харалтын агуулга нь серверт
+     аюулгүй хадгалагдсан илгээлт бөгөөд хуанли дээр зөвхөн үзүүлж байгаа —
+     хуудсыг хаахад алдагдах зүйлгүй.
+     ⚠️ БАГЦ/ТӨРӨЛ СОЛИХ нь ӨӨР зүйл: тэнд `askSwitch` асуудаг (2026-09-11).
+     Хаах нь урьдчилан харалтыг үлдээнэ, солих нь ТАСАЛНА — батлагч юу харж
+     байснаа алдаж, илгээлт нь хүлээгдсэн хэвээр үлдэнэ. */
   useEffect(() => {
     if (!dirtyN || previewing) return undefined;
     const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); };
@@ -1420,9 +1578,25 @@ export function Huvaari() {
     return () => window.removeEventListener('beforeunload', warn);
   }, [dirtyN, previewing]);
 
+  /**
+   * БАГЦ/ТӨРӨЛ СОЛИХ зөвшөөрөл асууна.
+   *
+   * ⚠️ УРЬДЧИЛАН ХАРЖ БАЙХАД ТУСДАА АСУУЛТ (2026-09-11-ний аудитын S1).
+   *    Урьд нь `previewing` үед ШУУД `true` буцаадаг байв — «ноорог нь
+   *    батлагчийнх тул хаяхад эвгүй зүйлгүй» гэсэн үндэслэлээр. Гэвч солих
+   *    нь урьдчилан харалтыг ТАСАЛДАГ: батлагч юу харж байснаа алдаж,
+   *    илгээлт хүлээгдсэн хэвээр үлдэнэ. Тиймээс чимээгүй зөвшөөрөхгүй.
+   * ⚠️ Хоёр тохиолдолд ӨӨР асуулт: урьдчилан харалт нь өгөгдөл алдахгүй
+   *    (сервер дээр хэвээр), ноорог нь АЛДАГДАНА.
+   */
   const askSwitch = useCallback(
-    () => dirtyN === 0 || previewing
-      || window.confirm(tr('Хадгалаагүй {0} өөрчлөлт байна. Хаяад солих уу?', num(dirtyN))),
+    () => {
+      if (previewing) {
+        return window.confirm(tr('Батлах урьдчилан харалт хаагдана. Илгээлт хүлээгдсэн хэвээр үлдэнэ. Үргэлжлүүлэх үү?'));
+      }
+      return dirtyN === 0
+        || window.confirm(tr('Хадгалаагүй {0} өөрчлөлт байна. Хаяад солих уу?', num(dirtyN)));
+    },
     [dirtyN, previewing],
   );
 
@@ -1560,11 +1734,13 @@ export function Huvaari() {
         /* ⚠️ Хошууны marker нь шугамын `stroke`-оос өнгө АВДАГГҮЙ (SVG-ийн
            marker нь referencing path-аас currentColor өвлөдөггүй) тул ангилал
            бүрд ТУСДАА marker хэрэглэнэ. */
-        const kind = viol ? 2 : hot ? 1 : 0;
+        /* ⚠️ Нэр нь `arrKind` — гадна талын `kind` (хуваарийн ТӨРӨЛ) нь
+           огт өөр зүйл; ижил нэр нь уншигчийг төөрөгдүүлнэ. */
+        const arrKind = viol ? 2 : hot ? 1 : 0;
         arrows.push({
           d,
           cls: viol ? h.depBad : hot ? h.depHot : h.depLine,
-          mk: `url(#hvDepArr${kind})`,
+          mk: `url(#hvDepArr${arrKind})`,
           key: `${r.oid}·${j}`,
         });
       });
@@ -1665,6 +1841,75 @@ export function Huvaari() {
               </select>
             </label>
 
+            {/*
+              * ХУВААРИЙН ТӨРӨЛ — «Төлөвлөгөө» / «Гэрээ» (2026-09-11).
+              *
+              * ⚠️ ЗӨВХӨН ШИЛЖИНЭ (хэрэглэгчийн хүсэлт): эдгээр хоёр товч нь
+              *    аль огноог ЗАСАХ вэ гэдгийг л сонгоно — нэг нь идэвхтэй.
+              *    Хоёуланг зэрэг харах нь ТУСДАА товч (`Зэрэг`, доор).
+              * ⚠️ Хадгалаагүй ноорогтой үед асууна (`askSwitch`) — солиход
+              *    ноорог цэвэрлэгддэг тул.
+              */}
+            <div className={h.tlZoom}>
+              {([
+                ['plan', tr('Төлөвлөгөө')],
+                ['geree', tr('Гэрээ')],
+              ] as [PlanKind, string][]).map(([k, label]) => (
+                <button key={k} type="button"
+                  className={`${h.tlZoomB} ${kind === k ? h.tlZoomOn : ''}`}
+                  aria-pressed={kind === k}
+                  title={k === 'geree'
+                    ? tr('Гэрээнд заасан огноог засна.')
+                    : tr('Ажлын төлөвлөсөн огноог засна.')}
+                  /* ⚠️ `busy` үед ТҮГЖИНЭ (2026-09-11-ний аудит): `save`-ийн
+                     таван await-ийн зуур төрөл солигдвол `[kind]` эффект
+                     ноорогийг цэвэрлэж, «хадгалагдлаа» гэсэн мэдэгдэл ӨӨР
+                     төрлийн хуанли дээр гарна. Багцын сонгогч аль хэдийн
+                     ингэж түгжигддэг. */
+                  disabled={busy}
+                  onClick={() => { if (kind !== k && askSwitch()) setKind(k); }}>
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {/*
+              * ЗЭРЭГ ХАРАХ — нөгөө төрлийн огноог мөр бүрийн ДООД зурвасаар
+              * нэмж харуулна (2026-09-11, хэрэглэгч: «тусдаа зэрэг харах гэдэг
+              * button нэм»).
+              *
+              * ⚠️ ЗӨВХӨН ХАРУУЛНА — ноорог, хадгалалт, батлалтад ОГТ хүрэхгүй.
+              *    Засагдах нь ҮРГЭЛЖ дээрх сонголт (`kind`). Эс бөгөөс нэг
+              *    ноорогт хоёр төрөл холилдоно (2026-09-11-ний аудитын S1).
+              * ⚠️ Анхдагчаар УНТРААЛТТАЙ: дангаар нь харах нь үндсэн байдал.
+              */}
+            <button type="button"
+              className={`${h.tlZoomB} ${showRef ? h.tlZoomRef : ''}`}
+              aria-pressed={showRef}
+              title={showRef
+                ? tr('Нөгөө огноог нуана.')
+                : (kind === 'geree'
+                  ? tr('Төлөвлөсөн огноог мөр бүрийн доор нэмж харуулна.')
+                  : tr('Гэрээний огноог мөр бүрийн доор нэмж харуулна.'))}
+              onClick={() => setShowRef((v) => !v)}>
+              {tr('Зэрэг')}
+            </button>
+
+            {/*
+              * ТАЙЛБАР — зөвхөн лавлагаа АСААЛТТАЙ үед.
+              *
+              * ⚠️ Унтраалттай үед тайлбар үлдвэл байхгүй зурвасыг тайлбарлана.
+              */}
+            {showRef && (
+              <span className={h.plRefKey}
+                title={kind === 'geree'
+                  ? tr('Мөр бүрийн ДООД зурвас нь ТӨЛӨВЛӨСӨН огноо — зөвхөн харуулна, засагдахгүй.')
+                  : tr('Мөр бүрийн ДООД зурвас нь ГЭРЭЭНИЙ огноо — зөвхөн харуулна, засагдахгүй.')}>
+                <span className={h.plRefSwatch} />
+                {kind === 'geree' ? tr('Төлөвлөгөө') : tr('Гэрээ')}
+              </span>
+            )}
+
             <div className={h.tlZoom}>
               {(['day', 'week', 'month'] as Zoom[]).map((z) => (
                 <button key={z} type="button"
@@ -1708,7 +1953,7 @@ export function Huvaari() {
             className={h.save}
             disabled={busy || dirtyN === 0 || flowReady === false}
             title={flowReady === false
-              ? tr('Батлах хүснэгт бэлэн болоогүй — админ нэг удаа нэвтэрч үүсгэнэ.')
+              ? (flowWhy || tr('Батлах хүснэгт бэлэн болоогүй — админ нэг удаа нэвтэрч үүсгэнэ.'))
               : tr('Өөрчлөлтийг батлуулахаар илгээнэ — батлагдтал эх хуваарь хөдлөхгүй')}
             onClick={() => setFlowBox('send')}
           >
@@ -1787,9 +2032,14 @@ export function Huvaari() {
             lastDecision.approver ?? '', num(lastDecision.rowCount))}
         </p>
       )}
+      {/* ⚠️ ЯГ ШАЛТГААНЫГ бичнэ (2026-09-11). Урьд нь гурван огт өөр
+          шалтгаан (нэвтрээгүй · эзэн танигдахгүй · порталын алдаа) нэг л
+          «олдсонгүй» мессеж болж нийлдэг тул админ юу засахаа мэдэхгүй байв. */}
       {flowReady === false && canEdit && (
         <p className={h.err} role="alert">
-          {tr('Батлах хүснэгт олдсонгүй — админ (super) нэг удаа нэвтрэхэд автоматаар үүснэ. Түүнийг хүртэл хуваарь илгээх боломжгүй.')}
+          {flowWhy || tr('Батлах хүснэгт олдсонгүй — админ (super) нэг удаа нэвтрэхэд автоматаар үүснэ.')}
+          {' '}
+          {tr('Түүнийг хүртэл хуваарь илгээх боломжгүй.')}
         </p>
       )}
 
@@ -1892,9 +2142,35 @@ export function Huvaari() {
                           style={{ top: k * PL_ROW, height: PL_ROW }}
                           onPointerDown={(e) => onDown(e, r, 'new')}
                         >
+                          {/*
+                            * ЛАВЛАГААНЫ ЗУРВАС — нөгөө төрлийн огноо (2026-09-11).
+                            *
+                            * ⚠️ Мөрийн ДООД хагаст, сонгосон төрлийн зурвасын ДООР
+                            *    зэрэгцэнэ (ард нь биш) — хэрэглэгчийн хүсэлт. Хоёр
+                            *    огнооны зөрүү нь хэвтээ шилжилтээр шууд уншигдана.
+                            * ⚠️ Огноо ИЖИЛ байсан ч ЗУРНА: зэрэгцсэн хоёр зурвас нь
+                            *    давхцахгүй тул «ижил байна» гэдэг нь өөрөө мэдээлэл.
+                            * ⚠️ Зөвхөн нөгөө төрөлд огноо БАЙГАА үед — байхгүйг
+                            *    «тэг» гэж зурахгүй (`null ≠ 0`).
+                            */}
+                          {(() => {
+                            if (!showRef) return null;
+                            const rr = refByOid.get(r.oid);
+                            if (!rr) return null;
+                            const rsp = r.group ? effSpan(refBase, rr.i, blk) : rr.spans[blk];
+                            if (!rsp) return null;
+                            const other = kind === 'geree' ? tr('Төлөвлөгөө') : tr('Гэрээ');
+                            return (
+                              <div
+                                className={h.plRef}
+                                style={{ left: xOf(rsp.start), width: Math.max(6, spanDays(rsp) * px - 1) }}
+                                title={`${other}: ${msToDay(rsp.start)} → ${msToDay(rsp.end)} (${tr('{0} хоног', spanDays(rsp))})`}
+                              />
+                            );
+                          })()}
                           {sp && (
                             <div
-                              className={`${h.plBar} ${r.group ? h.plBarG : ST_CLASS[st]} ${sel === r.i ? h.tlBarOn : ''} ${viol ? h.plBarViol : ''}`}
+                              className={`${h.plBar} ${showRef ? h.plBarHalf : ''} ${r.group ? h.plBarG : ST_CLASS[st]} ${sel === r.i ? h.tlBarOn : ''} ${viol ? h.plBarViol : ''}`}
                               style={{ left: xOf(sp.start), width: Math.max(10, spanDays(sp) * px - 1) }}
                               onPointerDown={(e) => onDown(e, r, 'move')}
                               aria-label={`${r.work || r.no} · ${sc.bld[blk]} · ${msToDay(sp.start)} → ${msToDay(sp.end)}`}

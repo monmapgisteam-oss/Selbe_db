@@ -239,8 +239,37 @@ function applyAnchor(
 /* ══════════════════ Татах ба кэш (§9.2, §9.3) ══════════════════ */
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const pad = (n: number) => String(n).padStart(2, '0');
-export const ymd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+/**
+ * ⚠️ ЦАГИЙН БҮС — Open-Meteo-гийн хариу нь ОФФСЕТГҮЙ мөр буцаадаг
+ * (`"2026-09-11T07:00"`). `Date.parse` түүнийг ХӨТЧИЙН локал цаг гэж уншина.
+ * Тиймээс UB-аас өөр бүсээс нэвтэрвэл `nowIndex` буруу цаг сонгож, сэвсгэрийн
+ * чиглэл хэдэн цагаар хазайж байв. Хүсэлтэд `Asia/Ulaanbaatar`-ыг ИЛ заагаад,
+ * эргэж ирсэн мөрийг ТУХАЙН бүсийн оффсетоор epoch болгоно — хөтчийн локал
+ * цагаас ҮЛ ХАМААРНА.
+ */
+export const TZ = 'Asia/Ulaanbaatar';
+
+/** Улаанбаатарын цагаар `YYYY-MM-DD` — хөтчийн бүснээс ҮЛ ХАМААРНА */
+export const ymd = (d: Date = new Date()) =>
+  new Intl.DateTimeFormat('en-CA', {
+    timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(d);
+
+/**
+ * Оффсетгүй мөрийг (`"2026-09-11T07:00"`) epoch ms болгоно.
+ * ⚠️ `utc_offset_seconds` нь хариунаас ирнэ — тогтмол +8 гэж бичвэл зуны цаг
+ * эсвэл бүсийн дүрэм өөрчлөгдөхөд чимээгүй хазайна.
+ */
+/** UB-ын цагаар `HH:00` — шошгод. ⚠️ `getHours()` нь хөтчийн бүсээр хөрвүүлнэ. */
+export const hhmmUB = (ms: number): string =>
+  new Intl.DateTimeFormat('en-GB', {
+    timeZone: TZ, hour: '2-digit', minute: '2-digit', hour12: false,
+  }).format(new Date(ms));
+
+export const epochOf = (local: string, offsetS: number): number => {
+  const ms = Date.parse(local + 'Z');
+  return Number.isFinite(ms) ? ms - offsetS * 1000 : NaN;
+};
 
 /** Эх модультай ижил түлхүүрийн хэв — `windCache:YYYY-MM-DD` */
 /* ⚠️ Түлхүүрт `a` (anchor) — залруулгагүй ХУУЧИН кэш уншигдвал зөрчил
@@ -305,7 +334,8 @@ export async function loadWindField(date: string): Promise<WindField> {
     longitude: lons.join(','),
     hourly: 'wind_speed_10m,wind_direction_10m',
     wind_speed_unit: 'ms',
-    timezone: 'auto',
+    /* ⚠️ 'auto' БИШ: цуваа нь ҮРГЭЛЖ UB-ын цагаар ирэх ёстой (§TZ) */
+    timezone: TZ,
     start_date: date,
     end_date: date,
   });
@@ -327,6 +357,7 @@ export async function loadWindField(date: string): Promise<WindField> {
     /* ⚠️ ГАНЦ цэгт объект, ОЛОН цэгт массив ирдэг — хоёуланг нь хүлээнэ */
     const arr = (Array.isArray(body) ? body : [body]) as {
       hourly?: { time?: string[]; wind_speed_10m?: number[]; wind_direction_10m?: number[] };
+      utc_offset_seconds?: number;
       error?: boolean;
       reason?: string;
     }[];
@@ -336,7 +367,10 @@ export async function loadWindField(date: string): Promise<WindField> {
       throw new Error(tr('Торны цэг дутуу ирлээ: {0}/{1}', String(arr.length), String(NX * NY + 1)));
     }
 
-    const times = (arr[0].hourly?.time ?? []).map((t) => new Date(t).getTime());
+    /* ⚠️ `new Date(t)` нь оффсетгүй мөрийг ХӨТЧИЙН бүсээр уншина — хариуны
+       `utc_offset_seconds`-ээр бодно (§TZ). */
+    const offS = arr[0].utc_offset_seconds ?? 0;
+    const times = (arr[0].hourly?.time ?? []).map((t) => epochOf(t, offS));
     const H = times.length;
     if (!H) throw new Error(tr('Цагийн цуваа хоосон'));
 

@@ -9,6 +9,7 @@
 // Тиймээс нэрийг ХАТУУ бичихгүй — үйлчилгээний метадатагаас нь ХЭВ ШИНЖЭЭР
 // таньж авна. Ингэснээр шинэ багц нэмэгдэхэд зөвхөн `PKGS`-д мөр нэмнэ.
 
+import { t as tr } from '@/lib/i18nCore';
 import { agsFetch } from "./ags";
 
 const HJ = "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services";
@@ -32,16 +33,16 @@ export type Pkg = {
  * ЯГ таарна — зөрвөл мод буруу багцад наалдана.
  */
 export const PKGS: Pkg[] = [
-  { key: "b1_9f", group: 'Багц 1', floors: 9, label: 'Багц 1 · 9 давхар', url: `${HJ}/Bagts_1_9f/FeatureServer/0` },
-  { key: "b1_12f", group: 'Багц 1', floors: 12, label: 'Багц 1 · 12 давхар', url: `${HJ}/Bagts_1_12f/FeatureServer/0` },
-  { key: "b2_9f", group: 'Багц 2', floors: 9, label: 'Багц 2 · 9 давхар', url: `${HJ}/Bagts_2_9f/FeatureServer/0` },
-  { key: "b2_12f", group: 'Багц 2', floors: 12, label: 'Багц 2 · 12 давхар', url: `${HJ}/Bagts_2_12f/FeatureServer/0` },
-  { key: "b31_9f", group: 'Багц 3.1', floors: 9, label: 'Багц 3.1 · 9 давхар', url: `${HJ}/Bagts_3_1_9f/FeatureServer/0` },
-  { key: "b32_9f", group: 'Багц 3.2', floors: 9, label: 'Багц 3.2 · 9 давхар', url: `${HJ}/Bagts_3_2_9f/FeatureServer/0` },
-  { key: "b33_9f", group: 'Багц 3.3', floors: 9, label: 'Багц 3.3 · 9 давхар', url: `${HJ}/Bagts_3_3_9f/FeatureServer/0` },
-  { key: "b41_9f", group: 'Багц 4-1', floors: 9, label: 'Багц 4-1 · 9 давхар', url: `${HJ}/Bagts_4_1_9f/FeatureServer/0` },
-  { key: "b42_9f", group: 'Багц 4-2', floors: 9, label: 'Багц 4-2 · 9 давхар', url: `${HJ}/Bagts_4_2_9f/FeatureServer/0` },
-  { key: "b42_12f", group: 'Багц 4-2', floors: 12, label: 'Багц 4-2 · 12 давхар', url: `${HJ}/Bagts_4_2_12f/FeatureServer/0` },
+  { key: "b1_9f", group: 'Багц 1', floors: 9, label: tr('Багц 1 · 9 давхар'), url: `${HJ}/Bagts_1_9f/FeatureServer/0` },
+  { key: "b1_12f", group: 'Багц 1', floors: 12, label: tr('Багц 1 · 12 давхар'), url: `${HJ}/Bagts_1_12f/FeatureServer/0` },
+  { key: "b2_9f", group: 'Багц 2', floors: 9, label: tr('Багц 2 · 9 давхар'), url: `${HJ}/Bagts_2_9f/FeatureServer/0` },
+  { key: "b2_12f", group: 'Багц 2', floors: 12, label: tr('Багц 2 · 12 давхар'), url: `${HJ}/Bagts_2_12f/FeatureServer/0` },
+  { key: "b31_9f", group: 'Багц 3.1', floors: 9, label: tr('Багц 3.1 · 9 давхар'), url: `${HJ}/Bagts_3_1_9f/FeatureServer/0` },
+  { key: "b32_9f", group: 'Багц 3.2', floors: 9, label: tr('Багц 3.2 · 9 давхар'), url: `${HJ}/Bagts_3_2_9f/FeatureServer/0` },
+  { key: "b33_9f", group: 'Багц 3.3', floors: 9, label: tr('Багц 3.3 · 9 давхар'), url: `${HJ}/Bagts_3_3_9f/FeatureServer/0` },
+  { key: "b41_9f", group: 'Багц 4-1', floors: 9, label: tr('Багц 4-1 · 9 давхар'), url: `${HJ}/Bagts_4_1_9f/FeatureServer/0` },
+  { key: "b42_9f", group: 'Багц 4-2', floors: 9, label: tr('Багц 4-2 · 9 давхар'), url: `${HJ}/Bagts_4_2_9f/FeatureServer/0` },
+  { key: "b42_12f", group: 'Багц 4-2', floors: 12, label: tr('Багц 4-2 · 12 давхар'), url: `${HJ}/Bagts_4_2_12f/FeatureServer/0` },
 ];
 
 /** Сонгогчид харагдах 7 багц — давхрын хувилбарууд нь дотроо. */
@@ -81,6 +82,22 @@ export type Schema = {
   /** ⚠️ Огноо дутуу блок бий (Багц 3.1-ийн 5/2) — тэнд `null` */
   start: (string | null)[];
   end: (string | null)[];
+  /**
+   * ГЭРЭЭНИЙ огноо (`F<цуваа>_<блок>_geree_ehleh` / `…_geree_duusah`) —
+   * 2026-09-11-нд 10/10 үйлчилгээнд нэмэгдсэн (Date, nullable, 242 талбар).
+   *
+   * ⚠️ `start`/`end` нь ТӨЛӨВЛӨСӨН огноо, энэ нь ГЭРЭЭНИЙ — хоёр өөр
+   *    зүйл. Гэрээ нь өөрчлөгдөшгүй лавлагаа (хэзээ дуусгах ёстой),
+   *    төлөвлөгөө нь ажлын явцад хөдөлдөг. Хоёрыг нэг талбарт хийвэл
+   *    «хоцорсон эсэх» гэдгийг ХЭМЖИХ суурь алдагдана.
+   * ⚠️ Нэр нь ЛАТИНААР — кирилл нэр AGOL дээр `_1` дагавар авдаг
+   *    (`Дуусах`/`Дуусах1`-ийн сургамж, доорх :256-260-ийг үз).
+   * ⚠️ Бүх блокт БАЙНА (242 = блокуудын тоо × 2) тул `null` гарах
+   *    ёсгүй; гэсэн ч хэлбэрийг `start`/`end`-тэй ижил байлгав —
+   *    хожим шинэ багц нэмэгдэхэд талбар дутуу ирж болно.
+   */
+  gStart: (string | null)[];
+  gEnd: (string | null)[];
 
   /** Мөрийн скаляр талбарууд. Байхгүй бол `null`. */
   f: {
@@ -202,6 +219,9 @@ export function resolveSchema(fields: FieldMeta[]): Schema {
     start: string[];
     end: string[];
     obyem: string[];
+    /** ГЭРЭЭНИЙ огноо — латин нэртэй тул кирилл шүүлтүүрт баригдахгүй */
+    gStart: string[];
+    gEnd: string[];
   };
   const blocks = new Map<string, Slot>();
   const order: { key: string; s: number; n: number }[] = [];
@@ -211,7 +231,7 @@ export function resolveSchema(fields: FieldMeta[]): Schema {
     const key = `${m[1]}/${m[2]}`;
     let slot = blocks.get(key);
     if (!slot) {
-      slot = { act: [], plan: [], start: [], end: [], obyem: [] };
+      slot = { act: [], plan: [], start: [], end: [], obyem: [], gStart: [], gEnd: [] };
       blocks.set(key, slot);
       order.push({ key, s: Number(m[1]), n: Number(m[2]) });
     }
@@ -221,7 +241,11 @@ export function resolveSchema(fields: FieldMeta[]): Schema {
     // ⚠️ Обьёмын бичлэг багц бүрд өөр: `F5_1_obyem` · `F5_1_9obyem` ·
     //    `F6_1_12_obyem` — бүгд латинаар төгсдөг тул доорх кирилл
     //    шалгууруудад баригдахгүй, тиймээс тэднээс өмнө шалгав.
-    if (/obyem$/.test(tail)) slot.obyem.push(raw);
+    /* ⚠️ ГЭРЭЭНИЙ огноо нь ЛАТИН тул кирилл шүүлтүүрүүдээс ӨМНӨ — эс
+       бөгөөс аль нэгэнд нь баригдахгүй чимээгүй хаягдана (2026-09-11). */
+    if (/gereeehleh$/.test(tail)) slot.gStart.push(raw);
+    else if (/gereeduusah$/.test(tail)) slot.gEnd.push(raw);
+    else if (/obyem$/.test(tail)) slot.obyem.push(raw);
     else if (/дуусах$/.test(tail) || /дуусах\d+$/.test(tail)) slot.end.push(raw);
     else if (/эхлэх$/.test(tail)) slot.start.push(raw);
     else if (/төлөвлөгө/.test(tail)) slot.plan.push(raw);
@@ -243,6 +267,8 @@ export function resolveSchema(fields: FieldMeta[]): Schema {
   const plan: string[] = [];
   const start: (string | null)[] = [];
   const end: (string | null)[] = [];
+  const gStart: (string | null)[] = [];
+  const gEnd: (string | null)[] = [];
   const obyem: (string | null)[] = [];
   for (const key of bld) {
     const s = blocks.get(key)!;
@@ -260,6 +286,8 @@ export function resolveSchema(fields: FieldMeta[]): Schema {
       start.push(s.start[0] ?? null);
       end.push(s.end[0] ?? null);
     }
+    gStart.push(s.gStart[0] ?? null);
+    gEnd.push(s.gEnd[0] ?? null);
   }
 
   /* ── Скаляр талбарууд ── */
@@ -329,7 +357,7 @@ export function resolveSchema(fields: FieldMeta[]): Schema {
     oid: names.find((n) => /^objectid$/i.test(n)) ?? "ObjectID",
   };
 
-  return { bld, act, plan, obyem, start, end, f };
+  return { bld, act, plan, obyem, start, end, gStart, gEnd, f };
 }
 
 /** Үйлчилгээний талбарын жагсаалтыг татаж бүдүүвч болгоно (кэштэй). */

@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { DOCS, docUrl, isExternalDoc } from '@/lib/docs';
+import { useFocusTrap } from '@/lib/useFocusTrap';
 import { Icon } from './Icon';
 import s from './docviewer.module.css';
 
@@ -16,6 +17,14 @@ import s from './docviewer.module.css';
  */
 export function DocViewer({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [active, setActive] = useState(DOCS[0].key);
+  const modalRef = useRef<HTMLDivElement>(null);
+
+  /* ⚠️ ФОКУСЫН УРХИ (`useFocusTrap`) — `aria-modal="true"` нь зөвхөн дэлгэц
+     уншигчид зориулагдсан бөгөөд ХӨТЧИЙН Tab-д нөлөөгүй: урхигүй үед Tab
+     дарсаар байхад фокус модалаас гарч, ард байгаа порталын товч, хүснэгтийн
+     нүд рүү шилждэг байв. Мөн хаахад фокусыг нээсэн товч («ТЭЗҮ») дээр нь
+     буцаана — эс тэгвээс Tab хуудасны эхнээс дахин эхэлнэ. */
+  useFocusTrap(modalRef, open);
 
   // ⚠️ Escape-ээр хаах + нээлттэй үед фоны гүйлгэлтийг түгжих.
   //    Эффектийг нөхцөлт дуудахгүй (hook дүрэм) — дотор нь `open`-оор шалгана.
@@ -38,6 +47,7 @@ export function DocViewer({ open, onClose }: { open: boolean; onClose: () => voi
   return (
     <div className={s.overlay} onClick={onClose} role="presentation">
       <div
+        ref={modalRef}
         className={s.modal}
         onClick={(e) => e.stopPropagation()}
         role="dialog"

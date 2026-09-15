@@ -19,6 +19,7 @@
  */
 
 import { queryFeatures } from './query';
+import { register } from './dataBus';
 import { BUILDING, HABEA, PKG_BY_BAGTS, LAYER_BY_ID } from './services';
 import { overlapLeftParcels } from './parcelOverlap';
 import { PKGS, loadSchema } from '@/modules/sheet/bagts.pkg';
@@ -71,6 +72,20 @@ export type Variance = {
  * гүйцэтгэл төлөвлөгдсөн хэмжээнээс давсан — өртгийн хяналтын асуудал.
  */
 let varCache: Promise<Variance> | null = null;
+/**
+ * ⚠️ КЭШИЙГ ӨГӨГДЛИЙН АВТОБУСАД ХОЛБОВ — `land.ts:62`-ийн загвараар. Энэ нь
+ * `cached()`-ээр ороогүй ГАРААР бичсэн модулийн кэш тул `invalidate()` түүнийг
+ * ОГТ хөнддөггүй байв.
+ *
+ * ⚠️ ТҮЛХҮҮР НЬ `BAGTS_SHEET` — эх сурвалжийг мөшгиж тогтоов: `loadVariance`
+ * нь `PKGS` (`bagts.pkg.ts` — `Bagts_*` FeatureServer-ууд) дээр
+ * `loadSchema` + `loadRows` дуудна, өөр хүснэгт УНШИХГҮЙ. Яг тэр мөрүүдийг
+ * «Гүйцэтгэл бөглөх» хуудас бичээд `invalidate('BAGTS_SHEET')` дууддаг
+ * (`bagtsSheet.ts:1604·1641·1694`). Обьёмын зөрүү нь ТЭР мөрүүдээс бодогддог
+ * тул холбоогүй үед CEO-гийн «Обьёмын зөрүү» карт обьём засагдмагц сесс
+ * дуустал хуучин тоогоо барьж, засвар хийгдээгүй мэт харагдана.
+ */
+register(() => { varCache = null; }, ['BAGTS_SHEET']);
 export function loadVariance(): Promise<Variance> {
   if (varCache) return varCache;
   varCache = (async () => {
@@ -144,6 +159,22 @@ const commonName = (titles: string[]): string => {
 };
 
 let ovCache: Promise<Overlaps> | null = null;
+/**
+ * ⚠️ ХОЁР ТҮЛХҮҮР — эх сурвалж бүрийг мөшгиж тогтоов (`land.ts:62`-ийн загвар):
+ *   · `BUILDING`  — блокуудыг багцаар бүлэглэхдээ `BUILDING.url`-ээс шууд
+ *                   уншина (`BAGTS`/OID). Блокийн багцын нэр өөрчлөгдвөл
+ *                   ажлуудын бүлэглэл өөр болно.
+ *   · `PARCEL_LEFT` — `overlapLeftParcels` нь ҮЛДСЭН нэгж талбартай
+ *                   огтлолцлыг боддог. Талбарын төлөв «Бүрэн чөлөөлсөн»
+ *                   болмогц (`parcelEdit.ts:207` → `invalidate('PARCEL_LEFT')`)
+ *                   тэр талбар давхцлаас ГАРАХ ёстой.
+ *
+ * ⚠️ `parcelOverlap.ts:148` нь ЗӨВХӨН ӨӨРИЙН дотоод кэшээ (geom/result)
+ * цэвэрлэдэг — энэ модулийн нэгтгэсэн үр дүн (`byPkg`, `total`) нь ТУСДАА
+ * кэш тул түүнийг ЭНД хаяхгүй бол цэвэрлэгдсэн эх дээр хуучин нийлбэр
+ * үлдэнэ. Буруу түлхүүр бүртгэх нь бүртгэхгүйгээс дор тул хоёуланг зарлав.
+ */
+register(() => { ovCache = null; }, ['BUILDING', 'PARCEL_LEFT']);
 export function loadOverlaps(): Promise<Overlaps> {
   if (ovCache) return ovCache;
   ovCache = (async () => {
@@ -225,6 +256,13 @@ export type Damage = {
 };
 
 let dmgCache: Promise<Damage> | null = null;
+/**
+ * ⚠️ ТҮЛХҮҮР НЬ `HABEA` — `loadDamage` нь ЗӨВХӨН `HABEA.incident.url`
+ * (ослын бүртгэл) уншина. `ceo/safety.ts:263` ба `reportData.ts:711` нь ЯГ ТЭР
+ * хүснэгтээс уншиж `['HABEA']` зарладаг: ах дүү ачаалагчид ӨӨР тагтай байвал
+ * нэг дэлгэц дээр хоёр өөр агшны тоо гарна (`Habea.tsx:68`-ийн тайлбар).
+ */
+register(() => { dmgCache = null; }, ['HABEA']);
 export function loadDamage(): Promise<Damage> {
   if (dmgCache) return dmgCache;
   dmgCache = (async () => {

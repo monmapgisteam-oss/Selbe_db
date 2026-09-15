@@ -58,7 +58,7 @@
 
 import { useAsync, type Async } from '@/lib/useAsync';
 import { t as tr } from '@/lib/i18nCore';
-import { num, pct } from '@/lib/format';
+import { num, pct, dayKey } from '@/lib/format';
 import { queryFeatures } from '@/lib/query';
 import { cached, loadClearance } from '@/lib/live';
 import { layerTotals } from '@/lib/totals';
@@ -753,7 +753,11 @@ async function loadHabeaSummaryRaw(): Promise<ReportExtra['habea']> {
 
   const ts = last ? nn(last[L.ognoo]) : 0;
   return {
-    date: ts ? new Date(ts).toISOString().slice(0, 10) : '',
+    /* ⚠️ `Habea.tsx`-ийн өдрийн цуваатай ИЖИЛ дүрэм — орон нутгийн огноо
+       (`dayKey`). `toISOString()` нь +08 бүсэд шөнийн бүртгэлийг өмнөх өдөр
+       болгодог тул тайлангийн «хамгийн сүүлийн бүртгэлийн огноо» нь дэлгэц
+       дээрх өдрөөс нэг хоногоор зөрдөг байв. */
+    date: ts ? dayKey(ts) : '',
     workers: byCompany.reduce((a, c) => a + c.workers, 0),
     mongol: byCompany.reduce((a, c) => a + c.mongol, 0),
     gadaad: byCompany.reduce((a, c) => a + c.gadaad, 0),

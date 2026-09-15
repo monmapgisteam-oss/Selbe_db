@@ -8,7 +8,9 @@ import { LayerCatalog } from '@/components/LayerCatalog';
 import { OpacityPanel } from '@/components/OpacityPanel';
 import { Section, Stats, Stat, Data, Empty, Bars, monotonePath, TIP_RULE } from '@/components/ui';
 import { useLayerPicks } from '@/lib/useLayerPicks';
-import { useAsync } from '@/lib/useAsync';
+/* ⚠️ `Async` төрөл нь `cfGate`-д хэрэгтэй — дөрвөн эхийг НЭГ синтетик
+   төлөв болгож `Data`-д дамжуулна (`cfGate`-ийн тайлбарыг үз). */
+import { useAsync, type Async } from '@/lib/useAsync';
 import { usePlanTotals, qtyText } from '@/lib/totals';
 import { loadLandStatus } from '@/lib/land';
 /* ⚠️ 2026-09-10: багцын гүйцэтгэлийн эх сурвалж `BAGTS_NEGTGEL` (батлагдсан
@@ -326,6 +328,34 @@ export function GeneralDash({
     ),
     [cfPlanInScope, cfTotal, period, ipcByMonth, housingMoneyByMonth, ipcUndated],
   );
+  /**
+   * S-МУРУЙН ХААЛГА — ДӨРВӨН ЭХИЙГ НЭГ `Async` болгоно (2026-09-11).
+   *
+   * ⚠️ ЯАГААД. Урьд нь `<Data q={cfPlan}>` гэж ЗӨВХӨН сарын хуваарилалтыг
+   *    хаалга болгодог байв. Гэтэл `cfTotal` нь `cf`-ээс ирдэг бөгөөд түүнгүйд
+   *    0 байна; `cashflowCurve` нь `total <= 0` үед `[]` буцаадаг. Тиймээс
+   *    `cfPlan` түрүүлж ирэхэд муруй хоосон гарч, дэлгэц дээр «Сарын
+   *    хуваарилалт бөглөгдөөгүй» гэсэн ЗААВАР гардаг байв — хэрэглэгч бөглөх
+   *    зүйлгүй хуудас руу илгээгддэг ХУДАЛ мэдэгдэл.
+   *
+   * ⚠️ ТӨЛӨВИЙН ЭРЭМБЭ: алдаа > ачаалалт > бэлэн. Аль нэг эх нь унасан бол
+   *    «Өгөгдөл татагдсангүй» (шалтгаан нь харагдана) — хоосон чарт зурж
+   *    алдааг НУУХГҮЙ. `retry` нь унасан эхийнх — товч дармагц ЯГ тэр хүсэлт
+   *    дахин явна.
+   *
+   * ⚠️ `data` нь `true` (утга биш): `Data`-гийн хүүхэд `cfCurve`-ийг ГАДНААС
+   *    уншдаг тул дамжуулах өгөгдөл шаардлагагүй — хаалга нь зөвхөн ТӨЛӨВ.
+   */
+  const cfGate = useMemo((): Async<true> => {
+    const srcs = [cfPlan, cf, hoQ, finD];
+    const bad = srcs.find((q) => q.state === 'error');
+    if (bad && bad.state === 'error') {
+      return { state: 'error', data: null, error: bad.error, retry: bad.retry };
+    }
+    const wait = srcs.find((q) => q.state === 'loading');
+    if (wait) return { state: 'loading', data: null, error: null };
+    return { state: 'ready', data: true, error: null };
+  }, [cfPlan, cf, hoQ, finD]);
   /* ⚠️ ТУСДАА сэлгүүр: хоёр чарт өөр өөр асуултад хариулдаг тул нэгийг
      хүснэгтээр харах нь нөгөөг ч сэлгэх ёсгүй. */
   const [cfMode, setCfMode] = useState<'chart' | 'table'>('chart');
@@ -657,7 +687,27 @@ export function GeneralDash({
             </span>
           )}
         >
-          <Data q={cfPlan} minH={190}>
+          {/*
+            * ⚠️ ХААЛГА НЬ ДӨРВҮҮЛЭЭ (2026-09-11). Урьд нь `q={cfPlan}` ганцаараа
+            * байсан нь ХУДАЛ «бөглөгдөөгүй» зарладаг байв: `cfCurve` нь ДӨРВӨН
+            * эхээс бүтдэг —
+            *     `cfPlanInScope` ← `cfPlan`   (сарын хуваарилалт)
+            *     `cfTotal`       ← `cf`       (нийт төсвийн хуваарь)
+            *     `ipcByMonth`    ← `hoQ`      (олгосон IPC)
+            *     `housingMoneyByMonth` ← `finD` (орон сууцны биет явц)
+            * `cf` ирээгүй байхад `cfTotal` нь 0 бөгөөд `cashflowCurve` нь
+            * `total <= 0` үед `[]` буцаадаг (`gdash.ts:945`). Тиймээс `cfPlan`
+            * түрүүлж ирэхэд хэрэглэгч «Сарын хуваарилалт бөглөгдөөгүй — Cashflow
+            * хувиарлах хэсгээс оруулна уу» гэсэн ЗААВАРТАЙ хоосон дэлгэц хараад
+            * байхгүй өгөгдөл бөглөх гэж очдог байв.
+            *
+            * ⚠️ «АЧААЛЖ БАЙНА» ба «ӨГӨГДӨЛ АЛГА» хоёрыг ЯЛГАНА: аль нэг эх нь
+            * ачаалж байвал ачаалалт, аль нэг нь унасан бол алдаа, БҮГД ирсэн
+            * хойно л «бөглөгдөөгүй» гэж зарлана. `Data` нь ганц `Async`-ийг л
+            * авдаг тул дөрвийг НЭГ синтетик төлөв болгож нийлүүлнэ —
+            * ачаалалт/алдааны дүр төрх бусад картуудтай ИЖИЛ хэвээр.
+            */}
+          <Data q={cfGate} minH={190}>
             {() => (cfCurve.length === 0 ? (
               /* ⚠️ ТЭГ БАГАНА ЗУРАХГҮЙ — «мөнгө гарахгүй» гэсэн ХУДАЛ уншилт
                  болно. Хоосон бол шалтгаан ба зам нь хэлэгдэнэ. */
@@ -1710,7 +1760,11 @@ function Timeline({
       sort.c === 'label' ? a.key.localeCompare(b.key) * sort.d
         : sort.c === 'sub' ? subOf(a).localeCompare(subOf(b)) * sort.d
           : sort.c === 'ipc' ? ((a.ipcPct ?? -1) - (b.ipcPct ?? -1)) * sort.d
-              : (a.pct - b.pct) * sort.d
+              /* ⚠️ `pct` ч `null` байж болно (төлөвлөгөө бөглөгдөөгүй сар) —
+                 `ipcPct`-ТЭЙ ЯГ ИЖИЛ дүрмээр `-1`: хэмжигдээгүй үе 0%-иас
+                 ялгарч доод талд бөөгнөрнө. Хасалтад `null` орвол NaN гарч
+                 эрэмбэ бүхэлдээ санамсаргүй болно. */
+              : ((a.pct ?? -1) - (b.pct ?? -1)) * sort.d
     ));
     const head = (
       c: 'label' | 'sub' | 'pct' | 'ipc',
@@ -1754,7 +1808,10 @@ function Timeline({
               <tr key={p.key}>
                 <td>{p.key.slice(0, 4)}</td>
                 {subCol && <td>{subOf(p)}</td>}
-                <td className={g.tlNum}>{pct(p.pct)}</td>
+                {/* ⚠️ `null` → ХООСОН нүд (`ipcPct`-тэй ижил): төлөвлөгөө
+                    бөглөгдөөгүй сард «0%» бичвэл «төлөвлөгөө тэг» гэсэн
+                    худал уншилт болно. */}
+                <td className={g.tlNum}>{p.pct == null ? '' : pct(p.pct)}</td>
                 {/* ⚠️ `null` → ХООСОН нүд, «0%» БИШ (хэмжигдээгүй ≠ тэг) */}
                 <td className={g.tlNum}>{p.ipcPct == null ? '' : pct(p.ipcPct)}</td>
                 <td className={g.tlNum}>{p.ipcMoney == null ? '' : mnt(p.ipcMoney)}</td>
@@ -1823,10 +1880,6 @@ function Timeline({
 
   /* ⚠️ Цэгийн х-байрлал нь баганын ТӨВД — эс бөгөөс муруй баганаас хазайна */
   const xOf = (i: number) => ((i + 0.5) / n) * 100;
-  const path = monotonePath(pts.map((p, i) => ({
-    x: xOf(i),
-    y: 100 - Math.max(0, Math.min(100, p.pct)),
-  })));
   /**
    * ОЛГОСОН IPC-ИЙН МУРУЙ — төлөвлөгөөнийхтэй ИЖИЛ smooth (2026-09-10,
    * хэрэглэгч: «IPC хэсэг графикт орохдоо адилхан smooth line байна»).
@@ -1844,6 +1897,16 @@ function Timeline({
       ? monotonePath(q.map((x) => ({ x: xOf(x.i), y: 100 - Math.max(0, Math.min(100, x.v)) })))
       : '';
   };
+  /**
+   * ТӨЛӨВЛӨСӨН МУРУЙ — одоо ЭНЭ Ч `curveOf`-оор (2026-09-11).
+   *
+   * ⚠️ Урьд нь `pts.map(... p.pct)` гэж ШУУД бодогддог байсан бөгөөд `pct` нь
+   *    үргэлж тоо байсан тул аюулгүй байв. Одоо төлөвлөгөө бөглөгдөөгүй сар
+   *    `null` ирдэг болсон тул шууд бодвол `Math.min(100, null)` → 0 болж
+   *    муруй тэг рүү унах (эсвэл NaN координат үүсгэх) байлаа. `curveOf` нь
+   *    хэмжигдээгүй цэгийг АЛГАСНА — график дээр цоорхой үлдэнэ, 0 зурахгүй.
+   */
+  const path = curveOf((p) => p.pct);
   const ipcPath = curveOf((p) => p.ipcPct);
   /**
    * ⚠️ ХҮЛЭЭГДЭЖ БУЙ ӨӨРЧЛӨЛТ (2026-09-08, хэрэглэгчийн заавар): багана нь
@@ -1866,10 +1929,13 @@ function Timeline({
       {/* Уншилтын мөр — заасан (эсвэл сүүлийн) үеийн хоёр тоо НЭГ газар */}
       <div className={g.tlHead}>
         <span className={g.tlHeadLbl}>{cur.label}</span>
-        <b className={g.tlHeadPct}>{pct(cur.pct)}</b>
+        {/* ⚠️ Төлөвлөгөө хэмжигдээгүй үед «0%» БИШ «—» (`null ≠ 0`) */}
+        <b className={g.tlHeadPct}>{cur.pct == null ? '—' : pct(cur.pct)}</b>
         {/* ⚠️ ХУРИМТЛАЛЫН мөнгө — тухайн үеийн олголт БИШ. «64.3%» гэдэг нь
             ямар хэмжээний хөрөнгө болохыг дангаараа хэлдэггүй. */}
-        <span className={g.tlHeadAmt}>{mntShort(cumOf(cur.pct))}</span>
+        {/* ⚠️ Хувь нь `null` бол мөнгөн эквивалент ч УТГАГҮЙ — 0 ₮ гэж
+            бичвэл «хөрөнгө зарцуулаагүй» гэсэн худал уншилт төрнө. */}
+        {cur.pct != null && <span className={g.tlHeadAmt}>{mntShort(cumOf(cur.pct))}</span>}
         {/* ⚠️ «үүнээс {сарын дүн}» ХАСАГДСАН (2026-09-10): улбар шар багана
             нуугдсан тул сарын төлөвлөгөөт дүн дэлгэцэнд байхгүй болсон —
             байхгүй зүйлийн тайлбар нь төөрөгдүүлнэ. */}
@@ -1977,7 +2043,12 @@ function Timeline({
           * (2026-09-06). Энэ бүрхүүл нь SVG-тэй ЯГ ижил `inset`-тэй.
           */}
         <div className={g.tlDots}>
-          {pts.map((p, i) => (
+          {/* ⚠️ ХЭМЖИГДЭЭГҮЙ ЦЭГ ОГТ ЗУРАГДАХГҮЙ (2026-09-11): төлөвлөгөө
+              бөглөгдөөгүй сард цэгийг 0%-ийн шалан дээр тавьбал муруй тасарсан
+              атал цэг нь тэг дээр эгнэж, «тэр саруудад төлөвлөгөө тэг» гэсэн
+              худал уншилт төрнө. Муруй (`curveOf`) ч ЯГ ижил цэгүүдийг
+              алгасдаг тул хоёулаа нийцнэ. */}
+          {pts.map((p, i) => (p.pct == null ? null : (
             <span
               key={p.key}
               className={`${g.tlDot} ${i === at ? g.tlDotOn : ''}`}
@@ -1988,7 +2059,7 @@ function Timeline({
             >
               <b className={twoRow && i % 2 === 1 ? g.tlDotUp : undefined}>{pct(p.pct)}</b>
             </span>
-          ))}
+          )))}
         </div>
       </div>
 

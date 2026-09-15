@@ -70,6 +70,36 @@ export function SplitGrip({
 type Sides = { l?: number; r?: number };
 
 /**
+ * localStorage-оос уншсан утгын ХЭЛБЭРИЙГ шалгана.
+ *
+ * ⚠️ 2026-09-11: урьд нь `JSON.parse(raw) as Sides` гэж ШУУД хөрвүүлдэг байв.
+ * `try/catch` нь зөвхөн ШИДЭЛТИЙГ (эвдэрсэн JSON) барьдаг — хүчинтэй JSON
+ * боловч БУРУУ хэлбэр (`"abc"`, `[1,2]`, `{"l":"x"}`, `{"l":null}`) чимээгүй
+ * нэвтэрч, доор `--side-l: ${w.l}px` гэж бичигдэхэд `abcpx`/`nullpx` гэсэн
+ * хүчингүй CSS гарч тал бүхэлдээ задардаг байв (хэрэглэгч зөвхөн «эвдэрсэн
+ * байрлал» хардаг, шалтгаан нь харагдахгүй). Өөр эх (өөр хувилбар, гараар
+ * засварласан, өөр апп-ийн ижил түлхүүр) утга бичих боломжтой тул итгэж
+ * болохгүй.
+ *
+ * ⚠️ Хязгаарыг чирэлттэй ИЖИЛ (`MIN`…`MAX`) байлгана — эс бөгөөс хадгалагдсан
+ * утга чирэлтээр хүрэх боломжгүй өргөнийг сэргээж, тал уншигдахаа болино.
+ */
+function parseSides(v: unknown): Sides {
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) return {};
+  const src = v as Record<string, unknown>;
+  const out: Sides = {};
+  for (const k of ['l', 'r'] as const) {
+    const n = src[k];
+    // ⚠️ `Number(x)` БИШ, `typeof === 'number'`: `Number(null)`/`Number('')` нь
+    //    0 өгдөг тул хог утга «хүчинтэй 0» болж хувирна. NaN/Infinity-г мөн хаяна.
+    if (typeof n === 'number' && Number.isFinite(n) && n >= MIN && n <= MAX) {
+      out[k] = Math.round(n);
+    }
+  }
+  return out;
+}
+
+/**
  * @param key      localStorage-ийн түлхүүр — дашбоард бүрд ӨӨР.
  * @param hasRight Баруун тал байгаа эсэх (зарим дашбоард зөвхөн зүүнтэй).
  */
@@ -83,7 +113,7 @@ export function useSideResize(key: string, hasRight = true) {
   useEffect(() => {
     try {
       const raw = localStorage.getItem(LS + key);
-      if (raw) setW(JSON.parse(raw) as Sides);
+      if (raw) setW(parseSides(JSON.parse(raw)));
     } catch {
       /* хадгалалт байхгүй/эвдэрсэн — анхны өргөнөөр */
     }
