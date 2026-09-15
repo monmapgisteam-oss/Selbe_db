@@ -2,7 +2,7 @@
 
 import {
   memo, useState,
-  type CSSProperties, type Dispatch, type SetStateAction,
+  type CSSProperties, type Dispatch, type SetStateAction, type ReactNode,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import { Icon } from './Icon';
@@ -14,7 +14,10 @@ import type { Totals } from '@/lib/totals';
 import { qtyText, whereFor, layerStats } from '@/lib/totals';
 import { useFilter } from '@/lib/filter';
 import { queryGroup, groups, groupWhere } from '@/lib/query';
-import { catalogGroups, INITIAL_MAP_LAYERS, LAYER_BY_ID, layerUrl, type CatalogView, type LayerDef } from '@/lib/services';
+import {
+  catalogGroups, INITIAL_MAP_LAYERS, LAYER_BY_ID, layerUrl, ALWAYS_ON_IDS,
+  type CatalogView, type LayerDef,
+} from '@/lib/services';
 import { num } from '@/lib/format';
 import s from './catalog.module.css';
 
@@ -51,6 +54,8 @@ export const LayerCatalog = memo(function LayerCatalog({
   onResizeReset,
   zone,
   embedded = false,
+  extra,
+  forced,
 }: {
   /**
    * Аль харагдацын каталог вэ.
@@ -91,6 +96,22 @@ export const LayerCatalog = memo(function LayerCatalog({
    * гарах тул баруун ирмэгийн зураас (`border-right`) илүүц болно.
    */
   embedded?: boolean;
+  /**
+   * ХАРАГДАЦЫН ӨӨРИЙН НЭМЭЛТ ХЭСЭГ — жагсаалтын ХАМГИЙН ДООД талд
+   * (2026-09-15, хэрэглэгчийн заавар: «давхаргын доор «Багц 74» гэж
+   * шинээр үүсгэнэ, тэнд багцын ажлууд жагсаалтаар харагдана»).
+   *
+   * ⚠️ Каталог нь ДАВХАРГЫН бүртгэл — ажил, гэрээ зэрэг САНХҮҮГИЙН
+   *    өгөгдлийг энд шууд татвал бүх харагдацад тэр ачаалал дагана.
+   *    Тиймээс агуулгыг дуудагч тал өөрөө бүрдүүлж дамжуулна.
+   */
+  extra?: ReactNode;
+  /**
+   * ЭНЭ ХАРАГДАЦАД ҮРГЭЛЖ АСААЛТТАЙ давхаргууд (2026-09-15) — мөр нь
+   * «асаалттай» гэж харагдаж, унтраах товшилт ажиллахгүй.
+   * ⚠️ Глобал `ALWAYS_ON_IDS` дээр НЭМЭГДЭНЭ, түүнийг орлохгүй.
+   */
+  forced?: readonly string[];
 }) {
   const groups = catalogGroups(view);
   /** Ортофото ил эсэх — газрын зурагтай нэг эх сурвалж (`MapProvider`) */
@@ -148,7 +169,13 @@ export const LayerCatalog = memo(function LayerCatalog({
     });
 
   const all = groups.flatMap((g) => g.ids);
-  const onCount = visible.filter((id) => all.includes(id)).length;
+  /* ⚠️ Үргэлж асаалттай давхаргыг ч тоолно — жагсаалтад асаасан гэж
+     харагдаж байгаа тул тоолуур түүнийг алгасвал зөрөлдөнө. */
+  const forcedIds = [...(ALWAYS_ON_IDS as readonly string[]), ...(forced ?? [])];
+  const forcedAll = forcedIds.filter((id) => all.includes(id));
+  const onCount = new Set(
+    [...visible.filter((id) => all.includes(id)), ...forcedAll],
+  ).size;
 
   /*
    * ХАЙЛТ (2026-09-15-ны хэрэглээний аудит).
@@ -247,7 +274,9 @@ export const LayerCatalog = memo(function LayerCatalog({
         <button
           type="button"
           className={s.allOff}
-          disabled={onCount === 0}
+          /* ⚠️ Үргэлж асаалттай давхарга унтрахгүй тул тэднээс ӨӨР асаалттай
+              зүйл байхад л идэвхтэй. */
+          disabled={visible.filter((id) => all.includes(id)).length === 0}
           onClick={() => setVisible((prev) => prev.filter((id) => !all.includes(id)))}
         >
           <Icon name="layers" size={15} />
@@ -293,8 +322,14 @@ export const LayerCatalog = memo(function LayerCatalog({
                 const ids = g.ids.filter((id) => hit(id, g.title));
                 if (!ids.length) return null;
                 const defs = ids.map((id) => LAYER_BY_ID[id]).filter(Boolean);
-                const on = ids.filter((id) => visible.includes(id)).length;
-                /* ⚠️ Хайж байхад ЗААВАЛ задарна — олдсон зүйл нуугдах ёсгүй */
+                /* ⚠️ Үргэлж асаалттай давхаргыг ч тоолно (`tailan`) — мөр нь
+                   «асаалттай» гэж харагдаж байхад бүлгийн тоолуур 0 гэвэл
+                   зөрчилдөнө. */
+                const on = ids.filter(
+                  (id) => visible.includes(id) || forcedIds.includes(id),
+                ).length;
+                /* ⚠️ Хайж байхад ЗААВАЛ задарна (`main`) — олдсон зүйл нуугдах
+                   ёсгүй. Хайлтгүй үед хэрэглэгчийн гараар эвхсэн байдал хэвээр. */
                 const open = needle ? true : !shut.has(g.key);
 
                 return (
@@ -353,7 +388,11 @@ export const LayerCatalog = memo(function LayerCatalog({
                     <div className={s.rows}>
                       {defs.map((d) => {
                         const t = map?.get(d.id);
-                        const isOn = visible.includes(d.id);
+                        /* ⚠️ `ALWAYS_ON_IDS` — газрын зураг тэднийг `visible`-ээс
+                           ҮЛ ХАМААРАН асаадаг тул жагсаалт ч асаалттай гэж
+                           харуулах ёстой (эс бөгөөс «асаагүй» гэж уншигдана). */
+                        const isForced = forcedIds.includes(d.id);
+                        const isOn = isForced || visible.includes(d.id);
                         const q = t ? qtyText(d, t.q) : null;
                         return (
                           <div
@@ -373,7 +412,8 @@ export const LayerCatalog = memo(function LayerCatalog({
                               aria-checked={isOn}
                               aria-label={tr('{0} — зурагт харуулах', d.title)}
                               className={s.rowMain}
-                              onClick={() => toggle(d.id)}
+                              title={isForced ? tr('Энэ давхарга үргэлж асаалттай') : undefined}
+                              onClick={() => { if (!isForced) toggle(d.id); }}
                             >
                               <span className={s.rowTitle}>{d.title}</span>
                               <span className={`${s.rowMeta} num`}>
@@ -415,6 +455,8 @@ export const LayerCatalog = memo(function LayerCatalog({
             </>
           );
         })()}
+        {/* ⚠️ НЭМЭЛТ ХЭСЭГ — `extra` пропсын тайлбарыг үз (2026-09-15) */}
+        {extra}
       </div>
 
     </aside>
@@ -500,7 +542,13 @@ function FacetRows({
               });
             }}
           >
-            <span className={s.facetName}>{tr(item.label)}</span>
+            {/* ⚠️ Кодтой талбарт хүний нэр (`paint.labels`, 2026-09-15):
+                «1» → «Явган хүний зам». Зураг ба жагсаалт нэг нэр хэлнэ. */}
+            <span className={s.facetName}>
+              {tr(f.field === d.paint?.field
+                ? d.paint.labels?.[item.label] ?? item.label
+                : item.label)}
+            </span>
             <span className={`${s.facetMeta} num`}>
               {num(item.values.n)} {tr('ш')}{qty ? ` · ${qty}` : ''}
             </span>

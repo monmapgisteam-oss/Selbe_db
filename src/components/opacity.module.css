@@ -116,3 +116,15 @@
   box-shadow: var(--shadow-sm);
   cursor: pointer;
 }
+/*
+ * ЗҮҮН ХАВТАСНЫ ХУВИЛБАР — ЗӨВХӨН «Ерөнхий төлөвлөгөө» (`dock` проп,
+ * 2026-09-15). Бусад харагдацад дээрх анхдагч байрлал хэвээр.
+ */
+.dock {
+  top: 44px;
+  left: 0;
+  width: min(var(--catalog, 360px), 92%);
+  max-width: none;
+  border-left: 0;
+  border-radius: 0;
+}

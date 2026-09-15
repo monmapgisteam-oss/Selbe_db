@@ -35,10 +35,7 @@
   align-items: stretch;
   gap: 3px;
   width: 176px;
-  /* Товч олонтой харагдацад (нэмэлт `children`) багана зургаас халихгүй.
-     ⚠️ 170px нь дээд 96px + доод ~74px — доод зүүн буланд легенд (`.legend`,
-     `bottom: 12px`) болон хамрах хүрээний overlay байдаг тул тэднийг дарахгүй;
-     багтахгүй бол багана дотроо гүйлгэнэ. */
+  /* Товч олонтой харагдацад (нэмэлт `children`) багана зургаас халихгүй. */
   max-height: calc(100% - 170px);
   overflow-y: auto;
   padding: 4px;
@@ -59,8 +56,9 @@
 .btn {
   display: inline-flex;
   align-items: center;
-  /* ⚠️ Босоо баганад товчнууд бүтэн өргөнөөр сунана — дүрс/бичиг ЗҮҮН талаасаа
-     эгнэнэ. `center` байвал нэр урттай/богинотой товчнууд эрээн харагдана. */
+  /* ⚠️ Босоо баганад товчнууд бүтэн өргөнөөр сунана — дүрс/бичиг ЗҮҮН
+     талаасаа эгнэнэ. `center` байвал нэр урттай/богинотой товчнууд эрээн
+     харагдана. */
   justify-content: flex-start;
   gap: 7px;
   padding: 8px 11px;
@@ -188,3 +186,108 @@
 .zoneClose:hover { color: var(--ink); }
 /* Бүсүүд олон (52) тул жагсаалт дотроо гүйлгэнэ */
 .zoneBody { overflow: auto; padding: 10px 12px; }
+/*
+ * ХУРААХ БАРИУЛУУД (2026-09-15) — «Ерөнхий дашбоард»-аас хуваалцсан
+ * бүрэлдэхүүн рүү зөөгдсөн загвар (тэнд `.mapTab`/`.toolsTab`/`.dimsTab`
+ * гэж байсан).
+ *
+ * ⚠️ ArcGIS-ийн өөрийн товчнуудаас ЗАЙТАЙ: зүүн дээд буланд томруулах
+ * виджет 15–79px өндөрт сууна.
+ */
+.tab {
+  position: absolute;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--ink-2);
+  background: color-mix(in srgb, var(--surface) 86%, transparent);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  cursor: pointer;
+}
+.tab:hover { color: var(--data); border-color: var(--data); }
+
+/* Давхарга · тунгалаг · бүс — ЗҮҮН тийш хугална */
+.toolsTab {
+  top: 96px;
+  left: 15px;
+  width: 20px;
+  height: 34px;
+}
+/* Дэлгэсэн үед баганын БАРУУН ирмэг дээр (15 + 176 + 4) */
+.toolsTabOpen { left: 195px; }
+
+/* 2D/3D/BIM — ДЭЭШ хураана (зурвас нь дээд ТӨВД тул бариул түүний дор) */
+.dimsTab {
+  top: 15px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 34px;
+  height: 20px;
+}
+.dimsTabOpen { top: 62px; }
+/*
+ * ⚠️ «ХАВТАН НЭЭЛТТЭЙ ҮЕД БАРУУН ТИЙШ ШИЛЖИХ» дүрэм ХАСАГДСАН
+ * (2026-09-15). Тэр нь товчны баганыг зургийн ДУНД аваачиж хөвүүлдэг
+ * байв. Одоо давхаргын жагсаалт нээлттэй үед зурвас ба бариул хоёулаа
+ * нуугдана (`MapTools.tsx`-ийн тайлбарыг үз) — зургийн зүүн ирмэгт
+ * ЗӨВХӨН жагсаалт үлдэнэ.
+ */
+/*
+ * ЗҮҮН ХАВТАСНЫ ЗОХИОМЖ — ЗӨВХӨН «ЕРӨНХИЙ ТӨЛӨВЛӨГӨӨ»-Д (`dock` проп).
+ *
+ * ⚠️ 2026-09-15: энэ зохиомжийг БҮХ харагдацад тарааж үзээд БУЦААВ —
+ * хэрэглэгчийн заавар: «зөвхөн ерөнхий төлөвлөгөөн дээр, бусад нь яг
+ * хэвээрээ». Тиймээс анхдагч дүрмүүд (дээр) хэвээр үлдэж, эдгээр нь
+ * зөвхөн нэмэлт классаар идэвхжинэ.
+ *
+ *   [Давхарга · Тунгалаг · Бүс]   ← толгой (44px, хэвтээ)
+ *   [сонгосон хэсгийн агуулга ]   ← `shell.module.css` §catPop
+ */
+.toolsDock {
+  top: 0;
+  left: 0;
+  flex-direction: row;
+  width: min(var(--catalog, 360px), 92%);
+  height: 44px;
+  max-height: none;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 4px 22px 4px 4px;
+  border-top: 0;
+  border-left: 0;
+  border-radius: 0;
+  animation: dockIn 0.32s var(--ease) both;
+}
+@keyframes dockIn {
+  from { opacity: 0; transform: translateY(-10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+/* Толгойд гурвуулаа ТЭНЦҮҮ хэсэгт голлоно */
+.btnDock { flex: 1 1 0; justify-content: center; min-width: 0; }
+/* Хураах бариул — толгойн баруун захад */
+.tabDock {
+  top: 0;
+  left: 0;
+  width: 20px;
+  height: 44px;
+  border-top: 0;
+  border-left: 0;
+  border-radius: 0;
+}
+.tabDockOpen { left: calc(min(var(--catalog, 360px), 92%) - 20px); }
+/* Бүсийн хавтан — толгойн ЯГ доор, ижил өргөн */
+.zoneDock {
+  top: 44px;
+  left: 0;
+  width: min(var(--catalog, 360px), 92%);
+  max-width: none;
+  max-height: calc(100% - 56px);
+  border-left: 0;
+  border-radius: 0;
+}

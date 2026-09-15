@@ -181,6 +181,7 @@
 /* ── Газрын зураг ── */
 .hero {
   position: relative;
+
   /*
    * ⚠️ `display: flex` ЗААВАЛ. `MapCanvas`-ийн үндсэн элемент нь
    * `flex: 1; min-height: 0` (map.module.css §.wrap) бөгөөд дотоод давхарга нь
@@ -201,16 +202,6 @@
   border-radius: 10px;
   overflow: hidden;
   background: var(--sunken, var(--surface-2));
-}
-
-.catPanel {
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: min(360px, 80%);
-  z-index: 6;
-  overflow: auto;
-  background: var(--surface);
-  box-shadow: 2px 0 12px rgb(0 0 0 / 22%);
 }
 
 /* ── Хугацааны шүүлт ── */
@@ -310,6 +301,14 @@
 }
 .fClear:hover { color: var(--bad-ink, var(--ink)); border-color: var(--bad); }
 
+/*
+ * ⚠️ ЗУРГИЙН ЗҮҮН ИРМЭГТ (2026-09-15, хэрэглэгчийн заавар). Товчны багана нь
+ * хавтан нээлттэй үед баруун тийш шилждэг тул давхцал үүсэхгүй
+ * (`mapTools.module.css` §ХАВТАН НЭЭЛТТЭЙ).
+ * ⚠️ 2026-09-15: ДАВХАРДСАН хоёр дахь тодорхойлолт мөн хасагдав.
+ */
+/* ⚠️ 2026-09-15: зүүн хавтасны зохиомж нь ЗӨВХӨН «Ерөнхий төлөвлөгөө»-д
+   үлдсэн тул энэ харагдац ХУУЧИН байрлалдаа буцав. */
 .catPanel {
   position: absolute;
   inset: 0 auto 0 0;
@@ -395,56 +394,15 @@
 .shell :global(.statTag) { font-size: 10.8px; letter-spacing: 0.02em; line-height: 1.1; }
 
 /*
- * ЗУРГИЙН УДИРДЛАГЫН ХУРААХ ТАБ — хоёр чиглэл.
+ * ⚠️ 2026-09-15: ЗУРГИЙН ДЭЭРХ ХУРААХ БАРИУЛУУД ЭНДЭЭС ХАСАГДСАН
+ * (`.mapTab`, `.dimsTab`, `.toolsTab` ба `data-tools`/`data-dims` дүрмүүд).
  *
- * ⚠️ Товч нь ХУРААСАН ч БАЙРАНДАА үлдэнэ, зөвхөн сум нь эргэнэ. Нуувал
- * хэрэглэгч зурагт ямар ч удирдлагагүй үлдэнэ (навигацийн ««» товчтой ижил
- * зарчим).
- *
- * ⚠️ ArcGIS-ийн өөрийн товчнуудаас ЗАЙТАЙ: `esri-ui-top-left` (томруулах) нь
- * 15px завсартай, 15–79px өндөрт; `esri-ui-top-right` нь баруунаас 15–47px.
+ * Тэдгээр нь хуваалцсан `MapTools` бүрэлдэхүүн рүү шилжсэн
+ * (`mapTools.module.css` §ХУРААХ БАРИУЛУУД) — ингэснээр порталын БҮХ
+ * зурагт ижил ажиллана (хэрэглэгчийн заавар: «ерөнхий дашбоард дээрх
+ * зургийн товчны hide/unhide-ыг бүх зурагтай ижил болго»).
  */
-.mapTab {
-  position: absolute;
-  z-index: 10;
-  display: grid;
-  place-items: center;
-  font-size: 13px;
-  line-height: 1;
-  color: var(--ink-2);
-  background: color-mix(in srgb, var(--surface) 86%, transparent);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  box-shadow: var(--shadow-lg);
-  backdrop-filter: blur(4px);
-  cursor: pointer;
-}
-.mapTab:hover { color: var(--data); border-color: var(--data); }
 
-/* ── 2D/3D/BIM — ДЭЭШ хураана. Зурвас нь дээд ТӨВД тул таб нь түүний дор. ── */
-.dimsTab {
-  top: 15px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 34px;
-  height: 20px;
-}
-/* Дэлгэсэн үед зурвасны ДООР бууна — түүнийг халхлахгүй */
-.dimsTabOpen { top: 46px; }
-
-/* ── Давхарга · тунгалаг · бүс — ЗҮҮН тийш хугална ── */
-.toolsTab {
-  top: 88px;
-  left: 15px;
-  width: 20px;
-  height: 34px;
-}
-/* Дэлгэсэн үед баганын БАРУУН ирмэг дээр (15 + 132 + 4) */
-.toolsTabOpen { left: 151px; }
-
-/* Хураасан хэсгүүд — глобал нэрсээр (§ЗУРГИЙН ДЭЭРХ ТОВЧНУУД) */
-.hero[data-tools='0'] :global(.mapToolsBar) { display: none; }
-.hero[data-dims='0'] :global(.mapDims) { display: none; }
 
 /*
  * КАРТЫН ГАРЧИГ — ЖИЖИГ (2026-09-04, хэрэглэгчийн хүсэлт).
@@ -1118,3 +1076,68 @@
 .tlTbl tbody tr:nth-child(even) { background: color-mix(in srgb, var(--ink) 3%, transparent); }
 .tlTbl tbody tr:hover { background: color-mix(in srgb, var(--data) 12%, transparent); }
 
+/*
+ * «БАГЦ 74» — давхаргын каталогийн доод хэсгийн ажлын жагсаалт (2026-09-15).
+ * ⚠️ Каталогийн өөрийн CSS модуль (`catalog.module.css`) энд хүрэхгүй тул
+ *    хэв маягийг нь ойролцоо давтав: толгой + хураагддаг мөрүүд.
+ */
+.pkgSec {
+  margin-top: 8px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+.pkgHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  background: none;
+  border: 0;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 6px;
+}
+.pkgHead:hover { background: var(--surface-2); }
+.pkgCaret { color: var(--ink-3); width: 10px; }
+.pkgTitle { flex: 1 1 auto; text-align: left; }
+.pkgCount { color: var(--ink-3); font-size: 11px; }
+.pkgRows {
+  display: flex;
+  flex-direction: column;
+  /* ⚠️ ӨӨРИЙН гүйлгүүр — 74 мөр каталогийн үлдсэн хэсгийг түлхэх ёсгүй */
+  max-height: 320px;
+  overflow: auto;
+}
+.pkgRow {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 5px 10px;
+  background: none;
+  border: 0;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.pkgRow:hover:not(:disabled) { background: var(--surface-2); color: var(--ink); }
+/* ⚠️ Давхаргагүй ажлыг НУУХГҮЙ, зөвхөн бүдгэрүүлнэ (JSX-ийн тайлбарыг үз) */
+.pkgRow:disabled { opacity: 0.45; cursor: default; }
+.pkgRowOn { background: color-mix(in srgb, var(--data) 16%, transparent); color: var(--ink); }
+.pkgBagts {
+  flex: none;
+  min-width: 66px;
+  color: var(--data);
+  font-size: 11px;
+  font-weight: 600;
+}
+.pkgName {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

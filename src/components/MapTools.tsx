@@ -38,6 +38,7 @@ export function MapTools({
   onOpacity,
   zone,
   setZone,
+  dock = false,
   children,
 }: {
   dim: Dim;
@@ -74,6 +75,16 @@ export function MapTools({
    */
   zone?: string | null;
   setZone?: (z: string | null) => void;
+  /**
+   * ЗҮҮН ХАВТАСНЫ ЗОХИОМЖ — зурвас нь зургийн зүүн ирмэгийн хавтасны
+   * ХЭВТЭЭ ТОЛГОЙ болно (2026-09-15).
+   *
+   * ⚠️ ЗӨВХӨН «Ерөнхий төлөвлөгөө»-д (хэрэглэгчийн заавар: «мапын зүүн
+   * талд гаргана гэдэг нь зөвхөн ерөнхий төлөвлөгөө дээр, бусад нь яг
+   * хэвээрээ»). Анхдагч `false` — бусад бүх харагдац зүүн дээд буланд
+   * босоо баганатай хэвээр.
+   */
+  dock?: boolean;
   /** Харагдацын ӨӨРИЙН товчнууд — «Полигон зурах», «Дулаан» гэх мэт */
   children?: ReactNode;
 }) {
@@ -85,6 +96,23 @@ export function MapTools({
    * харагдацад ижил тул модуль бүрд `useState` нэмүүлэх шаардлагагүй.
    */
   const [zoneOpen, setZoneOpen] = useState(false);
+  /**
+   * ЗУРВАС ба ХАРАГДАЦЫН ТОВЧ ХУРААГДСАН эсэх (2026-09-15, хэрэглэгчийн
+   * заавар: «Ерөнхий дашбоард дээрх зургийн товчны hide/unhide-ыг энэ
+   * төсөл дээрх БҮХ зурагтай ижил болго»).
+   *
+   * ⚠️ Урьд нь энэ зан ЗӨВХӨН «Ерөнхий дашбоард»-д, тэр модулийн ӨӨРИЙН
+   * товч ба `data-tools`/`data-dims` CSS-ээр хийгдсэн байв. Одоо
+   * хуваалцсан бүрэлдэхүүн дотор орсон тул харагдац бүрд давтах
+   * шаардлагагүй — шинэ зураг нэмэхэд ч өөрөө дагана.
+   *
+   * ⚠️ АНХДАГЧ нь НЭЭЛТТЭЙ (2026-09-15-ны залруулга: «энэ 3 сонголт
+   * хаачив?»). Богино хугацаанд хураасан хэвээр эхлүүлж үзсэн нь
+   * «Давхарга · Тунгалаг · Бүс» гурвыг нүднээс далдалж, хэрэглэгч
+   * жижиг бариулыг олохгүй байв. Хураах боломж нь бариулаар үлдэнэ.
+   */
+  const [barOn, setBarOn] = useState(true);
+  const [dimsOn, setDimsOn] = useState(false);
   const zoneCount = zone ? zone.split(',').filter(Boolean).length : 0;
 
   /**
@@ -99,7 +127,7 @@ export function MapTools({
    * утга нь энгийн: хэрэглэгч нөгөө хавтангаа хаахад бүсийнх нь нээлттэй
    * хэвээрээ буцаж гарч ирнэ — сонголт нь алдагдахгүй.
    */
-  const zoneShown = zoneOpen && !layersOpen && !opacityOpen;
+  const zoneShown = zoneOpen && !layersOpen && !opacityOpen && barOn;
 
   return (
     <>
@@ -107,12 +135,35 @@ export function MapTools({
         Дуудагч харагдац товчны хэмжээг өөрийн нягтралд тааруулж дарж бичихэд
         хэрэгтэй: жижиг зурагтай дашбоардад 176px өргөн багана нь зургийн
         талыг эзэлдэг. Энд ЗӨВХӨН нэр — хэмжээ нь энэ файлын анхдагч хэвээр. */}
-    <div className={`${s.tools} mapToolsBar`}>
+    {/*
+      * Зурвасыг хураах/дэлгэх бариул — зургийн зүүн ирмэг дээр.
+      *
+      * ⚠️ Жагсаалт нээлттэй үед ч ХЭВЭЭР харагдана: жагсаалт нь товчны
+      * баганын БАРУУН талаас эхэлдэг тул давхцахгүй (`shell.module.css`
+      * §catPop, `generalDash.module.css` §catPanel).
+      */}
+    <button
+      type="button"
+      aria-expanded={barOn}
+      className={[
+        s.tab,
+        dock ? s.tabDock : s.toolsTab,
+        barOn ? (dock ? s.tabDockOpen : s.toolsTabOpen) : '',
+      ].filter(Boolean).join(' ')}
+      title={barOn ? tr('Товчнуудыг хураах') : tr('Товчнуудыг харуулах')}
+      aria-label={barOn ? tr('Товчнуудыг хураах') : tr('Товчнуудыг харуулах')}
+      onClick={() => setBarOn((v) => !v)}
+    >
+      {barOn ? '◂' : '▸'}
+    </button>
+
+    {barOn && (
+    <div className={`${s.tools} mapToolsBar ${dock ? s.toolsDock : ''}`}>
       {onLayers && (
         <button
           type="button"
           aria-pressed={layersOpen}
-          className={`${s.btn} mapToolsBtn ${layersOpen ? s.btnOn : ''}`}
+          className={`${s.btn} mapToolsBtn ${dock ? s.btnDock : ''} ${layersOpen ? s.btnOn : ''}`}
           onClick={onLayers}
           title={tr('Давхаргын жагсаалт')}
         >
@@ -125,7 +176,7 @@ export function MapTools({
         <button
           type="button"
           aria-pressed={opacityOpen}
-          className={`${s.btn} mapToolsBtn ${opacityOpen ? s.btnOn : ''}`}
+          className={`${s.btn} mapToolsBtn ${dock ? s.btnDock : ''} ${opacityOpen ? s.btnOn : ''}`}
           onClick={onOpacity}
           title={tr('Давхаргын тунгалаг')}
         >
@@ -139,7 +190,7 @@ export function MapTools({
         <button
           type="button"
           aria-pressed={zoneShown}
-          className={`${s.btn} mapToolsBtn ${zoneShown ? s.btnOn : ''}`}
+          className={`${s.btn} mapToolsBtn ${dock ? s.btnDock : ''} ${zoneShown ? s.btnOn : ''}`}
           onClick={() => setZoneOpen((v) => !v)}
           title={tr('Бүсээр шүүх')}
         >
@@ -150,12 +201,26 @@ export function MapTools({
 
       {children}
     </div>
+    )}
 
     {/**
       * 2D ↔ 3D ↔ BIM — ЗУРВАСААС САЛГАЖ, ГОЛД (хэрэглэгчийн хүсэлт 2026-08-23).
       * Хэмжээст горим нь «юуг харуулах» биш «ЯАЖ харуулах» сонголт тул панель
       * нээгчидтэй нэг баганад байхаас илүү тусдаа, өмнөх байрлалдаа тохирно.
       */}
+    {/* 2D/3D/BIM сегментийг хураах бариул — зурвасныхаа дор/дээр */}
+    <button
+      type="button"
+      aria-expanded={dimsOn}
+      className={`${s.tab} ${s.dimsTab} ${dimsOn ? s.dimsTabOpen : ''}`}
+      title={dimsOn ? tr('Харагдацын товч хураах') : tr('Харагдацын товч дэлгэх')}
+      aria-label={dimsOn ? tr('Харагдацын товч хураах') : tr('Харагдацын товч дэлгэх')}
+      onClick={() => setDimsOn((v) => !v)}
+    >
+      {dimsOn ? '▴' : '▾'}
+    </button>
+
+    {dimsOn && (
     <div className={`${s.dimsBar} mapDims`} role="group" aria-label={tr('Газрын зургийн харагдац')}>
       {dims.map((d) => (
         <button
@@ -169,11 +234,12 @@ export function MapTools({
         </button>
       ))}
     </div>
+    )}
 
     {/* ⚠️ Хавтан нь `.tools`-ЫН ГАДНА — тэр нь `overflow-y: auto` тул дотор нь
         байрлуулбал бүсийн жагсаалт гүйлгэх хайрцагт таслагдана. */}
     {setZone && zoneShown && (
-      <div className={s.zonePanel}>
+      <div className={`${s.zonePanel} ${dock ? s.zoneDock : ''}`}>
         <header className={s.zoneHead}>
           <span className={s.zoneTitle}>{tr('Бүсээр шүүх')}</span>
           <button

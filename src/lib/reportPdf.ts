@@ -163,7 +163,7 @@ export function buildReportDoc(
       ] }, layout: tableLayout },
       note(tr('Төслийн нийт гүйцэтгэл нь {0} блокийг багцынх нь төсвийн жингээр тооцсон дүн (3-р хэсэг); барилга угсралтын гүйцэтгэл нь хяналтын {1} блокийн энгийн дундаж (6-р хэсэг).', num(overall.rows), num(progress.blocks))),
 
-      ...section('2', tr('Орон сууцны 7 багц'),
+      ...section('2', tr('Орон сууцны багцууд'),
         tr('Орон сууцны барилгажилт долоон багцад хуваагдан хэрэгжиж байна. Нийт {0} блокт {1} өрхийн орон сууц төлөвлөгдсөн бөгөөд төсөвт өртөг {2} ₮ байна. Багц хоорондын гүйцэтгэлийн зөрүү их байна: хамгийн өндөр нь {3} ({4}), хамгийн бага нь {5} ({6}).', num(blocks), num(ail), bn(budget), d.bestBagts?.bagts ?? '—', pct(d.bestBagts?.pct ?? null, 2), d.worstBagts?.bagts ?? '—', pct(d.worstBagts?.pct ?? null, 2))),
       cap('2', tr('Багц тус бүрийн блок, өрх, төсөв ба гүйцэтгэл (төсөвт өртгөөр буурах эрэмбээр)')),
       { table: { headerRows: 1, widths: ['*', 36, 36, 100, 52], body: [
@@ -246,7 +246,9 @@ export function buildReportDoc(
       note(tr('Дундаж нь блок бүрийг тэнцүү жинтэйгээр тооцсон; 2-р хэсгийн багцын гүйцэтгэлтэй нэг эх сурвалжаас гарна.')),
 
       ...section('7', tr('Санхүүжилтийн явц'),
-        tr('Захирамж, гэрээгээр баталгаажсан {0} ажлын санхүүжилт дөрвөн эх үүсвэрээс бүрдэж байна.{1}', num(finance.rows), d.topSource ? tr(' Санхүүжилтийн дийлэнх хэсгийг «{0}» эх үүсвэр бүрдүүлж, нийт дүнгийн {1}-ийг эзэлж байна.', tr(d.topSource.label), pct(d.topSource.share, 1)) : '')),
+        /* ⚠️ Эх үүсвэрийн ТОО нь өгөгдлөөс — «дөрвөн» гэж бичвэл эх сурвалж
+           өөрчлөгдөхөд PDF чимээгүй худал болно (дэлгэцтэй ижил дүрэм). */
+        tr('Захирамж, гэрээгээр баталгаажсан {0} багц ажлын санхүүжилт {1} эх үүсвэрээс бүрдэж байна.{2}', num(finance.rows), num(finance.sources.length), d.topSource ? tr(' Санхүүжилтийн дийлэнх хэсгийг «{0}» эх үүсвэр бүрдүүлж, нийт дүнгийн {1}-ийг эзэлж байна.', tr(d.topSource.label), pct(d.topSource.share, 1)) : '')),
       cap('7.1', tr('Санхүүжилтийн эх үүсвэрийн бүтэц')),
       { table: { headerRows: 1, widths: ['*', 110, 70], body: [
         [th(tr('Эх үүсвэр')), th(tr('Дүн (төг)'), true), th(tr('Хувь'), true)],
@@ -268,8 +270,11 @@ export function buildReportDoc(
         ...finance.byType.map((t): TableCell[] => [
           td(t.type), td(num(t.n), true), td(bnOrDash(t.budget), true), td(bnOrDash(t.contract), true),
         ]),
-        [td(tr('Нийт'), false, TOTAL), td(num(finance.rows), true, TOTAL),
-          td(bn(finance.budget), true, TOTAL), td(bn(finance.contractAmount), true, TOTAL)],
+        /* ⚠️ НИЙТ нь ЭНЭ ХҮСНЭГТИЙН мөрүүдийн нийлбэр (`byTypeTotal`) —
+           §1-ийн «нийт төсөв» БИШ (тэр нь Excel-ийн НИЙТ хамрах хүрээгээр).
+           Дэлгэцийн §7.2-той ЯГ ижил дүрэм; зөрвөл PDF ба дэлгэц зөрнө. */
+        [td(tr('Нийт'), false, TOTAL), td(num(finance.byType.reduce((a, t) => a + t.n, 0)), true, TOTAL),
+          td(bn(finance.byTypeTotal.budget), true, TOTAL), td(bn(finance.byTypeTotal.contract), true, TOTAL)],
       ] }, layout: tableLayout },
 
       ...section('8', tr('Дэд бүтцийн хэрэгжилт'),

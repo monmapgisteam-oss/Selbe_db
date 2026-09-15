@@ -1,6 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback, useEffect, useMemo, useRef, useState,
+  type Dispatch, type SetStateAction,
+} from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
 import { MapTools } from '@/components/MapTools';
@@ -27,20 +30,28 @@ import { loadHoRows } from '@/lib/ipc';
 import { aggregateMonths } from '@/modules/PkgProg';
 import { overlapLeftParcels } from '@/lib/parcelOverlap';
 import { loadPkgOverlaps } from '@/lib/pkgSaad';
+import { FIN_XL_LAND_CODE } from '@/lib/finExcelLayout';
+/* ⚠️ Орон сууцны багцын орон зайн хүрээ — блокийн давхарга */
+import { BLOCK_LAYER } from '@/modules/Bagts';
 import {
   /* ⚠️ `PKG_BY_FAMILY` нь ЗӨВХӨН «Ерөнхий төлөвлөгөө» картын шугам
      сүлжээний нийлбэр уртад хэрэглэгдэнэ — газар чөлөөлөлтийн давхцал нь
      2026-09-04-нд гэр бүлээс ДЭД БАГЦ руу шилжсэн. */
   PKG_BY_FAMILY, BUILDING, LAYER_BY_ID, PARCEL_LEFT, ZONE_FIELD, ZONE_NONE, type PkgFamily,
+  /* ⚠️ 2026-09-15: чартын сонголтыг ГАЗРЫН ЗУРАГТАЙ холбоно — багцын
+     нэр (`bagts`) → тухайн багцын давхаргууд. `pkgKeyOf` нь `bagtsKey` БИШ:
+     «Багц 1-4» гэсэн ДИАПАЗОН бичиглэлийг `''` болгож, бодит «Багц 14»-ийн
+     давхаргад наалдахаас сэргийлнэ. */
+  PKG_BY_BAGTS, pkgKeyOf,
   HO_IPC, hoAmount,
   /* ⚠️ 2026-09-10: орон сууцны биет явцын жин ба сарын тэнхлэг — `housingMoneyByMonth` */
   bagtsKey, cfMonthAxis,
 } from '@/lib/services';
-import { queryStats, count } from '@/lib/query';
+import { queryStats, count, sqlStr } from '@/lib/query';
 import { cat, mnt, num, pct, monthKey } from '@/lib/format';
 import {
   loadGdashCf, loadContractSum, loadHseNow, loadReasonOids, loadSubPkgLayers,
-  loadCfPlan, cashflowCurve, housingMoney,
+  loadCfPlan, cashflowCurve, housingMoney, loadBuildPkgs,
   chartTypeCost, chartSourceMerged, xMatch,
   type XDim,
   grainOf, kpisOf, inPeriod, yearsOf, periodActive, activeSubPkgTypes,
@@ -100,8 +111,9 @@ export function GeneralDash({
      хийсэн, нээгээд харна, бусад үед hide»). Энэ дашбоардын зураг нь гурван
      баганын дунд, доор нь S-муруйтай тул талбай нь хомс — удирдлага нь
      хэрэгтэй агшинд нь л гарч ирнэ. */
-  const [toolsOn, setToolsOn] = useState(false);
-  const [dimsOn, setDimsOn] = useState(false);
+  /* ⚠️ 2026-09-15: товчийг хураах/дэлгэх төлөв нь `MapTools` дотор
+     шилжсэн — бүх зурагт ижил ажиллана. Энд байсан `toolsOn`/`dimsOn`
+     ба `data-tools`/`data-dims` CSS ХАСАГДАВ. */
   const [opacity, setOpacity] = useState<Record<string, number>>({});
   /**
    * ГАЗАР ЧӨЛӨӨЛӨЛТИЙН ШҮҮЛТ — сонгосон шалтгааны нэгж талбарууд.
@@ -428,6 +440,77 @@ export function GeneralDash({
    */
   const beforeType = useRef<string[] | null>(null);
 
+  /**
+   * ЧАРТЫН СОНГОЛТ → ГАЗРЫН ЗУРГИЙН ДАВХАРГА (2026-09-15, хэрэглэгчийн
+   * заавар: «зүүн панелийн чартууд газрын зурагтай холбогдоно /талбар —
+   * багц/»).
+   *
+   * Чартын нэг баганыг дарахад тэр ангилалд багтах ажлуудын БАГЦЫН нэрийг
+   * (`bagts`) цуглуулж, түүнд харгалзах давхаргуудыг зурагт асаана.
+   *
+   * ⚠️ ХУГАЦААНЫ ШҮҮЛТ ч тооцогдоно — дэлгэц дээрх чарт ба зураг ижил
+   *    мөрүүд дээр ажиллах ёстой.
+   * ⚠️ Багцын нэргүй (эсвэл давхаргагүй) ажил зүгээр л алгасагдана —
+   *    инженерийн шугам, ТЭЗҮ зэрэгт орон зайн давхарга байхгүй.
+   */
+  const buildPkgs = useAsync(loadBuildPkgs, []);
+  const xsPick = useMemo(() => {
+    if (!xs || cf.state !== 'ready') return null;
+    const ids = new Set<string>();
+    /* Блокийн давхаргад шүүлт болгох `BAGTS` утгууд (орон сууцны багц) */
+    const houses = new Set<string>();
+    /* ⚠️ ГАЗАР ЧӨЛӨӨЛӨЛТ — багцын давхаргагүй ч НЭГЖ ТАЛБАР нь зурагт бий
+       (2026-09-15, хэрэглэгчийн заавар). */
+    let land = false;
+    const byKey = buildPkgs.state === 'ready' ? buildPkgs.data : null;
+    for (const r of cf.data) {
+      if (!inPeriod(r, period) || !xMatch(r, xs.dim, xs.key)) continue;
+      if (r.sec === FIN_XL_LAND_CODE) { land = true; continue; }
+      const k = pkgKeyOf(r.pkg2);
+      if (!k) continue;
+      const layers = PKG_BY_BAGTS[k];
+      if (layers?.length) { for (const id of layers) ids.add(id); continue; }
+      const house = byKey?.get(k);
+      if (house) houses.add(house);
+    }
+    if (houses.size) ids.add(BLOCK_LAYER);
+    if (land) ids.add(PARCEL_LAYER);
+    if (ids.size === 0) return null;
+    return {
+      ids: [...ids],
+      /* ⚠️ Блокийн давхаргыг СОНГОСОН багцаар нь шүүнэ — эс бөгөөс 113
+         блок бүгд гарч, «энэ хэсэг» гэсэн утга алдагдана. */
+      houseWhere: houses.size
+        ? `${BUILDING.fields.bagts} IN (${[...houses].map(sqlStr).join(', ')})`
+        : null,
+    };
+  }, [xs, cf, period, buildPkgs]);
+
+  /**
+   * ⚠️ Сонголтын ӨМНӨХ давхаргын төлөвийг ref-д барина: сонголт тайлагдахад
+   * ЯГ түүнийг сэргээнэ. Эффектийн хамаарал нь `visible`-ээс ХАМААРАХГҮЙ
+   * байх ёстой — эс бөгөөс `setVisible` бүр эффектийг дахин ажиллуулж
+   * төгсгөлгүй давталт үүснэ.
+   */
+  const beforeXs = useRef<string[] | null>(null);
+  const visRef = useRef<string[]>(visible);
+  visRef.current = visible;
+  useEffect(() => {
+    if (xsPick == null) {
+      if (beforeXs.current) {
+        setVisible(beforeXs.current);
+        beforeXs.current = null;
+      }
+      return;
+    }
+    if (beforeXs.current == null) beforeXs.current = visRef.current;
+    /* ⚠️ БУСАД ДАВХАРГЫГ НУУНА (2026-09-15, хэрэглэгчийн заавар: «хуучин
+       харагдаж байсан давхаргууд hide гэсэн зарчмаар ажиллана»). Нэмэх
+       байдлаар үлдээвэл сонгосон хэсэг нь 20 давхаргын дунд алга болно. */
+    setVisible(xsPick.ids);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [xsPick]);
+
   const pickReason = useCallback((k: string) => {
     const next = k === reason ? null : k;
     setReason(next);
@@ -562,45 +645,23 @@ export function GeneralDash({
           )}
         </Data>
 
-        {/* ⚠️ Хураалтыг `data-*`-ААР дамжуулна: `MapTools` нь ХУВААЛЦСАН
-            бүрэлдэхүүн бөгөөд хоёр хэсгээ нэг зэрэг зурдаг тул JSX-ээс
-            тусад нь салгах боломжгүй. Глобал нэрсээр (§ЗУРГИЙН ДЭЭРХ
-            ТОВЧНУУД) энэ харагдацад л нуугдана. */}
-        <div className={g.hero} data-tools={toolsOn ? '1' : '0'} data-dims={dimsOn ? '1' : '0'}>
+        <div className={g.hero}>
           <MapCanvas
             dim={dim}
             visible={visible}
             opacity={opacity}
             zone={zone}
-            layerWhere={{ [PARCEL_LAYER]: parcelWhere }}
+            layerWhere={{
+              [PARCEL_LAYER]: parcelWhere,
+              /* ⚠️ Чартаас сонгосон орон сууцны багцын блокууд (2026-09-15) */
+              [BLOCK_LAYER]: xsPick?.houseWhere ?? null,
+            }}
             uniform
             onPick={pick}
           />
 
-          {/* Дээш хураах — 2D/3D/BIM зурвас (зургийн дээд төвд) */}
-          <button
-            type="button"
-            aria-expanded={dimsOn}
-            className={`${g.mapTab} ${g.dimsTab} ${dimsOn ? g.dimsTabOpen : ''}`}
-            title={dimsOn ? tr('Харагдацын товч хураах') : tr('Харагдацын товч дэлгэх')}
-            aria-label={dimsOn ? tr('Харагдацын товч хураах') : tr('Харагдацын товч дэлгэх')}
-            onClick={() => setDimsOn((v) => !v)}
-          >
-            {dimsOn ? '▴' : '▾'}
-          </button>
-
-          {/* Зүүн тийш хугалах — давхарга · тунгалаг · бүс */}
-          <button
-            type="button"
-            aria-expanded={toolsOn}
-            className={`${g.mapTab} ${g.toolsTab} ${toolsOn ? g.toolsTabOpen : ''}`}
-            title={toolsOn ? tr('Товчнуудыг хураах') : tr('Товчнуудыг харуулах')}
-            aria-label={toolsOn ? tr('Товчнуудыг хураах') : tr('Товчнуудыг харуулах')}
-            onClick={() => setToolsOn((v) => !v)}
-          >
-            {toolsOn ? '‹' : '›'}
-          </button>
-
+          {/* ⚠️ Хураах бариулууд ХАСАГДСАН (2026-09-15) — тэдгээр нь одоо
+              хуваалцсан `MapTools` дотор, бүх зурагт ижил ажиллана. */}
           <MapTools
             dim={dim}
             setDim={setDim}
@@ -611,7 +672,7 @@ export function GeneralDash({
             zone={zone}
             setZone={setZone}
           />
-          {toolsOn && opOpen && (
+          {opOpen && (
             <OpacityPanel
               visible={visible}
               opacity={opacity}
@@ -619,7 +680,7 @@ export function GeneralDash({
               onClose={() => setOpOpen(false)}
             />
           )}
-          {toolsOn && layerOpen && (
+          {layerOpen && (
             <div className={g.catPanel}>
               <LayerCatalog
                 view="plan"
@@ -631,6 +692,15 @@ export function GeneralDash({
                 onClose={() => setLayerOpen(false)}
                 zone={zone}
                 embedded
+                /* ⚠️ «Багц 74» — давхаргын жагсаалтын ХАМГИЙН ДООД хэсэг
+                   (2026-09-15, хэрэглэгчийн заавар). */
+                extra={(
+                  <PkgWorkList
+                    rows={cf.state === 'ready' ? cf.data : null}
+                    visible={visible}
+                    setVisible={setVisible}
+                  />
+                )}
               />
             </div>
           )}
@@ -2167,6 +2237,92 @@ function useOverlapBySubPkg(enabled: boolean) {
   }, [enabled, subs]);
 
   return { subs, out };
+}
+
+/**
+ * «БАГЦ 74» — ДАВХАРГЫН жагсаалтын доод хэсэгт гарах АЖЛЫН жагсаалт
+ * (2026-09-15, хэрэглэгчийн заавар: «давхаргын доор багц 74 гэж шинээр
+ * үүсгэнэ, тэнд багцын ажлууд жагсаалтаар харагдана»).
+ *
+ * ⚠️ Мөр дарахад тэр ажлын БАГЦЫН давхаргууд зурагт асна/унтарна
+ *    (`PKG_BY_BAGTS`). Асаахад тухайн давхарга руу ойртуулна.
+ * ⚠️ Орон зайн давхаргагүй ажил (ТЭЗҮ, зураг төсөл, бондын хүү г.м.)
+ *    жагсаалтад ХЭВЭЭР гарна — «74 ажил» гэсэн тоо бүтэн байх ёстой —
+ *    зөвхөн бүдэг бөгөөд дарагдахгүй.
+ * ⚠️ Анхдагчаар ХУРААСАН: 74 мөр нээлттэй байвал давхаргын жагсаалт
+ *    гүйлгэхэд хэт урт болно.
+ */
+function PkgWorkList({
+  rows, visible, setVisible,
+}: {
+  rows: CfRow[] | null;
+  visible: string[];
+  setVisible: Dispatch<SetStateAction<string[]>>;
+}) {
+  const [open, setOpen] = useState(false);
+  const map = useMap();
+
+  const works = useMemo(() => {
+    if (!rows) return [];
+    return rows
+      .filter((r) => r.isWork)
+      .map((r) => {
+        const key = r.pkg2 ? bagtsKey(r.pkg2) : '';
+        return { oid: r.oid, pkg: r.pkg, name: r.name, ids: PKG_BY_BAGTS[key] ?? [] };
+      })
+      .sort((a, b) => a.pkg.localeCompare(b.pkg) || a.name.localeCompare(b.name));
+  }, [rows]);
+
+  /* ⚠️ Зурагт ил гарсан ажлын тоо — толгойн «N/74» тоолуур */
+  const onCount = works.filter(
+    (w) => w.ids.length > 0 && w.ids.every((id) => visible.includes(id)),
+  ).length;
+
+  if (works.length === 0) return null;
+
+  return (
+    <section className={g.pkgSec}>
+      <button
+        type="button"
+        className={g.pkgHead}
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span className={g.pkgCaret}>{open ? '▾' : '▸'}</span>
+        <span className={g.pkgTitle}>{tr('Багц {0}', num(works.length))}</span>
+        <span className={`${g.pkgCount} num`}>{onCount}/{works.length}</span>
+      </button>
+      {open && (
+        <div className={g.pkgRows}>
+          {works.map((w) => {
+            const has = w.ids.length > 0;
+            const isOn = has && w.ids.every((id) => visible.includes(id));
+            return (
+              <button
+                key={w.oid}
+                type="button"
+                disabled={!has}
+                className={`${g.pkgRow} ${isOn ? g.pkgRowOn : ''}`}
+                title={has ? w.name : tr('{0} — орон зайн давхаргагүй', w.name)}
+                onClick={() => {
+                  if (!has) return;
+                  if (isOn) {
+                    setVisible((v) => v.filter((id) => !w.ids.includes(id)));
+                    return;
+                  }
+                  setVisible((v) => [...new Set([...v, ...w.ids])]);
+                  if (w.ids[0]) map.zoomToLayer(w.ids[0]);
+                }}
+              >
+                <span className={g.pkgBagts}>{w.pkg || '—'}</span>
+                <span className={g.pkgName}>{w.name}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
 }
 
 /** Газар чөлөөлөлтийн нэгж талбарын давхарга — шалтгааны зум үүн дээр */

@@ -76,6 +76,7 @@ import {
   DEFAULT_VIEW, VIEW_BY_KEY, layerUrl, oidOf, zoneWhere,
   PLAN_LAYER_IDS, CATALOG_LAYER_IDS, LAYER_BY_ID, groupOf,
   ZONE_LAYER, ZONE_FIELDS, BUILT_LAYER, BUILT_FIELDS,
+  PLAN_ALWAYS_ON_IDS,
   type ViewKey,
 } from '@/lib/services';
 import { readParam, writeParams } from '@/lib/urlState';
@@ -753,7 +754,16 @@ function PortalContent(
         {!isFull && (
           <>
             <div className={s.map}>
-              <MapCanvas dim={dim} visible={visible} opacity={opacity} zone={zone} onPick={pick} />
+              <MapCanvas
+                dim={dim}
+                visible={visible}
+                opacity={opacity}
+                zone={zone}
+                /* ⚠️ Явган хүний зам нь ЗӨВХӨН «Ерөнхий төлөвлөгөө»-д үргэлж
+                   асаалттай (`services.ts` §PLAN_ALWAYS_ON_IDS). */
+                alwaysOn={planPanel ? PLAN_ALWAYS_ON_IDS : undefined}
+                onPick={pick}
+              />
 
               {/* Газрын зургийн НЭГДСЭН хэрэгслийн зурвас — бүх харагдацад ижил
                   (`MapTools`). Урьд нь энэ блок энд гараар бичигдсэн байв. */}
@@ -771,6 +781,9 @@ function PortalContent(
                 onOpacity={() => setOpacityOpen((v) => !v)}
                 zone={zone}
                 setZone={setZone}
+                /* ⚠️ ЗҮҮН ХАВТАС — ЗӨВХӨН энэ харагдацад (2026-09-15,
+                   хэрэглэгчийн заавар). Бусад зураг хуучин зохиомжтой. */
+                dock
               />
 
               {/* Тунгалаг тохируулах хөвөгч цонх */}
@@ -780,6 +793,7 @@ function PortalContent(
                   opacity={opacity}
                   setOpacity={setOpacity}
                   onClose={closeOpacity}
+                  dock
                 />
               )}
 
@@ -799,6 +813,7 @@ function PortalContent(
                     selected={layer}
                     onSelect={setLayer}
                     onClose={closeCatalog}
+                    forced={planPanel ? PLAN_ALWAYS_ON_IDS : undefined}
                     pinned={false}
                     embedded
                     resizing={catSize.dragging}

@@ -14,17 +14,13 @@
   --side-r: 344px;
   display: grid;
   /**
-   * ⚠️ ХОЁР МӨР: зургийн ДООР «Саад — багцаар» зурвас, ЗУРГИЙН ӨРГӨНТЭЙ
-   * ЯГ ТЭНЦҮҮ (хэрэглэгчийн шийдвэр, 2026-08-27). Талын хоёр багана нэрээ
-   * хоёр мөрөнд давтсан тул автоматаар БҮТЭН өндрөөр сунана — тусад нь
-   * `grid-row: span 2` бичих шаардлагагүй.
+   * ⚠️ НЭГ МӨР (2026-09-15): «Саад — багцаар» зурвас нь зургийн доороос
+   * БАРУУН панел руу шилжсэн (`Gazar.tsx` §БАРУУН БАГАНА) тул газрын
+   * зураг бүтэн өндрөө авна.
    */
-  grid-template-areas:
-    "left map   right"
-    "left chart right";
+  grid-template-areas: "left map right";
   grid-template-columns: var(--side-l) minmax(0, 1fr) var(--side-r);
-  /* Зураг үлдсэн зайг эзэлнэ; зурвас агуулгаараа (дээд хязгаартай) */
-  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr);
   gap: 10px;
   height: 100%;
   min-height: 0;
@@ -79,15 +75,38 @@
  * ⚠️ Өндрийг ХЯЗГААРЛАНА: 30 гаруй багц гарвал зурвас нь газрын зургийг
  * шахаж, харагдац нь жагсаалт болж хувирна. Дотроо гүйнэ.
  */
-.chart {
-  grid-area: chart;
-  min-width: 0;
-  max-height: 34vh;
-  overflow-y: auto;
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  background: var(--surface);
+/* ⚠️ `.chart` (зургийн доод зурвас) ХАСАГДСАН (2026-09-15) — чарт нь
+   баруун панелд шилжив. */
+
+/* ── Саадын чартын БҮЛЭГ (2026-09-15) ── */
+.ovGroup { margin-top: 10px; }
+.ovGroup:first-of-type { margin-top: 2px; }
+.ovGroupHd {
+  /* ⚠️ ТОВЧ (2026-09-15, хэрэглэгчийн заавар: бүлэг бүрийг
+     hide/unhide хийнэ) — браузерийн өгөгдмөй товчны загварыг БҮРЭН арилгана. */
+  width: 100%;
+  font: inherit;
+  text-align: left;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 4px;
+  padding: 0 0 3px;
+  border-bottom: 1px solid var(--line);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-2);
 }
+.ovGroupHd:hover { color: var(--ink); border-bottom-color: var(--line-strong); }
+/* Сум — тогтмол өргөнтэй: нээх/хаахад нэр хөдлөхгүй */
+.ovGroupCaret { flex: none; width: 9px; font-size: 9px; color: var(--ink-3); }
+.ovGroupName { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ovGroupNum { flex: none; font-size: 10.5px; font-weight: 600; color: var(--bad-ink); }
 
 /* ── Панель — envhub Box: surface + hairline, толгой нь доод зураастай ── */
 .panel {
@@ -255,20 +274,18 @@
   .frame {
     grid-template-areas:
       "map"
-      "chart"
       "left"
       "right";
     grid-template-columns: 1fr;
-    /* зураг · зурвас · зүүн · баруун — дөрвөн мөр */
-    grid-template-rows: max(240px, 52vh) auto auto auto;
+    /* зураг · зүүн · баруун — гурван мөр (зурвас баруун панелд шилжсэн) */
+    grid-template-rows: max(240px, 52vh) auto auto;
     height: auto;
     min-height: 100%;
     overflow-y: auto;
   }
   .map { min-height: max(240px, 52vh); }
   .left, .right { overflow-y: visible; }
-  /* Босоо өрөлтөд өндөр хязгаарлах утгагүй — агуулгаараа өснө */
-  .chart { max-height: none; overflow-y: visible; }
+
 }
 
 /* ══ SplitGrip-ийг сүлжээний НҮДЭНД — завсрын ГОЛД суулгана (2026-08-21):
@@ -461,65 +478,43 @@
 /* Ачаалж буй / олдоогүй үеийн модалын бие */
 .modalMsg { padding: 28px 16px; text-align: center; font-size: 12px; color: var(--ink-3); }
 
-/* Хадгалсны дараах мэдэгдэл — газрын зургийн доод зүүн буланд */
-.saved {
-  position: absolute;
-  left: 10px;
-  bottom: 10px;
-  z-index: 8;
-  padding: 6px 12px;
-  font-size: 11.5px;
-  color: var(--ink);
-  background: color-mix(in srgb, var(--good) 16%, var(--surface));
-  border: 1px solid color-mix(in srgb, var(--good) 45%, var(--line));
-  border-radius: var(--r-sm);
-}
-
-/* ══════════════ ЗАСВАРЫН ГОРИМ — зөвхөн газрын зураг ══════════════
+/*
+ * ── ДАВХАРГЫН ХАВТАН — ЗУРГИЙН БАРУУН ТАЛД (2026-09-15, хэрэглэгчийн заавар:
+ *    «давхарга сонгоход гарч ирэх панел мапын баруун талд, Саад багцаар
+ *    панелийн зүүн талд гарч ирдэг болго») ──
  *
- * ⚠️ ХОЁР ДАХЬ ArcGIS VIEW ҮҮСГЭХГҮЙ. «Шинэ цонх» гэдгийг тусдаа MapCanvas-аар
- * барьвал хоёр view зэрэг ажиллаж WebGL контекст үрэгдэнэ (`next.config.mjs`-ийн
- * `reactStrictMode: false`-ийн тайлбартай ижил шалтгаан). Оронд нь БАЙГАА
- * зургаа үлдээгээд хажуугийн багана, доод зурвасыг нуух замаар дэлгэц дүүрэн
- * болгоно — зураг дахин баригдахгүй тул томруулсан байрлал ч хэвээр үлдэнэ.
+ * ⚠️ `gazarOv.module.css`-ийн `.catPanel`-ЫГ ЗАСААГҮЙ санаатай: тэр файлыг
+ *    «Эрсдэлийн загвар» ч хэрэглэдэг бөгөөд энэ өөрчлөлт ЗӨВХӨН газар
+ *    чөлөөлөлтөд хамаарна. Тиймээс энд бие даасан ангилал.
+ *
+ * ⚠️ Зурвас нь зүүн талд 200px эзэлдэг тул хавтан өргөсөхдөө түүн рүү
+ *    халихгүй (`max-width`).
  */
-.frameEdit {
-  grid-template-areas: "map";
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr);
-}
-/* Чирэх бариулууд засварын горимд утгагүй */
-.frameEdit > :global(button[class*='splitGrip_grip']) { display: none; }
-
-/* Зургийн дээд ирмэг дэх ажлын зурвас — «энэ бол тусдаа цонх» гэдгийг хэлнэ */
-.editBar {
+.catPanelRight {
   position: absolute;
-  top: 0;
-  left: 0;
   right: 0;
-  z-index: 9;
+  top: 0;
+  bottom: 0;
+  z-index: 8;
+  width: 320px;
+  max-width: min(calc(100% - 212px), 340px);
   display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 12px;
-  background: color-mix(in srgb, var(--surface) 92%, transparent);
-  border-bottom: 1px solid var(--line);
-  backdrop-filter: blur(3px);
+  background: var(--surface);
+  border-left: 1px solid var(--line);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
 }
-.editTitle { font-size: 12.5px; font-weight: 600; color: var(--ink); }
-.editHint { flex: 1; font-size: 11.5px; color: var(--ink-3); }
-.editClose {
-  font: inherit;
-  font-size: 12px;
-  padding: 5px 12px;
-  color: var(--ink-2);
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  cursor: pointer;
-}
-.editClose:hover { color: var(--ink); border-color: var(--line-strong); }
 
-/* ⚠️ Хэрэгслийн зурвасыг ажлын зурвасын ДООГУУР буулгана — эс тэгвээс
-   2D/3D товчнууд гарчгийн доор нуугдана. */
-.frameEdit .map > :global(div[class*='mapTools_bar']) { top: 46px; }
+/*
+ * ── БАРУУН БАГАНЫ КАРТЫН ГАРЧИГ (2026-09-15, хэрэглэгчийн заавар:
+ *    «Багц бүрийн чөлөөлөгдөөгүй талбар» гарчгийн фонт жижиг) ──
+ *
+ * ⚠️ `secTitle` нь ГЛОБАЛ нэр бөгөөд ТУСГАЙЛАН дарж бичихэд зориулагдсан
+ *    (`ui.tsx`-ийн тайлбарыг үз). Анхдагч 13.5px нь нарийн баганад гарчиг
+ *    хоёр мөр болгож, чартаас илүү зай эзэлж байв.
+ * ⚠️ ЗӨВХӨН энэ модулийн БАРУУН багана — зүүн талын самбарууд хэвээр.
+ */
+.right :global(.secTitle) {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
