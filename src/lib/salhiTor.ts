@@ -376,11 +376,28 @@ export async function loadWindField(date: string): Promise<WindField> {
 
     const u = new Float32Array(H * NX * NY);
     const v = new Float32Array(H * NX * NY);
+    /* ⚠️ Дутуу заалттай ЦАГУУД — `windAt` эдгээрт `null` буцаана (доорх ⚠️) */
+    const bad = new Uint8Array(H);
     for (let i = 0; i < NX * NY; i++) {
       const sp = arr[i].hourly?.wind_speed_10m ?? [];
       const dr = arr[i].hourly?.wind_direction_10m ?? [];
+      /*
+       * ⚠️ ДУТУУ ЦАГИЙГ 0-ЭЭР ДҮҮРГЭХГҮЙ (2026-09-15-ны аудит). `salhi.ts`
+       *    нь яг эсрэг дүрэмтэй: «дутуу цагийг ОРХИНО — 0-ээр дүүргэвэл
+       *    «нам гүм» гэсэн ХУДАЛ дохио өгнө». Энд `?? 0` байсан тул нэг
+       *    өгөгдлийг хоёр модуль эсрэгээр тайлбарлаж, `applyAnchor` нь тэг
+       *    вектор дээр залруулга бодож зогсонги бүс үүсгэдэг байв.
+       *
+       * ⚠️ Утга нь `Float32Array` тул `null` хадгалах боломжгүй; оронд нь
+       *    тэр ЦАГИЙГ БҮХЭЛД нь «бүрэн бус» гэж тэмдэглэнэ (`bad`). NaN
+       *    бичих нь болохгүй: `applyAnchor`-ийн интерполяц түүнийг БҮХ
+       *    торонд тараана.
+       */
       for (let h = 0; h < H; h++) {
-        const w = toUV(sp[h] ?? 0, dr[h] ?? 0);
+        const s = sp[h];
+        const d = dr[h];
+        if (s == null || d == null) { bad[h] = 1; continue; }
+        const w = toUV(s, d);
         u[h * NX * NY + i] = w.u;
         v[h * NX * NY + i] = w.v;
       }
@@ -389,16 +406,42 @@ export async function loadWindField(date: string): Promise<WindField> {
     /* Зангуу цэгийн ЯГ заалт — торыг түүн рүү татна */
     const aSp = arr[NX * NY].hourly?.wind_speed_10m ?? [];
     const aDr = arr[NX * NY].hourly?.wind_direction_10m ?? [];
+    /* ⚠️ Зангуу цэгийн заалт дутуу цаг ч БҮРЭН БУС — тэднийг ч хасна */
+    for (let h = 0; h < H; h++) if (aSp[h] == null || aDr[h] == null) bad[h] = 1;
     applyAnchor(u, v, H, aSp, aDr);
+
+    /*
+     * ⚠️ БҮРЭН БУС ЦАГИЙГ ХАСНА (2026-09-15-ны аудит). Торны аль нэг цэгийн
+     *    заалт дутуу цагийг үлдээвэл тэр цэг 0 м/с («нам гүм») гэж уншигдаж,
+     *    `applyAnchor` түүн дээр залруулга бодож зогсонги бүс үүсгэнэ —
+     *    `salhi.ts`-ийн «дутуу цагийг ОРХИНО» дүрмийн зөрчил. Цагийг
+     *    бүхэлд нь хасах нь `windAt`-ийн буцаах төрлийг хөндөхгүй хамгийн
+     *    цэвэр зам: уншигч талууд зөвхөн БҮРЭН цагуудыг хардаг.
+     */
+    const keep: number[] = [];
+    for (let h = 0; h < H; h++) if (!bad[h]) keep.push(h);
+    if (!keep.length) throw new Error(tr('Цагийн цуваа хоосон'));
+    let outTimes = times;
+    let outU = u;
+    let outV = v;
+    if (keep.length !== H) {
+      outTimes = keep.map((h) => times[h]);
+      outU = new Float32Array(keep.length * NX * NY);
+      outV = new Float32Array(keep.length * NX * NY);
+      keep.forEach((h, k) => {
+        outU.set(u.subarray(h * NX * NY, (h + 1) * NX * NY), k * NX * NY);
+        outV.set(v.subarray(h * NX * NY, (h + 1) * NX * NY), k * NX * NY);
+      });
+    }
 
     try {
       window.localStorage.setItem(key, JSON.stringify({
-        ts: Date.now(), times, u: [...u], v: [...v],
+        ts: Date.now(), times: outTimes, u: [...outU], v: [...outV],
       } satisfies Cached));
     } catch {
       /* квот дүүрсэн — кэшгүй ажиллана */
     }
-    return { times, u, v, date, cached: false };
+    return { times: outTimes, u: outU, v: outV, date, cached: false };
   } catch (e) {
     if (hit) {
       /* ⚠️ Хугацаа нь дууссан ч кэш байвал ТҮҮНИЙГ буцаана */

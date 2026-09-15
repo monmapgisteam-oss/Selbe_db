@@ -547,10 +547,16 @@ async function loadArchived(bagts: string, sheetOid: number): Promise<Submission
               orderByFields: 'OBJECTID ASC',
               resultOffset: String(off),
               resultRecordCount: '2000',
-            })) as { features?: { attributes: Record<string, unknown> }[] };
+            })) as { features?: { attributes: Record<string, unknown> }[]; exceededTransferLimit?: boolean };
             const got = page.features ?? [];
             feats.push(...got);
-            if (got.length < 2000) break;
+            /* ⚠️ `exceededTransferLimit`-ЭЭР таслана, мөрийн тоог 2000-тай
+               жишихээр БИШ (2026-09-15-ны аудит): үйлчилгээний `maxRecordCount`
+               2000-аас БАГА бол (1000 нь ArcGIS-ийн түгээмэл анхдагч) эхний
+               хуудсаар зогсож, жааз ДУТУУ ирнэ. Тэгвэл `lastFrame` буруу
+               заагаар таслаж, мөрийн индекс «Гүйцэтгэл бөглөх»-ийнхтэй зөрч,
+               хянагч ӨӨР зүйл батална (доорх ⚠️ яг үүнийг анхааруулсан). */
+            if (!page.exceededTransferLimit || got.length === 0) break;
             off += got.length;
           }
           /*
@@ -595,7 +601,7 @@ async function loadArchived(bagts: string, sheetOid: number): Promise<Submission
                   orderByFields: 'OBJECTID ASC',
                   resultOffset: String(off),
                   resultRecordCount: '2000',
-                })) as { features?: { attributes: Record<string, unknown> }[] };
+                })) as { features?: { attributes: Record<string, unknown> }[]; exceededTransferLimit?: boolean };
                 const got = pv.features ?? [];
                 /*
                  * ⚠️ Түлхүүр нь № ГАНЦААРАА БИШ — «1», «2» гэсэн дугаар хуудсанд
@@ -604,7 +610,8 @@ async function loadArchived(bagts: string, sheetOid: number): Promise<Submission
                  *    дараалалаар агуулдаг тул байрлал тогтвортой.
                  */
                 prevFeats.push(...got);
-                if (got.length < 2000) break;
+                /* ⚠️ `exceededTransferLimit` — дээрхтэй ижил шалтгаан (2026-09-15) */
+                if (!pv.exceededTransferLimit || got.length === 0) break;
                 off += got.length;
               }
             } catch {

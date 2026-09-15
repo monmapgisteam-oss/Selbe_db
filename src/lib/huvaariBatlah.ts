@@ -529,8 +529,14 @@ export async function decidePlan(args: {
   oid: number;
   approve: boolean;
   approver: string;
-  /** Илгээсэн хүн — өөрийгөө батлахаас хамгаалахад */
-  author: string;
+  /**
+   * Илгээсэн хүн — ЗӨВХӨН нөөц (fallback).
+   *
+   * ⚠️ 2026-09-15-ны аудит: дүрмийн ЖИНХЭНЭ эх нь ЭНЭ БИШ, СЕРВЕРИЙН мөрийн
+   *    `F.author` (доор `cur`-аас уншина). Дуудагчийн өгсөн утгад найдвал
+   *    консолоос `author: ''` дамжуулаад хамгаалалтыг бүрэн алгасаж болно.
+   */
+  author?: string;
   reason?: string;
 }): Promise<{ ok: boolean; error?: string }> {
   /*
@@ -542,9 +548,18 @@ export async function decidePlan(args: {
    *    товч нуух нь харагдацын асуудал, харин дүрэм нь өгөгдлийнх. Хоёр эрх
    *    (`plan` + `planApprove`) нэг хүнд олгогдвол товч нь идэвхтэй болох тул
    *    ганц хамгаалалт нь энэ.
+   *
+   * ⚠️ ХОЁР ДАВХАР ШАЛГУУР (2026-09-15-ны аудит):
+   *      (1) ЭНД — дуудагчийн өгсөн `author`-оор, СҮЛЖЭЭНЭЭС ӨМНӨ. Энэ нь
+   *          ArcGIS уншигдахгүй орчинд дүрэм чимээгүй алга болохоос сэргийлнэ
+   *          (тест яг үүнийг барьдаг).
+   *      (2) `cur`-ийн ДАРАА — СЕРВЕРИЙН мөрийн `F.author`-оор. Учир нь (1)
+   *          нь дуудагчийн өгсөн утгад найддаг тул консолоос `author: ''`
+   *          дамжуулаад бүрэн алгасаж болно. Жинхэнэ эх нь ЗӨВХӨН сервер.
    */
   const me = args.approver.trim().toLowerCase();
-  if (me && me === args.author.trim().toLowerCase()) {
+  const claimed = (args.author ?? '').trim().toLowerCase();
+  if (me && claimed && me === claimed) {
     return { ok: false, error: tr('Өөрийн илгээсэн хуваарийг өөрөө батлах боломжгүй — өөр батлагч шийдвэрлэнэ.') };
   }
   if (!args.approve && !args.reason?.trim()) {
@@ -560,8 +575,20 @@ export async function decidePlan(args: {
    *    нэр чимээгүй дарагдана. Мөр нь ганц тул `applyEdits` алдаа өгөхгүй —
    *    ЗӨВХӨН энэ шалгуур л барина.
    */
-  const cur = await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.approver}`);
+  const cur = await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.approver},${F.author}`);
   if (!cur.length) return { ok: false, error: tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') };
+  /*
+   * ⚠️ ХОЁР ДАХЬ ШАЛГУУР — ЗОХИОГЧ СЕРВЕРЭЭС (2026-09-15-ны аудит).
+   *    Дээрх эрт шалгуур нь дуудагчийн өгсөн утгад найддаг тул консолоос
+   *    `author: ''` дамжуулаад (эсвэл UI-д `pending` null болсон агшинд
+   *    `pending?.author ?? ''` → `''` болох тул) бүрэн алгасагдаж,
+   *    `plan`+`planApprove` хоёулаа бүхий хүн өөрийн хуваарийг өөрөө батлаж
+   *    чаддаг байв. Мөрийн жинхэнэ зохиогчийг ЗӨВХӨН сервер мэднэ.
+   */
+  const author = s(cur[0][F.author])?.trim().toLowerCase() ?? '';
+  if (me && author && me === author) {
+    return { ok: false, error: tr('Өөрийн илгээсэн хуваарийг өөрөө батлах боломжгүй — өөр батлагч шийдвэрлэнэ.') };
+  }
   const curStatus = s(cur[0][F.status]);
   if (curStatus !== PLAN_STATUS.pending) {
     const by = s(cur[0][F.approver]);

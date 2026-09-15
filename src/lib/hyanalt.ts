@@ -264,11 +264,21 @@ export async function queryAll(): Promise<Attrs[]> {
       orderByFields: `${HYANALT.oid} ASC`,
       resultOffset: String(offset),
       resultRecordCount: '2000',
-    })) as { features?: { attributes: Attrs }[] };
+    })) as { features?: { attributes: Attrs }[]; exceededTransferLimit?: boolean };
 
     const got = j.features ?? [];
     out.push(...got.map((f) => f.attributes));
-    if (got.length < 2000) break;
+    /*
+     * ⚠️ `exceededTransferLimit`-ЭЭР таслана, `got.length < 2000`-ААР БИШ
+     *    (2026-09-15-ны аудит). Үйлчилгээний `maxRecordCount` нь 2000-аас
+     *    БАГА байж болно (1000 нь ArcGIS-ийн түгээмэл анхдагч): тэр үед
+     *    эхний хуудас 1000 мөр буцаад `1000 < 2000` тул давталт ЗОГСОЖ,
+     *    бүртгэлийн үлдсэн мөр чимээгүй алга болдог байв. Тэгвэл
+     *    `groupWorks` дутуу тойргоор «одоогийн төлөв» тогтоож, `nextId()`
+     *    дутуу мөрөөс `max` бодож ДАВХАРДСАН дугаар үүсгэнэ.
+     *    Зөв хэв маяг репод аль хэдийн бий: `bagtsSheet.ts`, `permsRemote.ts`.
+     */
+    if (!j.exceededTransferLimit || got.length === 0) break;
     offset += got.length;
   }
   return out;

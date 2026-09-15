@@ -16,6 +16,7 @@
 import { queryFeatures, type Row } from '@/lib/query';
 import { cached } from '@/lib/live';
 import { t as tr } from '@/lib/i18nCore';
+import { dayKey } from '@/lib/format';
 import {
   CASHFLOW_NEW, CF_WORK_WHERE, CF_MONTH_WHERE, CF_MONTH, HABEA, bagtsKey, isPkgRange,
 } from '@/lib/services';
@@ -1180,7 +1181,10 @@ export const loadHseNow = cached<HseNow | null>(async () => {
   if (!r) return null;
   const ms = Number(r[f.ognoo]);
   return {
-    date: Number.isFinite(ms) ? new Date(ms).toISOString().slice(0, 10) : '',
+    /* ⚠️ ОРОН НУТГИЙН огноо — UTC slice нь +08 бүсэд өглөөний 08:00 хүртэл
+       бүртгэгдсэн маягтыг ӨМНӨХ өдрөөр харуулдаг байв (2026-09-15). Энэ
+       огноо нь дээрх ⚠️-ийн «тоо нь хэдийнх вэ» гэсэн зорилготой. */
+    date: Number.isFinite(ms) ? dayKey(ms) : '',
     workers: nOf(r[f.niitAjiltan]),
     equipment: nOf(r[f.niitTehnik]),
     manHours: nOf(r[f.hunTsag]),

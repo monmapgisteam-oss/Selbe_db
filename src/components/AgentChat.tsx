@@ -65,11 +65,20 @@ export function AgentChat({
       setWide(localStorage.getItem(WIDE_KEY) === '1');
     } catch { /* хувийн горим — нарийн харагдац хэвээр */ }
   }, []);
+  /*
+   * ⚠️ БИЧИЛТ updater-ЫН ГАДНА, try/catch-тай (2026-09-15-ны аудит). Урьд нь
+   *    `setWide`-ийн updater ДОТОР `localStorage.setItem` дуудагддаг байв:
+   *    (1) хувийн горимд шидсэн алдаа React-ийн updater-аас гарч чатыг
+   *    унагадаг (дээрх `getItem` хамгаалагдсан атал энэ нь үгүй байсан);
+   *    (2) updater нь ЦЭВЭР функц байх ёстой — StrictMode-д хоёр дахин
+   *    дуудагдахад гаж нөлөө давхардана.
+   */
   const toggleWide = () => {
-    setWide((v) => {
-      localStorage.setItem(WIDE_KEY, v ? '0' : '1');
-      return !v;
-    });
+    const next = !wide;
+    setWide(next);
+    try {
+      localStorage.setItem(WIDE_KEY, next ? '1' : '0');
+    } catch { /* хувийн горим — тохиргоо хадгалагдахгүй, харагдац ажиллана */ }
   };
 
   /**

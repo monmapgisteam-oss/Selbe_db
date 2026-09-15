@@ -25,6 +25,7 @@ import {
   LAYER_BY_ID, PARCEL_CLEARED, layerUrl, oidOf,
   CF_WORK_WHERE,
 } from '@/lib/services';
+import { dayKey } from '@/lib/format';
 import { FIN_XL_CHART_FIELDS, finXlChartCat } from '@/lib/finExcelLayout';
 import { sumBy, tally } from '@/lib/agg';
 import { register, type DataKey } from '@/lib/dataBus';
@@ -312,8 +313,14 @@ const futureCutMs = (): number => {
   return Math.max(local.getTime(), utc);
 };
 
-/** Дээрх заагийн `YYYY-MM-DD` хэлбэр — `PkgProgressRow.date`-тай харьцуулахад */
-const futureCutDay = (): string => new Date(futureCutMs()).toISOString().slice(0, 10);
+/**
+ * Дээрх заагийн `YYYY-MM-DD` хэлбэр — `PkgProgressRow.date`-тай харьцуулахад.
+ *
+ * ⚠️ `dayKey` (ОРОН НУТГИЙН огноо) — `toISOString().slice(0,10)` БИШ.
+ *    `PkgProgressRow.date` мөн `dayKey`-ээр бүтдэг тул хоёулаа НЭГ дүрэмтэй
+ *    байх ёстой; эсрэг тохиолдолд зааг нэг хоногоор зөрнө.
+ */
+const futureCutDay = (): string => dayKey(futureCutMs());
 
 /**
  * БАГЦЫН ГҮЙЦЭТГЭЛИЙН НЭГТГЭЛ — багц бүрийн ХАМГИЙН СҮҮЛИЙН огноотой мөр.
@@ -366,7 +373,11 @@ export const loadPkgProgress = cached<PkgProgressRow[]>(async () => {
     if (!key) continue;
     const ts = r[F.date];
     if (ts != null && Number(ts) > cut) { dropped += 1; continue; }
-    const date = ts == null ? '' : new Date(Number(ts)).toISOString().slice(0, 10);
+    /* ⚠️ ОРОН НУТГИЙН огноо (`dayKey`) — `toISOString().slice(0,10)` нь UTC
+       тул +08 бүсэд 00:00–07:59-ийн мөр ӨМНӨХ өдрийн түлхүүр авдаг байв.
+       Энэ `date` нь `slice(0,7)`-оор САР болж дашбоардын цуваанд ордог тул
+       сарын эхний шөнийн хэмжилт БҮТЭН САРААР гулсдаг байлаа (2026-09-15). */
+    const date = ts == null ? '' : dayKey(Number(ts));
     out.push({
       key,
       label: raw2,

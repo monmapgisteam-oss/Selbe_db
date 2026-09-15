@@ -34,6 +34,7 @@ export function MapTools({
   layersOpen,
   onLayers,
   opacityOpen,
+  opacityCount = 0,
   onOpacity,
   zone,
   setZone,
@@ -53,6 +54,16 @@ export function MapTools({
   onLayers?: () => void;
   /** Тунгалагийн хавтан нээлттэй эсэх. `onOpacity` байхгүй бол товч зурагдахгүй. */
   opacityOpen?: boolean;
+  /**
+   * ХЭДЭН давхаргын тунгалаг ӨӨРЧЛӨГДСӨН бэ — товчны тэмдэгт.
+   *
+   * ⚠️ 2026-09-15-ны хэрэглээний аудит: тунгалаг нь харагдац солиход
+   *    ТЭГЛЭГДДЭГГҮЙ бөгөөд товчинд ямар ч тэмдэг байгаагүй тул 10%-д
+   *    чирсэн давхарга бүх дараагийн харагдацад бараг үл үзэгдэх хэвээр
+   *    үлдэж, «яагаад зураг хоосон вэ» гэсэн жинхэнэ занга үүсгэдэг байв.
+   *    «Бүс · 2»-тай ЯГ ижил хэлбэр.
+   */
+  opacityCount?: number;
   onOpacity?: () => void;
   /**
    * Бүсийн шүүлт. `setZone` байхгүй бол товч зурагдахгүй.
@@ -119,7 +130,7 @@ export function MapTools({
           title={tr('Давхаргын тунгалаг')}
         >
           <Icon name="droplet" size={15} />
-          {tr('Тунгалаг')}
+          {tr('Тунгалаг')}{opacityCount ? ` · ${opacityCount}` : ''}
         </button>
       )}
 

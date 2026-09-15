@@ -150,6 +150,27 @@ export const LayerCatalog = memo(function LayerCatalog({
   const all = groups.flatMap((g) => g.ids);
   const onCount = visible.filter((id) => all.includes(id)).length;
 
+  /*
+   * ХАЙЛТ (2026-09-15-ны хэрэглээний аудит).
+   *
+   * ⚠️ ЯАГААД: каталогт ~99 давхарга, 19 бүлэг байдаг бөгөөд бүгд ХУРААГДСАН
+   *    эхэлдэг (дээрх ⚠️ — тэр шийдвэр зөв, «юу байгааг» нэг харцаар харуулна).
+   *    Гэвч НЭР нь мэдэгдэж байгаа давхаргыг олохын тулд бүлгүүдийг нэг нэгээр
+   *    нээж үзэхээс өөр арга байсангүй.
+   *
+   * ⚠️ Хайлт нь ХУРААЛТЫГ ДАРНА: бичиж эхлэхэд таарсан давхарга бүхий бүлэг
+   *    задарна (`shut` төлөв ХӨНДӨГДӨХГҮЙ — хайлтыг цэвэрлэвэл хэрэглэгчийн
+   *    гараар нээсэн байдал хэвээр үлдэнэ).
+   */
+  const [q, setQ] = useState('');
+  const needle = q.trim().toLowerCase();
+  /** Давхарга хайлтад таарч байна уу — нэр ба бүлгийн нэрээр */
+  const hit = (id: string, groupTitle: string): boolean => {
+    if (!needle) return true;
+    const d = LAYER_BY_ID[id];
+    return `${d?.title ?? ''} ${groupTitle}`.toLowerCase().includes(needle);
+  };
+
   return (
     <aside className={`${s.drawer} ${embedded ? s.embedded : ''}`} aria-label={tr('Давхаргын жагсаалт')}>
       {/* Өргөн тохируулах бариул — баганын БАРУУН ирмэг дээр (зураг руу харсан) */}
@@ -210,6 +231,16 @@ export const LayerCatalog = memo(function LayerCatalog({
       </header>
 
       <div className={s.body}>
+        {/* ХАЙЛТ — ~99 давхаргаас нэрээр нь олох цорын ганц зам (дээрх ⚠️) */}
+        <input
+          type="search"
+          className={s.search}
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder={tr('Давхарга хайх…')}
+          aria-label={tr('Давхарга хайх')}
+        />
+
         {/* БҮХ ДАВХАРГЫГ УНТРААХ — жагсаалтын хамгийн дээд, тусдаа том товч
             (хэрэглэгчийн хүсэлт: шууд нүдэнд харагдахуйц). Унтраах юмгүй үед
             бүдгэрнэ. */}
@@ -256,10 +287,15 @@ export const LayerCatalog = memo(function LayerCatalog({
           return (
             <>
               {groups.map((g) => {
-                const ids = g.ids;
+                /* ⚠️ Хайлт идэвхтэй бол ЗӨВХӨН таарсан давхарга үлдэнэ; нэг ч
+                   таарахгүй бүлэг бүхэлдээ ХАРАГДАХГҮЙ (хоосон гарчиг нь
+                   чимээ). Хайлтгүй үед бүх зан төлөв ХУУЧНААРАА. */
+                const ids = g.ids.filter((id) => hit(id, g.title));
+                if (!ids.length) return null;
                 const defs = ids.map((id) => LAYER_BY_ID[id]).filter(Boolean);
                 const on = ids.filter((id) => visible.includes(id)).length;
-                const open = !shut.has(g.key);
+                /* ⚠️ Хайж байхад ЗААВАЛ задарна — олдсон зүйл нуугдах ёсгүй */
+                const open = needle ? true : !shut.has(g.key);
 
                 return (
                   <section

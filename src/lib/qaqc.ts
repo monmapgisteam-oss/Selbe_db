@@ -246,7 +246,18 @@ export async function loadQaqcRows(pkgKey: string): Promise<QaqcRow[]> {
   if (!want.includes(OID)) throw new Error('QAQC хүснэгтэд ObjectID талбар алга.');
 
   const feats: Feat[] = [];
-  for (let off = 0; ; off += 2000) {
+  /*
+   * ⚠️ ХУУДСЫГ ИРСЭН МӨРИЙН ТООГООР ахиулна, тогтмол 2000-аар БИШ; тасрахыг
+   *    нь `exceededTransferLimit`-ээр шийднэ (2026-09-15-ны аудит).
+   *
+   *    Урьд нь `off += 2000` + `f.length < 2000` байв. Үйлчилгээний
+   *    `maxRecordCount` 2000-аас БАГА бол (1000 нь ArcGIS-ийн түгээмэл
+   *    анхдагч) эхний хуудас 1000 мөр буцаад давталт ЗОГСОНО: `attachTree`
+   *    шатлалаа холбож чадахгүй (`rows.length !== sheet.length`), хуудас
+   *    хавтгай зурагдаж, ачаалагдаагүй мөрүүдэд акт бөглөх БОЛОМЖГҮЙ болно.
+   *    Хэрэв сервер тасалдаггүй ч хуудас дүүргэдэггүй бол алгасалт үүснэ.
+   */
+  for (let off = 0; ; ) {
     const j = await agsFetch(`${url}/query`, {
       where: '1=1',
       outFields: want.join(','),
@@ -257,7 +268,8 @@ export async function loadQaqcRows(pkgKey: string): Promise<QaqcRow[]> {
     });
     const f = (j.features ?? []) as Feat[];
     feats.push(...f);
-    if (f.length < 2000) break;
+    if (!j.exceededTransferLimit || f.length === 0) break;
+    off += f.length;
   }
   return toRows(feats);
 }
@@ -394,7 +406,11 @@ export function qaqcUpdates(
     const cut = pk.lastIndexOf(':');
     const oid = Number(pk.slice(0, cut));
     const fld = QAQC_COLS[Number(pk.slice(cut + 1))]?.name;
-    if (cut < 0 || !Number.isInteger(oid) || !fld || (known && !known.has(oid))) {
+    /* ⚠️ `cut <= 0` (2026-09-15-ны аудит): `cut === 0` бол OID хэсэг нь ХООСОН
+       мөр бөгөөд `Number('') === 0`, `Number.isInteger(0)` нь ҮНЭН тул
+       ObjectID **0** руу бичих хүсэлт үүсдэг байв. ArcGIS-д 0 нь хүчинтэй
+       дугаар байж болзошгүй тул чимээгүй буруу мөр засагдана. */
+    if (cut <= 0 || !Number.isInteger(oid) || !fld || (known && !known.has(oid))) {
       skipped.push(pk);
       continue;
     }

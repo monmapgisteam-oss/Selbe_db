@@ -100,6 +100,24 @@ export function ScopedAclPanel<R extends string>({ spec }: { spec: AclPanelSpec<
   const orphanFail = [...failed].some((u) => !rows.some((a) => a.user === u));
   const dirtyPerms = new Set(dirtyKeys());
   const [err, setErr] = useState('');
+  /*
+   * ⚠️ БИЧИЛТ ЯВЖ БАЙХАД дахин дарахаас хамгаална (2026-09-15-ны
+   *    хэрэглээний аудит). Урьд нь `void r.sync` гэж хүлээлгүй орхидог тул
+   *    сүлжээ удаан үед хоёр удаа дарвал хоёр `setGrants` зэрэгцэн явж,
+   *    хоёр дахь нь ХУУЧИН `rows`-оос `grants`-ыг уншина — сүүлийнх нь
+   *    ялж, эхний нэмэлт ЧИМЭЭГҮЙ алга болно.
+   */
+  const [busy, setBusy] = useState(false);
+  /**
+   * Бичилтийг хүлээж, явцад нь товчнуудыг түгжинэ.
+   * ⚠️ `sync` нь СОНГОМОЛ (`Write.sync?`) — алсын бичилт огт эхлээгүй
+   *    (баталгаажуулалт унасан) үед байхгүй. Тэр үед түгжих зүйлгүй.
+   */
+  const run = async (sync?: Promise<unknown>) => {
+    if (!sync) return;
+    setBusy(true);
+    try { await sync; } finally { setBusy(false); }
+  };
 
   /**
    * БАГЦАД ААКАУНТ НЭМЭХ — тэр хүний ТЭР ҮҮРГИЙН grant-д энэ багцыг нэмнэ.
@@ -127,7 +145,7 @@ export function ScopedAclPanel<R extends string>({ spec }: { spec: AclPanelSpec<
     }
     const r = spec.setGrants(u, grants);
     setErr(r.ok ? '' : (r.error ?? ''));
-    void r.sync;
+    void run(r.sync);
   };
 
   /**
@@ -162,12 +180,12 @@ export function ScopedAclPanel<R extends string>({ spec }: { spec: AclPanelSpec<
     /* Нэг ч grant үлдэхгүй бол мөрийг бүхэлд нь хасна — эрх нь мөн буцна */
     if (!grants.length) {
       if (!window.confirm(spec.confirmRemoveAll(user))) return;
-      void spec.remove(user).sync;
+      void run(spec.remove(user).sync);
       return;
     }
     const r = spec.setGrants(user, grants);
     setErr(r.ok ? '' : (r.error ?? ''));
-    void r.sync;
+    void run(r.sync);
   };
 
   const [note1, note2, note3] = spec.notes();
@@ -201,6 +219,7 @@ export function ScopedAclPanel<R extends string>({ spec }: { spec: AclPanelSpec<
             dirtyPerms={dirtyPerms}
             onAdd={addTo}
             onRemove={removeFrom}
+            busy={busy}
           />
         ))}
       </div>
@@ -210,7 +229,7 @@ export function ScopedAclPanel<R extends string>({ spec }: { spec: AclPanelSpec<
 
 /** НЭГ БАГЦЫН хөзөр — хоёр үүргийн жагсаалт */
 function PkgCol<R extends string>({
-  spec, group, rows, accounts, known, failed, dirtyPerms, onAdd, onRemove,
+  spec, group, rows, accounts, known, failed, dirtyPerms, onAdd, onRemove, busy,
 }: {
   spec: AclPanelSpec<R>;
   group: string;
@@ -221,6 +240,8 @@ function PkgCol<R extends string>({
   dirtyPerms: Set<string>;
   onAdd: (group: string, role: R, user: string) => void;
   onRemove: (group: string, role: R, user: string) => void;
+  /** Алсын бичилт явж байна — товчнууд түгжигдэнэ (давхар товшилтоос) */
+  busy: boolean;
 }) {
   /** Тухайн багцад тэр үүргээр хуваарилагдсан аккаунтууд */
   const usersOf = (role: R): string[] =>
@@ -265,6 +286,7 @@ function PkgCol<R extends string>({
             dirtyPerms={dirtyPerms}
             onAdd={onAdd}
             onRemove={onRemove}
+            busy={busy}
           />
         );
       })}
@@ -281,7 +303,7 @@ function PkgCol<R extends string>({
 
 /** Нэг үүргийн блок — жагсаалт + нэмэх сонгогч */
 function RoleBlock<R extends string>({
-  spec, group, role, list, free, known, failed, dirtyPerms, onAdd, onRemove,
+  spec, group, role, list, free, known, failed, dirtyPerms, onAdd, onRemove, busy,
 }: {
   spec: AclPanelSpec<R>;
   group: string;
@@ -293,6 +315,8 @@ function RoleBlock<R extends string>({
   dirtyPerms: Set<string>;
   onAdd: (group: string, role: R, user: string) => void;
   onRemove: (group: string, role: R, user: string) => void;
+  /** Алсын бичилт явж байна — товчнууд түгжигдэнэ (давхар товшилтоос) */
+  busy: boolean;
 }) {
   const [add, setAdd] = useState('');
 
@@ -320,6 +344,7 @@ function RoleBlock<R extends string>({
             type="button"
             className={s.aclX}
             title={tr('Энэ багцаас хасах')}
+            disabled={busy}
             onClick={() => onRemove(group, role, u)}
           >
             ✕
@@ -333,7 +358,7 @@ function RoleBlock<R extends string>({
           className={s.aclInput}
           value={add}
           onChange={(e) => setAdd(e.target.value)}
-          disabled={free.length === 0}
+          disabled={busy || free.length === 0}
         >
           <option value="">{free.length ? tr('Аккаунт нэмэх…') : tr('Чөлөөтэй аккаунт алга')}</option>
           {free.map((a) => <option key={a} value={a}>{a}</option>)}
@@ -341,7 +366,8 @@ function RoleBlock<R extends string>({
         <button
           type="button"
           className={s.aclBtn}
-          disabled={!add.trim()}
+          /* ⚠️ Бичилт явж байхад түгжинэ — давхар товшилт нэмэлтийг алдагдуулна */
+          disabled={busy || !add.trim()}
           onClick={() => { onAdd(group, role, add); setAdd(''); }}
         >
           {tr('Нэмэх')}

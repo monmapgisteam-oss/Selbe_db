@@ -38,7 +38,7 @@ import {
 } from '@/lib/blockProgress';
 import { sumBy, maxOf } from '@/lib/agg';
 import { loadLandStatus, type LandStatus } from '@/lib/land';
-import { cat, mnt, num, pct, shade, shades, tint, CAT_LIGHT, NO_DATA, km } from '@/lib/format';
+import { cat, mnt, num, pct, shade, shades, tint, CAT_LIGHT, NO_DATA, km, monthKey } from '@/lib/format';
 import { BAGTS_ORIGIN } from '@/lib/brief';
 import {
   loadHeadline, loadSocial, loadBudget, loadPkgProgress, latestPkgProgress,
@@ -746,7 +746,7 @@ function railStat(k: SecKey, d: DashData): {
 } {
   const b = d.bagts.state === 'ready' ? d.bagts.data : null;
   const f = d.fin.state === 'ready' ? d.fin.data : null;
-  const nowYm = new Date().toISOString().slice(0, 7);
+  const nowYm = monthKey(); /* ⚠️ ОРОН НУТГИЙН сар — UTC slice нь сарын 1-ний шөнө ӨМНӨХ сар өгдөг */
   /**
    * Багцын биет гүйцэтгэл — «одоо» хүртэлх сүүлийн бөглөгдсөн сарын утга,
    * блокийн тоогоор жигнэсэн.
@@ -760,6 +760,7 @@ function railStat(k: SecKey, d: DashData): {
     f.phys.forEach((byMon, k) => {
       if (!match(k)) return;
       let last: number | null = null;
+      let lastMon = '';
       [...byMon.entries()].sort(([x], [y]) => x.localeCompare(y)).forEach(([m, v]) => {
         /* ⚠️ `v > 0` БИШ: `phys` мап нь тухайн сард ЯДАЖ нэг блок хэмжигдсэн
            үед л мөр үүсгэдэг (`Finance.loadFinData`, `if (cnt > 0)`) тул 0 нь
@@ -767,10 +768,20 @@ function railStat(k: SecKey, d: DashData): {
            ажил эхлээгүй багц жигнэлтээс бүрмөсөн хасагдаж, төслийн дундаж
            гүйцэтгэл хөөрөгдөж харагддаг байв (`aggregateMonths`, `lagOf`
            хоёр аль хэдийн `!= null`-ыг барьдаг). */
-        if (m <= nowYm) last = v;
+        if (m <= nowYm) { last = v; lastMon = m; }
       });
       if (last == null) return;
-      const cnt = f.physCnt.get(k)?.get(nowYm) ?? 1;
+      /*
+       * ⚠️ ЖИНГ УТГА АВСАН САРААС уншина (2026-09-15-ны аудит). Урьд нь
+       *    `physCnt.get(k)?.get(nowYm)` гэж ЗӨВХӨН ЭНЭ САРААС авдаг байсан
+       *    бөгөөд `last` нь ихэвчлэн ӨМНӨХ сарынх байдаг: тухайн багц энэ
+       *    сард тайлагнаагүй бол жин нь блокийн тооны оронд **1** болно.
+       *    Жишээ: 7-р сард сүүлд тайлагнасан 40 блоктой багц жин 1-ээр,
+       *    энэ сард тайлагнасан 6 блоктой багц жин 6-аар орж, «Биет
+       *    гүйцэтгэл» индикатор ~70%-ийн оронд ~19% гардаг байв.
+       */
+      const cntMap = f.physCnt.get(k);
+      const cnt = cntMap?.get(lastMon) ?? cntMap?.get(nowYm) ?? 1;
       w += last * cnt; n += cnt;
     });
     return n ? w / n : null;
@@ -942,17 +953,20 @@ function IndStrip({ d }: { d: DashData }) {
   const h = d.headline.state === 'ready' ? d.headline.data : null;
   const b = d.bagts.state === 'ready' ? d.bagts.data : null;
   const f = d.fin.state === 'ready' ? d.fin.data : null;
-  const nowYm = new Date().toISOString().slice(0, 7);
+  const nowYm = monthKey(); /* ⚠️ ОРОН НУТГИЙН сар — UTC slice нь сарын 1-ний шөнө ӨМНӨХ сар өгдөг */
   /** Төслийн биет гүйцэтгэл — бүх багцын сүүлийн утга, блокоор жигнэсэн */
   let physW = 0; let physN = 0;
   f?.phys.forEach((byMon, k) => {
     let last: number | null = null;
+    let lastMon = '';
     [...byMon.entries()].sort(([x], [y]) => x.localeCompare(y)).forEach(([m, v]) => {
       // ⚠️ 0% нь ХЭМЖИГДСЭН утга — алгасвал ажил эхлээгүй багц дунджаас хасагдана
-      if (m <= nowYm) last = v;
+      if (m <= nowYm) { last = v; lastMon = m; }
     });
     if (last == null) return;
-    const cnt = f.physCnt.get(k)?.get(nowYm) ?? 1;
+    /* ⚠️ Жинг УТГА АВСАН сараас — мөр 776-ийн ⚠️-тэй ижил дүрэм */
+    const cntMap = f.physCnt.get(k);
+    const cnt = cntMap?.get(lastMon) ?? cntMap?.get(nowYm) ?? 1;
     physW += last * cnt; physN += cnt;
   });
   const overall = physN ? physW / physN : null;
@@ -1678,7 +1692,17 @@ function ScopeDetail({ bagts, d, flt, onFlt }: {
  * самбар нэмэхэд шошго дагаж явна. `note` нь 2 мөрөөр таслагддаг
  * (`dashboardOv.module.css .panelNote`) тул текст АЛЬ БОЛОХ БОГИНО.
  */
-const SRC_NEGTGEL = () => tr('эх: багцын нэгтгэл — бөглөх хуудас БИШ');
+/*
+ * ⚠️ 2026-09-15 (хэрэглээний аудит): шошго нь ЭХ СУРВАЛЖИЙГ хэлдэг байсан ч
+ *    тэр өгөгдөл нь ТУРШИЛТЫНХ гэдгийг хэлдэггүй байв. Дээрх ⚠️-д тэр баримт
+ *    бүрэн бичигдсэн атал зөвхөн кодод үлдэж, дэлгэц дээр гарахгүй байлаа.
+ *    Удирдлагын хүн 61%-ийг бодит гүйцэтгэл гэж уншина.
+ *
+ *    Өгөгдлийг УСТГАХ нь хэвээр ХЭРЭГЛЭГЧИЙН шийдвэр (`--wipe`) — энд зөвхөн
+ *    шошгыг үнэн болгов. Устгасны дараа энэ шошгыг `SRC_NEGTGEL_REAL` болгож
+ *    «туршилтын» гэсэн үгийг хасна.
+ */
+const SRC_NEGTGEL = () => tr('⚠ туршилтын өгөгдөл · багцын нэгтгэл');
 /** Блокийн гүйцэтгэлийн («Гүйцэтгэл бөглөх» хуудас) эх сурвалжийн шошго */
 const SRC_SHEET = () => tr('эх: бөглөх хуудас');
 /** `note` + эх сурвалж. Функц дуудалт — хэлээ сольсны дараа дахин орчуулагдана */
@@ -1729,7 +1753,7 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
    *    хувь) байхаа больж ХУВААРИАС (`lagOf`) гарна. Хуучин тоо нь МӨНГӨний
    *    хувь байсныг БИЕТ %-тай хасдаг байсан — нэгж нь зөрсөн харьцуулалт.
    */
-  const nowYm = new Date().toISOString().slice(0, 7);
+  const nowYm = monthKey(); /* ⚠️ ОРОН НУТГИЙН сар — UTC slice нь сарын 1-ний шөнө ӨМНӨХ сар өгдөг */
   const lag = months ? lagOf(months) : null;
   const planned: number | null = lag ? lag.planned : null;
   let actual: number | null = null;
@@ -1845,7 +1869,12 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
             const zero: { key: string; n: number }[] = [];
             const byPkg = new Map<string, number>();
             pm.forEach((x, k) => {
-              if (x.overall > 0) return;
+              /* ⚠️ ХЭМЖИГДЭЭГҮЙ блокийг АЛГАСНА (2026-09-15-ны аудит).
+                 Урьд нь зөвхөн `> 0`-ыг шалгадаг байсан тул бөглөх хуудас
+                 нийтлэгдээгүй (`overall == null`) блок «0%-д гацсан» гэж
+                 CEO-д тайлагнагдаж, тайлагналын цоорхойтой багцын зурвас
+                 хөөрөгддөг байв. Хажуугийн бүх самбар энэ шалгуурыг хийдэг. */
+              if (x.overall == null || x.overall > 0) return;
               const pkg = k.split('|')[0] ?? '';
               byPkg.set(pkg, (byPkg.get(pkg) ?? 0) + 1);
             });
@@ -2264,19 +2293,22 @@ function pkgPhys(f: FinData | null, match: (k: string) => boolean): {
   rows: { key: string; pct: number }[];
 } {
   if (!f) return { actual: null, packs: 0, rows: [] };
-  const nowYm = new Date().toISOString().slice(0, 7);
+  const nowYm = monthKey(); /* ⚠️ ОРОН НУТГИЙН сар — UTC slice нь сарын 1-ний шөнө ӨМНӨХ сар өгдөг */
   const rows: { key: string; pct: number }[] = [];
   let w = 0; let n = 0;
   f.phys.forEach((byMon, k) => {
     if (!match(k)) return;
     let last: number | null = null;
+    let lastMon = '';
     [...byMon.entries()].sort(([x], [y]) => x.localeCompare(y)).forEach(([m, v]) => {
       // ⚠️ 0% нь ХЭМЖИГДСЭН утга (`phys` мөр зөвхөн cnt>0 үед үүснэ) — хасахгүй
-      if (m <= nowYm) last = v;
+      if (m <= nowYm) { last = v; lastMon = m; }
     });
     if (last == null) return;
     rows.push({ key: k, pct: last });
-    const cnt = f.physCnt.get(k)?.get(nowYm) ?? 1;
+    /* ⚠️ Жинг УТГА АВСАН сараас — дээрх `pkgPct`-ийн ⚠️-тэй ижил дүрэм */
+    const cntMap = f.physCnt.get(k);
+    const cnt = cntMap?.get(lastMon) ?? cntMap?.get(nowYm) ?? 1;
     w += last * cnt; n += cnt;
   });
   return { actual: n ? w / n : null, packs: rows.length, rows: rows.sort((a, b) => b.pct - a.pct) };
@@ -2856,7 +2888,12 @@ function LandDetail({ parcels, land, flt, onFlt }: {
               ...b,
               n: left.filter((r) => {
                 const a2 = parcelArea(r);
-                return a2 >= b.min && a2 < b.max;
+                /* ⚠️ Талбайгүй парселийг ХАСНА (2026-09-15-ны аудит):
+                   parcelArea нь `|| 0` тул хоёр талбайн багана хоосон мөр 0 м²
+                   болж «0–300 м²» бүлэгт ЖИНХЭНЭ парсел мэт тоологдож, хамгийн
+                   жижиг ангиллыг хөөрөгдөж байв. Доорх «га-гаар» хувилбар энэ
+                   шалгуурыг аль хэдийн хийдэг. */
+                return a2 > 0 && a2 >= b.min && a2 < b.max;
               }).length,
             })).filter((b) => b.n > 0);
             return counts.length ? (
@@ -2897,7 +2934,12 @@ function LandDetail({ parcels, land, flt, onFlt }: {
               ...b,
               n: done.filter((r) => {
                 const a2 = parcelArea(r);
-                return a2 >= b.min && a2 < b.max;
+                /* ⚠️ Талбайгүй парселийг ХАСНА (2026-09-15-ны аудит):
+                   parcelArea нь `|| 0` тул хоёр талбайн багана хоосон мөр 0 м²
+                   болж «0–300 м²» бүлэгт ЖИНХЭНЭ парсел мэт тоологдож, хамгийн
+                   жижиг ангиллыг хөөрөгдөж байв. Доорх «га-гаар» хувилбар энэ
+                   шалгуурыг аль хэдийн хийдэг. */
+                return a2 > 0 && a2 >= b.min && a2 < b.max;
               }).length,
             })).filter((b) => b.n > 0);
             return counts.length ? (
@@ -3622,7 +3664,12 @@ function PowerDetail({ sources, prog, powTotals, flt, onFlt }: {
             if (!capTotal) return <Empty label={tr('Цахилгааны эх үүсвэрийн чадал бүртгэгдээгүй.')} />;
             const newOne = cap.find((x) => x.planned);
             const oldOne = cap.find((x) => !x.planned);
-            const plannedMw = newOne?.mw ?? 0;
+            /* ⚠️ БҮХ төлөвлөсөн станцыг нийлүүлнэ, эхнийхийг БИШ
+               (2026-09-15-ны аудит). Урьд нь capTotal нь бүх мөрөөс,
+               plannedMw нь ГАНЦ мөрөөс гардаг байсан тул хоёроос олон
+               төлөвлөсөн станц бүртгэгдэхэд «Одоо байгаа» нүд баригдаагүй
+               чадлыг өөртөө зохиож авдаг байв. */
+            const plannedMw = sumBy(cap.filter((x) => x.planned), (x) => x.mw);
             return (
               // ⚠️ Энд 61%, 07-д (`хангах_хувь`-аар) 62% — тиймээс `decimals={0}`
               //    бөгөөд шошго нь «хангамж» БИШ «эх үүсвэрийн чадал».
@@ -3652,7 +3699,8 @@ function PowerDetail({ sources, prog, powTotals, flt, onFlt }: {
               .map((r) => ({ mw: srcNum(r[F.total]), planned: /Шинээр/.test(srcStr(r[F.name])) }));
             const capTotal = sumBy(cap, (x) => x.mw);
             if (!capTotal) return <Empty label={tr('Бүртгэл алга.')} />;
-            const plannedMw = cap.find((x) => x.planned)?.mw ?? 0;
+            /* ⚠️ БҮХ төлөвлөсөн станц — дээрх ижил дүрэм */
+            const plannedMw = sumBy(cap.filter((x) => x.planned), (x) => x.mw);
             return (
               <RingCard
                 value={(plannedMw / capTotal) * 100}

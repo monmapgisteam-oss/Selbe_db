@@ -25,7 +25,7 @@ import {
 /* ⚠️ 2026-09-09: `ipcCode`/`ipcNet`/`ipcDue`/`ipcPaid` ба `finCard.dedOrNull`
    БҮГД УСТСАН — шинэ эх сурвалжид СУУТГАЛ ба ТӨЛӨГДӨӨГҮЙ ҮЛДЭГДЭЛ гэсэн
    ойлголт ОГТ БАЙХГҮЙ. `dun` нь аль хэдийн бодит олгосон дүн. */
-import { cat, shade, date, mnt, num, pct } from '@/lib/format';
+import { cat, shade, date, mnt, num, pct, monthKey } from '@/lib/format';
 import { readParam, writeParams } from '@/lib/urlState';
 import o from './pkgFinOv.module.css';
 import f from './finance.module.css';
@@ -668,7 +668,14 @@ export function PkgFin({ dim, setDim }: {
           <>
             {/* ⚠️ 2026-09-06: «Санхүүжилт хоцорсон багц» тусдаа бүлэг
                 ХАСАГДСАН — сарын хуваарь байхгүй болсон тул «хугацаа
-                өнгөрсөн ч аваагүй» гэдгийг тодорхойлох арга байхгүй. */}
+                өнгөрсөн ч аваагүй» гэдгийг тодорхойлох арга байхгүй.
+                ⚠️ 2026-09-15 (хэрэглээний аудит): тэр БҮЛЭГ БАЙХГҮЙ нь
+                «хоцорсон багц алга» гэж ХУДАЛ уншигддаг байв — хэрэглэгч
+                55 мөрийг нүдээр жишиж, харьцааг оюун ухаандаа боддог.
+                Шалтгааныг ИЛ хэлнэ: тооцогдоогүй ≠ асуудалгүй. */}
+            <p className={f.srcNote}>
+              {tr('Санхүүгийн хоцрогдол тооцогдохгүй — гэрээнд сарын төлбөрийн хуваарь байхгүй. Доорх жагсаалт нь олгосон дүнгээр эрэмбэлэгдсэн.')}
+            </p>
             {/* ДӨРВӨН АНГИЛЛААР (2026-08-21) — барилга угсралт · дэд бүтэц ·
                 нийгмийн барилга · өндөржилт; alert-тэй нь дээрх бүлэгт */}
             {PACK_CATS.map((c) => (
@@ -833,7 +840,7 @@ function TsKpi({ packs, fin }: { packs: Pack[]; fin: FinData | null }) {
   const t = useMemo(() => {
     if (!fin) return null;
     const months = aggregateMonths(fin);
-    const nowYm = new Date().toISOString().slice(0, 7);
+    const nowYm = monthKey(); /* ⚠️ ОРОН НУТГИЙН сар — UTC slice нь сарын 1-ний шөнө ӨМНӨХ сар өгдөг */
     /* ⚠️ 2026-09-06: ТӨЛӨВЛӨГӨӨТ хувь нь `cumPct` (cashflow-ийн өссөн
        МӨНГӨН хувь) байхаа больж ХУВААРИАС (`lagOf`) гарна — доорх графикийн
        badge-тэй НЭГ тоо. Урьд нь хоёр өөр нэгж харьцуулагдаж байв. */
@@ -1424,6 +1431,9 @@ function CatChart({
   const rows = PACK_CATS.map((c) => {
     const list = packs.filter((p) => catOf(p) === c.key);
     const pcts: number[] = [];
+    /* Мөнгөн салааны ЖИГНЭЛТ — төлөвлөгөөт (гэрээний) дүнгээр */
+    let wNum = 0;
+    let wDen = 0;
     for (const p of list) {
       if (!finOnly) {
         /*
@@ -1441,9 +1451,19 @@ function CatChart({
       /* ⚠️ 2026-09-08 (аудит, CRITICAL): сарын цувааны нийлбэр БИШ, `givenMap` —
          огноогүй акт цуваанд ордоггүй (`givenMap`-ийн ⚠️-г үз). */
       const given = givenMap.get(p.key) ?? 0;
-      if (plan > 0) pcts.push((given / plan) * 100);
+      if (plan > 0) {
+        pcts.push((given / plan) * 100);
+        /* ⚠️ ЖИГНЭСЭН дундаж (2026-09-15-ны аудит): 20 тэрбумын багц 10%,
+           200 саяынх 100% байхад энгийн дундаж 55% гэж хэлэх ба бодит
+           явцыг 5 дахин үнэлнэ (жигнэсэн нь 10.9%). `finExcelLayout.ts`-ийн
+           `FIN_XL_PCT_WEIGHT` яг энэ дүрмийг баримтжуулсан. */
+        wNum += given;
+        wDen += plan;
+      }
     }
-    const mean = pcts.length ? pcts.reduce((a, b) => a + b, 0) / pcts.length : null;
+    const mean = finOnly
+      ? (wDen > 0 ? (wNum / wDen) * 100 : null)
+      : (pcts.length ? pcts.reduce((a, b) => a + b, 0) / pcts.length : null);
     return { c, n: list.length, mean };
   });
   return (

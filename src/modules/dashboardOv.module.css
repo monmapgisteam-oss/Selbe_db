@@ -958,7 +958,24 @@
 
 .indIcon { flex: none; color: var(--ink-3); display: grid; place-items: center; }
 
-.indVal { font-size: 19px; line-height: 1; font-weight: 500; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/*
+ * ⚠️ ТАСЛАХГҮЙ (2026-09-15-ны хэрэглээний аудит). Урьд нь `nowrap` +
+ *    `text-overflow: ellipsis` байсан тул 400px дэлгэцэд «2,660,000,000,000 ₮»
+ *    нь «2,660,000…» болж ТАСАРДАГ байв — тасарсан мөнгөн дүн бол БУРУУ
+ *    мөнгөн дүн, уншигч түүнийг 2.66 тэрбум гэж уншина.
+ *
+ *    Оронд нь ХОЁР МӨР болж уяна; `overflow-wrap: normal` нь мянгатын
+ *    БҮЛГИЙН дундуур хэзээ ч таслахгүй (зөвхөн зайны байрлалаар). `mnt()` нь
+ *    тоо ба «₮»-ийн хооронд зайтай тул тэр цэгээс л мөр буулгана.
+ */
+.indVal {
+  font-size: 19px;
+  line-height: 1.15;
+  font-weight: 500;
+  color: var(--ink);
+  overflow-wrap: normal;
+  word-break: keep-all;
+}
 
 /* Эх сурвалжийн мөр — зургийн доор, дэвсгэргүй (envhub) */
 .srcLine { flex: none; padding: 0 2px; font-size: 10.5px; line-height: 1.4; color: var(--ink-3); }

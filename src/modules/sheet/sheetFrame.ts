@@ -253,8 +253,11 @@ export function moveKeys(
   const unmoved: string[] = [];
   for (const [k, v] of Object.entries(src)) {
     const at = k.indexOf(":");
-    const oid = Number(k.slice(0, at));
-    if (!map.size || oid < 0) {
+    /* ⚠️ `at < 0` (2026-09-15-ны аудит): «:»-гүй эвдэрсэн түлхүүрт
+       `k.slice(0, -1)` нь СҮҮЛИЙН ТЭМДЭГТИЙГ таслаад «1234» → 123 гэсэн
+       ХҮЧИНТЭЙ OID гаргадаг тул утга ӨӨР МӨРД буух боломжтой байв. */
+    const oid = at < 0 ? NaN : Number(k.slice(0, at));
+    if (!map.size || !Number.isFinite(oid) || oid < 0) {
       out[k] = v;
       continue;
     }
@@ -389,7 +392,9 @@ export function overlaySubmission(
   for (const [k, v] of Object.entries(mc.out)) {
     const at = k.indexOf(":");
     const b = Number(k.slice(at + 1));
-    const i = rowOf(Number(k.slice(0, at)));
+    /* ⚠️ `at < 0` бол түлхүүр эвдэрсэн — `slice(0, -1)` нь сүүлийн тэмдэгтийг
+       таслаад ХУУРАМЧ OID гаргана (дээрх `moveKeys`-ийн ижил ⚠️). */
+    const i = at < 0 ? null : rowOf(Number(k.slice(0, at)));
     /* ⚠️ Мөр эсвэл блок олдохгүй бол ЧИМЭЭГҮЙ хаяхгүй — `unmoved`-д тоолно
        (ноорог/илгээлтийн түлхүүр хуучирсан, rowKeys алга г.м.). */
     if (i == null || !Number.isInteger(b) || b < 0 || b >= nBld) {

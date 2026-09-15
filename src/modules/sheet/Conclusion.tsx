@@ -75,14 +75,11 @@ type Job = {
 export function buildJobs(feats: Feature[]): { jobs: Job[]; grand: number } {
   // Latest value per (section|level|work|bld) cell.
   const win = new Map<string, Feature>();
-  const blds = new Set<string>();
   for (const f of feats) {
     const a = f.attributes;
     const b = s(a[F.bld]);
-    if (b) blds.add(b);
     win.set(`${s(a[F.sec])}|${s(a[F.level])}|${s(a[F.work])}|${b}`, f);
   }
-  const nb = blds.size || 1;
 
   // Group into jobs, preserving first-seen order (= sheet order of the first
   // uploaded building's batch).
@@ -95,6 +92,8 @@ export function buildJobs(feats: Feature[]): { jobs: Job[]; grand: number } {
       weight: number | null;
       tw: number;
       sum: number;
+      /** ⚠️ Энэ ажилд БОДИТООР хэмжигдсэн блокууд — дунджийн ХУВААРЬ */
+      blds: Set<string>;
       isHeader: boolean;
     }
   >();
@@ -109,12 +108,22 @@ export function buildJobs(feats: Feature[]): { jobs: Job[]; grand: number } {
         weight: num(a[F.weight]),
         tw: num(a[F.totw]) ?? 0,
         sum: 0,
+        blds: new Set<string>(),
         isHeader: isHeaderAttrs(a),
       };
       map.set(key, j);
       order.push(key);
     }
-    if (s(a[F.bld])) j.sum += num(a[F.pct]) ?? 0;
+    const bld = s(a[F.bld]);
+    if (bld) {
+      j.sum += num(a[F.pct]) ?? 0;
+      /* ⚠️ Ажлын ӨӨРИЙН блокуудыг тоолно (2026-09-15-ны аудит). Урьд нь
+         хуваарь нь БАГЦЫН БҮХ блокийн тоо (`nb`) байсан тул зөвхөн 2 блокт
+         хамаарах ажил 12 блоктой багцад `sum/12` гэж бодогдож, гүйцэтгэл нь
+         6 ДАХИН бага гардаг байв. Энэ утга эцсийн «Нийт дүн» (`grand`) руу
+         шууд ордог тул дүгнэлтийн хуудас бүхэлдээ доогуур харагдана. */
+      j.blds.add(bld);
+    }
   }
 
   const jobs: Job[] = order.map((key) => {
@@ -125,7 +134,9 @@ export function buildJobs(feats: Feature[]): { jobs: Job[]; grand: number } {
       weight: j.weight,
       tw: j.tw,
       isHeader: j.isHeader,
-      done: j.isHeader ? null : j.sum / nb, // leaf mean; headers filled below
+      /* ⚠️ Ажлын ӨӨРИЙН блокийн тоогоор хуваана — багцын нийт блокоор БИШ.
+         Блокгүй (хэмжилтгүй) ажил нь `null` = «мэдээлэлгүй», 0 БИШ. */
+      done: j.isHeader ? null : (j.blds.size ? j.sum / j.blds.size : null),
     };
   });
 

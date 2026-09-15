@@ -591,8 +591,23 @@
 }
 .aclUser { display: flex; align-items: center; gap: 8px; }
 .aclName { flex: 1; min-width: 0; font-weight: 600; font-size: 0.82rem; overflow: hidden; text-overflow: ellipsis; }
-.aclX { color: var(--ink-3); font-size: 0.8rem; padding: 0 4px; }
-.aclX:hover { color: var(--bad); }
+/*
+ * ЭРХ ХАСАХ ТОВЧ (✕).
+ *
+ * ⚠️ 2026-09-15-ны хэрэглээний аудит: энэ нь хэрэглэгчийн ЭРХИЙГ устгадаг
+ *    товч байтал (а) хүрэх талбай ~21×13px, (б) улаан өнгө нь ЗӨВХӨН hover-д
+ *    гардаг тул мэдрэгч дэлгэцэд бүдэг саарал хэвээр — устгана гэсэн ямар ч
+ *    дохиогүй байв. Одоо бай нь 32px, өнгө нь анхнаасаа сэрэмжлүүлэг.
+ */
+.aclX {
+  color: var(--bad-ink);
+  font-size: 0.8rem;
+  padding: 6px 8px;
+  min-width: 32px;
+  min-height: 32px;
+  line-height: 1;
+}
+.aclX:hover, .aclX:focus-visible { color: var(--bad); }
 .aclPkgs { display: flex; flex-wrap: wrap; gap: 4px; }
 /* Багцын шошго — асаалттай нь ЯЛГАРНА: хуваарилалт хагас харагдаж болохгүй. */
 .aclPkg {

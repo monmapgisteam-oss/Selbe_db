@@ -59,6 +59,16 @@ async function fetchAll(u: string, outFields: string[], returnGeometry = false):
       outFields,
       returnGeometry,
       outSpatialReference: { wkid: WKID },
+      /*
+       * ⚠️ `orderByFields` ЗААВАЛ (2026-09-15-ны аудит). ArcGIS нь эрэмбэгүй
+       *    үед хуудасны мөрийн дарааллыг БАТАЛГААЖУУЛДАГГҮЙ: заагийн мөр
+       *    давхардах эсвэл унах бөгөөд алдаа нь ЧИМЭЭГҮЙ. Жишээ нь «Гадна
+       *    дулаан» (3,200 объект) хоёр хуудсаар ирэхэд нэг сегмент давхардаж
+       *    нөгөө нь унавал `engUnion` дутуу болж, БҮХ бүсийн `engineering`
+       *    зай буруу гарна. `buildings.ts` ба `roadNet.ts`-д яг энэ эрсдэлийг
+       *    2026-09-07-нд зассан ч энэ файлд хүрээгүй байв.
+       */
+      orderByFields: ['OBJECTID ASC'],
       start,
       num: PAGE,
     });

@@ -91,19 +91,53 @@ const DRAFT_PREFIX = 'selbe-qaqc-draft:';
  *
  * ⚠️ `FillNew.tsx`-д 2026-09-06-нд яг энэ шалтгаанаар 14 болгосон —
  * чанарын хуудас тэр засварыг аваагүй хоцорсон байв.
+ *
+ * ⚠️ TTL нь ЗӨВХӨН ЛОКАЛ хуулбарт (2026-09-15-ны аудит). Алсын (ArcGIS)
+ * хуулбарыг ХУГАЦААГААР ХЭЗЭЭ Ч устгахгүй — зөвхөн бүтцээр эвдэрсэн үед.
+ * Хоёр долоо хоног талбайд ажиллаад ирэхэд ArcGIS дээр БҮТНЭЭРЭЭ байгаа
+ * ноорог `null` болж хаягдах ёсгүй; локал хуулбар нь тухайн БРАУЗЕРЫН түр
+ * зуурын хадгалалт тул хуучрахад утгагүй болдог нь өөр хэрэг.
+ * `FillNew.tsx` энэ ялгааг аль хэдийн хийсэн.
  */
 const DRAFT_TTL_MS = 14 * 24 * 3600 * 1000;
 
-const parseDraft = (raw: string): Draft | null => {
+const parseDraft = (raw: string, src: 'local' | 'remote' = 'local'): Draft | null => {
   try {
     const d = JSON.parse(raw) as Draft;
-    if (!d.t || !Array.isArray(d.cells) || Date.now() - d.t > DRAFT_TTL_MS) return null;
+    if (!d.t || !Array.isArray(d.cells)) return null;
+    if (src === 'local' && Date.now() - d.t > DRAFT_TTL_MS) return null;
     if (d.rowKeys != null && !Array.isArray(d.rowKeys)) d.rowKeys = undefined;
     return d;
   } catch {
     return null;
   }
 };
+/**
+ * ЛОКАЛ ба АЛСЫН ноорогийг НИЙЛҮҮЛНЭ — нэгийг нь сонгохгүй (2026-09-15).
+ *
+ * ⚠️ `FillNew.mergeDrafts`-ийн хялбаршуулсан хувилбар: чанарын ноорогт
+ *    `adds`/`by`/`done`/`dates` байхгүй тул `cells` ба `rowKeys` хоёрыг л
+ *    нийлүүлнэ. Нүд бүрд ШИНЭ ноорогийн утга ялж, зөвхөн нэг талд байгаа
+ *    нүд ХЭВЭЭР үлдэнэ.
+ *
+ * ⚠️ Нэг тал `null` бол нөгөөг ШУУД буцаана; хоёулаа `null` бол `null`.
+ */
+const mergeDraft = (a: Draft | null, b: Draft | null): Draft | null => {
+  if (!a) return b;
+  if (!b) return a;
+  const [older, newer] = a.t <= b.t ? [a, b] : [b, a];
+  const cells = new Map<string, string>(older.cells);
+  for (const [k, v] of newer.cells) cells.set(k, v);
+  const rowKeys = new Map<number, string>(older.rowKeys ?? []);
+  for (const [o, k] of newer.rowKeys ?? []) rowKeys.set(o, k);
+  return {
+    ...newer,
+    t: newer.t,
+    cells: [...cells],
+    rowKeys: rowKeys.size ? [...rowKeys] : undefined,
+  };
+};
+
 const readDraft = (pkgKey: string): Draft | null => {
   try {
     const raw = localStorage.getItem(DRAFT_PREFIX + pkgKey);
@@ -636,15 +670,18 @@ export function Qaqc() {
         ));
       }
       const rem = rr.ok ? rr.draft : null;
-      const remD = rem ? parseDraft(rem.payload) : null;
-      const pick: { d: Draft; source: 'local' | 'remote' } | null =
-        local && remD
-          ? (remD.t > local.t ? { d: remD, source: 'remote' } : { d: local, source: 'local' })
-          : local
-            ? { d: local, source: 'local' }
-            : remD
-              ? { d: remD, source: 'remote' }
-              : null;
+      const remD = rem ? parseDraft(rem.payload, 'remote') : null;
+      /*
+       * ⚠️ НИЙЛҮҮЛНЭ, СОНГОХГҮЙ (2026-09-15-ны аудит) — `FillNew.mergeDrafts`
+       *    -тэй ижил дүрэм. Урьд нь `remD.t > local.t`-ээр НЭГИЙГ нь бүхэлд
+       *    нь авдаг байсан тул оффисын компьютер дээр 30 нүд бөглөөд (алсад
+       *    хуулагдсан) гэртээ 5 нүд бөглөвөл гэрийнх шинэ тул оффисын 30 нүд
+       *    БҮХЭЛДЭЭ, ямар ч анхааруулгагүй хаягддаг байв.
+       */
+      const merged = mergeDraft(local, remD);
+      const pick: { d: Draft; source: 'local' | 'remote' } | null = merged
+        ? { d: merged, source: (remD && (!local || remD.t >= local.t)) ? 'remote' : 'local' }
+        : null;
       if (!pick) return;
 
       /* ⚠️ Мөр нь БАЙГАА эсэхийг шалгана: хүснэгт AGOL дээр дахин үүсгэгдвэл

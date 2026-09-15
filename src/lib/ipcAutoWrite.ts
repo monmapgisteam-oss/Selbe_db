@@ -48,15 +48,17 @@ export async function syncIpcFromFill(bagts: string, day: string): Promise<AutoR
     let obyem: number | null = null;
     let une: number | null = null;
     let read = 0;
+    /* ⚠️ ХУУДАС ДУТУУ эсэхийг ТУСАД НЬ тоолно (2026-09-15-ны аудит) */
+    let missing = 0;
 
     for (const pkg of wanted) {
       const sc: Schema | null = await loadSchema(pkg).catch(() => null);
-      if (!sc?.f.fillDate) continue;
+      if (!sc?.f.fillDate) { missing += 1; continue; }
       const cols = sc.obyem.filter((x): x is string => !!x);
-      if (!cols.length) continue;
+      if (!cols.length) { missing += 1; continue; }
       const need = [sc.f.oid, sc.f.no, sc.f.wC, sc.f.vol, sc.f.unit, ...cols];
       const { rows } = await loadRows(pkg, sc, day, need);
-      if (!rows.length) continue;
+      if (!rows.length) { missing += 1; continue; }
       read += 1;
       const s = snapshotOf(rows, day);
       if (s.obyem != null) obyem = (obyem ?? 0) + s.obyem;
@@ -66,6 +68,21 @@ export async function syncIpcFromFill(bagts: string, day: string): Promise<AutoR
     /* ⚠️ НЭГ Ч ХУУДАС УНШИГДААГҮЙ бол «гүйцэтгэл 0» ГЭЖ БҮҮ БИЧ — энэ нь
        сүлжээний/бүдүүвчийн асуудал байж болно. Алдаа буцаана. */
     if (!read) return { ok: false, error: 'Бөглөх хуудаснаас агшин уншигдсангүй' };
+    /*
+     * ⚠️ БАГЦЫН ХУУДАС ДУТУУ бол ч БИЧИХГҮЙ (2026-09-15-ны аудит). Урьд нь
+     *    `read >= 1` хангалттай гэж үздэг байсан тул хоёр хуудастай багцын
+     *    (9F + 12F) нэг нь тэр өдөр бөглөгдөөгүй бол `guits_une` нь зөвхөн
+     *    нөгөөгийнх болж, `guits_zoruu` тэр багцад тогтмол эерэг («илүү
+     *    олгосон») гардаг байв. Тэр зөрүү ArcGIS руу БУЦААЖ БИЧИГДДЭГ тул
+     *    худал тоо эх өгөгдөлд үлдэнэ.
+     */
+    if (missing) {
+      return {
+        ok: false,
+        error: `Багцын ${wanted.length} хуудаснаас ${missing} нь тэр өдөр бөглөгдөөгүй `
+          + '— дутуу дүнгээр гүйцэтгэл бичихгүй.',
+      };
+    }
 
     /* ── 2. HO-гийн одоогийн мөрүүд ── */
     const rows = (await queryFeatures(HO_IPC.url, {

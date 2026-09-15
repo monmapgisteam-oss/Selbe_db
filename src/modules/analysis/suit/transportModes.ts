@@ -147,7 +147,14 @@ export function tRange(mode: TMode, ctx: TransportCtx): TRange {
 export function tNorm(v: number | null, r: TRange): number | null {
   if (v == null || !Number.isFinite(v)) return null;
   const span = r.max - r.min;
-  if (span <= 0) return 0;
+  /*
+   * ⚠️ БҮХ УТГА ТЭНЦҮҮ бол ДУНД (0.5), тогтмол `0` БИШ (2026-09-15-ны аудит).
+   *    Урьд нь `0` буцаадаг байсан тул шатлалын ХАМГИЙН ЦАЙВАР өнгө гарч,
+   *    зураг «хаана ч төвлөрөл алга» гэж уншигддаг байв — үнэндээ «бүгд
+   *    ИЖИЛХЭН». Жишээ: `capacity` дүрслэлд ганцхан төрлийн барилга үлдэх
+   *    шүүлт хийхэд хамгийн ИХ багтаамжтай нь хамгийн бага мэт харагдана.
+   */
+  if (span <= 0) return 0.5;
   return Math.max(0, Math.min(1, (v - r.min) / span));
 }
 
@@ -245,7 +252,10 @@ export function tItems(mode: TMode, ctx: TransportCtx): TItem[] {
         key: `e${i}`,
         idx: i,
         name: tr('Хэрчим #{0}', i),
-        sub: tr('{0} м', Math.round(ctx.net.edges[i].length / ctx.net.unitsPerMeter)),
+        /* ⚠️ `|| 1` — `unitsPerMeter` 0/undefined ирвэл `Infinity м` эсвэл
+           «NaN м» гэж хэвлэгддэг байв (2026-09-15-ны аудит). `roadDemand.ts`,
+           `traffic.ts`, `busAccess.ts` бүгд энэ хамгаалалттай. */
+        sub: tr('{0} м', Math.round(ctx.net.edges[i].length / (ctx.net.unitsPerMeter || 1))),
         value: v,
         text: tr('{0} машин/ц', nf0(v)),
         t,

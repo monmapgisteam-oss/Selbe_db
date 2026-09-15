@@ -12,7 +12,7 @@ import { usePlanTotals } from '@/lib/totals';
 import { Stats, Stat, Donut, Bars, Ring, Empty, Loading } from '@/components/ui';
 import { useAsync } from '@/lib/useAsync';
 import {
-  queryStats, queryGroup, groups, count, sum, avg, type Aoi, type Row,
+  queryStats, queryGroup, groups, groupWhere, count, sum, avg, type Aoi, type Row,
 } from '@/lib/query';
 import {
   GAZAR_BUILDING, GAZAR_PARCEL, PARCEL_LEFT, PARCEL_CLEARED, parcelLeftWhere, parcelOidsWhere,
@@ -205,7 +205,17 @@ const ha = (m2: number) => num(m2 / 10_000, 2);
  */
 const money = (v: number): { v: string; unit: string } => ({ v: num(v), unit: '₮' });
 
-/** Бүлэглэсэн мөрүүд → диаграмын зүсмэгүүд (өнгө автоматаар, тоо НЭГЖТЭЙ) */
+/**
+ * Бүлэглэсэн мөрүүд → диаграмын зүсмэгүүд (өнгө автоматаар, тоо НЭГЖТЭЙ).
+ *
+ * ⚠️ `where`-ийг ЭНД, `groupWhere`-ээр бүтээнэ (2026-09-15-ны аудит).
+ *    Урьд нь зүсмэгийн ШОШГЫГ (`grp.label`) `eqOrNull`-д дамжуулдаг байв:
+ *    шошго нь `tr('Тодорхойгүй')`-ээс гардаг тул АНГЛИ горимд «Unspecified»
+ *    болж, `label === 'Тодорхойгүй'` салаа ХЭЗЭЭ Ч ажиллахгүй — «Zoriulalt =
+ *    'Unspecified'» гэсэн WHERE явж, ArcGIS 0 мөр буцааж, давхарга бүтнээрээ
+ *    алга болдог байлаа. `groupWhere` нь ТҮҮХИЙ утгуудаар (`raws`) шүүдэг тул
+ *    орчуулгаас бүрэн хамааралгүй, мөн зайтай хувилбарыг ч зөв хамарна.
+ */
 function toItems(rows: Row[], field: string, valueKey: string, unit = tr('ш')) {
   return groups(rows, field, tr('Тодорхойгүй'), [valueKey]).map((grp, i) => ({
     key: grp.label || `#${i}`,
@@ -213,8 +223,19 @@ function toItems(rows: Row[], field: string, valueKey: string, unit = tr('ш')) 
     value: grp.values[valueKey] ?? 0,
     display: `${num(grp.values[valueKey] ?? 0)} ${unit}`,
     color: PALETTE[i % PALETTE.length],
+    where: groupWhere(field, grp),
   }));
 }
+
+/**
+ * Зүсмэгийн түлхүүрээс түүний БЭЛЭН WHERE-ийг олно.
+ *
+ * ⚠️ Олдохгүй бол `1=0` — БҮХ мөр таарах `1=1` БИШ. Шүүлт нь «энэ зүсмэгийг
+ *    л үзүүл» гэсэн утгатай тул алдаа гарвал хоосон харагдах нь зөв; эсрэгээр
+ *    бол хэрэглэгч шүүсэн гэж бодоод бүх өгөгдлийг хардаг.
+ */
+const whereOf = (items: { key: string; where: string }[], k: string): string =>
+  items.find((x) => x.key === k)?.where ?? '1=0';
 
 type StatusBars = { key: string; label: string; value: number; color: string; where: string }[];
 type ReasonItems = {
@@ -230,11 +251,13 @@ type GFlt = { grp: string; key: string; label: string; where: string; only: stri
 /** SQL string literal — дан хашилтыг давхарлана */
 const sq = (v: string) => v.replace(/'/g, "''");
 
-/** Ангиллын нэр → WHERE («Тодорхойгүй» = хоосон/null) */
-const eqOrNull = (field: string, label: string) =>
-  label === 'Тодорхойгүй'
-    ? `${field} IS NULL OR ${field} = ''`
-    : `${field} = '${sq(label)}'`;
+/*
+ * ⚠️ `eqOrNull` УСТГАВ (2026-09-15-ны аудит). Тэр нь зүсмэгийн ОРЧУУЛСАН
+ *    шошгыг (`tr('Тодорхойгүй')`) түүхий утгатай жишдэг байсан тул англи
+ *    горимд «Unspecified» болж салаа нь хэзээ ч ажиллахгүй, мөн Юникод
+ *    утгад `N'…'` угтваргүй тул шүүлт 0 мөр буцаадаг байв. Одоо `toItems`
+ *    нь `groupWhere`-ээр ТҮҮХИЙ утгуудаас WHERE бүтээнэ (`whereOf`).
+ */
 
 type GazarData = {
   /** `Tuluv` төлөвөөс: чөлөөлсөн (бүрэн+цэвэрлэсэн) ба үлдсэн */
@@ -418,23 +441,49 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    * ⚠️ ЗӨВХӨН OID-г авна. `onPick`-ийн атрибут нь давхаргын `outFields`-д
    *    ачаалагдсанаар хязгаарлагдах тул маягт нь мөрөө ӨӨРӨӨ бүтнээр татна.
    */
+  /*
+   * ⚠️ ХАДГАЛААГҮЙ МАЯГТЫГ ХАМГААЛНА (2026-09-15-ны хэрэглээний аудит).
+   *
+   *    `GazarEdit` дотор «Хадгалаагүй өөрчлөлт байна. Хаах уу?» баталгаа бий
+   *    (`tryClose`), гэвч ЭНЭ файлын `exitEdit`/`onMapPick` нь `editOid`-ыг
+   *    `null` болгож компонентыг ШУУД салгадаг тул тэр баталгаа ХЭЗЭЭ Ч
+   *    дуудагддаггүй байв: «Талбар засах»-ыг дахин дарах, «Хаах» дарах,
+   *    эсвэл ӨӨР парсел дээр товшиход бөглөсөн бүх зүйл асуулгүй алга болно.
+   *
+   *    Одоо маягт нь `onDirty`-гээр төлөвөө мэдэгдэж, энд гурван замд бүгдэд
+   *    нь баталгаа асууна.
+   */
+  const editDirty = useRef(false);
+  const askDrop = useCallback((): boolean => {
+    if (!editDirty.current) return true;
+    if (!window.confirm(tr('Хадгалаагүй өөрчлөлт байна. Хаях уу?'))) return false;
+    editDirty.current = false;
+    return true;
+  }, []);
+
   const onMapPick = useCallback((a: Record<string, unknown> | null, id: string | null) => {
     if (!editMode) return;
+    if (!askDrop()) return;
     if (!a || id !== PARCEL_LAYER_ID) { setEditOid(null); setHighlight(null); return; }
     const oid = Number(a[PARCEL_OID]);
     if (!Number.isFinite(oid)) { setEditOid(null); return; }
     setEditOid(oid);
     setHighlight(parcelWhere(oid), PARCEL_LAYER_ID);
-  }, [editMode, setHighlight]);
+  }, [editMode, setHighlight, askDrop]);
 
-  const closeEdit = useCallback(() => { setEditOid(null); setHighlight(null); }, [setHighlight]);
-
-  /** Засварын горимоос бүрэн гарах — маягт, тодруулга хоёулаа цэвэрлэгдэнэ */
-  const exitEdit = useCallback(() => {
-    setEditMode(false);
+  const closeEdit = useCallback(() => {
+    editDirty.current = false;
     setEditOid(null);
     setHighlight(null);
   }, [setHighlight]);
+
+  /** Засварын горимоос бүрэн гарах — маягт, тодруулга хоёулаа цэвэрлэгдэнэ */
+  const exitEdit = useCallback(() => {
+    if (!askDrop()) return;
+    setEditMode(false);
+    setEditOid(null);
+    setHighlight(null);
+  }, [setHighlight, askDrop]);
 
   /**
    * Чарт-шүүлт — бар/зүсмэг дарахад холбогдох давхаргад тодруулга тавина.
@@ -607,8 +656,12 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           //    (Урьдын PARCEL_PROGRESS_HUES солонго нь чимэглэл болж байсан.)
           color: label === 'Тодорхойгүй' ? NO_DATA : 'var(--data)',
           /* ⚠️ Төлөвийн нэмэлт нөхцөл ХЭРЭГГҮЙ: `status` ба `progress` нэг
-             талбар тул шалтгааны утга нь өөрөө «чөлөөлөгдөөгүй»-г заана. */
-          where: `(${eq.join(' OR ')})`,
+             талбар тул шалтгааны утга нь өөрөө «чөлөөлөгдөөгүй»-г заана.
+             ⚠️ `eq` ХООСОН бол `()` гэсэн ХҮЧИНГҮЙ SQL үүсэхээс сэргийлж
+             `1=0` (2026-09-15-ны аудит): ArcGIS түүнд HTTP 200 + «'where'
+             parameter is invalid» буцаадаг тул `definitionExpression`
+             эвдэрч, `land:left` давхарга бүрмөсөн зурагдахаа болино. */
+          where: eq.length ? `(${eq.join(' OR ')})` : '1=0',
         };
       });
     return {
@@ -782,6 +835,9 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           <GazarEdit
             oid={editOid}
             canEdit={canEdit}
+            /* ⚠️ Маягтын «хадгалаагүй» төлөвийг энд барина — `exitEdit` ба
+               `onMapPick` хоёул түүнийг шалгаж баталгаа асууна (дээрх ⚠️) */
+            onDirty={(v) => { editDirty.current = v; }}
             onCancel={closeEdit}
             onDone={(n) => {
               closeEdit();
@@ -938,7 +994,7 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                     selected={flt?.grp === 'bType' ? flt.key : null}
                     onSelect={(k) => pickFlt({
                       grp: 'bType', key: k, label: tr('Барилга: {0}', k),
-                      where: eqOrNull(GAZAR_BUILDING.fields.type, k), only: ['gazar:building'],
+                      where: whereOf(d.bType, k), only: ['gazar:building'],
                     })}
                   />
                 )}
@@ -951,7 +1007,7 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                       selected={flt?.grp === 'bMat' ? flt.key : null}
                       onSelect={(k) => pickFlt({
                         grp: 'bMat', key: k, label: tr('Материал: {0}', k),
-                        where: eqOrNull(GAZAR_BUILDING.fields.material, k), only: ['gazar:building'],
+                        where: whereOf(d.bMat, k), only: ['gazar:building'],
                       })}
                     />
                   </>
@@ -979,7 +1035,7 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                     selected={flt?.grp === 'pRight' ? flt.key : null}
                     onSelect={(k) => pickFlt({
                       grp: 'pRight', key: k, label: tr('Эрх: {0}', k),
-                      where: eqOrNull(GAZAR_PARCEL.fields.right, k), only: ['gazar:parcel'],
+                      where: whereOf(d.pRight, k), only: ['gazar:parcel'],
                     })}
                   />
                 )}
@@ -992,7 +1048,7 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                       selected={flt?.grp === 'pUse' ? flt.key : null}
                       onSelect={(k) => pickFlt({
                         grp: 'pUse', key: k, label: tr('Зориулалт: {0}', k),
-                        where: eqOrNull(GAZAR_PARCEL.fields.landuse, k), only: ['gazar:parcel'],
+                        where: whereOf(d.pUse, k), only: ['gazar:parcel'],
                       })}
                     />
                   </>

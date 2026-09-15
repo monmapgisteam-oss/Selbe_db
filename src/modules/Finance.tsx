@@ -79,7 +79,7 @@ import {
   buildGroups, type FinKind, type GroupRow,
 } from '@/lib/finGroup';
 import { HO_MAIN_FIELDS, sumOrNull } from '@/lib/finCard';
-import { mnt, num, text, cat, date } from '@/lib/format';
+import { mnt, num, text, cat, date, monthKey } from '@/lib/format';
 import { fitLabels, textW, useChartWidth } from '@/lib/chartFit';
 import { ResizableTable } from '@/components/ResizableTable';
 import { applyAll } from '@/lib/tableWrite';
@@ -767,7 +767,7 @@ async function loadFinDataRaw(): Promise<FinData> {
 
     // Биет гүйцэтгэл → багц бүрд: сар → % (блокуудын дундаж, сарын эцсийн байдлаар).
     // Append-лог тул блок бүрийн тухайн сараас өмнөх ХАМГИЙН СҮҮЛИЙН бичилтийг авна.
-    const nowYm = new Date().toISOString().slice(0, 7);
+    const nowYm = monthKey(); /* ⚠️ ОРОН НУТГИЙН сар — UTC slice нь сарын 1-ний шөнө ӨМНӨХ сар өгдөг */
     const phys: PhysMap = new Map();
     const physCnt: PhysMap = new Map(); // багц·сар → блокийн тоо (жин)
     {
@@ -1016,7 +1016,7 @@ export function contractMonths(r: Row, fin: FinData): MonthPt[] {
  *    үүнийг дууддаг. Багцын түлхүүр нь `MonthPt.pkg`-ээр цэг дотроо явна.
  */
 export function lagOf(months: MonthPt[]): { month: string; planned: number; actual: number; gap: number } | null {
-  const nowYm = new Date().toISOString().slice(0, 7);
+  const nowYm = monthKey(); /* ⚠️ ОРОН НУТГИЙН сар — UTC slice нь сарын 1-ний шөнө ӨМНӨХ сар өгдөг */
   let mi = -1;
   months.forEach((m, i) => {
     // ⚠️ `!= null`: 0% нь бодит хэмжилт — хоцрогдлын тооцооноос хасахгүй
@@ -3645,12 +3645,23 @@ const DEF_WRAP = useMemo(() => ['ajil_uilchilgee'], []);
                 (төсөв, гэрээт төсөв) баганад нийлбэр тавьбал мөрд давтагдсан
                 тоо нийлж 7 дахин хөөрөгдөнө — тиймээс тэдгээр багана НИЙТ
                 мөрөнд ХООСОН үлдэнэ. `sumOrNull` тул бүх мөр хоосон бол «—». */}
+            {/* ⚠️ `dun` багана НУУГДСАН (`amtIx === -1`) бол НИЙТ мөрийг бүхэлд
+                нь өөрөөр зурна (2026-09-15-ны аудит). Урьд нь `colSpan` нь 1
+                болж, дүнгийн нүд нь ямар ч байсан зурагдаж, `slice(0)` нь БҮХ
+                баганыг дахин нэмдэг тул мөр хүснэгтээс нэг баганаар илүү
+                болж, гарчиг ба дүн хоёулаа гулсдаг байв. */}
             <tr className={f.sTotal}>
-              <td colSpan={1 + Math.max(0, amtIx)}>{tr('НИЙТ ОЛГОСОН')}</td>
-              <td className={`num ${f.cellNum} ${f.cellStrong}`}>
-                {paidTot == null ? '—' : num(paidTot)}
-              </td>
-              {ipcMainCols.slice(amtIx + 1).map((c) => <td key={c.name} />)}
+              {amtIx < 0 ? (
+                <td colSpan={ipcMainCols.length}>{tr('НИЙТ ОЛГОСОН')}</td>
+              ) : (
+                <>
+                  <td colSpan={1 + amtIx}>{tr('НИЙТ ОЛГОСОН')}</td>
+                  <td className={`num ${f.cellNum} ${f.cellStrong}`}>
+                    {paidTot == null ? '—' : num(paidTot)}
+                  </td>
+                  {ipcMainCols.slice(amtIx + 1).map((c) => <td key={c.name} />)}
+                </>
+              )}
               {edit && canRow && <td className={f.rowBtnCell} />}
             </tr>
           </tbody>

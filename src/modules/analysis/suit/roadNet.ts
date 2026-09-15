@@ -146,7 +146,19 @@ export async function loadPathsFrom(url: string, signal?: AbortSignal): Promise<
   );
   if (cnt.error) throw new Error(cnt.error.message ?? tr('ArcGIS count алдаа'));
 
-  const pages = Math.max(1, Math.ceil((cnt.count ?? 0) / PAGE));
+  /*
+   * ⚠️ `count` ХООСОН/ТЭГ бол ШИДНЭ, нэг хоосон хуудас татахгүй
+   *    (2026-09-15-ны аудит). Урьд нь `Math.max(1, …)` тул давхарга хоосон
+   *    (эсвэл `returnCountOnly` хариу `count`-гүй ирсэн) үед 0 ирмэгтэй
+   *    сүлжээ буцаж, `assignRoadDemand` нь БҮХ барилгыг `unlinked` гэж
+   *    тоолон «Замд холбогдоогүй: 363 барилга» гэсэн ХУДАЛ KPI гаргадаг
+   *    байв — сүлжээ татагдаагүй гэсэн алдаа хаана ч харагдахгүй.
+   */
+  const total = cnt.count ?? 0;
+  if (!Number.isFinite(total) || total <= 0) {
+    throw new Error(tr('Замын сүлжээний давхарга хоосон ирлээ — шинжилгээ бодох боломжгүй.'));
+  }
+  const pages = Math.ceil(total / PAGE);
   const chunks = await Promise.all(
     Array.from({ length: pages }, (_, i) => fetchPage(i * PAGE)),
   );

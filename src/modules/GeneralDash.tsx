@@ -37,7 +37,7 @@ import {
   bagtsKey, cfMonthAxis,
 } from '@/lib/services';
 import { queryStats, count } from '@/lib/query';
-import { cat, mnt, num, pct } from '@/lib/format';
+import { cat, mnt, num, pct, monthKey } from '@/lib/format';
 import {
   loadGdashCf, loadContractSum, loadHseNow, loadReasonOids, loadSubPkgLayers,
   loadCfPlan, cashflowCurve, housingMoney,
@@ -304,21 +304,28 @@ export function GeneralDash({
    * ⚠️ Хэмжилтгүй бол `null` — чартын мөр ОГТ гарахгүй (0% зурвас нь
    *    «эхэлсэн ч юу ч хийгээгүй» гэсэн худал мэдэгдэл болно).
    */
+  /*
+   * ⚠️ СҮҮЛИЙН ХЭМЖИЛТИЙН САРЫГ ч буцаана (2026-09-15-ны хэрэглээний аудит).
+   *    Урьд нь зөвхөн утга гардаг тул хэрэглэгч «энэ тоо хэдийнх вэ» гэдгийг
+   *    мэдэх аргагүй байв: сүүлд тайлагнасан сар нь 2 сарын өмнөх байж болно.
+   *    ХАБ карт (`stamp`) аль хэдийн ийм тэмдэгтэй — тэр дүрмийг тараав.
+   */
   const housingNow = useMemo(() => {
     if (finD.state !== 'ready') return null;
-    const now = new Date().toISOString().slice(0, 7);
+    const now = monthKey(); /* ⚠️ ОРОН НУТГИЙН сар — `cfMonthAxis`-тай ижил суурь */
     let last: number | null = null;
+    let at = '';
     for (const m of aggregateMonths(finD.data)) {
       if (m.label > now) continue;
-      if (m.phys != null) last = m.phys;
+      if (m.phys != null) { last = m.phys; at = m.label; }
     }
-    return last;
+    return last == null ? null : { pct: last, at };
   }, [finD]);
   const catPct = useMemo(() => {
     const m = new Map<string, number>();
     /* ⚠️ «Төсөв, гэрээлсэн дүн»-гийн орон сууцны хороолол ба «Төслийн
        гүйцэтгэл»-ийн орон сууцны барилга угсралт — НЭГ тоо (`housingNow`). */
-    if (housingNow != null) m.set('ОРОН СУУЦНЫ ХОРООЛОЛ', housingNow);
+    if (housingNow != null) m.set('ОРОН СУУЦНЫ ХОРООЛОЛ', housingNow.pct);
     return m;
   }, [housingNow]);
   const cfCurve = useMemo(
@@ -527,7 +534,7 @@ export function GeneralDash({
 
       <aside className={g.left}>
         <Data q={cf} minH={520}>
-          {(rows) => <FinCharts rows={rows} period={period} xs={xs} setXs={setXs} pkgPct={pkgPct} catPct={catPct} housingNow={housingNow} />}
+          {(rows) => <FinCharts rows={rows} period={period} xs={xs} setXs={setXs} pkgPct={pkgPct} catPct={catPct} housingNow={housingNow?.pct ?? null} housingAt={housingNow?.at ?? null} />}
         </Data>
       </aside>
 
@@ -1372,7 +1379,7 @@ const WBS_CHART: { label: string; wbs?: string[]; lvl3?: string; housing?: true 
 ];
 
 function FinCharts({
-  rows, period, xs, setXs, pkgPct, catPct, housingNow,
+  rows, period, xs, setXs, pkgPct, catPct, housingNow, housingAt,
 }: {
   rows: CfRow[];
   period: Period;
@@ -1382,6 +1389,8 @@ function FinCharts({
   catPct: Map<string, number>;
   /** «05. Багцын гүйцэтгэл»-ийн одоогийн жигнэсэн хувь — `WBS_CHART.housing` */
   housingNow: number | null;
+  /** ⚠️ Тэр хувь АЛЬ САРЫНХ вэ — «энэ тоо хэдийнх» гэдэгт хариулна */
+  housingAt: string | null;
   /** ⚠️ Төлөв нь ЭЦЭГТ — индикаторт ч үйлчлэх ёстой (эцгийн тайлбарыг үз) */
   xs: { dim: XDim; key: string } | null;
   setXs: (v: { dim: XDim; key: string } | null
@@ -1522,7 +1531,14 @@ function FinCharts({
         * (2026-09-10, хэрэглэгчийн заавар). Тэр чартын агуулга нь
         * «Төсөв, гэрээлсэн дүн»-ий hover панель руу нэгдсэн.
         */}
-      <Section title={tr('Төслийн гүйцэтгэл')}>
+      {/* ⚠️ ХЭМЖИЛТИЙН САР толгойд (2026-09-15-ны хэрэглээний аудит):
+          «энэ тоо хэдийнх вэ» гэдэгт хариулахгүй бол уншигч түүнийг
+          ӨНӨӨДРИЙНХ гэж үзнэ — сүүлд тайлагнасан сар хоёр сарын өмнөх
+          байж болно. ХАБ карт аль хэдийн ийм тэмдэгтэй. */}
+      <Section
+        title={tr('Төслийн гүйцэтгэл')}
+        note={housingAt ? tr('сүүлийн хэмжилт: {0}', housingAt) : undefined}
+      >
         <Data q={wbs} minH={150}>
           {() => (wbsBars.length === 0
             ? <Empty label={tr('Гүйцэтгэл хэмжигдээгүй')} />

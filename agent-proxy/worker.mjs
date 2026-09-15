@@ -28,8 +28,16 @@ const VERSION = '2023-06-01';
 const DEFAULTS = {
   MODEL: 'claude-opus-5',
   EFFORT: 'low',
-  /** ⚠️ Opus 5-д бодолт анхнаасаа асаалттай ба `max_tokens` нь бодолт + хариу ХОЁУЛАНГ хамарна */
-  MAX_TOKENS: 8000,
+  /**
+   * ⚠️ Opus 5-д бодолт анхнаасаа асаалттай ба `max_tokens` нь бодолт + хариу
+   * ХОЁУЛАНГ хамарна.
+   *
+   * ⚠️ 8000 → 10000 (2026-09-15-ны аудит): `server.mjs` нь 10000 байсан тул
+   * локалд бүтэн гардаг урт хариулт (олон багцын хүснэгт + график) байршуулсан
+   * Worker дээр таслагдаж, хөгжүүлэгч локалд давтаж чаддаггүй эвдрэл үүсдэг
+   * байв. Хоёр файл нь толин хувилбар — тоонууд ЗААВАЛ ижил байна.
+   */
+  MAX_TOKENS: 10000,
   PORTAL: 'https://www.arcgis.com',
 };
 
@@ -60,8 +68,21 @@ const verified = new Map();
 const RATE_LIMIT = 40;
 const RATE_WINDOW = 60 * 1000;
 const hits = new Map();
+/**
+ * ⚠️ ХУУЧИРСАН ТҮЛХҮҮРИЙГ ЦЭВЭРЛЭНЭ (2026-09-15-ны аудит). Урьд нь `hits`
+ * түлхүүр бүрийг ҮҮРД үлдээдэг байсан тул урт наслалттай isolate дээр олон
+ * мянган хэрэглэгч/Origin дамжсаны дараа Map тасралтгүй өсдөг байв.
+ */
+function sweepHits(now) {
+  for (const [k, arr] of hits) {
+    if (!arr.length || now - arr[arr.length - 1] >= RATE_WINDOW) hits.delete(k);
+  }
+}
+let lastSweep = 0;
 function rateLimited(key) {
   const now = Date.now();
+  /* Цонх тутам нэг удаа шүүрдэнэ — хүсэлт бүрд бүтэн Map туулах нь үрэлгэн */
+  if (now - lastSweep > RATE_WINDOW) { sweepHits(now); lastSweep = now; }
   const arr = (hits.get(key) || []).filter((t) => now - t < RATE_WINDOW);
   arr.push(now);
   hits.set(key, arr);
@@ -156,9 +177,22 @@ export default {
     const EFFORT = env.AGENT_EFFORT || DEFAULTS.EFFORT;
     const withEffort = Boolean(EFFORT) && !/haiku/i.test(MODEL);
 
-    // Эрүүл мэндийн шалгалт — порталын UI реле асаалттай эсэхийг эндээс мэднэ
+    /*
+     * Эрүүл мэндийн шалгалт — порталын UI реле асаалттай эсэхийг эндээс мэднэ.
+     *
+     * ⚠️ ДОТООД ТОХИРГООГ ЗАДЛАХГҮЙ (2026-09-15-ны аудит). Урьд нь `model` ба
+     *    `effort`-ыг нэвтрэлт, хурдны хязгаар ХОЁУЛАНГААС нь ӨМНӨ буцаадаг
+     *    байсан тул хаягийг олсон хэн ч дотоод тохиргоог хязгааргүй тандаж
+     *    чаддаг байв. Порталын UI-д зөвхөн «амьд эсэх» л хэрэгтэй.
+     *
+     * ⚠️ Хурдны хязгаарт ч оруулна — эс бөгөөс энэ зам нь хязгааргүй хүсэлт
+     *    хүлээж авах цорын ганц нүх болно.
+     */
     if (request.method === 'GET' && (url.pathname === '/' || url.pathname === '/health')) {
-      return json(200, { ok: true, model: MODEL, effort: EFFORT }, cors);
+      if (rateLimited(`health:${origin || 'anon'}`)) {
+        return json(429, { error: 'Хэт олон хүсэлт' }, cors);
+      }
+      return json(200, { ok: true }, cors);
     }
 
     if (request.method !== 'POST' || !url.pathname.startsWith('/chat')) {

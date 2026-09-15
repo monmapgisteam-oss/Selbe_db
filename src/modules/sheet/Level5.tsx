@@ -37,9 +37,21 @@ type Agg = {
 const blank = (key: string, name: string): Agg =>
   ({ key, name, w: 0, wd: 0, n: 0, late: {}, id: "", kids: [] });
 
-function add(a: Agg, w: number, done: number, code: string) {
-  a.w += w;
-  a.wd += w * done;
+/**
+ * ⚠️ ХЭМЖИГДЭЭГҮЙ ажилбар (`done == null`) нь ЖИГНЭЛТЭД ОРОХГҮЙ
+ *    (2026-09-15-ны аудит). Урьд нь `Number(a.guitsetgel) || 0` гэж 0%
+ *    болгодог байсан тул тайлан ирээгүй ажилбар нь «огт хийгдээгүй» гэж
+ *    тоологдож, жин нь (`niit_jin`) ХУВААРЬТ үлдэн жигнэсэн гүйцэтгэлийг
+ *    доош татдаг байв. `ags.ts` энэ замыг аль хэдийн зөв хамгаалсан.
+ *
+ * ⚠️ `n` (ажилбарын тоо) ба хоцролтын код нь ХЭВЭЭР тоологдоно — тэдгээр нь
+ *    хэмжилтээс хамаардаггүй баримт.
+ */
+function add(a: Agg, w: number, done: number | null, code: string) {
+  if (done != null) {
+    a.w += w;
+    a.wd += w * done;
+  }
   a.n += 1;
   if (code) a.late[code] = (a.late[code] || 0) + 1;
 }
@@ -65,7 +77,10 @@ function build(rows: Feature[]): Agg[] {
   for (const f of rows) {
     const a = f.attributes;
     const w = Number(a.niit_jin) || 0;
-    const done = Number(a.guitsetgel) || 0;
+    /* ⚠️ `null` ≠ 0 — хэмжигдээгүйг 0% болговол жигнэсэн дүн доош татагдана */
+    const done = a.guitsetgel == null || !Number.isFinite(Number(a.guitsetgel))
+      ? null
+      : Number(a.guitsetgel);
     const code = s(a.aldaatai);
     const k1 = s(a.angilal_a) || "—";
     const k2 = s(a.angilal_b) || "—";

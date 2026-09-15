@@ -183,11 +183,18 @@ export function simRange(zones: Zone[], kind: SimKind, popBasis: PopBasis = 'res
   return { min, max };
 }
 
-/** Утгыг 0..1 болгож нормчилно (хязгаар нурсан бол 0). */
+/**
+ * Утгыг 0..1 болгож нормчилно.
+ *
+ * ⚠️ ХЯЗГААР НУРСАН (бүх утга тэнцүү) үед ДУНД (0.5) — `0` БИШ
+ *    (2026-09-15-ны аудит, `transportModes.tNorm`-тэй ижил дүрэм). `0` нь
+ *    бүх бүсийг шатлалын хамгийн цайвар өнгөөр будаж «төвлөрөл алга» гэсэн
+ *    ХУДАЛ дүр зураг өгдөг байв — үнэндээ «бүгд ижилхэн».
+ */
 export function simNorm(v: number | null, r: SimRange): number | null {
   if (v == null || !Number.isFinite(v)) return null;
   const span = r.max - r.min;
-  if (span <= 0) return 0;
+  if (span <= 0) return 0.5;
   return Math.max(0, Math.min(1, (v - r.min) / span));
 }
 

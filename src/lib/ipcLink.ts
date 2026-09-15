@@ -166,10 +166,41 @@ export function linkContract(
   snaps: readonly Snapshot[],
   dayOf: (v: unknown) => string | null,
 ): LinkResult[] {
+  /*
+   * ⚠️ ДУГААРГҮЙ МӨР нь ЭХЭНД БИШ, ХАМГИЙН АРД (2026-09-15-ны аудит).
+   *    `ipcAuto.autoInsert` нь `ipc_dugaar` бичдэггүй (санхүүгийн газар
+   *    нөхнө) тул AUTO мөр бүр `?? 0` -оор дугаар 1-ийн ӨМНӨ суудаг байв.
+   *    Тэр үед IPC-01-ийн `cum` нь AUTO мөрийн дүнгээр хөөрч, `guits_zoruu`
+   *    БҮХ IPC-д тэр хэмжээгээр буруу гардаг — энэ нь `writeLinks`-ээр
+   *    ArcGIS руу БУЦААЖ БИЧИГДДЭГ тул худал тоо эх өгөгдөлд үлдэнэ.
+   *    Амьдаар 7 AUTO мөр бий.
+   *
+   * ⚠️ Дугааргүй мөрүүд хоорондоо ОГНООГООР эрэмбэлэгдэнэ — тэдгээрийн
+   *    жинхэнэ дараалал нь гүйцэтгэл батлагдсан өдөр. Огноогүй бол тогтвортой
+   *    (оролтын) дараалал хэвээр: `Array.sort` ES2019-өөс тогтвортой.
+   */
+  const ord = (r: Row): number => {
+    const n = num(r[P.ipcNo]);
+    return n == null ? Number.POSITIVE_INFINITY : n;
+  };
+  const dayMs = (r: Row): number => {
+    const d = dayOf(r[P.payDate]);
+    const t = d ? Date.parse(d) : NaN;
+    return Number.isFinite(t) ? t : Number.POSITIVE_INFINITY;
+  };
   const work = pays
     .filter((r) => r[P.kind] === HO_IPC.kinds.work)
     .slice()
-    .sort((a, b) => (num(a[P.ipcNo]) ?? 0) - (num(b[P.ipcNo]) ?? 0));
+    .sort((a, b) => {
+      const oa = ord(a);
+      const ob = ord(b);
+      /* ⚠️ Хасахгүй ЖИШНЭ — `∞ − ∞ = NaN` нь эрэмбийг эвдэнэ */
+      if (oa !== ob) return oa < ob ? -1 : 1;
+      const da = dayMs(a);
+      const db = dayMs(b);
+      if (da !== db) return da < db ? -1 : 1;
+      return 0;
+    });
 
   /* ⚠️ Түлхүүр нь МӨРИЙН ЛАВЛАГАА (объект) — `murun_id` эсвэл `ipc_dugaar`
      БИШ. Дугаар давхардвал (эх өгөгдөл эвдэрвэл) хуримтлал чимээгүй

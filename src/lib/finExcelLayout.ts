@@ -275,7 +275,13 @@ export const FIN_XL_PCT: readonly string[] = [
   'zuwshuurul',
   'songon_shalgaruulalt',
   'urdchilgaa_huvi',
-  'zahiramj_unet_tsaas_huvi',
+  /*
+   * ⚠️ `zahiramj_unet_tsaas_huvi` ХАСАГДСАН (2026-09-15-ны аудит). Тэр талбар
+   *    нь 0–100 БИШ, 0–1 БУТАРХАЙ: `agent/datasets.ts` («0.1414 = 14.14%») ба
+   *    `ceo/qaqc.ts` (`p.share * 100`) хоёулаа ингэж уншдаг. Энэ жагсаалтад
+   *    байх нь «0–100 хувь» гэсэн утгатай тул зурвасын жигнэсэн дундаж
+   *    «0.25» гэж гарч, 24.7% байх ёстойгоо орхидог байв.
+   */
 ];
 
 /**

@@ -260,7 +260,20 @@ async function tableUrl(canCreate: boolean): Promise<string | null> {
   const auth = await getToken();
   if (!auth) return null;
   let url = await findTableUrl(auth.token);
-  if (!url && canCreate && !ownerMismatch) url = await createTable(auth.token, auth.user);
+  /*
+   * ⚠️ ЗӨВХӨН ЭЗЭН ҮҮСГЭНЭ (2026-09-15-ны аудит). Урьд нь `TABLE_OWNERS`
+   *    шалгуургүй байсан тул порталын search индекс хоцрох/түр алдаа гарах
+   *    агшинд publish эрхтэй ЖИРИЙН хэрэглэгч ӨӨРИЙН эзэмшлийн хуурамч
+   *    `Selbe_Permissions` үүсгэж чаддаг байв. Дараа нь `findTableUrl` нь
+   *    эзэн таарахгүй гэж `ownerMismatch` тавьж, БҮХ клиентийн remote эрх,
+   *    урсгал, QAQC, хуваарь, обьёмын томилгоо унтарна.
+   *
+   * ⚠️ `draftRemote.ts` ба `qaqcDraftRemote.ts` аль хэдийн ижил шалгууртай —
+   *    энэ файл л хоцорсон байв.
+   */
+  if (!url && canCreate && !ownerMismatch && TABLE_OWNERS.has(auth.user.toLowerCase())) {
+    url = await createTable(auth.token, auth.user);
+  }
   if (url) tableUrlCache = url;
   return url;
 }

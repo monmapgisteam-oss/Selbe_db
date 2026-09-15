@@ -214,18 +214,30 @@ export async function constructionByBagts(): Promise<Record<string, number>> {
     outFields: "bagts,ognoo,barilga_blok,guitsetgel",
   });
   // Keep only each Багц's latest ognoo, then average its building cells.
-  const latest = new Map<string, string>();
+  /*
+   * ⚠️ ОГНООГ ТООГООР жишнэ, МӨРӨӨР БИШ (2026-09-15-ны аудит). `ognoo` нь
+   *    ArcGIS-д epoch ms тул `String()`-оор жишихэд 13 ба 12 оронтой утга
+   *    («1700000000000» vs «999999999999») буруу эрэмбэлэгдэж, багцын явц
+   *    ХУУЧИН агшингаас бодогдож байв. Тоо болгож чадахгүй утгыг (текст
+   *    огноо) мөрөөр нь жишиж, буцаж нийцтэй үлдээнэ.
+   */
+  const ordOf = (v: unknown): number | string => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : String(v);
+  };
+  const latest = new Map<string, number | string>();
   for (const f of feats) {
     const b = String(f.attributes.bagts);
-    const d = String(f.attributes.ognoo);
-    if (!latest.has(b) || d > latest.get(b)!) latest.set(b, d);
+    const d = ordOf(f.attributes.ognoo);
+    const cur = latest.get(b);
+    if (cur === undefined || d > cur) latest.set(b, d);
   }
   const sum = new Map<string, number>();
   const cnt = new Map<string, number>();
   for (const f of feats) {
     const a = f.attributes;
     const b = String(a.bagts);
-    if (String(a.ognoo) !== latest.get(b)) continue;
+    if (ordOf(a.ognoo) !== latest.get(b)) continue;
     if (a.guitsetgel == null) continue; // guard null cells
     sum.set(b, (sum.get(b) ?? 0) + Number(a.guitsetgel));
     cnt.set(b, (cnt.get(b) ?? 0) + 1);

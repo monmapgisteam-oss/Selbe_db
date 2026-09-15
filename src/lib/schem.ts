@@ -557,7 +557,14 @@ export function stageRail(src: SchemSources, pkg?: string | null): { stage: Stag
  *    үзүүлэх нь ЧИМЭЭГҮЙ ХУДАЛ мэдээлэл болно.
  */
 export function buildSchem(src: SchemSources, pkg: string | null = null): SchemLive {
-  const bagtsRow = pkg && src.bagts ? src.bagts.find((b) => b.label === pkg || b.key === pkg) : null;
+  /* ⚠️ `samePkg` — түүхий `===` БИШ (2026-09-15-ны аудит). Доорх мөр 577 ба
+     660 нь аль хэдийн `samePkg`-ээр шүүдэг: «Багц-4.1» ↔ «Багц 4.1» гэсэн
+     бичиглэлийн зөрүүтэй үед зөвшөөрөл/хяналт нь тэр багцаар шүүгдээд,
+     барилга/санхүү нь `bagtsRow == null` болж ТӨСЛИЙН НИЙТ рүү унадаг байв —
+     нэг схем дээр хоёр өөр хамрах хүрээ зэрэгцэнэ. */
+  const bagtsRow = pkg && src.bagts
+    ? src.bagts.find((b) => samePkg(b.label, pkg) || samePkg(b.key, pkg))
+    : null;
 
   /* ── Төлөвлөгөө ── */
   const area = fin(src.headline?.areaHa);

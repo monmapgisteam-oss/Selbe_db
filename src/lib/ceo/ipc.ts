@@ -67,7 +67,7 @@ import {
   loadHoRows, groupHo, hoTotals, unlinkedPays, ipcGaps,
   type Row, type HoContract, type HoTotals,
 } from '@/lib/ipc';
-import { mnt, pct, date, text } from '@/lib/format';
+import { mnt, pct, date, text, dayKey } from '@/lib/format';
 import type { Level } from '@/lib/kpiLevels';
 import { cell, table, type KpiResult, type KpiIssue, type Cell } from './kpi';
 
@@ -85,17 +85,24 @@ const IPC_TTL = 60_000;
 
 /**
  * Ямар ч хэлбэрийн огноог `YYYY-MM-DD` болгоно: DateOnly мөр (шууд таслана),
- * epoch тоо (UTC өдөр), бусад мөр (`Date.parse`). Хоосон/танигдахгүй → null.
+ * epoch тоо (ОРОН НУТГИЙН өдөр), бусад мөр (`Date.parse`).
+ * Хоосон/танигдахгүй → null.
+ *
+ * ⚠️ epoch-д `dayKey` (`format.ts`) — `toISOString().slice(0,10)` БИШ
+ * (2026-09-15-ны аудит). Тэр нь UTC тул +08 бүсэд орон нутгийн 00:00–07:59-д
+ * бүртгэгдсэн гүйлгээ ӨМНӨХ өдрийн түлхүүр авдаг байв; энэ файлын `todayOf`
+ * нь аль хэдийн орон нутгийнх байсан тул нэг файлд ХОЁР өөр дүрэм зэрэгцэж,
+ * «өнөөдрийн» гүйлгээ «өчигдөр» гэж харагдах боломжтой байлаа.
  */
 export function dayOf(v: unknown): string | null {
   if (v == null || v === '') return null;
   if (typeof v === 'number') {
-    return Number.isFinite(v) ? new Date(v).toISOString().slice(0, 10) : null;
+    return Number.isFinite(v) ? dayKey(v) : null;
   }
   const s = String(v).trim();
   if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
   const ms = Date.parse(s);
-  return Number.isFinite(ms) ? new Date(ms).toISOString().slice(0, 10) : null;
+  return Number.isFinite(ms) ? dayKey(ms) : null;
 }
 
 /** Огноо → epoch ms; хоосон/танигдахгүй → null */

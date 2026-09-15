@@ -23,6 +23,8 @@ export type BusStop = { oid: number; x: number; y: number };
 
 type QueryResp = {
   features?: { attributes?: Record<string, unknown>; geometry?: { x: number; y: number } }[];
+  /** ⚠️ Хуудаслалтын ТӨГСГӨЛИЙГ энэ шийднэ — мөрийн тоог 2000-тай жишихээр БИШ */
+  exceededTransferLimit?: boolean;
   error?: { message?: string };
 };
 
@@ -31,18 +33,35 @@ export async function loadBusStops(signal?: AbortSignal): Promise<BusStop[]> {
   const def = LAYER_BY_ID[BUS_LAYER_ID];
   if (!def) throw new Error(tr('Автобусны давхарга каталогт алга: {0}', BUS_LAYER_ID));
 
-  const q = new URLSearchParams({
-    where: '1=1', outFields: 'OBJECTID', returnGeometry: 'true',
-    outSR: '3857', resultRecordCount: '2000', f: 'json',
-  });
-  const r: QueryResp = await fetch(`${layerUrl(def)}/query?${q}`, { signal }).then((x) => x.json());
-  if (r.error) throw new Error(r.error.message ?? tr('ArcGIS query алдаа'));
-
   const out: BusStop[] = [];
-  for (const f of r.features ?? []) {
-    const g = f.geometry;
-    if (!g || !Number.isFinite(g.x) || !Number.isFinite(g.y)) continue;
-    out.push({ oid: Number(f.attributes?.OBJECTID ?? 0), x: g.x, y: g.y });
+  /*
+   * ⚠️ ХУУДАСЛАНА (2026-09-15-ны аудит). Урьд нь ганц хүсэлтээр татаж,
+   *    `exceededTransferLimit`-ыг шалгадаггүй байв: давхарга 2,000 буудлаас
+   *    хэтрэх (эсвэл үйлчилгээний `maxRecordCount` 1,000 байх) тохиолдолд
+   *    илүүдэл буудал ЧИМЭЭГҮЙ унаж, `busAccess()` нь барилгуудыг байхгүй
+   *    буудал руу оноон `distM`-ийг хэтрүүлж, «>800 м дутмаг» KPI ба
+   *    `popUnserved` худал өсдөг байв. Алдаа гардаггүй тул илрэхгүй.
+   *
+   * ⚠️ `orderByFields` ЗААВАЛ — эрэмбэгүй хуудаслалт нь заагийн мөрийг
+   *    давхардуулах/унагаах бөгөөд мөн чимээгүй (`buildings.ts`-ийн дүрэм).
+   */
+  for (let off = 0; ; ) {
+    const q = new URLSearchParams({
+      where: '1=1', outFields: 'OBJECTID', returnGeometry: 'true',
+      outSR: '3857', orderByFields: 'OBJECTID ASC',
+      resultOffset: String(off), resultRecordCount: '2000', f: 'json',
+    });
+    const r: QueryResp = await fetch(`${layerUrl(def)}/query?${q}`, { signal }).then((x) => x.json());
+    if (r.error) throw new Error(r.error.message ?? tr('ArcGIS query алдаа'));
+
+    const got = r.features ?? [];
+    for (const f of got) {
+      const g = f.geometry;
+      if (!g || !Number.isFinite(g.x) || !Number.isFinite(g.y)) continue;
+      out.push({ oid: Number(f.attributes?.OBJECTID ?? 0), x: g.x, y: g.y });
+    }
+    if (!r.exceededTransferLimit || got.length === 0) break;
+    off += got.length;
   }
   return out;
 }

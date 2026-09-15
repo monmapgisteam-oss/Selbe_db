@@ -15,6 +15,7 @@ import { type PopBasis } from './simulation';
 import { t as tr } from '@/lib/i18nCore';
 import { buildingValue, tModeDef, type TMode, type TransportCtx } from './transportModes';
 import type { BuildingPt } from './buildings';
+import { zoneCanon, zoneRefValues } from '@/lib/services';
 
 /** Газрын зургийн хэв маяг — «Симуляц» горимд л утгатай */
 export type MapStyle = 'poly' | 'heat';
@@ -37,10 +38,29 @@ export type HeatPoint = { x: number; y: number; w: number };
  * ⚠️ Жин нь АБСОЛЮТ ТОО (хүн), нягтрал (хүн/га) БИШ. Heatmap нь цөмүүдийг
  * НЭМДЭГ тул харьцаа нэмэх нь утгагүй; орон зайн тархалтыг цөм өөрөө хийнэ.
  *
- * ⚠️ `zoneIds` — бүсийн ангиллын шүүлт. Барилгын `ZONE_ID` нь бүсийн `id`-тай
- * таардаг (шалгасан) тул самбарын шүүлт зурагт мөн үйлчилнэ. Бүсэд хамаарахгүй
- * барилга («Бүсийн мэдээлэл байхгүй») шүүгдэж хасагдана.
+ * ⚠️ `zoneIds` — бүсийн ангиллын шүүлт. Бүсэд хамаарахгүй барилга («Бүсийн
+ * мэдээлэл байхгүй») шүүгдэж хасагдана.
+ *
+ * ⚠️ БАРИЛГЫН `ZONE_ID`-г ЗУРАГЛАНА, шууд жишихгүй (2026-09-15-ны аудит).
+ * `b.zone` нь `buildings.ts`-ийн ТҮҮХИЙ утга, харин `zoneIds` нь `zoneCanon`
+ * -оор хэвийн болсон `rows[].id`. `ZONE_SPLIT` (`services.ts`) дагуу барилгууд
+ * ХУУЧИН «D-8» кодтой атал бүс нь `D-8.1`/`D-8.2` болсон тул тэдгээр барилга
+ * бүгд дулааны гадаргуугаас ЧИМЭЭГҮЙ унадаг байв; «E-5-1» гэх бичиглэлийн
+ * зөрүү ч таарахгүй байлаа. `data.ts`-ийн `resolveZoneId` энэ дүрмийг аль
+ * хэдийн хэрэглэдэг — энэ модуль түүнийг алгассан байв.
  */
+function zoneIdOf(raw: string | null, ids: Set<string>): string | null {
+  const id = zoneCanon(raw);
+  if (!id) return null;
+  if (ids.has(id)) return id;
+  /* Хуваагдсан бүс: «D-8» → `D-8.1`/`D-8.2`-ийн эхнийх */
+  const split = zoneRefValues(id).map(zoneCanon).find((c) => ids.has(c));
+  if (split) return split;
+  /* Дэд дугаартай код эцэг бүс рүүгээ буулгана: «B-2.1» → «B-2» */
+  const parent = id.replace(/\.\d+$/, '');
+  return ids.has(parent) ? parent : null;
+}
+
 export function densityHeat(
   buildings: BuildingPt[],
   popBasis: PopBasis,
@@ -48,7 +68,7 @@ export function densityHeat(
 ): HeatPoint[] {
   const out: HeatPoint[] = [];
   for (const b of buildings) {
-    if (!b.zone || !zoneIds.has(b.zone)) continue;
+    if (!zoneIdOf(b.zone, zoneIds)) continue;
     const res = b.cat === 'residential';
     // ⚠️ Барилга бүр ЗӨВХӨН ӨӨРИЙН нэг тоог өгнө — хүн ам ба багтаамжийг
     //    НЭМЭХГҮЙ. «Нийт» гэдэг нь «хоёуланг нь харуул» гэсэн үг, «нэмэх» биш.

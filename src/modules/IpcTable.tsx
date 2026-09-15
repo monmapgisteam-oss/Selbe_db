@@ -27,7 +27,7 @@
  */
 import { useMemo, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
-import { mnt, num, pct } from '@/lib/format';
+import { mnt, num, pct, dayKey } from '@/lib/format';
 import {
   contractBlocks, anyObyem, sortBlocks, ipcTotals,
   type ContractBlock, type Detail, type PayRow, type SortKey,
@@ -73,7 +73,9 @@ const num2 = (v: unknown): number | null => {
 const payDate = (v: unknown): string => {
   if (v == null || v === '') return '—';
   if (typeof v === 'number' && Number.isFinite(v)) {
-    return new Date(v).toISOString().slice(0, 10);
+    /* ⚠️ ОРОН НУТГИЙН огноо (`dayKey`) — UTC slice нь +08 бүсэд шөнийн
+       гүйлгээг ӨМНӨХ өдөрт буулгадаг (2026-09-15-ны аудит). */
+    return dayKey(v);
   }
   const s2 = String(v);
   const m = /^(\d{4}-\d{2}-\d{2})/.exec(s2.trim());

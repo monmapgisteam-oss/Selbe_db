@@ -69,6 +69,23 @@ export function dayKey(ms: number): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
+/**
+ * САРЫН ТҮЛХҮҮР — «YYYY-MM» ОРОН НУТГИЙН огноогоор. Оролтгүй бол ӨНӨӨДӨР.
+ *
+ * ⚠️ `new Date().toISOString().slice(0, 7)` гэж БҮҮ бич — `dayKey`-ийн яг
+ * тэр занга: +08 бүсэд САРЫН 1-ний 00:00–07:59-д ӨМНӨХ САР буцаана. Тэр үед
+ * «энэ сар хүртэл» гэсэн шүүлт (`m <= nowYm`) тухайн сарын хэмжилтийг бүхэлд
+ * нь хаяж, жилийн 1-нд бүтэн ЖИЛ ухрана.
+ *
+ * ⚠️ `cfMonthAxis` (`services.ts`) нь тэнхлэгээ ОРОН НУТГИЙН `getFullYear`/
+ * `getMonth`-оор бүтээдэг — энэ түлхүүр түүнтэй ИЖИЛ суурьтай байх ёстой,
+ * эс бөгөөс тэнхлэг ба шүүлт хоёр өөр сар дээр тулгуурлана.
+ */
+export function monthKey(ms: number = Date.now()): string {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
 /** ArcGIS-ийн хоосон утга: null, "" эсвэл зөвхөн зай */
 export const blank = (v: unknown): boolean =>
   v == null || (typeof v === 'string' && v.trim() === '');

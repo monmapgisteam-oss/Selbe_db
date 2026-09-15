@@ -31,7 +31,7 @@ import {
 import { t as tr } from '@/lib/i18nCore';
 import { Section, Empty, Loading } from '@/components/ui';
 import { useAuth } from '@/components/AuthGate';
-import { huvaariScope, subscribeHuvaariAcl } from '@/lib/huvaariAcl';
+import { hasPlanRole, huvaariScope, subscribeHuvaariAcl } from '@/lib/huvaariAcl';
 import { roleForUser } from '@/lib/services';
 import { num } from '@/lib/format';
 import {
@@ -125,6 +125,17 @@ function rowSpan(r: PlanRow): Span | null {
     if (z == null || s.end > z) z = s.end;
   }
   return a == null || z == null ? null : { start: a, end: z };
+}
+
+/**
+ * ЛАВЛАГААНЫ мөрийн нийт муж — нөгөө төрлийн (гэрээ ↔ төлөвлөгөө) огноо.
+ *
+ * ⚠️ Мөр олдохгүй бол `null`: `refBase` нь идэвхтэй табтай ЯГ ижил мөрүүдээс
+ *    бүтдэг тул ихэвчлэн олдоно, гэхдээ нэг тал нь хоосон блоктой байж болно.
+ */
+function spanOfRef(m: Map<number, PlanRow>, oid: number): Span | null {
+  const r = m.get(oid);
+  return r ? rowSpan(r) : null;
 }
 
 
@@ -221,8 +232,37 @@ export function Huvaari() {
    *    багцаас гадуур зөвхөн УНШИНА. Аюулгүй байдал сулраагүй: бичих зам
    *    бүр (`onDown` · `applyModal` · `save` · `decidePlan`) тэдгээрээр
    *    хаагдсан хэвээр.
+   *
+   * ⚠️ 2026-09-15 (хэрэглэгчийн шууд шаардлага): ЭНЭ ШИЙДВЭР ХУМИГДАВ.
+   *    «Багц хуваарилсан аккаунт өөрийн багцаас БУСДЫГ харж байна» — тэр нь
+   *    буруу. Дээрх 2026-09-09-ний засвар нь `huvaariScope` fail-closed
+   *    болсноос үүдсэн ХАЖУУГИЙН үр дагаврыг (хуваарилагдаагүй хүнд сонгогч
+   *    хоосон болох) нөхөх түр шийдэл байсан бөгөөд хэт өргөн болсон байв.
+   *
+   *    ОДООГИЙН ДҮРЭМ:
+   *      · хуваарилалт БАЙХГҮЙ (`[]`, аль ч үүрэгт)  → БҮХ багц (харах эрх
+   *        нь `views`-ээр аль хэдийн шийдэгдсэн; сонгогч хоосон болохгүй)
+   *      · хуваарилалт БАЙГАА                        → ЗӨВХӨН өөрийн багц
+   *      · `null` (хязгааргүй)                       → БҮХ багц
+   *
+   *    Хоёр үүргийн НЭГДЭЛ: зохиогч Багц 3-т, батлагч Багц 5-д томилогдсон
+   *    хүн хоёуланг нь харна — эс бөгөөс батлах ажлаа хийж чадахгүй.
    */
-  const groupOpts = PKG_GROUPS;
+  const groupOpts = useMemo(() => {
+    if (status === 'off') return PKG_GROUPS;
+    const a = huvaariScope(user?.username, 'author');
+    const b = huvaariScope(user?.username, 'approver');
+    /* ⚠️ `null` нь ХЯЗГААРГҮЙ — аль нэг үүрэг нь хязгааргүй бол бүгд */
+    if (a == null || b == null) return PKG_GROUPS;
+    const mine = new Set([...a, ...b]);
+    /* ⚠️ Хоёр үүрэгт ч томилогдоогүй бол ХУМИХГҮЙ (дээрх ⚠️) */
+    if (mine.size === 0) return PKG_GROUPS;
+    const list = PKG_GROUPS.filter((g) => mine.has(g));
+    /* ⚠️ Томилгоо нь одоо байхгүй багцыг заасан (нэр солигдсон) бол сонгогч
+       хоосорно — тэр үед бүгдийг үзүүлнэ, эс бөгөөс хуудас ашиглагдахгүй. */
+    return list.length ? list : PKG_GROUPS;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, status, hvN]);
   /**
    * ЗАСАХ ЭРХ — тусад нь олгодог (`caps`) + багцын хүрээ.
    * ⚠️ Нэг огноо солиход БҮХ багцын төлөвлөгөөт хувь, тайлан, хоцрогдлын
@@ -355,6 +395,21 @@ export function Huvaari() {
    */
   const [obDraft, setObDraft] = useState<Map<string, Map<string, number>>>(new Map());
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
+  /**
+   * ХАРАГДАХ ТҮВШИН — «Түвшин 1 2 3 4 5» зурвасын идэвхтэй товч.
+   *
+   * ⚠️ `Finance`-ийн «Гэрээний бүртгэл» хуудасны ЯГ ИЖИЛ загвар (хэрэглэгчийн
+   *    шаардлага, 2026-09-15): нэг порталд нэг үүрэгтэй хоёр өөр хэлбэр
+   *    байх ёсгүй. Тэнд `lvl` нь 1–5, `setLevel` нь эвхэлтийг бөөнөөр тавьдаг.
+   *
+   * ⚠️ `0` = «холимог»: хэрэглэгч ГАРААР нэг бүлэг эвхсэн бол аль ч товч
+   *    тодрохгүй — дэлгэц дээрх байдалтай зөрчилдсөн тодруулга үлдэх ёсгүй
+   *    (`Finance.lvOn`-ийн ижил ⚠️).
+   *
+   * ⚠️ АНХДАГЧ нь ХАМГИЙН ГҮН (бүх мөр дэлгээтэй) — хуваарь нь ажил тус бүрийн
+   *    огноог ЗАСАХ хуудас тул хаалттай эхлэх нь ажлыг нэмэгдүүлнэ.
+   */
+  const [lvl, setLvl] = useState(0);
   /** Popup хуанли нээгдсэн мөр (`PlanRow.i`) */
   const [modal, setModal] = useState<number | null>(null);
 
@@ -440,11 +495,20 @@ export function Huvaari() {
     let alive = true;
     setBusy(true); setErr(''); setRows([]); setSc(null);
     setDraft(new Map()); setHam(new Map()); setSel(null); setCollapsed(new Set()); setModal(null);
+    /* ⚠️ Түвшний товчийг ч тэглэнэ — багц бүр ӨӨР гүнтэй тул өмнөх багцын
+       сонголт шинэ модонд утгагүй (эвхэлт нь дээр цэвэрлэгдсэн). */
+    setLvl(0);
     setObPlan(new Map()); setObOids(new Map()); setObDraft(new Map()); setObDups([]);
     /* ⚠️ Урьдчилан харах ба батлах урсгалын төлөв нь БАГЦЫНХ — ноорог
        цэвэрлэгдэхэд эдгээр ч дагаж тэглэгдэхгүй бол өмнөх багцын санал
        харагдсаар байгаа мэт товч, баннер үлдэнэ. */
     setPreviewing(false); setApproving(null); setFlowBox(null);
+    /* ⚠️ Батлах урсгалын АЛХАМЫН тэмдэглэгээг ч тэглэнэ (2026-09-15-ны
+       аудит): savedRef нь useRef тул багц/төрөл солиход үлддэг байв. Бичилт
+       унаад true үлдсэн бол дараагийн батлалтад save() ОГТ дуудагдалгүй
+       шууд decidePlan руу орж, хуваарь эх хуудсанд бичигдэлгүй «батлагдсан»
+       болж, гүйцэтгэгчийн санал ул мөргүй алга болно. */
+    savedRef.current = false;
     setBlk(0); jumped.current = false;
     /* ⚠️ Сарын обьёмыг ТУСАД НЬ татна: тэр үйлчилгээ унасан ч хуваарийн
        хуудас нээгдэх ЁСТОЙ. Алдааг `setErr` рүү хийхгүй — улаан баннер нь
@@ -485,6 +549,12 @@ export function Huvaari() {
     setDraft(new Map()); setHam(new Map()); setObDraft(new Map());
     setSel(null); setModal(null); setNote(''); setErr('');
     setPreviewing(false); setApproving(null); setFlowBox(null);
+    /* ⚠️ Батлах урсгалын АЛХАМЫН тэмдэглэгээг ч тэглэнэ (2026-09-15-ны
+       аудит): savedRef нь useRef тул багц/төрөл солиход үлддэг байв. Бичилт
+       унаад true үлдсэн бол дараагийн батлалтад save() ОГТ дуудагдалгүй
+       шууд decidePlan руу орж, хуваарь эх хуудсанд бичигдэлгүй «батлагдсан»
+       болж, гүйцэтгэгчийн санал ул мөргүй алга болно. */
+    savedRef.current = false;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kind]);
 
@@ -504,12 +574,17 @@ export function Huvaari() {
    *    утга байх ёстой — эс бөгөөс өөрийн зассан зурвасаа өөртэйгөө жишнэ.
    * ⚠️ Бүлгийн мөрд ХҮҮХДЭЭСЭЭ бодогдоно (`effSpan`) — зурах үед хийгдэнэ.
    */
-  /* ⚠️ `showRef` унтраалттай бол ОГТ бодохгүй (2026-09-11-ний аудит): анхдагч
-     нь унтраалттай тул ихэнх хэрэглэгчид 1,266–1,675 мөрийг хоёр дахь удаа
-     хөрвүүлэх нь дэмий. Хоосон массив нь доорх дүрслэлд аюулгүй. */
+  /*
+   * ⚠️ 2026-09-15: `showRef`-ЭЭС САЛГАВ. Урьд нь «Зэрэг» унтраалттай үед огт
+   *    бодохгүй байсан (2026-09-11-ний аудит, ачаалал хэмнэх) — гэвч одоо
+   *    зүүн самбарын ДӨРВӨН ШИНЭ БАГАНА (гэрээний ба инженерийн огноо) нь
+   *    үүнийг ҮРГЭЛЖ шаардана. Нэг хөрвүүлэлт нэмэгдэх нь тэр багануудыг
+   *    хоосон үлдээхээс дээр: хоёр төрлийн огноог зэрэгцүүлж харах нь
+   *    хуудасны ГОЛ зорилго.
+   */
   const refBase = useMemo(
-    () => (showRef ? toPlanRows(rows, n, kind === 'geree' ? 'plan' : 'geree') : []),
-    [rows, n, kind, showRef],
+    () => toPlanRows(rows, n, kind === 'geree' ? 'plan' : 'geree'),
+    [rows, n, kind],
   );
   const refByOid = useMemo(() => {
     const m = new Map<number, PlanRow>();
@@ -619,6 +694,44 @@ export function Huvaari() {
     return out;
   }, [scoped, collapsed, match]);
 
+  /**
+   * ХҮСНЭГТЭД БОДИТООР БАЙГАА ТҮВШНҮҮД — товчийг өгөгдлөөс угсарна.
+   *
+   * ⚠️ Хатуу 1·2·3·4·5 гэж бичихгүй (`Finance`-ээс ЭНД ЯЛГААТАЙ): санхүүгийн
+   *    бүртгэл нь ТОГТМОЛ таван түвшинтэй Excel загвар, харин хуваарийн модны
+   *    гүн БАГЦ БҮРД өөр. Багц 1 нь дөрвөн түвшинтэй, зарим багц хоёр л
+   *    түвшинтэй — байхгүй түвшний товч гарвал дарахад юу ч болохгүй.
+   *
+   * ⚠️ Гүн 0-ээс эхэлдэг тул товчны дугаар нь `depth + 1`.
+   */
+  const lvls = useMemo(() => {
+    const s = new Set<number>();
+    for (const r of scoped) if (r.group) s.add(r.depth);
+    return [...s].sort((a, b) => a - b);
+  }, [scoped]);
+
+  /**
+   * ТҮВШИН СОНГОХ — `Finance.setLevel`-ийн ижил үүрэг.
+   *
+   * ⚠️ `n` нь ТОВЧНЫ дугаар (1-ээс эхэлнэ), гүн нь `n - 1`. «Энэ түвшний
+   *    гарчгууд ХАРАГДАНА, доорх нь эвхэгдэнэ» гэсэн утгатай: гүн ≥ `n - 1`
+   *    бүх БҮЛЭГ мөрийг `collapsed`-д хийнэ.
+   *
+   * ⚠️ ХАМГИЙН ГҮН түвшин нь бүх мөрийг ДЭЛГЭНЭ (`Finance`-ийн 4·5-тай ижил
+   *    зарчим): тэр түвшний бүлгүүд нь навчтай тул эвхэх юм үлдэхгүй.
+   *
+   * ⚠️ Зөвхөн БҮЛЭГ мөрийг (`r.group`) хийнэ — навч мөрийг эвхэх утгагүй
+   *    бөгөөд `visible`-ийн `hideBelow` логик нь тэднийг хардаггүй.
+   */
+  const setLevel = useCallback((n: number) => {
+    setLvl(n);
+    const deepest = lvls.length ? lvls[lvls.length - 1] : 0;
+    /* Хамгийн гүн түвшин = бүгдийг дэлгэх */
+    if (n - 1 >= deepest) { setCollapsed(new Set()); return; }
+    const s = new Set<number>();
+    for (const r of scoped) if (r.group && r.depth >= n - 1) s.add(r.oid);
+    setCollapsed(s);
+  }, [scoped, lvls]);
 
   /** Хуваарьт тааралдсан ЖИЛҮҮД — сонголтыг өгөгдлөөс угсарна */
   const years = useMemo(() => {
@@ -860,6 +973,33 @@ export function Huvaari() {
       setObDraft((m) => new Map(m).set(obKey(des, blok), months));
     }
   }, [plan, byCode, n, busy, locked, ham, rows, applyChanges, sc, blk]);
+
+  /**
+   * ХАМААРЛЫГ НҮДЭНД ШУУД БИЧИХ (2026-09-15, хэрэглэгчийн хүсэлт:
+   * «11FS14 гэж шууд бичиж холбоос хийх боломжтой болгох»).
+   *
+   * ⚠️ POPUP-ЫГ ОРЛОХГҮЙ, ХАЖУУД НЬ. Popup нь ажлын НЭРЭЭР сонгуулдаг тул
+   *    кодоо мэдэхгүй хүнд зайлшгүй; энэ нь кодоо мэддэг хүнд ХУРДАН зам.
+   *    MS Project-ийн Predecessors нүд яг ийм ажилладаг.
+   *
+   * ⚠️ БҮХ ШАЛГУУР `applyModal`-д (дугуй хамаарал, шатлалын зөрчил, танигдаагүй
+   *    токен хадгалах) — энд ДАВХАРДУУЛАХГҮЙ. Зөвхөн текстийг `Dep[]` болгож
+   *    дамжуулна; буруу бичсэн токеныг `parseDeps` өөрөө алгасана.
+   *
+   * ⚠️ Хоосон болговол уялдааг ЦЭВЭРЛЭНЭ (`[]`) — `null` нь «бүү хөндөөрэй»
+   *    гэсэн утгатай тул ялгах ёстой.
+   */
+  const applyHamText = useCallback((oid: number, text: string) => {
+    if (busy || locked || !canEdit) return;
+    const cur = plan.find((x) => x.oid === oid);
+    if (!cur) return;
+    const next = parseDeps(text);
+    /* Өөрчлөгдөөгүй бол дэмий тархалт хийхгүй — 1,400 мөрийн `propagate`
+       нь хямд биш, мөн «хадгалаагүй» тэмдэг худал асахгүй. */
+    if (formatDeps(next) === formatDeps(cur.deps)) return;
+    setErr('');
+    applyModal(oid, null, next, null);
+  }, [busy, locked, canEdit, plan, applyModal]);
 
   /* ── Чирэлт ── */
 
@@ -1784,6 +1924,40 @@ export function Huvaari() {
           <>
             <span className={h.tbSep} aria-hidden />
 
+            {/*
+              * ТҮВШНИЙ ЗУРВАС — «Гэрээний бүртгэл» хуудасны ЯГ ИЖИЛ загвар
+              * (2026-09-15, хэрэглэгчийн шаардлага). Товч нь «энэ түвшин
+              * хүртэл дэлгэ» гэсэн утгатай: 1 дарвал зөвхөн дээд бүлгүүд,
+              * хамгийн гүн нь дарвал бүх ажлын мөр харагдана.
+              *
+              * ⚠️ Товчны ТОО нь БАГЦААС хамаарна (`lvls`) — санхүүгийн
+              *    бүртгэл нь тогтмол таван түвшинтэй Excel загвар, харин
+              *    хуваарийн мод багц бүрд өөр гүнтэй.
+              * ⚠️ Бүлэг огт байхгүй (бүгд навч) бол зурвас гарахгүй.
+              */}
+            {lvls.length > 1 && (
+              <span className={h.lvBar}>
+                <span className={h.lvLbl}>{tr('Түвшин')}</span>
+                {lvls.map((d) => {
+                  const nn = d + 1;
+                  const deepest = d === lvls[lvls.length - 1];
+                  return (
+                    <button
+                      key={d}
+                      type="button"
+                      className={lvl === nn ? h.lvOn : ''}
+                      title={deepest
+                        ? tr('Бүх ажлын мөрийг дэлгэнэ')
+                        : tr('{0}-р түвшин хүртэл дэлгэх', nn)}
+                      onClick={() => setLevel(nn)}
+                    >{nn}</button>
+                  );
+                })}
+              </span>
+            )}
+
+            <span className={h.tbSep} aria-hidden />
+
             {([
               ['all', tr('Бүгд'), plan.filter((r) => !r.group).length],
               ['has', tr('Хуваарьтай'), cov.planned],
@@ -1988,6 +2162,41 @@ export function Huvaari() {
             {tr('Шийдвэрлэх')} ({num(pending.rowCount)})
           </button>
         )}
+        {/*
+          * ⚠️ ӨӨРИЙН ИЛГЭЭЛТ — товч идэвхгүй болсон ШАЛТГААНЫГ ил хэлнэ
+          *    (2026-09-15). Урьд нь зөвхөн `title` (hover) байсан тул
+          *    мэдрэгч дэлгэцэд ОГТ хүрэхгүй, хулганатай ч гэсэн саарал
+          *    товч ширтсэн хүн «эвдэрсэн» гэж үзнэ. Багц гацсан гэдгийг
+          *    ба гарцыг нь хамт хэлнэ.
+          */}
+        {pending && canApprove && isOwnSubmission && (
+          <span className={h.muted} role="status">
+            {tr('Энэ илгээлтийг та өөрөө хийсэн тул өөрөө батлах боломжгүй. Өөр батлагч шийдвэрлэнэ — багцад батлагч томилоогүй бол админ «Хуваарийн эрх» хэсгээс нэмнэ.')}
+          </span>
+        )}
+        {/*
+          * ⚠️ БАТЛАХ ЭРХГҮЙ бол ШАЛТГААНЫГ ил хэлнэ (2026-09-15, хэрэглэгч:
+          *    «төлөвлөөд батлахад батлах идэвхжихгүй байна»).
+          *
+          *    Урьд нь `canApprove` худал үед «Шийдвэрлэх» товч ОГТ
+          *    зурагддаггүй байв — хэрэглэгч «товч идэвхгүй» гэж хардаг ч
+          *    үнэндээ товч байхгүй, шалтгаан нь хаана ч бичигдэхгүй.
+          *    Одоо хэнд хандахыг нэрлэнэ.
+          *
+          * ⚠️ `locked` үед «Батлуулах» товч ч алга болдог (дээрх `!pending`)
+          *    тул энэ мөр нь тэр хоосон зайг ч тайлбарлана.
+          */}
+        {pending && !canApprove && (
+          <span className={h.muted} role="status">
+            {/* ⚠️ ХОЁР ӨӨР шалтгааныг ЯЛГАНА (2026-09-15): «эрх огт байхгүй»
+                ба «эрх бий ч ЭНЭ багцад биш» хоёр нь өөр гарцтай. Хоёуланг
+                нь «эрхгүй» гэж нэгтгэвэл тусдаа эрх тохируулсан хүн юу дутуу
+                байгааг олохгүй. `hasPlanRole` нь багцаас ҮЛ ХАМААРНА. */}
+            {hasPlanRole(user?.username, 'approver')
+              ? tr('Танд батлах эрх бий, гэхдээ ЭНЭ багцад томилогдоогүй байна. Админ «Хуваарийн эрх» → {0} → «Батлагч» хэсэгт таныг нэмнэ.', pkg.group)
+              : tr('Батлах эрхгүй — энэ багцад батлагчаар томилогдсон хүн шийдвэрлэнэ. Админ «Хуваарийн эрх» хэсгээс томилно.')}
+          </span>
+        )}
       </header>
 
       {err && <p className={h.err} role="alert">{err}</p>}
@@ -2066,7 +2275,37 @@ export function Huvaari() {
                 <div className={h.gSideHead} style={{ height: PL_ROW }}>
                   <span className={h.gHeadDes}>{tr('Ажлын код')}</span>
                   <span className={h.gHeadWork}>{tr('Ажил')}</span>
-                  <span className={h.gHeadHam}>{tr('Хамаарал')}</span>
+                  {/*
+                    * ДӨРВӨН ОГНООНЫ БАГАНА (2026-09-15, хэрэглэгчийн хүсэлт:
+                    * «ажилбар бүрийн ард 4 багана нэмнэ — гэрээний эхлэх,
+                    * дуусах, инженерийн эхлэх, дуусах огноо»).
+                    *
+                    * ⚠️ ХОЁР ТӨРЛИЙГ ЗЭРЭГ: хуанли нь ЗӨВХӨН идэвхтэй табын
+                    *    огноог зурдаг тул гэрээ ба төлөвлөгөөг зэрэгцүүлж
+                    *    харахын тулд табаа солих шаардлагатай байв. Эдгээр
+                    *    багана нь хоёуланг нь НЭГ мөрөнд гаргана.
+                    *
+                    * ⚠️ ЗАСАГДАХГҮЙ — зөвхөн УНШИНА. Огноо засах цорын ганц
+                    *    зам нь хуанли дээр чирэх (`onDown`) ба popup хэвээр:
+                    *    хоёр өөр засварын зам үүсвэл аль нь үнэн болох нь
+                    *    бүрхэг болно.
+                    */}
+                  <span className={h.gHeadDate}>{tr('Гэрээ эхлэх')}</span>
+                  <span className={h.gHeadDate}>{tr('Гэрээ дуусах')}</span>
+                  {/* ⚠️ ХОНОГ нь ТУСДАА БАГАНА (2026-09-15, хэрэглэгч).
+                      Огнооны нүдэнд шигтгэвэл тэр нүд хоёр утга агуулж,
+                      эрэмбэлэх · хуулах · нүдээр гүйлгэх бүгд хүндэрнэ. */}
+                  <span className={h.gHeadDays}>{tr('Хоног')}</span>
+                  <span className={h.gHeadDate}>{tr('Төлөвлөгөө эхлэх')}</span>
+                  <span className={h.gHeadDate}>{tr('Төлөвлөгөө дуусах')}</span>
+                  <span className={h.gHeadDays}>{tr('Хоног')}</span>
+                  {/* ⚠️ ЖИШЭЭГ ТОЛГОЙД (2026-09-15): нүдний `placeholder`-т
+                      тавьбал 1,400 хоосон мөр бүгд «11FS14» гэж харагдаж,
+                      бодит утга мэт уншигдана. Толгойд нэг удаа бичих нь
+                      бичиглэлийг заах ба хүснэгтийг цэвэр үлдээнэ. */}
+                  <span className={h.gHeadHam} title={tr('Жишээ: 11FS14 — 11-р ажил дууссанаас 14 хоногийн дараа. Олныг таслалаар: 11FS,22SS-5')}>
+                    {tr('Хамаарал')} <i className={h.gHeadHint}>11FS14</i>
+                  </span>
                 </div>
                 {/* ⚠️ ЗАЙ БАРИГЧ: зүүн мөрүүд УРСГАЛД байдаг тул зурагдаагүй
                     мөрүүдийн өндрийг орлуулахгүй бол гүйлтийн урт агшиж, зүүн
@@ -2082,12 +2321,28 @@ export function Huvaari() {
                        харагдаж, юу хадгалагдахыг тоолж болохгүй байв. */
                     dirty={draft.has(r.oid) || ham.has(r.oid)}
                     collapsed={collapsed.has(r.oid)}
-                    onToggle={() => setCollapsed((s) => {
-                      const m = new Set(s);
-                      if (m.has(r.oid)) m.delete(r.oid); else m.add(r.oid);
-                      return m;
-                    })}
+                    onToggle={() => {
+                      /* ⚠️ ГАРААР эвхэхэд түвшний товч ТОДРОХГҮЙ болно
+                         (`lvl = 0`) — дэлгэц дээрх байдалтай зөрчилдсөн
+                         тодруулга үлдэх ёсгүй (`Finance.lvOn`-ийн ижил дүрэм). */
+                      setLvl(0);
+                      setCollapsed((s) => {
+                        const m = new Set(s);
+                        if (m.has(r.oid)) m.delete(r.oid); else m.add(r.oid);
+                        return m;
+                      });
+                    }}
                     onPick={() => { setSel(r.i); setModal(r.i); }}
+                    /* ⚠️ ХОЁР ТӨРЛИЙН огноог зэрэг өгнө. `r` нь ИДЭВХТЭЙ
+                       табынх, `refByOid` нь НӨГӨӨ табынх — аль нь гэрээ, аль
+                       нь төлөвлөгөө болохыг `kind`-ээр шийднэ. */
+                    geree={kind === 'geree' ? rowSpan(r) : spanOfRef(refByOid, r.oid)}
+                    tolov={kind === 'geree' ? spanOfRef(refByOid, r.oid) : rowSpan(r)}
+                    /* ⚠️ Уялдааг нүдэнд ШУУД бичих зам (`HamCell`). Түгжээтэй
+                       (батлагдахыг хүлээж буй илгээлт) үед ч засагдахгүй —
+                       `applyHamText` дотор `locked` шалгагдана. */
+                    canEdit={canEdit && !locked}
+                    onHamText={applyHamText}
                   />
                 ))}
                 {winTo < visible.length && (
@@ -2191,7 +2446,35 @@ export function Huvaari() {
                                   шатанд нэмбэл гурав дөрвөн үсэг + «…» л үлдэж, мэдээлэл
                                   өгөхийн оронд огноог л түлхэж гаргана. Нэр нь агшиж
                                   (`plBarName` ellipsis), огноо нь агшихгүй. */}
-                              {spanDays(sp) * px > 250 ? (
+                              {/*
+                                * ⚠️ ОГНОО ДЭЭР ДООР (2026-09-11, хэрэглэгч): эхлэх огноо
+                                *    ДЭЭД мөрөнд, дуусах огноо ба хоног ДООД мөрөнд. Зурвас
+                                *    22px тул 9.5px үсэг хоёр мөр багтана; нэг мөрт «→»-өөр
+                                *    бичихэд 178px шаарддаг байсныг богиносгож, дунд урттай
+                                *    зурвас ч бүтэн огноотой болов. Чирэхэд `sp` шинэчлэгдэх
+                                *    тул огноо шууд дагана.
+                                * ⚠️ «Зэрэг» асаалттай (`showRef`) үед зурвас 11px — хоёр
+                                *    мөр багтахгүй тул хуучин нэг мөрийн шатлал үлдэнэ.
+                                *
+                                * ⚠️ БОСГО 100px (2026-09-15-ны аудит). Урьд нь 66px байсан
+                                *    нь ДООД мөрийн бодит өргөнөөс бага: «2026-04-18 · 187х»
+                                *    нь 9.5px tabular-nums дээр ~94px, дээр нь `.plBar`-ын
+                                *    хоёр `plGrip` ба хүрээ ~6px иднэ. `white-space: nowrap`
+                                *    + `overflow: hidden` тул илүү нь ellipsis-гүй ТАСАРЧ,
+                                *    «2026-04-1» гэж хагас огноо гардаг байв. Доод шат
+                                *    (118px `short()`) -аас бага байх ёстой тул 100px.
+                                */}
+                              {!showRef && spanDays(sp) * px > 100 ? (
+                                <span className={`${h.plBarLab} ${h.plBarTwo}`}>
+                                  {spanDays(sp) * px > 250 && (
+                                    <span className={h.plBarName}>{r.work || r.no}</span>
+                                  )}
+                                  <span className={h.plBarWhen}>
+                                    <span>{msToDay(sp.start)}</span>
+                                    <span>{msToDay(sp.end)} · {spanDays(sp)}{tr('х')}</span>
+                                  </span>
+                                </span>
+                              ) : spanDays(sp) * px > 250 ? (
                                 <span className={h.plBarLab}>
                                   <span className={h.plBarName}>{r.work || r.no}</span>
                                   <span className={h.plBarWhen}>
@@ -2395,11 +2678,25 @@ function FlowBox({
 /* ══════════════════ Ажлын мөр (зүүн багана) ══════════════════ */
 
 function TaskRow({
-  r, on, dirty, collapsed, onToggle, onPick,
+  r, on, dirty, collapsed, onToggle, onPick, geree, tolov, canEdit, onHamText,
 }: {
   r: PlanRow; on: boolean; dirty: boolean;
   collapsed: boolean;
   onToggle: () => void; onPick: () => void;
+  /**
+   * ГЭРЭЭНИЙ ба ТӨЛӨВЛӨГӨӨНИЙ нийт муж — дөрвөн огнооны багана.
+   *
+   * ⚠️ Хоёулаа ЗАСАГДАХГҮЙ, зөвхөн уншина. Огноо засах зам нь хуанли дээр
+   *    чирэх ба popup хэвээр — хоёр өөр засварын зам үүсвэл аль нь үнэн
+   *    болох нь бүрхэг болно.
+   * ⚠️ `null` = тэр төрөлд хуваарь ОГТ байхгүй → «—» (0 БИШ).
+   */
+  geree: Span | null;
+  tolov: Span | null;
+  /** Уялдааны нүд ЗАСАГДАХ уу — эрхгүй бол зөвхөн уншина */
+  canEdit: boolean;
+  /** Нүдэнд бичсэн текстийг хадгална () */
+  onHamText: (oid: number, text: string) => void;
 }) {
   /* ⚠️ «Хуваарь» (хоногийн тоо) ба «блок» (12/12) багана 2026-09-03-нд
      ХАСАГДСАН (хэрэглэгч) — тоо нь зурвасны шошго ба tooltip-д давхардаж
@@ -2434,18 +2731,115 @@ function TaskRow({
         </button>
       </div>
 
+      {/*
+        * ДӨРВӨН ОГНООНЫ НҮД — гэрээ (эхлэх · дуусах) ба төлөвлөгөө
+        * (эхлэх · дуусах). 2026-09-15-ны хэрэглэгчийн хүсэлт.
+        *
+        * ⚠️ БҮЛГИЙН мөрд ч гарна: `rowSpan` нь хүүхдүүдийн MIN/MAX-ыг
+        *    нэгтгэдэг тул бүлгийн мөр нь дэд ажлуудынхаа нийт мужийг
+        *    харуулна — эвхээстэй байхад ч хугацаа нь мэдэгдэнэ.
+        * ⚠️ `msToDay` — ЯГ хуанлийн шошготой ижил формат (`YYYY-MM-DD`).
+        *    Өөр формат хэрэглэвэл нэг огноо хоёр газарт өөр харагдана.
+        * ⚠️ Хуваарьгүй бол «—», 0 огноо БИШ.
+        */}
+      <span className={h.rowDate} title={geree ? tr('Гэрээний эхлэх огноо') : undefined}>
+        {geree ? msToDay(geree.start) : '—'}
+      </span>
+      <span className={h.rowDate} title={geree ? tr('Гэрээний дуусах огноо') : undefined}>
+        {geree ? msToDay(geree.end) : '—'}
+      </span>
+      {/* ⚠️ ҮРГЭЛЖЛЭХ ХОНОГ — ТУСДАА багана (2026-09-15, хэрэглэгч).
+          `spanDays` нь ХОЁР ҮЗҮҮРИЙГ ОРУУЛЖ тоолно (эхлэх ба дуусах өдөр
+          хоёулаа ажлын өдөр) — хуанлийн зурвасын шошготой ЯГ ижил тоо. */}
+      <span className={h.rowDays} title={geree ? tr('Гэрээгээр үргэлжлэх хоног') : undefined}>
+        {geree ? spanDays(geree) : '—'}
+      </span>
+      <span className={h.rowDate} title={tolov ? tr('Төлөвлөгөөт эхлэх огноо') : undefined}>
+        {tolov ? msToDay(tolov.start) : '—'}
+      </span>
+      <span className={h.rowDate} title={tolov ? tr('Төлөвлөгөөт дуусах огноо') : undefined}>
+        {tolov ? msToDay(tolov.end) : '—'}
+      </span>
+      <span className={h.rowDays} title={tolov ? tr('Төлөвлөгөөгөөр үргэлжлэх хоног') : undefined}>
+        {tolov ? spanDays(tolov) : '—'}
+      </span>
+
       {/* УЯЛДАА — MS Project-ийн Predecessors бичиглэлээр («18FS3,22SS»).
           Урт бол таслагдана — бүтнийг нь tooltip ба popup-д харна.
           ⚠️ ТОВЧ (2026-09-03, хэрэглэгч): нүдэн дээр дарахад мөн л popup
           нээгдэж уялдааг нь тохируулна. Хоосон нүд агаар мэт харагдах тул
           мөр дээр хулгана очиход «+» гарч дарагдахыг нь сануулна (CSS). */}
-      <button type="button" className={h.rowHam} onClick={onPick}
-        title={r.deps.length
-          ? `${formatDeps(r.deps)}\n${tr('Уялдаа тохируулах')}`
-          : tr('Уялдаа тохируулах')}>
-        {r.deps.length ? formatDeps(r.deps) : ''}
-      </button>
+      <HamCell r={r} canEdit={canEdit} onText={onHamText} onPick={onPick} />
     </div>
+  );
+}
+
+/* ══════════════════ УЯЛДААНЫ НҮД ══════════════════ */
+
+/**
+ * ХАМААРЛЫН НҮД — MS Project-ийн Predecessors шиг ШУУД БИЧНЭ.
+ *
+ * ⚠️ 2026-09-15, хэрэглэгчийн хүсэлт: «11FS14 гэж шууд бичиж холбоос хийх».
+ *    Урьд нь нүд нь ЗӨВХӨН popup нээдэг товч байсан: кодоо мэддэг хүн ч
+ *    цонх нээж, жагсаалтаас ажил хайж, төрөл сонгож байж нэг уялдаа нэмдэг.
+ *
+ * ⚠️ POPUP ХЭВЭЭР — энэ нь түүнийг ОРЛОХГҮЙ. Кодоо мэдэхгүй хүнд жагсаалтаас
+ *    нэрээр нь сонгох зам зайлшгүй. Тиймээс: нүдэнд бичнэ, «…» товчоор
+ *    popup нээнэ.
+ *
+ * ⚠️ ХАДГАЛАХ нь `blur` ба `Enter`-д — тэмдэгт бүрд БИШ. Бичиж байх зуур
+ *    `propagate` дуудвал 1,400 мөрийн гинж тэмдэгт тутамд дахин бодогдож,
+ *    хагас бичсэн токен («11F») уялдаагаа алдана.
+ * ⚠️ `Escape` — засварыг хаяж, хадгалсан утга руу буцна.
+ */
+function HamCell({
+  r, canEdit, onText, onPick,
+}: {
+  r: PlanRow;
+  canEdit: boolean;
+  onText: (oid: number, text: string) => void;
+  onPick: () => void;
+}) {
+  const saved = r.deps.length ? formatDeps(r.deps) : '';
+  const [txt, setTxt] = useState(saved);
+  const [edit, setEdit] = useState(false);
+
+  /* ⚠️ Гаднаас өөрчлөгдвөл (popup, чирэлтийн гинж, ноорог сэргээх) оролтыг
+     дагуулна — ЗӨВХӨН засаж БАЙХГҮЙ үед, эс бөгөөс бичиж байхад нь дарна. */
+  useEffect(() => { if (!edit) setTxt(saved); }, [saved, edit]);
+
+  if (!canEdit) {
+    /* ⚠️ Эрхгүй бол УНШИХ горим — товч хэвээр (popup нь зөвхөн харуулна) */
+    return (
+      <button type="button" className={h.rowHam} onClick={onPick}
+        title={saved ? `${saved}\n${tr('Уялдаа харах')}` : tr('Уялдаа харах')}>
+        {saved}
+      </button>
+    );
+  }
+
+  return (
+    <span className={h.hamWrap}>
+      <input
+        className={h.hamIn}
+        value={txt}
+        /* ⚠️ `placeholder` БАЙХГҮЙ (2026-09-15, хэрэглэгч: «бүгд 11FS14
+           болчихлоо — энэ жишээ шүү дээ»). Хоосон нүд бүрд жишээ бичиглэл
+           харагдвал бодит утга мэт уншигдаж, 1,400 мөр «11FS14»-ээр дүүрсэн
+           дүр зураг гарна. Жишээг ЗӨВХӨН `title` (hover) ба толгойн зааварт. */
+        title={tr('Жишээ: 11FS14 — 11-р ажил дууссанаас 14 хоногийн дараа. Олныг таслалаар: 11FS,22SS-5')}
+        onChange={(e) => { setEdit(true); setTxt(e.target.value); }}
+        onFocus={() => setEdit(true)}
+        onBlur={() => { setEdit(false); onText(r.oid, txt); }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') { e.currentTarget.blur(); return; }
+          if (e.key === 'Escape') { setTxt(saved); setEdit(false); e.currentTarget.blur(); }
+        }}
+      />
+      {/* ⚠️ POPUP руу орох зам — кодоо мэдэхгүй хүнд жагсаалтаас нэрээр нь */}
+      <button type="button" className={h.hamMore} onClick={onPick}
+        title={tr('Жагсаалтаас сонгох')}>…</button>
+    </span>
   );
 }
 

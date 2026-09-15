@@ -172,7 +172,6 @@ const en: Record<string, string> = {
   "» үе шат эхэлсэн": "” phase has started",
   "» эх үүсвэр бүрдүүлж, нийт дүнгийн": "” source, which accounts for",
   "(1) НЭГТГЭЛ — `stats` өгвөл ArcGIS дээр тоолол/нийлбэр/дундаж бодогдоно (`groupBy` өгвөл ангиллаар задарна). ": "(1) AGGREGATE — with `stats`, counts/sums/averages are computed on ArcGIS (with `groupBy`, broken down by category). ",
-  "(2) ЖАГСААЛТ — `stats` өгөхгүй бол бодит мөрүүд буцна (дээд тал нь ": "(2) LIST — without `stats`, actual rows are returned (at most ",
   "(БНБД-ийн сайн хүртээмжийн босго). Ажиглагдсан хамгийн хол нь": "(the BNbD threshold for good accessibility). The farthest observed is",
   "(дэд багцтай),": "(with sub-packages),",
   "(жиш. «Багц-1», «Багц-3.2»). Бүсийн жагсаалтыг `query_feature`-ээр ": "(e.g. “Багц-1”, “Багц-3.2”). You can obtain the zone list with `query_feature` ",
@@ -3025,7 +3024,6 @@ const en: Record<string, string> = {
   "Хоцролт: FS — дууссанаас, SS — эхэлснээс хойш хэд хоногийн дараа (сөрөг = давхцана)": "Lag: days after the predecessor finishes (FS) or starts (SS); negative = overlap",
   "Уялдаа устгах": "Remove link",
   "Уялдаа нэмэх": "Add link",
-  "Уялдаа тохируулах": "Set links",
   "{0} давхарга ачаалагдсангүй": "{0} layers failed to load",
   " …+{0}": " …+{0}",
   "Эдгээрийн өгөгдөл зурагт ХАРАГДАХГҮЙ. Сүлжээ эсвэл үйлчилгээний хандалтыг шалгана уу.": "Their data is NOT shown on the map. Check the network or the service permissions.",
@@ -3216,7 +3214,6 @@ const en: Record<string, string> = {
   "Хөтчийн график (WebGL) идэвхгүй байна — тоног төхөөрөмжийн хурдасгуурыг асаах эсвэл өөр хөтөч ашиглана уу.": "Browser graphics (WebGL) are disabled — turn on hardware acceleration or use a different browser.",
   "Мөрийн OBJECTID уншигдаагүй тул устгах боломжгүй.": "The row's OBJECTID could not be read, so it cannot be deleted.",
   "Мөрийн OBJECTID уншигдаагүй тул засах боломжгүй.": "The row's OBJECTID could not be read, so it cannot be edited.",
-  "эх: багцын нэгтгэл — бөглөх хуудас БИШ": "source: package summary — NOT the fill sheet",
   "эх: бөглөх хуудас": "source: fill sheet",
   "Нийт гүйцэтгэл (багцын жингээр)": "Overall progress (weighted by package)",
   "Санхүүжилт — захирамж, гэрээ, олголт": "Financing — decrees, contracts, disbursements",
@@ -3379,8 +3376,6 @@ const en: Record<string, string> = {
   "Харагдац руу орох": "Open the view",
   "Шийдэгдээгүй зөвшөөрөл": "Unresolved permits",
   "Илгээлтийн агуулга татагдаагүй тул батлах боломжгүй": "Submission content could not be loaded — approval is not possible",
-
-
   "График": "Graphic",
   "Гүйцэтгэл хэмжигдээгүй": "Performance not measured",
   "Гэрээлсэн дүн": "Contracted amount",
@@ -3977,34 +3972,55 @@ const en: Record<string, string> = {
   "Талбайн бэлтгэл ажил": "Site preparation works",
   "Барилга угсралт ажил": "Construction and installation works",
   "Улсын комисс, хүлээлгэн өгөх": "State commission and handover",
-
-  /* ── Хуваарийн ТӨРӨЛ ба батлах урсгал (2026-09-11-ний аудитын S1) ── */
-  "Батлах урьдчилан харалт хаагдана. Илгээлт хүлээгдсэн хэвээр үлдэнэ. Үргэлжлүүлэх үү?":
-    "The approval preview will close. The submission stays pending. Continue?",
-  "Энэ илгээлт ГЭРЭЭНИЙ огноонд хамаарна — «Гэрээ» таб руу шилжээд дахин үзнэ үү.":
-    "This submission covers CONTRACT dates — switch to the «Contract» tab to preview it.",
-  "Энэ илгээлт ТӨЛӨВЛӨГӨӨНИЙ огноонд хамаарна — «Төлөвлөгөө» таб руу шилжээд дахин үзнэ үү.":
-    "This submission covers PLANNED dates — switch to the «Plan» tab to preview it.",
-  "Энэ илгээлт ГЭРЭЭНИЙ огноонд хамаарна — «Гэрээ» таб руу шилжээд батална уу.":
-    "This submission covers CONTRACT dates — switch to the «Contract» tab to approve it.",
-  "Энэ илгээлт ТӨЛӨВЛӨГӨӨНИЙ огноонд хамаарна — «Төлөвлөгөө» таб руу шилжээд батална уу.":
-    "This submission covers PLANNED dates — switch to the «Plan» tab to approve it.",
+  "Батлах урьдчилан харалт хаагдана. Илгээлт хүлээгдсэн хэвээр үлдэнэ. Үргэлжлүүлэх үү?": "The approval preview will close. The submission stays pending. Continue?",
+  "Энэ илгээлт ГЭРЭЭНИЙ огноонд хамаарна — «Гэрээ» таб руу шилжээд дахин үзнэ үү.": "This submission covers CONTRACT dates — switch to the «Contract» tab to preview it.",
+  "Энэ илгээлт ТӨЛӨВЛӨГӨӨНИЙ огноонд хамаарна — «Төлөвлөгөө» таб руу шилжээд дахин үзнэ үү.": "This submission covers PLANNED dates — switch to the «Plan» tab to preview it.",
+  "Энэ илгээлт ГЭРЭЭНИЙ огноонд хамаарна — «Гэрээ» таб руу шилжээд батална уу.": "This submission covers CONTRACT dates — switch to the «Contract» tab to approve it.",
+  "Энэ илгээлт ТӨЛӨВЛӨГӨӨНИЙ огноонд хамаарна — «Төлөвлөгөө» таб руу шилжээд батална уу.": "This submission covers PLANNED dates — switch to the «Plan» tab to approve it.",
   "Биет гүйцэтгэл (сарын тайлан)": "Physical progress (monthly report)",
   "Багцын гэрээний дүн:": "Package contract value:",
-
-  /* ── Лавлагааны зурвас: нөгөө төрөл судлаар ард нь (2026-09-11) ── */
-  "Мөр бүрийн ДООД зурвас нь ТӨЛӨВЛӨСӨН огноо — зөвхөн харуулна, засагдахгүй.":
-    "The lower bar in each row is the PLANNED date — shown for reference only, not editable.",
-  "Мөр бүрийн ДООД зурвас нь ГЭРЭЭНИЙ огноо — зөвхөн харуулна, засагдахгүй.":
-    "The lower bar in each row is the CONTRACT date — shown for reference only, not editable.",
+  "Мөр бүрийн ДООД зурвас нь ТӨЛӨВЛӨСӨН огноо — зөвхөн харуулна, засагдахгүй.": "The lower bar in each row is the PLANNED date — shown for reference only, not editable.",
+  "Мөр бүрийн ДООД зурвас нь ГЭРЭЭНИЙ огноо — зөвхөн харуулна, засагдахгүй.": "The lower bar in each row is the CONTRACT date — shown for reference only, not editable.",
   "Гэрээнд заасан огноог засна.": "Edit the dates set in the contract.",
   "Ажлын төлөвлөсөн огноог засна.": "Edit the planned work dates.",
   "Зэрэг": "Both",
   "Нөгөө огноог нуана.": "Hide the other dates.",
-  "Төлөвлөсөн огноог мөр бүрийн доор нэмж харуулна.":
-    "Also show the planned dates below each row.",
-  "Гэрээний огноог мөр бүрийн доор нэмж харуулна.":
-    "Also show the contract dates below each row."
+  "Төлөвлөсөн огноог мөр бүрийн доор нэмж харуулна.": "Also show the planned dates below each row.",
+  "Гэрээний огноог мөр бүрийн доор нэмж харуулна.": "Also show the contract dates below each row.",
+  "(2) ЖАГСААЛТ — `stats` өгөхгүй бол бодит мөрүүд буцна (дээд тал нь {0}). ": "(2) LIST — without `stats`, actual rows are returned (at most {0}). ",
+  "Илгээлт хадгалагдсангүй: серверээс хариу ирсэнгүй.": "Submission was not saved: the server returned no result.",
+  "Илгээлт хаагдсангүй: серверээс хариу ирсэнгүй.": "Submission was not closed: the server returned no result.",
+  "Илгээлт хаагдсангүй.": "Submission was not closed.",
+  "Замын сүлжээний давхарга хоосон ирлээ — шинжилгээ бодох боломжгүй.": "The road network layer came back empty — the analysis cannot be computed.",
+  "Агаарын заалт ирээгүй": "No air readings received",
+  "Энэ хугацаанд хэмжилт бүртгэгдээгүй.": "No measurements were recorded in this period.",
+  "⚠ туршилтын өгөгдөл · багцын нэгтгэл": "⚠ test data · package rollup",
+  "Хадгалаагүй өөрчлөлт байна. Хаях уу?": "There are unsaved changes. Discard them?",
+  "сүүлийн хэмжилт: {0}": "last measured: {0}",
+  "Санхүүгийн хоцрогдол тооцогдохгүй — гэрээнд сарын төлбөрийн хуваарь байхгүй. Доорх жагсаалт нь олгосон дүнгээр эрэмбэлэгдсэн.": "Financial lag is not computed — contracts carry no monthly payment schedule. The list below is ordered by amount disbursed.",
+  "Төлөвлөгөө (алга)": "Plan (not available)",
+  "заалт нь жишээ өгөгдөл": "readings are sample data",
+  "Давхарга хайх…": "Search layers…",
+  "Давхарга хайх": "Search layers",
+  "① Багцаа сонго → ② «Бөглөх» дар → ③ нүдэнд обьёмоо бич → ④ «Илгээх»": "① Pick your package → ② press Fill → ③ enter volumes in the cells → ④ press Submit",
+  "Σ аялал × 0.05 ц × 2.8 — аялалын судалгаа байхгүй тул таамаг (Little-ийн хууль)": "Σ trips × 0.05 h × 2.8 — an assumption, as no travel survey exists (Little's law)",
+  "Батлах эрхгүй — энэ багцад батлагчаар томилогдсон хүн шийдвэрлэнэ. Админ «Хуваарийн эрх» хэсгээс томилно.": "You cannot approve — an assigned approver for this package decides. An admin assigns one under Schedule permissions.",
+  "Энэ илгээлтийг та өөрөө хийсэн тул өөрөө батлах боломжгүй. Өөр батлагч шийдвэрлэнэ — багцад батлагч томилоогүй бол админ «Хуваарийн эрх» хэсгээс нэмнэ.": "You submitted this yourself, so you cannot approve it. Another approver decides — if none is assigned to the package, an admin adds one under Schedule permissions.",
+  "Танд батлах эрх бий, гэхдээ ЭНЭ багцад томилогдоогүй байна. Админ «Хуваарийн эрх» → {0} → «Батлагч» хэсэгт таныг нэмнэ.": "You do have approval rights, but you are not assigned to THIS package. An admin adds you under Schedule permissions → {0} → Approver.",
+  "Бүх ажлын мөрийг дэлгэнэ": "Expand every task row",
+  "Гэрээ эхлэх": "Contract start",
+  "Гэрээ дуусах": "Contract end",
+  "Төлөвлөгөө эхлэх": "Plan start",
+  "Төлөвлөгөө дуусах": "Plan end",
+  "Гэрээний эхлэх огноо": "Contract start date",
+  "Гэрээний дуусах огноо": "Contract end date",
+  "Төлөвлөгөөт эхлэх огноо": "Planned start date",
+  "Төлөвлөгөөт дуусах огноо": "Planned end date",
+  "Гэрээгээр үргэлжлэх хоног": "Duration in days per contract",
+  "Төлөвлөгөөгөөр үргэлжлэх хоног": "Duration in days per plan",
+  "Уялдаа харах": "View dependencies",
+  "Жишээ: 11FS14 — 11-р ажил дууссанаас 14 хоногийн дараа. Олныг таслалаар: 11FS,22SS-5": "Example: 11FS14 — 14 days after task 11 finishes. Separate several with commas: 11FS,22SS-5",
+  "Жагсаалтаас сонгох": "Pick from the list"
 };
 
 export default en;

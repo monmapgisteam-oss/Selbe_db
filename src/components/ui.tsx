@@ -1383,7 +1383,15 @@ export function Select({
 export type TrendPoint = {
   /** Тэнхлэгийн шошго — «2026-07-20» / «2026-07» */
   label: string;
-  value: number;
+  /**
+   * Хэмжсэн утга. `null` = ХЭМЖИГДЭЭГҮЙ — муруй тэнд ТАСАРНА.
+   *
+   * ⚠️ `null` ≠ 0 (2026-09-15-ны хэрэглээний аудит). Урьд нь энэ талбар
+   * `number` байсан тул тайлангүй сар `fin()`-ээр 0 болж, муруй тэг рүү
+   * УНАСАН мэт зурагддаг байв — «тайлагнаагүй» ба «огт хийгээгүй» хоёр нэг
+   * харагдана. `GeneralDash.Timeline` энэ дүрмийг аль хэдийн зөв хэрэгжүүлсэн.
+   */
+  value: number | null;
   /** Уншилтын мөрөнд гарах нэмэлт тайлбар — «113 блок» */
   note?: string;
 };
@@ -1595,6 +1603,11 @@ export function Trend({
   }, [points.length]);
 
   if (points.length < 2) return <Empty label={tr('Цуваа зурахад хангалттай бүртгэл алга.')} />;
+  /* ⚠️ БҮХ цэг хэмжигдээгүй бол хоосон гэж ИЛ хэлнэ (2026-09-15): эс бөгөөс
+     тэнхлэг, шошго нь зурагдаад муруй нь байхгүй — «эвдэрсэн» гэж уншигдана. */
+  if (!points.some((p) => p.value != null && Number.isFinite(p.value))) {
+    return <Empty label={tr('Энэ хугацаанд хэмжилт бүртгэгдээгүй.')} />;
+  }
 
   // Тэнхлэгийн дээд хязгаар нь БҮТЭН аравт — 23%-ийн муруйг 0–100 дээр зурвал
   // шулуун шугам болж, өсөлт нь ялгагдахгүй.
@@ -1603,7 +1616,11 @@ export function Trend({
    * (жишээ нь 26°C хүрдэг агаарт 28°C-ийн шугам) тэнхлэгээс гарч, шугам нь
    * ОГТ ЗУРАГДАХГҮЙ — хэрэглэгч босго байхгүй гэж эндүүрнэ.
    */
-  const peak = Math.max(...points.map((p) => fin(p.value)), alert ? alert.value : 0);
+  /* ⚠️ ХЭМЖИГДЭЭГҮЙ цэгийг оргилын тооцоонд ОРУУЛАХГҮЙ — `fin(null)` нь 0 тул
+     тэдгээр нь тэнхлэгийг доош татахгүй ч, бүгд `null` бол `Math.max` нь
+     `-Infinity` өгнө. Тиймээс шүүж аваад хоосон бол 0-ээс эхэлнэ. */
+  const meas = points.map((p) => p.value).filter((v): v is number => v != null && Number.isFinite(v));
+  const peak = Math.max(...meas, alert ? alert.value : 0, 0);
   const top = Math.max(10, Math.ceil(peak / 10) * 10);
   /**
    * ⚠️ Утга бичих үед хамгийн өндөр цэг нь y≈0%-д буудаг тул түүний дээрх
@@ -1614,14 +1631,39 @@ export function Trend({
   const x = (i: number) => (i / (points.length - 1)) * 100;
   const y = (v: number) => 100 - (fin(v) / axisTop) * 100;
 
-  const path = points.map((p, i) => `${x(i)},${y(p.value)}`).join(' ');
-  /* Зөөлөн горимд `polyline`/`polygon`-ы оронд нэг `path` */
-  const dLine = smooth
-    ? monotonePath(points.map((p, i) => ({ x: x(i), y: y(p.value) })))
-    : '';
+  /*
+   * ⚠️ ТАСРАЛТГҮЙ ХЭСГҮҮД (2026-09-15-ны хэрэглээний аудит). Хэмжигдээгүй
+   *    (`null`) цэг дээр муруй ТАСАРНА — нэг `polyline`-аар зурвал тэр цэг 0
+   *    болж «гүйцэтгэл тэг рүү унасан» гэсэн ХУДАЛ дүр зураг өгнө.
+   *    Хэсэг бүр өөрийн `polyline`/`path`-тай; ганц цэгтэй хэсэг нь шугам
+   *    зурахгүй ч доорх цэгийн товчоор харагдана.
+   */
+  const runs: { i: number; v: number }[][] = [];
+  {
+    let cur: { i: number; v: number }[] = [];
+    points.forEach((p, i) => {
+      if (p.value == null || !Number.isFinite(p.value)) {
+        if (cur.length) runs.push(cur);
+        cur = [];
+        return;
+      }
+      cur.push({ i, v: p.value });
+    });
+    if (cur.length) runs.push(cur);
+  }
+  /** Хэсэг → `polyline`-ийн цэгүүд */
+  const runPts = (run: { i: number; v: number }[]) =>
+    run.map((r) => `${x(r.i)},${y(r.v)}`).join(' ');
+  /* Зөөлөн горимд `polyline`-ы оронд `path` — хэсэг тус бүрд */
+  const runPath = (run: { i: number; v: number }[]) =>
+    monotonePath(run.map((r) => ({ x: x(r.i), y: y(r.v) })));
+  /** Талбайн дүүргэлт — ЗӨВХӨН хэмжигдсэн хэсгийн доор */
+  const runArea = (run: { i: number; v: number }[]) =>
+    `${runPts(run)} ${x(run[run.length - 1].i)},100 ${x(run[0].i)},100`;
 
   /** Цэг нь босгоос ДЭЭШ гарсан уу */
-  const over = (v: number) => alert != null && fin(v) > alert.value;
+  /* ⚠️ Хэмжигдээгүй цэг ХЭЗЭЭ Ч босго давсан гэж тооцогдохгүй */
+  const over = (v: number | null) => alert != null && v != null && Number.isFinite(v) && v > alert.value;
   const alertY = alert ? y(alert.value) : 0;
 
   /**
@@ -1687,7 +1729,8 @@ export function Trend({
         {/* Сонгосон цэг анхааруулгын мужид бол уншилтын тоо ч улаанаар —
             чартаас нүд салгасан хэрэглэгч ч төлөвийг нэг харцаар мэднэ. */}
         <span className={`${s.trendValue} num ${over(cur.value) ? s.trendValueAlert : ''}`}>
-          {fmtV(fin(cur.value))}{unit}
+          {/* ⚠️ Хэмжигдээгүй цэг дээр «—», 0 БИШ (2026-09-15) */}
+          {cur.value == null ? '—' : `${fmtV(cur.value)}${unit}`}
         </span>
         <span className={s.trendMeta}>
           {tr(cur.label)}{cur.note ? ` · ${cur.note}` : ''}
@@ -1716,19 +1759,29 @@ export function Trend({
                   <stop offset="100%" stopColor="var(--tone, var(--data))" stopOpacity="0.02" />
                 </linearGradient>
               </defs>
-              {smooth ? (
-                <>
-                  {/* ⚠️ Талбай нь ШУГАМЫН ЗАМЫГ дагана — тусад нь байгуулбал
-                      хоёр муруй бага зэрэг зөрж, ирмэг дээр цагаан зурвас гарна. */}
-                  <path d={`${dLine} L100,100 L0,100 Z`} style={{ fill: `url(#${gradId})` }} />
-                  <path className={s.trendLine} d={dLine} fill="none" />
-                </>
-              ) : (
-                <>
-                  <polygon points={`0,100 ${path} 100,100`} style={{ fill: `url(#${gradId})` }} />
-                  <polyline className={s.trendLine} points={path} />
-                </>
-              )}
+              {/* ⚠️ ХЭСЭГ БҮРИЙГ ТУСАД НЬ (2026-09-15): хэмжигдээгүй цэг дээр
+                  муруй тасарна. Ганц цэгтэй хэсэгт шугам зурахгүй — цэгийн
+                  товч нь өөрөө тэр утгыг харуулна. */}
+              {runs.map((run) => {
+                const k = `r${run[0].i}`;
+                if (run.length < 2) return null;
+                return smooth ? (
+                  <g key={k}>
+                    {/* ⚠️ Талбай нь ШУГАМЫН ЗАМЫГ дагана — тусад нь байгуулбал
+                        хоёр муруй бага зэрэг зөрж, ирмэг дээр цагаан зурвас гарна. */}
+                    <path
+                      d={`${runPath(run)} L${x(run[run.length - 1].i)},100 L${x(run[0].i)},100 Z`}
+                      style={{ fill: `url(#${gradId})` }}
+                    />
+                    <path className={s.trendLine} d={runPath(run)} fill="none" />
+                  </g>
+                ) : (
+                  <g key={k}>
+                    <polygon points={runArea(run)} style={{ fill: `url(#${gradId})` }} />
+                    <polyline className={s.trendLine} points={runPts(run)} />
+                  </g>
+                );
+              })}
               {/* Босгын шугам — муруйн ДЭЭГҮҮР зурагдана (эс бөгөөс градиент дарна) */}
               {alert ? (
                 <line
@@ -1766,24 +1819,30 @@ export function Trend({
                 tabIndex={curIdx === i ? 0 : -1}
                 className={`${s.trendHit} ${hov === i ? s.trendHitOn : ''}`}
                 style={{ left: `${x(i)}%` }}
-                aria-label={`${p.label}: ${fmtV(fin(p.value))}${unit}${p.note ? ` · ${p.note}` : ''}`}
+                aria-label={`${p.label}: ${p.value == null ? tr('хэмжигдээгүй') : `${fmtV(p.value)}${unit}`}${p.note ? ` · ${p.note}` : ''}`}
                 onMouseEnter={() => setHov(i)}
                 onMouseLeave={() => setHov((h) => (h === i ? null : h))}
                 onFocus={() => setHov(i)}
                 onBlur={() => setHov((h) => (h === i ? null : h))}
               >
-                <span
-                  className={`${s.trendDot} ${over(p.value) ? s.trendDotAlert : ''}`}
-                  style={{ top: `${y(p.value)}%` }}
-                />
-                {showValues ? (
+                {/* ⚠️ ХЭМЖИГДЭЭГҮЙ цэгэд дүрс ЗУРАХГҮЙ (2026-09-15): `y(null)`
+                    нь 100% буюу тэнхлэгийн ёроол — «тэг хэмжигдсэн» гэж
+                    худал уншигдана. Товч нь хэвээр үлдэнэ (hover/фокусаар
+                    «—» гэж уншигдана), зөвхөн цэг алга болно. */}
+                {p.value != null && (
+                  <span
+                    className={`${s.trendDot} ${over(p.value) ? s.trendDotAlert : ''}`}
+                    style={{ top: `${y(p.value)}%` }}
+                  />
+                )}
+                {showValues && p.value != null ? (
                   /* ⚠️ Бүхэл тоог «.0»-гүй бичнэ: 8 бичиг зэрэгцэхэд илүү
                      тэмдэгт бүр давхцлын эрсдэл — «98» нь «98.0»-аас нарийн. */
                   <span
                     className={`${s.trendVal} ${over(p.value) ? s.trendValAlert : ''}`}
                     style={{ top: `${y(p.value)}%` }}
                   >
-                    {fmt ? fmt(fin(p.value)) : (Number.isInteger(fin(p.value)) ? fin(p.value) : fin(p.value).toFixed(1))}
+                    {fmt ? fmt(p.value) : (Number.isInteger(p.value) ? p.value : p.value.toFixed(1))}
                   </span>
                 ) : null}
               </button>

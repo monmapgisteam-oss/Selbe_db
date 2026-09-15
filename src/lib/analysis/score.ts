@@ -9,7 +9,17 @@ import {
 } from './config';
 
 export const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
-const lerp = (v: number, a: number, b: number) => (b === a ? 1 : (v - a) / (b - a));
+/**
+ * Шугаман интерполяц `a`→`b` дээр.
+ *
+ * ⚠️ `b === a` (норм нурсан) үед `v`-ийн БАЙРЛАЛААР шийднэ, тогтмол `1` БИШ
+ *    (2026-09-15-ны аудит). Урьд нь үргэлж `1` буцаадаг байсан тул `band`
+ *    горимд `hardMin === optMin` тохируулсан үзүүлэлтэд хамаагүй бага утга
+ *    ч `clamp(1,0,1) * fail` = 44 оноо авч, «маш муу» нь «дунд»-ын хилд
+ *    шахагддаг байв; `lower` горимд `best === hardMax` үед эсрэг талдаа
+ *    хазайдаг байлаа.
+ */
+const lerp = (v: number, a: number, b: number) => (b === a ? (v >= a ? 1 : 0) : (v - a) / (b - a));
 
 /**
  * Бүсийн ТӨРЛӨӨС хамаарах норм (Хүснэгт 6.1) — FAR, BCR-д.

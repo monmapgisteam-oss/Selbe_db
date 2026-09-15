@@ -1191,7 +1191,13 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
               </header>
               <div className={e.panelBody}>
                 {air.length === 0 ? <Empty label={tr('Агаарын харуул алга')} /> : (() => {
-                  const aqi = Math.round(maxOf(air, 'aqi'));
+                  /* ⚠️ ХАРУУЛ БАЙГААД ЗААЛТГҮЙ байж БОЛНО — `maxOf` тэр үед
+                     `null` буцаана. `0` болгон бөглөвөл `AQI_BAND(0)` нь
+                     «Сайн» (ногоон) өгч, «мэдээлэл алга» нь «агаар цэвэр»
+                     гэж ХУДАЛ уншигдана (2026-09-15-ны аудит). */
+                  const aqiRaw = maxOf(air, 'aqi');
+                  if (aqiRaw == null) return <Empty label={tr('Агаарын заалт ирээгүй')} />;
+                  const aqi = Math.round(aqiRaw);
                   const band = AQI_BAND(aqi);
                   return (
                     <>
@@ -1938,7 +1944,16 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                 <section className={e.panel}>
                   <header className={e.panelHd}>
                     <h3 className={e.panelTitle}>{current.name}</h3>
-                    <span className={e.panelNote}>{KIND_LABEL[current.kind]}</span>
+                    {/* ⚠️ ЗААЛТ НЬ ЖИШЭЭ гэдгийг ЭНД Ч хэлнэ (2026-09-15-ны
+                        хэрэглээний аудит). Хуудасны дээд талын `Note` нь
+                        доош гүйлгэхэд дэлгэцээс гардаг тул энэ самбар, АЧИ-ийн
+                        цагираг, 72 цагийн графикууд дээр ямар ч тэмдэг
+                        үлддэггүй байв. Салхи нь «жинхэнэ заалт» гэж шошготой
+                        байдаг тул шошгогүй нь жинхэнэ гэсэн ЭСРЭГ дохио
+                        үүсдэг — тэр эндүүрлийг хаана. */}
+                    <span className={e.panelNote}>
+                      {KIND_LABEL[current.kind]} · {tr('заалт нь жишээ өгөгдөл')}
+                    </span>
                   </header>
                   <div className={e.panelBody}>
                     <div className={e.grid}>
@@ -2178,14 +2193,28 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
 
 /* ══════════════════════ Туслах ══════════════════════ */
 
-/** Харуулуудын нэг үзүүлэлтийн ДУНДАЖ (сүүлийн заалтаар) */
-function avgOf(list: StationLive[], key: string): number {
+/**
+ * Харуулуудын нэг үзүүлэлтийн ДУНДАЖ (сүүлийн заалтаар).
+ *
+ * ⚠️ ЗААЛТГҮЙ бол `null` — `0` БИШ (2026-09-15-ны аудит, төслийн `null ≠ 0`
+ *    үндсэн дүрэм). Урьд нь `0` буцаадаг байсан тул харуул холбогдоогүй,
+ *    эсвэл заалт ирээгүй үед усны түвшин «0.00 м», урсац «0.00 м³/с» гэж
+ *    ХЭМЖИГДСЭН мэт харагддаг байв. `num()` нь `null`-ыг «—» болгоно.
+ */
+function avgOf(list: StationLive[], key: string): number | null {
   const vals = list.map((s) => s.metrics.find((m) => m.key === key)?.latest).filter((v): v is number => v != null);
-  return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+  return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
 }
 
-/** Харуулуудын нэг үзүүлэлтийн ХАМГИЙН ИХ утга — АЧИ шиг «хамгийн муугаар» үнэлэх зүйлд */
-function maxOf(list: StationLive[], key: string): number {
+/**
+ * Харуулуудын нэг үзүүлэлтийн ХАМГИЙН ИХ утга — АЧИ шиг «хамгийн муугаар»
+ * үнэлэх зүйлд.
+ *
+ * ⚠️ ЗААЛТГҮЙ бол `null` (дээрхтэй ижил дүрэм). АЧИ-д энэ нь ОНЦГОЙ чухал:
+ *    `0` нь `AQI_BAND`-аар «Сайн» (ногоон) болох тул «мэдээлэл алга» нь
+ *    «агаар цэвэр» гэж ХУДАЛ уншигдаж байв.
+ */
+function maxOf(list: StationLive[], key: string): number | null {
   const vals = list.map((s) => s.metrics.find((m) => m.key === key)?.latest).filter((v): v is number => v != null);
-  return vals.length ? Math.max(...vals) : 0;
+  return vals.length ? Math.max(...vals) : null;
 }

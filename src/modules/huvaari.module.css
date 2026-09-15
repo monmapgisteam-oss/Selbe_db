@@ -114,11 +114,22 @@
 /* ⚠️ Зүүн багана ХЭВТЭЭ гүйлтэд ОРОЛЦОХГҮЙ — нэр байрандаа үлдэнэ. */
 /* ⚠️ Зүүн багана хэвтээ гүйлтэд НААЛДАНА — хуанлийг баруун тийш гүйлгэхэд
    ажлын нэр байрандаа үлдэнэ, эс тэгвээс «энэ зурвас юуных вэ» алдагдана. */
+/*
+ * ⚠️ ӨРГӨН ТЭЛЭВ (2026-09-15): дөрвөн ОГНООНЫ багана нэмэгдсэн тул зүүн
+ *    самбар 4 × 78px + 2 × 46px = 404px илүү зай шаардана. Хуучин `clamp(240px, 30%,
+ *    420px)`-д тэдгээр нь ажлын нэрийг бараг тэглэж, хүснэгт уншигдахгүй
+ *    болно.
+ *
+ * ⚠️ Дээд хязгаар нь 900px: түүнээс дээш бол нарийн дэлгэц дээр хуанлид
+ *    зай үлдэхгүй. Доод нь 710px — код (66) + нэр (мин ~100) + огноо (312)
+ *    + хоног (92) + хамаарал (110) + зай (~28) нийлбэр.
+ * ⚠️ `30%` → `58%`: өргөн дэлгэцэд хуанли хэвээр давамгайлна.
+ */
 .gSide {
   position: sticky;
   left: 0;
   z-index: 2;
-  flex: 0 0 clamp(240px, 30%, 420px);
+  flex: 0 0 clamp(710px, 58%, 900px);
   min-width: 0;
   border-right: 1px solid var(--line);
   background: var(--surface);
@@ -138,9 +149,32 @@
 }
 /* ⚠️ Толгой ба мөрийн багана ЯГ ижил өргөнтэй байх ёстой (`--des-w`,
    `--ham-w`) — зөрвөл гарчиг утгынхаа дээр таарахгүй. */
-.gSideHead, .row { --des-w: 66px; --ham-w: 62px; }
+/*
+ * ⚠️ ХҮСНЭГТИЙН БАГАНЫ ӨРГӨН — толгой ба мөр ЯГ ижил хувьсагчаас.
+ *    Зөрвөл гарчиг утгынхаа дээр таарахгүй.
+ * ⚠️ `--date-w` (2026-09-15): дөрвөн огнооны багана. «2026-04-18» нь
+ *    10 тэмдэгт, 11px tabular-nums дээр ~72px — 78px нь дүүргэлттэй.
+ */
+.gSideHead, .row { --des-w: 66px; --ham-w: 110px; --date-w: 78px; --days-w: 46px; }
 .gHeadDes { flex: none; width: var(--des-w); padding-right: 8px; text-align: right; }
 .gHeadHam { flex: none; width: var(--ham-w); text-align: right; }
+/* ⚠️ Гарчиг нь ХОЁР МӨР болж эвхэгдэж болно («Төлөвлөгөө эхлэх») — тэр нь
+   зөвшөөрөгдөнө: толгойн мөрийн өндөр PL_ROW тул багтана. */
+.gHeadDate {
+  flex: none;
+  width: var(--date-w);
+  padding-right: 6px;
+  text-align: right;
+  line-height: 1.15;
+}
+/* ⚠️ ХОНОГИЙН гарчиг — огноогоос НАРИЙХАН: гурван оронтой тоо л багтана */
+.gHeadDays {
+  flex: none;
+  width: var(--days-w);
+  padding-right: 6px;
+  text-align: right;
+  line-height: 1.15;
+}
 .gHeadWork { flex: 1; }
 .gRight { flex: none; }
 .gTrack { position: relative; }
@@ -512,6 +546,43 @@
   font-weight: 600;
 }
 .plBarWhen { flex: none; }
+
+/*
+ * ХОЁР МӨРИЙН ШОШГО (2026-09-11): эхлэх огноо дээр, дуусах огноо доор.
+ *
+ * ⚠️ ӨНДРИЙН НӨӨЦ (2026-09-15-ны аудит). `.plBar` нь `top:4px; bottom:4px`
+ *    тул PL_ROW=30 дээр 22px, дээр нь `border 1px × 2` — ДОТООД зай 20px.
+ *    Хоёр мөр × 9.5px + 1px зай = ЯГ 20px байсан нь хилийн утга: `line-height`
+ *    дугуйрах, фонтын дээд/доод зай, эсвэл `border` нэмэгдэх юу ч болсон
+ *    доод мөрийг огтолно. Тиймээс шошгын `font-size`-ыг 9px болгож (17px
+ *    нийт) 3px нөөц үлдээв — огноо бүтэн уншигдана.
+ *
+ * ⚠️ `overflow: hidden` + `nowrap` тул багтаагүй текст ellipsis-ГҮЙ тасардаг.
+ *    `.plBarName`-д `text-overflow` бий ч ОГНООНЫ мөрөнд байгаагүй — «2026-04-1»
+ *    гэж хагас огноо гарч байв. Огноонд ч ellipsis нэмэв: тасарсан нь ил
+ *    харагдаж, хэрэглэгч бүтэн огноог хаанаас харахаа мэднэ.
+ *    Босго (`Huvaari.tsx`, 100px) нь ердийн тохиолдолд тасралтгүй байлгана.
+ */
+.plBarTwo { line-height: 1; font-size: 9px; }
+/* ⚠️ `flex: 1 1 auto` — дээрх `.plBarWhen { flex: none }`-ыг ДАРНА. Хоёр
+   мөрийн хувилбарт огноо нь агших ЁСТОЙ: агшихгүй бол `max-width: 100%`
+   хүчингүй болж ellipsis ажиллахгүй, текст зурвасаас халина. Нэг мөрийн
+   хувилбарт `flex: none` хэвээр (тэнд нэр нь агшдаг — дээрх ⚠️). */
+.plBarTwo .plBarWhen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.plBarTwo .plBarWhen span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.plBarTwo:has(.plBarName) { gap: 6px; }
+.plBarTwo:has(.plBarName) .plBarWhen { align-items: flex-start; }
 /* УЯЛДААНЫ ЗӨРЧИЛ — шаардлагаас ӨМНӨ эхэлсэн зурвас. Хориглодоггүй тул
    зөвхөн тод улаан хүрээ: «энэ огноо урд ажилтайгаа зөрж байна» гэсэн дохио. */
 .plBarViol { outline: 2px dashed var(--bad); outline-offset: 1px; }
@@ -774,4 +845,177 @@
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 6px 8px;
+}
+
+/*
+ * ТОЛГОЙН ЗУРВАСЫН ТАЙЛБАР — товчны ОРОНД гарах шалтгаан (2026-09-15).
+ *
+ * ⚠️ ЯАГААД: батлах эрхгүй хүнд «Шийдвэрлэх» товч ОГТ зурагддаггүй байсан
+ *    тул хэрэглэгч «товч идэвхжихгүй» гэж үздэг ч үнэндээ товч байхгүй,
+ *    шалтгаан нь хаана ч бичигдэхгүй байв. Товчны хэмжээ, байрлалд таарна.
+ */
+.muted {
+  padding: 7px 11px;
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--ink-2);
+  max-width: 420px;
+}
+
+/*
+ * ТҮВШНИЙ ЗУРВАС — «Гэрээний бүртгэл» хуудасны ИЖИЛ загвар (2026-09-15,
+ * хэрэглэгчийн шаардлага: «түвшин 1–5 үүнтэй адилхан хий»).
+ *
+ * ⚠️ `finance.module.css`-ийн `.lvBar` · `.lvLbl` · `.lvOn`-ийн ХУУЛБАР.
+ *    Нэг файлаас импортлох боломжгүй (CSS module тус бүр тусдаа) бөгөөд
+ *    харагдацууд стайлаа ТУСДАА барих нь 2026-08-25-ны шийдвэр — тиймээс
+ *    давхардал нь санаатай. Хэмжээ, өнгө ЗӨРЖ БОЛОХГҮЙ: хоёр хуудсанд нэг
+ *    үүрэгтэй товч өөр харагдвал хэрэглэгч тэднийг өөр зүйл гэж уншина.
+ */
+.lvBar {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.lvLbl {
+  margin-right: 5px;
+  color: var(--ink-3);
+  font-size: 0.74rem;
+}
+.lvBar button {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.lvBar button:hover { border-color: var(--data); color: var(--ink); }
+/* ⚠️ Идэвхтэй товч — хэрэглэгч гараар нэг бүлэг хумивал АЛЬ Ч товч тодрохгүй
+   (`lvl = 0`): дэлгэц дээрх байдалтай зөрчилдсөн тодруулга үлдэх ёсгүй. */
+.lvOn {
+  background: var(--data) !important;
+  border-color: var(--data) !important;
+  color: #fff !important;
+}
+
+/*
+ * ОГНООНЫ НҮД — гэрээ · төлөвлөгөөний эхлэх/дуусах (2026-09-15).
+ *
+ * ⚠️ ЗАСАГДАХГҮЙ: `button` БИШ `span`. Огноо засах цорын ганц зам нь хуанли
+ *    дээр чирэх ба popup хэвээр — хоёр өөр засварын зам үүсвэл аль нь үнэн
+ *    болох нь бүрхэг болно (`TaskRow`-ийн ижил ⚠️).
+ * ⚠️ `tabular-nums` — багана дотор орон нь эгнэнэ, эс бөгөөс огноонууд
+ *    хоорондоо гулсаж уншигдахгүй болно.
+ * ⚠️ Хуваарьгүй мөрийн «—» нь бүдэг (`--ink-3`) — жинхэнэ огноотой андуурахгүй.
+ */
+.rowDate {
+  flex: none;
+  width: var(--date-w);
+  padding-right: 6px;
+  text-align: right;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.rowGroup .rowDate { color: var(--ink); font-weight: 600; }
+
+/*
+ * ҮРГЭЛЖЛЭХ ХОНОГ — огнооны хосын ард, ТУСДАА багана (2026-09-15, хэрэглэгч).
+ *
+ * ⚠️ Огнооны нүдэнд шигтгэхгүй: нэг нүд хоёр утга агуулбал эрэмбэлэх,
+ *    хуулах, нүдээр гүйлгэх бүгд хүндэрнэ.
+ * ⚠️ `tabular-nums` — 7 ба 187 хоёр нэг босоо шугамд эгнэнэ.
+ */
+.rowDays {
+  flex: none;
+  width: var(--days-w);
+  padding-right: 6px;
+  text-align: right;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+.rowGroup .rowDays { color: var(--ink-2); font-weight: 600; }
+
+/*
+ * УЯЛДААНЫ НҮД — ШУУД БИЧДЭГ (2026-09-15, хэрэглэгч: «11FS14 гэж шууд бичиж
+ * холбоос хийх боломжтой болгох»). MS Project-ийн Predecessors нүдний загвар.
+ *
+ * ⚠️ Оролт + «…» товч ХОЁУЛАА `--ham-w` дотор багтана. Тиймээс тэр өргөнийг
+ *    62px → 110px болгов (дээрх хувьсагчийн мөрийг үз): «11FS14,22SS-5» гэсэн
+ *    хоёр токен уншигдах ёстой.
+ * ⚠️ Хүрээ нь ЗӨВХӨН фокуст — 1,400 мөрт нүд бүр хүрээтэй байвал хүснэгт
+ *    торлог болж, огноо, нэр зэрэг ГОЛ мэдээлэл живнэ.
+ */
+.hamWrap {
+  flex: none;
+  width: var(--ham-w);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+.hamIn {
+  font: inherit;
+  flex: 1;
+  min-width: 0;
+  padding: 1px 3px;
+  text-align: right;
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-2);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+}
+.hamIn:hover { border-color: var(--line); }
+.hamIn:focus {
+  outline: none;
+  border-color: var(--data);
+  background: var(--surface-2);
+  color: var(--ink);
+  /* ⚠️ Фокуст ЗҮҮН зэрэгцүүлэлт — урт бичиглэл бичихэд курсор ирмэгт
+     наалдахгүй, бичсэн зүйл эхнээсээ харагдана. */
+  text-align: left;
+}
+/* «…» — popup руу орох зам (жагсаалтаас нэрээр сонгох) */
+.hamMore {
+  font: inherit;
+  flex: none;
+  width: 14px;
+  padding: 0;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--ink-3);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.hamMore:hover { color: var(--data); }
+
+/*
+ * ТОЛГОЙН ЖИШЭЭ БИЧИГЛЭЛ — «Хамаарал» гарчгийн хажууд «11FS14».
+ *
+ * ⚠️ Нүдний `placeholder`-ийн ОРОНД (2026-09-15, хэрэглэгч: «бүгд 11FS14
+ *    болчихлоо»). Тэнд байвал хоосон мөр бүрд давтагдаж, бодит утга мэт
+ *    уншигдана — толгойд НЭГ УДАА бичих нь ижил мэдээллийг өгнө.
+ * ⚠️ Гарчгаас БҮДЭГ ба налуу — «энэ бол загвар, утга биш» гэдгийг хэлбэрээр.
+ */
+.gHeadHint {
+  font-style: italic;
+  font-weight: 400;
+  color: var(--line-strong);
+  font-variant-numeric: tabular-nums;
 }

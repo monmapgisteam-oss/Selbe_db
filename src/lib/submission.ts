@@ -720,6 +720,13 @@ export async function saveSubmission(
     };
     const r = await fl.applyEdits(edit as Parameters<typeof fl.applyEdits>[0]);
     const results = [...(r.addFeatureResults ?? []), ...(r.updateFeatureResults ?? [])];
+    /* ⚠️ ХООСОН ХАРИУГ БАС БАРИНА (2026-09-15-ны аудит): `applyEdits` нь
+       алдаагүй атлаа үр дүнгүй буцаж болно. Доорх OID шалгуур нь `add`-ыг
+       барьдаг ч `update`-д `target` аль хэдийн мэдэгдэж байдаг тул барьдаггүй
+       байв — тиймээс хариу ирсэн эсэхийг ЭНД шалгана. */
+    if (!results.length) {
+      return { ok: false, error: tr('Илгээлт хадгалагдсангүй: серверээс хариу ирсэнгүй.') };
+    }
     const bad = results.find((x) => x.error != null);
     if (bad) return { ok: false, error: tr('Илгээлт хадгалагдсангүй: {0}', errMsg(bad.error)) };
     const oid = target ?? results[0]?.objectId;
@@ -782,8 +789,23 @@ export async function closeSubmission(
       }],
     };
     const r = await fl.applyEdits(edit as Parameters<typeof fl.applyEdits>[0]);
-    const bad = (r.updateFeatureResults ?? []).find((x) => x.error != null);
-    if (bad) return { ok: false, error: errMsg(bad.error) };
+    /*
+     * ⚠️ ХООСОН ХАРИУГ БАС БАРИНА (2026-09-15-ны аудит). Урьд нь зөвхөн
+     *    `error != null`-ыг шалгадаг байсан тул `updateFeatureResults` огт
+     *    ирээгүй хариунд `bad = undefined` болж `{ok:true}` буцдаг байв.
+     *    Тэр үед `sub|` мөр НЭЭЛТТЭЙ үлдэж, дараагийн илгээлт батлагдсан
+     *    агуулга дээр нэгтгэгдэн архивт ДАВХАР тоологдоно.
+     *
+     * ⚠️ `objectId`-ыг БАС шалгана: ArcGIS JS API-ийн `FeatureEditResult`-д
+     *    `success` талбар байхгүй тул амжилтын ганц бодит тэмдэг нь буцсан
+     *    мөрийн дугаар мөн.
+     */
+    const ups = r.updateFeatureResults ?? [];
+    if (!ups.length) {
+      return { ok: false, error: tr('Илгээлт хаагдсангүй: серверээс хариу ирсэнгүй.') };
+    }
+    const bad = ups.find((x) => x.error != null || typeof x.objectId !== 'number');
+    if (bad) return { ok: false, error: errMsg(bad.error) || tr('Илгээлт хаагдсангүй.') };
     return { ok: true };
   } catch (e) {
     return { ok: false, error: errMsg(e) };

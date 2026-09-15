@@ -513,7 +513,11 @@ export function Tailan() {
                         title={tr('Багц тус бүрийн гүйцэтгэлийн хувь')}
                         max={100}
                         items={[...sorted]
-                          .sort((a, b) => (b.progress ?? 0) - (a.progress ?? 0))
+                          /* ⚠️ Хэмжигдээгүйг -1 (2026-09-15-ны аудит): 0-оор
+                             орлуулбал ЖИНХЭНЭ 0%-тай багцтай нэг байранд суух ба
+                             уншигч «хамгийн муу» ба «тайлагнаагүй»-г ялгаж чадахгүй.
+                             Dashboard ба GeneralDash энэ дүрмийг баримтжуулсан. */
+                          .sort((a, b) => (b.progress ?? -1) - (a.progress ?? -1))
                           .map((b) => ({
                             label: tr(b.label),
                             value: b.progress,
@@ -586,7 +590,12 @@ export function Tailan() {
                             <th className={r.num}>{tr('Блок')}</th>
                             <th className={r.num}>{tr('Эзлэх жин')}</th>
                             <th className={r.num}>{tr('Гүйцэтгэл')}</th>
-                            <th className={r.num}>{tr('Төлөвлөгөө')}</th>
+                            {/* ⚠️ Багана нь ОДООГООР бүхэлдээ «—» (`reportData`-ийн
+                                `planned` нь literal `null`). Доорх тайлбар мөр
+                                шалтгааныг хэлдэг ч ХҮСНЭГТЭЭС ХОЛ байдаг тул
+                                толгойд нь ч тэмдэглэв (2026-09-15-ны аудит) —
+                                уншигч «хоцрогдол тооцогдсон» гэж эндүүрэхгүй. */}
+                            <th className={r.num}>{tr('Төлөвлөгөө (алга)')}</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -723,7 +732,8 @@ export function Tailan() {
                         title={tr('Багц тус бүрийн барилга угсралтын гүйцэтгэл')}
                         max={100}
                         items={[...x.progress.byBagts]
-                          .sort((a, b) => (b.pct ?? 0) - (a.pct ?? 0))
+                          /* ⚠️ Хэмжигдээгүйг -1 — дээрх ижил дүрэм */
+                          .sort((a, b) => (b.pct ?? -1) - (a.pct ?? -1))
                           .map((b) => ({ label: tr(b.bagts), value: b.pct, text: pct(b.pct, 2) }))}
                       />
                       <Cap no="6.1">{tr('Багц тус бүрийн барилга угсралтын гүйцэтгэл')}</Cap>

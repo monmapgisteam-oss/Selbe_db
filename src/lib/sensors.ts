@@ -412,18 +412,33 @@ export type SensorLive = SensorDef & {
   error?: string;
 };
 
-/** ISO-8601 (`+08:00`) эсвэл `dd/MM/yyyy HH:mm:ss` → epoch ms. Задрахгүй бол null. */
+/**
+ * ISO-8601 (`+08:00`) эсвэл `dd/MM/yyyy HH:mm:ss` → epoch ms.
+ * Задрахгүй бол null.
+ *
+ * ⚠️ `dd/MM/yyyy`-ийг `Date.parse`-ААС ӨМНӨ шалгана (2026-09-15-ны аудит).
+ *    Урьд нь `Date.parse` эхэлж дуудагддаг байсан бөгөөд V8 нь `09/01/2026`
+ *    гэсэн мөрийг АМЕРИК дүрмээр (MM/DD) АМЖИЛТТАЙ задалдаг тул доорх зөв
+ *    regex рүү ХЭЗЭЭ Ч хүрдэггүй байв: 1-р сарын 9 нь 9-р сарын 1 болж,
+ *    цуваа 8 сараар шилжин, `ageHours` «шинэхэн» гэж ногооноор харагдаж
+ *    байхад заалт нь үнэндээ хэдэн сарын хуучин байлаа. Өдөр нь 12-оос их
+ *    үед л (`25/01/…`) `Date.parse` NaN өгч, алдаа нүдэнд илэрдэг байсан.
+ *
+ * ⚠️ Энэ хэлбэрийн цагийг ОРОН НУТГИЙН гэж үзнэ (`new Date(...)`), `Date.UTC`
+ *    БИШ. Харуулууд УБ-ын цагаар тамгалдаг тул UTC гэж уншвал бүх заалт
+ *    8 цагаар хойш шилжиж, `ageHours` хэтэрч «хуучирсан» улаан төлөв худал
+ *    гарч байв.
+ */
 export function parseTs(v: unknown): number | null {
   const s = String(v ?? '').trim();
   if (!s) return null;
-  const iso = Date.parse(s);
-  if (Number.isFinite(iso)) return iso;
   const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2}):(\d{2})$/);
   if (m) {
     const [, dd, MM, yyyy, hh, mi, ss] = m;
-    return Date.UTC(+yyyy, +MM - 1, +dd, +hh, +mi, +ss);
+    return new Date(+yyyy, +MM - 1, +dd, +hh, +mi, +ss).getTime();
   }
-  return null;
+  const iso = Date.parse(s);
+  return Number.isFinite(iso) ? iso : null;
 }
 
 /**

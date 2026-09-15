@@ -473,8 +473,14 @@ export async function decideObyem(args: {
   oid: number;
   approve: boolean;
   approver: string;
-  /** Илгээсэн хүн — өөрийгөө батлахаас хамгаалахад */
-  author: string;
+  /**
+   * Илгээсэн хүн — ЗӨВХӨН нөөц (fallback).
+   *
+   * ⚠️ 2026-09-15-ны аудит: дүрмийн ЖИНХЭНЭ эх нь ЭНЭ БИШ, СЕРВЕРИЙН мөрийн
+   *    `F.author` (доор `cur`-аас уншина). Дуудагчийн өгсөн утгад найдвал
+   *    консолоос `author: ''` дамжуулаад хамгаалалтыг бүрэн алгасаж болно.
+   */
+  author?: string;
   reason?: string;
 }): Promise<{ ok: boolean; error?: string }> {
   /*
@@ -486,9 +492,16 @@ export async function decideObyem(args: {
    *    товч нуух нь харагдацын асуудал, харин дүрэм нь өгөгдлийнх. Хоёр эрх
    *    (`obyemEdit` + `obyemApprove`) нэг хүнд олгогдвол товч нь идэвхтэй
    *    болох тул ганц хамгаалалт нь энэ.
+   *
+   * ⚠️ ХОЁР ДАВХАР ШАЛГУУР (2026-09-15-ны аудит):
+   *      (1) ЭНД — дуудагчийн өгсөн `author`-оор, СҮЛЖЭЭНЭЭС ӨМНӨ. ArcGIS
+   *          уншигдахгүй орчинд дүрэм чимээгүй алга болохоос сэргийлнэ.
+   *      (2) `cur`-ийн ДАРАА — СЕРВЕРИЙН мөрийн `F.author`-оор, учир нь (1)
+   *          нь дуудагчийн утгад найддаг тул хуурамчлах боломжтой.
    */
   const me = args.approver.trim().toLowerCase();
-  if (me && me === args.author.trim().toLowerCase()) {
+  const claimed = (args.author ?? '').trim().toLowerCase();
+  if (me && claimed && me === claimed) {
     return { ok: false, error: tr('Өөрийн илгээсэн засварыг өөрөө батлах боломжгүй — өөр батлагч шийдвэрлэнэ.') };
   }
   if (!args.approve && !args.reason?.trim()) {
@@ -502,8 +515,17 @@ export async function decideObyem(args: {
    *    Түүнийг дарахад шийдвэр гаргасан хүний нэр чимээгүй дарагдана. Мөр нь
    *    ганц тул `applyEdits` алдаа өгөхгүй — ЗӨВХӨН энэ шалгуур л барина.
    */
-  const cur = await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.approver}`);
+  const cur = await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.approver},${F.author}`);
   if (!cur.length) return { ok: false, error: tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') };
+  /*
+   * ⚠️ ХОЁР ДАХЬ ШАЛГУУР — ЗОХИОГЧ СЕРВЕРЭЭС (2026-09-15-ны аудит),
+   *    `huvaariBatlah`-тай ижил дүрэм. Дээрх эрт шалгуур нь дуудагчийн утгад
+   *    найддаг тул хоосон утга дамжуулаад алгасах боломжтой байв.
+   */
+  const author = s(cur[0][F.author])?.trim().toLowerCase() ?? '';
+  if (me && author && me === author) {
+    return { ok: false, error: tr('Өөрийн илгээсэн засварыг өөрөө батлах боломжгүй — өөр батлагч шийдвэрлэнэ.') };
+  }
   const curStatus = s(cur[0][F.status]);
   if (curStatus !== OBYEM_STATUS.pending) {
     const by = s(cur[0][F.approver]);

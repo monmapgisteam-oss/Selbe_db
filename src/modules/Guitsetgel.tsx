@@ -673,6 +673,17 @@ function Item({ work, stage, who, onFix, readOnly, isSuper }: {
   /** Товчийг хаах уу — дутуу ЭСВЭЛ тодорхойгүй бол ХАА. */
   const lackBlocks = lack == null || lack.length > 0;
   const [okKeys, setOkKeys] = useState<Set<string>>(new Set());
+  /*
+   * ⚠️ ТОЙРОГ СОЛИГДОХОД ЗӨВШӨӨРЛИЙГ ТЭГЛЭНЭ (2026-09-15-ны аудит).
+   *
+   * `work.key` нь `багц|ажил|компани` тул буцаагдаад ДАХИН илгээгдсэн ажил
+   * дээр `Item` unmount БОЛОХГҮЙ: `changes` нь шинэ `sheetOid`-оор дахин
+   * ачаалагдахад ӨМНӨХ тойргийн зөвшөөрлүүд хэвээр үлдэж, хянагч нэг ч нүд
+   * харалгүйгээр «Батлах» товч идэвхтэй болдог байв — «нүд бүрийг гараар
+   * зөвшөөрнө» гэсэн үндсэн дүрмийн шууд зөрчил.
+   */
+  const curSheetOid = cur?.[F.sheetOid];
+  useEffect(() => { setOkKeys(new Set()); }, [curSheetOid]);
   const toggleOk = useCallback((row: number, block: string) => {
     setOkKeys((prev) => {
       const n = new Set(prev);

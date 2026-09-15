@@ -24,6 +24,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { HO_IPC, hoAmount, hoPayCode, hoSaving, num } from '@/lib/services';
 import type { HoContract } from '@/lib/ipc';
 import { LINK_FIELDS } from '@/lib/ipcLink';
+import { dayKey } from '@/lib/format';
 
 type Row = Record<string, unknown>;
 
@@ -245,14 +246,20 @@ const DETAIL_SPEC: readonly {
  *
  * ⚠️ Жинхэнэ `0` нь ХОOСОН БИШ — үлдэнэ (`null ≠ 0`).
  */
-/** Огноог `YYYY-MM-DD` болгоно — танихгүй бол түүхийгээр нь */
+/**
+ * Огноог `YYYY-MM-DD` болгоно — танихгүй бол түүхийгээр нь.
+ *
+ * ⚠️ epoch-д `dayKey` (ОРОН НУТГИЙН огноо), `toISOString().slice(0,10)` БИШ
+ *    (2026-09-15-ны аудит) — UTC нь +08 бүсэд шөнийн гүйлгээг ӨМНӨХ өдөрт
+ *    буулгадаг. DateOnly МӨР нь цаггүй тул дээрх regex-ээр шууд таслагдана.
+ */
 const dayOf = (v: unknown): string => {
   const s = String(v ?? '').trim();
   const m = /^(\d{4}-\d{2}-\d{2})/.exec(s);
   if (m) return m[1];
   const t = typeof v === 'number' ? v : Date.parse(s);
   if (!Number.isFinite(t)) return s;
-  return new Date(t).toISOString().slice(0, 10);
+  return dayKey(t);
 };
 
 export function details(h: Row): DetailGroup[] {
@@ -329,12 +336,46 @@ export type ContractBlock = {
  * `murun_id`-аар. Гарчиггүй бүлэг ХЭЗЭЭ Ч гаргахгүй — хүн юу харж
  * байгаагаа мэдэхгүй болно.
  */
+/**
+ * Гэрээний төлбөрийн мөрүүдээс НЭГТГЭСЭН «толгой мөр» — талбар бүрт
+ * УТГАТАЙ (null/хоосон биш) эхний утгыг сонгоно.
+ *
+ * ⚠️ `ipc.ts`-ийн `pickField`-тэй ижил дүрэм, зөвхөн энэ модулийн хэрэгцээнд
+ *    (тэр нь export биш). Зөрчлийн анхааруулга ЭНД хэвлэхгүй — `groupHo`
+ *    ижил өгөгдөл дээр аль хэдийн нэг удаа хэвлэсэн байна, хоёр дахин
+ *    хэвлэвэл нэг зөрчил хоёр мэт харагдана.
+ */
+function mergeHead(pays: readonly Row[]): Row {
+  const out: Row = {};
+  for (const r of pays) {
+    for (const k of Object.keys(r)) {
+      if (k in out) continue;
+      const v = r[k];
+      if (v == null || (typeof v === 'string' && v.trim() === '')) continue;
+      out[k] = v;
+    }
+  }
+  return out;
+}
+
 export function contractBlocks(cs: readonly HoContract[]): ContractBlock[] {
   return cs.map((c) => {
     const rows = payRows(c.pays);
-    /* ⚠️ Гэрээний талбарыг ЭХНИЙ мөрөөс — `groupHo`-ийн ЯГ ижил дүрэм
-       (гэрээ бүрд uniq утга 1 гэж амьдаар батлагдсан). */
-    const h = c.pays[0] ?? {};
+    /*
+     * ⚠️ Гэрээний талбарыг ТАЛБАР БҮРЭЭР, УТГАТАЙ эхний мөрөөс — `groupHo`-ийн
+     *    `pickField`-тэй ижил дүрэм (2026-09-15-ны аудит).
+     *
+     *    Урьд нь `c.pays[0]` гэсэн НЭГ «толгой мөр» сонгодог байв. `groupHo`
+     *    тэр загвараа 2026-09-11-нд яг ЭНЭ шалтгаанаар орхисон: нэг мөрөнд
+     *    төсөв нь бөглөгдсөн атлаа гүйцэтгэгч нь хоосон байж болно.
+     *    Илүү аюултай нь `ipcAuto`-ийн AUTO мөр — тэр нь гэрээний талбар ОГТ
+     *    агуулдаггүй бөгөөд `OBJECTID` эрэмбээр эхэнд ирж болно. Тэр үед
+     *    `details(h)` бүхэлдээ хоосон, `savingMismatch` худал `false` болж,
+     *    гэрээний төсөв, гүйцэтгэгч, захирамж бүгд IPC хуудаснаас чимээгүй
+     *    алга болно — `contractTotal`/`paidTotal` нь `groupHo`-оос ирдэг тул
+     *    зөв хэвээр үлдэж, зөрчил нүдэнд илрэхгүй.
+     */
+    const h = mergeHead(c.pays);
     const stored = num(h[C.saving]);
     const calc = hoSaving(h);
     return {

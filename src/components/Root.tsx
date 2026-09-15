@@ -130,9 +130,16 @@ export default function Root() {
   /** Нэвтрэлтээс буцаж эрх авмагц хүлээгдэж буй цэгт орно */
   useEffect(() => {
     if (!authorized) return;
-    const p = sessionStorage.getItem(PENDING_KEY);
+    /* ⚠️ try/catch (2026-09-15-ны аудит): хатуу нууцлалын тохиргоотой хөтөч
+       дээр `sessionStorage`-д хандахад ШИДДЭГ. Энэ нь эффектийн дотор тул
+       хамгаалахгүй бол БҮХ апп унаж, зөвхөн root ErrorBoundary-ийн бүтэн
+       дэлгэцийн алдаа үлддэг байв. Дээрх `localStorage` аль хэдийн хамгаалсан. */
+    let p: string | null = null;
+    try {
+      p = sessionStorage.getItem(PENDING_KEY);
+      if (p) sessionStorage.removeItem(PENDING_KEY);
+    } catch { p = null; }
     if (!p) return;
-    sessionStorage.removeItem(PENDING_KEY);
     if (p === 'enter' || p === 'all') openEntry();
     // ⚠️ sessionStorage ч гаднын утга — prototype түлхүүрээс хамгаална
     else if (Object.hasOwn(VIEW_BY_KEY, p)) openView(p as ViewKey);
@@ -181,7 +188,10 @@ export default function Root() {
 
   const enterAll = () => {
     if (authorized) openEntry();
-    else { sessionStorage.setItem(PENDING_KEY, 'enter'); signIn(); }
+    /* ⚠️ Бичилт унавал нэвтрэлт ЗОГСОХГҮЙ — зөвхөн буцаж ирэхэд хүлээгдсэн
+       цэг рүү үсрэхгүй (ач холбогдол бага). Хамгаалахгүй бол «Нэвтрэх» огт
+       ажиллахгүй болно. */
+    else { try { sessionStorage.setItem(PENDING_KEY, 'enter'); } catch { /* нууцлалын горим */ } signIn(); }
   };
 
   /**
@@ -193,7 +203,7 @@ export default function Root() {
    */
   const enterView = (key: ViewKey) => {
     if (authorized) openView(key);
-    else { sessionStorage.setItem(PENDING_KEY, key); signIn(); }
+    else { try { sessionStorage.setItem(PENDING_KEY, key); } catch { /* нууцлалын горим */ } signIn(); }
   };
 
   /**
@@ -312,6 +322,15 @@ export default function Root() {
              хэрэглэгчийн эрх хоёр газарт өөрөөр тайлбарлагдахаас сэргийлнэ. */
           docsAllowed={access?.docs ?? true}
           isSuper={isSuper}
+          /*
+           * ⚠️ УДИРДЛАГЫН САМБАР — «бүх харагдац» эрхтэй хүнд ч нээгдэнэ
+           *    (2026-09-15-ны хэрэглээний аудит). Урьд нь `isSuper` дангаар
+           *    хаадаг байсан тул харах эрх олгогдсон дарга нэвтэрвэл зөвхөн
+           *    навигацийн зурвастай ХООСОН хуудас хардаг байв. Самбар нь
+           *    зөвхөн УНШИХ бөгөөд бичих үйлдэлгүй тул нуух шалтгаангүй;
+           *    `admin` товч нь `isSuper`-ээр ХЭВЭЭР хаагдсан.
+           */
+          boardAllowed={isSuper || allowed === 'all'}
         />
       ) : (
         /*

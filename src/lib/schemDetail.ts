@@ -40,7 +40,21 @@ import { GROUP_ROOT, type FineId } from '@/lib/schemFine';
  */
 export type Cell = { v: string | number | null; kind?: MetricKind };
 
-export type DetailTable = { title: string; cols: string[]; rows: Cell[][] };
+export type DetailTable = {
+  title: string;
+  cols: string[];
+  /** ХАРАГДАХ мөрүүд — `ROW_CAP`-аар таслагдсан байж болно */
+  rows: Cell[][];
+  /**
+   * ⚠️ ТАСЛААГҮЙ бүтэн мөрүүд — ЗӨВХӨН таслагдсан үед байна (`ceo/kpi.table`).
+   *
+   * Багцаар шүүхдээ (`ceo/filter.filterTable`) ЭНЭ уншигдана: таслалт нь
+   * шүүхээс өмнө хийгддэг тул эхний багцуудын мөр л үлдэж, сүүлийн багц
+   * сонгоход жагсаалт хоосон гардаг байв (2026-09-15-ны аудит). Схемийн
+   * хүснэгтүүд (`schemDetail`) энэ талбарыг хэрэглэдэггүй.
+   */
+  rowsFull?: Cell[][];
+};
 
 /**
  * Анхаарал татах нэг мөр — өнгө нь `Health`-ийн ижил хэлээр.
@@ -652,8 +666,28 @@ export function cardStat(
   const row = pkg && rows
     ? rows.find((b) => samePkg(b.label, pkg) || samePkg(b.key, pkg)) ?? null
     : null;
-  const sum = (of: (b: BagtsLite) => number) => (rows ? rows.reduce((s, b) => s + of(b), 0) : null);
-  const rc = src.review ? reviewCounts(src.review) : null;
+  /*
+   * ⚠️ БАГЦ СОНГОСОН атал МӨР ОЛДООГҮЙ бол `null` — ТӨСЛИЙН нийлбэр БИШ
+   *    (2026-09-15-ны аудит). Урьд нь `row == null` үед `sum()` нь БҮХ багцын
+   *    нийлбэрийг буцаадаг тул «Тайлангүй блок 47» гэсэн төслийн дүн тухайн
+   *    багцынх мэт харагддаг байв. `row == null` нь `samePkg`-ийн бичиглэлийн
+   *    зөрүүнээс бодитоор үүсдэг. «—» нь худал тооноос ДЭЭР.
+   */
+  const sum = (of: (b: BagtsLite) => number) => (
+    pkg && !row ? null : rows ? rows.reduce((s, b) => s + of(b), 0) : null
+  );
+  /**
+   * Багц сонгосон үеийн ТӨСЛИЙН нөөц утга — зөвхөн багц СОНГООГҮЙ үед.
+   * ⚠️ Дээрх `sum`-тэй ижил дүрэм: багц сонгосон атал мөр олдоогүй бол «—».
+   */
+  const proj = (v: number | null): number | null => (pkg ? null : v);
+  /* ⚠️ ХЯНАЛТЫН тоог ч БАГЦААР шүүнэ (2026-09-15-ны аудит). Урьд нь `pkg`
+     огт хэрэглэгддэггүй байсан тул «Багц 4-1» сонгоход `zov*`/`bar*`/`gaz*`
+     картууд тэр багцын тоог, харин `hyCo`/`hyEng`/`hyMgr`/`hyDir`/`hyDone`
+     таван карт ТӨСЛИЙН НИЙТ тоог зэрэг харуулдаг байв — нэг дэлгэц дээр
+     хоёр өөр олонлог, `projectWide` тэмдэг ч байхгүй. `buildSchem`,
+     `hyanaltPart` хоёул `samePkg`-ээр шүүдэг. */
+  const rc = src.review ? reviewCounts(pickPkg(src.review, pkg, (r) => r[HF.bagts])) : null;
   const c = src.clearance;
   const fi = src.finance;
 
@@ -683,12 +717,12 @@ export function cardStat(
       /* ⚠️ Хуваарь амьд эх сурвалжгүй (`schem.ts`-ийн шийдвэр) — ҮРГЭЛЖ «—» */
       return statOf(tr('Хамралт'), null, 'pct', 'none');
     case 'bar': {
-      const v = row ? fin(row.progress) : fin(src.overall?.pct);
+      const v = row ? fin(row.progress) : proj(fin(src.overall?.pct));
       return statOf(tr('Гүйцэтгэл'), v, 'pct', grade(v, TH.barilgaPct.good, TH.barilgaPct.warn));
     }
     case 'barOk': {
       /* Тайлагнасан = нийт блок − тайлангүй */
-      const blocks = row ? row.blocks : fin(src.progress?.blocks);
+      const blocks = row ? row.blocks : proj(fin(src.progress?.blocks));
       const missing = row ? row.missing : sum((b) => b.missing);
       const v = blocks != null && missing != null ? blocks - missing : null;
       return statOf(tr('Тайлагнасан блок'), v, 'count', known(v));

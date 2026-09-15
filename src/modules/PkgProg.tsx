@@ -41,7 +41,7 @@ type ProgPt = { label: string; plan: number; act: number | null; vol: number | n
 import {
   BUILDING, CASHFLOW_NEW, PROGRESS_LEVELS, LAYER_BY_ID, pkgKeyOf,
   PKG_FAMILY_BY_BAGTS, zoneWhere, cfMonthAxis, parcelOidsWhere } from '@/lib/services';
-import { cat, shade, num, pct } from '@/lib/format';
+import { cat, shade, num, pct, monthKey } from '@/lib/format';
 import { fitLabels, textW, useChartWidth } from '@/lib/chartFit';
 import { readParam, writeParams } from '@/lib/urlState';
 import o from './pkgProgOv.module.css';
@@ -882,7 +882,7 @@ function TsKpi(
   const t = useMemo(() => {
     if (!fin) return null;
     const months = aggregateMonths(fin);
-    const nowYm = new Date().toISOString().slice(0, 7);
+    const nowYm = monthKey(); /* ⚠️ ОРОН НУТГИЙН сар — UTC slice нь сарын 1-ний шөнө ӨМНӨХ сар өгдөг */
     let planned: number | null = null;
     let actual: number | null = null;
     for (const m of months) {

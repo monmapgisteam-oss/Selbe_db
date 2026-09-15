@@ -40,13 +40,24 @@ const patchOf = (p: Parcel): ParcelPatch => ({
 });
 
 export function GazarEdit({
-  oid, canEdit, onDone, onCancel,
+  oid, canEdit, onDone, onCancel, onDirty,
 }: {
   oid: number;
   canEdit: boolean;
   /** Амжилттай хадгалсны дараа — хэдэн талбар бичигдсэнийг дамжуулна */
   onDone: (changed: number) => void;
   onCancel: () => void;
+  /**
+   * ⚠️ «Хадгалаагүй өөрчлөлт байна уу» гэдгийг ЭЦЭГТ мэдэгдэнэ
+   *    (2026-09-15-ны хэрэглээний аудит).
+   *
+   *    `Gazar.exitEdit` нь `editOid`-ыг `null` болгож энэ компонентыг ШУУД
+   *    салгадаг тул доорх `tryClose`-ийн баталгаа ХЭЗЭЭ Ч дуудагддаггүй байв:
+   *    «Талбар засах» товчийг дахин дарах, эсвэл «Хаах» дарахад бөглөсөн бүх
+   *    зүйл асуулгүй алга болдог байлаа. Эцэг нь энэ тугийг хараад өөрөө
+   *    асууна.
+   */
+  onDirty?: (dirty: boolean) => void;
 }) {
   const [before, setBefore] = useState<Parcel | null>(null);
   const [d, setD] = useState<ParcelPatch | null>(null);
@@ -87,6 +98,8 @@ export function GazarEdit({
 
   const set = (k: keyof ParcelPatch, v: string) => {
     dirty.current = true;
+    /* ⚠️ Эцэгт МЭДЭГДЭНЭ — `Gazar.exitEdit` энэ тугаар баталгаа асууна */
+    onDirty?.(true);
     setD((p) => (p ? { ...p, [k]: v } : p));
     setErr((p) => ({ ...p, [k]: undefined }));
     setFail('');
@@ -95,6 +108,9 @@ export function GazarEdit({
   const tryClose = useCallback(() => {
     if (busy) return;
     if (dirty.current && !window.confirm(tr('Хадгалаагүй өөрчлөлт байна. Хаах уу?'))) return;
+    /* ⚠️ Хаяхаар шийдсэн тул тугийг унтраана — эцэг дахин асуух ёсгүй */
+    dirty.current = false;
+    onDirty?.(false);
     onCancel();
   }, [busy, onCancel]);
 
@@ -129,6 +145,10 @@ export function GazarEdit({
     setBusy(true); setFail('');
     try {
       const n = await saveParcel(before, d);
+      /* ⚠️ Хадгалагдмагц тугийг УНТРААНА — эс бөгөөс горимоос гарахад
+         «хадгалаагүй өөрчлөлт байна» гэж ХУДАЛ асууна */
+      dirty.current = false;
+      onDirty?.(false);
       onDone(n);
     } catch (x) {
       /* ⚠️ Маягт ХААГДАХГҮЙ — бичсэн зүйл үлдэнэ */

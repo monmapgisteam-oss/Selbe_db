@@ -763,6 +763,11 @@ function PortalContent(
                 layersOpen={catOpen}
                 onLayers={() => setCatalog((v) => !v)}
                 opacityOpen={opacityOpen}
+                /* ⚠️ Тунгалаг нь `setView`-д ТЭГЛЭГДДЭГГҮЙ (санаатай — доорх
+                   `setView`-ийн жагсаалтыг үз) тул өмнөх харагдацад 10% болгосон
+                   давхарга энд ч бүдэг хэвээр. Товчны тэмдэг нь тэр далд төлөвийг
+                   ил болгоно (2026-09-15-ны хэрэглээний аудит). */
+                opacityCount={Object.values(opacity).filter((v) => v < 1).length}
                 onOpacity={() => setOpacityOpen((v) => !v)}
                 zone={zone}
                 setZone={setZone}

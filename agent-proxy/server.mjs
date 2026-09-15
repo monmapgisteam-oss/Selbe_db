@@ -50,6 +50,9 @@ const ALLOWED = (
  * нь бодолт + хариу ХОЁУЛАНГ хамарна — тиймээс хариултын уртаас хамаагүй өгөөмөр.
  */
 const MODEL = process.env.AGENT_MODEL || "claude-opus-5";
+/* ⚠️ `worker.mjs`-ийн `DEFAULTS.MAX_TOKENS`-тай ЗААВАЛ ижил байна. 2026-09-15
+   хүртэл 10000 vs 8000 гэж зөрж байсан тул локалд бүтэн гардаг урт хариулт
+   байршуулсан Worker дээр таслагдаж, хөгжүүлэгч давтаж чаддаггүй байв. */
 const MAX_TOKENS = 10000;
 const EFFORT = process.env.AGENT_EFFORT || "low";
 /** `effort` дэмждэг эсэх — `worker.mjs`-тэй ижил дүрэм байх ёстой */
@@ -97,6 +100,34 @@ function readBody(req) {
   });
 }
 
+/**
+ * ХУРДНЫ ХЯЗГААР — worker.mjs-ийн ижил дүрэм (2026-09-15-ны аудит).
+ *
+ * Урьд нь локал реле нь ХЯЗГААРГҮЙ байв. 127.0.0.1-д л сонсдог нь эрсдэлийг
+ * бууруулдаг ч бүрэн хаадаггүй: хөгжүүлэгчийн машин дээр ажиллаж буй дурын
+ * локал процесс (өөр devtool, өргөтгөл, Origin толгойгүй скрипт) хязгааргүй
+ * хүсэлтээр Anthropic түлхүүрийг зарцуулж чадна — Origin байхгүй үед доорх
+ * цагаан жагсаалтын шалгалт бүхэлдээ алгасагддаг.
+ */
+const RATE_LIMIT = 40;
+const RATE_WINDOW = 60 * 1000;
+const hits = new Map();
+let lastSweep = 0;
+function rateLimited(key) {
+  const now = Date.now();
+  /* Хуучирсан түлхүүрийг цонх тутам нэг удаа цэвэрлэнэ — санах ой өсөхгүй */
+  if (now - lastSweep > RATE_WINDOW) {
+    for (const [k, a] of hits) {
+      if (!a.length || now - a[a.length - 1] >= RATE_WINDOW) hits.delete(k);
+    }
+    lastSweep = now;
+  }
+  const arr = (hits.get(key) || []).filter((t) => now - t < RATE_WINDOW);
+  arr.push(now);
+  hits.set(key, arr);
+  return arr.length > RATE_LIMIT;
+}
+
 const server = createServer(async (req, res) => {
   const origin = req.headers.origin;
   cors(res, origin);
@@ -107,9 +138,15 @@ const server = createServer(async (req, res) => {
     return;
   }
 
-  // Эрүүл мэндийн шалгалт — порталын UI реле асаалттай эсэхийг эндээс мэднэ
+  /* Эрүүл мэндийн шалгалт — реле асаалттай эсэхийг эндээс мэднэ.
+     ⚠️ Дотоод тохиргоог (model/effort) ЗАДЛАХГҮЙ — `worker.mjs`-ийн ижил
+        дүрэм: хаягийг олсон хэн ч тохиргоог тандах ёсгүй. */
   if (req.method === "GET" && (req.url === "/" || req.url === "/health")) {
-    json(res, 200, { ok: true, model: MODEL, effort: EFFORT });
+    if (rateLimited(`health:${origin || "anon"}`)) {
+      json(res, 429, { error: "Хэт олон хүсэлт" });
+      return;
+    }
+    json(res, 200, { ok: true });
     return;
   }
 
@@ -122,6 +159,13 @@ const server = createServer(async (req, res) => {
   //    curl-ээр дуудаж болох тул серверт ч шалгана.
   if (origin && !ALLOWED.includes(origin)) {
     json(res, 403, { error: "Энэ эх сурвалжид зөвшөөрөл алга" });
+    return;
+  }
+
+  /* ⚠️ ХУРДНЫ ХЯЗГААР — Origin БАЙХГҮЙ (скрипт, curl) үед дээрх шалгалт
+     бүхэлдээ алгасагддаг тул энэ нь тэр нүхийг хаана. */
+  if (rateLimited(origin || "anon")) {
+    json(res, 429, { error: "Хэт олон хүсэлт — минутад 40 хүсэлт" });
     return;
   }
 

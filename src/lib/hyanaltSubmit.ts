@@ -41,29 +41,47 @@ const norm = (s: string) => s.replace(/[\s-]/g, '').replace(/\./g, '').toLowerCa
 
 async function companyOf(bagts: string): Promise<string> {
   if (!COMPANY) {
-    const res = await fetch(`${BUILDING.url}/query`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        f: 'json',
-        where: '1=1',
-        groupByFieldsForStatistics: `${BUILDING.fields.bagts},${BUILDING.fields.contractor}`,
-        outStatistics: JSON.stringify([
-          { statisticType: 'count', onStatisticField: BUILDING.oid, outStatisticFieldName: 'n' },
-        ]),
-      }).toString(),
-    });
-    const j = (await res.json()) as { features?: { attributes: Attrs }[]; error?: unknown };
-    COMPANY = new Map();
-    // ⚠️ Алдаа гарвал ШИДЭХГҮЙ — компанийн нэр дутуу байх нь нийтлэлийг
-    //    зогсоох шалтгаан биш. Хоосон нэрээр бүртгэл үүсэж, дараа засагдана.
-    if (!j.error) {
-      for (const f of j.features ?? []) {
-        const k = norm(String(f.attributes[BUILDING.fields.bagts] ?? ''));
-        const v = String(f.attributes[BUILDING.fields.contractor] ?? '').trim();
-        if (k && v && !COMPANY.has(k)) COMPANY.set(k, v);
+    /*
+     * ⚠️ АМЖИЛТГҮЙ ХАРИУГ КЭШЛЭХГҮЙ (2026-09-15-ны аудит). Урьд нь `COMPANY`
+     *    нь юу ч болсон тавигддаг байсан тул нэг түр саатал (сүлжээ, 200-аар
+     *    ирсэн `error`) ХООСОН map-ыг сешн дуустал хөлдөөдөг байв: дараагийн
+     *    БҮХ илгээлт хоосон компанийн нэрээр бүртгэгдэж, `groupWorks`-ийн
+     *    түлхүүр (`багц|ажил|компани`) өөрчлөгдөж ажил хоёр тасархай болж,
+     *    `ergelt` 1 рүү тэглэгддэг. Одоо дараагийн дуудалт дахин оролдоно.
+     *
+     * ⚠️ ШИДЭХГҮЙ ХЭВЭЭР — компанийн нэр дутуу байх нь нийтлэлийг зогсоох
+     *    шалтгаан биш (анхны шийдвэр). Зөвхөн кэш нь л түр зуурынх болов.
+     */
+    let ok = false;
+    const map = new Map<string, string>();
+    try {
+      const res = await fetch(`${BUILDING.url}/query`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          f: 'json',
+          where: '1=1',
+          groupByFieldsForStatistics: `${BUILDING.fields.bagts},${BUILDING.fields.contractor}`,
+          outStatistics: JSON.stringify([
+            { statisticType: 'count', onStatisticField: BUILDING.oid, outStatisticFieldName: 'n' },
+          ]),
+        }).toString(),
+      });
+      /* ⚠️ ArcGIS алдааг HTTP 200-аар буцаадаг — биеийн `error`-ыг ЗААВАЛ шалгана */
+      const j = (await res.json()) as { features?: { attributes: Attrs }[]; error?: unknown };
+      if (res.ok && !j.error) {
+        for (const f of j.features ?? []) {
+          const k = norm(String(f.attributes[BUILDING.fields.bagts] ?? ''));
+          const v = String(f.attributes[BUILDING.fields.contractor] ?? '').trim();
+          if (k && v && !map.has(k)) map.set(k, v);
+        }
+        ok = true;
       }
+    } catch {
+      /* сүлжээ унасан — кэшлэхгүй, дараагийн удаа дахин оролдоно */
     }
+    if (!ok) return '';
+    COMPANY = map;
   }
   return COMPANY.get(norm(bagts)) ?? '';
 }

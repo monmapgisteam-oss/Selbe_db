@@ -419,3 +419,28 @@
   /* Босоо өрөлтөд багана бүтэн өргөнтэй — өргөн чирэх утгагүй */
   .grip { display: none; }
 }
+
+/*
+ * ДАВХАРГЫН ХАЙЛТ (2026-09-15-ны хэрэглээний аудит).
+ *
+ * ⚠️ ~99 давхарга, 19 бүлэг бүгд хураагдсан эхэлдэг тул нэр нь мэдэгдэж
+ *    байгаа давхаргыг олохын тулд бүлгүүдийг нэг нэгээр нээх шаардлагатай
+ *    байв. Жагсаалтын хамгийн дээд талд, «бүгдийг унтраах»-аас ӨМНӨ.
+ */
+.search {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 8px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 12.5px;
+  line-height: 1.3;
+}
+.search:focus-visible {
+  outline: 2px solid var(--data);
+  outline-offset: -1px;
+}
+.search::placeholder { color: var(--ink-3); }

@@ -226,15 +226,24 @@ export function Simulation({
         {cells.length > 0 && (
           <div className={c.readout}>
             {cells.map((x) => (
-              <div key={x.k} className={c.cell}>
+              /* ⚠️ `title` нь ЗӨВХӨН hover — мэдрэгч дэлгэцэд хүрэхгүй. Тиймээс
+                 тайлбартай нүдний шошгонд «*» тэмдэг нэмж, доор нь ил тайлбар
+                 мөр гаргана (2026-09-15-ны хэрэглээний аудит). */
+              <div key={x.k} className={c.cell} title={x.title}>
                 <div className={c.cellV} style={x.color ? { color: x.color } : undefined}>
                   {x.v}
                   {x.unit && <small>{x.unit}</small>}
                 </div>
-                <div className={c.cellK}>{x.k}</div>
+                <div className={c.cellK}>{x.k}{x.title ? ' *' : ''}</div>
               </div>
             ))}
           </div>
+        )}
+        {/* ⚠️ «*»-тай нүдний тайлбар ИЛ — hover нь мэдрэгч дэлгэцэд хүрэхгүй */}
+        {cells.some((x) => x.title) && (
+          <p className={c.assume}>
+            {cells.filter((x) => x.title).map((x) => `* ${x.k}: ${x.title}`).join(' · ')}
+          </p>
         )}
 
         {/* ── Цагийн консол ба трафикийн төлөв (зөвхөн «Ачаалал») ── */}
@@ -282,7 +291,22 @@ export function Simulation({
 
 /* ══════════════════ Тоон уншилт ══════════════════ */
 
-type Cell = { k: string; v: string; unit?: string; color?: string };
+type Cell = {
+  k: string;
+  v: string;
+  unit?: string;
+  color?: string;
+  /**
+   * Тоо ЮУНААС гарсныг тайлбарлах hover текст.
+   *
+   * ⚠️ 2026-09-15-ны хэрэглээний аудит: «Машин: 2,847» гэсэн эрх мэдэлтэй
+   *    тоо нь ГУРВАН таамгийн үржвэр (TRIP_PER_RESIDENT=0.35,
+   *    TRIP_DURATION_H=0.05, DEMAND_SCALE=2.8) атлаа дэлгэцэд ямар ч эх
+   *    сурвалж, эргэлзээний тэмдэггүй гарч байв. Эргэлзэгчийн өмнө тоогоо
+   *    хамгаалах боломжгүй байсан.
+   */
+  title?: string;
+};
 
 /**
  * Симуляц бүрийн ГУРВАН гол тоо.
@@ -295,7 +319,12 @@ function readout(kind: SimKind, ranked: Ranked[], road?: RoadState): Cell[] {
     const st = road?.stats;
     const flow = st ? Math.round(st.flow * 100) : null;
     return [
-      { k: tr('Машин'), v: st ? nf0(st.cars) : '—' },
+      {
+        k: tr('Машин'),
+        v: st ? nf0(st.cars) : '—',
+        /* ⚠️ Томьёог ИЛ хэлнэ — дээрх `Cell.title`-ийн ⚠️ */
+        title: tr('Σ аялал × 0.05 ц × 2.8 — аялалын судалгаа байхгүй тул таамаг (Little-ийн хууль)'),
+      },
       { k: tr('Дундаж хурд'), v: st ? String(Math.round(st.kmh)) : '—', unit: st ? tr('км/ц') : undefined },
       {
         k: tr('Урсгал'),

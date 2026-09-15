@@ -78,8 +78,12 @@ const pct = (v: number | null) => (v == null ? "" : Math.round(v * 100) + "%");
 const wpct = (v: number | null) =>
   v == null ? "" : (v * 100).toFixed(1) + "%";
 // Original cell value as an integer-percent string ("" when empty).
-const origStr = (row: Row, bld: string) => {
-  const p = row.cells[bld]?.pct;
+const origStr = (row: Row | undefined, bld: string) => {
+  /* ⚠️ `row` БАЙХГҮЙ байж болно (2026-09-15-ны аудит): `loadSlice` дууссаны
+     дараа `rows` богиносч болох ба `sel` цэвэрлэгддэггүй тул `sel.f.ri` нь
+     хязгаараас гарна. Урьд нь `row.cells` дээр TypeError шидэж хуудас
+     бүхэлдээ цагаан унадаг байв. */
+  const p = row?.cells[bld]?.pct;
   return p == null ? "" : String(Math.round(p * 100));
 };
 

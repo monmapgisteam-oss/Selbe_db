@@ -20,6 +20,7 @@
  */
 import { t as tr } from '@/lib/i18nCore';
 import { bagtsKey, isPkgRange } from '@/lib/services';
+import { capRows } from './kpi';
 import type { Cell, DetailTable, KpiResult } from './kpi';
 
 /** «Бүх багц» — шүүлтгүй төлөв */
@@ -66,13 +67,33 @@ export const isPkgSummary = (t: DetailTable): boolean => (
  * хэрэглэгч «мэдээлэл алга болов» гэж уншина.
  */
 export function filterTable(t: DetailTable, pkg: string): DetailTable | null {
+  /*
+   * ⚠️ ТАСЛАЛТ ЭНД, ШҮҮЛТИЙН ДАРАА (2026-09-15-ны аудит). Урьд нь `kpi.table()`
+   *    бүтээх үедээ 300 мөрөөр тасалдаг байсан тул багцаар шүүхэд эхний
+   *    багцуудын мөрүүд л үлдэж, сүүлийн багц сонгоход жагсаалт ХООСОН
+   *    гардаг байв (мөрүүд багц багцаараа дараалан нийлдэг). `capRows` нь
+   *    тасалсан тоог СҮҮЛИЙН МӨР болгож ил үлдээдэг тул чимээгүй хаялт биш.
+   */
   if (!pkg) return t;
   if (isPkgSummary(t)) return null;
   const col = pkgColOf(t);
   if (col < 0) return t;
-  const rows = t.rows.filter((r) => rowInPkg(r, col, pkg));
+  /*
+   * ⚠️ `rowsFull`-ЭЭС шүүнэ (2026-09-15-ны аудит). `t.rows` нь `kpi.table()`-д
+   *    аль хэдийн 300 мөрөөр таслагдсан байж болох бөгөөд мөрүүд багц
+   *    багцаараа ДАРААЛАН нийлдэг тул эхний 1–2 багц л тэнд байна: «Багц 4.2»
+   *    сонгоход жагсаалт ХООСОН гардаг байв. `rowsFull` нь зөвхөн таслагдсан
+   *    хүснэгтэд байдаг тул бусад тохиолдолд `t.rows` хэвээр.
+   */
+  const src = t.rowsFull ?? t.rows;
+  const rows = src.filter((r) => rowInPkg(r, col, pkg));
   /* ⚠️ Хоосон болсон хүснэгтийг ЗУРАХГҮЙ — «(хоосон)» гэсэн толгой нь чимээ */
-  return rows.length ? { ...t, rows } : null;
+  if (!rows.length) return null;
+  /* ⚠️ Шүүсний ДАРАА дахин таслана — нэг багц ч 300 мөр давж болно.
+     `rowsFull`-ыг үр дүнд АВЧ ЯВАХГҮЙ: шүүлт хийгдсэн тул бүтэн эх нь
+     утгагүй, мөн дахин шүүхэд буруу (бүх багцын) мөр эргэж ирнэ. */
+  const cut = capRows(rows, t.cols.length);
+  return { title: t.title, cols: t.cols, rows: cut };
 }
 
 /**

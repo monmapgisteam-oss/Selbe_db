@@ -247,16 +247,41 @@ type SignalFeature = {
 };
 
 async function fetchRealSignals(): Promise<SignalDef[]> {
-  const q = new URLSearchParams({
-    where: '1=1',
-    outFields: 'uulzwar_name,gerlen_dohio_code',
-    returnGeometry: 'true',
-    outSR: '3857',
-    f: 'json',
-  });
-  const r: { features?: SignalFeature[]; error?: { message?: string } } =
-    await fetch(`${SIGNAL_LAYER_URL}/query?${q}`).then((x) => x.json());
-  if (r.error) throw new Error(r.error.message ?? tr('гэрлэн дохио query алдаа'));
+  /*
+   * ⚠️ ХУУДАСЛАНА (2026-09-15-ны аудит). Урьд нь `resultRecordCount` ч,
+   *    хуудаслалт ч байгаагүй: `gerlen_dohio` нь уулзвар бүрд 4 approach
+   *    line-тэй тул уулзварын тоо өсөхөд үйлчилгээний анхдагч
+   *    `maxRecordCount` дээр ЧИМЭЭГҮЙ таслагдана. Нэг уулзварын 4 line-ийн
+   *    зарим нь ирэхгүй бол доорх `groups`-ийн төв цэг (`cx`,`cy`) хазайж,
+   *    дохио буруу зангилаанд наалдаж, тэр чиглэлийн машин МӨНХӨД зогсоно.
+   *
+   * ⚠️ `orderByFields` ЗААВАЛ — эрэмбэгүй хуудаслалт нь ижил уулзварын
+   *    line-уудыг заагаар салгаж, дээрх алдааг өөрөө үүсгэнэ.
+   */
+  const feats: SignalFeature[] = [];
+  for (let off = 0; ; ) {
+    const q = new URLSearchParams({
+      where: '1=1',
+      outFields: 'uulzwar_name,gerlen_dohio_code',
+      returnGeometry: 'true',
+      outSR: '3857',
+      orderByFields: 'OBJECTID ASC',
+      resultOffset: String(off),
+      resultRecordCount: '2000',
+      f: 'json',
+    });
+    const page: {
+      features?: SignalFeature[];
+      exceededTransferLimit?: boolean;
+      error?: { message?: string };
+    } = await fetch(`${SIGNAL_LAYER_URL}/query?${q}`).then((x) => x.json());
+    if (page.error) throw new Error(page.error.message ?? tr('гэрлэн дохио query алдаа'));
+    const got = page.features ?? [];
+    feats.push(...got);
+    if (!page.exceededTransferLimit || got.length === 0) break;
+    off += got.length;
+  }
+  const r: { features?: SignalFeature[] } = { features: feats };
 
   /** Уулзвар бүрийн оройнууд ба approach line-ууд (бүлэгтэй) */
   const groups = new Map<string, { pts: Pt[]; lines: SignalLine[] }>();
