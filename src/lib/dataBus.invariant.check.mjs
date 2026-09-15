@@ -365,6 +365,11 @@ const GARAAR_ZOVSHOOROGDSON = new Map([
   ['src/modules/sheet/bagtsSheet.ts',
     '`baseKeyCache` нь СУУРЬ ТҮЛХҮҮРИЙН жагсаалт (бүтцийн туслах). Энэ файл '
     + 'өөрөө `invalidate(\'BAGTS_SHEET\')` дууддаг (мөр 1604·1641·1694).'],
+  ['src/lib/layerSummary.ts',
+    'Инженерийн дэд бүтцийн давхаргын хураангуй. Портал эдгээрт БИЧДЭГ ч '
+    + 'автобусын түлхүүр байхгүй — хүчингүй болгох зам нь `dropTotalsCache()` '
+    + '(`DedButets`-ийн бичих бүх зам дууддаг) бөгөөд файл түүнд '
+    + '`subscribeTotals`-аар холбогдсон.'],
 ]);
 
 /**

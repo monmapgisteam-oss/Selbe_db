@@ -251,6 +251,17 @@
   text-overflow: ellipsis;
 }
 .mixBar { min-width: 0; }
+
+/* Мөр дарагддаг (компаниар шүүнэ) — ArcGIS маягийн сонголт: сонгоогүй нь бүдгэрнэ */
+.mixRowClick {
+  padding: 2px 4px;
+  margin: -2px -4px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.mixRowClick:hover { background: var(--surface-2); }
+.mixRowClick:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.mixRowDim { opacity: 0.35; }
 .mixPct {
   font-size: 11.5px;
   font-weight: 700;
@@ -589,8 +600,10 @@
   gap: 8px;
 }
 
-/* Үзлэгийн горим — сарын ГАНЦ цуваа, бүтэн өргөнөөр.
-   ⚠️ Гүйцэтгэгч ба талбайн задаргаа нь БАРУУН баганад зөөгдсөн (2026-09-06):
+/* ГАНЦ багана — одоогоор АЛЬ Ч горим хэрэглэхгүй.
+   ⚠️ 2026-09-15: үзлэгийн горим өдөр ба сарын ХОЁР карттай болж `2` руу
+   шилжсэн. Дүрмийг ирээдүйн ганц карттай горимд үлдээв.
+   ⚠️ Гүйцэтгэгч ба талбайн задаргаа нь БАРУУН баганад (2026-09-06):
    гурвуулаа доор байвал зурвас өндөрсөж, зураг дэлгэцээс гарч байв. */
 .fin[data-cols='1'] {
   grid-template-columns: minmax(0, 1fr);
@@ -702,6 +715,32 @@
 /* ── Зурган дээрээс сонгосон объектын карт — баруун доод булан.
    Зураг ДЭЭГҮҮР ЖИНХЭНЭ хөвөгч гадаргуу тул shadow-lg + blur нь энд
    зөвшөөрөгдөнө (overview-ийн mapTools/legend-тэй ижил хэл). ── */
+/* ══ ГАЗРЫН ЗУРГИЙН ШҮҮЛТҮҮР — баруун дээд булан ══
+   ⚠️ `backdrop-filter`, `transform`, `filter` ХОРИОТОЙ: эдгээр нь `fixed`
+   байрлалтай элементийн АГУУЛАХ БЛОК болж, `MultiSelect`-ийн жагсаалт энэ
+   жижиг хайрцгийн хэмжээнд тайрагдана. Оронд нь бараг бүрэн дүүрэн дэвсгэр. */
+.mapFilter {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 7;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  max-width: calc(100% - 24px);
+  padding: 6px;
+  background: color-mix(in srgb, var(--surface) 96%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  box-shadow: var(--shadow-lg);
+}
+
+/* Нарийн зурагт капсулууд босоо — хэвтээ дараалал зургийг бүрхэнэ */
+@media (max-width: 720px) {
+  .mapFilter { border-radius: var(--r-sm); flex-direction: column; align-items: flex-end; }
+}
+
 .pick {
   position: absolute;
   right: 12px;

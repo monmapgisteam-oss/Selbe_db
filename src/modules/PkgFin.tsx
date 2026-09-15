@@ -26,6 +26,7 @@ import {
    БҮГД УСТСАН — шинэ эх сурвалжид СУУТГАЛ ба ТӨЛӨГДӨӨГҮЙ ҮЛДЭГДЭЛ гэсэн
    ойлголт ОГТ БАЙХГҮЙ. `dun` нь аль хэдийн бодит олгосон дүн. */
 import { cat, shade, date, mnt, num, pct, monthKey } from '@/lib/format';
+import { PackLayers } from '@/components/PackLayers';
 import { readParam, writeParams } from '@/lib/urlState';
 import o from './pkgFinOv.module.css';
 import f from './finance.module.css';
@@ -214,6 +215,97 @@ function mergePkgMonths(
  * ⚠️ БАГЦ-7-гийн хоёр гэрээ НЭГ л «БАГЦ7» түлхүүрт унадаг тул давхардлыг
  *    хасахгүй бол олгосон дүн хоёр дахин харагдана.
  */
+/**
+ * САНХҮҮ ↔ ГАЗРЫН ЗУРГИЙН БАГЦЫН ХОЛБООС (2026-09-15, хэрэглэгч: «холболт
+ * байвал хий»).
+ *
+ * Санхүүгийн хүснэгтүүд (`Cashflow_0909`, `HO_IPC`) ба газрын зургийн
+ * давхарга (`Test0911S`) ИЖИЛ ажлыг ӨӨР дугаараар бичдэг. Эдгээр мөр ямар ч
+ * багцад холбогдохгүй тул тэр багц «санхүү бүртгэлгүй» эсвэл «—» харагддаг байв.
+ *
+ * ⚠️ ДУГААРЫН ТӨСТЭЙ БАЙДЛААР БИШ, НОТОЛГООГООР (2026-09-15, амьд өгөгдөл):
+ *   «Багц 7.1» → Багц 7   Cashflow «Хөрсний ус зайлуулах, доошлуулах байгууламж»,
+ *                         гүйцэтгэгч «Геодиз» = HO «Багц-7»-ийн олголт (хөрсний
+ *                         усны түвшинг бууруулах, «Геодези») ба газрын зургийн
+ *                         «Багц 7 · хөрсний усны түвшин бууруулах зайлуулах».
+ *   «Багц 8»   → Багц 8.2 Cashflow «110 кВ-ын агаарын шугамын ажил» = газрын
+ *                         зургийн «Багц 8.2 · Цахилгаан дамжуулах агаарын шугам».
+ *   «Багц-8.1» → Багц 8.2 HO зураг төслийн олголт 323,040,989 ₮ — Cashflow
+ *                         «Багц 8»-ын зураг төслийн гэрээтэй ЯГ ИЖИЛ дүн.
+ *
+ * ⚠️ ХОЛБООГҮЙ ҮЛДСЭН (зориуд):
+ *   «БАГЦ-7.2» — үерийн ба гадаргуугийн ус, хөрсний уснаас ӨӨР ажил.
+ *   «Багц 18»  — санхүүд авто замын зураг төсөл, газрын зурагт дулааны эх
+ *                үүсвэр: дугаар давхцсан ч өөр ажил. Хэрэглэгчийн шийдвэр хүлээнэ.
+ *   «БАГЦ -9», «БАГЦ-6.10» — газрын зурагт харгалзах давхарга алга.
+ *
+ * ⚠️ ЗӨВХӨН «Багцын санхүү» хуудсанд. `pkgKeyOf`-ийг өөрчилбөл 13 файл
+ * (Санхүүжилт, Ерөнхий дашбоард, IPC холбоос …) дагаж, тэдгээрийн багц бүрийн
+ * жагсаалт чимээгүй нийлнэ.
+ */
+const FIN_PKG_ALIAS: Record<string, { key: string; label: string }> = {
+  'БАГЦ71': { key: 'БАГЦ7', label: 'Багц 7' },
+  'БАГЦ8': { key: 'БАГЦ82', label: 'Багц 8.2' },
+  'БАГЦ81': { key: 'БАГЦ82', label: 'Багц 8.2' },
+};
+
+/**
+ * Санхүүгийн өгөгдлийг холбоостой хувилбар болгоно — хуудасны БҮХ хэсэг
+ * (жагсаалт, KPI, карт, сарын график, төлбөрийн жагсаалт) нэг л тоо харуулна.
+ *
+ * ⚠️ МӨРИЙН `bagts`-ийг ДАРЖ БИЧНЭ: `pkgSrcKey`, `contractMonths`, `PkgPays`
+ * бүгд түлхүүрийг мөрөөс өөрсдөө гаргадаг. Зөвхөн нийлбэрийг холбовол тэдгээр
+ * хуучин түлхүүрээр хайж 0 олно. Эх утга нь `__bagtsSrc`-д хадгалагдана.
+ * ⚠️ БИЕТ ГҮЙЦЭТГЭЛ (`phys`, `physCnt`) НЭМЭГДЭХГҮЙ — хувь тул нийлбэрлэвэл
+ * утгагүй; зорилтот түлхүүрт аль хэдийн байвал хэвээр үлдэнэ.
+ * ⚠️ Холбох мөр байхгүй бол ЭХ объектыг буцаана — лавлагаа тогтвортой.
+ */
+function aliasFin(d: FinData): FinData {
+  const C = CASHFLOW_NEW.fields;
+  const HC = HO_IPC.contractFields;
+  const hits = (m: Map<string, unknown>) => [...m.keys()].some((k) => k in FIN_PKG_ALIAS);
+  if (!hits(d.planTotal) && !hits(d.givenTotal)) return d;
+
+  type R = FinData['contracts'][number];
+  const reRow = (r: R, field: string): R => {
+    const a = FIN_PKG_ALIAS[pkgKeyOf(r[field])];
+    return a ? { ...r, [field]: a.label, __bagtsSrc: String(r[field] ?? '') } : r;
+  };
+  const tgt = (k: string) => FIN_PKG_ALIAS[k]?.key ?? k;
+  const mergeNum = (m: Map<string, number>) => {
+    const out = new Map<string, number>();
+    m.forEach((v, k) => { const t = tgt(k); out.set(t, (out.get(t) ?? 0) + v); });
+    return out;
+  };
+  const mergeMon = (m: Map<string, Map<string, number>>, sum: boolean) => {
+    const out = new Map<string, Map<string, number>>();
+    m.forEach((mon, k) => {
+      const t = tgt(k);
+      const cur = out.get(t);
+      if (!cur) { out.set(t, new Map(mon)); return; }
+      mon.forEach((v, ym) => {
+        if (sum) cur.set(ym, (cur.get(ym) ?? 0) + v);
+        else if (!cur.has(ym)) cur.set(ym, v);
+      });
+    });
+    return out;
+  };
+
+  return {
+    ...d,
+    contracts: d.contracts.map((r) => {
+      const x = reRow(r, C.pkg2);
+      return C.pkg === C.pkg2 ? x : reRow(x, C.pkg);
+    }),
+    pays: d.pays.map((r) => reRow(r, HC.pkg)),
+    planTotal: mergeNum(d.planTotal),
+    givenTotal: mergeNum(d.givenTotal),
+    given: mergeMon(d.given, true),
+    phys: mergeMon(d.phys, false),
+    physCnt: mergeMon(d.physCnt, false),
+  };
+}
+
 function pkgGivenTotal(rows: FinData['contracts'], d: FinData): number {
   const seen = new Set<string>();
   let s = 0;
@@ -250,7 +342,18 @@ export function PkgFin({ dim, setDim }: {
    */
   const side = useSideResize('pkgFin');
   const q = useBuildings();
-  const finQ = useAsync<FinData>(loadFinData, []);
+  const finRaw = useAsync<FinData>(loadFinData, []);
+  /**
+   * ⚠️ Хуудасны БҮХ хэсэг `finQ`-ээс уншдаг тул холбоосыг (`aliasFin`) ЭНД
+   * НЭГ УДАА хэрэглэнэ — жагсаалтын хувь, сонгосон багцын карт, сарын график
+   * ялгаатай тоо харуулахгүй.
+   */
+  const finRawData = finRaw.state === 'ready' ? finRaw.data : null;
+  const finAliased = useMemo(() => (finRawData ? aliasFin(finRawData) : null), [finRawData]);
+  const finQ = useMemo<Async<FinData>>(
+    () => (finAliased && finRaw.state === 'ready' ? { ...finRaw, data: finAliased } : finRaw),
+    [finRaw, finAliased],
+  );
   const { zoomToWhere, setHighlight } = useMap();
 
   /** Сонгосон багц — Bagts-тай ижил `?pkg=` параметрээр хуваалцагдана */
@@ -682,7 +785,14 @@ export function PkgFin({ dim, setDim }: {
               <TsPackList
                 key={c.key}
                 title={c.name()}
-                note={tr('олгосон / гэрээ')}
+                /* ⚠️ 2026-09-15 (хэрэглэгчийн хүсэлт): «Инженерийн дэд бүтэц» бүлэг
+                   «Багцын гүйцэтгэл»-ийн ижил бүлгийн өгөгдлийг харуулна —
+                   давхаргын тоо, дарахад давхаргууд задарна. Санхүү нь багц
+                   СОНГОХОД баруун карт ба доод графикт гарсаар (`givenMap`).
+                   Бусад гурван бүлэг санхүүгийн мөрөө хэвээр харуулна. */
+                mode={c.key === 'infra' ? 'layers' : 'fin'}
+                note={c.key === 'infra' ? tr('давхарга · олгосон / гэрээ') : tr('олгосон / гэрээ')}
+                givenMap={givenMap}
                 planMap={planMap}
                 /* ⚠️ Alert-тай багц нь ДЭЭД бүлэгт гарсан тул эндээс хасагдана —
                    эс бөгөөс нэг багц хоёр газар давхардаж жагсана. */
@@ -898,19 +1008,45 @@ function TsKpi({ packs, fin }: { packs: Pack[]; fin: FinData | null }) {
   );
 }
 
+/**
+ * «Багц 6.5 · …» → [6, 5]. Дугааргүй нэр хамгийн сүүлд.
+ * ⚠️ Эх (монгол) нэрээс — `tr()`-ийн дараах англи «Package» дээр таарахгүй.
+ */
+const pkgNum = (name: string): [number, number] => {
+  const m = /Багц\s*(\d+)(?:[.-](\d+))?/i.exec(name);
+  return m ? [Number(m[1]), m[2] ? Number(m[2]) : 0] : [9999, 0];
+};
+
 function TsPackList({
-  title, note, packs, sel, onSel, finMap, planMap,
+  title, note, packs, sel, onSel, finMap, planMap, givenMap, mode = 'fin',
 }: {
   title: string;
   note: string;
+  /**
+   * МӨРИЙН АГУУЛГА.
+   *   `fin`    — олгосон ₮ / гэрээ ₮ ба хувь (анхдагч).
+   *   `layers` — «Багцын гүйцэтгэл»-ийн ИЖИЛ мөр: давхаргын тоо, олгосон ÷ гэрээ
+   *              хувь (2026-09-15), багцын дугаараар эрэмбэ,
+   *              дарахад давхаргууд задарна (`PackLayers`).
+   * ⚠️ Нэг бүрэлдэхүүн хоёр горимтой — тусдаа хуулбар бичвэл сонголт,
+   * эрэмбэ, хураах зан хоёр газарт зөрж хоцорно.
+   */
+  mode?: 'fin' | 'layers';
   packs: Pack[];
   sel: string | null;
   onSel: (k: string | null) => void;
   finMap: Map<string, ReturnType<typeof contractMonths>> | null;
   /** Багц → гэрээний нийт дүн, ₮ (`FinData.planTotal`) */
   planMap: Map<string, number> | null;
+  /**
+   * Багц → олгосон НИЙТ дүн, ₮ — огноогүй актыг ч багтаасан (`givenMap`).
+   * ⚠️ Сарын цувааны нийлбэр (`finMap`) БИШ: огноогүй акт цуваанд ордоггүй тул
+   * Багц 5.1 (984,295,870 ₮) «—», Багц 3.1 (28.8 тэрбум ₮) дутуу харагддаг байв.
+   */
+  givenMap: Map<string, number> | null;
 }) {
   if (!packs.length) return null;
+  const layers = mode === 'layers';
   /*
    * ⚠️ 2026-09-06: ХОЦРОГДЛЫН ЗЭРЭГЛЭЛЭЭР ЭРЭМБЭЛЭХ нь ХАСАГДСАН. Тэр нь
    *    санхүүгийн хоцрогдол (`finLagOf`) дээр тогтдог байсан бөгөөд түүний
@@ -921,7 +1057,10 @@ function TsPackList({
     .map((p) => {
       const months = finMap?.get(p.key) ?? null;
       const plan = planMap?.get(p.key) ?? 0;
-      const given = months ? months.reduce((a, m) => a + m.given, 0) : 0;
+      /* ⚠️ `givenMap` ЭХЛЭЭД — карт ба KPI-тай ИЖИЛ тоо (дээрх пропын ⚠️) */
+      const given = givenMap
+        ? (givenMap.get(p.key) ?? 0)
+        : (months ? months.reduce((a, m) => a + m.given, 0) : 0);
       // Багцын төрлөөс үл хамааран ОЛГОСОН / ТӨЛӨВЛӨГӨӨ
       const execPct = plan > 0 ? (given / plan) * 100 : null;
       /*
@@ -934,7 +1073,16 @@ function TsPackList({
        */
       return { p, execPct, plan, given };
     })
-    .sort((a, b) => b.given - a.given || b.plan - a.plan);
+    /* ⚠️ Давхаргын горимд БАГЦЫН ДУГААРААР (2026-09-15, хэрэглэгчийн хүсэлт):
+       5.1 → 5.2 → … → 6.1 → … → 14 → 15 → 18. Нэрийн мөрөөр эрэмбэлбэл
+       «Багц 10» нь «Багц 5.1»-ээс ӨМНӨ орно. Ижил дугаартай (6.1 цахилгаан ба
+       6.1 холбоо) нь нэрээр. Санхүүгийн горимд олгосон дүнгээр хэвээр. */
+    .sort((a, b) => {
+      if (!layers) return b.given - a.given || b.plan - a.plan;
+      const [a1, a2] = pkgNum(a.p.name);
+      const [b1, b2] = pkgNum(b.p.name);
+      return a1 - b1 || a2 - b2 || a.p.name.localeCompare(b.p.name, 'mn', { numeric: true });
+    });
   return (
     /*
      * ⚠️ БҮХ БҮЛЭГ НЭЭЛТТЭЙ ЭХЭЛНЭ (хэрэглэгчийн шийдвэр, 2026-08-25). Хураах
@@ -956,9 +1104,11 @@ function TsPackList({
             <Fragment key={p.key}>
             <ListItem
               title={tr(p.name)}
-              sub={plan > 0 || given > 0
-                ? tr('{0} / {1}', mnt(given), mnt(plan))
-                : tr('санхүү бүртгэлгүй')}
+              sub={layers
+                ? (p.layerIds.length ? tr('{0} давхарга', num(p.layerIds.length)) : tr('зураггүй'))
+                : plan > 0 || given > 0
+                  ? tr('{0} / {1}', mnt(given), mnt(plan))
+                  : tr('санхүү бүртгэлгүй')}
               value={
                 /* ⚠️ `flexWrap` — самбар хамгийн нарийн (180px) үедээ ч тэмдэг
                    картаас хальж гарахгүй: хувь дээрээ, тэмдэг доороо буна. */
@@ -966,6 +1116,8 @@ function TsPackList({
                   display: 'inline-flex', alignItems: 'center', gap: 6,
                   flexWrap: 'wrap', justifyContent: 'flex-end',
                 }}>
+                  {/* ⚠️ Давхаргын горимд ч хувь ХАРАГДАНА (2026-09-15, хэрэглэгч:
+                      «ард байгаа хувийг оруул») — олгосон ÷ гэрээ. */}
                   {execPct == null ? '—' : pct(execPct, 1)}
                   {/* ⚠️ 2026-09-06: хоцрогдлын ба «бүртгэл алга» тэмдгүүд
                       ХАСАГДСАН — хоёулаа сарын төлөвлөгөө дээр тогтдог
@@ -974,10 +1126,13 @@ function TsPackList({
                       аль хэдийн хэлдэг. */}
                 </span>
               }
-              color={cat(0)}
+              color={layers ? cat(2) : cat(0)}
               active={open}
               onClick={() => onSel(open ? null : p.key)}
             />
+            {/* ⚠️ «Багцын гүйцэтгэл»-тэй ИЖИЛ: сонгосон дэд бүтцийн багцын
+                давхаргууд доор нь задарна, давхарга дарахад өгөгдөл нь. */}
+            {open && layers && <PackLayers layerIds={p.layerIds} />}
             {/*
               * ⚠️ ЖАГСААЛТЫН ДОТОРХ ЖИЖИГ ГРАФИК ХАСАГДСАН (2026-08-25).
               *    290px өргөн, 140px өндөр талбайд 12 сарын гурван цуваа
