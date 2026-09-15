@@ -926,3 +926,36 @@
   border-left: 2px solid var(--data);
   border-radius: 3px;
 }
+
+/*
+ * ── ЧИРЭХ БАРИУЛ — БАГАНУУДЫН ЗАВСАРТ (2026-09-15, хэрэглэгчийн заавар:
+ *    «resize янзлах») ──
+ *
+ * ⚠️ Анхдагчаар `SplitGrip` нь `left: calc(var(--side-l) - 5px)` гэж бүрхүүлийн
+ *    ЗҮҮН ИРМЭГЭЭС тоолдог. Энэ бүрхүүлд 12px padding байгаа тул бариул нь
+ *    жинхэнэ заагаас 12px ДОТОГШ, өөрөөр хэлбэл зүүн баганын ДЭЭР суудаг —
+ *    картын товшилтыг хулгайлж, зураас нь ирмэгтэйгээ таардаггүй байв.
+ * ⚠️ Шийдэл нь «Ерөнхий дашбоард»-ынхтай ЯГ ИЖИЛ (`dashboardOv.module.css`
+ *    §splitGrip): бариулыг grid-ийн ЭЛЕМЕНТ болгож, баганын ирмэгт наана.
+ *    Хоёрын аль нэгийг өөрчилбөл нөгөөг нь ХАМТ өөрчил.
+ */
+.frame > :global(button[class*='splitGrip_grip']) {
+  position: relative;
+  grid-row: 1 / -1;
+  top: auto;
+  bottom: auto;
+  z-index: 6;
+}
+.frame > :global(button[class*='splitGrip_left']) {
+  grid-column: 1 / 2;
+  justify-self: end;
+  left: auto;
+  /* 10px завсрын голд — бариул өөрөө 11px */
+  margin-right: -10.5px;
+}
+.frame > :global(button[class*='splitGrip_right']) {
+  grid-column: 3 / 4;
+  justify-self: start;
+  right: auto;
+  margin-left: -10.5px;
+}

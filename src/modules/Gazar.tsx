@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
 import { MapTools, MapToolBtn } from '@/components/MapTools';
@@ -12,16 +12,15 @@ import { usePlanTotals } from '@/lib/totals';
 import { Stats, Stat, Donut, Bars, Ring, Empty, Loading } from '@/components/ui';
 import { useAsync } from '@/lib/useAsync';
 import {
-  queryStats, queryGroup, groups, count, sum, avg, type Aoi, type Row,
+  queryStats, queryGroup, queryFeatures, groups, count, sum, avg, type Aoi, type Row,
 } from '@/lib/query';
 import {
   GAZAR_BUILDING, GAZAR_PARCEL, PARCEL_LEFT, PARCEL_CLEARED, parcelLeftWhere, parcelOidsWhere,
+  PKG_FAMILY_BY_BAGTS,
+  layerUrl, ZONE_LAYER, ZONE_FIELDS, zoneType,
 } from '@/lib/services';
 import { loadPkgOverlaps, type PkgOverlap } from '@/lib/pkgSaad';
-import { hasCap, subscribeCaps } from '@/lib/caps';
-import { useAuth } from '@/components/AuthGate';
-import { PARCEL_OID, parcelWhere } from '@/lib/parcelEdit';
-import { GazarEdit } from './GazarEdit';
+import { overlapLeftParcels } from '@/lib/parcelOverlap';
 import { Section } from '@/components/ui';
 import { num, text, shades, CAT_LIGHT, NO_DATA } from '@/lib/format';
 import o from './gazarOv.module.css';
@@ -64,6 +63,43 @@ const PARCEL_LAYER_ID = 'land:left';
  * ⚠️ Мөр дарахад ЗУРАГ тэр багцын талбарууд руу очиж, багцын ӨӨРИЙН давхарга
  *    хамт асна — «хаана» гэдгээс гадна «ЮУНД саад болж байгааг» харуулна.
  */
+/**
+ * СААДЫН ЧАРТЫН БҮЛГҮҮД (2026-09-15) — «Багцын гүйцэтгэл»-ийн `PACK_CATS`-тай
+ * ИЖИЛ ангилал, ижил дараалал.
+ * ⚠️ Нэрийг render үед `tr()`-ээр авна (хэл солиход дагана).
+ */
+const OV_GROUPS: { key: string; label: () => string }[] = [
+  { key: 'build', label: () => tr('Барилга угсралт') },
+  { key: 'infra', label: () => tr('Инженерийн дэд бүтэц') },
+  { key: 'soc', label: () => tr('Нийгмийн барилга') },
+  { key: 'site', label: () => tr('Өндөржилт') },
+  { key: 'other', label: () => tr('Бусад') },
+];
+
+/**
+ * Багцын түлхүүр → бүлэг. `PKG_FAMILY_BY_BAGTS` нь дэд бүтцийн гэр бүлийг
+ * (net/pow/src/com → инженер, soc → нийгмийн, site → өндөржилт) хэлнэ;
+ * барилгын багц тэнд БАЙХГҮЙ тул блокийн нэрээр (`БАГЦ1`…`БАГЦ42`) танина.
+ */
+const ovGroupOf = (key: string): string => {
+  const fam = PKG_FAMILY_BY_BAGTS[key];
+  if (fam === 'soc') return 'soc';
+  if (fam === 'site') return 'site';
+  if (fam) return 'infra';
+  /* ⚠️ Орон сууцны багц: `БАГЦ1`…`БАГЦ42` — цэвэр тоон дагавартай */
+  if (/^БАГЦ[0-9]{1,2}$/.test(key)) return 'build';
+  return 'other';
+};
+
+/**
+ * ⚠️ ТООН ТЭМДЭГЛЭГЭЭ («N багц · N талбар») ХАСАГДСАН (2026-09-15,
+ * хэрэглэгчийн заавар). Бүлэг бүрийн толгой («Инженерийн дэд бүтэц ·
+ * 103 талбар») ба зурвас бүрийн тоо нь тэр мэдээллийг аль хэдийн өгдөг.
+ *
+ * ⚠️ ТАТАГДААГҮЙ БАГЦЫН ДОХИО АЛДАГДААГҮЙ: зурвас тус бүр «татагдсангүй»
+ * гэж шар өнгөөр бичигддэг (`pkgSaad.ts`-ийн `failed` туг) — «0 талбар»
+ * гэж зурвал жинхэнэ саадгүй багцаас ялгагдахгүй болох тул тэр зам ХЭВЭЭР.
+ */
 function OverlapBars({
   q,
   selected,
@@ -73,16 +109,28 @@ function OverlapBars({
   selected: string | null;
   onPick: (pk: PkgOverlap | null) => void;
 }) {
+  /**
+   * ХУРААСАН БҮЛГҮҮД (2026-09-15, хэрэглэгчийн заавар: «hide/unhide дотоод
+   * сэдвүүдээр»). Түлхүүр нь бүлгийн `key`, утга нь ХААЛТТАЙ эсэх.
+   *
+   * ⚠️ Hook нь ЭРТ БУЦААЛТУУДААС ДЭЭР — доор нь `loading`/`error`/хоосон гурван
+   * `return` бий тул энд бичихгүй бол hook-ийн дараалал рендер бүрт өөрчлөгдөж
+   * React унана.
+   * ⚠️ САНАДАГГҮЙ (`Section collapsible`-тэй ижил зарчим): дахин ороход бүх
+   * бүлэг НЭЭЛТТЭЙ эхэлнэ — нуусан бүлэг мартагдаад «багц алга болжээ» гэсэн
+   * дүгнэлт төрүүлэхгүй.
+   */
+  const [shut, setShut] = useState<Record<string, boolean>>({});
   if (q.state === 'loading') {
     return (
-      <Section title={tr('Саад — багцаар')}>
+      <Section title={tr('Багц бүрийн чөлөөлөгдөөгүй талбар')}>
         <Loading label={tr('Давхцлыг тоолж байна…')} />
       </Section>
     );
   }
   if (q.state !== 'ready') {
     return (
-      <Section title={tr('Саад — багцаар')}>
+      <Section title={tr('Багц бүрийн чөлөөлөгдөөгүй талбар')}>
         <Empty label={tr('Давхцлыг тоолж чадсангүй.')} onRetry={q.retry} />
       </Section>
     );
@@ -90,68 +138,165 @@ function OverlapBars({
   const rows = q.data;
   if (!rows.length) {
     return (
-      <Section title={tr('Саад — багцаар')}>
+      <Section title={tr('Багц бүрийн чөлөөлөгдөөгүй талбар')}>
         <Empty label={tr('Аль ч багц дээр давхцсан үлдсэн нэгж талбар алга.')} />
       </Section>
     );
   }
-  /* ⚠️ ЯЛГААТАЙ талбар — зурвасуудын НИЙЛБЭР БИШ. Нэг үлдсэн нэгж талбар
-     хэд хэдэн багцын шугам/блоктой зэрэг огтлолцож болно (2026-09-06 амьдаар:
-     105 талбарын 73 нь 2–7 багцад тоологдож, нийлбэр 244 болдог). Нийлбэрийг
-     «талбар» гэж бичихэд зүүн баганын «Үлдсэн 143»-аас ИХ гарч зөрж байв.
-     Зурвас бүрийн тоо нь тэр багцын БОДИТ саад тул хэвээр (нийлбэр нь
-     утгагүй тоо болох тул толгойд огт харуулахгүй). */
-  const total = new Set(rows.flatMap((r) => r.oids)).size;
-  /* ⚠️ 2026-09-08: ТАТАГДААГҮЙ БАГЦЫГ ИЛ ХЭЛНЭ. `pkgSaad.ts`-ийн `failed` туг
-     нь «огтлолцол уншигдсангүй» гэсэн утгатай ба тэр багцын `oids` нь ХООСОН
-     байдаг — «0 талбар» гэж зурвал жинхэнэ саадгүй багцаас ЯЛГАГДАХГҮЙ болж,
-     сүлжээний уналт «энэ багц дээр газар чөлөөлөлт дууссан» гэсэн ХУДАЛ
-     баталгаа болно. `Ersdel.tsx`-ийн «⚠ {0} давхарга татагдсангүй» чиптэй нэг
-     зарчим: мэдээлэлгүй ба саадгүй хоёр ХЭЗЭЭ Ч ижил утгатай биш.
-     Мөн `total`/`rows.length` нь татагдсан багцуудынх л тул тусад нь тоолно. */
-  const failed = rows.filter((r) => r.failed).length;
-  const okRows = rows.length - failed;
+  /**
+   * БАГЦЫН АНГИЛАЛ — «Багцын гүйцэтгэл» хуудасны бүлэглэлттэй ИЖИЛ
+   * (`PKG_FAMILY_BY_BAGTS`: барилга · инженер · нийгмийн · өндөржилт).
+   * ⚠️ Гэр бүл олдоогүй багц «Бусад»-д — чимээгүй алга болох ёсгүй.
+   */
+  const grouped = OV_GROUPS.map((gr) => {
+    const list = rows.filter((r) => ovGroupOf(r.key) === gr.key);
+    return {
+      key: gr.key,
+      label: gr.label(),
+      rows: list.slice().sort((a, b) => b.oids.length - a.oids.length),
+      total: new Set(list.flatMap((r) => r.oids)).size,
+    };
+  }).filter((gr) => gr.rows.length > 0);
   return (
-    <Section
-      title={tr('Саад — багцаар')}
-      note={(
-        <span style={{ color: 'var(--bad-ink)' }}>
-          {tr('{0} багц · {1} талбар', num(okRows), num(total))}
-          {failed > 0 && (
-            <span style={{ color: 'var(--warn-ink)' }}>
-              {' · '}
-              {tr('⚠ {0} багц татагдсангүй', num(failed))}
-            </span>
+    /* ⚠️ КАРТЫН ГАРЧИГ ЭНД БАЙХГҮЙ (2026-09-15, хэрэглэгчийн заавар):
+       баганын гарчиг нь «Багц бүрийн чөлөөлөгдөөгүй талбар» болсон тул
+       картад давтвал хоёр давхар нэр болно. Тоон тэмдэглэгээ нь мэдээлэл
+       тул ҮЛДЭНЭ — эхний мөрөнд. */
+    <Section>
+      {/*
+        * ⚠️ БҮЛЭГЛЭСЭН (2026-09-15, хэрэглэгчийн заавар: «саад багц чартыг
+        * бүлэглэмээр байна — багцын гүйцэтгэлийн баруун панелийн доорх чарт
+        * шиг»). 40 гаруй багц нэг урт жагсаалт байхад «аль төрлийн ажил
+        * саадтай вэ» гэдэг нь уншигдахгүй байв.
+        * ⚠️ Ангилал нь «Багцын гүйцэтгэл»-ийнхтэй ЯГ ИЖИЛ эхээс
+        * (`PKG_FAMILY_BY_BAGTS`) — хоёр хуудас нэг л бүлэглэлт харуулна.
+        * ⚠️ Хоосон бүлэг ОГТ гарахгүй; эрэмбэ нь саадын хэмжээгээр.
+        */}
+      {grouped.map((grp) => {
+        const off = !!shut[grp.key];
+        return (
+        <div key={grp.key} className={g.ovGroup}>
+          {/* ⚠️ Толгой нь БҮХЭЛДЭЭ товч — жижиг сум онилохоос хялбар
+              (`ui.tsx`-ийн `Section collapsible`-тэй ижил шийдэл). */}
+          <button
+            type="button"
+            className={g.ovGroupHd}
+            aria-expanded={!off}
+            onClick={() => setShut((m) => ({ ...m, [grp.key]: !off }))}
+            title={off ? tr('Дэлгэх') : tr('Хураах')}
+          >
+            <span className={g.ovGroupCaret} aria-hidden>{off ? '▸' : '▾'}</span>
+            <span className={g.ovGroupName}>{grp.label}</span>
+            <span className={`${g.ovGroupNum} num`}>{tr('{0} талбар', num(grp.total))}</span>
+          </button>
+          {!off && (
+          <Bars
+            color="var(--bad)"
+            max={Math.max(1, ...rows.map((r) => r.oids.length))}
+            selected={selected}
+            onSelect={(k) => {
+              const r = rows.find((x) => x.key === k);
+              onPick(r && r.key !== selected ? r : null);
+            }}
+            items={grp.rows.map((r) => ({
+              key: r.key,
+              label: tr(r.name),
+              value: r.oids.length,
+              /* ⚠️ Татагдаагүй багц «0 талбар» гэж БИЧИГДЭХГҮЙ (дээрх тайлбарыг үз) */
+              display: r.failed ? tr('татагдсангүй') : tr('{0} талбар', num(r.oids.length)),
+              ...(r.failed ? { color: 'var(--warn)' } : {}),
+            }))}
+          />
           )}
-        </span>
-      )}
-    >
-      <Bars
-        color="var(--bad)"
-        max={Math.max(1, ...rows.map((r) => r.oids.length))}
-        /* ⚠️ Эхний 12 — доод зурвас нь тогтмол өндөртэй; үлдсэнийг товчоор */
-        limit={12}
-        selected={selected}
-        onSelect={(k) => {
-          const r = rows.find((x) => x.key === k);
-          onPick(r && r.key !== selected ? r : null);
-        }}
-        items={rows.map((r) => ({
-          key: r.key,
-          label: tr(r.name),
-          value: r.oids.length,
-          /* ⚠️ Татагдаагүй багц «0 талбар» гэж БИЧИГДЭХГҮЙ (дээрх тайлбарыг үз) */
-          display: r.failed ? tr('татагдсангүй') : tr('{0} талбар', num(r.oids.length)),
-          ...(r.failed ? { color: 'var(--warn)' } : {}),
-        }))}
-      />
+        </div>
+        );
+      })}
     </Section>
   );
+}
+
+/**
+ * Нэг бүсийн ангиллын үлдсэн талбарууд.
+ * `where` нь БҮСИЙН давхаргын шүүлт (түүхий `Angilal` утгууд) — чарт
+ * товшиход зурагт тэр бүсийг өөрийг нь харуулахад хэрэглэгдэнэ.
+ */
+type ZoneLeft = {
+  key: string; label: string; where: string; oids: number[];
+};
+
+/**
+ * ҮЛДСЭН НЭГЖ ТАЛБАР — ХОТ ТӨЛӨВЛӨЛТИЙН БҮСИЙН АНГИЛЛААР (2026-09-15,
+ * хэрэглэгчийн заавар: «бүсийн мэдээлэл final-ийн «Олон нийтийн бүс» гэх
+ * мэт ангиллаар шүүнэ — тэр бүсэд ямар газар чөлөөлөгдөөгүй байгааг харна»).
+ *
+ * ⚠️ АТРИБУТААР ХОЛБОХ БОЛОМЖГҮЙ: нэгж талбарын давхаргад бүсийн код
+ * (`ZONE_ID` / `RefName_1`) талбар БАЙХГҮЙ. Тиймээс «Саад — багцаар»
+ * чарттай ЯГ ИЖИЛ замаар — ОРОН ЗАЙН огтлолцлоор (`overlapLeftParcels`)
+ * тоолно. Тэр туслах нь давхаргын геометрийг кэшлэдэг тул ангилал бүрийн
+ * хүсэлт нэг л удаа явна.
+ *
+ * ⚠️ Түүхий `Angilal` утгууд нэг ангиллыг ХЭД ХЭДЭН бичлэгээр илэрхийлдэг
+ * («нийгмийн дэд бүтэц» ~ «нийгмийн дэд бүтцийн бүс»). `zoneType()`-оор
+ * каноник болгож НЭГТГЭЭД, SQL-д түүхий утгуудыг нь `IN`-ээр өгнө —
+ * каноник нэрээр шүүвэл нэг ч бүс таарахгүй.
+ *
+ * ⚠️ Нэг талбар ХОЁР бүсэд давхцаж болно (бүсийн зааг дээр) — баганы
+ * нийлбэр «Үлдсэн»-ээс ИХ гарч болно. Саадын чарттай ижил шинж.
+ */
+function useZoneLeft() {
+  return useAsync<ZoneLeft[]>(async () => {
+    const rows = await queryFeatures(layerUrl(ZONE_LAYER), {
+      outFields: [ZONE_FIELDS.type],
+    });
+    /* каноник ангилал → түүхий утгууд */
+    const by = new Map<string, Set<string>>();
+    for (const r of rows) {
+      const raw = String(r[ZONE_FIELDS.type] ?? '').trim();
+      if (!raw) continue;
+      const canon = zoneType(raw);
+      if (!by.has(canon)) by.set(canon, new Set());
+      by.get(canon)!.add(raw);
+    }
+    /* ⚠️ Ангилал бүр ТУСДАА огтлолцол; нэг нь унавал бусад нь үлдэнэ */
+    const list = [...by].map(([canon, raws]) => ({
+      canon,
+      where: `${ZONE_FIELDS.type} IN (${[...raws].map((v) => `N'${sq(v)}'`).join(', ')})`,
+    }));
+    const res = await Promise.allSettled(list.map((z) => overlapLeftParcels([{
+      layerId: ZONE_LAYER.id,
+      where: z.where,
+    }])));
+    return list
+      .map((z, i) => {
+        const r = res[i];
+        return {
+          key: z.canon,
+          label: z.canon,
+          where: z.where,
+          oids: r.status === 'fulfilled' ? r.value.oids : [],
+        };
+      })
+      /* ⚠️ Үлдсэн талбаргүй бүс ОГТ гарахгүй — «0» зурвас мэдээлэл өгөхгүй
+         атлаа жагсаалтыг л уртасгана. */
+      .filter((x) => x.oids.length > 0)
+      .sort((a, b) => b.oids.length - a.oids.length);
+  }, []);
 }
 
 /** Газрын зурагт харагдах давхаргууд — чөлөөлөлт + барилга/кадастр.
  *  (Хилүүд `khil1`/`khil2` нь `ALWAYS_ON_IDS`-ээр автоматаар ил тул энд бичихгүй.) */
 const VISIBLE_IDS = ['gazar:parcel', 'gazar:building', 'land:left'];
+/**
+ * ⚠️ ТООЦООЛООГҮЙ ҮЕИЙН давхаргууд (2026-09-15, хэрэглэгчийн заавар:
+ * «Сэлбэгээс гаднах parcel идэвхгүй байх — газар чөлөөлөлт тооцоолол дээр
+ * харагдана»).
+ *
+ * Кадастрын нэгж ба үнэлгээний барилга нь ТӨСЛИЙН ТАЛБАЙГААС ГАДУУР бүх
+ * хотыг хамардаг тул анхнаасаа асаалттай байхад зураг бүхэлдээ будагдаж,
+ * гол сэдэв болох ҮЛДСЭН НЭГЖ ТАЛБАР (`land:left`) дотор нь алга болдог
+ * байв. Одоо полигон зурж тооцоолмогц л нэмэгдэнэ.
+ */
+const BASE_IDS = ['land:left'];
 /** Полигоноор ШҮҮГДЭХ давхаргууд — featureEffect (бүдгэрүүлэлт) зөвхөн эдгээрт */
 const FILTER_IDS = ['land:left', 'gazar:building', 'gazar:parcel'];
 
@@ -255,16 +400,28 @@ type GazarData = {
 export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   /** Талын багануудын өргөн — чирж тохируулна, хөтөчид хадгалагдана. */
   const side = useSideResize('gazar');
-  const { setHighlight, zoomToWhere, refreshLayer } = useMap();
+  const { setHighlight, zoomToWhere } = useMap();
 
   const [aoi, setAoi] = useState<Aoi | null>(null);
   const [drawToken, setDrawToken] = useState(0);
+  /**
+   * ПОЛИГОН ЗУРАХ ГОРИМ АСААЛТТАЙ ЭСЭХ (2026-09-15).
+   * ⚠️ `drawToken` нь зөвхөн ӨДӨӨГЧ (тоолуур) тул «одоо зурж байна уу»
+   * гэдгийг хэлж чадахгүй — заавар харуулахад тусдаа төлөв хэрэгтэй.
+   */
+  const [drawing, setDrawing] = useState(false);
   const [clearToken, setClearToken] = useState(0);
   /**
    * Кадастрын гурван давхарга нь СУУРЬ; каталогоос порталын аль ч давхаргыг
    * дээр нь нэмнэ (`useLayerPicks`).
    */
-  const [visible, setVisible] = useLayerPicks(VISIBLE_IDS);
+  /* ⚠️ Суурь нь ТООЦООЛЛООС хамаарна (`BASE_IDS`-ийн тайлбарыг үз).
+     `useLayerPicks` нь хэрэглэгчийн өөрийн сонголтыг суурь солигдоход ч
+     хадгалдаг тул гараар нэмсэн давхарга алга болохгүй. */
+  /* ⚠️ ТОВЧ ДАРМАГЦ (`drawing`) — полигон дуустал хүлээхгүй: хэрэглэгч
+     Сэлбэгийн ГАДНАХ нэгж талбар, барилгыг ХАРЖ байж полигоноо зурна
+     (2026-09-15, хэрэглэгчийн заавар). */
+  const [visible, setVisible] = useLayerPicks(aoi || drawing ? VISIBLE_IDS : BASE_IDS);
   const [catOpen, setCatOpen] = useState(false);
   const [opOpen, setOpOpen] = useState(false);
 
@@ -273,33 +430,11 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    * давхарга асаж, парселийн давхарга түүний талбаруудаар нарийсна.
    */
   const ovQ = useAsync(loadPkgOverlaps, []);
+
+  /** Бүсийн ангилал бүрийн үлдсэн талбар — `useZoneLeft`-ийн тайлбарыг үз */
+  const zoneQ = useZoneLeft();
   const [ovPick, setOvPick] = useState<PkgOverlap | null>(null);
 
-  /**
-   * ЗАСВАРЫН ГОРИМ — «Талбар засах» товчоор асна.
-   *
-   * ⚠️ ГОРИМТОЙ БОЛГОСОН ШАЛТГААН: газрын зураг дээр товших нь энэ харагдацад
-   *    ердийн үйлдэл (полигон зурах, багц сонгох). Товшилт бүрд маягт нээвэл
-   *    зүгээр л газар харж байгаа хүнд саад болно. Горим асаалттай үед л
-   *    товшилт маягт нээнэ.
-   */
-  const [editMode, setEditMode] = useState(false);
-  const [editOid, setEditOid] = useState<number | null>(null);
-  const [saved, setSaved] = useState('');
-
-  const { user, status: authStatus } = useAuth();
-  const [capN, setCapN] = useState(0);
-  useEffect(() => subscribeCaps(() => setCapN((x) => x + 1)), []);
-  /**
-   * ⚠️ ЗАСАХ ЭРХ ТУСДАА (`caps` → `gazar`). Газар чөлөөлөлтийг ХАРАХ нь
-   *    төлөвийг нь СОЛИХ эрх биш: нэг талбарын төлөв солиход чөлөөлөлтийн хувь,
-   *    давхцлын тооцоо, дашбоард, тайлан бүгд дагаж өөрчлөгдөнө.
-   */
-  const canEdit = useMemo(
-    () => authStatus === 'off' || hasCap(user?.username, 'gazar'),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [user, authStatus, capN],
-  );
 
   /**
    * Сонгосон багцын давхаргууд зурагт НЭМЭГДЭНЭ.
@@ -308,16 +443,9 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    */
   const mapVisible = useMemo(
     () => {
-      /**
-       * ⚠️ ЗАСВАРЫН ГОРИМД ЗӨВХӨН НЭГЖ ТАЛБАР. Кадастр (`gazar:parcel`) ба
-       * барилга (`gazar:building`) нь энэ давхаргатай бараг бүрэн давхцдаг тул
-       * ил үлдээвэл товшилт тэдний аль нэг дээр буугаад маягт нээгдэхгүй, эсвэл
-       * буруу объект сонгогдоно. Хилүүд (`ALWAYS_ON_IDS`) автоматаар үлдэнэ.
-       */
-      if (editMode) return [PARCEL_LAYER_ID];
       return ovPick ? [...new Set([...visible, ...ovPick.layerIds])] : visible;
     },
-    [visible, ovPick, editMode],
+    [visible, ovPick],
   );
 
   /**
@@ -385,6 +513,7 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
 
   /** Sketch-ээс ирсэн геометр — бүдгэрүүлэлт ба REST шүүлтийг ЗЭРЭГ тохируулна */
   const onSketch = useCallback((geom: __esri.Geometry | null) => {
+    setDrawing(false);
     setFlt(null); // полигон шүүлт тодруулгыг эзэмшинэ — чарт-шүүлтийг цэвэрлэнэ
     aoiGeomRef.current = geom;
     if (!geom) {
@@ -403,38 +532,26 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     setHighlight(null, FILTER_IDS, geom);
   }, [setHighlight]);
 
-  const startDraw = useCallback(() => setDrawToken((t) => t + 1), []);
-
   /**
-   * ГАЗРЫН ЗУРАГ ДЭЭР ТАЛБАР ТОВШИХ.
+   * «ЧӨЛӨӨЛӨЛТ ТООЦООЛОХ» — ДАРААС ДАРАХАД ЦУЦЛАНА (2026-09-15, хэрэглэгчийн
+   * заавар: «дараад баруун панел гарч ирнэ, дахиад дархад нөгөө панел гарч
+   * ирнэ»).
    *
-   * ⚠️ `useCallback` ЗААВАЛ: inline функц нь `memo(MapCanvas)`-ийн пропс
-   *    өөрчлөгдсөн гэж үзүүлж, товшилт бүрд газрын зураг бүхэлдээ дахин
-   *    баригдана (`PkgProg.onMapPick`-ийн тайлбар).
-   *
-   * ⚠️ ХООСОН ГАЗАР товшиход `(null, null)` ирнэ — сонголтыг ЦЭВЭРЛЭНЭ,
-   *    `return` хийж хуучин тодруулгыг үлдээхгүй.
-   *
-   * ⚠️ ЗӨВХӨН OID-г авна. `onPick`-ийн атрибут нь давхаргын `outFields`-д
-   *    ачаалагдсанаар хязгаарлагдах тул маягт нь мөрөө ӨӨРӨӨ бүтнээр татна.
+   * ⚠️ ЗӨВХӨН ПОЛИГОН ЗУРААГҮЙ БАЙХАД цуцлана. Полигон зурж дуусмагц
+   * `drawing` унтарч `aoi` асдаг тул тэр үед энэ товч «Дахин тооцоолох»
+   * хэвээрээ — тооцоог хаяхыг «Цэвэрлэх» товч хийнэ.
    */
-  const onMapPick = useCallback((a: Record<string, unknown> | null, id: string | null) => {
-    if (!editMode) return;
-    if (!a || id !== PARCEL_LAYER_ID) { setEditOid(null); setHighlight(null); return; }
-    const oid = Number(a[PARCEL_OID]);
-    if (!Number.isFinite(oid)) { setEditOid(null); return; }
-    setEditOid(oid);
-    setHighlight(parcelWhere(oid), PARCEL_LAYER_ID);
-  }, [editMode, setHighlight]);
+  const startDraw = useCallback(() => {
+    if (drawing) {
+      setDrawing(false);
+      /* Зурж эхэлсэн хагас полигоныг зургаас арилгана */
+      setClearToken((t) => t + 1);
+      return;
+    }
+    setDrawToken((t) => t + 1);
+    setDrawing(true);
+  }, [drawing]);
 
-  const closeEdit = useCallback(() => { setEditOid(null); setHighlight(null); }, [setHighlight]);
-
-  /** Засварын горимоос бүрэн гарах — маягт, тодруулга хоёулаа цэвэрлэгдэнэ */
-  const exitEdit = useCallback(() => {
-    setEditMode(false);
-    setEditOid(null);
-    setHighlight(null);
-  }, [setHighlight]);
 
   /**
    * Чарт-шүүлт — бар/зүсмэг дарахад холбогдох давхаргад тодруулга тавина.
@@ -448,24 +565,6 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   fltRef.current = flt;
   // ⚠️ setState-ийн updater ДОТОР setHighlight дуудаж болохгүй (React render
   //    дундуур өөр компонент шинэчилнэ) — тул ref-ээс уншиж ГАДНА нь дуудна.
-  /**
-   * ЗАСВАРЫН ГОРИМД ОРОХ.
-   *
-   * ⚠️ ИДЭВХТЭЙ ШҮҮЛТҮҮДИЙГ ЗААВАЛ ЦЭВЭРЛЭНЭ. Багц сонгосон байхад
-   * `ovWhere` нь `land:left` давхаргыг «OBJECTID IN (…)» гэж НАРИЙСГАДАГ —
-   * тэр үед засварын горимд ЗӨВХӨН тэр багцын саад болж буй талбарууд
-   * зурагдаж, бусад талбар дээр товшиход ЮУ Ч БОЛОХГҮЙ. Хэрэглэгч «засвар
-   * ажиллахгүй байна» гэж дүгнэнэ. Чартын шүүлт ба полигоны бүдгэрүүлэлт
-   * мөн адил төөрөгдүүлнэ.
-   */
-  const enterEdit = useCallback(() => {
-    setOvPick(null);
-    setFlt(null);
-    fltRef.current = null;
-    setHighlight(null);
-    setEditOid(null);
-    setEditMode(true);
-  }, [setHighlight]);
 
   const pickFlt = useCallback((next: GFlt) => {
     const cur = fltRef.current;
@@ -482,8 +581,42 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     );
   }, [setHighlight]);
 
+  /**
+   * СОНГОСОН БҮСИЙН АНГИЛАЛ (2026-09-15, хэрэглэгчийн заавар: «давхарга
+   * цэснээс бүсийг идэвхжүүлбэл мап дээр харагдана — ингэж чарттайгаа
+   * холбомоор байна»).
+   *
+   * Чартын бар нь нэгж талбаруудыг тодруулаад зогсохгүй, БҮСИЙН давхаргыг
+   * өөрийг нь зурагт асааж, тэр ангиллаараа нарийсгана — хэрэглэгч давхаргын
+   * цэс рүү орж гараар асаах шаардлагагүй.
+   */
+  const zonePick = useMemo(
+    () => (flt?.grp === 'zoneCat' && zoneQ.state === 'ready'
+      ? zoneQ.data.find((z) => z.key === flt.key) ?? null
+      : null),
+    [flt, zoneQ],
+  );
+
+  /**
+   * ЗУРГИЙН ЭЦСИЙН ДАВХАРГА / ШҮҮЛТ — багцын давхцал (`ovPick`) дээр бүсийн
+   * сонголтыг давхарлана.
+   *
+   * ⚠️ `setVisible` рүү БИЧИХГҮЙ: тэр нь хэрэглэгчийн каталогийн сонголт.
+   * Чарт цуцлахад бүсийн давхарга өөрөө унтарна, гараар асаасан давхарга
+   * хөндөгдөхгүй.
+   */
+  const mapLayers = useMemo(
+    () => (zonePick ? [...new Set([...mapVisible, ZONE_LAYER.id])] : mapVisible),
+    [mapVisible, zonePick],
+  );
+  const mapWhere = useMemo<Record<string, string | null> | undefined>(
+    () => (zonePick ? { ...(ovWhere ?? {}), [ZONE_LAYER.id]: zonePick.where } : ovWhere),
+    [ovWhere, zonePick],
+  );
+
   const clear = useCallback(() => {
     setClearToken((t) => t + 1);
+    setDrawing(false);
     setAoi(null);
     aoiGeomRef.current = null; // ⚠️ хоцорсон геометр pickFlt-д дахин орох ёсгүй
     setFlt(null);
@@ -649,23 +782,12 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     /* Талын багануудыг чирж өргөсгөх/нарийсгах бариулууд. */
     <div
       ref={side.hostRef}
-      className={`${g.frame} ${editMode ? g.frameEdit : ''} ${side.hostClass}`}
+      className={`${g.frame} ${side.hostClass}`}
       style={side.style}
     >
       <SplitGrip {...side.left} />
       <SplitGrip {...side.right} />
-      {/*
-        * ⚠️ ЗАСВАРЫН ГОРИМД ХАЖУУГИЙН БАГАНУУД БҮРЭН UNMOUNT БОЛНО.
-        * Зөвхөн CSS-ээр нуувал доторх `useAsync` хүсэлтүүд харагдахгүй атлаа
-        * ажилласаар байх бөгөөд хадгалсны дараах `invalidate` тэднийг дахин
-        * татна — засвар хийж буй хүнд хэрэггүй сүлжээний ачаалал.
-        *
-        * ⚠️ Газрын зураг ӨӨРӨӨ unmount БОЛОХГҮЙ: хоёр дахь ArcGIS view үүсгэвэл
-        * WebGL контекст үрэгдэнэ. Тиймээс «шинэ цонх» гэдэг нь БАЙГАА зургаа
-        * дэлгэц дүүрэн болгосон хэлбэр — томруулсан байрлал ч хэвээр үлдэнэ.
-        */}
-      {!editMode && (
-      /* ── ЗҮҮН: Чөлөөлөлт (үлдсэн нэгж талбар) — үзүүлэлт + явц бүгд энд ── */
+      {/* ── ЗҮҮН: Чөлөөлөлт (үлдсэн нэгж талбар) — үзүүлэлт + явц бүгд энд ── */}
       <div className={g.left}>
         {/* Баганын толгой — envhub eyebrow: өнгөгүй; багана нь БАЙРЛАЛААРАА ялгарна */}
         <h3 className={g.colHd}>
@@ -694,6 +816,40 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                     <span className={g.ringSub}>{tr('бүрэн чөлөөлсөн')}</span>
                   </p>
                 </div>
+                {/*
+                  * ХОТ ТӨЛӨВЛӨЛТИЙН БҮСИЙН АНГИЛЛААР — `useZoneLeft`-ийн
+                  * тайлбарыг үз (2026-09-15, хэрэглэгчийн заавар).
+                  */}
+                {zoneQ.state === 'ready' && zoneQ.data.length > 0 && (
+                  <>
+                    <p className={g.subHead}>
+                      {tr('Үлдсэн талбар бүсийн ангиллаар')}
+                    </p>
+                    <Bars
+                      items={zoneQ.data.map((z) => ({
+                        key: z.key,
+                        label: tr(z.label),
+                        value: z.oids.length,
+                        display: tr('{0} талбар', num(z.oids.length)),
+                        /* ⚠️ Бүх багана НЭГ өнгө (cyan, 2026-09-15 хэрэглэгчийн
+                           заавар): ангиллын өнгө нь бүсийн ДАВХАРГЫН палитр
+                           бөгөөд энэ чарт нь тэр биш, ҮЛДСЭН ТАЛБАРЫН тоог
+                           хэмждэг. */
+                        color: 'var(--data)',
+                      }))}
+                      selected={flt?.grp === 'zoneCat' ? flt.key : null}
+                      onSelect={(k) => {
+                        const z = zoneQ.data.find((x) => x.key === k);
+                        if (!z) return;
+                        pickFlt({
+                          grp: 'zoneCat', key: k, label: tr('Бүс: {0}', tr(z.label)),
+                          where: parcelOidsWhere(z.oids),
+                          only: ['land:left'],
+                        });
+                      }}
+                    />
+                  </>
+                )}
                 <p className={g.subHead}>{tr('Талбай (га) төлөвөөр')}</p>
                 {/* limit БАЙХГҮЙ — бүх төлөв харагдаж, баганы нийлбэр «Нийт»-тэй тэнцэнэ */}
                 <Bars
@@ -759,49 +915,23 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           </div>
         </section>
       </div>
-      )}
 
       {/* ── ТӨВ: Газрын зураг + Полигон ── */}
       <main className={g.map}>
         <MapCanvas
           dim={dim}
-          visible={mapVisible}
+          visible={mapLayers}
           opacity={opacity}
           zone={zone}
-          layerWhere={ovWhere}
+          layerWhere={mapWhere}
           layerStyle={parcelStyle}
           uniform
           sketch
           onSketch={onSketch}
           drawToken={drawToken}
           clearToken={clearToken}
-          onPick={onMapPick}
         />
 
-        {editOid != null && (
-          <GazarEdit
-            oid={editOid}
-            canEdit={canEdit}
-            onCancel={closeEdit}
-            onDone={(n) => {
-              closeEdit();
-              /**
-               * ⚠️ ДАВХАРГЫГ ДАХИН УНШУУЛНА. FeatureLayer нь татсан объектоо
-               * клиент дээрээ кэшлэдэг бөгөөд бичилт нь SDK-аар биш ШУУД
-               * REST-ээр явсан тул зассан талбар ХУУЧИН ӨНГӨӨРӨӨ үлдэнэ.
-               * Үүнгүй бол хэрэглэгч «хадгалагдсангүй» гэж бодоод бүтэн
-               * хуудсаа refresh хийнэ — газрын зураг, бүх өгөгдөл дахин ачаална.
-               */
-              if (n > 0) refreshLayer(PARCEL_LAYER_ID);
-              /* ⚠️ 0 нь АМЖИЛТГҮЙ биш — юу ч өөрчлөөгүй гэсэн үг. Хоёрыг нэг
-                 мессежээр хэлбэл «хадгалагдсангүй» гэж уншигдана. */
-              setSaved(n > 0
-                ? tr('{0} талбар хадгалагдлаа', num(n))
-                : tr('Өөрчлөлт байсангүй'));
-              window.setTimeout(() => setSaved(''), 4000);
-            }}
-          />
-        )}
 
         {/* ⚠️ 2026-08-20: Урьд нь ЭНД зөвхөн 2D/3D/BIM + «Полигон зурах» байв —
             Давхарга ч, Тунгалаг ч, Бүс ч байхгүй тул кадастрын гурван давхаргаас
@@ -823,46 +953,18 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             disabled={dim !== '2d'}
             title={dim !== '2d' ? tr('Полигоныг зөвхөн 2D дээр зурна') : tr('Газар дээр полигон зурах')}
           >
-            {aoi ? tr('Дахин зурах') : tr('Полигон зурах')}
+            {/* ⚠️ Зурж байх үед ЦУЦЛАХ гэж хэлнэ — тэр товшилт нь зурахыг
+                эхлүүлэхгүй, буцаана (`startDraw`-ийн тайлбарыг үз). */}
+            {drawing ? tr('Цуцлах') : aoi ? tr('Дахин тооцоолох') : tr('Чөлөөлөлт тооцоолох')}
           </MapToolBtn>
           {aoi && <MapToolBtn onClick={clear}>{tr('Цэвэрлэх')}</MapToolBtn>}
-          {/* ⚠️ Эрхгүй хүнд ОГТ харагдахгүй — идэвхгүй товч нь «яагаад
-              болохгүй байна» гэсэн асуулт төрүүлээд хариулахгүй. */}
-          {canEdit && (
-            <MapToolBtn
-              icon="pen"
-              on={editMode}
-              disabled={dim !== '2d'}
-              onClick={() => (editMode ? exitEdit() : enterEdit())}
-              title={dim !== '2d'
-                ? tr('Засварыг зөвхөн 2D дээр хийнэ')
-                : tr('Зөвхөн газрын зураг үлдэж, талбар дарахад төлөв солих цонх нээгдэнэ')}
-            >
-              {tr('Талбар засах')}
-            </MapToolBtn>
-          )}
+
         </MapTools>
 
-        {/*
-          * ЗАСВАРЫН АЖЛЫН ЗУРВАС — «энэ бол тусдаа цонх» гэдгийг хэлнэ.
-          * Хажуугийн багана, доод зурвас нь unmount болсон тул зөвхөн зураг
-          * үлдэж, энэ зурвас нь гарчиг ба гарах замыг өгнө.
-          */}
-        {editMode && (
-          <div className={g.editBar}>
-            <span className={g.editTitle}>{tr('Нэгж талбар засах')}</span>
-            <span className={g.editHint}>
-              {tr('Газрын зураг дээр нэгж талбар дарна уу')}
-            </span>
-            <button type="button" className={g.editClose} onClick={exitEdit}>
-              {tr('Хаах')}
-            </button>
-          </div>
-        )}
-        {saved && <p className={g.saved} role="status">{saved}</p>}
 
         {catOpen && (
-          <div className={o.catPanel}>
+          /* ⚠️ Баруун талд — `gazar.module.css` §catPanelRight-ийн тайлбарыг үз */
+          <div className={g.catPanelRight}>
             <LayerCatalog
               view="gazar"
               totals={catTotals}
@@ -903,20 +1005,37 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         )}
       </main>
 
-      {/* ── ЗУРГИЙН ДООД ЗУРВАС: багц бүрийн саад (зургийн өргөнтэй) ── */}
-      {!editMode && (
-      <div className={g.chart}>
-        <OverlapBars q={ovQ} selected={ovPick?.key ?? null} onPick={pickOverlap} />
-      </div>
-      )}
+      {/* ⚠️ ЗУРГИЙН ДООД ЗУРВАС ХАСАГДСАН (2026-09-15) — «Саад — багцаар»
+          чарт нь БАРУУН панел руу шилжсэн (доорх тайлбарыг үз). */}
 
-      {/* ── БАРУУН: Барилга + Кадастр (нэгтгэсэн багана) ── */}
-      {!editMode && (
+      {/*
+        * ── БАРУУН БАГАНА — ДИНАМИК (2026-09-15, хэрэглэгчийн заавар) ──
+        *
+        * «Газар чөлөөлөлт тооцоолох» дараагүй үед энэ багана нь
+        * «Саад — багцаар» чартыг харуулна; полигон зурмагц тооцооллын
+        * үр дүн (Барилга · Кадастр) руу СОЛИГДОНО.
+        *
+        * ⚠️ Урьд нь Барилга/Кадастр нь полигон зураагүй үед ч зогсож,
+        * «төслийн талбайгаас гаднах БҮХ» гэсэн утгагүй тоо харуулдаг байв
+        * (5-р заавар ч үүнтэй холбоотой). Одоо тэдгээр нь ЗӨВХӨН
+        * тооцооллын үр дүн.
+        */}
       <div className={g.right}>
-        {/* Баганын толгой — зүүнтэй ЯГ ижил envhub eyebrow (өнгөт identity байхгүй) */}
         <h3 className={g.colHd}>
-          {tr('Төслийн талбайгаас гаднах нэгж талбар, барилга')}
+          {/* ⚠️ Товч ДАРМАГЦ солигдоно (`aoi || drawing`) — полигон дуустал
+              хүлээвэл «товч ажиллаагүй» гэж уншигдана (хэрэглэгчийн заавар). */}
+          {aoi || drawing
+            ? tr('Тооцоолсон талбай — нэгж талбар, барилга')
+            : tr('Багц бүрийн чөлөөлөгдөөгүй талбар')}
         </h3>
+        {!aoi && !drawing && (
+          <OverlapBars q={ovQ} selected={ovPick?.key ?? null} onPick={pickOverlap} />
+        )}
+        {/* ⚠️ Товч ДАРМАГЦ (`aoi || drawing`) Барилга/Кадастр ил гарна —
+            эхлээд БҮХ талбайн тоогоор, полигон зурмагц зөвхөн тэр талбайнхаар
+            ШИНЭЧЛЭГДЭНЭ (2026-09-15, хэрэглэгчийн заавар). Полигон дуустал
+            хоосон байлгавал «товч ажиллаагүй» гэж уншигдана. */}
+        {(aoi || drawing) && (<>
         <section className={`${g.panel} ${g.panelOuter}`} aria-label={tr('Барилга')}>
           <header className={g.panelHd}>
             <h3 className={g.panelTitle}>{tr('Барилга')}</h3>
@@ -1001,8 +1120,8 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             ))}
           </div>
         </section>
+        </>)}
       </div>
-      )}
     </div>
   );
 }

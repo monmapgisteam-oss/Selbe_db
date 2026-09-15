@@ -18,6 +18,7 @@ import { cached } from '@/lib/live';
 import { t as tr } from '@/lib/i18nCore';
 import {
   CASHFLOW_NEW, CF_WORK_WHERE, CF_MONTH_WHERE, CF_MONTH, HABEA, bagtsKey, isPkgRange,
+  BUILDING,
 } from '@/lib/services';
 import { stageProjectPct } from '@/lib/negtgel';
 import {
@@ -62,6 +63,12 @@ export const CF = {
   pkg2: 'bagts',
   /** Урьдчилсан төсөвт өртөг — БҮХ мөнгөн тооцооны эх */
   cost: 'ho_dun_geree',
+  /**
+   * АЖЛЫН БҮТЭН НЭР — «Багц 74» жагсаалтад (2026-09-15).
+   * ⚠️ Багцын нэр (`bagts`) нь ОЛОН ажилд давтагддаг тул жагсаалтыг
+   *    зөвхөн түүгээр гаргавал мөрүүд ялгагдахгүй.
+   */
+  detail: 'ajil_uilchilgee',
   /**
    * ХЭСГИЙН КОД — Excel-ийн E баганы «1 · 2 · 5 · 6 · 7».
    * ⚠️ НИЙТ ТӨСВИЙН индикаторын хамрах хүрээг ЭНЭ л шийднэ
@@ -203,6 +210,14 @@ export type CfRow = {
    *    байна (`мөр устгахгүй` дүрэм).
    */
   isWork: boolean;
+  /** Ажлын бүтэн нэр (`ajil_uilchilgee`) — жагсаалтад харагдана */
+  name: string;
+  /**
+   * ТАЙЛАНГИЙН ХЭСГИЙН КОД (`bagts_tuvshin1`) — «1» ТЭЗҮ … «7» бондын хүү.
+   * ⚠️ Чартаас газрын зураг руу холбоход хэрэгтэй: газар чөлөөлөлтийн
+   *    мөрүүд багцын давхаргагүй ч НЭГЖ ТАЛБАРЫН давхаргатай.
+   */
+  sec: string;
 };
 
 const nOf = (v: unknown): number => {
@@ -227,7 +242,7 @@ export const loadGdashCf = cached<CfRow[]>(async () => {
   const rows = await queryFeatures(CF.url, {
     where: CF_WORK_WHERE,
     outFields: [
-      'OBJECTID', CF.type, CF.project, CF.pkg, CF.cost, CF.note,
+      'OBJECTID', CF.type, CF.project, CF.pkg, CF.cost, CF.note, CF.detail,
       ...FIN_XL_CHART_FIELDS,
       /* ⚠️ «Төслийн гүйцэтгэл» чартын нэг мөр 3-р түвшнээс бодогдоно */
       'ajil_tuvshin3',
@@ -263,6 +278,8 @@ export const loadGdashCf = cached<CfRow[]>(async () => {
     lvl3: sOf(r.ajil_tuvshin3),
     /* ⚠️ КОДООР шүүнэ, нэрээр БИШ — нэр засагдаж болно (`finXlInTotal`) */
     isWork: !FIN_XL_WORK_SKIP.includes(sOf(r[CF.code1])),
+    name: sOf(r[CF.detail]),
+    sec: sOf(r[CF.code1]),
   }));
 }, undefined, ['CASHFLOW_NEW']);
 
@@ -1144,6 +1161,30 @@ export function kpisOf(rows: CfRow[], contractSum: number, landPct: number | nul
     types: types.size,
   };
 }
+
+/**
+ * БАРИЛГА УГСРАЛТЫН БАГЦ → блокийн давхаргын `BAGTS` утга (2026-09-15).
+ *
+ * ⚠️ Орон сууцны багцад (Багц 1 … 4.2) `PKG_BY_BAGTS`-д ДАВХАРГА БАЙХГҮЙ:
+ * тэдгээрийн орон зайн хүрээ нь ДЭД БҮТЦИЙН шугам биш, БЛОКИЙН полигон
+ * (`mon:building`, 113 блок). Тиймээс чартаас зурагт холбохдоо блокийн
+ * давхаргыг `BAGTS` талбараар шүүнэ.
+ *
+ * ⚠️ Түлхүүр нь `bagtsKey` (нормчилсон), утга нь ҮЙЛЧИЛГЭЭН ДЭХ ЯГ бичиглэл
+ * («Багц 3.1») — SQL шүүлт тэр бичиглэлээр л ажиллана.
+ */
+export const loadBuildPkgs = cached<Map<string, string>>(async () => {
+  const rows = await queryFeatures(BUILDING.url, {
+    outFields: [BUILDING.fields.bagts],
+    limit: 4000,
+  });
+  const m = new Map<string, string>();
+  for (const r of rows) {
+    const v = sOf(r[BUILDING.fields.bagts]);
+    if (v) m.set(bagtsKey(v), v);
+  }
+  return m;
+});
 
 /** Гэрээний дүнгийн нийлбэр — шүүсэн мөрүүдээс (тусад нь: `CfRow`-д ороогүй) */
 export const loadContractSum = cached<Map<number, number>>(async () => {

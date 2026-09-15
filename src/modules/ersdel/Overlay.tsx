@@ -385,7 +385,7 @@ export function Overlay({
   floodSliceRef.current = floodSlice;
   /* ⚠️ `drawSurface` нь ДООР зарлагдсан тул REF-ээр дамжина (TDZ) */
   const drawSurfaceRef = useRef<((pos: number) => void) | null>(null);
-  const drawWFlowRef = useRef<((pos: number) => void) | null>(null);
+  const drawWFlowRef = useRef<((pos: number, dt?: number) => void) | null>(null);
 
 
   /**
@@ -541,14 +541,16 @@ export function Overlay({
    * ⚠️ ЗӨВХӨН `depth` горимд: хурд/аюулын зурагт судал нь өнгөний утгыг
    * дардаг ба тэнд чиглэлийг СУМ хэлнэ (`uyr.ts` §frame).
    */
-  const drawWFlow = useCallback((pos: number) => {
+  const drawWFlow = useCallback((pos: number, dt?: number) => {
     const layer = wflowLayerRef.current;
     const geo = wflowGeoRef.current;
     const flow = wflowRef.current;
     if (!layer || !geo || !flow) return;
     layer.visible = modeRef.current === 'depth';
     if (!layer.visible) return;
-    const el = new ImageElement({ image: flow.step(pos), georeference: geo });
+    /* ⚠️ `dt` дамжуулна — судал ФРЕЙМ тутам биш ХУГАЦААГААР хөдөлнө
+       (`uyrUrsgal.step` §тайлбар). Зогссон үед `undefined` = нэг алхам. */
+    const el = new ImageElement({ image: flow.step(pos, dt), georeference: geo });
     const src = layer.source as unknown as { elements: { removeAll(): void; add(x: unknown): void } };
     src.elements.removeAll();
     src.elements.add(el);
@@ -626,6 +628,10 @@ export function Overlay({
        * тутамд шинэ `ImageElement` үүсэж RGBA текстур GPU руу ачаалагдана.
        */
       if (now - lastDraw < FRAME_MS) return;
+      /* ⚠️ ЖИНХЭНЭ хугацааны зөрүү — судлын алхамд өгнө. `FRAME_MS`
+         хязгаарлагч нь 60 Гц дэлгэц дээр 33/50 мс-ээр ээлжилдэг тул
+         тогтмол гэж үзвэл судал цохилж харагдана (2026-09-15). */
+      const dtDraw = (now - lastDraw) / 1000;
       lastDraw = now;
       const el = (now - t0) / 1000;
       const pos = el / STEP_S;
@@ -650,7 +656,7 @@ export function Overlay({
       drawFrame(sl, pos - sl, el);
       /* ⚠️ СУДАЛ нь ФРЕЙМ БҮРД — хөдөлгөөн нь тасралтгүй байж л ус мэт
          уншигдана. Зардал нь ~576 богино зураас ≈ 0.3 мс. */
-      drawWFlowRef.current?.(pos);
+      drawWFlowRef.current?.(pos, dtDraw);
       /**
        * УСНЫ ГАДАРГУУ (3D) — БУТАРХАЙ агшинд, ~8 удаа/сек.
        *

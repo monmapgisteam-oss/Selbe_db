@@ -75,13 +75,22 @@ const LIFE = 110;
 const MIN_MS = 0.06;
 
 export type WaterFlow = {
-  /** Дараагийн фреймийг зурж, БЭЛЭН canvas буцаана. `pos` — бутархай зүсмэл */
-  step(pos: number): HTMLCanvasElement;
+  /**
+   * Дараагийн фреймийг зурж, БЭЛЭН canvas буцаана. `pos` — бутархай зүсмэл.
+   * @param dt өмнөх зурсан фреймээс хойшхи ХУГАЦАА (сек).
+   * ⚠️ ЗААВАЛ: тоосонцор «фрейм тутам N пиксел» гэж явбал хурд нь дэлгэцийн
+   * давтамжаас хамаарна — 60 Гц дээр хоёр дахин хурдан, ачаалалтай үед
+   * гацсан мэт. Анхдагч нь 30 фрейм/сек-ийн нэг алхам.
+   */
+  step(pos: number, dt?: number): HTMLCanvasElement;
   /** Тоосонцрыг дахин тарааж, судлыг арилгана */
   reset(): void;
 };
 
 type P = { x: number; y: number; age: number };
+
+/** Загварын суурь фрейм (сек) — `SPEED_GAIN`, `LIFE`, `FADE` энэ хэмнэлд тохируулагдсан */
+const FRAME_REF_S = 1 / 30;
 
 /**
  * @param fd загварчлалын үр дүн — хурдны талбар ба гүнийг эндээс уншина
@@ -121,12 +130,20 @@ export function buildWaterFlow(fd: FloodData): WaterFlow {
    * үхнэ — үр дүнд нь усан дээр тоосонцор бараг үлдэхгүй. Зүсмэл бүрд
    * жагсаалтыг шинэчилнэ (ус тархах тусам төрөх талбай өснө).
    */
-  let wetList = new Int32Array(0);
+  /**
+   * ⚠️ УРЬДЧИЛАН ХУВААРИЛСАН БУФЕР (2026-09-15). Урьд нь зүсмэл бүрд шинэ
+   * `number[]` цуглуулаад `Int32Array.from` хийдэг байсан нь 45 мянган
+   * нүдэн дээр хуваарилалт + хогийн цэвэрлэгээ өгч, 0.9 сек тутам буюу нэг
+   * тоглуулалтад 24 удаа МЭДЭГДЭХҮЙЦ гацаа үүсгэдэг байв (хэрэглэгчийн
+   * «анимаци гацдаг» шүүмж). Одоо нэг буфер, нэг дамжилт, хуваарилалтгүй.
+   */
+  const wetBuf = new Int32Array(GW * GH);
+  let wetLen = 0;
   let wetSlice = -1;
   const rebuildWet = (s: number) => {
-    const tmp: number[] = [];
-    for (let i = 0; i < GW * GH; i++) if (fd.depth(s, i) >= wet) tmp.push(i);
-    wetList = Int32Array.from(tmp);
+    let n = 0;
+    for (let i = 0; i < GW * GH; i++) if (fd.depth(s, i) >= wet) wetBuf[n++] = i;
+    wetLen = n;
     wetSlice = s;
   };
 
@@ -136,8 +153,8 @@ export function buildWaterFlow(fd: FloodData): WaterFlow {
    * бүрэн детерминист хэвээр.
    */
   const spawn = (p: P) => {
-    if (wetList.length) {
-      const k = wetList[(Math.random() * wetList.length) | 0];
+    if (wetLen) {
+      const k = wetBuf[(Math.random() * wetLen) | 0];
       const gx = k % GW;
       const gy = (k / GW) | 0;
       /* Нүдний ДОТОР санамсаргүй — тор шиг эгнэхгүй */
@@ -163,7 +180,11 @@ export function buildWaterFlow(fd: FloodData): WaterFlow {
     for (const p of ps) spawn(p);
   };
 
-  const step = (pos: number): HTMLCanvasElement => {
+  const step = (pos: number, dt = FRAME_REF_S): HTMLCanvasElement => {
+    /* ⚠️ ХУГАЦААНЫ ХҮЧИН ЗҮЙЛ — 30 фрейм/сек-ийн нэг алхмыг 1 гэж үзнэ.
+       Дээд хязгаар: таб идэвхгүй болоод буцаж ирэхэд `dt` секундээр
+       хэмжигдэж, тоосонцор бүгд дэлгэцээс үсэрч гарна. */
+    const k = Math.max(0.2, Math.min(3, dt / FRAME_REF_S));
     const s0 = Math.max(0, Math.min(SL - 1, Math.floor(pos)));
     const s1 = Math.min(SL - 1, s0 + 1);
     const w1 = s0 === s1 ? 0 : Math.max(0, Math.min(1, pos - s0));
@@ -172,7 +193,9 @@ export function buildWaterFlow(fd: FloodData): WaterFlow {
 
     /* ── Хуучин судлыг бүдгэрүүлнэ (өнгө НЭМЭХГҮЙ, зөвхөн alpha хасна) ── */
     ac.globalCompositeOperation = 'destination-out';
-    ac.fillStyle = `rgba(0,0,0,${FADE})`;
+    /* ⚠️ Бүдгэрэлт нь ФРЕЙМ тутам хийгддэг тул мөн хугацаанд тэнцүүлнэ —
+       эс бөгөөс удаан фрейм дээр судал хэт удаан үлдэж «тос» болно. */
+    ac.fillStyle = `rgba(0,0,0,${1 - Math.pow(1 - FADE, k)})`;
     ac.fillRect(0, 0, W, H);
     ac.globalCompositeOperation = 'source-over';
 
@@ -186,7 +209,8 @@ export function buildWaterFlow(fd: FloodData): WaterFlow {
       const i = cy * GW + cx;
       const d = fd.depth(s0, i) * w0 + fd.depth(s1, i) * w1;
       if (d < wet) { spawn(p); continue; }
-      if (++p.age > LIFE) { spawn(p); continue; }
+      p.age += k;
+      if (p.age > LIFE) { spawn(p); continue; }
 
       const u = fd.u(s0, i) * w0 + fd.u(s1, i) * w1;
       const v = fd.v(s0, i) * w0 + fd.v(s1, i) * w1;
@@ -195,9 +219,9 @@ export function buildWaterFlow(fd: FloodData): WaterFlow {
 
       const x0 = p.x;
       const y0 = p.y;
-      p.x += u * SPEED_GAIN;
+      p.x += u * SPEED_GAIN * k;
       /* ⚠️ `v` нь ХОЙШ эерэг, canvas-ийн `y` нь УРАГШ өсдөг — тэмдэг урвуу */
-      p.y -= v * SPEED_GAIN;
+      p.y -= v * SPEED_GAIN * k;
 
       /**
        * ХУРДАН УС = ТОД ЦАГААН (хөөс), удаан = бүдэг.

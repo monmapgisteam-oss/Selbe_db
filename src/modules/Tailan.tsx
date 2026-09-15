@@ -150,7 +150,7 @@ function ReportWaiting({ steps, secs }: { steps: { label: string; done: boolean 
   const ready = steps.filter((s) => s.done).length;
   const sections = [
     tr('1. Үндсэн үзүүлэлт'),
-    tr('2. Орон сууцны 7 багц'),
+    tr('2. Орон сууцны багцууд'),
     tr('3. Багцын жигнэсэн гүйцэтгэл'),
     tr('4. Газар чөлөөлөлт'),
     tr('5. Нийгмийн үйлчилгээний барилга'),
@@ -488,11 +488,14 @@ export function Tailan() {
                       </p>
                     </section>
 
-                    {/* ── 2. Орон сууцны 7 багц ── */}
+                    {/* ── 2. Орон сууцны багцууд ── */}
                     <section className={r.section}>
-                      <h2 className={r.h2}>{tr('2. Орон сууцны 7 багц')}</h2>
+                      <h2 className={r.h2}>{tr('2. Орон сууцны багцууд')}</h2>
                       <p className={r.intro}>
-                        {tr('Орон сууцны барилгажилт долоон багцад хуваагдан хэрэгжиж байна. Нийт')} {num(blocks)} {tr('блокт')} {num(ail)} {tr('өрхийн орон сууц төлөвлөгдсөн бөгөөд төсөвт өртөг')} {bn(budget)} {tr('₮ байна. Багц хоорондын гүйцэтгэлийн зөрүү их байна: хамгийн өндөр нь')} {tr(d.bestBagts?.bagts ?? '')}
+                        {/* ⚠️ Багцын ТОО нь өгөгдлөөс (`sorted.length`) — урьд
+                            нь «долоон» гэж бичигдсэн байсан тул багц нэмэгдэх
+                            эсвэл нэгдэхэд тайлан чимээгүй худал болно. */}
+                        {tr('Орон сууцны барилгажилт')} {num(sorted.length)} {tr('багцад хуваагдан хэрэгжиж байна. Нийт')} {num(blocks)} {tr('блокт')} {num(ail)} {tr('өрхийн орон сууц төлөвлөгдсөн бөгөөд төсөвт өртөг')} {bn(budget)} {tr('₮ байна. Багц хоорондын гүйцэтгэлийн зөрүү их байна: хамгийн өндөр нь')} {tr(d.bestBagts?.bagts ?? '')}
                         ({pct(d.bestBagts?.pct ?? null, 2)}{tr('), хамгийн бага нь')}
                         {' '}{tr(d.worstBagts?.bagts ?? '')} ({pct(d.worstBagts?.pct ?? null, 2)}).
                       </p>
@@ -788,7 +791,10 @@ export function Tailan() {
                     <section className={r.section}>
                       <h2 className={r.h2}>{tr('7. Санхүүжилтийн явц')}</h2>
                       <p className={r.intro}>
-                        {tr('Захирамж, гэрээгээр баталгаажсан')} {num(x.finance.rows)} {tr('ажлын санхүүжилт дөрвөн эх үүсвэрээс бүрдэж байна.')}
+                        {/* ⚠️ Эх үүсвэрийн ТОО нь өгөгдлөөс — урьд нь «дөрвөн»
+                            гэж бичигдсэн байсан тул эх сурвалжид тав дахь
+                            эх үүсвэр нэмэгдэхэд тайлан чимээгүй худал болно. */}
+                        {tr('Захирамж, гэрээгээр баталгаажсан')} {num(x.finance.rows)} {tr('багц ажлын санхүүжилт')} {num(x.finance.sources.length)} {tr('эх үүсвэрээс бүрдэж байна.')}
                         {d.topSource && (
                           <> {tr('Санхүүжилтийн дийлэнх хэсгийг «')}{tr(d.topSource.label)}{tr('» эх үүсвэр бүрдүүлж, нийт дүнгийн')} {pct(d.topSource.share, 1)}{tr('-ийг эзэлж байна.')}</>
                         )}
@@ -843,14 +849,23 @@ export function Tailan() {
                               <td className={r.num}>{bnOrDash(t.contract)}</td>
                             </tr>
                           ))}
+                          {/* ⚠️ НИЙТ нь ЭНЭ ХҮСНЭГТИЙН мөрүүдийн нийлбэр
+                              (`byTypeTotal`) — §1-ийн «Нийт төсөв» БИШ.
+                              Задаргаа нь газар чөлөөлөлт, ГИШС-ээс гадуурх
+                              ажлыг ч агуулдаг тул хоёр тоо ӨӨР хамрах
+                              хүрээтэй; нэгийг нь нөгөөгийнх нь оронд
+                              тавибал хүснэгт нийлэхээ болино. */}
                           <tr className={r.total}>
                             <td>{tr('Нийт')}</td>
-                            <td className={r.num}>{num(x.finance.rows)}</td>
-                            <td className={r.num}>{bn(x.finance.budget)}</td>
-                            <td className={r.num}>{bn(x.finance.contractAmount)}</td>
+                            <td className={r.num}>{num(x.finance.byType.reduce((a, t) => a + t.n, 0))}</td>
+                            <td className={r.num}>{bn(x.finance.byTypeTotal.budget)}</td>
+                            <td className={r.num}>{bn(x.finance.byTypeTotal.contract)}</td>
                           </tr>
                         </tbody>
                       </ResizableTable>
+                      <p className={r.note}>
+                        {tr('Эх сурвалж: Cashflow_0909. §1 ба §7.1-ийн «нийт төсөв» нь эх Excel-ийн НИЙТ томьёоны хамрах хүрээ (Орон сууцны хороолол + ГИШС), харин энэ хүснэгт нь гэрээний БҮХ мөрийг төрлөөр задалсан тул нийлбэр нь илүү гарна. Зөрүү нь газар чөлөөлөлт, буулгалт цэвэрлэгээ болон хамрах хүрээнээс гадуурх ажлууд.')}
+                      </p>
                     </section>
 
                     {/* ── 8. Дэд бүтцийн хэрэгжилт ── */}

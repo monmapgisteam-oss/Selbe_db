@@ -66,6 +66,9 @@ import {
   BUILDING, CASHFLOW_NEW, HABEA, HO_IPC, LAYER_GROUPS, GROUP_LAYERS, LAYER_BY_ID, PARCEL_CLEARED, PARCEL_LEFT,
   bagtsKey, pkgKeyOf, laborCompanyFields, hoAmount, CF_WORK_WHERE,
 } from '@/lib/services';
+import {
+  finXlInTotal, FIN_XL_WORK_SKIP, FIN_XL_TOTAL_CODE_FIELD, FIN_XL_LAND_CODE,
+} from '@/lib/finExcelLayout';
 
 /* ═══════════════ Төрөл ═══════════════ */
 
@@ -140,10 +143,14 @@ export type ReportExtra = {
     stalled: number;
   };
   finance: {
+    /** Багц ажлын тоо — 74 (газар чөлөөлөлтийн 4 мөр тоологдохгүй) */
     rows: number;
+    /** Нийт төсөв — Excel-ийн НИЙТ хамрах хүрээгээр (2,493,041,880,532 ₮) */
     budget: number;
     orderTotal: number;
     contractAmount: number;
+    /** Газар чөлөөлөлт, буулгалт цэвэрлэгээ — НИЙТ дүнгээс ГАДУУР, ₮ */
+    landBudget: number;
     sources: { label: string; value: number }[];
     /**
      * Бодитоор олгосон санхүүжилт — `HO_IPC`-ийн БҮХ ТӨЛБӨРИЙН нийлбэр, ₮.
@@ -160,6 +167,8 @@ export type ReportExtra = {
      */
     paid: number;
     byType: { type: string; n: number; budget: number; contract: number }[];
+    /** «Ажлын төрлөөр» хүснэгтийн НИЙТ мөр — БҮХ мөрөөр (задаргаатай нийцнэ) */
+    byTypeTotal: { budget: number; contract: number };
     /** Багцын түлхүүр (`BagtsRow.key`) → урьдчилсан төсөвт өртөг, ₮ */
     byBagts: Record<string, number>;
   };
@@ -552,9 +561,31 @@ async function loadFinanceRaw(): Promise<ReportExtra['finance']> {
     queryFeatures(HO_IPC.url, { outFields: [HO_IPC.payFields.amount] }),
   ]);
 
-  /** Гэрээний мөрүүд (76) — шүүлт хэрэггүй, мөр бүр нэг гэрээ */
+  /** Гэрээний мөрүүд (78) — шүүлт хэрэггүй, мөр бүр нэг гэрээ */
   const master = rows;
-  const sum = (f: string) => master.reduce((a, r) => a + nn(r[f]), 0);
+
+  /**
+   * ⚠️ ТӨСЛИЙН НИЙТ ДҮН = ЗӨВХӨН ХАМРАХ ХҮРЭЭНИЙ МӨР (2026-09-15-ны залруулга).
+   *
+   * Урьд нь `sum()` нь 78 мөр БҮГДИЙГ нэмдэг байсан тул тайлан «нийт төсөв
+   * 3,167,606,958,415 ₮» гэж бичдэг байв — эх Excel-д ч, дашбоард дээр ч
+   * БАЙХГҮЙ тоо. Excel-ийн НИЙТ томьёо (`=+I8+I21`) нь 5·6·7-р хэсгийг
+   * (ГИШС-ээс гадуурх, газар чөлөөлөлт, бондын хүү) хасдаг — `finXlInTotal`
+   * яг тэр дүрэм. Амьд хэмжилт (2026-09-15, Cashflow_0909/0, 78 мөр):
+   *     шүүлтгүй      3,167,606,958,415 ₮
+   *     finXlInTotal  2,493,041,880,532 ₮  ← дашбоард ба S-муруйнхтай ИЖИЛ
+   * ⚠️ Хэрэглэгчийн шийдвэр (2026-09-15): «3,167,606,958,415 ₮ энэ дүнг
+   *    ашиглахгүй … яг төсөв нь 2,493,041,880,532 эндээс бодно».
+   *
+   * ⚠️ ХАМРАХ ХҮРЭЭНЭЭС ГАДУУРХ МӨНГӨ АЛГА БОЛООГҮЙ: газар чөлөөлөлтийн
+   *    дүнг `landBudget` гэж тусад нь гаргаж, тайлангийн 4-р хэсэг уншина.
+   */
+  const inTotal = master.filter(finXlInTotal);
+  const sum = (f: string) => inTotal.reduce((a, r) => a + nn(r[f]), 0);
+  /** Бүх мөрөөр (хамрах хүрээнээс гадуурх ч) — задаргааны хүснэгтэд */
+  const sumAll = (f: string) => master.reduce((a, r) => a + nn(r[f]), 0);
+  const secOf = (r: Record<string, unknown>) =>
+    String(r[FIN_XL_TOTAL_CODE_FIELD] ?? '').trim();
 
   /* ⚠️ 2026-09-06: САРЫН ХУВААРЬ ХАСАГДСАН — хуучин `cashflow_0813`-ийн
      «САР» мөрүүдээс гардаг байсан бөгөөд шинэ `Cashflow_0909`-т он/сарын
@@ -653,16 +684,45 @@ async function loadFinanceRaw(): Promise<ReportExtra['finance']> {
   });
 
   return {
-    // ⚠️ Гэрээний тоо = МАСТЕР мөрийн тоо (76), хүснэгтийн бүх мөр (209) БИШ
-    rows: master.length,
+    /**
+     * БАГЦ АЖЛЫН ТОО = 74 (2026-09-15-ны залруулга).
+     *
+     * ⚠️ Урьд нь `master.length` = 78 байв. Хэрэглэгчийн заавар («78 биш 74»,
+     * `finExcelLayout.ts` §FIN_XL_WORK_SKIP): 6-р хэсгийн 4 мөр нь газар
+     * эзэмшигчид олгох НӨХӨН ОЛГОВОР — гүйцэтгэгчтэй байгуулах ажлын багц
+     * БИШ. Ерөнхий дашбоардын «Багц ажлын тоо» ЯГ энэ дүрмээр 74 гэж
+     * бичдэг тул хоёр газар зөрж болохгүй.
+     * ⚠️ `inTotal`-ААС ТУСДАА дүрэм: тэр нь мөнгөн НИЙЛБЭРИЙН хүрээ (5·6·7),
+     * энэ нь «мөр бүр ажил мөн үү» (6) гэсэн ӨӨР асуулт.
+     */
+    rows: master.filter((r) => !FIN_XL_WORK_SKIP.includes(secOf(r))).length,
     budget: sum(F.budget),
     orderTotal: sum(F.orderTotal),
     contractAmount: sum(F.contractAmount),
+    /**
+     * ГАЗАР ЧӨЛӨӨЛӨЛТ, БУУЛГАЛТ ЦЭВЭРЛЭГЭЭ (6-р хэсэг) — НИЙТ дүнгээс
+     * ГАДУУР тул тусад нь. Тайлангийн 4-р хэсэг үүнийг уншина: мөнгө
+     * «алга болсон» биш, өөрийн хэсэгтээ тайлагнагдана.
+     */
+    landBudget: master
+      .filter((r) => secOf(r) === FIN_XL_LAND_CODE)
+      .reduce((a, r) => a + nn(r[F.budget]), 0),
     sources: CASHFLOW_NEW.sources.map((s) => ({ label: s.label, value: sum(s.field) })),
     paid,
     byType: [...typeMap.entries()]
       .map(([type, v]) => ({ type, ...v }))
       .sort((a, b) => b.budget - a.budget),
+    /**
+     * «Ажлын төрлөөр» хүснэгтийн НИЙТ мөр — задаргаа нь БҮХ мөрөөр явдаг
+     * тул НИЙТ нь ч бүх мөрөөр (2026-09-15).
+     *
+     * ⚠️ `budget` (=НИЙТ дүн, хамрах хүрээгээр) ЭНД ХЭРЭГЛЭХГҮЙ: хүснэгтийн
+     * мөрүүд нь газар чөлөөлөлт, ГИШС-ээс гадуурх ажлыг ч агуулдаг тул
+     * баганын нийлбэр НИЙТ мөртэй зөрж, «хүснэгт нийлэхгүй байна» гэсэн
+     * хамгийн эргэлзээтэй байдал үүснэ. Хоёр өөр хамрах хүрээг НЭГ
+     * хүснэгтэд хольж болохгүй — тайлбарыг тайлангийн 7-р хэсэгт бичнэ.
+     */
+    byTypeTotal: { budget: sumAll(F.budget), contract: sumAll(F.contractAmount) },
     byBagts,
   };
 }

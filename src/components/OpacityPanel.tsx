@@ -18,11 +18,18 @@ export function OpacityPanel({
   opacity,
   setOpacity,
   onClose,
+  dock = false,
 }: {
   visible: string[];
   opacity: Record<string, number>;
   setOpacity: Dispatch<SetStateAction<Record<string, number>>>;
   onClose: () => void;
+  /**
+   * ЗҮҮН ХАВТАСНЫ ЗОХИОМЖ — зургийн зүүн ирмэгт, толгойн эгнээний доор
+   * (2026-09-15). ⚠️ ЗӨВХӨН «Ерөнхий төлөвлөгөө»-д; бусад харагдацад
+   * хавтан хуучин байрлалдаа (`MapTools`-ийн `dock` тайлбарыг үз).
+   */
+  dock?: boolean;
 }) {
   const ref = new Set<string>(REFERENCE_IDS as readonly string[]);
   const ids = visible.filter((id) => LAYER_BY_ID[id] && !ref.has(id));
@@ -36,7 +43,7 @@ export function OpacityPanel({
   const touched = ids.some((id) => opacity[id] != null && opacity[id] !== 1);
 
   return (
-    <aside className={s.panel} aria-label={tr('Давхаргын тунгалаг')}>
+    <aside className={`${s.panel} ${dock ? s.dock : ''}`} aria-label={tr('Давхаргын тунгалаг')}>
       <header className={s.head}>
         <span className={s.title}>{tr('Тунгалаг')}</span>
         {touched && (

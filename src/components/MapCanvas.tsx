@@ -585,13 +585,28 @@ export const symbolOf = (d: LayerDef, hue = d.hue) => {
  * улбар шар харагддаг байлаа. Одоо Ерөнхий төлөвлөгөөтэй ижлээр `paint.values`
  * (`ZONE_MAP_TYPES` = эх webmap-ийн өнгө) бүрээр зурна.
  */
+/**
+ * `paint.values`-ийн ТҮЛХҮҮРИЙГ талбарын төрөлд тааруулна (2026-09-15).
+ *
+ * ⚠️ JS объектын түлхүүр ҮРГЭЛЖ мөр байдаг. ArcGIS нь `uniqueValueInfos`-ийн
+ * `value`-г талбарын утгатай ЧАНД (тэнцүү төрлөөр) жишдэг тул Integer
+ * талбарт «1» гэсэн мөр өгвөл НЭГ Ч объект таарахгүй — бүгд
+ * `defaultSymbol`-оор зурагдана. Цэвэр тоон түлхүүрийг тоо болгоно.
+ */
+const paintValue = (v: string): string | number => (
+  /^-?\d+(\.\d+)?$/.test(v) ? Number(v) : v
+);
+
 const zoneTypeRenderer = (d: LayerDef) => ({
   type: 'unique-value',
   field: d.paint?.field ?? 'Angilal',
   defaultSymbol: symbolOf(d, ZONE_TYPE_EMPTY_HUE),
   defaultLabel: d.paint?.emptyLabel,
   uniqueValueInfos: Object.entries(d.paint?.values ?? {}).map(([value, hue]) => ({
-    value, label: value, symbol: symbolOf(d, hue),
+    /* ⚠️ Кодтой талбарт хүний нэр (`paint.labels`) — эс бөгөөс «1», «2» */
+    value: paintValue(value),
+    label: d.paint?.labels?.[value] ?? value,
+    symbol: symbolOf(d, hue),
   })),
 } as unknown as RendererProp);
 
@@ -606,7 +621,10 @@ const paintRenderer = (d: LayerDef) => ({
   defaultSymbol: symbolOf(d, ZONE_TYPE_EMPTY_HUE),
   defaultLabel: d.paint!.emptyLabel,
   uniqueValueInfos: Object.entries(d.paint!.values).map(([value, hue]) => ({
-    value, label: value, symbol: symbolOf(d, hue),
+    /* ⚠️ Кодтой талбарт хүний нэр (`paint.labels`) — эс бөгөөс «1», «2» */
+    value: paintValue(value),
+    label: d.paint!.labels?.[value] ?? value,
+    symbol: symbolOf(d, hue),
   })),
 } as unknown as RendererProp);
 
@@ -1105,11 +1123,27 @@ function buildLayers(uniform = false): Layer[] {
       visible: false,
       ...(d.minScale ? { minScale: d.minScale } : {}),
       elevationInfo: ON_GROUND,
-      // `sb:*` — «Selbe 2D map 0804» webmap-ийн ЯГ renderer (100% style).
-      renderer: p2
+      /**
+       * ⚠️ `paint.force` — ТУХАЙН давхаргын гараар бичсэн ангилал-өнгө нь
+       * АВТОМАТААР татсан webmap снапшотоос ДАВАМГАЙЛНА (2026-09-15).
+       *
+       * `et:27` (Явган хүний зам) нь `plan2d` alias-аар `sb:3`-ийн загварыг
+       * өмсдөг бөгөөд тэр нь гинжинд ТҮРҮҮЛЖ шалгагддаг тул `Code`-ын хоёр
+       * өнгө (явган зам · цементэн талбай) огт хэрэглэгддэггүй байв.
+       *
+       * ⚠️ ГЛОБАЛААР СОЛИХГҮЙ: `et:24` (Барилга) ч `paint`-тай атлаа тэнд
+       * webmap-ийн загвар ЗӨВ. Тиймээс давхарга бүр ИЛ сонгоно.
+       */
+      renderer: d.paint?.force
+        ? paintRenderer(d)
+        : p2
         ? (rendererJsonUtils.fromJSON(p2 as never) as unknown as RendererProp)
         : webRenderer
         ? (rendererJsonUtils.fromJSON(webRenderer as never) as unknown as RendererProp)
+        /* ⚠️ ЭНЭ САЛАА ЗААВАЛ: `force`-гүй `paint` (жиш. `land:left` нь
+           төлөвөөр, `zone` нь ангилалаар, `source:eh` нь төрлөөр) энд
+           хэрэглэгдэнэ. Хасвал тэдгээр нь `simple()`-ийн ганц өнгөөр
+           будагдаж, ангилал нь бүрмөсөн алга болно (2026-09-15-ны алдаа). */
         : d.paint
         ? paintRenderer(d)
         : uniform
@@ -1378,6 +1412,7 @@ export const MapCanvas = memo(function MapCanvas({
   pulseIds,
   uniform = false,
   bare = false,
+  alwaysOn,
   onPick,
   sketch = false,
   onSketch,
@@ -1466,7 +1501,20 @@ export const MapCanvas = memo(function MapCanvas({
    * харагдана.
    */
   bare?: boolean;
-  onPick: (attrs: Record<string, unknown> | null, layerId: string | null) => void;
+  /**
+   * ЭНЭ ХАРАГДАЦАД ҮРГЭЛЖ АСААЛТТАЙ давхаргууд (2026-09-15).
+   *
+   * ⚠️ `ALWAYS_ON_IDS` (глобал хил) -ЭЭС ТУСДАА: тэр нь БҮХ зурагт
+   * үйлчилдэг тул сэдэвчилсэн давхаргыг тэнд нэмбэл газар чөлөөлөлт,
+   * багц, IoT зэрэг хамаагүй зурагт ч гарна («Ерөнхий төлөвлөгөө»-ний
+   * явган хүний зам яг ингэж тархсан).
+   */
+  alwaysOn?: readonly string[];
+  /**
+   * Товшилтын сонголт. СОНГОЛТОТ: зарим харагдац (жиш. Газар чөлөөлөлт)
+   * зургийн товшилтоос ЮУ Ч хийхгүй.
+   */
+  onPick?: (attrs: Record<string, unknown> | null, layerId: string | null) => void;
   /**
    * ПОЛИГОН ЗУРАХ чадварыг асаана («Газар чөлөөлөлт»). Зөвхөн 2D-д ажиллана —
    * `SketchViewModel`-ийг бэлдэнэ (гадаад товч `drawToken`-оор эхлүүлнэ).
@@ -1752,6 +1800,7 @@ export const MapCanvas = memo(function MapCanvas({
 
   /** Массивыг эффектийн хамааралд өгч болохгүй (лавлагаа нь рендер бүрт шинэ) */
   const visibleKey = visible.join(',');
+  const alwaysOnKey = (alwaysOn ?? []).join(',');
 
   /** Энэ харагдацын 3D меш багц — заагаагүй бол аппын үндсэн `SCENE` */
   const sceneList = scene ?? SCENE.layers;
@@ -2067,12 +2116,12 @@ export const MapCanvas = memo(function MapCanvas({
           // Хоцорсон hitTest — шинэ даралт аль хэдийн явж байна
           if (seq !== clickSeq) return;
           const hit = pickHit(r);
-          if (hit) { pickRef.current(hit.attrs, hit.id); return; }
-          if (view.destroyed || !e.mapPoint) { pickRef.current(null, null); return; }
+          if (hit) { pickRef.current?.(hit.attrs, hit.id); return; }
+          if (view.destroyed || !e.mapPoint) { pickRef.current?.(null, null); return; }
           // ≈6 пикселийн хүлцэл — нимгэн шугам, жижиг цэгийг барихад хангалттай
           const tol = Math.max(2, (view.resolution || 1) * 6);
           const q = await pickByQuery(e.mapPoint, tol);
-          if (!view.destroyed && seq === clickSeq) pickRef.current(q?.attrs ?? null, q?.id ?? null);
+          if (!view.destroyed && seq === clickSeq) pickRef.current?.(q?.attrs ?? null, q?.id ?? null);
         })
         .catch(() => {/* view устгагдсан — сонголт өөрчлөгдөхгүй */});
     });
@@ -3211,7 +3260,10 @@ export const MapCanvas = memo(function MapCanvas({
        */
       if (String(l.id).startsWith('ersdel:')) { l.visible = true; return; }
       // Лавлагааны хилүүд — каталогоос үл хамааран БҮХ зурагт үргэлж ил.
-      if ((ALWAYS_ON_IDS as readonly string[]).includes(String(l.id))) { l.visible = true; return; }
+      /* ⚠️ Хоёр эх: ГЛОБАЛ лавлагаа (хил) ба ХАРАГДАЦЫН ӨӨРИЙН
+         (`alwaysOn` проп — жиш. «Ерөнхий төлөвлөгөө»-ний явган зам). */
+      if ((ALWAYS_ON_IDS as readonly string[]).includes(String(l.id))
+        || alwaysOnKey.split(',').includes(String(l.id))) { l.visible = true; return; }
       /**
        * НҮХЭН ЖОРЛОН — 3D-д зайнаас ЦЭГ, ойроос CALLOUT.
        *
@@ -3370,7 +3422,7 @@ export const MapCanvas = memo(function MapCanvas({
     });
     // Дараагийн өөрчлөлтөд «шинээр ил болсон»-ыг зөв илрүүлэхийн тулд тэмдэглэнэ.
     prevVisRef.current = on;
-  }, [visibleKey, dim, ready, zone, layerWhere, layerStyle, hl, hlOnly, uniform, bare, ortho, pulseLayer]);
+  }, [visibleKey, alwaysOnKey, dim, ready, zone, layerWhere, layerStyle, hl, hlOnly, uniform, bare, ortho, pulseLayer]);
 
   /**
    * ТУНГАЛАГ — давхарга бүрийн `opacity`-г override-оор тавина. Override байхгүй
