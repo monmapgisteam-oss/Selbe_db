@@ -253,26 +253,13 @@
 }
 .editClose:hover { color: var(--ink); border-color: var(--line-strong); }
 
-/**
- * Аль давхаргад нэмэхийг сонгох — зурвас доторх нарийн жагсаалт.
- *
- * ⚠️ `max-width` ЗААВАЛ: давхаргын нэр 40 тэмдэгт хүрдэг («Багц 8.2 ·
- * Цахилгаан дамжуулах агаарын шугам 110кв») тул хязгааргүй бол сонголт
- * зурвасыг бүхэлд нь эзэлж, «Хаах» товч дэлгэцээс гарна.
- */
-.editSel {
-  font: inherit;
-  font-size: 11.5px;
-  max-width: 240px;
-  padding: 5px 8px;
-  color: var(--ink);
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  cursor: pointer;
-}
+/* ⚠️ `.editSel` ХАСАГДСАН (2026-09-14) — 74 давхаргын `<select>` нь
+   тэмплэйтийн самбараар (`.tplRow`) солигдсон. Тэр сонголт нь бүлэглэлгүй,
+   тэмдэггүй, хайлтгүй байсан бөгөөд нэр нь урт тул зурвасыг эзэлж «Хаах»
+   товчийг дэлгэцээс шахдаг байв. */
 
-/* «Зурж нэмэх» — зурвасын ЦОРЫН ГАНЦ дүүргэлттэй товч (гол үйлдэл) */
+/* «Шинэ объект» — зурвасын ЦОРЫН ГАНЦ дүүргэлттэй товч (гол үйлдэл).
+   Самбар доторх «Хэлбэр хадгалах» ч энэ загварыг хуваалцана. */
 .editAdd {
   font: inherit;
   font-size: 12px;
@@ -293,36 +280,123 @@
 .editAdd:disabled { opacity: 0.45; cursor: default; filter: none; }
 .editClose:disabled { opacity: 0.45; cursor: default; }
 
-/* Дэд горимын солигч — «Атрибут» / «Хэлбэр» хоёр сегмент, нэг хүрээнд */
-.editTabs {
+
+/* ══ БАРУУН САМБАР — ArcGIS Experience Builder-ийн edit widget хэв ══
+
+   ⚠️ ЗАСВАРЫН МАЯГТ ЦОНХНООС САМБАР БОЛСОН (2026-09-14). Гол ялгаа нь
+   зохиомж биш АЖИЛЛАГАА: модаль цонх нь backdrop-оороо газрын зургийг
+   бүхэлд нь түгжиж, объект зассаны дараа зурагт эргэж харахын тулд заавал
+   хаах шаардлагатай байв. Мөн vertex-ийн бариулууд цонхны ард үлддэг тул
+   «Атрибут / Хэлбэр» гэсэн хоёр таб зайлшгүй болсон. Самбар нь зургийн
+   баруун ирмэгт зогсох тул маягт ба бариул ЗЭРЭГ харагдана — хоёр таб
+   бүхэлдээ ХЭРЭГГҮЙ болов.
+
+   ⚠️ Зурвасын ӨНДРӨӨС (44px) эхэлнэ — эс бөгөөс горимын нэр, «Хаах» товчийг
+   бүрхэнэ. */
+.pane {
+  position: absolute;
+  top: 44px;
+  right: 0;
+  bottom: 0;
+  z-index: 11;
+  width: min(360px, 42vw);
   display: flex;
-  flex: none;
-  padding: 2px;
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-}
-
-.editTab {
-  font: inherit;
-  font-size: 11.5px;
-  padding: 3px 10px;
-  color: var(--ink-3);
-  background: none;
-  border: 0;
-  border-radius: calc(var(--r-sm) - 1px);
-  cursor: pointer;
-  transition: color 0.12s, background 0.12s;
-}
-.editTab:hover { color: var(--ink-2); }
-
-/* ⚠️ Идэвхтэй сегментийг ДЭВСГЭРЭЭР ялгана, өнгөөр БИШ: зурвас нь тунгалаг
-   тул зөвхөн үсгийн өнгө солиход аль нь идэвхтэй нь мэдэгдэхгүй. */
-.editTabOn {
-  color: var(--ink);
+  flex-direction: column;
+  overflow-y: auto;
   background: var(--surface);
-  box-shadow: 0 1px 2px rgb(0 0 0 / 25%);
+  border-left: 1px solid var(--line);
+  box-shadow: -10px 0 28px rgb(0 0 0 / 28%);
 }
+
+/* ⚠️ Нарийн дэлгэцэд самбар нь зургийн ихэнхийг эзэлнэ — доод хагаст
+   буулгаж, зураг дээд хагаст бүтнээрээ үлдэнэ. Хажуу тийш шахвал зураг
+   хэдхэн арван пиксель үлдэж, объект дарах боломжгүй болно. */
+@media (max-width: 720px) {
+  .pane {
+    top: auto;
+    left: 0;
+    width: auto;
+    max-height: 56%;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    box-shadow: 0 -10px 28px rgb(0 0 0 / 28%);
+  }
+}
+
+/* ── Тэмплэйтийн жагсаалт («Шинэ объект») ── */
+.tplWrap {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px 18px;
+}
+.tplGroup { display: grid; gap: 2px; }
+.tplHead {
+  padding: 6px 2px 2px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+/* ⚠️ Тэмдэг 24px — `PackLayers.Swatch`-ийн өргөнтэй ЯГ тааруулсан: хоёр
+   жагсаалт нэг хуудсан дээр байдаг тул зөрвөл нүдэнд шууд мэдэгдэнэ. */
+.tplRow {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  color: var(--ink-2);
+  background: none;
+  border: none;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.tplRow:hover { background: var(--surface-2); color: var(--ink); }
+.tplRow:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.tplName { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── Геометрийн үйлдэл — маягтын доор ── */
+.geomBox {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 16px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+.geomTitle {
+  width: 100%;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+/* ⚠️ УСТГАХ нь БУЦААГДАХГҮЙ үйлдэл тул бусад товчноос өнгөөр САЛГАНА.
+   Дүүрэн улаан БИШ: тэр нь «энд дар» гэсэн дуудлага болно — энэ товч нь
+   ховор хэрэглэгдэх ёстой. */
+.geomDel {
+  font: inherit;
+  font-size: 12px;
+  padding: 6px 12px;
+  color: var(--bad-ink);
+  background: none;
+  border: 1px solid color-mix(in srgb, var(--bad-ink) 45%, transparent);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.geomDel:hover { background: color-mix(in srgb, var(--bad-ink) 14%, transparent); }
+.geomDel:disabled { opacity: 0.45; cursor: default; background: none; }
+
+/* «Шинэ объект» товч дарагдсан төлөв */
+.editAddOn { box-shadow: inset 0 0 0 2px color-mix(in srgb, #fff 55%, transparent); }
 
 /**
  * «Үйлдэл буцаах» — сэрэмжийн өнгө (`--warn`), дүүргэлтгүй.
@@ -509,4 +583,14 @@
 }
 @media (max-width: 1180px) {
   .frame > :global(button[class*='splitGrip_grip']) { display: none; }
+}
+
+/* ⚠️ ЯВЦЫН мөр — «74-аас 31 давхарга». Үзүүлэлтүүд дэвшилттэй дүүрдэг болсноор
+   (`usePlanTotalsLive`) «…» тэмдэг нь гацсан уу, ачаалж байна уу гэдэг нь
+   ялгагдахгүй болсон тул явцыг ил хэлнэ. Бүрэн болмогц алга болно. */
+.kpiWait {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
 }

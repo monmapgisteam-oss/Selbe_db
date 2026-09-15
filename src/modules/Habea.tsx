@@ -28,14 +28,18 @@ import { t as tr } from '@/lib/i18nCore';
 import { useAsync } from '@/lib/useAsync';
 import { queryFeatures, type Row } from '@/lib/query';
 import {
-  HABEA, HABEA_LAYER_IDS, LAYER_BY_ID, CATALOG_LAYER_IDS,
+  HABEA, HABEA_LAYER_IDS, HABEA_UZLEG_LAYER_ID, LAYER_BY_ID, CATALOG_LAYER_IDS,
   bagtsKey, laborCompanyFields,
 } from '@/lib/services';
 import { usePlanTotals } from '@/lib/totals';
 import { cached } from '@/lib/live';
 import { usePanes } from './habeaPanes';
-import { useUzleg, UzlegLeft, UzlegRight, UzlegFin, type UzlegKind } from './habeaUzleg';
-import { Section, Bars, Donut, Select, Series, Stack, Loading, Empty } from '@/components/ui';
+import {
+  useUzleg, filterUzleg, uzPass, uzPickRows, uzValueLabel, UzlegLeft, UzlegRight, UzlegFin,
+  type UzlegKind, type UzDim,
+} from './habeaUzleg';
+import { MultiSelect } from '@/components/MultiSelect';
+import { Section, Bars, Donut, Series, Stack, Loading, Empty } from '@/components/ui';
 import { num, date, text, dayKey } from '@/lib/format';
 import { MapCanvas, type Dim } from '@/components/MapCanvas';
 import { MapTools } from '@/components/MapTools';
@@ -323,11 +327,11 @@ function laborState(rows: Row[]): {
  * өдөр) — шинэ тайлан ирэх бүрд өөрөө уртсана. Задаргаагүй өдрийг 0%-иар
  * зурвал «монгол ажилтан байгаагүй» гэж ХУДАЛ уншигдана тул хасна.
  *
- * `sfx` өгвөл ЗӨВХӨН тэр гүйцэтгэгчийн баганын бүлгээс, эс бөгөөс бүгдийн
+ * `sfxs` өгвөл ЗӨВХӨН тэдгээр гүйцэтгэгчийн баганын бүлгүүдээс, эс бөгөөс бүгдийн
  * нийлбэрээс тооцно.
  */
-function mixTotals(rows: Row[], sfx: string | null): { mongol: number; gadaad: number } {
-  const fields = (sfx ? [{ sfx }] : HABEA.labor.companies).map((c) => laborCompanyFields(c.sfx));
+function mixTotals(rows: Row[], sfxs: readonly string[] | null): { mongol: number; gadaad: number } {
+  const fields = (sfxs ? sfxs.map((sfx) => ({ sfx })) : HABEA.labor.companies).map((c) => laborCompanyFields(c.sfx));
   return rows.reduce<{ mongol: number; gadaad: number }>(
     (a, r) => ({
       mongol: a.mongol + fields.reduce((s, f) => s + nn(r[f.mongol]), 0),
@@ -340,7 +344,9 @@ function mixTotals(rows: Row[], sfx: string | null): { mongol: number; gadaad: n
 /**
  * Гүйцэтгэгч бүрийн өдөр тутмын ажилтны тоо — ОГНООГООР.
  *
- * `sfx` өгвөл тэр гүйцэтгэгчийн багана, эс бөгөөс бүх гүйцэтгэгчийн нийлбэр.
+ * `sfxs` өгвөл тэдгээр гүйцэтгэгчийн баганын нийлбэр, эс бөгөөс бүх гүйцэтгэгчийн
+ * нийлбэр. ⚠️ ХООСОН массив (`[]`) нь «бүгд» БИШ — шүүлт юу ч тааруулаагүй
+ * гэсэн үг тул цуваа хоосон гарна.
  *
  * ⚠️ Огноогүй мөрийг (бөглөж дуусаагүй маягт) ХАСНА — `CreationDate`-аар
  * орлуулбал өнөөдрийн огноогоор олон хоосон багана нэмэгдэнэ.
@@ -378,13 +384,15 @@ function companyTotals(rows: Row[]) {
 /**
  * Өдөр тутмын цуваа — ажилтан эсвэл техник.
  *
- * `sfx` өгвөл тэр гүйцэтгэгчийн багана, эс бөгөөс бүх гүйцэтгэгчийн нийлбэр.
+ * `sfxs` өгвөл тэдгээр гүйцэтгэгчийн баганын нийлбэр, эс бөгөөс бүх гүйцэтгэгчийн
+ * нийлбэр. ⚠️ ХООСОН массив (`[]`) нь «бүгд» БИШ — шүүлт юу ч тааруулаагүй
+ * гэсэн үг тул цуваа хоосон гарна.
  *
  * ⚠️ Огноогүй мөрийг (бөглөж дуусаагүй маягт) ХАСНА — `CreationDate`-аар
  * орлуулбал өнөөдрийн огноогоор олон хоосон багана нэмэгдэнэ.
  */
-function byDaySeries(rows: Row[], sfx: string | null, key: 'niitAjiltan' | 'niitTehnik') {
-  const fields = (sfx ? [{ sfx }] : HABEA.labor.companies).map((c) => laborCompanyFields(c.sfx));
+function byDaySeries(rows: Row[], sfxs: readonly string[] | null, key: 'niitAjiltan' | 'niitTehnik') {
+  const fields = (sfxs ? sfxs.map((sfx) => ({ sfx })) : HABEA.labor.companies).map((c) => laborCompanyFields(c.sfx));
   return rows
     .map((r) => {
       /**
@@ -742,7 +750,7 @@ const FOCUS_CHIPS: {
 }[] = [
   { key: 'inc', label: () => tr('Осол, зөрчил'), count: (n) => n },
   { key: 'labor', label: () => tr('Техник болон хүн цаг'), count: () => null },
-  { key: 'v11', label: () => tr('Ажлын байрны үзлэг V11'), count: () => null },
+  { key: 'v11', label: () => tr('Ажлын байрны үзлэг V1.1'), count: () => null },
   { key: 'guitsetgegch', label: () => tr('Гүйцэтгэгчийн ажлын байрны үзлэг'), count: () => null },
 ];
 
@@ -766,11 +774,57 @@ const DAYS_VISIBLE = 8;
  *   incCompany → ЗӨВХӨН осол
  *   craneState → ЗӨВХӨН кран
  */
-type Dim2 = 'pkg' | 'co' | 'incType' | 'cause' | 'incCompany' | 'craneState';
-type Sel = Record<Dim2, string | null>;
-const NO_SEL: Sel = {
-  pkg: null, co: null, incType: null, cause: null, incCompany: null, craneState: null,
+type Dim2 = 'pkg' | 'co' | 'incType' | 'cause' | 'incCompany' | 'craneState'
+  /* ⚠️ 2026-09-15: ҮЗЛЭГИЙН чартын хэмжээсүүд — ЗӨВХӨН үзлэгийн самбарыг
+     шүүнэ (ослын `incType` нь зөвхөн ослыг шүүдэгтэй ижил хамрах хүрээ). */
+  | 'uzSev' | 'uzShift' | 'uzCompany' | 'uzSite'
+  /* ⚠️ ХУУДАСНЫ ОГНОО — хүн хүч, осол, үзлэг гурвуулаа дагана (кран огноогүй).
+     Хүн хүчний ба үзлэгийн өдөр/сарын цуваа ИЖИЛ хэмжээсийг тавина. */
+  | 'day' | 'month';
+/**
+ * ⚠️ 2026-09-15: `pkg` ба `co` НЭГ УТГАТАЙ `Sel`-ээс ГАРЧ, тусдаа МАССИВ
+ * төлөв болов (олон сонголт). Бусад дөрвөн хэмжээс чартын нэг хэсгийг
+ * дарж сонгодог тул нэг утгатай хэвээр.
+ */
+type SelDim = Exclude<Dim2, 'pkg' | 'co'>;
+/**
+ * ⚠️ 2026-09-15: БҮХ хэмжээс МАССИВ — ArcGIS Dashboard-ын олон сонголт.
+ * Нэг хэмжээс доторх утгууд «эсвэл», хэмжээс хооронд «ба». Хоосон = бүгд.
+ */
+type Sel = Record<SelDim, string[]>;
+/** Үзлэгийн хэмжээсүүд — маягт солиход ЭДГЭЭР л цуцлагдана */
+/**
+ * Үзлэгийн хэмжээсүүд — маягт солиход ЭДГЭЭР л цуцлагдана.
+ * ⚠️ Огноо (`day`/`month`) ЭНД ОРОХГҮЙ: тэр нь хуудасны шүүлт тул
+ * маягт солиход ч хүн хүч, ослын шүүлт хэвээр үлдэх ёстой.
+ */
+const NO_UZ_SEL: Pick<Sel, 'uzSev' | 'uzShift' | 'uzCompany' | 'uzSite'> = {
+  uzSev: [], uzShift: [], uzCompany: [], uzSite: [],
 };
+
+const NO_SEL: Sel = {
+  incType: [], cause: [], incCompany: [], craneState: [],
+  ...NO_UZ_SEL,
+  day: [], month: [],
+};
+
+const inSet = (arr: readonly string[], v: string) => arr.length === 0 || arr.includes(v);
+
+/** Үзлэгийн самбарын хэмжээс → хуудасны сонголтын түлхүүр */
+const UZ_DIM: Record<UzDim, SelDim> = {
+  sev: 'uzSev', shift: 'uzShift', company: 'uzCompany',
+  site: 'uzSite', day: 'day', month: 'month',
+};
+
+/**
+ * ГҮЙЦЭТГЭГЧ → БАГЦ (1:1) — хүн хүчний бүртгэлээс. Багц заагаагүй
+ * гүйцэтгэгч (ММСЕ, SC …) ЭНД ОРОХГҮЙ.
+ */
+const PKG_OF_CO: ReadonlyMap<string, string> = new Map<string, string>(
+  HABEA.labor.companies
+    .filter((x) => x.bagts)
+    .map((x) => [x.sfx, bagtsKey(x.bagts as string)] as const),
+);
 
 /** Хүний уншиж болох нэр — идэвхтэй шүүлтийн чипэнд гарна */
 const DIM_LABEL: Record<Dim2, string> = {
@@ -783,6 +837,12 @@ const DIM_LABEL: Record<Dim2, string> = {
   //    Хоёулаа зэрэг идэвхтэй байж болох тул чип дээр ялгарах ёстой.
   incCompany: tr('Ослын компани'),
   craneState: tr('Краны төлөв'),
+  uzSev: tr('Үл нийцлийн зэрэг'),
+  uzShift: tr('Ээлж'),
+  uzCompany: tr('Үзлэгийн компани'),
+  uzSite: tr('Үзлэгийн талбай'),
+  day: tr('Өдөр'),
+  month: tr('Сар'),
 };
 
 /* ═══════════════════════ Үндсэн компонент ═══════════════════════ */
@@ -805,6 +865,13 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
 
   /* Олон хэмжээст хөндлөн шүүлт + зурган дээрээс сонгосон объект */
   const [sel, setSel] = useState<Sel>(NO_SEL);
+  /**
+   * БАГЦ ба КОМПАНИ — ОЛОН СОНГОЛТ (2026-09-15, хэрэглэгчийн хүсэлт).
+   * Хоосон массив = бүгд. Хүснэгтийн мөр, газрын зургийн давхаргын аль аль
+   * нь эдгээрээс ДАМЖИН `pkgEff`/`coEff`-ээр шүүгдэнэ.
+   */
+  const [pkgs, setPkgs] = useState<string[]>([]);
+  const [cos, setCos] = useState<string[]>([]);
   const [picked, setPicked] = useState<{ id: string; attrs: Record<string, unknown> } | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
 
@@ -902,7 +969,26 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
      зурваст өдөр↔сар сэлгэх нь давхардал үүсгэхээ больсон. */
   const aStep = ajiltanStep;
   const tStep = tehnikStep;
-  const { pkg, co } = sel;
+  /**
+   * ХҮЧИНТЭЙ БАГЦУУД — ЗӨВХӨН багцтай эх сурвалжид (осол, кран, газрын
+   * зургийн гурван давхарга). `null` = шүүлтгүй.
+   *
+   * ⚠️ Компани сонгосон бол ТҮҮНИЙ багцаар дамжина (гүйцэтгэгч ↔ багц 1:1).
+   * Багц ба компани ХОЁУЛАА сонгогдвол ОГТЛОЛЦОЛ («ба») — нэгдлийг авбал
+   * «Багц 1» + «Монкон» гэж сонгоход Монконы бус Багц 1-ийн осол ч орж,
+   * хэрэглэгчийн хүссэнээс илүү мөр гарна. Огтлолцол хоосон бол ХООСОН
+   * олонлог (`size 0`) — шүүлтүүрийн мөрөнд ил анхааруулна.
+   *
+   * ⚠️ Сонгосон компаниудын АЛЬ Ч багцгүй бол компанийн шүүлт эдгээр эх
+   * сурвалжид үйлчлэхгүй (өмнөх нэг сонголттой хувилбарын ижил дүрэм).
+   */
+  const pkgEff = useMemo<ReadonlySet<string> | null>(() => {
+    const a = pkgs.length ? new Set(pkgs) : null;
+    const viaCo = cos.map((k) => PKG_OF_CO.get(k)).filter((k): k is string => Boolean(k));
+    const b = viaCo.length ? new Set(viaCo) : null;
+    if (a && b) return new Set([...a].filter((k) => b.has(k)));
+    return a ?? b;
+  }, [pkgs, cos]);
 
   /**
    * ХҮЧИНТЭЙ ГҮЙЦЭТГЭГЧ — багцын шүүлтийг хүн хүчний өгөгдөлд ХОЛБОНО.
@@ -918,12 +1004,20 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    * компанид тохирохгүй бол `null` — тэр үед хүн хүч шүүгдэхгүй нь ЗӨВ
    * (тэр багцад ажилтны багана байхгүй гэсэн үг).
    */
-  const coEff = useMemo(() => {
-    if (co) return co;
-    if (!pkg) return null;
-    const hit = HABEA.labor.companies.find((x) => x.bagts && bagtsKey(x.bagts) === pkg);
-    return hit ? hit.sfx : null;
-  }, [co, pkg]);
+  /* ⚠️ 2026-09-15: ОЛОН утга. Багцаар дамжсан гүйцэтгэгчид ба шууд сонгосон
+     гүйцэтгэгчдийн ОГТЛОЛЦОЛ (`pkgEff`-ийн ижил «ба» дүрэм). Сонгосон
+     багцуудын аль нь ч гүйцэтгэгчгүй бол хүн хүч шүүгдэхгүй. */
+  const coEff = useMemo<string[] | null>(() => {
+    const c = cos.length ? cos : null;
+    /* ⚠️ `string[]` ИЛ: эс бөгөөс гүйцэтгэгчийн кодын нарийн төрлөөр таамаглагдаж
+       `d.includes(k)` энгийн мөрийг хүлээж авахгүй. */
+    const viaPkg: string[] = HABEA.labor.companies
+      .filter((x) => pkgs.includes(PKG_OF_CO.get(x.sfx) ?? ''))
+      .map((x) => x.sfx);
+    const d = viaPkg.length ? viaPkg : null;
+    if (c && d) return c.filter((k) => d.includes(k));
+    return c ?? d;
+  }, [pkgs, cos]);
 
   const onPick = useCallback((attrs: Record<string, unknown> | null, layerId: string | null) => {
     setPicked(attrs && layerId?.startsWith('habea:') ? { id: layerId, attrs } : null);
@@ -937,67 +1031,62 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    * ⚠️ Зурган дээрх сонголтыг ЦУЦАЛНА: чартаас шүүхэд өмнөх нэг объектын
    * сонголт хүчинтэй үлдвэл хоёр шүүлт зөрчилдөж үр дүн үргэлж хоосон гарна.
    */
-  const toggleDim = useCallback((d: Dim2, v: string) => {
-    setSel((s) => ({ ...s, [d]: s[d] === v ? null : v }));
+  const toggleDim = useCallback((d: SelDim, v: string) => {
+    setSel((s) => ({ ...s, [d]: s[d].includes(v) ? s[d].filter((x) => x !== v) : [...s[d], v] }));
     setPicked(null);
   }, []);
 
+  /** Чартын багана дарахад — тухайн багцыг сонголтод нэмнэ/хасна */
   const togglePkg = useCallback((k: string) => {
-    // Багцаар шүүхэд гүйцэтгэгчийн нарийвчлал утгагүй болно — хамт цуцална
-    setSel((s) => ({ ...s, pkg: s.pkg === k ? null : k, co: null }));
+    setPkgs((p) => (p.includes(k) ? p.filter((x) => x !== k) : [...p, k]));
     setPicked(null);
   }, []);
 
-  /**
-   * Багцыг ЯГ тавих (`null` = бүх багц) — унжих жагсаалтын зам.
-   *
-   * ⚠️ `togglePkg`-оос ТУСДАА: тэр нь ижил утгыг дахин өгөхөд ЦУЦАЛДАГ
-   * (чартын бар дарах зан). Унжих жагсаалтад тэр зан нь буруу — хэрэглэгч
-   * аль хэдийн сонгосон багцаа дахин сонгоход шүүлт чимээгүй арилна.
-   *
-   * ⚠️ `co`-г МӨН цуцална: гүйцэтгэгч ↔ багц нь 1:1 тул өөр багц
-   * сонгосон хойно хуучин гүйцэтгэгчийн шүүлт үлдвэл хоёр нөхцөл
-   * зөрчилдөж ажилтны самбар үргэлж хоосон гарна.
-   */
-  const setPkg = useCallback((k: string | null) => {
-    setSel((s) => ({ ...s, pkg: k, co: null }));
+  /** Чартын багана дарахад — тухайн гүйцэтгэгчийг сонголтод нэмнэ/хасна */
+  const toggleCo = useCallback((k: string) => {
+    setCos((p) => (p.includes(k) ? p.filter((x) => x !== k) : [...p, k]));
     setPicked(null);
   }, []);
+
+  /* ⚠️ `setPkg` ХАСАГДСАН (2026-09-15): унжих жагсаалт олон сонголттой болсон
+     тул багцыг `MultiSelect`-ийн `onChange` шууд тавина. */
 
   /** Бүх шүүлт + зургийн сонголтыг нэг дор арилгана */
   const clearAll = useCallback(() => {
     setSel(NO_SEL);
+    setPkgs([]);
+    setCos([]);
     setPicked(null);
   }, []);
 
-  /**
-   * Гүйцэтгэгч сонгох. Ажилтан/техникийг тухайн компанийн баганын бүлгээс ЯГ
-   * шүүнэ; осол зөрчил, кран, газрын зураг нь компанийн нэрээр БИШ — компанийн
-   * БАГЦААР шүүгдэнэ (ослын бүртгэлийн компанийн нэр нь чөлөөт текст, 31
-   * тэмдэгтээр таслагдсан тул найдвартай тааруулах боломжгүй).
-   *
-   * ⚠️ Багц заагдаагүй гүйцэтгэгч (ММСЕ, SC, ОСНААГ, ГУББ, ЧХО) сонгоход
-   * `pkg` нь null хэвээр — ажилтан/техник шүүгдэнэ, осол/кран ШҮҮГДЭХГҮЙ.
-   * Үүнийг шүүлтийн мөрөнд ил бичнэ.
-   */
-  /**
-   * Гүйцэтгэгчийг ЯГ тавих (`null` = бүгд). Унжих жагсаалт нь энийг шууд,
-   * чартын багана/бар нь `toggleCo`-гоор дамжуулан дуудна.
-   *
-   * Гүйцэтгэгч ↔ багц нь 1:1 тул хоёуланг ЗЭРЭГ тавина: ажилтан/техникийг
-   * компанийн баганаас ЯГ, осол/кран/газрын зургийг түүний БАГЦААР шүүнэ.
-   */
-  const setCompany = useCallback((sfx: string | null) => {
-    const bagts = sfx ? HABEA.labor.companies.find((c) => c.sfx === sfx)?.bagts ?? null : null;
-    setSel((s) => ({ ...s, co: sfx, pkg: bagts ? bagtsKey(bagts) : null }));
-    setPicked(null);
-  }, []);
+  /* ⚠️ `setCompany` ХАСАГДСАН (2026-09-15). Урьд нь гүйцэтгэгч сонгоход
+     `pkg`-ийг ДАРЖ бичдэг байв (1:1 холбоо). Олон сонголтод дарж бичих нь
+     хэрэглэгчийн сонгосон багцыг чимээгүй устгана — одоо хоёр жагсаалт
+     ТУСДАА хадгалагдаж, холбоо нь `pkgEff`/`coEff`-д «ба» дүрмээр бодогдоно. */
 
 
   const all = q.state === 'ready' ? q.data : null;
   const inc = useMemo(() => (all ? all.incident.map(normIncident) : []), [all]);
   const cranes = useMemo(() => (all ? all.crane.map(normCrane) : []), [all]);
   const labor = useMemo(() => laborState(all ? all.labor : []), [all]);
+  /**
+   * ОГНООНЫ ШҮҮЛТТЭЙ хүн хүчний мөрүүд — өдөр/сарын цувааг ЭС тооцвол бүх
+   * хүн хүчний дүрслэл (монгол/гадаад, компаниар) эндээс.
+   * ⚠️ Өдөр/сарын цуваа нь ӨӨРӨӨ огнооны сонгогч тул ШҮҮГДЭЭГҮЙ `all.labor`-
+   * оос бодогдоно (ArcGIS зан: сонгосон чарт өөрийн сонголтоор хумигдахгүй).
+   * ⚠️ `laborState` ба сонголтын жагсаалтууд мөн шүүгдээгүйгээс — удирдлага
+   * тогтвортой байх ёстой.
+   */
+  const laborDated = useMemo(() => {
+    const rows = all ? all.labor : [];
+    if (!sel.day.length && !sel.month.length) return rows;
+    return rows.filter((r) => {
+      const d = nn(r[L.ognoo]);
+      if (d <= 0) return false;
+      const k = dayKey(d);
+      return inSet(sel.day, k) && inSet(sel.month, k.slice(0, 7));
+    });
+  }, [all, sel.day, sel.month]);
 
   /**
    * Багц сонгоход давхарга бүрийн WHERE — график дээр тоолсон ЯГ тэр мөрүүдийг
@@ -1021,38 +1110,108 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    * дарахад ч цэгийн түлхүүрт хөрвүүлнэ — аюулгүйн бүс кранаа ЯГ дагана.
    */
   const pickOsol = picked?.id === 'habea:osol' ? nn(picked.attrs['objectid']) : 0;
-  const pickCraneOid = picked && picked.id !== 'habea:osol'
+  /* ⚠️ 2026-09-15: «осол БИШ бол кран» гэж ҮЗЭХГҮЙ — үзлэгийн давхарга нэмэгдсэн
+     тул үзлэг дарахад краны шүүлт андуурч асах байв. Төрөл бүрийг ИЛ шалгана. */
+  const pickCraneOid = picked && (picked.id === 'habea:crane' || picked.id === 'habea:buffer')
     ? nn(picked.id === 'habea:buffer' ? picked.attrs[C.bufferLink] : picked.attrs[C.oid])
     : 0;
+  const pickUzOid = picked
+    && (picked.id === HABEA_UZLEG_LAYER_ID.v11 || picked.id === HABEA_UZLEG_LAYER_ID.guitsetgegch)
+    ? nn(picked.attrs['objectid'])
+    : 0;
+  const pickUzRow = pickUzOid && uz.state === 'ready'
+    ? uz.rows.find((x) => x.oid === pickUzOid) ?? null
+    : null;
 
-  const incOn = Boolean(pkg || sel.incType || sel.cause || sel.incCompany || pickOsol);
-  const craneOn = Boolean(pkg || sel.craneState || pickCraneOid);
+  const incOn = Boolean(
+    pkgEff || sel.incType.length || sel.cause.length || sel.incCompany.length
+    || sel.day.length || sel.month.length || pickOsol,
+  );
+  const craneOn = Boolean(pkgEff || sel.craneState.length || pickCraneOid);
 
   /* Шүүгдсэн олонлогууд — БҮХ дүрслэл эдгээрээс тоологдоно.
      ⚠️ `useMemo` нь дүрслэлийн хурдны төлөө БИШ, ЛАВЛАГААНЫ ТОГТВОРТОЙ БАЙДЛЫН
      төлөө: доорх `layerWhere` эдгээрээс хамаардаг бөгөөд рендер бүрт шинэ
      массив үүсвэл газрын зураг `definitionExpression`-оо дахин дахин тавина. */
-  const fInc = useMemo(() => inc.filter((x) =>
-    (!pkg || x.bagtsK === pkg)
-    && (!sel.incType || x.type === sel.incType)
-    && (!sel.cause || x.cause === sel.cause)
-    && (!sel.incCompany || x.company === sel.incCompany)
-    && (!pickOsol || x.oid === pickOsol)),
-  [inc, pkg, sel.incType, sel.cause, sel.incCompany, pickOsol]);
+  /**
+   * ОСЛЫН МӨР ШҮҮЛТЭЭР ГАРАХ УУ — `except` хэмжээсийг ТООЦОХГҮЙ.
+   * ⚠️ ArcGIS Dashboard-ын зан: сонголт хийсэн чарт ӨӨРӨӨ шүүгдэхгүй, бүх
+   * ангиллаа харуулсаар сонгосон нь тодорно. Урьд нь «Унах» дармагц төрлийн
+   * донат ганц зүсмэг болж хумигддаг тул хоёр дахь төрөл нэмэх боломжгүй байв.
+   */
+  const incPass = useCallback((x: Inc, except?: SelDim | 'pkg') =>
+    (except === 'pkg' || !pkgEff || pkgEff.has(x.bagtsK))
+    && (except === 'incType' || inSet(sel.incType, x.type))
+    && (except === 'cause' || inSet(sel.cause, x.cause))
+    && (except === 'incCompany' || inSet(sel.incCompany, x.company))
+    /* ⚠️ Огнооны сонголт идэвхтэй бол огноогүй осол ГАРАХГҮЙ — «аль өдрийнх
+       нь мэдэгдэхгүй»-г сонгосон өдөрт хамааруулж болохгүй. */
+    && ((!sel.day.length && !sel.month.length)
+      || (x.d > 0 && inSet(sel.day, dayKey(x.d)) && inSet(sel.month, dayKey(x.d).slice(0, 7))))
+    && (!pickOsol || x.oid === pickOsol),
+  [pkgEff, sel.incType, sel.cause, sel.incCompany, sel.day, sel.month, pickOsol]);
 
-  const fCrane = useMemo(() => cranes.filter((x) =>
-    (!pkg || x.bagtsK === pkg)
-    && (!sel.craneState || x.tuluv === sel.craneState)
-    && (!pickCraneOid || x.oid === pickCraneOid)),
-  [cranes, pkg, sel.craneState, pickCraneOid]);
+  const fInc = useMemo(() => inc.filter((x) => incPass(x)), [inc, incPass]);
+
+  /** Краны мөр — `incPass`-ийн ижил «өөрийгөө хасах» дүрэм. Кран огноогүй. */
+  const cranePass = useCallback((x: (typeof cranes)[number], except?: SelDim | 'pkg') =>
+    (except === 'pkg' || !pkgEff || pkgEff.has(x.bagtsK))
+    && (except === 'craneState' || inSet(sel.craneState, x.tuluv))
+    && (!pickCraneOid || x.oid === pickCraneOid),
+  [pkgEff, sel.craneState, pickCraneOid]);
+
+  const fCrane = useMemo(() => cranes.filter((x) => cranePass(x)), [cranes, cranePass]);
 
   /**
    * ЧАРТ → ЗУРАГ. Давхарга бүрт ӨӨРИЙН WHERE: график дээр тоологдсон ЯГ ТЭР
    * мөрүүдийг зурагт үлдээнэ. Шүүлт идэвхгүй давхаргад `null` — тэр давхарга
    * бүтнээрээ харагдана (жиш. зөвхөн ослын төрлөөр шүүхэд кран хэвээр).
    */
+  /** Үзлэгийн чартын сонголт — ТОГТВОРТОЙ лавлагаа (газрын зургийн шүүлт дагана) */
+  const uzSel = useMemo(() => ({
+    sev: sel.uzSev, shift: sel.uzShift, company: sel.uzCompany,
+    site: sel.uzSite, day: sel.day, month: sel.month,
+  }), [sel.uzSev, sel.uzShift, sel.uzCompany, sel.uzSite, sel.day, sel.month]);
+
+  /**
+   * Үзлэгийн СУУРЬ олонлог — багц/компани ба газрын зургаас дарсан үзлэг.
+   * ⚠️ Чартын сонголтыг ЭНД хэрэглэхгүй: самбар бүр `uzPass`-аар «өөрийгөө
+   * хассан» олонлогоо бодно (ArcGIS зан).
+   * ⚠️ Дарсан үзлэг нь ЗӨВХӨН үзлэгийн самбарыг шүүнэ — осол, кран
+   * хөндөгдөхгүй (ослын цэг дарахтай ижил хамрах хүрээ).
+   */
+  const uzF = useMemo(() => {
+    const base = filterUzleg(uz, pkgs, cos);
+    if (!pickUzOid || base.state !== 'ready') return base;
+    return { ...base, rows: base.rows.filter((x) => x.oid === pickUzOid) };
+  }, [uz, pkgs, cos, pickUzOid]);
+
+  /** Фокусын маягтын газрын зургийн давхарга — фокус байхгүй бол `null` */
+  const uzLayerId = uzlegKind ? HABEA_UZLEG_LAYER_ID[uzlegKind] : null;
+
+  /**
+   * ҮЗЛЭГ → ГАЗРЫН ЗУРАГ. Үзлэгийн самбарт тоологдсон ЯГ тэр мөрүүдийг зурагт
+   * үлдээнэ (осол, краны `layerWhere`-тэй ижил загвар).
+   * ⚠️ Шүүлт идэвхгүй бол `null` — давхарга бүтнээрээ. Идэвхтэй боловч юу ч
+   * тохирохгүй бол `1=0` — давхаргыг ХООСЛОНО, бүтнээр нь үлдээхгүй.
+   */
+  const uzWhere = useMemo(() => {
+    if (!uzLayerId) return null;
+    const on = pkgs.length || cos.length || pickUzOid
+      || Object.values(uzSel).some((v) => v.length);
+    if (!on || uzF.state !== 'ready') return null;
+    const ids = uzF.rows.filter((x) => uzPass(x, uzSel)).map((x) => x.oid).filter((o) => o > 0);
+    return ids.length ? `objectid IN (${ids.join(',')})` : '1=0';
+  }, [uzLayerId, pkgs.length, cos.length, pickUzOid, uzSel, uzF]);
+
+  /** Газрын зурагт харагдах давхаргууд — каталогийн сонголт + фокусын үзлэг */
+  const mapVisible = useMemo(
+    () => (uzLayerId ? [...visible, uzLayerId] : visible),
+    [visible, uzLayerId],
+  );
+
   const layerWhere = useMemo(() => {
-    if (!incOn && !craneOn) return undefined;
+    if (!incOn && !craneOn && !uzWhere) return undefined;
     // ⚠️ Хоосон жагсаалт = `1=0`: тухайн шүүлтэд юу ч тохирохгүй бол давхаргыг
     //    БҮТНЭЭР нь харуулах биш, ХООСЛОНО.
     const ids = fInc.map((x) => x.oid);
@@ -1066,15 +1225,17 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     const buff = craneOn
       ? (oids.length ? `${C.bufferLink} IN (${oids.join(',')})` : '1=0')
       : null;
-    return { 'habea:osol': osol, 'habea:crane': kran, 'habea:buffer': buff };
-  }, [incOn, craneOn, fInc, fCrane]);
+    const out: Record<string, string | null> = { 'habea:osol': osol, 'habea:crane': kran, 'habea:buffer': buff };
+    if (uzLayerId) out[uzLayerId] = uzWhere;
+    return out;
+  }, [incOn, craneOn, fInc, fCrane, uzLayerId, uzWhere]);
 
   /**
    * Монгол/гадаад — БҮХ бүртгэлийн нийлбэр (сонгосон гүйцэтгэгчийг дагана).
    * ⚠️ Задаргаа бөглөгдсөн өдрүүдээс Л хуримтлагдана (маягтад өдөр бүр
    * бөглөгддөггүй) тул нийт нь «Нийт ажилтан» KPI-тай тэнцэхгүй.
    */
-  const mixSum = useMemo(() => mixTotals(all ? all.labor : [], coEff), [all, coEff]);
+  const mixSum = useMemo(() => mixTotals(laborDated, coEff), [laborDated, coEff]);
   /* ⚠️ Шошгыг `tr()`-ээр боож бичнэ. `Donut` нь `tr(sl.label)` гэж
      ДИНАМИКААР орчуулдаг тул түүхий мөр ч ажиллах МЭТ санагддаг — гэвч
      `i18n-extract` нь ЗӨВХӨН статик `tr('…')` дуудлагыг олдог тул толинд
@@ -1111,15 +1272,26 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    * ⚠️ Хөндлөн шүүлтийн `layerWhere`-ээс ослын WHERE-ийг өгнө — шүүлтгүй бол
    * бүсээр, тэр ч байхгүй бол бүтэн хүрээ.
    */
+  /* ⚠️ 2026-09-15: урьд нь ЗӨВХӨН ослын шүүлт рүү нисдэг байв — краны төлөв
+     эсвэл үзлэгээр шүүхэд зураг хөдлөхгүй. Одоо идэвхтэй шүүлтийн давхарга
+     руу: үзлэг (фокус нээлттэй үед) → осол → кран. */
+  const zoomTo: [string, string] | null = uzLayerId && uzWhere
+    ? [uzLayerId, uzWhere]
+    : layerWhere?.['habea:osol'] && incOn
+      ? ['habea:osol', layerWhere['habea:osol']]
+      : layerWhere?.['habea:crane'] && craneOn
+        ? ['habea:crane', layerWhere['habea:crane']]
+        : null;
   useZoomToFilter({
     zone,
-    layerId: layerWhere?.['habea:osol'] ? 'habea:osol' : null,
-    where: layerWhere?.['habea:osol'] ?? null,
+    layerId: zoomTo ? zoomTo[0] : null,
+    where: zoomTo ? zoomTo[1] : null,
   });
 
   /* Осол, зөрчил */
-  const incByType = riskRed(categoryColors(topN(countBy(fInc, (x) => x.type), 4)));
-  const incByCause = countBy(fInc.filter((x) => x.cause !== '—'), (x) => x.cause);
+  const incTypeBase = inc.filter((x) => incPass(x, 'incType'));
+  const incByType = riskRed(categoryColors(topN(countBy(incTypeBase, (x) => x.type), 4)));
+  const incByCause = countBy(inc.filter((x) => incPass(x, 'cause') && x.cause !== '—'), (x) => x.cause);
   /**
    * Шалтгааны төрлийн пай — ТЭРГҮҮЛЭГЧ шалтгаан улаан (`--bad`), бусад нь БҮГД
    * нэг саарал бэх (`--ink-3`).
@@ -1134,8 +1306,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const causeTotal = incByCause.reduce((s, x) => s + x.value, 0);
   /* Хамгийн олон осол бүртгүүлсэн гүйцэтгэгч(ид) улаанаар — анхаарал татах
      ёстой тал нь эгнээг гүйлгэн уншихгүйгээр шууд харагдана. */
-  const incByCompany = leadRed(countBy(fInc, (x) => x.company));
-  const incByPkg = byPkg(inc, () => 1);
+  const incByCompany = leadRed(countBy(inc.filter((x) => incPass(x, 'incCompany')), (x) => x.company));
   const recent = [...fInc].sort((a, b) => b.d - a.d).slice(0, 6);
   /* ⚠️ `lastInc` нь «Сүүлийн ослоос хойш» KPI-д хэрэглэгдэж байсныг
      2026-09-06-нд хэрэглэгчийн хүсэлтээр ХАСАВ. Сүүлийн ослын огноо нь
@@ -1150,7 +1321,8 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    * гэдэг нь «хэдэн кран буусан бэ» гэсэн ганц асуултад хариулахгүй —
    * хэрэглэгч тоог нь эргүүлж бодох шаардлагатай болно.
    */
-  const craneByStatus = countBy(fCrane, (x) => x.tuluv)
+  const craneStatusBase = cranes.filter((x) => cranePass(x, 'craneState'));
+  const craneByStatus = countBy(craneStatusBase, (x) => x.tuluv)
     .map((x) => ({ ...x, color: CRANE_HUE[x.label] ?? 'var(--ink-3)', display: num(x.value) }));
   /**
    * ИДЭВХТЭЙ кран — `Tuluv` нь «Буусан» БИШ бүх кран.
@@ -1163,7 +1335,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    *    бөгжинд «—» зүсмэгээр тусдаа харагдана. Өнөөдөр 0 ийм кран.
    */
   const craneUp = fCrane.filter((x) => x.tuluv !== 'Буусан' && x.tuluv !== '—').length;
-  const craneByPkg = byPkg(cranes, () => 1);
+  const craneByPkg = byPkg(cranes.filter((x) => cranePass(x, 'pkg')), () => 1);
   /* ⚠️ `avgUndur` / `avgSum` (дундаж өндөр ба сумны урт) ХАСАГДАВ
      (2026-09-06, хэрэглэгчийн хүсэлт): краны төлөвийн доор гарч байсан
      «Өндөр 38.0 м · сум 47.9 м» мөр нь төлөвийн задаргаатай ямар ч
@@ -1177,8 +1349,10 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    * шүүлтүүрээс алга болж, өдөр бүр өөр жагсаалт харагдана — шүүлтийн
    * удирдлага ТОГТВОРТОЙ байх ёстой.
    */
-  const coAll = useMemo(() => companyTotals(all ? all.labor : []), [all]);
-  const coOptions = coAll
+  /* ⚠️ Сонголтын жагсаалт ШҮҮГДЭЭГҮЙгээс (тогтвортой), чарт нь огноотойгоос */
+  const coBase = useMemo(() => companyTotals(all ? all.labor : []), [all]);
+  const coAll = useMemo(() => companyTotals(laborDated), [laborDated]);
+  const coOptions = coBase
     .filter((x) => x.ajiltan > 0 || x.tehnik > 0)
     .sort((a, b) => b.ajiltan - a.ajiltan);
   /**
@@ -1280,16 +1454,30 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   }, [inc, cranes, labor.rows]);
 
   /* Шүүлтийн чипийн нэр — аль ч эх сурвалжийн түүхий бичиглэлээс */
-  const pkgLabel = pkg
-    ? [...incByPkg, ...craneByPkg, ...byPkg(labor.rows, (x) => x.ajiltan)]
-        .find((x) => x.key === pkg)?.label ?? pkg
-    : null;
+  /* ⚠️ Олон сонголт: `pkgOptions` нь бүх эх сурвалжийн шошгыг аль хэдийн
+     нэгтгэсэн тул тэндээс уншина. */
+  const pkgLabels = pkgs.map((k) => pkgOptions.find((o) => o.key === k)?.label ?? k);
   /** Сонгосон гүйцэтгэгчийн бүтэн нэр — чипэнд богино кодын оронд гарна */
   /* ⚠️ `coEff`-ээр: багцаар шүүсэн үед ч цувааны толгойд «бүх компани»
      гэж бичигдэхгүй, тухайн гүйцэтгэгчийн нэр гарна. */
+  const coName = (k: string) => HABEA.labor.companies.find((c) => c.sfx === k)?.label ?? k;
   const coLabel = coEff
-    ? HABEA.labor.companies.find((c) => c.sfx === coEff)?.label ?? coEff
+    ? (coEff.length === 1 ? coName(coEff[0]) : tr('{0} компани', num(coEff.length)))
     : null;
+
+  /**
+   * ШҮҮЛТҮҮРИЙН МӨРИЙН ТАЙЛБАР — хамгийн чухлыг нь ганцыг.
+   *
+   * ⚠️ Огтлолцол хоосон бол ЭХЭНД: бүх чарт «Бүртгэл алга» болох бөгөөд
+   * шалтгааныг нь хэлэхгүй бол хэрэглэгч «өгөгдөл алга» гэж дүгнэнэ.
+   */
+  const coNote = (pkgEff && pkgEff.size === 0) || (coEff && coEff.length === 0)
+    ? tr('Сонгосон багц ба компани таарахгүй — үр дүн хоосон')
+    : cos.length && cos.every((k) => !PKG_OF_CO.has(k))
+      ? tr('багц заагаагүй — осол, кран шүүгдэхгүй')
+      : cos.length
+        ? tr('{0} хүн-өдөр', num(coAll.filter((x) => cos.includes(x.key)).reduce((s2, x) => s2 + x.ajiltan, 0)))
+        : null;
 
   /**
    * Идэвхтэй шүүлт бүрийн чип. Гүйцэтгэгч сонгосон үед `pkg` нь автоматаар
@@ -1297,34 +1485,87 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    * ганц чипээр төлөөлүүлж, түүнийг арилгахад хоёулаа цуцлагдана.
    */
   const chips: { dim: Dim2 | null; label: string; value: string; clear: () => void }[] = [];
-  if (co) {
+  /* ⚠️ 2026-09-15: багц ба компани ТУСДАА чип — олон сонголтод нэгийг нь
+     нөгөөгөөр төлөөлүүлж болохгүй (тусдаа жагсаалтууд). */
+  if (pkgs.length) {
     chips.push({
-      dim: 'co',
-      label: DIM_LABEL.co,
-      value: coLabel ?? co,
-      clear: () => setSel((s) => ({ ...s, co: null, pkg: null })),
+      dim: 'pkg', label: DIM_LABEL.pkg, value: pkgLabels.join(', '),
+      clear: () => setPkgs([]),
     });
-  } else if (pkg) {
+  }
+  if (cos.length) {
     chips.push({
-      dim: 'pkg', label: DIM_LABEL.pkg, value: pkgLabel ?? pkg,
-      clear: () => setSel((s) => ({ ...s, pkg: null })),
+      dim: 'co', label: DIM_LABEL.co, value: cos.map(coName).join(', '),
+      clear: () => setCos([]),
     });
   }
   (['incType', 'cause', 'incCompany', 'craneState'] as const).forEach((d) => {
     const v = sel[d];
-    if (v) chips.push({ dim: d, label: DIM_LABEL[d], value: v, clear: () => setSel((s) => ({ ...s, [d]: null })) });
+    if (v.length) chips.push({ dim: d, label: DIM_LABEL[d], value: v.join(', '), clear: () => setSel((s) => ({ ...s, [d]: [] })) });
+  });
+  /* Үзлэгийн чартын сонголтууд — зэргийн түлхүүрийг нэрээр нь харуулна */
+  (Object.entries(UZ_DIM) as [UzDim, SelDim][]).forEach(([ud, d]) => {
+    const v = sel[d];
+    if (v.length) {
+      chips.push({
+        dim: d, label: DIM_LABEL[d], value: v.map((x) => uzValueLabel(ud, x)).join(', '),
+        clear: () => setSel((s) => ({ ...s, [d]: [] })),
+      });
+    }
   });
   if (picked) {
     chips.push({
       dim: null,
-      label: picked.id === 'habea:osol' ? tr('Сонгосон осол') : tr('Сонгосон кран'),
+      label: picked.id === 'habea:osol'
+        ? tr('Сонгосон осол')
+        : pickUzOid ? tr('Сонгосон үзлэг') : tr('Сонгосон кран'),
       value: picked.id === 'habea:osol'
         ? text(picked.attrs[I.turul], `#${pickOsol}`)
+        : pickUzOid
+          ? (pickUzRow ? `${date(pickUzRow.d)} · ${pickUzRow.site}` : `#${pickUzOid}`)
         /* ⚠️ Дугааргүй кран (21/50) — «—» биш `#OBJECTID` гэж нэрлэнэ */
         : text(picked.attrs[C.dugaar], '') || `#${pickCraneOid}`,
       clear: () => setPicked(null),
     });
   }
+
+  /**
+   * БАГЦ · КОМПАНИ — ОЛОН СОНГОЛТТОЙ ХОЁР КАПСУЛ.
+   *
+   * ⚠️ НЭГ ЭЛЕМЕНТ, ХОЁР БАЙРЛАЛ: шүүлтүүрийн мөр ба газрын зургийн
+   * давхарласан самбар. Хоёр газарт тусад нь бичвэл аль нэгийн сонголтын
+   * жагсаалт, шошго нь нөгөөгөөсөө хоцорно. Төлөв нь нэг (`pkgs`, `cos`)
+   * тул аль газраас сонгосон нь нөгөөд шууд тусна.
+   */
+  const filterPills = (<>
+    {pkgOptions.length > 0 && (
+      <MultiSelect
+        label={tr("Багц")}
+        ariaLabel={tr("Багцаар шүүх")}
+        allLabel={tr("Бүх багц")}
+        countLabel={(n) => tr('{0} багц', num(n))}
+        options={pkgOptions}
+        value={pkgs}
+        onChange={(v) => { setPkgs(v); setPicked(null); }}
+      />
+    )}
+    {coOptions.length > 0 && (
+      <MultiSelect
+        label={tr("Компани")}
+        ariaLabel={tr("Компаниар шүүх")}
+        allLabel={tr("Бүх компани")}
+        countLabel={(n) => tr('{0} компани', num(n))}
+        options={coOptions.map((x) => ({ key: x.key, label: x.label }))}
+        value={cos}
+        onChange={(v) => { setCos(v); setPicked(null); }}
+      />
+    )}
+  </>);
+
+  /* ⚠️ `uzSel`/`uzF` нь `layerWhere`-ийн ӨМНӨ memo болж шилжсэн (2026-09-15) —
+     газрын зургийн шүүлт тэднээс хамаардаг бөгөөд memo-гүй бол рендер бүрт
+     шинэ объект үүсч `definitionExpression` дахин дахин тавигдана. */
+  const onUzPick = (d: UzDim, k: string) => toggleDim(UZ_DIM[d], k);
 
   if (q.state === 'loading') {
     return (
@@ -1378,9 +1619,9 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             захиалагч шийдсэн — тоог өөрчлөхөөс өмнө үүнийг мэд.
 
             Толгойн талбар компаниар задардаггүй тул шүүлт идэвхтэй үед «—». */}
-        {kpiTile(pkg || co ? '—' : num(labor.cum.ajiltan), tr('Нийт ажилтан'))}
-        {kpiTile(pkg || co ? '—' : num(labor.cum.hunTsag), tr('Хүн цаг'))}
-        {kpiTile(pkg || co ? '—' : num(labor.cum.tehnik), tr('Нийт ажилласан техник'))}
+        {kpiTile(pkgs.length || cos.length || sel.day.length || sel.month.length ? '—' : num(labor.cum.ajiltan), tr('Нийт ажилтан'))}
+        {kpiTile(pkgs.length || cos.length || sel.day.length || sel.month.length ? '—' : num(labor.cum.hunTsag), tr('Хүн цаг'))}
+        {kpiTile(pkgs.length || cos.length || sel.day.length || sel.month.length ? '—' : num(labor.cum.tehnik), tr('Нийт ажилласан техник'))}
         {/**
           * ⚠️ «ИДЭВХТЭЙ/НИЙТ» СЭРГЭВ (2026-09-04). Урьд нь ганц тоо болгож
           * хураасан шалтгаан нь ЭХ СУРВАЛЖИД байсан: test_data-гийн хуулбар
@@ -1428,7 +1669,10 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
               aria-pressed={on}
               className={`${h.incChip} ${on ? h.incChipOn : ''}`}
               /* Дахин дарвал анхны харагдац руу буцна */
-              onClick={() => setFocus(on ? null : f.key)}
+              /* ⚠️ Үзлэгийн чартын сонголтыг ЦУЦАЛНА: V1.1 ба гүйцэтгэгчийн маягт
+                 ӨӨР компани, талбайн жагсаалттай тул нэгийнх нь сонголт нөгөөд
+                 хуучирч үлдвэл самбар «Бүртгэл алга» гэж шалтгаангүй хоосорно. */
+              onClick={() => { setFocus(on ? null : f.key); setSel((s) => ({ ...s, ...NO_UZ_SEL })); setPicked(null); }}
             >
               <span className={h.incChipLabel}>{f.label()}</span>
               {f.count(fInc.length) != null && (
@@ -1442,45 +1686,8 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             ⚠️ Гурван эх сурвалж ЦӨМ багцтай тул энэ нь хамгийн ӨРГӨН хамрах
             хүрээтэй шүүлт: осол · кран · ажилтан · газрын зургийн гурван
             давхарга бүгд дагана. Тиймээс компаниас ӨМНӨ байрлана. ── */}
-        {pkgOptions.length > 0 && (
-          <label className={`${h.pill} ${pkg ? h.pillOn : ''}`}>
-            <span className={h.pillLabel}>{tr("Багц")}</span>
-            <Select
-              label={tr("Багцаар шүүх")}
-              value={pkg ?? ''}
-              onChange={(v) => setPkg(v || null)}
-              options={[
-                { key: '', label: tr("Бүх багц") },
-                ...pkgOptions,
-              ]}
-            />
-          </label>
-        )}
-
-        {coOptions.length > 0 && (<>
-          {/* ⚠️ Богино кодын (ХХДМГК…) оронд БҮТЭН нэр. 11 бүтэн нэр чипээр
-              ~1,340px эзлэх тул унжих жагсаалт болгов — нэг удирдлага, гүйлгэх
-              шаардлагагүй. Хоосон утга = бүх компани (шүүлт цуцлах). */}
-          <label className={`${h.pill} ${co ? h.pillOn : ''}`}>
-            <span className={h.pillLabel}>{tr("Компани")}</span>
-            <Select
-              label={tr("Компаниар шүүх")}
-              value={co ?? ''}
-              onChange={(v) => setCompany(v || null)}
-              options={[
-                { key: '', label: tr("Бүх компани") },
-                ...coOptions.map((c) => ({ key: c.key, label: c.label })),
-              ]}
-            />
-          </label>
-          {co && (
-            <span className={h.coNote}>
-              {coAll.find((c) => c.key === co)?.bagtsK
-                ? tr('{0} хүн-өдөр', num(coAll.find((c) => c.key === co)?.ajiltan ?? 0))
-                : tr('багц заагаагүй — осол, кран шүүгдэхгүй')}
-            </span>
-          )}
-        </>)}
+        {filterPills}
+        {coNote && <span className={h.coNote}>{coNote}</span>}
       </div>
 
 
@@ -1527,14 +1734,25 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         </Section>
         <Section
           title={tr("Компаниар — монгол, гадаад")}
-          note={mixByCo.length ? tr("гадаадын хувиар") : undefined}
+          note={mixByCo.length ? tr("гадаадын хувиар · дарж шүүнэ") : undefined}
           fill
         >
           {mixByCo.length
             ? (
               <div className={h.mixList}>
                 {mixByCo.map((x) => (
-                  <div key={x.key} className={h.mixRow}>
+                  /* ⚠️ `<button>` БИШ, `role="button"`: дотор нь `Stack`-ийн блок
+                     элементүүд суудаг бөгөөд товч нь зөвхөн phrasing агуулга
+                     зөвшөөрдөг. Гарын Enter/Space-ийг ИЛ холбоно. */
+                  <div
+                    key={x.key}
+                    role="button"
+                    tabIndex={0}
+                    aria-pressed={cos.includes(x.key)}
+                    className={`${h.mixRow} ${h.mixRowClick} ${cos.length && !cos.includes(x.key) ? h.mixRowDim : ''}`}
+                    onClick={() => toggleCo(x.key)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleCo(x.key); } }}
+                  >
                     <span className={h.mixName} title={x.label}>{x.label}</span>
                     {/* ⚠️ `legend={false}` — мөр бүрд «Монгол · Гадаад» гэсэн
                         тайлбар давтагдвал жагсаалт уншигдахаа болино. Өнгө нь
@@ -1557,11 +1775,11 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         </Section>
         </>)}
 
-        {uzlegKind && <UzlegLeft st={uz} />}
+        {uzlegKind && <UzlegLeft st={uzF} url={HABEA.uzleg[uzlegKind].url} sel={uzSel} onPick={onUzPick} />}
         {incOpen && (<>
         <Section title={tr('Осол, зөрчил — төрлөөр')} note={tr('{0} бүртгэл', num(fInc.length))} tone="primary">
           {incByType.length
-            ? <Donut items={incByType} stack size={110} center={num(fInc.length)} centerLabel={tr('нийт')}
+            ? <Donut items={incByType} stack size={110} center={num(incTypeBase.length)} centerLabel={tr('нийт')}
                 selected={sel.incType} onSelect={(k) => k !== '__other' && toggleDim('incType', k)} />
             : <Empty label={tr('Бүртгэл алга')} />}
         </Section>
@@ -1578,7 +1796,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       <div className={h.map}>
         <MapCanvas
           dim={dim}
-          visible={visible}
+          visible={mapVisible}
           opacity={opacity}
           layerWhere={layerWhere}
           zone={null}
@@ -1657,7 +1875,9 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
               <button type="button" onClick={() => setPicked(null)} aria-label={tr('Хаах')}>×</button>
             </header>
             <dl className={h.pickRows}>
-              {pickRows(picked.id, picked.attrs).map(([k, v]) => (
+              {(pickUzOid
+                ? (pickUzRow ? uzPickRows(pickUzRow) : [])
+                : pickRows(picked.id, picked.attrs)).map(([k, v]) => (
                 <div key={k}><dt>{k}</dt><dd>{v}</dd></div>
               ))}
             </dl>
@@ -1665,8 +1885,19 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           </div>
         )}
 
+        {/* ── ГАЗРЫН ЗУРГИЙН ШҮҮЛТҮҮР (2026-09-15, хэрэглэгчийн хүсэлт) ──
+            Баруун ДЭЭД буланд: зүүн доод нь тайлбар, баруун доод нь сонгосон
+            объектын карт, дээд төв нь 2D/3D, зүүн тал нь хэрэгслийн багана.
+            ⚠️ `backdrop-filter` БҮҮ нэм — `MultiSelect`-ийн `fixed` жагсаалтыг
+            тайрна (бүрэлдэхүүний толгойн тайлбарыг үз). */}
+        {(pkgOptions.length > 0 || coOptions.length > 0) && (
+          <div className={h.mapFilter} role="group" aria-label={tr('Газрын зургийн шүүлтүүр')}>
+            {filterPills}
+          </div>
+        )}
+
         <div className={o.legend}>
-          {visible.slice(0, 8).map((id) => {
+          {mapVisible.slice(0, 8).map((id) => {
             const Ld = LAYER_BY_ID[id];
             return Ld ? (
               <span key={id} className={o.legendItem} title={Ld.title}>
@@ -1674,7 +1905,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
               </span>
             ) : null;
           })}
-          {visible.length > 8 && <span className={o.legendMore}>+{visible.length - 8}</span>}
+          {mapVisible.length > 8 && <span className={o.legendMore}>+{mapVisible.length - 8}</span>}
         </div>
       </div>
 
@@ -1727,11 +1958,11 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         </Section>
         )}
 
-        {uzlegKind && <UzlegRight st={uz} />}
+        {uzlegKind && <UzlegRight st={uzF} sel={uzSel} onPick={onUzPick} />}
 
         {/* ── ХҮН ХҮЧНИЙ ФОКУС — БАРУУНД КОМПАНИАР хүний тоо ──
             ⚠️ Дарахад тухайн гүйцэтгэгчээр БҮХ хуудас шүүгдэнэ
-            (`setCompany`) — доорх өдрийн цуваа, зүүн талын
+            (`toggleCo`) — доорх өдрийн цуваа, зүүн талын
             бүрэлдэхүүн, газрын зураг бүгд дагана. Дахин дарвал цуцална.
 
             ⚠️ Гарчигт «хүн-өдөр» гэж бичсэн нь ЗАЙЛШГҮЙ: утга нь ажилласан
@@ -1747,7 +1978,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
               <Bars
                 items={coBars}
                 selected={coEff}
-                onSelect={(k) => setCompany(coEff === k ? null : k)}
+                onSelect={toggleCo}
               />
             )
             : surveyEmpty}
@@ -1762,7 +1993,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
               <Bars
                 items={coTechBars}
                 selected={coEff}
-                onSelect={(k) => setCompany(coEff === k ? null : k)}
+                onSelect={toggleCo}
               />
             )
             : surveyEmpty}
@@ -1782,13 +2013,13 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             тавихад утгатай болно. */}
         <Section title={tr('Цамхагт кран — төлөв')}>
           {craneByStatus.length
-            ? <Donut items={craneByStatus} stack size={110} center={num(fCrane.length)} centerLabel={tr('кран')}
+            ? <Donut items={craneByStatus} stack size={110} center={num(craneStatusBase.length)} centerLabel={tr('кран')}
                 selected={sel.craneState} onSelect={(k) => toggleDim('craneState', k)} />
             : <Empty label={tr('Бүртгэл алга')} />}
         </Section>
         <Section title={tr('Кран — багцаар')} note={tr('дарж бүгдийг шүүнэ')}>
           {craneByPkg.length
-            ? <Bars items={craneByPkg} selected={pkg} onSelect={togglePkg} />
+            ? <Bars items={craneByPkg} selected={pkgEff ? [...pkgEff] : null} onSelect={togglePkg} />
             : <Empty label={tr('Бүртгэл алга')} />}
         </Section>
         </>)}
@@ -1805,9 +2036,9 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           тал хоосон үлдэнэ. Горим бүрд:
             осол   → 2 (зураг · компаниар)
             хүн хүч → 2 (ажилтан · техник)
-            үзлэг  → 1 (сараар, бүтэн өргөн; гүйцэтгэгч · талбай нь
-                        баруун баганад — `UzlegRight`) */}
-      <div className={h.fin} data-cols={uzlegKind ? '1' : '2'}
+            үзлэг  → 2 (өдрөөр · сараар — 2026-09-15, урьд нь 1)
+            (гүйцэтгэгч ба талбайн задаргаа нь баруун баганад — `UzlegRight`) */}
+      <div className={h.fin} data-cols="2"
         style={panes.styleFor('fin1', 'fin2')}>
         {incOpen && (<>
         <Section title={tr('Осол, зөрчлийн зураг')} note={tr('хавсаргасан зургууд · дарж томруулна')}>
@@ -1820,7 +2051,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         </Section>
         </>)}
 
-        {uzlegKind && <UzlegFin st={uz} />}
+        {uzlegKind && <UzlegFin st={uzF} sel={uzSel} onPick={onUzPick} />}
 
         {laborOpen && (<>
         {/* Ажилтны тоо ӨДРӨӨР. Багана 213 хүртэл болох тул хэвтээ гүйлгэгчид
@@ -1847,6 +2078,8 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                     unit={aStep === 'day' ? tr("ажилтан") : tr("хүн-өдөр")}
                     line
                     showValues
+                    selected={aStep === 'day' ? sel.day : sel.month}
+                    onSelect={(k) => toggleDim(aStep === 'day' ? 'day' : 'month', k)}
                   />
                 </div>
               </div>
@@ -1872,6 +2105,8 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                     unit={tStep === 'day' ? tr("нэгж") : tr("нэгж-өдөр")}
                     line
                     showValues
+                    selected={tStep === 'day' ? sel.day : sel.month}
+                    onSelect={(k) => toggleDim(tStep === 'day' ? 'day' : 'month', k)}
                   />
                 </div>
               </div>

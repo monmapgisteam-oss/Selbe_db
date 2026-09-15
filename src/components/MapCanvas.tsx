@@ -46,12 +46,13 @@ import {
   HOME, IMAGERY, IRGED_ORTHO, IRGED_ROAD, IRGED_SCENE, IRGED_TOILET, IRGED_BUILT, IRGED_BUILT_DEF,
   SCENE, BIM, USAN_SAN, ELEVATION_URL, ZONE_LAYER, zoneWhere,
   ZONE_FIELD, ZONE_NONE, ZONE_TYPE_EMPTY_HUE, OID, BUILDING, SURVEY, PARCEL_LEFT, buildingKey,
-  MAP_HUE_OVERRIDES, SOURCE_FS, BASE_MAP_IDS, TOGLOOM_TYPES,
+  MAP_HUE_OVERRIDES, SOURCE_FS, BASE_MAP_IDS, TOGLOOM_TYPES, srcLineWidth,
   type LayerDef,
 } from '@/lib/services';
 import { SCENE3D_LAYERS } from '@/lib/scene3d';
 import { plan2dStyleOf, loadPlan2dStyle, PLAN2D_ALIASED } from '@/lib/plan2d';
 import { queryExtent, queryFeatures, type Aoi } from '@/lib/query';
+import { getAuth } from '@/lib/draftRemote';
 import { loadBlockProgress, cachedBlockProgress, type BlockProgressMap } from '@/lib/blockProgress';
 import { webmapStyleOf, loadWebmapStyle } from '@/lib/webmapStyle';
 import * as rendererJsonUtils from '@arcgis/core/renderers/support/jsonUtils';
@@ -486,6 +487,47 @@ type RendererProp = NonNullable<__esri.FeatureLayerProperties['renderer']>;
 
 const simple = (sym: unknown) => ({ type: 'simple', symbol: sym }) as unknown as RendererProp;
 
+/**
+ * МАСШТАБТ УЯГДСАН ЦЭГ — зум ойртуулахад маркер ГАЗРЫН ХЭМЖЭЭГЭЭР томорно
+ * (2026-09-11, хэрэглэгчийн хүсэлт: ХТП/РП «дээрх зургаар оруулсан хэмжээнд
+ * масштаб тэгж»).
+ *
+ * ⚠️ Тогтмол 7px маркер нь зум 20-д (~0.3 м/px) 2 м-ийн ХТП хайрцгийг
+ * дөнгөж хэдэн пикселээр тэмдэглэж, полигоны буланд УУСДАГ байв. Стоп нь
+ * ~1.5 м-ийн бодит биетэд ойртуулан тохируулсан: зум 15 (18k) 7px ·
+ * зум 18 (2.3k) 12px · зум 20 (560) 22px · зум 21 (280) 32px.
+ *
+ * ⚠️ `$view.scale` visual variable нь ЭНГИЙН маркерт найдвартай; picture
+ * marker дээр ажиллаагүй тул `tgl` тусдаа watch ашигладаг (`toglRenderer`).
+ * Энд simple-marker тул тэр зам хэрэггүй.
+ */
+const scaledDot = (hex: string, marker: NonNullable<LayerDef['marker']> = 'circle') => ({
+  type: 'simple',
+  symbol: {
+    type: 'simple-marker',
+    style: marker,
+    color: c(hex, 0.95),
+    /* ⚠️ Хүрээ нарийссан (1.4 → 0.8): цэг жижгэрсэн тул хуучин зузаан цагаан
+       хүрээ дүрсийн талыг эзэлж, өнгө нь танигдахаа болих байв. */
+    outline: { color: [255, 255, 255, 0.9], width: ow(0.8) },
+  },
+  visualVariables: [{
+    type: 'size',
+    valueExpression: '$view.scale',
+    /* ⚠️ 2026-09-14: ХЭМЖЭЭ ~2.3 дахин БУУРАВ (хэрэглэгч: «хтп point-ийг жижиг
+       болго»). Өмнөх 7–32px нь ойртоход ХТП-ийн полигоныг бүхэлд нь дардаг
+       байв — цэг нь тэмдэглэгээ болох ёстой, барилгыг халхлах ёсгүй. Одоо
+       ойртоход полигон харагдаж, цэг нь төв дээр нь жижиг тэмдэг болно.
+       Масштабын уялдаа ХЭВЭЭР: холоос ялгагдах, ойртоход томрох. */
+    stops: [
+      { value: 18_000, size: 3.5 },
+      { value: 2_300, size: 5.5 },
+      { value: 560, size: 9 },
+      { value: 280, size: 13 },
+    ],
+  }],
+}) as unknown as RendererProp;
+
 /* ⚠️ Урьд нь энд «Усан сан»-гийн `WATER_SYMBOL` (WaterSymbol3DLayer) байв.
    Хэрэглэгчийн хүсэлтээр «Усан сан» давхаргыг газрын зурагт унтраасан тул
    ашиглагдахаа больж УСТСАН. Буцааж асаахдаа энэ симбол + доорх нэмэх логикийг
@@ -567,8 +609,50 @@ export const radarSymbol = (hue: string) => {
   } as unknown as __esri.Symbol3DProperties;
 };
 
+
+/**
+ * ЭХ ҮЙЛЧИЛГЭЭНИЙ СИМБОЛ — ArcGIS-ийн зурагтай ЯГ ИЖИЛ (2026-09-14).
+ *
+ * ⚠️ Порталын хоёр «сайжруулалт» ЭНД ХЭРЭГЛЭГДЭХГҮЙ. (1) `ow()` буюу
+ * `OUTLINE_SCALE` — бүх хүрээг 0.55 дахин нарийсгадаг тул эх 0.9pt хүрээ
+ * 0.5pt болж, ArcGIS-ийнхээс хоёр дахин нимгэн гарна. (2) Шугамын доорх бараан
+ * CIM ХҮРЭЭЛЭЛ (`line()`) — эх зурагт БАЙХГҮЙ бөгөөд нарийн шугамыг
+ * бараантуулж өнгийг нь гуйвуулдаг.
+ *
+ * ⚠️ ШУГАМ нь энгийн `simple-line` тул SceneView-д Ч ЗӨВ зурагдана — CIM-ийн
+ * олон `symbolLayers`-ыг 3D дэмждэггүй тул урьд нь 3D-д тусдаа сольдог байсан.
+ * Одоо 2D ба 3D НЭГ Л симбол хэрэглэнэ: салангид зам, нөөцлөх ref хэрэггүй.
+ *
+ * ⚠️ ЦЭГИЙН хэмжээг эхээс АВАХГҮЙ: эх үйлчилгээнд ХТП/РП нь 1pt (бараг
+ * үл үзэгдэх). Цэгийг `scaledDot` масштабаар зурна — хэрэглэгчийн тусгай
+ * шаардлага (2026-09-11). Энд зөвхөн НӨӨЦ зам болж үлдэнэ.
+ */
+const srcSymbol = (d: LayerDef, hue: string) =>
+  d.geom === 'line'
+    ? ({
+        type: 'simple-line', color: c(hue, 1), style: d.dash ?? 'solid',
+        width: srcLineWidth(d.width),
+      } as const)
+    : d.geom === 'point'
+      ? ({
+          type: 'simple-marker', style: d.marker ?? 'circle',
+          size: Math.max(4, d.size ?? 4), color: c(hue, 1), outline: { width: 0 },
+        } as const)
+      : ({
+          type: 'simple-fill', color: c(hue, d.fill ?? 0.3),
+          outline: {
+            color: c(d.stroke ?? hue, 1),
+            /* ⚠️ Хүрээнд ч ижил доод хязгаар: эх утга 0.6–0.7pt байдаг
+               худаг, ДХТ-ийн контур ортофото дээр бүдгэрдэг. Зузаан нь
+               эхийнхээ харьцаагаар (3pt хүрээ 3-аараа үлдэнэ). */
+            width: Math.max(0.9, d.width ?? 0.9),
+            style: d.strokeDash ?? 'solid',
+          },
+        } as const);
+
 export const symbolOf = (d: LayerDef, hue = d.hue) => {
   const plan = d.topic === 'plan';
+  if (d.srcSym) return srcSymbol(d, hue);
   return d.geom === 'line'
     ? line(hue, plan ? LINE_PX : (d.width ?? 1.4), d.dash ?? 'solid')
     : d.geom === 'point'
@@ -797,9 +881,9 @@ function sceneElevInfo(raw: unknown): __esri.FeatureLayerProperties['elevationIn
   return { ...e, mode } as __esri.FeatureLayerProperties['elevationInfo'];
 }
 
-async function extentOf(url: string, view: AnyView, where = '1=1'): Promise<Extent | null> {
+async function extentOf(url: string, view: AnyView, where = '1=1', token?: string): Promise<Extent | null> {
   const wkid = view.spatialReference?.wkid ?? 102100;
-  const box = await queryExtent(url, wkid, where);
+  const box = await queryExtent(url, wkid, where, token);
   if (!box) return null;
   return new Extent({
     xmin: box.xmin, ymin: box.ymin, xmax: box.xmax, ymax: box.ymax,
@@ -1304,7 +1388,10 @@ export function MapProvider({ children }: { children: ReactNode }) {
     if (!d || !view || view.destroyed) return;
     const t = ++flyToken.current;
     try {
-      const e = await extentOf(layerUrl(d), view, where);
+      /* ⚠️ Нэвтрэлт шаардлагатай давхарга — токенгүй бол хүрээ ХООСОН ирж
+         зураг огт хөдлөхгүй (`LayerDef.auth`). */
+      const token = d.auth ? (await getAuth())?.token : undefined;
+      const e = await extentOf(layerUrl(d), view, where, token);
       if (flyToken.current !== t) return;
       if (!e || view.destroyed) return;
       // 150 м-ээс нарийн хүрээг тэлнэ — контекстгүй ойртохоос сэргийлнэ
@@ -2033,6 +2120,10 @@ export const MapCanvas = memo(function MapCanvas({
        * ихэнхдээ эхний багцаар шийдэгдэнэ; бүрэн хоосон газар л бүх давхаргыг
        * туулна (бүрхэлт хэвээр — гүнзгий давхарга ч сонгогдоно).
        */
+      /* ⚠️ Нэвтрэлт шаардлагатай давхарга байвал токеныг НЭГ удаа авна */
+      const authTok = cand.some(({ id }) => LAYER_BY_ID[id]?.auth)
+        ? (await getAuth())?.token
+        : undefined;
       const BATCH = 3;
       for (let i = 0; i < cand.length; i += BATCH) {
         const batch = cand.slice(i, i + BATCH);
@@ -2041,6 +2132,7 @@ export const MapCanvas = memo(function MapCanvas({
             aoi,
             limit: 1,
             where: (l as __esri.FeatureLayer).definitionExpression || '1=1',
+            ...(LAYER_BY_ID[id]?.auth && authTok ? { token: authTok } : {}),
           }).catch(() => [] as Record<string, unknown>[]),
         ));
         for (let k = 0; k < batch.length; k++) {
@@ -2334,6 +2426,80 @@ export const MapCanvas = memo(function MapCanvas({
        * дээр суусан мэдрэгч дээвэр дотор орж алга болно.
        */
       l.elevationInfo = (lift ? { mode: 'relative-to-scene' } : ON_GROUND) as never;
+    }
+  }, [dim, ready]);
+
+  /**
+   * НЭВТРЭЛТ ШААРДЛАГАТАЙ ДАВХАРГАД ТОКЕН (2026-09-15, `LayerDef.auth`).
+   *
+   * ⚠️ `buildLayers` СИНХРОН, токен АСИНХРОН тул давхарга үүссэний дараа
+   * `customParameters`-ээр залгаж `refresh()` хийнэ. SDK нь `customParameters`-ийг
+   * асуулга БҮРД уншдаг тул дараагийн татах бүр токентой явна.
+   *
+   * ⚠️ `IdentityManager`-т найдаж болохгүй: үйлчилгээ нийтэд нээлттэй ч
+   * асуулгыг нэргүй хэрэглэгчид хаасан тул нэвтрэлтийн шаардлага БИШ, хоосон
+   * хариу ирдэг — SDK токен залгах шалтгаан олохгүй.
+   *
+   * ⚠️ Нэвтрээгүй бол юу ч хийхгүй — давхарга хоосон үлдэнэ (хуудас өөрөө
+   * «зөвхөн нэвтэрсэн хэрэглэгч харна» гэж ил хэлдэг).
+   */
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    const ids = LAYERS.filter((d) => d.auth).map((d) => d.id);
+    if (!ids.length) return;
+    let alive = true;
+    void getAuth().then((a) => {
+      if (!alive || !a) return;
+      for (const id of ids) {
+        const fl = map.findLayerById(id) as FeatureLayer | null;
+        if (!fl || !('customParameters' in fl)) continue;
+        if (fl.customParameters?.token === a.token) continue;
+        fl.customParameters = { ...(fl.customParameters ?? {}), token: a.token };
+        fl.refresh();
+      }
+    });
+    return () => { alive = false; };
+  }, [ready]);
+
+  /**
+   * ИНЖЕНЕРИЙН ДЭД БҮТЭЦ — 3D-д ч ЯГ 2D ШИГ, ГАЗАР ДЭЭРЭЭ (2026-09-11).
+   *
+   * ⚠️ `relative-to-scene`-ийг ТУРШААД ХАЯСАН — БУЦААЖ БҮҮ ТАВЬ. Тэр горимд
+   * шугамын зангилаа бүр Z=0-ээс мешийн дээд гадарга хүртэл БОСОО ТУЛГУУР
+   * болж зурагдан, зураг бүхэлдээ хар баганаар дүүрсэн (хэрэглэгчийн скриншот:
+   * «ингэж дээшээ босгомооргүй»). Учир нь SceneView нь өндрийн горимыг
+   * ЗАНГИЛААНД тооцдог тул хөрш зангилаа өөр өндөрт очиж хооронд нь босоо
+   * сегмент үүсдэг.
+   *
+   * Одоо бүх геометр `on-the-ground` — 2D-тэй ижил. Мешийн барилга шугамын
+   * ДЭЭГҮҮР давхарлах нь хүлээн зөвшөөрөгдсөн: шугам газарт байдаг, барилга
+   * нь түүн дээр зогсож байгаа нь ЗӨВ дүрслэл. Энэ effect нь IoT-ийн
+   * өргөлтөөс (`iot:*`, дээр) ТУСДАА үлдэнэ — тэнд өргөлт зөв.
+   *
+   * ⚠️ 2026-09-14: ШУГАМЫГ 3D-д СОЛИХ ЗАМ ХАСАГДСАН. Эх үйлчилгээний симбол
+   * (`srcSym`) нь аль хэдийн энгийн `simple-line` тул SceneView зөв
+   * зурна — урьд нь 2D-д CIM (олон давхаргат) байсан учир 3D-д хар гардаг
+   * байсан. Хамт `line3dBackup` нөөц ч хэрэггүй болов: 2D ↔ 3D шилжихэд
+   * renderer ОГТ өөрчлөгдөхгүй.
+   */
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    for (const d of LAYERS) {
+      if (!d.id.startsWith('infra:')) continue;
+      const l = map.findLayerById(d.id) as __esri.FeatureLayer | undefined;
+      if (!l) continue;
+      l.elevationInfo = ON_GROUND;
+      /**
+       * ⚠️ ЦЭГ (ХТП/РП) — масштабт уягдсан хэмжээ, 2D ба 3D-д ИЖИЛ. Эх
+       * үйлчилгээний 1pt маркерыг ЗОРИУДААР ДАГААГҮЙ: тэр нь зурган дээр
+       * бараг үл үзэгдэх бөгөөд хэрэглэгч ойртоход томордог байхыг шаардсан
+       * (2026-09-11). Хэлбэр (квадрат) ба өнгө нь эхийнхээрээ.
+       */
+      if (d.geom === 'point') {
+        l.renderer = scaledDot(d.hue, d.marker ?? 'circle') as unknown as FeatureLayer['renderer'];
+      }
     }
   }, [dim, ready]);
 

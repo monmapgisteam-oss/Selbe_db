@@ -10,6 +10,7 @@ import { useLayerPicks } from '@/lib/useLayerPicks';
 import { useZoomToFilter } from '@/lib/useZoomToFilter';
 import { usePlanTotals } from '@/lib/totals';
 import { Section, Note, Data, Empty, Rows, Bars, List, ListItem } from '@/components/ui';
+import { PackLayers } from '@/components/PackLayers';
 import {
   buildPacks, PackKpi, BlocksCard, LayersCard, levelColor, BLOCK_LAYER, type Pack,
 } from '@/modules/Bagts';
@@ -1048,6 +1049,20 @@ function TsPackList({
               active={open}
               onClick={() => onSel(open ? null : p.key)}
             />
+            {/**
+              * ⚠️ ДЭД БҮТЦИЙН БАГЦ ДАРАХАД ДАВХАРГУУД ЗАДАРНА (2026-09-11,
+              * хэрэглэгчийн хүсэлт): «Багц 5.1 · 10 давхарга» → доор нь 10
+              * давхарга, давхарга дарахад түүний өгөгдөл. Дахин дарвал хаагдана —
+              * `onSel` аль хэдийн toggle тул тусдаа төлөв хэрэггүй.
+              *
+              * ⚠️ ЗӨВХӨН `infra`: барилгын багцын задаргаа нь блок бөгөөд тэр
+              * нь баруун талын `BlocksCard`-д аль хэдийн гардаг.
+              *
+              * ⚠️ Утгын багана (`valueFor`) ӨГӨӨГҮЙ: энэ жагсаалтын утга нь
+              * гүйцэтгэлийн хувь бөгөөд давхаргад тийм хэмжигдэхүүн байхгүй.
+              * Урт нь давхарга дарахад өгөгдлийн хэсэгт нийлбэрээр гарна.
+              */}
+            {open && p.kind === 'infra' && <PackLayers layerIds={p.layerIds} />}
             {/*
               * ⚠️ ЖАГСААЛТЫН ДОТОРХ ЖИЖИГ ГРАФИК ХАСАГДСАН (2026-08-25).
               *    290px өргөн, 140px өндөр талбайд 12 сарын гурван цуваа

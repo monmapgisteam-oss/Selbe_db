@@ -306,13 +306,26 @@ export async function queryGroup(
 /** Бичлэгүүдийг талбартай нь татах */
 export async function queryFeatures(
   url: string,
-  opts: { where?: string; outFields?: string[]; orderBy?: string; limit?: number; aoi?: Aoi } = {},
+  opts: {
+    where?: string; outFields?: string[]; orderBy?: string; limit?: number; aoi?: Aoi;
+    /**
+     * Нэвтэрсэн хэрэглэгчийн ArcGIS токен — НЭРГҮЙ уншилтыг хаасан давхаргад
+     * (`allowAnonymousToQuery: false`). Ийм давхарга токенгүй асуухад алдаа
+     * БИШ, ХООСОН хариу өгдөг тул «өгөгдөл алга» гэж чимээгүй ташаарна.
+     *
+     * ⚠️ Токен нь POST-ын БИЕЭР л явна (`attemptRequest`) — URL-д, алдааны
+     * мессежид (`ArcGISError`) ОРОХГҮЙ. Давхардал арилгах түлхүүрт (`reqKey`)
+     * орох нь зөв: өөр хэрэглэгчийн хариуг хуваалцахгүй.
+     */
+    token?: string;
+  } = {},
 ): Promise<Row[]> {
   const params: Record<string, string> = {
     where: opts.where ?? '1=1',
     outFields: (opts.outFields ?? ['*']).join(','),
     returnGeometry: 'false',
     ...spatial(opts.aoi),
+    ...(opts.token ? { token: opts.token } : {}),
   };
 
   // ⚠️ ХУУДАСЛАЛТ: сервер maxRecordCount(~2000)-аас олон мөрийг нэг хариунд
@@ -378,11 +391,16 @@ export type ExtentBox ={ xmin: number; ymin: number; xmax: number; ymax: number;
  * түүнийг 400 «No where clause specified» гэж татгалздаг. REST рүү шууд хандвал
  * `where=1=1` бичигдэж, найдвартай ажиллана.
  */
-export async function queryExtent(url: string, wkid = 102100, where = '1=1'): Promise<ExtentBox | null> {
+export async function queryExtent(
+  url: string, wkid = 102100, where = '1=1',
+  /** Нэвтрэлт шаардлагатай давхаргад (`LayerDef.auth`) — POST биеэр л явна */
+  token?: string,
+): Promise<ExtentBox | null> {
   const body = await request(url, {
     where,
     returnExtentOnly: 'true',
     outSR: String(wkid),
+    ...(token ? { token } : {}),
   });
   const e = (body as { extent?: { xmin: number; ymin: number; xmax: number; ymax: number } }).extent;
   if (!e || !Number.isFinite(e.xmin)) return null;

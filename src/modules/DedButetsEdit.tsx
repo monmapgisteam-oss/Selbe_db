@@ -22,13 +22,22 @@
  * 2026-09-02). Хоёр горим НЭГ маягт хуваалцана: талбарын жагсаалт, шалгуур,
  * алдааны дүрэм ижил тул хоёр файл болговол аль нэг нь чимээгүй хоцорно.
  *
+ * ⚠️ ХОЁР БАЙРЛАЛ (2026-09-14, хэрэглэгч: «ArcGIS Experience Builder-ийн edit
+ * widget шиг»): `docked` үед БАРУУН САМБАР дотор, үгүй бол ТӨВИЙН цонх.
+ *
+ * ⚠️ САМБАР нь зөвхөн «илүү жижиг цонх» БИШ — зарчмын ялгаа нь ГАЗРЫН ЗУРАГ
+ * НЭЭЛТТЭЙ ҮЛДЭНЭ. Тиймээс: (1) backdrop БАЙХГҮЙ (байвал зураг дарагдана),
+ * (2) Escape нь ХААХГҮЙ (самбар нь горимын байнгын хэсэг, түр цонх биш;
+ * Escape дарахад зурсан дүрс цуцлагдах ёстой), (3) гадуур товшиход
+ * хаагдахгүй — зураг дээр ажиллах нь энгийн үйлдэл.
+ *
  * ⚠️ ГЕОМЕТРЭЭС ГАРАХ ХЭМЖЭЭ (`Shape__Length`) ЗАСАГДАХГҮЙ — үйлчилгээ өөрөө
  * `editable: false` гэж хэлдэг. Идэвхгүй `input` болговол «яагаад бичиж
  * болохгүй байна» гэсэн асуулт төрөх тул ТОДОРХОЙЛОЛТ (`<dl>`) хэлбэрээр
  * үзүүлнэ (`GazarEdit`-ийн «Талбай»-тай ижил шийдэл).
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { km, num } from '@/lib/format';
 import type { Row } from '@/lib/query';
@@ -75,7 +84,7 @@ const numOf = (v: unknown): number | null => {
 };
 
 export function DedButetsEdit({
-  layerId, oid, geometry, canEdit, onDone, onCancel,
+  layerId, oid, geometry, canEdit, onDone, onCancel, docked = false, extra,
 }: {
   layerId: string;
   /** БАЙГАА мөрийн дугаар. `null` бол ШИНЭ объект үүсгэх горим. */
@@ -92,6 +101,20 @@ export function DedButetsEdit({
    */
   onDone: (changed: number, undo: UndoInfo | null) => void;
   onCancel: () => void;
+  /**
+   * БАРУУН САМБАР дотор эсэх. Дээрх толгойн ⚠️-г үз — зөвхөн зохиомжийн
+   * биш, ЗАН ТӨЛВИЙН ялгаа (backdrop, Escape, гадуур товшилт).
+   */
+  docked?: boolean;
+  /**
+   * Маягтын ДООР нэмэх хэсэг — хэлбэр засах, устгах зэрэг ГЕОМЕТРИЙН
+   * үйлдлүүд. ⚠️ Эдгээрийг ЭНД биш ДУУДАГЧ талд байлгасан шалтгаан:
+   * тэдгээр нь `SketchViewModel`-тэй ажилладаг бөгөөд түүний төлөв
+   * (`reshape`, `reshaped`) нь газрын зурагтай хамт `DedButets`-д амьдардаг.
+   * Энд зөөвөл маягт газрын зургийн төлөвийг мэддэг болж, хоёр модуль
+   * салшгүй холбогдоно.
+   */
+  extra?: ReactNode;
 }) {
   /** Шинэ объект үүсгэж байна уу (эсвэл байгааг засаж байна уу) */
   const isNew = oid == null;
@@ -160,12 +183,19 @@ export function DedButetsEdit({
     onCancel();
   }, [busy, onCancel]);
 
-  /* Esc-ээр хаагдана — цонх нээгээд гарах товч хайх шаардлагагүй */
+  /**
+   * Esc-ээр хаагдана — цонх нээгээд гарах товч хайх шаардлагагүй.
+   *
+   * ⚠️ САМБАРЫН горимд БҮРТГЭГДЭХГҮЙ: тэнд Escape нь газрын зургийн
+   * зураалтыг цуцлах зориулалттай бөгөөд самбар нь горимын байнгын хэсэг тул
+   * санамсаргүй хаагдвал бөглөж байсан маягт алга болно.
+   */
   useEffect(() => {
+    if (docked) return;
     const h = (e: KeyboardEvent) => { if (e.key === 'Escape') tryClose(); };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
-  }, [tryClose]);
+  }, [tryClose, docked]);
 
   const submit = async () => {
     if (!meta || !p) return;
@@ -238,9 +268,13 @@ export function DedButetsEdit({
     );
   };
 
-  return (
-    <div className={d.backdrop} role="dialog" aria-modal="true" onClick={tryClose}>
-      <div className={d.modal} onClick={(e) => e.stopPropagation()}>
+  /**
+   * ⚠️ БҮРХҮҮЛ нь хоёр өөр, ДОТОР нь ИЖИЛ. Хуулбарлаж хоёр салангид маягт
+   * бичих сонголт байсан ч татгалзсан: талбарын жагсаалт, шалгуур, алдааны
+   * дүрэм, хадгалах урсгал бүгд ижил тул нэгийг засахад нөгөө нь хоцорно.
+   */
+  const body = (
+      <>
         <div className={d.modalHead}>
           <span className={d.modalTitle}>{meta?.title ?? tr('Дэд бүтцийн объект')}</span>
           <span className={d.modalNo}>{isNew ? tr('шинэ') : `#${oid}`}</span>
@@ -304,10 +338,15 @@ export function DedButetsEdit({
               {fail && <div className={d.formErr} role="alert">{fail}</div>}
             </div>
 
+            {/* ⚠️ ГЕОМЕТРИЙН үйлдлүүд — дуудагч талаас (дээрх `extra`-гийн
+                тайлбарыг үз). Хадгалах товчнуудын ДЭЭР: тэдгээр нь өөр
+                объектод биш ЭНЭ мөрөнд үйлчилдэг тул маягтын үргэлжлэл. */}
+            {extra}
+
             <div className={d.actions}>
               <span className={d.spacer} />
               <button type="button" className={d.btn} onClick={tryClose} disabled={busy}>
-                {tr('Болих')}
+                {docked ? tr('Хаах') : tr('Болих')}
               </button>
               {/* ⚠️ ШИНЭ объектод `fields.length === 0` нь саад БИШ: атрибутгүй
                   давхаргад ч геометр нэмэх нь утгатай. Засах горимд харин
@@ -320,7 +359,17 @@ export function DedButetsEdit({
             </div>
           </>
         )}
-      </div>
+      </>
+  );
+
+  /* ⚠️ САМБАР — `role="dialog"`-гүй: энэ нь модаль БИШ, горимын байнгын
+     хэсэг. `aria-modal` тавибал дэлгэц уншигч газрын зургийг «ард нь далд»
+     гэж зарлаж, зурагтай ажиллах боломжийг нуух болно. */
+  if (docked) return <aside className={d.pane}>{body}</aside>;
+
+  return (
+    <div className={d.backdrop} role="dialog" aria-modal="true" onClick={tryClose}>
+      <div className={d.modal} onClick={(e) => e.stopPropagation()}>{body}</div>
     </div>
   );
 }

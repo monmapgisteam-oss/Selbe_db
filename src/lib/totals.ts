@@ -11,7 +11,7 @@ import { queryStats, count, sum } from './query';
 import { t as tr } from '@/lib/i18nCore';
 import { layerUrl, OID, CATALOG_LAYER_IDS, LAYER_BY_ID, zoneWhere, type LayerDef } from './services';
 import { num, ha, km } from './format';
-import { useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useAsync, type Async } from './useAsync';
 
 export type Totals = { n: number; q: number };
@@ -161,4 +161,123 @@ export function usePlanTotals(
     totalsCache.set(key, map);
     return map;
   }, [key]);
+}
+
+/**
+ * ДЭВШИЛТТЭЙ НИЙЛБЭР — үр дүн ирэх бүрд шинэчлэгдэнэ.
+ *
+ * ⚠️ ЯАГААД `usePlanTotals`-ААС ТУСДАА ВЭ. Тэр нь БҮХ давхаргын дүн
+ * ирэх хүртэл `loading` төлөвтэй байдаг. «Инженерийн дэд бүтэц» хуудсанд
+ * энэ нь 74 давхарга × (зэрэг 6) = хэмжсэнээр 4.2 секундын ХООСОН хүлээлт
+ * болж байв (2026-09-14-нд амьд үйлчилгээ дээр хэмжсэн: нэг хүсэлт дунджаар
+ * 318 мс, медиан 264, хамгийн удаан 801). Тэр хугацаанд дэлгэц дээр ердөө
+ * «Тооцоолж байна…» гэсэн нэг мөр байв.
+ *
+ * Энэ хувилбар нь ирсэн бүрийг нь ТЭР ДАРУЙ гаргана: эхний тоо ~300 мс-д
+ * гарч, бүлгүүд дүүрсээр байна.
+ *
+ * ⚠️ ДУТУУ НИЙЛБЭР ГАРГАХГҮЙ. Дуудагч тал `have()`-ээр шалгаж, багцынхаа
+ * БҮХ давхарга ирсэн үед л тоог үзүүлнэ. Дутуу олонлогийн нийлбэрийг
+ * шууд бичвэл «146 км» гэх ёстой тоо эхлээд «31 км» гэж гарч, хэрэглэгч
+ * түүнийг БОДИТ утга гэж уншина (`null ≠ 0`-ийн ижил сургамж).
+ *
+ * ⚠️ `usePlanTotals`-ийн session кэшийг ХУВААЛЦАНА: нэг хуудсанд хоёулаа
+ * ажиллавал (каталог + KPI) хоёр дахь нь татахгүй, шууд бэлэн авна.
+ */
+export type LiveTotals = {
+  map: Map<string, Totals>;
+  /** Хэдэн давхаргын дүн ирсэн (амжилтгүй нь ч тоологдоно — хүлээлт дуусна) */
+  done: number;
+  total: number;
+  /** БҮГД унасан — жинхэнэ алдаа (нэг нэгээр унах нь `map`-д дутуугаар илэрнэ) */
+  error: Error | null;
+};
+
+export function usePlanTotalsLive(
+  zone: string | null,
+  enabled = true,
+  ids: string[] = CATALOG_LAYER_IDS,
+): LiveTotals {
+  const epoch = useSyncExternalStore(subscribeTotals, totalsEpoch, totalsEpoch);
+  const key = `${enabled ? 'on' : 'off'}|${zone ?? ''}|${epoch}|${ids.join(",")}`;
+  const [st, setSt] = useState<LiveTotals>(() => ({
+    map: new Map(), done: 0, total: ids.length, error: null,
+  }));
+
+  useEffect(() => {
+    if (!enabled) {
+      setSt({ map: new Map(), done: 0, total: 0, error: null });
+      return undefined;
+    }
+    const hit = totalsCache.get(key);
+    if (hit) {
+      setSt({ map: hit, done: hit.size, total: ids.length, error: null });
+      return undefined;
+    }
+    let alive = true;
+    /* ⚠️ ШИНЭ Map — өмнөх бүс/багцын дүнг ҮРГЭЛЖЛҮҮЛЖ БОЛОХГҮЙ: хуучин
+       давхаргын тоо шинэ олонлогийнх мэт харагдана. */
+    const map = new Map<string, Totals>();
+    let done = 0;
+    let failed = 0;
+    setSt({ map, done: 0, total: ids.length, error: null });
+
+    /**
+     * ⚠️ ХЭСЭГЧИЛСЭН ШИНЭЧЛЭЛ. Хүсэлт бүрд `setSt` дуудвал 74 рендер болно;
+     * тэдгээрийн бүр нь 74 элементийн нийлбэрийг дахин бодно. Тиймээс
+     * хуримтлуулаад ~120 мс тутамд НЭГ УДАА нийтэлнэ — нүд ялгахгүй
+     * хугацаа боловч рендерийн ачаалал 10 дахин буурна.
+     */
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const flush = () => {
+      timer = null;
+      if (!alive) return;
+      /* ⚠️ Map-ыг ХУУЛЖ өгнө — React нь лавлагааны адилтгалаар шалгадаг тул
+         нэг Map-ыг мутацлаад дамжуулбал дахин рендер ОГТ болохгүй. */
+      setSt({ map: new Map(map), done, total: ids.length, error: null });
+    };
+    const bump = () => { if (timer == null) timer = setTimeout(flush, 120); };
+
+    void (async () => {
+      let firstErr: Error | null = null;
+      await Promise.all(ids.map(async (id) => {
+        const d = LAYER_BY_ID[id];
+        try {
+          const r = await layerTotals(d, whereFor(d, zone));
+          if (!alive) return;
+          map.set(id, r);
+        } catch (e) {
+          failed += 1;
+          firstErr ??= e as Error;
+        } finally {
+          done += 1;
+          bump();
+        }
+      }));
+      if (!alive) return;
+      if (timer != null) { clearTimeout(timer); timer = null; }
+      if (failed) {
+        console.warn(`[selbe] usePlanTotalsLive: ${failed} давхаргын тоо татагдсангүй`);
+      }
+      /* ⚠️ ЗӨВХӨН БҮРЭН дүнг кэшлэнэ — дутуу Map кэшлэгдвэл унасан давхарга
+         session дуустал «—» хэвээр үлдэж, өөрөө эдгэрэхгүй. */
+      if (!failed) totalsCache.set(key, map);
+      setSt({
+        map: new Map(map),
+        done: ids.length,
+        total: ids.length,
+        error: failed === ids.length ? (firstErr ?? new Error("no data")) : null,
+      });
+    })();
+
+    return () => {
+      alive = false;
+      if (timer != null) clearTimeout(timer);
+    };
+    /* ⚠️ `ids` нь дуудагч талд `useMemo`-гүй байж болох тул `key`-ээр л
+       хамаарна — тэр нь id-уудыг өөрсдийг нь агуулна. */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+
+  return st;
 }

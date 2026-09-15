@@ -1130,12 +1130,23 @@ function smoothPath(pts: { x: number; y: number }[]): string {
  * Баганын түвшинд (`.seriesPlot`) БҮТЭН талбайг эзэлж хөвнө; hover/дарах нь
  * доорх баганууд дээр хэвээр ажиллана (энэ давхарга нь `pointer-events: none`).
  */
+/**
+ * СОНГОЛТЫН ТУСЛАХ — ганц утга ба МАССИВ хоёуланг зөвшөөрнө (2026-09-15,
+ * ХАБЭА-гийн ArcGIS маягийн олон сонголт). `Bars`/`Donut` аль хэдийн
+ * массив хүлээн авдаг байсан; `Series` л ганц утгатай үлдсэн байв.
+ * ⚠️ Хуучин ганц утгатай дуудлагууд ӨӨРЧЛӨГДӨХГҮЙ ажиллана.
+ */
+const selAny = (sel: string | readonly string[] | null | undefined): boolean =>
+  sel != null && (typeof sel === 'string' || sel.length > 0);
+const selHas = (sel: string | readonly string[] | null | undefined, key: string): boolean =>
+  sel != null && (typeof sel === 'string' ? sel === key : sel.includes(key));
+
 function SeriesLine({
   items, max, selected, showValues,
 }: {
   items: { key: string; label: string; value: number; display?: string }[];
   max: number;
-  selected?: string | null;
+  selected?: string | readonly string[] | null;
   showValues?: boolean;
 }) {
   // ⚠️ Нэг хуудсанд хэд хэдэн муруй байж болно — градиентийн id ДАВТАГДВАЛ
@@ -1172,7 +1183,7 @@ function SeriesLine({
         <path className={s.seriesLinePath} d={d} />
       </svg>
       {pts.map((p, i) => {
-        const dim = selected != null && selected !== items[i].key ? 0.22 : 1;
+        const dim = selAny(selected) && !selHas(selected, items[i].key) ? 0.22 : 1;
         return (
           <Fragment key={items[i].key}>
             <span
@@ -1216,7 +1227,7 @@ export function Series({
    */
   grow?: boolean;
   /** Сонгосон баганын key — идэвхтэй бол бусад нь бүдгэрнэ */
-  selected?: string | null;
+  selected?: string | readonly string[] | null;
   /** Багана дарахад — байвал цуваа шүүлтийн удирдлага болно */
   onSelect?: (key: string) => void;
   /**
@@ -1281,8 +1292,8 @@ export function Series({
       >
         {line && <SeriesLine items={items} max={max} selected={selected} showValues={showValues} />}
         {items.map((it) => {
-          const on = selected === it.key;
-          const dim = selected != null && !on;
+          const on = selHas(selected, it.key);
+          const dim = selAny(selected) && !on;
           // ⚠️ Баганын хамгийн бага өндөр 1.5%: утга 0 байсан ч багана нь БАЙГАА
           //    гэдэг нь харагдах ёстой — эс бөгөөс өгөгдөлгүйтэй андуурагдана.
           const barH = `${Math.max(1.5, (fin(it.value) / max) * 100)}%`;
@@ -1331,7 +1342,7 @@ export function Series({
       </div>
       <div className={s.seriesTicks} aria-hidden ref={ticksRef}>
         {items.map((it, i) => {
-          const on = selected === it.key;
+          const on = selHas(selected, it.key);
           // Сүүлчийнхээс хойш тоолсон алхам — хамгийн шинэ үе ҮРГЭЛЖ бичигдэнэ.
           const show = (items.length - 1 - i) % stride === 0;
           return (
