@@ -524,7 +524,14 @@ export function isViewOnly(user?: string | null): boolean {
  */
 export function bagtsFor(user: string | null | undefined, stage: Stage): string[] | null {
   if (!user) return [];
-  const a = load().find((x) => x.stage === stage && x.user === user.toLowerCase());
+  /* ⚠️ `.trim()` ЗААВАЛ (2026-09-16-ны гүн шалгалт). Бичих тал (`setAssign`,
+     `_syncRemoteAssigns`) нь `trim().toLowerCase()` хийдэг тул энд тааруулахгүй
+     бол нэрэнд санамсаргүй зай орсон хүний хуваарилалт «олдохгүй» болж, тэр
+     хүн томилогдсон атлаа ажлаа ОГТ харахгүй. Энэ файлын бусад 9 хайлт бүгд
+     `.trim()`-тэй — ганц энэ орхигдсон байв (CLAUDE.md-ийн баримтжуулсан
+     «засвар нэгд нь л хүрсэн» хэв шинж). */
+  const key = user.trim().toLowerCase();
+  const a = load().find((x) => x.stage === stage && x.user === key);
   if (!a) return [];
   if (a.bagts.includes(ALL_BAGTS)) return null;
   return a.bagts;

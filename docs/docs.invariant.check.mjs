@@ -24,7 +24,14 @@ import { join } from 'node:path';
 
 const BS = String.fromCharCode(92);
 const norm = (p) => p.split(BS).join('/');
-const read = (p) => readFileSync(p, 'utf8');
+/**
+ * ⚠️ CRLF-ИЙГ НОРМАЛЧИЛНА (2026-09-16). `docs/` доторх .md файлууд Windows
+ *    дээр CRLF-ээр хадгалагддаг ч энэ файлын хэв шинжийн шүүлтүүрүүд
+ *    (`/```mermaid\n/`, `/^\s*participant /m` г.м.) зөвхөн `\n` хүлээдэг.
+ *    Үр дүнд нь Ш5 нь 9 диаграмын НЭГИЙГ Ч олохгүй «Диаграм олдсонгүй» гэж
+ *    унаж байв — баримт зөв атлаа шалгуур худал дохио өгнө.
+ */
+const read = (p) => readFileSync(p, 'utf8').replace(/\r\n/g, '\n');
 
 let bad = 0;
 const ok = (b) => (b ? '✅' : '❌');

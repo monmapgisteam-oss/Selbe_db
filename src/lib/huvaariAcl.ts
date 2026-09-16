@@ -59,7 +59,7 @@ export const subscribeHuvaariAcl = acl.subscribe;
 
 /** REMOTE-ООС ИРСЭН хуваарилалт — `permissions.initRemote` дуудна */
 export const _syncRemoteHuvaari = (
-  rows: { user: string; roles?: string[]; bagts?: string[]; grants?: Grant<PlanRole>[] }[],
+  rows: { user: string; roles?: string[]; bagts?: string[]; grants?: Grant<string>[] }[],
 ): void => acl.syncRemote(rows);
 
 /** Аккаунтад хуваарийн үүрэг ба багц олгох / шинэчлэх */

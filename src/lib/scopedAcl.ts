@@ -127,7 +127,14 @@ export type Acl<R extends string> = {
   list: () => Assign<R>[];
   /** ⚠️ Хуучин (`roles`/`bagts`) ба шинэ (`grants`) хоёуланг хүлээж авна */
   syncRemote: (
-    rows: { user: string; roles?: string[]; bagts?: string[]; grants?: Grant<R>[] }[],
+    /**
+     * ⚠️ `Grant<string>` — `Grant<R>` БИШ (2026-09-16). `permsRemote` нь
+     *    үүргийн утгыг ШАЛГАДАГГҮЙ, зөвхөн тээвэрлэдэг (тэр модулийн
+     *    баримтжуулсан зарчим). Танигдахгүй үүргийг ЭНЭ функц өөрөө
+     *    `ROLES.has()`-ээр хаядаг тул нарийн төрөл шаардах нь худал
+     *    баталгаа өгөөд дуудагч талыг cast хийхэд хүргэнэ.
+     */
+    rows: { user: string; roles?: string[]; bagts?: string[]; grants?: Grant<string>[] }[],
   ) => void;
   failedUsers: () => string[];
   set: (user: string, roles: R[], bagts: string[], grant?: boolean) => AclWrite;
@@ -305,7 +312,14 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
    *    хийж чадахгүй» гэсэн утгагүй төлөв үүсгэхгүй.
    */
   const syncRemote = (
-    rows: { user: string; roles?: string[]; bagts?: string[]; grants?: Grant<R>[] }[],
+    /**
+     * ⚠️ `Grant<string>` — `Grant<R>` БИШ (2026-09-16). `permsRemote` нь
+     *    үүргийн утгыг ШАЛГАДАГГҮЙ, зөвхөн тээвэрлэдэг (тэр модулийн
+     *    баримтжуулсан зарчим). Танигдахгүй үүргийг ЭНЭ функц өөрөө
+     *    `ROLES.has()`-ээр хаядаг тул нарийн төрөл шаардах нь худал
+     *    баталгаа өгөөд дуудагч талыг cast хийхэд хүргэнэ.
+     */
+    rows: { user: string; roles?: string[]; bagts?: string[]; grants?: Grant<string>[] }[],
   ): void => {
     const byUser = new Map<string, Assign<R>>();
     for (const r of rows) {
@@ -318,7 +332,8 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
        *    уншвал тэдгээр эрх ЧИМЭЭГҮЙ алга болно. Хөрвүүлэлт нь эрхийг
        *    НЭМЭХГҮЙ, ХАСАХГҮЙ; дараагийн бичилтэд шинэ хэлбэрээр хадгалагдана.
        */
-      const raw: Grant<R>[] = Array.isArray(r.grants)
+      /* ⚠️ `Grant<string>` — доорх шүүлт нь `ROLES.has()`-ээр `R` болгож нарийсгана */
+      const raw: Grant<string>[] = Array.isArray(r.grants)
         ? r.grants
         : fromLegacy<R>({ user, roles: r.roles, bagts: r.bagts }, hasRoles);
 

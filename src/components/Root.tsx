@@ -102,7 +102,20 @@ export default function Root() {
   // ⚠️ Хатуу super-ийг НИКОГДА түгжихгүй: UserAdmin дээр санамсаргүй бүх view-г
   //    унтраасан override байсан ч, super нь ҮРГЭЛЖ бүх эрхтэй — эс бөгөөс өөрийгөө
   //    админ панелаас гаргаж, засах арга үгүй болно (noAccess дэлгэц Portal-ыг орлоно).
-  const allowed: ViewKey[] | 'all' = hardSuper ? 'all' : (access?.views ?? 'all');
+  /**
+   * ⚠️ FAIL-CLOSED (2026-09-16-ны гүн шалгалт). Урьд нь `access?.views ?? 'all'`
+   *    байв — `resolveAccess` нь `null` буцаах ХОЁР тохиолдолд (бүртгэлгүй хүн,
+   *    УСТГАГДСАН аккаунт) эрх ОЛГОХ тийш унадаг байлаа.
+   *
+   *    Практикт `AuthGate` тэднийг `hasAccess === false`-ээр `denied` төлөвт
+   *    барьдаг тул эрх алдагдаагүй. ГЭХДЭЭ тэр нь ГАНЦ хамгаалалт: `AuthGate`-д
+   *    гарсан ямар ч алдаа (эсвэл ирээдүйд шинэ нэвтрэх зам) энэ анхдагчаар
+   *    дамжин ШУУД бүх харагдац нээнэ. Гүн хамгаалалтын зарчмаар энд ч хаана.
+   *
+   *    `status === 'off'` (dev, нэвтрэлт унтраалттай) үед дээрх `access` нь
+   *    аль хэдийн `{ views: 'all' }` болдог тул энэ өөрчлөлт dev-д нөлөөгүй.
+   */
+  const allowed: ViewKey[] | 'all' = hardSuper ? 'all' : (access?.views ?? []);
 
   /** Дурын хүрээг зөвшөөрсөн харагдацуудаар хайчилна */
   const clamp = (sc: NavScope): NavScope => {
@@ -309,7 +322,7 @@ export default function Root() {
           <Portal
             onHome={goHome}
             navScope={clamped as 'all' | ViewKey[]}
-            docsAllowed={access?.docs ?? true}
+            docsAllowed={access?.docs ?? false}
             isSuper={isSuper}
           />
         )
@@ -320,7 +333,7 @@ export default function Root() {
           onEnterView={enterView}
           /* Порталын хажуугийн цэстэй ЯГ ижил эх сурвалж (мөр 291) — нэг
              хэрэглэгчийн эрх хоёр газарт өөрөөр тайлбарлагдахаас сэргийлнэ. */
-          docsAllowed={access?.docs ?? true}
+          docsAllowed={access?.docs ?? false}
           isSuper={isSuper}
           /*
            * ⚠️ УДИРДЛАГЫН САМБАР — «бүх харагдац» эрхтэй хүнд ч нээгдэнэ
